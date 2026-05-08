@@ -54,11 +54,48 @@ pub async fn extract_concepts(
         !existing_fronts_lower.contains(&f) && !skipped_lower.contains(&f)
     });
 
-        // 最多 5 个
-        candidates.truncate(5);
+        // 词库匹配：从 AI 回复中扫描出生词（不额外消耗 LLM）
+        if crate::word_bank::is_loaded() {
+            let matched = crate::word_bank::match_text(ai_reply);
+            for (word, difficulty, domain) in &matched {
+                let word_lower = word.to_lowercase();
+                // 跳过已有卡片/跳过记录
+                if existing_fronts_lower.contains(&word_lower) || skipped_lower.contains(&word_lower) {
+                    continue;
+                }
+                // 跳过已通过 LLM 提取的候选
+                if candidates.iter().any(|c| c.front.to_lowercase() == word_lower) {
+                    continue;
+                }
+                let source = find_source_sentence(ai_reply, word).unwrap_or_default();
+                candidates.push(ConceptCandidate {
+                    front: word.clone(),
+                    back: format!("[词汇] 等级: {}/5 | 领域: {}", difficulty, domain),
+                    source_sentence: source,
+                    domain: domain.clone(),
+                });
+            }
+        }
+
+        // 最多 10 个
+        candidates.truncate(10);
 
         ExtractionResult { candidates, direct_card: false }
     }
+}
+
+/// 从回复文本中找包含该词的句子
+fn find_source_sentence(reply: &str, word: &str) -> Option<String> {
+    for line in reply.lines() {
+        if line.to_lowercase().contains(&word.to_lowercase()) {
+            let trimmed = line.trim();
+            if trimmed.len() > 120 {
+                return Some(format!("{}...", &trimmed[..120]));
+            }
+            return Some(trimmed.to_string());
+        }
+    }
+    None
 }
 
 /// LLM 提取候选概念 (≤5)

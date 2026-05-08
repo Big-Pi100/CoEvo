@@ -15,6 +15,9 @@ async fn main() {
     chat_engine::prompt_loader::init("prompts");
     tracing::info!("Prompts loaded from prompts/");
 
+    // Load word bank (CEFR catalog)
+    chat_engine::word_bank::init("cefr_catalog.json");
+
     chat_engine::config::ensure_db_connection();
 
     // Auto-schema (idempotent)

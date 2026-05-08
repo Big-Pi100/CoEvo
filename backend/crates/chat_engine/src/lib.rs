@@ -6,3 +6,4 @@ pub mod llm_caller;
 pub mod concept_extractor;
 pub mod config;
 pub mod prompt_loader;
+pub mod word_bank;
