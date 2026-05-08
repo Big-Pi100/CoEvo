@@ -1,0 +1,18 @@
+[package]
+name = "chat_engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+shared_types = { path = "../shared_types" }
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+reqwest.workspace = true
+futures-util.workspace = true
+futures-core.workspace = true
+rusqlite.workspace = true

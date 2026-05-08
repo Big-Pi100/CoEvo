@@ -1,0 +1,21 @@
+[package]
+name = "api_server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+shared_types = { path = "../shared_types" }
+chat_engine = { path = "../chat_engine" }
+card_engine = { path = "../card_engine" }
+growth_engine = { path = "../growth_engine" }
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+tokio.workspace = true
+axum.workspace = true
+tracing.workspace = true
+rusqlite.workspace = true
+tower-http.workspace = true
+sha2 = "0.10"

@@ -1,0 +1,415 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../api/chat_client.dart';
+import '../providers/auth_provider.dart';
+import '../models/coevo_models.dart';
+
+class CardListScreen extends ConsumerStatefulWidget {
+  const CardListScreen({super.key});
+
+  @override
+  ConsumerState<CardListScreen> createState() => _CardListScreenState();
+}
+
+class _CardListScreenState extends ConsumerState<CardListScreen> {
+  List<DueCard> _allCards = [];
+  List<DueCard> _filteredCards = [];
+  bool _isLoading = true;
+
+  // 搜索与过滤
+  final _searchController = TextEditingController();
+  int? _stateFilter;       // null = all
+  String? _domainFilter;   // null = all
+  List<String> _domains = [];
+  Map<String, int> _stateCounts = {};
+
+  static const _stateLabels = ['新卡片', '学习中', '复习中', '重学中'];
+  static const _stateColors = [Colors.blue, Colors.orange, Colors.green, Colors.red];
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(_applyFilters);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadCards());
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_applyFilters);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadCards() async {
+    final auth = ref.read(authProvider);
+    if (auth.userId == null) return;
+    final client = ChatClient(userId: auth.userId!, token: auth.token);
+    try {
+      final resp = await client.getAllCards();
+      final cards = (resp['cards'] as List<dynamic>?)
+          ?.map((e) => DueCard.fromJson(e as Map<String, dynamic>))
+          .toList() ?? [];
+      final stateCounts = resp['state_counts'] as Map<String, dynamic>? ?? {};
+      final domains = (resp['domains'] as List<dynamic>?)
+          ?.map((e) => e as String).toList() ?? [];
+
+      setState(() {
+        _allCards = cards;
+        _domains = domains;
+        _stateCounts = stateCounts.map((k, v) => MapEntry(k, (v as num).toInt()));
+        _isLoading = false;
+      });
+      _applyFilters();
+    } catch (e) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _applyFilters() {
+    final query = _searchController.text.trim().toLowerCase();
+    setState(() {
+      _filteredCards = _allCards.where((c) {
+        // 搜索
+        if (query.isNotEmpty) {
+          if (!c.front.toLowerCase().contains(query) &&
+              !c.back.toLowerCase().contains(query)) {
+            return false;
+          }
+        }
+        // 状态过滤
+        if (_stateFilter != null && c.state != _stateFilter) return false;
+        // 领域过滤
+        if (_domainFilter != null && c.domain != _domainFilter) return false;
+        return true;
+      }).toList();
+    });
+  }
+
+  void _showCardDetail(DueCard card) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.85,
+        expand: false,
+        builder: (_, scrollController) => Padding(
+          padding: const EdgeInsets.all(24),
+          child: ListView(
+            controller: scrollController,
+            children: [
+              Center(
+                child: Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text('正面', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+              const SizedBox(height: 4),
+              Text(card.front, style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+              )),
+              const Divider(height: 32),
+              Text('释义', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+              const SizedBox(height: 4),
+              Text(card.back, style: Theme.of(context).textTheme.bodyLarge),
+              if (card.sourceSentence != null) ...[
+                const Divider(height: 32),
+                Text('来源', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                const SizedBox(height: 4),
+                Text(card.sourceSentence!, style: TextStyle(
+                  fontStyle: FontStyle.italic, color: Colors.grey.shade700,
+                )),
+              ],
+              const Divider(height: 32),
+              Wrap(
+                spacing: 8, runSpacing: 8,
+                children: [
+                  _InfoChip(label: '状态', value: _stateLabels[card.state.clamp(0, 3)]),
+                  if (card.domain != null) _InfoChip(label: '领域', value: card.domain!),
+                  _InfoChip(label: '复习', value: '${card.reps} 次'),
+                  _InfoChip(label: '遗忘', value: '${card.lapses} 次'),
+                  _InfoChip(label: '难度', value: card.difficulty.toStringAsFixed(1)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('我的卡片')),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _allCards.isEmpty
+              ? _buildEmptyState()
+              : Column(
+                  children: [
+                    // 搜索栏
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: '搜索卡片...',
+                          prefixIcon: const Icon(Icons.search, size: 20),
+                          isDense: true,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                          suffixIcon: _searchController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear, size: 18),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    _applyFilters();
+                                  },
+                                )
+                              : null,
+                        ),
+                      ),
+                    ),
+
+                    // 统计栏
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Row(
+                        children: [
+                          _StateBadge(
+                            label: '全部',
+                            count: _allCards.length,
+                            isActive: _stateFilter == null,
+                            onTap: () => setState(() { _stateFilter = null; _applyFilters(); }),
+                          ),
+                          const SizedBox(width: 6),
+                          _StateBadge(
+                            label: '新', count: _stateCounts['new'] ?? 0,
+                            color: Colors.blue,
+                            isActive: _stateFilter == 0,
+                            onTap: () => setState(() { _stateFilter = _stateFilter == 0 ? null : 0; _applyFilters(); }),
+                          ),
+                          const SizedBox(width: 6),
+                          _StateBadge(
+                            label: '学习中', count: _stateCounts['learning'] ?? 0,
+                            color: Colors.orange,
+                            isActive: _stateFilter == 1,
+                            onTap: () => setState(() { _stateFilter = _stateFilter == 1 ? null : 1; _applyFilters(); }),
+                          ),
+                          const SizedBox(width: 6),
+                          _StateBadge(
+                            label: '复习中', count: _stateCounts['review'] ?? 0,
+                            color: Colors.green,
+                            isActive: _stateFilter == 2,
+                            onTap: () => setState(() { _stateFilter = _stateFilter == 2 ? null : 2; _applyFilters(); }),
+                          ),
+                          const SizedBox(width: 6),
+                          _StateBadge(
+                            label: '重学', count: _stateCounts['relearning'] ?? 0,
+                            color: Colors.red,
+                            isActive: _stateFilter == 3,
+                            onTap: () => setState(() { _stateFilter = _stateFilter == 3 ? null : 3; _applyFilters(); }),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // 领域标签
+                    if (_domains.isNotEmpty)
+                      SizedBox(
+                        height: 36,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          children: [
+                            _DomainChip(
+                              label: '全部领域',
+                              isActive: _domainFilter == null,
+                              onTap: () => setState(() { _domainFilter = null; _applyFilters(); }),
+                            ),
+                            ..._domains.map((d) => Padding(
+                              padding: const EdgeInsets.only(left: 6),
+                              child: _DomainChip(
+                                label: d,
+                                isActive: _domainFilter == d,
+                                onTap: () => setState(() { _domainFilter = _domainFilter == d ? null : d; _applyFilters(); }),
+                              ),
+                            )),
+                          ],
+                        ),
+                      ),
+
+                    // 结果计数
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('${_filteredCards.length} 张卡片',
+                              style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                          PopupMenuButton<String>(
+                            onSelected: (sort) {
+                              // TODO: support sort via API
+                            },
+                            itemBuilder: (_) => [
+                              const PopupMenuItem(value: 'state', child: Text('按状态排序')),
+                              const PopupMenuItem(value: 'front', child: Text('按名称排序')),
+                              const PopupMenuItem(value: 'created', child: Text('按创建时间')),
+                              const PopupMenuItem(value: 'due', child: Text('按到期时间')),
+                            ],
+                            icon: const Icon(Icons.sort, size: 20),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // 卡片列表
+                    Expanded(
+                      child: _filteredCards.isEmpty
+                          ? Center(
+                              child: Text('没有匹配的卡片',
+                                  style: TextStyle(color: Colors.grey.shade500)))
+                          : ListView.builder(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              itemCount: _filteredCards.length,
+                              itemBuilder: (_, i) {
+                                final card = _filteredCards[i];
+                                return Card(
+                                  child: ListTile(
+                                    leading: CircleAvatar(
+                                      backgroundColor: _stateColors[card.state.clamp(0, 3)].withAlpha(30),
+                                      child: Icon(Icons.auto_stories,
+                                        color: _stateColors[card.state.clamp(0, 3)], size: 20),
+                                    ),
+                                    title: Text(card.front, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                    subtitle: Text(card.back, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    trailing: Chip(
+                                      label: Text(_stateLabels[card.state.clamp(0, 3)], style: const TextStyle(fontSize: 11)),
+                                      backgroundColor: _stateColors[card.state.clamp(0, 3)].withAlpha(20),
+                                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                    onTap: () => _showCardDetail(card),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.inbox, size: 64, color: Colors.grey.shade300),
+          const SizedBox(height: 16),
+          Text('还没有卡片', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Text('和 AI 对话后，系统会自动提取知识点',
+              style: TextStyle(color: Colors.grey.shade600)),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            onPressed: () => context.go('/chat'),
+            icon: const Icon(Icons.chat),
+            label: const Text('开始对话'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── 小组件 ──
+
+class _StateBadge extends StatelessWidget {
+  final String label;
+  final int count;
+  final Color? color;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _StateBadge({
+    required this.label, required this.count,
+    this.color, required this.isActive, required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bgColor = (color ?? Colors.grey).withAlpha(isActive ? 30 : 10);
+    final txtColor = isActive ? (color ?? Colors.grey) : Colors.grey;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(16),
+          border: isActive ? Border.all(color: (color ?? Colors.grey).withAlpha(80)) : null,
+        ),
+        child: Text('$label $count', style: TextStyle(
+          fontSize: 12, fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+          color: txtColor,
+        )),
+      ),
+    );
+  }
+}
+
+class _DomainChip extends StatelessWidget {
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+  const _DomainChip({required this.label, required this.isActive, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        decoration: BoxDecoration(
+          color: isActive ? Theme.of(context).colorScheme.primary.withAlpha(30) : Colors.grey.withAlpha(15),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(label, style: TextStyle(
+          fontSize: 12,
+          color: isActive ? Theme.of(context).colorScheme.primary : Colors.grey.shade600,
+          fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+        )),
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  final String label;
+  final String value;
+  const _InfoChip({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Chip(
+      avatar: Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+      label: Text(value, style: const TextStyle(fontSize: 13)),
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+    );
+  }
+}
