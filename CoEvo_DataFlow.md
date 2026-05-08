@@ -681,6 +681,24 @@
 ColdPath 运行在 `tokio::spawn` 后台 task 中，不阻塞消息接收。
 用户连续发消息时，每条消息立即被处理（不等前一条的 ColdPath 完成）。
 
+### 词汇匹配 (新增，2026-05-08)
+
+```
+ColdPath 内:
+  1. LLM 提取概念 (已有流程)
+  2. 词库文本匹配:
+     AI回复 → 分词 → 查 cefr_catalog.json (10万词)
+     → 按难度降序排序 → 取前10个
+     → 去重: 已有卡片/跳过记录/LLM已提取 → 跳过
+     → domain: "general"|"grammar" → 改为 "vocabulary"
+     → 与 LLM 结果合并 → 返回 candidates
+```
+
+词库文件: `backend/cefr_catalog.json` (从 LinguaFlow 复制)
+词库加载: `chat_engine/src/word_bank.rs`
+加载时机: 启动时一次性读入 `OnceLock<HashMap<String, CefrEntry>>`
+匹配算法: O(n) 全量扫描 + HashSet 去重 + 多词复合匹配
+
 ---
 
 ## 六、数据流分析发现的问题与建议（实施后状态）
@@ -706,9 +724,9 @@ ColdPath 运行在 `tokio::spawn` 后台 task 中，不阻塞消息接收。
 
 | # | 建议 | 状态 |
 |:--|:--|:--:|
-| 8 | **N1 上下文: 10 轮历史** | ⏳ 待实现 |
+| 8 | **N1 上下文: 5000 字滑动窗口** | ✅ 已实现 |
 | 9 | **achievements 表加 name + icon** | ✅ 已实现 |
-| 10 | **增加 daily_review_count 限制** | ⏳ 待实现 |
+| 10 | **增加 daily_review_count 限制** | ⏭️ 已确认不需要 |
 
 ---
 

@@ -23,6 +23,15 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
   String? _domainFilter;   // null = all
   List<String> _domains = [];
   Map<String, int> _stateCounts = {};
+  String _sortBy = 'state';
+  String get _sortLabel {
+    switch (_sortBy) {
+      case 'front': return '名称';
+      case 'created': return '创建时间';
+      case 'due': return '到期';
+      default: return '状态';
+    }
+  }
 
   static const _stateLabels = ['新卡片', '学习中', '复习中', '重学中'];
   static const _stateColors = [Colors.blue, Colors.orange, Colors.green, Colors.red];
@@ -46,7 +55,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     if (auth.userId == null) return;
     final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {
-      final resp = await client.getAllCards();
+      final resp = await client.getAllCards(sort: _sortBy);
       final cards = (resp['cards'] as List<dynamic>?)
           ?.map((e) => DueCard.fromJson(e as Map<String, dynamic>))
           .toList() ?? [];
@@ -260,17 +269,27 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                         children: [
                           Text('${_filteredCards.length} 张卡片',
                               style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
-                          PopupMenuButton<String>(
-                            onSelected: (sort) {
-                              // TODO: support sort via API
-                            },
-                            itemBuilder: (_) => [
-                              const PopupMenuItem(value: 'state', child: Text('按状态排序')),
-                              const PopupMenuItem(value: 'front', child: Text('按名称排序')),
-                              const PopupMenuItem(value: 'created', child: Text('按创建时间')),
-                              const PopupMenuItem(value: 'due', child: Text('按到期时间')),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(_sortLabel, style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                              const SizedBox(width: 4),
+                              PopupMenuButton<String>(
+                                onSelected: (sort) {
+                                  if (sort != _sortBy) {
+                                    setState(() => _sortBy = sort);
+                                    _loadCards();
+                                  }
+                                },
+                                itemBuilder: (_) => [
+                                  const PopupMenuItem(value: 'state', child: Text('按状态排序')),
+                                  const PopupMenuItem(value: 'front', child: Text('按名称排序')),
+                                  const PopupMenuItem(value: 'created', child: Text('按创建时间')),
+                                  const PopupMenuItem(value: 'due', child: Text('按到期时间')),
+                                ],
+                                icon: const Icon(Icons.sort, size: 20),
+                              ),
                             ],
-                            icon: const Icon(Icons.sort, size: 20),
                           ),
                         ],
                       ),

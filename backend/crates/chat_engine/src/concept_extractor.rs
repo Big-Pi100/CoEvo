@@ -68,11 +68,16 @@ pub async fn extract_concepts(
                     continue;
                 }
                 let source = find_source_sentence(ai_reply, word).unwrap_or_default();
+                // 词库存词统一归类为 vocabulary，避免 "general"/"grammar" 等无意义标签
+                let vocab_domain = match domain.as_str() {
+                    "general" | "grammar" => "vocabulary".to_string(),
+                    _ => domain.clone(),
+                };
                 candidates.push(ConceptCandidate {
                     front: word.clone(),
-                    back: format!("[词汇] 等级: {}/5 | 领域: {}", difficulty, domain),
+                    back: format!("[词汇] 等级: {}/5 | 领域: {}", difficulty, vocab_domain),
                     source_sentence: source,
-                    domain: domain.clone(),
+                    domain: vocab_domain,
                 });
             }
         }

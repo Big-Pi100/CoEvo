@@ -98,13 +98,19 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     final card = _cards[_activeCardIndex];
     final passed = _verificationResult == 'pass';
     try {
-      await _client!.submitReview(
+      final resp = await _client!.submitReview(
         cardId: card.id,
         rating: passed ? 3 : 1,
         verificationType: vtype,
         verificationResult: _verificationResult,
       );
       setState(() => _reviewedCount++);
+
+      // 成就检测
+      final achievements = resp['achievements'] as List<dynamic>?;
+      if (achievements != null && achievements.isNotEmpty) {
+        _showAchievementDialog(achievements.cast<Map<String, dynamic>>());
+      }
 
       // 下一张
       if (_activeCardIndex + 1 < _cards.length) {
@@ -114,12 +120,86 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           _cards.removeAt(_activeCardIndex);
           _activeCardIndex = -1;
         });
+        // 完成后展示统计
+        WidgetsBinding.instance.addPostFrameCallback((_) => _showCompletionStats());
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('提交失败: $e')),
       );
     }
+  }
+
+  void _showAchievementDialog(List<Map<String, dynamic>> achievements) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.emoji_events, color: Colors.amber, size: 28),
+            SizedBox(width: 8),
+            Text('成就解锁！'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: achievements.map((a) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Text(a['icon'] as String? ?? '🌟', style: const TextStyle(fontSize: 32)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(a['name'] as String? ?? '',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
+          )).toList(),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('太棒了！'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCompletionStats() {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('今日复习完成'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.check_circle, color: Colors.green, size: 48),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text('本次复习了 $_reviewedCount 张卡片',
+                style: const TextStyle(fontSize: 16)),
+            const SizedBox(height: 8),
+            Text('保持节奏，每天进步一点点！',
+                style: TextStyle(color: Colors.grey.shade600)),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('继续'),
+          ),
+        ],
+      ),
+    );
   }
 
   // AI 问答
@@ -311,70 +391,17 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               const SizedBox(height: 8),
             ],
 
-              // 卡片 (带 TTS 朗读)
+              // 卡片 (3D 翻转动画)
               Expanded(
                 child: Stack(
                   children: [
-                    GestureDetector(
+                    _CardFlipWidget(
+                      isFlipped: _isFlipped,
+                      front: card.front,
+                      back: card.back,
+                      sourceSentence: card.sourceSentence,
+                      domain: card.domain,
                       onTap: () => setState(() => _isFlipped = !_isFlipped),
-                      child: Card(
-                        child: Center(
-                          child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 300),
-                            child: _isFlipped
-                                ? Padding(
-                                    key: const ValueKey('back'),
-                                    padding: const EdgeInsets.all(24),
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Text(card.back,
-                                          style: Theme.of(context).textTheme.titleLarge,
-                                          textAlign: TextAlign.center,
-                                        ),
-                                        if (card.sourceSentence != null) ...[
-                                          const SizedBox(height: 16),
-                                          Text('来源: ${card.sourceSentence}',
-                                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                              color: Colors.grey,
-                                              fontStyle: FontStyle.italic,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        ],
-                                        if (card.domain != null)
-                                          Padding(
-                                            padding: const EdgeInsets.only(top: 12),
-                                            child: Chip(
-                                              label: Text(card.domain!, style: const TextStyle(fontSize: 12)),
-                                              visualDensity: VisualDensity.compact,
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  )
-                                : Padding(
-                                    key: const ValueKey('front'),
-                                    padding: const EdgeInsets.all(24),
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Text(card.front,
-                                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                        const SizedBox(height: 24),
-                                        const Text('点击翻转查看释义',
-                                          style: TextStyle(color: Colors.grey),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                          ),
-                        ),
-                      ),
                     ),
                     // TTS 朗读按钮
                     Positioned(
@@ -707,6 +734,148 @@ class _DomainChip2 extends StatelessWidget {
           color: isActive ? Theme.of(context).colorScheme.primary : Colors.grey.shade600,
           fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
         )),
+      ),
+    );
+  }
+}
+
+// ── 3D 翻牌组件 ──
+class _CardFlipWidget extends StatefulWidget {
+  final bool isFlipped;
+  final String front;
+  final String back;
+  final String? sourceSentence;
+  final String? domain;
+  final VoidCallback onTap;
+
+  const _CardFlipWidget({
+    required this.isFlipped,
+    required this.front,
+    required this.back,
+    this.sourceSentence,
+    this.domain,
+    required this.onTap,
+  });
+
+  @override
+  State<_CardFlipWidget> createState() => _CardFlipWidgetState();
+}
+
+class _CardFlipWidgetState extends State<_CardFlipWidget>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    _animation = Tween<double>(begin: 0, end: 1.0)
+        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    if (widget.isFlipped) _controller.value = 1.0;
+  }
+
+  @override
+  void didUpdateWidget(_CardFlipWidget old) {
+    super.didUpdateWidget(old);
+    if (widget.isFlipped != old.isFlipped) {
+      if (widget.isFlipped) {
+        _controller.forward();
+      } else {
+        _controller.reverse();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: AnimatedBuilder(
+        animation: _animation,
+        builder: (_, __) {
+          final angle = _animation.value * 3.14159265;
+          return Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.identity()
+              ..setEntry(3, 2, 0.001)
+              ..rotateY(angle),
+            child: Card(
+              child: Center(
+                child: angle < 3.14159265 / 2
+                    ? _buildFront()
+                    : Transform(
+                        alignment: Alignment.center,
+                        transform: Matrix4.identity()..rotateY(3.14159265),
+                        child: _buildBack(),
+                      ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildFront() {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(widget.front,
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          const Text('点击翻转查看释义',
+            style: TextStyle(color: Colors.grey),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBack() {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(widget.back,
+            style: Theme.of(context).textTheme.titleLarge,
+            textAlign: TextAlign.center,
+          ),
+          if (widget.sourceSentence != null) ...[
+            const SizedBox(height: 16),
+            Text('来源: ${widget.sourceSentence}',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Colors.grey,
+                fontStyle: FontStyle.italic,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+          if (widget.domain != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Chip(
+                label: Text(widget.domain!, style: const TextStyle(fontSize: 12)),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+        ],
       ),
     );
   }

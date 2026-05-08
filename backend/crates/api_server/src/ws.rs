@@ -70,12 +70,22 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 // 构建带上下文的 prompt
                 let mut prompt = chat_engine::prompt_loader::get().chat_system.clone();
                 if history.len() > 1 {
-                    // history 包含刚保存的 user 消息，去掉最后一条避免重复
                     let context = &history[..history.len() - 1];
-                    prompt.push_str("\n\n### 对话历史\n");
-                    for (role, content) in context {
+                    // 滑动窗口: 保留最近 N 轮, 总长度 ≤5000 字, 不截断单条
+                    let mut lines: Vec<String> = Vec::new();
+                    let mut total = 0usize;
+                    for (role, content) in context.iter().rev() {
                         let label = if role == "user" { "用户" } else { "AI" };
-                        prompt.push_str(&format!("\n{}: {}", label, content));
+                        let line = format!("\n{}: {}", label, content);
+                        let next = total + line.len();
+                        if next > 5000 { break; }
+                        total = next;
+                        lines.push(line);
+                    }
+                    if !lines.is_empty() {
+                        lines.reverse();
+                        prompt.push_str("\n\n### 对话历史");
+                        for l in &lines { prompt.push_str(l); }
                     }
                 }
                 prompt.push_str(&format!("\n\n### 当前对话\n用户: {}", chat_req.message));

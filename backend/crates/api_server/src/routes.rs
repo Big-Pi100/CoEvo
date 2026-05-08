@@ -149,14 +149,24 @@ async fn chat_handler(
         (existing_fronts, skipped_fronts, now_str, history)
     }; // conn dropped here
 
-    // 构建带上下文的 prompt
+    // 构建带上下文的 prompt（滑动窗口 ≤5000 字）
     let mut prompt = chat_engine::prompt_loader::get().chat_system.clone();
     if history.len() > 1 {
         let context = &history[..history.len() - 1];
-        prompt.push_str("\n\n### 对话历史\n");
-        for (role, content) in context {
+        let mut lines: Vec<String> = Vec::new();
+        let mut total = 0usize;
+        for (role, content) in context.iter().rev() {
             let label = if role == "user" { "用户" } else { "AI" };
-            prompt.push_str(&format!("\n{}: {}", label, content));
+            let line = format!("\n{}: {}", label, content);
+            let next = total + line.len();
+            if next > 5000 { break; }
+            total = next;
+            lines.push(line);
+        }
+        if !lines.is_empty() {
+            lines.reverse();
+            prompt.push_str("\n\n### 对话历史");
+            for l in &lines { prompt.push_str(l); }
         }
     }
     prompt.push_str(&format!("\n\n### 当前对话\n用户: {}", input.message));
