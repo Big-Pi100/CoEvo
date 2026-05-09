@@ -292,3 +292,47 @@ class WsChatSession {
     _channel.sink.close();
   }
 }
+
+// ── Learning Plan API (ChatClient extension) ──
+
+extension PlanApi on ChatClient {
+  Future<List<Map<String, dynamic>>> getPlans() async {
+    try {
+      final resp = await http.get(
+        Uri.parse('$baseUrl/api/plans?user_id=$userId'),
+        headers: _authHeaders,
+      );
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+        return (data['plans'] as List?)
+            ?.cast<Map<String, dynamic>>()
+            .where((p) => p['mode'] != 'deleted')
+            .toList() ?? [];
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  Future<Map<String, dynamic>?> createPlan({
+    required String goal,
+    required String domain,
+    required Map<String, dynamic> planJson,
+  }) async {
+    try {
+      final resp = await http.post(
+        Uri.parse('$baseUrl/api/plans'),
+        headers: {..._authHeaders, 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': userId,
+          'goal': goal,
+          'domain': domain,
+          'plan_json': planJson,
+        }),
+      );
+      if (resp.statusCode == 200) {
+        return jsonDecode(resp.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+}

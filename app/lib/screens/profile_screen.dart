@@ -252,7 +252,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         const SizedBox(width: 8),
                         Text('语速', style: Theme.of(context).textTheme.bodyMedium),
                         const Spacer(),
-                        Text('${tts.speechRate.toStringAsFixed(1)}',
+                        Text(tts.speechRate.toStringAsFixed(1),
                             style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
                       ],
                     ),

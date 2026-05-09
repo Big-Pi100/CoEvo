@@ -200,7 +200,7 @@ impl LlmCaller {
         let mut full_text = String::new();
         let mut stream = response.bytes_stream();
         let mut buffer = Vec::new();
-        let mut had_content = false;
+        let had_content = false;
 
         while let Some(chunk) = stream.next().await {
             let chunk = match chunk {

@@ -16,9 +16,11 @@ use chat_engine::llm_caller::LlmConfig;
 struct TestCase {
     id: &'static str,
     name: &'static str,
+    #[allow(dead_code)]
     user_message: &'static str,
     ai_reply: &'static str,
     expected_fronts: &'static [&'static str],
+    #[allow(dead_code)]
     domain: &'static str,
 }
 

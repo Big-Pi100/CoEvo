@@ -35,6 +35,9 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/user/{user_id}/avatar", post(avatar_upload_handler).get(avatar_get_handler))
         // WS
         .route("/ws", get(ws_upgrade))
+        // Learning Plans
+        .route("/api/plans", get(plans_list_handler).post(plan_upsert_handler))
+        .route("/api/plans/{plan_id}", delete(plan_delete_handler))
 }
 
 // ════════════════════════════════════════════
@@ -783,5 +786,85 @@ async fn avatar_get_handler(
     match tokio::fs::read(&path).await {
         Ok(data) => Ok((axum::http::StatusCode::OK, [("Content-Type", "image/png")], data)),
         Err(_) => Err((axum::http::StatusCode::NOT_FOUND, "No avatar")),
+    }
+}
+
+// ════════════════════════════════════════════
+// Learning Plan Handlers
+// ════════════════════════════════════════════
+
+#[derive(Deserialize)]
+pub struct PlanInput {
+    pub user_id: String,
+    pub goal: String,
+    pub domain: String,
+    pub plan_json: serde_json::Value,
+}
+
+async fn plans_list_handler(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Json<serde_json::Value> {
+    let user_id = match params.get("user_id") {
+        Some(id) => id,
+        None => return Json(serde_json::json!({"error": "user_id required"})),
+    };
+    let conn = crate::db_pool::get_conn();
+    let mut stmt = match conn.prepare(
+        "SELECT id, goal, domain, mode, plan_json, created_at, updated_at FROM learning_plans WHERE user_id = ?1 ORDER BY created_at DESC"
+    ) {
+        Ok(s) => s,
+        Err(e) => return Json(serde_json::json!({"error": format!("DB: {}", e)})),
+    };
+    let plans: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![user_id], |row| {
+        Ok(serde_json::json!({
+            "id": row.get::<_, String>(0)?,
+            "goal": row.get::<_, String>(1)?,
+            "domain": row.get::<_, String>(2)?,
+            "mode": row.get::<_, Option<String>>(3)?,
+            "plan": serde_json::from_str::<serde_json::Value>(&row.get::<_, String>(4)?).ok(),
+            "created_at": row.get::<_, String>(5)?,
+            "updated_at": row.get::<_, String>(6)?,
+        }))
+    }).unwrap().filter_map(|r| r.ok()).collect();
+
+    Json(serde_json::json!({"plans": plans}))
+}
+
+async fn plan_upsert_handler(
+    Json(input): Json<PlanInput>,
+) -> Json<serde_json::Value> {
+    let conn = crate::db_pool::get_conn();
+    let now = chrono::Utc::now().to_rfc3339();
+    let plan_str = input.plan_json.to_string();
+    let id = uuid::Uuid::new_v4().to_string();
+
+    // 检查是否已有同 domain 的 plan，有则更新，无则插入
+    match conn.execute(
+        "INSERT INTO learning_plans (id, user_id, goal, domain, mode, plan_json, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, 'structured', ?5, ?6, ?6)
+         ON CONFLICT(id) DO UPDATE SET plan_json=?5, updated_at=?6",
+        rusqlite::params![id, input.user_id, input.goal, input.domain, plan_str, now],
+    ) {
+        Ok(_) => Json(serde_json::json!({"id": id, "status": "ok"})),
+        Err(e) => Json(serde_json::json!({"error": format!("DB: {}", e)})),
+    }
+}
+
+async fn plan_delete_handler(
+    Path(plan_id): Path<String>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Json<serde_json::Value> {
+    let user_id = match params.get("user_id") {
+        Some(id) => id,
+        None => return Json(serde_json::json!({"error": "user_id required"})),
+    };
+    let conn = crate::db_pool::get_conn();
+    // 软删除：标记 mode=deleted，不物理删除
+    match conn.execute(
+        "UPDATE learning_plans SET mode='deleted', updated_at=?1 WHERE id=?2 AND user_id=?3",
+        rusqlite::params![chrono::Utc::now().to_rfc3339(), plan_id, user_id],
+    ) {
+        Ok(_) => Json(serde_json::json!({"status": "ok"})),
+        Err(e) => Json(serde_json::json!({"error": format!("DB: {}", e)})),
     }
 }

@@ -29,6 +29,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isWaiting = false;
   String _convId = '';
 
+  // 学习计划
+  Map<String, dynamic>? _activePlan;
+  bool _planExpanded = true;
+
   String _streamingBuffer = '';
   int _streamingIndex = -1;
 
@@ -57,6 +61,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       token: auth.token,
     );
 
+    // 加载学习计划
+    _loadPlan();
+
     // 加载历史对话
     final history = await _client!.getConversationTurns(_convId);
     if (history.isNotEmpty && mounted) {
@@ -80,6 +87,116 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ));
       });
     }
+  }
+
+  Future<void> _loadPlan() async {
+    if (_client == null) return;
+    final plans = await _client!.getPlans();
+    if (plans.isNotEmpty && mounted) {
+      setState(() => _activePlan = plans.first);
+    }
+  }
+
+  Widget _buildPlanPanel() {
+    if (_activePlan == null) return const SizedBox.shrink();
+    final plan = _activePlan!;
+    final goal = plan['goal'] as String? ?? '';
+    final planJson = plan['plan'] as Map<String, dynamic>? ?? {};
+    final stages = planJson['stages'] as List<dynamic>? ?? [];
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary.withAlpha(10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(context).colorScheme.primary.withAlpha(30)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: () => setState(() => _planExpanded = !_planExpanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(Icons.school, size: 18, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(goal, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                  Icon(_planExpanded ? Icons.expand_less : Icons.expand_more, size: 20),
+                ],
+              ),
+            ),
+          ),
+          if (_planExpanded)
+            ...stages.map((stage) {
+              final s = stage as Map<String, dynamic>;
+              final stageName = s['name'] as String? ?? '';
+              final stageStatus = s['status'] as String? ?? 'pending';
+              final tasks = s['tasks'] as List<dynamic>? ?? [];
+              final isActive = stageStatus == 'in_progress';
+
+              return Padding(
+                padding: const EdgeInsets.only(left: 14, right: 14, bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          isActive ? Icons.play_circle_fill : Icons.check_circle,
+                          size: 14,
+                          color: isActive ? Theme.of(context).colorScheme.primary : Colors.green,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(stageName,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+                            color: isActive ? null : Colors.grey,
+                          )),
+                        if (stageStatus == 'done')
+                          Text(' ✅', style: TextStyle(fontSize: 12, color: Colors.green.shade600)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    ...tasks.map((task) {
+                      final t = task as Map<String, dynamic>;
+                      final taskName = t['name'] as String? ?? '';
+                      final taskStatus = t['status'] as String? ?? 'pending';
+                      final isTaskActive = taskStatus == 'in_progress';
+                      return Padding(
+                        padding: const EdgeInsets.only(left: 16, top: 2),
+                        child: Row(
+                          children: [
+                            Icon(
+                              taskStatus == 'done' ? Icons.check_circle_outline :
+                              isTaskActive ? Icons.radio_button_checked : Icons.radio_button_checked_outlined,
+                              size: 12,
+                              color: taskStatus == 'done' ? Colors.green :
+                                     isTaskActive ? Theme.of(context).colorScheme.primary : Colors.grey.shade400,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(taskName,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: taskStatus == 'done' ? Colors.green.shade600 :
+                                       isTaskActive ? null : Colors.grey.shade500,
+                                fontWeight: isTaskActive ? FontWeight.w500 : FontWeight.normal,
+                              )),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
+    );
   }
 
   @override
@@ -144,6 +261,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       case 'thinking':
         _updateStreaming('思考中...');
         break;
+      case 'planning':
+        // 计划生成中，清空已收到的碎片 token，显示占位
+        _streamingBuffer = '';
+        if (_streamingIndex < 0) {
+          _addMessage(Message(
+            role: 'assistant', content: '计划制定中……', timestamp: DateTime.now(),
+          ));
+          _streamingIndex = _messages.length - 1;
+        }
+        _updateStreaming('计划制定中……');
+        break;
       case 'token':
         _streamingBuffer += event.content ?? '';
         _updateStreaming(_streamingBuffer);
@@ -159,6 +287,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         break;
       case 'error':
         _finalizeStreaming('抱歉，出了点问题：${event.content}');
+        break;
+      case 'plan_updated':
+        _loadPlan();
         break;
     }
   }
@@ -194,18 +325,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     const pageSize = 5;
     final totalPages = (candidates.length + pageSize - 1) ~/ pageSize;
     final selected = List.generate(candidates.length, (_) => true);
+    var page = 0;
+
+    void nextPage() => page++;
+    int start() => page * pageSize;
+    int end() => (start() + pageSize).clamp(0, candidates.length);
+    List<ConceptCandidate> pageItems() => candidates.sublist(start(), end());
+    bool isLastPage() => page >= totalPages - 1;
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
-          var page = 0;
-          void nextPage() => setDialogState(() => page++);
-          int start() => page * pageSize;
-          int end() => (start() + pageSize).clamp(0, candidates.length);
-          List<ConceptCandidate> pageItems() => candidates.sublist(start(), end());
-          bool isLastPage() => page >= totalPages - 1;
-
           return AlertDialog(
             title: Text('发现知识点 (${page + 1}/$totalPages)'),
             content: SizedBox(
@@ -251,6 +382,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       selected[i] = true;
                     }
                     nextPage();
+                    setDialogState(() {});
                   }
                 },
                 child: Text(isLastPage() ? '完成' : '跳过并继续'),
@@ -288,6 +420,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       selected[i] = true;
                     }
                     nextPage();
+                    setDialogState(() {});
                   }
                 },
                 child: Text(isLastPage() ? '确认制卡' : '确认并继续'),
@@ -354,6 +487,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
       body: Column(
         children: [
+          // 学习计划面板（持久展示，不被对话推没）
+          _buildPlanPanel(),
           Expanded(
             child: SelectionArea(
               child: ListView.builder(

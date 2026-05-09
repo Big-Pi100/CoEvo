@@ -13,6 +13,7 @@ name = "coevo_backend"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+default-run = "coevo_backend"
 
 [dependencies]
 api_server = { path = "crates/api_server" }

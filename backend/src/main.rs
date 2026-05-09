@@ -33,7 +33,7 @@ async fn main() {
                 if let Err(e) = conn.execute_batch(&safe_sql) {
                     tracing::error!("schema init failed: {}", e);
                 } else {
-                    tracing::info!("Schema initialized (8 tables)");
+                    tracing::info!("Schema initialized (9 tables)");
                 }
             }
         }
@@ -41,6 +41,9 @@ async fn main() {
         let migrations = [
             "ALTER TABLE users ADD COLUMN streak_days INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN last_active_date TEXT",
+            "ALTER TABLE conversations ADD COLUMN learning_plan_id TEXT",
+            "ALTER TABLE achievements ADD COLUMN tier TEXT DEFAULT 'fixed'",
+            "ALTER TABLE achievements ADD COLUMN source TEXT",
         ];
         for sql in &migrations {
             let _ = conn.execute(sql, []);
