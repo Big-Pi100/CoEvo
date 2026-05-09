@@ -44,6 +44,19 @@ async fn main() {
             "ALTER TABLE conversations ADD COLUMN learning_plan_id TEXT",
             "ALTER TABLE achievements ADD COLUMN tier TEXT DEFAULT 'fixed'",
             "ALTER TABLE achievements ADD COLUMN source TEXT",
+            "CREATE TABLE IF NOT EXISTS learning_plans (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                conversation_id TEXT,
+                goal TEXT NOT NULL,
+                domain TEXT NOT NULL,
+                mode TEXT DEFAULT NULL,
+                plan_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_learning_plans_user ON learning_plans(user_id)",
         ];
         for sql in &migrations {
             let _ = conn.execute(sql, []);

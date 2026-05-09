@@ -97,10 +97,10 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 {
                     let conn = crate::db_pool::get_conn();
                     let mut stmt = conn.prepare(
-                        "SELECT mode, goal, plan_json FROM learning_plans WHERE user_id = ?1 AND mode = 'structured' ORDER BY updated_at DESC LIMIT 1"
+                        "SELECT mode, goal, plan_json FROM learning_plans WHERE conversation_id = ?1 AND mode = 'structured' ORDER BY updated_at DESC LIMIT 1"
                     ).ok();
                     if let Some(ref mut stmt) = stmt {
-                        if let Ok(row) = stmt.query_row(rusqlite::params![chat_req.user_id], |row| {
+                        if let Ok(row) = stmt.query_row(rusqlite::params![chat_req.conversation_id], |row| {
                             Ok((row.get::<_, Option<String>>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
                         }) {
                             if let (Some(mode), Ok(plan)) = (&row.0, serde_json::from_str::<serde_json::Value>(&row.2)) {
@@ -196,15 +196,15 @@ pub async fn handle_ws(mut ws: WebSocket) {
                                     let mut plan = update.clone();
                                     let _ = plan.as_object_mut().map(|o| { o.remove("is_new_plan"); o.remove("goal"); });
                                     let _ = conn.execute(
-                                        "INSERT INTO learning_plans (id, user_id, goal, domain, mode, plan_json, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 'structured', ?5, ?6, ?6)",
-                                        rusqlite::params![id, chat_req.user_id, goal, "", plan.to_string(), now],
+                                        "INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_json, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, 'structured', ?6, ?7, ?7)",
+                                        rusqlite::params![id, chat_req.user_id, chat_req.conversation_id, goal, "", plan.to_string(), now],
                                     );
                                     final_reply = render_plan(&update);
                                     plan_updated = true;
                                 } else {
                                     let plan_row: Option<(String, String)> = conn.query_row(
-                                        "SELECT id, plan_json FROM learning_plans WHERE user_id = ?1 AND mode = 'structured' ORDER BY updated_at DESC LIMIT 1",
-                                        rusqlite::params![chat_req.user_id],
+                                        "SELECT id, plan_json FROM learning_plans WHERE conversation_id = ?1 AND mode = 'structured' ORDER BY updated_at DESC LIMIT 1",
+                                        rusqlite::params![chat_req.conversation_id],
                                         |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
                                     ).ok();
                                     if let Some((plan_id, plan_str)) = plan_row {

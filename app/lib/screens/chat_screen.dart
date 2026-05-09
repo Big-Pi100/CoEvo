@@ -91,7 +91,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _loadPlan() async {
     if (_client == null) return;
-    final plans = await _client!.getPlans();
+    final plans = await _client!.getPlans(conversationId: _convId);
     if (plans.isNotEmpty && mounted) {
       setState(() => _activePlan = plans.first);
     }

@@ -296,10 +296,13 @@ class WsChatSession {
 // ── Learning Plan API (ChatClient extension) ──
 
 extension PlanApi on ChatClient {
-  Future<List<Map<String, dynamic>>> getPlans() async {
+  Future<List<Map<String, dynamic>>> getPlans({String? conversationId}) async {
     try {
+      final queryParams = conversationId != null
+          ? 'conversation_id=$conversationId'
+          : 'user_id=$userId';
       final resp = await http.get(
-        Uri.parse('$baseUrl/api/plans?user_id=$userId'),
+        Uri.parse('$baseUrl/api/plans?$queryParams'),
         headers: _authHeaders,
       );
       if (resp.statusCode == 200) {

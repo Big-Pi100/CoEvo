@@ -105,12 +105,14 @@ CREATE INDEX idx_achievements_user ON achievements(user_id);
 CREATE TABLE learning_plans (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
+    conversation_id TEXT,
     goal TEXT NOT NULL,           -- "AI入门"
     domain TEXT NOT NULL,         -- "linear_algebra"
-    mode TEXT DEFAULT NULL,       -- NULL(自由) / "structured"
+    mode TEXT DEFAULT NULL,       -- NULL(自由) / "structured" / "deleted"
     plan_json TEXT NOT NULL,      -- 完整 learning_plan JSON
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 CREATE INDEX idx_learning_plans_user ON learning_plans(user_id);
+CREATE INDEX idx_learning_plans_conv ON learning_plans(conversation_id);
