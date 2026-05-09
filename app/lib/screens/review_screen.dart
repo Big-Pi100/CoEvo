@@ -5,7 +5,7 @@ import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
 import '../services/tts_service.dart';
 
-/// 学习计划: 展示待复习队列 + 复习模式
+/// 学习计划: 内联复习队列
 class ReviewScreen extends ConsumerStatefulWidget {
   const ReviewScreen({super.key});
 
@@ -18,18 +18,23 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   ChatClient? _client;
   List<DueCard> _cards = [];
 
-  // 复习状态
-  int _activeCardIndex = -1; // -1 = 队列视图
+  int _activeCardIndex = -1;
   bool _isFlipped = false;
   bool _isLoading = true;
   String _verificationResult = '';
   bool _isVerified = false;
+  bool _isVerifying = false;  // 闭卷考试模式（翻回正面，不可再翻看）
   bool _isAiQuiz = false;
   List<VerifyQuestion> _aiQuestions = [];
   int _aiQuestionIndex = 0;
   List<String> _aiAnswers = [];
   List<JudgeResult> _aiResults = [];
   int _reviewedCount = 0;
+  final _scrollController = ScrollController();
+  final Map<int, GlobalKey> _cardKeys = {};
+  List<VerifyQuestion> _preloadedQuestions = [];
+  bool _preloadingQuiz = false;
+  bool _isJudging = false;
 
   @override
   void initState() {
@@ -40,6 +45,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   @override
   void dispose() {
     _answerController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -61,73 +67,44 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             ?.map((e) => DueCard.fromJson(e as Map<String, dynamic>))
             .toList() ?? [];
         _isLoading = false;
-        _activeCardIndex = _cards.isEmpty ? -1 : -1; // 先展示队列
       });
     } catch (e) {
       setState(() => _isLoading = false);
     }
   }
 
-  void _enterReview(int index) {
+  Future<int> _loadMoreCards() async {
+    try {
+      final resp = await _client!.getDueCards();
+      final newCards = (resp['cards'] as List<dynamic>?)
+          ?.map((e) => DueCard.fromJson(e as Map<String, dynamic>))
+          .toList() ?? [];
+      setState(() {
+        _cards = newCards;
+        _activeCardIndex = -1;
+      });
+      return newCards.length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  void _resetInlineReview() {
     setState(() {
-      _activeCardIndex = index;
       _isFlipped = false;
       _isVerified = false;
+      _isVerifying = false;
       _verificationResult = '';
       _isAiQuiz = false;
       _aiQuestions = [];
+      _preloadedQuestions = [];
+      _preloadingQuiz = false;
+      _isJudging = false;
       _aiQuestionIndex = 0;
       _aiAnswers = [];
       _aiResults = [];
       _answerController.clear();
     });
-  }
-
-  void _exitReview() {
-    setState(() {
-      _activeCardIndex = -1;
-      _isFlipped = false;
-      _isVerified = false;
-      _verificationResult = '';
-    });
-    _loadCards(); // 刷新队列
-  }
-
-  Future<void> _submitAndNext(String vtype) async {
-    if (_client == null || _activeCardIndex < 0) return;
-    final card = _cards[_activeCardIndex];
-    final passed = _verificationResult == 'pass';
-    try {
-      final resp = await _client!.submitReview(
-        cardId: card.id,
-        rating: passed ? 3 : 1,
-        verificationType: vtype,
-        verificationResult: _verificationResult,
-      );
-      setState(() => _reviewedCount++);
-
-      // 成就检测
-      final achievements = resp['achievements'] as List<dynamic>?;
-      if (achievements != null && achievements.isNotEmpty) {
-        _showAchievementDialog(achievements.cast<Map<String, dynamic>>());
-      }
-
-      // 下一张
-      if (_activeCardIndex + 1 < _cards.length) {
-        _enterReview(_activeCardIndex + 1);
-      } else {
-        setState(() {
-          _cards.removeAt(_activeCardIndex);
-          _activeCardIndex = -1;
-        });
-        // 完成后展示统计
-        WidgetsBinding.instance.addPostFrameCallback((_) => _showCompletionStats());
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('提交失败: $e')),
-      );
-    }
   }
 
   void _showAchievementDialog(List<Map<String, dynamic>> achievements) {
@@ -202,10 +179,62 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     );
   }
 
-  // AI 问答
-  Future<void> _startAiQuiz() async {
-    if (_client == null || _activeCardIndex < 0) return;
-    final card = _cards[_activeCardIndex];
+  Future<void> _skipCard(DueCard card) async {
+    if (_client == null) return;
+    try {
+      await _client!.skipConcept(card.front, card.sourceSentence ?? '');
+      if (mounted) {
+        setState(() {
+          _cards.removeWhere((c) => c.id == card.id);
+          _activeCardIndex = -1;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已跳过「${card.front}」')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('跳过失败: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _preloadAiQuestions(DueCard card) async {
+    if (_client == null) return;
+    setState(() => _preloadingQuiz = true);
+    try {
+      final resp = await _client!.verifyQuestions(card.id, card.front, card.back);
+      final questions = (resp['questions'] as List<dynamic>?)
+          ?.map((e) => VerifyQuestion.fromJson(e as Map<String, dynamic>))
+          .toList() ?? [];
+      if (mounted && _activeCardIndex >= 0 && _cards[_activeCardIndex].id == card.id) {
+        setState(() {
+          _preloadedQuestions = questions;
+          _preloadingQuiz = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _preloadingQuiz = false);
+    }
+  }
+
+  // ── 内联复习方法 ──
+
+  Future<void> _startInlineAiQuiz(DueCard card) async {
+    // 优先用预加载的问题（零延迟）
+    if (_preloadedQuestions.isNotEmpty) {
+      setState(() {
+        _isAiQuiz = true;
+        _aiQuestions = List.from(_preloadedQuestions);
+        _aiQuestionIndex = 0;
+        _aiAnswers = List.filled(_preloadedQuestions.length, '');
+      });
+      return;
+    }
+    // 降级: 实时生成
+    if (_client == null) return;
     try {
       final resp = await _client!.verifyQuestions(card.id, card.front, card.back);
       final questions = (resp['questions'] as List<dynamic>?)
@@ -218,63 +247,94 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         _aiAnswers = List.filled(questions.length, '');
       });
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('AI 问答启动失败: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('AI 问答启动失败: $e')),
+        );
+      }
     }
   }
 
-  void _submitAiAnswer() {
-    setState(() {
-      _aiAnswers[_aiQuestionIndex] = _answerController.text.trim();
-      _answerController.clear();
-      if (_aiQuestionIndex + 1 < _aiQuestions.length) {
-        _aiQuestionIndex++;
-      } else {
-        _judgeAiAnswers();
-      }
-    });
+  void _submitInlineAiAnswer() {
+    if (_aiQuestionIndex >= _aiQuestions.length) return;
+    _aiAnswers[_aiQuestionIndex] = _answerController.text.trim();
+    _answerController.clear();
+    setState(() => _aiQuestionIndex++);
+    if (_aiQuestionIndex >= _aiQuestions.length) {
+      _judgeInlineAnswers();
+    }
   }
 
-  Future<void> _judgeAiAnswers() async {
-    if (_client == null || _activeCardIndex < 0) return;
+  Future<void> _judgeInlineAnswers() async {
+    if (_client == null || _cards.isEmpty || _activeCardIndex < 0) return;
+    setState(() => _isJudging = true);
     final card = _cards[_activeCardIndex];
-    final qlist = List.generate(_aiQuestions.length, (i) => {
-      'question': _aiQuestions[i].question,
-      'expected_answer': _aiQuestions[i].expectedAnswer,
-      'user_answer': _aiAnswers[i],
-    });
     try {
-      final resp = await _client!.judgeAnswers(cardId: card.id, questions: qlist);
+      final questions = List.generate(_aiQuestions.length, (i) => {
+        'question': _aiQuestions[i].question,
+        'expected_answer': _aiQuestions[i].expectedAnswer,
+        'user_answer': i < _aiAnswers.length ? _aiAnswers[i] : '',
+      });
+      final resp = await _client!.judgeAnswers(cardId: card.id, questions: questions);
       final results = (resp['results'] as List<dynamic>?)
           ?.map((e) => JudgeResult.fromJson(e as Map<String, dynamic>))
           .toList() ?? [];
       final correct = resp['total_correct'] as int? ?? 0;
+      _aiResults = results;
+      _verificationResult = correct >= 2 ? 'pass' : 'fail';
       setState(() {
-        _aiResults = results;
-        if (correct >= 2) {
-          _verificationResult = 'pass';
-        } else {
-          _verificationResult = 'fail';
-        }
         _isVerified = true;
+        _isVerifying = false;
+        _isJudging = false;
+      });
+      // 展示 1.5 秒后自动提交
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted) _submitInlineReview(_activeCardIndex);
       });
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('AI 判断失败: $e')),
+      if (mounted) setState(() => _isJudging = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('判断失败: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _submitInlineReview(int index) async {
+    if (_client == null || index >= _cards.length) return;
+    final card = _cards[index];
+    final vtype = card.cardType == 'vocabulary' ? 'spelling' : 'ai_dialogue';
+    try {
+      final resp = await _client!.submitReview(
+        cardId: card.id,
+        rating: _verificationResult == 'pass' ? 3 : 1,
+        verificationType: vtype,
+        verificationResult: _verificationResult,
       );
+      setState(() {
+        _reviewedCount++;
+        _cards.removeAt(index);
+        _activeCardIndex = -1;
+      });
+      final achievements = resp['achievements'] as List<dynamic>?;
+      if (achievements != null && achievements.isNotEmpty) {
+        _showAchievementDialog(achievements.cast<Map<String, dynamic>>());
+      }
+      if (_cards.isEmpty) {
+        final more = await _loadMoreCards();
+        if (more == 0 && mounted) _showCompletionStats();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('提交失败: $e')),
+        );
+      }
     }
   }
 
-  void _skipCard() {
-    if (_activeCardIndex + 1 < _cards.length) {
-      _enterReview(_activeCardIndex + 1);
-    } else {
-      _exitReview();
-    }
-  }
-
-  // ── 构建 ──
+  // ── Build ──
 
   @override
   Widget build(BuildContext context) {
@@ -285,12 +345,6 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       );
     }
 
-    // ── 复习模式 ──
-    if (_activeCardIndex >= 0 && _activeCardIndex < _cards.length) {
-      return _buildReviewMode();
-    }
-
-    // ── 队列视图（没有待复习卡片） ──
     if (_cards.isEmpty) {
       return Scaffold(
         appBar: AppBar(title: const Text('学习计划')),
@@ -298,25 +352,13 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.check_circle, size: 80, color: Colors.green.shade400),
+              Icon(Icons.check_circle_outline, size: 64, color: Colors.green.shade300),
+              const SizedBox(height: 16),
+              Text('今日复习完成！', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text('共复习 $_reviewedCount 张卡片',
+                  style: TextStyle(color: Colors.grey.shade600)),
               const SizedBox(height: 24),
-              Text(
-                _reviewedCount > 0 ? '今日复习完成！' : '暂无待复习卡片',
-                style: Theme.of(context).textTheme.headlineMedium,
-              ),
-              if (_reviewedCount > 0)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text('今日已复习 $_reviewedCount 张卡片',
-                      style: Theme.of(context).textTheme.bodyLarge),
-                ),
-              if (_reviewedCount == 0)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text('去对话学习新知识，卡片会自动出现在这里',
-                      style: TextStyle(color: Colors.grey.shade600)),
-                ),
-              const SizedBox(height: 32),
               FilledButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('返回'),
@@ -327,7 +369,6 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       );
     }
 
-    // ── 队列视图（有待复习卡片） ──
     return Scaffold(
       appBar: AppBar(
         title: const Text('学习计划'),
@@ -342,541 +383,333 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           ),
         ],
       ),
-      body: _buildQueueView(),
+      body: _buildQueue(),
     );
   }
 
-  Widget _buildQueueView() {
-    // 从卡片列表提取领域信息用于过滤
-    final domains = <String>{};
-    for (final c in _cards) {
-      if (c.domain != null) domains.add(c.domain!);
+  /// 蒙版宽度因子：0.0 = 无蒙版（全进度），1.0 = 全蒙版（无进度）
+  double _progressOverlay(int state, int reps) {
+    switch (state) {
+      case 0: // 新卡片 — 无蒙版，全彩色
+        return 0.0;
+      case 1: // 学习中 — 0 或 50%
+        return reps >= 1 ? 0.5 : 1.0;
+      case 2: // 复习中 — 0 / 50 / 100%
+        if (reps >= 6) return 0.0;
+        if (reps >= 3) return 0.5;
+        return 1.0;
+      case 3: // 重学中 — 0 / 50 / 100%
+        if (reps >= 6) return 0.0;
+        if (reps >= 3) return 0.5;
+        return 1.0;
+      default:
+        return 0.0;
     }
-
-    return _CardsQueueView(
-      cards: _cards,
-      domains: domains.toList()..sort(),
-      onEnterReview: _enterReview,
-    );
   }
 
-  Widget _buildReviewMode() {
-    final card = _cards[_activeCardIndex];
+  Widget _buildQueue() {
+    final stateLabels = ['新卡片', '学习中', '复习中', '重学中'];
+    final stateColors = [Colors.blue, Colors.orange, Colors.green, Colors.purple];
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('复习 (${_activeCardIndex + 1}/${_cards.length})'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: _exitReview,
-        ),
-        actions: [
-          // 跳过当前卡片
-          if (!_isVerified)
-            TextButton(
-              onPressed: _skipCard,
-              child: const Text('跳过'),
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.all(16),
+      itemCount: _cards.length,
+      itemBuilder: (_, i) {
+        final card = _cards[i];
+        final state = card.state.clamp(0, 3);
+        final isActive = _activeCardIndex == i;
+
+        return Dismissible(
+          key: ValueKey('review_${card.id}'),
+          direction: DismissDirection.endToStart,
+          background: Container(
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.only(right: 24),
+            decoration: BoxDecoration(
+              color: Colors.red.shade400,
+              borderRadius: BorderRadius.circular(12),
             ),
-        ],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            // 进度条
-            if (_isFlipped) ...[
-              LinearProgressIndicator(
-                value: (_activeCardIndex + 1) / _cards.length,
-              ),
-              const SizedBox(height: 8),
-            ],
-
-              // 卡片 (3D 翻转动画)
-              Expanded(
-                child: Stack(
-                  children: [
-                    _CardFlipWidget(
-                      isFlipped: _isFlipped,
-                      front: card.front,
-                      back: card.back,
-                      sourceSentence: card.sourceSentence,
-                      domain: card.domain,
-                      onTap: () => setState(() => _isFlipped = !_isFlipped),
-                    ),
-                    // TTS 朗读按钮
-                    Positioned(
-                      right: 8, bottom: 8,
-                      child: Consumer(
-                        builder: (_, ref, __) {
-                          final tts = ref.watch(ttsServiceProvider);
-                          final enabled = ref.watch(ttsEnabledProvider);
-                          if (!enabled) return const SizedBox.shrink();
-                          return IconButton(
-                            icon: const Icon(Icons.volume_up, size: 22),
-                            onPressed: () => tts.speak(
-                              _isFlipped ? card.back : card.front,
-                              language: card.front.contains(RegExp(r'[\u4e00-\u9fff]')) ? 'zh-CN' : 'en-US',
-                            ),
-                            tooltip: '朗读',
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-            // 验证区
-            if (_isFlipped && !_isVerified) ...[
-              const SizedBox(height: 16),
-              // 验证方式选择
-              if (card.cardType == 'vocabulary') ...[
-                TextField(
-                  controller: _answerController,
-                  decoration: const InputDecoration(hintText: '输入答案...'),
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (value) {
-                    final minLen = (card.back.length * 0.3).ceil().clamp(3, card.back.length);
-                    final sub = card.back.toLowerCase().substring(0, minLen);
-                    final correct = value.trim().toLowerCase().contains(sub);
-                    setState(() {
-                      _verificationResult = correct ? 'pass' : 'fail';
-                      _isVerified = true;
-                    });
-                  },
-                ),
-              ] else ...[
-                FilledButton.icon(
-                  onPressed: _startAiQuiz,
-                  icon: const Icon(Icons.quiz),
-                  label: const Text('开始验证 (AI 问答)'),
-                ),
-              ],
-            ],
-
-            // AI 问答
-            if (_isAiQuiz && _aiQuestions.isNotEmpty && _aiResults.isEmpty && !_isVerified) ...[
-              const SizedBox(height: 16),
-              Text('问题 ${_aiQuestionIndex + 1}/${_aiQuestions.length}',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              Text(_aiQuestions[_aiQuestionIndex].question,
-                  style: Theme.of(context).textTheme.bodyLarge,
-                  textAlign: TextAlign.center),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _answerController,
-                      decoration: const InputDecoration(hintText: '你的回答...'),
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _submitAiAnswer(),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton.filled(
-                    onPressed: _submitAiAnswer,
-                    icon: const Icon(Icons.arrow_forward),
-                  ),
-                ],
-              ),
-            ],
-
-            // AI 结果
-            if (_aiResults.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              ..._aiResults.map((r) => Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  children: [
-                    Icon(r.correct ? Icons.check_circle : Icons.cancel,
-                        color: r.correct ? Colors.green : Colors.red, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(r.feedback, style: const TextStyle(fontSize: 13))),
-                  ],
-                ),
-              )),
-            ],
-
-            // 验证结果 + 提交
-            if (_isFlipped && _isVerified) ...[
-              const SizedBox(height: 16),
-              Text(
-                _verificationResult == 'pass' ? '✅ 正确！' : '❌ 未掌握',
-                style: TextStyle(
-                  fontSize: 20, fontWeight: FontWeight.bold,
-                  color: _verificationResult == 'pass' ? Colors.green : Colors.red,
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () => _submitAndNext(
-                    card.cardType == 'vocabulary' ? 'spelling' : 'ai_dialogue',
-                  ),
-                  child: Text(
-                    _activeCardIndex + 1 < _cards.length
-                        ? '提交并继续 (${_cards.length - _activeCardIndex - 1} 张剩余)'
-                        : '提交并完成',
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── 可搜索/过滤的复习队列 ──
-class _CardsQueueView extends StatefulWidget {
-  final List<DueCard> cards;
-  final List<String> domains;
-  final Function(int) onEnterReview;
-
-  const _CardsQueueView({
-    required this.cards, required this.domains, required this.onEnterReview,
-  });
-
-  @override
-  State<_CardsQueueView> createState() => _CardsQueueViewState();
-}
-
-class _CardsQueueViewState extends State<_CardsQueueView> {
-  final _searchController = TextEditingController();
-  int? _stateFilter;
-  String? _domainFilter;
-
-  List<DueCard> get _filtered {
-    final query = _searchController.text.trim().toLowerCase();
-    return widget.cards.where((c) {
-      if (query.isNotEmpty) {
-        if (!c.front.toLowerCase().contains(query) &&
-            !c.back.toLowerCase().contains(query)) return false;
-      }
-      if (_stateFilter != null && c.state != _stateFilter) return false;
-      if (_domainFilter != null && c.domain != _domainFilter) return false;
-      return true;
-    }).toList();
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  static const _labels = ['新卡片', '学习中', '复习中', '重学中'];
-  static const _colors = [Colors.blue, Colors.orange, Colors.green, Colors.red];
-
-  @override
-  Widget build(BuildContext context) {
-    final filtered = _filtered;
-
-    return Column(
-      children: [
-        // 搜索栏
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              hintText: '搜索待复习卡片...',
-              prefixIcon: const Icon(Icons.search, size: 20),
-              isDense: true,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(24),
-              ),
-              contentPadding: const EdgeInsets.symmetric(vertical: 10),
-              suffixIcon: _searchController.text.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear, size: 18),
-                      onPressed: () { _searchController.clear(); setState(() {}); },
-                    )
-                  : null,
-            ),
-            onChanged: (_) => setState(() {}),
-          ),
-        ),
-
-        // 状态过滤标签
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(children: [
-              _Badge(label: '全部', count: widget.cards.length, isActive: _stateFilter == null, onTap: () => setState(() => _stateFilter = null)),
-              const SizedBox(width: 6),
-              _Badge(label: '新', color: Colors.blue, count: widget.cards.where((c) => c.state == 0).length, isActive: _stateFilter == 0, onTap: () => setState(() => _stateFilter = _stateFilter == 0 ? null : 0)),
-              const SizedBox(width: 6),
-              _Badge(label: '学习中', color: Colors.orange, count: widget.cards.where((c) => c.state == 1).length, isActive: _stateFilter == 1, onTap: () => setState(() => _stateFilter = _stateFilter == 1 ? null : 1)),
-              const SizedBox(width: 6),
-              _Badge(label: '复习中', color: Colors.green, count: widget.cards.where((c) => c.state == 2).length, isActive: _stateFilter == 2, onTap: () => setState(() => _stateFilter = _stateFilter == 2 ? null : 2)),
-              const SizedBox(width: 6),
-              _Badge(label: '重学', color: Colors.red, count: widget.cards.where((c) => c.state == 3).length, isActive: _stateFilter == 3, onTap: () => setState(() => _stateFilter = _stateFilter == 3 ? null : 3)),
-            ]),
-          ),
-        ),
-
-        // 领域过滤标签
-        if (widget.domains.isNotEmpty)
-          SizedBox(
-            height: 32,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                _DomainChip2(label: '全部领域', isActive: _domainFilter == null, onTap: () => setState(() => _domainFilter = null)),
-                ...widget.domains.map((d) => Padding(
-                  padding: const EdgeInsets.only(left: 6),
-                  child: _DomainChip2(label: d, isActive: _domainFilter == d, onTap: () => setState(() => _domainFilter = _domainFilter == d ? null : d)),
-                )),
+                Icon(Icons.skip_next, color: Colors.white),
+                SizedBox(width: 8),
+                Text('跳过', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
               ],
             ),
           ),
+          confirmDismiss: (_) async {
+            await _skipCard(card);
+            return true;
+          },
+          child: Card(
+            color: stateColors[state],
+            elevation: 1,
+            key: _cardKeys.putIfAbsent(i, () => GlobalKey()),
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              children: [
+                // 进度蒙版：从左到右渐亮
+                Positioned.fill(
+                  child: FractionallySizedBox(
+                    widthFactor: _progressOverlay(card.state, card.reps),
+                    alignment: Alignment.centerLeft,
+                    child: Container(color: Colors.white.withAlpha(80)),
+                  ),
+                ),
+                // 卡片内容
+                Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: stateColors[state].withAlpha(50),
+                      child: Text('${i + 1}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                    ),
+                    title: Text(card.front, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white)),
+                    subtitle: isActive ? null : Text('${card.back}\n复习 ${card.reps} 次', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withAlpha(200))),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Chip(
+                      label: Text(stateLabels[state], style: const TextStyle(fontSize: 11)),
+                      backgroundColor: stateColors[state].withAlpha(20),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    if (!isActive) ...[
+                      const SizedBox(width: 4),
+                      Icon(Icons.expand_more, size: 20, color: Colors.grey.shade400),
+                    ],
+                  ],
+                ),
+                onTap: () {
+                  if (isActive) {
+                    setState(() => _activeCardIndex = -1);
+                  } else {
+                    setState(() => _activeCardIndex = i);
+                    _resetInlineReview();
+                    // 展开后只滚动到刚好可视
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      final key = _cardKeys[i];
+                      if (key?.currentContext != null) {
+                        Scrollable.ensureVisible(
+                          key!.currentContext!,
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                          alignment: 0.1, // 顶部留 10% 边距
+                        );
+                      }
+                    });
+                    // 预生成 AI 问题（概念类卡片）
+                    if (card.cardType != 'vocabulary') {
+                      _preloadAiQuestions(card);
+                    }
+                  }
+                },
+              ),
 
-        // 计数
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: Row(
-            children: [
-              Text('${filtered.length} 张待复习',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+              // 展开内联复习
+              if (isActive) ...[
+                const Divider(height: 1, color: Colors.white38),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: DefaultTextStyle(
+                    style: const TextStyle(color: Colors.white),
+                    child: _buildInlineReview(card),
+                  ),
+                ),
+              ],
             ],
           ),
-        ),
-
-        // 列表
-        Expanded(
-          child: filtered.isEmpty
-              ? Center(child: Text('没有匹配的待复习卡片', style: TextStyle(color: Colors.grey.shade500)))
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: filtered.length,
-                  itemBuilder: (_, i) {
-                    final card = filtered[i];
-                    final stateLabel = _labels[card.state.clamp(0, 3)];
-                    final stateColor = _colors[card.state.clamp(0, 3)];
-                    return Card(
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: stateColor.withAlpha(30),
-                          child: Text('${i + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        ),
-                        title: Text(card.front, style: const TextStyle(fontWeight: FontWeight.w600)),
-                        subtitle: Text(card.back, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        trailing: Chip(
-                          label: Text(stateLabel, style: const TextStyle(fontSize: 11)),
-                          backgroundColor: stateColor.withAlpha(20),
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        onTap: () => widget.onEnterReview(widget.cards.indexOf(card)),
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
-  }
-}
-
-class _Badge extends StatelessWidget {
-  final String label;
-  final int count;
-  final Color? color;
-  final bool isActive;
-  final VoidCallback onTap;
-  const _Badge({required this.label, required this.count, this.color, required this.isActive, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final bgColor = (color ?? Colors.grey).withAlpha(isActive ? 30 : 10);
-    final txtColor = isActive ? (color ?? Colors.grey) : Colors.grey;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(16),
-          border: isActive ? Border.all(color: (color ?? Colors.grey).withAlpha(80)) : null,
-        ),
-        child: Text('$label $count', style: TextStyle(
-          fontSize: 12, fontWeight: isActive ? FontWeight.w600 : FontWeight.normal, color: txtColor,
-        )),
-      ),
-    );
-  }
-}
-
-class _DomainChip2 extends StatelessWidget {
-  final String label;
-  final bool isActive;
-  final VoidCallback onTap;
-  const _DomainChip2({required this.label, required this.isActive, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        decoration: BoxDecoration(
-          color: isActive ? Theme.of(context).colorScheme.primary.withAlpha(30) : Colors.grey.withAlpha(15),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Text(label, style: TextStyle(
-          fontSize: 12,
-          color: isActive ? Theme.of(context).colorScheme.primary : Colors.grey.shade600,
-          fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-        )),
-      ),
-    );
-  }
-}
-
-// ── 3D 翻牌组件 ──
-class _CardFlipWidget extends StatefulWidget {
-  final bool isFlipped;
-  final String front;
-  final String back;
-  final String? sourceSentence;
-  final String? domain;
-  final VoidCallback onTap;
-
-  const _CardFlipWidget({
-    required this.isFlipped,
-    required this.front,
-    required this.back,
-    this.sourceSentence,
-    this.domain,
-    required this.onTap,
-  });
-
-  @override
-  State<_CardFlipWidget> createState() => _CardFlipWidgetState();
-}
-
-class _CardFlipWidgetState extends State<_CardFlipWidget>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 600),
-      vsync: this,
-    );
-    _animation = Tween<double>(begin: 0, end: 1.0)
-        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
-    if (widget.isFlipped) _controller.value = 1.0;
-  }
-
-  @override
-  void didUpdateWidget(_CardFlipWidget old) {
-    super.didUpdateWidget(old);
-    if (widget.isFlipped != old.isFlipped) {
-      if (widget.isFlipped) {
-        _controller.forward();
-      } else {
-        _controller.reverse();
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: widget.onTap,
-      child: AnimatedBuilder(
-        animation: _animation,
-        builder: (_, __) {
-          final angle = _animation.value * 3.14159265;
-          return Transform(
-            alignment: Alignment.center,
-            transform: Matrix4.identity()
-              ..setEntry(3, 2, 0.001)
-              ..rotateY(angle),
-            child: Card(
-              child: Center(
-                child: angle < 3.14159265 / 2
-                    ? _buildFront()
-                    : Transform(
-                        alignment: Alignment.center,
-                        transform: Matrix4.identity()..rotateY(3.14159265),
-                        child: _buildBack(),
-                      ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildFront() {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(widget.front,
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          const Text('点击翻转查看释义',
-            style: TextStyle(color: Colors.grey),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBack() {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(widget.back,
-            style: Theme.of(context).textTheme.titleLarge,
-            textAlign: TextAlign.center,
-          ),
-          if (widget.sourceSentence != null) ...[
-            const SizedBox(height: 16),
-            Text('来源: ${widget.sourceSentence}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.grey,
-                fontStyle: FontStyle.italic,
-              ),
-              textAlign: TextAlign.center,
-            ),
           ],
-          if (widget.domain != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Chip(
-                label: Text(widget.domain!, style: const TextStyle(fontSize: 12)),
-                visualDensity: VisualDensity.compact,
+        ),
+      ),
+    );
+  },
+    );
+  }
+
+  Widget _buildInlineReview(DueCard card) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 翻牌区域（验证中锁定为正面，闭卷）
+        GestureDetector(
+          onTap: _isVerifying ? null : () => setState(() => _isFlipped = !_isFlipped),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: _isVerifying ? const Color(0xFFF5F5FF) :
+                     _isFlipped ? const Color(0xFFEEF2FF) : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  _isVerifying || !_isFlipped ? card.front : card.back,
+                  style: TextStyle(
+                    fontSize: _isVerifying || !_isFlipped ? 18 : 16,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF1A1A2E),
+                    height: 1.4,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                if (!_isVerifying && _isFlipped && card.sourceSentence != null) ...[
+                  const SizedBox(height: 8),
+                  Text('来源: ${card.sourceSentence}',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontStyle: FontStyle.italic)),
+                ],
+                const SizedBox(height: 8),
+                Text(
+                  _isVerifying ? '闭卷考试中' :
+                  _isFlipped ? '点击收回' : '点击翻转查看释义',
+                  style: TextStyle(fontSize: 12, color: _isVerifying ? Colors.indigo.shade400 : Colors.grey.shade500)),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // TTS
+        Consumer(
+          builder: (_, ref, __) {
+            final tts = ref.watch(ttsServiceProvider);
+            final enabled = ref.watch(ttsEnabledProvider);
+            if (!enabled) return const SizedBox.shrink();
+            return Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                icon: const Icon(Icons.volume_up, size: 18),
+                label: Text(_isFlipped ? '朗读释义' : '朗读概念'),
+                onPressed: () => tts.speak(
+                  _isFlipped ? card.back : card.front,
+                  language: 'zh-CN',
+                ),
+              ),
+            );
+          },
+        ),
+
+        // 记忆验证（正面背面均显示）
+        if (!_isVerified && !_isVerifying) ...[
+          const SizedBox(height: 8),
+          if (card.cardType == 'vocabulary')
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => setState(() { _isFlipped = false; _isVerifying = true; }),
+                icon: const Icon(Icons.edit, size: 18),
+                label: const Text('默写验证'),
+              ),
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  setState(() { _isFlipped = false; _isVerifying = true; });
+                  // 使用预加载的问题（已在后台生成），即时启动
+                  _startInlineAiQuiz(card);
+                },
+                icon: _preloadingQuiz
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.quiz, size: 18),
+                label: Text(_preloadedQuestions.isNotEmpty ? '记忆验证 (已就绪)' :
+                           _preloadingQuiz ? '正在准备考题...' : '记忆验证'),
               ),
             ),
         ],
-      ),
+
+        // 默写输入（vocabulary 专用，验证中显示）
+        if (_isVerifying && card.cardType == 'vocabulary' && !_isVerified) ...[
+          const SizedBox(height: 8),
+          TextField(
+            controller: _answerController,
+            decoration: const InputDecoration(
+              hintText: '输入答案...',
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+            textInputAction: TextInputAction.send,
+            onSubmitted: (_) {
+              final minLen = (card.back.length * 0.3).ceil().clamp(3, card.back.length);
+              final sub = card.back.toLowerCase().substring(0, minLen);
+              final correct = _answerController.text.trim().toLowerCase().contains(sub);
+              _verificationResult = correct ? 'pass' : 'fail';
+              _isVerified = true;
+              _isVerifying = false;
+              setState(() {});
+              Future.delayed(const Duration(milliseconds: 1500), () {
+                if (mounted) _submitInlineReview(_cards.indexOf(card));
+              });
+            },
+          ),
+          const SizedBox(height: 8),
+        ],
+
+        // AI 问答（闭卷中）
+        if (_isVerifying && !_isJudging && _isAiQuiz && _aiQuestions.isNotEmpty && _aiResults.isEmpty && _aiQuestionIndex < _aiQuestions.length) ...[
+          const SizedBox(height: 8),
+          Text('问题 ${_aiQuestionIndex + 1}/${_aiQuestions.length}',
+              style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 4),
+          Text(_aiQuestions[_aiQuestionIndex].question,
+              style: Theme.of(context).textTheme.bodyMedium,
+              textAlign: TextAlign.center),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _answerController,
+                  decoration: const InputDecoration(hintText: '你的回答...', isDense: true, border: OutlineInputBorder()),
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _submitInlineAiAnswer(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filled(
+                onPressed: _submitInlineAiAnswer,
+                icon: const Icon(Icons.arrow_forward, size: 18),
+              ),
+            ],
+          ),
+        ],
+
+        // 判断中...
+        if (_isJudging) ...[
+          const SizedBox(height: 12),
+          const Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                SizedBox(width: 8),
+                Text('正在判断答案...', style: TextStyle(color: Colors.grey)),
+              ],
+            ),
+          ),
+        ],
+
+        // AI 结果（自动提交前显示 1.5s）
+        if (_aiResults.isNotEmpty && !_isJudging) ...[
+          const SizedBox(height: 8),
+          ..._aiResults.map((r) => Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              children: [
+                Icon(r.correct ? Icons.check_circle : Icons.cancel,
+                    color: r.correct ? Colors.green : Colors.red, size: 18),
+                const SizedBox(width: 6),
+                Expanded(child: Text(r.feedback, style: const TextStyle(fontSize: 12))),
+              ],
+            ),
+          )),
+        ],
+      ],
     );
   }
 }

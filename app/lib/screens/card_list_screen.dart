@@ -34,7 +34,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
   }
 
   static const _stateLabels = ['新卡片', '学习中', '复习中', '重学中'];
-  static const _stateColors = [Colors.blue, Colors.orange, Colors.green, Colors.red];
+  static const _stateColors = [Colors.blue, Colors.orange, Colors.green, Colors.purple];
 
   @override
   void initState() {
@@ -306,30 +306,104 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                               itemCount: _filteredCards.length,
                               itemBuilder: (_, i) {
                                 final card = _filteredCards[i];
-                                return Card(
-                                  child: ListTile(
-                                    leading: CircleAvatar(
-                                      backgroundColor: _stateColors[card.state.clamp(0, 3)].withAlpha(30),
-                                      child: Icon(Icons.auto_stories,
-                                        color: _stateColors[card.state.clamp(0, 3)], size: 20),
+                                return Dismissible(
+                                  key: ValueKey('skip_${card.id}'),
+                                  direction: DismissDirection.endToStart,
+                                  background: Container(
+                                    alignment: Alignment.centerRight,
+                                    padding: const EdgeInsets.only(right: 24),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.shade400,
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
-                                    title: Text(card.front, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                    subtitle: Text(card.back, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                    trailing: Chip(
-                                      label: Text(_stateLabels[card.state.clamp(0, 3)], style: const TextStyle(fontSize: 11)),
-                                      backgroundColor: _stateColors[card.state.clamp(0, 3)].withAlpha(20),
-                                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                      visualDensity: VisualDensity.compact,
+                                    child: const Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        Icon(Icons.skip_next, color: Colors.white),
+                                        SizedBox(width: 8),
+                                        Text('跳过', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                                      ],
                                     ),
-                                    onTap: () => _showCardDetail(card),
+                                  ),
+                                  confirmDismiss: (_) async {
+                                    final auth = ref.read(authProvider);
+                                    if (auth.userId == null) return false;
+                                    final client = ChatClient(userId: auth.userId!, token: auth.token);
+                                    try {
+                                      await client.skipConcept(card.front, card.sourceSentence ?? '');
+                                      setState(() {
+                                        _allCards.removeWhere((c) => c.id == card.id);
+                                        _filteredCards.removeWhere((c) => c.id == card.id);
+                                      });
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('已跳过「${card.front}」')),
+                                        );
+                                      }
+                                      return true;
+                                    } catch (e) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('跳过失败: $e')),
+                                        );
+                                      }
+                                      return false;
+                                    }
+                                  },
+                                  child: Card(
+                                    color: _stateColors[card.state.clamp(0, 3)],
+                                    elevation: 1,
+                                    clipBehavior: Clip.antiAlias,
+                                    child: Stack(
+                                      children: [
+                                        Positioned.fill(
+                                          child: FractionallySizedBox(
+                                            widthFactor: _progressOverlay(card.state, card.reps),
+                                            alignment: Alignment.centerLeft,
+                                            child: Container(color: Colors.white.withAlpha(80)),
+                                          ),
+                                        ),
+                                        Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            ListTile(
+                                              leading: CircleAvatar(
+                                                backgroundColor: _stateColors[card.state.clamp(0, 3)].withAlpha(50),
+                                                child: Icon(Icons.auto_stories,
+                                                  color: Colors.white, size: 20),
+                                              ),
+                                              title: Text(card.front, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                                              subtitle: Text(card.back, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withAlpha(200))),
+                                              trailing: Chip(
+                                                label: Text(_stateLabels[card.state.clamp(0, 3)], style: const TextStyle(fontSize: 11, color: Colors.white)),
+                                                backgroundColor: _stateColors[card.state.clamp(0, 3)].withAlpha(100),
+                                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                visualDensity: VisualDensity.compact,
+                                              ),
+                                              onTap: () => _showCardDetail(card),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 );
                               },
                             ),
-                    ),
+                          ),
                   ],
                 ),
     );
+  }
+
+  double _progressOverlay(int state, int reps) {
+    switch (state) {
+      case 0: return 0.0;
+      case 1: return reps >= 1 ? 0.5 : 1.0;
+      case 2: if (reps >= 6) return 0.0; if (reps >= 3) return 0.5; return 1.0;
+      case 3: if (reps >= 6) return 0.0; if (reps >= 3) return 0.5; return 1.0;
+      default: return 0.0;
+    }
   }
 
   Widget _buildEmptyState() {

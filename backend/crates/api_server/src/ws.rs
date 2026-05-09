@@ -11,7 +11,10 @@ use std::time::Duration;
 
 pub async fn handle_ws(mut ws: WebSocket) {
     // ColdPath 结果通道：后台 task 提取完概念后通过此通道发回
-    let (cold_tx, mut cold_rx) = mpsc::channel::<Vec<serde_json::Value>>(8);
+    let (cold_tx, mut cold_rx) = mpsc::channel::<(u32, Vec<serde_json::Value>)>(8);
+    let mut turn_counter: u32 = 0;
+    let mut next_turn_to_show: u32 = 0;
+    let mut pending_candidates: std::collections::BTreeMap<u32, Vec<serde_json::Value>> = std::collections::BTreeMap::new();
 
     loop {
         tokio::select! {
@@ -144,11 +147,15 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     "reply": final_reply,
                 }).to_string().into())).await;
 
+                let current_turn = turn_counter;
+                turn_counter += 1;
+
                 // ❄️ ColdPath: 扔到后台 task，不阻塞消息接收
                 let user_id = chat_req.user_id.clone();
                 let msg = chat_req.message.clone();
                 let config = llm_config.clone();
                 let cold_tx = cold_tx.clone();
+                let cold_turn = current_turn;
                 tokio::spawn(async move {
                     let (existing_fronts, skipped_fronts) = {
                         let conn = crate::db_pool::get_conn();
@@ -182,21 +189,27 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         &existing_fronts, &skipped_fronts, &config,
                     ).await;
 
-                    if !extraction.candidates.is_empty() {
-                        let candidates: Vec<serde_json::Value> = extraction.candidates.iter().map(|c| {
-                            json!({"front": c.front, "back": c.back, "source_sentence": c.source_sentence, "domain": c.domain})
-                        }).collect();
-                        let _ = cold_tx.send(candidates).await;
-                    }
+                    let candidates: Vec<serde_json::Value> = extraction.candidates.iter().map(|c| {
+                        json!({"front": c.front, "back": c.back, "source_sentence": c.source_sentence, "domain": c.domain})
+                    }).collect();
+                    let _ = cold_tx.send((cold_turn, candidates)).await;
                 });
             }
 
-            // ── 接收 ColdPath 结果（不阻塞消息接收） ──
-            Some(candidates) = cold_rx.recv() => {
-                let _ = ws.send(Message::Text(json!({
-                    "type": "candidates",
-                    "candidates": candidates,
-                }).to_string().into())).await;
+            // ── 接收 ColdPath 结果（排队按轮次输出） ──
+            Some((cold_turn, candidates)) = cold_rx.recv() => {
+                // 按轮次存入缓冲区
+                pending_candidates.insert(cold_turn, candidates);
+                // 从最早未输出的轮次开始，连续输出
+                while let Some(ready) = pending_candidates.remove(&next_turn_to_show) {
+                    if !ready.is_empty() {
+                        let _ = ws.send(Message::Text(json!({
+                            "type": "candidates",
+                            "candidates": ready,
+                        }).to_string().into())).await;
+                    }
+                    next_turn_to_show += 1;
+                }
             }
         }
     }

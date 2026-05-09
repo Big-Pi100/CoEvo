@@ -15,7 +15,8 @@ pub fn format_card(user_id: &str, candidate: &ConceptCandidate) -> (Card, CardMe
         id: card_id.clone(),
         user_id: user_id.to_string(),
         domain: Some(candidate.domain.clone()),
-        card_type: "concept".to_string(),
+        // domain 为 "vocabulary" 的候选自动归为词汇卡，其余为概念卡
+        card_type: if candidate.domain == "vocabulary" { "vocabulary".to_string() } else { "concept".to_string() },
         front: candidate.front.clone(),
         back: candidate.back.clone(),
         source_sentence: Some(candidate.source_sentence.clone()),

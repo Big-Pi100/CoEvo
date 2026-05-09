@@ -59,10 +59,19 @@ pub fn is_loaded() -> bool {
     WORD_BANK.get().map(|m| !m.is_empty()).unwrap_or(false)
 }
 
-/// 从文本中扫描出词库中存在的单词 (去重)
+/// 词库匹配结果
+#[derive(Debug, Clone)]
+pub struct WordMatch {
+    pub word: String,
+    pub difficulty: u32,
+    pub domain: String,
+    pub definition: String,
+}
+
+/// 从文本中扫描出词库中存在的单词
 ///
-/// 返回: Vec<(word, difficulty_level, domain)>
-pub fn match_text(text: &str) -> Vec<(String, u32, String)> {
+/// 返回按难度降序排列，最多 10 个
+pub fn match_text(text: &str) -> Vec<WordMatch> {
     let catalog = match WORD_BANK.get() {
         Some(c) => c,
         None => return vec![],
@@ -72,13 +81,15 @@ pub fn match_text(text: &str) -> Vec<(String, u32, String)> {
     }
 
     let text_lower = text.to_lowercase();
-    let words: Vec<&str> = text_lower
-        .split(|c: char| !c.is_alphabetic())
-        .filter(|w| !w.is_empty())
+    // 只提取英文字母单词（排除 CJK 等非拉丁字符干扰）
+    let words: Vec<String> = text_lower
+        .split(|c: char| c != '\'' && !c.is_ascii_lowercase())
+        .filter(|w| !w.is_empty() && w.len() >= 2)
+        .map(String::from)
         .collect();
-    let word_set: HashSet<&str> = words.iter().copied().collect();
+    let word_set: HashSet<String> = words.iter().cloned().collect();
 
-    let mut found: Vec<(String, u32, String)> = Vec::new();
+    let mut found: Vec<WordMatch> = Vec::new();
 
     for (id, entry) in catalog.iter() {
         let id_lower = id.to_lowercase();
@@ -86,11 +97,12 @@ pub fn match_text(text: &str) -> Vec<(String, u32, String)> {
         // 单次词: 精确匹配
         if !id_lower.contains(' ') && !id_lower.contains('_') {
             if word_set.contains(id_lower.as_str()) {
-                found.push((
-                    id.clone(),
-                    entry.difficulty_level.unwrap_or(1),
-                    entry.domain.clone().unwrap_or_else(|| "general".into()),
-                ));
+                found.push(WordMatch {
+                    word: id.clone(),
+                    difficulty: entry.difficulty_level.unwrap_or(1),
+                    domain: entry.domain.clone().unwrap_or_else(|| "general".into()),
+                    definition: entry.definition.clone().unwrap_or_default(),
+                });
                 continue;
             }
         }
@@ -100,20 +112,21 @@ pub fn match_text(text: &str) -> Vec<(String, u32, String)> {
         let parts: Vec<&str> = normalized.split(' ').collect();
         if parts.len() >= 2 {
             if words.windows(parts.len()).any(|window| {
-                window.iter().zip(parts.iter()).all(|(w, p)| *w == *p)
+                window.iter().zip(parts.iter()).all(|(w, p)| w.as_str() == *p)
             }) {
-                found.push((
-                    id.clone(),
-                    entry.difficulty_level.unwrap_or(1),
-                    entry.domain.clone().unwrap_or_else(|| "general".into()),
-                ));
+                found.push(WordMatch {
+                    word: id.clone(),
+                    difficulty: entry.difficulty_level.unwrap_or(1),
+                    domain: entry.domain.clone().unwrap_or_else(|| "general".into()),
+                    definition: entry.definition.clone().unwrap_or_default(),
+                });
             }
         }
     }
 
-    // 去重 + 按难度降序排列（先推荐难的）
-    found.sort_by(|a, b| b.1.cmp(&a.1));
-    found.dedup_by(|a, b| a.0 == b.0);
-    found.truncate(10); // 最多 10 个
+    // 去重 + 按难度降序
+    found.sort_by(|a, b| b.difficulty.cmp(&a.difficulty));
+    found.dedup_by(|a, b| a.word == b.word);
+    found.truncate(10);
     found
 }

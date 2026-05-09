@@ -25,6 +25,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _scrollController = ScrollController();
   ChatClient? _client;
   WsChatSession? _session;
+  StreamSubscription<WsEvent>? _sessionSub;
   bool _isWaiting = false;
   String _convId = '';
 
@@ -83,6 +84,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
+    _sessionSub?.cancel();
     _session?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
@@ -105,50 +107,60 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     setState(() => _isWaiting = true);
 
-    // 启动 WebSocket 流式通信
-    _session?.cancel();
-    _session = _client!.streamChat(text);
+    if (_session == null) {
+      // 首次通话：建立 WS 连接并启动监听
+      _session = _client!.streamChat(text);
 
-    _streamingBuffer = '';
-    setState(() {
-      _streamingIndex = _messages.length;
-      _messages.add(Message(
+      _streamingBuffer = '';
+      _addMessage(Message(
         role: 'assistant', content: '', timestamp: DateTime.now(),
       ));
       _streamingIndex = _messages.length - 1;
-    });
 
-    _session!.events.listen(
-      (event) {
-        switch (event.type) {
-          case 'thinking':
-            _updateStreaming('思考中...');
-            break;
-          case 'token':
-            _streamingBuffer += event.content ?? '';
-            _updateStreaming(_streamingBuffer);
-            break;
-          case 'done':
-            _finalizeStreaming(event.reply ?? _streamingBuffer);
-            break;
-          case 'candidates':
-            final list = event.candidates;
-            if (list != null && list.isNotEmpty && list.any((c) => c.front.isNotEmpty)) {
-              Future.delayed(Duration.zero, () => _showConceptDialog(list));
-            }
-            break;
-          case 'error':
-            _finalizeStreaming('抱歉，出了点问题：${event.content}');
-            break;
+      _sessionSub = _session!.events.listen(
+        (event) => _handleWsEvent(event),
+        onError: (error) => _finalizeStreaming('连接错误：$error'),
+        onDone: () {
+          if (_streamingIndex >= 0 && _streamingBuffer.isNotEmpty) {
+            _finalizeStreaming(_streamingBuffer);
+          }
+        },
+      );
+    } else {
+      // 后续消息：复用已有连接
+      final auth = ref.read(authProvider);
+      _session!.send(auth.userId ?? '', _convId, text);
+
+      _streamingBuffer = '';
+      _addMessage(Message(
+        role: 'assistant', content: '', timestamp: DateTime.now(),
+      ));
+      _streamingIndex = _messages.length - 1;
+    }
+  }
+
+  void _handleWsEvent(WsEvent event) {
+    switch (event.type) {
+      case 'thinking':
+        _updateStreaming('思考中...');
+        break;
+      case 'token':
+        _streamingBuffer += event.content ?? '';
+        _updateStreaming(_streamingBuffer);
+        break;
+      case 'done':
+        _finalizeStreaming(event.reply ?? _streamingBuffer);
+        break;
+      case 'candidates':
+        final list = event.candidates;
+        if (list != null && list.isNotEmpty && list.any((c) => c.front.isNotEmpty)) {
+          Future.delayed(Duration.zero, () => _showConceptDialog(list));
         }
-      },
-      onError: (error) => _finalizeStreaming('连接错误：$error'),
-      onDone: () {
-        if (_streamingIndex >= 0 && _streamingBuffer.isNotEmpty) {
-          _finalizeStreaming(_streamingBuffer);
-        }
-      },
-    );
+        break;
+      case 'error':
+        _finalizeStreaming('抱歉，出了点问题：${event.content}');
+        break;
+    }
   }
 
   void _updateStreaming(String content) {
@@ -178,45 +190,75 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   void _showConceptDialog(List<ConceptCandidate> candidates) {
     if (!mounted || candidates.isEmpty) return;
+
+    const pageSize = 5;
+    final totalPages = (candidates.length + pageSize - 1) ~/ pageSize;
     final selected = List.generate(candidates.length, (_) => true);
+
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
+          var page = 0;
+          void nextPage() => setDialogState(() => page++);
+          int start() => page * pageSize;
+          int end() => (start() + pageSize).clamp(0, candidates.length);
+          List<ConceptCandidate> pageItems() => candidates.sublist(start(), end());
+          bool isLastPage() => page >= totalPages - 1;
+
           return AlertDialog(
-            title: const Text('发现值得记住的知识点'),
+            title: Text('发现知识点 (${page + 1}/$totalPages)'),
             content: SizedBox(
               width: double.maxFinite,
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: candidates.length,
-                itemBuilder: (_, i) => CheckboxListTile(
-                  title: Text(candidates[i].front),
-                  subtitle: candidates[i].back != null
-                      ? Text(candidates[i].back!, maxLines: 2, overflow: TextOverflow.ellipsis)
-                      : null,
-                  value: selected[i],
-                  onChanged: (v) => setDialogState(() => selected[i] = v ?? false),
-                ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('第 ${start() + 1}~${end()} 条 / 共 ${candidates.length} 条',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                  const SizedBox(height: 8),
+                  ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: pageItems().length,
+                    itemBuilder: (_, i) {
+                      final realIdx = start() + i;
+                      return CheckboxListTile(
+                        title: Text(pageItems()[i].front),
+                        subtitle: pageItems()[i].back != null
+                            ? Text(pageItems()[i].back!, maxLines: 2, overflow: TextOverflow.ellipsis)
+                            : null,
+                        value: selected[realIdx],
+                        onChanged: (v) => setDialogState(() => selected[realIdx] = v ?? false),
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
             actions: [
               TextButton(
                 onPressed: () {
-                  // 跳过全部
-                  for (final c in candidates) {
-                    _client?.skipConcept(c.front, c.sourceSentence ?? '');
+                  for (int i = start(); i < end(); i++) {
+                    if (!selected[i]) {
+                      _client?.skipConcept(candidates[i].front, candidates[i].sourceSentence ?? '');
+                    }
                   }
-                  Navigator.pop(ctx);
+                  if (isLastPage()) {
+                    Navigator.pop(ctx);
+                  } else {
+                    for (int i = (page + 1) * pageSize;
+                         i < ((page + 1) * pageSize + pageSize).clamp(0, candidates.length);
+                         i++) {
+                      selected[i] = true;
+                    }
+                    nextPage();
+                  }
                 },
-                child: const Text('跳过全部'),
+                child: Text(isLastPage() ? '完成' : '跳过并继续'),
               ),
               FilledButton(
                 onPressed: () async {
-                  Navigator.pop(ctx);
-                  // 批量制卡
                   final toCreate = <Map<String, dynamic>>[];
-                  for (var i = 0; i < candidates.length; i++) {
+                  for (int i = start(); i < end(); i++) {
                     if (selected[i]) {
                       toCreate.add({
                         'front': candidates[i].front,
@@ -237,8 +279,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       );
                     }
                   }
+                  if (isLastPage()) {
+                    Navigator.pop(ctx);
+                  } else {
+                    for (int i = (page + 1) * pageSize;
+                         i < ((page + 1) * pageSize + pageSize).clamp(0, candidates.length);
+                         i++) {
+                      selected[i] = true;
+                    }
+                    nextPage();
+                  }
                 },
-                child: const Text('确认制卡'),
+                child: Text(isLastPage() ? '确认制卡' : '确认并继续'),
               ),
             ],
           );
@@ -303,7 +355,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: ListView.builder(
+            child: SelectionArea(
+              child: ListView.builder(
               controller: _scrollController,
               padding: const EdgeInsets.all(16),
               itemCount: _messages.length,
@@ -340,6 +393,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 );
               },
             ),
+          ),
           ),
           if (_isWaiting)
             const Padding(

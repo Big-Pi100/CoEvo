@@ -32,6 +32,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/history", get(history_handler))
         // Profile
         .route("/api/user/{user_id}/profile", get(profile_handler))
+        .route("/api/user/{user_id}/avatar", post(avatar_upload_handler).get(avatar_get_handler))
         // WS
         .route("/ws", get(ws_upgrade))
 }
@@ -384,7 +385,18 @@ async fn cards_skip_handler(
     }
     let conn = crate::db_pool::get_conn();
     match card_engine::card_repository::skip_concept(&conn, &input.user_id, &input.front, &input.domain, &input.source_text) {
-        Ok(id) => Json(serde_json::json!({"skipped_id": id})),
+        Ok(id) => {
+            // 同时删除已存在的卡片（及记忆状态）
+            let _ = conn.execute(
+                "DELETE FROM card_memory WHERE card_id IN (SELECT id FROM cards WHERE user_id = ?1 AND LOWER(front) = ?2)",
+                rusqlite::params![input.user_id, input.front.to_lowercase()],
+            );
+            let _ = conn.execute(
+                "DELETE FROM cards WHERE user_id = ?1 AND LOWER(front) = ?2",
+                rusqlite::params![input.user_id, input.front.to_lowercase()],
+            );
+            Json(serde_json::json!({"skipped_id": id}))
+        },
         Err(e) => Json(serde_json::json!({"error": e})),
     }
 }
@@ -731,4 +743,45 @@ async fn profile_handler(
         },
         "achievements": achievements,
     }))
+}
+
+// ── Avatar ──
+
+const AVATAR_DIR: &str = "data/avatars";
+
+async fn avatar_upload_handler(
+    Path(user_id): Path<String>,
+    mut multipart: axum::extract::Multipart,
+) -> Json<serde_json::Value> {
+    use tokio::io::AsyncWriteExt;
+    let _ = tokio::fs::create_dir_all(AVATAR_DIR).await;
+    while let Ok(Some(field)) = multipart.next_field().await {
+        let data = match field.bytes().await {
+            Ok(d) => d,
+            Err(e) => return Json(serde_json::json!({"error": format!("Read: {}", e)})),
+        };
+        if data.is_empty() || data.len() > 5 * 1024 * 1024 {
+            return Json(serde_json::json!({"error": "File too large (max 5MB)"}));
+        }
+        let path = format!("{}/{}.png", AVATAR_DIR, user_id);
+        let mut file = match tokio::fs::File::create(&path).await {
+            Ok(f) => f,
+            Err(e) => return Json(serde_json::json!({"error": format!("Write: {}", e)})),
+        };
+        if let Err(e) = file.write_all(&data).await {
+            return Json(serde_json::json!({"error": format!("Write: {}", e)}));
+        }
+        return Json(serde_json::json!({"status": "ok", "url": format!("/api/user/{}/avatar", user_id)}));
+    }
+    Json(serde_json::json!({"error": "No file uploaded"}))
+}
+
+async fn avatar_get_handler(
+    Path(user_id): Path<String>,
+) -> Result<(axum::http::StatusCode, [(&'static str, &'static str); 1], Vec<u8>), (axum::http::StatusCode, &'static str)> {
+    let path = format!("{}/{}.png", AVATAR_DIR, user_id);
+    match tokio::fs::read(&path).await {
+        Ok(data) => Ok((axum::http::StatusCode::OK, [("Content-Type", "image/png")], data)),
+        Err(_) => Err((axum::http::StatusCode::NOT_FOUND, "No avatar")),
+    }
 }

@@ -9,7 +9,8 @@
 //! 输出: Vec<ConceptCandidate>
 
 use crate::llm_caller::{LlmCaller, LlmConfig};
-use shared_types::card::{ConceptCandidate, ExtractionResult};
+pub use shared_types::card::ConceptCandidate;
+use shared_types::card::ExtractionResult;
 
 /// 检测用户消息是否包含制卡意图
 fn has_card_intent(message: &str) -> bool {
@@ -57,33 +58,49 @@ pub async fn extract_concepts(
         // 词库匹配：从 AI 回复中扫描出生词（不额外消耗 LLM）
         if crate::word_bank::is_loaded() {
             let matched = crate::word_bank::match_text(ai_reply);
-            for (word, difficulty, domain) in &matched {
-                let word_lower = word.to_lowercase();
-                // 跳过已有卡片/跳过记录
+            // 收集需要 LLM 生成释义的词汇（去重后）
+            let mut vocab_needs_llm: Vec<String> = Vec::new();
+            let mut vocab_candidates: Vec<ConceptCandidate> = Vec::new();
+
+            for m in &matched {
+                let word_lower = m.word.to_lowercase();
                 if existing_fronts_lower.contains(&word_lower) || skipped_lower.contains(&word_lower) {
                     continue;
                 }
-                // 跳过已通过 LLM 提取的候选
                 if candidates.iter().any(|c| c.front.to_lowercase() == word_lower) {
                     continue;
                 }
-                let source = find_source_sentence(ai_reply, word).unwrap_or_default();
-                // 词库存词统一归类为 vocabulary，避免 "general"/"grammar" 等无意义标签
-                let vocab_domain = match domain.as_str() {
-                    "general" | "grammar" => "vocabulary".to_string(),
-                    _ => domain.clone(),
-                };
-                candidates.push(ConceptCandidate {
-                    front: word.clone(),
-                    back: format!("[词汇] 等级: {}/5 | 领域: {}", difficulty, vocab_domain),
-                    source_sentence: source,
-                    domain: vocab_domain,
-                });
+                // 所有词库匹配的都交给 LLM 生成释义
+                vocab_needs_llm.push(m.word.clone());
             }
-        }
 
-        // 最多 10 个
-        candidates.truncate(10);
+            // 批量调用 LLM 为生词生成释义
+            if !vocab_needs_llm.is_empty() {
+                let prompt = format!(
+                    "为以下英语单词生成简洁的单词卡。每个单词包含: front(单词)、back(中文释义和英文例句)。\
+                     \n返回 JSON 数组，只返回 JSON，不要其他文字。\
+                     \n单词: {}",
+                    vocab_needs_llm.join(", ")
+                );
+                let mut caller = LlmCaller::new(llm_config.clone());
+                if let Ok(text) = caller.generate(&prompt).await {
+                    let generated = parse_candidates(&text);
+                    for g in generated {
+                        let word_lower = g.front.to_lowercase();
+                        if vocab_needs_llm.iter().any(|w| w.to_lowercase() == word_lower) {
+                            let source = find_source_sentence(ai_reply, &g.front).unwrap_or_default();
+                            vocab_candidates.push(ConceptCandidate {
+                                source_sentence: source,
+                                domain: "vocabulary".to_string(),
+                                ..g
+                            });
+                        }
+                    }
+                }
+            }
+
+            candidates.extend(vocab_candidates);
+        }
 
         ExtractionResult { candidates, direct_card: false }
     }
@@ -126,7 +143,7 @@ async fn generate_direct_card(config: &LlmConfig, user_message: &str, ai_reply: 
 }
 
 /// 从 JSON 数组中解析候选人列表，过滤无效条目
-fn parse_candidates(text: &str) -> Vec<ConceptCandidate> {
+pub fn parse_candidates(text: &str) -> Vec<ConceptCandidate> {
     let mut candidates = Vec::new();
 
     // 尝试直接 JSON 解析

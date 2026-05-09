@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
 import '../api/chat_client.dart';
+import '../api/api_config.dart';
 import '../providers/auth_provider.dart';
+import '../services/tts_service.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -14,6 +19,9 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Map<String, dynamic>? _data;
   bool _isLoading = true;
+  String? _avatarUrl;
+  String _displayName = '';
+  bool _isUploading = false;
 
   @override
   void initState() {
@@ -23,13 +31,83 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _load() async {
     final auth = ref.read(authProvider);
-    if (auth.userId == null || auth.token == null) return;
+    final prefs = await SharedPreferences.getInstance();
+
+    setState(() {
+      _displayName = prefs.getString('display_name') ?? auth.username ?? '用户';
+    });
+
+    if (auth.userId == null || auth.token == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    // 检查头像是否存在
+    _avatarUrl = '${ApiConfig.baseUrl}/api/user/${auth.userId}/avatar';
+
     final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {
       final data = await client.getProfile();
       if (mounted) setState(() { _data = data; _isLoading = false; });
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _uploadAvatar() async {
+    final auth = ref.read(authProvider);
+    if (auth.userId == null || auth.token == null) return;
+
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 512, maxHeight: 512);
+    if (picked == null) return;
+
+    setState(() => _isUploading = true);
+
+    final uri = Uri.parse('${ApiConfig.baseUrl}/api/user/${auth.userId}/avatar');
+    final request = http.MultipartRequest('POST', uri);
+    request.headers['Authorization'] = 'Bearer ${auth.token}';
+    request.files.add(await http.MultipartFile.fromPath('file', picked.path));
+
+    try {
+      final streamed = await request.send();
+      if (streamed.statusCode == 200) {
+        setState(() => _avatarUrl = '${ApiConfig.baseUrl}/api/user/${auth.userId}/avatar?t=${DateTime.now().millisecondsSinceEpoch}');
+      }
+    } catch (_) {}
+
+    if (mounted) setState(() => _isUploading = false);
+  }
+
+  Future<void> _editName() async {
+    final controller = TextEditingController(text: _displayName);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('修改昵称'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: '输入昵称'),
+          textInputAction: TextInputAction.done,
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (result != null && result.trim().isNotEmpty && result != _displayName) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('display_name', result.trim());
+      setState(() => _displayName = result.trim());
     }
   }
 
@@ -74,17 +152,37 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        // 用户头像 + 名字
+        // 用户头像 + 名字（可点击自定义）
         Center(
           child: Column(
             children: [
-              CircleAvatar(
-                radius: 40,
-                backgroundColor: Theme.of(context).colorScheme.primary.withAlpha(30),
-                child: Icon(Icons.person, size: 40, color: Theme.of(context).colorScheme.primary),
+              GestureDetector(
+                onTap: _uploadAvatar,
+                child: CircleAvatar(
+                  radius: 44,
+                  backgroundColor: Theme.of(context).colorScheme.primary.withAlpha(30),
+                  backgroundImage: _avatarUrl != null ? NetworkImage(_avatarUrl!) : null,
+                  child: _isUploading
+                      ? const CircularProgressIndicator(strokeWidth: 2)
+                      : (_avatarUrl == null
+                          ? Icon(Icons.person, size: 40, color: Theme.of(context).colorScheme.primary)
+                          : null),
+                ),
               ),
+              const SizedBox(height: 4),
+              Text('点击更换头像', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
               const SizedBox(height: 12),
-              Text(auth.username ?? '用户', style: Theme.of(context).textTheme.titleLarge),
+              GestureDetector(
+                onTap: _editName,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(_displayName, style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(width: 6),
+                    Icon(Icons.edit, size: 16, color: Colors.grey.shade400),
+                  ],
+                ),
+              ),
               if (streakDays > 0)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
@@ -130,6 +228,93 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/skipped'),
           ),
+        ),
+        const SizedBox(height: 16),
+
+        // 朗读设置
+        Consumer(
+          builder: (_, ref, __) {
+            final tts = ref.watch(ttsServiceProvider);
+            final voices = tts.availableVoices;
+            return Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('朗读设置', style: Theme.of(context).textTheme.titleMedium),
+                    const Divider(height: 24),
+
+                    // 语速
+                    Row(
+                      children: [
+                        const Icon(Icons.speed, size: 18),
+                        const SizedBox(width: 8),
+                        Text('语速', style: Theme.of(context).textTheme.bodyMedium),
+                        const Spacer(),
+                        Text('${tts.speechRate.toStringAsFixed(1)}',
+                            style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                      ],
+                    ),
+                    Slider(
+                      value: tts.speechRate,
+                      min: 0.1,
+                      max: 1.0,
+                      divisions: 9,
+                      label: tts.speechRate.toStringAsFixed(1),
+                      onChanged: (v) => tts.speechRate = v,
+                    ),
+                    const SizedBox(height: 8),
+
+                    // 音色
+                    if (voices.isNotEmpty) ...[
+                      Row(
+                        children: [
+                          const Icon(Icons.record_voice_over, size: 18),
+                          const SizedBox(width: 8),
+                          Text('音色', style: Theme.of(context).textTheme.bodyMedium),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        value: tts.selectedVoice?['name'] as String?,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(),
+                        ),
+                        hint: const Text('系统默认 (zh-CN)'),
+                        items: voices.map<DropdownMenuItem<String>>((v) {
+                          final name = v['name'] ?? '';
+                          final locale = v['locale'] ?? '';
+                          return DropdownMenuItem(
+                            value: name as String,
+                            child: Text('$name ($locale)',
+                                overflow: TextOverflow.ellipsis),
+                          );
+                        }).toList(),
+                        onChanged: (voiceName) {
+                          if (voiceName != null) {
+                            final match = voices.cast<Map<String, dynamic>?>().firstWhere(
+                              (v) => v?['name'] == voiceName,
+                              orElse: () => null,
+                            );
+                            if (match != null) {
+                              tts.selectVoice(match);
+                              // 选中后自动试听
+                              tts.speak('你好，这是试听语音',
+                                  language: 'zh-CN');
+                            }
+                          }
+                        },
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          },
         ),
         const SizedBox(height: 16),
 

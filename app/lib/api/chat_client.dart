@@ -279,6 +279,15 @@ class WsChatSession {
 
   WsChatSession(this.events, this._channel);
 
+  /// 通过已有连接发送消息（复用 WS）
+  void send(String userId, String conversationId, String message) {
+    _channel.sink.add(jsonEncode(ChatRequest(
+      userId: userId,
+      conversationId: conversationId,
+      message: message,
+    ).toJson()));
+  }
+
   void cancel() {
     _channel.sink.close();
   }
