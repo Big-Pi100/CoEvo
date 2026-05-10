@@ -14,7 +14,12 @@ final goRouter = GoRouter(
   routes: [
     GoRoute(
       path: '/auth',
-      builder: (context, state) => const AuthScreen(),
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const AuthScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            FadeTransition(opacity: animation, child: child),
+      ),
     ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) => _ShellScaffold(navigationShell: navigationShell),
@@ -58,11 +63,27 @@ final goRouter = GoRouter(
     ),
     GoRoute(
       path: '/conversations',
-      builder: (context, state) => const ConversationListScreen(),
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const ConversationListScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            SlideTransition(
+              position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(animation),
+              child: child,
+            ),
+      ),
     ),
     GoRoute(
       path: '/skipped',
-      builder: (context, state) => const SkippedListScreen(),
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const SkippedListScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            SlideTransition(
+              position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(animation),
+              child: child,
+            ),
+      ),
     ),
   ],
 );

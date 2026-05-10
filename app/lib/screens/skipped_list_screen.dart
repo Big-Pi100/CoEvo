@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/empty_state.dart';
 
 class SkippedListScreen extends ConsumerStatefulWidget {
   const SkippedListScreen({super.key});
@@ -72,19 +73,10 @@ class _SkippedListScreenState extends ConsumerState<SkippedListScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _items.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.inbox, size: 64, color: Colors.grey.shade300),
-                      const SizedBox(height: 16),
-                      Text('没有跳过的概念',
-                          style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: 8),
-                      Text('对话中弹出的知识点如果不感兴趣可以跳过',
-                          style: TextStyle(color: Colors.grey.shade600)),
-                    ],
-                  ),
+              ? const EmptyState(
+                  icon: Icons.inbox,
+                  title: '没有跳过的概念',
+                  subtitle: '对话中弹出的知识点如果不感兴趣可以跳过',
                 )
               : ListView.builder(
                   padding: const EdgeInsets.all(16),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../api/chat_client.dart';
+import '../widgets/empty_state.dart';
 import '../providers/auth_provider.dart';
 import '../models/coevo_models.dart';
 
@@ -352,15 +353,29 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                                   },
                                   child: Card(
                                     color: _stateColors[card.state.clamp(0, 3)],
-                                    elevation: 1,
+                                    elevation: 0,
                                     clipBehavior: Clip.antiAlias,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                      side: BorderSide(color: Colors.grey.shade200),
+                                    ),
                                     child: Stack(
                                       children: [
                                         Positioned.fill(
                                           child: FractionallySizedBox(
                                             widthFactor: _progressOverlay(card.state, card.reps),
                                             alignment: Alignment.centerLeft,
-                                            child: Container(color: Colors.white.withAlpha(80)),
+                                            child: Container(
+                                              decoration: BoxDecoration(
+                                                gradient: LinearGradient(
+                                                  colors: [
+                                                    _stateColors[card.state.clamp(0, 3)].withAlpha(60),
+                                                    _stateColors[card.state.clamp(0, 3)].withAlpha(20),
+                                                  ],
+                                                  stops: const [0.0, 0.8],
+                                                ),
+                                              ),
+                                            ),
                                           ),
                                         ),
                                         Column(
@@ -407,24 +422,12 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.inbox, size: 64, color: Colors.grey.shade300),
-          const SizedBox(height: 16),
-          Text('还没有卡片', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Text('和 AI 对话后，系统会自动提取知识点',
-              style: TextStyle(color: Colors.grey.shade600)),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: () => context.go('/chat'),
-            icon: const Icon(Icons.chat),
-            label: const Text('开始对话'),
-          ),
-        ],
-      ),
+    return EmptyState(
+      icon: Icons.inbox,
+      title: '还没有卡片',
+      subtitle: '和 AI 对话后，系统会自动提取知识点',
+      actionLabel: '去对话',
+      onAction: () => context.go('/chat'),
     );
   }
 }

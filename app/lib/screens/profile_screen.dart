@@ -46,7 +46,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
 
     // 检查头像是否存在
-    _avatarUrl = '${ApiConfig.baseUrl}/api/user/${auth.userId}/avatar';
+    final avatarUrl = '${ApiConfig.baseUrl}/api/user/${auth.userId}/avatar';
+    try {
+      final headResp = await http.head(Uri.parse(avatarUrl));
+      if (headResp.statusCode == 200) {
+        _avatarUrl = avatarUrl;
+      } else {
+        _avatarUrl = null;
+      }
+    } catch (_) {
+      _avatarUrl = null;
+    }
 
     final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {

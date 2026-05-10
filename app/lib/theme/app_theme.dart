@@ -3,6 +3,16 @@ import 'package:flutter/material.dart';
 /// CoEvo Material 3 Theme
 /// Brand: Deep Blue + Emerald Green (进化/成长)
 class AppTheme {
+  // ── Spacing Tokens ──
+  static const double spacingXs = 4;
+  static const double spacingSm = 8;
+  static const double spacingMd = 12;
+  static const double spacingLg = 16;
+  static const double spacingXl = 20;
+  static const double spacingXxl = 24;
+  static const double spacingXxxl = 32;
+  static const double spacingXxxxl = 48;
+
   // ── Brand Colors ──
   static const Color _primaryLight = Color(0xFF1A237E);   // Deep Blue 800
   static const Color _primaryDark = Color(0xFF5C6BC0);    // Indigo 300

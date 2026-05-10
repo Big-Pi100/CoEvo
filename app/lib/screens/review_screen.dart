@@ -445,17 +445,31 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           },
           child: Card(
             color: stateColors[state],
-            elevation: 1,
+            elevation: 0,
             key: _cardKeys.putIfAbsent(i, () => GlobalKey()),
             clipBehavior: Clip.antiAlias,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: Colors.grey.shade200),
+            ),
             child: Stack(
               children: [
-                // 进度蒙版：从左到右渐亮
+                // 进度蒙版：用渐变替代白色 alpha
                 Positioned.fill(
                   child: FractionallySizedBox(
                     widthFactor: _progressOverlay(card.state, card.reps),
                     alignment: Alignment.centerLeft,
-                    child: Container(color: Colors.white.withAlpha(80)),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            stateColors[state].withAlpha(60),
+                            stateColors[state].withAlpha(20),
+                          ],
+                          stops: const [0.0, 0.8],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
                 // 卡片内容

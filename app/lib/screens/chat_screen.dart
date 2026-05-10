@@ -6,6 +6,7 @@ import '../models/coevo_models.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
 import '../services/stt_service.dart';
+import '../widgets/skeleton.dart';
 
 /// 持久化 conversation_id 的 provider (跨页面保持)
 final currentConversationIdProvider = StateProvider<String?>((ref) => null);
@@ -22,13 +23,14 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _messageController = TextEditingController();
   final _messages = <Message>[];
-  final _listKey = GlobalKey<AnimatedListState>();
+  GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
   final _scrollController = ScrollController();
   ChatClient? _client;
   WsChatSession? _session;
   StreamSubscription<WsEvent>? _sessionSub;
   bool _isWaiting = false;
   String _convId = '';
+  bool _isInitializing = true;
 
   // 学习计划
   Map<String, dynamic>? _activePlan;
@@ -88,6 +90,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ));
       });
     }
+    if (mounted) setState(() => _isInitializing = false);
   }
 
   Future<void> _loadPlan() async {
@@ -302,7 +305,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       _sessionSub = _session!.events.listen(
         (event) => _handleWsEvent(event),
-        onError: (error) => _finalizeStreaming('连接错误：$error'),
+        onError: (error) {
+          _finalizeStreamingWithRetry('连接错误：$error');
+        },
         onDone: () {
           if (_streamingIndex >= 0 && _streamingBuffer.isNotEmpty) {
             _finalizeStreaming(_streamingBuffer);
@@ -310,9 +315,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         },
       );
     } else {
-      // 后续消息：复用已有连接
+      // 后续消息：复用已有连接；若连接已关闭则重建
       final auth = ref.read(authProvider);
-      _session!.send(auth.userId ?? '', _convId, text);
+      try {
+        _session!.send(auth.userId ?? '', _convId, text);
+      } catch (_) {
+        // 连接已关闭，清理后重建
+        _sessionSub?.cancel();
+        _session = null;
+        // 递归调用自身，走首次连接分支
+        _sendMessage();
+        return;
+      }
 
       _streamingBuffer = '';
       _addMessage(Message(
@@ -352,7 +366,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         }
         break;
       case 'error':
-        _finalizeStreaming('抱歉，出了点问题：${event.content}');
+        _finalizeStreamingWithRetry('抱歉，出了点问题：${event.content}');
         break;
       case 'plan_updated':
         _loadPlan();
@@ -375,6 +389,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     setState(() {
       _messages[_streamingIndex] = Message(
         role: 'assistant', content: reply, timestamp: DateTime.now(),
+      );
+      _isWaiting = false;
+      _streamingIndex = -1;
+      _streamingBuffer = '';
+    });
+    _scrollToBottom();
+  }
+
+  /// 带重试按钮的错误提示
+  void _finalizeStreamingWithRetry(String errorMsg) {
+    if (_streamingIndex < 0) return;
+    setState(() {
+      _messages[_streamingIndex] = Message(
+        role: 'assistant',
+        content: '${errorMsg}',
+        timestamp: DateTime.now(),
       );
       _isWaiting = false;
       _streamingIndex = -1;
@@ -532,10 +562,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             onPressed: () async {
               final result = await context.push<String>('/conversations');
               if (result != null && mounted) {
+                // 切换到新会话：重置 AnimatedList key 强制重建
+                _listKey = GlobalKey<AnimatedListState>();
+                _sessionSub?.cancel();
+                _session = null;
                 _convId = result;
                 _activePlan = null;
-                _session = null;
-                _sessionSub?.cancel();
                 ref.read(currentConversationIdProvider.notifier).state = _convId;
                 _client = ChatClient(
                   userId: ref.read(authProvider).userId ?? 'default_user',
@@ -563,6 +595,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     ));
                   }
                 });
+              } else if (mounted) {
+                // 返回但没选会话：重置 WS 连接，避免使用过期连接
+                _sessionSub?.cancel();
+                _session = null;
               }
             },
           ),
@@ -572,6 +608,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             tooltip: '新对话',
             onPressed: () {
               ref.read(currentConversationIdProvider.notifier).state = null;
+              _listKey = GlobalKey<AnimatedListState>();
               setState(() {
                 _messages.clear();
                 _convId = 'conv_${DateTime.now().millisecondsSinceEpoch}';
@@ -600,7 +637,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           // 学习计划面板（持久展示，不被对话推没）
           _buildPlanPanel(),
           Expanded(
-            child: SelectionArea(
+            child: _isInitializing
+                ? const ChatSkeleton()
+                : SelectionArea(
               child: AnimatedList(
               key: _listKey,
               controller: _scrollController,
@@ -614,32 +653,80 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   sizeFactor: animation,
                   child: FadeTransition(
                     opacity: animation,
-                    child: Align(
-                      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: isUser
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context).colorScheme.secondaryContainer,
-                          borderRadius: BorderRadius.circular(20).copyWith(
-                            bottomRight: isUser ? const Radius.circular(4) : null,
-                            bottomLeft: !isUser ? const Radius.circular(4) : null,
+                    child: Column(
+                      crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            // AI 头像（左侧）
+                            if (!isUser)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8, bottom: 12),
+                                child: CircleAvatar(
+                                  radius: 14,
+                                  backgroundColor: Theme.of(context).colorScheme.primary.withAlpha(30),
+                                  child: Icon(Icons.auto_awesome, size: 14, color: Theme.of(context).colorScheme.primary),
+                                ),
+                              ),
+                            // 气泡
+                            Flexible(
+                              child: Container(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: isUser
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Theme.of(context).colorScheme.secondaryContainer,
+                                  borderRadius: BorderRadius.circular(20).copyWith(
+                                    bottomRight: isUser ? const Radius.circular(4) : null,
+                                    bottomLeft: !isUser ? const Radius.circular(4) : null,
+                                  ),
+                                ),
+                                constraints: BoxConstraints(
+                                  maxWidth: MediaQuery.of(context).size.width * 0.65,
+                                ),
+                                child: Text(
+                                  msg.content + (isStreaming ? '▌' : ''),
+                                  style: TextStyle(
+                                    color: isUser ? Colors.white : Theme.of(context).colorScheme.onSecondaryContainer,
+                                    fontSize: 16,
+                                    height: 1.5,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // 用户头像（右侧）
+                            if (isUser)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 8, bottom: 12),
+                                child: CircleAvatar(
+                                  radius: 14,
+                                  backgroundColor: Theme.of(context).colorScheme.primary,
+                                  child: const Icon(Icons.person, size: 14, color: Colors.white),
+                                ),
+                              ),
+                          ],
+                        ),
+                        // 错误重试按钮
+                        if (!isUser && msg.content.startsWith('抱歉') || msg.content.startsWith('连接错误'))
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12, left: 8),
+                            child: TextButton.icon(
+                              onPressed: _isWaiting ? null : () {
+                                final lastUserIdx = _messages.lastIndexWhere((m) => m.role == 'user');
+                                if (lastUserIdx >= 0) {
+                                  _messageController.text = _messages[lastUserIdx].content;
+                                  _sendMessage();
+                                }
+                              },
+                              icon: const Icon(Icons.refresh, size: 16),
+                              label: const Text('重试', style: TextStyle(fontSize: 13)),
+                            ),
                           ),
-                        ),
-                        constraints: BoxConstraints(
-                          maxWidth: MediaQuery.of(context).size.width * 0.75,
-                        ),
-                        child: Text(
-                          msg.content + (isStreaming ? '▌' : ''),
-                          style: TextStyle(
-                            color: isUser ? Colors.white : Theme.of(context).colorScheme.onSecondaryContainer,
-                            fontSize: 16,
-                            height: 1.5,
-                          ),
-                        ),
-                      ),
+                      ],
                     ),
                   ),
                 );
