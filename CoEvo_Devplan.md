@@ -485,6 +485,12 @@ learning_plans (
   ✅ 动态成就系统: tier 层级 + 学习计划绑定
   ✅ 学习计划面板 (前端可折叠, conversation_id 绑定)
   ✅ Part-time 考核: grill_assessment.md + assessment 解析 + bronze/silver/gold 成就
+
+--- 待做 (Phase 3: 家长看板) ---
+  ⬜ 学习报告 API: GET /api/user/{user_id}/learning-report
+  ⬜ 家长看板页面: profile_screen 扩展 (概览/计划详情/成就tier/热力图)
+  ⬜ 周报/通知: 学习报告推送 + 闲置提醒
+  ⬜ 推广素材: 截图 + 视频文案
 ```
 
 ---

@@ -338,4 +338,46 @@ extension PlanApi on ChatClient {
     } catch (_) {}
     return null;
   }
+
+  /// 获取学习报告（Phase 3 家长看板数据）
+  Future<Map<String, dynamic>?> getLearningReport() async {
+    try {
+      final resp = await http.get(
+        Uri.parse('$baseUrl/api/user/$userId/learning-report'),
+        headers: _authHeaders,
+      );
+      if (resp.statusCode == 200) {
+        return jsonDecode(resp.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// 获取学习活动数据（热力图用）
+  Future<Map<String, dynamic>?> getActivity({int days = 30}) async {
+    try {
+      final resp = await http.get(
+        Uri.parse('$baseUrl/api/user/$userId/activity?days=$days'),
+        headers: _authHeaders,
+      );
+      if (resp.statusCode == 200) {
+        return jsonDecode(resp.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// 获取周报数据
+  Future<Map<String, dynamic>?> getWeeklyReport() async {
+    try {
+      final resp = await http.get(
+        Uri.parse('$baseUrl/api/user/$userId/weekly-report'),
+        headers: _authHeaders,
+      );
+      if (resp.statusCode == 200) {
+        return jsonDecode(resp.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
 }

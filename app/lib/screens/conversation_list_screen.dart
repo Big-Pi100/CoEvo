@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
 
@@ -60,16 +61,36 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
                     ],
                   ),
                 )
-              : ListView.builder(
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView.builder(
                   padding: const EdgeInsets.all(12),
                   itemCount: _conversations.length,
                   itemBuilder: (_, i) {
                     final conv = _conversations[i];
                     final title = conv['title'] as String? ?? '新对话';
                     final turnCount = conv['turn_count'] as int? ?? 0;
-                    final startedAt = conv['started_at'] as String? ?? '';
-                    final date = startedAt.length >= 10 ? startedAt.substring(0, 10) : '';
-                    final time = startedAt.length >= 16 ? startedAt.substring(11, 16) : '';
+                    final startedAtStr = conv['started_at'] as String? ?? '';
+                    // 相对时间格式化
+                    String dateLabel;
+                    try {
+                      final dt = DateTime.parse(startedAtStr).toLocal();
+                      final now = DateTime.now();
+                      final diff = now.difference(dt);
+                      if (diff.inMinutes < 1) {
+                        dateLabel = '刚刚';
+                      } else if (diff.inHours < 1) {
+                        dateLabel = '${diff.inMinutes} 分钟前';
+                      } else if (diff.inDays < 1) {
+                        dateLabel = DateFormat('HH:mm').format(dt);
+                      } else if (diff.inDays < 7) {
+                        dateLabel = '${diff.inDays} 天前';
+                      } else {
+                        dateLabel = DateFormat('MM-dd').format(dt);
+                      }
+                    } catch (_) {
+                      dateLabel = startedAtStr.length >= 10 ? startedAtStr.substring(0, 10) : '';
+                    }
                     return Card(
                       child: ListTile(
                         leading: CircleAvatar(
@@ -77,7 +98,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
                           child: const Icon(Icons.chat, size: 20),
                         ),
                         title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Text('$date $time · $turnCount 轮对话',
+                        subtitle: Text('$dateLabel · $turnCount 轮对话',
                             style: const TextStyle(fontSize: 12)),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () {
@@ -89,6 +110,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
                       ),
                     );
                   },
+                ),
                 ),
     );
   }

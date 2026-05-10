@@ -575,7 +575,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     decoration: BoxDecoration(
                       color: isUser
                           ? Theme.of(context).colorScheme.primary
-                          : const Color(0xFFF0F4FF),
+                          : Theme.of(context).colorScheme.secondaryContainer,
                       borderRadius: BorderRadius.circular(20).copyWith(
                         bottomRight: isUser ? const Radius.circular(4) : null,
                         bottomLeft: !isUser ? const Radius.circular(4) : null,
@@ -587,7 +587,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     child: Text(
                       msg.content + (isStreaming ? '▌' : ''),
                       style: TextStyle(
-                        color: isUser ? Colors.white : const Color(0xFF1A1A2E),
+                        color: isUser ? Colors.white : Theme.of(context).colorScheme.onSecondaryContainer,
                         fontSize: 16,
                         height: 1.5,
                       ),

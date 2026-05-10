@@ -38,6 +38,10 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         // Learning Plans
         .route("/api/plans", get(plans_list_handler).post(plan_upsert_handler))
         .route("/api/plans/{plan_id}", delete(plan_delete_handler))
+        // Learning Report (Phase 3)
+        .route("/api/user/{user_id}/learning-report", get(learning_report_handler))
+        .route("/api/user/{user_id}/activity", get(activity_handler))
+        .route("/api/user/{user_id}/weekly-report", get(weekly_report_handler))
 }
 
 // ════════════════════════════════════════════
@@ -870,4 +874,233 @@ async fn plan_delete_handler(
         Ok(_) => Json(serde_json::json!({"status": "ok"})),
         Err(e) => Json(serde_json::json!({"error": format!("DB: {}", e)})),
     }
+}
+
+// ════════════════════════════════════════════
+// Phase 3 — Learning Report
+// ════════════════════════════════════════════
+
+async fn learning_report_handler(
+    Path(user_id): Path<String>,
+) -> Json<serde_json::Value> {
+    let conn = crate::db_pool::get_conn();
+
+    // 1. 学习计划进度
+    let plan_data = conn.query_row(
+        "SELECT plan_json, goal, updated_at FROM learning_plans WHERE user_id = ?1 AND mode = 'structured' ORDER BY updated_at DESC LIMIT 1",
+        rusqlite::params![user_id],
+        |row| {
+            let pj: String = row.get(0)?;
+            let goal: String = row.get(1)?;
+            let updated: String = row.get(2)?;
+            Ok((pj, goal, updated))
+        }
+    ).ok();
+
+    let mut plan_progress = serde_json::json!(null);
+    if let Some((pj, goal, updated)) = &plan_data {
+        if let Ok(plan) = serde_json::from_str::<serde_json::Value>(pj) {
+            let mut total_tasks = 0u32;
+            let mut done_tasks = 0u32;
+            let mut current_stage = "";
+            if let Some(stages) = plan.get("stages").and_then(|v| v.as_array()) {
+                for stage in stages {
+                    let sname = stage["name"].as_str().unwrap_or("");
+                    let sstatus = stage["status"].as_str().unwrap_or("pending");
+                    if sstatus == "in_progress" && current_stage.is_empty() {
+                        current_stage = sname;
+                    }
+                    if let Some(tasks) = stage["tasks"].as_array() {
+                        for task in tasks {
+                            total_tasks += 1;
+                            if task["status"].as_str().unwrap_or("") == "done" {
+                                done_tasks += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            plan_progress = serde_json::json!({
+                "goal": goal,
+                "current_stage": current_stage,
+                "total_tasks": total_tasks,
+                "done_tasks": done_tasks,
+                "progress_pct": if total_tasks > 0 { format!("{:.0}%", done_tasks as f64 / total_tasks as f64 * 100.0) } else { "0%".to_string() },
+                "updated_at": updated,
+            });
+        }
+    }
+
+    // 2. 成就统计
+    let mut stmt = conn.prepare(
+        "SELECT tier, COUNT(*) as cnt FROM achievements WHERE user_id = ?1 GROUP BY tier ORDER BY tier"
+    ).unwrap();
+    let tier_counts: serde_json::Value = stmt.query_map(rusqlite::params![user_id], |row| {
+        Ok(serde_json::json!({
+            "tier": row.get::<_, String>(0)?,
+            "count": row.get::<_, i64>(1)?,
+        }))
+    }).unwrap().filter_map(|r| r.ok()).collect();
+
+    // 3. 学习统计
+    let cards_total: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM cards WHERE user_id = ?1", rusqlite::params![user_id], |row| row.get(0)
+    ).unwrap_or(0);
+
+    let reviews_total: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM review_log WHERE card_id IN (SELECT id FROM cards WHERE user_id = ?1)",
+        rusqlite::params![user_id], |row| row.get(0)
+    ).unwrap_or(0);
+
+    let conv_total: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM conversation_turns WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = ?1)",
+        rusqlite::params![user_id], |row| row.get(0)
+    ).unwrap_or(0);
+
+    let streak_days: i64 = conn.query_row(
+        "SELECT streak_days FROM users WHERE id = ?1", rusqlite::params![user_id], |row| row.get(0)
+    ).unwrap_or(0);
+
+    // 4. 考核统计 —— bronze 成就数作为已通过任务的近似
+    let bronze_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM achievements WHERE user_id = ?1 AND tier = 'bronze'",
+        rusqlite::params![user_id], |row| row.get(0)
+    ).unwrap_or(0);
+
+    Json(serde_json::json!({
+        "plan_progress": plan_progress,
+        "achievements_by_tier": tier_counts,
+        "stats": {
+            "total_cards": cards_total,
+            "total_reviews": reviews_total,
+            "total_conversation_turns": conv_total,
+            "streak_days": streak_days,
+        },
+        "assessment": {
+            "tasks_passed": bronze_count,
+        }
+    }))
+}
+
+// ════════════════════════════════════════════
+// Activity Heatmap API
+// ════════════════════════════════════════════
+
+use std::collections::HashMap;
+
+async fn activity_handler(
+    Path(user_id): Path<String>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Json<serde_json::Value> {
+    let conn = crate::db_pool::get_conn();
+    let days: i64 = params.get("days").and_then(|v| v.parse().ok()).unwrap_or(30);
+
+    // 每日复习数
+    let mut stmt = conn.prepare(
+        "SELECT DATE(r.reviewed_at, 'unixepoch') as d, COUNT(*) as cnt
+         FROM review_log r JOIN cards c ON r.card_id = c.id
+         WHERE c.user_id = ?1 AND r.reviewed_at >= ?2
+         GROUP BY d ORDER BY d"
+    ).unwrap();
+    let since = chrono::Utc::now() - chrono::Duration::days(days);
+    let since_ts = since.timestamp();
+    let reviews_by_day: HashMap<String, i64> = stmt.query_map(
+        rusqlite::params![user_id, since_ts],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    ).unwrap().filter_map(|r| r.ok()).collect();
+
+    // 每日对话轮次数
+    let mut stmt2 = conn.prepare(
+        "SELECT DATE(created_at) as d, COUNT(*) as cnt
+         FROM conversation_turns ct
+         WHERE ct.conversation_id IN (SELECT id FROM conversations WHERE user_id = ?1)
+           AND ct.created_at >= ?2
+         GROUP BY d ORDER BY d"
+    ).unwrap();
+    let convs_by_day: HashMap<String, i64> = stmt2.query_map(
+        rusqlite::params![user_id, since.to_rfc3339()],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    ).unwrap().filter_map(|r| r.ok()).collect();
+
+    // 每日制卡数
+    let mut stmt3 = conn.prepare(
+        "SELECT DATE(created_at, 'unixepoch') as d, COUNT(*) as cnt
+         FROM cards WHERE user_id = ?1 AND created_at >= ?2
+         GROUP BY d ORDER BY d"
+    ).unwrap();
+    let cards_by_day: HashMap<String, i64> = stmt3.query_map(
+        rusqlite::params![user_id, since_ts],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    ).unwrap().filter_map(|r| r.ok()).collect();
+
+    // 生成日期序列 + 活动数据
+    let mut days_data: Vec<serde_json::Value> = Vec::new();
+    for i in (0..days).rev() {
+        let date = (chrono::Utc::now() - chrono::Duration::days(i)).format("%Y-%m-%d").to_string();
+        let reviews = reviews_by_day.get(&date).copied().unwrap_or(0);
+        let convs = convs_by_day.get(&date).copied().unwrap_or(0);
+        let cards = cards_by_day.get(&date).copied().unwrap_or(0);
+        let score = reviews + convs + cards; // 活跃度
+        days_data.push(serde_json::json!({
+            "date": date,
+            "score": score,
+            "reviews": reviews,
+            "conversations": convs,
+            "cards": cards,
+        }));
+    }
+
+    Json(serde_json::json!({"days": days_data}))
+}
+
+// ════════════════════════════════════════════
+// Weekly Report API
+// ════════════════════════════════════════════
+
+async fn weekly_report_handler(
+    Path(user_id): Path<String>,
+) -> Json<serde_json::Value> {
+    let conn = crate::db_pool::get_conn();
+    let week_ago = (chrono::Utc::now() - chrono::Duration::days(7)).to_rfc3339();
+    let week_ago_ts = (chrono::Utc::now() - chrono::Duration::days(7)).timestamp();
+
+    // 本周新增卡片
+    let new_cards: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM cards WHERE user_id = ?1 AND created_at >= ?2",
+        rusqlite::params![user_id, week_ago_ts], |row| row.get(0)
+    ).unwrap_or(0);
+
+    // 本周复习次数
+    let weekly_reviews: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM review_log r JOIN cards c ON r.card_id = c.id WHERE c.user_id = ?1 AND r.reviewed_at >= ?2",
+        rusqlite::params![user_id, week_ago_ts], |row| row.get(0)
+    ).unwrap_or(0);
+
+    // 本周对话轮次
+    let weekly_convs: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM conversation_turns WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = ?1) AND created_at >= ?2",
+        rusqlite::params![user_id, week_ago], |row| row.get(0)
+    ).unwrap_or(0);
+
+    // 本周新成就
+    let weekly_achievements: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM achievements WHERE user_id = ?1 AND unlocked_at >= ?2",
+        rusqlite::params![user_id, week_ago], |row| row.get(0)
+    ).unwrap_or(0);
+
+    // 当前计划进度
+    let plan_goal: Option<String> = conn.query_row(
+        "SELECT goal FROM learning_plans WHERE user_id = ?1 AND mode = 'structured' ORDER BY updated_at DESC LIMIT 1",
+        rusqlite::params![user_id], |row| row.get(0)
+    ).ok();
+
+    Json(serde_json::json!({
+        "week_start": (chrono::Utc::now() - chrono::Duration::days(7)).format("%Y-%m-%d").to_string(),
+        "week_end": chrono::Utc::now().format("%Y-%m-%d").to_string(),
+        "new_cards": new_cards,
+        "reviews": weekly_reviews,
+        "conversation_turns": weekly_convs,
+        "new_achievements": weekly_achievements,
+        "active_plan": plan_goal,
+    }))
 }

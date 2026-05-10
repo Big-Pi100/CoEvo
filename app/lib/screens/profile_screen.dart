@@ -18,6 +18,9 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Map<String, dynamic>? _data;
+  Map<String, dynamic>? _report;  // Phase 3 学习报告
+  Map<String, dynamic>? _activityData;  // Phase 3 热力图
+  Map<String, dynamic>? _weeklyReport;  // Phase 3 周报
   bool _isLoading = true;
   String? _avatarUrl;
   String _displayName = '';
@@ -48,7 +51,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {
       final data = await client.getProfile();
-      if (mounted) setState(() { _data = data; _isLoading = false; });
+      final report = await client.getLearningReport();
+      final activity = await client.getActivity();
+      final weekly = await client.getWeeklyReport();
+      if (mounted) setState(() { _data = data; _report = report; _activityData = activity; _weeklyReport = weekly; _isLoading = false; });
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -200,6 +206,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         ),
         const SizedBox(height: 32),
+
+        // ── Phase 3: 学习报告 ──
+        if (_report != null) ...[
+          _buildReportSection(_report!),
+          const SizedBox(height: 16),
+        ],
+        if (_activityData != null) ...[
+          _buildHeatmap(_activityData!),
+          const SizedBox(height: 16),
+        ],
+        if (_weeklyReport != null) ...[
+          _buildWeeklyReport(_weeklyReport!),
+          const SizedBox(height: 16),
+        ],
 
         // 统计卡片
         Card(
@@ -364,6 +384,253 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  // ── Phase 3: 学习报告 ──
+  Widget _buildReportSection(Map<String, dynamic> report) {
+    final plan = report['plan_progress'] as Map<String, dynamic>?;
+    final tiers = report['achievements_by_tier'] as List<dynamic>? ?? [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 学习计划进度
+        if (plan != null && plan['goal'] != null)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.school, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text('学习计划', style: Theme.of(context).textTheme.titleMedium)),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text('目标：${plan['goal']}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  if (plan['current_stage'] is String && (plan['current_stage'] as String).isNotEmpty)
+                    Text('当前阶段：${plan['current_stage']}', style: TextStyle(color: Colors.grey.shade600)),
+                  const SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: ((plan['total_tasks'] as int?) ?? 0) > 0
+                          ? ((plan['done_tasks'] as int?) ?? 0) / ((plan['total_tasks'] as int?) ?? 1)
+                          : 0,
+                      minHeight: 8,
+                      backgroundColor: Colors.grey.shade200,
+                      valueColor: AlwaysStoppedAnimation(Theme.of(context).colorScheme.primary),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text('${plan['done_tasks']}/${plan['total_tasks']} 任务完成 (${plan['progress_pct']})',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                ],
+              ),
+            ),
+          ),
+        const SizedBox(height: 12),
+
+        // 成就 tier 展示
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.emoji_events, size: 20),
+                    const SizedBox(width: 8),
+                    Text('成就', style: Theme.of(context).textTheme.titleMedium),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ...tiers.map((t) {
+                  final tmap = t as Map<String, dynamic>;
+                  final tier = tmap['tier'] as String? ?? '';
+                  final count = tmap['count'] as int? ?? 0;
+                  final icon = tier == 'bronze' ? '🥉' : tier == 'silver' ? '🥈' : tier == 'gold' ? '🥇' : tier == 'platinum' ? '🏆' : '🌟';
+                  final label = tier == 'fixed' ? '固定成就' : tier == 'bronze' ? '任务级' : tier == 'silver' ? '阶段级' : tier == 'gold' ? '领域级' : '跨领域';
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        Text(icon, style: const TextStyle(fontSize: 20)),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text(label, style: const TextStyle(fontSize: 14))),
+                        Text('$count', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+}
+
+  // ── Phase 3: 周报 ──
+  Widget _buildWeeklyReport(Map<String, dynamic> report) {
+    final activePlan = report['active_plan'] as String?;
+    final newCards = report['new_cards'] as int? ?? 0;
+    final reviews = report['reviews'] as int? ?? 0;
+    final convs = report['conversation_turns'] as int? ?? 0;
+    final newAchs = report['new_achievements'] as int? ?? 0;
+
+    // 闲置提醒：有活跃计划但本周无活动
+    final isIdle = activePlan != null && newCards == 0 && reviews == 0 && convs == 0;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.assessment, size: 20),
+                const SizedBox(width: 8),
+                Expanded(child: Text('本周学习报告', style: Theme.of(context).textTheme.titleMedium)),
+                if (isIdle)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade100,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text('待唤醒', style: TextStyle(fontSize: 11, color: Colors.orange.shade800)),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (isIdle)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.notifications_active, color: Colors.orange, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text('你的"$activePlan"学习计划等你回来继续！',
+                            style: TextStyle(fontSize: 13, color: Colors.orange.shade800)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            _StatRow(icon: Icons.auto_stories, label: '新增卡片', value: '$newCards'),
+            _StatRow(icon: Icons.replay, label: '本周复习', value: '$reviews'),
+            _StatRow(icon: Icons.chat, label: '对话轮次', value: '$convs'),
+            _StatRow(icon: Icons.emoji_events, label: '新成就', value: '$newAchs'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Phase 3: 学习热力图 ──
+  Widget _buildHeatmap(Map<String, dynamic> activity) {
+    final days = activity['days'] as List<dynamic>? ?? [];
+    if (days.isEmpty) return const SizedBox.shrink();
+
+    // 计算最大活跃度用于颜色缩放
+    final maxScore = days.fold<int>(0, (m, d) {
+      final score = (d as Map<String, dynamic>)['score'] as int? ?? 0;
+      return score > m ? score : m;
+    });
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.calendar_month, size: 20),
+                const SizedBox(width: 8),
+                Text('学习活动', style: Theme.of(context).textTheme.titleMedium),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: Wrap(
+                spacing: 3,
+                runSpacing: 3,
+                children: days.map((d) {
+                  final day = d as Map<String, dynamic>;
+                  final date = day['date'] as String? ?? '';
+                  final score = day['score'] as int? ?? 0;
+                  final intensity = maxScore > 0 ? score / maxScore : 0.0;
+                  final weekday = DateTime.tryParse(date)?.weekday ?? 0;
+
+                  Color color;
+                  if (score == 0) {
+                    color = Colors.grey.shade100;
+                  } else if (intensity < 0.25) {
+                    color = Colors.green.shade100;
+                  } else if (intensity < 0.5) {
+                    color = Colors.green.shade300;
+                  } else if (intensity < 0.75) {
+                    color = Colors.green.shade500;
+                  } else {
+                    color = Colors.green.shade700;
+                  }
+
+                  // 周末标灰
+                  if (weekday == 6 || weekday == 7) {
+                    color = color.withAlpha(180);
+                  }
+
+                  return Tooltip(
+                    message: '$date\n复习${day['reviews']}次 · ${day['conversations']}轮对话 · ${day['cards']}张卡',
+                    child: Container(
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: color,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Text('少', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                const SizedBox(width: 4),
+                Container(width: 14, height: 14, decoration: BoxDecoration(color: Colors.green.shade100, borderRadius: BorderRadius.circular(2))),
+                const SizedBox(width: 4),
+                Container(width: 14, height: 14, decoration: BoxDecoration(color: Colors.green.shade300, borderRadius: BorderRadius.circular(2))),
+                const SizedBox(width: 4),
+                Container(width: 14, height: 14, decoration: BoxDecoration(color: Colors.green.shade500, borderRadius: BorderRadius.circular(2))),
+                const SizedBox(width: 4),
+                Container(width: 14, height: 14, decoration: BoxDecoration(color: Colors.green.shade700, borderRadius: BorderRadius.circular(2))),
+                const SizedBox(width: 4),
+                Text('多', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
