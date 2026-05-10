@@ -22,6 +22,7 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _messageController = TextEditingController();
   final _messages = <Message>[];
+  final _listKey = GlobalKey<AnimatedListState>();
   final _scrollController = ScrollController();
   ChatClient? _client;
   WsChatSession? _session;
@@ -273,8 +274,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _addMessage(Message msg) {
-    setState(() => _messages.add(msg));
-    _scrollToBottom();
+    _messages.add(msg);
+    _listKey.currentState?.insertItem(_messages.length - 1, duration: const Duration(milliseconds: 300));
+    Future.delayed(const Duration(milliseconds: 50), _scrollToBottom);
   }
 
   void _sendMessage() {
@@ -512,17 +514,57 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('AI 对话'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          tooltip: '返回',
-          onPressed: () => context.pop(),
+        title: Row(
+          children: [
+            Icon(Icons.auto_awesome, size: 20, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 8),
+            Text('CoEvo', style: TextStyle(
+              fontWeight: FontWeight.bold,
+              letterSpacing: 2,
+              color: Theme.of(context).colorScheme.primary,
+            )),
+          ],
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.history),
             tooltip: '对话列表',
-            onPressed: () => context.push('/conversations'),
+            onPressed: () async {
+              final result = await context.push<String>('/conversations');
+              if (result != null && mounted) {
+                _convId = result;
+                _activePlan = null;
+                _session = null;
+                _sessionSub?.cancel();
+                ref.read(currentConversationIdProvider.notifier).state = _convId;
+                _client = ChatClient(
+                  userId: ref.read(authProvider).userId ?? 'default_user',
+                  conversationId: _convId,
+                  token: ref.read(authProvider).token,
+                );
+                _loadPlan();
+                // 加载历史对话
+                final history = await _client!.getConversationTurns(_convId);
+                setState(() {
+                  _messages.clear();
+                  if (history.isNotEmpty) {
+                    for (final turn in history) {
+                      _messages.add(Message(
+                        role: turn['role'] as String? ?? 'assistant',
+                        content: turn['content'] as String? ?? '',
+                        timestamp: DateTime.now(),
+                      ));
+                    }
+                  } else {
+                    _messages.add(Message(
+                      role: 'assistant',
+                      content: '你好！我是你的 AI 学习助手。有什么想学的吗？',
+                      timestamp: DateTime.now(),
+                    ));
+                  }
+                });
+              }
+            },
           ),
           // 新对话按钮
           IconButton(
@@ -559,37 +601,44 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _buildPlanPanel(),
           Expanded(
             child: SelectionArea(
-              child: ListView.builder(
+              child: AnimatedList(
+              key: _listKey,
               controller: _scrollController,
+              initialItemCount: _messages.length,
               padding: const EdgeInsets.all(16),
-              itemCount: _messages.length,
-              itemBuilder: (_, i) {
+              itemBuilder: (_, i, animation) {
                 final msg = _messages[i];
                 final isUser = msg.role == 'user';
                 final isStreaming = i == _streamingIndex;
-                return Align(
-                  alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: isUser
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.secondaryContainer,
-                      borderRadius: BorderRadius.circular(20).copyWith(
-                        bottomRight: isUser ? const Radius.circular(4) : null,
-                        bottomLeft: !isUser ? const Radius.circular(4) : null,
-                      ),
-                    ),
-                    constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.75,
-                    ),
-                    child: Text(
-                      msg.content + (isStreaming ? '▌' : ''),
-                      style: TextStyle(
-                        color: isUser ? Colors.white : Theme.of(context).colorScheme.onSecondaryContainer,
-                        fontSize: 16,
-                        height: 1.5,
+                return SizeTransition(
+                  sizeFactor: animation,
+                  child: FadeTransition(
+                    opacity: animation,
+                    child: Align(
+                      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: isUser
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.secondaryContainer,
+                          borderRadius: BorderRadius.circular(20).copyWith(
+                            bottomRight: isUser ? const Radius.circular(4) : null,
+                            bottomLeft: !isUser ? const Radius.circular(4) : null,
+                          ),
+                        ),
+                        constraints: BoxConstraints(
+                          maxWidth: MediaQuery.of(context).size.width * 0.75,
+                        ),
+                        child: Text(
+                          msg.content + (isStreaming ? '▌' : ''),
+                          style: TextStyle(
+                            color: isUser ? Colors.white : Theme.of(context).colorScheme.onSecondaryContainer,
+                            fontSize: 16,
+                            height: 1.5,
+                          ),
+                        ),
                       ),
                     ),
                   ),

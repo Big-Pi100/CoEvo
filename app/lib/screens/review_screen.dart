@@ -547,20 +547,34 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             ),
             child: Column(
               children: [
-                Text(
-                  _isVerifying || !_isFlipped ? card.front : card.back,
-                  style: TextStyle(
-                    fontSize: _isVerifying || !_isFlipped ? 18 : 16,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1A1A2E),
-                    height: 1.4,
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  transitionBuilder: (child, animation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: ScaleTransition(scale: animation, child: child),
+                    );
+                  },
+                  child: Text(
+                    key: ValueKey('${_isVerifying}_$_isFlipped'),
+                    _isVerifying || !_isFlipped ? card.front : card.back,
+                    style: TextStyle(
+                      fontSize: _isVerifying || !_isFlipped ? 18 : 16,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF1A1A2E),
+                      height: 1.4,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-                  textAlign: TextAlign.center,
                 ),
                 if (!_isVerifying && _isFlipped && card.sourceSentence != null) ...[
                   const SizedBox(height: 8),
-                  Text('来源: ${card.sourceSentence}',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontStyle: FontStyle.italic)),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    child: Text('来源: ${card.sourceSentence}',
+                        key: ValueKey(card.sourceSentence),
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontStyle: FontStyle.italic)),
+                  ),
                 ],
                 const SizedBox(height: 8),
                 Text(

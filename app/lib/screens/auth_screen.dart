@@ -29,7 +29,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     // Auto-navigate when authenticated
     if (authState.isAuthenticated) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        context.go('/');
+        context.go('/chat');
       });
     }
 
@@ -41,18 +41,42 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               // Logo
+              Icon(
+                Icons.auto_awesome,
+                size: 48,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(height: 12),
               Text(
-                '刻意进化',
-                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                'CoEvo',
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: Theme.of(context).colorScheme.primary,
+                  letterSpacing: 4,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               Text(
-                '如果不想被AI取代，你需要刻意进化',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey,
+                '刻意进化学习',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary.withAlpha(8),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '如果不想被AI取代，你需要刻意进化',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Theme.of(context).colorScheme.primary.withAlpha(180),
+                    fontStyle: FontStyle.italic,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
               ),
               const SizedBox(height: 48),

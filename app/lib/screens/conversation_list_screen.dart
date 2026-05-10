@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/empty_state.dart';
 
 class ConversationListScreen extends ConsumerStatefulWidget {
   const ConversationListScreen({super.key});
@@ -45,21 +46,11 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _conversations.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey.shade300),
-                      const SizedBox(height: 16),
-                      Text('还没有对话', style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: 24),
-                      FilledButton.icon(
-                        onPressed: () => context.go('/chat'),
-                        icon: const Icon(Icons.add),
-                        label: const Text('开始新对话'),
-                      ),
-                    ],
-                  ),
+              ? EmptyState(
+                  icon: Icons.chat_bubble_outline,
+                  title: '还没有对话',
+                  actionLabel: '开始新对话',
+                  onAction: () => context.go('/chat'),
                 )
               : RefreshIndicator(
                   onRefresh: _load,
@@ -104,7 +95,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
                         onTap: () {
                           final convId = conv['id'] as String?;
                           if (convId != null) {
-                            context.push('/chat', extra: convId);
+                            context.pop(convId);
                           }
                         },
                       ),
