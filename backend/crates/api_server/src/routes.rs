@@ -805,18 +805,20 @@ async fn plans_list_handler(
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Json<serde_json::Value> {
     let conn = crate::db_pool::get_conn();
-    let (sql, param): (&str, Box<dyn rusqlite::types::ToSql>) = if let Some(conv_id) = params.get("conversation_id") {
-        ("SELECT id, goal, domain, mode, plan_json, created_at, updated_at FROM learning_plans WHERE conversation_id = ?1 ORDER BY created_at DESC", Box::new(conv_id.clone()) as Box<dyn rusqlite::types::ToSql>)
+
+    let (sql, param_val): (&str, String) = if let Some(conv_id) = params.get("conversation_id") {
+        ("SELECT id, goal, domain, mode, plan_json, created_at, updated_at FROM learning_plans WHERE conversation_id = ?1 ORDER BY created_at DESC", conv_id.clone())
     } else if let Some(uid) = params.get("user_id") {
-        ("SELECT id, goal, domain, mode, plan_json, created_at, updated_at FROM learning_plans WHERE user_id = ?1 ORDER BY created_at DESC", Box::new(uid.clone()) as Box<dyn rusqlite::types::ToSql>)
+        ("SELECT id, goal, domain, mode, plan_json, created_at, updated_at FROM learning_plans WHERE user_id = ?1 ORDER BY created_at DESC", uid.clone())
     } else {
         return Json(serde_json::json!({"error": "user_id or conversation_id required"}));
     };
+
     let mut stmt = match conn.prepare(sql) {
         Ok(s) => s,
         Err(e) => return Json(serde_json::json!({"error": format!("DB: {}", e)})),
     };
-    let plans: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![param], |row| {
+    let plans: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![param_val], |row| {
         Ok(serde_json::json!({
             "id": row.get::<_, String>(0)?,
             "goal": row.get::<_, String>(1)?,

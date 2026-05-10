@@ -132,6 +132,28 @@ N6c 评分 → FSRS 更新记忆状态
 
 ---
 
+## 四、学习计划流程
+
+```
+用户表达学习目标
+    │
+    ▼
+N8 学习计划（可选结构化模式）
+    │
+    ├─ LLM 输出 <plan_update> JSON
+    │   ├─ is_new_plan: true → INSERT learning_plans
+    │   └─ 后端 render_plan() → 渲染为对话文本
+    │
+    ├─ prompt 注入：每次对话注入学习上下文
+    │   └─ 长期目标、当前阶段、任务状态
+    │
+    └─ 后端解析后续 <plan_update> → 更新 DB
+        ├─ completed_concepts 累积
+        └─ current_task_complete → 推进到下一任务
+```
+
+---
+
 ## 四、节点定义
 
 ### N1: AI 对话
@@ -243,6 +265,30 @@ N6c 评分 → FSRS 更新记忆状态
 | 百炼 | 累计复习 100 次 |
 | 千锤 | 累计复习 1000 次 |
 
+**动态成就（学习计划绑定）**：
+
+| 层级 | 触发 | 命名规则 | 示例 |
+|:--|:--|:--|:--|
+| bronze | task done | {task_name}入门 | "绝对值入门" |
+| silver | stage done | {stage_name}精英 | "数学基础精英" |
+| gold | domain done | {domain}大师 | "线性代数大师" |
+| platinum | cross-domain | {goal}宗师 | "AI入门宗师" |
+
+---
+
+### N8: 学习计划
+
+| 属性 | 值 |
+|------|-----|
+| **位置** | 后端 Rust（WS 对话内） |
+| **触发** | LLM 检测学习意图 → 用户确认 |
+| **输入** | `<plan_update>` JSON（含 stages/tasks） |
+| **逻辑** | is_new_plan → INSERT；后续更新 → UPDATE plan_json + achievements |
+| **渲染** | render_plan() 从 JSON 渲染对话文本（LLM 只输出 JSON） |
+| **注入** | 每次对话 prompt 注入学习上下文（长期目标/当前阶段/任务） |
+| **前端** | 聊天页顶部独立计划面板（可折叠，按 conversation_id 过滤） |
+| **成就** | task→bronze, stage→silver, domain→gold, cross→platinum |
+
 ---
 
 ## 五、节点汇总
@@ -255,13 +301,14 @@ N6c 评分 → FSRS 更新记忆状态
 | N4 | 后端 | 卡片入库 |
 | N5 | 后端 | 待复习队列（FSRS） |
 | N6 | 客户端+后端 | 翻牌 + 验证 + 评分 |
-| N7 | 后端 | 成就检测 |
+| N7 | 后端 | 成就检测（固定11个 + 动态成就） |
+| N8 | 后端 | 学习计划（LLM + prompt注入 + render_plan） |
 
-**7 个节点 · 8 张表 · 1 天 MVP 核心完成**
+**8 个节点 · 9 张表 · 结构化学习完成**
 
 ---
 
-## 六、数据库设计 (8 张表)
+## 六、数据库设计 (9 张表)
 
 ```sql
 -- 1. 用户
@@ -269,8 +316,8 @@ users (
     id TEXT PRIMARY KEY,
     username TEXT,
     password_hash TEXT,
-    streak_days INTEGER DEFAULT 0,   -- 连续复习天数 (N7)
-    last_active_date TEXT,           -- 最后活跃日期
+    streak_days INTEGER DEFAULT 0,
+    last_active_date TEXT,
     created_at TEXT
 )
 
@@ -280,6 +327,7 @@ conversations (
     user_id TEXT NOT NULL,
     turn_count INTEGER DEFAULT 0,
     started_at TEXT NOT NULL,
+    learning_plan_id TEXT,            -- 关联学习计划
     FOREIGN KEY (user_id) REFERENCES users(id)
 )
 
@@ -293,7 +341,7 @@ conversation_turns (
     FOREIGN KEY (conversation_id) REFERENCES conversations(id)
 )
 
--- 2. 卡片
+-- 4. 卡片
 cards (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -306,7 +354,7 @@ cards (
     FOREIGN KEY (user_id) REFERENCES users(id)
 )
 
--- 3. 记忆状态 (1:1 cards)
+-- 5. 记忆状态 (1:1 cards)
 card_memory (
     card_id TEXT PRIMARY KEY,
     state INTEGER,         -- 0:New, 1:Learning, 2:Review, 3:Relearning
@@ -319,7 +367,7 @@ card_memory (
     FOREIGN KEY (card_id) REFERENCES cards(id)
 )
 
--- 4. 复习日志
+-- 6. 复习日志
 review_log (
     id TEXT PRIMARY KEY,
     card_id TEXT NOT NULL,
@@ -330,16 +378,20 @@ review_log (
     FOREIGN KEY (card_id) REFERENCES cards(id)
 )
 
--- 5. 成就
+-- 7. 成就 (含动态成就层级)
 achievements (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     achievement_key TEXT,
-    unlocked_at INTEGER,
+    name TEXT NOT NULL,
+    icon TEXT NOT NULL,
+    tier TEXT DEFAULT 'fixed',    -- "fixed"|"bronze"|"silver"|"gold"|"platinum"
+    source TEXT,                  -- "task"|"stage"|"domain"|"cross"|NULL
+    unlocked_at TEXT,
     FOREIGN KEY (user_id) REFERENCES users(id)
 )
 
--- 6. 跳过记录
+-- 8. 跳过记录
 skipped_concepts (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -347,6 +399,20 @@ skipped_concepts (
     domain TEXT,
     source_text TEXT,
     skipped_at INTEGER,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+)
+
+-- 9. 学习计划
+learning_plans (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT,          -- 绑定的会话
+    goal TEXT NOT NULL,            -- "AI入门"
+    domain TEXT NOT NULL,          -- "linear_algebra"
+    mode TEXT DEFAULT NULL,        -- NULL / "structured" / "deleted"
+    plan_json TEXT NOT NULL,       -- 完整 stages/tasks JSON
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
 )
 ```
@@ -413,6 +479,12 @@ skipped_concepts (
   ✅ 词库英文词汇匹配 (cefr_catalog.json, 10万词)
   ✅ 个人页真实统计 + 成就展示
   ✅ 跳过记录管理页 (查看/取消跳过)
+  ✅ 概念提取评估框架 (7用例×3变体, precision/recall 评估)
+  ✅ 概念提取 prompt 优化 (变体C, 双语+示例, 74%精准率/76%召回率)
+  ✅ 结构化学习 N8: learning_plans 表 + render_plan + prompt 注入
+  ✅ 动态成就系统: tier 层级 + 学习计划绑定
+  ✅ 学习计划面板 (前端可折叠, conversation_id 绑定)
+  ✅ Part-time 考核: grill_assessment.md + assessment 解析 + bronze/silver/gold 成就
 ```
 
 ---

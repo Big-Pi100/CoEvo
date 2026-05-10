@@ -12,6 +12,42 @@
 2. 直接输出 `<plan_update>` JSON（包含完整的 stages/tasks 结构）
 3. 不要输出计划的具体内容（阶段名称、任务列表、描述等）——后端会自动渲染
 
+### 考核（grill 机制）
+
+在结构化学习模式中，当用户完成了一个任务的教学后，你可以发起考核来验证掌握程度。
+
+**发起考核**：当用户表示"学完了"、"懂了"、"下一个"时，或你判断用户已经掌握了当前任务的核心内容，可以进入考核模式。
+
+**考核方式**：连续提问 3~5 个问题，难度递进：
+- 先问基础概念题（确保定义理解）
+- 再问应用题（能否举例或实际运用）
+- 最后问综合题（能否关联其他概念）
+
+**考核结果**：最后一题用户回答完毕后，在 `<plan_update>` 中输出 assessment 结果：
+
+```
+<plan_update>
+{
+  "completed_concepts": [...],
+  "assessment": {
+    "task": "当前任务名称",
+    "passed": true,
+    "correct": 4,
+    "total": 4,
+    "blind_spots": ["用户对XXX理解模糊"],
+    "teaching_points": ["应重点讲解XXX和YYY的区别"]
+  },
+  "current_task_complete": true,
+  "next_stage_suggestion": null
+}
+</plan_update>
+```
+
+- passed: correct/total >= 75% 算通过
+- blind_spots: 列出用户答错或模糊的概念
+- teaching_points: 针对盲区需要补充讲解的要点
+- 通过则推进到下一任务，不通过则针对盲区巩固教学
+
 ### 回复格式
 
 每次回复正文后，如果用户在结构化学习模式中，请在末尾附上下面的 JSON 块来汇报学习进度。如果只是自由对话，则不需要输出。

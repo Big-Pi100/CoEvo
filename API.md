@@ -114,7 +114,9 @@ WebSocket 流式聊天（推荐）。连接后发送 JSON，接收多事件流�
 ```
 {"type":"thinking"}
 {"type":"token","content":"逐字"}
+{"type":"planning"}               // 计划生成中（替代 token）
 {"type":"done","reply":"完整回复"}
+{"type":"plan_updated"}            // 学习计划已更新
 ```
 
 **Server → Client (ColdPath，异步):**
@@ -427,3 +429,71 @@ AI 批量评判用户答案。
 | 401 | 认证失败 |
 | 404 | 资源不存在 |
 | 500 | 服务器错误（LLM 不可用、DB 错误等） |
+
+---
+
+## 学习计划
+
+### `GET /api/plans`
+
+获取学习计划列表。
+
+**Query Params:**
+- `conversation_id` (优先) 或 `user_id` (回退)
+
+**Response 200:**
+```json
+{
+  "plans": [
+    {
+      "id": "uuid",
+      "goal": "AI入门",
+      "domain": "linear_algebra",
+      "mode": "structured",
+      "plan": {
+        "stages": [
+          {"name": "阶段一", "status": "in_progress", "tasks": [...]}
+        ],
+        "completed_concepts": [...]
+      },
+      "created_at": "2026-05-09T...",
+      "updated_at": "2026-05-09T..."
+    }
+  ]
+}
+```
+
+### `POST /api/plans`
+
+创建或更新学习计划。
+
+**Request:**
+```json
+{
+  "user_id": "string",
+  "goal": "AI入门",
+  "domain": "linear_algebra",
+  "plan_json": {
+    "stages": [
+      {"name": "...", "status": "in_progress", "tasks": [...]}
+    ]
+  }
+}
+```
+
+**Response 200:**
+```json
+{"id": "uuid", "status": "ok"}
+```
+
+### `DELETE /api/plans/{plan_id}`
+
+软删除学习计划。
+
+**Query Params:**
+- `user_id` (required)
+
+**Response 200:**
+```json
+{"status": "ok"}
+```

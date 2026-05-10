@@ -253,6 +253,50 @@ pub async fn handle_ws(mut ws: WebSocket) {
                                                 rusqlite::params![plan.to_string(), now, plan_id],
                                             );
                                             plan_updated = true;
+                                            // ── 成就检测 ──
+                                            // 检查刚完成的任务 → bronze
+                                            if let Some(assessment) = update.get("assessment") {
+                                                if assessment.get("passed").and_then(|v| v.as_bool()).unwrap_or(false) {
+                                                    if let Some(task_name) = assessment.get("task").and_then(|v| v.as_str()) {
+                                                        write_achievement(&conn, &chat_req.user_id,
+                                                            &format!("{}_bronze", task_name),
+                                                            &format!("{}入门", task_name), "🥉", "bronze", "task");
+                                                    }
+                                                }
+                                            }
+                                            // 检查 stage done → silver
+                                            if let Some(stages) = plan.get("stages").and_then(|v| v.as_array()) {
+                                                for stage in stages {
+                                                    if stage["status"] == "done" {
+                                                        let stage_name = stage["name"].as_str().unwrap_or("阶段");
+                                                        let key = format!("{}_silver", stage_name);
+                                                        // 检查是否已有该成就
+                                                        let exists: bool = conn.query_row(
+                                                            "SELECT 1 FROM achievements WHERE user_id = ?1 AND achievement_key = ?2",
+                                                            rusqlite::params![chat_req.user_id, key],
+                                                            |_| Ok(true)
+                                                        ).unwrap_or(false);
+                                                        if !exists {
+                                                            write_achievement(&conn, &chat_req.user_id,
+                                                                &key, &format!("{}精英", stage_name), "🥈", "silver", "stage");
+                                                        }
+                                                        // 检查 domain done → gold
+                                                        if stages.iter().all(|s| s["status"] == "done") {
+                                                            let domain_name = plan.get("goal").and_then(|v| v.as_str()).unwrap_or("领域");
+                                                            let dkey = format!("{}_gold", domain_name);
+                                                            let dexists: bool = conn.query_row(
+                                                                "SELECT 1 FROM achievements WHERE user_id = ?1 AND achievement_key = ?2",
+                                                                rusqlite::params![chat_req.user_id, dkey],
+                                                                |_| Ok(true)
+                                                            ).unwrap_or(false);
+                                                            if !dexists {
+                                                                write_achievement(&conn, &chat_req.user_id,
+                                                                    &dkey, &format!("{}大师", domain_name), "🥇", "gold", "domain");
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -403,4 +447,20 @@ fn render_plan(plan: &serde_json::Value) -> String {
     }
 
     out
+}
+
+/// 写入成就（去重）
+fn write_achievement(conn: &rusqlite::Connection, user_id: &str, key: &str, name: &str, icon: &str, tier: &str, source: &str) {
+    let exists: bool = conn.query_row(
+        "SELECT 1 FROM achievements WHERE user_id = ?1 AND achievement_key = ?2",
+        rusqlite::params![user_id, key],
+        |_| Ok(true)
+    ).unwrap_or(false);
+    if !exists {
+        let now = chrono::Utc::now().to_rfc3339();
+        let _ = conn.execute(
+            "INSERT INTO achievements (id, user_id, achievement_key, name, icon, tier, source, unlocked_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![uuid::Uuid::new_v4().to_string(), user_id, key, name, icon, tier, source, now],
+        );
+    }
 }

@@ -97,6 +97,45 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  String _progressSummary(List<dynamic> stages) {
+    int total = 0, done = 0;
+    for (final stage in stages) {
+      final s = stage as Map<String, dynamic>;
+      final tasks = s['tasks'] as List<dynamic>? ?? [];
+      for (final t in tasks) {
+        total++;
+        final ts = t is Map ? (t['status'] as String? ?? '') : '';
+        if (ts == 'done') done++;
+      }
+    }
+    return total > 0 ? '$done/$total' : '';
+  }
+
+  Widget _buildProgressBar(List<dynamic> stages) {
+    int total = 0, done = 0;
+    for (final stage in stages) {
+      final s = stage as Map<String, dynamic>;
+      final tasks = s['tasks'] as List<dynamic>? ?? [];
+      for (final t in tasks) {
+        total++;
+        final ts = t is Map ? (t['status'] as String? ?? '') : '';
+        if (ts == 'done') done++;
+      }
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: LinearProgressIndicator(
+          value: total > 0 ? done / total : 0,
+          minHeight: 6,
+          backgroundColor: Colors.grey.shade200,
+          valueColor: AlwaysStoppedAnimation(Theme.of(context).colorScheme.primary),
+        ),
+      ),
+    );
+  }
+
   Widget _buildPlanPanel() {
     if (_activePlan == null) return const SizedBox.shrink();
     final plan = _activePlan!;
@@ -125,11 +164,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   Expanded(
                     child: Text(goal, style: const TextStyle(fontWeight: FontWeight.w600)),
                   ),
+                  // 进度摘要
+                  Text(_progressSummary(stages),
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                  const SizedBox(width: 6),
                   Icon(_planExpanded ? Icons.expand_less : Icons.expand_more, size: 20),
                 ],
               ),
             ),
           ),
+          // 全局进度条
+          if (_planExpanded) _buildProgressBar(stages),
           if (_planExpanded)
             ...stages.map((stage) {
               final s = stage as Map<String, dynamic>;
@@ -137,6 +182,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               final stageStatus = s['status'] as String? ?? 'pending';
               final tasks = s['tasks'] as List<dynamic>? ?? [];
               final isActive = stageStatus == 'in_progress';
+              final doneTasks = tasks.where((t) {
+                final ts = t is Map ? (t['status'] as String? ?? '') : '';
+                return ts == 'done';
+              }).length;
 
               return Padding(
                 padding: const EdgeInsets.only(left: 14, right: 14, bottom: 8),
@@ -151,15 +200,30 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           color: isActive ? Theme.of(context).colorScheme.primary : Colors.green,
                         ),
                         const SizedBox(width: 6),
-                        Text(stageName,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-                            color: isActive ? null : Colors.grey,
-                          )),
-                        if (stageStatus == 'done')
-                          Text(' ✅', style: TextStyle(fontSize: 12, color: Colors.green.shade600)),
+                        Expanded(
+                          child: Text(stageName,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+                              color: isActive ? null : Colors.grey,
+                            )),
+                        ),
+                        // Stage 进度: done/total
+                        Text('$doneTasks/${tasks.length}',
+                          style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
                       ],
+                    ),
+                    const SizedBox(height: 4),
+                    // Stage 进度条
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: tasks.isEmpty ? 0 : doneTasks / tasks.length,
+                        minHeight: 4,
+                        backgroundColor: Colors.grey.shade200,
+                        valueColor: AlwaysStoppedAnimation(
+                          stageStatus == 'done' ? Colors.green : Theme.of(context).colorScheme.primary),
+                      ),
                     ),
                     const SizedBox(height: 4),
                     ...tasks.map((task) {
@@ -470,12 +534,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 _messages.clear();
                 _convId = 'conv_${DateTime.now().millisecondsSinceEpoch}';
                 ref.read(currentConversationIdProvider.notifier).state = _convId;
+                _activePlan = null;
+                _session = null;
+                _sessionSub?.cancel();
               });
               _client = ChatClient(
                 userId: ref.read(authProvider).userId ?? 'default_user',
                 conversationId: _convId,
                 token: ref.read(authProvider).token,
               );
+              _loadPlan();
               _addMessage(Message(
                 role: 'assistant',
                 content: '你好！我是你的 AI 学习助手。有什么想学的吗？',

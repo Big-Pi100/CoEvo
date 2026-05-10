@@ -16,6 +16,7 @@
  Flow C: 复习循环 (User-Triggered, 交互流程)
  Flow D: 成就检测 (附属于 B 和 C)
  Flow E: 跳过管理
+ Flow F: 学习计划 (N8, 对话内结构化学习)
 ════════════════════════════════════════════════════════════════════
 
  ┌─────────────────────────────────────────────────────────────────┐
@@ -430,6 +431,51 @@
 └─────────────────────────────────────────────────────────┘
 ```
 
+### N8: 学习计划 (结构化学习)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ Node N8: 学习计划 (对话内结构化学习)                      │
+│                                                         │
+│ 位置: 后端 Rust (ws.rs 对话内处理)                       │
+│                                                         │
+│ 触发: LLM 检测学习意图 → 用户确认                         │
+│                                                         │
+│ 刚体流程:                                                │
+│                                                         │
+│ 用户:"我想学XX"                                          │
+│   → LLM 确认 + 输出 <plan_update> JSON                   │
+│   → 后端解析 JSON（含 is_new_plan + stages/tasks）       │
+│   → INSERT INTO learning_plans (绑定 conversation_id)    │
+│   → render_plan() 渲染为对话文本                         │
+│   → 发 done + plan_updated WS 事件                       │
+│                                                         │
+│ 后续对话:                                                │
+│   → prompt 注入学习上下文 (长期目标/当前阶段/任务状态)    │
+│   → LLM 教学 + 输出 <plan_update> 更新进度               │
+│   → 后端解析 → UPDATE plan_json + achievements           │
+│   → plan_updated WS 事件 → Flutter 刷新面板              │
+│                                                         │
+│ 流式拦截:                                                │
+│   检测到 <plan_update 标签 → 停止转发 token              │
+│   发 planning 事件 → Flutter 显示"计划制定中……"           │
+│                                                         │
+│ 截断保护:                                                │
+│   找到 <plan_update 但找不到 > 或 </plan_update>         │
+│   → truncate(start) 删掉垃圾，不写数据库                  │
+│                                                         │
+│ DB 表:                                                   │
+│   learning_plans (id, user_id, conversation_id,          │
+│     goal, domain, mode, plan_json, created_at, updated)  │
+│                                                         │
+│ 成就绑定:                                                │
+│   task done → bronze/"任务名入门"                        │
+│   stage done → silver/"阶段名精英"                       │
+│   domain done → gold/"领域大师"                          │
+│   cross-domain → platinum/"目标宗师"                     │
+└─────────────────────────────────────────────────────────┘
+```
+
 ### Flow E: 跳过管理
 
 ```
@@ -618,6 +664,15 @@
 │  │ ─────────────────────────────────────────────────── │       │
 │  │ id | user_id | turn_count | started_at              │       │
 │  └─────────────────────────────────────────────────────┘       │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────┐       │
+│  │ learning_plans         (Learning Progress)           │       │
+│  │ ─────────────────────────────────────────────────── │       │
+│  │ id | user_id | conversation_id | goal | domain      │       │
+│  │     | mode | plan_json | created_at | updated_at    │       │
+│  │ 🔗 N8 创建/更新   🔗 对话 prompt 注入               │       │
+│  │ 🔗 Flutter 面板   🔗 成就 (bronze~platinum)         │       │
+│  └─────────────────────────────────────────────────────┘       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -645,6 +700,9 @@
 | POST | `/api/cards/skip` | N2 | `{user_id, front, source_text}` | `{skipped_id}` |
 | GET | `/api/cards/skipped` | - | `?user_id=xxx` | `{skipped: [...]}` |
 | DELETE | `/api/cards/skipped/{skip_id}` | - | - | `{status: "removed"}` |
+| GET | `/api/plans` | N8 | `?conversation_id=xxx` 或 `?user_id=xxx` | `{plans: [{id, goal, plan, mode}]}` |
+| POST | `/api/plans` | N8 | `{user_id, goal, domain, plan_json}` | `{id, status}` |
+| DELETE | `/api/plans/{plan_id}` | N8 | `?user_id=xxx` | `{status: "ok"}` (软删除) |
 
 ### WebSocket 协议 (HotPath / ColdPath 分离)
 
@@ -658,8 +716,10 @@
 
 服务器 → 客户端 (HotPath，按顺序):
 {"type":"thinking"}                       // 开始思考
-{"type":"token","content":"..."}          // 流式token
+{"type":"token","content":"..."}          // 流式token (计划生成时被 planning 替代)
+{"type":"planning"}                       // 计划生成中，显示占位
 {"type":"done","reply":"..."}             // 完成 —— 立即返回，不等概念提取
+{"type":"plan_updated"}                   // 计划已更新，前端刷新面板
 
 服务器 → 客户端 (ColdPath，异步推送):
 {"type":"candidates",                     // 概念提取完成（1-3s 后）
@@ -732,11 +792,12 @@ ColdPath 内:
 
 ## 七、开发计划修正记录 (已全部实施)
 
-### 修正 1: 表结构 (6 → 8 张表)
+### 修正 1: 表结构 (6 → 9 张表)
 ```
-原计划 6 张表 → 增加 conversation_turns + conversations
-最终 8 张表: users, conversations, conversation_turns,
-  cards, card_memory, review_log, achievements, skipped_concepts
+原计划 6 张表 → 增加 conversation_turns + conversations + learning_plans
+最终 9 张表: users, conversations, conversation_turns,
+  cards, card_memory, review_log, achievements, skipped_concepts,
+  learning_plans
 ```
 
 ### 修正 2: N2 节点输出结构

@@ -44,6 +44,7 @@ async fn main() {
             "ALTER TABLE conversations ADD COLUMN learning_plan_id TEXT",
             "ALTER TABLE achievements ADD COLUMN tier TEXT DEFAULT 'fixed'",
             "ALTER TABLE achievements ADD COLUMN source TEXT",
+            "ALTER TABLE learning_plans ADD COLUMN conversation_id TEXT",
             "CREATE TABLE IF NOT EXISTS learning_plans (
                 id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
