@@ -120,16 +120,25 @@ pub fn submit_review(
     verification_type: &str,
     verification_result: &str,
     user_id: &str,
+    details_json: Option<&str>,
 ) -> Result<AchievementContext, String> {
     let now = Utc::now().timestamp();
     let log_id = format!("rev_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap());
 
     // 1. 写入 review_log
-    conn.execute(
-        "INSERT INTO review_log (id, card_id, rating, verification_type, verification_result, reviewed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        rusqlite::params![log_id, card_id, rating, verification_type, verification_result, now],
-    ).map_err(|e| format!("Review log insert: {}", e))?;
+    if let Some(details) = details_json {
+        conn.execute(
+            "INSERT INTO review_log (id, card_id, rating, verification_type, verification_result, details_json, reviewed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![log_id, card_id, rating, verification_type, verification_result, details, now],
+        ).map_err(|e| format!("Review log insert: {}", e))?;
+    } else {
+        conn.execute(
+            "INSERT INTO review_log (id, card_id, rating, verification_type, verification_result, reviewed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![log_id, card_id, rating, verification_type, verification_result, now],
+        ).map_err(|e| format!("Review log insert: {}", e))?;
+    }
 
     // 2. FSRS 状态更新 (当前为简化版)
     let passed = verification_result == "pass";

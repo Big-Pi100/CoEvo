@@ -96,23 +96,38 @@ class ChatClient {
     required int rating,
     required String verificationType,
     required String verificationResult,
+    String? detailsJson,  // JSON 字符串: [{question, correct, feedback}]
   }) async {
+    final body = <String, dynamic>{
+      'user_id': userId,
+      'card_id': cardId,
+      'rating': rating,
+      'verification_type': verificationType,
+      'verification_result': verificationResult,
+    };
+    if (detailsJson != null) body['details'] = detailsJson;
     final resp = await http.post(
       Uri.parse('$baseUrl/api/review/submit'),
       headers: _authHeaders,
-      body: jsonEncode({
-        'user_id': userId,
-        'card_id': cardId,
-        'rating': rating,
-        'verification_type': verificationType,
-        'verification_result': verificationResult,
-      }),
+      body: jsonEncode(body),
     ).timeout(ApiConfig.requestTimeout);
 
     if (resp.statusCode != 200) {
       throw Exception('Review submit error: ${resp.statusCode}');
     }
     return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  /// 获取卡片最近一次考试详情
+  Future<Map<String, dynamic>?> getLastReview(String cardId) async {
+    try {
+      final resp = await http.get(
+        Uri.parse('$baseUrl/api/cards/$cardId/last-review'),
+        headers: _authHeaders,
+      );
+      if (resp.statusCode == 200) return jsonDecode(resp.body) as Map<String, dynamic>;
+    } catch (_) {}
+    return null;
   }
 
   Future<Map<String, dynamic>> verifyQuestions(String cardId, String front, String back) async {

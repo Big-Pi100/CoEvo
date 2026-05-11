@@ -65,6 +65,8 @@ class DueCard {
   final double difficulty;
   final int? createdAt;
   final int? due;
+  final int? lastReviewedAt;
+  final int? lastReviewQuality;
 
   const DueCard({
     required this.id,
@@ -79,6 +81,8 @@ class DueCard {
     this.difficulty = 5.0,
     this.createdAt,
     this.due,
+    this.lastReviewedAt,
+    this.lastReviewQuality,
   });
 
   factory DueCard.fromJson(Map<String, dynamic> json) => DueCard(
@@ -94,6 +98,8 @@ class DueCard {
     difficulty: (json['difficulty'] as num?)?.toDouble() ?? 5.0,
     createdAt: json['created_at'] as int?,
     due: json['due'] as int?,
+    lastReviewedAt: json['last_reviewed_at'] as int?,
+    lastReviewQuality: json['last_review_quality'] as int?,
   );
 }
 

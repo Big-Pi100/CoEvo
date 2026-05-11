@@ -67,6 +67,7 @@ async fn main() {
                 PRIMARY KEY (user_id, key),
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )",
+            "ALTER TABLE review_log ADD COLUMN details_json TEXT DEFAULT NULL",
         ];
         for sql in &migrations {
             let _ = conn.execute(sql, []);

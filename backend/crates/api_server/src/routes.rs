@@ -29,6 +29,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/cards/skipped/{skip_id}", delete(cards_skip_delete_handler))
         .route("/api/cards/batch-create", post(cards_batch_create_handler))
         .route("/api/cards/all", get(cards_all_handler))
+        .route("/api/cards/{card_id}/last-review", get(cards_last_review_handler))
         // History
         .route("/api/history", get(history_handler))
         // Profile
@@ -247,6 +248,7 @@ pub struct ReviewSubmitInput {
     pub rating: i32,
     pub verification_type: String,
     pub verification_result: String,
+    pub details: Option<String>,  // JSON 数组: [{question, correct, feedback}]
 }
 
 async fn review_submit_handler(
@@ -261,6 +263,7 @@ async fn review_submit_handler(
     match card_engine::fsrs_scheduler::submit_review(
         &conn, &input.card_id, input.rating,
         &input.verification_type, &input.verification_result, &input.user_id,
+        input.details.as_deref(),
     ) {
         Ok(ctx) => {
             // 成就检测
@@ -548,9 +551,16 @@ async fn cards_all_handler(
 
     let mut sql = String::from(
         "SELECT c.id, c.front, c.back, c.domain, c.card_type, c.source_sentence,
-                c.created_at, cm.state, cm.difficulty, cm.due, cm.reps, cm.lapses
+                c.created_at, cm.state, cm.difficulty, cm.due, cm.reps, cm.lapses,
+                lrev.reviewed_at, lrev.rating
          FROM cards c
          JOIN card_memory cm ON c.id = cm.card_id
+         LEFT JOIN (
+            SELECT card_id, MAX(reviewed_at) as last_reviewed_at
+            FROM review_log GROUP BY card_id
+         ) lr ON c.id = lr.card_id
+         LEFT JOIN review_log lrev
+            ON lrev.card_id = lr.card_id AND lrev.reviewed_at = lr.last_reviewed_at
          WHERE c.user_id = ?1"
     );
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(query.user_id.clone())];
@@ -601,6 +611,8 @@ async fn cards_all_handler(
             "due": row.get::<_, i64>(9)?,
             "reps": row.get::<_, i32>(10)?,
             "lapses": row.get::<_, i32>(11)?,
+            "last_reviewed_at": row.get::<_, Option<i64>>(12)?,
+            "last_review_quality": row.get::<_, Option<i32>>(13)?,
         }))
     ).unwrap().filter_map(|r| r.ok()).collect();
 
@@ -639,6 +651,39 @@ pub struct HistoryQuery {
     pub user_id: String,
     pub conversation_id: Option<String>,
     pub limit: Option<i64>,
+}
+
+/// GET /api/cards/{card_id}/last-review — 最近一次考试详情
+async fn cards_last_review_handler(
+    Path(card_id): Path<String>,
+) -> Json<serde_json::Value> {
+    let conn = crate::db_pool::get_conn();
+    match conn.query_row(
+        "SELECT id, rating, verification_type, verification_result, details_json, reviewed_at
+         FROM review_log WHERE card_id = ?1
+         ORDER BY reviewed_at DESC LIMIT 1",
+        rusqlite::params![card_id],
+        |row| Ok(serde_json::json!({
+            "id": row.get::<_, String>(0)?,
+            "rating": row.get::<_, i32>(1)?,
+            "verification_type": row.get::<_, String>(2)?,
+            "verification_result": row.get::<_, String>(3)?,
+            "details": row.get::<_, Option<String>>(4)?,
+            "reviewed_at": row.get::<_, i64>(5)?,
+        })),
+    ) {
+        Ok(data) => {
+            // 如果 details_json 存在，解析为数组
+            let mut result = data;
+            if let Some(details_str) = result.get("details").and_then(|v| v.as_str()) {
+                if let Ok(details) = serde_json::from_str::<serde_json::Value>(details_str) {
+                    result.as_object_mut().unwrap().insert("details".to_string(), details);
+                }
+            }
+            Json(result)
+        }
+        Err(_) => Json(serde_json::json!({"error": "No review found"})),
+    }
 }
 
 /// GET /api/history — 获取对话历史

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/coevo_models.dart';
@@ -5,7 +6,7 @@ import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
 import '../services/tts_service.dart';
 
-/// 学习计划: 内联复习队列
+/// 复习: 内联复习队列
 class ReviewScreen extends ConsumerStatefulWidget {
   const ReviewScreen({super.key});
 
@@ -287,8 +288,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         _isVerifying = false;
         _isJudging = false;
       });
-      // 展示 1.5 秒后自动提交
-      Future.delayed(const Duration(milliseconds: 1500), () {
+      // 展示 5 秒后自动提交（让用户看清结果）
+      Future.delayed(const Duration(milliseconds: 5000), () {
         if (mounted) _submitInlineReview(_activeCardIndex);
       });
     } catch (e) {
@@ -305,12 +306,25 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     if (_client == null || index >= _cards.length) return;
     final card = _cards[index];
     final vtype = card.cardType == 'vocabulary' ? 'spelling' : 'ai_dialogue';
+    // 序列化每道题细节
+    String? detailsJson;
+    if (_aiResults.isNotEmpty) {
+      detailsJson = jsonEncode(List.generate(_aiResults.length, (i) {
+        final aiQ = i < _aiQuestions.length ? _aiQuestions[i] : null;
+        return {
+          'question': aiQ?.question ?? '',
+          'correct': _aiResults[i].correct,
+          'feedback': _aiResults[i].feedback,
+        };
+      }));
+    }
     try {
       final resp = await _client!.submitReview(
         cardId: card.id,
         rating: _verificationResult == 'pass' ? 3 : 1,
         verificationType: vtype,
         verificationResult: _verificationResult,
+        detailsJson: detailsJson,
       );
       setState(() {
         _reviewedCount++;
@@ -340,14 +354,14 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(title: const Text('学习计划')),
+        appBar: AppBar(title: const Text('复习')),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_cards.isEmpty) {
       return Scaffold(
-        appBar: AppBar(title: const Text('学习计划')),
+        appBar: AppBar(title: const Text('复习')),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -371,7 +385,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('学习计划'),
+        title: const Text('复习'),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
@@ -670,7 +684,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               _isVerified = true;
               _isVerifying = false;
               setState(() {});
-              Future.delayed(const Duration(milliseconds: 1500), () {
+              Future.delayed(const Duration(milliseconds: 5000), () {
                 if (mounted) _submitInlineReview(_cards.indexOf(card));
               });
             },
@@ -737,6 +751,47 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             ),
           )),
         ],
+
+        // 验证结果（5 秒提示）
+        if (_isVerified)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                color: _verificationResult == 'pass'
+                    ? Colors.green.shade50 : Colors.red.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: _verificationResult == 'pass'
+                      ? Colors.green.shade300 : Colors.red.shade300,
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    _verificationResult == 'pass'
+                        ? Icons.check_circle : Icons.cancel,
+                    color: _verificationResult == 'pass'
+                        ? Colors.green : Colors.red,
+                    size: 22,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _verificationResult == 'pass' ? '验证通过 ✅' : '未通过 ❌',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: _verificationResult == 'pass'
+                          ? Colors.green.shade700 : Colors.red.shade700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
       ],
     );
   }

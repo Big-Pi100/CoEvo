@@ -487,10 +487,17 @@ learning_plans (
   ✅ Part-time 考核: grill_assessment.md + assessment 解析 + bronze/silver/gold 成就
 
 --- 待做 (Phase 3: 家长看板) ---
-  ⬜ 学习报告 API: GET /api/user/{user_id}/learning-report
-  ⬜ 家长看板页面: profile_screen 扩展 (概览/计划详情/成就tier/热力图)
-  ⬜ 周报/通知: 学习报告推送 + 闲置提醒
-  ⬜ 推广素材: 截图 + 视频文案
+  ✅ 学习报告 API: GET /api/user/{user_id}/learning-report
+  ✅ 家长看板页面: profile_screen 扩展 (概览/计划详情/成就tier/日历)
+  ✅ 周报/通知: 学习报告推送 + 闲置提醒
+  ✅ 推广素材: 截图 + 视频文案
+
+--- Next (V4 规划) ---
+  ⬜ 学习日志: 用 AI 生成每日学习日志，替代纯数据周报
+      - 具体夸奖 + 发现问题 + 改善建议 + 计划进度增量
+      - 难点跟踪 (difficulty 标记 + 挂起-召回-再攻克)
+      - 子任务栈 (任务被难点卡住，日志提示推进)
+      - 方案文档: docs/daily-journal-plan.md
 ```
 
 ---

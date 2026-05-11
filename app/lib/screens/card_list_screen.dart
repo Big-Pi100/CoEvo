@@ -158,6 +158,119 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     );
   }
 
+  void _showReviewDetails(String cardId) async {
+    final auth = ref.read(authProvider);
+    if (auth.userId == null || auth.token == null) return;
+    final client = ChatClient(userId: auth.userId!, token: auth.token);
+    final review = await client.getLastReview(cardId);
+    if (!mounted || review == null) return;
+
+    // 解析考试细节
+    final details = review['details'];
+    List<dynamic>? questionDetails;
+    if (details is List) {
+      questionDetails = details;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: questionDetails != null ? 0.5 : 0.3,
+        minChildSize: 0.3,
+        maxChildSize: 0.7,
+        expand: false,
+        builder: (_, scrollController) => Padding(
+          padding: const EdgeInsets.all(24),
+          child: ListView(
+            controller: scrollController,
+            children: [
+              Center(
+                child: Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  const Icon(Icons.history, size: 20),
+                  const SizedBox(width: 8),
+                  Text('上次考试结果', style: Theme.of(context).textTheme.titleMedium),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (questionDetails != null && questionDetails.isNotEmpty)
+                ...questionDetails.map((d) {
+                  final q = d as Map<String, dynamic>;
+                  final correct = q['correct'] == true;
+                  return Card(
+                    color: correct ? Colors.green.shade50 : Colors.red.shade50,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                correct ? Icons.check_circle : Icons.cancel,
+                                color: correct ? Colors.green : Colors.red,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(child: Text(
+                                q['question'] as String? ?? '',
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              )),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(q['feedback'] as String? ?? '',
+                              style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              if (questionDetails == null || questionDetails.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: Text(
+                      review['verification_result'] as String? ?? '完成',
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 12),
+              Center(
+                child: Chip(
+                  avatar: Icon(
+                    review['verification_result'] == 'pass' ? Icons.check_circle : Icons.cancel,
+                    size: 16,
+                    color: review['verification_result'] == 'pass' ? Colors.green : Colors.red,
+                  ),
+                  label: Text(
+                    review['verification_result'] == 'pass' ? '已通过' : '未通过',
+                    style: TextStyle(
+                      color: review['verification_result'] == 'pass' ? Colors.green : Colors.red,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -389,11 +502,52 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                                               ),
                                               title: Text(card.front, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
                                               subtitle: Text(card.back, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withAlpha(200))),
-                                              trailing: Chip(
-                                                label: Text(_stateLabels[card.state.clamp(0, 3)], style: const TextStyle(fontSize: 11, color: Colors.white)),
-                                                backgroundColor: _stateColors[card.state.clamp(0, 3)].withAlpha(100),
-                                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                                visualDensity: VisualDensity.compact,
+                                              trailing: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  if (card.lastReviewedAt != null)
+                                                    GestureDetector(
+                                                      onTap: () => _showReviewDetails(card.id),
+                                                      child: Container(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                        decoration: BoxDecoration(
+                                                        color: (card.lastReviewQuality ?? 0) >= 3
+                                                            ? Colors.green.shade100
+                                                            : Colors.red.shade100,
+                                                        borderRadius: BorderRadius.circular(12),
+                                                      ),
+                                                      child: Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          Icon(
+                                                            (card.lastReviewQuality ?? 0) >= 3
+                                                                ? Icons.check_circle : Icons.cancel,
+                                                            size: 16,
+                                                            color: (card.lastReviewQuality ?? 0) >= 3
+                                                                ? Colors.green : Colors.red,
+                                                          ),
+                                                          const SizedBox(width: 4),
+                                                          Text(
+                                                            (card.lastReviewQuality ?? 0) >= 3 ? '正确' : '错误',
+                                                            style: TextStyle(
+                                                              fontSize: 12,
+                                                              fontWeight: FontWeight.w600,
+                                                              color: (card.lastReviewQuality ?? 0) >= 3
+                                                                  ? Colors.green.shade700 : Colors.red.shade700,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                    ),
+                                                  if (card.lastReviewedAt != null) const SizedBox(width: 8),
+                                                  Chip(
+                                                    label: Text(_stateLabels[card.state.clamp(0, 3)], style: const TextStyle(fontSize: 11, color: Colors.white)),
+                                                    backgroundColor: _stateColors[card.state.clamp(0, 3)].withAlpha(100),
+                                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                    visualDensity: VisualDensity.compact,
+                                                  ),
+                                                ],
                                               ),
                                               onTap: () => _showCardDetail(card),
                                             ),
