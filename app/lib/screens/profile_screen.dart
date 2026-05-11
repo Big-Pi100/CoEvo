@@ -241,7 +241,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
         // ── Phase 3: 学习报告 ──
         if (_report != null) ...[
-          _buildReportSection(_report!),
+          _buildReportSection(_report!, achievements),
           const SizedBox(height: 16),
         ],
         if (_activityData != null) ...[
@@ -368,61 +368,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             );
           },
         ),
-        const SizedBox(height: 16),
-
-        // 成就卡片
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text('成就', style: Theme.of(context).textTheme.titleMedium),
-                    const Spacer(),
-                    Text('${achievements.length}/11',
-                        style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
-                  ],
-                ),
-                const Divider(height: 24),
-                if (achievements.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: Center(
-                      child: Column(
-                        children: [
-                          Icon(Icons.emoji_events, size: 48, color: Colors.grey.shade300),
-                          const SizedBox(height: 8),
-                          Text('还没有成就', style: TextStyle(color: Colors.grey.shade500)),
-                          const SizedBox(height: 4),
-                          Text('去对话学习，解锁第一个成就',
-                              style: TextStyle(fontSize: 13, color: Colors.grey.shade400)),
-                        ],
-                      ),
-                    ),
-                  )
-                else
-                  Wrap(
-                    spacing: 8, runSpacing: 12,
-                    children: achievements.map((a) => _AchievementTile(
-                      icon: a['icon'] as String? ?? '🌟',
-                      name: a['name'] as String? ?? '',
-                      unlockedAt: a['unlocked_at'] as String? ?? '',
-                    )).toList(),
-                  ),
-              ],
-            ),
-          ),
-        ),
       ],
     );
   }
 
   // ── Phase 3: 学习报告 ──
-  Widget _buildReportSection(Map<String, dynamic> report) {
+  Widget _buildReportSection(Map<String, dynamic> report, List<Map<String, dynamic>> achievements) {
     final plans = report['plans'] as List<dynamic>? ?? [];
     final tiers = report['achievements_by_tier'] as List<dynamic>? ?? [];
+    final tierCount = tiers.fold<int>(0, (sum, t) => sum + ((t as Map<String, dynamic>)['count'] as int? ?? 0));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -514,10 +468,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   children: [
                     const Icon(Icons.emoji_events, size: 20),
                     const SizedBox(width: 8),
-                    Text('成就', style: Theme.of(context).textTheme.titleMedium),
+                    Text('成就 ($tierCount)', style: Theme.of(context).textTheme.titleMedium),
                   ],
                 ),
                 const SizedBox(height: 12),
+                // tier 统计（汇总行）
                 ...tiers.map((t) {
                   final tmap = t as Map<String, dynamic>;
                   final tier = tmap['tier'] as String? ?? '';
@@ -536,13 +491,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                   );
                 }),
+                if (achievements.isNotEmpty) ...[
+                  const Divider(height: 24),
+                  // 已解锁成就列表
+                  Wrap(
+                    spacing: 8, runSpacing: 12,
+                    children: achievements.map((a) => _AchievementTile(
+                      icon: a['icon'] as String? ?? '🌟',
+                      name: a['name'] as String? ?? '',
+                      unlockedAt: a['unlocked_at'] as String? ?? '',
+                    )).toList(),
+                  ),
+                ],
               ],
             ),
           ),
         ),
       ],
     );
-}
+  }
 
   // ── Phase 3: 周报 ──
   Widget _buildWeeklyReport(Map<String, dynamic> report) {
