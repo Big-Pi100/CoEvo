@@ -55,7 +55,7 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
     let _token_hash = hash_to_hex(&hash_password(&token));
 
     conn.execute(
-        "INSERT INTO users (id, username, password_hash, created_at) VALUES (?1, ?2, ?3, ?4)",
+        "INSERT INTO users (id, username, display_name, password_hash, created_at) VALUES (?1, ?2, ?2, ?3, ?4)",
         rusqlite::params![user_id, req.username, pwhash, now],
     ).map_err(|e| format!("Insert error: {}", e))?;
 

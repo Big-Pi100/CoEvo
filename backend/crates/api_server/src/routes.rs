@@ -32,6 +32,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/history", get(history_handler))
         // Profile
         .route("/api/user/{user_id}/profile", get(profile_handler))
+        .route("/api/user/{user_id}/display-name", post(update_display_name_handler))
         .route("/api/user/{user_id}/avatar", post(avatar_upload_handler).get(avatar_get_handler))
         // WS
         .route("/ws", get(ws_upgrade))
@@ -739,8 +740,14 @@ async fn profile_handler(
         }))
     ).unwrap().filter_map(|r| r.ok()).collect();
 
+    let display_name: Option<String> = conn.query_row(
+        "SELECT display_name FROM users WHERE id = ?1",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).ok().flatten();
+
     Json(serde_json::json!({
         "user_id": user_id,
+        "display_name": display_name,
         "stats": {
             "total_cards": total_cards,
             "total_reviews": total_reviews,
@@ -750,6 +757,26 @@ async fn profile_handler(
         },
         "achievements": achievements,
     }))
+}
+
+// ── Display Name ──
+
+async fn update_display_name_handler(
+    Path(user_id): Path<String>,
+    Json(input): Json<serde_json::Value>,
+) -> Json<serde_json::Value> {
+    let conn = crate::db_pool::get_conn();
+    let name = input.get("display_name").and_then(|v| v.as_str()).unwrap_or("");
+    if name.trim().is_empty() {
+        return Json(serde_json::json!({"error": "display_name cannot be empty"}));
+    }
+    match conn.execute(
+        "UPDATE users SET display_name = ?1 WHERE id = ?2",
+        rusqlite::params![name.trim(), user_id],
+    ) {
+        Ok(_) => Json(serde_json::json!({"status": "ok", "display_name": name.trim()})),
+        Err(e) => Json(serde_json::json!({"error": format!("DB: {}", e)})),
+    }
 }
 
 // ── Avatar ──

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'theme/app_theme.dart';
 import 'screens/auth_screen.dart';
@@ -8,6 +9,7 @@ import 'screens/card_list_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/conversation_list_screen.dart';
 import 'screens/skipped_list_screen.dart';
+import 'providers/auth_provider.dart';
 
 final goRouter = GoRouter(
   initialLocation: '/auth',
@@ -112,8 +114,21 @@ class _ShellScaffold extends StatelessWidget {
   }
 }
 
-class CoEvoApp extends StatelessWidget {
+class CoEvoApp extends ConsumerStatefulWidget {
   const CoEvoApp({super.key});
+
+  @override
+  ConsumerState<CoEvoApp> createState() => _CoEvoAppState();
+}
+
+class _CoEvoAppState extends ConsumerState<CoEvoApp> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(authProvider.notifier).tryRestore();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

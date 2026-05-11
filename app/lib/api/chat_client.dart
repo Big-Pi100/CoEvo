@@ -380,4 +380,18 @@ extension PlanApi on ChatClient {
     } catch (_) {}
     return null;
   }
+
+  /// 更新显示昵称到后端
+  Future<bool> updateDisplayName(String name) async {
+    try {
+      final resp = await http.post(
+        Uri.parse('$baseUrl/api/user/$userId/display-name'),
+        headers: _authHeaders,
+        body: jsonEncode({'display_name': name}),
+      );
+      return resp.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
 }

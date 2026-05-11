@@ -58,6 +58,7 @@ async fn main() {
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )",
             "CREATE INDEX IF NOT EXISTS idx_learning_plans_user ON learning_plans(user_id)",
+            "ALTER TABLE users ADD COLUMN display_name TEXT DEFAULT NULL",
         ];
         for sql in &migrations {
             let _ = conn.execute(sql, []);

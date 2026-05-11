@@ -25,10 +25,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   String? _avatarUrl;
   String _displayName = '';
   bool _isUploading = false;
+  ProviderSubscription? _authSub;
 
   @override
   void initState() {
     super.initState();
+    _authSub = ref.listenManual(authProvider, (prev, next) {
+      if (next.isAuthenticated && prev?.isAuthenticated == false && mounted) {
+        _load();
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -41,22 +47,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     });
 
     if (auth.userId == null || auth.token == null) {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
       return;
     }
 
-    // 检查头像是否存在
-    final avatarUrl = '${ApiConfig.baseUrl}/api/user/${auth.userId}/avatar';
-    try {
-      final headResp = await http.head(Uri.parse(avatarUrl));
-      if (headResp.statusCode == 200) {
-        _avatarUrl = avatarUrl;
-      } else {
-        _avatarUrl = null;
-      }
-    } catch (_) {
-      _avatarUrl = null;
-    }
+    // 存储头像 URL（NetworkImage 加载失败会优雅降级）
+    _avatarUrl = '${ApiConfig.baseUrl}/api/user/${auth.userId}/avatar';
 
     final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {
@@ -64,6 +60,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       final report = await client.getLearningReport();
       final activity = await client.getActivity();
       final weekly = await client.getWeeklyReport();
+      // 如果后端有 display_name，覆盖本地缓存
+      final backendName = data['display_name'] as String?;
+      if (backendName != null && backendName != _displayName && mounted) {
+        await prefs.setString('display_name', backendName);
+        setState(() => _displayName = backendName);
+      }
       if (mounted) setState(() { _data = data; _report = report; _activityData = activity; _weeklyReport = weekly; _isLoading = false; });
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
@@ -83,14 +85,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final uri = Uri.parse('${ApiConfig.baseUrl}/api/user/${auth.userId}/avatar');
     final request = http.MultipartRequest('POST', uri);
     request.headers['Authorization'] = 'Bearer ${auth.token}';
-    request.files.add(await http.MultipartFile.fromPath('file', picked.path));
-
     try {
-      final streamed = await request.send();
-      if (streamed.statusCode == 200) {
+      final bytes = await picked.readAsBytes();
+      request.files.add(http.MultipartFile.fromBytes('file', bytes, filename: 'avatar.png'));
+      final streamed = await request.send().timeout(const Duration(seconds: 15));
+      if (streamed.statusCode == 200 && mounted) {
         setState(() => _avatarUrl = '${ApiConfig.baseUrl}/api/user/${auth.userId}/avatar?t=${DateTime.now().millisecondsSinceEpoch}');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('头像已更新'), duration: Duration(seconds: 2)),
+        );
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('上传失败 (${streamed.statusCode})')),
+        );
       }
-    } catch (_) {}
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('上传出错: $e')),
+        );
+      }
+    }
 
     if (mounted) setState(() => _isUploading = false);
   }
@@ -121,9 +136,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ),
     );
     if (result != null && result.trim().isNotEmpty && result != _displayName) {
+      final auth = ref.read(authProvider);
+      final trimmed = result.trim();
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('display_name', result.trim());
-      setState(() => _displayName = result.trim());
+      await prefs.setString('display_name', trimmed);
+      // 同步到后端
+      if (auth.userId != null && auth.token != null) {
+        final client = ChatClient(userId: auth.userId!, token: auth.token);
+        await client.updateDisplayName(trimmed);
+      }
+      setState(() => _displayName = trimmed);
     }
   }
 
@@ -642,6 +664,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _authSub?.close();
+    super.dispose();
   }
 }
 
