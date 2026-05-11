@@ -2,10 +2,11 @@
 //!
 //! 复用 LinguaFlow routes.rs 的模式
 
-use axum::{Router, routing::{get, post, delete}, Json, extract::{Path, Query}};
+use axum::{Router, routing::{get, post, put, delete}, Json, extract::{Path, Query}};
 use axum::extract::ws::WebSocketUpgrade;
 use axum::http::HeaderMap;
 use serde::Deserialize;
+use std::collections::HashMap;
 
 use chat_engine::llm_caller::LlmConfig;
 
@@ -34,6 +35,8 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/user/{user_id}/profile", get(profile_handler))
         .route("/api/user/{user_id}/display-name", post(update_display_name_handler))
         .route("/api/user/{user_id}/avatar", post(avatar_upload_handler).get(avatar_get_handler))
+        // Preferences
+        .route("/api/user/{user_id}/preferences", get(preferences_get_handler).put(preferences_put_handler))
         // WS
         .route("/ws", get(ws_upgrade))
         // Learning Plans
@@ -779,6 +782,42 @@ async fn update_display_name_handler(
     }
 }
 
+// ════════════════════════════════════════════
+// User Preferences
+// ════════════════════════════════════════════
+
+async fn preferences_get_handler(
+    Path(user_id): Path<String>,
+) -> Json<serde_json::Value> {
+    let conn = crate::db_pool::get_conn();
+    let mut stmt = conn.prepare(
+        "SELECT key, value FROM user_preferences WHERE user_id = ?1"
+    ).unwrap();
+    let mut prefs = serde_json::Map::new();
+    for row in stmt.query_map(rusqlite::params![user_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    }).unwrap().filter_map(|r| r.ok()) {
+        prefs.insert(row.0, serde_json::Value::String(row.1));
+    }
+    Json(serde_json::Value::Object(prefs))
+}
+
+async fn preferences_put_handler(
+    Path(user_id): Path<String>,
+    Json(input): Json<HashMap<String, String>>,
+) -> Json<serde_json::Value> {
+    let conn = crate::db_pool::get_conn();
+    let now = chrono::Utc::now().to_rfc3339();
+    for (key, value) in &input {
+        let _ = conn.execute(
+            "INSERT INTO user_preferences (user_id, key, value, updated_at) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(user_id, key) DO UPDATE SET value = ?3, updated_at = ?4",
+            rusqlite::params![user_id, key, value, now],
+        );
+    }
+    Json(serde_json::json!({"status": "ok"}))
+}
+
 // ── Avatar ──
 
 const AVATAR_DIR: &str = "data/avatars";
@@ -1013,14 +1052,13 @@ async fn learning_report_handler(
 // Activity Heatmap API
 // ════════════════════════════════════════════
 
-use std::collections::HashMap;
 
 async fn activity_handler(
     Path(user_id): Path<String>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Json<serde_json::Value> {
     let conn = crate::db_pool::get_conn();
-    let days: i64 = params.get("days").and_then(|v| v.parse().ok()).unwrap_or(30);
+    let days: i64 = params.get("days").and_then(|v| v.parse().ok()).unwrap_or(90);
 
     // 每日复习数
     let mut stmt = conn.prepare(

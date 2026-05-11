@@ -20,6 +20,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Map<String, dynamic>? _data;
   Map<String, dynamic>? _report;  // Phase 3 学习报告
   Map<String, dynamic>? _activityData;  // Phase 3 热力图
+  DateTime _calendarMonth = DateTime(DateTime.now().year, DateTime.now().month);  // 当前日历月份
   Map<String, dynamic>? _weeklyReport;  // Phase 3 周报
   bool _isLoading = true;
   String? _avatarUrl;
@@ -56,9 +57,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {
+      // 绑定 TTS 客户端（用于偏好同步）
+      final tts = ref.read(ttsServiceProvider);
+      tts.bindClient(client);
+
       final data = await client.getProfile();
       final report = await client.getLearningReport();
-      final activity = await client.getActivity();
+      final activity = await client.getActivity(days: 90);
       final weekly = await client.getWeeklyReport();
       // 如果后端有 display_name，覆盖本地缓存
       final backendName = data['display_name'] as String?;
@@ -311,8 +316,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     Slider(
                       value: tts.speechRate,
                       min: 0.1,
-                      max: 1.0,
-                      divisions: 9,
+                      max: 2.0,
+                      divisions: 19,
                       label: tts.speechRate.toStringAsFixed(1),
                       onChanged: (v) => tts.speechRate = v,
                     ),
@@ -577,16 +582,90 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  // ── Phase 3: 学习热力图 ──
+  // ── Phase 3: 学习日历（真实月历） ──
   Widget _buildHeatmap(Map<String, dynamic> activity) {
     final days = activity['days'] as List<dynamic>? ?? [];
-    if (days.isEmpty) return const SizedBox.shrink();
+    // 构建日期→分数映射
+    final scoreByDate = <String, int>{};
+    final reviewsByDate = <String, int>{};
+    final convsByDate = <String, int>{};
+    final cardsByDate = <String, int>{};
+    for (final d in days) {
+      final day = d as Map<String, dynamic>;
+      final date = day['date'] as String? ?? '';
+      scoreByDate[date] = day['score'] as int? ?? 0;
+      reviewsByDate[date] = day['reviews'] as int? ?? 0;
+      convsByDate[date] = day['conversations'] as int? ?? 0;
+      cardsByDate[date] = day['cards'] as int? ?? 0;
+    }
 
-    // 计算最大活跃度用于颜色缩放
-    final maxScore = days.fold<int>(0, (m, d) {
-      final score = (d as Map<String, dynamic>)['score'] as int? ?? 0;
-      return score > m ? score : m;
-    });
+    // 计算当前月
+    final year = _calendarMonth.year;
+    final month = _calendarMonth.month;
+    final firstDay = DateTime(year, month, 1);
+    final lastDay = DateTime(year, month + 1, 0);
+    final daysInMonth = lastDay.day;
+    // Monday = 1 ... Sunday = 7
+    final startWeekday = firstDay.weekday; // 1=Mon ... 7=Sun
+    final todayStr = DateTime.now().toIso8601String().substring(0, 10);
+
+    // 月名前缀
+    const monthNames = ['', '1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+    final headerLabel = '$year年${monthNames[month]}';
+
+    // 计算最大分数用于颜色强度
+    final maxScore = scoreByDate.values.fold<int>(0, (m, s) => s > m ? s : m);
+
+    Color cellColor(int score) {
+      if (score == 0) return Colors.grey.shade100;
+      final intensity = maxScore > 0 ? score / maxScore : 0.0;
+      if (intensity < 0.25) return Colors.green.shade100;
+      if (intensity < 0.5) return Colors.green.shade300;
+      if (intensity < 0.75) return Colors.green.shade500;
+      return Colors.green.shade700;
+    }
+
+    // 构建日历网格行
+    final cells = <Widget>[];
+    // 填充月初空白
+    final leadingBlanks = startWeekday - 1; // Mon=1 → 0, ... Sun=7 → 6
+    for (int i = 0; i < leadingBlanks; i++) {
+      cells.add(const SizedBox(width: 40, height: 40));
+    }
+    for (int day = 1; day <= daysInMonth; day++) {
+      final dateStr = '${year}-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+      final score = scoreByDate[dateStr] ?? 0;
+      final isToday = dateStr == todayStr;
+      final bgColor = cellColor(score);
+      final textColor = score == 0 ? Colors.black54 : Colors.black;
+      final reviews = reviewsByDate[dateStr] ?? 0;
+      final convs = convsByDate[dateStr] ?? 0;
+      final cardCount = cardsByDate[dateStr] ?? 0;
+
+      cells.add(
+        Tooltip(
+          message: '$dateStr\n复习$reviews次 · $convs轮对话 · $cardCount张卡',
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(6),
+              border: isToday ? Border.all(color: Theme.of(context).colorScheme.primary, width: 2) : null,
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              '$day',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                color: textColor,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     return Card(
       child: Padding(
@@ -594,70 +673,62 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 月份导航
             Row(
               children: [
                 const Icon(Icons.calendar_month, size: 20),
                 const SizedBox(width: 8),
-                Text('学习活动', style: Theme.of(context).textTheme.titleMedium),
+                Text(headerLabel, style: Theme.of(context).textTheme.titleMedium),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.chevron_left, size: 20),
+                  onPressed: () => setState(() {
+                    _calendarMonth = DateTime(year, month - 1);
+                  }),
+                  visualDensity: VisualDensity.compact,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.chevron_right, size: 20),
+                  onPressed: () => setState(() {
+                    _calendarMonth = DateTime(year, month + 1);
+                  }),
+                  visualDensity: VisualDensity.compact,
+                ),
               ],
             ),
             const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: Wrap(
-                spacing: 3,
-                runSpacing: 3,
-                children: days.map((d) {
-                  final day = d as Map<String, dynamic>;
-                  final date = day['date'] as String? ?? '';
-                  final score = day['score'] as int? ?? 0;
-                  final intensity = maxScore > 0 ? score / maxScore : 0.0;
-                  final weekday = DateTime.tryParse(date)?.weekday ?? 0;
-
-                  Color color;
-                  if (score == 0) {
-                    color = Colors.grey.shade100;
-                  } else if (intensity < 0.25) {
-                    color = Colors.green.shade100;
-                  } else if (intensity < 0.5) {
-                    color = Colors.green.shade300;
-                  } else if (intensity < 0.75) {
-                    color = Colors.green.shade500;
-                  } else {
-                    color = Colors.green.shade700;
-                  }
-
-                  // 周末标灰
-                  if (weekday == 6 || weekday == 7) {
-                    color = color.withAlpha(180);
-                  }
-
-                  return Tooltip(
-                    message: '$date\n复习${day['reviews']}次 · ${day['conversations']}轮对话 · ${day['cards']}张卡',
-                    child: Container(
-                      width: 14,
-                      height: 14,
-                      decoration: BoxDecoration(
-                        color: color,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
+            // 星期头
+            Row(
+              mainAxisAlignment: MainAxisAlignment.start,
+              children: ['一', '二', '三', '四', '五', '六', '日'].map((d) =>
+                SizedBox(
+                  width: 40,
+                  child: Text(d,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                ),
+              ).toList(),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
+            // 日历网格
+            Wrap(
+              spacing: 0,
+              runSpacing: 4,
+              children: cells,
+            ),
+            const SizedBox(height: 12),
+            // 图例
             Row(
               children: [
                 Text('少', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
                 const SizedBox(width: 4),
-                Container(width: 14, height: 14, decoration: BoxDecoration(color: Colors.green.shade100, borderRadius: BorderRadius.circular(2))),
+                Container(width: 16, height: 16, decoration: BoxDecoration(color: Colors.green.shade100, borderRadius: BorderRadius.circular(3))),
                 const SizedBox(width: 4),
-                Container(width: 14, height: 14, decoration: BoxDecoration(color: Colors.green.shade300, borderRadius: BorderRadius.circular(2))),
+                Container(width: 16, height: 16, decoration: BoxDecoration(color: Colors.green.shade300, borderRadius: BorderRadius.circular(3))),
                 const SizedBox(width: 4),
-                Container(width: 14, height: 14, decoration: BoxDecoration(color: Colors.green.shade500, borderRadius: BorderRadius.circular(2))),
+                Container(width: 16, height: 16, decoration: BoxDecoration(color: Colors.green.shade500, borderRadius: BorderRadius.circular(3))),
                 const SizedBox(width: 4),
-                Container(width: 14, height: 14, decoration: BoxDecoration(color: Colors.green.shade700, borderRadius: BorderRadius.circular(2))),
+                Container(width: 16, height: 16, decoration: BoxDecoration(color: Colors.green.shade700, borderRadius: BorderRadius.circular(3))),
                 const SizedBox(width: 4),
                 Text('多', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
               ],

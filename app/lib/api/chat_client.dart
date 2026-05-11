@@ -394,4 +394,33 @@ extension PlanApi on ChatClient {
       return false;
     }
   }
+
+  /// 获取用户偏好
+  Future<Map<String, String>> getPreferences() async {
+    try {
+      final resp = await http.get(
+        Uri.parse('$baseUrl/api/user/$userId/preferences'),
+        headers: _authHeaders,
+      );
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+        return data.map((k, v) => MapEntry(k, v.toString()));
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  /// 保存用户偏好（批量）
+  Future<bool> savePreferences(Map<String, String> prefs) async {
+    try {
+      final resp = await http.put(
+        Uri.parse('$baseUrl/api/user/$userId/preferences'),
+        headers: _authHeaders,
+        body: jsonEncode(prefs),
+      );
+      return resp.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
 }
