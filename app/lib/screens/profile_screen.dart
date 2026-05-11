@@ -421,14 +421,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   // ── Phase 3: 学习报告 ──
   Widget _buildReportSection(Map<String, dynamic> report) {
-    final plan = report['plan_progress'] as Map<String, dynamic>?;
+    final plans = report['plans'] as List<dynamic>? ?? [];
     final tiers = report['achievements_by_tier'] as List<dynamic>? ?? [];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 学习计划进度
-        if (plan != null && plan['goal'] != null)
+        // 所有学习计划进度
+        if (plans.isNotEmpty)
           Card(
             child: Padding(
               padding: const EdgeInsets.all(20),
@@ -439,29 +439,64 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     children: [
                       const Icon(Icons.school, size: 20),
                       const SizedBox(width: 8),
-                      Expanded(child: Text('学习计划', style: Theme.of(context).textTheme.titleMedium)),
+                      Text('学习计划 (${plans.length})', style: Theme.of(context).textTheme.titleMedium),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Text('目标：${plan['goal']}', style: const TextStyle(fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 4),
-                  if (plan['current_stage'] is String && (plan['current_stage'] as String).isNotEmpty)
-                    Text('当前阶段：${plan['current_stage']}', style: TextStyle(color: Colors.grey.shade600)),
-                  const SizedBox(height: 12),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: LinearProgressIndicator(
-                      value: ((plan['total_tasks'] as int?) ?? 0) > 0
-                          ? ((plan['done_tasks'] as int?) ?? 0) / ((plan['total_tasks'] as int?) ?? 1)
-                          : 0,
-                      minHeight: 8,
-                      backgroundColor: Colors.grey.shade200,
-                      valueColor: AlwaysStoppedAnimation(Theme.of(context).colorScheme.primary),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text('${plan['done_tasks']}/${plan['total_tasks']} 任务完成 (${plan['progress_pct']})',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                  ...plans.asMap().entries.map((entry) {
+                    final i = entry.key;
+                    final plan = entry.value as Map<String, dynamic>;
+                    return Padding(
+                      padding: i < plans.length - 1 ? const EdgeInsets.only(bottom: 16) : EdgeInsets.zero,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                plan['mode'] == 'completed' || plan['current_stage'] == '完成'
+                                    ? Icons.check_circle : Icons.play_circle,
+                                size: 16,
+                                color: plan['mode'] == 'completed'
+                                    ? Colors.green : Theme.of(context).colorScheme.primary,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(plan['goal'] as String? ?? '',
+                                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                              ),
+                              if (plan['mode'] == 'completed')
+                                Text('已完成', style: TextStyle(fontSize: 11, color: Colors.green.shade600)),
+                            ],
+                          ),
+                          if (plan['current_stage'] is String && (plan['current_stage'] as String).isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 24, top: 4),
+                              child: Text('当前阶段：${plan['current_stage']}',
+                                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                            ),
+                          const SizedBox(height: 8),
+                          if (((plan['total_tasks'] as int?) ?? 0) > 0)
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                value: ((plan['done_tasks'] as int?) ?? 0) / ((plan['total_tasks'] as int?) ?? 1),
+                                minHeight: 6,
+                                backgroundColor: Colors.grey.shade200,
+                                valueColor: AlwaysStoppedAnimation(
+                                  plan['mode'] == 'completed' ? Colors.green : Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                            ),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 24, top: 4),
+                            child: Text('${plan['done_tasks']}/${plan['total_tasks']} 任务 (${plan['progress_pct']})',
+                                style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
                 ],
               ),
             ),

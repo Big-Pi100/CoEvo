@@ -912,21 +912,20 @@ async fn learning_report_handler(
 ) -> Json<serde_json::Value> {
     let conn = crate::db_pool::get_conn();
 
-    // 1. 学习计划进度
-    let plan_data = conn.query_row(
-        "SELECT plan_json, goal, updated_at FROM learning_plans WHERE user_id = ?1 AND mode = 'structured' ORDER BY updated_at DESC LIMIT 1",
-        rusqlite::params![user_id],
-        |row| {
-            let pj: String = row.get(0)?;
-            let goal: String = row.get(1)?;
-            let updated: String = row.get(2)?;
-            Ok((pj, goal, updated))
-        }
-    ).ok();
-
-    let mut plan_progress = serde_json::json!(null);
-    if let Some((pj, goal, updated)) = &plan_data {
-        if let Ok(plan) = serde_json::from_str::<serde_json::Value>(pj) {
+    // 1. 所有学习计划进度
+    let mut stmt_plans = conn.prepare(
+        "SELECT plan_json, goal, mode, updated_at FROM learning_plans WHERE user_id = ?1 AND mode != 'deleted' ORDER BY updated_at DESC"
+    ).unwrap();
+    let mut plans: Vec<serde_json::Value> = Vec::new();
+    for row in stmt_plans.query_map(rusqlite::params![user_id], |row| {
+        let pj: String = row.get(0)?;
+        let goal: String = row.get(1)?;
+        let mode: String = row.get(2)?;
+        let updated: String = row.get(3)?;
+        Ok((pj, goal, mode, updated))
+    }).unwrap().filter_map(|r| r.ok()) {
+        let (pj, goal, mode, updated) = row;
+        if let Ok(plan) = serde_json::from_str::<serde_json::Value>(&pj) {
             let mut total_tasks = 0u32;
             let mut done_tasks = 0u32;
             let mut current_stage = "";
@@ -947,14 +946,15 @@ async fn learning_report_handler(
                     }
                 }
             }
-            plan_progress = serde_json::json!({
+            plans.push(serde_json::json!({
                 "goal": goal,
+                "mode": mode,
                 "current_stage": current_stage,
                 "total_tasks": total_tasks,
                 "done_tasks": done_tasks,
                 "progress_pct": if total_tasks > 0 { format!("{:.0}%", done_tasks as f64 / total_tasks as f64 * 100.0) } else { "0%".to_string() },
                 "updated_at": updated,
-            });
+            }));
         }
     }
 
@@ -995,7 +995,7 @@ async fn learning_report_handler(
     ).unwrap_or(0);
 
     Json(serde_json::json!({
-        "plan_progress": plan_progress,
+        "plans": plans,
         "achievements_by_tier": tier_counts,
         "stats": {
             "total_cards": cards_total,
