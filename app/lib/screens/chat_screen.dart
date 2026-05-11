@@ -654,28 +654,32 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   child: FadeTransition(
                     opacity: animation,
                     child: Column(
-                      crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            // AI 头像（左侧）
-                            if (!isUser)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 8, bottom: 12),
-                                child: CircleAvatar(
-                                  radius: 14,
-                                  backgroundColor: Theme.of(context).colorScheme.primary.withAlpha(30),
-                                  child: Icon(Icons.auto_awesome, size: 14, color: Theme.of(context).colorScheme.primary),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              // ── AI 消息布局：头像 | 气泡 | Spacer ──
+                              if (!isUser)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: CircleAvatar(
+                                    radius: 12,
+                                    backgroundColor: Theme.of(context).colorScheme.primary.withAlpha(30),
+                                    child: Icon(Icons.auto_awesome, size: 12, color: Theme.of(context).colorScheme.primary),
+                                  ),
                                 ),
-                              ),
-                            // 气泡
-                            Flexible(
-                              child: Container(
-                                margin: const EdgeInsets.only(bottom: 12),
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              // ── 用户消息布局：Spacer | 气泡 | 头像 ──
+                              if (isUser)
+                                const Spacer(),
+                              // 气泡
+                              Container(
+                                constraints: BoxConstraints(
+                                  maxWidth: MediaQuery.of(context).size.width * 0.70,
+                                ),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                                 decoration: BoxDecoration(
                                   color: isUser
                                       ? Theme.of(context).colorScheme.primary
@@ -685,30 +689,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                     bottomLeft: !isUser ? const Radius.circular(4) : null,
                                   ),
                                 ),
-                                constraints: BoxConstraints(
-                                  maxWidth: MediaQuery.of(context).size.width * 0.65,
-                                ),
                                 child: Text(
                                   msg.content + (isStreaming ? '▌' : ''),
                                   style: TextStyle(
                                     color: isUser ? Colors.white : Theme.of(context).colorScheme.onSecondaryContainer,
-                                    fontSize: 16,
+                                    fontSize: 15,
                                     height: 1.5,
                                   ),
                                 ),
                               ),
-                            ),
-                            // 用户头像（右侧）
-                            if (isUser)
-                              Padding(
-                                padding: const EdgeInsets.only(left: 8, bottom: 12),
-                                child: CircleAvatar(
-                                  radius: 14,
-                                  backgroundColor: Theme.of(context).colorScheme.primary,
-                                  child: const Icon(Icons.person, size: 14, color: Colors.white),
+                              if (!isUser)
+                                const Spacer(),
+                              if (isUser)
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 6),
+                                  child: CircleAvatar(
+                                    radius: 12,
+                                    backgroundColor: Theme.of(context).colorScheme.primary,
+                                    child: const Icon(Icons.person, size: 12, color: Colors.white),
+                                  ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
                         // 错误重试按钮
                         if (!isUser && msg.content.startsWith('抱歉') || msg.content.startsWith('连接错误'))
