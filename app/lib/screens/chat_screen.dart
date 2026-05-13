@@ -6,6 +6,7 @@ import '../models/coevo_models.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
 import '../services/stt_service.dart';
+import '../services/tts_service.dart';
 import '../widgets/skeleton.dart';
 
 /// 持久化 conversation_id 的 provider (跨页面保持)
@@ -44,6 +45,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isRecording = false;
   bool _isCancelling = false;
   SttService? _stt;
+  String? _sttError;
 
   @override
   void initState() {
@@ -366,7 +368,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         }
         break;
       case 'error':
-        _finalizeStreamingWithRetry('抱歉，出了点问题：${event.content}');
+        if (event.content == 'subscription_expired') {
+          _showSubscriptionDialog('订阅已到期');
+        } else if (event.content == 'subscription_required') {
+          _showSubscriptionDialog('需要激活');
+        } else {
+          _finalizeStreamingWithRetry('抱歉，出了点问题：${event.content}');
+        }
         break;
       case 'plan_updated':
         _loadPlan();
@@ -502,6 +510,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     final result = await _client!.batchCreateCards(toCreate);
                     if (mounted) {
                       final count = (result['created'] as List?)?.length ?? 0;
+                      if (count > 0) ref.read(cardRefreshProvider.notifier).state++;
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('已创建 $count 张卡片')),
                       );
@@ -538,6 +547,30 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         );
       }
     });
+  }
+
+  void _showSubscriptionDialog(String title) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.lock, size: 20),
+            const SizedBox(width: 8),
+            Text(title),
+          ],
+        ),
+        content: const Text('请联系你的服务人员续费。\n续费后刷新页面即可恢复使用。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('我知道了'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -689,13 +722,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                     bottomLeft: !isUser ? const Radius.circular(4) : null,
                                   ),
                                 ),
-                                child: Text(
-                                  msg.content + (isStreaming ? '▌' : ''),
-                                  style: TextStyle(
-                                    color: isUser ? Colors.white : Theme.of(context).colorScheme.onSecondaryContainer,
-                                    fontSize: 15,
-                                    height: 1.5,
-                                  ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                                  children: [
+                                    // 消息文字
+                                    Text(
+                                      _cleanText(msg.content) + (isStreaming ? '▌' : ''),
+                                      style: TextStyle(
+                                        color: isUser ? Colors.white : Theme.of(context).colorScheme.onSecondaryContainer,
+                                        fontSize: 15,
+                                        height: 1.5,
+                                      ),
+                                    ),
+                                    // AI 消息朗读按钮（流式输出时不显示）
+                                    if (!isUser && !isStreaming)
+                                      _buildTtsButton(_cleanText(msg.content)),
+                                  ],
                                 ),
                               ),
                               if (!isUser)
@@ -748,7 +791,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               border: Border(top: BorderSide(color: Colors.grey.shade200)),
             ),
             child: SafeArea(
-              child: _voiceMode ? _buildVoiceInput() : _buildTextInput(),
+              child: _buildTextInput(),
             ),
           ),
         ],
@@ -760,11 +803,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget _buildTextInput() {
     return Row(
       children: [
-        IconButton(
-          icon: const Icon(Icons.keyboard_voice),
-          onPressed: () => setState(() => _voiceMode = true),
-          tooltip: '语音输入',
-        ),
         const SizedBox(width: 4),
         Expanded(
           child: TextField(
@@ -800,6 +838,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // 错误提示
+            if (_sttError != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(_sttError!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+              ),
             // 取消提示
             if (_isRecording)
               AnimatedOpacity(
@@ -846,10 +890,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 Expanded(
                   child: GestureDetector(
                     onLongPressStart: (_) async {
-                      setState(() { _isRecording = true; });
+                      setState(() { _isRecording = true; _sttError = null; });
                       final stt = ref.read(sttServiceProvider);
-                      await stt.startRecording();
                       setState(() => _stt = stt);
+                      await stt.startRecording();
                     },
                     onLongPressMoveUpdate: (details) {
                       setState(() {
@@ -868,11 +912,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         return;
                       }
                       final text = await _stt!.stopRecording();
+                      final error = _stt!.lastError;
                       setState(() {
                         _isRecording = false;
                         _isCancelling = false;
                         _stt = null;
+                        _sttError = error;
                       });
+                      if (error != null) return;
                       if (text.isNotEmpty) {
                         _sendVoiceMessage(text);
                       }
@@ -923,5 +970,39 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void _sendVoiceMessage(String text) {
     _messageController.text = text;
     _sendMessage();
+  }
+
+  /// 构建 AI 消息朗读按钮（气泡右下角小喇叭）
+  Widget _buildTtsButton(String text) {
+    return Consumer(
+      builder: (_, ref, __) {
+        final enabled = ref.watch(ttsEnabledProvider);
+        if (!enabled) return const SizedBox.shrink();
+        final tts = ref.watch(ttsServiceProvider);
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: GestureDetector(
+              onTap: () => tts.speak(text, language: 'zh-CN'),
+              child: Icon(
+                Icons.volume_up_outlined,
+                size: 16,
+                color: Theme.of(context).colorScheme.onSecondaryContainer.withAlpha(120),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// 去除 markdown 标记符号（**、###等），使朗读和显示更干净
+  String _cleanText(String text) {
+    return text
+        .replaceAll('**', '')
+        .replaceAll('### ', '')
+        .replaceAll('## ', '')
+        .replaceAll('# ', '');
   }
 }

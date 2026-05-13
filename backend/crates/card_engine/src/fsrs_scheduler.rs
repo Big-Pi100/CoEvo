@@ -272,7 +272,7 @@ mod tests {
         conn.execute("INSERT INTO cards (id, user_id, front, back, card_type, created_at) VALUES ('c1', 'u1', 'test', 'test', 'concept', 0)", []).unwrap();
         conn.execute("INSERT INTO card_memory (card_id, due) VALUES ('c1', 0)", []).unwrap();
 
-        let ctx = submit_review(&conn, "c1", 3, "spelling", "pass", "u1").unwrap();
+        let ctx = submit_review(&conn, "c1", 3, "spelling", "pass", "u1", None).unwrap();
         assert_eq!(ctx.streak_days, 1);
         assert_eq!(ctx.total_reviews, 1);
     }
@@ -313,7 +313,7 @@ mod tests {
         assert_eq!(due[0].state, 0, "New 状态");
 
         // 2. 提交复习 (pass) → New → Learning
-        let ctx = submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user").unwrap();
+        let ctx = submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user", None).unwrap();
         assert_eq!(ctx.total_reviews, 1, "第1次复习");
 
         let state: i32 = conn.query_row(
@@ -328,13 +328,13 @@ mod tests {
         insert_card(&conn, "c1", "e2e_user", "概念A", "概念A的解释");
 
         // New → Learning
-        submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user").unwrap();
+        submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user", None).unwrap();
 
         // 模拟 due 已到
         conn.execute("UPDATE card_memory SET due=0 WHERE card_id='c1'", []).unwrap();
 
         // Learning + pass → Review
-        let ctx = submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user").unwrap();
+        let ctx = submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user", None).unwrap();
         assert_eq!(ctx.total_reviews, 2);
 
         let state: i32 = conn.query_row(
@@ -349,13 +349,13 @@ mod tests {
         insert_card(&conn, "c1", "e2e_user", "概念A", "概念A的解释");
 
         // New → Learning → Review
-        submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user").unwrap();
+        submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user", None).unwrap();
         conn.execute("UPDATE card_memory SET due=0 WHERE card_id='c1'", []).unwrap();
-        submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user").unwrap();
+        submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user", None).unwrap();
         conn.execute("UPDATE card_memory SET due=0 WHERE card_id='c1'", []).unwrap();
 
         // Review + fail → Relearning
-        submit_review(&conn, "c1", 1, "spelling", "fail", "e2e_user").unwrap();
+        submit_review(&conn, "c1", 1, "spelling", "fail", "e2e_user", None).unwrap();
 
         let state: i32 = conn.query_row(
             "SELECT state FROM card_memory WHERE card_id='c1'", [], |r| r.get(0)
@@ -369,15 +369,15 @@ mod tests {
         insert_card(&conn, "c1", "e2e_user", "概念A", "概念A的解释");
 
         // New → Learning → Review → Relearning
-        submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user").unwrap();
+        submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user", None).unwrap();
         conn.execute("UPDATE card_memory SET due=0 WHERE card_id='c1'", []).unwrap();
-        submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user").unwrap();
+        submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user", None).unwrap();
         conn.execute("UPDATE card_memory SET due=0 WHERE card_id='c1'", []).unwrap();
-        submit_review(&conn, "c1", 1, "spelling", "fail", "e2e_user").unwrap();
+        submit_review(&conn, "c1", 1, "spelling", "fail", "e2e_user", None).unwrap();
         conn.execute("UPDATE card_memory SET due=0 WHERE card_id='c1'", []).unwrap();
 
         // Relearning + pass → Review
-        submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user").unwrap();
+        submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user", None).unwrap();
 
         let state: i32 = conn.query_row(
             "SELECT state FROM card_memory WHERE card_id='c1'", [], |r| r.get(0)
@@ -391,7 +391,7 @@ mod tests {
 
         // 第1天: 复习 → streak=1
         insert_card(&conn, "c2", "e2e_user", "卡B", "说明B");
-        submit_review(&conn, "c2", 3, "spelling", "pass", "e2e_user").unwrap();
+        submit_review(&conn, "c2", 3, "spelling", "pass", "e2e_user", None).unwrap();
         let s1: i32 = conn.query_row(
             "SELECT streak_days FROM users WHERE id='e2e_user'", [], |r| r.get(0)
         ).unwrap();
@@ -403,7 +403,7 @@ mod tests {
             yesterday.format("%Y-%m-%d").to_string()
         }]).unwrap();
         insert_card(&conn, "c3", "e2e_user", "卡C", "说明C");
-        submit_review(&conn, "c3", 3, "spelling", "pass", "e2e_user").unwrap();
+        submit_review(&conn, "c3", 3, "spelling", "pass", "e2e_user", None).unwrap();
         let s2: i32 = conn.query_row(
             "SELECT streak_days FROM users WHERE id='e2e_user'", [], |r| r.get(0)
         ).unwrap();
@@ -421,7 +421,7 @@ mod tests {
         }]).unwrap();
 
         insert_card(&conn, "c4", "e2e_user", "卡D", "说明D");
-        submit_review(&conn, "c4", 3, "spelling", "pass", "e2e_user").unwrap();
+        submit_review(&conn, "c4", 3, "spelling", "pass", "e2e_user", None).unwrap();
 
         let streak: i32 = conn.query_row(
             "SELECT streak_days FROM users WHERE id='e2e_user'", [], |r| r.get(0)
@@ -471,7 +471,7 @@ mod tests {
         insert_card(&conn, "c_lapse", "e2e_user", "遗忘测试", "");
 
         // fail
-        submit_review(&conn, "c_lapse", 1, "spelling", "fail", "e2e_user").unwrap();
+        submit_review(&conn, "c_lapse", 1, "spelling", "fail", "e2e_user", None).unwrap();
         let lapses: i32 = conn.query_row(
             "SELECT lapses FROM card_memory WHERE card_id='c_lapse'", [], |r| r.get(0)
         ).unwrap();
@@ -479,7 +479,7 @@ mod tests {
 
         // pass
         conn.execute("UPDATE card_memory SET due=0 WHERE card_id='c_lapse'", []).unwrap();
-        submit_review(&conn, "c_lapse", 3, "spelling", "pass", "e2e_user").unwrap();
+        submit_review(&conn, "c_lapse", 3, "spelling", "pass", "e2e_user", None).unwrap();
         let lapses2: i32 = conn.query_row(
             "SELECT lapses FROM card_memory WHERE card_id='c_lapse'", [], |r| r.get(0)
         ).unwrap();

@@ -1,7 +1,8 @@
 /// CoEvo API Configuration
 class ApiConfig {
-  /// Default development URL
-  static const String baseUrl = 'http://localhost:8080';
+  /// API 服务器地址
+  /// 使用 IP 而非域名以避免移动运营商 DNS 解析问题
+  static const String baseUrl = 'http://<OLD_VPS_IP>:8080';
 
   /// Production URL placeholder
   static const String productionUrl = 'https://api.coevo.app';

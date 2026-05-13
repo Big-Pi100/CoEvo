@@ -63,24 +63,31 @@ class _SkippedListScreenState extends ConsumerState<SkippedListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('跳过的概念'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () { setState(() => _isLoading = true); _load(); },
-          ),
-        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _items.isEmpty
-              ? const EmptyState(
-                  icon: Icons.inbox,
-                  title: '没有跳过的概念',
-                  subtitle: '对话中弹出的知识点如果不感兴趣可以跳过',
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _items.length,
+          : RefreshIndicator(
+              onRefresh: () async {
+                setState(() => _isLoading = true);
+                await _load();
+              },
+              child: _items.isEmpty
+                  ? ListView(
+                      children: [
+                        SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.6,
+                          child: const EmptyState(
+                            icon: Icons.inbox,
+                            title: '没有跳过的概念',
+                            subtitle: '对话中弹出的知识点如果不感兴趣可以跳过',
+                          ),
+                        ),
+                      ],
+                    )
+                  : ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _items.length,
                   itemBuilder: (_, i) {
                     final item = _items[i];
                     final front = item['front'] as String? ?? '';
@@ -111,6 +118,7 @@ class _SkippedListScreenState extends ConsumerState<SkippedListScreen> {
                     );
                   },
                 ),
+              ),
     );
   }
 }

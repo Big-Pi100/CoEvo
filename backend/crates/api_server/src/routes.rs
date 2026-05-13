@@ -2,10 +2,11 @@
 //!
 //! 复用 LinguaFlow routes.rs 的模式
 
-use axum::{Router, routing::{get, post, put, delete}, Json, extract::{Path, Query}};
+use axum::{Router, routing::{get, post, delete}, Json, extract::{Path, Query}};
 use axum::extract::ws::WebSocketUpgrade;
 use axum::http::HeaderMap;
 use serde::Deserialize;
+use std::sync::OnceLock;
 use std::collections::HashMap;
 
 use chat_engine::llm_caller::LlmConfig;
@@ -47,6 +48,10 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/user/{user_id}/learning-report", get(learning_report_handler))
         .route("/api/user/{user_id}/activity", get(activity_handler))
         .route("/api/user/{user_id}/weekly-report", get(weekly_report_handler))
+        // Admin
+        .route("/api/admin/users", get(admin_users_handler))
+        // STT
+        .route("/api/stt", post(stt_handler))
 }
 
 // ════════════════════════════════════════════
@@ -439,8 +444,55 @@ async fn cards_skip_delete_handler(
     Path(skip_id): Path<String>,
 ) -> Json<serde_json::Value> {
     let conn = crate::db_pool::get_conn();
+
+    // 1. 读取跳过的概念记录
+    let skipped = match conn.query_row(
+        "SELECT user_id, front, domain, source_text, skipped_at FROM skipped_concepts WHERE id = ?1",
+        rusqlite::params![skip_id],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, i64>(4)?,
+            ))
+        }
+    ) {
+        Ok(s) => s,
+        Err(e) => return Json(serde_json::json!({"error": format!("Skip not found: {}", e)})),
+    };
+
+    let (user_id, front, domain, source_text, _skipped_at) = skipped;
+
+    // 2. 重新创建卡片
+    let now = chrono::Utc::now().timestamp();
+    let card_id = format!("card_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap());
+    let back = source_text.clone().unwrap_or_default();
+    let domain_str = domain.clone().unwrap_or_default();
+
+    if let Err(e) = conn.execute(
+        "INSERT INTO cards (id, user_id, domain, card_type, front, back, source_sentence, created_at)
+         VALUES (?1, ?2, ?3, 'concept', ?4, ?5, ?6, ?7)",
+        rusqlite::params![card_id, user_id, domain_str, front, back, source_text, now],
+    ) {
+        return Json(serde_json::json!({"error": format!("Card insert: {}", e)}));
+    }
+
+    // 3. 创建卡片记忆状态（新卡片，今天到期）
+    if let Err(e) = conn.execute(
+        "INSERT INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
+         VALUES (?1, 0, 0.3, 1.0, ?2, 0, 0, 0)",
+        rusqlite::params![card_id, now],
+    ) {
+        // 回滚卡片
+        let _ = conn.execute("DELETE FROM cards WHERE id = ?1", rusqlite::params![card_id]);
+        return Json(serde_json::json!({"error": format!("Card memory insert: {}", e)}));
+    }
+
+    // 4. 删除跳过记录
     match conn.execute("DELETE FROM skipped_concepts WHERE id = ?1", rusqlite::params![skip_id]) {
-        Ok(_) => Json(serde_json::json!({"status": "removed"})),
+        Ok(_) => Json(serde_json::json!({"status": "restored", "card_id": card_id})),
         Err(e) => Json(serde_json::json!({"error": format!("Delete: {}", e)})),
     }
 }
@@ -865,14 +917,22 @@ async fn preferences_put_handler(
 
 // ── Avatar ──
 
-const AVATAR_DIR: &str = "data/avatars";
+static AVATAR_DIR: OnceLock<String> = OnceLock::new();
+
+pub fn set_avatar_dir(dir: &str) {
+    let _ = AVATAR_DIR.set(dir.to_string());
+}
+
+fn avatar_dir() -> &'static str {
+    AVATAR_DIR.get().map(|s| s.as_str()).unwrap_or("data/avatars")
+}
 
 async fn avatar_upload_handler(
     Path(user_id): Path<String>,
     mut multipart: axum::extract::Multipart,
 ) -> Json<serde_json::Value> {
     use tokio::io::AsyncWriteExt;
-    let _ = tokio::fs::create_dir_all(AVATAR_DIR).await;
+    let _ = tokio::fs::create_dir_all(avatar_dir()).await;
     while let Ok(Some(field)) = multipart.next_field().await {
         let data = match field.bytes().await {
             Ok(d) => d,
@@ -881,7 +941,7 @@ async fn avatar_upload_handler(
         if data.is_empty() || data.len() > 5 * 1024 * 1024 {
             return Json(serde_json::json!({"error": "File too large (max 5MB)"}));
         }
-        let path = format!("{}/{}.png", AVATAR_DIR, user_id);
+        let path = format!("{}/{}.png", avatar_dir(), user_id);
         let mut file = match tokio::fs::File::create(&path).await {
             Ok(f) => f,
             Err(e) => return Json(serde_json::json!({"error": format!("Write: {}", e)})),
@@ -897,7 +957,7 @@ async fn avatar_upload_handler(
 async fn avatar_get_handler(
     Path(user_id): Path<String>,
 ) -> Result<(axum::http::StatusCode, [(&'static str, &'static str); 1], Vec<u8>), (axum::http::StatusCode, &'static str)> {
-    let path = format!("{}/{}.png", AVATAR_DIR, user_id);
+    let path = format!("{}/{}.png", avatar_dir(), user_id);
     match tokio::fs::read(&path).await {
         Ok(data) => Ok((axum::http::StatusCode::OK, [("Content-Type", "image/png")], data)),
         Err(_) => Err((axum::http::StatusCode::NOT_FOUND, "No avatar")),
@@ -1213,4 +1273,167 @@ async fn weekly_report_handler(
         "new_achievements": weekly_achievements,
         "active_plan": plan_goal,
     }))
+}
+
+// ════════════════════════════════════════════
+// Admin
+// ════════════════════════════════════════════
+
+#[derive(Deserialize)]
+struct AdminUsersQuery {
+    q: String,
+}
+
+async fn admin_users_handler(
+    headers: HeaderMap,
+    Query(query): Query<AdminUsersQuery>,
+) -> Json<serde_json::Value> {
+    // 验证管理员密钥
+    let admin_key = std::env::var("COEVO_ADMIN_KEY").unwrap_or_default();
+    let got = headers.get("x-admin-key").and_then(|v| v.to_str().ok()).unwrap_or("");
+    if admin_key.is_empty() || got != admin_key {
+        return Json(serde_json::json!({"error": "unauthorized"}));
+    }
+
+    let conn = crate::db_pool::get_conn();
+    let pattern = format!("%{}%", query.q);
+
+    let mut stmt = conn.prepare(
+        "SELECT id, username, created_at FROM users WHERE id LIKE ?1 OR username LIKE ?1 LIMIT 20"
+    ).unwrap();
+
+    let users: Vec<serde_json::Value> = stmt.query_map(
+        rusqlite::params![pattern],
+        |row| {
+            let user_id: String = row.get(0)?;
+            Ok((user_id, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+        },
+    ).unwrap().filter_map(|r| r.ok()).map(|(uid, uname, created)| {
+        let expires: Option<String> = conn.query_row(
+            "SELECT value FROM user_preferences WHERE user_id = ?1 AND key = 'subscription_expires'",
+            rusqlite::params![uid],
+            |row| row.get(0),
+        ).ok();
+        serde_json::json!({
+            "user_id": uid,
+            "username": uname,
+            "created_at": created,
+            "subscription_expires": expires,
+        })
+    }).collect();
+
+    Json(serde_json::json!({"users": users}))
+}
+
+// ════════════════════════════════════════════
+// ════════════════════════════════════════════
+// STT Proxy — 录音 → ffmpeg转WAV → 科大讯飞 → 返回文字
+// ════════════════════════════════════════════
+
+async fn stt_handler(
+    body: axum::body::Bytes,
+) -> Json<serde_json::Value> {
+    let appid = std::env::var("IFLYTEK_APPID").unwrap_or_default();
+    let api_key = std::env::var("IFLYTEK_API_KEY").unwrap_or_default();
+    let api_secret = std::env::var("IFLYTEK_API_SECRET").unwrap_or_default();
+    if appid.is_empty() || api_key.is_empty() || api_secret.is_empty() {
+        return Json(serde_json::json!({"error": "iFlytek credentials not configured"}));
+    }
+
+    // 用 ffmpeg 把 M4A/AAC 转成 16kHz 单声道 PCM
+    let pid = std::process::id();
+    let in_path = std::path::Path::new("/tmp").join(format!("stt_in_{}", pid));
+    let out_path = std::path::Path::new("/tmp").join(format!("stt_out_{}.pcm", pid));
+    let _ = std::fs::write(&in_path, &body);
+    tracing::info!("STT: received {} bytes, wrote to {}", body.len(), in_path.display());
+    let ffmpeg_out = std::process::Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-i", &in_path.to_string_lossy(),
+            "-ar", "16000",
+            "-ac", "1",
+            "-sample_fmt", "s16",
+            "-f", "s16le",
+            &out_path.to_string_lossy(),
+        ])
+        .output();
+    let _ = std::fs::remove_file(&in_path);
+
+    let raw_pcm = match ffmpeg_out {
+        Ok(o) if o.status.success() => {
+            let data = std::fs::read(&out_path).unwrap_or_default();
+            let _ = std::fs::remove_file(&out_path);
+            data
+        }
+        Ok(o) => {
+            let msg = String::from_utf8_lossy(&o.stderr).to_string();
+            return Json(serde_json::json!({"error": format!("ffmpeg: {}", msg)}));
+        }
+        Err(e) => return Json(serde_json::json!({"error": format!("ffmpeg exec: {}", e)})),
+    };
+    if raw_pcm.is_empty() {
+        return Json(serde_json::json!({"error": "empty pcm after ffmpeg"}));
+    }
+    tracing::info!("STT: ffmpeg ok, pcm={} bytes, sending to iFlytek", raw_pcm.len());
+
+    let cur_time = chrono::Utc::now().timestamp().to_string();
+    let param_json = serde_json::json!({
+        "engine_type": "sms16k",
+        "aue": "raw",
+    });
+    let param_b64 = base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        param_json.to_string(),
+    );
+    let checksum_input = format!("{}{}{}", api_key, cur_time, param_b64);
+    let checksum = format!("{:x}", md5::compute(checksum_input.as_bytes()));
+
+    let client = reqwest::Client::new();
+    // 讯飞 REST API 要求: audio 先 Base64 编码，再 URL 编码，作为 form 参数发送
+    let audio_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &raw_pcm);
+    let audio_form = audio_b64
+        .replace('+', "%2B")
+        .replace('/', "%2F")
+        .replace('=', "%3D");
+    let form_body = format!("audio={}", audio_form);
+    match client
+        .post("https://api.xfyun.cn/v1/service/v1/iat")
+        .header("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
+        .header("X-Appid", &appid)
+        .header("X-CurTime", &cur_time)
+        .header("X-Param", &param_b64)
+        .header("X-CheckSum", &checksum)
+        .body(form_body)
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let text = resp.text().await.unwrap_or_default();
+            tracing::info!("iFlytek response ({}): {}", status, &text[..text.len().min(500)]);
+            if status == 200 {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                    let code = json["code"].as_str().unwrap_or("??");
+                    if code == "0" {
+                        if let Some(t) = json["data"].as_str() {
+                            if !t.is_empty() {
+                                tracing::info!("STT: success, text='{}'", t);
+                                return Json(serde_json::json!({"text": t}));
+                            }
+                        }
+                        tracing::warn!("STT: code=0 but data empty: {}", text);
+                        return Json(serde_json::json!({"text": "", "_debug": text}));
+                    }
+                    let desc = json["desc"].as_str().unwrap_or(&text);
+                    tracing::error!("STT: code={} desc={}", code, desc);
+                    return Json(serde_json::json!({"error": format!("iFlytek code={}: {}", code, desc)}));
+                }
+                tracing::error!("STT: parse error: {}", text);
+                Json(serde_json::json!({"error": format!("iFlytek parse: {}", text)}))
+            } else {
+                Json(serde_json::json!({"error": format!("iFlytek {}: {}", status, text)}))
+            }
+        }
+        Err(e) => Json(serde_json::json!({"error": format!("STT proxy: {}", e)})),
+    }
 }

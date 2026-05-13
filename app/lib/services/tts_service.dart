@@ -24,6 +24,7 @@ class TtsService extends ChangeNotifier {
   TtsService() {
     _tts.setCompletionHandler(() => state = TtsState.stopped);
     _tts.setErrorHandler((msg) {
+      debugPrint('TTS error: $msg');
       state = TtsState.stopped;
     });
   }
@@ -110,24 +111,29 @@ class TtsService extends ChangeNotifier {
   /// 后台加载可用音色（Web 平台可能延迟，需重试）
   Future<void> _loadVoices() async {
     for (var attempt = 0; attempt < 5; attempt++) {
-      final voices = await _tts.getVoices;
-      if (voices is List && voices.isNotEmpty) {
-        _availableVoices = voices.cast<Map>().map((m) => Map<String, dynamic>.from(m)).toList();
-        // 加载完成后恢复首选音色
-        final prefs = await SharedPreferences.getInstance();
-        final savedName = prefs.getString('tts_voice_name');
-        final savedLocale = prefs.getString('tts_voice_locale');
-        if (savedName != null && savedLocale != null) {
-          _selectedVoice = _availableVoices.cast<Map<String, dynamic>?>().firstWhere(
-            (v) => v?['name'] == savedName && v?['locale'] == savedLocale,
-            orElse: () => null,
-          );
+      try {
+        final voices = await _tts.getVoices;
+        if (voices is List && voices.isNotEmpty) {
+          _availableVoices = voices.cast<Map>().map((m) => Map<String, dynamic>.from(m)).toList();
+          final prefs = await SharedPreferences.getInstance();
+          final savedName = prefs.getString('tts_voice_name');
+          final savedLocale = prefs.getString('tts_voice_locale');
+          if (savedName != null && savedLocale != null) {
+            _selectedVoice = _availableVoices.cast<Map<String, dynamic>?>().firstWhere(
+              (v) => v?['name'] == savedName && v?['locale'] == savedLocale,
+              orElse: () => null,
+            );
+          }
+          notifyListeners();
+          return;
         }
-        notifyListeners();
-        return;
+      } catch (_) {
+        // 部分 Android 设备不支持 getVoices，静默忽略
       }
       await Future.delayed(const Duration(milliseconds: 500));
     }
+    // 无可用音色时也通知 UI（显示系统默认）
+    notifyListeners();
   }
 
   /// 可用音色列表
@@ -180,21 +186,26 @@ class TtsService extends ChangeNotifier {
   Future<void> speak(String text, {String? language}) async {
     if (!_enabled || text.isEmpty) return;
 
-    await _tts.stop();
-    await Future.delayed(const Duration(milliseconds: 100));
+    try {
+      await _tts.stop();
+      await Future.delayed(const Duration(milliseconds: 100));
 
-    if (_selectedVoice != null) {
-      await _tts.setVoice(Map<String, String>.from(_selectedVoice! as Map));
-    } else {
-      final lang = language ?? _detectLanguage(text);
-      await _tts.setLanguage(lang);
-    }
-    await _tts.setSpeechRate(_speechRate);
-    await _tts.setVolume(1.0);
+      if (_selectedVoice != null) {
+        await _tts.setVoice(Map<String, String>.from(_selectedVoice! as Map));
+      } else {
+        final lang = language ?? _detectLanguage(text);
+        await _tts.setLanguage(lang);
+      }
+      await _tts.setSpeechRate(_speechRate);
+      await _tts.setVolume(1.0);
 
-    state = TtsState.playing;
-    final result = await _tts.speak(text);
-    if (result != 1) {
+      state = TtsState.playing;
+      final result = await _tts.speak(text);
+      if (result != 1) {
+        state = TtsState.stopped;
+      }
+    } catch (e) {
+      debugPrint('TTS speak error: $e');
       state = TtsState.stopped;
     }
   }
@@ -208,8 +219,11 @@ class TtsService extends ChangeNotifier {
   /// Simple language detection: check for CJK characters
   String _detectLanguage(String text) {
     final hasCjk = text.runes.any((r) =>
-        (r >= 0x4E00 && r <= 0x9FFF) || // CJK Unified
-        (r >= 0x4E00 && r <= 0x9FFF)    // (kept for compatibility)
+        (r >= 0x4E00 && r <= 0x9FFF) || // CJK Unified Ideographs
+        (r >= 0x3400 && r <= 0x4DBF) || // CJK Extension A
+        (r >= 0x2E80 && r <= 0x2EFF) || // CJK Radicals
+        (r >= 0x3000 && r <= 0x303F) || // CJK Symbols
+        (r >= 0xFF00 && r <= 0xFFEF)    // Fullwidth Forms
     );
     return hasCjk ? 'zh-CN' : 'en-US';
   }

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../models/coevo_models.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
@@ -41,6 +42,9 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadCards());
+    ref.listenManual(cardRefreshProvider, (prev, next) {
+      if (prev != next && mounted) _loadCards();
+    });
   }
 
   @override
@@ -362,20 +366,31 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     if (_cards.isEmpty) {
       return Scaffold(
         appBar: AppBar(title: const Text('复习')),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+        body: RefreshIndicator(
+          onRefresh: _loadCards,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
             children: [
-              Icon(Icons.check_circle_outline, size: 64, color: Colors.green.shade300),
-              const SizedBox(height: 16),
-              Text('今日复习完成！', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 8),
-              Text('共复习 $_reviewedCount 张卡片',
-                  style: TextStyle(color: Colors.grey.shade600)),
-              const SizedBox(height: 24),
-              FilledButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('返回'),
+              SizedBox(
+                height: MediaQuery.of(context).size.height * 0.6,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.check_circle_outline, size: 64, color: Colors.green.shade300),
+                      const SizedBox(height: 16),
+                      Text('今日复习完成！', style: Theme.of(context).textTheme.titleLarge),
+                      const SizedBox(height: 8),
+                      Text('共复习 $_reviewedCount 张卡片',
+                          style: TextStyle(color: Colors.grey.shade600)),
+                      const SizedBox(height: 24),
+                      FilledButton(
+                        onPressed: () => context.go('/chat'),
+                        child: const Text('返回'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
@@ -397,7 +412,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           ),
         ],
       ),
-      body: _buildQueue(),
+      body: RefreshIndicator(
+        onRefresh: _loadCards,
+        child: _buildQueue(),
+      ),
     );
   }
 
@@ -427,6 +445,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
 
     return ListView.builder(
       controller: _scrollController,
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       itemCount: _cards.length,
       itemBuilder: (_, i) {
@@ -575,26 +594,32 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             ),
             child: Column(
               children: [
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  transitionBuilder: (child, animation) {
-                    return FadeTransition(
-                      opacity: animation,
-                      child: ScaleTransition(scale: animation, child: child),
-                    );
-                  },
-                  child: Text(
-                    key: ValueKey('${_isVerifying}_$_isFlipped'),
-                    _isVerifying || !_isFlipped ? card.front : card.back,
-                    style: TextStyle(
-                      fontSize: _isVerifying || !_isFlipped ? 18 : 16,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFF1A1A2E),
-                      height: 1.4,
+                // 卡片内容（考试模式降低不透明度）
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      transitionBuilder: (child, animation) {
+                        return FadeTransition(
+                          opacity: animation,
+                          child: ScaleTransition(scale: animation, child: child),
+                        );
+                      },
+                      child: Text(
+                        key: ValueKey('${_isVerifying}_$_isFlipped'),
+                        _isVerifying || !_isFlipped ? card.front : card.back,
+                        style: TextStyle(
+                          fontSize: _isVerifying || !_isFlipped ? 18 : 16,
+                          fontWeight: FontWeight.w600,
+                          color: _isVerifying
+                              ? const Color(0xCC1A1A2E) // 80% 可见度
+                              : const Color(0xFF1A1A2E),
+                          height: 1.4,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
                     ),
-                    textAlign: TextAlign.center,
                   ),
-                ),
                 if (!_isVerifying && _isFlipped && card.sourceSentence != null) ...[
                   const SizedBox(height: 8),
                   AnimatedSwitcher(
@@ -627,7 +652,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                 icon: const Icon(Icons.volume_up, size: 18),
                 label: Text(_isFlipped ? '朗读释义' : '朗读概念'),
                 onPressed: () => tts.speak(
-                  _isFlipped ? card.back : card.front,
+                  (_isFlipped ? card.back : card.front).replaceAll('**', ''),
                   language: 'zh-CN',
                 ),
               ),

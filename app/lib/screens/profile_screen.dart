@@ -163,21 +163,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         title: const Text('个人'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () { setState(() => _isLoading = true); _load(); },
-          ),
-          IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () {
-              ref.read(authProvider.notifier).logout();
-              context.go('/auth');
+            onPressed: () async {
+              await ref.read(authProvider.notifier).logout();
+              if (context.mounted) context.go('/auth');
             },
           ),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _buildContent(context, auth),
+          : RefreshIndicator(
+              onRefresh: () async {
+                setState(() => _isLoading = true);
+                await _load();
+              },
+              child: _buildContent(context, auth),
+            ),
     );
   }
 
@@ -324,49 +326,51 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     const SizedBox(height: 8),
 
                     // 音色
-                    if (voices.isNotEmpty) ...[
-                      Row(
-                        children: [
-                          const Icon(Icons.record_voice_over, size: 18),
-                          const SizedBox(width: 8),
-                          Text('音色', style: Theme.of(context).textTheme.bodyMedium),
-                        ],
+                    Row(
+                      children: [
+                        const Icon(Icons.record_voice_over, size: 18),
+                        const SizedBox(width: 8),
+                        Text('音色', style: Theme.of(context).textTheme.bodyMedium),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: tts.selectedVoice?['name'] as String?,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(),
                       ),
-                      const SizedBox(height: 8),
-                      DropdownButtonFormField<String>(
-                        value: tts.selectedVoice?['name'] as String?,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          border: OutlineInputBorder(),
-                        ),
-                        hint: const Text('系统默认 (zh-CN)'),
-                        items: voices.map<DropdownMenuItem<String>>((v) {
-                          final name = v['name'] ?? '';
-                          final locale = v['locale'] ?? '';
-                          return DropdownMenuItem(
-                            value: name as String,
-                            child: Text('$name ($locale)',
-                                overflow: TextOverflow.ellipsis),
-                          );
-                        }).toList(),
-                        onChanged: (voiceName) {
-                          if (voiceName != null) {
-                            final match = voices.cast<Map<String, dynamic>?>().firstWhere(
-                              (v) => v?['name'] == voiceName,
-                              orElse: () => null,
+                      hint: const Text('系统默认 (zh-CN)'),
+                      items: [
+                        const DropdownMenuItem(value: '', child: Text('系统默认 (zh-CN)')),
+                        if (voices.isNotEmpty)
+                          ...voices.map<DropdownMenuItem<String>>((v) {
+                            final name = v['name'] ?? '';
+                            final locale = v['locale'] ?? '';
+                            return DropdownMenuItem(
+                              value: name as String,
+                              child: Text('$name ($locale)',
+                                  overflow: TextOverflow.ellipsis),
                             );
-                            if (match != null) {
-                              tts.selectVoice(match);
-                              // 选中后自动试听
-                              tts.speak('你好，这是试听语音',
-                                  language: 'zh-CN');
-                            }
-                          }
-                        },
-                      ),
-                    ],
+                          }),
+                      ],
+                      onChanged: (voiceName) {
+                        if (voiceName == null || voiceName.isEmpty) {
+                          tts.selectVoice(null);
+                          return;
+                        }
+                        final match = voices.cast<Map<String, dynamic>?>().firstWhere(
+                          (v) => v?['name'] == voiceName,
+                          orElse: () => null,
+                        );
+                        if (match != null) {
+                          tts.selectVoice(match);
+                          tts.speak('你好，这是试听语音', language: 'zh-CN');
+                        }
+                      },
+                    ),
                   ],
                 ),
               ),

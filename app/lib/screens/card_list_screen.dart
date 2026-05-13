@@ -42,6 +42,9 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     super.initState();
     _searchController.addListener(_applyFilters);
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadCards());
+    ref.listenManual(cardRefreshProvider, (prev, next) {
+      if (prev != next) _loadCards();
+    });
   }
 
   @override
@@ -274,7 +277,15 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('我的卡片')),
+      appBar: AppBar(
+        title: const Text('我的卡片'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadCards,
+          ),
+        ],
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _allCards.isEmpty
@@ -415,7 +426,10 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                           ? Center(
                               child: Text('没有匹配的卡片',
                                   style: TextStyle(color: Colors.grey.shade500)))
-                          : ListView.builder(
+                          : RefreshIndicator(
+                              onRefresh: _loadCards,
+                              child: ListView.builder(
+                              physics: const AlwaysScrollableScrollPhysics(),
                               padding: const EdgeInsets.symmetric(horizontal: 16),
                               itemCount: _filteredCards.length,
                               itemBuilder: (_, i) {
@@ -560,6 +574,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                               },
                             ),
                           ),
+                        ),
                   ],
                 ),
     );

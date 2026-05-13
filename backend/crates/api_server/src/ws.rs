@@ -36,6 +36,32 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     }
                 };
 
+                // 检查订阅状态
+                {
+                    let conn = crate::db_pool::get_conn();
+                    let expires: Option<String> = conn.query_row(
+                        "SELECT value FROM user_preferences WHERE user_id = ?1 AND key = 'subscription_expires'",
+                        rusqlite::params![chat_req.user_id],
+                        |row| row.get(0),
+                    ).ok().flatten();
+                    let now = chrono::Utc::now().format("%Y-%m-%d").to_string();
+                    let expired = match &expires {
+                        Some(e) => e.as_str() < now.as_str(),
+                        None => true, // 无记录 = 未付费
+                    };
+                    if expired {
+                        let msg = if expires.is_some() {
+                            "subscription_expired".to_string()
+                        } else {
+                            "subscription_required".to_string()
+                        };
+                        let _ = ws.send(Message::Text(
+                            json!({"type":"error","content": msg}).to_string().into()
+                        )).await;
+                        continue;
+                    }
+                }
+
                 // 保存用户消息
                 let now_str = chrono::Utc::now().to_rfc3339();
                 {
@@ -190,15 +216,32 @@ pub async fn handle_ws(mut ws: WebSocket) {
                                 let conn = crate::db_pool::get_conn();
                                 let is_new = update.get("is_new_plan").and_then(|v| v.as_bool()).unwrap_or(false);
                                 if is_new {
-                                    let id = uuid::Uuid::new_v4().to_string();
+                                    // 检查是否已有学习计划（防止重复创建）
+                                    let existing_plan: Option<String> = conn.query_row(
+                                        "SELECT id FROM learning_plans WHERE conversation_id = ?1 AND mode != 'deleted' LIMIT 1",
+                                        rusqlite::params![chat_req.conversation_id],
+                                        |row| row.get(0)
+                                    ).ok();
+
                                     let now = chrono::Utc::now().to_rfc3339();
                                     let goal = update["goal"].as_str().unwrap_or("");
                                     let mut plan = update.clone();
                                     let _ = plan.as_object_mut().map(|o| { o.remove("is_new_plan"); o.remove("goal"); });
-                                    let _ = conn.execute(
-                                        "INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_json, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, 'structured', ?6, ?7, ?7)",
-                                        rusqlite::params![id, chat_req.user_id, chat_req.conversation_id, goal, "", plan.to_string(), now],
-                                    );
+
+                                    if let Some(existing_id) = existing_plan {
+                                        // 已有计划，更新而非新建
+                                        let _ = conn.execute(
+                                            "UPDATE learning_plans SET goal=?1, plan_json=?2, updated_at=?3 WHERE id=?4",
+                                            rusqlite::params![goal, plan.to_string(), now, existing_id],
+                                        );
+                                    } else {
+                                        // 无已有计划，创建新计划
+                                        let id = uuid::Uuid::new_v4().to_string();
+                                        let _ = conn.execute(
+                                            "INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_json, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, 'structured', ?6, ?7, ?7)",
+                                            rusqlite::params![id, chat_req.user_id, chat_req.conversation_id, goal, "", plan.to_string(), now],
+                                        );
+                                    }
                                     final_reply = render_plan(&update);
                                     plan_updated = true;
                                 } else {

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="刻意进化学习 — AI 对话中自动提取概念，FSRS 记忆曲线复习，客观验证内化。如果不想被 AI 取代，你需要刻意进化。">
+  <meta name="theme-color" content="#1A1A2E">
+  <meta property="og:title" content="刻意进化学习 · CoEvo">
+  <meta property="og:description" content="AI 对话 + 记忆曲线复习 + 客观验证，刻意记住，真正进化。">
+  <meta property="og:type" content="website">
+  <title>刻意进化学习 · CoEvo</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ─── Navigation ─── -->
+  <nav class="navbar" id="navbar">
+    <div class="nav-container">
+      <a href="#" class="nav-logo">
+        <span class="logo-icon">✦</span>
+        <span class="logo-text">刻意进化</span>
+      </a>
+      <div class="nav-links" id="navLinks">
+        <a href="#features" class="nav-link">产品</a>
+        <a href="#how-it-works" class="nav-link">原理</a>
+        <a href="#download" class="nav-link">下载</a>
+        <a href="#about" class="nav-link">关于</a>
+      </div>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ─── Hero ─── -->
+  <section class="hero" id="hero">
+    <canvas id="particleCanvas"></canvas>
+    <div class="hero-overlay"></div>
+    <div class="hero-content">
+      <div class="hero-badge">v1.0.0 · Android 8.0+</div>
+      <h1 class="hero-title">
+        如果不想被 AI 取代
+        <br>
+        <span class="hero-highlight">你需要刻意进化</span>
+      </h1>
+      <p class="hero-subtitle">
+        每一次 AI 对话，每一次刻意复习练习，都是你的进化。
+        <br>AI 定制学习计划，追踪每个阶段的成长。
+      </p>
+      <div class="hero-actions">
+        <a href="#download" class="btn-primary magnetic-btn">
+          <span class="btn-icon">📥</span>
+          下载 APK
+        </a>
+        <a href="#how-it-works" class="btn-secondary">了解原理</a>
+      </div>
+      <div class="hero-stats">
+        <div class="stat-item">
+          <span class="stat-number" data-target="10000">0</span><span class="stat-plus">+</span>
+          <span class="stat-label">卡片</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-number">5</span>
+          <span class="stat-label">领域覆盖</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-number">FSRS</span>
+          <span class="stat-label">记忆算法</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Features ─── -->
+  <section class="features" id="features">
+    <div class="section-header">
+      <span class="section-tag">功能</span>
+      <h2 class="section-title">为什么选择刻意进化</h2>
+      <p class="section-desc">AI 对话 + 学习计划 + 记忆曲线 + 客观验证，四维一体</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card glass-card" data-delay="0">
+        <div class="feature-icon">🤖</div>
+        <h3 class="feature-title">AI 对话学习</h3>
+        <p class="feature-desc">和 AI 对话学习任何东西，系统自动提取值得记住的概念，你确认就能制成卡片。</p>
+      </div>
+      <div class="feature-card glass-card" data-delay="100">
+        <div class="feature-icon">📚</div>
+        <h3 class="feature-title">记忆曲线复习</h3>
+        <p class="feature-desc">基于 FSRS 算法在最佳时间弹出复习卡片，事半功倍，而不是盲目刷题。</p>
+      </div>
+      <div class="feature-card glass-card" data-delay="200">
+        <div class="feature-icon">📋</div>
+        <h3 class="feature-title">学习计划定制</h3>
+        <p class="feature-desc">告诉 AI 你想学什么，自动生成分阶段学习计划，实时追踪进度，成就感满满。</p>
+      </div>
+      <div class="feature-card glass-card" data-delay="300">
+        <div class="feature-icon">✅</div>
+        <h3 class="feature-title">客观验证</h3>
+        <p class="feature-desc">翻牌回忆 + AI 快问快答 + 拼写验证，三种方式确保你真正记住了知识。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── How It Works ─── -->
+  <section class="how-it-works" id="how-it-works">
+    <div class="section-header">
+      <span class="section-tag">流程</span>
+      <h2 class="section-title">从对话到掌握</h2>
+      <p class="section-desc">AI 制定学习计划 → 逐阶段推进 → 每个知识点都不落下</p>
+    </div>
+    <div class="steps-container">
+      <div class="step-item" data-step="1">
+        <div class="step-number">01</div>
+        <div class="step-content">
+          <h3>AI 对话</h3>
+          <p>问你感兴趣的领域，和 AI 深度交流。告诉 AI 你想系统学习某个主题。</p>
+        </div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step-item" data-step="2">
+        <div class="step-number">02</div>
+        <div class="step-content">
+          <h3>制定计划</h3>
+          <p>AI 自动生成分阶段学习计划，设定目标、里程碑和任务列表，你确认后开始执行。</p>
+        </div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step-item" data-step="3">
+        <div class="step-number">03</div>
+        <div class="step-content">
+          <h3>自动制卡</h3>
+          <p>对话中 AI 提取关键概念，你确认即生成记忆卡片，随计划推进不断积累。</p>
+        </div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step-item" data-step="4">
+        <div class="step-number">04</div>
+        <div class="step-content">
+          <h3>定时复习</h3>
+          <p>FSRS 算法在最佳时间提醒你复习，巩固每个知识点。</p>
+        </div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step-item" data-step="5">
+        <div class="step-number">05</div>
+        <div class="step-content">
+          <h3>追踪进度</h3>
+          <p>实时查看学习计划完成度、已掌握概念数、连续学习天数，每个进步都看得见。</p>
+        </div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step-item" data-step="6">
+        <div class="step-number">06</div>
+        <div class="step-content">
+          <h3>真正掌握</h3>
+          <p>日积月累，刻意记住 → 真正进化。成就系统见证你的成长轨迹。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Download ─── -->
+  <section class="download" id="download">
+    <div class="section-header">
+      <span class="section-tag">下载</span>
+      <h2 class="section-title">开始你的进化</h2>
+      <p class="section-desc">免费 · 无广告 · 无需注册</p>
+    </div>
+    <div class="download-card glass-card">
+      <div class="download-info">
+        <div class="download-icon">📱</div>
+        <h3>CoEvo v1.0.0</h3>
+        <ul class="download-meta">
+          <li>📦 52MB</li>
+          <li>🤖 Android 8.0+</li>
+          <li>🔒 完全免费</li>
+        </ul>
+        <a href="app-release.apk" class="btn-primary btn-download magnetic-btn" download>
+          <span class="btn-icon">📥</span>
+          下载 APK
+        </a>
+        <p class="download-note">下载后直接安装即可，首次启动会自动初始化</p>
+      </div>
+      <div class="download-qr">
+        <div class="qr-placeholder">
+          <span>📱</span>
+          <span>扫码下载</span>
+          <span class="qr-hint">手机扫码直接安装</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── About / Footer ─── -->
+  <footer class="footer" id="about">
+    <div class="footer-content">
+      <div class="footer-brand">
+        <span class="footer-logo">✦ 刻意进化</span>
+        <p class="footer-tagline">如果不想被 AI 取代，你需要刻意进化。</p>
+      </div>
+      <div class="footer-links">
+        <div class="footer-col">
+          <h4>产品</h4>
+          <a href="#features">功能</a>
+          <a href="#how-it-works">原理</a>
+          <a href="#download">下载</a>
+        </div>
+        <div class="footer-col">
+          <h4>技术</h4>
+          <a href="https://flutter.dev" target="_blank" rel="noopener">Flutter</a>
+          <a href="https://www.rust-lang.org" target="_blank" rel="noopener">Rust</a>
+          <a href="https://github.com" target="_blank" rel="noopener">GitHub</a>
+        </div>
+        <div class="footer-col">
+          <h4>关于</h4>
+          <a href="mailto:contact@keyievolution.fun">联系</a>
+          <a href="#">隐私政策</a>
+          <a href="#">用户协议</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>© 2026 刻意进化学习 · CoEvo</p>
+      <p class="icp-info">沪ICP备xxxxxxxx号-1</p>
+    </div>
+  </footer>
+
+  <!-- ─── Scripts ─── -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="js/particles.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

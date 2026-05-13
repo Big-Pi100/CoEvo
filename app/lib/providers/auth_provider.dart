@@ -6,6 +6,9 @@ const _tokenKey = 'coevo_auth_token';
 const _userIdKey = 'coevo_auth_user_id';
 const _usernameKey = 'coevo_auth_username';
 
+/// 卡片刷新信号 — 制卡成功后递增
+final cardRefreshProvider = StateProvider<int>((ref) => 0);
+
 class AuthState {
   final bool isAuthenticated;
   final String? userId;

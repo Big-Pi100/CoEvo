@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'theme/app_theme.dart';
 import 'screens/auth_screen.dart';
 import 'screens/chat_screen.dart';
+import 'screens/admin_screen.dart';
 import 'screens/review_screen.dart';
 import 'screens/card_list_screen.dart';
 import 'screens/profile_screen.dart';
@@ -22,6 +23,10 @@ final goRouter = GoRouter(
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             FadeTransition(opacity: animation, child: child),
       ),
+    ),
+    GoRoute(
+      path: '/admin',
+      builder: (context, state) => const AdminScreen(),
     ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) => _ShellScaffold(navigationShell: navigationShell),

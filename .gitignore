@@ -1,8 +1,10 @@
 **/target
 node_modules/
-/.env
-/.env.local
-/.env.*.local
+.env
+.env.local
+.env.*.local
+backend/.env
+backend/.env.local
 /dist
 /build
 *.log
@@ -21,3 +23,7 @@ CLAUDE.md
 /.codebuddy
 /old
 /frontend/assets
+/docs/deployment-guide.md
+# 废弃的部署脚本（已删除，防止重新出现）
+deploy*.sh
+deploy.ps1

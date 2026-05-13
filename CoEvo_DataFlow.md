@@ -498,8 +498,9 @@
 │   → SELECT * FROM skipped_concepts                      │
 │                                                         │
 │ 取消跳过:                                               │
-│   DELETE /api/cards/skipped/:skip_id                    │
-│   → 移除记录，概念将在后续对话中重新出现                  │
+│   DELETE /api/cards/skipped/{skip_id}                    │
+│   → 移除跳过记录 → 同时重新创建卡片并加入复习队列         │
+│   → 概念立即出现，不等后续对话                           │
 │                                                         │
 │ ⚠️ 数据一致性问题:                                       │
 │   front 是用户写的自由文本，可能和LLM提取的front不同     │
@@ -673,6 +674,13 @@
 │  │ 🔗 N8 创建/更新   🔗 对话 prompt 注入               │       │
 │  │ 🔗 Flutter 面板   🔗 成就 (bronze~platinum)         │       │
 │  └─────────────────────────────────────────────────────┘       │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────┐       │
+│  │ user_preferences       (User Settings)               │       │
+│  │ ─────────────────────────────────────────────────── │       │
+│  │ user_id | key | value | updated_at                   │       │
+│  │ 🔗 偏好同步 (TTS语速、朗读开关等)                     │       │
+│  └─────────────────────────────────────────────────────┘       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -687,9 +695,9 @@
 | POST | `/api/auth/register` | - | `{username, password}` | `{user_id, token}` |
 | POST | `/api/auth/login` | - | `{username, password}` | `{user_id, token}` |
 | WS | `/ws` | N1 | `ChatRequest` (JSON) | `WsEvent` 流 |
-| POST | `/api/cards/skip` | N2 | `{user_id, front, domain, source_text}` | `{skipped_id}` |
-| GET | `/api/cards/skipped` | - | `?user_id=xxx` | `[{id, front, domain, skipped_at}]` |
-| DELETE | `/api/cards/skipped/:id` | - | - | `{status: "removed"}` |
+| POST | `/api/cards/skip` | N2 | `{user_id, front, source_text}` | `{skipped_id}` |
+| GET | `/api/cards/skipped` | - | `?user_id=xxx` | `{skipped: [...]}` |
+| DELETE | `/api/cards/skipped/{skip_id}` | - | - | `{status: "restored", card_id: "..."}` (同时恢复为卡片) |
 | GET | `/api/review/due` | N5 | `?user_id=xxx` | `{cards: [...], total_due, has_more}` |
 | POST | `/api/review/verify` | N6b | `{card_id, front, back}` | `{questions: [{q, expected}]...}` |
 | POST | `/api/review/judge` | N6b | `{card_id, questions: [{q,expected,user_answer}]}` | `{results: [{correct,feedback}], total_correct}` |
@@ -697,9 +705,6 @@
 | POST | `/api/cards/batch-create` | N3+N4 | `{user_id, candidates: [{front,back,source_sentence,domain}]}` | `{created, duplicates, achievements}` |
 | GET | `/api/cards/all` | - | `?user_id=xxx&q=&state=&domain=&sort=` | `{cards, total, state_counts, domains}` |
 | GET | `/api/history` | N1 | `?user_id=xxx&conversation_id=xxx` | `{turns: [{role,content,...}]}` |
-| POST | `/api/cards/skip` | N2 | `{user_id, front, source_text}` | `{skipped_id}` |
-| GET | `/api/cards/skipped` | - | `?user_id=xxx` | `{skipped: [...]}` |
-| DELETE | `/api/cards/skipped/{skip_id}` | - | - | `{status: "removed"}` |
 | GET | `/api/plans` | N8 | `?conversation_id=xxx` 或 `?user_id=xxx` | `{plans: [{id, goal, plan, mode}]}` |
 | POST | `/api/plans` | N8 | `{user_id, goal, domain, plan_json}` | `{id, status}` |
 | DELETE | `/api/plans/{plan_id}` | N8 | `?user_id=xxx` | `{status: "ok"}` (软删除) |
@@ -792,12 +797,12 @@ ColdPath 内:
 
 ## 七、开发计划修正记录 (已全部实施)
 
-### 修正 1: 表结构 (6 → 9 张表)
+### 修正 1: 表结构 (9 → 10 张表)
 ```
-原计划 6 张表 → 增加 conversation_turns + conversations + learning_plans
-最终 9 张表: users, conversations, conversation_turns,
+原计划 9 张表 → 增加 user_preferences
+最终 10 张表: users, conversations, conversation_turns,
   cards, card_memory, review_log, achievements, skipped_concepts,
-  learning_plans
+  learning_plans, user_preferences
 ```
 
 ### 修正 2: N2 节点输出结构
@@ -819,6 +824,6 @@ LOWER(front) 精确匹配 + Jaro-Winkler > 0.85 模糊匹配
 
 ---
 
-*文档版本: V2.0 (实施后)*
-*日期: 2026-05-07*
+*文档版本: V2.1 (实施后)*
+*日期: 2026-05-13*
 *说明: 所有数据流分析发现的问题已在实施中解决*
