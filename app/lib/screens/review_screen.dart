@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -605,6 +606,11 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                           child: ScaleTransition(scale: animation, child: child),
                         );
                       },
+                      child: ImageFiltered(
+                      imageFilter: ui.ImageFilter.blur(
+                        sigmaX: _isVerifying ? 5.0 : 0.0,
+                        sigmaY: _isVerifying ? 5.0 : 0.0,
+                      ),
                       child: Text(
                         key: ValueKey('${_isVerifying}_$_isFlipped'),
                         _isVerifying || !_isFlipped ? card.front : card.back,
@@ -612,12 +618,13 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                           fontSize: _isVerifying || !_isFlipped ? 18 : 16,
                           fontWeight: FontWeight.w600,
                           color: _isVerifying
-                              ? const Color(0xCC1A1A2E) // 80% 可见度
+                              ? const Color(0x051A1A2E) // 2% 可见度 + 模糊
                               : const Color(0xFF1A1A2E),
                           height: 1.4,
                         ),
                         textAlign: TextAlign.center,
                       ),
+                    ),
                     ),
                   ),
                 if (!_isVerifying && _isFlipped && card.sourceSentence != null) ...[
