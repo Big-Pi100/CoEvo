@@ -125,6 +125,7 @@
 │ Node N1: AI 对话 (Hot Path)                              │
 │                                                         │
 │ 位置: 后端 Rust (chat_engine/llm_caller.rs)             │
+│       前端 Dart (app/lib/screens/chat_screen.dart)       │
 │ 复用: LinguaFlow llm_caller.rs (直接复制)               │
 │                                                         │
 │ Input:                                                  │
@@ -134,6 +135,19 @@
 │ Output:                                                 │
 │   流式 SSE: Thinking → Token* → Done(reply)             │
 │   + 存入 conversation_turns                             │
+│                                                         │
+│ 前端渲染管道 (chat_screen.dart _buildRichContent):      │
+│   ws.rs SSE → serde_json → WebSocket                    │
+│     → Dart jsonDecode → _buffer += token               │
+│     → isStreaming? 纯文本 : 正则解析公式               │
+│     → Math.tex (flutter_math_fork) 渲染                 │
+│                                                         │
+│ 数学公式支持:                                           │
+│   - 定界符: \(inline\) 和 \[display\]                   │
+│   - 流式期间: 跳过正则解析，纯文本展示（防闪烁）        │
+│   - done 事件: 一次性正则解析所有公式                   │
+│   - 正则: RegExp(r'\\[\(\[](.+?)\\[[)\]]', dotAll:true) │
+│   - dotAll 必需: LLM 输出的 \[...\] 含换行              │
 │                                                         │
 │ DB 写入:                                                │
 │   INSERT INTO conversation_turns                        │
@@ -147,6 +161,7 @@
 │ 依赖:                                                   │
 │   - reqwest HTTP client (全局单例，含连接池调优)         │
 │   - OpenAI 兼容 API (DeepSeek V4/Qwen3)                 │
+│   - flutter_math_fork (前端 LaTeX 渲染)                 │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -733,6 +748,24 @@
 {"type":"error","content":"..."}          // 错误
 ```
 
+#### 前端 token → 公式渲染流程
+
+```
+LLM SSE chunk → ws.rs 解析 "data: {...}"
+  → serde_json::json!({"type":"token","content":"..."})
+  → WebSocket 文本帧
+  → Dart jsonDecode → _buffer += content
+  → _buildRichContent(text, isStreaming: true)
+    ┌─ isStreaming=true  → Text(纯文本)          ← 防闪烁
+    └─ isStreaming=false → RegExp(dotAll:true)    ← done 后一次性解析
+         → Math.tex("\\sin\\theta")               ← flutter_math_fork 渲染
+```
+
+**设计决策** (2026-05-14):
+- 流式期间不解析公式：每个 chunk 到达时 `\(...` 不完整，正则无法匹配 → 原生文本闪烁
+- done 事件后一次性解析：此时全文完整，正则 100% 命中
+- `dotAll: true`：DeepSeek/Qwen 输出的 `\[...\]` 公式内部含换行，默认 `.` 不跨行导致 display 公式静默丢弃
+
 ⚡ HotPath 和 ❄️ ColdPath 通过 `select!` 并发处理:
 
 ```
@@ -824,6 +857,6 @@ LOWER(front) 精确匹配 + Jaro-Winkler > 0.85 模糊匹配
 
 ---
 
-*文档版本: V2.1 (实施后)*
-*日期: 2026-05-13*
-*说明: 所有数据流分析发现的问题已在实施中解决*
+*文档版本: V2.2 (实施后)*
+*日期: 2026-05-14*
+*说明: 所有数据流分析发现的问题已在实施中解决；新增 N1 前端公式渲染管道文档*

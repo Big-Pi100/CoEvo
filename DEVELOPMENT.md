@@ -107,7 +107,8 @@ app/                        # Flutter 前端
 |:--|:--|
 | `flutter run` | 启动 App |
 | `flutter analyze` | 静态分析 |
-| `flutter test` | 运行 Flutter 测试 |
+| `flutter test` | 运行全部测试 |
+| `flutter test test/math_streaming_test.dart test/math_e2e_pipeline_test.dart` | 运行数学公式渲染测试 (19 用例) |
 
 ## 调试
 
@@ -143,3 +144,68 @@ sqlite3 data/coevo.db "SELECT * FROM users;"
 ## 修改 Prompt
 
 Prompt 文件在 `backend/prompts/`，修改后重启后端即可生效，**无需重新编译**。
+
+---
+
+## 数学公式渲染
+
+### 渲染管道
+
+CoEvo 支持 LLM 输出的 LaTeX 数学公式，通过 `flutter_math_fork` 渲染：
+
+```
+DeepSeek/Qwen SSE
+  → ws.rs (JSON 帧: {"type":"token","content":"..."})
+  → WebSocket
+  → chat_screen.dart: _handleWsEvent
+  → _buildRichContent(text, isStreaming: bool)
+  → Math.tex(formula)
+```
+
+### 支持的定界符
+
+| 类型 | 定界符 | 示例 | flutter_math_fork |
+|------|--------|------|-------------------|
+| 行内公式 | `\( ... \)` | `\(\sin\theta\)` | 行内渲染 |
+| 独立公式 | `\[ ... \]` | `\[\sum x^n\]` | 块级居中渲染 |
+
+### 流式渲染策略
+
+为防止流式输出期间公式闪烁（不完整定界符导致正则反复匹配/不匹配）：
+
+- **流式期间** (`isStreaming = true`): `_buildRichContent` 直接返回纯文本，**跳过正则解析**
+- **done 事件** (`isStreaming = false`): 一次性用正则提取所有公式，渲染为 `Math.tex`
+
+### 正则表达式
+
+```dart
+// chat_screen.dart:1154
+final mathRegex = RegExp(
+  r'\\[\(\[](.+?)\\[[)\]]',
+  dotAll: true,  // LLM 输出的 \[...\] 可能含换行
+);
+```
+
+> **注意**: `dotAll: true` 是必需的。DeepSeek/Qwen 输出 display 公式时常在 `\[` 和 `\]` 之间换行，
+> 默认 `.` 不匹配 `\n` 会导致 display 公式静默丢弃。
+
+### 测试
+
+```bash
+# 单元测试 + 管道测试 (19 用例)
+cd app
+flutter test test/math_streaming_test.dart test/math_e2e_pipeline_test.dart
+
+# 真实 LLM 流式验证 (需要 DEEPSEEK_API_KEY 环境变量)
+cd ..
+python scripts/live_llm_stream_test.py              # 单领域
+python scripts/live_llm_stream_test.py --domain all # 全部 5 领域
+```
+
+### 已知覆盖范围
+
+通过 5 领域 × 248 公式真实 LLM 验证，支持以下 LaTeX 特性：
+
+`\frac \int \sum \lim \sqrt \partial \pm \cdot \times`
+`\begin{pmatrix} \begin{bmatrix} \begin{cases}`
+`\left \right \mathbb \mathbf \nabla \varepsilon \infty`
