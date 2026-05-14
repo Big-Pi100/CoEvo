@@ -1132,11 +1132,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   /// 渲染消息内容，支持 \(...\) 行内公式和 \[...\] 独立公式
+  ///
+  /// 流式输出期间跳过数学公式正则解析，避免因 token 分片导致 \(...\) 定界符
+  /// 不完整时 raw LaTeX 与渲染公式之间反复闪烁。done 事件后 _streamingIndex 置 -1，
+  /// isStreaming 变为 false，由 _finalizeStreaming 触发的 rebuild 会正常渲染全部公式。
   Widget _buildRichContent(String text, {required bool isUser, bool isStreaming = false}) {
     final baseColor = isUser
         ? Colors.white
         : Theme.of(context).colorScheme.onSecondaryContainer;
     final trailing = isStreaming ? '▌' : '';
+
+    // 流式输出期间：纯文本渲染，不解析数学公式
+    if (isStreaming) {
+      return Text(
+        '$text$trailing',
+        style: TextStyle(color: baseColor, fontSize: 15, height: 1.5),
+      );
+    }
 
     // 匹配 \(inline\) 和 \[display\] 数学公式
     final mathRegex = RegExp(r'\\[\(\[](.+?)\\[[)\]]');
