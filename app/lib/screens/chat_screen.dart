@@ -1151,7 +1151,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
 
     // 匹配 \(inline\) 和 \[display\] 数学公式
-    final mathRegex = RegExp(r'\\[\(\[](.+?)\\[[)\]]');
+    final mathRegex = RegExp(r'\\[\(\[](.+?)\\[[)\]]', dotAll: true);
 
     final matches = mathRegex.allMatches(text).toList();
 

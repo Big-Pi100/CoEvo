@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// - isStreaming=false → 正则匹配后用 Math.tex 渲染
 
 /// 与 _buildRichContent 中完全相同的正则
-final mathRegex = RegExp(r'\\[\(\[](.+?)\\[[)\]]');
+final mathRegex = RegExp(r'\\[\(\[](.+?)\\[[)\]]', dotAll: true);
 
 // ============================================================================
 // 工具函数
@@ -251,10 +251,15 @@ void main() {
     });
 
     test('含换行的独立公式 (dotAll)', () {
-      // 真实换行符：默认 . 不匹配 \n，LLM 实际上不会输出含换行的公式
+      // 真实 LLM 输出中，display 公式常有换行：
+      // \[
+      // \sin\theta = \frac{a}{b}
+      // \]
+      // dotAll: true 后 . 可以匹配 \n
       final text = '\\[\na + b = c\n\\]';
-      // 默认 . 不跨行 → 不匹配（这是合理的，LLM 不会产生含换行的公式）
-      expect(mathRegex.hasMatch(text), isFalse);
+      expect(mathRegex.hasMatch(text), isTrue);
+      final match = mathRegex.firstMatch(text)!;
+      expect(match.group(1)!.trim(), 'a + b = c');
     });
 
     test('空公式 .+? 不匹配 → 正确行为', () {

@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// 验证：JSON 往返逃逸、正则匹配、流式分片下的最终渲染正确性
 
 /// 与 _buildRichContent 中完全相同的正则
-final mathRegex = RegExp(r'\\[\(\[](.+?)\\[[)\]]');
+final mathRegex = RegExp(r'\\[\(\[](.+?)\\[[)\]]', dotAll: true);
 
 /// ---------------------------------------------------------------------------
 /// 模拟后端 ws.rs 的 token 事件发送
