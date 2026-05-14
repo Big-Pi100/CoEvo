@@ -3,18 +3,26 @@ class ChatRequest {
   final String userId;
   final String conversationId;
   final String message;
+  final String? token;
 
   const ChatRequest({
     required this.userId,
     required this.conversationId,
     required this.message,
+    this.token,
   });
 
-  Map<String, dynamic> toJson() => {
-    'user_id': userId,
-    'conversation_id': conversationId,
-    'message': message,
-  };
+  Map<String, dynamic> toJson() {
+    final json = <String, dynamic>{
+      'user_id': userId,
+      'conversation_id': conversationId,
+      'message': message,
+    };
+    if (token != null) {
+      json['token'] = token;
+    }
+    return json;
+  }
 }
 
 /// WebSocket 事件

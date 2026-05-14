@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../models/coevo_models.dart';
@@ -51,13 +52,16 @@ class ChatClient {
   // ── WebSocket Chat ──
 
   WsChatSession streamChat(String message) {
-    final wsUrl = token != null
-        ? '$baseUrl/ws?token=$token'
-        : '$baseUrl/ws';
+    // D4: token no longer in URL — sent as first message payload instead
+    final wsUrl = '$baseUrl/ws';
     final uri = Uri.parse(wsUrl.replaceFirst('http', 'ws'));
     final channel = WebSocketChannel.connect(uri);
     final controller = StreamController<WsEvent>.broadcast();
 
+    // D4: send token as first message (auth handshake), then the chat request
+    if (token != null) {
+      channel.sink.add(jsonEncode({'type': 'auth', 'token': token}));
+    }
     channel.sink.add(jsonEncode(ChatRequest(
       userId: userId,
       conversationId: conversationId,
@@ -126,7 +130,9 @@ class ChatClient {
         headers: _authHeaders,
       );
       if (resp.statusCode == 200) return jsonDecode(resp.body) as Map<String, dynamic>;
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('getLastReview error: $e');
+    }
     return null;
   }
 
@@ -282,7 +288,8 @@ class ChatClient {
       final resp = await http.get(Uri.parse('$baseUrl/health'))
           .timeout(const Duration(seconds: 5));
       return resp.statusCode == 200;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('healthCheck error: $e');
       return false;
     }
   }
@@ -327,7 +334,9 @@ extension PlanApi on ChatClient {
             .where((p) => p['mode'] != 'deleted')
             .toList() ?? [];
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('getPlans error: $e');
+    }
     return [];
   }
 
@@ -350,7 +359,9 @@ extension PlanApi on ChatClient {
       if (resp.statusCode == 200) {
         return jsonDecode(resp.body) as Map<String, dynamic>;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('createPlan error: $e');
+    }
     return null;
   }
 
@@ -364,7 +375,9 @@ extension PlanApi on ChatClient {
       if (resp.statusCode == 200) {
         return jsonDecode(resp.body) as Map<String, dynamic>;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('getLearningReport error: $e');
+    }
     return null;
   }
 
@@ -378,7 +391,9 @@ extension PlanApi on ChatClient {
       if (resp.statusCode == 200) {
         return jsonDecode(resp.body) as Map<String, dynamic>;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('getActivity error: $e');
+    }
     return null;
   }
 
@@ -392,7 +407,9 @@ extension PlanApi on ChatClient {
       if (resp.statusCode == 200) {
         return jsonDecode(resp.body) as Map<String, dynamic>;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('getWeeklyReport error: $e');
+    }
     return null;
   }
 
@@ -405,7 +422,8 @@ extension PlanApi on ChatClient {
         body: jsonEncode({'display_name': name}),
       );
       return resp.statusCode == 200;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('updateDisplayName error: $e');
       return false;
     }
   }
@@ -421,7 +439,9 @@ extension PlanApi on ChatClient {
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
         return data.map((k, v) => MapEntry(k, v.toString()));
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('getPreferences error: $e');
+    }
     return {};
   }
 
@@ -434,7 +454,8 @@ extension PlanApi on ChatClient {
         body: jsonEncode(prefs),
       );
       return resp.statusCode == 200;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('savePreferences error: $e');
       return false;
     }
   }

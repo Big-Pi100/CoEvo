@@ -91,6 +91,17 @@ pub fn match_text(text: &str) -> Vec<WordMatch> {
 
     let mut found: Vec<WordMatch> = Vec::new();
 
+    // Pre-compute n-gram set for multi-word lookup — O(n) instead of O(n×m)
+    let mut phrase_set: HashSet<String> = HashSet::new();
+    for i in 0..words.len() {
+        for len in 2..=5 {
+            // phrases of 2-5 words
+            if i + len <= words.len() {
+                phrase_set.insert(words[i..i + len].join(" "));
+            }
+        }
+    }
+
     for (id, entry) in catalog.iter() {
         let id_lower = id.to_lowercase();
 
@@ -107,13 +118,11 @@ pub fn match_text(text: &str) -> Vec<WordMatch> {
             }
         }
 
-        // 多词/复合词
+        // 多词/复合词 — 使用预计算的 phrase_set 进行 O(1) 查找
         let normalized = id_lower.replace('_', " ").replace('-', " ");
         let parts: Vec<&str> = normalized.split(' ').collect();
         if parts.len() >= 2 {
-            if words.windows(parts.len()).any(|window| {
-                window.iter().zip(parts.iter()).all(|(w, p)| w.as_str() == *p)
-            }) {
+            if phrase_set.contains(&normalized) {
                 found.push(WordMatch {
                     word: id.clone(),
                     difficulty: entry.difficulty_level.unwrap_or(1),
@@ -129,4 +138,65 @@ pub fn match_text(text: &str) -> Vec<WordMatch> {
     found.dedup_by(|a, b| a.word == b.word);
     found.truncate(10);
     found
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup_word_bank(words: &[(&str, u32)]) {
+        let mut catalog: HashMap<String, serde_json::Value> = HashMap::new();
+        for (word, level) in words {
+            catalog.insert(word.to_string(), serde_json::json!({
+                "difficulty_level": level,
+                "domain": "test",
+                "definition": "A test word"
+            }));
+        }
+        let json = serde_json::to_string(&catalog).unwrap();
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("word_bank_test_{}.json", std::process::id()));
+        std::fs::write(&path, json).unwrap();
+        init(path.to_str().unwrap());
+    }
+
+    /// Combined test — OnceLock global can only be initialized once per process.
+    #[test]
+    fn test_word_bank_matching() {
+        setup_word_bank(&[
+            ("algorithm", 3),
+            ("data", 1),
+            ("machine learning", 4),
+            ("deep learning", 5),
+            ("look_up", 2),
+            ("neural network", 4),
+        ]);
+
+        // Single word matching
+        let matches1 = match_text("The algorithm and data structures are important");
+        let words1: Vec<&str> = matches1.iter().map(|m| m.word.as_str()).collect();
+        assert!(words1.contains(&"algorithm"));
+        assert!(words1.contains(&"data"));
+
+        // Multi-word matching using optimized phrase_set
+        let matches2 = match_text("I am studying machine learning and deep learning with neural network");
+        let words2: Vec<&str> = matches2.iter().map(|m| m.word.as_str()).collect();
+        assert!(words2.contains(&"machine learning"));
+        assert!(words2.contains(&"deep learning"));
+        assert!(words2.contains(&"neural network"));
+        // Sorted by difficulty descending
+        assert_eq!(matches2[0].word, "deep learning");
+
+        // Compound word with underscore
+        let matches3 = match_text("Please look up this word");
+        let words3: Vec<&str> = matches3.iter().map(|m| m.word.as_str()).collect();
+        assert!(words3.contains(&"look_up"));
+
+        // Truncation to 10 results
+        assert!(matches2.len() <= 10);
+
+        // Empty text should return empty
+        let matches4 = match_text("");
+        assert!(matches4.is_empty());
+    }
 }

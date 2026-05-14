@@ -14,6 +14,35 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLogin = true;
+  String? _validationError;
+
+  /// 校验输入字段，返回 null 表示通过，否则返回错误消息
+  String? _validateInputs(String username, String password) {
+    if (username.isEmpty) {
+      return '用户名不能为空';
+    }
+    if (username.length < 2) {
+      return '用户名至少需要 2 个字符';
+    }
+    if (username.length > 32) {
+      return '用户名不能超过 32 个字符';
+    }
+    // 只允许字母、数字、下划线和中文
+    final usernameRegExp = RegExp(r'^[\w\u4e00-\u9fff]+$');
+    if (!usernameRegExp.hasMatch(username)) {
+      return '用户名只能包含字母、数字、下划线和中文';
+    }
+    if (password.isEmpty) {
+      return '密码不能为空';
+    }
+    if (password.length < 6) {
+      return '密码至少需要 6 个字符';
+    }
+    if (password.length > 64) {
+      return '密码不能超过 64 个字符';
+    }
+    return null;
+  }
 
   @override
   void dispose() {
@@ -102,6 +131,17 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               ),
               const SizedBox(height: 24),
 
+              // 客户端校验错误
+              if (_validationError != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Text(
+                    _validationError!,
+                    style: const TextStyle(color: Colors.orange, fontSize: 13),
+                  ),
+                ),
+
+              // 服务端错误
               if (authState.error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 16),
@@ -115,7 +155,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 onPressed: authState.isLoading ? null : () {
                   final username = _usernameController.text.trim();
                   final password = _passwordController.text.trim();
-                  if (username.isEmpty || password.isEmpty) return;
+
+                  // 客户端输入校验
+                  final validationError = _validateInputs(username, password);
+                  if (validationError != null) {
+                    setState(() => _validationError = validationError);
+                    return;
+                  }
+                  setState(() => _validationError = null);
+
                   if (_isLogin) {
                     ref.read(authProvider.notifier).login(username, password);
                   } else {
@@ -132,7 +180,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               ),
               const SizedBox(height: 16),
               TextButton(
-                onPressed: () => setState(() => _isLogin = !_isLogin),
+                onPressed: () => setState(() {
+                  _isLogin = !_isLogin;
+                  _validationError = null;
+                }),
                 child: Text(
                   _isLogin ? '没有账号？注册' : '已有账号？登录',
                 ),

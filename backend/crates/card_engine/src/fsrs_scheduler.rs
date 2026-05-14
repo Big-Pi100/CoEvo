@@ -155,31 +155,40 @@ pub fn submit_review(
     // 3. 更新 streak
     let streak_days = update_streak(conn, user_id)?;
 
-    // 4. 聚合成就上下文
-    let total_cards: u32 = conn.query_row(
-        "SELECT COUNT(*) FROM cards WHERE user_id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-
-    let total_reviews: u32 = conn.query_row(
-        "SELECT COUNT(*) FROM review_log r
-         JOIN cards c ON r.card_id = c.id
-         WHERE c.user_id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-
-    let domains_covered: u32 = conn.query_row(
-        "SELECT COUNT(DISTINCT domain) FROM cards WHERE user_id = ?1 AND domain IS NOT NULL",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
+    // 4. 批量聚合成就上下文 — 单次查询替代 3 次独立查询
+    let agg: AchievementAggregate = conn.query_row(
+        "SELECT
+            (SELECT COUNT(*) FROM cards WHERE user_id = ?1) AS total_cards,
+            (SELECT COUNT(*) FROM review_log r
+             JOIN cards c ON r.card_id = c.id
+             WHERE c.user_id = ?1) AS total_reviews,
+            (SELECT COUNT(DISTINCT domain) FROM cards WHERE user_id = ?1 AND domain IS NOT NULL) AS domains_covered",
+        rusqlite::params![user_id],
+        |row| Ok(AchievementAggregate {
+            total_cards: row.get(0)?,
+            total_reviews: row.get(1)?,
+            domains_covered: row.get(2)?,
+        }),
+    ).unwrap_or(AchievementAggregate {
+        total_cards: 0,
+        total_reviews: 0,
+        domains_covered: 0,
+    });
 
     Ok(AchievementContext {
         user_id: user_id.to_string(),
-        total_cards,
-        total_reviews,
+        total_cards: agg.total_cards,
+        total_reviews: agg.total_reviews,
         streak_days,
-        domains_covered,
+        domains_covered: agg.domains_covered,
     })
+}
+
+/// 批量聚合结果，用于单次查询替代多次独立查询
+struct AchievementAggregate {
+    total_cards: u32,
+    total_reviews: u32,
+    domains_covered: u32,
 }
 
 /// 简化版 FSRS 状态机:
@@ -187,17 +196,15 @@ pub fn submit_review(
 /// Review →(rating<=1)→ Relearning →(rating>=3)→ Review
 /// 返回 (new_state, next_due_timestamp)
 fn compute_next_state(conn: &Connection, card_id: &str, _rating: i32, passed: bool) -> (i32, i64) {
-    let current_state: i32 = conn.query_row(
-        "SELECT state FROM card_memory WHERE card_id = ?1",
-        rusqlite::params![card_id], |row| row.get(0),
-    ).unwrap_or(0);
+    // Batch query: combine current_state and reps into one query row
+    let (current_state, reps): (i32, i32) = conn.query_row(
+        "SELECT state, reps FROM card_memory WHERE card_id = ?1",
+        rusqlite::params![card_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    ).unwrap_or((0, 0));
 
     let now = Utc::now().timestamp();
     let intervals = [60, 300, 900, 3600, 14400, 43200, 86400, 172800, 345600, 604800];
-    let reps: i32 = conn.query_row(
-        "SELECT reps FROM card_memory WHERE card_id = ?1",
-        rusqlite::params![card_id], |row| row.get(0),
-    ).unwrap_or(0);
 
     match (current_state, passed) {
         // New → 首次复习

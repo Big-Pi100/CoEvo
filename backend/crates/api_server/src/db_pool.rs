@@ -1,13 +1,14 @@
 //! N11: Database access — connection pool via r2d2-sqlite
 //!
-//! Uses a pool of up to 10 SQLite connections so every request
+//! Uses a pool of up to 30 SQLite connections so every request
 //! doesn't pay the cost of opening a new file handle.
 //!
-//! PRAGMA busy_timeout=5000 is applied to every connection on
-//! checkout (fast, no I/O), avoiding SQLITE_BUSY errors under
-//! concurrent writes.
+//! PRAGMA busy_timeout=5000 is applied once per connection at creation
+//! time via `with_init()`, avoiding redundant PRAGMA calls on every
+//! checkout.
 
 use std::sync::OnceLock;
+use std::time::Duration;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 
@@ -18,9 +19,12 @@ static DB_POOL: OnceLock<Pool<SqliteConnectionManager>> = OnceLock::new();
 
 /// Initialize the connection pool. Call once at startup.
 pub fn init(db_path: &str) -> Result<(), String> {
-    let manager = SqliteConnectionManager::file(db_path);
+    let manager = SqliteConnectionManager::file(db_path)
+        .with_init(|conn| {
+            conn.execute_batch("PRAGMA busy_timeout=5000;")
+        });
     let pool = Pool::builder()
-        .max_size(10)
+        .max_size(30)
         .build(manager)
         .map_err(|e| format!("DB pool init: {}", e))?;
 
@@ -41,15 +45,14 @@ pub fn init(db_path: &str) -> Result<(), String> {
 /// so all existing code using `conn.execute` / `conn.prepare` /
 /// `conn.query_row` works unchanged.
 ///
-/// Sets `busy_timeout=5000` on every checkout (PRAGMAs are connection-
-/// local; this avoids SQLITE_BUSY under write contention).
+/// Uses `get_timeout(3s)` instead of blocking `get()` — in an async
+/// context (tokio), a blocked thread starves the runtime. The 3-second
+/// timeout gives the pool time to recycle an in-use connection while
+/// avoiding indefinite blocking.
 pub fn get_conn() -> DbConn {
-    let conn = DB_POOL
+    DB_POOL
         .get()
         .expect("DB pool not initialized — call init() first")
-        .get()
-        .expect("Failed to get DB connection from pool");
-    conn.execute_batch("PRAGMA busy_timeout=5000;")
-        .expect("Failed to set busy_timeout");
-    conn
+        .get_timeout(Duration::from_secs(3))
+        .expect("Failed to get DB connection from pool (timeout after 3s)")
 }

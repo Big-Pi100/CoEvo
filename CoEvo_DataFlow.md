@@ -140,12 +140,12 @@
 │   (id, conversation_id, role, content, created_at)       │
 │                                                         │
 │ 关键性能决策:                                           │
-│   - 双请求竞速 (tokio::select!) 保证最低延迟             │
-│   - 1s 超时 → 模板回复 (不丢用户输入)                   │
+│   - 单请求 + 失败重试 (避免连接池污染)                  │
+│   - connect_timeout=10s, pool_idle_timeout=30s          │
 │   - warmup() 启动预热                                   │
 │                                                         │
 │ 依赖:                                                   │
-│   - reqwest HTTP client (全局单例)                      │
+│   - reqwest HTTP client (全局单例，含连接池调优)         │
 │   - OpenAI 兼容 API (DeepSeek V4/Qwen3)                 │
 └─────────────────────────────────────────────────────────┘
 ```

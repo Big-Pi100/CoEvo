@@ -2,6 +2,8 @@
 //!
 //! ⚡ HotPath: 流式回复 → done 立即发送 → 不等概念提取
 //! ❄️ ColdPath: 通过 channel 异步提取概念，不阻塞消息接收
+//!
+//! 鉴权: token 由首条消息 payload 传递（不出现在 URL 查询参数中）
 
 use axum::extract::ws::{Message, WebSocket};
 use chat_engine::llm_caller::{LlmCaller, LlmEvent};
@@ -9,12 +11,22 @@ use serde_json::json;
 use tokio::sync::mpsc;
 use std::time::Duration;
 
+/// 内部使用，含可选 token 字段的反序列化结构
+#[derive(serde::Deserialize)]
+struct RawChatRequest {
+    user_id: String,
+    conversation_id: String,
+    message: String,
+    token: Option<String>,
+}
+
 pub async fn handle_ws(mut ws: WebSocket) {
     // ColdPath 结果通道：后台 task 提取完概念后通过此通道发回
     let (cold_tx, mut cold_rx) = mpsc::channel::<(u32, Vec<serde_json::Value>)>(8);
     let mut turn_counter: u32 = 0;
     let mut next_turn_to_show: u32 = 0;
     let mut pending_candidates: std::collections::BTreeMap<u32, Vec<serde_json::Value>> = std::collections::BTreeMap::new();
+    let mut token_verified = false;
 
     loop {
         tokio::select! {
@@ -26,7 +38,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     _ => continue,
                 };
 
-                let chat_req: shared_types::conversation::ChatRequest = match serde_json::from_str(&text) {
+                let raw_req: RawChatRequest = match serde_json::from_str(&text) {
                     Ok(r) => r,
                     Err(e) => {
                         let _ = ws.send(Message::Text(
@@ -34,6 +46,51 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         )).await;
                         continue;
                     }
+                };
+
+                // ── 鉴权：首条消息必须携带有效 token ──
+                if !token_verified {
+                    match &raw_req.token {
+                        Some(token) => {
+                            match crate::auth::verify_token(token) {
+                                Ok(Some(uid)) => {
+                                    // token 有效，user_id 必须与 token 所属用户一致
+                                    if uid != raw_req.user_id {
+                                        let _ = ws.send(Message::Text(
+                                            json!({"type":"error","content":"user_id mismatch"}).to_string().into()
+                                        )).await;
+                                        continue;
+                                    }
+                                    token_verified = true;
+                                }
+                                Ok(None) => {
+                                    let _ = ws.send(Message::Text(
+                                        json!({"type":"error","content":"invalid_token"}).to_string().into()
+                                    )).await;
+                                    continue;
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Token verification error: {}", e);
+                                    let _ = ws.send(Message::Text(
+                                        json!({"type":"error","content":"auth_error"}).to_string().into()
+                                    )).await;
+                                    continue;
+                                }
+                            }
+                        }
+                        None => {
+                            let _ = ws.send(Message::Text(
+                                json!({"type":"error","content":"missing_token"}).to_string().into()
+                            )).await;
+                            continue;
+                        }
+                    }
+                }
+
+                let chat_req = shared_types::conversation::ChatRequest {
+                    user_id: raw_req.user_id,
+                    conversation_id: raw_req.conversation_id,
+                    message: raw_req.message,
                 };
 
                 // 检查订阅状态

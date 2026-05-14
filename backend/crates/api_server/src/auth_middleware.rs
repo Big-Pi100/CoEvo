@@ -9,7 +9,7 @@ use axum::http::HeaderMap;
 /// Verify that the Authorization header contains a valid Bearer token for the given user.
 ///
 /// Returns `Ok(())` if valid, `Err(message)` otherwise.
-/// Note: MVP trusts any non-empty token; future versions should verify against stored tokens.
+/// Performs DB lookup against the `tokens` table for real security.
 pub fn verify_auth(user_id: &str, headers: &HeaderMap) -> Result<(), String> {
     let token = headers
         .get("authorization")
@@ -17,8 +17,8 @@ pub fn verify_auth(user_id: &str, headers: &HeaderMap) -> Result<(), String> {
         .and_then(|v| v.strip_prefix("Bearer "))
         .ok_or_else(|| "Missing or invalid Authorization header".to_string())?;
 
-    // MVP: verify_token is a pure check (non-empty token), no DB access needed
-    if crate::auth::verify_token_no_db(user_id, token) {
+    let conn = crate::db_pool::get_conn();
+    if crate::auth::verify_token(&conn, user_id, token) {
         Ok(())
     } else {
         Err("Invalid or expired token".to_string())

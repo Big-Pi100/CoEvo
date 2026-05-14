@@ -11,6 +11,13 @@ use std::collections::HashMap;
 
 use chat_engine::llm_caller::LlmConfig;
 
+/// Reusable HTTP client for STT requests — avoids creating a new connection pool per call
+static STT_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
+fn stt_client() -> &'static reqwest::Client {
+    STT_CLIENT.get_or_init(|| reqwest::Client::new())
+}
+
 pub fn build_router(llm_config: LlmConfig) -> Router {
     // 存储 LLM 配置供 routes 使用
     crate::llm::init(llm_config);
@@ -115,7 +122,7 @@ async fn chat_handler(
     let llm_config = crate::llm::get_config();
 
     // Do all DB operations in one block — drop conn before async
-    let (existing_fronts, skipped_fronts, _now_str, history) = {
+    let (existing_fronts, skipped_fronts, now_str, history) = {
         let conn = crate::db_pool::get_conn();
 
         // Pre-query for concept extraction
@@ -203,12 +210,11 @@ async fn chat_handler(
     let candidates: Vec<String> = extraction.candidates.iter().map(|c| c.front.clone()).collect();
 
     // 3. 保存 assistant 回复 (新连接)
-    let now_ts = chrono::Utc::now().timestamp();
     {
         let conn = crate::db_pool::get_conn();
         let _ = conn.execute(
             "INSERT INTO conversation_turns (id, conversation_id, role, content, created_at) VALUES (?1, ?2, 'assistant', ?3, ?4)",
-            rusqlite::params![uuid::Uuid::new_v4().to_string(), input.conversation_id, reply, now_ts.to_string()],
+            rusqlite::params![uuid::Uuid::new_v4().to_string(), input.conversation_id, reply, now_str],
         );
         let _ = conn.execute(
             "UPDATE conversations SET turn_count = turn_count + 1 WHERE id = ?1",
@@ -287,6 +293,7 @@ async fn review_submit_handler(
 
 #[derive(Deserialize)]
 pub struct VerifyInput {
+    pub user_id: String,
     pub card_id: String,
     pub front: String,
     pub back: String,
@@ -294,8 +301,12 @@ pub struct VerifyInput {
 
 /// AI 快问快答: 生成 3 个问题
 async fn review_verify_handler(
+    headers: HeaderMap,
     Json(input): Json<VerifyInput>,
 ) -> Json<serde_json::Value> {
+    if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
+        return Json(serde_json::json!({"error": e}));
+    }
     let llm_config = crate::llm::get_config();
     let prompt = chat_engine::prompt_loader::get().quiz_generate.clone()
         .replace("{front}", &input.front)
@@ -324,6 +335,7 @@ async fn review_verify_handler(
 
 #[derive(Deserialize)]
 pub struct JudgeInput {
+    pub user_id: String,
     pub card_id: String,
     pub questions: Vec<JudgeQuestionInput>,
 }
@@ -337,8 +349,12 @@ pub struct JudgeQuestionInput {
 
 /// AI 快问快答: 批量判断 3 个答案
 async fn review_judge_handler(
+    headers: HeaderMap,
     Json(input): Json<JudgeInput>,
 ) -> Json<serde_json::Value> {
+    if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
+        return Json(serde_json::json!({"error": e}));
+    }
     let llm_config = crate::llm::get_config();
 
     let mut q_parts = Vec::new();
@@ -421,8 +437,12 @@ async fn cards_skip_handler(
 }
 
 async fn cards_skipped_handler(
+    headers: HeaderMap,
     Query(query): Query<DueQuery>,
 ) -> Json<serde_json::Value> {
+    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
+        return Json(serde_json::json!({"error": e}));
+    }
     let conn = crate::db_pool::get_conn();
     let mut stmt = conn.prepare(
         "SELECT id, front, domain, source_text, skipped_at FROM skipped_concepts WHERE user_id = ?1 ORDER BY skipped_at DESC"
@@ -441,6 +461,7 @@ async fn cards_skipped_handler(
 }
 
 async fn cards_skip_delete_handler(
+    headers: HeaderMap,
     Path(skip_id): Path<String>,
 ) -> Json<serde_json::Value> {
     let conn = crate::db_pool::get_conn();
@@ -464,6 +485,11 @@ async fn cards_skip_delete_handler(
     };
 
     let (user_id, front, domain, source_text, _skipped_at) = skipped;
+
+    // Verify auth with the user_id from the skipped record
+    if let Err(e) = crate::auth_middleware::verify_auth(&user_id, &headers) {
+        return Json(serde_json::json!({"error": e}));
+    }
 
     // 2. 重新创建卡片
     let now = chrono::Utc::now().timestamp();
@@ -707,8 +733,13 @@ pub struct HistoryQuery {
 
 /// GET /api/cards/{card_id}/last-review — 最近一次考试详情
 async fn cards_last_review_handler(
+    headers: HeaderMap,
+    Query(query): Query<DueQuery>,
     Path(card_id): Path<String>,
 ) -> Json<serde_json::Value> {
+    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
+        return Json(serde_json::json!({"error": e}));
+    }
     let conn = crate::db_pool::get_conn();
     match conn.query_row(
         "SELECT id, rating, verification_type, verification_result, details_json, reviewed_at
@@ -1014,17 +1045,34 @@ async fn plan_upsert_handler(
     let conn = crate::db_pool::get_conn();
     let now = chrono::Utc::now().to_rfc3339();
     let plan_str = input.plan_json.to_string();
-    let id = uuid::Uuid::new_v4().to_string();
 
-    // 检查是否已有同 domain 的 plan，有则更新，无则插入
-    match conn.execute(
-        "INSERT INTO learning_plans (id, user_id, goal, domain, mode, plan_json, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, 'structured', ?5, ?6, ?6)
-         ON CONFLICT(id) DO UPDATE SET plan_json=?5, updated_at=?6",
-        rusqlite::params![id, input.user_id, input.goal, input.domain, plan_str, now],
-    ) {
-        Ok(_) => Json(serde_json::json!({"id": id, "status": "ok"})),
-        Err(e) => Json(serde_json::json!({"error": format!("DB: {}", e)})),
+    // Check if plan exists for this user+domain
+    let existing_id: Option<String> = conn.query_row(
+        "SELECT id FROM learning_plans WHERE user_id = ?1 AND domain = ?2 AND mode != 'deleted' LIMIT 1",
+        rusqlite::params![input.user_id, input.domain],
+        |row| row.get(0),
+    ).ok();
+
+    if let Some(id) = existing_id {
+        // Update existing
+        match conn.execute(
+            "UPDATE learning_plans SET goal=?1, plan_json=?2, updated_at=?3 WHERE id=?4",
+            rusqlite::params![input.goal, plan_str, now, id],
+        ) {
+            Ok(_) => Json(serde_json::json!({"id": id, "status": "updated"})),
+            Err(e) => Json(serde_json::json!({"error": format!("DB: {}", e)})),
+        }
+    } else {
+        // Insert new
+        let id = uuid::Uuid::new_v4().to_string();
+        match conn.execute(
+            "INSERT INTO learning_plans (id, user_id, goal, domain, mode, plan_json, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, 'structured', ?5, ?6, ?6)",
+            rusqlite::params![id, input.user_id, input.goal, input.domain, plan_str, now],
+        ) {
+            Ok(_) => Json(serde_json::json!({"id": id, "status": "created"})),
+            Err(e) => Json(serde_json::json!({"error": format!("DB: {}", e)})),
+        }
     }
 }
 
@@ -1344,7 +1392,7 @@ async fn stt_handler(
     let pid = std::process::id();
     let in_path = std::path::Path::new("/tmp").join(format!("stt_in_{}", pid));
     let out_path = std::path::Path::new("/tmp").join(format!("stt_out_{}.pcm", pid));
-    let _ = std::fs::write(&in_path, &body);
+    let _ = tokio::fs::write(&in_path, &body).await;
     tracing::info!("STT: received {} bytes, wrote to {}", body.len(), in_path.display());
     let ffmpeg_out = std::process::Command::new("ffmpeg")
         .args([
@@ -1357,12 +1405,12 @@ async fn stt_handler(
             &out_path.to_string_lossy(),
         ])
         .output();
-    let _ = std::fs::remove_file(&in_path);
+    let _ = tokio::fs::remove_file(&in_path).await;
 
     let raw_pcm = match ffmpeg_out {
         Ok(o) if o.status.success() => {
-            let data = std::fs::read(&out_path).unwrap_or_default();
-            let _ = std::fs::remove_file(&out_path);
+            let data = tokio::fs::read(&out_path).await.unwrap_or_default();
+            let _ = tokio::fs::remove_file(&out_path).await;
             data
         }
         Ok(o) => {
@@ -1388,7 +1436,7 @@ async fn stt_handler(
     let checksum_input = format!("{}{}{}", api_key, cur_time, param_b64);
     let checksum = format!("{:x}", md5::compute(checksum_input.as_bytes()));
 
-    let client = reqwest::Client::new();
+    let client = stt_client();
     // 讯飞 REST API 要求: audio 先 Base64 编码，再 URL 编码，作为 form 参数发送
     let audio_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &raw_pcm);
     let audio_form = audio_b64

@@ -18,48 +18,57 @@ pub enum InsertResult {
 
 /// 插入卡片 (事务)
 pub fn insert_card(conn: &Connection, card: &Card, memory: &CardMemory) -> InsertResult {
-    // 1. 去重检查: 查询相同用户的已有卡片 front
+    let front_lower = card.front.to_lowercase();
+
+    // 1. 事务开始 — BEGIN IMMEDIATE 立即获取写锁，防止 TOCTOU
+    match conn.execute("BEGIN IMMEDIATE", []) {
+        Ok(_) => {},
+        Err(e) => return InsertResult::DatabaseError(format!("Begin tx: {}", e)),
+    }
+
+    // 2. 去重检查 (事务内执行，消除 TOCTOU 窗口)
     let existing_fronts: Vec<String> = {
         let mut stmt = match conn.prepare(
             "SELECT LOWER(front) FROM cards WHERE user_id = ?1"
         ) {
             Ok(s) => s,
-            Err(e) => return InsertResult::DatabaseError(format!("Prepare: {}", e)),
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK", []);
+                return InsertResult::DatabaseError(format!("Prepare: {}", e));
+            }
         };
         let rows = match stmt.query_map(rusqlite::params![card.user_id], |row| {
             row.get::<_, String>(0)
         }) {
             Ok(rows) => rows,
-            Err(e) => return InsertResult::DatabaseError(format!("Query: {}", e)),
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK", []);
+                return InsertResult::DatabaseError(format!("Query: {}", e));
+            }
         };
         rows.filter_map(|r| r.ok()).collect()
     };
 
-    let front_lower = card.front.to_lowercase();
-
     // 精确匹配 + 模糊匹配
     for existing in &existing_fronts {
         if existing == &front_lower {
+            let _ = conn.execute("ROLLBACK", []);
             return InsertResult::Duplicate(card.front.clone());
         }
         let sim = strsim::jaro_winkler(existing, &front_lower);
         if sim > 0.85 {
+            let _ = conn.execute("ROLLBACK", []);
             return InsertResult::Duplicate(card.front.clone());
         }
     }
 
-    // 2. 跳过记录移除 (如果用户之前跳过该概念)
+    // 3. 跳过记录移除 (如果用户之前跳过该概念)
     let _ = conn.execute(
         "DELETE FROM skipped_concepts WHERE user_id = ?1 AND LOWER(front) = ?2",
         rusqlite::params![card.user_id, front_lower],
     );
 
-    // 3. 事务写入
-    match conn.execute_batch("BEGIN TRANSACTION") {
-        Ok(_) => {},
-        Err(e) => return InsertResult::DatabaseError(format!("Begin tx: {}", e)),
-    }
-
+    // 4. 事务内写入 cards
     let card_result = conn.execute(
         "INSERT INTO cards (id, user_id, domain, card_type, front, back, source_sentence, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -70,10 +79,11 @@ pub fn insert_card(conn: &Connection, card: &Card, memory: &CardMemory) -> Inser
     );
 
     if let Err(e) = card_result {
-        let _ = conn.execute_batch("ROLLBACK");
+        let _ = conn.execute("ROLLBACK", []);
         return InsertResult::DatabaseError(format!("Card insert: {}", e));
     }
 
+    // 5. 事务内写入 card_memory
     let memory_result = conn.execute(
         "INSERT INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -84,11 +94,12 @@ pub fn insert_card(conn: &Connection, card: &Card, memory: &CardMemory) -> Inser
     );
 
     if let Err(e) = memory_result {
-        let _ = conn.execute_batch("ROLLBACK");
+        let _ = conn.execute("ROLLBACK", []);
         return InsertResult::DatabaseError(format!("Memory insert: {}", e));
     }
 
-    match conn.execute_batch("COMMIT") {
+    // 6. 提交事务
+    match conn.execute("COMMIT", []) {
         Ok(_) => InsertResult::Success(card.id.clone()),
         Err(e) => InsertResult::DatabaseError(format!("Commit: {}", e)),
     }

@@ -1,5 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../api/auth_client.dart';
 
 const _tokenKey = 'coevo_auth_token';
@@ -47,36 +48,50 @@ class AuthState {
 
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthClient _client;
+  final FlutterSecureStorage _storage;
 
-  AuthNotifier(this._client) : super(const AuthState());
+  AuthNotifier(this._client)
+      : _storage = const FlutterSecureStorage(),
+        super(const AuthState());
 
   Future<void> tryRestore() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString(_tokenKey);
-    final userId = prefs.getString(_userIdKey);
-    final username = prefs.getString(_usernameKey);
-    if (token != null && userId != null) {
-      state = AuthState(
-        isAuthenticated: true,
-        userId: userId,
-        token: token,
-        username: username,
-      );
+    try {
+      final token = await _storage.read(key: _tokenKey);
+      final userId = await _storage.read(key: _userIdKey);
+      final username = await _storage.read(key: _usernameKey);
+      if (token != null && userId != null) {
+        state = AuthState(
+          isAuthenticated: true,
+          userId: userId,
+          token: token,
+          username: username,
+        );
+      }
+    } catch (e) {
+      debugPrint('tryRestore: failed to read secure storage: $e');
     }
   }
 
   Future<void> _saveCredentials(String userId, String token, String? username) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, token);
-    await prefs.setString(_userIdKey, userId);
-    if (username != null) await prefs.setString(_usernameKey, username);
+    try {
+      await _storage.write(key: _tokenKey, value: token);
+      await _storage.write(key: _userIdKey, value: userId);
+      if (username != null) {
+        await _storage.write(key: _usernameKey, value: username);
+      }
+    } catch (e) {
+      debugPrint('_saveCredentials: failed to write secure storage: $e');
+    }
   }
 
   Future<void> _clearCredentials() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_tokenKey);
-    await prefs.remove(_userIdKey);
-    await prefs.remove(_usernameKey);
+    try {
+      await _storage.delete(key: _tokenKey);
+      await _storage.delete(key: _userIdKey);
+      await _storage.delete(key: _usernameKey);
+    } catch (e) {
+      debugPrint('_clearCredentials: failed to clear secure storage: $e');
+    }
   }
 
   Future<void> register(String username, String password) async {

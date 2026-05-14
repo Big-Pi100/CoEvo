@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,8 +26,12 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _messageController = TextEditingController();
   final _messages = <Message>[];
-  GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
+  final _listKey = GlobalKey<AnimatedListState>();
   final _scrollController = ScrollController();
+
+  /// Seed for AnimatedList ValueKey — increment to force recreate on conversation switch
+  int _listSeed = 0;
+
   ChatClient? _client;
   WsChatSession? _session;
   StreamSubscription<WsEvent>? _sessionSub;
@@ -141,8 +146,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _subscriptionRequired = false;
         _subscriptionChecked = true;
       });
-    } catch (_) {
+    } catch (e) {
       // 网络错误等，不阻断使用
+      debugPrint('ChatScreen._checkSubscription: $e');
       if (mounted) setState(() => _subscriptionChecked = true);
     }
   }
@@ -365,8 +371,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final auth = ref.read(authProvider);
       try {
         _session!.send(auth.userId ?? '', _convId, text);
-      } catch (_) {
+      } catch (e) {
         // 连接已关闭，清理后重建
+        debugPrint('ChatScreen._sendMessage session send failed: $e');
         _sessionSub?.cancel();
         _session = null;
         // 递归调用自身，走首次连接分支
@@ -710,8 +717,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             onPressed: () async {
               final result = await context.push<String>('/conversations');
               if (result != null && mounted) {
-                // 切换到新会话：重置 AnimatedList key 强制重建
-                _listKey = GlobalKey<AnimatedListState>();
+                // 切换到新会话：递增 seed 强制重建 AnimatedList
+                _listSeed++;
                 _sessionSub?.cancel();
                 _session = null;
                 _convId = result;
@@ -756,7 +763,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             tooltip: '新对话',
             onPressed: () {
               ref.read(currentConversationIdProvider.notifier).state = null;
-              _listKey = GlobalKey<AnimatedListState>();
+              _listSeed++;
               setState(() {
                 _messages.clear();
                 _convId = 'conv_${DateTime.now().millisecondsSinceEpoch}';
@@ -791,7 +798,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ? const ChatSkeleton()
                 : SelectionArea(
               child: AnimatedList(
-              key: _listKey,
+              key: ValueKey(_listSeed),
               controller: _scrollController,
               initialItemCount: _messages.length,
               padding: const EdgeInsets.all(16),

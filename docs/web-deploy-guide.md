@@ -1,6 +1,6 @@
-# CoEvo Web 部署指南
+# CoEvo 部署指南
 
-> 将 Flutter Web 前端部署到 VPS，通过 Nginx 提供服务。
+> Flutter Web 前端 + Rust 后端完整部署流程，涵盖构建、上传、替换、验证与回滚。
 
 ---
 
@@ -12,8 +12,14 @@
 | SSH 用户 | `ubuntu` |
 | SSH 密钥 | `~/.ssh/coevo_key` |
 | 域名 | `keyievolution.fun`（待备案） |
+| **前端** | |
 | Web 目录 | `/opt/coevo/admin-web/` |
 | 访问入口 | `http://<OLD_VPS_IP>/app/` |
+| **后端** | |
+| 后端目录 | `/opt/coevo/` |
+| 二进制路径 | `/opt/coevo/coevo_server` |
+| systemd 服务 | `coevo.service` |
+| 后端端口 | `8080` |
 
 ---
 
@@ -31,18 +37,26 @@
 │  location /ws    → proxy_pass http://127.0.0.1:8080  │
 └──────────────────────────────────────────────────────┘
                            │
-                           ▼
-┌─ Nginx :3000 (coevo-admin) ─────────────────────────┐
-│  root /opt/coevo/admin-web/                          │
-│  Flutter Web 静态文件                                 │
-│  location /api/ → http://127.0.0.1:8080              │
-│  location /ws   → http://127.0.0.1:8080/ws           │
-└──────────────────────────────────────────────────────┘
+          ┌────────────────┼────────────────┐
+          ▼                                 ▼
+┌─ Nginx :3000 (coevo-admin) ───┐  ┌─ coevo.service :8080 ──┐
+│  root /opt/coevo/admin-web/   │  │  /opt/coevo/coevo_server │
+│  Flutter Web 静态文件          │  │  Rust axum + SQLite      │
+│  /app/ → rewrite 剥离前缀      │  │  WorkingDirectory:       │
+│  /api/ → :8080                │  │  /opt/coevo              │
+│  /ws   → :8080/ws             │  │                          │
+└───────────────────────────────┘  └─────────────────────────┘
 ```
 
 > Nginx 配置文件位置：
 > - `/etc/nginx/sites-available/coevo-landing`（port 80，入口）
 > - `/etc/nginx/sites-available/coevo-admin`（port 3000，内部）
+>
+> **关键设计说明**：
+> - Flutter 构建时使用 `--base-href /app/`，所有资源请求会带 `/app/` 前缀。
+> - Port 80 通过 `proxy_pass` 将 `/app/` 路由到 port 3000，资源路径自然匹配。
+> - Port 3000 Nginx 配置了 `/app/` location，通过 `rewrite` 剥离前缀后正确提供文件。
+> - **部署时必须确保 port 3000 的 `/app/` location 配置存在**，否则直连 port 3000 时所有 JS/CSS 资源会错误返回 HTML，导致白屏。
 
 ---
 
@@ -122,7 +136,129 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "rm -f /tmp/coevo-web.tar.gz"
 
 ---
 
-## 5. 验证部署
+## 5. Rust 后端部署
+
+> 后端使用 Rust (axum + tokio + rusqlite)，由 systemd 管理 `coevo.service`。
+
+### 5.1 环境说明
+
+| 项目 | 值 |
+|:--|:--|
+| VPS OS | Ubuntu 22.04 LTS (x86_64) |
+| VPS 规格 | 2 核 / 1 GB RAM / 2 GB swap |
+| Rust 版本 | 1.95.0（通过 rustup 安装） |
+| 二进制名 | `coevo_backend` → 部署后重命名为 `coevo_server` |
+| 本地 OS | Windows（无法直接交叉编译 Linux 目标） |
+
+> **关键约束**：本地 Windows 无 Linux 链接器，无法交叉编译。必须将源码上传到 VPS 原地编译。VPS 仅 1 GB RAM，编译需使用 `-j 1` 限制单线程，避免 OOM。
+
+### 5.2 源码打包上传
+
+```bash
+# 1. 本地打包（排除 target/ 和 data/ 目录）
+cd E:\CoEvo
+tar czf /tmp/coevo-backend-src.tar.gz \
+  --exclude='backend/target' \
+  --exclude='backend/data' \
+  backend/
+
+# 2. 上传到 VPS
+scp -i ~/.ssh/coevo_key -o StrictHostKeyChecking=no \
+  /tmp/coevo-backend-src.tar.gz \
+  ubuntu@<OLD_VPS_IP>:/tmp/
+```
+
+### 5.3 VPS 端编译
+
+```bash
+ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
+  # 解压源码
+  sudo rm -rf /tmp/coevo-build
+  sudo mkdir -p /tmp/coevo-build
+  sudo tar xzf /tmp/coevo-backend-src.tar.gz -C /tmp/coevo-build/
+  sudo chown -R ubuntu:ubuntu /tmp/coevo-build
+
+  # 编译（-j 1 防 OOM，首次约 5-10 分钟，增量更快）
+  export PATH="$HOME/.cargo/bin:$PATH"
+  cd /tmp/coevo-build/backend
+  cargo build --release -j 1
+'
+```
+
+> **注意**：
+> - 首次编译耗时较长（需下载并编译所有依赖），后续增量编译会快很多。
+> - 如果 VPS 上 Rust 未安装，先执行：  
+>   `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y`
+
+### 5.4 替换二进制并重启
+
+```bash
+ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
+  # 停止服务
+  sudo systemctl stop coevo
+
+  # 备份旧二进制
+  sudo cp /opt/coevo/coevo_server \
+    /opt/coevo/coevo_server.bak.$(date +%Y%m%d-%H%M%S)
+
+  # 替换新二进制
+  sudo cp /tmp/coevo-build/backend/target/release/coevo_backend \
+    /opt/coevo/coevo_server
+  sudo chmod +x /opt/coevo/coevo_server
+  sudo chown ubuntu:ubuntu /opt/coevo/coevo_server
+
+  # 启动服务
+  sudo systemctl start coevo
+  sleep 2
+  echo "Service: $(sudo systemctl is-active coevo)"
+'
+```
+
+### 5.5 清理
+
+```bash
+# VPS 端
+ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> \
+  "rm -rf /tmp/coevo-build /tmp/coevo-backend-src.tar.gz"
+
+# 本地
+rm -f /tmp/coevo-backend-src.tar.gz
+```
+
+### 5.6 systemd 服务参考
+
+```ini
+# /etc/systemd/system/coevo.service
+[Unit]
+Description=CoEvo Learning Service
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/coevo
+ExecStart=/opt/coevo/coevo_server
+Restart=always
+RestartSec=5
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=multi-user.target
+```
+
+常用管理命令：
+
+```bash
+sudo systemctl status coevo     # 查看状态
+sudo systemctl stop coevo       # 停止
+sudo systemctl start coevo      # 启动
+sudo systemctl restart coevo    # 重启
+sudo journalctl -u coevo -f     # 实时日志
+```
+
+---
+
+## 6. 验证部署
 
 ### 5.1 快速检查
 
@@ -161,7 +297,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
 
 ---
 
-## 6. 故障排查
+## 7. 故障排查
 
 ### 6.1 App 页面空白 / JS 404
 
@@ -216,7 +352,26 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> \
   "sudo systemctl restart coevo"
 ```
 
-### 6.4 域名被拦截
+### 6.4 后端编译 OOM
+
+**症状**：`cargo build --release` 被系统 kill，日志中出现 `Killed` 或内存不足
+
+**原因**：VPS 仅 1 GB RAM，Rust 编译（尤其是 rusqlite bundled 编译 SQLite C 源码）内存消耗大
+
+**解决**：
+
+```bash
+# 使用 -j 1 限制单线程编译
+cargo build --release -j 1
+
+# 如果仍然 OOM，临时增加 swap
+sudo fallocate -l 4G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+```
+
+### 6.5 域名被拦截
 
 **症状**：`keyievolution.fun` 返回 DNSPod 拦截页面
 
@@ -224,9 +379,40 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> \
 
 **解决**：登录 [DNSPod 控制台](https://console.dnspod.cn/)，检查域名状态和备案信息。备案完成前请使用 IP 直连。
 
+### 6.6 直连 Port 3000 白屏 / 管理员后台打不开
+
+**症状**：`http://<OLD_VPS_IP>:3000/` 或 `:3000/admin` 页面白屏，浏览器 Console 报 JS 语法错误（`Unexpected token '<'`）
+
+**原因**：Flutter 构建时使用 `--base-href /app/`，`index.html` 中 `<base href="/app/">` 导致所有资源请求带 `/app/` 前缀。Port 3000 Nginx 若缺少 `/app/` location，`try_files` 会将不存在的文件回退到 `index.html`，使 JS/CSS 请求返回 HTML 内容。
+
+**检查**：
+
+```bash
+# 验证 — 正确应返回 application/javascript，而非 text/html
+curl -sI http://<OLD_VPS_IP>:3000/app/main.dart.js | grep Content-Type
+# 期望: Content-Type: application/javascript
+```
+
+**修复**：确保 port 3000 Nginx 配置包含 `/app/` location：
+
+```nginx
+location /app/ {
+    rewrite ^/app/(.*)$ /$1 break;
+    try_files $uri $uri/ /index.html;
+}
+```
+
+应用修复后重载：
+
+```bash
+ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
+  sudo nginx -t && sudo nginx -s reload
+'
+```
+
 ---
 
-## 7. 平台兼容注意事项
+## 8. 平台兼容注意事项
 
 ### 7.1 代码修改清单
 
@@ -250,7 +436,9 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> \
 
 ---
 
-## 8. 回滚
+## 9. 回滚
+
+### 9.1 前端回滚
 
 如遇严重问题，可恢复上一版本：
 
@@ -265,6 +453,118 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
 "
 ```
 
+### 9.2 后端回滚
+
+```bash
+ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
+  # 列出可用备份
+  ls -la /opt/coevo/coevo_server.bak.*
+
+  # 停止 → 回滚 → 启动
+  sudo systemctl stop coevo
+  sudo cp /opt/coevo/coevo_server.bak.20260514-163157 /opt/coevo/coevo_server
+  sudo systemctl start coevo
+
+  # 验证
+  curl -s http://127.0.0.1:8080/health
+'
+```
+
 ---
 
-> 最后更新：2026-05-14
+## 10. 部署检查清单
+
+> 每次部署后逐项验证，避免遗漏。**部署后端时不要忘记检查前端和管理后台。**
+
+| # | 检查项 | 命令 | 期望 |
+|:--|:--|:--|:--|
+| 1 | 后端健康 | `curl -s http://<OLD_VPS_IP>:8080/health` | `CoEvo API — OK` |
+| 2 | 落地页 | `curl -sI http://<OLD_VPS_IP>/` | HTTP 200 |
+| 3 | App 入口 (port 80) | `curl -sI http://<OLD_VPS_IP>/app/` | HTTP 200 |
+| 4 | App 入口 (port 3000) | `curl -sI http://<OLD_VPS_IP>:3000/` | HTTP 200 |
+| 5 | 管理后台 (SPA 路由) | `curl -sI http://<OLD_VPS_IP>:3000/admin` | HTTP 200 |
+| 6 | JS 资源 MIME 类型 | `curl -sI http://<OLD_VPS_IP>:3000/app/main.dart.js \| grep Content-Type` | `application/javascript` |
+| 7 | coevo 服务 | `ssh ... "systemctl is-active coevo"` | `active` |
+| 8 | Nginx 服务 | `ssh ... "systemctl is-active nginx"` | `active` |
+| 9 | 服务日志无异常 | `ssh ... "journalctl -u coevo --since '1 min ago'"` | 无 ERROR |
+
+> **部署后端后特别注意第 4-6 项**：后端部署不会触碰前端文件，但如果 Nginx 配置曾因故回滚或丢失 `/app/` location，管理后台会白屏。
+
+### 完整验证脚本
+
+```bash
+#!/bin/bash
+# coevo-deploy-check.sh — 部署后一键验证
+
+VPS="ubuntu@<OLD_VPS_IP>"
+KEY="~/.ssh/coevo_key"
+
+echo "=== CoEvo 部署验证 ==="
+
+# 1. 后端健康
+echo -n "1. Backend health: "
+curl -s http://<OLD_VPS_IP>:8080/health
+echo ""
+
+# 2-6. 前端页面
+for url in \
+  "http://<OLD_VPS_IP>/|Landing" \
+  "http://<OLD_VPS_IP>/app/|App (p80)" \
+  "http://<OLD_VPS_IP>:3000/|App (p3000)" \
+  "http://<OLD_VPS_IP>:3000/admin|Admin"
+do
+  u="${url%%|*}"; label="${url##*|}"
+  code=$(curl -s -o /dev/null -w "%{http_code}" "$u")
+  echo "$label: HTTP $code"
+done
+
+# 7. JS MIME
+mime=$(curl -sI http://<OLD_VPS_IP>:3000/app/main.dart.js | grep Content-Type | tr -d '\r')
+echo "main.dart.js: $mime"
+
+# 8-9. 服务状态
+ssh -i "$KEY" "$VPS" "
+  echo 'coevo:' \$(systemctl is-active coevo)
+  echo 'nginx:' \$(systemctl is-active nginx)
+"
+echo "=== Done ==="
+```
+
+---
+## 11. Port 3000 Nginx 完整配置参考
+
+```nginx
+# /etc/nginx/sites-available/coevo-admin
+server {
+    listen 3000;
+    root /opt/coevo/admin-web;
+    index index.html;
+
+    # 关键：剥离 /app/ 前缀，匹配 Flutter --base-href /app/
+    # 缺少此配置会导致直连 port 3000 时白屏
+    location /app/ {
+        rewrite ^/app/(.*)$ /$1 break;
+        try_files $uri $uri/ /index.html;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+    }
+
+    location /ws {
+        proxy_pass http://127.0.0.1:8080/ws;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+---
+
+> 最后更新：2026-05-14（新增 Rust 后端部署章节 + Port 3000 /app/ 修复 + 部署检查清单）

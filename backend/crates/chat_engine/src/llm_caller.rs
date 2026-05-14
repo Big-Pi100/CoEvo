@@ -8,9 +8,9 @@
 ///   - `stream_generate()`: streaming SSE (for real-time UI)
 ///
 /// Performance:
-///   - Two parallel API calls race with 1s timeout (first wins, second aborted)
-///   - ~95% of calls complete within 1s (vs ~80% for single call)
-///   - Worst case: 1s → template reply (instead of 30s+)
+///   - Single request with one retry on failure (no racing)
+///   - Pool config prevents stale-connection reuse with 30 s idle timeout
+///   - 10 s connect timeout prevents TCP-handshake hangs
 ///
 /// Cold start:
 ///   - `warmup()` called at server startup to pre-warm DeepSeek model
@@ -21,12 +21,22 @@ use serde_json::{json, Value};
 use std::sync::OnceLock;
 use std::time::Duration;
 
-/// Global HTTP client (shared across all LlmCaller instances)
+/// Global HTTP client (shared across all LlmCaller instances).
+///
+/// Pool tuning:
+///   - `connect_timeout`: prevents hanging on TCP handshake
+///   - `pool_max_idle_per_host`: limits idle connections (5 is enough for
+///      our 2-attempt retry pattern)
+///   - `pool_idle_timeout`: evicts stale/corrupted connections after 30 s,
+///      preventing "poisoned connection" reuse
 fn http_client() -> &'static Client {
     static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
     HTTP_CLIENT.get_or_init(|| {
         Client::builder()
+            .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
+            .pool_max_idle_per_host(5)
+            .pool_idle_timeout(Duration::from_secs(30))
             .build()
             .expect("reqwest::Client::new")
     })
@@ -108,33 +118,35 @@ impl LlmCaller {
 
     /// Non-streaming chat completion.
     ///
-    /// Sends two identical requests simultaneously; returns the first that
-    /// completes. The loser is silently dropped. This reduces worst-case
-    /// latency when one connection happens to be slower than the other.
+    /// Single request with one retry on failure. Previously used a
+    /// `tokio::select!` race of two parallel requests — this was the
+    /// root cause of connection-pool corruption: the losing request's
+    /// connection was dropped mid-flight back into the reqwest pool,
+    /// poisoning it for all subsequent callers.
     pub async fn generate(&mut self, prompt: &str) -> Result<String, LlmError> {
         let url = format!("{}/chat/completions", self.config.base_url);
         let body = build_request_body(&self.config, prompt);
         let consecutive = &mut self.consecutive_failures;
 
-        // Race two parallel requests (no artificial timeout — let the
-        // winner come back as fast as the API can deliver).
-        let req1 = post_one(http_client(), &url, &self.config.api_key, &body);
-        let req2 = post_one(http_client(), &url, &self.config.api_key, &body);
-        let result = tokio::select! {
-            result1 = req1 => result1,
-            result2 = req2 => result2,
-        };
-
-        match result {
-            Ok(reply) => {
-                *consecutive = 0;
-                Ok(reply)
-            }
-            Err(e) => {
-                *consecutive += 1;
-                Err(e)
+        let mut last_error = LlmError::EmptyResponse;
+        for attempt in 0..2 {
+            match post_one(http_client(), &url, &self.config.api_key, &body).await {
+                Ok(reply) => {
+                    *consecutive = 0;
+                    return Ok(reply);
+                }
+                Err(e) => {
+                    if attempt == 0 {
+                        tracing::warn!("LLM generate attempt 1 failed: {:?}", e);
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                    }
+                    last_error = e;
+                }
             }
         }
+
+        *consecutive += 1;
+        Err(last_error)
     }
 
     // ── Streaming call (for real-time UI) ──

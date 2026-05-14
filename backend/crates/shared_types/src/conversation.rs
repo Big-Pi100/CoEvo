@@ -6,6 +6,9 @@ pub struct ChatRequest {
     pub user_id: String,
     pub conversation_id: String,
     pub message: String,
+    /// 可选 token — 首条 WS 消息通过 payload 传递鉴权
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
 }
 
 /// 对话回复 (REST end)
