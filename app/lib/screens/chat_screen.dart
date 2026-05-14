@@ -8,6 +8,7 @@ import '../providers/auth_provider.dart';
 import '../services/stt_service.dart';
 import '../services/tts_service.dart';
 import '../widgets/skeleton.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 
 /// 持久化 conversation_id 的 provider (跨页面保持)
 final currentConversationIdProvider = StateProvider<String?>((ref) => null);
@@ -36,6 +37,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // 学习计划
   Map<String, dynamic>? _activePlan;
   bool _planExpanded = true;
+
+  // 订阅状态
+  bool _subscriptionRequired = false;
+  bool _subscriptionExpired = false;
+  bool _subscriptionChecked = false;
+  bool _subscriptionDialogShown = false;
 
   String _streamingBuffer = '';
   int _streamingIndex = -1;
@@ -69,6 +76,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     // 加载学习计划
     _loadPlan();
 
+    // 主动检查订阅状态
+    _checkSubscription();
+
     // 加载历史对话
     final history = await _client!.getConversationTurns(_convId);
     if (history.isNotEmpty && mounted) {
@@ -100,6 +110,40 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final plans = await _client!.getPlans(conversationId: _convId);
     if (plans.isNotEmpty && mounted) {
       setState(() => _activePlan = plans.first);
+    }
+  }
+
+  Future<void> _checkSubscription() async {
+    if (_client == null) return;
+    try {
+      final prefs = await _client!.getPreferences();
+      final expiresStr = prefs['subscription_expires'];
+      if (expiresStr == null || expiresStr.isEmpty) {
+        if (mounted) setState(() {
+          _subscriptionRequired = true;
+          _subscriptionExpired = false;
+          _subscriptionChecked = true;
+        });
+        return;
+      }
+      final expires = DateTime.tryParse(expiresStr);
+      if (expires == null) {
+        if (mounted) setState(() {
+          _subscriptionRequired = true;
+          _subscriptionExpired = false;
+          _subscriptionChecked = true;
+        });
+        return;
+      }
+      final now = DateTime.now();
+      if (mounted) setState(() {
+        _subscriptionExpired = now.isAfter(expires);
+        _subscriptionRequired = false;
+        _subscriptionChecked = true;
+      });
+    } catch (_) {
+      // 网络错误等，不阻断使用
+      if (mounted) setState(() => _subscriptionChecked = true);
     }
   }
 
@@ -369,9 +413,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         break;
       case 'error':
         if (event.content == 'subscription_expired') {
-          _showSubscriptionDialog('订阅已到期');
+          setState(() {
+            _subscriptionExpired = true;
+            _subscriptionRequired = false;
+            _subscriptionChecked = true;
+          });
+          if (!_subscriptionDialogShown) {
+            _subscriptionDialogShown = true;
+            _showSubscriptionDialog('订阅已到期');
+          }
         } else if (event.content == 'subscription_required') {
-          _showSubscriptionDialog('需要激活');
+          setState(() {
+            _subscriptionRequired = true;
+            _subscriptionExpired = false;
+            _subscriptionChecked = true;
+          });
+          if (!_subscriptionDialogShown) {
+            _subscriptionDialogShown = true;
+            _showSubscriptionDialog('需要激活');
+          }
         } else {
           _finalizeStreamingWithRetry('抱歉，出了点问题：${event.content}');
         }
@@ -512,7 +572,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       final count = (result['created'] as List?)?.length ?? 0;
                       if (count > 0) ref.read(cardRefreshProvider.notifier).state++;
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('已创建 $count 张卡片')),
+                        SnackBar(
+                          content: Text('已创建 $count 张卡片'),
+                          behavior: SnackBarBehavior.floating,
+                          margin: EdgeInsets.only(
+                            bottom: MediaQuery.of(context).size.height - 120,
+                            left: 16,
+                            right: 16,
+                          ),
+                        ),
                       );
                     }
                   }
@@ -551,6 +619,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   void _showSubscriptionDialog(String title) {
     if (!mounted) return;
+    setState(() {
+      if (title.contains('到期') || title.contains('过期')) {
+        _subscriptionExpired = true;
+        _subscriptionRequired = false;
+      } else {
+        _subscriptionRequired = true;
+        _subscriptionExpired = false;
+      }
+      _subscriptionChecked = true;
+    });
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -567,6 +645,43 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('我知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 订阅状态横幅（主动检查结果显示在聊天页顶部）
+  Widget _buildSubscriptionBanner() {
+    if (!_subscriptionChecked) return const SizedBox.shrink();
+    if (!_subscriptionRequired && !_subscriptionExpired) return const SizedBox.shrink();
+
+    final isExpired = _subscriptionExpired;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: isExpired ? Colors.red.shade50 : Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isExpired ? Colors.red.shade200 : Colors.orange.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isExpired ? Icons.lock_clock : Icons.lock_outline,
+            size: 18,
+            color: isExpired ? Colors.red.shade700 : Colors.orange.shade700,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              isExpired ? '订阅已到期，请联系服务人员续费' : '需要激活订阅才能使用 AI 对话',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: isExpired ? Colors.red.shade800 : Colors.orange.shade800,
+              ),
+            ),
           ),
         ],
       ),
@@ -669,6 +784,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         children: [
           // 学习计划面板（持久展示，不被对话推没）
           _buildPlanPanel(),
+          // 订阅状态横幅
+          _buildSubscriptionBanner(),
           Expanded(
             child: _isInitializing
                 ? const ChatSkeleton()
@@ -726,14 +843,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                   mainAxisSize: MainAxisSize.min,
                                   crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                                   children: [
-                                    // 消息文字
-                                    Text(
-                                      _cleanText(msg.content) + (isStreaming ? '▌' : ''),
-                                      style: TextStyle(
-                                        color: isUser ? Colors.white : Theme.of(context).colorScheme.onSecondaryContainer,
-                                        fontSize: 15,
-                                        height: 1.5,
-                                      ),
+                                    // 消息文字（支持 LaTeX 数学公式渲染）
+                                    _buildRichContent(
+                                      msg.content,
+                                      isUser: isUser,
+                                      isStreaming: isStreaming,
                                     ),
                                     // AI 消息朗读按钮（流式输出时不显示）
                                     if (!isUser && !isStreaming)
@@ -997,12 +1111,83 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  /// 去除 markdown 标记符号（**、###等），使朗读和显示更干净
+  /// 去除标记符号，使朗读和显示更干净
   String _cleanText(String text) {
     return text
         .replaceAll('**', '')
         .replaceAll('### ', '')
         .replaceAll('## ', '')
-        .replaceAll('# ', '');
+        .replaceAll('# ', '')
+        .replaceAll('\\(', '')
+        .replaceAll('\\)', '')
+        .replaceAll('\\[', '')
+        .replaceAll('\\]', '');
+  }
+
+  /// 渲染消息内容，支持 \(...\) 行内公式和 \[...\] 独立公式
+  Widget _buildRichContent(String text, {required bool isUser, bool isStreaming = false}) {
+    final baseColor = isUser
+        ? Colors.white
+        : Theme.of(context).colorScheme.onSecondaryContainer;
+    final trailing = isStreaming ? '▌' : '';
+
+    // 匹配 \(inline\) 和 \[display\] 数学公式
+    final mathRegex = RegExp(r'\\[\(\[](.+?)\\[[)\]]');
+
+    final matches = mathRegex.allMatches(text).toList();
+
+    if (matches.isEmpty) {
+      return Text(
+        '$text$trailing',
+        style: TextStyle(color: baseColor, fontSize: 15, height: 1.5),
+      );
+    }
+
+    final spans = <InlineSpan>[];
+    int lastEnd = 0;
+
+    for (final match in matches) {
+      // 公式前的纯文本
+      if (match.start > lastEnd) {
+        spans.add(TextSpan(
+          text: text.substring(lastEnd, match.start),
+          style: TextStyle(color: baseColor, fontSize: 15, height: 1.5),
+        ));
+      }
+
+      final isDisplay = text[match.start + 1] == '[';
+      final formula = match.group(1)!.trim();
+
+      spans.add(WidgetSpan(
+        child: Math.tex(
+          formula,
+          mathStyle: isDisplay ? MathStyle.display : MathStyle.text,
+          textStyle: TextStyle(fontSize: 15, color: baseColor),
+        ),
+        alignment: PlaceholderAlignment.middle,
+      ));
+
+      lastEnd = match.end;
+    }
+
+    // 剩余纯文本
+    if (lastEnd < text.length) {
+      spans.add(TextSpan(
+        text: text.substring(lastEnd),
+        style: TextStyle(color: baseColor, fontSize: 15, height: 1.5),
+      ));
+    }
+
+    // 流式光标
+    if (trailing.isNotEmpty) {
+      spans.add(TextSpan(
+        text: trailing,
+        style: TextStyle(color: baseColor, fontSize: 15, height: 1.5),
+      ));
+    }
+
+    return Text.rich(
+      TextSpan(children: spans),
+    );
   }
 }

@@ -701,7 +701,7 @@
 | GET | `/api/review/due` | N5 | `?user_id=xxx` | `{cards: [...], total_due, has_more}` |
 | POST | `/api/review/verify` | N6b | `{card_id, front, back}` | `{questions: [{q, expected}]...}` |
 | POST | `/api/review/judge` | N6b | `{card_id, questions: [{q,expected,user_answer}]}` | `{results: [{correct,feedback}], total_correct}` |
-| POST | `/api/review/submit` | N6c | `{card_id, rating, vtype, vresult}` | `{new_state, next_due, achievements}` |
+| POST | `/api/review/submit` | N6c | `{user_id, card_id, rating, vtype, vresult, details?}` | `{status: "ok", achievements: [...]}` |
 | POST | `/api/cards/batch-create` | N3+N4 | `{user_id, candidates: [{front,back,source_sentence,domain}]}` | `{created, duplicates, achievements}` |
 | GET | `/api/cards/all` | - | `?user_id=xxx&q=&state=&domain=&sort=` | `{cards, total, state_counts, domains}` |
 | GET | `/api/history` | N1 | `?user_id=xxx&conversation_id=xxx` | `{turns: [{role,content,...}]}` |

@@ -154,7 +154,7 @@ N8 学习计划（可选结构化模式）
 
 ---
 
-## 四、节点定义
+## 五、节点定义
 
 ### N1: AI 对话
 
@@ -291,7 +291,7 @@ N8 学习计划（可选结构化模式）
 
 ---
 
-## 五、节点汇总
+## 六、节点汇总
 
 | 节点 | 位置 | 负责 |
 |------|------|------|
@@ -304,11 +304,11 @@ N8 学习计划（可选结构化模式）
 | N7 | 后端 | 成就检测（固定11个 + 动态成就） |
 | N8 | 后端 | 学习计划（LLM + prompt注入 + render_plan） |
 
-**8 个节点 · 9 张表 · 结构化学习完成**
+**8 个节点 · 10 张表 · 结构化学习完成**
 
 ---
 
-## 六、数据库设计 (9 张表)
+## 七、数据库设计 (10 张表)
 
 ```sql
 -- 1. 用户
@@ -415,32 +415,41 @@ learning_plans (
     updated_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
 )
+
+-- 10. 用户偏好
+user_preferences (
+    user_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, key),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+)
 ```
 
 ---
 
-## 七、技术栈
+## 八、技术栈
 
 | 层 | 技术 |
 |----|------|
 | 后端 | Rust (axum + tokio) |
 | 客户端 | Flutter 3.x (iOS + Android) |
-| 数据库 | SQLite (rusqlite + Drift) |
+| 数据库 | SQLite (rusqlite, 后端独有) |
 | 记忆算法 | fsrs crate (FSRS-5) |
 | LLM | OpenAI 兼容 API |
-| 通信 | REST + WebSocket |
-| 跨语言类型 | REST JSON + 手动 Dart 类型 |
+| 通信 | REST + WebSocket, Dart 手动类型序列化 |
 
 ---
 
-## 八、实施计划（已全部完成 ✅）
+## 九、实施计划（已全部完成 ✅）
 
 ```
 2026-05-07 第一天完成全部 MVP 核心功能
 
 ✅ W1 ─────────────────────────
   项目脚手架
-  数据库 Schema + Migration (8 表)
+  数据库 Schema + Migration (9 表 → 迁移后 10 表)
   用户认证 (注册/登录/Token)
   N1 AI 对话 (REST + WebSocket 流式)
 
@@ -502,7 +511,7 @@ learning_plans (
 
 ---
 
-## 九、设计原则
+## 十、设计原则
 
 ```
 1. 系统不替用户决定什么值得学，系统建议，用户确认
@@ -514,13 +523,11 @@ learning_plans (
 
 ---
 
-## 十、待办功能（Backlog）
+## 十一、待办功能（Backlog）
 
 ### 语音识别（STT）
-- **状态**: 技术调研完成，暂缓
-- **问题**: 讯飞API凭据报10105；Android原生SpeechRecognizer依赖Google服务，国产手机兼容性差
-- **后续方案**: 待决定——要么修好讯飞凭据，要么换阿里云/百度语音（走现有后端代理架构）
-- **参考**: 见 `docs/deployment-guide.md` 和 memory 2026-05-13
+- **状态**: 已实现 ✅ — `POST /api/stt` 端点，ffmpeg 转码 + 科大讯飞 API
+- **环境变量**: `IFLYTEK_APPID`, `IFLYTEK_API_KEY`, `IFLYTEK_API_SECRET`
 
 ### 图像文字识别（OCR）
 - **状态**: 技术调研完成，暂缓

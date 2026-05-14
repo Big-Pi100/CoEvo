@@ -24,6 +24,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   int _activeCardIndex = -1;
   bool _isFlipped = false;
   bool _isLoading = true;
+  bool _hasLoadedOnce = false;
   String _verificationResult = '';
   bool _isVerified = false;
   bool _isVerifying = false;  // 闭卷考试模式（翻回正面，不可再翻看）
@@ -46,6 +47,12 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     ref.listenManual(cardRefreshProvider, (prev, next) {
       if (prev != next && mounted) _loadCards();
     });
+    // 监听 auth 恢复：当 auth 从不可用变为可用时自动重新加载
+    ref.listenManual(authProvider, (prev, next) {
+      if (!_hasLoadedOnce && next.userId != null) {
+        _loadCards();
+      }
+    });
   }
 
   @override
@@ -64,8 +71,16 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   }
 
   Future<void> _loadCards() async {
+    final auth = ref.read(authProvider);
+    if (auth.userId == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
     _initClient();
-    if (_client == null) return;
+    if (_client == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
     try {
       final resp = await _client!.getDueCards();
       setState(() {
@@ -73,6 +88,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             ?.map((e) => DueCard.fromJson(e as Map<String, dynamic>))
             .toList() ?? [];
         _isLoading = false;
+        _hasLoadedOnce = true;
       });
     } catch (e) {
       setState(() => _isLoading = false);

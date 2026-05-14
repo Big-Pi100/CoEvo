@@ -44,7 +44,7 @@ CoEvo API on http://0.0.0.0:8080
 LLM: deepseek-v4-flash @ https://api.deepseek.com/v1
 Prompts loaded from prompts/
 Word bank loaded: ~10万 words
-Schema initialized (8 tables)
+Schema initialized (9 tables, 迁移后 10 表)
 ```
 
 ### 4. 启动前端
@@ -62,15 +62,15 @@ flutter run
 
 ```
 backend/                    # Rust 后端 (axum)
-├── src/main.rs             # 入口 + 启动配置
-├── schema.sql              # 数据库 8 张表定义
+├── src/main.rs             # 入口 + 启动配置 + 内联 SCHEMA_SQL（9 表 + 迁移）
 ├── cefr_catalog.json       # 英文词库 (10 万词)
 ├── prompts/                # LLM Prompt 模板
 │   ├── chat_system.md
 │   ├── concept_extract.md
 │   ├── card_direct.md
 │   ├── quiz_generate.md
-│   └── quiz_judge.md
+│   ├── quiz_judge.md
+│   └── grill_assessment.md
 ├── data/coevo.db           # SQLite 数据库 (运行后自动创建)
 └── crates/
     ├── api_server/         # HTTP + WS 路由

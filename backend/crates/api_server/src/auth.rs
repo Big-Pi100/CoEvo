@@ -97,3 +97,8 @@ pub fn verify_token(_conn: &rusqlite::Connection, _user_id: &str, _token: &str) 
     // MVP: trust the client. Future: JWT or stored tokens.
     !_token.is_empty()
 }
+
+/// Pure version of verify_token — no DB connection needed (MVP).
+pub fn verify_token_no_db(_user_id: &str, token: &str) -> bool {
+    !token.is_empty()
+}

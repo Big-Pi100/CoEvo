@@ -14,16 +14,25 @@ class SkippedListScreen extends ConsumerStatefulWidget {
 class _SkippedListScreenState extends ConsumerState<SkippedListScreen> {
   List<Map<String, dynamic>> _items = [];
   bool _isLoading = true;
+  bool _hasLoadedOnce = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    ref.listenManual(authProvider, (prev, next) {
+      if (!_hasLoadedOnce && next.userId != null) {
+        _load();
+      }
+    });
   }
 
   Future<void> _load() async {
     final auth = ref.read(authProvider);
-    if (auth.userId == null) return;
+    if (auth.userId == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
     final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {
       final resp = await client.getSkippedConcepts();
@@ -31,6 +40,7 @@ class _SkippedListScreenState extends ConsumerState<SkippedListScreen> {
         _items = (resp['skipped'] as List<dynamic>?)
             ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
         _isLoading = false;
+        _hasLoadedOnce = true;
       });
     } catch (e) {
       setState(() => _isLoading = false);

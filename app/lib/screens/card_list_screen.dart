@@ -17,6 +17,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
   List<DueCard> _allCards = [];
   List<DueCard> _filteredCards = [];
   bool _isLoading = true;
+  bool _hasLoadedOnce = false;
 
   // 搜索与过滤
   final _searchController = TextEditingController();
@@ -45,6 +46,12 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     ref.listenManual(cardRefreshProvider, (prev, next) {
       if (prev != next) _loadCards();
     });
+    // 监听 auth 恢复：当 auth 从不可用变为可用时自动重新加载
+    ref.listenManual(authProvider, (prev, next) {
+      if (!_hasLoadedOnce && next.userId != null) {
+        _loadCards();
+      }
+    });
   }
 
   @override
@@ -56,7 +63,10 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
 
   Future<void> _loadCards() async {
     final auth = ref.read(authProvider);
-    if (auth.userId == null) return;
+    if (auth.userId == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
     final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {
       final resp = await client.getAllCards(sort: _sortBy);
@@ -72,6 +82,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
         _domains = domains;
         _stateCounts = stateCounts.map((k, v) => MapEntry(k, (v as num).toInt()));
         _isLoading = false;
+        _hasLoadedOnce = true;
       });
       _applyFilters();
     } catch (e) {

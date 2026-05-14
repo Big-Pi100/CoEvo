@@ -1,24 +1,55 @@
-//! N11: Database access
+//! N11: Database access — connection pool via r2d2-sqlite
 //!
-//! WAL-mode connections are cheap. Each request opens its own short-lived
-//! connection — no global lock, no contention.
+//! Uses a pool of up to 10 SQLite connections so every request
+//! doesn't pay the cost of opening a new file handle.
+//!
+//! PRAGMA busy_timeout=5000 is applied to every connection on
+//! checkout (fast, no I/O), avoiding SQLITE_BUSY errors under
+//! concurrent writes.
 
 use std::sync::OnceLock;
-use rusqlite::Connection;
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 
-static DB_PATH: OnceLock<String> = OnceLock::new();
+/// Re-export the pooled connection type so callers see the same interface.
+pub type DbConn = r2d2::PooledConnection<SqliteConnectionManager>;
 
-/// Initialize. Call once at startup.
+static DB_POOL: OnceLock<Pool<SqliteConnectionManager>> = OnceLock::new();
+
+/// Initialize the connection pool. Call once at startup.
 pub fn init(db_path: &str) -> Result<(), String> {
-    let conn = Connection::open(db_path).map_err(|e| format!("DB open: {}", e))?;
-    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")
-        .map_err(|e| format!("DB pragma: {}", e))?;
-    DB_PATH.set(db_path.to_string())
-        .map_err(|_| "DB already initialized".to_string())
+    let manager = SqliteConnectionManager::file(db_path);
+    let pool = Pool::builder()
+        .max_size(10)
+        .build(manager)
+        .map_err(|e| format!("DB pool init: {}", e))?;
+
+    // Enable WAL mode — persistent across all connections once set.
+    {
+        let conn = pool.get().map_err(|e| format!("Pool get: {}", e))?;
+        conn.execute_batch("PRAGMA journal_mode=WAL;")
+            .map_err(|e| format!("DB pragma: {}", e))?;
+    }
+
+    DB_POOL.set(pool)
+        .map_err(|_| "DB pool already initialized".to_string())
 }
 
-/// Open a new connection. Panics if not initialized.
-pub fn get_conn() -> Connection {
-    let path = DB_PATH.get().expect("DB not initialized — call init() first");
-    Connection::open(path).expect("Failed to open DB connection")
+/// Get a connection from the pool. Panics if pool not initialized.
+///
+/// Returns a `PooledConnection` that derefs to `rusqlite::Connection`,
+/// so all existing code using `conn.execute` / `conn.prepare` /
+/// `conn.query_row` works unchanged.
+///
+/// Sets `busy_timeout=5000` on every checkout (PRAGMAs are connection-
+/// local; this avoids SQLITE_BUSY under write contention).
+pub fn get_conn() -> DbConn {
+    let conn = DB_POOL
+        .get()
+        .expect("DB pool not initialized — call init() first")
+        .get()
+        .expect("Failed to get DB connection from pool");
+    conn.execute_batch("PRAGMA busy_timeout=5000;")
+        .expect("Failed to set busy_timeout");
+    conn
 }

@@ -28,6 +28,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _isUploading = false;
   ProviderSubscription? _authSub;
 
+  // 订阅状态
+  String? _subscriptionExpires;  // ISO 8601 或 null（未激活）
+
   @override
   void initState() {
     super.initState();
@@ -61,17 +64,32 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       final tts = ref.read(ttsServiceProvider);
       tts.bindClient(client);
 
-      final data = await client.getProfile();
-      final report = await client.getLearningReport();
-      final activity = await client.getActivity(days: 90);
-      final weekly = await client.getWeeklyReport();
+      final results = await Future.wait([
+        client.getProfile(),
+        client.getLearningReport(),
+        client.getActivity(days: 90),
+        client.getWeeklyReport(),
+        client.getPreferences(),
+      ]);
+      final data = results[0] as Map<String, dynamic>;
+      final report = results[1] as Map<String, dynamic>?;
+      final activity = results[2] as Map<String, dynamic>?;
+      final weekly = results[3] as Map<String, dynamic>?;
+      final serverPrefs = results[4] as Map<String, String>;
       // 如果后端有 display_name，覆盖本地缓存
       final backendName = data['display_name'] as String?;
       if (backendName != null && backendName != _displayName && mounted) {
         await prefs.setString('display_name', backendName);
         setState(() => _displayName = backendName);
       }
-      if (mounted) setState(() { _data = data; _report = report; _activityData = activity; _weeklyReport = weekly; _isLoading = false; });
+      if (mounted) setState(() {
+        _data = data;
+        _report = report;
+        _activityData = activity;
+        _weeklyReport = weekly;
+        _subscriptionExpires = serverPrefs['subscription_expires'];
+        _isLoading = false;
+      });
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -277,6 +295,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
           ),
         ),
+        const SizedBox(height: 16),
+
+        // 订阅状态
+        _buildSubscriptionCard(),
         const SizedBox(height: 16),
 
         // 跳过的概念
@@ -747,6 +769,51 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void dispose() {
     _authSub?.close();
     super.dispose();
+  }
+
+  /// 订阅状态卡片
+  Widget _buildSubscriptionCard() {
+    final expiresStr = _subscriptionExpires;
+    final bool isActivated = expiresStr != null && expiresStr.isNotEmpty;
+    final bool isExpired = isActivated && DateTime.tryParse(expiresStr)?.isBefore(DateTime.now()) == true;
+
+    String statusText;
+    Color statusColor;
+    IconData statusIcon;
+
+    if (!isActivated) {
+      statusText = '未激活 — 请联系服务人员开通';
+      statusColor = Colors.orange;
+      statusIcon = Icons.lock_outline;
+    } else if (isExpired) {
+      statusText = '已到期 — 请联系服务人员续费';
+      statusColor = Colors.red;
+      statusIcon = Icons.lock_clock;
+    } else {
+      final expires = DateTime.tryParse(expiresStr!)!;
+      final remaining = expires.difference(DateTime.now());
+      if (remaining.inDays > 30) {
+        statusText = '有效 — 到期日: ${expiresStr!.substring(0, 10)}';
+        statusColor = Colors.green;
+        statusIcon = Icons.verified;
+      } else if (remaining.inDays > 0) {
+        statusText = '即将到期 — 剩余 ${remaining.inDays} 天';
+        statusColor = Colors.orange;
+        statusIcon = Icons.access_time;
+      } else {
+        statusText = '已到期 — 请联系服务人员续费';
+        statusColor = Colors.red;
+        statusIcon = Icons.lock_clock;
+      }
+    }
+
+    return Card(
+      child: ListTile(
+        leading: Icon(statusIcon, color: statusColor, size: 24),
+        title: Text('订阅状态', style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text(statusText, style: TextStyle(color: statusColor, fontSize: 13)),
+      ),
+    );
   }
 }
 
