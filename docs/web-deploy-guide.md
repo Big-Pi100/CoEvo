@@ -71,13 +71,36 @@
 
 ```bash
 cd E:\CoEvo\app
-D:\flutter\flutter\bin\flutter build web --no-wasm-dry-run --base-href /app/
+D:\flutter\flutter\bin\flutter build web --no-wasm-dry-run --base-href /app/ \
+  --dart-define=API_HOST=<OLD_VPS_IP> --dart-define=API_PORT=8080
 ```
 
 | 参数 | 说明 |
 |:--|:--|
 | `--no-wasm-dry-run` | 跳过 WASM 干运行（避免 URI 解析错误） |
 | `--base-href /app/` | 设置资源基础路径，匹配 Nginx 的 `/app/` 路由 |
+| `--dart-define=API_HOST=...` | **2026-05-15 新增**：编译时注入 API 服务器地址（见 3.2.1 节） |
+| `--dart-define=API_PORT=...` | API 端口，VPS 上为 `8080` |
+
+### 3.2.1 API 地址配置机制
+
+> `app/lib/api/api_config.dart` 中 `baseUrl` 使用 Dart 编译时常量，**不再硬编码**。
+
+```dart
+// app/lib/api/api_config.dart
+static const String _host = String.fromEnvironment('API_HOST', defaultValue: 'localhost');
+static const String _port = String.fromEnvironment('API_PORT', defaultValue: '8080');
+static String get baseUrl => 'http://$_host:$_port';
+```
+
+| 场景 | 命令 |
+|:--|:--|
+| **VPS 部署（Web）** | `flutter build web --dart-define=API_HOST=<OLD_VPS_IP> --dart-define=API_PORT=8080` |
+| **VPS 部署（Android APK）** | `flutter build apk --release --dart-define=API_HOST=<OLD_VPS_IP> --dart-define=API_PORT=8080` |
+| **本地测试（默认）** | `flutter run`（默认连接 `localhost:8080`） |
+| **真机调试** | `flutter run --dart-define=API_HOST=<电脑局域网IP>` |
+
+> ⚠️ 部署到 VPS 时必须显式传入 `API_HOST`，否则前端会尝试连接 `localhost:8080` 导致 API 请求失败。
 
 ### 3.3 构建输出
 
@@ -197,7 +220,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
   # 停止服务
   sudo systemctl stop coevo
 
-  # 备份旧二进制
+  # 备份旧二进制（前端更新也要备份）
   sudo cp /opt/coevo/coevo_server \
     /opt/coevo/coevo_server.bak.$(date +%Y%m%d-%H%M%S)
 
@@ -321,6 +344,18 @@ curl -s -o /dev/null -w "%{http_code}" http://<OLD_VPS_IP>/app/main.dart.js
 
 **症状**：App 加载正常但 API 调用返回错误
 
+**检查清单**：
+
+1. **API 地址是否匹配部署环境**（2026-05-15 新增）：
+   ```bash
+   # 查看构建产物中注入的 API 地址
+   grep -o '"http://[^"]*"' /opt/coevo/admin-web/main.dart.js | head -5
+   # 期望 VPS 部署：http://<OLD_VPS_IP>:8080
+   # 如出现 localhost:8080 说明构建时忘记传 --dart-define=API_HOST=<OLD_VPS_IP>
+   ```
+
+2. **后端服务是否正常**：
+
 **检查**：
 
 ```bash
@@ -420,6 +455,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
 
 | 文件 | 修改内容 |
 |:--|:--|
+| `lib/api/api_config.dart` | **2026-05-15**：`baseUrl` 改为 `--dart-define` 注入，默认 `localhost:8080` |
 | `lib/services/stt_service.dart` | 条件导出：`dart.library.io` → native，否则 → web 桩 |
 | `lib/services/stt_service_web.dart` | Web 平台桩实现（语音不可用，用文本输入替代） |
 | `lib/services/stt_service_native.dart` | 原生平台实现（MediaRecorder + 讯飞 API） |
@@ -487,6 +523,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
 | 7 | coevo 服务 | `ssh ... "systemctl is-active coevo"` | `active` |
 | 8 | Nginx 服务 | `ssh ... "systemctl is-active nginx"` | `active` |
 | 9 | 服务日志无异常 | `ssh ... "journalctl -u coevo --since '1 min ago'"` | 无 ERROR |
+| 10 | API_HOST 正确注入 | `grep -o 'http://<OLD_VPS_IP>' /opt/coevo/admin-web/main.dart.js \| head -1` | 匹配 VPS IP |
 
 > **部署后端后特别注意第 4-6 项**：后端部署不会触碰前端文件，但如果 Nginx 配置曾因故回滚或丢失 `/app/` location，管理后台会白屏。
 
@@ -567,4 +604,4 @@ server {
 
 ---
 
-> 最后更新：2026-05-14（新增 Rust 后端部署章节 + Port 3000 /app/ 修复 + 部署检查清单）
+> 最后更新：2026-05-15（新增 `--dart-define=API_HOST` 编译时 API 地址注入机制；更新构建命令和代码清单）

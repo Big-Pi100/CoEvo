@@ -66,16 +66,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _init() async {
-    final auth = ref.read(authProvider);
+    // Bug 2 修复：等待 authProvider.tryRestore() 完成（app.dart 中异步调用）
+    // 避免因 auth.userId 为 null 而 fallback 到 'default_user'，
+    // 导致订阅状态查询使用了错误的 user_id
+    String? userId;
+    String? token;
+    for (int retry = 0; retry < 20; retry++) {
+      final auth = ref.read(authProvider);
+      if (auth.userId != null && auth.userId!.isNotEmpty) {
+        userId = auth.userId;
+        token = auth.token;
+        break;
+      }
+      await Future.delayed(const Duration(milliseconds: 150));
+    }
+    if (userId == null) {
+      // 认证未恢复，跳转到登录页
+      if (mounted) context.go('/auth');
+      return;
+    }
 
     // 恢复或创建 conversation_id (跨页面持久)
     _convId = widget.conversationId ?? ref.read(currentConversationIdProvider) ?? 'conv_${DateTime.now().millisecondsSinceEpoch}';
     ref.read(currentConversationIdProvider.notifier).state = _convId;
 
     _client = ChatClient(
-      userId: auth.userId ?? 'default_user',
+      userId: userId,
       conversationId: _convId,
-      token: auth.token,
+      token: token,
     );
 
     // 加载学习计划
@@ -349,12 +367,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       // 首次通话：建立 WS 连接并启动监听
       _session = _client!.streamChat(text);
 
-      _streamingBuffer = '';
-      _addMessage(Message(
-        role: 'assistant', content: '', timestamp: DateTime.now(),
-      ));
-      _streamingIndex = _messages.length - 1;
-
+      // 竞态修复: 必须在 _addMessage 之前订阅，否则 AnimatedList 的 300ms
+      // 插入动画会导致 done/token 事件在订阅到达前就被丢弃
       _sessionSub = _session!.events.listen(
         (event) => _handleWsEvent(event),
         onError: (error) {
@@ -366,6 +380,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           }
         },
       );
+
+      _streamingBuffer = '';
+      _addMessage(Message(
+        role: 'assistant', content: '', timestamp: DateTime.now(),
+      ));
+      _streamingIndex = _messages.length - 1;
     } else {
       // 后续消息：复用已有连接；若连接已关闭则重建
       final auth = ref.read(authProvider);

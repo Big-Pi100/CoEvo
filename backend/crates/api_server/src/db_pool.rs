@@ -45,14 +45,14 @@ pub fn init(db_path: &str) -> Result<(), String> {
 /// so all existing code using `conn.execute` / `conn.prepare` /
 /// `conn.query_row` works unchanged.
 ///
-/// Uses `get_timeout(3s)` instead of blocking `get()` — in an async
-/// context (tokio), a blocked thread starves the runtime. The 3-second
-/// timeout gives the pool time to recycle an in-use connection while
-/// avoiding indefinite blocking.
+/// Uses `get_timeout(10s)` instead of blocking `get()` — in an async
+/// context (tokio), a blocked thread starves the runtime. The 10-second
+/// timeout gives the pool ample time to recycle an in-use connection
+/// while avoiding indefinite blocking.
 pub fn get_conn() -> DbConn {
     DB_POOL
         .get()
         .expect("DB pool not initialized — call init() first")
-        .get_timeout(Duration::from_secs(3))
-        .expect("Failed to get DB connection from pool (timeout after 3s)")
+        .get_timeout(Duration::from_secs(10))
+        .expect("Failed to get DB connection from pool (timeout after 10s)")
 }

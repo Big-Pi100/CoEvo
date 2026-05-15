@@ -123,9 +123,9 @@ impl LlmCaller {
     /// root cause of connection-pool corruption: the losing request's
     /// connection was dropped mid-flight back into the reqwest pool,
     /// poisoning it for all subsequent callers.
-    pub async fn generate(&mut self, prompt: &str) -> Result<String, LlmError> {
+    pub async fn generate(&mut self, system_prompt: &str, user_content: &str) -> Result<String, LlmError> {
         let url = format!("{}/chat/completions", self.config.base_url);
-        let body = build_request_body(&self.config, prompt);
+        let body = build_request_body(&self.config, system_prompt, user_content);
         let consecutive = &mut self.consecutive_failures;
 
         let mut last_error = LlmError::EmptyResponse;
@@ -153,13 +153,14 @@ impl LlmCaller {
 
     pub async fn stream_generate(
         &mut self,
-        prompt: &str,
+        system_prompt: &str,
+        user_content: &str,
         tx: mpsc::Sender<LlmEvent>,
     ) -> Result<(), LlmError> {
         // Retry once on failure (streaming connection can be flaky)
         let mut last_error = LlmError::EmptyResponse;
         for attempt in 0..2 {
-            match self.stream_generate_inner(prompt, &tx).await {
+            match self.stream_generate_inner(system_prompt, user_content, &tx).await {
                 Ok(()) => return Ok(()),
                 Err(e) => {
                     tracing::warn!("LLM stream attempt {} failed: {:?}", attempt + 1, e);
@@ -174,7 +175,8 @@ impl LlmCaller {
 
     async fn stream_generate_inner(
         &mut self,
-        prompt: &str,
+        system_prompt: &str,
+        user_content: &str,
         tx: &mpsc::Sender<LlmEvent>,
     ) -> Result<(), LlmError> {
         let _ = tx.send(LlmEvent::Thinking).await;
@@ -182,7 +184,10 @@ impl LlmCaller {
         let url = format!("{}/chat/completions", self.config.base_url);
         let body = json!({
             "model": self.config.model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content}
+            ],
             "stream": true,
             "max_tokens": self.config.max_tokens,
             "temperature": self.config.temperature,
@@ -259,11 +264,16 @@ impl LlmCaller {
 
 // ── Helper functions ──
 
-/// Build the request body from config and prompt
-fn build_request_body(config: &LlmConfig, prompt: &str) -> serde_json::Value {
+/// Build the request body from config, system prompt, and user content
+fn build_request_body(config: &LlmConfig, system_prompt: &str, user_content: &str) -> serde_json::Value {
+    let mut messages: Vec<serde_json::Value> = Vec::new();
+    if !system_prompt.is_empty() {
+        messages.push(json!({"role": "system", "content": system_prompt}));
+    }
+    messages.push(json!({"role": "user", "content": user_content}));
     json!({
         "model": config.model,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": messages,
         "stream": false,
         "max_tokens": config.max_tokens,
         "temperature": config.temperature,
@@ -306,7 +316,7 @@ pub async fn warmup() {
 /// Warm up with a specific config (used when config is already loaded).
 pub async fn warmup_with_config(config: LlmConfig) {
     let mut caller = LlmCaller::new(config);
-    match caller.generate("Say 'ok' in one word.").await {
+    match caller.generate("", "Say 'ok' in one word.").await {
         Ok(_) => tracing::info!("LLM warmup: OK"),
         Err(e) => tracing::warn!("LLM warmup: {:?} (non-critical)", e),
     }
@@ -364,7 +374,7 @@ mod tests {
         let cfg = LlmConfig::deepseek_v4_flash(&api_key);
         let mut caller = LlmCaller::new(cfg);
 
-        let result = caller.generate("Say hello in one word.").await;
+        let result = caller.generate("", "Say hello in one word.").await;
         assert!(result.is_ok(), "API call failed: {:?}", result.err());
         let text = result.unwrap();
         assert!(!text.is_empty(), "Response should not be empty");
@@ -382,7 +392,7 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(100);
 
         let handle = tokio::spawn(async move {
-            caller.stream_generate("Count to 3.", tx).await
+            caller.stream_generate("", "Count to 3.", tx).await
         });
 
         let mut got_done = false;

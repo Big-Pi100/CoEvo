@@ -111,7 +111,28 @@ CREATE TABLE learning_plans (
 #[tokio::main]
 async fn main() {
     let _ = dotenvy::dotenv();
-    tracing_subscriber::fmt::init();
+
+    // ── Logging: file-based with daily rotation ──
+    // On Android APK, stdout is invisible; logs go to files instead.
+    // Set COEVO_LOG_STDOUT=1 for dev to also see logs on console.
+    let log_dir = std::env::var("COEVO_LOG_DIR").unwrap_or_else(|_| "data/logs".to_string());
+    let _ = std::fs::create_dir_all(&log_dir);
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "coevo.log");
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+
+    // Keep _guard alive for the entire program — it flushes logs on drop
+    std::mem::forget(_guard);
+
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+
+    tracing_subscriber::fmt()
+        .with_env_filter(env_filter)
+        .with_writer(non_blocking)
+        .with_ansi(false) // No ANSI escape codes in log files
+        .init();
+
+    tracing::info!("CoEvo backend starting, logs: {}/coevo.log.*", log_dir);
 
     // --- Paths from environment (with hardcoded defaults for dev) ---
     let db_path = std::env::var("COEVO_DB_PATH").unwrap_or_else(|_| "data/coevo.db".to_string());
@@ -197,6 +218,8 @@ async fn main() {
             "CREATE INDEX IF NOT EXISTS idx_review_log_card_reviewed ON review_log(card_id, reviewed_at)",
             "CREATE INDEX IF NOT EXISTS idx_conversation_turns_conv_created ON conversation_turns(conversation_id, created_at)",
             "CREATE INDEX IF NOT EXISTS idx_cards_user_domain ON cards(user_id, domain)",
+            // 清理重复的学习计划（保留每个 user_id+domain 最新的一条）
+            "DELETE FROM learning_plans WHERE id IN (SELECT l1.id FROM learning_plans l1 WHERE EXISTS (SELECT 1 FROM learning_plans l2 WHERE l2.user_id = l1.user_id AND l2.domain = l1.domain AND (l2.updated_at > l1.updated_at OR (l2.updated_at = l1.updated_at AND l2.id > l1.id))))",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_plans_user_domain ON learning_plans(user_id, domain)",
         ];
 

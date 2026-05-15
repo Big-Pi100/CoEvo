@@ -47,7 +47,7 @@ class _AdminScreenState extends State<AdminScreen> {
         'Content-Type': 'application/json',
       },
       body: jsonEncode({
-        'subscription_expires': expires,
+        'subscription_expires': expires.length == 10 ? '${expires}T00:00:00Z' : expires,
       }),
     );
     if (resp.statusCode == 200) {

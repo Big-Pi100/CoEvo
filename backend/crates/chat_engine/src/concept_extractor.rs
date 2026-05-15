@@ -23,6 +23,7 @@ fn has_card_intent(message: &str) -> bool {
 ///
 /// existing_fronts: 用户已有卡片的 front 列表 (全小写)
 /// skipped_fronts: 用户跳过记录中的 front 列表 (全小写)
+/// history: 最近 N 轮对话 (role, content)，注入 LLM prompt 以避免重复提取
 ///
 /// 1. 检测制卡意图 → Path B2 (直接生成卡片)
 /// 2. 否则 → LLM 提取候选概念 → 去重
@@ -33,6 +34,7 @@ pub async fn extract_concepts(
     existing_fronts: &[String],
     skipped_fronts: &[String],
     llm_config: &LlmConfig,
+    history: &[(String, String)],
 ) -> ExtractionResult {
     if has_card_intent(user_message) {
         // Path B2: 直接制卡
@@ -44,8 +46,12 @@ pub async fn extract_concepts(
             None => ExtractionResult { candidates: vec![], direct_card: true },
         }
     } else {
-        // 从 LLM 提取候选概念
-        let mut candidates = extract_candidates_from_llm(llm_config, ai_reply).await;
+        // 从 LLM 提取候选概念（传入已有概念 + 对话历史，避免重复）
+        let all_existing: Vec<String> = existing_fronts.iter()
+            .chain(skipped_fronts.iter())
+            .cloned()
+            .collect();
+        let mut candidates = extract_candidates_from_llm(llm_config, ai_reply, &all_existing, history).await;
 
     let existing_fronts_lower: Vec<String> = existing_fronts.iter().map(|f| f.to_lowercase()).collect();
     let skipped_lower: Vec<String> = skipped_fronts.iter().map(|f| f.to_lowercase()).collect();
@@ -83,7 +89,7 @@ pub async fn extract_concepts(
                     vocab_needs_llm.join(", ")
                 );
                 let mut caller = LlmCaller::new(llm_config.clone());
-                if let Ok(text) = caller.generate(&prompt).await {
+                if let Ok(text) = caller.generate("", &prompt).await {
                     let generated = parse_candidates(&text);
                     for g in generated {
                         let word_lower = g.front.to_lowercase();
@@ -120,12 +126,17 @@ fn find_source_sentence(reply: &str, word: &str) -> Option<String> {
     None
 }
 
-/// LLM 提取候选概念 (≤5)
-async fn extract_candidates_from_llm(config: &LlmConfig, ai_reply: &str) -> Vec<ConceptCandidate> {
-    let prompt = crate::prompt_loader::build_concept_extract(ai_reply);
+/// LLM 提取候选概念（带上下文注入）
+async fn extract_candidates_from_llm(
+    config: &LlmConfig,
+    ai_reply: &str,
+    existing_concepts: &[String],
+    history: &[(String, String)],
+) -> Vec<ConceptCandidate> {
+    let prompt = crate::prompt_loader::build_concept_extract(ai_reply, existing_concepts, history);
 
     let mut caller = LlmCaller::new(config.clone());
-    match caller.generate(&prompt).await {
+    match caller.generate("", &prompt).await {
         Ok(text) => parse_candidates(&text),
         Err(_) => vec![],
     }
@@ -136,7 +147,7 @@ async fn generate_direct_card(config: &LlmConfig, user_message: &str, ai_reply: 
     let prompt = crate::prompt_loader::build_card_direct(user_message, ai_reply);
 
     let mut caller = LlmCaller::new(config.clone());
-    match caller.generate(&prompt).await {
+    match caller.generate("", &prompt).await {
         Ok(text) => parse_single_candidate(&text),
         Err(_) => None,
     }

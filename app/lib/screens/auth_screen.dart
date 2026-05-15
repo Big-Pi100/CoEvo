@@ -55,10 +55,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
 
-    // Auto-navigate when authenticated
-    if (authState.isAuthenticated) {
+    // Redirect guard in GoRouter handles initial navigation;
+    // this callback is a fallback for when auth state changes
+    // AFTER the auth screen is already visible (e.g., tryRestore completes)
+    if (authState.isAuthenticated && authState.isRestored) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        context.go('/chat');
+        if (mounted) context.go('/chat');
       });
     }
 

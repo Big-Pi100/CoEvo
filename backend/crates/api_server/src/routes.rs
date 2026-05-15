@@ -26,6 +26,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/health", get(health_check))
         .route("/api/auth/register", post(auth_register))
         .route("/api/auth/login", post(auth_login))
+        .route("/api/auth/verify", post(auth_verify))
         .route("/api/chat", post(chat_handler))
         .route("/api/review/due", get(review_due_handler))
         .route("/api/review/submit", post(review_submit_handler))
@@ -103,6 +104,19 @@ async fn auth_login(Json(input): Json<AuthInput>) -> Json<serde_json::Value> {
     }
 }
 
+/// Verify that a stored token is still valid (used for session restore on app restart)
+#[derive(Deserialize)]
+pub struct TokenVerifyInput {
+    pub user_id: String,
+    pub token: String,
+}
+
+async fn auth_verify(Json(input): Json<TokenVerifyInput>) -> Json<serde_json::Value> {
+    let conn = crate::db_pool::get_conn();
+    let valid = crate::auth::verify_token(&conn, &input.user_id, &input.token);
+    Json(serde_json::json!({"valid": valid}))
+}
+
 #[derive(Deserialize)]
 pub struct ChatInput {
     pub user_id: String,
@@ -174,8 +188,21 @@ async fn chat_handler(
         (existing_fronts, skipped_fronts, now_str, history)
     }; // conn dropped here
 
-    // 构建带上下文的 prompt（滑动窗口 ≤5000 字）
-    let mut prompt = chat_engine::prompt_loader::get().chat_system.clone();
+    // ── 查询学习计划，判定生命周期状态 ──
+    let (system_prompt, plan_context) = {
+        let conn = crate::db_pool::get_conn();
+        let (mode, ctx) = crate::plan_handler::build_plan_context(&conn, &input.conversation_id);
+        let templates = chat_engine::prompt_loader::get();
+        let sp = if mode == "structured" {
+            templates.chat_system_structured.clone()
+        } else {
+            templates.chat_system_free.clone()
+        };
+        (sp, ctx)
+    };
+
+    // 构建 user_content（对话历史 + 计划上下文 + 当前消息）
+    let mut user_content = String::new();
     if history.len() > 1 {
         let context = &history[..history.len() - 1];
         let mut lines: Vec<String> = Vec::new();
@@ -190,21 +217,72 @@ async fn chat_handler(
         }
         if !lines.is_empty() {
             lines.reverse();
-            prompt.push_str("\n\n### 对话历史");
-            for l in &lines { prompt.push_str(l); }
+            user_content.push_str("\n\n### 对话历史");
+            for l in &lines { user_content.push_str(l); }
         }
     }
-    prompt.push_str(&format!("\n\n### 当前对话\n用户: {}", input.message));
+    if !plan_context.is_empty() {
+        user_content.push_str(&plan_context);
+    }
+    user_content.push_str(&format!("\n\n### 当前对话\n用户: {}", input.message));
+
     let mut caller = chat_engine::llm_caller::LlmCaller::new(llm_config.clone());
-    let reply = match caller.generate(&prompt).await {
+    let raw_reply = match caller.generate(&system_prompt, &user_content).await {
         Ok(r) => r,
         Err(e) => return Json(serde_json::json!({"error": format!("LLM: {}", e)})),
     };
 
+    // ── 解析 <plan_update> 标签（与 WebSocket 路径共用 plan_handler） ──
+    let (final_reply, plan_updated) = {
+        let conn = crate::db_pool::get_conn();
+        let result = crate::plan_handler::handle_plan_update(
+            &conn, &raw_reply, &input.conversation_id, &input.user_id,
+        );
+
+        let mut reply = result.cleaned_reply;
+
+        // 新建计划 → 渲染计划文本替代 raw_reply
+        if result.is_new_plan {
+            if let Some(ref plan) = result.plan_json {
+                reply = crate::plan_handler::render_plan(plan);
+            }
+        }
+
+        // 成就检测（与 ws.rs 共用 plan_handler 函数）
+        if result.plan_updated && !result.is_new_plan {
+            if let Some(ref plan) = result.plan_json {
+                // 检查 stage done → silver / gold
+                if let Some(stages) = plan.get("stages").and_then(|v| v.as_array()) {
+                    for stage in stages {
+                        if stage["status"] == "done" {
+                            let stage_name = stage["name"].as_str().unwrap_or("阶段");
+                            let key = format!("{}_silver", stage_name);
+                            if !crate::plan_handler::achievement_exists(&conn, &input.user_id, &key) {
+                                crate::plan_handler::write_achievement(&conn, &input.user_id,
+                                    &key, &format!("{}精英", stage_name), "🥈", "silver", "stage");
+                            }
+                            if stages.iter().all(|s| s["status"] == "done") {
+                                let domain_name = plan.get("goal").and_then(|v| v.as_str()).unwrap_or("领域");
+                                let dkey = format!("{}_gold", domain_name);
+                                if !crate::plan_handler::achievement_exists(&conn, &input.user_id, &dkey) {
+                                    crate::plan_handler::write_achievement(&conn, &input.user_id,
+                                        &dkey, &format!("{}大师", domain_name), "🥇", "gold", "domain");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        (reply, result.plan_updated)
+    };
+
     // 2. ColdPath: 提取候选概念 (no Connection — uses pre-queried data)
     let extraction = chat_engine::concept_extractor::extract_concepts(
-        &input.user_id, &input.message, &reply,
+        &input.user_id, &input.message, &final_reply,
         &existing_fronts, &skipped_fronts, &llm_config,
+        &history,
     ).await;
 
     let candidates: Vec<String> = extraction.candidates.iter().map(|c| c.front.clone()).collect();
@@ -214,7 +292,7 @@ async fn chat_handler(
         let conn = crate::db_pool::get_conn();
         let _ = conn.execute(
             "INSERT INTO conversation_turns (id, conversation_id, role, content, created_at) VALUES (?1, ?2, 'assistant', ?3, ?4)",
-            rusqlite::params![uuid::Uuid::new_v4().to_string(), input.conversation_id, reply, now_str],
+            rusqlite::params![uuid::Uuid::new_v4().to_string(), input.conversation_id, final_reply, now_str],
         );
         let _ = conn.execute(
             "UPDATE conversations SET turn_count = turn_count + 1 WHERE id = ?1",
@@ -223,9 +301,10 @@ async fn chat_handler(
     }
 
     Json(serde_json::json!({
-        "reply": reply,
+        "reply": final_reply,
         "candidates": candidates,
         "achievements": [],
+        "plan_updated": plan_updated,
     }))
 }
 
@@ -313,7 +392,7 @@ async fn review_verify_handler(
         .replace("{back}", &input.back);
 
     let mut caller = chat_engine::llm_caller::LlmCaller::new(llm_config.clone());
-    match caller.generate(&prompt).await {
+    match caller.generate("", &prompt).await {
         Ok(text) => {
             // 尝试 JSON 解析
             if let Ok(questions) = serde_json::from_str::<Vec<serde_json::Value>>(&text) {
@@ -369,7 +448,7 @@ async fn review_judge_handler(
         .replace("{questions}", &q_parts.join("\n---\n"));
 
     let mut caller = chat_engine::llm_caller::LlmCaller::new(llm_config.clone());
-    match caller.generate(&prompt).await {
+    match caller.generate("", &prompt).await {
         Ok(text) => {
             if let Ok(results) = serde_json::from_str::<Vec<serde_json::Value>>(&text) {
                 let total_correct = results.iter()
@@ -937,6 +1016,12 @@ async fn preferences_put_handler(
     let conn = crate::db_pool::get_conn();
     let now = chrono::Utc::now().to_rfc3339();
     for (key, value) in &input {
+        // 正规化日期：纯日期 "YYYY-MM-DD" → RFC3339
+        let value = if key == "subscription_expires" && value.len() == 10 && value.as_bytes().get(4) == Some(&b'-') {
+            format!("{}T00:00:00Z", value)
+        } else {
+            value.clone()
+        };
         let _ = conn.execute(
             "INSERT INTO user_preferences (user_id, key, value, updated_at) VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT(user_id, key) DO UPDATE SET value = ?3, updated_at = ?4",

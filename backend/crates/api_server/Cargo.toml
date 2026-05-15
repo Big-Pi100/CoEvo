@@ -25,3 +25,6 @@ base64 = "0.22"
 md5 = "0.7"
 sha2 = "0.10"
 bcrypt = "0.15"
+
+[dev-dependencies]
+dotenvy = "0.15"

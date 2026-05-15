@@ -13,11 +13,11 @@ class ChatClient {
   final String? token;
 
   ChatClient({
-    this.baseUrl = ApiConfig.baseUrl,
+    String? baseUrl,
     this.userId = 'default_user',
     this.conversationId = 'default_conv',
     this.token,
-  });
+  }) : baseUrl = baseUrl ?? ApiConfig.baseUrl;
 
   Map<String, String> get _authHeaders {
     final headers = <String, String>{'Content-Type': 'application/json'};
@@ -53,20 +53,12 @@ class ChatClient {
 
   WsChatSession streamChat(String message) {
     // D4: token no longer in URL — sent as first message payload instead
+    // 竞态修复: 控制器在连接前创建，监听器在发消息前注册，确保不丢事件
+    final controller = StreamController<WsEvent>.broadcast();
+
     final wsUrl = '$baseUrl/ws';
     final uri = Uri.parse(wsUrl.replaceFirst('http', 'ws'));
     final channel = WebSocketChannel.connect(uri);
-    final controller = StreamController<WsEvent>.broadcast();
-
-    // D4: send token as first message (auth handshake), then the chat request
-    if (token != null) {
-      channel.sink.add(jsonEncode({'type': 'auth', 'token': token}));
-    }
-    channel.sink.add(jsonEncode(ChatRequest(
-      userId: userId,
-      conversationId: conversationId,
-      message: message,
-    ).toJson()));
 
     channel.stream.listen(
       (data) {
@@ -77,6 +69,15 @@ class ChatClient {
       onError: (error) => controller.addError(error),
       onDone: () => controller.close(),
     );
+
+    // Token 已包含在 ChatRequest payload 中，无需额外握手消息
+    // （额外的 auth 消息会导致后端解析失败 → 前端误处理为流错误，吞噬 done 回复）
+    channel.sink.add(jsonEncode(ChatRequest(
+      userId: userId,
+      conversationId: conversationId,
+      message: message,
+      token: token,
+    ).toJson()));
 
     return WsChatSession(controller.stream, channel);
   }
@@ -140,7 +141,12 @@ class ChatClient {
     final resp = await http.post(
       Uri.parse('$baseUrl/api/review/verify'),
       headers: _authHeaders,
-      body: jsonEncode({'card_id': cardId, 'front': front, 'back': back}),
+      body: jsonEncode({
+        'user_id': userId,
+        'card_id': cardId,
+        'front': front,
+        'back': back,
+      }),
     ).timeout(ApiConfig.longTimeout);
 
     if (resp.statusCode != 200) {
@@ -156,7 +162,11 @@ class ChatClient {
     final resp = await http.post(
       Uri.parse('$baseUrl/api/review/judge'),
       headers: _authHeaders,
-      body: jsonEncode({'card_id': cardId, 'questions': questions}),
+      body: jsonEncode({
+        'user_id': userId,
+        'card_id': cardId,
+        'questions': questions,
+      }),
     ).timeout(ApiConfig.longTimeout);
 
     if (resp.statusCode != 200) {

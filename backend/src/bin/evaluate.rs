@@ -103,7 +103,7 @@ async fn run_extraction(
 ) -> Vec<ConceptCandidate> {
     let prompt = build_prompt(ai_reply, variant_instruction);
     let mut caller = chat_engine::llm_caller::LlmCaller::new(config.clone());
-    match caller.generate(&prompt).await {
+    match caller.generate("", &prompt).await {
         Ok(text) => concept_extractor::parse_candidates(&text),
         Err(_) => vec![],
     }

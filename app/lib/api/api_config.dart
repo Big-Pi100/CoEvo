@@ -1,8 +1,27 @@
 /// CoEvo API Configuration
+///
+/// ## 本地测试
+/// ```bash
+/// # Android 模拟器 (默认 localhost:8080)
+/// flutter run
+///
+/// # 真机调试 (用电脑局域网 IP)
+/// flutter run --dart-define=API_HOST=192.168.1.100 --dart-define=API_PORT=8080
+/// ```
+///
+/// ## VPS 部署
+/// ```bash
+/// flutter build apk --dart-define=API_HOST=<OLD_VPS_IP> --dart-define=API_PORT=8080
+/// ```
 class ApiConfig {
-  /// API 服务器地址
-  /// 使用 IP 而非域名以避免移动运营商 DNS 解析问题
-  static const String baseUrl = 'http://<OLD_VPS_IP>:8080';
+  /// API 服务器地址 — 通过 `--dart-define` 在编译时注入
+  ///
+  /// 默认: http://localhost:8080（本地开发）
+  static const String _host = String.fromEnvironment('API_HOST', defaultValue: 'localhost');
+  static const String _port = String.fromEnvironment('API_PORT', defaultValue: '8080');
+
+  /// HTTP base URL (REST + WebSocket 共用)
+  static String get baseUrl => 'http://$_host:$_port';
 
   /// Production URL placeholder
   static const String productionUrl = 'https://api.coevo.app';

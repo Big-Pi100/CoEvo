@@ -14,6 +14,24 @@ import 'providers/auth_provider.dart';
 
 final goRouter = GoRouter(
   initialLocation: '/auth',
+  redirect: (context, state) {
+    final auth = ProviderScope.containerOf(context).read(authProvider);
+
+    // Still restoring session — allow current route
+    if (!auth.isRestored) {
+      return null;
+    }
+
+    final isOnAuth = state.matchedLocation == '/auth';
+
+    if (auth.isAuthenticated && isOnAuth) {
+      return '/chat';
+    }
+    if (!auth.isAuthenticated && !isOnAuth) {
+      return '/auth';
+    }
+    return null;
+  },
   routes: [
     GoRoute(
       path: '/auth',

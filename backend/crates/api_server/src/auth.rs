@@ -26,7 +26,7 @@ pub struct AuthResponse {
 
 /// Hash a password using bcrypt (with salt).
 /// Returns the hashed password string, or empty string on failure.
-fn hash_password(password: &str) -> String {
+pub fn hash_password(password: &str) -> String {
     bcrypt::hash(password, bcrypt::DEFAULT_COST).unwrap_or_else(|e| {
         tracing::error!("bcrypt hash failed: {}", e);
         String::new()
@@ -79,6 +79,16 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
     })
 }
 
+/// Delete all existing tokens for a user (to prevent token table bloat)
+fn cleanup_old_tokens(conn: &rusqlite::Connection, user_id: &str) {
+    if let Err(e) = conn.execute(
+        "DELETE FROM tokens WHERE user_id = ?1",
+        rusqlite::params![user_id],
+    ) {
+        tracing::warn!("Failed to clean old tokens for {}: {}", user_id, e);
+    }
+}
+
 /// Login with username and password
 pub fn login(conn: &rusqlite::Connection, req: &LoginRequest) -> Result<AuthResponse, String> {
     // Fetch user id and password hash
@@ -91,6 +101,9 @@ pub fn login(conn: &rusqlite::Connection, req: &LoginRequest) -> Result<AuthResp
     if !verify_password(&req.password, &stored_hash) {
         return Err("Invalid username or password".to_string());
     }
+
+    // Clean up old tokens for this user before creating a new one
+    cleanup_old_tokens(conn, &user_id);
 
     let token = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -116,13 +129,6 @@ pub fn verify_token(conn: &rusqlite::Connection, user_id: &str, token: &str) -> 
         rusqlite::params![user_id, token],
         |_| Ok(true),
     ).unwrap_or(false)
-}
-
-/// Verify a session token without a DB connection.
-/// This is a fallback that performs a basic non-empty check.
-/// Prefer `verify_token` with a DB connection for real security.
-pub fn verify_token_no_db(_user_id: &str, token: &str) -> bool {
-    !token.is_empty()
 }
 
 #[cfg(test)]
@@ -242,11 +248,5 @@ mod tests {
 
         // Wrong user should not verify
         assert!(!verify_token(&conn, "wrong-user", &resp.token));
-    }
-
-    #[test]
-    fn test_verify_token_no_db_fallback() {
-        assert!(verify_token_no_db("any", "some-token"));
-        assert!(!verify_token_no_db("any", ""));
     }
 }

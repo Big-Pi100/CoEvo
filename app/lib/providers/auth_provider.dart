@@ -17,6 +17,7 @@ class AuthState {
   final String? username;
   final String? error;
   final bool isLoading;
+  final bool isRestored; // true after tryRestore() completes
 
   const AuthState({
     this.isAuthenticated = false,
@@ -25,6 +26,7 @@ class AuthState {
     this.username,
     this.error,
     this.isLoading = false,
+    this.isRestored = false,
   });
 
   AuthState copyWith({
@@ -34,6 +36,7 @@ class AuthState {
     String? username,
     String? error,
     bool? isLoading,
+    bool? isRestored,
   }) {
     return AuthState(
       isAuthenticated: isAuthenticated ?? this.isAuthenticated,
@@ -42,6 +45,7 @@ class AuthState {
       username: username ?? this.username,
       error: error,
       isLoading: isLoading ?? this.isLoading,
+      isRestored: isRestored ?? this.isRestored,
     );
   }
 }
@@ -60,16 +64,27 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final userId = await _storage.read(key: _userIdKey);
       final username = await _storage.read(key: _usernameKey);
       if (token != null && userId != null) {
-        state = AuthState(
-          isAuthenticated: true,
-          userId: userId,
-          token: token,
-          username: username,
-        );
+        // Verify token with backend to ensure it's still valid
+        final valid = await _client.verifyToken(userId, token);
+        if (valid) {
+          state = AuthState(
+            isAuthenticated: true,
+            userId: userId,
+            token: token,
+            username: username,
+            isRestored: true,
+          );
+          return;
+        }
+        // Token invalid on server — clear local storage
+        debugPrint('tryRestore: token invalid on server, clearing credentials');
+        await _clearCredentials();
       }
     } catch (e) {
       debugPrint('tryRestore: failed to read secure storage: $e');
     }
+    // Mark restore as complete even on failure
+    state = state.copyWith(isRestored: true);
   }
 
   Future<void> _saveCredentials(String userId, String token, String? username) async {
@@ -108,6 +123,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         userId: uid,
         token: token,
         username: username,
+        isRestored: true,
       );
     } catch (e) {
       state = state.copyWith(
@@ -131,6 +147,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         userId: uid,
         token: token,
         username: username,
+        isRestored: true,
       );
     } catch (e) {
       state = state.copyWith(
@@ -142,7 +159,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> logout() async {
     await _clearCredentials();
-    state = const AuthState();
+    state = const AuthState(isRestored: true);
   }
 }
 
