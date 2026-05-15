@@ -58,26 +58,37 @@ class ChatClient {
 
     final wsUrl = '$baseUrl/ws';
     final uri = Uri.parse(wsUrl.replaceFirst('http', 'ws'));
+    debugPrint('🌐 streamChat: connecting to $uri');
     final channel = WebSocketChannel.connect(uri);
+    debugPrint('🌐 streamChat: WS connected, controller.hasListener=${controller.hasListener}');
 
     channel.stream.listen(
       (data) {
         final json = jsonDecode(data as String) as Map<String, dynamic>;
         final event = WsEvent.fromJson(json);
+        debugPrint('🌐 WS raw event: type=${event.type} hasListener=${controller.hasListener}');
         controller.add(event);
       },
-      onError: (error) => controller.addError(error),
-      onDone: () => controller.close(),
+      onError: (error) {
+        debugPrint('🌐 WS channel error: $error');
+        controller.addError(error);
+      },
+      onDone: () {
+        debugPrint('🌐 WS channel closed');
+        controller.close();
+      },
     );
 
     // Token 已包含在 ChatRequest payload 中，无需额外握手消息
     // （额外的 auth 消息会导致后端解析失败 → 前端误处理为流错误，吞噬 done 回复）
-    channel.sink.add(jsonEncode(ChatRequest(
+    final req = jsonEncode(ChatRequest(
       userId: userId,
       conversationId: conversationId,
       message: message,
       token: token,
-    ).toJson()));
+    ).toJson());
+    debugPrint('🌐 streamChat: sending request (len=${req.length})');
+    channel.sink.add(req);
 
     return WsChatSession(controller.stream, channel);
   }
@@ -216,17 +227,24 @@ class ChatClient {
 
   /// 获取指定对话的轮次
   Future<List<Map<String, dynamic>>> getConversationTurns(String convId) async {
-    final uri = Uri.parse('$baseUrl/api/history').replace(queryParameters: {
-      'user_id': userId,
-      'conversation_id': convId,
-      'limit': '50',
-    });
-    final resp = await http.get(uri, headers: _authHeaders)
-        .timeout(ApiConfig.requestTimeout);
-    if (resp.statusCode != 200) return [];
-    final data = jsonDecode(resp.body) as Map<String, dynamic>;
-    return (data['turns'] as List<dynamic>?)
-        ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
+    try {
+      final uri = Uri.parse('$baseUrl/api/history').replace(queryParameters: {
+        'user_id': userId,
+        'conversation_id': convId,
+        'limit': '50',
+      });
+      final resp = await http.get(uri, headers: _authHeaders)
+          .timeout(ApiConfig.requestTimeout);
+      if (resp.statusCode != 200) return [];
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      // 检查是否有 error（BIG-5 鉴权失败等情况）
+      if (data.containsKey('error')) return [];
+      return (data['turns'] as List<dynamic>?)
+          ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
+    } catch (e) {
+      debugPrint('getConversationTurns error: $e');
+      return [];
+    }
   }
 
   // ── All Cards API ──

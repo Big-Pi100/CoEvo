@@ -77,7 +77,10 @@ Base URL: `http://localhost:8080`
 
 ### `POST /api/chat`
 
-非流式聊天（一次请求返回完整回复 + 概念提取）。
+非流式聊天（一次请求返回完整回复 + 概念提取）。需要鉴权和有效订阅。
+
+**Request Headers:**
+- `Authorization: Bearer <token>` (required)
 
 **Request:**
 ```json
@@ -99,13 +102,38 @@ Base URL: `http://localhost:8080`
 }
 ```
 
+**Response 200 (订阅错误):**
+```json
+{"error": "subscription_required"}
+```
+或
+```json
+{"error": "subscription_expired"}
+```
+
+**Response 401:**
+```json
+{"error": "Missing or invalid Authorization header"}
+```
+
 > `candidates` 为概念提取结果（ColdPath 异步），REST 端点中通常为空数组；概念候选通过 WebSocket `candidates` 事件异步推送。
 
 ### `WS /ws`
 
 WebSocket 流式聊天（推荐）。连接后发送 JSON，接收多事件流。
+首条消息必须携带 `token` 用于鉴权，后续消息可省略。
 
-**Client → Server:**
+**Client → Server (首条消息，含 token):**
+```json
+{
+  "user_id": "string",
+  "conversation_id": "conv_1712345678000",
+  "message": "用户消息",
+  "token": "sha256_token"
+}
+```
+
+**Client → Server (后续消息，token 可选):**
 ```json
 {
   "user_id": "string",
@@ -121,6 +149,14 @@ WebSocket 流式聊天（推荐）。连接后发送 JSON，接收多事件流�
 {"type":"planning"}               // 计划生成中（替代 token）
 {"type":"done","reply":"完整回复"}
 {"type":"plan_updated"}            // 学习计划已更新
+```
+
+**Server → Client (鉴权/订阅错误):**
+```
+{"type":"error","content":"missing_token"}
+{"type":"error","content":"invalid_token"}
+{"type":"error","content":"subscription_required"}
+{"type":"error","content":"subscription_expired"}
 ```
 
 **Server → Client (ColdPath，异步):**

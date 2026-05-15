@@ -29,10 +29,21 @@ class _AdminScreenState extends State<AdminScreen> {
     }).timeout(const Duration(seconds: 5));
 
     if (resp.statusCode != 200) {
-      setState(() { _isLoading = false; _error = '查询失败 (${resp.statusCode})'; });
+      final msg = resp.statusCode == 401 ? '管理员密钥错误，请重新输入' : '查询失败 (${resp.statusCode})';
+      setState(() { _isLoading = false; _error = msg; });
+      if (resp.statusCode == 401) _adminKey = null; // 密钥错误，退回输入页
       return;
     }
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    if (data.containsKey('error')) {
+      final errMsg = data['error'] as String? ?? '未知错误';
+      setState(() {
+        _isLoading = false;
+        _error = errMsg == 'unauthorized' ? '管理员密钥错误，请重新输入' : '查询失败: $errMsg';
+      });
+      if (errMsg == 'unauthorized') _adminKey = null; // 密钥错误，退回输入页
+      return;
+    }
     final users = (data['users'] as List<dynamic>?)
         ?.map((e) => e as Map<String, dynamic>)
         .toList() ?? [];
@@ -121,6 +132,9 @@ class _AdminScreenState extends State<AdminScreen> {
                 const Icon(Icons.admin_panel_settings, size: 64, color: Colors.grey),
                 const SizedBox(height: 24),
                 Text('输入管理员密钥', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 4),
+                Text('请联系开发人员获取密钥（配置文件中的 COEVO_ADMIN_KEY）',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
                 const SizedBox(height: 16),
                 TextField(
                   controller: _keyController,

@@ -26,11 +26,7 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _messageController = TextEditingController();
   final _messages = <Message>[];
-  final _listKey = GlobalKey<AnimatedListState>();
   final _scrollController = ScrollController();
-
-  /// Seed for AnimatedList ValueKey — increment to force recreate on conversation switch
-  int _listSeed = 0;
 
   ChatClient? _client;
   WsChatSession? _session;
@@ -66,66 +62,91 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _init() async {
-    // Bug 2 修复：等待 authProvider.tryRestore() 完成（app.dart 中异步调用）
-    // 避免因 auth.userId 为 null 而 fallback 到 'default_user'，
-    // 导致订阅状态查询使用了错误的 user_id
-    String? userId;
-    String? token;
-    for (int retry = 0; retry < 20; retry++) {
-      final auth = ref.read(authProvider);
-      if (auth.userId != null && auth.userId!.isNotEmpty) {
-        userId = auth.userId;
-        token = auth.token;
-        break;
+    try {
+      // Bug 2 修复：等待 authProvider.tryRestore() 完成（app.dart 中异步调用）
+      // 避免因 auth.userId 为 null 而 fallback 到 'default_user'，
+      // 导致订阅状态查询使用了错误的 user_id
+      String? userId;
+      String? token;
+      for (int retry = 0; retry < 20; retry++) {
+        final auth = ref.read(authProvider);
+        if (auth.userId != null && auth.userId!.isNotEmpty) {
+          userId = auth.userId;
+          token = auth.token;
+          break;
+        }
+        await Future.delayed(const Duration(milliseconds: 150));
       }
-      await Future.delayed(const Duration(milliseconds: 150));
-    }
-    if (userId == null) {
-      // 认证未恢复，跳转到登录页
-      if (mounted) context.go('/auth');
-      return;
-    }
+      if (userId == null) {
+        // 认证未恢复，跳转到登录页
+        if (mounted) context.go('/auth');
+        return;
+      }
 
-    // 恢复或创建 conversation_id (跨页面持久)
-    _convId = widget.conversationId ?? ref.read(currentConversationIdProvider) ?? 'conv_${DateTime.now().millisecondsSinceEpoch}';
-    ref.read(currentConversationIdProvider.notifier).state = _convId;
+      // 恢复或创建 conversation_id (跨页面持久)
+      _convId = widget.conversationId ?? ref.read(currentConversationIdProvider) ?? 'conv_${DateTime.now().millisecondsSinceEpoch}';
+      ref.read(currentConversationIdProvider.notifier).state = _convId;
 
-    _client = ChatClient(
-      userId: userId,
-      conversationId: _convId,
-      token: token,
-    );
+      _client = ChatClient(
+        userId: userId,
+        conversationId: _convId,
+        token: token,
+      );
 
-    // 加载学习计划
-    _loadPlan();
+      // 加载学习计划和订阅状态（并行发起，统一等待完成后再渲染）
+      final planFuture = _loadPlan();
+      final subFuture = _checkSubscription();
 
-    // 主动检查订阅状态
-    _checkSubscription();
-
-    // 加载历史对话
-    final history = await _client!.getConversationTurns(_convId);
-    if (history.isNotEmpty && mounted) {
-      setState(() {
-        for (final turn in history) {
+      // 加载历史对话
+      try {
+        final history = await _client!.getConversationTurns(_convId);
+        if (history.isNotEmpty && mounted) {
+          setState(() {
+            for (final turn in history) {
+              _messages.add(Message(
+                role: turn['role'] as String? ?? 'assistant',
+                content: turn['content'] as String? ?? '',
+                timestamp: DateTime.now(),
+              ));
+            }
+          });
+          _scrollToBottom();
+        } else {
+          setState(() {
+            _messages.add(Message(
+              role: 'assistant',
+              content: '你好！我是你的 AI 学习助手。有什么想学的吗？',
+              timestamp: DateTime.now(),
+            ));
+          });
+        }
+      } catch (e) {
+        debugPrint('_init: history load failed: $e');
+        setState(() {
           _messages.add(Message(
-            role: turn['role'] as String? ?? 'assistant',
-            content: turn['content'] as String? ?? '',
+            role: 'assistant',
+            content: '你好！我是你的 AI 学习助手。有什么想学的吗？',
             timestamp: DateTime.now(),
           ));
-        }
-      });
-      _scrollToBottom();
-    } else {
-      // 新对话: 显示欢迎消息
-      setState(() {
+        });
+      }
+
+      // 等待计划和订阅加载完成
+      await planFuture;
+      await subFuture;
+    } catch (e) {
+      debugPrint('_init: fatal error: $e');
+      if (mounted) setState(() {
         _messages.add(Message(
           role: 'assistant',
           content: '你好！我是你的 AI 学习助手。有什么想学的吗？',
           timestamp: DateTime.now(),
         ));
       });
+    } finally {
+      // 无论如何都要解除初始化状态，防止永久灰屏
+      if (mounted) setState(() => _isInitializing = false);
     }
-    if (mounted) setState(() => _isInitializing = false);
   }
 
   Future<void> _loadPlan() async {
@@ -347,14 +368,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _addMessage(Message msg) {
-    _messages.add(msg);
-    _listKey.currentState?.insertItem(_messages.length - 1, duration: const Duration(milliseconds: 300));
+    setState(() => _messages.add(msg));
     Future.delayed(const Duration(milliseconds: 50), _scrollToBottom);
   }
 
   void _sendMessage() {
     final text = _messageController.text.trim();
     if (text.isEmpty || _client == null || _isWaiting) return;
+
+    debugPrint('📤 _sendMessage: text="$text" convId=$_convId session=${_session != null ? "reuse" : "new"}');
 
     _messageController.clear();
     _addMessage(Message(
@@ -365,27 +387,38 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     if (_session == null) {
       // 首次通话：建立 WS 连接并启动监听
+      debugPrint('📤 Creating new WS session...');
       _session = _client!.streamChat(text);
 
-      // 竞态修复: 必须在 _addMessage 之前订阅，否则 AnimatedList 的 300ms
-      // 插入动画会导致 done/token 事件在订阅到达前就被丢弃
+      // 竞态修复: 必须在 _addMessage（setState）之前订阅，确保 WS 事件不丢失
       _sessionSub = _session!.events.listen(
         (event) => _handleWsEvent(event),
         onError: (error) {
+          debugPrint('🔴 WS stream error: $error');
           _finalizeStreamingWithRetry('连接错误：$error');
+          // 确保 _isWaiting 复位
+          if (mounted) setState(() => _isWaiting = false);
         },
         onDone: () {
+          debugPrint('🔴 WS stream done. buf_len=${_streamingBuffer.length} idx=$_streamingIndex');
           if (_streamingIndex >= 0 && _streamingBuffer.isNotEmpty) {
             _finalizeStreaming(_streamingBuffer);
+          } else if (_streamingIndex >= 0) {
+            // 流关闭但没有内容——可能连接被拒绝（订阅检查等）
+            _finalizeStreamingWithRetry('连接已关闭，请重试');
           }
+          // 确保 _isWaiting 复位
+          if (mounted) setState(() => _isWaiting = false);
         },
       );
+      debugPrint('📤 WS listener registered');
 
       _streamingBuffer = '';
       _addMessage(Message(
         role: 'assistant', content: '', timestamp: DateTime.now(),
       ));
       _streamingIndex = _messages.length - 1;
+      debugPrint('📤 AI bubble added at idx=$_streamingIndex, total msgs=${_messages.length}');
     } else {
       // 后续消息：复用已有连接；若连接已关闭则重建
       final auth = ref.read(authProvider);
@@ -410,6 +443,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _handleWsEvent(WsEvent event) {
+    debugPrint('🟢 WsEvent: type=${event.type} content=${event.content?.substring(0, event.content!.length > 50 ? 50 : event.content!.length)} reply_len=${event.reply?.length} streamingIdx=$_streamingIndex msgCount=${_messages.length}');
     switch (event.type) {
       case 'thinking':
         _updateStreaming('思考中...');
@@ -444,7 +478,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             _subscriptionExpired = true;
             _subscriptionRequired = false;
             _subscriptionChecked = true;
+            _isWaiting = false;
           });
+          // 清理空的 AI 气泡
+          if (_streamingIndex >= 0 && _streamingIndex < _messages.length) {
+            _messages.removeAt(_streamingIndex);
+          }
+          _streamingIndex = -1;
+          _streamingBuffer = '';
           if (!_subscriptionDialogShown) {
             _subscriptionDialogShown = true;
             _showSubscriptionDialog('订阅已到期');
@@ -454,7 +495,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             _subscriptionRequired = true;
             _subscriptionExpired = false;
             _subscriptionChecked = true;
+            _isWaiting = false;
           });
+          // 清理空的 AI 气泡
+          if (_streamingIndex >= 0 && _streamingIndex < _messages.length) {
+            _messages.removeAt(_streamingIndex);
+          }
+          _streamingIndex = -1;
+          _streamingBuffer = '';
           if (!_subscriptionDialogShown) {
             _subscriptionDialogShown = true;
             _showSubscriptionDialog('需要激活');
@@ -470,17 +518,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _updateStreaming(String content) {
-    if (_streamingIndex < 0 || _streamingIndex >= _messages.length) return;
+    debugPrint('🔵 _updateStreaming: idx=$_streamingIndex content_len=${content.length} msgCount=${_messages.length} mounted=$mounted');
+    if (_streamingIndex < 0 || _streamingIndex >= _messages.length) {
+      debugPrint('🔴 _updateStreaming: SKIPPED (idx out of range)');
+      return;
+    }
     setState(() {
       _messages[_streamingIndex] = Message(
         role: 'assistant', content: content, timestamp: DateTime.now(),
       );
     });
+    debugPrint('🔵 _updateStreaming: setState done, new content="${content.substring(0, content.length > 30 ? 30 : content.length)}"');
     _scrollToBottom();
   }
 
   void _finalizeStreaming(String reply) {
-    if (_streamingIndex < 0) return;
+    debugPrint('🟡 _finalizeStreaming: idx=$_streamingIndex reply_len=${reply.length} mounted=$mounted');
+    if (_streamingIndex < 0) {
+      debugPrint('🔴 _finalizeStreaming: SKIPPED (idx=-1)');
+      return;
+    }
     setState(() {
       _messages[_streamingIndex] = Message(
         role: 'assistant', content: reply, timestamp: DateTime.now(),
@@ -489,6 +546,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _streamingIndex = -1;
       _streamingBuffer = '';
     });
+    debugPrint('🟡 _finalizeStreaming: done, msgCount=${_messages.length}');
     _scrollToBottom();
   }
 
@@ -737,12 +795,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             onPressed: () async {
               final result = await context.push<String>('/conversations');
               if (result != null && mounted) {
-                // 切换到新会话：递增 seed 强制重建 AnimatedList
-                _listSeed++;
+                // 切换到已有对话
                 _sessionSub?.cancel();
                 _session = null;
                 _convId = result;
                 _activePlan = null;
+                _isInitializing = true;
                 ref.read(currentConversationIdProvider.notifier).state = _convId;
                 _client = ChatClient(
                   userId: ref.read(authProvider).userId ?? 'default_user',
@@ -750,26 +808,40 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   token: ref.read(authProvider).token,
                 );
                 _loadPlan();
-                // 加载历史对话
-                final history = await _client!.getConversationTurns(_convId);
-                setState(() {
-                  _messages.clear();
-                  if (history.isNotEmpty) {
-                    for (final turn in history) {
+                // 清空旧消息并重新加载历史
+                setState(() => _messages.clear());
+                try {
+                  final history = await _client!.getConversationTurns(_convId);
+                  if (history.isNotEmpty && mounted) {
+                    setState(() {
+                      for (final turn in history) {
+                        _messages.add(Message(
+                          role: turn['role'] as String? ?? 'assistant',
+                          content: turn['content'] as String? ?? '',
+                          timestamp: DateTime.now(),
+                        ));
+                      }
+                    });
+                  } else {
+                    setState(() {
                       _messages.add(Message(
-                        role: turn['role'] as String? ?? 'assistant',
-                        content: turn['content'] as String? ?? '',
+                        role: 'assistant',
+                        content: '你好！我是你的 AI 学习助手。有什么想学的吗？',
                         timestamp: DateTime.now(),
                       ));
-                    }
-                  } else {
+                    });
+                  }
+                } catch (e) {
+                  debugPrint('Conversation switch: history load failed: $e');
+                  setState(() {
                     _messages.add(Message(
                       role: 'assistant',
                       content: '你好！我是你的 AI 学习助手。有什么想学的吗？',
                       timestamp: DateTime.now(),
                     ));
-                  }
-                });
+                  });
+                }
+                if (mounted) setState(() => _isInitializing = false);
               } else if (mounted) {
                 // 返回但没选会话：重置 WS 连接，避免使用过期连接
                 _sessionSub?.cancel();
@@ -782,27 +854,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             icon: const Icon(Icons.add_comment),
             tooltip: '新对话',
             onPressed: () {
-              ref.read(currentConversationIdProvider.notifier).state = null;
-              _listSeed++;
+              _sessionSub?.cancel();
+              _session = null;
+              final newConvId = 'conv_${DateTime.now().millisecondsSinceEpoch}';
+              ref.read(currentConversationIdProvider.notifier).state = newConvId;
               setState(() {
                 _messages.clear();
-                _convId = 'conv_${DateTime.now().millisecondsSinceEpoch}';
-                ref.read(currentConversationIdProvider.notifier).state = _convId;
+                _messages.add(Message(
+                  role: 'assistant',
+                  content: '你好！我是你的 AI 学习助手。有什么想学的吗？',
+                  timestamp: DateTime.now(),
+                ));
+                _convId = newConvId;
                 _activePlan = null;
-                _session = null;
-                _sessionSub?.cancel();
+                _isInitializing = false;
               });
               _client = ChatClient(
                 userId: ref.read(authProvider).userId ?? 'default_user',
-                conversationId: _convId,
+                conversationId: newConvId,
                 token: ref.read(authProvider).token,
               );
               _loadPlan();
-              _addMessage(Message(
-                role: 'assistant',
-                content: '你好！我是你的 AI 学习助手。有什么想学的吗？',
-                timestamp: DateTime.now(),
-              ));
             },
           ),
         ],
@@ -816,21 +888,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           Expanded(
             child: _isInitializing
                 ? const ChatSkeleton()
-                : SelectionArea(
-              child: AnimatedList(
-              key: ValueKey(_listSeed),
+                : ListView.builder(
               controller: _scrollController,
-              initialItemCount: _messages.length,
+              itemCount: _messages.length,
               padding: const EdgeInsets.all(16),
-              itemBuilder: (_, i, animation) {
+              itemBuilder: (_, i) {
                 final msg = _messages[i];
                 final isUser = msg.role == 'user';
                 final isStreaming = i == _streamingIndex;
-                return SizeTransition(
-                  sizeFactor: animation,
-                  child: FadeTransition(
-                    opacity: animation,
-                    child: Column(
+                return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Padding(
@@ -913,12 +979,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             ),
                           ),
                       ],
-                    ),
-                  ),
                 );
               },
             ),
-          ),
           ),
           if (_isWaiting)
             const Padding(

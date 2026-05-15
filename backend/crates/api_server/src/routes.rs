@@ -2,7 +2,7 @@
 //!
 //! 复用 LinguaFlow routes.rs 的模式
 
-use axum::{Router, routing::{get, post, delete}, Json, extract::{Path, Query}};
+use axum::{Router, routing::{get, post, delete}, Json, extract::{Path, Query}, http::StatusCode, response::IntoResponse};
 use axum::extract::ws::WebSocketUpgrade;
 use axum::http::HeaderMap;
 use serde::Deserialize;
@@ -131,6 +131,38 @@ async fn chat_handler(
     // Verify auth
     if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
         return Json(serde_json::json!({"error": e}));
+    }
+
+    // 检查订阅状态（与 WS /ws 保持一致）
+    {
+        let conn = crate::db_pool::get_conn();
+        let expires: Option<String> = conn.query_row(
+            "SELECT value FROM user_preferences WHERE user_id = ?1 AND key = 'subscription_expires'",
+            rusqlite::params![input.user_id],
+            |row| row.get(0),
+        ).ok().flatten();
+        let now_ts = chrono::Utc::now().timestamp();
+        let expired = match &expires {
+            Some(e) => {
+                let normalized = if e.len() == 10 && e.as_bytes().get(4) == Some(&b'-') {
+                    format!("{}T00:00:00Z", e)
+                } else {
+                    e.clone()
+                };
+                chrono::DateTime::parse_from_rfc3339(&normalized)
+                    .map(|dt| dt.timestamp() < now_ts)
+                    .unwrap_or(true)
+            }
+            None => true,
+        };
+        if expired {
+            let msg = if expires.is_some() {
+                "subscription_expired"
+            } else {
+                "subscription_required"
+            };
+            return Json(serde_json::json!({"error": msg}));
+        }
     }
 
     let llm_config = crate::llm::get_config();
@@ -850,8 +882,14 @@ async fn cards_last_review_handler(
 
 /// GET /api/history — 获取对话历史
 async fn history_handler(
+    headers: HeaderMap,
     Query(query): Query<HistoryQuery>,
 ) -> Json<serde_json::Value> {
+    // 鉴权：验证 Bearer token
+    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
+        return Json(serde_json::json!({"error": e}));
+    }
+
     let conn = crate::db_pool::get_conn();
     let limit = query.limit.unwrap_or(50).min(200);
 
@@ -1420,12 +1458,12 @@ struct AdminUsersQuery {
 async fn admin_users_handler(
     headers: HeaderMap,
     Query(query): Query<AdminUsersQuery>,
-) -> Json<serde_json::Value> {
+) -> impl IntoResponse {
     // 验证管理员密钥
     let admin_key = std::env::var("COEVO_ADMIN_KEY").unwrap_or_default();
     let got = headers.get("x-admin-key").and_then(|v| v.to_str().ok()).unwrap_or("");
     if admin_key.is_empty() || got != admin_key {
-        return Json(serde_json::json!({"error": "unauthorized"}));
+        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "unauthorized"}))).into_response();
     }
 
     let conn = crate::db_pool::get_conn();
@@ -1455,7 +1493,7 @@ async fn admin_users_handler(
         })
     }).collect();
 
-    Json(serde_json::json!({"users": users}))
+    Json(serde_json::json!({"users": users})).into_response()
 }
 
 // ════════════════════════════════════════════
