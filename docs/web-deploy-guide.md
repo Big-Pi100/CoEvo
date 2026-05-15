@@ -220,7 +220,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
   # 停止服务
   sudo systemctl stop coevo
 
-  # 备份旧二进制（前端更新也要备份）
+  # 备份旧二进制
   sudo cp /opt/coevo/coevo_server \
     /opt/coevo/coevo_server.bak.$(date +%Y%m%d-%H%M%S)
 
@@ -229,6 +229,13 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
     /opt/coevo/coevo_server
   sudo chmod +x /opt/coevo/coevo_server
   sudo chown ubuntu:ubuntu /opt/coevo/coevo_server
+
+  # ⚠️ 重要：全量覆盖 prompts、cefr_catalog.json、.env
+  # 这些文件不随二进制编译，修改后必须重新上传
+  sudo cp /tmp/coevo-build/backend/prompts/*.md /opt/coevo/prompts/
+  sudo cp /tmp/coevo-build/backend/cefr_catalog.json /opt/coevo/
+  sudo cp /tmp/coevo-build/backend/.env /opt/coevo/
+  sudo chown ubuntu:ubuntu /opt/coevo/prompts/*.md /opt/coevo/cefr_catalog.json /opt/coevo/.env
 
   # 启动服务
   sudo systemctl start coevo
