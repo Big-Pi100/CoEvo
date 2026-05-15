@@ -426,12 +426,20 @@ AI 批量评判用户答案。
 
 ### `GET /api/history`
 
-获取对话列表或指定对话的轮次。
+获取对话列表或指定对话的轮次。需要鉴权。
+
+**Request Headers:**
+- `Authorization: Bearer <token>` (required)
 
 **Query Params:**
 - `user_id` (required)
 - `conversation_id` (可选) — 指定对话则返回轮次
 - `limit` (默认 50, 最大 200)
+
+**Response 401:**
+```json
+{"error": "Missing or invalid Authorization header"}
+```
 
 **无 conversation_id（对话列表）:**
 ```json

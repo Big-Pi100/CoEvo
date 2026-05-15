@@ -157,13 +157,24 @@ async fn generate_direct_card(config: &LlmConfig, user_message: &str, ai_reply: 
 pub fn parse_candidates(text: &str) -> Vec<ConceptCandidate> {
     let mut candidates = Vec::new();
 
+    // 辅助: 尝试解析，失败则修复反斜杠后重试
+    let try_parse = |json_str: &str| -> Option<Vec<ConceptCandidate>> {
+        match serde_json::from_str::<Vec<ConceptCandidate>>(json_str) {
+            Ok(list) => Some(list),
+            Err(_) => {
+                let repaired = repair_json_backslashes(json_str);
+                serde_json::from_str::<Vec<ConceptCandidate>>(&repaired).ok()
+            }
+        }
+    };
+
     // 尝试直接 JSON 解析
-    if let Ok(list) = serde_json::from_str::<Vec<ConceptCandidate>>(text.trim()) {
+    if let Some(list) = try_parse(text.trim()) {
         candidates = list;
     } else if let Some(start) = text.find('[') {
         if let Some(end) = text.rfind(']') {
             let json_str = &text[start..=end];
-            if let Ok(list) = serde_json::from_str::<Vec<ConceptCandidate>>(json_str) {
+            if let Some(list) = try_parse(json_str) {
                 candidates = list;
             }
         }
@@ -180,18 +191,65 @@ pub fn parse_candidates(text: &str) -> Vec<ConceptCandidate> {
 }
 
 fn parse_single_candidate(text: &str) -> Option<ConceptCandidate> {
-    if let Ok(c) = serde_json::from_str::<ConceptCandidate>(text.trim()) {
+    let try_parse = |json_str: &str| -> Option<ConceptCandidate> {
+        match serde_json::from_str::<ConceptCandidate>(json_str) {
+            Ok(c) => Some(c),
+            Err(_) => {
+                let repaired = repair_json_backslashes(json_str);
+                serde_json::from_str::<ConceptCandidate>(&repaired).ok()
+            }
+        }
+    };
+
+    if let Some(c) = try_parse(text.trim()) {
         return Some(c);
     }
     if let Some(start) = text.find('{') {
         if let Some(end) = text.rfind('}') {
             let json_str = &text[start..=end];
-            if let Ok(c) = serde_json::from_str::<ConceptCandidate>(json_str) {
+            if let Some(c) = try_parse(json_str) {
                 return Some(c);
             }
         }
     }
     None
+}
+
+/// 修复 LLM 输出 JSON 字符串值中的未转义反斜杠
+///
+/// LLM（特别是 DeepSeek V4 Flash）在生成 JSON 时可能在字符串字段中输出
+/// 字面反斜杠（如 `\d`、`\w`），这不符合 JSON 规范。
+/// 此函数将 JSON 字符串值内所有非法转义的 `\` 替换为 `\\`。
+fn repair_json_backslashes(json_str: &str) -> String {
+    let mut result = String::with_capacity(json_str.len());
+    let chars: Vec<char> = json_str.chars().collect();
+    let mut i = 0;
+    let mut in_string = false;
+
+    while i < chars.len() {
+        let ch = chars[i];
+        match ch {
+            '"' if i == 0 || chars[i - 1] != '\\' => {
+                in_string = !in_string;
+                result.push(ch);
+            }
+            '\\' if in_string => {
+                let valid_escape = i + 1 < chars.len() && matches!(
+                    chars[i + 1],
+                    '"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't' | 'u'
+                );
+                if valid_escape {
+                    result.push(ch);
+                } else {
+                    result.push_str("\\\\");
+                    continue;
+                }
+            }
+            _ => result.push(ch),
+        }
+        i += 1;
+    }
+    result
 }
 
 #[cfg(test)]

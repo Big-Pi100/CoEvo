@@ -45,7 +45,34 @@ pub fn handle_plan_update(
                 let json_str = final_reply[block_start..block_start + end].to_string();
                 final_reply.replace_range(start..block_start + end + 14, "");
 
-                if let Ok(update) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                // 尝试解析 JSON（支持 LLM 常见格式错误修复）
+                let update = match serde_json::from_str::<serde_json::Value>(&json_str) {
+                    Ok(v) => Some(v),
+                    Err(e) => {
+                        // 修复常见 LLM JSON 错误：字符串值中未转义的反斜杠
+                        // LLM 可能在 description 等字段中输出 \d、\w、\n 字面量
+                        // JSON 规范要求反斜杠必须转义为 \\，否则解析失败
+                        let repaired = repair_json_backslashes(&json_str);
+                        match serde_json::from_str::<serde_json::Value>(&repaired) {
+                            Ok(v) => {
+                                tracing::warn!(
+                                    "Plan JSON repaired (unescaped backslashes). Original error: {}",
+                                    e
+                                );
+                                Some(v)
+                            }
+                            Err(e2) => {
+                                tracing::error!(
+                                    "Plan JSON parse failed after repair. Original: {}. Repaired: {}. JSON (first 300): {}...",
+                                    e, e2, &json_str[..json_str.len().min(300)]
+                                );
+                                None
+                            }
+                        }
+                    }
+                };
+
+                if let Some(update) = update {
                     is_new_plan = update.get("is_new_plan")
                         .and_then(|v| v.as_bool())
                         .unwrap_or(false);
@@ -94,6 +121,10 @@ fn upsert_learning_plan(
         o.remove("goal");
     });
 
+    // domain = conversation_id，确保每个对话独立拥有学习计划
+    // （UNIQUE INDEX 约束 (user_id, domain)，同一用户不同对话各自独立）
+    let domain = conversation_id;
+
     // 检查是否已有学习计划（防止重复创建）
     let existing_plan: Option<String> = conn.query_row(
         "SELECT id FROM learning_plans WHERE conversation_id = ?1 AND mode != 'deleted' LIMIT 1",
@@ -102,18 +133,24 @@ fn upsert_learning_plan(
     ).ok();
 
     if let Some(existing_id) = existing_plan {
-        let _ = conn.execute(
-            "UPDATE learning_plans SET goal=?1, plan_json=?2, updated_at=?3 WHERE id=?4",
-            rusqlite::params![goal, plan.to_string(), now, existing_id],
-        );
-        tracing::debug!("Learning plan updated: {}", existing_id);
+        if let Err(e) = conn.execute(
+            "UPDATE learning_plans SET goal=?1, plan_json=?2, domain=?3, updated_at=?4 WHERE id=?5",
+            rusqlite::params![goal, plan.to_string(), domain, now, existing_id],
+        ) {
+            tracing::error!("Learning plan update failed: {} (plan_id={})", e, existing_id);
+        } else {
+            tracing::debug!("Learning plan updated: {}", existing_id);
+        }
     } else {
         let id = uuid::Uuid::new_v4().to_string();
-        let _ = conn.execute(
+        if let Err(e) = conn.execute(
             "INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_json, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, 'structured', ?6, ?7, ?7)",
-            rusqlite::params![id, user_id, conversation_id, goal, "", plan.to_string(), now],
-        );
-        tracing::info!("Learning plan created: {} for user {}", id, user_id);
+            rusqlite::params![id, user_id, conversation_id, goal, domain, plan.to_string(), now],
+        ) {
+            tracing::error!("Learning plan insert failed: {} (user={}, conv={}, goal={})", e, user_id, conversation_id, goal);
+        } else {
+            tracing::info!("Learning plan created: {} for user {} (goal: {}, conv: {})", id, user_id, goal, conversation_id);
+        }
     }
 }
 
@@ -348,4 +385,80 @@ pub fn achievement_exists(conn: &rusqlite::Connection, user_id: &str, key: &str)
         rusqlite::params![user_id, key],
         |_| Ok(true),
     ).unwrap_or(false)
+}
+
+/// 修复 LLM 输出 JSON 中的常见转义错误
+///
+/// LLM（特别是 DeepSeek V4 Flash）在生成 JSON 时可能输出未转义的反斜杠，
+/// 例如 description 字段中的 `\d`、`\w`、`\n`（字面量）等。
+/// JSON 规范要求 `\` 后只能跟 `"`, `\`, `/`, `b`, `f`, `n`, `r`, `t`, `uXXXX`。
+///
+/// 此函数将字符串值内所有不是合法 JSON 转义序列的 `\` 替换为 `\\`。
+fn repair_json_backslashes(json_str: &str) -> String {
+    let mut result = String::with_capacity(json_str.len());
+    let chars: Vec<char> = json_str.chars().collect();
+    let mut i = 0;
+    let mut in_string = false;
+
+    while i < chars.len() {
+        let ch = chars[i];
+        match ch {
+            '"' if i == 0 || chars[i - 1] != '\\' => {
+                in_string = !in_string;
+                result.push(ch);
+            }
+            '\\' if in_string => {
+                // 检查下一个字符是否为合法 JSON 转义
+                let valid_escape = i + 1 < chars.len() && matches!(
+                    chars[i + 1],
+                    '"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't' | 'u'
+                );
+                if valid_escape {
+                    result.push(ch); // 合法转义，原样保留
+                } else {
+                    result.push_str("\\\\"); // 非法转义，双写反斜杠
+                    continue; // 跳过递增 i 的步骤
+                }
+            }
+            _ => {
+                result.push(ch);
+            }
+        }
+        i += 1;
+    }
+
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_repair_json_backslashes() {
+        // 正常 JSON 不应被修改
+        let ok = r#"{"key": "hello world"}"#;
+        assert_eq!(repair_json_backslashes(ok), ok);
+
+        // 合法转义不应被修改
+        let ok2 = r#"{"key": "hello\nworld"}"#;
+        assert_eq!(repair_json_backslashes(ok2), ok2);
+
+        // 非法转义应被修复
+        let bad = r#"{"desc": "使用 \d 匹配数字"}"#;
+        let fixed = repair_json_backslashes(bad);
+        assert_eq!(fixed, r#"{"desc": "使用 \\d 匹配数字"}"#);
+        // 修复后应能解析
+        assert!(serde_json::from_str::<serde_json::Value>(&fixed).is_ok());
+
+        // 多个非法转义
+        let bad2 = r#"{"desc": "正则 \d 和 \w"}"#;
+        let fixed2 = repair_json_backslashes(bad2);
+        assert_eq!(fixed2, r#"{"desc": "正则 \\d 和 \\w"}"#);
+
+        // Windows 路径
+        let bad3 = r#"{"path": "C:\Users\test"}"#;
+        let fixed3 = repair_json_backslashes(bad3);
+        assert_eq!(fixed3, r#"{"path": "C:\\Users\\test"}"#);
+    }
 }

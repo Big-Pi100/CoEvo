@@ -727,11 +727,12 @@
 ### WebSocket 协议 (HotPath / ColdPath 分离)
 
 ```
-客户端 → 服务器:
+客户端 → 服务器 (首条消息含 token，后续可省略):
 {
   "user_id": "...",
   "conversation_id": "...",
-  "message": "用户输入"
+  "message": "用户输入",
+  "token": "sha256_token"           // 首条必传
 }
 
 服务器 → 客户端 (HotPath，按顺序):
@@ -745,7 +746,12 @@
 {"type":"candidates",                     // 概念提取完成（1-3s 后）
   "candidates": [{"front":..., "back":..., "source_sentence":..., "domain":...}]}
 
-{"type":"error","content":"..."}          // 错误
+服务器 → 客户端 (鉴权/订阅错误):
+{"type":"error","content":"missing_token"}           // 首条消息缺少 token
+{"type":"error","content":"invalid_token"}           // token 无效
+{"type":"error","content":"subscription_required"}   // 未激活订阅
+{"type":"error","content":"subscription_expired"}    // 订阅已到期
+{"type":"error","content":"..."}                     // 其他错误
 ```
 
 #### 前端 token → 公式渲染流程

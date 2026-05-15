@@ -73,7 +73,7 @@ backend/                    # Rust 后端 (axum)
 │   └── grill_assessment.md
 ├── data/coevo.db           # SQLite 数据库 (运行后自动创建)
 └── crates/
-    ├── api_server/         # HTTP + WS 路由
+    ├── api_server/         # HTTP + WS 路由 + 鉴权中间件 + 计划管理
     ├── chat_engine/        # LLM 调用 + 概念提取 + 词库
     ├── card_engine/        # 制卡 + FSRS 调度
     ├── growth_engine/      # 成就检测
@@ -84,7 +84,7 @@ app/                        # Flutter 前端
 │   ├── api/                # HTTP/WS 客户端
 │   ├── models/             # 数据模型
 │   ├── providers/          # Riverpod 状态管理
-│   ├── screens/            # 8 个页面
+│   ├── screens/            # 9 个页面
 │   ├── services/           # TTS / STT 服务
 │   └── theme/              # Material 3 主题
 ```
@@ -96,7 +96,7 @@ app/                        # Flutter 前端
 | 命令 | 说明 |
 |:--|:--|
 | `cargo run` | 启动后端 (8080) |
-| `cargo test --workspace` | 运行全部测试 (26 个) |
+| `cargo test --workspace` | 运行全部测试 (35 个) |
 | `cargo test -p card_engine` | 仅运行制卡引擎测试 |
 | `cargo check` | 编译检查 |
 | `RUST_LOG=debug cargo run` | 带调试日志启动 |
@@ -157,7 +157,7 @@ CoEvo 支持 LLM 输出的 LaTeX 数学公式，通过 `flutter_math_fork` 渲�
 DeepSeek/Qwen SSE
   → ws.rs (JSON 帧: {"type":"token","content":"..."})
   → WebSocket
-  → chat_screen.dart: _handleWsEvent
+  → chat_screen.dart: _handleWsEvent (≈445行)
   → _buildRichContent(text, isStreaming: bool)
   → Math.tex(formula)
 ```
@@ -179,7 +179,7 @@ DeepSeek/Qwen SSE
 ### 正则表达式
 
 ```dart
-// chat_screen.dart:1154
+// chat_screen.dart _buildRichContent (≈1237行)
 final mathRegex = RegExp(
   r'\\[\(\[](.+?)\\[[)\]]',
   dotAll: true,  // LLM 输出的 \[...\] 可能含换行
