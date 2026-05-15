@@ -435,6 +435,7 @@ AI 批量评判用户答案。
 - `user_id` (required)
 - `conversation_id` (可选) — 指定对话则返回轮次
 - `limit` (默认 50, 最大 200)
+- `include_deleted` (可选) — `"only"`=仅已删除, `"true"`=全部, 默认仅活跃
 
 **Response 401:**
 ```json
@@ -450,6 +451,7 @@ AI 批量评判用户答案。
       "id": "conv_...",
       "turn_count": 12,
       "started_at": "2026-05-07T18:00:00+00:00",
+      "deleted_at": null,
       "title": "第一条消息..."
     }
   ],
@@ -466,6 +468,55 @@ AI 批量评判用户答案。
     {"id": "turn_uuid", "role": "assistant", "content": "...", "created_at": "..."}
   ]
 }
+```
+
+---
+
+## 对话管理
+
+### `DELETE /api/conversations/{conv_id}`
+
+软删除对话（移至回收站，30天内可恢复）。
+
+**Query Params:**
+- `user_id` (required)
+
+**Request Headers:**
+- `Authorization: Bearer <token>` (required)
+
+**Response 200:**
+```json
+{"status": "ok", "deleted_at": "2026-05-15T..."}
+```
+
+### `POST /api/conversations/{conv_id}/restore`
+
+恢复已删除的对话。
+
+**Query Params:**
+- `user_id` (required)
+
+**Request Headers:**
+- `Authorization: Bearer <token>` (required)
+
+**Response 200:**
+```json
+{"status": "ok"}
+```
+
+### `DELETE /api/conversations/{conv_id}/permanent`
+
+物理删除对话（不可恢复，同时删除关联的 conversation_turns）。
+
+**Query Params:**
+- `user_id` (required)
+
+**Request Headers:**
+- `Authorization: Bearer <token>` (required)
+
+**Response 200:**
+```json
+{"status": "ok"}
 ```
 
 ---

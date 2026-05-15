@@ -45,6 +45,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _subscriptionChecked = false;
   bool _subscriptionDialogShown = false;
 
+  // 对话删除状态
+  // ignore: prefer_final_fields
+  bool _isDeleted = false;
+
   String _streamingBuffer = '';
   int _streamingIndex = -1;
 
@@ -773,6 +777,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
+  /// 对话已删除横幅
+  Widget _buildDeletedBanner() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, size: 18, color: Colors.grey.shade600),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              '此对话已被删除。你可以在对话列表的回收站中恢复。',
+              style: TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -885,6 +914,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _buildPlanPanel(),
           // 订阅状态横幅
           _buildSubscriptionBanner(),
+          // 对话已删除横幅
+          if (_isDeleted) _buildDeletedBanner(),
           Expanded(
             child: _isInitializing
                 ? const ChatSkeleton()

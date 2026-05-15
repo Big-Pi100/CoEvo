@@ -58,6 +58,10 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/user/{user_id}/weekly-report", get(weekly_report_handler))
         // Admin
         .route("/api/admin/users", get(admin_users_handler))
+        // Conversation management
+        .route("/api/conversations/{conv_id}", delete(conversation_delete_handler))
+        .route("/api/conversations/{conv_id}/restore", post(conversation_restore_handler))
+        .route("/api/conversations/{conv_id}/permanent", delete(conversation_permanent_delete_handler))
         // STT
         .route("/api/stt", post(stt_handler))
 }
@@ -840,6 +844,8 @@ pub struct HistoryQuery {
     pub user_id: String,
     pub conversation_id: Option<String>,
     pub limit: Option<i64>,
+    /// "only"=仅已删除, "true"=全部, 默认=仅活跃
+    pub include_deleted: Option<String>,
 }
 
 /// GET /api/cards/{card_id}/last-review — 最近一次考试详情
@@ -917,18 +923,26 @@ async fn history_handler(
     }
 
     // 查询用户的所有对话列表（含标题：第一条用户消息）
-    let mut stmt = conn.prepare(
-        "SELECT c.id, c.turn_count, c.started_at,
+    // include_deleted: "only"=仅已删除, "true"=全部, 默认=仅活跃
+    let deleted_filter = match query.include_deleted.as_deref() {
+        Some("only") => " AND c.deleted_at IS NOT NULL",
+        Some("true") => "",
+        _ => " AND c.deleted_at IS NULL",
+    };
+    let sql = format!(
+        "SELECT c.id, c.turn_count, c.started_at, c.deleted_at,
                 (SELECT content FROM conversation_turns t
                  WHERE t.conversation_id = c.id AND t.role = 'user'
                  ORDER BY t.created_at ASC LIMIT 1) as first_msg
          FROM conversations c
-         WHERE c.user_id = ?1 ORDER BY c.started_at DESC LIMIT ?2"
-    ).unwrap();
+         WHERE c.user_id = ?1{} ORDER BY c.started_at DESC LIMIT ?2",
+        deleted_filter
+    );
+    let mut stmt = conn.prepare(&sql).unwrap();
     let conversations: Vec<serde_json::Value> = stmt.query_map(
         rusqlite::params![query.user_id, limit],
         |row| {
-            let first_msg: Option<String> = row.get(3).ok().flatten();
+            let first_msg: Option<String> = row.get(4).ok().flatten(); // col 4 (after added deleted_at)
             let title = first_msg.as_deref()
                 .map(|s| if s.len() > 50 { format!("{}...", &s[..50]) } else { s.to_string() })
                 .unwrap_or_else(|| "新对话".to_string());
@@ -936,6 +950,7 @@ async fn history_handler(
                 "id": row.get::<_, String>(0)?,
                 "turn_count": row.get::<_, i32>(1)?,
                 "started_at": row.get::<_, String>(2)?,
+                "deleted_at": row.get::<_, Option<String>>(3)?,
                 "title": title,
             }))
         }
@@ -945,6 +960,81 @@ async fn history_handler(
         "conversations": conversations,
         "count": conversations.len(),
     }))
+}
+
+// ════════════════════════════════════════════
+// 对话管理 — 软删除 / 恢复 / 彻底删除
+// ════════════════════════════════════════════
+
+#[derive(Deserialize)]
+struct ConversationActionQuery {
+    user_id: String,
+}
+
+/// DELETE /api/conversations/{conv_id} — 软删除对话
+async fn conversation_delete_handler(
+    headers: HeaderMap,
+    Path(conv_id): Path<String>,
+    Query(query): Query<ConversationActionQuery>,
+) -> Json<serde_json::Value> {
+    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
+        return Json(serde_json::json!({"error": e}));
+    }
+    let conn = crate::db_pool::get_conn();
+    let now = chrono::Utc::now().to_rfc3339();
+    match conn.execute(
+        "UPDATE conversations SET deleted_at = ?1 WHERE id = ?2 AND user_id = ?3 AND deleted_at IS NULL",
+        rusqlite::params![now, conv_id, query.user_id],
+    ) {
+        Ok(0) => Json(serde_json::json!({"error": "Conversation not found or already deleted"})),
+        Ok(_) => Json(serde_json::json!({"status": "ok", "deleted_at": now})),
+        Err(e) => Json(serde_json::json!({"error": format!("DB: {}", e)})),
+    }
+}
+
+/// POST /api/conversations/{conv_id}/restore — 恢复已删除对话
+async fn conversation_restore_handler(
+    headers: HeaderMap,
+    Path(conv_id): Path<String>,
+    Query(query): Query<ConversationActionQuery>,
+) -> Json<serde_json::Value> {
+    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
+        return Json(serde_json::json!({"error": e}));
+    }
+    let conn = crate::db_pool::get_conn();
+    match conn.execute(
+        "UPDATE conversations SET deleted_at = NULL WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NOT NULL",
+        rusqlite::params![conv_id, query.user_id],
+    ) {
+        Ok(0) => Json(serde_json::json!({"error": "Conversation not found or not deleted"})),
+        Ok(_) => Json(serde_json::json!({"status": "ok"})),
+        Err(e) => Json(serde_json::json!({"error": format!("DB: {}", e)})),
+    }
+}
+
+/// DELETE /api/conversations/{conv_id}/permanent — 物理删除（不可恢复）
+async fn conversation_permanent_delete_handler(
+    headers: HeaderMap,
+    Path(conv_id): Path<String>,
+    Query(query): Query<ConversationActionQuery>,
+) -> Json<serde_json::Value> {
+    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
+        return Json(serde_json::json!({"error": e}));
+    }
+    let conn = crate::db_pool::get_conn();
+    // 级联删除 conversation_turns
+    let _ = conn.execute(
+        "DELETE FROM conversation_turns WHERE conversation_id = ?1",
+        rusqlite::params![conv_id],
+    );
+    match conn.execute(
+        "DELETE FROM conversations WHERE id = ?1 AND user_id = ?2",
+        rusqlite::params![conv_id, query.user_id],
+    ) {
+        Ok(0) => Json(serde_json::json!({"error": "Conversation not found"})),
+        Ok(_) => Json(serde_json::json!({"status": "ok"})),
+        Err(e) => Json(serde_json::json!({"error": format!("DB: {}", e)})),
+    }
 }
 
 /// GET /api/user/:user_id/profile — 用户统计 + 成就
@@ -1295,7 +1385,7 @@ async fn learning_report_handler(
     ).unwrap_or(0);
 
     let conv_total: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM conversation_turns WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = ?1)",
+        "SELECT COUNT(*) FROM conversation_turns WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = ?1 AND deleted_at IS NULL)",
         rusqlite::params![user_id], |row| row.get(0)
     ).unwrap_or(0);
 

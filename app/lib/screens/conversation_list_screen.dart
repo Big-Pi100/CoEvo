@@ -13,106 +13,343 @@ class ConversationListScreen extends ConsumerStatefulWidget {
   ConsumerState<ConversationListScreen> createState() => _ConversationListScreenState();
 }
 
-class _ConversationListScreenState extends ConsumerState<ConversationListScreen> {
-  List<Map<String, dynamic>> _conversations = [];
-  bool _isLoading = true;
+class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+  List<Map<String, dynamic>> _activeConversations = [];
+  List<Map<String, dynamic>> _deletedConversations = [];
+  bool _isLoadingActive = true;
+  bool _isLoadingDeleted = false;
   bool _hasLoadedOnce = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        setState(() {}); // 刷新 Tab 内容
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadActive());
     ref.listenManual(authProvider, (prev, next) {
       if (!_hasLoadedOnce && next.userId != null) {
-        _load();
+        _loadActive();
       }
     });
   }
 
-  Future<void> _load() async {
+  ChatClient _makeClient() {
+    final auth = ref.read(authProvider);
+    return ChatClient(
+      userId: auth.userId ?? 'default_user',
+      token: auth.token,
+    );
+  }
+
+  Future<void> _loadActive() async {
     final auth = ref.read(authProvider);
     if (auth.userId == null) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoadingActive = false);
       return;
     }
-    final client = ChatClient(userId: auth.userId!, token: auth.token);
+    final client = _makeClient();
     try {
       final resp = await client.getConversationList();
       setState(() {
-        _conversations = (resp['conversations'] as List<dynamic>?)
+        _activeConversations = (resp['conversations'] as List<dynamic>?)
             ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
-        _isLoading = false;
+        _isLoadingActive = false;
         _hasLoadedOnce = true;
       });
     } catch (e) {
-      setState(() => _isLoading = false);
+      setState(() => _isLoadingActive = false);
+    }
+  }
+
+  Future<void> _loadDeleted() async {
+    setState(() => _isLoadingDeleted = true);
+    final client = _makeClient();
+    try {
+      final resp = await client.getConversationList(includeDeleted: 'only');
+      setState(() {
+        _deletedConversations = (resp['conversations'] as List<dynamic>?)
+            ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
+        _isLoadingDeleted = false;
+      });
+    } catch (e) {
+      setState(() => _isLoadingDeleted = false);
+    }
+  }
+
+  Future<void> _doDelete(Map<String, dynamic> conv) async {
+    final convId = conv['id'] as String;
+    final client = _makeClient();
+    final resp = await client.deleteConversation(convId);
+    if (resp != null) {
+      _loadActive();
+      if (_tabController.index == 1) _loadDeleted();
+    }
+  }
+
+  Future<void> _restoreConversation(Map<String, dynamic> conv) async {
+    final convId = conv['id'] as String;
+    final client = _makeClient();
+    final ok = await client.restoreConversation(convId);
+    if (ok) {
+      _loadDeleted();
+      _loadActive();
+      _tabController.animateTo(0);
+    }
+  }
+
+  Future<void> _showDeleteDialog(Map<String, dynamic> conv) async {
+    final title = (conv['title'] as String?) ?? '此对话';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除对话'),
+        content: Text('「$title」将移至回收站，30天内可恢复。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await _doDelete(conv);
+    }
+  }
+
+  Future<void> _showPermanentDeleteDialog(Map<String, dynamic> conv) async {
+    final title = (conv['title'] as String?) ?? '此对话';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('彻底删除'),
+        content: Text('「$title」将被永久删除，无法恢复。确定继续？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('彻底删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      final client = _makeClient();
+      await client.permanentDeleteConversation(conv['id'] as String);
+      _loadDeleted();
+    }
+  }
+
+  String _formatDate(String isoStr) {
+    try {
+      final dt = DateTime.parse(isoStr).toLocal();
+      final now = DateTime.now();
+      final diff = now.difference(dt);
+      if (diff.inMinutes < 1) return '刚刚';
+      if (diff.inHours < 1) return '${diff.inMinutes} 分钟前';
+      if (diff.inDays < 1) return DateFormat('HH:mm').format(dt);
+      if (diff.inDays < 7) return '${diff.inDays} 天前';
+      return DateFormat('MM-dd').format(dt);
+    } catch (_) {
+      return isoStr.length >= 10 ? isoStr.substring(0, 10) : '';
     }
   }
 
   @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  // ── Build ──
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('对话列表')),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _conversations.isEmpty
-              ? EmptyState(
-                  icon: Icons.chat_bubble_outline,
-                  title: '还没有对话',
-                  actionLabel: '开始新对话',
-                  onAction: () => context.go('/chat'),
-                )
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: _conversations.length,
-                  itemBuilder: (_, i) {
-                    final conv = _conversations[i];
-                    final title = conv['title'] as String? ?? '新对话';
-                    final turnCount = conv['turn_count'] as int? ?? 0;
-                    final startedAtStr = conv['started_at'] as String? ?? '';
-                    // 相对时间格式化
-                    String dateLabel;
-                    try {
-                      final dt = DateTime.parse(startedAtStr).toLocal();
-                      final now = DateTime.now();
-                      final diff = now.difference(dt);
-                      if (diff.inMinutes < 1) {
-                        dateLabel = '刚刚';
-                      } else if (diff.inHours < 1) {
-                        dateLabel = '${diff.inMinutes} 分钟前';
-                      } else if (diff.inDays < 1) {
-                        dateLabel = DateFormat('HH:mm').format(dt);
-                      } else if (diff.inDays < 7) {
-                        dateLabel = '${diff.inDays} 天前';
-                      } else {
-                        dateLabel = DateFormat('MM-dd').format(dt);
-                      }
-                    } catch (_) {
-                      dateLabel = startedAtStr.length >= 10 ? startedAtStr.substring(0, 10) : '';
-                    }
-                    return Card(
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: Theme.of(context).colorScheme.primary.withAlpha(30),
-                          child: const Icon(Icons.chat, size: 20),
-                        ),
-                        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Text('$dateLabel · $turnCount 轮对话',
-                            style: const TextStyle(fontSize: 12)),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
-                          final convId = conv['id'] as String?;
-                          if (convId != null) {
-                            context.pop(convId);
-                          }
-                        },
-                      ),
-                    );
-                  },
-                ),
-                ),
+      appBar: AppBar(
+        title: const Text('对话列表'),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            Tab(text: '活跃 (${_activeConversations.length})'),
+            const Tab(text: '已删除'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildActiveList(),
+          _buildDeletedList(),
+        ],
+      ),
+    );
+  }
+
+  // ── 活跃列表 ──
+
+  Widget _buildActiveList() {
+    if (_isLoadingActive) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_activeConversations.isEmpty) {
+      return EmptyState(
+        icon: Icons.chat_bubble_outline,
+        title: '还没有对话',
+        actionLabel: '开始新对话',
+        onAction: () => context.go('/chat'),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _loadActive,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: _activeConversations.length,
+        itemBuilder: (_, i) => _buildActiveTile(_activeConversations[i]),
+      ),
+    );
+  }
+
+  Widget _buildActiveTile(Map<String, dynamic> conv) {
+    final title = (conv['title'] as String?) ?? '新对话';
+    final turnCount = conv['turn_count'] as int? ?? 0;
+    final startedAtStr = (conv['started_at'] as String?) ?? '';
+    final dateLabel = _formatDate(startedAtStr);
+
+    return Dismissible(
+      key: Key(conv['id'] as String),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        color: Colors.red,
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      confirmDismiss: (_) async {
+        await _showDeleteDialog(conv);
+        return false; // Dismissible 不自动移除，由 _doDelete 刷新列表
+      },
+      child: Card(
+        child: ListTile(
+          leading: CircleAvatar(
+            backgroundColor: Theme.of(context).colorScheme.primary.withAlpha(30),
+            child: const Icon(Icons.chat, size: 20),
+          ),
+          title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text('$dateLabel · $turnCount 轮对话',
+              style: const TextStyle(fontSize: 12)),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            final convId = conv['id'] as String?;
+            if (convId != null) {
+              context.pop(convId);
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  // ── 已删除列表（回收站） ──
+
+  Widget _buildDeletedList() {
+    // 首次切换到已删除 Tab 时加载
+    if (_deletedConversations.isEmpty && !_isLoadingDeleted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadDeleted());
+    }
+    if (_isLoadingDeleted) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_deletedConversations.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.delete_outline, size: 64, color: Colors.grey.shade300),
+            const SizedBox(height: 16),
+            Text('回收站为空', style: TextStyle(color: Colors.grey.shade500)),
+            const SizedBox(height: 8),
+            Text('已删除的对话将保留30天',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
+          ],
+        ),
+      );
+    }
+    return Column(
+      children: [
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: _deletedConversations.length,
+            itemBuilder: (_, i) => _buildDeletedTile(_deletedConversations[i]),
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.all(12),
+          color: Colors.grey.shade50,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.info_outline, size: 14, color: Colors.grey.shade400),
+              const SizedBox(width: 6),
+              Text('已删除的对话将在30天后自动清理',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDeletedTile(Map<String, dynamic> conv) {
+    final title = (conv['title'] as String?) ?? '新对话';
+    final turnCount = conv['turn_count'] as int? ?? 0;
+    final deletedAtStr = (conv['deleted_at'] as String?) ?? '';
+    final dateLabel = _formatDate(deletedAtStr);
+
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: Colors.grey.shade200,
+          child: Icon(Icons.delete_outline, size: 20, color: Colors.grey.shade600),
+        ),
+        title: Text(title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: Colors.grey.shade700)),
+        subtitle: Text('$turnCount轮对话 · 删除于 $dateLabel',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextButton.icon(
+              icon: const Icon(Icons.restore, size: 18),
+              label: const Text('恢复'),
+              onPressed: () => _restoreConversation(conv),
+            ),
+            IconButton(
+              icon: Icon(Icons.delete_forever, size: 20, color: Colors.red.shade300),
+              tooltip: '彻底删除',
+              onPressed: () => _showPermanentDeleteDialog(conv),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

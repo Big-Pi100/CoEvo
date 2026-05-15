@@ -214,11 +214,17 @@ class ChatClient {
   // ── History API ──
 
   /// 获取对话列表（不含具体轮次）
-  Future<Map<String, dynamic>> getConversationList({int limit = 50}) async {
-    final uri = Uri.parse('$baseUrl/api/history').replace(queryParameters: {
+  /// includeDeleted: "only"=仅已删除, "true"=全部, 默认=仅活跃
+  Future<Map<String, dynamic>> getConversationList({
+    int limit = 50,
+    String? includeDeleted,
+  }) async {
+    final params = <String, String>{
       'user_id': userId,
       'limit': limit.toString(),
-    });
+    };
+    if (includeDeleted != null) params['include_deleted'] = includeDeleted;
+    final uri = Uri.parse('$baseUrl/api/history').replace(queryParameters: params);
     final resp = await http.get(uri, headers: _authHeaders)
         .timeout(ApiConfig.requestTimeout);
     if (resp.statusCode != 200) throw Exception('History API: ${resp.statusCode}');
@@ -307,6 +313,52 @@ class ChatClient {
       throw Exception('Batch create error: ${resp.statusCode}');
     }
     return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  // ── Conversation Management ──
+
+  /// 软删除对话（移至回收站）
+  Future<Map<String, dynamic>?> deleteConversation(String convId) async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/conversations/$convId')
+          .replace(queryParameters: {'user_id': userId});
+      final resp = await http.delete(uri, headers: _authHeaders)
+          .timeout(ApiConfig.requestTimeout);
+      if (resp.statusCode == 200) {
+        return jsonDecode(resp.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint('deleteConversation error: $e');
+    }
+    return null;
+  }
+
+  /// 恢复已删除对话
+  Future<bool> restoreConversation(String convId) async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/conversations/$convId/restore')
+          .replace(queryParameters: {'user_id': userId});
+      final resp = await http.post(uri, headers: _authHeaders)
+          .timeout(ApiConfig.requestTimeout);
+      return resp.statusCode == 200;
+    } catch (e) {
+      debugPrint('restoreConversation error: $e');
+      return false;
+    }
+  }
+
+  /// 彻底删除对话（不可恢复）
+  Future<bool> permanentDeleteConversation(String convId) async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/conversations/$convId/permanent')
+          .replace(queryParameters: {'user_id': userId});
+      final resp = await http.delete(uri, headers: _authHeaders)
+          .timeout(ApiConfig.requestTimeout);
+      return resp.statusCode == 200;
+    } catch (e) {
+      debugPrint('permanentDeleteConversation error: $e');
+      return false;
+    }
   }
 
   // ── Health ──

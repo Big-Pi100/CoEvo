@@ -17,6 +17,7 @@
  Flow D: 成就检测 (附属于 B 和 C)
  Flow E: 跳过管理
  Flow F: 学习计划 (N8, 对话内结构化学习)
+ Flow G: 对话生命周期 (软删除/恢复/物理删除)
 ════════════════════════════════════════════════════════════════════
 
  ┌─────────────────────────────────────────────────────────────────┐
@@ -452,7 +453,8 @@
 ┌─────────────────────────────────────────────────────────┐
 │ Node N8: 学习计划 (对话内结构化学习)                      │
 │                                                         │
-│ 位置: 后端 Rust (ws.rs 对话内处理)                       │
+│ 位置: 后端 Rust (ws.rs 对话内处理 + plan_handler 模块)    │
+│ Prompt: chat_system_free.md / chat_system_structured.md  │
 │                                                         │
 │ 触发: LLM 检测学习意图 → 用户确认                         │
 │                                                         │
@@ -460,15 +462,20 @@
 │                                                         │
 │ 用户:"我想学XX"                                          │
 │   → LLM 确认 + 输出 <plan_update> JSON                   │
-│   → 后端解析 JSON（含 is_new_plan + stages/tasks）       │
-│   → INSERT INTO learning_plans (绑定 conversation_id)    │
+│   → 后端 plan_handler::handle_plan_update() 解析         │
+│     ├─ 提取 <plan_update>...</plan_update> 之间 JSON     │
+│     ├─ JSON 解析失败 → repair_json_backslashes() 修复    │
+│     │   (LLM 可能输出 \d、\w 等非法转义)                  │
+│     ├─ is_new_plan=true → upsert_learning_plan()         │
+│     │   domain=conversation_id (保证每对话独立计划)       │
+│     └─ is_new_plan=false → apply_plan_mutations()        │
 │   → render_plan() 渲染为对话文本                         │
 │   → 发 done + plan_updated WS 事件                       │
 │                                                         │
 │ 后续对话:                                                │
-│   → prompt 注入学习上下文 (长期目标/当前阶段/任务状态)    │
+│   → build_plan_context() 注入学习上下文到 prompt          │
 │   → LLM 教学 + 输出 <plan_update> 更新进度               │
-│   → 后端解析 → UPDATE plan_json + achievements           │
+│   → plan_handler 解析 → UPDATE plan_json + achievements  │
 │   → plan_updated WS 事件 → Flutter 刷新面板              │
 │                                                         │
 │ 流式拦截:                                                │
@@ -482,6 +489,8 @@
 │ DB 表:                                                   │
 │   learning_plans (id, user_id, conversation_id,          │
 │     goal, domain, mode, plan_json, created_at, updated)  │
+│   UNIQUE INDEX (user_id, domain) — domain=conversation_id │
+│   → 每个对话最多一个计划，同一用户不同对话各自独立         │
 │                                                         │
 │ 成就绑定:                                                │
 │   task done → bronze/"任务名入门"                        │
@@ -523,6 +532,42 @@
 │   LLM 提取 "machine learning" → 应该能匹配              │
 │   解决: 去重时用 LOWER(front) 做精确匹配                 │
 │   ❓ 是否需要更模糊的匹配?                               │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Flow G: 对话生命周期
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ Flow G: 对话生命周期 (软删除/恢复/物理删除)              │
+│                                                         │
+│ 位置: routes.rs (conversation_*_handler)                 │
+│       conversation_list_screen.dart (UI)                 │
+│                                                         │
+│ 状态机:                                                  │
+│                                                         │
+│   新建对话 ──→ 活跃 (deleted_at = NULL)                  │
+│                   │                                     │
+│                   │ DELETE /api/conversations/{id}       │
+│                   │ 确认弹窗 → 软删除                     │
+│                   ▼                                     │
+│              已删除 (deleted_at = 当前时间)               │
+│                   │                                     │
+│       ┌───────────┴───────────┐                         │
+│       │                       │                         │
+│  POST .../restore    DELETE .../permanent               │
+│  deleted_at=NULL     物理删除 conversations              │
+│       │               + 级联删 conversation_turns        │
+│       ▼               (不可恢复)                         │
+│     活跃                                                │
+│                                                         │
+│   统计查询: 默认 AND deleted_at IS NULL                  │
+│   历史列表: include_deleted 参数控制可见性                │
+│   前端: TabBar [活跃] [已删除] 两栏切换                   │
+│                                                         │
+│   deleted_at 列: TEXT DEFAULT NULL                      │
+│   索引: idx_conversations_user_deleted(user_id, deleted_at)│
+│   定时清理: 30天后物理删除（后续迭代）                    │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -678,7 +723,9 @@
 │  ┌─────────────────────────────────────────────────────┐       │
 │  │ conversations          (Session)                     │       │
 │  │ ─────────────────────────────────────────────────── │       │
-│  │ id | user_id | turn_count | started_at              │       │
+│  │ id | user_id | turn_count | started_at |            │       │
+│  │ deleted_at (NULL=活跃, 非NULL=已删除)               │       │
+│  │ 🔗 Flow G 软删除/恢复                               │       │
 │  └─────────────────────────────────────────────────────┘       │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────┐       │
@@ -719,10 +766,13 @@
 | POST | `/api/review/submit` | N6c | `{user_id, card_id, rating, vtype, vresult, details?}` | `{status: "ok", achievements: [...]}` |
 | POST | `/api/cards/batch-create` | N3+N4 | `{user_id, candidates: [{front,back,source_sentence,domain}]}` | `{created, duplicates, achievements}` |
 | GET | `/api/cards/all` | - | `?user_id=xxx&q=&state=&domain=&sort=` | `{cards, total, state_counts, domains}` |
-| GET | `/api/history` | N1 | `?user_id=xxx&conversation_id=xxx` | `{turns: [{role,content,...}]}` |
+| GET | `/api/history` | N1 | `?user_id=xxx&conversation_id=xxx&include_deleted=only\|true` | `{turns: [...]}` 或 `{conversations: [{..., deleted_at}]}` |
 | GET | `/api/plans` | N8 | `?conversation_id=xxx` 或 `?user_id=xxx` | `{plans: [{id, goal, plan, mode}]}` |
 | POST | `/api/plans` | N8 | `{user_id, goal, domain, plan_json}` | `{id, status}` |
 | DELETE | `/api/plans/{plan_id}` | N8 | `?user_id=xxx` | `{status: "ok"}` (软删除) |
+| DELETE | `/api/conversations/{id}` | Flow G | `?user_id=xxx` | `{status: "ok", deleted_at: "..."}` (软删除) |
+| POST | `/api/conversations/{id}/restore` | Flow G | `?user_id=xxx` | `{status: "ok"}` (恢复) |
+| DELETE | `/api/conversations/{id}/permanent` | Flow G | `?user_id=xxx` | `{status: "ok"}` (物理删除) |
 
 ### WebSocket 协议 (HotPath / ColdPath 分离)
 

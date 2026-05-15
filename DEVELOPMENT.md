@@ -66,6 +66,8 @@ backend/                    # Rust 后端 (axum)
 ├── cefr_catalog.json       # 英文词库 (10 万词)
 ├── prompts/                # LLM Prompt 模板
 │   ├── chat_system.md
+│   ├── chat_system_free.md       # 自由对话模式
+│   ├── chat_system_structured.md # 结构化学习模式
 │   ├── concept_extract.md
 │   ├── card_direct.md
 │   ├── quiz_generate.md
@@ -74,7 +76,12 @@ backend/                    # Rust 后端 (axum)
 ├── data/coevo.db           # SQLite 数据库 (运行后自动创建)
 └── crates/
     ├── api_server/         # HTTP + WS 路由 + 鉴权中间件 + 计划管理
-    ├── chat_engine/        # LLM 调用 + 概念提取 + 词库
+    │   ├── auth.rs              # 注册/登录/Token验证
+    │   ├── auth_middleware.rs   # Bearer Token 鉴权
+    │   ├── plan_handler.rs     # 学习计划解析/存储/JSON修复
+    │   ├── routes.rs           # REST API 路由（含对话软删除/恢复/彻底删除）
+    │   └── ws.rs               # WebSocket 流式聊天
+    ├── chat_engine/        # LLM 调用 + 概念提取 + 词库 + JSON修复
     ├── card_engine/        # 制卡 + FSRS 调度
     ├── growth_engine/      # 成就检测
     └── shared_types/       # 公共类型
@@ -139,6 +146,31 @@ curl -X POST http://localhost:8080/api/auth/register \
 cd backend
 sqlite3 data/coevo.db ".tables"
 sqlite3 data/coevo.db "SELECT * FROM users;"
+```
+
+### 对话管理
+
+CoEvo 支持软删除机制，避免误删导致数据永久丢失。
+
+```bash
+# 软删除对话（移至回收站）
+curl -X DELETE "http://localhost:8080/api/conversations/conv_xxx?user_id=user_xxx" \
+  -H "Authorization: Bearer <token>"
+
+# 恢复已删除对话
+curl -X POST "http://localhost:8080/api/conversations/conv_xxx/restore?user_id=user_xxx" \
+  -H "Authorization: Bearer <token>"
+
+# 彻底删除（不可恢复，同时删除 conversation_turns）
+curl -X DELETE "http://localhost:8080/api/conversations/conv_xxx/permanent?user_id=user_xxx" \
+  -H "Authorization: Bearer <token>"
+
+# 查看已删除对话
+curl "http://localhost:8080/api/history?user_id=user_xxx&include_deleted=only" \
+  -H "Authorization: Bearer <token>"
+
+# 手动清理30天前的已删除对话
+sqlite3 data/coevo.db "DELETE FROM conversation_turns WHERE conversation_id IN (SELECT id FROM conversations WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now','-30 days')); DELETE FROM conversations WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now','-30 days');"
 ```
 
 ## 修改 Prompt

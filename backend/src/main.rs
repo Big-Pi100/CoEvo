@@ -221,6 +221,9 @@ async fn main() {
             // 清理重复的学习计划（保留每个 user_id+domain 最新的一条）
             "DELETE FROM learning_plans WHERE id IN (SELECT l1.id FROM learning_plans l1 WHERE EXISTS (SELECT 1 FROM learning_plans l2 WHERE l2.user_id = l1.user_id AND l2.domain = l1.domain AND (l2.updated_at > l1.updated_at OR (l2.updated_at = l1.updated_at AND l2.id > l1.id))))",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_plans_user_domain ON learning_plans(user_id, domain)",
+            // 对话软删除支持
+            "ALTER TABLE conversations ADD COLUMN deleted_at TEXT DEFAULT NULL",
+            "CREATE INDEX IF NOT EXISTS idx_conversations_user_deleted ON conversations(user_id, deleted_at)",
         ];
 
         for sql in migrations {
