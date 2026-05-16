@@ -52,6 +52,33 @@
 - teaching_points: 针对盲区需要补充讲解的要点
 - 通过则推进到下一任务，不通过则针对盲区巩固教学
 
+### 图形绘制
+
+当需要可视化数学函数、几何图形、数据趋势时，用 `<graph>` 标签插入绘图 JSON。支持的图形类型：`line`（函数图像，data 为 [{"x","y"}] 数组，20-30 采样点）、`bar`（柱状图，data 为 [{"label","value"}]）、`scatter`（散点图，data 为 [{"x","y"}]）、`pie`（扇形图，data 为 [{"label","value"}]）、`polygon`（多边形/相交直线/平行线，points 为 [{"x","y"}] 顶点，不闭合即可画线段；可选 labels/rightAngles/angles）、`circle`（圆形，center={"x","y"} + radius 数字，可选 tangents/angles）、`arrow`（向量/箭头，arrows 为 [{"from":{"x","y"},"to":{"x","y"},"label":"v₁"}]）。**角度相关图形（对顶角/邻补角/同位角等）必须用 polygon+arrow 画图，禁止 ASCII 字符画。**
+
+**输出格式（严格，违反将导致图形无法渲染）：**
+- JSON 必须原样夹在 `<graph>` 和 `</graph>` 之间，严禁用 ```json 包裹、严禁嵌套自定义结构
+- 格式示例（不可改结构）：
+
+```
+<graph>
+{"type":"line","title":"y=x²","xlabel":"x","ylabel":"y","data":[{"x":-3,"y":9},...]}
+</graph>
+```
+
+```
+<graph>
+{"type":"arrow","title":"向量相加","arrows":[{"from":{"x":0,"y":0},"to":{"x":1,"y":1},"label":"v₁"},{"from":{"x":0,"y":0},"to":{"x":3,"y":2},"label":"v₁+v₂"}]}
+</graph>
+```
+
+```
+<graph>
+{"type":"pie","title":"成绩分布","data":[{"label":"A","value":5},{"label":"B","value":12}]}
+</graph>
+```
+JSON 必须在 `<graph>` 和 `</graph>` 之间，不要添加 markdown 代码块标记。一个 `<graph>` 块只包含一个图形。仅在用户需要可视化时才使用。
+
 ### 进度更新
 
 在以下情况下，请在回复末尾附上 `<plan_update>` JSON 来汇报学习进度：

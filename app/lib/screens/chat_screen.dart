@@ -10,6 +10,7 @@ import '../services/stt_service.dart';
 import '../services/tts_service.dart';
 import '../widgets/skeleton.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
+import '../widgets/graph_widget.dart';
 
 /// 持久化 conversation_id 的 provider (跨页面保持)
 final currentConversationIdProvider = StateProvider<String?>((ref) => null);
@@ -1349,24 +1350,67 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final baseColor = isUser
         ? Colors.white
         : Theme.of(context).colorScheme.onSecondaryContainer;
-    final trailing = isStreaming ? '▌' : '';
 
-    // 流式输出期间：纯文本渲染，不解析数学公式
+    // 流式输出期间：纯文本渲染，不解析
     if (isStreaming) {
       return Text(
-        '$text$trailing',
+        text,
         style: TextStyle(color: baseColor, fontSize: 15, height: 1.5),
       );
     }
 
-    // 匹配 \(inline\) 和 \[display\] 数学公式
-    final mathRegex = RegExp(r'\\[\(\[](.+?)\\[[)\]]', dotAll: true);
+    // ── 先解析 <graph> 标签，分割为文本段 + 图形 ──
+    final graphRegex = RegExp(r'<graph>(.*?)</graph>', dotAll: true);
+    final graphMatches = graphRegex.allMatches(text).toList();
 
+    if (graphMatches.isEmpty) {
+      // 无图形 → 走原有的纯数学公式解析
+      return _buildMathContent(text, baseColor);
+    }
+
+    // 混合渲染：交替 文本段（含数学公式） + 图形
+    final children = <Widget>[];
+    int lastEnd = 0;
+
+    for (final g in graphMatches) {
+      // 图形前的文本段
+      if (g.start > lastEnd) {
+        final segment = text.substring(lastEnd, g.start).trim();
+        if (segment.isNotEmpty) {
+          children.add(Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: _buildMathContent(segment, baseColor),
+          ));
+        }
+      }
+      // 图形
+      children.add(GraphWidget(jsonStr: g.group(1)!));
+      lastEnd = g.end;
+    }
+
+    // 最后一段文本
+    if (lastEnd < text.length) {
+      final tail = text.substring(lastEnd).trim();
+      if (tail.isNotEmpty) {
+        children.add(_buildMathContent(tail, baseColor));
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: children,
+    );
+  }
+
+  /// 纯文本 + 数学公式渲染（原有逻辑）
+  Widget _buildMathContent(String text, Color baseColor) {
+    final mathRegex = RegExp(r'\\[\(\[](.+?)\\[[)\]]', dotAll: true);
     final matches = mathRegex.allMatches(text).toList();
 
     if (matches.isEmpty) {
       return Text(
-        '$text$trailing',
+        text,
         style: TextStyle(color: baseColor, fontSize: 15, height: 1.5),
       );
     }
@@ -1375,7 +1419,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     int lastEnd = 0;
 
     for (final match in matches) {
-      // 公式前的纯文本
       if (match.start > lastEnd) {
         spans.add(TextSpan(
           text: text.substring(lastEnd, match.start),
@@ -1398,7 +1441,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       lastEnd = match.end;
     }
 
-    // 剩余纯文本
     if (lastEnd < text.length) {
       spans.add(TextSpan(
         text: text.substring(lastEnd),
@@ -1406,16 +1448,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ));
     }
 
-    // 流式光标
-    if (trailing.isNotEmpty) {
-      spans.add(TextSpan(
-        text: trailing,
-        style: TextStyle(color: baseColor, fontSize: 15, height: 1.5),
-      ));
-    }
-
-    return Text.rich(
-      TextSpan(children: spans),
-    );
+    return Text.rich(TextSpan(children: spans));
   }
 }

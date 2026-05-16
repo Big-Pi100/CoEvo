@@ -1001,7 +1001,14 @@ async fn conversation_delete_handler(
         rusqlite::params![now, conv_id, query.user_id],
     ) {
         Ok(0) => Json(serde_json::json!({"error": "Conversation not found or already deleted"})),
-        Ok(_) => Json(serde_json::json!({"status": "ok", "deleted_at": now})),
+        Ok(_) => {
+            // 同步标记关联的学习计划为 deleted
+            let _ = conn.execute(
+                "UPDATE learning_plans SET mode='deleted', updated_at=?1 WHERE conversation_id=?2 AND mode!='deleted'",
+                rusqlite::params![now, conv_id],
+            );
+            Json(serde_json::json!({"status": "ok", "deleted_at": now}))
+        },
         Err(e) => Json(serde_json::json!({"error": format!("DB: {}", e)})),
     }
 }
@@ -1021,7 +1028,14 @@ async fn conversation_restore_handler(
         rusqlite::params![conv_id, query.user_id],
     ) {
         Ok(0) => Json(serde_json::json!({"error": "Conversation not found or not deleted"})),
-        Ok(_) => Json(serde_json::json!({"status": "ok"})),
+        Ok(_) => {
+            // 同步恢复关联的学习计划
+            let _ = conn.execute(
+                "UPDATE learning_plans SET mode='structured', updated_at=?1 WHERE conversation_id=?2 AND mode='deleted'",
+                rusqlite::params![chrono::Utc::now().to_rfc3339(), conv_id],
+            );
+            Json(serde_json::json!({"status": "ok"}))
+        },
         Err(e) => Json(serde_json::json!({"error": format!("DB: {}", e)})),
     }
 }
@@ -1039,6 +1053,11 @@ async fn conversation_permanent_delete_handler(
     // 级联删除 conversation_turns
     let _ = conn.execute(
         "DELETE FROM conversation_turns WHERE conversation_id = ?1",
+        rusqlite::params![conv_id],
+    );
+    // 级联删除关联的学习计划
+    let _ = conn.execute(
+        "DELETE FROM learning_plans WHERE conversation_id = ?1",
         rusqlite::params![conv_id],
     );
     match conn.execute(
