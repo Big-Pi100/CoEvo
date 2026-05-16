@@ -124,7 +124,7 @@ async fn main() {
     std::mem::forget(_guard);
 
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
 
     tracing_subscriber::fmt()
         .with_env_filter(env_filter)
@@ -175,7 +175,7 @@ async fn main() {
                     tracing::error!("Schema init failed critically: {}", e);
                     panic!("Schema init failed: {}", e);
                 });
-            tracing::info!("Schema initialized (9 tables)");
+            tracing::info!("Schema initialized (10 tables, tokens + migrations to follow)");
         }
 
         let migrations: &[&str] = &[

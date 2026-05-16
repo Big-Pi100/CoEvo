@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS review_log (
     rating INTEGER NOT NULL,
     verification_type TEXT NOT NULL,
     verification_result TEXT NOT NULL,
+    details_json TEXT DEFAULT NULL,
     reviewed_at INTEGER NOT NULL,
     FOREIGN KEY (card_id) REFERENCES cards(id)
 );

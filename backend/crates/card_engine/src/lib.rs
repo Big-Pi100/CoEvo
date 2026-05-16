@@ -4,4 +4,5 @@
 
 pub mod card_formatter;
 pub mod card_repository;
+pub mod fsrs5;
 pub mod fsrs_scheduler;

@@ -9,6 +9,12 @@ use rusqlite::Connection;
 /// 成就检测器
 pub struct AchievementDetector;
 
+impl Default for AchievementDetector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AchievementDetector {
     pub fn new() -> Self {
         Self
@@ -74,10 +80,7 @@ impl AchievementDetector {
 
 fn is_condition_met(condition: &str, ctx: &AchievementContext) -> bool {
     // Named conditions
-    match condition {
-        "first_card" => return ctx.total_cards >= 1,
-        _ => {}
-    }
+    if condition == "first_card" { return ctx.total_cards >= 1 }
 
     // Numeric: "key >= value"
     parse_numeric(condition, ctx)

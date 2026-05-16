@@ -44,7 +44,7 @@ CoEvo API on http://0.0.0.0:8080
 LLM: deepseek-v4-flash @ https://api.deepseek.com/v1
 Prompts loaded from prompts/
 Word bank loaded: ~10万 words
-Schema initialized (9 tables, 迁移后 10 表)
+Schema initialized (10 tables, 迁移后 11 表)
 ```
 
 ### 4. 启动前端
@@ -62,7 +62,7 @@ flutter run
 
 ```
 backend/                    # Rust 后端 (axum)
-├── src/main.rs             # 入口 + 启动配置 + 内联 SCHEMA_SQL（9 表 + 迁移）
+├── src/main.rs             # 入口 + 启动配置 + 内联 SCHEMA_SQL（10 表 + 迁移）
 ├── cefr_catalog.json       # 英文词库 (10 万词)
 ├── prompts/                # LLM Prompt 模板
 │   ├── chat_system.md
@@ -77,12 +77,14 @@ backend/                    # Rust 后端 (axum)
 └── crates/
     ├── api_server/         # HTTP + WS 路由 + 鉴权中间件 + 计划管理
     │   ├── auth.rs              # 注册/登录/Token验证
-    │   ├── auth_middleware.rs   # Bearer Token 鉴权
+    │   ├── auth_middleware.rs   # Bearer Token 鉴权（返回 AppError）
+    │   ├── error.rs             # 统一错误类型 (thiserror AppError + IntoResponse)
+    │   ├── db_pool.rs           # 连接池 (PRAGMA foreign_keys = ON)
     │   ├── plan_handler.rs     # 学习计划解析/存储/JSON修复
-    │   ├── routes.rs           # REST API 路由（含对话软删除/恢复/彻底删除）
+    │   ├── routes.rs           # REST API 路由（chat_handler 已拆分为5个helper函数）
     │   └── ws.rs               # WebSocket 流式聊天
     ├── chat_engine/        # LLM 调用 + 概念提取 + 词库 + JSON修复
-    ├── card_engine/        # 制卡 + FSRS 调度
+    ├── card_engine/        # 制卡 + FSRS-5 调度（fsrs5.rs 自实现 + TxGuard）
     ├── growth_engine/      # 成就检测
     └── shared_types/       # 公共类型
 
@@ -92,8 +94,18 @@ app/                        # Flutter 前端
 │   ├── models/             # 数据模型
 │   ├── providers/          # Riverpod 状态管理
 │   ├── screens/            # 9 个页面
+│   │   └── chat/
+│   │       ├── chat_concept_dialog.dart  # 制卡确认弹窗
+│   │       ├── chat_input.dart           # 文本+语音输入栏
+│   │       └── chat_plan_panel.dart      # 学习计划面板(可折叠)
 │   ├── services/           # TTS / STT 服务
+│   ├── widgets/            # 通用组件 (graph_widget, skeleton)
 │   └── theme/              # Material 3 主题
+├── test/
+│   ├── model_test.dart         # 数据模型序列化测试
+│   ├── review_widget_test.dart # 复习页面 Widget 测试
+│   └── ...                     # 数学公式测试等
+└── analysis_options.yaml  # dart_code_metrics 配置
 ```
 
 ## 常用命令
@@ -103,10 +115,33 @@ app/                        # Flutter 前端
 | 命令 | 说明 |
 |:--|:--|
 | `cargo run` | 启动后端 (8080) |
-| `cargo test --workspace` | 运行全部测试 (35 个) |
+| `cargo test --workspace` | 运行全部测试 (37 个) |
 | `cargo test -p card_engine` | 仅运行制卡引擎测试 |
 | `cargo check` | 编译检查 |
 | `RUST_LOG=debug cargo run` | 带调试日志启动 |
+
+**重要架构改进 (2026-05-16)**:
+
+* **统一错误类型**: `api_server::error::AppError` (thiserror)，实现 `IntoResponse`
+  - `verify_auth()` 返回 `Result<(), AppError>`，鉴权失败自动 401
+  - handler 使用 `auth_json(e)` 辅助函数转换
+* **事务封装**: `card_engine::card_repository::TxGuard` — RAII 自动回滚
+  - 替代手动 BEGIN/ROLLBACK/COMMIT
+  - Drop 时自动 ROLLBACK 未提交事务
+* **LLM 指数退避**: 250ms * 2^attempt，上限 2000ms
+* **PRAGMA foreign_keys = ON**: db_pool 连接池级别启用外键约束
+* **日志默认级别**: `warn`（生产安全），开发时设 `RUST_LOG=info`
+* **DB 查询安全**: `query_vec()` / `query_one()` 辅助函数
+  - 统一 prepare + query_map + 错误转 Json 响应
+  - routes.rs unwrap 35→22（高风险 DB 类已清零）
+* **chat_screen 拆分**: 1453→830 行（-43%）
+  - `chat_concept_dialog.dart` — 制卡确认弹窗 (ConceptDialog.show)
+  - `chat_input.dart` — 文本+语音输入栏 (ChatInput widget)
+  - `chat_plan_panel.dart` — 学习计划面板 (ChatPlanPanel)
+  - `chat_message_bubble.dart` — 消息气泡渲染 (ChatMessageBubble)
+* **Freezed 模型**: 已添加依赖 + 示例 (`models/freezed_example.dart`)
+  - 运行 `cd app && dart run build_runner build` 生成代码
+  - DueCard → 后续逐模型迁移 (ConceptCandidate/VerifyQuestion/JudgeResult/ChatRequest/WsEvent)
 
 ### 前端
 
@@ -115,6 +150,7 @@ app/                        # Flutter 前端
 | `flutter run` | 启动 App |
 | `flutter analyze` | 静态分析 |
 | `flutter test` | 运行全部测试 |
+| `flutter test test/model_test.dart test/review_widget_test.dart` | 数据模型 + 复习页面测试 |
 | `flutter test test/math_streaming_test.dart test/math_e2e_pipeline_test.dart` | 运行数学公式渲染测试 (19 用例) |
 
 ## 调试

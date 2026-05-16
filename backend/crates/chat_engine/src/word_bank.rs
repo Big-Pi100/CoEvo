@@ -106,8 +106,8 @@ pub fn match_text(text: &str) -> Vec<WordMatch> {
         let id_lower = id.to_lowercase();
 
         // 单次词: 精确匹配
-        if !id_lower.contains(' ') && !id_lower.contains('_') {
-            if word_set.contains(id_lower.as_str()) {
+        if !id_lower.contains(' ') && !id_lower.contains('_')
+            && word_set.contains(id_lower.as_str()) {
                 found.push(WordMatch {
                     word: id.clone(),
                     difficulty: entry.difficulty_level.unwrap_or(1),
@@ -116,13 +116,12 @@ pub fn match_text(text: &str) -> Vec<WordMatch> {
                 });
                 continue;
             }
-        }
 
         // 多词/复合词 — 使用预计算的 phrase_set 进行 O(1) 查找
-        let normalized = id_lower.replace('_', " ").replace('-', " ");
+        let normalized = id_lower.replace(['_', '-'], " ");
         let parts: Vec<&str> = normalized.split(' ').collect();
-        if parts.len() >= 2 {
-            if phrase_set.contains(&normalized) {
+        if parts.len() >= 2
+            && phrase_set.contains(&normalized) {
                 found.push(WordMatch {
                     word: id.clone(),
                     difficulty: entry.difficulty_level.unwrap_or(1),
@@ -130,7 +129,6 @@ pub fn match_text(text: &str) -> Vec<WordMatch> {
                     definition: entry.definition.clone().unwrap_or_default(),
                 });
             }
-        }
     }
 
     // 去重 + 按难度降序

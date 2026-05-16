@@ -26,3 +26,16 @@ linter:
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options
+
+# dart_code_metrics — 持续代码质量门禁
+# https://pub.dev/packages/dart_code_metrics
+dart_code_metrics:
+  metrics:
+    cyclomatic-complexity: 20
+    number-of-parameters: 4
+    maximum-nesting-level: 5
+    lines-of-code: 200
+  rules:
+    - prefer-trailing-comma
+    - no-boolean-literal-compare
+    - prefer-const-border-radius

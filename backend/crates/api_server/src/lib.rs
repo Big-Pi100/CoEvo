@@ -5,6 +5,7 @@
 pub mod auth;
 pub mod auth_middleware;
 pub mod db_pool;
+pub mod error;
 pub mod llm;
 pub mod plan_handler;
 pub mod routes;

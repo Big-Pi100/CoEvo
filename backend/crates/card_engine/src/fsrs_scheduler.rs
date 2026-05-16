@@ -2,15 +2,15 @@
 //!
 //! 负责:
 //!   1. 查询到期卡片 (due <= now, 按 due ASC, LIMIT 20)
-//!   2. 提交复习结果后更新 FSRS 状态
+//!   2. 提交复习结果后更新 FSRS-5 状态
 //!   3. 管理 streak_days 签到逻辑
 //!
-//! ⚠️ 注意: 当前未使用 fsrs crate (如果不可用则手动计算)
-//! TODO: 后续集成 fsrs crate 的 FSRS-5 算法
+//! 调度核心: crate::fsrs5 — 自实现 FSRS-5 算法 (避免 fsrs crate 与 rusqlite bundled 冲突)
 
 use shared_types::growth::AchievementContext;
 use chrono::Utc;
 use rusqlite::Connection;
+use crate::fsrs5::{self, FsrsMemory, Rating};
 
 /// 待复习的卡片 (用于 UI 展示)
 #[derive(Debug, Clone, serde::Serialize)]
@@ -140,10 +140,10 @@ pub fn submit_review(
         ).map_err(|e| format!("Review log insert: {}", e))?;
     }
 
-    // 2. FSRS 状态更新 (当前为简化版)
+    // 2. FSRS-5 scheduling
     let passed = verification_result == "pass";
-    let new_rating = if passed { 3i32 } else { 1i32 };
-    let new_state = compute_next_state(conn, card_id, new_rating, passed);
+    let rating = Rating::from_pass(passed, false);
+    let new_state = compute_next_state(conn, card_id, rating);
 
     conn.execute(
         "UPDATE card_memory SET state = ?1, due = ?2, last_review = ?3,
@@ -191,41 +191,52 @@ struct AchievementAggregate {
     domains_covered: u32,
 }
 
-/// 简化版 FSRS 状态机:
-/// New →(first review)→ Learning →(rating>=3)→ Review
-/// Review →(rating<=1)→ Relearning →(rating>=3)→ Review
-/// 返回 (new_state, next_due_timestamp)
-fn compute_next_state(conn: &Connection, card_id: &str, _rating: i32, passed: bool) -> (i32, i64) {
-    // Batch query: combine current_state and reps into one query row
-    let (current_state, reps): (i32, i32) = conn.query_row(
-        "SELECT state, reps FROM card_memory WHERE card_id = ?1",
+/// FSRS-5 scheduling: compute next state and due timestamp.
+/// Returns (new_state_code, next_due_timestamp)
+///
+/// State mapping: 0=New, 1=Learning, 2=Review, 3=Relearning
+fn compute_next_state(conn: &Connection, card_id: &str, rating: Rating) -> (i32, i64) {
+    // Read current memory state from DB
+    let (current_state, difficulty, stability, reps, last_review): (i32, f64, f64, i32, Option<i64>) = conn.query_row(
+        "SELECT state, difficulty, stability, reps, last_review FROM card_memory WHERE card_id = ?1",
         rusqlite::params![card_id],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    ).unwrap_or((0, 0));
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+    ).unwrap_or((0, 0.0, 0.0, 0, None));
 
     let now = Utc::now().timestamp();
-    let intervals = [60, 300, 900, 3600, 14400, 43200, 86400, 172800, 345600, 604800];
+    let elapsed_days = match last_review {
+        Some(lr) => ((now - lr) as f64 / 86400.0).max(0.0),
+        None => 0.0,
+    };
 
-    match (current_state, passed) {
-        // New → 首次复习
-        (0, true) => (1, now + 1800),               // → Learning, 30min
-        (0, false) => (1, now + 120),                // → Learning, 2min
-        // Learning
-        (1, true) => (2, now + interval(reps, &intervals)), // → Review
-        (1, false) => (1, now + 120),                // stay Learning, 2min
-        // Review
-        (2, true) => (2, now + interval(reps + 1, &intervals)), // stay Review
-        (2, false) => (3, now + 600),                // → Relearning, 10min
-        // Relearning
-        (3, true) => (2, now + interval(reps, &intervals)),     // → Review
-        (3, false) => (3, now + 300),                // stay Relearning, 5min
-        _ => (current_state, now + 3600),
-    }
-}
+    let mem = FsrsMemory {
+        difficulty,
+        stability,
+        reps,
+        lapses: 0, // will be updated separately
+        last_review,
+    };
 
-fn interval(reps: i32, intervals: &[i64]) -> i64 {
-    let idx = reps as usize;
-    if idx < intervals.len() { intervals[idx] } else { intervals[intervals.len() - 1] }
+    let result = fsrs5::schedule(&mem, rating, elapsed_days);
+
+    // Map FSRS result to state codes
+    let next_state = match rating {
+        Rating::Again => 3,  // Relearning
+        Rating::Hard | Rating::Good => {
+            if current_state == 0 { 1 } else { 2 } // New→Learning, else Review
+        }
+        Rating::Easy => 2,  // Review
+    };
+
+    let next_due = now + result.interval_seconds;
+
+    // Update difficulty/stability in card_memory
+    let _ = conn.execute(
+        "UPDATE card_memory SET difficulty = ?1, stability = ?2 WHERE card_id = ?3",
+        rusqlite::params![result.difficulty, result.stability, card_id],
+    );
+
+    (next_state, next_due)
 }
 
 #[cfg(test)]
@@ -241,8 +252,8 @@ mod tests {
              CREATE TABLE IF NOT EXISTS conversation_turns (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
              CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, domain TEXT, card_type TEXT NOT NULL, front TEXT NOT NULL, back TEXT NOT NULL, source_sentence TEXT, created_at INTEGER NOT NULL);
              CREATE TABLE IF NOT EXISTS card_memory (card_id TEXT PRIMARY KEY, state INTEGER DEFAULT 0, difficulty REAL DEFAULT 5.0, stability REAL DEFAULT 0.0, due INTEGER DEFAULT 0, last_review INTEGER, reps INTEGER DEFAULT 0, lapses INTEGER DEFAULT 0);
-             CREATE TABLE IF NOT EXISTS review_log (id TEXT PRIMARY KEY, card_id TEXT NOT NULL, rating INTEGER NOT NULL, verification_type TEXT NOT NULL, verification_result TEXT NOT NULL, reviewed_at INTEGER NOT NULL);
-             CREATE TABLE IF NOT EXISTS achievements (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, achievement_key TEXT NOT NULL, name TEXT NOT NULL, icon TEXT NOT NULL, unlocked_at TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS review_log (id TEXT PRIMARY KEY, card_id TEXT NOT NULL, rating INTEGER NOT NULL, verification_type TEXT NOT NULL, verification_result TEXT NOT NULL, details_json TEXT DEFAULT NULL, reviewed_at INTEGER NOT NULL);
+             CREATE TABLE IF NOT EXISTS achievements (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, achievement_key TEXT NOT NULL, name TEXT NOT NULL, icon TEXT NOT NULL, tier TEXT DEFAULT 'fixed', source TEXT, unlocked_at TEXT NOT NULL);
              CREATE TABLE IF NOT EXISTS skipped_concepts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, front TEXT NOT NULL, domain TEXT, source_text TEXT, skipped_at INTEGER NOT NULL);"
         ).unwrap();
         // 插入测试用户

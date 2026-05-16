@@ -71,6 +71,32 @@ Base URL: `http://localhost:8080`
 }
 ```
 
+### `POST /api/auth/verify`
+
+验证已存储的 Token 是否仍然有效（用于 App 重启时的会话恢复）。
+
+**Request:**
+```json
+{
+  "user_id": "string",
+  "token": "string"
+}
+```
+
+**Response 200:**
+```json
+{
+  "valid": true
+}
+```
+
+若 Token 无效：
+```json
+{
+  "valid": false
+}
+```
+
 ---
 
 ## 聊天

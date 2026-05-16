@@ -16,90 +16,102 @@ pub enum InsertResult {
     DatabaseError(String),     // 数据库错误
 }
 
-/// 插入卡片 (事务)
+/// RAII transaction guard — auto-rollback on drop if not committed
+struct TxGuard<'a> {
+    conn: &'a Connection,
+    committed: bool,
+}
+
+impl<'a> TxGuard<'a> {
+    fn begin(conn: &'a Connection) -> Result<Self, rusqlite::Error> {
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        Ok(TxGuard { conn, committed: false })
+    }
+    fn commit(mut self) -> Result<(), rusqlite::Error> {
+        self.conn.execute_batch("COMMIT")?;
+        self.committed = true;
+        Ok(())
+    }
+}
+
+impl<'a> Drop for TxGuard<'a> {
+    fn drop(&mut self) {
+        if !self.committed {
+            let _ = self.conn.execute_batch("ROLLBACK");
+        }
+    }
+}
+
+/// 插入卡片 (事务封装，自动回滚)
 pub fn insert_card(conn: &Connection, card: &Card, memory: &CardMemory) -> InsertResult {
     let front_lower = card.front.to_lowercase();
 
-    // 1. 事务开始 — BEGIN IMMEDIATE 立即获取写锁，防止 TOCTOU
-    match conn.execute("BEGIN IMMEDIATE", []) {
-        Ok(_) => {},
+    // 1. Transaction — auto-rollback on drop if not committed
+    let tx = match TxGuard::begin(conn) {
+        Ok(tx) => tx,
         Err(e) => return InsertResult::DatabaseError(format!("Begin tx: {}", e)),
-    }
+    };
 
-    // 2. 去重检查 (事务内执行，消除 TOCTOU 窗口)
+    // 2. Dedup check (inside transaction, prevents TOCTOU)
     let existing_fronts: Vec<String> = {
         let mut stmt = match conn.prepare(
             "SELECT LOWER(front) FROM cards WHERE user_id = ?1"
         ) {
             Ok(s) => s,
-            Err(e) => {
-                let _ = conn.execute("ROLLBACK", []);
-                return InsertResult::DatabaseError(format!("Prepare: {}", e));
-            }
+            Err(e) => return InsertResult::DatabaseError(format!("Prepare: {}", e)),
         };
         let rows = match stmt.query_map(rusqlite::params![card.user_id], |row| {
             row.get::<_, String>(0)
         }) {
             Ok(rows) => rows,
-            Err(e) => {
-                let _ = conn.execute("ROLLBACK", []);
-                return InsertResult::DatabaseError(format!("Query: {}", e));
-            }
+            Err(e) => return InsertResult::DatabaseError(format!("Query: {}", e)),
         };
         rows.filter_map(|r| r.ok()).collect()
     };
 
-    // 精确匹配 + 模糊匹配
+    // Exact + fuzzy matching
     for existing in &existing_fronts {
         if existing == &front_lower {
-            let _ = conn.execute("ROLLBACK", []);
             return InsertResult::Duplicate(card.front.clone());
         }
         let sim = strsim::jaro_winkler(existing, &front_lower);
         if sim > 0.85 {
-            let _ = conn.execute("ROLLBACK", []);
             return InsertResult::Duplicate(card.front.clone());
         }
     }
 
-    // 3. 跳过记录移除 (如果用户之前跳过该概念)
+    // 3. Remove skip record (user actively created this card)
     let _ = conn.execute(
         "DELETE FROM skipped_concepts WHERE user_id = ?1 AND LOWER(front) = ?2",
         rusqlite::params![card.user_id, front_lower],
     );
 
-    // 4. 事务内写入 cards
-    let card_result = conn.execute(
+    // 4. Insert card
+    if let Err(e) = conn.execute(
         "INSERT INTO cards (id, user_id, domain, card_type, front, back, source_sentence, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         rusqlite::params![
             card.id, card.user_id, card.domain, card.card_type,
             card.front, card.back, card.source_sentence, card.created_at,
         ],
-    );
-
-    if let Err(e) = card_result {
-        let _ = conn.execute("ROLLBACK", []);
+    ) {
         return InsertResult::DatabaseError(format!("Card insert: {}", e));
     }
 
-    // 5. 事务内写入 card_memory
-    let memory_result = conn.execute(
+    // 5. Insert card memory
+    if let Err(e) = conn.execute(
         "INSERT INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         rusqlite::params![
             memory.card_id, memory.state, memory.difficulty, memory.stability,
             memory.due, memory.last_review, memory.reps, memory.lapses,
         ],
-    );
-
-    if let Err(e) = memory_result {
-        let _ = conn.execute("ROLLBACK", []);
+    ) {
         return InsertResult::DatabaseError(format!("Memory insert: {}", e));
     }
 
-    // 6. 提交事务
-    match conn.execute("COMMIT", []) {
+    // 6. Commit
+    match tx.commit() {
         Ok(_) => InsertResult::Success(card.id.clone()),
         Err(e) => InsertResult::DatabaseError(format!("Commit: {}", e)),
     }

@@ -329,14 +329,14 @@ pub fn render_plan(plan: &serde_json::Value) -> String {
 
     let mut out = format!("好的！我来为你制定一个学习计划 📋\n\n**目标：{}**\n", goal);
 
-    for (_si, stage) in stages.iter().enumerate() {
+    for stage in stages.iter() {
         let name = stage["name"].as_str().unwrap_or("");
         let status = stage["status"].as_str().unwrap_or("pending");
         let icon = if status == "in_progress" { "🔄" } else if status == "done" { "✅" } else { "📌" };
         out.push_str(&format!("\n### {} {} \n", icon, name));
 
         if let Some(tasks) = stage["tasks"].as_array() {
-            for (_ti, task) in tasks.iter().enumerate() {
+            for task in tasks.iter() {
                 let tname = task["name"].as_str().unwrap_or("");
                 let tstatus = task["status"].as_str().unwrap_or("pending");
                 let desc = task.get("description").and_then(|v| v.as_str()).unwrap_or("");

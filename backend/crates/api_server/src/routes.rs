@@ -9,13 +9,45 @@ use serde::Deserialize;
 use std::sync::OnceLock;
 use std::collections::HashMap;
 
+use crate::error::AppError;
+
+/// Helper: convert an AppError into a Json error response (for handlers returning Json<Value>)
+fn auth_json(e: AppError) -> Json<serde_json::Value> {
+    Json(serde_json::json!({"error": e.to_string()}))
+}
+
+/// Helper: run a DB query that returns Vec<T>, or return a Json error
+fn query_vec<T, F>(
+    conn: &rusqlite::Connection, sql: &str, params: &[&dyn rusqlite::types::ToSql],
+    map: F,
+) -> Result<Vec<T>, Json<serde_json::Value>>
+where F: Fn(&rusqlite::Row) -> rusqlite::Result<T>
+{
+    let mut stmt = conn.prepare(sql).map_err(|e| Json(serde_json::json!({"error": format!("DB prepare: {}", e)})))?;
+    let rows: Vec<T> = stmt.query_map(params, map)
+        .map_err(|e| Json(serde_json::json!({"error": format!("DB query: {}", e)})))?
+        .filter_map(|r| r.ok()).collect();
+    Ok(rows)
+}
+
+/// Helper: run a query_row that returns a single value, or return a Json error
+fn query_one<T, F>(
+    conn: &rusqlite::Connection, sql: &str, params: &[&dyn rusqlite::types::ToSql],
+    map: F,
+) -> Result<T, Json<serde_json::Value>>
+where F: Fn(&rusqlite::Row) -> rusqlite::Result<T>
+{
+    conn.query_row(sql, params, map)
+        .map_err(|e| Json(serde_json::json!({"error": format!("DB query: {}", e)})))
+}
+
 use chat_engine::llm_caller::LlmConfig;
 
 /// Reusable HTTP client for STT requests — avoids creating a new connection pool per call
 static STT_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
 fn stt_client() -> &'static reqwest::Client {
-    STT_CLIENT.get_or_init(|| reqwest::Client::new())
+    STT_CLIENT.get_or_init(reqwest::Client::new)
 }
 
 pub fn build_router(llm_config: LlmConfig) -> Router {
@@ -132,116 +164,79 @@ pub struct ChatInput {
     pub message: String,
 }
 
-async fn chat_handler(
-    headers: HeaderMap,
-    Json(input): Json<ChatInput>,
-) -> Json<serde_json::Value> {
-    // Verify auth
-    if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
-        return Json(serde_json::json!({"error": e}));
-    }
+// ── Chat handler (split into composable helpers per P1-6) ──
 
-    // 检查订阅状态（与 WS /ws 保持一致）
-    {
-        let conn = crate::db_pool::get_conn();
-        let expires: Option<String> = conn.query_row(
-            "SELECT value FROM user_preferences WHERE user_id = ?1 AND key = 'subscription_expires'",
-            rusqlite::params![input.user_id],
-            |row| row.get(0),
-        ).ok().flatten();
-        let now_ts = chrono::Utc::now().timestamp();
-        let expired = match &expires {
-            Some(e) => {
-                let normalized = if e.len() == 10 && e.as_bytes().get(4) == Some(&b'-') {
-                    format!("{}T00:00:00Z", e)
-                } else {
-                    e.clone()
-                };
-                chrono::DateTime::parse_from_rfc3339(&normalized)
-                    .map(|dt| dt.timestamp() < now_ts)
-                    .unwrap_or(true)
-            }
-            None => true,
-        };
-        if expired {
-            let msg = if expires.is_some() {
-                "subscription_expired"
+/// Check subscription — returns Ok(()) if valid, Err(msg) if expired/missing
+fn check_subscription(user_id: &str) -> Result<(), String> {
+    let conn = crate::db_pool::get_conn();
+    let expires: Option<String> = conn.query_row(
+        "SELECT value FROM user_preferences WHERE user_id = ?1 AND key = 'subscription_expires'",
+        rusqlite::params![user_id],
+        |row| row.get(0),
+    ).ok().flatten();
+    let now_ts = chrono::Utc::now().timestamp();
+    let expired = match &expires {
+        Some(e) => {
+            let normalized = if e.len() == 10 && e.as_bytes().get(4) == Some(&b'-') {
+                format!("{}T00:00:00Z", e)
             } else {
-                "subscription_required"
+                e.clone()
             };
-            return Json(serde_json::json!({"error": msg}));
+            chrono::DateTime::parse_from_rfc3339(&normalized)
+                .map(|dt| dt.timestamp() < now_ts)
+                .unwrap_or(true)
         }
-    }
-
-    let llm_config = crate::llm::get_config();
-
-    // Do all DB operations in one block — drop conn before async
-    let (existing_fronts, skipped_fronts, now_str, history) = {
-        let conn = crate::db_pool::get_conn();
-
-        // Pre-query for concept extraction
-        let existing_fronts: Vec<String> = {
-            let mut stmt = conn.prepare(
-                "SELECT LOWER(front) FROM cards WHERE user_id = ?1"
-            ).unwrap();
-            let rows = stmt.query_map(rusqlite::params![input.user_id], |row| row.get::<_, String>(0))
-                .unwrap();
-            rows.filter_map(|r| r.ok()).collect()
-        };
-        let skipped_fronts: Vec<String> = {
-            let mut stmt = conn.prepare(
-                "SELECT LOWER(front) FROM skipped_concepts WHERE user_id = ?1"
-            ).unwrap();
-            let rows = stmt.query_map(rusqlite::params![input.user_id], |row| row.get::<_, String>(0))
-                .unwrap();
-            rows.filter_map(|r| r.ok()).collect()
-        };
-
-        // 加载最近 10 轮历史
-        let history: Vec<(String, String)> = {
-            let mut stmt = conn.prepare(
-                "SELECT role, content FROM conversation_turns
-                 WHERE conversation_id = ?1
-                 ORDER BY created_at DESC LIMIT 10"
-            ).unwrap();
-            let mut turns: Vec<(String, String)> = stmt.query_map(
-                rusqlite::params![input.conversation_id],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            ).unwrap().filter_map(|r| r.ok()).collect();
-            turns.reverse();
-            turns
-        };
-
-        let now = chrono::Utc::now();
-        let now_str = now.to_rfc3339().to_string();
-
-        // Save conversation turns
-        let _ = conn.execute(
-            "INSERT OR IGNORE INTO conversations (id, user_id, turn_count, started_at) VALUES (?1, ?2, 0, ?3)",
-            rusqlite::params![input.conversation_id, input.user_id, now_str],
-        );
-        let _ = conn.execute(
-            "INSERT INTO conversation_turns (id, conversation_id, role, content, created_at) VALUES (?1, ?2, 'user', ?3, ?4)",
-            rusqlite::params![uuid::Uuid::new_v4().to_string(), input.conversation_id, input.message, now_str],
-        );
-
-        (existing_fronts, skipped_fronts, now_str, history)
-    }; // conn dropped here
-
-    // ── 查询学习计划，判定生命周期状态 ──
-    let (system_prompt, plan_context) = {
-        let conn = crate::db_pool::get_conn();
-        let (mode, ctx) = crate::plan_handler::build_plan_context(&conn, &input.conversation_id);
-        let templates = chat_engine::prompt_loader::get();
-        let sp = if mode == "structured" {
-            templates.chat_system_structured.clone()
-        } else {
-            templates.chat_system_free.clone()
-        };
-        (sp, ctx)
+        None => true,
     };
+    if expired {
+        let msg = if expires.is_some() { "subscription_expired" } else { "subscription_required" };
+        Err(msg.to_string())
+    } else {
+        Ok(())
+    }
+}
 
-    // 构建 user_content（对话历史 + 计划上下文 + 当前消息）
+/// Pre-query DB for concept extraction dedup + chat history. Drops conn before async.
+fn load_chat_context(
+    user_id: &str, conversation_id: &str, message: &str,
+) -> (Vec<String>, Vec<String>, String, Vec<(String, String)>) {
+    let conn = crate::db_pool::get_conn();
+
+    let existing_fronts: Vec<String> = query_vec(
+        &conn, "SELECT LOWER(front) FROM cards WHERE user_id = ?1",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).unwrap_or_default();
+    let skipped_fronts: Vec<String> = query_vec(
+        &conn, "SELECT LOWER(front) FROM skipped_concepts WHERE user_id = ?1",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).unwrap_or_default();
+
+    let mut history: Vec<(String, String)> = query_vec(
+        &conn,
+        "SELECT role, content FROM conversation_turns WHERE conversation_id = ?1 ORDER BY created_at DESC LIMIT 10",
+        rusqlite::params![conversation_id],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+    ).unwrap_or_default();
+    history.reverse();
+
+    let now = chrono::Utc::now();
+    let now_str = now.to_rfc3339().to_string();
+
+    // Save conversation + user turn
+    let _ = conn.execute(
+        "INSERT OR IGNORE INTO conversations (id, user_id, turn_count, started_at) VALUES (?1, ?2, 0, ?3)",
+        rusqlite::params![conversation_id, user_id, now_str],
+    );
+    let _ = conn.execute(
+        "INSERT INTO conversation_turns (id, conversation_id, role, content, created_at) VALUES (?1, ?2, 'user', ?3, ?4)",
+        rusqlite::params![uuid::Uuid::new_v4().to_string(), conversation_id, message, now_str],
+    );
+
+    (existing_fronts, skipped_fronts, now_str, history)
+}
+
+/// Build the user_content string from history + plan context + current message
+fn build_user_content(history: &[(String, String)], plan_context: &str, message: &str) -> String {
     let mut user_content = String::new();
     if history.len() > 1 {
         let context = &history[..history.len() - 1];
@@ -262,83 +257,121 @@ async fn chat_handler(
         }
     }
     if !plan_context.is_empty() {
-        user_content.push_str(&plan_context);
+        user_content.push_str(plan_context);
     }
-    user_content.push_str(&format!("\n\n### 当前对话\n用户: {}", input.message));
+    user_content.push_str(&format!("\n\n### 当前对话\n用户: {}", message));
+    user_content
+}
 
-    let mut caller = chat_engine::llm_caller::LlmCaller::new(llm_config.clone());
-    let raw_reply = match caller.generate(&system_prompt, &user_content).await {
-        Ok(r) => r,
-        Err(e) => return Json(serde_json::json!({"error": format!("LLM: {}", e)})),
-    };
+/// Process plan_update tags in LLM reply + detect achievements
+fn process_plan_update(
+    raw_reply: &str, conversation_id: &str, user_id: &str,
+) -> (String, bool) {
+    let conn = crate::db_pool::get_conn();
+    let result = crate::plan_handler::handle_plan_update(&conn, raw_reply, conversation_id, user_id);
 
-    // ── 解析 <plan_update> 标签（与 WebSocket 路径共用 plan_handler） ──
-    let (final_reply, plan_updated) = {
-        let conn = crate::db_pool::get_conn();
-        let result = crate::plan_handler::handle_plan_update(
-            &conn, &raw_reply, &input.conversation_id, &input.user_id,
-        );
-
-        let mut reply = result.cleaned_reply;
-
-        // 新建计划 → 渲染计划文本替代 raw_reply
-        if result.is_new_plan {
-            if let Some(ref plan) = result.plan_json {
-                reply = crate::plan_handler::render_plan(plan);
-            }
+    let mut reply = result.cleaned_reply;
+    if result.is_new_plan {
+        if let Some(ref plan) = result.plan_json {
+            reply = crate::plan_handler::render_plan(plan);
         }
+    }
 
-        // 成就检测（与 ws.rs 共用 plan_handler 函数）
-        if result.plan_updated && !result.is_new_plan {
-            if let Some(ref plan) = result.plan_json {
-                // 检查 stage done → silver / gold
-                if let Some(stages) = plan.get("stages").and_then(|v| v.as_array()) {
-                    for stage in stages {
-                        if stage["status"] == "done" {
-                            let stage_name = stage["name"].as_str().unwrap_or("阶段");
-                            let key = format!("{}_silver", stage_name);
-                            if !crate::plan_handler::achievement_exists(&conn, &input.user_id, &key) {
-                                crate::plan_handler::write_achievement(&conn, &input.user_id,
-                                    &key, &format!("{}精英", stage_name), "🥈", "silver", "stage");
-                            }
-                            if stages.iter().all(|s| s["status"] == "done") {
-                                let domain_name = plan.get("goal").and_then(|v| v.as_str()).unwrap_or("领域");
-                                let dkey = format!("{}_gold", domain_name);
-                                if !crate::plan_handler::achievement_exists(&conn, &input.user_id, &dkey) {
-                                    crate::plan_handler::write_achievement(&conn, &input.user_id,
-                                        &dkey, &format!("{}大师", domain_name), "🥇", "gold", "domain");
-                                }
+    // Achievement detection (stage done → silver/gold)
+    if result.plan_updated && !result.is_new_plan {
+        if let Some(ref plan) = result.plan_json {
+            if let Some(stages) = plan.get("stages").and_then(|v| v.as_array()) {
+                for stage in stages {
+                    if stage["status"] == "done" {
+                        let stage_name = stage["name"].as_str().unwrap_or("阶段");
+                        let key = format!("{}_silver", stage_name);
+                        if !crate::plan_handler::achievement_exists(&conn, user_id, &key) {
+                            crate::plan_handler::write_achievement(&conn, user_id,
+                                &key, &format!("{}精英", stage_name), "🥈", "silver", "stage");
+                        }
+                        if stages.iter().all(|s| s["status"] == "done") {
+                            let domain_name = plan.get("goal").and_then(|v| v.as_str()).unwrap_or("领域");
+                            let dkey = format!("{}_gold", domain_name);
+                            if !crate::plan_handler::achievement_exists(&conn, user_id, &dkey) {
+                                crate::plan_handler::write_achievement(&conn, user_id,
+                                    &dkey, &format!("{}大师", domain_name), "🥇", "gold", "domain");
                             }
                         }
                     }
                 }
             }
         }
+    }
 
-        (reply, result.plan_updated)
+    (reply, result.plan_updated)
+}
+
+/// Save assistant reply turn
+fn save_assistant_turn(conversation_id: &str, content: &str, now_str: &str) {
+    let conn = crate::db_pool::get_conn();
+    let _ = conn.execute(
+        "INSERT INTO conversation_turns (id, conversation_id, role, content, created_at) VALUES (?1, ?2, 'assistant', ?3, ?4)",
+        rusqlite::params![uuid::Uuid::new_v4().to_string(), conversation_id, content, now_str],
+    );
+    let _ = conn.execute(
+        "UPDATE conversations SET turn_count = turn_count + 1 WHERE id = ?1",
+        rusqlite::params![conversation_id],
+    );
+}
+
+async fn chat_handler(
+    headers: HeaderMap,
+    Json(input): Json<ChatInput>,
+) -> Json<serde_json::Value> {
+    // 1. Auth
+    if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
+        return auth_json(e);
+    }
+
+    // 2. Subscription check
+    if let Err(msg) = check_subscription(&input.user_id) {
+        return Json(serde_json::json!({"error": msg}));
+    }
+
+    // 3. Load context (sync DB ops, drops conn before async LLM call)
+    let (existing_fronts, skipped_fronts, now_str, history) =
+        load_chat_context(&input.user_id, &input.conversation_id, &input.message);
+
+    // 4. Build system prompt with plan context
+    let llm_config = crate::llm::get_config();
+    let (system_prompt, plan_context) = {
+        let conn = crate::db_pool::get_conn();
+        let (mode, ctx) = crate::plan_handler::build_plan_context(&conn, &input.conversation_id);
+        let templates = chat_engine::prompt_loader::get();
+        let sp = if mode == "structured" {
+            templates.chat_system_structured.clone()
+        } else {
+            templates.chat_system_free.clone()
+        };
+        (sp, ctx)
     };
 
-    // 2. ColdPath: 提取候选概念 (no Connection — uses pre-queried data)
+    // 5. Build user content and call LLM
+    let user_content = build_user_content(&history, &plan_context, &input.message);
+    let mut caller = chat_engine::llm_caller::LlmCaller::new(llm_config.clone());
+    let raw_reply = match caller.generate(&system_prompt, &user_content).await {
+        Ok(r) => r,
+        Err(e) => return Json(serde_json::json!({"error": format!("LLM: {}", e)})),
+    };
+
+    // 6. Process plan updates + achievements
+    let (final_reply, plan_updated) =
+        process_plan_update(&raw_reply, &input.conversation_id, &input.user_id);
+
+    // 7. Extract candidate concepts (async, uses pre-queried data)
     let extraction = chat_engine::concept_extractor::extract_concepts(
         &input.user_id, &input.message, &final_reply,
-        &existing_fronts, &skipped_fronts, &llm_config,
-        &history,
+        &existing_fronts, &skipped_fronts, &llm_config, &history,
     ).await;
-
     let candidates: Vec<String> = extraction.candidates.iter().map(|c| c.front.clone()).collect();
 
-    // 3. 保存 assistant 回复 (新连接)
-    {
-        let conn = crate::db_pool::get_conn();
-        let _ = conn.execute(
-            "INSERT INTO conversation_turns (id, conversation_id, role, content, created_at) VALUES (?1, ?2, 'assistant', ?3, ?4)",
-            rusqlite::params![uuid::Uuid::new_v4().to_string(), input.conversation_id, final_reply, now_str],
-        );
-        let _ = conn.execute(
-            "UPDATE conversations SET turn_count = turn_count + 1 WHERE id = ?1",
-            rusqlite::params![input.conversation_id],
-        );
-    }
+    // 8. Save assistant turn
+    save_assistant_turn(&input.conversation_id, &final_reply, &now_str);
 
     Json(serde_json::json!({
         "reply": final_reply,
@@ -360,7 +393,7 @@ async fn review_due_handler(
     Query(query): Query<DueQuery>,
 ) -> Json<serde_json::Value> {
     if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return Json(serde_json::json!({"error": e}));
+        return auth_json(e);
     }
     let conn = crate::db_pool::get_conn();
     let (cards, total) = card_engine::fsrs_scheduler::get_due_cards(&conn, &query.user_id, 20);
@@ -386,7 +419,7 @@ async fn review_submit_handler(
     Json(input): Json<ReviewSubmitInput>,
 ) -> Json<serde_json::Value> {
     if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
-        return Json(serde_json::json!({"error": e}));
+        return auth_json(e);
     }
     let conn = crate::db_pool::get_conn();
 
@@ -424,7 +457,7 @@ async fn review_verify_handler(
     Json(input): Json<VerifyInput>,
 ) -> Json<serde_json::Value> {
     if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
-        return Json(serde_json::json!({"error": e}));
+        return auth_json(e);
     }
     let llm_config = crate::llm::get_config();
     let prompt = chat_engine::prompt_loader::get().quiz_generate.clone()
@@ -472,7 +505,7 @@ async fn review_judge_handler(
     Json(input): Json<JudgeInput>,
 ) -> Json<serde_json::Value> {
     if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
-        return Json(serde_json::json!({"error": e}));
+        return auth_json(e);
     }
     let llm_config = crate::llm::get_config();
 
@@ -535,7 +568,7 @@ async fn cards_skip_handler(
     Json(input): Json<SkipInput>,
 ) -> Json<serde_json::Value> {
     if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
-        return Json(serde_json::json!({"error": e}));
+        return auth_json(e);
     }
     let conn = crate::db_pool::get_conn();
     match card_engine::card_repository::skip_concept(&conn, &input.user_id, &input.front, &input.domain, &input.source_text) {
@@ -560,13 +593,12 @@ async fn cards_skipped_handler(
     Query(query): Query<DueQuery>,
 ) -> Json<serde_json::Value> {
     if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return Json(serde_json::json!({"error": e}));
+        return auth_json(e);
     }
     let conn = crate::db_pool::get_conn();
-    let mut stmt = conn.prepare(
-        "SELECT id, front, domain, source_text, skipped_at FROM skipped_concepts WHERE user_id = ?1 ORDER BY skipped_at DESC"
-    ).unwrap();
-    let rows: Vec<serde_json::Value> = stmt.query_map(
+    let rows = match query_vec(
+        &conn,
+        "SELECT id, front, domain, source_text, skipped_at FROM skipped_concepts WHERE user_id = ?1 ORDER BY skipped_at DESC",
         rusqlite::params![query.user_id],
         |row| Ok(serde_json::json!({
             "id": row.get::<_, String>(0)?,
@@ -574,28 +606,41 @@ async fn cards_skipped_handler(
             "domain": row.get::<_, Option<String>>(2)?,
             "source_text": row.get::<_, String>(3)?,
             "skipped_at": row.get::<_, i64>(4)?,
-        }))
-    ).unwrap().filter_map(|r| r.ok()).collect();
+        })),
+    ) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
     Json(serde_json::json!({"skipped": rows}))
+}
+
+#[derive(Deserialize)]
+pub struct SkipDeleteQuery {
+    pub user_id: String,
 }
 
 async fn cards_skip_delete_handler(
     headers: HeaderMap,
+    Query(query): Query<SkipDeleteQuery>,
     Path(skip_id): Path<String>,
 ) -> Json<serde_json::Value> {
+    // Verify auth first — don't query DB before authentication
+    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
+        return auth_json(e);
+    }
+
     let conn = crate::db_pool::get_conn();
 
-    // 1. 读取跳过的概念记录
+    // Read skipped record — scoped to the authenticated user
     let skipped = match conn.query_row(
-        "SELECT user_id, front, domain, source_text, skipped_at FROM skipped_concepts WHERE id = ?1",
-        rusqlite::params![skip_id],
+        "SELECT front, domain, source_text, skipped_at FROM skipped_concepts WHERE id = ?1 AND user_id = ?2",
+        rusqlite::params![skip_id, query.user_id],
         |row| {
             Ok((
                 row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(1)?,
                 row.get::<_, Option<String>>(2)?,
-                row.get::<_, Option<String>>(3)?,
-                row.get::<_, i64>(4)?,
+                row.get::<_, i64>(3)?,
             ))
         }
     ) {
@@ -603,15 +648,11 @@ async fn cards_skip_delete_handler(
         Err(e) => return Json(serde_json::json!({"error": format!("Skip not found: {}", e)})),
     };
 
-    let (user_id, front, domain, source_text, _skipped_at) = skipped;
+    let (front, domain, source_text, _skipped_at) = skipped;
 
-    // Verify auth with the user_id from the skipped record
-    if let Err(e) = crate::auth_middleware::verify_auth(&user_id, &headers) {
-        return Json(serde_json::json!({"error": e}));
-    }
-
-    // 2. 重新创建卡片
+    // Restore as card
     let now = chrono::Utc::now().timestamp();
+    // UUID format is guaranteed (8-4-4-4-12), split('-').next() never returns None
     let card_id = format!("card_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap());
     let back = source_text.clone().unwrap_or_default();
     let domain_str = domain.clone().unwrap_or_default();
@@ -619,24 +660,24 @@ async fn cards_skip_delete_handler(
     if let Err(e) = conn.execute(
         "INSERT INTO cards (id, user_id, domain, card_type, front, back, source_sentence, created_at)
          VALUES (?1, ?2, ?3, 'concept', ?4, ?5, ?6, ?7)",
-        rusqlite::params![card_id, user_id, domain_str, front, back, source_text, now],
+        rusqlite::params![card_id, query.user_id, domain_str, front, back, source_text, now],
     ) {
         return Json(serde_json::json!({"error": format!("Card insert: {}", e)}));
     }
 
-    // 3. 创建卡片记忆状态（新卡片，今天到期）
+    // Create card memory (new card, due today)
     if let Err(e) = conn.execute(
         "INSERT INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
          VALUES (?1, 0, 0.3, 1.0, ?2, 0, 0, 0)",
         rusqlite::params![card_id, now],
     ) {
-        // 回滚卡片
+        // Rollback card
         let _ = conn.execute("DELETE FROM cards WHERE id = ?1", rusqlite::params![card_id]);
         return Json(serde_json::json!({"error": format!("Card memory insert: {}", e)}));
     }
 
-    // 4. 删除跳过记录
-    match conn.execute("DELETE FROM skipped_concepts WHERE id = ?1", rusqlite::params![skip_id]) {
+    // Delete skip record
+    match conn.execute("DELETE FROM skipped_concepts WHERE id = ?1 AND user_id = ?2", rusqlite::params![skip_id, query.user_id]) {
         Ok(_) => Json(serde_json::json!({"status": "restored", "card_id": card_id})),
         Err(e) => Json(serde_json::json!({"error": format!("Delete: {}", e)})),
     }
@@ -666,8 +707,12 @@ pub struct CardCandidateInput {
 
 /// POST /api/cards/batch-create — 用户确认制卡后批量入库
 async fn cards_batch_create_handler(
+    headers: HeaderMap,
     Json(input): Json<BatchCreateInput>,
 ) -> Json<serde_json::Value> {
+    if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
+        return auth_json(e);
+    }
     let conn = crate::db_pool::get_conn();
     let mut created = Vec::new();
     let mut duplicates = Vec::new();
@@ -742,8 +787,13 @@ pub struct AllCardsQuery {
 }
 
 async fn cards_all_handler(
+    headers: HeaderMap,
     Query(query): Query<AllCardsQuery>,
 ) -> Json<serde_json::Value> {
+    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
+        return auth_json(e);
+    }
+
     let conn = crate::db_pool::get_conn();
 
     let mut sql = String::from(
@@ -791,27 +841,30 @@ async fn cards_all_handler(
         _ => sql.push_str(" ORDER BY cm.state ASC, cm.due ASC"), // 默认: 按状态+到期排序
     }
 
-    let mut stmt = conn.prepare(&sql).unwrap();
     let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-    let rows: Vec<serde_json::Value> = stmt.query_map(
-        param_refs.as_slice(),
-        |row| Ok(serde_json::json!({
-            "id": row.get::<_, String>(0)?,
-            "front": row.get::<_, String>(1)?,
-            "back": row.get::<_, String>(2)?,
-            "domain": row.get::<_, Option<String>>(3)?,
-            "card_type": row.get::<_, String>(4)?,
-            "source_sentence": row.get::<_, Option<String>>(5)?,
-            "created_at": row.get::<_, i64>(6)?,
-            "state": row.get::<_, i32>(7)?,
-            "difficulty": row.get::<_, f64>(8)?,
-            "due": row.get::<_, i64>(9)?,
-            "reps": row.get::<_, i32>(10)?,
-            "lapses": row.get::<_, i32>(11)?,
-            "last_reviewed_at": row.get::<_, Option<i64>>(12)?,
-            "last_review_quality": row.get::<_, Option<i32>>(13)?,
-        }))
-    ).unwrap().filter_map(|r| r.ok()).collect();
+    let mut stmt = match conn.prepare(&sql) {
+        Ok(s) => s,
+        Err(e) => return Json(serde_json::json!({"error": format!("DB prepare: {}", e)})),
+    };
+    let rows: Vec<serde_json::Value> = match stmt.query_map(param_refs.as_slice(), |row| Ok(serde_json::json!({
+        "id": row.get::<_, String>(0)?,
+        "front": row.get::<_, String>(1)?,
+        "back": row.get::<_, String>(2)?,
+        "domain": row.get::<_, Option<String>>(3)?,
+        "card_type": row.get::<_, String>(4)?,
+        "source_sentence": row.get::<_, Option<String>>(5)?,
+        "created_at": row.get::<_, i64>(6)?,
+        "state": row.get::<_, i32>(7)?,
+        "difficulty": row.get::<_, f64>(8)?,
+        "due": row.get::<_, i64>(9)?,
+        "reps": row.get::<_, i32>(10)?,
+        "lapses": row.get::<_, i32>(11)?,
+        "last_reviewed_at": row.get::<_, Option<i64>>(12)?,
+        "last_review_quality": row.get::<_, Option<i32>>(13)?,
+    }))) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(e) => return Json(serde_json::json!({"error": format!("DB query: {}", e)})),
+    };
 
     // 聚合统计数据
     let total = rows.len();
@@ -821,13 +874,11 @@ async fn cards_all_handler(
     }).collect();
 
     // 领域列表
-    let domains: Vec<String> = {
-        let mut stmt = conn.prepare(
-            "SELECT DISTINCT domain FROM cards WHERE user_id = ?1 AND domain IS NOT NULL ORDER BY domain"
-        ).unwrap();
-        stmt.query_map(rusqlite::params![query.user_id], |row| row.get::<_, String>(0))
-            .unwrap().filter_map(|r| r.ok()).collect()
-    };
+    let domains: Vec<String> = query_vec(
+        &conn,
+        "SELECT DISTINCT domain FROM cards WHERE user_id = ?1 AND domain IS NOT NULL ORDER BY domain",
+        rusqlite::params![query.user_id], |row| row.get(0),
+    ).unwrap_or_default();
 
     Json(serde_json::json!({
         "cards": rows,
@@ -861,7 +912,7 @@ async fn cards_last_review_handler(
     Path(card_id): Path<String>,
 ) -> Json<serde_json::Value> {
     if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return Json(serde_json::json!({"error": e}));
+        return auth_json(e);
     }
     let conn = crate::db_pool::get_conn();
     match conn.query_row(
@@ -883,7 +934,10 @@ async fn cards_last_review_handler(
             let mut result = data;
             if let Some(details_str) = result.get("details").and_then(|v| v.as_str()) {
                 if let Ok(details) = serde_json::from_str::<serde_json::Value>(details_str) {
-                    result.as_object_mut().unwrap().insert("details".to_string(), details);
+                    // result is always a JSON object (built from json!({...}))
+                    if let Some(obj) = result.as_object_mut() {
+                        obj.insert("details".to_string(), details);
+                    }
                 }
             }
             Json(result)
@@ -899,7 +953,7 @@ async fn history_handler(
 ) -> Json<serde_json::Value> {
     // 鉴权：验证 Bearer token
     if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return Json(serde_json::json!({"error": e}));
+        return auth_json(e);
     }
 
     let conn = crate::db_pool::get_conn();
@@ -992,7 +1046,7 @@ async fn conversation_delete_handler(
     Query(query): Query<ConversationActionQuery>,
 ) -> Json<serde_json::Value> {
     if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return Json(serde_json::json!({"error": e}));
+        return auth_json(e);
     }
     let conn = crate::db_pool::get_conn();
     let now = chrono::Utc::now().to_rfc3339();
@@ -1020,7 +1074,7 @@ async fn conversation_restore_handler(
     Query(query): Query<ConversationActionQuery>,
 ) -> Json<serde_json::Value> {
     if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return Json(serde_json::json!({"error": e}));
+        return auth_json(e);
     }
     let conn = crate::db_pool::get_conn();
     match conn.execute(
@@ -1047,7 +1101,7 @@ async fn conversation_permanent_delete_handler(
     Query(query): Query<ConversationActionQuery>,
 ) -> Json<serde_json::Value> {
     if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return Json(serde_json::json!({"error": e}));
+        return auth_json(e);
     }
     let conn = crate::db_pool::get_conn();
     // 级联删除 conversation_turns
@@ -1210,7 +1264,7 @@ async fn avatar_upload_handler(
 ) -> Json<serde_json::Value> {
     use tokio::io::AsyncWriteExt;
     let _ = tokio::fs::create_dir_all(avatar_dir()).await;
-    while let Ok(Some(field)) = multipart.next_field().await {
+    if let Ok(Some(field)) = multipart.next_field().await {
         let data = match field.bytes().await {
             Ok(d) => d,
             Err(e) => return Json(serde_json::json!({"error": format!("Read: {}", e)})),

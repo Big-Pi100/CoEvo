@@ -1,16 +1,15 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/coevo_models.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
-import '../services/stt_service.dart';
-import '../services/tts_service.dart';
 import '../widgets/skeleton.dart';
-import 'package:flutter_math_fork/flutter_math.dart';
-import '../widgets/graph_widget.dart';
+import 'chat/chat_concept_dialog.dart';
+import 'chat/chat_input.dart';
+import 'chat/chat_plan_panel.dart';
+import 'chat/chat_message_bubble.dart';
 
 /// 持久化 conversation_id 的 provider (跨页面保持)
 final currentConversationIdProvider = StateProvider<String?>((ref) => null);
@@ -38,7 +37,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   // 学习计划
   Map<String, dynamic>? _activePlan;
-  bool _planExpanded = true;
 
   // 订阅状态
   bool _subscriptionRequired = false;
@@ -60,12 +58,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String _streamingBuffer = '';
   int _streamingIndex = -1;
 
-  // 语音输入
-  bool _voiceMode = false;
-  bool _isRecording = false;
-  bool _isCancelling = false;
-  SttService? _stt;
-  String? _sttError;
 
   @override
   void initState() {
@@ -212,171 +204,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
-  String _progressSummary(List<dynamic> stages) {
-    int total = 0, done = 0;
-    for (final stage in stages) {
-      final s = stage as Map<String, dynamic>;
-      final tasks = s['tasks'] as List<dynamic>? ?? [];
-      for (final t in tasks) {
-        total++;
-        final ts = t is Map ? (t['status'] as String? ?? '') : '';
-        if (ts == 'done') done++;
-      }
-    }
-    return total > 0 ? '$done/$total' : '';
-  }
-
-  Widget _buildProgressBar(List<dynamic> stages) {
-    int total = 0, done = 0;
-    for (final stage in stages) {
-      final s = stage as Map<String, dynamic>;
-      final tasks = s['tasks'] as List<dynamic>? ?? [];
-      for (final t in tasks) {
-        total++;
-        final ts = t is Map ? (t['status'] as String? ?? '') : '';
-        if (ts == 'done') done++;
-      }
-    }
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(4),
-        child: LinearProgressIndicator(
-          value: total > 0 ? done / total : 0,
-          minHeight: 6,
-          backgroundColor: Colors.grey.shade200,
-          valueColor: AlwaysStoppedAnimation(Theme.of(context).colorScheme.primary),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPlanPanel() {
-    if (_activePlan == null) return const SizedBox.shrink();
-    final plan = _activePlan!;
-    final goal = plan['goal'] as String? ?? '';
-    final planJson = plan['plan'] as Map<String, dynamic>? ?? {};
-    final stages = planJson['stages'] as List<dynamic>? ?? [];
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary.withAlpha(10),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Theme.of(context).colorScheme.primary.withAlpha(30)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          InkWell(
-            onTap: () => setState(() => _planExpanded = !_planExpanded),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              child: Row(
-                children: [
-                  Icon(Icons.school, size: 18, color: Theme.of(context).colorScheme.primary),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(goal, style: const TextStyle(fontWeight: FontWeight.w600)),
-                  ),
-                  // 进度摘要
-                  Text(_progressSummary(stages),
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-                  const SizedBox(width: 6),
-                  Icon(_planExpanded ? Icons.expand_less : Icons.expand_more, size: 20),
-                ],
-              ),
-            ),
-          ),
-          // 全局进度条
-          if (_planExpanded) _buildProgressBar(stages),
-          if (_planExpanded)
-            ...stages.map((stage) {
-              final s = stage as Map<String, dynamic>;
-              final stageName = s['name'] as String? ?? '';
-              final stageStatus = s['status'] as String? ?? 'pending';
-              final tasks = s['tasks'] as List<dynamic>? ?? [];
-              final isActive = stageStatus == 'in_progress';
-              final doneTasks = tasks.where((t) {
-                final ts = t is Map ? (t['status'] as String? ?? '') : '';
-                return ts == 'done';
-              }).length;
-
-              return Padding(
-                padding: const EdgeInsets.only(left: 14, right: 14, bottom: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          isActive ? Icons.play_circle_fill : Icons.check_circle,
-                          size: 14,
-                          color: isActive ? Theme.of(context).colorScheme.primary : Colors.green,
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(stageName,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-                              color: isActive ? null : Colors.grey,
-                            )),
-                        ),
-                        // Stage 进度: done/total
-                        Text('$doneTasks/${tasks.length}',
-                          style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    // Stage 进度条
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: tasks.isEmpty ? 0 : doneTasks / tasks.length,
-                        minHeight: 4,
-                        backgroundColor: Colors.grey.shade200,
-                        valueColor: AlwaysStoppedAnimation(
-                          stageStatus == 'done' ? Colors.green : Theme.of(context).colorScheme.primary),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    ...tasks.map((task) {
-                      final t = task as Map<String, dynamic>;
-                      final taskName = t['name'] as String? ?? '';
-                      final taskStatus = t['status'] as String? ?? 'pending';
-                      final isTaskActive = taskStatus == 'in_progress';
-                      return Padding(
-                        padding: const EdgeInsets.only(left: 16, top: 2),
-                        child: Row(
-                          children: [
-                            Icon(
-                              taskStatus == 'done' ? Icons.check_circle_outline :
-                              isTaskActive ? Icons.radio_button_checked : Icons.radio_button_checked_outlined,
-                              size: 12,
-                              color: taskStatus == 'done' ? Colors.green :
-                                     isTaskActive ? Theme.of(context).colorScheme.primary : Colors.grey.shade400,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(taskName,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: taskStatus == 'done' ? Colors.green.shade600 :
-                                       isTaskActive ? null : Colors.grey.shade500,
-                                fontWeight: isTaskActive ? FontWeight.w500 : FontWeight.normal,
-                              )),
-                          ],
-                        ),
-                      );
-                    }),
-                  ],
-                ),
-              );
-            }),
-        ],
-      ),
-    );
-  }
 
   @override
   void dispose() {
@@ -500,7 +327,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       case 'candidates':
         final list = event.candidates;
         if (list != null && list.isNotEmpty && list.any((c) => c.front.isNotEmpty)) {
-          Future.delayed(Duration.zero, () => _showConceptDialog(list));
+          Future.delayed(Duration.zero, () => ConceptDialog.show(context, candidates: list, client: _client, ref: ref));
         }
         break;
       case 'error':
@@ -605,130 +432,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _streamingBuffer = '';
     });
     _scrollToBottom();
-  }
-
-  // ── 制卡确认弹窗 ──
-
-  void _showConceptDialog(List<ConceptCandidate> candidates) {
-    if (!mounted || candidates.isEmpty) return;
-
-    const pageSize = 5;
-    final totalPages = (candidates.length + pageSize - 1) ~/ pageSize;
-    final selected = List.generate(candidates.length, (_) => true);
-    var page = 0;
-
-    void nextPage() => page++;
-    int start() => page * pageSize;
-    int end() => (start() + pageSize).clamp(0, candidates.length);
-    List<ConceptCandidate> pageItems() => candidates.sublist(start(), end());
-    bool isLastPage() => page >= totalPages - 1;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          return AlertDialog(
-            title: Text('发现知识点 (${page + 1}/$totalPages)'),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('第 ${start() + 1}~${end()} 条 / 共 ${candidates.length} 条',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-                  const SizedBox(height: 8),
-                  ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: pageItems().length,
-                    itemBuilder: (_, i) {
-                      final realIdx = start() + i;
-                      return CheckboxListTile(
-                        title: Text(pageItems()[i].front),
-                        subtitle: pageItems()[i].back != null
-                            ? Text(pageItems()[i].back!, maxLines: 2, overflow: TextOverflow.ellipsis)
-                            : null,
-                        value: selected[realIdx],
-                        onChanged: (v) => setDialogState(() => selected[realIdx] = v ?? false),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  for (int i = start(); i < end(); i++) {
-                    if (!selected[i]) {
-                      _client?.skipConcept(candidates[i].front, candidates[i].sourceSentence ?? '');
-                    }
-                  }
-                  if (isLastPage()) {
-                    Navigator.pop(ctx);
-                  } else {
-                    for (int i = (page + 1) * pageSize;
-                         i < ((page + 1) * pageSize + pageSize).clamp(0, candidates.length);
-                         i++) {
-                      selected[i] = true;
-                    }
-                    nextPage();
-                    setDialogState(() {});
-                  }
-                },
-                child: Text(isLastPage() ? '完成' : '跳过并继续'),
-              ),
-              FilledButton(
-                onPressed: () async {
-                  final toCreate = <Map<String, dynamic>>[];
-                  for (int i = start(); i < end(); i++) {
-                    if (selected[i]) {
-                      toCreate.add({
-                        'front': candidates[i].front,
-                        'back': candidates[i].back ?? candidates[i].front,
-                        'source_sentence': candidates[i].sourceSentence ?? '',
-                        'domain': candidates[i].domain ?? 'general',
-                      });
-                    } else {
-                      _client?.skipConcept(candidates[i].front, candidates[i].sourceSentence ?? '');
-                    }
-                  }
-                  if (toCreate.isNotEmpty && _client != null) {
-                    final result = await _client!.batchCreateCards(toCreate);
-                    if (mounted) {
-                      final count = (result['created'] as List?)?.length ?? 0;
-                      if (count > 0) ref.read(cardRefreshProvider.notifier).state++;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('已创建 $count 张卡片'),
-                          behavior: SnackBarBehavior.floating,
-                          margin: EdgeInsets.only(
-                            bottom: MediaQuery.of(context).size.height - 120,
-                            left: 16,
-                            right: 16,
-                          ),
-                        ),
-                      );
-                    }
-                  }
-                  if (isLastPage()) {
-                    Navigator.pop(ctx);
-                  } else {
-                    for (int i = (page + 1) * pageSize;
-                         i < ((page + 1) * pageSize + pageSize).clamp(0, candidates.length);
-                         i++) {
-                      selected[i] = true;
-                    }
-                    nextPage();
-                    setDialogState(() {});
-                  }
-                },
-                child: Text(isLastPage() ? '确认制卡' : '确认并继续'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
   }
 
   void _scrollToBottom() {
@@ -999,7 +702,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       body: Column(
         children: [
           // 学习计划面板（持久展示，不被对话推没）
-          _buildPlanPanel(),
+          if (_activePlan != null) ChatPlanPanel(plan: _activePlan!),
           // 订阅状态横幅
           _buildSubscriptionBanner(),
           // 对话已删除横幅
@@ -1060,15 +763,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                   mainAxisSize: MainAxisSize.min,
                                   crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                                   children: [
-                                    // 消息文字（支持 LaTeX 数学公式渲染）
-                                    _buildRichContent(
-                                      msg.content,
+                                    ChatMessageBubble(
+                                      text: msg.content,
                                       isUser: isUser,
                                       isStreaming: isStreaming,
                                     ),
-                                    // AI 消息朗读按钮（流式输出时不显示）
-                                    if (!isUser && !isStreaming)
-                                      _buildTtsButton(_cleanText(msg.content)),
                                   ],
                                 ),
                               ),
@@ -1115,339 +814,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               padding: EdgeInsets.all(8),
               child: LinearProgressIndicator(),
             ),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              border: Border(top: BorderSide(color: Colors.grey.shade200)),
-            ),
-            child: SafeArea(
-              child: _buildTextInput(),
-            ),
+          ChatInput(
+            textController: _messageController,
+            isWaiting: _isWaiting,
+            isDeleted: _isDeleted,
+            onSend: _sendMessage,
           ),
         ],
       ),
     );
   }
 
-  // ── 文本输入模式 ──
-  Widget _buildTextInput() {
-    return Row(
-      children: [
-        const SizedBox(width: 4),
-        Expanded(
-          child: TextField(
-            controller: _messageController,
-            decoration: const InputDecoration(
-              hintText: '输入消息...',
-              isDense: true,
-              border: OutlineInputBorder(),
-              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            ),
-            textInputAction: TextInputAction.send,
-            onSubmitted: (_) => _sendMessage(),
-          ),
-        ),
-        const SizedBox(width: 8),
-        IconButton.filled(
-          onPressed: _isWaiting ? null : _sendMessage,
-          icon: _isWaiting
-              ? const SizedBox(
-                  width: 20, height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                )
-              : const Icon(Icons.send),
-        ),
-      ],
-    );
-  }
-
-  // ── 语音输入模式 ──
-  Widget _buildVoiceInput() {
-    return Stack(
-      children: [
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 错误提示
-            if (_sttError != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(_sttError!, style: const TextStyle(color: Colors.red, fontSize: 12)),
-              ),
-            // 取消提示
-            if (_isRecording)
-              AnimatedOpacity(
-                opacity: _isCancelling ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 150),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(
-                    color: _isCancelling ? Colors.red.shade50 : Colors.transparent,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.arrow_upward, size: 16,
-                          color: _isCancelling ? Colors.red : Colors.grey),
-                      const SizedBox(width: 4),
-                      Text(
-                        _isCancelling ? '松开取消' : '上滑取消',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: _isCancelling ? Colors.red : Colors.grey,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            Row(
-              children: [
-                // 返回键盘
-                IconButton(
-                  icon: const Icon(Icons.keyboard),
-                  onPressed: () => setState(() {
-                    _voiceMode = false;
-                    _isRecording = false;
-                    _isCancelling = false;
-                  }),
-                  tooltip: '键盘输入',
-                ),
-                const SizedBox(width: 4),
-                // 长按录音区域
-                Expanded(
-                  child: GestureDetector(
-                    onLongPressStart: (_) async {
-                      setState(() { _isRecording = true; _sttError = null; });
-                      final stt = ref.read(sttServiceProvider);
-                      setState(() => _stt = stt);
-                      await stt.startRecording();
-                    },
-                    onLongPressMoveUpdate: (details) {
-                      setState(() {
-                        _isCancelling = details.localPosition.dy < -60;
-                      });
-                    },
-                    onLongPressEnd: (_) async {
-                      if (_stt == null) return;
-                      if (_isCancelling) {
-                        await _stt!.stopRecording();
-                        setState(() {
-                          _isRecording = false;
-                          _isCancelling = false;
-                          _stt = null;
-                        });
-                        return;
-                      }
-                      final text = await _stt!.stopRecording();
-                      final error = _stt!.lastError;
-                      setState(() {
-                        _isRecording = false;
-                        _isCancelling = false;
-                        _stt = null;
-                        _sttError = error;
-                      });
-                      if (error != null) return;
-                      if (text.isNotEmpty) {
-                        _sendVoiceMessage(text);
-                      }
-                    },
-                    child: Container(
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: _isRecording
-                            ? (_isCancelling ? Colors.red.shade50 : Colors.blue.shade50)
-                            : Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                          color: _isRecording
-                              ? (_isCancelling ? Colors.red : Colors.blue)
-                              : Colors.grey.shade300,
-                        ),
-                      ),
-                      child: Center(
-                        child: _isRecording
-                            ? Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.mic, size: 20,
-                                      color: _isCancelling ? Colors.red : Colors.blue),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    _isCancelling ? '松开取消' : '录音中...',
-                                    style: TextStyle(
-                                      color: _isCancelling ? Colors.red : Colors.blue,
-                                    ),
-                                  ),
-                                ],
-                              )
-                            : const Text('按住 说话',
-                                style: TextStyle(color: Colors.grey)),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  void _sendVoiceMessage(String text) {
-    _messageController.text = text;
-    _sendMessage();
-  }
-
-  /// 构建 AI 消息朗读按钮（气泡右下角小喇叭）
-  Widget _buildTtsButton(String text) {
-    return Consumer(
-      builder: (_, ref, __) {
-        final enabled = ref.watch(ttsEnabledProvider);
-        if (!enabled) return const SizedBox.shrink();
-        final tts = ref.watch(ttsServiceProvider);
-        return Align(
-          alignment: Alignment.centerRight,
-          child: Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: GestureDetector(
-              onTap: () => tts.speak(text, language: 'zh-CN'),
-              child: Icon(
-                Icons.volume_up_outlined,
-                size: 16,
-                color: Theme.of(context).colorScheme.onSecondaryContainer.withAlpha(120),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  /// 去除标记符号，使朗读和显示更干净
-  String _cleanText(String text) {
-    return text
-        .replaceAll('**', '')
-        .replaceAll('### ', '')
-        .replaceAll('## ', '')
-        .replaceAll('# ', '')
-        .replaceAll('\\(', '')
-        .replaceAll('\\)', '')
-        .replaceAll('\\[', '')
-        .replaceAll('\\]', '');
-  }
-
-  /// 渲染消息内容，支持 \(...\) 行内公式和 \[...\] 独立公式
-  ///
-  /// 流式输出期间跳过数学公式正则解析，避免因 token 分片导致 \(...\) 定界符
-  /// 不完整时 raw LaTeX 与渲染公式之间反复闪烁。done 事件后 _streamingIndex 置 -1，
-  /// isStreaming 变为 false，由 _finalizeStreaming 触发的 rebuild 会正常渲染全部公式。
-  Widget _buildRichContent(String text, {required bool isUser, bool isStreaming = false}) {
-    final baseColor = isUser
-        ? Colors.white
-        : Theme.of(context).colorScheme.onSecondaryContainer;
-
-    // 流式输出期间：纯文本渲染，不解析
-    if (isStreaming) {
-      return Text(
-        text,
-        style: TextStyle(color: baseColor, fontSize: 15, height: 1.5),
-      );
-    }
-
-    // ── 先解析 <graph> 标签，分割为文本段 + 图形 ──
-    final graphRegex = RegExp(r'<graph>(.*?)</graph>', dotAll: true);
-    final graphMatches = graphRegex.allMatches(text).toList();
-
-    if (graphMatches.isEmpty) {
-      // 无图形 → 走原有的纯数学公式解析
-      return _buildMathContent(text, baseColor);
-    }
-
-    // 混合渲染：交替 文本段（含数学公式） + 图形
-    final children = <Widget>[];
-    int lastEnd = 0;
-
-    for (final g in graphMatches) {
-      // 图形前的文本段
-      if (g.start > lastEnd) {
-        final segment = text.substring(lastEnd, g.start).trim();
-        if (segment.isNotEmpty) {
-          children.add(Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: _buildMathContent(segment, baseColor),
-          ));
-        }
-      }
-      // 图形
-      children.add(GraphWidget(jsonStr: g.group(1)!));
-      lastEnd = g.end;
-    }
-
-    // 最后一段文本
-    if (lastEnd < text.length) {
-      final tail = text.substring(lastEnd).trim();
-      if (tail.isNotEmpty) {
-        children.add(_buildMathContent(tail, baseColor));
-      }
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: children,
-    );
-  }
-
-  /// 纯文本 + 数学公式渲染（原有逻辑）
-  Widget _buildMathContent(String text, Color baseColor) {
-    final mathRegex = RegExp(r'\\[\(\[](.+?)\\[[)\]]', dotAll: true);
-    final matches = mathRegex.allMatches(text).toList();
-
-    if (matches.isEmpty) {
-      return Text(
-        text,
-        style: TextStyle(color: baseColor, fontSize: 15, height: 1.5),
-      );
-    }
-
-    final spans = <InlineSpan>[];
-    int lastEnd = 0;
-
-    for (final match in matches) {
-      if (match.start > lastEnd) {
-        spans.add(TextSpan(
-          text: text.substring(lastEnd, match.start),
-          style: TextStyle(color: baseColor, fontSize: 15, height: 1.5),
-        ));
-      }
-
-      final isDisplay = text[match.start + 1] == '[';
-      final formula = match.group(1)!.trim();
-
-      spans.add(WidgetSpan(
-        child: Math.tex(
-          formula,
-          mathStyle: isDisplay ? MathStyle.display : MathStyle.text,
-          textStyle: TextStyle(fontSize: 15, color: baseColor),
-        ),
-        alignment: PlaceholderAlignment.middle,
-      ));
-
-      lastEnd = match.end;
-    }
-
-    if (lastEnd < text.length) {
-      spans.add(TextSpan(
-        text: text.substring(lastEnd),
-        style: TextStyle(color: baseColor, fontSize: 15, height: 1.5),
-      ));
-    }
-
-    return Text.rich(TextSpan(children: spans));
-  }
 }

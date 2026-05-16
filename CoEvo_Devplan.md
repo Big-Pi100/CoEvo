@@ -214,7 +214,7 @@ N8 学习计划（可选结构化模式）
 | 属性 | 值 |
 |------|-----|
 | **位置** | 后端 Rust |
-| **算法** | FSRS（`fsrs` crate） |
+| **算法** | FSRS 简化版（固定间隔数组，待集成 `fsrs` crate） |
 | **输入** | `user_id` + 当前时间 |
 | **输出** | 到期卡片列表（按 due 升序，上限 20 张） |
 
@@ -304,11 +304,11 @@ N8 学习计划（可选结构化模式）
 | N7 | 后端 | 成就检测（固定11个 + 动态成就） |
 | N8 | 后端 | 学习计划（LLM + prompt注入 + render_plan） |
 
-**8 个节点 · 10 张表 · 结构化学习完成**
+**8 个节点 · 11 张表 · 结构化学习完成**
 
 ---
 
-## 七、数据库设计 (10 张表)
+## 七、数据库设计 (11 张表)
 
 ```sql
 -- 1. 用户
@@ -318,20 +318,31 @@ users (
     password_hash TEXT,
     streak_days INTEGER DEFAULT 0,
     last_active_date TEXT,
+    display_name TEXT,          -- 迁移添加
     created_at TEXT
 )
 
--- 2. 会话容器 (N1 对话持久化)
+-- 2. 令牌（安全改进，DevPlan 后期添加）
+tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    token TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+)
+
+-- 3. 会话容器 (N1 对话持久化)
 conversations (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     turn_count INTEGER DEFAULT 0,
     started_at TEXT NOT NULL,
     learning_plan_id TEXT,            -- 关联学习计划
+    deleted_at TEXT,                  -- 软删除时间（迁移添加）
     FOREIGN KEY (user_id) REFERENCES users(id)
 )
 
--- 3. 对话轮次 (N1 历史上下文 + N2 概念提取)
+-- 4. 对话轮次 (N1 历史上下文 + N2 概念提取)
 conversation_turns (
     id TEXT PRIMARY KEY,
     conversation_id TEXT NOT NULL,
@@ -341,7 +352,7 @@ conversation_turns (
     FOREIGN KEY (conversation_id) REFERENCES conversations(id)
 )
 
--- 4. 卡片
+-- 5. 卡片
 cards (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -354,7 +365,7 @@ cards (
     FOREIGN KEY (user_id) REFERENCES users(id)
 )
 
--- 5. 记忆状态 (1:1 cards)
+-- 6. 记忆状态 (1:1 cards)
 card_memory (
     card_id TEXT PRIMARY KEY,
     state INTEGER,         -- 0:New, 1:Learning, 2:Review, 3:Relearning
@@ -367,18 +378,19 @@ card_memory (
     FOREIGN KEY (card_id) REFERENCES cards(id)
 )
 
--- 6. 复习日志
+-- 7. 复习日志
 review_log (
     id TEXT PRIMARY KEY,
     card_id TEXT NOT NULL,
     rating INTEGER,        -- 1-4
     verification_type TEXT,-- "spelling" | "ai_dialogue"
     verification_result TEXT, -- "pass" | "fail"
+    details_json TEXT,          -- 迁移添加（AI 快问快答详细数据）
     reviewed_at INTEGER,
     FOREIGN KEY (card_id) REFERENCES cards(id)
 )
 
--- 7. 成就 (含动态成就层级)
+-- 8. 成就 (含动态成就层级)
 achievements (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -391,7 +403,7 @@ achievements (
     FOREIGN KEY (user_id) REFERENCES users(id)
 )
 
--- 8. 跳过记录
+-- 9. 跳过记录
 skipped_concepts (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -402,7 +414,7 @@ skipped_concepts (
     FOREIGN KEY (user_id) REFERENCES users(id)
 )
 
--- 9. 学习计划
+-- 10. 学习计划
 learning_plans (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -416,7 +428,7 @@ learning_plans (
     FOREIGN KEY (user_id) REFERENCES users(id)
 )
 
--- 10. 用户偏好
+-- 11. 用户偏好
 user_preferences (
     user_id TEXT NOT NULL,
     key TEXT NOT NULL,

@@ -138,7 +138,9 @@ impl LlmCaller {
                 Err(e) => {
                     if attempt == 0 {
                         tracing::warn!("LLM generate attempt 1 failed: {:?}", e);
-                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        // Exponential backoff: base 250ms, cap 2s
+                        let delay = std::cmp::min(250 * 2u64.pow(attempt as u32), 2000);
+                        tokio::time::sleep(Duration::from_millis(delay)).await;
                     }
                     last_error = e;
                 }
@@ -165,8 +167,9 @@ impl LlmCaller {
                 Err(e) => {
                     tracing::warn!("LLM stream attempt {} failed: {:?}", attempt + 1, e);
                     last_error = e;
-                    // Brief backoff before retry
-                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    // Exponential backoff before retry
+                    let delay = std::cmp::min(250 * 2u64.pow(attempt as u32), 2000);
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                 }
             }
         }

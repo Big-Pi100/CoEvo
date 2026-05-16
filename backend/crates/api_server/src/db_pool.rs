@@ -21,7 +21,7 @@ static DB_POOL: OnceLock<Pool<SqliteConnectionManager>> = OnceLock::new();
 pub fn init(db_path: &str) -> Result<(), String> {
     let manager = SqliteConnectionManager::file(db_path)
         .with_init(|conn| {
-            conn.execute_batch("PRAGMA busy_timeout=5000;")
+            conn.execute_batch("PRAGMA busy_timeout=5000; PRAGMA foreign_keys = ON;")
         });
     let pool = Pool::builder()
         .max_size(30)
