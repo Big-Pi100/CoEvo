@@ -125,7 +125,7 @@ fn first_stability(r: f64) -> f64 {
     base.max(0.01)
 }
 
-fn stability_after_success(d: f64, s: f64, r: f64, elapsed: f64) -> f64 {
+fn stability_after_success(d: f64, s: f64, r: f64, _elapsed: f64) -> f64 {
     let hard_penalty = if r == 2.0 { W[15] } else { 1.0 };
     let easy_bonus = if r == 4.0 { W[16] } else { 1.0 };
 
@@ -135,7 +135,7 @@ fn stability_after_success(d: f64, s: f64, r: f64, elapsed: f64) -> f64 {
         * easy_bonus
 }
 
-fn stability_after_failure(d: f64, s: f64, elapsed: f64) -> f64 {
+fn stability_after_failure(d: f64, s: f64, _elapsed: f64) -> f64 {
     (W[11] * d.powf(-W[12]) * ((s + 1.0).powf(W[13]) - 1.0)
         * ((W[14]) * (1.0 - d / 10.0)).exp())
         .max(0.01)

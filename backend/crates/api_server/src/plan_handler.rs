@@ -417,7 +417,8 @@ fn repair_json_backslashes(json_str: &str) -> String {
                     result.push(ch); // 合法转义，原样保留
                 } else {
                     result.push_str("\\\\"); // 非法转义，双写反斜杠
-                    continue; // 跳过递增 i 的步骤
+                    i += 1; // 跳过 \，但用 continue 避免底部 i++ 吞掉下一个字符
+                    continue;
                 }
             }
             _ => {
@@ -456,9 +457,19 @@ mod tests {
         let fixed2 = repair_json_backslashes(bad2);
         assert_eq!(fixed2, r#"{"desc": "正则 \\d 和 \\w"}"#);
 
-        // Windows 路径
+        // Windows 路径：\U 非法需修复，\t 合法保持
         let bad3 = r#"{"path": "C:\Users\test"}"#;
         let fixed3 = repair_json_backslashes(bad3);
-        assert_eq!(fixed3, r#"{"path": "C:\\Users\\test"}"#);
+        assert_eq!(fixed3, r#"{"path": "C:\\Users\test"}"#);
+
+        // 回归测试：非法转义不应导致无限循环 (BugFix 2026-05-16)
+        let bad4 = r#"{"key": "\d\w"}"#;
+        let fixed4 = repair_json_backslashes(bad4);
+        assert_eq!(fixed4, r#"{"key": "\\d\\w"}"#);
+        assert!(serde_json::from_str::<serde_json::Value>(&fixed4).is_ok());
+
+        // 回归测试：长字符串不卡死
+        let bad5 = format!(r#"{{"k": "{}"}}"#, "\\d".repeat(100));
+        let _ = repair_json_backslashes(&bad5); // 不挂即可
     }
 }

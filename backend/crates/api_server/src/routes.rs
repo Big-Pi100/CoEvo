@@ -31,6 +31,7 @@ where F: Fn(&rusqlite::Row) -> rusqlite::Result<T>
 }
 
 /// Helper: run a query_row that returns a single value, or return a Json error
+#[allow(dead_code)]
 fn query_one<T, F>(
     conn: &rusqlite::Connection, sql: &str, params: &[&dyn rusqlite::types::ToSql],
     map: F,
