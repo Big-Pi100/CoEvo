@@ -49,6 +49,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // ignore: prefer_final_fields
   bool _isDeleted = false;
 
+  // 历史对话分页
+  int _historyOffset = 0;
+  static const int _historyPageSize = 5;
+  int _historyTotal = 0;
+  bool _loadingMore = false;
+  bool _isHistoryConversation = false;
+
   String _streamingBuffer = '';
   int _streamingIndex = -1;
 
@@ -101,12 +108,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final planFuture = _loadPlan();
       final subFuture = _checkSubscription();
 
-      // 加载历史对话
+      // 加载历史对话（历史会话只加载最近5条）
       try {
-        final history = await _client!.getConversationTurns(_convId);
+        _isHistoryConversation = _convId.isNotEmpty && _convId != 'new';
+        final initialLimit = _isHistoryConversation ? 5 : 50;
+        final result = await _client!.getConversationTurns(_convId, limit: initialLimit);
+        final history = (result['turns'] as List<dynamic>?)
+            ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
+        _historyTotal = (result['total'] as int?) ?? 0;
+        _historyOffset = history.length;
+
         if (history.isNotEmpty && mounted) {
+          final ascTurns = history.reversed.toList();
           setState(() {
-            for (final turn in history) {
+            for (final turn in ascTurns) {
               _messages.add(Message(
                 role: turn['role'] as String? ?? 'assistant',
                 content: turn['content'] as String? ?? '',
@@ -433,6 +448,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         debugPrint('ChatScreen._sendMessage session send failed: $e');
         _sessionSub?.cancel();
         _session = null;
+        // 重置等待状态，避免递归调用被 _isWaiting 拦截
+        if (mounted) setState(() => _isWaiting = false);
         // 递归调用自身，走首次连接分支
         _sendMessage();
         return;
@@ -449,6 +466,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void _handleWsEvent(WsEvent event) {
     debugPrint('🟢 WsEvent: type=${event.type} content=${event.content?.substring(0, event.content!.length > 50 ? 50 : event.content!.length)} reply_len=${event.reply?.length} streamingIdx=$_streamingIndex msgCount=${_messages.length}');
     switch (event.type) {
+      case 'kicked':
+        // 在另一台设备登录，当前连接被强制断开
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('账号已在其他设备登录，当前连接已断开')),
+          );
+          context.go('/auth');
+        }
+        break;
       case 'thinking':
         _updateStreaming('思考中...');
         break;
@@ -477,6 +503,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         }
         break;
       case 'error':
+        if (event.content == 'invalid_token' || event.content == 'missing_token') {
+          // 被踢下线：token 已失效
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('账号已在其他设备登录，请重新登录')),
+            );
+            context.go('/auth');
+          }
+          break;
+        }
         if (event.content == 'subscription_expired') {
           setState(() {
             _subscriptionExpired = true;
@@ -802,6 +838,51 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
+  Widget _buildLoadMoreButton() {
+    final remaining = _historyTotal - _historyOffset;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: TextButton.icon(
+        icon: _loadingMore
+            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+            : const Icon(Icons.expand_less, size: 18),
+        label: Text(_loadingMore ? '加载中...' : '查看更早对话 ($remaining 条)',
+            style: const TextStyle(fontSize: 13)),
+        onPressed: _loadingMore ? null : _loadMoreHistory,
+      ),
+    );
+  }
+
+  Future<void> _loadMoreHistory() async {
+    if (_loadingMore || _client == null) return;
+    setState(() => _loadingMore = true);
+    try {
+      final result = await _client!.getConversationTurns(
+        _convId, limit: _historyPageSize, offset: _historyOffset,
+      );
+      final more = (result['turns'] as List<dynamic>?)
+          ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
+      if (more.isNotEmpty && mounted) {
+        final ascMore = more.reversed.toList();
+        setState(() {
+          for (final turn in ascMore) {
+            _messages.insert(0, Message(
+              role: turn['role'] as String? ?? 'assistant',
+              content: turn['content'] as String? ?? '',
+              timestamp: DateTime.now(),
+            ));
+          }
+          _historyOffset += more.length;
+        });
+      }
+    } catch (e) {
+      debugPrint('_loadMoreHistory error: $e');
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -840,10 +921,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 // 清空旧消息并重新加载历史
                 setState(() => _messages.clear());
                 try {
-                  final history = await _client!.getConversationTurns(_convId);
+                  _isHistoryConversation = _convId.isNotEmpty;
+                  final result = await _client!.getConversationTurns(_convId, limit: _isHistoryConversation ? 5 : 50);
+                  final history = (result['turns'] as List<dynamic>?)
+                      ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
+                  _historyTotal = (result['total'] as int?) ?? 0;
+                  _historyOffset = history.length;
                   if (history.isNotEmpty && mounted) {
+                    final ascTurns = history.reversed.toList();
                     setState(() {
-                      for (final turn in history) {
+                      for (final turn in ascTurns) {
                         _messages.add(Message(
                           role: turn['role'] as String? ?? 'assistant',
                           content: turn['content'] as String? ?? '',
@@ -919,12 +1006,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           Expanded(
             child: _isInitializing
                 ? const ChatSkeleton()
-                : ListView.builder(
-              controller: _scrollController,
-              itemCount: _messages.length,
-              padding: const EdgeInsets.all(16),
-              itemBuilder: (_, i) {
-                final msg = _messages[i];
+                : Column(
+              children: [
+                if (_isHistoryConversation && _historyOffset < _historyTotal)
+                  _buildLoadMoreButton(),
+                Expanded(
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    itemCount: _messages.length,
+                    padding: const EdgeInsets.all(16),
+                    itemBuilder: (_, i) {
+                      final msg = _messages[i];
                 final isUser = msg.role == 'user';
                 final isStreaming = i == _streamingIndex;
                 return Column(
@@ -1012,6 +1104,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       ],
                 );
               },
+            ),
+              ),
+            ],
             ),
           ),
           if (_isWaiting)

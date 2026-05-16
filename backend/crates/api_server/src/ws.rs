@@ -9,7 +9,21 @@ use axum::extract::ws::{Message, WebSocket};
 use chat_engine::llm_caller::{LlmCaller, LlmEvent};
 use serde_json::json;
 use tokio::sync::mpsc;
+use std::sync::{LazyLock, Arc};
 use std::time::Duration;
+use std::future;
+
+/// 全局踢下线通知: user_id → Notify
+static KICK_NOTIFIERS: LazyLock<tokio::sync::Mutex<std::collections::HashMap<String, Arc<tokio::sync::Notify>>>> =
+    LazyLock::new(|| tokio::sync::Mutex::new(std::collections::HashMap::new()));
+
+/// 通知指定用户的所有旧 WS 连接被踢下线（新设备登录时调用）
+pub async fn kick_user_connections(user_id: &str) {
+    let lock = KICK_NOTIFIERS.lock().await;
+    if let Some(notify) = lock.get(user_id) {
+        notify.notify_one();
+    }
+}
 
 /// 内部使用，含可选 token 字段的反序列化结构
 #[derive(serde::Deserialize)]
@@ -27,9 +41,11 @@ pub async fn handle_ws(mut ws: WebSocket) {
     let mut next_turn_to_show: u32 = 0;
     let mut pending_candidates: std::collections::BTreeMap<u32, Vec<serde_json::Value>> = std::collections::BTreeMap::new();
     let mut token_verified = false;
+    let mut kick_notify: Option<Arc<tokio::sync::Notify>> = None;
 
     loop {
         tokio::select! {
+            biased;
             // ── 接收用户消息（HotPath） ──
             msg = ws.recv() => {
                 let text = match msg {
@@ -55,6 +71,12 @@ pub async fn handle_ws(mut ws: WebSocket) {
                             let conn = crate::db_pool::get_conn();
                             if crate::auth::verify_token(&conn, &raw_req.user_id, token) {
                                 token_verified = true;
+                                // 注册踢下线通知（单设备登录强制）
+                                let mut lock = KICK_NOTIFIERS.lock().await;
+                                let notify = lock.entry(raw_req.user_id.clone())
+                                    .or_insert_with(|| Arc::new(tokio::sync::Notify::new()))
+                                    .clone();
+                                kick_notify = Some(notify);
                             } else {
                                 let _ = ws.send(Message::Text(
                                     json!({"type":"error","content":"invalid_token"}).to_string().into()
@@ -388,6 +410,16 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     }).collect();
                     let _ = cold_tx.send((cold_turn, candidates)).await;
                 });
+            }
+
+            // ── 踢下线信号（单设备登录强制） ──
+            _ = async {
+                if let Some(ref n) = kick_notify { n.notified().await } else { future::pending().await }
+            } => {
+                let _ = ws.send(Message::Text(
+                    json!({"type":"kicked","content":"您的账号已在其他设备登录，当前连接已断开"}).to_string().into()
+                )).await;
+                break;
             }
 
             // ── 接收 ColdPath 结果（排队按轮次输出） ──

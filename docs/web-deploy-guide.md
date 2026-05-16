@@ -451,6 +451,26 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
   sudo nginx -t && sudo nginx -s reload
 '
 ```
+---
+
+### 6.7 WebSocket 长时间空闲后断连
+
+**症状**：闲置几分钟后再次发送消息无响应，需要刷新页面才能恢复
+
+**原因**：Nginx 默认 `proxy_read_timeout = 60s`，超过 60 秒无数据传输即关闭 WebSocket 连接
+
+**修复**：
+```bash
+ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
+  sudo sed -i "/location \/ws {/,/}/ {
+    /proxy_pass.*8080\/ws/ a\\        proxy_read_timeout 86400s;
+  }" /etc/nginx/sites-available/coevo-landing
+  sudo sed -i "/location \/ws {/,/}/ {
+    /proxy_pass.*8080\/ws/ a\\        proxy_read_timeout 86400s;
+  }" /etc/nginx/sites-available/coevo-admin
+  sudo nginx -t && sudo nginx -s reload
+'
+```
 
 ---
 

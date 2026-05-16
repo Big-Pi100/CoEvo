@@ -231,25 +231,29 @@ class ChatClient {
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }
 
-  /// 获取指定对话的轮次
-  Future<List<Map<String, dynamic>>> getConversationTurns(String convId) async {
+  /// 获取指定对话的轮次（支持分页，offset=0 为最新）
+  /// 返回 {turns, total}
+  Future<Map<String, dynamic>> getConversationTurns(String convId, {int limit = 50, int offset = 0}) async {
     try {
       final uri = Uri.parse('$baseUrl/api/history').replace(queryParameters: {
         'user_id': userId,
         'conversation_id': convId,
-        'limit': '50',
+        'limit': limit.toString(),
+        'offset': offset.toString(),
       });
       final resp = await http.get(uri, headers: _authHeaders)
           .timeout(ApiConfig.requestTimeout);
-      if (resp.statusCode != 200) return [];
+      if (resp.statusCode != 200) return {'turns': [], 'total': 0};
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
-      // 检查是否有 error（BIG-5 鉴权失败等情况）
-      if (data.containsKey('error')) return [];
-      return (data['turns'] as List<dynamic>?)
-          ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
+      if (data.containsKey('error')) return {'turns': [], 'total': 0};
+      return {
+        'turns': (data['turns'] as List<dynamic>?)
+            ?.map((e) => e as Map<String, dynamic>).toList() ?? [],
+        'total': data['total'] as int? ?? 0,
+      };
     } catch (e) {
       debugPrint('getConversationTurns error: $e');
-      return [];
+      return {'turns': [], 'total': 0};
     }
   }
 

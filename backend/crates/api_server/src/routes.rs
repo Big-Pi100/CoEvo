@@ -103,7 +103,11 @@ async fn auth_login(Json(input): Json<AuthInput>) -> Json<serde_json::Value> {
         })
     };
     match result {
-        Ok(resp) => Json(serde_json::json!(resp)),
+        Ok(resp) => {
+            // 踢掉同一用户的其他 WS 连接（单设备登录强制）
+            crate::ws::kick_user_connections(&resp.user_id).await;
+            Json(serde_json::json!(resp))
+        },
         Err(e) => Json(serde_json::json!({"error": e})),
     }
 }
@@ -846,6 +850,8 @@ pub struct HistoryQuery {
     pub limit: Option<i64>,
     /// "only"=仅已删除, "true"=全部, 默认=仅活跃
     pub include_deleted: Option<String>,
+    /// 分页偏移（仅 conversation_id 模式有效），默认 0
+    pub offset: Option<i64>,
 }
 
 /// GET /api/cards/{card_id}/last-review — 最近一次考试详情
@@ -900,14 +906,15 @@ async fn history_handler(
     let limit = query.limit.unwrap_or(50).min(200);
 
     if let Some(conv_id) = &query.conversation_id {
-        // 查询指定对话的轮次
+        // 查询指定对话的轮次（支持分页：offset=0 为最新）
+        let offset = query.offset.unwrap_or(0).max(0);
         let mut stmt = conn.prepare(
             "SELECT id, role, content, created_at
              FROM conversation_turns WHERE conversation_id = ?1
-             ORDER BY created_at ASC LIMIT ?2"
+             ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"
         ).unwrap();
         let turns: Vec<serde_json::Value> = stmt.query_map(
-            rusqlite::params![conv_id, limit],
+            rusqlite::params![conv_id, limit, offset],
             |row| Ok(serde_json::json!({
                 "id": row.get::<_, String>(0)?,
                 "role": row.get::<_, String>(1)?,
@@ -915,10 +922,17 @@ async fn history_handler(
                 "created_at": row.get::<_, String>(3)?,
             }))
         ).unwrap().filter_map(|r| r.ok()).collect();
+        // 获取总轮次数（用于前端判断"还有更多"）
+        let total: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM conversation_turns WHERE conversation_id = ?1",
+            rusqlite::params![conv_id],
+            |row| row.get(0),
+        ).unwrap_or(0);
         return Json(serde_json::json!({
             "conversation_id": conv_id,
             "turns": turns,
             "count": turns.len(),
+            "total": total,
         }));
     }
 

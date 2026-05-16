@@ -435,6 +435,7 @@ AI 批量评判用户答案。
 - `user_id` (required)
 - `conversation_id` (可选) — 指定对话则返回轮次
 - `limit` (默认 50, 最大 200)
+- `offset` (可选, 默认 0) — 分页偏移。offset=0 为最新轮次，返回 DESC 排序
 - `include_deleted` (可选) — `"only"`=仅已删除, `"true"`=全部, 默认仅活跃
 
 **Response 401:**
@@ -459,15 +460,18 @@ AI 批量评判用户答案。
 }
 ```
 
-**有 conversation_id（轮次列表）:**
+**有 conversation_id（轮次列表，DESC 排序）:**
 ```json
 {
-  "user_id": "...",
+  "conversation_id": "conv_...",
   "turns": [
-    {"id": "turn_uuid", "role": "user", "content": "...", "created_at": "..."},
-    {"id": "turn_uuid", "role": "assistant", "content": "...", "created_at": "..."}
-  ]
+    {"id": "turn_uuid", "role": "assistant", "content": "...", "created_at": "..."},
+    {"id": "turn_uuid", "role": "user", "content": "...", "created_at": "..."}
+  ],
+  "count": 2,
+  "total": 47
 }
+```
 ```
 
 ---
