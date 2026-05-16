@@ -254,7 +254,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 }
 
                 // ── 解析学习计划更新（共用 plan_handler 模块） ──
-                let plan_updated;
+                let mut plan_updated;
                 {
                     let conn = crate::db_pool::get_conn();
                     let result = crate::plan_handler::handle_plan_update(
@@ -316,6 +316,17 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     "type": "done",
                     "reply": final_reply,
                 }).to_string().into())).await;
+
+                // ── 代码层兜底：若 LLM 未处理回退请求，自动回退 ──
+                if !plan_updated && crate::plan_handler::check_revert_signals(&chat_req.message) {
+                    if let Some(_plan) = {
+                        let conn = crate::db_pool::get_conn();
+                        crate::plan_handler::auto_revert(&conn, &chat_req.conversation_id)
+                    } {
+                        plan_updated = true;
+                        tracing::info!("Auto-revert triggered by user message: {}", &chat_req.message[..chat_req.message.len().min(80)]);
+                    }
+                }
 
                 // 通知前端刷新计划
                 if plan_updated {

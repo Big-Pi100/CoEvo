@@ -9,6 +9,14 @@ class GraphWidget extends StatelessWidget {
 
   const GraphWidget({super.key, required this.jsonStr});
 
+  /// 安全提取 List — 处理 LLM 生成的非标准 JSON（如将数组写成对象）
+  static List _safeList(dynamic value) {
+    if (value == null) return [];
+    if (value is List) return value;
+    // LLM 可能把单元素写成对象, 或把 null/数字/字符串当成数组
+    return [];
+  }
+
   @override
   Widget build(BuildContext context) {
     Map<String, dynamic> data;
@@ -55,7 +63,7 @@ class GraphWidget extends StatelessWidget {
 
   // ── fl_chart 折线图 ──
   Widget _buildLineChart(Map<String, dynamic> data) {
-    final List rawData = data['data'] as List? ?? [];
+    final List rawData = _safeList(data['data']);
     final spots = rawData.map((p) {
       final m = p as Map<String, dynamic>;
       return FlSpot((m['x'] as num).toDouble(), (m['y'] as num).toDouble());
@@ -158,7 +166,7 @@ class GraphWidget extends StatelessWidget {
 
   // ── fl_chart 柱状图 ──
   Widget _buildBarChart(Map<String, dynamic> data) {
-    final List rawData = data['data'] as List? ?? [];
+    final List rawData = _safeList(data['data']);
     final groups = rawData.asMap().entries.map((e) {
       final m = e.value as Map<String, dynamic>;
       return BarChartGroupData(
@@ -227,7 +235,7 @@ class GraphWidget extends StatelessWidget {
 
   // ── fl_chart 散点图 ──
   Widget _buildScatterChart(Map<String, dynamic> data) {
-    final List rawData = data['data'] as List? ?? [];
+    final List rawData = _safeList(data['data']);
     final spots = rawData.map((p) {
       final m = p as Map<String, dynamic>;
       return ScatterSpot((m['x'] as num).toDouble(), (m['y'] as num).toDouble());
@@ -278,7 +286,7 @@ class GraphWidget extends StatelessWidget {
 
   // ── fl_chart 扇形图 ──
   Widget _buildPieChart(Map<String, dynamic> data) {
-    final List rawData = data['data'] as List? ?? [];
+    final List rawData = _safeList(data['data']);
     final colors = [0xFF6C63FF, 0xFFFF6B6B, 0xFF4ECDC4, 0xFFFFD93D, 0xFFA78BFA, 0xFFFB923C, 0xFF34D399, 0xFF60A5FA];
     final sections = rawData.asMap().entries.map((e) {
       final m = e.value as Map<String, dynamic>;
@@ -327,7 +335,7 @@ class GraphWidget extends StatelessWidget {
 
   // ── CustomPainter 多边形 ──
   Widget _buildPolygon(Map<String, dynamic> data, BuildContext context) {
-    final List raw = data['points'] as List? ?? [];
+    final List raw = _safeList(data['points']);
     final points = raw.map((p) {
       final m = p as Map<String, dynamic>;
       return Offset((m['x'] as num).toDouble(), (m['y'] as num).toDouble());
@@ -336,13 +344,13 @@ class GraphWidget extends StatelessWidget {
 
     final title = data['title'] as String? ?? '';
     // 顶点标签
-    final rawLabels = data['labels'] as List?;
+    final rawLabels = _safeList(data['labels']);
     final labels = rawLabels?.map((l) => l.toString()).toList() ?? <String>[];
     // 直角顶点索引
-    final rawAngles = data['rightAngles'] as List?;
+    final rawAngles = _safeList(data['rightAngles']);
     final rightAngles = rawAngles?.map((a) => a as int).toSet() ?? <int>{};
     // 角度弧线: [{"vertex":0,"label":"30°","startAngle":0,"sweepAngle":30}]
-    final rawAngleArcs = data['angles'] as List?;
+    final rawAngleArcs = _safeList(data['angles']);
     final angleArcs = rawAngleArcs?.map((a) {
       final m = a as Map<String, dynamic>;
       return _AngleArc(
@@ -403,7 +411,7 @@ class GraphWidget extends StatelessWidget {
     final radius = (data['radius'] as num?)?.toDouble() ?? 1;
     final title = data['title'] as String? ?? '';
     // 切线: [{"from":{"x":-5,"y":0},"to":{"x":-3,"y":0}}]
-    final rawTangents = data['tangents'] as List?;
+    final rawTangents = _safeList(data['tangents']);
     final tangents = rawTangents?.map((t) {
       final m = t as Map<String, dynamic>;
       final from = m['from'] as Map<String, dynamic>;
@@ -415,7 +423,7 @@ class GraphWidget extends StatelessWidget {
       );
     }).toList() ?? <_ArrowData>[];
     // 圆上角度弧线标记
-    final rawAngleArcs2 = data['angles'] as List?;
+    final rawAngleArcs2 = _safeList(data['angles']);
     final angleArcs2 = rawAngleArcs2?.map((a) {
       final m = a as Map<String, dynamic>;
       return _AngleArc(
@@ -469,7 +477,7 @@ class GraphWidget extends StatelessWidget {
 
   // ── 箭头图：向量、力分析 ──
   Widget _buildArrowChart(Map<String, dynamic> data, BuildContext context) {
-    final List raw = data['arrows'] as List? ?? [];
+    final List raw = _safeList(data['arrows']);
     final arrows = raw.map((a) {
       final m = a as Map<String, dynamic>;
       final from = m['from'] as Map<String, dynamic>;

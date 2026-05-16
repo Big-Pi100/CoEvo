@@ -186,8 +186,78 @@ fn apply_plan_mutations(
         plan["completed_concepts"] = json!(all);
     }
 
+    // ── 子阶段进度更新 (task_sub_steps) ──
+    if let Some(sub_steps) = update.get("task_sub_steps") {
+        if let Some(stages) = plan["stages"].as_array_mut() {
+            for stage in stages.iter_mut() {
+                if stage["status"] == "in_progress" || stage["status"] == "pending" {
+                    if let Some(tasks) = stage["tasks"].as_array_mut() {
+                        for task in tasks.iter_mut() {
+                            if task["status"] == "in_progress" {
+                                let mut existing = task.get("sub_steps")
+                                    .cloned()
+                                    .unwrap_or(json!({"teach": "pending", "examples": "pending", "quiz": "pending"}));
+                                if let Some(obj) = existing.as_object_mut() {
+                                    if let Some(v) = sub_steps.get("teach").and_then(|s| s.as_str()) {
+                                        obj.insert("teach".to_string(), json!(v));
+                                    }
+                                    if let Some(v) = sub_steps.get("examples").and_then(|s| s.as_str()) {
+                                        obj.insert("examples".to_string(), json!(v));
+                                    }
+                                    if let Some(v) = sub_steps.get("quiz").and_then(|s| s.as_str()) {
+                                        obj.insert("quiz".to_string(), json!(v));
+                                    }
+                                }
+                                task["sub_steps"] = existing;
+                                break;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
     // 标记当前任务完成并推进下一任务
-    if update.get("current_task_complete").and_then(|c| c.as_bool()).unwrap_or(false) {
+    // 检查两个位置：顶层（规范格式）和 assessment 内（LLM 常见格式漂移）
+    let task_complete = update.get("current_task_complete")
+        .and_then(|c| c.as_bool())
+        .or_else(|| update.get("assessment").and_then(|a| a.get("current_task_complete")).and_then(|c| c.as_bool()))
+        .unwrap_or(false);
+    if task_complete {
+        // ── 子阶段完整性检查 ──
+        // 若任务有 sub_steps 但未全部 done，拒绝推进
+        if let Some(stages_check) = plan["stages"].as_array() {
+            for stage in stages_check {
+                if stage["status"] == "in_progress" || stage["status"] == "pending" {
+                    if let Some(tasks) = stage["tasks"].as_array() {
+                        for task in tasks {
+                            if task["status"] == "in_progress" {
+                                if let Some(ss) = task.get("sub_steps") {
+                                    let teach = ss["teach"].as_str().unwrap_or("pending");
+                                    let examples = ss["examples"].as_str().unwrap_or("pending");
+                                    let quiz = ss["quiz"].as_str().unwrap_or("pending");
+                                    if teach != "done" || examples != "done" || quiz != "done" {
+                                        tracing::warn!(
+                                            "BLOCKED: current_task_complete=true but sub_steps incomplete. \
+                                            teach={}, examples={}, quiz={}",
+                                            teach, examples, quiz
+                                        );
+                                        return None; // 拒绝推进
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        tracing::debug!("Plan mutation: current_task_complete=true (source: {})",
+            if update.get("current_task_complete").and_then(|c| c.as_bool()).is_some() { "top-level" } else { "assessment" });
         if let Some(stages) = plan["stages"].as_array_mut() {
             for stage in stages.iter_mut() {
                 if stage["status"] == "in_progress" || stage["status"] == "pending" {
@@ -258,13 +328,144 @@ fn apply_plan_mutations(
         }
     }
 
+    // LLM 超前更新回退：将当前 in_progress 任务回退到 pending，恢复上一 done 任务
+    if update.get("reset_current_task").and_then(|v| v.as_bool()).unwrap_or(false) {
+        if let Some(stages) = plan["stages"].as_array_mut() {
+            for stage in stages.iter_mut() {
+                if stage["status"] == "in_progress" {
+                    if let Some(tasks) = stage["tasks"].as_array_mut() {
+                        // 找到当前 in_progress 任务 → 回退为 pending
+                        let mut current_idx = None;
+                        for i in 0..tasks.len() {
+                            if tasks[i]["status"] == "in_progress" {
+                                tasks[i]["status"] = json!("pending");
+                                current_idx = Some(i);
+                                break;
+                            }
+                        }
+                        // 找到上一个 done 任务 → 恢复为 in_progress
+                        if let Some(idx) = current_idx {
+                            if idx > 0 {
+                                for j in (0..idx).rev() {
+                                    if tasks[j]["status"] == "done" {
+                                        tasks[j]["status"] = json!("in_progress");
+                                        break;
+                                    }
+                                }
+                            }
+                            // 如果本阶段没有上一个 done 任务，检查上一阶段
+                            if tasks.iter().any(|t| t["status"] == "done") {
+                                // 本阶段有 done 任务但 idx==0，说明 done 在前面被跳过了
+                                // 这种情况不应该发生，但以防万一：找最后一个 done
+                                if idx == 0 {
+                                    for j in (0..tasks.len()).rev() {
+                                        if tasks[j]["status"] == "done" {
+                                            tasks[j]["status"] = json!("in_progress");
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // 如果当前阶段全部 pending/done 且 stage 是 done，回退为 in_progress
+                        if stage["status"] == "done" {
+                            stage["status"] = json!("in_progress");
+                        }
+                        // 如果下一阶段是 in_progress，回退为 pending
+                        // (需要在外部循环或后续逻辑中处理)
+                    }
+                    break;
+                }
+            }
+        }
+        tracing::debug!("Plan mutation: reset_current_task=true — task reverted");
+    }
+
     // 持久化更新后的 plan
     let now = chrono::Utc::now().to_rfc3339();
-    let _ = conn.execute(
+    if let Err(e) = conn.execute(
         "UPDATE learning_plans SET plan_json = ?1, updated_at = ?2 WHERE id = ?3",
         rusqlite::params![plan.to_string(), now, plan_id],
-    );
+    ) {
+        tracing::error!("Plan mutation DB write failed: {} (plan_id={})", e, plan_id);
+        return None;  // 写入失败则不返回 plan，避免前端加载到旧数据
+    }
 
+    Some(plan)
+}
+
+/// 检测用户消息是否包含回退信号关键词
+///
+/// 当 LLM 未能主动使用 reset_current_task 时，
+/// 由代码层自动检测并触发回退。
+pub fn check_revert_signals(user_message: &str) -> bool {
+    let signals = [
+        "回退", "退回去", "还没学会", "没学会", "不理解",
+        "不懂", "没懂", "跳太快", "跳得太快", "太快了",
+        "进度错了", "进度不对", "进度有问题", "状态错了",
+        "标记错了", "超前", "还没掌握", "没掌握",
+        "重新学", "再学一遍", "倒回去",
+    ];
+    let msg_lower = user_message.to_lowercase();
+    signals.iter().any(|s| msg_lower.contains(s))
+}
+
+/// 自动回退计划（代码层兜底）。
+/// 当 LLM 未能处理回退请求时，由调用方直接调用此函数。
+pub fn auto_revert(conn: &rusqlite::Connection, conversation_id: &str) -> Option<serde_json::Value> {
+    let plan_row: Option<(String, String)> = conn.query_row(
+        "SELECT id, plan_json FROM learning_plans WHERE conversation_id = ?1 AND mode = 'structured' ORDER BY updated_at DESC LIMIT 1",
+        rusqlite::params![conversation_id],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+    ).ok();
+
+    let (plan_id, plan_str) = plan_row?;
+    let mut plan = serde_json::from_str::<serde_json::Value>(&plan_str).ok()?;
+
+    let changed = if let Some(stages) = plan["stages"].as_array_mut() {
+        let mut modified = false;
+        for stage in stages.iter_mut() {
+            if stage["status"] == "in_progress" {
+                if let Some(tasks) = stage["tasks"].as_array_mut() {
+                    for i in 0..tasks.len() {
+                        if tasks[i]["status"] == "in_progress" {
+                            tasks[i]["status"] = serde_json::json!("pending");
+                            // 恢复上一个 done 任务
+                            if i > 0 {
+                                for j in (0..i).rev() {
+                                    if tasks[j]["status"] == "done" {
+                                        tasks[j]["status"] = serde_json::json!("in_progress");
+                                        break;
+                                    }
+                                }
+                            }
+                            modified = true;
+                            break;
+                        }
+                    }
+                }
+                if modified { break; }
+            }
+        }
+        modified
+    } else {
+        false
+    };
+
+    if !changed {
+        return None;
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+    if let Err(e) = conn.execute(
+        "UPDATE learning_plans SET plan_json = ?1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![plan.to_string(), now, plan_id],
+    ) {
+        tracing::error!("Auto-revert DB write failed: {} (plan_id={})", e, plan_id);
+        return None;
+    }
+
+    tracing::info!("Auto-revert applied for conversation {}", conversation_id);
     Some(plan)
 }
 
@@ -471,5 +672,185 @@ mod tests {
         // 回归测试：长字符串不卡死
         let bad5 = format!(r#"{{"k": "{}"}}"#, "\\d".repeat(100));
         let _ = repair_json_backslashes(&bad5); // 不挂即可
+    }
+
+    #[test]
+    fn test_current_task_complete_in_assessment() {
+        // 验证 LLM 将 current_task_complete 嵌套在 assessment 内时也能识别
+        use crate::plan_handler::handle_plan_update;
+        use rusqlite::Connection;
+        use serde_json::json;
+
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("
+            CREATE TABLE learning_plans (id TEXT, user_id TEXT, conversation_id TEXT, goal TEXT, domain TEXT, mode TEXT, plan_json TEXT, created_at TEXT, updated_at TEXT);
+            INSERT INTO learning_plans VALUES ('p1', 'u1', 'c1', 'test', '', 'structured', ?, '2024-01-01', '2024-01-01');
+        ").unwrap();
+
+        // 初始计划：Task1 in_progress, Task2 pending
+        let plan = json!({
+            "stages": [{
+                "name": "基础", "status": "in_progress",
+                "tasks": [
+                    {"name": "Task1", "status": "in_progress"},
+                    {"name": "Task2", "status": "pending"}
+                ]
+            }],
+            "completed_concepts": []
+        });
+        conn.execute("UPDATE learning_plans SET plan_json=?1 WHERE id='p1'",
+            rusqlite::params![plan.to_string()]).unwrap();
+
+        // LLM 格式漂移：current_task_complete 嵌套在 assessment 内，顶层无此字段
+        let reply = format!("回答内容\n\n<plan_update>\n{}\n</plan_update>", json!({
+            "completed_concepts": ["概念1"],
+            "assessment": {
+                "task": "Task1",
+                "passed": true,
+                "current_task_complete": true
+            }
+        }));
+
+        let result = handle_plan_update(&conn, &reply, "c1", "u1");
+        assert!(result.plan_updated, "plan should be updated");
+
+        let plan = result.plan_json.unwrap();
+        let tasks = plan["stages"][0]["tasks"].as_array().unwrap();
+        assert_eq!(tasks[0]["status"], "done", "Task1 should be marked done");
+        assert_eq!(tasks[1]["status"], "in_progress", "Task2 should be activated");
+    }
+
+    #[test]
+    fn test_reset_current_task_revert() {
+        // 验证 LLM 超前更新后可以通过 reset_current_task 回退
+        use crate::plan_handler::handle_plan_update;
+        use rusqlite::Connection;
+        use serde_json::json;
+
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("
+            CREATE TABLE learning_plans (id TEXT, user_id TEXT, conversation_id TEXT, goal TEXT, domain TEXT, mode TEXT, plan_json TEXT, created_at TEXT, updated_at TEXT);
+            INSERT INTO learning_plans VALUES ('p1', 'u1', 'c1', 'test', '', 'structured', ?, '2024-01-01', '2024-01-01');
+        ").unwrap();
+
+        // 模拟超前更新后的状态：Task1 done, Task2 in_progress（但用户实际还没学完 Task1）
+        let plan = json!({
+            "stages": [{
+                "name": "基础", "status": "in_progress",
+                "tasks": [
+                    {"name": "Task1", "status": "done"},
+                    {"name": "Task2", "status": "in_progress"}
+                ]
+            }],
+            "completed_concepts": ["概念1"]
+        });
+        conn.execute("UPDATE learning_plans SET plan_json=?1 WHERE id='p1'",
+            rusqlite::params![plan.to_string()]).unwrap();
+
+        // LLM 意识到超前，发送回退
+        let reply = format!("抱歉我跳得太快了\n\n<plan_update>\n{}\n</plan_update>", json!({
+            "reset_current_task": true
+        }));
+
+        let result = handle_plan_update(&conn, &reply, "c1", "u1");
+        assert!(result.plan_updated, "plan should be updated");
+
+        let plan = result.plan_json.unwrap();
+        let tasks = plan["stages"][0]["tasks"].as_array().unwrap();
+        assert_eq!(tasks[0]["status"], "in_progress", "Task1 should be restored to in_progress");
+        assert_eq!(tasks[1]["status"], "pending", "Task2 should be reverted to pending");
+    }
+
+    #[test]
+    fn test_check_revert_signals() {
+        assert!(check_revert_signals("等一下，我还没学会，能回退吗"));
+        assert!(check_revert_signals("这个我不理解，需要重新学"));
+        assert!(check_revert_signals("跳太快了，进度不对"));
+        assert!(check_revert_signals("你标记错了，这部分我还没掌握"));
+        assert!(check_revert_signals("我完全没懂，能倒回去吗"));
+        assert!(!check_revert_signals("好的，我理解了"));
+        assert!(!check_revert_signals("继续下一个"));
+        assert!(!check_revert_signals("这个例子很好"));
+    }
+
+    #[test]
+    fn test_auto_revert() {
+        use rusqlite::Connection;
+        use serde_json::json;
+
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("
+            CREATE TABLE learning_plans (id TEXT, user_id TEXT, conversation_id TEXT, goal TEXT, domain TEXT, mode TEXT, plan_json TEXT, created_at TEXT, updated_at TEXT);
+            INSERT INTO learning_plans VALUES ('p1', 'u1', 'c1', 'test', '', 'structured', ?, '2024-01-01', '2024-01-01');
+        ").unwrap();
+
+        let plan = json!({
+            "stages": [{
+                "name": "基础", "status": "in_progress",
+                "tasks": [
+                    {"name": "Task1", "status": "done"},
+                    {"name": "Task2", "status": "in_progress"}
+                ]
+            }],
+            "completed_concepts": []
+        });
+        conn.execute("UPDATE learning_plans SET plan_json=?1 WHERE id='p1'",
+            rusqlite::params![plan.to_string()]).unwrap();
+
+        let result = auto_revert(&conn, "c1").expect("auto_revert should succeed");
+        let tasks = result["stages"][0]["tasks"].as_array().unwrap();
+        assert_eq!(tasks[0]["status"], "in_progress", "Task1 should be restored");
+        assert_eq!(tasks[1]["status"], "pending", "Task2 should be reverted");
+    }
+
+    #[test]
+    fn test_sub_steps_block_completion() {
+        // 验证子阶段未全部 done 时，current_task_complete 被拒绝
+        use rusqlite::Connection;
+        use serde_json::json;
+
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("
+            CREATE TABLE learning_plans (id TEXT, user_id TEXT, conversation_id TEXT, goal TEXT, domain TEXT, mode TEXT, plan_json TEXT, created_at TEXT, updated_at TEXT);
+            INSERT INTO learning_plans VALUES ('p1', 'u1', 'c1', 'test', '', 'structured', ?, '2024-01-01', '2024-01-01');
+        ").unwrap();
+
+        // 任务含 sub_steps 但 quiz 未完成
+        let plan = json!({
+            "stages": [{
+                "name": "基础", "status": "in_progress",
+                "tasks": [{
+                    "name": "Task1", "status": "in_progress",
+                    "sub_steps": {"teach": "done", "examples": "done", "quiz": "pending"}
+                }]
+            }],
+            "completed_concepts": []
+        });
+        conn.execute("UPDATE learning_plans SET plan_json=?1 WHERE id='p1'",
+            rusqlite::params![plan.to_string()]).unwrap();
+
+        // 尝试推进 — 应被拒绝
+        let reply = format!("<plan_update>\n{}\n</plan_update>", json!({
+            "current_task_complete": true
+        }));
+        let result = handle_plan_update(&conn, &reply, "c1", "u1");
+        assert!(!result.plan_updated, "sub_steps incomplete → should block");
+
+        // 现在完成 quiz
+        let reply2 = format!("<plan_update>\n{}\n</plan_update>", json!({
+            "task_sub_steps": {"quiz": "done"}
+        }));
+        let result2 = handle_plan_update(&conn, &reply2, "c1", "u1");
+        assert!(result2.plan_updated, "sub_steps update should work");
+        let quiz_status = result2.plan_json.as_ref().unwrap()["stages"][0]["tasks"][0]["sub_steps"]["quiz"].as_str().unwrap();
+        assert_eq!(quiz_status, "done");
+
+        // 现在推进 — 应成功
+        let reply3 = format!("<plan_update>\n{}\n</plan_update>", json!({
+            "current_task_complete": true
+        }));
+        let result3 = handle_plan_update(&conn, &reply3, "c1", "u1");
+        assert!(result3.plan_updated, "sub_steps all done → should complete");
+        assert_eq!(result3.plan_json.unwrap()["stages"][0]["tasks"][0]["status"], "done");
     }
 }

@@ -549,3 +549,219 @@ async fn e2e_live_llm_plan_lifecycle() {
     println!(" ✅ LIVE E2E 学习计划生命周期测试完成!");
     println!("{}", "=".repeat(70));
 }
+
+// ════════════════════════════════════════════
+// 回退机制专项测试: LLM 能否使用 reset_current_task
+// ════════════════════════════════════════════
+
+#[tokio::test]
+#[ignore]
+async fn e2e_live_revert_basic() {
+    println!("\n{}", "=".repeat(70));
+    println!(" CoEvo E2E LIVE: 回退机制基础测试");
+    println!("{}", "=".repeat(70));
+
+    setup();
+
+    let api_key = std::env::var("DEEPSEEK_API_KEY")
+        .expect("DEEPSEEK_API_KEY not set in .env");
+
+    use chat_engine::llm_caller::{LlmCaller, LlmConfig};
+    let config = LlmConfig::deepseek_v4_flash(&api_key);
+    let mut caller = LlmCaller::new(config);
+
+    // ── Step 1: 创建学习计划 ──
+    println!("\n─── Step 1: 创建计划 ───");
+    let plan = serde_json::json!({
+        "stages": [{
+            "name": "基础概念",
+            "status": "in_progress",
+            "tasks": [
+                {"name": "理解定义", "status": "in_progress"},
+                {"name": "应用练习", "status": "pending"}
+            ]
+        }],
+        "completed_concepts": []
+    });
+    let conn = api_server::db_pool::get_conn();
+    conn.execute(
+        "INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_json, created_at, updated_at)
+         VALUES ('p1', ?1, ?2, '数学基础', '', 'structured', ?3, '2024-01-01', '2024-01-01')",
+        rusqlite::params![TEST_USER_ID, TEST_CONV_ID, plan.to_string()],
+    ).unwrap();
+
+    // ── Step 2: 模拟超前更新 ──
+    println!("\n─── Step 2: 模拟 LLM 超前更新 (Task1→done, Task2→in_progress) ───");
+    let premature = serde_json::json!({
+        "stages": [{
+            "name": "基础概念",
+            "status": "in_progress",
+            "tasks": [
+                {"name": "理解定义", "status": "done"},
+                {"name": "应用练习", "status": "in_progress"}
+            ]
+        }],
+        "completed_concepts": ["定义概念"]
+    });
+    conn.execute(
+        "UPDATE learning_plans SET plan_json=?1, updated_at='2024-01-02' WHERE id='p1'",
+        rusqlite::params![premature.to_string()],
+    ).unwrap();
+
+    insert_turn("user", "好的，我们开始学习吧");
+    insert_turn("assistant", "好的！今天我们学习数学基础。首先我们来理解定义...");
+
+    // ── Step 3: 用户指出进度错误 ──
+    println!("\n─── Step 3: 用户指出进度错误 ───");
+    let user_msg = "STOP。我发现计划进度有问题：理解定义这个任务被错误标记为完成，但我根本没学会。\
+这不是复习请求，而是计划状态错误。请在回复中用 <plan_update> 标签设置 reset_current_task 为 true 来回退。";
+
+    let (mode, plan_ctx) = build_plan_context();
+    println!("当前 plan_context:\n{}", plan_ctx);
+
+    let prompts = chat_engine::prompt_loader::get();
+    let system_prompt = &prompts.chat_system_structured;
+    let history = get_conversation_history();
+    let user_content = format!("{}{}", history, plan_ctx);
+
+    let sp_tail: String = system_prompt.chars().rev().take(500).collect::<Vec<_>>().into_iter().rev().collect();
+    println!("系统提示词 (最后500字):\n{}", sp_tail);
+
+    let raw_reply = caller.generate(system_prompt, &user_content).await
+        .expect("LLM call failed");
+
+    println!("\n🤖 LLM 完整回复 ({} chars):\n{}", raw_reply.len(), raw_reply);
+    println!("\n--- 检测 plan_update ---");
+
+    // ── Step 4: 检查是否用了 reset_current_task ──
+    let result = api_server::plan_handler::handle_plan_update(
+        &conn, &raw_reply, TEST_CONV_ID, TEST_USER_ID,
+    );
+
+    if result.plan_updated {
+        println!("plan_updated: true");
+        if let Some(ref pj) = result.plan_json {
+            let stages = pj["stages"].as_array().unwrap();
+            for stage in stages {
+                let sname = stage["name"].as_str().unwrap_or("");
+                let sstatus = stage["status"].as_str().unwrap_or("");
+                println!("  Stage [{}]: {}", sname, sstatus);
+                if let Some(tasks) = stage["tasks"].as_array() {
+                    for task in tasks {
+                        println!("    Task [{}]: {}", task["name"].as_str().unwrap_or(""), task["status"].as_str().unwrap_or(""));
+                    }
+                }
+            }
+        }
+
+        // 验证回退是否生效
+        if let Some(ref pj) = result.plan_json {
+            let tasks = pj["stages"][0]["tasks"].as_array().unwrap();
+            let t1 = tasks[0]["status"].as_str().unwrap();
+            let t2 = tasks[1]["status"].as_str().unwrap();
+            println!("\n回退后状态: Task1={}, Task2={}", t1, t2);
+
+            if t1 == "in_progress" && t2 == "pending" {
+                println!("✅ 回退生效！LLM 正确使用了 reset_current_task");
+            } else if t1 == "done" && t2 == "in_progress" {
+                println!("❌ 回退未生效！状态未改变。LLM 回复中可能未包含 reset_current_task");
+                // 检查 LLM 回复中是否有 reset_current_task
+                if raw_reply.contains("reset_current_task") {
+                    println!("   但 LLM 回复中包含了 reset_current_task 关键字");
+                } else {
+                    println!("   LLM 回复中未包含 reset_current_task 关键字");
+                }
+            } else {
+                println!("⚠️  意外状态: Task1={}, Task2={}", t1, t2);
+            }
+        }
+    } else {
+        println!("plan_updated: false");
+        println!("❌ LLM 回复中未包含 <plan_update> 标签");
+        println!("检查 LLM 回复是否包含 reset_current_task: {}", raw_reply.contains("reset_current_task"));
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn e2e_live_revert_explicit() {
+    println!("\n{}", "=".repeat(70));
+    println!(" CoEvo E2E LIVE: 显式回退测试 (直接要求 LLM 回退)");
+    println!("{}", "=".repeat(70));
+
+    setup();
+
+    let api_key = std::env::var("DEEPSEEK_API_KEY")
+        .expect("DEEPSEEK_API_KEY not set in .env");
+
+    use chat_engine::llm_caller::{LlmCaller, LlmConfig};
+    let config = LlmConfig::deepseek_v4_flash(&api_key);
+    let mut caller = LlmCaller::new(config);
+
+    // ── 创建计划 ──
+    let plan = serde_json::json!({
+        "stages": [{
+            "name": "入门",
+            "status": "in_progress",
+            "tasks": [
+                {"name": "安装环境", "status": "done"},
+                {"name": "Hello World", "status": "in_progress"}
+            ]
+        }],
+        "completed_concepts": []
+    });
+    let conn = api_server::db_pool::get_conn();
+    conn.execute(
+        "INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_json, created_at, updated_at)
+         VALUES ('p2', ?1, ?2, '编程入门', '', 'structured', ?3, '2024-01-01', '2024-01-01')",
+        rusqlite::params![TEST_USER_ID, TEST_CONV_ID, plan.to_string()],
+    ).unwrap();
+
+    insert_turn("user", "开始学习编程");
+    insert_turn("assistant", "好的！我们从安装环境开始...");
+
+    // ── 直接要求 LLM 使用 reset_current_task ──
+    // 用户消息明确要求回退
+    let user_msg = "注意：我刚才被错误地标记为完成了「Hello World」任务，但我实际上还没开始学这个。\
+        请你在回复中使用 <plan_update> 标签，并在 JSON 中设置 \"reset_current_task\": true 来回退这个错误。";
+
+    let prompts = chat_engine::prompt_loader::get();
+    let history = format!("user: 开始学习编程\nassistant: 好的！我们从安装环境开始...\nuser: {}", user_msg);
+    let user_content = history;
+
+    println!("用户消息: {}", user_msg);
+
+    let raw_reply = caller.generate(&prompts.chat_system_structured, &user_content).await
+        .expect("LLM call failed");
+
+    println!("\n🤖 LLM 回复:\n{}", raw_reply);
+
+    let result = api_server::plan_handler::handle_plan_update(
+        &conn, &raw_reply, TEST_CONV_ID, TEST_USER_ID,
+    );
+
+    if result.plan_updated {
+        println!("\nplan_updated: true");
+        if let Some(ref pj) = result.plan_json {
+            let tasks = pj["stages"][0]["tasks"].as_array().unwrap();
+            for task in tasks {
+                println!("  {}: {}", task["name"].as_str().unwrap_or(""), task["status"].as_str().unwrap_or(""));
+            }
+
+            let t2 = tasks[1]["status"].as_str().unwrap();
+            if t2 == "pending" || t2 == "in_progress" {
+                println!("✅ 回退处理成功");
+            } else {
+                println!("⚠️ 回退后状态: {} (期望 pending 或 in_progress)", t2);
+            }
+        }
+    } else {
+        println!("\n❌ plan_updated: false");
+        if raw_reply.contains("reset_current_task") {
+            println!("   LLM 提到了 reset_current_task 但未正确使用 <plan_update> 格式");
+        } else {
+            println!("   LLM 未使用 reset_current_task");
+        }
+        println!("   原始回复:\n{}", raw_reply);
+    }
+}

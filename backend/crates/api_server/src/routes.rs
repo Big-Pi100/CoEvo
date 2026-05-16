@@ -361,8 +361,15 @@ async fn chat_handler(
     };
 
     // 6. Process plan updates + achievements
-    let (final_reply, plan_updated) =
+    let (final_reply, mut plan_updated) =
         process_plan_update(&raw_reply, &input.conversation_id, &input.user_id);
+
+    // 代码层兜底：若 LLM 未处理回退请求，自动回退
+    if !plan_updated && crate::plan_handler::check_revert_signals(&input.message) {
+        if crate::plan_handler::auto_revert(&crate::db_pool::get_conn(), &input.conversation_id).is_some() {
+            plan_updated = true;
+        }
+    }
 
     // 7. Extract candidate concepts (async, uses pre-queried data)
     let extraction = chat_engine::concept_extractor::extract_concepts(
