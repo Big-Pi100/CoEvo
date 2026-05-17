@@ -19,8 +19,10 @@ static KICK_NOTIFIERS: LazyLock<tokio::sync::Mutex<std::collections::HashMap<Str
 
 /// 通知指定用户的所有旧 WS 连接被踢下线（新设备登录时调用）
 pub async fn kick_user_connections(user_id: &str) {
-    let lock = KICK_NOTIFIERS.lock().await;
-    if let Some(notify) = lock.get(user_id) {
+    let mut lock = KICK_NOTIFIERS.lock().await;
+    // remove 而非 get：销毁旧 Notify，杜绝 permit 残留
+    // 当前在线 WS 收到 notify 被踢 → 新 WS 通过 or_insert_with 创建全新 Notify
+    if let Some(notify) = lock.remove(user_id) {
         notify.notify_one();
     }
 }

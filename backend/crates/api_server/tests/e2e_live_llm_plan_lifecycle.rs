@@ -290,7 +290,7 @@ async fn chat_turn(
     // 调用 LLM
     let raw_reply = match caller.generate(system_prompt, &user_content).await {
         Ok(r) => {
-            let preview: String = r.chars().take(500).collect();
+            let preview: String = r.chars().take(3000).collect();
             println!("🤖 LLM 原始回复 ({} chars):\n{}", r.len(), preview);
             r
         }
@@ -305,13 +305,16 @@ async fn chat_turn(
         &conn, &raw_reply, TEST_CONV_ID, TEST_USER_ID,
     );
 
+    // 新计划：渲染但不检测成就（成就仅对进度更新触发）
+    // 已有计划更新：渲染 + 成就检测
     if result.plan_updated {
-        let _rendered = api_server::plan_handler::render_plan(result.plan_json.as_ref().unwrap());
         println!("📝 plan_update 已处理 | is_new_plan={}", result.is_new_plan);
 
-        // 成就检测 (抽取为独立函数, 与 simulation 测试对齐)
-        if let Some(ref pj) = result.plan_json {
-            record_stage_achievements(&conn, pj);
+        // 成就检测 — 仅对非新建计划的进度更新触发
+        if !result.is_new_plan {
+            if let Some(ref pj) = result.plan_json {
+                record_stage_achievements(&conn, pj);
+            }
         }
 
         // 保存 LLM 清理后的回复
@@ -764,4 +767,274 @@ async fn e2e_live_revert_explicit() {
         }
         println!("   原始回复:\n{}", raw_reply);
     }
+}
+
+// ════════════════════════════════════════════
+// 双智能体自主对话 — 全程学生 LLM + 导师 LLM
+// ════════════════════════════════════════════
+
+/// 学生智能体的系统提示词
+const STUDENT_SYSTEM_PROMPT: &str = "\
+你是一个正在使用 AI 学习助手的中学生。你正在学习 K-12 课程体系中的某个知识点。\n\
+\n\
+**话题范围（K-12）**：你只能从以下话题中选择一个来学习：
+- 小学数学：分数运算、小数乘除、简易方程
+- 初中数学：一次函数、勾股定理、三角形全等、一元二次方程
+- 初中物理：欧姆定律、压强与浮力、光的反射
+- 高中数学：三角函数、数列、概率
+
+话题必须具体，不能笼统（如不能说「数学」或「编程」）。\n\
+\n\
+行为指南：\n\
+1. **首次对话**：从上述列表选一个话题，告诉导师你想学什么，请他制定学习计划。\n\
+2. **教学过程**：认真听导师讲解，有疑问就提出，理解后要求进入下一个任务。\n\
+3. **考核环节**：导师出题时，认真回答每一题。用自己的话解释概念，展示计算步骤。\n\
+   - 不要只说「我懂了」「理解了」这种空话\n\
+   - 用具体的知识内容展示你的理解\n\
+4. **推进节奏**：完成一个任务后主动说「请继续下一个任务」或「可以出题考核我了」。\n\
+5. **最终目标**：完成学习计划中的所有阶段和任务。\n\
+\n\
+回复格式：直接输出你要对导师说的话，不要加「学生：」「用户：」等前缀。\n\
+不要模拟导师的回复，不要输出 <plan_update> 标签。";
+
+/// 学生智能体：根据对话历史生成下一句回复
+async fn student_speak(
+    student_caller: &mut chat_engine::llm_caller::LlmCaller,
+    history: &str,
+    plan_summary: &str,
+) -> String {
+    let context = if plan_summary.is_empty() {
+        history.to_string()
+    } else {
+        format!("{}{}", history, plan_summary)
+    };
+
+    match student_caller.generate(STUDENT_SYSTEM_PROMPT, &context).await {
+        Ok(reply) => {
+            let cleaned = reply.trim().to_string();
+            let preview: String = cleaned.chars().take(200).collect();
+            println!("  🧑 学生: {}", preview);
+            cleaned
+        }
+        Err(e) => {
+            println!("  ⚠️ 学生 LLM 调用失败: {:?}, 使用回退", e);
+            "请继续下一个任务，如果我已经掌握了请出题考核我。".to_string()
+        }
+    }
+}
+
+/// 简单的计划摘要（供学生智能体了解进度）
+fn plan_summary() -> String {
+    if let Some((_, goal, pjson)) = get_plan_from_db() {
+        if let Ok(plan) = serde_json::from_str::<serde_json::Value>(&pjson) {
+            let stages = plan["stages"].as_array().unwrap();
+            let mut s = format!("\n\n[当前计划进度: 目标={}]", goal);
+            let mut all_done = true;
+            for stage in stages {
+                let sn = stage["name"].as_str().unwrap_or("?");
+                let ss = stage["status"].as_str().unwrap_or("?");
+                s.push_str(&format!("\n  阶段[{}]: {}", sn, ss));
+                if ss != "done" { all_done = false; }
+                if let Some(tasks) = stage["tasks"].as_array() {
+                    for task in tasks {
+                        let tn = task["name"].as_str().unwrap_or("?");
+                        let ts = task["status"].as_str().unwrap_or("?");
+                        s.push_str(&format!("\n    任务[{}]: {}", tn, ts));
+                        if ts != "done" { all_done = false; }
+                    }
+                }
+            }
+            if all_done { s.push_str("\n  全部完成！"); }
+            return s;
+        }
+    }
+    String::new()
+}
+
+#[tokio::test]
+#[ignore]
+async fn e2e_dual_agent_autonomous() {
+    println!("\n{}", "=".repeat(70));
+    println!(" CoEvo E2E: 双智能体自主对话 (学生 LLM ↔ 导师 LLM)");
+    println!("{}", "=".repeat(70));
+
+    setup();
+
+    let api_key = std::env::var("DEEPSEEK_API_KEY")
+        .expect("请在 backend/.env 中设置 DEEPSEEK_API_KEY");
+
+    let tutor_config = chat_engine::llm_caller::LlmConfig::deepseek_v4_flash(&api_key);
+    let mut tutor_caller = chat_engine::llm_caller::LlmCaller::new(tutor_config);
+
+    // 学生用稍低的 temperature 保证行为可控
+    let mut student_config = chat_engine::llm_caller::LlmConfig::deepseek_v4_flash(&api_key);
+    student_config.temperature = 0.5;
+    let mut student_caller = chat_engine::llm_caller::LlmCaller::new(student_config);
+
+    // ── Phase 0: 学生发起学习请求 ──
+    println!("\n─── 阶段 0: 学生发起学习请求 ───");
+    let initial_msg = student_speak(
+        &mut student_caller,
+        "（这是对话的开始，请向导师打招呼并说出你想学习的 K-12 知识点）",
+        "",
+    ).await;
+    // 兜底：如果 LLM 返回空消息
+    let initial_msg = if initial_msg.trim().is_empty() {
+        "导师好！我想学习勾股定理，这是我的数学课内容，请帮我制定一个学习计划。".to_string()
+    } else {
+        initial_msg
+    };
+    let t0 = chat_turn(&mut tutor_caller, &initial_msg, "学生首次发言").await;
+
+    // 容忍：LLM 可能不立即创建计划
+    if t0.plan_updated && t0.is_new_plan {
+        println!("✅ 学习计划已在首轮创建");
+    } else {
+        // 追问创建计划
+        println!("  ⚠️ 首轮未创建计划，追问...");
+        let follow = "请你帮我创建一个学习计划，我需要有条理地学习。在回复中用 <plan_update> 标签输出计划。";
+        let tf = chat_turn(&mut tutor_caller, follow, "追问创建计划").await;
+        if !tf.is_new_plan {
+            // 再追问一次
+            let follow2 = "我需要一个学习计划。请用 <plan_update> 标签创建一个包含 \"is_new_plan\": true 的计划。";
+            let _tf2 = chat_turn(&mut tutor_caller, follow2, "再次追问").await;
+        }
+    }
+
+    let plan = get_plan_from_db();
+    assert!(plan.is_some(), "应该已创建学习计划");
+    println!("✅ 学习计划已创建");
+
+    // ── 主循环：学生 ↔ 导师自主对话 ──
+    println!("\n─── 主循环: 自主对话推进 ───");
+    let max_rounds = 80;
+    let mut round = 0;
+    let mut total_tasks = 0;
+
+    // 记录初始状态
+    if let Some((_, _, pjson)) = get_plan_from_db() {
+        if let Ok(plan) = serde_json::from_str::<serde_json::Value>(&pjson) {
+            let stages = plan["stages"].as_array().unwrap();
+            total_tasks = stages.iter()
+                .filter_map(|s| s["tasks"].as_array())
+                .map(|t| t.len()).sum();
+            println!("  初始: {} 阶段, {} 任务", stages.len(), total_tasks);
+        }
+    }
+
+    for round in 1..=max_rounds {
+        // 检查是否全部完成
+        let (done_stages, done_tasks, all_done, stage_count) = {
+            let plan = get_plan_from_db();
+            if plan.is_none() { break; }
+            let (_, _, pjson) = plan.unwrap();
+            let plan_val: serde_json::Value = serde_json::from_str(&pjson).unwrap();
+            let stages = plan_val["stages"].as_array().unwrap();
+            let sc = stages.len();
+            let ds = stages.iter().filter(|s| s["status"] == "done").count();
+            let dt: usize = stages.iter()
+                .filter_map(|s| s["tasks"].as_array())
+                .map(|t| t.iter().filter(|x| x["status"] == "done").count())
+                .sum();
+            let ad = ds == sc && stages.iter().all(|s|
+                s["tasks"].as_array().map_or(false, |t|
+                    t.iter().all(|x| x["status"] == "done")
+                )
+            );
+            (ds, dt, ad, sc)
+        };
+
+        if total_tasks == 0 {
+            if let Some((_, _, pjson)) = get_plan_from_db() {
+                if let Ok(plan) = serde_json::from_str::<serde_json::Value>(&pjson) {
+                    total_tasks = plan["stages"].as_array().unwrap().iter()
+                        .filter_map(|s| s["tasks"].as_array())
+                        .map(|t| t.len()).sum();
+                }
+            }
+        }
+
+        println!("\n  🔄 轮次 {round}: {}/{} 阶段完成, {}/{} 任务完成",
+            done_stages, stage_count, done_tasks, total_tasks);
+
+        if all_done {
+            println!("  🎉 全部任务完成!");
+            break;
+        }
+
+        // 学生发言
+        let summary = plan_summary();
+        let history = get_conversation_history();
+        let student_msg = student_speak(&mut student_caller, &history, &summary).await;
+        let _result = chat_turn(&mut tutor_caller, &student_msg, &format!("轮次{}", round)).await;
+
+        // 每 5 轮显示详细状态
+        if round % 5 == 0 {
+            if let Some((_, _, pjson)) = get_plan_from_db() {
+                if let Ok(plan) = serde_json::from_str::<serde_json::Value>(&pjson) {
+                    for stage in plan["stages"].as_array().unwrap() {
+                        let sn = stage["name"].as_str().unwrap_or("?");
+                        let ss = stage["status"].as_str().unwrap_or("?");
+                        print!("    {} [{}]", sn, ss);
+                        if let Some(tasks) = stage["tasks"].as_array() {
+                            for task in tasks {
+                                print!(" | {}:{}", task["name"].as_str().unwrap_or("?"), task["status"].as_str().unwrap_or("?"));
+                            }
+                        }
+                        println!();
+                    }
+                }
+            }
+        }
+    }
+
+    if round >= max_rounds {
+        println!("  ⚠️ 达到最大轮次限制 {}", max_rounds);
+    }
+
+    // ── 最终验证 ──
+    println!("\n{}", "=".repeat(70));
+    println!(" 最终验证");
+    println!("{}", "=".repeat(70));
+
+    let plan = get_plan_from_db();
+    assert!(plan.is_some(), "学习计划应存在");
+    let (_pid, goal, pjson) = plan.unwrap();
+    println!("目标: {}", goal);
+
+    let plan_val: serde_json::Value = serde_json::from_str(&pjson).unwrap();
+    let stages = plan_val["stages"].as_array().unwrap();
+    let done_stages_final = stages.iter().filter(|s| s["status"] == "done").count();
+    let done_tasks_final: usize = stages.iter()
+        .filter_map(|s| s["tasks"].as_array())
+        .map(|t| t.iter().filter(|x| x["status"] == "done").count())
+        .sum();
+
+    println!("阶段完成: {}/{}", done_stages_final, stages.len());
+    for stage in stages {
+        let sname = stage["name"].as_str().unwrap();
+        let sstatus = stage["status"].as_str().unwrap();
+        println!("  {} → {}", sname, sstatus);
+        if let Some(tasks) = stage["tasks"].as_array() {
+            for task in tasks {
+                println!("    └ {} → {}", task["name"].as_str().unwrap(), task["status"].as_str().unwrap());
+            }
+        }
+    }
+
+    assert!(done_tasks_final >= 1, "至少完成 1 个任务");
+    assert!(done_stages_final >= 1, "至少完成 1 个阶段");
+
+    let achievements = get_achievements();
+    println!("\n成就: {} 个", achievements.len());
+    for (key, name, tier) in &achievements {
+        println!("  🏆 {} | {} | {}", key, name, tier);
+    }
+    assert!(!achievements.is_empty(), "应该解锁至少 1 个成就");
+
+    println!("\n{}", "=".repeat(70));
+    println!(" ✅ 双智能体自主对话测试完成! ({} 轮)", round);
+    println!("    阶段 {}/{} | 任务 {}/{} | 成就 {} 个",
+        done_stages_final, stages.len(), done_tasks_final, total_tasks, achievements.len());
+    println!("{}", "=".repeat(70));
 }
