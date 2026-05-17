@@ -37,7 +37,7 @@
   });
 
   // ─── Scroll Reveal (Intersection Observer) ───
-  const revealElements = document.querySelectorAll('.feature-card, .step-item');
+  const revealElements = document.querySelectorAll('.feature-card, .step-item, .pain-card, .why-card');
 
   const revealObserver = new IntersectionObserver((entries) => {
     entries.forEach(entry => {

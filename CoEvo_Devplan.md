@@ -289,6 +289,18 @@ N8 学习计划（可选结构化模式）
 | **前端** | 聊天页顶部独立计划面板（可折叠，按 conversation_id 过滤） |
 | **成就** | task→bronze, stage→silver, domain→gold, cross→platinum |
 
+### N9: 图像识别输入 📷 (暂缓)
+
+| 属性 | 值 |
+|------|-----|
+| **位置** | 前端 Flutter + 后端 API |
+| **方案** | DeepSeek V4 Vision（多模态 LLM），备选 Qwen-VL |
+| **输入** | 用户拍照上传（image_picker）→ 压缩 1024px → base64 |
+| **处理** | POST DeepSeek Vision API，识别 + 理解 + 教学一站式 |
+| **成本** | ~¥0.003/张（500 token），日均 50 张 < ¥1 |
+| **状态** | 🟡 方案已定，暂缓实施 |
+| **详细** | `docs/image-recognition-proposal.md` |
+
 ---
 
 ## 六、节点汇总
@@ -303,8 +315,9 @@ N8 学习计划（可选结构化模式）
 | N6 | 客户端+后端 | 翻牌 + 验证 + 评分 |
 | N7 | 后端 | 成就检测（固定11个 + 动态成就） |
 | N8 | 后端 | 学习计划（LLM + prompt注入 + render_plan） |
+| N9 | 客户端+后端 | 📷 图像识别输入（DeepSeek V4 Vision / 暂缓） |
 
-**8 个节点 · 11 张表 · 结构化学习完成**
+**9 个节点 · 11 张表**
 
 ---
 

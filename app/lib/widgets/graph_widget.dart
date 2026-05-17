@@ -13,8 +13,36 @@ class GraphWidget extends StatelessWidget {
   static List _safeList(dynamic value) {
     if (value == null) return [];
     if (value is List) return value;
-    // LLM 可能把单元素写成对象, 或把 null/数字/字符串当成数组
     return [];
+  }
+
+  /// 安全转 double — 容忍 LLM 输出字符串数字、int、bool 等
+  static double _safeDouble(dynamic value, [double fallback = 0]) {
+    if (value == null) return fallback;
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      final d = double.tryParse(value);
+      if (d != null) return d;
+      final i = int.tryParse(value);
+      if (i != null) return i.toDouble();
+    }
+    if (value is bool) return value ? 1.0 : 0.0;
+    return fallback;
+  }
+
+  /// 安全转 int — 容忍 LLM 输出字符串、double 等
+  static int _safeInt(dynamic value, [int fallback = 0]) {
+    if (value == null) return fallback;
+    if (value is int) return value;
+    if (value is double) return value.round();
+    if (value is num) return value.toInt();
+    if (value is String) {
+      final i = int.tryParse(value);
+      if (i != null) return i;
+      final d = double.tryParse(value);
+      if (d != null) return d.round();
+    }
+    return fallback;
   }
 
   @override
@@ -66,7 +94,7 @@ class GraphWidget extends StatelessWidget {
     final List rawData = _safeList(data['data']);
     final spots = rawData.map((p) {
       final m = p as Map<String, dynamic>;
-      return FlSpot((m['x'] as num).toDouble(), (m['y'] as num).toDouble());
+      return FlSpot(_safeDouble(m['x']), _safeDouble(m['y']));
     }).toList();
     if (spots.isEmpty) return _buildError('无数据');
 
@@ -172,7 +200,7 @@ class GraphWidget extends StatelessWidget {
       return BarChartGroupData(
         x: e.key,
         barRods: [BarChartRodData(
-          toY: (m['value'] as num).toDouble(),
+          toY: _safeDouble(m['value']),
           color: const Color(0xFF6C63FF),
           width: 16,
         )],
@@ -238,7 +266,7 @@ class GraphWidget extends StatelessWidget {
     final List rawData = _safeList(data['data']);
     final spots = rawData.map((p) {
       final m = p as Map<String, dynamic>;
-      return ScatterSpot((m['x'] as num).toDouble(), (m['y'] as num).toDouble());
+      return ScatterSpot(_safeDouble(m['x']), _safeDouble(m['y']));
     }).toList();
     if (spots.isEmpty) return _buildError('无数据');
 
@@ -291,7 +319,7 @@ class GraphWidget extends StatelessWidget {
     final sections = rawData.asMap().entries.map((e) {
       final m = e.value as Map<String, dynamic>;
       return PieChartSectionData(
-        value: (m['value'] as num).toDouble(),
+        value: _safeDouble(m['value']),
         title: '${m['label'] ?? ''}\n${m['value']}',
         color: Color(colors[e.key % colors.length]),
         radius: 55,
@@ -338,23 +366,23 @@ class GraphWidget extends StatelessWidget {
     final List raw = _safeList(data['points']);
     final points = raw.map((p) {
       final m = p as Map<String, dynamic>;
-      return Offset((m['x'] as num).toDouble(), (m['y'] as num).toDouble());
+      return Offset(_safeDouble(m['x']), _safeDouble(m['y']));
     }).toList();
     if (points.length < 2) return _buildError('多边形至少需要 2 个点');
 
     final title = data['title'] as String? ?? '';
     // 顶点标签
     final rawLabels = _safeList(data['labels']);
-    final labels = rawLabels?.map((l) => l.toString()).toList() ?? <String>[];
+    final labels = rawLabels.map((l) => l.toString()).toList();
     // 直角顶点索引
     final rawAngles = _safeList(data['rightAngles']);
-    final rightAngles = rawAngles?.map((a) => a as int).toSet() ?? <int>{};
+    final rightAngles = rawAngles.map((a) => _safeInt(a)).toSet();
     // 角度弧线: [{"vertex":0,"label":"30°","startAngle":0,"sweepAngle":30}]
     final rawAngleArcs = _safeList(data['angles']);
     final angleArcs = rawAngleArcs?.map((a) {
       final m = a as Map<String, dynamic>;
       return _AngleArc(
-        vertexIndex: m['vertex'] as int,
+        vertexIndex: _safeInt(m['vertex']),
         label: m['label'] as String?,
         startAngle: (m['startAngle'] as num?)?.toDouble(),
         sweepAngle: (m['sweepAngle'] as num?)?.toDouble(),
@@ -417,24 +445,24 @@ class GraphWidget extends StatelessWidget {
       final from = m['from'] as Map<String, dynamic>;
       final to = m['to'] as Map<String, dynamic>;
       return _ArrowData(
-        from: Offset((from['x'] as num).toDouble(), (from['y'] as num).toDouble()),
-        to: Offset((to['x'] as num).toDouble(), (to['y'] as num).toDouble()),
+        from: Offset(_safeDouble(from['x']), _safeDouble(from['y'])),
+        to: Offset(_safeDouble(to['x']), _safeDouble(to['y'])),
         label: m['label'] as String?,
       );
     }).toList() ?? <_ArrowData>[];
     // 圆上角度弧线标记
-    final rawAngleArcs2 = _safeList(data['angles']);
-    final angleArcs2 = rawAngleArcs2?.map((a) {
-      final m = a as Map<String, dynamic>;
-      return _AngleArc(
-        vertexIndex: m['vertex'] as int?,
-        label: m['label'] as String?,
-        startAngle: (m['startAngle'] as num?)?.toDouble(),
-        sweepAngle: (m['sweepAngle'] as num?)?.toDouble(),
-        centerX: (m['cx'] as num?)?.toDouble(),
-        centerY: (m['cy'] as num?)?.toDouble(),
-      );
-    }).toList() ?? <_AngleArc>[];
+      final rawAngleArcs2 = _safeList(data['angles']);
+      final angleArcs2 = rawAngleArcs2?.map((a) {
+        final m = a as Map<String, dynamic>;
+        return _AngleArc(
+          vertexIndex: _safeInt(m['vertex']),
+          label: m['label'] as String?,
+          startAngle: (m['startAngle'] as num?)?.toDouble(),
+          sweepAngle: (m['sweepAngle'] as num?)?.toDouble(),
+          centerX: (m['cx'] as num?)?.toDouble(),
+          centerY: (m['cy'] as num?)?.toDouble(),
+        );
+      }).toList() ?? <_AngleArc>[];
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
@@ -483,8 +511,8 @@ class GraphWidget extends StatelessWidget {
       final from = m['from'] as Map<String, dynamic>;
       final to = m['to'] as Map<String, dynamic>;
       return _ArrowData(
-        from: Offset((from['x'] as num).toDouble(), (from['y'] as num).toDouble()),
-        to: Offset((to['x'] as num).toDouble(), (to['y'] as num).toDouble()),
+        from: Offset(_safeDouble(from['x']), _safeDouble(from['y'])),
+        to: Offset(_safeDouble(to['x']), _safeDouble(to['y'])),
         label: m['label'] as String?,
         color: _parseColor(m['color'] as String?),
       );

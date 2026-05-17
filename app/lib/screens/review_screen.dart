@@ -7,6 +7,7 @@ import '../models/coevo_models.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
 import '../services/tts_service.dart';
+import 'card_list_screen.dart';
 
 /// 复习: 内联复习队列
 class ReviewScreen extends ConsumerStatefulWidget {
@@ -373,66 +374,69 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('复习'),
+          bottom: TabBar(
+            labelColor: Theme.of(context).colorScheme.onSurface,
+            tabs: [
+              Tab(text: _isLoading ? '待复习' : '待复习 (${_cards.length})'),
+              const Tab(text: '全部卡片'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            _buildReviewTab(),
+            const CardListScreen(embedded: true),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReviewTab() {
     if (_isLoading) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('复习')),
-        body: const Center(child: CircularProgressIndicator()),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (_cards.isEmpty) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('复习')),
-        body: RefreshIndicator(
-          onRefresh: _loadCards,
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            children: [
-              SizedBox(
-                height: MediaQuery.of(context).size.height * 0.6,
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.check_circle_outline, size: 64, color: Colors.green.shade300),
-                      const SizedBox(height: 16),
-                      Text('今日复习完成！', style: Theme.of(context).textTheme.titleLarge),
-                      const SizedBox(height: 8),
-                      Text('共复习 $_reviewedCount 张卡片',
-                          style: TextStyle(color: Colors.grey.shade600)),
-                      const SizedBox(height: 24),
-                      FilledButton(
-                        onPressed: () => context.go('/chat'),
-                        child: const Text('返回'),
-                      ),
-                    ],
-                  ),
+      return RefreshIndicator(
+        onRefresh: _loadCards,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: MediaQuery.of(context).size.height * 0.6,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check_circle_outline, size: 64, color: Colors.green.shade300),
+                    const SizedBox(height: 16),
+                    Text('今日复习完成！', style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 8),
+                    Text('共复习 $_reviewedCount 张卡片',
+                        style: TextStyle(color: Colors.grey.shade600)),
+                    const SizedBox(height: 24),
+                    FilledButton(
+                      onPressed: () => context.go('/chat'),
+                      child: const Text('返回'),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('复习'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: Chip(
-              avatar: const Icon(Icons.schedule, size: 18),
-              label: Text('${_cards.length} 张待复习'),
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadCards,
-        child: _buildQueue(),
-      ),
+    return RefreshIndicator(
+      onRefresh: _loadCards,
+      child: _buildQueue(),
     );
   }
 

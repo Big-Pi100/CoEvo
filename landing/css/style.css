@@ -209,6 +209,30 @@ img { max-width: 100%; display: block; }
   font-weight: 600;
 }
 
+/* CTA nav link — button style */
+.nav-cta {
+  background: var(--accent) !important;
+  color: white !important;
+  padding: 6px 18px !important;
+  border-radius: 100px !important;
+  font-weight: 600 !important;
+  font-size: 13px !important;
+}
+
+.navbar.scrolled .nav-cta {
+  background: var(--accent) !important;
+  color: white !important;
+  box-shadow: 0 2px 12px rgba(108, 99, 255, 0.3);
+}
+
+/* Mobile nav */
+@media (max-width: 768px) {
+  .nav-cta {
+    margin-top: 8px;
+    text-align: center;
+  }
+}
+
 /* Mobile nav toggle */
 .nav-toggle {
   display: none;
@@ -414,6 +438,308 @@ img { max-width: 100%; display: block; }
   width: 1px;
   height: 40px;
   background: rgba(255, 255, 255, 0.1);
+}
+
+/* ─── Why Now: AI趋势+预测 ─── */
+.why-now {
+  padding: 120px 24px;
+  background: var(--bg);
+}
+
+.why-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  max-width: var(--max-width);
+  margin: 0 auto;
+}
+
+.why-card {
+  background: white;
+  border-radius: var(--radius-md);
+  padding: 32px 28px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid rgba(108, 99, 255, 0.08);
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.why-card.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.why-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+  border-color: rgba(108, 99, 255, 0.2);
+}
+
+.why-icon {
+  font-size: 36px;
+  margin-bottom: 16px;
+}
+
+.why-card h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 12px;
+}
+
+.why-card p {
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 768px) {
+  .why-grid {
+    grid-template-columns: 1fr;
+  }
+  .why-now {
+    padding: 80px 16px;
+  }
+}
+
+/* ─── Cost Comparison: vs 辅导班 ─── */
+.compare {
+  padding: 120px 24px;
+  background: var(--bg-alt);
+}
+
+.compare-table-wrapper {
+  max-width: 900px;
+  margin: 0 auto;
+  overflow-x: auto;
+}
+
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+
+.compare-table th,
+.compare-table td {
+  padding: 16px 24px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.compare-table th {
+  background: var(--primary);
+  color: white;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.compare-table .col-coevo {
+  background: rgba(108, 99, 255, 0.04);
+  border-left: 2px solid var(--accent);
+}
+
+.compare-table .col-coevo strong {
+  color: var(--accent);
+}
+
+.compare-table .dim {
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.compare-table .highlight {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.compare-table tr:last-child td {
+  border-bottom: none;
+}
+
+.compare-table tbody tr:hover {
+  background: rgba(108, 99, 255, 0.02);
+}
+
+.compare-table tbody tr:hover .col-coevo {
+  background: rgba(108, 99, 255, 0.07);
+}
+
+@media (max-width: 768px) {
+  .compare {
+    padding: 80px 16px;
+  }
+  .compare-table th,
+  .compare-table td {
+    padding: 12px 14px;
+    font-size: 13px;
+  }
+}
+
+/* ─── CTA Enhancements ─── */
+.cta-price {
+  text-align: center;
+  margin-bottom: 24px;
+  padding: 20px;
+  background: rgba(108, 99, 255, 0.06);
+  border-radius: var(--radius-md);
+  border: 1px dashed rgba(108, 99, 255, 0.25);
+}
+
+.price-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-light);
+  margin-bottom: 8px;
+  letter-spacing: 2px;
+}
+
+.price-old {
+  font-size: 18px;
+  color: var(--text-light);
+  text-decoration: line-through;
+  margin-right: 12px;
+}
+
+.price-arrow {
+  font-size: 20px;
+  color: var(--accent);
+  margin-right: 12px;
+}
+
+.price-now {
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.price-unit {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-left: 4px;
+}
+
+.cta-features {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 24px;
+  text-align: left;
+}
+
+.cta-feature {
+  padding: 10px 14px;
+  background: rgba(108, 99, 255, 0.04);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.cta-guarantee {
+  margin-top: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  .cta-features {
+    grid-template-columns: 1fr;
+  }
+  .price-now {
+    font-size: 28px;
+  }
+}
+
+/* ─── Pain Points: 为什么需要中间件 ─── */
+.pain-points {
+  padding: 120px 24px;
+  background: var(--bg-alt);
+}
+
+.pain-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+  max-width: var(--max-width);
+  margin: 0 auto;
+}
+
+.pain-card {
+  background: white;
+  border-radius: var(--radius-md);
+  padding: 32px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid rgba(108, 99, 255, 0.08);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.pain-card.visible {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.pain-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+  border-color: rgba(108, 99, 255, 0.2);
+}
+
+.pain-icon {
+  font-size: 32px;
+  margin-bottom: 12px;
+}
+
+.pain-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 8px;
+}
+
+.pain-desc {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.pain-solution {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text);
+  padding: 12px 16px;
+  background: rgba(108, 99, 255, 0.06);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--accent);
+}
+
+.pain-solution strong {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .pain-grid {
+    grid-template-columns: 1fr;
+  }
+  .pain-points {
+    padding: 80px 16px;
+  }
 }
 
 /* ─── Features ─── */

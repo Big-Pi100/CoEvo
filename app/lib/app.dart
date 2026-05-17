@@ -6,7 +6,6 @@ import 'screens/auth_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/admin_screen.dart';
 import 'screens/review_screen.dart';
-import 'screens/card_list_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/conversation_list_screen.dart';
 import 'screens/skipped_list_screen.dart';
@@ -71,14 +70,6 @@ final goRouter = GoRouter(
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: '/cards',
-              builder: (context, state) => const CardListScreen(),
-            ),
-          ],
-        ),
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
               path: '/profile',
               builder: (context, state) => const ProfileScreen(),
             ),
@@ -129,7 +120,6 @@ class _ShellScaffold extends StatelessWidget {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: '对话'),
           NavigationDestination(icon: Icon(Icons.replay_outlined), selectedIcon: Icon(Icons.replay), label: '复习'),
-          NavigationDestination(icon: Icon(Icons.auto_stories_outlined), selectedIcon: Icon(Icons.auto_stories), label: '卡片'),
           NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '个人'),
         ],
       ),

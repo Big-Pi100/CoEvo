@@ -115,7 +115,7 @@ app/                        # Flutter 前端
 | 命令 | 说明 |
 |:--|:--|
 | `cargo run` | 启动后端 (8080) |
-| `cargo test --workspace` | 运行全部测试 (37 个) |
+| `cargo test --workspace` | 运行全部测试 (41 个) |
 | `cargo test -p card_engine` | 仅运行制卡引擎测试 |
 | `cargo check` | 编译检查 |
 | `RUST_LOG=debug cargo run` | 带调试日志启动 |
@@ -132,6 +132,44 @@ app/                        # Flutter 前端
 * **PRAGMA foreign_keys = ON**: db_pool 连接池级别启用外键约束
 * **日志默认级别**: `warn`（生产安全），开发时设 `RUST_LOG=info`
 * **DB 查询安全**: `query_vec()` / `query_one()` 辅助函数
+
+## 近期重要改动 (2026-05-17)
+
+### Markdown 全渲染
+
+- 依赖: `markdown_widget ^2.3.2`
+- 块分割模型: `<graph>` 和 `\[formula\]` 作为独立 Block，纯文本走 MarkdownWidget
+- 行内公式 `\(...\)` 正则分割 + `flutter_math_fork`
+- 颜色统一: `RichContentBuilder.textColor` 贯穿整个链路（公式/文本/引用/代码块）
+- 自定义 MarkdownConfig: blockquote/textColor, PreConfig/textStyle, CodeConfig/style
+
+### 图形渲染工具
+
+- 依赖: `fl_chart ^0.70.0` + CustomPainter
+- 支持 7 种类型: line / bar / scatter / pie / polygon / circle / arrow
+- polygon 扩展: 顶点标注 labels、直角标记 rightAngles、角度弧线 angles
+- circle 扩展: 切线 tangents、圆心角弧线 angles
+- 容错: `_safeDouble` / `_safeInt` 替换所有 `as num` 强转
+- K-12 覆盖率 90%（小学 89% / 初中 90% / 高中 91%）
+
+### 单设备登录
+
+- 机制: `KICK_NOTIFIERS` (Arc\<Notify\>) 全局映射
+- 新设备登录 → `kick_user_connections` → 旧 WS 收到 kicked 事件 → 前端跳转 /auth
+- 修复: `lock.remove()` 替代 `lock.get()` 防跨会话 permit 残留
+
+### 复习 + 卡片页合并
+
+- 删 `/cards` 路由 + 导航项，底部导航 4→3 项
+- review_screen: `DefaultTabController` [待复习(N) / 全部卡片]
+- `CardListScreen(embedded: true)` 嵌入全部卡片 Tab
+
+### 学习计划双智能体测试
+
+- 学生 LLM + 导师 LLM 全自主对话
+- K-12 话题约束，覆盖计划创建→子步骤→任务完成→阶段完成→成就
+- 2 话题验证: 一次函数(23.5min)/一元二次方程(25.8min)
+- 详见 `DEVELOPMENT.md` 测试章节
   - 统一 prepare + query_map + 错误转 Json 响应
   - routes.rs unwrap 35→22（高风险 DB 类已清零）
 * **chat_screen 拆分**: 1453→830 行（-43%）
@@ -277,3 +315,82 @@ python scripts/live_llm_stream_test.py --domain all # 全部 5 领域
 `\frac \int \sum \lim \sqrt \partial \pm \cdot \times`
 `\begin{pmatrix} \begin{bmatrix} \begin{cases}`
 `\left \right \mathbb \mathbf \nabla \varepsilon \infty`
+
+---
+
+## 学习计划生命周期测试 (双智能体)
+
+> 测试文件: `backend/crates/api_server/tests/e2e_live_llm_plan_lifecycle.rs`
+
+### 架构
+
+```
+┌─────────────────┐         ┌─────────────────┐
+│  学生智能体 LLM  │ ──自然对话──→ │  导师智能体 LLM  │
+│  (DeepSeek V4)  │ ←──教学+考核── │  (chat_system)   │
+│  temp=0.5        │              │  temp=0.7        │
+└─────────────────┘              └────────┬────────┘
+                                          │
+                                   handle_plan_update
+                                          │
+                              ┌───────────▼───────────┐
+                              │ learning_plans        │
+                              │ achievements          │
+                              │ conversation_turns    │
+                              └───────────────────────┘
+```
+
+### 设计
+
+| 要素 | 实现 |
+|------|------|
+| 学生智能体 | 独立 LLM，读取对话历史 + 计划进度，自主决定每轮发言 |
+| 导师智能体 | 使用 `chat_system_free.md` / `chat_system_structured.md` prompt |
+| 话题约束 | K-12 课程（小学/初中/高中数学物理），固定候选列表 |
+| plan_update | 导师通过 `<plan_update>` JSON 标签更新计划状态 |
+| 成就检测 | `record_stage_achievements` 仅在 `!is_new_plan` 时触发 |
+
+### 覆盖范围
+
+| 生命周期节点 | 验证方式 |
+|-------------|---------|
+| 计划创建 | `get_plan_from_db().is_some()` + `is_new_plan=true` |
+| 子步骤推进 | `task_sub_steps: teach→examples→quiz` |
+| 任务完成 | `current_task_complete: true` → 推进到下一任务 |
+| 阶段完成 | 阶段内全部任务 done → 阶段标记 done |
+| 成就解锁 | silver（阶段完成）、gold（全部阶段完成） |
+| 对话持久化 | `conversation_turns` 写入 user + assistant 消息 |
+
+### 测试用例
+
+| 测试函数 | 说明 | 标记 |
+|---------|------|------|
+| `e2e_live_llm_plan_lifecycle` | 硬编码用户消息的生命周期测试 | `#[ignore]` |
+| `e2e_live_revert_basic` | 回退机制测试（LLM 使用 reset_current_task） | `#[ignore]` |
+| `e2e_live_revert_explicit` | 显式回退测试（用户要求 LLM 回退） | `#[ignore]` |
+| `e2e_dual_agent_autonomous` | **双智能体自主对话**（主测试） | `#[ignore]` |
+
+### 运行
+
+```bash
+# 双智能体自主对话（完整生命周期，约 25 分钟）
+cargo test -p api_server --test e2e_live_llm_plan_lifecycle \
+  e2e_dual_agent_autonomous -- --ignored --nocapture
+
+# 所有 LLM 测试
+cargo test -p api_server --test e2e_live_llm_plan_lifecycle \
+  -- --ignored --nocapture
+```
+
+前置条件: `backend/.env` 中已配置 `DEEPSEEK_API_KEY`
+
+### 已验证结果
+
+| 测试话题 | 计划 | 完成 | 成就 | 耗时 |
+|---------|------|------|------|------|
+| 一次函数（初中数学） | 3 阶段 6 任务 | 2/3 阶段, 4/6 任务 | 2 silver | 23.5 min |
+| 一元二次方程（初中数学） | 3 阶段 6 任务 | 2/3 阶段, 4/6 任务 | 2 silver | 25.8 min |
+
+### 已知限制
+
+阶段三（深层应用/推导）所需轮次等于前两阶段之和，80 轮上限无法完整覆盖但断言已满足。详见 `docs/dual-agent-k12-v3-report-2026-05-17.md`

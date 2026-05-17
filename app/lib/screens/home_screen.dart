@@ -60,7 +60,7 @@ class HomeScreen extends StatelessWidget {
                     title: '我的卡片',
                     subtitle: '查看已创建的知识卡片',
                     color: Colors.indigo,
-                    onTap: () => context.push('/cards'),
+                    onTap: () => context.go('/review'),
                   ),
                 ],
               ),

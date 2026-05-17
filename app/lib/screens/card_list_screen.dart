@@ -7,7 +7,8 @@ import '../providers/auth_provider.dart';
 import '../models/coevo_models.dart';
 
 class CardListScreen extends ConsumerStatefulWidget {
-  const CardListScreen({super.key});
+  final bool embedded;
+  const CardListScreen({super.key, this.embedded = false});
 
   @override
   ConsumerState<CardListScreen> createState() => _CardListScreenState();
@@ -285,23 +286,10 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('我的卡片'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadCards,
-          ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _allCards.isEmpty
-              ? _buildEmptyState()
-              : Column(
+  Widget _buildBody() {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_allCards.isEmpty) return _buildEmptyState();
+    return Column(
                   children: [
                     // 搜索栏
                     Padding(
@@ -587,7 +575,21 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                           ),
                         ),
                   ],
-                ),
+                );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final body = _buildBody();
+    if (widget.embedded) return body;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('我的卡片'),
+        actions: [
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadCards),
+        ],
+      ),
+      body: body,
     );
   }
 
