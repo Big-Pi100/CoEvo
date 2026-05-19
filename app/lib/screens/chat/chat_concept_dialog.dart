@@ -31,6 +31,7 @@ class ConceptDialog {
 
     showDialog(
       context: context,
+      barrierDismissible: false, // 只允许按钮关闭，防止误触
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
           return AlertDialog(
@@ -81,7 +82,7 @@ class ConceptDialog {
                     setDialogState(() {});
                   }
                 },
-                child: Text(isLastPage() ? '完成' : '跳过并继续'),
+                child: Text(isLastPage() ? '跳过' : '跳过并继续'),
               ),
               FilledButton(
                 onPressed: () async {

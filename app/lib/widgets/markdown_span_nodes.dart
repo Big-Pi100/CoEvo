@@ -69,26 +69,22 @@ class RichContentBuilder {
     final matches = inlineRegex.allMatches(text).toList();
 
     if (matches.isEmpty) {
-      // 纯文本块：用 MarkdownWidget（继承默认暗色文字）
-      return MarkdownWidget(
-        data: text,
-        shrinkWrap: true,
-        config: MarkdownConfig(configs: [
-          BlockquoteConfig(
-            textColor: textColor,
-            sideColor: textColor.withAlpha(80),
-          ),
-          PreConfig(
-            textStyle: TextStyle(color: textColor, fontSize: 14),
-            decoration: BoxDecoration(
-              color: textColor.withAlpha(15),
-              borderRadius: const BorderRadius.all(Radius.circular(8)),
-            ),
-          ),
-          CodeConfig(
-            style: TextStyle(color: textColor, backgroundColor: textColor.withAlpha(20)),
-          ),
-        ]),
+      // 纯文本块：MarkdownWidget — 强制继承 textColor
+      // 预处理: 修复 LLM 常见 Markdown 格式问题
+      final fixed = _fixMarkdown(text);
+      return DefaultTextStyle(
+        style: TextStyle(color: textColor, fontSize: 15, height: 1.5),
+        child: MarkdownWidget(
+          data: fixed,
+          shrinkWrap: true,
+          config: MarkdownConfig(configs: [
+            BlockquoteConfig(textColor: textColor, sideColor: textColor.withAlpha(80)),
+            PreConfig(textStyle: TextStyle(color: textColor, fontSize: 14),
+              decoration: BoxDecoration(color: textColor.withAlpha(15), borderRadius: const BorderRadius.all(Radius.circular(8)))),
+            CodeConfig(style: TextStyle(color: textColor, backgroundColor: textColor.withAlpha(20))),
+            PConfig(textStyle: TextStyle(color: textColor, fontSize: 15)),
+          ]),
+        ),
       );
     }
 
@@ -225,4 +221,41 @@ List<ContentBlock> _splitBlockLevel(String text) {
   }
 
   return blocks;
+}
+
+/// 修复 LLM 常见 Markdown 格式问题
+/// 1. `##text` → `## text`（CommonMark 要求 # 后有空格）
+/// 2. 缺失表格分隔行 → 自动补 `|---|---|`
+String _fixMarkdown(String text) {
+  // 1. ATX 标题：确保 # 后有空格
+  var fixed = text.replaceAllMapped(
+    RegExp(r'^(#{1,6})([^\s#])', multiLine: true),
+    (m) => '${m.group(1)} ${m.group(2)}',
+  );
+
+  // 2. 表格：如果第一行是 |...|，第二行不是 |---|，自动补分隔行
+  final lines = fixed.split('\n');
+  final buf = <String>[];
+  for (int i = 0; i < lines.length; i++) {
+    final line = lines[i].trim();
+    buf.add(lines[i]); // 保留原始缩进
+
+    // 检测表格头行
+    if (line.startsWith('|') && line.endsWith('|') && line.contains('|')) {
+      // 检查下一行是否是分隔行
+      final nextIdx = i + 1;
+      if (nextIdx < lines.length) {
+        final next = lines[nextIdx].trim();
+        final isSep = RegExp(r'^\|[\s\-:]+\|').hasMatch(next);
+        if (!isSep && next.startsWith('|') && !next.contains('---')) {
+          // 缺失分隔行 — 自动生成
+          final cols = '|'.allMatches(line).length - 1;
+          final sep = List.filled(cols, '---').join('|');
+          buf.add('|$sep|');
+          i = nextIdx - 1; // 下一轮处理原来的"下一行"
+        }
+      }
+    }
+  }
+  return buf.join('\n');
 }

@@ -36,7 +36,7 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64) -> (Vec<DueCa
          JOIN card_memory cm ON c.id = cm.card_id
          WHERE c.user_id = ?1
            AND cm.due <= ?2
-         ORDER BY cm.due ASC
+         ORDER BY CASE WHEN cm.state = 0 THEN 1 ELSE 0 END, cm.due ASC
          LIMIT ?3"
     ).unwrap();
 
@@ -450,25 +450,19 @@ mod tests {
     #[test]
     fn e2e_due_queue_ordering() {
         let conn = setup_full_db();
-        insert_card(&conn, "ca", "e2e_user", "较早到期", "");
-        insert_card(&conn, "cb", "e2e_user", "较晚到期", "");
-        insert_card_old(&conn, "cc", "e2e_user", "旧卡片", "");
-        conn.execute("UPDATE card_memory SET due=100 WHERE card_id='ca'", []).unwrap();
-        conn.execute("UPDATE card_memory SET due=200 WHERE card_id='cb'", []).unwrap();
-        conn.execute("UPDATE card_memory SET due=86400*2 WHERE card_id='cc'", []).unwrap();
+        insert_card(&conn, "ca", "e2e_user", "较早到期新卡", "");
+        insert_card(&conn, "cb", "e2e_user", "较晚到期新卡", "");
+        insert_card_old(&conn, "cc", "e2e_user", "复习中卡片", "");
+        conn.execute("UPDATE card_memory SET due=100, state=0 WHERE card_id='ca'", []).unwrap();
+        conn.execute("UPDATE card_memory SET due=200, state=0 WHERE card_id='cb'", []).unwrap();
+        conn.execute("UPDATE card_memory SET due=500, state=2 WHERE card_id='cc'", []).unwrap();
 
         let (due, _) = get_due_cards(&conn, "e2e_user", 20);
-        assert!(due.len() >= 2, "至少 2 张到期 (ca=100, cb=200)");
-        // 按 due ASC
-        for w in due.windows(2) {
-            let d1: i64 = conn.query_row(
-                "SELECT due FROM card_memory WHERE card_id=?1", rusqlite::params![w[0].id], |r| r.get(0)
-            ).unwrap();
-            let d2: i64 = conn.query_row(
-                "SELECT due FROM card_memory WHERE card_id=?1", rusqlite::params![w[1].id], |r| r.get(0)
-            ).unwrap();
-            assert!(d1 <= d2, "到期队列应按 due 升序");
-        }
+        assert!(due.len() >= 3, "3 张到期");
+        // 新排序: 非新卡片(state≠0)优先，同组内按 due ASC
+        assert_eq!(due[0].id, "cc", "复习中(cc)应排第一");
+        assert_eq!(due[1].id, "ca", "新卡ca due=100");
+        assert_eq!(due[2].id, "cb", "新卡cb due=200");
     }
 
     #[test]

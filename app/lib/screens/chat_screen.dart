@@ -730,8 +730,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           padding: const EdgeInsets.only(bottom: 8),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
                             children: [
-                              // ── AI 消息布局：头像 | 气泡 | Spacer ──
+                              // AI 头像
                               if (!isUser)
                                 Padding(
                                   padding: const EdgeInsets.only(right: 6),
@@ -741,38 +742,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                     child: Icon(Icons.auto_awesome, size: 12, color: Theme.of(context).colorScheme.primary),
                                   ),
                                 ),
-                              // ── 用户消息布局：Spacer | 气泡 | 头像 ──
+                              // 气泡：用户自适应 / AI 撑满 80%
                               if (isUser)
-                                const Spacer(),
-                              // 气泡
-                              Container(
-                                constraints: BoxConstraints(
-                                  maxWidth: MediaQuery.of(context).size.width * 0.70,
+                                Flexible(
+                                  child: _buildBubble(context, isUser, isStreaming, msg),
+                                )
+                              else
+                                Expanded(
+                                  child: _buildBubble(context, isUser, isStreaming, msg),
                                 ),
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                decoration: BoxDecoration(
-                                  color: isUser
-                                      ? Theme.of(context).colorScheme.primary
-                                      : Theme.of(context).colorScheme.secondaryContainer,
-                                  borderRadius: BorderRadius.circular(20).copyWith(
-                                    bottomRight: isUser ? const Radius.circular(4) : null,
-                                    bottomLeft: !isUser ? const Radius.circular(4) : null,
-                                  ),
-                                ),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                                  children: [
-                                    ChatMessageBubble(
-                                      text: msg.content,
-                                      isUser: isUser,
-                                      isStreaming: isStreaming,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              if (!isUser)
-                                const Spacer(),
+                              // 用户头像
                               if (isUser)
                                 Padding(
                                   padding: const EdgeInsets.only(left: 6),
@@ -820,6 +799,33 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             isDeleted: _isDeleted,
             onSend: _sendMessage,
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBubble(BuildContext context, bool isUser, bool isStreaming, Message msg) {
+    return Container(
+      constraints: BoxConstraints(
+        maxWidth: isUser
+            ? MediaQuery.of(context).size.width * 0.70
+            : MediaQuery.of(context).size.width * 0.80,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: isUser
+            ? Theme.of(context).colorScheme.primary
+            : Theme.of(context).colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(20).copyWith(
+          bottomRight: isUser ? const Radius.circular(4) : null,
+          bottomLeft: !isUser ? const Radius.circular(4) : null,
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          ChatMessageBubble(text: msg.content, isUser: isUser, isStreaming: isStreaming),
         ],
       ),
     );

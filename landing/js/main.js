@@ -37,15 +37,12 @@
   });
 
   // ─── Scroll Reveal (Intersection Observer) ───
-  const revealElements = document.querySelectorAll('.feature-card, .step-item, .pain-card, .why-card');
+  const revealElements = document.querySelectorAll('[data-reveal]');
 
   const revealObserver = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
-        const delay = parseInt(entry.target.dataset.delay) || 0;
-        setTimeout(() => {
-          entry.target.classList.add('visible');
-        }, delay);
+        entry.target.classList.add('visible');
         revealObserver.unobserve(entry.target);
       }
     });

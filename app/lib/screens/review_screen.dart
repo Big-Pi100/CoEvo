@@ -494,6 +494,18 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             ),
           ),
           confirmDismiss: (_) async {
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('跳过这张卡片？'),
+                content: Text('跳过「${card.front}」后将不再作为候选概念推荐。'),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                  TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('跳过', style: TextStyle(color: Colors.red))),
+                ],
+              ),
+            );
+            if (confirmed != true) return false;
             await _skipCard(card);
             return true;
           },

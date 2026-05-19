@@ -433,6 +433,9 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                               itemCount: _filteredCards.length,
                               itemBuilder: (_, i) {
                                 final card = _filteredCards[i];
+                                if (widget.embedded) {
+                                  return _buildCardTile(card, i);
+                                }
                                 return Dismissible(
                                   key: ValueKey('skip_${card.id}'),
                                   direction: DismissDirection.endToStart,
@@ -453,6 +456,19 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                                     ),
                                   ),
                                   confirmDismiss: (_) async {
+                                    final confirmed = await showDialog<bool>(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        title: const Text('跳过这张卡片？'),
+                                        content: Text('跳过「${card.front}」后将不再作为候选概念推荐。'),
+                                        actions: [
+                                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                                          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('跳过', style: TextStyle(color: Colors.red))),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirmed != true) return false;
+
                                     final auth = ref.read(authProvider);
                                     if (auth.userId == null) return false;
                                     final client = ChatClient(userId: auth.userId!, token: auth.token);
@@ -570,7 +586,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                                     ),
                                   ),
                                 );
-                              },
+                            },
                             ),
                           ),
                         ),
@@ -600,6 +616,132 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
       case 2: if (reps >= 6) return 0.0; if (reps >= 3) return 0.5; return 1.0;
       case 3: if (reps >= 6) return 0.0; if (reps >= 3) return 0.5; return 1.0;
       default: return 0.0;
+    }
+  }
+
+  Widget _buildCardTile(DueCard card, int i) {
+    return Card(
+      color: _stateColors[card.state.clamp(0, 3)],
+      elevation: 0,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: FractionallySizedBox(
+              widthFactor: _progressOverlay(card.state, card.reps),
+              alignment: Alignment.centerLeft,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      _stateColors[card.state.clamp(0, 3)].withAlpha(60),
+                      _stateColors[card.state.clamp(0, 3)].withAlpha(20),
+                    ],
+                    stops: const [0.0, 0.8],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: _stateColors[card.state.clamp(0, 3)].withAlpha(50),
+                  child: const Icon(Icons.auto_stories, color: Colors.white, size: 20),
+                ),
+                title: Text(card.front, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                subtitle: Text(card.back, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withAlpha(200))),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (card.lastReviewedAt != null)
+                      GestureDetector(
+                        onTap: () => _showReviewDetails(card.id),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: (card.lastReviewQuality ?? 0) >= 3 ? Colors.green.shade100 : Colors.red.shade100,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon((card.lastReviewQuality ?? 0) >= 3 ? Icons.check_circle : Icons.cancel,
+                                  size: 16, color: (card.lastReviewQuality ?? 0) >= 3 ? Colors.green : Colors.red),
+                              const SizedBox(width: 4),
+                              Text((card.lastReviewQuality ?? 0) >= 3 ? '正确' : '错误',
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                                      color: (card.lastReviewQuality ?? 0) >= 3 ? Colors.green.shade700 : Colors.red.shade700)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    if (card.lastReviewedAt != null) const SizedBox(width: 8),
+                    Chip(
+                      label: Text(_stateLabels[card.state.clamp(0, 3)], style: const TextStyle(fontSize: 11, color: Colors.white)),
+                      backgroundColor: _stateColors[card.state.clamp(0, 3)].withAlpha(100),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon: const Icon(Icons.block, size: 18),
+                      color: Colors.white.withAlpha(180),
+                      tooltip: '跳过',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      onPressed: () => _doSkipCard(card),
+                    ),
+                  ],
+                ),
+                onTap: () => _showCardDetail(card),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _doSkipCard(DueCard card) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('跳过这张卡片？'),
+        content: Text('跳过「${card.front}」后将不再作为候选概念推荐。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('跳过', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final auth = ref.read(authProvider);
+    if (auth.userId == null) return;
+    final client = ChatClient(userId: auth.userId!, token: auth.token);
+    try {
+      await client.skipConcept(card.front, card.sourceSentence ?? '');
+      setState(() {
+        _allCards.removeWhere((c) => c.id == card.id);
+        _filteredCards.removeWhere((c) => c.id == card.id);
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已跳过「${card.front}」')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('跳过失败: $e')),
+        );
+      }
     }
   }
 
