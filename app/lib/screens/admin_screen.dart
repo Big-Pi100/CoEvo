@@ -554,7 +554,6 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
   Widget build(BuildContext context) {
     if (_adminKey == null && _token == null) return _buildLogin();
 
-    final showApproval = _role == 'super';
     final showAdminMgmt = _role == 'super';
     final showAudit = _role == 'super' || _role == 'service';
     final tabs = <Tab>[const Tab(text: '仪表盘'), const Tab(text: '用户管理')];
@@ -713,6 +712,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
             IconButton(icon: const Icon(Icons.close, size: 18), onPressed: _exitSelectMode),
         ]),
       ),
+      const Divider(height: 1, thickness: 1),
       if (_loading) const LinearProgressIndicator(),
       // ── Scrollable: user results + subscription requests ──
       Expanded(child: _users.isEmpty && reqs.isEmpty
@@ -722,10 +722,13 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
           ..._users.map((u) => _buildUserCard(u)),
           // Load more button
           if (!_searchCtrl.text.trim().isEmpty && !_userEndReached)
-            Center(child: TextButton(onPressed: _loadMoreUsers, child: Text('加载更多 (${_users.length}/$_userTotal)', style: const TextStyle(fontSize: 12)))),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Center(child: TextButton(onPressed: _loadMoreUsers, child: Text('加载更多 (${_users.length}/$_userTotal)', style: const TextStyle(fontSize: 12)))),
+            ),
           // Subscription requests
           if (reqs.isNotEmpty) ...[
-            const Divider(height: 24),
+            const Divider(height: 24, thickness: 1),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: Row(children: [
@@ -782,9 +785,9 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: borderColor, width: isExpiring ? 1.5 : 1)),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 8, 14, 10),
+        padding: const EdgeInsets.fromLTRB(4, 8, 10, 10),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Title row
+          // Title row: checkbox + name + status + detail button
           Row(children: [
             Checkbox(
               value: _selectedUserIds.contains(u['user_id']),
@@ -810,44 +813,67 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
                 style: TextStyle(fontSize: 10, color: isDeleted ? Colors.red : (isExpiring ? const Color(0xFFC77D33) : (isActive ? const Color(0xFF588157) : Colors.grey))),
               ),
             ),
-          ]),
-          // Subtitle
-          Padding(
-            padding: const EdgeInsets.only(left: 48, top: 2),
-            child: Text(
-              '卡片:${u['card_count']} 复习:${u['review_count']} · ${u['streak_days'] ?? 0}天'
-              '${gName != null ? " · 家长:$gName" : ""}'
-              '${tName != null ? " · 老师:$tName" : ""}',
-              style: const TextStyle(fontSize: 11),
+            const SizedBox(width: 6),
+            SizedBox(
+              width: 28, height: 28,
+              child: IconButton(
+                icon: const Icon(Icons.open_in_new, size: 14),
+                padding: EdgeInsets.zero,
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UserDetailScreen(userId: u['user_id'] as String, adminKey: _adminKey, token: _token, role: _role!))),
+                tooltip: '详情',
+              ),
             ),
-          ),
-          // Detail info
+          ]),
+          // Info rows: stats + phone + guardian/tutor
           Padding(
-            padding: const EdgeInsets.only(left: 48, top: 4),
+            padding: const EdgeInsets.only(left: 48),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                '卡片:${u['card_count']} 复习:${u['review_count']} · ${u['streak_days'] ?? 0}天'
+                '${gName != null ? " · 家长:$gName" : ""}'
+                '${tName != null ? " · 老师:$tName" : ""}',
+                style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
+              ),
+              const SizedBox(height: 3),
+              // Phone row
               Text.rich(TextSpan(children: [
-                TextSpan(text: '姓名: $name  ·  手机: $phoneMasked  ', style: const TextStyle(fontSize: 13)),
+                TextSpan(text: '$phoneMasked', style: const TextStyle(fontSize: 13)),
                 WidgetSpan(child: InkWell(
-                  child: Icon(Icons.visibility_outlined, size: 14, color: const Color(0xFF5B7A9A)),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: Icon(Icons.visibility_outlined, size: 14, color: const Color(0xFF5B7A9A)),
+                  ),
                   onTap: () => _revealPhone(u['user_id'] as String),
                 )),
               ])),
-              if (gName != null) Text.rich(TextSpan(children: [
-                TextSpan(text: '家长: $gName  ·  $gPhone  ', style: TextStyle(fontSize: 13, color: const Color(0xFF5B7A9A))),
-                WidgetSpan(child: InkWell(
-                  child: Icon(Icons.visibility_outlined, size: 14, color: const Color(0xFF5B7A9A)),
-                  onTap: () => _revealAdminPhone(gId, '家长'),
-                )),
-              ])),
-              if (tName != null) Text.rich(TextSpan(children: [
-                TextSpan(text: '老师: $tName  ·  $tPhone  ', style: TextStyle(fontSize: 13, color: const Color(0xFFC77D33))),
-                WidgetSpan(child: InkWell(
-                  child: Icon(Icons.visibility_outlined, size: 14, color: const Color(0xFFC77D33)),
-                  onTap: () => _revealAdminPhone(tId, '老师'),
-                )),
-              ])),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(icon: const Icon(Icons.open_in_new, size: 14), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UserDetailScreen(userId: u['user_id'] as String, adminKey: _adminKey, token: _token, role: _role!))), label: const Text('详情', style: TextStyle(fontSize: 11))),
+              // Guardian
+              if (gName != null) Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text.rich(TextSpan(children: [
+                  TextSpan(text: '家长: $gName  $gPhone', style: TextStyle(fontSize: 12, color: const Color(0xFF5B7A9A))),
+                  WidgetSpan(child: Padding(
+                    padding: const EdgeInsets.only(left: 3),
+                    child: InkWell(
+                      child: Icon(Icons.visibility_outlined, size: 12, color: const Color(0xFF5B7A9A)),
+                      onTap: () => _revealAdminPhone(gId, '家长'),
+                    ),
+                  )),
+                ])),
+              ),
+              // Tutor
+              if (tName != null) Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text.rich(TextSpan(children: [
+                  TextSpan(text: '老师: $tName  $tPhone', style: TextStyle(fontSize: 12, color: const Color(0xFFC77D33))),
+                  WidgetSpan(child: Padding(
+                    padding: const EdgeInsets.only(left: 3),
+                    child: InkWell(
+                      child: Icon(Icons.visibility_outlined, size: 12, color: const Color(0xFFC77D33)),
+                      onTap: () => _revealAdminPhone(tId, '老师'),
+                    ),
+                  )),
+                ])),
+              ),
             ]),
           ),
         ]),
@@ -907,16 +933,18 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
         final isSelf = aid == _adminKey || aid == _token; // approximate
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-          child: ListTile(
-            title: Text(a['real_name'] ?? a['username'] ?? '', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-            subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${a['role']} · ${a['phone'] ?? ''} · ${a['created_at']?.toString().replaceAll(RegExp(r'T.*'), '') ?? ''}', style: const TextStyle(fontSize: 11)),
-              if (role == 'guardian' || role == 'tutor') ...[
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(children: [
+              // Name + info
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(a['real_name'] ?? a['username'] ?? '', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                 const SizedBox(height: 2),
-                ..._buildStudentList(aid, role),
-              ],
-            ]),
-            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text('${a['role']} · ${a['phone'] ?? ''} · ${a['created_at']?.toString().replaceAll(RegExp(r'T.*'), '') ?? ''}', style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+                if (role == 'guardian' || role == 'tutor') ..._buildStudentList(aid, role),
+              ])),
+              // Actions
+              Row(mainAxisSize: MainAxisSize.min, children: [
               if (role == 'service' && !isSelf)
                 IconButton(
                   icon: const Icon(Icons.admin_panel_settings, size: 18, color: Color(0xFF5B7A9A)),
@@ -932,8 +960,9 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
               ],
               Chip(label: Text(status == 'disabled' ? '已禁用' : '正常', style: TextStyle(fontSize: 10, color: status == 'disabled' ? Colors.red : Colors.green))),
             ]),
-          ),
-        );
+          ]),
+        ),
+      );
       })),
     ]);
   }
