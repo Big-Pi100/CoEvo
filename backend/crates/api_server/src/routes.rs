@@ -98,16 +98,19 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/admin/dashboard", get(admin_dashboard))
         .route("/api/admin/register", post(admin_register))
         .route("/api/admin/users/batch-subscription", post(admin_batch_subscription))
-        .route("/api/admin/users/{user_id}", get(admin_user_detail))
+        .route("/api/admin/users/{user_id}", get(admin_user_detail).delete(admin_delete_user))
+        .route("/api/admin/users/{user_id}/restore", post(admin_restore_user))
         .route("/api/admin/users/{user_id}/reveal-phone", post(admin_reveal_phone))
         .route("/api/admin/users/{user_id}/subscription", put(admin_set_subscription))
+        .route("/api/admin/users/{user_id}/quick-extend", post(admin_quick_extend))
         .route("/api/admin/subscription-requests", get(admin_list_subscription_requests).post(admin_create_subscription_request))
         .route("/api/admin/subscription-requests/{req_id}/approve", post(admin_approve_request))
         .route("/api/admin/subscription-requests/{req_id}/reject", post(admin_reject_request))
-        .route("/api/admin/admins", get(admin_list_admins))
-        .route("/api/admin/admins/{admin_id}/approve", post(admin_approve_admin))
-        .route("/api/admin/admins/{admin_id}/reject", post(admin_reject_admin))
+        .route("/api/admin/admins", get(admin_list_admins).post(admin_create_admin))
+        .route("/api/admin/admins/{admin_id}/password", post(admin_reset_password))
+        .route("/api/admin/admins/{admin_id}/permissions", put(admin_set_permissions))
         .route("/api/admin/admins/{admin_id}/disable", delete(admin_disable_admin))
+        .route("/api/admin/admins/{admin_id}/enable", post(admin_enable_admin))
         .route("/api/admin/audit-log", get(admin_audit_log))
         .route("/api/admin/guardian/students", get(guardian_students))
         .route("/api/admin/guardian/students/{student_id}", get(guardian_student_cards))
@@ -1694,58 +1697,6 @@ async fn weekly_report_handler(
 // ════════════════════════════════════════════
 // Admin
 // ════════════════════════════════════════════
-
-#[derive(Deserialize)]
-struct AdminUsersQuery {
-    q: String,
-}
-
-async fn admin_users_handler(
-    headers: HeaderMap,
-    Query(query): Query<AdminUsersQuery>,
-) -> impl IntoResponse {
-    // 验证管理员密钥
-    let admin_key = std::env::var("COEVO_ADMIN_KEY").unwrap_or_default();
-    let got = headers.get("x-admin-key").and_then(|v| v.to_str().ok()).unwrap_or("");
-    if admin_key.is_empty() || got != admin_key {
-        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "unauthorized"}))).into_response();
-    }
-
-    let conn = crate::db_pool::get_conn();
-    let pattern = format!("%{}%", query.q);
-
-    let mut stmt = conn.prepare(
-        "SELECT id, username, created_at FROM users WHERE id LIKE ?1 OR username LIKE ?1 LIMIT 20"
-    ).unwrap();
-
-    let users: Vec<serde_json::Value> = stmt.query_map(
-        rusqlite::params![pattern],
-        |row| {
-            let user_id: String = row.get(0)?;
-            Ok((user_id, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
-        },
-    ).unwrap().filter_map(|r| r.ok()).map(|(uid, uname, created)| {
-        let expires: Option<String> = conn.query_row(
-            "SELECT value FROM user_preferences WHERE user_id = ?1 AND key = 'subscription_expires'",
-            rusqlite::params![uid],
-            |row| row.get(0),
-        ).ok();
-        serde_json::json!({
-            "user_id": uid,
-            "username": uname,
-            "created_at": created,
-            "subscription_expires": expires,
-        })
-    }).collect();
-
-    Json(serde_json::json!({"users": users})).into_response()
-}
-
-// ════════════════════════════════════════════
-// ════════════════════════════════════════════
-// STT Proxy — 录音 → ffmpeg转WAV → 科大讯飞 → 返回文字
-// ════════════════════════════════════════════
-
 async fn stt_handler(
     body: axum::body::Bytes,
 ) -> Json<serde_json::Value> {

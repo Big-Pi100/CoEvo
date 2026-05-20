@@ -15,7 +15,7 @@ class UserDetailScreen extends StatefulWidget {
   State<UserDetailScreen> createState() => _UserDetailScreenState();
 }
 
-class _UserDetailScreenState extends State<UserDetailScreen> with SingleTickerProviderStateMixin {
+class _UserDetailScreenState extends State<UserDetailScreen> with TickerProviderStateMixin {
   Map<String, dynamic>? _user;
   List<Map<String, dynamic>> _cards = [];
   List<Map<String, dynamic>> _convs = [];

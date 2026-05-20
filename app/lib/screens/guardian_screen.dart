@@ -97,6 +97,30 @@ class _GuardianScreenState extends State<GuardianScreen> {
     else { _snack(resp['error'] ?? '登录失败'); }
   }
 
+  Future<void> _doRegister() async {
+    final u = _userCtrl.text.trim();
+    final p = _passCtrl.text.trim();
+    final n = _nameCtrl.text.trim();
+    final ph = _phoneCtrl.text.trim();
+    if (u.length < 5) { _snack('用户名至少5位'); return; }
+    if (p.length < 6) { _snack('密码至少6位'); return; }
+    if (n.isEmpty || n.length > 4) { _snack('姓名须为中文2-4字'); return; }
+    if (ph.length != 11 || !ph.startsWith('1')) { _snack('手机号格式不正确'); return; }
+    _snack('正在提交...');
+    final resp = await _api('POST', '/api/admin/register', body: {
+      'username': u, 'password': p,
+      'role': _isTutorMode ? 'tutor' : 'guardian',
+      'real_name': n, 'phone': ph,
+      'registered_from': _isTutorMode ? 'teacher' : 'parent',
+    });
+    if (resp.containsKey('admin_id')) {
+      _snack('注册成功，请登录');
+      setState(() { _showRegister = false; });
+    } else {
+      _snack(resp['error'] ?? '注册失败');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -265,6 +289,7 @@ class _GuardianScreenState extends State<GuardianScreen> {
 
   bool _loading = false;
   String? _error;
+  bool _showRegister = false;
 
   @override
   Widget build(BuildContext context) {
@@ -284,7 +309,7 @@ class _GuardianScreenState extends State<GuardianScreen> {
     return Scaffold(
       backgroundColor: _surfaceBg,
       appBar: AppBar(
-        title: Text(_isTutorMode ? '辅导老师登录' : '家长登录', style: TextStyle(color: Color(0xFF2C2C2C))),
+        title: Text(_isTutorMode ? '辅导老师' : '家长', style: TextStyle(color: Color(0xFF2C2C2C))),
         centerTitle: false,
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.white,
@@ -297,11 +322,30 @@ class _GuardianScreenState extends State<GuardianScreen> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Icon(Icons.family_restroom_rounded, size: 48, color: _primaryMuted),
             const SizedBox(height: 24),
-            TextField(controller: _userCtrl, decoration: const InputDecoration(labelText: '用户名', border: OutlineInputBorder(), prefixIcon: Icon(Icons.person_outline))),
-            const SizedBox(height: 12),
-            TextField(controller: _passCtrl, obscureText: true, decoration: const InputDecoration(labelText: '密码', border: OutlineInputBorder(), prefixIcon: Icon(Icons.lock_outline))),
-            const SizedBox(height: 20),
-            SizedBox(width: double.infinity, child: FilledButton(onPressed: _login, child: const Text('登录'))),
+            // ── Login form ──
+            if (!_showRegister) ...[
+              TextField(controller: _userCtrl, decoration: const InputDecoration(labelText: '用户名', border: OutlineInputBorder(), prefixIcon: Icon(Icons.person_outline))),
+              const SizedBox(height: 12),
+              TextField(controller: _passCtrl, obscureText: true, decoration: const InputDecoration(labelText: '密码', border: OutlineInputBorder(), prefixIcon: Icon(Icons.lock_outline))),
+              const SizedBox(height: 20),
+              SizedBox(width: double.infinity, child: FilledButton(onPressed: _login, child: const Text('登录'))),
+              const SizedBox(height: 16),
+              TextButton(onPressed: () => setState(() => _showRegister = true), child: Text('没有账号？注册${_isTutorMode ? "辅导老师" : "监护账号"}')),
+            ],
+            // ── Register form ──
+            if (_showRegister) ...[
+              TextField(controller: _userCtrl, decoration: const InputDecoration(labelText: '用户名（5位以上英文数字）', border: OutlineInputBorder(), prefixIcon: Icon(Icons.person_outline))),
+              const SizedBox(height: 12),
+              TextField(controller: _passCtrl, obscureText: true, decoration: const InputDecoration(labelText: '密码（6位以上含英文+数字）', border: OutlineInputBorder(), prefixIcon: Icon(Icons.lock_outline))),
+              const SizedBox(height: 12),
+              TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: '真实姓名（中文4字以内）', border: OutlineInputBorder(), prefixIcon: Icon(Icons.badge_outlined))),
+              const SizedBox(height: 12),
+              TextField(controller: _phoneCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: '手机号', border: OutlineInputBorder(), prefixIcon: Icon(Icons.phone_outlined))),
+              const SizedBox(height: 20),
+              SizedBox(width: double.infinity, child: FilledButton(onPressed: _doRegister, child: Text('注册${_isTutorMode ? '辅导老师' : '监护账号'}'))),
+              const SizedBox(height: 16),
+              TextButton(onPressed: () => setState(() => _showRegister = false), child: const Text('已有账号？去登录')),
+            ],
           ]),
         ),
       ),
