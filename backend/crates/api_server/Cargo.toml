@@ -26,6 +26,9 @@ md5 = "0.7"
 sha2 = "0.10"
 bcrypt = "0.15"
 thiserror.workspace = true
+hex.workspace = true
+aes-gcm.workspace = true
+rand.workspace = true
 
 [dev-dependencies]
 dotenvy = "0.15"

@@ -20,6 +20,8 @@
 | 二进制路径 | `/opt/coevo/coevo_server` |
 | systemd 服务 | `coevo.service` |
 | 后端端口 | `8080` |
+| **环境变量** | |
+| `COEVO_PII_KEY` | **2026-05-20 新增**：64 位十六进制字符串，用于 AES-256-GCM 加密 PII 字段（见 5.7 节） |
 
 ---
 
@@ -213,6 +215,24 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
 > - 如果 VPS 上 Rust 未安装，先执行：  
 >   `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y`
 
+### 5.3.1 首次部署 AES-256 密钥生成
+
+> **2026-05-20 新增**：CoEvo 使用 AES-256-GCM 对用户 PII（真实姓名、手机号、身份证号等）进行加密存储，密钥由环境变量 `COEVO_PII_KEY` 提供。
+
+首次部署或从旧版本升级时执行：
+
+```bash
+# 生成 64 位十六进制密钥（32 bytes = 256 bits）
+openssl rand -hex 32
+
+# 写入 .env 文件（与二进制同目录）
+echo 'COEVO_PII_KEY=<上面生成的密钥>' >> /opt/coevo/.env
+
+# 写入 systemd 服务（可选，推荐写 .env 以便后续修改）
+sudo systemctl edit coevo  # 添加 Environment=COEVO_PII_KEY=...
+```
+
+
 ### 5.4 替换二进制并重启
 
 ```bash
@@ -237,7 +257,9 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
   sudo cp /tmp/coevo-build/backend/.env /opt/coevo/
   sudo chown ubuntu:ubuntu /opt/coevo/prompts/*.md /opt/coevo/cefr_catalog.json /opt/coevo/.env
 
-  # 启动服务
+  # 启动服务（自动执行 PII 加密迁移）
+  # 2026-05-20: 第一次启动时后端会自动加密所有现有明文 PII 数据
+  # 并生成 bind_hash 列，无需手动干预
   sudo systemctl start coevo
   sleep 2
   echo "Service: $(sudo systemctl is-active coevo)"
@@ -271,6 +293,7 @@ ExecStart=/opt/coevo/coevo_server
 Restart=always
 RestartSec=5
 Environment=RUST_LOG=info
+Environment=COEVO_PII_KEY=<64位十六进制密钥>
 
 [Install]
 WantedBy=multi-user.target
@@ -290,7 +313,7 @@ sudo journalctl -u coevo -f     # 实时日志
 
 ## 6. 验证部署
 
-### 5.1 快速检查
+### 6.1 快速检查
 
 ```bash
 # App 入口
@@ -316,7 +339,7 @@ curl -s http://<OLD_VPS_IP>:8080/health
 | 落地页 | HTTP 200 |
 | API 健康 | `CoEvo API — OK` |
 
-### 5.2 服务状态
+### 6.2 服务状态
 
 ```bash
 ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
@@ -329,7 +352,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
 
 ## 7. 故障排查
 
-### 6.1 App 页面空白 / JS 404
+### 7.1 App 页面空白 / JS 404
 
 **症状**：访问 `/app/` 返回 HTML 但页面白屏
 
@@ -347,7 +370,7 @@ curl -s -o /dev/null -w "%{http_code}" http://<OLD_VPS_IP>/app/main.dart.js
 # 期望: 200
 ```
 
-### 6.2 API 请求失败
+### 7.2 API 请求失败
 
 **症状**：App 加载正常但 API 调用返回错误
 
@@ -382,7 +405,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
 "
 ```
 
-### 6.3 后端崩溃
+### 7.3 后端崩溃
 
 ```bash
 # 查看日志
@@ -394,7 +417,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> \
   "sudo systemctl restart coevo"
 ```
 
-### 6.4 后端编译 OOM
+### 7.4 后端编译 OOM
 
 **症状**：`cargo build --release` 被系统 kill，日志中出现 `Killed` 或内存不足
 
@@ -413,7 +436,7 @@ sudo mkswap /swapfile
 sudo swapon /swapfile
 ```
 
-### 6.5 域名被拦截
+### 7.5 域名被拦截
 
 **症状**：`keyievolution.fun` 返回 DNSPod 拦截页面
 
@@ -421,7 +444,7 @@ sudo swapon /swapfile
 
 **解决**：登录 [DNSPod 控制台](https://console.dnspod.cn/)，检查域名状态和备案信息。备案完成前请使用 IP 直连。
 
-### 6.6 直连 Port 3000 白屏 / 管理员后台打不开
+### 7.6 直连 Port 3000 白屏 / 管理员后台打不开
 
 **症状**：`http://<OLD_VPS_IP>:3000/` 或 `:3000/admin` 页面白屏，浏览器 Console 报 JS 语法错误（`Unexpected token '<'`）
 
@@ -453,7 +476,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
 ```
 ---
 
-### 6.7 WebSocket 长时间空闲后断连
+### 7.7 WebSocket 长时间空闲后断连
 
 **症状**：闲置几分钟后再次发送消息无响应，需要刷新页面才能恢复
 
@@ -472,11 +495,33 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
 '
 ```
 
+### 7.8 PII 解密失败 / 用户信息显示乱码
+
+**症状**：管理员后台用户姓名/手机号显示为 `***` 或乱码字符
+
+**原因**：`COEVO_PII_KEY` 环境变量未设置或与加密时使用的密钥不一致
+
+**诊断**：
+```bash
+# 检查环境变量是否已设置
+ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
+  sudo systemctl show coevo --property=Environment | grep COEVO_PII_KEY
+  grep COEVO_PII_KEY /opt/coevo/.env 2>/dev/null || echo '未在 .env 中找到'
+"
+```
+
+**解决**：
+- 若从未设置：按 5.3.1 节生成密钥并写入 .env，重启服务。启动时自动重新加密。
+- 若密钥已变更：恢复旧的密钥值，或提供原密钥后重新加密。
+- 测试密钥是否可用：`openssl enc -d -aes-256-gcm -K <密钥> -iv <iv> -in /dev/null`
+
+> ⚠️ **警告**：更换密钥后现有加密数据将不可读，必须保持密钥不变或从备份恢复旧密钥。
+
 ---
 
 ## 8. 平台兼容注意事项
 
-### 7.1 代码修改清单
+### 8.1 代码修改清单
 
 `flutter build web` 前需确认以下兼容处理：
 
@@ -487,8 +532,9 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
 | `lib/services/stt_service_web.dart` | Web 平台桩实现（语音不可用，用文本输入替代） |
 | `lib/services/stt_service_native.dart` | 原生平台实现（MediaRecorder + 讯飞 API） |
 | `pubspec.yaml` | 需包含 `flutter_web_plugins` 依赖 |
+| `backend/crates/api_server/src/encryption.rs` | **2026-05-20 新增**：AES-256-GCM PII 加密模块，需要 `COEVO_PII_KEY` 环境变量 |
 
-### 7.2 不可用于 Web 的插件
+### 8.2 不可用于 Web 的插件
 
 | 插件 | Web 状态 | 处理方式 |
 |:--|:--|:--|
@@ -551,6 +597,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
 | 8 | Nginx 服务 | `ssh ... "systemctl is-active nginx"` | `active` |
 | 9 | 服务日志无异常 | `ssh ... "journalctl -u coevo --since '1 min ago'"` | 无 ERROR |
 | 10 | API_HOST 正确注入 | `grep -o 'http://<OLD_VPS_IP>' /opt/coevo/admin-web/main.dart.js \| head -1` | 匹配 VPS IP |
+| 11 | **2026-05-20**: PII 密钥已设置 | `ssh ... "sudo systemctl show coevo --property=Environment \| grep COEVO_PII_KEY"` | 输出含 64 位 hex 密钥 |
 
 > **部署后端后特别注意第 4-6 项**：后端部署不会触碰前端文件，但如果 Nginx 配置曾因故回滚或丢失 `/app/` location，管理后台会白屏。
 
@@ -631,4 +678,4 @@ server {
 
 ---
 
-> 最后更新：2026-05-15（新增 `--dart-define=API_HOST` 编译时 API 地址注入机制；更新构建命令和代码清单）
+> 最后更新：2026-05-20（新增 AES-256-GCM PII 加密部署说明、COEVO_PII_KEY 环境变量、PII 故障排查、验证清单第 11 项）

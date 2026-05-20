@@ -2,11 +2,14 @@
 //!
 //! 复用 LinguaFlow: auth.rs, auth_middleware.rs, db_pool.rs
 
+pub mod admin_handlers;
 pub mod auth;
 pub mod auth_middleware;
 pub mod db_pool;
+pub mod encryption;
 pub mod error;
 pub mod llm;
 pub mod plan_handler;
+pub mod rate_limiter;
 pub mod routes;
 pub mod ws;

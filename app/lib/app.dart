@@ -5,30 +5,31 @@ import 'theme/app_theme.dart';
 import 'screens/auth_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/admin_screen.dart';
+import 'screens/guardian_screen.dart';
 import 'screens/review_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/conversation_list_screen.dart';
 import 'screens/skipped_list_screen.dart';
 import 'providers/auth_provider.dart';
 
+// Prevent dart2js tree-shaking of admin/guardian screens
+final _allScreens = <Widget>[
+  AdminScreen(),
+  GuardianScreen(),
+];
+
 final goRouter = GoRouter(
   initialLocation: '/auth',
   redirect: (context, state) {
     final auth = ProviderScope.containerOf(context).read(authProvider);
+    if (!auth.isRestored) return null;
 
-    // Still restoring session — allow current route
-    if (!auth.isRestored) {
-      return null;
-    }
+    final loc = state.uri.toString();
+    final isOnAuth = loc.endsWith('/auth');
+    if (loc.contains('/admin') || loc.contains('/guardian')) return null;
 
-    final isOnAuth = state.matchedLocation == '/auth';
-
-    if (auth.isAuthenticated && isOnAuth) {
-      return '/chat';
-    }
-    if (!auth.isAuthenticated && !isOnAuth) {
-      return '/auth';
-    }
+    if (auth.isAuthenticated && isOnAuth) return '/chat';
+    if (!auth.isAuthenticated && !isOnAuth) return '/auth';
     return null;
   },
   routes: [
@@ -44,6 +45,14 @@ final goRouter = GoRouter(
     GoRoute(
       path: '/admin',
       builder: (context, state) => const AdminScreen(),
+    ),
+    GoRoute(
+      path: '/guardian',
+      builder: (context, state) => const GuardianScreen(),
+    ),
+    GoRoute(
+      path: '/teacher',
+      builder: (context, state) => const GuardianScreen(),
     ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) => _ShellScaffold(navigationShell: navigationShell),
@@ -145,6 +154,8 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
 
   @override
   Widget build(BuildContext context) {
+    // Keep admin/guardian from tree-shaking
+    _allScreens;
     return MaterialApp.router(
       title: '刻意进化学习',
       debugShowCheckedModeBanner: false,

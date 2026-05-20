@@ -2,7 +2,7 @@
 //!
 //! 复用 LinguaFlow routes.rs 的模式
 
-use axum::{Router, routing::{get, post, delete}, Json, extract::{Path, Query}, http::StatusCode, response::IntoResponse};
+use axum::{Router, routing::{get, post, put, delete}, Json, extract::{Path, Query}, http::StatusCode, response::IntoResponse};
 use axum::extract::ws::WebSocketUpgrade;
 use axum::http::HeaderMap;
 use serde::Deserialize;
@@ -10,6 +10,7 @@ use std::sync::OnceLock;
 use std::collections::HashMap;
 
 use crate::error::AppError;
+use crate::admin_handlers::*;
 
 /// Helper: convert an AppError into a Json error response (for handlers returning Json<Value>)
 fn auth_json(e: AppError) -> Json<serde_json::Value> {
@@ -91,6 +92,36 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/user/{user_id}/weekly-report", get(weekly_report_handler))
         // Admin
         .route("/api/admin/users", get(admin_users_handler))
+        .route("/api/admin/users/expiring", get(admin_expiring_users))
+        .route("/api/admin/users/export", get(admin_users_export))
+        .route("/api/admin/login", post(admin_login))
+        .route("/api/admin/dashboard", get(admin_dashboard))
+        .route("/api/admin/register", post(admin_register))
+        .route("/api/admin/users/batch-subscription", post(admin_batch_subscription))
+        .route("/api/admin/users/{user_id}", get(admin_user_detail))
+        .route("/api/admin/users/{user_id}/reveal-phone", post(admin_reveal_phone))
+        .route("/api/admin/users/{user_id}/subscription", put(admin_set_subscription))
+        .route("/api/admin/subscription-requests", get(admin_list_subscription_requests).post(admin_create_subscription_request))
+        .route("/api/admin/subscription-requests/{req_id}/approve", post(admin_approve_request))
+        .route("/api/admin/subscription-requests/{req_id}/reject", post(admin_reject_request))
+        .route("/api/admin/admins", get(admin_list_admins))
+        .route("/api/admin/admins/{admin_id}/approve", post(admin_approve_admin))
+        .route("/api/admin/admins/{admin_id}/reject", post(admin_reject_admin))
+        .route("/api/admin/admins/{admin_id}/disable", delete(admin_disable_admin))
+        .route("/api/admin/audit-log", get(admin_audit_log))
+        .route("/api/admin/guardian/students", get(guardian_students))
+        .route("/api/admin/guardian/students/{student_id}", get(guardian_student_cards))
+        .route("/api/admin/guardian/students/{student_id}/cards", get(guardian_student_cards))
+        .route("/api/admin/guardian/students/{student_id}/conversations", get(guardian_student_conversations))
+        .route("/api/admin/guardian/students/{student_id}/conversations/{conv_id}", get(guardian_student_conversation_detail))
+        .route("/api/admin/guardian/students/{student_id}/learning-summary", get(guardian_learning_summary))
+        .route("/api/admin/guardian/bind", post(guardian_bind_request))
+        .route("/api/admin/guardian/reveal-phone/{admin_id}", post(guardian_reveal_phone))
+        // Guardian assignment management (super admin)
+        .route("/api/admin/guardian/assignments", get(admin_list_assignments).post(admin_create_assignment))
+        .route("/api/admin/guardian/assignments/{assignment_id}", delete(admin_remove_assignment))
+        .route("/api/user/bind-lookup", post(bind_lookup_handler))
+        .route("/api/user/{user_id}/profile", put(update_user_profile_handler))
         // Conversation management
         .route("/api/conversations/{conv_id}", delete(conversation_delete_handler))
         .route("/api/conversations/{conv_id}/restore", post(conversation_restore_handler))
@@ -111,6 +142,8 @@ async fn health_check() -> &'static str {
 pub struct AuthInput {
     pub username: String,
     pub password: String,
+    pub real_name: Option<String>,
+    pub phone: Option<String>,
 }
 
 async fn auth_register(Json(input): Json<AuthInput>) -> Json<serde_json::Value> {
@@ -119,6 +152,8 @@ async fn auth_register(Json(input): Json<AuthInput>) -> Json<serde_json::Value> 
         crate::auth::register(&conn, &crate::auth::RegisterRequest {
             username: input.username,
             password: input.password,
+            real_name: input.real_name,
+            phone: input.phone,
         })
     };
     match result {
@@ -666,8 +701,8 @@ async fn cards_skip_delete_handler(
     let domain_str = domain.clone().unwrap_or_default();
 
     if let Err(e) = conn.execute(
-        "INSERT INTO cards (id, user_id, domain, card_type, front, back, source_sentence, created_at)
-         VALUES (?1, ?2, ?3, 'concept', ?4, ?5, ?6, ?7)",
+        "INSERT INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at)
+         VALUES (?1, ?2, ?3, 'concept', ?4, ?5, ?6, NULL, ?7)",
         rusqlite::params![card_id, query.user_id, domain_str, front, back, source_text, now],
     ) {
         return Json(serde_json::json!({"error": format!("Card insert: {}", e)}));
@@ -702,6 +737,7 @@ async fn ws_upgrade(ws: WebSocketUpgrade) -> impl axum::response::IntoResponse {
 #[derive(Deserialize)]
 pub struct BatchCreateInput {
     pub user_id: String,
+    pub conversation_id: Option<String>,
     pub candidates: Vec<CardCandidateInput>,
 }
 
@@ -733,7 +769,8 @@ async fn cards_batch_create_handler(
             source_sentence: cand.source_sentence.clone(),
             domain: cand.domain.clone().unwrap_or_else(|| "general".into()),
         };
-        let (card, memory) = card_engine::card_formatter::format_card(&input.user_id, &candidate);
+        let (mut card, memory) = card_engine::card_formatter::format_card(&input.user_id, &candidate);
+        card.conversation_id = input.conversation_id.clone();
         match card_engine::card_repository::insert_card(&conn, &card, &memory) {
             card_engine::card_repository::InsertResult::Success(id) => {
                 created.push(id);
@@ -1134,9 +1171,15 @@ async fn conversation_permanent_delete_handler(
 
 /// GET /api/user/:user_id/profile — 用户统计 + 成就
 async fn profile_handler(
+    headers: axum::http::HeaderMap,
     Path(user_id): Path<String>,
-) -> Json<serde_json::Value> {
+) -> impl axum::response::IntoResponse {
     let conn = crate::db_pool::get_conn();
+
+    // Verify auth: caller must be the user themselves
+    if crate::auth_middleware::verify_auth(&user_id, &headers).is_err() {
+        return (axum::http::StatusCode::UNAUTHORIZED, axum::Json(serde_json::json!({"error": "unauthorized"})));
+    }
 
     let total_cards: i64 = conn.query_row(
         "SELECT COUNT(*) FROM cards WHERE user_id = ?1",
@@ -1177,10 +1220,27 @@ async fn profile_handler(
         "SELECT display_name FROM users WHERE id = ?1",
         rusqlite::params![user_id], |row| row.get(0),
     ).ok().flatten();
+    let real_name_raw: Option<String> = conn.query_row(
+        "SELECT real_name FROM users WHERE id = ?1",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).ok().flatten();
+    let phone_raw: Option<String> = conn.query_row(
+        "SELECT phone FROM users WHERE id = ?1",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).ok().flatten();
+    // Decrypt PII fields — now stored as AES-256-GCM
+    let real_name = real_name_raw.as_ref().map(|v| {
+        if crate::encryption::is_encrypted(v) { crate::encryption::decrypt(v) } else { v.clone() }
+    });
+    let phone = phone_raw.as_ref().map(|v| {
+        if crate::encryption::is_encrypted(v) { crate::encryption::decrypt(v) } else { v.clone() }
+    });
 
-    Json(serde_json::json!({
+    (axum::http::StatusCode::OK, axum::Json(serde_json::json!({
         "user_id": user_id,
         "display_name": display_name,
+        "real_name": real_name,
+        "phone": phone,
         "stats": {
             "total_cards": total_cards,
             "total_reviews": total_reviews,
@@ -1189,7 +1249,7 @@ async fn profile_handler(
             "today_reviews": today_reviews,
         },
         "achievements": achievements,
-    }))
+    })))
 }
 
 // ── Display Name ──

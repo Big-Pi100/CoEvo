@@ -3,7 +3,47 @@ import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:markdown_widget/markdown_widget.dart';
 import 'graph_widget.dart';
 
+/// 错误边界 — 捕获子组件构建/渲染异常，兜底显示
+class _ErrorBoundary extends StatelessWidget {
+  final Widget child;
+  final String fallbackMsg;
+  const _ErrorBoundary({required this.child, this.fallbackMsg = '渲染异常'});
+
+  @override
+  Widget build(BuildContext context) {
+    try {
+      // Builder 确保在正确的 Element 上下文中捕获构建异常
+      return Builder(builder: (_) => child);
+    } catch (_) {
+      return _renderFallback(fallbackMsg);
+    }
+  }
+}
+
+Widget _renderFallback(String msg) {
+  return Container(
+    margin: const EdgeInsets.symmetric(vertical: 6),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    decoration: BoxDecoration(
+      color: Colors.orange.shade50,
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: Colors.orange.shade200),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.broken_image_outlined, size: 16, color: Colors.orange.shade700),
+        const SizedBox(width: 6),
+        Flexible(child: Text(msg, style: TextStyle(fontSize: 12, color: Colors.orange.shade800))),
+      ],
+    ),
+  );
+}
+
 /// 将 LaTeX display 公式渲染为独立块
+///
+/// flutter_math_fork 0.7.x 存在已知问题: textStyle.color 不会传递到所有 TeX 原子
+/// 这里使用 \textcolor 注入来强制数字/符号的颜色一致
 class DisplayMathBlock extends StatelessWidget {
   final String formula;
   final Color textColor;
@@ -11,17 +51,35 @@ class DisplayMathBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Center(
-        child: Math.tex(
-          formula,
-          mathStyle: MathStyle.display,
-          textStyle: TextStyle(fontSize: 16, color: textColor),
+    final fixed = _addColorCmd(formula, textColor);
+    return _ErrorBoundary(
+      fallbackMsg: '公式渲染失败',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Center(
+          child: Math.tex(
+            fixed,
+            mathStyle: MathStyle.display,
+            textStyle: TextStyle(fontSize: 16, color: textColor),
+          ),
         ),
       ),
     );
   }
+}
+
+/// 在 LaTeX 公式外包裹 \textcolor，解决数字/符号颜色不继承的问题
+/// 如果公式已有颜色指令则跳过。仅对简单公式注入，复杂公式（含环境）跳过以免破坏语法
+String _addColorCmd(String formula, Color color) {
+  if (color == Colors.black87 || color == Colors.black || color == Colors.white) return formula;
+  // 已有颜色指令
+  if (formula.contains(r'\color') || formula.contains(r'\textcolor')) return formula;
+  // 含复杂环境时跳过，\textcolor 包裹会破坏内部结构
+  if (formula.contains(r'\begin') || formula.contains(r'\\') || formula.contains(r'\cr')) return formula;
+  // 颜色接近深色/黑色时也跳过（flutter_math_fork 对深色渲染正常）
+  if (color.red < 60 && color.green < 60 && color.blue < 60) return formula;
+  final hex = '#${color.red.toRadixString(16).padLeft(2, '0')}${color.green.toRadixString(16).padLeft(2, '0')}${color.blue.toRadixString(16).padLeft(2, '0')}';
+  return r'\textcolor{' + hex + '}{' + formula + '}';
 }
 
 /// 预处理管线入口：块分割 → Markdown + 自定义块混合渲染
@@ -47,7 +105,10 @@ class RichContentBuilder {
           }
           break;
         case BlockType.graph:
-          children.add(GraphWidget(jsonStr: block.content));
+          children.add(_ErrorBoundary(
+            fallbackMsg: '图形渲染失败',
+            child: GraphWidget(jsonStr: block.content),
+          ));
           break;
         case BlockType.displayMath:
           children.add(DisplayMathBlock(block.content, textColor: textColor));
@@ -98,11 +159,15 @@ class RichContentBuilder {
       }
 
       final formula = m.group(1)!.trim();
+      final fixedFormula = _addColorCmd(formula, textColor);
       spans.add(WidgetSpan(
-        child: Math.tex(
-          formula,
-          mathStyle: MathStyle.text,
-          textStyle: TextStyle(fontSize: 14, color: textColor),
+        child: _ErrorBoundary(
+          fallbackMsg: '公式错误',
+          child: Math.tex(
+            fixedFormula,
+            mathStyle: MathStyle.text,
+            textStyle: TextStyle(fontSize: 14, color: textColor),
+          ),
         ),
         alignment: PlaceholderAlignment.middle,
       ));

@@ -20,6 +20,7 @@ pub fn format_card(user_id: &str, candidate: &ConceptCandidate) -> (Card, CardMe
         front: candidate.front.clone(),
         back: candidate.back.clone(),
         source_sentence: Some(candidate.source_sentence.clone()),
+        conversation_id: None,
         created_at: now,
     };
 

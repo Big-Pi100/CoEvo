@@ -4,10 +4,12 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../api/chat_client.dart';
 import '../api/api_config.dart';
 import '../providers/auth_provider.dart';
 import '../services/tts_service.dart';
+import '../utils/validators.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -25,6 +27,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _isLoading = true;
   String? _avatarUrl;
   String _displayName = '';
+  String? _realName;
+  String? _phone;
   bool _isUploading = false;
   ProviderSubscription? _authSub;
 
@@ -82,6 +86,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         await prefs.setString('display_name', backendName);
         setState(() => _displayName = backendName);
       }
+      // 真实姓名 + 手机号
+      setState(() {
+        _realName = data['real_name'] as String?;
+        _phone = data['phone'] as String?;
+      });
       if (mounted) setState(() {
         _data = data;
         _report = report;
@@ -170,6 +179,68 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       }
       setState(() => _displayName = trimmed);
     }
+  }
+
+  Future<void> _editInfoField(String label, String? current, String? Function(String?) validator, Future<void> Function(String) onSave) async {
+    final controller = TextEditingController(text: current ?? '');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('修改$label'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(hintText: '输入$label'),
+          textInputAction: TextInputAction.done,
+          onSubmitted: (v) {
+            if (validator(v.trim()) == null) Navigator.pop(ctx, v.trim());
+          },
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(onPressed: () {
+            final v = controller.text.trim();
+            if (validator(v) == null) Navigator.pop(ctx, v);
+            else ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(validator(v)!)));
+          }, child: const Text('保存')),
+        ],
+      ),
+    );
+    if (result != null && result.isNotEmpty) {
+      await onSave(result);
+    }
+  }
+
+  Future<void> _updateProfile(Map<String, String> fields) async {
+    final auth = ref.read(authProvider);
+    if (auth.userId == null || auth.token == null) return;
+    final client = ChatClient(userId: auth.userId!, token: auth.token);
+    try {
+      final resp = await http.put(
+        Uri.parse('${ApiConfig.baseUrl}/api/user/${auth.userId}/profile'),
+        headers: {'Authorization': 'Bearer ${auth.token}', 'Content-Type': 'application/json'},
+        body: jsonEncode(fields),
+      );
+      if (resp.statusCode == 200) {
+        setState(() {
+          if (fields.containsKey('real_name')) _realName = fields['real_name'];
+          if (fields.containsKey('phone')) _phone = fields['phone'];
+        });
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已保存')));
+      }
+    } catch (_) {}
+  }
+
+  Widget _buildInfoTile({required IconData icon, required String label, required String value, required VoidCallback onTap}) {
+    return Card(
+      child: ListTile(
+        leading: Icon(icon, size: 20, color: Colors.grey),
+        title: Text(label, style: const TextStyle(fontSize: 14, color: Colors.grey)),
+        subtitle: Text(value, style: const TextStyle(fontSize: 16)),
+        trailing: const Icon(Icons.chevron_right, size: 18),
+        onTap: onTap,
+      ),
+    );
   }
 
   @override
@@ -263,6 +334,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         ),
         const SizedBox(height: 32),
+
+        // ── 真实姓名 + 手机号 ──
+        _buildInfoTile(
+          icon: Icons.badge_outlined,
+          label: '真实姓名',
+          value: _realName ?? '未填写',
+          onTap: () => _editInfoField('真实姓名', _realName, Validators.realName, (v) => _updateProfile({'real_name': v})),
+        ),
+        _buildInfoTile(
+          icon: Icons.phone_outlined,
+          label: '手机号',
+          value: _phone ?? '未填写',
+          onTap: () => _editInfoField('手机号', _phone, Validators.phone, (v) => _updateProfile({'phone': v})),
+        ),
+        const SizedBox(height: 16),
 
         // ── Phase 3: 学习报告 ──
         if (_report != null) ...[

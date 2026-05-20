@@ -88,11 +88,11 @@ pub fn insert_card(conn: &Connection, card: &Card, memory: &CardMemory) -> Inser
 
     // 4. Insert card
     if let Err(e) = conn.execute(
-        "INSERT INTO cards (id, user_id, domain, card_type, front, back, source_sentence, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![
             card.id, card.user_id, card.domain, card.card_type,
-            card.front, card.back, card.source_sentence, card.created_at,
+            card.front, card.back, card.source_sentence, card.conversation_id, card.created_at,
         ],
     ) {
         return InsertResult::DatabaseError(format!("Card insert: {}", e));
@@ -141,7 +141,7 @@ mod tests {
     fn setup_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
-            "CREATE TABLE cards (id TEXT PRIMARY KEY, user_id TEXT, domain TEXT, card_type TEXT, front TEXT, back TEXT, source_sentence TEXT, created_at INTEGER);
+            "CREATE TABLE cards (id TEXT PRIMARY KEY, user_id TEXT, domain TEXT, card_type TEXT, front TEXT, back TEXT, source_sentence TEXT, conversation_id TEXT, created_at INTEGER);
              CREATE TABLE card_memory (card_id TEXT PRIMARY KEY, state INTEGER, difficulty REAL, stability REAL, due INTEGER, last_review INTEGER, reps INTEGER, lapses INTEGER);
              CREATE TABLE skipped_concepts (id TEXT PRIMARY KEY, user_id TEXT, front TEXT, domain TEXT, source_text TEXT, skipped_at INTEGER);"
         ).unwrap();

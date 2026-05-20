@@ -15,6 +15,11 @@ CREATE TABLE users (
     password_hash TEXT,
     streak_days INTEGER DEFAULT 0,
     last_active_date TEXT,
+    display_name TEXT DEFAULT NULL,
+    real_name TEXT DEFAULT NULL,
+    phone TEXT DEFAULT NULL,
+    id_number TEXT DEFAULT NULL,
+    bind_hash TEXT DEFAULT NULL,
     created_at TEXT NOT NULL
 );
 CREATE TABLE tokens (
@@ -199,6 +204,7 @@ async fn main() {
             )",
             "CREATE INDEX IF NOT EXISTS idx_learning_plans_user ON learning_plans(user_id)",
             "ALTER TABLE users ADD COLUMN display_name TEXT DEFAULT NULL",
+            "ALTER TABLE cards ADD COLUMN conversation_id TEXT",
             "CREATE TABLE IF NOT EXISTS user_preferences (
                 user_id TEXT NOT NULL,
                 key TEXT NOT NULL,
@@ -224,6 +230,72 @@ async fn main() {
             // 对话软删除支持
             "ALTER TABLE conversations ADD COLUMN deleted_at TEXT DEFAULT NULL",
             "CREATE INDEX IF NOT EXISTS idx_conversations_user_deleted ON conversations(user_id, deleted_at)",
+            // 管理后台重构 — PII 字段
+            "ALTER TABLE users ADD COLUMN real_name TEXT DEFAULT NULL",
+            "ALTER TABLE users ADD COLUMN phone TEXT DEFAULT NULL",
+            "ALTER TABLE users ADD COLUMN id_number TEXT DEFAULT NULL",
+            // AES-256-GCM 加密迁移 — bind_hash 用于确定性查找
+            "ALTER TABLE users ADD COLUMN bind_hash TEXT DEFAULT NULL",
+            // 管理员表
+            "CREATE TABLE IF NOT EXISTS admin_users (
+                id TEXT PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'pending',
+                status TEXT NOT NULL DEFAULT 'pending',
+                real_name TEXT,
+                phone TEXT,
+                id_number TEXT,
+                guardian_declaration TEXT,
+                apply_reason TEXT,
+                reject_reason TEXT,
+                registered_from TEXT,
+                created_by TEXT,
+                created_at TEXT NOT NULL,
+                approved_at TEXT
+            )",
+            // 订阅申请审批表
+            "CREATE TABLE IF NOT EXISTS subscription_requests (
+                id TEXT PRIMARY KEY,
+                target_user_id TEXT NOT NULL,
+                requested_by TEXT NOT NULL,
+                reviewed_by TEXT,
+                package TEXT NOT NULL,
+                channel TEXT,
+                note TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                reject_reason TEXT,
+                requested_at TEXT NOT NULL,
+                reviewed_at TEXT,
+                FOREIGN KEY (target_user_id) REFERENCES users(id)
+            )",
+            // 操作审计日志
+            "CREATE TABLE IF NOT EXISTS admin_audit_log (
+                id TEXT PRIMARY KEY,
+                admin_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                target_user_id TEXT,
+                request_id TEXT,
+                detail TEXT,
+                created_at TEXT NOT NULL
+            )",
+            // 监护关系
+            "CREATE TABLE IF NOT EXISTS guardian_assignments (
+                id TEXT PRIMARY KEY,
+                guardian_admin_id TEXT NOT NULL,
+                student_user_id TEXT NOT NULL,
+                bind_key TEXT NOT NULL,
+                assigned_by TEXT,
+                assigned_at TEXT NOT NULL,
+                is_active INTEGER DEFAULT 1,
+                UNIQUE(guardian_admin_id, student_user_id)
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_admin_users_role_status ON admin_users(role, status)",
+            "CREATE INDEX IF NOT EXISTS idx_subscription_requests_status ON subscription_requests(status)",
+            "CREATE INDEX IF NOT EXISTS idx_guardian_assignments_guardian ON guardian_assignments(guardian_admin_id)",
+            "CREATE INDEX IF NOT EXISTS idx_guardian_assignments_student ON guardian_assignments(student_user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_admin_audit_log_admin ON admin_audit_log(admin_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_admin_audit_log_action ON admin_audit_log(action, created_at)",
         ];
 
         for sql in migrations {
@@ -239,6 +311,58 @@ async fn main() {
                         panic!("Migration failed: {} — SQL: {}", err_msg, sql);
                     }
                 }
+            }
+        }
+    }
+
+    // --- PII 加密迁移：加密现有明文数据 + 计算 bind_hash ---
+    {
+        let conn = api_server::db_pool::get_conn();
+        // Users table — encrypt real_name and phone, compute bind_hash
+        let mut stmt = conn.prepare("SELECT id, real_name, phone FROM users WHERE real_name IS NOT NULL OR phone IS NOT NULL").unwrap();
+        let rows: Vec<(String, Option<String>, Option<String>)> = stmt.query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        }).unwrap().filter_map(|r| r.ok()).collect();
+        for (uid, rn, ph) in &rows {
+            let needs_update = rn.as_ref().map_or(false, |v| !api_server::encryption::is_encrypted(v))
+                || ph.as_ref().map_or(false, |v| !api_server::encryption::is_encrypted(v));
+            if needs_update {
+                let enc_rn = rn.as_ref().map(|v| {
+                    if api_server::encryption::is_encrypted(v) { v.clone() }
+                    else { api_server::encryption::encrypt(v) }
+                });
+                let enc_ph = ph.as_ref().map(|v| {
+                    if api_server::encryption::is_encrypted(v) { v.clone() }
+                    else { api_server::encryption::encrypt(v) }
+                });
+                let bh = api_server::encryption::bind_hash(
+                    rn.as_deref().unwrap_or(""),
+                    ph.as_deref().unwrap_or(""),
+                );
+                let _ = conn.execute(
+                    "UPDATE users SET real_name=?1, phone=?2, bind_hash=?3 WHERE id=?4",
+                    rusqlite::params![enc_rn, enc_ph, bh, uid],
+                );
+                tracing::info!("Encrypted PII for user {}", uid);
+            }
+        }
+        // Admin users table — encrypt real_name, phone, id_number, guardian_declaration
+        let mut stmt2 = conn.prepare("SELECT id, real_name, phone, id_number, guardian_declaration FROM admin_users WHERE real_name IS NOT NULL OR phone IS NOT NULL").unwrap();
+        let admins: Vec<(String, Option<String>, Option<String>, Option<String>, Option<String>)> = stmt2.query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?))
+        }).unwrap().filter_map(|r| r.ok()).collect();
+        for (aid, rn, ph, idn, gd) in &admins {
+            let needs_enc = |v: &Option<String>| v.as_ref().map_or(false, |s| !api_server::encryption::is_encrypted(s));
+            if needs_enc(rn) || needs_enc(ph) || needs_enc(idn) || needs_enc(gd) {
+                let enc_rn = rn.as_ref().map(|v| if api_server::encryption::is_encrypted(v) { v.clone() } else { api_server::encryption::encrypt(v) });
+                let enc_ph = ph.as_ref().map(|v| if api_server::encryption::is_encrypted(v) { v.clone() } else { api_server::encryption::encrypt(v) });
+                let enc_idn = idn.as_ref().map(|v| if api_server::encryption::is_encrypted(v) { v.clone() } else { api_server::encryption::encrypt(v) });
+                let enc_gd = gd.as_ref().map(|v| if api_server::encryption::is_encrypted(v) { v.clone() } else { api_server::encryption::encrypt(v) });
+                let _ = conn.execute(
+                    "UPDATE admin_users SET real_name=?1, phone=?2, id_number=?3, guardian_declaration=?4 WHERE id=?5",
+                    rusqlite::params![enc_rn, enc_ph, enc_idn, enc_gd, aid],
+                );
+                tracing::info!("Encrypted PII for admin user {}", aid);
             }
         }
     }

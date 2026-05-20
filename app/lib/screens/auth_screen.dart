@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
+import '../utils/validators.dart';
 
 class AuthScreen extends ConsumerStatefulWidget {
   const AuthScreen({super.key});
@@ -13,33 +14,21 @@ class AuthScreen extends ConsumerStatefulWidget {
 class _AuthScreenState extends ConsumerState<AuthScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _nameController = TextEditingController();
+  final _phoneController = TextEditingController();
   bool _isLogin = true;
   String? _validationError;
 
-  /// 校验输入字段，返回 null 表示通过，否则返回错误消息
-  String? _validateInputs(String username, String password) {
-    if (username.isEmpty) {
-      return '用户名不能为空';
-    }
-    if (username.length < 2) {
-      return '用户名至少需要 2 个字符';
-    }
-    if (username.length > 32) {
-      return '用户名不能超过 32 个字符';
-    }
-    // 只允许字母、数字、下划线和中文
-    final usernameRegExp = RegExp(r'^[\w\u4e00-\u9fff]+$');
-    if (!usernameRegExp.hasMatch(username)) {
-      return '用户名只能包含字母、数字、下划线和中文';
-    }
-    if (password.isEmpty) {
-      return '密码不能为空';
-    }
-    if (password.length < 6) {
-      return '密码至少需要 6 个字符';
-    }
-    if (password.length > 64) {
-      return '密码不能超过 64 个字符';
+  String? _validateInputs() {
+    final u = _usernameController.text.trim();
+    final p = _passwordController.text.trim();
+    final err = Validators.username(u) ?? Validators.password(p);
+    if (err != null) return err;
+    if (!_isLogin) {
+      final ne = Validators.realName(_nameController.text.trim());
+      if (ne != null) return ne;
+      final pe = Validators.phone(_phoneController.text.trim());
+      if (pe != null) return pe;
     }
     return null;
   }
@@ -125,12 +114,33 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               TextField(
                 controller: _passwordController,
                 decoration: const InputDecoration(
-                  labelText: '密码',
+                  labelText: '密码（6位以上英文+数字）',
                   prefixIcon: Icon(Icons.lock),
                 ),
                 obscureText: true,
-                textInputAction: TextInputAction.done,
+                textInputAction: TextInputAction.next,
               ),
+              if (!_isLogin) ...[
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: '真实姓名（中文，4字以内）',
+                    prefixIcon: Icon(Icons.person),
+                  ),
+                  textInputAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _phoneController,
+                  decoration: const InputDecoration(
+                    labelText: '手机号',
+                    prefixIcon: Icon(Icons.phone),
+                  ),
+                  keyboardType: TextInputType.phone,
+                  textInputAction: TextInputAction.done,
+                ),
+              ],
               const SizedBox(height: 24),
 
               // 客户端校验错误
@@ -159,7 +169,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   final password = _passwordController.text.trim();
 
                   // 客户端输入校验
-                  final validationError = _validateInputs(username, password);
+                  final validationError = _validateInputs();
                   if (validationError != null) {
                     setState(() => _validationError = validationError);
                     return;
@@ -169,7 +179,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   if (_isLogin) {
                     ref.read(authProvider.notifier).login(username, password);
                   } else {
-                    ref.read(authProvider.notifier).register(username, password);
+                    ref.read(authProvider.notifier).register(username, password,
+                      realName: _nameController.text.trim(),
+                      phone: _phoneController.text.trim(),
+                    );
                   }
                 },
                 child: SizedBox(

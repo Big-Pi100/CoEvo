@@ -267,7 +267,7 @@ mod tests {
     fn setup_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
-            "CREATE TABLE cards (id TEXT PRIMARY KEY, user_id TEXT, domain TEXT, card_type TEXT, front TEXT, back TEXT, source_sentence TEXT, created_at INTEGER);
+            "CREATE TABLE cards (id TEXT PRIMARY KEY, user_id TEXT, domain TEXT, card_type TEXT, front TEXT, back TEXT, source_sentence TEXT, conversation_id TEXT, created_at INTEGER);
              CREATE TABLE card_memory (card_id TEXT PRIMARY KEY, state INTEGER DEFAULT 0, difficulty REAL DEFAULT 5.0, stability REAL DEFAULT 0.0, due INTEGER DEFAULT 0, last_review INTEGER, reps INTEGER DEFAULT 0, lapses INTEGER DEFAULT 0);
              CREATE TABLE review_log (id TEXT PRIMARY KEY, card_id TEXT, rating INTEGER, verification_type TEXT, verification_result TEXT, reviewed_at INTEGER);
              CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT, streak_days INTEGER DEFAULT 0, last_active_date TEXT, created_at TEXT);"

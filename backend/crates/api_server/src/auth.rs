@@ -4,11 +4,14 @@
 //! Tokens are stored in the `tokens` table for server-side verification.
 
 use serde::{Deserialize, Serialize};
+use crate::encryption;
 
 #[derive(Deserialize)]
 pub struct RegisterRequest {
     pub username: String,
     pub password: String,
+    pub real_name: Option<String>,
+    pub phone: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -51,6 +54,16 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
         return Err("Username already taken".into());
     }
 
+    // 校验
+    if req.username.len() < 5 || !req.username.chars().all(|c| c.is_ascii_alphanumeric()) { return Err("用户名至少5位英文或数字".into()); }
+    if req.password.len() < 6 || !req.password.chars().any(|c| c.is_ascii_alphabetic()) || !req.password.chars().any(|c| c.is_ascii_digit()) { return Err("密码至少6位含英文+数字".into()); }
+    if let Some(ref n) = req.real_name {
+        if n.is_empty() || n.chars().count() > 4 || !n.chars().all(|c| (c >= '\u{4e00}' && c <= '\u{9fff}') || c == '·') { return Err("姓名须为中文4字以内".into()); }
+    }
+    if let Some(ref p) = req.phone {
+        if p.len() != 11 || !p.starts_with('1') || !p.chars().all(|c| c.is_ascii_digit()) { return Err("手机号格式不正确".into()); }
+    }
+
     let user_id = format!("user_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap());
     let now = chrono::Utc::now().to_rfc3339();
     let token = uuid::Uuid::new_v4().to_string();
@@ -60,9 +73,18 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
         return Err("Password hashing failed".into());
     }
 
+    // Encrypt PII fields
+    let enc_real_name = req.real_name.as_ref().map(|n| encryption::encrypt(n));
+    let enc_phone = req.phone.as_ref().map(|p| encryption::encrypt(p));
+    // Compute bind_hash (for deterministic lookup)
+    let bind_hash_val = match (&req.real_name, &req.phone) {
+        (Some(n), Some(p)) => Some(encryption::bind_hash(n, p)),
+        _ => None,
+    };
+
     conn.execute(
-        "INSERT INTO users (id, username, display_name, password_hash, created_at) VALUES (?1, ?2, ?2, ?3, ?4)",
-        rusqlite::params![user_id, req.username, pwhash, now],
+        "INSERT INTO users (id, username, display_name, password_hash, real_name, phone, bind_hash, created_at) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7)",
+        rusqlite::params![user_id, req.username, pwhash, enc_real_name, enc_phone, bind_hash_val, now],
     ).map_err(|e| format!("Insert error: {}", e))?;
 
     // Store token in tokens table
@@ -146,6 +168,9 @@ mod tests {
                 streak_days INTEGER DEFAULT 0,
                 last_active_date TEXT,
                 display_name TEXT,
+                real_name TEXT,
+                phone TEXT,
+                bind_hash TEXT,
                 created_at TEXT NOT NULL
             );
             CREATE TABLE tokens (
@@ -183,7 +208,9 @@ mod tests {
         // Register
         let resp = register(&conn, &RegisterRequest {
             username: "alice".into(),
-            password: "secret".into(),
+            password: "secret1".into(),
+            real_name: None,
+            phone: None,
         }).unwrap();
         assert!(resp.user_id.starts_with("user_"));
         assert!(!resp.token.is_empty());
@@ -191,7 +218,7 @@ mod tests {
         // Login
         let resp2 = login(&conn, &LoginRequest {
             username: "alice".into(),
-            password: "secret".into(),
+            password: "secret1".into(),
         }).unwrap();
         assert_eq!(resp2.user_id, resp.user_id);
         assert!(!resp2.token.is_empty());
@@ -202,13 +229,15 @@ mod tests {
         let conn = setup_db();
 
         register(&conn, &RegisterRequest {
-            username: "bob".into(),
-            password: "correct".into(),
+            username: "bobby".into(),
+            password: "correct1".into(),
+            real_name: None,
+            phone: None,
         }).unwrap();
 
         let result = login(&conn, &LoginRequest {
-            username: "bob".into(),
-            password: "wrong".into(),
+            username: "bobby".into(),
+            password: "wrong1".into(),
         });
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Invalid"));
@@ -220,12 +249,16 @@ mod tests {
 
         register(&conn, &RegisterRequest {
             username: "charlie".into(),
-            password: "pw1".into(),
+            password: "pw1pass".into(),
+            real_name: None,
+            phone: None,
         }).unwrap();
 
         let result = register(&conn, &RegisterRequest {
             username: "charlie".into(),
-            password: "pw2".into(),
+            password: "pw2pass".into(),
+            real_name: None,
+            phone: None,
         });
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("taken"));
@@ -236,8 +269,10 @@ mod tests {
         let conn = setup_db();
 
         let resp = register(&conn, &RegisterRequest {
-            username: "dave".into(),
-            password: "pass".into(),
+            username: "davey".into(),
+            password: "pass12".into(),
+            real_name: None,
+            phone: None,
         }).unwrap();
 
         // Valid token should verify

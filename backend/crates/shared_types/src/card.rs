@@ -4,10 +4,11 @@ pub struct Card {
     pub id: String,
     pub user_id: String,
     pub domain: Option<String>,
-    pub card_type: String,           // "vocabulary" | "concept"
+    pub card_type: String,
     pub front: String,
     pub back: String,
     pub source_sentence: Option<String>,
+    pub conversation_id: Option<String>,
     pub created_at: i64,
 }
 
