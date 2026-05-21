@@ -155,7 +155,7 @@ async fn main() {
     tracing_subscriber::fmt::init();
     let _ = dotenvy::dotenv();
 
-    chat_engine::prompt_loader::init("prompts");
+    chat_engine::prompt_loader::init("prompts", "pipelines");
     chat_engine::word_bank::init("cefr_catalog.json");
     let config = chat_engine::config::load_llm_config();
 

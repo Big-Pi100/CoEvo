@@ -48,6 +48,10 @@ img{max-width:100%;display:block}
 .navbar.scrolled .nav-login{color:var(--text)!important}
 .nav-cta{background:var(--purple);color:#fff!important;padding:8px 18px;border-radius:100px;font-weight:600;font-size:12px;transition:all .25s}
 .nav-cta:hover{background:var(--purple-hover);transform:translateY(-1px)}
+
+/* ─── Role cards ─── */
+.role-card{transition:all .3s!important}
+.role-card:hover{transform:translateY(-4px);box-shadow:0 8px 32px rgba(0,0,0,.12)!important;border-color:var(--purple)!important}
 .nav-cta.navbar.scrolled{color:#fff!important}
 
 /* Mobile nav toggle */

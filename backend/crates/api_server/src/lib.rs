@@ -6,6 +6,7 @@ pub mod admin_handlers;
 pub mod auth;
 pub mod auth_middleware;
 pub mod db_pool;
+pub mod e2e_runner;
 pub mod encryption;
 pub mod error;
 pub mod llm;

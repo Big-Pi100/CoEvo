@@ -143,6 +143,7 @@ async fn main() {
     let db_path = std::env::var("COEVO_DB_PATH").unwrap_or_else(|_| "data/coevo.db".to_string());
     let avatar_dir = std::env::var("COEVO_AVATAR_DIR").unwrap_or_else(|_| "data/avatars".to_string());
     let prompts_dir = std::env::var("COEVO_PROMPTS_DIR").unwrap_or_else(|_| "prompts".to_string());
+    let pipelines_dir = std::env::var("COEVO_PIPELINES_DIR").unwrap_or_else(|_| "pipelines".to_string());
     let wordbank_path = std::env::var("COEVO_WORDBANK_PATH").unwrap_or_else(|_| "cefr_catalog.json".to_string());
     let host = std::env::var("COEVO_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
     let port: u16 = std::env::var("COEVO_PORT")
@@ -155,9 +156,9 @@ async fn main() {
         .expect("Failed to init DB pool");
     tracing::info!("DB: {}", db_path);
 
-    // Load prompts from files
-    chat_engine::prompt_loader::init(&prompts_dir);
-    tracing::info!("Prompts: {}", prompts_dir);
+    // Load prompts from files (general + pipelines)
+    chat_engine::prompt_loader::init(&prompts_dir, &pipelines_dir);
+    tracing::info!("Prompts: {} (general), {} (pipelines)", prompts_dir, pipelines_dir);
 
     // Load word bank (CEFR catalog)
     chat_engine::word_bank::init(&wordbank_path);
@@ -236,6 +237,8 @@ async fn main() {
             "ALTER TABLE users ADD COLUMN id_number TEXT DEFAULT NULL",
             // AES-256-GCM 加密迁移 — bind_hash 用于确定性查找
             "ALTER TABLE users ADD COLUMN bind_hash TEXT DEFAULT NULL",
+            // 软删除支持
+            "ALTER TABLE users ADD COLUMN deleted_at TEXT DEFAULT NULL",
             // 管理员表
             "CREATE TABLE IF NOT EXISTS admin_users (
                 id TEXT PRIMARY KEY,
@@ -296,6 +299,7 @@ async fn main() {
             "CREATE INDEX IF NOT EXISTS idx_guardian_assignments_student ON guardian_assignments(student_user_id)",
             "CREATE INDEX IF NOT EXISTS idx_admin_audit_log_admin ON admin_audit_log(admin_id, created_at)",
             "CREATE INDEX IF NOT EXISTS idx_admin_audit_log_action ON admin_audit_log(action, created_at)",
+            "ALTER TABLE admin_users ADD COLUMN permissions TEXT DEFAULT '{}'",
         ];
 
         for sql in migrations {

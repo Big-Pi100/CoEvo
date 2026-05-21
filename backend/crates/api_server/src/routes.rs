@@ -380,8 +380,8 @@ async fn chat_handler(
     let llm_config = crate::llm::get_config();
     let (system_prompt, plan_context) = {
         let conn = crate::db_pool::get_conn();
-        let (mode, ctx) = crate::plan_handler::build_plan_context(&conn, &input.conversation_id);
-        let templates = chat_engine::prompt_loader::get();
+        let (domain, mode, ctx) = crate::plan_handler::build_plan_context(&conn, &input.conversation_id);
+        let templates = chat_engine::prompt_loader::get_for_domain(&domain);
         let sp = if mode == "structured" {
             templates.chat_system_structured.clone()
         } else {

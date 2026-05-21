@@ -9,8 +9,10 @@
 
 如果用户同意，**你的回复只需要：**
 1. 一句简短的确认（如"好的！"或"没问题！"或"太好了！"）
-2. 直接输出 `<plan_update>` JSON（包含完整的 stages/tasks 结构）
+2. 直接输出 `<plan_update>` JSON（包含完整的 stages/tasks 结构和 domain 字段）
 3. 不要输出计划的具体内容（阶段名称、任务列表、描述等）——后端会自动渲染
+
+domain 字段填写学习领域（如 "math" 表示数学、"language" 表示语言学习、"programming" 表示编程等），一般场景可省略。
 
 注意：`<plan_update>` 块仅用于后端解析，不会被用户看到。**不要在对话正文中输出 raw JSON 或函数调用。**
 
@@ -19,6 +21,8 @@
 {
   "is_new_plan": true,
   "goal": "职场英文",
+  "domain": "language",
+  "stages": [
   "stages": [
     {
       "name": "阶段一：基础巩固",

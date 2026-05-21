@@ -7,6 +7,7 @@ import '../models/coevo_models.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
 import '../services/tts_service.dart';
+import '../pipelines/verification_strategy.dart';
 import 'card_list_screen.dart';
 
 /// 复习: 内联复习队列
@@ -327,7 +328,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   Future<void> _submitInlineReview(int index) async {
     if (_client == null || index >= _cards.length) return;
     final card = _cards[index];
-    final vtype = card.cardType == 'vocabulary' ? 'spelling' : 'ai_dialogue';
+    final strategy = resolveStrategy(card);
+    final vtype = strategy.isSpellingBased ? 'spelling' : 'ai_dialogue';
     // 序列化每道题细节
     String? detailsJson;
     if (_aiResults.isNotEmpty) {
@@ -581,8 +583,9 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         );
                       }
                     });
-                    // 预生成 AI 问题（概念类卡片）
-                    if (card.cardType != 'vocabulary') {
+                    // 预生成 AI 问题（非拼写验证类卡片）
+                    final strategy = resolveStrategy(card);
+                    if (!strategy.isSpellingBased) {
                       _preloadAiQuestions(card);
                     }
                   }
@@ -692,7 +695,6 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                 label: Text(_isFlipped ? '朗读释义' : '朗读概念'),
                 onPressed: () => tts.speak(
                   (_isFlipped ? card.back : card.front).replaceAll('**', ''),
-                  language: 'zh-CN',
                 ),
               ),
             );
@@ -702,59 +704,45 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         // 记忆验证（正面背面均显示）
         if (!_isVerified && !_isVerifying) ...[
           const SizedBox(height: 8),
-          if (card.cardType == 'vocabulary')
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => setState(() { _isFlipped = false; _isVerifying = true; }),
-                icon: const Icon(Icons.edit, size: 18),
-                label: const Text('默写验证'),
-              ),
-            )
-          else
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  setState(() { _isFlipped = false; _isVerifying = true; });
-                  // 使用预加载的问题（已在后台生成），即时启动
-                  _startInlineAiQuiz(card);
-                },
-                icon: _preloadingQuiz
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.quiz, size: 18),
-                label: Text(_preloadedQuestions.isNotEmpty ? '记忆验证 (已就绪)' :
-                           _preloadingQuiz ? '正在准备考题...' : '记忆验证'),
-              ),
-            ),
+          resolveStrategy(card).buildButton(
+            context,
+            () {
+              setState(() { _isFlipped = false; _isVerifying = true; });
+              if (!resolveStrategy(card).isSpellingBased) {
+                _startInlineAiQuiz(card);
+              }
+            },
+            isReady: _preloadedQuestions.isNotEmpty,
+            isLoading: _preloadingQuiz,
+          ),
         ],
 
-        // 默写输入（vocabulary 专用，验证中显示）
-        if (_isVerifying && card.cardType == 'vocabulary' && !_isVerified) ...[
-          const SizedBox(height: 8),
-          TextField(
+        // 验证输入（管线策略路由，仅在验证中显示）
+        if (_isVerifying && !_isVerified && resolveStrategy(card).isSpellingBased)
+          resolveStrategy(card).buildInput(
+            context: context,
+            card: card,
             controller: _answerController,
-            decoration: const InputDecoration(
-              hintText: '输入答案...',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            textInputAction: TextInputAction.send,
-            onSubmitted: (_) {
-              final minLen = (card.back.length * 0.3).ceil().clamp(3, card.back.length);
-              final sub = card.back.toLowerCase().substring(0, minLen);
-              final correct = _answerController.text.trim().toLowerCase().contains(sub);
-              _verificationResult = correct ? 'pass' : 'fail';
-              _isVerified = true;
-              _isVerifying = false;
-              setState(() {});
-              Future.delayed(const Duration(milliseconds: 5000), () {
-                if (mounted) _submitInlineReview(_cards.indexOf(card));
-              });
+            isVerifying: _isVerifying,
+            isVerified: _isVerified,
+            verificationResult: _verificationResult,
+            onSubmit: (_) async {
+              if (resolveStrategy(card).isSpellingBased) {
+                final strategy = resolveStrategy(card);
+                _verificationResult = await strategy.submitVerification(
+                  card: card,
+                  client: _client!,
+                  userInput: _answerController.text,
+                );
+                _isVerified = true;
+                _isVerifying = false;
+                setState(() {});
+                Future.delayed(const Duration(milliseconds: 5000), () {
+                  if (mounted) _submitInlineReview(_cards.indexOf(card));
+                });
+              }
             },
           ),
-          const SizedBox(height: 8),
-        ],
 
         // AI 问答（闭卷中）
         if (_isVerifying && !_isJudging && _isAiQuiz && _aiQuestions.isNotEmpty && _aiResults.isEmpty && _aiQuestionIndex < _aiQuestions.length) ...[

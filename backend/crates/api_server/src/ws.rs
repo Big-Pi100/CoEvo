@@ -172,11 +172,11 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     turns
                 };
 
-                // ── 查询学习计划，判定生命周期状态 ──
+                // ── 查询学习计划，判定生命周期状态 + 管线 ──
                 let (system_prompt, plan_context) = {
                     let conn = crate::db_pool::get_conn();
-                    let (mode, ctx) = crate::plan_handler::build_plan_context(&conn, &chat_req.conversation_id);
-                    let templates = chat_engine::prompt_loader::get();
+                    let (domain, mode, ctx) = crate::plan_handler::build_plan_context(&conn, &chat_req.conversation_id);
+                    let templates = chat_engine::prompt_loader::get_for_domain(&domain);
                     let sp = if mode == "structured" {
                         templates.chat_system_structured.clone()
                     } else {

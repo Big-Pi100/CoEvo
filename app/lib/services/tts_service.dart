@@ -119,10 +119,19 @@ class TtsService extends ChangeNotifier {
           final savedName = prefs.getString('tts_voice_name');
           final savedLocale = prefs.getString('tts_voice_locale');
           if (savedName != null && savedLocale != null) {
+            // 有保存的音色 → 恢复
             _selectedVoice = _availableVoices.cast<Map<String, dynamic>?>().firstWhere(
               (v) => v?['name'] == savedName && v?['locale'] == savedLocale,
               orElse: () => null,
             );
+          } else {
+            // 无保存音色 → 自动选最佳中文音色（默认场景多为中文学习）
+            _selectedVoice = _pickBestVoice('zh-CN');
+            // 同步到本地偏好
+            if (_selectedVoice != null) {
+              await prefs.setString('tts_voice_name', _selectedVoice!['name'] ?? '');
+              await prefs.setString('tts_voice_locale', _selectedVoice!['locale'] ?? '');
+            }
           }
           notifyListeners();
           return;
@@ -190,10 +199,21 @@ class TtsService extends ChangeNotifier {
       await _tts.stop();
       await Future.delayed(const Duration(milliseconds: 100));
 
+      final lang = language ?? _detectLanguage(text);
+
       if (_selectedVoice != null) {
+        // 用户手动选了音色 → 用用户的
         await _tts.setVoice(Map<String, String>.from(_selectedVoice! as Map));
+      } else if (_availableVoices.isNotEmpty) {
+        // 用户未选音色 → 根据文本语言自动选最佳音色
+        final best = _pickBestVoice(lang);
+        if (best != null) {
+          await _tts.setVoice(Map<String, String>.from(best as Map));
+        } else {
+          await _tts.setLanguage(lang);
+        }
       } else {
-        final lang = language ?? _detectLanguage(text);
+        // 没有可用音色列表 → 用语言标识
         await _tts.setLanguage(lang);
       }
       await _tts.setSpeechRate(_speechRate);
@@ -216,16 +236,44 @@ class TtsService extends ChangeNotifier {
     state = TtsState.stopped;
   }
 
-  /// Simple language detection: check for CJK characters
+  /// 语言检测：有 CJK 字符就用中文 TTS（中文 TTS 能处理英文，英文 TTS 遇中文会崩）
   String _detectLanguage(String text) {
+    if (text.isEmpty) return 'en-US';
     final hasCjk = text.runes.any((r) =>
-        (r >= 0x4E00 && r <= 0x9FFF) || // CJK Unified Ideographs
-        (r >= 0x3400 && r <= 0x4DBF) || // CJK Extension A
-        (r >= 0x2E80 && r <= 0x2EFF) || // CJK Radicals
-        (r >= 0x3000 && r <= 0x303F) || // CJK Symbols
-        (r >= 0xFF00 && r <= 0xFFEF)    // Fullwidth Forms
+        (r >= 0x4E00 && r <= 0x9FFF) ||
+        (r >= 0x3400 && r <= 0x4DBF) ||
+        (r >= 0x2E80 && r <= 0x2EFF) ||
+        (r >= 0x3000 && r <= 0x303F) ||
+        (r >= 0xFF00 && r <= 0xFFEF)
     );
     return hasCjk ? 'zh-CN' : 'en-US';
+  }
+
+  /// 按语言选取最佳可用音色
+  /// 优先匹配 locale，其次匹配语言前缀，最后返回第一个可用音色
+  Map<String, dynamic>? _pickBestVoice(String language) {
+    if (_availableVoices.isEmpty) return null;
+
+    // 优先精确匹配 locale（如 zh-CN → zh-CN, en-US → en-US）
+    final exact = _availableVoices.cast<Map<String, dynamic>?>().firstWhere(
+      (v) => v?['locale'] == language,
+      orElse: () => null,
+    );
+    if (exact != null) return exact;
+
+    // 其次匹配语言前缀（如 zh → zh-HK, zh-TW; en → en-GB, en-AU）
+    final langPrefix = language.split('-').first;
+    final prefixMatch = _availableVoices.cast<Map<String, dynamic>?>().firstWhere(
+      (v) {
+        final loc = v?['locale'] as String? ?? '';
+        return loc.startsWith(langPrefix);
+      },
+      orElse: () => null,
+    );
+    if (prefixMatch != null) return prefixMatch;
+
+    // 兜底：第一个可用音色
+    return _availableVoices.first;
   }
 }
 

@@ -198,7 +198,7 @@ fn insert_turn(role: &str, content: &str) {
 /// 构建 plan_context (thin wrapper → plan_handler 公共函数)
 ///
 /// 不再自行复制 routes.rs 逻辑，直接调用 plan_handler::build_plan_context 权威实现。
-fn build_plan_context() -> (String, String) {
+fn build_plan_context() -> (String, String, String) {
     let conn = api_server::db_pool::get_conn();
     api_server::plan_handler::build_plan_context(&conn, TEST_CONV_ID)
 }
@@ -360,7 +360,7 @@ fn e2e_learning_plan_full_lifecycle() {
     // ────────────────────────────────────────
     println!("\n─── Phase 0: FREE 状态 ───");
     {
-        let (mode, ctx) = build_plan_context();
+        let (_domain, mode, ctx) = build_plan_context();
         assert_eq!(mode, "free", "初始应为 FREE 模式");
         assert!(ctx.is_empty(), "FREE 状态不应有 plan_context");
         println!("  ✅ mode='free', plan_context 为空 (正确)");
@@ -385,7 +385,7 @@ fn e2e_learning_plan_full_lifecycle() {
 
     // 验证 Turn1 后仍为 FREE 状态
     {
-        let (mode, ctx) = build_plan_context();
+        let (_domain, mode, ctx) = build_plan_context();
         assert_eq!(mode, "free", "Turn1 后仍应为 FREE 模式");
         assert!(ctx.is_empty(), "FREE 状态不应有 plan_context");
         println!("  ✅ Turn1 后: mode=free (正确)");
@@ -497,7 +497,7 @@ fn e2e_learning_plan_full_lifecycle() {
     // ────────────────────────────────────────
     println!("\n─── Phase 2: STRUCTURED context 注入 ───");
     {
-        let (mode, ctx) = build_plan_context();
+        let (_domain, mode, ctx) = build_plan_context();
         assert_eq!(mode, "structured", "创建计划后应为 structured 模式");
         assert!(!ctx.is_empty(), "structured 状态应有 plan_context");
         assert!(ctx.contains("AI基础知识"), "context 应包含长期目标");
@@ -574,7 +574,7 @@ fn e2e_learning_plan_full_lifecycle() {
     println!("  ✅ 任务2 (无监督学习概念) → in_progress (自动推进)");
 
     // 再次验证 context (应反映新状态)
-    let (_mode, ctx) = build_plan_context();
+    let (_domain, _mode, ctx) = build_plan_context();
     assert!(ctx.contains("无监督学习概念"), "context 应反映新的当前任务");
     assert!(ctx.contains("监督学习概念"), "context 应保留已完成任务 (当前阶段全部任务均展示)");
     assert!(ctx.contains("done"), "context 应标注完成任务的状态");
@@ -887,7 +887,7 @@ fn e2e_learning_plan_full_lifecycle() {
     println!("\n─── Phase 9: Context 构建追踪总结 ───");
 
     // 最终 context 状态 (全部完成)
-    let (_mode, ctx) = build_plan_context();
+    let (_domain, _mode, ctx) = build_plan_context();
     println!("  最终 mode: {}", _mode);
     // 当所有阶段都 done 时，context 不会包含任何阶段 (没有 in_progress 或 pending)
     // 这是预期行为：所有阶段完成后，不再有"当前阶段"的概念

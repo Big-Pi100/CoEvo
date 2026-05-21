@@ -52,7 +52,7 @@ class ChatMessageBubble extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.only(top: 4),
             child: GestureDetector(
-              onTap: () => tts.speak(cleanText, language: 'zh-CN'),
+              onTap: () => tts.speak(cleanText),
               child: Icon(
                 Icons.volume_up_outlined,
                 size: 16,

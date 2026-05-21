@@ -90,9 +90,10 @@ fn setup() {
         ).unwrap();
     }
 
-    // 初始化 prompt loader
+    // 初始化 prompt loader (general + pipelines)
     let prompts_dir = "../../prompts";
-    chat_engine::prompt_loader::init(prompts_dir);
+    let pipelines_dir = "../../pipelines";
+    chat_engine::prompt_loader::init(prompts_dir, pipelines_dir);
 
     eprintln!("[setup] done\n");
 }
@@ -129,7 +130,7 @@ fn get_conversation_history() -> String {
 }
 
 /// 构建 plan_context (thin wrapper → plan_handler 公共函数)
-fn build_plan_context() -> (String, String) {
+fn build_plan_context() -> (String, String, String) {
     let conn = api_server::db_pool::get_conn();
     api_server::plan_handler::build_plan_context(&conn, TEST_CONV_ID)
 }
@@ -268,8 +269,8 @@ async fn chat_turn(
     println!("👤 用户: {}", user_message);
 
     // 确定 mode + system_prompt
-    let (mode, plan_ctx) = build_plan_context();
-    let prompts = chat_engine::prompt_loader::get();
+    let (domain, mode, plan_ctx) = build_plan_context();
+    let prompts = chat_engine::prompt_loader::get_for_domain(&domain);
     let system_prompt = if mode == "structured" {
         &prompts.chat_system_structured
     } else {
@@ -379,8 +380,9 @@ async fn e2e_live_llm_plan_lifecycle() {
     println!("\n✅ Phase1: 计划创建成功");
 
     // ── Phase 2: STRUCTURED — 验证 context 注入 ──
-    let (mode, ctx) = build_plan_context();
+    let (domain, mode, ctx) = build_plan_context();
     assert_eq!(mode, "structured", "Phase2: 应为 structured 模式");
+    assert!(!domain.is_empty(), "Phase2: domain 不应为空");
     assert!(!ctx.is_empty(), "Phase2: plan_context 不应为空");
     println!("✅ Phase2: STRUCTURED context 注入验证通过");
 
@@ -619,10 +621,10 @@ async fn e2e_live_revert_basic() {
     let user_msg = "STOP。我发现计划进度有问题：理解定义这个任务被错误标记为完成，但我根本没学会。\
 这不是复习请求，而是计划状态错误。请在回复中用 <plan_update> 标签设置 reset_current_task 为 true 来回退。";
 
-    let (mode, plan_ctx) = build_plan_context();
-    println!("当前 plan_context:\n{}", plan_ctx);
+    let (domain, mode, plan_ctx) = build_plan_context();
+    println!("当前 domain: {:?}, plan_context:\n{}", domain, plan_ctx);
 
-    let prompts = chat_engine::prompt_loader::get();
+    let prompts = chat_engine::prompt_loader::get_for_domain(&domain);
     let system_prompt = &prompts.chat_system_structured;
     let history = get_conversation_history();
     let user_content = format!("{}{}", history, plan_ctx);

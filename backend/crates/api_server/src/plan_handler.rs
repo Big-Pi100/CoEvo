@@ -481,21 +481,33 @@ pub fn auto_revert(conn: &rusqlite::Connection, conversation_id: &str) -> Option
 ///
 /// 这是 routes.rs context 构建逻辑的唯一权威来源。
 /// 测试应调用此函数而非自行复制逻辑。
-pub fn build_plan_context(conn: &rusqlite::Connection, conversation_id: &str) -> (String, String) {
+pub fn build_plan_context(conn: &rusqlite::Connection, conversation_id: &str) -> (String, String, String) {
     let plan_row = conn.query_row(
-        "SELECT mode, goal, plan_json FROM learning_plans WHERE conversation_id = ?1 AND mode = 'structured' ORDER BY updated_at DESC LIMIT 1",
+        "SELECT mode, goal, plan_json, domain FROM learning_plans WHERE conversation_id = ?1 AND mode = 'structured' ORDER BY updated_at DESC LIMIT 1",
         rusqlite::params![conversation_id],
         |row| Ok((
             row.get::<_, Option<String>>(0)?,
             row.get::<_, String>(1)?,
             row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
         )),
-    ).ok().and_then(|(mode, goal, plan_json)| {
-        mode.map(|m| (m, goal, plan_json))
+    ).ok().and_then(|(mode, goal, plan_json, domain)| {
+        mode.map(|m| (m, goal, plan_json, domain))
     });
 
     match plan_row {
-        Some((mode, goal, plan_json)) if mode == "structured" => {
+        Some((mode, goal, plan_json, _domain)) if mode == "structured" => {
+            // 从 plan_json 中读取 pipeline_domain
+            let pipeline_domain: String = serde_json::from_str::<serde_json::Value>(&plan_json).ok()
+                .and_then(|plan| {
+                    // 先尝试 pipeline_domain，再尝试 domain
+                    if let Some(d) = plan.get("pipeline_domain").and_then(|d| d.as_str()) {
+                        return Some(d.to_string());
+                    }
+                    plan.get("domain").and_then(|d| d.as_str()).map(|s| s.to_string())
+                })
+                .unwrap_or_default();
+
             let mut ctx = format!("\n\n### 学习计划\n长期目标: {}", goal);
             if let Ok(plan) = serde_json::from_str::<serde_json::Value>(&plan_json) {
                 if let Some(stages) = plan.get("stages").and_then(|v| v.as_array()) {
@@ -516,9 +528,9 @@ pub fn build_plan_context(conn: &rusqlite::Connection, conversation_id: &str) ->
                     }
                 }
             }
-            ("structured".to_string(), ctx)
+            (pipeline_domain, "structured".to_string(), ctx)
         }
-        _ => ("free".to_string(), String::new()),
+        _ => ("".to_string(), "free".to_string(), String::new()),
     }
 }
 

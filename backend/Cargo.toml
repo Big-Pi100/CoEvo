@@ -15,9 +15,14 @@ edition.workspace = true
 rust-version.workspace = true
 default-run = "coevo_backend"
 
+[[bin]]
+name = "e2e-pipeline-test"
+path = "src/bin/e2e_pipeline_test.rs"
+
 [dependencies]
 api_server = { path = "crates/api_server" }
 chat_engine = { path = "crates/chat_engine" }
+chrono.workspace = true
 card_engine = { path = "crates/card_engine" }
 shared_types = { path = "crates/shared_types" }
 serde_json.workspace = true
