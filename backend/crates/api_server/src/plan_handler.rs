@@ -224,6 +224,19 @@ fn apply_plan_mutations(
     let task_complete = update.get("current_task_complete")
         .and_then(|c| c.as_bool())
         .or_else(|| update.get("assessment").and_then(|a| a.get("current_task_complete")).and_then(|c| c.as_bool()))
+        // 兼容 LLM 非标准输出：字符串或数组非空时视为完成
+        .or_else(|| {
+            let c = update.get("current_task_complete")?;
+            if c.is_string() { let s = c.as_str()?; (!s.is_empty()).then_some(true) }
+            else if c.is_array() { c.as_array().map(|a| !a.is_empty()).unwrap_or(false).then_some(true) }
+            else { None }
+        })
+        // 兼容 LLM 常用格式：stages[].status == "completed"
+        .or_else(|| {
+            let stages = update.get("stages")?.as_array()?;
+            let any_completed = stages.iter().any(|s| s.get("status").and_then(|v| v.as_str()) == Some("completed"));
+            any_completed.then_some(true)
+        })
         .unwrap_or(false);
     if task_complete {
         // ── 子阶段完整性检查 ──
@@ -531,6 +544,152 @@ pub fn build_plan_context(conn: &rusqlite::Connection, conversation_id: &str) ->
             (pipeline_domain, "structured".to_string(), ctx)
         }
         _ => ("".to_string(), "free".to_string(), String::new()),
+    }
+}
+
+/// 构建计划分析 prompt（用于 ColdPath 2）
+pub fn build_plan_analysis_prompt(conversation_history: &[(String, String)], plan_json: &serde_json::Value) -> String {
+    let dialogue: Vec<String> = conversation_history.iter()
+        .map(|(role, content)| {
+            let label = if role == "user" { "学生" } else { "教师" };
+            format!("{}: {}", label, content)
+        })
+        .collect();
+    let dialogue_text = dialogue.join("\n");
+
+    let stages_text: String = if let Some(stages) = plan_json.get("stages").and_then(|v| v.as_array()) {
+        stages.iter().map(|s| {
+            let name = s["name"].as_str().unwrap_or("");
+            let status = s["status"].as_str().unwrap_or("pending");
+            let tasks: Vec<String> = s.get("tasks").and_then(|t| t.as_array()).map(|arr| {
+                arr.iter().map(|t| {
+                    format!("    {}: {}", t["name"].as_str().unwrap_or(""), t["status"].as_str().unwrap_or("pending"))
+                }).collect()
+            }).unwrap_or_default();
+            format!("- {} ({}){}", name, status,
+                if tasks.is_empty() { String::new() } else { format!("\n{}", tasks.join("\n")) })
+        }).collect::<Vec<_>>().join("\n")
+    } else { String::new() };
+
+    format!(
+        r#"你是一位学习计划分析器。你的任务是根据师生对话内容，分析学习进度并输出计划更新。
+
+【当前计划】
+目标: {}
+{stages_text}
+
+【最近对话】
+{dialogue_text}（注意只分析教学相关的部分，忽略寒暄）
+
+请分析：
+1. 学生当前是否完成了某个概念或任务？(completed_concepts)
+2. 当前任务(Task)是否应该标记为完成？(current_task_complete: true/false)
+3. 如果当前阶段(stage)所有任务都完成了，是否应该推进到下一阶段？
+
+只返回 JSON 格式（不要加任何其他文字）：
+{{"completed_concepts": ["概念1", "概念2"], "current_task_complete": true/false, "next_stage_suggestion": null或"阶段名称"}}
+"#,
+        plan_json.get("goal").and_then(|v| v.as_str()).unwrap_or(""),
+        stages_text = stages_text,
+        dialogue_text = dialogue_text,
+    )
+}
+
+/// ColdPath 2: 分析对话进度，更新学习计划（如无计划则自动创建）
+pub async fn analyze_plan_progress(
+    conn: &rusqlite::Connection,
+    conversation_id: &str,
+    user_id: &str,
+    caller: &mut chat_engine::llm_caller::LlmCaller,
+) -> bool {
+    // 读取最近 20 轮对话
+    let history: Vec<(String, String)> = {
+        let mut stmt = match conn.prepare(
+            "SELECT role, content FROM conversation_turns WHERE conversation_id = ?1 ORDER BY created_at DESC LIMIT 20"
+        ) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+        let mut turns: Vec<(String, String)> = stmt.query_map(
+            rusqlite::params![conversation_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        ).unwrap().filter_map(|r| r.ok()).collect();
+        turns.reverse();
+        turns
+    };
+
+    let relevant: Vec<(String, String)> = history.into_iter()
+        .filter(|(r, _)| r == "user" || r == "assistant")
+        .collect();
+
+    if relevant.len() < 2 {
+        return false; // 对话太短
+    }
+
+    // 检查是否已有计划
+    let existing_plan: Option<String> = conn.query_row(
+        "SELECT plan_json FROM learning_plans WHERE conversation_id = ?1 AND mode = 'structured' ORDER BY updated_at DESC LIMIT 1",
+        rusqlite::params![conversation_id],
+        |row| row.get(0),
+    ).ok();
+
+    match existing_plan {
+        Some(plan_json_str) => {
+            // 已有计划 → 分析进度更新
+            let plan_json: serde_json::Value = match serde_json::from_str(&plan_json_str) {
+                Ok(v) => v,
+                Err(_) => return false,
+            };
+            let prompt = build_plan_analysis_prompt(&relevant, &plan_json);
+            match caller.generate("", &prompt).await {
+                Ok(response) => {
+                    let result = handle_plan_update(conn, &format!("<plan_update>{}</plan_update>", response), conversation_id, user_id);
+                    result.plan_updated
+                }
+                Err(_) => false,
+            }
+        }
+        None => {
+            // 无计划 → 自动创建新计划
+            let dialogue_text: String = relevant.iter()
+                .map(|(role, content)| {
+                    let label = if role == "user" { "学生" } else { "教师" };
+                    format!("{}: {}", label, content)
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            let prompt = format!(
+                r#"根据以下师生对话，为学生制定一个详细的学习计划。
+
+对话：
+{}
+
+请输出 JSON 格式的学习计划，包含：
+- goal: 学习目标（根据对话推断）
+- domain: 领域（math/language/chemistry/biology 之一）
+- stages: 阶段数组，每个阶段包含 name、status（in_progress/pending/completed）、tasks 数组
+- 每项 task 包含 name、status、description
+- completed_concepts: []
+- current_task_complete: false
+- next_stage_suggestion: null
+
+确保计划包含 3-5 个阶段，每个阶段 2-3 个任务，覆盖完整的学习路径。
+
+只返回 JSON，不要加其他文字：
+{{"is_new_plan": true, "goal": "...", "domain": "...", "stages": [...], "completed_concepts": [], "current_task_complete": false, "next_stage_suggestion": null}}
+"#,
+                dialogue_text
+            );
+
+            match caller.generate("", &prompt).await {
+                Ok(response) => {
+                    let result = handle_plan_update(conn, &format!("<plan_update>{}</plan_update>", response), conversation_id, user_id);
+                    result.is_new_plan || result.plan_updated
+                }
+                Err(_) => false,
+            }
+        }
     }
 }
 

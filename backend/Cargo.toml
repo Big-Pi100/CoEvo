@@ -6,6 +6,8 @@ members = [
     "crates/chat_engine",
     "crates/card_engine",
     "crates/growth_engine",
+    "crates/k12_tests",
+    "crates/quality_eval",
 ]
 
 [package]
@@ -18,6 +20,14 @@ default-run = "coevo_backend"
 [[bin]]
 name = "e2e-pipeline-test"
 path = "src/bin/e2e_pipeline_test.rs"
+
+[[bin]]
+name = "e2e-k12-runner"
+path = "src/bin/e2e_k12_runner.rs"
+
+[[bin]]
+name = "e2e-quality-eval"
+path = "src/bin/e2e_quality_eval.rs"
 
 [dependencies]
 api_server = { path = "crates/api_server" }
@@ -36,6 +46,9 @@ tower-http = { version = "0.6", features = ["cors"] }
 rusqlite = { workspace = true, features = ["bundled"] }
 toml = "0.8"
 serde.workspace = true
+uuid.workspace = true
+k12_tests = { path = "crates/k12_tests" }
+quality_eval = { path = "crates/quality_eval" }
 
 [workspace.package]
 edition = "2021"

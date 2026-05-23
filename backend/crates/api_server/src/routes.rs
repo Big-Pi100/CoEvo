@@ -131,6 +131,8 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/conversations/{conv_id}/permanent", delete(conversation_permanent_delete_handler))
         // STT
         .route("/api/stt", post(stt_handler))
+        // Verify translation (V1 forward mode)
+        .route("/api/verify-translation", post(verify_translation_handler))
 }
 
 // ════════════════════════════════════════════
@@ -410,9 +412,12 @@ async fn chat_handler(
     }
 
     // 7. Extract candidate concepts (async, uses pre-queried data)
+    let conn7 = crate::db_pool::get_conn();
+    let (extract_domain, _, _) = crate::plan_handler::build_plan_context(&conn7, &input.conversation_id);
     let extraction = chat_engine::concept_extractor::extract_concepts(
         &input.user_id, &input.message, &final_reply,
         &existing_fronts, &skipped_fronts, &llm_config, &history,
+        &extract_domain,
     ).await;
     let candidates: Vec<String> = extraction.candidates.iter().map(|c| c.front.clone()).collect();
 
@@ -596,6 +601,49 @@ async fn review_judge_handler(
             Json(serde_json::json!({"error": "Parse failed", "raw": text}))
         }
         Err(e) => Json(serde_json::json!({"error": format!("LLM: {}", e)})),
+    }
+}
+
+// ── Verify Translation (V1 forward mode) ──
+
+#[derive(Deserialize)]
+struct VerifyTranslationInput {
+    front: String,
+    back: String,
+    user_input: String,
+}
+
+async fn verify_translation_handler(
+    Json(input): Json<VerifyTranslationInput>,
+) -> Json<serde_json::Value> {
+    let prompt = format!(
+        "You are an English teacher judging whether a student's translation of a word is correct.\n\
+         \nEnglish word: {}\nExpected meaning: {}\nStudent's answer: {}\n\
+         \nJudge whether the student's answer correctly conveys the meaning of the English word.\n\
+         Consider synonyms, paraphrases, and reasonable alternative translations as correct.\n\
+         Only mark as 'fail' if the answer is completely wrong or unrelated.\n\
+         \nRespond with exactly one word: pass or fail",
+        input.front, input.back, input.user_input
+    );
+
+    let config = crate::llm::get_config();
+    let mut caller = chat_engine::llm_caller::LlmCaller::new(config);
+    match caller.generate("You are a strict but fair English teacher.", &prompt).await {
+        Ok(reply) => {
+            let result = if reply.to_lowercase().contains("pass") { "pass" } else { "fail" };
+            Json(serde_json::json!({"result": result}))
+        }
+        Err(_) => {
+            // LLM fallback: simple keyword matching
+            let input_lower = input.user_input.to_lowercase();
+            let back_lower = input.back.to_lowercase();
+            let result = if back_lower.contains(&input_lower) || input_lower.contains(&back_lower) {
+                "pass"
+            } else {
+                "fail"
+            };
+            Json(serde_json::json!({"result": result}))
+        }
     }
 }
 
@@ -1239,6 +1287,35 @@ async fn profile_handler(
         if crate::encryption::is_encrypted(v) { crate::encryption::decrypt(v) } else { v.clone() }
     });
 
+    // CEFR 词汇统计
+    let catalog_stats = chat_engine::word_bank::get_cefr_catalog_stats();
+    let mut mastered_by_level: HashMap<String, u64> = HashMap::new();
+
+    // 查询用户的 vocabulary 卡片中已掌握的 (state=2)，按 CEFR 等级分组
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT c.front FROM cards c JOIN card_memory cm ON c.id = cm.card_id
+         WHERE c.user_id = ?1 AND c.card_type = 'vocabulary' AND cm.state = 2"
+    ) {
+        if let Ok(rows) = stmt.query_map(rusqlite::params![user_id], |row| row.get::<_, String>(0)) {
+            for row in rows {
+                if let Ok(front) = row {
+                    if let Some(level) = chat_engine::word_bank::lookup_cefr(&front) {
+                        *mastered_by_level.entry(level).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    let cefr_stats: Vec<serde_json::Value> = catalog_stats.into_iter().map(|s| {
+        let mastered = mastered_by_level.get(&s.level).copied().unwrap_or(0);
+        serde_json::json!({
+            "level": s.level,
+            "total": s.total,
+            "mastered": mastered,
+        })
+    }).collect();
+
     (axum::http::StatusCode::OK, axum::Json(serde_json::json!({
         "user_id": user_id,
         "display_name": display_name,
@@ -1252,6 +1329,7 @@ async fn profile_handler(
             "today_reviews": today_reviews,
         },
         "achievements": achievements,
+        "cefr_stats": cefr_stats,
     })))
 }
 

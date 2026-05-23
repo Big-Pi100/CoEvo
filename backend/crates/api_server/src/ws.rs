@@ -45,6 +45,12 @@ pub async fn handle_ws(mut ws: WebSocket) {
     let mut token_verified = false;
     let mut kick_notify: Option<Arc<tokio::sync::Notify>> = None;
 
+    // ⚡ Heartbeat: 每 60 秒发送 WS Ping 帧检测连接活性
+    // 防止 ws.recv() 在连接被 Nginx/中间件静默切断后无限阻塞
+    let mut heartbeat = tokio::time::interval(Duration::from_secs(60));
+    // 跳过首次立即 tick（避免启动时立即触发 ping）
+    heartbeat.tick().await;
+
     loop {
         tokio::select! {
             biased;
@@ -59,9 +65,9 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 let raw_req: RawChatRequest = match serde_json::from_str(&text) {
                     Ok(r) => r,
                     Err(e) => {
-                        let _ = ws.send(Message::Text(
+                        if ws.send(Message::Text(
                             json!({"type":"error","content": format!("Invalid request: {}", e)}).to_string().into()
-                        )).await;
+                        )).await.is_err() { break; }
                         continue;
                     }
                 };
@@ -131,9 +137,9 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         } else {
                             "subscription_required".to_string()
                         };
-                        let _ = ws.send(Message::Text(
+                        if ws.send(Message::Text(
                             json!({"type":"error","content": msg}).to_string().into()
-                        )).await;
+                        )).await.is_err() { break; }
                         continue;
                     }
                 }
@@ -172,6 +178,33 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     turns
                 };
 
+                // ── 学科路由（首次消息） ──
+                // 用 LLM 检测 subject + grade → 加载课标约束
+                let mut routing_ctx = String::new();
+                if history.len() <= 1 {
+                    let cfg = crate::llm::get_config();
+                    let mut caller = chat_engine::llm_caller::LlmCaller::new(cfg);
+                    let routing = crate::subject_router::route(&chat_req.message, &mut caller).await;
+                    let (cover, bound) = crate::subject_router::get_curriculum_bounds(&routing.subject, &routing.grade_band);
+                    let kg_paths = crate::subject_router::get_knowledge_paths(&routing.subject, &routing.grade_band);
+                    if !cover.is_empty() {
+                        let mut ctx = format!(
+                            "\n\n### 课程范围\n本课学习 {}（{} 水平）。\n\n⚠️ **重要：你的学习计划必须涵盖以下所有内容。每项内容至少对应一个阶段(stage)，不得只选其中一部分。**\n\n【必须覆盖的内容】\n{}",
+                            routing.subject, routing.grade_band, cover
+                        );
+                        if !bound.is_empty() {
+                            ctx.push_str(&format!(
+                                "\n\n【禁止深入的内容（超纲）】\n这些内容不属于本年级要求，不要在教学中深入展开：\n{}",
+                                bound
+                            ));
+                        }
+                        if !kg_paths.is_empty() {
+                            ctx.push_str(&kg_paths);
+                        }
+                        routing_ctx = ctx;
+                    }
+                }
+
                 // ── 查询学习计划，判定生命周期状态 + 管线 ──
                 let (system_prompt, plan_context) = {
                     let conn = crate::db_pool::get_conn();
@@ -182,7 +215,9 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     } else {
                         templates.chat_system_free.clone()
                     };
-                    (sp, ctx)
+                    // 将路由上下文合并到计划上下文中
+                    let full_ctx = if ctx.is_empty() { routing_ctx.clone() } else { format!("{}\n{}", ctx, routing_ctx) };
+                    (sp, full_ctx)
                 };
 
                 // ── 构建 user_content（对话历史 + 计划上下文 + 当前消息） ──
@@ -225,10 +260,14 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 let mut final_reply = String::new();
                 let mut got_done = false;
                 let mut is_planning = false;
+                let mut ws_disconnected = false;
                 loop {
                     match tokio::time::timeout(Duration::from_secs(60), rx.recv()).await {
                         Ok(Some(LlmEvent::Thinking)) => {
-                            let _ = ws.send(Message::Text(json!({"type":"thinking"}).to_string().into())).await;
+                            if ws.send(Message::Text(json!({"type":"thinking"}).to_string().into())).await.is_err() {
+                                ws_disconnected = true;
+                                break;
+                            }
                         }
                         Ok(Some(LlmEvent::Token(content))) => {
                             final_reply.push_str(&content);
@@ -236,11 +275,17 @@ pub async fn handle_ws(mut ws: WebSocket) {
                                 // 计划生成中，不再转发原始 token
                             } else if final_reply.contains("<plan_update") {
                                 is_planning = true;
-                                let _ = ws.send(Message::Text(json!({
+                                if ws.send(Message::Text(json!({
                                     "type":"planning"
-                                }).to_string().into())).await;
+                                }).to_string().into())).await.is_err() {
+                                    ws_disconnected = true;
+                                    break;
+                                }
                             } else {
-                                let _ = ws.send(Message::Text(json!({"type":"token","content":content}).to_string().into())).await;
+                                if ws.send(Message::Text(json!({"type":"token","content":content}).to_string().into())).await.is_err() {
+                                    ws_disconnected = true;
+                                    break;
+                                }
                             }
                         }
                         Ok(Some(LlmEvent::Done(reply))) => {
@@ -250,6 +295,10 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         }
                         Ok(None) | Err(_) => break,
                     }
+                }
+                if ws_disconnected {
+                    tracing::warn!("WS send failed during streaming — connection lost");
+                    break;
                 }
                 if !got_done && final_reply.is_empty() {
                     final_reply = "[LLM 响应超时]".to_string();
@@ -313,11 +362,14 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     );
                 }
 
-                // ⚡ HotPath: 发 done
-                let _ = ws.send(Message::Text(json!({
+                // ⚡ HotPath: 发 done — 失败则连接已断，跳过后序处理
+                if ws.send(Message::Text(json!({
                     "type": "done",
                     "reply": final_reply,
-                }).to_string().into())).await;
+                }).to_string().into())).await.is_err() {
+                    tracing::warn!("WS send(done) failed — connection lost");
+                    break;
+                }
 
                 // ── 代码层兜底：若 LLM 未处理回退请求，自动回退 ──
                 if !plan_updated && crate::plan_handler::check_revert_signals(&chat_req.message) {
@@ -332,9 +384,12 @@ pub async fn handle_ws(mut ws: WebSocket) {
 
                 // 通知前端刷新计划
                 if plan_updated {
-                    let _ = ws.send(Message::Text(json!({
+                    if ws.send(Message::Text(json!({
                         "type": "plan_updated",
-                    }).to_string().into())).await;
+                    }).to_string().into())).await.is_err() {
+                        tracing::warn!("WS send(plan_updated) failed — connection lost");
+                        break;
+                    }
                 }
 
                 let current_turn = turn_counter;
@@ -347,6 +402,13 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 let cold_tx = cold_tx.clone();
                 let cold_turn = current_turn;
                 let history_clone = history.clone();
+                // 获取 domain 用于概念提取管线路由
+                let conv_id = &chat_req.conversation_id;
+                let extract_domain = {
+                    let conn = crate::db_pool::get_conn();
+                    let (domain, _, _) = crate::plan_handler::build_plan_context(&conn, conv_id);
+                    domain
+                };
                 tokio::spawn(async move {
                     // Bug 1 修复：确保任何 DB 错误路径都向 cold_tx 发送空结果，
                     // 避免 BTreeMap 产生空洞导致后续 candidates 永久阻塞。
@@ -407,7 +469,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         chat_engine::concept_extractor::extract_concepts(
                             &user_id, &msg, &final_reply,
                             &existing_fronts, &skipped_fronts, &config,
-                            &history_clone,
+                            &history_clone, &extract_domain,
                         ),
                     ).await {
                         Ok(e) => e,
@@ -423,6 +485,20 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     }).collect();
                     let _ = cold_tx.send((cold_turn, candidates)).await;
                 });
+
+                // ❄️ ColdPath 2: 计划进度分析（每 5 轮执行一次）
+                // 改用 tokio::spawn 而非 std::thread::spawn，避免在 1GB VPS 上创建 OS 线程 + tokio 运行时
+                if turn_counter > 0 && turn_counter % 5 == 0 {
+                    let conv_id = chat_req.conversation_id.clone();
+                    let uid = chat_req.user_id.clone();
+                    let cfg = llm_config.clone();
+                    tokio::spawn(async move {
+                        let mut caller = chat_engine::llm_caller::LlmCaller::new(cfg);
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        let conn = crate::db_pool::get_conn();
+                        let _ = crate::plan_handler::analyze_plan_progress(&conn, &conv_id, &uid, &mut caller).await;
+                    });
+                }
             }
 
             // ── 踢下线信号（单设备登录强制） ──
@@ -433,6 +509,15 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     json!({"type":"kicked","content":"您的账号已在其他设备登录，当前连接已断开"}).to_string().into()
                 )).await;
                 break;
+            }
+
+            // ⚡ Heartbeat: 发送 WS Ping 帧检测连接活性
+            // 若发送失败则连接已断开，break 出循环
+            _ = heartbeat.tick() => {
+                if ws.send(Message::Ping(axum::body::Bytes::new())).await.is_err() {
+                    tracing::warn!("WS heartbeat failed — connection lost, closing");
+                    break;
+                }
             }
 
             // ── 接收 ColdPath 结果（排队按轮次输出） ──
@@ -456,10 +541,13 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 // 从最早未输出的轮次开始，连续输出
                 while let Some(ready) = pending_candidates.remove(&next_turn_to_show) {
                     if !ready.is_empty() {
-                        let _ = ws.send(Message::Text(json!({
+                        if ws.send(Message::Text(json!({
                             "type": "candidates",
                             "candidates": ready,
-                        }).to_string().into())).await;
+                        }).to_string().into())).await.is_err() {
+                            tracing::warn!("WS send(candidates) failed — connection lost");
+                            break;
+                        }
                     }
                     next_turn_to_show += 1;
                 }

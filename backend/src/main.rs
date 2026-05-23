@@ -164,6 +164,14 @@ async fn main() {
     chat_engine::word_bank::init(&wordbank_path);
     tracing::info!("Wordbank: {}", wordbank_path);
 
+    // Load curriculum guide
+    api_server::subject_router::init_curriculum("docs/curriculum/curriculum_guide.json");
+    tracing::info!("Curriculum guide loaded");
+
+    // Load knowledge graph
+    api_server::subject_router::init_knowledge_graph("docs/curriculum/knowledge_graph.json");
+    tracing::info!("Knowledge graph loaded");
+
     chat_engine::config::ensure_db_connection();
 
     // --- Auto-schema + Migrations ---

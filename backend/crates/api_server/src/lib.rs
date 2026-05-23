@@ -13,4 +13,5 @@ pub mod llm;
 pub mod plan_handler;
 pub mod rate_limiter;
 pub mod routes;
+pub mod subject_router;
 pub mod ws;

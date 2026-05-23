@@ -57,7 +57,7 @@ pub fn init(prompts_dir: &str, pipelines_base: &str) {
     let mut pipelines: HashMap<String, PromptTemplates> = HashMap::new();
 
     // 加载已注册管线
-    for domain in &["math", "language"] {
+    for domain in &["math", "language", "chemistry", "biology"] {
         let dir = format!("{}/{}/prompts", pipelines_base, domain);
         let tpl = load_pipeline_dir_with_fallback(&dir, &general);
         let fallback_info = if std::path::Path::new(&dir).exists() { " (custom)" } else { " (fallback to general)" };

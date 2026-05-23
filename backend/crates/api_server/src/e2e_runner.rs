@@ -12,6 +12,27 @@ use serde::{Deserialize, Serialize};
 
 // ── 测试结果结构 ──
 
+/// 测试通过等级
+///
+/// A: 完全符合设计预期 — 正确 pipeline prompt 路由 + 字段 100% 对齐
+/// B: 功能正确但有轻微偏差 — 部分字段不对齐，不影响使用
+/// C: 兜底机制触发 — LLM 路径未走通但 word_bank/通用路径成功
+/// D: 兜底部分生效 — 只有少量有效输出，功能勉强可用
+/// F: 彻底失败 — 无有效输出
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum Grade {
+    #[serde(rename = "A")]
+    A,
+    #[serde(rename = "B")]
+    B,
+    #[serde(rename = "C")]
+    C,
+    #[serde(rename = "D")]
+    D,
+    #[serde(rename = "F")]
+    F,
+}
+
 /// 单个测试阶段的运行结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PhaseResult {
@@ -22,6 +43,7 @@ pub struct PhaseResult {
     pub completed_at: String,
     pub duration_ms: u64,
     pub status: PhaseStatus,
+    pub grade: Option<Grade>,
     pub metrics: serde_json::Value,
     pub llm_logs: Vec<LlmLog>,
     pub errors: Vec<String>,
@@ -206,7 +228,7 @@ pub fn init_test_db(db_path: &str) -> Result<(), Box<dyn std::error::Error>> {
         CREATE TABLE IF NOT EXISTS cards (
             id TEXT PRIMARY KEY, user_id TEXT NOT NULL, domain TEXT,
             card_type TEXT, front TEXT NOT NULL, back TEXT NOT NULL,
-            source_sentence TEXT, created_at INTEGER,
+            source_sentence TEXT, conversation_id TEXT, created_at INTEGER,
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
         CREATE TABLE IF NOT EXISTS card_memory (
@@ -301,4 +323,132 @@ pub fn format_duration(d: Duration) -> String {
     } else {
         format!("{}m{:02}s", secs / 60, secs % 60)
     }
+}
+
+/// 根据阶段类型和指标判定通过等级
+///
+/// - concept-extraction: A=LLM路径+正确domain, C=仅word_bank路径, F=空
+/// - progression: A=有plan_update, B=有教学但无plan_update, F=无教学
+/// - plan-creation: A=domain全匹配, C=部分匹配, F=全不匹配
+/// - review-flow: A=全通过, D=半通过, F=未通过
+pub fn resolve_grade(phase: &str, status: &PhaseStatus, metrics: &serde_json::Value, errors: &[String]) -> Grade {
+    match status {
+        PhaseStatus::Skipped => Grade::D,
+        PhaseStatus::Failed => Grade::F,
+        PhaseStatus::Passed => {
+            match phase {
+                "concept-extraction" => {
+                    let total = metrics.get("total_concepts").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let domain_ok = metrics.get("domain_ok").and_then(|v| v.as_bool()).unwrap_or(false);
+                    let direct_card = metrics.get("direct_card").and_then(|v| v.as_bool()).unwrap_or(false);
+                    if direct_card { Grade::A }  // Path B2 直接制卡
+                    else if total > 0 && domain_ok { Grade::A }  // LLM 路径 + 正确 domain
+                    else if total > 0 { Grade::C }  // 仅 word_bank 匹配
+                    else { Grade::D }
+                }
+                "progression-history" | "progression-language" | "progression-math" => {
+                    let updates = metrics.get("plan_updates").and_then(|v| v.as_u64()).unwrap_or(0);
+                    if updates > 0 { Grade::A }
+                    else { Grade::B }  // 有教学但无 plan_update
+                }
+                "plan-creation" => {
+                    let accuracy = metrics.get("domain_accuracy").and_then(|v| v.as_str()).unwrap_or("0/0");
+                    if accuracy == "3/3" { Grade::A }
+                    else if accuracy.starts_with("1/3") || accuracy.starts_with("2/3") { Grade::C }
+                    else { Grade::D }
+                }
+                "review-flow" => {
+                    let reps_ok = metrics.get("reps_ok").and_then(|v| v.as_bool()).unwrap_or(false);
+                    let lapses_ok = metrics.get("lapses_ok").and_then(|v| v.as_bool()).unwrap_or(false);
+                    let logs_ok = metrics.get("logs_ok").and_then(|v| v.as_bool()).unwrap_or(false);
+                    if reps_ok && lapses_ok && logs_ok { Grade::A }
+                    else if reps_ok || lapses_ok { Grade::D }
+                    else { Grade::F }
+                }
+                _ => Grade::A,  // 其他阶段（report 等聚合阶段）默认 A
+            }
+        }
+    }
+}
+
+// ── 卡片 & 复习辅助函数 ──
+
+/// review_log 行条目
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewLogEntry {
+    pub id: String,
+    pub card_id: String,
+    pub rating: i32,
+    pub verification_type: String,
+    pub verification_result: String,
+    pub reviewed_at: i64,
+}
+
+/// 插入测试卡片（同时写入 cards + card_memory 1:1）
+pub fn insert_test_card(
+    conn: &rusqlite::Connection,
+    user_id: &str,
+    domain: &str,
+    card_type: &str,
+    front: &str,
+    back: &str,
+) -> Result<String, String> {
+    let card_id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp();
+
+    conn.execute(
+        "INSERT INTO cards (id, user_id, domain, card_type, front, back, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        rusqlite::params![card_id, user_id, domain, card_type, front, back, now],
+    ).map_err(|e| format!("Insert test card: {}", e))?;
+
+    conn.execute(
+        "INSERT INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
+         VALUES (?1, 0, 5.0, 5.0, ?2, NULL, 0, 0)",
+        rusqlite::params![card_id, now],
+    ).map_err(|e| format!("Insert test card memory: {}", e))?;
+
+    Ok(card_id)
+}
+
+/// 调用 submit_review（封装 fsrs_scheduler）
+pub fn call_submit_review(
+    conn: &rusqlite::Connection,
+    card_id: &str,
+    user_id: &str,
+    rating: i32,
+    verification_type: &str,
+    verification_result: &str,
+) -> Result<(), String> {
+    card_engine::fsrs_scheduler::submit_review(
+        conn, card_id, rating, verification_type, verification_result, user_id, None,
+    )?;
+    Ok(())
+}
+
+/// 查 card_id 的所有 review_log
+pub fn get_review_log(
+    conn: &rusqlite::Connection,
+    card_id: &str,
+) -> Vec<ReviewLogEntry> {
+    let mut stmt = conn.prepare(
+        "SELECT id, card_id, rating, verification_type, verification_result, reviewed_at
+         FROM review_log WHERE card_id = ?1 ORDER BY reviewed_at"
+    ).map_err(|e| format!("Prepare review_log query: {}", e)).ok();
+
+    let mut stmt = match stmt {
+        Some(s) => s,
+        None => return vec![],
+    };
+
+    stmt.query_map(rusqlite::params![card_id], |row| {
+        Ok(ReviewLogEntry {
+            id: row.get(0)?,
+            card_id: row.get(1)?,
+            rating: row.get(2)?,
+            verification_type: row.get(3)?,
+            verification_result: row.get(4)?,
+            reviewed_at: row.get(5)?,
+        })
+    }).ok().map(|rows| rows.filter_map(|r| r.ok()).collect()).unwrap_or_default()
 }

@@ -1,31 +1,34 @@
 import 'package:flutter/material.dart';
 import '../models/coevo_models.dart';
 import '../api/chat_client.dart';
-import 'language/verification_strategy.dart';
+import 'language/verification_strategy.dart' as lang;
+import 'math/verification_strategy.dart';
 import 'general/verification_strategy.dart';
+import 'language/grammar_strategy.dart';
+
+/// 验证模式枚举
+///
+/// - forward: 正向语义验证（LLM 判断中文翻译是否等价）
+/// - reverse: 反向拼写验证（精确匹配英语单词）
+/// - dictation: 听写验证（TTS 朗读后精确匹配）
+enum VerificationMode { forward, reverse, dictation }
 
 /// 验证策略接口
 ///
 /// 每条管线实现自己的验证策略：
 /// - general: AI 快问快答（通用概念）
-/// - language: 拼写验证 + 听写（Phase 2 完善）
-///
-/// 调用方 (review_screen) 通过 resolveStrategy(card) 获取对应实例。
+/// - language: 多模式验证（正向/反向/听写）
+/// - math: AI 快问快答（数学/物理）
 abstract class VerificationStrategy {
-  /// 策略名称标识
   String get name;
-
-  /// 是否为拼写型验证（语言类卡片）
-  /// review_screen 据此决定是否展示输入框
   bool get isSpellingBased => false;
-
-  /// 验证按钮的标签
   String get buttonLabel;
 
-  /// 构建验证按钮
+  /// 当前验证模式（语言管线使用 forward/reverse/dictation）
+  VerificationMode get mode => VerificationMode.forward;
+
   Widget buildButton(BuildContext context, VoidCallback onPressed, {bool isReady = false, bool isLoading = false});
 
-  /// 构建验证输入区域
   Widget buildInput({
     required BuildContext context,
     required DueCard card,
@@ -36,27 +39,23 @@ abstract class VerificationStrategy {
     required void Function(String) onSubmit,
   });
 
-  /// 开始验证（生成题目等异步准备）
-  Future<void> startVerification({
-    required DueCard card,
-    required ChatClient client,
-  });
+  Future<void> startVerification({required DueCard card, required ChatClient client});
 
-  /// 提交验证（返回 pass/fail）
-  Future<String> submitVerification({
-    required DueCard card,
-    required ChatClient client,
-    required String userInput,
-  });
+  Future<String> submitVerification({required DueCard card, required ChatClient client, required String userInput});
 }
 
-/// 策略路由：按 card.domain 匹配
+/// 策略路由：按 card.domain 匹配 + 按 reps 选择验证模式
 VerificationStrategy resolveStrategy(DueCard card) {
   switch (card.domain) {
     case 'vocabulary':
-    case 'grammar':
     case 'language':
-      return LanguageVerificationStrategy();
+      final mode = lang.resolveMode(card);
+      return lang.LanguageVerificationStrategy(mode: mode);
+    case 'grammar':
+      return GrammarVerificationStrategy();
+    case 'math':
+    case 'physics':
+      return MathVerificationStrategy();
     default:
       return GeneralVerificationStrategy();
   }

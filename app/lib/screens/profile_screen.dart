@@ -282,6 +282,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final streakDays = stats['streak_days'] ?? 0;
     final domainsCovered = stats['domains_covered'] ?? 0;
     final todayReviews = stats['today_reviews'] ?? 0;
+    final cefrStats = (_data?['cefr_stats'] as List<dynamic>?)
+        ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
 
     return ListView(
       padding: const EdgeInsets.all(24),
@@ -382,6 +384,29 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         ),
         const SizedBox(height: 16),
+
+        // ── CEFR 词汇仪表盘 ──
+        if (cefrStats.isNotEmpty) ...[
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('CEFR 词汇掌握度', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  Text('统计已掌握的词汇量，按 CEFR 等级分阶展示',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                  const Divider(height: 20),
+                  ...cefrStats.map((s) => _buildCefrBar(s)),
+                  const Divider(height: 16),
+                  _buildCefrTotal(cefrStats),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
 
         // 订阅状态
         _buildSubscriptionCard(),
@@ -901,6 +926,33 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ),
     );
   }
+
+  // ── CEFR 仪表盘辅助方法 ──
+
+  Widget _buildCefrBar(Map<String, dynamic> stat) {
+    final level = stat['level'] as String? ?? '';
+    final total = stat['total'] as int? ?? 0;
+    final mastered = stat['mastered'] as int? ?? 0;
+    final ratio = total > 0 ? mastered / total : 0.0;
+    return _CefrBar(level: level, total: total, mastered: mastered, ratio: ratio);
+  }
+
+  Widget _buildCefrTotal(List<Map<String, dynamic>> stats) {
+    int totalMastered = 0, totalAll = 0;
+    for (final s in stats) {
+      totalMastered += s['mastered'] as int? ?? 0;
+      totalAll += s['total'] as int? ?? 0;
+    }
+    final pct = totalAll > 0 ? (totalMastered * 100 / totalAll).toStringAsFixed(1) : '0.0';
+    return Row(
+      children: [
+        Text('总计', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+        const Spacer(),
+        Text('$totalMastered / $totalAll ($pct%)',
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+      ],
+    );
+  }
 }
 
 class _StatRow extends StatelessWidget {
@@ -959,5 +1011,75 @@ class _AchievementTile extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// CEFR 等级进度条
+class _CefrBar extends StatelessWidget {
+  final String level;
+  final int total;
+  final int mastered;
+  final double ratio;
+
+  const _CefrBar({
+    required this.level,
+    required this.total,
+    required this.mastered,
+    required this.ratio,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _levelColor(level);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: color.withAlpha(30),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(level, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: ratio,
+                    backgroundColor: color.withAlpha(25),
+                    valueColor: AlwaysStoppedAnimation(color),
+                    minHeight: 10,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 80,
+                child: Text('$mastered/$total', textAlign: TextAlign.right,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _levelColor(String level) {
+    switch (level) {
+      case 'A1': return Colors.green;
+      case 'A2': return Colors.teal;
+      case 'B1': return Colors.blue;
+      case 'B2': return Colors.orange;
+      case 'C1': return Colors.deepPurple;
+      case 'C2': return Colors.red;
+      default: return Colors.grey;
+    }
   }
 }

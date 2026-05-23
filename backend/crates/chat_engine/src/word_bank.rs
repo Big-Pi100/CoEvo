@@ -15,6 +15,8 @@ pub struct CefrEntry {
     pub domain: Option<String>,
     pub difficulty_level: Option<u32>,
     pub definition: Option<String>,
+    pub cefr_level: Option<String>,
+    pub ipa: Option<String>,
 }
 
 /// 初始化: 从 cefr_catalog.json 加载词库
@@ -46,6 +48,8 @@ pub fn init(path: &str) {
             domain: val.get("domain").and_then(|v| v.as_str()).map(String::from),
             difficulty_level: val.get("difficulty_level").and_then(|v| v.as_u64()).map(|v| v as u32),
             definition: val.get("definition").and_then(|v| v.as_str()).map(String::from),
+            cefr_level: val.get("cefr_level").and_then(|v| v.as_str()).map(String::from),
+            ipa: val.get("ipa").and_then(|v| v.as_str()).map(String::from),
         };
         catalog.insert(word, entry);
     }
@@ -66,6 +70,8 @@ pub struct WordMatch {
     pub difficulty: u32,
     pub domain: String,
     pub definition: String,
+    pub cefr_level: Option<String>,
+    pub ipa: Option<String>,
 }
 
 /// 从文本中扫描出词库中存在的单词
@@ -113,6 +119,8 @@ pub fn match_text(text: &str) -> Vec<WordMatch> {
                     difficulty: entry.difficulty_level.unwrap_or(1),
                     domain: entry.domain.clone().unwrap_or_else(|| "general".into()),
                     definition: entry.definition.clone().unwrap_or_default(),
+                    cefr_level: entry.cefr_level.clone(),
+                    ipa: entry.ipa.clone(),
                 });
                 continue;
             }
@@ -127,6 +135,8 @@ pub fn match_text(text: &str) -> Vec<WordMatch> {
                     difficulty: entry.difficulty_level.unwrap_or(1),
                     domain: entry.domain.clone().unwrap_or_else(|| "general".into()),
                     definition: entry.definition.clone().unwrap_or_default(),
+                    cefr_level: entry.cefr_level.clone(),
+                    ipa: entry.ipa.clone(),
                 });
             }
     }
@@ -136,6 +146,39 @@ pub fn match_text(text: &str) -> Vec<WordMatch> {
     found.dedup_by(|a, b| a.word == b.word);
     found.truncate(10);
     found
+}
+
+/// 查询单个词的 CEFR 等级
+pub fn lookup_cefr(word: &str) -> Option<String> {
+    WORD_BANK.get()?.get(word).and_then(|e| e.cefr_level.clone())
+}
+
+/// CEFR 等级统计
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CefrCatalogStat {
+    pub level: String,
+    pub total: u64,
+}
+
+/// 获取词库中各 CEFR 等级的词汇总数
+pub fn get_cefr_catalog_stats() -> Vec<CefrCatalogStat> {
+    let catalog = match WORD_BANK.get() {
+        Some(c) => c,
+        None => return vec![],
+    };
+    let mut counts: HashMap<&str, u64> = HashMap::new();
+    for entry in catalog.values() {
+        if let Some(ref level) = entry.cefr_level {
+            *counts.entry(level).or_insert(0) += 1;
+        }
+    }
+    let mut stats: Vec<CefrCatalogStat> = counts.into_iter()
+        .map(|(level, total)| CefrCatalogStat { level: level.to_string(), total })
+        .collect();
+    // Sort by CEFR order: A1, A2, B1, B2, C1, C2
+    let order = |l: &str| -> usize { match l { "A1" => 0, "A2" => 1, "B1" => 2, "B2" => 3, "C1" => 4, "C2" => 5, _ => 6 } };
+    stats.sort_by_key(|s| order(&s.level));
+    stats
 }
 
 #[cfg(test)]

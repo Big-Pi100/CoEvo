@@ -24,6 +24,9 @@ CLAUDE.md
 /old
 /frontend/assets
 /docs/deployment-guide.md
+# Windows 保留设备名（不可被 Git 索引）
+/nul
+
 # 废弃的部署脚本（已删除，防止重新出现）
 deploy*.sh
 deploy.ps1

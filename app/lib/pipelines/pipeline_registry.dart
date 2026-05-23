@@ -53,7 +53,7 @@ PipelineConfig getPipelineConfig(PipelineDomain domain) {
       return const PipelineConfig(
         domain: PipelineDomain.language,
         displayName: '语言学习',
-        availableVerifications: ['spelling', 'ai_dialogue'],
+        availableVerifications: ['spelling', 'ai_dialogue', 'grammar'],
       );
     case PipelineDomain.general:
       return const PipelineConfig(

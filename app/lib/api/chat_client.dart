@@ -186,6 +186,54 @@ class ChatClient {
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }
 
+  /// 正向语义验证：LLM 判断用户翻译是否等价于正确答案
+  Future<String> verifyTranslation({
+    required String front,
+    required String back,
+    required String userInput,
+  }) async {
+    final body = <String, dynamic>{
+      'front': front,
+      'back': back,
+      'user_input': userInput,
+    };
+    final resp = await http.post(
+      Uri.parse('$baseUrl/api/verify-translation'),
+      headers: _authHeaders,
+      body: jsonEncode(body),
+    ).timeout(ApiConfig.requestTimeout);
+
+    if (resp.statusCode != 200) {
+      throw Exception('Verify translation error: ${resp.statusCode}');
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    return data['result'] as String;
+  }
+
+  /// 语法验证：LLM 判断用户的语法答案是否正确
+  Future<String> verifyGrammar({
+    required String front,
+    required String back,
+    required String userInput,
+  }) async {
+    final body = <String, dynamic>{
+      'front': front,
+      'back': back,
+      'user_input': userInput,
+    };
+    final resp = await http.post(
+      Uri.parse('$baseUrl/api/verify-translation'),
+      headers: _authHeaders,
+      body: jsonEncode(body),
+    ).timeout(ApiConfig.requestTimeout);
+
+    if (resp.statusCode != 200) {
+      throw Exception('Verify grammar error: ${resp.statusCode}');
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    return data['result'] as String;
+  }
+
   // ── Skip API ──
 
   Future<void> skipConcept(String front, String sourceText) async {

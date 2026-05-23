@@ -35,6 +35,7 @@ pub async fn extract_concepts(
     skipped_fronts: &[String],
     llm_config: &LlmConfig,
     history: &[(String, String)],
+    domain: &str,  // "language" / "math" / "general"
 ) -> ExtractionResult {
     if has_card_intent(user_message) {
         // Path B2: 直接制卡
@@ -51,7 +52,7 @@ pub async fn extract_concepts(
             .chain(skipped_fronts.iter())
             .cloned()
             .collect();
-        let mut candidates = extract_candidates_from_llm(llm_config, ai_reply, &all_existing, history).await;
+        let mut candidates = extract_candidates_from_llm(llm_config, ai_reply, &all_existing, history, domain).await;
 
     let existing_fronts_lower: Vec<String> = existing_fronts.iter().map(|f| f.to_lowercase()).collect();
     let skipped_lower: Vec<String> = skipped_fronts.iter().map(|f| f.to_lowercase()).collect();
@@ -102,6 +103,23 @@ pub async fn extract_concepts(
                             });
                         }
                     }
+                } else {
+                    // LLM 不可用时的降级：利用词库自带释义
+                    for m in &matched {
+                        let word_lower = m.word.to_lowercase();
+                        if vocab_needs_llm.iter().any(|w| w.to_lowercase() == word_lower) {
+                            let source = find_source_sentence(ai_reply, &m.word).unwrap_or_default();
+                            let back = m.definition.clone();
+                            let ipa = m.ipa.clone().unwrap_or_default();
+                            let back_with_ipa = if ipa.is_empty() { back } else { format!("/{}/ {}", ipa, back) };
+                            vocab_candidates.push(ConceptCandidate {
+                                front: m.word.clone(),
+                                back: back_with_ipa,
+                                source_sentence: source,
+                                domain: "vocabulary".to_string(),
+                            });
+                        }
+                    }
                 }
             }
 
@@ -126,14 +144,15 @@ fn find_source_sentence(reply: &str, word: &str) -> Option<String> {
     None
 }
 
-/// LLM 提取候选概念（带上下文注入）
+/// LLM 提取候选概念（带上下文注入 + domain 路由）
 async fn extract_candidates_from_llm(
     config: &LlmConfig,
     ai_reply: &str,
     existing_concepts: &[String],
     history: &[(String, String)],
+    domain: &str,
 ) -> Vec<ConceptCandidate> {
-    let prompt = crate::prompt_loader::build_concept_extract(ai_reply, existing_concepts, history);
+    let prompt = crate::prompt_loader::build_concept_extract_for_domain(ai_reply, existing_concepts, history, domain);
 
     let mut caller = LlmCaller::new(config.clone());
     match caller.generate("", &prompt).await {

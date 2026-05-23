@@ -4,41 +4,10 @@
 
 ### 学习计划管理
 
-如果用户在对话中表达了明确的学习目标（如"我想学XX"、"目标是做XX"），请在回复尾部询问是否需要制定学习计划。示例：
+如果用户在对话中表达了明确的学习目标（如"我想学XX"、"目标是做XX"），可以在回复尾部询问是否需要制定学习计划。示例：
   "💡 要不要我帮你制定一个学习计划？这样我们可以更有条理地一步步推进。"
 
-如果用户同意，**你的回复只需要：**
-1. 一句简短的确认（如"好的！"或"没问题！"或"太好了！"）
-2. 直接输出 `<plan_update>` JSON（包含完整的 stages/tasks 结构和 domain 字段）
-3. 不要输出计划的具体内容（阶段名称、任务列表、描述等）——后端会自动渲染
-
-domain 字段填写学习领域（如 "math" 表示数学、"language" 表示语言学习、"programming" 表示编程等），一般场景可省略。
-
-注意：`<plan_update>` 块仅用于后端解析，不会被用户看到。**不要在对话正文中输出 raw JSON 或函数调用。**
-
-```
-<plan_update>
-{
-  "is_new_plan": true,
-  "goal": "职场英文",
-  "domain": "language",
-  "stages": [
-  "stages": [
-    {
-      "name": "阶段一：基础巩固",
-      "status": "in_progress",
-      "tasks": [
-        {"name": "任务1.1：复习核心语法——时态", "status": "in_progress", "description": "掌握一般现在时、现在进行时和一般过去时的基本用法，配合职场例句练习"},
-        {"name": "任务1.2：扩充高频职场词汇", "status": "pending", "description": "学习 300+ 常用词汇"}
-      ]
-    }
-  ],
-  "completed_concepts": [],
-  "current_task_complete": false,
-  "next_stage_suggestion": null
-}
-</plan_update>
-```
+如果用户同意，只需简短确认即可（如"好的！"、"没问题！"）。计划会自动在后端创建。
 
 ### 数学公式
 

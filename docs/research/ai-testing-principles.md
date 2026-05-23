@@ -202,19 +202,87 @@ CoEvo 管线测试遵循以上原则的实现：
 cargo run --bin e2e-pipeline-test               # 完整流水线
 cargo run --bin e2e-pipeline-test -- --phase plan-creation  # 单阶段
 cargo run --bin e2e-pipeline-test -- --from phase-2         # 从 Phase 2 续跑
+```
 
 结果存储在:
+```
   backend/docs/test-results/<run_id>/
     ├── config.json          ← 运行配置（支持断点续跑）
     ├── phase-*.json         ← 每阶段结果（含完整 LLM 日志）
-    └── report.md            ← 聚合报表
+    └── report.md            ← 聚合报表（含等级）
 ```
 
-每次 prompt 修改后：
+---
 
-1. 改 prompt 文件（git diff 可追踪）
-2. 运行 `e2e-pipeline-test --force --phase plan-creation`（5 分钟）
-3. 检查 `report.md` 中的 domain 准确率和创建耗时
-4. 运行 `e2e-pipeline-test --force --phase plan-progression`（5 分钟）
-5. 检查 plan_update 触发率
-6. 查看 JSON 中的原始 LLM 日志确认输出质量
+## 原则九：分级通过标准
+
+**测试结果按 A/B/C/D/F 五级评定，只有全 A 才算完全通过。**
+
+### 等级定义
+
+| 等级 | 含义 | 后续处理 |
+|:----:|------|---------|
+| **A** | 完全符合设计预期 — pipeline prompt 正确路由 + 字段 100% 对齐 | 可发布 |
+| **B** | 功能正确但有轻微偏差 — 部分字段不对齐，不影响主要功能 | 需人工评估，可发布 |
+| **C** | 兜底机制触发 — LLM 提取路径未走通但 word_bank/通用路径成功 | 需修复，延迟发布 |
+| **D** | 兜底部分生效 — 只有少量有效输出，功能勉强可用 | 需修复 |
+| **F** | 彻底失败 — 无有效输出 | 阻断发布 |
+
+### 各阶段等级判定逻辑
+
+```
+concept-extraction:
+  A = 有 candidates + domain 正确率 ≥ 50% (LLM 路径成功)
+  C = 有 candidates 但 domain 不对 (仅 word_bank 匹配)
+  F = 无 candidates
+
+progression:
+  A = 有教学对话 + 有 plan_update
+  B = 有教学对话但无 plan_update (LLM 行为差异)
+  F = 无教学对话
+
+plan-creation:
+  A = domain 准确率 3/3
+  C = domain 准确率 1/3 ~ 2/3
+  F = 0/3
+
+review-flow:
+  A = reps 递增 + lapses 递增 + review_log 记录 (全覆盖)
+  D = 仅部分指标通过
+  F = 全部失败
+```
+
+### 实现
+
+`PhaseResult` 结构体中 `grade: Option<Grade>` 字段在每次 phase 执行后由 `resolve_grade()` 自动判定。
+
+```rust
+pub fn resolve_grade(phase, status, metrics, errors) -> Grade {
+    match status {
+        Failed => Grade::F,
+        Passed => {
+            match phase {
+                "concept-extraction" => {
+                    if total > 0 && domain_ok { Grade::A }
+                    else if total > 0 { Grade::C }
+                    else { Grade::D }
+                }
+                "progression-history" | "progression-language" | "progression-math" => {
+                    if plan_updates > 0 { Grade::A } else { Grade::B }
+                }
+                "plan-creation" => {
+                    if "3/3" { Grade::A } else if "1/3"~"2/3" { Grade::C } else { Grade::D }
+                }
+                "review-flow" => {
+                    if reps && lapses && logs { Grade::A }
+                    else if reps || lapses { Grade::D }
+                    else { Grade::F }
+                }
+                _ => Grade::C
+            }
+        }
+    }
+}
+```
+
+**`all_passed = true` 要求所有 phase 的 grade == A**。任何 B/C/D 都会导致 CI 警告或阻断。
