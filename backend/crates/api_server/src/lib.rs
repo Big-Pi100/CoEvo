@@ -14,4 +14,8 @@ pub mod plan_handler;
 pub mod rate_limiter;
 pub mod routes;
 pub mod subject_router;
+pub mod curriculum_loader;
+pub mod k12_quiz;
+pub mod k12_quiz_api;
+pub mod k12_quiz_loader;
 pub mod ws;

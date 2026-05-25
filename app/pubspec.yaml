@@ -4,7 +4,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.7.0
+  sdk: ">=3.6.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -41,6 +41,8 @@ dev_dependencies:
 
 dependency_overrides:
   http: ^1.3.0
+  flutter_math_fork:
+    path: packages/flutter_math_fork
 
 flutter:
   uses-material-design: true

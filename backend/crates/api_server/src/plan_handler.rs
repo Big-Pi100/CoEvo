@@ -7,6 +7,28 @@
 
 use serde_json::json;
 
+/// 从 plan_json 中找到当前 in_progress 的 task 名称
+pub fn get_current_task_name(plan_json: &serde_json::Value) -> Option<String> {
+    let stages = plan_json.get("stages").and_then(|v| v.as_array())?;
+    for stage in stages {
+        let tasks = stage.get("tasks").and_then(|v| v.as_array())?;
+        for task in tasks {
+            let status = task.get("status").and_then(|v| v.as_str()).unwrap_or("pending");
+            if status == "in_progress" {
+                return task.get("name").and_then(|v| v.as_str()).map(|s| s.to_string());
+            }
+        }
+    }
+    // 没有 in_progress → 找第一个 pending
+    for stage in stages {
+        let tasks = stage.get("tasks").and_then(|v| v.as_array())?;
+        if let Some(task) = tasks.first() {
+            return task.get("name").and_then(|v| v.as_str()).map(|s| s.to_string());
+        }
+    }
+    None
+}
+
 /// plan_update 处理结果
 pub struct PlanUpdateResult {
     /// 清理后的回复文本（去除 plan_update 标签）
@@ -116,6 +138,11 @@ fn upsert_learning_plan(
     let now = chrono::Utc::now().to_rfc3339();
     let goal = update["goal"].as_str().unwrap_or("");
     let mut plan = update.clone();
+    // 跟踪 plan_update 次数（用于评估和分析）
+    let prev_count = plan.get("plan_update_count").and_then(|v| v.as_u64()).unwrap_or(0);
+    plan.as_object_mut().map(|o| {
+        o.insert("plan_update_count".to_string(), serde_json::Value::Number((prev_count + 1).into()));
+    });
     let _ = plan.as_object_mut().map(|o| {
         o.remove("is_new_plan");
         o.remove("goal");
@@ -548,7 +575,12 @@ pub fn build_plan_context(conn: &rusqlite::Connection, conversation_id: &str) ->
 }
 
 /// 构建计划分析 prompt（用于 ColdPath 2）
-pub fn build_plan_analysis_prompt(conversation_history: &[(String, String)], plan_json: &serde_json::Value) -> String {
+/// pass_rate_info: 可选的客观通过率描述文本（如 "客观完成率：当前任务通过率 75%（需 ≥ 80%）"）
+pub fn build_plan_analysis_prompt(
+    conversation_history: &[(String, String)],
+    plan_json: &serde_json::Value,
+    pass_rate_info: Option<&str>,
+) -> String {
     let dialogue: Vec<String> = conversation_history.iter()
         .map(|(role, content)| {
             let label = if role == "user" { "学生" } else { "教师" };
@@ -577,7 +609,7 @@ pub fn build_plan_analysis_prompt(conversation_history: &[(String, String)], pla
 【当前计划】
 目标: {}
 {stages_text}
-
+{pass_rate_line}
 【最近对话】
 {dialogue_text}（注意只分析教学相关的部分，忽略寒暄）
 
@@ -592,58 +624,122 @@ pub fn build_plan_analysis_prompt(conversation_history: &[(String, String)], pla
         plan_json.get("goal").and_then(|v| v.as_str()).unwrap_or(""),
         stages_text = stages_text,
         dialogue_text = dialogue_text,
+        pass_rate_line = pass_rate_info.map(|p| format!("\n{}\n", p)).unwrap_or_default(),
     )
 }
 
 /// ColdPath 2: 分析对话进度，更新学习计划（如无计划则自动创建）
+/// 内部自行管理 DB 连接，不持有跨 .await 的引用（兼容 tokio::spawn）
 pub async fn analyze_plan_progress(
-    conn: &rusqlite::Connection,
     conversation_id: &str,
     user_id: &str,
     caller: &mut chat_engine::llm_caller::LlmCaller,
 ) -> bool {
-    // 读取最近 20 轮对话
-    let history: Vec<(String, String)> = {
-        let mut stmt = match conn.prepare(
-            "SELECT role, content FROM conversation_turns WHERE conversation_id = ?1 ORDER BY created_at DESC LIMIT 20"
-        ) {
-            Ok(s) => s,
-            Err(_) => return false,
+    let conv_id = conversation_id.to_string();
+    let uid = user_id.to_string();
+
+    // 第一步：读取数据
+    let (relevant, plan_json_str) = {
+        let conn = crate::db_pool::get_conn();
+        let history_raw: Vec<(String, String)> = {
+            let mut stmt = match conn.prepare(
+                "SELECT role, content FROM conversation_turns WHERE conversation_id = ?1 ORDER BY created_at DESC LIMIT 20"
+            ) {
+                Ok(s) => s,
+                Err(_) => return false,
+            };
+            let mut turns: Vec<(String, String)> = stmt.query_map(
+                rusqlite::params![conversation_id],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            ).unwrap().filter_map(|r| r.ok()).collect();
+            turns.reverse();
+            turns
         };
-        let mut turns: Vec<(String, String)> = stmt.query_map(
-            rusqlite::params![conversation_id],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        ).unwrap().filter_map(|r| r.ok()).collect();
-        turns.reverse();
-        turns
-    };
 
-    let relevant: Vec<(String, String)> = history.into_iter()
-        .filter(|(r, _)| r == "user" || r == "assistant")
-        .collect();
+        let relevant: Vec<(String, String)> = history_raw.into_iter()
+            .filter(|(r, _)| r == "user" || r == "assistant")
+            .collect();
 
-    if relevant.len() < 2 {
-        return false; // 对话太短
-    }
+        if relevant.len() < 2 {
+            return false; // 对话太短
+        }
 
-    // 检查是否已有计划
-    let existing_plan: Option<String> = conn.query_row(
-        "SELECT plan_json FROM learning_plans WHERE conversation_id = ?1 AND mode = 'structured' ORDER BY updated_at DESC LIMIT 1",
-        rusqlite::params![conversation_id],
-        |row| row.get(0),
-    ).ok();
+        // 检查是否已有计划
+        let plan_json_str: Option<String> = conn.query_row(
+            "SELECT plan_json FROM learning_plans WHERE conversation_id = ?1 AND mode = 'structured' ORDER BY updated_at DESC LIMIT 1",
+            rusqlite::params![&conv_id],
+            |row| row.get(0),
+        ).ok();
 
-    match existing_plan {
+        (relevant, plan_json_str)
+    }; // conn 在此释放，后面的 .await 安全
+
+    match plan_json_str {
         Some(plan_json_str) => {
             // 已有计划 → 分析进度更新
             let plan_json: serde_json::Value = match serde_json::from_str(&plan_json_str) {
                 Ok(v) => v,
                 Err(_) => return false,
             };
-            let prompt = build_plan_analysis_prompt(&relevant, &plan_json);
+            // 计算客观通过率，注入 prompt
+            let pass_rate_info: Option<String> = {
+                let conn = crate::db_pool::get_conn();
+                get_current_task_name(&plan_json).and_then(|task_name| {
+                    let total: i64 = conn.query_row(
+                        "SELECT COUNT(*) FROM k12_quiz_bank WHERE task_name = ?1",
+                        rusqlite::params![&task_name],
+                        |row| row.get(0),
+                    ).unwrap_or(0);
+                    if total == 0 { return None; } // 无题库
+                    let correct: i64 = conn.query_row(
+                        "SELECT COUNT(*) FROM k12_quiz_attempts
+                         WHERE user_id = ?1 AND task_name = ?2 AND attempted_at >= ?3 AND is_correct = 1",
+                        rusqlite::params![&uid, &task_name, seven_days_ago()],
+                        |row| row.get(0),
+                    ).unwrap_or(0);
+                    let total_attempts: i64 = conn.query_row(
+                        "SELECT COUNT(*) FROM k12_quiz_attempts
+                         WHERE user_id = ?1 AND task_name = ?2 AND attempted_at >= ?3",
+                        rusqlite::params![&uid, &task_name, seven_days_ago()],
+                        |row| row.get(0),
+                    ).unwrap_or(0);
+                    if total_attempts == 0 {
+                        Some(format!("客观完成率：当前任务「{}」有 {} 道题库题目，但尚未完成任何测评。", task_name, total))
+                    } else {
+                        let pct = (correct as f64 / total_attempts as f64 * 100.0).round() as i64;
+                        Some(format!("客观完成率：当前任务「{}」题库通过率为 {}%（{}次正确/{}次作答，需 ≥ 80%）。", task_name, pct, correct, total_attempts))
+                    }
+                })
+            };
+            let prompt = build_plan_analysis_prompt(&relevant, &plan_json, pass_rate_info.as_deref());
             match caller.generate("", &prompt).await {
                 Ok(response) => {
-                    let result = handle_plan_update(conn, &format!("<plan_update>{}</plan_update>", response), conversation_id, user_id);
+                    let conn = crate::db_pool::get_conn();
+                    // 后处理：客观通过率 >= 80% 则强制标记任务完成
+                    let processed = if let Some(task_name) = get_current_task_name(&plan_json) {
+                        if crate::k12_quiz::should_mark_task_complete(&conn, &uid, &task_name) {
+                            // 解析 LLM 返回，补上 current_task_complete: true
+                            let mut plan_update: serde_json::Value = match serde_json::from_str(&response) {
+                                Ok(v) => v,
+                                Err(_) => serde_json::json!({"current_task_complete": true}),
+                            };
+                            if plan_update.get("current_task_complete").and_then(|v| v.as_bool()) != Some(true) {
+                                if let Some(obj) = plan_update.as_object_mut() {
+                                    obj.insert("current_task_complete".to_string(), serde_json::Value::Bool(true));
+                                }
+                            }
+                            serde_json::to_string(&plan_update).unwrap_or(response)
+                        } else {
+                            response
+                        }
+                    } else {
+                        response
+                    };
+                    let result = handle_plan_update(&conn, &format!("<plan_update>{}</plan_update>", processed), &conv_id, &uid);
+                    // 卡片渐进解锁：任务完成后解锁下一批卡片
+                    if result.plan_updated {
+                        unlock_next_cards(&conn, &conv_id, &uid, &plan_json);
+                    }
                     result.plan_updated
                 }
                 Err(_) => false,
@@ -684,10 +780,94 @@ pub async fn analyze_plan_progress(
 
             match caller.generate("", &prompt).await {
                 Ok(response) => {
-                    let result = handle_plan_update(conn, &format!("<plan_update>{}</plan_update>", response), conversation_id, user_id);
+                    let conn = crate::db_pool::get_conn();
+                    let result = handle_plan_update(&conn, &format!("<plan_update>{}</plan_update>", response), &conv_id, &uid);
                     result.is_new_plan || result.plan_updated
                 }
                 Err(_) => false,
+            }
+        }
+    }
+}
+
+/// 7 天前的时间戳（RFC 3339），用于题库通过率查询
+fn seven_days_ago() -> String {
+    (chrono::Utc::now() - chrono::Duration::days(7)).to_rfc3339()
+}
+
+/// 卡片渐进解锁：当任务完成后，解锁下一批预置卡片
+fn unlock_next_cards(
+    conn: &rusqlite::Connection,
+    conversation_id: &str,
+    user_id: &str,
+    plan_json: &serde_json::Value,
+) {
+    // 从计划中找第一个 status != "done" 且 != "completed" 的 task
+    let next_ids: Option<Vec<String>> = (|| {
+        let stages = plan_json.get("stages").and_then(|v| v.as_array())?;
+        let mut found_complete = false;
+        for stage in stages {
+            let tasks = stage.get("tasks").and_then(|v| v.as_array())?;
+            for task in tasks {
+                let status = task.get("status").and_then(|v| v.as_str()).unwrap_or("pending");
+                if status == "in_progress" || status == "pending" {
+                    // 如果是第一个 in_progress/pending 且 found_complete=false → 跳过（当前任务）
+                    if !found_complete {
+                        // 检查这个 task 是否已完成
+                        let task_name = task.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                        if crate::k12_quiz::should_mark_task_complete(conn, user_id, task_name) {
+                            found_complete = true;
+                            continue;
+                        }
+                        // 未完成 → 当前任务还在进行，不需解锁
+                        return None;
+                    }
+                    // 找到了下一个任务，返回它的 gold_cr_ids
+                    return task.get("gold_cr_ids")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect());
+                }
+            }
+        }
+        None
+    })();
+
+    if let Some(next_ids) = next_ids {
+        if next_ids.is_empty() { return; }
+
+        let now_ts = chrono::Utc::now().timestamp();
+        // 从 curriculum_loader 获取预置卡片模板，匹配 gold_cr_id 导入
+        // 先查 conversation 的 subject/grade_band
+        let (subject, grade_band): (Option<String>, Option<String>) = conn.query_row(
+            "SELECT subject, grade_band FROM conversations WHERE id = ?1",
+            rusqlite::params![conversation_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).unwrap_or((None, None));
+
+        let (subj, grade) = match (subject, grade_band) {
+            (Some(s), Some(g)) => (s, g),
+            _ => return,
+        };
+
+        let cards = crate::curriculum_loader::get_cards(&subj, &grade);
+        if let Some(card_list) = cards {
+            for card_tmpl in card_list {
+                if !card_tmpl.gold_cr_id.as_ref().map_or(false, |g| next_ids.contains(g)) {
+                    continue;
+                }
+                let card_id = format!("k12_{}", &card_tmpl.id);
+                let _ = conn.execute(
+                    "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, subject, grade_band, k12_card_id)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                    rusqlite::params![card_id, user_id, card_tmpl.domain, card_tmpl.card_type,
+                        card_tmpl.front, card_tmpl.back, card_tmpl.source_sentence.as_deref(), conversation_id, now_ts,
+                        subj, grade, card_tmpl.id],
+                );
+                let _ = conn.execute(
+                    "INSERT OR IGNORE INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
+                     VALUES (?1, 0, 0.3, 1.0, ?2, 0, 0, 0)",
+                    rusqlite::params![card_id, now_ts],
+                );
             }
         }
     }

@@ -179,29 +179,72 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 };
 
                 // ── 学科路由（首次消息） ──
-                // 用 LLM 检测 subject + grade → 加载课标约束
+                // K12 模式：从 conversations 表读取 subject/grade_band，跳过 LLM
+                // 自由探索模式：调 LLM 检测 subject + grade → 加载课标约束
                 let mut routing_ctx = String::new();
                 if history.len() <= 1 {
-                    let cfg = crate::llm::get_config();
-                    let mut caller = chat_engine::llm_caller::LlmCaller::new(cfg);
-                    let routing = crate::subject_router::route(&chat_req.message, &mut caller).await;
-                    let (cover, bound) = crate::subject_router::get_curriculum_bounds(&routing.subject, &routing.grade_band);
-                    let kg_paths = crate::subject_router::get_knowledge_paths(&routing.subject, &routing.grade_band);
-                    if !cover.is_empty() {
-                        let mut ctx = format!(
-                            "\n\n### 课程范围\n本课学习 {}（{} 水平）。\n\n⚠️ **重要：你的学习计划必须涵盖以下所有内容。每项内容至少对应一个阶段(stage)，不得只选其中一部分。**\n\n【必须覆盖的内容】\n{}",
-                            routing.subject, routing.grade_band, cover
-                        );
-                        if !bound.is_empty() {
-                            ctx.push_str(&format!(
-                                "\n\n【禁止深入的内容（超纲）】\n这些内容不属于本年级要求，不要在教学中深入展开：\n{}",
-                                bound
-                            ));
+                    // 先查 conversations 表，判断是否是 K12 模式
+                    let k12_subject: Option<String> = {
+                        let conn = crate::db_pool::get_conn();
+                        conn.query_row(
+                            "SELECT subject FROM conversations WHERE id = ?1 AND subject IS NOT NULL",
+                            rusqlite::params![chat_req.conversation_id],
+                            |row| row.get(0),
+                        ).ok()
+                    };
+
+                    if let Some(ref subject) = k12_subject {
+                        // ── K12 模式：直接从 conversations 取 grade_band ──
+                        let k12_grade: Option<String> = {
+                            let conn = crate::db_pool::get_conn();
+                            conn.query_row(
+                                "SELECT grade_band FROM conversations WHERE id = ?1",
+                                rusqlite::params![chat_req.conversation_id],
+                                |row| row.get(0),
+                            ).ok()
+                        };
+                        let grade = k12_grade.as_deref().unwrap_or("");
+                        let (cover, bound) = crate::subject_router::get_curriculum_bounds(subject, grade);
+                        let kg_paths = crate::subject_router::get_knowledge_paths(subject, grade);
+                        if !cover.is_empty() {
+                            let mut ctx = format!(
+                                "\n\n### 课程范围\n本课学习 {}（{} 水平）。\n\n⚠️ **重要：你的学习计划必须涵盖以下所有内容。每项内容至少对应一个阶段(stage)，不得只选其中一部分。**\n\n【必须覆盖的内容】\n{}",
+                                subject, grade, cover
+                            );
+                            if !bound.is_empty() {
+                                ctx.push_str(&format!(
+                                    "\n\n【禁止深入的内容（超纲）】\n这些内容不属于本年级要求，不要在教学中深入展开：\n{}",
+                                    bound
+                                ));
+                            }
+                            if !kg_paths.is_empty() {
+                                ctx.push_str(&kg_paths);
+                            }
+                            routing_ctx = ctx;
                         }
-                        if !kg_paths.is_empty() {
-                            ctx.push_str(&kg_paths);
+                    } else {
+                        // ── 自由探索模式：LLM 路由 ──
+                        let cfg = crate::llm::get_config();
+                        let mut caller = chat_engine::llm_caller::LlmCaller::new(cfg);
+                        let routing = crate::subject_router::route(&chat_req.message, &mut caller).await;
+                        let (cover, bound) = crate::subject_router::get_curriculum_bounds(&routing.subject, &routing.grade_band);
+                        let kg_paths = crate::subject_router::get_knowledge_paths(&routing.subject, &routing.grade_band);
+                        if !cover.is_empty() {
+                            let mut ctx = format!(
+                                "\n\n### 课程范围\n本课学习 {}（{} 水平）。\n\n⚠️ **重要：你的学习计划必须涵盖以下所有内容。每项内容至少对应一个阶段(stage)，不得只选其中一部分。**\n\n【必须覆盖的内容】\n{}",
+                                routing.subject, routing.grade_band, cover
+                            );
+                            if !bound.is_empty() {
+                                ctx.push_str(&format!(
+                                    "\n\n【禁止深入的内容（超纲）】\n这些内容不属于本年级要求，不要在教学中深入展开：\n{}",
+                                    bound
+                                ));
+                            }
+                            if !kg_paths.is_empty() {
+                                ctx.push_str(&kg_paths);
+                            }
+                            routing_ctx = ctx;
                         }
-                        routing_ctx = ctx;
                     }
                 }
 
@@ -495,8 +538,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     tokio::spawn(async move {
                         let mut caller = chat_engine::llm_caller::LlmCaller::new(cfg);
                         tokio::time::sleep(Duration::from_millis(500)).await;
-                        let conn = crate::db_pool::get_conn();
-                        let _ = crate::plan_handler::analyze_plan_progress(&conn, &conv_id, &uid, &mut caller).await;
+                        let _ = crate::plan_handler::analyze_plan_progress(&conv_id, &uid, &mut caller).await;
                     });
                 }
             }

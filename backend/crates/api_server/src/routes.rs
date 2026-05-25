@@ -10,10 +10,11 @@ use std::sync::OnceLock;
 use std::collections::HashMap;
 
 use crate::error::AppError;
+use crate::curriculum_loader;
 use crate::admin_handlers::*;
 
 /// Helper: convert an AppError into a Json error response (for handlers returning Json<Value>)
-fn auth_json(e: AppError) -> Json<serde_json::Value> {
+pub(crate) fn auth_json(e: AppError) -> Json<serde_json::Value> {
     Json(serde_json::json!({"error": e.to_string()}))
 }
 
@@ -82,6 +83,9 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         // Preferences
         .route("/api/user/{user_id}/preferences", get(preferences_get_handler).put(preferences_put_handler))
         // WS
+        .route("/api/k12/init", post(k12_init_handler))
+        .route("/api/k12/progress", get(k12_progress_handler))
+        .route("/api/k12/quiz/submit", post(crate::k12_quiz_api::quiz_submit_handler))
         .route("/ws", get(ws_upgrade))
         // Learning Plans
         .route("/api/plans", get(plans_list_handler).post(plan_upsert_handler))
@@ -879,6 +883,7 @@ pub struct AllCardsQuery {
     pub q: Option<String>,         // 搜索关键词 (匹配 front/back)
     pub state: Option<i32>,        // 按状态过滤
     pub domain: Option<String>,    // 按领域过滤
+    pub subject: Option<String>,   // 按科目过滤 (K12)
     pub sort: Option<String>,      // "front" | "created" | "state" | "due"
 }
 
@@ -895,7 +900,7 @@ async fn cards_all_handler(
     let mut sql = String::from(
         "SELECT c.id, c.front, c.back, c.domain, c.card_type, c.source_sentence,
                 c.created_at, cm.state, cm.difficulty, cm.due, cm.reps, cm.lapses,
-                lrev.reviewed_at, lrev.rating
+                lrev.reviewed_at, lrev.rating, c.subject, c.grade_band
          FROM cards c
          JOIN card_memory cm ON c.id = cm.card_id
          LEFT JOIN (
@@ -912,6 +917,14 @@ async fn cards_all_handler(
     if let Some(ref domain) = query.domain {
         params.push(Box::new(domain.clone()));
         sql.push_str(&format!(" AND c.domain = ?{}", params.len()));
+    }
+
+    // 按 K12 科目过滤
+    if let Some(ref subject) = query.subject {
+        if !subject.is_empty() {
+            params.push(Box::new(subject.clone()));
+            sql.push_str(&format!(" AND c.subject = ?{}", params.len()));
+        }
     }
 
     // 按状态过滤
@@ -957,6 +970,8 @@ async fn cards_all_handler(
         "lapses": row.get::<_, i32>(11)?,
         "last_reviewed_at": row.get::<_, Option<i64>>(12)?,
         "last_review_quality": row.get::<_, Option<i32>>(13)?,
+        "subject": row.get::<_, Option<String>>(14)?,
+        "grade_band": row.get::<_, Option<String>>(15)?,
     }))) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
         Err(e) => return Json(serde_json::json!({"error": format!("DB query: {}", e)})),
@@ -976,6 +991,13 @@ async fn cards_all_handler(
         rusqlite::params![query.user_id], |row| row.get(0),
     ).unwrap_or_default();
 
+    // K12 科目列表
+    let subjects: Vec<String> = query_vec(
+        &conn,
+        "SELECT DISTINCT subject FROM cards WHERE user_id = ?1 AND subject IS NOT NULL ORDER BY subject",
+        rusqlite::params![query.user_id], |row| row.get(0),
+    ).unwrap_or_default();
+
     Json(serde_json::json!({
         "cards": rows,
         "total": total,
@@ -986,6 +1008,7 @@ async fn cards_all_handler(
             "relearning": state_counts[3],
         },
         "domains": domains,
+        "subjects": subjects,
     }))
 }
 
@@ -1881,4 +1904,169 @@ async fn stt_handler(
         }
         Err(e) => Json(serde_json::json!({"error": format!("STT proxy: {}", e)})),
     }
+}
+// ════════════════════════════════════════════
+// K12 结构化学习初始化
+// ════════════════════════════════════════════
+
+#[derive(Deserialize)]
+pub struct K12InitInput {
+    pub user_id: String,
+    pub subject: String,
+    pub grade_band: String,
+}
+
+#[derive(Deserialize)]
+pub struct K12InitQuery {
+    pub user_id: String,
+}
+
+/// POST /api/k12/init — 初始化 K12 会话
+async fn k12_init_handler(
+    headers: HeaderMap,
+    Json(input): Json<K12InitInput>,
+) -> Json<serde_json::Value> {
+    // 1. Auth
+    if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
+        return auth_json(e);
+    }
+
+    let conn = crate::db_pool::get_conn();
+    let now = chrono::Utc::now();
+    let now_str = now.to_rfc3339();
+    let now_ts = now.timestamp();
+
+    // 2. 创建 conversation 带 subject/grade_band 标记
+    let conv_id = uuid::Uuid::new_v4().to_string();
+    if let Err(e) = conn.execute(
+        "INSERT INTO conversations (id, user_id, turn_count, started_at, subject, grade_band) VALUES (?1, ?2, 0, ?3, ?4, ?5)",
+        rusqlite::params![conv_id, input.user_id, now_str, input.subject, input.grade_band],
+    ) {
+        return Json(serde_json::json!({"error": format!("Conv create: {}", e)}));
+    }
+
+    // 3. 加载预生成计划
+    let plan = match curriculum_loader::get_plan(&input.subject, &input.grade_band) {
+        Some(p) => p,
+        None => return Json(serde_json::json!({"error": format!("No plan for {} {}", input.subject, input.grade_band)})),
+    };
+
+    // 4. 将计划写入 learning_plans 表
+    let plan_id = uuid::Uuid::new_v4().to_string();
+    let plan_json = serde_json::json!({
+        "id": plan.id,
+        "subject": input.subject,
+        "grade_band": input.grade_band,
+        "goal": plan.goal,
+        "stages": plan.stages,
+        "total_crs": plan.total_crs,
+    });
+    let plan_str = serde_json::to_string(&plan_json).unwrap_or_default();
+    if let Err(e) = conn.execute(
+        "INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_json, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, 'structured', ?6, ?7, ?7)",
+        rusqlite::params![plan_id, input.user_id, conv_id, format!("K12: {} {}", input.subject, input.grade_band), input.subject, plan_str, now_str],
+    ) {
+        return Json(serde_json::json!({"error": format!("Plan insert: {}", e)}));
+    }
+
+    // 5. 卡片渐进解锁：只导入第一个任务的卡片
+    let cards = curriculum_loader::get_cards(&input.subject, &input.grade_band);
+    let mut card_ids: Vec<String> = Vec::new();
+
+    // 从计划中提取第一个任务的 gold_cr_ids
+    let first_task_ids: Vec<String> = plan_json.get("stages")
+        .and_then(|s| s.as_array())
+        .and_then(|stages| stages.first())
+        .and_then(|stage| stage.get("tasks"))
+        .and_then(|t| t.as_array())
+        .and_then(|tasks| tasks.first())
+        .and_then(|task| task.get("gold_cr_ids"))
+        .and_then(|ids| ids.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+        .unwrap_or_default();
+
+    if let Some(card_list) = cards {
+        for card_tmpl in card_list {
+            // 只导入 gold_cr_id 匹配首批任务的卡片
+            if !first_task_ids.is_empty() && !card_tmpl.gold_cr_id.as_ref().map_or(false, |g| first_task_ids.contains(g)) {
+                continue;
+            }
+            let card_id = format!("k12_{}", &card_tmpl.id);
+            let _ = conn.execute(
+                "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, subject, grade_band, k12_card_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                rusqlite::params![card_id, input.user_id, card_tmpl.domain, card_tmpl.card_type,
+                    card_tmpl.front, card_tmpl.back, card_tmpl.source_sentence.as_deref(), conv_id, now_ts,
+                    input.subject, input.grade_band, card_tmpl.id],
+            );
+            // 创建 card_memory (新卡片)
+            let _ = conn.execute(
+                "INSERT OR IGNORE INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
+                 VALUES (?1, 0, 0.3, 1.0, ?2, 0, 0, 0)",
+                rusqlite::params![card_id, now_ts],
+            );
+            card_ids.push(card_id);
+        }
+    }
+
+    // 6. 返回结果
+    Json(serde_json::json!({
+        "conversation_id": conv_id,
+        "plan": plan_json,
+        "cards": serde_json::json!({
+            "total": card_ids.len(),
+            "ids": card_ids,
+            "sample": card_ids.get(0..5).unwrap_or(&[]),
+        }),
+    }))
+}
+
+/// GET /api/k12/progress — 获取用户 K12 进度摘要
+#[derive(Deserialize)]
+pub struct K12ProgressQuery {
+    pub user_id: String,
+}
+
+async fn k12_progress_handler(
+    headers: HeaderMap,
+    Query(query): Query<K12ProgressQuery>,
+) -> Json<serde_json::Value> {
+    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
+        return auth_json(e);
+    }
+
+    let conn = crate::db_pool::get_conn();
+
+    // 从 k12_progress 表读取所有进度记录
+    let mut stmt = match conn.prepare(
+        "SELECT subject, grade_band, mastered_cards, total_cards, started_at, last_activity_at, completed_at
+         FROM k12_progress
+         WHERE user_id = ?1
+         ORDER BY subject, grade_band"
+    ) {
+        Ok(s) => s,
+        Err(e) => return Json(serde_json::json!({"error": format!("DB prepare: {}", e)})),
+    };
+
+    let rows: Vec<serde_json::Value> = match stmt.query_map(
+        rusqlite::params![query.user_id],
+        |row| Ok(serde_json::json!({
+            "subject": row.get::<_, String>(0)?,
+            "grade_band": row.get::<_, String>(1)?,
+            "mastered_cards": row.get::<_, i64>(2)?,
+            "total_cards": row.get::<_, i64>(3)?,
+            "started_at": row.get::<_, String>(4)?,
+            "last_activity_at": row.get::<_, Option<String>>(5)?,
+            "completed_at": row.get::<_, Option<String>>(6)?,
+        }))
+    ) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(e) => return Json(serde_json::json!({"error": format!("DB query: {}", e)})),
+    };
+
+    Json(serde_json::json!({
+        "progress": rows,
+        "total": rows.len(),
+    }))
 }

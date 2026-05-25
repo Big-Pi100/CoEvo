@@ -24,7 +24,9 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
   final _searchController = TextEditingController();
   int? _stateFilter;       // null = all
   String? _domainFilter;   // null = all
+  String? _subjectFilter;  // null = all (K12)
   List<String> _domains = [];
+  List<String> _subjects = [];
   Map<String, int> _stateCounts = {};
   String _sortBy = 'state';
   String get _sortLabel {
@@ -70,17 +72,23 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     }
     final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {
-      final resp = await client.getAllCards(sort: _sortBy);
+      final resp = await client.getAllCards(
+        sort: _sortBy,
+        subject: _subjectFilter,
+      );
       final cards = (resp['cards'] as List<dynamic>?)
           ?.map((e) => DueCard.fromJson(e as Map<String, dynamic>))
           .toList() ?? [];
       final stateCounts = resp['state_counts'] as Map<String, dynamic>? ?? {};
       final domains = (resp['domains'] as List<dynamic>?)
           ?.map((e) => e as String).toList() ?? [];
+      final subjects = (resp['subjects'] as List<dynamic>?)
+          ?.map((e) => e as String).toList() ?? [];
 
       setState(() {
         _allCards = cards;
         _domains = domains;
+        _subjects = subjects;
         _stateCounts = stateCounts.map((k, v) => MapEntry(k, (v as num).toInt()));
         _isLoading = false;
         _hasLoadedOnce = true;
@@ -106,6 +114,8 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
         if (_stateFilter != null && c.state != _stateFilter) return false;
         // 领域过滤
         if (_domainFilter != null && c.domain != _domainFilter) return false;
+        // K12 科目过滤
+        if (_subjectFilter != null && c.subject != _subjectFilter) return false;
         return true;
       }).toList();
     });
@@ -379,6 +389,31 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                                 label: d,
                                 isActive: _domainFilter == d,
                                 onTap: () => setState(() { _domainFilter = _domainFilter == d ? null : d; _applyFilters(); }),
+                              ),
+                            )),
+                          ],
+                        ),
+                      ),
+
+                    // K12 科目标签
+                    if (_subjects.isNotEmpty)
+                      SizedBox(
+                        height: 36,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          children: [
+                            _DomainChip(
+                              label: '全部科目',
+                              isActive: _subjectFilter == null,
+                              onTap: () => setState(() { _subjectFilter = null; _loadCards(); }),
+                            ),
+                            ..._subjects.map((s) => Padding(
+                              padding: const EdgeInsets.only(left: 6),
+                              child: _DomainChip(
+                                label: s,
+                                isActive: _subjectFilter == s,
+                                onTap: () => setState(() { _subjectFilter = _subjectFilter == s ? null : s; _loadCards(); }),
                               ),
                             )),
                           ],

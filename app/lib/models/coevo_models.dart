@@ -75,6 +75,8 @@ class DueCard {
   final int? due;
   final int? lastReviewedAt;
   final int? lastReviewQuality;
+  final String? subject;
+  final String? gradeBand;
 
   const DueCard({
     required this.id,
@@ -91,6 +93,8 @@ class DueCard {
     this.due,
     this.lastReviewedAt,
     this.lastReviewQuality,
+    this.subject,
+    this.gradeBand,
   });
 
   factory DueCard.fromJson(Map<String, dynamic> json) => DueCard(
@@ -108,6 +112,8 @@ class DueCard {
     due: json['due'] as int?,
     lastReviewedAt: json['last_reviewed_at'] as int?,
     lastReviewQuality: json['last_review_quality'] as int?,
+    subject: json['subject'] as String?,
+    gradeBand: json['grade_band'] as String?,
   );
 }
 

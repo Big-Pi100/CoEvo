@@ -482,18 +482,32 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
 
 **原因**：Nginx 默认 `proxy_read_timeout = 60s`，超过 60 秒无数据传输即关闭 WebSocket 连接
 
-**修复**：
+**修复（2026-05-23 更新：补充 proxy_send_timeout + 后端心跳代码已上线）**：
+
+1. **Nginx 层**：同时设置 `proxy_read_timeout` 和 `proxy_send_timeout` 到 86400s（24 小时）：
 ```bash
 ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
+  # port 80 入口
   sudo sed -i "/location \/ws {/,/}/ {
-    /proxy_pass.*8080\/ws/ a\\        proxy_read_timeout 86400s;
+    /proxy_pass.*8080\/ws/ a\\
+        proxy_read_timeout 86400s;\\
+        proxy_send_timeout 86400s;
   }" /etc/nginx/sites-available/coevo-landing
+  # port 3000 内部
   sudo sed -i "/location \/ws {/,/}/ {
-    /proxy_pass.*8080\/ws/ a\\        proxy_read_timeout 86400s;
+    /proxy_pass.*8080\/ws/ a\\
+        proxy_read_timeout 86400s;\\
+        proxy_send_timeout 86400s;
   }" /etc/nginx/sites-available/coevo-admin
   sudo nginx -t && sudo nginx -s reload
 '
 ```
+
+2. **后端层**（2026-05-23 新增代码已合并到仓库）：
+   - **Heartbeat 心跳检测**：每 60s 发送 WS Ping 帧检测连接活性，断连时自动退出
+   - **ws.send() 错误检查**：所有关键发送点检查 Result，发送失败立即 break + 日志告警
+   - **双重保护**：即使 Nginx/中间件静默切断连接，最长 60s 内即可检测断开并清理
+   - 部署新版二进制后自动生效，无需额外配置
 
 ### 7.8 PII 解密失败 / 用户信息显示乱码
 
@@ -533,6 +547,8 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
 | `lib/services/stt_service_native.dart` | 原生平台实现（MediaRecorder + 讯飞 API） |
 | `pubspec.yaml` | 需包含 `flutter_web_plugins` 依赖 |
 | `backend/crates/api_server/src/encryption.rs` | **2026-05-20 新增**：AES-256-GCM PII 加密模块，需要 `COEVO_PII_KEY` 环境变量 |
+| `backend/crates/api_server/src/ws.rs` | **2026-05-23 修复**：添加 WS 心跳检测（60s Ping）、ws.send() 错误检查、ColdPath 2 改用 tokio::spawn |
+| `landing/coevo-nginx.conf` | **2026-05-23 修复**：WebSocket location 添加 `proxy_read_timeout 86400s; proxy_send_timeout 86400s;` |
 
 ### 8.2 不可用于 Web 的插件
 
@@ -672,10 +688,12 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
     }
 }
 ```
 
 ---
 
-> 最后更新：2026-05-20（新增 AES-256-GCM PII 加密部署说明、COEVO_PII_KEY 环境变量、PII 故障排查、验证清单第 11 项）
+> 最后更新：2026-05-23（新增 Nginx WebSocket 超时配置 reference、后端心跳+错误检查代码说明）

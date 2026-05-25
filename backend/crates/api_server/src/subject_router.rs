@@ -41,7 +41,8 @@ fn grade_to_band(text: &str) -> &'static str {
             else if text.contains("三") || text.contains("十二") { "g10-12" }
             else { "g10-12" }
         } else {
-            if text.contains("一") || text.contains("二") { "g1-2" }
+            if text.contains("初") { "g7-9" }
+            else if text.contains("一") || text.contains("二") { "g1-2" }
             else if text.contains("三") || text.contains("四") { "g3-4" }
             else if text.contains("五") || text.contains("六") { "g5-6" }
             else { "g1-2" }

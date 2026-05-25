@@ -43,8 +43,16 @@ class HomeScreen extends StatelessWidget {
                   _ActionCard(
                     icon: Icons.chat,
                     title: '开始对话',
-                    subtitle: '和 AI 对话学习新知识',
+                    subtitle: '和 AI 自由对话学习新知识',
                     onTap: () => context.push('/chat'),
+                  ),
+                  const SizedBox(height: 16),
+                  _ActionCard(
+                    icon: Icons.school,
+                    title: 'K12 结构化学习',
+                    subtitle: '按课程标准系统学习',
+                    color: Colors.deepOrange,
+                    onTap: () => context.push('/k12/subject'),
                   ),
                   const SizedBox(height: 16),
                   _ActionCard(

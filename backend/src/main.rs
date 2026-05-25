@@ -165,12 +165,22 @@ async fn main() {
     tracing::info!("Wordbank: {}", wordbank_path);
 
     // Load curriculum guide
+    api_server::curriculum_loader::init().unwrap_or_else(|e| tracing::warn!("K12 loader: {}", e));
     api_server::subject_router::init_curriculum("docs/curriculum/curriculum_guide.json");
     tracing::info!("Curriculum guide loaded");
 
     // Load knowledge graph
     api_server::subject_router::init_knowledge_graph("docs/curriculum/knowledge_graph.json");
     tracing::info!("Knowledge graph loaded");
+
+    // K12 quiz bank — 需要 DB 连接
+    {
+        let conn = api_server::db_pool::get_conn();
+        match api_server::k12_quiz_loader::load_quiz_bank(&conn, "docs/curriculum/prebuilt") {
+            Ok(n) => tracing::info!("K12 quiz bank: {} quizzes loaded", n),
+            Err(e) => tracing::warn!("K12 quiz bank: {}", e),
+        }
+    }
 
     chat_engine::config::ensure_db_connection();
 
@@ -308,6 +318,91 @@ async fn main() {
             "CREATE INDEX IF NOT EXISTS idx_admin_audit_log_admin ON admin_audit_log(admin_id, created_at)",
             "CREATE INDEX IF NOT EXISTS idx_admin_audit_log_action ON admin_audit_log(action, created_at)",
             "ALTER TABLE admin_users ADD COLUMN permissions TEXT DEFAULT '{}'",
+            // K12 支持 — 添加 cards 表字段
+            "ALTER TABLE cards ADD COLUMN subject TEXT DEFAULT NULL",
+            "ALTER TABLE cards ADD COLUMN grade_band TEXT DEFAULT NULL",
+            "ALTER TABLE cards ADD COLUMN k12_card_id TEXT DEFAULT NULL",
+            // K12 进度追踪
+            "CREATE TABLE IF NOT EXISTS k12_progress (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                grade_band TEXT NOT NULL,
+                plan_json TEXT,
+                mastered_cards INTEGER DEFAULT 0,
+                total_cards INTEGER DEFAULT 0,
+                started_at TEXT NOT NULL,
+                last_activity_at TEXT,
+                completed_at TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                UNIQUE(user_id, subject, grade_band)
+            )",
+            "CREATE TABLE IF NOT EXISTS k12_achievements (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                achievement_id TEXT NOT NULL,
+                unlocked_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                UNIQUE(user_id, achievement_id)
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_k12_progress_user ON k12_progress(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_k12_achievements_user ON k12_achievements(user_id)",
+            // K12 — conversations 表加 subject/grade_band 列
+            "ALTER TABLE conversations ADD COLUMN subject TEXT DEFAULT NULL",
+            "ALTER TABLE conversations ADD COLUMN grade_band TEXT DEFAULT NULL",
+            // K12 题库
+            "CREATE TABLE IF NOT EXISTS k12_quiz_bank (
+                id TEXT PRIMARY KEY,
+                subject TEXT NOT NULL,
+                grade_band TEXT NOT NULL,
+                task_name TEXT,
+                question TEXT NOT NULL,
+                answer TEXT NOT NULL,
+                question_type TEXT,
+                options TEXT,
+                source_dataset TEXT,
+                difficulty REAL DEFAULT 0.5
+            )",
+            "CREATE TABLE IF NOT EXISTS k12_quiz_attempts (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                quiz_id TEXT NOT NULL,
+                conversation_id TEXT,
+                user_answer TEXT,
+                is_correct INTEGER,
+                attempted_at TEXT NOT NULL,
+                task_name TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_k12_quiz_bank_subject_grade ON k12_quiz_bank(subject, grade_band)",
+            "CREATE INDEX IF NOT EXISTS idx_k12_quiz_attempts_user_quiz ON k12_quiz_attempts(user_id, quiz_id)",
+
+            // V2.2 知识图谱支持
+            // cards 表新增字段
+            "ALTER TABLE cards ADD COLUMN gold_cr_id TEXT DEFAULT NULL",
+            "ALTER TABLE cards ADD COLUMN plan_task_id TEXT DEFAULT NULL",
+            "ALTER TABLE cards ADD COLUMN origin TEXT DEFAULT 'extracted'",
+            // k12_quiz_bank 新增关联字段
+            "ALTER TABLE k12_quiz_bank ADD COLUMN assessment_item_id TEXT DEFAULT NULL",
+            "ALTER TABLE k12_quiz_bank ADD COLUMN plan_stage_id TEXT DEFAULT NULL",
+            "ALTER TABLE k12_quiz_bank ADD COLUMN plan_task_id TEXT DEFAULT NULL",
+            // 知识图谱边表
+            "CREATE TABLE IF NOT EXISTS knowledge_graph (
+                id TEXT PRIMARY KEY,
+                source_subject TEXT NOT NULL,
+                source_stage TEXT,
+                source_task TEXT,
+                target_subject TEXT NOT NULL,
+                target_stage TEXT,
+                target_task TEXT,
+                edge_type TEXT NOT NULL,
+                strength TEXT DEFAULT 'medium',
+                note TEXT,
+                created_at TEXT NOT NULL
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_kg_source ON knowledge_graph(source_subject, source_stage)",
+            "CREATE INDEX IF NOT EXISTS idx_kg_target ON knowledge_graph(target_subject, target_stage)",
+
         ];
 
         for sql in migrations {

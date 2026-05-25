@@ -10,6 +10,8 @@ import 'screens/review_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/conversation_list_screen.dart';
 import 'screens/skipped_list_screen.dart';
+import 'screens/home_screen.dart';
+import 'screens/k12_subject_screen.dart';
 import 'providers/auth_provider.dart';
 
 // Prevent dart2js tree-shaking of admin/guardian screens
@@ -28,7 +30,7 @@ final goRouter = GoRouter(
     final isOnAuth = loc.endsWith('/auth');
     if (loc.contains('/admin') || loc.contains('/guardian')) return null;
 
-    if (auth.isAuthenticated && isOnAuth) return '/chat';
+    if (auth.isAuthenticated && isOnAuth) return '/home';
     if (!auth.isAuthenticated && !isOnAuth) return '/auth';
     return null;
   },
@@ -87,6 +89,15 @@ final goRouter = GoRouter(
       ],
     ),
     GoRoute(
+      path: '/home',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const HomeScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            FadeTransition(opacity: animation, child: child),
+      ),
+    ),
+    GoRoute(
       path: '/conversations',
       pageBuilder: (context, state) => CustomTransitionPage(
         key: state.pageKey,
@@ -103,6 +114,18 @@ final goRouter = GoRouter(
       pageBuilder: (context, state) => CustomTransitionPage(
         key: state.pageKey,
         child: const SkippedListScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            SlideTransition(
+              position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(animation),
+              child: child,
+            ),
+      ),
+    ),
+    GoRoute(
+      path: '/k12/subject',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const K12SubjectScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             SlideTransition(
               position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(animation),

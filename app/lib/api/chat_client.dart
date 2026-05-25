@@ -333,12 +333,14 @@ class ChatClient {
     String? query,
     int? state,
     String? domain,
+    String? subject,
     String? sort,
   }) async {
     final params = <String, String>{'user_id': userId};
     if (query != null && query.isNotEmpty) params['q'] = query;
     if (state != null) params['state'] = state.toString();
     if (domain != null && domain.isNotEmpty) params['domain'] = domain;
+    if (subject != null && subject.isNotEmpty) params['subject'] = subject;
     if (sort != null) params['sort'] = sort;
 
     final uri = Uri.parse('$baseUrl/api/cards/all').replace(queryParameters: params);
@@ -411,6 +413,40 @@ class ChatClient {
       debugPrint('permanentDeleteConversation error: $e');
       return false;
     }
+  }
+
+  // ── K12 API ──
+
+  /// 初始化 K12 结构化学习会话
+  Future<Map<String, dynamic>> k12Init({
+    required String subject,
+    required String gradeBand,
+  }) async {
+    final resp = await http.post(
+      Uri.parse('$baseUrl/api/k12/init'),
+      headers: _authHeaders,
+      body: jsonEncode({
+        'user_id': userId,
+        'subject': subject,
+        'grade_band': gradeBand,
+      }),
+    ).timeout(ApiConfig.requestTimeout);
+
+    if (resp.statusCode != 200) {
+      throw Exception('K12 init error: ${resp.statusCode} ${resp.body}');
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  /// 获取 K12 学习进度
+  Future<Map<String, dynamic>> getK12Progress() async {
+    final uri = Uri.parse('$baseUrl/api/k12/progress').replace(queryParameters: {
+      'user_id': userId,
+    });
+    final resp = await http.get(uri, headers: _authHeaders)
+        .timeout(ApiConfig.requestTimeout);
+    if (resp.statusCode != 200) throw Exception('K12 progress: ${resp.statusCode}');
+    return jsonDecode(resp.body) as Map<String, dynamic>;
   }
 
   // ── Health ──
