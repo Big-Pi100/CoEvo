@@ -49,7 +49,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     // AFTER the auth screen is already visible (e.g., tryRestore completes)
     if (authState.isAuthenticated && authState.isRestored) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) context.go('/chat');
+        if (mounted) context.go('/home');
       });
     }
 

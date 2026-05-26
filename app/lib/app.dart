@@ -62,11 +62,8 @@ final goRouter = GoRouter(
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: '/chat',
-              builder: (context, state) {
-                final conversationId = state.extra as String?;
-                return ChatScreen(conversationId: conversationId);
-              },
+              path: '/home',
+              builder: (context, state) => const HomeScreen(),
             ),
           ],
         ),
@@ -89,12 +86,15 @@ final goRouter = GoRouter(
       ],
     ),
     GoRoute(
-      path: '/home',
+      path: '/chat',
       pageBuilder: (context, state) => CustomTransitionPage(
         key: state.pageKey,
-        child: const HomeScreen(),
+        child: ChatScreen(conversationId: state.extra as String?),
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-            FadeTransition(opacity: animation, child: child),
+            SlideTransition(
+              position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(animation),
+              child: child,
+            ),
       ),
     ),
     GoRoute(

@@ -129,13 +129,17 @@ async fn main() {
     std::mem::forget(_guard);
 
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
 
     tracing_subscriber::fmt()
         .with_env_filter(env_filter)
         .with_writer(non_blocking)
-        .with_ansi(false) // No ANSI escape codes in log files
+        .with_ansi(false)
         .init();
+
+    // 启动时显式输出 K12 数据路径（不受 tracing 影响，一定看得到）
+    let prebuilt = std::env::var("COEVO_K12_DATA_DIR").unwrap_or_else(|_| "docs/curriculum/prebuilt".to_string());
+    eprintln!("[K12] data dir: {}", prebuilt);
 
     tracing::info!("CoEvo backend starting, logs: {}/coevo.log.*", log_dir);
 

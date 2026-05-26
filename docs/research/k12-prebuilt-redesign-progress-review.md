@@ -63,3 +63,32 @@
 | 前端 Flutter | 完成 | **新增考试页面 + 消息中心** |
 | 数据库 | 完成 | 新增 exam_frameworks / exam_attempts 表 |
 | 脚本管线 | 全部完成 | 无进一步变更 |
+| 后端 loader | 已写但 V1 格式 | **需适配 V3 数据格式 — 当前 P0 阻塞项** |
+
+---
+
+## 四、真实依赖链
+
+```
+Python 管线            ✅ 全部完成
+        │
+        ▼
+后端 curriculum_loader  ⏳ P0 阻塞项
+  适配 V3 数据格式
+  - 目录扫描 prebuilt/plans/ + prebuilt/cards/
+  - Plan 解析：{"plans": [{goal, stages, total_crs}]}
+  - 从文件名推断 subject + grade_band
+  - Card 新增 plan_task_id + gold_cr_ids
+  - 加载质量条目 gold/{level}/*_quality_items.json
+        │
+        ▼
+前端 K12 页面          ⚠️ 待验证
+（选科/复习/进度矩阵）   依赖后端 API 返回格式
+        │
+        ▼
+大考系统                ⏳ P1
+(k12_assessment crate)
+        │
+        ▼
+前端考试页              ⏳ P2
+```

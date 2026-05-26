@@ -30,3 +30,4 @@ CLAUDE.md
 # 废弃的部署脚本（已删除，防止重新出现）
 deploy*.sh
 deploy.ps1
+.hvigor

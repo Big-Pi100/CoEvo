@@ -852,7 +852,9 @@ fn unlock_next_cards(
         let cards = crate::curriculum_loader::get_cards(&subj, &grade);
         if let Some(card_list) = cards {
             for card_tmpl in card_list {
-                if !card_tmpl.gold_cr_id.as_ref().map_or(false, |g| next_ids.contains(g)) {
+                // 概念卡：gold_cr_ids 与下一任务的 gold_cr_ids 有交集
+                // 词卡：plan_task_id 等于下一任务 name
+                if !next_ids.is_empty() && !card_tmpl.gold_cr_ids.iter().any(|g| next_ids.contains(g)) {
                     continue;
                 }
                 let card_id = format!("k12_{}", &card_tmpl.id);
@@ -860,7 +862,7 @@ fn unlock_next_cards(
                     "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, subject, grade_band, k12_card_id)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                     rusqlite::params![card_id, user_id, card_tmpl.domain, card_tmpl.card_type,
-                        card_tmpl.front, card_tmpl.back, card_tmpl.source_sentence.as_deref(), conversation_id, now_ts,
+                        card_tmpl.front, card_tmpl.back, card_tmpl.source_sentence, conversation_id, now_ts,
                         subj, grade, card_tmpl.id],
                 );
                 let _ = conn.execute(

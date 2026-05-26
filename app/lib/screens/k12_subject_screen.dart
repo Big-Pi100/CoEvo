@@ -16,29 +16,46 @@ class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
   bool _loading = false;
   String? _error;
 
-  static const _subjects = [
-    '数学', '语文', '英语', '物理', '化学', '生物',
-    '历史', '地理', '政治', '科学', '信息技术',
-    '体育', '艺术', '日语', '俄语',
-  ];
+  // 有预生成计划的科目（按课标实际覆盖的学段过滤）
+  // key=科目名, value=可用学段列表
+  static const _availableSubjects = <String, List<String>>{
+    '数学': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
+    '语文': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
+    '英语': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
+    '物理': ['g7-9', 'g10', 'g11-12'],
+    '化学': ['g7-9', 'g10', 'g11-12'],
+    '生物': ['g7-9', 'g10', 'g11-12'],
+    '历史': ['g7-9', 'g10', 'g11-12'],
+    '地理': ['g7-9', 'g10', 'g11-12'],
+    '政治': ['g10', 'g11-12'],
+    '科学': ['g1-2', 'g5-6', 'g7-9'],
+    '信息技术': ['g1-2', 'g3-4', 'g5-6', 'g7-9'],
+    '体育': ['g1-2', 'g3-4', 'g5-6', 'g7-9'],
+    '日语': ['g3-4', 'g5-6', 'g7-9'],
+    '俄语': ['g7-9'],
+  };
 
-  static const _grades = [
-    ('g1-2', '小学低年级（1-2年级）'),
-    ('g3-4', '小学中年级（3-4年级）'),
-    ('g5-6', '小学高年级（5-6年级）'),
-    ('g7-9', '初中（7-9年级）'),
-    ('g10', '高中一年级'),
-    ('g11-12', '高中二三年级'),
-  ];
+  static const _gradeNames = {
+    'g1-2': '小学低年级（1-2年级）',
+    'g3-4': '小学中年级（3-4年级）',
+    'g5-6': '小学高年级（5-6年级）',
+    'g7-9': '初中（7-9年级）',
+    'g10': '高中一年级',
+    'g11-12': '高中二三年级',
+  };
+
+  List<String> get _subjects => _availableSubjects.keys.toList();
 
   Future<void> _selectSubject(String subject) async {
+    final grades = _availableSubjects[subject]!;
+
     final gradeBand = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
         title: Text('选择 $subject 年级'),
-        children: _grades.map((g) => SimpleDialogOption(
-          onPressed: () => Navigator.of(ctx).pop(g.$1),
-          child: Text(g.$2),
+        children: grades.map((g) => SimpleDialogOption(
+          onPressed: () => Navigator.of(ctx).pop(g),
+          child: Text(_gradeNames[g] ?? g),
         )).toList(),
       ),
     );
@@ -58,7 +75,10 @@ class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
       if (convId != null && mounted) {
         context.replace('/chat', extra: convId);
       } else {
-        setState(() { _error = '初始化失败，请重试'; _loading = false; });
+        setState(() {
+          _error = result['error'] as String? ?? '初始化失败，请重试';
+          _loading = false;
+        });
       }
     } catch (e) {
       setState(() { _error = '初始化失败: $e'; _loading = false; });
@@ -73,7 +93,7 @@ class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
         title: const Text('K12 结构化学习'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/chat'),
+          onPressed: () => context.go('/home'),
         ),
       ),
       body: _loading
@@ -110,15 +130,28 @@ class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
                       itemCount: _subjects.length,
                       itemBuilder: (ctx, i) {
                         final subject = _subjects[i];
+                        final grades = _availableSubjects[subject]!;
                         return Card(
                           child: InkWell(
                             borderRadius: BorderRadius.circular(12),
                             onTap: () => _selectSubject(subject),
-                            child: Center(
-                              child: Text(
-                                subject,
-                                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                                textAlign: TextAlign.center,
+                            child: Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    subject,
+                                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _gradeRangeLabel(grades),
+                                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -130,5 +163,13 @@ class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
               ),
             ),
     );
+  }
+
+  String _gradeRangeLabel(List<String> grades) {
+    if (grades.isEmpty) return '';
+    final first = _gradeNames[grades.first] ?? '';
+    if (grades.length == 1) return first;
+    final lastLabel = _gradeNames[grades.last] ?? '';
+    return '$first ~ $lastLabel';
   }
 }

@@ -1109,7 +1109,7 @@ async fn history_handler(
         }));
     }
 
-    // 查询用户的所有对话列表（含标题：第一条用户消息）
+    // 查询用户的所有对话列表（标题：有 plan 的显示 goal，否则显示第一条消息）
     // include_deleted: "only"=仅已删除, "true"=全部, 默认=仅活跃
     let deleted_filter = match query.include_deleted.as_deref() {
         Some("only") => " AND c.deleted_at IS NOT NULL",
@@ -1120,7 +1120,10 @@ async fn history_handler(
         "SELECT c.id, c.turn_count, c.started_at, c.deleted_at,
                 (SELECT content FROM conversation_turns t
                  WHERE t.conversation_id = c.id AND t.role = 'user'
-                 ORDER BY t.created_at ASC LIMIT 1) as first_msg
+                 ORDER BY t.created_at ASC LIMIT 1) as first_msg,
+                (SELECT lp.goal FROM learning_plans lp
+                 WHERE lp.conversation_id = c.id AND lp.mode = 'structured'
+                 ORDER BY lp.updated_at DESC LIMIT 1) as plan_goal
          FROM conversations c
          WHERE c.user_id = ?1{} ORDER BY c.started_at DESC LIMIT ?2",
         deleted_filter
@@ -1129,9 +1132,13 @@ async fn history_handler(
     let conversations: Vec<serde_json::Value> = stmt.query_map(
         rusqlite::params![query.user_id, limit],
         |row| {
-            let first_msg: Option<String> = row.get(4).ok().flatten(); // col 4 (after added deleted_at)
-            let title = first_msg.as_deref()
-                .map(|s| if s.len() > 50 { format!("{}...", &s[..50]) } else { s.to_string() })
+            let first_msg: Option<String> = row.get(4).ok().flatten();
+            let plan_goal: Option<String> = row.get(5).ok().flatten();
+            let title = plan_goal
+                .filter(|g| !g.is_empty())
+                .map(|g| format!("K12: {}", g))
+                .or_else(|| first_msg.as_deref()
+                    .map(|s| if s.len() > 50 { format!("{}...", &s[..50]) } else { s.to_string() }))
                 .unwrap_or_else(|| "新对话".to_string());
             Ok(serde_json::json!({
                 "id": row.get::<_, String>(0)?,
@@ -1936,7 +1943,25 @@ async fn k12_init_handler(
     let now_str = now.to_rfc3339();
     let now_ts = now.timestamp();
 
-    // 2. 创建 conversation 带 subject/grade_band 标记
+    // 2. 检查是否已有该学段的 K12 会话（同用户+同科目+同学段）
+    let existing_conv: Option<String> = conn.query_row(
+        "SELECT c.id FROM conversations c
+         INNER JOIN learning_plans lp ON lp.conversation_id = c.id
+         WHERE c.user_id = ?1 AND c.subject = ?2 AND c.grade_band = ?3
+           AND lp.mode = 'structured' AND c.deleted_at IS NULL
+         ORDER BY c.started_at DESC LIMIT 1",
+        rusqlite::params![input.user_id, input.subject, input.grade_band],
+        |row| row.get(0),
+    ).ok();
+
+    if let Some(conv_id) = existing_conv {
+        return Json(serde_json::json!({
+            "conversation_id": conv_id,
+            "resumed": true,
+        }));
+    }
+
+    // 3. 创建新 conversation 带 subject/grade_band 标记
     let conv_id = uuid::Uuid::new_v4().to_string();
     if let Err(e) = conn.execute(
         "INSERT INTO conversations (id, user_id, turn_count, started_at, subject, grade_band) VALUES (?1, ?2, 0, ?3, ?4, ?5)",
@@ -1948,8 +1973,13 @@ async fn k12_init_handler(
     // 3. 加载预生成计划
     let plan = match curriculum_loader::get_plan(&input.subject, &input.grade_band) {
         Some(p) => p,
-        None => return Json(serde_json::json!({"error": format!("No plan for {} {}", input.subject, input.grade_band)})),
+        None => return Json(serde_json::json!({"error": format!("无此科目/学段的学习计划", )})),
     };
+
+    // 3a. 检查是否有匹配当前学段的 stages
+    if plan.stages.is_empty() {
+        return Json(serde_json::json!({"error": format!("【{}】在{}学段没有预生成的学习内容", input.subject, input.grade_band)}));
+    }
 
     // 4. 将计划写入 learning_plans 表
     let plan_id = uuid::Uuid::new_v4().to_string();
@@ -1962,6 +1992,11 @@ async fn k12_init_handler(
         "total_crs": plan.total_crs,
     });
     let plan_str = serde_json::to_string(&plan_json).unwrap_or_default();
+    // 先清理同一用户+科目的旧学习计划（防止 UNIQUE 冲突）
+    let _ = conn.execute(
+        "DELETE FROM learning_plans WHERE user_id = ?1 AND domain = ?2",
+        rusqlite::params![input.user_id, input.subject],
+    );
     if let Err(e) = conn.execute(
         "INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_json, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, 'structured', ?6, ?7, ?7)",
@@ -1974,7 +2009,7 @@ async fn k12_init_handler(
     let cards = curriculum_loader::get_cards(&input.subject, &input.grade_band);
     let mut card_ids: Vec<String> = Vec::new();
 
-    // 从计划中提取第一个任务的 gold_cr_ids
+    // 从计划中提取第一个任务的 gold_cr_ids 和名称
     let first_task_ids: Vec<String> = plan_json.get("stages")
         .and_then(|s| s.as_array())
         .and_then(|stages| stages.first())
@@ -1986,10 +2021,24 @@ async fn k12_init_handler(
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
         .unwrap_or_default();
 
+    let first_task_name: String = plan_json.get("stages")
+        .and_then(|s| s.as_array())
+        .and_then(|stages| stages.first())
+        .and_then(|stage| stage.get("tasks"))
+        .and_then(|t| t.as_array())
+        .and_then(|tasks| tasks.first())
+        .and_then(|task| task.get("name"))
+        .and_then(|n| n.as_str())
+        .unwrap_or("")
+        .to_string();
+
     if let Some(card_list) = cards {
         for card_tmpl in card_list {
-            // 只导入 gold_cr_id 匹配首批任务的卡片
-            if !first_task_ids.is_empty() && !card_tmpl.gold_cr_id.as_ref().map_or(false, |g| first_task_ids.contains(g)) {
+            // 概念卡：gold_cr_ids 与首任务的 gold_cr_ids 有交集则导入
+            // 词卡/其他卡：plan_task_id 等于首任务 name 则导入
+            let matches_task = card_tmpl.gold_cr_ids.iter().any(|g| first_task_ids.contains(g))
+                || (!first_task_name.is_empty() && card_tmpl.plan_task_id == first_task_name);
+            if !first_task_ids.is_empty() && !matches_task && first_task_name.is_empty() {
                 continue;
             }
             let card_id = format!("k12_{}", &card_tmpl.id);
@@ -1997,7 +2046,7 @@ async fn k12_init_handler(
                 "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, subject, grade_band, k12_card_id)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 rusqlite::params![card_id, input.user_id, card_tmpl.domain, card_tmpl.card_type,
-                    card_tmpl.front, card_tmpl.back, card_tmpl.source_sentence.as_deref(), conv_id, now_ts,
+                    card_tmpl.front, card_tmpl.back, card_tmpl.source_sentence, conv_id, now_ts,
                     input.subject, input.grade_band, card_tmpl.id],
             );
             // 创建 card_memory (新卡片)

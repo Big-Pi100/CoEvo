@@ -749,9 +749,9 @@ CREATE TABLE IF NOT EXISTS k12_achievements (...);
 
 ---
 
-## 十一、实施分期（V2.3 更新）
+## 十一、实施分期（V2.3 更新 — 真实状态）
 
-### P0：数据管线重构（全部完成 ✅）
+### P0：Python 数据管线（全部完成 ✅）
 - [x] 清洗脚本 clean_curriculum.py
 - [x] LLM 概念提取（extract_v3 / extract_language）
 - [x] Plan 生成脚本 build_plans_v3.py（含逻辑推演补全）
@@ -759,10 +759,24 @@ CREATE TABLE IF NOT EXISTS k12_achievements (...);
 - [x] 词卡富集 enrich_vocab.py（LLM 并发批量生成）
 - [x] 词卡重建 + Plan 绑定 rebuild_vocab_cards.py（关键词匹配）
 - [x] 学业质量条目分割 extract_quality_items.py
+- [x] 清理废弃 V1/V2 脚本（18 个文件）
 - [x] 设计文档同步 V2.3
+
+### P0：后端适配 V3 数据（待实施）
+- [ ] 更新 `curriculum_loader.rs`：
+  - 目录扫描改为 `prebuilt/plans/` + `prebuilt/cards/`
+  - Plan 解析适配 `{"plans": [{goal, stages, total_crs}]}` 格式
+  - 从文件名推断 subject + grade_band
+  - Card 解析增加 `plan_task_id`、`gold_cr_ids`（数组）字段
+  - 增加 TaskTemplate 的 `dependencies`、`cross_subject_refs`、`origin` 字段
+  - 增加质量条目加载（`gold/{level}/*_quality_items.json`）
+- [ ] 编译验证 + 数据加载测试
+- [ ] 确认前端 API 响应格式兼容
 
 ### P1：后端大考系统（待实施）
 - [ ] 新 crate: k12_assessment（出题框架 + LLM 出题 + 判卷）
+- [ ] API: POST /k12/exam/start
+- [ ] API: POST /k12/exam/submit
 - [ ] API: POST /k12/exam/start
 - [ ] API: POST /k12/exam/submit
 - [ ] 消息推送：stage 完成 → 通知用户 → 用户点开考试
