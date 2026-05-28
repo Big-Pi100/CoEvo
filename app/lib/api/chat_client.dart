@@ -438,6 +438,29 @@ class ChatClient {
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }
 
+  /// 初始化课文阅读会话（reading-first 模式，独立于 K12）
+  Future<Map<String, dynamic>> k12ReadingInit({
+    required String subject,
+    required String gradeBand,
+  }) async {
+    final resp = await http.post(
+      Uri.parse('$baseUrl/api/k12/reading/init'),
+      headers: _authHeaders,
+      body: jsonEncode({
+        'user_id': userId,
+        'subject': subject,
+        'grade_band': gradeBand,
+      }),
+    ).timeout(ApiConfig.requestTimeout);
+
+    if (resp.statusCode != 200) {
+      throw Exception('Reading init error: ${resp.statusCode} ${resp.body}');
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  /// 获取 K12 学习进度
+
   /// 获取 K12 学习进度
   Future<Map<String, dynamic>> getK12Progress() async {
     final uri = Uri.parse('$baseUrl/api/k12/progress').replace(queryParameters: {

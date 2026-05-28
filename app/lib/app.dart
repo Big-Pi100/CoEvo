@@ -11,7 +11,6 @@ import 'screens/profile_screen.dart';
 import 'screens/conversation_list_screen.dart';
 import 'screens/skipped_list_screen.dart';
 import 'screens/home_screen.dart';
-import 'screens/k12_subject_screen.dart';
 import 'providers/auth_provider.dart';
 
 // Prevent dart2js tree-shaking of admin/guardian screens
@@ -121,18 +120,6 @@ final goRouter = GoRouter(
             ),
       ),
     ),
-    GoRoute(
-      path: '/k12/subject',
-      pageBuilder: (context, state) => CustomTransitionPage(
-        key: state.pageKey,
-        child: const K12SubjectScreen(),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-            SlideTransition(
-              position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(animation),
-              child: child,
-            ),
-      ),
-    ),
   ],
 );
 
@@ -150,7 +137,7 @@ class _ShellScaffold extends StatelessWidget {
           navigationShell.goBranch(i, initialLocation: i == navigationShell.currentIndex);
         },
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: '对话'),
+          NavigationDestination(icon: Icon(Icons.school_outlined), selectedIcon: Icon(Icons.school), label: '学习'),
           NavigationDestination(icon: Icon(Icons.replay_outlined), selectedIcon: Icon(Icons.replay), label: '复习'),
           NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '个人'),
         ],

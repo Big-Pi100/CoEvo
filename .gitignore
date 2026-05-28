@@ -31,3 +31,6 @@ CLAUDE.md
 deploy*.sh
 deploy.ps1
 .hvigor
+.gitnexus
+.claude
+AGENTS.md

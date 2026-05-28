@@ -85,6 +85,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         // WS
         .route("/api/k12/init", post(k12_init_handler))
         .route("/api/k12/progress", get(k12_progress_handler))
+        .route("/api/k12/reading/init", post(k12_reading_init_handler))
         .route("/api/k12/quiz/submit", post(crate::k12_quiz_api::quiz_submit_handler))
         .route("/ws", get(ws_upgrade))
         // Learning Plans
@@ -1492,9 +1493,9 @@ async fn plans_list_handler(
     let conn = crate::db_pool::get_conn();
 
     let (sql, param_val): (&str, String) = if let Some(conv_id) = params.get("conversation_id") {
-        ("SELECT id, goal, domain, mode, plan_json, created_at, updated_at FROM learning_plans WHERE conversation_id = ?1 ORDER BY created_at DESC", conv_id.clone())
+        ("SELECT id, goal, domain, mode, plan_content, plan_json, created_at, updated_at FROM learning_plans WHERE conversation_id = ?1 ORDER BY created_at DESC", conv_id.clone())
     } else if let Some(uid) = params.get("user_id") {
-        ("SELECT id, goal, domain, mode, plan_json, created_at, updated_at FROM learning_plans WHERE user_id = ?1 ORDER BY created_at DESC", uid.clone())
+        ("SELECT id, goal, domain, mode, plan_content, plan_json, created_at, updated_at FROM learning_plans WHERE user_id = ?1 ORDER BY created_at DESC", uid.clone())
     } else {
         return Json(serde_json::json!({"error": "user_id or conversation_id required"}));
     };
@@ -1504,14 +1505,51 @@ async fn plans_list_handler(
         Err(e) => return Json(serde_json::json!({"error": format!("DB: {}", e)})),
     };
     let plans: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![param_val], |row| {
+        // plan_content: 完整计划结构（可为 NULL）
+        let plan_content_raw: Option<String> = row.get(4).ok();
+        // plan_json: 状态信息
+        let plan_json_raw: String = row.get(5)?;
+        let plan_json_val: Option<serde_json::Value> = serde_json::from_str(&plan_json_raw).ok();
+
+        // 合并：plan_content（内容）+ plan_json（状态）→ 前端格式
+        let merged_plan = if let (Some(content_str), Some(status_val)) = (&plan_content_raw, &plan_json_val) {
+            if let Ok(mut content) = serde_json::from_str::<serde_json::Value>(content_str) {
+                // 从 plan_json 读取 task_status 映射
+                let task_status = status_val.get("task_status")
+                    .and_then(|s| s.as_object())
+                    .or_else(|| status_val.as_object()); // 兼容旧格式直接存 map
+                if let Some(status_map) = task_status {
+                    if let Some(stages) = content.get_mut("stages").and_then(|s| s.as_array_mut()) {
+                        for stage in stages {
+                            if let Some(tasks) = stage.get_mut("tasks").and_then(|t| t.as_array_mut()) {
+                                for task in tasks {
+                                    if let Some(name) = task.get("name").and_then(|n| n.as_str()) {
+                                        let status = status_map.get(name)
+                                            .and_then(|s| s.as_str())
+                                            .unwrap_or("pending");
+                                        task["status"] = serde_json::json!(status);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                content
+            } else {
+                serde_json::Value::Null
+            }
+        } else {
+            serde_json::Value::Null
+        };
+
         Ok(serde_json::json!({
             "id": row.get::<_, String>(0)?,
             "goal": row.get::<_, String>(1)?,
             "domain": row.get::<_, String>(2)?,
             "mode": row.get::<_, Option<String>>(3)?,
-            "plan": serde_json::from_str::<serde_json::Value>(&row.get::<_, String>(4)?).ok(),
-            "created_at": row.get::<_, String>(5)?,
-            "updated_at": row.get::<_, String>(6)?,
+            "plan": merged_plan,
+            "created_at": row.get::<_, String>(6)?,
+            "updated_at": row.get::<_, String>(7)?,
         }))
     }).unwrap().filter_map(|r| r.ok()).collect();
 
@@ -2068,6 +2106,163 @@ async fn k12_init_handler(
             "ids": card_ids,
             "sample": card_ids.get(0..5).unwrap_or(&[]),
         }),
+    }))
+}
+
+// ── Reading-First 模式初始化 ──
+
+/// POST /api/k12/reading/init — 初始化课文阅读会话（独立于 knowledge_first）
+async fn k12_reading_init_handler(
+    headers: HeaderMap,
+    Json(input): Json<K12InitInput>,
+) -> Json<serde_json::Value> {
+    eprintln!("[READING-HANDLER] start: user={}, subject={}, grade={}", input.user_id, input.subject, input.grade_band);
+
+    if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
+        eprintln!("[READING-HANDLER] auth failed: {:?}", e);
+        return auth_json(e);
+    }
+
+    let conn = crate::db_pool::get_conn();
+    let now = chrono::Utc::now();
+    let now_str = now.to_rfc3339();
+    let now_ts = now.timestamp();
+
+    // 1. 检查是否已有 reading 会话
+    let existing_conv: Option<String> = conn.query_row(
+        "SELECT c.id FROM conversations c
+         INNER JOIN learning_plans lp ON lp.conversation_id = c.id
+         WHERE c.user_id = ?1 AND c.subject = ?2 AND c.grade_band = ?3
+           AND lp.mode = 'reading' AND c.deleted_at IS NULL
+         ORDER BY c.started_at DESC LIMIT 1",
+        rusqlite::params![input.user_id, input.subject, input.grade_band],
+        |row| row.get(0),
+    ).ok();
+
+    if let Some(conv_id) = existing_conv {
+        return Json(serde_json::json!({
+            "conversation_id": conv_id,
+            "resumed": true,
+        }));
+    }
+
+    // 2. 加载 reading plan（中文科目名→英文 key）
+    let subject_key = crate::curriculum_loader::CHINESE_TO_ENGLISH.iter()
+        .find(|(cn, _)| *cn == input.subject)
+        .map(|(_, en)| *en)
+        .unwrap_or(&input.subject)
+        .to_string();
+    eprintln!("[READING-HANDLER] subject_key={}, getting plan...", subject_key);
+    let plan = match crate::reading_loader::get_plan(&subject_key) {
+        Some(p) => {
+            eprintln!("[READING-HANDLER] plan found: goal={}", p.goal);
+            p
+        }
+        None => {
+            eprintln!("[READING-HANDLER] plan NOT FOUND for key={}", subject_key);
+            return Json(serde_json::json!({"error": format!("reading plan not found for subject: {}", input.subject)}));
+        }
+    };
+
+    // 3. 创建 conversation
+    let conv_id = uuid::Uuid::new_v4().to_string();
+    if let Err(e) = conn.execute(
+        "INSERT INTO conversations (id, user_id, turn_count, started_at, subject, grade_band) VALUES (?1, ?2, 0, ?3, ?4, ?5)",
+        rusqlite::params![conv_id, input.user_id, now_str, input.subject, input.grade_band],
+    ) {
+        eprintln!("[READING-HANDLER] Conv INSERT failed: {}", e);
+        return Json(serde_json::json!({"error": format!("Conv create: {}", e)}));
+    }
+
+    // 4. 写入 plan（按学段过滤 stage）
+    let subj_key = input.subject.clone();
+    let filtered_stages: Vec<_> = plan.stages.iter()
+        .filter(|s| {
+            let gb = s.grade_band.as_str();
+            gb == input.grade_band || input.grade_band.starts_with(&gb[..2])
+        })
+        .cloned()
+        .collect();
+    eprintln!("[READING-HANDLER] filtered stages: {} of {} (grade={})", filtered_stages.len(), plan.stages.len(), input.grade_band);
+
+    // plan_content: 完整计划结构（写入一次，只读不改）
+    let plan_content = serde_json::json!({
+        "id": format!("{}_reading_plan", subj_key),
+        "subject": subj_key,
+        "grade_band": input.grade_band,
+        "goal": plan.goal,
+        "stages": filtered_stages,
+    });
+    let plan_content_str = serde_json::to_string(&plan_content).unwrap_or_default();
+
+    // plan_json: 仅状态（task_name → status）
+    let status_map: serde_json::Value = if let Some(stages) = plan_content.get("stages").and_then(|s| s.as_array()) {
+        let mut map = serde_json::Map::new();
+        for stage in stages {
+            if let Some(tasks) = stage.get("tasks").and_then(|t| t.as_array()) {
+                for task in tasks {
+                    if let Some(name) = task.get("name").and_then(|n| n.as_str()) {
+                        map.insert(name.to_string(), serde_json::json!("pending"));
+                    }
+                }
+            }
+        }
+        serde_json::Value::Object(map)
+    } else {
+        serde_json::Value::Object(serde_json::Map::new())
+    };
+    let plan_json_str = serde_json::to_string(&status_map).unwrap_or_default();
+    eprintln!("[READING-HANDLER] plan_content={}B, plan_json={}B", plan_content_str.len(), plan_json_str.len());
+
+    if plan_content_str.is_empty() {
+        eprintln!("[READING-HANDLER] plan_content is EMPTY");
+        return Json(serde_json::json!({"error": "Plan serialization failed"}));
+    }
+
+    // 先删该用户该科目的所有 plan（UNIQUE (user_id, domain)）
+    let _ = conn.execute(
+        "DELETE FROM learning_plans WHERE user_id = ?1 AND domain = ?2",
+        rusqlite::params![input.user_id, input.subject],
+    );
+    if let Err(e) = conn.execute(
+        "INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_content, plan_json, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, 'reading', ?6, ?7, ?8, ?8)",
+        rusqlite::params![uuid::Uuid::new_v4().to_string(), input.user_id, conv_id,
+            format!("Reading: {} {}", input.subject, input.grade_band), input.subject,
+            plan_content_str, plan_json_str, now_str],
+    ) {
+        eprintln!("[READING-HANDLER] Plan INSERT failed: {}", e);
+        return Json(serde_json::json!({"error": format!("Plan insert: {}", e)}));
+    }
+
+    // 5. 导入首任务的 reading card（立即解锁课文）
+    let mut imported_cards = 0i64;
+    if let Some(stages) = plan_content.get("stages").and_then(|s| s.as_array()) {
+        if let Some(first_stage) = stages.first() {
+            if let Some(tasks) = first_stage.get("tasks").and_then(|t| t.as_array()) {
+                if let Some(first_task) = tasks.first() {
+                    if let Some(card_id) = first_task.get("reading_card_id").and_then(|c| c.as_str()) {
+                        if !card_id.is_empty() {
+                            let card = format!("k12_{}", card_id);
+                            let _ = conn.execute(
+                                "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, conversation_id, created_at, subject, grade_band, k12_card_id)
+                                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                                rusqlite::params![card, input.user_id, input.subject, "reading",
+                                    "课文阅读", "Reading-First Mode", conv_id, now_ts, input.subject, input.grade_band, card_id],
+                            ).ok();
+                            imported_cards += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    eprintln!("[READING-HANDLER] SUCCESS: conv_id={}, imported_cards={}", conv_id, imported_cards);
+    Json(serde_json::json!({
+        "conversation_id": conv_id,
+        "plan": plan_content,
+        "imported_cards": imported_cards,
     }))
 }
 

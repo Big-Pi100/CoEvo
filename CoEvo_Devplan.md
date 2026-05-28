@@ -459,7 +459,7 @@ user_preferences (
 | 层 | 技术 |
 |----|------|
 | 后端 | Rust (axum + tokio) |
-| 客户端 | Flutter 3.x (iOS + Android) |
+| 客户端 | Flutter 3.x (社区版 `D:\flutter_flutter`，支持鸿蒙) |
 | 数据库 | SQLite (rusqlite, 后端独有) |
 | 记忆算法 | fsrs crate (FSRS-5) |
 | LLM | OpenAI 兼容 API |

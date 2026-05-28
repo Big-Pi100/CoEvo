@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS conversation_turns (
 CREATE TABLE IF NOT EXISTS learning_plans (
     id TEXT PRIMARY KEY, user_id TEXT NOT NULL, conversation_id TEXT,
     goal TEXT NOT NULL, domain TEXT NOT NULL DEFAULT '', mode TEXT DEFAULT NULL,
-    plan_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    plan_content TEXT DEFAULT NULL, plan_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 CREATE TABLE IF NOT EXISTS achievements (
@@ -81,7 +81,7 @@ fn setup() {
     {
         let conn = api_server::db_pool::get_conn();
         conn.execute(
-            "INSERT INTO users (id, username, password_hash, created_at) VALUES (?1,?2,?3,?4)",
+            "INSERT OR IGNORE INTO users (id, username, password_hash, created_at) VALUES (?1,?2,?3,?4)",
             rusqlite::params![TEST_USER_ID, TEST_USERNAME, pw_hash, now],
         ).unwrap();
         conn.execute(
@@ -113,7 +113,7 @@ fn insert_turn(role: &str, content: &str) {
 fn get_conversation_history() -> String {
     let conn = api_server::db_pool::get_conn();
     let mut stmt = conn.prepare(
-        "SELECT role, content FROM conversation_turns WHERE conversation_id = ?1 ORDER BY created_at ASC"
+        "SELECT role, content FROM conversation_turns WHERE conversation_id = ?1 ORDER BY created_at DESC LIMIT 10"
     ).unwrap();
     let turns: Vec<(String, String)> = stmt.query_map(
         rusqlite::params![TEST_CONV_ID],
@@ -122,9 +122,7 @@ fn get_conversation_history() -> String {
 
     let mut hist = String::new();
     for (role, content) in turns.iter().rev() {
-        let line = format!("{}: {}\n", role, content);
-        if hist.len() + line.len() > 5000 { break; }
-        hist.insert_str(0, &line);
+        hist.push_str(&format!("{}: {}\n", role, content));
     }
     hist
 }
@@ -198,6 +196,10 @@ fn record_stage_achievements(conn: &rusqlite::Connection, plan_json: &serde_json
 // ════════════════════════════════════════════
 // Phase 5 辅助: 用 LLM 生成真实学生回答
 // ════════════════════════════════════════════
+
+fn truncate_utf8(s: &str, max_chars: usize) -> String {
+    s.chars().take(max_chars).collect()
+}
 
 /// 根据助教提问生成具体、详细的真实学生回答。
 ///
@@ -1038,5 +1040,768 @@ async fn e2e_dual_agent_autonomous() {
     println!(" ✅ 双智能体自主对话测试完成! ({} 轮)", round);
     println!("    阶段 {}/{} | 任务 {}/{} | 成就 {} 个",
         done_stages_final, stages.len(), done_tasks_final, total_tasks, achievements.len());
+    println!("{}", "=".repeat(70));
+}
+
+// ════════════════════════════════════════════
+// 语文课文阅读模式 E2E 评估
+// ════════════════════════════════════════════
+
+/// 阅读模式专用的 plan_context builder
+fn build_reading_context() -> (String, String, String) {
+    let conn = api_server::db_pool::get_conn();
+    api_server::plan_handler::build_plan_context(&conn, TEST_CONV_ID)
+}
+
+/// 获取阅读模式 plan（不限制 mode='structured'）
+fn get_reading_plan_from_db() -> Option<(String, String, String)> {
+    let conn = api_server::db_pool::get_conn();
+    conn.query_row(
+        "SELECT id, goal, plan_json FROM learning_plans WHERE conversation_id = ?1 ORDER BY updated_at DESC LIMIT 1",
+        rusqlite::params![TEST_CONV_ID],
+        |row| Ok((row.get::<_,String>(0)?, row.get::<_,String>(1)?, row.get::<_,String>(2)?)),
+    ).ok()
+}
+
+#[tokio::test]
+#[ignore]
+async fn e2e_live_chinese_reading() {
+    println!("\n{}", "=".repeat(70));
+    println!(" CoEvo E2E LIVE: 语文课文阅读模式 (DeepSeek V4 Flash)");
+    println!("{}", "=".repeat(70));
+
+    // ── Setup ──
+    let _ = fs::remove_file(TEST_DB_PATH);
+    if PathBuf::from(TEST_DB_PATH).exists() {
+        // DB 文件未被删除，用绝对路径重试
+        let abs_path = std::env::current_dir().unwrap_or_default().join(TEST_DB_PATH);
+        let _ = fs::remove_file(&abs_path);
+        eprintln!("[SETUP] retry remove: {:?}", abs_path);
+    }
+    let _ = fs::create_dir_all("data");
+    let env_paths = ["../../.env", ".env", "../.env"];
+    for p in &env_paths {
+        if dotenvy::from_filename(p).is_ok() { break; }
+    }
+    api_server::db_pool::init(TEST_DB_PATH).expect("init DB pool");
+    {
+        let conn = api_server::db_pool::get_conn();
+        conn.execute_batch(SCHEMA_SQL).expect("create schema");
+    }
+    // 添加 subject/grade_band 列
+    {
+        let conn = api_server::db_pool::get_conn();
+        let _ = conn.execute_batch(
+            "ALTER TABLE conversations ADD COLUMN subject TEXT DEFAULT NULL;
+             ALTER TABLE conversations ADD COLUMN grade_band TEXT DEFAULT NULL;"
+        );
+    }
+    let now = chrono::Utc::now().to_rfc3339();
+    let pw_hash = api_server::auth::hash_password(TEST_PASSWORD);
+    {
+        let conn = api_server::db_pool::get_conn();
+        conn.execute(
+            "INSERT OR IGNORE INTO users (id, username, password_hash, created_at) VALUES (?1,?2,?3,?4)",
+            rusqlite::params![TEST_USER_ID, TEST_USERNAME, pw_hash, now],
+        ).unwrap();
+    }
+    let prompts_dir = "../../prompts";
+    let pipelines_dir = "../../pipelines";
+    chat_engine::prompt_loader::init(prompts_dir, pipelines_dir);
+
+    // 初始化 reading_loader（加载 prebuilt data）
+    api_server::reading_loader::init().unwrap_or_else(|e| {
+        eprintln!("[TEST] reading_loader::init warned: {}", e);
+    });
+
+    let api_key = std::env::var("DEEPSEEK_API_KEY")
+        .expect("请在 backend/.env 中设置 DEEPSEEK_API_KEY");
+    let config = chat_engine::llm_caller::LlmConfig::deepseek_v4_flash(&api_key);
+    let mut caller = chat_engine::llm_caller::LlmCaller::new(config);
+
+    // ── Phase 1: 初始化阅读会话 ──
+    println!("\n─── Phase 1: 初始化阅读会话 (语文·g7-9) ───");
+    let subject_key = "chinese".to_string();
+    let grade_band = "g7-9".to_string();
+
+    // 模拟 /api/k12/reading/init 的行为
+    // 使用 TEST_CONV_ID 以便 insert_turn() 正常工作
+    let plan = api_server::reading_loader::get_plan(&subject_key)
+        .expect("reading plan 应存在");
+
+    // 按学段过滤 stages
+    let filtered_stages: Vec<_> = plan.stages.iter()
+        .filter(|s| s.grade_band == grade_band || grade_band.starts_with(&s.grade_band[..2]))
+        .cloned()
+        .collect();
+    println!("  计划段: {} 阶段 (原始 {} 段)", filtered_stages.len(), plan.stages.len());
+
+    // plan_content: 完整计划结构
+    let plan_content = serde_json::json!({
+        "id": format!("{}_reading_plan", subject_key),
+        "subject": subject_key,
+        "grade_band": &grade_band,
+        "goal": plan.goal,
+        "stages": filtered_stages.clone(),
+    });
+    let plan_content_str = serde_json::to_string(&plan_content).unwrap();
+    // plan_json: 仅状态
+    let mut status_map = serde_json::Map::new();
+    if let Some(stages) = plan_content.get("stages").and_then(|s| s.as_array()) {
+        for stage in stages {
+            if let Some(tasks) = stage.get("tasks").and_then(|t| t.as_array()) {
+                for task in tasks {
+                    if let Some(name) = task.get("name").and_then(|n| n.as_str()) {
+                        status_map.insert(name.to_string(), serde_json::json!("pending"));
+                    }
+                }
+            }
+        }
+    }
+    let plan_json_str = serde_json::to_string(&serde_json::Value::Object(status_map)).unwrap();
+
+    {
+        let conn = api_server::db_pool::get_conn();
+        conn.execute(
+            "INSERT INTO conversations (id, user_id, turn_count, started_at, subject, grade_band) VALUES (?1,?2,0,?3,?4,?5)",
+            rusqlite::params![TEST_CONV_ID, TEST_USER_ID, now, "语文", &grade_band],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_content, plan_json, created_at, updated_at)
+             VALUES (?1,?2,?3,?4,?5,'reading',?6,?7,?8,?8)",
+            rusqlite::params![uuid::Uuid::new_v4().to_string(), TEST_USER_ID, TEST_CONV_ID,
+                format!("Reading: 语文 {}", &grade_band), "语文", plan_content_str, plan_json_str, now],
+        ).unwrap();
+    }
+    insert_turn("assistant", &format!(
+        "欢迎进入课文阅读学习！当前计划：语文 ({} 阶段, {} 学段)。第一课即将开始。",
+        filtered_stages.len(), grade_band
+    ));
+
+    // ── Phase 2: 验证 reading context 组装 ──
+    println!("\n─── Phase 2: 验证 reading context ───");
+    let (domain, mode, ctx) = build_reading_context();
+    assert_eq!(mode, "reading", "应为 reading 模式");
+    assert!(!ctx.is_empty(), "context 不应为空");
+    // 验证 context 中包含 reading_loader 卡片内容
+    println!("  mode={}, ctx_len={}, domain={}", mode, ctx.len(), domain);
+    let first_stage = &filtered_stages[0];
+    let first_task = &first_stage.tasks[0];
+    println!("  首任务: {} | focus: {}", first_task.name, first_task.focus);
+    // 验证 context 包含核心教学点
+    assert!(ctx.contains("核心教学点"), "context 应包含核心教学点");
+    assert!(ctx.contains(&first_task.name), "context 应包含课文名");
+    assert!(ctx.contains(&first_task.focus), "context 应包含 focus");
+
+    // 如果有 reading_card_id，验证卡片内容已注入
+    if let Some(ref card_id) = first_task.reading_card_id {
+        if !card_id.is_empty() {
+            let card = api_server::reading_loader::get_card(card_id);
+            assert!(card.is_some(), "reading card {} 应在 index 中", card_id);
+            println!("  reading card: {} by {}", card.unwrap().front, card.unwrap().author);
+            assert!(ctx.contains(&card.unwrap().theme), "context 应包含主旨");
+        }
+    }
+    println!("✅ Phase2: reading context 组装验证通过");
+
+    // ── 双智能体对话：学生 ↔ 教师 ──
+    println!("\n{}", "=".repeat(70));
+    println!("  双智能体对话：学生 ↔ 教师 (语文课文阅读模式)");
+    println!("{}", "=".repeat(70));
+
+    // 学生智能体 prompt — 扮演初中生学习语文课文
+    let student_system = "\
+你是一个正在学习语文课的初中生。你的语文老师正在按照课文阅读计划教你课文。\
+你认真听讲，积极回答老师的提问。\n\
+行为规则：\
+\n- **首次发言**：告诉老师你想学语文课文《春》\
+\n- **教学过程中**：老师讲解后，你要针对教学点（比喻、拟人、多感官描写等）提出自己的理解和问题\
+\n- **回答提问**：用具体内容回答，不要只说空话\
+\n- **表示掌握**：当你觉得已经理解了一篇课文，礼貌地说学会了，请老师推进到下一篇\
+\n- **最终目标**：至少完成2篇课文的学习（《春》和《济南的冬天》或下一课）\
+\n- 不要说「我理解了」「我掌握了」等空话，要用具体的赏析语句展示你的理解\
+\n- 不要输出<reading_update>标签，那是老师用的\
+\n- 直接输出你要说的话，不要加「学生：」前缀";
+
+    let student_config = chat_engine::llm_caller::LlmConfig {
+        temperature: 0.6,
+        ..chat_engine::llm_caller::LlmConfig::deepseek_v4_flash(&api_key)
+    };
+    let mut student_caller = chat_engine::llm_caller::LlmCaller::new(student_config);
+
+    let prompts = chat_engine::prompt_loader::get_for_domain("");
+
+    // 学生首次发言
+    println!("\n─── 学生首次发言 ───");
+    let initial_msg = {
+        let history = get_conversation_history();
+        // 给学生提供上下文
+        let ctx_summary = format!("\n[课文阅读已准备就绪，当前计划包含36个阶段，145篇课文。你的第一课是《春》，教学重点是「语言特色·比喻排比与多感官描写」]");
+        let student_input = format!("{}{}", history, ctx_summary);
+        let reply = student_caller.generate(student_system, &student_input).await
+            .unwrap_or_else(|_| "老师好！我想学习语文课文《春》，听说这篇课文用了很多比喻和拟人，请给我讲解一下。".to_string());
+        if reply.trim().is_empty() {
+            "老师好！我想学习《春》这篇课文，特别是里面的比喻和拟人手法。".to_string()
+        } else {
+            reply
+        }
+    };
+    println!("  🧑 学生: {}", truncate_utf8(&initial_msg, 200));
+
+    // ── 主对话循环 ──
+    let system_prompt = prompts.chat_system_reading.clone();
+    let max_rounds = 10;
+    let start_time = std::time::Instant::now();
+    let max_duration = std::time::Duration::from_secs(90);
+    let mut rounds_completed = 0u32;
+    let mut plan_updated_count = 0;
+    let mut llm_reply_total_chars = 0usize;
+    let mut last_context = String::new();
+
+    for round in 1..=max_rounds {
+        // 超时保护
+        if start_time.elapsed() > max_duration {
+            println!("  ⏰ 达到最大持续时间 ({:?}), 停止", max_duration);
+            rounds_completed = round - 1;
+            break;
+        }
+        rounds_completed = round;
+
+        // 获取当前 reading context
+        let (domain, mode, ctx) = build_reading_context();
+
+        // 构建 teacher prompt (history + reading context)
+        let history = get_conversation_history();
+        let user_content = format!("{}{}", history, ctx);
+        last_context = ctx.clone();
+
+        // 调用教师 LLM
+        let raw_reply = match caller.generate(&system_prompt, &user_content).await {
+            Ok(r) => r,
+            Err(e) => {
+                println!("  ⚠️ 教师 LLM 调用失败: {:?}", e);
+                break;
+            }
+        };
+        llm_reply_total_chars += raw_reply.len();
+
+        // 处理 plan_update / reading_update
+        let conn = api_server::db_pool::get_conn();
+        let result = api_server::plan_handler::handle_plan_update(
+            &conn, &raw_reply, TEST_CONV_ID, TEST_USER_ID,
+        );
+
+        let cleaned_reply = if result.plan_updated {
+            plan_updated_count += 1;
+            if result.is_new_plan {
+                // reading mode 不应该创建新 plan
+                println!("  ⚠️ 教师创建了新计划 (reading mode 不应有此行为)");
+            } else {
+                // 更新了进度
+                let done: usize = if let Some(ref pj) = result.plan_json {
+                    pj["stages"].as_array().unwrap().iter()
+                        .filter_map(|s| s["tasks"].as_array())
+                        .map(|t| t.iter().filter(|x| x["status"] == "done").count())
+                        .sum()
+                } else { 0 };
+                println!("  📝 plan 更新: done_tasks={}", done);
+            }
+            result.cleaned_reply
+        } else {
+            raw_reply
+        };
+
+        insert_turn("assistant", &cleaned_reply);
+
+        // 检查是否所有任务已完成
+        let (done_tasks, total_tasks, all_done) = {
+            if let Some((_, _, pjson)) = get_reading_plan_from_db() {
+                if let Ok(plan) = serde_json::from_str::<serde_json::Value>(&pjson) {
+                    let stages = plan["stages"].as_array().unwrap();
+                    let dt: usize = stages.iter()
+                        .filter_map(|s| s["tasks"].as_array())
+                        .map(|t| t.iter().filter(|x| x["status"] == "done").count())
+                        .sum();
+                    let tt: usize = stages.iter()
+                        .filter_map(|s| s["tasks"].as_array())
+                        .map(|t| t.len()).sum();
+                    let ad = stages.iter().all(|s| s["status"] == "done")
+                        || stages.iter().all(|s|
+                            s["tasks"].as_array().map_or(true, |t|
+                                t.iter().all(|x| x["status"] == "done")
+                            )
+                        );
+                    (dt, tt, ad)
+                } else { (0, 1, false) }
+            } else { (0, 1, false) }
+        };
+
+        println!("  🔄 轮次{round}: done_tasks={done_tasks}/{total_tasks}  plan_updates={plan_updated_count}");
+        if done_tasks >= 2 || all_done {
+            println!("  🎉 完成至少2篇课文!");
+            break;
+        }
+
+        // 学生智能体发言
+        let student_history = format!("{}{}", get_conversation_history(), &last_context);
+        let student_msg = student_caller.generate(student_system, &student_history).await
+            .unwrap_or_else(|_| "老师，我理解了。请继续下一课的教学吧。".to_string());
+        let student_clean = student_msg.trim().to_string();
+        let preview: String = student_clean.chars().take(200).collect();
+        println!("  🧑 学生: {}", preview);
+
+        if student_clean.is_empty() {
+            // 兜底
+            insert_turn("user", "请继续教学或出题考核我。");
+        } else {
+            insert_turn("user", &student_clean);
+        }
+    }
+
+    // ── 最终评估 ──
+    println!("\n{}", "=".repeat(70));
+    println!("  教学评估报告");
+    println!("{}", "=".repeat(70));
+
+    // 1. 任务推进评估
+    let (done_tasks_final, total_tasks_final) = {
+        if let Some((_, _, pjson)) = get_reading_plan_from_db() {
+            if let Ok(plan) = serde_json::from_str::<serde_json::Value>(&pjson) {
+                let stages = plan["stages"].as_array().unwrap();
+                let dt: usize = stages.iter()
+                    .filter_map(|s| s["tasks"].as_array())
+                    .map(|t| t.iter().filter(|x| x["status"] == "done").count())
+                    .sum();
+                let tt: usize = stages.iter()
+                    .filter_map(|s| s["tasks"].as_array())
+                    .map(|t| t.len()).sum();
+                (dt, tt)
+            } else { (0, 1) }
+        } else { (0, 1) }
+    };
+
+    println!("  任务推进: {}/{} done", done_tasks_final, total_tasks_final);
+    println!("  plan_update 总次数: {}", plan_updated_count);
+    println!("  对话轮次: {}", rounds_completed);
+    println!("  教师回复总字符: {}", llm_reply_total_chars);
+
+    // 2. Context 质量评估
+    println!("\n── Context 质量评估 ──");
+    let (_, mode_final, ctx_final) = build_reading_context();
+    println!("  最终 mode: {}", mode_final);
+    if !ctx_final.is_empty() {
+        let has_focus = ctx_final.contains("核心教学点");
+        let has_reading_card = ctx_final.contains("语句赏析") || ctx_final.contains("手法");
+        let has_theme = ctx_final.contains("主旨");
+        let has_full_text = ctx_final.contains("全文");
+        println!("  ✅ 含核心教学点: {}", has_focus);
+        println!("  ✅ 含 reading 卡: {}", has_reading_card);
+        println!("  ✅ 含主旨: {}", has_theme);
+        println!("  ✅ 含全文: {}", has_full_text);
+    }
+
+    // 3. reading_update 标签清理验证
+    println!("\n── reading_update 标签清理 ──");
+    if let Some((_, _, pjson)) = get_reading_plan_from_db() {
+        if !pjson.contains("<reading_update") {
+            println!("  ✅ plan_json 中无残留 reading_update 标签");
+        } else {
+            println!("  ⚠️ plan_json 中有残留 reading_update 标签");
+        }
+    }
+
+    // 4. 断言
+    assert_eq!(mode_final, "reading", "全程应为 reading 模式");
+    assert!(rounds_completed >= 3, "至少 3 轮对话 (应有实质性教学互动)");
+
+    // 如果至少完成了一个任务，打印进度详情
+    if done_tasks_final > 0 {
+        println!("\n── 已完成任务详情 ──");
+        if let Some((_, _, pjson)) = get_reading_plan_from_db() {
+            if let Ok(plan) = serde_json::from_str::<serde_json::Value>(&pjson) {
+                for stage in plan["stages"].as_array().unwrap() {
+                    let sname = stage["name"].as_str().unwrap_or("?");
+                    if let Some(tasks) = stage["tasks"].as_array() {
+                        let remaining: Vec<_> = tasks.iter().filter(|t| t["status"] == "pending").collect();
+                        let done: Vec<_> = tasks.iter().filter(|t| t["status"] == "done").collect();
+                        if !done.is_empty() {
+                            for t in &done {
+                                println!("  ✅ {} → {}", sname, t["name"].as_str().unwrap_or("?"));
+                            }
+                        }
+                        if !remaining.is_empty() && done.is_empty() {
+                            break; // 只显示当前活跃 stage
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    println!("\n{}", "=".repeat(70));
+    println!(" ✅ 语文课文阅读模式 E2E 双智能体评估完成!");
+    println!("    任务 {}/{} 完成 | plan_update {} 次 | 对话 {} 轮",
+        done_tasks_final, total_tasks_final, plan_updated_count, rounds_completed);
+    println!("{}", "=".repeat(70));
+}
+
+// ════════════════════════════════════════════
+// 教学质量评估 E2E — 带全面日志输出
+// ════════════════════════════════════════════
+
+use std::path::PathBuf;
+use std::time::Instant;
+
+/// 运行一次教学质量评估测试并保存完整日志
+async fn run_eval_session(
+    run_id: &str,
+    subject_cn: &str,
+    subject_key: &str,
+    grade_band: &str,
+    tasks_limit: usize,  // 只测试前 N 个 task，0=全量
+) -> PathBuf {
+    let run_dir = format!("data/eval_runs/{}", run_id);
+    let _ = fs::create_dir_all(&run_dir);
+
+    // 初始化 data + session
+    let now = chrono::Utc::now().to_rfc3339();
+    let plan = api_server::reading_loader::get_plan(subject_key)
+        .expect("reading plan should exist");
+    let filtered_stages: Vec<_> = plan.stages.iter()
+        .filter(|s| s.grade_band == grade_band || grade_band.starts_with(&s.grade_band[..2]))
+        .cloned()
+        .collect();
+
+    // 只保留 first_stage + tasks_limit 个 task（评估用，不跑全学段）
+    let mut trimmed_stages: Vec<serde_json::Value> = vec![];
+    if let Some(first) = filtered_stages.first() {
+        let mut stage_json = serde_json::to_value(first).unwrap_or_default();
+        if tasks_limit > 0 {
+            if let Some(tasks) = stage_json.get_mut("tasks").and_then(|t| t.as_array_mut()) {
+                tasks.truncate(tasks_limit);
+            }
+        }
+        trimmed_stages.push(stage_json);
+    }
+
+    let plan_content = serde_json::json!({
+        "subject": subject_key, "grade_band": grade_band,
+        "goal": plan.goal, "stages": trimmed_stages,
+    });
+    let plan_content_str = serde_json::to_string(&plan_content).unwrap();
+    let mut status_map = serde_json::Map::new();
+    for stage in plan_content["stages"].as_array().unwrap() {
+        for task in stage["tasks"].as_array().unwrap() {
+            if let Some(name) = task["name"].as_str() {
+                status_map.insert(name.to_string(), serde_json::json!("pending"));
+            }
+        }
+    }
+    let plan_json_str = serde_json::to_string(&serde_json::Value::Object(status_map)).unwrap();
+
+    // 写 meta.json
+    let expected_tasks = {
+        let mut et = serde_json::json!({"stages": []});
+        if let Some(stages) = et.get_mut("stages").and_then(|s| s.as_array_mut()) {
+            for s in plan_content["stages"].as_array().unwrap().iter().take(2) {
+                let mut ss = serde_json::json!({"name": s["name"], "tasks": []});
+                for t in s["tasks"].as_array().unwrap() {
+                    ss["tasks"].as_array_mut().unwrap().push(serde_json::json!({
+                        "name": t["name"], "focus": t["focus"], "mode": t["mode"]
+                    }));
+                }
+                stages.push(ss);
+            }
+        }
+        et
+    };
+    let meta = serde_json::json!({
+        "run_id": run_id, "subject": subject_cn, "subject_key": subject_key,
+        "grade_band": grade_band, "total_stages": filtered_stages.len(),
+        "total_tasks": plan_content["stages"].as_array().unwrap().iter()
+            .map(|s| s["tasks"].as_array().map(|t| t.len()).unwrap_or(0)).sum::<usize>(),
+        "started_at": now,
+        "expected_tasks": expected_tasks,
+    });
+    fs::write(format!("{}/meta.json", run_dir), serde_json::to_string_pretty(&meta).unwrap()).ok();
+
+    // 初始化 DB 插入
+    let conn = api_server::db_pool::get_conn();
+    conn.execute(
+        "INSERT OR REPLACE INTO conversations (id, user_id, turn_count, started_at, subject, grade_band)
+         VALUES (?1, ?2, 0, ?3, ?4, ?5)",
+        rusqlite::params![TEST_CONV_ID, TEST_USER_ID, now, subject_cn, grade_band],
+    ).ok();
+    conn.execute(
+        "DELETE FROM learning_plans WHERE user_id = ?1 AND domain = ?2",
+        rusqlite::params![TEST_USER_ID, subject_cn],
+    ).ok();
+    conn.execute(
+        "INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_content, plan_json, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, 'reading', ?6, ?7, ?8, ?8)",
+        rusqlite::params![uuid::Uuid::new_v4().to_string(), TEST_USER_ID, TEST_CONV_ID,
+            format!("Reading: {} {}", subject_cn, grade_band), subject_cn,
+            plan_content_str, plan_json_str, now],
+    ).ok();
+
+    let prompts = chat_engine::prompt_loader::get_for_domain("");
+    // 按学段 + task mode 选择对应的物理隔离 prompt
+    let is_nursery = plan_content.get("stages")
+        .and_then(|s| s.as_array())
+        .and_then(|a| a.first())
+        .and_then(|s| s.get("tasks"))
+        .and_then(|t| t.as_array())
+        .and_then(|a| a.first())
+        .and_then(|t| t.get("mode"))
+        .and_then(|m| m.as_str())
+        == Some("nursery_rhyme");
+    let is_primary = grade_band == "g1-2" || grade_band == "g3-4";
+    let system_prompt = if is_nursery {
+        let p = prompts.chat_system_reading_nursery.clone();
+        if !p.is_empty() { p } else { prompts.chat_system_reading.clone() }
+    } else if is_primary {
+        let p = prompts.chat_system_reading_primary.clone();
+        if !p.is_empty() { p } else { prompts.chat_system_reading.clone() }
+    } else {
+        let p = prompts.chat_system_reading_secondary.clone();
+        if !p.is_empty() { p } else { prompts.chat_system_reading.clone() }
+    };
+    eprintln!("[EVAL] Prompt selected: {} chars (grade={}, nursery={})", system_prompt.len(), grade_band, is_nursery);
+
+    // 学生智能体 prompt（纯被动应答，不接触计划信息）
+    let student_system = format!(
+"你是一个{}学生。你的语文老师正在教你课文。\
+\n\
+行为规则：\
+\n- 老师提问时，尽可能用具体内容回答\
+\n- 对老师讲的内容可以提出自己的理解，但不要主动指挥教学进度\
+\n- 如果老师问你是否理解，用你自己的话复述所学内容来展示理解\
+\n- 直接输出你要说的话，不要加前缀",
+        if grade_band == "g1-2" { "小学低年级" } else { "初中" }
+    );
+    let mut student_cfg = chat_engine::llm_caller::LlmConfig::deepseek_v4_flash(
+        &std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY")
+    );
+    student_cfg.temperature = 0.6;
+    let mut student_caller = chat_engine::llm_caller::LlmCaller::new(student_cfg);
+
+    // 双智能体对话主循环
+    let start_time = Instant::now();
+    let max_rounds = 20u32;
+    let max_duration_secs = 1800u64;
+    let mut turn = 0u32;
+
+    for round in 1..=max_rounds {
+        if start_time.elapsed().as_secs() > max_duration_secs { break; }
+
+        // 获取 plan_context
+        let (_, _, ctx) = {
+            let c = api_server::db_pool::get_conn();
+            api_server::plan_handler::build_plan_context(&c, TEST_CONV_ID)
+        };
+
+        // 读取当前 plan_state
+        let plan_state: String = conn.query_row(
+            "SELECT plan_json FROM learning_plans WHERE conversation_id = ?1",
+            rusqlite::params![TEST_CONV_ID],
+            |row| row.get(0),
+        ).unwrap_or_default();
+
+        // 学生发言（仅看对话历史，不看计划上下文）
+        let student_history = get_conversation_history();
+        let student_msg = student_caller.generate(&student_system, &student_history).await
+            .unwrap_or_else(|_| "老师，我理解了。".to_string());
+        insert_turn("user", &student_msg);
+
+        // 教师回复
+        let user_content = format!("{}{}", get_conversation_history(), ctx);
+        let teacher_start = Instant::now();
+        let raw_reply = match {
+            let mut t_cfg = chat_engine::llm_caller::LlmConfig::deepseek_v4_flash(
+                &std::env::var("DEEPSEEK_API_KEY").unwrap()
+            );
+            let mut t_caller = chat_engine::llm_caller::LlmCaller::new(t_cfg);
+            t_caller.generate(&system_prompt, &user_content).await
+        } {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("[EVAL] Teacher LLM error at round {}: {:?} (retrying)", round, e);
+                // 重试一次
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                let mut t_cfg2 = chat_engine::llm_caller::LlmConfig::deepseek_v4_flash(
+                    &std::env::var("DEEPSEEK_API_KEY").unwrap()
+                );
+                let mut t_caller2 = chat_engine::llm_caller::LlmCaller::new(t_cfg2);
+                match t_caller2.generate(&system_prompt, &user_content).await {
+                    Ok(r) => r,
+                    Err(e2) => {
+                        eprintln!("[EVAL] Teacher LLM failed after retry at round {}: {:?}", round, e2);
+                        String::new()
+                    }
+                }
+            }
+        };
+        if raw_reply.is_empty() {
+            eprintln!("[EVAL] Empty teacher reply at round {}, skipping log save", round);
+            // 跳过本轮日志，但继续循环
+            turn += 1;
+            continue;
+        }
+        let latency_ms = teacher_start.elapsed().as_millis() as u64;
+
+        // 处理 plan_update
+        let conn_handle = api_server::db_pool::get_conn();
+        let result = api_server::plan_handler::handle_plan_update(
+            &conn_handle, &raw_reply, TEST_CONV_ID, TEST_USER_ID,
+        );
+        let cleaned = result.cleaned_reply;
+        insert_turn("assistant", &cleaned);
+
+        // 读取更新后的 plan_state
+        let new_plan_state: String = conn_handle.query_row(
+            "SELECT plan_json FROM learning_plans WHERE conversation_id = ?1",
+            rusqlite::params![TEST_CONV_ID],
+            |row| row.get(0),
+        ).unwrap_or_default();
+
+        turn += 1;
+        let turn_dir = format!("{}/turn_{:03}", run_dir, turn);
+        let _ = fs::create_dir_all(&turn_dir);
+
+        fs::write(format!("{}/user.txt", turn_dir), &student_msg).ok();
+        fs::write(format!("{}/system_prompt.txt", turn_dir), &system_prompt).ok();
+        fs::write(format!("{}/plan_context.txt", turn_dir), &ctx).ok();
+        fs::write(format!("{}/llm_reply_raw.txt", turn_dir), &raw_reply).ok();
+        fs::write(format!("{}/cleaned_reply.txt", turn_dir), &cleaned).ok();
+        fs::write(format!("{}/plan_state_before.json", turn_dir), &plan_state).ok();
+        fs::write(format!("{}/plan_state_after.json", turn_dir), &new_plan_state).ok();
+
+        let meta_turn = serde_json::json!({
+            "turn": turn, "plan_updated": result.plan_updated,
+            "latency_ms": latency_ms,
+            "reply_chars": raw_reply.len(), "reply_tokens_est": raw_reply.len() / 2,
+        });
+        fs::write(format!("{}/llm_metadata.json", turn_dir),
+            serde_json::to_string_pretty(&meta_turn).unwrap()).ok();
+
+        // Coldpath 2 模拟：每 5 轮调用 analyze_plan_progress
+        if turn > 0 && turn % 3 == 0 {
+            eprintln!("    [CP2] Running auto-progress analysis at turn {}...", turn);
+            let mut cp2_cfg = chat_engine::llm_caller::LlmConfig::deepseek_v4_flash(
+                &std::env::var("DEEPSEEK_API_KEY").unwrap()
+            );
+            cp2_cfg.temperature = 0.0;
+            let mut cp2_caller = chat_engine::llm_caller::LlmCaller::new(cp2_cfg);
+            let advanced = api_server::plan_handler::analyze_plan_progress(
+                TEST_CONV_ID, TEST_USER_ID, &mut cp2_caller,
+            ).await;
+            eprintln!("    [CP2] Turn {}: advanced={}", turn, advanced);
+            if advanced {
+                // 重新读取 context（任务状态已更新）
+                let (_, _, new_ctx) = {
+                    let c = api_server::db_pool::get_conn();
+                    api_server::plan_handler::build_plan_context(&c, TEST_CONV_ID)
+                };
+                // 更新 ctx 供下轮使用
+                // (ctx 会在下轮开始时从 build_plan_context 重新读取)
+            }
+        }
+
+        println!("  📝 Turn {:03}: plan_updated={}, reply={}chars, {}ms",
+            turn, result.plan_updated, raw_reply.len(), latency_ms);
+        // Debug: confirm loop is advancing
+        eprintln!("[LOOP] end of round {} (turn={})", round, turn);
+
+        // 检查是否所有 task 都已完成（提前结束）
+        let all_done = {
+            let c = api_server::db_pool::get_conn();
+            let pj: String = c.query_row(
+                "SELECT plan_json FROM learning_plans WHERE conversation_id = ?1",
+                rusqlite::params![TEST_CONV_ID],
+                |row| row.get(0),
+            ).unwrap_or_default();
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&pj) {
+                let status_map = v.get("task_status")
+                    .and_then(|s| s.as_object())
+                    .or_else(|| v.as_object());
+                status_map.map(|m| m.values().all(|s| s.as_str() == Some("done"))).unwrap_or(false)
+            } else { false }
+        };
+        if all_done {
+            eprintln!("[EVAL] All tasks completed at turn {}! Breaking early.", turn);
+            break;
+        }
+    }
+
+    // 写入 aggregate.json
+    let agg = serde_json::json!({
+        "run_id": run_id, "total_turns": turn,
+        "duration_secs": start_time.elapsed().as_secs(),
+    });
+    fs::write(format!("{}/aggregate.json", run_dir),
+        serde_json::to_string_pretty(&agg).unwrap()).ok();
+
+    eprintln!("[EVAL] Session {} done: {} turns in {}s, logs at {}",
+        run_id, turn, start_time.elapsed().as_secs(), run_dir);
+
+    PathBuf::from(&run_dir)
+}
+
+#[tokio::test]
+#[ignore]
+async fn e2e_live_teaching_quality() {
+    println!("\n{}", "=".repeat(70));
+    println!(" CoEvo E2E: 教学质量评估 (语文阅读 g1-2 完整学段)");
+    println!("{}", "=".repeat(70));
+
+    // ── Setup ──
+    let _ = fs::remove_file(TEST_DB_PATH);
+    if PathBuf::from(TEST_DB_PATH).exists() {
+        // DB 文件未被删除，用绝对路径重试
+        let abs_path = std::env::current_dir().unwrap_or_default().join(TEST_DB_PATH);
+        let _ = fs::remove_file(&abs_path);
+        eprintln!("[SETUP] retry remove: {:?}", abs_path);
+    }
+    let _ = fs::create_dir_all("data");
+    let _ = fs::create_dir_all("data/eval_runs");
+    for p in &["../../.env", ".env", "../.env"] {
+        if dotenvy::from_filename(p).is_ok() { break; }
+    }
+    api_server::db_pool::init(TEST_DB_PATH).expect("init DB pool");
+    {
+        let conn = api_server::db_pool::get_conn();
+        conn.execute_batch(SCHEMA_SQL).expect("create schema");
+        let _ = conn.execute_batch(
+            "ALTER TABLE conversations ADD COLUMN subject TEXT DEFAULT NULL;
+             ALTER TABLE conversations ADD COLUMN grade_band TEXT DEFAULT NULL;"
+        );
+    }
+    let now = chrono::Utc::now().to_rfc3339();
+    let pw_hash = api_server::auth::hash_password(TEST_PASSWORD);
+    {
+        let conn = api_server::db_pool::get_conn();
+        conn.execute(
+            "INSERT OR IGNORE INTO users (id, username, password_hash, created_at) VALUES (?1,?2,?3,?4)",
+            rusqlite::params![TEST_USER_ID, TEST_USERNAME, pw_hash, now],
+        ).unwrap();
+    }
+    let prompts_dir = "../../prompts";
+    let pipelines_dir = "../../pipelines";
+    chat_engine::prompt_loader::init(prompts_dir, pipelines_dir);
+    api_server::reading_loader::init().unwrap_or_else(|e| {
+        eprintln!("[EVAL] reading_loader init: {}", e);
+    });
+
+    let run_id = format!("eval_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+
+    // ── Session: 语文阅读 g1-2（首 stage 的 3 个 task） ──
+    println!("\n─── Session: 语文阅读 g1-2 (3 tasks) ───");
+    let dir1 = run_eval_session(&format!("{}_chinese_g12", run_id),
+        "语文", "chinese", "g1-2", 3).await;
+    println!("  ✅ Logs: {:?}", dir1);
+
+    println!("\n{}", "=".repeat(70));
+    println!(" ✅ 教学质量评估 E2E 完成! 日志目录: data/eval_runs/{}", run_id);
+    println!("    运行评审: python scripts/eval/quality_review.py --run {}", run_id);
     println!("{}", "=".repeat(70));
 }

@@ -106,6 +106,7 @@ CREATE TABLE learning_plans (
     goal TEXT NOT NULL,
     domain TEXT NOT NULL,
     mode TEXT DEFAULT NULL,
+    plan_content TEXT DEFAULT NULL,
     plan_json TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -170,11 +171,11 @@ async fn main() {
 
     // Load curriculum guide
     api_server::curriculum_loader::init().unwrap_or_else(|e| tracing::warn!("K12 loader: {}", e));
-    api_server::subject_router::init_curriculum("docs/curriculum/curriculum_guide.json");
-    tracing::info!("Curriculum guide loaded");
-
-    // Load knowledge graph
-    api_server::subject_router::init_knowledge_graph("docs/curriculum/knowledge_graph.json");
+    api_server::reading_loader::init().unwrap_or_else(|e| {
+        eprintln!("[READING] init failed: {}", e);
+        tracing::error!("READING loader: {}", e);
+    });
+    tracing::info!("Data loaders initialized");
     tracing::info!("Knowledge graph loaded");
 
     // K12 quiz bank — 需要 DB 连接
@@ -213,6 +214,7 @@ async fn main() {
             "ALTER TABLE achievements ADD COLUMN tier TEXT DEFAULT 'fixed'",
             "ALTER TABLE achievements ADD COLUMN source TEXT",
             "ALTER TABLE learning_plans ADD COLUMN conversation_id TEXT",
+            "ALTER TABLE learning_plans ADD COLUMN plan_content TEXT DEFAULT NULL",
             "CREATE TABLE IF NOT EXISTS learning_plans (
                 id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
@@ -220,6 +222,7 @@ async fn main() {
                 goal TEXT NOT NULL,
                 domain TEXT NOT NULL,
                 mode TEXT DEFAULT NULL,
+                plan_content TEXT DEFAULT NULL,
                 plan_json TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
@@ -475,6 +478,53 @@ async fn main() {
                 );
                 tracing::info!("Encrypted PII for admin user {}", aid);
             }
+        }
+    }
+
+    // --- Plan JSON 迁移：将旧格式（含 stages）拆分为 plan_content + plan_json(task_status) ---
+    {
+        let conn = api_server::db_pool::get_conn();
+        let mut stmt = conn.prepare(
+            "SELECT id, plan_json FROM learning_plans WHERE plan_content IS NULL AND plan_json LIKE '%\"stages\"%'"
+        ).unwrap();
+        let rows: Vec<(String, String)> = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        }).unwrap().filter_map(|r| r.ok()).collect();
+
+        let count = rows.len();
+        if count > 0 {
+            tracing::info!("Migrating {} learning_plans to plan_content + plan_json(task_status)", count);
+            let mut migrated = 0u32;
+            for (pid, plan_json_str) in &rows {
+                if let Ok(plan) = serde_json::from_str::<serde_json::Value>(plan_json_str) {
+                    // 提取 task_status
+                    let mut status_map = serde_json::Map::new();
+                    if let Some(stages) = plan.get("stages").and_then(|s| s.as_array()) {
+                        for stage in stages {
+                            if let Some(tasks) = stage.get("tasks").and_then(|t| t.as_array()) {
+                                for task in tasks {
+                                    if let Some(name) = task.get("name").and_then(|n| n.as_str()) {
+                                        let status = task.get("status").and_then(|s| s.as_str()).unwrap_or("pending");
+                                        status_map.insert(name.to_string(), serde_json::json!(status));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    let new_plan_json = serde_json::json!({"task_status": status_map});
+                    if let Err(e) = conn.execute(
+                        "UPDATE learning_plans SET plan_content=?1, plan_json=?2 WHERE id=?3",
+                        rusqlite::params![plan_json_str, new_plan_json.to_string(), pid],
+                    ) {
+                        tracing::error!("Migrate plan {} failed: {}", pid, e);
+                    } else {
+                        migrated += 1;
+                    }
+                }
+            }
+            tracing::info!("Plan JSON migration: {}/{} done", migrated, count);
+        } else {
+            tracing::info!("Plan JSON migration: no old-format plans found");
         }
     }
 

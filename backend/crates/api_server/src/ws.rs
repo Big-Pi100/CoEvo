@@ -178,12 +178,11 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     turns
                 };
 
-                // ── 学科路由（首次消息） ──
-                // K12 模式：从 conversations 表读取 subject/grade_band，跳过 LLM
-                // 自由探索模式：调 LLM 检测 subject + grade → 加载课标约束
+                // ── 学科检测（首次消息） ──
+                // K12 模式：从 conversations 表读取 subject/grade_band
+                // 自由探索模式：无需任何课标约束
                 let mut routing_ctx = String::new();
                 if history.len() <= 1 {
-                    // 先查 conversations 表，判断是否是 K12 模式
                     let k12_subject: Option<String> = {
                         let conn = crate::db_pool::get_conn();
                         conn.query_row(
@@ -192,59 +191,8 @@ pub async fn handle_ws(mut ws: WebSocket) {
                             |row| row.get(0),
                         ).ok()
                     };
-
-                    if let Some(ref subject) = k12_subject {
-                        // ── K12 模式：直接从 conversations 取 grade_band ──
-                        let k12_grade: Option<String> = {
-                            let conn = crate::db_pool::get_conn();
-                            conn.query_row(
-                                "SELECT grade_band FROM conversations WHERE id = ?1",
-                                rusqlite::params![chat_req.conversation_id],
-                                |row| row.get(0),
-                            ).ok()
-                        };
-                        let grade = k12_grade.as_deref().unwrap_or("");
-                        let (cover, bound) = crate::subject_router::get_curriculum_bounds(subject, grade);
-                        let kg_paths = crate::subject_router::get_knowledge_paths(subject, grade);
-                        if !cover.is_empty() {
-                            let mut ctx = format!(
-                                "\n\n### 课程范围\n本课学习 {}（{} 水平）。\n\n⚠️ **重要：你的学习计划必须涵盖以下所有内容。每项内容至少对应一个阶段(stage)，不得只选其中一部分。**\n\n【必须覆盖的内容】\n{}",
-                                subject, grade, cover
-                            );
-                            if !bound.is_empty() {
-                                ctx.push_str(&format!(
-                                    "\n\n【禁止深入的内容（超纲）】\n这些内容不属于本年级要求，不要在教学中深入展开：\n{}",
-                                    bound
-                                ));
-                            }
-                            if !kg_paths.is_empty() {
-                                ctx.push_str(&kg_paths);
-                            }
-                            routing_ctx = ctx;
-                        }
-                    } else {
-                        // ── 自由探索模式：LLM 路由 ──
-                        let cfg = crate::llm::get_config();
-                        let mut caller = chat_engine::llm_caller::LlmCaller::new(cfg);
-                        let routing = crate::subject_router::route(&chat_req.message, &mut caller).await;
-                        let (cover, bound) = crate::subject_router::get_curriculum_bounds(&routing.subject, &routing.grade_band);
-                        let kg_paths = crate::subject_router::get_knowledge_paths(&routing.subject, &routing.grade_band);
-                        if !cover.is_empty() {
-                            let mut ctx = format!(
-                                "\n\n### 课程范围\n本课学习 {}（{} 水平）。\n\n⚠️ **重要：你的学习计划必须涵盖以下所有内容。每项内容至少对应一个阶段(stage)，不得只选其中一部分。**\n\n【必须覆盖的内容】\n{}",
-                                routing.subject, routing.grade_band, cover
-                            );
-                            if !bound.is_empty() {
-                                ctx.push_str(&format!(
-                                    "\n\n【禁止深入的内容（超纲）】\n这些内容不属于本年级要求，不要在教学中深入展开：\n{}",
-                                    bound
-                                ));
-                            }
-                            if !kg_paths.is_empty() {
-                                ctx.push_str(&kg_paths);
-                            }
-                            routing_ctx = ctx;
-                        }
+                    if k12_subject.is_some() {
+                        // K12 模式：计划上下文由 build_plan_context 提供
                     }
                 }
 
@@ -253,7 +201,27 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     let conn = crate::db_pool::get_conn();
                     let (domain, mode, ctx) = crate::plan_handler::build_plan_context(&conn, &chat_req.conversation_id);
                     let templates = chat_engine::prompt_loader::get_for_domain(&domain);
-                    let sp = if mode == "structured" {
+                    let sp = if mode == "reading" {
+                        // 按学段 + task mode 选择对应的物理隔离 prompt
+                        let grade_band: Option<String> = conn.query_row(
+                            "SELECT grade_band FROM conversations WHERE id = ?1",
+                            rusqlite::params![chat_req.conversation_id],
+                            |row| row.get(0),
+                        ).ok().flatten();
+                        // 为简洁起见，通过 ctx 中的"教学模式:"行判断 task mode
+                        let is_nursery = ctx.contains("教学模式: nursery_rhyme");
+                        let is_primary = matches!(grade_band.as_deref(), Some("g1-2" | "g3-4"));
+                        if is_nursery {
+                            let p = templates.chat_system_reading_nursery.clone();
+                            if !p.is_empty() { p } else { templates.chat_system_reading.clone() }
+                        } else if is_primary {
+                            let p = templates.chat_system_reading_primary.clone();
+                            if !p.is_empty() { p } else { templates.chat_system_reading.clone() }
+                        } else {
+                            let p = templates.chat_system_reading_secondary.clone();
+                            if !p.is_empty() { p } else { templates.chat_system_reading.clone() }
+                        }
+                    } else if mode == "structured" {
                         templates.chat_system_structured.clone()
                     } else {
                         templates.chat_system_free.clone()
@@ -316,7 +284,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                             final_reply.push_str(&content);
                             if is_planning {
                                 // 计划生成中，不再转发原始 token
-                            } else if final_reply.contains("<plan_update") {
+                            } else if final_reply.contains("<plan_update") || final_reply.contains("<reading_update") {
                                 is_planning = true;
                                 if ws.send(Message::Text(json!({
                                     "type":"planning"

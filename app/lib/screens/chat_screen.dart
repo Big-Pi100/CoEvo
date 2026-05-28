@@ -591,6 +591,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/home'),
+        ),
         title: Row(
           children: [
             Icon(Icons.auto_awesome, size: 20, color: Theme.of(context).colorScheme.primary),
