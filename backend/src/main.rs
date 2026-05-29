@@ -139,7 +139,7 @@ async fn main() {
         .init();
 
     // 启动时显式输出 K12 数据路径（不受 tracing 影响，一定看得到）
-    let prebuilt = std::env::var("COEVO_K12_DATA_DIR").unwrap_or_else(|_| "docs/curriculum/prebuilt".to_string());
+    let prebuilt = std::env::var("COEVO_K12_DATA_DIR").unwrap_or_else(|_| "data/curriculum/prebuilt".to_string());
     eprintln!("[K12] data dir: {}", prebuilt);
 
     tracing::info!("CoEvo backend starting, logs: {}/coevo.log.*", log_dir);
@@ -181,7 +181,7 @@ async fn main() {
     // K12 quiz bank — 需要 DB 连接
     {
         let conn = api_server::db_pool::get_conn();
-        match api_server::k12_quiz_loader::load_quiz_bank(&conn, "docs/curriculum/prebuilt") {
+        match api_server::k12_quiz_loader::load_quiz_bank(&conn, &prebuilt) {
             Ok(n) => tracing::info!("K12 quiz bank: {} quizzes loaded", n),
             Err(e) => tracing::warn!("K12 quiz bank: {}", e),
         }

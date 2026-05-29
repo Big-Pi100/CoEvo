@@ -22,6 +22,8 @@ pub fn format_card(user_id: &str, candidate: &ConceptCandidate) -> (Card, CardMe
         source_sentence: Some(candidate.source_sentence.clone()),
         conversation_id: None,
         created_at: now,
+        subject: None,
+        grade_band: None,
     };
 
     // FSRS 初始状态: New, difficulty=5.0, stability=0.0, due=now

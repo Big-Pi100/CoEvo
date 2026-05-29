@@ -1,6 +1,6 @@
 //! K12 题库加载器
 //!
-//! 启动时从 docs/curriculum/prebuilt/k12_quiz_bank*.json 加载试题到 k12_quiz_bank 表
+//! 启动时从 data/curriculum/prebuilt/k12_quiz_bank*.json 加载试题到 k12_quiz_bank 表
 
 use rusqlite::Connection;
 

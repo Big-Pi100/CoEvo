@@ -497,9 +497,16 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     let _ = cold_tx.send((cold_turn, candidates)).await;
                 });
 
-                // ❄️ ColdPath 2: 计划进度分析（每 5 轮执行一次）
+                // ❄️ ColdPath 2: 计划进度分析
+                // - 第 2、3 轮：检测无计划 → 自动创建
+                // - 每 5 轮（含上述条件）：推进评估 + 卡片解锁
                 // 改用 tokio::spawn 而非 std::thread::spawn，避免在 1GB VPS 上创建 OS 线程 + tokio 运行时
-                if turn_counter > 0 && turn_counter % 5 == 0 {
+                let run_cp2 = turn_counter > 0 && (
+                    turn_counter % 5 == 0    // 常规评估
+                    || turn_counter == 2     // 开局无计划检测
+                    || turn_counter == 3     // 开局无计划检测（2 轮对话后已有内容）
+                );
+                if run_cp2 {
                     let conv_id = chat_req.conversation_id.clone();
                     let uid = chat_req.user_id.clone();
                     let cfg = llm_config.clone();

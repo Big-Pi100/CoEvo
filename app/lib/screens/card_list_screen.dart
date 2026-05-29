@@ -8,7 +8,9 @@ import '../models/coevo_models.dart';
 
 class CardListScreen extends ConsumerStatefulWidget {
   final bool embedded;
-  const CardListScreen({super.key, this.embedded = false});
+  final String? domainFilter;   // 按领域过滤
+  final String? subjectFilter;  // 按科目过滤
+  const CardListScreen({super.key, this.embedded = false, this.domainFilter, this.subjectFilter});
 
   @override
   ConsumerState<CardListScreen> createState() => _CardListScreenState();
@@ -44,6 +46,8 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
   @override
   void initState() {
     super.initState();
+    _domainFilter = widget.domainFilter;
+    _subjectFilter = widget.subjectFilter;
     _searchController.addListener(_applyFilters);
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadCards());
     ref.listenManual(cardRefreshProvider, (prev, next) {
@@ -74,6 +78,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     try {
       final resp = await client.getAllCards(
         sort: _sortBy,
+        domain: _domainFilter,
         subject: _subjectFilter,
       );
       final cards = (resp['cards'] as List<dynamic>?)

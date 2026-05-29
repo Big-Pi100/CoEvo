@@ -88,11 +88,12 @@ pub fn insert_card(conn: &Connection, card: &Card, memory: &CardMemory) -> Inser
 
     // 4. Insert card
     if let Err(e) = conn.execute(
-        "INSERT INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        "INSERT INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, subject, grade_band)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         rusqlite::params![
             card.id, card.user_id, card.domain, card.card_type,
             card.front, card.back, card.source_sentence, card.conversation_id, card.created_at,
+            card.subject, card.grade_band,
         ],
     ) {
         return InsertResult::DatabaseError(format!("Card insert: {}", e));

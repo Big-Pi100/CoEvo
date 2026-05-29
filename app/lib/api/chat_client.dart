@@ -355,12 +355,18 @@ class ChatClient {
   // ── Batch Create Cards ──
 
   Future<Map<String, dynamic>> batchCreateCards(
-    List<Map<String, dynamic>> candidates,
-  ) async {
+    List<Map<String, dynamic>> candidates, {
+    String? conversationId,
+  }) async {
+    final body = <String, dynamic>{
+      'user_id': userId,
+      'candidates': candidates,
+    };
+    if (conversationId != null) body['conversation_id'] = conversationId;
     final resp = await http.post(
       Uri.parse('$baseUrl/api/cards/batch-create'),
       headers: _authHeaders,
-      body: jsonEncode({'user_id': userId, 'candidates': candidates}),
+      body: jsonEncode(body),
     ).timeout(ApiConfig.requestTimeout);
 
     if (resp.statusCode != 200) {
@@ -455,6 +461,19 @@ class ChatClient {
 
     if (resp.statusCode != 200) {
       throw Exception('Reading init error: ${resp.statusCode} ${resp.body}');
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  /// 获取当前阅读模式课文的完整卡片数据
+  Future<Map<String, dynamic>> k12ReadingCurrentCard(String conversationId) async {
+    final uri = Uri.parse('$baseUrl/api/k12/reading/$conversationId/current-card')
+        .replace(queryParameters: {'user_id': userId});
+    final resp = await http.get(uri, headers: _authHeaders)
+        .timeout(ApiConfig.requestTimeout);
+
+    if (resp.statusCode != 200) {
+      throw Exception('Current card error: ${resp.statusCode} ${resp.body}');
     }
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }

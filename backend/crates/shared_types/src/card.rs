@@ -10,6 +10,8 @@ pub struct Card {
     pub source_sentence: Option<String>,
     pub conversation_id: Option<String>,
     pub created_at: i64,
+    pub subject: Option<String>,
+    pub grade_band: Option<String>,
 }
 
 /// FSRS 记忆状态 (1:1 cards)

@@ -565,6 +565,7 @@ async fn phase_concept_extraction(run_id: &str, _cli: &CliArgs) -> e2e_runner::P
                 source_sentence: Some(c.source_sentence.clone()),
                 conversation_id: Some(CONV_LANG.to_string()),
                 created_at: chrono::Utc::now().timestamp(),
+                subject: None, grade_band: None,
             };
             match card_engine::card_repository::insert_card(&conn, &card, &memory) {
                 card_engine::card_repository::InsertResult::Success(_) => inserted += 1,

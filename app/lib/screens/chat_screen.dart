@@ -38,6 +38,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // 学习计划
   Map<String, dynamic>? _activePlan;
 
+  // 阅读模式（课文全文展示）
+  Map<String, dynamic>? _readingCard;
+  bool _isReading = false;
+
   // 订阅状态
   bool _subscriptionRequired = false;
   bool _subscriptionExpired = false;
@@ -146,6 +150,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       // 等待计划和订阅加载完成
       await planFuture;
       await subFuture;
+
+      // 检测阅读模式：尝试获取当前课文卡
+      if (_client != null && mounted) {
+        try {
+          final cardResult = await _client!.k12ReadingCurrentCard(_convId);
+          final card = cardResult['current_card'];
+          if (card != null && card is Map<String, dynamic> && card['full_text'] != null && 
+              (card['full_text'] as String).isNotEmpty) {
+            debugPrint('📖 _init: reading mode detected: ${card['front']}');
+            setState(() {
+              _readingCard = card;
+              _isReading = true;
+            });
+          }
+        } catch (e) {
+          // 非 reading 管线的对话，静默忽略
+          debugPrint('_init: reading card check ignored: $e');
+        }
+      }
     } catch (e) {
       debugPrint('_init: fatal error: $e');
       if (mounted) setState(() {
@@ -166,6 +189,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final plans = await _client!.getPlans(conversationId: _convId);
     if (plans.isNotEmpty && mounted) {
       setState(() => _activePlan = plans.first);
+    }
+
+    // 课文推进后刷新阅读卡片
+    if (_isReading && mounted) {
+      try {
+        final cardResult = await _client!.k12ReadingCurrentCard(_convId);
+        final card = cardResult['current_card'];
+        if (card != null && card is Map<String, dynamic>) {
+          setState(() => _readingCard = card);
+        }
+      } catch (e) {
+        debugPrint('_loadPlan: reading card refresh ignored: $e');
+      }
     }
   }
 
@@ -327,7 +363,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       case 'candidates':
         final list = event.candidates;
         if (list != null && list.isNotEmpty && list.any((c) => c.front.isNotEmpty)) {
-          Future.delayed(Duration.zero, () => ConceptDialog.show(context, candidates: list, client: _client, ref: ref));
+          Future.delayed(Duration.zero, () => ConceptDialog.show(context, candidates: list, client: _client, ref: ref, conversationId: _convId));
         }
         break;
       case 'error':
@@ -511,6 +547,51 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 color: isExpired ? Colors.red.shade800 : Colors.orange.shade800,
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 阅读模式课文卡片入口
+  Widget _buildReadingCardBanner() {
+    if (!_isReading || _readingCard == null) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    final front = _readingCard!['front'] as String? ?? '';
+    final author = _readingCard!['author'] as String? ?? '';
+    final subtitle = author.isNotEmpty ? '· $author' : '';
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.menu_book, size: 20, color: theme.colorScheme.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '当前课文：$front $subtitle',
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              context.push('/reading-full-text', extra: _readingCard);
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: theme.colorScheme.primary,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text('查看全文 →', style: TextStyle(fontSize: 13)),
           ),
         ],
       ),
@@ -709,6 +790,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           if (_activePlan != null) ChatPlanPanel(plan: _activePlan!),
           // 订阅状态横幅
           _buildSubscriptionBanner(),
+          // 阅读模式课文卡片入口
+          _buildReadingCardBanner(),
           // 对话已删除横幅
           if (_isDeleted) _buildDeletedBanner(),
           Expanded(
@@ -736,17 +819,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             crossAxisAlignment: CrossAxisAlignment.end,
                             mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
                             children: [
-                              // AI 头像
-                              if (!isUser)
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 6),
-                                  child: CircleAvatar(
-                                    radius: 12,
-                                    backgroundColor: Theme.of(context).colorScheme.primary.withAlpha(30),
-                                    child: Icon(Icons.auto_awesome, size: 12, color: Theme.of(context).colorScheme.primary),
-                                  ),
-                                ),
-                              // 气泡：用户自适应 / AI 撑满 80%
+                              // 气泡：用户自适应 / AI 100%宽度
                               if (isUser)
                                 Flexible(
                                   child: _buildBubble(context, isUser, isStreaming, msg),
@@ -754,16 +827,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               else
                                 Expanded(
                                   child: _buildBubble(context, isUser, isStreaming, msg),
-                                ),
-                              // 用户头像
-                              if (isUser)
-                                Padding(
-                                  padding: const EdgeInsets.only(left: 6),
-                                  child: CircleAvatar(
-                                    radius: 12,
-                                    backgroundColor: Theme.of(context).colorScheme.primary,
-                                    child: const Icon(Icons.person, size: 12, color: Colors.white),
-                                  ),
                                 ),
                             ],
                           ),
@@ -809,30 +872,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _buildBubble(BuildContext context, bool isUser, bool isStreaming, Message msg) {
-    return Container(
-      constraints: BoxConstraints(
-        maxWidth: isUser
-            ? MediaQuery.of(context).size.width * 0.70
-            : MediaQuery.of(context).size.width * 0.80,
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: isUser
-            ? Theme.of(context).colorScheme.primary
-            : Theme.of(context).colorScheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(20).copyWith(
-          bottomRight: isUser ? const Radius.circular(4) : null,
-          bottomLeft: !isUser ? const Radius.circular(4) : null,
+    if (isUser) {
+      // 用户消息：带气泡的完整宽度
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primary,
+          borderRadius: BorderRadius.circular(20).copyWith(
+            bottomRight: const Radius.circular(4),
+          ),
         ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: [
-          ChatMessageBubble(text: msg.content, isUser: isUser, isStreaming: isStreaming),
-        ],
-      ),
-    );
+        child: ChatMessageBubble(text: msg.content, isUser: true, isStreaming: isStreaming),
+      );
+    } else {
+      // AI 消息：无气泡，无背景，满宽显示
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: ChatMessageBubble(text: msg.content, isUser: false, isStreaming: isStreaming),
+      );
+    }
   }
 
 }

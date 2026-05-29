@@ -86,6 +86,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/k12/init", post(k12_init_handler))
         .route("/api/k12/progress", get(k12_progress_handler))
         .route("/api/k12/reading/init", post(k12_reading_init_handler))
+        .route("/api/k12/reading/{conv_id}/current-card", get(k12_reading_current_card_handler))
         .route("/api/k12/quiz/submit", post(crate::k12_quiz_api::quiz_submit_handler))
         .route("/ws", get(ws_upgrade))
         // Learning Plans
@@ -818,6 +819,15 @@ async fn cards_batch_create_handler(
     let mut duplicates = Vec::new();
     let mut errors = Vec::new();
 
+    // 查对话的 subject/grade_band（如有），用于绑定 plan
+    let (conv_subject, conv_grade): (Option<String>, Option<String>) = input.conversation_id.as_ref()
+        .and_then(|cid| conn.query_row(
+            "SELECT subject, grade_band FROM conversations WHERE id = ?1",
+            rusqlite::params![cid],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).ok())
+        .unwrap_or((None, None));
+
     for cand in &input.candidates {
         let candidate = shared_types::card::ConceptCandidate {
             front: cand.front.clone(),
@@ -827,6 +837,8 @@ async fn cards_batch_create_handler(
         };
         let (mut card, memory) = card_engine::card_formatter::format_card(&input.user_id, &candidate);
         card.conversation_id = input.conversation_id.clone();
+        card.subject = conv_subject.clone();
+        card.grade_band = conv_grade.clone();
         match card_engine::card_repository::insert_card(&conn, &card, &memory) {
             card_engine::card_repository::InsertResult::Success(id) => {
                 created.push(id);
@@ -1126,7 +1138,10 @@ async fn history_handler(
                  WHERE lp.conversation_id = c.id AND lp.mode = 'structured'
                  ORDER BY lp.updated_at DESC LIMIT 1) as plan_goal
          FROM conversations c
-         WHERE c.user_id = ?1{} ORDER BY c.started_at DESC LIMIT ?2",
+         WHERE c.user_id = ?1
+           AND c.turn_count > 0
+           AND (c.subject IS NULL OR c.subject = '')
+           {} ORDER BY c.started_at DESC LIMIT ?2",
         deleted_filter
     );
     let mut stmt = conn.prepare(&sql).unwrap();
@@ -1485,6 +1500,7 @@ pub struct PlanInput {
     pub goal: String,
     pub domain: String,
     pub plan_json: serde_json::Value,
+    pub conversation_id: Option<String>,
 }
 
 async fn plans_list_handler(
@@ -1563,33 +1579,37 @@ async fn plan_upsert_handler(
     let now = chrono::Utc::now().to_rfc3339();
     let plan_str = input.plan_json.to_string();
 
-    // Check if plan exists for this user+domain
-    let existing_id: Option<String> = conn.query_row(
-        "SELECT id FROM learning_plans WHERE user_id = ?1 AND domain = ?2 AND mode != 'deleted' LIMIT 1",
-        rusqlite::params![input.user_id, input.domain],
-        |row| row.get(0),
-    ).ok();
+    // 通过 conversation_id 或 user_id+domain 查找已有计划
+    let existing_id: Option<String> = if let Some(ref conv_id) = input.conversation_id {
+        conn.query_row(
+            "SELECT id FROM learning_plans WHERE conversation_id = ?1 AND mode != 'deleted' LIMIT 1",
+            rusqlite::params![conv_id],
+            |row| row.get(0),
+        ).ok()
+    } else {
+        conn.query_row(
+            "SELECT id FROM learning_plans WHERE user_id = ?1 AND domain = ?2 AND mode != 'deleted' LIMIT 1",
+            rusqlite::params![input.user_id, input.domain],
+            |row| row.get(0),
+        ).ok()
+    };
 
     if let Some(id) = existing_id {
         // Update existing
-        match conn.execute(
+        let _ = conn.execute(
             "UPDATE learning_plans SET goal=?1, plan_json=?2, updated_at=?3 WHERE id=?4",
             rusqlite::params![input.goal, plan_str, now, id],
-        ) {
-            Ok(_) => Json(serde_json::json!({"id": id, "status": "updated"})),
-            Err(e) => Json(serde_json::json!({"error": format!("DB: {}", e)})),
-        }
+        );
+        Json(serde_json::json!({"id": id, "status": "updated"}))
     } else {
         // Insert new
         let id = uuid::Uuid::new_v4().to_string();
-        match conn.execute(
-            "INSERT INTO learning_plans (id, user_id, goal, domain, mode, plan_json, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, 'structured', ?5, ?6, ?6)",
-            rusqlite::params![id, input.user_id, input.goal, input.domain, plan_str, now],
-        ) {
-            Ok(_) => Json(serde_json::json!({"id": id, "status": "created"})),
-            Err(e) => Json(serde_json::json!({"error": format!("DB: {}", e)})),
-        }
+        let _ = conn.execute(
+            "INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_json, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, 'structured', ?6, ?7, ?7)",
+            rusqlite::params![id, input.user_id, input.conversation_id, input.goal, input.domain, plan_str, now],
+        );
+        Json(serde_json::json!({"id": id, "status": "created"}))
     }
 }
 
@@ -1971,8 +1991,11 @@ async fn k12_init_handler(
     headers: HeaderMap,
     Json(input): Json<K12InitInput>,
 ) -> Json<serde_json::Value> {
+    eprintln!("[K12-INIT] start: user={}, subject={}, grade={}", input.user_id, input.subject, input.grade_band);
+
     // 1. Auth
     if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
+        eprintln!("[K12-INIT] auth failed: {:?}", e);
         return auth_json(e);
     }
 
@@ -1993,6 +2016,7 @@ async fn k12_init_handler(
     ).ok();
 
     if let Some(conv_id) = existing_conv {
+        eprintln!("[K12-INIT] resumed existing conv={}", conv_id);
         return Json(serde_json::json!({
             "conversation_id": conv_id,
             "resumed": true,
@@ -2001,6 +2025,7 @@ async fn k12_init_handler(
 
     // 3. 创建新 conversation 带 subject/grade_band 标记
     let conv_id = uuid::Uuid::new_v4().to_string();
+    eprintln!("[K12-INIT] new conv={} for {} {} {}", conv_id, input.user_id, input.subject, input.grade_band);
     if let Err(e) = conn.execute(
         "INSERT INTO conversations (id, user_id, turn_count, started_at, subject, grade_band) VALUES (?1, ?2, 0, ?3, ?4, ?5)",
         rusqlite::params![conv_id, input.user_id, now_str, input.subject, input.grade_band],
@@ -2036,9 +2061,9 @@ async fn k12_init_handler(
         rusqlite::params![input.user_id, input.subject],
     );
     if let Err(e) = conn.execute(
-        "INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_json, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, 'structured', ?6, ?7, ?7)",
-        rusqlite::params![plan_id, input.user_id, conv_id, format!("K12: {} {}", input.subject, input.grade_band), input.subject, plan_str, now_str],
+        "INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_content, plan_json, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, 'structured', ?6, ?7, ?8, ?8)",
+        rusqlite::params![plan_id, input.user_id, conv_id, format!("K12: {} {}", input.subject, input.grade_band), input.subject, plan_str, plan_str, now_str],
     ) {
         return Json(serde_json::json!({"error": format!("Plan insert: {}", e)}));
     }
@@ -2070,6 +2095,12 @@ async fn k12_init_handler(
         .unwrap_or("")
         .to_string();
 
+    // 修复旧数据：将该科目所有卡片的 domain 对齐到计划名称（如 "math"→"数学"）
+    let _ = conn.execute(
+        "UPDATE cards SET domain = ?1 WHERE subject = ?1 AND domain != ?1",
+        rusqlite::params![input.subject],
+    );
+
     if let Some(card_list) = cards {
         for card_tmpl in card_list {
             // 概念卡：gold_cr_ids 与首任务的 gold_cr_ids 有交集则导入
@@ -2083,7 +2114,7 @@ async fn k12_init_handler(
             let _ = conn.execute(
                 "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, subject, grade_band, k12_card_id)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-                rusqlite::params![card_id, input.user_id, card_tmpl.domain, card_tmpl.card_type,
+                rusqlite::params![card_id, input.user_id, input.subject, card_tmpl.card_type,
                     card_tmpl.front, card_tmpl.back, card_tmpl.source_sentence, conv_id, now_ts,
                     input.subject, input.grade_band, card_tmpl.id],
             );
@@ -2176,10 +2207,14 @@ async fn k12_reading_init_handler(
 
     // 4. 写入 plan（按学段过滤 stage）
     let subj_key = input.subject.clone();
+    let grade_for_filter = match input.grade_band.as_str() {
+        "g10" | "g11-12" => "g10-12",
+        other => other,
+    };
     let filtered_stages: Vec<_> = plan.stages.iter()
         .filter(|s| {
             let gb = s.grade_band.as_str();
-            gb == input.grade_band || input.grade_band.starts_with(&gb[..2])
+            gb == grade_for_filter || gb.is_empty()
         })
         .cloned()
         .collect();
@@ -2235,22 +2270,79 @@ async fn k12_reading_init_handler(
         return Json(serde_json::json!({"error": format!("Plan insert: {}", e)}));
     }
 
-    // 5. 导入首任务的 reading card（立即解锁课文）
+    // 5. 导入该学段所有卡片（诗词卡 + 词卡），立即可复习
     let mut imported_cards = 0i64;
     if let Some(stages) = plan_content.get("stages").and_then(|s| s.as_array()) {
-        if let Some(first_stage) = stages.first() {
-            if let Some(tasks) = first_stage.get("tasks").and_then(|t| t.as_array()) {
-                if let Some(first_task) = tasks.first() {
-                    if let Some(card_id) = first_task.get("reading_card_id").and_then(|c| c.as_str()) {
+        for stage in stages {
+            if let Some(tasks) = stage.get("tasks").and_then(|t| t.as_array()) {
+                for task in tasks {
+                    // 5a. 导入诗词卡
+                    if let Some(card_id) = task.get("reading_card_id").and_then(|c| c.as_str()) {
                         if !card_id.is_empty() {
                             let card = format!("k12_{}", card_id);
+                            let (card_front, card_back) = crate::reading_loader::get_card(card_id)
+                                .map(|rc| {
+                                    let front = rc.front.clone();
+                                    let back = format!("{}\n\n{}",
+                                        rc.full_text,
+                                        ["author", "translation", "summary", "appreciation"]
+                                            .iter().filter_map(|f| {
+                                                let v = match *f {
+                                                    "author" => rc.author.clone(),
+                                                    "translation" => rc.translation.clone(),
+                                                    "summary" => rc.summary.clone(),
+                                                    "appreciation" => rc.appreciation.join("\n"),
+                                                    _ => String::new(),
+                                                };
+                                                if v.is_empty() { None }
+                                                else { Some(format!("【{}】\n{}",
+                                                    match *f {
+                                                        "author" => "作者",
+                                                        "translation" => "翻译",
+                                                        "summary" => "摘要",
+                                                        "appreciation" => "赏析",
+                                                        _ => f,
+                                                    }, v)) }
+                                            }).collect::<Vec<_>>().join("\n\n")
+                                    );
+                                    (front, back)
+                                })
+                                .unwrap_or_else(|| ("课文阅读".to_string(), "Reading-First Mode".to_string()));
                             let _ = conn.execute(
                                 "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, conversation_id, created_at, subject, grade_band, k12_card_id)
                                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                                 rusqlite::params![card, input.user_id, input.subject, "reading",
-                                    "课文阅读", "Reading-First Mode", conv_id, now_ts, input.subject, input.grade_band, card_id],
+                                    card_front, card_back, conv_id, now_ts, input.subject, input.grade_band, card_id],
+                            ).ok();
+                            let _ = conn.execute(
+                                "INSERT OR IGNORE INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
+                                 VALUES (?1, 0, 5.0, 0.0, ?2, NULL, 0, 0)",
+                                rusqlite::params![card, now_ts],
                             ).ok();
                             imported_cards += 1;
+                        }
+                    }
+                    // 5b. 导入该 task 的词卡
+                    if let Some(vocab_ids) = task.get("vocab_card_ids").and_then(|v| v.as_array()) {
+                        for vid_val in vocab_ids {
+                            if let Some(vid) = vid_val.as_str() {
+                                if vid.is_empty() { continue; }
+                                if let Some(vc) = crate::curriculum_loader::get_card_by_id(vid) {
+                                    let k12_id = format!("k12_{}", vid);
+                                    let _ = conn.execute(
+                                        "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, conversation_id, created_at, subject, grade_band, k12_card_id)
+                                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                                        rusqlite::params![k12_id, input.user_id, input.subject, "vocabulary",
+                                            vc.front, vc.back, conv_id, now_ts, input.subject, input.grade_band, vid],
+                                    ).ok();
+                                    let _ = conn.execute(
+                                        "INSERT OR IGNORE INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
+                                         VALUES (?1, 0, 5.0, 0.0, ?2, NULL, 0, 0)",
+                                        rusqlite::params![k12_id, now_ts],
+                                    ).ok();
+                                    imported_cards += 1;
+                                }
+                            }
                         }
                     }
                 }
@@ -2258,11 +2350,88 @@ async fn k12_reading_init_handler(
         }
     }
 
-    eprintln!("[READING-HANDLER] SUCCESS: conv_id={}, imported_cards={}", conv_id, imported_cards);
+    // 6. 查找当前课文卡用于返回
+    let current_card: Option<serde_json::Value> = (|| {
+        let stages = plan_content.get("stages")?.as_array()?;
+        let first_stage = stages.first()?;
+        let tasks = first_stage.get("tasks")?.as_array()?;
+        let first_task = tasks.first()?;
+        let card_id = first_task.get("reading_card_id")?.as_str()?;
+        if card_id.is_empty() { return None; }
+        let card = crate::reading_loader::get_card(card_id)?;
+        serde_json::to_value(card).ok()
+    })();
+
+    eprintln!("[READING-HANDLER] SUCCESS: conv_id={}, imported_cards={}, has_current_card={}",
+        conv_id, imported_cards, current_card.is_some());
     Json(serde_json::json!({
         "conversation_id": conv_id,
         "plan": plan_content,
         "imported_cards": imported_cards,
+        "current_card": current_card,
+    }))
+}
+
+/// GET /api/k12/reading/{conv_id}/current-card — 获取当前 task 的课文卡片
+#[derive(Deserialize)]
+pub struct K12ReadingCurrentCardQuery {
+    pub user_id: String,
+}
+
+async fn k12_reading_current_card_handler(
+    headers: HeaderMap,
+    Path(conv_id): Path<String>,
+    Query(query): Query<K12ReadingCurrentCardQuery>,
+) -> Json<serde_json::Value> {
+    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
+        return auth_json(e);
+    }
+
+    let conn = crate::db_pool::get_conn();
+
+    // 1. 读取 plan_content（结构）和 plan_json（状态）
+    let (plan_content_str, plan_json_str): (String, String) = match conn.query_row(
+        "SELECT plan_content, plan_json FROM learning_plans WHERE conversation_id = ?1 AND mode = 'reading'",
+        rusqlite::params![conv_id],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+    ) {
+        Ok(v) => v,
+        Err(_) => return Json(serde_json::json!({"error": "reading plan not found"})),
+    };
+
+    let plan_content: serde_json::Value = match serde_json::from_str(&plan_content_str) {
+        Ok(v) => v,
+        Err(_) => return Json(serde_json::json!({"error": "invalid plan content"})),
+    };
+    let plan_json: serde_json::Value = serde_json::from_str(&plan_json_str).unwrap_or_default();
+
+    // 2. 找到第一个未完成的 task 的 reading_card_id
+    let card_id: Option<String> = (|| {
+        let stages = plan_content.get("stages")?.as_array()?;
+        for stage in stages {
+            let tasks = stage.get("tasks")?.as_array()?;
+            for task in tasks {
+                let task_name = task.get("name")?.as_str()?;
+                let status = plan_json.get(task_name).and_then(|s| s.as_str()).unwrap_or("pending");
+                if status == "done" {
+                    continue; // 已完成，跳过
+                }
+                // 找到第一个未完成/进行中的 task
+                let cid = task.get("reading_card_id")?.as_str()?.to_string();
+                if cid.is_empty() { return None; }
+                return Some(cid);
+            }
+        }
+        None
+    })();
+
+    let current_card = card_id
+        .as_deref()
+        .and_then(crate::reading_loader::get_card)
+        .and_then(|card| serde_json::to_value(card).ok());
+
+    Json(serde_json::json!({
+        "current_card": current_card,
     }))
 }
 

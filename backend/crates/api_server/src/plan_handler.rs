@@ -533,7 +533,7 @@ fn apply_plan_mutations(
         tracing::debug!("Plan mutation: reset_current_task=true — task reverted");
     }
 
-    // 持久化更新后的 plan — 只写状态（task_status + completed_concepts）
+    // 持久化更新后的 plan — 同时同步 plan_content（完整结构）和 plan_json（状态快照）
     let now = chrono::Utc::now().to_rfc3339();
     let task_status = extract_task_status(&plan);
     let mut status_update = serde_json::json!({"task_status": task_status});
@@ -541,25 +541,18 @@ fn apply_plan_mutations(
         status_update["completed_concepts"] = concepts.clone();
     }
 
-    // 检测是否有 sub_steps 变更（需要同时更新 plan_content）
-    let has_sub_steps = plan.get("stages").and_then(|s| s.as_array())
-        .map(|stages| stages.iter().any(|s| s["tasks"].as_array()
-            .map(|t| t.iter().any(|x| x.get("sub_steps").is_some())).unwrap_or(false)))
-        .unwrap_or(false);
+    // 从 in-memory plan 重建 plan_content（保留 stages 结构及更新后的 status）
+    let plan_content = serde_json::json!({
+        "stages": plan.get("stages"),
+        "completed_concepts": plan.get("completed_concepts"),
+    });
 
-    if has_sub_steps {
-        if let Err(e) = conn.execute(
-            "UPDATE learning_plans SET plan_content = ?1, plan_json = ?2, updated_at = ?3 WHERE id = ?4",
-            rusqlite::params![plan.to_string(), status_update.to_string(), now, plan_id],
-        ) {
-            tracing::error!("Plan mutation DB+content write failed: {} (plan_id={})", e, plan_id);
-            return None;
-        }
-    } else {
-        let _ = conn.execute(
-            "UPDATE learning_plans SET plan_json = ?1, updated_at = ?2 WHERE id = ?3",
-            rusqlite::params![status_update.to_string(), now, plan_id],
-        );
+    if let Err(e) = conn.execute(
+        "UPDATE learning_plans SET plan_content = ?1, plan_json = ?2, updated_at = ?3 WHERE id = ?4",
+        rusqlite::params![plan_content.to_string(), status_update.to_string(), now, plan_id],
+    ) {
+        tracing::error!("Plan mutation DB write failed: {} (plan_id={})", e, plan_id);
+        return None;
     }
 
     Some(plan)
@@ -963,6 +956,33 @@ pub fn build_plan_analysis_prompt(
     )
 }
 
+/// ColdPath 2: 创建计划 prompt — 无现有计划时使用
+/// 与 build_plan_analysis_prompt 物理拆分，职责清晰
+pub fn build_plan_creation_prompt(dialogue_text: &str) -> String {
+    format!(
+        r#"根据以下师生对话，为学生制定一个详细的学习计划。
+
+对话：
+{}
+
+请输出 JSON 格式的学习计划，包含：
+- goal: 学习目标（根据对话推断）
+- domain: 领域（math/language/chemistry/biology 之一）
+- stages: 阶段数组，每个阶段包含 name、status（in_progress/pending/completed）、tasks 数组
+- 每项 task 包含 name、status、description
+- completed_concepts: []
+- current_task_complete: false
+- next_stage_suggestion: null
+
+确保计划包含 3-5 个阶段，每个阶段 2-3 个任务，覆盖完整的学习路径。
+
+只返回 JSON，不要加其他文字：
+{{"is_new_plan": true, "goal": "...", "domain": "...", "stages": [...], "completed_concepts": [], "current_task_complete": false, "next_stage_suggestion": null}}
+"#,
+        dialogue_text
+    )
+}
+
 /// ColdPath 2: 分析对话进度，更新学习计划（如无计划则自动创建）
 /// 内部自行管理 DB 连接，不持有跨 .await 的引用（兼容 tokio::spawn）
 pub async fn analyze_plan_progress(
@@ -1168,28 +1188,7 @@ pub async fn analyze_plan_progress(
                 .collect::<Vec<_>>()
                 .join("\n");
 
-            let prompt = format!(
-                r#"根据以下师生对话，为学生制定一个详细的学习计划。
-
-对话：
-{}
-
-请输出 JSON 格式的学习计划，包含：
-- goal: 学习目标（根据对话推断）
-- domain: 领域（math/language/chemistry/biology 之一）
-- stages: 阶段数组，每个阶段包含 name、status（in_progress/pending/completed）、tasks 数组
-- 每项 task 包含 name、status、description
-- completed_concepts: []
-- current_task_complete: false
-- next_stage_suggestion: null
-
-确保计划包含 3-5 个阶段，每个阶段 2-3 个任务，覆盖完整的学习路径。
-
-只返回 JSON，不要加其他文字：
-{{"is_new_plan": true, "goal": "...", "domain": "...", "stages": [...], "completed_concepts": [], "current_task_complete": false, "next_stage_suggestion": null}}
-"#,
-                dialogue_text
-            );
+            let prompt = build_plan_creation_prompt(&dialogue_text);
 
             match caller.generate("", &prompt).await {
                 Ok(response) => {
@@ -1274,7 +1273,7 @@ fn unlock_next_cards(
                 let _ = conn.execute(
                     "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, subject, grade_band, k12_card_id)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-                    rusqlite::params![card_id, user_id, card_tmpl.domain, card_tmpl.card_type,
+                    rusqlite::params![card_id, user_id, subj, card_tmpl.card_type,
                         card_tmpl.front, card_tmpl.back, card_tmpl.source_sentence, conversation_id, now_ts,
                         subj, grade, card_tmpl.id],
                 );

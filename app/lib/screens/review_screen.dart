@@ -18,7 +18,7 @@ class ReviewScreen extends ConsumerStatefulWidget {
   ConsumerState<ReviewScreen> createState() => _ReviewScreenState();
 }
 
-class _ReviewScreenState extends ConsumerState<ReviewScreen> {
+class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerProviderStateMixin {
   final _answerController = TextEditingController();
   ChatClient? _client;
   List<DueCard> _cards = [];
@@ -29,7 +29,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   bool _hasLoadedOnce = false;
   String _verificationResult = '';
   bool _isVerified = false;
-  bool _isVerifying = false;  // 闭卷考试模式（翻回正面，不可再翻看）
+  bool _isVerifying = false;
   bool _isAiQuiz = false;
   List<VerifyQuestion> _aiQuestions = [];
   int _aiQuestionIndex = 0;
@@ -42,10 +42,20 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   bool _preloadingQuiz = false;
   bool _isJudging = false;
 
+  // 计划标签 & domain 过滤
+  late TabController _tabController;
+  List<Map<String, dynamic>> _planTabs = [];
+  bool _plansLoaded = false;
+  String? _domainFilter;  // null = 不过滤（原待复习tab），非空=只显示该domain
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadCards());
+    _tabController = TabController(length: 2, vsync: this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadCards();
+      _loadPlans();
+    });
     ref.listenManual(cardRefreshProvider, (prev, next) {
       if (prev != next && mounted) _loadCards();
     });
@@ -53,15 +63,36 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     ref.listenManual(authProvider, (prev, next) {
       if (!_hasLoadedOnce && next.userId != null) {
         _loadCards();
+        _loadPlans();
       }
     });
   }
 
   @override
   void dispose() {
+    _tabController.dispose();
     _answerController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadPlans() async {
+    final auth = ref.read(authProvider);
+    if (auth.userId == null) return;
+    final client = ChatClient(userId: auth.userId!, token: auth.token);
+    try {
+      final planList = await client.getPlans();
+      if (!mounted) return;
+      setState(() {
+        _planTabs = planList;
+        _plansLoaded = true;
+        final totalTabs = 2 + _planTabs.length;
+        final oldIndex = _tabController.index;
+        _tabController.dispose();
+        _tabController = TabController(length: totalTabs, vsync: this,
+          initialIndex: oldIndex.clamp(0, totalTabs - 1));
+      });
+    } catch (_) {}
   }
 
   void _initClient() {
@@ -326,8 +357,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   }
 
   Future<void> _submitInlineReview(int index) async {
-    if (_client == null || index >= _cards.length) return;
-    final card = _cards[index];
+    if (_client == null) return;
+    final displayCards = _filteredCards;
+    if (index >= displayCards.length) return;
+    final card = displayCards[index];
     final strategy = resolveStrategy(card);
     final vtype = strategy.isSpellingBased ? 'spelling' : 'ai_dialogue';
     // 序列化每道题细节
@@ -352,7 +385,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       );
       setState(() {
         _reviewedCount++;
-        _cards.removeAt(index);
+        _cards.removeWhere((c) => c.id == card.id);
         _activeCardIndex = -1;
       });
       final achievements = resp['achievements'] as List<dynamic>?;
@@ -374,37 +407,89 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
 
   // ── Build ──
 
+  /// 计算每个 domain 的待复习卡片数
+  int _domainDueCount(String domain) =>
+      domain.isEmpty ? _cards.length : _cards.where((c) => c.domain == domain).length;
+
+  /// 从 plan goal 提取简短标签（"K12: 数学 g3-4" → "数学 g3-4"）
+  String _planLabel(Map<String, dynamic> plan) {
+    final goal = plan['goal'] as String? ?? '';
+    return goal.replaceAll(RegExp(r'^K12:\s*'), '');
+  }
+
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('复习'),
-          bottom: TabBar(
-            labelColor: Theme.of(context).colorScheme.onSurface,
-            tabs: [
-              Tab(text: _isLoading ? '待复习' : '待复习 (${_cards.length})'),
-              const Tab(text: '全部卡片'),
-            ],
-          ),
-        ),
-        body: TabBarView(
-          children: [
-            _buildReviewTab(),
-            const CardListScreen(embedded: true),
+    // TabBar 切换时更新 domain 过滤
+    void onTabChanged() {
+      final i = _tabController.index;
+      if (i < _planTabs.length) {
+        final domain = _planTabs[i]['domain'] as String? ?? '';
+        if (domain != _domainFilter) {
+          setState(() {
+            _domainFilter = domain;
+            _activeCardIndex = -1;
+            _resetInlineReview();
+          });
+        }
+      } else {
+        setState(() {
+          _domainFilter = null;
+          _activeCardIndex = -1;
+          _resetInlineReview();
+        });
+      }
+    }
+    _tabController.removeListener(onTabChanged);
+    _tabController.addListener(onTabChanged);
+    // 初始化时应用首 tab 的 domain filter
+    if (_domainFilter == null && _planTabs.isNotEmpty) {
+      _domainFilter = _planTabs[0]['domain'] as String? ?? '';
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('复习'),
+        bottom: TabBar(
+          isScrollable: true,
+          controller: _tabController,
+          labelColor: Theme.of(context).colorScheme.onSurface,
+          tabs: [
+            ..._planTabs.map((p) {
+              final domain = p['domain'] as String? ?? '';
+              final count = _domainDueCount(domain);
+              return Tab(
+                child: Text('${_planLabel(p)}（$count）',
+                    overflow: TextOverflow.ellipsis),
+              );
+            }),
+            const Tab(text: '全部卡片'),
           ],
         ),
       ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          ..._planTabs.map((_) => _buildReviewTab()),
+          const CardListScreen(embedded: true),  // 全部卡片永远放最后
+        ],
+      ),
     );
   }
+
+  /// 按 domain 过滤的待复习列表（复用记忆曲线复习界面）
+  List<DueCard> get _filteredCards =>
+      _domainFilter == null
+          ? _cards
+          : _cards.where((c) => c.domain == _domainFilter).toList();
 
   Widget _buildReviewTab() {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_cards.isEmpty) {
+    final displayCards = _filteredCards;
+
+    if (displayCards.isEmpty) {
       return RefreshIndicator(
         onRefresh: _loadCards,
         child: ListView(
@@ -465,14 +550,15 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   Widget _buildQueue() {
     final stateLabels = ['新卡片', '学习中', '复习中', '重学中'];
     final stateColors = [Colors.blue, Colors.orange, Colors.green, Colors.purple];
+    final displayCards = _filteredCards;
 
     return ListView.builder(
       controller: _scrollController,
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
-      itemCount: _cards.length,
+      itemCount: displayCards.length,
       itemBuilder: (_, i) {
-        final card = _cards[i];
+        final card = displayCards[i];
         final state = card.state.clamp(0, 3);
         final isActive = _activeCardIndex == i;
 

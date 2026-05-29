@@ -1,0 +1,33 @@
+{
+  "expected_tasks": {
+    "stages": [
+      {
+        "name": "七年级上册·第一单元",
+        "tasks": [
+          {
+            "focus": "语言特色·比喻排比与多感官描写",
+            "mode": "reading_first",
+            "name": "春"
+          },
+          {
+            "focus": "对比手法·老舍的语言风格",
+            "mode": "reading_first",
+            "name": "济南的冬天"
+          },
+          {
+            "focus": "多感官描写·时间顺序结构",
+            "mode": "reading_first",
+            "name": "雨的四季"
+          }
+        ]
+      }
+    ]
+  },
+  "grade_band": "g7-9",
+  "run_id": "eval_20260527_130922_chinese_g79",
+  "started_at": "2026-05-27T13:09:22.032257700+00:00",
+  "subject": "语文",
+  "subject_key": "chinese",
+  "total_stages": 36,
+  "total_tasks": 3
+}

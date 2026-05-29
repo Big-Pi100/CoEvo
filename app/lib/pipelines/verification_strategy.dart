@@ -56,6 +56,9 @@ VerificationStrategy resolveStrategy(DueCard card) {
     case 'math':
     case 'physics':
       return MathVerificationStrategy();
+    case '数学':
+    case '物理':
+      return MathVerificationStrategy();
     default:
       return GeneralVerificationStrategy();
   }

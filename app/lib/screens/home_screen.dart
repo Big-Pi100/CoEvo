@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
+import 'chat_screen.dart';
 
 /// 首页 — 科目直选 + 模式自动路由
 class HomeScreen extends ConsumerWidget {
@@ -26,12 +27,13 @@ class HomeScreen extends ConsumerWidget {
   };
 
   static const _gradeNames = {
-    'g1-2': '小学低年级（1-2年级）',
-    'g3-4': '小学中年级（3-4年级）',
-    'g5-6': '小学高年级（5-6年级）',
-    'g7-9': '初中（7-9年级）',
+    'g1-2': '小学低年级',
+    'g3-4': '小学中年级',
+    'g5-6': '小学高年级',
+    'g7-9': '初中',
     'g10': '高中一年级',
     'g11-12': '高中二三年级',
+    'g10-12': '高中',
   };
 
   // 科目 → 模式
@@ -52,6 +54,23 @@ class HomeScreen extends ConsumerWidget {
     '信息技术': Color(0xFF7986CB),
     '日语': Color(0xFFE0A050),
     '俄语': Color(0xFFC0392B),
+  };
+
+  // 科目图标
+  static final _subjectIcons = <String, IconData>{
+    '数学': Icons.calculate,
+    '语文': Icons.menu_book,
+    '英语': Icons.language,
+    '物理': Icons.science,
+    '化学': Icons.biotech,
+    '生物': Icons.pets,
+    '历史': Icons.auto_stories,
+    '地理': Icons.explore,
+    '政治': Icons.account_balance,
+    '科学': Icons.travel_explore,
+    '信息技术': Icons.computer,
+    '日语': Icons.translate,
+    '俄语': Icons.translate,
   };
 
   @override
@@ -90,7 +109,31 @@ class HomeScreen extends ConsumerWidget {
                 title: Text('开始对话', style: theme.textTheme.titleMedium),
                 subtitle: const Text('和 AI 自由对话学习新知识'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('/chat'),
+                onTap: () {
+                  ref.read(currentConversationIdProvider.notifier).state = null;
+                  context.push('/chat');
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 历史对话入口
+            Card(
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.orange.withAlpha(30),
+                  child: Icon(Icons.history, color: Colors.orange.shade700),
+                ),
+                title: Text('历史对话', style: theme.textTheme.titleMedium),
+                subtitle: const Text('继续之前的对话，或恢复已学习内容'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  final convId = await context.push<String>('/conversations');
+                  if (convId != null && context.mounted) {
+                    ref.read(currentConversationIdProvider.notifier).state = null;
+                    context.push('/chat', extra: convId);
+                  }
+                },
               ),
             ),
             const SizedBox(height: 16),
@@ -114,6 +157,7 @@ class HomeScreen extends ConsumerWidget {
                   return _SubjectCard(
                     name: subject,
                     color: color,
+                    icon: _subjectIcons[subject] ?? Icons.school,
                     onTap: () => _startSubject(context, ref, subject, grades),
                   );
                 },
@@ -131,6 +175,16 @@ class HomeScreen extends ConsumerWidget {
     String subject,
     List<String> grades,
   ) async {
+    // 合并高中选项（g10 + g11-12 → g10-12），前端统一显示为"高中"
+    final hasG10 = grades.contains('g10');
+    final hasG1112 = grades.contains('g11-12');
+    if (hasG10 || hasG1112) {
+      grades = grades
+          .where((g) => g != 'g10' && g != 'g11-12')
+          .toList()
+        ..add('g10-12');
+    }
+
     // 选择年级
     final gradeBand = await showDialog<String>(
       context: context,
@@ -175,11 +229,13 @@ class HomeScreen extends ConsumerWidget {
 class _SubjectCard extends StatelessWidget {
   final String name;
   final Color color;
+  final IconData icon;
   final VoidCallback onTap;
 
   const _SubjectCard({
     required this.name,
     required this.color,
+    required this.icon,
     required this.onTap,
   });
 
@@ -197,7 +253,7 @@ class _SubjectCard extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.school, color: color, size: 28),
+            Icon(icon, color: color, size: 28),
             const SizedBox(height: 6),
             Text(name,
                 style: TextStyle(

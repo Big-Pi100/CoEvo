@@ -15,6 +15,7 @@ class ConceptDialog {
     required List<ConceptCandidate> candidates,
     required ChatClient? client,
     required WidgetRef ref,
+    String? conversationId,
   }) {
     if (candidates.isEmpty) return;
 
@@ -100,7 +101,7 @@ class ConceptDialog {
                     }
                   }
                   if (toCreate.isNotEmpty && client != null) {
-                    final result = await client.batchCreateCards(toCreate);
+                    final result = await client.batchCreateCards(toCreate, conversationId: conversationId);
                     if (context.mounted) {
                       final count = (result['created'] as List?)?.length ?? 0;
                       if (count > 0) ref.read(cardRefreshProvider.notifier).state++;

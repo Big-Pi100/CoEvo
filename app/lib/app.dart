@@ -10,6 +10,7 @@ import 'screens/review_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/conversation_list_screen.dart';
 import 'screens/skipped_list_screen.dart';
+import 'screens/reading_full_text_screen.dart';
 import 'screens/home_screen.dart';
 import 'providers/auth_provider.dart';
 
@@ -107,6 +108,29 @@ final goRouter = GoRouter(
               child: child,
             ),
       ),
+    ),
+    GoRoute(
+      path: '/reading-full-text',
+      pageBuilder: (context, state) {
+        final card = state.extra as Map<String, dynamic>? ?? <String, dynamic>{};
+        return CustomTransitionPage(
+          key: state.pageKey,
+          child: ReadingFullTextScreen(
+            title: (card['front'] as String?) ?? (card['title'] as String?) ?? '',
+            author: (card['author'] as String?) ?? '',
+            fullText: (card['full_text'] as String?) ?? '',
+            appreciation: (card['appreciation'] as List<dynamic>?)?.cast<String>(),
+            technique: (card['technique'] as List<dynamic>?)?.cast<String>(),
+            theme: card['theme'] as String?,
+            commonMistakes: card['common_mistakes'] as String?,
+          ),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+              SlideTransition(
+                position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(animation),
+                child: child,
+              ),
+        );
+      },
     ),
     GoRoute(
       path: '/skipped',

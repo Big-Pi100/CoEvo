@@ -1,6 +1,6 @@
 //! K12 V3 预生成数据加载器
 //!
-//! 启动时从 docs/curriculum/prebuilt/{plans,cards}/ 加载 V3 格式数据
+//! 启动时从 data/curriculum/prebuilt/{plans,cards}/ 加载 V3 格式数据
 //! 从文件名推断 subject + level，无需数据文件内嵌。
 //! 供 /k12/init 路由直接使用。
 
@@ -188,10 +188,11 @@ pub fn init() -> Result<(), String> {
                     }
                 };
                 let key = format!("{}_{}", subject, level);
+                eprintln!("[K12] loaded {} → key={} ({} cards)", fname, key, card_file.cards.len());
                 card_index.insert(key, card_file.cards);
             }
         }
-        tracing::info!("K12: loaded {} card sets from {}", card_index.len(), cards_dir.display());
+        eprintln!("[K12] loaded {} card sets from {}", card_index.len(), cards_dir.display());
     } else {
         tracing::warn!("K12: cards dir not found: {}", cards_dir.display());
     }
@@ -238,6 +239,7 @@ pub fn get_plan(subject_cn: &str, grade: &str) -> Option<PlanData> {
         eprintln!("[K12] WARN: {} no stages match grade_band '{}' (plan has {} stages)", subject_cn, grade_for_filter, plan.stages.len());
         tracing::warn!("K12: no stages match grade_band {} for {}", grade, subject_cn);
     }
+    eprintln!("[K12] get_plan: {} -> {} stages (filtered for grade={})", subject_cn, result.stages.len(), grade);
     Some(result)
 }
 
@@ -253,11 +255,25 @@ pub fn get_cards(subject_cn: &str, grade: &str) -> Option<&'static Vec<CardData>
     };
     let key = format!("{}_{}", subject_key, level);
     let result = get().card_index.get(&key);
-    if result.is_none() {
+    if let Some(cards) = result {
+        eprintln!("[K12] get_cards: {} -> {} cards (key={})", subject_cn, cards.len(), key);
+    } else {
         eprintln!("[K12] get_cards: MISS key={} (subject={})", key, subject_cn);
         tracing::warn!("K12: cards not found: {} (key={})", subject_cn, key);
     }
     result
+}
+
+/// 按 ID 查找卡片（遍历所有 card_index 条目）
+pub fn get_card_by_id(card_id: &str) -> Option<&'static CardData> {
+    for cards in get().card_index.values() {
+        for card in cards {
+            if card.id == card_id {
+                return Some(card);
+            }
+        }
+    }
+    None
 }
 
 fn load_json<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> Result<T, String> {
@@ -276,12 +292,12 @@ impl Paths {
         }
         // 开发模式：从 CARGO_MANIFEST_DIR 定位
         let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../docs/curriculum/prebuilt");
+            .join("../../../data/curriculum/prebuilt");
         if dev_path.join("plans").exists() {
             return dev_path;
         }
         // 回退：相对 CWD（兼容在项目根目录运行）
-        let cwd_path = std::path::PathBuf::from("docs/curriculum/prebuilt");
+        let cwd_path = std::path::PathBuf::from("data/curriculum/prebuilt");
         if cwd_path.join("plans").exists() {
             return cwd_path;
         }

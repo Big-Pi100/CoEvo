@@ -8,9 +8,9 @@
 
 | 文件路径 | 范围 | 数量 |
 |:---------|:----|:----:|
-| `docs/curriculum/prebuilt/cards/chinese_reading_primary.json` | 小学课文 | 409 |
-| `docs/curriculum/prebuilt/cards/chinese_reading_extended.json` | 拓展阅读 | 142 |
-| `docs/curriculum/prebuilt/cards/chinese_reading_missing.json` | 补录课文 | 45 |
+| `data/curriculum/prebuilt/cards/chinese_reading_primary.json` | 小学课文 | 409 |
+| `data/curriculum/prebuilt/cards/chinese_reading_extended.json` | 拓展阅读 | 142 |
+| `data/curriculum/prebuilt/cards/chinese_reading_missing.json` | 补录课文 | 45 |
 
 ## 评估脚本
 
@@ -197,15 +197,15 @@ python3 -c "...统计脚本..." > docs/eval/stats_$(date +%Y%m%d_%H%M%S).md
 卡片 JSON 和评估文档由 Git 跟踪：
 
 ```bash
-git log --oneline -- docs/curriculum/prebuilt/cards/chinese_reading_*.json
-git diff <commit1> <commit2> -- docs/curriculum/prebuilt/cards/chinese_reading_primary.json
+git log --oneline -- data/curriculum/prebuilt/cards/chinese_reading_*.json
+git diff <commit1> <commit2> -- data/curriculum/prebuilt/cards/chinese_reading_primary.json
 ```
 
 基线提交：`cad41f8 "card quality evaluation baseline v1"`
 
 后续每次修复后：
 ```bash
-git add docs/curriculum/prebuilt/cards/chinese_reading_*.json docs/eval/
+git add data/curriculum/prebuilt/cards/chinese_reading_*.json docs/eval/
 git commit -m "fix(cards): 具体修复内容描述"
 ```
 
