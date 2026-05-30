@@ -95,3 +95,22 @@
 1. **删除平台目录 ≠ 删除平台 SDK**：`app/ohos/` 只是构建配置，真正的平台耦合在 Flutter SDK 的 Framework 层（`TargetPlatform.ohos`）
 2. **第三方包的 exhaustive switch 是隐式平台耦合**：任何在 `TargetPlatform` 上做穷举开关的包，在非标准 Flutter SDK 下都可能编译失败
 3. **PATH 优先于意图**：即使删除所有鸿蒙代码，只要 PATH 指向 ohos SDK，编译环境就仍是鸿蒙模式
+
+---
+
+## 六、当前 SDK 配置（2026-05-30 更新）
+
+当前使用的 Flutter SDK 为 **社区版**：
+
+| 项目 | 值 |
+|:----|:----|
+| SDK 路径 | `D:\flutter_flutter\bin\flutter.bat` |
+| 版本 | 3.27.5-ohos-1.0.2（社区版，含华为 SDK 支持） |
+| 状态 | ✅ 正常工作，用于 Web 构建和部署 |
+
+**不过度使用路径**：
+- `D:\flutter_ohos` — 鸿蒙定制版，不用于 Web 构建
+- `D:\flutter` — 标准版 Flutter，未验证兼容性
+- `D:\flutter_flutter` — 社区版，**当前使用的版本**（已验证 Web 构建正常）
+
+> 详情见 `docs/deploy/web-deploy-guide.md` 第 3.1 节。

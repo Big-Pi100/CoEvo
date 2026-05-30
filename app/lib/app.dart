@@ -8,6 +8,7 @@ import 'screens/admin_screen.dart';
 import 'screens/guardian_screen.dart';
 import 'screens/review_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/achievements_screen.dart';
 import 'screens/conversation_list_screen.dart';
 import 'screens/skipped_list_screen.dart';
 import 'screens/reading_full_text_screen.dart';
@@ -78,12 +79,24 @@ final goRouter = GoRouter(
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: '/profile',
-              builder: (context, state) => const ProfileScreen(),
+              path: '/achievements',
+              builder: (context, state) => const AchievementsScreen(),
             ),
           ],
         ),
       ],
+    ),
+    GoRoute(
+      path: '/profile',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const ProfileScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            SlideTransition(
+              position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(animation),
+              child: child,
+            ),
+      ),
     ),
     GoRoute(
       path: '/chat',
@@ -163,7 +176,7 @@ class _ShellScaffold extends StatelessWidget {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.school_outlined), selectedIcon: Icon(Icons.school), label: '学习'),
           NavigationDestination(icon: Icon(Icons.replay_outlined), selectedIcon: Icon(Icons.replay), label: '复习'),
-          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '个人'),
+          NavigationDestination(icon: Icon(Icons.emoji_events_outlined), selectedIcon: Icon(Icons.emoji_events), label: '成就'),
         ],
       ),
     );

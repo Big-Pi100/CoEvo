@@ -419,11 +419,11 @@ async fn chat_handler(
 
     // 7. Extract candidate concepts (async, uses pre-queried data)
     let conn7 = crate::db_pool::get_conn();
-    let (extract_domain, _, _) = crate::plan_handler::build_plan_context(&conn7, &input.conversation_id);
+    let (extract_domain, _, extract_plan_ctx) = crate::plan_handler::build_plan_context(&conn7, &input.conversation_id);
     let extraction = chat_engine::concept_extractor::extract_concepts(
         &input.user_id, &input.message, &final_reply,
         &existing_fronts, &skipped_fronts, &llm_config, &history,
-        &extract_domain,
+        &extract_domain, &extract_plan_ctx,
     ).await;
     let candidates: Vec<String> = extraction.candidates.iter().map(|c| c.front.clone()).collect();
 
@@ -453,7 +453,7 @@ async fn review_due_handler(
         return auth_json(e);
     }
     let conn = crate::db_pool::get_conn();
-    let (cards, total) = card_engine::fsrs_scheduler::get_due_cards(&conn, &query.user_id, 20);
+    let (cards, total) = card_engine::fsrs_scheduler::get_due_cards(&conn, &query.user_id, 500);
     Json(serde_json::json!({
         "cards": cards,
         "total_due": total,
@@ -1643,38 +1643,50 @@ async fn learning_report_handler(
 
     // 1. 所有学习计划进度
     let mut stmt_plans = conn.prepare(
-        "SELECT plan_json, goal, mode, updated_at FROM learning_plans WHERE user_id = ?1 AND mode != 'deleted' ORDER BY updated_at DESC"
+        "SELECT plan_json, plan_content, goal, mode, updated_at FROM learning_plans WHERE user_id = ?1 AND mode != 'deleted' ORDER BY updated_at DESC"
     ).unwrap();
     let mut plans: Vec<serde_json::Value> = Vec::new();
     for row in stmt_plans.query_map(rusqlite::params![user_id], |row| {
         let pj: String = row.get(0)?;
-        let goal: String = row.get(1)?;
-        let mode: String = row.get(2)?;
-        let updated: String = row.get(3)?;
-        Ok((pj, goal, mode, updated))
+        let pc: Option<String> = row.get(1)?;
+        let goal: String = row.get(2)?;
+        let mode: String = row.get(3)?;
+        let updated: String = row.get(4)?;
+        Ok((pj, pc, goal, mode, updated))
     }).unwrap().filter_map(|r| r.ok()) {
-        let (pj, goal, mode, updated) = row;
-        if let Ok(plan) = serde_json::from_str::<serde_json::Value>(&pj) {
-            let mut total_tasks = 0u32;
-            let mut done_tasks = 0u32;
-            let mut current_stage = "";
-            if let Some(stages) = plan.get("stages").and_then(|v| v.as_array()) {
-                for stage in stages {
-                    let sname = stage["name"].as_str().unwrap_or("");
-                    let sstatus = stage["status"].as_str().unwrap_or("pending");
-                    if sstatus == "in_progress" && current_stage.is_empty() {
-                        current_stage = sname;
-                    }
-                    if let Some(tasks) = stage["tasks"].as_array() {
-                        for task in tasks {
-                            total_tasks += 1;
-                            if task["status"].as_str().unwrap_or("") == "done" {
-                                done_tasks += 1;
+        let (pj, pc, goal, mode, updated) = row;
+                if let Ok(plan) = serde_json::from_str::<serde_json::Value>(&pj) {
+                    let mut total_tasks = 0u32;
+                    let mut done_tasks = 0u32;
+                    let mut current_stage = "";
+                    // plan_json 可能只有 task_status（被 apply_plan_mutations 改写后），
+                    // 需要从 plan_content 中读取 stages 结构
+                    let stages = plan.get("stages").and_then(|v| v.as_array());
+                    if stages.is_none() || stages.unwrap().is_empty() {
+                        // 从 plan_content 取 stages
+                        if let Some(ref pc_str) = pc {
+                            let (ct, dd) = compute_plan_totals(pc_str, &plan);
+                            total_tasks = ct;
+                            done_tasks = dd;
+                        }
+                    } else {
+                        // plan_json 有 stages（旧格式）
+                        for stage in stages.unwrap() {
+                            let sname = stage["name"].as_str().unwrap_or("");
+                            let sstatus = stage["status"].as_str().unwrap_or("pending");
+                            if sstatus == "in_progress" && current_stage.is_empty() {
+                                current_stage = sname;
+                            }
+                            if let Some(tasks) = stage["tasks"].as_array() {
+                                for task in tasks {
+                                    total_tasks += 1;
+                                    if task["status"].as_str().unwrap_or("") == "done" {
+                                        done_tasks += 1;
+                                    }
+                                }
                             }
                         }
                     }
-                }
-            }
             plans.push(serde_json::json!({
                 "goal": goal,
                 "mode": mode,
@@ -1736,6 +1748,33 @@ async fn learning_report_handler(
             "tasks_passed": bronze_count,
         }
     }))
+}
+
+/// 从 plan_content JSON 字符串中计算任务总数和完成数
+/// status_map (plan_json 的 task_status) 用于 reading 模式的状态覆盖
+fn compute_plan_totals(plan_content_str: &str, plan_json: &serde_json::Value) -> (u32, u32) {
+    let mut total: u32 = 0;
+    let mut done: u32 = 0;
+    let status_map = plan_json.get("task_status").and_then(|v| v.as_object());
+    if let Ok(pc_v) = serde_json::from_str::<serde_json::Value>(plan_content_str) {
+        if let Some(stages) = pc_v.get("stages").and_then(|v| v.as_array()) {
+            for stage in stages {
+                if let Some(tasks) = stage["tasks"].as_array() {
+                    for task in tasks {
+                        total += 1;
+                        if let Some(name) = task.get("name").and_then(|n| n.as_str()) {
+                            if status_map.and_then(|m| m.get(name)).and_then(|v| v.as_str()) == Some("done") {
+                                done += 1;
+                            }
+                        } else if task["status"].as_str().unwrap_or("") == "done" {
+                            done += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    (total, done)
 }
 
 // ════════════════════════════════════════════
@@ -2054,16 +2093,30 @@ async fn k12_init_handler(
         "stages": plan.stages,
         "total_crs": plan.total_crs,
     });
-    let plan_str = serde_json::to_string(&plan_json).unwrap_or_default();
-    // 先清理同一用户+科目的旧学习计划（防止 UNIQUE 冲突）
+    // 激活第一个任务（防止所有任务都是 pending，CP2 无法推进）
+    let plan_str = {
+        let mut pj = plan_json.clone();
+        if let Some(stages) = pj.get_mut("stages").and_then(|s| s.as_array_mut()) {
+            if let Some(first_stage) = stages.first_mut() {
+                if let Some(tasks) = first_stage.get_mut("tasks").and_then(|t| t.as_array_mut()) {
+                    if let Some(first_task) = tasks.first_mut() {
+                        first_task["status"] = serde_json::json!("in_progress");
+                    }
+                }
+            }
+        }
+        serde_json::to_string(&pj).unwrap_or_default()
+    };
+    // 先清理同一用户+科目+学段的旧学习计划（防止 UNIQUE 冲突）
+    // domain = subject + grade_band，确保不同学段不互相覆盖
     let _ = conn.execute(
         "DELETE FROM learning_plans WHERE user_id = ?1 AND domain = ?2",
-        rusqlite::params![input.user_id, input.subject],
+        rusqlite::params![input.user_id, format!("{}_{}", input.subject, input.grade_band)],
     );
     if let Err(e) = conn.execute(
         "INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_content, plan_json, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, 'structured', ?6, ?7, ?8, ?8)",
-        rusqlite::params![plan_id, input.user_id, conv_id, format!("K12: {} {}", input.subject, input.grade_band), input.subject, plan_str, plan_str, now_str],
+        rusqlite::params![plan_id, input.user_id, conv_id, format!("K12: {} {}", input.subject, input.grade_band), format!("{}_{}", input.subject, input.grade_band), plan_str, plan_str, now_str],
     ) {
         return Json(serde_json::json!({"error": format!("Plan insert: {}", e)}));
     }
@@ -2246,6 +2299,8 @@ async fn k12_reading_init_handler(
     } else {
         serde_json::Value::Object(serde_json::Map::new())
     };
+    // 激活第一个任务（reading 模式 CP2 查找 in_progress 的前提）
+    let status_map = activate_first_task(status_map, &plan_content);
     let plan_json_str = serde_json::to_string(&status_map).unwrap_or_default();
     eprintln!("[READING-HANDLER] plan_content={}B, plan_json={}B", plan_content_str.len(), plan_json_str.len());
 
@@ -2254,16 +2309,16 @@ async fn k12_reading_init_handler(
         return Json(serde_json::json!({"error": "Plan serialization failed"}));
     }
 
-    // 先删该用户该科目的所有 plan（UNIQUE (user_id, domain)）
+    // 先删该用户该科目同学段的所有 plan（UNIQUE (user_id, domain)）
     let _ = conn.execute(
         "DELETE FROM learning_plans WHERE user_id = ?1 AND domain = ?2",
-        rusqlite::params![input.user_id, input.subject],
+        rusqlite::params![input.user_id, format!("{}_{}", input.subject, input.grade_band)],
     );
     if let Err(e) = conn.execute(
         "INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_content, plan_json, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, 'reading', ?6, ?7, ?8, ?8)",
         rusqlite::params![uuid::Uuid::new_v4().to_string(), input.user_id, conv_id,
-            format!("Reading: {} {}", input.subject, input.grade_band), input.subject,
+            format!("Reading: {} {}", input.subject, input.grade_band), format!("{}_{}", input.subject, input.grade_band),
             plan_content_str, plan_json_str, now_str],
     ) {
         eprintln!("[READING-HANDLER] Plan INSERT failed: {}", e);
@@ -2439,6 +2494,25 @@ async fn k12_reading_current_card_handler(
 #[derive(Deserialize)]
 pub struct K12ProgressQuery {
     pub user_id: String,
+}
+
+/// 激活计划中的第一个任务：将第一 stage 的第一个 task 设为 in_progress
+/// 防止 reading/structured 模式创建计划后所有任务全 pending，CP2 无法推进
+fn activate_first_task(mut status_map: serde_json::Value, plan_content: &serde_json::Value) -> serde_json::Value {
+    if let Some(first_task_name) = plan_content.get("stages")
+        .and_then(|s| s.as_array())
+        .and_then(|a| a.first())
+        .and_then(|stage| stage.get("tasks"))
+        .and_then(|t| t.as_array())
+        .and_then(|a| a.first())
+        .and_then(|task| task.get("name"))
+        .and_then(|n| n.as_str())
+    {
+        if let Some(map) = status_map.as_object_mut() {
+            map.insert(first_task_name.to_string(), serde_json::json!("in_progress"));
+        }
+    }
+    status_map
 }
 
 async fn k12_progress_handler(

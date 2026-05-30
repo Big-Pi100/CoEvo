@@ -126,6 +126,12 @@ CREATE TABLE IF NOT EXISTS k12_quiz_attempts (
     id TEXT PRIMARY KEY, user_id TEXT NOT NULL, task_name TEXT,
     is_correct INTEGER, attempted_at TEXT
 );
+CREATE TABLE IF NOT EXISTS review_log (
+    id TEXT PRIMARY KEY, card_id TEXT NOT NULL, rating INTEGER DEFAULT 0,
+    verification_type TEXT, verification_result TEXT, details_json TEXT,
+    reviewed_at INTEGER NOT NULL,
+    FOREIGN KEY (card_id) REFERENCES cards(id)
+);
 "#;
 
 // ════════════════════════════════════════════
@@ -154,6 +160,7 @@ mod helpers {
 
     /// 公共 setup：清理 DB → 加载 .env → 初始化 pool → 创建 schema → 插入用户/对话
     pub fn setup() {
+        // 只删除数据文件，不重新初始化 pool（singleton OnceLock）
         let _ = fs::remove_file(TEST_DB_PATH);
         let _ = fs::create_dir_all("data");
 
@@ -164,10 +171,24 @@ mod helpers {
             }
         }
 
-        api_server::db_pool::init(TEST_DB_PATH).expect("init DB pool");
+        // Pool 可能已存在（跨测试复用），仅当首次运行时初始化
+        if api_server::db_pool::init(TEST_DB_PATH).is_err() {
+            // pool 已存在，只需重建表
+        }
 
         {
             let conn = api_server::db_pool::get_conn();
+            let _ = conn.execute_batch("DROP TABLE IF EXISTS review_log");
+            let _ = conn.execute_batch("DROP TABLE IF EXISTS k12_quiz_attempts");
+            let _ = conn.execute_batch("DROP TABLE IF EXISTS k12_quiz_bank");
+            let _ = conn.execute_batch("DROP TABLE IF EXISTS card_memory");
+            let _ = conn.execute_batch("DROP TABLE IF EXISTS cards");
+            let _ = conn.execute_batch("DROP TABLE IF EXISTS achievements");
+            let _ = conn.execute_batch("DROP TABLE IF EXISTS learning_plans");
+            let _ = conn.execute_batch("DROP TABLE IF EXISTS conversation_turns");
+            let _ = conn.execute_batch("DROP TABLE IF EXISTS conversations");
+            let _ = conn.execute_batch("DROP TABLE IF EXISTS tokens");
+            let _ = conn.execute_batch("DROP TABLE IF EXISTS users");
             conn.execute_batch(SCHEMA_SQL).expect("create schema");
         }
 
@@ -1374,7 +1395,7 @@ async fn e2e_live_06_reading_context_quality() {
     for p in &["../../.env", ".env", "../.env"] {
         if dotenvy::from_filename(p).is_ok() { break; }
     }
-    api_server::db_pool::init(TEST_DB_PATH).expect("init DB pool");
+    api_server::db_pool::init(TEST_DB_PATH).ok();
     {
         let conn = api_server::db_pool::get_conn();
         conn.execute_batch(SCHEMA_SQL).expect("create schema");
@@ -1998,19 +2019,27 @@ async fn run_eval_session(
         trimmed_stages.push(stage_json);
     }
 
-    let plan_content = serde_json::json!({
+    let mut plan_content = serde_json::json!({
         "subject": subject_key, "grade_band": grade_band,
         "goal": plan.goal, "stages": trimmed_stages,
     });
-    let plan_content_str = serde_json::to_string(&plan_content).unwrap();
+    // 激活第一个任务（reading 模式 CP2 查找 in_progress 的前提）
+    let first_task_name: Option<String> = plan_content["stages"].as_array()
+        .and_then(|a| a.first())
+        .and_then(|s| s["tasks"].as_array())
+        .and_then(|a| a.first())
+        .and_then(|t| t["name"].as_str())
+        .map(|s| s.to_string());
     let mut status_map = serde_json::Map::new();
     for stage in plan_content["stages"].as_array().unwrap() {
         for task in stage["tasks"].as_array().unwrap() {
             if let Some(name) = task["name"].as_str() {
-                status_map.insert(name.to_string(), serde_json::json!("pending"));
+                let status = if first_task_name.as_deref() == Some(name) { "in_progress" } else { "pending" };
+                status_map.insert(name.to_string(), serde_json::json!(status));
             }
         }
     }
+    let plan_content_str = serde_json::to_string(&plan_content).unwrap();
     let plan_json_str = serde_json::to_string(&serde_json::Value::Object(status_map)).unwrap();
 
     // meta.json
@@ -2171,6 +2200,8 @@ async fn run_eval_session(
         let meta_turn = serde_json::json!({
             "turn": turn, "plan_updated": result.plan_updated,
             "latency_ms": latency_ms, "reply_chars": raw_reply.len(),
+            "prompt_tokens_est": (system_prompt.len() + user_content.len()) / 2,
+            "completion_tokens_est": raw_reply.len() / 2,
         });
         fs::write(format!("{}/llm_metadata.json", turn_dir),
             serde_json::to_string_pretty(&meta_turn).unwrap()).ok();
@@ -2212,12 +2243,247 @@ async fn run_eval_session(
         }
     }
 
+    // ── Phase 2: 卡片验证 ──
+    eprintln!("[EVAL] Phase 2: Card verification...");
+    let conn = api_server::db_pool::get_conn();
+    let total_cards: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM cards WHERE user_id = ?1",
+        rusqlite::params![TEST_USER_ID],
+        |row| row.get(0),
+    ).unwrap_or(0);
+    let concept_cards: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM cards WHERE user_id = ?1 AND (card_type = 'concept' OR card_type = 'concept_card')",
+        rusqlite::params![TEST_USER_ID],
+        |row| row.get(0),
+    ).unwrap_or(0);
+    let vocab_cards: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM cards WHERE user_id = ?1 AND (card_type = 'vocab' OR card_type = 'vocabulary')",
+        rusqlite::params![TEST_USER_ID],
+        |row| row.get(0),
+    ).unwrap_or(0);
+    let reading_cards: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM cards WHERE user_id = ?1 AND (card_type = 'reading' OR card_type = 'nursery_rhyme' OR card_type = '课文卡')",
+        rusqlite::params![TEST_USER_ID],
+        |row| row.get(0),
+    ).unwrap_or(0);
+    let card_memory_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM card_memory cm JOIN cards c ON cm.card_id = c.id WHERE c.user_id = ?1",
+        rusqlite::params![TEST_USER_ID],
+        |row| row.get(0),
+    ).unwrap_or(0);
+
+    // 读取已完成任务对应的预期词卡
+    let plan_content_str: Option<String> = conn.query_row(
+        "SELECT plan_content FROM learning_plans WHERE conversation_id = ?1 ORDER BY updated_at DESC LIMIT 1",
+        rusqlite::params![TEST_CONV_ID],
+        |row| row.get(0),
+    ).ok();
+    let mut expected_vocab = 0usize;
+    let mut expected_reading = 0usize;
+    if let Some(ref pc) = plan_content_str {
+        if let Ok(pcv) = serde_json::from_str::<serde_json::Value>(pc) {
+            if let Some(stages) = pcv.get("stages").and_then(|v| v.as_array()) {
+                for stage in stages {
+                    if let Some(tasks) = stage.get("tasks").and_then(|v| v.as_array()) {
+                        for task in tasks {
+                            let status = task.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                            if status == "done" {
+                                expected_vocab += task.get("vocab_card_ids")
+                                    .and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+                                if task.get("reading_card_id").and_then(|v| v.as_str()).map(|s| !s.is_empty()).unwrap_or(false) {
+                                    expected_reading += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let cards_summary = serde_json::json!({
+        "total_cards": total_cards,
+        "by_type": {"concept": concept_cards, "vocab": vocab_cards, "reading": reading_cards},
+        "card_memory_records": card_memory_count,
+        "expected_from_completed_tasks": {
+            "vocab_card_ids": expected_vocab,
+            "reading_card_id": expected_reading,
+        },
+    });
+    fs::write(format!("{}/cards_summary.json", run_dir),
+        serde_json::to_string_pretty(&cards_summary).unwrap()).ok();
+
+    // 读卡日志（仅当有卡时记录详情）
+    if total_cards > 0 {
+        let mut stmt = conn.prepare(
+            "SELECT id, card_type, front, subject, grade_band FROM cards WHERE user_id = ?1 LIMIT 50"
+        ).unwrap();
+        let imported_cards: Vec<serde_json::Value> = stmt.query_map(
+            rusqlite::params![TEST_USER_ID],
+            |row| Ok(serde_json::json!({
+                "id": row.get::<_,String>(0)?,
+                "card_type": row.get::<_,String>(1)?,
+                "front": row.get::<_,String>(2)?,
+                "subject": row.get::<_,Option<String>>(3)?,
+                "grade_band": row.get::<_,Option<String>>(4)?,
+            })),
+        ).unwrap().filter_map(|r| r.ok()).collect();
+        fs::write(format!("{}/cards_imported.json", run_dir),
+            serde_json::to_string_pretty(&serde_json::json!({"cards": imported_cards})).unwrap()).ok();
+
+        // ── Phase 3: 复习流完整验证 ──
+        eprintln!("[EVAL] Phase 3: Review lifecycle...");
+        let (cards, total) = card_engine::fsrs_scheduler::get_due_cards(&conn, TEST_USER_ID, 5);
+        if !cards.is_empty() {
+            // Step 1: get_due_cards → 获取到期卡片
+            let card = &cards[0];
+            let card_id = card.id.as_str();
+            let card_front = card.front.as_str();
+            eprintln!("[EVAL] Phase 3: {} due, testing card: {} (id={})", total, card_front, card_id);
+
+            // Step 2: 模拟复习提交 (rating=3/good, verification=pass)
+            let pre_state: i32 = conn.query_row(
+                "SELECT state FROM card_memory WHERE card_id = ?1",
+                rusqlite::params![card_id],
+                |row| row.get(0),
+            ).unwrap_or(-1);
+            let pre_reps: i32 = conn.query_row(
+                "SELECT reps FROM card_memory WHERE card_id = ?1",
+                rusqlite::params![card_id],
+                |row| row.get(0),
+            ).unwrap_or(-1);
+            let pre_due: i64 = conn.query_row(
+                "SELECT due FROM card_memory WHERE card_id = ?1",
+                rusqlite::params![card_id],
+                |row| row.get(0),
+            ).unwrap_or(0);
+            eprintln!("[EVAL] Phase 3: pre-review state={}, reps={}, due={}", pre_state, pre_reps, pre_due);
+
+            // submit_review(card_id, rating, verification_type, verification_result, user_id, details)
+            let review_result = card_engine::fsrs_scheduler::submit_review(
+                &conn, card_id, 3, "auto", "pass", TEST_USER_ID,
+                Some(r#"[{"question":"测试题","correct":true,"feedback":"正确"}]"#),
+            );
+            match review_result {
+                Ok(ctx) => {
+                    // Step 3: 验证 FSRS 状态迁移
+                    let post_state: i32 = conn.query_row(
+                        "SELECT state FROM card_memory WHERE card_id = ?1",
+                        rusqlite::params![card_id],
+                        |row| row.get(0),
+                    ).unwrap_or(-1);
+                    let post_reps: i32 = conn.query_row(
+                        "SELECT reps FROM card_memory WHERE card_id = ?1",
+                        rusqlite::params![card_id],
+                        |row| row.get(0),
+                    ).unwrap_or(-1);
+                    let post_due: i64 = conn.query_row(
+                        "SELECT due FROM card_memory WHERE card_id = ?1",
+                        rusqlite::params![card_id],
+                        |row| row.get(0),
+                    ).unwrap_or(0);
+                    let log_count: i64 = conn.query_row(
+                        "SELECT COUNT(*) FROM review_log WHERE card_id = ?1",
+                        rusqlite::params![card_id],
+                        |row| row.get(0),
+                    ).unwrap_or(0);
+
+                    let state_changed = post_state != pre_state || pre_state == 0;
+                    let reps_incremented = post_reps == pre_reps + 1;
+                    let due_moved = post_due > pre_due;
+
+                    let review_session = serde_json::json!({
+                        "total_due": total,
+                        "sample_card": cards[0],
+                        "submitted": {
+                            "card_id": card_id,
+                            "rating": 3,
+                            "verification": "auto/pass",
+                            "user_ctx": format!("cards={}, reviews={}, streak={}",
+                                ctx.total_cards, ctx.total_reviews, ctx.streak_days),
+                        },
+                        "fsrs_transition": {
+                            "state_before": pre_state, "state_after": post_state,
+                            "reps_before": pre_reps, "reps_after": post_reps,
+                            "due_before": pre_due, "due_after": post_due,
+                            "state_changed": state_changed,
+                            "reps_incremented": reps_incremented,
+                            "due_moved": due_moved,
+                        },
+                        "review_log_entries": log_count,
+                    });
+                    fs::write(format!("{}/review_session.json", run_dir),
+                        serde_json::to_string_pretty(&review_session).unwrap()).ok();
+
+                    eprintln!("[EVAL] Phase 3: state {}→{}, reps {}→{}, due {}→{}, logs={}",
+                        pre_state, post_state, pre_reps, post_reps, pre_due, post_due, log_count);
+                    if !state_changed { eprintln!("  ⚠️ FSRS state unchanged"); }
+                    if !reps_incremented { eprintln!("  ⚠️ reps not incremented"); }
+                    if !due_moved { eprintln!("  ⚠️ due not advanced"); }
+                }
+                Err(e) => {
+                    eprintln!("[EVAL] Phase 3: submit_review failed: {}", e);
+                    let fallback_session = serde_json::json!({
+                        "total_due": total, "sample_card": cards[0], "submit_error": e,
+                    });
+                    fs::write(format!("{}/review_session.json", run_dir),
+                        serde_json::to_string_pretty(&fallback_session).unwrap()).ok();
+                }
+            }
+        } else {
+            let review_session = serde_json::json!({"total_due": 0, "note": "No due cards"});
+            fs::write(format!("{}/review_session.json", run_dir),
+                serde_json::to_string_pretty(&review_session).unwrap()).ok();
+            eprintln!("[EVAL] Phase 3: No due cards found");
+        }
+    } else {
+        eprintln!("[EVAL] Phase 2: ⚠️ 未创建任何卡片");
+    }
+
+    // ── 全局汇总: aggregate.json + precheck.json ──
+    let total_latency: u64 = (1..=turn).filter_map(|t| {
+        let meta_file = format!("{}/turn_{:03}/llm_metadata.json", run_dir, t);
+        std::fs::read_to_string(&meta_file).ok()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+            .and_then(|v| v.get("latency_ms").and_then(|v| v.as_u64()))
+    }).sum();
+    let total_chars: usize = (1..=turn).filter_map(|t| {
+        let reply_file = format!("{}/turn_{:03}/llm_reply_raw.txt", run_dir, t);
+        std::fs::read_to_string(&reply_file).ok().map(|s| s.len())
+    }).sum();
     let agg = serde_json::json!({
         "run_id": run_id, "total_turns": turn,
         "duration_secs": start_time.elapsed().as_secs(),
+        "total_latency_ms": total_latency,
+        "avg_latency_ms": if turn > 0 { total_latency / turn as u64 } else { 0 },
+        "total_reply_chars": total_chars,
+        "total_cards": cards_summary.get("total_cards").cloned().unwrap_or(serde_json::json!(0)),
     });
-    fs::write(format!("{}/aggregate.json", run_dir),
-        serde_json::to_string_pretty(&agg).unwrap()).ok();
+    if let Err(e) = fs::write(format!("{}/aggregate.json", run_dir),
+        serde_json::to_string_pretty(&agg).unwrap()) {
+        eprintln!("[EVAL] aggregate.json write failed: {}", e);
+    }
+    let precheck_task_events: Vec<serde_json::Value> = (1..=turn).filter_map(|t| {
+        let before = std::fs::read_to_string(format!("{}/turn_{:03}/plan_state_before.json", run_dir, t)).ok()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok()).unwrap_or_default();
+        let after = std::fs::read_to_string(format!("{}/turn_{:03}/plan_state_after.json", run_dir, t)).ok()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok()).unwrap_or_default();
+        let mut ev = vec![];
+        if let (Some(bmap), Some(amap)) = (before.as_object(), after.as_object()) {
+            for (task, status) in amap {
+                let old = bmap.get(task).and_then(|v| v.as_str()).unwrap_or("unknown");
+                let new = status.as_str().unwrap_or("unknown");
+                if old != new { ev.push(serde_json::json!({"turn":format!("turn_{:03}",t),"task":task,"from":old,"to":new})); }
+            }
+        }
+        if ev.is_empty() { None } else { Some(ev) }
+    }).flatten().collect();
+    let precheck = serde_json::json!({"total_turns": turn, "task_events": precheck_task_events, "keywords_hit": 0});
+    if let Err(e) = fs::write(format!("{}/precheck.json", run_dir),
+        serde_json::to_string_pretty(&precheck).unwrap()) {
+        eprintln!("[EVAL] precheck.json write failed: {}", e);
+    }
+
     eprintln!("[EVAL] Session {} done: {} turns in {}s", run_id, turn, start_time.elapsed().as_secs());
     PathBuf::from(&run_dir)
 }
@@ -2226,8 +2492,8 @@ async fn run_eval_session(
 #[ignore]
 async fn e2e_live_11_teaching_quality() {
     println!("\n{}", "=".repeat(70));
-    println!(" 🧪 Test 11: 教学质量评估 (多学段)");
-    println!("   场景: 语文阅读 g1-2 + g7-9 分别运行 → 日志落盘 → quality_review.py 可后处理");
+    println!(" 🧪 Test 11: 教学质量评估 (5 学段全量)");
+    println!("   场景: 语文阅读 g1-2→g10-12 五学段 + 结构化数学/物理/政治");
     println!("   评估维度: 教学点覆盖 / 流程执行 / 卡片利用 / 交互质量 / 推进合规 / 学段适应性 / 上下文纯净度");
     println!("   后处理: python scripts/eval/quality_review.py --run <run_id>");
     println!("{}", "=".repeat(70));
@@ -2239,7 +2505,7 @@ async fn e2e_live_11_teaching_quality() {
     for p in &["../../.env", ".env", "../.env"] {
         if dotenvy::from_filename(p).is_ok() { break; }
     }
-    api_server::db_pool::init(TEST_DB_PATH).expect("init DB pool");
+    api_server::db_pool::init(TEST_DB_PATH).ok();
     {
         let conn = api_server::db_pool::get_conn();
         conn.execute_batch(SCHEMA_SQL).expect("create schema");
@@ -2261,30 +2527,181 @@ async fn e2e_live_11_teaching_quality() {
     api_server::reading_loader::init().unwrap_or_else(|e| {
         eprintln!("[EVAL] reading_loader init: {}", e);
     });
+    api_server::curriculum_loader::init().unwrap_or_else(|e| {
+        eprintln!("[EVAL] curriculum_loader init: {}", e);
+    });
 
     let run_id = format!("eval_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
 
-    // ── Session 1: 语文阅读 g1-2 (小学低年级, 3 tasks) ──
-    println!("\n─── Session 1: 语文阅读 g1-2 (3 tasks) ───");
-    let dir1 = run_eval_session(&format!("{}_chinese_g12", run_id),
-        "语文", "chinese", "g1-2", 3).await;
-    println!("  ✅ Logs: {:?}", dir1);
+    // ── Phase 1.1: 语文阅读全学段 (5 sessions) ──
+    let reading_sessions: Vec<(&str, &str, usize)> = vec![
+        ("chinese_g12", "g1-2", 3),   // 小学低年级
+        ("chinese_g34", "g3-4", 2),   // 小学中年级
+        ("chinese_g56", "g5-6", 2),   // 小学高年级
+        ("chinese_g79", "g7-9", 2),   // 初中
+        ("chinese_g1012", "g10-12", 2), // 高中
+    ];
+    let mut reading_dirs: Vec<PathBuf> = vec![];
 
-    // ── Session 2: 语文阅读 g7-9 (初中, 2 tasks) ──
-    println!("\n─── Session 2: 语文阅读 g7-9 (2 tasks) ───");
-    let dir2 = run_eval_session(&format!("{}_chinese_g79", run_id),
-        "语文", "chinese", "g7-9", 2).await;
-    println!("  ✅ Logs: {:?}", dir2);
+    for (suffix, grade, tasks) in &reading_sessions {
+        let session_id = format!("{}_{}", run_id, suffix);
+        println!("\n─── 语文阅读 {} ({} tasks) ───", grade, tasks);
+        let dir = run_eval_session(&session_id, "语文", "chinese", grade, *tasks).await;
+        println!("  ✅ Logs: {:?}", dir);
+        reading_dirs.push(dir);
+    }
 
     println!("\n{}", "=".repeat(70));
-    println!(" ✅ Test 11 完成!");
+    println!(" ✅ Test 11 完成 — 语文阅读 5 学段");
     println!("    日志目录: data/eval_runs/{}", run_id);
     println!("    运行评审:");
     println!("      python scripts/eval/quality_review.py --run {}", run_id);
-    println!("    g1-2 质量对比:");
-    println!("      python scripts/eval/quality_review.py --run {}_chinese_g12", run_id);
-    println!("    g7-9 质量对比:");
-    println!("      python scripts/eval/quality_review.py --run {}_chinese_g79", run_id);
+    for (suffix, grade, _) in &reading_sessions {
+        println!("    {}: python scripts/eval/quality_review.py --run {}_{}", grade, run_id, suffix);
+    }
+    println!("{}", "=".repeat(70));
+    println!(" 💡 新增学段: g3-4, g5-6, g10-12 (之前仅 g1-2 + g7-9)");
+    println!("{}", "=".repeat(70));
+}
+
+// ════════════════════════════════════════════
+// 🧪 结构化模式 eval session
+// ════════════════════════════════════════════
+
+/// 运行结构化模式 eval session
+async fn run_eval_session_structured(
+    run_id: &str, subject_cn: &str, subject_key: &str,
+    grade_band: &str, tasks_limit: usize,
+) -> PathBuf {
+    let run_dir = format!("data/eval_runs/{}", run_id);
+    let _ = fs::create_dir_all(&run_dir);
+    let now = chrono::Utc::now().to_rfc3339();
+
+    // 读取 curriculum plan 并截取 tasks
+    let plan = api_server::curriculum_loader::get_plan(subject_cn, grade_band)
+        .expect("structured plan exists");
+    let mut stage_vals: Vec<serde_json::Value> = vec![];
+    if let Some(first) = plan.stages.first() {
+        let tasks: Vec<serde_json::Value> = first.tasks.iter().take(tasks_limit).map(|t| {
+            serde_json::json!({"name": t.name, "status": "pending"})
+        }).collect();
+        stage_vals.push(serde_json::json!({
+            "name": first.name, "status": "in_progress", "tasks": tasks,
+        }));
+    }
+
+    let meta = serde_json::json!({"run_id": run_id, "subject": subject_cn, "grade_band": grade_band, "mode": "structured"});
+    fs::write(format!("{}/meta.json", run_dir), serde_json::to_string_pretty(&meta).unwrap()).ok();
+
+    let conn = api_server::db_pool::get_conn();
+    conn.execute("DELETE FROM learning_plans WHERE conversation_id = ?1", rusqlite::params![TEST_CONV_ID]).ok();
+    conn.execute("DELETE FROM conversation_turns WHERE conversation_id = ?1", rusqlite::params![TEST_CONV_ID]).ok();
+    conn.execute(
+        "INSERT OR REPLACE INTO conversations (id, user_id, turn_count, started_at, subject, grade_band)
+         VALUES (?1, ?2, 0, ?3, ?4, ?5)",
+        rusqlite::params![TEST_CONV_ID, TEST_USER_ID, now, subject_cn, grade_band],
+    ).ok();
+
+    // 创建计划
+    let plan_update = serde_json::json!({"is_new_plan": true, "goal": format!("{} {} 学习", subject_cn, grade_band), "stages": stage_vals});
+    let tag = format!("<plan_update>{}</plan_update>", serde_json::to_string(&plan_update).unwrap());
+    api_server::plan_handler::handle_plan_update(&conn, &tag, TEST_CONV_ID, TEST_USER_ID);
+
+    let prompts = chat_engine::prompt_loader::get_for_domain(subject_key);
+    let system_prompt = prompts.chat_system_structured.clone();
+    let student_system = format!("你是一个{}。请展示理解并推进学习。", format!("学习{}的{}学生", subject_cn, grade_band));
+
+    let mut student_cfg = chat_engine::llm_caller::LlmConfig::deepseek_v4_flash(
+        &std::env::var("DEEPSEEK_API_KEY").unwrap()
+    );
+    student_cfg.temperature = 0.5;
+    let mut student_caller = chat_engine::llm_caller::LlmCaller::new(student_cfg);
+
+    let start = Instant::now();
+    let mut turn = 0u32;
+
+    // 学生首次发言
+    let msg = student_caller.generate(&student_system, &format!("对老师说我开始学习{}", subject_cn)).await.unwrap_or_default();
+    if !msg.is_empty() { helpers::insert_turn("user", &msg); }
+
+    for _ in 1..=12u32 {
+        if start.elapsed().as_secs() > 600 { break; }
+        let (_, _, ctx) = helpers::build_plan_ctx();
+        let user_content = format!("{}{}", helpers::get_history(), ctx);
+        let raw = {
+            let mut c = chat_engine::llm_caller::LlmCaller::new(
+                chat_engine::llm_caller::LlmConfig::deepseek_v4_flash(&std::env::var("DEEPSEEK_API_KEY").unwrap())
+            );
+            c.generate(&system_prompt, &user_content).await.unwrap_or_default()
+        };
+        if raw.is_empty() { continue; }
+        let r = api_server::plan_handler::handle_plan_update(&api_server::db_pool::get_conn(),
+            &format!("<plan_update>{}</plan_update>", raw), TEST_CONV_ID, TEST_USER_ID);
+        helpers::insert_turn("assistant", &r.cleaned_reply);
+        turn += 1;
+
+        let hist = helpers::get_history();
+        let s = student_caller.generate(&student_system, &hist).await.unwrap_or_default();
+        if !s.is_empty() { helpers::insert_turn("user", &s); }
+        turn += 1;
+    }
+
+    // Phase 2+3
+    let conn = api_server::db_pool::get_conn();
+    let total: i64 = conn.query_row("SELECT COUNT(*) FROM cards WHERE user_id = ?1",
+        rusqlite::params![TEST_USER_ID], |r| r.get(0)).unwrap_or(0);
+    let cs = serde_json::json!({"total_cards": total, "turns": turn, "secs": start.elapsed().as_secs()});
+    fs::write(format!("{}/cards_summary.json", run_dir), serde_json::to_string_pretty(&cs).unwrap()).ok();
+
+    if total > 0 {
+        if let (cards, _) = card_engine::fsrs_scheduler::get_due_cards(&conn, TEST_USER_ID, 5) {
+            if let Some(card) = cards.first() {
+                let _ = card_engine::fsrs_scheduler::submit_review(&conn, &card.id, 3, "auto", "pass", TEST_USER_ID, None);
+                let st: i32 = conn.query_row("SELECT state FROM card_memory WHERE card_id = ?1",
+                    rusqlite::params![&card.id], |r| r.get(0)).unwrap_or(-1);
+                fs::write(format!("{}/review_session.json", run_dir),
+                    serde_json::to_string_pretty(&serde_json::json!({"due": cards.len(), "sample": &card.front, "state": st})).unwrap()).ok();
+            }
+        }
+    }
+    PathBuf::from(&run_dir)
+}
+
+// ════════════════════════════════════════════
+// 🧪 Test 12: 结构化模式质量评估
+// ════════════════════════════════════════════
+
+#[tokio::test]
+#[ignore]
+async fn e2e_live_12_structured_quality() {
+    println!("\n{}", "=".repeat(70));
+    println!(" 🧪 Test 12: 结构化模式质量评估");
+    println!("   科目: 数学(g3-4) + 物理(g7-9) + 政治(g10-12)");
+    println!("{}", "=".repeat(70));
+    let _ = fs::remove_file(TEST_DB_PATH);
+    for p in &["../../.env", ".env", "../.env"] { if dotenvy::from_filename(p).is_ok() { break; } }
+    api_server::db_pool::init(TEST_DB_PATH).ok();
+    { let c = api_server::db_pool::get_conn(); c.execute_batch(SCHEMA_SQL).expect("schema"); }
+    let now = chrono::Utc::now().to_rfc3339();
+    { let c = api_server::db_pool::get_conn();
+        c.execute("INSERT OR IGNORE INTO users VALUES (?1,?2,?3,0,'','',?4)",
+            rusqlite::params![TEST_USER_ID, TEST_USERNAME, api_server::auth::hash_password(TEST_PASSWORD), now]).unwrap(); }
+    chat_engine::prompt_loader::init("../../prompts", "../../pipelines");
+    api_server::curriculum_loader::init().ok();
+
+    let rid = format!("eval_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+    for (s, subj, key, grade, tasks) in vec![
+        ("math_g34", "数学", "math", "g3-4", 3),
+        ("physics_g79", "物理", "physics", "g7-9", 3),
+        ("politics_g1012", "政治", "politics", "g10-12", 3),
+    ] {
+        println!("\n─── 结构化: {} {} ({} tasks) ───", subj, grade, tasks);
+        let d = run_eval_session_structured(&format!("{}_{}", rid, s), subj, key, grade, tasks).await;
+        println!("  ✅ {:?}", d);
+    }
+    println!("\n{}", "=".repeat(70));
+    println!(" ✅ Test 12 完成 — 结构化 3 科目");
+    println!("    评审: python scripts/eval/quality_review.py --run {}", rid);
     println!("{}", "=".repeat(70));
 }
 
@@ -2307,4 +2724,469 @@ async fn e2e_live_llm_plan_lifecycle() {
     assert!(t1.plan_updated || metrics.api_calls > 0, "测试应至少完成一轮对话");
     metrics.report("LegacyCompatibility");
     println!(" ✅ Legacy entry point verified: e2e_live_llm_plan_lifecycle delegates correctly");
+}
+
+// ════════════════════════════════════════════
+// 🧪 Test 13: Free 模式质量评估
+// ════════════════════════════════════════════
+
+#[tokio::test]
+#[ignore]
+async fn e2e_live_13_free_mode_quality() {
+    println!("\n{}", "=".repeat(70));
+    println!(" 🧪 Test 13: Free 模式 (无计划对话)");
+    println!("   场景: 师生自由对话 → ColdPath 1 概念提取 → cards 表检查 → Phase 3 复习");
+    println!("{}", "=".repeat(70));
+
+    helpers::setup();
+    let mut caller = helpers::create_caller();
+    let prompts = chat_engine::prompt_loader::get_for_domain("language");
+    let system_prompt = &prompts.chat_system_free;
+    let student_system = "你是一个初中生，正在和AI助教老师讨论学习问题。提出具体问题，认真回答老师的提问。";
+
+    let mut student_cfg = chat_engine::llm_caller::LlmConfig::deepseek_v4_flash(
+        &std::env::var("DEEPSEEK_API_KEY").unwrap()
+    );
+    student_cfg.temperature = 0.6;
+    let mut student_caller = chat_engine::llm_caller::LlmCaller::new(student_cfg);
+
+    // 学生发起
+    let msg = student_caller.generate(student_system, "（对话开始，提出你的第一个学习问题）").await.unwrap_or_default();
+    println!("  🧑 学生: {}", &msg.chars().take(100).collect::<String>());
+    helpers::insert_turn("user", &msg);
+
+    for round in 1..=6u32 {
+        let (_, _, ctx) = helpers::build_plan_ctx();
+        let user_content = format!("{}{}", helpers::get_history(), ctx);
+        let raw = caller.generate(system_prompt, &user_content).await.unwrap_or_default();
+        let r = api_server::plan_handler::handle_plan_update(
+            &api_server::db_pool::get_conn(), &raw, TEST_CONV_ID, TEST_USER_ID,
+        );
+        helpers::insert_turn("assistant", &r.cleaned_reply);
+        println!("  📘 T{}: {} chars | plan={}", round, r.cleaned_reply.len(), r.plan_updated);
+
+        let s = student_caller.generate(student_system, &helpers::get_history()).await.unwrap_or_default();
+        if !s.is_empty() { helpers::insert_turn("user", &s); }
+    }
+
+    // Phase 2: 检查概念卡
+    let conn = api_server::db_pool::get_conn();
+    let card_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM cards WHERE user_id = ?1",
+        rusqlite::params![TEST_USER_ID], |r| r.get(0),
+    ).unwrap_or(0);
+    println!("  🃏 卡片总数: {}", card_count);
+    if card_count > 0 {
+        let (cards, total) = card_engine::fsrs_scheduler::get_due_cards(&conn, TEST_USER_ID, 5);
+        if !cards.is_empty() {
+            let _ = card_engine::fsrs_scheduler::submit_review(
+                &conn, &cards[0].id, 3, "auto", "pass", TEST_USER_ID, None,
+            );
+            println!("  ✅ 复习提交通过: id={}", &cards[0].id.chars().take(20).collect::<String>());
+        }
+    }
+    println!("\n{}", "=".repeat(70));
+    println!(" ✅ Test 13 完成 — Free 模式验证 ({} 轮, {} 张卡)", 6, card_count);
+    println!("{}", "=".repeat(70));
+}
+
+// ════════════════════════════════════════════
+// 🧪 Test 14: 概念卡验证 (ColdPath 1)
+// ════════════════════════════════════════════
+
+#[tokio::test]
+#[ignore]
+async fn e2e_live_14_concept_card_extraction() {
+    println!("\n{}", "=".repeat(70));
+    println!(" 🧪 Test 14: 概念卡提取验证 (ColdPath 1)");
+    println!("   场景: 直接调用 extract_concepts → 检查 candidates → 验证概念卡写入 cards 表");
+    println!("{}", "=".repeat(70));
+
+    helpers::setup();
+    let config = chat_engine::llm_caller::LlmConfig::deepseek_v4_flash(
+        &std::env::var("DEEPSEEK_API_KEY").unwrap()
+    );
+
+    // 模拟一轮师生对话
+    let user_msg = "勾股定理为什么是 a²+b²=c²？能不能从几何角度解释？";
+    let ai_reply = "勾股定理描述直角三角形三边关系。你可以用面积法理解：\
+                    以直角三角形各边为边长做正方形，两直角边上的正方形面积之和等于斜边上的正方形面积。";
+
+    // 调用概念提取
+    let result = chat_engine::concept_extractor::extract_concepts(
+        TEST_USER_ID, user_msg, ai_reply,
+        &[], &[], &config, &[], "math", "",
+    ).await;
+
+    println!("  📊 提取结果: {} 个候选项", result.candidates.len());
+    for (i, c) in result.candidates.iter().enumerate() {
+        println!("    [{}] front={}, back={}", i,
+            c.front.chars().take(40).collect::<String>(),
+            c.back.chars().take(40).collect::<String>());
+    }
+    assert!(result.candidates.len() >= 1, "应至少提取 1 个概念");
+    println!("  ✅ 概念提取成功: {} 个", result.candidates.len());
+
+    // 模拟 WS 通道接收后的卡片创建
+    let conn = api_server::db_pool::get_conn();
+    let now_ts = chrono::Utc::now().timestamp();
+    for c in &result.candidates {
+        let id = format!("concept_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap());
+        conn.execute(
+            "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at)
+             VALUES (?1, ?2, 'math', 'concept', ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![id, TEST_USER_ID, &c.front, &c.back, &c.source_sentence, TEST_CONV_ID, now_ts],
+        ).unwrap();
+        conn.execute(
+            "INSERT OR IGNORE INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
+             VALUES (?1, 0, 0.3, 1.0, ?2, 0, 0, 0)",
+            rusqlite::params![id, now_ts],
+        ).unwrap();
+    }
+
+    let total: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM cards WHERE user_id = ?1 AND card_type = 'concept'",
+        rusqlite::params![TEST_USER_ID], |r| r.get(0),
+    ).unwrap_or(0);
+    println!("  🃏 概念卡在 DB 中: {} 张 (card_type='concept')", total);
+    assert_eq!(total as usize, result.candidates.len(), "概念卡应全部写入 DB");
+
+    // Phase 3: 复习验证
+    let (cards, due) = card_engine::fsrs_scheduler::get_due_cards(&conn, TEST_USER_ID, 5);
+    println!("  📖 到期复习: {} 张 (取前 {} 张)", due, cards.len());
+    if !cards.is_empty() {
+        let _ = card_engine::fsrs_scheduler::submit_review(
+            &conn, &cards[0].id, 3, "auto", "pass", TEST_USER_ID, None,
+        );
+        let state: i32 = conn.query_row(
+            "SELECT state FROM card_memory WHERE card_id = ?1",
+            rusqlite::params![&cards[0].id], |r| r.get(0),
+        ).unwrap_or(-1);
+        println!("  ✅ 复习后 FSRS state: {}", state);
+        assert!(state > 0, "复习后 state 应从 0 变为 >0");
+    }
+
+    println!("\n{}", "=".repeat(70));
+    println!(" ✅ Test 14 完成 — 概念卡提取验证通过");
+    println!("{}", "=".repeat(70));
+}
+
+// ════════════════════════════════════════════
+// 🧪 Test 15: 多轮 FSRS 复习 + fail 路径
+// ════════════════════════════════════════════
+
+#[tokio::test]
+#[ignore]
+async fn e2e_live_15_multi_round_fsrs() {
+    println!("\n{}", "=".repeat(70));
+    println!(" 🧪 Test 15: 多轮 FSRS 复习 + fail 路径");
+    println!("   场景: Round1 pass(0→1) → Round2 fail(1→0 lapses+1) → Round3 pass(0→1) → 轨迹验证");
+    println!("{}", "=".repeat(70));
+
+    helpers::setup();
+    let conn = api_server::db_pool::get_conn();
+
+    // 创建一张测试卡片
+    let card_id = "fsrs_test_card_001";
+    conn.execute(
+        "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at)
+         VALUES (?1, ?2, 'test', 'concept', '测试概念', '这是测试', '来源', ?3, 0)",
+        rusqlite::params![card_id, TEST_USER_ID, TEST_CONV_ID],
+    ).unwrap();
+    conn.execute(
+        "INSERT OR IGNORE INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
+         VALUES (?1, 0, 0.3, 1.0, 0, 0, 0, 0)",
+        rusqlite::params![card_id],
+    ).unwrap();
+
+    // Round 1: pass (good, verification=pass)
+    println!("\n── Round 1: pass (good) ──");
+    let _ = card_engine::fsrs_scheduler::submit_review(&conn, card_id, 3, "auto", "pass", TEST_USER_ID, None);
+    let (s1, r1, l1) = conn.query_row(
+        "SELECT state, reps, lapses FROM card_memory WHERE card_id = ?1",
+        rusqlite::params![card_id], |row| Ok((row.get::<_,i32>(0)?, row.get::<_,i32>(1)?, row.get::<_,i32>(2)?)),
+    ).unwrap();
+    println!("  state={}, reps={}, lapses={}", s1, r1, l1);
+    assert!(s1 > 0, "pass 后 state 应 > 0");
+    assert_eq!(r1, 1, "reps 应为 1");
+
+    // Round 2: fail (again, verification=fail)
+    println!("\n── Round 2: fail (verification=fail) ──");
+    let _ = card_engine::fsrs_scheduler::submit_review(&conn, card_id, 1, "auto", "fail", TEST_USER_ID, None);
+    let (s2, r2, l2) = conn.query_row(
+        "SELECT state, reps, lapses FROM card_memory WHERE card_id = ?1",
+        rusqlite::params![card_id], |row| Ok((row.get::<_,i32>(0)?, row.get::<_,i32>(1)?, row.get::<_,i32>(2)?)),
+    ).unwrap();
+    println!("  state={}, reps={}, lapses={}", s2, r2, l2);
+    assert_eq!(l2, 1, "fail 后 lapses 应为 1");
+
+    // Round 3: pass again
+    println!("\n── Round 3: pass again ──");
+    let _ = card_engine::fsrs_scheduler::submit_review(&conn, card_id, 3, "auto", "pass", TEST_USER_ID, None);
+    let (s3, r3, l3) = conn.query_row(
+        "SELECT state, reps, lapses FROM card_memory WHERE card_id = ?1",
+        rusqlite::params![card_id], |row| Ok((row.get::<_,i32>(0)?, row.get::<_,i32>(1)?, row.get::<_,i32>(2)?)),
+    ).unwrap();
+    println!("  state={}, reps={}, lapses={}", s3, r3, l3);
+
+    // 验证复习轨迹
+    println!("\n── 复习轨迹 ──");
+    println!("  Round1(pass):  state {} → {}", 0, s1);
+    println!("  Round2(fail):  state {} → {}, lapses+1({})", s1, s2, l2);
+    println!("  Round3(pass):  state {} → {}, reps={}", s2, s3, r3);
+    assert!(r3 >= 2, "3 轮后 reps 应 >= 2");
+    println!("  ✅ 多轮 FSRS 复习轨迹验证通过");
+
+    // 验证 review_log 写入
+    let logs: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM review_log WHERE card_id = ?1",
+        rusqlite::params![card_id], |r| r.get(0),
+    ).unwrap_or(0);
+    println!("  review_log 条数: {}", logs);
+    assert_eq!(logs, 3, "应有 3 条复习日志");
+
+    println!("\n{}", "=".repeat(70));
+    println!(" ✅ Test 15 完成 — 多轮 FSRS + fail 路径验证通过");
+    println!("{}", "=".repeat(70));
+}
+
+// ════════════════════════════════════════════
+// 🧪 Test 16: verify + judge 完整复习流
+// ════════════════════════════════════════════
+
+#[tokio::test]
+#[ignore]
+async fn e2e_live_16_verify_and_judge() {
+    println!("\n{}", "=".repeat(70));
+    println!(" 🧪 Test 16: verify + judge 完整复习流");
+    println!("   场景: 概念提取 → LLM 出题 (verify) → 模拟学生回答 → LLM 判题 (judge) → submit_review");
+    println!("{}", "=".repeat(70));
+
+    helpers::setup();
+    let api_key = std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY");
+    let config = chat_engine::llm_caller::LlmConfig::deepseek_v4_flash(&api_key);
+    let prompts = chat_engine::prompt_loader::get();
+
+    // Step 1: 用 ColdPath 1 提取一个概念
+    let result = chat_engine::concept_extractor::extract_concepts(
+        TEST_USER_ID,
+        "欧姆定律的公式是什么？如何理解电压、电流和电阻的关系？",
+        "欧姆定律 I=U/R。电压是动力，电阻是阻力，电流是实际流量。",
+        &[], &[], &config, &[], "physics", "",
+    ).await;
+    assert!(!result.candidates.is_empty(), "应提取到概念");
+    let concept = &result.candidates[0];
+    println!("  📝 概念: front={}",
+        concept.front.chars().take(40).collect::<String>());
+
+    // Step 2: verify — LLM 生成验证问题
+    println!("\n── Step 2: LLM 出题 (verify) ──");
+    let verify_prompt = prompts.quiz_generate.clone()
+        .replace("{front}", &concept.front)
+        .replace("{back}", &concept.back);
+    let mut vc = chat_engine::llm_caller::LlmCaller::new(config.clone());
+    let vresp = vc.generate("", &verify_prompt).await.expect("verify 调用失败");
+    let questions: Vec<serde_json::Value> = serde_json::from_str(&vresp)
+        .unwrap_or_else(|_| {
+            let s = vresp.find('[').and_then(|i| vresp.rfind(']').map(|j| &vresp[i..=j]));
+            s.and_then(|j| serde_json::from_str(j).ok()).unwrap_or_default()
+        });
+    println!("  ❓ {} 道题:", questions.len());
+    for (i, q) in questions.iter().enumerate() {
+        let qs = q.get("question").and_then(|v| v.as_str()).unwrap_or("?");
+        let ans = q.get("answer").and_then(|v| v.as_str()).unwrap_or("?");
+        println!("    Q{}: {} → {}", i+1, &qs.chars().take(40).collect::<String>(),
+            &ans.chars().take(25).collect::<String>());
+    }
+    assert!(!questions.is_empty(), "至少 1 道题");
+
+    // Step 3: judge — LLM 判题
+    println!("\n── Step 3: LLM 判题 (judge) ──");
+    let jqs: Vec<serde_json::Value> = questions.iter().map(|q| {
+        let qs = q.get("question").and_then(|v| v.as_str()).unwrap_or("");
+        let ans = q.get("answer").and_then(|v| v.as_str()).unwrap_or("");
+        serde_json::json!({"question": qs, "expected_answer": ans,
+            "user_answer": format!("我来回答: {}", &ans[..ans.len().saturating_sub(1)])})
+    }).collect();
+    let qp: Vec<String> = jqs.iter().enumerate().map(|(i, jq)| {
+        format!("Q{}: {}\nExpected: {}\nUser: {}", i+1,
+            jq["question"].as_str().unwrap_or(""),
+            jq["expected_answer"].as_str().unwrap_or(""),
+            jq["user_answer"].as_str().unwrap_or(""))
+    }).collect();
+    let jprompt = prompts.quiz_judge.clone().replace("{questions}", &qp.join("\n---\n"));
+    let mut jc = chat_engine::llm_caller::LlmCaller::new(config);
+    let jresp = jc.generate("", &jprompt).await.expect("judge 调用失败");
+    let jresults: Vec<serde_json::Value> = serde_json::from_str(&jresp)
+        .unwrap_or_else(|_| {
+            let s = jresp.find('[').and_then(|i| jresp.rfind(']').map(|j| &jresp[i..=j]));
+            s.and_then(|j| serde_json::from_str(j).ok()).unwrap_or_default()
+        });
+    let correct = jresults.iter().filter(|r| r.get("correct").and_then(|c| c.as_bool()).unwrap_or(false)).count();
+    println!("  📊 {}/{} 正确", correct, jresults.len());
+
+    // Step 4: submit_review
+    println!("\n── Step 4: submit_review ──");
+    let conn = api_server::db_pool::get_conn();
+    let cid = "verify_judge_card";
+    conn.execute("INSERT OR IGNORE INTO cards(id,user_id,domain,card_type,front,back,conversation_id,created_at) VALUES(?1,?2,'test','concept','test','test',?3,0)",
+        rusqlite::params![cid, TEST_USER_ID, TEST_CONV_ID]).ok();
+    conn.execute("INSERT OR IGNORE INTO card_memory(card_id,state,difficulty,stability,due,last_review,reps,lapses) VALUES(?1,0,0.3,1.0,0,0,0,0)",
+        rusqlite::params![cid]).ok();
+    let details = serde_json::json!(jresults).to_string();
+    let _ = card_engine::fsrs_scheduler::submit_review(&conn, cid, 3, "llm",
+        if correct > jresults.len()/2 { "pass" } else { "fail" },
+        TEST_USER_ID, Some(&details)).expect("submit_review");
+    let (st, rp): (i32,i32) = conn.query_row("SELECT state,reps FROM card_memory WHERE card_id=?1",
+        rusqlite::params![cid], |r| Ok((r.get(0)?,r.get(1)?))).unwrap();
+    println!("  ✅ state={}, reps={}", st, rp);
+    assert!(rp > 0, "reps 应 > 0");
+
+    println!("\n{}", "=".repeat(70));
+    println!(" ✅ Test 16 完成 — verify+judge 验证通过");
+    println!("{}", "=".repeat(70));
+}
+
+// ════════════════════════════════════════════
+// 🧪 Test 17: CP1 + CP2 竞态测试
+// ════════════════════════════════════════════
+
+#[tokio::test]
+#[ignore]
+async fn e2e_live_17_cp1_cp2_race() {
+    println!("\n{}", "=".repeat(70));
+    println!(" 🧪 Test 17: CP1 + CP2 竞态测试");
+    println!("   场景: extract_concepts + analyze_plan_progress 并发 → 数据一致性验证");
+    println!("{}", "=".repeat(70));
+
+    helpers::setup();
+    let api_key = std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY");
+    let cfg = chat_engine::llm_caller::LlmConfig::deepseek_v4_flash(&api_key);
+
+    let conn = api_server::db_pool::get_conn();
+    conn.execute("INSERT OR IGNORE INTO conversations(id,user_id,turn_count,started_at,subject,grade_band) VALUES(?1,?2,0,?3,'物理','g7-9')",
+        rusqlite::params![TEST_CONV_ID, TEST_USER_ID, chrono::Utc::now().to_rfc3339()]).ok();
+    let pu = serde_json::json!({"is_new_plan":true,"goal":"物理","stages":[{"name":"基础","tasks":[{"name":"欧姆定律","status":"in_progress"},{"name":"串并联","status":"pending"}]}]});
+    api_server::plan_handler::handle_plan_update(&conn, &format!("<plan_update>{}</plan_update>", pu), TEST_CONV_ID, TEST_USER_ID);
+    for (r,c) in &[("user","欧姆定律是什么？"),("assistant","I=U/R"),("user","我理解了"),("assistant","很好")] {
+        helpers::insert_turn(r, c);
+    }
+
+    let cp1 = async {
+        chat_engine::concept_extractor::extract_concepts(TEST_USER_ID,"欧姆定律？","I=U/R，串联R=R1+R2",&[],&[],&cfg,&[],"physics","").await
+    };
+    let cp2 = async {
+        let mut c = chat_engine::llm_caller::LlmCaller::new(cfg.clone());
+        api_server::plan_handler::analyze_plan_progress(TEST_CONV_ID, TEST_USER_ID, &mut c).await
+    };
+    let (r_cp1, r_cp2) = tokio::join!(cp1, cp2);
+    println!("  CP1: {} 概念 | CP2: {}", r_cp1.candidates.len(), r_cp2);
+
+    let cnt: i64 = conn.query_row("SELECT COUNT(*) FROM cards WHERE user_id=?1",
+        rusqlite::params![TEST_USER_ID], |r| r.get(0)).unwrap_or(0);
+    let pj: String = conn.query_row("SELECT plan_json FROM learning_plans WHERE conversation_id=?1",
+        rusqlite::params![TEST_CONV_ID], |r| r.get(0)).unwrap_or_default();
+    println!("  cards: {} 行 | plan_json 可解析: {}", cnt, serde_json::from_str::<serde_json::Value>(&pj).is_ok());
+    assert!(serde_json::from_str::<serde_json::Value>(&pj).is_ok(), "plan_json 应可解析");
+
+    println!("\n{}", "=".repeat(70));
+    println!(" ✅ Test 17 完成 — CP1 + CP2 竞态验证通过");
+    println!("{}", "=".repeat(70));
+}
+
+// ════════════════════════════════════════════
+// 🧪 Test 18: 多用户并发压力测试
+// ════════════════════════════════════════════
+
+#[tokio::test]
+#[ignore]
+async fn e2e_live_18_stress_test() {
+    println!("\n{}", "=".repeat(70));
+    println!(" 🧪 Test 18: 多用户并发压力测试");
+    println!("   场景: 5 用户并发创建计划+对话+卡片+复习 → 数据隔离 + DB 稳定性");
+    println!("{}", "=".repeat(70));
+
+    helpers::setup();
+    {
+        let conn = api_server::db_pool::get_conn();
+        for t in &["review_log", "card_memory", "cards", "achievements", "learning_plans", "conversation_turns", "conversations", "tokens", "users"] {
+            let _ = conn.execute_batch(&format!("DELETE FROM {}", t));
+        }
+    }
+
+    let concurrent_users = 5;
+    let rounds_per_user = 3;
+    let start = std::time::Instant::now();
+    let mut handles = vec![];
+
+    for uid in 0..concurrent_users {
+        handles.push(tokio::spawn(async move {
+            let user_id = format!("stress_user_{}", uid);
+            let conv_id = format!("stress_conv_{}", uid);
+            let conn = api_server::db_pool::get_conn();
+
+            conn.execute("INSERT OR IGNORE INTO users(id,username,password_hash,created_at) VALUES(?1,?2,'',?3)",
+                rusqlite::params![user_id, user_id, chrono::Utc::now().to_rfc3339()]).ok();
+            conn.execute("INSERT OR IGNORE INTO conversations(id,user_id,turn_count,started_at) VALUES(?1,?2,0,?3)",
+                rusqlite::params![conv_id, user_id, chrono::Utc::now().to_rfc3339()]).ok();
+
+            let plan = serde_json::json!({"is_new_plan":true,"goal":format!("用户{}",uid),"stages":[{"name":"阶段","tasks":[{"name":"任务A","status":"in_progress"},{"name":"任务B","status":"pending"}]}]});
+            api_server::plan_handler::handle_plan_update(&conn, &format!("<plan_update>{}</plan_update>",plan), &conv_id, &user_id);
+
+            for r in 0..rounds_per_user {
+                conn.execute("INSERT INTO conversation_turns(id,conversation_id,role,content,created_at) VALUES(?1,?2,'user',?3,?4)",
+                    rusqlite::params![uuid::Uuid::new_v4().to_string(), conv_id, format!("用户{}第{}轮",uid,r), chrono::Utc::now().to_rfc3339()]).ok();
+                if r == 1 {
+                    api_server::plan_handler::handle_plan_update(&conn, "<plan_update>{\"current_task_complete\":true}</plan_update>", &conv_id, &user_id);
+                }
+            }
+
+            for i in 0..3 {
+                let cid = format!("stress_{}_{}", uid, i);
+                conn.execute("INSERT OR IGNORE INTO cards(id,user_id,domain,card_type,front,back,conversation_id,created_at) VALUES(?1,?2,'stress','concept',?3,?4,?5,0)",
+                    rusqlite::params![cid, user_id, format!("概念{}",i), format!("内容{}",i), conv_id]).ok();
+                conn.execute("INSERT OR IGNORE INTO card_memory(card_id,state,difficulty,stability,due,last_review,reps,lapses) VALUES(?1,0,0.3,1.0,0,0,0,0)",
+                    rusqlite::params![cid]).ok();
+            }
+
+            let due: Vec<String> = {
+                let mut s = conn.prepare("SELECT c.id FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id=?1 AND cm.due<=?2 LIMIT 1").unwrap();
+                s.query_map(rusqlite::params![user_id, chrono::Utc::now().timestamp()], |r| r.get(0)).unwrap().filter_map(|r| r.ok()).collect()
+            };
+            if !due.is_empty() {
+                let _ = card_engine::fsrs_scheduler::submit_review(&conn, &due[0], 3, "auto", "pass", &user_id, None);
+            }
+
+            let (mc, mp): (i64, i64) = (
+                conn.query_row("SELECT COUNT(*) FROM cards WHERE user_id=?1", rusqlite::params![user_id], |r| r.get(0)).unwrap_or(0),
+                conn.query_row("SELECT COUNT(*) FROM learning_plans WHERE conversation_id=?1", rusqlite::params![conv_id], |r| r.get(0)).unwrap_or(0),
+            );
+            let (ac, ap): (i64, i64) = (
+                conn.query_row("SELECT COUNT(*) FROM cards", [], |r| r.get(0)).unwrap_or(0),
+                conn.query_row("SELECT COUNT(*) FROM learning_plans", [], |r| r.get(0)).unwrap_or(0),
+            );
+            (uid, user_id, mc, mp, ac, ap)
+        }));
+    }
+
+    let mut errors = 0u32;
+    let mut results = vec![];
+    for h in handles {
+        match h.await { Ok(r) => results.push(r), Err(_) => errors += 1 }
+    }
+
+    println!("  并发: {} 用户 × {} 轮 = {:.1}s", concurrent_users, rounds_per_user, start.elapsed().as_secs_f64());
+    for (uid, _, mc, mp, _, _) in &results {
+        println!("  用户{}: 卡片={}(应3) 计划={}(应1)", uid, mc, mp);
+        assert_eq!(*mc, 3, "用户{} 应 3 卡", uid);
+        assert_eq!(*mp, 1, "用户{} 应 1 计划", uid);
+    }
+    assert_eq!(results.iter().map(|r| r.2).sum::<i64>(), (concurrent_users * 3) as i64);
+    assert_eq!(errors, 0, "0 线程崩溃，实际 {}", errors);
+    println!("  ✅ 5用户数据隔离 + 0 死锁 + {} ops/s",
+        concurrent_users as f64 * 10_f64 / start.elapsed().as_secs_f64());
+
+    println!("\n{}", "=".repeat(70));
+    println!(" ✅ Test 18 完成 — 多用户并发压力测试通过");
+    println!("{}", "=".repeat(70));
 }

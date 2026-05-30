@@ -1,0 +1,31 @@
+{
+  "fsrs_transition": {
+    "due_after": 1780307499,
+    "due_before": 1780100060,
+    "due_moved": true,
+    "reps_after": 1,
+    "reps_before": 0,
+    "reps_incremented": true,
+    "state_after": 1,
+    "state_before": 0,
+    "state_changed": true
+  },
+  "review_log_entries": 1,
+  "sample_card": {
+    "back": "拼音: tiān\n\n部首: 大\n\n笔画: 4画\n\n释义: 天空；天下；天然\n\n常用词: 今天、天气",
+    "card_type": "vocabulary",
+    "domain": "语文",
+    "front": "天",
+    "id": "vocab_chinese_g7-9_v0580",
+    "reps": 0,
+    "source_sentence": "",
+    "state": 0
+  },
+  "submitted": {
+    "card_id": "vocab_chinese_g7-9_v0580",
+    "rating": 3,
+    "user_ctx": "cards=11, reviews=1, streak=1",
+    "verification": "auto/pass"
+  },
+  "total_due": 11
+}

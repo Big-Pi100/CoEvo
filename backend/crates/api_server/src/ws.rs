@@ -39,6 +39,8 @@ struct RawChatRequest {
 pub async fn handle_ws(mut ws: WebSocket) {
     // ColdPath 结果通道：后台 task 提取完概念后通过此通道发回
     let (cold_tx, mut cold_rx) = mpsc::channel::<(u32, Vec<serde_json::Value>)>(8);
+    // CP2 通知通道：后台 task 更新 plan 后通知主循环发 WS 消息
+    let (cp2_tx, mut cp2_rx) = mpsc::channel::<bool>(1);
     let mut turn_counter: u32 = 0;
     let mut next_turn_to_show: u32 = 0;
     let mut pending_candidates: std::collections::BTreeMap<u32, Vec<serde_json::Value>> = std::collections::BTreeMap::new();
@@ -62,6 +64,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     _ => continue,
                 };
 
+                let turn_start = std::time::Instant::now();
                 let raw_req: RawChatRequest = match serde_json::from_str(&text) {
                     Ok(r) => r,
                     Err(e) => {
@@ -406,6 +409,28 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 let current_turn = turn_counter;
                 turn_counter += 1;
 
+                // ── 生产环境 metrics 日志 ──
+                let turn_latency = turn_start.elapsed();
+                let turn_card_count: i64 = {
+                    let conn = crate::db_pool::get_conn();
+                    conn.query_row(
+                        "SELECT COUNT(*) FROM cards WHERE user_id = ?1",
+                        rusqlite::params![&chat_req.user_id],
+                        |row| row.get(0),
+                    ).unwrap_or(0)
+                };
+                tracing::info!(
+                    turn = current_turn,
+                    latency_ms = turn_latency.as_millis() as i64,
+                    reply_chars = final_reply.len(),
+                    prompt_chars_est = chat_req.message.len() + chat_req.message.len(),
+                    completion_chars_est = final_reply.len(),
+                    plan_updated = plan_updated,
+                    card_count = turn_card_count,
+                    user_id = &chat_req.user_id,
+                    "WS turn completed"
+                );
+
                 // ❄️ ColdPath: 扔到后台 task，不阻塞消息接收
                 let user_id = chat_req.user_id.clone();
                 let msg = chat_req.message.clone();
@@ -415,12 +440,24 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 let history_clone = history.clone();
                 // 获取 domain 用于概念提取管线路由
                 let conv_id = &chat_req.conversation_id;
-                let extract_domain = {
+                let (extract_domain, _, extract_plan_ctx) = {
                     let conn = crate::db_pool::get_conn();
-                    let (domain, _, _) = crate::plan_handler::build_plan_context(&conn, conv_id);
-                    domain
+                    crate::plan_handler::build_plan_context(&conn, conv_id)
                 };
-                tokio::spawn(async move {
+                // CP2 需要 final_reply，但 CP1 spawn 会 move 走它，提前 clone
+                let cp2_reply = final_reply.clone();
+                // ❄️ ColdPath 1: 概念提取 — 仅在已有 plan 时才运行
+                // 无 plan 时提取的概念无法正确绑定到 review tab，浪费 LLM 调用
+                if !extract_domain.is_empty() {
+                    let user_id = chat_req.user_id.clone();
+                    let msg = chat_req.message.clone();
+                    let config = llm_config.clone();
+                    let cold_tx = cold_tx.clone();
+                    let cold_turn = current_turn;
+                    let history_clone = history.clone();
+                    let ctx = extract_plan_ctx.clone();
+                    let fr = final_reply.clone();
+                    tokio::spawn(async move {
                     // Bug 1 修复：确保任何 DB 错误路径都向 cold_tx 发送空结果，
                     // 避免 BTreeMap 产生空洞导致后续 candidates 永久阻塞。
                     // 注意：rusqlite Connection/Statement 不是 Send，
@@ -478,9 +515,9 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     let extraction = match tokio::time::timeout(
                         Duration::from_secs(30),
                         chat_engine::concept_extractor::extract_concepts(
-                            &user_id, &msg, &final_reply,
+                            &user_id, &msg, &fr,
                             &existing_fronts, &skipped_fronts, &config,
-                            &history_clone, &extract_domain,
+                            &history_clone, &extract_domain, &ctx,
                         ),
                     ).await {
                         Ok(e) => e,
@@ -496,24 +533,32 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     }).collect();
                     let _ = cold_tx.send((cold_turn, candidates)).await;
                 });
+                } else {
+                    // 无 plan → 发送空结果避免空洞
+                    let _ = cold_tx.send((cold_turn, vec![])).await;
+                }  // end if !extract_domain.is_empty()
 
-                // ❄️ ColdPath 2: 计划进度分析
-                // - 第 2、3 轮：检测无计划 → 自动创建
-                // - 每 5 轮（含上述条件）：推进评估 + 卡片解锁
+                // ❄️ ColdPath 2: 计划进度分析（轻量，每轮检测）
+                // 每轮判断 teacher 最后一轮回复（final_reply），仅单轮 LLM 调用：
+                //   1. 无 plan → 检测 teacher 是否自然引入学习任务
+                //   2. 有 plan → 检测 teacher 是否标记当前任务完成
+                // HotPath（XML 标签）已处理时跳过，避免重复更新
                 // 改用 tokio::spawn 而非 std::thread::spawn，避免在 1GB VPS 上创建 OS 线程 + tokio 运行时
-                let run_cp2 = turn_counter > 0 && (
-                    turn_counter % 5 == 0    // 常规评估
-                    || turn_counter == 2     // 开局无计划检测
-                    || turn_counter == 3     // 开局无计划检测（2 轮对话后已有内容）
-                );
-                if run_cp2 {
+                if !plan_updated && turn_counter > 0 {
                     let conv_id = chat_req.conversation_id.clone();
                     let uid = chat_req.user_id.clone();
                     let cfg = llm_config.clone();
+                    let reply = cp2_reply;
+                    let cp2_notify = cp2_tx.clone();
                     tokio::spawn(async move {
                         let mut caller = chat_engine::llm_caller::LlmCaller::new(cfg);
                         tokio::time::sleep(Duration::from_millis(500)).await;
-                        let _ = crate::plan_handler::analyze_plan_progress(&conv_id, &uid, &mut caller).await;
+                        let updated = crate::plan_handler::analyze_turn_progress(
+                            &conv_id, &uid, &mut caller, &reply,
+                        ).await;
+                        if updated {
+                            let _ = cp2_notify.send(true).await;
+                        }
                     });
                 }
             }
@@ -567,6 +612,15 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         }
                     }
                     next_turn_to_show += 1;
+                }
+            }
+
+            // ❄️ ColdPath 2 通知：CP2 更新 plan 后通知前端刷新
+            Some(true) = cp2_rx.recv() => {
+                if ws.send(Message::Text(json!({
+                    "type": "plan_updated",
+                }).to_string().into())).await.is_err() {
+                    tracing::warn!("WS send(plan_updated from CP2) failed — connection lost");
                 }
             }
         }

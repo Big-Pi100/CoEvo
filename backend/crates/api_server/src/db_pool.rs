@@ -19,6 +19,11 @@ static DB_POOL: OnceLock<Pool<SqliteConnectionManager>> = OnceLock::new();
 
 /// Initialize the connection pool. Call once at startup.
 pub fn init(db_path: &str) -> Result<(), String> {
+    // 幂等: 如果 pool 已初始化，直接返回成功
+    if DB_POOL.get().is_some() {
+        return Ok(());
+    }
+
     let manager = SqliteConnectionManager::file(db_path)
         .with_init(|conn| {
             conn.execute_batch("PRAGMA busy_timeout=5000; PRAGMA foreign_keys = ON;")

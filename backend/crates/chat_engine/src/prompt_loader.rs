@@ -162,6 +162,17 @@ pub fn build_concept_extract_for_domain(
     context_turns: &[(String, String)],
     domain: &str,
 ) -> String {
+    build_concept_extract_for_domain_with_plan(text, existing_concepts, context_turns, domain, "")
+}
+
+/// 构建概念提取 prompt（带 domain 路由 + plan 上下文）
+pub fn build_concept_extract_for_domain_with_plan(
+    text: &str,
+    existing_concepts: &[String],
+    context_turns: &[(String, String)],
+    domain: &str,
+    plan_context: &str,
+) -> String {
     let tpl = &get_for_domain(domain).concept_extract;
 
     let concepts_str = if existing_concepts.is_empty() {
@@ -194,6 +205,7 @@ pub fn build_concept_extract_for_domain(
         tpl.replace("{text}", text)
             .replace("{existing_concepts_list}", &concepts_str)
             .replace("{conversation_history}", &history_str)
+            .replace("{plan_context}", plan_context)
     }
 }
 

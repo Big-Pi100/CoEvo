@@ -407,9 +407,17 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
 
   // ── Build ──
 
-  /// 计算每个 domain 的待复习卡片数
-  int _domainDueCount(String domain) =>
-      domain.isEmpty ? _cards.length : _cards.where((c) => c.domain == domain).length;
+  /// 计算每个 domain 的待复习卡片数（支持精确和前缀匹配）
+  int _domainDueCount(String domain) {
+    if (domain.isEmpty) return _cards.length;
+    if (domain.contains('_')) {
+      final base = domain.split('_').first;
+      return _cards.where((c) =>
+          c.domain == domain ||
+          (c.domain != null && !c.domain!.contains('_') && c.domain == base)).length;
+    }
+    return _cards.where((c) => c.domain == domain).length;
+  }
 
   /// 从 plan goal 提取简短标签（"K12: 数学 g3-4" → "数学 g3-4"）
   String _planLabel(Map<String, dynamic> plan) {
@@ -477,10 +485,22 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
   }
 
   /// 按 domain 过滤的待复习列表（复用记忆曲线复习界面）
-  List<DueCard> get _filteredCards =>
-      _domainFilter == null
-          ? _cards
-          : _cards.where((c) => c.domain == _domainFilter).toList();
+  /// 支持三种匹配模式：
+  ///   - 精确匹配: tab domain == card domain
+  ///   - 学段前缀匹配: tab domain="数学_g10-12" 时, card domain="数学" 也匹配
+  ///   - 纯学科名: tab domain="语文" 时, 只精确匹配 card domain="语文" (不匹配"语文_g7-9")
+  List<DueCard> get _filteredCards {
+    if (_domainFilter == null) return _cards;
+    // 如果 domain 带下划线后缀（如"数学_g10-12"），用前缀匹配；
+    // 如果无下划线（如"语文"），用精确匹配。
+    if (_domainFilter!.contains('_')) {
+      final base = _domainFilter!.split('_').first;
+      return _cards.where((c) =>
+          c.domain == _domainFilter ||
+          (c.domain != null && !c.domain!.contains('_') && c.domain == base)).toList();
+    }
+    return _cards.where((c) => c.domain == _domainFilter).toList();
+  }
 
   Widget _buildReviewTab() {
     if (_isLoading) {

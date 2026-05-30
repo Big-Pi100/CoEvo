@@ -11,10 +11,11 @@
 | IP 地址 | `<OLD_VPS_IP>` |
 | SSH 用户 | `ubuntu` |
 | SSH 密钥 | `~/.ssh/coevo_key` |
-| 域名 | `keyievolution.fun`（待备案） |
+| 域名 | `keyievolution.fun`（已备案：粤ICP备2026061557号-1） |
+| SSL | Let's Encrypt（certbot），自动续期 |
 | **前端** | |
 | Web 目录 | `/opt/coevo/admin-web/` |
-| 访问入口 | `http://<OLD_VPS_IP>/app/` |
+| 访问入口 | `https://keyievolution.fun/app/` |
 | **后端** | |
 | 后端目录 | `/opt/coevo/` |
 | 二进制路径 | `/opt/coevo/coevo_server` |
@@ -22,6 +23,7 @@
 | 后端端口 | `8080` |
 | **环境变量** | |
 | `COEVO_PII_KEY` | **2026-05-20 新增**：64 位十六进制字符串，用于 AES-256-GCM 加密 PII 字段（见 5.7 节） |
+| `COEVO_K12_DATA_DIR` | **2026-05-30 新增**：指向 `/opt/coevo/data/curriculum/prebuilt`，解决编译时路径与运行时路径不一致的问题（见 5.4 节） |
 
 ---
 
@@ -60,29 +62,53 @@
 > - Port 3000 Nginx 配置了 `/app/` location，通过 `rewrite` 剥离前缀后正确提供文件。
 > - **部署时必须确保 port 3000 的 `/app/` location 配置存在**，否则直连 port 3000 时所有 JS/CSS 资源会错误返回 HTML，导致白屏。
 
+### 2.1 SSL / HTTPS
+
+**2026-05-31 更新**：正式域名 `keyievolution.fun` 已启用 HTTPS。
+
+```bash
+# 首次申请证书
+sudo certbot --nginx -d keyievolution.fun --agree-tos --email admin@keyievolution.fun
+
+# 证书自动续期（certbot 已设置 systemd timer，无需手动操作）
+sudo certbot renew --dry-run
+```
+
+证书路径：
+- `/etc/letsencrypt/live/keyievolution.fun/fullchain.pem`
+- `/etc/letsencrypt/live/keyievolution.fun/privkey.pem`
+
+部署后 Nginx 配置自动包含：
+- 443 HTTPS（SSL）
+- 80 HTTP → 301 跳转 HTTPS
+
 ---
 
 ## 3. 本地构建
 
 ### 3.1 环境要求
 
-- Flutter SDK: `D:\flutter\flutter\bin\flutter.bat`（3.41.1 stable）
-- **注意**：不要使用 `D:\flutter_ohos`（该版本为鸿蒙定制 SDK）
+- Flutter SDK: `D:\flutter_flutter\bin\flutter.bat`（3.27.5 社区版，支持华为 SDK）
+- **注意**：
+  - `D:\flutter_flutter` 是社区版（含华为 SDK 支持），**这是当前使用的版本**
+  - `D:\flutter_ohos` 是鸿蒙定制版，**不要使用**
+  - `D:\flutter` 是标准版 Flutter，通常也可用，但构建时需确认 API_HOST 正确注入
 
 ### 3.2 构建命令
 
 ```bash
 cd E:\CoEvo\app
-D:\flutter\flutter\bin\flutter build web --no-wasm-dry-run --base-href /app/ \
-  --dart-define=API_HOST=<OLD_VPS_IP> --dart-define=API_PORT=8080
+D:\flutter_flutter\bin\flutter.bat build web --base-href /app/ \
+  --dart-define=API_HOST=keyievolution.fun
 ```
 
 | 参数 | 说明 |
 |:--|:--|
-| `--no-wasm-dry-run` | 跳过 WASM 干运行（避免 URI 解析错误） |
 | `--base-href /app/` | 设置资源基础路径，匹配 Nginx 的 `/app/` 路由 |
 | `--dart-define=API_HOST=...` | **2026-05-15 新增**：编译时注入 API 服务器地址（见 3.2.1 节） |
 | `--dart-define=API_PORT=...` | API 端口，VPS 上为 `8080` |
+
+> **注意**：旧版文档中的 `--no-wasm-dry-run` 在新版 Flutter 中已废弃，不再使用。
 
 ### 3.2.1 API 地址配置机制
 
@@ -92,13 +118,18 @@ D:\flutter\flutter\bin\flutter build web --no-wasm-dry-run --base-href /app/ \
 // app/lib/api/api_config.dart
 static const String _host = String.fromEnvironment('API_HOST', defaultValue: 'localhost');
 static const String _port = String.fromEnvironment('API_PORT', defaultValue: '8080');
-static String get baseUrl => 'http://$_host:$_port';
+static String get baseUrl {
+  if (_host.contains('.')) {
+    return 'https://$_host';  // 域名 → HTTPS 443
+  }
+  return 'http://$_host:$_port';  // IP/localhost → HTTP + 端口
+}
 ```
 
 | 场景 | 命令 |
 |:--|:--|
-| **VPS 部署（Web）** | `flutter build web --dart-define=API_HOST=<OLD_VPS_IP> --dart-define=API_PORT=8080` |
-| **VPS 部署（Android APK）** | `flutter build apk --release --dart-define=API_HOST=<OLD_VPS_IP> --dart-define=API_PORT=8080` |
+| **VPS 部署（Web）** | `flutter build web --base-href /app/ --dart-define=API_HOST=keyievolution.fun` |
+| **VPS 部署（Android APK）** | `flutter build apk --release --dart-define=API_HOST=keyievolution.fun` |
 | **本地测试（默认）** | `flutter run`（默认连接 `localhost:8080`） |
 | **真机调试** | `flutter run --dart-define=API_HOST=<电脑局域网IP>` |
 
@@ -180,18 +211,29 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "rm -f /tmp/coevo-web.tar.gz"
 ### 5.2 源码打包上传
 
 ```bash
-# 1. 本地打包（排除 target/ 和 data/ 目录）
-cd E:\CoEvo
+# 1. 本地打包
+# ⚠️ 注意：必须从 backend/ 目录打包，这样 VPS 上解压后可直接进入 backend/ 子目录
+# ⚠️ 注意：不要排除 data/curriculum/（课程数据需要同步上传）
+cd E:\CoEvo\backend
 tar czf /tmp/coevo-backend-src.tar.gz \
-  --exclude='backend/target' \
-  --exclude='backend/data' \
-  backend/
+  --exclude=target \
+  --exclude='data/test_*' \
+  --exclude='data/eval_runs' \
+  src/ Cargo.toml Cargo.lock crates/ prompts/
 
 # 2. 上传到 VPS
 scp -i ~/.ssh/coevo_key -o StrictHostKeyChecking=no \
   /tmp/coevo-backend-src.tar.gz \
   ubuntu@<OLD_VPS_IP>:/tmp/
+
+# 3. 课程数据打包上传（必需，编译时路径与运行时路径不同）
+cd E:\CoEvo
+tar czf /tmp/curriculum-prebuilt.tar.gz -C data/curriculum/prebuilt .
+scp -i ~/.ssh/coevo_key /tmp/curriculum-prebuilt.tar.gz \
+  ubuntu@<OLD_VPS_IP>:/tmp/
 ```
+
+> **注意**：课程数据必须单独上传，不能依赖编译时路径（CARGO_MANIFEST_DIR）。见 5.4 节。
 
 ### 5.3 VPS 端编译
 
@@ -199,20 +241,23 @@ scp -i ~/.ssh/coevo_key -o StrictHostKeyChecking=no \
 ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
   # 解压源码
   sudo rm -rf /tmp/coevo-build
-  sudo mkdir -p /tmp/coevo-build
-  sudo tar xzf /tmp/coevo-backend-src.tar.gz -C /tmp/coevo-build/
+  mkdir -p /tmp/coevo-build/backend
+  sudo tar xzf /tmp/coevo-backend-src.tar.gz -C /tmp/coevo-build/backend/
   sudo chown -R ubuntu:ubuntu /tmp/coevo-build
 
   # 编译（-j 1 防 OOM，首次约 5-10 分钟，增量更快）
+  # ⚠️ 使用完整路径：SSH 非交互式 shell 下 $PATH 可能不包含 ~/.cargo/bin
   export PATH="$HOME/.cargo/bin:$PATH"
   cd /tmp/coevo-build/backend
   cargo build --release -j 1
 '
 ```
 
-> **注意**：
-> - 首次编译耗时较长（需下载并编译所有依赖），后续增量编译会快很多。
-> - 如果 VPS 上 Rust 未安装，先执行：  
+> **⚠️ 常见陷阱（2026-05-30 更新）**：
+> - **nohup 和 PATH**：如需后台编译（`nohup cargo build &`），务必使用完整路径 `/home/ubuntu/.cargo/bin/cargo`，因为 `nohup` 不继承 SSH 的 PATH。
+> - **SSH 超时断连**：SSH 会话断开后前台进程会被 SIGTERM 杀死。如需避免，使用 screen/tmux 或 `nohup`，不要依赖 SSH 保活（`ServerAliveInterval` 不阻止断连）。
+> - **首次编译**：需下载并编译所有依赖，比较耗时。后续增量编译快很多。
+> - 如果 VPS 上 Rust 未安装，先执行：
 >   `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y`
 
 ### 5.3.1 首次部署 AES-256 密钥生成
@@ -232,49 +277,66 @@ echo 'COEVO_PII_KEY=<上面生成的密钥>' >> /opt/coevo/.env
 sudo systemctl edit coevo  # 添加 Environment=COEVO_PII_KEY=...
 ```
 
-
 ### 5.4 替换二进制并重启
 
 ```bash
 ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
-  # 停止服务
+  # 0. 确保课程数据已就位（编译时路径为 /tmp/coevo-build/，运行时为 /opt/coevo/）
+  sudo mkdir -p /opt/coevo/data/curriculum/prebuilt
+  sudo tar xzf /tmp/curriculum-prebuilt.tar.gz \
+    -C /opt/coevo/data/curriculum/prebuilt/
+
+  # 1. 停止服务
   sudo systemctl stop coevo
 
-  # 备份旧二进制
+  # 2. 备份旧二进制
   sudo cp /opt/coevo/coevo_server \
     /opt/coevo/coevo_server.bak.$(date +%Y%m%d-%H%M%S)
 
-  # 替换新二进制
+  # 3. 替换新二进制
   sudo cp /tmp/coevo-build/backend/target/release/coevo_backend \
     /opt/coevo/coevo_server
   sudo chmod +x /opt/coevo/coevo_server
   sudo chown ubuntu:ubuntu /opt/coevo/coevo_server
 
-  # ⚠️ 重要：全量覆盖 prompts、cefr_catalog.json、.env
+  # 4. ⚠️ 重要：全量覆盖 prompts、.env
   # 这些文件不随二进制编译，修改后必须重新上传
   sudo cp /tmp/coevo-build/backend/prompts/*.md /opt/coevo/prompts/
-  sudo cp /tmp/coevo-build/backend/cefr_catalog.json /opt/coevo/
-  sudo cp /tmp/coevo-build/backend/.env /opt/coevo/
-  sudo chown ubuntu:ubuntu /opt/coevo/prompts/*.md /opt/coevo/cefr_catalog.json /opt/coevo/.env
+  sudo chown ubuntu:ubuntu /opt/coevo/prompts/*.md
 
-  # 启动服务（自动执行 PII 加密迁移）
-  # 2026-05-20: 第一次启动时后端会自动加密所有现有明文 PII 数据
-  # 并生成 bind_hash 列，无需手动干预
+  # 5. ⚠️ 设置 COEVO_K12_DATA_DIR 环境变量（2026-05-30）
+  # 解决编译时 CARGO_MANIFEST_DIR 指向 /tmp/coevo-build/ 的问题
+  grep -q COEVO_K12_DATA_DIR /opt/coevo/.env ||
+    echo "COEVO_K12_DATA_DIR=/opt/coevo/data/curriculum/prebuilt" >> /opt/coevo/.env
+
+  # 6. 启动服务
   sudo systemctl start coevo
   sleep 2
   echo "Service: $(sudo systemctl is-active coevo)"
+  echo "Health: $(curl -s http://127.0.0.1:8080/health)"
 '
 ```
+
+> **⚠️ 关键路径说明（2026-05-30 更新）**：
+> - Rust 代码中 `reading_loader.rs` 和 `curriculum_loader.rs` 在开发阶段通过 `CARGO_MANIFEST_DIR` 查找 `data/curriculum/prebuilt`。但编译后在 VPS 上运行，`CARGO_MANIFEST_DIR` 指向的是编译机器上的路径（如 `/tmp/coevo-build/...`），而非 VPS 上的 `/opt/coevo/`。
+> - **解决方案**：设置 `COEVO_K12_DATA_DIR=/opt/coevo/data/curriculum/prebuilt` 环境变量。loader 代码会优先读此变量，只有未设置时才回退到 `CARGO_MANIFEST_DIR` 路径。
+> - 每次部署后检查启动日志确认数据加载正常：
+>   ```bash
+>   sudo journalctl -u coevo -n 20 --no-pager | grep -E 'K12|READING|init done'
+>   # 期望看到:
+>   # [K12] loaded 22 card sets from /opt/coevo/data/curriculum/prebuilt/cards
+>   # [READING] init done: 1 plans, 775 cards
+>   ```
 
 ### 5.5 清理
 
 ```bash
 # VPS 端
 ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> \
-  "rm -rf /tmp/coevo-build /tmp/coevo-backend-src.tar.gz"
+  "rm -rf /tmp/coevo-build /tmp/coevo-backend-src.tar.gz /tmp/curriculum-prebuilt.tar.gz /tmp/build.log"
 
 # 本地
-rm -f /tmp/coevo-backend-src.tar.gz
+rm -f /tmp/coevo-backend-src.tar.gz /tmp/curriculum-prebuilt.tar.gz
 ```
 
 ### 5.6 systemd 服务参考
@@ -294,6 +356,8 @@ Restart=always
 RestartSec=5
 Environment=RUST_LOG=info
 Environment=COEVO_PII_KEY=<64位十六进制密钥>
+# 2026-05-30 新增：课程数据路径（解决编译时路径与运行时路径不一致）
+Environment=COEVO_K12_DATA_DIR=/opt/coevo/data/curriculum/prebuilt
 
 [Install]
 WantedBy=multi-user.target
@@ -348,6 +412,21 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
 "
 ```
 
+### 6.3 课程数据加载验证（2026-05-30 新增）
+
+```bash
+ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
+  echo 'K12 plans:' \$(ls /opt/coevo/data/curriculum/prebuilt/plans/ | wc -l)
+  echo 'K12 cards:' \$(ls /opt/coevo/data/curriculum/prebuilt/cards/*.json | wc -l)
+  sudo journalctl -u coevo -n 5 --no-pager --no-hostname | grep -E 'K12|READING'
+"
+# 期望:
+#   K12 plans: 14
+#   K12 cards: 22
+#   [K12] loaded 22 card sets from /opt/coevo/data/curriculum/prebuilt/cards
+#   [READING] init done: 1 plans, 775 cards
+```
+
 ---
 
 ## 7. 故障排查
@@ -381,7 +460,7 @@ curl -s -o /dev/null -w "%{http_code}" http://<OLD_VPS_IP>/app/main.dart.js
    # 查看构建产物中注入的 API 地址
    grep -o '"http://[^"]*"' /opt/coevo/admin-web/main.dart.js | head -5
    # 期望 VPS 部署：http://<OLD_VPS_IP>:8080
-   # 如出现 localhost:8080 说明构建时忘记传 --dart-define=API_HOST=<OLD_VPS_IP>
+   # 如出现 localhost:8080 或 keyievolution.fun:8080 说明构建时忘记传 --dart-define=API_HOST
    ```
 
 2. **后端服务是否正常**：
@@ -436,7 +515,58 @@ sudo mkswap /swapfile
 sudo swapon /swapfile
 ```
 
-### 7.5 域名被拦截
+### 7.5 编译成功但课程数据加载失败（2026-05-30 新增）
+
+**症状**：服务启动日志显示 `[K12] ERR: plans dir not found: /tmp/coevo-build/.../data/curriculum/prebuilt/plans` 或 `[READING] init done: 0 plans, 0 cards`
+
+**根因**：Rust 代码中的 `CARGO_MANIFEST_DIR` 是编译时路径（指向 `/tmp/coevo-build/`），部署到 `/opt/coevo/` 后这个路径不再存在。loader 代码虽然有相对路径 fallback，但需要 `.env` 中显式设置 `COEVO_K12_DATA_DIR`。
+
+**解决**：（见 5.4 节第 5 步）
+
+```bash
+# 检查 .env
+grep COEVO_K12_DATA_DIR /opt/coevo/.env
+
+# 如缺失则添加
+echo 'COEVO_K12_DATA_DIR=/opt/coevo/data/curriculum/prebuilt' >> /opt/coevo/.env
+
+# 确保数据在正确位置
+ls /opt/coevo/data/curriculum/prebuilt/plans/  # 应有 14 个文件
+
+# 重启
+sudo systemctl restart coevo
+
+# 验证加载
+sudo journalctl -u coevo -n 10 --no-pager | grep -E 'K12|READING'
+```
+
+### 7.6 SSH 断连导致编译中断（2026-05-30 新增）
+
+**症状**：远程启动编译后 SSH 断连重连，发现编译进程已消失
+
+**根因**：SSH 会话退出时会向其启用的进程组发送 SIGHUP/SIGTERM。即使设置了 `SSH ServerAliveInterval`，网络断开或超时仍会导致会话结束。
+
+**解决**：
+
+```bash
+# 方案一：nohup（推荐，最简单）
+nohup /home/ubuntu/.cargo/bin/cargo build --release -j 1 > /tmp/build.log 2>&1 &
+
+# 方案二：tmux（适合需要交互监控的场景）
+tmux new-session -s build
+cargo build --release -j 1   # 在 tmux 内运行
+# Ctrl+B D 断开但不结束 session
+# tmux attach -t build 重新连接
+
+# 方案三：screen
+screen -S build
+cargo build --release -j 1
+# Ctrl+A D 断开，screen -r build 重新连接
+```
+
+> **注意**：使用 `nohup` 时必须用完整路径 `/home/ubuntu/.cargo/bin/cargo`，因为 SSH 非交互式 shell 和 `nohup` 环境中的 `$PATH` 可能不包含 cargo。
+
+### 7.7 域名被拦截
 
 **症状**：`keyievolution.fun` 返回 DNSPod 拦截页面
 
@@ -444,7 +574,7 @@ sudo swapon /swapfile
 
 **解决**：登录 [DNSPod 控制台](https://console.dnspod.cn/)，检查域名状态和备案信息。备案完成前请使用 IP 直连。
 
-### 7.6 直连 Port 3000 白屏 / 管理员后台打不开
+### 7.8 直连 Port 3000 白屏 / 管理员后台打不开
 
 **症状**：`http://<OLD_VPS_IP>:3000/` 或 `:3000/admin` 页面白屏，浏览器 Console 报 JS 语法错误（`Unexpected token '<'`）
 
@@ -476,7 +606,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
 ```
 ---
 
-### 7.7 WebSocket 长时间空闲后断连
+### 7.9 WebSocket 长时间空闲后断连
 
 **症状**：闲置几分钟后再次发送消息无响应，需要刷新页面才能恢复
 
@@ -489,14 +619,14 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
 ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
   # port 80 入口
   sudo sed -i "/location \/ws {/,/}/ {
-    /proxy_pass.*8080\/ws/ a\\
-        proxy_read_timeout 86400s;\\
+    /proxy_pass.*8080\/ws/ a\
+        proxy_read_timeout 86400s;\
         proxy_send_timeout 86400s;
   }" /etc/nginx/sites-available/coevo-landing
   # port 3000 内部
   sudo sed -i "/location \/ws {/,/}/ {
-    /proxy_pass.*8080\/ws/ a\\
-        proxy_read_timeout 86400s;\\
+    /proxy_pass.*8080\/ws/ a\
+        proxy_read_timeout 86400s;\
         proxy_send_timeout 86400s;
   }" /etc/nginx/sites-available/coevo-admin
   sudo nginx -t && sudo nginx -s reload
@@ -509,7 +639,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
    - **双重保护**：即使 Nginx/中间件静默切断连接，最长 60s 内即可检测断开并清理
    - 部署新版二进制后自动生效，无需额外配置
 
-### 7.8 PII 解密失败 / 用户信息显示乱码
+### 7.10 PII 解密失败 / 用户信息显示乱码
 
 **症状**：管理员后台用户姓名/手机号显示为 `***` 或乱码字符
 
@@ -547,8 +677,16 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
 | `lib/services/stt_service_native.dart` | 原生平台实现（MediaRecorder + 讯飞 API） |
 | `pubspec.yaml` | 需包含 `flutter_web_plugins` 依赖 |
 | `backend/crates/api_server/src/encryption.rs` | **2026-05-20 新增**：AES-256-GCM PII 加密模块，需要 `COEVO_PII_KEY` 环境变量 |
-| `backend/crates/api_server/src/ws.rs` | **2026-05-23 修复**：添加 WS 心跳检测（60s Ping）、ws.send() 错误检查、ColdPath 2 改用 tokio::spawn |
+| `backend/crates/api_server/src/ws.rs` | **2026-05-23 修复**：添加 WS 心跳检测（60s Ping）、ws.send() 错误检查、ColdPath 2 改用 tokio::spawn<br>**2026-05-30 更新**：新增每次请求后 `WS turn completed` 结构化日志（latency/token/plan/cards） |
+| `backend/crates/api_server/src/plan_handler.rs` | **2026-05-30 修复**：`apply_plan_mutations` 始终同步 `plan_content`；`unlock_next_cards` 支持词卡+课文卡；reading 模式 CP2 推进后调用 `unlock_next_cards`；`upsert_learning_plan` 自动激活首任务 |
+| `backend/crates/api_server/src/db_pool.rs` | **2026-05-30 修复**：`init()` 改为幂等（OnceLock 检查），多次调用不 panic |
 | `landing/coevo-nginx.conf` | **2026-05-23 修复**：WebSocket location 添加 `proxy_read_timeout 86400s; proxy_send_timeout 86400s;` |
+
+## SDK 版本说明（2026-05-30 更新）
+
+当前使用的 Flutter SDK 为 **社区版 3.27.5**（路径 `D:\flutter_flutter`），支持华为 SDK 扩展。
+此版本已移除 `--no-wasm-dry-run` 参数，构建时无需传入。
+如有多个 Flutter SDK，构建前确认 PATH 或指定完整路径到正确的 SDK。`D:\flutter_ohos` 为鸿蒙定制版，不用于 Web 构建。
 
 ### 8.2 不可用于 Web 的插件
 
@@ -587,7 +725,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
 
   # 停止 → 回滚 → 启动
   sudo systemctl stop coevo
-  sudo cp /opt/coevo/coevo_server.bak.20260514-163157 /opt/coevo/coevo_server
+  sudo cp /opt/coevo/coevo_server.bak.20260530-111727 /opt/coevo/coevo_server
   sudo systemctl start coevo
 
   # 验证
@@ -612,10 +750,11 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
 | 7 | coevo 服务 | `ssh ... "systemctl is-active coevo"` | `active` |
 | 8 | Nginx 服务 | `ssh ... "systemctl is-active nginx"` | `active` |
 | 9 | 服务日志无异常 | `ssh ... "journalctl -u coevo --since '1 min ago'"` | 无 ERROR |
-| 10 | API_HOST 正确注入 | `grep -o 'http://<OLD_VPS_IP>' /opt/coevo/admin-web/main.dart.js \| head -1` | 匹配 VPS IP |
+| 10 | API_HOST 正确注入 | `grep -o 'keyievolution.fun' /opt/coevo/admin-web/main.dart.js \| head -1` | 匹配域名 |
 | 11 | **2026-05-20**: PII 密钥已设置 | `ssh ... "sudo systemctl show coevo --property=Environment \| grep COEVO_PII_KEY"` | 输出含 64 位 hex 密钥 |
-
-> **部署后端后特别注意第 4-6 项**：后端部署不会触碰前端文件，但如果 Nginx 配置曾因故回滚或丢失 `/app/` location，管理后台会白屏。
+| 12 | **2026-05-30**: 课程数据加载 | `ssh ... "journalctl -u coevo --no-pager \| grep -E 'K12\|READING' \| tail -3"` | `1 plans, 775 cards` |
+| 13 | **2026-05-30**: COEVO_K12_DATA_DIR 已设置 | `grep COEVO_K12_DATA_DIR /opt/coevo/.env` | `/opt/coevo/data/curriculum/prebuilt` |
+| 14 | **2026-05-30**: 二进制版本 | `ssh ... "ls -lh /opt/coevo/coevo_server"` | `13M May 30 11:37` (或当天日期) |
 
 ### 完整验证脚本
 
@@ -653,11 +792,14 @@ echo "main.dart.js: $mime"
 ssh -i "$KEY" "$VPS" "
   echo 'coevo:' \$(systemctl is-active coevo)
   echo 'nginx:' \$(systemctl is-active nginx)
+  echo 'K12 plans:' \$(ls /opt/coevo/data/curriculum/prebuilt/plans/ | wc -l)
+  echo 'Binary date:' \$(ls -lh /opt/coevo/coevo_server | awk '{print \$6,\$7,\$8}')
 "
 echo "=== Done ==="
 ```
 
 ---
+
 ## 11. Port 3000 Nginx 完整配置参考
 
 ```nginx
@@ -696,4 +838,19 @@ server {
 
 ---
 
-> 最后更新：2026-05-23（新增 Nginx WebSocket 超时配置 reference、后端心跳+错误检查代码说明）
+## 附录：2026-05-30 部署问题汇总
+
+本次部署遇到了以下问题，均已修复或记录了避免方法：
+
+| 问题 | 根因 | 解决方案 | 相关章节 |
+|:----|:-----|:---------|:--------|
+| SSH 断连杀死编译进程 | SSH 会话退出时发送 SIGHUP | 使用 `nohup` 或 tmux/screen | 7.6 |
+| `nohup` 下找不到 cargo | SSH 非交互式 shell 无 `$HOME/.cargo/bin` 在 PATH 中 | 使用完整路径 `/home/ubuntu/.cargo/bin/cargo` | 7.6 |
+| 课程数据加载失败 (0 plans, 0 cards) | `CARGO_MANIFEST_DIR` 指向编译目录 `/tmp/coevo-build/` | 设置 `COEVO_K12_DATA_DIR` 环境变量 | 7.5 |
+| 课程数据 tarball 损坏 (222MB) | SCP 上传大文件断连导致 | 只打包 `prebuilt/` (5.7MB)，排除 `raw/cleaned/gold` | 5.2 |
+| tarball 目录结构不匹配 | 从 `backend/` 打包缺少子目录前缀 | 解压到 `mkdir -p /tmp/coevo-build/backend` | 5.3 |
+| DB pool 多次 init panic | 测试并发初始化 | `init()` 改为幂等 OnceLock | 已在代码中修复 |
+
+---
+
+> 最后更新：2026-05-30（Flutter SDK 路径修正为 `D:\flutter_flutter`，移除废弃参数 `--no-wasm-dry-run`，新增 SDK 版本说明）

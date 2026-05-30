@@ -36,6 +36,7 @@ pub async fn extract_concepts(
     llm_config: &LlmConfig,
     history: &[(String, String)],
     domain: &str,  // "language" / "math" / "general"
+    plan_context: &str,  // 当前学习计划上下文，用于限定提取范围
 ) -> ExtractionResult {
     if has_card_intent(user_message) {
         // Path B2: 直接制卡
@@ -47,12 +48,12 @@ pub async fn extract_concepts(
             None => ExtractionResult { candidates: vec![], direct_card: true },
         }
     } else {
-        // 从 LLM 提取候选概念（传入已有概念 + 对话历史，避免重复）
+        // 从 LLM 提取候选概念（传入已有概念 + 对话历史 + plan 上下文，避免重复）
         let all_existing: Vec<String> = existing_fronts.iter()
             .chain(skipped_fronts.iter())
             .cloned()
             .collect();
-        let mut candidates = extract_candidates_from_llm(llm_config, ai_reply, &all_existing, history, domain).await;
+        let mut candidates = extract_candidates_from_llm(llm_config, ai_reply, &all_existing, history, domain, plan_context).await;
 
     let existing_fronts_lower: Vec<String> = existing_fronts.iter().map(|f| f.to_lowercase()).collect();
     let skipped_lower: Vec<String> = skipped_fronts.iter().map(|f| f.to_lowercase()).collect();
@@ -151,8 +152,9 @@ async fn extract_candidates_from_llm(
     existing_concepts: &[String],
     history: &[(String, String)],
     domain: &str,
+    plan_context: &str,
 ) -> Vec<ConceptCandidate> {
-    let prompt = crate::prompt_loader::build_concept_extract_for_domain(ai_reply, existing_concepts, history, domain);
+    let prompt = crate::prompt_loader::build_concept_extract_for_domain_with_plan(ai_reply, existing_concepts, history, domain, plan_context);
 
     let mut caller = LlmCaller::new(config.clone());
     match caller.generate("", &prompt).await {

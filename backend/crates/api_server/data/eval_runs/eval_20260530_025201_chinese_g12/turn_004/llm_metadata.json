@@ -1,0 +1,8 @@
+{
+  "completion_tokens_est": 256,
+  "latency_ms": 5354,
+  "plan_updated": false,
+  "prompt_tokens_est": 2873,
+  "reply_chars": 513,
+  "turn": 4
+}

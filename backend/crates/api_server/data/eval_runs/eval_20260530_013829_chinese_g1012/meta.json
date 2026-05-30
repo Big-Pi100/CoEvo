@@ -1,0 +1,28 @@
+{
+  "expected_tasks": {
+    "stages": [
+      {
+        "name": "一年级上册·入学教育",
+        "tasks": [
+          {
+            "focus": "入学教育·国家认同",
+            "mode": "nursery_rhyme",
+            "name": "我是中国人"
+          },
+          {
+            "focus": "入学教育·爱国情感",
+            "mode": "nursery_rhyme",
+            "name": "我爱我们的祖国"
+          }
+        ]
+      }
+    ]
+  },
+  "grade_band": "g10-12",
+  "run_id": "eval_20260530_013829_chinese_g1012",
+  "started_at": "2026-05-30T01:47:13.108090600+00:00",
+  "subject": "语文",
+  "subject_key": "chinese",
+  "total_stages": 35,
+  "total_tasks": 2
+}

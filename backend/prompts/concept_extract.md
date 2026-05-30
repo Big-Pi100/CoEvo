@@ -6,6 +6,9 @@
 ### 对话上下文
 {conversation_history}
 
+### 当前学习任务（决定提取方向）
+{plan_context}
+
 ### 当前 AI 回复
 {text}
 

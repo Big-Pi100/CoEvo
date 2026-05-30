@@ -20,10 +20,6 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Map<String, dynamic>? _data;
-  Map<String, dynamic>? _report;  // Phase 3 学习报告
-  Map<String, dynamic>? _activityData;  // Phase 3 热力图
-  DateTime _calendarMonth = DateTime(DateTime.now().year, DateTime.now().month);  // 当前日历月份
-  Map<String, dynamic>? _weeklyReport;  // Phase 3 周报
   bool _isLoading = true;
   String? _avatarUrl;
   String _displayName = '';
@@ -34,9 +30,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   // 订阅状态
   String? _subscriptionExpires;  // ISO 8601 或 null（未激活）
-
-  // K12 进度
-  List<Map<String, dynamic>> _k12Progress = [];
 
   @override
   void initState() {
@@ -73,18 +66,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
       final results = await Future.wait([
         client.getProfile(),
-        client.getLearningReport(),
-        client.getActivity(days: 90),
-        client.getWeeklyReport(),
         client.getPreferences(),
-        client.getK12Progress(),
       ]);
       final data = results[0] as Map<String, dynamic>;
-      final report = results[1] as Map<String, dynamic>?;
-      final activity = results[2] as Map<String, dynamic>?;
-      final weekly = results[3] as Map<String, dynamic>?;
-      final serverPrefs = results[4] as Map<String, String>;
-      final k12Progress = results[5] as Map<String, dynamic>;
+      final serverPrefs = results[1] as Map<String, String>;
       // 如果后端有 display_name，覆盖本地缓存
       final backendName = data['display_name'] as String?;
       if (backendName != null && backendName != _displayName && mounted) {
@@ -98,12 +83,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       });
       if (mounted) setState(() {
         _data = data;
-        _report = report;
-        _activityData = activity;
-        _weeklyReport = weekly;
         _subscriptionExpires = serverPrefs['subscription_expires'];
-        _k12Progress = (k12Progress['progress'] as List<dynamic>?)
-            ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
         _isLoading = false;
       });
     } catch (e) {
@@ -281,16 +261,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Widget _buildContent(BuildContext context, AuthState auth) {
     final stats = _data?['stats'] as Map<String, dynamic>? ?? {};
-    final achievements = (_data?['achievements'] as List<dynamic>?)
-        ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
 
     final totalCards = stats['total_cards'] ?? 0;
     final totalReviews = stats['total_reviews'] ?? 0;
     final streakDays = stats['streak_days'] ?? 0;
     final domainsCovered = stats['domains_covered'] ?? 0;
     final todayReviews = stats['today_reviews'] ?? 0;
-    final cefrStats = (_data?['cefr_stats'] as List<dynamic>?)
-        ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
 
     return ListView(
       padding: const EdgeInsets.all(24),
@@ -358,68 +334,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           onTap: () => _editInfoField('手机号', _phone, Validators.phone, (v) => _updateProfile({'phone': v})),
         ),
         const SizedBox(height: 16),
-
-        // ── Phase 3: 学习报告 ──
-        if (_report != null) ...[
-          _buildReportSection(_report!, achievements),
-          const SizedBox(height: 16),
-        ],
-        if (_activityData != null) ...[
-          _buildHeatmap(_activityData!),
-          const SizedBox(height: 16),
-        ],
-        if (_weeklyReport != null) ...[
-          _buildWeeklyReport(_weeklyReport!),
-          const SizedBox(height: 16),
-        ],
-
-        // ── K12 学习进度 ──
-        if (_k12Progress.isNotEmpty) ...[
-          _buildK12Progress(),
-          const SizedBox(height: 16),
-        ],
-
-        // 统计卡片
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('学习统计', style: Theme.of(context).textTheme.titleMedium),
-                const Divider(height: 24),
-                _StatRow(icon: Icons.auto_stories, label: '卡片总数', value: '$totalCards'),
-                _StatRow(icon: Icons.replay, label: '累计复习', value: '$totalReviews'),
-                _StatRow(icon: Icons.today, label: '今日复习', value: '$todayReviews'),
-                _StatRow(icon: Icons.category, label: '覆盖领域', value: '$domainsCovered'),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // ── CEFR 词汇仪表盘 ──
-        if (cefrStats.isNotEmpty) ...[
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('CEFR 词汇掌握度', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 4),
-                  Text('统计已掌握的词汇量，按 CEFR 等级分阶展示',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-                  const Divider(height: 20),
-                  ...cefrStats.map((s) => _buildCefrBar(s)),
-                  const Divider(height: 16),
-                  _buildCefrTotal(cefrStats),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
 
         // 订阅状态
         _buildSubscriptionCard(),
@@ -527,458 +441,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  // ── Phase 3: 学习报告 ──
-  Widget _buildReportSection(Map<String, dynamic> report, List<Map<String, dynamic>> achievements) {
-    final plans = report['plans'] as List<dynamic>? ?? [];
-    final tiers = report['achievements_by_tier'] as List<dynamic>? ?? [];
-    final tierCount = tiers.fold<int>(0, (sum, t) => sum + ((t as Map<String, dynamic>)['count'] as int? ?? 0));
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // 所有学习计划进度
-        if (plans.isNotEmpty)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.school, size: 20),
-                      const SizedBox(width: 8),
-                      Text('学习计划 (${plans.length})', style: Theme.of(context).textTheme.titleMedium),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  ...plans.asMap().entries.map((entry) {
-                    final i = entry.key;
-                    final plan = entry.value as Map<String, dynamic>;
-                    return Padding(
-                      padding: i < plans.length - 1 ? const EdgeInsets.only(bottom: 16) : EdgeInsets.zero,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                plan['mode'] == 'completed' || plan['current_stage'] == '完成'
-                                    ? Icons.check_circle : Icons.play_circle,
-                                size: 16,
-                                color: plan['mode'] == 'completed'
-                                    ? Colors.green : Theme.of(context).colorScheme.primary,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(plan['goal'] as String? ?? '',
-                                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                              ),
-                              if (plan['mode'] == 'completed')
-                                Text('已完成', style: TextStyle(fontSize: 11, color: Colors.green.shade600)),
-                            ],
-                          ),
-                          if (plan['current_stage'] is String && (plan['current_stage'] as String).isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(left: 24, top: 4),
-                              child: Text('当前阶段：${plan['current_stage']}',
-                                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-                            ),
-                          const SizedBox(height: 8),
-                          if (((plan['total_tasks'] as int?) ?? 0) > 0)
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: LinearProgressIndicator(
-                                value: ((plan['done_tasks'] as int?) ?? 0) / ((plan['total_tasks'] as int?) ?? 1),
-                                minHeight: 6,
-                                backgroundColor: Colors.grey.shade200,
-                                valueColor: AlwaysStoppedAnimation(
-                                  plan['mode'] == 'completed' ? Colors.green : Theme.of(context).colorScheme.primary,
-                                ),
-                              ),
-                            ),
-                          Padding(
-                            padding: const EdgeInsets.only(left: 24, top: 4),
-                            child: Text('${plan['done_tasks']}/${plan['total_tasks']} 任务 (${plan['progress_pct']})',
-                                style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-                ],
-              ),
-            ),
-          ),
-        const SizedBox(height: 12),
-
-        // 成就 tier 展示
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.emoji_events, size: 20),
-                    const SizedBox(width: 8),
-                    Text('成就 ($tierCount)', style: Theme.of(context).textTheme.titleMedium),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                // tier 统计（汇总行）
-                ...tiers.map((t) {
-                  final tmap = t as Map<String, dynamic>;
-                  final tier = tmap['tier'] as String? ?? '';
-                  final count = tmap['count'] as int? ?? 0;
-                  final icon = tier == 'bronze' ? '🥉' : tier == 'silver' ? '🥈' : tier == 'gold' ? '🥇' : tier == 'platinum' ? '🏆' : '🌟';
-                  final label = tier == 'fixed' ? '固定成就' : tier == 'bronze' ? '任务级' : tier == 'silver' ? '阶段级' : tier == 'gold' ? '领域级' : '跨领域';
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      children: [
-                        Text(icon, style: const TextStyle(fontSize: 20)),
-                        const SizedBox(width: 12),
-                        Expanded(child: Text(label, style: const TextStyle(fontSize: 14))),
-                        Text('$count', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
-                      ],
-                    ),
-                  );
-                }),
-                if (achievements.isNotEmpty) ...[
-                  const Divider(height: 24),
-                  // 已解锁成就列表
-                  Wrap(
-                    spacing: 8, runSpacing: 12,
-                    children: achievements.map((a) => _AchievementTile(
-                      icon: a['icon'] as String? ?? '🌟',
-                      name: a['name'] as String? ?? '',
-                      unlockedAt: a['unlocked_at'] as String? ?? '',
-                    )).toList(),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ── Phase 3: 周报 ──
-  Widget _buildWeeklyReport(Map<String, dynamic> report) {
-    final activePlan = report['active_plan'] as String?;
-    final newCards = report['new_cards'] as int? ?? 0;
-    final reviews = report['reviews'] as int? ?? 0;
-    final convs = report['conversation_turns'] as int? ?? 0;
-    final newAchs = report['new_achievements'] as int? ?? 0;
-
-    // 闲置提醒：有活跃计划但本周无活动
-    final isIdle = activePlan != null && newCards == 0 && reviews == 0 && convs == 0;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.assessment, size: 20),
-                const SizedBox(width: 8),
-                Expanded(child: Text('本周学习报告', style: Theme.of(context).textTheme.titleMedium)),
-                if (isIdle)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade100,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text('待唤醒', style: TextStyle(fontSize: 11, color: Colors.orange.shade800)),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (isIdle)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.notifications_active, color: Colors.orange, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text('你的"$activePlan"学习计划等你回来继续！',
-                            style: TextStyle(fontSize: 13, color: Colors.orange.shade800)),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            _StatRow(icon: Icons.auto_stories, label: '新增卡片', value: '$newCards'),
-            _StatRow(icon: Icons.replay, label: '本周复习', value: '$reviews'),
-            _StatRow(icon: Icons.chat, label: '对话轮次', value: '$convs'),
-            _StatRow(icon: Icons.emoji_events, label: '新成就', value: '$newAchs'),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Phase 3: 学习日历（真实月历） ──
-  Widget _buildHeatmap(Map<String, dynamic> activity) {
-    final days = activity['days'] as List<dynamic>? ?? [];
-    // 构建日期→分数映射
-    final scoreByDate = <String, int>{};
-    final reviewsByDate = <String, int>{};
-    final convsByDate = <String, int>{};
-    final cardsByDate = <String, int>{};
-    for (final d in days) {
-      final day = d as Map<String, dynamic>;
-      final date = day['date'] as String? ?? '';
-      scoreByDate[date] = day['score'] as int? ?? 0;
-      reviewsByDate[date] = day['reviews'] as int? ?? 0;
-      convsByDate[date] = day['conversations'] as int? ?? 0;
-      cardsByDate[date] = day['cards'] as int? ?? 0;
-    }
-
-    // 计算当前月
-    final year = _calendarMonth.year;
-    final month = _calendarMonth.month;
-    final firstDay = DateTime(year, month, 1);
-    final lastDay = DateTime(year, month + 1, 0);
-    final daysInMonth = lastDay.day;
-    // Monday = 1 ... Sunday = 7
-    final startWeekday = firstDay.weekday; // 1=Mon ... 7=Sun
-    final todayStr = DateTime.now().toIso8601String().substring(0, 10);
-
-    // 月名前缀
-    const monthNames = ['', '1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
-    final headerLabel = '$year年${monthNames[month]}';
-
-    // 计算最大分数用于颜色强度
-    final maxScore = scoreByDate.values.fold<int>(0, (m, s) => s > m ? s : m);
-
-    Color cellColor(int score) {
-      if (score == 0) return Colors.grey.shade100;
-      final intensity = maxScore > 0 ? score / maxScore : 0.0;
-      if (intensity < 0.25) return Colors.green.shade100;
-      if (intensity < 0.5) return Colors.green.shade300;
-      if (intensity < 0.75) return Colors.green.shade500;
-      return Colors.green.shade700;
-    }
-
-    // 构建日历网格行
-    final cells = <Widget>[];
-    // 填充月初空白
-    final leadingBlanks = startWeekday - 1; // Mon=1 → 0, ... Sun=7 → 6
-    for (int i = 0; i < leadingBlanks; i++) {
-      cells.add(const SizedBox(width: 40, height: 40));
-    }
-    for (int day = 1; day <= daysInMonth; day++) {
-      final dateStr = '${year}-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
-      final score = scoreByDate[dateStr] ?? 0;
-      final isToday = dateStr == todayStr;
-      final bgColor = cellColor(score);
-      final textColor = score == 0 ? Colors.black54 : Colors.black;
-      final reviews = reviewsByDate[dateStr] ?? 0;
-      final convs = convsByDate[dateStr] ?? 0;
-      final cardCount = cardsByDate[dateStr] ?? 0;
-
-      cells.add(
-        Tooltip(
-          message: '$dateStr\n复习$reviews次 · $convs轮对话 · $cardCount张卡',
-          child: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: BorderRadius.circular(6),
-              border: isToday ? Border.all(color: Theme.of(context).colorScheme.primary, width: 2) : null,
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              '$day',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                color: textColor,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 月份导航
-            Row(
-              children: [
-                const Icon(Icons.calendar_month, size: 20),
-                const SizedBox(width: 8),
-                Text(headerLabel, style: Theme.of(context).textTheme.titleMedium),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.chevron_left, size: 20),
-                  onPressed: () => setState(() {
-                    _calendarMonth = DateTime(year, month - 1);
-                  }),
-                  visualDensity: VisualDensity.compact,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_right, size: 20),
-                  onPressed: () => setState(() {
-                    _calendarMonth = DateTime(year, month + 1);
-                  }),
-                  visualDensity: VisualDensity.compact,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            // 星期头
-            Row(
-              mainAxisAlignment: MainAxisAlignment.start,
-              children: ['一', '二', '三', '四', '五', '六', '日'].map((d) =>
-                SizedBox(
-                  width: 40,
-                  child: Text(d,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-                ),
-              ).toList(),
-            ),
-            const SizedBox(height: 6),
-            // 日历网格
-            Wrap(
-              spacing: 0,
-              runSpacing: 4,
-              children: cells,
-            ),
-            const SizedBox(height: 12),
-            // 图例
-            Row(
-              children: [
-                Text('少', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-                const SizedBox(width: 4),
-                Container(width: 16, height: 16, decoration: BoxDecoration(color: Colors.green.shade100, borderRadius: BorderRadius.circular(3))),
-                const SizedBox(width: 4),
-                Container(width: 16, height: 16, decoration: BoxDecoration(color: Colors.green.shade300, borderRadius: BorderRadius.circular(3))),
-                const SizedBox(width: 4),
-                Container(width: 16, height: 16, decoration: BoxDecoration(color: Colors.green.shade500, borderRadius: BorderRadius.circular(3))),
-                const SizedBox(width: 4),
-                Container(width: 16, height: 16, decoration: BoxDecoration(color: Colors.green.shade700, borderRadius: BorderRadius.circular(3))),
-                const SizedBox(width: 4),
-                Text('多', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   void dispose() {
     _authSub?.close();
     super.dispose();
-  }
-
-  /// K12 学习进度矩阵
-  Widget _buildK12Progress() {
-    final gradeLabels = {
-      'g1-2': '1-2年级', 'g3-4': '3-4年级', 'g5-6': '5-6年级',
-      'g7-9': '初中', 'g10': '高一', 'g11-12': '高二/三',
-    };
-
-    // 按学科分组
-    final bySubject = <String, List<Map<String, dynamic>>>{};
-    for (final p in _k12Progress) {
-      final subj = p['subject'] as String? ?? '';
-      bySubject.putIfAbsent(subj, () => []).add(p);
-    }
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.school, size: 20),
-                const SizedBox(width: 8),
-                Text('K12 学习进度', style: Theme.of(context).textTheme.titleMedium),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ...bySubject.entries.map((entry) {
-              final subject = entry.key;
-              final grades = entry.value;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(subject, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                    const SizedBox(height: 4),
-                    ...grades.map((g) {
-                      final band = g['grade_band'] as String? ?? '';
-                      final total = (g['total_cards'] as num?)?.toInt() ?? 0;
-                      final mastered = (g['mastered_cards'] as num?)?.toInt() ?? 0;
-                      final pct = total > 0 ? mastered / total : 0.0;
-                      final label = gradeLabels[band] ?? band;
-                      final completed = g['completed_at'] != null;
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 3),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 60,
-                              child: Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: LinearProgressIndicator(
-                                  value: pct,
-                                  backgroundColor: Colors.grey.shade200,
-                                  valueColor: AlwaysStoppedAnimation(
-                                    completed ? Colors.green : Theme.of(context).colorScheme.primary,
-                                  ),
-                                  minHeight: 8,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              completed ? '毕业 🎓' : '${(pct * 100).toStringAsFixed(0)}%',
-                              style: TextStyle(fontSize: 12, color: completed ? Colors.green : Colors.grey.shade600),
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-                  ],
-                ),
-              );
-            }),
-          ],
-        ),
-      ),
-    );
   }
 
   /// 订阅状态卡片
@@ -1026,91 +492,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  // ── CEFR 仪表盘辅助方法 ──
-
-  Widget _buildCefrBar(Map<String, dynamic> stat) {
-    final level = stat['level'] as String? ?? '';
-    final total = stat['total'] as int? ?? 0;
-    final mastered = stat['mastered'] as int? ?? 0;
-    final ratio = total > 0 ? mastered / total : 0.0;
-    return _CefrBar(level: level, total: total, mastered: mastered, ratio: ratio);
-  }
-
-  Widget _buildCefrTotal(List<Map<String, dynamic>> stats) {
-    int totalMastered = 0, totalAll = 0;
-    for (final s in stats) {
-      totalMastered += s['mastered'] as int? ?? 0;
-      totalAll += s['total'] as int? ?? 0;
-    }
-    final pct = totalAll > 0 ? (totalMastered * 100 / totalAll).toStringAsFixed(1) : '0.0';
-    return Row(
-      children: [
-        Text('总计', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
-        const Spacer(),
-        Text('$totalMastered / $totalAll ($pct%)',
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
-      ],
-    );
-  }
-}
-
-class _StatRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  const _StatRow({required this.icon, required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: Colors.grey.shade600),
-          const SizedBox(width: 8),
-          Text(label, style: Theme.of(context).textTheme.bodyMedium),
-          const Spacer(),
-          Text(value, style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-          )),
-        ],
-      ),
-    );
-  }
-}
-
-class _AchievementTile extends StatelessWidget {
-  final String icon;
-  final String name;
-  final String unlockedAt;
-
-  const _AchievementTile({
-    required this.icon, required this.name, required this.unlockedAt,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final date = unlockedAt.length >= 10 ? unlockedAt.substring(0, 10) : '';
-    return Tooltip(
-      message: date,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.primary.withAlpha(15),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Theme.of(context).colorScheme.primary.withAlpha(40)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(icon, style: const TextStyle(fontSize: 20)),
-            const SizedBox(width: 6),
-            Text(name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 /// CEFR 等级进度条

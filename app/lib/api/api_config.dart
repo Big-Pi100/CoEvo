@@ -9,9 +9,14 @@
 /// flutter run --dart-define=API_HOST=192.168.1.100 --dart-define=API_PORT=8080
 /// ```
 ///
-/// ## VPS 部署
+/// ## VPS 部署（IP 直连）
 /// ```bash
-/// flutter build apk --dart-define=API_HOST=<OLD_VPS_IP> --dart-define=API_PORT=8080
+/// flutter build web --dart-define=API_HOST=<OLD_VPS_IP> --dart-define=API_PORT=8080
+/// ```
+///
+/// ## 正式域名部署
+/// ```bash
+/// flutter build web --dart-define=API_HOST=keyievolution.fun
 /// ```
 class ApiConfig {
   /// API 服务器地址 — 通过 `--dart-define` 在编译时注入
@@ -21,10 +26,18 @@ class ApiConfig {
   static const String _port = String.fromEnvironment('API_PORT', defaultValue: '8080');
 
   /// HTTP base URL (REST + WebSocket 共用)
-  static String get baseUrl => 'http://$_host:$_port';
-
-  /// Production URL placeholder
-  static const String productionUrl = 'https://api.coevo.app';
+  ///
+  /// 自动判断：
+  /// - 如果 _host 包含点号（域名），使用 https:// 且不追加端口（443 默认）
+  /// - 否则（localhost 或 IP），使用 http:// 并追加 _port
+  static String get baseUrl {
+    if (_host.contains('.')) {
+      // 域名 → HTTPS, 默认端口 443
+      return 'https://$_host';
+    }
+    // IP 或 localhost → HTTP + 端口
+    return 'http://$_host:$_port';
+  }
 
   /// Request timeout for normal API calls
   static const Duration requestTimeout = Duration(seconds: 10);
