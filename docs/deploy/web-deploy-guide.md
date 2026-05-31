@@ -853,4 +853,13 @@ server {
 
 ---
 
-> 最后更新：2026-05-30（Flutter SDK 路径修正为 `D:\flutter_flutter`，移除废弃参数 `--no-wasm-dry-run`，新增 SDK 版本说明）
+---
+
+## 附录: 相关文档
+
+| 文档 | 用途 |
+|:----|:-----|
+| `docs/operations/maintenance-spec.md` | 生产环境维护规范（必读） |
+| `docs/architecture/cp2-eval-report-2026-05-30.md` | CP2 修复评估报告 |
+
+> 最后更新：2026-05-31（Flutter SDK 路径修正为 `D:\flutter_flutter`，移除废弃参数 `--no-wasm-dry-run`，新增 SDK 版本说明；新增维护规范引用）

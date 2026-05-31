@@ -252,7 +252,7 @@ pub fn build_reading_context(
             // 注入 reading 卡内容
             if !card_id.is_empty() {
                 if let Some(card) = get_card(card_id) {
-                    ctx.push_str(&format!("\n### 课文卡\n"));
+                    ctx.push_str(&"\n### 课文卡\n".to_string());
                     ctx.push_str(&format!("作者: {}\n", card.author));
                     if !card.background.is_empty() {
                         ctx.push_str(&format!("背景: {}\n", card.background));

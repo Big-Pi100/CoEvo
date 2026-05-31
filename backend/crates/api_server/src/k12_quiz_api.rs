@@ -2,7 +2,7 @@
 //!
 //! POST /api/k12/quiz/submit — 提交试题作答，计算通过率
 
-use axum::{Json, extract::Query, http::HeaderMap};
+use axum::{Json, http::HeaderMap};
 use serde::Deserialize;
 use uuid::Uuid;
 

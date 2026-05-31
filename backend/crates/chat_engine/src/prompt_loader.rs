@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 #[derive(Clone, Debug)]
+#[derive(Default)]
 pub struct PromptTemplates {
     pub chat_system: String,
     pub chat_system_free: String,
@@ -27,24 +28,6 @@ pub struct PromptTemplates {
     pub quiz_judge: String,
 }
 
-impl Default for PromptTemplates {
-    fn default() -> Self {
-        Self {
-            chat_system: String::new(),
-            chat_system_free: String::new(),
-            chat_system_structured: String::new(),
-            chat_system_reading: String::new(),
-            chat_system_reading_primary: String::new(),
-            chat_system_reading_secondary: String::new(),
-            chat_system_reading_nursery: String::new(),
-            chat_system_nursery: String::new(),
-            concept_extract: String::new(),
-            card_direct: String::new(),
-            quiz_generate: String::new(),
-            quiz_judge: String::new(),
-        }
-    }
-}
 
 /// 管线注册表
 struct PromptRegistry {

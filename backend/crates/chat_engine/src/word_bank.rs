@@ -142,7 +142,7 @@ pub fn match_text(text: &str) -> Vec<WordMatch> {
     }
 
     // 去重 + 按难度降序
-    found.sort_by(|a, b| b.difficulty.cmp(&a.difficulty));
+    found.sort_by_key(|a| std::cmp::Reverse(a.difficulty));
     found.dedup_by(|a, b| a.word == b.word);
     found.truncate(10);
     found

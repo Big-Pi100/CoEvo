@@ -58,7 +58,7 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
     if req.username.len() < 5 || !req.username.chars().all(|c| c.is_ascii_alphanumeric()) { return Err("用户名至少5位英文或数字".into()); }
     if req.password.len() < 6 || !req.password.chars().any(|c| c.is_ascii_alphabetic()) || !req.password.chars().any(|c| c.is_ascii_digit()) { return Err("密码至少6位含英文+数字".into()); }
     if let Some(ref n) = req.real_name {
-        if n.is_empty() || n.chars().count() > 4 || !n.chars().all(|c| (c >= '\u{4e00}' && c <= '\u{9fff}') || c == '·') { return Err("姓名须为中文4字以内".into()); }
+        if n.is_empty() || n.chars().count() > 4 || !n.chars().all(|c| ('\u{4e00}'..='\u{9fff}').contains(&c) || c == '·') { return Err("姓名须为中文4字以内".into()); }
     }
     if let Some(ref p) = req.phone {
         if p.len() != 11 || !p.starts_with('1') || !p.chars().all(|c| c.is_ascii_digit()) { return Err("手机号格式不正确".into()); }

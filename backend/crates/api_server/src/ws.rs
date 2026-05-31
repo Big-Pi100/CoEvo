@@ -184,7 +184,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 // ── 学科检测（首次消息） ──
                 // K12 模式：从 conversations 表读取 subject/grade_band
                 // 自由探索模式：无需任何课标约束
-                let mut routing_ctx = String::new();
+                let routing_ctx = String::new();
                 if history.len() <= 1 {
                     let k12_subject: Option<String> = {
                         let conn = crate::db_pool::get_conn();
@@ -397,14 +397,13 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 }
 
                 // 通知前端刷新计划
-                if plan_updated {
-                    if ws.send(Message::Text(json!({
+                if plan_updated
+                    && ws.send(Message::Text(json!({
                         "type": "plan_updated",
                     }).to_string().into())).await.is_err() {
                         tracing::warn!("WS send(plan_updated) failed — connection lost");
                         break;
                     }
-                }
 
                 let current_turn = turn_counter;
                 turn_counter += 1;
@@ -432,12 +431,12 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 );
 
                 // ❄️ ColdPath: 扔到后台 task，不阻塞消息接收
-                let user_id = chat_req.user_id.clone();
-                let msg = chat_req.message.clone();
-                let config = llm_config.clone();
+                let _user_id = chat_req.user_id.clone();
+                let _msg = chat_req.message.clone();
+                let _config = llm_config.clone();
                 let cold_tx = cold_tx.clone();
                 let cold_turn = current_turn;
-                let history_clone = history.clone();
+                let _history_clone = history.clone();
                 // 获取 domain 用于概念提取管线路由
                 let conv_id = &chat_req.conversation_id;
                 let (extract_domain, _, extract_plan_ctx) = {
@@ -528,8 +527,12 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         }
                     };
 
+                    let is_free_dialogue = extract_domain.contains('-');
                     let candidates: Vec<serde_json::Value> = extraction.candidates.iter().map(|c| {
-                        json!({"front": c.front, "back": c.back, "source_sentence": c.source_sentence, "domain": c.domain})
+                        // 自由对话的 plan domain 是 conversation UUID，与 LLM 自主推断的 domain 不匹配。
+                        // 标准化为 "general" 以便前端 review tab 能正确归类。
+                        let domain = if is_free_dialogue { "general" } else { &c.domain };
+                        json!({"front": c.front, "back": c.back, "source_sentence": c.source_sentence, "domain": domain})
                     }).collect();
                     let _ = cold_tx.send((cold_turn, candidates)).await;
                 });
@@ -602,15 +605,14 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 }
                 // 从最早未输出的轮次开始，连续输出
                 while let Some(ready) = pending_candidates.remove(&next_turn_to_show) {
-                    if !ready.is_empty() {
-                        if ws.send(Message::Text(json!({
+                    if !ready.is_empty()
+                        && ws.send(Message::Text(json!({
                             "type": "candidates",
                             "candidates": ready,
                         }).to_string().into())).await.is_err() {
                             tracing::warn!("WS send(candidates) failed — connection lost");
                             break;
                         }
-                    }
                     next_turn_to_show += 1;
                 }
             }

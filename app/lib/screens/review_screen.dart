@@ -84,7 +84,12 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
       final planList = await client.getPlans();
       if (!mounted) return;
       setState(() {
-        _planTabs = planList;
+        // 过滤掉自由对话的 plan（domain 为 conversation UUID，无法作为有意义的 tab）
+        // 这些 plan 的卡片统一归类到 "general" 域，在 "全部卡片" tab 中可见
+        _planTabs = planList.where((p) {
+          final domain = p['domain'] as String? ?? '';
+          return !domain.contains('-');  // UUID 含连字符，学科 domain 不含
+        }).toList();
         _plansLoaded = true;
         final totalTabs = 2 + _planTabs.length;
         final oldIndex = _tabController.index;

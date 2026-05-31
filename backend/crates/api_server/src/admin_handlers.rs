@@ -90,7 +90,7 @@ pub async fn admin_register(Json(input): Json<AdminRegisterInput>) -> impl IntoR
     if !["service","tutor","guardian"].contains(&input.role.as_str()) { return err(StatusCode::BAD_REQUEST,"invalid_role"); }
     if input.username.len() < 5 || !input.username.chars().all(|c| c.is_ascii_alphanumeric()) { return err(StatusCode::BAD_REQUEST, "username_5_alphanumeric"); }
     if input.password.len() < 6 || !input.password.chars().any(|c| c.is_ascii_alphabetic()) || !input.password.chars().any(|c| c.is_ascii_digit()) { return err(StatusCode::BAD_REQUEST, "password_6_alpha_numeric"); }
-    if input.real_name.is_empty() || input.real_name.chars().count() > 4 || !input.real_name.chars().all(|c| c >= '\u{4e00}' && c <= '\u{9fff}' || c == '·') { return err(StatusCode::BAD_REQUEST, "real_name_chinese_4chars"); }
+    if input.real_name.is_empty() || input.real_name.chars().count() > 4 || !input.real_name.chars().all(|c| ('\u{4e00}'..='\u{9fff}').contains(&c) || c == '·') { return err(StatusCode::BAD_REQUEST, "real_name_chinese_4chars"); }
     if !input.phone.chars().all(|c| c.is_ascii_digit()) || input.phone.len() != 11 || !input.phone.starts_with('1') { return err(StatusCode::BAD_REQUEST, "invalid_phone"); }
     if input.role == "service" { return err(StatusCode::FORBIDDEN, "service_accounts_must_be_created_by_admin"); }
     let id = uuid::Uuid::new_v4().to_string();
@@ -188,7 +188,7 @@ pub async fn admin_users_handler(headers: HeaderMap, Query(query): Query<AdminUs
 
 // ── User Detail ──
 pub async fn admin_user_detail(headers: HeaderMap, Path(uid): Path<String>) -> impl IntoResponse {
-    let _ = verify_admin(&headers).map_err(|e| e);
+    let _ = verify_admin(&headers);
     let c = conn();
     let u: Option<serde_json::Value> = c.query_row("SELECT id,username,display_name,real_name,phone,created_at,streak_days,last_active_date FROM users WHERE id=?1", rusqlite::params![&uid], |row| {
         let uid2: String = row.get(0)?;
@@ -354,7 +354,7 @@ pub async fn admin_batch_subscription(headers: HeaderMap, Json(input): Json<Batc
 
 #[derive(Deserialize)] pub struct ListReqsQuery { pub status: Option<String> }
 pub async fn admin_list_subscription_requests(headers: HeaderMap, Query(q): Query<ListReqsQuery>) -> impl IntoResponse {
-    let _ = verify_admin(&headers).map_err(|e| e);
+    let _ = verify_admin(&headers);
     let filter = q.status.unwrap_or_else(|| "%".into());
     let c2 = conn(); let mut stmt = c2.prepare("SELECT sr.id,sr.target_user_id,sr.requested_by,sr.package,sr.channel,sr.note,sr.status,sr.reject_reason,sr.requested_at,sr.reviewed_at,u.username,au.real_name FROM subscription_requests sr JOIN users u ON sr.target_user_id=u.id JOIN admin_users au ON sr.requested_by=au.id WHERE CASE WHEN ?1='%' THEN 1 ELSE sr.status=?1 END ORDER BY sr.requested_at DESC LIMIT 50").unwrap();
     let reqs: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![filter], |row| {
@@ -412,7 +412,7 @@ async fn review_subscription(headers: &HeaderMap, req_id: &str, status: &str, re
 
 // ── Admin Management ──
 pub async fn admin_list_admins(headers: HeaderMap) -> impl IntoResponse {
-    let (_, role) = guard!(&headers);
+    let (_, _role) = guard!(&headers);
     let c2 = conn();
     // 服务人员可以看到 pending 的家长/辅导申请
     // 管理员管理：超管可以看到所有管理员账号
@@ -503,7 +503,7 @@ pub async fn admin_enable_admin(headers: HeaderMap, Path(aid): Path<String>) -> 
 
 #[derive(Deserialize)] pub struct CreateAdminInput { pub username: String, pub password: String, pub real_name: String, pub phone: String, pub role: String }
 pub async fn admin_create_admin(headers: HeaderMap, Json(input): Json<CreateAdminInput>) -> impl IntoResponse {
-    let (admin_id, role) = guard!(&headers);
+    let (_admin_id, role) = guard!(&headers);
     if role != "super" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     if !["service","super"].contains(&input.role.as_str()) { return err(StatusCode::BAD_REQUEST, "role_must_be_service_or_super"); }
     if input.username.len() < 5 { return err(StatusCode::BAD_REQUEST, "username_5"); }
@@ -587,9 +587,9 @@ pub async fn guardian_students(headers: HeaderMap) -> impl IntoResponse {
     let mut stmt = c.prepare("SELECT ga.student_user_id,u.display_name,u.real_name,u.phone,u.streak_days,u.last_active_date FROM guardian_assignments ga JOIN users u ON ga.student_user_id=u.id WHERE ga.guardian_admin_id=?1 AND ga.is_active=1").unwrap();
     let students: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![gid], |row| {
         let uid: String = row.get(0)?;
-        let cards: i64 = c.query_row("SELECT COUNT(*) FROM cards WHERE user_id=?1",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0);
-        let reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0);
-        let mastery: f64 = c.query_row("SELECT CAST(SUM(CASE WHEN cm.state=2 THEN 1 ELSE 0 END) AS REAL)/MAX(1,COUNT(*)) FROM card_memory cm JOIN cards cd ON cm.card_id=cd.id WHERE cd.user_id=?1",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0.0);
+        let _cards: i64 = c.query_row("SELECT COUNT(*) FROM cards WHERE user_id=?1",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0);
+        let _reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0);
+        let _mastery: f64 = c.query_row("SELECT CAST(SUM(CASE WHEN cm.state=2 THEN 1 ELSE 0 END) AS REAL)/MAX(1,COUNT(*)) FROM card_memory cm JOIN cards cd ON cm.card_id=cd.id WHERE cd.user_id=?1",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0.0);
         // Plan stats
         let total_plans: i64 = c.query_row("SELECT COUNT(*) FROM learning_plans WHERE user_id=?1 AND mode != 'deleted'", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
         let active_7d: i64 = c.query_row("SELECT COUNT(*) FROM learning_plans WHERE user_id=?1 AND mode != 'deleted' AND updated_at >= ?2", rusqlite::params![&uid, &seven_days_ago], |r| r.get(0)).unwrap_or(0);
@@ -716,7 +716,7 @@ pub async fn guardian_learning_summary(headers: HeaderMap, Path(sid): Path<Strin
     let rows = plan_stmt.query_map(rusqlite::params![sid], |row| -> rusqlite::Result<()> {
         let plan_id: String = row.get(0)?;
         let goal: String = row.get(1)?;
-        let domain: String = row.get(2)?;
+        let _domain: String = row.get(2)?;
         let conv_id: Option<String> = row.get(3)?;
         let plan_json_str: String = row.get(4)?;
         let updated_at_str: String = row.get(5)?;
@@ -738,11 +738,11 @@ pub async fn guardian_learning_summary(headers: HeaderMap, Path(sid): Path<Strin
             let fallback_domain = plan_keywords_from_goal(&goal);
             let fallback_ok = !fallback_domain.is_empty();
             if let Some(cid) = &conv_id {
-                let r = c.query_row(&format!("{} c.conversation_id=?1", base_sql), rusqlite::params![cid], |row| card_stats_from_row(row)).unwrap_or((0,0,0,0,0,None));
+                let r = c.query_row(&format!("{} c.conversation_id=?1", base_sql), rusqlite::params![cid], card_stats_from_row).unwrap_or((0,0,0,0,0,None));
                 if r.0 > 0 { r }
-                else if fallback_ok { c.query_row(&format!("{} c.user_id=?1 AND c.domain=?2", base_sql), rusqlite::params![sid, fallback_domain], |row| card_stats_from_row(row)).unwrap_or((0,0,0,0,0,None)) }
+                else if fallback_ok { c.query_row(&format!("{} c.user_id=?1 AND c.domain=?2", base_sql), rusqlite::params![sid, fallback_domain], card_stats_from_row).unwrap_or((0,0,0,0,0,None)) }
                 else { r }
-            } else if fallback_ok { c.query_row(&format!("{} c.user_id=?1 AND c.domain=?2", base_sql), rusqlite::params![sid, fallback_domain], |row| card_stats_from_row(row)).unwrap_or((0,0,0,0,0,None)) }
+            } else if fallback_ok { c.query_row(&format!("{} c.user_id=?1 AND c.domain=?2", base_sql), rusqlite::params![sid, fallback_domain], card_stats_from_row).unwrap_or((0,0,0,0,0,None)) }
             else { (0,0,0,0,0,None) }
         };
 
@@ -972,7 +972,7 @@ pub async fn admin_remove_assignment(headers: HeaderMap, Path(aid): Path<String>
 
 // ── Dashboard ──
 pub async fn admin_dashboard(headers: HeaderMap) -> impl IntoResponse {
-    let _ = verify_admin(&headers).map_err(|e| e);
+    let _ = verify_admin(&headers);
     let c = conn();
     let now = chrono::Utc::now();
     let today_start = now.format("%Y-%m-%dT00:00:00Z").to_string();
@@ -1013,7 +1013,7 @@ pub async fn admin_dashboard(headers: HeaderMap) -> impl IntoResponse {
 // ── Expiring Users ──
 #[derive(Deserialize)] pub struct ExpiringQuery { pub range: Option<String> }
 pub async fn admin_expiring_users(headers: HeaderMap, Query(query): Query<ExpiringQuery>) -> impl IntoResponse {
-    let _ = verify_admin(&headers).map_err(|e| e);
+    let _ = verify_admin(&headers);
     let range_days: i64 = match query.range.as_deref() {
         Some("today") => 0, Some("week") => 7, Some("month") => 30, _ => 7,
     };

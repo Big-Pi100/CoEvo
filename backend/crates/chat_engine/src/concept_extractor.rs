@@ -27,6 +27,7 @@ fn has_card_intent(message: &str) -> bool {
 ///
 /// 1. 检测制卡意图 → Path B2 (直接生成卡片)
 /// 2. 否则 → LLM 提取候选概念 → 去重
+#[allow(clippy::too_many_arguments)]
 pub async fn extract_concepts(
     _user_id: &str,
     user_message: &str,

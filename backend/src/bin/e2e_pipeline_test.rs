@@ -2,7 +2,10 @@
 //!
 //! 阶段化 E2E 测试工具：每阶段独立运行、结果持久化、可链式/单独执行。
 //! Phase 2 使用双 LLM 模拟师生对话进行计划推进测试。
-//!
+
+#![allow(clippy::match_single_binding)]
+#![allow(clippy::useless_format)]
+#![allow(clippy::single_match)]
 //! 用法:
 //!   cargo run --bin e2e-pipeline-test
 //!   cargo run --bin e2e-pipeline-test -- --phase plan-creation
@@ -528,7 +531,7 @@ async fn phase_concept_extraction(run_id: &str, _cli: &CliArgs) -> e2e_runner::P
     let extraction: ExtractionResult = chat_engine::concept_extractor::extract_concepts(
         TEST_USER_ID, user_message, ai_reply,
         &existing_fronts, &skipped_fronts, &llm_config, &history_refs,
-        "language",
+        "language", "",
     ).await;
 
     let total = extraction.candidates.len();

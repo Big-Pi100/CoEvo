@@ -235,9 +235,7 @@ fn upsert_learning_plan(
     let mut plan = update.clone();
     // 跟踪 plan_update 次数（用于评估和分析）
     let prev_count = plan.get("plan_update_count").and_then(|v| v.as_u64()).unwrap_or(0);
-    plan.as_object_mut().map(|o| {
-        o.insert("plan_update_count".to_string(), serde_json::Value::Number((prev_count + 1).into()));
-    });
+    if let Some(o) = plan.as_object_mut() { o.insert("plan_update_count".to_string(), serde_json::Value::Number((prev_count + 1).into())); }
     let _ = plan.as_object_mut().map(|o| {
         o.remove("is_new_plan");
         o.remove("goal");
@@ -525,8 +523,8 @@ fn apply_plan_mutations(
                     if let Some(tasks) = stage["tasks"].as_array_mut() {
                         // 找到当前 in_progress 任务 → 回退为 pending
                         let mut current_idx = None;
-                        for i in 0..tasks.len() {
-                            if tasks[i]["status"] == "in_progress" {
+                        for (i, task) in tasks.iter_mut().enumerate() {
+                            if task["status"] == "in_progress" {
                                 tasks[i]["status"] = json!("pending");
                                 current_idx = Some(i);
                                 break;
@@ -850,7 +848,7 @@ pub fn build_plan_context(conn: &rusqlite::Connection, conversation_id: &str) ->
             let status_val: serde_json::Value = serde_json::from_str(&plan_json).unwrap_or_default();
             let task_status = status_val.as_object()
                 .and_then(|o| o.get("task_status"))
-                .or_else(|| Some(&status_val)); // 兼容直接存 map 的格式
+                .or(Some(&status_val)); // 兼容直接存 map 的格式
 
             let mut merged = if let Some(ref content_str) = plan_content_raw {
                 // plan_content 存在（自由探索模式或已有 reading plan 缓存）
@@ -931,6 +929,7 @@ pub fn build_plan_context(conn: &rusqlite::Connection, conversation_id: &str) ->
                 if let Some(stages) = merged.get("stages").and_then(|v| v.as_array()) {
                     let mut found_current = false;
                     let mut next_stage_name: Option<String> = None;
+                    let mut current_task: Option<&serde_json::Value> = None;
                     for stage in stages {
                         let name = stage["name"].as_str().unwrap_or("");
                         let status = stage["status"].as_str().unwrap_or("pending");
@@ -943,12 +942,25 @@ pub fn build_plan_context(conn: &rusqlite::Connection, conversation_id: &str) ->
                                         let tname = task["name"].as_str().unwrap_or("");
                                         let tstatus = task["status"].as_str().unwrap_or("pending");
                                         ctx.push_str(&format!("\n  - {}: {}", tname, tstatus));
+                                        // 当前 in_progress 的任务用于查询预置卡 fronts
+                                        if tstatus == "in_progress" && current_task.is_none() {
+                                            current_task = Some(task);
+                                        }
                                     }
                                 }
                             } else {
                                 next_stage_name = Some(name.to_string());
                                 break;
                             }
+                        }
+                    }
+                    // 追加当前 task 预置卡 fronts（CP1 去重 + Teacher 参考）
+                    if let Some(task) = current_task {
+                        let card_fronts = get_prebuilt_card_fronts(
+                            conn, conversation_id, task,
+                        );
+                        if !card_fronts.is_empty() {
+                            ctx.push_str(&format!("\n  当前任务已绑定的卡片: {}", card_fronts.join("、")));
                         }
                     }
                     if let Some(ref next) = next_stage_name {
@@ -960,6 +972,67 @@ pub fn build_plan_context(conn: &rusqlite::Connection, conversation_id: &str) ->
         }
         _ => ("".to_string(), "free".to_string(), String::new()),
     }
+}
+
+/// 从 task JSON 中提取预置卡 fronts（用于注入 build_plan_context）
+/// 查询 curriculum_loader / reading_loader 中 task 关联的卡片 fronts。
+/// 不依赖 unlock_next_cards 是否已执行（直接查预置卡源数据）。
+fn get_prebuilt_card_fronts(
+    conn: &rusqlite::Connection,
+    conversation_id: &str,
+    task: &serde_json::Value,
+) -> Vec<String> {
+    let mut fronts: Vec<String> = Vec::new();
+
+    // 获取 conversation 的 subject 和 grade_band（用于 curriculum_loader 查询）
+    let (subject, grade_band): (String, String) = conn.query_row(
+        "SELECT COALESCE(subject, ''), COALESCE(grade_band, '') FROM conversations WHERE id = ?1",
+        rusqlite::params![conversation_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    ).unwrap_or_default();
+
+    // ── 管道 A: 词卡 (vocab_card_ids) ──
+    let vocab_ids: Vec<&str> = task.get("vocab_card_ids")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
+        .unwrap_or_default();
+    if !vocab_ids.is_empty() && !subject.is_empty() && !grade_band.is_empty() {
+        if let Some(card_list) = crate::curriculum_loader::get_cards(&subject, &grade_band) {
+            let vocab_set: std::collections::HashSet<&str> = vocab_ids.iter().cloned().collect();
+            for card in card_list {
+                if vocab_set.contains(card.id.as_str()) {
+                    fronts.push(card.front.clone());
+                }
+            }
+        }
+    }
+
+    // ── 管道 B: 课文卡 (reading_card_id) ──
+    let reading_card_id = task.get("reading_card_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if !reading_card_id.is_empty() {
+        if let Some(card) = crate::reading_loader::get_card(reading_card_id) {
+            fronts.push(card.front.clone());
+        }
+    }
+
+    // ── 管道 C: 概念卡 / K12 金牌卡 (gold_cr_ids) ──
+    let gold_ids: Vec<&str> = task.get("gold_cr_ids")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
+        .unwrap_or_default();
+    if !gold_ids.is_empty() && !subject.is_empty() && !grade_band.is_empty() {
+        if let Some(card_list) = crate::curriculum_loader::get_cards(&subject, &grade_band) {
+            for card in card_list {
+                if card.gold_cr_ids.iter().any(|g| gold_ids.contains(&g.as_str())) {
+                    fronts.push(card.front.clone());
+                }
+            }
+        }
+    }
+
+    fronts
 }
 
 /// 构建计划分析 prompt（用于 ColdPath 2）
@@ -1121,7 +1194,7 @@ pub async fn analyze_plan_progress(
                 ).await;
                 if should_advance {
                     let conn = crate::db_pool::get_conn();
-                    let tag = format!("<reading_update>{{\"complete_current_task\": true}}</reading_update>");
+                    let tag = "<reading_update>{\"complete_current_task\": true}</reading_update>".to_string();
                     let result = handle_plan_update(&conn, &tag, &conv_id, &uid);
                     // reading 模式也触发卡片渐进解锁
                     if result.plan_updated {

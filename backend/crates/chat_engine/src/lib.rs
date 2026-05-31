@@ -2,6 +2,9 @@
 //!
 //! 复用 LinguaFlow: llm_caller.rs, concept_extractor.rs, prompt_builder.rs
 
+#![allow(clippy::empty_line_after_doc_comments)]
+#![allow(clippy::doc_overindented_list_items)]
+
 pub mod llm_caller;
 pub mod concept_extractor;
 pub mod config;

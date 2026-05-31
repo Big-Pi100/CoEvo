@@ -2,6 +2,14 @@
 //!
 //! 复用 LinguaFlow: auth.rs, auth_middleware.rs, db_pool.rs
 
+#![allow(clippy::result_large_err)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::type_complexity)]
+#![allow(dead_code)]
+#![allow(clippy::incompatible_msrv)]
+#![allow(clippy::if_same_then_else)]
+#![allow(clippy::unnecessary_to_owned)]
+
 pub mod admin_handlers;
 pub mod auth;
 pub mod auth_middleware;

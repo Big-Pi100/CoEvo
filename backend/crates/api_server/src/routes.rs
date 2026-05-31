@@ -2,7 +2,7 @@
 //!
 //! 复用 LinguaFlow routes.rs 的模式
 
-use axum::{Router, routing::{get, post, put, delete}, Json, extract::{Path, Query}, http::StatusCode, response::IntoResponse};
+use axum::{Router, routing::{get, post, put, delete}, Json, extract::{Path, Query}};
 use axum::extract::ws::WebSocketUpgrade;
 use axum::http::HeaderMap;
 use serde::Deserialize;
@@ -411,11 +411,10 @@ async fn chat_handler(
         process_plan_update(&raw_reply, &input.conversation_id, &input.user_id);
 
     // 代码层兜底：若 LLM 未处理回退请求，自动回退
-    if !plan_updated && crate::plan_handler::check_revert_signals(&input.message) {
-        if crate::plan_handler::auto_revert(&crate::db_pool::get_conn(), &input.conversation_id).is_some() {
+    if !plan_updated && crate::plan_handler::check_revert_signals(&input.message)
+        && crate::plan_handler::auto_revert(&crate::db_pool::get_conn(), &input.conversation_id).is_some() {
             plan_updated = true;
         }
-    }
 
     // 7. Extract candidate concepts (async, uses pre-queried data)
     let conn7 = crate::db_pool::get_conn();
@@ -1343,11 +1342,9 @@ async fn profile_handler(
          WHERE c.user_id = ?1 AND c.card_type = 'vocabulary' AND cm.state = 2"
     ) {
         if let Ok(rows) = stmt.query_map(rusqlite::params![user_id], |row| row.get::<_, String>(0)) {
-            for row in rows {
-                if let Ok(front) = row {
-                    if let Some(level) = chat_engine::word_bank::lookup_cefr(&front) {
-                        *mastered_by_level.entry(level).or_insert(0) += 1;
-                    }
+            for front in rows.flatten() {
+                if let Some(level) = chat_engine::word_bank::lookup_cefr(&front) {
+                    *mastered_by_level.entry(level).or_insert(0) += 1;
                 }
             }
         }
@@ -1662,7 +1659,7 @@ async fn learning_report_handler(
                     // plan_json 可能只有 task_status（被 apply_plan_mutations 改写后），
                     // 需要从 plan_content 中读取 stages 结构
                     let stages = plan.get("stages").and_then(|v| v.as_array());
-                    if stages.is_none() || stages.unwrap().is_empty() {
+                    if stages.map_or(true, |s| s.is_empty()) {
                         // 从 plan_content 取 stages
                         if let Some(ref pc_str) = pc {
                             let (ct, dd) = compute_plan_totals(pc_str, &plan);

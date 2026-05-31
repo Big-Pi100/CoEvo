@@ -7,7 +7,7 @@
 //! - 结果目录管理
 
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 // ── 测试结果结构 ──
@@ -331,7 +331,7 @@ pub fn format_duration(d: Duration) -> String {
 /// - progression: A=有plan_update, B=有教学但无plan_update, F=无教学
 /// - plan-creation: A=domain全匹配, C=部分匹配, F=全不匹配
 /// - review-flow: A=全通过, D=半通过, F=未通过
-pub fn resolve_grade(phase: &str, status: &PhaseStatus, metrics: &serde_json::Value, errors: &[String]) -> Grade {
+pub fn resolve_grade(phase: &str, status: &PhaseStatus, metrics: &serde_json::Value, _errors: &[String]) -> Grade {
     match status {
         PhaseStatus::Skipped => Grade::D,
         PhaseStatus::Failed => Grade::F,
@@ -431,7 +431,7 @@ pub fn get_review_log(
     conn: &rusqlite::Connection,
     card_id: &str,
 ) -> Vec<ReviewLogEntry> {
-    let mut stmt = conn.prepare(
+    let stmt = conn.prepare(
         "SELECT id, card_id, rating, verification_type, verification_result, reviewed_at
          FROM review_log WHERE card_id = ?1 ORDER BY reviewed_at"
     ).map_err(|e| format!("Prepare review_log query: {}", e)).ok();

@@ -3,6 +3,8 @@
 //! Runs as a localhost API server inside the Android APK,
 //! or directly on a VPS for development/testing.
 //! Paths are configurable via environment variables.
+
+#![allow(clippy::type_complexity)]
 //!
 //! Schema & migration errors are propagated — the process will exit
 //! on critical failures to avoid running in a broken state.
@@ -438,8 +440,8 @@ async fn main() {
             Ok((row.get(0)?, row.get(1)?, row.get(2)?))
         }).unwrap().filter_map(|r| r.ok()).collect();
         for (uid, rn, ph) in &rows {
-            let needs_update = rn.as_ref().map_or(false, |v| !api_server::encryption::is_encrypted(v))
-                || ph.as_ref().map_or(false, |v| !api_server::encryption::is_encrypted(v));
+            let needs_update = rn.as_ref().is_some_and(|v| !api_server::encryption::is_encrypted(v))
+                || ph.as_ref().is_some_and(|v| !api_server::encryption::is_encrypted(v));
             if needs_update {
                 let enc_rn = rn.as_ref().map(|v| {
                     if api_server::encryption::is_encrypted(v) { v.clone() }
@@ -466,7 +468,7 @@ async fn main() {
             Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?))
         }).unwrap().filter_map(|r| r.ok()).collect();
         for (aid, rn, ph, idn, gd) in &admins {
-            let needs_enc = |v: &Option<String>| v.as_ref().map_or(false, |s| !api_server::encryption::is_encrypted(s));
+            let needs_enc = |v: &Option<String>| v.as_ref().is_some_and(|s| !api_server::encryption::is_encrypted(s));
             if needs_enc(rn) || needs_enc(ph) || needs_enc(idn) || needs_enc(gd) {
                 let enc_rn = rn.as_ref().map(|v| if api_server::encryption::is_encrypted(v) { v.clone() } else { api_server::encryption::encrypt(v) });
                 let enc_ph = ph.as_ref().map(|v| if api_server::encryption::is_encrypted(v) { v.clone() } else { api_server::encryption::encrypt(v) });
