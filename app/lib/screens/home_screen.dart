@@ -9,21 +9,38 @@ import 'chat_screen.dart';
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
-  // 科目列表（key=中文名, value=可用学段）
+  // 科目列表（key=英文代码, value=可用学段）
   static const _subjects = <String, List<String>>{
-    '数学': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
-    '语文': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
-    '英语': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
-    '物理': ['g7-9', 'g10', 'g11-12'],
-    '化学': ['g7-9', 'g10', 'g11-12'],
-    '生物': ['g7-9', 'g10', 'g11-12'],
-    '历史': ['g7-9', 'g10', 'g11-12'],
-    '地理': ['g7-9', 'g10', 'g11-12'],
-    '政治': ['g10', 'g11-12'],
-    '科学': ['g3-4', 'g5-6', 'g7-9'],
-    '信息技术': ['g1-2', 'g3-4', 'g5-6', 'g7-9'],
-    '日语': ['g5-6', 'g7-9', 'g10', 'g11-12'],
-    '俄语': ['g7-9', 'g10', 'g11-12'],
+    'math': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
+    'chinese': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
+    'english': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
+    'physics': ['g7-9', 'g10', 'g11-12'],
+    'chemistry': ['g7-9', 'g10', 'g11-12'],
+    'biology': ['g7-9', 'g10', 'g11-12'],
+    'history': ['g7-9', 'g10', 'g11-12'],
+    'geography': ['g7-9', 'g10', 'g11-12'],
+    'politics': ['g10', 'g11-12'],
+    'science': ['g3-4', 'g5-6', 'g7-9'],
+    'it': ['g1-2', 'g3-4', 'g5-6', 'g7-9'],
+    'japanese': ['g5-6', 'g7-9', 'g10', 'g11-12'],
+    'russian': ['g7-9', 'g10', 'g11-12'],
+  };
+
+  // 科目中文显示名
+  static const _subjectDisplayNames = <String, String>{
+    'math': '数学',
+    'chinese': '语文',
+    'english': '英语',
+    'physics': '物理',
+    'chemistry': '化学',
+    'biology': '生物',
+    'history': '历史',
+    'geography': '地理',
+    'politics': '政治',
+    'science': '科学',
+    'it': '信息技术',
+    'japanese': '日语',
+    'russian': '俄语',
   };
 
   static const _gradeNames = {
@@ -37,40 +54,40 @@ class HomeScreen extends ConsumerWidget {
   };
 
   // 科目 → 模式
-  static bool _isReadingSubject(String subject) => subject == '语文';
+  static bool _isReadingSubject(String subject) => subject == 'chinese';
 
   // 科目颜色
   static const _subjectColors = <String, Color>{
-    '数学': Color(0xFFE57373),
-    '语文': Color(0xFF64B5F6),
-    '英语': Color(0xFF81C784),
-    '物理': Color(0xFFFFB74D),
-    '化学': Color(0xFFBA68C8),
-    '生物': Color(0xFF4DB6AC),
-    '历史': Color(0xFFF06292),
-    '地理': Color(0xFF4FC3F7),
-    '政治': Color(0xFFA1887F),
-    '科学': Color(0xFF90A4AE),
+    'math': Color(0xFFE57373),
+    'chinese': Color(0xFF64B5F6),
+    'english': Color(0xFF81C784),
+    'physics': Color(0xFFFFB74D),
+    'chemistry': Color(0xFFBA68C8),
+    'biology': Color(0xFF4DB6AC),
+    'history': Color(0xFFF06292),
+    'geography': Color(0xFF4FC3F7),
+    'politics': Color(0xFFA1887F),
+    'science': Color(0xFF90A4AE),
     '信息技术': Color(0xFF7986CB),
-    '日语': Color(0xFFE0A050),
-    '俄语': Color(0xFFC0392B),
+    'japanese': Color(0xFFE0A050),
+    'russian': Color(0xFFC0392B),
   };
 
   // 科目图标
   static final _subjectIcons = <String, IconData>{
-    '数学': Icons.calculate,
-    '语文': Icons.menu_book,
-    '英语': Icons.language,
-    '物理': Icons.science,
-    '化学': Icons.biotech,
-    '生物': Icons.pets,
-    '历史': Icons.auto_stories,
-    '地理': Icons.explore,
-    '政治': Icons.account_balance,
-    '科学': Icons.travel_explore,
-    '信息技术': Icons.computer,
-    '日语': Icons.translate,
-    '俄语': Icons.translate,
+    'math': Icons.calculate,
+    'chinese': Icons.menu_book,
+    'english': Icons.language,
+    'physics': Icons.science,
+    'chemistry': Icons.biotech,
+    'biology': Icons.pets,
+    'history': Icons.auto_stories,
+    'geography': Icons.explore,
+    'politics': Icons.account_balance,
+    'science': Icons.travel_explore,
+    'it': Icons.computer,
+    'japanese': Icons.translate,
+    'russian': Icons.translate,
   };
 
   @override
@@ -155,7 +172,7 @@ class HomeScreen extends ConsumerWidget {
                   final color = _subjectColors[subject] ?? Colors.grey;
                   final grades = _subjects[subject]!;
                   return _SubjectCard(
-                    name: subject,
+                    name: _subjectDisplayNames[subject] ?? subject,
                     color: color,
                     icon: _subjectIcons[subject] ?? Icons.school,
                     onTap: () => _startSubject(context, ref, subject, grades),
@@ -189,7 +206,7 @@ class HomeScreen extends ConsumerWidget {
     final gradeBand = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: Text('选择 $subject 年级'),
+        title: Text('选择 ${_subjectDisplayNames[subject] ?? subject} 年级'),
         children: grades.map((g) => SimpleDialogOption(
           onPressed: () => Navigator.of(ctx).pop(g),
           child: Text(_gradeNames[g] ?? g),

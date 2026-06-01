@@ -211,7 +211,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 let (system_prompt, plan_context) = {
                     let conn = crate::db_pool::get_conn();
                     let (domain, mode, ctx) = crate::plan_handler::build_plan_context(&conn, &chat_req.conversation_id);
-                    let templates = chat_engine::prompt_loader::get_for_domain(&domain);
+                    let templates = chat_engine::prompt_loader::get_chat(&domain);
                     let sp = if mode == "reading" {
                         // 按学段 + task mode 选择对应的物理隔离 prompt
                         let grade_band: Option<String> = conn.query_row(
@@ -223,19 +223,19 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         let is_nursery = ctx.contains("教学模式: nursery_rhyme");
                         let is_primary = matches!(grade_band.as_deref(), Some("g1-2" | "g3-4"));
                         if is_nursery {
-                            let p = templates.chat_system_reading_nursery.clone();
-                            if !p.is_empty() { p } else { templates.chat_system_reading.clone() }
+                            let p = templates.reading_nursery.clone();
+                            if !p.is_empty() { p } else { templates.reading.clone() }
                         } else if is_primary {
-                            let p = templates.chat_system_reading_primary.clone();
-                            if !p.is_empty() { p } else { templates.chat_system_reading.clone() }
+                            let p = templates.reading_primary.clone();
+                            if !p.is_empty() { p } else { templates.reading.clone() }
                         } else {
-                            let p = templates.chat_system_reading_secondary.clone();
-                            if !p.is_empty() { p } else { templates.chat_system_reading.clone() }
+                            let p = templates.reading_secondary.clone();
+                            if !p.is_empty() { p } else { templates.reading.clone() }
                         }
                     } else if mode == "structured" {
-                        templates.chat_system_structured.clone()
+                        templates.structured.clone()
                     } else {
-                        templates.chat_system_free.clone()
+                        templates.free.clone()
                     };
                     // 将路由上下文合并到计划上下文中
                     let full_ctx = if ctx.is_empty() { routing_ctx.clone() } else { format!("{}\n{}", ctx, routing_ctx) };
@@ -421,7 +421,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 let turn_card_count: i64 = {
                     let conn = crate::db_pool::get_conn();
                     conn.query_row(
-                        "SELECT COUNT(*) FROM cards WHERE user_id = ?1",
+                        "SELECT COUNT(*) FROM cards WHERE user_id = ?1 AND status = 'active'",
                         rusqlite::params![&chat_req.user_id],
                         |row| row.get(0),
                     ).unwrap_or(0)
@@ -470,7 +470,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     // 注意：rusqlite Connection/Statement 不是 Send，
                     // DB 操作必须在独立 block 内完成并 drop conn 后才能 .await。
 
-                    let result: Option<(Vec<String>, Vec<String>)> = 'db: {
+                    let result: Option<Vec<String>> = 'db: {
                         let conn = crate::db_pool::get_conn();
 
                         let ef: Vec<String> = {
@@ -490,27 +490,10 @@ pub async fn handle_ws(mut ws: WebSocket) {
                             rows.filter_map(|r| r.ok()).collect()
                         };
 
-                        let sf: Vec<String> = {
-                            let mut stmt = match conn.prepare(
-                                "SELECT LOWER(front) FROM skipped_concepts WHERE user_id = ?1"
-                            ) {
-                                Ok(s) => s,
-                                Err(_) => break 'db None,
-                            };
-                            let rows = match stmt.query_map(
-                                rusqlite::params![user_id],
-                                |row| row.get::<_, String>(0)
-                            ) {
-                                Ok(r) => r,
-                                Err(_) => break 'db None,
-                            };
-                            rows.filter_map(|r| r.ok()).collect()
-                        };
-
-                        Some((ef, sf))
+                        Some(ef)
                     }; // conn dropped here — safe to .await now
 
-                    let (existing_fronts, skipped_fronts) = match result {
+                    let existing_fronts = match result {
                         Some(v) => v,
                         None => {
                             let _ = cold_tx.send((cold_turn, vec![])).await;
@@ -523,7 +506,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         Duration::from_secs(30),
                         chat_engine::concept_extractor::extract_concepts(
                             &user_id, &msg, &fr,
-                            &existing_fronts, &skipped_fronts, &config,
+                            &existing_fronts, &config,
                             &history_clone, &extract_domain, &ctx,
                         ),
                     ).await {
@@ -535,11 +518,28 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         }
                     };
 
-                    let candidates: Vec<serde_json::Value> = extraction.candidates.iter().map(|c| {
-                        // 卡片 domain 使用 LLM 推断值（domain 已改为枚举，不再用 UUID 列）
-                        json!({"front": c.front, "back": c.back, "source_sentence": c.source_sentence, "domain": &c.domain})
-                    }).collect();
-                    let _ = cold_tx.send((cold_turn, candidates)).await;
+                    // 概念提取 → 批量入库 (status='pending')，返回 card_id 供前端 PATCH
+                    let pending_candidates: Vec<serde_json::Value> = {
+                        let conn = crate::db_pool::get_conn();
+                        extraction.candidates.iter().map(|c| {
+                            let card_id = format!("pend_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap());
+                            let now = chrono::Utc::now().timestamp();
+                            // 写入 cards (status='pending') + card_memory
+                            let _ = conn.execute(
+                                "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, created_at, status)
+                                 VALUES (?1, ?2, ?3, 'concept', ?4, ?5, ?6, ?7, 'pending')",
+                                rusqlite::params![card_id, user_id, c.domain, c.front, c.back, c.source_sentence, now],
+                            );
+                            let _ = conn.execute(
+                                "INSERT OR IGNORE INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
+                                 VALUES (?1, 0, 0.3, 1.0, ?2, 0, 0, 0)",
+                                rusqlite::params![card_id, now],
+                            );
+                            json!({"id": card_id, "front": c.front, "back": c.back,
+                                   "source_sentence": c.source_sentence, "domain": &c.domain})
+                        }).collect()
+                    };
+                    let _ = cold_tx.send((cold_turn, pending_candidates)).await;
                 });
                 } else {
                     // 无 plan → 发送空结果避免空洞

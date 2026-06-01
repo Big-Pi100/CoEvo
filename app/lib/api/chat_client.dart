@@ -234,18 +234,42 @@ class ChatClient {
     return data['result'] as String;
   }
 
-  // ── Skip API ──
+  // ── Card Status API ──
 
-  Future<void> skipConcept(String front, String sourceText) async {
-    await http.post(
-      Uri.parse('$baseUrl/api/cards/skip'),
+  /// 更新单张卡片状态: active / pending / skipped / archived
+  Future<void> updateCardStatus(String cardId, String status) async {
+    final resp = await http.patch(
+      Uri.parse('$baseUrl/api/cards/status'),
       headers: _authHeaders,
       body: jsonEncode({
         'user_id': userId,
-        'front': front,
-        'source_text': sourceText,
+        'card_id': cardId,
+        'status': status,
       }),
-    );
+    ).timeout(ApiConfig.requestTimeout);
+    if (resp.statusCode != 200) {
+      throw Exception('Status update error: ${resp.statusCode}');
+    }
+  }
+
+  /// 批量更新卡片状态
+  Future<Map<String, dynamic>> batchUpdateStatus(
+    List<String> cardIds,
+    String status,
+  ) async {
+    final resp = await http.patch(
+      Uri.parse('$baseUrl/api/cards/batch-status'),
+      headers: _authHeaders,
+      body: jsonEncode({
+        'user_id': userId,
+        'card_ids': cardIds,
+        'status': status,
+      }),
+    ).timeout(ApiConfig.requestTimeout);
+    if (resp.statusCode != 200) {
+      throw Exception('Batch status update error: ${resp.statusCode}');
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
   }
 
   // ── Profile API ──
@@ -307,28 +331,6 @@ class ChatClient {
 
   // ── All Cards API ──
 
-  // ── Skipped Concepts ──
-
-  Future<Map<String, dynamic>> getSkippedConcepts() async {
-    final uri = Uri.parse('$baseUrl/api/cards/skipped').replace(queryParameters: {
-      'user_id': userId,
-    });
-    final resp = await http.get(uri, headers: _authHeaders)
-        .timeout(ApiConfig.requestTimeout);
-    if (resp.statusCode != 200) throw Exception('Skipped API: ${resp.statusCode}');
-    return jsonDecode(resp.body) as Map<String, dynamic>;
-  }
-
-  Future<void> deleteSkipped(String skipId) async {
-    final resp = await http.delete(
-      Uri.parse('$baseUrl/api/cards/skipped/$skipId'),
-      headers: _authHeaders,
-    ).timeout(ApiConfig.requestTimeout);
-    if (resp.statusCode != 200) throw Exception('Delete skipped: ${resp.statusCode}');
-  }
-
-  // ── All Cards API ──
-
   Future<Map<String, dynamic>> getAllCards({
     String? query,
     int? state,
@@ -348,29 +350,6 @@ class ChatClient {
         .timeout(ApiConfig.requestTimeout);
     if (resp.statusCode != 200) {
       throw Exception('Cards API error: ${resp.statusCode}');
-    }
-    return jsonDecode(resp.body) as Map<String, dynamic>;
-  }
-
-  // ── Batch Create Cards ──
-
-  Future<Map<String, dynamic>> batchCreateCards(
-    List<Map<String, dynamic>> candidates, {
-    String? conversationId,
-  }) async {
-    final body = <String, dynamic>{
-      'user_id': userId,
-      'candidates': candidates,
-    };
-    if (conversationId != null) body['conversation_id'] = conversationId;
-    final resp = await http.post(
-      Uri.parse('$baseUrl/api/cards/batch-create'),
-      headers: _authHeaders,
-      body: jsonEncode(body),
-    ).timeout(ApiConfig.requestTimeout);
-
-    if (resp.statusCode != 200) {
-      throw Exception('Batch create error: ${resp.statusCode}');
     }
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }

@@ -148,7 +148,7 @@ pub async fn admin_users_handler(headers: HeaderMap, Query(query): Query<AdminUs
     let mut stmt = c.prepare(&sql).unwrap();
     let users: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![limit, offset], |row| {
         let uid: String = row.get(0)?;
-        let cards: i64 = c.query_row("SELECT COUNT(*) FROM cards WHERE user_id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
+        let cards: i64 = c.query_row("SELECT COUNT(*) FROM cards WHERE user_id=?1 AND status='active'", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
         let reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
         let expires: Option<String> = c.query_row("SELECT value FROM user_preferences WHERE user_id=?1 AND key='subscription_expires'", rusqlite::params![&uid], |r| r.get(0)).ok();
         let is_super = role == "super";
@@ -192,7 +192,7 @@ pub async fn admin_user_detail(headers: HeaderMap, Path(uid): Path<String>) -> i
     let c = conn();
     let u: Option<serde_json::Value> = c.query_row("SELECT id,username,display_name,real_name,phone,created_at,streak_days,last_active_date FROM users WHERE id=?1", rusqlite::params![&uid], |row| {
         let uid2: String = row.get(0)?;
-        let cards: i64 = c.query_row("SELECT COUNT(*) FROM cards WHERE user_id=?1", rusqlite::params![&uid2],|r|r.get(0)).unwrap_or(0);
+        let cards: i64 = c.query_row("SELECT COUNT(*) FROM cards WHERE user_id=?1 AND status='active'", rusqlite::params![&uid2],|r|r.get(0)).unwrap_or(0);
         let reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1", rusqlite::params![&uid2],|r|r.get(0)).unwrap_or(0);
         let rn_raw: Option<String> = row.get(3)?;
         let ph_raw: Option<String> = row.get(4)?;
@@ -587,7 +587,7 @@ pub async fn guardian_students(headers: HeaderMap) -> impl IntoResponse {
     let mut stmt = c.prepare("SELECT ga.student_user_id,u.display_name,u.real_name,u.phone,u.streak_days,u.last_active_date FROM guardian_assignments ga JOIN users u ON ga.student_user_id=u.id WHERE ga.guardian_admin_id=?1 AND ga.is_active=1").unwrap();
     let students: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![gid], |row| {
         let uid: String = row.get(0)?;
-        let _cards: i64 = c.query_row("SELECT COUNT(*) FROM cards WHERE user_id=?1",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0);
+        let _cards: i64 = c.query_row("SELECT COUNT(*) FROM cards WHERE user_id=?1 AND status='active'",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0);
         let _reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0);
         let _mastery: f64 = c.query_row("SELECT CAST(SUM(CASE WHEN cm.state=2 THEN 1 ELSE 0 END) AS REAL)/MAX(1,COUNT(*)) FROM card_memory cm JOIN cards cd ON cm.card_id=cd.id WHERE cd.user_id=?1",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0.0);
         // Plan stats
@@ -1049,7 +1049,7 @@ pub async fn admin_users_export(headers: HeaderMap, Query(query): Query<AdminUse
     let mut csv = String::from("user_id,username,display_name,real_name,phone,created_at,streak_days,card_count,review_count,subscription_expires\n");
     if let Ok(rows) = stmt.query_map(rusqlite::params![pattern], |row| {
         let uid: String = row.get(0)?;
-        let cards: i64 = c.query_row("SELECT COUNT(*) FROM cards WHERE user_id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
+        let cards: i64 = c.query_row("SELECT COUNT(*) FROM cards WHERE user_id=?1 AND status='active'", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
         let reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
         let expires: String = c.query_row("SELECT COALESCE(value,'') FROM user_preferences WHERE user_id=?1 AND key='subscription_expires'", rusqlite::params![&uid], |r| r.get(0)).unwrap_or_default();
         let rn_opt: Option<String> = row.get(3).ok().flatten();

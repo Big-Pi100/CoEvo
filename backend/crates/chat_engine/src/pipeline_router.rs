@@ -51,6 +51,8 @@ impl Domain {
     ];
 
     /// 从中文 subject 映射到 Domain 枚举
+    /// 标记 deprecated：新代码应使用 Domain::from_str（同时支持中英文）
+    #[deprecated(note = "use Domain::from_str instead (supports both Chinese and English)")]
     pub fn from_chinese(cn: &str) -> Self {
         match cn {
             "数学" => Domain::Math,

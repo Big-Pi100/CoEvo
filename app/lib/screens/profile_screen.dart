@@ -1,3 +1,4 @@
+// ignore_for_file: unnecessary_cast, unnecessary_non_null_assertion, unused_element
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -201,7 +202,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Future<void> _updateProfile(Map<String, String> fields) async {
     final auth = ref.read(authProvider);
     if (auth.userId == null || auth.token == null) return;
-    final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {
       final resp = await http.put(
         Uri.parse('${ApiConfig.baseUrl}/api/user/${auth.userId}/profile'),
@@ -262,11 +262,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget _buildContent(BuildContext context, AuthState auth) {
     final stats = _data?['stats'] as Map<String, dynamic>? ?? {};
 
-    final totalCards = stats['total_cards'] ?? 0;
-    final totalReviews = stats['total_reviews'] ?? 0;
     final streakDays = stats['streak_days'] ?? 0;
-    final domainsCovered = stats['domains_covered'] ?? 0;
-    final todayReviews = stats['today_reviews'] ?? 0;
 
     return ListView(
       padding: const EdgeInsets.all(24),
@@ -469,7 +465,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       final expires = DateTime.tryParse(expiresStr!)!;
       final remaining = expires.difference(DateTime.now());
       if (remaining.inDays > 30) {
-        statusText = '有效 — 到期日: ${expiresStr!.substring(0, 10)}';
+        statusText = '有效 — 到期日: ${expiresStr.substring(0, 10)}';
         statusColor = Colors.green;
         statusIcon = Icons.verified;
       } else if (remaining.inDays > 0) {

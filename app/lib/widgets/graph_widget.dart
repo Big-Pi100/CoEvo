@@ -1,3 +1,4 @@
+// ignore_for_file: invalid_null_aware_operator, unnecessary_cast
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';

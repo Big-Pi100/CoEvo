@@ -236,7 +236,7 @@ mod helpers {
             ).unwrap();
         }
 
-        chat_engine::prompt_loader::init("../../prompts", "../../pipelines");
+        chat_engine::prompt_loader::init("../../prompts");
         eprintln!("[setup] done\n");
     }
 
@@ -402,11 +402,11 @@ mod helpers {
         println!("👤 用户: {}", user_message);
 
         let (domain, mode, plan_ctx) = build_plan_ctx();
-        let prompts = chat_engine::prompt_loader::get_for_domain(&domain);
+        let prompts = chat_engine::prompt_loader::get_chat(&domain);
         let system_prompt = if mode == "structured" {
-            &prompts.chat_system_structured
+            &prompts.structured
         } else {
-            &prompts.chat_system_free
+            &prompts.free
         };
 
         let history = get_history();
@@ -635,10 +635,10 @@ pub async fn cp2_turn(
     println!("👤 用户: {}", user_message);
 
     let (domain, mode, plan_ctx) = helpers::build_plan_ctx();
-    let prompts = chat_engine::prompt_loader::get_for_domain(&domain);
-    let system_prompt = if mode == "structured" { &prompts.chat_system_structured }
-    else if mode == "reading" { &prompts.chat_system_reading }
-    else { &prompts.chat_system_free };
+    let prompts = chat_engine::prompt_loader::get_chat(&domain);
+    let system_prompt = if mode == "structured" { &prompts.structured }
+    else if mode == "reading" { &prompts.reading }
+    else { &prompts.free };
     let history = helpers::get_history();
     let user_content = if plan_ctx.is_empty() { history } else { format!("{}{}", history, plan_ctx) };
     println!("📋 mode={} | sys={} | user={}", mode, system_prompt.len(), user_content.len());
@@ -1189,8 +1189,8 @@ async fn e2e_live_04_revert_mechanism() {
         请你在回复中用 <plan_update> 标签设置 \"reset_current_task\": true 来回退。";
 
     let (_domain, _mode, plan_ctx) = helpers::build_plan_ctx();
-    let prompts = chat_engine::prompt_loader::get_for_domain(&_domain);
-    let system_prompt = &prompts.chat_system_structured;
+    let prompts = chat_engine::prompt_loader::get_chat(&_domain);
+    let system_prompt = &prompts.structured;
     let history = helpers::get_history();
     let user_content = format!("{}{}", history, plan_ctx);
     helpers::insert_turn("user", user_msg);
@@ -1483,7 +1483,7 @@ async fn e2e_live_06_reading_context_quality() {
 
     // ── Setup（使用标准 helpers::setup 确保 DB 干净）──
     helpers::setup();
-    chat_engine::prompt_loader::init("../../prompts", "../../pipelines");
+    chat_engine::prompt_loader::init("../../prompts");
     api_server::reading_loader::init().unwrap_or_else(|e| {
         eprintln!("[TEST] reading_loader init: {}", e);
     });
@@ -1530,7 +1530,7 @@ async fn e2e_live_06_reading_context_quality() {
             "INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_content, plan_json, task_status, created_at, updated_at)
              VALUES (?1,?2,?3,?4,?5,'reading',?6,?7,?7,?8,?8)",
             rusqlite::params![uuid::Uuid::new_v4().to_string(), TEST_USER_ID, TEST_CONV_ID,
-                format!("Reading: 语文 {}", grade_band), "语文", plan_content_str, plan_json_str, chrono::Utc::now().timestamp()],
+                format!("Reading: 语文 {}", grade_band), "chinese", plan_content_str, plan_json_str, chrono::Utc::now().timestamp()],
         ).unwrap();
     }
 
@@ -1576,8 +1576,8 @@ async fn e2e_live_06_reading_context_quality() {
 \n- 用具体内容回答，不要说空话\
 \n- 直接输出你要说的话，不要加前缀";
 
-    let prompts = chat_engine::prompt_loader::get_for_domain("");
-    let system_prompt = prompts.chat_system_reading.clone();
+    let prompts = chat_engine::prompt_loader::get_chat("");
+    let system_prompt = prompts.reading.clone();
 
     // 学生首次发言
     let initial_msg = {
@@ -2191,7 +2191,7 @@ async fn run_eval_session(
             plan_content_str, plan_json_str, now],
     ).ok();
 
-    let prompts = chat_engine::prompt_loader::get_for_domain("");
+    let prompts = chat_engine::prompt_loader::get_chat("");
     let is_nursery = plan_content.get("stages")
         .and_then(|s| s.as_array())
         .and_then(|a| a.first())
@@ -2203,14 +2203,14 @@ async fn run_eval_session(
         == Some("nursery_rhyme");
     let is_primary = grade_band == "g1-2" || grade_band == "g3-4";
     let system_prompt = if is_nursery {
-        let p = prompts.chat_system_reading_nursery.clone();
-        if !p.is_empty() { p } else { prompts.chat_system_reading.clone() }
+        let p = prompts.reading_nursery.clone();
+        if !p.is_empty() { p } else { prompts.reading.clone() }
     } else if is_primary {
-        let p = prompts.chat_system_reading_primary.clone();
-        if !p.is_empty() { p } else { prompts.chat_system_reading.clone() }
+        let p = prompts.reading_primary.clone();
+        if !p.is_empty() { p } else { prompts.reading.clone() }
     } else {
-        let p = prompts.chat_system_reading_secondary.clone();
-        if !p.is_empty() { p } else { prompts.chat_system_reading.clone() }
+        let p = prompts.reading_secondary.clone();
+        if !p.is_empty() { p } else { prompts.reading.clone() }
     };
     eprintln!("[EVAL] Prompt: {} chars (grade={}, nursery={})", system_prompt.len(), grade_band, is_nursery);
 
@@ -2629,7 +2629,7 @@ async fn e2e_live_11_teaching_quality() {
                 api_server::auth::hash_password(TEST_PASSWORD), now],
         ).unwrap();
     }
-    chat_engine::prompt_loader::init("../../prompts", "../../pipelines");
+    chat_engine::prompt_loader::init("../../prompts");
     api_server::reading_loader::init().unwrap_or_else(|e| {
         eprintln!("[EVAL] reading_loader init: {}", e);
     });
@@ -2652,7 +2652,7 @@ async fn e2e_live_11_teaching_quality() {
     for (suffix, grade, tasks) in &reading_sessions {
         let session_id = format!("{}_{}", run_id, suffix);
         println!("\n─── 语文阅读 {} ({} tasks) ───", grade, tasks);
-        let dir = run_eval_session(&session_id, "语文", "chinese", grade, *tasks).await;
+        let dir = run_eval_session(&session_id, "chinese", "chinese", grade, *tasks).await;
         println!("  ✅ Logs: {:?}", dir);
         reading_dirs.push(dir);
     }
@@ -2713,8 +2713,8 @@ async fn run_eval_session_structured(
     let tag = format!("<plan_update>{}</plan_update>", serde_json::to_string(&plan_update).unwrap());
     api_server::plan_handler::handle_plan_update(&conn, &tag, TEST_CONV_ID, TEST_USER_ID);
 
-    let prompts = chat_engine::prompt_loader::get_for_domain(subject_key);
-    let system_prompt = prompts.chat_system_structured.clone();
+    let prompts = chat_engine::prompt_loader::get_chat(subject_key);
+    let system_prompt = prompts.structured.clone();
     let student_system = format!("你是一个{}。请展示理解并推进学习。", format!("学习{}的{}学生", subject_cn, grade_band));
 
     let mut student_cfg = chat_engine::llm_caller::LlmConfig::deepseek_v4_flash(
@@ -2792,12 +2792,12 @@ async fn e2e_live_12_structured_quality() {
     { let c = api_server::db_pool::get_conn();
         c.execute("INSERT OR IGNORE INTO users VALUES (?1,?2,?3,0,'','',?4)",
             rusqlite::params![TEST_USER_ID, TEST_USERNAME, api_server::auth::hash_password(TEST_PASSWORD), now]).unwrap(); }
-    chat_engine::prompt_loader::init("../../prompts", "../../pipelines");
+    chat_engine::prompt_loader::init("../../prompts");
     api_server::curriculum_loader::init().ok();
 
     let rid = format!("eval_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
     for (s, subj, key, grade, tasks) in vec![
-        ("math_g34", "数学", "math", "g3-4", 3),
+        ("math_g34", "math", "math", "g3-4", 3),
         ("physics_g79", "物理", "physics", "g7-9", 3),
         ("politics_g1012", "政治", "politics", "g10-12", 3),
     ] {
@@ -3007,7 +3007,7 @@ async fn e2e_live_16_verify_and_judge() {
     helpers::setup();
     let api_key = std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY");
     let config = chat_engine::llm_caller::LlmConfig::deepseek_v4_flash(&api_key);
-    let prompts = chat_engine::prompt_loader::get();
+    let prompts = chat_engine::prompt_loader::get_quiz("general");
 
     // Step 1: 用 ColdPath 1 提取一个概念
     let result = chat_engine::concept_extractor::extract_concepts(
@@ -3023,7 +3023,7 @@ async fn e2e_live_16_verify_and_judge() {
 
     // Step 2: verify — LLM 生成验证问题
     println!("\n── Step 2: LLM 出题 (verify) ──");
-    let verify_prompt = prompts.quiz_generate.clone()
+    let verify_prompt = prompts.generate.clone()
         .replace("{front}", &concept.front)
         .replace("{back}", &concept.back);
     let mut vc = chat_engine::llm_caller::LlmCaller::new(config.clone());
@@ -3056,7 +3056,7 @@ async fn e2e_live_16_verify_and_judge() {
             jq["expected_answer"].as_str().unwrap_or(""),
             jq["user_answer"].as_str().unwrap_or(""))
     }).collect();
-    let jprompt = prompts.quiz_judge.clone().replace("{questions}", &qp.join("\n---\n"));
+    let jprompt = prompts.judge.clone().replace("{questions}", &qp.join("\n---\n"));
     let mut jc = chat_engine::llm_caller::LlmCaller::new(config);
     let jresp = jc.generate("", &jprompt).await.expect("judge 调用失败");
     let jresults: Vec<serde_json::Value> = serde_json::from_str(&jresp)

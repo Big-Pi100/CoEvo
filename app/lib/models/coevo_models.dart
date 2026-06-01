@@ -166,14 +166,16 @@ class Message {
 
 /// 卡片候选 (制卡弹窗)
 class ConceptCandidate {
+  final String? id;            // 预插入卡片的 card_id (status='pending')
   final String front;
   final String? back;
   final String? sourceSentence;
   final String? domain;
 
-  const ConceptCandidate({required this.front, this.back, this.sourceSentence, this.domain});
+  const ConceptCandidate({this.id, required this.front, this.back, this.sourceSentence, this.domain});
 
   factory ConceptCandidate.fromJson(Map<String, dynamic> json) => ConceptCandidate(
+    id: json['id'] as String?,
     front: json['front'] as String? ?? json['concept'] as String? ?? '',
     back: json['back'] as String?,
     sourceSentence: json['source_sentence'] as String?,

@@ -1,133 +1,327 @@
-//! Prompt Loader — 从外部文件加载 prompt 模板
+//! Prompt Loader — 按类别 × 科目加载 prompt 模板
 //!
-//! 支持管线式加载：
-//! - init() 加载通用管线 prompts/ + 所有已注册管线的 prompts
-//! - get(domain) 按 domain 获取对应 PromptTemplates，找不到回退通用
+//! 目录结构:
+//!   prompts/{category}/{subject}/{type}.md
 //!
-//! 设计原则：
-//! - 管线目录里的文件不要求全，不存在的文件自动回退到通用管线
-//! - 新增管线只需建目录 + 写要改的文件 + 注册
+//! 类别:
+//!   chat     - 教师对话（free/structured/reading...）
+//!   concept  - CP1 概念提取（extract/direct）
+//!   plan     - CP2 计划管理（creation/analysis/signal）
+//!   quiz     - 考核（generate/judge/grill）
+//!   verify   - 复习验证（spelling/dialogue/translation）
+//!   routing  - 学科路由（subject）
+//!
+//! 每类别下 general/ 作为通用兜底，科目目录不存在时 fallback。
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-#[derive(Clone, Debug)]
-#[derive(Default)]
-pub struct PromptTemplates {
-    pub chat_system: String,
-    pub chat_system_free: String,
-    pub chat_system_structured: String,
-    pub chat_system_reading: String,
-    pub chat_system_reading_primary: String,
-    pub chat_system_reading_secondary: String,
-    pub chat_system_reading_nursery: String,
-    pub chat_system_nursery: String,
-    pub concept_extract: String,
-    pub card_direct: String,
-    pub quiz_generate: String,
-    pub quiz_judge: String,
+// ── 各类别 prompt 结构体 ──
+
+#[derive(Clone, Debug, Default)]
+pub struct ChatTemplates {
+    pub free: String,
+    pub structured: String,
+    pub reading: String,
+    pub reading_nursery: String,
+    pub reading_primary: String,
+    pub reading_secondary: String,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct ConceptTemplates {
+    pub extract: String,
+    pub direct: String,
+}
 
-/// 管线注册表
-struct PromptRegistry {
-    /// 通用管线（兜底）
-    general: PromptTemplates,
-    /// 场景管线 key=domain
-    pipelines: HashMap<String, PromptTemplates>,
+#[derive(Clone, Debug, Default)]
+pub struct PlanTemplates {
+    pub creation: String,
+    pub analysis: String,
+    pub signal: String,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct QuizTemplates {
+    pub generate: String,
+    pub judge: String,
+    pub grill: String,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct VerifyTemplates {
+    pub spelling: String,
+    pub dialogue: String,
+    pub translation: String,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct RoutingTemplates {
+    pub subject: String,
+}
+
+// ── 注册表 ──
+
+pub struct PromptRegistry {
+    /// 各类别 × 科目 map
+    pub chat: HashMap<String, ChatTemplates>,
+    pub concept: HashMap<String, ConceptTemplates>,
+    pub plan: HashMap<String, PlanTemplates>,
+    pub quiz: HashMap<String, QuizTemplates>,
+    pub verify: HashMap<String, VerifyTemplates>,
+    pub routing: HashMap<String, RoutingTemplates>,
+    /// 各类别通用兜底
+    pub chat_general: ChatTemplates,
+    pub concept_general: ConceptTemplates,
+    pub plan_general: PlanTemplates,
+    pub quiz_general: QuizTemplates,
+    pub verify_general: VerifyTemplates,
+    pub routing_general: RoutingTemplates,
 }
 
 static REGISTRY: OnceLock<PromptRegistry> = OnceLock::new();
 
-/// 初始化: 加载通用管线 + 所有已注册管线
-///
-/// `prompts_dir`: 通用 prompt 目录 (如 "prompts/")
-/// `pipelines_base`: 管线基目录 (如 "pipelines/")
-pub fn init(prompts_dir: &str, pipelines_base: &str) {
-    let general = load_pipeline_dir(prompts_dir);
-    tracing::info!("General prompts loaded from: {}", prompts_dir);
-
-    let mut pipelines: HashMap<String, PromptTemplates> = HashMap::new();
-
-    // 加载已注册管线
-    for domain in &["math", "language", "chemistry", "biology"] {
-        let dir = format!("{}/{}/prompts", pipelines_base, domain);
-        let tpl = load_pipeline_dir_with_fallback(&dir, &general);
-        let fallback_info = if std::path::Path::new(&dir).exists() { " (custom)" } else { " (fallback to general)" };
-        tracing::info!("Pipeline [{}] loaded from: {}{}", domain, dir, fallback_info);
-        pipelines.insert(domain.to_string(), tpl);
-    }
-
-    let registry = PromptRegistry { general, pipelines };
-    let _ = REGISTRY.set(registry);
-}
-
-/// 加载单个目录，文件不存在时使用空字符串
-fn load_pipeline_dir(dir: &str) -> PromptTemplates {
-    PromptTemplates {
-        chat_system: read_file(&format!("{}/chat_system.md", dir)),
-        chat_system_free: read_file(&format!("{}/chat_system_free.md", dir)),
-        chat_system_structured: read_file(&format!("{}/chat_system_structured.md", dir)),
-        chat_system_reading: read_file(&format!("{}/chat_system_reading.md", dir)),
-        chat_system_reading_primary: read_file(&format!("{}/chat_system_reading_primary.md", dir)),
-        chat_system_reading_secondary: read_file(&format!("{}/chat_system_reading_secondary.md", dir)),
-        chat_system_reading_nursery: read_file(&format!("{}/chat_system_reading_nursery.md", dir)),
-        chat_system_nursery: read_file(&format!("{}/chat_system_nursery.md", dir)),
-        concept_extract: read_file(&format!("{}/concept_extract.md", dir)),
-        card_direct: read_file(&format!("{}/card_direct.md", dir)),
-        quiz_generate: read_file(&format!("{}/quiz_generate.md", dir)),
-        quiz_judge: read_file(&format!("{}/quiz_judge.md", dir)),
-    }
-}
-
-/// 加载单个目录，文件不存在时回退到 fallback 管线的对应字段
-fn load_pipeline_dir_with_fallback(dir: &str, fallback: &PromptTemplates) -> PromptTemplates {
-    PromptTemplates {
-        chat_system: read_file_with_alt(&format!("{}/chat_system.md", dir), &fallback.chat_system),
-        chat_system_free: read_file_with_alt(&format!("{}/chat_system_free.md", dir), &fallback.chat_system_free),
-        chat_system_structured: read_file_with_alt(&format!("{}/chat_system_structured.md", dir), &fallback.chat_system_structured),
-        chat_system_reading: read_file_with_alt(&format!("{}/chat_system_reading.md", dir), &fallback.chat_system_reading),
-        chat_system_reading_primary: read_file_with_alt(&format!("{}/chat_system_reading_primary.md", dir), &fallback.chat_system_reading_primary),
-        chat_system_reading_secondary: read_file_with_alt(&format!("{}/chat_system_reading_secondary.md", dir), &fallback.chat_system_reading_secondary),
-        chat_system_reading_nursery: read_file_with_alt(&format!("{}/chat_system_reading_nursery.md", dir), &fallback.chat_system_reading_nursery),
-        chat_system_nursery: read_file_with_alt(&format!("{}/chat_system_nursery.md", dir), &fallback.chat_system_nursery),
-        concept_extract: read_file_with_alt(&format!("{}/concept_extract.md", dir), &fallback.concept_extract),
-        card_direct: read_file_with_alt(&format!("{}/card_direct.md", dir), &fallback.card_direct),
-        quiz_generate: read_file_with_alt(&format!("{}/quiz_generate.md", dir), &fallback.quiz_generate),
-        quiz_judge: read_file_with_alt(&format!("{}/quiz_judge.md", dir), &fallback.quiz_judge),
-    }
-}
-
-/// 读取文件，不存在时返回 alt 默认值
-fn read_file_with_alt(path: &str, alt: &str) -> String {
-    std::fs::read_to_string(path).unwrap_or_else(|_| alt.to_string())
-}
+// ── 加载函数 ──
 
 fn read_file(path: &str) -> String {
     std::fs::read_to_string(path).unwrap_or_default()
 }
 
-/// 获取通用管线的 prompt（无参，后向兼容）
-pub fn get() -> &'static PromptTemplates {
-    let registry = REGISTRY.get().expect("Prompts not initialized — call init() first");
-    &registry.general
+fn read_file_with_alt(path: &str, alt: &str) -> String {
+    std::fs::read_to_string(path).unwrap_or_else(|_| alt.to_string())
 }
 
-/// 获取指定管线的 prompt 模板
-///
-/// - domain = "" 或 "general" → 通用兜底
-/// - domain = "math" → 数学管线
-/// - domain = "language" → 语言管线
-/// - 未知 domain → 通用兜底
-pub fn get_for_domain(domain: &str) -> &'static PromptTemplates {
-    let registry = REGISTRY.get().expect("Prompts not initialized — call init() first");
-
-    if domain.is_empty() || domain == "general" {
-        return &registry.general;
+fn load_chat_dir(dir: &str) -> ChatTemplates {
+    ChatTemplates {
+        free: read_file(&format!("{}/free.md", dir)),
+        structured: read_file(&format!("{}/structured.md", dir)),
+        reading: read_file(&format!("{}/reading.md", dir)),
+        reading_nursery: read_file(&format!("{}/reading-nursery.md", dir)),
+        reading_primary: read_file(&format!("{}/reading-primary.md", dir)),
+        reading_secondary: read_file(&format!("{}/reading-secondary.md", dir)),
     }
-
-    registry.pipelines.get(domain).unwrap_or(&registry.general)
 }
+
+fn load_chat_dir_with_fallback(dir: &str, fallback: &ChatTemplates) -> ChatTemplates {
+    ChatTemplates {
+        free: read_file_with_alt(&format!("{}/free.md", dir), &fallback.free),
+        structured: read_file_with_alt(&format!("{}/structured.md", dir), &fallback.structured),
+        reading: read_file_with_alt(&format!("{}/reading.md", dir), &fallback.reading),
+        reading_nursery: read_file_with_alt(&format!("{}/reading-nursery.md", dir), &fallback.reading_nursery),
+        reading_primary: read_file_with_alt(&format!("{}/reading-primary.md", dir), &fallback.reading_primary),
+        reading_secondary: read_file_with_alt(&format!("{}/reading-secondary.md", dir), &fallback.reading_secondary),
+    }
+}
+
+fn load_concept_dir(dir: &str) -> ConceptTemplates {
+    ConceptTemplates {
+        extract: read_file(&format!("{}/extract.md", dir)),
+        direct: read_file(&format!("{}/direct.md", dir)),
+    }
+}
+
+fn load_concept_dir_with_fallback(dir: &str, fallback: &ConceptTemplates) -> ConceptTemplates {
+    ConceptTemplates {
+        extract: read_file_with_alt(&format!("{}/extract.md", dir), &fallback.extract),
+        direct: read_file_with_alt(&format!("{}/direct.md", dir), &fallback.direct),
+    }
+}
+
+fn load_plan_dir(dir: &str) -> PlanTemplates {
+    PlanTemplates {
+        creation: read_file(&format!("{}/creation.md", dir)),
+        analysis: read_file(&format!("{}/analysis.md", dir)),
+        signal: read_file(&format!("{}/signal.md", dir)),
+    }
+}
+
+fn load_plan_dir_with_fallback(dir: &str, fallback: &PlanTemplates) -> PlanTemplates {
+    PlanTemplates {
+        creation: read_file_with_alt(&format!("{}/creation.md", dir), &fallback.creation),
+        analysis: read_file_with_alt(&format!("{}/analysis.md", dir), &fallback.analysis),
+        signal: read_file_with_alt(&format!("{}/signal.md", dir), &fallback.signal),
+    }
+}
+
+fn load_quiz_dir(dir: &str) -> QuizTemplates {
+    QuizTemplates {
+        generate: read_file(&format!("{}/generate.md", dir)),
+        judge: read_file(&format!("{}/judge.md", dir)),
+        grill: read_file(&format!("{}/grill.md", dir)),
+    }
+}
+
+fn load_quiz_dir_with_fallback(dir: &str, fallback: &QuizTemplates) -> QuizTemplates {
+    QuizTemplates {
+        generate: read_file_with_alt(&format!("{}/generate.md", dir), &fallback.generate),
+        judge: read_file_with_alt(&format!("{}/judge.md", dir), &fallback.judge),
+        grill: read_file_with_alt(&format!("{}/grill.md", dir), &fallback.grill),
+    }
+}
+
+fn load_verify_dir(dir: &str) -> VerifyTemplates {
+    VerifyTemplates {
+        spelling: read_file(&format!("{}/spelling.md", dir)),
+        dialogue: read_file(&format!("{}/dialogue.md", dir)),
+        translation: read_file(&format!("{}/translation.md", dir)),
+    }
+}
+
+fn load_verify_dir_with_fallback(dir: &str, fallback: &VerifyTemplates) -> VerifyTemplates {
+    VerifyTemplates {
+        spelling: read_file_with_alt(&format!("{}/spelling.md", dir), &fallback.spelling),
+        dialogue: read_file_with_alt(&format!("{}/dialogue.md", dir), &fallback.dialogue),
+        translation: read_file_with_alt(&format!("{}/translation.md", dir), &fallback.translation),
+    }
+}
+
+fn load_routing_dir(dir: &str) -> RoutingTemplates {
+    RoutingTemplates {
+        subject: read_file(&format!("{}/subject.md", dir)),
+    }
+}
+
+fn load_routing_dir_with_fallback(dir: &str, fallback: &RoutingTemplates) -> RoutingTemplates {
+    RoutingTemplates {
+        subject: read_file_with_alt(&format!("{}/subject.md", dir), &fallback.subject),
+    }
+}
+
+/// 扫描某类别下所有科目子目录并注册
+fn scan_subject_dirs<T, F1, F2>(base_dir: &str, load_dir: F1, load_with_fb: F2) -> (HashMap<String, T>, T)
+where
+    T: Clone + Default,
+    F1: Fn(&str) -> T,
+    F2: Fn(&str, &T) -> T,
+{
+    let general_dir = format!("{}/general", base_dir);
+    let general = if std::path::Path::new(&general_dir).exists() {
+        load_dir(&general_dir)
+    } else {
+        T::default()
+    };
+
+    let mut map = HashMap::new();
+    if let Ok(entries) = std::fs::read_dir(base_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() { continue; }
+            let name = match path.file_name().and_then(|n| n.to_str()) {
+                Some(n) if !n.is_empty() && n != "general" => n.to_string(),
+                _ => continue,
+            };
+            let dir_str = path.to_string_lossy().to_string();
+            let tpl = load_with_fb(&dir_str, &general);
+            map.insert(name, tpl);
+        }
+    }
+    (map, general)
+}
+
+// ── 初始化 ──
+
+/// 初始化: 扫描 prompts/{category}/{subject}/ 注册所有 prompt
+pub fn init(base_dir: &str) {
+    let (chat, chat_general) = scan_subject_dirs(
+        &format!("{}/chat", base_dir),
+        load_chat_dir,
+        load_chat_dir_with_fallback,
+    );
+    let (concept, concept_general) = scan_subject_dirs(
+        &format!("{}/concept", base_dir),
+        load_concept_dir,
+        load_concept_dir_with_fallback,
+    );
+    let (plan, plan_general) = scan_subject_dirs(
+        &format!("{}/plan", base_dir),
+        load_plan_dir,
+        load_plan_dir_with_fallback,
+    );
+    let (quiz, quiz_general) = scan_subject_dirs(
+        &format!("{}/quiz", base_dir),
+        load_quiz_dir,
+        load_quiz_dir_with_fallback,
+    );
+    let (verify, verify_general) = scan_subject_dirs(
+        &format!("{}/verify", base_dir),
+        load_verify_dir,
+        load_verify_dir_with_fallback,
+    );
+    let (routing, routing_general) = scan_subject_dirs(
+        &format!("{}/routing", base_dir),
+        load_routing_dir,
+        load_routing_dir_with_fallback,
+    );
+
+    let registry = PromptRegistry {
+        chat: chat.clone(), chat_general: chat_general.clone(),
+        concept: concept.clone(), concept_general: concept_general.clone(),
+        plan: plan.clone(), plan_general: plan_general.clone(),
+        quiz: quiz.clone(), quiz_general: quiz_general.clone(),
+        verify: verify.clone(), verify_general: verify_general.clone(),
+        routing: routing.clone(), routing_general: routing_general.clone(),
+    };
+    let _ = REGISTRY.set(registry);
+
+    tracing::info!(
+        "Prompts loaded: chat({} subjects), concept({}), plan({}), quiz({}), verify({}), routing({})",
+        chat.len(), concept.len(), plan.len(), quiz.len(), verify.len(), routing.len(),
+    );
+}
+
+// ── 查询 API ──
+
+/// 获取教师对话 prompt，按科目 fallback
+pub fn get_chat(subject: &str) -> &'static ChatTemplates {
+    let r = REGISTRY.get().expect("Prompts not initialized");
+    if subject.is_empty() || subject == "general" {
+        return &r.chat_general;
+    }
+    r.chat.get(subject).unwrap_or(&r.chat_general)
+}
+
+/// 获取概念提取 prompt，按科目 fallback
+pub fn get_concept(subject: &str) -> &'static ConceptTemplates {
+    let r = REGISTRY.get().expect("Prompts not initialized");
+    if subject.is_empty() || subject == "general" {
+        return &r.concept_general;
+    }
+    r.concept.get(subject).unwrap_or(&r.concept_general)
+}
+
+/// 获取计划 prompt（暂仅 general/，后续可扩展）
+pub fn get_plan(subject: &str) -> &'static PlanTemplates {
+    let r = REGISTRY.get().expect("Prompts not initialized");
+    if subject.is_empty() || subject == "general" {
+        return &r.plan_general;
+    }
+    r.plan.get(subject).unwrap_or(&r.plan_general)
+}
+
+/// 获取考核 prompt，按科目 fallback
+pub fn get_quiz(subject: &str) -> &'static QuizTemplates {
+    let r = REGISTRY.get().expect("Prompts not initialized");
+    if subject.is_empty() || subject == "general" {
+        return &r.quiz_general;
+    }
+    r.quiz.get(subject).unwrap_or(&r.quiz_general)
+}
+
+/// 获取复习验证 prompt（暂仅 general/）
+pub fn get_verify(subject: &str) -> &'static VerifyTemplates {
+    let r = REGISTRY.get().expect("Prompts not initialized");
+    if subject.is_empty() || subject == "general" {
+        return &r.verify_general;
+    }
+    r.verify.get(subject).unwrap_or(&r.verify_general)
+}
+
+/// 获取路由 prompt
+pub fn get_routing() -> &'static RoutingTemplates {
+    &REGISTRY.get().expect("Prompts not initialized").routing_general
+}
+
+// ── 辅助函数（供 concept_extractor 等调用） ──
 
 /// 构建概念提取 prompt（通用管线，后向兼容）
 pub fn build_concept_extract(
@@ -156,7 +350,7 @@ pub fn build_concept_extract_for_domain_with_plan(
     domain: &str,
     plan_context: &str,
 ) -> String {
-    let tpl = &get_for_domain(domain).concept_extract;
+    let tpl = get_concept(domain);
 
     let concepts_str = if existing_concepts.is_empty() {
         "（暂无）".to_string()
@@ -178,14 +372,14 @@ pub fn build_concept_extract_for_domain_with_plan(
             .join("\n")
     };
 
-    if tpl.is_empty() {
+    if tpl.extract.is_empty() {
         // 降级为硬编码
         format!(
             "从以下文本中提取值得记住的知识点，最多5个。返回JSON数组。\n\n已有概念:\n{}\n\n{}",
             concepts_str, text
         )
     } else {
-        tpl.replace("{text}", text)
+        tpl.extract.replace("{text}", text)
             .replace("{existing_concepts_list}", &concepts_str)
             .replace("{conversation_history}", &history_str)
             .replace("{plan_context}", plan_context)
@@ -194,63 +388,103 @@ pub fn build_concept_extract_for_domain_with_plan(
 
 /// 构建直接制卡 prompt
 pub fn build_card_direct(user_message: &str, ai_reply: &str) -> String {
-    let tpl = &get().card_direct;
-    if tpl.is_empty() {
+    let tpl = get_concept("general");
+    if tpl.direct.is_empty() {
         format!("Generate a flashcard from this conversation.\nUser: {}\nAI: {}", user_message, ai_reply)
     } else {
-        tpl.replace("{user_message}", user_message)
+        tpl.direct.replace("{user_message}", user_message)
            .replace("{ai_reply}", ai_reply)
     }
+}
+
+// ── 后向兼容（过渡期用，后续删除） ──
+use crate::pipeline_router::Domain;
+
+/// 后向兼容: 从 Domain 解析 subject，获取 chat prompt
+pub fn get_chat_for_domain(domain: &Domain) -> &'static ChatTemplates {
+    get_chat(&domain.to_string())
+}
+
+/// 后向兼容: 从 domain 字符串获取 concept prompt
+pub fn get_concept_for_domain(domain: &str) -> &'static ConceptTemplates {
+    get_concept(domain)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// 仅用于测试的初始化
     fn test_init() {
-        // 用临时目录模拟管线目录结构
-        let tmp = std::env::temp_dir().join("coevo_prompt_test");
-        let _ = std::fs::create_dir_all(tmp.join("pipelines/math/prompts"));
-        let _ = std::fs::create_dir_all(tmp.join("pipelines/language/prompts"));
+        let tmp = std::env::temp_dir().join("coevo_prompt_cat_test");
+        // chat/
+        std::fs::create_dir_all(tmp.join("chat/general")).ok();
+        std::fs::create_dir_all(tmp.join("chat/math")).ok();
+        std::fs::write(tmp.join("chat/general/free.md"), "通用聊天模板").ok();
+        std::fs::write(tmp.join("chat/math/free.md"), "数学聊天模板").ok();
+        // concept/
+        std::fs::create_dir_all(tmp.join("concept/general")).ok();
+        std::fs::write(tmp.join("concept/general/extract.md"), "通用提取模板").ok();
+        // quiz/
+        std::fs::create_dir_all(tmp.join("quiz/general")).ok();
+        std::fs::write(tmp.join("quiz/general/generate.md"), "通用出题模板").ok();
+        // plan/
+        std::fs::create_dir_all(tmp.join("plan/general")).ok();
+        std::fs::write(tmp.join("plan/general/creation.md"), "通用创建模板").ok();
+        // verify/
+        std::fs::create_dir_all(tmp.join("verify/general")).ok();
+        // routing/
+        std::fs::create_dir_all(tmp.join("routing/general")).ok();
 
-        // 写通用 prompt
-        std::fs::write(tmp.join("concept_extract.md"), "通用提取模板").ok();
-        // 写 math 专用 prompt
-        std::fs::write(tmp.join("pipelines/math/prompts/concept_extract.md"), "数学提取模板").ok();
-        // language 无专用 prompt（测试回退）
-
-        let prompts_dir = tmp.to_str().unwrap().to_string();
-        let pipelines_base = format!("{}/pipelines", prompts_dir);
-        init(&prompts_dir, &pipelines_base);
+        init(tmp.to_str().unwrap());
     }
 
     #[test]
-    fn test_get_general() {
+    fn test_get_chat_general() {
         test_init();
-        let tpl = get_for_domain("general");
-        assert_eq!(tpl.concept_extract, "通用提取模板");
+        let tpl = get_chat("general");
+        assert_eq!(tpl.free, "通用聊天模板");
+        assert!(tpl.structured.is_empty()); // 未设置
     }
 
     #[test]
-    fn test_get_math() {
+    fn test_get_chat_math() {
         test_init();
-        let tpl = get_for_domain("math");
-        assert_eq!(tpl.concept_extract, "数学提取模板");
+        let tpl = get_chat("math");
+        assert_eq!(tpl.free, "数学聊天模板");
     }
 
     #[test]
-    fn test_get_language_fallback() {
+    fn test_get_chat_unknown_fallback() {
         test_init();
-        let tpl = get_for_domain("language");
-        // language 没有专用 prompt，应回退到通用
-        assert_eq!(tpl.concept_extract, "通用提取模板");
+        let tpl = get_chat("history");
+        assert_eq!(tpl.free, "通用聊天模板"); // fallback
     }
 
     #[test]
-    fn test_get_unknown_domain() {
+    fn test_get_concept_general() {
         test_init();
-        let tpl = get_for_domain("history");
-        assert_eq!(tpl.concept_extract, "通用提取模板");
+        let tpl = get_concept("general");
+        assert_eq!(tpl.extract, "通用提取模板");
+    }
+
+    #[test]
+    fn test_get_quiz() {
+        test_init();
+        let tpl = get_quiz("general");
+        assert_eq!(tpl.generate, "通用出题模板");
+    }
+
+    #[test]
+    fn test_get_plan() {
+        test_init();
+        let tpl = get_plan("general");
+        assert_eq!(tpl.creation, "通用创建模板");
+    }
+
+    #[test]
+    fn test_get_routing() {
+        test_init();
+        let tpl = get_routing();
+        assert!(tpl.subject.is_empty());
     }
 }

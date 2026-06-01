@@ -45,8 +45,6 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
   // 计划标签 & domain 过滤
   late TabController _tabController;
   List<Map<String, dynamic>> _planTabs = [];
-  bool _plansLoaded = false;
-  String? _domainFilter;  // domain 标签（仅"全部卡片"视图用作文科分类）
   String? _selectedConvId;  // 当前选中的 plan tab 的 conversation_id（null=全部卡片）
 
   @override
@@ -90,7 +88,6 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
       setState(() {
         // 所有 plan 都生成 tab，自由对话的 plan 用 goal 作为 tab 标签
         _planTabs = planList.toList();
-        _plansLoaded = true;
         final totalTabs = 2 + _planTabs.length;
         final oldIndex = _tabController.index;
         _tabController.dispose();
@@ -242,7 +239,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
   Future<void> _skipCard(DueCard card) async {
     if (_client == null) return;
     try {
-      await _client!.skipConcept(card.front, card.sourceSentence ?? '');
+      await _client!.updateCardStatus(card.id, 'skipped');
       if (mounted) {
         setState(() {
           _cards.removeWhere((c) => c.id == card.id);

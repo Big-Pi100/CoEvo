@@ -19,7 +19,11 @@ class _ReadingSubjectScreenState extends ConsumerState<ReadingSubjectScreen> {
   // 支持课文阅读模式的科目
   static const _availableSubjects = <String, List<String>>{
     // 语文用国内K12课文（已建 reading_plan）
-    '语文': ['g7-9', 'g10', 'g11-12'],
+    'chinese': ['g7-9', 'g10', 'g11-12'],
+  };
+
+  static const _subjectDisplayNames = <String, String>{
+    'chinese': '语文',
   };
 
   static const _gradeNames = {
@@ -35,7 +39,7 @@ class _ReadingSubjectScreenState extends ConsumerState<ReadingSubjectScreen> {
     final gradeBand = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: Text('选择 $subject 年级'),
+        title: Text('选择 ${_subjectDisplayNames[subject] ?? subject} 年级'),
         children: grades.map((g) => SimpleDialogOption(
           onPressed: () => Navigator.of(ctx).pop(g),
           child: Text(_gradeNames[g] ?? g),

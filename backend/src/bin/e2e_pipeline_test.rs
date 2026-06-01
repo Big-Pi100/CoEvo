@@ -139,8 +139,8 @@ async fn phase_plan_creation(run_id: &str, cli: &CliArgs) -> e2e_runner::PhaseRe
         // Turn 1 尚无学习计划，domain/mode 走默认值
         println!("  🎯 [{}] Turn1 (plan not yet created)", step);
 
-        let templates = chat_engine::prompt_loader::get_for_domain("");
-        let sp = templates.chat_system_free.clone();  // 无计划时走 free mode
+        let templates = chat_engine::prompt_loader::get_chat("");
+        let sp = templates.free.clone();  // 无计划时走 free mode
         log.system_prompt_preview = sp.clone();
 
         let history = e2e_runner::get_conversation_history(&conn, TEST_CONV_ID, 20);
@@ -161,8 +161,8 @@ async fn phase_plan_creation(run_id: &str, cli: &CliArgs) -> e2e_runner::PhaseRe
         let (dom2, mode2, ctx2) = e2e_runner::build_plan_context(&conn, TEST_CONV_ID);
         println!("  🎯 [{}] Turn2 domain={:?} mode={:?}", step, dom2, mode2);
 
-        let t2 = chat_engine::prompt_loader::get_for_domain(&dom2);
-        let sp2 = if mode2 == "structured" { t2.chat_system_structured.clone() } else { t2.chat_system_free.clone() };
+        let t2 = chat_engine::prompt_loader::get_chat(&dom2);
+        let sp2 = if mode2 == "structured" { t2.structured.clone() } else { t2.free.clone() };
         let h2 = e2e_runner::get_conversation_history(&conn, TEST_CONV_ID, 20);
         let uc2 = if ctx2.is_empty() { h2.iter().map(|(r, c)| format!("{}: {}", r, c)).collect::<Vec<_>>().join("\n") } else { format!("{}\n{}", h2.iter().map(|(r, c)| format!("{}: {}", r, c)).collect::<Vec<_>>().join("\n"), ctx2) };
 
@@ -329,8 +329,8 @@ async fn progression_domain_test(
 
     // 调用 LLM 创建计划
     let mut teacher_caller = e2e_runner::create_llm_caller(&cli.model);
-    let templates = chat_engine::prompt_loader::get_for_domain("");
-    let sp = templates.chat_system_free.clone();
+    let templates = chat_engine::prompt_loader::get_chat("");
+    let sp = templates.free.clone();
     let history = e2e_runner::get_conversation_history(&conn, conv_id, 20);
     let uc = history.iter().map(|(r, c)| format!("{}: {}", r, c)).collect::<Vec<_>>().join("\n");
 
@@ -353,8 +353,8 @@ async fn progression_domain_test(
     e2e_runner::insert_turn(&conn, conv_id, "user", confirm);
 
     let (dom2, mode2, ctx2) = e2e_runner::build_plan_context(&conn, conv_id);
-    let t2 = chat_engine::prompt_loader::get_for_domain(&dom2);
-    let sp2 = if mode2 == "structured" { t2.chat_system_structured.clone() } else { t2.chat_system_free.clone() };
+    let t2 = chat_engine::prompt_loader::get_chat(&dom2);
+    let sp2 = if mode2 == "structured" { t2.structured.clone() } else { t2.free.clone() };
     let h2 = e2e_runner::get_conversation_history(&conn, conv_id, 20);
     let uc2 = if ctx2.is_empty() { h2.iter().map(|(r, c)| format!("{}: {}", r, c)).collect::<Vec<_>>().join("\n") } else { format!("{}\n{}", h2.iter().map(|(r, c)| format!("{}: {}", r, c)).collect::<Vec<_>>().join("\n"), ctx2) };
 
@@ -404,8 +404,8 @@ async fn progression_domain_test(
         log.user_message = student_msg.clone();
 
         let (cur_domain, cur_mode, cur_ctx) = e2e_runner::build_plan_context(&conn, conv_id);
-        let tpl = chat_engine::prompt_loader::get_for_domain(&cur_domain);
-        let sp = if cur_mode == "structured" { tpl.chat_system_structured.clone() } else { tpl.chat_system_free.clone() };
+        let tpl = chat_engine::prompt_loader::get_chat(&cur_domain);
+        let sp = if cur_mode == "structured" { tpl.structured.clone() } else { tpl.free.clone() };
         log.system_prompt_preview = sp.clone();
 
         let history = e2e_runner::get_conversation_history(&conn, conv_id, 20);
@@ -513,24 +513,15 @@ async fn phase_concept_extraction(run_id: &str, _cli: &CliArgs) -> e2e_runner::P
         } else { vec![] }
     };
 
-    let skipped_fronts: Vec<String> = {
-        let stmt = conn.prepare("SELECT LOWER(front) FROM skipped_concepts WHERE user_id = ?1");
-        if let Ok(mut s) = stmt {
-            if let Ok(rows) = s.query_map(rusqlite::params![TEST_USER_ID], |row| row.get::<_, String>(0)) {
-                rows.filter_map(|r| r.ok()).collect()
-            } else { vec![] }
-        } else { vec![] }
-    };
-
     let llm_config = chat_engine::config::load_llm_config();
 
-    println!("  📝 提取概念: user_msg=({} chars), ai_reply=({} chars), existing={}, skipped={}",
-        user_message.len(), ai_reply.len(), existing_fronts.len(), skipped_fronts.len());
+    println!("  📝 提取概念: user_msg=({} chars), ai_reply=({} chars), existing={}",
+        user_message.len(), ai_reply.len(), existing_fronts.len());
 
     use shared_types::card::ExtractionResult;
     let extraction: ExtractionResult = chat_engine::concept_extractor::extract_concepts(
         TEST_USER_ID, user_message, ai_reply,
-        &existing_fronts, &skipped_fronts, &llm_config, &history_refs,
+        &existing_fronts, &llm_config, &history_refs,
         "language", "",
     ).await;
 
@@ -817,7 +808,7 @@ async fn main() {
         let _ = std::fs::remove_dir_all("docs/test-results");
     }
 
-    chat_engine::prompt_loader::init("prompts", "pipelines");
+    chat_engine::prompt_loader::init("prompts");
     chat_engine::word_bank::init("cefr_catalog.json");
 
     e2e_runner::init_test_db(TEST_DB_PATH).expect("Failed to init test DB");

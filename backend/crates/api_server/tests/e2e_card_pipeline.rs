@@ -71,10 +71,10 @@ fn test_k12_init_card_domain() {
     let now_ts = 1000000;
     let conv_id = "k12-test";
 
-    conn.execute("INSERT INTO conversations (id, user_id, turn_count, started_at, subject, grade_band) VALUES (?1, ?2, 0, 'now', '数学', 'g3-4')",
+    conn.execute("INSERT INTO conversations (id, user_id, turn_count, started_at, subject, grade_band) VALUES (?1, ?2, 0, 'now', 'math', 'g3-4')",
         params![conv_id, USER_ID]).unwrap();
     conn.execute("INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_content, task_status, created_at, updated_at)
-        VALUES ('p1', ?1, ?2, '测试', '数学', 'structured', '{}', '{}', 'now', 'now')",
+        VALUES ('p1', ?1, ?2, '测试', 'math', 'structured', '{}', '{}', 'now', 'now')",
         params![USER_ID, conv_id]).unwrap();
 
     // 模拟 K12 init：INSERT cards + card_memory（domain=中文名）
@@ -82,7 +82,7 @@ fn test_k12_init_card_domain() {
         let card_id = format!("k12_{}", cid);
         conn.execute(
             "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, conversation_id, created_at, subject, grade_band, k12_card_id)
-             VALUES (?1, ?2, '数学', ?3, ?4, 'back', ?5, ?6, '数学', 'g3-4', ?7)",
+             VALUES (?1, ?2, 'math', ?3, ?4, 'back', ?5, ?6, 'math', 'g3-4', ?7)",
             params![card_id, USER_ID, ctype, front, conv_id, now_ts, cid],
         ).unwrap();
         conn.execute(
@@ -94,10 +94,10 @@ fn test_k12_init_card_domain() {
 
     assert_eq!(count_cards(&conn, USER_ID), 3);
     assert_eq!(count_memory(&conn, USER_ID), 3);
-    // 所有卡片 domain = "数学"（匹配 plan.domain）
-    assert_eq!(cards_with_domain(&conn, USER_ID, "数学"), 3);
+    // 所有卡片 domain = "math"（匹配 plan.domain）
+    assert_eq!(cards_with_domain(&conn, USER_ID, "math"), 3);
     let plan_domain: String = conn.query_row("SELECT domain FROM learning_plans WHERE id = 'p1'", [], |r| r.get(0)).unwrap();
-    assert_eq!(plan_domain, "数学");
+    assert_eq!(plan_domain, "math");
     assert_eq!(cards_with_domain(&conn, USER_ID, &plan_domain), 3);
 }
 
@@ -108,17 +108,17 @@ fn test_k12_init_card_domain() {
 fn test_plan_advancement_creates_cards() {
     let conn = setup_db("data/t_plan_advance.db");
     let conv_id = "plan-adv-test";
-    conn.execute("INSERT INTO conversations (id, user_id, turn_count, started_at, subject, grade_band) VALUES (?1, ?2, 0, 'now', '数学', 'g3-4')",
+    conn.execute("INSERT INTO conversations (id, user_id, turn_count, started_at, subject, grade_band) VALUES (?1, ?2, 0, 'now', 'math', 'g3-4')",
         params![conv_id, USER_ID]).unwrap();
 
     // Plan：2 tasks（首 task gold_cr_ids=["cr_001"]）
-    let plan = serde_json::json!({"goal":"数学","stages":[{"name":"基础","tasks":[
+    let plan = serde_json::json!({"goal":"math","stages":[{"name":"基础","tasks":[
         {"name":"加减法","gold_cr_ids":["cr_001"]},
         {"name":"乘除法","gold_cr_ids":["cr_002"]}
     ]}]});
     let status = serde_json::json!({"task_status":{"加减法":"done"}});
     conn.execute("INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_content, task_status, created_at, updated_at)
-        VALUES ('p2', ?1, ?2, '数学', '数学', 'structured', ?3, ?4, 'now', 'now')",
+        VALUES ('p2', ?1, ?2, 'math', 'math', 'structured', ?3, ?4, 'now', 'now')",
         params![USER_ID, conv_id, plan.to_string(), status.to_string()]).unwrap();
 
     // 调用 handle_plan_update 推进
@@ -152,7 +152,7 @@ fn test_reading_init_all_cards() {
         {"name":"燕子","reading_card_id":"r3","vocab_card_ids":[]}
     ]}]});
     conn.execute("INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_content, task_status, created_at, updated_at)
-        VALUES ('pr', ?1, ?2, '阅读', '语文', 'reading', ?3, '{}', 'now', 'now')",
+        VALUES ('pr', ?1, ?2, '阅读', 'chinese', 'reading', ?3, '{}', 'now', 'now')",
         params![USER_ID, conv_id, pc.to_string()]).unwrap();
 
     // 模拟 reading init 的卡片导入（遍历所有 task）
@@ -162,7 +162,7 @@ fn test_reading_init_all_cards() {
             if let Some(cid) = task["reading_card_id"].as_str() {
                 let k12 = format!("k12_{}", cid);
                 conn.execute("INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, conversation_id, created_at, subject, grade_band, k12_card_id)
-                    VALUES (?1,?2,'语文','reading',?3,'全文',?4,?5,'语文','g3-4',?6)",
+                    VALUES (?1,?2,'chinese','reading',?3,'全文',?4,?5,'chinese','g3-4',?6)",
                     params![k12, USER_ID, task["name"].as_str(), conv_id, now_ts, cid]).unwrap();
                 conn.execute("INSERT OR IGNORE INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
                     VALUES (?1,0,5.0,0.0,?2,NULL,0,0)", params![k12, now_ts]).unwrap();
@@ -171,7 +171,7 @@ fn test_reading_init_all_cards() {
                 if let Some(vid) = vid_val.as_str() {
                     let k12 = format!("k12_{}", vid);
                     conn.execute("INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, conversation_id, created_at, subject, grade_band, k12_card_id)
-                        VALUES (?1,?2,'语文','vocabulary',?3,'字义',?4,?5,'语文','g3-4',?6)",
+                        VALUES (?1,?2,'chinese','vocabulary',?3,'字义',?4,?5,'chinese','g3-4',?6)",
                         params![k12, USER_ID, vid, conv_id, now_ts, vid]).unwrap();
                     conn.execute("INSERT OR IGNORE INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
                         VALUES (?1,0,5.0,0.0,?2,NULL,0,0)", params![k12, now_ts]).unwrap();
@@ -183,7 +183,7 @@ fn test_reading_init_all_cards() {
     assert_eq!(conn.query_row("SELECT COUNT(*) FROM cards WHERE user_id=?1 AND card_type='reading'", params![USER_ID], |r| r.get::<_,i64>(0)).unwrap(), 3);
     assert_eq!(conn.query_row("SELECT COUNT(*) FROM cards WHERE user_id=?1 AND card_type='vocabulary'", params![USER_ID], |r| r.get::<_,i64>(0)).unwrap(), 3);
     assert_eq!(count_memory(&conn, USER_ID), 6);
-    assert_eq!(cards_with_domain(&conn, USER_ID, "语文"), 6);
+    assert_eq!(cards_with_domain(&conn, USER_ID, "chinese"), 6);
 }
 
 // ════════════════════════════════════════════
@@ -195,13 +195,13 @@ fn test_cold_path1_card_binding() {
     let conv_id = "cp1-test";
     let now_ts = 1000000;
 
-    conn.execute("INSERT INTO conversations (id, user_id, turn_count, started_at, subject, grade_band) VALUES (?1, ?2, 0, 'now', '数学', 'g3-4')",
+    conn.execute("INSERT INTO conversations (id, user_id, turn_count, started_at, subject, grade_band) VALUES (?1, ?2, 0, 'now', 'math', 'g3-4')",
         params![conv_id, USER_ID]).unwrap();
 
-    // Cold Path 1 insert: domain=LLM指定('math'), subject=conversation('数学'), conversation_id=conv_id
+    // Cold Path 1 insert: domain=LLM指定('math'), subject=conversation('math'), conversation_id=conv_id
     conn.execute(
         "INSERT INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, subject, grade_band)
-         VALUES ('cp1_card', ?1, 'math', 'concept', '加法交换律', 'a+b=b+a', '示例', ?2, ?3, '数学', 'g3-4')",
+         VALUES ('cp1_card', ?1, 'math', 'concept', '加法交换律', 'a+b=b+a', '示例', ?2, ?3, 'math', 'g3-4')",
         params![USER_ID, conv_id, now_ts],
     ).unwrap();
     conn.execute("INSERT INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
@@ -214,7 +214,7 @@ fn test_cold_path1_card_binding() {
     assert_eq!(domain, "math", "ColdPath1 card preserves LLM domain");
     // subject = conversation.subject
     let subj: String = conn.query_row("SELECT subject FROM cards WHERE id = 'cp1_card'", [], |r| r.get(0)).unwrap();
-    assert_eq!(subj, "数学", "ColdPath1 card subject matches conversation");
+    assert_eq!(subj, "math", "ColdPath1 card subject matches conversation");
 }
 
 // ════════════════════════════════════════════
@@ -224,7 +224,7 @@ fn test_cold_path1_card_binding() {
 fn test_history_filter() {
     let conn = setup_db("data/t_history.db");
     conn.execute("INSERT INTO conversations (id, user_id, turn_count, started_at) VALUES ('free', ?1, 3, 'now')", params![USER_ID]).unwrap();
-    conn.execute("INSERT INTO conversations (id, user_id, turn_count, started_at, subject, grade_band) VALUES ('k12', ?1, 5, 'now', '数学', 'g3-4')", params![USER_ID]).unwrap();
+    conn.execute("INSERT INTO conversations (id, user_id, turn_count, started_at, subject, grade_band) VALUES ('k12', ?1, 5, 'now', 'math', 'g3-4')", params![USER_ID]).unwrap();
     conn.execute("INSERT INTO conversations (id, user_id, turn_count, started_at, subject, grade_band) VALUES ('rd', ?1, 2, 'now', '语文', 'g3-4')", params![USER_ID]).unwrap();
 
     // 模拟 history_handler 过滤：subject IS NULL OR subject = ''

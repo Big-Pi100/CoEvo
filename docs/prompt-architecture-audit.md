@@ -1,99 +1,264 @@
-# Prompt 架构审计报告
+# Prompt 架构重整方案
 
-审计时间：2026-06-01 | 总计：40 个 prompt 文件
+## 一、全系统 Prompt 分类
 
-## 一、当前分布
+全系统所有 LLM 调用中的 prompt 按**功能类别**划分，而非按科目划分。每类下再按科目细分。
 
-```
-backend/prompts/                    ← 根目录（通用 fallback，12 个）
-  ├─ chat_system.md                 ← ❌ 死代码，未引用
-  ├─ chat_system_free.md            ✅
-  ├─ chat_system_structured.md      ✅
-  ├─ chat_system_reading.md         ✅
-  ├─ chat_system_reading_nursery.md ✅
-  ├─ chat_system_reading_primary.md ✅
-  ├─ chat_system_reading_secondary.md ✅
-  ├─ concept_extract.md             ✅
-  ├─ card_direct.md                 ✅
-  ├─ quiz_generate.md               ✅
-  ├─ quiz_judge.md                  ✅
-  └─ grill_assessment.md            ← ❌ 死代码，未引用
+| 类别 | 用途 | 使用方 | 当前状态 |
+|------|------|--------|---------|
+| **chat** | 教师对话（自由/结构化/阅读模式） | ws.rs | 部分文件化 |
+| **concept** | CP1 概念提取 | concept_extractor.rs | 部分文件化 |
+| **plan** | CP2 计划管理（创建/分析/信号检测） | plan_handler.rs | 硬编码 |
+| **quiz** | 出题/判题/考核评估 | ws.rs, routes.rs | 部分文件化 |
+| **verify** | 复习验证（拼写/对话/翻译） | routes.rs | 硬编码 |
+| **routing** | 学科路由 | subject_router.rs | 硬编码 |
+| **test** | e2e 测试学生模拟 | e2e 测试文件 | 硬编码 |
 
-backend/pipelines/{domain}/prompts/  ← 领域覆盖（4 领域 × 7 文件 = 28 个）
-  ├─ biology/  ← ⚠️ 与 chemistry 完全一致
-  ├─ chemistry/ ← ⚠️ 与 biology 完全一致
-  ├─ language/ ← 独立定制版
-  └─ math/     ← 独立定制版
-```
-
-## 二、Struct 中的死字段
-
-`PromptTemplates` 中有 2 个字段从没有被任何代码引用（`get_for_domain()` 加载后从未读取）：
-
-| 字段 | 状态 | 对应文件 |
-|------|------|---------|
-| `chat_system` | ❌ 加载但不使用 | `prompts/chat_system.md` |
-| `chat_system_nursery` | ❌ 加载但不使用 | 不存在对应 .md 文件 |
-
-## 三、Pipeline 重复
-
-| prompt 文件 | root | bio | chem | lang | math |
-|------------|------|-----|------|------|------|
-| card_direct.md | 251B | 251B | 251B | 254B | 264B |
-| chat_system.md | 1693B | **1865B** | **1865B** | 950B | 968B |
-| chat_system_free.md | 4365B | **4917B** | **4917B** | 1177B | 1148B |
-| chat_system_structured.md | 4372B | **2502B** | **2502B** | 972B | 810B |
-| concept_extract.md | 2059B | 1300B | 1288B | 802B | 1209B |
-| quiz_generate.md | 219B | 219B | 219B | 247B | 285B |
-| quiz_judge.md | 275B | 275B | 275B | 212B | 228B |
-
-biology 和 chemistry 的文件大小完全一致（内容也相同），可以合并。
-
-## 四、清理建议
-
-### 立即可删（4 个文件）
-
-| 文件 | 理由 |
-|------|------|
-| `prompts/chat_system.md` | 结构体字段加载但不使用，也没有任何代码引用 |
-| `prompts/grill_assessment.md` | 未在 PromptTemplates 中注册，代码零引用 |
-| `pipelines/biology/prompts/*`(7个) | 与 chemistry 完全一致，可复用 chemistry 的或删除让 fallback 到 root |
-| `pipelines/chemistry/prompts/*`(7个) | 同上 |
-
-### 需决策后清理（2 个 struct 字段）
-
-| 字段 | 建议 |
-|------|------|
-| `chat_system` | 直接删除 struct 字段 + 加载代码 |
-| `chat_system_nursery` | 直接删除 struct 字段 + 加载代码 |
-
-### 保留（27 个）
-
-| 文件 | 原因 |
-|------|------|
-| root 中除 chat_system.md 和 grill_assessment.md 外的 10 个 | 通用 fallback |
-| language/ 下 7 个 | 独立定制 |
-| math/ 下 7 个 | 独立定制 |
-| root 下 3 个 reading 变体 | 学段隔离 |
-
-## 五、清理后架构
+## 二、目录结构（类别 × 科目）
 
 ```
-backend/prompts/                    ← 通用 fallback（10 个）
-  ├─ chat_system_free.md           自由对话
-  ├─ chat_system_structured.md     结构化学习
-  ├─ chat_system_reading.md        阅读（通用 fallback）
-  ├─ chat_system_reading_nursery.md 幼儿阅读
-  ├─ chat_system_reading_primary.md 小学阅读
-  ├─ chat_system_reading_secondary.md 初中阅读
-  ├─ concept_extract.md            概念提取
-  ├─ card_direct.md                直接制卡
-  ├─ quiz_generate.md              出题
-  └─ quiz_judge.md                 判题
-
-backend/pipelines/                  ← 领域定制（仅定制领域保留）
-  ├─ language/prompts/  (7 个)      语言领域
-  └─ math/prompts/      (7 个)      数学领域
+backend/prompts/                    ← 唯一 prompt 存放位置
+│
+├── chat/                           ← 教师对话类
+│   ├── general/                    ← 通用兜底
+│   │   ├── free.md                 (原 chat-free)
+│   │   ├── structured.md           (原 chat-structured)
+│   │   ├── reading.md              (原 chat-reading)
+│   │   ├── reading-nursery.md
+│   │   ├── reading-primary.md
+│   │   └── reading-secondary.md
+│   │
+│   ├── math/                       ← 数学（含 LaTeX + <graph>）
+│   │   ├── free.md
+│   │   └── structured.md
+│   │
+│   ├── chinese/                    ← 语文（含阅读变体）
+│   │   ├── free.md
+│   │   ├── structured.md
+│   │   ├── reading.md
+│   │   ├── reading-primary.md
+│   │   └── reading-secondary.md
+│   │
+│   ├── english/                    ← 英语
+│   │   ├── free.md
+│   │   ├── structured.md
+│   │   ├── reading.md
+│   │   ├── reading-primary.md
+│   │   └── reading-secondary.md
+│   │
+│   └── ...                         ← 其他科目按需（不存在则 fallback general/）
+│
+├── concept/                        ← CP1 概念提取类
+│   ├── general/
+│   │   ├── extract.md              (原 concept-extract)
+│   │   └── direct.md               (原 card-direct)
+│   └── math/                       ← 数学专用提取 prompt（可选）
+│       └── extract.md
+│
+├── quiz/                           ← 考核类
+│   ├── general/
+│   │   ├── generate.md
+│   │   ├── judge.md
+│   │   └── grill.md
+│   └── ...                         ← 科目目录按需
+│
+├── plan/                           ← CP2 计划管理类
+│   └── general/
+│       ├── creation.md             (从 build_plan_creation_prompt 提取)
+│       ├── analysis.md             (从 build_plan_analysis_prompt 提取)
+│       └── signal.md               (任务完成信号检测)
+│
+├── verify/                         ← 复习验证类
+│   └── general/
+│       ├── spelling.md             (拼写验证)
+│       ├── dialogue.md             (对话验证)
+│       └── translation.md          (翻译校验)
+│
+├── routing/                        ← 学科路由类
+│   └── general/
+│       └── subject.md              (从 build_routing_prompt 提取)
+│
+└── test/                           ← 测试模拟类
+    └── general/
+        └── student.md              (e2e 学生扮演)
 ```
 
-文件数从 **40 → 24**（-16）。其余领域（biology, chemistry）不保留 pipeline 目录，自然 fallback 到 root。
+**核心规则**：
+1. 按类别建目录，每个类别下有 `general/` 兜底
+2. 各类别下按科目建子目录（`math/`、`chinese/` 等），科目级 prompt 不存在时 fallback 到该类别下的 `general/`
+3. 所有 prompt 文件采用 `kebab-case` 命名，不加 `chat_system_` 前缀
+4. 支持逐层 fallback：`prompts/chat/math/free.md` → `prompts/chat/general/free.md`
+
+## 三、Rust 加载架构
+
+### 3.1 数据结构
+
+```rust
+// 每个类别独立的结构体
+pub struct ChatTemplates {
+    pub free: String,
+    pub structured: String,
+    pub reading: String,
+    pub reading_nursery: String,
+    pub reading_primary: String,
+    pub reading_secondary: String,
+}
+
+pub struct ConceptTemplates {
+    pub extract: String,
+    pub direct: String,
+}
+
+pub struct PlanTemplates {
+    pub creation: String,
+    pub analysis: String,
+    pub signal: String,
+}
+
+pub struct QuizTemplates {
+    pub generate: String,
+    pub judge: String,
+    pub grill: String,
+}
+
+pub struct VerifyTemplates {
+    pub spelling: String,
+    pub dialogue: String,
+    pub translation: String,
+}
+
+pub struct RoutingTemplates {
+    pub subject: String,
+}
+```
+
+### 3.2 注册表
+
+```rust
+pub struct PromptRegistry {
+    // 每个类别一个 map: subject_key → Templates
+    chat: HashMap<String, ChatTemplates>,
+    concept: HashMap<String, ConceptTemplates>,
+    plan: HashMap<String, PlanTemplates>,
+    quiz: HashMap<String, QuizTemplates>,
+    verify: HashMap<String, VerifyTemplates>,
+    routing: HashMap<String, RoutingTemplates>,
+    // 各类别通用兜底
+    chat_general: ChatTemplates,
+    concept_general: ConceptTemplates,
+    plan_general: PlanTemplates,
+    quiz_general: QuizTemplates,
+    verify_general: VerifyTemplates,
+    routing_general: RoutingTemplates,
+}
+```
+
+### 3.3 查询 API
+
+```rust
+// 按类别 + 科目获取 prompt
+pub fn get_chat(subject: &str) -> &ChatTemplates;
+pub fn get_concept(subject: &str) -> &ConceptTemplates;
+pub fn get_plan(subject: &str) -> &PlanTemplates;
+pub fn get_quiz(subject: &str) -> &QuizTemplates;
+pub fn get_verify(subject: &str) -> &VerifyTemplates;
+pub fn get_routing() -> &RoutingTemplates;
+```
+
+### 3.4 初始化
+
+启动时扫描 `prompts/{category}/` 下所有子目录，按类别 + 科目注册：
+
+```rust
+pub fn init(base_dir: &str) {
+    for category in &["chat", "concept", "quiz", "plan", "verify", "routing", "test"] {
+        let general_dir = format!("{}/{}/general", base_dir, category);
+        let general_tpl = load_{category}_dir(&general_dir);
+        
+        let mut pipelines = HashMap::new();
+        if let Ok(entries) = std::fs::read_dir(format!("{}/{}", base_dir, category)) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_dir() { continue; }
+                let name = path.file_name()...;
+                if name == "general" { continue; }
+                let tpl = load_{category}_dir_with_fallback(&path, &general_tpl);
+                pipelines.insert(name, tpl);
+            }
+        }
+        
+        registry.{category} = pipelines;
+        registry.{category}_general = general_tpl;
+    }
+}
+```
+
+## 四、调用方变更
+
+| 类别 | 调用方 | 改前 | 改后 |
+|------|--------|------|------|
+| chat | ws.rs | `get_for_domain(domain).chat_system_free` | `get_chat(&domain).free` |
+| concept | concept_extractor.rs | `get_for_domain(domain).concept_extract` | `get_concept(&domain).extract` |
+| concept | concept_extractor.rs | `get().card_direct` | `get_concept("general").direct` |
+| plan | plan_handler.rs | `build_plan_analysis_prompt()` | `get_plan("general").analysis` |
+| plan | plan_handler.rs | `build_plan_creation_prompt()` | `get_plan("general").creation` |
+| quiz | ws.rs / routes.rs | `get_for_domain(domain).quiz_generate` | `get_quiz(&domain).generate` |
+| verify | routes.rs | 硬编码字符串 | `get_verify("general").spelling` |
+| routing | subject_router.rs | 硬编码字符串 | `get_routing().subject` |
+
+## 五、实施步骤
+
+### Step 1：重构目录结构
+
+```bash
+# 删除旧结构
+rm -rf backend/prompts/{math,physics,chemistry,biology,chinese,english,...}
+
+# 创建新结构
+mkdir -p backend/prompts/{chat,concept,quiz,plan,verify,routing,test}/general
+mkdir -p backend/prompts/chat/{math,chinese,english}
+mkdir -p backend/prompts/concept/math
+```
+
+### Step 2：复制迁移文件
+
+```bash
+# chat/general/ ← 从旧 prompts/general/ 来
+cp old_general/chat-free.md           prompts/chat/general/free.md
+cp old_general/chat-structured.md     prompts/chat/general/structured.md
+cp old_general/chat-reading.md        prompts/chat/general/reading.md
+cp old_general/chat-reading-*.md      prompts/chat/general/
+cp old_general/concept-extract.md     prompts/concept/general/extract.md
+cp old_general/card-direct.md         prompts/concept/general/direct.md
+cp old_general/quiz-generate.md       prompts/quiz/general/generate.md
+cp old_general/quiz-judge.md          prompts/quiz/general/judge.md
+cp old_general/grill-assessment.md    prompts/quiz/general/grill.md
+cp old_general/plan-creation.md       prompts/plan/general/creation.md
+```
+
+### Step 3：重构 `prompt_loader.rs`
+
+拆分 `PromptTemplates` 为多个类别结构体，不再共用。
+
+### Step 4：提取硬编码 prompt
+
+- `plan_handler.rs:1392` → `prompts/plan/general/analysis.md`
+- `plan_handler.rs:1752` → `prompts/plan/general/signal.md`
+- `subject_router.rs:220` → `prompts/routing/general/subject.md`
+- `routes.rs:519,575,631` → `prompts/verify/general/{spelling,dialogue,translation}.md`
+- 测试文件 → `prompts/test/general/student.md`
+
+### Step 5：更新调用方
+
+所有 `get_for_domain(domain).xxx` 改为 `get_xxx(&domain).yyy`。
+
+### Step 6：全量测试
+
+## 六、文件变化总结
+
+| | 改前 | 改后 |
+|---|------|------|
+| 组织结构 | 科目平铺（`prompts/{subject}/`） | 类别 × 科目（`prompts/{category}/{subject}/`） |
+| Rust 数据结构 | 单一 `PromptTemplates` 大集合 | 每类独立 `*Templates` 结构体 |
+| 查询 API | `get_for_domain(domain).field` | `get_chat(domain).free` / `get_concept(domain).extract` |
+| 硬编码 | 5+ 处 Rust 字符串 | 全部提取为文件 |

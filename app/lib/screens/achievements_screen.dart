@@ -1,8 +1,8 @@
+// ignore_for_file: unnecessary_cast
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 import '../api/chat_client.dart';
-import '../api/api_config.dart';
 
 class AchievementsScreen extends ConsumerStatefulWidget {
   const AchievementsScreen({super.key});
@@ -294,6 +294,18 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
     }
     if (bySubject.isEmpty) return const SizedBox.shrink();
 
+    // 科目英文代码 → 中文显示名
+    String subjectDisplayName(String code) {
+      const names = <String, String>{
+        'math': '数学', 'chinese': '语文', 'english': '英语',
+        'physics': '物理', 'chemistry': '化学', 'biology': '生物',
+        'history': '历史', 'geography': '地理', 'politics': '政治',
+        'science': '科学', 'it': '信息技术', 'pe': '体育',
+        'art': '艺术', 'labor': '劳动', 'japanese': '日语', 'russian': '俄语',
+      };
+      return names[code] ?? code;
+    }
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -310,7 +322,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(subject, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                Text(subjectDisplayName(subject), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
                 const SizedBox(height: 4),
                 ...grades.map((g) {
                   final band = g['grade_band'] as String? ?? '';
@@ -407,7 +419,6 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
   // ── 学习计划进度（来源于学习报告） ──
   Widget _buildLearningPlans(ThemeData theme) {
     final plans = _report!['plans'] as List<dynamic>? ?? [];
-    final tiers = _report!['achievements_by_tier'] as List<dynamic>? ?? [];
     if (plans.isEmpty) return const SizedBox.shrink();
 
     return Card(

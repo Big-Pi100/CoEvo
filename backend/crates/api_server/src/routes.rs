@@ -2,7 +2,7 @@
 //!
 //! 复用 LinguaFlow routes.rs 的模式
 
-use axum::{Router, routing::{get, post, put, delete}, Json, extract::{Path, Query}};
+use axum::{Router, routing::{get, post, put, delete, patch}, Json, extract::{Path, Query}};
 use axum::extract::ws::WebSocketUpgrade;
 use axum::http::HeaderMap;
 use serde::Deserialize;
@@ -68,11 +68,9 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/review/submit", post(review_submit_handler))
         .route("/api/review/verify", post(review_verify_handler))
         .route("/api/review/judge", post(review_judge_handler))
-        // Skipped concepts
-        .route("/api/cards/skip", post(cards_skip_handler))
-        .route("/api/cards/skipped", get(cards_skipped_handler))
-        .route("/api/cards/skipped/{skip_id}", delete(cards_skip_delete_handler))
-        .route("/api/cards/batch-create", post(cards_batch_create_handler))
+        // Card status
+        .route("/api/cards/status", patch(cards_status_handler))
+        .route("/api/cards/batch-status", patch(cards_batch_status_handler))
         .route("/api/cards/all", get(cards_all_handler))
         .route("/api/cards/{card_id}/last-review", get(cards_last_review_handler))
         // History
@@ -247,15 +245,11 @@ fn check_subscription(user_id: &str) -> Result<(), String> {
 /// Pre-query DB for concept extraction dedup + chat history. Drops conn before async.
 fn load_chat_context(
     user_id: &str, conversation_id: &str, message: &str,
-) -> (Vec<String>, Vec<String>, String, Vec<(String, String)>) {
+) -> (Vec<String>, String, Vec<(String, String)>) {
     let conn = crate::db_pool::get_conn();
 
     let existing_fronts: Vec<String> = query_vec(
         &conn, "SELECT LOWER(front) FROM cards WHERE user_id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or_default();
-    let skipped_fronts: Vec<String> = query_vec(
-        &conn, "SELECT LOWER(front) FROM skipped_concepts WHERE user_id = ?1",
         rusqlite::params![user_id], |row| row.get(0),
     ).unwrap_or_default();
 
@@ -280,7 +274,7 @@ fn load_chat_context(
         rusqlite::params![uuid::Uuid::new_v4().to_string(), conversation_id, message, now_str],
     );
 
-    (existing_fronts, skipped_fronts, now_str, history)
+    (existing_fronts, now_str, history)
 }
 
 /// Build the user_content string from history + plan context + current message
@@ -382,7 +376,7 @@ async fn chat_handler(
     }
 
     // 3. Load context (sync DB ops, drops conn before async LLM call)
-    let (existing_fronts, skipped_fronts, now_str, history) =
+    let (existing_fronts, now_str, history) =
         load_chat_context(&input.user_id, &input.conversation_id, &input.message);
 
     // 4. Build system prompt with plan context
@@ -390,11 +384,11 @@ async fn chat_handler(
     let (system_prompt, plan_context) = {
         let conn = crate::db_pool::get_conn();
         let (domain, mode, ctx) = crate::plan_handler::build_plan_context(&conn, &input.conversation_id);
-        let templates = chat_engine::prompt_loader::get_for_domain(&domain);
+        let templates = chat_engine::prompt_loader::get_chat(&domain);
         let sp = if mode == "structured" {
-            templates.chat_system_structured.clone()
+            templates.structured.clone()
         } else {
-            templates.chat_system_free.clone()
+            templates.free.clone()
         };
         (sp, ctx)
     };
@@ -422,7 +416,7 @@ async fn chat_handler(
     let (extract_domain, _, extract_plan_ctx) = crate::plan_handler::build_plan_context(&conn7, &input.conversation_id);
     let extraction = chat_engine::concept_extractor::extract_concepts(
         &input.user_id, &input.message, &final_reply,
-        &existing_fronts, &skipped_fronts, &llm_config, &history,
+        &existing_fronts, &llm_config, &history,
         &extract_domain, &extract_plan_ctx,
     ).await;
     let candidates: Vec<String> = extraction.candidates.iter().map(|c| c.front.clone()).collect();
@@ -517,7 +511,7 @@ async fn review_verify_handler(
         return auth_json(e);
     }
     let llm_config = crate::llm::get_config();
-    let prompt = chat_engine::prompt_loader::get().quiz_generate.clone()
+    let prompt = chat_engine::prompt_loader::get_quiz("general").generate.clone()
         .replace("{front}", &input.front)
         .replace("{back}", &input.back);
 
@@ -574,7 +568,7 @@ async fn review_judge_handler(
         ));
     }
 
-    let prompt = chat_engine::prompt_loader::get().quiz_judge.clone()
+    let prompt = chat_engine::prompt_loader::get_quiz("general").judge.clone()
         .replace("{questions}", &q_parts.join("\n---\n"));
 
     let mut caller = chat_engine::llm_caller::LlmCaller::new(llm_config.clone());
@@ -622,19 +616,15 @@ struct VerifyTranslationInput {
 async fn verify_translation_handler(
     Json(input): Json<VerifyTranslationInput>,
 ) -> Json<serde_json::Value> {
-    let prompt = format!(
-        "You are an English teacher judging whether a student's translation of a word is correct.\n\
-         \nEnglish word: {}\nExpected meaning: {}\nStudent's answer: {}\n\
-         \nJudge whether the student's answer correctly conveys the meaning of the English word.\n\
-         Consider synonyms, paraphrases, and reasonable alternative translations as correct.\n\
-         Only mark as 'fail' if the answer is completely wrong or unrelated.\n\
-         \nRespond with exactly one word: pass or fail",
-        input.front, input.back, input.user_input
-    );
+    let tpl = chat_engine::prompt_loader::get_verify("general");
+    let prompt = tpl.translation
+        .replace("{front}", &input.front)
+        .replace("{back}", &input.back)
+        .replace("{user_input}", &input.user_input);
 
     let config = crate::llm::get_config();
     let mut caller = chat_engine::llm_caller::LlmCaller::new(config);
-    match caller.generate("You are a strict but fair English teacher.", &prompt).await {
+    match caller.generate("", &prompt).await {
         Ok(reply) => {
             let result = if reply.to_lowercase().contains("pass") { "pass" } else { "fail" };
             Json(serde_json::json!({"result": result}))
@@ -653,240 +643,57 @@ async fn verify_translation_handler(
     }
 }
 
-// ── Card Skip Handlers ──
+// ── Card Status Handlers ──
 
 #[derive(Deserialize)]
-pub struct SkipInput {
+pub struct UpdateStatusInput {
     pub user_id: String,
-    pub front: String,
-    pub domain: Option<String>,
-    pub source_text: String,
+    pub card_id: String,
+    pub status: String,
 }
 
-async fn cards_skip_handler(
+#[derive(Deserialize)]
+pub struct BatchStatusInput {
+    pub user_id: String,
+    pub card_ids: Vec<String>,
+    pub status: String,
+}
+
+/// PATCH /api/cards/status — 更新卡片状态 (active/pending/skipped/archived)
+async fn cards_status_handler(
     headers: HeaderMap,
-    Json(input): Json<SkipInput>,
+    Json(input): Json<UpdateStatusInput>,
 ) -> Json<serde_json::Value> {
     if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
         return auth_json(e);
     }
     let conn = crate::db_pool::get_conn();
-    match card_engine::card_repository::skip_concept(&conn, &input.user_id, &input.front, &input.domain, &input.source_text) {
-        Ok(id) => {
-            // 同时删除已存在的卡片（及记忆状态）
-            let _ = conn.execute(
-                "DELETE FROM card_memory WHERE card_id IN (SELECT id FROM cards WHERE user_id = ?1 AND LOWER(front) = ?2)",
-                rusqlite::params![input.user_id, input.front.to_lowercase()],
-            );
-            let _ = conn.execute(
-                "DELETE FROM cards WHERE user_id = ?1 AND LOWER(front) = ?2",
-                rusqlite::params![input.user_id, input.front.to_lowercase()],
-            );
-            Json(serde_json::json!({"skipped_id": id}))
-        },
+    match card_engine::card_repository::update_card_status(&conn, &input.card_id, &input.status) {
+        Ok(_) => Json(serde_json::json!({"status": "ok"})),
         Err(e) => Json(serde_json::json!({"error": e})),
     }
 }
 
-async fn cards_skipped_handler(
+/// PATCH /api/cards/batch-status — 批量更新卡片状态
+async fn cards_batch_status_handler(
     headers: HeaderMap,
-    Query(query): Query<DueQuery>,
+    Json(input): Json<BatchStatusInput>,
 ) -> Json<serde_json::Value> {
-    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
+    if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
         return auth_json(e);
     }
     let conn = crate::db_pool::get_conn();
-    let rows = match query_vec(
-        &conn,
-        "SELECT id, front, domain, source_text, skipped_at FROM skipped_concepts WHERE user_id = ?1 ORDER BY skipped_at DESC",
-        rusqlite::params![query.user_id],
-        |row| Ok(serde_json::json!({
-            "id": row.get::<_, String>(0)?,
-            "front": row.get::<_, String>(1)?,
-            "domain": row.get::<_, Option<String>>(2)?,
-            "source_text": row.get::<_, String>(3)?,
-            "skipped_at": row.get::<_, i64>(4)?,
+    match card_engine::card_repository::batch_update_status(&conn, &input.card_ids, &input.status) {
+        Ok(_) => Json(serde_json::json!({
+            "updated": input.card_ids.len(),
+            "status": "ok",
         })),
-    ) {
-        Ok(v) => v,
-        Err(e) => return e,
-    };
-    Json(serde_json::json!({"skipped": rows}))
-}
-
-#[derive(Deserialize)]
-pub struct SkipDeleteQuery {
-    pub user_id: String,
-}
-
-async fn cards_skip_delete_handler(
-    headers: HeaderMap,
-    Query(query): Query<SkipDeleteQuery>,
-    Path(skip_id): Path<String>,
-) -> Json<serde_json::Value> {
-    // Verify auth first — don't query DB before authentication
-    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return auth_json(e);
-    }
-
-    let conn = crate::db_pool::get_conn();
-
-    // Read skipped record — scoped to the authenticated user
-    let skipped = match conn.query_row(
-        "SELECT front, domain, source_text, skipped_at FROM skipped_concepts WHERE id = ?1 AND user_id = ?2",
-        rusqlite::params![skip_id, query.user_id],
-        |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, Option<String>>(1)?,
-                row.get::<_, Option<String>>(2)?,
-                row.get::<_, i64>(3)?,
-            ))
-        }
-    ) {
-        Ok(s) => s,
-        Err(e) => return Json(serde_json::json!({"error": format!("Skip not found: {}", e)})),
-    };
-
-    let (front, domain, source_text, _skipped_at) = skipped;
-
-    // Restore as card
-    let now = chrono::Utc::now().timestamp();
-    // UUID format is guaranteed (8-4-4-4-12), split('-').next() never returns None
-    let card_id = format!("card_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap());
-    let back = source_text.clone().unwrap_or_default();
-    let domain_str = domain.clone().unwrap_or_default();
-
-    if let Err(e) = conn.execute(
-        "INSERT INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at)
-         VALUES (?1, ?2, ?3, 'concept', ?4, ?5, ?6, NULL, ?7)",
-        rusqlite::params![card_id, query.user_id, domain_str, front, back, source_text, now],
-    ) {
-        return Json(serde_json::json!({"error": format!("Card insert: {}", e)}));
-    }
-
-    // Create card memory (new card, due today)
-    if let Err(e) = conn.execute(
-        "INSERT INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
-         VALUES (?1, 0, 0.3, 1.0, ?2, 0, 0, 0)",
-        rusqlite::params![card_id, now],
-    ) {
-        // Rollback card
-        let _ = conn.execute("DELETE FROM cards WHERE id = ?1", rusqlite::params![card_id]);
-        return Json(serde_json::json!({"error": format!("Card memory insert: {}", e)}));
-    }
-
-    // Delete skip record
-    match conn.execute("DELETE FROM skipped_concepts WHERE id = ?1 AND user_id = ?2", rusqlite::params![skip_id, query.user_id]) {
-        Ok(_) => Json(serde_json::json!({"status": "restored", "card_id": card_id})),
-        Err(e) => Json(serde_json::json!({"error": format!("Delete: {}", e)})),
+        Err(e) => Json(serde_json::json!({"error": e})),
     }
 }
 
 async fn ws_upgrade(ws: WebSocketUpgrade) -> impl axum::response::IntoResponse {
     ws.on_upgrade(crate::ws::handle_ws)
-}
-
-// ════════════════════════════════════════════
-// 批量制卡
-// ════════════════════════════════════════════
-
-#[derive(Deserialize)]
-pub struct BatchCreateInput {
-    pub user_id: String,
-    pub conversation_id: Option<String>,
-    pub candidates: Vec<CardCandidateInput>,
-}
-
-#[derive(Deserialize)]
-pub struct CardCandidateInput {
-    pub front: String,
-    pub back: String,
-    pub source_sentence: String,
-    pub domain: Option<String>,
-}
-
-/// POST /api/cards/batch-create — 用户确认制卡后批量入库
-async fn cards_batch_create_handler(
-    headers: HeaderMap,
-    Json(input): Json<BatchCreateInput>,
-) -> Json<serde_json::Value> {
-    if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
-        return auth_json(e);
-    }
-    let conn = crate::db_pool::get_conn();
-    let mut created = Vec::new();
-    let mut duplicates = Vec::new();
-    let mut errors = Vec::new();
-
-    // 查对话的 subject/grade_band（如有），用于绑定 plan
-    let (conv_subject, conv_grade): (Option<String>, Option<String>) = input.conversation_id.as_ref()
-        .and_then(|cid| conn.query_row(
-            "SELECT subject, grade_band FROM conversations WHERE id = ?1",
-            rusqlite::params![cid],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        ).ok())
-        .unwrap_or((None, None));
-
-    for cand in &input.candidates {
-        let candidate = shared_types::card::ConceptCandidate {
-            front: cand.front.clone(),
-            back: cand.back.clone(),
-            source_sentence: cand.source_sentence.clone(),
-            domain: cand.domain.clone().unwrap_or_else(|| "general".into()),
-        };
-        let (mut card, memory) = card_engine::card_formatter::format_card(&input.user_id, &candidate);
-        card.conversation_id = input.conversation_id.clone();
-        card.subject = conv_subject.clone();
-        card.grade_band = conv_grade.clone();
-        match card_engine::card_repository::insert_card(&conn, &card, &memory) {
-            card_engine::card_repository::InsertResult::Success(id) => {
-                created.push(id);
-            }
-            card_engine::card_repository::InsertResult::Duplicate(front) => {
-                duplicates.push(front);
-            }
-            card_engine::card_repository::InsertResult::DatabaseError(e) => {
-                errors.push(e);
-            }
-        }
-    }
-
-    // 成就检测
-    let achievements = if !created.is_empty() {
-        let total_cards: u32 = conn.query_row(
-            "SELECT COUNT(*) FROM cards WHERE user_id = ?1",
-            rusqlite::params![input.user_id], |row| row.get(0),
-        ).unwrap_or(0);
-        let total_reviews: u32 = conn.query_row(
-            "SELECT COUNT(*) FROM review_log r JOIN cards c ON r.card_id = c.id WHERE c.user_id = ?1",
-            rusqlite::params![input.user_id], |row| row.get(0),
-        ).unwrap_or(0);
-        let streak_days: u32 = conn.query_row(
-            "SELECT streak_days FROM users WHERE id = ?1",
-            rusqlite::params![input.user_id], |row| row.get(0),
-        ).unwrap_or(0);
-        let domains_covered: u32 = conn.query_row(
-            "SELECT COUNT(DISTINCT domain) FROM cards WHERE user_id = ?1 AND domain IS NOT NULL",
-            rusqlite::params![input.user_id], |row| row.get(0),
-        ).unwrap_or(0);
-
-        let ctx = shared_types::growth::AchievementContext {
-            user_id: input.user_id.clone(),
-            total_cards, total_reviews, streak_days, domains_covered,
-        };
-        let detector = growth_engine::achievements::AchievementDetector;
-        detector.check_and_persist(&conn, &shared_types::growth::AchievementDef::predefined(), &ctx)
-    } else {
-        vec![]
-    };
-
-    Json(serde_json::json!({
-        "created": created,
-        "duplicates": duplicates,
-        "errors": errors,
-        "achievements": achievements,
-    }))
 }
 
 /// GET /api/cards/all — 获取用户所有卡片 (含搜索过滤)
@@ -923,7 +730,7 @@ async fn cards_all_handler(
          ) lr ON c.id = lr.card_id
          LEFT JOIN review_log lrev
             ON lrev.card_id = lr.card_id AND lrev.reviewed_at = lr.last_reviewed_at
-         WHERE c.user_id = ?1"
+         WHERE c.user_id = ?1 AND c.status = 'active'"
     );
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(query.user_id.clone())];
 
@@ -1002,14 +809,14 @@ async fn cards_all_handler(
     // 领域列表
     let domains: Vec<String> = query_vec(
         &conn,
-        "SELECT DISTINCT domain FROM cards WHERE user_id = ?1 AND domain IS NOT NULL ORDER BY domain",
+        "SELECT DISTINCT domain FROM cards WHERE user_id = ?1 AND domain IS NOT NULL AND status = 'active' ORDER BY domain",
         rusqlite::params![query.user_id], |row| row.get(0),
     ).unwrap_or_default();
 
     // K12 科目列表
     let subjects: Vec<String> = query_vec(
         &conn,
-        "SELECT DISTINCT subject FROM cards WHERE user_id = ?1 AND subject IS NOT NULL ORDER BY subject",
+        "SELECT DISTINCT subject FROM cards WHERE user_id = ?1 AND subject IS NOT NULL AND status = 'active' ORDER BY subject",
         rusqlite::params![query.user_id], |row| row.get(0),
     ).unwrap_or_default();
 
@@ -1281,7 +1088,7 @@ async fn profile_handler(
     }
 
     let total_cards: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM cards WHERE user_id = ?1",
+        "SELECT COUNT(*) FROM cards WHERE user_id = ?1 AND status = 'active'",
         rusqlite::params![user_id], |row| row.get(0),
     ).unwrap_or(0);
     let total_reviews: i64 = conn.query_row(
@@ -1293,7 +1100,7 @@ async fn profile_handler(
         rusqlite::params![user_id], |row| row.get(0),
     ).unwrap_or(0);
     let domains_covered: i64 = conn.query_row(
-        "SELECT COUNT(DISTINCT domain) FROM cards WHERE user_id = ?1 AND domain IS NOT NULL",
+        "SELECT COUNT(DISTINCT domain) FROM cards WHERE user_id = ?1 AND domain IS NOT NULL AND status = 'active'",
         rusqlite::params![user_id], |row| row.get(0),
     ).unwrap_or(0);
     let today_reviews: i64 = conn.query_row(
@@ -1342,7 +1149,7 @@ async fn profile_handler(
     // 查询用户的 vocabulary 卡片中已掌握的 (state=2)，按 CEFR 等级分组
     if let Ok(mut stmt) = conn.prepare(
         "SELECT c.front FROM cards c JOIN card_memory cm ON c.id = cm.card_id
-         WHERE c.user_id = ?1 AND c.card_type = 'vocabulary' AND cm.state = 2"
+         WHERE c.user_id = ?1 AND c.card_type = 'vocabulary' AND cm.state = 2 AND c.status = 'active'"
     ) {
         if let Ok(rows) = stmt.query_map(rusqlite::params![user_id], |row| row.get::<_, String>(0)) {
             for front in rows.flatten() {
@@ -1707,11 +1514,11 @@ async fn learning_report_handler(
 
     // 3. 学习统计
     let cards_total: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM cards WHERE user_id = ?1", rusqlite::params![user_id], |row| row.get(0)
+        "SELECT COUNT(*) FROM cards WHERE user_id = ?1 AND status = 'active'", rusqlite::params![user_id], |row| row.get(0)
     ).unwrap_or(0);
 
     let reviews_total: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM review_log WHERE card_id IN (SELECT id FROM cards WHERE user_id = ?1)",
+        "SELECT COUNT(*) FROM review_log WHERE card_id IN (SELECT id FROM cards WHERE user_id = ?1 AND status = 'active')",
         rusqlite::params![user_id], |row| row.get(0)
     ).unwrap_or(0);
 
@@ -1855,7 +1662,7 @@ async fn weekly_report_handler(
 
     // 本周新增卡片
     let new_cards: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM cards WHERE user_id = ?1 AND created_at >= ?2",
+        "SELECT COUNT(*) FROM cards WHERE user_id = ?1 AND created_at >= ?2 AND status = 'active'",
         rusqlite::params![user_id, week_ago_ts], |row| row.get(0)
     ).unwrap_or(0);
 
@@ -2103,7 +1910,7 @@ async fn k12_init_handler(
         serde_json::to_string(&pj).unwrap_or_default()
     };
     // 先清理该 conversation 的旧学习计划（domain 不再用作唯一键）
-    let domain_val = Domain::from_chinese(&input.subject);
+    let domain_val: Domain = input.subject.parse().unwrap_or(Domain::General);
     let _ = conn.execute(
         "DELETE FROM learning_plans WHERE conversation_id = ?1",
         rusqlite::params![conv_id],
@@ -2144,12 +1951,6 @@ async fn k12_init_handler(
         .unwrap_or("")
         .to_string();
 
-    // 修复旧数据：将该科目所有卡片的 domain 对齐到计划名称（如 "math"→"数学"）
-    let _ = conn.execute(
-        "UPDATE cards SET domain = ?1 WHERE subject = ?1 AND domain != ?1",
-        rusqlite::params![input.subject],
-    );
-
     if let Some(card_list) = cards {
         for card_tmpl in card_list {
             // 通过 gold_cr_ids 匹配任务级卡片（plan_task_id 已移除，任务匹配由 gold_cr_ids 担当）
@@ -2161,7 +1962,7 @@ async fn k12_init_handler(
             let _ = conn.execute(
                 "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, subject, grade_band, k12_card_id, origin)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'prebuilt')",
-                rusqlite::params![card_id, input.user_id, input.subject, card_tmpl.card_type,
+                rusqlite::params![card_id, input.user_id, domain_val.to_string(), card_tmpl.card_type,
                     card_tmpl.front, card_tmpl.back, card_tmpl.source_sentence, conv_id, now_ts,
                     input.subject, input.grade_band, card_tmpl.id],
             );
@@ -2304,7 +2105,7 @@ async fn k12_reading_init_handler(
     }
 
     // 先删该 conversation 的旧 plan（domain 不再用作唯一键）
-    let domain_val = Domain::from_chinese(&input.subject);
+    let domain_val: Domain = input.subject.parse().unwrap_or(Domain::General);
     let _ = conn.execute(
         "DELETE FROM learning_plans WHERE conversation_id = ?1",
         rusqlite::params![conv_id],
@@ -2361,7 +2162,7 @@ async fn k12_reading_init_handler(
                             let _ = conn.execute(
                                 "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, conversation_id, created_at, subject, grade_band, k12_card_id, origin)
                                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'prebuilt')",
-                                rusqlite::params![card, input.user_id, input.subject, "reading",
+                                rusqlite::params![card, input.user_id, domain_val.to_string(), "reading",
                                     card_front, card_back, conv_id, now_ts, input.subject, input.grade_band, card_id],
                             ).ok();
                             let _ = conn.execute(
@@ -2382,7 +2183,7 @@ async fn k12_reading_init_handler(
                                     let _ = conn.execute(
                                         "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, conversation_id, created_at, subject, grade_band, k12_card_id, origin, plan_task_id)
                                          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'prebuilt', '')",
-                                        rusqlite::params![k12_id, input.user_id, input.subject, "vocabulary",
+                                        rusqlite::params![k12_id, input.user_id, domain_val.to_string(), "vocabulary",
                                             vc.front, vc.back, conv_id, now_ts, input.subject, input.grade_band, vid],
                                     ).ok();
                                     let _ = conn.execute(

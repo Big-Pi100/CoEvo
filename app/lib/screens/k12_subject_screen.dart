@@ -17,22 +17,37 @@ class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
   String? _error;
 
   // 有预生成计划的科目（按课标实际覆盖的学段过滤）
-  // key=科目名, value=可用学段列表
+  // key=科目英文代码, value=可用学段列表
   static const _availableSubjects = <String, List<String>>{
-    '数学': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
-    '语文': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
-    '英语': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
-    '物理': ['g7-9', 'g10', 'g11-12'],
-    '化学': ['g7-9', 'g10', 'g11-12'],
-    '生物': ['g7-9', 'g10', 'g11-12'],
-    '历史': ['g7-9', 'g10', 'g11-12'],
-    '地理': ['g7-9', 'g10', 'g11-12'],
-    '政治': ['g10', 'g11-12'],
-    '科学': ['g3-4', 'g5-6', 'g7-9'],
-    '信息技术': ['g1-2', 'g3-4', 'g5-6', 'g7-9'],
+    'math': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
+    'chinese': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
+    'english': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
+    'physics': ['g7-9', 'g10', 'g11-12'],
+    'chemistry': ['g7-9', 'g10', 'g11-12'],
+    'biology': ['g7-9', 'g10', 'g11-12'],
+    'history': ['g7-9', 'g10', 'g11-12'],
+    'geography': ['g7-9', 'g10', 'g11-12'],
+    'politics': ['g10', 'g11-12'],
+    'science': ['g3-4', 'g5-6', 'g7-9'],
+    'it': ['g1-2', 'g3-4', 'g5-6', 'g7-9'],
+    'japanese': ['g3-4', 'g5-6', 'g7-9'],
+    'russian': ['g7-9'],
+  };
 
-    '日语': ['g3-4', 'g5-6', 'g7-9'],
-    '俄语': ['g7-9'],
+  static const _subjectDisplayNames = <String, String>{
+    'math': '数学',
+    'chinese': '语文',
+    'english': '英语',
+    'physics': '物理',
+    'chemistry': '化学',
+    'biology': '生物',
+    'history': '历史',
+    'geography': '地理',
+    'politics': '政治',
+    'science': '科学',
+    'it': '信息技术',
+    'japanese': '日语',
+    'russian': '俄语',
   };
 
   static const _gradeNames = {
@@ -52,7 +67,7 @@ class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
     final gradeBand = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: Text('选择 $subject 年级'),
+        title: Text('选择 ${_subjectDisplayNames[subject] ?? subject} 年级'),
         children: grades.map((g) => SimpleDialogOption(
           onPressed: () => Navigator.of(ctx).pop(g),
           child: Text(_gradeNames[g] ?? g),

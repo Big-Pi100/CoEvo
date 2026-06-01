@@ -10,7 +10,6 @@ import 'screens/review_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/achievements_screen.dart';
 import 'screens/conversation_list_screen.dart';
-import 'screens/skipped_list_screen.dart';
 import 'screens/reading_full_text_screen.dart';
 import 'screens/home_screen.dart';
 import 'providers/auth_provider.dart';
@@ -144,18 +143,6 @@ final goRouter = GoRouter(
               ),
         );
       },
-    ),
-    GoRoute(
-      path: '/skipped',
-      pageBuilder: (context, state) => CustomTransitionPage(
-        key: state.pageKey,
-        child: const SkippedListScreen(),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-            SlideTransition(
-              position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(animation),
-              child: child,
-            ),
-      ),
     ),
   ],
 );

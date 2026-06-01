@@ -66,11 +66,7 @@ class ConceptDialog {
             actions: [
               TextButton(
                 onPressed: () {
-                  for (int i = start(); i < end(); i++) {
-                    if (!selected[i]) {
-                      client?.skipConcept(candidates[i].front, candidates[i].sourceSentence ?? '');
-                    }
-                  }
+                  // 不再逐个跳过 — 待确认卡片保持 pending 状态，待批量更新
                   if (isLastPage()) {
                     Navigator.pop(ctx);
                   } else {
@@ -87,23 +83,20 @@ class ConceptDialog {
               ),
               FilledButton(
                 onPressed: () async {
-                  final toCreate = <Map<String, dynamic>>[];
+                  final toCreate = <String>[];
                   for (int i = start(); i < end(); i++) {
+                    final cardId = candidates[i].id;
+                    if (cardId == null) continue;
                     if (selected[i]) {
-                      toCreate.add({
-                        'front': candidates[i].front,
-                        'back': candidates[i].back ?? candidates[i].front,
-                        'source_sentence': candidates[i].sourceSentence ?? '',
-                        'domain': candidates[i].domain ?? 'general',
-                      });
+                      toCreate.add(cardId);
                     } else {
-                      client?.skipConcept(candidates[i].front, candidates[i].sourceSentence ?? '');
+                      client?.updateCardStatus(cardId, 'skipped');
                     }
                   }
                   if (toCreate.isNotEmpty && client != null) {
-                    final result = await client.batchCreateCards(toCreate, conversationId: conversationId);
+                    final result = await client.batchUpdateStatus(toCreate, 'active');
                     if (context.mounted) {
-                      final count = (result['created'] as List?)?.length ?? 0;
+                      final count = (result['updated'] as num?)?.toInt() ?? 0;
                       if (count > 0) ref.read(cardRefreshProvider.notifier).state++;
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(

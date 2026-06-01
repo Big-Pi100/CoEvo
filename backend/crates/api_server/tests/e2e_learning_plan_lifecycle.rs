@@ -122,15 +122,6 @@ CREATE TABLE IF NOT EXISTS review_log (
     reviewed_at INTEGER NOT NULL,
     FOREIGN KEY (card_id) REFERENCES cards(id)
 );
-CREATE TABLE IF NOT EXISTS skipped_concepts (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    front TEXT NOT NULL,
-    domain TEXT,
-    source_text TEXT,
-    skipped_at INTEGER NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
 CREATE TABLE IF NOT EXISTS user_preferences (
     user_id TEXT NOT NULL,
     key TEXT NOT NULL,

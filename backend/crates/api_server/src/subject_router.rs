@@ -218,20 +218,8 @@ pub fn get_curriculum_hint(subject: &str, grade_band: &str) -> String {
 
 /// LLM 路由 prompt
 pub fn build_routing_prompt(user_message: &str) -> String {
-    format!(
-        r#"分析以下学生请求，提取"科目"和"年级"两个字段。
-
-科目可选值：数学、语文、英语、物理、化学、生物、历史、地理、政治、科学
-年级可选值：一年级、二年级、三年级、四年级、五年级、六年级、初一(七年级)、初二(八年级)、初三(九年级)、高一(十年级)、高二(十一年级)、高三(十二年级)
-如果未明确提及，科目默认为"数学"（最常见的自学科目），年级留空。
-
-学生请求：{message}
-
-只返回 JSON，格式：
-{{"subject": "科目", "grade": "年级", "description": "一句话描述"}}
-"#,
-        message = user_message
-    )
+    chat_engine::prompt_loader::get_routing().subject
+        .replace("{message}", user_message)
 }
 
 /// 解析 LLM 路由响应
@@ -295,11 +283,11 @@ mod tests {
     #[test]
     fn test_subject_mapping() {
         assert_eq!(subject_to_domain("数学"), "math");
-        assert_eq!(subject_to_domain("物理"), "math");
+        assert_eq!(subject_to_domain("物理"), "physics");
         assert_eq!(subject_to_domain("英语"), "language");
         assert_eq!(subject_to_domain("化学"), "chemistry");
         assert_eq!(subject_to_domain("生物"), "biology");
-        assert_eq!(subject_to_domain("语文"), "");
-        assert_eq!(subject_to_domain("历史"), "");
+        assert_eq!(subject_to_domain("语文"), "language");
+        assert_eq!(subject_to_domain("历史"), "history");
     }
 }

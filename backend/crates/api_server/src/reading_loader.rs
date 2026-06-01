@@ -181,11 +181,8 @@ pub fn get_plan(subject: &str) -> Option<&'static ReadingPlanFile> {
 /// 获取 reading plan 内容（按学段过滤），返回 serde_json::Value
 /// 用于 build_plan_context 中合并状态
 pub fn get_plan_content(subject: &str, grade_band: &str) -> Option<serde_json::Value> {
-    // 中文科目名转英文 key
-    let subject_key = crate::curriculum_loader::CHINESE_TO_ENGLISH.iter()
-        .find(|(cn, _)| *cn == subject)
-        .map(|(_, en)| *en)
-        .unwrap_or(subject);
+    // 直接使用 subject 作为 key（迁移后 conversations.subject 已是英文代码）
+    let subject_key = subject;
     let plan = get_plan(subject_key)?;
     let grade_for_filter = match grade_band {
         "g10" | "g11-12" => "g10-12",

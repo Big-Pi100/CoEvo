@@ -205,20 +205,16 @@ pub fn get() -> &'static K12Prebuilt {
 
 // ── 公开查询接口 ──
 
-/// 通过前端 subject 中文名 + grade_band 获取 Plan（已按年级过滤）
-pub fn get_plan(subject_cn: &str, grade: &str) -> Option<PlanData> {
-    let subject_key = CHINESE_TO_ENGLISH.iter()
-        .find(|(cn, _)| *cn == subject_cn)
-        .map(|(_, en)| *en)?;
+/// 通过 subject key（英文代码）+ grade_band 获取 Plan（已按年级过滤）
+/// 与 get_plan 的区别：直接使用英文 key，不经过 CHINESE_TO_ENGLISH 查找
+pub fn get_plan_by_key(subject_key: &str, grade: &str) -> Option<PlanData> {
     let plan = match get().plan_index.get(subject_key) {
         Some(p) => p,
         None => {
-            eprintln!("[K12] get_plan: MISS subject={} (key={:?})", subject_cn, subject_key);
+            eprintln!("[K12] get_plan_by_key: MISS key={}", subject_key);
             return None;
         }
     };
-
-    // 按 grade_band 过滤 stages
     let grade_for_filter = match grade {
         "g10" | "g11-12" => "g10-12",
         _ => grade,
@@ -227,26 +223,20 @@ pub fn get_plan(subject_cn: &str, grade: &str) -> Option<PlanData> {
         .filter(|s| s.grade_band.is_empty() || s.grade_band == grade_for_filter)
         .cloned()
         .collect();
-
     let result = PlanData {
         stages: filtered_stages,
         ..plan.clone()
     };
-
     if result.stages.is_empty() {
-        eprintln!("[K12] WARN: {} no stages match grade_band '{}' (plan has {} stages)", subject_cn, grade_for_filter, plan.stages.len());
-        tracing::warn!("K12: no stages match grade_band {} for {}", grade, subject_cn);
+        eprintln!("[K12] WARN: {} no stages match grade_band '{}' (plan has {} stages)", subject_key, grade_for_filter, plan.stages.len());
+        tracing::warn!("K12: no stages match grade_band {} for {}", grade, subject_key);
     }
-    eprintln!("[K12] get_plan: {} -> {} stages (filtered for grade={})", subject_cn, result.stages.len(), grade);
+    eprintln!("[K12] get_plan_by_key: {} -> {} stages (filtered for grade={})", subject_key, result.stages.len(), grade);
     Some(result)
 }
 
-/// 通过前端 subject 中文名 + grade_band 获取 Cards
-pub fn get_cards(subject_cn: &str, grade: &str) -> Option<&'static Vec<CardData>> {
-    let subject_key = CHINESE_TO_ENGLISH.iter()
-        .find(|(cn, _)| *cn == subject_cn)
-        .map(|(_, en)| *en)?;
-    // 卡文件仍按 level 拆分
+/// 通过 subject key（英文代码）+ grade_band 获取 Cards
+pub fn get_cards_by_key(subject_key: &str, grade: &str) -> Option<&'static Vec<CardData>> {
     let level = match grade {
         "g10" | "g10-12" | "g11-12" | "senior" => "senior",
         _ => "compulsory",
@@ -254,12 +244,32 @@ pub fn get_cards(subject_cn: &str, grade: &str) -> Option<&'static Vec<CardData>
     let key = format!("{}_{}", subject_key, level);
     let result = get().card_index.get(&key);
     if let Some(cards) = result {
-        eprintln!("[K12] get_cards: {} -> {} cards (key={})", subject_cn, cards.len(), key);
+        eprintln!("[K12] get_cards_by_key: {} -> {} cards (key={})", subject_key, cards.len(), key);
     } else {
-        eprintln!("[K12] get_cards: MISS key={} (subject={})", key, subject_cn);
-        tracing::warn!("K12: cards not found: {} (key={})", subject_cn, key);
+        eprintln!("[K12] get_cards_by_key: MISS key={} (subject={})", key, subject_key);
+        tracing::warn!("K12: cards not found: {} (key={})", subject_key, key);
     }
     result
+}
+
+/// 通过前端 subject 中文名 + grade_band 获取 Plan（已按年级过滤）
+/// 兼容过渡期：中文名走 CHINESE_TO_ENGLISH，英文名直接使用
+pub fn get_plan(subject_cn: &str, grade: &str) -> Option<PlanData> {
+    let subject_key = CHINESE_TO_ENGLISH.iter()
+        .find(|(cn, _)| *cn == subject_cn)
+        .map(|(_, en)| *en)
+        .unwrap_or(subject_cn);  // 如果找不到中文映射，直接用输入作为 key（英文代码兼容）
+    get_plan_by_key(subject_key, grade)
+}
+
+/// 通过前端 subject 中文名 + grade_band 获取 Cards
+/// 兼容过渡期：中文名走 CHINESE_TO_ENGLISH，英文名直接使用
+pub fn get_cards(subject_cn: &str, grade: &str) -> Option<&'static Vec<CardData>> {
+    let subject_key = CHINESE_TO_ENGLISH.iter()
+        .find(|(cn, _)| *cn == subject_cn)
+        .map(|(_, en)| *en)
+        .unwrap_or(subject_cn);  // 如果找不到中文映射，直接用输入作为 key（英文代码兼容）
+    get_cards_by_key(subject_key, grade)
 }
 
 /// 按 ID 查找卡片（遍历所有 card_index 条目）

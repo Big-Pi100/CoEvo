@@ -21,8 +21,7 @@ fn has_card_intent(message: &str) -> bool {
 
 /// N2: 从对话中提取候选概念
 ///
-/// existing_fronts: 用户已有卡片的 front 列表 (全小写)
-/// skipped_fronts: 用户跳过记录中的 front 列表 (全小写)
+/// existing_fronts: 用户已有卡片的 front 列表 (全小写，含所有 status)
 /// history: 最近 N 轮对话 (role, content)，注入 LLM prompt 以避免重复提取
 ///
 /// 1. 检测制卡意图 → Path B2 (直接生成卡片)
@@ -33,7 +32,6 @@ pub async fn extract_concepts(
     user_message: &str,
     ai_reply: &str,
     existing_fronts: &[String],
-    skipped_fronts: &[String],
     llm_config: &LlmConfig,
     history: &[(String, String)],
     domain: &str,  // "language" / "math" / "general"
@@ -50,18 +48,14 @@ pub async fn extract_concepts(
         }
     } else {
         // 从 LLM 提取候选概念（传入已有概念 + 对话历史 + plan 上下文，避免重复）
-        let all_existing: Vec<String> = existing_fronts.iter()
-            .chain(skipped_fronts.iter())
-            .cloned()
-            .collect();
+        let all_existing: Vec<String> = existing_fronts.to_vec();
         let mut candidates = extract_candidates_from_llm(llm_config, ai_reply, &all_existing, history, domain, plan_context).await;
 
     let existing_fronts_lower: Vec<String> = existing_fronts.iter().map(|f| f.to_lowercase()).collect();
-    let skipped_lower: Vec<String> = skipped_fronts.iter().map(|f| f.to_lowercase()).collect();
 
     candidates.retain(|c| {
         let f = c.front.to_lowercase();
-        !existing_fronts_lower.contains(&f) && !skipped_lower.contains(&f)
+        !existing_fronts_lower.contains(&f)
     });
 
         // 词库匹配：从 AI 回复中扫描出生词（不额外消耗 LLM）
@@ -73,7 +67,7 @@ pub async fn extract_concepts(
 
             for m in &matched {
                 let word_lower = m.word.to_lowercase();
-                if existing_fronts_lower.contains(&word_lower) || skipped_lower.contains(&word_lower) {
+                if existing_fronts_lower.contains(&word_lower) {
                     continue;
                 }
                 if candidates.iter().any(|c| c.front.to_lowercase() == word_lower) {

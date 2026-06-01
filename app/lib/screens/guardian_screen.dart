@@ -1,3 +1,4 @@
+// ignore_for_file: unused_element
 import 'dart:convert';
 import 'dart:html' as html;
 import 'package:flutter/material.dart';

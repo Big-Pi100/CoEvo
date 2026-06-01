@@ -127,11 +127,6 @@ CREATE TABLE IF NOT EXISTS review_log (
     reviewed_at INTEGER NOT NULL,
     FOREIGN KEY (card_id) REFERENCES cards(id)
 );
-CREATE TABLE IF NOT EXISTS skipped_concepts (
-    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, front TEXT NOT NULL,
-    domain TEXT, source_text TEXT, skipped_at INTEGER NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
 "#;
 
 // ═══════════════════════════════════════════════════
@@ -155,7 +150,7 @@ mod helpers {
         for tbl in &["review_log", "k12_quiz_attempts", "k12_quiz_bank", "card_memory",
                       "cards", "achievements", "learning_plans", "conversation_plans",
                       "plan_templates", "user_plan_progress", "conversation_turns",
-                      "conversations", "tokens", "users", "skipped_concepts"] {
+                      "conversations", "tokens", "users"] {
             let _ = conn.execute_batch(&format!("DROP TABLE IF EXISTS {}", tbl));
         }
         conn.execute_batch(SCHEMA_SQL).expect("create schema");
@@ -172,7 +167,7 @@ mod helpers {
         ).unwrap();
 
         INIT_PROMPTS.get_or_init(|| {
-            chat_engine::prompt_loader::init("../../prompts", "../../pipelines");
+            chat_engine::prompt_loader::init("../../prompts");
         });
     }
 
@@ -352,10 +347,10 @@ async fn cp2_turn(
 
     // 2. 构建对话上下文（含计划 context，如果存在）
     let (domain, mode, plan_ctx) = helpers::build_plan_ctx();
-    let prompts = chat_engine::prompt_loader::get_for_domain(&domain);
-    let system_prompt_str = if mode == "structured" { &prompts.chat_system_structured }
-        else if mode == "reading" { &prompts.chat_system_reading }
-        else { &prompts.chat_system_free };
+    let prompts = chat_engine::prompt_loader::get_chat(&domain);
+    let system_prompt_str = if mode == "structured" { &prompts.structured }
+        else if mode == "reading" { &prompts.reading }
+        else { &prompts.free };
     let history = helpers::get_history();
     let user_content = if plan_ctx.is_empty() { history } else { format!("{}{}", history, plan_ctx) };
 
@@ -479,8 +474,6 @@ async fn e2e_main_lifecycle() {
     // 最多 3 轮对话让 CP2 检测学习意图并创建计划
     for (i, msg) in [
         "你好，我想学习勾股定理。",
-        "请帮我制定一个包含概念理解、证明和应用的学习计划。",
-        "可以制定学习计划吗？我们先学基本概念。",
     ].iter().enumerate() {
         let result = cp2_turn(&mut caller, &mut cp2_caller, msg,
             &format!("创建计划(对话{})", i+1), &mut api_calls, plan_created).await;
@@ -639,7 +632,7 @@ async fn e2e_main_lifecycle() {
         // 3b: 调用生产 CP1
         let result = chat_engine::concept_extractor::extract_concepts(
             TEST_USER_ID, user_msg, ai_reply,
-            &existing_fronts, &[], &cfg, &turns, "math", "",
+            &existing_fronts, &cfg, &turns, "math", "",
         ).await;
         println!("  📊 CP1 提取: {} 个候选概念", result.candidates.len());
         for c in &result.candidates {

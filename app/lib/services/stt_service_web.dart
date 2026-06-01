@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// 或者直接使用文本输入替代语音。当前版本为占位实现。
 class SttService {
   bool _isListening = false;
-  String _transcript = '';
   String? _lastError;
 
   bool get isListening => _isListening;

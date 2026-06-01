@@ -513,7 +513,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                                     if (auth.userId == null) return false;
                                     final client = ChatClient(userId: auth.userId!, token: auth.token);
                                     try {
-                                      await client.skipConcept(card.front, card.sourceSentence ?? '');
+                                      await client.updateCardStatus(card.id, 'skipped');
                                       setState(() {
                                         _allCards.removeWhere((c) => c.id == card.id);
                                         _filteredCards.removeWhere((c) => c.id == card.id);
@@ -766,7 +766,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     if (auth.userId == null) return;
     final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {
-      await client.skipConcept(card.front, card.sourceSentence ?? '');
+      await client.updateCardStatus(card.id, 'skipped');
       setState(() {
         _allCards.removeWhere((c) => c.id == card.id);
         _filteredCards.removeWhere((c) => c.id == card.id);

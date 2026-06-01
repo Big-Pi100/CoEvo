@@ -388,10 +388,7 @@ fn upsert_learning_plan(
                 rusqlite::params![conversation_id],
                 |row| row.get(0),
             ).unwrap_or_default();
-            let subj_key = crate::curriculum_loader::CHINESE_TO_ENGLISH.iter()
-                .find(|(cn, _)| *cn == subj)
-                .map(|(_, en)| *en)
-                .unwrap_or("general");
+            let subj_key = if subj.is_empty() { "general" } else { &subj };
             format!("{}_plan", subj_key)
         };
 
@@ -991,10 +988,7 @@ pub fn build_plan_context(conn: &rusqlite::Connection, conversation_id: &str) ->
 
     // 尝试从 plan_templates 读取（K12/Reading 路径）
     if let (Some(ref subject), Some(ref grade)) = (conv_subject, conv_grade) {
-        let subject_key = crate::curriculum_loader::CHINESE_TO_ENGLISH.iter()
-            .find(|(cn, _)| *cn == subject)
-            .map(|(_, en)| *en)
-            .unwrap_or("general");
+        let subject_key = if subject.is_empty() { "general" } else { subject.as_str() };
 
         if let Ok((goal, plan_content_str)) = conn.query_row(
             "SELECT goal, plan_content FROM plan_templates WHERE subject_key = ?1 AND grade_band = ?2 LIMIT 1",
@@ -1422,39 +1416,29 @@ pub fn build_plan_analysis_prompt(
         }).collect::<Vec<_>>().join("\n")
     } else { String::new() };
 
-    format!(
-        r#"你是一位学习计划分析器。你的任务是根据师生对话内容，分析学习进度并输出计划更新。
-
-【当前计划】
-目标: {}
-{stages_text}
-{pass_rate_line}
-【最近对话】
-{dialogue_text}（注意只分析教学相关的部分，忽略寒暄）
-
-请分析：
-1. 学生当前是否完成了某个概念或任务？(completed_concepts)
-2. 当前任务(Task)是否应该标记为完成？(current_task_complete: true/false)
-3. 如果当前阶段(stage)所有任务都完成了，是否应该推进到下一阶段？
-
-只返回 JSON 格式（不要加任何其他文字）：
-{{"completed_concepts": ["概念1", "概念2"], "current_task_complete": true/false, "next_stage_suggestion": null或"阶段名称"}}
-"#,
-        task_status.get("goal").and_then(|v| v.as_str()).unwrap_or(""),
-        stages_text = stages_text,
-        dialogue_text = dialogue_text,
-        pass_rate_line = pass_rate_info.map(|p| format!("\n{}\n", p)).unwrap_or_default(),
-    )
+    let goal = task_status.get("goal").and_then(|v| v.as_str()).unwrap_or("");
+    let pass_rate_line = pass_rate_info.map(|p| format!("\n{}\n", p)).unwrap_or_default();
+    let tpl = chat_engine::prompt_loader::get_plan("general");
+    tpl.analysis.replace("{goal}", goal)
+        .replace("{stages_text}", &stages_text)
+        .replace("{pass_rate_line}", &pass_rate_line)
+        .replace("{dialogue_text}", &dialogue_text)
 }
 
 /// ColdPath 2: 创建计划 prompt — 无现有计划时使用
 /// 与 build_plan_analysis_prompt 物理拆分，职责清晰
+/// 模板从 prompts/general/plan-creation.md 加载
 pub fn build_plan_creation_prompt(dialogue_text: &str) -> String {
-    format!(
-        r#"根据以下师生对话，为学生制定一个详细的学习计划。
+    let tpl_path = {
+        let dir = std::env::var("COEVO_PROMPTS_DIR").unwrap_or_else(|_| "prompts".to_string());
+        format!("{}/general/plan-creation.md", dir)
+    };
+    let tpl = std::fs::read_to_string(&tpl_path).unwrap_or_else(|_| {
+        // 降级：硬编码兜底
+        let default = r#"根据以下师生对话，为学生制定一个详细的学习计划。
 
 对话：
-{}
+{dialogue_text}
 
 请输出 JSON 格式的学习计划，包含：
 - goal: 简洁的学习目标（**15字以内**，概括即可，如"一元二次方程求解"、"Python入门"）
@@ -1469,9 +1453,10 @@ pub fn build_plan_creation_prompt(dialogue_text: &str) -> String {
 
 只返回 JSON，不要加其他文字：
 {{"is_new_plan": true, "goal": "...", "domain": "...", "stages": [...], "completed_concepts": [], "current_task_complete": false, "next_stage_suggestion": null}}
-"#,
-        dialogue_text
-    )
+"#;
+        default.to_string()
+    });
+    tpl.replace("{dialogue_text}", dialogue_text)
 }
 
 /// ColdPath 2: 分析对话进度，更新学习计划（如无计划则自动创建）
@@ -1736,18 +1721,8 @@ pub async fn analyze_turn_progress(
     if !has_plan {
         // ── 无 plan：先用 final_reply 快速轻量检测是否引入了学习任务 ──
         // 有信号时回退到对话全量历史创建 plan（因 plan 创建需要完整上下文）
-        let signal_prompt = format!(
-            "分析以下教师回复，判断教师是否引入了新的学习任务或开始教授新的内容。\n\
-             以下是\"引入新任务\"的明确标志：\n\
-             - 明确说\"我们来学\"、\"今天学习\"、\"接下来学\"
-             - 开始解释一个新概念（如\"集合就是...\"、\"函数是指...\"）
-             - 开始教学一个新的知识点（如\"勾股定理是...\"、\"现在完成时表示...\"）
-             - 说\"我们来谈谈\"、\"我教你\"、\"一起学习\"
-             如果符合以上任一条件，回复：{{\"has_task\": true}}\n\
-             否则回复：{{\"has_task\": false}}\n\
-             只输出 JSON。\n\n教师回复：{}",
-            final_reply
-        );
+        let signal_prompt = chat_engine::prompt_loader::get_plan("general").signal
+            .replace("{final_reply}", final_reply);
         let has_signal = match caller.generate("", &signal_prompt).await {
             Ok(response) => {
                 if let Some(start) = response.find('{') {
@@ -1934,7 +1909,7 @@ fn unlock_next_cards(
         .unwrap_or_default();
 
     if !vocab_ids.is_empty() {
-        let subj = subject.as_deref().unwrap_or("chinese");
+        let subj = subject.as_deref().unwrap_or("chinese");  // reading 卡片多为语文/英语，留作默认
         let grade = grade_band.as_deref().unwrap_or("g7-9");
         if let Some(card_list) = crate::curriculum_loader::get_cards(subj, grade) {
             let vocab_id_set: std::collections::HashSet<&str> =

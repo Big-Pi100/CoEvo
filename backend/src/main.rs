@@ -62,6 +62,8 @@ CREATE TABLE cards (
     k12_card_id TEXT,
     gold_cr_id TEXT,
     plan_task_id TEXT,
+    status TEXT NOT NULL DEFAULT 'active'
+        CHECK(status IN ('active', 'pending', 'skipped', 'archived')),
     origin TEXT DEFAULT 'extracted'
         CHECK(origin IN ('extracted', 'prebuilt')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -99,15 +101,6 @@ CREATE TABLE achievements (
     tier TEXT DEFAULT 'fixed',
     source TEXT,
     unlocked_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-CREATE TABLE skipped_concepts (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    front TEXT NOT NULL,
-    domain TEXT,
-    source_text TEXT,
-    skipped_at INTEGER NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 CREATE INDEX IF NOT EXISTS idx_cards_user_id ON cards(user_id);
@@ -214,7 +207,6 @@ async fn main() {
     let db_path = std::env::var("COEVO_DB_PATH").unwrap_or_else(|_| "data/coevo.db".to_string());
     let avatar_dir = std::env::var("COEVO_AVATAR_DIR").unwrap_or_else(|_| "data/avatars".to_string());
     let prompts_dir = std::env::var("COEVO_PROMPTS_DIR").unwrap_or_else(|_| "prompts".to_string());
-    let pipelines_dir = std::env::var("COEVO_PIPELINES_DIR").unwrap_or_else(|_| "pipelines".to_string());
     let wordbank_path = std::env::var("COEVO_WORDBANK_PATH").unwrap_or_else(|_| "cefr_catalog.json".to_string());
     let host = std::env::var("COEVO_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
     let port: u16 = std::env::var("COEVO_PORT")
@@ -228,8 +220,8 @@ async fn main() {
     tracing::info!("DB: {}", db_path);
 
     // Load prompts from files (general + pipelines)
-    chat_engine::prompt_loader::init(&prompts_dir, &pipelines_dir);
-    tracing::info!("Prompts: {} (general), {} (pipelines)", prompts_dir, pipelines_dir);
+    chat_engine::prompt_loader::init(&prompts_dir);
+    tracing::info!("Prompts: {}", prompts_dir);
 
     // Load word bank (CEFR catalog)
     chat_engine::word_bank::init(&wordbank_path);
@@ -270,7 +262,7 @@ async fn main() {
                     tracing::error!("Schema init failed critically: {}", e);
                     panic!("Schema init failed: {}", e);
                 });
-            tracing::info!("Schema initialized (10 tables, tokens + migrations to follow)");
+            tracing::info!("Schema initialized (9 tables, tokens + migrations to follow)");
         }
 
         let migrations: &[&str] = &[
@@ -1025,6 +1017,88 @@ async fn main() {
             tracing::info!("Plan JSON migration: {}/{} done", migrated, count);
         } else {
             tracing::info!("Plan JSON migration: no old-format plans found");
+        }
+    }
+
+    // ── Phase N: 加 cards.status 列 + 清理 domain/subject 中文值 + 废弃 skipped_concepts ──
+    {
+        let conn = api_server::db_pool::get_conn();
+        // 检测条件：cards 表是否有 status 列
+        let has_status: bool = conn
+            .prepare("SELECT status FROM cards LIMIT 0")
+            .is_ok();
+        if has_status {
+            tracing::debug!("Phase N: already applied (cards.status exists)");
+        } else {
+            tracing::info!("Phase N: adding status column, cleaning up subject codes, dropping skipped_concepts");
+            conn.execute_batch(r#"
+                -- 1. 加 status 列
+                ALTER TABLE cards ADD COLUMN status TEXT NOT NULL DEFAULT 'active'
+                    CHECK(status IN ('active', 'pending', 'skipped', 'archived'));
+
+                -- 2. 迁移存量 origin='prebuilt' 为 status='active'
+                UPDATE cards SET status = 'active' WHERE origin = 'prebuilt';
+
+                -- 3. 清理 cards.domain 中文值 → 英文代码
+                UPDATE cards SET domain = 'math'     WHERE domain = '数学';
+                UPDATE cards SET domain = 'chinese'  WHERE domain = '语文';
+                UPDATE cards SET domain = 'english'  WHERE domain = '英语';
+                UPDATE cards SET domain = 'physics'  WHERE domain = '物理';
+                UPDATE cards SET domain = 'chemistry'WHERE domain = '化学';
+                UPDATE cards SET domain = 'biology'  WHERE domain = '生物' OR domain = '生物学';
+                UPDATE cards SET domain = 'history'  WHERE domain = '历史';
+                UPDATE cards SET domain = 'geography'WHERE domain = '地理';
+                UPDATE cards SET domain = 'politics' WHERE domain = '政治' OR domain = '道德与法治' OR domain = '道法';
+                UPDATE cards SET domain = 'science'  WHERE domain = '科学';
+                UPDATE cards SET domain = 'it'        WHERE domain = '信息技术' OR domain = '信息科技';
+                UPDATE cards SET domain = 'pe'        WHERE domain = '体育' OR domain = '体育与健康';
+                UPDATE cards SET domain = 'art'       WHERE domain = '艺术' OR domain = '美术' OR domain = '音乐';
+                UPDATE cards SET domain = 'labor'     WHERE domain = '劳动';
+                UPDATE cards SET domain = 'japanese'  WHERE domain = '日语';
+                UPDATE cards SET domain = 'russian'   WHERE domain = '俄语';
+                UPDATE cards SET domain = 'general'   WHERE domain = '' OR domain IS NULL;
+
+                -- 4. 清理 cards.subject 中文值 → 英文代码
+                UPDATE cards SET subject = 'math'     WHERE subject = '数学';
+                UPDATE cards SET subject = 'chinese'  WHERE subject = '语文';
+                UPDATE cards SET subject = 'english'  WHERE subject = '英语';
+                UPDATE cards SET subject = 'physics'  WHERE subject = '物理';
+                UPDATE cards SET subject = 'chemistry'WHERE subject = '化学';
+                UPDATE cards SET subject = 'biology'  WHERE subject = '生物' OR subject = '生物学';
+                UPDATE cards SET subject = 'history'  WHERE subject = '历史';
+                UPDATE cards SET subject = 'geography'WHERE subject = '地理';
+                UPDATE cards SET subject = 'politics' WHERE subject = '政治' OR subject = '道德与法治';
+                UPDATE cards SET subject = 'science'  WHERE subject = '科学';
+                UPDATE cards SET subject = 'it'        WHERE subject = '信息技术' OR subject = '信息科技';
+                UPDATE cards SET subject = 'pe'        WHERE subject = '体育';
+                UPDATE cards SET subject = 'art'       WHERE subject = '艺术' OR subject = '美术' OR subject = '音乐';
+                UPDATE cards SET subject = 'japanese'  WHERE subject = '日语';
+                UPDATE cards SET subject = 'russian'   WHERE subject = '俄语';
+
+                -- 5. 清理 conversations.subject 中文值 → 英文代码
+                UPDATE conversations SET subject = 'math'     WHERE subject = '数学';
+                UPDATE conversations SET subject = 'chinese'  WHERE subject = '语文';
+                UPDATE conversations SET subject = 'english'  WHERE subject = '英语';
+                UPDATE conversations SET subject = 'physics'  WHERE subject = '物理';
+                UPDATE conversations SET subject = 'chemistry'WHERE subject = '化学';
+                UPDATE conversations SET subject = 'biology'  WHERE subject = '生物' OR subject = '生物学';
+                UPDATE conversations SET subject = 'history'  WHERE subject = '历史';
+                UPDATE conversations SET subject = 'geography'WHERE subject = '地理';
+                UPDATE conversations SET subject = 'politics' WHERE subject = '政治' OR subject = '道德与法治';
+                UPDATE conversations SET subject = 'science'  WHERE subject = '科学';
+                UPDATE conversations SET subject = 'it'        WHERE subject = '信息技术' OR subject = '信息科技';
+                UPDATE conversations SET subject = 'pe'        WHERE subject = '体育';
+                UPDATE conversations SET subject = 'art'       WHERE subject = '艺术' OR subject = '美术' OR subject = '音乐';
+                UPDATE conversations SET subject = 'japanese'  WHERE subject = '日语';
+                UPDATE conversations SET subject = 'russian'   WHERE subject = '俄语';
+
+                -- 6. 废弃 skipped_concepts 表
+                DROP TABLE IF EXISTS skipped_concepts;
+            "#).unwrap_or_else(|e| {
+                tracing::error!("Phase N migration failed: {}", e);
+                panic!("Phase N migration failed: {}", e);
+            });
+            tracing::info!("Phase N: cards.status + subject code cleanup + skipped_concepts drop completed");
         }
     }
 

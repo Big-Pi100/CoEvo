@@ -2,8 +2,8 @@
 //!
 //! 负责:
 //!   1. 去重检查 (front Jaro-Winkler > 0.85 拒绝)
-//!   2. 跳过记录自动移除 (用户主动制卡时)
-//!   3. 事务写入 cards + card_memory
+//!   2. 事务写入 cards + card_memory
+//!   3. 卡片状态管理 (pending → active / skipped)
 
 use shared_types::card::{Card, CardMemory};
 use rusqlite::Connection;
@@ -42,8 +42,18 @@ impl<'a> Drop for TxGuard<'a> {
     }
 }
 
-/// 插入卡片 (事务封装，自动回滚)
+/// 插入卡片 (status='active') — 用于 K12 预生成和直接制卡
 pub fn insert_card(conn: &Connection, card: &Card, memory: &CardMemory) -> InsertResult {
+    insert_card_with_status(conn, card, memory, "active")
+}
+
+/// 插入卡片 (status='pending') — 用于概念弹窗候选
+pub fn insert_pending_card(conn: &Connection, card: &Card, memory: &CardMemory) -> InsertResult {
+    insert_card_with_status(conn, card, memory, "pending")
+}
+
+/// 内部实现：插入卡片 + 指定 status
+fn insert_card_with_status(conn: &Connection, card: &Card, memory: &CardMemory, status: &str) -> InsertResult {
     let front_lower = card.front.to_lowercase();
 
     // 1. Transaction — auto-rollback on drop if not committed
@@ -53,6 +63,7 @@ pub fn insert_card(conn: &Connection, card: &Card, memory: &CardMemory) -> Inser
     };
 
     // 2. Dedup check (inside transaction, prevents TOCTOU)
+    // 扫描所有卡片（含 skipped），确保同一概念不会被重复提取
     let existing_fronts: Vec<String> = {
         let mut stmt = match conn.prepare(
             "SELECT LOWER(front) FROM cards WHERE user_id = ?1"
@@ -80,26 +91,20 @@ pub fn insert_card(conn: &Connection, card: &Card, memory: &CardMemory) -> Inser
         }
     }
 
-    // 3. Remove skip record (user actively created this card)
-    let _ = conn.execute(
-        "DELETE FROM skipped_concepts WHERE user_id = ?1 AND LOWER(front) = ?2",
-        rusqlite::params![card.user_id, front_lower],
-    );
-
-    // 4. Insert card
+    // 3. Insert card with status
     if let Err(e) = conn.execute(
-        "INSERT INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, subject, grade_band)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        "INSERT INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, subject, grade_band, status)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         rusqlite::params![
             card.id, card.user_id, card.domain, card.card_type,
             card.front, card.back, card.source_sentence, card.conversation_id, card.created_at,
-            card.subject, card.grade_band,
+            card.subject, card.grade_band, status,
         ],
     ) {
         return InsertResult::DatabaseError(format!("Card insert: {}", e));
     }
 
-    // 5. Insert card memory
+    // 4. Insert card memory
     if let Err(e) = conn.execute(
         "INSERT INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -111,25 +116,31 @@ pub fn insert_card(conn: &Connection, card: &Card, memory: &CardMemory) -> Inser
         return InsertResult::DatabaseError(format!("Memory insert: {}", e));
     }
 
-    // 6. Commit
+    // 5. Commit
     match tx.commit() {
         Ok(_) => InsertResult::Success(card.id.clone()),
         Err(e) => InsertResult::DatabaseError(format!("Commit: {}", e)),
     }
 }
 
-/// 跳过概念: 写入 skipped_concepts 表
-pub fn skip_concept(conn: &Connection, user_id: &str, front: &str, domain: &Option<String>, source: &str) -> Result<String, String> {
-    let id = format!("skip_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap());
-    let now = chrono::Utc::now().timestamp();
-
+/// 更新卡片状态: active / pending / skipped / archived
+pub fn update_card_status(conn: &Connection, card_id: &str, status: &str) -> Result<(), String> {
     conn.execute(
-        "INSERT INTO skipped_concepts (id, user_id, front, domain, source_text, skipped_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        rusqlite::params![id, user_id, front, domain, source, now],
-    ).map_err(|e| format!("Skip insert: {}", e))?;
+        "UPDATE cards SET status = ?1 WHERE id = ?2",
+        rusqlite::params![status, card_id],
+    ).map_err(|e| format!("Status update: {}", e))?;
+    Ok(())
+}
 
-    Ok(id)
+/// 批量更新卡片状态
+pub fn batch_update_status(conn: &Connection, card_ids: &[String], status: &str) -> Result<(), String> {
+    for card_id in card_ids {
+        conn.execute(
+            "UPDATE cards SET status = ?1 WHERE id = ?2",
+            rusqlite::params![status, card_id],
+        ).map_err(|e| format!("Batch status update: {}", e))?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -142,9 +153,8 @@ mod tests {
     fn setup_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
-            "CREATE TABLE cards (id TEXT PRIMARY KEY, user_id TEXT, domain TEXT, card_type TEXT, front TEXT, back TEXT, source_sentence TEXT, conversation_id TEXT, created_at INTEGER, subject TEXT, grade_band TEXT, origin TEXT DEFAULT 'extracted');
-             CREATE TABLE card_memory (card_id TEXT PRIMARY KEY, state INTEGER, difficulty REAL, stability REAL, due INTEGER, last_review INTEGER, reps INTEGER, lapses INTEGER);
-             CREATE TABLE skipped_concepts (id TEXT PRIMARY KEY, user_id TEXT, front TEXT, domain TEXT, source_text TEXT, skipped_at INTEGER);"
+            "CREATE TABLE cards (id TEXT PRIMARY KEY, user_id TEXT, domain TEXT, card_type TEXT, front TEXT, back TEXT, source_sentence TEXT, conversation_id TEXT, created_at INTEGER, subject TEXT, grade_band TEXT, status TEXT NOT NULL DEFAULT 'active');
+             CREATE TABLE card_memory (card_id TEXT PRIMARY KEY, state INTEGER, difficulty REAL, stability REAL, due INTEGER, last_review INTEGER, reps INTEGER, lapses INTEGER);"
         ).unwrap();
         conn
     }
@@ -164,6 +174,37 @@ mod tests {
             InsertResult::Success(id) => assert_eq!(id, card.id),
             _ => panic!("Expected success"),
         }
+        // 验证默认 status='active'
+        let status: String = conn.query_row(
+            "SELECT status FROM cards WHERE id = ?1",
+            rusqlite::params![card.id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(status, "active");
+    }
+
+    #[test]
+    fn test_insert_pending_card() {
+        let conn = setup_db();
+        let candidate = ConceptCandidate {
+            front: "pendulum".into(),
+            back: "A weight suspended from a pivot".into(),
+            source_sentence: "The pendulum swings.".into(),
+            domain: "physics".into(),
+        };
+        let (card, memory) = format_card("u1", &candidate);
+        let result = insert_pending_card(&conn, &card, &memory);
+        match result {
+            InsertResult::Success(id) => assert_eq!(id, card.id),
+            _ => panic!("Expected success"),
+        }
+        // 验证 status='pending'
+        let status: String = conn.query_row(
+            "SELECT status FROM cards WHERE id = ?1",
+            rusqlite::params![card.id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(status, "pending");
     }
 
     #[test]
@@ -187,9 +228,33 @@ mod tests {
     }
 
     #[test]
-    fn test_skip_concept_writes() {
+    fn test_update_card_status() {
         let conn = setup_db();
-        let id = skip_concept(&conn, "u1", "rust", &Some("programming".into()), "rust is fast").unwrap();
-        assert!(id.starts_with("skip_"));
+        let candidate = ConceptCandidate {
+            front: "rust ownership".into(),
+            back: "Each value has one owner".into(),
+            source_sentence: "Ownership is key in Rust.".into(),
+            domain: "programming".into(),
+        };
+        let (card, memory) = format_card("u1", &candidate);
+        let _ = insert_card(&conn, &card, &memory);
+
+        // active → skipped
+        update_card_status(&conn, &card.id, "skipped").unwrap();
+        let status: String = conn.query_row(
+            "SELECT status FROM cards WHERE id = ?1",
+            rusqlite::params![card.id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(status, "skipped");
+
+        // skipped → active (revert)
+        update_card_status(&conn, &card.id, "active").unwrap();
+        let status: String = conn.query_row(
+            "SELECT status FROM cards WHERE id = ?1",
+            rusqlite::params![card.id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(status, "active");
     }
 }
