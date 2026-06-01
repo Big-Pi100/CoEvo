@@ -56,7 +56,16 @@ CREATE TABLE cards (
     back TEXT NOT NULL,
     source_sentence TEXT,
     created_at INTEGER NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    conversation_id TEXT,
+    subject TEXT,
+    grade_band TEXT,
+    k12_card_id TEXT,
+    gold_cr_id TEXT,
+    plan_task_id TEXT,
+    origin TEXT DEFAULT 'extracted'
+        CHECK(origin IN ('extracted', 'prebuilt')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL
 );
 CREATE TABLE card_memory (
     card_id TEXT PRIMARY KEY,
@@ -67,16 +76,19 @@ CREATE TABLE card_memory (
     last_review INTEGER,
     reps INTEGER DEFAULT 0,
     lapses INTEGER DEFAULT 0,
-    FOREIGN KEY (card_id) REFERENCES cards(id)
+    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
 );
 CREATE TABLE review_log (
     id TEXT PRIMARY KEY,
     card_id TEXT NOT NULL,
     rating INTEGER NOT NULL,
-    verification_type TEXT NOT NULL,
-    verification_result TEXT NOT NULL,
+    verification_type TEXT NOT NULL
+        CHECK(verification_type IN ('spelling', 'typing', 'ai_dialogue')),
+    verification_result TEXT NOT NULL
+        CHECK(verification_result IN ('pass', 'fail')),
     reviewed_at INTEGER NOT NULL,
-    FOREIGN KEY (card_id) REFERENCES cards(id)
+    details_json TEXT,
+    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
 );
 CREATE TABLE achievements (
     id TEXT PRIMARY KEY,
@@ -99,21 +111,73 @@ CREATE TABLE skipped_concepts (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 CREATE INDEX IF NOT EXISTS idx_cards_user_id ON cards(user_id);
+CREATE INDEX IF NOT EXISTS idx_cards_user_domain ON cards(user_id, domain);
+CREATE INDEX IF NOT EXISTS idx_cards_conversation_id ON cards(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_card_memory_due ON card_memory(due);
 CREATE INDEX IF NOT EXISTS idx_conversation_turns_conv ON conversation_turns(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_review_log_card_reviewed ON review_log(card_id, reviewed_at);
 CREATE TABLE learning_plans (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
-    conversation_id TEXT,
+    conversation_id TEXT NOT NULL UNIQUE,
     goal TEXT NOT NULL,
-    domain TEXT NOT NULL,
-    mode TEXT DEFAULT NULL,
+    domain TEXT DEFAULT 'general'
+        CHECK(domain IN ('general','math','language','chemistry','biology','physics',
+                         'history','geography','politics','science','it','pe','art','labor')),
+    mode TEXT DEFAULT NULL
+        CHECK(mode IN ('structured', 'reading', 'free', 'deleted')),
     plan_content TEXT DEFAULT NULL,
     plan_json TEXT NOT NULL,
+    task_status TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS plan_templates (
+    id TEXT PRIMARY KEY,
+    subject TEXT NOT NULL,
+    subject_key TEXT NOT NULL UNIQUE,
+    grade_band TEXT NOT NULL,
+    goal TEXT NOT NULL,
+    plan_content TEXT NOT NULL,
+    version INTEGER DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(subject_key, grade_band)
+);
+CREATE TABLE IF NOT EXISTS conversation_plans (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL UNIQUE,
+    goal TEXT NOT NULL,
+    domain TEXT DEFAULT 'general'
+        CHECK(domain IN ('general','math','language','chemistry','biology','physics',
+                         'history','geography','politics','science','it','pe','art','labor')),
+    plan_content TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_conversation_plans_user ON conversation_plans(user_id);
+CREATE TABLE IF NOT EXISTS user_plan_progress (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    plan_type TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    task_key TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending', 'in_progress', 'done', 'skipped')),
+    score REAL,
+    attempt_count INTEGER DEFAULT 0,
+    started_at INTEGER,
+    completed_at INTEGER,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(plan_id, task_key),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_upp_user_plan ON user_plan_progress(user_id, plan_type, plan_id);
+CREATE INDEX IF NOT EXISTS idx_upp_status ON user_plan_progress(plan_id, status);
 "#;
 
 #[tokio::main]
@@ -389,12 +453,10 @@ async fn main() {
             // V2.2 知识图谱支持
             // cards 表新增字段
             "ALTER TABLE cards ADD COLUMN gold_cr_id TEXT DEFAULT NULL",
-            "ALTER TABLE cards ADD COLUMN plan_task_id TEXT DEFAULT NULL",
             "ALTER TABLE cards ADD COLUMN origin TEXT DEFAULT 'extracted'",
             // k12_quiz_bank 新增关联字段
             "ALTER TABLE k12_quiz_bank ADD COLUMN assessment_item_id TEXT DEFAULT NULL",
             "ALTER TABLE k12_quiz_bank ADD COLUMN plan_stage_id TEXT DEFAULT NULL",
-            "ALTER TABLE k12_quiz_bank ADD COLUMN plan_task_id TEXT DEFAULT NULL",
             // 知识图谱边表
             "CREATE TABLE IF NOT EXISTS knowledge_graph (
                 id TEXT PRIMARY KEY,
@@ -428,6 +490,442 @@ async fn main() {
                     }
                 }
             }
+        }
+
+        // ── V2.0 migrations: conversations table rebuild (drop learning_plan_id) ──
+        {
+            let has_old_col: bool = conn
+                .prepare("SELECT learning_plan_id FROM conversations LIMIT 1")
+                .is_ok();
+            if has_old_col {
+                tracing::info!("Migration V2.0: rebuilding conversations table (drop learning_plan_id)");
+                // 临时关闭 FK 检查以允许 DROP TABLE + RENAME
+                conn.execute_batch("PRAGMA foreign_keys=OFF;").unwrap();
+                conn.execute_batch("
+                    BEGIN TRANSACTION;
+                    CREATE TABLE conversations_new (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL,
+                        turn_count INTEGER DEFAULT 0,
+                        started_at TEXT NOT NULL,
+                        deleted_at TEXT,
+                        subject TEXT,
+                        grade_band TEXT,
+                        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                    );
+                    INSERT INTO conversations_new (id, user_id, turn_count, started_at, deleted_at, subject, grade_band)
+                        SELECT id, user_id, turn_count, started_at, deleted_at, subject, grade_band FROM conversations;
+                    DROP TABLE conversations;
+                    ALTER TABLE conversations_new RENAME TO conversations;
+                    CREATE INDEX IF NOT EXISTS idx_conversations_user_deleted ON conversations(user_id, deleted_at);
+                    COMMIT;
+                ").unwrap_or_else(|e| {
+                    tracing::error!("Migration V2.0 failed: {}", e);
+                    panic!("Migration V2.0 failed: {}", e);
+                });
+                conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+                tracing::info!("Migration V2.0: conversations rebuilt successfully");
+            } else {
+                tracing::debug!("Migration V2.0: conversations already migrated (no learning_plan_id column)");
+            }
+        }
+
+        // ── V2.0 Phase 3: learning_plans table rebuild (domain enum + mode CHECK + task_status + FK + CASCADE) ──
+        {
+            let has_old_domain_idx: bool = conn
+                .prepare("SELECT 1 FROM sqlite_master WHERE name='idx_plans_user_domain'")
+                .is_ok_and(|mut s| s.query_row([], |_| Ok(())).is_ok());
+            // 检测条件：是否还存在旧的 (user_id, domain) 唯一索引
+            if has_old_domain_idx {
+                tracing::info!("Migration V2.0 Phase3: rebuilding learning_plans table");
+                let existing_count: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM learning_plans WHERE mode != 'deleted'",
+                    [], |row| row.get(0),
+                ).unwrap_or(0);
+                tracing::info!("Migration V2.0 Phase3: {} active plans to migrate", existing_count);
+
+                conn.execute_batch("PRAGMA foreign_keys=OFF;").unwrap();
+                conn.execute_batch(r#"
+                    BEGIN TRANSACTION;
+
+                    -- 清理已删除且无 conversation 的孤立记录
+                    DELETE FROM learning_plans WHERE mode = 'deleted' AND conversation_id IS NULL;
+
+                    CREATE TABLE learning_plans_new (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL,
+                        conversation_id TEXT NOT NULL UNIQUE,
+                        goal TEXT NOT NULL,
+                        domain TEXT DEFAULT 'general'
+                            CHECK(domain IN ('general','math','language','chemistry','biology','physics',
+                         'history','geography','politics','science','it','pe','art','labor')),
+                        mode TEXT DEFAULT NULL
+                            CHECK(mode IN ('structured', 'reading', 'free', 'deleted')),
+                        plan_content TEXT,
+                        plan_json TEXT NOT NULL,
+                        task_status TEXT,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+                    );
+
+                    INSERT INTO learning_plans_new (
+                        id, user_id, conversation_id, goal, domain, mode,
+                        plan_content, plan_json, task_status, created_at, updated_at
+                    )
+                    SELECT
+                        lp.id, lp.user_id, lp.conversation_id, lp.goal,
+                        COALESCE(
+                            CASE c.subject
+                                WHEN '数学' THEN 'math'
+                                WHEN '语文' THEN 'language'
+                                WHEN '英语' THEN 'language'
+                                WHEN '物理' THEN 'physics'
+                                WHEN '化学' THEN 'chemistry'
+                                WHEN '生物' THEN 'biology'
+                                ELSE 'general'
+                            END,
+                            'general'
+                        ),
+                        lp.mode,
+                        lp.plan_content, lp.plan_json, lp.plan_json,
+                        lp.created_at, lp.updated_at
+                    FROM learning_plans lp
+                    LEFT JOIN conversations c ON c.id = lp.conversation_id
+                    WHERE lp.mode != 'deleted' OR (lp.mode = 'deleted' AND lp.conversation_id IS NOT NULL);
+
+                    DROP TABLE learning_plans;
+                    ALTER TABLE learning_plans_new RENAME TO learning_plans;
+                    CREATE INDEX IF NOT EXISTS idx_learning_plans_user ON learning_plans(user_id);
+                    CREATE INDEX IF NOT EXISTS idx_learning_plans_domain ON learning_plans(domain);
+                    COMMIT;
+                "#).unwrap_or_else(|e| {
+                    tracing::error!("Migration V2.0 Phase3 failed: {}", e);
+                    panic!("Migration V2.0 Phase3 failed: {}", e);
+                });
+                conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+                tracing::info!("Migration V2.0 Phase3: learning_plans rebuilt successfully");
+            } else {
+                tracing::debug!("Migration V2.0 Phase3: learning_plans already migrated (no old domain index)");
+            }
+        }
+
+        // ── V2.0 Phase 4: cards + review_log + card_memory rebuild ──
+        {
+            // 检测条件：cards 是否已有 origin 列（判断 Phase 4 是否已运行）
+            let has_origin: bool = conn
+                .prepare("SELECT origin FROM cards LIMIT 1")
+                .is_ok();
+            if !has_origin {
+                tracing::info!("Migration V2.0 Phase4: rebuilding cards/review_log/card_memory");
+                conn.execute_batch("PRAGMA foreign_keys=OFF;").unwrap();
+                conn.execute_batch(r#"
+                    BEGIN TRANSACTION;
+
+                    -- 1. cards 重建（FK + origin CHECK）
+                    CREATE TABLE cards_new (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL,
+                        domain TEXT,
+                        card_type TEXT NOT NULL,
+                        front TEXT NOT NULL,
+                        back TEXT NOT NULL,
+                        source_sentence TEXT,
+                        created_at INTEGER NOT NULL,
+                        conversation_id TEXT,
+                        subject TEXT,
+                        grade_band TEXT,
+                        k12_card_id TEXT,
+                        gold_cr_id TEXT,
+                        origin TEXT DEFAULT 'extracted'
+                            CHECK(origin IN ('extracted', 'prebuilt')),
+                        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL
+                    );
+                    INSERT INTO cards_new SELECT * FROM cards;
+                    DROP TABLE cards;
+                    ALTER TABLE cards_new RENAME TO cards;
+                    CREATE INDEX IF NOT EXISTS idx_cards_user_id ON cards(user_id);
+                    CREATE INDEX IF NOT EXISTS idx_cards_user_domain ON cards(user_id, domain);
+                    CREATE INDEX IF NOT EXISTS idx_cards_conversation_id ON cards(conversation_id);
+
+                    -- 3. card_memory 重建（ON DELETE CASCADE）
+                    CREATE TABLE card_memory_new (
+                        card_id TEXT PRIMARY KEY,
+                        state INTEGER DEFAULT 0,
+                        difficulty REAL DEFAULT 5.0,
+                        stability REAL DEFAULT 0.0,
+                        due INTEGER DEFAULT 0,
+                        last_review INTEGER,
+                        reps INTEGER DEFAULT 0,
+                        lapses INTEGER DEFAULT 0,
+                        FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
+                    );
+                    INSERT INTO card_memory_new SELECT * FROM card_memory;
+                    DROP TABLE card_memory;
+                    ALTER TABLE card_memory_new RENAME TO card_memory;
+                    CREATE INDEX IF NOT EXISTS idx_card_memory_due ON card_memory(due);
+
+                    -- 4. review_log 重建（CHECK 约束）
+                    CREATE TABLE review_log_new (
+                        id TEXT PRIMARY KEY,
+                        card_id TEXT NOT NULL,
+                        rating INTEGER NOT NULL,
+                        verification_type TEXT NOT NULL
+                            CHECK(verification_type IN ('spelling', 'typing', 'ai_dialogue')),
+                        verification_result TEXT NOT NULL
+                            CHECK(verification_result IN ('pass', 'fail')),
+                        reviewed_at INTEGER NOT NULL,
+                        details_json TEXT,
+                        FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
+                    );
+                    INSERT INTO review_log_new SELECT * FROM review_log;
+                    DROP TABLE review_log;
+                    ALTER TABLE review_log_new RENAME TO review_log;
+                    CREATE INDEX IF NOT EXISTS idx_review_log_card_reviewed ON review_log(card_id, reviewed_at);
+
+                    COMMIT;
+                "#).unwrap_or_else(|e| {
+                    tracing::error!("Migration V2.0 Phase4 failed: {}", e);
+                    panic!("Migration V2.0 Phase4 failed: {}", e);
+                });
+                conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+                tracing::info!("Migration V2.0 Phase4: rebuild complete (cards: FK+origin CHECK, card_memory: CASCADE, review_log: CHECK)");
+            } else {
+                tracing::debug!("Migration V2.0 Phase4: already applied (cards have origin column)");
+            }
+        }
+
+        // ── V2.0 Phase 4b: 预置卡 origin 标记修复 ──
+        // Phase 4 迁移时旧数据（k12_prebuilt）被统一标记为 origin='extracted'，
+        // 修正为 origin='prebuilt'
+        {
+            let need_fix: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM cards WHERE k12_card_id IS NOT NULL AND origin = 'extracted'",
+                [], |row| row.get(0),
+            ).unwrap_or(0);
+            if need_fix > 0 {
+                tracing::info!("Migration V2.0 Phase4b: fixing {} prebuilt cards' origin to 'prebuilt'", need_fix);
+                conn.execute(
+                    "UPDATE cards SET origin = 'prebuilt' WHERE k12_card_id IS NOT NULL AND origin = 'extracted'",
+                    [],
+                ).unwrap_or_else(|e| {
+                    tracing::error!("Migration V2.0 Phase4b failed: {}", e);
+                    0
+                });
+                tracing::info!("Migration V2.0 Phase4b: prebuilt card origin fixed");
+            } else {
+                tracing::debug!("Migration V2.0 Phase4b: no prebuilt cards need fixing");
+            }
+        }
+    }
+
+    // ── V2.1 Phase 0: 清理 learning_plan_tasks（已废弃，任务列表从 plan_content 运行时解析） ──
+    {
+        let conn = api_server::db_pool::get_conn();
+        let has_tasks_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='learning_plan_tasks'")
+            .is_ok_and(|mut s| s.query_row([], |_| Ok(())).is_ok());
+        if has_tasks_table {
+            tracing::info!("Migration V2.1 Phase0: dropping deprecated learning_plan_tasks table");
+            conn.execute_batch(r#"
+                PRAGMA foreign_keys=OFF;
+                DROP TABLE IF EXISTS learning_plan_tasks;
+                PRAGMA foreign_keys=ON;
+            "#).unwrap_or_else(|e| {
+                tracing::error!("Migration V2.1 Phase0 failed: {}", e);
+            });
+            tracing::info!("Migration V2.1 Phase0: learning_plan_tasks dropped");
+        } else {
+            tracing::debug!("Migration V2.1 Phase0: already clean");
+        }
+    }
+
+    // ── V2.1 Phase 1: 新建 plan_templates + conversation_plans + user_plan_progress ──
+    {
+        let conn = api_server::db_pool::get_conn();
+        let has_plan_templates: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='plan_templates'")
+            .is_ok_and(|mut s| s.query_row([], |_| Ok(())).is_ok());
+        if !has_plan_templates {
+            tracing::info!("Migration V2.1 Phase1: creating plan_templates, conversation_plans, user_plan_progress");
+            conn.execute_batch(r#"
+                BEGIN TRANSACTION;
+
+                CREATE TABLE IF NOT EXISTS plan_templates (
+                    id TEXT PRIMARY KEY,
+                    subject TEXT NOT NULL,
+                    subject_key TEXT NOT NULL UNIQUE,
+                    grade_band TEXT NOT NULL,
+                    goal TEXT NOT NULL,
+                    plan_content TEXT NOT NULL,
+                    version INTEGER DEFAULT 1,
+                    updated_at INTEGER NOT NULL,
+                    UNIQUE(subject_key, grade_band)
+                );
+
+                CREATE TABLE IF NOT EXISTS conversation_plans (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    conversation_id TEXT NOT NULL UNIQUE,
+                    goal TEXT NOT NULL,
+                    domain TEXT DEFAULT 'general'
+                        CHECK(domain IN ('general','math','language','chemistry','biology','physics',
+                                         'history','geography','politics','science','it','pe','art','labor')),
+                    plan_content TEXT,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_conversation_plans_user ON conversation_plans(user_id);
+
+                CREATE TABLE IF NOT EXISTS user_plan_progress (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    plan_type TEXT NOT NULL,
+                    plan_id TEXT NOT NULL,
+                    task_key TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending'
+                        CHECK(status IN ('pending', 'in_progress', 'done', 'skipped')),
+                    score REAL,
+                    attempt_count INTEGER DEFAULT 0,
+                    started_at INTEGER,
+                    completed_at INTEGER,
+                    updated_at INTEGER NOT NULL,
+                    UNIQUE(plan_id, task_key),
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_upp_user_plan ON user_plan_progress(user_id, plan_type, plan_id);
+                CREATE INDEX IF NOT EXISTS idx_upp_status ON user_plan_progress(plan_id, status);
+
+                COMMIT;
+            "#).unwrap_or_else(|e| {
+                tracing::error!("Migration V2.1 Phase1 failed: {}", e);
+                panic!("Migration V2.1 Phase1 failed: {}", e);
+            });
+            tracing::info!("Migration V2.1 Phase1: 3 tables created successfully");
+        } else {
+            tracing::debug!("Migration V2.1 Phase1: already applied (plan_templates exists)");
+        }
+    }
+
+    // ── V2.1 Phase 2: 重命名 cp1_plans → conversation_plans ──
+    {
+        let conn = api_server::db_pool::get_conn();
+        let has_old_name: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cp1_plans'")
+            .is_ok_and(|mut s| s.query_row([], |_| Ok(())).is_ok());
+        if has_old_name {
+            let has_new_name: bool = conn
+                .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='conversation_plans'")
+                .is_ok_and(|mut s| s.query_row([], |_| Ok(())).is_ok());
+            if !has_new_name {
+                tracing::info!("Migration V2.1 Phase2: renaming cp1_plans → conversation_plans");
+                conn.execute_batch(r#"
+                    PRAGMA foreign_keys=OFF;
+                    ALTER TABLE cp1_plans RENAME TO conversation_plans;
+                    PRAGMA foreign_keys=ON;
+                "#).unwrap_or_else(|e| {
+                    tracing::error!("Migration V2.1 Phase2 failed: {}", e);
+                    panic!("Migration V2.1 Phase2 failed: {}", e);
+                });
+                tracing::info!("Migration V2.1 Phase2: renamed successfully");
+            } else {
+                tracing::debug!("Migration V2.1 Phase2: both old and new table exist, dropping old");
+                conn.execute_batch("DROP TABLE IF EXISTS cp1_plans;").unwrap();
+            }
+        } else {
+            tracing::debug!("Migration V2.1 Phase2: already renamed (cp1_plans not found)");
+        }
+    }
+
+    // ── V2.1 Phase 3: 迁移 learning_plans 数据到新表 + 废弃旧表 ──
+    {
+        let conn = api_server::db_pool::get_conn();
+        let is_learning_plans_current: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='learning_plans'")
+            .is_ok_and(|mut s| s.query_row([], |_| Ok(())).is_ok());
+        if is_learning_plans_current {
+            // 检查是否已有迁移标记（避免重复迁移）
+            let already_migrated: bool = conn
+                .prepare("SELECT COUNT(*) FROM user_plan_progress")
+                .is_ok_and(|mut s| s.query_row([], |r| r.get::<_,i64>(0)).unwrap_or(0) > 0);
+            if !already_migrated {
+                tracing::info!("Migration V2.1 Phase3: migrating learning_plans data to new tables");
+                conn.execute_batch("PRAGMA foreign_keys=OFF;").unwrap();
+
+                // 1. 迁移 CP1 计划到 conversation_plans
+                conn.execute_batch(r#"
+                    INSERT OR IGNORE INTO conversation_plans (id, user_id, conversation_id, goal, domain, plan_content, created_at, updated_at)
+                    SELECT id, user_id, conversation_id, goal, domain, plan_content,
+                           CAST(strftime('%s', created_at) AS INTEGER),
+                           CAST(strftime('%s', updated_at) AS INTEGER)
+                    FROM learning_plans
+                    WHERE (mode = 'structured' OR mode = 'free')
+                      AND conversation_id NOT IN (SELECT id FROM conversations WHERE subject IS NOT NULL);
+                "#).unwrap_or_else(|e| tracing::warn!("Phase3 cp1 migration (may be 0 rows): {}", e));
+
+                // 2. 迁移 K12 计划到 plan_templates（如不存在于预置数据中）
+                conn.execute_batch(r#"
+                    INSERT OR IGNORE INTO plan_templates (id, subject, subject_key, grade_band, goal, plan_content, version, updated_at)
+                    SELECT
+                        CASE c.subject
+                            WHEN '数学' THEN 'math_plan' WHEN '语文' THEN 'chinese_plan'
+                            WHEN '英语' THEN 'english_plan' WHEN '物理' THEN 'physics_plan'
+                            WHEN '化学' THEN 'chemistry_plan' WHEN '生物' THEN 'biology_plan'
+                            ELSE 'general_plan'
+                        END,
+                        c.subject,
+                        CASE c.subject
+                            WHEN '数学' THEN 'math' WHEN '语文' THEN 'chinese'
+                            WHEN '英语' THEN 'english' WHEN '物理' THEN 'physics'
+                            WHEN '化学' THEN 'chemistry' WHEN '生物' THEN 'biology'
+                            ELSE 'general'
+                        END,
+                        c.grade_band, lp.goal, lp.plan_content, 1,
+                        CAST(strftime('%s', lp.updated_at) AS INTEGER)
+                    FROM learning_plans lp
+                    JOIN conversations c ON c.id = lp.conversation_id
+                    WHERE c.subject IS NOT NULL
+                      AND (lp.mode = 'structured' OR lp.mode = 'reading');
+                "#).unwrap_or_else(|e| tracing::warn!("Phase3 template migration: {}", e));
+
+                // 3. 迁移 task_status 到 user_plan_progress（解析 JSON）
+                // 先用 Rust 代码做精确迁移（SQLite json_each 对复杂 JSON 兼容性不稳定）
+                // 此处用简单的 SQL 迁移，复杂进度在首次 CP2 运行时自动补全
+                conn.execute_batch(r#"
+                    INSERT OR IGNORE INTO user_plan_progress (id, user_id, plan_type, plan_id, task_key, status, updated_at)
+                    SELECT
+                        hex(randomblob(16)),
+                        lp.user_id,
+                        CASE WHEN c.subject IS NOT NULL THEN 'k12' ELSE 'conversation' END,
+                        CASE WHEN c.subject IS NOT NULL THEN
+                            CASE c.subject
+                                WHEN '数学' THEN 'math_plan' WHEN '语文' THEN 'chinese_plan'
+                                WHEN '英语' THEN 'english_plan' WHEN '物理' THEN 'physics_plan'
+                                WHEN '化学' THEN 'chemistry_plan' WHEN '生物' THEN 'biology_plan'
+                                ELSE 'general_plan'
+                            END
+                        ELSE (SELECT id FROM conversation_plans WHERE conversation_id = lp.conversation_id LIMIT 1)
+                        END,
+                        'migrated_' || lp.id,
+                        'pending',
+                        CAST(strftime('%s', lp.updated_at) AS INTEGER)
+                    FROM learning_plans lp
+                    LEFT JOIN conversations c ON c.id = lp.conversation_id
+                    WHERE lp.mode != 'deleted';
+                "#).unwrap_or_else(|e| tracing::warn!("Phase3 progress migration: {}", e));
+
+                conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+
+                tracing::info!("Migration V2.1 Phase3: learning_plans data migrated to new tables");
+            } else {
+                tracing::debug!("Migration V2.1 Phase3: already migrated (progress data exists)");
+            }
+        } else {
+            tracing::debug!("Migration V2.1 Phase3: learning_plans table not found, already migrated");
         }
     }
 
@@ -515,7 +1013,7 @@ async fn main() {
                     }
                     let new_plan_json = serde_json::json!({"task_status": status_map});
                     if let Err(e) = conn.execute(
-                        "UPDATE learning_plans SET plan_content=?1, plan_json=?2 WHERE id=?3",
+                        "UPDATE learning_plans SET plan_content=?1, task_status=?2 WHERE id=?3",
                         rusqlite::params![plan_json_str, new_plan_json.to_string(), pid],
                     ) {
                         tracing::error!("Migrate plan {} failed: {}", pid, e);

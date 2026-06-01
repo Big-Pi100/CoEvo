@@ -46,7 +46,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
   late TabController _tabController;
   List<Map<String, dynamic>> _planTabs = [];
   bool _plansLoaded = false;
-  String? _domainFilter;  // null = 不过滤（原待复习tab），非空=只显示该domain
+  String? _domainFilter;  // domain 标签（仅"全部卡片"视图用作文科分类）
+  String? _selectedConvId;  // 当前选中的 plan tab 的 conversation_id（null=全部卡片）
 
   @override
   void initState() {
@@ -57,7 +58,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
       _loadPlans();
     });
     ref.listenManual(cardRefreshProvider, (prev, next) {
-      if (prev != next && mounted) _loadCards();
+      if (prev != next && mounted) {
+        _loadCards();
+        _loadPlans();
+      }
     });
     // 监听 auth 恢复：当 auth 从不可用变为可用时自动重新加载
     ref.listenManual(authProvider, (prev, next) {
@@ -84,12 +88,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
       final planList = await client.getPlans();
       if (!mounted) return;
       setState(() {
-        // 过滤掉自由对话的 plan（domain 为 conversation UUID，无法作为有意义的 tab）
-        // 这些 plan 的卡片统一归类到 "general" 域，在 "全部卡片" tab 中可见
-        _planTabs = planList.where((p) {
-          final domain = p['domain'] as String? ?? '';
-          return !domain.contains('-');  // UUID 含连字符，学科 domain 不含
-        }).toList();
+        // 所有 plan 都生成 tab，自由对话的 plan 用 goal 作为 tab 标签
+        _planTabs = planList.toList();
         _plansLoaded = true;
         final totalTabs = 2 + _planTabs.length;
         final oldIndex = _tabController.index;
@@ -412,16 +412,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
 
   // ── Build ──
 
-  /// 计算每个 domain 的待复习卡片数（支持精确和前缀匹配）
-  int _domainDueCount(String domain) {
-    if (domain.isEmpty) return _cards.length;
-    if (domain.contains('_')) {
-      final base = domain.split('_').first;
-      return _cards.where((c) =>
-          c.domain == domain ||
-          (c.domain != null && !c.domain!.contains('_') && c.domain == base)).length;
-    }
-    return _cards.where((c) => c.domain == domain).length;
+  /// 计算每个 plan 的待复习卡片数（按 conversation_id 匹配）
+  int _planDueCount(String convId) {
+    if (convId.isEmpty) return 0;
+    return _cards.where((c) => c.conversationId == convId).length;
   }
 
   /// 从 plan goal 提取简短标签（"K12: 数学 g3-4" → "数学 g3-4"）
@@ -432,21 +426,21 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
 
   @override
   Widget build(BuildContext context) {
-    // TabBar 切换时更新 domain 过滤
+    // TabBar 切换时更新 conversation_id 过滤
     void onTabChanged() {
       final i = _tabController.index;
       if (i < _planTabs.length) {
-        final domain = _planTabs[i]['domain'] as String? ?? '';
-        if (domain != _domainFilter) {
+        final convId = _planTabs[i]['conversation_id'] as String? ?? '';
+        if (convId != _selectedConvId) {
           setState(() {
-            _domainFilter = domain;
+            _selectedConvId = convId;
             _activeCardIndex = -1;
             _resetInlineReview();
           });
         }
       } else {
         setState(() {
-          _domainFilter = null;
+          _selectedConvId = null;
           _activeCardIndex = -1;
           _resetInlineReview();
         });
@@ -454,25 +448,26 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
     }
     _tabController.removeListener(onTabChanged);
     _tabController.addListener(onTabChanged);
-    // 初始化时应用首 tab 的 domain filter
-    if (_domainFilter == null && _planTabs.isNotEmpty) {
-      _domainFilter = _planTabs[0]['domain'] as String? ?? '';
+    // 初始化时应用首 tab 的 conversation_id
+    if (_selectedConvId == null && _planTabs.isNotEmpty) {
+      _selectedConvId = _planTabs[0]['conversation_id'] as String? ?? '';
     }
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('复习'),
         bottom: TabBar(
-          isScrollable: true,
+          isScrollable: false,
+          tabAlignment: TabAlignment.fill,
           controller: _tabController,
           labelColor: Theme.of(context).colorScheme.onSurface,
           tabs: [
             ..._planTabs.map((p) {
-              final domain = p['domain'] as String? ?? '';
-              final count = _domainDueCount(domain);
+              final convId = p['conversation_id'] as String? ?? '';
+              final count = _planDueCount(convId);
               return Tab(
                 child: Text('${_planLabel(p)}（$count）',
-                    overflow: TextOverflow.ellipsis),
+                    overflow: TextOverflow.ellipsis, maxLines: 1),
               );
             }),
             const Tab(text: '全部卡片'),
@@ -489,22 +484,13 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
     );
   }
 
-  /// 按 domain 过滤的待复习列表（复用记忆曲线复习界面）
-  /// 支持三种匹配模式：
-  ///   - 精确匹配: tab domain == card domain
-  ///   - 学段前缀匹配: tab domain="数学_g10-12" 时, card domain="数学" 也匹配
-  ///   - 纯学科名: tab domain="语文" 时, 只精确匹配 card domain="语文" (不匹配"语文_g7-9")
+  /// 按 conversation_id 过滤的待复习列表
+  /// - 选中 plan tab: 匹配卡片 conversationId == 该 plan 的 conversation_id
+  /// - 选中"全部卡片": 不过滤
+  /// domain 仅用于内部分类标签，不用于 tab 匹配
   List<DueCard> get _filteredCards {
-    if (_domainFilter == null) return _cards;
-    // 如果 domain 带下划线后缀（如"数学_g10-12"），用前缀匹配；
-    // 如果无下划线（如"语文"），用精确匹配。
-    if (_domainFilter!.contains('_')) {
-      final base = _domainFilter!.split('_').first;
-      return _cards.where((c) =>
-          c.domain == _domainFilter ||
-          (c.domain != null && !c.domain!.contains('_') && c.domain == base)).toList();
-    }
-    return _cards.where((c) => c.domain == _domainFilter).toList();
+    if (_selectedConvId == null) return _cards;
+    return _cards.where((c) => c.conversationId == _selectedConvId).toList();
   }
 
   Widget _buildReviewTab() {

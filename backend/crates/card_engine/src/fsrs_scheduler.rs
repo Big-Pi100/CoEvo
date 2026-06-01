@@ -23,6 +23,7 @@ pub struct DueCard {
     pub source_sentence: Option<String>,
     pub state: i32,
     pub reps: i32,
+    pub conversation_id: Option<String>,
 }
 
 /// N5: 查询到期卡片
@@ -31,7 +32,7 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64) -> (Vec<DueCa
 
     let mut stmt = conn.prepare(
         "SELECT c.id, c.front, c.back, c.domain, c.card_type, c.source_sentence,
-                cm.state, cm.reps
+                cm.state, cm.reps, c.conversation_id
          FROM cards c
          JOIN card_memory cm ON c.id = cm.card_id
          WHERE c.user_id = ?1
@@ -51,6 +52,7 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64) -> (Vec<DueCa
             source_sentence: row.get(5)?,
             state: row.get(6)?,
             reps: row.get(7)?,
+            conversation_id: row.get(8)?,
         })
     ).unwrap().filter_map(|r| r.ok()).collect();
 
@@ -250,7 +252,7 @@ mod tests {
             "CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT, streak_days INTEGER DEFAULT 0, last_active_date TEXT, created_at TEXT NOT NULL);
              CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, turn_count INTEGER DEFAULT 0, started_at TEXT NOT NULL);
              CREATE TABLE IF NOT EXISTS conversation_turns (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
-             CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, domain TEXT, card_type TEXT NOT NULL, front TEXT NOT NULL, back TEXT NOT NULL, source_sentence TEXT, created_at INTEGER NOT NULL);
+             CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, domain TEXT, card_type TEXT NOT NULL, front TEXT NOT NULL, back TEXT NOT NULL, source_sentence TEXT, conversation_id TEXT, created_at INTEGER NOT NULL);
              CREATE TABLE IF NOT EXISTS card_memory (card_id TEXT PRIMARY KEY, state INTEGER DEFAULT 0, difficulty REAL DEFAULT 5.0, stability REAL DEFAULT 0.0, due INTEGER DEFAULT 0, last_review INTEGER, reps INTEGER DEFAULT 0, lapses INTEGER DEFAULT 0);
              CREATE TABLE IF NOT EXISTS review_log (id TEXT PRIMARY KEY, card_id TEXT NOT NULL, rating INTEGER NOT NULL, verification_type TEXT NOT NULL, verification_result TEXT NOT NULL, details_json TEXT DEFAULT NULL, reviewed_at INTEGER NOT NULL);
              CREATE TABLE IF NOT EXISTS achievements (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, achievement_key TEXT NOT NULL, name TEXT NOT NULL, icon TEXT NOT NULL, tier TEXT DEFAULT 'fixed', source TEXT, unlocked_at TEXT NOT NULL);

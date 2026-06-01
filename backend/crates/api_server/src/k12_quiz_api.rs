@@ -39,7 +39,7 @@ pub async fn quiz_submit_handler(
     }
 
     let conn = crate::db_pool::get_conn();
-    let now = chrono::Utc::now().to_rfc3339();
+    let now = chrono::Utc::now().timestamp();
     let mut correct_count = 0u32;
     let mut total_count = 0u32;
     let mut details: Vec<serde_json::Value> = Vec::new();

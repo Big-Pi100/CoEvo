@@ -178,8 +178,8 @@ async fn phase_plan_creation(run_id: &str, cli: &CliArgs) -> e2e_runner::PhaseRe
         let result = api_server::plan_handler::handle_plan_update(&conn, &last_assistant, TEST_CONV_ID, TEST_USER_ID);
 
         // 提取 pipeline_domain
-        let pipeline_domain: String = result.plan_json.as_ref().and_then(|j| j.get("domain")).and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let db_domain: String = conn.query_row("SELECT plan_json FROM learning_plans WHERE conversation_id = ?1", rusqlite::params![TEST_CONV_ID], |row| row.get::<_, String>(0))
+        let pipeline_domain: String = result.task_status.as_ref().and_then(|j| j.get("domain")).and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let db_domain: String = conn.query_row("SELECT task_status FROM learning_plans WHERE conversation_id = ?1", rusqlite::params![TEST_CONV_ID], |row| row.get::<_, String>(0))
             .ok().and_then(|pj| serde_json::from_str::<serde_json::Value>(&pj).ok().and_then(|v| v.get("domain").and_then(|d| d.as_str()).map(|s| s.to_string()))).unwrap_or_default();
         let matched_domain = if !pipeline_domain.is_empty() { pipeline_domain.as_str() } else { db_domain.as_str() };
         let domain_match = matched_domain == *expected_domain || (expected_domain.is_empty() && !matched_domain.is_empty());
@@ -187,7 +187,7 @@ async fn phase_plan_creation(run_id: &str, cli: &CliArgs) -> e2e_runner::PhaseRe
 
         println!("  💡 [{}] plan_update: is_new={} pipeline_domain={:?} match={}", step, result.is_new_plan, matched_domain, domain_match);
 
-        let plan_has_stages = result.plan_json.as_ref().and_then(|j| j.get("stages")).and_then(|s| s.as_array()).map(|a| !a.is_empty()).unwrap_or(false);
+        let plan_has_stages = result.task_status.as_ref().and_then(|j| j.get("stages")).and_then(|s| s.as_array()).map(|a| !a.is_empty()).unwrap_or(false);
         let (_, actual_mode, _) = e2e_runner::build_plan_context(&conn, TEST_CONV_ID);
 
         domain_results.insert(expected_domain.to_string(), json!({
@@ -430,7 +430,7 @@ async fn progression_domain_test(
         conversations += 1;
         if result.plan_updated {
             plan_updates += 1;
-            if let Some(ref pj) = result.plan_json {
+            if let Some(ref pj) = result.task_status {
                 if pj.get("current_task_complete").and_then(|v| v.as_bool()).unwrap_or(false) { println!("  ✅ [{}] current_task_complete = true", step); }
                 if let Some(stage) = pj.get("next_stage_suggestion").and_then(|v| v.as_str()) { if !stage.is_empty() { println!("  🏁 [{}] 下一阶段: {}", step, truncate(stage, 80)); } }
             }

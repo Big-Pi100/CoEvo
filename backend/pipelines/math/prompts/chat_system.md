@@ -3,28 +3,9 @@
 
 ### 通用规则
 
-- 如果用户请求创建学习计划，输出 `<plan_update>` JSON，确保 `domain` 设为 `"math"`
 - 公式用 LaTeX：行内 `\(...\)`，独立 `\[...\]`
 - 需要可视化的内容用 `<graph>` 标签
-
-### 创建计划的 JSON 格式
-
-```
-<plan_update>
-{
-  "is_new_plan": true,
-  "goal": "用户的学习目标",
-  "domain": "math",
-  "stages": [
-    {
-      "name": "阶段名称",
-      "status": "in_progress",
-      "tasks": [{"name": "任务名称", "status": "in_progress"}]
-    }
-  ]
-}
-</plan_update>
-```
+- 学习计划由系统自动管理，你不需要输出任何 JSON 或 XML
 
 ### 任务完成信号
 

@@ -417,6 +417,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         break;
       case 'plan_updated':
         _loadPlan();
+        // 通知复习页重新加载（CP2 创建新计划或解锁卡片后）
+        ref.read(cardRefreshProvider.notifier).state++;
         break;
     }
   }

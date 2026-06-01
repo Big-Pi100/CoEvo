@@ -73,7 +73,8 @@ CREATE TABLE IF NOT EXISTS learning_plans (
     goal TEXT NOT NULL,
     domain TEXT NOT NULL DEFAULT '',
     mode TEXT DEFAULT NULL,
-    plan_json TEXT NOT NULL,
+    task_status TEXT NOT NULL,
+    plan_content TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
@@ -203,13 +204,13 @@ fn build_plan_context() -> (String, String, String) {
     api_server::plan_handler::build_plan_context(&conn, TEST_CONV_ID)
 }
 
-/// 查询 DB 中的学习计划 JSON
-fn get_plan_from_db() -> Option<(String, String, String)> {
+/// 查询 DB 中的学习计划 JSON（返回 id, goal, task_status, plan_content）
+fn get_plan_from_db() -> Option<(String, String, String, Option<String>)> {
     let conn = api_server::db_pool::get_conn();
     conn.query_row(
-        "SELECT id, goal, plan_json FROM learning_plans WHERE conversation_id = ?1 AND mode = 'structured' ORDER BY updated_at DESC LIMIT 1",
+        "SELECT id, goal, task_status, plan_content FROM learning_plans WHERE conversation_id = ?1 AND mode = 'structured' ORDER BY updated_at DESC LIMIT 1",
         rusqlite::params![TEST_CONV_ID],
-        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?)),
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, Option<String>>(3)?)),
     ).ok()
 }
 
@@ -464,9 +465,9 @@ fn e2e_learning_plan_full_lifecycle() {
 
     assert!(result.is_new_plan, "应识别为新建计划");
     assert!(result.plan_updated, "计划应被标记为已更新");
-    assert!(result.plan_json.is_some(), "应返回解析后的 plan JSON");
+    assert!(result.task_status.is_some(), "应返回解析后的 plan JSON");
 
-    let rendered = api_server::plan_handler::render_plan(result.plan_json.as_ref().unwrap());
+    let rendered = api_server::plan_handler::render_plan(result.task_status.as_ref().unwrap());
     println!("  🤖 Turn4 (assistant/plan): 基于用户信息创建计划");
     println!("  ✅ 计划创建成功, is_new_plan=true");
     println!("  📋 渲染的计划文本:\n{}", rendered);
@@ -477,10 +478,10 @@ fn e2e_learning_plan_full_lifecycle() {
     // 验证 DB
     let plan = get_plan_from_db();
     assert!(plan.is_some(), "DB 中应存在学习计划");
-    let (_pid, goal, plan_json_str) = plan.unwrap();
+    let (_pid, goal, _plan_json_str, plan_content_raw) = plan.unwrap();
     assert_eq!(goal, "AI基础知识", "goal 应正确存储");
-    let plan_json: serde_json::Value = serde_json::from_str(&plan_json_str).unwrap();
-    let stages = plan_json["stages"].as_array().unwrap();
+    let plan_content: serde_json::Value = serde_json::from_str(&plan_content_raw.unwrap_or_default()).unwrap_or_default();
+    let stages = plan_content["stages"].as_array().unwrap();
     assert_eq!(stages.len(), 3, "应有3个阶段");
     assert_eq!(stages[0]["name"], "阶段一：机器学习基础");
     assert_eq!(stages[0]["tasks"].as_array().unwrap().len(), 3, "阶段一应有3个任务");
@@ -530,10 +531,10 @@ fn e2e_learning_plan_full_lifecycle() {
 
     assert!(!result.is_new_plan, "不应是新建计划");
     assert!(result.plan_updated, "计划应被更新");
-    assert!(result.plan_json.is_some());
+    assert!(result.task_status.is_some());
 
     // 验证 completed_concepts 累积
-    let plan_json = result.plan_json.as_ref().unwrap();
+    let plan_json = result.task_status.as_ref().unwrap();
     let concepts = plan_json["completed_concepts"].as_array().unwrap();
     let concept_names: Vec<&str> = concepts.iter().map(|c| c.as_str().unwrap()).collect();
     assert!(concept_names.contains(&"监督学习定义"), "应包含 '监督学习定义'");
@@ -561,7 +562,7 @@ fn e2e_learning_plan_full_lifecycle() {
     assert!(result.plan_updated, "计划应被更新");
 
     // 验证任务状态变更
-    let plan_json = result.plan_json.as_ref().unwrap();
+    let plan_json = result.task_status.as_ref().unwrap();
     let stages = plan_json["stages"].as_array().unwrap();
     let tasks_s1 = stages[0]["tasks"].as_array().unwrap();
 
@@ -626,7 +627,7 @@ fn e2e_learning_plan_full_lifecycle() {
             &conn, &plan_update_fail, TEST_CONV_ID, TEST_USER_ID,
         );
         assert!(result.plan_updated);
-        let pj = result.plan_json.as_ref().unwrap();
+        let pj = result.task_status.as_ref().unwrap();
         let tasks = pj["stages"][0]["tasks"].as_array().unwrap();
         assert_eq!(tasks[1]["status"], "in_progress",
             "考核不通过 → 任务2 应保持 in_progress，不应回退也不应推进");
@@ -663,7 +664,7 @@ fn e2e_learning_plan_full_lifecycle() {
             &conn, &plan_update_pass, TEST_CONV_ID, TEST_USER_ID,
         );
         assert!(result.plan_updated);
-        let pj = result.plan_json.as_ref().unwrap();
+        let pj = result.task_status.as_ref().unwrap();
         let tasks = pj["stages"][0]["tasks"].as_array().unwrap();
         assert_eq!(tasks[1]["status"], "done", "考核通过 → 任务2 应标记为 done");
         assert_eq!(tasks[1]["name"], "无监督学习概念");
@@ -720,7 +721,7 @@ fn e2e_learning_plan_full_lifecycle() {
     );
 
     assert!(result.plan_updated);
-    let plan_json = result.plan_json.as_ref().unwrap();
+    let plan_json = result.task_status.as_ref().unwrap();
     let stages = plan_json["stages"].as_array().unwrap();
 
     // 阶段一 → done, 阶段二 → in_progress
@@ -735,7 +736,8 @@ fn e2e_learning_plan_full_lifecycle() {
     // 成就检测 (使用共享函数 — 替代原手动内联代码)
     {
         let conn = api_server::db_pool::get_conn();
-        let (_pid, _goal, plan_json_str) = get_plan_from_db().unwrap();
+        let (_pid, _goal, _task_status_str, plan_content_raw) = get_plan_from_db().unwrap();
+        let plan_json_str = plan_content_raw.unwrap_or_default();
         let plan: serde_json::Value = serde_json::from_str(&plan_json_str).unwrap();
         record_stage_achievements(&conn, &plan);
     }
@@ -782,7 +784,8 @@ fn e2e_learning_plan_full_lifecycle() {
 
     // 验证阶段二 → done, 阶段三 → in_progress
     {
-        let (_pid, _goal, plan_json_str) = get_plan_from_db().unwrap();
+        let (_pid, _goal, _task_status_str, plan_content_raw) = get_plan_from_db().unwrap();
+        let plan_json_str = plan_content_raw.unwrap_or_default();
         let plan_json: serde_json::Value = serde_json::from_str(&plan_json_str).unwrap();
         let stages = plan_json["stages"].as_array().unwrap();
         assert_eq!(stages[1]["status"], "done", "阶段二应标记为 done");
@@ -818,7 +821,7 @@ fn e2e_learning_plan_full_lifecycle() {
         );
 
         // 阶段三所有任务完成 → stage done
-        let plan_json = result.plan_json.as_ref().unwrap();
+        let plan_json = result.task_status.as_ref().unwrap();
         let stages = plan_json["stages"].as_array().unwrap();
         assert_eq!(stages[2]["status"], "done", "阶段三应标记为 done");
         assert!(stages.iter().all(|s| s["status"] == "done"), "所有阶段应标记为 done");
@@ -828,7 +831,8 @@ fn e2e_learning_plan_full_lifecycle() {
     // 触发所有成就检测 (使用共享函数)
     {
         let conn = api_server::db_pool::get_conn();
-        let (_pid, _goal, plan_json_str) = get_plan_from_db().unwrap();
+        let (_pid, _goal, _task_status_str, plan_content_raw) = get_plan_from_db().unwrap();
+        let plan_json_str = plan_content_raw.unwrap_or_default();
         let plan: serde_json::Value = serde_json::from_str(&plan_json_str).unwrap();
         record_stage_achievements(&conn, &plan);
     }
@@ -841,9 +845,9 @@ fn e2e_learning_plan_full_lifecycle() {
     // 最终 plan 状态
     let plan = get_plan_from_db();
     assert!(plan.is_some(), "最终应存在学习计划");
-    let (_pid, goal, plan_json_str) = plan.unwrap();
-    let plan_json: serde_json::Value = serde_json::from_str(&plan_json_str).unwrap();
-    let stages = plan_json["stages"].as_array().unwrap();
+    let (_pid, goal, _task_status_str, plan_content_raw) = plan.unwrap();
+    let plan_content: serde_json::Value = serde_json::from_str(&plan_content_raw.unwrap_or_default()).unwrap_or_default();
+    let stages = plan_content["stages"].as_array().unwrap();
 
     println!("  目标: {}", goal);
     for stage in stages {
@@ -966,7 +970,7 @@ fn e2e_learning_plan_full_lifecycle() {
         // upsert 应更新现有计划而非创建新行
         let plan = get_plan_from_db();
         assert!(plan.is_some());
-        let (_pid, goal, _pjson) = plan.unwrap();
+        let (_pid, goal, _task_status_str, _plan_content_raw) = plan.unwrap();
         assert_eq!(goal, "AI高级进阶", "计划目标应被更新");
         println!("  ✅ 重复创建同一会话计划: upsert 行为正确 (更新现有计划)");
     }

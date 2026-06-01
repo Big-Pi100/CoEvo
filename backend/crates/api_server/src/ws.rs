@@ -41,6 +41,9 @@ pub async fn handle_ws(mut ws: WebSocket) {
     let (cold_tx, mut cold_rx) = mpsc::channel::<(u32, Vec<serde_json::Value>)>(8);
     // CP2 通知通道：后台 task 更新 plan 后通知主循环发 WS 消息
     let (cp2_tx, mut cp2_rx) = mpsc::channel::<bool>(1);
+    // CP2 繁忙信号：当 CP2 正在构建计划时，阻塞下一条用户消息
+    let cp2_busy = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let cp2_done = Arc::new(tokio::sync::Notify::new());
     let mut turn_counter: u32 = 0;
     let mut next_turn_to_show: u32 = 0;
     let mut pending_candidates: std::collections::BTreeMap<u32, Vec<serde_json::Value>> = std::collections::BTreeMap::new();
@@ -74,6 +77,11 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         continue;
                     }
                 };
+
+                // ── CP2 繁忙等待：仅在 CP2 正在运行时阻塞用户消息 ──
+                if cp2_busy.load(std::sync::atomic::Ordering::Acquire) {
+                    cp2_done.notified().await;
+                }
 
                 // ── 鉴权：首条消息必须携带有效 token ──
                 if !token_verified {
@@ -148,7 +156,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 }
 
                 // 保存用户消息
-                let now_str = chrono::Utc::now().to_rfc3339();
+                let now_str = chrono::Utc::now().timestamp();
                 {
                     let conn = crate::db_pool::get_conn();
                     let _ = conn.execute(
@@ -329,14 +337,14 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     plan_updated = result.plan_updated;
 
                     if result.is_new_plan {
-                        if let Some(ref plan) = result.plan_json {
+                        if let Some(ref plan) = result.task_status {
                             final_reply = crate::plan_handler::render_plan(plan);
                         }
                     }
 
                     // ── 成就检测（仅非新建计划的更新） ──
                     if result.plan_updated && !result.is_new_plan {
-                        if let Some(ref plan) = result.plan_json {
+                        if let Some(ref plan) = result.task_status {
                             if let Some(stages) = plan.get("stages").and_then(|v| v.as_array()) {
                                 for stage in stages {
                                     if stage["status"] == "done" {
@@ -363,7 +371,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 }
 
                 // 保存 assistant 回复（final_reply 已清理/渲染）
-                let now_str = chrono::Utc::now().to_rfc3339();
+                let now_str = chrono::Utc::now().timestamp();
                 {
                     let conn = crate::db_pool::get_conn();
                     let _ = conn.execute(
@@ -527,12 +535,9 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         }
                     };
 
-                    let is_free_dialogue = extract_domain.contains('-');
                     let candidates: Vec<serde_json::Value> = extraction.candidates.iter().map(|c| {
-                        // 自由对话的 plan domain 是 conversation UUID，与 LLM 自主推断的 domain 不匹配。
-                        // 标准化为 "general" 以便前端 review tab 能正确归类。
-                        let domain = if is_free_dialogue { "general" } else { &c.domain };
-                        json!({"front": c.front, "back": c.back, "source_sentence": c.source_sentence, "domain": domain})
+                        // 卡片 domain 使用 LLM 推断值（domain 已改为枚举，不再用 UUID 列）
+                        json!({"front": c.front, "back": c.back, "source_sentence": c.source_sentence, "domain": &c.domain})
                     }).collect();
                     let _ = cold_tx.send((cold_turn, candidates)).await;
                 });
@@ -553,6 +558,10 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     let cfg = llm_config.clone();
                     let reply = cp2_reply;
                     let cp2_notify = cp2_tx.clone();
+                    let cp2_busy_flag = cp2_busy.clone();
+                    let cp2_done_signal = cp2_done.clone();
+                    // 标记 CP2 繁忙：下一条用户消息需等待 CP2 完成
+                    cp2_busy.store(true, std::sync::atomic::Ordering::Release);
                     tokio::spawn(async move {
                         let mut caller = chat_engine::llm_caller::LlmCaller::new(cfg);
                         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -562,6 +571,9 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         if updated {
                             let _ = cp2_notify.send(true).await;
                         }
+                        // CP2 完成：唤醒可能正在阻塞的用户消息
+                        cp2_busy_flag.store(false, std::sync::atomic::Ordering::Release);
+                        cp2_done_signal.notify_waiters();
                     });
                 }
             }

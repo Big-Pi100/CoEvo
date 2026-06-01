@@ -82,8 +82,6 @@ pub struct CardData {
     #[serde(default)]
     pub gold_cr_ids: Vec<String>,
     #[serde(default)]
-    pub plan_task_id: String,
-    #[serde(default)]
     pub origin: String,
     #[serde(default)]
     pub source_sentence: String,

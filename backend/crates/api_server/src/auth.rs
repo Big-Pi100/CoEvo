@@ -65,7 +65,7 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
     }
 
     let user_id = format!("user_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap());
-    let now = chrono::Utc::now().to_rfc3339();
+    let now = chrono::Utc::now().timestamp();
     let token = uuid::Uuid::new_v4().to_string();
     let pwhash = hash_password(&req.password);
 
@@ -128,7 +128,7 @@ pub fn login(conn: &rusqlite::Connection, req: &LoginRequest) -> Result<AuthResp
     cleanup_old_tokens(conn, &user_id);
 
     let token = uuid::Uuid::new_v4().to_string();
-    let now = chrono::Utc::now().to_rfc3339();
+    let now = chrono::Utc::now().timestamp();
     let token_id = uuid::Uuid::new_v4().to_string();
 
     conn.execute(

@@ -94,7 +94,7 @@ pub async fn admin_register(Json(input): Json<AdminRegisterInput>) -> impl IntoR
     if !input.phone.chars().all(|c| c.is_ascii_digit()) || input.phone.len() != 11 || !input.phone.starts_with('1') { return err(StatusCode::BAD_REQUEST, "invalid_phone"); }
     if input.role == "service" { return err(StatusCode::FORBIDDEN, "service_accounts_must_be_created_by_admin"); }
     let id = uuid::Uuid::new_v4().to_string();
-    let now = chrono::Utc::now().to_rfc3339();
+    let now = chrono::Utc::now().timestamp();
     let hash = bcrypt::hash(&input.password, 12).unwrap_or_default();
     // Encrypt PII fields before storing
     let enc_real_name = encryption::encrypt(&input.real_name);
@@ -208,7 +208,7 @@ pub async fn admin_delete_user(headers: HeaderMap, Path(uid): Path<String>) -> i
     let (_, role) = match verify_admin(&headers) { Ok(r) => r, Err(e) => { return e; } };
     if role != "super" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     let c = conn();
-    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.fZ").to_string();
+    let now = chrono::Utc::now().timestamp().to_string();
     let rows = c.execute("UPDATE users SET deleted_at=?1 WHERE id=?2 AND deleted_at IS NULL", rusqlite::params![now, &uid]).unwrap_or(0);
     let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'soft_delete_user',?3,?4,?5)",
         rusqlite::params![uuid::Uuid::new_v4().to_string(), "super", &uid, serde_json::json!({"deleted_at":now}).to_string(), now]);
@@ -222,7 +222,7 @@ pub async fn admin_restore_user(headers: HeaderMap, Path(uid): Path<String>) -> 
     let c = conn();
     let rows = c.execute("UPDATE users SET deleted_at=NULL WHERE id=?1 AND deleted_at IS NOT NULL", rusqlite::params![&uid]).unwrap_or(0);
     if rows > 0 {
-        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.fZ").to_string();
+        let now = chrono::Utc::now().timestamp().to_string();
         let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'restore_user',?3,?4,?5)",
             rusqlite::params![uuid::Uuid::new_v4().to_string(), "super", &uid, serde_json::json!({"restored_at":now}).to_string(), now]);
         ok(serde_json::json!({"status":"restored"}))
@@ -246,12 +246,12 @@ pub async fn admin_reveal_phone(headers: HeaderMap, Path(uid): Path<String>, Que
             if query.full.unwrap_or(false) {
                 // Step 2: return full phone with audit log
                 let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'reveal_phone_full',?3,?4,?5)",
-                    rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"target":target_info,"masked":masked}).to_string(), chrono::Utc::now().to_rfc3339()]);
+                    rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"target":target_info,"masked":masked}).to_string(), chrono::Utc::now().timestamp()]);
                 ok(serde_json::json!({"phone":decrypted, "full":true}))
             } else {
                 // Step 1: return masked phone with audit log
                 let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'reveal_phone_masked',?3,?4,?5)",
-                    rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"target":target_info,"masked":masked}).to_string(), chrono::Utc::now().to_rfc3339()]);
+                    rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"target":target_info,"masked":masked}).to_string(), chrono::Utc::now().timestamp()]);
                 ok(serde_json::json!({"phone":mask_phone(&decrypted), "full":false}))
             }
         }
@@ -275,7 +275,7 @@ pub async fn admin_set_subscription(headers: HeaderMap, Path(uid): Path<String>,
     // service with permission applies directly like super
     let can_direct = role == "super" || (role == "service" && has_permission(&admin_id, "set_expiry"));
     if role == "service" && !has_permission(&admin_id, "set_expiry") { return err(StatusCode::FORBIDDEN, "no_permission"); }
-    let c = conn(); let now = chrono::Utc::now().to_rfc3339();
+    let c = conn(); let now = chrono::Utc::now().timestamp();
     if can_direct {
         // Direct apply
         let _ = c.execute("INSERT OR REPLACE INTO user_preferences (user_id,key,value,updated_at) VALUES (?1,'subscription_expires',?2,?3)", rusqlite::params![uid, input.subscription_expires, now]);
@@ -301,7 +301,7 @@ pub async fn admin_quick_extend(headers: HeaderMap, Path(uid): Path<String>, Jso
         let perm_key = match days { 1..=7 => "extend_7d", 8..=30 => "extend_30d", _ => "extend_365d" };
         if has_permission(&admin_id, perm_key) {
             // Has permission — direct apply like super
-            let c = conn(); let now = chrono::Utc::now().to_rfc3339();
+            let c = conn(); let now = chrono::Utc::now().timestamp();
             let _ = c.execute("INSERT OR REPLACE INTO user_preferences (user_id,key,value,updated_at) VALUES (?1,'subscription_expires',?2,?3)", rusqlite::params![uid, input.subscription_expires, now]);
             let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'quick_extend',?3,?4,?5)",
                 rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"expires":input.subscription_expires,"days":days}).to_string(), now]);
@@ -309,7 +309,7 @@ pub async fn admin_quick_extend(headers: HeaderMap, Path(uid): Path<String>, Jso
         }
     }
     // Fallback: service without permission → create pending request
-    let c = conn(); let now = chrono::Utc::now().to_rfc3339();
+    let c = conn(); let now = chrono::Utc::now().timestamp();
     if role == "service" {
         let days = input.days.unwrap_or(7);
         let pkg = format!("{}d", days);
@@ -329,7 +329,7 @@ pub async fn admin_quick_extend(headers: HeaderMap, Path(uid): Path<String>, Jso
 pub async fn admin_create_subscription_request(headers: HeaderMap, Json(input): Json<CreateSubReqInput>) -> impl IntoResponse {
     let (admin_id, role) = guard!(&headers);
     if role != "super" && role != "service" { return err(StatusCode::FORBIDDEN, "forbidden"); }
-    let c = conn(); let id = uuid::Uuid::new_v4().to_string(); let now = chrono::Utc::now().to_rfc3339();
+    let c = conn(); let id = uuid::Uuid::new_v4().to_string(); let now = chrono::Utc::now().timestamp();
     let _ = c.execute("INSERT INTO subscription_requests (id,target_user_id,requested_by,package,channel,note,status,requested_at) VALUES (?1,?2,?3,?4,?5,?6,'pending',?7)",
         rusqlite::params![id, input.target_user_id, admin_id, input.package, input.channel, input.note, now]);
     ok(serde_json::json!({"request_id":id,"status":"pending"}))
@@ -340,7 +340,7 @@ pub async fn admin_create_subscription_request(headers: HeaderMap, Json(input): 
 pub async fn admin_batch_subscription(headers: HeaderMap, Json(input): Json<BatchSubInput>) -> impl IntoResponse {
     let (admin_id, role) = guard!(&headers, &[]);
     if role != "super" { return err(StatusCode::FORBIDDEN, "forbidden"); }
-    let c = conn(); let now = chrono::Utc::now().to_rfc3339();
+    let c = conn(); let now = chrono::Utc::now().timestamp();
     for uid in &input.user_ids {
         let current: String = c.query_row("SELECT value FROM user_preferences WHERE user_id=?1 AND key='subscription_expires'", rusqlite::params![uid], |row| row.get(0)).unwrap_or_default();
         let new_exp = if current.is_empty() { (chrono::Utc::now()+chrono::Duration::days(input.days)).format("%Y-%m-%d").to_string() }
@@ -379,7 +379,7 @@ async fn review_subscription(headers: &HeaderMap, req_id: &str, status: &str, re
         let can_approve = perms.get("can_approve").and_then(|v| v.as_bool()).unwrap_or(false);
         if !can_approve { return err(StatusCode::FORBIDDEN, "forbidden"); }
     }
-    let c = conn(); let now = chrono::Utc::now().to_rfc3339();
+    let c = conn(); let now = chrono::Utc::now().timestamp();
     let info: Option<(String,String)> = c.query_row("SELECT target_user_id,package FROM subscription_requests WHERE id=?1 AND status='pending'", rusqlite::params![req_id], |row| Ok((row.get(0)?,row.get(1)?))).ok();
     match info {
         Some((uid, pkg)) => {
@@ -439,7 +439,7 @@ pub async fn admin_approve_admin(headers: HeaderMap, Path(aid): Path<String>) ->
     let target_role: Option<String> = conn().query_row("SELECT role FROM admin_users WHERE id=?1 AND status='pending'", rusqlite::params![&aid], |row| row.get(0)).ok();
     match target_role {
         Some(ref r) if r == "guardian" || r == "tutor" || role == "super" => {
-            let now = chrono::Utc::now().to_rfc3339();
+            let now = chrono::Utc::now().timestamp();
             let c = conn();
             let _ = c.execute("UPDATE admin_users SET status='active',approved_at=?1,created_by=?2 WHERE id=?3 AND status='pending'", rusqlite::params![now,reviewer,aid]);
             // 如果是家长通过审批，自动创建监护绑定
@@ -482,7 +482,7 @@ pub async fn admin_reject_admin(headers: HeaderMap, Path(aid): Path<String>, Jso
     match target_role {
         Some(ref r) if r == "guardian" || r == "tutor" || role == "super" => {
             let c = conn();
-            let _ = c.execute("UPDATE admin_users SET status='rejected',reject_reason=?1,approved_at=?2,created_by=?3 WHERE id=?4", rusqlite::params![input.reject_reason,chrono::Utc::now().to_rfc3339(),reviewer,aid]);
+            let _ = c.execute("UPDATE admin_users SET status='rejected',reject_reason=?1,approved_at=?2,created_by=?3 WHERE id=?4", rusqlite::params![input.reject_reason,chrono::Utc::now().timestamp(),reviewer,aid]);
             ok(serde_json::json!({"status":"rejected"}))
         }
         Some(_) => err(StatusCode::FORBIDDEN, "only_super_admin_approval"),
@@ -509,7 +509,7 @@ pub async fn admin_create_admin(headers: HeaderMap, Json(input): Json<CreateAdmi
     if input.username.len() < 5 { return err(StatusCode::BAD_REQUEST, "username_5"); }
     if input.password.len() < 6 { return err(StatusCode::BAD_REQUEST, "password_6"); }
     let id = uuid::Uuid::new_v4().to_string();
-    let now = chrono::Utc::now().to_rfc3339();
+    let now = chrono::Utc::now().timestamp();
     let hash = bcrypt::hash(&input.password, 12).unwrap_or_default();
     let enc_real_name = encryption::encrypt(&input.real_name);
     let enc_phone = encryption::encrypt(&input.phone);
@@ -631,7 +631,7 @@ pub async fn guardian_bind_request(headers: HeaderMap, Json(input): Json<Guardia
     let (gid, role) = guard!(&headers);
     if role != "guardian" && role != "tutor" { return err(StatusCode::FORBIDDEN,"forbidden"); }
     let c = conn();
-    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.fZ").to_string();
+    let now = chrono::Utc::now().timestamp().to_string();
     let bind_id = uuid::Uuid::new_v4().to_string();
     if let Err(e) = c.execute(
         "INSERT INTO guardian_assignments (id, guardian_admin_id, student_user_id, bind_key, assigned_by, assigned_at, is_active) VALUES (?1,?2,?3,'auto',?4,?5,1)",
@@ -646,7 +646,7 @@ pub async fn guardian_reveal_phone(headers: HeaderMap, Path(aid): Path<String>) 
     let c = conn();
     let phone_enc: Option<String> = c.query_row("SELECT phone FROM admin_users WHERE id=?1", rusqlite::params![aid], |row| row.get(0)).unwrap_or(None);
     let phone = match phone_enc { Some(ref enc) if !enc.is_empty() => decrypt_maybe(enc), _ => return err(StatusCode::NOT_FOUND, "phone not found") };
-    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.fZ").to_string();
+    let now = chrono::Utc::now().timestamp().to_string();
     let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'reveal_guardian_phone',?3,'Phone revealed by tutor',?4)",
         rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, aid, now]);
     ok(serde_json::json!({"phone":phone}))
@@ -703,7 +703,7 @@ pub async fn guardian_learning_summary(headers: HeaderMap, Path(sid): Path<Strin
     let one_day_ago = (now - chrono::Duration::days(1)).to_rfc3339();
 
     // 1. Get all plans for this student
-    let mut plan_stmt = c.prepare("SELECT id, goal, domain, conversation_id, plan_json, updated_at FROM learning_plans WHERE user_id=?1 AND mode != 'deleted' ORDER BY updated_at DESC").unwrap();
+    let mut plan_stmt = c.prepare("SELECT id, goal, domain, conversation_id, task_status, updated_at FROM learning_plans WHERE user_id=?1 AND mode != 'deleted' ORDER BY updated_at DESC").unwrap();
     let mut plan_results: Vec<serde_json::Value> = Vec::new();
     let mut total_active_7d = 0i64;
     let mut total_today_active = 0i64;
@@ -718,11 +718,11 @@ pub async fn guardian_learning_summary(headers: HeaderMap, Path(sid): Path<Strin
         let goal: String = row.get(1)?;
         let _domain: String = row.get(2)?;
         let conv_id: Option<String> = row.get(3)?;
-        let plan_json_str: String = row.get(4)?;
+        let task_status_str: String = row.get(4)?;
         let updated_at_str: String = row.get(5)?;
 
         // Parse plan progress
-        let (total_tasks, done_tasks, current_stage, current_task) = parse_plan_progress(&plan_json_str);
+        let (total_tasks, done_tasks, current_stage, current_task) = parse_plan_progress(&task_status_str);
 
         // Parse updated_at as unix timestamp for activity calculation
         let updated_ts = chrono::DateTime::parse_from_rfc3339(&updated_at_str).map(|d| d.timestamp()).unwrap_or(0);
@@ -940,7 +940,7 @@ pub async fn admin_create_assignment(headers: HeaderMap, Json(input): Json<Creat
     let (reviewer, role) = guard!(&headers);
     if role != "super" && role != "service" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     let c = conn();
-    let now = chrono::Utc::now().to_rfc3339();
+    let now = chrono::Utc::now().timestamp();
     let id = uuid::Uuid::new_v4().to_string();
     // Generate bind_key from names
     let guardian_name: String = c.query_row("SELECT COALESCE(real_name,'') FROM admin_users WHERE id=?1", rusqlite::params![&input.guardian_admin_id], |row| row.get(0)).unwrap_or_default();

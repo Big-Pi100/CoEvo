@@ -20,14 +20,23 @@ pub struct RoutingResult {
     pub curriculum_hint: String,
 }
 
-/// 学科 → domain 映射
+/// 学科 → domain 映射（与 pipeline_router::Domain enum 对齐）
 fn subject_to_domain(subject: &str) -> &'static str {
     match subject {
-        "数学" | "物理" | "科学" => "math",
-        "英语" => "language",
+        "数学" => "math",
+        "语文" | "英语" | "日语" | "俄语" => "language",
         "化学" => "chemistry",
         "生物" | "生物学" => "biology",
-        _ => "", // 语文、历史、地理、政治 → 通用管线
+        "物理" => "physics",
+        "历史" => "history",
+        "地理" => "geography",
+        "政治" | "道德与法治" | "道法" => "politics",
+        "科学" => "science",
+        "信息技术" | "信息科技" => "it",
+        "体育" | "体育与健康" => "pe",
+        "美术" | "音乐" | "艺术" => "art",
+        "劳动" => "labor",
+        _ => "general", // 未知科目兜底
     }
 }
 

@@ -31,14 +31,13 @@ pub fn should_mark_task_complete(
     }
 
     // 有题库：计算最近 7 天通过率
-    let seven_days_ago = chrono::Utc::now() - chrono::Duration::days(7);
-    let cutoff = seven_days_ago.to_rfc3339();
+    let cutoff_ts = (chrono::Utc::now() - chrono::Duration::days(7)).timestamp();
 
     let total: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM k12_quiz_attempts
-             WHERE user_id = ?1 AND task_name = ?2 AND attempted_at >= ?3",
-            rusqlite::params![user_id, task_name, cutoff],
+             WHERE user_id = ?1 AND task_name = ?2 AND CAST(attempted_at AS INTEGER) >= ?3",
+            rusqlite::params![user_id, task_name, cutoff_ts],
             |row| row.get(0),
         )
         .unwrap_or(0);
@@ -51,7 +50,7 @@ pub fn should_mark_task_complete(
         .query_row(
             "SELECT COUNT(*) FROM k12_quiz_attempts
              WHERE user_id = ?1 AND task_name = ?2 AND attempted_at >= ?3 AND is_correct = 1",
-            rusqlite::params![user_id, task_name, cutoff],
+            rusqlite::params![user_id, task_name, cutoff_ts],
             |row| row.get(0),
         )
         .unwrap_or(0);
@@ -113,15 +112,16 @@ mod tests {
             "INSERT INTO k12_quiz_bank (id, task_name) VALUES ('q1', '任务1')",
             [],
         ).unwrap();
+        let now = chrono::Utc::now().timestamp();
         conn.execute(
             "INSERT INTO k12_quiz_attempts (id, user_id, task_name, is_correct, attempted_at)
-             VALUES ('a1', 'user1', '任务1', 1, '2026-05-23T10:00:00Z')",
-            [],
+             VALUES ('a1', 'user1', '任务1', 1, ?1)",
+            rusqlite::params![now],
         ).unwrap();
         conn.execute(
             "INSERT INTO k12_quiz_attempts (id, user_id, task_name, is_correct, attempted_at)
-             VALUES ('a2', 'user1', '任务1', 1, '2026-05-23T10:01:00Z')",
-            [],
+             VALUES ('a2', 'user1', '任务1', 1, ?1)",
+            rusqlite::params![now],
         ).unwrap();
 
         // 2/2 = 100% >= 80% → true

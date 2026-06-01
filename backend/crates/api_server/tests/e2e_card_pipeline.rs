@@ -21,7 +21,7 @@ fn setup_db(path: &str) -> Connection {
         CREATE TABLE IF NOT EXISTS learning_plans (
             id TEXT PRIMARY KEY, user_id TEXT NOT NULL, conversation_id TEXT,
             goal TEXT NOT NULL, domain TEXT NOT NULL DEFAULT '', mode TEXT,
-            plan_content TEXT, plan_json TEXT,
+            plan_content TEXT, task_status TEXT,
             created_at TEXT NOT NULL, updated_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS cards (
@@ -73,7 +73,7 @@ fn test_k12_init_card_domain() {
 
     conn.execute("INSERT INTO conversations (id, user_id, turn_count, started_at, subject, grade_band) VALUES (?1, ?2, 0, 'now', '数学', 'g3-4')",
         params![conv_id, USER_ID]).unwrap();
-    conn.execute("INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_content, plan_json, created_at, updated_at)
+    conn.execute("INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_content, task_status, created_at, updated_at)
         VALUES ('p1', ?1, ?2, '测试', '数学', 'structured', '{}', '{}', 'now', 'now')",
         params![USER_ID, conv_id]).unwrap();
 
@@ -117,7 +117,7 @@ fn test_plan_advancement_creates_cards() {
         {"name":"乘除法","gold_cr_ids":["cr_002"]}
     ]}]});
     let status = serde_json::json!({"task_status":{"加减法":"done"}});
-    conn.execute("INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_content, plan_json, created_at, updated_at)
+    conn.execute("INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_content, task_status, created_at, updated_at)
         VALUES ('p2', ?1, ?2, '数学', '数学', 'structured', ?3, ?4, 'now', 'now')",
         params![USER_ID, conv_id, plan.to_string(), status.to_string()]).unwrap();
 
@@ -126,7 +126,7 @@ fn test_plan_advancement_creates_cards() {
     api_server::plan_handler::handle_plan_update(&conn, reply, conv_id, USER_ID);
 
     // 验证 plan 推进到下一 task
-    let updated: String = conn.query_row("SELECT plan_json FROM learning_plans WHERE conversation_id = ?1",
+    let updated: String = conn.query_row("SELECT task_status FROM learning_plans WHERE conversation_id = ?1",
         params![conv_id], |r| r.get(0)).unwrap_or_default();
     assert!(updated.contains("乘除法"), "next task should be in plan: {}", updated);
     let has_pending = updated.contains("\"pending\"") || updated.contains("\"in_progress\"");
@@ -151,7 +151,7 @@ fn test_reading_init_all_cards() {
         {"name":"花的学校","reading_card_id":"r2","vocab_card_ids":["v003"]},
         {"name":"燕子","reading_card_id":"r3","vocab_card_ids":[]}
     ]}]});
-    conn.execute("INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_content, plan_json, created_at, updated_at)
+    conn.execute("INSERT INTO learning_plans (id, user_id, conversation_id, goal, domain, mode, plan_content, task_status, created_at, updated_at)
         VALUES ('pr', ?1, ?2, '阅读', '语文', 'reading', ?3, '{}', 'now', 'now')",
         params![USER_ID, conv_id, pc.to_string()]).unwrap();
 

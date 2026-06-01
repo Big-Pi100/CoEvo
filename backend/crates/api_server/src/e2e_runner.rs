@@ -222,7 +222,7 @@ pub fn init_test_db(db_path: &str) -> Result<(), Box<dyn std::error::Error>> {
         CREATE TABLE IF NOT EXISTS learning_plans (
             id TEXT PRIMARY KEY, user_id TEXT NOT NULL, conversation_id TEXT,
             goal TEXT NOT NULL, domain TEXT NOT NULL DEFAULT '', mode TEXT DEFAULT NULL,
-            plan_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+            task_status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
         CREATE TABLE IF NOT EXISTS cards (
@@ -254,7 +254,7 @@ pub fn seed_test_data(
     password_hash: &str,
     conv_id: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let now = chrono::Utc::now().to_rfc3339();
+    let now = chrono::Utc::now().timestamp();
 
     conn.execute(
         "INSERT OR IGNORE INTO users (id, username, password_hash, created_at) VALUES (?1, ?2, ?3, ?4)",
@@ -271,7 +271,7 @@ pub fn seed_test_data(
 
 /// 插入对话轮次
 pub fn insert_turn(conn: &rusqlite::Connection, conv_id: &str, role: &str, content: &str) {
-    let now = chrono::Utc::now().to_rfc3339();
+    let now = chrono::Utc::now().timestamp();
     let turn_id = format!("{}-{}", conv_id, rand::random::<u64>());
     let _ = conn.execute(
         "INSERT INTO conversation_turns (id, conversation_id, role, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",

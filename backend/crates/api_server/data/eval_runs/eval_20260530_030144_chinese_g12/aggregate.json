@@ -1,9 +1,0 @@
-{
-  "avg_latency_ms": 8357,
-  "duration_secs": 108,
-  "run_id": "eval_20260530_030144_chinese_g12",
-  "total_cards": 11,
-  "total_latency_ms": 75213,
-  "total_reply_chars": 8191,
-  "total_turns": 9
-}
