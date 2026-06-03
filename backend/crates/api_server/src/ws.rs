@@ -509,7 +509,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                             // 写入 cards（带 conversation_id + plan_type + plan_id）
                             let _ = conn.execute(
                                 "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, status, plan_type, plan_id)
-                                 VALUES (?1, ?2, ?3, 'concept', ?4, ?5, ?6, ?7, ?8, 'pending', 'conversation_plans', ?9)",
+                                 VALUES (?1, ?2, ?3, 'concept', ?4, ?5, ?6, ?7, ?8, 'active', 'conversation_plans', ?9)",
                                 rusqlite::params![card_id, user_id, c.domain, c.front, c.back, c.source_sentence, conv_id_cp1, now, cp1_plan_id],
                             );
                             let _ = conn.execute(
