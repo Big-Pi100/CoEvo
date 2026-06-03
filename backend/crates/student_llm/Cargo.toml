@@ -1,0 +1,8 @@
+[package]
+name = "student_llm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+chat_engine = { path = "../chat_engine" }

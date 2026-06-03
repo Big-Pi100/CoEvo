@@ -1,0 +1,3274 @@
+{
+  "cards": [
+    {
+      "id": "physics_senior_0000",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "加速度",
+      "back": "定义:描述物体速度变化快慢的物理量，等于速度变化量与发生这一变化所用时间之比。\n\n关键要素:矢量，方向与速度变化量方向相同。在匀变速直线运动中为恒定值。\n\n应用:判断物体加速或减速，计算匀变速直线运动的速度和时间关系。\n\n关联:速度、位移、匀变速直线运动",
+      "card_type": "concept",
+      "plan_task_id": "描述运动的物理量",
+      "gold_cr_ids": [
+        "cr_001"
+      ],
+      "source_sentence": "1.1.3 理解位移、速度和加速度。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0001",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "瞬时速度",
+      "back": "定义:物体在某一时刻或某一位置的速度，是平均速度的极限值。\n\n关键要素:矢量，方向沿运动轨迹在该点的切线方向。通过极限方法（Δx/Δt当Δt→0）建构。\n\n应用:描述物体运动的精确快慢，如测速仪、频闪照片分析。\n\n关联:速度、极限方法、平均速度",
+      "card_type": "concept",
+      "plan_task_id": "描述运动的物理量",
+      "gold_cr_ids": [
+        "cr_003"
+      ],
+      "source_sentence": "例3 结合瞬时速度概念的建构，体会研究物理问题的极限方法。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0002",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "极限方法",
+      "back": "定义:通过取极端或无限逼近的方式研究物理问题的方法。\n\n关键要素:例如用平均速度的极限定义瞬时速度，用无穷小量分析运动变化。\n\n应用:建构瞬时速度、加速度等概念，分析匀变速直线运动规律。\n\n关联:瞬时速度、加速度、微元法",
+      "card_type": "concept",
+      "plan_task_id": "描述运动的物理量",
+      "gold_cr_ids": [
+        "cr_007"
+      ],
+      "source_sentence": "例3 结合瞬时速度概念的建构，体会研究物理问题的极限方法。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0003",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "匀变速直线运动",
+      "back": "定义:沿直线且加速度恒定不变的运动。\n\n关键要素:速度均匀变化，可用公式(v=v₀+at、x=v₀t+½at²等)和v-t图像（倾斜直线）描述。\n\n应用:解决自由落体、汽车刹车等实际问题，体会极限方法。\n\n关联:加速度、位移、速度、自由落体运动",
+      "card_type": "concept",
+      "plan_task_id": "匀变速直线运动与自由落体",
+      "gold_cr_ids": [
+        "cr_002"
+      ],
+      "source_sentence": "1.1.3 通过实验，探究匀变速直线运动的特点，能用公式、图像等方法描述匀变速直线运动，理解匀变速直线运动的规律，能运用其解决实际问题，体会科学思维中的抽象方法和物理问题研究中的极限方法。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0004",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "自由落体运动",
+      "back": "定义:物体只在重力作用下从静止开始下落的运动。\n\n关键要素:初速度为零，加速度为重力加速度g（大小约9.8m/s²，方向竖直向下），是匀变速直线运动的特例。\n\n应用:计算下落时间、速度等，如跳伞、落体实验。\n\n关联:匀变速直线运动、重力加速度、伽利略",
+      "card_type": "concept",
+      "plan_task_id": "匀变速直线运动与自由落体",
+      "gold_cr_ids": [
+        "cr_004"
+      ],
+      "source_sentence": "1.1.4 通过实验，认识自由落体运动规律。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0005",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "伽利略的实验科学思想和方法",
+      "back": "定义:伽利略在物理学研究中采用的实验与数学推理相结合的科学方法。\n\n关键要素:包括理想实验、外推法、控制变量、斜面实验、科学推理等。\n\n应用:推翻亚里士多德错误观点，建立自由落体运动规律，推动近代实验科学发展。\n\n关联:自由落体运动、理想实验、物理学史",
+      "card_type": "concept",
+      "plan_task_id": "匀变速直线运动与自由落体",
+      "gold_cr_ids": [
+        "cr_005"
+      ],
+      "source_sentence": "例1 了解伽利略的实验研究工作，认识伽利略有关实验的科学思想和方法。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0006",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "亚里士多德关于力与运动的主要观点",
+      "back": "定义:亚里士多德认为力是维持物体运动的原因，物体运动需要外力持续作用。\n\n关键要素:错误观点，认为重的物体下落快、轻的物体下落慢。研究方法基于直觉和简单观察，缺乏实验验证。\n\n应用:作为对比，突出伽利略实验与推理方法的正确性，理解物理学进步过程。\n\n关联:伽利略、自由落体运动、力与运动",
+      "card_type": "concept",
+      "plan_task_id": "匀变速直线运动与自由落体",
+      "gold_cr_ids": [
+        "cr_006"
+      ],
+      "source_sentence": "例6 查阅资料，了解亚里士多德关于力与运动的主要观点和研究方法。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0007",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "曲线运动",
+      "back": "定义:运动轨迹为曲线的运动\n\n关键要素:物体做曲线运动的条件是合外力方向与速度方向不在同一直线上；速方向时刻改变，是变速运动\n\n应用:篮球投篮、汽车转弯等实际运动\n\n关联:与直线运动相对，可用运动的合成与分解来处理",
+      "card_type": "concept",
+      "plan_task_id": "曲线运动与抛体",
+      "gold_cr_ids": [
+        "cr_012"
+      ],
+      "source_sentence": "2.2.1通过实验，了解曲线运动，知道物体做曲线运动的条件。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0008",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "平抛运动",
+      "back": "定义:水平抛出且只在重力作用下的运动，是匀变速曲线运动\n\n关键要素:水平方向匀速直线运动，竖直方向自由落体运动；轨迹为抛物线\n\n应用:分析投掷、跳伞等抛体运动；炮弹弹道与理想抛物线的差异\n\n关联:运动合成与分解、抛体运动、自由落体运动",
+      "card_type": "concept",
+      "plan_task_id": "曲线运动与抛体",
+      "gold_cr_ids": [
+        "cr_013"
+      ],
+      "source_sentence": "2.2.2通过实验，探究并认识平抛运动的规律。会用运动合成与分解的方法分析平抛运动。体会将复杂运动分解为简单运动的物理思想。能分析生产生活中的抛体运动。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0009",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "运动的合成与分解",
+      "back": "定义:将复杂运动分解为几个简单运动，或合成多个分运动得到合运动的方法\n\n关键要素:遵循平行四边形定则；合运动与分运动具有等时性和独立性\n\n应用:分析平抛运动、小船渡河、牵连运动等\n\n关联:平抛运动、曲线运动、矢量运算",
+      "card_type": "concept",
+      "plan_task_id": "曲线运动与抛体",
+      "gold_cr_ids": [
+        "cr_014"
+      ],
+      "source_sentence": "2.2.2通过实验，探究并认识平抛运动的规律。会用运动合成与分解的方法分析平抛运动。体会将复杂运动分解为简单运动的物理思想。能分析生产生活中的抛体运动。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0010",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "抛体运动",
+      "back": "定义:以一定初速度抛出，只在重力作用下的运动（忽略空气阻力）\n\n关键要素:水平方向匀速，竖直方向匀变速；轨迹为抛物线（斜抛时）\n\n应用:篮球投篮、跳远、农田灌溉喷水等\n\n关联:平抛运动、竖直上抛运动、斜抛运动",
+      "card_type": "concept",
+      "plan_task_id": "曲线运动与抛体",
+      "gold_cr_ids": [
+        "cr_015"
+      ],
+      "source_sentence": "2.2.2通过实验，探究并认识平抛运动的规律。会用运动合成与分解的方法分析平抛运动。体会将复杂运动分解为简单运动的物理思想。能分析生产生活中的抛体运动。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0011",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "线速度",
+      "back": "定义:做匀速圆周运动的质点通过的弧长与所用时间的比值，方向沿切线方向\n\n关键要素:大小 v = Δs/Δt；单位 m/s；是矢量\n\n应用:描述圆周运动的快慢\n\n关联:角速度、周期、匀速圆周运动",
+      "card_type": "concept",
+      "plan_task_id": "圆周运动",
+      "gold_cr_ids": [
+        "cr_016"
+      ],
+      "source_sentence": "2.2.3会用线速度、角速度、周期描述匀速圆周运动。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0012",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "角速度",
+      "back": "定义:做匀速圆周运动的质点转过的圆心角与所用时间的比值\n\n关键要素:大小 ω = Δθ/Δt；单位 rad/s；是矢量，方向由右手螺旋定则确定\n\n应用:描述圆周运动转动的快慢\n\n关联:线速度、周期、匀速圆周运动",
+      "card_type": "concept",
+      "plan_task_id": "圆周运动",
+      "gold_cr_ids": [
+        "cr_017"
+      ],
+      "source_sentence": "2.2.3会用线速度、角速度、周期描述匀速圆周运动。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0013",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "匀速圆周运动",
+      "back": "定义:质点沿圆周运动，在相等时间内通过的弧长相等的运动\n\n关键要素:线速度大小不变，方向时刻改变；角速度不变；有向心加速度\n\n应用:天体运动、齿轮传动、转盘运动等\n\n关联:线速度、角速度、周期、向心加速度、向心力",
+      "card_type": "concept",
+      "plan_task_id": "圆周运动",
+      "gold_cr_ids": [
+        "cr_018"
+      ],
+      "source_sentence": "2.2.3会用线速度、角速度、周期描述匀速圆周运动。知道匀速圆周运动向心加速度的大小和方向。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0014",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "向心加速度",
+      "back": "定义:做匀速圆周运动的物体加速度总指向圆心，描述速度方向变化的快慢\n\n关键要素:大小 a = v²/r = ω²r；方向始终指向圆心，与速度垂直\n\n应用:分析圆周运动中的动力学问题\n\n关联:向心力、牛顿第二定律、匀速圆周运动",
+      "card_type": "concept",
+      "plan_task_id": "圆周运动",
+      "gold_cr_ids": [
+        "cr_019"
+      ],
+      "source_sentence": "2.2.3会用线速度、角速度、周期描述匀速圆周运动。知道匀速圆周运动向心加速度的大小和方向。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0015",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "向心力",
+      "back": "定义:使物体做圆周运动的力，方向始终指向圆心\n\n关键要素:大小 F = mv²/r = mω²r；由合外力提供；不是新的力\n\n应用:汽车转弯、火车转弯、离心机等；通过实验探究与半径、角速度、质量的关系\n\n关联:牛顿第二定律、匀速圆周运动、离心现象",
+      "card_type": "concept",
+      "plan_task_id": "圆周运动",
+      "gold_cr_ids": [
+        "cr_020"
+      ],
+      "source_sentence": "2.2.3通过实验，探究并了解匀速圆周运动向心力大小与半径、角速度、质量的关系。能用牛顿第二定律分析匀速圆周运动的向心力。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0016",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "离心现象",
+      "back": "定义:做圆周运动的物体，当向心力突然消失或不足时，物体沿切线方向飞出或远离圆心的现象\n\n关键要素:本质是惯性；原因是合外力不足以维持圆周运动\n\n应用:离心机、洗衣机脱水、汽车转弯侧滑等\n\n关联:向心力、匀速圆周运动、惯性",
+      "card_type": "concept",
+      "plan_task_id": "圆周运动",
+      "gold_cr_ids": [
+        "cr_021"
+      ],
+      "source_sentence": "2.2.3了解生产生活中的离心现象及其产生的原因。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0017",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "牛顿力学",
+      "back": "定义:艾萨克·牛顿建立的经典力学体系，包括三大运动定律和万有引力定律。\n\n关键要素:惯性定律、加速度定律、作用与反作用定律；万有引力定律；适用于宏观低速运动的物体。\n\n应用:天体运行预测、工程力学、机械设计等。\n\n局限性:不适用于微观粒子（量子效应）和高速运动（相对论效应）。\n\n关联:伽利略方法、相对论、量子力学",
+      "card_type": "concept",
+      "plan_task_id": "万有引力定律",
+      "gold_cr_ids": [
+        "cr_182"
+      ],
+      "source_sentence": "了解牛顿力学的成就和局限性。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0018",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "万有引力定律",
+      "back": "定义:自然界中任何两个物体都相互吸引，引力大小与它们质量的乘积成正比，与距离的平方成反比\n\n关键要素:公式 F = G m₁m₂/r²，G为引力常量；方向沿连线\n\n意义:统一了地上与天上的力学，解释了行星运动规律\n\n关联:牛顿、卡文迪许、天体运动、重力",
+      "card_type": "concept",
+      "plan_task_id": "万有引力定律",
+      "gold_cr_ids": [
+        "cr_022"
+      ],
+      "source_sentence": "2.2.4通过史实，了解万有引力定律的发现过程。知道万有引力定律。认识发现万有引力定律的重要意义。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0019",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "开普勒定律",
+      "back": "定义:约翰内斯·开普勒发现的行星运动三大定律：椭圆轨道定律、面积定律和周期定律。\n\n关键要素:行星绕太阳做椭圆运动，太阳位于一个焦点；相同时间内扫过相等面积；公转周期的平方与轨道半长轴的立方成正比。\n\n应用:精确描述行星运动，是牛顿万有引力定律推导的基础。\n\n关联:牛顿万有引力定律、天体力学",
+      "card_type": "concept",
+      "plan_task_id": "万有引力定律",
+      "gold_cr_ids": [
+        "cr_180"
+      ],
+      "source_sentence": "了解开普勒定律对牛顿发现万有引力定律的重要作用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0020",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "第一宇宙速度",
+      "back": "定义:人造地球卫星在地面附近绕地球做匀速圆周运动所需的最小发射速度，即环绕速度\n\n关键要素:大小约7.9 km/s；由万有引力提供向心力推导\n\n应用:卫星发射、航天技术\n\n关联:第二宇宙速度、第三宇宙速度、万有引力定律",
+      "card_type": "concept",
+      "plan_task_id": "万有引力定律",
+      "gold_cr_ids": [
+        "cr_023"
+      ],
+      "source_sentence": "2.2.5 会计算人造地球卫星的环绕速度。知道第二宇宙速度和第三宇宙速度。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0021",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "第二宇宙速度",
+      "back": "定义:物体脱离地球引力束缚所需的最小发射速度\n\n关键要素:大小约11.2 km/s；当速度达到此值时，物体成为绕太阳运行的人造行星\n\n应用:行星探测、星际航行\n\n关联:第一宇宙速度、第三宇宙速度、万有引力定律",
+      "card_type": "concept",
+      "plan_task_id": "万有引力定律",
+      "gold_cr_ids": [
+        "cr_024"
+      ],
+      "source_sentence": "2.2.5 会计算人造地球卫星的环绕速度。知道第二宇宙速度和第三宇宙速度。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0022",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "第三宇宙速度",
+      "back": "定义:物体脱离太阳系引力束缚所需的最小发射速度\n\n关键要素:大小约16.7 km/s；需借助地球公转速度\n\n应用:飞出太阳系的探测器\n\n关联:第一宇宙速度、第二宇宙速度、万有引力定律",
+      "card_type": "concept",
+      "plan_task_id": "万有引力定律",
+      "gold_cr_ids": [
+        "cr_025"
+      ],
+      "source_sentence": "2.2.5 会计算人造地球卫星的环绕速度。知道第二宇宙速度和第三宇宙速度。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0023",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "动能定理",
+      "back": "定义:合外力对物体所做的功等于物体动能的变化量。\n\n关键要素:合外力做的功、初动能、末动能。\n\n应用:解释生产生活中的现象；根据牛顿第二定律推导出动能定理；分析汽车刹车距离与车速的关系。\n\n关联:牛顿第二定律、功、动能、机械能守恒定律。",
+      "card_type": "concept",
+      "plan_task_id": "动能定理与机械能守恒",
+      "gold_cr_ids": [
+        "cr_008"
+      ],
+      "source_sentence": "理解动能和动能定理。能用动能定理解释生产生活中的现象。例3根据牛顿第二定律推导出动能定理。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0024",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "重力势能",
+      "back": "定义:物体由于被举高而具有的能量，表达式为Ep=mgh。重力势能的变化与重力做功的关系：重力做功等于重力势能的减少量。\n\n关键要素:质量、重力加速度、高度。\n\n应用:分析物体在重力作用下的能量变化。\n\n关联:机械能守恒定律、重力做功。\n\n注意:重力势能具有相对性，需选定参考平面。",
+      "card_type": "concept",
+      "plan_task_id": "动能定理与机械能守恒",
+      "gold_cr_ids": [
+        "cr_009"
+      ],
+      "source_sentence": "理解重力势能，知道重力势能的变化与重力做功的关系。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0025",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "弹性势能",
+      "back": "定义:物体由于发生弹性形变而具有的能量。\n\n关键要素:形变量、劲度系数（对于弹簧）。\n\n应用:定性了解弹性势能的概念，通常用于分析弹簧等弹性体的能量转化。\n\n关联:机械能守恒定律、动能、重力势能。\n\n注意:教材要求为定性了解。",
+      "card_type": "concept",
+      "plan_task_id": "动能定理与机械能守恒",
+      "gold_cr_ids": [
+        "cr_010"
+      ],
+      "source_sentence": "定性了解弹性势能。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0026",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "机械能守恒定律",
+      "back": "定义:在只有重力或弹力做功的物体系统内，动能与势能（重力势能和弹性势能）相互转化，而总的机械能保持不变。\n\n关键要素:只有重力或弹力做功、动能、重力势能、弹性势能、总机械能守恒。\n\n应用:通过实验验证机械能守恒定律；分析生产生活中的有关问题。\n\n关联:动能定理、重力势能、弹性势能、守恒观念。",
+      "card_type": "concept",
+      "plan_task_id": "动能定理与机械能守恒",
+      "gold_cr_ids": [
+        "cr_011"
+      ],
+      "source_sentence": "通过实验，验证机械能守恒定律。理解机械能守恒定律，体会守恒观念对认识物理规律的重要性。能用机械能守恒定律分析生产生活中的有关问题。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0027",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "能量守恒定律",
+      "back": "定义:不同形式的能量可以相互转化，在转化过程中能量总量保持不变。\n\n关键要素:能量既不会凭空产生，也不会凭空消失；转化过程总量守恒。\n\n应用:分析各种能量转化问题，如机械能守恒、热力学第一定律。\n\n关联:能量转化方向性、热力学定律。",
+      "card_type": "concept",
+      "plan_task_id": "能量守恒定律与能源",
+      "gold_cr_ids": [
+        "cr_062"
+      ],
+      "source_sentence": "知道不同形式的能量可互相转化，在转化过程中能量总量保持不变，能量转化是有方向性的。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0028",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "能量转化方向性",
+      "back": "定义:能量在转化过程中具有方向性，某些形式的能量不能自发地完全转化为其他形式。\n\n关键要素:如内能不能自发地全部转化为机械能；反映了自然过程不可逆性。\n\n应用:热机效率限制、能源利用的可持续性分析。\n\n关联:能量守恒定律、熵增加原理、热力学第二定律。",
+      "card_type": "concept",
+      "plan_task_id": "能量守恒定律与能源",
+      "gold_cr_ids": [
+        "cr_063"
+      ],
+      "source_sentence": "知道不同形式的能量可互相转化，在转化过程中能量总量保持不变，能量转化是有方向性的。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0029",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "可再生能源",
+      "back": "定义:在自然界中可以持续再生、取之不尽或短期内可恢复的能源。\n\n关键要素:包括风能、水能、太阳能、生物质能、地热能、潮汐能等。\n\n应用:风力发电、水力发电、太阳能热水器、光伏电池等。\n\n关联:不可再生能源、能源分类、环境保护。",
+      "card_type": "concept",
+      "plan_task_id": "能量守恒定律与能源",
+      "gold_cr_ids": [
+        "cr_064"
+      ],
+      "source_sentence": "了解可再生能源和不可再生能源的分类，认识能源的过度开发和利用对环境的影响。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0030",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "不可再生能源",
+      "back": "定义:在人类历史时期内无法自然再生或再生速度远低于消耗速度的能源。\n\n关键要素:包括煤炭、石油、天然气、核燃料（铀等）。\n\n应用:火力发电、内燃机、核电站。\n\n关联:可再生能源、能源危机、环境污染。",
+      "card_type": "concept",
+      "plan_task_id": "能量守恒定律与能源",
+      "gold_cr_ids": [
+        "cr_065"
+      ],
+      "source_sentence": "了解可再生能源和不可再生能源的分类，认识能源的过度开发和利用对环境的影响。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0031",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "动量定理",
+      "back": "定义:合外力的冲量等于物体动量的变化量，即 I = Δp。\n\n关键要素:矢量性，冲量方向与动量变化方向一致；适用于任何力作用的过程。\n\n应用:解释缓冲现象（如跳远沙坑）、打击力计算、变加速运动分析。\n\n关联:冲量、动量、动量守恒定律",
+      "card_type": "concept",
+      "plan_task_id": "动量定理与碰撞",
+      "gold_cr_ids": [
+        "cr_068"
+      ],
+      "source_sentence": "通过理论推导和实验，理解动量定理和动量守恒定律，能用其解释生产生活中的有关现象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0032",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "动量守恒定律",
+      "back": "定义:系统不受外力或所受合外力为零时，系统总动量保持不变。\n\n关键要素:守恒条件：合外力为零；矢量守恒，适用于任意方向；在碰撞、爆炸、反冲等过程中近似成立。\n\n应用:火箭发射、中子发现、台球碰撞、微观粒子碰撞等。\n\n关联:动量定理、弹性碰撞、非弹性碰撞、反冲现象",
+      "card_type": "concept",
+      "plan_task_id": "动量定理与碰撞",
+      "gold_cr_ids": [
+        "cr_069"
+      ],
+      "source_sentence": "通过理论推导和实验，理解动量定理和动量守恒定律，能用其解释生产生活中的有关现象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0033",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "动量守恒定律的普适性",
+      "back": "定义:动量守恒定律不仅适用于宏观物体，也适用于微观粒子和高速运动物体，是自然界最基本的守恒定律之一。\n\n关键要素:守恒定律的适用范围广泛，不依赖于具体力的性质；在经典物理和量子物理中均成立。\n\n应用:解释天体运动、原子核反应、基本粒子碰撞等现象。\n\n关联:动量守恒定律、能量守恒定律、自然界的和谐统一",
+      "card_type": "concept",
+      "plan_task_id": "动量定理与碰撞",
+      "gold_cr_ids": [
+        "cr_070"
+      ],
+      "source_sentence": "知道动量守恒定律的普适性。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0034",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "反冲现象",
+      "back": "定义:系统的一部分向某一方向运动时，另一部分向相反方向运动的现象，本质是动量守恒。\n\n关键要素:系统内力作用，总动量守恒；反冲速度与质量成反比。\n\n应用:火箭发射、喷气飞机、枪械后坐力、水火箭等。\n\n关联:动量守恒定律、火箭推进",
+      "card_type": "concept",
+      "plan_task_id": "动量定理与碰撞",
+      "gold_cr_ids": [
+        "cr_071"
+      ],
+      "source_sentence": "例1知道火箭的发射利用了反冲现象",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0035",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "弹性碰撞",
+      "back": "定义:碰撞前后系统动能守恒的碰撞，同时动量也守恒。\n\n关键要素:碰撞过程中无机械能损失，物体发生弹性形变后完全恢复原状。\n\n应用:台球碰撞、理想气体分子碰撞、中子散射等。\n\n关联:非弹性碰撞、动量守恒、动能守恒",
+      "card_type": "concept",
+      "plan_task_id": "动量定理与碰撞",
+      "gold_cr_ids": [
+        "cr_073"
+      ],
+      "source_sentence": "通过实验，了解弹性碰撞和非弹性碰撞的特点。定量分析一维碰撞问题并能解释生产生活中的弹性碰撞和非弹性碰撞现象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0036",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "非弹性碰撞",
+      "back": "定义:碰撞前后系统动能不守恒（有机械能损失）的碰撞，但动量仍守恒。\n\n关键要素:部分动能转化为内能或形变势能；完全非弹性碰撞后两物体粘在一起，动能损失最大。\n\n应用:汽车碰撞、软球碰撞、缓冲装置设计等。\n\n关联:弹性碰撞、动量守恒、能量转化",
+      "card_type": "concept",
+      "plan_task_id": "动量定理与碰撞",
+      "gold_cr_ids": [
+        "cr_074"
+      ],
+      "source_sentence": "通过实验，了解弹性碰撞和非弹性碰撞的特点。定量分析一维碰撞问题并能解释生产生活中的弹性碰撞和非弹性碰撞现象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0037",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "一维碰撞问题",
+      "back": "定义:碰撞发生在同一直线上的简化模型，便于定量分析。\n\n关键要素:碰撞前后速度均沿直线，可用正负号表示方向；动量守恒方程为一维标量方程。\n\n应用:处理小球对心碰撞、子弹打木块等常见物理模型。\n\n关联:弹性碰撞、非弹性碰撞、动量守恒",
+      "card_type": "concept",
+      "plan_task_id": "动量定理与碰撞",
+      "gold_cr_ids": [
+        "cr_075"
+      ],
+      "source_sentence": "定量分析一维碰撞问题并能解释生产生活中的弹性碰撞和非弹性碰撞现象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0038",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "守恒定律分析问题的方法",
+      "back": "定义:利用动量守恒、能量守恒等守恒定律，忽略复杂过程细节，直接通过初末状态求解物理问题的方法。\n\n关键要素:选取系统并判断守恒条件；确定初末状态量，列守恒方程；简化计算，突出物理本质。\n\n应用:天体运动、碰撞、爆炸、微观粒子反应等。\n\n关联:动量守恒定律、能量守恒定律、自然界的和谐统一",
+      "card_type": "concept",
+      "plan_task_id": "动量定理与碰撞",
+      "gold_cr_ids": [
+        "cr_076"
+      ],
+      "source_sentence": "体会用守恒定律分析物理问题的方法，体会自然界的和谐与统一。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0039",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "简谐运动",
+      "back": "定义:物体在回复力作用下，位移与时间满足正弦或余弦函数的运动，其特征是周期性、对称性。\n\n关键要素:回复力与位移成正比且方向相反（F=-kx）；加速度与位移成正比且方向相反。\n\n应用:弹簧振子、单摆的小角度摆动（近似简谐运动）等。\n\n关联:简谐运动的描述（公式、图像）；单摆；受迫振动；共振。",
+      "card_type": "concept",
+      "plan_task_id": "简谐运动与单摆",
+      "gold_cr_ids": [
+        "cr_077"
+      ],
+      "source_sentence": "通过实验，认识简谐运动的特征。能用公式和图像描述简谐运动。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0040",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "单摆周期公式",
+      "back": "定义:单摆在小角度摆动时，周期T与摆长l的平方根成正比，与重力加速度g的平方根成反比。\n\n公式:T=2π√(l/g)\n\n关键要素:摆长l（悬点到摆球重心的距离）；重力加速度g；小角度条件（偏角<5°）。\n\n应用:用单摆测量当地重力加速度；制作计时摆钟。\n\n关联:简谐运动；重力加速度；受迫振动。",
+      "card_type": "concept",
+      "plan_task_id": "简谐运动与单摆",
+      "gold_cr_ids": [
+        "cr_078"
+      ],
+      "source_sentence": "通过实验，探究单摆的周期与摆长的定量关系。知道单摆周期与摆长、重力加速度的关系。会用单摆测量重力加速度的大小。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0041",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "受迫振动",
+      "back": "定义:系统在周期性驱动力作用下的振动，其稳定振动频率等于驱动力的频率，与系统固有频率无关。\n\n关键要素:驱动力频率；系统固有频率；稳定时振幅由驱动力频率与固有频率的接近程度决定。\n\n应用:发动机振动、扬声器纸盆振动等。\n\n关联:共振；简谐运动；阻尼振动。",
+      "card_type": "concept",
+      "plan_task_id": "简谐运动与单摆",
+      "gold_cr_ids": [
+        "cr_079"
+      ],
+      "source_sentence": "通过实验，认识受迫振动的特点。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0042",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "单摆模型",
+      "back": "定义:将小球用细线悬挂，忽略空气阻力、线质量和小球大小，摆角很小时可视为简谐运动的理想模型。\n\n关键要素:回复力由重力沿切线方向分力提供，周期 T = 2π√(L/g)（已存在概念“单摆周期公式”）。\n\n应用:测量重力加速度，计时。\n\n关联:简谐运动、重力加速度测量",
+      "card_type": "concept",
+      "plan_task_id": "简谐运动与单摆",
+      "gold_cr_ids": [
+        "cr_096"
+      ],
+      "source_sentence": "能根据现实生活中的振动或摆动的特点，建构简谐运动、单摆等物理模型。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0043",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "用单摆测量重力加速度",
+      "back": "定义:通过测量单摆的摆长和周期，利用周期公式 T=2π√(L/g) 计算当地重力加速度。\n\n关键要素:需要精确测量摆长（悬点到摆球重心）和周期（多次测量取平均）。误差来源包括摆角、空气阻力等。\n\n应用:测定各地重力加速度值，验证重力随纬度变化。\n\n关联:单摆、简谐运动",
+      "card_type": "concept",
+      "plan_task_id": "简谐运动与单摆",
+      "gold_cr_ids": [
+        "cr_098"
+      ],
+      "source_sentence": "会做“用单摆测量重力加速度的大小”等实验。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0044",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "波的特征",
+      "back": "定义:机械振动在介质中的传播形成机械波，波传播的是能量和振动形式，介质质点不随波迁移。\n\n关键要素:波源；介质；传播方向与振动方向的关系（横波、纵波）；波长、频率、波速的关系。\n\n应用:声波、水波、地震波等。\n\n关联:横波与纵波；波速-波长-频率关系；波的反射、折射、干涉、衍射。",
+      "card_type": "concept",
+      "plan_task_id": "机械波与声波",
+      "gold_cr_ids": [
+        "cr_080"
+      ],
+      "source_sentence": "通过观察，认识波的特征。能区别横波和纵波。能用图像描述横波。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0045",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "横波与纵波",
+      "back": "定义:横波——质点的振动方向与波的传播方向垂直；纵波——质点的振动方向与波的传播方向平行（同向或反向）。\n\n关键要素:横波有波峰和波谷；纵波有疏部和密部。\n\n应用:横波：电磁波（但非机械波）、水表面波；纵波：声波（空气中）、地震P波。\n\n关联:机械波；波的特征；偏振（仅横波有）。",
+      "card_type": "concept",
+      "plan_task_id": "机械波与声波",
+      "gold_cr_ids": [
+        "cr_081"
+      ],
+      "source_sentence": "能区别横波和纵波。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0046",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "波速、波长与频率的关系",
+      "back": "定义:波在介质中传播的速度v等于波长λ与频率f的乘积，即v=λf。\n\n关键要素:波速由介质性质决定；频率由波源决定；波长由波速和频率共同决定。\n\n应用:通过测量波长和频率求波速；利用多普勒效应测速等。\n\n关联:波的图像；机械波；电磁波。",
+      "card_type": "concept",
+      "plan_task_id": "机械波与声波",
+      "gold_cr_ids": [
+        "cr_082"
+      ],
+      "source_sentence": "理解波速、波长和频率的关系。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0047",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "波的反射与折射",
+      "back": "定义:波遇到障碍物或两种介质界面时，返回原介质传播的现象称为反射；进入另一种介质并改变传播方向的现象称为折射。\n\n关键要素:反射定律（入射角等于反射角）；折射定律（斯涅尔定律）；波速变化导致折射。\n\n应用:回声定位、声纳、透镜成像（光波）等。\n\n关联:波的特征；干涉；衍射。",
+      "card_type": "concept",
+      "plan_task_id": "机械波与声波",
+      "gold_cr_ids": [
+        "cr_083"
+      ],
+      "source_sentence": "知道波的反射和折射现象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0048",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "波的干涉与衍射",
+      "back": "定义:干涉——两列频率相同、相位差恒定的波相遇时，在空间某些区域振动加强、某些区域振动减弱的稳定现象。衍射——波绕过障碍物或通过狭缝继续传播的现象，条件为障碍物或狭缝尺寸与波长相近。\n\n关键要素:干涉：相干波源（频率相同、相位差恒定）；衍射：明显衍射条件（d≈λ）。\n\n应用:干涉：双缝干涉测量波长、薄膜干涉；衍射：光栅衍射、声波绕过障碍物。\n\n关联:波的特征；惠更斯原理；叠加原理。",
+      "card_type": "concept",
+      "plan_task_id": "机械波与声波",
+      "gold_cr_ids": [
+        "cr_084"
+      ],
+      "source_sentence": "通过实验，了解波的干涉与衍射现象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0049",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "多普勒效应",
+      "back": "定义:由于波源与观察者之间有相对运动，导致观察者接收到的波频率与波源实际频率不同的现象。\n\n关键要素:接近时频率升高（蓝移），远离时频率降低（红移）；相对速度越大，频移越明显。\n\n应用:雷达测速、多普勒彩超、天体运动测量、声呐等。\n\n关联:波速-波长-频率关系；机械波；电磁波。",
+      "card_type": "concept",
+      "plan_task_id": "机械波与声波",
+      "gold_cr_ids": [
+        "cr_085"
+      ],
+      "source_sentence": "通过实验，认识多普勒效应。能解释多普勒效应产生的原因。能列举多普勒效应的应用实例。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0050",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "机械波",
+      "back": "定义:机械振动在介质中传播形成的波。\n\n关键要素:产生条件：波源和介质；传播的是振动形式和能量，质点不随波迁移。包括横波和纵波。\n\n应用:声波、地震波。\n\n关联:简谐运动、波的干涉",
+      "card_type": "concept",
+      "plan_task_id": "机械波与声波",
+      "gold_cr_ids": [
+        "cr_097"
+      ],
+      "source_sentence": "能用恰当的物理量描述简谐运动和机械波，能说明机械波的特点，并能解释生产生活中的有关现象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0051",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "声波反射",
+      "back": "定义:声波在传播过程中遇到障碍物时，会改变传播方向返回原介质的现象。\n\n关键要素:反射定律（入射角等于反射角）；反射波的强度与介质特性有关。\n\n应用:B超（超声波诊断）利用声波反射形成人体内部结构图像。\n\n关联:回声、超声波、多普勒效应",
+      "card_type": "concept",
+      "plan_task_id": "机械波与声波",
+      "gold_cr_ids": [
+        "cr_192"
+      ],
+      "source_sentence": "2.1.1 了解声波的反射在B超中的应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0052",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "油酸分子大小估测",
+      "back": "定义:通过实验测量油酸分子直径的方法，通常利用油酸在水面上形成单分子层油膜，根据油酸体积和油膜面积估算分子大小。\n\n关键要素:单分子层、油膜法、体积与面积比值。\n\n应用:测量分子数量级（约10⁻¹⁰ m），验证分子动理论。\n\n关联:分子动理论、阿伏伽德罗常数",
+      "card_type": "concept",
+      "plan_task_id": "分子动理论",
+      "gold_cr_ids": [
+        "cr_130"
+      ],
+      "source_sentence": "通过实验，估测油酸分子的大小。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0053",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "分子动理论基本观点",
+      "back": "定义:物质由大量分子组成，分子永不停息地做无规则运动，分子间存在相互作用力（引力和斥力）。\n\n关键要素:分子、热运动、分子力。\n\n应用:解释扩散、布朗运动、热现象等。\n\n关联:扩散现象、布朗运动、气体实验定律",
+      "card_type": "concept",
+      "plan_task_id": "分子动理论",
+      "gold_cr_ids": [
+        "cr_131"
+      ],
+      "source_sentence": "了解分子动理论的基本观点及相关的实验证据。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0054",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "扩散现象",
+      "back": "定义:不同物质相互接触时，彼此进入对方的现象，是分子热运动的结果。\n\n关键要素:自发、无规则运动、温度越高扩散越快。\n\n应用:气体、液体、固体中均存在，生活中如香水挥发、墨水扩散。\n\n关联:布朗运动、分子动理论",
+      "card_type": "concept",
+      "plan_task_id": "分子动理论",
+      "gold_cr_ids": [
+        "cr_132"
+      ],
+      "source_sentence": "通过实验，了解扩散现象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0055",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "布朗运动",
+      "back": "定义:悬浮在液体或气体中的微粒所做的永不停息的无规则运动，是液体或气体分子对微粒撞击不平衡的结果。\n\n关键要素:微粒足够小、液体分子撞击、无规则、温度越高越剧烈。\n\n应用:证明分子热运动的存在。\n\n关联:分子动理论、扩散现象",
+      "card_type": "concept",
+      "plan_task_id": "分子动理论",
+      "gold_cr_ids": [
+        "cr_133"
+      ],
+      "source_sentence": "观察并能解释布朗运动。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0056",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "分子运动速率分布统计规律",
+      "back": "定义:大量分子的运动速率分布遵从统计规律，表现为中间多、两头少的正态分布，且温度决定分布曲线的峰值位置。\n\n关键要素:速率分布图像、温度影响、统计规律。\n\n应用:解释气体压强、温度等宏观量的微观本质。\n\n关联:分子动理论、气体实验定律",
+      "card_type": "concept",
+      "plan_task_id": "分子动理论",
+      "gold_cr_ids": [
+        "cr_134"
+      ],
+      "source_sentence": "了解分子运动速率分布的统计规律，知道分子运动速率分布图像的物理意义。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0057",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "油膜法估测分子大小",
+      "back": "定义:将油酸滴在水面形成单分子油膜，用体积除以面积估算分子直径的方法。\n\n关键要素:油酸体积、油膜面积、单分子层、分子直径d=V/S。\n\n应用:测量分子数量级（约10^-10 m）。\n\n关联:分子动理论、阿伏伽德罗常数",
+      "card_type": "concept",
+      "plan_task_id": "分子动理论",
+      "gold_cr_ids": [
+        "cr_176"
+      ],
+      "source_sentence": "会做“用油膜法估测分子的大小”等实验。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0058",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "分子动理论",
+      "back": "定义:物质由大量分子组成，分子永不停息地做无规则运动，分子间存在相互作用力。\n\n关键要素:分子、热运动、分子力。\n\n应用:解释固体、液体和气体的微观结构及宏观性质。\n\n关联:扩散现象、布朗运动、气体实验定律",
+      "card_type": "concept",
+      "plan_task_id": "分子动理论",
+      "gold_cr_ids": [
+        "cr_169"
+      ],
+      "source_sentence": "能用分子动理论解释固体、液体和气体的微观结构及特点。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0059",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "固体微观结构",
+      "back": "定义:固体由大量原子、离子或分子按一定规律排列而成，分为晶体（长程有序）和非晶体（短程有序）。\n\n关键要素:晶体、非晶体、各向异性/各向同性。\n\n应用:区分物质类型，理解物理性质差异。\n\n关联:晶体、非晶体、液晶",
+      "card_type": "concept",
+      "plan_task_id": "固体与液体微观结构",
+      "gold_cr_ids": [
+        "cr_135"
+      ],
+      "source_sentence": "了解固体的微观结构。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0060",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "非晶体",
+      "back": "定义:内部结构无长程有序、外形不规则的固体，没有固定熔点，物理性质各向同性。\n\n关键要素:无固定熔点、各向同性。\n\n应用:玻璃、石蜡、橡胶等。\n\n关联:晶体、液晶",
+      "card_type": "concept",
+      "plan_task_id": "固体与液体微观结构",
+      "gold_cr_ids": [
+        "cr_136"
+      ],
+      "source_sentence": "知道晶体和非晶体的特点。能列举生活中的晶体和非晶体。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0061",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "半导体",
+      "back": "定义:导电性能介于导体和绝缘体之间的材料，其电阻率随温度升高而降低，且受杂质、光照、电场等影响显著。\n\n关键要素:电阻率、温度敏感、掺杂改性。\n\n应用:二极管、三极管、集成电路、太阳能电池等。\n\n关联:材料科学、纳米材料",
+      "card_type": "concept",
+      "plan_task_id": "固体与液体微观结构",
+      "gold_cr_ids": [
+        "cr_137"
+      ],
+      "source_sentence": "知道半导体的特点，了解半导体技术在生产生活中的应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0062",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "纳米材料",
+      "back": "定义:在三维空间中至少有一维处于纳米尺度（1~100 nm）或由该尺度结构单元构成的材料，具有表面效应、小尺寸效应等特殊性能。\n\n关键要素:纳米尺度、表面效应、量子效应。\n\n应用:催化剂、药物载体、高强度材料等。\n\n关联:半导体、材料科学",
+      "card_type": "concept",
+      "plan_task_id": "固体与液体微观结构",
+      "gold_cr_ids": [
+        "cr_138"
+      ],
+      "source_sentence": "初步了解纳米材料的特性，关注纳米材料的研究和应用及其可能存在的问题。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0063",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "液体表面张力",
+      "back": "定义:液体表面层分子因受到指向液体内部的合力，使表面具有收缩趋势的力。\n\n关键要素:表面层、分子间引力、收缩趋势。\n\n应用:水黾在水面行走、荷叶上的水滴呈球形、毛细现象等。\n\n关联:毛细现象、表面能",
+      "card_type": "concept",
+      "plan_task_id": "固体与液体微观结构",
+      "gold_cr_ids": [
+        "cr_139"
+      ],
+      "source_sentence": "观察液体的表面张力现象。了解表面张力产生的原因。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0064",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "毛细现象",
+      "back": "定义:浸润液体在细管中上升、不浸润液体在细管中下降的现象，由表面张力和附着力共同作用引起。\n\n关键要素:浸润/不浸润、细管、液面弯曲。\n\n应用:土壤吸水、蜡烛芯吸油、纸巾吸水等。\n\n关联:表面张力、浸润与不浸润",
+      "card_type": "concept",
+      "plan_task_id": "固体与液体微观结构",
+      "gold_cr_ids": [
+        "cr_140"
+      ],
+      "source_sentence": "知道毛细现象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0065",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "气体实验定律",
+      "back": "定义:描述气体状态变化的实验规律，包括玻意耳定律（等温）、查理定律（等容）、盖-吕萨克定律（等压）。\n\n关键要素:压强、体积、温度、等温/等容/等压过程。\n\n应用:计算气体状态变化，解释热机原理。\n\n关联:理想气体模型、分子动理论",
+      "card_type": "concept",
+      "plan_task_id": "气体定律与热力学",
+      "gold_cr_ids": [
+        "cr_141"
+      ],
+      "source_sentence": "通过实验，了解气体实验定律。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0066",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "理想气体模型",
+      "back": "定义:忽略分子大小和分子间作用力的气体模型，满足状态方程 pV = nRT。\n\n关键要素:分子无体积、无相互作用力、弹性碰撞。\n\n应用:近似处理实际气体在低压高温条件下的行为。\n\n关联:气体实验定律、分子动理论",
+      "card_type": "concept",
+      "plan_task_id": "气体定律与热力学",
+      "gold_cr_ids": [
+        "cr_142"
+      ],
+      "source_sentence": "知道理想气体模型。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0067",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "气体压强的微观解释",
+      "back": "定义:气体压强由大量分子对器壁频繁碰撞产生，其大小与分子数密度和分子平均动能成正比。\n\n关键要素:分子碰撞、数密度、平均动能、温度。\n\n应用:解释气体实验定律的微观本质。\n\n关联:分子动理论、气体实验定律",
+      "card_type": "concept",
+      "plan_task_id": "气体定律与热力学",
+      "gold_cr_ids": [
+        "cr_143"
+      ],
+      "source_sentence": "能用分子动理论和统计观点解释气体压强和气体实验定律。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0068",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "热力学第一定律",
+      "back": "定义: 热力学第一定律是能量守恒定律在热力学中的具体表述，即系统内能的增量等于外界对系统传递的热量与外界对系统所做功之和。\n\n关键要素: 内能变化、热量传递、做功；表达式为 ΔU = Q + W（注意符号规则不同教材可能不同）。\n\n应用: 解释热机效率、制冷机原理、能量转化过程。\n\n关联: 能量守恒定律、热力学第二定律、永动机不可能实现。",
+      "card_type": "concept",
+      "plan_task_id": "气体定律与热力学",
+      "gold_cr_ids": [
+        "cr_144"
+      ],
+      "source_sentence": "3.2.1知道热力学第一定律。通过有关史实，了解热力学第一定律和能量守恒定律的发现过程，体会科学探索中的挫折和失败对科学发现的意义。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0069",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "热力学第二定律",
+      "back": "定义: 热力学第二定律揭示了宏观自然过程的方向性，即热量不能自发地从低温物体传到高温物体（克劳修斯表述），或者不可能从单一热源吸取热量使之完全变为有用功而不产生其他影响（开尔文-普朗克表述）。\n\n关键要素: 宏观过程的方向性、不可逆性、熵增加原理。\n\n应用: 解释热机效率上限（卡诺定理）、分析永动机（第二类永动机不可能实现）、判断过程自发方向。\n\n关联: 热力学第一定律、能量守恒定律、第一类永动机与第二类永动机的区别。",
+      "card_type": "concept",
+      "plan_task_id": "气体定律与热力学",
+      "gold_cr_ids": [
+        "cr_145"
+      ],
+      "source_sentence": "3.2.3通过自然界中宏观过程的方向性，了解热力学第二定律。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0070",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "热力学定律",
+      "back": "定义:热力学第一定律（能量守恒，ΔU=Q+W）；热力学第二定律（熵增原理）；热力学第三定律（绝对零度不可达）。\n\n关键要素:内能、热量、功、熵。\n\n应用:热机效率、制冷机、能量转化分析。\n\n关联:气体实验定律、能量守恒",
+      "card_type": "concept",
+      "plan_task_id": "气体定律与热力学",
+      "gold_cr_ids": [
+        "cr_170"
+      ],
+      "source_sentence": "能用气体实验定律、热力学定律解释生产生活中的一些现象，解决一些实际问题。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0071",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "静电现象",
+      "back": "定义:物体因电荷积累或转移而表现出的电荷相互作用、放电等现象。\n\n关键要素:通过摩擦、接触、感应等方式使物体带电，产生吸引、排斥或火花放电等效应。\n\n应用:分析日常生活中的静电吸附、静电放电等现象。\n\n关联:电荷守恒、原子结构模型",
+      "card_type": "concept",
+      "plan_task_id": "静电场基本概念",
+      "gold_cr_ids": [
+        "cr_034"
+      ],
+      "source_sentence": "通过实验，了解静电现象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0072",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "原子结构模型",
+      "back": "定义:描述原子内部结构（原子核与电子）的理论模型，如核式结构模型。\n\n关键要素:原子核带正电，电子带负电并绕核运动；得失电子导致物体带电。\n\n应用:解释静电现象中电荷的来源和转移。\n\n关联:静电现象、电荷守恒",
+      "card_type": "concept",
+      "plan_task_id": "静电场基本概念",
+      "gold_cr_ids": [
+        "cr_035"
+      ],
+      "source_sentence": "能用原子结构模型和电荷守恒的知识分析静电现象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0073",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "电荷守恒",
+      "back": "定义:电荷既不能被创造也不能被消灭，只能从一个物体转移到另一个物体，或从物体的一部分转移到另一部分，总电荷量保持不变。\n\n关键要素:系统总电荷量恒定；静电感应中电荷重新分布但总量不变。\n\n应用:分析摩擦起电、静电感应等过程中的电荷变化。\n\n关联:静电现象、原子结构模型",
+      "card_type": "concept",
+      "plan_task_id": "静电场基本概念",
+      "gold_cr_ids": [
+        "cr_036"
+      ],
+      "source_sentence": "能用原子结构模型和电荷守恒的知识分析静电现象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0074",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "点电荷模型",
+      "back": "定义:当带电体的大小和形状对相互作用力的影响可忽略时，将其抽象为带有电荷量的几何点。\n\n关键要素:理想化模型，类比质点；适用于距离远大于带电体尺寸的情境。\n\n应用:简化库仑定律的计算，描述静电场的性质。\n\n关联:库仑定律、质点模型",
+      "card_type": "concept",
+      "plan_task_id": "静电场基本概念",
+      "gold_cr_ids": [
+        "cr_037"
+      ],
+      "source_sentence": "知道点电荷模型。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0075",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "库仑定律",
+      "back": "定义:真空中两个静止点电荷之间的相互作用力与它们电荷量的乘积成正比，与它们之间距离的平方成反比，方向在它们的连线上。\n\n关键要素:仅适用于真空中的点电荷；力的大小公式 F = k q1 q2 / r²；方向同性相斥、异性相吸。\n\n应用:计算点电荷间的静电力，是电磁学的基本定律。\n\n关联:点电荷模型、库仑扭秤实验",
+      "card_type": "concept",
+      "plan_task_id": "静电场基本概念",
+      "gold_cr_ids": [
+        "cr_038"
+      ],
+      "source_sentence": "知道两个点电荷间相互作用的规律。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0076",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "库仑扭秤实验",
+      "back": "定义:库仑通过扭秤装置测量两个带电小球间的静电力，从而得出库仑定律的实验方法。\n\n关键要素:利用扭转平衡精确测量微小力；控制变量法；得到电力与距离平方成反比。\n\n应用:验证库仑定律，培养科学探究思想。\n\n关联:库仑定律、科学方法",
+      "card_type": "concept",
+      "plan_task_id": "静电场基本概念",
+      "gold_cr_ids": [
+        "cr_039"
+      ],
+      "source_sentence": "体会库仑扭秤实验设计的巧妙之处。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0077",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "电场强度",
+      "back": "定义:描述电场强弱和方向的物理量，定义为放入电场中某点的试探电荷所受电场力与电荷量的比值，即 E = F/q。\n\n关键要素:矢量，方向与正电荷受力方向一致；比值定义法；与试探电荷无关。\n\n应用:定量描述电场的力的性质。\n\n关联:电场、用物理量之比定义新物理量的方法",
+      "card_type": "concept",
+      "plan_task_id": "电场强度与电势",
+      "gold_cr_ids": [
+        "cr_040"
+      ],
+      "source_sentence": "了解电场强度，体会用物理量之比定义新物理量的方法。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0078",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "电场线",
+      "back": "定义:用来形象描述电场分布的曲线，曲线上每一点的切线方向表示该点电场强度方向，疏密程度表示电场强度大小。\n\n关键要素:假想曲线，始于正电荷或无穷远，终止于负电荷或无穷远；不相交；疏密反映场强大小。\n\n应用:直观描绘电场分布，如等量异种点电荷周围的电场。\n\n关联:电场强度、电场",
+      "card_type": "concept",
+      "plan_task_id": "电场强度与电势",
+      "gold_cr_ids": [
+        "cr_041"
+      ],
+      "source_sentence": "会用电场线描述电场。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0079",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "静电的利用与防护",
+      "back": "定义:将静电现象应用于生产生活，以及采取措施防止静电危害。\n\n关键要素:利用：静电除尘、静电喷雾、激光打印等；防护：接地、增加空气湿度、避免可燃气体环境中的静电积累。\n\n应用:静电复印、喷涂、除尘；防止油库、矿井等场所的静电火花引发爆炸。\n\n关联:静电现象",
+      "card_type": "concept",
+      "plan_task_id": "电场强度与电势",
+      "gold_cr_ids": [
+        "cr_042"
+      ],
+      "source_sentence": "了解生产生活中关于静电的利用与防护。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0080",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "电势能",
+      "back": "定义:电荷在静电场中由于位置而具有的能量，等于将电荷从零势能点移到该点克服电场力做的功。\n\n关键要素:与电荷的电性和电场中位置有关；标量；通常取无穷远或大地为零势能点。\n\n应用:分析带电粒子在电场中的能量变化。\n\n关联:电势、电势差、电场力做功",
+      "card_type": "concept",
+      "plan_task_id": "电场强度与电势",
+      "gold_cr_ids": [
+        "cr_043"
+      ],
+      "source_sentence": "知道静电场中的电荷具有电势能。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0081",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "电势差",
+      "back": "定义:电场中两点间电势的差值，也叫电压，UAB = φA - φB。\n\n关键要素:标量，表示电场力做功的能力；与零势点选择无关。\n\n应用:计算电场力移动电荷做的功 W = qU。\n\n关联:电势、电场力做功、匀强电场中电势差与电场强度的关系",
+      "card_type": "concept",
+      "plan_task_id": "电场强度与电势",
+      "gold_cr_ids": [
+        "cr_044"
+      ],
+      "source_sentence": "了解电势能、电势和电势差的含义。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0082",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "匀强电场中电势差与电场强度的关系",
+      "back": "定义:在匀强电场中，两点间的电势差等于电场强度与这两点沿电场方向距离的乘积，即 U = Ed。\n\n关键要素:仅适用于匀强电场；d为两点沿电场线方向的距离；电场强度方向指向电势降低的方向。\n\n应用:计算匀强电场中电势差或电场强度，分析带电粒子运动。\n\n关联:电势差、电场强度",
+      "card_type": "concept",
+      "plan_task_id": "电场强度与电势",
+      "gold_cr_ids": [
+        "cr_045"
+      ],
+      "source_sentence": "知道匀强电场中电势差与电场强度的关系。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0083",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "带电粒子在电场中的运动",
+      "back": "定义:带电粒子（如电子、离子）在静电场中受到电场力作用而发生的加速、偏转等运动。\n\n关键要素:受力分析：F = qE；运动状态取决于初速度和电场分布；可做匀变速直线运动或类平抛运动。\n\n应用:示波器、电子枪、静电加速器等。\n\n关联:电场强度、电势差、牛顿运动定律",
+      "card_type": "concept",
+      "plan_task_id": "带电粒子与电容器",
+      "gold_cr_ids": [
+        "cr_046"
+      ],
+      "source_sentence": "能分析带电粒子在电场中的运动情况，能解释相关的物理现象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0084",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "电容器",
+      "back": "定义:由两个彼此绝缘且相互靠近的导体组成的器件，能储存电荷和电能。\n\n关键要素:基本结构：两个极板、绝缘介质；充电后两极板带等量异种电荷；可存储电场能。\n\n应用:滤波、耦合、储能（如照相机闪光灯）、调谐等。\n\n关联:电容、电容器的充放电",
+      "card_type": "concept",
+      "plan_task_id": "带电粒子与电容器",
+      "gold_cr_ids": [
+        "cr_047"
+      ],
+      "source_sentence": "观察常见的电容器，了解电容器的电容。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0085",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "电容器的充放电现象",
+      "back": "定义:电容器接入电路时，极板电荷量随时间增加或减少的过程，伴随电流和电场能量的变化。\n\n关键要素:充电：电源使极板积累电荷，电压升高；放电：极板电荷中和，电压降低；过程中有瞬时电流。\n\n应用:时间延迟、闪光灯放电、滤波等。\n\n关联:电容器、电容、电流",
+      "card_type": "concept",
+      "plan_task_id": "带电粒子与电容器",
+      "gold_cr_ids": [
+        "cr_048"
+      ],
+      "source_sentence": "观察电容器的充、放电现象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0086",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "闭合电路欧姆定律",
+      "back": "定义:闭合电路中的电流与电源电动势成正比，与整个电路的总电阻（内阻+外阻）成反比。\n\n关键要素:公式I=E/(R+r)；E为电动势，R为外电阻，r为内阻。\n\n应用:分析电路、测量电源电动势和内阻、电路故障判断。\n\n关联:部分电路欧姆定律、电源电动势、内阻。",
+      "card_type": "concept",
+      "plan_task_id": "闭合电路欧姆定律与传感器",
+      "gold_cr_ids": [
+        "cr_066"
+      ],
+      "source_sentence": "会用闭合电路欧姆定律等分析电路各部分之间电学量的相互关系。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0087",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "焦耳定律",
+      "back": "定义:电流通过导体时产生的热量与电流的平方、导体的电阻及通电时间成正比。\n\n关键要素:公式Q=I²Rt；纯电阻电路中还可表示为Q=UIt或Q=(U²/R)t。\n\n应用:计算电热器发热量、电路安全分析、能源效率。\n\n关联:电功、电功率、欧姆定律。",
+      "card_type": "concept",
+      "plan_task_id": "闭合电路欧姆定律与传感器",
+      "gold_cr_ids": [
+        "cr_067"
+      ],
+      "source_sentence": "能用电势能和焦耳定律等分析电学中的能量转化问题。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0088",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "非电学量转换电学量",
+      "back": "定义:将非电学量（如温度、光强、压力、位移等）转换为电学量（如电压、电流、电阻等）的技术。\n\n关键要素:传感器是实现这一转换的核心器件。\n\n应用:自动控制、测量、信息处理等。\n\n关联:传感器、自动控制装置",
+      "card_type": "concept",
+      "plan_task_id": "闭合电路欧姆定律与传感器",
+      "gold_cr_ids": [
+        "cr_125"
+      ],
+      "source_sentence": "2.4.1 知道非电学量转换成电学量的技术意义。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0089",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "热敏电阻传感器",
+      "back": "定义:利用热敏电阻的电阻值随温度变化而变化的特性，将温度信号转换为电信号的传感器。\n\n关键要素:热敏电阻（正温度系数或负温度系数）、温度-电阻特性曲线。\n\n应用:温度测量、温度补偿、过热保护等。\n\n关联:传感器、温度传感器",
+      "card_type": "concept",
+      "plan_task_id": "闭合电路欧姆定律与传感器",
+      "gold_cr_ids": [
+        "cr_126"
+      ],
+      "source_sentence": "例1 通过热敏电阻实验，了解温度传感器的工作原理。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0090",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "光敏传感器",
+      "back": "定义:利用光敏元件（如光敏电阻、光电二极管、光电池等）将光信号转换为电信号的传感器。\n\n关键要素:光敏元件的光电特性（电阻随光照变化或产生光电流）。\n\n应用:光照强度检测、自动照明、相机曝光控制等。\n\n关联:传感器、光电效应",
+      "card_type": "concept",
+      "plan_task_id": "闭合电路欧姆定律与传感器",
+      "gold_cr_ids": [
+        "cr_127"
+      ],
+      "source_sentence": "例2 了解光敏传感器及其在生产生活中的应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0091",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "磁现象",
+      "back": "定义:磁现象是指磁体或电流之间通过磁场发生的相互作用现象，包括吸引铁磁性物质、同名磁极相斥、异名磁极相吸等。\n\n关键要素:磁体、磁场、磁极、磁力。\n\n应用:在生产生活中广泛应用，如指南针、电磁铁、磁记录等。\n\n关联:磁场、磁感应强度",
+      "card_type": "concept",
+      "plan_task_id": "磁场与电流磁效应",
+      "gold_cr_ids": [
+        "cr_049"
+      ],
+      "source_sentence": "3.3.1能列举磁现象在生产生活中的应用。了解我国古代在磁现象方面的研究成果及其对人类文明的影响。关注与磁相关的现代技术发展。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0092",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "磁感应强度",
+      "back": "定义:磁感应强度是描述磁场强弱和方向的物理量，用B表示，单位是特斯拉（T）。方向与该点磁场方向一致，大小由通电导线受力与电流和导线长度的比值定义。\n\n关键要素:大小B = F/(IL)（通电导线垂直于磁场时），方向由小磁针N极指向确定。\n\n应用:计算磁场力、磁通量，设计电磁器件。\n\n关联:磁场、磁感线、磁通量",
+      "card_type": "concept",
+      "plan_task_id": "磁场与电流磁效应",
+      "gold_cr_ids": [
+        "cr_050"
+      ],
+      "source_sentence": "3.3.2通过实验，认识磁场。了解磁感应强度，会用磁感线描述磁场。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0093",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "磁感线",
+      "back": "定义:磁感线是人为引入的用来形象描述磁场的曲线，曲线上每一点的切线方向与该点磁场方向一致，磁感线的疏密表示磁场的强弱。\n\n关键要素:闭合曲线（不存在磁单极子），从N极出发到S极（外部），内部从S到N。\n\n应用:描绘通电直导线和通电线圈周围的磁场（例1）。\n\n关联:磁场、磁感应强度、安培定则",
+      "card_type": "concept",
+      "plan_task_id": "磁场与电流磁效应",
+      "gold_cr_ids": [
+        "cr_051"
+      ],
+      "source_sentence": "3.3.2通过实验，认识磁场。了解磁感应强度，会用磁感线描述磁场。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0094",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "磁通量",
+      "back": "定义:磁通量是指穿过某一平面的磁感线条数，用Φ表示，公式为Φ = BScosθ（B为磁感应强度，S为平面面积，θ为B与平面法线的夹角），单位是韦伯（Wb）。\n\n关键要素:标量，有正负；磁通量的变化是产生感应电流的条件之一。\n\n应用:电磁感应现象中计算感应电动势（法拉第电磁感应定律）。\n\n关联:电磁感应、感应电流",
+      "card_type": "concept",
+      "plan_task_id": "磁场与电流磁效应",
+      "gold_cr_ids": [
+        "cr_052"
+      ],
+      "source_sentence": "3.3.3知道磁通量。通过实验，了解电磁感应现象，了解产生感应电流的条件。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0095",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "奥斯特电流磁效应",
+      "back": "定义:通电导线周围会产生磁场，使磁针偏转，表明电流能够产生磁场的现象。\n\n关键要素:首次揭示电与磁之间的联系，由丹麦物理学家奥斯特在1820年发现。\n\n应用:电磁铁、电流表、电机基础。\n\n关联:电磁感应现象、法拉第电磁感应定律、安培定则。",
+      "card_type": "concept",
+      "plan_task_id": "磁场与电流磁效应",
+      "gold_cr_ids": [
+        "cr_117"
+      ],
+      "source_sentence": "活动建议：（2）查阅资料，撰写报告分析奥斯特电流磁效应和法拉第电磁感应定律对第二次工业革命的贡献，体会科学技术对社会发展的意义。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0096",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "安培力",
+      "back": "定义:磁场对通电导线的作用力。\n\n关键要素:方向由左手定则判断，大小 F = BIL sinθ（B为磁感应强度，I为电流，L为有效长度，θ为电流方向与磁场方向的夹角）。\n\n应用:磁电式电表、电动机、电流天平等装置。\n\n关联:洛伦兹力（微观本质：导线内运动电荷所受洛伦兹力的宏观表现）。",
+      "card_type": "concept",
+      "plan_task_id": "安培力与洛伦兹力",
+      "gold_cr_ids": [
+        "cr_099"
+      ],
+      "source_sentence": "2.1.1通过实验，认识安培力。能判断安培力的方向，会计算安培力的大小。了解安培力在生产生活中的应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0097",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "洛伦兹力",
+      "back": "定义:磁场对运动电荷的作用力。\n\n关键要素:方向由左手定则判断（正电荷受力方向为四指指向运动方向，负电荷相反），大小 F = qvB sinθ（q为电荷量，v为速度，B为磁感应强度，θ为速度方向与磁场方向的夹角）。\n\n应用:质谱仪、回旋加速器、阴极射线管、洛伦兹力演示仪等。\n\n关联:安培力（宏观表现）；带电粒子在匀强磁场中的圆周运动（当θ=90°时）。",
+      "card_type": "concept",
+      "plan_task_id": "安培力与洛伦兹力",
+      "gold_cr_ids": [
+        "cr_100"
+      ],
+      "source_sentence": "2.1.2通过实验，认识洛伦兹力。能判断洛伦兹力的方向，会计算洛伦兹力的大小。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0098",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "带电粒子在匀强磁场中的圆周运动",
+      "back": "定义:带电粒子垂直进入匀强磁场（v⊥B）时，洛伦兹力提供向心力，粒子做匀速圆周运动。\n\n关键要素:轨道半径 r = mv/(qB)，周期 T = 2πm/(qB)（与速度无关）。\n\n应用:质谱仪中通过半径测量质荷比；回旋加速器中利用周期性回旋加速粒子。\n\n关联:洛伦兹力（提供向心力）；质谱仪和回旋加速器的工作原理。",
+      "card_type": "concept",
+      "plan_task_id": "安培力与洛伦兹力",
+      "gold_cr_ids": [
+        "cr_101"
+      ],
+      "source_sentence": "2.1.3能用洛伦兹力分析带电粒子在匀强磁场中的圆周运动。了解带电粒子在匀强磁场中的偏转及其应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0099",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "质谱仪",
+      "back": "定义:利用磁场对带电粒子的偏转作用，根据质荷比（m/q）分离和测量离子质量的仪器。\n\n关键要素:由加速电场、速度选择器（可选）、偏转磁场和检测器组成；离子在磁场中做圆周运动的半径 r = (2mU/(qB^2))^(1/2)，通过半径确定质荷比。\n\n应用:分析同位素组成、测定原子质量、化学分析等。\n\n关联:洛伦兹力、带电粒子在匀强磁场中的圆周运动、回旋加速器（同属于磁场应用）。",
+      "card_type": "concept",
+      "plan_task_id": "安培力与洛伦兹力",
+      "gold_cr_ids": [
+        "cr_102"
+      ],
+      "source_sentence": "例4了解质谱仪和回旋加速器的工作原理。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0100",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "回旋加速器",
+      "back": "定义:利用交变电场和恒定磁场加速带电粒子的装置，使粒子在D形盒内多次回旋并获得高能量。\n\n关键要素:两个D形盒置于磁场中，盒间缝隙加交变电场；交变电场频率与粒子回旋频率 f = qB/(2πm) 同步；最终动能 E_k = (q^2 B^2 R^2)/(2m)（R为D形盒半径）。\n\n应用:高能物理研究、医学同位素生产、材料辐照等。\n\n关联:洛伦兹力、带电粒子在匀强磁场中的圆周运动、质谱仪（同属磁场偏转技术）。",
+      "card_type": "concept",
+      "plan_task_id": "安培力与洛伦兹力",
+      "gold_cr_ids": [
+        "cr_103"
+      ],
+      "source_sentence": "例4了解质谱仪和回旋加速器的工作原理。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0101",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "电磁感应现象",
+      "back": "定义:电磁感应现象是指穿过闭合回路的磁通量发生变化时，回路中产生感应电动势（从而产生感应电流）的现象。由法拉第发现。\n\n关键要素:闭合回路、磁通量变化（B、S、夹角变化均可）。\n\n应用:发电机、变压器、无线充电等，对现代社会有重大影响。\n\n关联:磁通量、感应电流、法拉第电磁感应定律",
+      "card_type": "concept",
+      "plan_task_id": "电磁感应定律",
+      "gold_cr_ids": [
+        "cr_053"
+      ],
+      "source_sentence": "3.3.3知道磁通量。通过实验，了解电磁感应现象，了解产生感应电流的条件。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0102",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "感应电流",
+      "back": "定义:感应电流是由于电磁感应现象在闭合回路中产生的电流。产生条件：穿过闭合回路的磁通量发生变化。\n\n关键要素:回路必须闭合；磁通量变化是本质；感应电流的方向可用楞次定律判断。\n\n应用:电磁感应加热、感应电动机等。\n\n关联:电磁感应、磁通量、楞次定律",
+      "card_type": "concept",
+      "plan_task_id": "电磁感应定律",
+      "gold_cr_ids": [
+        "cr_054"
+      ],
+      "source_sentence": "3.3.3知道磁通量。通过实验，了解电磁感应现象，了解产生感应电流的条件。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0103",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "楞次定律",
+      "back": "定义:感应电流的方向，总是使感应电流的磁场阻碍引起感应电流的磁通量的变化。\n\n关键要素:感应电流的磁场阻碍原磁通量的变化，体现为“增反减同”。\n\n应用:确定感应电流方向、发电机、电动机等电磁感应现象分析。\n\n关联:法拉第电磁感应定律、能量守恒定律。",
+      "card_type": "concept",
+      "plan_task_id": "电磁感应定律",
+      "gold_cr_ids": [
+        "cr_104"
+      ],
+      "source_sentence": "2.2.1探究影响感应电流方向的因素，理解楞次定律。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0104",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "法拉第电磁感应定律",
+      "back": "定义:闭合电路中感应电动势的大小，等于穿过这一电路的磁通量的变化率。\n\n关键要素:感应电动势E = nΔΦ/Δt（n为匝数），磁通量变化越快，电动势越大。\n\n应用:发电机、变压器、电磁感应能量转换。\n\n关联:楞次定律、磁通量、感应电流。",
+      "card_type": "concept",
+      "plan_task_id": "电磁感应定律",
+      "gold_cr_ids": [
+        "cr_105"
+      ],
+      "source_sentence": "2.2.2通过实验，理解法拉第电磁感应定律。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0105",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "自感现象",
+      "back": "定义:由于导体线圈自身电流变化而产生的电磁感应现象。\n\n关键要素:自感电动势阻碍自身电流变化，电流增大时阻碍增大，电流减小时阻碍减小。\n\n应用:扼流圈、日光灯镇流器、电感器。\n\n关联:涡流现象、法拉第电磁感应定律。",
+      "card_type": "concept",
+      "plan_task_id": "电磁感应定律",
+      "gold_cr_ids": [
+        "cr_106"
+      ],
+      "source_sentence": "2.2.3通过实验，了解自感现象和涡流现象。能举例说明自感现象和涡流现象在生产生活中的应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0106",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "涡流现象",
+      "back": "定义:块状金属在变化的磁场中，由于电磁感应而在金属内部产生的闭合感应电流（涡旋电流）。\n\n关键要素:涡流会使金属发热，有热效应；也可产生电磁阻尼。\n\n应用:电磁炉加热、涡流制动、金属探测器。\n\n关联:自感现象、电磁感应、楞次定律。",
+      "card_type": "concept",
+      "plan_task_id": "电磁感应定律",
+      "gold_cr_ids": [
+        "cr_107"
+      ],
+      "source_sentence": "2.2.3通过实验，了解自感现象和涡流现象。能举例说明自感现象和涡流现象在生产生活中的应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0107",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "交变电流",
+      "back": "定义:大小和方向随时间做周期性变化的电流。\n\n关键要素:一般由交流发电机产生，常见形式为正弦交流电。\n\n应用:家庭用电、工业用电、远距离输电。\n\n关联:正弦交变电流、峰值、有效值、变压器。",
+      "card_type": "concept",
+      "plan_task_id": "交变电流的产生与传输",
+      "gold_cr_ids": [
+        "cr_108"
+      ],
+      "source_sentence": "2.2.4通过实验，认识交变电流。能用公式和图像描述正弦交变电流。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0108",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "正弦交变电流",
+      "back": "定义:随时间按正弦规律变化的交变电流，表达式 i = I_m sin(ωt) 或 u = U_m sin(ωt)。\n\n关键要素:峰值 I_m、角频率 ω、周期 T、有效值的关系。\n\n应用:交流发电机输出电流、交流电路分析。\n\n关联:交变电流、峰值、有效值。",
+      "card_type": "concept",
+      "plan_task_id": "交变电流的产生与传输",
+      "gold_cr_ids": [
+        "cr_109"
+      ],
+      "source_sentence": "2.2.4通过实验，认识交变电流。能用公式和图像描述正弦交变电流。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0109",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "峰值（交变电流）",
+      "back": "定义:交变电流在一个周期内所能达到的最大瞬时值，包括电流峰值 I_m 和电压峰值 U_m。\n\n关键要素:峰值是描述交流电强弱的重要参数，与有效值的关系为 I_m = √2 I，U_m = √2 U（正弦交流电）。\n\n应用:计算电容器耐压值、示波器波形测量。\n\n关联:有效值、正弦交变电流。",
+      "card_type": "concept",
+      "plan_task_id": "交变电流的产生与传输",
+      "gold_cr_ids": [
+        "cr_110"
+      ],
+      "source_sentence": "2.2.4通过实验，认识交变电流。能用公式和图像描述正弦交变电流。例3用示波器或其他设备观察交变电流的波形，并测算其峰值和有效值。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0110",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "有效值（交变电流）",
+      "back": "定义:根据电流的热效应定义的，使交变电流与直流电流在相同时间内通过同一电阻产生相同热量的直流电流值。\n\n关键要素:正弦交流电有效值与峰值关系：I = I_m/√2，U = U_m/√2。有效值常用于交流电表读数、功率计算。\n\n应用:家用电器额定电压（220V）、电流表测量、电能计算。\n\n关联:峰值、正弦交变电流、交变电流。",
+      "card_type": "concept",
+      "plan_task_id": "交变电流的产生与传输",
+      "gold_cr_ids": [
+        "cr_111"
+      ],
+      "source_sentence": "2.2.4通过实验，认识交变电流。能用公式和图像描述正弦交变电流。例3用示波器或其他设备观察交变电流的波形，并测算其峰值和有效值。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0111",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "交变电流的产生原理",
+      "back": "定义:线圈在匀强磁场中绕垂直于磁场的轴匀速转动，线圈中产生按正弦（或余弦）规律变化的感应电动势，从而产生交变电流。\n\n关键要素:线圈、磁极、转速、中性面、电动势峰值Em = NBSω。\n\n应用:交流发电机、电力系统供电。\n\n关联:有效值、变压器、正弦交流电",
+      "card_type": "concept",
+      "plan_task_id": "交变电流的产生与传输",
+      "gold_cr_ids": [
+        "cr_128"
+      ],
+      "source_sentence": "了解电磁振荡的过程、交变电流的产生原理和方式以及高压输电、变压器等的原理。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0112",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "变压器原副线圈电压与匝数关系",
+      "back": "定义:理想变压器原、副线圈的端电压之比等于这两个线圈的匝数之比，即 U₁/U₂ = n₁/n₂。\n\n关键要素:原线圈接交流电源，副线圈输出交流电；电压与匝数成正比，电流与匝数成反比（忽略损耗）。\n\n应用:电压变换、阻抗匹配、远距离输电升压降压。\n\n关联:法拉第电磁感应定律、交变电流、远距离输电。",
+      "card_type": "concept",
+      "plan_task_id": "交变电流的产生与传输",
+      "gold_cr_ids": [
+        "cr_112"
+      ],
+      "source_sentence": "2.2.5通过实验，探究并了解变压器原、副线圈电压与匝数的关系。知道远距离输电时通常采用高压输电的原因。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0113",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "远距离输电高压输电",
+      "back": "定义:采用高电压输送电能，以减少输电线路上的电能损耗。\n\n关键要素:输电功率一定时，电压升高则电流减小，根据焦耳定律 Q=I²Rt，线路损耗功率降低。\n\n应用:高压交流输电（如110kV、220kV）、特高压输电。\n\n关联:变压器、交变电流、电能损耗。",
+      "card_type": "concept",
+      "plan_task_id": "交变电流的产生与传输",
+      "gold_cr_ids": [
+        "cr_113"
+      ],
+      "source_sentence": "2.2.5通过实验，探究并了解变压器原、副线圈电压与匝数的关系。知道远距离输电时通常采用高压输电的原因。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0114",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "高压输电原理",
+      "back": "定义:在输送电功率一定时，提高输电电压可减小输电电流，从而降低输电线路上的焦耳热损耗（P损 = I²R）。\n\n关键要素:变压器升压、降压，输电电压等级，线路电阻。\n\n应用:远距离电力输送、电网互联。\n\n关联:变压器、交变电流、电功率损耗",
+      "card_type": "concept",
+      "plan_task_id": "交变电流的产生与传输",
+      "gold_cr_ids": [
+        "cr_129"
+      ],
+      "source_sentence": "了解电磁振荡的过程、交变电流的产生原理和方式以及高压输电、变压器等的原理。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0115",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "发电机",
+      "back": "定义:将机械能转化为电能的装置，利用电磁感应原理产生交变电流。\n\n关键要素:转子绕组在磁场中旋转，产生感应电动势；分为交流发电机和直流发电机。\n\n应用:火力发电、水力发电、风力发电等。\n\n关联:电动机、法拉第电磁感应定律、交变电流、能量转化。",
+      "card_type": "concept",
+      "plan_task_id": "发电机与电动机",
+      "gold_cr_ids": [
+        "cr_114"
+      ],
+      "source_sentence": "2.2.6了解发电机和电动机工作过程中的能量转化。认识电磁学在人类生活和社会发展中的作用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0116",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "电动机",
+      "back": "定义:将电能转化为机械能的装置，利用通电线圈在磁场中受力而转动。\n\n关键要素:直流电动机利用换向器保证持续转动；交流电动机利用交变磁场驱动转子。\n\n应用:电风扇、电动车、工业机械。\n\n关联:发电机、安培力、能量转化。",
+      "card_type": "concept",
+      "plan_task_id": "发电机与电动机",
+      "gold_cr_ids": [
+        "cr_115"
+      ],
+      "source_sentence": "2.2.6了解发电机和电动机工作过程中的能量转化。认识电磁学在人类生活和社会发展中的作用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0117",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "能量转化（发电机和电动机）",
+      "back": "定义:发电机将机械能转化为电能；电动机将电能转化为机械能。两者互为逆过程。\n\n关键要素:发电机中，外力驱动转子克服电磁阻力做功，机械能转化为电能；电动机中，电流通过线圈受安培力做功，电能转化为机械能。\n\n应用:理解发电厂与用电设备间的能量链，能量守恒定律的体现。\n\n关联:发电机、电动机、楞次定律、能量守恒定律。",
+      "card_type": "concept",
+      "plan_task_id": "发电机与电动机",
+      "gold_cr_ids": [
+        "cr_116"
+      ],
+      "source_sentence": "2.2.6了解发电机和电动机工作过程中的能量转化。认识电磁学在人类生活和社会发展中的作用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0118",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "电磁波",
+      "back": "定义:电磁波是变化的电场和磁场相互激发、在空间中传播的波，不需要介质。在真空中速度等于光速c=3×10⁸ m/s。\n\n关键要素:电场和磁场相互垂直，且都垂直于传播方向，是横波；具有能量和动量。\n\n应用:手机通信、卫星通信、雷达、微波炉、紫外线消毒等。\n\n关联:电磁场的物质性、光是一种电磁波",
+      "card_type": "concept",
+      "plan_task_id": "电磁场理论",
+      "gold_cr_ids": [
+        "cr_055"
+      ],
+      "source_sentence": "3.3.4通过实验，了解电磁波，知道电磁场的物质性。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0119",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "电磁场的物质性",
+      "back": "定义:电磁场是一种特殊的物质形态，具有能量、动量、质量等物质的基本属性，不依赖于其他物质而独立存在。\n\n关键要素:电磁场是物质的一种形式，不同于实物粒子；电磁波传播时携带能量和动量。\n\n应用:解释电磁辐射的压力（光压）、能量传输等。\n\n关联:电磁波、场",
+      "card_type": "concept",
+      "plan_task_id": "电磁场理论",
+      "gold_cr_ids": [
+        "cr_056"
+      ],
+      "source_sentence": "3.3.4通过实验，了解电磁波，知道电磁场的物质性。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0120",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "麦克斯韦电磁场理论",
+      "back": "定义:麦克斯韦电磁场理论的基本思想是变化的电场产生磁场，变化的磁场产生电场，形成统一的电磁场。\n\n关键要素:电场和磁场相互联系、相互激发，预言了电磁波的存在。\n\n应用:为无线电通信、雷达、微波炉等电磁波技术提供理论基础。\n\n关联:牛顿万有引力定律、场的统一性与多样性",
+      "card_type": "concept",
+      "plan_task_id": "电磁场理论",
+      "gold_cr_ids": [
+        "cr_118"
+      ],
+      "source_sentence": "初步了解麦克斯韦电磁场理论的基本思想，初步了解场的统一性与多样性，体会物理学对统一性的追求。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0121",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "场的统一性与多样性",
+      "back": "定义:物理学中不同的场（如引力场、电磁场）具有统一性，即遵循相似的数学描述和物理规律，同时各场又表现多样性。\n\n关键要素:麦克斯韦电磁场理论将电场和磁场统一为电磁场；牛顿万有引力定律描述引力场。\n\n应用:指导探索统一场论，如爱因斯坦统一场论尝试。\n\n关联:麦克斯韦电磁场理论、牛顿万有引力定律",
+      "card_type": "concept",
+      "plan_task_id": "电磁场理论",
+      "gold_cr_ids": [
+        "cr_119"
+      ],
+      "source_sentence": "初步了解麦克斯韦电磁场理论的基本思想，初步了解场的统一性与多样性，体会物理学对统一性的追求。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0122",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "电磁振荡",
+      "back": "定义:在LC振荡电路中，电荷和电流随时间做周期性变化，并伴随电场和磁能的周期性转换。\n\n关键要素:由电感L和电容C组成回路，振荡频率f=1/(2π√(LC))；产生交变电磁场。\n\n应用:无线电发射电路、调谐电路、振荡器。\n\n关联:电磁波的发射",
+      "card_type": "concept",
+      "plan_task_id": "电磁场理论",
+      "gold_cr_ids": [
+        "cr_120"
+      ],
+      "source_sentence": "通过实验，了解电磁振荡。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0123",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "电磁波的发射、传播和接收",
+      "back": "定义:电磁波由振荡电路产生并通过天线发射，以光速在空间传播，可通过天线接收并转化为电信号。\n\n关键要素:发射需足够高的频率和开放电路；传播无需介质；接收需调谐和检波。\n\n应用:广播、电视、手机、雷达等通信系统。\n\n关联:电磁振荡、赫兹实验",
+      "card_type": "concept",
+      "plan_task_id": "电磁场理论",
+      "gold_cr_ids": [
+        "cr_121"
+      ],
+      "source_sentence": "知道电磁波的发射、传播和接收。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0124",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "赫兹实验",
+      "back": "定义:赫兹通过实验验证了麦克斯韦预言的电磁波存在，证实了电磁波具有反射、折射、干涉等波动性质。\n\n关键要素:利用放电火花产生电磁波，用检波器接收；证明电磁波速度等于光速。\n\n应用:奠定无线通信的实验基础。\n\n关联:麦克斯韦电磁场理论、电磁波的传播",
+      "card_type": "concept",
+      "plan_task_id": "电磁场理论",
+      "gold_cr_ids": [
+        "cr_122"
+      ],
+      "source_sentence": "演示赫兹实验，体会理论预言在科学发展中的作用，以及实验证据对新理论的支撑作用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0125",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "电磁波谱",
+      "back": "定义:电磁波按频率或波长大小排列形成的谱系，包括无线电波、微波、红外线、可见光、紫外线、X射线、γ射线。\n\n关键要素:频率递增（波长递减）顺序；各波段具有不同特性。\n\n应用:根据波段特性用于通信、遥感、医疗、探测等。\n\n关联:各个波段电磁波的名称、特征和典型应用",
+      "card_type": "concept",
+      "plan_task_id": "电磁波谱与应用",
+      "gold_cr_ids": [
+        "cr_123"
+      ],
+      "source_sentence": "认识电磁波谱。知道各个波段的电磁波的名称、特征和典型应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0126",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "各个波段电磁波的名称、特征和典型应用",
+      "back": "定义:\n- 无线电波：长波、中波、短波等，用于广播、通信。\n- 微波：波长1mm~1m，用于微波炉、雷达、移动通信。\n- 红外线：热效应显著，用于遥控、热成像。\n- 可见光：人眼可感知，用于照明、光学通信。\n- 紫外线：荧光效应、杀菌，用于消毒、验钞。\n- X射线：穿透性强，用于医学影像、安检。\n- γ射线：高能电磁波，用于医疗放疗、金属探伤。\n\n关键要素:各波段频率和波长不同，特性决定应用。\n\n应用:见上述典型应用。\n\n关联:电磁波谱、电磁波",
+      "card_type": "concept",
+      "plan_task_id": "电磁波谱与应用",
+      "gold_cr_ids": [
+        "cr_124"
+      ],
+      "source_sentence": "认识电磁波谱。知道各个波段的电磁波的名称、特征和典型应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0127",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "光是一种电磁波",
+      "back": "定义:光具有波粒二象性，在经典电磁理论中，光被证实是特定频率范围内的电磁波，其波速、反射、折射等性质与电磁波一致。\n\n关键要素:可见光是电磁波谱中一小段，波长在400~760nm；光速等于电磁波速；光具有干涉、衍射等波动性。\n\n应用:光纤通信、光学仪器、光谱分析等。\n\n关联:电磁波、光的能量不连续",
+      "card_type": "concept",
+      "plan_task_id": "电磁波谱与应用",
+      "gold_cr_ids": [
+        "cr_057"
+      ],
+      "source_sentence": "3.3.6知道光是一种电磁波。知道光的能量是不连续的。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0128",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "X射线穿透性",
+      "back": "定义:X射线对不同物质（尤其是人体组织）的穿透能力存在差异，与物质的密度、原子序数相关。\n\n关键要素:高密度物质（如骨骼）吸收X射线多，穿透少；低密度物质（如软组织）吸收少，穿透多。\n\n应用:医学X光摄影，利用穿透性差异形成影像对比。\n\n关联:CT扫描、射线防护、射线特性",
+      "card_type": "concept",
+      "plan_task_id": "电磁波谱与应用",
+      "gold_cr_ids": [
+        "cr_193"
+      ],
+      "source_sentence": "2.1.3 了解X射线对人体不同组织的穿透性差异。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0129",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "CT扫描原理",
+      "back": "定义:计算机断层扫描（CT）利用X射线从多个角度对人体截面进行扫描，通过计算机重建得到断层图像。\n\n关键要素:旋转X射线源和探测器；获取多方向投影数据；反投影或迭代算法重建图像。\n\n应用:医学诊断中高分辨率三维成像，检测肿瘤、骨折等。\n\n关联:X射线穿透性、图像重建、医学影像",
+      "card_type": "concept",
+      "plan_task_id": "电磁波谱与应用",
+      "gold_cr_ids": [
+        "cr_194"
+      ],
+      "source_sentence": "2.1.4 了解CT扫描的基本原理。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0130",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "光的折射定律",
+      "back": "定义:光从一种介质进入另一种介质时，传播方向发生改变，入射角和折射角的正弦之比为常数。\n\n关键要素:折射定律表达式为 n₁sinθ₁ = n₂sinθ₂，其中 n 为折射率。\n\n应用:测量材料的折射率，解释视深现象。\n\n关联:折射率、全反射",
+      "card_type": "concept",
+      "plan_task_id": "几何光学",
+      "gold_cr_ids": [
+        "cr_086"
+      ],
+      "source_sentence": "通过实验，理解光的折射定律。会测量材料的折射率。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0131",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "折射率",
+      "back": "定义:光在真空中的速度与在介质中的速度之比，表征介质对光的折射能力。\n\n关键要素:折射率 n = c/v，且与介质性质和光的频率有关。\n\n应用:计算折射角，判断全反射临界角。\n\n关联:光的折射定律、全反射",
+      "card_type": "concept",
+      "plan_task_id": "几何光学",
+      "gold_cr_ids": [
+        "cr_087"
+      ],
+      "source_sentence": "通过实验，理解光的折射定律。会测量材料的折射率。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0132",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "光的全反射现象",
+      "back": "定义:光从光密介质射向光疏介质时，当入射角大于临界角，光全部返回原介质的现象。\n\n关键要素:产生条件：光从光密介质到光疏介质；入射角大于等于临界角。\n\n应用:光纤通信、潜望镜、光导纤维内窥镜。\n\n关联:折射率、光纤",
+      "card_type": "concept",
+      "plan_task_id": "几何光学",
+      "gold_cr_ids": [
+        "cr_088"
+      ],
+      "source_sentence": "知道光的全反射现象及其产生的条件。初步了解光纤的工作原理、光纤技术在生产生活中的应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0133",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "光纤工作原理",
+      "back": "定义:利用光的全反射原理，将光信号束缚在光纤芯中传输。\n\n关键要素:光纤由纤芯和包层组成，纤芯折射率大于包层，光在纤芯与包层界面发生全反射。\n\n应用:通信、传感器、医学内窥。\n\n关联:全反射、光的传播",
+      "card_type": "concept",
+      "plan_task_id": "几何光学",
+      "gold_cr_ids": [
+        "cr_089"
+      ],
+      "source_sentence": "初步了解光纤的工作原理、光纤技术在生产生活中的应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0134",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "光的干涉现象",
+      "back": "定义:两束相干光叠加时，在光波重叠区域出现稳定的明暗相间条纹的现象。\n\n关键要素:产生条件：两束光频率相同、相位差恒定、振动方向一致。常见实验：双缝干涉、薄膜干涉。\n\n应用:测量波长、检查表面平整度、增透膜。\n\n关联:双缝干涉、光的波动性",
+      "card_type": "concept",
+      "plan_task_id": "波动光学",
+      "gold_cr_ids": [
+        "cr_090"
+      ],
+      "source_sentence": "观察光的干涉、衍射和偏振现象，了解这些现象产生的条件，知道其在生产生活中的应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0135",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "光的衍射现象",
+      "back": "定义:光在传播过程中遇到障碍物或小孔时，偏离直线传播进入障碍物几何阴影区的现象。\n\n关键要素:产生条件：障碍物或小孔的尺寸与光的波长可比拟。典型图样：单缝衍射中央亮纹最宽最亮。\n\n应用:衍射光栅、光谱分析。\n\n关联:光的波动性、单缝衍射",
+      "card_type": "concept",
+      "plan_task_id": "波动光学",
+      "gold_cr_ids": [
+        "cr_091"
+      ],
+      "source_sentence": "观察光的干涉、衍射和偏振现象，了解这些现象产生的条件，知道其在生产生活中的应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0136",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "光的偏振现象",
+      "back": "定义:光矢量在垂直于传播方向的平面内沿特定方向振动的现象，证明光是横波。\n\n关键要素:产生条件：自然光通过偏振片或反射、折射后得到偏振光。\n\n应用:3D电影、太阳镜、液晶显示。\n\n关联:横波、光的波动性",
+      "card_type": "concept",
+      "plan_task_id": "波动光学",
+      "gold_cr_ids": [
+        "cr_092"
+      ],
+      "source_sentence": "观察光的干涉、衍射和偏振现象，了解这些现象产生的条件，知道其在生产生活中的应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0137",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "光是横波",
+      "back": "定义:光波中电场和磁场矢量垂直于传播方向振动的一种波动形式。\n\n关键要素:横波特征：具有偏振现象。光波是电磁波，属于横波。\n\n应用:通过偏振现象验证光的横波性质。\n\n关联:光的偏振、电磁波",
+      "card_type": "concept",
+      "plan_task_id": "波动光学",
+      "gold_cr_ids": [
+        "cr_093"
+      ],
+      "source_sentence": "知道光是横波，会用双缝干涉实验测量光的波长。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0138",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "双缝干涉测量光的波长",
+      "back": "定义:利用双缝干涉条纹间距与波长、缝间距、屏距的关系计算光的波长。\n\n关键要素:公式 Δx = (L/d)λ，其中 Δx 为条纹间距，L 为屏到双缝距离，d 为双缝间距。\n\n应用:测定未知光的波长，验证光的波动性。\n\n关联:光的干涉、波长",
+      "card_type": "concept",
+      "plan_task_id": "波动光学",
+      "gold_cr_ids": [
+        "cr_094"
+      ],
+      "source_sentence": "知道光是横波，会用双缝干涉实验测量光的波长。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0139",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "激光的特性",
+      "back": "定义:激光是受激辐射光放大产生的特殊光源，具有高度相干性、方向性、单色性和亮度高等特性。\n\n关键要素:相干性好，方向性极强，亮度远高于普通光源。\n\n应用:激光切割、激光通信、激光医疗、全息照相。\n\n关联:光的干涉、光的衍射",
+      "card_type": "concept",
+      "plan_task_id": "波动光学",
+      "gold_cr_ids": [
+        "cr_095"
+      ],
+      "source_sentence": "通过实验，了解激光的特性。能举例说明激光技术在生产生活中的应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0140",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "牛顿力学的局限性",
+      "back": "定义:牛顿力学在高速（接近光速）和强引力场等条件下不再适用，需要相对论和量子力学来修正。\n\n关键要素:牛顿力学适用于宏观低速弱引力场环境，超出此范围出现偏差。\n\n应用:理解经典力学与近代物理的边界，帮助建立正确的科学世界观。\n\n关联:相对论时空观、时空弯曲",
+      "card_type": "concept",
+      "plan_task_id": "经典力学局限与狭义相对论",
+      "gold_cr_ids": [
+        "cr_026"
+      ],
+      "source_sentence": "2.3.1知道牛顿力学的局限性，体会人类对自然界的探索是不断深入的。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0141",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "相对论时空观",
+      "back": "定义:由爱因斯坦提出，认为时间和空间并非绝对，而是与物质运动及引力相关的统一时空结构。\n\n关键要素:光速不变原理、相对性原理；时间膨胀、长度收缩、时空弯曲等效应。\n\n应用:解释高速运动现象、GPS修正、引力波探测等。\n\n关联:长度收缩效应、时间延缓效应、时空弯曲、牛顿力学的局限性",
+      "card_type": "concept",
+      "plan_task_id": "经典力学局限与狭义相对论",
+      "gold_cr_ids": [
+        "cr_027"
+      ],
+      "source_sentence": "2.3.2初步了解相对论时空观",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0142",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "长度收缩效应",
+      "back": "定义:在相对论中，物体相对观察者运动时，沿运动方向的长度比静止时缩短的现象。\n\n关键要素:收缩只发生在运动方向，收缩因子为√(1-v²/c²)。\n\n应用:解释粒子物理中的寿命延长现象，验证相对论预言。\n\n关联:相对论时空观、时间延缓效应",
+      "card_type": "concept",
+      "plan_task_id": "经典力学局限与狭义相对论",
+      "gold_cr_ids": [
+        "cr_028"
+      ],
+      "source_sentence": "例1初步了解长度收缩效应和时间延缓效应。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0143",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "时间延缓效应",
+      "back": "定义:在相对论中，运动时钟的走时比静止时钟慢的现象。\n\n关键要素:时间膨胀因子为1/√(1-v²/c²)，速度越接近光速效应越显著。\n\n应用:宇宙线μ子寿命延长、双生子佯谬。\n\n关联:相对论时空观、长度收缩效应",
+      "card_type": "concept",
+      "plan_task_id": "经典力学局限与狭义相对论",
+      "gold_cr_ids": [
+        "cr_029"
+      ],
+      "source_sentence": "例1初步了解长度收缩效应和时间延缓效应。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0144",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "相对性原理",
+      "back": "定义:所有惯性参考系中物理定律的形式相同，无法通过任何物理实验确定惯性系的绝对运动状态。\n\n关键要素:惯性系等效性、物理定律的协变性。\n\n应用:为狭义相对论奠定基础，解释电磁现象与力学定律的统一性。\n\n关联:光速不变原理、狭义相对论",
+      "card_type": "concept",
+      "plan_task_id": "经典力学局限与狭义相对论",
+      "gold_cr_ids": [
+        "cr_207"
+      ],
+      "source_sentence": "3.2.1 知道相对性原理和光速不变原理。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0145",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "光速不变原理",
+      "back": "定义:真空中的光速在任何惯性参考系中都是相同的常数c，与光源和观察者的运动无关。\n\n关键要素:光速c=3×10⁸ m/s，与参考系选择无关。\n\n应用:推翻经典时空观，导出时间膨胀、长度收缩等效应。\n\n关联:相对性原理、狭义相对论",
+      "card_type": "concept",
+      "plan_task_id": "经典力学局限与狭义相对论",
+      "gold_cr_ids": [
+        "cr_208"
+      ],
+      "source_sentence": "3.2.1 知道相对性原理和光速不变原理。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0146",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "爱因斯坦质能方程",
+      "back": "定义:物体的能量E与质量m满足关系E=mc²，其中c为光速。\n\n关键要素:质量与能量等价，微小质量可转化为巨大能量。\n\n应用:核裂变与核聚变的能量计算、原子弹与核电站的原理基础。\n\n关联:相对论、核能利用",
+      "card_type": "concept",
+      "plan_task_id": "经典力学局限与狭义相对论",
+      "gold_cr_ids": [
+        "cr_209"
+      ],
+      "source_sentence": "3.2.3 知道爱因斯坦质能方程的意义。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0147",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "质能关系",
+      "back": "定义:爱因斯坦提出的质量与能量等价关系，公式E=mc²，其中c为光速。\n\n关键要素:质量可以转化为能量，能量也可以转化为质量；比例系数是光速的平方，巨大。\n\n应用:核反应（裂变、聚变）能量释放的计算；粒子加速器中的质能转换。\n\n关联:相对论时空观、核物理",
+      "card_type": "concept",
+      "plan_task_id": "经典力学局限与狭义相对论",
+      "gold_cr_ids": [
+        "cr_185"
+      ],
+      "source_sentence": "知道质能关系的意义，了解相对论与量子论对人类认识的影响。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0148",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "时空弯曲",
+      "back": "定义:在广义相对论中，物质和能量使时空几何发生弯曲，引力本质是时空弯曲的几何效应。\n\n关键要素:质量/能量导致时空曲率，物体沿测地线运动。\n\n应用:解释水星近日点进动、引力透镜、黑洞等。\n\n关联:相对论时空观、牛顿力学的局限性",
+      "card_type": "concept",
+      "plan_task_id": "广义相对论",
+      "gold_cr_ids": [
+        "cr_030"
+      ],
+      "source_sentence": "例2初步了解时空弯曲。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0149",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "广义相对论",
+      "back": "定义:爱因斯坦提出的引力理论，认为引力不是力而是时空弯曲的几何效应。\n\n关键要素:等效原理（引力与加速度等效）、时空弯曲、物质告诉时空如何弯曲，时空告诉物质如何运动。\n\n应用:预言黑洞、引力透镜、引力红移、引力波。\n\n关联:狭义相对论、引力波",
+      "card_type": "concept",
+      "plan_task_id": "广义相对论",
+      "gold_cr_ids": [
+        "cr_210"
+      ],
+      "source_sentence": "3.2.4 了解广义相对论的主要思想、结论和观测证据。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0150",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "双生子伴谬",
+      "back": "定义:一对双胞胎，一个乘飞船高速旅行返回后比留在地球上的兄弟更年轻的假想实验。\n\n关键要素:涉及时间延缓效应、加速过程的非惯性系处理，最终结论符合广义相对论。\n\n应用:加深对时间膨胀效应和相对论时空观的理解。\n\n关联:时间延缓效应、狭义相对论",
+      "card_type": "concept",
+      "plan_task_id": "广义相对论",
+      "gold_cr_ids": [
+        "cr_211"
+      ],
+      "source_sentence": "小组讨论“双生子伴谬”问题，分享各自的观点。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0151",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "引力波",
+      "back": "定义:时空曲率扰动以波的形式向外传播的现象，由加速运动的质量产生，以光速传播。\n\n关键要素:爱因斯坦于1916年预言，2015年LIGO首次直接探测到。\n\n应用:开启引力波天文学，观测黑洞合并、中子星碰撞等极端天体事件。\n\n关联:广义相对论、LIGO",
+      "card_type": "concept",
+      "plan_task_id": "广义相对论",
+      "gold_cr_ids": [
+        "cr_212"
+      ],
+      "source_sentence": "查阅资料，了解引力波的产生及其探测。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0152",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "宇宙起源",
+      "back": "定义:关于宇宙如何开始的科学理论，主流为宇宙大爆炸理论。\n\n关键要素:宇宙从高温高密状态膨胀至今，约138亿年前开始。\n\n应用:解释微波背景辐射、元素丰度、星系红移。\n\n关联:宇宙演化、恒星演化",
+      "card_type": "concept",
+      "plan_task_id": "宇宙学",
+      "gold_cr_ids": [
+        "cr_031"
+      ],
+      "source_sentence": "2.3.3关注宇宙起源和演化的研究进展",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0153",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "宇宙演化",
+      "back": "定义:宇宙从诞生至今经历的变化过程，包括膨胀、冷却、结构形成等。\n\n关键要素:经历早期暴涨、原初核合成、复合时代、星系形成等阶段。\n\n应用:预测宇宙未来命运（热寂、大撕裂等）。\n\n关联:宇宙起源、恒星演化",
+      "card_type": "concept",
+      "plan_task_id": "宇宙学",
+      "gold_cr_ids": [
+        "cr_032"
+      ],
+      "source_sentence": "2.3.3关注宇宙起源和演化的研究进展",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0154",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "恒星演化",
+      "back": "定义:恒星从诞生到死亡所经历的一系列阶段，包括主序星、红巨星、白矮星/中子星/黑洞等。\n\n关键要素:质量决定演化路径，核心核聚变反应驱动。\n\n应用:了解元素合成、天体演化规律、超新星爆发等。\n\n关联:宇宙演化、万有引力定律",
+      "card_type": "concept",
+      "plan_task_id": "宇宙学",
+      "gold_cr_ids": [
+        "cr_033"
+      ],
+      "source_sentence": "例3查阅资料，初步了解典型的恒星演化过程。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0155",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "大爆炸宇宙论",
+      "back": "定义:一种宇宙起源理论，认为宇宙起源于约138亿年前一个极高密度、极高温度的点（奇点）的爆炸，并不断膨胀和冷却演化至今。\n\n关键要素:理论模型包括宇宙膨胀、早期核合成、微波背景辐射等；观察证据包括宇宙微波背景辐射、哈勃红移（星系退行）、轻元素丰度等。\n\n应用:解释宇宙大尺度结构、星系演化、宇宙年龄等。\n\n关联:黑洞、暗物质、暗能量、恒星演化",
+      "card_type": "concept",
+      "plan_task_id": "宇宙学",
+      "gold_cr_ids": [
+        "cr_213"
+      ],
+      "source_sentence": "3.3.1 初步了解大爆炸宇宙论的理论模型及其观察证据。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0156",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "暗物质",
+      "back": "定义:一种不发射、不吸收电磁波但通过引力效应存在的物质，约占宇宙总物质质量的85%。\n\n关键要素:通过星系旋转曲线、引力透镜、宇宙大尺度结构等观测间接证实；尚未直接探测到其粒子本质。\n\n应用:解释星系团动力学、宇宙结构形成等。\n\n关联:暗能量、大爆炸宇宙论、粒子物理",
+      "card_type": "concept",
+      "plan_task_id": "宇宙学",
+      "gold_cr_ids": [
+        "cr_214"
+      ],
+      "source_sentence": "3.3.3 初步了解暗物质和暗能量。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0157",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "暗能量",
+      "back": "定义:一种导致宇宙加速膨胀的未知能量形式，约占宇宙总能量密度的68%。\n\n关键要素:通过Ia型超新星观测发现宇宙膨胀在加速；其本质可能是宇宙常数或动态标量场。\n\n应用:解释宇宙晚期加速膨胀现象。\n\n关联:暗物质、大爆炸宇宙论、宇宙学常数",
+      "card_type": "concept",
+      "plan_task_id": "宇宙学",
+      "gold_cr_ids": [
+        "cr_215"
+      ],
+      "source_sentence": "3.3.3 初步了解暗物质和暗能量。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0158",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "光的能量不连续",
+      "back": "定义:光的能量不是连续的，而是以一份份的量子形式存在，每一份能量称为光子，其能量E = hν（h为普朗克常量，ν为光的频率）。这是量子化特征的表现。\n\n关键要素:光子能量与频率成正比；光的发射和吸收是量子化的；解释了光电效应等实验。\n\n应用:激光、光电效应、量子通信等。\n\n关联:微观世界的量子化特征、光子、普朗克常量",
+      "card_type": "concept",
+      "plan_task_id": "量子概念与光电效应",
+      "gold_cr_ids": [
+        "cr_058"
+      ],
+      "source_sentence": "3.3.6知道光是一种电磁波。知道光的能量是不连续的。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0159",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "微观世界的量子化特征",
+      "back": "定义:在微观世界（如原子、分子、电子等）中，物理量（如能量、角动量、电荷等）的取值往往是不连续的，只能取某些离散的数值，这一现象称为量子化。\n\n关键要素:能量量子化（能级）、角动量量子化、自旋量子化；是量子力学的基础。\n\n应用:解释原子光谱、半导体能带、量子计算等。\n\n关联:光的能量不连续、能级、光子",
+      "card_type": "concept",
+      "plan_task_id": "量子概念与光电效应",
+      "gold_cr_ids": [
+        "cr_059"
+      ],
+      "source_sentence": "3.3.6知道光是一种电磁波。知道光的能量是不连续的。初步了解微观世界的量子化特征。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0160",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "光电效应现象",
+      "back": "定义:金属在光照射下发射电子的现象，光频率需高于截止频率。\n\n关键要素:光频率、截止频率、逸出功、光电子。\n\n应用:光电管、光控开关、太阳能电池。\n\n关联:爱因斯坦光电效应方程、光的波粒二象性",
+      "card_type": "concept",
+      "plan_task_id": "量子概念与光电效应",
+      "gold_cr_ids": [
+        "cr_163"
+      ],
+      "source_sentence": "通过实验，了解光电效应现象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0161",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "爱因斯坦光电效应方程",
+      "back": "定义:E_k = hν - W，其中E_k为光电子最大初动能，h为普朗克常量，ν为光频率，W为逸出功。\n\n关键要素:光电子动能、入射光频率、逸出功。\n\n应用:解释光电效应的瞬时性和截止频率现象。\n\n关联:光电效应、光量子假说",
+      "card_type": "concept",
+      "plan_task_id": "量子概念与光电效应",
+      "gold_cr_ids": [
+        "cr_164"
+      ],
+      "source_sentence": "知道爱因斯坦光电效应方程及其意义。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0162",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "量子概念的建构",
+      "back": "定义:从普朗克提出能量量子化开始，经爱因斯坦、玻尔、德布罗意、薛定谔等发展，建立量子理论的历史过程。\n\n关键要素:普朗克常量、光量子、玻尔模型、波函数。\n\n应用:推动现代物理学发展。\n\n关联:量子力学、波粒二象性",
+      "card_type": "concept",
+      "plan_task_id": "量子概念与光电效应",
+      "gold_cr_ids": [
+        "cr_168"
+      ],
+      "source_sentence": "通过史实，了解量子概念的建构对人类认识自然的影响。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0163",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "光的波粒二象性",
+      "back": "定义:光同时具有波动性和粒子性的性质，在不同实验中分别表现。\n\n关键要素:干涉、衍射（波动性）；光电效应、康普顿效应（粒子性）。\n\n应用:理解光的行为，量子光学基础。\n\n关联:爱因斯坦光电效应、德布罗意波",
+      "card_type": "concept",
+      "plan_task_id": "波粒二象性与物质波",
+      "gold_cr_ids": [
+        "cr_165"
+      ],
+      "source_sentence": "能根据实验结论说明光的波粒二象性。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0164",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "实物粒子的波动性",
+      "back": "定义:实物粒子（如电子）也具有波动性，波长λ = h/p（德布罗意波）。\n\n关键要素:德布罗意波长、动量、质量。\n\n应用:电子显微镜、中子衍射。\n\n关联:电子衍射实验、量子力学",
+      "card_type": "concept",
+      "plan_task_id": "波粒二象性与物质波",
+      "gold_cr_ids": [
+        "cr_166"
+      ],
+      "source_sentence": "知道实物粒子具有波动性，了解微观世界的量子化特征。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0165",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "电子衍射实验",
+      "back": "定义:通过电子束穿过晶体产生衍射图样，证实电子的波动性。\n\n关键要素:德布罗意波长、晶体衍射、电子波动性。\n\n应用:验证实物粒子波粒二象性。\n\n关联:德布罗意波、物质波",
+      "card_type": "concept",
+      "plan_task_id": "波粒二象性与物质波",
+      "gold_cr_ids": [
+        "cr_167"
+      ],
+      "source_sentence": "了解电子衍射实验。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0166",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "德布罗意物质波",
+      "back": "定义:德布罗意提出实物粒子也具有波动性，这种波称为物质波。\n\n关键要素:物质波的波长与粒子的动量成反比，即 λ = h/p，其中h为普朗克常量。\n\n应用:解释电子的衍射现象，为量子力学奠定了基础。\n\n关联:波粒二象性、不确定性原理",
+      "card_type": "concept",
+      "plan_task_id": "波粒二象性与物质波",
+      "gold_cr_ids": [
+        "cr_203"
+      ],
+      "source_sentence": "3.1.2 了解德布罗意物质波，知道物质的波粒二象性。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0167",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "海森伯不确定性原理",
+      "back": "定义:微观粒子的某些共轭物理量（如位置和动量、时间和能量）不能同时被精确测量，存在不确定度关系。\n\n关键要素:Δx·Δp ≥ h/(4π)，ΔE·Δt ≥ h/(4π)，其中h为普朗克常量。\n\n应用:限制微观粒子的经典描述，量子力学基本公理之一。\n\n关联:波粒二象性、量子测量",
+      "card_type": "concept",
+      "plan_task_id": "波粒二象性与物质波",
+      "gold_cr_ids": [
+        "cr_204"
+      ],
+      "source_sentence": "3.1.3 初步了解海森伯不确定性原理。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0168",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "波粒二象性",
+      "back": "定义:微观粒子（如电子、光子）既表现出粒子性又表现出波动性的双重属性。\n\n关键要素:德布罗意提出物质波；光的波粒二象性（光电效应、干涉衍射）；量子力学核心思想。\n\n应用:电子显微镜、量子通信、半导体物理等。\n\n关联:量子力学、不确定性原理",
+      "card_type": "concept",
+      "plan_task_id": "波粒二象性与物质波",
+      "gold_cr_ids": [
+        "cr_184"
+      ],
+      "source_sentence": "了解波粒二象性的物理思想，体会人们对物质本性认识的不断发展。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0169",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "原子的核式结构模型",
+      "back": "定义:原子由带正电的原子核和绕核运动的电子组成，核很小但集中了几乎全部质量。\n\n关键要素:卢瑟福α粒子散射实验验证；核与电子间库仑力作用。\n\n应用:解释原子稳定性、粒子散射现象。\n\n关联:原子的能级结构、氢原子光谱",
+      "card_type": "concept",
+      "plan_task_id": "原子结构",
+      "gold_cr_ids": [
+        "cr_146"
+      ],
+      "source_sentence": "知道原子的核式结构模型。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0170",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "原子的能级结构",
+      "back": "定义:原子中电子只能处于一系列不连续的能量状态（能级），跃迁时吸收或发射特定频率的光子。\n\n关键要素:能级量子化；基态与激发态；跃迁条件hν=ΔE。\n\n应用:解释氢原子光谱的线状谱。\n\n关联:氢原子光谱、玻尔模型",
+      "card_type": "concept",
+      "plan_task_id": "原子结构",
+      "gold_cr_ids": [
+        "cr_147"
+      ],
+      "source_sentence": "通过对氢原子光谱的分析，了解原子的能级结构。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0171",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "氢原子光谱",
+      "back": "定义:氢原子在能级跃迁时发射或吸收的一系列分立波长的谱线。\n\n关键要素:包括巴尔末系、莱曼系等；波长满足里德伯公式。\n\n应用:验证原子能级结构；光谱分析。\n\n关联:原子的能级结构、玻尔理论",
+      "card_type": "concept",
+      "plan_task_id": "原子结构",
+      "gold_cr_ids": [
+        "cr_148"
+      ],
+      "source_sentence": "通过对氢原子光谱的分析，了解原子的能级结构。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0172",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "原子核的组成",
+      "back": "定义:原子核由质子和中子（统称核子）组成，质子带正电，中子不带电。\n\n关键要素:质子数决定元素；中子数影响同位素；核子间存在强相互作用。\n\n应用:解释核反应、同位素现象。\n\n关联:核力、四种基本相互作用",
+      "card_type": "concept",
+      "plan_task_id": "原子结构",
+      "gold_cr_ids": [
+        "cr_149"
+      ],
+      "source_sentence": "了解原子核的组成和核力的性质。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0173",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "四种基本相互作用",
+      "back": "定义:自然界中存在的四种基本相互作用：引力相互作用、电磁相互作用、强相互作用、弱相互作用。\n\n关键要素:强作用力核子间；弱作用力引起衰变；电磁力范围无限；引力最弱。\n\n应用:统一描述物理现象。\n\n关联:核力、原子核衰变",
+      "card_type": "concept",
+      "plan_task_id": "原子结构",
+      "gold_cr_ids": [
+        "cr_150"
+      ],
+      "source_sentence": "知道四种基本相互作用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0174",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "原子核式结构模型",
+      "back": "定义:原子由带正电的原子核和核外电子组成，核很小但集中大部分质量。\n\n关键要素:原子核、质子、中子、电子、核外电子轨道。\n\n应用:解释α粒子散射实验。\n\n关联:卢瑟福实验、原子结构",
+      "card_type": "concept",
+      "plan_task_id": "原子结构",
+      "gold_cr_ids": [
+        "cr_171"
+      ],
+      "source_sentence": "认识建构理想气体、原子核式结构等模型的必要性。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0175",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "放射性",
+      "back": "定义:某些不稳定的原子核自发地放射出α、β、γ射线而转变为其他核的现象。\n\n关键要素:自发过程；三种射线本质不同。\n\n应用:放射性测年、医学治疗、工业检测。\n\n关联:原子核衰变、半衰期、放射性同位素",
+      "card_type": "concept",
+      "plan_task_id": "放射性及其应用",
+      "gold_cr_ids": [
+        "cr_152"
+      ],
+      "source_sentence": "了解放射性和原子核衰变。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0176",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "原子核衰变",
+      "back": "定义:不稳定的原子核自发地放出粒子或射线并转变成另一种核的过程。\n\n关键要素:α衰变、β衰变、γ衰变；遵守质量数守恒和电荷守恒。\n\n应用:测定年代、核能利用。\n\n关联:放射性、半衰期、核反应方程",
+      "card_type": "concept",
+      "plan_task_id": "放射性及其应用",
+      "gold_cr_ids": [
+        "cr_153"
+      ],
+      "source_sentence": "了解放射性和原子核衰变。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0177",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "半衰期",
+      "back": "定义:放射性原子核数目衰变到原来一半所需的时间。\n\n关键要素:统计规律，对大量原子核成立；与外界条件无关；不同核素半衰期不同。\n\n应用:放射性测年（如碳-14）、核废物处理。\n\n关联:原子核衰变、放射性同位素",
+      "card_type": "concept",
+      "plan_task_id": "放射性及其应用",
+      "gold_cr_ids": [
+        "cr_154"
+      ],
+      "source_sentence": "知道半衰期及其统计意义。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0178",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "放射性同位素",
+      "back": "定义:具有放射性的同位素，原子核不稳定会自发衰变。\n\n关键要素:人工或天然产生；衰变方式多样；半衰期各异。\n\n应用:医学示踪、放射治疗、工业探伤、考古断代。\n\n关联:放射性、半衰期、原子核衰变",
+      "card_type": "concept",
+      "plan_task_id": "放射性及其应用",
+      "gold_cr_ids": [
+        "cr_155"
+      ],
+      "source_sentence": "了解放射性同位素的应用，知道射线的危害与防护。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0179",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "射线的危害与防护",
+      "back": "定义:α、β、γ等射线对人体组织有电离作用，可能导致细胞损伤或癌变；防护措施包括屏蔽、距离、时间控制。\n\n关键要素:α射线穿透弱但电离强；β射线需金属屏蔽；γ射线需厚铅或混凝土。\n\n应用:制定辐射安全标准、核设施防护。\n\n关联:放射性、原子核衰变",
+      "card_type": "concept",
+      "plan_task_id": "放射性及其应用",
+      "gold_cr_ids": [
+        "cr_156"
+      ],
+      "source_sentence": "了解放射性同位素的应用，知道射线的危害与防护。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0180",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "典型射线的特性与防护",
+      "back": "定义:常见射线（α、β、γ、X射线等）具有不同的电离能力、穿透能力和生物效应，需采取相应防护措施。\n\n关键要素:α粒子穿透弱但电离强；β粒子穿透中等；γ/X射线穿透强但电离弱；防护原则：时间、距离、屏蔽。\n\n应用:医学放疗（γ射线杀灭癌细胞）、工业探伤、核安全防护。\n\n关联:X射线、放射性、辐射剂量、防护材料",
+      "card_type": "concept",
+      "plan_task_id": "放射性及其应用",
+      "gold_cr_ids": [
+        "cr_195"
+      ],
+      "source_sentence": "2.1.5 了解典型射线的特性及其防护措施，知道这些射线在医学中的应用及其对人体的影响。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0181",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "原子核的衰变",
+      "back": "定义:不稳定的原子核自发放出α、β或γ射线而转变成另一种核的过程。\n\n关键要素:α衰变、β衰变、γ衰变、半衰期。\n\n应用:放射性测年、医学放疗。\n\n关联:核反应、放射现象",
+      "card_type": "concept",
+      "plan_task_id": "放射性及其应用",
+      "gold_cr_ids": [
+        "cr_172"
+      ],
+      "source_sentence": "了解原子、原子核的结构和特点，能说明原子核的衰变、裂变、聚变和放射现象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0182",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "放射现象",
+      "back": "定义:原子核自发辐射出α、β、γ射线的现象。\n\n关键要素:放射性、半衰期、辐射类型。\n\n应用:辐照育种、医学成像。\n\n关联:核衰变、原子核稳定性",
+      "card_type": "concept",
+      "plan_task_id": "放射性及其应用",
+      "gold_cr_ids": [
+        "cr_175"
+      ],
+      "source_sentence": "了解原子、原子核的结构和特点，能说明原子核的衰变、裂变、聚变和放射现象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0183",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "核反应方程",
+      "back": "定义:表示原子核在反应前后变化的等式，遵循质量数守恒和电荷守恒。\n\n关键要素:反应中质量数总和不变，电荷数总和不变；常用符号如α、β、γ等。\n\n应用:书写核裂变、核聚变、衰变等方程。\n\n关联:质量数守恒、电荷守恒、核裂变、核聚变",
+      "card_type": "concept",
+      "plan_task_id": "核反应基础",
+      "gold_cr_ids": [
+        "cr_151"
+      ],
+      "source_sentence": "能根据质量数守恒和电荷守恒写出核反应方程。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0184",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "原子核的结合能",
+      "back": "定义:将原子核分解成自由核子所需的最小能量，或核子结合成核时释放的能量。\n\n关键要素:结合能越大核越稳定；质量亏损对应ΔE=Δmc²。\n\n应用:计算核反应释放能量，如核裂变、核聚变。\n\n关联:核裂变反应、核聚变反应、爱因斯坦质能方程",
+      "card_type": "concept",
+      "plan_task_id": "核反应基础",
+      "gold_cr_ids": [
+        "cr_157"
+      ],
+      "source_sentence": "认识原子核的结合能，了解核裂变反应和核聚变反应。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0185",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "中子的发现",
+      "back": "定义:1932年查德威克利用动量守恒定律分析α粒子轰击铍核产生的辐射，发现中性粒子——中子。\n\n关键要素:通过碰撞实验测量反冲质子能量，结合动量守恒和能量守恒确定中子质量。\n\n应用:奠定原子核物理基础，引发核反应和核能利用。\n\n关联:动量守恒定律、弹性碰撞、核物理",
+      "card_type": "concept",
+      "plan_task_id": "核反应基础",
+      "gold_cr_ids": [
+        "cr_072"
+      ],
+      "source_sentence": "例2查阅资料，了解中子的发现过程，讨论动量守恒定律在其中的作用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0186",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "核裂变",
+      "back": "定义:重原子核分裂成两个或多个较轻原子核，并释放出巨大能量的过程。\n\n关键要素:通常由中子轰击触发，可产生链式反应；释放能量基于质量亏损。\n\n应用:核电站发电、原子弹等。\n\n关联:核聚变、质量亏损、链式反应。",
+      "card_type": "concept",
+      "plan_task_id": "核反应基础",
+      "gold_cr_ids": [
+        "cr_060"
+      ],
+      "source_sentence": "初步了解核裂变与核聚变。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0187",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "核聚变",
+      "back": "定义:两个轻原子核结合成较重原子核，并释放出巨大能量的过程。\n\n关键要素:需要极高温度和压力克服库仑斥力；太阳等恒星主要能量来源。\n\n应用:氢弹、可控核聚变研究（如托卡马克）。\n\n关联:核裂变、质量亏损、恒星演化。",
+      "card_type": "concept",
+      "plan_task_id": "核反应基础",
+      "gold_cr_ids": [
+        "cr_061"
+      ],
+      "source_sentence": "初步了解核裂变与核聚变。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0188",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "核裂变反应",
+      "back": "定义:重原子核（如铀-235）被中子轰击后分裂为质量相近的两个中等质量核，同时释放中子和巨大能量的过程。\n\n关键要素:链式反应；释放能量约200 MeV；产物有放射性。\n\n应用:核电站、原子弹。\n\n关联:原子核的结合能、核聚变反应",
+      "card_type": "concept",
+      "plan_task_id": "核裂变与核聚变",
+      "gold_cr_ids": [
+        "cr_158"
+      ],
+      "source_sentence": "认识原子核的结合能，了解核裂变反应和核聚变反应。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0189",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "核聚变反应",
+      "back": "定义:轻原子核（如氘、氚）在高温高压下结合成较重的原子核，同时释放巨大能量的过程。\n\n关键要素:需要极高温度（如太阳内核）；释放能量比裂变更大；产物无长寿命放射性。\n\n应用:氢弹、可控核聚变研究（如托卡马克）。\n\n关联:原子核的结合能、核裂变反应",
+      "card_type": "concept",
+      "plan_task_id": "核裂变与核聚变",
+      "gold_cr_ids": [
+        "cr_159"
+      ],
+      "source_sentence": "认识原子核的结合能，了解核裂变反应和核聚变反应。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0190",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "原子核的裂变",
+      "back": "定义:重原子核分裂成两个或多个较轻核，同时释放能量的过程。\n\n关键要素:中子轰击、链式反应、质量亏损。\n\n应用:核电站、原子弹。\n\n关联:核能、连锁反应",
+      "card_type": "concept",
+      "plan_task_id": "核裂变与核聚变",
+      "gold_cr_ids": [
+        "cr_173"
+      ],
+      "source_sentence": "了解原子、原子核的结构和特点，能说明原子核的衰变、裂变、聚变和放射现象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0191",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "原子核的聚变",
+      "back": "定义:轻原子核结合成较重原子核，同时释放巨大能量的过程。\n\n关键要素:高温高压、氘氚反应、质量亏损。\n\n应用:氢弹、可控核聚变研究。\n\n关联:核能、恒星能量来源",
+      "card_type": "concept",
+      "plan_task_id": "核裂变与核聚变",
+      "gold_cr_ids": [
+        "cr_174"
+      ],
+      "source_sentence": "了解原子、原子核的结构和特点，能说明原子核的衰变、裂变、聚变和放射现象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0192",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "直线加速器",
+      "back": "定义:利用沿直线排列的加速管，通过高频电场逐级加速带电粒子的装置。\n\n关键要素:粒子沿直线运动；能量逐渐增加；适用于电子、质子等。\n\n应用:高能物理实验、放射治疗、工业辐照。\n\n关联:同步加速器、粒子探测器",
+      "card_type": "concept",
+      "plan_task_id": "粒子物理与加速器",
+      "gold_cr_ids": [
+        "cr_160"
+      ],
+      "source_sentence": "了解直线加速器、同步加速器、粒子探测器在核物理和粒子物理研究中的作用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0193",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "同步加速器",
+      "back": "定义:使带电粒子在环形轨道上受交变电场加速，同时磁场随能量同步增强以维持轨道半径的装置。\n\n关键要素:环形结构；同步调变磁场和电场；可加速到非常高能量。\n\n应用:高能物理研究（如LHC）。\n\n关联:直线加速器、粒子探测器",
+      "card_type": "concept",
+      "plan_task_id": "粒子物理与加速器",
+      "gold_cr_ids": [
+        "cr_161"
+      ],
+      "source_sentence": "了解直线加速器、同步加速器、粒子探测器在核物理和粒子物理研究中的作用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0194",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "粒子探测器",
+      "back": "定义:用于探测、记录高能粒子（如电子、质子、光子）位置、能量、动量等信息的仪器。\n\n关键要素:包括气泡室、闪烁体、半导体探测器等；利用电离、发光等效应。\n\n应用:粒子物理实验、核医学成像、辐射监测。\n\n关联:直线加速器、同步加速器",
+      "card_type": "concept",
+      "plan_task_id": "粒子物理与加速器",
+      "gold_cr_ids": [
+        "cr_162"
+      ],
+      "source_sentence": "了解直线加速器、同步加速器、粒子探测器在核物理和粒子物理研究中的作用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0195",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "基本粒子的微观模型",
+      "back": "定义:描述构成物质的最小单元及其相互作用的模型，如粒子物理标准模型。\n\n关键要素:包括夸克、轻子、规范玻色子等基本粒子，以及强力、弱力、电磁力、引力四种基本相互作用。\n\n应用:解释高能物理实验现象，预测新粒子。\n\n关联:粒子加速器、宇宙学",
+      "card_type": "concept",
+      "plan_task_id": "粒子物理与加速器",
+      "gold_cr_ids": [
+        "cr_205"
+      ],
+      "source_sentence": "3.1.4 初步了解基本粒子的微观模型及其特点。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0196",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "人类探索基本粒子的大致历程",
+      "back": "定义:从发现电子、质子、中子，到夸克模型、标准模型，再到不断寻找新粒子的历史过程。\n\n关键要素:重要里程碑包括汤姆逊发现电子、卢瑟福发现原子核、查德威克发现中子、粒子加速器发现大量新粒子、盖尔曼提出夸克模型、希格斯粒子发现等。\n\n应用:理解物质结构，推动技术发展。\n\n关联:波粒二象性、基本粒子模型",
+      "card_type": "concept",
+      "plan_task_id": "粒子物理与加速器",
+      "gold_cr_ids": [
+        "cr_206"
+      ],
+      "source_sentence": "3.1.5 了解人类探索基本粒子的大致历程，知道这种探索将不断深入。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0197",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "相互作用统一理论",
+      "back": "定义:物理学中追求将自然界中不同的基本相互作用统一在一个理论框架下的思想，如电磁力和弱力的统一（电弱统一理论），以及进一步将强相互作用纳入的大统一理论。\n\n关键要素:核心思想是揭示看似不同的力在更高能量或更小尺度下的内在联系；已实现电磁力与弱力的统一，预言了W玻色子、Z玻色子等粒子并被实验证实。\n\n应用:推动高能物理实验（如大型强子对撞机）设计，验证标准模型；解释早期宇宙演化。\n\n关联:四种基本相互作用、希格斯粒子、标准模型、量子场论。",
+      "card_type": "concept",
+      "plan_task_id": "粒子物理与加速器",
+      "gold_cr_ids": [
+        "cr_217"
+      ],
+      "source_sentence": "3.4.2 初步了解追求相互作用统一的思想和探索在物理学发展中的作用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0198",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "希格斯粒子",
+      "back": "定义:希格斯粒子（希格斯玻色子）是标准模型中通过希格斯机制产生的粒子，是赋予其他基本粒子质量的量子。\n\n关键要素:由彼得·希格斯等人于1964年理论预言；2012年在欧洲核子中心（CERN）大型强子对撞机上被发现；其发现验证了希格斯机制的正确性，解释了W和Z玻色子的质量来源。\n\n应用:完善了粒子物理标准模型；推动了对质量起源、宇宙早期相变等问题的研究。\n\n关联:基本相互作用统一理论、标准模型、对称性破缺、质量起源。",
+      "card_type": "concept",
+      "plan_task_id": "粒子物理与加速器",
+      "gold_cr_ids": [
+        "cr_218"
+      ],
+      "source_sentence": "（1）查阅资料，讨论“希格斯粒子”及其意义。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0199",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "反物质",
+      "back": "定义:由反粒子（如反质子、正电子）组成的物质，与普通物质相遇时发生湮灭并释放巨大能量。\n\n关键要素:反物质与普通物质具有相同质量但电荷等性质相反；宇宙中反物质极其稀少，存在正反物质不对称之谜。\n\n应用:正电子发射断层扫描（PET）等医学成像；基础物理研究CP破缺等。\n\n关联:暗物质、大爆炸宇宙论、粒子物理",
+      "card_type": "concept",
+      "plan_task_id": "粒子物理与加速器",
+      "gold_cr_ids": [
+        "cr_216"
+      ],
+      "source_sentence": "3.3.4 初步了解反物质与物质。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0200",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "微电子技术",
+      "back": "定义:以集成电路为核心的、在微小尺度上制造电子元件和电路的技术。\n\n关键要素:微型化、集成化、低功耗、高可靠性。\n\n应用:计算机CPU、手机芯片、智能卡、医疗电子设备等。\n\n关联:半导体技术、信息技术、集成电路。",
+      "card_type": "concept",
+      "plan_task_id": "现代技术应用",
+      "gold_cr_ids": [
+        "cr_187"
+      ],
+      "source_sentence": "1.3.2 能列举微电子技术在生活中的应用实例。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0201",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "电视广播技术",
+      "back": "定义:利用无线电波将图像和声音信号进行远距离传输的技术。\n\n关键要素:发射（调制）、传输（载波）、接收（解调）、显示。\n\n应用:传统电视节目、卫星电视、数字电视等。\n\n关联:电磁波、通信技术、信号处理。",
+      "card_type": "concept",
+      "plan_task_id": "现代技术应用",
+      "gold_cr_ids": [
+        "cr_188"
+      ],
+      "source_sentence": "了解电视广播技术的发展对生活的影响。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0202",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "激光技术",
+      "back": "定义:利用受激辐射原理产生方向性好、亮度高、单色性好的相干光的技术。\n\n关键要素:单色性好、方向性强、能量集中、相干性高。\n\n应用:激光切割、激光医疗（手术、矫正视力）、激光通信、激光雷达等。\n\n关联:光纤通信、量子光学、受激辐射。",
+      "card_type": "concept",
+      "plan_task_id": "现代技术应用",
+      "gold_cr_ids": [
+        "cr_189"
+      ],
+      "source_sentence": "1.3.4 了解激光技术和光纤通信技术在生活中的应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0203",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "光纤通信技术",
+      "back": "定义:以光波为载波、以光纤为传输介质的通信技术。\n\n关键要素:传输容量大、损耗低、抗干扰强、中继距离长。\n\n应用:互联网骨干网、有线电视、电话网络等。\n\n关联:激光技术、全反射原理、通信工程。",
+      "card_type": "concept",
+      "plan_task_id": "现代技术应用",
+      "gold_cr_ids": [
+        "cr_190"
+      ],
+      "source_sentence": "1.3.4 了解激光技术和光纤通信技术在生活中的应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0204",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "航天技术",
+      "back": "定义:探索、开发和利用太空以及地球以外天体资源的综合性技术。\n\n关键要素:火箭推进、卫星轨道设计、载人航天、空间站建设。\n\n应用:卫星通信、卫星导航（GPS/北斗）、遥感观测、太空探索等。\n\n关联:牛顿力学、火箭方程、天体物理。",
+      "card_type": "concept",
+      "plan_task_id": "现代技术应用",
+      "gold_cr_ids": [
+        "cr_191"
+      ],
+      "source_sentence": "1.3.5 了解航天技术对生活的影响。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0205",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "物理学在新材料开发中的作用",
+      "back": "物理学为新材料的设计、合成与性能分析提供量子力学、固体物理等理论基础，并通过实验技术（如X射线衍射、电子显微镜）表征材料微观结构，从而推动新材料的研发。",
+      "card_type": "concept",
+      "plan_task_id": "现代技术应用",
+      "gold_cr_ids": [
+        "cr_200"
+      ],
+      "source_sentence": "了解物理学在新材料开发中的作用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0206",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "超导体",
+      "back": "定义：在特定临界温度以下电阻降为零，并具有完全抗磁性（迈斯纳效应）的材料。\n\n关键要素：零电阻、迈斯纳效应、临界温度、临界电流密度。\n\n应用：磁悬浮列车、核磁共振成像（MRI）、超导电缆、超导储能。\n\n关联：与普通导体相比，超导体无焦耳热损耗，但需低温条件（液氮或液氦）。",
+      "card_type": "concept",
+      "plan_task_id": "现代技术应用",
+      "gold_cr_ids": [
+        "cr_201"
+      ],
+      "source_sentence": "了解超导体的一些特点，了解超导技术的应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0207",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "功能材料",
+      "back": "定义：具有特定物理或化学功能（如电、磁、光、热、力、声等）的材料。\n\n关键要素：功能特性因材料组成和结构不同而异，如压电效应、形状记忆效应、光电效应等。\n\n应用：压电陶瓷（传感器）、形状记忆合金（医疗支架）、液晶显示材料、光敏电阻等。\n\n关联：与结构材料（主要承担力学负荷）不同，功能材料侧重性能调控。",
+      "card_type": "concept",
+      "plan_task_id": "现代技术应用",
+      "gold_cr_ids": [
+        "cr_202"
+      ],
+      "source_sentence": "了解一些功能材料的特性及应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0208",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "太阳能利用",
+      "back": "定义:指将太阳辐射能转化为热能或电能加以利用的技术。\n\n关键要素:常见方式包括光伏发电（直接转化为电能）、光热利用（太阳能热水器、太阳灶）和太阳能热发电。\n\n应用:家庭热水、光伏电站、太阳能干燥、太阳能建筑等。\n\n关联:可再生能源、光伏效应、热传递。",
+      "card_type": "concept",
+      "plan_task_id": "能源技术",
+      "gold_cr_ids": [
+        "cr_196"
+      ],
+      "source_sentence": "2.2.2 了解太阳能利用的常见方式及应用前景。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0209",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "核能利用及核废料处理",
+      "back": "定义:核能利用指通过核裂变或核聚变反应获取能量用于发电等；核废料处理指对核反应产生的放射性废料进行安全处置。\n\n关键要素:核废料具有放射性，需长期隔离（如深地质处置）；核泄漏事故可能造成严重影响。\n\n应用:核电站、核潜艇、医学放疗等。\n\n关联:核裂变、核聚变、放射性、环境保护。",
+      "card_type": "concept",
+      "plan_task_id": "能源技术",
+      "gold_cr_ids": [
+        "cr_197"
+      ],
+      "source_sentence": "2.2.3 了解核裂变和核聚变，了解核能的利用及核废料的处理。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0210",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "地热能",
+      "back": "定义:指地球内部放射性元素衰变等过程产生的热能，通过地热流体（热水、蒸汽）传递至地表。\n\n关键要素:储量巨大；分布不均；可用于发电和直接供热。\n\n应用:地热发电站、地源热泵、温泉供暖。\n\n关联:可再生能源、火山活动、热传递。",
+      "card_type": "concept",
+      "plan_task_id": "能源技术",
+      "gold_cr_ids": [
+        "cr_198"
+      ],
+      "source_sentence": "2.2.4 了解地热能、潮汐能及风能等的利用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0211",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "潮汐能",
+      "back": "定义:指海水周期性涨落（潮汐）所蕴含的动能和势能。\n\n关键要素:由月球和太阳引力引起；能量密度较低但可预测；需建潮汐坝或潮汐涡轮机。\n\n应用:潮汐发电站。\n\n关联:可再生能源、万有引力、海洋能。",
+      "card_type": "concept",
+      "plan_task_id": "能源技术",
+      "gold_cr_ids": [
+        "cr_199"
+      ],
+      "source_sentence": "2.2.4 了解地热能、潮汐能及风能等的利用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0212",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "古希腊宇宙观",
+      "back": "定义:古希腊时期关于宇宙结构和天体运动的观点，如地心说（托勒密体系）等。\n\n关键要素:以地球为中心，天体绕地球做圆周运动；哲学与数学基础。\n\n关联:哥白尼日心说、宇宙观发展",
+      "card_type": "concept",
+      "plan_task_id": "物理学史与科学方法",
+      "gold_cr_ids": [
+        "cr_177"
+      ],
+      "source_sentence": "了解古希腊的宇宙观与中国古代的宇宙观。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0213",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "中国古代宇宙观",
+      "back": "定义:中国古代关于宇宙结构和天体运动的观点，如浑天说、盖天说等。\n\n关键要素:天圆地方、浑天如鸡子等模型；与天文观测和历法结合。\n\n关联:古希腊宇宙观、宇宙观比较",
+      "card_type": "concept",
+      "plan_task_id": "物理学史与科学方法",
+      "gold_cr_ids": [
+        "cr_178"
+      ],
+      "source_sentence": "了解古希腊的宇宙观与中国古代的宇宙观。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0214",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "哥白尼日心说",
+      "back": "定义:尼古拉·哥白尼提出的太阳位于宇宙中心、地球和其他行星绕太阳公转的学说。\n\n关键要素:太阳为中心，地球自转并公转；推翻了教会支持的地心说，引发科学革命。\n\n应用:现代天文学的起点，为开普勒定律和牛顿万有引力定律奠定基础。\n\n关联:开普勒定律、牛顿万有引力定律",
+      "card_type": "concept",
+      "plan_task_id": "物理学史与科学方法",
+      "gold_cr_ids": [
+        "cr_179"
+      ],
+      "source_sentence": "了解哥白尼日心说对宇宙观的冲击。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0215",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "伽利略实验方法",
+      "back": "定义:伽利略开创的以实验为基础、结合数学推理和逻辑分析的科学研究方法。\n\n关键要素:理想化实验（如斜面实验）、可重复观测、数学定量描述、推翻亚里士多德权威。\n\n应用:为牛顿力学奠定方法论基础，被认为是近代科学方法的开端。\n\n关联:牛顿力学、科学革命",
+      "card_type": "concept",
+      "plan_task_id": "物理学史与科学方法",
+      "gold_cr_ids": [
+        "cr_181"
+      ],
+      "source_sentence": "了解伽利略的实验方法和逻辑方法对牛顿力学诞生的贡献。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0216",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "中国物理学家的成果与贡献",
+      "back": "定义:中国物理学家在物理学发展史上的重要发现和贡献，如钱学森、邓稼先、吴健雄、杨振宁、李政道等。\n\n关键要素:涉及核物理、粒子物理、天体物理、凝聚态物理等多个领域；部分工作获诺贝尔奖。\n\n应用:激励学生科学精神，弘扬家国情怀。\n\n关联:物理学史、科技强国",
+      "card_type": "concept",
+      "plan_task_id": "物理学史与科学方法",
+      "gold_cr_ids": [
+        "cr_186"
+      ],
+      "source_sentence": "了解中国物理学家的成果与贡献。",
+      "origin": "extracted"
+    },
+    {
+      "id": "physics_senior_0217",
+      "subject": "physics",
+      "grade_band": "senior",
+      "domain": "physics",
+      "front": "19世纪末物理学发现",
+      "back": "定义:19世纪末在物理学中一系列突破性实验发现，包括X射线（伦琴）、放射性（贝克勒尔）、电子（汤姆孙）等。\n\n关键要素:打破了经典物理“大厦”的完美性；揭示了原子内部结构和微观世界新现象。\n\n应用:催生了量子力学和相对论，推动近代物理学革命。\n\n关联:近代物理学革命、波粒二象性",
+      "card_type": "concept",
+      "plan_task_id": "物理学史与科学方法",
+      "gold_cr_ids": [
+        "cr_183"
+      ],
+      "source_sentence": "了解19世纪末物理学的发现对于近代物理学革命的意义。",
+      "origin": "extracted"
+    }
+  ]
+}

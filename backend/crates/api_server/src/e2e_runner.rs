@@ -219,12 +219,6 @@ pub fn init_test_db(db_path: &str) -> Result<(), Box<dyn std::error::Error>> {
             content TEXT NOT NULL, created_at TEXT NOT NULL,
             FOREIGN KEY (conversation_id) REFERENCES conversations(id)
         );
-        CREATE TABLE IF NOT EXISTS learning_plans (
-            id TEXT PRIMARY KEY, user_id TEXT NOT NULL, conversation_id TEXT,
-            goal TEXT NOT NULL, domain TEXT NOT NULL DEFAULT '', mode TEXT DEFAULT NULL,
-            task_status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES users(id)
-        );
         CREATE TABLE IF NOT EXISTS cards (
             id TEXT PRIMARY KEY, user_id TEXT NOT NULL, domain TEXT,
             card_type TEXT, front TEXT NOT NULL, back TEXT NOT NULL,

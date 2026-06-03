@@ -32,3 +32,4 @@ rand.workspace = true
 
 [dev-dependencies]
 dotenvy = "0.15"
+student_llm = { path = "../student_llm" }

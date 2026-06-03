@@ -1,0 +1,1699 @@
+{
+  "cards": [
+    {
+      "id": "chemistry_senior_0000",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "物质的量",
+      "back": "定义:表示物质所含微粒数目多少的物理量，符号为n，单位是摩尔(mol)。\n\n关键要素:1 mol任何物质所含的基本微粒数约为6.02×10²³（阿伏加德罗常数）。\n\n应用:用于宏观物质质量与微观粒子数目之间的换算，是化学计量中的基本桥梁。\n\n关联:摩尔质量、气体摩尔体积、物质的量浓度、阿伏加德罗常数",
+      "card_type": "concept",
+      "plan_task_id": "物质的量及其应用",
+      "gold_cr_ids": [
+        "cr_001"
+      ],
+      "source_sentence": "能基于物质的量认识物质组成及其化学变化，运用物质的量、摩尔质量、气体摩尔体积、物质的量浓度之间的相互关系进行简单计算。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0001",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "摩尔质量",
+      "back": "定义:单位物质的量的物质所具有的质量，符号为M，常用单位g/mol。\n\n关键要素:数值上等于该物质的相对分子质量（或相对原子质量）。\n\n应用:通过摩尔质量实现质量与物质的量之间的换算。\n\n关联:物质的量、质量、相对原子质量",
+      "card_type": "concept",
+      "plan_task_id": "物质的量及其应用",
+      "gold_cr_ids": [
+        "cr_002"
+      ],
+      "source_sentence": "能基于物质的量认识物质组成及其化学变化，运用物质的量、摩尔质量、气体摩尔体积、物质的量浓度之间的相互关系进行简单计算。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0002",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "气体摩尔体积",
+      "back": "定义:一定条件下（温度、压强一定）单位物质的量的气体所占的体积，符号为Vm，常用单位L/mol。\n\n关键要素:标准状况（0℃，101.325 kPa）下，气体摩尔体积约为22.4 L/mol。\n\n应用:用于气体物质的量与其体积之间的换算，适用于理想气体或近似条件。\n\n关联:物质的量、理想气体状态方程、阿伏加德罗定律",
+      "card_type": "concept",
+      "plan_task_id": "物质的量及其应用",
+      "gold_cr_ids": [
+        "cr_003"
+      ],
+      "source_sentence": "能基于物质的量认识物质组成及其化学变化，运用物质的量、摩尔质量、气体摩尔体积、物质的量浓度之间的相互关系进行简单计算。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0003",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "物质的量浓度",
+      "back": "定义:单位体积溶液中所含溶质的物质的量，符号为c，常用单位mol/L。\n\n关键要素:c = n/V，其中n为溶质的物质的量，V为溶液的体积。\n\n应用:用于溶液浓度计算、稀释定律、化学反应中溶液之间的定量关系。\n\n关联:物质的量、摩尔质量、质量分数、溶解度",
+      "card_type": "concept",
+      "plan_task_id": "物质的量及其应用",
+      "gold_cr_ids": [
+        "cr_004"
+      ],
+      "source_sentence": "能基于物质的量认识物质组成及其化学变化，运用物质的量、摩尔质量、气体摩尔体积、物质的量浓度之间的相互关系进行简单计算。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0004",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "离子反应",
+      "back": "定义:离子反应是指有离子参加或生成的反应，通常发生在水溶液中。\n\n关键要素:离子反应可以用离子方程式表示，遵循复分解反应或氧化还原反应规律；反应实质是离子浓度减小。\n\n应用:用于物质的检验、分离、提纯以及水处理等。\n\n关联:电离、复分解反应、氧化还原反应。",
+      "card_type": "concept",
+      "plan_task_id": "化学反应基本类型",
+      "gold_cr_ids": [
+        "cr_006"
+      ],
+      "source_sentence": "能利用电离、离子反应、氧化还原反应等概念对常见的反应进行分类和分析说明。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0005",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "氧化还原反应",
+      "back": "定义:氧化还原反应是指有电子转移（或化合价升降）的化学反应。\n\n关键要素:氧化反应（化合价升高）和还原反应（化合价降低）同时发生；氧化剂和还原剂得失电子。\n\n应用:金属冶炼、燃料电池、生物呼吸、日常生活中的氧化现象（如食物腐败）。\n\n关联:化合价、氧化剂、还原剂、还原反应。",
+      "card_type": "concept",
+      "plan_task_id": "化学反应基本类型",
+      "gold_cr_ids": [
+        "cr_007"
+      ],
+      "source_sentence": "日常生活中的氧化还原反应。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0006",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "复分解反应",
+      "back": "定义:复分解反应是指两种化合物交换成分生成两种新化合物的反应。\n\n关键要素:反应发生在电解质水溶液中；生成物中必须有沉淀、气体或水等难电离物质才能发生。\n\n应用:可用于物质的制备、离子检验、硬水软化等。\n\n关联:离子反应、沉淀、中和反应。",
+      "card_type": "concept",
+      "plan_task_id": "化学反应基本类型",
+      "gold_cr_ids": [
+        "cr_008"
+      ],
+      "source_sentence": "能从物质类别、元素价态的角度，依据复分解反应和氧化还原反应原理，预测物质的化学性质和变化。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0007",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "元素价态",
+      "back": "定义:元素价态（化合价）是元素原子在形成化合物时得失电子或共用电子对偏移的数目，表示元素的原子在该化合物中的化合状态。\n\n关键要素:常见元素有固定或可变价态；可通过化合价升降判断氧化还原反应。\n\n应用:预测物质的性质（如氧化性、还原性）、书写化学式、配平化学方程式。\n\n关联:氧化还原反应、物质类别、化合价。",
+      "card_type": "concept",
+      "plan_task_id": "化学反应基本类型",
+      "gold_cr_ids": [
+        "cr_009"
+      ],
+      "source_sentence": "能依据物质类别和元素价态列举某种元素的典型代表物。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0008",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "化学方程式",
+      "back": "定义:化学方程式是用化学式表示化学反应的式子，反映反应物、生成物及反应条件。\n\n关键要素:遵循质量守恒定律，反应前后原子种类和个数不变；必须配平。\n\n应用:描述化学反应事实、进行计量计算、表达物质转化关系。\n\n关联:离子方程式、化学式、质量守恒。",
+      "card_type": "concept",
+      "plan_task_id": "化学反应基本类型",
+      "gold_cr_ids": [
+        "cr_010"
+      ],
+      "source_sentence": "能用化学方程式、离子方程式正确表示典型物质的主要化学性质。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0009",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "离子方程式",
+      "back": "定义:离子方程式是用实际参加反应的离子符号表示离子反应的式子。\n\n关键要素:书写时需拆写可溶性强电解质，保留沉淀、气体、弱电解质等化学式；反映反应的本质。\n\n应用:简化同类型离子反应的表征、分析溶液中离子行为。\n\n关联:化学方程式、电离、离子反应。",
+      "card_type": "concept",
+      "plan_task_id": "化学反应基本类型",
+      "gold_cr_ids": [
+        "cr_011"
+      ],
+      "source_sentence": "能用化学方程式、离子方程式正确表示典型物质的主要化学性质。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0010",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "变量控制法",
+      "back": "定义:在实验探究中，保持其他条件不变，只改变一个变量（因素），以研究该变量对实验结果影响的方法。\n\n关键要素:确定自变量、因变量和无关变量；每次只改变一个变量。\n\n应用:用于探究化学反应规律、反应条件的影响、物质性质与反应条件的关系等。\n\n关联:实验设计、反应规律、控制变量",
+      "card_type": "concept",
+      "plan_task_id": "实验基础方法",
+      "gold_cr_ids": [
+        "cr_005"
+      ],
+      "source_sentence": "能运用变量控制的方法初步探究反应规律。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0011",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "控制变量",
+      "back": "定义：在实验设计中，人为固定一个或多个变量（控制变量），改变一个变量（自变量）并观测其对结果（因变量）的影响，以排除其他因素干扰的科学方法。\n\n关键要素：自变量、因变量、控制变量、对照实验。\n\n应用：探究反应速率影响因素（浓度、温度、催化剂）、物质性质比较等。\n\n关联：实验设计、定量研究、误差分析。",
+      "card_type": "concept",
+      "plan_task_id": "实验基础方法",
+      "gold_cr_ids": [
+        "cr_096"
+      ],
+      "source_sentence": "知道在实验设计和实施过程中如何控制相关变量。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0012",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "定量研究",
+      "back": "定义：通过测量、计算等数学手段，对物质的组成、含量、反应等给出具体数值描述的科学方法。\n\n关键要素：数据测量、数据处理、误差分析、标准曲线。\n\n应用：比色法测定铁含量、滴定分析、化学平衡常数计算等。\n\n关联：控制变量、实验误差、比色法、滴定。",
+      "card_type": "concept",
+      "plan_task_id": "实验基础方法",
+      "gold_cr_ids": [
+        "cr_097"
+      ],
+      "source_sentence": "知道如何对实验数据进行分析，能分析产生误差的原因，初步形成定量研究的意识。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0013",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "实验误差分析",
+      "back": "定义：对实验测量值与真值之间的差异（误差）来源、大小和性质的系统评判。误差分为系统误差、随机误差和过失误差。\n\n关键要素：随机误差、系统误差、精密度、准确度、误差来源（仪器、试剂、操作等）。\n\n应用：评估实验结果的可靠性、优化实验方案、提高数据质量。\n\n关联：定量研究、控制变量、有效数字。",
+      "card_type": "concept",
+      "plan_task_id": "实验基础方法",
+      "gold_cr_ids": [
+        "cr_098"
+      ],
+      "source_sentence": "知道如何对实验数据进行分析，能分析产生误差的原因，初步形成定量研究的意识。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0014",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "实验报告要素",
+      "back": "定义：规范实验报告应包含的核心内容，包括实验目的、原理、步骤、现象、数据、结果分析、结论等，并强调尊重事实、充分讨论、关注异常现象。\n\n关键要素：目的、原理、步骤、现象记录、数据表格、误差分析、结论、异常现象讨论。\n\n应用：撰写化学实验报告、科学论文、研究记录。\n\n关联：科学态度、实验记录、汇报展示。",
+      "card_type": "concept",
+      "plan_task_id": "实验基础方法",
+      "gold_cr_ids": [
+        "cr_099"
+      ],
+      "source_sentence": "知道实验报告所包含的要素，知道如何规范地撰写实验报告，知道实验报告应该尊重事实、充分讨论、特别关注“异常”现象等。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0015",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "科学态度",
+      "back": "定义：在科学探究中形成的实事求是、严谨细致、具有批判精神和创新意识的思维与行为方式。\n\n关键要素：实事求是、严谨细致、批判精神、创新意识。\n\n应用：贯穿实验设计、数据记录、结果分析全过程，是科学素养的核心组成部分。\n\n关联：实验记录、误差分析、绿色化学。",
+      "card_type": "concept",
+      "plan_task_id": "实验基础方法",
+      "gold_cr_ids": [
+        "cr_100"
+      ],
+      "source_sentence": "形成实事求是、严谨细致的科学态度，具有批判精神和创新意识。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0016",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "玻尔与爱因斯坦的争论",
+      "back": "定义:20世纪初玻尔与爱因斯坦关于量子力学完备性和原子结构模型的著名科学辩论。\n\n关键要素:玻尔提出原子能级模型；爱因斯坦质疑量子力学统计解释。\n\n应用:推动量子理论发展和物质结构研究。\n\n关联:原子光谱、原子结构模型",
+      "card_type": "concept",
+      "plan_task_id": "原子结构模型与光谱",
+      "gold_cr_ids": [
+        "cr_085"
+      ],
+      "source_sentence": "玻尔与爱因斯坦的争论。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0017",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "人类建立原子结构模型的历史",
+      "back": "定义:从道尔顿实心球模型、汤姆孙葡萄干布丁模型、卢瑟福行星模型到玻尔原子模型，再到量子力学模型的发展过程。\n\n关键要素:实验证据和理论推演共同推动模型进步。\n\n应用:理解科学本质和科学方法。\n\n关联:玻尔与爱因斯坦的争论、原子光谱",
+      "card_type": "concept",
+      "plan_task_id": "原子结构模型与光谱",
+      "gold_cr_ids": [
+        "cr_086"
+      ],
+      "source_sentence": "人类建立原子结构模型的历史；玻尔与爱因斯坦的争论。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0018",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "原子光谱",
+      "back": "定义:原子光谱是原子在跃迁过程中发射或吸收的光谱，是测定物质结构的基本方法和实验手段。\n\n关键要素:每种元素有特征光谱；可用于元素鉴定和结构分析。\n\n应用:用于测定物质的电子结构和原子排列。\n\n关联:分子光谱、晶体X射线衍射",
+      "card_type": "concept",
+      "plan_task_id": "原子结构模型与光谱",
+      "gold_cr_ids": [
+        "cr_073"
+      ],
+      "source_sentence": "知道原子光谱、分子光谱、晶体X射线衍射等是测定物质结构的基本方法和实验手段。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0019",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "分子光谱",
+      "back": "定义:分子光谱是分子在能级跃迁时产生的光谱，用于研究分子结构和化学键。\n\n关键要素:包括红外光谱、紫外-可见光谱、拉曼光谱等。\n\n应用:鉴定官能团、分析分子构型。\n\n关联:原子光谱、晶体X射线衍射",
+      "card_type": "concept",
+      "plan_task_id": "原子结构模型与光谱",
+      "gold_cr_ids": [
+        "cr_074"
+      ],
+      "source_sentence": "知道原子光谱、分子光谱、晶体X射线衍射等是测定物质结构的基本方法和实验手段。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0020",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "价电子数目与空间结构的关系",
+      "back": "定义:分子的空间结构由中心原子的价电子对数目和孤对电子决定（VSEPR理论）。\n\n关键要素:价电子对包括成键电子和孤对电子；电子对相互排斥使分子采取最稳定构型。\n\n应用:预测分子几何形状，如直线形、三角形、四面体等。\n\n关联:分子光谱、物质结构模型",
+      "card_type": "concept",
+      "plan_task_id": "分子空间结构与化学键",
+      "gold_cr_ids": [
+        "cr_077"
+      ],
+      "source_sentence": "探究分子的价电子数目与空间结构的关系。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0021",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "物质结构模型",
+      "back": "定义:基于实验数据构建的用于解释和预测物质结构特征的理论模型。\n\n关键要素:随技术发展不断修正，如原子结构模型从实心球到量子力学模型。\n\n应用:指导新物质的设计与合成。\n\n关联:X射线衍射、原子光谱",
+      "card_type": "concept",
+      "plan_task_id": "分子空间结构与化学键",
+      "gold_cr_ids": [
+        "cr_078"
+      ],
+      "source_sentence": "交流讨论模型在探索物质结构中的作用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0022",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "范德华力",
+      "back": "定义:分子间普遍存在的微弱相互作用力，包括色散力、诱导力和取向力。\n\n关键要素:随分子量增大而增强；影响物质的熔沸点。\n\n应用:解释稀有气体、非极性分子聚集状态。\n\n关联:氢键、分子空间结构",
+      "card_type": "concept",
+      "plan_task_id": "分子空间结构与化学键",
+      "gold_cr_ids": [
+        "cr_076"
+      ],
+      "source_sentence": "借助物质熔、沸点变化与范德华力的关系探究影响范德华力的因素。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0023",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "碳原子成键特点",
+      "back": "定义:有机化合物中碳原子可通过单键、双键、三键与其他原子结合，形成不同的碳骨架和官能团。\n\n关键要素:碳原子最外层4个电子，可形成4个共价键；键型包括单键（烷烃）、双键（烯烃）、三键（炔烃）及芳香键（苯）。\n\n应用:解释有机物的空间结构和化学性质差异；用于搭建分子模型。\n\n关联:有机化合物分子空间结构、官能团",
+      "card_type": "concept",
+      "plan_task_id": "分子空间结构与化学键",
+      "gold_cr_ids": [
+        "cr_015"
+      ],
+      "source_sentence": "以甲烷、乙烯、乙炔、苯为例认识碳原子的成键特点",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0024",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "有机化合物分子空间结构",
+      "back": "定义:有机化合物分子具有特定的空间立体结构，不同分子因原子排列方式不同而呈现不同形状。\n\n关键要素:以甲烷、乙烯、乙炔、苯为例，碳原子的成键方式决定分子空间构型（如甲烷正四面体、乙烯平面、乙炔直线、苯平面六边形）。\n\n应用:通过球棍模型可直观认识分子的立体结构，解释物质性质差异。\n\n关联:碳原子成键特点、同分异构现象",
+      "card_type": "concept",
+      "plan_task_id": "分子空间结构与化学键",
+      "gold_cr_ids": [
+        "cr_014"
+      ],
+      "source_sentence": "知道有机化合物分子是有空间结构的，以甲烷、乙烯、乙炔、苯为例认识碳原子的成键特点",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0025",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "晶体X射线衍射",
+      "back": "定义:利用X射线在晶体中的衍射现象分析晶体内部原子排布的方法，是测定物质结构的基本实验手段。\n\n关键要素:适用于晶体；可确定晶胞参数、原子坐标。\n\n应用:测定无机物、有机物及蛋白质的晶体结构。\n\n关联:原子光谱、分子光谱",
+      "card_type": "concept",
+      "plan_task_id": "晶体与聚集态",
+      "gold_cr_ids": [
+        "cr_075"
+      ],
+      "source_sentence": "知道原子光谱、分子光谱、晶体X射线衍射等是测定物质结构的基本方法和实验手段。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0026",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "碳的同素异形体",
+      "back": "定义:由碳元素组成的具有不同结构形态的单质，如金刚石、石墨、富勒烯、碳纳米管等。\n\n关键要素:碳原子排列方式不同导致性质差异。\n\n应用:新型材料如石墨烯、纳米材料。\n\n关联:功能高分子材料、聚集态",
+      "card_type": "concept",
+      "plan_task_id": "晶体与聚集态",
+      "gold_cr_ids": [
+        "cr_081"
+      ],
+      "source_sentence": "碳的同素异形体及其应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0027",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "聚集态",
+      "back": "定义:物质在宏观尺度下的存在状态，如气态、液态、固态及液晶等中间态。\n\n关键要素:分子间作用力决定聚集态及其转变。\n\n应用:材料性能与聚集态结构密切相关。\n\n关联:超分子、晶体X射线衍射",
+      "card_type": "concept",
+      "plan_task_id": "晶体与聚集态",
+      "gold_cr_ids": [
+        "cr_083"
+      ],
+      "source_sentence": "能举例说明物质在原子、分子、超分子、聚集态等不同尺度上的结构特点对物质性质的影响。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0028",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "组成、结构决定性质",
+      "back": "定义:有机化学的基本观念，即物质的化学组成和空间结构决定了其物理性质、化学性质和反应活性。\n\n关键要素:官能团、化学键、空间构型是影响性质的关键因素。\n\n应用:设计合成路线、预测新物质性能。\n\n关联:官能团、化学键、反应类型",
+      "card_type": "concept",
+      "plan_task_id": "晶体与聚集态",
+      "gold_cr_ids": [
+        "cr_084"
+      ],
+      "source_sentence": "通过本课程模块的学习，引导学生建立“组成、结构决定性质”的基本观念。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0029",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "配合物与抗癌药物设计",
+      "back": "定义:利用金属离子与配体形成的配合物的特殊性质进行抗癌药物设计，如顺铂。\n\n关键要素:金属中心、配体种类、配位几何影响药效。\n\n应用:开发新型金属抗癌药物。\n\n关联:手性药物、物质结构",
+      "card_type": "concept",
+      "plan_task_id": "配合物与超分子",
+      "gold_cr_ids": [
+        "cr_079"
+      ],
+      "source_sentence": "配合物与抗癌药物的设计，手性药物设计；碳的同素异形体及其应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0030",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "手性药物",
+      "back": "定义:具有手性中心的药物，其不同对映体可能具有不同的生物活性。\n\n关键要素:手性分子与生物靶点作用具有立体选择性。\n\n应用:药物研发中需分离或不对称合成单一对映体。\n\n关联:配合物、官能团",
+      "card_type": "concept",
+      "plan_task_id": "配合物与超分子",
+      "gold_cr_ids": [
+        "cr_080"
+      ],
+      "source_sentence": "配合物与抗癌药物的设计，手性药物设计；碳的同素异形体及其应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0031",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "超分子",
+      "back": "定义:由两个或多个分子通过非共价键相互作用形成的具有特定结构和功能的分子聚集体。\n\n关键要素:分子识别、自组装、主客体化学。\n\n应用:分子机器、药物递送。\n\n关联:氢键、范德华力、聚集态",
+      "card_type": "concept",
+      "plan_task_id": "配合物与超分子",
+      "gold_cr_ids": [
+        "cr_082"
+      ],
+      "source_sentence": "了解从原子、分子、超分子等不同尺度认识物质结构的意义。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0032",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "超分子化学",
+      "back": "定义:超分子化学是研究分子间非共价相互作用（如氢键、π-π堆积、静电作用、范德华力）导致分子自组装形成有序超分子结构的学科。\n\n关键要素:分子识别、自组装、主-客体化学、配位驱动组装、超分子凝胶。\n\n应用:药物递送系统、分子传感器、智能响应材料、纳米反应器。\n\n关联:纳米化学、界面化学、自修复材料、化学生物学",
+      "card_type": "concept",
+      "plan_task_id": "配合物与超分子",
+      "gold_cr_ids": [
+        "cr_109"
+      ],
+      "source_sentence": "形成有机、无机或杂化体系的空间有序结构的作用力；团簇、大分子、超分子和纳米结构的精确构筑和调控",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0033",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "甲烷分子结构特征",
+      "back": "定义:甲烷（CH₄）为正四面体结构，碳原子位于中心，四个氢原子位于顶点，键角均为109°28′。\n\n关键要素:碳原子采用sp³杂化，所有C-H键完全相同；分子为非极性分子。\n\n应用:作为烷烃的典型代表，理解饱和烃的结构。\n\n关联:碳原子成键特点、有机化合物分子空间结构",
+      "card_type": "concept",
+      "plan_task_id": "烃的结构与同分异构",
+      "gold_cr_ids": [
+        "cr_030"
+      ],
+      "source_sentence": "能描述甲烷、乙烯、乙炔的分子结构特征，并能搭建甲烷和乙烷的立体模型",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0034",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "乙烯分子结构特征",
+      "back": "定义:乙烯（C₂H₄）为平面结构，碳碳双键（C=C）不能旋转，键角约120°。\n\n关键要素:碳原子采用sp²杂化，双键由一个σ键和一个π键构成；分子为平面分子。\n\n应用:理解烯烃的不饱和性与加成反应。\n\n关联:碳原子成键特点、加成反应",
+      "card_type": "concept",
+      "plan_task_id": "烃的结构与同分异构",
+      "gold_cr_ids": [
+        "cr_031"
+      ],
+      "source_sentence": "能描述甲烷、乙烯、乙炔的分子结构特征",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0035",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "乙炔分子结构特征",
+      "back": "定义:乙炔（C₂H₂）为直线形结构，碳碳三键（C≡C），键角为180°。\n\n关键要素:碳原子采用sp杂化，三键由一个σ键和两个π键构成；分子为直线形。\n\n应用:理解炔烃的化学性质（如加成反应）。\n\n关联:碳原子成键特点、加成反应",
+      "card_type": "concept",
+      "plan_task_id": "烃的结构与同分异构",
+      "gold_cr_ids": [
+        "cr_032"
+      ],
+      "source_sentence": "能描述甲烷、乙烯、乙炔的分子结构特征",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0036",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "碳骨架",
+      "back": "定义:有机化合物分子中碳原子相互连接形成的骨架结构，决定了分子基本框架。\n\n关键要素:可分为直链、支链、环状等；碳骨架的差异是造成同分异构体的原因之一。\n\n应用:辨识有机化合物分子结构；书写同分异构体时需考虑碳骨架变化。\n\n关联:同分异构现象、碳原子成键特点",
+      "card_type": "concept",
+      "plan_task_id": "烃的结构与同分异构",
+      "gold_cr_ids": [
+        "cr_029"
+      ],
+      "source_sentence": "能辨识常见有机化合物分子中的碳骨架和官能团",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0037",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "同分异构现象",
+      "back": "定义:分子式相同但结构不同的化合物互为同分异构体，这种现象称为同分异构现象。\n\n关键要素:常见类型包括碳链异构、位置异构、官能团异构等；同分异构体具有不同的物理性质和部分化学性质。\n\n应用:书写丁烷、戊烷的同分异构体；理解有机物种类的多样性。\n\n关联:有机化合物分子空间结构、碳原子成键特点",
+      "card_type": "concept",
+      "plan_task_id": "烃的结构与同分异构",
+      "gold_cr_ids": [
+        "cr_017"
+      ],
+      "source_sentence": "知道有机化合物存在同分异构现象",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0038",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "官能团",
+      "back": "定义:有机化合物中决定其化学特性的特定原子或原子团。\n\n关键要素:常见官能团如碳碳双键（烯烃）、羟基（醇）、羧基（羧酸）、酯基（酯）等；官能团决定物质的主要化学性质。\n\n应用:根据官能团预测有机物的反应类型和产物；鉴别不同有机化合物。\n\n关联:氧化、加成、取代、聚合等反应类型，有机化合物分类",
+      "card_type": "concept",
+      "plan_task_id": "官能团与衍生物",
+      "gold_cr_ids": [
+        "cr_016"
+      ],
+      "source_sentence": "以乙烯、乙醇、乙酸、乙酸乙酯为例认识有机化合物中的官能团",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0039",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "烃的衍生物",
+      "back": "定义:烃分子中的氢原子被其他原子或原子团取代后生成的有机化合物，常见类型包括卤代烃、醇、醛、羧酸、酯、酚、醚、酮、胺和酰胺等。\n\n关键要素:官能团决定化学性质；不同衍生物之间可通过转化反应相互联系。\n\n应用:在生产生活中广泛存在，如药物、香料、高分子材料等。\n\n关联:官能团、取代反应、有机合成、碳骨架",
+      "card_type": "concept",
+      "plan_task_id": "官能团与衍生物",
+      "gold_cr_ids": [
+        "cr_087"
+      ],
+      "source_sentence": "认识卤代烃、醇、醛、羧酸、酯、酚的组成和结构特点、性质、转化关系及其在生产、生活中的重要应用，知道醚、酮、胺和酰胺的结构特点及其应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0040",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "乙烯的结构与性质",
+      "back": "定义:乙烯是含碳碳双键（C=C）的烯烃，分子式C₂H₄，平面结构。\n\n关键要素:化学性质活泼，可发生加成反应（如与H₂、Br₂、H₂O等）、氧化反应（如燃烧、使酸性高锰酸钾褪色）和聚合反应（生成聚乙烯）。\n\n应用:用于水果催熟、合成塑料（聚乙烯）、制乙醇等。\n\n关联:官能团（碳碳双键）、加成反应、聚合反应",
+      "card_type": "concept",
+      "plan_task_id": "官能团与衍生物",
+      "gold_cr_ids": [
+        "cr_018"
+      ],
+      "source_sentence": "认识乙烯、乙醇、乙酸的结构及其主要性质与应用",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0041",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "乙醇的结构与性质",
+      "back": "定义:乙醇分子式为C₂H₅OH，官能团为羟基（—OH），属于醇类。\n\n关键要素:可发生氧化反应（如燃烧、催化氧化生成乙醛）、取代反应（如与钠反应生成乙醇钠）、酯化反应（与乙酸生成乙酸乙酯）。\n\n应用:用作燃料（乙醇汽油）、溶剂、消毒剂（75%乙醇）、酿酒原料等。\n\n关联:官能团（羟基）、氧化反应、取代反应",
+      "card_type": "concept",
+      "plan_task_id": "官能团与衍生物",
+      "gold_cr_ids": [
+        "cr_019"
+      ],
+      "source_sentence": "认识乙烯、乙醇、乙酸的结构及其主要性质与应用",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0042",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "乙酸的结构与性质",
+      "back": "定义:乙酸分子式为CH₃COOH，官能团为羧基（—COOH），属于羧酸。\n\n关键要素:具有弱酸性（可使石蕊变红），可发生酯化反应（与醇生成酯）、取代反应（如与碳酸盐反应放出CO₂）。\n\n应用:调味品（食醋）、合成乙酸乙酯、制药等。\n\n关联:官能团（羧基）、酯化反应、取代反应",
+      "card_type": "concept",
+      "plan_task_id": "官能团与衍生物",
+      "gold_cr_ids": [
+        "cr_020"
+      ],
+      "source_sentence": "认识乙烯、乙醇、乙酸的结构及其主要性质与应用",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0043",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "氧化反应（有机）",
+      "back": "定义:有机化合物中加氧或去氢的反应，常伴随碳原子氧化态升高。\n\n关键要素:典型实例包括乙醇催化氧化生成乙醛、乙烯使酸性高锰酸钾褪色、有机物的燃烧等。\n\n应用:鉴别有机物（如用酸性高锰酸钾区分烯烃和烷烃）；工业制乙醛、乙酸等。\n\n关联:官能团性质、加成反应、取代反应",
+      "card_type": "concept",
+      "plan_task_id": "有机反应类型",
+      "gold_cr_ids": [
+        "cr_021"
+      ],
+      "source_sentence": "结合典型实例认识官能团与性质的关系，知道氧化、加成、取代、聚合等有机反应类型",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0044",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "加成反应",
+      "back": "定义:有机化合物分子中的不饱和键（双键或三键）断裂，与其他原子或原子团结合生成新物质的反应。\n\n关键要素:典型实例有乙烯与溴水加成生成1,2-二溴乙烷、乙烯与水加成生成乙醇、乙炔与氢气加成生成乙烯等。\n\n应用:工业合成乙醇、卤代烃等；鉴别不饱和烃。\n\n关联:官能团（碳碳双键、碳碳三键）、聚合反应",
+      "card_type": "concept",
+      "plan_task_id": "有机反应类型",
+      "gold_cr_ids": [
+        "cr_022"
+      ],
+      "source_sentence": "知道氧化、加成、取代、聚合等有机反应类型",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0045",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "取代反应",
+      "back": "定义:有机化合物分子中的原子或原子团被其他原子或原子团替代的反应。\n\n关键要素:典型实例包括甲烷与氯气在光照下的卤代反应、乙醇与钠反应生成乙醇钠、乙酸与乙醇的酯化反应等。\n\n应用:制备卤代烃、醚、酯等有机产物。\n\n关联:官能团、氧化反应、酯化反应",
+      "card_type": "concept",
+      "plan_task_id": "有机反应类型",
+      "gold_cr_ids": [
+        "cr_023"
+      ],
+      "source_sentence": "知道氧化、加成、取代、聚合等有机反应类型",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0046",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "聚合反应",
+      "back": "定义:小分子（单体）通过加成或缩合方式连接成大分子（聚合物）的反应。\n\n关键要素:包括加聚反应（如乙烯加聚成聚乙烯）和缩聚反应（如氨基酸缩聚成蛋白质）；产物为高分子化合物。\n\n应用:生产塑料、合成纤维、橡胶等高分子材料。\n\n关联:加成反应、高分子化合物",
+      "card_type": "concept",
+      "plan_task_id": "有机反应类型",
+      "gold_cr_ids": [
+        "cr_024"
+      ],
+      "source_sentence": "知道氧化、加成、取代、聚合等有机反应类型",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0047",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "消去反应",
+      "back": "定义:有机化合物在适当条件下，从分子中脱去一个小分子（如水、卤化氢等），生成含不饱和键（双键或三键）化合物的反应。\n\n关键要素:反应物通常为饱和化合物（如醇、卤代烃）；产物含碳碳双键或三键；常需催化剂和加热。\n\n应用:用于制备烯烃、炔烃等不饱和烃，如乙醇脱水制乙烯。\n\n关联:醇、卤代烃、加成反应、取代反应",
+      "card_type": "concept",
+      "plan_task_id": "有机反应类型",
+      "gold_cr_ids": [
+        "cr_088"
+      ],
+      "source_sentence": "认识加成、取代、消去反应及氧化还原反应的特点和规律，了解有机反应类型和有机化合物组成结构特点的关系。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0048",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "有机氧化还原反应",
+      "back": "定义:在有机化学中，氧化反应指有机物分子中加氧或去氢的反应，还原反应指加氢或去氧的反应；常涉及官能团的转化。\n\n关键要素:可通过官能团变化判断（如醇→醛→羧酸为氧化）；与无机氧化还原不同，通常以氧、氢的得失作为判断依据。\n\n应用:用于合成醛、酸、醇等，如乙醇氧化制乙醛、乙醛氧化制乙酸。\n\n关联:官能团转化、醇、醛、羧酸、烃的衍生物",
+      "card_type": "concept",
+      "plan_task_id": "有机反应类型",
+      "gold_cr_ids": [
+        "cr_089"
+      ],
+      "source_sentence": "认识加成、取代、消去反应及氧化还原反应的特点和规律，了解有机反应类型和有机化合物组成结构特点的关系。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0049",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "物质的转化路径",
+      "back": "定义:物质的转化路径是指从一种物质出发通过一系列化学反应生成目标物质的流程。\n\n关键要素:通常从物质类别和元素价态变化两个视角设计路径；涉及氧化还原、复分解等反应类型。\n\n应用:用于制备、分离、提纯、检验等方案的设计和分析。\n\n关联:氧化还原反应、复分解反应、物质类别。",
+      "card_type": "concept",
+      "plan_task_id": "有机合成与转化",
+      "gold_cr_ids": [
+        "cr_012"
+      ],
+      "source_sentence": "能从物质类别和元素价态变化的视角说明物质的转化路径。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0050",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "有机化合物相互转化",
+      "back": "定义:在一定条件下，有机化合物可以通过化学反应转化为其他有机化合物。\n\n关键要素:常见转化如乙烯→乙醇→乙酸→乙酸乙酯；糖类、油脂、蛋白质在人体内可相互转化或分解。\n\n应用:利用转化关系合成目标有机物；理解代谢过程。\n\n关联:官能团性质、有机反应类型",
+      "card_type": "concept",
+      "plan_task_id": "有机合成与转化",
+      "gold_cr_ids": [
+        "cr_025"
+      ],
+      "source_sentence": "知道有机化合物之间在一定条件下是可以转化的",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0051",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "合成新物质",
+      "back": "定义:通过有机化学反应人工制造自然界中不存在或难以提取的化合物，是有机化学研究价值的重要体现。\n\n关键要素:包括合成高分子、药物、染料、农药等；如合成塑料、合成纤维、合成橡胶。\n\n应用:生产日常生活中所需的材料（如聚乙烯、聚酯纤维）、药物（如阿司匹林）等。\n\n关联:聚合反应、高分子化合物",
+      "card_type": "concept",
+      "plan_task_id": "有机合成与转化",
+      "gold_cr_ids": [
+        "cr_026"
+      ],
+      "source_sentence": "知道合成新物质是有机化学研究价值的重要体现",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0052",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "有机合成路线设计",
+      "back": "定义:根据目标分子结构，通过逆向或正向分析，规划从起始原料到目标产物的反应序列，核心是碳骨架的构建和官能团的转化。\n\n关键要素:常用逆向合成分析（从目标反推至简单原料）；需考虑反应选择性、官能团保护、绿色化学原则。\n\n应用:用于药物、高分子材料、精细化学品的合成，如长效缓释阿司匹林的合成路线。\n\n关联:碳骨架、官能团转化、绿色化学、合成新物质",
+      "card_type": "concept",
+      "plan_task_id": "有机合成与转化",
+      "gold_cr_ids": [
+        "cr_090"
+      ],
+      "source_sentence": "认识有机合成的关键是碳骨架的构建和官能团的转化，了解设计有机合成路线的一般方法。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0053",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "常见官能团的检验",
+      "back": "定义:通过特征化学反应识别有机化合物中特定官能团的方法，如醛基可用银镜反应或斐林试剂检验，酚羟基可用三氯化铁显色等。\n\n关键要素:每种官能团有专属的显色反应或沉淀反应；需控制反应条件以避免干扰。\n\n应用:用于有机化合物结构鉴定、药物分析、食品检测等，如糖尿病患者的尿样检测利用醛基还原性。\n\n关联:官能团、醛基、酚羟基、氧化还原反应、阿司匹林检验",
+      "card_type": "concept",
+      "plan_task_id": "有机合成与转化",
+      "gold_cr_ids": [
+        "cr_091"
+      ],
+      "source_sentence": "有机化合物中常见官能团的检验。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0054",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "化学能与热能相互转化",
+      "back": "定义:化学反应中化学能可以转化为热能，热能也可以转化为化学能（如吸热反应）。\n\n关键要素:能量转化遵循能量守恒定律；反应热（焓变）定量描述热能变化。\n\n应用:燃料燃烧供热；利用热化学方程设计能量利用方案；通过盖斯定律计算反应热。\n\n关联:焓变、内能、能量守恒定律",
+      "card_type": "concept",
+      "plan_task_id": "热化学基础",
+      "gold_cr_ids": [
+        "cr_051"
+      ],
+      "source_sentence": "认识化学能与热能的相互转化，恒温恒压条件下化学反应的反应热可以用焓变表示。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0055",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "能量守恒定律",
+      "back": "定义:能量不能被创造或消灭，只能从一种形式转化为另一种形式，总量保持不变。\n\n关键要素:化学能、热能、电能等可以相互转化；转化过程中总能量不变。\n\n应用:解释化学反应中能量变化的总量关系；指导能量利用和能源开发。\n\n关联:化学能与热能、化学能与电能、内能",
+      "card_type": "concept",
+      "plan_task_id": "热化学基础",
+      "gold_cr_ids": [
+        "cr_053"
+      ],
+      "source_sentence": "能量的转化遵循能量守恒定律。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0056",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "盖斯定律",
+      "back": "定义:恒温恒压下，化学反应的反应热（焓变）只与反应的始态和终态有关，与反应的具体路径无关。\n\n关键要素:可间接计算难以直接测定的反应热；反应热具有加和性。\n\n应用:计算某些反应的反应热，如工业生产硝酸反应路线的能量变化计算。\n\n关联:焓变、热化学方程式",
+      "card_type": "concept",
+      "plan_task_id": "热化学基础",
+      "gold_cr_ids": [
+        "cr_047"
+      ],
+      "source_sentence": "了解盖斯定律及其简单应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0057",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "化学反应速率表示方法",
+      "back": "定义:化学反应速率通常用单位时间内反应物浓度的减少或生成物浓度的增加来表示（平均速率）。\n\n关键要素:常用单位 mol·L⁻¹·s⁻¹ 或 mol·L⁻¹·min⁻¹；同一反应不同物质表示的速率之比等于化学计量数之比。\n\n应用:定量描述化学反应快慢，用于速率计算和比较。\n\n关联:化学反应速率测定、影响速率的因素",
+      "card_type": "concept",
+      "plan_task_id": "化学反应速率",
+      "gold_cr_ids": [
+        "cr_058"
+      ],
+      "source_sentence": "知道化学反应速率的表示方法，了解测定化学反应速率的简单方法。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0058",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "化学反应速率测定",
+      "back": "定义:通过测量反应体系中某一物理量（如气体体积、溶液颜色、压强等）随时间的变化，间接测定化学反应速率。\n\n关键要素:常用方法包括量气法、比色法、电导法等；需控制变量进行实验。\n\n应用:探究浓度、温度等对反应速率的影响，验证速率理论。\n\n关联:化学反应速率表示方法、变量控制法",
+      "card_type": "concept",
+      "plan_task_id": "化学反应速率",
+      "gold_cr_ids": [
+        "cr_059"
+      ],
+      "source_sentence": "了解测定化学反应速率的简单方法。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0059",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "影响化学反应速率的因素",
+      "back": "定义:温度、浓度、压强和催化剂等外界条件会影响化学反应速率。\n\n关键要素:增大浓度、升高温度、增大压强（对气体）、使用催化剂通常加快反应速率；催化剂通过降低活化能改变反应历程。\n\n应用:调控反应速率以适应生产、生活需要（如合成氨中优化条件）。\n\n关联:活化能、基元反应、化学反应速率",
+      "card_type": "concept",
+      "plan_task_id": "化学反应速率",
+      "gold_cr_ids": [
+        "cr_060"
+      ],
+      "source_sentence": "通过实验探究，了解温度、浓度、压强和催化剂对化学反应速率的影响。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0060",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "基元反应",
+      "back": "定义:化学反应是有历程的，基元反应是反应历程中最基本的步骤，由反应物分子直接碰撞一步转化为产物。\n\n关键要素:总反应由多个基元反应组成；每个基元反应有对应的活化能。\n\n应用:解释反应机理，理解活化能对速率的影响。\n\n关联:活化能、化学反应历程",
+      "card_type": "concept",
+      "plan_task_id": "化学反应速率",
+      "gold_cr_ids": [
+        "cr_061"
+      ],
+      "source_sentence": "知道化学反应是有历程的，认识基元反应活化能对化学反应速率的影响。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0061",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "活化能",
+      "back": "定义:活化能是基元反应中反应物分子达到活化状态所需的最小能量。\n\n关键要素:活化能越高，反应越慢；催化剂通过降低活化能加快反应速率；温度升高使更多分子达到活化能。\n\n应用:解释温度、催化剂对反应速率的影响。\n\n关联:基元反应、催化剂、反应速率",
+      "card_type": "concept",
+      "plan_task_id": "化学反应速率",
+      "gold_cr_ids": [
+        "cr_062"
+      ],
+      "source_sentence": "认识基元反应活化能对化学反应速率的影响。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0062",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "催化剂对反应历程的影响",
+      "back": "定义:催化剂可以改变反应历程，降低反应的活化能，从而显著改变化学反应速率。\n\n关键要素:催化剂不改变反应平衡常数，但能加速正逆反应；具有选择性；参与反应但反应前后质量和化学性质不变。\n\n应用:工业合成氨、汽车尾气处理、酶催化等。\n\n关联:活化能、反应速率、化学调控",
+      "card_type": "concept",
+      "plan_task_id": "化学反应速率",
+      "gold_cr_ids": [
+        "cr_063"
+      ],
+      "source_sentence": "知道催化剂可以改变反应历程，对调控化学反应速率具有重要意义。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0063",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "化学反应方向",
+      "back": "定义:化学反应是有方向的，反应的方向与反应的焓变和熵变有关。\n\n关键要素:焓变（ΔH）、熵变（ΔS）；通常ΔG=ΔH-TΔS判断自发方向。\n\n应用:预测化学反应能否自发进行，指导反应条件选择。\n\n关联:化学平衡、热力学",
+      "card_type": "concept",
+      "plan_task_id": "化学平衡",
+      "gold_cr_ids": [
+        "cr_054"
+      ],
+      "source_sentence": "知道化学反应是有方向的，知道化学反应的方向与反应的焓变和熵变有关。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0064",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "化学平衡常数",
+      "back": "定义:化学平衡常数是表征反应限度的物理量，表示在一定温度下可逆反应达到平衡时生成物浓度幂之积与反应物浓度幂之积的比值。\n\n关键要素:符号K，温度常数；表达式符合质量作用定律；K值大小反映反应进行程度。\n\n应用:判断平衡状态（与浓度商比较）、计算转化率、预测平衡移动方向。\n\n关联:浓度商、平衡移动、转化率",
+      "card_type": "concept",
+      "plan_task_id": "化学平衡",
+      "gold_cr_ids": [
+        "cr_055"
+      ],
+      "source_sentence": "认识化学平衡常数是表征反应限度的物理量，知道化学平衡常数的含义。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0065",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "浓度商",
+      "back": "定义:浓度商（Q）是任意时刻生成物浓度幂之积与反应物浓度幂之积的比值。\n\n关键要素:与化学平衡常数K比较，Q > K反应逆向进行，Q < K反应正向进行，Q = K达到平衡。\n\n应用:判断反应是否达到平衡及平衡移动方向。\n\n关联:化学平衡常数、平衡移动",
+      "card_type": "concept",
+      "plan_task_id": "化学平衡",
+      "gold_cr_ids": [
+        "cr_056"
+      ],
+      "source_sentence": "了解浓度商和化学平衡常数的相对大小与反应方向间的联系。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0066",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "化学平衡的影响因素",
+      "back": "定义:浓度、压强、温度等外界条件改变会影响化学平衡状态，使平衡发生移动。\n\n关键要素:增大反应物浓度或减小生成物浓度，平衡正向移动；增大压强（对有气体参与的反应），平衡向气体体积减小方向移动；升高温度，平衡向吸热方向移动。\n\n应用:通过调控条件优化反应产率，如合成氨工业。\n\n关联:勒夏特列原理、化学平衡常数",
+      "card_type": "concept",
+      "plan_task_id": "化学平衡",
+      "gold_cr_ids": [
+        "cr_057"
+      ],
+      "source_sentence": "通过实验探究，了解浓度、压强、温度对化学平衡状态的影响。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0067",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "化学反应调控",
+      "back": "定义:综合考虑化学反应的速率、限度（平衡）、能耗等因素，对反应条件（温度、压强、浓度、催化剂等）进行选择和优化。\n\n关键要素:兼顾反应速率与转化率；体现绿色化学观念；常用实例：合成氨（高压、催化剂、适宜温度）。\n\n应用:工业生产中提高产率、降低成本、减少污染。\n\n关联:化学平衡、化学反应速率、催化剂",
+      "card_type": "concept",
+      "plan_task_id": "化学平衡",
+      "gold_cr_ids": [
+        "cr_064"
+      ],
+      "source_sentence": "认识化学反应速率和化学平衡的综合调控在生产、生活和科学研究中的重要作用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0068",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "平衡常数表达式与计算",
+      "back": "定义:对于可逆反应aA + bB ⇌ cC + dD，平衡常数K = [C]^c[D]^d / ([A]^a[B]^b)（固体、纯液体不写入）。\n\n关键要素:K只与温度有关；利用K可计算转化率、平衡浓度等。\n\n应用:判断反应程度，进行定量计算。\n\n关联:化学平衡常数、转化率、浓度商",
+      "card_type": "concept",
+      "plan_task_id": "化学平衡",
+      "gold_cr_ids": [
+        "cr_065"
+      ],
+      "source_sentence": "能书写平衡常数表达式，能进行平衡常数、转化率的简单计算，能利用平衡常数和浓度商的关系判断化学反应是否达到平衡及平衡移动的方向。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0069",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "电离平衡",
+      "back": "定义:弱电解质在水溶液中存在电离平衡，即电离过程是可逆的，达到动态平衡状态。\n\n关键要素:电离平衡常数（Ka或Kb）表示电离程度的大小；温度影响平衡常数。\n\n应用:用于分析弱电解质的电离程度、计算溶液pH、判断酸碱性等。\n\n关联:水的电离、离子平衡、化学平衡",
+      "card_type": "concept",
+      "plan_task_id": "溶液中的平衡",
+      "gold_cr_ids": [
+        "cr_066"
+      ],
+      "source_sentence": "认识弱电解质在水溶液中存在电离平衡，了解电离平衡常数的含义。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0070",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "水的离子积常数",
+      "back": "定义:水的离子积常数（Kw）是水溶液中氢离子浓度与氢氧根离子浓度的乘积，在25℃时Kw=1.0×10⁻¹⁴。\n\n关键要素:Kw仅受温度影响，温度升高Kw增大；中性溶液c(H⁺)=c(OH⁻)=√Kw。\n\n应用:用于计算溶液的pH、判断酸碱性、分析水的电离平衡移动。\n\n关联:水的电离、溶液的酸碱性、pH",
+      "card_type": "concept",
+      "plan_task_id": "溶液中的平衡",
+      "gold_cr_ids": [
+        "cr_067"
+      ],
+      "source_sentence": "认识水的电离，了解水的离子积常数，认识溶液的酸碱性及pH，掌握检测溶液pH的方法。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0071",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "溶液的酸碱性",
+      "back": "定义:溶液的酸碱性由氢离子浓度与氢氧根离子浓度的相对大小决定：c(H⁺)>c(OH⁻)呈酸性，c(H⁺)=c(OH⁻)呈中性，c(H⁺)<c(OH⁻)呈碱性。\n\n关键要素:常用pH表示酸碱性，pH=-lg[c(H⁺)]；pH<7为酸性，pH=7为中性，pH>7为碱性。\n\n应用:判断溶液性质、调控pH、工农业生产和科学研究中的应用。\n\n关联:pH、水的离子积常数、电离平衡",
+      "card_type": "concept",
+      "plan_task_id": "溶液中的平衡",
+      "gold_cr_ids": [
+        "cr_068"
+      ],
+      "source_sentence": "认识水的电离，了解水的离子积常数，认识溶液的酸碱性及pH，掌握检测溶液pH的方法。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0072",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "盐类水解",
+      "back": "定义:盐的离子与水电离出的H⁺或OH⁻结合生成弱电解质的反应，称为盐类水解。\n\n关键要素:水解原理：弱酸根或弱碱阳离子破坏水的电离平衡；影响因素有盐的性质、温度、浓度、酸碱性等。\n\n应用:明矾净水、泡沫灭火器、溶液酸碱性的调控、缓冲溶液等。\n\n关联:水解平衡、电离平衡、离子反应",
+      "card_type": "concept",
+      "plan_task_id": "溶液中的平衡",
+      "gold_cr_ids": [
+        "cr_069"
+      ],
+      "source_sentence": "认识盐类水解的原理和影响盐类水解的主要因素。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0073",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "沉淀溶解平衡",
+      "back": "定义:难溶电解质在水溶液中存在沉淀溶解平衡，即固体溶解与离子沉淀达到动态平衡。\n\n关键要素:溶度积常数（Ksp）表示难溶电解质的溶解能力；平衡移动受温度、同离子效应、pH等影响。\n\n应用:沉淀的生成（如去除杂质）、溶解（如酸溶）、转化（如由硫化锌转化为硫化铜）；用于物质分离、提纯及工业流程。\n\n关联:离子平衡、化学平衡、沉淀转化",
+      "card_type": "concept",
+      "plan_task_id": "溶液中的平衡",
+      "gold_cr_ids": [
+        "cr_070"
+      ],
+      "source_sentence": "认识难溶电解质在水溶液中存在沉淀溶解平衡，了解沉淀的生成、溶解与转化。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0074",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "离子反应与平衡的应用",
+      "back": "定义:水溶液中的离子反应与平衡在物质检测、化学反应规律研究、物质转化等方面有广泛应用。\n\n关键要素:包括离子检验、中和滴定、沉淀滴定、pH调控等；在工农业中如弱酸制备、净水、缓冲溶液、矿石提取等。\n\n应用:定性分析（离子鉴定）、定量分析（滴定）、工业生产（侯氏制碱法、二氧化钛制备）、环境保护（水处理）等。\n\n关联:电离平衡、水解平衡、沉淀溶解平衡、中和滴定",
+      "card_type": "concept",
+      "plan_task_id": "溶液中的平衡",
+      "gold_cr_ids": [
+        "cr_071"
+      ],
+      "source_sentence": "了解水溶液中的离子反应与平衡在物质检测、化学反应规律研究、物质转化中的应用。了解溶液pH的调控在工农业生产和科学研究中的应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0075",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "中和滴定",
+      "back": "定义:中和滴定是利用酸和碱的中和反应，通过滴定管向待测溶液中逐滴加入已知浓度的标准溶液，以确定待测溶液浓度的方法。\n\n关键要素:强酸与强碱的中和滴定需选择合适的指示剂（如酚酞、甲基橙）；终点判断、滴定操作、误差分析。\n\n应用:定量分析酸碱浓度、测定未知溶液浓度、工农业生产和科研中成分分析。\n\n关联:离子反应、pH、化学平衡",
+      "card_type": "concept",
+      "plan_task_id": "溶液中的平衡",
+      "gold_cr_ids": [
+        "cr_072"
+      ],
+      "source_sentence": "强酸与强碱的中和滴定。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0076",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "原电池",
+      "back": "定义:将化学能直接转化为电能的装置。\n\n关键要素:由正极、负极、离子导体（电解质溶液或熔融盐）和电子导体（外电路）组成；负极发生氧化反应，正极发生还原反应。\n\n应用:常见化学电源（如锌锰干电池、铅蓄电池、锂离子电池、氢氧燃料电池）；根据原电池原理设计简单电池。\n\n关联:电解池、电化学腐蚀、化学能",
+      "card_type": "concept",
+      "plan_task_id": "原电池、电解池与电能转化",
+      "gold_cr_ids": [
+        "cr_048"
+      ],
+      "source_sentence": "了解原电池及常见化学电源的工作原理。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0077",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "电解池",
+      "back": "定义:将电能转化为化学能的装置。\n\n关键要素:由阳极、阴极、电解质溶液或熔融盐组成；阳极发生氧化反应，阴极发生还原反应；需要外加电源。\n\n应用:电解熔融氯化钠制钠、电解饱和食盐水制氯气和烧碱、电镀、电解精炼铜、电解在污水处理和煤炭脱硫中的应用，以及储能。\n\n关联:原电池、电化学腐蚀、能量转化",
+      "card_type": "concept",
+      "plan_task_id": "原电池、电解池与电能转化",
+      "gold_cr_ids": [
+        "cr_049"
+      ],
+      "source_sentence": "了解电解池的工作原理，认识电解在实现物质转化和储存能量中的具体应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0078",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "电化学腐蚀",
+      "back": "定义:金属在电解质溶液中通过原电池反应而发生的腐蚀（本质是电化学反应）。\n\n关键要素:活泼金属作负极被氧化；腐蚀类型包括吸氧腐蚀和析氢腐蚀。\n\n应用:了解金属腐蚀危害；采取防腐措施，如涂覆、电化学保护（牺牲阳极法）等。\n\n关联:原电池、防止金属腐蚀的措施",
+      "card_type": "concept",
+      "plan_task_id": "原电池、电解池与电能转化",
+      "gold_cr_ids": [
+        "cr_050"
+      ],
+      "source_sentence": "了解金属发生电化学腐蚀的本质，知道金属腐蚀的危害，了解防止金属腐蚀的措施。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0079",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "化学能与电能相互转化",
+      "back": "定义:通过原电池将化学能转为电能（放电），通过电解池将电能转为化学能（充电或电化学合成）。\n\n关键要素:原电池是自发氧化还原反应；电解池是非自发反应在外加电能驱动下进行。\n\n应用:常见化学电源（电池）；电解精炼、电镀、电冶金；燃料电池与电解水实现能量储存。\n\n关联:原电池、电解池、能量守恒定律",
+      "card_type": "concept",
+      "plan_task_id": "原电池、电解池与电能转化",
+      "gold_cr_ids": [
+        "cr_052"
+      ],
+      "source_sentence": "认识化学能与电能相互转化的实际意义及其重要应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0080",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "燃料电池",
+      "back": "定义:燃料电池是一种将燃料（如氢气、甲醇）和氧化剂（通常是氧气）的化学能直接转换为电能的电化学装置。\n\n关键要素:电极（阳极、阴极）、电解质膜、电催化反应、质子交换膜、能量转换效率高、产物清洁（水）。\n\n应用:新能源汽车、分布式发电、便携式电源、航天器电源。\n\n关联:电化学、二次电池、超级电容器、绿色化学",
+      "card_type": "concept",
+      "plan_task_id": "化学电源",
+      "gold_cr_ids": [
+        "cr_111"
+      ],
+      "source_sentence": "燃料电池、二次电池和超级电容器等电化学能量储存与转化系统集成",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0081",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "二次电池",
+      "back": "定义:二次电池（可充电电池）是通过可逆电化学反应实现电能储存和释放的装置，放电后可再次充电重复使用。\n\n关键要素:正负极材料、电解质、锂离子嵌入/脱出、循环寿命、能量密度。\n\n应用:便携电子设备、电动汽车、储能电站、电动工具。\n\n关联:电化学、燃料电池、超级电容器、电极材料",
+      "card_type": "concept",
+      "plan_task_id": "化学电源",
+      "gold_cr_ids": [
+        "cr_112"
+      ],
+      "source_sentence": "燃料电池、二次电池和超级电容器等电化学能量储存与转化系统集成",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0082",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "超级电容器",
+      "back": "定义:超级电容器是一种依靠电极与电解质之间形成的双电层或快速可逆的氧化还原反应（赝电容）来储存能量的电化学器件。\n\n关键要素:高功率密度、快速充放电、双电层电容、赝电容、活性炭/石墨烯电极。\n\n应用:电动汽车启动辅助、瞬时功率补偿、智能电网调频、便携设备备用电源。\n\n关联:电化学、二次电池、燃料电池、碳材料",
+      "card_type": "concept",
+      "plan_task_id": "化学电源",
+      "gold_cr_ids": [
+        "cr_113"
+      ],
+      "source_sentence": "燃料电池、二次电池和超级电容器等电化学能量储存与转化系统集成",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0083",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "金属材料",
+      "back": "定义: 金属材料是由金属元素或以金属元素为主构成的具有金属特性的材料，通常包括纯金属和合金。\n\n关键要素: 组成（金属元素）、结构（晶格）、性能（导电性、导热性、延展性、强度等）。\n\n应用: 建筑、机械、电子、航空航天等领域。\n\n关联: 无机非金属材料、高分子材料；材料组成-性能-应用关系。",
+      "card_type": "concept",
+      "plan_task_id": "金属与无机非金属材料",
+      "gold_cr_ids": [
+        "cr_034"
+      ],
+      "source_sentence": "知道金属材料、无机非金属材料、高分子材料等常见材料类型，结合实例认识材料组成、性能与应用的联系。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0084",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "无机非金属材料",
+      "back": "定义: 无机非金属材料是以无机非金属化合物（如氧化物、氮化物、碳化物等）为主要成分的材料，通常具有耐高温、耐腐蚀、绝缘等特性。\n\n关键要素: 组成（非金属元素与氧、氮等）、结构（晶体或非晶体）、性能（硬度、耐热性、电绝缘性等）。\n\n应用: 陶瓷、水泥、玻璃、光导纤维、单晶硅等。\n\n关联: 金属材料、高分子材料；材料科学与工程。",
+      "card_type": "concept",
+      "plan_task_id": "金属与无机非金属材料",
+      "gold_cr_ids": [
+        "cr_035"
+      ],
+      "source_sentence": "知道金属材料、无机非金属材料、高分子材料等常见材料类型，结合实例认识材料组成、性能与应用的联系。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0085",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "光导纤维",
+      "back": "定义: 光导纤维（光纤）是由高纯度石英玻璃（SiO₂）制成的细丝，利用全反射原理传输光信号，属于无机非金属材料。\n\n关键要素: 结构（纤芯+包层，折射率不同）、传输原理（全内反射）、性能（低损耗、大带宽、抗干扰）。\n\n应用: 通信网络、医学内窥镜、传感器等。\n\n关联: 无机非金属材料、硅化学、信息科学。",
+      "card_type": "concept",
+      "plan_task_id": "金属与无机非金属材料",
+      "gold_cr_ids": [
+        "cr_044"
+      ],
+      "source_sentence": "陶瓷、水泥、玻璃、光导纤维和单晶硅等无机非金属材料；功能高分子材料在医疗、航空航天等领域的应用；保水材料在沙漠",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0086",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "单晶硅",
+      "back": "定义: 单晶硅是一种具有完整晶格结构的硅晶体，是半导体工业的核心基础材料。\n\n关键要素: 制备（提拉法或区熔法提纯硅）、纯度（99.9999999%以上）、晶体结构（金刚石型）。\n\n应用: 集成电路芯片、太阳能电池、整流器、传感器等。\n\n关联: 无机非金属材料、半导体物理、信息技术。",
+      "card_type": "concept",
+      "plan_task_id": "金属与无机非金属材料",
+      "gold_cr_ids": [
+        "cr_045"
+      ],
+      "source_sentence": "陶瓷、水泥、玻璃、光导纤维和单晶硅等无机非金属材料；功能高分子材料在医疗、航空航天等领域的应用；保水材料在沙漠",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0087",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "高分子化合物",
+      "back": "定义:由许多重复结构单元通过共价键连接而成的相对分子质量很大的化合物。\n\n关键要素:常见类型包括塑料（如聚乙烯）、橡胶、纤维（如尼龙）；可通过加聚或缩聚反应合成。\n\n应用:制造工业材料、生活用品（如服装、容器）；吸水性高分子用于卫生用品。\n\n关联:聚合反应、合成新物质",
+      "card_type": "concept",
+      "plan_task_id": "高分子材料",
+      "gold_cr_ids": [
+        "cr_027"
+      ],
+      "source_sentence": "结合实例认识高分子、油脂、糖类、蛋白质等有机化合物在生产、生活中的重要应用",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0088",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "高分子材料",
+      "back": "定义: 高分子材料是由相对分子质量很高的聚合物（如塑料、橡胶、纤维等）构成的材料，通常具有可塑性、弹性、轻质等特点。\n\n关键要素: 组成（重复单元链节）、结构（线型、体型）、性能（强度、弹性、耐化学性等）。\n\n应用: 日用塑料、橡胶轮胎、合成纤维、功能高分子（如保水材料、医用高分子）。\n\n关联: 金属材料、无机非金属材料；聚合反应。",
+      "card_type": "concept",
+      "plan_task_id": "高分子材料",
+      "gold_cr_ids": [
+        "cr_036"
+      ],
+      "source_sentence": "知道金属材料、无机非金属材料、高分子材料等常见材料类型，结合实例认识材料组成、性能与应用的联系。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0089",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "功能高分子材料",
+      "back": "定义: 功能高分子材料是指除力学性能外，还具有特定功能（如导电、光学、生物相容、分离、记忆等）的高分子材料。\n\n关键要素: 类型（导电高分子、形状记忆高分子、医用高分子、智能水凝胶等）、功能与结构的关系。\n\n应用: 医疗（药物缓释、组织工程）、航空航天（轻质高强）、环保（吸附分离）、柔性电子等。\n\n关联: 高分子材料、聚合反应、材料科学。",
+      "card_type": "concept",
+      "plan_task_id": "高分子材料",
+      "gold_cr_ids": [
+        "cr_046"
+      ],
+      "source_sentence": "功能高分子材料在医疗、航空航天等领域的应用；保水材料在沙漠",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0090",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "自修复材料",
+      "back": "定义:自修复材料是一种能够在外界刺激（如温度、压力、pH等）下自动修复内部损伤（如裂纹、划痕）的功能材料。\n\n关键要素:微胶囊封装修复剂、可逆共价键/非共价键、形状记忆效应、响应性聚合物。\n\n应用:航空航天涂层、电子器件封装、人造皮肤、建筑防水层。\n\n关联:功能高分子材料、超分子化学、纳米化学、绿色化学",
+      "card_type": "concept",
+      "plan_task_id": "高分子材料",
+      "gold_cr_ids": [
+        "cr_108"
+      ],
+      "source_sentence": "碳材料、药物载体与组织工程材料、能量储存与转换材料、自修复材料等新型材料",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0091",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "材料组成、性能与应用的关系",
+      "back": "定义: 材料的化学成分和微观结构决定了其宏观性能，而性能又决定了其在具体场景中的应用。这是材料科学的核心原理。\n\n关键要素: 组成（元素、化合物、配比）、结构（原子排列、结晶度、缺陷）、性能（力学、热学、电学、光学等）、应用（工程需求）。\n\n应用: 通过调整组成或结构（如合金化、掺杂、热处理）来优化性能，满足特定应用。\n\n关联: 金属材料、无机非金属材料、高分子材料；材料设计。",
+      "card_type": "concept",
+      "plan_task_id": "材料性能与绿色化学",
+      "gold_cr_ids": [
+        "cr_037"
+      ],
+      "source_sentence": "知道金属材料、无机非金属材料、高分子材料等常见材料类型，结合实例认识材料组成、性能与应用的联系。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0092",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "绿色化学",
+      "back": "定义: 绿色化学是一种理念，旨在通过化学产品的设计和生产过程的优化，减少或消除有害物质的使用和产生，实现从源头上防止污染。\n\n关键要素: 原子经济性、减少废物、使用可再生原料、无害溶剂、安全化学品设计等。\n\n应用: 化工生产中的清洁工艺、节能环保技术、废弃物循环利用。\n\n关联: 可持续发展、环境保护、资源节约。",
+      "card_type": "concept",
+      "plan_task_id": "材料性能与绿色化学",
+      "gold_cr_ids": [
+        "cr_033"
+      ],
+      "source_sentence": "树立“绿色化学”的观念，形成资源全面节约、物能循环利用的意识。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0093",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "原子经济",
+      "back": "定义:原子经济是指化学反应中原料分子中的原子被最大限度地转化为目标产物，实现零废物排放或最小化废物产生的理念。\n\n关键要素:高效利用原料原子、减少副产物、绿色可持续、精准可控的合成方法。\n\n应用:工业生产中的绿色合成路线设计，如药物、材料等精细化学品的原子经济性合成。\n\n关联:绿色化学、合成化学、催化化学",
+      "card_type": "concept",
+      "plan_task_id": "材料性能与绿色化学",
+      "gold_cr_ids": [
+        "cr_103"
+      ],
+      "source_sentence": "从简单易得的原料到目标功能分子的简洁和高效绿色合成；原子经济、绿色可持续和精准可控的合成方法与技术",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0094",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "蛋白质",
+      "back": "定义:由氨基酸通过肽键连接而成的生物大分子，具有复杂的空间结构。\n\n关键要素:可发生水解反应（生成氨基酸），遇重金属盐、高温、强酸强碱会变性；含有肽键，可发生颜色反应（如双缩脲反应）。\n\n应用:构成生命体的基础物质；食物中的营养物质；酶催化作用。\n\n关联:有机化合物转化、聚合反应",
+      "card_type": "concept",
+      "plan_task_id": "化学与生命",
+      "gold_cr_ids": [
+        "cr_028"
+      ],
+      "source_sentence": "结合实例认识高分子、油脂、糖类、蛋白质等有机化合物在生产、生活中的重要应用",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0095",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "微量元素",
+      "back": "定义：人体中含量低于体重0.01%的必需元素，如铁、锌、铜、碘、硒等，对维持生命活动具有重要作用。\n\n关键要素：必需微量元素（铁、锌、碘等）、缺乏症、富集食物。\n\n应用：补铁剂中铁含量测定、食品营养标签、膳食均衡指导。\n\n关联：营养均衡、有机化合物、化学与健康。",
+      "card_type": "concept",
+      "plan_task_id": "化学与生命",
+      "gold_cr_ids": [
+        "cr_101"
+      ],
+      "source_sentence": "知道微量元素对人体健康的重要作用，了解合理摄入营养物质的重要性，认识营养均衡与",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0096",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "营养均衡",
+      "back": "定义：通过合理搭配膳食，使人体摄入的糖类、脂质、蛋白质、维生素、无机盐和水等营养物质种类齐全、比例适当，以满足生理需求。\n\n关键要素：六大营养素（糖、脂、蛋白质、维生素、无机盐、水）、膳食指南、能量平衡。\n\n应用：食品成分分析、健康饮食设计、疾病预防。\n\n关联：微量元素、常见有机化合物、化学与健康。",
+      "card_type": "concept",
+      "plan_task_id": "化学与生命",
+      "gold_cr_ids": [
+        "cr_102"
+      ],
+      "source_sentence": "认识营养均衡与",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0097",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "提取青蒿素",
+      "back": "定义: 中国科学家屠呦呦团队从黄花蒿中提取出青蒿素，一种具有过氧键结构的倍半萜内酯化合物，对疟原虫有高效杀灭作用。\n\n关键要素: 提取方法（乙醚低温萃取）、结构（过氧桥）、抗疟机理（产生自由基破坏疟原虫膜结构）。\n\n应用: 青蒿素及其衍生物（如双氢青蒿素）成为抗疟药物，拯救数百万生命。\n\n关联: 药物合成、天然产物化学、诺贝尔生理学或医学奖（2015年）。",
+      "card_type": "concept",
+      "plan_task_id": "化学与生命",
+      "gold_cr_ids": [
+        "cr_043"
+      ],
+      "source_sentence": "中外历史上的化学成就：合成氨、人工合成尿素、人工合成结晶牛胰岛素、提取青蒿素，以及中国近30年化学科学与技术及其应用的重要成果。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0098",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "药物合成",
+      "back": "定义: 药物合成是指通过有机化学反应，从简单原料经过多步反应制备具有药理活性的化合物的过程。\n\n关键要素: 合成路线设计、反应条件控制（温度、催化剂、溶剂）、产率与纯度、手性合成等。\n\n应用: 新药研发、仿制药生产、天然药物全合成（如青蒿素、结晶牛胰岛素）。\n\n关联: 有机化学、生物化学、绿色化学。",
+      "card_type": "concept",
+      "plan_task_id": "化学与生命",
+      "gold_cr_ids": [
+        "cr_038"
+      ],
+      "source_sentence": "体会化学科学发展对于药物合成的重要意义，初步建立依据物质性质分析健康问题的意识。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0099",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "人工合成尿素",
+      "back": "定义: 人工合成尿素是指1828年德国化学家维勒（F. Wöhler）从无机物氰酸铵（NH₄OCN）加热制得尿素，首次实现了从无机物到有机物的合成，打破了“生命力论”。\n\n关键要素: 反应：NH₄OCN → (NH₂)₂CO；意义：有机化学里程碑，证明了无机物与有机物之间没有不可逾越的鸿沟。\n\n应用: 尿素是重要化肥、化工原料（脲醛树脂、药物等）。\n\n关联: 合成氨、化学史、有机合成。",
+      "card_type": "concept",
+      "plan_task_id": "化学与生命",
+      "gold_cr_ids": [
+        "cr_041"
+      ],
+      "source_sentence": "中外历史上的化学成就：合成氨、人工合成尿素、人工合成结晶牛胰岛素、提取青蒿素，以及中国近30年化学科学与技术及其应用的重要成果。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0100",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "人工合成结晶牛胰岛素",
+      "back": "定义: 1965年中国科学家首次人工合成了具有生物活性的结晶牛胰岛素，这是世界上第一次人工合成蛋白质。\n\n关键要素: 胰岛素由51个氨基酸组成两条多肽链（A链21个、B链30个），通过二硫键连接；合成步骤包括氨基酸保护、缩合、脱保护、折叠等。\n\n应用: 证明蛋白质可以通过化学方法合成，为生物化学和药物合成奠定基础。\n\n关联: 药物合成、生物化学、化学史。",
+      "card_type": "concept",
+      "plan_task_id": "化学与生命",
+      "gold_cr_ids": [
+        "cr_042"
+      ],
+      "source_sentence": "中外历史上的化学成就：合成氨、人工合成尿素、人工合成结晶牛胰岛素、提取青蒿素，以及中国近30年化学科学与技术及其应用的重要成果。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0101",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "合成氨",
+      "back": "定义:合成氨是将氮气和氢气在高温高压和催化剂条件下直接合成氨（NH₃）的工业过程（哈伯法）。\n\n关键要素:反应为N₂ + 3H₂ ⇌ 2NH₃（可逆、放热）；需要铁触媒、高压（10~30 MPa）、温度（400~500℃）。\n\n应用:生产氮肥、硝酸、炸药等，对农业发展有重要贡献。\n\n关联:氧化还原反应、化学工业、氨的性质。",
+      "card_type": "concept",
+      "plan_task_id": "重要工业过程",
+      "gold_cr_ids": [
+        "cr_013"
+      ],
+      "source_sentence": "能说明常见元素及其化合物的应用（如金属冶炼、合成氨等）对社会发展的价值、对环境的影响。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0102",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "工业制硫酸",
+      "back": "定义: 工业制硫酸通常采用接触法，以硫铁矿、硫磺或冶炼烟气为原料，经过焙烧（生成SO₂）、催化氧化（SO₂→SO₃）和吸收（SO₃溶于浓硫酸）三步骤生产硫酸。\n\n关键要素: 原料（硫、硫铁矿）、催化剂（V₂O₅）、反应条件（400-500℃、常压）、吸收剂（浓硫酸）。\n\n应用: 硫酸是重要的化工原料，用于化肥（磷肥）、合成纤维、农药、石油炼制等。\n\n关联: 合成氨、石油化工；化学工业在国民经济中的地位。",
+      "card_type": "concept",
+      "plan_task_id": "重要工业过程",
+      "gold_cr_ids": [
+        "cr_039"
+      ],
+      "source_sentence": "结合合成氨、工业制硫酸、石油化工等实例了解化学在生产中的具体应用，认识化学工业在国民经济发展中的重要地位。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0103",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "石油化工",
+      "back": "定义: 石油化工是以石油和天然气为原料，通过裂解、重整、分离等过程生产乙烯、丙烯、芳烃等基础有机化工原料，进而加工成塑料、合成纤维、合成橡胶等产品的工业。\n\n关键要素: 原料（石油、天然气）、主要工艺（常减压蒸馏、催化裂化、蒸汽裂解、催化重整）、产品（乙烯、丙烯、丁二烯、苯、甲苯、二甲苯等）。\n\n应用: 提供合成材料、燃料、溶剂、医药、农药等。\n\n关联: 乙烯的结构与性质、聚合反应、合成氨；能源综合利用。",
+      "card_type": "concept",
+      "plan_task_id": "重要工业过程",
+      "gold_cr_ids": [
+        "cr_040"
+      ],
+      "source_sentence": "结合合成氨、工业制硫酸、石油化工等实例了解化学在生产中的具体应用，认识化学工业在国民经济发展中的重要地位。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0104",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "比色法",
+      "back": "定义：基于朗伯-比尔定律，通过比较有色物质溶液颜色深度或对特定波长光吸收强度来测定物质含量的定量分析方法。\n\n关键要素：标准溶液、显色反应、吸光度测量、标准曲线。\n\n应用：用于测定补铁剂中铁的含量、水质中微量离子分析等。\n\n关联：定量分析、分光光度计、滴定法。",
+      "card_type": "concept",
+      "plan_task_id": "实验分析技术",
+      "gold_cr_ids": [
+        "cr_092"
+      ],
+      "source_sentence": "例如，菠菜中的色素、茶叶中咖啡因等成分的提取；比色法测定补铁剂中铁的含量；啤酒中酒精含量的测定；阿司匹林的合成；抑酸剂抗酸容量的探究。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0105",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "过滤（抽滤）",
+      "back": "定义：利用滤纸或滤膜等介质，将固体与液体分离的分离操作。抽滤（减压过滤）通过降低滤液下方压力加速过滤。\n\n关键要素：漏斗、滤纸、抽滤瓶、真空泵。\n\n应用：分离沉淀与溶液、提纯晶体、收集固体产物。\n\n关联：蒸馏、萃取、固液分离。",
+      "card_type": "concept",
+      "plan_task_id": "实验分析技术",
+      "gold_cr_ids": [
+        "cr_093"
+      ],
+      "source_sentence": "掌握过滤（抽滤）、蒸馏（回流）、萃取、滴定等基本实验操作，初步掌握酸度计等仪器的使用方法。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0106",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "蒸馏（回流）",
+      "back": "定义：利用液体混合物中各组分挥发度不同，通过加热使液体汽化，再冷凝为液体从而实现分离的操作。回流是将蒸汽冷凝后返回原容器以维持反应温度。\n\n关键要素：蒸馏烧瓶、冷凝管、接收瓶、加热源。\n\n应用：分离互溶液体混合物、提纯溶剂、有机合成中控制反应温度。\n\n关联：萃取、分馏、沸点。",
+      "card_type": "concept",
+      "plan_task_id": "实验分析技术",
+      "gold_cr_ids": [
+        "cr_094"
+      ],
+      "source_sentence": "掌握过滤（抽滤）、蒸馏（回流）、萃取、滴定等基本实验操作，初步掌握酸度计等仪器的使用方法。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0107",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "酸度计",
+      "back": "定义：通过测量电极电位来测定水溶液pH值的仪器，通常由玻璃电极和参比电极组成。\n\n关键要素：pH电极、标准缓冲溶液、温度补偿。\n\n应用：测定溶液的酸碱度、酸碱滴定终点判断、水质监测。\n\n关联：滴定、pH、离子浓度。",
+      "card_type": "concept",
+      "plan_task_id": "实验分析技术",
+      "gold_cr_ids": [
+        "cr_095"
+      ],
+      "source_sentence": "掌握过滤（抽滤）、蒸馏（回流）、萃取、滴定等基本实验操作，初步掌握酸度计等仪器的使用方法。",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0108",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "界面化学",
+      "back": "定义:界面化学是研究两相（如固-液、液-气、固-气等）界面处发生的物理化学现象的学科分支。\n\n关键要素:表面张力、吸附、润湿、界面反应、胶体与界面现象。\n\n应用:催化剂设计、纳米材料制备、生物膜模拟、环境修复中的吸附剂开发。\n\n关联:催化化学、纳米化学、超分子化学、材料化学",
+      "card_type": "concept",
+      "plan_task_id": "前沿化学",
+      "gold_cr_ids": [
+        "cr_104"
+      ],
+      "source_sentence": "围绕合成化学、催化化学、界面化学、理论与计算化学、化学测量与成像，以及化学动态学等现代化学研究的重要领域",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0109",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "理论与计算化学",
+      "back": "定义:理论与计算化学是利用数学、物理模型及计算机模拟来研究化学体系的结构、性质和反应机理的学科。\n\n关键要素:量子化学计算、分子动力学模拟、统计力学、计算光谱学。\n\n应用:预测分子结构、反应路径设计、材料性能筛选、药物分子设计。\n\n关联:合成化学、催化化学、化学动态学",
+      "card_type": "concept",
+      "plan_task_id": "前沿化学",
+      "gold_cr_ids": [
+        "cr_105"
+      ],
+      "source_sentence": "围绕合成化学、催化化学、界面化学、理论与计算化学、化学测量与成像，以及化学动态学等现代化学研究的重要领域",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0110",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "化学测量与成像",
+      "back": "定义:化学测量与成像是指利用光谱、质谱、电化学、显微镜等技术对化学物质的组成、结构和空间分布进行定性和定量分析及可视化表征的学科领域。\n\n关键要素:高灵敏度检测、空间分辨率、实时动态监测、多模态成像。\n\n应用:公共安全预警（如爆炸物检测）、生物医学成像、环境污染物溯源、材料缺陷分析。\n\n关联:分析化学、化学动态学、界面化学",
+      "card_type": "concept",
+      "plan_task_id": "前沿化学",
+      "gold_cr_ids": [
+        "cr_106"
+      ],
+      "source_sentence": "围绕合成化学、催化化学、界面化学、理论与计算化学、化学测量与成像，以及化学动态学等现代化学研究的重要领域",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0111",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "化学动态学",
+      "back": "定义:化学动态学是研究化学反应过程中分子间能量传递、键的断裂与形成以及反应中间体瞬态行为的学科。\n\n关键要素:反应速率常数、过渡态、势能面、飞秒化学、分子反应动力学。\n\n应用:理解催化机理、燃烧过程模拟、大气化学中的光化学反应、超快光谱研究。\n\n关联:理论与计算化学、催化化学、化学测量与成像",
+      "card_type": "concept",
+      "plan_task_id": "前沿化学",
+      "gold_cr_ids": [
+        "cr_107"
+      ],
+      "source_sentence": "围绕合成化学、催化化学、界面化学、理论与计算化学、化学测量与成像，以及化学动态学等现代化学研究的重要领域",
+      "origin": "extracted"
+    },
+    {
+      "id": "chemistry_senior_0112",
+      "subject": "chemistry",
+      "grade_band": "senior",
+      "domain": "chemistry",
+      "front": "纳米化学",
+      "back": "定义:纳米化学是研究尺度在1-100纳米范围内的物质的制备、性质及应用的一门交叉学科。\n\n关键要素:量子尺寸效应、表面效应、小尺寸效应、纳米结构精确构筑、自组装。\n\n应用:纳米催化剂、纳米药物载体、量子点成像、纳米传感器。\n\n关联:超分子化学、界面化学、材料化学、化学测量与成像",
+      "card_type": "concept",
+      "plan_task_id": "前沿化学",
+      "gold_cr_ids": [
+        "cr_110"
+      ],
+      "source_sentence": "团簇、大分子、超分子和纳米结构的精确构筑和调控",
+      "origin": "extracted"
+    }
+  ]
+}

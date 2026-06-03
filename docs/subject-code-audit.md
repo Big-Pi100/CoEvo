@@ -336,3 +336,68 @@ DROP TABLE skipped_concepts;
 | 概念提取 | 不受影响（`extract_concepts` 已用英文代码） |
 | CP2 进度管理 | 不受影响（`learning_plans.domain` 已是英文） |
 | 用户可见变化 | 无（前端显示中文名不变，只是 API 底层改编码） |
+
+---
+
+## 九、实施完成状态（2026-06-01）
+
+**全部实施完成。** 以下是实际执行的改动对照：
+
+### Phase 0 — DB 迁移 ✅
+
+| 改动 | 状态 | 文件/位置 |
+|------|------|----------|
+| `cards` 表新增 `status` 列 (CHECK active/pending/skipped/archived) | ✅ | `main.rs` DDL 段 |
+| Phase N 迁移: domain/subject 中文→英文 | ✅ | `main.rs` Phase N 脚本 |
+| Phase N 迁移: DROP `skipped_concepts` | ✅ | `main.rs` Phase N 脚本 |
+| 备份 DB | ✅ | `data/coevo.db.bak.20260601` |
+
+### Phase 1 — API 层 ✅
+
+| 改动 | 状态 |
+|------|------|
+| `K12InitInput.subject` 改为英文代码 | ✅ |
+| `k12_init_handler` `Domain::from_chinese` → `Domain::from_str` | ✅ |
+| `UPDATE cards SET domain=?1` 错误语句删除 | ✅ |
+| `cards.domain` 写入改为 `domain_val.to_string()` (英文) | ✅ |
+| `reading_init_handler` 同理修复 | ✅ |
+| `plan_handler` 3 处 CHINESE_TO_ENGLISH 直取英文 | ✅ |
+| `curriculum_loader` 新增 `get_plan_by_key` / `get_cards_by_key` | ✅ |
+| `get_plan` / `get_cards` 兼容中英文入参 | ✅ |
+| `reading_loader` 去掉 CHINESE_TO_ENGLISH 依赖 | ✅ |
+| `pipeline_router` `from_chinese` 标记 `#[deprecated]` | ✅ |
+
+### Phase 3 — 前端 ✅
+
+| 改动 | 文件 |
+|------|------|
+| `_subjects` map key 中文→英文 | `home_screen.dart`, `k12_subject_screen.dart`, `reading_subject_screen.dart` |
+| 新增 `_subjectDisplayNames` 中文显示映射 | 同上 |
+| 颜色/图标 map key 同步英文 | `home_screen.dart` |
+| `achievements_screen.dart` 增加 `subjectDisplayName` | ✅ |
+
+### Phase 4 — 卡片状态重构 (skip 机制) ✅
+
+| 改动 | 状态 |
+|------|------|
+| `card_repository` 新增 `update_card_status` / `batch_update_status` / `insert_pending_card` | ✅ |
+| 删除 `skip_concept` 函数 | ✅ |
+| 3 个 skip handler 删除 → `PATCH /api/cards/status` | ✅ |
+| `batch_create` → `batch_status` | ✅ |
+| 概念提取后批量 INSERT pending 卡片 (ws.rs) | ✅ |
+| `concept_extractor` 删除 `skipped_fronts` 参数链 | ✅ |
+| `load_chat_context` 删除 `skipped_fronts` 查询 | ✅ |
+| 前端 `chat_client.dart` 删除旧 API，新增 `updateCardStatus` / `batchUpdateStatus` | ✅ |
+| 前端 `chat_concept_dialog`、`card_list_screen`、`review_screen` 适配 | ✅ |
+| 删除 `skipped_list_screen.dart` + `app.dart` 路由 | ✅ |
+| 23 处 SQL 查询加 `WHERE status='active'` | ✅ |
+
+### 验证结果
+
+| 检查项 | 结果 |
+|--------|------|
+| `cargo build --release` | ✅ 0 warnings |
+| `flutter analyze` (lib/) | ✅ 0 errors, 0 warnings |
+| 20 lib 测试 (card_engine + chat_engine + api_server) | ✅ 全部通过 |
+| e2e_card_pipeline (5 tests) | ✅ 全部通过 |
+| e2e_main_lifecycle (Phase 1 CP2 创建计划) | ✅ 通过 |

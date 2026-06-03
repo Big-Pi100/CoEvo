@@ -189,24 +189,6 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     turns
                 };
 
-                // ── 学科检测（首次消息） ──
-                // K12 模式：从 conversations 表读取 subject/grade_band
-                // 自由探索模式：无需任何课标约束
-                let routing_ctx = String::new();
-                if history.len() <= 1 {
-                    let k12_subject: Option<String> = {
-                        let conn = crate::db_pool::get_conn();
-                        conn.query_row(
-                            "SELECT subject FROM conversations WHERE id = ?1 AND subject IS NOT NULL",
-                            rusqlite::params![chat_req.conversation_id],
-                            |row| row.get(0),
-                        ).ok()
-                    };
-                    if k12_subject.is_some() {
-                        // K12 模式：计划上下文由 build_plan_context 提供
-                    }
-                }
-
                 // ── 查询学习计划，判定生命周期状态 + 管线 ──
                 let (system_prompt, plan_context) = {
                     let conn = crate::db_pool::get_conn();
@@ -238,7 +220,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         templates.free.clone()
                     };
                     // 将路由上下文合并到计划上下文中
-                    let full_ctx = if ctx.is_empty() { routing_ctx.clone() } else { format!("{}\n{}", ctx, routing_ctx) };
+                    let full_ctx = if ctx.is_empty() { String::new() } else { ctx.clone() };
                     (sp, full_ctx)
                 };
 
@@ -263,10 +245,13 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         for l in &lines { user_content.push_str(l); }
                     }
                 }
+                user_content.push_str(&format!("\n\n### 当前对话\n用户: {}", chat_req.message));
                 if !plan_context.is_empty() {
                     user_content.push_str(&plan_context);
                 }
-                user_content.push_str(&format!("\n\n### 当前对话\n用户: {}", chat_req.message));
+
+                // 记录 LLM 输入（供 e2e 测试捕获）
+                crate::plan_handler::log_llm_input(&system_prompt, &user_content);
 
                 // 后台流式生成 LLM 回复
                 let cfg = llm_config.clone();
@@ -393,15 +378,10 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     break;
                 }
 
-                // ── 代码层兜底：若 LLM 未处理回退请求，自动回退 ──
+                // ── 代码层兜底：若 LLM 未处理回退请求，自动回退（auto_revert 已迁移） ──
                 if !plan_updated && crate::plan_handler::check_revert_signals(&chat_req.message) {
-                    if let Some(_plan) = {
-                        let conn = crate::db_pool::get_conn();
-                        crate::plan_handler::auto_revert(&conn, &chat_req.conversation_id)
-                    } {
-                        plan_updated = true;
-                        tracing::info!("Auto-revert triggered by user message: {}", &chat_req.message[..chat_req.message.len().min(80)]);
-                    }
+                    plan_updated = true;
+                    tracing::info!("Revert signal detected: {}", &chat_req.message[..chat_req.message.len().min(80)]);
                 }
 
                 // 通知前端刷新计划
@@ -439,12 +419,8 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 );
 
                 // ❄️ ColdPath: 扔到后台 task，不阻塞消息接收
-                let _user_id = chat_req.user_id.clone();
-                let _msg = chat_req.message.clone();
-                let _config = llm_config.clone();
                 let cold_tx = cold_tx.clone();
                 let cold_turn = current_turn;
-                let _history_clone = history.clone();
                 // 获取 domain 用于概念提取管线路由
                 let conv_id = &chat_req.conversation_id;
                 let (extract_domain, _, extract_plan_ctx) = {
@@ -453,18 +429,19 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 };
                 // CP2 需要 final_reply，但 CP1 spawn 会 move 走它，提前 clone
                 let cp2_reply = final_reply.clone();
-                // ❄️ ColdPath 1: 概念提取 — 仅在已有 plan 时才运行
-                // 无 plan 时提取的概念无法正确绑定到 review tab，浪费 LLM 调用
-                if !extract_domain.is_empty() {
-                    let user_id = chat_req.user_id.clone();
-                    let msg = chat_req.message.clone();
-                    let config = llm_config.clone();
-                    let cold_tx = cold_tx.clone();
-                    let cold_turn = current_turn;
-                    let history_clone = history.clone();
-                    let ctx = extract_plan_ctx.clone();
-                    let fr = final_reply.clone();
-                    tokio::spawn(async move {
+                // ❄️ ColdPath 1: 概念提取 — 每轮对话后都运行（不再依赖 plan 是否存在）
+                // 卡片通过 conversation_id 关联到会话，plan_type/plan_id 可选
+                let user_id = chat_req.user_id.clone();
+                let msg = chat_req.message.clone();
+                let config = llm_config.clone();
+                let cold_tx = cold_tx.clone();
+                let cold_turn = current_turn;
+                let history_clone = history.clone();
+                let ctx = extract_plan_ctx.clone();
+                let ed = extract_domain.clone();
+                let fr = final_reply.clone();
+                let conv_id_cp1 = chat_req.conversation_id.clone();
+                tokio::spawn(async move {
                     // Bug 1 修复：确保任何 DB 错误路径都向 cold_tx 发送空结果，
                     // 避免 BTreeMap 产生空洞导致后续 candidates 永久阻塞。
                     // 注意：rusqlite Connection/Statement 不是 Send，
@@ -507,7 +484,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         chat_engine::concept_extractor::extract_concepts(
                             &user_id, &msg, &fr,
                             &existing_fronts, &config,
-                            &history_clone, &extract_domain, &ctx,
+                            &history_clone, &ed, &ctx,
                         ),
                     ).await {
                         Ok(e) => e,
@@ -521,14 +498,19 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     // 概念提取 → 批量入库 (status='pending')，返回 card_id 供前端 PATCH
                     let pending_candidates: Vec<serde_json::Value> = {
                         let conn = crate::db_pool::get_conn();
+                        // 查询 plan_id
+                        let cp1_plan_id: String = conn.query_row(
+                            "SELECT id FROM conversation_plans WHERE conversation_id = ?1 LIMIT 1",
+                            rusqlite::params![&conv_id_cp1], |r| r.get(0),
+                        ).unwrap_or_default();
                         extraction.candidates.iter().map(|c| {
                             let card_id = format!("pend_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap());
                             let now = chrono::Utc::now().timestamp();
-                            // 写入 cards (status='pending') + card_memory
+                            // 写入 cards（带 conversation_id + plan_type + plan_id）
                             let _ = conn.execute(
-                                "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, created_at, status)
-                                 VALUES (?1, ?2, ?3, 'concept', ?4, ?5, ?6, ?7, 'pending')",
-                                rusqlite::params![card_id, user_id, c.domain, c.front, c.back, c.source_sentence, now],
+                                "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, status, plan_type, plan_id)
+                                 VALUES (?1, ?2, ?3, 'concept', ?4, ?5, ?6, ?7, ?8, 'pending', 'conversation_plans', ?9)",
+                                rusqlite::params![card_id, user_id, c.domain, c.front, c.back, c.source_sentence, conv_id_cp1, now, cp1_plan_id],
                             );
                             let _ = conn.execute(
                                 "INSERT OR IGNORE INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
@@ -541,10 +523,6 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     };
                     let _ = cold_tx.send((cold_turn, pending_candidates)).await;
                 });
-                } else {
-                    // 无 plan → 发送空结果避免空洞
-                    let _ = cold_tx.send((cold_turn, vec![])).await;
-                }  // end if !extract_domain.is_empty()
 
                 // ❄️ ColdPath 2: 计划进度分析（轻量，每轮检测）
                 // 每轮判断 teacher 最后一轮回复（final_reply），仅单轮 LLM 调用：

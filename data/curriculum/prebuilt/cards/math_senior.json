@@ -1,0 +1,1774 @@
+{
+  "cards": [
+    {
+      "id": "math_senior_0000",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "元素与集合的关系（属于关系）",
+      "back": "定义:元素与集合之间最基本的关系是“属于”关系，即元素属于集合或不属于集合。需区分元素与由该元素组成的单元素集合，例如元素A与集合{A}不同，有 A ∈ {A}。\n\n关键要素:元素（具体对象）、集合（具有共同属性的对象整体）、属于符号∈、不属于符号∉。\n\n应用:用集合语言描述数学对象，明确元素与集合的归属，避免混淆元素与单元素集合。\n\n关联:集合表示法、集合的基本关系、逻辑用语。",
+      "card_type": "concept",
+      "plan_task_id": "集合的基本概念与运算",
+      "gold_cr_ids": [
+        "cr_002"
+      ],
+      "source_sentence": "应引导学生理解属于关系是集合的基本关系，了解元素 A 与由元素 A 组成的集合 {A} 的差异，即 A ∈ {A}， A 与 {A} 不相同。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0001",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "数学语言的三种形式",
+      "back": "定义:数学研究对象可以用三种语言表达：自然语言（日常用语）、图形语言（图像、图表）、符号语言（数学符号、公式）。三种语言可以相互转换。\n\n关键要素:自然语言（如文字描述）、图形语言（如函数图象、集合Venn图）、符号语言（如∀、∃、∪、∩等）。\n\n应用:用多种方式表达同一数学对象，便于理解、交流与推理。\n\n关联:集合语言、函数表示、逻辑表达。",
+      "card_type": "concept",
+      "plan_task_id": "集合的基本概念与运算",
+      "gold_cr_ids": [
+        "cr_003"
+      ],
+      "source_sentence": "初步学会用三种语言（自然语言、图形语言、符号语言）表达数学研究对象，并能进行转换。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0002",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "集合的基本关系与基本运算",
+      "back": "定义:集合的基本关系包括包含（子集）、相等、真子集等；基本运算包括并集（∪）、交集（∩）、补集（∁）等。这些是集合论的核心内容。\n\n关键要素:子集（⊆）、真子集（⊂）、相等（=）；并集、交集、补集的运算规则。\n\n应用:用集合语言描述数学对象的范围与关系，进行逻辑推理与运算。\n\n关联:元素与集合的关系、常用逻辑用语、函数定义域与值域。",
+      "card_type": "concept",
+      "plan_task_id": "集合的基本概念与运算",
+      "gold_cr_ids": [
+        "cr_004"
+      ],
+      "source_sentence": "掌握集合的基本关系与基本运算。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0003",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "常用逻辑用语",
+      "back": "定义:常用逻辑用语包括命题、充分条件、必要条件、充要条件、全称量词、存在量词等，用于数学表达、论证和交流。\n\n关键要素:命题（真或假）、充分条件（p⇒q）、必要条件（q⇒p）、充要条件（p⇔q）、全称量词（∀）、存在量词（∃）。\n\n应用:用逻辑用语严谨表达数学结论，进行推理证明，判断条件关系。\n\n关联:集合语言、数学论证、不等式性质、函数性质。",
+      "card_type": "concept",
+      "plan_task_id": "集合的基本概念与运算",
+      "gold_cr_ids": [
+        "cr_005"
+      ],
+      "source_sentence": "能够借助常用逻辑用语进行数学表达、论证和交流，体会常用逻辑用语在数学中的作用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0004",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "一元二次不等式与一元二次函数、方程的联系",
+      "back": "定义:通过一元二次函数的图象，可以了解一元二次不等式的解集与相应一元二次方程的根之间的关系。具体来说，一元二次函数图象与x轴的交点对应一元二次方程的根，图象在x轴上方或下方的部分对应不等式的解集。\n\n关键要素:一元二次函数（如 y=ax²+bx+c）、一元二次方程（ax²+bx+c=0）、一元二次不等式（ax²+bx+c>0 或 <0）。\n\n应用:利用函数图象求解一元二次不等式，建立函数、方程、不等式之间的转化关系。\n\n关联:一元二次函数、方程、不等式、数形结合思想。",
+      "card_type": "concept",
+      "plan_task_id": "一元二次不等式及其解法",
+      "gold_cr_ids": [
+        "cr_001"
+      ],
+      "source_sentence": "借助一元二次函数的图象，了解一元二次不等式与相应函数、方程的联系（参见案例1）。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0005",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "等式与不等式的性质",
+      "back": "定义:等式性质包括等式的对称性、传递性、加减乘除同向保等性等；不等式性质包括不等式的传递性、加减乘除同向保号性、乘除负数反向保号性等。类比等式与不等式可以发现共性与差异。\n\n关键要素:等式性质（如 a=b ⇒ a+c=b+c）、不等式性质（如 a>b ⇒ a+c>b+c；a>b 且 c>0 ⇒ ac>bc）。\n\n应用:化简、求解方程与不等式，进行代数推理。\n\n关联:一元二次方程、一元二次不等式、函数观点。",
+      "card_type": "concept",
+      "plan_task_id": "一元二次不等式及其解法",
+      "gold_cr_ids": [
+        "cr_006"
+      ],
+      "source_sentence": "在相等关系与不等关系的教学中，应引导学生通过类比学过的等式与不等式的性质，进一步探索等式与不等式的共性与差异。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0006",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "函数与不等式（利用函数性质解不等式）",
+      "back": "定义：利用函数的单调性、奇偶性、最值等性质，将不等式问题转化为函数值比较或图象位置关系，从而求解不等式。\n\n关键要素：函数图象、单调性、最值、定义域、不等式等价转换。\n\n应用：解代数不等式、三角不等式、指数对数不等式。\n\n关联：函数与方程、函数的单调性、基本函数类。",
+      "card_type": "concept",
+      "plan_task_id": "一元二次不等式及其解法",
+      "gold_cr_ids": [
+        "cr_036"
+      ],
+      "source_sentence": "能够从函数观点认识不等式，并运用函数的性质解不等式。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0007",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "函数概念",
+      "back": "定义:函数是现代数学最基本的概念，是描述客观世界中变量关系和规律的最为基本的数学语言和工具。给定两个非空数集A和B，按照某种对应关系f，对于A中的每一个数x，在B中都有唯一确定的数y与之对应，则称f:A→B为函数。\n\n关键要素:定义域、值域、对应关系；变量关系；唯一性。\n\n应用:描述现实世界的变化规律，贯穿高中数学课程，用于方程、不等式、数列、导数等。\n\n关联:一元二次函数、方程与不等式、函数观点、数形结合。",
+      "card_type": "concept",
+      "plan_task_id": "函数的概念与表示",
+      "gold_cr_ids": [
+        "cr_007"
+      ],
+      "source_sentence": "函数是现代数学最基本的概念，是描述客观世界中变量关系和规律的最为基本的数学语言和工具，在解决实际问题中发挥重要作用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0008",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "函数概念（对应关系定义）",
+      "back": "定义：函数是两个变量之间的依赖关系，也是实数集合之间的对应关系，还可以通过函数图象的几何直观来理解。\n\n关键要素：变量依赖、集合对应、几何直观、符号表达与抽象定义。\n\n应用：用于刻画实际问题中的变量关系，构建数学模型。\n\n关联：函数模型、数学语言的三种形式、函数的单调性、奇偶性等性质。",
+      "card_type": "concept",
+      "plan_task_id": "函数的概念与表示",
+      "gold_cr_ids": [
+        "cr_028"
+      ],
+      "source_sentence": "能够从两个变量之间的依赖关系、实数集合之间的对应关系、函数图象的几何直观等多个角度，理解函数的意义与数学表达；理解函数符号表达与抽象定义之间的关联，知道函数抽象概念的意义。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0009",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "几何与代数的融合（数形结合）",
+      "back": "定义：几何直观与代数运算相互结合，通过形与数的联系加强数学理解，是高中数学课程的主线之一。\n\n关键要素：几何直观、代数运算、数形结合、整体性理解。\n\n应用：解析几何、向量、函数图象分析、不等式证明等。\n\n关联：函数图象、向量、三角函数、解析几何。",
+      "card_type": "concept",
+      "plan_task_id": "函数的概念与表示",
+      "gold_cr_ids": [
+        "cr_037"
+      ],
+      "source_sentence": "几何与代数是高中数学课程的主线之一。在必修课程与选择性必修课程中，突出几何直观与代数运算之间的融合，即通过形与数的结合，感悟数学知识之间的关联，加强对数学整体性的理解。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0010",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "函数的单调性",
+      "back": "定义：函数在定义域内某区间上，当自变量增大时，函数值也增大（或减小）的性质，称为单调递增（或单调递减）。\n\n关键要素：区间、自变量变化方向、函数值变化方向、符号语言刻画。\n\n应用：判断函数变化趋势、求极值、解不等式、研究函数图象。\n\n关联：函数的最大（小）值、函数的奇偶性、周期性、基本函数类。",
+      "card_type": "concept",
+      "plan_task_id": "函数的性质",
+      "gold_cr_ids": [
+        "cr_029"
+      ],
+      "source_sentence": "能够理解函数的单调性、最大（小）值，了解函数的奇偶性、周期性；掌握一些基本函数类（一元一次函数、反比例函数、一元二次函数、幂函数、指数函数、对数函数、三角函数等）的背景、概念和性质。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0011",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "函数的奇偶性（对称性）",
+      "back": "定义：函数满足f(-x)=f(x)时为偶函数，图象关于y轴对称；满足f(-x)=-f(x)时为奇函数，图象关于原点对称。\n\n关键要素：定义域对称性、自变量取相反数时函数值的关系、图象对称性。\n\n应用：简化函数研究、判断对称性、辅助求值。\n\n关联：函数的单调性、周期性、三角函数的奇偶性。",
+      "card_type": "concept",
+      "plan_task_id": "函数的性质",
+      "gold_cr_ids": [
+        "cr_030"
+      ],
+      "source_sentence": "通过梳理函数的单调性、周期性、奇偶性（对称性）、最大（小）值等，认识函数的整体性质。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0012",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "函数的最大（小）值",
+      "back": "定义：函数在定义域内所有函数值中的最大者称为最大值，最小者称为最小值。\n\n关键要素：定义域、函数值比较、极值点与端点、单调性关系。\n\n应用：优化问题、实际模型中的最值求解。\n\n关联：函数的单调性、函数零点存在定理、基本函数类的最值。",
+      "card_type": "concept",
+      "plan_task_id": "函数的性质",
+      "gold_cr_ids": [
+        "cr_031"
+      ],
+      "source_sentence": "能够理解函数的单调性、最大（小）值，了解函数的奇偶性、周期性；掌握一些基本函数类（一元一次函数、反比例函数、一元二次函数、幂函数、指数函数、对数函数、三角函数等）的背景、概念和性质。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0013",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "函数零点与方程解的关系",
+      "back": "定义:函数f(x)的零点就是方程f(x)=0的实数解，即函数图象与x轴交点的横坐标。\n\n关键要素:零点存在性、解的个数。\n\n应用:求方程近似解的基础。\n\n关联:零点存在定理、二分法",
+      "card_type": "concept",
+      "plan_task_id": "函数与方程",
+      "gold_cr_ids": [
+        "cr_023"
+      ],
+      "source_sentence": "结合学过的函数图象，了解函数零点与方程解的关系。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0014",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "函数零点存在定理",
+      "back": "定义:如果函数y=f(x)在区间[a,b]上的图象是连续不断的一条曲线，并且有f(a)·f(b)<0，那么函数y=f(x)在区间(a,b)内有零点，即存在c∈(a,b)，使得f(c)=0。\n\n关键要素:连续性、端点函数值异号。\n\n应用:判断零点存在性，为二分法提供理论依据。\n\n关联:二分法、方程近似解",
+      "card_type": "concept",
+      "plan_task_id": "函数与方程",
+      "gold_cr_ids": [
+        "cr_024"
+      ],
+      "source_sentence": "结合具体连续函数及其图象的特点，了解函数零点存在定理，探索用二分法求方程近似解的思路并会画程序框图。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0015",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "二分法",
+      "back": "定义:通过不断取中点、缩小区间，直到区间长度足够小，从而获得方程近似解的方法。\n\n关键要素:连续函数、零点存在定理、中值定理思想、迭代停止条件。\n\n应用:求方程近似解（如高次方程、超越方程）。\n\n关联:零点存在定理、程序框图",
+      "card_type": "concept",
+      "plan_task_id": "函数与方程",
+      "gold_cr_ids": [
+        "cr_025"
+      ],
+      "source_sentence": "探索用二分法求方程近似解的思路并会画程序框图，能借助计算工具用二分法求方程近似解。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0016",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "函数模型",
+      "back": "定义:用数学语言（如函数解析式、图象）描述客观世界中变量之间关系与规律的模型。\n\n关键要素:变量关系、函数类型（一次、二次、指数、对数等）。\n\n应用:解决实际问题，如增长、衰减、周期现象。\n\n关联:数学模型、函数应用",
+      "card_type": "concept",
+      "plan_task_id": "函数与方程",
+      "gold_cr_ids": [
+        "cr_026"
+      ],
+      "source_sentence": "理解函数模型是描述客观世界中变量关系和规律的重要数学语言和工具。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0017",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "函数与方程（函数的零点）",
+      "back": "定义：函数f(x)的零点即方程f(x)=0的解，从函数观点认识方程，可通过函数性质求方程的近似解（如二分法）。\n\n关键要素：零点存在定理、函数图象与x轴交点、二分法、近似解。\n\n应用：解方程、分析函数性质、实际问题的数值求解。\n\n关联：函数零点存在定理、二分法、函数与不等式。",
+      "card_type": "concept",
+      "plan_task_id": "函数与方程",
+      "gold_cr_ids": [
+        "cr_035"
+      ],
+      "source_sentence": "能够从函数观点认识方程，并运用函数的性质求方程的近似解。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0018",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "对数增长、直线上升、指数爆炸",
+      "back": "定义:对数增长指增长速率逐渐减慢（如y=logx）；直线上升指匀速增长（如y=kx）；指数爆炸指增长速率急剧加快（如y=a^x,a>1）。\n\n关键要素:增长速度差异、实际背景。\n\n应用:选择合适模型描述现实问题。\n\n关联:指数函数、对数函数、一次函数",
+      "card_type": "concept",
+      "plan_task_id": "指数函数与对数函数",
+      "gold_cr_ids": [
+        "cr_027"
+      ],
+      "source_sentence": "结合现实情境中的具体问题，利用计算工具，比较对数函数、一元一次函数、指数函数增长速度的差异，理解“对数增长”“直线上升”“指数爆炸”等术语的现实含义。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0019",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "指数函数的运算法则与变化规律",
+      "back": "定义：指数函数形如y=a^x (a>0且a≠1)，其运算法则包括同底数幂的乘除、幂的乘方、积的乘方等；变化规律体现为当a>1时函数递增，0<a<1时递减，且恒过点(0,1)。\n\n关键要素：底数a、指数从整数到实数的拓展、单调性、过定点。\n\n应用：描述增长或衰减过程（如人口、放射性衰变），与对数函数互为反函数。\n\n关联：对数函数、反函数、幂函数、指数型增长模型。",
+      "card_type": "concept",
+      "plan_task_id": "指数函数与对数函数",
+      "gold_cr_ids": [
+        "cr_032"
+      ],
+      "source_sentence": "指数函数的教学，应关注指数函数的运算法则和变化规律，引导学生经历从整数指数幂到有理数指数幂、再到实数指数幂的拓展过程，掌握指数函数的运算法则和变化规律。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0020",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "反函数（指数函数与对数函数互为反函数）",
+      "back": "定义：如果两个函数y=f(x)和y=g(x)满足对任意x∈定义域，有f(g(x))=x且g(f(x))=x，则称g为f的反函数。指数函数y=a^x与对数函数y=log_a x互为反函数。\n\n关键要素：对应关系互逆、定义域与值域互换、图象关于直线y=x对称。\n\n应用：求解指数或对数方程，转化计算，理解函数间关系。\n\n关联：指数函数、对数函数、函数概念。",
+      "card_type": "concept",
+      "plan_task_id": "指数函数与对数函数",
+      "gold_cr_ids": [
+        "cr_033"
+      ],
+      "source_sentence": "对数函数的教学，应通过比较同底数的指数函数和对数函数（例如，y=2^x和y=log₂x），认识它们互为反函数。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0021",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "任意角",
+      "back": "定义:一条射线绕其端点旋转形成的图形，包括正角、负角和零角。\n\n关键要素:旋转方向（逆时针为正，顺时针为负）、旋转量。\n\n应用:推广角的范围，为弧度制和三角函数提供基础。\n\n关联:弧度制、三角函数",
+      "card_type": "concept",
+      "plan_task_id": "任意角、弧度制与三角函数定义",
+      "gold_cr_ids": [
+        "cr_008"
+      ],
+      "source_sentence": "了解任意角的概念和弧度制，能进行弧度与角度的互化，体会引入弧度制的必要性。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0022",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "弧度制",
+      "back": "定义:用弧长与半径之比度量角的大小的制度，单位是弧度（rad）。\n\n关键要素:1弧度=长度等于半径的弧所对的圆心角，π rad=180°。\n\n应用:简化三角函数微积分运算，使公式自然。\n\n关联:任意角、三角函数",
+      "card_type": "concept",
+      "plan_task_id": "任意角、弧度制与三角函数定义",
+      "gold_cr_ids": [
+        "cr_009"
+      ],
+      "source_sentence": "了解任意角的概念和弧度制，能进行弧度与角度的互化，体会引入弧度制的必要性。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0023",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "三角函数（正弦、余弦、正切）的定义",
+      "back": "定义:在单位圆上，角α的终边与单位圆交于点P(x,y)，则sinα=y，cosα=x，tanα=y/x（x≠0）。\n\n关键要素:单位圆、终边、坐标对应。\n\n应用:建立一般三角函数的概念，研究周期性、奇偶性等性质。\n\n关联:单位圆、任意角、诱导公式",
+      "card_type": "concept",
+      "plan_task_id": "任意角、弧度制与三角函数定义",
+      "gold_cr_ids": [
+        "cr_010"
+      ],
+      "source_sentence": "借助单位圆理解三角函数（正弦、余弦、正切）的定义，能画出这些三角函数的图象。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0024",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "三角函数的周期性",
+      "back": "定义:三角函数值重复出现的规律，正弦、余弦的最小正周期为2π，正切的最小正周期为π。\n\n关键要素:周期函数定义、最小正周期。\n\n应用:研究函数性质，简化计算。\n\n关联:正弦函数、余弦函数、正切函数",
+      "card_type": "concept",
+      "plan_task_id": "单位圆、周期性、诱导公式与同角关系",
+      "gold_cr_ids": [
+        "cr_011"
+      ],
+      "source_sentence": "了解三角函数的周期性、单调性、奇偶性、最大（小）值。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0025",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "诱导公式",
+      "back": "定义:利用单位圆的对称性，由三角函数定义推导出的角α±π/2、α±π的正弦、余弦、正切公式。\n\n关键要素:对称性、奇偶性、公式组（如sin(π-α)=sinα等）。\n\n应用:简化任意角的三角函数计算。\n\n关联:单位圆、三角函数定义",
+      "card_type": "concept",
+      "plan_task_id": "单位圆、周期性、诱导公式与同角关系",
+      "gold_cr_ids": [
+        "cr_012"
+      ],
+      "source_sentence": "借助单位圆的对称性，利用定义推导出诱导公式（α±π/2，α±π的正弦、余弦、正切）。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0026",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "同角三角函数的基本关系式",
+      "back": "定义:对任意角x，有sin²x+cos²x=1，且tanx=sinx/cosx（cosx≠0）。\n\n关键要素:平方关系、商数关系。\n\n应用:化简三角表达式、证明恒等式、解三角函数方程。\n\n关联:三角函数定义、诱导公式、三角恒等变换",
+      "card_type": "concept",
+      "plan_task_id": "单位圆、周期性、诱导公式与同角关系",
+      "gold_cr_ids": [
+        "cr_017"
+      ],
+      "source_sentence": "理解同角三角函数的基本关系式：sin²x+cos²x=1，sinx/cosx=tanx。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0027",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "单位圆与三角函数性质",
+      "back": "定义：单位圆是半径为1、圆心在原点的圆，借助单位圆可直观定义三角函数（正弦、余弦、正切等），并探索其周期性、对称性、单调性等性质。\n\n关键要素：单位圆、角度与弧对应、三角函数值几何表示、性质探索。\n\n应用：推导三角恒等式、解三角方程、研究波动现象。\n\n关联：三角函数定义、弧度制、诱导公式、两角和与差公式、三角恒等变换。",
+      "card_type": "concept",
+      "plan_task_id": "单位圆、周期性、诱导公式与同角关系",
+      "gold_cr_ids": [
+        "cr_034"
+      ],
+      "source_sentence": "三角函数的教学，应发挥单位圆的作用，引导学生结合实际情境，借助单位圆的直观，探索三角函数的有关性质。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0028",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "正弦函数在[0,2π]上的性质",
+      "back": "定义:正弦函数y=sinx在闭区间[0,2π]上的单调性、奇偶性、最值等。\n\n关键要素:递增区间[0,π/2]和[3π/2,2π]？实际应为[0,π/2]增，[π/2,3π/2]减，[3π/2,2π]增；最大值1，最小值-1；奇函数（但区间不对称）。\n\n应用:解三角方程、画图、建模。\n\n关联:余弦函数、正切函数、三角函数图象",
+      "card_type": "concept",
+      "plan_task_id": "正弦、余弦、正切函数的性质",
+      "gold_cr_ids": [
+        "cr_013"
+      ],
+      "source_sentence": "借助图象理解正弦函数、余弦函数在[0,2π]上，正切函数在(-π/2,π/2)上的性质。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0029",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "余弦函数在[0,2π]上的性质",
+      "back": "定义:余弦函数y=cosx在闭区间[0,2π]上的单调性、奇偶性、最值等。\n\n关键要素:递减区间[0,π]，递增区间[π,2π]；最大值1，最小值-1；偶函数。\n\n应用:同正弦函数。\n\n关联:正弦函数、三角函数图象",
+      "card_type": "concept",
+      "plan_task_id": "正弦、余弦、正切函数的性质",
+      "gold_cr_ids": [
+        "cr_014"
+      ],
+      "source_sentence": "借助图象理解正弦函数、余弦函数在[0,2π]上，正切函数在(-π/2,π/2)上的性质。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0030",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "正切函数在(-π/2,π/2)上的性质",
+      "back": "定义:正切函数y=tanx在开区间(-π/2,π/2)上的单调性、奇偶性等。\n\n关键要素:单调递增，奇函数，无最值，有渐近线x=±π/2。\n\n应用:研究周期性、解三角方程。\n\n关联:正弦、余弦、三角函数图象",
+      "card_type": "concept",
+      "plan_task_id": "正弦、余弦、正切函数的性质",
+      "gold_cr_ids": [
+        "cr_015"
+      ],
+      "source_sentence": "借助图象理解正弦函数、余弦函数在[0,2π]上，正切函数在(-π/2,π/2)上的性质。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0031",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "函数y=Asin(ωx+φ)的参数意义",
+      "back": "定义:参数A为振幅（最大位移），ω为角频率（决定周期T=2π/|ω|），φ为初相（相位偏移）。\n\n关键要素:振幅、周期、相位、图象变换（平移、伸缩）。\n\n应用:描述简谐振动、交流电等周期现象。\n\n关联:三角函数图象变换、数学模型",
+      "card_type": "concept",
+      "plan_task_id": "正弦、余弦、正切函数的性质",
+      "gold_cr_ids": [
+        "cr_016"
+      ],
+      "source_sentence": "结合具体实例，了解y=Asin(ωx+φ)的实际意义；能借助图象理解参数ω，φ，A的意义，了解参数的变化对函数图象的影响。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0032",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "两角差余弦公式",
+      "back": "定义:cos(α-β)=cosαcosβ+sinαsinβ。\n\n关键要素:推导过程（基于向量或单位圆），公式结构。\n\n应用:作为其他和差公式的基础。\n\n关联:两角和与差公式、二倍角公式",
+      "card_type": "concept",
+      "plan_task_id": "三角恒等变换",
+      "gold_cr_ids": [
+        "cr_018"
+      ],
+      "source_sentence": "经历推导两角差余弦公式的过程，知道两角差余弦公式的意义。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0033",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "两角和与差的正弦、余弦、正切公式",
+      "back": "定义:sin(α±β)=sinαcosβ±cosαsinβ；cos(α±β)=cosαcosβ∓sinαsinβ；tan(α±β)=(tanα±tanβ)/(1∓tanαtanβ)。\n\n关键要素:由两角差余弦推导，符号规律。\n\n应用:恒等变换、化简求值。\n\n关联:两角差余弦、二倍角公式",
+      "card_type": "concept",
+      "plan_task_id": "三角恒等变换",
+      "gold_cr_ids": [
+        "cr_019"
+      ],
+      "source_sentence": "能从两角差的余弦公式推导出两角和与差的正弦、余弦、正切公式，二倍角的正弦、余弦、正切公式，了解它们的内在联系。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0034",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "二倍角公式",
+      "back": "定义:sin2α=2sinαcosα；cos2α=cos²α-sin²α=2cos²α-1=1-2sin²α；tan2α=2tanα/(1-tan²α)。\n\n关键要素:由和角公式令β=α得到。\n\n应用:降幂、化简、求值。\n\n关联:和差公式、半角公式",
+      "card_type": "concept",
+      "plan_task_id": "三角恒等变换",
+      "gold_cr_ids": [
+        "cr_020"
+      ],
+      "source_sentence": "能从两角差的余弦公式推导出两角和与差的正弦、余弦、正切公式，二倍角的正弦、余弦、正切公式，了解它们的内在联系。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0035",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "积化和差与和差化积公式",
+      "back": "定义:积化和差：sinαcosβ=[sin(α+β)+sin(α-β)]/2等；和差化积：sinα+sinβ=2sin[(α+β)/2]cos[(α-β)/2]等。\n\n关键要素:由和差公式推导，不要求记忆但可推导。\n\n应用:简化三角式、解三角形。\n\n关联:两角和差公式、二倍角公式",
+      "card_type": "concept",
+      "plan_task_id": "三角恒等变换",
+      "gold_cr_ids": [
+        "cr_021"
+      ],
+      "source_sentence": "能运用上述公式进行简单的恒等变换（包括推导出积化和差、和差化积、半角公式，这三组公式不要求记忆）。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0036",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "半角公式",
+      "back": "定义:sin(α/2)=±√[(1-cosα)/2]；cos(α/2)=±√[(1+cosα)/2]；tan(α/2)=±√[(1-cosα)/(1+cosα)]=sinα/(1+cosα)=(1-cosα)/sinα。\n\n关键要素:由二倍角公式逆推，符号由α/2所在象限决定。\n\n应用:降次、求值。\n\n关联:二倍角公式、万能公式",
+      "card_type": "concept",
+      "plan_task_id": "三角恒等变换",
+      "gold_cr_ids": [
+        "cr_022"
+      ],
+      "source_sentence": "能运用上述公式进行简单的恒等变换（包括推导出积化和差、和差化积、半角公式，这三组公式不要求记忆）。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0037",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "基本立体图形的结构特征",
+      "back": "定义:柱、锥、台、球及简单组合体的结构特征。\n\n关键要素:能运用这些特征描述现实生活中简单物体的结构。\n\n应用:观察空间图形、识别立体图形。\n\n关联:柱、锥、台、球、简单组合体",
+      "card_type": "concept",
+      "plan_task_id": "空间几何体的结构与度量",
+      "gold_cr_ids": [
+        "cr_038"
+      ],
+      "source_sentence": "利用实物、计算机软件等观察空间图形，认识柱、锥、台、球及简单组合体的结构特征，能运用这些特征描述现实生活中简单物体的结构。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0038",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "柱、锥、台、球的表面积和体积公式",
+      "back": "定义:球、棱柱、棱锥、棱台的表面积和体积的计算公式。\n\n关键要素:包括球、棱柱、棱锥、棱台的表面积和体积公式。\n\n应用:能用公式解决简单的实际问题。\n\n关联:柱、锥、台、球、表面积、体积",
+      "card_type": "concept",
+      "plan_task_id": "空间几何体的结构与度量",
+      "gold_cr_ids": [
+        "cr_039"
+      ],
+      "source_sentence": "知道球、棱柱、棱锥、棱台的表面积和体积的计算公式，能用公式解决简单的实际问题。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0039",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "斜二测法",
+      "back": "定义:一种画空间图形直观图的方法。\n\n关键要素:用斜二测法画出简单空间图形（长方体、球、圆柱、圆锥、棱柱及其简单组合）的直观图。\n\n应用:绘制立体图形的直观图。\n\n关联:直观图、空间图形",
+      "card_type": "concept",
+      "plan_task_id": "空间几何体的结构与度量",
+      "gold_cr_ids": [
+        "cr_040"
+      ],
+      "source_sentence": "能用斜二测法画出简单空间图形（长方体、球、圆柱、圆锥、棱柱及其简单组合）的直观图。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0040",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "基本事实1",
+      "back": "定义:过不在一条直线上的三个点，有且只有一个平面。\n\n关键要素:三点不共线确定唯一平面。\n\n应用:确定平面、几何证明。\n\n关联:平面、点、直线",
+      "card_type": "concept",
+      "plan_task_id": "点线面位置关系的基本事实",
+      "gold_cr_ids": [
+        "cr_041"
+      ],
+      "source_sentence": "基本事实1：过不在一条直线上的三个点，有且只有一个平面。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0041",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "基本事实2",
+      "back": "定义:如果一条直线上的两个点在一个平面内，那么这条直线在这个平面内。\n\n关键要素:直线上两点在平面内则整条直线在平面内。\n\n应用:判断直线在平面内。\n\n关联:直线、平面",
+      "card_type": "concept",
+      "plan_task_id": "点线面位置关系的基本事实",
+      "gold_cr_ids": [
+        "cr_042"
+      ],
+      "source_sentence": "基本事实2：如果一条直线上的两个点在一个平面内，那么这条直线在这个平面内。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0042",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "基本事实3",
+      "back": "定义:如果两个不重合的平面有一个公共点，那么它们有且只有一条过该点的公共直线。\n\n关键要素:两个平面相交于一条直线。\n\n应用:面面交线性质。\n\n关联:平面、交线、公共点",
+      "card_type": "concept",
+      "plan_task_id": "点线面位置关系的基本事实",
+      "gold_cr_ids": [
+        "cr_043"
+      ],
+      "source_sentence": "基本事实3：如果两个不重合的平面有一个公共点，那么它们有且只有一条过该点的公共直线。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0043",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "基本事实4",
+      "back": "定义:平行于同一条直线的两条直线平行。\n\n关键要素:平行线的传递性。\n\n应用:证明线线平行。\n\n关联:平行线、传递性",
+      "card_type": "concept",
+      "plan_task_id": "点线面位置关系的基本事实",
+      "gold_cr_ids": [
+        "cr_044"
+      ],
+      "source_sentence": "基本事实4：平行于同一条直线的两条直线平行。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0044",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "空间等角定理",
+      "back": "定义:如果空间中两个角的两条边分别对应平行，那么这两个角相等或互补。\n\n关键要素:两边对应平行，角相等或互补。\n\n应用:判断空间角的关系。\n\n关联:角、平行",
+      "card_type": "concept",
+      "plan_task_id": "点线面位置关系的基本事实",
+      "gold_cr_ids": [
+        "cr_045"
+      ],
+      "source_sentence": "定理：如果空间中两个角的两条边分别对应平行，那么这两个角相等或互补。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0045",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "直线与平面平行的判定定理",
+      "back": "定义:如果平面外一条直线与此平面内的一条直线平行，那么该直线与此平面平行。\n\n关键要素:线线平行推出线面平行。\n\n应用:证明线面平行。\n\n关联:线线平行、线面平行",
+      "card_type": "concept",
+      "plan_task_id": "平行与垂直的判定定理",
+      "gold_cr_ids": [
+        "cr_050"
+      ],
+      "source_sentence": "如果平面外一条直线与此平面内的一条直线平行，那么该直线与此平面平行。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0046",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "两个平面平行的判定定理",
+      "back": "定义:如果一个平面内的两条相交直线与另一个平面平行，那么这两个平面平行。\n\n关键要素:面内两相交直线平行于另一面则两面平行。\n\n应用:证明面面平行。\n\n关联:面面平行、线面平行",
+      "card_type": "concept",
+      "plan_task_id": "平行与垂直的判定定理",
+      "gold_cr_ids": [
+        "cr_051"
+      ],
+      "source_sentence": "如果一个平面内的两条相交直线与另一个平面平行，那么这两个平面平行。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0047",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "直线与平面垂直的判定定理",
+      "back": "定义:如果一条直线与一个平面内的两条相交直线垂直，那么该直线与此平面垂直。\n\n关键要素:线垂直于面内两相交直线则线面垂直。\n\n应用:证明线面垂直。\n\n关联:线面垂直、垂直",
+      "card_type": "concept",
+      "plan_task_id": "平行与垂直的判定定理",
+      "gold_cr_ids": [
+        "cr_052"
+      ],
+      "source_sentence": "如果一条直线与一个平面内的两条相交直线垂直，那么该直线与此平面垂直。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0048",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "两个平面垂直的判定定理",
+      "back": "定义:如果一个平面过另一个平面的垂线，那么这两个平面垂直。\n\n关键要素:一个面包含另一面的垂线则两面垂直。\n\n应用:证明面面垂直。\n\n关联:面面垂直、线面垂直",
+      "card_type": "concept",
+      "plan_task_id": "平行与垂直的判定定理",
+      "gold_cr_ids": [
+        "cr_053"
+      ],
+      "source_sentence": "如果一个平面过另一个平面的垂线，那么这两个平面垂直。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0049",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "直线与平面平行的性质定理",
+      "back": "定义:一条直线与一个平面平行，如果过该直线的平面与此平面相交，那么该直线与交线平行。\n\n关键要素:线面平行则线交线平行。\n\n应用:证明线线平行。\n\n关联:线面平行、线线平行",
+      "card_type": "concept",
+      "plan_task_id": "平行与垂直的性质定理",
+      "gold_cr_ids": [
+        "cr_046"
+      ],
+      "source_sentence": "一条直线与一个平面平行，如果过该直线的平面与此平面相交，那么该直线与交线平行。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0050",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "两个平面平行的性质定理",
+      "back": "定义:两个平面平行，如果另一个平面与这两个平面相交，那么两条交线平行。\n\n关键要素:面面平行则交线平行。\n\n应用:证明线线平行。\n\n关联:面面平行、线线平行",
+      "card_type": "concept",
+      "plan_task_id": "平行与垂直的性质定理",
+      "gold_cr_ids": [
+        "cr_047"
+      ],
+      "source_sentence": "两个平面平行，如果另一个平面与这两个平面相交，那么两条交线平行。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0051",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "直线与平面垂直的性质定理",
+      "back": "定义:垂直于同一个平面的两条直线平行。\n\n关键要素:同垂直于一个平面的两直线平行。\n\n应用:证明线线平行。\n\n关联:线面垂直、线线平行",
+      "card_type": "concept",
+      "plan_task_id": "平行与垂直的性质定理",
+      "gold_cr_ids": [
+        "cr_048"
+      ],
+      "source_sentence": "垂直于同一个平面的两条直线平行。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0052",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "两个平面垂直的性质定理",
+      "back": "定义:两个平面垂直，如果一个平面内有一条直线垂直于这两个平面的交线，那么这条直线与另一个平面垂直。\n\n关键要素:面面垂直，垂直于交线的线垂直另一个面。\n\n应用:证明线面垂直。\n\n关联:面面垂直、线面垂直",
+      "card_type": "concept",
+      "plan_task_id": "平行与垂直的性质定理",
+      "gold_cr_ids": [
+        "cr_049"
+      ],
+      "source_sentence": "两个平面垂直，如果一个平面内有一条直线垂直于这两个平面的交线，那么这条直线与另一个平面垂直。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0053",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "向量的概念与运算法则",
+      "back": "定义:从力、速度、位移等实际情境入手，从物理、几何、代数三个角度理解向量的概念与运算法则。\n\n关键要素:向量具有大小和方向；运算法则包括加法、减法、数乘等。\n\n应用:解决物理和几何问题。\n\n关联:力、速度、位移、向量运算",
+      "card_type": "concept",
+      "plan_task_id": "平面向量概念与运算",
+      "gold_cr_ids": [
+        "cr_054"
+      ],
+      "source_sentence": "在平面向量及其应用的教学中，应从力、速度、位移等实际情境入手，从物理、几何、代数三个角度理解向量的概念与运算法则，引导学生运用类比的方法探索实数运算与向量运算的共性与差异。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0054",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "向量基本定理",
+      "back": "定义:通过力的分解引出向量基本定理，建立基的概念。\n\n关键要素:任意向量可由基向量线性表示。\n\n应用:向量的坐标表示。\n\n关联:基、坐标表示",
+      "card_type": "concept",
+      "plan_task_id": "平面向量概念与运算",
+      "gold_cr_ids": [
+        "cr_055"
+      ],
+      "source_sentence": "可以通过力的分解引出向量基本定理，建立基的概念和向量的坐标表示。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0055",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "向量分解",
+      "back": "定义:向量分解是指将一个向量按照特定方向或基向量进行拆分，得到若干分量的过程。\n\n关键要素:基向量、分量、线性组合。\n\n应用:在体育运动中，如跳高、跳远和投掷，通过向量分解分析力的方向和大小，优化动作技术。\n\n关联:向量基本定理、平面向量、线性组合。",
+      "card_type": "concept",
+      "plan_task_id": "平面向量概念与运算",
+      "gold_cr_ids": [
+        "cr_112"
+      ],
+      "source_sentence": "例如，根据向量分解的原理指导运动员进行跳高、跳远和投掷。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0056",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "向量的坐标表示",
+      "back": "定义:在基的基础上，将向量表示为有序数对。\n\n关键要素:选定基后，向量与坐标一一对应。\n\n应用:简化向量运算。\n\n关联:向量基本定理、坐标",
+      "card_type": "concept",
+      "plan_task_id": "向量的坐标表示",
+      "gold_cr_ids": [
+        "cr_056"
+      ],
+      "source_sentence": "建立基的概念和向量的坐标表示。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0057",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "复数的表示及几何意义",
+      "back": "定义:复数可以用代数形式、几何形式（复平面上的点或向量）表示。\n\n关键要素:复数的几何意义是复平面上的点或向量。\n\n应用:数系扩充、数学文化。\n\n关联:复平面、向量、数系",
+      "card_type": "concept",
+      "plan_task_id": "复数的概念与运算",
+      "gold_cr_ids": [
+        "cr_057"
+      ],
+      "source_sentence": "在复数的教学中，应注重对复数的表示及几何意义的理解，避免繁琐的计算与技巧训练。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0058",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "复数的三角表示",
+      "back": "定义:复数可以用模和辐角表示为三角形式。\n\n关键要素:r(cosθ + i sinθ)。\n\n应用:乘除运算的简化。\n\n关联:模、辐角、复数",
+      "card_type": "concept",
+      "plan_task_id": "复数的概念与运算",
+      "gold_cr_ids": [
+        "cr_058"
+      ],
+      "source_sentence": "对于学有余力的学生，可以安排一些引申内容，如复数的三角表示等。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0059",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "等差数列",
+      "back": "定义：从第二项起，每一项与它的前一项的差等于同一个常数的数列。\n\n关键要素：通项公式为 \\(a_n = a_1 + (n-1)d\\)，前 \\(n\\) 项和公式为 \\(S_n = \\frac{n(a_1+a_n)}{2} = na_1 + \\frac{n(n-1)}{2}d\\)；与一元一次函数有密切关系。\n\n应用：解决实际生活中的等差增长问题，如等额分期付款。\n\n关联：与数列、等比数列、一元一次函数相联系。",
+      "card_type": "concept",
+      "plan_task_id": "数列与数学归纳法",
+      "gold_cr_ids": [
+        "cr_069"
+      ],
+      "source_sentence": "通过生活中的实例，理解等差数列的概念和通项公式的意义；探索并掌握等差数列的前n项和公式；体会等差数列与一元一次函数的关系。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0060",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "等比数列",
+      "back": "定义：从第二项起，每一项与它的前一项的比等于同一个常数（公比）的数列。\n\n关键要素：通项公式为 \\(a_n = a_1 q^{n-1}\\)，前 \\(n\\) 项和公式为 \\(S_n = \\begin{cases} na_1, & q=1 \\\\ \\frac{a_1(1-q^n)}{1-q}, & q\\neq 1 \\end{cases}\\)；与指数函数有密切关系。\n\n应用：解决复利、增长率等实际问题。\n\n关联：与数列、等差数列、指数函数相联系。",
+      "card_type": "concept",
+      "plan_task_id": "数列与数学归纳法",
+      "gold_cr_ids": [
+        "cr_070"
+      ],
+      "source_sentence": "通过生活中的实例，理解等比数列的概念和通项公式的意义；探索并掌握等比数列的前n项和公式；体会等比数列与指数函数的关系。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0061",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "数学归纳法",
+      "back": "定义：一种用于证明与正整数有关的命题的数学方法。\n\n关键要素：原理包括两步：（1）归纳奠基：证明当 \\(n=n_0\\) 时命题成立；（2）归纳递推：假设当 \\(n=k\\) 时命题成立，证明当 \\(n=k+1\\) 时命题也成立。\n\n应用：常用于证明数列的通项公式、不等式等。\n\n关联：与数列、自然数、递归思想相联系。",
+      "card_type": "concept",
+      "plan_task_id": "数列与数学归纳法",
+      "gold_cr_ids": [
+        "cr_071"
+      ],
+      "source_sentence": "了解数学归纳法的原理，能用数学归纳法证明数列中的一些简单命题。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0062",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "数列与差分",
+      "back": "定义:数列是按一定顺序排列的数；差分是离散数学中相邻项之间的差值，用于研究数列的变化规律和逼近。\n\n关键要素:通项公式、递推关系、一阶差分、高阶差分。\n\n应用:数值分析、数据拟合、时间序列预测。\n\n关联:微积分（差分近似导数）、数值方法、递推数列。",
+      "card_type": "concept",
+      "plan_task_id": "数列与数学归纳法",
+      "gold_cr_ids": [
+        "cr_117"
+      ],
+      "source_sentence": "例如，机器人与数学、对称与群、球面上的几何、欧拉公式与闭曲面分类、数列与差分、初等数论初步。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0063",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "极限思想",
+      "back": "定义：一种通过无限逼近来研究变化趋势的数学思想。\n\n关键要素：在导数定义中，平均变化率的极限得到瞬时变化率；极限是微积分的基础。\n\n应用：用于定义导数、定积分等。\n\n关联：与导数、数列极限、连续函数相联系。",
+      "card_type": "concept",
+      "plan_task_id": "极限与连续",
+      "gold_cr_ids": [
+        "cr_072"
+      ],
+      "source_sentence": "体会极限思想。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0064",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "数列极限的ε-N定义",
+      "back": "定义: 对于数列{x_n}，若存在常数a，使得∀ε>0，∃N∈N*，当n>N时，|x_n - a|<ε，则称数列{x_n}收敛于a，记为lim_{n→∞}x_n = a。\n\n关键要素: 任意小正数ε，存在正整数N，n>N时不等式成立。\n\n应用: 用来严格证明数列收敛性，是微积分中极限理论的基础。\n\n关联: 数列极限、函数极限、收敛数列",
+      "card_type": "concept",
+      "plan_task_id": "极限与连续",
+      "gold_cr_ids": [
+        "cr_104"
+      ],
+      "source_sentence": "（1）通过典型收敛数列的极限过程（当n→∞时，1/n→0，n/(n+1)→1，q^n→0(0<|q|<1)，a^{1/n}→1(a>0)），建立并理解数列极限的ε-N定义。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0065",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "收敛数列的有界性",
+      "back": "性质: 如果数列{x_n}收敛，则数列{x_n}必定有界，即存在M>0，使得对所有n，|x_n|≤M。\n\n关键要素: 收敛蕴含数列有界，但有界不一定收敛。\n\n应用: 用于判断数列收敛的必要条件，也是证明其他极限性质的基础。\n\n关联: 数列极限、收敛数列",
+      "card_type": "concept",
+      "plan_task_id": "极限与连续",
+      "gold_cr_ids": [
+        "cr_105"
+      ],
+      "source_sentence": "（2）探索并证明基本性质：收敛数列是有界数列。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0066",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "单调有界数列",
+      "back": "定义: 如果数列既是单调的（单调递增或单调递减）又是有界的，则称该数列为单调有界数列。\n\n关键要素: 单调性和有界性同时满足。\n\n应用: 单调有界定理：单调有界数列必收敛，这是判断数列收敛的重要方法。常用例子包括{1/n}、{n/(n+1)}等。\n\n关联: 数列极限、收敛数列",
+      "card_type": "concept",
+      "plan_task_id": "极限与连续",
+      "gold_cr_ids": [
+        "cr_106"
+      ],
+      "source_sentence": "（3）通过典型单调有界数列{1/n}，{n/(n+1)}...",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0067",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "函数极限",
+      "back": "定义: 在具体情境中用极限刻画导数，通过极限建立函数连续的概念。函数极限包括x趋于有限值时的极限和x趋于无穷时的极限。\n\n关键要素: 用ε-δ语言或ε-N语言严格定义。\n\n应用: 是导数、积分、连续性的基础。\n\n关联: 数列极限、连续函数、导数",
+      "card_type": "concept",
+      "plan_task_id": "极限与连续",
+      "gold_cr_ids": [
+        "cr_107"
+      ],
+      "source_sentence": "本专题在数列极限的基础上建立函数极限和连续的概念；在具体的情境中用极限刻画导数，给出借助导数研究函数性质的一般方法。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0068",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "连续函数",
+      "back": "定义: 函数f(x)在点x0处连续，如果lim_{x→x0}f(x)=f(x0)。\n\n关键要素: 函数在一点处的极限值等于该点的函数值。\n\n应用: 连续函数具有介值定理、最值定理等性质，是微积分研究的基本对象。\n\n关联: 函数极限、导数",
+      "card_type": "concept",
+      "plan_task_id": "极限与连续",
+      "gold_cr_ids": [
+        "cr_108"
+      ],
+      "source_sentence": "本专题在数列极限的基础上建立函数极限和连续的概念；在具体的情境中用极限刻画导数，给出借助导数研究函数性质的一般方法。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0069",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "导数的几何意义",
+      "back": "定义：函数 \\(y=f(x)\\) 在点 \\(x_0\\) 处的导数 \\(f'(x_0)\\) 等于函数图象在该点处切线的斜率。\n\n关键要素：切线方程为 \\(y - f(x_0) = f'(x_0)(x - x_0)\\)；通过图象直观理解。\n\n应用：求曲线的切线方程，研究曲线变化趋势。\n\n关联：与导数、函数图象、切线相联系。",
+      "card_type": "concept",
+      "plan_task_id": "导数的概念与运算",
+      "gold_cr_ids": [
+        "cr_073"
+      ],
+      "source_sentence": "通过函数图象直观理解导数的几何意义。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0070",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "基本初等函数的导数公式",
+      "back": "定义：常见基本初等函数的导数计算公式。\n\n关键要素：\\(c' = 0\\)（\\(c\\) 为常数），\\(x' = 1\\)，\\((x^2)' = 2x\\)，\\((x^3)' = 3x^2\\)，\\((1/x)' = -1/x^2\\)，\\((\\sqrt{x})' = 1/(2\\sqrt{x})\\)。\n\n应用：直接用于求简单函数的导数。\n\n关联：与导数定义、导数四则运算法则相联系。",
+      "card_type": "concept",
+      "plan_task_id": "导数的概念与运算",
+      "gold_cr_ids": [
+        "cr_074"
+      ],
+      "source_sentence": "能根据导数定义求函数 y=c, y=x, y=x^2, y=x^3, y=1/x, y=√x 的导数。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0071",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "导数的四则运算法则",
+      "back": "定义：对函数进行加、减、乘、除运算后的求导法则。\n\n关键要素：\\((u \\pm v)' = u' \\pm v'\\)，\\((uv)' = u'v + uv'\\)，\\((u/v)' = (u'v - uv')/v^2\\)（\\(v \\neq 0\\)）。\n\n应用：求复杂函数的导数。\n\n关联：与基本初等函数的导数公式、复合函数求导相联系。",
+      "card_type": "concept",
+      "plan_task_id": "导数的概念与运算",
+      "gold_cr_ids": [
+        "cr_075"
+      ],
+      "source_sentence": "能利用给出的基本初等函数的导数公式和导数的四则运算法则，求简单函数的导数。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0072",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "复合函数求导（链式法则）",
+      "back": "定义：对于形如 \\(f(ax+b)\\) 的复合函数，其导数为 \\(f'(ax+b) \\cdot a\\)。\n\n关键要素：复合函数 \\(y = f(g(x))\\) 的导数为 \\(y' = f'(g(x)) \\cdot g'(x)\\)；课标要求限于形如 \\(f(ax+b)\\) 的简单复合函数。\n\n应用：求复合函数的导数，如 \\(\\sin(2x+1)\\) 等。\n\n关联：与基本初等函数的导数公式、导数四则运算法则相联系。",
+      "card_type": "concept",
+      "plan_task_id": "导数的概念与运算",
+      "gold_cr_ids": [
+        "cr_076"
+      ],
+      "source_sentence": "能求简单的复合函数（限于形如 f(ax+b)）的导数。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0073",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "导数与微分",
+      "back": "定义: 导数刻画函数在某点处的瞬时变化率，微分是函数增量的线性主部。用极限定义导数：f'(x0)=lim_{Δx→0}[f(x0+Δx)-f(x0)]/Δx。\n\n关键要素: 导数与极限的关联，微分是导数的线性近似。\n\n应用: 利用导数研究函数单调性、极值、凹凸性等，是微积分核心工具。\n\n关联: 函数极限、连续函数、微积分基本定理",
+      "card_type": "concept",
+      "plan_task_id": "导数的概念与运算",
+      "gold_cr_ids": [
+        "cr_109"
+      ],
+      "source_sentence": "在具体的情境中用极限刻画导数，给出借助导数研究函数性质的一般方法；通过极限建立微分和积分的概念。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0074",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "导数与函数的单调性",
+      "back": "定义：利用导数的正负判断函数的单调性。\n\n关键要素：若在区间内 \\(f'(x) > 0\\)，则函数单调递增；若 \\(f'(x) < 0\\)，则函数单调递减。\n\n应用：求函数的单调区间。\n\n关联：与导数、极值、函数图象相联系。",
+      "card_type": "concept",
+      "plan_task_id": "导数的应用与定积分",
+      "gold_cr_ids": [
+        "cr_077"
+      ],
+      "source_sentence": "结合实例，借助几何直观了解函数的单调性与导数的关系；能利用导数研究函数的单调性；对于多项式函数，能求不超过三次的多项式函数的单调区间。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0075",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "函数的极值",
+      "back": "定义：函数在某点附近的局部最大值或最小值。\n\n关键要素：极值点处导数为零（必要条件），且左右导数符号相反（充分条件）；极大值和极小值统称极值。\n\n应用：求解实际问题中的最优解。\n\n关联：与导数、单调性、最大值最小值相联系。",
+      "card_type": "concept",
+      "plan_task_id": "导数的应用与定积分",
+      "gold_cr_ids": [
+        "cr_078"
+      ],
+      "source_sentence": "借助函数的图象，了解函数在某点取得极值的必要条件和充分条件；能利用导数求某些函数的极大值、极小值以及给定闭区间上不超过三次的多项式函数的最大值、最小值。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0076",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "微积分的创立与发展",
+      "back": "定义：微积分是由牛顿和莱布尼茨在17世纪独立创立的数学分支，主要包括微分学和积分学。\n\n关键要素：微积分的发展经历了从直观到严密的过程，是现代数学的重要基础。\n\n应用：广泛用于物理、工程、经济等领域。\n\n关联：与导数、极限、定积分相联系。",
+      "card_type": "concept",
+      "plan_task_id": "导数的应用与定积分",
+      "gold_cr_ids": [
+        "cr_079"
+      ],
+      "source_sentence": "微积分的创立与发展",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0077",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "定积分",
+      "back": "定义: 定积分是分割、近似、求和、取极限的过程，表示函数在区间上的累积效应（如面积）。\n\n关键要素: 引入积分和，通过极限定义定积分。\n\n应用: 计算曲边梯形面积、变速运动路程等，与微分通过微积分基本定理建立联系。\n\n关联: 导数与微分、微积分基本定理",
+      "card_type": "concept",
+      "plan_task_id": "导数的应用与定积分",
+      "gold_cr_ids": [
+        "cr_110"
+      ],
+      "source_sentence": "通过极限建立微分和积分的概念，阐述微分和积分的关系（微积分基本定理）及其应用。内容包括：数列极限、函数极限、连续函数、导数与微分、定积分。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0078",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "微积分基本定理",
+      "back": "定义: 若F(x)是f(x)的一个原函数，则∫_a^b f(x)dx = F(b)-F(a)。该定理揭示了微分与积分互为逆运算的关系。\n\n关键要素: 原函数存在性，定积分计算转化为原函数差值。\n\n应用: 将定积分计算简化为求原函数，是微积分中最核心的定理。\n\n关联: 导数与微分、定积分",
+      "card_type": "concept",
+      "plan_task_id": "导数的应用与定积分",
+      "gold_cr_ids": [
+        "cr_111"
+      ],
+      "source_sentence": "通过极限建立微分和积分的概念，阐述微分和积分的关系（微积分基本定理）及其应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0079",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "分类加法计数原理",
+      "back": "定义:完成一件事有n类不同方案，在第1类方案中有m1种不同方法，在第2类方案中有m2种不同方法，…，在第n类方案中有mn种不同方法，则完成这件事共有N=m1+m2+…+mn种不同方法。\n\n关键要素:分类要互斥，每一类方法都能独立完成这件事。\n\n应用:解决计数问题的基础，常用于枚举或组合计数。\n\n关联:分步乘法计数原理、排列、组合。",
+      "card_type": "concept",
+      "plan_task_id": "排列组合与二项式定理",
+      "gold_cr_ids": [
+        "cr_080"
+      ],
+      "source_sentence": "分类加法计数原理和分步乘法计数原理是解决计数问题的基础，称为基本计数原理。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0080",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "分步乘法计数原理",
+      "back": "定义:完成一件事需要n个步骤，做第1步有m1种不同方法，做第2步有m2种不同方法，…，做第n步有mn种不同方法，则完成这件事共有N=m1×m2×…×mn种不同方法。\n\n关键要素:步骤必须依次完成，每一步的方法相互独立。\n\n应用:解决计数问题的基础，常用于排列、组合计数。\n\n关联:分类加法计数原理、排列、组合。",
+      "card_type": "concept",
+      "plan_task_id": "排列组合与二项式定理",
+      "gold_cr_ids": [
+        "cr_081"
+      ],
+      "source_sentence": "分类加法计数原理和分步乘法计数原理是解决计数问题的基础，称为基本计数原理。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0081",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "排列数公式",
+      "back": "定义:从n个不同元素中取出m个元素的排列数，记为Aₙᵐ = n(n-1)(n-2)…(n-m+1) = n!/(n-m)!。\n\n关键要素:m≤n；当m=n时，Aₙⁿ = n!。\n\n应用:计算排列的总数。\n\n关联:组合数公式、计数原理。",
+      "card_type": "concept",
+      "plan_task_id": "排列组合与二项式定理",
+      "gold_cr_ids": [
+        "cr_082"
+      ],
+      "source_sentence": "能利用计数原理推导排列数公式、组合数公式。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0082",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "组合数公式",
+      "back": "定义:从n个不同元素中取出m个元素的组合数，记为Cₙᵐ = Aₙᵐ / m! = n! / [m!(n-m)!]。\n\n关键要素:m≤n；Cₙᵐ = Cₙⁿ⁻ᵐ。\n\n应用:计算组合的总数。\n\n关联:排列数公式、二项式定理。",
+      "card_type": "concept",
+      "plan_task_id": "排列组合与二项式定理",
+      "gold_cr_ids": [
+        "cr_083"
+      ],
+      "source_sentence": "能利用计数原理推导排列数公式、组合数公式。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0083",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "二项式定理",
+      "back": "定义:(a+b)ⁿ = ∑_{k=0}^{n} Cₙᵏ aⁿ⁻ᵏ bᵏ，其中Cₙᵏ为二项式系数。\n\n关键要素:通项Tₖ₊₁ = Cₙᵏ aⁿ⁻ᵏ bᵏ；系数由组合数给出。\n\n应用:展开二项式、求特定项系数、近似计算等。\n\n关联:组合数公式、多项式运算法则。",
+      "card_type": "concept",
+      "plan_task_id": "排列组合与二项式定理",
+      "gold_cr_ids": [
+        "cr_084"
+      ],
+      "source_sentence": "能用多项式运算法则和计数原理证明二项式定理，会用二项式定理解决与二项展开式有关的简单问题。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0084",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "古典概型",
+      "back": "定义:具有有限个等可能基本事件的概率模型。其核心特征是样本空间有限且每个基本事件发生的可能性相等。\n\n关键要素:有限性、等可能性；概率计算公式为 P(A) = 事件A包含的基本事件数 / 样本空间基本事件总数。\n\n应用:解决抛硬币、掷骰子、抽签等典型随机问题，是概率论的基础模型。\n\n关联:样本空间、随机事件、几何概型、概率",
+      "card_type": "concept",
+      "plan_task_id": "随机事件与古典概型",
+      "gold_cr_ids": [
+        "cr_062"
+      ],
+      "source_sentence": "能够掌握古典概型的基本特征，根据实际问题构建概率模型，解决简单的实际问题。能够借助古典概型初步认识有限样本空间、随机事件，以及随机事件的概率。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0085",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "样本空间",
+      "back": "定义:随机试验中所有可能结果的集合，通常用 Ω 表示。每个结果称为一个样本点。\n\n关键要素:包含全部基本事件，是定义随机事件的基础。\n\n应用:用于描述随机试验的所有可能输出，是概率计算的出发点和依据。\n\n关联:随机事件、概率、基本事件",
+      "card_type": "concept",
+      "plan_task_id": "随机事件与古典概型",
+      "gold_cr_ids": [
+        "cr_063"
+      ],
+      "source_sentence": "能够借助古典概型初步认识有限样本空间、随机事件，以及随机事件的概率。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0086",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "随机事件",
+      "back": "定义:样本空间的子集，即在随机试验中可能发生也可能不发生的事件。\n\n关键要素:由样本点组成，包括必然事件（样本空间本身）和不可能事件（空集）。\n\n应用:对随机现象进行建模，通过概率度量事件发生的可能性。\n\n关联:样本空间、概率、互斥事件、对立事件",
+      "card_type": "concept",
+      "plan_task_id": "随机事件与古典概型",
+      "gold_cr_ids": [
+        "cr_064"
+      ],
+      "source_sentence": "能够借助古典概型初步认识有限样本空间、随机事件，以及随机事件的概率。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0087",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "随机数",
+      "back": "定义:按照一定概率分布产生的、不可预测的数值序列。在计算机中通常由算法生成伪随机数。\n\n关键要素:具有均匀性（如 [0,1] 上均匀分布）或服从特定分布；可重复模拟随机现象。\n\n应用:用于模拟试验（如掷硬币、蒙特卡洛方法）、抽样、加密等领域。\n\n关联:概率模拟、蒙特卡洛方法、抽样方法",
+      "card_type": "concept",
+      "plan_task_id": "随机事件与古典概型",
+      "gold_cr_ids": [
+        "cr_068"
+      ],
+      "source_sentence": "例如，利用计算器产生随机数来模拟掷硬币试验等，利用计算机来计算样本量较大的数据的样本均值、样本方差等。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0088",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "随机事件的独立性",
+      "back": "定义:对于两个随机事件A和B，如果P(AB)=P(A)P(B)，则称事件A与B相互独立。\n\n关键要素:事件间互不影响、概率乘积条件、独立性与互斥性不同。\n\n应用:简化复杂事件概率计算，如重复试验、串联系统可靠性分析。\n\n关联:与条件概率、伯努利试验、二项分布、全概率公式密切相关。",
+      "card_type": "concept",
+      "plan_task_id": "随机事件与古典概型",
+      "gold_cr_ids": [
+        "cr_101"
+      ],
+      "source_sentence": "能够结合具体实例，理解随机事件的独立性和条件概率的关系，理解离散型随机变量在描述随机现象中的作用，掌握两个基本概率模型及其应用，了解正态分布的作用，进一步深入理解随机思想在解决实际问题中的作用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0089",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "平均值",
+      "back": "定义:一组数据之和除以数据个数，是描述数据集中趋势的数字特征。\n\n关键要素:反映数据的中心位置，易受极端值影响。\n\n应用:用于数据分析中描述样本或总体的典型水平，常与方差、标准差等结合使用。\n\n关联:方差、中位数、众数、样本均值",
+      "card_type": "concept",
+      "plan_task_id": "方程与函数",
+      "gold_cr_ids": [
+        "cr_059"
+      ],
+      "source_sentence": "结合具体问题进行描述性说明，在此基础上适当引入严格的定义，并利用数字特征（平均值、方差等）和数据直观图表（直方图、散点图等）进行数据分析。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0090",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "直方图",
+      "back": "定义:用一系列等宽矩形表示数据分布的统计图表，横轴表示数据分组区间，纵轴表示频数或频率。\n\n关键要素:组距、频数/频率、矩形面积代表该组数据出现的比例。\n\n应用:直观展示连续型数据的分布形态，如对称性、偏态、异常值等。\n\n关联:频率分布、条形图、密度曲线",
+      "card_type": "concept",
+      "plan_task_id": "方程与函数",
+      "gold_cr_ids": [
+        "cr_060"
+      ],
+      "source_sentence": "结合具体问题进行描述性说明，在此基础上适当引入严格的定义，并利用数字特征（平均值、方差等）和数据直观图表（直方图、散点图等）进行数据分析。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0091",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "散点图",
+      "back": "定义:在平面直角坐标系中，用点的位置表示两个变量观测值的统计图表。\n\n关键要素:每个点对应一对数据 (x, y)，可直观展示两变量的相关关系。\n\n应用:用于判断变量之间是否存在线性或非线性相关，以及相关方向与强度。\n\n关联:相关系数、回归分析、相关性",
+      "card_type": "concept",
+      "plan_task_id": "方程与函数",
+      "gold_cr_ids": [
+        "cr_061"
+      ],
+      "source_sentence": "结合具体问题进行描述性说明，在此基础上适当引入严格的定义，并利用数字特征（平均值、方差等）和数据直观图表（直方图、散点图等）进行数据分析。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0092",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "抽样方法",
+      "back": "定义:从总体中抽取部分个体（样本）以推断总体特征的具体操作方式。\n\n关键要素:常见方法包括简单随机抽样、分层抽样、系统抽样、整群抽样等；要求样本具有代表性。\n\n应用:在无法或不便全面调查时，通过样本数据估计总体参数，如均值、比例等。\n\n关联:总体、样本、样本均值、样本方差、统计推断",
+      "card_type": "concept",
+      "plan_task_id": "几何变换与尺规",
+      "gold_cr_ids": [
+        "cr_065"
+      ],
+      "source_sentence": "能够根据实际问题的需求，选择恰当的抽样方法获取样本数据，并从中提取需要的数字特征推断总体。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0093",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "样本均值",
+      "back": "定义:样本数据的算术平均数，常用符号 \\(\\bar{x}\\) 表示。\n\n关键要素:是总体均值的无偏估计量，计算方式为样本各观测值之和除以样本容量。\n\n应用:作为统计推断中最重要的数字特征之一，用于描述样本的集中趋势并估计总体均值。\n\n关联:总体均值、样本方差、平均值、中心极限定理",
+      "card_type": "concept",
+      "plan_task_id": "平面直角坐标系",
+      "gold_cr_ids": [
+        "cr_066"
+      ],
+      "source_sentence": "例如，利用计算器产生随机数来模拟掷硬币试验等，利用计算机来计算样本量较大的数据的样本均值、样本方差等。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0094",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "样本方差",
+      "back": "定义:样本中各数据与样本均值之差的平方和除以 (n-1) 的结果，常用符号 \\(s^2\\) 表示。\n\n关键要素:除以 (n-1) 是为了得到总体方差的无偏估计；衡量样本数据的离散程度。\n\n应用:在统计推断中估计总体方差，用于假设检验、置信区间等。\n\n关联:总体方差、样本均值、标准差、方差",
+      "card_type": "concept",
+      "plan_task_id": "几何变换与尺规",
+      "gold_cr_ids": [
+        "cr_067"
+      ],
+      "source_sentence": "例如，利用计算器产生随机数来模拟掷硬币试验等，利用计算机来计算样本量较大的数据的样本均值、样本方差等。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0095",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "条件概率",
+      "back": "定义:在事件A发生的条件下，事件B发生的概率，记为P(B|A)，计算公式为P(B|A)=P(AB)/P(A)（P(A)>0）。\n\n关键要素:基于古典概型；条件改变了样本空间。\n\n应用:计算有附加条件的随机事件概率。\n\n关联:乘法公式、全概率公式、贝叶斯公式。",
+      "card_type": "concept",
+      "plan_task_id": "条件概率与全概率公式",
+      "gold_cr_ids": [
+        "cr_085"
+      ],
+      "source_sentence": "结合古典概型，了解条件概率，能计算简单随机事件的条件概率。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0096",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "乘法公式（概率）",
+      "back": "定义:对于任意事件A、B，有P(AB)=P(A)P(B|A)=P(B)P(A|B)。当A、B独立时，P(AB)=P(A)P(B)。\n\n关键要素:用于计算两个事件同时发生的概率。\n\n应用:概率计算中的基本公式。\n\n关联:条件概率、独立性。",
+      "card_type": "concept",
+      "plan_task_id": "条件概率与全概率公式",
+      "gold_cr_ids": [
+        "cr_086"
+      ],
+      "source_sentence": "结合古典概型，会利用乘法公式计算概率。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0097",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "全概率公式",
+      "back": "定义:设事件组A₁,A₂,…,Aₙ是样本空间的一个划分，且P(Aᵢ)>0，则对任意事件B，有P(B)=∑_{i=1}^{n} P(Aᵢ)P(B|Aᵢ)。\n\n关键要素:需要完备事件组；通常用于由“原因”求“结果”的概率。\n\n应用:复杂概率问题的分解计算。\n\n关联:条件概率、贝叶斯公式。",
+      "card_type": "concept",
+      "plan_task_id": "条件概率与全概率公式",
+      "gold_cr_ids": [
+        "cr_087"
+      ],
+      "source_sentence": "结合古典概型，会利用全概率公式计算概率。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0098",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "贝叶斯公式",
+      "back": "定义:在全概率公式基础上，由结果反推原因的概率：P(Aᵢ|B)=P(Aᵢ)P(B|Aᵢ)/∑_{j=1}^{n} P(A_j)P(B|A_j)。\n\n关键要素:先验概率更新为后验概率。\n\n应用:贝叶斯推断、决策理论等。\n\n关联:全概率公式、条件概率。",
+      "card_type": "concept",
+      "plan_task_id": "条件概率与全概率公式",
+      "gold_cr_ids": [
+        "cr_088"
+      ],
+      "source_sentence": "了解贝叶斯公式。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0099",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "离散型随机变量",
+      "back": "定义:取值可以一一列举的随机变量，其所有可能取值为有限个或可列无限个。\n\n关键要素:取值离散；每个值对应一个概率。\n\n应用:描述计数型随机现象，如投骰子、抽奖等。\n\n关联:离散型随机变量分布列、均值、方差。",
+      "card_type": "concept",
+      "plan_task_id": "离散型随机变量与正态分布",
+      "gold_cr_ids": [
+        "cr_089"
+      ],
+      "source_sentence": "通过具体实例，了解离散型随机变量的概念，理解离散型随机变量分布列及其数字特征（均值、方差）。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0100",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "离散型随机变量分布列",
+      "back": "定义:列出离散型随机变量所有可能取值及其对应概率的表格或函数，满足概率非负且和为1。\n\n关键要素:每个取值对应概率；∑pᵢ=1。\n\n应用:刻画随机变量的概率分布。\n\n关联:二项分布、超几何分布、均值、方差。",
+      "card_type": "concept",
+      "plan_task_id": "离散型随机变量与正态分布",
+      "gold_cr_ids": [
+        "cr_090"
+      ],
+      "source_sentence": "理解离散型随机变量分布列及其数字特征（均值、方差）。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0101",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "均值（数学期望）",
+      "back": "定义:离散型随机变量X的均值（期望）E(X)=∑ xᵢ pᵢ，反映随机变量取值的平均水平。\n\n关键要素:加权平均；线性性质。\n\n应用:稳定性判断、风险决策等。\n\n关联:方差、二项分布、超几何分布。",
+      "card_type": "concept",
+      "plan_task_id": "离散型随机变量与正态分布",
+      "gold_cr_ids": [
+        "cr_091"
+      ],
+      "source_sentence": "理解离散型随机变量分布列及其数字特征（均值、方差）。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0102",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "伯努利试验",
+      "back": "定义:在相同条件下重复进行的、每次只有两种可能结果（成功/失败）的随机试验。\n\n关键要素:每次试验独立；成功概率p固定。\n\n应用:二项分布的基础。\n\n关联:二项分布。",
+      "card_type": "concept",
+      "plan_task_id": "离散型随机变量与正态分布",
+      "gold_cr_ids": [
+        "cr_092"
+      ],
+      "source_sentence": "通过具体实例，了解伯努利试验，掌握二项分布及其数字特征。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0103",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "二项分布",
+      "back": "定义:n次独立重复的伯努利试验中成功次数X服从二项分布，记X~B(n,p)，概率P(X=k)=Cₙᵏ pᵏ (1-p)ⁿ⁻ᵏ，k=0,1,…,n。均值E(X)=np，方差D(X)=np(1-p)。\n\n关键要素:独立重复试验；成功概率恒定。\n\n应用:质检、投票、医学试验等。\n\n关联:伯努利试验、超几何分布。",
+      "card_type": "concept",
+      "plan_task_id": "离散型随机变量与正态分布",
+      "gold_cr_ids": [
+        "cr_093"
+      ],
+      "source_sentence": "通过具体实例，了解伯努利试验，掌握二项分布及其数字特征，并能解决简单的实际问题。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0104",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "超几何分布",
+      "back": "定义:从有限总体（含M个成功品，N-M个失败品）中不放回抽取n个，成功品个数X服从超几何分布，概率P(X=k)=C_Mᵏ C_{N-M}^{n-k} / C_Nⁿ。均值E(X)=nM/N。\n\n关键要素:不放回抽样；总体有限。\n\n应用:产品检验、抽样调查等。\n\n关联:二项分布（当N很大时可近似）。",
+      "card_type": "concept",
+      "plan_task_id": "离散型随机变量与正态分布",
+      "gold_cr_ids": [
+        "cr_094"
+      ],
+      "source_sentence": "通过具体实例，了解超几何分布及其均值，并能解决简单的实际问题。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0105",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "正态分布",
+      "back": "定义:连续型随机变量的概率密度函数为f(x)=1/(σ√(2π)) e^{-(x-μ)²/(2σ²)}，其中μ为均值，σ为标准差。图形呈钟形曲线。\n\n关键要素:关于x=μ对称；参数μ决定位置，σ决定形状。\n\n应用:自然界中大量现象近似服从正态分布，如身高、测量误差。\n\n关联:二项分布（近似）、中心极限定理。",
+      "card_type": "concept",
+      "plan_task_id": "离散型随机变量与正态分布",
+      "gold_cr_ids": [
+        "cr_095"
+      ],
+      "source_sentence": "通过误差模型，了解服从正态分布的随机变量。通过具体实例，借助频率直方图的几何直观，了解正态分布的特征。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0106",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "样本相关系数",
+      "back": "定义:度量两个变量线性相关程度的统计量，通常用r表示，取值范围[-1,1]。r>0正相关，r<0负相关，|r|越接近1相关性越强。\n\n关键要素:由样本数据计算；与标准化数据向量夹角余弦有关。\n\n应用:判断变量间线性关系的强弱。\n\n关联:一元线性回归模型。",
+      "card_type": "concept",
+      "plan_task_id": "相关性与回归分析",
+      "gold_cr_ids": [
+        "cr_096"
+      ],
+      "source_sentence": "结合实例，了解样本相关系数的统计含义，了解样本相关系数与标准化数据向量夹角的关系。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0107",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "一元线性回归模型",
+      "back": "定义:描述两个变量间线性关系的模型，形式为y=β₀+β₁x+ε，其中β₀、β₁为参数，ε为随机误差。通过最小二乘法估计参数。\n\n关键要素:自变量x，因变量y；线性假设。\n\n应用:预测与趋势分析。\n\n关联:最小二乘原理、样本相关系数。",
+      "card_type": "concept",
+      "plan_task_id": "相关性与回归分析",
+      "gold_cr_ids": [
+        "cr_097"
+      ],
+      "source_sentence": "结合具体实例，了解一元线性回归模型的含义，了解模型参数的统计意义，了解最小二乘原理。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0108",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "最小二乘原理",
+      "back": "定义:通过最小化观测值与模型预测值的残差平方和来估计模型参数的方法。\n\n关键要素:残差平方和最小；有解析解。\n\n应用:回归分析中的参数估计。\n\n关联:一元线性回归模型。",
+      "card_type": "concept",
+      "plan_task_id": "相关性与回归分析",
+      "gold_cr_ids": [
+        "cr_098"
+      ],
+      "source_sentence": "了解最小二乘原理，掌握一元线性回归模型参数的最小二乘估计方法。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0109",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "2×2列联表",
+      "back": "定义:用于展示两个分类变量（每个分两类）频数分布的表格，行与列分别表示变量的两个水平，单元格为频数。\n\n关键要素:总频数已知；行列合计。\n\n应用:独立性检验的基础。\n\n关联:独立性检验。",
+      "card_type": "concept",
+      "plan_task_id": "相关性与回归分析",
+      "gold_cr_ids": [
+        "cr_099"
+      ],
+      "source_sentence": "通过实例，理解2×2列联表的统计意义。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0110",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "独立性检验",
+      "back": "定义:利用2×2列联表中的数据检验两个分类变量是否独立的统计方法，常用卡方统计量。\n\n关键要素:原假设为独立；计算期望频数；比较卡方值与临界值。\n\n应用:判断变量间独立性，如药物疗效与性别的关系。\n\n关联:2×2列联表、卡方分布。",
+      "card_type": "concept",
+      "plan_task_id": "相关性与回归分析",
+      "gold_cr_ids": [
+        "cr_100"
+      ],
+      "source_sentence": "通过实例，了解2×2列联表独立性检验及其应用。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0111",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "成对样本数据",
+      "back": "定义:两个随机变量的一组观测值，每个观测值由一对数据(x_i, y_i)组成，用于分析变量之间的相关关系。\n\n关键要素:成对出现、通常来自同一对象或匹配样本、用于相关性分析。\n\n应用:探索变量间线性相关、回归分析、独立性检验中的原始数据。\n\n关联:与相关性、一元线性回归、2×2列联表、散点图密切相关。",
+      "card_type": "concept",
+      "plan_task_id": "相关性与回归分析",
+      "gold_cr_ids": [
+        "cr_102"
+      ],
+      "source_sentence": "应通过具体案例，引导学生理解两个随机变量的相关性可以通过成对样本数据进行分析。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0112",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "相关性（两个随机变量的相关性）",
+      "back": "定义:描述两个随机变量之间线性相关程度的度量，常用皮尔逊相关系数r，取值范围[-1,1]，正负号表示方向，绝对值大小表示强度。\n\n关键要素:线性关系、相关系数计算、显著性检验。\n\n应用:寻找变量间关联、预测建模、科学研究中探索影响因素。\n\n关联:与成对样本数据、一元线性回归、协方差、散点图密切相关。",
+      "card_type": "concept",
+      "plan_task_id": "相关性与回归分析",
+      "gold_cr_ids": [
+        "cr_103"
+      ],
+      "source_sentence": "应通过具体案例，引导学生理解两个随机变量的相关性可以通过成对样本数据进行分析。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0113",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "运筹学",
+      "back": "定义:运筹学是应用数学的一个分支，利用数学建模、优化算法等方法解决决策和资源分配问题。\n\n关键要素:最优化、线性规划、决策分析、调度。\n\n应用:在体育赛事中用于制定训练计划、比赛策略、资源调配等。\n\n关联:图论、概率统计、线性规划。",
+      "card_type": "concept",
+      "plan_task_id": "数学专题选讲",
+      "gold_cr_ids": [
+        "cr_113"
+      ],
+      "source_sentence": "知道能借助图论、运筹等数学知识分析体育赛事的规律，进行合理安排。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0114",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "对称与群",
+      "back": "定义:对称指图形或结构在某种变换下保持不变的性质；群是抽象代数中描述对称性的代数结构，由一个集合和满足封闭性、结合律、单位元、逆元的二元运算组成。\n\n关键要素:对称变换、群公理、子群、置换群。\n\n应用:研究几何图形的对称性、晶体结构、物理对称性等。\n\n关联:抽象代数、几何变换、群表示论。",
+      "card_type": "concept",
+      "plan_task_id": "数学专题选讲",
+      "gold_cr_ids": [
+        "cr_114"
+      ],
+      "source_sentence": "例如，机器人与数学、对称与群、球面上的几何、欧拉公式与闭曲面分类、数列与差分、初等数论初步。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0115",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "球面上的几何",
+      "back": "定义:球面上的几何是研究在球面（作为弯曲曲面）上的点、线、角、三角形等几何性质的分支，属于非欧几何的一种。\n\n关键要素:大圆、球面三角形、球面角、球面距离。\n\n应用:导航、天文、地球物理学中的曲面定位。\n\n关联:非欧几何、黎曼几何、欧拉公式。",
+      "card_type": "concept",
+      "plan_task_id": "数学专题选讲",
+      "gold_cr_ids": [
+        "cr_115"
+      ],
+      "source_sentence": "例如，机器人与数学、对称与群、球面上的几何、欧拉公式与闭曲面分类、数列与差分、初等数论初步。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0116",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "欧拉公式",
+      "back": "定义:欧拉公式通常指复变函数中的 e^(iπ) + 1 = 0，或拓扑学中多面体的顶点数V、棱数E、面数F满足V - E + F = 2。此处指后者（闭曲面分类中的欧拉示性数）。\n\n关键要素:顶点、棱、面、欧拉示性数、同胚。\n\n应用:闭曲面分类、多面体计数、网络拓扑分析。\n\n关联:拓扑学、闭曲面分类、组合几何。",
+      "card_type": "concept",
+      "plan_task_id": "数学专题选讲",
+      "gold_cr_ids": [
+        "cr_116"
+      ],
+      "source_sentence": "例如，机器人与数学、对称与群、球面上的几何、欧拉公式与闭曲面分类、数列与差分、初等数论初步。",
+      "origin": "extracted"
+    },
+    {
+      "id": "math_senior_0117",
+      "subject": "math",
+      "grade_band": "senior",
+      "domain": "math",
+      "front": "初等数论",
+      "back": "定义:初等数论是数论的基础分支，主要研究整数的性质，如整除性、素数、同余、不定方程等。\n\n关键要素:整除、素数、最大公因数、同余、欧拉定理。\n\n应用:密码学（RSA）、计算机科学、组合数学。\n\n关联:抽象代数、解析数论、密码学。",
+      "card_type": "concept",
+      "plan_task_id": "数学专题选讲",
+      "gold_cr_ids": [
+        "cr_118"
+      ],
+      "source_sentence": "例如，机器人与数学、对称与群、球面上的几何、欧拉公式与闭曲面分类、数列与差分、初等数论初步。",
+      "origin": "extracted"
+    }
+  ]
+}

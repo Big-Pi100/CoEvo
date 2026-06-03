@@ -6,6 +6,7 @@ members = [
     "crates/chat_engine",
     "crates/card_engine",
     "crates/growth_engine",
+    "crates/student_llm",
 ]
 
 [package]

@@ -127,7 +127,7 @@ impl FromStr for Domain {
 /// 管线配置
 #[derive(Debug, Clone)]
 pub struct PipelineConfig {
-    /// domain 标识（与 learning_plans.domain 对齐）
+    /// domain 标识（与 conversation_plans.domain 对齐）
     pub domain: &'static str,
     /// 可读名称
     pub display_name: &'static str,

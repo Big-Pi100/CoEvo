@@ -591,9 +591,9 @@ pub async fn guardian_students(headers: HeaderMap) -> impl IntoResponse {
         let _reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0);
         let _mastery: f64 = c.query_row("SELECT CAST(SUM(CASE WHEN cm.state=2 THEN 1 ELSE 0 END) AS REAL)/MAX(1,COUNT(*)) FROM card_memory cm JOIN cards cd ON cm.card_id=cd.id WHERE cd.user_id=?1",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0.0);
         // Plan stats
-        let total_plans: i64 = c.query_row("SELECT COUNT(*) FROM learning_plans WHERE user_id=?1 AND mode != 'deleted'", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
-        let active_7d: i64 = c.query_row("SELECT COUNT(*) FROM learning_plans WHERE user_id=?1 AND mode != 'deleted' AND updated_at >= ?2", rusqlite::params![&uid, &seven_days_ago], |r| r.get(0)).unwrap_or(0);
-        let today_active: i64 = c.query_row("SELECT COUNT(*) FROM learning_plans WHERE user_id=?1 AND mode != 'deleted' AND updated_at >= ?2", rusqlite::params![&uid, &one_day_ago], |r| r.get(0)).unwrap_or(0);
+        let total_plans: i64 = c.query_row("SELECT COUNT(*) FROM conversation_plans WHERE user_id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
+        let active_7d: i64 = c.query_row("SELECT COUNT(*) FROM conversation_plans WHERE user_id=?1 AND updated_at >= ?2", rusqlite::params![&uid, &seven_days_ago], |r| r.get(0)).unwrap_or(0);
+        let today_active: i64 = c.query_row("SELECT COUNT(*) FROM conversation_plans WHERE user_id=?1 AND updated_at >= ?2", rusqlite::params![&uid, &one_day_ago], |r| r.get(0)).unwrap_or(0);
         let rn_raw: Option<String> = row.get(2)?;
         let ph_raw: Option<String> = row.get(3)?;
         let rn_decrypted = rn_raw.as_ref().map(|v| decrypt_maybe(v));
@@ -670,7 +670,7 @@ pub async fn guardian_student_conversations(headers: HeaderMap, Path(sid): Path<
         "SELECT c.id, c.started_at,
          COALESCE((SELECT content FROM conversation_turns t WHERE t.conversation_id=c.id AND t.role='user' ORDER BY t.created_at LIMIT 1), c.id),
          (SELECT COUNT(*) FROM conversation_turns t WHERE t.conversation_id=c.id),
-         COALESCE((SELECT goal FROM learning_plans lp WHERE lp.conversation_id=c.id LIMIT 1), '')
+         COALESCE((SELECT goal FROM conversation_plans cp WHERE cp.conversation_id=c.id LIMIT 1), '')
          FROM conversations c WHERE c.user_id=?1 AND c.deleted_at IS NULL ORDER BY c.started_at DESC LIMIT 20"
     ).unwrap();
     let convs: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![sid], |row| {
@@ -703,7 +703,7 @@ pub async fn guardian_learning_summary(headers: HeaderMap, Path(sid): Path<Strin
     let one_day_ago = (now - chrono::Duration::days(1)).to_rfc3339();
 
     // 1. Get all plans for this student
-    let mut plan_stmt = c.prepare("SELECT id, goal, domain, conversation_id, task_status, updated_at FROM learning_plans WHERE user_id=?1 AND mode != 'deleted' ORDER BY updated_at DESC").unwrap();
+    let mut plan_stmt = c.prepare("SELECT id, goal, domain, conversation_id, plan_content, updated_at FROM conversation_plans WHERE user_id=?1 ORDER BY updated_at DESC").unwrap();
     let mut plan_results: Vec<serde_json::Value> = Vec::new();
     let mut total_active_7d = 0i64;
     let mut total_today_active = 0i64;

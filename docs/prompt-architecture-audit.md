@@ -6,13 +6,13 @@
 
 | 类别 | 用途 | 使用方 | 当前状态 |
 |------|------|--------|---------|
-| **chat** | 教师对话（自由/结构化/阅读模式） | ws.rs | 部分文件化 |
-| **concept** | CP1 概念提取 | concept_extractor.rs | 部分文件化 |
-| **plan** | CP2 计划管理（创建/分析/信号检测） | plan_handler.rs | 硬编码 |
-| **quiz** | 出题/判题/考核评估 | ws.rs, routes.rs | 部分文件化 |
-| **verify** | 复习验证（拼写/对话/翻译） | routes.rs | 硬编码 |
-| **routing** | 学科路由 | subject_router.rs | 硬编码 |
-| **test** | e2e 测试学生模拟 | e2e 测试文件 | 硬编码 |
+| **chat** | 教师对话（自由/结构化/阅读模式） | ws.rs | ✅ 已文件化 |
+| **concept** | CP1 概念提取 | concept_extractor.rs | ✅ 已文件化 |
+| **plan** | CP2 计划管理（创建/分析/信号检测） | plan_handler.rs | ✅ 已文件化 |
+| **quiz** | 出题/判题/考核评估 | ws.rs, routes.rs | ✅ 已文件化 |
+| **verify** | 复习验证（翻译校验） | routes.rs | ✅ 已文件化 |
+| **routing** | 学科路由 | subject_router.rs | ✅ 已文件化 |
+| **test** | e2e 测试学生模拟 | e2e 测试文件 | ✅ 已文件化 |
 
 ## 二、目录结构（类别 × 科目）
 
@@ -262,3 +262,23 @@ cp old_general/plan-creation.md       prompts/plan/general/creation.md
 | Rust 数据结构 | 单一 `PromptTemplates` 大集合 | 每类独立 `*Templates` 结构体 |
 | 查询 API | `get_for_domain(domain).field` | `get_chat(domain).free` / `get_concept(domain).extract` |
 | 硬编码 | 5+ 处 Rust 字符串 | 全部提取为文件 |
+
+---
+
+## 七、实施完成状态（2026-06-01）
+
+**全部实施完成。** 最终目录结构：
+
+```
+prompts/
+├── chat/       ← 31 文件（16 科目 × chat prompt，含阅读变体）
+├── concept/    ← 21 文件（16 科目 × 概念提取）
+├── quiz/       ← 9 文件（考核出题/判题，含 math/chinese/english 科目版）
+├── plan/       ← 3 文件（creation.md + analysis.md + signal.md，step3-4 提取）
+├── verify/     ← 1 文件（translation.md，step4 提取）
+├── routing/    ← 1 文件（subject.md，step4 提取）
+└── test/       ← 1 文件（student.md，step4 提取）
+```
+
+所有硬编码 LLM prompt 已提取为独立文件。`prompt_loader.rs` 完全重写为按类别 × 科目双层路由。
+旧 `pipelines/` 目录和 `prompts/` 根目录下的零散文件已删除。

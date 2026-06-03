@@ -128,7 +128,6 @@ async fn phase_plan_creation(run_id: &str, cli: &CliArgs) -> e2e_runner::PhaseRe
         let step = format!("create_plan_{}", if expected_domain.is_empty() { "general" } else { expected_domain });
         let mut log = e2e_runner::LlmLog::new("plan-creation", &step, expected_domain);
 
-        conn.execute("DELETE FROM learning_plans WHERE conversation_id = ?1", rusqlite::params![TEST_CONV_ID]).ok();
         conn.execute("DELETE FROM conversation_turns WHERE conversation_id = ?1", rusqlite::params![TEST_CONV_ID]).ok();
         std::thread::sleep(Duration::from_millis(500));
 
@@ -179,8 +178,8 @@ async fn phase_plan_creation(run_id: &str, cli: &CliArgs) -> e2e_runner::PhaseRe
 
         // 提取 pipeline_domain
         let pipeline_domain: String = result.task_status.as_ref().and_then(|j| j.get("domain")).and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let db_domain: String = conn.query_row("SELECT task_status FROM learning_plans WHERE conversation_id = ?1", rusqlite::params![TEST_CONV_ID], |row| row.get::<_, String>(0))
-            .ok().and_then(|pj| serde_json::from_str::<serde_json::Value>(&pj).ok().and_then(|v| v.get("domain").and_then(|d| d.as_str()).map(|s| s.to_string()))).unwrap_or_default();
+        let db_domain: String = conn.query_row("SELECT COALESCE(domain, '') FROM conversation_plans WHERE conversation_id = ?1", rusqlite::params![TEST_CONV_ID], |row| row.get::<_, String>(0))
+            .unwrap_or_default();
         let matched_domain = if !pipeline_domain.is_empty() { pipeline_domain.as_str() } else { db_domain.as_str() };
         let domain_match = matched_domain == *expected_domain || (expected_domain.is_empty() && !matched_domain.is_empty());
         if domain_match { passed += 1; }
@@ -313,7 +312,6 @@ async fn progression_domain_test(
     let conn = rusqlite::Connection::open(TEST_DB_PATH).expect("Cannot open test DB");
 
     // 清理该 conv_id 的旧数据，创建独立学习计划
-    conn.execute("DELETE FROM learning_plans WHERE conversation_id = ?1", rusqlite::params![conv_id]).ok();
     conn.execute("DELETE FROM conversation_turns WHERE conversation_id = ?1", rusqlite::params![conv_id]).ok();
     conn.execute("DELETE FROM cards WHERE user_id = ?1 AND created_at > 0", rusqlite::params![TEST_USER_ID]).ok();
     // 确保 conversation 存在

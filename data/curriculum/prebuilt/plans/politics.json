@@ -1,0 +1,380 @@
+{
+  "subject": "politics",
+  "goal": "政治学习计划",
+  "stages": [
+    {
+      "name": "国际政治基础",
+      "prerequisite_stages": [
+        "中国特色社会主义",
+        "经济与社会"
+      ],
+      "tasks": [
+        {
+          "name": "国际关系基本要素与和平发展",
+          "gold_cr_ids": [
+            "cr_001",
+            "cr_002",
+            "cr_003",
+            "cr_004",
+            "cr_005",
+            "cr_006"
+          ],
+          "dependencies": [],
+          "cross_subject_refs": [],
+          "origin": "extracted",
+          "sort": 0
+        }
+      ],
+      "grade_band": "g10-12",
+      "sort": 5
+    },
+    {
+      "name": "全球治理体系",
+      "prerequisite_stages": [
+        "国际政治基础"
+      ],
+      "tasks": [
+        {
+          "name": "全球治理理念与霸权主义",
+          "gold_cr_ids": [
+            "cr_007",
+            "cr_008",
+            "cr_009",
+            "cr_016"
+          ],
+          "dependencies": [
+            "国际关系基本要素与和平发展"
+          ],
+          "cross_subject_refs": [],
+          "origin": "extracted",
+          "sort": 0
+        },
+        {
+          "name": "主要国际组织及其作用",
+          "gold_cr_ids": [
+            "cr_017",
+            "cr_018",
+            "cr_019",
+            "cr_020",
+            "cr_021"
+          ],
+          "dependencies": [
+            "全球治理理念与霸权主义"
+          ],
+          "cross_subject_refs": [],
+          "origin": "extracted",
+          "sort": 1
+        }
+      ],
+      "grade_band": "g10-12",
+      "sort": 6
+    },
+    {
+      "name": "经济全球化与发展",
+      "prerequisite_stages": [
+        "经济与社会",
+        "全球治理体系"
+      ],
+      "tasks": [
+        {
+          "name": "经济全球化与开放型世界经济",
+          "gold_cr_ids": [
+            "cr_010",
+            "cr_011",
+            "cr_012",
+            "cr_013",
+            "cr_014",
+            "cr_015"
+          ],
+          "dependencies": [
+            "主要国际组织及其作用"
+          ],
+          "cross_subject_refs": [],
+          "origin": "extracted",
+          "sort": 0
+        }
+      ],
+      "grade_band": "g10-12",
+      "sort": 7
+    },
+    {
+      "name": "经济与社会",
+      "prerequisite_stages": [
+        "中国特色社会主义"
+      ],
+      "tasks": [
+        {
+          "name": "经济制度与市场",
+          "gold_cr_ids": [],
+          "dependencies": [],
+          "cross_subject_refs": [],
+          "origin": "curriculum_fix",
+          "sort": 0
+        },
+        {
+          "name": "货币与金融市场基础",
+          "gold_cr_ids": [
+            "cr_034",
+            "cr_035",
+            "cr_036",
+            "cr_037",
+            "cr_038",
+            "cr_039",
+            "cr_040",
+            "cr_041"
+          ],
+          "dependencies": [
+            "经济制度与市场"
+          ],
+          "cross_subject_refs": [],
+          "origin": "extracted",
+          "sort": 1
+        },
+        {
+          "name": "收入分配与社会保障",
+          "gold_cr_ids": [],
+          "dependencies": [
+            "经济制度与市场"
+          ],
+          "cross_subject_refs": [],
+          "origin": "curriculum_fix",
+          "sort": 2
+        },
+        {
+          "name": "新发展理念与现代化经济体系",
+          "gold_cr_ids": [],
+          "dependencies": [
+            "收入分配与社会保障"
+          ],
+          "cross_subject_refs": [],
+          "origin": "curriculum_fix",
+          "sort": 3
+        }
+      ],
+      "grade_band": "g10-12",
+      "sort": 1
+    },
+    {
+      "name": "形式逻辑初步",
+      "prerequisite_stages": [],
+      "tasks": [
+        {
+          "name": "形式逻辑基础",
+          "gold_cr_ids": [
+            "cr_022",
+            "cr_023",
+            "cr_024",
+            "cr_025"
+          ],
+          "dependencies": [],
+          "cross_subject_refs": [],
+          "origin": "extracted",
+          "sort": 0
+        }
+      ],
+      "grade_band": "g10-12",
+      "sort": 8
+    },
+    {
+      "name": "辩证与创新思维",
+      "prerequisite_stages": [
+        "形式逻辑初步"
+      ],
+      "tasks": [
+        {
+          "name": "辩证思维与创新思维方法",
+          "gold_cr_ids": [
+            "cr_026",
+            "cr_027",
+            "cr_028",
+            "cr_029",
+            "cr_030",
+            "cr_031",
+            "cr_032",
+            "cr_033"
+          ],
+          "dependencies": [
+            "形式逻辑基础"
+          ],
+          "cross_subject_refs": [],
+          "origin": "extracted",
+          "sort": 0
+        }
+      ],
+      "grade_band": "g10-12",
+      "sort": 9
+    },
+    {
+      "name": "中国特色社会主义",
+      "sort": 0,
+      "grade_band": "g10-12",
+      "prerequisite_stages": [],
+      "tasks": [
+        {
+          "name": "社会主义从空想到科学",
+          "gold_cr_ids": [],
+          "dependencies": [],
+          "cross_subject_refs": [],
+          "origin": "curriculum_fix",
+          "sort": 0
+        },
+        {
+          "name": "中国特色社会主义的创立与发展",
+          "gold_cr_ids": [],
+          "dependencies": [
+            "社会主义从空想到科学"
+          ],
+          "cross_subject_refs": [],
+          "origin": "curriculum_fix",
+          "sort": 1
+        },
+        {
+          "name": "习近平新时代中国特色社会主义思想",
+          "gold_cr_ids": [],
+          "dependencies": [
+            "中国特色社会主义的创立与发展"
+          ],
+          "cross_subject_refs": [],
+          "origin": "curriculum_fix",
+          "sort": 2
+        }
+      ]
+    },
+    {
+      "name": "法律与生活",
+      "sort": 4,
+      "grade_band": "g10-12",
+      "prerequisite_stages": [
+        "政治与法治"
+      ],
+      "tasks": [
+        {
+          "name": "民事权利与义务",
+          "gold_cr_ids": [],
+          "dependencies": [],
+          "cross_subject_refs": [],
+          "origin": "curriculum_fix",
+          "sort": 0
+        },
+        {
+          "name": "合同法与侵权责任",
+          "gold_cr_ids": [],
+          "dependencies": [
+            "民事权利与义务"
+          ],
+          "cross_subject_refs": [],
+          "origin": "curriculum_fix",
+          "sort": 1
+        },
+        {
+          "name": "婚姻家庭与继承",
+          "gold_cr_ids": [],
+          "dependencies": [
+            "民事权利与义务"
+          ],
+          "cross_subject_refs": [],
+          "origin": "curriculum_fix",
+          "sort": 2
+        },
+        {
+          "name": "劳动法与创业",
+          "gold_cr_ids": [],
+          "dependencies": [
+            "合同法与侵权责任"
+          ],
+          "cross_subject_refs": [],
+          "origin": "curriculum_fix",
+          "sort": 3
+        }
+      ]
+    },
+    {
+      "name": "政治与法治",
+      "sort": 2,
+      "grade_band": "g10-12",
+      "prerequisite_stages": [
+        "中国特色社会主义"
+      ],
+      "tasks": [
+        {
+          "name": "党的领导与执政",
+          "gold_cr_ids": [],
+          "dependencies": [],
+          "cross_subject_refs": [],
+          "origin": "curriculum_fix",
+          "sort": 0
+        },
+        {
+          "name": "人民民主专政",
+          "gold_cr_ids": [],
+          "dependencies": [
+            "党的领导与执政"
+          ],
+          "cross_subject_refs": [],
+          "origin": "curriculum_fix",
+          "sort": 1
+        },
+        {
+          "name": "全面依法治国",
+          "gold_cr_ids": [],
+          "dependencies": [
+            "人民民主专政"
+          ],
+          "cross_subject_refs": [],
+          "origin": "curriculum_fix",
+          "sort": 2
+        }
+      ]
+    },
+    {
+      "name": "哲学与文化",
+      "sort": 3,
+      "grade_band": "g10-12",
+      "prerequisite_stages": [
+        "中国特色社会主义"
+      ],
+      "tasks": [
+        {
+          "name": "唯物论与辩证法",
+          "gold_cr_ids": [],
+          "dependencies": [],
+          "cross_subject_refs": [],
+          "origin": "curriculum_fix",
+          "sort": 0
+        },
+        {
+          "name": "认识论与真理观",
+          "gold_cr_ids": [],
+          "dependencies": [
+            "唯物论与辩证法"
+          ],
+          "cross_subject_refs": [],
+          "origin": "curriculum_fix",
+          "sort": 1
+        },
+        {
+          "name": "价值判断与文化自信",
+          "gold_cr_ids": [],
+          "dependencies": [
+            "认识论与真理观"
+          ],
+          "cross_subject_refs": [],
+          "origin": "curriculum_fix",
+          "sort": 2
+        },
+        {
+          "name": "历史唯物主义与社会发展",
+          "gold_cr_ids": [],
+          "dependencies": [
+            "价值判断与文化自信"
+          ],
+          "cross_subject_refs": [],
+          "origin": "curriculum_fix",
+          "sort": 3
+        }
+      ]
+    }
+  ],
+  "total_stages": 10,
+  "total_tasks": 24
+}

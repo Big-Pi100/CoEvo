@@ -15,7 +15,6 @@ backend/.env.local
 /.idea
 /.vscode
 /vendor
-/data
 /scripts
 .rtk
 CLAUDE.md
@@ -24,6 +23,7 @@ CLAUDE.md
 /old
 /frontend/assets
 /docs/deployment-guide.md
+/backend/crates/api_server/data
 # Windows 保留设备名（不可被 Git 索引）
 /nul
 

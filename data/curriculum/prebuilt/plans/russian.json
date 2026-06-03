@@ -1,0 +1,237 @@
+{
+  "subject": "russian",
+  "goal": "俄语学习计划",
+  "stages": [
+    {
+      "name": "第一学段：语音与基础交际",
+      "prerequisite_stages": [],
+      "tasks": [
+        {
+          "name": "基础语音与发音规则",
+          "gold_cr_ids": [
+            "50",
+            "51",
+            "61"
+          ],
+          "dependencies": [],
+          "cross_subject_refs": [],
+          "origin": "extracted",
+          "sort": 0
+        },
+        {
+          "name": "问候与自我介绍",
+          "gold_cr_ids": [
+            "1",
+            "17",
+            "20",
+            "21",
+            "27",
+            "54",
+            "2",
+            "3",
+            "4"
+          ],
+          "dependencies": [
+            "基础语音与发音规则"
+          ],
+          "cross_subject_refs": [],
+          "origin": "extracted",
+          "sort": 1
+        },
+        {
+          "name": "词汇与语法感知",
+          "gold_cr_ids": [
+            "87",
+            "90",
+            "62",
+            "63",
+            "64",
+            "60",
+            "18",
+            "19",
+            "59"
+          ],
+          "dependencies": [
+            "基础语音与发音规则"
+          ],
+          "cross_subject_refs": [],
+          "origin": "extracted",
+          "sort": 2
+        }
+      ],
+      "grade_band": "",
+      "sort": 0
+    },
+    {
+      "name": "第二学段：语法扩充与文化初探",
+      "prerequisite_stages": [
+        "第一学段：语音与基础交际"
+      ],
+      "tasks": [
+        {
+          "name": "拼写构词与词义辨析",
+          "gold_cr_ids": [
+            "42",
+            "43",
+            "45",
+            "46"
+          ],
+          "dependencies": [
+            "词汇与语法感知"
+          ],
+          "cross_subject_refs": [],
+          "origin": "extracted",
+          "sort": 0
+        },
+        {
+          "name": "句子结构与语法规则",
+          "gold_cr_ids": [
+            "24",
+            "25",
+            "26",
+            "23",
+            "31",
+            "32",
+            "33",
+            "34"
+          ],
+          "dependencies": [
+            "拼写构词与词义辨析"
+          ],
+          "cross_subject_refs": [],
+          "origin": "extracted",
+          "sort": 1
+        },
+        {
+          "name": "文化知识初步了解",
+          "gold_cr_ids": [
+            "6",
+            "7",
+            "28",
+            "29",
+            "30",
+            "65",
+            "66",
+            "67",
+            "68",
+            "69",
+            "70"
+          ],
+          "dependencies": [
+            "句子结构与语法规则"
+          ],
+          "cross_subject_refs": [],
+          "origin": "extracted",
+          "sort": 2
+        },
+        {
+          "name": "语篇信息获取与判断",
+          "gold_cr_ids": [
+            "5",
+            "8",
+            "9",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "35"
+          ],
+          "dependencies": [
+            "文化知识初步了解"
+          ],
+          "cross_subject_refs": [],
+          "origin": "extracted",
+          "sort": 3
+        }
+      ],
+      "grade_band": "",
+      "sort": 1
+    },
+    {
+      "name": "第三学段：语篇任务与文化对比",
+      "prerequisite_stages": [
+        "第二学段：语法扩充与文化初探"
+      ],
+      "tasks": [
+        {
+          "name": "语调理解与日常交际",
+          "gold_cr_ids": [
+            "44",
+            "47",
+            "48",
+            "49",
+            "88",
+            "89"
+          ],
+          "dependencies": [
+            "语篇信息获取与判断"
+          ],
+          "cross_subject_refs": [],
+          "origin": "extracted",
+          "sort": 0
+        },
+        {
+          "name": "文化专题活动（中俄对比）",
+          "gold_cr_ids": [
+            "71",
+            "72",
+            "73",
+            "74",
+            "75",
+            "76",
+            "77",
+            "78",
+            "79",
+            "91",
+            "92"
+          ],
+          "dependencies": [
+            "语调理解与日常交际"
+          ],
+          "cross_subject_refs": [],
+          "origin": "extracted",
+          "sort": 1
+        },
+        {
+          "name": "综合言语技能与项目展示",
+          "gold_cr_ids": [
+            "22",
+            "36",
+            "37",
+            "38",
+            "39",
+            "40",
+            "41",
+            "52",
+            "53",
+            "55",
+            "56",
+            "57",
+            "58",
+            "80",
+            "81",
+            "82",
+            "83",
+            "84",
+            "85",
+            "86",
+            "93"
+          ],
+          "dependencies": [
+            "文化专题活动（中俄对比）"
+          ],
+          "cross_subject_refs": [],
+          "origin": "extracted",
+          "sort": 2
+        }
+      ],
+      "grade_band": "",
+      "sort": 2
+    }
+  ],
+  "total_stages": 3,
+  "total_tasks": 10
+}
