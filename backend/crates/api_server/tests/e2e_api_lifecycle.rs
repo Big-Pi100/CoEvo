@@ -14,7 +14,7 @@ use std::sync::OnceLock;
 const TEST_USER: &str = "apiuser";
 const TEST_PASS: &str = "apipass123";
 const TEST_CONV: &str = "api-test-conv";
-const MAX_DIALOGUE_ROUNDS: usize = 20;
+const MAX_DIALOGUE_ROUNDS: usize = 7;
 const TIMEOUT_MINS: u64 = 25;
 
 // 学生提示词由 student_llm crate 统一管理（DEFAULT_PROMPT），见 prompts/student/default.md
@@ -137,7 +137,8 @@ async fn e2e_api_lifecycle() {
 
     let start_time = std::time::Instant::now();
     let api_key = std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY");
-    let student_cfg = chat_engine::llm_caller::LlmConfig::deepseek_v4_flash(&api_key);
+    let mut student_cfg = chat_engine::llm_caller::LlmConfig::deepseek_v4_flash(&api_key);
+    student_cfg.temperature = 0.3;
 
     let mut plan_created = false;
     let mut turn_diags: Vec<TurnDiag> = Vec::new();
@@ -226,29 +227,20 @@ async fn e2e_api_lifecycle() {
             None => vec![],
         };
 
-        // 构建学生输入上下文：只取最后一轮教师回复（无历史记忆）
-        let student_input = raw_turns.iter().rev()
+        // 构建学生输入上下文：只取最后一轮教师回复，标注角色来源
+        // raw_turns 来自 /api/history，默认 ORDER BY created_at DESC（最新在前）
+        let student_input = raw_turns.iter()
             .find(|(role, _)| role == "assistant")
-            .map(|(_, content)| content.clone())
+            .map(|(_, content)| format!("assistant: {}", content))
             .unwrap_or_default();
 
         // 学生 LLM 生成回应
         let mut student_caller = chat_engine::llm_caller::LlmCaller::new(student_cfg.clone());
-        let student_msg = {
-            let msg = student_speak(&mut student_caller, DEFAULT_PROMPT, &student_input).await;
-            if msg.is_empty() {
-                eprintln!("  ⚠️ student LLM returned empty response");
-                format!("老师，我还没完全理解，能再讲讲吗？（第{}轮）", round)
-            } else { msg }
-        };
+        let student_msg = student_speak(&mut student_caller, DEFAULT_PROMPT, &student_input).await;
+        assert!(!student_msg.is_empty(), "student LLM returned empty response at round {}", round);
 
-        // 发送学生消息（第 6 轮后注入推进信号）
-        let active_msg = if round >= 7 {
-            // 学生已经学了够多轮了，主动要求推进
-            format!("老师我明白了！我觉得我已经掌握了，咱们继续下一步吧！{}", student_msg.chars().take(100).collect::<String>())
-        } else {
-            student_msg.clone()
-        };
+        // 发送学生消息
+        let active_msg = student_msg;
         let chat_resp = client.post(format!("{}/api/chat", base))
             .header("Authorization", format!("Bearer {}", token))
             .json(&json!({

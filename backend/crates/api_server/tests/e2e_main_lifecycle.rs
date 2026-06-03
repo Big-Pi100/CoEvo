@@ -450,7 +450,8 @@ async fn student_speak_wrapper(
     student_caller: &mut chat_engine::llm_caller::LlmCaller,
 ) -> String {
     let teacher_reply = helpers::get_last_teacher_reply();
-    let reply = student_speak(student_caller, DEFAULT_PROMPT, &teacher_reply).await;
+    let labeled_input = if teacher_reply.is_empty() { String::new() } else { format!("assistant: {}", teacher_reply) };
+    let reply = student_speak(student_caller, DEFAULT_PROMPT, &labeled_input).await;
     if !reply.is_empty() {
         println!("  🧑 学生: {}", truncate(&reply, 200));
     }
@@ -532,10 +533,8 @@ async fn e2e_main_lifecycle() {
     // 第1轮：学生看到 Phase 1 教师回复后，根据教学内容做出回应
     // 此时 conversation_turns 中已有 Phase 1 的完整对话（user+assistant）
     let mut student_msg = student_speak_wrapper(&mut student_caller).await;
-    if student_msg.trim().is_empty() || student_msg.len() < 5 {
-        // 学生 LLM 未生成有效回复，用硬编码兜底消息
-        student_msg = "老师，我不太明白，能讲得更简单一些吗？".to_string();
-    }
+    assert!(!student_msg.trim().is_empty() && student_msg.len() >= 5,
+        "student LLM empty/short response at phase 2 init");
 
     for round in 1..=max_rounds {
         let result = cp2_turn(&mut caller, &mut cp2_caller,
@@ -552,18 +551,10 @@ async fn e2e_main_lifecycle() {
         let mut student_diag = result.diag;
         student_diag.student_system_prompt = DEFAULT_PROMPT.to_string();
         student_diag.student_input_context = helpers::get_last_teacher_reply();
-        student_diag.student_reply = if next_student_msg.trim().is_empty() {
-            "[学生未生成有效回复，对话结束]".to_string()
-        } else {
-            next_student_msg.clone()
-        };
+        assert!(!next_student_msg.trim().is_empty(), "student LLM empty response at round {}", round);
+        student_diag.student_reply = next_student_msg.clone();
         turn_diags.push(student_diag);
-        
-        // 如果学生没话说了或消息太短，结束对话
-        if next_student_msg.trim().is_empty() || next_student_msg.len() < 5 { 
-            println!("  ⏹️ 学生无有效回复，对话结束");
-            break; 
-        }
+
         student_msg = next_student_msg;
 
         // 收集本轮对话数据供后续 CP1 批量提取
