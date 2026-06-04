@@ -47,13 +47,6 @@ where F: Fn(&rusqlite::Row) -> rusqlite::Result<T>
 use chat_engine::llm_caller::LlmConfig;
 use chat_engine::pipeline_router::Domain;
 
-/// Reusable HTTP client for STT requests — avoids creating a new connection pool per call
-static STT_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-
-fn stt_client() -> &'static reqwest::Client {
-    STT_CLIENT.get_or_init(reqwest::Client::new)
-}
-
 pub fn build_router(llm_config: LlmConfig) -> Router {
     // 存储 LLM 配置供 routes 使用
     crate::llm::init(llm_config);
@@ -104,8 +97,6 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/k12/quiz/submit", post(crate::k12_quiz_api::quiz_submit_handler))
         // ── WebSocket ──
         .route("/ws", get(ws_upgrade))
-        // ── STT (Speech-to-Text) ──
-        .route("/api/stt", post(stt_handler))
         // ── Verify Translation (V1 forward mode) ──
         .route("/api/verify-translation", post(verify_translation_handler))
         // ── Admin ──
@@ -1721,116 +1712,6 @@ async fn weekly_report_handler(
     }))
 }
 
-// ════════════════════════════════════════════
-// Admin
-// ════════════════════════════════════════════
-async fn stt_handler(
-    body: axum::body::Bytes,
-) -> Json<serde_json::Value> {
-    let appid = std::env::var("IFLYTEK_APPID").unwrap_or_default();
-    let api_key = std::env::var("IFLYTEK_API_KEY").unwrap_or_default();
-    let api_secret = std::env::var("IFLYTEK_API_SECRET").unwrap_or_default();
-    if appid.is_empty() || api_key.is_empty() || api_secret.is_empty() {
-        return Json(serde_json::json!({"error": "iFlytek credentials not configured"}));
-    }
-
-    // 用 ffmpeg 把 M4A/AAC 转成 16kHz 单声道 PCM
-    let pid = std::process::id();
-    let in_path = std::path::Path::new("/tmp").join(format!("stt_in_{}", pid));
-    let out_path = std::path::Path::new("/tmp").join(format!("stt_out_{}.pcm", pid));
-    let _ = tokio::fs::write(&in_path, &body).await;
-    tracing::info!("STT: received {} bytes, wrote to {}", body.len(), in_path.display());
-    let ffmpeg_out = std::process::Command::new("ffmpeg")
-        .args([
-            "-y",
-            "-i", &in_path.to_string_lossy(),
-            "-ar", "16000",
-            "-ac", "1",
-            "-sample_fmt", "s16",
-            "-f", "s16le",
-            &out_path.to_string_lossy(),
-        ])
-        .output();
-    let _ = tokio::fs::remove_file(&in_path).await;
-
-    let raw_pcm = match ffmpeg_out {
-        Ok(o) if o.status.success() => {
-            let data = tokio::fs::read(&out_path).await.unwrap_or_default();
-            let _ = tokio::fs::remove_file(&out_path).await;
-            data
-        }
-        Ok(o) => {
-            let msg = String::from_utf8_lossy(&o.stderr).to_string();
-            return Json(serde_json::json!({"error": format!("ffmpeg: {}", msg)}));
-        }
-        Err(e) => return Json(serde_json::json!({"error": format!("ffmpeg exec: {}", e)})),
-    };
-    if raw_pcm.is_empty() {
-        return Json(serde_json::json!({"error": "empty pcm after ffmpeg"}));
-    }
-    tracing::info!("STT: ffmpeg ok, pcm={} bytes, sending to iFlytek", raw_pcm.len());
-
-    let cur_time = chrono::Utc::now().timestamp().to_string();
-    let param_json = serde_json::json!({
-        "engine_type": "sms16k",
-        "aue": "raw",
-    });
-    let param_b64 = base64::Engine::encode(
-        &base64::engine::general_purpose::STANDARD,
-        param_json.to_string(),
-    );
-    let checksum_input = format!("{}{}{}", api_key, cur_time, param_b64);
-    let checksum = format!("{:x}", md5::compute(checksum_input.as_bytes()));
-
-    let client = stt_client();
-    // 讯飞 REST API 要求: audio 先 Base64 编码，再 URL 编码，作为 form 参数发送
-    let audio_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &raw_pcm);
-    let audio_form = audio_b64
-        .replace('+', "%2B")
-        .replace('/', "%2F")
-        .replace('=', "%3D");
-    let form_body = format!("audio={}", audio_form);
-    match client
-        .post("https://api.xfyun.cn/v1/service/v1/iat")
-        .header("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
-        .header("X-Appid", &appid)
-        .header("X-CurTime", &cur_time)
-        .header("X-Param", &param_b64)
-        .header("X-CheckSum", &checksum)
-        .body(form_body)
-        .send()
-        .await
-    {
-        Ok(resp) => {
-            let status = resp.status().as_u16();
-            let text = resp.text().await.unwrap_or_default();
-            tracing::info!("iFlytek response ({}): {}", status, &text[..text.len().min(500)]);
-            if status == 200 {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
-                    let code = json["code"].as_str().unwrap_or("??");
-                    if code == "0" {
-                        if let Some(t) = json["data"].as_str() {
-                            if !t.is_empty() {
-                                tracing::info!("STT: success, text='{}'", t);
-                                return Json(serde_json::json!({"text": t}));
-                            }
-                        }
-                        tracing::warn!("STT: code=0 but data empty: {}", text);
-                        return Json(serde_json::json!({"text": "", "_debug": text}));
-                    }
-                    let desc = json["desc"].as_str().unwrap_or(&text);
-                    tracing::error!("STT: code={} desc={}", code, desc);
-                    return Json(serde_json::json!({"error": format!("iFlytek code={}: {}", code, desc)}));
-                }
-                tracing::error!("STT: parse error: {}", text);
-                Json(serde_json::json!({"error": format!("iFlytek parse: {}", text)}))
-            } else {
-                Json(serde_json::json!({"error": format!("iFlytek {}: {}", status, text)}))
-            }
-        }
-        Err(e) => Json(serde_json::json!({"error": format!("STT proxy: {}", e)})),
-    }
-}
 // ════════════════════════════════════════════
 // K12 结构化学习初始化
 // ════════════════════════════════════════════
