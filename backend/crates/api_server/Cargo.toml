@@ -33,3 +33,5 @@ rand.workspace = true
 [dev-dependencies]
 dotenvy = "0.15"
 student_llm = { path = "../student_llm" }
+tokio-tungstenite = "0.21"
+futures-util.workspace = true

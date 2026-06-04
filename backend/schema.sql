@@ -78,6 +78,8 @@ CREATE TABLE cards (
         CHECK(origin IN ('extracted', 'prebuilt')),
     plan_type TEXT,                -- "conversation_plans" | "plan_templates"
     plan_id TEXT,
+    stage_name TEXT,               -- 所属 stage 名称，NULL 表示无 stage 绑定
+    plan_task_id TEXT,             -- 词汇/古诗/句型卡绑定的 task 名称
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL
 );

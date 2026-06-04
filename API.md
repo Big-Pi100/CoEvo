@@ -873,3 +873,195 @@ AI 批量评判用户答案。
 ```json
 {"status": "ok"}
 ```
+
+---
+
+## 卡片状态管理
+
+### `PATCH /api/cards/status`
+
+更新单张卡片状态（active / pending / skipped / archived）。
+
+**Request:**
+```json
+{
+  "user_id": "string",
+  "card_id": "string",
+  "status": "active|pending|skipped|archived"
+}
+```
+
+**Response 200:**
+```json
+{"status": "ok"}
+```
+
+### `PATCH /api/cards/batch-status`
+
+批量更新卡片状态。
+
+**Request:**
+```json
+{
+  "user_id": "string",
+  "card_ids": ["id1", "id2"],
+  "status": "active|pending|skipped|archived"
+}
+```
+
+**Response 200:**
+```json
+{"updated": 2, "status": "ok"}
+```
+
+---
+
+## K12 结构化学习
+
+### `POST /api/k12/init`
+
+初始化 K12 数理化等学科的结构化学习会话。创建新对话 + 从 plan_templates 加载预置课程计划 + 写入预置概念卡片。
+
+**Request:**
+```json
+{
+  "user_id": "string",
+  "subject": "math",
+  "grade_band": "g7-9"
+}
+```
+
+**Response 200:**
+```json
+{
+  "conversation_id": "uuid",
+  "plan": {"stages": [...], "goal": "..."},
+  "cards": {"total": 136, "ids": ["k12_..."], "sample": [...]}
+}
+```
+
+### `GET /api/k12/progress`
+
+获取 K12 学习进度（各学科完成情况）。
+
+**Query Params:**
+- `user_id` (required)
+
+**Response 200:**
+```json
+{
+  "subjects": [
+    {"subject": "math", "grade_band": "g7-9", "progress": 0.35, "total_tasks": 20, "completed_tasks": 7}
+  ]
+}
+```
+
+### `POST /api/k12/reading/init`
+
+初始化语文课文阅读会话（reading-first 模式，独立于 K12 knowledge-first）。
+
+**Request:**
+```json
+{
+  "user_id": "string",
+  "subject": "chinese",
+  "grade_band": "g1-2"
+}
+```
+
+**Response 200:**
+```json
+{
+  "conversation_id": "uuid",
+  "plan": {"stages": [...], "goal": "..."},
+  "cards": {"total": 658, "ids": ["chinese_..."], "sample": [...]}
+}
+```
+
+### `GET /api/k12/reading/{conv_id}/current-card`
+
+获取当前阅读模式课文的完整卡片数据（含课文全文、词卡、概念卡）。
+
+**Query Params:**
+- `user_id` (required)
+
+**Response 200:**
+```json
+{
+  "card_id": "reading_primary_我是中国人",
+  "front": "课文标题",
+  "back": "课文全文...",
+  "vocab_cards": [{"front": "我", "back": "..."}],
+  "concept_cards": []
+}
+```
+
+---
+
+## 翻译验证
+
+### `POST /api/verify-translation`
+
+正向语义验证 — LLM 判断用户翻译是否等价于正确答案（用于语言类复习）。
+
+**Request:**
+```json
+{
+  "front": "hello",
+  "back": "你好",
+  "user_input": "你好吗"
+}
+```
+
+**Response 200:**
+```json
+{"result": "pass|fail|partial"}
+```
+
+---
+
+## WebSocket 聊天
+
+### `WS /ws`
+
+WebSocket 聊天端点（前端主要聊天方式）。建立连接后发送 JSON 消息：
+
+**发送 (ChatRequest):**
+```json
+{
+  "user_id": "string",
+  "conversation_id": "string",
+  "message": "string",
+  "token": "string"
+}
+```
+
+**接收 (WsEvent):**
+```json
+{"type": "delta", "data": "部分回复文本"}
+{"type": "done", "data": "完整回复", "candidates": ["概念1", ...]}
+{"type": "error", "data": "错误信息"}
+```
+
+---
+
+## 更新用户资料
+
+### `PUT /api/user/{user_id}/profile`
+
+更新用户资料（昵称、头像等）。
+
+**Request:**
+```json
+{
+  "user_id": "string",
+  "real_name": "张三",
+  "phone": "13800138000"
+}
+```
+
+**Response 200:**
+```json
+{"status": "ok"}
+```
+

@@ -291,7 +291,7 @@ async fn e2e_api_lifecycle() {
             let role = t["role"].as_str()?;
             let content = t["content"].as_str()?;
             Some(format!("{}: {}", role, content))
-        }).collect::<Vec<_>>(),
+        }).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>(),
         None => vec![],
     };
     println!("  turns: {}", all_turns.len());
@@ -320,9 +320,25 @@ async fn e2e_api_lifecycle() {
     calls += 1;
     let plan_count = report_val["plans"].as_array().map(|a| a.len()).unwrap_or(0);
 
-    // 查询最终 plan 状态（从 DB 读 user_plan_progress）
+    // 查询最终 plan 状态（合并 plan_content 结构 + user_plan_progress 状态）
     let plan_status_lines: Vec<String> = {
         let conn = api_server::db_pool::get_conn();
+        // 从 user_plan_progress 读取实际状态
+        let task_statuses: std::collections::HashMap<String, String> = {
+            let mut stmt = conn.prepare(
+                "SELECT task_key, status FROM user_plan_progress WHERE plan_id = (SELECT id FROM conversation_plans WHERE conversation_id = ?1 LIMIT 1)"
+            ).ok();
+            match stmt {
+                Some(mut s) => s.query_map(rusqlite::params![TEST_CONV], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                }).ok().map(|rows| {
+                    rows.filter_map(|r| r.ok()).collect()
+                }).unwrap_or_default(),
+                None => std::collections::HashMap::new(),
+            }
+        };
+
+        // 从 plan_content 读取结构
         let plan_str: Option<String> = conn.query_row(
             "SELECT plan_content FROM conversation_plans WHERE conversation_id = ?1",
             rusqlite::params![TEST_CONV], |r| r.get(0),
@@ -336,9 +352,13 @@ async fn e2e_api_lifecycle() {
                         let sn = s["name"].as_str().unwrap_or("?");
                         s["tasks"].as_array().map(|tasks| {
                             tasks.iter().map(|t| {
-                                format!("- {} / {} → {}", sn,
-                                    t["name"].as_str().unwrap_or("?"),
-                                    t["status"].as_str().unwrap_or("?"))
+                                let tname = t["name"].as_str().unwrap_or("?");
+                                let status = task_statuses.get(tname)
+                                    .map(|s| s.as_str())
+                                    .or_else(|| task_statuses.get(t["task_key"].as_str().unwrap_or("")).map(|s| s.as_str()))
+                                    .or_else(|| t["status"].as_str())
+                                    .unwrap_or("pending");
+                                format!("- {} / {} → {}", sn, tname, status)
                             }).collect::<Vec<_>>().join("\n")
                         })
                     }).collect::<Vec<_>>()

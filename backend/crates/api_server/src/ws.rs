@@ -452,7 +452,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
 
                         let ef: Vec<String> = {
                             let mut stmt = match conn.prepare(
-                                "SELECT LOWER(front) FROM cards WHERE user_id = ?1"
+                                "SELECT LOWER(front) FROM cards WHERE user_id = ?1 AND status = 'active'"
                             ) {
                                 Ok(s) => s,
                                 Err(_) => break 'db None,

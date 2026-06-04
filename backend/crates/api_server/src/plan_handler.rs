@@ -934,12 +934,23 @@ pub fn build_plan_context(conn: &rusqlite::Connection, conversation_id: &str) ->
             let progress_map: std::collections::HashMap<String, String> = progress_rows.into_iter().collect();
 
             if let Some(stages) = merged.get_mut("stages").and_then(|s| s.as_array_mut()) {
-                for stage in stages {
+                for stage in stages.iter_mut() {
                     if let Some(tasks) = stage.get_mut("tasks").and_then(|t| t.as_array_mut()) {
                         for task in tasks {
                             let task_key = task.get("task_key").and_then(|k| k.as_str()).unwrap_or("");
                             let status = progress_map.get(task_key).map(|s| s.as_str()).unwrap_or("pending");
                             task["status"] = serde_json::json!(status);
+                        }
+                    }
+                }
+                // 初始状态（user_plan_progress 无数据）：激活第一 stage 的第一任务
+                if progress_map.is_empty() {
+                    if let Some(first_stage) = stages.first_mut() {
+                        first_stage["status"] = serde_json::json!("in_progress");
+                        if let Some(tasks) = first_stage.get_mut("tasks").and_then(|t| t.as_array_mut()) {
+                            if let Some(first_task) = tasks.first_mut() {
+                                first_task["status"] = serde_json::json!("in_progress");
+                            }
                         }
                     }
                 }
@@ -985,12 +996,23 @@ pub fn build_plan_context(conn: &rusqlite::Connection, conversation_id: &str) ->
             };
             let progress_map: std::collections::HashMap<String, String> = progress_rows.into_iter().collect();
             if let Some(stages) = merged.get_mut("stages").and_then(|s| s.as_array_mut()) {
-                for stage in stages {
+                for stage in stages.iter_mut() {
                     if let Some(tasks) = stage.get_mut("tasks").and_then(|t| t.as_array_mut()) {
                         for task in tasks {
                             let task_key = task.get("task_key").and_then(|k| k.as_str()).unwrap_or("");
                             let status = progress_map.get(task_key).map(|s| s.as_str()).unwrap_or("pending");
                             task["status"] = serde_json::json!(status);
+                        }
+                    }
+                }
+                // 初始状态：激活第一 stage 的第一任务
+                if progress_map.is_empty() {
+                    if let Some(first_stage) = stages.first_mut() {
+                        first_stage["status"] = serde_json::json!("in_progress");
+                        if let Some(tasks) = first_stage.get_mut("tasks").and_then(|t| t.as_array_mut()) {
+                            if let Some(first_task) = tasks.first_mut() {
+                                first_task["status"] = serde_json::json!("in_progress");
+                            }
                         }
                     }
                 }
@@ -1789,6 +1811,33 @@ fn unlock_next_cards(
             }
         }
     }
+
+    // ── 激活当前 in_progress stage 的卡片 ──
+    if let Some(stages) = task_status.get("stages").and_then(|s| s.as_array()) {
+        for stage in stages {
+            if stage["status"] == "in_progress" || stage["status"] == "done" {
+                if let Some(sn) = stage["name"].as_str() {
+                    let plan_type = if task_status.get("subject").is_some() { "plan_templates" } else { "conversation_plans" };
+                    let plan_id: String = conn.query_row(
+                        "SELECT COALESCE((SELECT id FROM conversation_plans WHERE conversation_id = ?1 LIMIT 1), '')",
+                        rusqlite::params![conversation_id],
+                        |row| row.get(0),
+                    ).unwrap_or_default();
+                    let pid = if plan_id.is_empty() {
+                        let subject: String = conn.query_row(
+                            "SELECT COALESCE(subject, '') FROM conversations WHERE id = ?1",
+                            rusqlite::params![conversation_id],
+                            |row| row.get(0),
+                        ).unwrap_or_default();
+                        if subject.is_empty() { break; }
+                        format!("{}_plan", subject)
+                    } else { plan_id };
+                    activate_stage_cards(conn, plan_type, &pid, sn);
+                }
+                break;
+            }
+        }
+    }
 }
 
 /// 从 plan_update JSON 渲染学习计划文本
@@ -1855,6 +1904,26 @@ pub fn achievement_exists(conn: &rusqlite::Connection, user_id: &str, key: &str)
         rusqlite::params![user_id, key],
         |_| Ok(true),
     ).unwrap_or(false)
+}
+
+/// 激活指定 stage 的所有卡片（archived → active）
+/// 在 K12 init 完成时、或 stage 状态变为 in_progress 时调用
+pub fn activate_stage_cards(
+    conn: &rusqlite::Connection,
+    plan_type: &str,
+    plan_id: &str,
+    stage_name: &str,
+) {
+    if plan_type.is_empty() || plan_id.is_empty() || stage_name.is_empty() {
+        return;
+    }
+    let updated = conn.execute(
+        "UPDATE cards SET status = 'active' WHERE plan_type = ?1 AND plan_id = ?2 AND stage_name = ?3 AND status = 'archived'",
+        rusqlite::params![plan_type, plan_id, stage_name],
+    ).unwrap_or(0);
+    if updated > 0 {
+        tracing::info!("Activated {} cards for stage '{}' (plan={}/{})", updated, stage_name, plan_type, plan_id);
+    }
 }
 
 /// 修复 LLM 输出 JSON 中的常见转义错误

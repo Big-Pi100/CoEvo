@@ -69,6 +69,8 @@ CREATE TABLE cards (
         CHECK(origin IN ('extracted', 'prebuilt')),
     plan_type TEXT,
     plan_id TEXT,
+    stage_name TEXT DEFAULT NULL,
+    plan_task_id TEXT DEFAULT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL
 );
@@ -409,6 +411,9 @@ async fn main() {
             // cards 表新增字段
             "ALTER TABLE cards ADD COLUMN gold_cr_id TEXT DEFAULT NULL",
             "ALTER TABLE cards ADD COLUMN origin TEXT DEFAULT 'extracted'",
+            // Stage 级卡片绑定
+            "ALTER TABLE cards ADD COLUMN stage_name TEXT DEFAULT NULL",
+            "ALTER TABLE cards ADD COLUMN plan_task_id TEXT DEFAULT NULL",
             // k12_quiz_bank 新增关联字段
             "ALTER TABLE k12_quiz_bank ADD COLUMN assessment_item_id TEXT DEFAULT NULL",
             "ALTER TABLE k12_quiz_bank ADD COLUMN plan_stage_id TEXT DEFAULT NULL",
@@ -797,6 +802,184 @@ async fn main() {
                 panic!("Phase N migration failed: {}", e);
             });
             tracing::info!("Phase N: cards.status + subject code cleanup + skipped_concepts drop completed");
+        }
+    }
+
+    // ── Phase StageBinding: 预置卡 stage_name 分配 + 归档旧卡 ──
+    {
+        let conn = api_server::db_pool::get_conn();
+        let has_stage_col: bool = conn
+            .prepare("SELECT stage_name FROM cards LIMIT 0")
+            .is_ok();
+        if !has_stage_col {
+            tracing::warn!("Phase StageBinding: stage_name column not found (ALTER TABLE may have failed)");
+        } else {
+            // 检查是否有尚未分配 stage_name 的预置卡
+            let need_migrate: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM cards WHERE origin = 'prebuilt' AND stage_name IS NULL",
+                [], |row| row.get(0),
+            ).unwrap_or(0);
+            if need_migrate == 0 {
+                tracing::debug!("Phase StageBinding: already applied (no prebuilt cards without stage_name)");
+            } else {
+                tracing::info!("Phase StageBinding: migrating {} prebuilt cards to stage-level binding", need_migrate);
+
+                // 1. 归档所有存量预置卡
+                let archived = conn.execute(
+                    "UPDATE cards SET status = 'archived' WHERE origin = 'prebuilt' AND status = 'active' AND stage_name IS NULL",
+                    [],
+                ).unwrap_or(0);
+                tracing::info!("Phase StageBinding: archived {} prebuilt cards", archived);
+
+                // 2. 遍历 plan_templates，匹配 stage_name
+                // plan_content JSON 结构: { "stages": [{ "name": "...", "tasks": [{ "name": "...", "gold_cr_ids": ["..."] }] }] }
+                // cards 表: k12_card_id 对应 plan_content 中某个 task 的 gold_cr_ids 之一
+                let mut stmt = conn.prepare(
+                    "SELECT subject_key, plan_content FROM plan_templates WHERE plan_content IS NOT NULL"
+                ).unwrap();
+                let plans: Vec<(String, String)> = stmt.query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                    ))
+                }).unwrap().filter_map(|r| r.ok()).collect();
+
+                for (subject_key, plan_content_str) in &plans {
+                    let plan_id = format!("{}_plan", subject_key);
+                    if let Ok(content) = serde_json::from_str::<serde_json::Value>(plan_content_str) {
+                        if let Some(stages) = content.get("stages").and_then(|s| s.as_array()) {
+                            // 构建 task_name → stage_name 映射（用于词汇/古诗/句型卡匹配）
+                            let mut task_to_stage: Vec<(&str, &str)> = Vec::new();
+                            for stage in stages {
+                                let stage_name = stage["name"].as_str().unwrap_or("");
+                                if stage_name.is_empty() { continue; }
+                                if let Some(tasks) = stage.get("tasks").and_then(|t| t.as_array()) {
+                                    for task in tasks {
+                                        // 路径A: 概念卡 — 通过 gold_cr_ids 匹配 k12_card_id
+                                        if let Some(ids) = task.get("gold_cr_ids").and_then(|g| g.as_array()) {
+                                            for id_val in ids {
+                                                if let Some(gold_id) = id_val.as_str() {
+                                                    let _ = conn.execute(
+                                                        "UPDATE cards SET stage_name = ?1 WHERE plan_id = ?2 AND k12_card_id = ?3 AND origin = 'prebuilt' AND stage_name IS NULL",
+                                                        rusqlite::params![stage_name, plan_id, gold_id],
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        // 路径B: 词汇/古诗/句型卡 — 通过 plan_task_id 匹配 task name
+                                        if let Some(task_name) = task["name"].as_str() {
+                                            if !task_name.is_empty() {
+                                                let _ = conn.execute(
+                                                    "UPDATE cards SET stage_name = ?1 WHERE plan_id = ?2 AND plan_task_id = ?3 AND origin = 'prebuilt' AND stage_name IS NULL",
+                                                    rusqlite::params![stage_name, plan_id, task_name],
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 3. 激活第一个 stage 的卡片
+                            if let Some(first_stage) = stages.first() {
+                                if let Some(sn) = first_stage["name"].as_str() {
+                                    if !sn.is_empty() {
+                                        // 使用 api_server::plan_handler 的激活函数
+                                        // 但这里在 main.rs 中，直接执行 SQL
+                                        let activated = conn.execute(
+                                            "UPDATE cards SET status = 'active' WHERE plan_id = ?1 AND stage_name = ?2 AND status = 'archived'",
+                                            rusqlite::params![plan_id, sn],
+                                        ).unwrap_or(0);
+                                        if activated > 0 {
+                                            tracing::info!("Phase StageBinding: activated {} cards for plan='{}' stage='{}'", activated, plan_id, sn);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── 路径C: 语文课文词卡 — 通过 reading_plans vocab_card_ids 匹配 ──
+                // 语文 plan 按课文组织（reading_plans/chinese.json），
+                // 每个课文 task 包含 vocab_card_ids[] 直接关联词卡 ID。
+                {
+                    // 路径解析（与 reading_loader.rs 一致）
+                    let reading_plans_path = {
+                        let base = if let Ok(dir) = std::env::var("COEVO_K12_DATA_DIR") {
+                            std::path::PathBuf::from(dir)
+                        } else {
+                            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                                .join("../../data/curriculum/prebuilt")
+                        };
+                        base.join("reading_plans").join("chinese.json")
+                    };
+                    if reading_plans_path.exists() {
+                        match std::fs::read_to_string(&reading_plans_path) {
+                            Ok(content) => {
+                                if let Ok(rp) = serde_json::from_str::<serde_json::Value>(&content) {
+                                    let mut total_matched = 0i64;
+                                    if let Some(stages) = rp.get("stages").and_then(|s| s.as_array()) {
+                                        for stage in stages {
+                                            let stage_name = stage["name"].as_str().unwrap_or("");
+                                            if stage_name.is_empty() { continue; }
+                                            if let Some(tasks) = stage.get("tasks").and_then(|t| t.as_array()) {
+                                                for task in tasks {
+                                                    if let Some(vocab_ids) = task.get("vocab_card_ids").and_then(|v| v.as_array()) {
+                                                        for id_val in vocab_ids {
+                                                            if let Some(vid) = id_val.as_str() {
+                                                                let updated = conn.execute(
+                                                                    "UPDATE cards SET stage_name = ?1 WHERE k12_card_id = ?2 AND origin = 'prebuilt' AND stage_name IS NULL",
+                                                                    rusqlite::params![stage_name, vid],
+                                                                ).unwrap_or(0);
+                                                                total_matched += updated as i64;
+                                                            }
+                                                        }
+                                                    }
+                                                    // 也处理 concept_card_ids
+                                                    if let Some(concept_ids) = task.get("concept_card_ids").and_then(|c| c.as_array()) {
+                                                        for id_val in concept_ids {
+                                                            if let Some(cid) = id_val.as_str() {
+                                                                let updated = conn.execute(
+                                                                    "UPDATE cards SET stage_name = ?1 WHERE k12_card_id = ?2 AND origin = 'prebuilt' AND stage_name IS NULL",
+                                                                    rusqlite::params![stage_name, cid],
+                                                                ).unwrap_or(0);
+                                                                total_matched += updated as i64;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if total_matched > 0 {
+                                        tracing::info!("Phase StageBinding: path C (reading_plans) matched {} prebuilt cards", total_matched);
+                                    }
+                                }
+                            }
+                            Err(e) => tracing::warn!("Phase StageBinding: path C reading_plans read error: {}", e),
+                        }
+                    } else {
+                        tracing::debug!("Phase StageBinding: path C skipped (reading_plans/chinese.json not found)");
+                    }
+                }
+
+                // 4. 统计最终状态
+                let stats: Vec<(String, i64)> = conn
+                    .prepare("SELECT status, COUNT(*) FROM cards WHERE origin = 'prebuilt' GROUP BY status")
+                    .unwrap()
+                    .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
+                    .unwrap()
+                    .filter_map(|r| r.ok())
+                    .collect();
+                for (status, count) in &stats {
+                    tracing::info!("Phase StageBinding: prebuilt cards status='{}': {}", status, count);
+                }
+                let stage_null: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM cards WHERE origin = 'prebuilt' AND stage_name IS NULL",
+                    [], |row| row.get(0),
+                ).unwrap_or(-1);
+                tracing::info!("Phase StageBinding: complete (prebuilt cards without stage_name: {})", stage_null);
+            }
         }
     }
 

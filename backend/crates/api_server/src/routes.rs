@@ -59,48 +59,62 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
     crate::llm::init(llm_config);
 
     Router::new()
+        // ── Health ──
         .route("/health", get(health_check))
+        // ── Auth ──
         .route("/api/auth/register", post(auth_register))
         .route("/api/auth/login", post(auth_login))
         .route("/api/auth/verify", post(auth_verify))
+        // ── Chat (REST) ──
         .route("/api/chat", post(chat_handler))
+        // ── Review / Spaced Repetition ──
         .route("/api/review/due", get(review_due_handler))
         .route("/api/review/submit", post(review_submit_handler))
         .route("/api/review/verify", post(review_verify_handler))
         .route("/api/review/judge", post(review_judge_handler))
-        // Card status
+        // ── Cards ──
         .route("/api/cards/status", patch(cards_status_handler))
         .route("/api/cards/batch-status", patch(cards_batch_status_handler))
         .route("/api/cards/all", get(cards_all_handler))
         .route("/api/cards/{card_id}/last-review", get(cards_last_review_handler))
-        // History
+        // ── History ──
         .route("/api/history", get(history_handler))
-        // Profile
+        // ── Conversation Management ──
+        .route("/api/conversations/{conv_id}", delete(conversation_delete_handler))
+        .route("/api/conversations/{conv_id}/restore", post(conversation_restore_handler))
+        .route("/api/conversations/{conv_id}/permanent", delete(conversation_permanent_delete_handler))
+        // ── User Profile ──
         .route("/api/user/{user_id}/profile", get(profile_handler))
+        .route("/api/user/{user_id}/profile", put(update_user_profile_handler))
         .route("/api/user/{user_id}/display-name", post(update_display_name_handler))
         .route("/api/user/{user_id}/avatar", post(avatar_upload_handler).get(avatar_get_handler))
-        // Preferences
         .route("/api/user/{user_id}/preferences", get(preferences_get_handler).put(preferences_put_handler))
-        // WS
+        .route("/api/user/bind-lookup", post(bind_lookup_handler))
+        // ── Learning Plans ──
+        .route("/api/plans", get(plans_list_handler))
+        // ── Learning Reports (Dashboard) ──
+        .route("/api/user/{user_id}/learning-report", get(learning_report_handler))
+        .route("/api/user/{user_id}/activity", get(activity_handler))
+        .route("/api/user/{user_id}/weekly-report", get(weekly_report_handler))
+        // ── K12 Structured Learning ──
         .route("/api/k12/init", post(k12_init_handler))
         .route("/api/k12/progress", get(k12_progress_handler))
         .route("/api/k12/reading/init", post(k12_reading_init_handler))
         .route("/api/k12/reading/{conv_id}/current-card", get(k12_reading_current_card_handler))
         .route("/api/k12/quiz/submit", post(crate::k12_quiz_api::quiz_submit_handler))
+        // ── WebSocket ──
         .route("/ws", get(ws_upgrade))
-        // Learning Plans
-        .route("/api/plans", get(plans_list_handler))
-        // Learning Report (Phase 3)
-        .route("/api/user/{user_id}/learning-report", get(learning_report_handler))
-        .route("/api/user/{user_id}/activity", get(activity_handler))
-        .route("/api/user/{user_id}/weekly-report", get(weekly_report_handler))
-        // Admin
-        .route("/api/admin/users", get(admin_users_handler))
-        .route("/api/admin/users/expiring", get(admin_expiring_users))
-        .route("/api/admin/users/export", get(admin_users_export))
+        // ── STT (Speech-to-Text) ──
+        .route("/api/stt", post(stt_handler))
+        // ── Verify Translation (V1 forward mode) ──
+        .route("/api/verify-translation", post(verify_translation_handler))
+        // ── Admin ──
         .route("/api/admin/login", post(admin_login))
         .route("/api/admin/dashboard", get(admin_dashboard))
         .route("/api/admin/register", post(admin_register))
+        .route("/api/admin/users", get(admin_users_handler))
+        .route("/api/admin/users/expiring", get(admin_expiring_users))
+        .route("/api/admin/users/export", get(admin_users_export))
         .route("/api/admin/users/batch-subscription", post(admin_batch_subscription))
         .route("/api/admin/users/{user_id}", get(admin_user_detail).delete(admin_delete_user))
         .route("/api/admin/users/{user_id}/restore", post(admin_restore_user))
@@ -111,11 +125,14 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/admin/subscription-requests/{req_id}/approve", post(admin_approve_request))
         .route("/api/admin/subscription-requests/{req_id}/reject", post(admin_reject_request))
         .route("/api/admin/admins", get(admin_list_admins).post(admin_create_admin))
+        .route("/api/admin/admins/{admin_id}/approve", post(admin_approve_admin))
+        .route("/api/admin/admins/{admin_id}/reject", post(admin_reject_admin))
         .route("/api/admin/admins/{admin_id}/password", post(admin_reset_password))
         .route("/api/admin/admins/{admin_id}/permissions", put(admin_set_permissions))
         .route("/api/admin/admins/{admin_id}/disable", delete(admin_disable_admin))
         .route("/api/admin/admins/{admin_id}/enable", post(admin_enable_admin))
         .route("/api/admin/audit-log", get(admin_audit_log))
+        // ── Admin: Guardian (Parent) ──
         .route("/api/admin/guardian/students", get(guardian_students))
         .route("/api/admin/guardian/students/{student_id}", get(guardian_student_cards))
         .route("/api/admin/guardian/students/{student_id}/cards", get(guardian_student_cards))
@@ -124,25 +141,17 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/admin/guardian/students/{student_id}/learning-summary", get(guardian_learning_summary))
         .route("/api/admin/guardian/bind", post(guardian_bind_request))
         .route("/api/admin/guardian/reveal-phone/{admin_id}", post(guardian_reveal_phone))
-        // Guardian assignment management (super admin)
         .route("/api/admin/guardian/assignments", get(admin_list_assignments).post(admin_create_assignment))
         .route("/api/admin/guardian/assignments/{assignment_id}", delete(admin_remove_assignment))
-        .route("/api/user/bind-lookup", post(bind_lookup_handler))
-        .route("/api/user/{user_id}/profile", put(update_user_profile_handler))
-        // Conversation management
-        .route("/api/conversations/{conv_id}", delete(conversation_delete_handler))
-        .route("/api/conversations/{conv_id}/restore", post(conversation_restore_handler))
-        .route("/api/conversations/{conv_id}/permanent", delete(conversation_permanent_delete_handler))
-        // STT
-        .route("/api/stt", post(stt_handler))
-        // Verify translation (V1 forward mode)
-        .route("/api/verify-translation", post(verify_translation_handler))
 }
 
 // ════════════════════════════════════════════
 // Handlers (stubs — will be filled in later)
 // ════════════════════════════════════════════
 
+/// GET /health — 服务器健康检查
+/// 请求: 无
+/// 响应: "CoEvo API — OK"
 async fn health_check() -> &'static str {
     "CoEvo API — OK"
 }
@@ -155,6 +164,9 @@ pub struct AuthInput {
     pub phone: Option<String>,
 }
 
+/// POST /api/auth/register — 注册新用户
+/// 请求: {"username": "str", "password": "str", "real_name?": "str", "phone?": "str"}
+/// 响应: {"user_id": "uuid", "token": "str"} 或 {"error": "str"}
 async fn auth_register(Json(input): Json<AuthInput>) -> Json<serde_json::Value> {
     let result = {
         let conn = crate::db_pool::get_conn();
@@ -171,6 +183,10 @@ async fn auth_register(Json(input): Json<AuthInput>) -> Json<serde_json::Value> 
     }
 }
 
+/// POST /api/auth/login — 用户登录
+/// 请求: {"username": "str", "password": "str"}
+/// 响应: {"user_id": "uuid", "token": "str"} 或 {"error": "str"}
+/// 注意: 登录后会踢掉同一用户的其他 WebSocket 连接（单设备登录）
 async fn auth_login(Json(input): Json<AuthInput>) -> Json<serde_json::Value> {
     let result = {
         let conn = crate::db_pool::get_conn();
@@ -189,7 +205,9 @@ async fn auth_login(Json(input): Json<AuthInput>) -> Json<serde_json::Value> {
     }
 }
 
-/// Verify that a stored token is still valid (used for session restore on app restart)
+/// POST /api/auth/verify — 验证 token 是否仍有效（用于应用重启后的会话恢复）
+/// 请求: {"user_id": "str", "token": "str"}
+/// 响应: {"valid": true|false}
 #[derive(Deserialize)]
 pub struct TokenVerifyInput {
     pub user_id: String,
@@ -243,14 +261,21 @@ fn check_subscription(user_id: &str) -> Result<(), String> {
 
 /// Pre-query DB for concept extraction dedup + chat history. Drops conn before async.
 fn load_chat_context(
-    user_id: &str, conversation_id: &str, message: &str,
+    user_id: &str, conversation_id: &str, message: &str, stage_name: &str,
 ) -> (Vec<String>, String, Vec<(String, String)>) {
     let conn = crate::db_pool::get_conn();
 
-    let existing_fronts: Vec<String> = query_vec(
-        &conn, "SELECT LOWER(front) FROM cards WHERE user_id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or_default();
+    let existing_fronts: Vec<String> = if stage_name.is_empty() {
+        query_vec(
+            &conn, "SELECT LOWER(front) FROM cards WHERE user_id = ?1 AND status = 'active'",
+            rusqlite::params![user_id], |row| row.get(0),
+        ).unwrap_or_default()
+    } else {
+        query_vec(
+            &conn, "SELECT LOWER(front) FROM cards WHERE user_id = ?1 AND status = 'active' AND (stage_name IS NULL OR stage_name = ?2)",
+            rusqlite::params![user_id, stage_name], |row| row.get(0),
+        ).unwrap_or_default()
+    };
 
     let mut history: Vec<(String, String)> = query_vec(
         &conn,
@@ -360,6 +385,22 @@ fn save_assistant_turn(conversation_id: &str, content: &str, now_str: &str) {
     );
 }
 
+/// POST /api/chat — 发送消息并获取 AI 回复（REST 模式，非流式）
+/// 请求: {"user_id": "str", "conversation_id": "str", "message": "str"}
+/// 响应: {
+///   "reply": "str",           // AI 回复文本
+///   "candidates": ["str"],    // CP1 提取的概念候选
+///   "achievements": [],       // 成就（暂为空）
+///   "plan_updated": bool,     // CP2 是否更新了学习计划
+/// }
+/// 内部流程:
+///   1. 鉴权 + 订阅检查
+///   2. build_plan_context() 获取当前学习计划上下文
+///   3. 拼装 LLM 输入 (system_prompt + user_content)
+///   4. LLM 生成回复
+///   5. process_plan_update() 解析 <plan_update> 标签 → CP2
+///   6. extract_concepts() 提取概念 → CP1 写入 cards 表
+///   7. 保存对话轮次
 async fn chat_handler(
     headers: HeaderMap,
     Json(input): Json<ChatInput>,
@@ -374,22 +415,35 @@ async fn chat_handler(
         return Json(serde_json::json!({"error": msg}));
     }
 
-    // 3. Load context (sync DB ops, drops conn before async LLM call)
+    // 3. 获取当前 stage 名称（用于 CP1 去重过滤）+ 加载上下文
+    let conn3 = crate::db_pool::get_conn();
+    let (domain, mode, plan_context) = crate::plan_handler::build_plan_context(&conn3, &input.conversation_id);
+    // 从 conversation_plans.plan_content 的 stages 中找第一个 in_progress 的 stage_name
+    let stage_name: String = conn3.query_row(
+        "SELECT COALESCE(plan_content, '{}') FROM conversation_plans WHERE conversation_id = ?1 LIMIT 1",
+        rusqlite::params![input.conversation_id],
+        |row| row.get::<_, String>(0),
+    ).ok().and_then(|json_str| {
+        let v: serde_json::Value = serde_json::from_str(&json_str).ok()?;
+        let stages = v.get("stages")?.as_array()?;
+        stages.iter()
+            .find(|s| s["status"].as_str().map(|st| st == "in_progress").unwrap_or(false))
+            .and_then(|s| s["name"].as_str().map(|n| n.to_string()))
+    }).unwrap_or_default();
+    drop(conn3);
     let (existing_fronts, now_str, history) =
-        load_chat_context(&input.user_id, &input.conversation_id, &input.message);
+        load_chat_context(&input.user_id, &input.conversation_id, &input.message, &stage_name);
 
     // 4. Build system prompt with plan context
     let llm_config = crate::llm::get_config();
     let (system_prompt, plan_context) = {
-        let conn = crate::db_pool::get_conn();
-        let (domain, mode, ctx) = crate::plan_handler::build_plan_context(&conn, &input.conversation_id);
         let templates = chat_engine::prompt_loader::get_chat(&domain);
         let sp = if mode == "structured" {
             templates.structured.clone()
         } else {
             templates.free.clone()
         };
-        (sp, ctx)
+        (sp, plan_context)
     };
 
     // 5. Build user content and call LLM
@@ -487,6 +541,9 @@ pub struct DueQuery {
     pub user_id: String,
 }
 
+/// GET /api/review/due — 获取到期待复习的卡片
+/// 请求参数: ?user_id=str
+/// 响应: {"cards": [...], "total_due": int, "has_more": bool}
 async fn review_due_handler(
     headers: HeaderMap,
     Query(query): Query<DueQuery>,
@@ -513,6 +570,11 @@ pub struct ReviewSubmitInput {
     pub details: Option<String>,  // JSON 数组: [{question, correct, feedback}]
 }
 
+/// POST /api/review/submit — 提交复习结果（含 FSRS 调度更新 + 成就检测）
+/// 请求: {"user_id": "str", "card_id": "str", "rating": int(0-4),
+///        "verification_type": "str", "verification_result": "str",
+///        "details?": "[{question,correct,feedback}]"}
+/// 响应: {"status": "ok", "achievements": [...]} 或 {"error": "str"}
 async fn review_submit_handler(
     headers: HeaderMap,
     Json(input): Json<ReviewSubmitInput>,
@@ -551,6 +613,9 @@ pub struct VerifyInput {
 }
 
 /// AI 快问快答: 生成 3 个问题
+/// POST /api/review/verify — LLM 生成快问快答题目（3 题）
+/// 请求: {"user_id": "str", "card_id": "str", "front": "str", "back": "str"}
+/// 响应: {"questions": [{question, expected_answer}, ...]} 或 {"error": "str", "raw": "str"}
 async fn review_verify_handler(
     headers: HeaderMap,
     Json(input): Json<VerifyInput>,
@@ -599,6 +664,10 @@ pub struct JudgeQuestionInput {
 }
 
 /// AI 快问快答: 批量判断 3 个答案
+/// POST /api/review/judge — LLM 批量判断用户答案是否正确
+/// 请求: {"user_id": "str", "card_id": "str",
+///        "questions": [{"question":"str","expected_answer":"str","user_answer":"str"}, ...]}
+/// 响应: {"results": [{"correct": bool, "feedback": "str"}, ...]} 或 {"error": "str"}
 async fn review_judge_handler(
     headers: HeaderMap,
     Json(input): Json<JudgeInput>,
@@ -755,6 +824,14 @@ pub struct AllCardsQuery {
     pub sort: Option<String>,      // "front" | "created" | "state" | "due"
 }
 
+/// GET /api/cards/all — 获取用户所有 active 卡片（支持过滤、搜索、排序）
+/// 请求参数: ?user_id=str&domain=str&subject=str&state=int&q=str&sort=str
+///    domain: 按领域过滤 (math/chinese/english...)
+///    subject: 按科目过滤
+///    state:   FSRS 状态过滤 (0=new, 1=learning, 2=review)
+///    q:       搜索关键词（匹配 front/back）
+///    sort:    排序方式 (front/created/state/due)
+/// 响应: {"cards": [{id,front,back,domain,card_type,state,difficulty,due,reps,...}], ...}
 async fn cards_all_handler(
     headers: HeaderMap,
     Query(query): Query<AllCardsQuery>,
@@ -1874,20 +1951,42 @@ async fn k12_init_handler(
         .to_string();
 
     if let Some(card_list) = cards {
-        for card_tmpl in card_list {
-            // 通过 gold_cr_ids 匹配任务级卡片（plan_task_id 已移除，任务匹配由 gold_cr_ids 担当）
-            let matches_task = card_tmpl.gold_cr_ids.iter().any(|g| first_task_ids.contains(g));
-            if !first_task_ids.is_empty() && !matches_task && first_task_name.is_empty() {
-                continue;
+        // 构建 stage 查找表：gold_cr_id → stage_name
+        let mut cr_to_stage: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        if let Some(stages) = task_status.get("stages").and_then(|s| s.as_array()) {
+            for stage in stages {
+                let sn = stage["name"].as_str().unwrap_or("");
+                if let Some(tasks) = stage["tasks"].as_array() {
+                    for task in tasks {
+                        if let Some(ids) = task.get("gold_cr_ids").and_then(|g| g.as_array()) {
+                            for id_val in ids {
+                                if let Some(id) = id_val.as_str() {
+                                    cr_to_stage.insert(id.to_string(), sn.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
             }
+        }
+
+        for card_tmpl in card_list {
+            // 匹配该卡片所属的 stage
+            let card_stage: String = card_tmpl.gold_cr_ids.iter()
+                .find_map(|g| cr_to_stage.get(g))
+                .cloned()
+                .unwrap_or_default();
+
             let card_id = format!("k12_{}", &card_tmpl.id);
-            let k12_plan_id = format!("{}_plan", input.subject);
+            let card_k12_plan_id = format!("{}_plan", input.subject);
             let _ = conn.execute(
-                "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, subject, grade_band, k12_card_id, origin, status, plan_type, plan_id)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'prebuilt', 'active', 'plan_templates', ?13)",
+                "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, subject, grade_band, k12_card_id, origin, status, plan_type, plan_id, stage_name, plan_task_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'prebuilt', 'archived', 'plan_templates', ?13, ?14, ?15)",
                 rusqlite::params![card_id, input.user_id, domain_val.to_string(), card_tmpl.card_type,
                     card_tmpl.front, card_tmpl.back, card_tmpl.source_sentence, conv_id, now_ts,
-                    input.subject, input.grade_band, card_tmpl.id, k12_plan_id],
+                    input.subject, input.grade_band, card_tmpl.id, card_k12_plan_id,
+                    if card_stage.is_empty() { rusqlite::types::Value::Null } else { rusqlite::types::Value::Text(card_stage) },
+                    if card_tmpl.plan_task_id.is_empty() { rusqlite::types::Value::Null } else { rusqlite::types::Value::Text(card_tmpl.plan_task_id.clone()) }],
             );
             // 创建 card_memory (新卡片)
             let _ = conn.execute(
@@ -1896,6 +1995,17 @@ async fn k12_init_handler(
                 rusqlite::params![card_id, now_ts],
             );
             card_ids.push(card_id);
+        }
+
+        // 激活第一个 stage 的卡片（卡片 plan_id = "{subject}_plan"）
+        let first_stage_name = task_status.get("stages")
+            .and_then(|s| s.as_array())
+            .and_then(|stages| stages.first())
+            .and_then(|stage| stage["name"].as_str())
+            .unwrap_or("");
+        if !first_stage_name.is_empty() {
+            let card_plan_id = format!("{}_plan", input.subject);
+            crate::plan_handler::activate_stage_cards(&conn, "plan_templates", &card_plan_id, first_stage_name);
         }
     }
 

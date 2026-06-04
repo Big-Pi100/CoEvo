@@ -60,6 +60,8 @@ CREATE TABLE cards (
         CHECK(origin IN ('extracted', 'prebuilt')),
     plan_type TEXT,
     plan_id TEXT,
+    stage_name TEXT,
+    plan_task_id TEXT,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL
 );

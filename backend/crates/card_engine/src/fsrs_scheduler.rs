@@ -23,6 +23,15 @@ pub struct DueCard {
     pub source_sentence: Option<String>,
     pub state: i32,
     pub reps: i32,
+    pub lapses: i32,
+    pub difficulty: f64,
+    pub created_at: i64,
+    pub due: i64,
+    #[serde(rename = "last_reviewed_at")]
+    pub last_review: Option<i64>,
+    pub last_review_quality: Option<i32>,
+    pub subject: Option<String>,
+    pub grade_band: Option<String>,
     pub conversation_id: Option<String>,
 }
 
@@ -32,7 +41,9 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64) -> (Vec<DueCa
 
     let mut stmt = conn.prepare(
         "SELECT c.id, c.front, c.back, c.domain, c.card_type, c.source_sentence,
-                cm.state, cm.reps, c.conversation_id
+                cm.state, cm.reps, cm.lapses, c.created_at, cm.difficulty, cm.due, cm.last_review,
+                (SELECT rating FROM review_log WHERE card_id = c.id ORDER BY reviewed_at DESC LIMIT 1),
+                c.subject, c.grade_band, c.conversation_id
          FROM cards c
          JOIN card_memory cm ON c.id = cm.card_id
          WHERE c.user_id = ?1
@@ -53,7 +64,15 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64) -> (Vec<DueCa
             source_sentence: row.get(5)?,
             state: row.get(6)?,
             reps: row.get(7)?,
-            conversation_id: row.get(8)?,
+            lapses: row.get(8)?,
+            created_at: row.get(9)?,
+            difficulty: row.get(10)?,
+            due: row.get(11)?,
+            last_review: row.get(12)?,
+            last_review_quality: row.get(13)?,
+            subject: row.get(14)?,
+            grade_band: row.get(15)?,
+            conversation_id: row.get(16)?,
         })
     ).unwrap().filter_map(|r| r.ok()).collect();
 
@@ -253,7 +272,7 @@ mod tests {
             "CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT, streak_days INTEGER DEFAULT 0, last_active_date TEXT, created_at TEXT NOT NULL);
              CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, turn_count INTEGER DEFAULT 0, started_at TEXT NOT NULL);
              CREATE TABLE IF NOT EXISTS conversation_turns (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
-             CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, domain TEXT, card_type TEXT NOT NULL, front TEXT NOT NULL, back TEXT NOT NULL, source_sentence TEXT, conversation_id TEXT, created_at INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'active');
+             CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, domain TEXT, card_type TEXT NOT NULL, front TEXT NOT NULL, back TEXT NOT NULL, source_sentence TEXT, conversation_id TEXT, subject TEXT, grade_band TEXT, created_at INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'active');
              CREATE TABLE IF NOT EXISTS card_memory (card_id TEXT PRIMARY KEY, state INTEGER DEFAULT 0, difficulty REAL DEFAULT 5.0, stability REAL DEFAULT 0.0, due INTEGER DEFAULT 0, last_review INTEGER, reps INTEGER DEFAULT 0, lapses INTEGER DEFAULT 0);
              CREATE TABLE IF NOT EXISTS review_log (id TEXT PRIMARY KEY, card_id TEXT NOT NULL, rating INTEGER NOT NULL, verification_type TEXT NOT NULL, verification_result TEXT NOT NULL, details_json TEXT DEFAULT NULL, reviewed_at INTEGER NOT NULL);
              CREATE TABLE IF NOT EXISTS achievements (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, achievement_key TEXT NOT NULL, name TEXT NOT NULL, icon TEXT NOT NULL, tier TEXT DEFAULT 'fixed', source TEXT, unlocked_at TEXT NOT NULL);"
@@ -269,7 +288,7 @@ mod tests {
     fn setup_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
-            "CREATE TABLE cards (id TEXT PRIMARY KEY, user_id TEXT, domain TEXT, card_type TEXT, front TEXT, back TEXT, source_sentence TEXT, conversation_id TEXT, created_at INTEGER, status TEXT NOT NULL DEFAULT 'active');
+            "CREATE TABLE cards (id TEXT PRIMARY KEY, user_id TEXT, domain TEXT, card_type TEXT, front TEXT, back TEXT, source_sentence TEXT, conversation_id TEXT, subject TEXT, grade_band TEXT, created_at INTEGER, status TEXT NOT NULL DEFAULT 'active');
              CREATE TABLE card_memory (card_id TEXT PRIMARY KEY, state INTEGER DEFAULT 0, difficulty REAL DEFAULT 5.0, stability REAL DEFAULT 0.0, due INTEGER DEFAULT 0, last_review INTEGER, reps INTEGER DEFAULT 0, lapses INTEGER DEFAULT 0);
              CREATE TABLE review_log (id TEXT PRIMARY KEY, card_id TEXT, rating INTEGER, verification_type TEXT, verification_result TEXT, reviewed_at INTEGER);
              CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT, streak_days INTEGER DEFAULT 0, last_active_date TEXT, created_at TEXT);"

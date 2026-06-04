@@ -85,6 +85,8 @@ pub struct CardData {
     pub origin: String,
     #[serde(default)]
     pub source_sentence: String,
+    #[serde(default)]
+    pub plan_task_id: String,
 }
 
 // ── 科目 key 映射 ──

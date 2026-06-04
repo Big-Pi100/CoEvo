@@ -1381,6 +1381,18 @@
     "radical": "亻",
     "strokes": 7
   },
+  "伶": {
+    "character": "伶",
+    "common_words": [
+      "伶俐",
+      "伶仃",
+      "优伶"
+    ],
+    "meaning": "clever, smart; actor",
+    "pinyin": "líng",
+    "radical": "亻",
+    "strokes": 7
+  },
   "伸": {
     "character": "伸",
     "common_words": [
@@ -1444,6 +1456,18 @@
     ],
     "meaning": "居住，停止",
     "pinyin": "zhù",
+    "radical": "亻",
+    "strokes": 7
+  },
+  "佑": {
+    "character": "佑",
+    "common_words": [
+      "保佑",
+      "佑护",
+      "佑助"
+    ],
+    "meaning": "to help, protect, bless",
+    "pinyin": "yòu",
     "radical": "亻",
     "strokes": 7
   },
@@ -2257,6 +2281,17 @@
     "radical": "八",
     "strokes": 4
   },
+  "兮": {
+    "character": "兮",
+    "common_words": [
+      "兮兮",
+      "归兮"
+    ],
+    "meaning": "particle used in ancient Chinese (like 'ah')",
+    "pinyin": "xī",
+    "radical": "八",
+    "strokes": 4
+  },
   "兰": {
     "character": "兰",
     "common_words": [
@@ -2389,6 +2424,18 @@
     "radical": "田",
     "strokes": 11
   },
+  "冀": {
+    "character": "冀",
+    "common_words": [
+      "冀望",
+      "冀求",
+      "希冀"
+    ],
+    "meaning": "to hope, expect; abbreviation for Hebei",
+    "pinyin": "jì",
+    "radical": "八",
+    "strokes": 16
+  },
   "内": {
     "character": "内",
     "common_words": [
@@ -2397,6 +2444,18 @@
     ],
     "meaning": "内部；里面",
     "pinyin": "nèi",
+    "radical": "冂",
+    "strokes": 4
+  },
+  "冈": {
+    "character": "冈",
+    "common_words": [
+      "山冈",
+      "冈峦",
+      "井冈山"
+    ],
+    "meaning": "ridge, hillock",
+    "pinyin": "gāng",
     "radical": "冂",
     "strokes": 4
   },
@@ -2483,6 +2542,18 @@
     "pinyin": "guān",
     "radical": "冖",
     "strokes": 9
+  },
+  "冤": {
+    "character": "冤",
+    "common_words": [
+      "冤枉",
+      "冤屈",
+      "冤家"
+    ],
+    "meaning": "injustice; grievance",
+    "pinyin": "yuān",
+    "radical": "冖",
+    "strokes": 10
   },
   "冥": {
     "character": "冥",
@@ -3071,6 +3142,18 @@
     "pinyin": "jì",
     "radical": "刂",
     "strokes": 8
+  },
+  "剃": {
+    "character": "剃",
+    "common_words": [
+      "剃头",
+      "剃须",
+      "剃刀"
+    ],
+    "meaning": "to shave",
+    "pinyin": "tì",
+    "radical": "刂",
+    "strokes": 9
   },
   "削": {
     "character": "削",
@@ -4784,6 +4867,17 @@
     "radical": "口",
     "strokes": 8
   },
+  "咚": {
+    "character": "咚",
+    "common_words": [
+      "咚咚",
+      "咚呛"
+    ],
+    "meaning": "thumping sound (onomatopoeia)",
+    "pinyin": "dōng",
+    "radical": "口",
+    "strokes": 8
+  },
   "咬": {
     "character": "咬",
     "common_words": [
@@ -5927,6 +6021,17 @@
     "radical": "土",
     "strokes": 12
   },
+  "堰": {
+    "character": "堰",
+    "common_words": [
+      "堰塞湖",
+      "堤堰"
+    ],
+    "meaning": "weir; dam",
+    "pinyin": "yàn",
+    "radical": "土",
+    "strokes": 12
+  },
   "堵": {
     "character": "堵",
     "common_words": [
@@ -6693,6 +6798,17 @@
     "radical": "女",
     "strokes": 9
   },
+  "姥": {
+    "character": "姥",
+    "common_words": [
+      "姥姥",
+      "姥爷"
+    ],
+    "meaning": "maternal grandmother; old woman",
+    "pinyin": "lǎo",
+    "radical": "女",
+    "strokes": 9
+  },
   "姨": {
     "character": "姨",
     "common_words": [
@@ -6792,6 +6908,16 @@
     "radical": "女",
     "strokes": 10
   },
+  "娲": {
+    "character": "娲",
+    "common_words": [
+      "女娲"
+    ],
+    "meaning": "goddess, mythological figure",
+    "pinyin": "wā",
+    "radical": "女",
+    "strokes": 10
+  },
   "娶": {
     "character": "娶",
     "common_words": [
@@ -6811,6 +6937,18 @@
     ],
     "meaning": "老年妇女；婆婆",
     "pinyin": "pó",
+    "radical": "女",
+    "strokes": 11
+  },
+  "婉": {
+    "character": "婉",
+    "common_words": [
+      "委婉",
+      "婉转",
+      "婉拒"
+    ],
+    "meaning": "graceful, tactful",
+    "pinyin": "wǎn",
     "radical": "女",
     "strokes": 11
   },
@@ -7044,6 +7182,18 @@
     "pinyin": "xué",
     "radical": "子",
     "strokes": 8
+  },
+  "孩": {
+    "character": "孩",
+    "common_words": [
+      "孩子",
+      "孩童",
+      "小孩"
+    ],
+    "meaning": "child, baby",
+    "pinyin": "hái",
+    "radical": "子",
+    "strokes": 9
   },
   "孵": {
     "character": "孵",
@@ -7539,6 +7689,18 @@
     "pinyin": "jiāng",
     "radical": "寸",
     "strokes": 9
+  },
+  "尉": {
+    "character": "尉",
+    "common_words": [
+      "上尉",
+      "中尉",
+      "少尉"
+    ],
+    "meaning": "military officer; surname",
+    "pinyin": "wèi",
+    "radical": "寸",
+    "strokes": 11
   },
   "尊": {
     "character": "尊",
@@ -8075,6 +8237,17 @@
     "radical": "山",
     "strokes": 11
   },
+  "崛": {
+    "character": "崛",
+    "common_words": [
+      "崛起",
+      "奇崛"
+    ],
+    "meaning": "towering, rising abruptly",
+    "pinyin": "jué",
+    "radical": "山",
+    "strokes": 11
+  },
   "崩": {
     "character": "崩",
     "common_words": [
@@ -8085,6 +8258,18 @@
     "pinyin": "bēng",
     "radical": "山",
     "strokes": 11
+  },
+  "嵩": {
+    "character": "嵩",
+    "common_words": [
+      "嵩山",
+      "嵩高",
+      "嵩岳"
+    ],
+    "meaning": "lofty, high; Mount Song",
+    "pinyin": "sōng",
+    "radical": "山",
+    "strokes": 13
   },
   "川": {
     "character": "川",
@@ -8592,6 +8777,18 @@
     "radical": "广",
     "strokes": 8
   },
+  "庖": {
+    "character": "庖",
+    "common_words": [
+      "庖厨",
+      "庖丁",
+      "庖代"
+    ],
+    "meaning": "kitchen; cook",
+    "pinyin": "páo",
+    "radical": "广",
+    "strokes": 8
+  },
   "店": {
     "character": "店",
     "common_words": [
@@ -8796,6 +8993,18 @@
     "pinyin": "nòng",
     "radical": "廾",
     "strokes": 7
+  },
+  "弈": {
+    "character": "弈",
+    "common_words": [
+      "弈棋",
+      "对弈",
+      "博弈"
+    ],
+    "meaning": "chess (especially Go); to play chess",
+    "pinyin": "yì",
+    "radical": "廾",
+    "strokes": 9
   },
   "弊": {
     "character": "弊",
@@ -9647,6 +9856,19 @@
     "radical": "心",
     "strokes": 11
   },
+  "患": {
+    "character": "患",
+    "common_words": [
+      "患难",
+      "患者",
+      "忧患",
+      "患病"
+    ],
+    "meaning": "worry, trouble; to suffer from; calamity",
+    "pinyin": "huàn",
+    "radical": "心",
+    "strokes": 11
+  },
   "悦": {
     "character": "悦",
     "common_words": [
@@ -10083,6 +10305,19 @@
     "radical": "戈",
     "strokes": 4
   },
+  "戎": {
+    "character": "戎",
+    "common_words": [
+      "戎马",
+      "戎装",
+      "戎机",
+      "投笔从戎"
+    ],
+    "meaning": "weapons; army; military; ancient ethnic group",
+    "pinyin": "róng",
+    "radical": "戈",
+    "strokes": 6
+  },
   "戏": {
     "character": "戏",
     "common_words": [
@@ -10494,6 +10729,17 @@
     ],
     "meaning": "抄写，抄袭",
     "pinyin": "chāo",
+    "radical": "扌",
+    "strokes": 7
+  },
+  "抉": {
+    "character": "抉",
+    "common_words": [
+      "抉择",
+      "抉摘"
+    ],
+    "meaning": "to pick out, to select; to pierce",
+    "pinyin": "jué",
     "radical": "扌",
     "strokes": 7
   },
@@ -11101,6 +11347,17 @@
     "radical": "扌",
     "strokes": 9
   },
+  "挫": {
+    "character": "挫",
+    "common_words": [
+      "挫折",
+      "挫败"
+    ],
+    "meaning": "to defeat, to frustrate, to dampen",
+    "pinyin": "cuò",
+    "radical": "扌",
+    "strokes": 10
+  },
   "振": {
     "character": "振",
     "common_words": [
@@ -11439,6 +11696,17 @@
     ],
     "meaning": "插入；插进",
     "pinyin": "chā",
+    "radical": "扌",
+    "strokes": 12
+  },
+  "揠": {
+    "character": "揠",
+    "common_words": [
+      "揠苗助长",
+      "揠拔"
+    ],
+    "meaning": "to pull up, to uproot",
+    "pinyin": "yà",
     "radical": "扌",
     "strokes": 12
   },
@@ -12161,6 +12429,18 @@
     "radical": "日",
     "strokes": 7
   },
+  "旷": {
+    "character": "旷",
+    "common_words": [
+      "旷野",
+      "旷课",
+      "旷日持久"
+    ],
+    "meaning": "vast, open, spacious; to neglect, to waste",
+    "pinyin": "kuàng",
+    "radical": "日",
+    "strokes": 7
+  },
   "旺": {
     "character": "旺",
     "common_words": [
@@ -12511,6 +12791,30 @@
     "pinyin": "àn",
     "radical": "日",
     "strokes": 13
+  },
+  "暝": {
+    "character": "暝",
+    "common_words": [
+      "暝色",
+      "暝暗",
+      "暝目"
+    ],
+    "meaning": "dark, obscure; dusk",
+    "pinyin": "míng",
+    "radical": "日",
+    "strokes": 13
+  },
+  "暮": {
+    "character": "暮",
+    "common_words": [
+      "暮色",
+      "暮年",
+      "朝暮"
+    ],
+    "meaning": "dusk, evening; last part of a period",
+    "pinyin": "mù",
+    "radical": "日",
+    "strokes": 14
   },
   "暴": {
     "character": "暴",
@@ -12999,6 +13303,18 @@
     "radical": "木",
     "strokes": 8
   },
+  "杵": {
+    "character": "杵",
+    "common_words": [
+      "杵臼",
+      "铁杵",
+      "杵声"
+    ],
+    "meaning": "pestle; a club for pounding",
+    "pinyin": "chǔ",
+    "radical": "木",
+    "strokes": 8
+  },
   "松": {
     "character": "松",
     "common_words": [
@@ -13472,6 +13788,18 @@
     "radical": "木",
     "strokes": 10
   },
+  "桓": {
+    "character": "桓",
+    "common_words": [
+      "桓桓",
+      "盘桓",
+      "齐桓公"
+    ],
+    "meaning": "a kind of tree; majestic; used in names",
+    "pinyin": "huán",
+    "radical": "木",
+    "strokes": 10
+  },
   "桥": {
     "character": "桥",
     "common_words": [
@@ -13795,6 +14123,18 @@
     "character": "樽",
     "meaning": "wine vessel; goblet",
     "pinyin": "zūn",
+    "radical": "木",
+    "strokes": 16
+  },
+  "橐": {
+    "character": "橐",
+    "common_words": [
+      "橐驼",
+      "橐囊",
+      "橐甲"
+    ],
+    "meaning": "a sack, a bag; to carry in a bag",
+    "pinyin": "tuó",
     "radical": "木",
     "strokes": 16
   },
@@ -14212,6 +14552,18 @@
     "radical": "氏",
     "strokes": 5
   },
+  "氓": {
+    "character": "氓",
+    "common_words": [
+      "流氓",
+      "氓隶",
+      "愚氓"
+    ],
+    "meaning": "people, populace; also a gangster (in 流氓)",
+    "pinyin": "máng",
+    "radical": "民",
+    "strokes": 8
+  },
   "气": {
     "character": "气",
     "common_words": [
@@ -14418,6 +14770,18 @@
     ],
     "meaning": "水蒸气；气体",
     "pinyin": "qì",
+    "radical": "氵",
+    "strokes": 7
+  },
+  "沁": {
+    "character": "沁",
+    "common_words": [
+      "沁园春",
+      "沁人心脾",
+      "沁凉"
+    ],
+    "meaning": "to seep; to permeate; name of a river",
+    "pinyin": "qìn",
     "radical": "氵",
     "strokes": 7
   },
@@ -15207,6 +15571,19 @@
     "radical": "氵",
     "strokes": 11
   },
+  "淫": {
+    "character": "淫",
+    "common_words": [
+      "淫荡",
+      "淫秽",
+      "淫雨",
+      "骄奢淫逸"
+    ],
+    "meaning": "excessive; licentious; obscene; to flood",
+    "pinyin": "yín",
+    "radical": "氵",
+    "strokes": 11
+  },
   "淮": {
     "character": "淮",
     "common_words": [
@@ -15764,6 +16141,18 @@
     "pinyin": "bīn",
     "radical": "氵",
     "strokes": 16
+  },
+  "濠": {
+    "character": "濠",
+    "common_words": [
+      "濠河",
+      "城濠",
+      "濠州"
+    ],
+    "meaning": "moat; trench; place name",
+    "pinyin": "háo",
+    "radical": "氵",
+    "strokes": 17
   },
   "瀑": {
     "character": "瀑",
@@ -16639,6 +17028,18 @@
     "radical": "犭",
     "strokes": 9
   },
+  "狸": {
+    "character": "狸",
+    "common_words": [
+      "狸猫",
+      "狐狸",
+      "狸奴"
+    ],
+    "meaning": "raccoon dog; wildcat",
+    "pinyin": "lí",
+    "radical": "犭",
+    "strokes": 10
+  },
   "狼": {
     "character": "狼",
     "common_words": [
@@ -16808,6 +17209,17 @@
     "radical": "王",
     "strokes": 9
   },
+  "珀": {
+    "character": "珀",
+    "common_words": [
+      "琥珀",
+      "珀斯"
+    ],
+    "meaning": "amber",
+    "pinyin": "pò",
+    "radical": "王",
+    "strokes": 9
+  },
   "珊": {
     "character": "珊",
     "common_words": [
@@ -16874,6 +17286,27 @@
     "radical": "王",
     "strokes": 11
   },
+  "琢": {
+    "character": "琢",
+    "common_words": [
+      "琢磨 (zhuó mó / zuó mo)",
+      "雕琢 (diāo zhuó)"
+    ],
+    "meaning": "to carve, polish; to refine",
+    "pinyin": "zhuó",
+    "radical": "王",
+    "strokes": 12
+  },
+  "琥": {
+    "character": "琥",
+    "common_words": [
+      "琥珀 (hǔ pò)"
+    ],
+    "meaning": "amber",
+    "pinyin": "hǔ",
+    "radical": "王",
+    "strokes": 12
+  },
   "琴": {
     "character": "琴",
     "common_words": [
@@ -16882,6 +17315,26 @@
     ],
     "meaning": "乐器",
     "pinyin": "qín",
+    "radical": "王",
+    "strokes": 12
+  },
+  "琵": {
+    "character": "琵",
+    "common_words": [
+      "琵琶 (pí pá)"
+    ],
+    "meaning": "a plucked string instrument",
+    "pinyin": "pí",
+    "radical": "王",
+    "strokes": 12
+  },
+  "琶": {
+    "character": "琶",
+    "common_words": [
+      "琵琶 (pí pá)"
+    ],
+    "meaning": "a plucked string instrument",
+    "pinyin": "pá",
     "radical": "王",
     "strokes": 12
   },
@@ -16924,6 +17377,17 @@
     "pinyin": "guā",
     "radical": "瓜",
     "strokes": 5
+  },
+  "瓠": {
+    "character": "瓠",
+    "common_words": [
+      "瓠子 (hù zi)",
+      "瓠瓜 (hù guā)"
+    ],
+    "meaning": "bottle gourd; calabash",
+    "pinyin": "hù",
+    "radical": "瓜",
+    "strokes": 11
   },
   "瓣": {
     "character": "瓣",
@@ -18332,6 +18796,19 @@
     "radical": "示",
     "strokes": 11
   },
+  "祭": {
+    "character": "祭",
+    "common_words": [
+      "祭祀",
+      "祭奠",
+      "祭品",
+      "祭坛"
+    ],
+    "meaning": "sacrifice, worship",
+    "pinyin": "jì",
+    "radical": "示",
+    "strokes": 11
+  },
   "祸": {
     "character": "祸",
     "common_words": [
@@ -18353,6 +18830,19 @@
     "pinyin": "jìn",
     "radical": "示",
     "strokes": 13
+  },
+  "禄": {
+    "character": "禄",
+    "common_words": [
+      "俸禄",
+      "禄位",
+      "高官厚禄",
+      "福禄"
+    ],
+    "meaning": "official's salary, good fortune",
+    "pinyin": "lù",
+    "radical": "示",
+    "strokes": 12
   },
   "福": {
     "character": "福",
@@ -18519,6 +19009,19 @@
     ],
     "meaning": "朝代名，秦国",
     "pinyin": "qín",
+    "radical": "禾",
+    "strokes": 10
+  },
+  "秧": {
+    "character": "秧",
+    "common_words": [
+      "秧苗",
+      "插秧",
+      "秧歌",
+      "树秧"
+    ],
+    "meaning": "seedling, sprout",
+    "pinyin": "yāng",
     "radical": "禾",
     "strokes": 10
   },
@@ -18781,6 +19284,19 @@
     "pinyin": "wō",
     "radical": "穴",
     "strokes": 12
+  },
+  "窦": {
+    "character": "窦",
+    "common_words": [
+      "窦房结",
+      "鼻窦",
+      "疑窦",
+      "窦娥"
+    ],
+    "meaning": "hole, sinus; (surname)",
+    "pinyin": "dòu",
+    "radical": "穴",
+    "strokes": 13
   },
   "立": {
     "character": "立",
@@ -19053,6 +19569,19 @@
     "radical": "竹",
     "strokes": 13
   },
+  "筝": {
+    "character": "筝",
+    "common_words": [
+      "古筝",
+      "筝曲",
+      "弹筝",
+      "风筝"
+    ],
+    "meaning": "zheng (Chinese zither)",
+    "pinyin": "zhēng",
+    "radical": "竹",
+    "strokes": 12
+  },
   "筹": {
     "character": "筹",
     "common_words": [
@@ -19254,6 +19783,18 @@
     "radical": "米",
     "strokes": 12
   },
+  "粥": {
+    "character": "粥",
+    "common_words": [
+      "米粥",
+      "粥汤",
+      "稀粥"
+    ],
+    "meaning": "congee; porridge",
+    "pinyin": "zhōu",
+    "radical": "米",
+    "strokes": 12
+  },
   "粪": {
     "character": "粪",
     "common_words": [
@@ -19276,6 +19817,18 @@
     "radical": "米",
     "strokes": 13
   },
+  "粽": {
+    "character": "粽",
+    "common_words": [
+      "粽子",
+      "粽叶",
+      "肉粽"
+    ],
+    "meaning": "rice dumpling (zongzi)",
+    "pinyin": "zòng",
+    "radical": "米",
+    "strokes": 14
+  },
   "精": {
     "character": "精",
     "common_words": [
@@ -19297,6 +19850,18 @@
     "pinyin": "hú",
     "radical": "米",
     "strokes": 15
+  },
+  "糕": {
+    "character": "糕",
+    "common_words": [
+      "蛋糕",
+      "糕点",
+      "年糕"
+    ],
+    "meaning": "cake; pastry",
+    "pinyin": "gāo",
+    "radical": "米",
+    "strokes": 16
   },
   "糖": {
     "character": "糖",
@@ -20133,6 +20698,18 @@
     "radical": "罒",
     "strokes": 13
   },
+  "羁": {
+    "character": "羁",
+    "common_words": [
+      "羁绊",
+      "羁留",
+      "不羁"
+    ],
+    "meaning": "bridle; restrain; detain",
+    "pinyin": "jī",
+    "radical": "罒",
+    "strokes": 17
+  },
   "羊": {
     "character": "羊",
     "common_words": [
@@ -20198,6 +20775,17 @@
     "pinyin": "yǔ",
     "radical": "羽",
     "strokes": 6
+  },
+  "羿": {
+    "character": "羿",
+    "common_words": [
+      "后羿",
+      "羿射九日"
+    ],
+    "meaning": "legendary archer (Hou Yi)",
+    "pinyin": "yì",
+    "radical": "羽",
+    "strokes": 9
   },
   "翁": {
     "character": "翁",
@@ -21434,6 +22022,16 @@
     "radical": "艹",
     "strokes": 6
   },
+  "芣": {
+    "character": "芣",
+    "common_words": [
+      "芣苢"
+    ],
+    "meaning": "an ancient name for plantain (Plantago asiatica), often used in compound 芣苢",
+    "pinyin": "fú",
+    "radical": "艹",
+    "strokes": 7
+  },
   "芦": {
     "character": "芦",
     "common_words": [
@@ -21547,6 +22145,16 @@
     "radical": "艹",
     "strokes": 8
   },
+  "苢": {
+    "character": "苢",
+    "common_words": [
+      "芣苢"
+    ],
+    "meaning": "same as 芣, part of the compound 芣苢",
+    "pinyin": "yǐ",
+    "radical": "艹",
+    "strokes": 8
+  },
   "若": {
     "character": "若",
     "meaning": "like, if; (used in 般若)",
@@ -21632,6 +22240,18 @@
     "radical": "艹",
     "strokes": 9
   },
+  "荆": {
+    "character": "荆",
+    "common_words": [
+      "荆棘",
+      "荆条",
+      "荆楚"
+    ],
+    "meaning": "thorns, brambles; also a surname and an ancient state in China",
+    "pinyin": "jīng",
+    "radical": "艹",
+    "strokes": 9
+  },
   "草": {
     "character": "草",
     "common_words": [
@@ -21658,6 +22278,17 @@
     ],
     "meaning": "荒芜，荒凉，荒废",
     "pinyin": "huāng",
+    "radical": "艹",
+    "strokes": 9
+  },
+  "荚": {
+    "character": "荚",
+    "common_words": [
+      "豆荚",
+      "荚果"
+    ],
+    "meaning": "pod of leguminous plants",
+    "pinyin": "jiá",
     "radical": "艹",
     "strokes": 9
   },
@@ -21821,6 +22452,18 @@
     "radical": "艹",
     "strokes": 11
   },
+  "菽": {
+    "character": "菽",
+    "common_words": [
+      "菽粟",
+      "菽麦",
+      "不辨菽麦"
+    ],
+    "meaning": "beans, pulses (general term for legumes)",
+    "pinyin": "shū",
+    "radical": "艹",
+    "strokes": 11
+  },
   "萄": {
     "character": "萄",
     "common_words": [
@@ -21873,6 +22516,18 @@
     ],
     "meaning": "萝卜，一种蔬菜",
     "pinyin": "luó",
+    "radical": "艹",
+    "strokes": 11
+  },
+  "萤": {
+    "character": "萤",
+    "common_words": [
+      "萤火虫",
+      "萤光",
+      "萤幕"
+    ],
+    "meaning": "firefly, glowworm",
+    "pinyin": "yíng",
     "radical": "艹",
     "strokes": 11
   },
@@ -22076,6 +22731,18 @@
     "character": "蒹",
     "meaning": "a kind of reed; similar to 葭",
     "pinyin": "jiān",
+    "radical": "艹",
+    "strokes": 13
+  },
+  "蒿": {
+    "character": "蒿",
+    "common_words": [
+      "蒿草",
+      "青蒿",
+      "蓬蒿"
+    ],
+    "meaning": "wormwood, artemisia",
+    "pinyin": "hāo",
     "radical": "艹",
     "strokes": 13
   },
@@ -22415,6 +23082,16 @@
     "radical": "虫",
     "strokes": 10
   },
+  "蚪": {
+    "character": "蚪",
+    "common_words": [
+      "蝌蚪"
+    ],
+    "meaning": "tadpole",
+    "pinyin": "dǒu",
+    "radical": "虫",
+    "strokes": 10
+  },
   "蚯": {
     "character": "蚯",
     "common_words": [
@@ -22509,6 +23186,18 @@
     "radical": "虫",
     "strokes": 12
   },
+  "蜗": {
+    "character": "蜗",
+    "common_words": [
+      "蜗牛",
+      "蜗居",
+      "蜗杆"
+    ],
+    "meaning": "snail",
+    "pinyin": "wō",
+    "radical": "虫",
+    "strokes": 13
+  },
   "蜘": {
     "character": "蜘",
     "common_words": [
@@ -22552,6 +23241,28 @@
     "pinyin": "yíng",
     "radical": "虫",
     "strokes": 14
+  },
+  "蝉": {
+    "character": "蝉",
+    "common_words": [
+      "蝉鸣",
+      "蝉蜕",
+      "蝉联"
+    ],
+    "meaning": "cicada",
+    "pinyin": "chán",
+    "radical": "虫",
+    "strokes": 14
+  },
+  "蝌": {
+    "character": "蝌",
+    "common_words": [
+      "蝌蚪"
+    ],
+    "meaning": "tadpole",
+    "pinyin": "kē",
+    "radical": "虫",
+    "strokes": 15
   },
   "蝙": {
     "character": "蝙",
@@ -22616,6 +23327,26 @@
     ],
     "meaning": "螺蛳，螺旋",
     "pinyin": "luó",
+    "radical": "虫",
+    "strokes": 17
+  },
+  "蟀": {
+    "character": "蟀",
+    "common_words": [
+      "蟋蟀"
+    ],
+    "meaning": "cricket",
+    "pinyin": "shuài",
+    "radical": "虫",
+    "strokes": 17
+  },
+  "蟋": {
+    "character": "蟋",
+    "common_words": [
+      "蟋蟀"
+    ],
+    "meaning": "cricket",
+    "pinyin": "xī",
     "radical": "虫",
     "strokes": 17
   },
@@ -23088,6 +23819,17 @@
     "radical": "言",
     "strokes": 13
   },
+  "誓": {
+    "character": "誓",
+    "common_words": [
+      "誓言",
+      "发誓"
+    ],
+    "meaning": "oath, vow",
+    "pinyin": "shì",
+    "radical": "言",
+    "strokes": 14
+  },
   "警": {
     "character": "警",
     "common_words": [
@@ -23435,6 +24177,17 @@
     "pinyin": "xiáng",
     "radical": "讠",
     "strokes": 8
+  },
+  "诫": {
+    "character": "诫",
+    "common_words": [
+      "告诫",
+      "规诫"
+    ],
+    "meaning": "warn, admonish",
+    "pinyin": "jiè",
+    "radical": "讠",
+    "strokes": 9
   },
   "语": {
     "character": "语",
@@ -24366,6 +25119,18 @@
     "radical": "足",
     "strokes": 13
   },
+  "跤": {
+    "character": "跤",
+    "common_words": [
+      "摔跤",
+      "跌跤",
+      "跤手"
+    ],
+    "meaning": "wrestle; fall",
+    "pinyin": "jiāo",
+    "radical": "足",
+    "strokes": 13
+  },
   "跨": {
     "character": "跨",
     "common_words": [
@@ -24574,6 +25339,18 @@
     "pinyin": "guǐ",
     "radical": "车",
     "strokes": 6
+  },
+  "轩": {
+    "character": "轩",
+    "common_words": [
+      "轩昂",
+      "轩然大波",
+      "轩窗"
+    ],
+    "meaning": "pavilion; high; lofty",
+    "pinyin": "xuān",
+    "radical": "车",
+    "strokes": 7
   },
   "转": {
     "character": "转",
@@ -24846,6 +25623,18 @@
     "radical": "辛",
     "strokes": 17
   },
+  "辰": {
+    "character": "辰",
+    "common_words": [
+      "辰时",
+      "星辰",
+      "诞辰"
+    ],
+    "meaning": "morning; time; celestial stem",
+    "pinyin": "chén",
+    "radical": "辰",
+    "strokes": 7
+  },
   "辱": {
     "character": "辱",
     "common_words": [
@@ -24978,6 +25767,18 @@
     "radical": "辶",
     "strokes": 7
   },
+  "还": {
+    "character": "还",
+    "common_words": [
+      "还是",
+      "还有",
+      "归还"
+    ],
+    "meaning": "still; also; return",
+    "pinyin": "hái, huán",
+    "radical": "辶",
+    "strokes": 7
+  },
   "这": {
     "character": "这",
     "common_words": [
@@ -25044,6 +25845,17 @@
     "radical": "辶",
     "strokes": 7
   },
+  "迢": {
+    "character": "迢",
+    "common_words": [
+      "迢迢",
+      "迢远"
+    ],
+    "meaning": "far; remote",
+    "pinyin": "tiáo",
+    "radical": "辶",
+    "strokes": 8
+  },
   "迪": {
     "character": "迪",
     "common_words": [
@@ -25085,6 +25897,19 @@
     ],
     "meaning": "迷路，迷恋",
     "pinyin": "mí",
+    "radical": "辶",
+    "strokes": 9
+  },
+  "迹": {
+    "character": "迹",
+    "common_words": [
+      "痕迹",
+      "事迹",
+      "足迹",
+      "遗迹"
+    ],
+    "meaning": "mark, trace, footprint",
+    "pinyin": "jì",
     "radical": "辶",
     "strokes": 9
   },
@@ -25162,6 +25987,18 @@
     ],
     "meaning": "挑选，选择",
     "pinyin": "xuǎn",
+    "radical": "辶",
+    "strokes": 9
+  },
+  "逊": {
+    "character": "逊",
+    "common_words": [
+      "谦逊",
+      "逊色",
+      "逊位"
+    ],
+    "meaning": "humble, modest; yield",
+    "pinyin": "xùn",
     "radical": "辶",
     "strokes": 9
   },
@@ -25472,6 +26309,89 @@
     "radical": "阝",
     "strokes": 6
   },
+  "邱": {
+    "character": "邱",
+    "common_words": [
+      "丘陵",
+      "邱县",
+      "邱姓"
+    ],
+    "meaning": "hill, mound; surname",
+    "pinyin": "qiū",
+    "radical": "阝",
+    "strokes": 7
+  },
+  "邸": {
+    "character": "邸",
+    "common_words": [
+      "官邸",
+      "府邸",
+      "邸宅"
+    ],
+    "meaning": "residence, mansion",
+    "pinyin": "dǐ",
+    "radical": "阝",
+    "strokes": 7
+  },
+  "邹": {
+    "character": "邹",
+    "common_words": [
+      "邹城",
+      "邹姓",
+      "邹鲁"
+    ],
+    "meaning": "surname; name of ancient state",
+    "pinyin": "zōu",
+    "radical": "阝",
+    "strokes": 7
+  },
+  "邺": {
+    "character": "邺",
+    "common_words": [
+      "邺城",
+      "邺县"
+    ],
+    "meaning": "ancient place name (Ye)",
+    "pinyin": "yè",
+    "radical": "阝",
+    "strokes": 7
+  },
+  "郁": {
+    "character": "郁",
+    "common_words": [
+      "郁闷",
+      "浓郁",
+      "郁结"
+    ],
+    "meaning": "lush; gloomy; fragrant",
+    "pinyin": "yù",
+    "radical": "阝",
+    "strokes": 8
+  },
+  "郎": {
+    "character": "郎",
+    "common_words": [
+      "郎中",
+      "新郎",
+      "郎君"
+    ],
+    "meaning": "young man; son; husband",
+    "pinyin": "láng",
+    "radical": "阝",
+    "strokes": 8
+  },
+  "部": {
+    "character": "部",
+    "common_words": [
+      "部分",
+      "部队",
+      "部门"
+    ],
+    "meaning": "part; section; department",
+    "pinyin": "bù",
+    "radical": "阝",
+    "strokes": 10
+  },
   "郭": {
     "character": "郭",
     "common_words": [
@@ -25538,6 +26458,18 @@
     "radical": "酉",
     "strokes": 10
   },
+  "酪": {
+    "character": "酪",
+    "common_words": [
+      "奶酪",
+      "酪乳",
+      "酪蛋白"
+    ],
+    "meaning": "cheese; jelly; fruit syrup",
+    "pinyin": "lào",
+    "radical": "酉",
+    "strokes": 13
+  },
   "酬": {
     "character": "酬",
     "common_words": [
@@ -25581,6 +26513,79 @@
     "pinyin": "niàng",
     "radical": "酉",
     "strokes": 14
+  },
+  "醉": {
+    "character": "醉",
+    "common_words": [
+      "醉酒",
+      "醉汉",
+      "沉醉"
+    ],
+    "meaning": "drunk, intoxicated",
+    "pinyin": "zuì",
+    "radical": "酉",
+    "strokes": 15
+  },
+  "里": {
+    "character": "里",
+    "common_words": [
+      "里面",
+      "那里",
+      "公里"
+    ],
+    "meaning": "inside, within; mile",
+    "pinyin": "lǐ",
+    "radical": "里",
+    "strokes": 7
+  },
+  "重": {
+    "character": "重",
+    "common_words": [
+      "重要",
+      "重量",
+      "重复"
+    ],
+    "meaning": "heavy, weight; (also chóng) repeat",
+    "pinyin": "zhòng",
+    "radical": "里",
+    "strokes": 9
+  },
+  "野": {
+    "character": "野",
+    "common_words": [
+      "野外",
+      "野餐",
+      "野心"
+    ],
+    "meaning": "field, wilderness, rustic",
+    "pinyin": "yě",
+    "radical": "里",
+    "strokes": 11
+  },
+  "量": {
+    "character": "量",
+    "common_words": [
+      "大量",
+      "数量",
+      "测量"
+    ],
+    "meaning": "measure, capacity, quantity",
+    "pinyin": "liàng",
+    "radical": "里",
+    "strokes": 12
+  },
+  "金": {
+    "character": "金",
+    "common_words": [
+      "金钱",
+      "金色",
+      "金属",
+      "黄金"
+    ],
+    "meaning": "gold, metal, money",
+    "pinyin": "jīn",
+    "radical": "金",
+    "strokes": 8
   },
   "鉴": {
     "character": "鉴",
@@ -25790,6 +26795,18 @@
     "pinyin": "lǚ",
     "radical": "钅",
     "strokes": 11
+  },
+  "铭": {
+    "character": "铭",
+    "common_words": [
+      "铭记",
+      "铭文",
+      "铭刻"
+    ],
+    "meaning": "engrave, inscribe, remember",
+    "pinyin": "míng",
+    "radical": "金",
+    "strokes": 14
   },
   "银": {
     "character": "银",
@@ -26022,6 +27039,17 @@
     "radical": "门",
     "strokes": 6
   },
+  "闰": {
+    "character": "闰",
+    "common_words": [
+      "闰年",
+      "闰月"
+    ],
+    "meaning": "intercalary, leap (year)",
+    "pinyin": "rùn",
+    "radical": "门",
+    "strokes": 7
+  },
   "闲": {
     "character": "闲",
     "common_words": [
@@ -26220,6 +27248,17 @@
     "radical": "阝",
     "strokes": 7
   },
+  "陀": {
+    "character": "陀",
+    "common_words": [
+      "陀螺",
+      "盘陀"
+    ],
+    "meaning": "slope, bump, uneven",
+    "pinyin": "tuó",
+    "radical": "阝",
+    "strokes": 7
+  },
   "附": {
     "character": "附",
     "common_words": [
@@ -26261,6 +27300,19 @@
     ],
     "meaning": "陈列；姓；陈旧",
     "pinyin": "chén",
+    "radical": "阝",
+    "strokes": 7
+  },
+  "陋": {
+    "character": "陋",
+    "common_words": [
+      "简陋",
+      "丑陋",
+      "陋习",
+      "陋室"
+    ],
+    "meaning": "low, humble, ugly, narrow",
+    "pinyin": "lòu",
     "radical": "阝",
     "strokes": 7
   },
@@ -26571,6 +27623,17 @@
     "radical": "隹",
     "strokes": 14
   },
+  "雎": {
+    "character": "雎",
+    "common_words": [
+      "关雎",
+      "雎鸠"
+    ],
+    "meaning": "a kind of bird, osprey (used in ancient poetry)",
+    "pinyin": "jū",
+    "radical": "隹",
+    "strokes": 13
+  },
   "雕": {
     "character": "雕",
     "common_words": [
@@ -26747,6 +27810,18 @@
     "radical": "青",
     "strokes": 8
   },
+  "静": {
+    "character": "静",
+    "common_words": [
+      "安静",
+      "平静",
+      "静止"
+    ],
+    "meaning": "quiet, still, calm, peaceful",
+    "pinyin": "jìng",
+    "radical": "青",
+    "strokes": 14
+  },
   "非": {
     "character": "非",
     "common_words": [
@@ -26834,6 +27909,18 @@
     "pinyin": "biān",
     "radical": "革",
     "strokes": 18
+  },
+  "韧": {
+    "character": "韧",
+    "common_words": [
+      "坚韧",
+      "韧性",
+      "柔韧"
+    ],
+    "meaning": "tough, resilient, pliable yet strong",
+    "pinyin": "rèn",
+    "radical": "韦",
+    "strokes": 7
   },
   "韩": {
     "character": "韩",
@@ -27032,6 +28119,18 @@
     "pinyin": "jǐng",
     "radical": "页",
     "strokes": 11
+  },
+  "颐": {
+    "character": "颐",
+    "common_words": [
+      "颐和园",
+      "颐养",
+      "解颐"
+    ],
+    "meaning": "cheek, chin; to nourish, take care of; carefree",
+    "pinyin": "yí",
+    "radical": "页",
+    "strokes": 13
   },
   "频": {
     "character": "频",
@@ -27396,6 +28495,18 @@
     "radical": "马",
     "strokes": 8
   },
+  "驿": {
+    "character": "驿",
+    "common_words": [
+      "驿站",
+      "驿道",
+      "驿夫"
+    ],
+    "meaning": "post horse, relay station; courier, stage",
+    "pinyin": "yì",
+    "radical": "马",
+    "strokes": 8
+  },
   "骂": {
     "character": "骂",
     "common_words": [
@@ -27425,6 +28536,18 @@
     ],
     "meaning": "用于“骆驼”，指一种哺乳动物。",
     "pinyin": "luò",
+    "radical": "马",
+    "strokes": 9
+  },
+  "骈": {
+    "character": "骈",
+    "common_words": [
+      "骈文",
+      "骈体",
+      "骈俪"
+    ],
+    "meaning": "side by side; together; a pair",
+    "pinyin": "pián",
     "radical": "马",
     "strokes": 9
   },
@@ -27458,6 +28581,18 @@
     ],
     "meaning": "欺骗",
     "pinyin": "piàn",
+    "radical": "马",
+    "strokes": 12
+  },
+  "骚": {
+    "character": "骚",
+    "common_words": [
+      "骚扰",
+      "骚动",
+      "骚客"
+    ],
+    "meaning": "disturb; agitate; to bother; literary; coquettish",
+    "pinyin": "sāo",
     "radical": "马",
     "strokes": 12
   },
@@ -27758,6 +28893,18 @@
     "radical": "鸟",
     "strokes": 15
   },
+  "鹭": {
+    "character": "鹭",
+    "common_words": [
+      "白鹭",
+      "鹭鸶",
+      "鹭岛"
+    ],
+    "meaning": "heron, egret",
+    "pinyin": "lù",
+    "radical": "鸟",
+    "strokes": 18
+  },
   "鹰": {
     "character": "鹰",
     "common_words": [
@@ -27768,6 +28915,18 @@
     "pinyin": "yīng",
     "radical": "鸟",
     "strokes": 16
+  },
+  "鹳": {
+    "character": "鹳",
+    "common_words": [
+      "鹳雀",
+      "鹳形目",
+      "鹳鸟"
+    ],
+    "meaning": "stork, crane",
+    "pinyin": "guàn",
+    "radical": "鸟",
+    "strokes": 17
   },
   "鹿": {
     "character": "鹿",
@@ -27812,6 +28971,18 @@
     "pinyin": "huáng",
     "radical": "黄",
     "strokes": 11
+  },
+  "黍": {
+    "character": "黍",
+    "common_words": [
+      "黍子",
+      "黍米",
+      "黍苗"
+    ],
+    "meaning": "millet, broomcorn millet",
+    "pinyin": "shǔ",
+    "radical": "黍",
+    "strokes": 12
   },
   "黎": {
     "character": "黎",
