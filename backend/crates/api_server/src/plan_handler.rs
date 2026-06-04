@@ -371,14 +371,12 @@ fn upsert_learning_plan(
                 |row| row.get(0),
             ).unwrap_or_default()
         } else {
-            // K12: 使用 subject_key + "_plan" 作为统一 plan_id
-            let subj: String = conn.query_row(
-                "SELECT COALESCE(subject, 'general') FROM conversations WHERE id = ?1",
+            // K12: 使用 conversation_plans.id（带 conv_id 后缀，唯一）
+            conn.query_row(
+                "SELECT id FROM conversation_plans WHERE conversation_id = ?1 LIMIT 1",
                 rusqlite::params![conversation_id],
                 |row| row.get(0),
-            ).unwrap_or_default();
-            let subj_key = if subj.is_empty() { "general" } else { &subj };
-            format!("{}_plan", subj_key)
+            ).unwrap_or_default()
         };
 
         // 展开 tasks 写入 user_plan_progress
@@ -919,14 +917,30 @@ pub fn build_plan_context(conn: &rusqlite::Connection, conversation_id: &str) ->
             rusqlite::params![subject_key, grade],
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
         ) {
-            // 从 user_plan_progress 读取进度
+            // 从 conversation_plans 获取 plan_id（带 conv_id 后缀，唯一）
+            let conv_plan_id: String = conn.query_row(
+                "SELECT id FROM conversation_plans WHERE conversation_id = ?1 LIMIT 1",
+                rusqlite::params![conversation_id],
+                |row| row.get(0),
+            ).unwrap_or_default();
+
+            // 从 user_plan_progress 读取进度（按 user_id 过滤）
             let progress_rows: Vec<(String, String)> = {
-                let mut stmt = conn.prepare(
-                    "SELECT task_key, status FROM user_plan_progress WHERE plan_id = ?1"
-                ).unwrap();
-                stmt.query_map(rusqlite::params![format!("{}_plan", subject_key)], |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-                }).unwrap().filter_map(|r| r.ok()).collect()
+                let user_id: String = conn.query_row(
+                    "SELECT user_id FROM conversations WHERE id = ?1",
+                    rusqlite::params![conversation_id],
+                    |row| row.get(0),
+                ).unwrap_or_default();
+                if conv_plan_id.is_empty() || user_id.is_empty() {
+                    Vec::new()
+                } else {
+                    let mut stmt = conn.prepare(
+                        "SELECT task_key, status FROM user_plan_progress WHERE plan_id = ?1 AND user_id = ?2"
+                    ).unwrap();
+                    stmt.query_map(rusqlite::params![conv_plan_id, user_id], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    }).unwrap().filter_map(|r| r.ok()).collect()
+                }
             };
 
             // 合并进度到 plan_content stages
@@ -1823,16 +1837,8 @@ fn unlock_next_cards(
                         rusqlite::params![conversation_id],
                         |row| row.get(0),
                     ).unwrap_or_default();
-                    let pid = if plan_id.is_empty() {
-                        let subject: String = conn.query_row(
-                            "SELECT COALESCE(subject, '') FROM conversations WHERE id = ?1",
-                            rusqlite::params![conversation_id],
-                            |row| row.get(0),
-                        ).unwrap_or_default();
-                        if subject.is_empty() { break; }
-                        format!("{}_plan", subject)
-                    } else { plan_id };
-                    activate_stage_cards(conn, plan_type, &pid, sn);
+                    if plan_id.is_empty() { break; }
+                    activate_stage_cards(conn, &user_id, plan_type, &plan_id, sn);
                 }
                 break;
             }
@@ -1910,16 +1916,17 @@ pub fn achievement_exists(conn: &rusqlite::Connection, user_id: &str, key: &str)
 /// 在 K12 init 完成时、或 stage 状态变为 in_progress 时调用
 pub fn activate_stage_cards(
     conn: &rusqlite::Connection,
+    user_id: &str,
     plan_type: &str,
     plan_id: &str,
     stage_name: &str,
 ) {
-    if plan_type.is_empty() || plan_id.is_empty() || stage_name.is_empty() {
+    if plan_type.is_empty() || plan_id.is_empty() || stage_name.is_empty() || user_id.is_empty() {
         return;
     }
     let updated = conn.execute(
-        "UPDATE cards SET status = 'active' WHERE plan_type = ?1 AND plan_id = ?2 AND stage_name = ?3 AND status = 'archived'",
-        rusqlite::params![plan_type, plan_id, stage_name],
+        "UPDATE cards SET status = 'active' WHERE user_id = ?1 AND plan_type = ?2 AND plan_id = ?3 AND stage_name = ?4 AND status = 'archived'",
+        rusqlite::params![user_id, plan_type, plan_id, stage_name],
     ).unwrap_or(0);
     if updated > 0 {
         tracing::info!("Activated {} cards for stage '{}' (plan={}/{})", updated, stage_name, plan_type, plan_id);

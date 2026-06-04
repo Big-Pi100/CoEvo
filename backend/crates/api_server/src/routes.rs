@@ -1758,8 +1758,31 @@ async fn k12_init_handler(
 
     if let Some(conv_id) = existing_conv {
         eprintln!("[K12-INIT] resumed existing conv={}", conv_id);
+        // 确保 plan 存在（旧版可能因 INSERT OR IGNORE 冲突导致缺少 plan）
+        let plan = match curriculum_loader::get_plan(&input.subject, &input.grade_band) {
+            Some(p) => p,
+            None => return Json(serde_json::json!({"error": format!("无此科目/学段的学习计划", )})),
+        };
+        let domain_val: Domain = input.subject.parse().unwrap_or(Domain::General);
+        let task_status = serde_json::json!({
+            "id": plan.id,
+            "subject": input.subject,
+            "grade_band": input.grade_band,
+            "goal": plan.goal,
+            "stages": plan.stages,
+            "total_crs": plan.total_crs,
+        });
+        let plan_content_str = serde_json::to_string(&task_status).unwrap_or_default();
+        let k12_plan_id = format!("k12_{}_plan_{}", input.subject, conv_id);
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO conversation_plans (id, user_id, conversation_id, goal, domain, plan_content, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![k12_plan_id, input.user_id, conv_id,
+                plan.goal, input.subject.to_string(), plan_content_str, now_ts, now_ts],
+        );
         return Json(serde_json::json!({
             "conversation_id": conv_id,
+            "plan": task_status,
             "resumed": true,
         }));
     }
@@ -1795,7 +1818,7 @@ async fn k12_init_handler(
         "total_crs": plan.total_crs,
     });
     // 4. 写入 conversation_plans（K12 / Reading 计划记录）
-    let k12_plan_id = format!("k12_{}_plan", input.subject);
+    let k12_plan_id = format!("k12_{}_plan_{}", input.subject, conv_id);
     let plan_content_str = serde_json::to_string(&task_status).unwrap_or_default();
     let _ = conn.execute(
         "INSERT OR IGNORE INTO conversation_plans (id, user_id, conversation_id, goal, domain, plan_content, created_at, updated_at)
@@ -1859,7 +1882,7 @@ async fn k12_init_handler(
                 .unwrap_or_default();
 
             let card_id = format!("k12_{}", &card_tmpl.id);
-            let card_k12_plan_id = format!("{}_plan", input.subject);
+            let card_k12_plan_id = format!("{}_plan_{}", input.subject, conv_id);
             let _ = conn.execute(
                 "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, subject, grade_band, k12_card_id, origin, status, plan_type, plan_id, stage_name, plan_task_id)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'prebuilt', 'archived', 'plan_templates', ?13, ?14, ?15)",
@@ -1885,8 +1908,8 @@ async fn k12_init_handler(
             .and_then(|stage| stage["name"].as_str())
             .unwrap_or("");
         if !first_stage_name.is_empty() {
-            let card_plan_id = format!("{}_plan", input.subject);
-            crate::plan_handler::activate_stage_cards(&conn, "plan_templates", &card_plan_id, first_stage_name);
+            let card_plan_id = format!("{}_plan_{}", input.subject, conv_id);
+            crate::plan_handler::activate_stage_cards(&conn, &input.user_id, "plan_templates", &card_plan_id, first_stage_name);
         }
     }
 
@@ -1932,8 +1955,28 @@ async fn k12_reading_init_handler(
     ).ok();
 
     if let Some(conv_id) = existing_conv {
+        // 与 k12_init 一致：确保 plan 存在（旧版可能缺失）
+        let plan = crate::reading_loader::get_plan(&input.subject);
+        let task_status = plan.map(|p| serde_json::json!({
+            "subject": input.subject,
+            "grade_band": input.grade_band,
+            "goal": p.goal,
+            "stages": p.stages,
+        })).unwrap_or_default();
+        if plan.is_some() {
+            let plan_content_str = serde_json::to_string(&task_status).unwrap_or_default();
+            let plan_id = format!("{}_reading_plan_{}", input.subject, conv_id);
+            let _ = conn.execute(
+                "INSERT OR IGNORE INTO conversation_plans (id, user_id, conversation_id, goal, domain, plan_content, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                rusqlite::params![plan_id, input.user_id, conv_id,
+                    task_status["goal"].as_str().unwrap_or(""),
+                    input.subject.to_string(), plan_content_str, now_ts, now_ts],
+            );
+        }
         return Json(serde_json::json!({
             "conversation_id": conv_id,
+            "plan": task_status,
             "resumed": true,
         }));
     }
@@ -2034,7 +2077,7 @@ async fn k12_reading_init_handler(
         for stage in stages {
             if let Some(tasks) = stage.get("tasks").and_then(|t| t.as_array()) {
                 for task in tasks {
-                    let k12_plan_id = format!("{}_plan", input.subject);
+                    let k12_plan_id = format!("{}_plan_{}", input.subject, conv_id);
                     // 5a. 导入诗词卡
                     if let Some(card_id) = task.get("reading_card_id").and_then(|c| c.as_str()) {
                         if !card_id.is_empty() {
