@@ -90,36 +90,31 @@ async fn e2e_k12_extra_lifecycle() {
     // 新用户：可能返回空 subjects 或默认结构
     assert!(progress.is_object(), "progress should return an object");
 
-    // ── Step 4: 插入测试进度数据到 k12_progress 表 ──
-    println!("\n--- Step 4: Insert test progress data ---");
-    let now = chrono::Utc::now().to_rfc3339();
+    // ── Step 4: 插入测试计划数据到 conversation_plans + cards ──
+    println!("\n--- Step 4: Insert test plan data ---");
+    let now_ts = chrono::Utc::now().timestamp();
     {
         let conn = api_server::db_pool::get_conn();
-        // k12_progress 表需要先存在
-        let _ = conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS k12_progress (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL, subject TEXT NOT NULL,
-                grade_band TEXT NOT NULL,
-                mastered_cards INTEGER DEFAULT 0,
-                total_cards INTEGER DEFAULT 0,
-                started_at TEXT NOT NULL,
-                last_activity_at TEXT,
-                completed_at TEXT
-            );"
-        );
+        // 插入两个 conversation_plans（作为"subject"进度来源）
+        let plan1_id = uuid::Uuid::new_v4().to_string();
+        let plan1_conv = uuid::Uuid::new_v4().to_string();
+        let plan_content1 = serde_json::json!({"goal": "math基础学习", "stages": [{"name": "代数", "tasks": [{"name": "一元一次方程", "task_key": "00-00"}]}]}).to_string();
         conn.execute(
-            "INSERT INTO k12_progress (user_id, subject, grade_band, mastered_cards, total_cards, started_at, last_activity_at)
-             VALUES (?1, 'math', 'g7-9', 15, 30, ?2, ?2)",
-            rusqlite::params![uid, now],
-        ).expect("insert math progress");
+            "INSERT INTO conversation_plans (id, user_id, conversation_id, goal, plan_content, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 'math基础学习', ?4, ?5, ?5)",
+            rusqlite::params![plan1_id, uid, plan1_conv, plan_content1, now_ts],
+        ).expect("insert plan1");
+
+        let plan2_id = uuid::Uuid::new_v4().to_string();
+        let plan2_conv = uuid::Uuid::new_v4().to_string();
+        let plan_content2 = serde_json::json!({"goal": "physics基础学习", "stages": [{"name": "力学", "tasks": [{"name": "牛顿定律", "task_key": "00-00"}]}]}).to_string();
         conn.execute(
-            "INSERT INTO k12_progress (user_id, subject, grade_band, mastered_cards, total_cards, started_at, last_activity_at)
-             VALUES (?1, 'physics', 'g7-9', 8, 20, ?2, ?2)",
-            rusqlite::params![uid, now],
-        ).expect("insert physics progress");
+            "INSERT INTO conversation_plans (id, user_id, conversation_id, goal, plan_content, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 'physics基础学习', ?4, ?5, ?5)",
+            rusqlite::params![plan2_id, uid, plan2_conv, plan_content2, now_ts],
+        ).expect("insert plan2");
     }
-    println!("  inserted 2 subjects: math(15/30), physics(8/20)");
+    println!("  inserted 2 plans: math, physics");
 
     // ── Step 5: GET /api/k12/progress (with data) ──
     println!("\n--- Step 5: GET /api/k12/progress (with data) ---");
@@ -128,21 +123,21 @@ async fn e2e_k12_extra_lifecycle() {
         .send().await.unwrap();
     let progress2: Value = body_json(resp).await;
     calls += 1;
-    let subjects = progress2["subjects"].as_array();
+    println!("  progress: {}", serde_json::to_string_pretty(&progress2).unwrap_or_default());
+    let subjects = progress2["progress"].as_array();
     match subjects {
         Some(s) => {
             println!("  subjects: {}", s.len());
             for subj in s {
-                println!("    {} g{}: {}/{} mastered",
-                    subj["subject"].as_str().unwrap_or("?"),
-                    subj["grade_band"].as_str().unwrap_or("?"),
+                println!("    goal: {}, cards: {}/{}",
+                    subj["goal"].as_str().unwrap_or("?"),
                     subj["mastered_cards"].as_i64().unwrap_or(-1),
                     subj["total_cards"].as_i64().unwrap_or(-1));
             }
-            assert!(s.len() >= 2, "should have at least 2 subjects");
+            assert!(s.len() >= 2, "should have at least 2 plans");
         }
         None => {
-            // 可能返回其它格式，接受
+            // 接受其它格式
             println!("  progress: {:?}", progress2);
         }
     }
@@ -177,8 +172,8 @@ async fn e2e_k12_extra_lifecycle() {
             rusqlite::params![conv_id, uid, now_ts],
         ).ok();
         conn.execute(
-            "INSERT INTO conversation_plans (id, user_id, conversation_id, goal, plan_content, updated_at)
-             VALUES (?1, ?2, ?3, '语文课文阅读学习', ?4, ?5)",
+            "INSERT INTO conversation_plans (id, user_id, conversation_id, goal, plan_content, created_at, updated_at)
+             VALUES (?1, ?2, ?3, '语文课文阅读学习', ?4, ?5, ?5)",
             rusqlite::params![
                 format!("plan_{}", conv_id), uid, conv_id,
                 reading_plan.to_string(), now_ts,

@@ -105,6 +105,13 @@ pub fn bind_hash(real_name: &str, phone: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
+/// Compute SHA-256 hex digest of a single input (e.g., phone number for login lookup)
+pub fn sha256_hash(input: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(input.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
 /// Check if a string looks like encrypted data (base64 of 12+ bytes = 16+ chars base64)
 pub fn is_encrypted(s: &str) -> bool {
     s.len() >= 16 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=')

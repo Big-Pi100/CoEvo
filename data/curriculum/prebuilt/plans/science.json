@@ -21,7 +21,27 @@
         },
         {
           "name": "工程设计过程",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "science_compulsory_0010",
+            "science_compulsory_0012",
+            "science_compulsory_0016",
+            "science_compulsory_0026",
+            "science_compulsory_0027",
+            "science_compulsory_0030",
+            "science_compulsory_0034",
+            "science_compulsory_0036",
+            "science_compulsory_0043",
+            "science_compulsory_0045",
+            "science_compulsory_0052",
+            "science_compulsory_0064",
+            "science_compulsory_0066",
+            "science_compulsory_0067",
+            "science_compulsory_0070",
+            "science_compulsory_0071",
+            "science_compulsory_0072",
+            "science_compulsory_0073",
+            "science_compulsory_0074"
+          ],
           "dependencies": [
             "工程基础"
           ],
@@ -81,7 +101,12 @@
         },
         {
           "name": "宇宙与太阳系",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "science_compulsory_0064",
+            "science_compulsory_0071",
+            "science_compulsory_0072",
+            "science_compulsory_0074"
+          ],
           "dependencies": [],
           "cross_subject_refs": [],
           "origin": "curriculum_fix",
@@ -89,7 +114,59 @@
         },
         {
           "name": "自然资源与环境",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "science_compulsory_0000",
+            "science_compulsory_0002",
+            "science_compulsory_0003",
+            "science_compulsory_0005",
+            "science_compulsory_0006",
+            "science_compulsory_0007",
+            "science_compulsory_0008",
+            "science_compulsory_0011",
+            "science_compulsory_0013",
+            "science_compulsory_0014",
+            "science_compulsory_0016",
+            "science_compulsory_0023",
+            "science_compulsory_0024",
+            "science_compulsory_0025",
+            "science_compulsory_0026",
+            "science_compulsory_0027",
+            "science_compulsory_0029",
+            "science_compulsory_0032",
+            "science_compulsory_0036",
+            "science_compulsory_0038",
+            "science_compulsory_0040",
+            "science_compulsory_0041",
+            "science_compulsory_0042",
+            "science_compulsory_0043",
+            "science_compulsory_0044",
+            "science_compulsory_0045",
+            "science_compulsory_0046",
+            "science_compulsory_0047",
+            "science_compulsory_0048",
+            "science_compulsory_0049",
+            "science_compulsory_0052",
+            "science_compulsory_0054",
+            "science_compulsory_0055",
+            "science_compulsory_0056",
+            "science_compulsory_0058",
+            "science_compulsory_0059",
+            "science_compulsory_0060",
+            "science_compulsory_0061",
+            "science_compulsory_0062",
+            "science_compulsory_0063",
+            "science_compulsory_0064",
+            "science_compulsory_0065",
+            "science_compulsory_0066",
+            "science_compulsory_0067",
+            "science_compulsory_0068",
+            "science_compulsory_0069",
+            "science_compulsory_0070",
+            "science_compulsory_0071",
+            "science_compulsory_0072",
+            "science_compulsory_0073",
+            "science_compulsory_0074"
+          ],
           "dependencies": [],
           "cross_subject_refs": [],
           "origin": "curriculum_fix",
@@ -219,7 +296,13 @@
         },
         {
           "name": "电学基础",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "science_compulsory_0009",
+            "science_compulsory_0016",
+            "science_compulsory_0071",
+            "science_compulsory_0072",
+            "science_compulsory_0073"
+          ],
           "dependencies": [],
           "cross_subject_refs": [],
           "origin": "curriculum_fix",
@@ -227,7 +310,13 @@
         },
         {
           "name": "力与运动",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "science_compulsory_0016",
+            "science_compulsory_0044",
+            "science_compulsory_0072",
+            "science_compulsory_0073",
+            "science_compulsory_0074"
+          ],
           "dependencies": [],
           "cross_subject_refs": [],
           "origin": "curriculum_fix",
@@ -235,7 +324,15 @@
         },
         {
           "name": "光与声音",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "science_compulsory_0005",
+            "science_compulsory_0042",
+            "science_compulsory_0043",
+            "science_compulsory_0044",
+            "science_compulsory_0071",
+            "science_compulsory_0072",
+            "science_compulsory_0074"
+          ],
           "dependencies": [],
           "cross_subject_refs": [],
           "origin": "curriculum_fix",
@@ -243,7 +340,20 @@
         },
         {
           "name": "热学与能量",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "science_compulsory_0001",
+            "science_compulsory_0013",
+            "science_compulsory_0014",
+            "science_compulsory_0015",
+            "science_compulsory_0016",
+            "science_compulsory_0024",
+            "science_compulsory_0026",
+            "science_compulsory_0041",
+            "science_compulsory_0071",
+            "science_compulsory_0072",
+            "science_compulsory_0073",
+            "science_compulsory_0074"
+          ],
           "dependencies": [],
           "cross_subject_refs": [],
           "origin": "curriculum_fix",
@@ -322,7 +432,19 @@
         },
         {
           "name": "细胞与遗传",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "science_compulsory_0004",
+            "science_compulsory_0005",
+            "science_compulsory_0030",
+            "science_compulsory_0038",
+            "science_compulsory_0039",
+            "science_compulsory_0040",
+            "science_compulsory_0043",
+            "science_compulsory_0048",
+            "science_compulsory_0052",
+            "science_compulsory_0054",
+            "science_compulsory_0056"
+          ],
           "dependencies": [
             "生物的特征与结构"
           ],
@@ -332,7 +454,17 @@
         },
         {
           "name": "生物的进化与分类",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "science_compulsory_0005",
+            "science_compulsory_0037",
+            "science_compulsory_0038",
+            "science_compulsory_0040",
+            "science_compulsory_0041",
+            "science_compulsory_0042",
+            "science_compulsory_0046",
+            "science_compulsory_0048",
+            "science_compulsory_0055"
+          ],
           "dependencies": [
             "细胞与遗传"
           ],
@@ -342,7 +474,29 @@
         },
         {
           "name": "人体系统与生物分类",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "science_compulsory_0037",
+            "science_compulsory_0038",
+            "science_compulsory_0039",
+            "science_compulsory_0040",
+            "science_compulsory_0041",
+            "science_compulsory_0042",
+            "science_compulsory_0043",
+            "science_compulsory_0044",
+            "science_compulsory_0045",
+            "science_compulsory_0046",
+            "science_compulsory_0047",
+            "science_compulsory_0048",
+            "science_compulsory_0049",
+            "science_compulsory_0050",
+            "science_compulsory_0051",
+            "science_compulsory_0052",
+            "science_compulsory_0053",
+            "science_compulsory_0054",
+            "science_compulsory_0055",
+            "science_compulsory_0056",
+            "science_compulsory_0057"
+          ],
           "dependencies": [
             "健康与疾病"
           ],

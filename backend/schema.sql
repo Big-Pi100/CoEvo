@@ -1,275 +1,34 @@
--- CoEvo 刻意进化学习 — Database Schema
--- 生成时间: 2026-06-03
--- 来源: backend/src/main.rs (生产 DDL + 运行时迁移)
--- 注意：部分表通过运行时 ALTER TABLE 添加/迁移，已合并为最终形态
+-- CoEvo 数据库 Schema V3
+-- 基于 k12-dataflow-analysis.md 文档 1.2 节
+-- 所有主键/外键统一 UUID v4
 
--- ================================================================
--- 1. 用户与认证
--- ================================================================
-
+-- ── 用户身份（学生/家长/老师 统一存储） ──
 CREATE TABLE users (
     id TEXT PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT,
+    role TEXT NOT NULL DEFAULT 'student'
+        CHECK(role IN ('student', 'tutor', 'guardian')),
+    status TEXT NOT NULL DEFAULT 'active',
     streak_days INTEGER DEFAULT 0,
     last_active_date TEXT,
-    display_name TEXT DEFAULT NULL,        -- 运行时新增
-    real_name TEXT DEFAULT NULL,           -- 运行时新增 (PII, AES-GCM 加密)
-    phone TEXT DEFAULT NULL,               -- 运行时新增 (PII, AES-GCM 加密)
-    id_number TEXT DEFAULT NULL,           -- 运行时新增 (PII, AES-GCM 加密)
-    bind_hash TEXT DEFAULT NULL,           -- 运行时新增 (SHA-256 确定性查找)
-    deleted_at TEXT DEFAULT NULL,          -- 运行时新增 (软删除)
+    display_name TEXT DEFAULT NULL,
+    real_name TEXT DEFAULT NULL,
+    phone TEXT DEFAULT NULL UNIQUE,
+    phone_hash TEXT DEFAULT NULL UNIQUE,
+    id_number TEXT DEFAULT NULL,
+    bind_hash TEXT DEFAULT NULL,
+    deleted_at TEXT DEFAULT NULL,
     created_at TEXT NOT NULL
 );
 
-CREATE TABLE tokens (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    token TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-
--- ================================================================
--- 2. 会话与对话
--- ================================================================
-
-CREATE TABLE conversations (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    turn_count INTEGER DEFAULT 0,
-    started_at TEXT NOT NULL,
-    subject TEXT,                  -- 运行时新增 (K12 学科代码)
-    grade_band TEXT,               -- 运行时新增 (K12 年级段)
-    deleted_at TEXT,               -- 运行时新增 (软删除)
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-
-CREATE TABLE conversation_turns (
-    id TEXT PRIMARY KEY,
-    conversation_id TEXT NOT NULL,
-    role TEXT NOT NULL,
-    content TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id)
-);
-
--- ================================================================
--- 3. 学习卡片 (CP1 提取)
--- ================================================================
-
-CREATE TABLE cards (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    domain TEXT,
-    card_type TEXT NOT NULL,        -- "vocabulary" | "concept" | "custom"
-    front TEXT NOT NULL,
-    back TEXT NOT NULL,
-    source_sentence TEXT,
-    created_at INTEGER NOT NULL,    -- Unix timestamp (INTEGER, 非 TEXT)
-    conversation_id TEXT,
-    subject TEXT,                   -- 运行时新增 (K12)
-    grade_band TEXT,                -- 运行时新增 (K12)
-    k12_card_id TEXT,              -- 运行时新增 (K12 预置卡关联)
-    gold_cr_id TEXT,               -- 运行时新增 (课程标准关联)
-    status TEXT NOT NULL DEFAULT 'active'
-        CHECK(status IN ('active', 'pending', 'skipped', 'archived')),
-    origin TEXT DEFAULT 'extracted'
-        CHECK(origin IN ('extracted', 'prebuilt')),
-    plan_type TEXT,                -- "conversation_plans" | "plan_templates"
-    plan_id TEXT,
-    stage_name TEXT,               -- 所属 stage 名称，NULL 表示无 stage 绑定
-    plan_task_id TEXT,             -- 词汇/古诗/句型卡绑定的 task 名称
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL
-);
-
--- 5. FSRS 记忆状态 (1:1 cards)
-CREATE TABLE card_memory (
-    card_id TEXT PRIMARY KEY,
-    state INTEGER DEFAULT 0,       -- 0:New, 1:Learning, 2:Review, 3:Relearning
-    difficulty REAL DEFAULT 5.0,
-    stability REAL DEFAULT 0.0,
-    due INTEGER DEFAULT 0,         -- Unix timestamp
-    last_review INTEGER,
-    reps INTEGER DEFAULT 0,
-    lapses INTEGER DEFAULT 0,
-    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
-);
-
--- 6. 复习日志
-CREATE TABLE review_log (
-    id TEXT PRIMARY KEY,
-    card_id TEXT NOT NULL,
-    rating INTEGER NOT NULL,       -- 1-4 (FSRS 等级)
-    verification_type TEXT NOT NULL
-        CHECK(verification_type IN ('spelling', 'typing', 'ai_dialogue')),
-    verification_result TEXT NOT NULL
-        CHECK(verification_result IN ('pass', 'fail')),
-    reviewed_at INTEGER NOT NULL,
-    details_json TEXT,             -- 运行时新增 (扩展信息)
-    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
-);
-
--- ================================================================
--- 4. 成就与跳过记录
--- ================================================================
-
-CREATE TABLE achievements (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    achievement_key TEXT NOT NULL,
-    name TEXT NOT NULL,
-    icon TEXT NOT NULL,
-    tier TEXT DEFAULT 'fixed',     -- "fixed" | "bronze" | "silver" | "gold" | "platinum"
-    source TEXT,                   -- "task" | "stage" | "domain" | "cross" | NULL(fixed)
-    unlocked_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-
-CREATE TABLE skipped_concepts (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    front TEXT NOT NULL,
-    domain TEXT,
-    source_text TEXT,
-    skipped_at INTEGER NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-
--- ================================================================
--- 5. 计划与进度 (CP2)
--- ================================================================
-
-CREATE TABLE plan_templates (
-    id TEXT PRIMARY KEY,
-    subject TEXT NOT NULL,
-    subject_key TEXT NOT NULL UNIQUE,
-    grade_band TEXT NOT NULL,
-    goal TEXT NOT NULL,
-    plan_content TEXT NOT NULL,
-    version INTEGER DEFAULT 1,
-    updated_at INTEGER NOT NULL,
-    UNIQUE(subject_key, grade_band)
-);
-
-CREATE TABLE conversation_plans (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    conversation_id TEXT NOT NULL UNIQUE,
-    goal TEXT NOT NULL,
-    domain TEXT DEFAULT 'general',
-    plan_content TEXT,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
-);
-
-CREATE TABLE user_plan_progress (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    plan_type TEXT NOT NULL,
-    plan_id TEXT NOT NULL,
-    task_key TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending'
-        CHECK(status IN ('pending', 'in_progress', 'done', 'skipped')),
-    score REAL,
-    attempt_count INTEGER DEFAULT 0,
-    started_at INTEGER,
-    completed_at INTEGER,
-    updated_at INTEGER NOT NULL,
-    UNIQUE(plan_id, task_key),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE user_preferences (
-    user_id TEXT NOT NULL,
-    key TEXT NOT NULL,
-    value TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    PRIMARY KEY (user_id, key),
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-
--- ================================================================
--- 6. K12 模块
--- ================================================================
-
-CREATE TABLE k12_progress (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    subject TEXT NOT NULL,
-    grade_band TEXT NOT NULL,
-    plan_json TEXT,
-    mastered_cards INTEGER DEFAULT 0,
-    total_cards INTEGER DEFAULT 0,
-    started_at TEXT NOT NULL,
-    last_activity_at TEXT,
-    completed_at TEXT,
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    UNIQUE(user_id, subject, grade_band)
-);
-
-CREATE TABLE k12_achievements (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    achievement_id TEXT NOT NULL,
-    unlocked_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    UNIQUE(user_id, achievement_id)
-);
-
-CREATE TABLE k12_quiz_bank (
-    id TEXT PRIMARY KEY,
-    subject TEXT NOT NULL,
-    grade_band TEXT NOT NULL,
-    task_name TEXT,
-    question TEXT NOT NULL,
-    answer TEXT NOT NULL,
-    question_type TEXT,
-    options TEXT,
-    source_dataset TEXT,
-    difficulty REAL DEFAULT 0.5,
-    assessment_item_id TEXT,       -- 运行时新增 (课标关联)
-    plan_stage_id TEXT             -- 运行时新增 (计划阶段关联)
-);
-
-CREATE TABLE k12_quiz_attempts (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    quiz_id TEXT NOT NULL,
-    conversation_id TEXT,
-    user_answer TEXT,
-    is_correct INTEGER,
-    attempted_at TEXT NOT NULL,
-    task_name TEXT,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-
-CREATE TABLE knowledge_graph (
-    id TEXT PRIMARY KEY,
-    source_subject TEXT NOT NULL,
-    source_stage TEXT,
-    source_task TEXT,
-    target_subject TEXT NOT NULL,
-    target_stage TEXT,
-    target_task TEXT,
-    edge_type TEXT NOT NULL,
-    strength TEXT DEFAULT 'medium',
-    note TEXT,
-    created_at TEXT NOT NULL
-);
-
--- ================================================================
--- 7. 管理与审计
--- ================================================================
-
+-- ── 后台管理员（仅 super/service） ──
 CREATE TABLE admin_users (
     id TEXT PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'pending',
+    role TEXT NOT NULL DEFAULT 'pending'
+        CHECK(role IN ('super', 'service')),
     status TEXT NOT NULL DEFAULT 'pending',
     real_name TEXT,
     phone TEXT,
@@ -281,9 +40,153 @@ CREATE TABLE admin_users (
     created_by TEXT,
     created_at TEXT NOT NULL,
     approved_at TEXT,
-    permissions TEXT DEFAULT '{}'    -- 运行时新增
+    permissions TEXT DEFAULT '{}'
 );
 
+-- ── 认证令牌 ──
+CREATE TABLE tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    token TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- ── 会话（WS 唯一写入） ──
+CREATE TABLE conversations (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    turn_count INTEGER DEFAULT 0,
+    started_at TEXT NOT NULL,
+    deleted_at TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- ── 对话轮次 ──
+CREATE TABLE conversation_turns (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id)
+);
+
+-- ── 卡片（所有类型统一存储） ──
+CREATE TABLE cards (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    domain TEXT,
+    card_type TEXT NOT NULL,
+    front TEXT NOT NULL,
+    back TEXT NOT NULL,
+    source_sentence TEXT,
+    created_at INTEGER NOT NULL,
+    conversation_id TEXT,
+    plan_id TEXT,
+    task_key TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL,
+    FOREIGN KEY (plan_id) REFERENCES conversation_plans(id) ON DELETE SET NULL
+);
+
+-- ── FSRS 复习状态 ──
+CREATE TABLE card_memory (
+    card_id TEXT PRIMARY KEY,
+    state INTEGER DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'active'
+        CHECK(status IN ('active', 'pending', 'skipped', 'archived')),
+    difficulty REAL DEFAULT 5.0,
+    stability REAL DEFAULT 0.0,
+    due INTEGER DEFAULT 0,
+    last_review INTEGER,
+    reps INTEGER DEFAULT 0,
+    lapses INTEGER DEFAULT 0,
+    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
+);
+
+-- ── 复习日志 ──
+CREATE TABLE review_log (
+    id TEXT PRIMARY KEY,
+    card_id TEXT NOT NULL,
+    rating INTEGER NOT NULL,
+    verification_type TEXT NOT NULL
+        CHECK(verification_type IN ('spelling', 'typing', 'ai_dialogue')),
+    verification_result TEXT NOT NULL
+        CHECK(verification_result IN ('pass', 'fail')),
+    reviewed_at INTEGER NOT NULL,
+    details_json TEXT,
+    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
+);
+
+-- ── 成就 ──
+CREATE TABLE achievements (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    achievement_key TEXT NOT NULL,
+    name TEXT NOT NULL,
+    icon TEXT NOT NULL,
+    tier TEXT DEFAULT 'fixed',
+    source TEXT,
+    unlocked_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- ── 学习计划（所有类型统一存储） ──
+CREATE TABLE conversation_plans (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL UNIQUE,
+    goal TEXT NOT NULL,
+    subject TEXT DEFAULT '',
+    plan_content TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+
+-- ── 任务进度（状态唯一权威来源） ──
+CREATE TABLE user_plan_progress (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    task_key TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending', 'in_progress', 'done')),
+    score REAL,
+    attempt_count INTEGER DEFAULT 0,
+    started_at INTEGER,
+    completed_at INTEGER,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (plan_id) REFERENCES conversation_plans(id) ON DELETE CASCADE,
+    UNIQUE(plan_id, task_key)
+);
+
+-- ── 用户偏好 ──
+CREATE TABLE user_preferences (
+    user_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, key),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- ── 监护人/老师 绑定关系 ──
+CREATE TABLE guardian_assignments (
+    id TEXT PRIMARY KEY,
+    guardian_admin_id TEXT NOT NULL,
+    student_user_id TEXT NOT NULL,
+    bind_key TEXT NOT NULL,
+    assigned_by TEXT,
+    assigned_at TEXT NOT NULL,
+    is_active INTEGER DEFAULT 1,
+    UNIQUE(guardian_admin_id, student_user_id)
+);
+
+-- ── 订阅请求 ──
 CREATE TABLE subscription_requests (
     id TEXT PRIMARY KEY,
     target_user_id TEXT NOT NULL,
@@ -299,6 +202,7 @@ CREATE TABLE subscription_requests (
     FOREIGN KEY (target_user_id) REFERENCES users(id)
 );
 
+-- ── 管理日志 ──
 CREATE TABLE admin_audit_log (
     id TEXT PRIMARY KEY,
     admin_id TEXT NOT NULL,
@@ -309,44 +213,67 @@ CREATE TABLE admin_audit_log (
     created_at TEXT NOT NULL
 );
 
-CREATE TABLE guardian_assignments (
+-- ── 知识图谱 ──
+CREATE TABLE knowledge_graph (
     id TEXT PRIMARY KEY,
-    guardian_admin_id TEXT NOT NULL,
-    student_user_id TEXT NOT NULL,
-    bind_key TEXT NOT NULL,
-    assigned_by TEXT,
-    assigned_at TEXT NOT NULL,
-    is_active INTEGER DEFAULT 1,
-    UNIQUE(guardian_admin_id, student_user_id)
+    source_subject TEXT NOT NULL,
+    source_stage TEXT,
+    source_task TEXT,
+    target_subject TEXT NOT NULL,
+    target_stage TEXT,
+    target_task TEXT,
+    edge_type TEXT NOT NULL,
+    strength TEXT DEFAULT 'medium',
+    note TEXT,
+    created_at TEXT NOT NULL
 );
 
--- ================================================================
--- 8. 索引
--- ================================================================
+-- ── 各科测验 ──
+CREATE TABLE k12_quiz_bank (
+    id TEXT PRIMARY KEY,
+    subject TEXT NOT NULL,
+    grade_band TEXT NOT NULL,
+    task_name TEXT,
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    question_type TEXT,
+    options TEXT,
+    source_dataset TEXT,
+    difficulty REAL DEFAULT 0.5,
+    assessment_item_id TEXT,
+    plan_stage_id TEXT
+);
 
+CREATE TABLE k12_quiz_attempts (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    quiz_id TEXT NOT NULL,
+    conversation_id TEXT,
+    user_answer TEXT,
+    is_correct INTEGER,
+    attempted_at TEXT NOT NULL,
+    task_name TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- ── 索引 ──
 CREATE INDEX IF NOT EXISTS idx_cards_user_id ON cards(user_id);
-CREATE INDEX IF NOT EXISTS idx_cards_user_domain ON cards(user_id, domain);
 CREATE INDEX IF NOT EXISTS idx_cards_conversation_id ON cards(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_card_memory_due ON card_memory(due);
-CREATE INDEX IF NOT EXISTS idx_card_memory_state_due ON card_memory(state, due);
 CREATE INDEX IF NOT EXISTS idx_conversation_turns_conv ON conversation_turns(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_conversation_turns_conv_created ON conversation_turns(conversation_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_review_log_card_reviewed ON review_log(card_id, reviewed_at);
 CREATE INDEX IF NOT EXISTS idx_conversation_plans_user ON conversation_plans(user_id);
-CREATE INDEX IF NOT EXISTS idx_upp_user_plan ON user_plan_progress(user_id, plan_type, plan_id);
+CREATE INDEX IF NOT EXISTS idx_conversation_plans_conv ON conversation_plans(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_upp_user_plan ON user_plan_progress(user_id, plan_id);
 CREATE INDEX IF NOT EXISTS idx_upp_status ON user_plan_progress(plan_id, status);
-CREATE INDEX IF NOT EXISTS idx_skipped_concepts_user ON skipped_concepts(user_id);
-CREATE INDEX IF NOT EXISTS idx_achievements_user ON achievements(user_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_user_deleted ON conversations(user_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_achievements_user ON achievements(user_id);
 CREATE INDEX IF NOT EXISTS idx_admin_users_role_status ON admin_users(role, status);
 CREATE INDEX IF NOT EXISTS idx_subscription_requests_status ON subscription_requests(status);
 CREATE INDEX IF NOT EXISTS idx_guardian_assignments_guardian ON guardian_assignments(guardian_admin_id);
 CREATE INDEX IF NOT EXISTS idx_guardian_assignments_student ON guardian_assignments(student_user_id);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_log_admin ON admin_audit_log(admin_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_admin_audit_log_action ON admin_audit_log(action, created_at);
-CREATE INDEX IF NOT EXISTS idx_k12_progress_user ON k12_progress(user_id);
-CREATE INDEX IF NOT EXISTS idx_k12_achievements_user ON k12_achievements(user_id);
 CREATE INDEX IF NOT EXISTS idx_k12_quiz_bank_subject_grade ON k12_quiz_bank(subject, grade_band);
 CREATE INDEX IF NOT EXISTS idx_k12_quiz_attempts_user_quiz ON k12_quiz_attempts(user_id, quiz_id);
 CREATE INDEX IF NOT EXISTS idx_kg_source ON knowledge_graph(source_subject, source_stage);
-CREATE INDEX IF NOT EXISTS idx_kg_target ON knowledge_graph(target_subject, target_stage);

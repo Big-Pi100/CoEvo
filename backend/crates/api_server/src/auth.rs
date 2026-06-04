@@ -64,7 +64,7 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
         if p.len() != 11 || !p.starts_with('1') || !p.chars().all(|c| c.is_ascii_digit()) { return Err("手机号格式不正确".into()); }
     }
 
-    let user_id = format!("user_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap());
+    let user_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp();
     let token = uuid::Uuid::new_v4().to_string();
     let pwhash = hash_password(&req.password);
@@ -76,6 +76,8 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
     // Encrypt PII fields
     let enc_real_name = req.real_name.as_ref().map(|n| encryption::encrypt(n));
     let enc_phone = req.phone.as_ref().map(|p| encryption::encrypt(p));
+    // Compute phone_hash for login via phone (SHA-256 plain phone, deterministic lookups)
+    let phone_hash = req.phone.as_ref().map(|p| encryption::sha256_hash(p));
     // Compute bind_hash (for deterministic lookup)
     let bind_hash_val = match (&req.real_name, &req.phone) {
         (Some(n), Some(p)) => Some(encryption::bind_hash(n, p)),
@@ -83,8 +85,8 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
     };
 
     conn.execute(
-        "INSERT INTO users (id, username, display_name, password_hash, real_name, phone, bind_hash, created_at) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7)",
-        rusqlite::params![user_id, req.username, pwhash, enc_real_name, enc_phone, bind_hash_val, now],
+        "INSERT INTO users (id, username, display_name, password_hash, real_name, phone, phone_hash, bind_hash, created_at) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![user_id, req.username, pwhash, enc_real_name, enc_phone, phone_hash, bind_hash_val, now],
     ).map_err(|e| format!("Insert error: {}", e))?;
 
     // Store token in tokens table
@@ -111,17 +113,34 @@ fn cleanup_old_tokens(conn: &rusqlite::Connection, user_id: &str) {
     }
 }
 
-/// Login with username and password
+/// Login with username or phone
 pub fn login(conn: &rusqlite::Connection, req: &LoginRequest) -> Result<AuthResponse, String> {
-    // Fetch user id and password hash
-    let (user_id, stored_hash): (String, String) = conn.query_row(
-        "SELECT id, password_hash FROM users WHERE username = ?1",
-        rusqlite::params![req.username],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    ).map_err(|_| "Invalid username or password".to_string())?;
+    let input = &req.username;
+
+    // 判断输入是用户名还是手机号
+    let is_phone = input.len() == 11 && input.starts_with('1') && input.chars().all(|c| c.is_ascii_digit());
+
+    let (user_id, stored_hash): (String, String) = if is_phone {
+        // 手机号登录：SHA-256 哈希匹配（phone 列用 AES-256-GCM 加密，无法直接查）
+        let phone_hash = encryption::sha256_hash(input);
+        conn.query_row(
+            "SELECT id, password_hash FROM users WHERE phone_hash = ?1",
+            rusqlite::params![phone_hash],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).map_err(|_| "Invalid phone or password".to_string())?
+    } else {
+        // 用户名登录
+        conn.query_row(
+            "SELECT id, password_hash FROM users WHERE username = ?1",
+            rusqlite::params![input],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).map_err(|_| "Invalid username or password".to_string())?
+    };
 
     if !verify_password(&req.password, &stored_hash) {
-        return Err("Invalid username or password".to_string());
+        // 统一错误信息，不泄露是用户名/手机号错了还是密码错了
+        let err_msg = if is_phone { "Invalid phone or password" } else { "Invalid username or password" };
+        return Err(err_msg.to_string());
     }
 
     // Clean up old tokens for this user before creating a new one
@@ -170,6 +189,7 @@ mod tests {
                 display_name TEXT,
                 real_name TEXT,
                 phone TEXT,
+                phone_hash TEXT,
                 bind_hash TEXT,
                 created_at TEXT NOT NULL
             );
@@ -212,7 +232,7 @@ mod tests {
             real_name: None,
             phone: None,
         }).unwrap();
-        assert!(resp.user_id.starts_with("user_"));
+        assert_eq!(resp.user_id.len(), 36, "user_id should be a UUID v4");
         assert!(!resp.token.is_empty());
 
         // Login
@@ -283,5 +303,42 @@ mod tests {
 
         // Wrong user should not verify
         assert!(!verify_token(&conn, "wrong-user", &resp.token));
+    }
+
+    #[test]
+    fn test_login_by_phone() {
+        let conn = setup_db();
+        let phone = "13800138000";
+
+        // Register with phone
+        let resp = register(&conn, &RegisterRequest {
+            username: "phoneuser".into(),
+            password: "pass123".into(),
+            real_name: Some("测试".into()),
+            phone: Some(phone.into()),
+        }).unwrap();
+        assert_eq!(resp.user_id.len(), 36);
+
+        // Login by phone (use the `username` field to pass the phone number)
+        let resp2 = login(&conn, &LoginRequest {
+            username: phone.into(),
+            password: "pass123".into(),
+        }).unwrap();
+        assert_eq!(resp2.user_id, resp.user_id);
+        assert!(!resp2.token.is_empty());
+
+        // Wrong phone should fail
+        let result = login(&conn, &LoginRequest {
+            username: "13800138001".into(),
+            password: "pass123".into(),
+        });
+        assert!(result.is_err());
+
+        // Wrong password should fail
+        let result = login(&conn, &LoginRequest {
+            username: phone.into(),
+            password: "wrongpass".into(),
+        });
+        assert!(result.is_err());
     }
 }

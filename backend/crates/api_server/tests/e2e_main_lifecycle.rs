@@ -66,98 +66,22 @@ struct TurnDiag {
 
 
 // ═══════════════════════════════════════════════════
-// Schema（测试专用，与生产保持一致）
+// Schema（从生产 schema.sql 同步，另加测试专用索引）
 // ═══════════════════════════════════════════════════
 
-const SCHEMA_SQL: &str = r#"
-CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT,
-    streak_days INTEGER DEFAULT 0, last_active_date TEXT, display_name TEXT DEFAULT NULL,
-    real_name TEXT, phone TEXT, id_number TEXT, bind_hash TEXT, deleted_at TEXT,
-    created_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS tokens (
-    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token TEXT NOT NULL, created_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-CREATE TABLE IF NOT EXISTS conversations (
-    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, turn_count INTEGER DEFAULT 0,
-    started_at TEXT NOT NULL, deleted_at TEXT, subject TEXT, grade_band TEXT,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-CREATE TABLE IF NOT EXISTS conversation_turns (
-    id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, role TEXT NOT NULL,
-    content TEXT NOT NULL, created_at TEXT NOT NULL,
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id)
-);
-CREATE TABLE IF NOT EXISTS plan_templates (
-    id TEXT PRIMARY KEY, subject TEXT NOT NULL, subject_key TEXT NOT NULL UNIQUE,
-    grade_band TEXT NOT NULL, goal TEXT NOT NULL, plan_content TEXT NOT NULL,
-    version INTEGER DEFAULT 1, updated_at INTEGER NOT NULL,
-    UNIQUE(subject_key, grade_band)
-);
-CREATE TABLE IF NOT EXISTS conversation_plans (
-    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, conversation_id TEXT NOT NULL UNIQUE,
-    goal TEXT NOT NULL, domain TEXT DEFAULT 'general', plan_content TEXT,
-    created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
-);
-CREATE TABLE IF NOT EXISTS user_plan_progress (
-    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, plan_type TEXT NOT NULL,
-    plan_id TEXT NOT NULL, task_key TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending'
-        CHECK(status IN ('pending', 'in_progress', 'done', 'skipped')),
-    score REAL,
-    attempt_count INTEGER DEFAULT 0, started_at INTEGER, completed_at INTEGER,
-    updated_at INTEGER NOT NULL,
-    UNIQUE(plan_id, task_key),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-CREATE TABLE IF NOT EXISTS achievements (
-    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, achievement_key TEXT NOT NULL,
-    name TEXT NOT NULL, icon TEXT NOT NULL, tier TEXT DEFAULT 'fixed', source TEXT,
-    unlocked_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-CREATE TABLE IF NOT EXISTS cards (
-    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, domain TEXT, card_type TEXT NOT NULL,
-    front TEXT NOT NULL, back TEXT NOT NULL, source_sentence TEXT,
-    conversation_id TEXT, created_at INTEGER NOT NULL, subject TEXT, grade_band TEXT,
-    k12_card_id TEXT, gold_cr_id TEXT, origin TEXT DEFAULT 'extracted'
-        CHECK(origin IN ('extracted', 'prebuilt')),
-    status TEXT NOT NULL DEFAULT 'active'
-        CHECK(status IN ('active', 'pending', 'skipped', 'archived')),
-    plan_type TEXT,
-    plan_id TEXT,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL
-);
-CREATE TABLE IF NOT EXISTS card_memory (
-    card_id TEXT PRIMARY KEY, state INTEGER DEFAULT 0, difficulty REAL DEFAULT 5.0,
-    stability REAL DEFAULT 0.0, due INTEGER DEFAULT 0, last_review INTEGER,
-    reps INTEGER DEFAULT 0, lapses INTEGER DEFAULT 0,
-    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
-);
-CREATE TABLE IF NOT EXISTS review_log (
-    id TEXT PRIMARY KEY, card_id TEXT NOT NULL, rating INTEGER NOT NULL,
-    verification_type TEXT NOT NULL
-        CHECK(verification_type IN ('spelling', 'typing', 'ai_dialogue')),
-    verification_result TEXT NOT NULL
-        CHECK(verification_result IN ('pass', 'fail')),
-    details_json TEXT, reviewed_at INTEGER NOT NULL,
-    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_cards_user_id ON cards(user_id);
+const SCHEMA_SQL: &str = {
+    // 生产 schema
+    let prod = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/schema.sql"));
+    // 补充测试专用索引（生产 schema 可能缺少的）
+    const EXTRA_INDEXES: &str = "
 CREATE INDEX IF NOT EXISTS idx_cards_user_domain ON cards(user_id, domain);
-CREATE INDEX IF NOT EXISTS idx_cards_conversation_id ON cards(conversation_id);
-CREATE INDEX IF NOT EXISTS idx_card_memory_due ON card_memory(due);
-CREATE INDEX IF NOT EXISTS idx_conversation_turns_conv ON conversation_turns(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_review_log_card_reviewed ON review_log(card_id, reviewed_at);
-CREATE INDEX IF NOT EXISTS idx_conversation_plans_user ON conversation_plans(user_id);
-CREATE INDEX IF NOT EXISTS idx_upp_user_plan ON user_plan_progress(user_id, plan_type, plan_id);
-CREATE INDEX IF NOT EXISTS idx_upp_status ON user_plan_progress(plan_id, status);
-"#;
+";
+    // 将两个字符串拼接为一个 const &str 做不到，
+    // 这里用格式化的方式，但 const context 不允许。
+    // 替代方案：在 init_db 中 execute_batch 两次
+    prod
+};
 
 // ═══════════════════════════════════════════════════
 // 测试辅助函数
@@ -179,11 +103,16 @@ mod helpers {
         // Drop stale tables
         for tbl in &["review_log", "k12_quiz_attempts", "k12_quiz_bank", "card_memory",
                       "cards", "achievements", "conversation_plans",
-                      "plan_templates", "user_plan_progress", "conversation_turns",
+                      "user_plan_progress", "conversation_turns",
                       "conversations", "tokens", "users"] {
             let _ = conn.execute_batch(&format!("DROP TABLE IF EXISTS {}", tbl));
         }
         conn.execute_batch(SCHEMA_SQL).expect("create schema");
+        // 补充测试专用索引
+        let _ = conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_cards_user_domain ON cards(user_id, domain);
+             CREATE INDEX IF NOT EXISTS idx_review_log_card_reviewed ON review_log(card_id, reviewed_at);"
+        );
 
         let now = chrono::Utc::now().timestamp();
         conn.execute(
@@ -655,8 +584,8 @@ async fn e2e_main_lifecycle() {
             for c in &result.candidates {
                 let card_id = format!("cp1_b{}_", input.round) + &uuid::Uuid::new_v4().to_string()[..8];
                 match conn.execute(
-                    "INSERT INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, plan_type, plan_id)
-                     VALUES (?1, ?2, 'math', 'concept', ?3, ?4, ?5, ?6, ?7, 'conversation_plans', ?8)",
+                    "INSERT INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, plan_id)
+                     VALUES (?1, ?2, 'math', 'concept', ?3, ?4, ?5, ?6, ?7, ?8)",
                     rusqlite::params![card_id, TEST_USER_ID, &c.front, &c.back, &c.source_sentence, TEST_CONV_ID, now_ts, cp1_plan_id],
                 ) {
                     Ok(n) => {
@@ -683,7 +612,7 @@ async fn e2e_main_lifecycle() {
                     Err(e) => eprintln!("  ⚠️ DB insert failed: {} (card_id={})", e, card_id),
                 }
                 match conn.execute(
-                    "INSERT INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
+                    "INSERT INTO card_memory (card_id, state, status, difficulty, stability, due, last_review, reps, lapses)
                      VALUES (?1, 0, 0.3, 1.0, ?2, 0, 0, 0)",
                     rusqlite::params![card_id, now_ts],
                 ) {

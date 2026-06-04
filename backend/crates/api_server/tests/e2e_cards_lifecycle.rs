@@ -114,8 +114,8 @@ async fn e2e_cards_lifecycle() {
                 Err(e) => println!("  INSERT card {} FAILED: {}", cid, e),
             }
             match conn.execute(
-                "INSERT OR IGNORE INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
-                 VALUES (?1, 0, 0.3, 1.0, ?2, 0, 0, 0)",
+                "INSERT OR IGNORE INTO card_memory (card_id, state, status, difficulty, stability, due, last_review, reps, lapses)
+                 VALUES (?1, 0, 'active', 0.3, 1.0, ?2, 0, 0, 0)",
                 rusqlite::params![cid, now],
             ) {
                 Ok(n) => println!("  inserted card_memory {}: {} rows", cid, n),

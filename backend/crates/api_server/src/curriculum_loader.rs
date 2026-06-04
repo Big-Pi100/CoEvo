@@ -315,3 +315,20 @@ impl Paths {
         dev_path
     }
 }
+
+/// 返回 v3 迁移后的数据目录（data/curriculum/v3）
+pub fn k12_data_dir() -> std::path::PathBuf {
+    if let Ok(dir) = std::env::var("COEVO_K12_DATA_DIR") {
+        return std::path::PathBuf::from(dir);
+    }
+    let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../data/curriculum/v3");
+    if dev_path.join("plans").exists() {
+        return dev_path;
+    }
+    let cwd_path = std::path::PathBuf::from("data/curriculum/v3");
+    if cwd_path.join("plans").exists() {
+        return cwd_path;
+    }
+    Paths::prebuilt() // fallback
+}

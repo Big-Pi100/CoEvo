@@ -591,3 +591,180 @@ JSON 文件在迁移后存储**最终要写入 DB 的格式**，init 时直接�
 | 运行时找卡 | `curriculum_loader` 做复杂匹配 | `WHERE id IN (?)` |
 | 过渡字段 | 8 个（`gold_cr_id`, `origin`, `plan_type`...） | 0 个 |
 | 绑定保障 | 无（ID 散乱，断了查不到） | `id_mapping.json` 可反查 |
+
+---
+
+## 十、实施计划
+
+### 10.1 代码影响范围
+
+#### 需要修改的核心文件
+
+| 文件 | 行数 | 改动量 | 改动内容 |
+|:-----|:----:|:------|:---------|
+| `backend/src/main.rs` | 1012 | **大** | schema.sql 重建，迁移脚本删除 plan_templates，StageBinding 路径 C 调整 |
+| `backend/crates/api_server/src/routes.rs` | 2306 | **大** | k12_init/reading_init 重构，cards INSERT 精简，删除 subject/grade_band 读取，phone 校验 |
+| `backend/crates/api_server/src/plan_handler.rs` | 2218 | **大** | build_plan_context 简化，删除管道 A/B/C，normalize_plan 重写，activate_stage_cards 简化 |
+| `backend/crates/api_server/src/ws.rs` | 621 | **中** | prompt 选择改为 prompt_loader HashMap 查询，conversations INSERT 调整 |
+| `backend/crates/api_server/src/auth.rs` | 287 | **小** | user_id 改 UUID，phone 校验+唯一性 |
+| `backend/crates/api_server/src/admin_handlers.rs` | 748 | **小** | guardian/tutor 移出 admin_users 的相关调整 |
+| `backend/crates/chat_engine/src/prompt_loader.rs` | 490 | **中** | 新增 `HashMap<"{subject}/{type}", String>` 扫描加载 |
+| `backend/crates/card_engine/src/fsrs_scheduler.rs` | 120 | ✅ 已完成 | DueCard 字段补齐 |
+| `backend/schema.sql` | 352 | **中** | 全部表定义重写 |
+| `backend/crates/api_server/src/schema.sql` | 286 | **中** | 同上 |
+
+#### 阶段二删除的文件
+
+| 文件 | 行数 | 说明 |
+|:-----|:----:|:------|
+| `curriculum_loader.rs` | 317 | 迁移完成后不再需要 |
+| `reading_loader.rs` | 326 | 同上 |
+| `data/curriculum/prebuilt/plans/*.json` | — | 全部原始 JSON |
+| `data/curriculum/prebuilt/cards/*.json` | — | 全部原始卡片 JSON |
+| `data/curriculum/prebuilt/reading_plans/*.json` | — | 全部阅读 JSON |
+| `backend/src/main.rs` 中的 StageBinding 迁移 | ~80 行 | 不再需要 |
+
+#### 影响较小的文件
+
+| 文件 | 说明 |
+|:-----|:------|
+| `pipeline_router.rs` | 不需要改（读 plan_context 不变） |
+| `shared_types/` | 可能需要调整卡片结构体 |
+| `card_formatter.rs` | 可能需要适配 reading 卡 back JSON 格式 |
+| `e2e_*.rs`（9 个测试文件）| 更新 INSERT 语句列数 + DB 初始化语句 |
+| `student_llm/` | 不需要改 |
+| `growth_engine/` | 不需要改 |
+
+---
+
+### 10.2 实施阶段
+
+#### Phase A: 数据迁移脚本（独立，不涉及代码）
+
+**估算：2-3 小时**
+
+1. 写 Python 脚本 `scripts/migrate_v3.py`：
+   - 遍历 `data/curriculum/prebuilt/cards/*.json` → 分配 UUID → 建立 `id_mapping.json`
+   - 遍历 `data/curriculum/prebuilt/plans/*.json` → 解析 gold_cr_ids → 转为 card_ids（UUID）
+   - 遍历 `reading_plans/*.json` → 解析 vocab_card_ids/reading_card_id → 转为 card_ids
+   - mode 转 prompt_mode（含科目前缀）
+   - 验证：所有 card_ids 在卡片 JSON 中存在 ✅
+   - 输出：新 JSON + id_mapping.json
+
+2. 验证映射关系完整性
+
+**可并行：前端登录页改造**
+
+1. 登录页加 role 选择器（student/tutor/guardian）
+2. 去除 admin 登录页中的 tutor/guardian 入口
+
+---
+
+#### Phase B: 核心表结构 + 基础代码（4-5 小时）
+
+**步骤 B1: schema.sql 重写**（0.5 小时）
+
+- 按 1.2 节写所有表 DDL
+- UUID 主键、清理字段、FK 约束
+- `users` 加 `role`/`status` 字段
+- `conversations` 删 subject/grade_band
+- `cards` 精简到 11 列
+- `conversation_plans` 删 domain
+- `user_plan_progress` 删 plan_type
+- `plan_templates` 不创建
+
+**步骤 B2: auth.rs + admin_handlers.rs 调整**（0.5 小时）
+
+- `auth.rs:67` 改 `uuid::new_v4().to_string()`
+- `auth.rs` register 加 phone 校验（`11位+1开头`）
+- schema.sql `users.phone` 加 `UNIQUE`
+- admin register 去掉 guardian/tutor role 支持
+- `admin_handlers.rs` 权限检查调整
+
+**步骤 B3: routes.rs 重构 k12_init / reading_init**（1.5 小时）
+
+- 去掉 `INSERT INTO conversations`
+- 读新 JSON 格式（已有 card_ids，不解析 gold_cr_ids）
+- INSERT INTO conversation_plans 写 plan_content
+- 复制卡片到用户名下
+- 改 cards INSERT 语句（去掉过渡字段）
+- 删掉 `format!("k12_{}_plan_{}", ...)` 写法
+
+**步骤 B4: plan_handler.rs 重构**（1.5 小时）
+
+- `build_plan_context`：删 subject 分叉，统一查 conversation_plans + user_plan_progress
+- 删管道 A/B/C（统一 `WHERE id IN (?)`）
+- normalize_plan：删猜 task_key 逻辑，改为按位置填充
+- activate_stage_cards：删 plan_type，简化
+- `sub_steps` 相关逻辑保留但标识为废弃
+
+**步骤 B5: ws.rs 调整**（0.5 小时）
+
+- WS 首次消息只为自由对话创建 conversation（K12 由 init 创建）
+- prompt 选择改为 `prompt_loader.get(prompt_mode)`
+
+**步骤 B6: prompt_loader.rs 调整**（0.5 小时）
+
+- 启动时扫描 `prompts/chat/` 建立 HashMap
+- 保留原有结构化字段兼容（过渡期）
+
+---
+
+#### Phase C: e2e 测试适配（1-2 小时）
+
+**步骤 C1: 测试 DB schema 同步**（0.5 小时）
+
+- 更新所有测试中的 CREATE TABLE 语句
+- 更新 INSERT 语句列数
+
+**步骤 C2: 跑全部 e2e 测试**（0.5 小时）
+
+- 9 个 e2e 测试 + 单元测试全部通过
+- 修复失败项
+
+---
+
+#### Phase D: 清理（0.5 小时）
+
+- 删除 `curriculum_loader.rs`
+- 删除 `reading_loader.rs`
+- 删除原始 JSON 文件
+- 删除 `main.rs` 中 StageBinding 迁移代码
+- 删除 `plan_templates` 所有引用
+
+---
+
+### 10.3 实施顺序
+
+```
+Phase A（数据迁移脚本）     → 2-3h  ← 可先做，不依赖代码
+  │
+Phase B1（schema.sql）     → 0.5h  ← 必须先做
+  │
+Phase B2（auth）            → 0.5h
+  │
+Phase B3（routes k12/reading）→ 1.5h
+  │
+Phase B4（plan_handler）    → 1.5h
+  ├─ 可并行 ── B5（ws.rs）→ 0.5h
+  ├─ 可并行 ── B6（prompt_loader）→ 0.5h
+  │
+Phase C（e2e 测试）         → 2h
+  │
+Phase D（清理）             → 0.5h  ← 验证通过后再做
+  │
+前端登录页改造（独立）       → 1-2h  ← 可随时并行
+```
+
+**总计：约 8-11 小时有效编码，可 2-3 天完成。**
+
+---
+
+### 10.4 风险点
+
+| 风险 | 缓解 |
+|:-----|:------|
+| `id_mapping.json` 映射不完整导致 plan 引用了不存在的卡片 | 迁移脚本必须有全量验证步骤，所有 card_ids 逐一核实 |
+| e2e 测试涉及大量 DB 初始化代码需同步更新 | 统一用一个测试 schema.sql 文件，9 个测试文件都引用它 |
+| 现有 DB 清库后无法回滚 | 先备份 `data/` 目录和 `data/*.db` 文件，验证通过前不删除 |
+| `prompt_loader` 改动影响所有 LLM 调用 | B6 保留旧字段兼容，过渡期内两种方式都支持 |

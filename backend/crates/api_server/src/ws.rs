@@ -193,31 +193,24 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 let (system_prompt, plan_context) = {
                     let conn = crate::db_pool::get_conn();
                     let (domain, mode, ctx) = crate::plan_handler::build_plan_context(&conn, &chat_req.conversation_id);
+                    // 记录 prompt 来源（供 e2e 测试验证）
+                    crate::plan_handler::log_prompt_source(&format!("{}/{}", domain, mode));
                     let templates = chat_engine::prompt_loader::get_chat(&domain);
-                    let sp = if mode == "reading" {
-                        // 按学段 + task mode 选择对应的物理隔离 prompt
-                        let grade_band: Option<String> = conn.query_row(
-                            "SELECT grade_band FROM conversations WHERE id = ?1",
-                            rusqlite::params![chat_req.conversation_id],
-                            |row| row.get(0),
-                        ).ok().flatten();
-                        // 为简洁起见，通过 ctx 中的"教学模式:"行判断 task mode
-                        let is_nursery = ctx.contains("教学模式: nursery_rhyme");
-                        let is_primary = matches!(grade_band.as_deref(), Some("g1-2" | "g3-4"));
-                        if is_nursery {
+                    let sp = match mode.as_str() {
+                        "reading-nursery" | "reading_nursery" => {
                             let p = templates.reading_nursery.clone();
                             if !p.is_empty() { p } else { templates.reading.clone() }
-                        } else if is_primary {
+                        }
+                        "reading-primary" | "reading_primary" => {
                             let p = templates.reading_primary.clone();
                             if !p.is_empty() { p } else { templates.reading.clone() }
-                        } else {
+                        }
+                        "reading-secondary" | "reading_secondary" | "reading" => {
                             let p = templates.reading_secondary.clone();
                             if !p.is_empty() { p } else { templates.reading.clone() }
                         }
-                    } else if mode == "structured" {
-                        templates.structured.clone()
-                    } else {
-                        templates.free.clone()
+                        "structured" => templates.structured.clone(),
+                        _ => templates.free.clone(),
                     };
                     // 将路由上下文合并到计划上下文中
                     let full_ctx = if ctx.is_empty() { String::new() } else { ctx.clone() };
@@ -401,7 +394,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 let turn_card_count: i64 = {
                     let conn = crate::db_pool::get_conn();
                     conn.query_row(
-                        "SELECT COUNT(*) FROM cards WHERE user_id = ?1 AND status = 'active'",
+                        "SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id = ?1 AND cm.status = 'active'",
                         rusqlite::params![&chat_req.user_id],
                         |row| row.get(0),
                     ).unwrap_or(0)
@@ -452,7 +445,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
 
                         let ef: Vec<String> = {
                             let mut stmt = match conn.prepare(
-                                "SELECT LOWER(front) FROM cards WHERE user_id = ?1 AND status = 'active'"
+                                "SELECT LOWER(c.front) FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id = ?1 AND cm.status = 'active'"
                             ) {
                                 Ok(s) => s,
                                 Err(_) => break 'db None,
@@ -498,23 +491,28 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     // 概念提取 → 批量入库 (status='pending')，返回 card_id 供前端 PATCH
                     let pending_candidates: Vec<serde_json::Value> = {
                         let conn = crate::db_pool::get_conn();
-                        // 查询 plan_id
-                        let cp1_plan_id: String = conn.query_row(
-                            "SELECT id FROM conversation_plans WHERE conversation_id = ?1 LIMIT 1",
-                            rusqlite::params![&conv_id_cp1], |r| r.get(0),
+                        // 查询 plan_id 和当前 task_key
+                        let (cp1_plan_id, cp1_task_key): (String, String) = conn.query_row(
+                            "SELECT cp.id, COALESCE((SELECT task_key FROM user_plan_progress WHERE plan_id = cp.id AND status = 'in_progress' LIMIT 1), '') 
+                             FROM conversation_plans cp WHERE cp.conversation_id = ?1 LIMIT 1",
+                            rusqlite::params![&conv_id_cp1],
+                            |r| Ok((r.get(0)?, r.get(1)?)),
                         ).unwrap_or_default();
                         extraction.candidates.iter().map(|c| {
-                            let card_id = format!("pend_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap());
+                            let card_id = uuid::Uuid::new_v4().to_string();
                             let now = chrono::Utc::now().timestamp();
-                            // 写入 cards（带 conversation_id + plan_type + plan_id）
+                            // cards: 结构数据（无 status，无 card_memory 状态字段）
                             let _ = conn.execute(
-                                "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, status, plan_type, plan_id)
-                                 VALUES (?1, ?2, ?3, 'concept', ?4, ?5, ?6, ?7, ?8, 'active', 'conversation_plans', ?9)",
-                                rusqlite::params![card_id, user_id, c.domain, c.front, c.back, c.source_sentence, conv_id_cp1, now, cp1_plan_id],
+                                "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, plan_id, task_key)
+                                 VALUES (?1, ?2, ?3, 'concept', ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                                rusqlite::params![card_id, user_id, c.domain, c.front, c.back, c.source_sentence,
+                                    conv_id_cp1, now, if cp1_plan_id.is_empty() { None } else { Some(&cp1_plan_id) },
+                                    if cp1_task_key.is_empty() { None } else { Some(&cp1_task_key) }],
                             );
+                            // card_memory: 状态数据（含 lifecycle status='pending'）
                             let _ = conn.execute(
-                                "INSERT OR IGNORE INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
-                                 VALUES (?1, 0, 0.3, 1.0, ?2, 0, 0, 0)",
+                                "INSERT OR IGNORE INTO card_memory (card_id, state, status, difficulty, stability, due, last_review, reps, lapses)
+                                 VALUES (?1, 0, 'pending', 0.3, 1.0, ?2, 0, 0, 0)",
                                 rusqlite::params![card_id, now],
                             );
                             json!({"id": card_id, "front": c.front, "back": c.back,

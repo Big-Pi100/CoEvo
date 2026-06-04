@@ -43,6 +43,22 @@ pub fn drain_llm_input_log() -> Vec<(String, String)> {
     result
 }
 
+/// ── Prompt 来源日志（domain + mode，由 ws.rs 写入，供 e2e 测试验证）──
+static PROMPT_SOURCE_LOG: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+pub fn log_prompt_source(source: &str) {
+    if let Ok(mut log) = PROMPT_SOURCE_LOG.lock() {
+        log.push(source.to_string());
+    }
+}
+
+pub fn drain_prompt_source_log() -> Vec<String> {
+    let mut log = PROMPT_SOURCE_LOG.lock().unwrap();
+    let result = log.clone();
+    log.clear();
+    result
+}
+
 /// 从 task_status 中找到当前 in_progress 的 task 名称
 pub fn get_current_task_name(task_status: &serde_json::Value) -> Option<String> {
     let stages = task_status.get("stages").and_then(|v| v.as_array())?;
@@ -229,12 +245,8 @@ pub fn handle_plan_update(
                                         }
                                     }
                                 }
-                                // 持久化到 conversation_plans
-                                let now = chrono::Utc::now().timestamp();
-                                let _ = conn.execute(
-                                    "UPDATE conversation_plans SET plan_content = ?1, updated_at = ?2 WHERE conversation_id = ?3",
-                                    rusqlite::params![content.to_string(), now, conversation_id],
-                                );
+                                // plan_content 只存结构，不存状态
+                                // 状态变化由调用方同步到 user_plan_progress
                                 content
                             } else { serde_json::Value::Null }
                         } else { serde_json::Value::Null };
@@ -302,25 +314,20 @@ fn upsert_learning_plan(
 
     // ── 规范化 plan JSON：补充 sort 和 task_key ──
     // LLM 生成的计划通常没有 sort 和 task_key 字段
+    // task_key 统一为 {stage:02d}-{task:02d} 格式
     if let Some(plan_obj) = plan.as_object_mut() {
         if let Some(stages) = plan_obj.get_mut("stages").and_then(|s| s.as_array_mut()) {
             for (s_idx, stage) in stages.iter_mut().enumerate() {
                 if stage.get("sort").is_none() {
-                    stage["sort"] = serde_json::json!(s_idx);
+                    stage["sort"] = serde_json::json!(format!("{:02}", s_idx));
                 }
                 if let Some(tasks) = stage.get_mut("tasks").and_then(|t| t.as_array_mut()) {
                     for (t_idx, task) in tasks.iter_mut().enumerate() {
-                        if task.get("sort").is_none() {
-                            task["sort"] = serde_json::json!(t_idx);
-                        }
-                        if task.get("task_key").is_none() {
-                            let tname = task.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                            if !tname.is_empty() {
-                                task["task_key"] = serde_json::json!(tname);
-                            } else {
-                                task["task_key"] = serde_json::json!(format!("s{}_t{}", s_idx, t_idx));
-                            }
-                        }
+                        // task 不需要 sort（顺序由数组位置隐式决定）
+                        task.as_object_mut().map(|o| o.remove("sort"));
+                        // task_key 统一为 digits 格式
+                        let expected_key = format!("{:02}-{:02}", s_idx, t_idx);
+                        task["task_key"] = serde_json::json!(expected_key);
                         // 确保每个 task 有 status（默认 pending）
                         if task.get("status").is_none() {
                             task["status"] = serde_json::json!("pending");
@@ -340,12 +347,8 @@ fn upsert_learning_plan(
     // ── V2.1: 同步写入 user_plan_progress ──
     // 将 plan 中的 tasks 状态展开为 progress 行
     if let Some(stages) = plan.get("stages").and_then(|s| s.as_array()) {
-        // 检测 plan type：K12（有预置模板）vs 对话计划（LLM 生成）
-        let is_conversation_plan: bool = conn.query_row(
-            "SELECT subject FROM conversations WHERE id = ?1",
-            rusqlite::params![conversation_id],
-            |row| row.get::<_, Option<String>>(0),
-        ).ok().flatten().is_none();
+        // V2.1+ 所有计划统一为 conversation_plan（K12/Reading 的 plan 在 v3 中已用 conversation_plans）
+        let is_conversation_plan = true;
 
         // 如果是对话计划且无已有记录，写入 conversation_plans
         if is_conversation_plan {
@@ -357,8 +360,8 @@ fn upsert_learning_plan(
             if !exists {
                 let cp1_id = uuid::Uuid::new_v4().to_string();
                 let _ = conn.execute(
-                    "INSERT INTO conversation_plans (id, user_id, conversation_id, goal, domain, plan_content, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                    rusqlite::params![cp1_id, user_id, conversation_id, goal, domain, plan_content_str, now_ts, now_ts],
+                    "INSERT INTO conversation_plans (id, user_id, conversation_id, goal, subject, plan_content, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    rusqlite::params![cp1_id, user_id, conversation_id, goal, "", plan_content_str, now_ts, now_ts],
                 );
             }
         }
@@ -401,9 +404,9 @@ fn upsert_learning_plan(
                             else { format!("s{}_t{}", s_idx, t_idx) };
                         let progress_id = uuid::Uuid::new_v4().to_string();
                         let _ = conn.execute(
-                            "INSERT OR REPLACE INTO user_plan_progress (id, user_id, plan_type, plan_id, task_key, status, updated_at)
-                             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                            rusqlite::params![progress_id, user_id, if is_conversation_plan { "conversation" } else { "k12" },
+                            "INSERT OR REPLACE INTO user_plan_progress (id, user_id, plan_id, task_key, status, updated_at)
+                             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                            rusqlite::params![progress_id, user_id,
                                 progress_plan_id, final_key, status, now_ts],
                         );
                     }
@@ -674,18 +677,8 @@ fn apply_plan_mutations(
         tracing::debug!("Plan mutation: reset_current_task=true — task reverted");
     }
 
-    // 持久化更新后的 plan 到 conversation_plans
-    let now = chrono::Utc::now().timestamp();
-    let plan_content_str = plan.to_string();
-    eprintln!("[CP2 MUTATE] WRITE conv={} plan_content={}", conversation_id,
-        &plan_content_str.chars().take(200).collect::<String>());
-    if let Err(e) = conn.execute(
-        "UPDATE conversation_plans SET plan_content = ?1, updated_at = ?2 WHERE conversation_id = ?3",
-        rusqlite::params![plan_content_str, now, conversation_id],
-    ) {
-        tracing::error!("[apply_plan_mutations] DB write failed: {} (conv={})", e, conversation_id);
-        return None;
-    }
+    // plan_content 只存结构，不存状态（sub_steps 已废弃，由 LLM prompt 管理）
+    // 状态变化由 user_plan_progress 追踪
 
     Some(plan)
 }
@@ -770,13 +763,13 @@ pub fn auto_revert(conn: &rusqlite::Connection, conversation_id: &str) -> Option
         return None;
     }
 
+    // 只同步状态变化到 plan_content（auto-revert 作用于 task 状态）
     let now = chrono::Utc::now().timestamp();
     if let Err(e) = conn.execute(
         "UPDATE conversation_plans SET plan_content = ?1, updated_at = ?2 WHERE conversation_id = ?3",
         rusqlite::params![plan.to_string(), now, conversation_id],
     ) {
-        tracing::error!("Auto-revert DB write failed: {} (conv={})", e, conversation_id);
-        return None;
+        tracing::warn!("Auto-revert plan_content write failed: {} (conv={})", e, conversation_id);
     }
 
     tracing::info!("Auto-revert applied for conversation {}", conversation_id);
@@ -900,61 +893,60 @@ fn get_current_reading_task(task_status: &serde_json::Value, plan_content_raw: &
 /// 这是 routes.rs context 构建逻辑的唯一权威来源。
 /// 测试应调用此函数而非自行复制逻辑。
 pub fn build_plan_context(conn: &rusqlite::Connection, conversation_id: &str) -> (String, String, String) {
-    // ── V2.1 新路径：优先从 plan_templates + user_plan_progress 或 conversation_plans 读取 ──
-    // 先检查 conversation 是否有 subject（K12 / Reading 标志）
-    let (conv_subject, conv_grade): (Option<String>, Option<String>) = conn.query_row(
-        "SELECT subject, grade_band FROM conversations WHERE id = ?1",
+    // 统一路径：从 conversation_plans + user_plan_progress 读取
+    // 不再查询 conversations.subject/grade_band 或 plan_templates（已废弃）
+
+    // 从 conversation_plans 读取
+    if let Ok((goal, plan_content_str)) = conn.query_row(
+        "SELECT goal, plan_content FROM conversation_plans WHERE conversation_id = ?1 LIMIT 1",
         rusqlite::params![conversation_id],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    ).unwrap_or((None, None));
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+    ) {
+        let plan_content = plan_content_str.unwrap_or_default();
+        let mut merged: serde_json::Value = serde_json::from_str(&plan_content).unwrap_or_default();
 
-    // 尝试从 plan_templates 读取（K12/Reading 路径）
-    if let (Some(ref subject), Some(ref grade)) = (conv_subject, conv_grade) {
-        let subject_key = if subject.is_empty() { "general" } else { subject.as_str() };
+        // 从 user_plan_progress 读取进度
+        let cp_plan_id: String = conn.query_row(
+            "SELECT id FROM conversation_plans WHERE conversation_id = ?1 LIMIT 1",
+            rusqlite::params![conversation_id],
+            |row| row.get(0),
+        ).unwrap_or_default();
 
-        if let Ok((goal, plan_content_str)) = conn.query_row(
-            "SELECT goal, plan_content FROM plan_templates WHERE subject_key = ?1 AND grade_band = ?2 LIMIT 1",
-            rusqlite::params![subject_key, grade],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-        ) {
-            // 从 conversation_plans 获取 plan_id（带 conv_id 后缀，唯一）
-            let conv_plan_id: String = conn.query_row(
-                "SELECT id FROM conversation_plans WHERE conversation_id = ?1 LIMIT 1",
-                rusqlite::params![conversation_id],
-                |row| row.get(0),
-            ).unwrap_or_default();
-
-            // 从 user_plan_progress 读取进度（按 user_id 过滤）
+        if !cp_plan_id.is_empty() {
             let progress_rows: Vec<(String, String)> = {
-                let user_id: String = conn.query_row(
-                    "SELECT user_id FROM conversations WHERE id = ?1",
-                    rusqlite::params![conversation_id],
-                    |row| row.get(0),
-                ).unwrap_or_default();
-                if conv_plan_id.is_empty() || user_id.is_empty() {
-                    Vec::new()
-                } else {
-                    let mut stmt = conn.prepare(
-                        "SELECT task_key, status FROM user_plan_progress WHERE plan_id = ?1 AND user_id = ?2"
-                    ).unwrap();
-                    stmt.query_map(rusqlite::params![conv_plan_id, user_id], |row| {
-                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-                    }).unwrap().filter_map(|r| r.ok()).collect()
-                }
+                let mut stmt = conn.prepare(
+                    "SELECT task_key, status FROM user_plan_progress WHERE plan_id = ?1"
+                ).unwrap();
+                stmt.query_map(rusqlite::params![cp_plan_id], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                }).unwrap().filter_map(|r| r.ok()).collect()
             };
-
-            // 合并进度到 plan_content stages
-            let mut merged: serde_json::Value = serde_json::from_str(&plan_content_str).unwrap_or_default();
             let progress_map: std::collections::HashMap<String, String> = progress_rows.into_iter().collect();
 
+            // 合并进度到 plan_content stages
             if let Some(stages) = merged.get_mut("stages").and_then(|s| s.as_array_mut()) {
                 for stage in stages.iter_mut() {
                     if let Some(tasks) = stage.get_mut("tasks").and_then(|t| t.as_array_mut()) {
-                        for task in tasks {
+                        let mut stage_done = true;
+                        let mut stage_has_active = false;
+                        let mut stage_has_pending = false;
+                        for task in tasks.iter_mut() {
                             let task_key = task.get("task_key").and_then(|k| k.as_str()).unwrap_or("");
-                            let status = progress_map.get(task_key).map(|s| s.as_str()).unwrap_or("pending");
-                            task["status"] = serde_json::json!(status);
+                            let state = progress_map.get(task_key).map(|s| s.as_str()).unwrap_or("pending");
+                            task["status"] = serde_json::json!(state);
+                            match state {
+                                "in_progress" => stage_has_active = true,
+                                "pending" => stage_has_pending = true,
+                                _ => {}
+                            }
+                            if state != "done" && state != "skipped" {
+                                stage_done = false;
+                            }
                         }
+                        stage["status"] = if stage_done { serde_json::json!("done") }
+                            else if stage_has_active { serde_json::json!("in_progress") }
+                            else if stage_has_pending { serde_json::json!("pending") }
+                            else { serde_json::json!("done") };
                     }
                 }
                 // 初始状态（user_plan_progress 无数据）：激活第一 stage 的第一任务
@@ -969,78 +961,31 @@ pub fn build_plan_context(conn: &rusqlite::Connection, conversation_id: &str) ->
                     }
                 }
             }
-
-            // K12/Reading 模式检测
-            let mode = if subject == "reading" || subject == "chinese" { "reading" } else { "structured" };
-            let pipeline_domain: String = merged.get("pipeline_domain")
-                .and_then(|d| d.as_str())
-                .or_else(|| merged.get("domain").and_then(|d| d.as_str()))
-                .unwrap_or(subject_key)
-                .to_string();
-
-            let ctx = build_context_text(&merged, &goal, mode);
-            return (pipeline_domain, mode.to_string(), ctx);
         }
-    }
 
-    // 尝试从 conversation_plans 读取（对话计划路径）
-    if let Ok((goal, plan_content_str)) = conn.query_row(
-        "SELECT goal, plan_content FROM conversation_plans WHERE conversation_id = ?1 LIMIT 1",
-        rusqlite::params![conversation_id],
-        |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
-    ) {
-        let plan_content = plan_content_str.unwrap_or_default();
-        let mut merged: serde_json::Value = serde_json::from_str(&plan_content).unwrap_or_default();
+        // 从 plan_content 读取 prompt_mode 确定 mode 和 subject/domain
+        let first_prompt_mode = merged.get("stages")
+            .and_then(|s| s.as_array())
+            .and_then(|stages| stages.first())
+            .and_then(|stage| stage.get("tasks"))
+            .and_then(|t| t.as_array())
+            .and_then(|tasks| tasks.first())
+            .and_then(|task| task.get("prompt_mode"))
+            .and_then(|p| p.as_str())
+            .unwrap_or("general/structured");
 
-        // 从 user_plan_progress 读取进度
-        let cp1_plan_id: String = conn.query_row(
-            "SELECT id FROM conversation_plans WHERE conversation_id = ?1 LIMIT 1",
-            rusqlite::params![conversation_id],
-            |row| row.get(0),
-        ).unwrap_or_default();
+        let mode = first_prompt_mode.split('/').nth(1).unwrap_or("structured").to_string();
 
-        if !cp1_plan_id.is_empty() {
-            let progress_rows: Vec<(String, String)> = {
-                let mut stmt = conn.prepare(
-                    "SELECT task_key, status FROM user_plan_progress WHERE plan_id = ?1"
-                ).unwrap();
-                stmt.query_map(rusqlite::params![cp1_plan_id], |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-                }).unwrap().filter_map(|r| r.ok()).collect()
-            };
-            let progress_map: std::collections::HashMap<String, String> = progress_rows.into_iter().collect();
-            if let Some(stages) = merged.get_mut("stages").and_then(|s| s.as_array_mut()) {
-                for stage in stages.iter_mut() {
-                    if let Some(tasks) = stage.get_mut("tasks").and_then(|t| t.as_array_mut()) {
-                        for task in tasks {
-                            let task_key = task.get("task_key").and_then(|k| k.as_str()).unwrap_or("");
-                            let status = progress_map.get(task_key).map(|s| s.as_str()).unwrap_or("pending");
-                            task["status"] = serde_json::json!(status);
-                        }
-                    }
-                }
-                // 初始状态：激活第一 stage 的第一任务
-                if progress_map.is_empty() {
-                    if let Some(first_stage) = stages.first_mut() {
-                        first_stage["status"] = serde_json::json!("in_progress");
-                        if let Some(tasks) = first_stage.get_mut("tasks").and_then(|t| t.as_array_mut()) {
-                            if let Some(first_task) = tasks.first_mut() {
-                                first_task["status"] = serde_json::json!("in_progress");
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        let prompt_subject = first_prompt_mode.split('/').next().unwrap_or("general").to_string();
 
         let pipeline_domain: String = merged.get("pipeline_domain")
             .and_then(|d| d.as_str())
             .or_else(|| merged.get("domain").and_then(|d| d.as_str()))
-            .unwrap_or("")
+            .unwrap_or(&prompt_subject)
             .to_string();
 
-        let ctx = build_context_text(&merged, &goal, "structured");
-        return (pipeline_domain, "structured".to_string(), ctx);
+        let ctx = build_context_text(&merged, &goal, &mode);
+        return (pipeline_domain, mode.to_string(), ctx);
     }
 
     // 无计划
@@ -1048,77 +993,49 @@ pub fn build_plan_context(conn: &rusqlite::Connection, conversation_id: &str) ->
 }
 
 /// 从 merged plan JSON（含 status 已合并的 stages）构建 LLM 上下文文本
-fn build_context_text(merged: &serde_json::Value, goal: &str, mode: &str) -> String {
+fn build_context_text(merged: &serde_json::Value, goal: &str, _mode: &str) -> String {
+    let _ = _mode; // suppress unused warning — kept for future use
     let mut ctx = format!("\n\n### 学习计划\n长期目标: {}", goal);
     let mut current_task_name: Option<String> = None;
     let mut current_stage_name: Option<String> = None;
 
-    if mode == "reading" {
-        if let Some(stages) = merged.get("stages").and_then(|v| v.as_array()) {
-            let mut found_current = false;
-            let mut next_task_name: Option<String> = None;
-            'outer: for stage in stages {
-                if let Some(tasks) = stage["tasks"].as_array() {
-                    for task in tasks {
-                        let tstatus = task["status"].as_str().unwrap_or("pending");
-                        let tname = task["name"].as_str().unwrap_or("");
-                        if tstatus != "done" {
-                            if !found_current {
-                                found_current = true;
+    // 统一处理所有模式：遍历 stages/tasks，注入 status
+    if let Some(stages) = merged.get("stages").and_then(|v| v.as_array()) {
+        let mut found_current = false;
+        let mut next_stage_name: Option<String> = None;
+        for stage in stages {
+            let name = stage["name"].as_str().unwrap_or("");
+            let status = stage["status"].as_str().unwrap_or("pending");
+            if status == "in_progress" || status == "pending" {
+                if !found_current {
+                    found_current = true;
+                    current_stage_name = Some(name.to_string());
+                    ctx.push_str(&format!("\n当前阶段: {} ({})", name, status));
+                    if let Some(tasks) = stage["tasks"].as_array() {
+                        for task in tasks {
+                            let tname = task["name"].as_str().unwrap_or("");
+                            let tstatus = task["status"].as_str().unwrap_or("pending");
+                            ctx.push_str(&format!("\n  - {}: {}", tname, tstatus));
+                            // 第一个 in_progress 的 task 即为当前任务
+                            if tstatus == "in_progress" && current_task_name.is_none() {
                                 current_task_name = Some(tname.to_string());
-                                current_stage_name = stage["name"].as_str().map(|s| s.to_string());
-                                let reading_ctx = crate::reading_loader::build_reading_context(merged, tname);
-                                ctx.push_str(&reading_ctx);
-                            } else {
-                                next_task_name = Some(tname.to_string());
-                                break 'outer;
+                            }
+                        }
+                        // 如果当前 stage 一个 in_progress 都没有（全部 pending），取第一个 task
+                        if current_task_name.is_none() {
+                            if let Some(first) = stage["tasks"].as_array().and_then(|t| t.first()) {
+                                current_task_name = first["name"].as_str().map(|s| s.to_string());
                             }
                         }
                     }
+                } else {
+                    next_stage_name = Some(name.to_string());
+                    break;
                 }
-            }
-            if let Some(ref next) = next_task_name {
-                ctx.push_str(&format!("\n\n### 下一课\n{}", next));
             }
         }
-    } else {
-        if let Some(stages) = merged.get("stages").and_then(|v| v.as_array()) {
-            let mut found_current = false;
-            let mut next_stage_name: Option<String> = None;
-            for stage in stages {
-                let name = stage["name"].as_str().unwrap_or("");
-                let status = stage["status"].as_str().unwrap_or("pending");
-                if status == "in_progress" || status == "pending" {
-                    if !found_current {
-                        found_current = true;
-                        current_stage_name = Some(name.to_string());
-                        ctx.push_str(&format!("\n当前阶段: {} ({})", name, status));
-                        if let Some(tasks) = stage["tasks"].as_array() {
-                            for task in tasks {
-                                let tname = task["name"].as_str().unwrap_or("");
-                                let tstatus = task["status"].as_str().unwrap_or("pending");
-                                ctx.push_str(&format!("\n  - {}: {}", tname, tstatus));
-                                // 第一个 in_progress 的 task 即为当前任务
-                                if tstatus == "in_progress" && current_task_name.is_none() {
-                                    current_task_name = Some(tname.to_string());
-                                }
-                            }
-                            // 如果当前 stage 一个 in_progress 都没有（全部 pending），取第一个 task
-                            if current_task_name.is_none() {
-                                if let Some(first) = stage["tasks"].as_array().and_then(|t| t.first()) {
-                                    current_task_name = first["name"].as_str().map(|s| s.to_string());
-                                }
-                            }
-                        }
-                    } else {
-                        next_stage_name = Some(name.to_string());
-                        break;
-                    }
-                }
-            }
-            if let Some(ref next) = next_stage_name {
-                ctx.push_str(&format!("\n下一阶段: {}", next));
-            }
+        if let Some(ref next) = next_stage_name {
+            ctx.push_str(&format!("\n下一阶段: {}", next));
         }
     }
 
@@ -1145,67 +1062,6 @@ fn build_context_text(merged: &serde_json::Value, goal: &str, mode: &str) -> Str
     }
 
     ctx
-}
-
-/// 从 task JSON 中提取预置卡 fronts（用于注入 build_plan_context）
-/// 查询 curriculum_loader / reading_loader 中 task 关联的卡片 fronts。
-/// 不依赖 unlock_next_cards 是否已执行（直接查预置卡源数据）。
-fn get_prebuilt_card_fronts(
-    conn: &rusqlite::Connection,
-    conversation_id: &str,
-    task: &serde_json::Value,
-) -> Vec<String> {
-    let mut fronts: Vec<String> = Vec::new();
-
-    // 获取 conversation 的 subject 和 grade_band（用于 curriculum_loader 查询）
-    let (subject, grade_band): (String, String) = conn.query_row(
-        "SELECT COALESCE(subject, ''), COALESCE(grade_band, '') FROM conversations WHERE id = ?1",
-        rusqlite::params![conversation_id],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    ).unwrap_or_default();
-
-    // ── 管道 A: 词卡 (vocab_card_ids) ──
-    let vocab_ids: Vec<&str> = task.get("vocab_card_ids")
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
-        .unwrap_or_default();
-    if !vocab_ids.is_empty() && !subject.is_empty() && !grade_band.is_empty() {
-        if let Some(card_list) = crate::curriculum_loader::get_cards(&subject, &grade_band) {
-            let vocab_set: std::collections::HashSet<&str> = vocab_ids.iter().cloned().collect();
-            for card in card_list {
-                if vocab_set.contains(card.id.as_str()) {
-                    fronts.push(card.front.clone());
-                }
-            }
-        }
-    }
-
-    // ── 管道 B: 课文卡 (reading_card_id) ──
-    let reading_card_id = task.get("reading_card_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    if !reading_card_id.is_empty() {
-        if let Some(card) = crate::reading_loader::get_card(reading_card_id) {
-            fronts.push(card.front.clone());
-        }
-    }
-
-    // ── 管道 C: 概念卡 / K12 金牌卡 (gold_cr_ids) ──
-    let gold_ids: Vec<&str> = task.get("gold_cr_ids")
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
-        .unwrap_or_default();
-    if !gold_ids.is_empty() && !subject.is_empty() && !grade_band.is_empty() {
-        if let Some(card_list) = crate::curriculum_loader::get_cards(&subject, &grade_band) {
-            for card in card_list {
-                if card.gold_cr_ids.iter().any(|g| gold_ids.contains(&g.as_str())) {
-                    fronts.push(card.front.clone());
-                }
-            }
-        }
-    }
-
-    fronts
 }
 
 /// 构建计划分析 prompt（用于 ColdPath 2）
@@ -1730,22 +1586,42 @@ fn unlock_next_cards(
     };
 
     let now_ts = chrono::Utc::now().timestamp();
-    let (subject, grade_band): (Option<String>, Option<String>) = conn.query_row(
-        "SELECT subject, grade_band FROM conversations WHERE id = ?1",
-        rusqlite::params![conversation_id],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    ).unwrap_or((None, None));
 
-    // ── 管道 A: 词卡 (vocab_card_ids) ──
-    // 从 compulsory 卡片集中通过 id 匹配导入
+    // 获取 plan_id
+    let plan_id: String = conn.query_row(
+        "SELECT cp.id FROM conversation_plans cp WHERE cp.conversation_id = ?1 LIMIT 1",
+        rusqlite::params![conversation_id],
+        |row| row.get(0),
+    ).unwrap_or_default();
+
+    // ── V3 统一路径: card_ids（UUID）──
+    // 所有卡片在 init 时已通过 copy_prebuilt_card 预拷贝到用户名下
+    // 此处只做 status 激活（archived → active）
+    let card_ids: Vec<String> = next_task.get("card_ids")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+        .unwrap_or_default();
+
+    if !card_ids.is_empty() {
+        for cid in &card_ids {
+            // 使用 copy_prebuilt_card 确保卡片已存在（幂等）
+            crate::plan_handler::copy_prebuilt_card(conn, user_id, &plan_id, cid);
+        }
+        return;
+    }
+
+    // ── 旧管道（向后兼容 CP2 生成的计划）──
+    // 注意：这些路径写入旧列格式，仅作用于新建的 plan
+    let subj = "chinese";
+    let grade = "g7-9";
+
+    // 管道 A: 词卡 (vocab_card_ids)
     let vocab_ids: Vec<String> = next_task.get("vocab_card_ids")
         .and_then(|v| v.as_array())
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
         .unwrap_or_default();
 
     if !vocab_ids.is_empty() {
-        let subj = subject.as_deref().unwrap_or("chinese");  // reading 卡片多为语文/英语，留作默认
-        let grade = grade_band.as_deref().unwrap_or("g7-9");
         if let Some(card_list) = crate::curriculum_loader::get_cards(subj, grade) {
             let vocab_id_set: std::collections::HashSet<&str> =
                 vocab_ids.iter().map(|s| s.as_str()).collect();
@@ -1755,37 +1631,33 @@ fn unlock_next_cards(
                 }
                 let card_id = format!("vocab_{}", &card_tmpl.id);
                 let _ = conn.execute(
-                    "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, subject, grade_band, k12_card_id)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                    "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, created_at, plan_id)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                     rusqlite::params![card_id, user_id, subj, card_tmpl.card_type,
-                        card_tmpl.front, card_tmpl.back, card_tmpl.source_sentence, conversation_id, now_ts,
-                        subj, grade, card_tmpl.id],
+                        card_tmpl.front, card_tmpl.back, card_tmpl.source_sentence, now_ts, plan_id],
                 );
                 let _ = conn.execute(
-                    "INSERT OR IGNORE INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
-                     VALUES (?1, 0, 0.3, 1.0, ?2, 0, 0, 0)",
+                    "INSERT OR IGNORE INTO card_memory (card_id, state, status, difficulty, stability, due, last_review, reps, lapses)
+                     VALUES (?1, 0, 'active', 0.3, 1.0, ?2, 0, 0, 0)",
                     rusqlite::params![card_id, now_ts],
                 );
             }
         }
     }
 
-    // ── 管道 B: 课文卡 (reading_card_id) ──
+    // 管道 B: 课文卡 (reading_card_id)
     let reading_card_id = next_task.get("reading_card_id")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
     if !reading_card_id.is_empty() {
         if let Some(card) = crate::reading_loader::get_card(&reading_card_id) {
-            let subj = subject.as_deref().unwrap_or("chinese");
-            let grade = grade_band.as_deref().unwrap_or("g7-9");
             let card_id = format!("reading_{}", &card.id);
             let _ = conn.execute(
-                "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, subject, grade_band, k12_card_id)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, created_at, plan_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 rusqlite::params![card_id, user_id, subj, &card.card_type,
-                    &card.front, card.back.as_deref().unwrap_or(""), &card.background, conversation_id, now_ts,
-                    subj, grade, &card.id],
+                    &card.front, card.back.as_deref().unwrap_or(""), &card.background, now_ts, plan_id],
             );
             let _ = conn.execute(
                 "INSERT OR IGNORE INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
@@ -1795,15 +1667,13 @@ fn unlock_next_cards(
         }
     }
 
-    // ── 管道 C: 概念卡 / K12 金牌卡 (gold_cr_ids) ──
+    // 管道 C: 概念卡 / K12 金牌卡 (gold_cr_ids)
     let gold_ids: Vec<String> = next_task.get("gold_cr_ids")
         .and_then(|v| v.as_array())
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
         .unwrap_or_default();
 
     if !gold_ids.is_empty() {
-        let subj = subject.as_deref().unwrap_or("chinese");
-        let grade = grade_band.as_deref().unwrap_or("g7-9");
         if let Some(card_list) = crate::curriculum_loader::get_cards(subj, grade) {
             for card_tmpl in card_list {
                 if !card_tmpl.gold_cr_ids.iter().any(|g| gold_ids.contains(g)) {
@@ -1811,15 +1681,14 @@ fn unlock_next_cards(
                 }
                 let card_id = format!("k12_{}", &card_tmpl.id);
                 let _ = conn.execute(
-                    "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, subject, grade_band, k12_card_id)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                    "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, created_at, plan_id)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                     rusqlite::params![card_id, user_id, subj, card_tmpl.card_type,
-                        card_tmpl.front, card_tmpl.back, card_tmpl.source_sentence, conversation_id, now_ts,
-                        subj, grade, card_tmpl.id],
+                        card_tmpl.front, card_tmpl.back, card_tmpl.source_sentence, now_ts, plan_id],
                 );
                 let _ = conn.execute(
-                    "INSERT OR IGNORE INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
-                     VALUES (?1, 0, 0.3, 1.0, ?2, 0, 0, 0)",
+                    "INSERT OR IGNORE INTO card_memory (card_id, state, status, difficulty, stability, due, last_review, reps, lapses)
+                     VALUES (?1, 0, 'active', 0.3, 1.0, ?2, 0, 0, 0)",
                     rusqlite::params![card_id, now_ts],
                 );
             }
@@ -1831,14 +1700,13 @@ fn unlock_next_cards(
         for stage in stages {
             if stage["status"] == "in_progress" || stage["status"] == "done" {
                 if let Some(sn) = stage["name"].as_str() {
-                    let plan_type = if task_status.get("subject").is_some() { "plan_templates" } else { "conversation_plans" };
                     let plan_id: String = conn.query_row(
                         "SELECT COALESCE((SELECT id FROM conversation_plans WHERE conversation_id = ?1 LIMIT 1), '')",
                         rusqlite::params![conversation_id],
                         |row| row.get(0),
                     ).unwrap_or_default();
                     if plan_id.is_empty() { break; }
-                    activate_stage_cards(conn, &user_id, plan_type, &plan_id, sn);
+                    activate_stage_cards(conn, &user_id, "", &plan_id, sn);
                 }
                 break;
             }
@@ -1912,25 +1780,89 @@ pub fn achievement_exists(conn: &rusqlite::Connection, user_id: &str, key: &str)
     ).unwrap_or(false)
 }
 
+/// 从 v3 预置数据复制一张卡片到用户名下
+use std::sync::OnceLock;
+
+/// 全局预置卡缓存（UUID → JSON Value），首次调用时惰性加载
+static PREBUILT_CARD_CACHE: OnceLock<std::collections::HashMap<String, serde_json::Value>> = OnceLock::new();
+
+fn load_prebuilt_card_cache() -> &'static std::collections::HashMap<String, serde_json::Value> {
+    PREBUILT_CARD_CACHE.get_or_init(|| {
+        let data_dir = crate::curriculum_loader::k12_data_dir();
+        let mut map = std::collections::HashMap::new();
+        for search_dir in &[data_dir.join("cards"), data_dir.join("cards").join("reading")] {
+            if let Ok(entries) = std::fs::read_dir(search_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|e| e.to_str()) != Some("json") { continue; }
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        if let Ok(data) = serde_json::from_str::<serde_json::Value>(&content) {
+                            if let Some(cards) = data.get("cards").and_then(|c| c.as_array()) {
+                                for card in cards {
+                                    if let Some(cid) = card["id"].as_str() {
+                                        map.insert(cid.to_string(), card.clone());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        tracing::info!("[copy_prebuilt_card] loaded {} prebuilt cards into cache", map.len());
+        map
+    })
+}
+
+pub fn copy_prebuilt_card(
+    conn: &rusqlite::Connection,
+    user_id: &str,
+    plan_id: &str,
+    card_uuid: &str,
+) {
+    let cache = load_prebuilt_card_cache();
+    if let Some(card) = cache.get(card_uuid) {
+        let now = chrono::Utc::now().timestamp();
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, created_at, plan_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            rusqlite::params![
+                card_uuid, user_id,
+                card["domain"].as_str().unwrap_or(""),
+                card["card_type"].as_str().unwrap_or(""),
+                card["front"].as_str().unwrap_or(""),
+                card["back"].as_str().unwrap_or(""),
+                card["source_sentence"].as_str().unwrap_or(""),
+                now, plan_id,
+            ],
+        );
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO card_memory (card_id, state, status, difficulty, stability, due, last_review, reps, lapses)
+             VALUES (?1, 0, 'active', 0.3, 1.0, ?2, 0, 0, 0)",
+            rusqlite::params![card_uuid, now],
+        );
+    } else {
+        tracing::warn!("[copy_prebuilt_card] card not found: {}", card_uuid);
+    }
+}
+
 /// 激活指定 stage 的所有卡片（archived → active）
 /// 在 K12 init 完成时、或 stage 状态变为 in_progress 时调用
 pub fn activate_stage_cards(
     conn: &rusqlite::Connection,
     user_id: &str,
-    plan_type: &str,
+    _plan_type: &str,
     plan_id: &str,
     stage_name: &str,
 ) {
-    if plan_type.is_empty() || plan_id.is_empty() || stage_name.is_empty() || user_id.is_empty() {
+    if plan_id.is_empty() || stage_name.is_empty() || user_id.is_empty() {
         return;
     }
-    let updated = conn.execute(
-        "UPDATE cards SET status = 'active' WHERE user_id = ?1 AND plan_type = ?2 AND plan_id = ?3 AND stage_name = ?4 AND status = 'archived'",
-        rusqlite::params![user_id, plan_type, plan_id, stage_name],
-    ).unwrap_or(0);
-    if updated > 0 {
-        tracing::info!("Activated {} cards for stage '{}' (plan={}/{})", updated, stage_name, plan_type, plan_id);
-    }
+    // V3 简化：卡片已在 copy_prebuilt_card 时设 status='active'
+    // 旧管道通过卡片 ID 前缀（vocab_/reading_/k12_）查找并激活
+    // 此处仅记录日志（列已不存在，不做 SQL 更新）
+    tracing::info!("Activate stage '{}' (plan={}): cards already pre-copied", stage_name, plan_id);
+    let _ = _plan_type; // suppress unused warning
 }
 
 /// 修复 LLM 输出 JSON 中的常见转义错误
@@ -2030,7 +1962,7 @@ mod tests {
         conn.execute_batch("
             CREATE TABLE users (id TEXT PRIMARY KEY);
             CREATE TABLE conversations (id TEXT PRIMARY KEY);
-            CREATE TABLE conversation_plans (id TEXT, user_id TEXT, conversation_id TEXT NOT NULL UNIQUE, goal TEXT, domain TEXT, plan_content TEXT, created_at INTEGER, updated_at INTEGER);
+            CREATE TABLE conversation_plans (id TEXT, user_id TEXT, conversation_id TEXT NOT NULL UNIQUE, goal TEXT, subject TEXT DEFAULT '', plan_content TEXT, created_at INTEGER, updated_at INTEGER);
             INSERT INTO users VALUES ('u1');
             INSERT INTO conversations VALUES ('c1');
             INSERT INTO conversation_plans VALUES ('p1', 'u1', 'c1', 'test', '', NULL, 0, 0);
@@ -2080,7 +2012,7 @@ mod tests {
         conn.execute_batch("
             CREATE TABLE users (id TEXT PRIMARY KEY);
             CREATE TABLE conversations (id TEXT PRIMARY KEY);
-            CREATE TABLE conversation_plans (id TEXT, user_id TEXT, conversation_id TEXT NOT NULL UNIQUE, goal TEXT, domain TEXT, plan_content TEXT, created_at INTEGER, updated_at INTEGER);
+            CREATE TABLE conversation_plans (id TEXT, user_id TEXT, conversation_id TEXT NOT NULL UNIQUE, goal TEXT, subject TEXT DEFAULT '', plan_content TEXT, created_at INTEGER, updated_at INTEGER);
             INSERT INTO users VALUES ('u1');
             INSERT INTO conversations VALUES ('c1');
             INSERT INTO conversation_plans VALUES ('p1', 'u1', 'c1', 'test', '', NULL, 0, 0);
@@ -2135,7 +2067,7 @@ mod tests {
         conn.execute_batch("
             CREATE TABLE users (id TEXT PRIMARY KEY);
             CREATE TABLE conversations (id TEXT PRIMARY KEY);
-            CREATE TABLE conversation_plans (id TEXT, user_id TEXT, conversation_id TEXT NOT NULL UNIQUE, goal TEXT, domain TEXT, plan_content TEXT, created_at INTEGER, updated_at INTEGER);
+            CREATE TABLE conversation_plans (id TEXT, user_id TEXT, conversation_id TEXT NOT NULL UNIQUE, goal TEXT, subject TEXT DEFAULT '', plan_content TEXT, created_at INTEGER, updated_at INTEGER);
             INSERT INTO users VALUES ('u1');
             INSERT INTO conversations VALUES ('c1');
             INSERT INTO conversation_plans VALUES ('p1', 'u1', 'c1', 'test', '', NULL, 0, 0);
@@ -2163,7 +2095,10 @@ mod tests {
 
     #[test]
     fn test_sub_steps_block_completion() {
-        // 验证子阶段未全部 done 时，current_task_complete 被拒绝
+        // 子阶段（sub_steps）已废弃（LLM prompt 管理子阶段），
+        // 但解析逻辑保留向后兼容：sub_steps 未全部 done 时 current_task_complete 被拒绝。
+        // 注意：sub_steps 变更不再持久化（plan_content 只存结构），
+        // 所以本测试仅验证单次调用的阻断逻辑，不验证跨轮持久化。
         use rusqlite::Connection;
         use serde_json::json;
 
@@ -2171,13 +2106,13 @@ mod tests {
         conn.execute_batch("
             CREATE TABLE users (id TEXT PRIMARY KEY);
             CREATE TABLE conversations (id TEXT PRIMARY KEY);
-            CREATE TABLE conversation_plans (id TEXT, user_id TEXT, conversation_id TEXT NOT NULL UNIQUE, goal TEXT, domain TEXT, plan_content TEXT, created_at INTEGER, updated_at INTEGER);
+            CREATE TABLE conversation_plans (id TEXT, user_id TEXT, conversation_id TEXT NOT NULL UNIQUE, goal TEXT, subject TEXT DEFAULT '', plan_content TEXT, created_at INTEGER, updated_at INTEGER);
             INSERT INTO users VALUES ('u1');
             INSERT INTO conversations VALUES ('c1');
             INSERT INTO conversation_plans VALUES ('p1', 'u1', 'c1', 'test', '', NULL, 0, 0);
         ").unwrap();
 
-        // 任务含 sub_steps 但 quiz 未完成
+        // 任务含 sub_steps 但 quiz 未完成 → 阻断
         let plan = json!({
             "stages": [{
                 "name": "基础", "status": "in_progress",
@@ -2198,16 +2133,21 @@ mod tests {
         let result = handle_plan_update(&conn, &reply, "c1", "u1");
         assert!(!result.plan_updated, "sub_steps incomplete → should block");
 
-        // 现在完成 quiz
-        let reply2 = format!("<plan_update>\n{}\n</plan_update>", json!({
-            "task_sub_steps": {"quiz": "done"}
-        }));
-        let result2 = handle_plan_update(&conn, &reply2, "c1", "u1");
-        assert!(result2.plan_updated, "sub_steps update should work");
-        let quiz_status = result2.task_status.as_ref().unwrap()["stages"][0]["tasks"][0]["sub_steps"]["quiz"].as_str().unwrap();
-        assert_eq!(quiz_status, "done");
+        // 直接设置 sub_steps 全部 done 后再尝试推进
+        let plan2 = json!({
+            "stages": [{
+                "name": "基础", "status": "in_progress",
+                "tasks": [{
+                    "name": "Task1", "status": "in_progress", "task_key": "Task1",
+                    "sub_steps": {"teach": "done", "examples": "done", "quiz": "done"}
+                }]
+            }],
+            "completed_concepts": []
+        });
+        conn.execute("UPDATE conversation_plans SET plan_content=?1 WHERE conversation_id='c1'",
+            rusqlite::params![plan2.to_string()]).unwrap();
 
-        // 现在推进 — 应成功
+        // sub_steps 全部 done → 应通过
         let reply3 = format!("<plan_update>\n{}\n</plan_update>", json!({
             "current_task_complete": true
         }));

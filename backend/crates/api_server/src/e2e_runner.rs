@@ -397,8 +397,8 @@ pub fn insert_test_card(
     ).map_err(|e| format!("Insert test card: {}", e))?;
 
     conn.execute(
-        "INSERT INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
-         VALUES (?1, 0, 5.0, 5.0, ?2, NULL, 0, 0)",
+        "INSERT INTO card_memory (card_id, state, status, difficulty, stability, due, last_review, reps, lapses)
+         VALUES (?1, 0, 'active', 5.0, 5.0, ?2, NULL, 0, 0)",
         rusqlite::params![card_id, now],
     ).map_err(|e| format!("Insert test card memory: {}", e))?;
 

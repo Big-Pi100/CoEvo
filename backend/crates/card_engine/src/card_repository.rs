@@ -91,25 +91,24 @@ fn insert_card_with_status(conn: &Connection, card: &Card, memory: &CardMemory, 
         }
     }
 
-    // 3. Insert card with status
+    // 3. Insert card (no status — status goes to card_memory)
     if let Err(e) = conn.execute(
-        "INSERT INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, subject, grade_band, status)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        "INSERT INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![
             card.id, card.user_id, card.domain, card.card_type,
             card.front, card.back, card.source_sentence, card.conversation_id, card.created_at,
-            card.subject, card.grade_band, status,
         ],
     ) {
         return InsertResult::DatabaseError(format!("Card insert: {}", e));
     }
 
-    // 4. Insert card memory
+    // 4. Insert card memory (with lifecycle status)
     if let Err(e) = conn.execute(
-        "INSERT INTO card_memory (card_id, state, difficulty, stability, due, last_review, reps, lapses)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO card_memory (card_id, state, status, difficulty, stability, due, last_review, reps, lapses)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![
-            memory.card_id, memory.state, memory.difficulty, memory.stability,
+            memory.card_id, memory.state, status, memory.difficulty, memory.stability,
             memory.due, memory.last_review, memory.reps, memory.lapses,
         ],
     ) {
@@ -126,7 +125,7 @@ fn insert_card_with_status(conn: &Connection, card: &Card, memory: &CardMemory, 
 /// 更新卡片状态: active / pending / skipped / archived
 pub fn update_card_status(conn: &Connection, card_id: &str, status: &str) -> Result<(), String> {
     conn.execute(
-        "UPDATE cards SET status = ?1 WHERE id = ?2",
+        "UPDATE card_memory SET status = ?1 WHERE card_id = ?2",
         rusqlite::params![status, card_id],
     ).map_err(|e| format!("Status update: {}", e))?;
     Ok(())
@@ -136,7 +135,7 @@ pub fn update_card_status(conn: &Connection, card_id: &str, status: &str) -> Res
 pub fn batch_update_status(conn: &Connection, card_ids: &[String], status: &str) -> Result<(), String> {
     for card_id in card_ids {
         conn.execute(
-            "UPDATE cards SET status = ?1 WHERE id = ?2",
+            "UPDATE card_memory SET status = ?1 WHERE card_id = ?2",
             rusqlite::params![status, card_id],
         ).map_err(|e| format!("Batch status update: {}", e))?;
     }
@@ -153,8 +152,8 @@ mod tests {
     fn setup_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
-            "CREATE TABLE cards (id TEXT PRIMARY KEY, user_id TEXT, domain TEXT, card_type TEXT, front TEXT, back TEXT, source_sentence TEXT, conversation_id TEXT, created_at INTEGER, subject TEXT, grade_band TEXT, status TEXT NOT NULL DEFAULT 'active');
-             CREATE TABLE card_memory (card_id TEXT PRIMARY KEY, state INTEGER, difficulty REAL, stability REAL, due INTEGER, last_review INTEGER, reps INTEGER, lapses INTEGER);"
+            "CREATE TABLE cards (id TEXT PRIMARY KEY, user_id TEXT, domain TEXT, card_type TEXT, front TEXT, back TEXT, source_sentence TEXT, conversation_id TEXT, created_at INTEGER);
+             CREATE TABLE card_memory (card_id TEXT PRIMARY KEY, state INTEGER, status TEXT DEFAULT 'active', difficulty REAL, stability REAL, due INTEGER, last_review INTEGER, reps INTEGER, lapses INTEGER);"
         ).unwrap();
         conn
     }
@@ -174,13 +173,13 @@ mod tests {
             InsertResult::Success(id) => assert_eq!(id, card.id),
             _ => panic!("Expected success"),
         }
-        // 验证默认 status='active'
-        let status: String = conn.query_row(
-            "SELECT status FROM cards WHERE id = ?1",
+        // 验证 card_memory status='active'
+        let cm_status: String = conn.query_row(
+            "SELECT status FROM card_memory WHERE card_id = ?1",
             rusqlite::params![card.id],
             |row| row.get(0),
         ).unwrap();
-        assert_eq!(status, "active");
+        assert_eq!(cm_status, "active");
     }
 
     #[test]
@@ -200,7 +199,7 @@ mod tests {
         }
         // 验证 status='pending'
         let status: String = conn.query_row(
-            "SELECT status FROM cards WHERE id = ?1",
+            "SELECT status FROM card_memory WHERE card_id = ?1",
             rusqlite::params![card.id],
             |row| row.get(0),
         ).unwrap();
@@ -242,7 +241,7 @@ mod tests {
         // active → skipped
         update_card_status(&conn, &card.id, "skipped").unwrap();
         let status: String = conn.query_row(
-            "SELECT status FROM cards WHERE id = ?1",
+            "SELECT status FROM card_memory WHERE card_id = ?1",
             rusqlite::params![card.id],
             |row| row.get(0),
         ).unwrap();
@@ -251,7 +250,7 @@ mod tests {
         // skipped → active (revert)
         update_card_status(&conn, &card.id, "active").unwrap();
         let status: String = conn.query_row(
-            "SELECT status FROM cards WHERE id = ?1",
+            "SELECT status FROM card_memory WHERE card_id = ?1",
             rusqlite::params![card.id],
             |row| row.get(0),
         ).unwrap();

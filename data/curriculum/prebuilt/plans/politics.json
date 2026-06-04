@@ -105,7 +105,35 @@
       "tasks": [
         {
           "name": "经济制度与市场",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "politics_senior_0001",
+            "politics_senior_0004",
+            "politics_senior_0005",
+            "politics_senior_0008",
+            "politics_senior_0013",
+            "politics_senior_0014",
+            "politics_senior_0015",
+            "politics_senior_0018",
+            "politics_senior_0019",
+            "politics_senior_0020",
+            "politics_senior_0021",
+            "politics_senior_0022",
+            "politics_senior_0023",
+            "politics_senior_0025",
+            "politics_senior_0026",
+            "politics_senior_0027",
+            "politics_senior_0028",
+            "politics_senior_0029",
+            "politics_senior_0030",
+            "politics_senior_0031",
+            "politics_senior_0034",
+            "politics_senior_0035",
+            "politics_senior_0036",
+            "politics_senior_0041",
+            "politics_senior_0042",
+            "politics_senior_0043",
+            "politics_senior_0044"
+          ],
           "dependencies": [],
           "cross_subject_refs": [],
           "origin": "curriculum_fix",
@@ -132,7 +160,25 @@
         },
         {
           "name": "收入分配与社会保障",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "politics_senior_0001",
+            "politics_senior_0004",
+            "politics_senior_0005",
+            "politics_senior_0012",
+            "politics_senior_0014",
+            "politics_senior_0021",
+            "politics_senior_0028",
+            "politics_senior_0029",
+            "politics_senior_0030",
+            "politics_senior_0034",
+            "politics_senior_0035",
+            "politics_senior_0036",
+            "politics_senior_0040",
+            "politics_senior_0042",
+            "politics_senior_0043",
+            "politics_senior_0044",
+            "politics_senior_0045"
+          ],
           "dependencies": [
             "经济制度与市场"
           ],
@@ -142,7 +188,25 @@
         },
         {
           "name": "新发展理念与现代化经济体系",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "politics_senior_0018",
+            "politics_senior_0019",
+            "politics_senior_0020",
+            "politics_senior_0022",
+            "politics_senior_0023",
+            "politics_senior_0028",
+            "politics_senior_0034",
+            "politics_senior_0035",
+            "politics_senior_0036",
+            "politics_senior_0039",
+            "politics_senior_0040",
+            "politics_senior_0041",
+            "politics_senior_0042",
+            "politics_senior_0043",
+            "politics_senior_0044",
+            "politics_senior_0045",
+            "politics_senior_0046"
+          ],
           "dependencies": [
             "收入分配与社会保障"
           ],
@@ -212,7 +276,16 @@
       "tasks": [
         {
           "name": "社会主义从空想到科学",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "politics_senior_0034",
+            "politics_senior_0035",
+            "politics_senior_0036",
+            "politics_senior_0041",
+            "politics_senior_0042",
+            "politics_senior_0043",
+            "politics_senior_0044",
+            "politics_senior_0046"
+          ],
           "dependencies": [],
           "cross_subject_refs": [],
           "origin": "curriculum_fix",
@@ -220,7 +293,24 @@
         },
         {
           "name": "中国特色社会主义的创立与发展",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "politics_senior_0001",
+            "politics_senior_0003",
+            "politics_senior_0005",
+            "politics_senior_0009",
+            "politics_senior_0020",
+            "politics_senior_0021",
+            "politics_senior_0022",
+            "politics_senior_0023",
+            "politics_senior_0034",
+            "politics_senior_0035",
+            "politics_senior_0036",
+            "politics_senior_0040",
+            "politics_senior_0041",
+            "politics_senior_0042",
+            "politics_senior_0043",
+            "politics_senior_0044"
+          ],
           "dependencies": [
             "社会主义从空想到科学"
           ],
@@ -230,7 +320,30 @@
         },
         {
           "name": "习近平新时代中国特色社会主义思想",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "politics_senior_0000",
+            "politics_senior_0001",
+            "politics_senior_0002",
+            "politics_senior_0003",
+            "politics_senior_0004",
+            "politics_senior_0005",
+            "politics_senior_0008",
+            "politics_senior_0009",
+            "politics_senior_0010",
+            "politics_senior_0012",
+            "politics_senior_0020",
+            "politics_senior_0021",
+            "politics_senior_0022",
+            "politics_senior_0023",
+            "politics_senior_0034",
+            "politics_senior_0035",
+            "politics_senior_0039",
+            "politics_senior_0040",
+            "politics_senior_0042",
+            "politics_senior_0043",
+            "politics_senior_0045",
+            "politics_senior_0046"
+          ],
           "dependencies": [
             "中国特色社会主义的创立与发展"
           ],
@@ -250,7 +363,14 @@
       "tasks": [
         {
           "name": "民事权利与义务",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "politics_senior_0021",
+            "politics_senior_0034",
+            "politics_senior_0042",
+            "politics_senior_0043",
+            "politics_senior_0044",
+            "politics_senior_0045"
+          ],
           "dependencies": [],
           "cross_subject_refs": [],
           "origin": "curriculum_fix",
@@ -258,7 +378,9 @@
         },
         {
           "name": "合同法与侵权责任",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "politics_senior_0043"
+          ],
           "dependencies": [
             "民事权利与义务"
           ],
@@ -268,7 +390,9 @@
         },
         {
           "name": "婚姻家庭与继承",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "politics_senior_0042"
+          ],
           "dependencies": [
             "民事权利与义务"
           ],
@@ -278,7 +402,13 @@
         },
         {
           "name": "劳动法与创业",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "politics_senior_0034",
+            "politics_senior_0041",
+            "politics_senior_0042",
+            "politics_senior_0043",
+            "politics_senior_0044"
+          ],
           "dependencies": [
             "合同法与侵权责任"
           ],
@@ -298,7 +428,27 @@
       "tasks": [
         {
           "name": "党的领导与执政",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "politics_senior_0001",
+            "politics_senior_0002",
+            "politics_senior_0005",
+            "politics_senior_0008",
+            "politics_senior_0009",
+            "politics_senior_0018",
+            "politics_senior_0020",
+            "politics_senior_0021",
+            "politics_senior_0023",
+            "politics_senior_0034",
+            "politics_senior_0035",
+            "politics_senior_0036",
+            "politics_senior_0039",
+            "politics_senior_0040",
+            "politics_senior_0041",
+            "politics_senior_0042",
+            "politics_senior_0043",
+            "politics_senior_0044",
+            "politics_senior_0045"
+          ],
           "dependencies": [],
           "cross_subject_refs": [],
           "origin": "curriculum_fix",
@@ -306,7 +456,17 @@
         },
         {
           "name": "人民民主专政",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "politics_senior_0001",
+            "politics_senior_0034",
+            "politics_senior_0035",
+            "politics_senior_0036",
+            "politics_senior_0041",
+            "politics_senior_0042",
+            "politics_senior_0043",
+            "politics_senior_0044",
+            "politics_senior_0045"
+          ],
           "dependencies": [
             "党的领导与执政"
           ],
@@ -316,7 +476,19 @@
         },
         {
           "name": "全面依法治国",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "politics_senior_0021",
+            "politics_senior_0034",
+            "politics_senior_0035",
+            "politics_senior_0036",
+            "politics_senior_0039",
+            "politics_senior_0040",
+            "politics_senior_0041",
+            "politics_senior_0042",
+            "politics_senior_0043",
+            "politics_senior_0044",
+            "politics_senior_0045"
+          ],
           "dependencies": [
             "人民民主专政"
           ],
@@ -336,7 +508,19 @@
       "tasks": [
         {
           "name": "唯物论与辩证法",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "politics_senior_0005",
+            "politics_senior_0009",
+            "politics_senior_0025",
+            "politics_senior_0027",
+            "politics_senior_0034",
+            "politics_senior_0036",
+            "politics_senior_0039",
+            "politics_senior_0040",
+            "politics_senior_0041",
+            "politics_senior_0042",
+            "politics_senior_0043"
+          ],
           "dependencies": [],
           "cross_subject_refs": [],
           "origin": "curriculum_fix",
@@ -344,7 +528,14 @@
         },
         {
           "name": "认识论与真理观",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "politics_senior_0005",
+            "politics_senior_0034",
+            "politics_senior_0035",
+            "politics_senior_0039",
+            "politics_senior_0042",
+            "politics_senior_0045"
+          ],
           "dependencies": [
             "唯物论与辩证法"
           ],
@@ -354,7 +545,33 @@
         },
         {
           "name": "价值判断与文化自信",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "politics_senior_0001",
+            "politics_senior_0002",
+            "politics_senior_0003",
+            "politics_senior_0004",
+            "politics_senior_0005",
+            "politics_senior_0007",
+            "politics_senior_0008",
+            "politics_senior_0009",
+            "politics_senior_0010",
+            "politics_senior_0012",
+            "politics_senior_0020",
+            "politics_senior_0021",
+            "politics_senior_0022",
+            "politics_senior_0023",
+            "politics_senior_0025",
+            "politics_senior_0034",
+            "politics_senior_0035",
+            "politics_senior_0036",
+            "politics_senior_0039",
+            "politics_senior_0040",
+            "politics_senior_0041",
+            "politics_senior_0042",
+            "politics_senior_0043",
+            "politics_senior_0044",
+            "politics_senior_0045"
+          ],
           "dependencies": [
             "认识论与真理观"
           ],
@@ -364,7 +581,29 @@
         },
         {
           "name": "历史唯物主义与社会发展",
-          "gold_cr_ids": [],
+          "gold_cr_ids": [
+            "politics_senior_0000",
+            "politics_senior_0001",
+            "politics_senior_0002",
+            "politics_senior_0003",
+            "politics_senior_0004",
+            "politics_senior_0005",
+            "politics_senior_0007",
+            "politics_senior_0008",
+            "politics_senior_0009",
+            "politics_senior_0010",
+            "politics_senior_0012",
+            "politics_senior_0013",
+            "politics_senior_0014",
+            "politics_senior_0015",
+            "politics_senior_0016",
+            "politics_senior_0018",
+            "politics_senior_0019",
+            "politics_senior_0020",
+            "politics_senior_0021",
+            "politics_senior_0022",
+            "politics_senior_0023"
+          ],
           "dependencies": [
             "价值判断与文化自信"
           ],

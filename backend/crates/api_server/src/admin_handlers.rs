@@ -9,6 +9,7 @@ fn err(code: StatusCode, msg: &str) -> axum::response::Response { (code, Json(se
 
 fn conn() -> crate::db_pool::DbConn { crate::db_pool::get_conn() }
 
+/// 验证 admin_users 身份（super/service）。guardian/tutor 已移入 users 表，不走此路径。
 pub fn verify_admin(headers: &HeaderMap) -> Result<(String, String), axum::response::Response> {
     let admin_key = std::env::var("COEVO_ADMIN_KEY").unwrap_or_default();
     if !admin_key.is_empty() && headers.get("x-admin-key").and_then(|v| v.to_str().ok()).unwrap_or("") == admin_key {
@@ -28,18 +29,65 @@ pub fn verify_admin(headers: &HeaderMap) -> Result<(String, String), axum::respo
     }
 }
 
+/// 验证 guardian/tutor 用户身份（从 users 表和 tokens 表认证）。
+/// guardian/tutor 通过 /api/auth/login 登录，使用 tokens 表中的 token。
+/// 同时兼容 admin_users（super/service）的旧认证路径。
+pub fn verify_guardian_or_admin(headers: &HeaderMap) -> Result<(String, String), axum::response::Response> {
+    // 先尝试 admin_users 认证（super/service）
+    let admin_key = std::env::var("COEVO_ADMIN_KEY").unwrap_or_default();
+    if !admin_key.is_empty() && headers.get("x-admin-key").and_then(|v| v.to_str().ok()).unwrap_or("") == admin_key {
+        return Ok(("super".into(), "super".into()));
+    }
+    let token = headers.get("authorization").and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer ")).unwrap_or("");
+    if token.is_empty() { return Err(err(StatusCode::UNAUTHORIZED, "unauthorized")); }
+
+    // 1. 检查 admin_users（super/service）
+    if let Some(result) = conn().query_row::<(String, String, String), _, _>(
+        "SELECT id, role, status FROM admin_users WHERE password_hash=?1", rusqlite::params![token],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).ok()
+    {
+        let (id, role, status) = result;
+        if status == "active" { return Ok((id, role)); }
+        return Err(err(StatusCode::FORBIDDEN, "pending_approval"));
+    }
+
+    // 2. 检查 users 表（guardian/tutor）—— 从 tokens 表验证 token，然后查 role
+    if let Ok(token_row) = conn().query_row::<String, _, _>(
+        "SELECT t.user_id FROM tokens t WHERE t.token = ?1",
+        rusqlite::params![token],
+        |row| Ok(row.get(0)?)
+    ) {
+        // token 有效，查 users 表的 role
+        if let Ok(role) = conn().query_row(
+            "SELECT role FROM users WHERE id = ?1 AND (role = 'guardian' OR role = 'tutor')",
+            rusqlite::params![token_row],
+            |row| row.get::<_, String>(0)
+        ) {
+            return Ok((token_row, role));
+        }
+        return Err(err(StatusCode::FORBIDDEN, "not_guardian_or_tutor"));
+    }
+
+    Err(err(StatusCode::UNAUTHORIZED, "unauthorized"))
+}
+
 fn require_role(headers: &HeaderMap, allowed: &[&str]) -> Result<(String, String), axum::response::Response> {
     let (id, role) = verify_admin(headers)?;
     if allowed.contains(&role.as_str()) || role == "super" { Ok((id, role)) }
     else { Err(err(StatusCode::FORBIDDEN, "forbidden")) }
 }
 
-macro_rules! guard {
+macro_rules! guard {                                 // admin_users 专用
     ($headers:expr, $allowed:expr) => {
         match require_role($headers, $allowed) { Ok(r) => r, Err(e) => return e }
     };
     ($headers:expr) => {
         match verify_admin($headers) { Ok(r) => r, Err(e) => return e }
+    };
+}
+macro_rules! guard_user {                           // guardian/tutor + admin_users 双通道
+    ($headers:expr) => {
+        match crate::admin_handlers::verify_guardian_or_admin($headers) { Ok(r) => r, Err(e) => return e }
     };
 }
 
@@ -85,30 +133,12 @@ pub async fn admin_login(Json(input): Json<AdminLoginInput>) -> impl IntoRespons
 }
 
 // ── Register ──
+// 注意: self-register endpoint。guardian/tutor 已移入 users 表，
+// admin_users 只保留 super/service，均由超管创建。
 #[derive(Deserialize)] pub struct AdminRegisterInput { pub username: String, pub password: String, pub role: String, pub real_name: String, pub phone: String, pub id_number: Option<String>, pub apply_reason: Option<String>, pub registered_from: Option<String>, pub guardian_declaration: Option<String> }
 pub async fn admin_register(Json(input): Json<AdminRegisterInput>) -> impl IntoResponse {
-    if !["service","tutor","guardian"].contains(&input.role.as_str()) { return err(StatusCode::BAD_REQUEST,"invalid_role"); }
-    if input.username.len() < 5 || !input.username.chars().all(|c| c.is_ascii_alphanumeric()) { return err(StatusCode::BAD_REQUEST, "username_5_alphanumeric"); }
-    if input.password.len() < 6 || !input.password.chars().any(|c| c.is_ascii_alphabetic()) || !input.password.chars().any(|c| c.is_ascii_digit()) { return err(StatusCode::BAD_REQUEST, "password_6_alpha_numeric"); }
-    if input.real_name.is_empty() || input.real_name.chars().count() > 4 || !input.real_name.chars().all(|c| ('\u{4e00}'..='\u{9fff}').contains(&c) || c == '·') { return err(StatusCode::BAD_REQUEST, "real_name_chinese_4chars"); }
-    if !input.phone.chars().all(|c| c.is_ascii_digit()) || input.phone.len() != 11 || !input.phone.starts_with('1') { return err(StatusCode::BAD_REQUEST, "invalid_phone"); }
-    if input.role == "service" { return err(StatusCode::FORBIDDEN, "service_accounts_must_be_created_by_admin"); }
-    let id = uuid::Uuid::new_v4().to_string();
-    let now = chrono::Utc::now().timestamp();
-    let hash = bcrypt::hash(&input.password, 12).unwrap_or_default();
-    // Encrypt PII fields before storing
-    let enc_real_name = encryption::encrypt(&input.real_name);
-    let enc_phone = encryption::encrypt(&input.phone);
-    let enc_id_number = input.id_number.as_ref().map(|v| encryption::encrypt(v));
-    let enc_guardian_decl = input.guardian_declaration.as_ref().map(|v| encryption::encrypt(v));
-    match conn().execute(
-        "INSERT INTO admin_users (id,username,password_hash,role,status,real_name,phone,id_number,apply_reason,registered_from,guardian_declaration,created_at) VALUES (?1,?2,?3,?4,'approved',?5,?6,?7,?8,?9,?10,?11)",
-        rusqlite::params![id, input.username, hash, input.role, enc_real_name, enc_phone, enc_id_number, input.apply_reason, input.registered_from, enc_guardian_decl, now],
-    ) {
-        Ok(_) => ok(serde_json::json!({"admin_id":id,"status":"approved"})),
-        Err(e) if e.to_string().contains("UNIQUE") => err(StatusCode::CONFLICT, "username_exists"),
-        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
-    }
+    // admin_users 只允许 super/service，guardian/tutor 已移入 users 表
+    return err(StatusCode::BAD_REQUEST, "self_register_disabled_contact_admin");
 }
 // ── User Search ──
 #[derive(Deserialize)] pub struct AdminUsersQuery { pub q: String, pub page: Option<i64>, pub sort: Option<String>, pub include_deleted: Option<bool> }
@@ -148,7 +178,7 @@ pub async fn admin_users_handler(headers: HeaderMap, Query(query): Query<AdminUs
     let mut stmt = c.prepare(&sql).unwrap();
     let users: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![limit, offset], |row| {
         let uid: String = row.get(0)?;
-        let cards: i64 = c.query_row("SELECT COUNT(*) FROM cards WHERE user_id=?1 AND status='active'", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
+        let cards: i64 = c.query_row("SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id=?1 AND cm.status='active'", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
         let reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
         let expires: Option<String> = c.query_row("SELECT value FROM user_preferences WHERE user_id=?1 AND key='subscription_expires'", rusqlite::params![&uid], |r| r.get(0)).ok();
         let is_super = role == "super";
@@ -156,18 +186,19 @@ pub async fn admin_users_handler(headers: HeaderMap, Query(query): Query<AdminUs
         let phone_raw: Option<String> = row.get(4)?;
         let rname_dec = rname_raw.as_ref().map(|v| decrypt_maybe(v));
         let phone_dec = phone_raw.as_ref().map(|v| decrypt_maybe(v));
-        // Guardian info (first guardian for this student)
-        let (g_id, g_name, g_phone): (Option<String>, Option<String>, Option<String>) = c.query_row(
-            "SELECT au.id, au.real_name, au.phone FROM guardian_assignments ga JOIN admin_users au ON ga.guardian_admin_id=au.id WHERE ga.student_user_id=?1 AND ga.is_active=1 AND au.role='guardian' LIMIT 1",
-            rusqlite::params![&uid], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        ).unwrap_or((None, None, None));
-        let g_name_dec = g_name.as_ref().map(|v| decrypt_maybe(v));
-        let g_phone_dec = g_phone.as_ref().map(|v| decrypt_maybe(v));
-        // Tutor info (first tutor for this student)
-        let (t_id, t_name, t_phone): (Option<String>, Option<String>, Option<String>) = c.query_row(
-            "SELECT au.id, au.real_name, au.phone FROM guardian_assignments ga JOIN admin_users au ON ga.guardian_admin_id=au.id WHERE ga.student_user_id=?1 AND ga.is_active=1 AND au.role='tutor' LIMIT 1",
-            rusqlite::params![&uid], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        ).unwrap_or((None, None, None));
+    // Guardian info (从 admin_users 查询——过渡期：实际旧数据仍在此)
+    // TODO: guardian/tutor 完全迁移到 users 表后改为 JOIN users
+    let (g_id, g_name, g_phone): (Option<String>, Option<String>, Option<String>) = c.query_row(
+        "SELECT u.id, u.real_name, u.phone FROM guardian_assignments ga JOIN users u ON ga.guardian_admin_id=u.id WHERE ga.student_user_id=?1 AND ga.is_active=1 AND u.role='guardian' LIMIT 1",
+        rusqlite::params![&uid], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+    ).unwrap_or((None, None, None));
+    let g_name_dec = g_name.as_ref().map(|v| decrypt_maybe(v));
+    let g_phone_dec = g_phone.as_ref().map(|v| decrypt_maybe(v));
+    // Tutor info
+    let (t_id, t_name, t_phone): (Option<String>, Option<String>, Option<String>) = c.query_row(
+        "SELECT u.id, u.real_name, u.phone FROM guardian_assignments ga JOIN users u ON ga.guardian_admin_id=u.id WHERE ga.student_user_id=?1 AND ga.is_active=1 AND u.role='tutor' LIMIT 1",
+        rusqlite::params![&uid], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+    ).unwrap_or((None, None, None));
         let t_name_dec = t_name.as_ref().map(|v| decrypt_maybe(v));
         let t_phone_dec = t_phone.as_ref().map(|v| decrypt_maybe(v));
         Ok(serde_json::json!({
@@ -192,7 +223,7 @@ pub async fn admin_user_detail(headers: HeaderMap, Path(uid): Path<String>) -> i
     let c = conn();
     let u: Option<serde_json::Value> = c.query_row("SELECT id,username,display_name,real_name,phone,created_at,streak_days,last_active_date FROM users WHERE id=?1", rusqlite::params![&uid], |row| {
         let uid2: String = row.get(0)?;
-        let cards: i64 = c.query_row("SELECT COUNT(*) FROM cards WHERE user_id=?1 AND status='active'", rusqlite::params![&uid2],|r|r.get(0)).unwrap_or(0);
+        let cards: i64 = c.query_row("SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id=?1 AND cm.status='active'", rusqlite::params![&uid2],|r|r.get(0)).unwrap_or(0);
         let reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1", rusqlite::params![&uid2],|r|r.get(0)).unwrap_or(0);
         let rn_raw: Option<String> = row.get(3)?;
         let ph_raw: Option<String> = row.get(4)?;
@@ -578,7 +609,7 @@ pub async fn admin_audit_log(headers: HeaderMap, Query(query): Query<AuditLogQue
 
 // ── Guardian ──
 pub async fn guardian_students(headers: HeaderMap) -> impl IntoResponse {
-    let (gid, role) = guard!(&headers);
+    let (gid, role) = guard_user!(&headers);
     if role!="guardian" && role!="tutor" && role!="super" { return err(StatusCode::FORBIDDEN,"forbidden"); }
     let c = conn();
     let now = chrono::Utc::now();
@@ -587,10 +618,9 @@ pub async fn guardian_students(headers: HeaderMap) -> impl IntoResponse {
     let mut stmt = c.prepare("SELECT ga.student_user_id,u.display_name,u.real_name,u.phone,u.streak_days,u.last_active_date FROM guardian_assignments ga JOIN users u ON ga.student_user_id=u.id WHERE ga.guardian_admin_id=?1 AND ga.is_active=1").unwrap();
     let students: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![gid], |row| {
         let uid: String = row.get(0)?;
-        let _cards: i64 = c.query_row("SELECT COUNT(*) FROM cards WHERE user_id=?1 AND status='active'",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0);
+        let _cards: i64 = c.query_row("SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id=?1 AND cm.status='active'",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0);
         let _reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0);
         let _mastery: f64 = c.query_row("SELECT CAST(SUM(CASE WHEN cm.state=2 THEN 1 ELSE 0 END) AS REAL)/MAX(1,COUNT(*)) FROM card_memory cm JOIN cards cd ON cm.card_id=cd.id WHERE cd.user_id=?1",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0.0);
-        // Plan stats
         let total_plans: i64 = c.query_row("SELECT COUNT(*) FROM conversation_plans WHERE user_id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
         let active_7d: i64 = c.query_row("SELECT COUNT(*) FROM conversation_plans WHERE user_id=?1 AND updated_at >= ?2", rusqlite::params![&uid, &seven_days_ago], |r| r.get(0)).unwrap_or(0);
         let today_active: i64 = c.query_row("SELECT COUNT(*) FROM conversation_plans WHERE user_id=?1 AND updated_at >= ?2", rusqlite::params![&uid, &one_day_ago], |r| r.get(0)).unwrap_or(0);
@@ -598,10 +628,10 @@ pub async fn guardian_students(headers: HeaderMap) -> impl IntoResponse {
         let ph_raw: Option<String> = row.get(3)?;
         let rn_decrypted = rn_raw.as_ref().map(|v| decrypt_maybe(v));
         let ph_decrypted = ph_raw.as_ref().map(|v| decrypt_maybe(v));
-        // Guardian info (for tutor role)
+        // Guardian info (for tutor role) — 从 users 表查
         let (g_aid, guardian_name, guardian_phone) = if role == "tutor" {
             let g: (Option<String>, Option<String>, Option<String>) = c.query_row(
-                "SELECT ga2.guardian_admin_id, au.real_name, au.phone FROM guardian_assignments ga2 JOIN admin_users au ON ga2.guardian_admin_id=au.id WHERE ga2.student_user_id=?1 AND ga2.is_active=1 LIMIT 1",
+                "SELECT ga2.guardian_admin_id, u.real_name, u.phone FROM guardian_assignments ga2 JOIN users u ON ga2.guardian_admin_id=u.id WHERE ga2.student_user_id=?1 AND ga2.is_active=1 AND u.role='guardian' LIMIT 1",
                 rusqlite::params![&uid], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
             ).unwrap_or((None, None, None));
             (g.0, g.1.as_ref().map(|v| decrypt_maybe(v)), g.2.as_ref().map(|v| decrypt_maybe(v)))
@@ -628,7 +658,7 @@ fn is_guardian_of(gid: &str, sid: &str) -> bool {
 
 #[derive(Deserialize)] pub struct GuardianBindInput { pub student_user_id: String }
 pub async fn guardian_bind_request(headers: HeaderMap, Json(input): Json<GuardianBindInput>) -> impl IntoResponse {
-    let (gid, role) = guard!(&headers);
+    let (gid, role) = guard_user!(&headers);
     if role != "guardian" && role != "tutor" { return err(StatusCode::FORBIDDEN,"forbidden"); }
     let c = conn();
     let now = chrono::Utc::now().timestamp().to_string();
@@ -641,10 +671,15 @@ pub async fn guardian_bind_request(headers: HeaderMap, Json(input): Json<Guardia
 }
 
 pub async fn guardian_reveal_phone(headers: HeaderMap, Path(aid): Path<String>) -> impl IntoResponse {
-    let (admin_id, role) = guard!(&headers);
+    let (admin_id, role) = guard_user!(&headers);
     if role != "tutor" && role != "super" && role != "service" { return err(StatusCode::FORBIDDEN,"forbidden"); }
     let c = conn();
-    let phone_enc: Option<String> = c.query_row("SELECT phone FROM admin_users WHERE id=?1", rusqlite::params![aid], |row| row.get(0)).unwrap_or(None);
+    // guardian/tutor 已移入 users 表；super/service 的 phone 仍在 admin_users
+    let phone_enc: Option<String> = if role == "super" || role == "service" {
+        c.query_row("SELECT phone FROM admin_users WHERE id=?1", rusqlite::params![aid], |row| row.get(0)).ok().flatten()
+    } else {
+        c.query_row("SELECT phone FROM users WHERE id=?1", rusqlite::params![aid], |row| row.get(0)).ok().flatten()
+    };
     let phone = match phone_enc { Some(ref enc) if !enc.is_empty() => decrypt_maybe(enc), _ => return err(StatusCode::NOT_FOUND, "phone not found") };
     let now = chrono::Utc::now().timestamp().to_string();
     let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'reveal_guardian_phone',?3,'Phone revealed by tutor',?4)",
@@ -653,7 +688,7 @@ pub async fn guardian_reveal_phone(headers: HeaderMap, Path(aid): Path<String>) 
 }
 
 pub async fn guardian_student_cards(headers: HeaderMap, Path(sid): Path<String>) -> impl IntoResponse {
-    let (gid, role) = guard!(&headers);
+    let (gid, role) = guard_user!(&headers);
     if role != "super" && role != "service" && !is_guardian_of(&gid, &sid) { return err(StatusCode::FORBIDDEN,"forbidden"); }
     let c2 = conn(); let mut stmt = c2.prepare("SELECT c.id,c.front,c.back,c.domain,cm.state,cm.reps,cm.last_review,c.conversation_id FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id=?1 ORDER BY cm.state,cm.due").unwrap();
     let cards: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![sid], |row| Ok(serde_json::json!({
@@ -662,7 +697,7 @@ pub async fn guardian_student_cards(headers: HeaderMap, Path(sid): Path<String>)
     ok(serde_json::json!({"cards":cards}))
 }
 pub async fn guardian_student_conversations(headers: HeaderMap, Path(sid): Path<String>) -> impl IntoResponse {
-    let (gid, role) = guard!(&headers);
+    let (gid, role) = guard_user!(&headers);
     if role != "super" && role != "service" && !is_guardian_of(&gid, &sid) { return err(StatusCode::FORBIDDEN,"forbidden"); }
     let c = conn();
     // Get conversations with first user message + learning plan title as combined title
@@ -683,7 +718,7 @@ pub async fn guardian_student_conversations(headers: HeaderMap, Path(sid): Path<
     ok(serde_json::json!({"conversations":convs}))
 }
 pub async fn guardian_student_conversation_detail(headers: HeaderMap, Path((sid, cid)): Path<(String,String)>) -> impl IntoResponse {
-    let (gid, role) = guard!(&headers);
+    let (gid, role) = guard_user!(&headers);
     if role != "super" && role != "service" && !is_guardian_of(&gid, &sid) { return err(StatusCode::FORBIDDEN,"forbidden"); }
     let c2 = conn(); let mut stmt = c2.prepare("SELECT role,content,created_at FROM conversation_turns WHERE conversation_id=?1 ORDER BY created_at").unwrap();
     let turns: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![cid], |row| Ok(serde_json::json!({
@@ -694,7 +729,7 @@ pub async fn guardian_student_conversation_detail(headers: HeaderMap, Path((sid,
 
 // ── Learning Summary (家长座舱) ──
 pub async fn guardian_learning_summary(headers: HeaderMap, Path(sid): Path<String>) -> impl IntoResponse {
-    let (gid, role) = guard!(&headers);
+    let (gid, role) = guard_user!(&headers);
     if role != "super" && role != "service" && !is_guardian_of(&gid, &sid) { return err(StatusCode::FORBIDDEN,"forbidden"); }
     let c = conn();
     let now = chrono::Utc::now();
@@ -911,9 +946,9 @@ pub async fn admin_list_assignments(headers: HeaderMap) -> impl IntoResponse {
     if role != "super" && role != "service" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     let c = conn();
     let mut stmt = c.prepare(
-        "SELECT ga.id, ga.guardian_admin_id, ga.student_user_id, ga.bind_key, ga.assigned_by, ga.assigned_at, ga.is_active, au.real_name, u.display_name, u.real_name
+        "SELECT ga.id, ga.guardian_admin_id, ga.student_user_id, ga.bind_key, ga.assigned_by, ga.assigned_at, ga.is_active, u2.real_name, u.display_name, u.real_name
          FROM guardian_assignments ga
-         JOIN admin_users au ON ga.guardian_admin_id = au.id
+         JOIN users u2 ON ga.guardian_admin_id = u2.id
          JOIN users u ON ga.student_user_id = u.id
          ORDER BY ga.assigned_at DESC LIMIT 50"
     ).unwrap();
@@ -943,7 +978,8 @@ pub async fn admin_create_assignment(headers: HeaderMap, Json(input): Json<Creat
     let now = chrono::Utc::now().timestamp();
     let id = uuid::Uuid::new_v4().to_string();
     // Generate bind_key from names
-    let guardian_name: String = c.query_row("SELECT COALESCE(real_name,'') FROM admin_users WHERE id=?1", rusqlite::params![&input.guardian_admin_id], |row| row.get(0)).unwrap_or_default();
+    // guardian/tutor 已移入 users 表
+    let guardian_name: String = c.query_row("SELECT COALESCE(real_name,'') FROM users WHERE id=?1", rusqlite::params![&input.guardian_admin_id], |row| row.get(0)).unwrap_or_default();
     let student_name: String = c.query_row("SELECT COALESCE(real_name,'') FROM users WHERE id=?1", rusqlite::params![&input.student_user_id], |row| row.get(0)).unwrap_or_default();
     let gname = if encryption::is_encrypted(&guardian_name) { encryption::decrypt(&guardian_name) } else { guardian_name.clone() };
     let sname = if encryption::is_encrypted(&student_name) { encryption::decrypt(&student_name) } else { student_name.clone() };
@@ -1049,7 +1085,7 @@ pub async fn admin_users_export(headers: HeaderMap, Query(query): Query<AdminUse
     let mut csv = String::from("user_id,username,display_name,real_name,phone,created_at,streak_days,card_count,review_count,subscription_expires\n");
     if let Ok(rows) = stmt.query_map(rusqlite::params![pattern], |row| {
         let uid: String = row.get(0)?;
-        let cards: i64 = c.query_row("SELECT COUNT(*) FROM cards WHERE user_id=?1 AND status='active'", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
+        let cards: i64 = c.query_row("SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id=?1 AND cm.status='active'", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
         let reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
         let expires: String = c.query_row("SELECT COALESCE(value,'') FROM user_preferences WHERE user_id=?1 AND key='subscription_expires'", rusqlite::params![&uid], |r| r.get(0)).unwrap_or_default();
         let rn_opt: Option<String> = row.get(3).ok().flatten();

@@ -6,7 +6,7 @@
 /// 学生默认系统提示词（编译嵌入）
 pub const DEFAULT_PROMPT: &str = include_str!("../../../prompts/student/default.md");
 
-/// 学生 LLM 生成自然回复
+/// 学生 LLM 生成自然回复（含最多 3 次自动重试）
 ///
 /// # Arguments
 /// * `caller` - LLM 调用器
@@ -17,8 +17,25 @@ pub async fn student_speak(
     prompt: &str,
     history: &str,
 ) -> String {
-    match caller.generate(prompt, history).await {
-        Ok(reply) => reply.trim().to_string(),
-        Err(_) => String::new(),
+    let max_retries = 3;
+    for attempt in 0..max_retries {
+        match caller.generate(prompt, history).await {
+            Ok(reply) => {
+                let trimmed = reply.trim().to_string();
+                if !trimmed.is_empty() {
+                    return trimmed;
+                }
+                eprintln!("student_speak: empty response on attempt {}", attempt + 1);
+            }
+            Err(e) => {
+                eprintln!("student_speak: LLM error on attempt {}: {:?}", attempt + 1, e);
+            }
+        }
+        if attempt < max_retries - 1 {
+            // 指数退避：1s, 2s
+            std::thread::sleep(std::time::Duration::from_secs(1 << attempt));
+        }
     }
+    eprintln!("student_speak: all {} attempts failed, returning empty", max_retries);
+    String::new()
 }
