@@ -35,12 +35,12 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
   void initState() {
     super.initState();
     _searchController.addListener(_applyFilters);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadCards());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPlanMeta());
     ref.listenManual(cardRefreshProvider, (prev, next) {
-      if (prev != next) _loadCards();
+      if (prev != next) _loadPlanMeta();
     });
     ref.listenManual(authProvider, (prev, next) {
-      if (!_hasLoadedOnce && next.userId != null) _loadCards();
+      if (!_hasLoadedOnce && next.userId != null) _loadPlanMeta();
     });
   }
 
@@ -51,7 +51,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     super.dispose();
   }
 
-  Future<void> _loadCards() async {
+  Future<void> _loadPlanMeta() async {
     final auth = ref.read(authProvider);
     if (auth.userId == null) {
       if (mounted) setState(() => _isLoading = false);
@@ -68,24 +68,13 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
 
       for (final p in plansRaw) {
         final pMap = p as Map<String, dynamic>;
-        final cardsRaw = (pMap['cards'] as List<dynamic>?) ?? [];
-        final cards = cardsRaw
-            .map((e) => DueCard.fromJson(e as Map<String, dynamic>))
-            .toList();
-
+        final cardCount = (pMap['card_count'] as num?)?.toInt() ?? 0;
         planGroups.add(_PlanGroup(
           id: pMap['id'] as String? ?? '',
           goal: pMap['goal'] as String? ?? '',
           conversationId: pMap['conversation_id'] as String? ?? '',
-          cards: cards,
+          cardCount: cardCount,
         ));
-        allCards.addAll(cards);
-      }
-
-      // 统计各状态数量
-      for (final c in allCards) {
-        final key = switch (c.state) { 0 => 'new', 1 => 'learning', 2 => 'review', _ => 'relearning' };
-        stateCounts[key] = (stateCounts[key] ?? 0) + 1;
       }
 
       setState(() {
@@ -97,9 +86,50 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
       });
       _applyFilters();
     } catch (e) {
-      debugPrint('_loadCards error: $e');
+      debugPrint('_loadPlanMeta error: $e');
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  /// 惰性加载指定 plan 的卡片
+  Future<void> _expandPlan(String conversationId) async {
+    final group = _planGroups.where((g) => g.conversationId == conversationId).firstOrNull;
+    if (group == null || group.expanded) return; // 已展开则跳过
+
+    group.isLoading = true;
+    group.expanded = true;
+    setState(() {});
+
+    final auth = ref.read(authProvider);
+    final client = ChatClient(userId: auth.userId!, token: auth.token);
+    try {
+      final resp = await client.getCardsByPlan(convId: conversationId);
+      final plansRaw = (resp['plans'] as List<dynamic>?) ?? [];
+      if (plansRaw.isNotEmpty) {
+        final pMap = plansRaw[0] as Map<String, dynamic>;
+        final cardsRaw = (pMap['cards'] as List<dynamic>?) ?? [];
+        final loadedCards = cardsRaw
+            .map((e) => DueCard.fromJson(e as Map<String, dynamic>))
+            .toList();
+        debugPrint('[_expandPlan] loading conv=$conversationId');
+        group.cards = loadedCards;
+        group.displayCards = List.from(loadedCards);
+        debugPrint('[_expandPlan] loaded ${loadedCards.length} cards, displayCards=${group.displayCards.length}, group.cards=${group.cards.length}');
+        // 同步加到 _allCards 中（供搜索/状态过滤）
+        _allCards.addAll(loadedCards);
+        // 统计状态
+        for (final c in loadedCards) {
+          final key = switch (c.state) { 0 => 'new', 1 => 'learning', 2 => 'review', _ => 'relearning' };
+          _stateCounts[key] = (_stateCounts[key] ?? 0) + 1;
+        }
+      }
+    } catch (e) {
+      debugPrint('_expandPlan error: $e');
+      // 加载失败：允许重新展开重试
+      group.expanded = false;
+    }
+    group.isLoading = false;
+    setState(() {});
   }
 
   void _applyFilters() {
@@ -252,7 +282,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('我的卡片'),
-        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _loadCards)],
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _loadPlanMeta)],
       ),
       body: _buildBody(),
     );
@@ -260,7 +290,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
 
   Widget _buildBody() {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
-    if (_allCards.isEmpty) return _buildEmptyState();
+    if (_planGroups.isEmpty) return _buildEmptyState();
     return Column(children: [
       // 搜索栏
       Padding(
@@ -296,21 +326,21 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
       ),
       // 分组卡片列表
       Expanded(
-        child: _filteredCards.isEmpty
+        child: _planGroups.where((g) => g.cardCount > 0).isEmpty
             ? Center(child: Text('没有匹配的卡片', style: TextStyle(color: Colors.grey.shade500)))
             : RefreshIndicator(
-                onRefresh: _loadCards,
+                onRefresh: _loadPlanMeta,
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                   children: [
                     // 总卡片数
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: Text('${_filteredCards.length} 张卡片 · ${_planGroups.length} 个计划',
+                      child: Text('${_planGroups.fold<int>(0, (s, g) => s + g.cardCount)} 张卡片 · ${_planGroups.length} 个计划',
                           style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
                     ),
-                    // 每个 plan 一个分组
-                    ..._planGroups.where((g) => g.displayCards.isNotEmpty).map((g) => _buildPlanSection(g)),
+                    // 每个 plan 一个折叠组
+                    ..._planGroups.where((g) => g.cardCount > 0).map((g) => _buildPlanSection(g)),
                   ],
                 ),
               ),
@@ -319,13 +349,14 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
   }
 
   Widget _buildPlanSection(_PlanGroup group) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Plan 标题
-          Container(
+    debugPrint('[_buildPlanSection] goal=${group.goal}, expanded=${group.expanded}, cards=${group.cards.length}, display=${group.displayCards.length}');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Plan 标题（可点击展开）
+        GestureDetector(
+          onTap: group.isLoading ? null : () => _expandPlan(group.conversationId),
+          child: Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
@@ -333,7 +364,8 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
               borderRadius: BorderRadius.circular(10),
             ),
             child: Row(children: [
-              Icon(Icons.assignment, size: 16, color: Theme.of(context).colorScheme.primary),
+              Icon(group.expanded ? Icons.expand_less : Icons.expand_more,
+                  size: 16, color: Theme.of(context).colorScheme.primary),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -342,21 +374,32 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (group.isLoading)
+                const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: Colors.grey.withAlpha(30),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text('${group.displayCards.length}', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                child: Text('${group.cardCount}', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
               ),
             ]),
           ),
+        ),
+        // 展开后显示卡片
+        if (group.expanded) ...[
           const SizedBox(height: 4),
-          // 该 plan 下的卡片
-          ...group.displayCards.map((card) => _buildCardTile(card)),
+          if (group.cards.isEmpty && !group.isLoading)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Center(child: Text('暂无卡片', style: TextStyle(color: Colors.grey.shade500, fontSize: 13))),
+            )
+          else
+            ...group.displayCards.map((card) => _buildCardTile(card)),
         ],
-      ),
+        const SizedBox(height: 8),
+      ],
     );
   }
 
@@ -487,15 +530,20 @@ class _PlanGroup {
   final String id;
   final String goal;
   final String conversationId;
-  final List<DueCard> cards;
-  List<DueCard> displayCards; // 过滤后的子集
+  final int cardCount;
+  List<DueCard> cards;       // 展开后加载
+  List<DueCard> displayCards;
+  bool isLoading = false;    // 正在加载中
+  bool expanded = false;     // 当前是否展开
 
   _PlanGroup({
     required this.id,
     required this.goal,
     required this.conversationId,
-    required this.cards,
-  }) : displayCards = List.from(cards);
+    required this.cardCount,
+    List<DueCard>? cards,
+  }) : cards = cards ?? [],
+       displayCards = [];
 }
 
 // ── 小组件 ──

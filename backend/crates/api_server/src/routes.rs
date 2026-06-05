@@ -646,6 +646,7 @@ async fn cards_all_handler(
 #[derive(Deserialize)]
 pub struct CardsByPlanQuery {
     pub user_id: String,
+    pub conversation_id: Option<String>,
 }
 
 /// GET /api/cards/by-plan — 按 conversation_plan 分组返回卡片
@@ -686,58 +687,72 @@ async fn cards_by_plan_handler(
     for row in rows.flatten() {
         let (plan_id, conv_id, goal) = row;
 
-        // 2. 用 conversation_id 取该 plan 下的卡片
-        let cards: Vec<serde_json::Value> = query_vec(
-            &conn,
-            "SELECT c.id, c.user_id, c.front, c.back, c.domain, c.card_type, c.source_sentence,
-                    c.created_at, cm.state, cm.difficulty, cm.due, cm.reps, cm.lapses,
-                    lrev.reviewed_at, lrev.rating,
-                    c.conversation_id
-             FROM cards c
-             JOIN card_memory cm ON c.id = cm.card_id
-             LEFT JOIN (
-                SELECT card_id, MAX(reviewed_at) as last_reviewed_at
-                FROM review_log GROUP BY card_id
-             ) lr ON c.id = lr.card_id
-             LEFT JOIN review_log lrev
-                ON lrev.card_id = lr.card_id AND lrev.reviewed_at = lr.last_reviewed_at
-             WHERE c.conversation_id = ?1 AND c.user_id = ?2 AND cm.status = 'active'
-             ORDER BY cm.state ASC, cm.due ASC",
-            rusqlite::params![conv_id, query.user_id],
-            |row| Ok(serde_json::json!({
-                "id": row.get::<_, String>(0)?,
-                "user_id": row.get::<_, String>(1)?,
-                "front": row.get::<_, String>(2)?,
-                "back": row.get::<_, String>(3)?,
-                "domain": row.get::<_, Option<String>>(4)?,
-                "card_type": row.get::<_, String>(5)?,
-                "source_sentence": row.get::<_, Option<String>>(6)?,
-                "created_at": row.get::<_, i64>(7)?,
-                "state": row.get::<_, i32>(8)?,
-                "difficulty": row.get::<_, f64>(9)?,
-                "due": row.get::<_, i64>(10)?,
-                "reps": row.get::<_, i32>(11)?,
-                "lapses": row.get::<_, i32>(12)?,
-                "last_reviewed_at": row.get::<_, Option<i64>>(13)?,
-                "last_review_quality": row.get::<_, Option<i32>>(14)?,
-                "conversation_id": row.get::<_, Option<String>>(15)?,
-            })),
-        ).unwrap_or_default();
+        // 惰性加载：仅当指定了 conversation_id 时才加载该 plan 的卡片
+        let load_cards = query.conversation_id.as_deref() == Some(&conv_id);
+
+        let (cards, effective_count): (Vec<serde_json::Value>, usize) = if load_cards {
+            let loaded = query_vec(
+                &conn,
+                "SELECT c.id, c.user_id, c.front, c.back, c.domain, c.card_type, c.source_sentence,
+                        c.created_at, cm.state, cm.difficulty, cm.due, cm.reps, cm.lapses,
+                        lrev.reviewed_at, lrev.rating,
+                        c.conversation_id
+                 FROM cards c
+                 JOIN card_memory cm ON c.id = cm.card_id
+                 LEFT JOIN (
+                    SELECT card_id, MAX(reviewed_at) as last_reviewed_at
+                    FROM review_log GROUP BY card_id
+                 ) lr ON c.id = lr.card_id
+                 LEFT JOIN review_log lrev
+                    ON lrev.card_id = lr.card_id AND lrev.reviewed_at = lr.last_reviewed_at
+                 WHERE c.conversation_id = ?1 AND c.user_id = ?2 AND cm.status = 'active'
+                 ORDER BY cm.state ASC, cm.due ASC",
+                rusqlite::params![conv_id, query.user_id],
+                |row| Ok(serde_json::json!({
+                    "id": row.get::<_, String>(0)?,
+                    "user_id": row.get::<_, String>(1)?,
+                    "front": row.get::<_, String>(2)?,
+                    "back": row.get::<_, String>(3)?,
+                    "domain": row.get::<_, Option<String>>(4)?,
+                    "card_type": row.get::<_, String>(5)?,
+                    "source_sentence": row.get::<_, Option<String>>(6)?,
+                    "created_at": row.get::<_, i64>(7)?,
+                    "state": row.get::<_, i32>(8)?,
+                    "difficulty": row.get::<_, f64>(9)?,
+                    "due": row.get::<_, i64>(10)?,
+                    "reps": row.get::<_, i32>(11)?,
+                    "lapses": row.get::<_, i32>(12)?,
+                    "last_reviewed_at": row.get::<_, Option<i64>>(13)?,
+                    "last_review_quality": row.get::<_, Option<i32>>(14)?,
+                    "conversation_id": row.get::<_, Option<String>>(15)?,
+                })),
+            ).unwrap_or_default();
+            let count = loaded.len();
+            (loaded, count)
+        } else {
+            let count: usize = conn.query_row(
+                "SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.conversation_id = ?1 AND c.user_id = ?2 AND cm.status = 'active'",
+                rusqlite::params![conv_id, query.user_id],
+                |row| row.get(0),
+            ).unwrap_or(0);
+            (vec![], count)
+        };
 
         plans.push(serde_json::json!({
             "id": plan_id,
             "goal": goal,
             "conversation_id": conv_id,
             "cards": cards,
-            "card_count": cards.len(),
+            "card_count": effective_count,
         }));
     }
 
     let total_cards: usize = plans.iter()
         .map(|p| p["card_count"].as_u64().unwrap_or(0) as usize)
         .sum();
-    tracing::info!("cards_by_plan_handler: user_id={}, plans={}, total_cards={}",
-        query.user_id, plans.len(), total_cards);
+    let cards_loaded = query.conversation_id.is_some();
+    tracing::info!("cards_by_plan_handler: user_id={}, plans={}, total_cards={}, loaded_cards={}, conv_filter={:?}",
+        query.user_id, plans.len(), total_cards, cards_loaded, query.conversation_id);
 
     eprintln!("[MARK] cards_by_plan_handler EXIT");
 
@@ -1628,6 +1643,7 @@ async fn k12_init_handler(
 
     // 按 grade_band 过滤 stage（从 v3 JSON 自身的 stage.grade_band 字段）
     let mut plan_val: serde_json::Value = serde_json::from_str(&plan_content_str).unwrap_or_default();
+    let plan_goal = plan_val.get("goal").and_then(|g| g.as_str()).unwrap_or("").to_string();
     let grade_band_filter = input.grade_band.as_str();
     if !grade_band_filter.is_empty() {
         if let Some(stages) = plan_val.get_mut("stages").and_then(|s| s.as_array_mut()) {
@@ -1652,7 +1668,7 @@ async fn k12_init_handler(
     match conn.execute(
         "INSERT INTO conversation_plans (id, user_id, conversation_id, goal, subject, grade_band, plan_content, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        rusqlite::params![plan_id, input.user_id, conv_id, "", input.subject, input.grade_band, filtered_content_str, now_ts, now_ts],
+        rusqlite::params![plan_id, input.user_id, conv_id, plan_goal, input.subject, input.grade_band, filtered_content_str, now_ts, now_ts],
     ) {
         Ok(_) => tracing::info!("[K12-INIT] plan inserted: id={}, subject={}, grade_band={}", plan_id, input.subject, input.grade_band),
         Err(e) => {
@@ -1767,6 +1783,7 @@ async fn k12_reading_init_handler(
         Ok(v) => v,
         Err(e) => return Json(serde_json::json!({"error": format!("解析阅读计划失败: {}", e)})),
     };
+    let plan_goal = plan_val.get("goal").and_then(|g| g.as_str()).unwrap_or("").to_string();
 
     let grade_for_filter = match input.grade_band.as_str() {
         "g10" | "g11-12" => "g10-12",
@@ -1805,7 +1822,7 @@ async fn k12_reading_init_handler(
     match conn.execute(
         "INSERT INTO conversation_plans (id, user_id, conversation_id, goal, subject, grade_band, plan_content, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        rusqlite::params![plan_id, input.user_id, conv_id, "", input.subject, input.grade_band, filtered_content_str, now_ts, now_ts],
+        rusqlite::params![plan_id, input.user_id, conv_id, plan_goal, input.subject, input.grade_band, filtered_content_str, now_ts, now_ts],
     ) {
         Ok(_) => tracing::info!("[READING-INIT] plan inserted: id={}, subject={}, grade_band={}", plan_id, input.subject, input.grade_band),
         Err(e) => {

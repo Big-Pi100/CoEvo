@@ -334,9 +334,16 @@ class ChatClient {
 
   /// 按 conversation_plan 分组获取卡片
   /// 返回 {"plans": [{id, goal, conversation_id, cards, card_count}], "total_plans": int}
-  Future<Map<String, dynamic>> getCardsByPlan() async {
+  /// 按 conversation_plan 获取卡片（惰性加载）
+  /// 当 [convId] 为空时：只返回 plan 元数据，cards 为空数组
+  /// 当 [convId] 指定时：只加载该 plan 的完整卡片数据
+  Future<Map<String, dynamic>> getCardsByPlan({String? convId}) async {
+    final params = <String, String>{'user_id': userId};
+    if (convId != null && convId.isNotEmpty) {
+      params['conversation_id'] = convId;
+    }
     final uri = Uri.parse('$baseUrl/api/cards/by-plan')
-        .replace(queryParameters: {'user_id': userId});
+        .replace(queryParameters: params);
     final resp = await http.get(uri, headers: _authHeaders)
         .timeout(ApiConfig.requestTimeout);
     if (resp.statusCode != 200) {

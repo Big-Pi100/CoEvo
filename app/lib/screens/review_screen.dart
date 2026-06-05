@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/characters.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../models/coevo_models.dart';
@@ -464,8 +463,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
               final convId = p['conversation_id'] as String? ?? '';
               final count = _planDueCount(convId);
               final label = _planLabel(p);
-              // 截取前5个中文字符
-              final shortLabel = label.characters.take(5).toString();
+              // 截取前5个字符（中文字符每个占1个UTF-16单元）
+              final shortLabel = label.length > 5 ? label.substring(0, 5) : label;
               return Tab(
                 child: SizedBox(
                   width: 90,  // ≈ 5 个中文字符宽度
