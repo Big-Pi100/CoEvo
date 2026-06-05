@@ -1,11 +1,6 @@
-/// Sherpa-ONNX TTS 后端
-///
-/// 替代系统 TTS，使用离线神经网络合成语音。
-/// 目前仅 Web 平台走 WASM，原生平台通过 FFI。
-///
-/// 模型文件（~125MB）首次使用从 ModelScope 下载后缓存。
-
 import 'dart:io';
+// Sherpa-ONNX TTS 后端 - 替代系统 TTS，使用离线神经网络合成语音。
+// Web 平台走 WASM，原生平台通过 FFI。模型文件首次使用从 ModelScope 下载后缓存。
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;

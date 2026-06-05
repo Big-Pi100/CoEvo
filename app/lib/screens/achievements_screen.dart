@@ -40,14 +40,16 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
         client.getLearningReport(),
         client.getK12Progress(),
       ]);
-      if (mounted) setState(() {
-        _data = results[0] as Map<String, dynamic>?;
-        _activityData = results[1] as Map<String, dynamic>?;
-        _report = results[2] as Map<String, dynamic>?;
-        _k12Progress = ((results[3] as Map<String, dynamic>)['progress'] as List<dynamic>?)
-            ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _data = results[0] as Map<String, dynamic>?;
+          _activityData = results[1] as Map<String, dynamic>?;
+          _report = results[2] as Map<String, dynamic>?;
+          _k12Progress = ((results[3] as Map<String, dynamic>)['progress'] as List<dynamic>?)
+              ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
+          _isLoading = false;
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _isLoading = false);
     }

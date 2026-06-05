@@ -77,9 +77,12 @@ String _addColorCmd(String formula, Color color) {
   // 含复杂环境时跳过，\textcolor 包裹会破坏内部结构
   if (formula.contains(r'\begin') || formula.contains(r'\\') || formula.contains(r'\cr')) return formula;
   // 颜色接近深色/黑色时也跳过（flutter_math_fork 对深色渲染正常）
-  if (color.red < 60 && color.green < 60 && color.blue < 60) return formula;
-  final hex = '#${color.red.toRadixString(16).padLeft(2, '0')}${color.green.toRadixString(16).padLeft(2, '0')}${color.blue.toRadixString(16).padLeft(2, '0')}';
-  return r'\textcolor{' + hex + '}{' + formula + '}';
+  if (color.r < 60 && color.g < 60 && color.b < 60) return formula;
+  final r = (color.r * 255).round();
+  final g = (color.g * 255).round();
+  final b = (color.b * 255).round();
+  final hex = '#${r.toRadixString(16).padLeft(2, '0')}${g.toRadixString(16).padLeft(2, '0')}${b.toRadixString(16).padLeft(2, '0')}';
+  return r'\textcolor{' '$hex' '}{' '$formula' '}';
 }
 
 /// 预处理管线入口：块分割 → Markdown + 自定义块混合渲染

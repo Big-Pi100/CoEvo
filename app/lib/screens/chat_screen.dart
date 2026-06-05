@@ -149,13 +149,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     } catch (e) {
       debugPrint('_init: fatal error: $e');
-      if (mounted) setState(() {
-        _messages.add(Message(
-          role: 'assistant',
-          content: '你好！我是你的 AI 学习助手。有什么想学的吗？',
-          timestamp: DateTime.now(),
-        ));
-      });
+      if (mounted) {
+        setState(() {
+          _messages.add(Message(
+            role: 'assistant',
+            content: '你好！我是你的 AI 学习助手。有什么想学的吗？',
+            timestamp: DateTime.now(),
+          ));
+        });
+      }
     } finally {
       // 无论如何都要解除初始化状态，防止永久灰屏
       if (mounted) setState(() => _isInitializing = false);
@@ -177,28 +179,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final prefs = await _client!.getPreferences();
       final expiresStr = prefs['subscription_expires'];
       if (expiresStr == null || expiresStr.isEmpty) {
-        if (mounted) setState(() {
-          _subscriptionRequired = true;
-          _subscriptionExpired = false;
-          _subscriptionChecked = true;
-        });
+        if (mounted) {
+          setState(() {
+            _subscriptionRequired = true;
+            _subscriptionExpired = false;
+            _subscriptionChecked = true;
+          });
+        }
         return;
       }
       final expires = DateTime.tryParse(expiresStr);
       if (expires == null) {
-        if (mounted) setState(() {
-          _subscriptionRequired = true;
-          _subscriptionExpired = false;
-          _subscriptionChecked = true;
-        });
+        if (mounted) {
+          setState(() {
+            _subscriptionRequired = true;
+            _subscriptionExpired = false;
+            _subscriptionChecked = true;
+          });
+        }
         return;
       }
       final now = DateTime.now();
-      if (mounted) setState(() {
-        _subscriptionExpired = now.isAfter(expires);
-        _subscriptionRequired = false;
-        _subscriptionChecked = true;
-      });
+      if (mounted) {
+        setState(() {
+          _subscriptionExpired = now.isAfter(expires);
+          _subscriptionRequired = false;
+          _subscriptionChecked = true;
+        });
+      }
     } catch (e) {
       // 网络错误等，不阻断使用
       debugPrint('ChatScreen._checkSubscription: $e');
@@ -329,7 +337,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       case 'candidates':
         final list = event.candidates;
         if (list != null && list.isNotEmpty && list.any((c) => c.front.isNotEmpty)) {
-          Future.delayed(Duration.zero, () => ConceptDialog.show(context, candidates: list, client: _client, ref: ref, conversationId: _convId));
+          Future.delayed(Duration.zero, () { if (mounted) ConceptDialog.show(context, candidates: list, client: _client, ref: ref, conversationId: _convId); });
         }
         break;
       case 'error':
@@ -428,7 +436,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     setState(() {
       _messages[_streamingIndex] = Message(
         role: 'assistant',
-        content: '${errorMsg}',
+        content: errorMsg,
         timestamp: DateTime.now(),
       );
       _isWaiting = false;

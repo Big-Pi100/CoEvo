@@ -82,11 +82,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _realName = data['real_name'] as String?;
         _phone = data['phone'] as String?;
       });
-      if (mounted) setState(() {
-        _data = data;
-        _subscriptionExpires = serverPrefs['subscription_expires'];
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _data = data;
+          _subscriptionExpires = serverPrefs['subscription_expires'];
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -188,8 +190,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(onPressed: () {
             final v = controller.text.trim();
-            if (validator(v) == null) Navigator.pop(ctx, v);
-            else ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(validator(v)!)));
+            if (validator(v) == null) { Navigator.pop(ctx, v); }
+            else { ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(validator(v)!))); }
           }, child: const Text('保存')),
         ],
       ),

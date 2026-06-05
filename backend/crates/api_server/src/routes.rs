@@ -1240,9 +1240,9 @@ async fn plans_list_handler(
     let conn = crate::db_pool::get_conn();
 
     let (sql, param_val): (&str, String) = if let Some(conv_id) = params.get("conversation_id") {
-        ("SELECT id, conversation_id, goal, '' as domain, 'structured' as mode, plan_content, created_at, updated_at FROM conversation_plans WHERE conversation_id = ?1 ORDER BY created_at DESC", conv_id.clone())
+        ("SELECT id, conversation_id, goal, subject, grade_band, '' as domain, 'structured' as mode, plan_content, created_at, updated_at FROM conversation_plans WHERE conversation_id = ?1 ORDER BY created_at DESC", conv_id.clone())
     } else if let Some(uid) = params.get("user_id") {
-        ("SELECT id, conversation_id, goal, '' as domain, 'structured' as mode, plan_content, created_at, updated_at FROM conversation_plans WHERE user_id = ?1 ORDER BY created_at DESC", uid.clone())
+        ("SELECT id, conversation_id, goal, subject, grade_band, '' as domain, 'structured' as mode, plan_content, created_at, updated_at FROM conversation_plans WHERE user_id = ?1 ORDER BY created_at DESC", uid.clone())
     } else {
         return Json(serde_json::json!({"error": "user_id or conversation_id required"}));
     };
@@ -1253,7 +1253,7 @@ async fn plans_list_handler(
     };
     let plans: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![param_val], |row| {
         // plan_content: 完整计划结构（不含状态，状态在 user_plan_progress）
-        let plan_content_raw: Option<String> = row.get(5).ok();
+        let plan_content_raw: Option<String> = row.get(7).ok();
         let plan_id: String = row.get::<_, String>(0)?;
         let mut merged_plan = if let Some(content_str) = &plan_content_raw {
             if let Ok(content) = serde_json::from_str::<serde_json::Value>(content_str) {
@@ -1292,11 +1292,13 @@ async fn plans_list_handler(
             "id": plan_id,
             "conversation_id": row.get::<_, String>(1)?,
             "goal": row.get::<_, String>(2)?,
-            "domain": row.get::<_, String>(3)?,
-            "mode": row.get::<_, Option<String>>(4)?,
+            "subject": row.get::<_, Option<String>>(3)?,
+            "grade_band": row.get::<_, Option<String>>(4)?,
+            "domain": row.get::<_, String>(5)?,
+            "mode": row.get::<_, Option<String>>(6)?,
             "plan": merged_plan,
-            "created_at": row.get::<_, i64>(6)?.to_string(),
-            "updated_at": row.get::<_, i64>(7)?.to_string(),
+            "created_at": row.get::<_, i64>(8)?.to_string(),
+            "updated_at": row.get::<_, i64>(9)?.to_string(),
         }))
     }).unwrap().filter_map(|r| r.ok()).collect();
 

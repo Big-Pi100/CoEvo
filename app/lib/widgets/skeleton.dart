@@ -45,7 +45,7 @@ class _SkeletonState extends State<Skeleton> with SingleTickerProviderStateMixin
         width: widget.width,
         height: widget.height,
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceVariant.withAlpha(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(
             (255.0 * _animation.value).ceil().clamp(0, 255)),
           borderRadius: BorderRadius.circular(widget.borderRadius),
         ),

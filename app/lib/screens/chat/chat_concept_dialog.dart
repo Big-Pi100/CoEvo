@@ -112,7 +112,7 @@ class ConceptDialog {
                     }
                   }
                   if (isLastPage()) {
-                    Navigator.pop(ctx);
+                    if (ctx.mounted) Navigator.pop(ctx);
                   } else {
                     for (int i = (page + 1) * pageSize;
                          i < ((page + 1) * pageSize + pageSize).clamp(0, candidates.length);

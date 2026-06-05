@@ -39,7 +39,7 @@ class _GuardianScreenState extends State<GuardianScreen> {
   final _passCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
-  String _relation = '父亲';
+  final String _relation = '父亲';
   // 学生绑定
   final _sNameCtrl = TextEditingController();
   final _sPhoneCtrl = TextEditingController();
@@ -302,8 +302,8 @@ class _GuardianScreenState extends State<GuardianScreen> {
   }
 
   void _refresh() {
-    if (_activeStudentId != null) _viewStudent(_activeStudentId!);
-    else _loadStudents();
+    if (_activeStudentId != null) { _viewStudent(_activeStudentId!); }
+    else { _loadStudents(); }
   }
 
   Widget _buildLogin() {
@@ -408,7 +408,7 @@ class _GuardianScreenState extends State<GuardianScreen> {
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     leading: CircleAvatar(
-                      backgroundColor: _primaryMuted.withOpacity(0.12),
+                      backgroundColor: _primaryMuted.withValues(alpha: 0.12),
                       child: Text(
                         name.substring(0, 1),
                         style: TextStyle(fontWeight: FontWeight.w600, color: _primaryDark, fontSize: 15),
@@ -462,7 +462,7 @@ class _GuardianScreenState extends State<GuardianScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: color)),
@@ -513,7 +513,7 @@ class _GuardianScreenState extends State<GuardianScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
@@ -730,7 +730,7 @@ class _GuardianScreenState extends State<GuardianScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
           decoration: BoxDecoration(
-            color: isUser ? _primaryDark.withOpacity(0.06) : const Color(0xFFEEEDE8),
+            color: isUser ? _primaryDark.withValues(alpha: 0.06) : const Color(0xFFEEEDE8),
             borderRadius: BorderRadius.only(
               topLeft: const Radius.circular(14),
               topRight: const Radius.circular(14),
@@ -776,7 +776,7 @@ class _GuardianScreenState extends State<GuardianScreen> {
           Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: healthColor.withOpacity(0.1),
+              color: healthColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(healthIcon, size: 18, color: healthColor),
@@ -792,7 +792,7 @@ class _GuardianScreenState extends State<GuardianScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: healthColor.withOpacity(0.12),
+              color: healthColor.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text('${plan['score'] ?? 0}', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: healthColor)),

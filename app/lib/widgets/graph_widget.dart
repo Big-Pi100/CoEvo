@@ -4,7 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 
-/// 内联图形渲染组件 — 解析 <graph> JSON 并渲染对应图表
+/// 内联图形渲染组件 — 解析 `<graph>` JSON 并渲染对应图表
 class GraphWidget extends StatelessWidget {
   final String jsonStr;
 
@@ -604,7 +604,7 @@ class GraphWidget extends StatelessWidget {
 
   double _pow10(int n) {
     double r = 1;
-    for (var i = 0; i < n; i++) r *= 10;
+    for (var i = 0; i < n; i++) { r *= 10; }
     return r;
   }
 
@@ -642,7 +642,7 @@ class GraphWidget extends StatelessWidget {
     // data: [[x, y], ...] → [{"x": x, "y": y}, ...]
     if (m['data'] is List && (m['data'] as List).isNotEmpty) {
       final first = (m['data'] as List).first;
-      if (first is List && !(first is Map)) {
+      if (first is List && first is! Map) {
         m['data'] = (m['data'] as List).map((e) {
           final arr = e as List;
           return {'x': num.tryParse(arr[0].toString()) ?? 0, 'y': num.tryParse(arr[1].toString()) ?? 0};

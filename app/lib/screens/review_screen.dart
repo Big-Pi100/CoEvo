@@ -88,7 +88,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
       setState(() {
         // 所有 plan 都生成 tab，自由对话的 plan 用 goal 作为 tab 标签
         _planTabs = planList.toList();
-        final totalTabs = 2 + _planTabs.length;
+        final totalTabs = 1 + _planTabs.length;
         final oldIndex = _tabController.index;
         _tabController.dispose();
         _tabController = TabController(length: totalTabs, vsync: this,
@@ -415,10 +415,15 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
     return _cards.where((c) => c.conversationId == convId).length;
   }
 
-  /// 从 plan goal 提取简短标签（"K12: 数学 g3-4" → "数学 g3-4"）
+  /// 从 plan goal + grade_band 提取简短标签
   String _planLabel(Map<String, dynamic> plan) {
     final goal = plan['goal'] as String? ?? '';
-    return goal.replaceAll(RegExp(r'^K12:\s*'), '');
+    final gb = plan['grade_band'] as String? ?? '';
+    final label = goal.replaceAll(RegExp(r'^K12:\s*'), '');
+    if (gb.isNotEmpty) {
+      return '$label（$gb）';
+    }
+    return label;
   }
 
   @override

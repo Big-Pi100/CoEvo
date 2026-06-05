@@ -70,7 +70,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     }
     if (_role == 'super') {
       if (_mainTab == 2) { _loadAdmins(); _loadAssignments(); }
-      else if (_mainTab == 3) _loadLogs();
+      else if (_mainTab == 3) { _loadLogs(); }
     } else if (_role == 'service') {
       if (_mainTab == 2) _loadLogs();
     }
@@ -140,7 +140,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
       final role = resp['role'] as String? ?? '';
       if (role == 'tutor' || role == 'guardian') {
         _snack('辅导老师/家长请从对应入口登录。正在跳转...');
-        Future.delayed(const Duration(seconds: 1), () => context.go(role == 'tutor' ? '/teacher' : '/guardian'));
+        Future.delayed(const Duration(seconds: 1), () { if (mounted) context.go(role == 'tutor' ? '/teacher' : '/guardian'); });
         return;
       }
       _token = resp['token'];
@@ -188,6 +188,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
       final maskedPhone = resp1['phone'] as String;
       if (resp1['full'] == true) {
         // Already returned full (shouldn't happen on first call)
+        if (!mounted) return;
         showDialog(context: context, builder: (ctx) => AlertDialog(
           title: const Text('手机号'),
           content: Text(maskedPhone),
@@ -196,7 +197,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
         return;
       }
       // Show masked phone with "查看完整号码" button
-      if (!context.mounted) return;
+      if (!mounted) return;
       showDialog(context: context, builder: (ctx) => AlertDialog(
         title: const Text('手机号'),
         content: Text('已脱敏: $maskedPhone'),
@@ -207,7 +208,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
             // Step 2: reveal full phone
             final resp2 = await _api('POST', '/api/admin/users/$uid/reveal-phone?full=true');
             if (resp2.containsKey('phone')) {
-              if (!context.mounted) return;
+              if (!mounted) return;
               showDialog(context: context, builder: (ctx2) => AlertDialog(
                 title: const Text('完整手机号'),
                 content: Text('${resp2['phone']}'),
@@ -473,7 +474,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     final searchCtrl = TextEditingController();
     List<Map<String, dynamic>> results = [];
     bool searching = false;
-    Timer? _debounce;
+    Timer? debounce;
     showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, setSt) => AlertDialog(
       title: const Text('绑定学生'),
       content: SizedBox(
@@ -487,9 +488,9 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
               prefixIcon: Icon(Icons.search, size: 18),
             ),
             onChanged: (v) {
-              _debounce?.cancel();
+              debounce?.cancel();
               if (v.trim().isEmpty) { setSt(() { results = []; searching = false; }); return; }
-              _debounce = Timer(const Duration(milliseconds: 300), () async {
+              debounce = Timer(const Duration(milliseconds: 300), () async {
                 setSt(() => searching = true);
                 try {
                   final resp = await _api('GET', '/api/admin/users?page=1&q=${Uri.encodeComponent(v.trim())}&include_deleted=false');
@@ -722,7 +723,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
           // User results
           ..._users.map((u) => _buildUserCard(u)),
           // Load more button
-          if (!_searchCtrl.text.trim().isEmpty && !_userEndReached)
+          if (_searchCtrl.text.trim().isNotEmpty && !_userEndReached)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Center(child: TextButton(onPressed: _loadMoreUsers, child: Text('加载更多 (${_users.length}/$_userTotal)', style: const TextStyle(fontSize: 12)))),
@@ -806,7 +807,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: isDeleted ? Colors.red.withOpacity(0.1) : (isExpiring ? const Color(0xFFC77D33).withOpacity(0.1) : (isActive ? const Color(0xFF588157).withOpacity(0.1) : Colors.grey.withOpacity(0.1))),
+                color: isDeleted ? Colors.red.withValues(alpha: 0.1) : (isExpiring ? const Color(0xFFC77D33).withValues(alpha: 0.1) : (isActive ? const Color(0xFF588157).withValues(alpha: 0.1) : Colors.grey.withValues(alpha: 0.1))),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
@@ -838,7 +839,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
               const SizedBox(height: 3),
               // Phone row
               Text.rich(TextSpan(children: [
-                TextSpan(text: '$phoneMasked', style: const TextStyle(fontSize: 13)),
+                TextSpan(text: phoneMasked, style: const TextStyle(fontSize: 13)),
                 WidgetSpan(child: InkWell(
                   child: Padding(
                     padding: const EdgeInsets.only(left: 4),
@@ -1285,7 +1286,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF5B7A9A).withOpacity(0.1),
+                  color: const Color(0xFF5B7A9A).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(actionLabel, style: TextStyle(fontSize: 10, color: const Color(0xFF5B7A9A))),
