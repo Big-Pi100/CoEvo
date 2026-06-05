@@ -53,9 +53,6 @@ class HomeScreen extends ConsumerWidget {
     'g10-12': '高中',
   };
 
-  // 科目 → 模式
-  static bool _isReadingSubject(String subject) => subject == 'chinese';
-
   // 科目颜色
   static const _subjectColors = <String, Color>{
     'math': Color(0xFFE57373),
@@ -222,11 +219,7 @@ class HomeScreen extends ConsumerWidget {
         token: auth.token,
       );
 
-      // 根据科目判定模式，调用对应 API
-      final bool isReading = _isReadingSubject(subject);
-      final result = isReading
-          ? await client.k12ReadingInit(subject: subject, gradeBand: gradeBand)
-          : await client.k12Init(subject: subject, gradeBand: gradeBand);
+      final result = await client.k12Init(subject: subject, gradeBand: gradeBand);
 
       final convId = result['conversation_id'] as String?;
       if (convId != null && context.mounted) {

@@ -38,10 +38,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // 学习计划
   Map<String, dynamic>? _activePlan;
 
-  // 阅读模式（课文全文展示）
-  Map<String, dynamic>? _readingCard;
-  bool _isReading = false;
-
   // 订阅状态
   bool _subscriptionRequired = false;
   bool _subscriptionExpired = false;
@@ -151,24 +147,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       await planFuture;
       await subFuture;
 
-      // 检测阅读模式：尝试获取当前课文卡
-      if (_client != null && mounted) {
-        try {
-          final cardResult = await _client!.k12ReadingCurrentCard(_convId);
-          final card = cardResult['current_card'];
-          if (card != null && card is Map<String, dynamic> && card['full_text'] != null && 
-              (card['full_text'] as String).isNotEmpty) {
-            debugPrint('📖 _init: reading mode detected: ${card['front']}');
-            setState(() {
-              _readingCard = card;
-              _isReading = true;
-            });
-          }
-        } catch (e) {
-          // 非 reading 管线的对话，静默忽略
-          debugPrint('_init: reading card check ignored: $e');
-        }
-      }
     } catch (e) {
       debugPrint('_init: fatal error: $e');
       if (mounted) setState(() {
@@ -191,18 +169,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       setState(() => _activePlan = plans.first);
     }
 
-    // 课文推进后刷新阅读卡片
-    if (_isReading && mounted) {
-      try {
-        final cardResult = await _client!.k12ReadingCurrentCard(_convId);
-        final card = cardResult['current_card'];
-        if (card != null && card is Map<String, dynamic>) {
-          setState(() => _readingCard = card);
-        }
-      } catch (e) {
-        debugPrint('_loadPlan: reading card refresh ignored: $e');
-      }
-    }
   }
 
   Future<void> _checkSubscription() async {
@@ -555,51 +521,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  /// 阅读模式课文卡片入口
-  Widget _buildReadingCardBanner() {
-    if (!_isReading || _readingCard == null) return const SizedBox.shrink();
-
-    final theme = Theme.of(context);
-    final front = _readingCard!['front'] as String? ?? '';
-    final author = _readingCard!['author'] as String? ?? '';
-    final subtitle = author.isNotEmpty ? '· $author' : '';
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.menu_book, size: 20, color: theme.colorScheme.primary),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              '当前课文：$front $subtitle',
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              context.push('/reading-full-text', extra: _readingCard);
-            },
-            style: TextButton.styleFrom(
-              foregroundColor: theme.colorScheme.primary,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: const Text('查看全文 →', style: TextStyle(fontSize: 13)),
-          ),
-        ],
-      ),
-    );
-  }
-
   /// 对话已删除横幅
   Widget _buildDeletedBanner() {
     return Container(
@@ -792,8 +713,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           if (_activePlan != null) ChatPlanPanel(plan: _activePlan!),
           // 订阅状态横幅
           _buildSubscriptionBanner(),
-          // 阅读模式课文卡片入口
-          _buildReadingCardBanner(),
           // 对话已删除横幅
           if (_isDeleted) _buildDeletedBanner(),
           Expanded(

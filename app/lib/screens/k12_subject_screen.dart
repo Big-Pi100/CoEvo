@@ -19,15 +19,15 @@ class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
   // 有预生成计划的科目（按课标实际覆盖的学段过滤）
   // key=科目英文代码, value=可用学段列表
   static const _availableSubjects = <String, List<String>>{
-    'math': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
-    'chinese': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
-    'english': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
-    'physics': ['g7-9', 'g10', 'g11-12'],
-    'chemistry': ['g7-9', 'g10', 'g11-12'],
-    'biology': ['g7-9', 'g10', 'g11-12'],
-    'history': ['g7-9', 'g10', 'g11-12'],
-    'geography': ['g7-9', 'g10', 'g11-12'],
-    'politics': ['g10', 'g11-12'],
+    'math': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10-12'],
+    'chinese': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10-12'],
+    'english': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10-12'],
+    'physics': ['g7-9', 'g10-12'],
+    'chemistry': ['g7-9', 'g10-12'],
+    'biology': ['g7-9', 'g10-12'],
+    'history': ['g7-9', 'g10-12'],
+    'geography': ['g7-9', 'g10-12'],
+    'politics': ['g10-12'],
     'science': ['g3-4', 'g5-6', 'g7-9'],
     'it': ['g1-2', 'g3-4', 'g5-6', 'g7-9'],
     'japanese': ['g3-4', 'g5-6', 'g7-9'],
@@ -55,8 +55,7 @@ class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
     'g3-4': '小学中年级（3-4年级）',
     'g5-6': '小学高年级（5-6年级）',
     'g7-9': '初中（7-9年级）',
-    'g10': '高中一年级',
-    'g11-12': '高中二三年级',
+    'g10-12': '高中',
   };
 
   List<String> get _subjects => _availableSubjects.keys.toList();

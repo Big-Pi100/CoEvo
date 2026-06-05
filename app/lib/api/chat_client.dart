@@ -421,40 +421,6 @@ class ChatClient {
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }
 
-  /// 初始化课文阅读会话（reading-first 模式，独立于 K12）
-  Future<Map<String, dynamic>> k12ReadingInit({
-    required String subject,
-    required String gradeBand,
-  }) async {
-    final resp = await http.post(
-      Uri.parse('$baseUrl/api/k12/reading/init'),
-      headers: _authHeaders,
-      body: jsonEncode({
-        'user_id': userId,
-        'subject': subject,
-        'grade_band': gradeBand,
-      }),
-    ).timeout(ApiConfig.requestTimeout);
-
-    if (resp.statusCode != 200) {
-      throw Exception('Reading init error: ${resp.statusCode} ${resp.body}');
-    }
-    return jsonDecode(resp.body) as Map<String, dynamic>;
-  }
-
-  /// 获取当前阅读模式课文的完整卡片数据
-  Future<Map<String, dynamic>> k12ReadingCurrentCard(String conversationId) async {
-    final uri = Uri.parse('$baseUrl/api/k12/reading/$conversationId/current-card')
-        .replace(queryParameters: {'user_id': userId});
-    final resp = await http.get(uri, headers: _authHeaders)
-        .timeout(ApiConfig.requestTimeout);
-
-    if (resp.statusCode != 200) {
-      throw Exception('Current card error: ${resp.statusCode} ${resp.body}');
-    }
-    return jsonDecode(resp.body) as Map<String, dynamic>;
-  }
-
   /// 获取 K12 学习进度
 
   /// 获取 K12 学习进度

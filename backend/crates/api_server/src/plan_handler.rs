@@ -210,57 +210,6 @@ pub fn handle_plan_update(
         }
     }
 
-    // ── reading_update 标签：标记当前 task 为 completed ──
-    if let Some(start) = final_reply.find("<reading_update") {
-        if let Some(tag_end) = final_reply[start..].find('>') {
-            let content_start = start + tag_end + 1;
-            if let Some(end) = final_reply[content_start..].find("</reading_update>") {
-                let json_str = final_reply[content_start..content_start + end].to_string();
-                final_reply.replace_range(start..content_start + end + 17, "");
-
-                // 预期格式: {"complete_current_task": true}
-                if let Ok(update) = serde_json::from_str::<serde_json::Value>(&json_str) {
-                    if update.get("complete_current_task").and_then(|v| v.as_bool()).unwrap_or(false) {
-                        plan_updated = true;
-                        // 从 conversation_plans.plan_content 读取完整计划结构
-                        let plan_content_str: Option<String> = conn.query_row(
-                            "SELECT plan_content FROM conversation_plans WHERE conversation_id = ?1 LIMIT 1",
-                            rusqlite::params![conversation_id],
-                            |row| row.get::<_, Option<String>>(0),
-                        ).ok().flatten();
-
-                        // 构建合并 plan 供返回值使用
-                        let merged: serde_json::Value = if let Some(ref content_str) = plan_content_str {
-                            if let Ok(mut content) = serde_json::from_str::<serde_json::Value>(content_str) {
-                                // 按顺序找到第一个非 done 的 task，标记为 done
-                                if let Some(stages) = content.get_mut("stages").and_then(|s| s.as_array_mut()) {
-                                    for stage in stages {
-                                        if let Some(tasks) = stage.get_mut("tasks").and_then(|t| t.as_array_mut()) {
-                                            for task in tasks.iter_mut() {
-                                                let ts = task["status"].as_str().unwrap_or("pending");
-                                                if ts != "done" {
-                                                    task["status"] = serde_json::json!("done");
-                                                    tracing::info!("READING task done: {}",
-                                                        task["name"].as_str().unwrap_or("?"));
-                                                    break;
-                                                }
-                                            }
-                                            break; // 只处理第一个 stage
-                                        }
-                                    }
-                                }
-                                // plan_content 只存结构，不存状态
-                                // 状态变化由调用方同步到 user_plan_progress
-                                content
-                            } else { serde_json::Value::Null }
-                        } else { serde_json::Value::Null };
-                        task_status = Some(merged);
-                    }
-                }
-            }
-        }
-    }
-
     PlanUpdateResult {
         cleaned_reply: final_reply,
         is_new_plan,
