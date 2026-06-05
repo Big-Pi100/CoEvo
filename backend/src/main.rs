@@ -9,158 +9,19 @@
 //! Schema & migration errors are propagated — the process will exit
 //! on critical failures to avoid running in a broken state.
 
-/// 内联数据库 Schema（替代 schema.sql 文件，确保 APK 部署不依赖文件系统）
-const SCHEMA_SQL: &str = r#"
-CREATE TABLE users (
-    id TEXT PRIMARY KEY,
-    username TEXT NOT NULL UNIQUE,
-    password_hash TEXT,
-    streak_days INTEGER DEFAULT 0,
-    last_active_date TEXT,
-    display_name TEXT DEFAULT NULL,
-    real_name TEXT DEFAULT NULL,
-    phone TEXT DEFAULT NULL,
-    id_number TEXT DEFAULT NULL,
-    bind_hash TEXT DEFAULT NULL,
-    created_at TEXT NOT NULL
-);
-CREATE TABLE tokens (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    token TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-CREATE TABLE conversations (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    turn_count INTEGER DEFAULT 0,
-    started_at TEXT NOT NULL,
-    subject TEXT,
-    grade_band TEXT,
-    deleted_at TEXT,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-CREATE TABLE conversation_turns (
-    id TEXT PRIMARY KEY,
-    conversation_id TEXT NOT NULL,
-    role TEXT NOT NULL,
-    content TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id)
-);
-CREATE TABLE cards (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    domain TEXT,
-    card_type TEXT NOT NULL,
-    front TEXT NOT NULL,
-    back TEXT NOT NULL,
-    source_sentence TEXT,
-    created_at INTEGER NOT NULL,
-    conversation_id TEXT,
-    subject TEXT,
-    grade_band TEXT,
-    k12_card_id TEXT,
-    gold_cr_id TEXT,
-    status TEXT NOT NULL DEFAULT 'active'
-        CHECK(status IN ('active', 'pending', 'skipped', 'archived')),
-    origin TEXT DEFAULT 'extracted'
-        CHECK(origin IN ('extracted', 'prebuilt')),
-    plan_type TEXT,
-    plan_id TEXT,
-    stage_name TEXT DEFAULT NULL,
-    plan_task_id TEXT DEFAULT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL
-);
-CREATE TABLE card_memory (
-    card_id TEXT PRIMARY KEY,
-    state INTEGER DEFAULT 0,
-    difficulty REAL DEFAULT 5.0,
-    stability REAL DEFAULT 0.0,
-    due INTEGER DEFAULT 0,
-    last_review INTEGER,
-    reps INTEGER DEFAULT 0,
-    lapses INTEGER DEFAULT 0,
-    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
-);
-CREATE TABLE review_log (
-    id TEXT PRIMARY KEY,
-    card_id TEXT NOT NULL,
-    rating INTEGER NOT NULL,
-    verification_type TEXT NOT NULL
-        CHECK(verification_type IN ('spelling', 'typing', 'ai_dialogue')),
-    verification_result TEXT NOT NULL
-        CHECK(verification_result IN ('pass', 'fail')),
-    reviewed_at INTEGER NOT NULL,
-    details_json TEXT,
-    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
-);
-CREATE TABLE achievements (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    achievement_key TEXT NOT NULL,
-    name TEXT NOT NULL,
-    icon TEXT NOT NULL,
-    tier TEXT DEFAULT 'fixed',
-    source TEXT,
-    unlocked_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-CREATE INDEX IF NOT EXISTS idx_cards_user_id ON cards(user_id);
-CREATE INDEX IF NOT EXISTS idx_cards_user_domain ON cards(user_id, domain);
-CREATE INDEX IF NOT EXISTS idx_cards_conversation_id ON cards(conversation_id);
-CREATE INDEX IF NOT EXISTS idx_card_memory_due ON card_memory(due);
-CREATE INDEX IF NOT EXISTS idx_conversation_turns_conv ON conversation_turns(conversation_id);
-CREATE INDEX IF NOT EXISTS idx_review_log_card_reviewed ON review_log(card_id, reviewed_at);
-CREATE TABLE IF NOT EXISTS plan_templates (
-    id TEXT PRIMARY KEY,
-    subject TEXT NOT NULL,
-    subject_key TEXT NOT NULL UNIQUE,
-    grade_band TEXT NOT NULL,
-    goal TEXT NOT NULL,
-    plan_content TEXT NOT NULL,
-    version INTEGER DEFAULT 1,
-    updated_at INTEGER NOT NULL,
-    UNIQUE(subject_key, grade_band)
-);
-CREATE TABLE IF NOT EXISTS conversation_plans (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    conversation_id TEXT NOT NULL UNIQUE,
-    goal TEXT NOT NULL,
-    domain TEXT DEFAULT 'general',
-    plan_content TEXT,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_conversation_plans_user ON conversation_plans(user_id);
-CREATE TABLE IF NOT EXISTS user_plan_progress (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    plan_type TEXT NOT NULL,
-    plan_id TEXT NOT NULL,
-    task_key TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending'
-        CHECK(status IN ('pending', 'in_progress', 'done', 'skipped')),
-    score REAL,
-    attempt_count INTEGER DEFAULT 0,
-    started_at INTEGER,
-    completed_at INTEGER,
-    updated_at INTEGER NOT NULL,
-    UNIQUE(plan_id, task_key),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_upp_user_plan ON user_plan_progress(user_id, plan_type, plan_id);
-CREATE INDEX IF NOT EXISTS idx_upp_status ON user_plan_progress(plan_id, status);
-"#;
+/// Panic hook：崩溃时打印信息到 stderr
+fn setup_panic_hook() {
+    std::panic::set_hook(Box::new(|info| {
+        eprintln!("\n====== PANIC ======");
+        eprintln!("{}", info);
+        eprintln!("===================\n");
+    }));
+}
 
 #[tokio::main]
 async fn main() {
     let _ = dotenvy::dotenv();
+    setup_panic_hook();
 
     // ── Logging: file-based with daily rotation ──
     // On Android APK, stdout is invisible; logs go to files instead.
@@ -183,7 +44,7 @@ async fn main() {
         .init();
 
     // 启动时显式输出 K12 数据路径（不受 tracing 影响，一定看得到）
-    let prebuilt = std::env::var("COEVO_K12_DATA_DIR").unwrap_or_else(|_| "data/curriculum/prebuilt".to_string());
+    let prebuilt = std::env::var("COEVO_K12_DATA_DIR").unwrap_or_else(|_| "data/curriculum/v3".to_string());
     eprintln!("[K12] data dir: {}", prebuilt);
 
     tracing::info!("CoEvo backend starting, logs: {}/coevo.log.*", log_dir);
@@ -214,10 +75,6 @@ async fn main() {
 
     // Load curriculum guide
     api_server::curriculum_loader::init().unwrap_or_else(|e| tracing::warn!("K12 loader: {}", e));
-    api_server::reading_loader::init().unwrap_or_else(|e| {
-        eprintln!("[READING] init failed: {}", e);
-        tracing::error!("READING loader: {}", e);
-    });
     tracing::info!("Data loaders initialized");
     tracing::info!("Knowledge graph loaded");
 
@@ -232,7 +89,7 @@ async fn main() {
 
     chat_engine::config::ensure_db_connection();
 
-    // --- Auto-schema + Migrations ---
+    // --- Auto-schema ---
     {
         let conn = api_server::db_pool::get_conn();
         let table_count: i32 = conn.query_row(
@@ -240,14 +97,12 @@ async fn main() {
             [], |row| row.get(0),
         ).unwrap_or(0);
         if table_count < 3 {
-            let safe_sql = SCHEMA_SQL.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS");
-            // Critical: schema init failure should prevent startup
-            conn.execute_batch(&safe_sql)
+            api_server::schema::init_database(&conn)
                 .unwrap_or_else(|e| {
                     tracing::error!("Schema init failed critically: {}", e);
                     panic!("Schema init failed: {}", e);
                 });
-            tracing::info!("Schema initialized (9 tables, tokens + migrations to follow)");
+            tracing::info!("Schema initialized (production schema)");
         }
 
         let migrations: &[&str] = &[
@@ -348,38 +203,6 @@ async fn main() {
             "CREATE INDEX IF NOT EXISTS idx_admin_audit_log_admin ON admin_audit_log(admin_id, created_at)",
             "CREATE INDEX IF NOT EXISTS idx_admin_audit_log_action ON admin_audit_log(action, created_at)",
             "ALTER TABLE admin_users ADD COLUMN permissions TEXT DEFAULT '{}'",
-            // K12 支持 — 添加 cards 表字段
-            "ALTER TABLE cards ADD COLUMN subject TEXT DEFAULT NULL",
-            "ALTER TABLE cards ADD COLUMN grade_band TEXT DEFAULT NULL",
-            "ALTER TABLE cards ADD COLUMN k12_card_id TEXT DEFAULT NULL",
-            // K12 进度追踪
-            "CREATE TABLE IF NOT EXISTS k12_progress (
-                id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                subject TEXT NOT NULL,
-                grade_band TEXT NOT NULL,
-                plan_json TEXT,
-                mastered_cards INTEGER DEFAULT 0,
-                total_cards INTEGER DEFAULT 0,
-                started_at TEXT NOT NULL,
-                last_activity_at TEXT,
-                completed_at TEXT,
-                FOREIGN KEY (user_id) REFERENCES users(id),
-                UNIQUE(user_id, subject, grade_band)
-            )",
-            "CREATE TABLE IF NOT EXISTS k12_achievements (
-                id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                achievement_id TEXT NOT NULL,
-                unlocked_at TEXT NOT NULL,
-                FOREIGN KEY (user_id) REFERENCES users(id),
-                UNIQUE(user_id, achievement_id)
-            )",
-            "CREATE INDEX IF NOT EXISTS idx_k12_progress_user ON k12_progress(user_id)",
-            "CREATE INDEX IF NOT EXISTS idx_k12_achievements_user ON k12_achievements(user_id)",
-            // K12 — conversations 表加 subject/grade_band 列
-            "ALTER TABLE conversations ADD COLUMN subject TEXT DEFAULT NULL",
-            "ALTER TABLE conversations ADD COLUMN grade_band TEXT DEFAULT NULL",
             // K12 题库
             "CREATE TABLE IF NOT EXISTS k12_quiz_bank (
                 id TEXT PRIMARY KEY,
@@ -408,12 +231,6 @@ async fn main() {
             "CREATE INDEX IF NOT EXISTS idx_k12_quiz_attempts_user_quiz ON k12_quiz_attempts(user_id, quiz_id)",
 
             // V2.2 知识图谱支持
-            // cards 表新增字段
-            "ALTER TABLE cards ADD COLUMN gold_cr_id TEXT DEFAULT NULL",
-            "ALTER TABLE cards ADD COLUMN origin TEXT DEFAULT 'extracted'",
-            // Stage 级卡片绑定
-            "ALTER TABLE cards ADD COLUMN stage_name TEXT DEFAULT NULL",
-            "ALTER TABLE cards ADD COLUMN plan_task_id TEXT DEFAULT NULL",
             // k12_quiz_bank 新增关联字段
             "ALTER TABLE k12_quiz_bank ADD COLUMN assessment_item_id TEXT DEFAULT NULL",
             "ALTER TABLE k12_quiz_bank ADD COLUMN plan_stage_id TEXT DEFAULT NULL",
@@ -452,536 +269,11 @@ async fn main() {
             }
         }
 
-        // ── V2.0 migrations: conversations table rebuild (drop learning_plan_id) ──
-        {
-            let has_old_col: bool = conn
-                .prepare("SELECT learning_plan_id FROM conversations LIMIT 1")
-                .is_ok();
-            if has_old_col {
-                tracing::info!("Migration V2.0: rebuilding conversations table (drop learning_plan_id)");
-                // 临时关闭 FK 检查以允许 DROP TABLE + RENAME
-                conn.execute_batch("PRAGMA foreign_keys=OFF;").unwrap();
-                conn.execute_batch("
-                    BEGIN TRANSACTION;
-                    CREATE TABLE conversations_new (
-                        id TEXT PRIMARY KEY,
-                        user_id TEXT NOT NULL,
-                        turn_count INTEGER DEFAULT 0,
-                        started_at TEXT NOT NULL,
-                        deleted_at TEXT,
-                        subject TEXT,
-                        grade_band TEXT,
-                        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-                    );
-                    INSERT INTO conversations_new (id, user_id, turn_count, started_at, deleted_at, subject, grade_band)
-                        SELECT id, user_id, turn_count, started_at, deleted_at, subject, grade_band FROM conversations;
-                    DROP TABLE conversations;
-                    ALTER TABLE conversations_new RENAME TO conversations;
-                    CREATE INDEX IF NOT EXISTS idx_conversations_user_deleted ON conversations(user_id, deleted_at);
-                    COMMIT;
-                ").unwrap_or_else(|e| {
-                    tracing::error!("Migration V2.0 failed: {}", e);
-                    panic!("Migration V2.0 failed: {}", e);
-                });
-                conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
-                tracing::info!("Migration V2.0: conversations rebuilt successfully");
-            } else {
-                tracing::debug!("Migration V2.0: conversations already migrated (no learning_plan_id column)");
-            }
         }
 
-        {
-            // 检测条件：cards 是否已有 origin 列（判断 Phase 4 是否已运行）
-            let has_origin: bool = conn
-                .prepare("SELECT origin FROM cards LIMIT 1")
-                .is_ok();
-            if !has_origin {
-                tracing::info!("Migration V2.0 Phase4: rebuilding cards/review_log/card_memory");
-                conn.execute_batch("PRAGMA foreign_keys=OFF;").unwrap();
-                conn.execute_batch(r#"
-                    BEGIN TRANSACTION;
-
-                    -- 1. cards 重建（FK + origin CHECK）
-                    CREATE TABLE cards_new (
-                        id TEXT PRIMARY KEY,
-                        user_id TEXT NOT NULL,
-                        domain TEXT,
-                        card_type TEXT NOT NULL,
-                        front TEXT NOT NULL,
-                        back TEXT NOT NULL,
-                        source_sentence TEXT,
-                        created_at INTEGER NOT NULL,
-                        conversation_id TEXT,
-                        subject TEXT,
-                        grade_band TEXT,
-                        k12_card_id TEXT,
-                        gold_cr_id TEXT,
-                        origin TEXT DEFAULT 'extracted'
-                            CHECK(origin IN ('extracted', 'prebuilt')),
-                        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL
-                    );
-                    INSERT INTO cards_new SELECT * FROM cards;
-                    DROP TABLE cards;
-                    ALTER TABLE cards_new RENAME TO cards;
-                    CREATE INDEX IF NOT EXISTS idx_cards_user_id ON cards(user_id);
-                    CREATE INDEX IF NOT EXISTS idx_cards_user_domain ON cards(user_id, domain);
-                    CREATE INDEX IF NOT EXISTS idx_cards_conversation_id ON cards(conversation_id);
-
-                    -- 3. card_memory 重建（ON DELETE CASCADE）
-                    CREATE TABLE card_memory_new (
-                        card_id TEXT PRIMARY KEY,
-                        state INTEGER DEFAULT 0,
-                        difficulty REAL DEFAULT 5.0,
-                        stability REAL DEFAULT 0.0,
-                        due INTEGER DEFAULT 0,
-                        last_review INTEGER,
-                        reps INTEGER DEFAULT 0,
-                        lapses INTEGER DEFAULT 0,
-                        FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
-                    );
-                    INSERT INTO card_memory_new SELECT * FROM card_memory;
-                    DROP TABLE card_memory;
-                    ALTER TABLE card_memory_new RENAME TO card_memory;
-                    CREATE INDEX IF NOT EXISTS idx_card_memory_due ON card_memory(due);
-
-                    -- 4. review_log 重建（CHECK 约束）
-                    CREATE TABLE review_log_new (
-                        id TEXT PRIMARY KEY,
-                        card_id TEXT NOT NULL,
-                        rating INTEGER NOT NULL,
-                        verification_type TEXT NOT NULL
-                            CHECK(verification_type IN ('spelling', 'typing', 'ai_dialogue')),
-                        verification_result TEXT NOT NULL
-                            CHECK(verification_result IN ('pass', 'fail')),
-                        reviewed_at INTEGER NOT NULL,
-                        details_json TEXT,
-                        FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
-                    );
-                    INSERT INTO review_log_new SELECT * FROM review_log;
-                    DROP TABLE review_log;
-                    ALTER TABLE review_log_new RENAME TO review_log;
-                    CREATE INDEX IF NOT EXISTS idx_review_log_card_reviewed ON review_log(card_id, reviewed_at);
-
-                    COMMIT;
-                "#).unwrap_or_else(|e| {
-                    tracing::error!("Migration V2.0 Phase4 failed: {}", e);
-                    panic!("Migration V2.0 Phase4 failed: {}", e);
-                });
-                conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
-                tracing::info!("Migration V2.0 Phase4: rebuild complete (cards: FK+origin CHECK, card_memory: CASCADE, review_log: CHECK)");
-            } else {
-                tracing::debug!("Migration V2.0 Phase4: already applied (cards have origin column)");
-            }
-        }
-
-        // ── V2.0 Phase 4b: 预置卡 origin 标记修复 ──
-        // Phase 4 迁移时旧数据（k12_prebuilt）被统一标记为 origin='extracted'，
-        // 修正为 origin='prebuilt'
-        {
-            let need_fix: i64 = conn.query_row(
-                "SELECT COUNT(*) FROM cards WHERE k12_card_id IS NOT NULL AND origin = 'extracted'",
-                [], |row| row.get(0),
-            ).unwrap_or(0);
-            if need_fix > 0 {
-                tracing::info!("Migration V2.0 Phase4b: fixing {} prebuilt cards' origin to 'prebuilt'", need_fix);
-                conn.execute(
-                    "UPDATE cards SET origin = 'prebuilt' WHERE k12_card_id IS NOT NULL AND origin = 'extracted'",
-                    [],
-                ).unwrap_or_else(|e| {
-                    tracing::error!("Migration V2.0 Phase4b failed: {}", e);
-                    0
-                });
-                tracing::info!("Migration V2.0 Phase4b: prebuilt card origin fixed");
-            } else {
-                tracing::debug!("Migration V2.0 Phase4b: no prebuilt cards need fixing");
-            }
-        }
-    }
-
-    // ── V2.1 Phase 0: 清理 learning_plan_tasks（已废弃，任务列表从 plan_content 运行时解析） ──
-    {
-        let conn = api_server::db_pool::get_conn();
-        let has_tasks_table: bool = conn
-            .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='learning_plan_tasks'")
-            .is_ok_and(|mut s| s.query_row([], |_| Ok(())).is_ok());
-        if has_tasks_table {
-            tracing::info!("Migration V2.1 Phase0: dropping deprecated learning_plan_tasks table");
-            conn.execute_batch(r#"
-                PRAGMA foreign_keys=OFF;
-                DROP TABLE IF EXISTS learning_plan_tasks;
-                PRAGMA foreign_keys=ON;
-            "#).unwrap_or_else(|e| {
-                tracing::error!("Migration V2.1 Phase0 failed: {}", e);
-            });
-            tracing::info!("Migration V2.1 Phase0: learning_plan_tasks dropped");
-        } else {
-            tracing::debug!("Migration V2.1 Phase0: already clean");
-        }
-    }
-
-    // ── V2.1 Phase 1: 新建 plan_templates + conversation_plans + user_plan_progress ──
-    {
-        let conn = api_server::db_pool::get_conn();
-        let has_plan_templates: bool = conn
-            .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='plan_templates'")
-            .is_ok_and(|mut s| s.query_row([], |_| Ok(())).is_ok());
-        if !has_plan_templates {
-            tracing::info!("Migration V2.1 Phase1: creating plan_templates, conversation_plans, user_plan_progress");
-            conn.execute_batch(r#"
-                BEGIN TRANSACTION;
-
-                CREATE TABLE IF NOT EXISTS plan_templates (
-                    id TEXT PRIMARY KEY,
-                    subject TEXT NOT NULL,
-                    subject_key TEXT NOT NULL UNIQUE,
-                    grade_band TEXT NOT NULL,
-                    goal TEXT NOT NULL,
-                    plan_content TEXT NOT NULL,
-                    version INTEGER DEFAULT 1,
-                    updated_at INTEGER NOT NULL,
-                    UNIQUE(subject_key, grade_band)
-                );
-
-                CREATE TABLE IF NOT EXISTS conversation_plans (
-                    id TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL,
-                    conversation_id TEXT NOT NULL UNIQUE,
-                    goal TEXT NOT NULL,
-                    domain TEXT DEFAULT 'general'
-                        CHECK(domain IN ('general','math','language','chemistry','biology','physics',
-                                         'history','geography','politics','science','it','pe','art','labor')),
-                    plan_content TEXT,
-                    created_at INTEGER NOT NULL,
-                    updated_at INTEGER NOT NULL,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
-                );
-                CREATE INDEX IF NOT EXISTS idx_conversation_plans_user ON conversation_plans(user_id);
-
-                CREATE TABLE IF NOT EXISTS user_plan_progress (
-                    id TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL,
-                    plan_type TEXT NOT NULL,
-                    plan_id TEXT NOT NULL,
-                    task_key TEXT NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'pending'
-                        CHECK(status IN ('pending', 'in_progress', 'done', 'skipped')),
-                    score REAL,
-                    attempt_count INTEGER DEFAULT 0,
-                    started_at INTEGER,
-                    completed_at INTEGER,
-                    updated_at INTEGER NOT NULL,
-                    UNIQUE(plan_id, task_key),
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-                );
-                CREATE INDEX IF NOT EXISTS idx_upp_user_plan ON user_plan_progress(user_id, plan_type, plan_id);
-                CREATE INDEX IF NOT EXISTS idx_upp_status ON user_plan_progress(plan_id, status);
-
-                COMMIT;
-            "#).unwrap_or_else(|e| {
-                tracing::error!("Migration V2.1 Phase1 failed: {}", e);
-                panic!("Migration V2.1 Phase1 failed: {}", e);
-            });
-            tracing::info!("Migration V2.1 Phase1: 3 tables created successfully");
-        } else {
-            tracing::debug!("Migration V2.1 Phase1: already applied (plan_templates exists)");
-        }
-    }
-
-    // ── V2.1 Phase 2: 重命名 cp1_plans → conversation_plans ──
-    {
-        let conn = api_server::db_pool::get_conn();
-        let has_old_name: bool = conn
-            .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cp1_plans'")
-            .is_ok_and(|mut s| s.query_row([], |_| Ok(())).is_ok());
-        if has_old_name {
-            let has_new_name: bool = conn
-                .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='conversation_plans'")
-                .is_ok_and(|mut s| s.query_row([], |_| Ok(())).is_ok());
-            if !has_new_name {
-                tracing::info!("Migration V2.1 Phase2: renaming cp1_plans → conversation_plans");
-                conn.execute_batch(r#"
-                    PRAGMA foreign_keys=OFF;
-                    ALTER TABLE cp1_plans RENAME TO conversation_plans;
-                    PRAGMA foreign_keys=ON;
-                "#).unwrap_or_else(|e| {
-                    tracing::error!("Migration V2.1 Phase2 failed: {}", e);
-                    panic!("Migration V2.1 Phase2 failed: {}", e);
-                });
-                tracing::info!("Migration V2.1 Phase2: renamed successfully");
-            } else {
-                tracing::debug!("Migration V2.1 Phase2: both old and new table exist, dropping old");
-                conn.execute_batch("DROP TABLE IF EXISTS cp1_plans;").unwrap();
-            }
-        } else {
-            tracing::debug!("Migration V2.1 Phase2: already renamed (cp1_plans not found)");
-        }
-    }
-
-    // ── Phase N: 加 cards.status 列 + 清理 domain/subject 中文值 + 废弃 skipped_concepts ──
-    {
-        let conn = api_server::db_pool::get_conn();
-        // 检测条件：cards 表是否有 status 列
-        let has_status: bool = conn
-            .prepare("SELECT status FROM cards LIMIT 0")
-            .is_ok();
-        if has_status {
-            tracing::debug!("Phase N: already applied (cards.status exists)");
-        } else {
-            tracing::info!("Phase N: adding status column, cleaning up subject codes, dropping skipped_concepts");
-            conn.execute_batch(r#"
-                -- 1. 加 status 列
-                ALTER TABLE cards ADD COLUMN status TEXT NOT NULL DEFAULT 'active'
-                    CHECK(status IN ('active', 'pending', 'skipped', 'archived'));
-
-                -- 1b. 加 plan_type/plan_id 列（卡片→计划关联）
-                ALTER TABLE cards ADD COLUMN plan_type TEXT;
-                ALTER TABLE cards ADD COLUMN plan_id TEXT;
-
-                -- 2. 迁移存量 origin='prebuilt' 为 status='active'
-                UPDATE cards SET status = 'active' WHERE origin = 'prebuilt';
-
-                -- 3. 清理 cards.domain 中文值 → 英文代码
-                UPDATE cards SET domain = 'math'     WHERE domain = '数学';
-                UPDATE cards SET domain = 'chinese'  WHERE domain = '语文';
-                UPDATE cards SET domain = 'english'  WHERE domain = '英语';
-                UPDATE cards SET domain = 'physics'  WHERE domain = '物理';
-                UPDATE cards SET domain = 'chemistry'WHERE domain = '化学';
-                UPDATE cards SET domain = 'biology'  WHERE domain = '生物' OR domain = '生物学';
-                UPDATE cards SET domain = 'history'  WHERE domain = '历史';
-                UPDATE cards SET domain = 'geography'WHERE domain = '地理';
-                UPDATE cards SET domain = 'politics' WHERE domain = '政治' OR domain = '道德与法治' OR domain = '道法';
-                UPDATE cards SET domain = 'science'  WHERE domain = '科学';
-                UPDATE cards SET domain = 'it'        WHERE domain = '信息技术' OR domain = '信息科技';
-                UPDATE cards SET domain = 'pe'        WHERE domain = '体育' OR domain = '体育与健康';
-                UPDATE cards SET domain = 'art'       WHERE domain = '艺术' OR domain = '美术' OR domain = '音乐';
-                UPDATE cards SET domain = 'labor'     WHERE domain = '劳动';
-                UPDATE cards SET domain = 'japanese'  WHERE domain = '日语';
-                UPDATE cards SET domain = 'russian'   WHERE domain = '俄语';
-                UPDATE cards SET domain = 'general'   WHERE domain = '' OR domain IS NULL;
-
-                -- 4. 清理 cards.subject 中文值 → 英文代码
-                UPDATE cards SET subject = 'math'     WHERE subject = '数学';
-                UPDATE cards SET subject = 'chinese'  WHERE subject = '语文';
-                UPDATE cards SET subject = 'english'  WHERE subject = '英语';
-                UPDATE cards SET subject = 'physics'  WHERE subject = '物理';
-                UPDATE cards SET subject = 'chemistry'WHERE subject = '化学';
-                UPDATE cards SET subject = 'biology'  WHERE subject = '生物' OR subject = '生物学';
-                UPDATE cards SET subject = 'history'  WHERE subject = '历史';
-                UPDATE cards SET subject = 'geography'WHERE subject = '地理';
-                UPDATE cards SET subject = 'politics' WHERE subject = '政治' OR subject = '道德与法治';
-                UPDATE cards SET subject = 'science'  WHERE subject = '科学';
-                UPDATE cards SET subject = 'it'        WHERE subject = '信息技术' OR subject = '信息科技';
-                UPDATE cards SET subject = 'pe'        WHERE subject = '体育';
-                UPDATE cards SET subject = 'art'       WHERE subject = '艺术' OR subject = '美术' OR subject = '音乐';
-                UPDATE cards SET subject = 'japanese'  WHERE subject = '日语';
-                UPDATE cards SET subject = 'russian'   WHERE subject = '俄语';
-
-                -- 5. 清理 conversations.subject 中文值 → 英文代码
-                UPDATE conversations SET subject = 'math'     WHERE subject = '数学';
-                UPDATE conversations SET subject = 'chinese'  WHERE subject = '语文';
-                UPDATE conversations SET subject = 'english'  WHERE subject = '英语';
-                UPDATE conversations SET subject = 'physics'  WHERE subject = '物理';
-                UPDATE conversations SET subject = 'chemistry'WHERE subject = '化学';
-                UPDATE conversations SET subject = 'biology'  WHERE subject = '生物' OR subject = '生物学';
-                UPDATE conversations SET subject = 'history'  WHERE subject = '历史';
-                UPDATE conversations SET subject = 'geography'WHERE subject = '地理';
-                UPDATE conversations SET subject = 'politics' WHERE subject = '政治' OR subject = '道德与法治';
-                UPDATE conversations SET subject = 'science'  WHERE subject = '科学';
-                UPDATE conversations SET subject = 'it'        WHERE subject = '信息技术' OR subject = '信息科技';
-                UPDATE conversations SET subject = 'pe'        WHERE subject = '体育';
-                UPDATE conversations SET subject = 'art'       WHERE subject = '艺术' OR subject = '美术' OR subject = '音乐';
-                UPDATE conversations SET subject = 'japanese'  WHERE subject = '日语';
-                UPDATE conversations SET subject = 'russian'   WHERE subject = '俄语';
-
-                -- 6. 废弃 skipped_concepts 表
-                DROP TABLE IF EXISTS skipped_concepts;
-            "#).unwrap_or_else(|e| {
-                tracing::error!("Phase N migration failed: {}", e);
-                panic!("Phase N migration failed: {}", e);
-            });
-            tracing::info!("Phase N: cards.status + subject code cleanup + skipped_concepts drop completed");
-        }
-    }
-
-    // ── Phase StageBinding: 预置卡 stage_name 分配 + 归档旧卡 ──
-    {
-        let conn = api_server::db_pool::get_conn();
-        let has_stage_col: bool = conn
-            .prepare("SELECT stage_name FROM cards LIMIT 0")
-            .is_ok();
-        if !has_stage_col {
-            tracing::warn!("Phase StageBinding: stage_name column not found (ALTER TABLE may have failed)");
-        } else {
-            // 检查是否有尚未分配 stage_name 的预置卡
-            let need_migrate: i64 = conn.query_row(
-                "SELECT COUNT(*) FROM cards WHERE origin = 'prebuilt' AND stage_name IS NULL",
-                [], |row| row.get(0),
-            ).unwrap_or(0);
-            if need_migrate == 0 {
-                tracing::debug!("Phase StageBinding: already applied (no prebuilt cards without stage_name)");
-            } else {
-                tracing::info!("Phase StageBinding: migrating {} prebuilt cards to stage-level binding", need_migrate);
-
-                // 1. 归档所有存量预置卡
-                let archived = conn.execute(
-                    "UPDATE cards SET status = 'archived' WHERE origin = 'prebuilt' AND status = 'active' AND stage_name IS NULL",
-                    [],
-                ).unwrap_or(0);
-                tracing::info!("Phase StageBinding: archived {} prebuilt cards", archived);
-
-                // 2. 遍历 plan_templates，匹配 stage_name
-                // plan_content JSON 结构: { "stages": [{ "name": "...", "tasks": [{ "name": "...", "gold_cr_ids": ["..."] }] }] }
-                // cards 表: k12_card_id 对应 plan_content 中某个 task 的 gold_cr_ids 之一
-                let mut stmt = conn.prepare(
-                    "SELECT subject_key, plan_content FROM plan_templates WHERE plan_content IS NOT NULL"
-                ).unwrap();
-                let plans: Vec<(String, String)> = stmt.query_map([], |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                    ))
-                }).unwrap().filter_map(|r| r.ok()).collect();
-
-                for (subject_key, plan_content_str) in &plans {
-                    let plan_id = format!("{}_plan", subject_key);
-                    if let Ok(content) = serde_json::from_str::<serde_json::Value>(plan_content_str) {
-                        if let Some(stages) = content.get("stages").and_then(|s| s.as_array()) {
-                            // 构建 task_name → stage_name 映射（用于词汇/古诗/句型卡匹配）
-                            let mut task_to_stage: Vec<(&str, &str)> = Vec::new();
-                            for stage in stages {
-                                let stage_name = stage["name"].as_str().unwrap_or("");
-                                if stage_name.is_empty() { continue; }
-                                if let Some(tasks) = stage.get("tasks").and_then(|t| t.as_array()) {
-                                    for task in tasks {
-                                        // 路径A: 概念卡 — 通过 gold_cr_ids 匹配 k12_card_id
-                                        if let Some(ids) = task.get("gold_cr_ids").and_then(|g| g.as_array()) {
-                                            for id_val in ids {
-                                                if let Some(gold_id) = id_val.as_str() {
-                                                    let _ = conn.execute(
-                                                        "UPDATE cards SET stage_name = ?1 WHERE plan_id = ?2 AND k12_card_id = ?3 AND origin = 'prebuilt' AND stage_name IS NULL",
-                                                        rusqlite::params![stage_name, plan_id, gold_id],
-                                                    );
-                                                }
-                                            }
-                                        }
-                                        // 路径B: 词汇/古诗/句型卡 — 通过 plan_task_id 匹配 task name
-                                        if let Some(task_name) = task["name"].as_str() {
-                                            if !task_name.is_empty() {
-                                                let _ = conn.execute(
-                                                    "UPDATE cards SET stage_name = ?1 WHERE plan_id = ?2 AND plan_task_id = ?3 AND origin = 'prebuilt' AND stage_name IS NULL",
-                                                    rusqlite::params![stage_name, plan_id, task_name],
-                                                );
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // 3. 激活第一个 stage 的卡片
-                            if let Some(first_stage) = stages.first() {
-                                if let Some(sn) = first_stage["name"].as_str() {
-                                    if !sn.is_empty() {
-                                        // 使用 api_server::plan_handler 的激活函数
-                                        // 但这里在 main.rs 中，直接执行 SQL
-                                        let activated = conn.execute(
-                                            "UPDATE cards SET status = 'active' WHERE plan_id = ?1 AND stage_name = ?2 AND status = 'archived'",
-                                            rusqlite::params![plan_id, sn],
-                                        ).unwrap_or(0);
-                                        if activated > 0 {
-                                            tracing::info!("Phase StageBinding: activated {} cards for plan='{}' stage='{}'", activated, plan_id, sn);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // ── 路径C: 语文课文词卡 — 通过 reading_plans vocab_card_ids 匹配 ──
-                // 语文 plan 按课文组织（reading_plans/chinese.json），
-                // 每个课文 task 包含 vocab_card_ids[] 直接关联词卡 ID。
-                {
-                    // 路径解析（与 reading_loader.rs 一致）
-                    let reading_plans_path = {
-                        let base = if let Ok(dir) = std::env::var("COEVO_K12_DATA_DIR") {
-                            std::path::PathBuf::from(dir)
-                        } else {
-                            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                                .join("../../data/curriculum/prebuilt")
-                        };
-                        base.join("reading_plans").join("chinese.json")
-                    };
-                    if reading_plans_path.exists() {
-                        match std::fs::read_to_string(&reading_plans_path) {
-                            Ok(content) => {
-                                if let Ok(rp) = serde_json::from_str::<serde_json::Value>(&content) {
-                                    let mut total_matched = 0i64;
-                                    if let Some(stages) = rp.get("stages").and_then(|s| s.as_array()) {
-                                        for stage in stages {
-                                            let stage_name = stage["name"].as_str().unwrap_or("");
-                                            if stage_name.is_empty() { continue; }
-                                            if let Some(tasks) = stage.get("tasks").and_then(|t| t.as_array()) {
-                                                for task in tasks {
-                                                    if let Some(vocab_ids) = task.get("vocab_card_ids").and_then(|v| v.as_array()) {
-                                                        for id_val in vocab_ids {
-                                                            if let Some(vid) = id_val.as_str() {
-                                                                let updated = conn.execute(
-                                                                    "UPDATE cards SET stage_name = ?1 WHERE k12_card_id = ?2 AND origin = 'prebuilt' AND stage_name IS NULL",
-                                                                    rusqlite::params![stage_name, vid],
-                                                                ).unwrap_or(0);
-                                                                total_matched += updated as i64;
-                                                            }
-                                                        }
-                                                    }
-                                                    // 也处理 concept_card_ids
-                                                    if let Some(concept_ids) = task.get("concept_card_ids").and_then(|c| c.as_array()) {
-                                                        for id_val in concept_ids {
-                                                            if let Some(cid) = id_val.as_str() {
-                                                                let updated = conn.execute(
-                                                                    "UPDATE cards SET stage_name = ?1 WHERE k12_card_id = ?2 AND origin = 'prebuilt' AND stage_name IS NULL",
-                                                                    rusqlite::params![stage_name, cid],
-                                                                ).unwrap_or(0);
-                                                                total_matched += updated as i64;
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if total_matched > 0 {
-                                        tracing::info!("Phase StageBinding: path C (reading_plans) matched {} prebuilt cards", total_matched);
-                                    }
-                                }
-                            }
-                            Err(e) => tracing::warn!("Phase StageBinding: path C reading_plans read error: {}", e),
-                        }
-                    } else {
-                        tracing::debug!("Phase StageBinding: path C skipped (reading_plans/chinese.json not found)");
-                    }
-                }
-
-                // 4. 统计最终状态
-                let stats: Vec<(String, i64)> = conn
-                    .prepare("SELECT status, COUNT(*) FROM cards WHERE origin = 'prebuilt' GROUP BY status")
-                    .unwrap()
-                    .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
-                    .unwrap()
-                    .filter_map(|r| r.ok())
-                    .collect();
-                for (status, count) in &stats {
-                    tracing::info!("Phase StageBinding: prebuilt cards status='{}': {}", status, count);
-                }
-                let stage_null: i64 = conn.query_row(
-                    "SELECT COUNT(*) FROM cards WHERE origin = 'prebuilt' AND stage_name IS NULL",
-                    [], |row| row.get(0),
-                ).unwrap_or(-1);
-                tracing::info!("Phase StageBinding: complete (prebuilt cards without stage_name: {})", stage_null);
-            }
-        }
-    }
+    // ════════════════════════════════════════════
+    // Start server
+    // ════════════════════════════════════════════
 
     // --- Configure avatar dir (routes.rs uses OnceLock) ---
     api_server::routes::set_avatar_dir(&avatar_dir);

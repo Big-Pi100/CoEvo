@@ -8,6 +8,7 @@
 //!
 //! 不依赖 student_llm 模拟 — 发一条固定消息即可触发流式回复
 
+use api_server::test_helpers::body_json;
 use serde_json::{json, Value};
 use std::sync::OnceLock;
 
@@ -23,6 +24,8 @@ async fn start_server() -> String {
         let _ = dotenvy::from_filename(p);
     }
 
+    api_server::test_helpers::init_tracing();
+
     INIT.get_or_init(|| {
         chat_engine::prompt_loader::init("../../prompts");
         let _ = std::fs::create_dir_all("data");
@@ -33,16 +36,7 @@ async fn start_server() -> String {
     api_server::db_pool::init(&db_path).expect("init db");
 
     let conn = api_server::db_pool::get_conn();
-    let sql = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/schema.sql"));
-    conn.execute_batch(&sql).expect("schema init");
-    conn.execute_batch("
-        CREATE TABLE IF NOT EXISTS user_preferences (
-            user_id TEXT NOT NULL, key TEXT NOT NULL,
-            value TEXT NOT NULL, updated_at TEXT NOT NULL,
-            PRIMARY KEY (user_id, key),
-            FOREIGN KEY (user_id) REFERENCES users(id)
-        );"
-    ).expect("user_preferences table");
+    api_server::schema::init_database(&conn).expect("schema init");
 
     let api_key = std::env::var("DEEPSEEK_API_KEY")
         .expect("DEEPSEEK_API_KEY 未设置");
@@ -56,11 +50,6 @@ async fn start_server() -> String {
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap(); });
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     base
-}
-
-/// 解析响应 body 为 JSON
-async fn body_json(resp: reqwest::Response) -> Value {
-    resp.json().await.unwrap_or(json!({"raw": "parse failed"}))
 }
 
 #[tokio::test]

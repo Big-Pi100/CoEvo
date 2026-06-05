@@ -30,8 +30,6 @@ pub struct DueCard {
     #[serde(rename = "last_reviewed_at")]
     pub last_review: Option<i64>,
     pub last_review_quality: Option<i32>,
-    pub subject: Option<String>,
-    pub grade_band: Option<String>,
     pub conversation_id: Option<String>,
 }
 
@@ -43,7 +41,7 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64) -> (Vec<DueCa
         "SELECT c.id, c.front, c.back, c.domain, c.card_type, c.source_sentence,
                 cm.state, cm.reps, cm.lapses, c.created_at, cm.difficulty, cm.due, cm.last_review,
                 (SELECT rating FROM review_log WHERE card_id = c.id ORDER BY reviewed_at DESC LIMIT 1),
-                '' as subject, '' as grade_band, c.conversation_id
+                c.conversation_id
          FROM cards c
          JOIN card_memory cm ON c.id = cm.card_id
          WHERE c.user_id = ?1
@@ -70,9 +68,7 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64) -> (Vec<DueCa
             due: row.get(11)?,
             last_review: row.get(12)?,
             last_review_quality: row.get(13)?,
-            subject: row.get(14)?,
-            grade_band: row.get(15)?,
-            conversation_id: row.get(16)?,
+            conversation_id: row.get(14)?,
         })
     ).unwrap().filter_map(|r| r.ok()).collect();
 

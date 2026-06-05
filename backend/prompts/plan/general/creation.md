@@ -5,9 +5,11 @@
 
 请输出 JSON 格式的学习计划，包含：
 - goal: 简洁的学习目标（**15字以内**，概括即可，如"一元二次方程求解"、"Python入门"）
-- domain: 学科（general/math/language/chemistry/biology/physics/history/geography/politics/science/it/pe/art/labor 之一）
-- stages: 阶段数组，每个阶段包含 name、status（in_progress/pending/completed）、tasks 数组
-- 每项 task 包含 name、status、description
+- stages: 阶段数组，每个阶段包含 name、tasks 数组
+- 每项 task 包含 name、description
+- completed_concepts: []
+- current_task_complete: false
+- next_stage_suggestion: null
 - completed_concepts: []
 - current_task_complete: false
 - next_stage_suggestion: null

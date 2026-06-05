@@ -747,6 +747,7 @@ Phase B3（routes k12/reading）→ 1.5h
   │
 Phase B4（plan_handler）    → 1.5h
   ├─ 可并行 ── B5（ws.rs）→ 0.5h
+
   ├─ 可并行 ── B6（prompt_loader）→ 0.5h
   │
 Phase C（e2e 测试）         → 2h
@@ -766,5 +767,118 @@ Phase D（清理）             → 0.5h  ← 验证通过后再做
 |:-----|:------|
 | `id_mapping.json` 映射不完整导致 plan 引用了不存在的卡片 | 迁移脚本必须有全量验证步骤，所有 card_ids 逐一核实 |
 | e2e 测试涉及大量 DB 初始化代码需同步更新 | 统一用一个测试 schema.sql 文件，9 个测试文件都引用它 |
+
+---
+
+## 十一、实现过程中的偏差与修正
+
+> 以下为 2026-06-04~06-05 实际编码过程中对原方案的修正，记录原因。
+
+### 11.1 `cards` 表：`status` 列 → `card_memory` 表
+
+**原方案**：`cards` 保留 `status` 列（active/pending/skipped/archived），11 列精简。
+**实际**：`status` 完全移出 `cards`，加入 `card_memory`。
+
+**原因**：与 `plan_content`/`user_plan_progress` 分离原则一致——`cards` 只存不可变结构数据，卡片生命周期状态由 `card_memory` 管理。
+
+### 11.2 `cards` 表：新增 `task_key` 列
+
+**原方案**：未规划。
+**实际**：在 `cards` 表加 `task_key TEXT` 列。
+
+**原因**：卡片→任务关联断裂。只有 `plan_id` 无法知道卡片属于哪个具体 task。CP1 提取概念时从当前 in_progress task 获取 `task_key` 写入，支持按任务筛选卡片。
+
+### 11.3 `plan_handler.rs` 管道 A/B/C：不是"统一"而是"删除"
+
+**原方案**（改动清单 #5）："统一为 `WHERE id IN (?)` 单条 SQL"。
+**实际**：整个管道 A/B/C 被删除（~80 行代码）。
+
+**原因**：
+1. V3 数据已全部迁移完毕，所有 plan 的 task 只有 `card_ids` 字段
+2. 旧字段（`vocab_card_ids`/`reading_card_id`/`gold_cr_ids`）在 V3 数据中不存在
+3. 即使触发旧管道，INSERT SQL 也使用已删除的列名，会 SQL 报错
+4. 随管道删除同时删除了 `reading_loader.rs` 模块
+
+### 11.4 `reading_loader.rs`：未保留，直接删除
+
+**原方案**（5.3节 #5）："保留"。
+**实际**：随管道 A/B/C 一起删除。
+
+### 11.5 `curriculum_stage_grades` 表：建了又删
+
+**实际流程**：
+1. 最初建表 `curriculum_stage_grades(subject, grade_band, stage_sort)` 用于迁移旧数据中的 grade_band 关系
+2. 改为 `(conversation_plans_id, grade_band)` 运行时写入
+3. 最终发现 grade_band 已补回到 v3 JSON 的 stage 中，表不再需要，删除
+
+**原因**：grade_band 补回 v3 plan JSON 的每个 stage 后，数据自包含，无需外部映射表。
+
+### 11.6 `conversation_plans` 加回 `subject` 列
+
+**原方案**：无 `subject` 列。
+**实际**：加了 `subject TEXT DEFAULT ''`。
+
+**原因**：`curriculum_stage_grades` 删除后，init 时的 `subject` 信息需要保留在 plan 上，供前端排查和调试使用。
+
+### 11.7 `plan_content` 不再含 `sub_steps`
+
+**原方案**：保留 `sub_steps` 解析逻辑但标识废弃。
+**实际**：`apply_plan_mutations` 中彻底删除了向 `plan_content` 回写 `sub_steps` 的代码。
+
+**原因**：`sub_steps` 从未被 LLM prompt 使用，也无前端消费。删除后 `plan_content` 只存结构，符合原则。
+
+### 11.8 HTTP `/api/chat` handler 删除
+
+**原方案**：保留 HTTP chat 作为 REST 备选。
+**实际**：整个 handler 删除（代码 + 路由注册）。
+
+**原因**：前端已全部走 WS。4 个依赖 HTTP chat 的 e2e 测试（chinese/k12/review/concurrency）同步删除。
+
+### 11.9 `check_revert_signals` 删除，`auto_revert` 改为精确命令
+
+**原方案**：关键词匹配（21 个中文关键词）+ LLM 兜底。
+**实际**：精确匹配 `/back` 命令，直接操作 `user_plan_progress` 回滚一步。
+
+**原因**：
+- 关键词匹配容易误触发
+- 不做 LLM 调用，零延迟
+- 直接写 `user_plan_progress`，无需读写 `plan_content`
+
+### 11.10 新增 `/plan` 命令
+
+**原方案**：无规划。
+**实际**：新增 `force_plan_creation()` 函数 + WS 入口。
+
+**原因**：用户兜底场景——当 LLM 没有自动创建计划时，用户发 `/plan` 命令强制触发生成。
+
+### 11.11 `creation.md` prompt 删除 `status` 和 `domain` 字段
+
+**原方案**：未明确。
+**实际**：删除了 prompt 要求 LLM 输出 stage/task `status` 和 `domain` 的要求。
+
+**原因**：V3 原则——`plan_content` 不存状态（由 `user_plan_progress` 管理）。`domain` 无需出现在 prompt 中。
+
+### 11.12 登录支持手机号
+
+**原方案**：仅用户名登录。
+**实际**：`phone_hash`（SHA-256）列加入 schema，登录自动检测输入为手机号还是用户名。
+
+**原因**：家长/老师场景中，手机号登录比用户名更方便。
+
+### 11.13 清理代码量统计
+
+| 项目 | 原方案 | 实际 |
+|:-----|:-------|:------|
+| 删除 `reading_loader.rs` | 保留 | ✅ 删除 |
+| 删除管道 A/B/C | 统一为 WHERE IN | ✅ 整块删除（80行） |
+| 删除 HTTP chat handler | 保留 | ✅ 删除（148行） |
+| `sub_steps` 回写 | 保留但废弃 | ✅ 删除 |
+| `check_revert_signals` | 保留关键词 | ✅ 删除，改为 /back 命令 |
+| `analyze_plan_progress` | 保留 | ✅ 删除（~200行死代码） |
+| `auto_advance_check` | 保留 | ✅ 删除（~70行死代码） |
+| `load_chat_context` 等辅助函数 | 保留 | ✅ 删除（~100行死代码） |
+| main.rs StageBinding 迁移 | 保留 | ✅ 删除（~120行死代码） |
+| 旧 JSON 数据文件 | 保留 | ✅ 删除 |
+| 总计 | — | **~800 行死代码删除** |
 | 现有 DB 清库后无法回滚 | 先备份 `data/` 目录和 `data/*.db` 文件，验证通过前不删除 |
 | `prompt_loader` 改动影响所有 LLM 调用 | B6 保留旧字段兼容，过渡期内两种方式都支持 |

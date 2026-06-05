@@ -283,28 +283,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
 
   // ── K12 学习进度（卡片掌握度） ──
   Widget _buildK12Progress(ThemeData theme) {
-    final gradeLabels = {
-      'g1-2': '1-2年级', 'g3-4': '3-4年级', 'g5-6': '5-6年级',
-      'g7-9': '初中', 'g10': '高一', 'g11-12': '高二/三',
-    };
-    final bySubject = <String, List<Map<String, dynamic>>>{};
-    for (final p in _k12Progress) {
-      final subj = p['subject'] as String? ?? '';
-      bySubject.putIfAbsent(subj, () => []).add(p);
-    }
-    if (bySubject.isEmpty) return const SizedBox.shrink();
-
-    // 科目英文代码 → 中文显示名
-    String subjectDisplayName(String code) {
-      const names = <String, String>{
-        'math': '数学', 'chinese': '语文', 'english': '英语',
-        'physics': '物理', 'chemistry': '化学', 'biology': '生物',
-        'history': '历史', 'geography': '地理', 'politics': '政治',
-        'science': '科学', 'it': '信息技术', 'pe': '体育',
-        'art': '艺术', 'labor': '劳动', 'japanese': '日语', 'russian': '俄语',
-      };
-      return names[code] ?? code;
-    }
+    if (_k12Progress.isEmpty) return const SizedBox.shrink();
 
     return Card(
       child: Padding(
@@ -313,46 +292,54 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
           Row(children: [
             const Icon(Icons.school, size: 20),
             const SizedBox(width: 8),
-            Text('K12 学习进度', style: theme.textTheme.titleMedium),
+            Text('学习计划进度', style: theme.textTheme.titleMedium),
           ]),
           const Divider(height: 16),
-          ...bySubject.entries.map((entry) {
-            final subject = entry.key;
-            final grades = entry.value;
+          ..._k12Progress.map((p) {
+            final goal = p['goal'] as String? ?? '';
+            final totalTasks = (p['total_tasks'] as num?)?.toInt() ?? 0;
+            final doneTasks = (p['done_tasks'] as num?)?.toInt() ?? 0;
+            final totalCards = (p['total_cards'] as num?)?.toInt() ?? 0;
+            final masteredCards = (p['mastered_cards'] as num?)?.toInt() ?? 0;
+            final pct = totalTasks > 0 ? doneTasks / totalTasks : 0.0;
+
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(subjectDisplayName(subject), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                Text(goal.isNotEmpty ? goal : '学习计划',
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                const SizedBox(height: 6),
+                // 任务进度
+                Row(children: [
+                  Text('任务', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                  const SizedBox(width: 8),
+                  Expanded(child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(value: pct, minHeight: 6,
+                        backgroundColor: Colors.grey.shade200,
+                        valueColor: AlwaysStoppedAnimation(theme.colorScheme.primary)),
+                  )),
+                  const SizedBox(width: 8),
+                  Text('$doneTasks/$totalTasks',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                ]),
                 const SizedBox(height: 4),
-                ...grades.map((g) {
-                  final band = g['grade_band'] as String? ?? '';
-                  final total = (g['total_cards'] as num?)?.toInt() ?? 0;
-                  final mastered = (g['mastered_cards'] as num?)?.toInt() ?? 0;
-                  final pct = total > 0 ? mastered / total : 0.0;
-                  final label = gradeLabels[band] ?? band;
-                  final completed = g['completed_at'] != null;
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 3),
-                    child: Row(children: [
-                      SizedBox(width: 60,
-                        child: Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600))),
-                      const SizedBox(width: 8),
-                      Expanded(child: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
-                          value: pct, minHeight: 8,
+                // 卡片进度
+                if (totalCards > 0)
+                  Row(children: [
+                    Text('卡片', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                    const SizedBox(width: 8),
+                    Expanded(child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                          value: totalCards > 0 ? masteredCards / totalCards : 0, minHeight: 6,
                           backgroundColor: Colors.grey.shade200,
-                          valueColor: AlwaysStoppedAnimation(
-                            completed ? Colors.green : theme.colorScheme.primary),
-                        ),
-                      )),
-                      const SizedBox(width: 8),
-                      Text(completed ? '毕业 🎓' : '${(pct * 100).toStringAsFixed(0)}%',
-                        style: TextStyle(fontSize: 12,
-                          color: completed ? Colors.green : Colors.grey.shade600)),
-                    ]),
-                  );
-                }),
+                          valueColor: AlwaysStoppedAnimation(Colors.green)),
+                    )),
+                    const SizedBox(width: 8),
+                    Text('$masteredCards/$totalCards',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                  ]),
               ]),
             );
           }),

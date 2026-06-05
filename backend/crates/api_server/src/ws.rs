@@ -159,10 +159,16 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 let now_str = chrono::Utc::now().timestamp();
                 {
                     let conn = crate::db_pool::get_conn();
+                    // 确认对话存在：INSERT OR IGNORE + 如已软删除则恢复
                     let _ = conn.execute(
                         "INSERT OR IGNORE INTO conversations (id, user_id, turn_count, started_at) VALUES (?1, ?2, 0, ?3)",
                         rusqlite::params![chat_req.conversation_id, chat_req.user_id, now_str],
                     );
+                    let _ = conn.execute(
+                        "UPDATE conversations SET deleted_at = NULL WHERE id = ?1 AND deleted_at IS NOT NULL",
+                        rusqlite::params![chat_req.conversation_id],
+                    );
+                    tracing::info!("WS conversation confirmed: id={}", chat_req.conversation_id);
                     let _ = conn.execute(
                         "INSERT INTO conversation_turns (id, conversation_id, role, content, created_at) VALUES (?1, ?2, 'user', ?3, ?4)",
                         rusqlite::params![uuid::Uuid::new_v4().to_string(), chat_req.conversation_id, chat_req.message, now_str],
@@ -188,11 +194,13 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     turns.reverse();
                     turns
                 };
+                tracing::info!("WS loaded {} turns for conv={}", history.len(), chat_req.conversation_id);
 
                 // ── 查询学习计划，判定生命周期状态 + 管线 ──
                 let (system_prompt, plan_context) = {
                     let conn = crate::db_pool::get_conn();
                     let (domain, mode, ctx) = crate::plan_handler::build_plan_context(&conn, &chat_req.conversation_id);
+                    tracing::info!("WS plan context: domain={}, mode={}", domain, mode);
                     // 记录 prompt 来源（供 e2e 测试验证）
                     crate::plan_handler::log_prompt_source(&format!("{}/{}", domain, mode));
                     let templates = chat_engine::prompt_loader::get_chat(&domain);
@@ -371,10 +379,38 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     break;
                 }
 
+                // ⚡ 从 final_reply 中检测 **goal 标记 → 立即创建学习计划
+                // 每次 LLM 回复后检查，不依赖 CP2 的二次 LLM 调用
+                if !plan_updated && final_reply.contains("**goal") && final_reply.contains("✅ 已完成") {
+                    let conv_for_plan = chat_req.conversation_id.clone();
+                    let extra = "";
+                    if crate::plan_handler::force_plan_creation(&conv_for_plan, extra).await {
+                        plan_updated = true;
+                        tracing::info!("Plan creation triggered by **goal badge in LLM reply");
+                    }
+                }
+
                 // ── 代码层兜底：若 LLM 未处理回退请求，自动回退（auto_revert 已迁移） ──
-                if !plan_updated && crate::plan_handler::check_revert_signals(&chat_req.message) {
-                    plan_updated = true;
-                    tracing::info!("Revert signal detected: {}", &chat_req.message[..chat_req.message.len().min(80)]);
+                if !plan_updated {
+                    let revert_conn = crate::db_pool::get_conn();
+                    if crate::plan_handler::auto_revert(&revert_conn, &chat_req.conversation_id, &chat_req.message) {
+                        plan_updated = true;
+                        tracing::info!("Revert signal detected: {}", &chat_req.message[..chat_req.message.len().min(80)]);
+                    }
+                }
+
+                // ── /plan 命令：强制创建计划 ──
+                // 支持 /plan 或 /plan 学习二次函数（参数作为用户意图追加到对话上下文）
+                if !plan_updated && chat_req.message.trim().starts_with("/plan") {
+                    let extra = chat_req.message.trim().strip_prefix("/plan").map(|s| s.trim()).unwrap_or("");
+                    if !extra.is_empty() {
+                        // 将参数作为用户意图注入对话文本的前面
+                        tracing::info!("Plan creation with intent: {}", extra);
+                    }
+                    if crate::plan_handler::force_plan_creation(&chat_req.conversation_id, extra).await {
+                        plan_updated = true;
+                        tracing::info!("Plan creation triggered by /plan command");
+                    }
                 }
 
                 // 通知前端刷新计划
@@ -420,25 +456,29 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     let conn = crate::db_pool::get_conn();
                     crate::plan_handler::build_plan_context(&conn, conv_id)
                 };
+                eprintln!("[MARK] WS build_plan_context done (cold path setup)");
                 // CP2 需要 final_reply，但 CP1 spawn 会 move 走它，提前 clone
+                eprintln!("[MARK] WS about to clone final_reply (len={})", final_reply.len());
                 let cp2_reply = final_reply.clone();
-                // ❄️ ColdPath 1: 概念提取 — 每轮对话后都运行（不再依赖 plan 是否存在）
-                // 卡片通过 conversation_id 关联到会话，plan_type/plan_id 可选
+                eprintln!("[MARK] WS final_reply cloned successfully");
+                // ❄️ ColdPath 1: 概念提取 — 仅在 CP2 创建 plan 后运行
+                // 每轮先检查 conversation_plans 是否存在，有 plan 才走 LLM 提取
                 let user_id = chat_req.user_id.clone();
                 let msg = chat_req.message.clone();
                 let config = llm_config.clone();
                 let cold_tx = cold_tx.clone();
                 let cold_turn = current_turn;
+                eprintln!("[MARK] WS about to clone history (len={})", history.len());
                 let history_clone = history.clone();
+                eprintln!("[MARK] WS history cloned successfully");
                 let ctx = extract_plan_ctx.clone();
                 let ed = extract_domain.clone();
+                eprintln!("[MARK] WS about to clone final_reply second time (len={})", final_reply.len());
                 let fr = final_reply.clone();
+                eprintln!("[MARK] WS final_reply second clone done");
                 let conv_id_cp1 = chat_req.conversation_id.clone();
                 tokio::spawn(async move {
-                    // Bug 1 修复：确保任何 DB 错误路径都向 cold_tx 发送空结果，
-                    // 避免 BTreeMap 产生空洞导致后续 candidates 永久阻塞。
-                    // 注意：rusqlite Connection/Statement 不是 Send，
-                    // DB 操作必须在独立 block 内完成并 drop conn 后才能 .await。
+                    eprintln!("[MARK] CP1 spawned task START turn={}", cold_turn);
 
                     let result: Option<Vec<String>> = 'db: {
                         let conn = crate::db_pool::get_conn();
@@ -471,7 +511,25 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         }
                     };
 
+                    // CP1 必须在 CP2 创建计划之后才运行 — 检查 conversation_plan 是否存在
+                    let has_plan: bool = {
+                        let conn_check = crate::db_pool::get_conn();
+                        conn_check.query_row(
+                            "SELECT 1 FROM conversation_plans WHERE conversation_id = ?1 LIMIT 1",
+                            rusqlite::params![&conv_id_cp1],
+                            |_| Ok(true),
+                        ).unwrap_or(false)
+                    };
+                    if !has_plan {
+                        tracing::info!("CP1 skipped for turn {}: no conversation_plan exists yet", cold_turn);
+                        let _ = cold_tx.send((cold_turn, vec![])).await;
+                        return;
+                    }
+
+                    tracing::info!("CP1 starting concept extraction for turn {}", cold_turn);
+
                     // 30 秒超时：防止 LLM 挂起导致 turn 永远不到达
+                    eprintln!("[MARK] CP1 about to call extract_concepts turn={}", cold_turn);
                     let extraction = match tokio::time::timeout(
                         Duration::from_secs(30),
                         chat_engine::concept_extractor::extract_concepts(
@@ -487,6 +545,9 @@ pub async fn handle_ws(mut ws: WebSocket) {
                             return;
                         }
                     };
+
+                    let candidate_count = extraction.candidates.len();
+                    tracing::info!("CP1 extracted {} candidates for turn {}", candidate_count, cold_turn);
 
                     // 概念提取 → 批量入库 (status='pending')，返回 card_id 供前端 PATCH
                     let pending_candidates: Vec<serde_json::Value> = {
@@ -519,6 +580,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                                    "source_sentence": c.source_sentence, "domain": &c.domain})
                         }).collect()
                     };
+                    tracing::info!("CP1 inserted {} pending cards for turn {}", pending_candidates.len(), cold_turn);
                     let _ = cold_tx.send((cold_turn, pending_candidates)).await;
                 });
 

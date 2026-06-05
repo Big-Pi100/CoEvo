@@ -4,6 +4,7 @@
 //!   GET /api/k12/progress                    — K12 学习进度
 //!   GET /api/k12/reading/{conv_id}/current-card — 语文阅读当前课文
 
+use api_server::test_helpers::body_json;
 use serde_json::{json, Value};
 use std::sync::OnceLock;
 
@@ -16,23 +17,15 @@ async fn start_server() -> String {
     INIT.get_or_init(|| {
         chat_engine::prompt_loader::init("../../prompts");
         let _ = api_server::curriculum_loader::init();
-        let _ = api_server::reading_loader::init();
+        // reading_loader 已删除（V3 不再需要）
         let _ = std::fs::create_dir_all("data");
     });
+    api_server::test_helpers::init_tracing();
     let db_path = format!("data/test_k12extra_{}.db", chrono::Utc::now().timestamp());
     let _ = std::fs::remove_file(&db_path);
     api_server::db_pool::init(&db_path).expect("init db");
     let conn = api_server::db_pool::get_conn();
-    let sql = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/schema.sql"));
-    conn.execute_batch(&sql).expect("schema init");
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS user_preferences (
-            user_id TEXT NOT NULL, key TEXT NOT NULL,
-            value TEXT NOT NULL, updated_at TEXT NOT NULL,
-            PRIMARY KEY (user_id, key),
-            FOREIGN KEY (user_id) REFERENCES users(id)
-        );"
-    ).expect("user_preferences table");
+    api_server::schema::init_database(&conn).expect("schema init");
     let api_key = std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY 未设置");
     let llm_config = chat_engine::llm_caller::LlmConfig::deepseek_v4_flash(&api_key);
     let app = api_server::routes::build_router(llm_config);
@@ -42,10 +35,6 @@ async fn start_server() -> String {
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap(); });
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     base
-}
-
-async fn body_json(resp: reqwest::Response) -> Value {
-    resp.json().await.unwrap_or(json!({"raw": "parse failed"}))
 }
 
 #[tokio::test]
@@ -98,6 +87,11 @@ async fn e2e_k12_extra_lifecycle() {
         // 插入两个 conversation_plans（作为"subject"进度来源）
         let plan1_id = uuid::Uuid::new_v4().to_string();
         let plan1_conv = uuid::Uuid::new_v4().to_string();
+        // 创建 conversations 记录（满足 FK 约束）
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO conversations (id, user_id, turn_count, started_at) VALUES (?1, ?2, 0, ?3)",
+            rusqlite::params![plan1_conv, uid, now_ts.to_string()],
+        );
         let plan_content1 = serde_json::json!({"goal": "math基础学习", "stages": [{"name": "代数", "tasks": [{"name": "一元一次方程", "task_key": "00-00"}]}]}).to_string();
         conn.execute(
             "INSERT INTO conversation_plans (id, user_id, conversation_id, goal, plan_content, created_at, updated_at)
@@ -107,6 +101,11 @@ async fn e2e_k12_extra_lifecycle() {
 
         let plan2_id = uuid::Uuid::new_v4().to_string();
         let plan2_conv = uuid::Uuid::new_v4().to_string();
+        // 创建 conversations 记录（满足 FK 约束）
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO conversations (id, user_id, turn_count, started_at) VALUES (?1, ?2, 0, ?3)",
+            rusqlite::params![plan2_conv, uid, now_ts.to_string()],
+        );
         let plan_content2 = serde_json::json!({"goal": "physics基础学习", "stages": [{"name": "力学", "tasks": [{"name": "牛顿定律", "task_key": "00-00"}]}]}).to_string();
         conn.execute(
             "INSERT INTO conversation_plans (id, user_id, conversation_id, goal, plan_content, created_at, updated_at)

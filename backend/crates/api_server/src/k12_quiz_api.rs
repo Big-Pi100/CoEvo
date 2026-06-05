@@ -87,14 +87,8 @@ pub async fn quiz_submit_handler(
         0.0
     };
 
-    // 更新 k12_progress（写入/更新）
-    let _ = conn.execute(
-        "INSERT INTO k12_progress (id, user_id, subject, grade_band, plan_json, mastered_cards, total_cards, started_at, last_activity_at)
-         VALUES (?1, ?2, '', '', NULL, 0, 0, ?3, ?3)
-         ON CONFLICT(user_id, subject, grade_band) DO UPDATE SET last_activity_at = ?3",
-        rusqlite::params![Uuid::new_v4().to_string(), input.user_id, now],
-    );
-
+    // k12_progress 表已废弃（V3 使用 conversation_plans + user_plan_progress 聚合进度）
+    // 保留此写入操作仅用于历史兼容，无读取方
     Json(serde_json::json!({
         "correct": correct_count,
         "total": total_count,

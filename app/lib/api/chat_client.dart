@@ -27,28 +27,6 @@ class ChatClient {
     return headers;
   }
 
-  // ── REST Chat ──
-
-  Future<Map<String, dynamic>> sendMessage(String message) async {
-    final body = ChatRequest(
-      userId: userId,
-      conversationId: conversationId,
-      message: message,
-    );
-
-    final resp = await http.post(
-      Uri.parse('$baseUrl/api/chat'),
-      headers: _authHeaders,
-      body: jsonEncode(body.toJson()),
-    ).timeout(ApiConfig.longTimeout);
-
-    if (resp.statusCode != 200) {
-      throw Exception('Chat API error: ${resp.statusCode} ${resp.body}');
-    }
-
-    return jsonDecode(resp.body) as Map<String, dynamic>;
-  }
-
   // ── WebSocket Chat ──
 
   WsChatSession streamChat(String message) {
@@ -335,14 +313,12 @@ class ChatClient {
     String? query,
     int? state,
     String? domain,
-    String? subject,
     String? sort,
   }) async {
     final params = <String, String>{'user_id': userId};
     if (query != null && query.isNotEmpty) params['q'] = query;
     if (state != null) params['state'] = state.toString();
     if (domain != null && domain.isNotEmpty) params['domain'] = domain;
-    if (subject != null && subject.isNotEmpty) params['subject'] = subject;
     if (sort != null) params['sort'] = sort;
 
     final uri = Uri.parse('$baseUrl/api/cards/all').replace(queryParameters: params);
@@ -350,6 +326,21 @@ class ChatClient {
         .timeout(ApiConfig.requestTimeout);
     if (resp.statusCode != 200) {
       throw Exception('Cards API error: ${resp.statusCode}');
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  // ── Cards by Plan (grouped by conversation_plans) ──
+
+  /// 按 conversation_plan 分组获取卡片
+  /// 返回 {"plans": [{id, goal, conversation_id, cards, card_count}], "total_plans": int}
+  Future<Map<String, dynamic>> getCardsByPlan() async {
+    final uri = Uri.parse('$baseUrl/api/cards/by-plan')
+        .replace(queryParameters: {'user_id': userId});
+    final resp = await http.get(uri, headers: _authHeaders)
+        .timeout(ApiConfig.requestTimeout);
+    if (resp.statusCode != 200) {
+      throw Exception('Cards by plan API error: ${resp.statusCode}');
     }
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }

@@ -123,47 +123,51 @@ fn parse_filename(fname: &str) -> Option<(String, String)> {
 pub fn init() -> Result<(), String> {
     let base = Paths::prebuilt();
     eprintln!("[K12] init: base={}", base.display());
-    eprintln!("[K12] plans_dir={}", base.join("plans").display());
     eprintln!("[K12] cards_dir={}", base.join("cards").display());
     tracing::info!("K12 loader: scanning {}", base.display());
-    let plans_dir = base.join("plans");
     let cards_dir = base.join("cards");
 
     let mut plan_index: HashMap<String, PlanData> = HashMap::new();
     let mut card_index: HashMap<String, Vec<CardData>> = HashMap::new();
 
-    // 1. 扫描 plan 文件（合并格式：{subject}.json → stages 列表）
-    if plans_dir.exists() {
-        if let Ok(dir) = std::fs::read_dir(&plans_dir) {
-            for entry in dir.flatten() {
-                let path = entry.path();
-                let fname = match path.file_name().and_then(|n| n.to_str()) {
-                    Some(n) if n.ends_with(".json") => n.to_string(),
-                    _ => continue,
-                };
-                let subject = fname.strip_suffix(".json").unwrap_or("").to_string();
-                let plan_file: PlanFile = match load_json(&path) {
-                    Ok(f) => f,
-                    Err(e) => {
-                        eprintln!("[K12] SKIP plan {}: {}", fname, e);
-                        tracing::warn!("K12: skip plan {}: {}", fname, e);
-                        continue;
-                    }
-                };
-                let plan = PlanData {
-                    id: format!("{}_plan", subject),
-                    goal: plan_file.goal.unwrap_or_else(|| format!("{}学习计划", subject)),
-                    stages: plan_file.stages,
-                    total_crs: plan_file.total_tasks.unwrap_or(0),
-                };
-                plan_index.insert(subject.clone(), plan);
+    // 1. 扫描 top-level JSON 计划文件（如 v3/chinese.json，非 v3/plans/subdir）
+    //    注意：v3/ 目录下直接包含 {subject}.json 格式的计划文件
+    if let Ok(dir) = std::fs::read_dir(&base) {
+        for entry in dir.flatten() {
+            let path = entry.path();
+            if !path.is_file() { continue; }
+            let fname = match path.file_name().and_then(|n| n.to_str()) {
+                Some(n) if n.ends_with(".json") && !n.ends_with("stage_grade_filter.json") => n.to_string(),
+                _ => continue,
+            };
+            // 跳过 cards/ 子目录
+            if path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()) == Some("cards") {
+                continue;
             }
+            let subject = fname.strip_suffix(".json").unwrap_or("").to_string();
+            let plan_file: PlanFile = match load_json(&path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("[K12] SKIP plan {}: {}", fname, e);
+                    tracing::warn!("K12: skip plan {}: {}", fname, e);
+                    continue;
+                }
+            };
+            let plan = PlanData {
+                id: format!("{}_plan", subject),
+                goal: plan_file.goal.unwrap_or_else(|| format!("{}学习计划", subject)),
+                stages: plan_file.stages,
+                total_crs: plan_file.total_tasks.unwrap_or(0),
+            };
+            plan_index.insert(subject.clone(), plan);
         }
-        eprintln!("[K12] loaded {} plans from {}", plan_index.len(), plans_dir.display());
-        tracing::info!("K12: loaded {} plans from {}", plan_index.len(), plans_dir.display());
+    }
+    if plan_index.is_empty() {
+        eprintln!("[K12] WARN: no plan files found in {}", base.display());
+        tracing::warn!("K12: no plan files found in {}", base.display());
     } else {
-        eprintln!("[K12] ERR: plans dir not found: {}", plans_dir.display());
-        tracing::warn!("K12: plans dir not found: {}", plans_dir.display());
+        eprintln!("[K12] loaded {} plans from {}", plan_index.len(), base.display());
+        tracing::info!("K12: loaded {} plans from {}", plan_index.len(), base.display());
     }
 
     // 2. 扫描卡片文件
@@ -302,12 +306,12 @@ impl Paths {
         }
         // 开发模式：从 CARGO_MANIFEST_DIR 定位
         let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../data/curriculum/prebuilt");
+            .join("../../../data/curriculum/v3");
         if dev_path.join("plans").exists() {
             return dev_path;
         }
         // 回退：相对 CWD（兼容在项目根目录运行）
-        let cwd_path = std::path::PathBuf::from("data/curriculum/prebuilt");
+        let cwd_path = std::path::PathBuf::from("data/curriculum/v3");
         if cwd_path.join("plans").exists() {
             return cwd_path;
         }
@@ -323,11 +327,11 @@ pub fn k12_data_dir() -> std::path::PathBuf {
     }
     let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../../data/curriculum/v3");
-    if dev_path.join("plans").exists() {
+    if dev_path.join("chinese.json").exists() {
         return dev_path;
     }
     let cwd_path = std::path::PathBuf::from("data/curriculum/v3");
-    if cwd_path.join("plans").exists() {
+    if cwd_path.join("chinese.json").exists() {
         return cwd_path;
     }
     Paths::prebuilt() // fallback

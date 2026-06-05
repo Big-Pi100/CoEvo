@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/characters.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../models/coevo_models.dart';
@@ -454,20 +455,26 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
       appBar: AppBar(
         title: const Text('复习'),
         bottom: TabBar(
-          isScrollable: false,
-          tabAlignment: TabAlignment.fill,
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
           controller: _tabController,
           labelColor: Theme.of(context).colorScheme.onSurface,
           tabs: [
             ..._planTabs.map((p) {
               final convId = p['conversation_id'] as String? ?? '';
               final count = _planDueCount(convId);
+              final label = _planLabel(p);
+              // 截取前5个中文字符
+              final shortLabel = label.characters.take(5).toString();
               return Tab(
-                child: Text('${_planLabel(p)}（$count）',
-                    overflow: TextOverflow.ellipsis, maxLines: 1),
+                child: SizedBox(
+                  width: 90,  // ≈ 5 个中文字符宽度
+                  child: Text('$shortLabel（$count）',
+                      overflow: TextOverflow.ellipsis, maxLines: 1),
+                ),
               );
             }),
-            const Tab(text: '全部卡片'),
+            const Tab(child: SizedBox(width: 90, child: Text('全部卡片', overflow: TextOverflow.ellipsis, maxLines: 1))),
           ],
         ),
       ),

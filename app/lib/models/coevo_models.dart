@@ -75,8 +75,6 @@ class DueCard {
   final int? due;
   final int? lastReviewedAt;
   final int? lastReviewQuality;
-  final String? subject;
-  final String? gradeBand;
   final String? conversationId;  // 绑定到的会话 ID，用于匹配 plan tab
 
   const DueCard({
@@ -94,8 +92,6 @@ class DueCard {
     this.due,
     this.lastReviewedAt,
     this.lastReviewQuality,
-    this.subject,
-    this.gradeBand,
     this.conversationId,
   });
 
@@ -114,8 +110,6 @@ class DueCard {
     due: json['due'] as int?,
     lastReviewedAt: json['last_reviewed_at'] as int?,
     lastReviewQuality: json['last_review_quality'] as int?,
-    subject: json['subject'] as String?,
-    gradeBand: json['grade_band'] as String?,
     conversationId: json['conversation_id'] as String?,
   );
 }
