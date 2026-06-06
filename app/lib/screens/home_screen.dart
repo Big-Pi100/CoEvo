@@ -5,6 +5,7 @@ import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
 import '../config/k12_subjects.dart';
 import 'chat_screen.dart';
+import '../theme/app_theme.dart';
 
 /// 首页 — 科目直选 + 模式自动路由
 class HomeScreen extends ConsumerWidget {
@@ -28,16 +29,16 @@ class HomeScreen extends ConsumerWidget {
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTheme.spacingLg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Header
             Text('今天想学什么？', style: theme.textTheme.headlineMedium),
-            const SizedBox(height: 4),
+            const SizedBox(height: AppTheme.spacingXs),
             Text('选择科目开始结构化学习',
-                style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey)),
-            const SizedBox(height: 16),
+                style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            const SizedBox(height: AppTheme.spacingLg),
 
             // 自由对话入口
             Card(
@@ -55,14 +56,14 @@ class HomeScreen extends ConsumerWidget {
                 },
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppTheme.spacingLg),
 
             // 历史对话入口
             Card(
               child: ListTile(
                 leading: CircleAvatar(
-                  backgroundColor: Colors.orange.withAlpha(30),
-                  child: Icon(Icons.history, color: Colors.orange.shade700),
+                  backgroundColor: theme.colorScheme.tertiaryContainer,
+                  child: Icon(Icons.history, color: theme.colorScheme.tertiary),
                 ),
                 title: Text('历史对话', style: theme.textTheme.titleMedium),
                 subtitle: const Text('继续之前的对话，或恢复已学习内容'),
@@ -76,11 +77,11 @@ class HomeScreen extends ConsumerWidget {
                 },
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppTheme.spacingLg),
 
             // 科目网格
             Text('科目', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppTheme.spacingSm),
             Expanded(
               child: GridView.builder(
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(

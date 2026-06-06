@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +11,7 @@ import 'chat/chat_concept_dialog.dart';
 import 'chat/chat_input.dart';
 import 'chat/chat_plan_panel.dart';
 import 'chat/chat_message_bubble.dart';
+import '../theme/app_theme.dart';
 
 /// 持久化 conversation_id 的 provider (跨页面保持)
 final currentConversationIdProvider = StateProvider<String?>((ref) => null);
@@ -25,6 +26,8 @@ class ChatScreen extends ConsumerStatefulWidget {
 }
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
+  ColorScheme get _cs => Theme.of(context).colorScheme;
+  TextTheme get _tt => Theme.of(context).textTheme;
   final _messageController = TextEditingController();
   final _messages = <Message>[];
   final _scrollController = ScrollController();
@@ -74,6 +77,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       String? userId;
       String? token;
       for (int retry = 0; retry < 20; retry++) {
+        if (!mounted) return;
         final auth = ref.read(authProvider);
         if (auth.userId != null && auth.userId!.isNotEmpty) {
           userId = auth.userId;
@@ -487,7 +491,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         title: Row(
           children: [
             const Icon(Icons.lock, size: 20),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppTheme.spacingSm),
             Text(title),
           ],
         ),
@@ -509,19 +513,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     final isExpired = _subscriptionExpired;
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      margin: const EdgeInsets.fromLTRB(AppTheme.spacingMd, AppTheme.spacingSm, AppTheme.spacingMd, 0),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: isExpired ? Colors.red.shade50 : Colors.orange.shade50,
+        color: isExpired ? _cs.errorContainer : _cs.secondaryContainer,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isExpired ? Colors.red.shade200 : Colors.orange.shade200),
+        border: Border.all(color: isExpired ? _cs.error : _cs.secondary),
       ),
       child: Row(
         children: [
           Icon(
             isExpired ? Icons.lock_clock : Icons.lock_outline,
             size: 18,
-            color: isExpired ? Colors.red.shade700 : Colors.orange.shade700,
+            color: isExpired ? _cs.error : _cs.secondary,
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -530,7 +534,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
-                color: isExpired ? Colors.red.shade800 : Colors.orange.shade800,
+                color: isExpired ? _cs.error : _cs.secondary,
               ),
             ),
           ),
@@ -542,21 +546,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   /// 对话已删除横幅
   Widget _buildDeletedBanner() {
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      margin: const EdgeInsets.fromLTRB(AppTheme.spacingMd, AppTheme.spacingSm, AppTheme.spacingMd, 0),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
+        color: _cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: _cs.outlineVariant),
       ),
       child: Row(
         children: [
-          Icon(Icons.info_outline, size: 18, color: Colors.grey.shade600),
+          Icon(Icons.info_outline, size: 18, color: _cs.onSurfaceVariant),
           const SizedBox(width: 10),
-          const Expanded(
+          Expanded(
             child: Text(
               '此对话已被删除。你可以在对话列表的回收站中恢复。',
-              style: TextStyle(fontSize: 13, color: Colors.grey),
+              style: TextStyle(fontSize: 13, color: _cs.onSurfaceVariant),
             ),
           ),
         ],
@@ -571,7 +575,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: TextButton.icon(
         icon: _loadingMore
-            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+            ? const SizedBox(width: AppTheme.spacingLg, height: AppTheme.spacingLg, child: CircularProgressIndicator(strokeWidth: 2))
             : const Icon(Icons.expand_less, size: 18),
         label: Text(_loadingMore ? '加载中...' : '查看更早对话 ($remaining 条)',
             style: const TextStyle(fontSize: 13)),
@@ -620,7 +624,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         title: Row(
           children: [
             Icon(Icons.auto_awesome, size: 20, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppTheme.spacingSm),
             Text('CoEvo', style: TextStyle(
               fontWeight: FontWeight.bold,
               letterSpacing: 2,
@@ -744,7 +748,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   child: ListView.builder(
                     controller: _scrollController,
                     itemCount: _messages.length,
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(AppTheme.spacingLg),
                     itemBuilder: (_, i) {
                       final msg = _messages[i];
                 final isUser = msg.role == 'user';
@@ -753,7 +757,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.only(bottom: AppTheme.spacingSm),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
@@ -773,7 +777,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         // 错误重试按钮
                         if (!isUser && msg.content.startsWith('抱歉') || msg.content.startsWith('连接错误'))
                           Padding(
-                            padding: const EdgeInsets.only(bottom: 12, left: 8),
+                            padding: const EdgeInsets.only(bottom: AppTheme.spacingMd, left: AppTheme.spacingSm),
                             child: TextButton.icon(
                               onPressed: _isWaiting ? null : () {
                                 final lastUserIdx = _messages.lastIndexWhere((m) => m.role == 'user');
@@ -796,7 +800,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
           if (_isWaiting)
             const Padding(
-              padding: EdgeInsets.all(8),
+              padding: EdgeInsets.all(AppTheme.spacingSm),
               child: LinearProgressIndicator(),
             ),
           ChatInput(
@@ -814,7 +818,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (isUser) {
       // 用户消息：带气泡的完整宽度
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingLg, vertical: AppTheme.spacingMd),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.primary,
           borderRadius: BorderRadius.circular(20).copyWith(
@@ -826,10 +830,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     } else {
       // AI 消息：无气泡，无背景，满宽显示
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingXs),
         child: ChatMessageBubble(text: msg.content, isUser: false, isStreaming: isStreaming),
       );
     }
   }
 
 }
+

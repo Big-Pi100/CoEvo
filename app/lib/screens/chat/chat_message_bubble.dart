@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../widgets/markdown_span_nodes.dart';
 import '../../services/tts_service.dart';
+import '../../theme/app_theme.dart';
 
 /// 消息气泡渲染 — 块分割 + Markdown + LaTeX + Graph
 class ChatMessageBubble extends StatelessWidget {
@@ -21,7 +22,7 @@ class ChatMessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final baseColor = isUser
-        ? Colors.white
+        ? Theme.of(context).colorScheme.onPrimary
         : Theme.of(context).colorScheme.onSecondaryContainer;
 
     final content = RichContentBuilder(
@@ -50,7 +51,7 @@ class ChatMessageBubble extends StatelessWidget {
         return Align(
           alignment: Alignment.centerRight,
           child: Padding(
-            padding: const EdgeInsets.only(top: 4),
+            padding: const EdgeInsets.only(top: AppTheme.spacingXs),
             child: GestureDetector(
               onTap: () => tts.speak(cleanText),
               child: Icon(

@@ -11,30 +11,31 @@ class _ErrorBoundary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final _cs = Theme.of(context).colorScheme;
     try {
       // Builder 确保在正确的 Element 上下文中捕获构建异常
       return Builder(builder: (_) => child);
     } catch (_) {
-      return _renderFallback(fallbackMsg);
+      return _renderFallback(fallbackMsg, _cs);
     }
   }
 }
 
-Widget _renderFallback(String msg) {
+Widget _renderFallback(String msg, ColorScheme cs) {
   return Container(
     margin: const EdgeInsets.symmetric(vertical: 6),
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
     decoration: BoxDecoration(
-      color: Colors.orange.shade50,
+      color: cs.errorContainer,
       borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: Colors.orange.shade200),
+      border: Border.all(color: cs.error.withAlpha(51)),
     ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.broken_image_outlined, size: 16, color: Colors.orange.shade700),
+        Icon(Icons.broken_image_outlined, size: 16, color: cs.error),
         const SizedBox(width: 6),
-        Flexible(child: Text(msg, style: TextStyle(fontSize: 12, color: Colors.orange.shade800))),
+        Flexible(child: Text(msg, style: TextStyle(fontSize: 12, color: cs.onErrorContainer))),
       ],
     ),
   );

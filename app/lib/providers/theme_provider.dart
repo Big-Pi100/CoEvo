@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -33,9 +34,14 @@ class ThemeNotifier extends StateNotifier<ThemeState> {
   }
 
   Future<void> setMode(AppThemeMode mode) async {
-    state = ThemeState(mode: mode);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('app_theme_mode', mode.index);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('app_theme_mode', mode.index);
+      state = ThemeState(mode: mode);
+    } catch (e, st) {
+      debugPrint('主题持久化失败: $e\n$st');
+      rethrow;
+    }
   }
 }
 

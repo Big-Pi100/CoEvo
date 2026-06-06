@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../theme/app_theme.dart';
 
 /// 聊天输入栏 — 文本输入
 class ChatInput extends ConsumerStatefulWidget {
@@ -21,12 +22,14 @@ class ChatInput extends ConsumerStatefulWidget {
 }
 
 class _ChatInputState extends ConsumerState<ChatInput> {
+  ColorScheme get _cs => Theme.of(context).colorScheme;
+  TextTheme get _tt => Theme.of(context).textTheme;
   @override
   Widget build(BuildContext context) {
     if (widget.isDeleted) return const SizedBox.shrink();
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingMd, vertical: AppTheme.spacingSm),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
@@ -39,7 +42,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   Widget _buildTextInput() {
     return Row(
       children: [
-        const SizedBox(width: 4),
+        const SizedBox(width: AppTheme.spacingXs),
         Expanded(
           child: TextField(
             controller: widget.textController,
@@ -47,19 +50,19 @@ class _ChatInputState extends ConsumerState<ChatInput> {
               hintText: '输入消息...',
               isDense: true,
               border: OutlineInputBorder(),
-              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              contentPadding: EdgeInsets.symmetric(horizontal: AppTheme.spacingLg, vertical: AppTheme.spacingMd),
             ),
             textInputAction: TextInputAction.send,
             onSubmitted: (_) => widget.onSend(),
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: AppTheme.spacingSm),
         IconButton.filled(
           onPressed: widget.isWaiting ? null : widget.onSend,
           icon: widget.isWaiting
-              ? const SizedBox(
+              ? SizedBox(
                   width: 20, height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  child: CircularProgressIndicator(strokeWidth: 2, color: _cs.onPrimary),
                 )
               : const Icon(Icons.send),
         ),
@@ -67,3 +70,4 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     );
   }
 }
+

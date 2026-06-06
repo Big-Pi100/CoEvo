@@ -1,4 +1,4 @@
-// ignore_for_file: unused_element, unused_local_variable
+﻿// ignore_for_file: unused_element, unused_local_variable
 import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import '../api/api_config.dart';
 import 'user_detail_screen.dart';
+import '../theme/app_theme.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -15,6 +16,10 @@ class AdminScreen extends StatefulWidget {
 }
 
 class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin {
+  // ── Theme access ──
+  ColorScheme get _cs => Theme.of(context).colorScheme;
+  TextTheme get _tt => Theme.of(context).textTheme;
+
   // Auth
   String? _adminKey; // super admin uses X-Admin-Key
   String? _token;    // other admins use Bearer token
@@ -347,14 +352,14 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
           DropdownMenuItem(value: '365d', child: Text('365 天')),
           DropdownMenuItem(value: 'lifetime', child: Text('终身')),
         ], onChanged: (v) => setSt(() => pkg = v!), decoration: const InputDecoration(isDense: true, border: OutlineInputBorder())),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppTheme.spacingMd),
         DropdownButtonFormField(value: channel, items: const [
           DropdownMenuItem(value: null, child: Text('（不选）')),
           DropdownMenuItem(value: '公开课', child: Text('公开课')),
           DropdownMenuItem(value: '转介绍', child: Text('转介绍')),
           DropdownMenuItem(value: '自然流量', child: Text('自然流量')),
         ], onChanged: (v) => setSt(() => channel = v), decoration: const InputDecoration(isDense: true, border: OutlineInputBorder())),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppTheme.spacingMd),
         TextField(controller: noteCtrl, decoration: const InputDecoration(hintText: '备注', isDense: true, border: OutlineInputBorder())),
       ]),
       actions: [
@@ -450,12 +455,12 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     final students = myAssignments.map((a) {
       final studentName = a['student_display_name'] ?? a['student_real_name'] ?? a['student_user_id'] ?? '';
       return Row(children: [
-        Icon(Icons.person, size: 12, color: role == 'guardian' ? const Color(0xFF5B7A9A) : const Color(0xFFC77D33)),
-        const SizedBox(width: 4),
-        Expanded(child: Text(studentName, style: TextStyle(fontSize: 11, color: role == 'guardian' ? const Color(0xFF5B7A9A) : const Color(0xFFC77D33)))),
+        Icon(Icons.person, size: 12, color: role == 'guardian' ?  _cs.secondary :  _cs.tertiary),
+        const SizedBox(width: AppTheme.spacingXs),
+        Expanded(child: Text(studentName, style: _tt.labelSmall?.copyWith(color: role == 'guardian' ?  _cs.secondary :  _cs.tertiary))),
         TextButton(onPressed: () => _removeAssignment(a['id'] as String),
           style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(30, 24), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-          child: Text('解除', style: TextStyle(fontSize: 10, color: Colors.red.shade300)),
+          child: Text('解除', style: TextStyle(fontSize: 10, color: _cs.errorContainer)),
         ),
       ]);
     }).toList();
@@ -464,7 +469,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
         icon: const Icon(Icons.add, size: 12),
         onPressed: () => _showCreateAssignmentDialog(aid: adminId),
         label: Text(role == 'guardian' ? '绑定学生' : '绑定学生',
-          style: TextStyle(fontSize: 10, color: const Color(0xFF5B7A9A))),
+          style: TextStyle(fontSize: 10, color:  _cs.secondary)),
         style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(40, 24), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
       ),
     ]));
@@ -499,10 +504,10 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
               });
             },
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppTheme.spacingSm),
           if (searching) const LinearProgressIndicator(),
           if (!searching && results.isEmpty && searchCtrl.text.trim().isNotEmpty)
-            const Padding(padding: EdgeInsets.all(8), child: Text('未找到匹配的学生', style: TextStyle(fontSize: 12))),
+            const Padding(padding: EdgeInsets.all(AppTheme.spacingSm), child: Text('未找到匹配的学生', style: TextStyle(fontSize: 12))),
           if (results.isNotEmpty)
             SizedBox(
               height: 200,
@@ -584,14 +589,14 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     return Scaffold(
       appBar: AppBar(title: const Text('管理后台')),
       body: Center(child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(AppTheme.spacingXxxl),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.admin_panel_settings, size: 64, color: Colors.grey),
-          const SizedBox(height: 24),
+          Icon(Icons.admin_panel_settings, size: 64, color: _cs.onSurfaceVariant),
+          const SizedBox(height: AppTheme.spacingXxl),
           TextField(controller: _keyCtrl, decoration: const InputDecoration(labelText: '管理员密钥 或 用户名', border: OutlineInputBorder())),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppTheme.spacingMd),
           TextField(controller: _passCtrl, obscureText: true, decoration: const InputDecoration(labelText: '密码（账号登录时必填）', border: OutlineInputBorder())),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppTheme.spacingLg),
           Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
             FilledButton(onPressed: _loginWithKey, child: const Text('密钥登录')),
             FilledButton.tonal(onPressed: _loginWithAccount, child: const Text('账号登录')),
@@ -605,7 +610,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
   Widget _buildDashboardTab() {
     return _dashboard == null
       ? Center(child: _dashboardLoading ? const CircularProgressIndicator() : TextButton(onPressed: _loadDashboard, child: const Text('加载仪表盘')))
-      : SingleChildScrollView(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      : SingleChildScrollView(padding: const EdgeInsets.all(AppTheme.spacingLg), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Wrap(spacing: 12, runSpacing: 12, children: [
           _statCard('今日新用户', '${_dashboard!['today_new_users'] ?? 0}', Icons.person_add),
           _statCard('今日活跃', '${_dashboard!['today_active_users'] ?? 0}', Icons.trending_up),
@@ -613,11 +618,11 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
           _statCard('总用户', '${_dashboard!['total_users'] ?? 0}', Icons.people),
           _statCard('总卡片', '${_dashboard!['total_cards'] ?? 0}', Icons.style),
         ]),
-        const SizedBox(height: 24),
+        const SizedBox(height: AppTheme.spacingXxl),
         Text('即将到期（7天内）', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppTheme.spacingSm),
         if ((_dashboard!['expiring_soon'] as List?)?.isEmpty ?? true)
-          const Text('暂无', style: TextStyle(color: Colors.grey))
+          Text('暂无', style: TextStyle(color: _cs.onSurfaceVariant))
         else
           ...(_dashboard!['expiring_soon'] as List).map((u) => ListTile(
             dense: true,
@@ -632,12 +637,12 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
       width: 150,
       child: Card(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppTheme.spacingLg),
           child: Column(children: [
-            Icon(icon, size: 28, color: Colors.blue),
-            const SizedBox(height: 8),
+            Icon(icon, size: 28, color: _cs.secondary),
+            const SizedBox(height: AppTheme.spacingSm),
             Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-            Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            Text(label, style: _tt.bodySmall?.copyWith(color: _cs.onSurfaceVariant)),
           ]),
         ),
       ),
@@ -650,16 +655,16 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     return Column(children: [
       // ── Search + refresh ──
       Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+        padding: const EdgeInsets.fromLTRB(AppTheme.spacingMd, AppTheme.spacingMd, AppTheme.spacingMd, AppTheme.spacingXs),
         child: Row(children: [
           Expanded(child: TextField(
             controller: _searchCtrl,
             decoration: InputDecoration(hintText: '搜索用户名/ID', prefixIcon: const Icon(Icons.search, size: 20), isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.circular(24))),
             onSubmitted: (_) => _search(),
           )),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppTheme.spacingSm),
           FilledButton(onPressed: _search, child: const Text('查找')),
-          const SizedBox(width: 4),
+          const SizedBox(width: AppTheme.spacingXs),
           IconButton(icon: const Icon(Icons.download, size: 20), onPressed: _exportCsv, tooltip: '导出 CSV'),
         ]),
       ),
@@ -668,7 +673,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
           child: Row(children: [
-            Text('共 $_userTotal 人 · 显示 ${_users.length} 人', style: TextStyle(fontSize: 11, color: const Color(0xFF7A7A7A))),
+            Text('共 $_userTotal 人 · 显示 ${_users.length} 人', style: _tt.labelSmall?.copyWith(color:  _cs.onSurfaceVariant)),
             const Spacer(),
             FilterChip(
               label: const Text('显示已删除', style: TextStyle(fontSize: 10)),
@@ -676,39 +681,39 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
               onSelected: (v) { setState(() => _includeDeleted = v); _search(); },
               visualDensity: VisualDensity.compact,
             ),
-            if (_searchCtrl.text.trim().isNotEmpty) Text(' · 搜索模式', style: TextStyle(fontSize: 11, color: Colors.orange)),
+            if (_searchCtrl.text.trim().isNotEmpty) Text(' · 搜索模式', style: _tt.labelSmall?.copyWith(color: _cs.tertiary)),
           ]),
         ),
       // ── Action bar (fixed below search) ──
       Container(
-        color: _selectedUserIds.isNotEmpty ? Colors.blue.shade50 : const Color(0xFFF5F5F5),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        color: _selectedUserIds.isNotEmpty ? _cs.secondaryContainer : _cs.surfaceContainerHighest,
+        padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingMd, vertical: 6),
         child: Row(children: [
           if (_selectedUserIds.isNotEmpty)
             Text('已选 ${_selectedUserIds.length} 人', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
           if (_selectedUserIds.isEmpty)
-            Text('选择用户后可操作', style: TextStyle(fontSize: 12, color: const Color(0xFF9E9E9E))),
+            Text('选择用户后可操作', style: _tt.bodySmall?.copyWith(color:  _cs.outline)),
           const Spacer(),
           if (_role == 'super' || _role == 'service')
             FilledButton.tonal(
               onPressed: () => _onAction('set_expiry'),
-              style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+              style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingSm)),
               child: const Text('设置到期', style: TextStyle(fontSize: 11)),
             ),
-          const SizedBox(width: 4),
+          const SizedBox(width: AppTheme.spacingXs),
           ...[7, 30, 365].map((days) => Padding(
-            padding: const EdgeInsets.only(left: 4),
+            padding: const EdgeInsets.only(left: AppTheme.spacingXs),
             child: FilledButton.tonal(
               onPressed: () => _onAction('extend_$days'),
-              style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
-              child: Text('+${days}d', style: const TextStyle(fontSize: 11)),
+              style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingSm)),
+              child: Text('+${days}d', style: _tt.labelSmall!),
             ),
           )),
           if (_role == 'super')
             TextButton(
               onPressed: () => _onAction('delete'),
-              style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4), minimumSize: Size.zero),
-              child: Icon(Icons.delete_outline, size: 18, color: Colors.red.shade300),
+              style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingXs), minimumSize: Size.zero),
+              child: Icon(Icons.delete_outline, size: 18, color: _cs.errorContainer),
             ),
           if (_selectedUserIds.isNotEmpty)
             IconButton(icon: const Icon(Icons.close, size: 18), onPressed: _exitSelectMode),
@@ -718,7 +723,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
       if (_loading) const LinearProgressIndicator(),
       // ── Scrollable: user results + subscription requests ──
       Expanded(child: _users.isEmpty && reqs.isEmpty
-        ? Center(child: Text(_loading ? '' : _searchCtrl.text.isNotEmpty ? '未找到匹配用户' : '加载中...', style: TextStyle(color: Colors.grey.shade400)))
+        ? Center(child: Text(_loading ? '' : _searchCtrl.text.isNotEmpty ? '未找到匹配用户' : '加载中...', style: TextStyle(color: _cs.outline)))
         : ListView(children: [
           // User results
           ..._users.map((u) => _buildUserCard(u)),
@@ -726,37 +731,37 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
           if (_searchCtrl.text.trim().isNotEmpty && !_userEndReached)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Center(child: TextButton(onPressed: _loadMoreUsers, child: Text('加载更多 (${_users.length}/$_userTotal)', style: const TextStyle(fontSize: 12)))),
+              child: Center(child: TextButton(onPressed: _loadMoreUsers, child: Text('加载更多 (${_users.length}/$_userTotal)', style: _tt.bodySmall!))),
             ),
           // Subscription requests
           if (reqs.isNotEmpty) ...[
             const Divider(height: 24, thickness: 1),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingLg, vertical: AppTheme.spacingXs),
               child: Row(children: [
-                Text('订阅申请 (${reqs.length})', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF2D3A4A))),
+                Text('订阅申请 (${reqs.length})', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _cs.primary)),
                 const Spacer(),
                 ...[
                   FilterChip(label: const Text('待审批', style: TextStyle(fontSize: 11)), selected: _reqFilter == 'pending', visualDensity: VisualDensity.compact, onSelected: (_) => _loadRequests('pending')),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: AppTheme.spacingXs),
                   FilterChip(label: const Text('已通过', style: TextStyle(fontSize: 11)), selected: _reqFilter == 'approved', visualDensity: VisualDensity.compact, onSelected: (_) => _loadRequests('approved')),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: AppTheme.spacingXs),
                   FilterChip(label: const Text('已拒绝', style: TextStyle(fontSize: 11)), selected: _reqFilter == 'rejected', visualDensity: VisualDensity.compact, onSelected: (_) => _loadRequests('rejected')),
                 ],
               ]),
             ),
             ...reqs.map((r) => Card(
-              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+              margin: const EdgeInsets.symmetric(horizontal: AppTheme.spacingMd, vertical: 3),
               child: ListTile(
                 dense: true,
                 title: Text('${r['target_username'] ?? r['target_user_id']} · ${r['package']}', style: const TextStyle(fontSize: 13)),
-                subtitle: Text('${r['requester_name'] ?? r['requested_by']} · ${r['channel'] ?? ''} · ${(r['requested_at'] as String? ?? '').replaceAll(RegExp(r'T.*'), '')}', style: const TextStyle(fontSize: 11)),
+                subtitle: Text('${r['requester_name'] ?? r['requested_by']} · ${r['channel'] ?? ''} · ${(r['requested_at'] as String? ?? '').replaceAll(RegExp(r'T.*'), '')}', style: _tt.labelSmall!),
                 trailing: r['status'] == 'pending'
                   ? Row(mainAxisSize: MainAxisSize.min, children: [
-                      IconButton(icon: const Icon(Icons.check_circle, color: Colors.green, size: 20), onPressed: () => _approveReq(r['id'] as String)),
-                      IconButton(icon: const Icon(Icons.cancel, color: Colors.red, size: 20), onPressed: () => _rejectReqDialog(r['id'] as String)),
+                      IconButton(icon: Icon(Icons.check_circle, color: _cs.primary, size: 20), onPressed: () => _approveReq(r['id'] as String)),
+                      IconButton(icon: Icon(Icons.cancel, color: _cs.error, size: 20), onPressed: () => _rejectReqDialog(r['id'] as String)),
                     ])
-                  : Chip(label: Text(r['status'] == 'approved' ? '已通过' : '已拒绝', style: const TextStyle(fontSize: 11))),
+                  : Chip(label: Text(r['status'] == 'approved' ? '已通过' : '已拒绝', style: _tt.labelSmall!)),
               ),
             )),
           ],
@@ -782,12 +787,12 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     final tPhone = u['tutor_phone_masked'] as String?;
     final tId = u['tutor_id'] as String?;
     final isExpiring = isActive && expires.isNotEmpty && _daysUntil(expires) <= 30;
-    final borderColor = isExpiring ? const Color(0xFFC77D33) : const Color(0xFFE8E6E0);
+    final borderColor = isExpiring ?  _cs.tertiary :  _cs.outlineVariant;
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+      margin: const EdgeInsets.symmetric(horizontal: AppTheme.spacingMd, vertical: 3),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: borderColor, width: isExpiring ? 1.5 : 1)),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 8, 10, 10),
+        padding: const EdgeInsets.fromLTRB(AppTheme.spacingXs, AppTheme.spacingSm, 10, 10),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           // Title row: checkbox + name + status + detail button
           Row(children: [
@@ -801,18 +806,18 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
               u['display_name'] ?? u['username'] ?? '',
               style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14,
                 decoration: isDeleted ? TextDecoration.lineThrough : null,
-                color: isDeleted ? const Color(0xFF9E9E9E) : null,
+                color: isDeleted ?  _cs.outline : null,
               ),
             )),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: isDeleted ? Colors.red.withValues(alpha: 0.1) : (isExpiring ? const Color(0xFFC77D33).withValues(alpha: 0.1) : (isActive ? const Color(0xFF588157).withValues(alpha: 0.1) : Colors.grey.withValues(alpha: 0.1))),
+                color: isDeleted ? _cs.error.withValues(alpha: 0.1) : (isExpiring ? _cs.tertiary.withValues(alpha: 0.1) : (isActive ? _cs.primary.withValues(alpha: 0.1) : _cs.onSurfaceVariant.withValues(alpha: 0.1))),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
                 isDeleted ? '已删除' : (isExpiring ? '${_daysUntil(expires)}d到期' : (isActive ? expires.replaceAll(RegExp(r'T.*'), '') : '未激活')),
-                style: TextStyle(fontSize: 10, color: isDeleted ? Colors.red : (isExpiring ? const Color(0xFFC77D33) : (isActive ? const Color(0xFF588157) : Colors.grey))),
+                style: TextStyle(fontSize: 10, color: isDeleted ? _cs.error : (isExpiring ?  _cs.tertiary : (isActive ?  _cs.primary : _cs.onSurfaceVariant))),
               ),
             ),
             const SizedBox(width: 6),
@@ -828,13 +833,13 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
           ]),
           // Info rows: stats + phone + guardian/tutor
           Padding(
-            padding: const EdgeInsets.only(left: 48),
+            padding: const EdgeInsets.only(left: AppTheme.spacingXxxxl),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(
                 '卡片:${u['card_count']} 复习:${u['review_count']} · ${u['streak_days'] ?? 0}天'
                 '${gName != null ? " · 家长:$gName" : ""}'
                 '${tName != null ? " · 老师:$tName" : ""}',
-                style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
+                style: _tt.labelSmall?.copyWith(color: _cs.onSurfaceVariant),
               ),
               const SizedBox(height: 3),
               // Phone row
@@ -842,8 +847,8 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
                 TextSpan(text: phoneMasked, style: const TextStyle(fontSize: 13)),
                 WidgetSpan(child: InkWell(
                   child: Padding(
-                    padding: const EdgeInsets.only(left: 4),
-                    child: Icon(Icons.visibility_outlined, size: 14, color: const Color(0xFF5B7A9A)),
+                    padding: const EdgeInsets.only(left: AppTheme.spacingXs),
+                    child: Icon(Icons.visibility_outlined, size: 14, color:  _cs.secondary),
                   ),
                   onTap: () => _revealPhone(u['user_id'] as String),
                 )),
@@ -852,11 +857,11 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
               if (gName != null) Padding(
                 padding: const EdgeInsets.only(top: 2),
                 child: Text.rich(TextSpan(children: [
-                  TextSpan(text: '家长: $gName  $gPhone', style: TextStyle(fontSize: 12, color: const Color(0xFF5B7A9A))),
+                  TextSpan(text: '家长: $gName  $gPhone', style: _tt.bodySmall?.copyWith(color:  _cs.secondary)),
                   WidgetSpan(child: Padding(
                     padding: const EdgeInsets.only(left: 3),
                     child: InkWell(
-                      child: Icon(Icons.visibility_outlined, size: 12, color: const Color(0xFF5B7A9A)),
+                      child: Icon(Icons.visibility_outlined, size: 12, color:  _cs.secondary),
                       onTap: () => _revealAdminPhone(gId, '家长'),
                     ),
                   )),
@@ -866,11 +871,11 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
               if (tName != null) Padding(
                 padding: const EdgeInsets.only(top: 2),
                 child: Text.rich(TextSpan(children: [
-                  TextSpan(text: '老师: $tName  $tPhone', style: TextStyle(fontSize: 12, color: const Color(0xFFC77D33))),
+                  TextSpan(text: '老师: $tName  $tPhone', style: _tt.bodySmall?.copyWith(color:  _cs.tertiary)),
                   WidgetSpan(child: Padding(
                     padding: const EdgeInsets.only(left: 3),
                     child: InkWell(
-                      child: Icon(Icons.visibility_outlined, size: 12, color: const Color(0xFFC77D33)),
+                      child: Icon(Icons.visibility_outlined, size: 12, color:  _cs.tertiary),
                       onTap: () => _revealAdminPhone(tId, '老师'),
                     ),
                   )),
@@ -899,19 +904,19 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     for (final a in _admins) { counts[a['role']] = (counts[a['role']] ?? 0) + 1; }
     return Column(children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+        padding: const EdgeInsets.fromLTRB(AppTheme.spacingMd, AppTheme.spacingMd, AppTheme.spacingMd, AppTheme.spacingXs),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text('管理员 (${filtered.length})', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF2D3A4A))),
+          Text('管理员 (${filtered.length})', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: _cs.primary)),
           Row(children: [
             FilledButton.icon(icon: const Icon(Icons.add, size: 16), onPressed: _showCreateAdminDialog, label: const Text('新建', style: TextStyle(fontSize: 12))),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppTheme.spacingSm),
             TextButton.icon(icon: const Icon(Icons.refresh, size: 16), onPressed: _loadAdmins, label: const Text('刷新', style: TextStyle(fontSize: 12))),
           ]),
         ]),
       ),
       // Role filter chips
       Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingMd),
         child: Row(children: [
           _roleChip('全部', 'all', counts.values.fold(0, (a,b)=>a+b)),
           const SizedBox(width: 6),
@@ -922,7 +927,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
           _roleChip('辅导老师', 'tutor', counts['tutor'] ?? 0),
         ]),
       ),
-      const SizedBox(height: 4),
+      const SizedBox(height: AppTheme.spacingXs),
       Expanded(child: filtered.isEmpty
         ? Center(child: TextButton(onPressed: _loadAdmins, child: const Text('点击加载')))
         : ListView.builder(itemCount: filtered.length, itemBuilder: (_, i) {
@@ -934,33 +939,33 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
         final canApprove = perms['can_approve'] == true;
         final isSelf = aid == _adminKey || aid == _token; // approximate
         return Card(
-          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+          margin: const EdgeInsets.symmetric(horizontal: AppTheme.spacingMd, vertical: 3),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingMd, vertical: AppTheme.spacingSm),
             child: Row(children: [
               // Name + info
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(a['real_name'] ?? a['username'] ?? '', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                 const SizedBox(height: 2),
-                Text('${a['role']} · ${a['phone'] ?? ''} · ${a['created_at']?.toString().replaceAll(RegExp(r'T.*'), '') ?? ''}', style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+                Text('${a['role']} · ${a['phone'] ?? ''} · ${a['created_at']?.toString().replaceAll(RegExp(r'T.*'), '') ?? ''}', style: _tt.labelSmall?.copyWith(color: _cs.onSurfaceVariant)),
                 if (role == 'guardian' || role == 'tutor') ..._buildStudentList(aid, role),
               ])),
               // Actions
               Row(mainAxisSize: MainAxisSize.min, children: [
               if (role == 'service' && !isSelf)
                 IconButton(
-                  icon: const Icon(Icons.admin_panel_settings, size: 18, color: Color(0xFF5B7A9A)),
+                  icon: Icon(Icons.admin_panel_settings, size: 18, color: _cs.secondary),
                   onPressed: () => _showPermissionDialog(aid, a['permissions'] as Map<String, dynamic>? ?? {}, perms),
                   tooltip: '权限设置',
                 ),
               if (!isSelf) ...[
-                IconButton(icon: const Icon(Icons.lock_reset, size: 18, color: Color(0xFF5B7A9A)), onPressed: () => _showResetPasswordDialog(aid), tooltip: '重置密码'),
+                IconButton(icon: Icon(Icons.lock_reset, size: 18, color: _cs.secondary), onPressed: () => _showResetPasswordDialog(aid), tooltip: '重置密码'),
                 if (status != 'disabled')
-                  IconButton(icon: const Icon(Icons.block, size: 18, color: Colors.red), onPressed: () => _disableAdmin(aid), tooltip: '禁用'),
+                  IconButton(icon: Icon(Icons.block, size: 18, color: _cs.error), onPressed: () => _disableAdmin(aid), tooltip: '禁用'),
                 if (status == 'disabled')
-                  IconButton(icon: const Icon(Icons.check_circle_outline, size: 18, color: Colors.green), onPressed: () => _enableAdmin(aid), tooltip: '启用'),
+                  IconButton(icon: Icon(Icons.check_circle_outline, size: 18, color: _cs.primary), onPressed: () => _enableAdmin(aid), tooltip: '启用'),
               ],
-              Chip(label: Text(status == 'disabled' ? '已禁用' : '正常', style: TextStyle(fontSize: 10, color: status == 'disabled' ? Colors.red : Colors.green))),
+              Chip(label: Text(status == 'disabled' ? '已禁用' : '正常', style: TextStyle(fontSize: 10, color: status == 'disabled' ? _cs.error : _cs.primary))),
             ]),
           ]),
         ),
@@ -972,13 +977,13 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
   Widget _roleChip(String label, String value, int count) {
     final selected = _adminRoleFilter == value;
     return FilterChip(
-      label: Text('$label ($count)', style: TextStyle(fontSize: 11, color: selected ? Colors.white : null)),
+      label: Text('$label ($count)', style: _tt.labelSmall?.copyWith(color: selected ? _cs.surface : null)),
       selected: selected,
       onSelected: (_) => setState(() => _adminRoleFilter = value),
       visualDensity: VisualDensity.compact,
-      selectedColor: const Color(0xFF5B7A9A),
-      checkmarkColor: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      selectedColor:  _cs.secondary,
+      checkmarkColor: _cs.surface,
+      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingXs),
     );
   }
 
@@ -992,13 +997,13 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
       title: const Text('创建管理员'),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
         TextField(controller: userCtrl, decoration: const InputDecoration(labelText: '用户名', isDense: true, border: OutlineInputBorder())),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppTheme.spacingSm),
         TextField(controller: passCtrl, obscureText: true, decoration: const InputDecoration(labelText: '密码（6位以上）', isDense: true, border: OutlineInputBorder())),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppTheme.spacingSm),
         TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: '真实姓名', isDense: true, border: OutlineInputBorder())),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppTheme.spacingSm),
         TextField(controller: phoneCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: '手机号', isDense: true, border: OutlineInputBorder())),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppTheme.spacingSm),
         DropdownButtonFormField(value: role, items: const [
           DropdownMenuItem(value: 'service', child: Text('服务人员')),
           DropdownMenuItem(value: 'super', child: Text('超管')),
@@ -1100,12 +1105,12 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
 
   void _showDeleteUserDialog(String uid, String name) {
     showDialog(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('删除用户', style: TextStyle(color: Colors.red)),
+      title: Text('删除用户', style: TextStyle(color: _cs.error)),
       content: Text('确认删除用户 $name？\n\n用户将被标记为已删除，不会出现在默认列表中。数据保留在数据库中，超管可以恢复。'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
         FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: Colors.red),
+          style: FilledButton.styleFrom(backgroundColor: _cs.error),
           onPressed: () async {
             Navigator.pop(ctx);
             final resp = await _api('DELETE', '/api/admin/users/$uid');
@@ -1141,7 +1146,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
   Widget _buildAssignmentTab() {
     return Column(children: [
       Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppTheme.spacingMd),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Text('监护关系 (${_assignments.length})', style: Theme.of(context).textTheme.titleMedium),
           Row(children: [
@@ -1156,13 +1161,13 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
         final a = _assignments[i];
         final active = a['is_active'] == 1;
         return Card(
-          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          color: active ? null : Colors.grey.shade100,
+          margin: const EdgeInsets.symmetric(horizontal: AppTheme.spacingMd, vertical: AppTheme.spacingXs),
+          color: active ? null : _cs.surfaceContainerHighest,
           child: ListTile(
             title: Text('${a['guardian_name'] ?? a['guardian_admin_id']} → ${a['student_display_name'] ?? a['student_real_name'] ?? a['student_user_id']}', style: TextStyle(fontWeight: active ? FontWeight.w600 : FontWeight.normal)),
             subtitle: Text('${a['assigned_at']?.toString().replaceAll(RegExp(r'T.*'), '') ?? ''}  ${active ? "有效" : "已解除"}'),
             trailing: active
-              ? IconButton(icon: const Icon(Icons.link_off, color: Colors.red, size: 20), onPressed: () => _removeAssignment(a['id'] as String))
+              ? IconButton(icon: Icon(Icons.link_off, color: _cs.error, size: 20), onPressed: () => _removeAssignment(a['id'] as String))
               : null,
           ),
         );
@@ -1177,7 +1182,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     return Column(children: [
       // Search bar + filters
       Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+        padding: const EdgeInsets.fromLTRB(AppTheme.spacingMd, AppTheme.spacingMd, AppTheme.spacingMd, 0),
         child: Column(children: [
           // Search row
           Row(children: [
@@ -1195,13 +1200,13 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
               style: const TextStyle(fontSize: 13),
               onSubmitted: (v) => _loadLogs(q: v),
             )),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppTheme.spacingSm),
             IconButton(
-              icon: Icon(Icons.refresh_rounded, size: 20, color: const Color(0xFF5B7A9A)),
+              icon: Icon(Icons.refresh_rounded, size: 20, color:  _cs.secondary),
               onPressed: () => _loadLogs(),
             ),
           ]),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppTheme.spacingSm),
           // Category filters
           SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
             _logFilterChip('全部', ''),
@@ -1209,29 +1214,29 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
             _logFilterChip('设置订阅', 'set_subscription'),
             _logFilterChip('审批', 'approve_request,reject_request'),
           ])),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppTheme.spacingSm),
           // Date range
           Row(children: [
             Expanded(child: TextField(
               decoration: InputDecoration(
                 labelText: '开始日期', isDense: true,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                hintText: '2026-05-01', hintStyle: const TextStyle(fontSize: 12),
+                hintText: '2026-05-01', hintStyle: _tt.bodySmall!,
               ),
               style: const TextStyle(fontSize: 13),
               onChanged: (v) => _logDateFrom = v.trim(),
             )),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppTheme.spacingSm),
             Expanded(child: TextField(
               decoration: InputDecoration(
                 labelText: '结束日期', isDense: true,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                hintText: '2026-05-20', hintStyle: const TextStyle(fontSize: 12),
+                hintText: '2026-05-20', hintStyle: _tt.bodySmall!,
               ),
               style: const TextStyle(fontSize: 13),
               onChanged: (v) => _logDateTo = v.trim(),
             )),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppTheme.spacingSm),
             TextButton(
               onPressed: () => _loadLogs(dateFrom: _logDateFrom, dateTo: _logDateTo),
               child: const Text('筛选', style: TextStyle(fontSize: 13)),
@@ -1239,12 +1244,12 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
           ]),
         ]),
       ),
-      const SizedBox(height: 4),
+      const SizedBox(height: AppTheme.spacingXs),
       // Result count
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14),
         child: Row(children: [
-          Text('${_logs.length} 条记录', style: TextStyle(fontSize: 12, color: const Color(0xFF7A7A7A))),
+          Text('${_logs.length} 条记录', style: _tt.bodySmall?.copyWith(color:  _cs.onSurfaceVariant)),
         ]),
       ),
       // Log list
@@ -1270,29 +1275,29 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
         // Extract target name or use ID
         final targetLabel = (l['target_user_id'] as String?) ?? '';
         return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+          margin: const EdgeInsets.symmetric(horizontal: AppTheme.spacingMd, vertical: 3),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: _cs.surface,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFE8E6E0)),
+            border: Border.all(color:  _cs.outlineVariant),
           ),
           child: ListTile(
             dense: true,
             contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-            leading: Icon(actionIcon, size: 18, color: const Color(0xFF5B7A9A)),
+            leading: Icon(actionIcon, size: 18, color:  _cs.secondary),
             title: Row(children: [
               Text(l['admin_name'] as String? ?? l['admin_id'] as String? ?? '', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppTheme.spacingSm),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF5B7A9A).withValues(alpha: 0.1),
+                  color: _cs.secondary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: Text(actionLabel, style: TextStyle(fontSize: 10, color: const Color(0xFF5B7A9A))),
+                child: Text(actionLabel, style: TextStyle(fontSize: 10, color:  _cs.secondary)),
               ),
             ]),
-            subtitle: Text('$targetLabel${detailText.isNotEmpty ? " · $detailText" : ""} · ${(l['created_at'] as String? ?? '').replaceAll(RegExp(r'T.*'), '')}', style: const TextStyle(fontSize: 11, color: Color(0xFF7A7A7A))),
+            subtitle: Text('$targetLabel${detailText.isNotEmpty ? " · $detailText" : ""} · ${(l['created_at'] as String? ?? '').replaceAll(RegExp(r'T.*'), '')}', style: _tt.labelSmall?.copyWith(color: _cs.onSurfaceVariant)),
           ),
         );
       })),
@@ -1300,9 +1305,9 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
   }
 
   Widget _logFilterChip(String label, String filter) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+    padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingXs, vertical: 6),
     child: FilterChip(
-      label: Text(label, style: const TextStyle(fontSize: 12)),
+      label: Text(label, style: _tt.bodySmall!),
       selected: _logFilter == filter,
       visualDensity: VisualDensity.compact,
       onSelected: (_) {
@@ -1337,3 +1342,4 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     };
   }
 }
+

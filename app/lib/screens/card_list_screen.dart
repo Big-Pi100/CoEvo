@@ -7,6 +7,7 @@ import '../widgets/empty_state.dart';
 import '../providers/auth_provider.dart';
 import '../models/coevo_models.dart';
 import '../widgets/markdown_span_nodes.dart';
+import '../theme/app_theme.dart';
 
 class CardListScreen extends ConsumerStatefulWidget {
   final bool embedded;
@@ -17,6 +18,10 @@ class CardListScreen extends ConsumerStatefulWidget {
 }
 
 class _CardListScreenState extends ConsumerState<CardListScreen> {
+  // ── Theme access ──
+  ColorScheme get _cs => Theme.of(context).colorScheme;
+  TextTheme get _tt => Theme.of(context).textTheme;
+
   // 按 plan 分组的数据
   List<_PlanGroup> _planGroups = [];
   bool _isLoading = true;
@@ -119,6 +124,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {
       final resp = await client.getCardsByPlan(convId: conversationId, limit: 20, offset: 0, sort: 'front');
+      if (!mounted) return;
       final plansRaw = (resp['plans'] as List<dynamic>?) ?? [];
       final matchedPlan = plansRaw.cast<Map<String, dynamic>>().firstWhere(
         (p) => (p['conversation_id'] as String? ?? '') == conversationId,
@@ -151,6 +157,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {
       final resp = await client.getCardsByPlan(convId: conversationId, limit: 20, offset: group.loadOffset, sort: 'front');
+      if (!mounted) return;
       final plansRaw = (resp['plans'] as List<dynamic>?) ?? [];
       final matchedPlan = plansRaw.cast<Map<String, dynamic>>().firstWhere(
         (p) => (p['conversation_id'] as String? ?? '') == conversationId,
@@ -164,7 +171,14 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
       group.displayCards = List.from(group.cards);
       group.loadOffset += moreCards.length;
       group.hasMore = moreCards.length >= 20;
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('加载更多卡片失败: $e\n$st');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('加载失败: $e')),
+        );
+      }
+    }
     group.isLoading = false;
     setState(() {});
   }
@@ -178,6 +192,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     setState(() { _isSearching = true; _searchOffset = 0; });
     try {
       final resp = await client.searchCards(query.trim(), limit: 20, offset: 0);
+      if (!mounted) return;
       setState(() {
         _searchResults = (resp['cards'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
         _searchTotal = (resp['total'] as num?)?.toInt() ?? 0;
@@ -197,6 +212,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     setState(() => _isSearching = true);
     try {
       final resp = await client.searchCards(_searchController.text.trim(), limit: 20, offset: _searchOffset);
+      if (!mounted) return;
       final more = (resp['cards'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
       setState(() {
         _searchResults.addAll(more);
@@ -211,7 +227,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     if (_isSearching && _searchResults.isEmpty) return const Center(child: CircularProgressIndicator());
     return Column(children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+        padding: const EdgeInsets.fromLTRB(AppTheme.spacingLg, AppTheme.spacingMd, AppTheme.spacingLg, 0),
         child: TextField(
           controller: _searchController,
           decoration: InputDecoration(
@@ -226,14 +242,14 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
         ),
       ),
       Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Text('搜索结果：共 $_searchTotal 条', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+        padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingLg, vertical: AppTheme.spacingSm),
+        child: Text('搜索结果：共 $_searchTotal 条', style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
       ),
       Expanded(
         child: _searchResults.isEmpty
-            ? Center(child: Text('未找到匹配卡片', style: TextStyle(color: Colors.grey.shade500)))
+            ? Center(child: Text('未找到匹配卡片', style: TextStyle(color: _cs.onSurfaceVariant)))
             : ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                padding: const EdgeInsets.fromLTRB(AppTheme.spacingLg, 0, AppTheme.spacingLg, AppTheme.spacingXxl),
                 itemCount: _searchResults.length + (_searchHasMore ? 1 : 0),
                 itemBuilder: (ctx, i) {
                   if (i >= _searchResults.length) {
@@ -241,7 +257,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                       child: TextButton(
                         onPressed: _loadMoreSearch,
                         child: _isSearching
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                            ? const SizedBox(width: AppTheme.spacingLg, height: AppTheme.spacingLg, child: CircularProgressIndicator(strokeWidth: 2))
                             : const Text('加载更多'),
                       ),
                     );
@@ -276,34 +292,34 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
         maxChildSize: 0.7,
         expand: false,
         builder: (_, scrollController) => Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppTheme.spacingXxl),
           child: ListView(
             controller: scrollController,
             children: [
-              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 24),
-              Row(children: [const Icon(Icons.history, size: 20), const SizedBox(width: 8), Text('上次考试结果', style: Theme.of(context).textTheme.titleMedium)]),
-              const SizedBox(height: 16),
+              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: _cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(2)))),
+              const SizedBox(height: AppTheme.spacingXxl),
+              Row(children: [const Icon(Icons.history, size: 20), const SizedBox(width: AppTheme.spacingSm), Text('上次考试结果', style: Theme.of(context).textTheme.titleMedium)]),
+              const SizedBox(height: AppTheme.spacingLg),
               if (questionDetails != null && questionDetails.isNotEmpty)
                 ...questionDetails.map((d) {
                   final q = d as Map<String, dynamic>;
                   final correct = q['correct'] == true;
                   return Card(
-                    color: correct ? Colors.green.shade50 : Colors.red.shade50,
+                    color: correct ? _cs.primaryContainer : _cs.errorContainer,
                     child: Padding(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(AppTheme.spacingMd),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Row(children: [Icon(correct ? Icons.check_circle : Icons.cancel, color: correct ? Colors.green : Colors.red, size: 18), const SizedBox(width: 8), Expanded(child: Text(q['question'] as String? ?? '', style: const TextStyle(fontWeight: FontWeight.w600)))]),
+                        Row(children: [Icon(correct ? Icons.check_circle : Icons.cancel, color: correct ? _cs.primary : _cs.error, size: 18), const SizedBox(width: AppTheme.spacingSm), Expanded(child: Text(q['question'] as String? ?? '', style: const TextStyle(fontWeight: FontWeight.w600)))]),
                         const SizedBox(height: 6),
-                        Text(q['feedback'] as String? ?? '', style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+                        Text(q['feedback'] as String? ?? '', style: TextStyle(fontSize: 13, color: _cs.outline)),
                       ]),
                     ),
                   );
                 }),
               if (questionDetails == null || questionDetails.isEmpty)
-                Padding(padding: const EdgeInsets.symmetric(vertical: 24), child: Center(child: Text(review['verification_result'] as String? ?? '完成', style: TextStyle(color: Colors.grey.shade600)))),
-              const SizedBox(height: 12),
-              Center(child: Chip(avatar: Icon(review['verification_result'] == 'pass' ? Icons.check_circle : Icons.cancel, size: 16, color: review['verification_result'] == 'pass' ? Colors.green : Colors.red), label: Text(review['verification_result'] == 'pass' ? '已通过' : '未通过', style: TextStyle(color: review['verification_result'] == 'pass' ? Colors.green : Colors.red)))),
+                Padding(padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingXxl), child: Center(child: Text(review['verification_result'] as String? ?? '完成', style: TextStyle(color: _cs.onSurfaceVariant)))),
+              const SizedBox(height: AppTheme.spacingMd),
+              Center(child: Chip(avatar: Icon(review['verification_result'] == 'pass' ? Icons.check_circle : Icons.cancel, size: 16, color: review['verification_result'] == 'pass' ? _cs.primary : _cs.error), label: Text(review['verification_result'] == 'pass' ? '已通过' : '未通过', style: TextStyle(color: review['verification_result'] == 'pass' ? _cs.primary : _cs.error)))),
             ],
           ),
         ),
@@ -336,7 +352,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     return Column(children: [
       // 搜索栏
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        padding: const EdgeInsets.fromLTRB(AppTheme.spacingLg, AppTheme.spacingSm, AppTheme.spacingLg, 0),
         child: TextField(
           controller: _searchController,
           decoration: InputDecoration(
@@ -358,17 +374,17 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
       // 分组卡片列表
       Expanded(
         child: _planGroups.where((g) => g.cardCount > 0).isEmpty
-            ? Center(child: Text('没有匹配的卡片', style: TextStyle(color: Colors.grey.shade500)))
+            ? Center(child: Text('没有匹配的卡片', style: TextStyle(color: _cs.onSurfaceVariant)))
             : RefreshIndicator(
                 onRefresh: _loadPlanMeta,
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  padding: const EdgeInsets.fromLTRB(AppTheme.spacingLg, 0, AppTheme.spacingLg, AppTheme.spacingXxl),
                   children: [
                     // 总卡片数
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.only(bottom: AppTheme.spacingSm),
                       child: Text('${_planGroups.fold<int>(0, (s, g) => s + g.cardCount)} 张卡片 · ${_planGroups.length} 个计划',
-                          style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                          style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
                     ),
                     // 每个 plan 一个折叠组
                     ..._planGroups.where((g) => g.cardCount > 0).map((g) => _buildPlanSection(g)),
@@ -389,7 +405,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
           onTap: group.isLoading ? null : () => _togglePlan(group.conversationId),
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingMd, vertical: 10),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.primary.withAlpha(12),
               borderRadius: BorderRadius.circular(10),
@@ -397,7 +413,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
             child: Row(children: [
               Icon(group.expanded ? Icons.expand_less : Icons.expand_more,
                   size: 16, color: Theme.of(context).colorScheme.primary),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppTheme.spacingSm),
               Expanded(
                 child: Text(
                   group.goal.isEmpty ? '无标题计划' : group.goal,
@@ -406,25 +422,25 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                 ),
               ),
               if (group.isLoading)
-                const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(width: AppTheme.spacingMd, height: AppTheme.spacingMd, child: CircularProgressIndicator(strokeWidth: 2)),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingSm, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.grey.withAlpha(30),
+                  color: _cs.outline.withAlpha(30),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text('${group.cardCount}', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                child: Text('${group.cardCount}', style: _tt.labelSmall?.copyWith(color: _cs.onSurfaceVariant)),
               ),
             ]),
           ),
         ),
         // 展开后显示卡片
         if (group.expanded) ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: AppTheme.spacingXs),
           if (group.cards.isEmpty && !group.isLoading)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Center(child: Text('暂无卡片', style: TextStyle(color: Colors.grey.shade500, fontSize: 13))),
+              padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingSm),
+              child: Center(child: Text('暂无卡片', style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13))),
             )
           else ...[
             ...group.displayCards.map((card) => _buildCardTile(card)),
@@ -432,18 +448,18 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
             if (group.hasMore)
               Center(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingXs),
                   child: TextButton(
                     onPressed: group.isLoading ? null : () => _loadMorePlanCards(group.conversationId),
                     child: group.isLoading
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        ? const SizedBox(width: AppTheme.spacingLg, height: AppTheme.spacingLg, child: CircularProgressIndicator(strokeWidth: 2))
                         : const Text('加载更多'),
                   ),
                 ),
               ),
           ],
         ],
-        const SizedBox(height: 8),
+        const SizedBox(height: AppTheme.spacingSm),
       ],
     );
   }
@@ -459,16 +475,16 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
   }
 
   Widget _buildCardTile(DueCard card) {
-    final colors = [Colors.blue, Colors.orange, Colors.green, Colors.purple];
+    final colors = [_cs.secondary, _cs.tertiary, _cs.primary, _cs.tertiaryFixed];
     final color = colors[card.state.clamp(0, 3)];
     return Card(
       color: color,
       elevation: 0,
       clipBehavior: Clip.antiAlias,
-      margin: const EdgeInsets.only(top: 4),
+      margin: const EdgeInsets.only(top: AppTheme.spacingXs),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.grey.shade200),
+        side: BorderSide(color: _cs.outlineVariant),
       ),
       child: Stack(children: [
         Positioned.fill(
@@ -484,35 +500,35 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
             ListTile(
           leading: CircleAvatar(
             backgroundColor: color.withAlpha(50),
-            child: const Icon(Icons.auto_stories, color: Colors.white, size: 18),
+            child: Icon(Icons.auto_stories, color: _cs.onPrimary, size: 18),
           ),
-          title: Text(card.front, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white)),
-          subtitle: Text('${card.back}\n复习 ${card.reps} 次', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withAlpha(200))),
+          title: Text(card.front, style: TextStyle(fontWeight: FontWeight.w600, color: _cs.onPrimary)),
+          subtitle: Text('${card.back}\n复习 ${card.reps} 次', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: _cs.onPrimary.withAlpha(200))),
           trailing: Row(mainAxisSize: MainAxisSize.min, children: [
             if (card.lastReviewedAt != null)
               GestureDetector(
                 onTap: () => _showReviewDetails(card.id),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                  decoration: BoxDecoration(color: (card.lastReviewQuality ?? 0) >= 3 ? Colors.green.shade100 : Colors.red.shade100, borderRadius: BorderRadius.circular(10)),
+                  decoration: BoxDecoration(color: (card.lastReviewQuality ?? 0) >= 3 ? _cs.primaryContainer : _cs.errorContainer, borderRadius: BorderRadius.circular(10)),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon((card.lastReviewQuality ?? 0) >= 3 ? Icons.check_circle : Icons.cancel, size: 14, color: (card.lastReviewQuality ?? 0) >= 3 ? Colors.green : Colors.red),
+                    Icon((card.lastReviewQuality ?? 0) >= 3 ? Icons.check_circle : Icons.cancel, size: 14, color: (card.lastReviewQuality ?? 0) >= 3 ? _cs.primary : _cs.error),
                     const SizedBox(width: 3),
-                    Text((card.lastReviewQuality ?? 0) >= 3 ? '正确' : '错误', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: (card.lastReviewQuality ?? 0) >= 3 ? Colors.green.shade700 : Colors.red.shade700)),
+                    Text((card.lastReviewQuality ?? 0) >= 3 ? '正确' : '错误', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: (card.lastReviewQuality ?? 0) >= 3 ? _cs.primary : _cs.error)),
                   ]),
                 ),
               ),
             if (card.lastReviewedAt != null) const SizedBox(width: 6),
             Chip(
-              label: Text(switch (card.state) { 0 => '新卡片', 1 => '学习中', 2 => '复习中', _ => '重学中' }, style: const TextStyle(fontSize: 10, color: Colors.white)),
+              label: Text(switch (card.state) { 0 => '新卡片', 1 => '学习中', 2 => '复习中', _ => '重学中' }, style: TextStyle(fontSize: 10, color: _cs.onPrimary)),
               backgroundColor: color.withAlpha(100),
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               visualDensity: VisualDensity.compact,
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: AppTheme.spacingXs),
             IconButton(
               icon: const Icon(Icons.block, size: 16),
-              color: Colors.white.withAlpha(180),
+              color: _cs.onPrimary.withAlpha(180),
               tooltip: '跳过',
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
@@ -520,7 +536,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
             ),
             const SizedBox(width: 2),
             Icon(_expandedCardIds.contains(card.id) ? Icons.expand_less : Icons.expand_more,
-                 size: 20, color: Colors.white.withAlpha(180)),
+                 size: 20, color: _cs.onPrimary.withAlpha(180)),
           ]),
           onTap: () {
             setState(() {
@@ -570,39 +586,39 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Divider(height: 1, color: Colors.white38),
+        Divider(height: 1, color: _cs.onPrimary.withAlpha(96)),
         Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppTheme.spacingLg),
           child: DefaultTextStyle(
-            style: const TextStyle(color: Colors.white),
+            style: TextStyle(color: _cs.onPrimary),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('正面', style: TextStyle(fontSize: 12, color: Colors.white.withAlpha(150))),
-              const SizedBox(height: 4),
-              RichContentBuilder().build(card.front),
-              const Divider(height: 32, color: Colors.white38),
-              Text('释义', style: TextStyle(fontSize: 12, color: Colors.white.withAlpha(150))),
-              const SizedBox(height: 4),
-              RichContentBuilder().build(card.back),
+              Text('正面', style: _tt.bodySmall?.copyWith(color: _cs.onPrimary.withAlpha(150))),
+              const SizedBox(height: AppTheme.spacingXs),
+              RichContentBuilder(textColor: _cs.onPrimary).build(card.front),
+              Divider(height: 32, color: _cs.onPrimary.withAlpha(96)),
+              Text('释义', style: _tt.bodySmall?.copyWith(color: _cs.onPrimary.withAlpha(150))),
+              const SizedBox(height: AppTheme.spacingXs),
+              RichContentBuilder(textColor: _cs.onPrimary).build(card.back),
               if (card.sourceSentence != null) ...[
-                const Divider(height: 32, color: Colors.white38),
-                Text('来源', style: TextStyle(fontSize: 12, color: Colors.white.withAlpha(150))),
-                const SizedBox(height: 4),
-                RichContentBuilder().build(card.sourceSentence!),
+                Divider(height: 32, color: _cs.onPrimary.withAlpha(96)),
+                Text('来源', style: _tt.bodySmall?.copyWith(color: _cs.onPrimary.withAlpha(150))),
+                const SizedBox(height: AppTheme.spacingXs),
+                RichContentBuilder(textColor: _cs.onPrimary).build(card.sourceSentence!),
               ],
               if (hasTimeline) ...[
-                const Divider(height: 32, color: Colors.white38),
+                Divider(height: 32, color: _cs.onPrimary.withAlpha(96)),
                 Row(children: [
-                  const Icon(Icons.timeline, size: 16, color: Colors.white38),
+                  Icon(Icons.timeline, size: 16, color: _cs.onPrimary.withAlpha(96)),
                   const SizedBox(width: 6),
-                  Text('复习时间线', style: TextStyle(fontSize: 12, color: Colors.white.withAlpha(150))),
+                  Text('复习时间线', style: _tt.bodySmall?.copyWith(color: _cs.onPrimary.withAlpha(150))),
                 ]),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppTheme.spacingMd),
                 _TimelineRow(
                   label: '创建时间',
                   time: _formatTimestamp(card.createdAt),
                 ),
                 if (card.lastReviewedAt != null) ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppTheme.spacingSm),
                   _TimelineRow(
                     label: '上次复习',
                     time: _formatTimestamp(card.lastReviewedAt),
@@ -610,7 +626,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                   ),
                 ],
                 if (card.due != null) ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppTheme.spacingSm),
                   _TimelineRow(
                     label: '下次复习',
                     time: _formatTimestamp(card.due),
@@ -619,7 +635,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                   ),
                 ],
               ],
-              const Divider(height: 32, color: Colors.white38),
+              Divider(height: 32, color: _cs.onPrimary.withAlpha(96)),
               Wrap(
                 spacing: 8, runSpacing: 8,
                 children: [
@@ -645,7 +661,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
         content: Text('跳过「${card.front}」后将不再作为候选概念推荐。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('跳过', style: TextStyle(color: Colors.red))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('跳过', style: TextStyle(color: _cs.error))),
         ],
       ),
     );
@@ -716,8 +732,9 @@ class _InfoChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Chip(
-      avatar: Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+      avatar: Text(label, style: TextStyle(fontSize: 10, color: cs.outline)),
       label: Text(value, style: const TextStyle(fontSize: 13)),
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       visualDensity: VisualDensity.compact,
@@ -734,20 +751,22 @@ class _TimelineRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
     return Row(children: [
-      SizedBox(width: 56, child: Text(label, style: TextStyle(fontSize: 12, color: Colors.white.withAlpha(120)))),
+      SizedBox(width: 56, child: Text(label, style: tt.bodySmall?.copyWith(color: cs.onPrimary.withAlpha(120)))),
       Expanded(child: Text(time, style: const TextStyle(fontSize: 13))),
       if (hint != null && hint!.isNotEmpty)
-        Text(hint!, style: TextStyle(fontSize: 12, color: Colors.white.withAlpha(150))),
+        Text(hint!, style: tt.bodySmall?.copyWith(color: cs.onPrimary.withAlpha(150))),
       if (extra != null && extra!.isNotEmpty) ...[
-        const SizedBox(width: 8),
+        const SizedBox(width: AppTheme.spacingSm),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
-            color: Colors.white.withAlpha(25),
+            color: cs.onPrimary.withAlpha(25),
             borderRadius: BorderRadius.circular(4),
           ),
-          child: Text(extra!, style: TextStyle(fontSize: 11, color: Colors.white.withAlpha(180))),
+          child: Text(extra!, style: tt.labelSmall?.copyWith(color: cs.onPrimary.withAlpha(180))),
         ),
       ],
     ]);

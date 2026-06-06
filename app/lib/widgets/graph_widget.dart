@@ -48,6 +48,7 @@ class GraphWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final _cs = Theme.of(context).colorScheme;
     Map<String, dynamic> data;
     try {
       // 容错：清理 markdown 代码块标记
@@ -60,22 +61,22 @@ class GraphWidget extends StatelessWidget {
       data = jsonDecode(cleaned) as Map<String, dynamic>;
       data = _normalize(data);
     } catch (_) {
-      return _buildError('图形数据解析失败');
+      return _buildError('图形数据解析失败', _cs);
     }
 
     final type = data['type'] as String?;
-    if (type == null) return _buildError('缺少 type 字段');
+    if (type == null) return _buildError('缺少 type 字段', _cs);
 
     try {
       switch (type) {
         case 'line':
-          return _buildLineChart(data);
+          return _buildLineChart(data, _cs);
         case 'bar':
-          return _buildBarChart(data);
+          return _buildBarChart(data, _cs);
         case 'scatter':
-          return _buildScatterChart(data);
+          return _buildScatterChart(data, _cs);
         case 'pie':
-          return _buildPieChart(data);
+          return _buildPieChart(data, _cs);
         case 'polygon':
           return _buildPolygon(data, context);
         case 'circle':
@@ -83,21 +84,21 @@ class GraphWidget extends StatelessWidget {
         case 'arrow':
           return _buildArrowChart(data, context);
         default:
-          return _buildError('不支持的图形类型: $type');
+          return _buildError('不支持的图形类型: $type', _cs);
       }
     } catch (e) {
-      return _buildError('图形渲染失败: $e');
+      return _buildError('图形渲染失败: $e', _cs);
     }
   }
 
   // ── fl_chart 折线图 ──
-  Widget _buildLineChart(Map<String, dynamic> data) {
+  Widget _buildLineChart(Map<String, dynamic> data, ColorScheme cs) {
     final List rawData = _safeList(data['data']);
     final spots = rawData.map((p) {
       final m = p as Map<String, dynamic>;
       return FlSpot(_safeDouble(m['x']), _safeDouble(m['y']));
     }).toList();
-    if (spots.isEmpty) return _buildError('无数据');
+    if (spots.isEmpty) return _buildError('无数据', cs);
 
     final title = data['title'] as String? ?? '';
     final xlabel = data['xlabel'] as String? ?? '';
@@ -117,9 +118,9 @@ class GraphWidget extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.fromLTRB(8, 12, 16, 8),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -169,12 +170,12 @@ class GraphWidget extends StatelessWidget {
                   LineChartBarData(
                     spots: spots,
                     isCurved: true,
-                    color: const Color(0xFF6C63FF),
+                    color: cs.primary,
                     barWidth: 2,
                     dotData: FlDotData(show: spots.length <= 20),
                     belowBarData: BarAreaData(
                       show: true,
-                      color: const Color(0xFF6C63FF).withAlpha(25),
+                      color: cs.primary.withAlpha(25),
                     ),
                   ),
                 ],
@@ -194,7 +195,7 @@ class GraphWidget extends StatelessWidget {
   }
 
   // ── fl_chart 柱状图 ──
-  Widget _buildBarChart(Map<String, dynamic> data) {
+  Widget _buildBarChart(Map<String, dynamic> data, ColorScheme cs) {
     final List rawData = _safeList(data['data']);
     final groups = rawData.asMap().entries.map((e) {
       final m = e.value as Map<String, dynamic>;
@@ -202,12 +203,12 @@ class GraphWidget extends StatelessWidget {
         x: e.key,
         barRods: [BarChartRodData(
           toY: _safeDouble(m['value']),
-          color: const Color(0xFF6C63FF),
+          color: cs.primary,
           width: 16,
         )],
       );
     }).toList();
-    if (groups.isEmpty) return _buildError('无数据');
+    if (groups.isEmpty) return _buildError('无数据', cs);
 
     final labels = rawData.map((p) => (p as Map<String, dynamic>)['label'] as String? ?? '').toList();
     final title = data['title'] as String? ?? '';
@@ -216,9 +217,9 @@ class GraphWidget extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.fromLTRB(8, 12, 16, 8),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -263,13 +264,13 @@ class GraphWidget extends StatelessWidget {
   }
 
   // ── fl_chart 散点图 ──
-  Widget _buildScatterChart(Map<String, dynamic> data) {
+  Widget _buildScatterChart(Map<String, dynamic> data, ColorScheme cs) {
     final List rawData = _safeList(data['data']);
     final spots = rawData.map((p) {
       final m = p as Map<String, dynamic>;
       return ScatterSpot(_safeDouble(m['x']), _safeDouble(m['y']));
     }).toList();
-    if (spots.isEmpty) return _buildError('无数据');
+    if (spots.isEmpty) return _buildError('无数据', cs);
 
     final xVals = spots.map((s) => s.x);
     final yVals = spots.map((s) => s.y);
@@ -283,9 +284,9 @@ class GraphWidget extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.fromLTRB(8, 12, 16, 8),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -314,7 +315,7 @@ class GraphWidget extends StatelessWidget {
   }
 
   // ── fl_chart 扇形图 ──
-  Widget _buildPieChart(Map<String, dynamic> data) {
+  Widget _buildPieChart(Map<String, dynamic> data, ColorScheme cs) {
     final List rawData = _safeList(data['data']);
     final colors = [0xFF6C63FF, 0xFFFF6B6B, 0xFF4ECDC4, 0xFFFFD93D, 0xFFA78BFA, 0xFFFB923C, 0xFF34D399, 0xFF60A5FA];
     final sections = rawData.asMap().entries.map((e) {
@@ -327,7 +328,7 @@ class GraphWidget extends StatelessWidget {
         titleStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white),
       );
     }).toList();
-    if (sections.isEmpty) return _buildError('无数据');
+    if (sections.isEmpty) return _buildError('无数据', cs);
 
     final title = data['title'] as String? ?? '';
 
@@ -335,9 +336,9 @@ class GraphWidget extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -364,12 +365,13 @@ class GraphWidget extends StatelessWidget {
 
   // ── CustomPainter 多边形 ──
   Widget _buildPolygon(Map<String, dynamic> data, BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final List raw = _safeList(data['points']);
     final points = raw.map((p) {
       final m = p as Map<String, dynamic>;
       return Offset(_safeDouble(m['x']), _safeDouble(m['y']));
     }).toList();
-    if (points.length < 2) return _buildError('多边形至少需要 2 个点');
+    if (points.length < 2) return _buildError('多边形至少需要 2 个点', cs);
 
     final title = data['title'] as String? ?? '';
     // 顶点标签
@@ -400,9 +402,9 @@ class GraphWidget extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -417,6 +419,7 @@ class GraphWidget extends StatelessWidget {
             child: CustomPaint(
               size: const Size(double.infinity, 200),
               painter: _GeometryPainter(
+                cs: cs,
                 points: points,
                 xMin: xMin, xMax: xMax,
                 yMin: yMin, yMax: yMax,
@@ -434,6 +437,7 @@ class GraphWidget extends StatelessWidget {
 
   // ── CustomPainter 圆形 ──
   Widget _buildCircle(Map<String, dynamic> data, BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final center = data['center'] as Map<String, dynamic>?;
     final cx = (center?['x'] as num?)?.toDouble() ?? 0;
     final cy = (center?['y'] as num?)?.toDouble() ?? 0;
@@ -469,9 +473,9 @@ class GraphWidget extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -486,6 +490,7 @@ class GraphWidget extends StatelessWidget {
             child: CustomPaint(
               size: const Size(double.infinity, 200),
               painter: _GeometryPainter(
+                cs: cs,
                 points: const [],
                 xMin: cx - radius - 0.5, xMax: cx + radius + 0.5,
                 yMin: cy - radius - 0.5, yMax: cy + radius + 0.5,
@@ -506,6 +511,7 @@ class GraphWidget extends StatelessWidget {
 
   // ── 箭头图：向量、力分析 ──
   Widget _buildArrowChart(Map<String, dynamic> data, BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final List raw = _safeList(data['arrows']);
     final arrows = raw.map((a) {
       final m = a as Map<String, dynamic>;
@@ -515,10 +521,10 @@ class GraphWidget extends StatelessWidget {
         from: Offset(_safeDouble(from['x']), _safeDouble(from['y'])),
         to: Offset(_safeDouble(to['x']), _safeDouble(to['y'])),
         label: m['label'] as String?,
-        color: _parseColor(m['color'] as String?),
+        color: _parseColor(m['color'] as String?, cs),
       );
     }).toList();
-    if (arrows.isEmpty) return _buildError('无箭头数据');
+    if (arrows.isEmpty) return _buildError('无箭头数据', cs);
 
     final title = data['title'] as String? ?? '';
 
@@ -542,9 +548,9 @@ class GraphWidget extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -559,6 +565,7 @@ class GraphWidget extends StatelessWidget {
             child: CustomPaint(
               size: const Size(double.infinity, 220),
               painter: _GeometryPainter(
+                cs: cs,
                 points: const [],
                 xMin: xMin, xMax: xMax, yMin: yMin, yMax: yMax,
                 drawClosed: false,
@@ -571,21 +578,21 @@ class GraphWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildError(String msg) {
+  Widget _buildError(String msg, ColorScheme cs) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.orange.shade50,
+        color: cs.errorContainer,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.orange.shade200),
+        border: Border.all(color: cs.error.withAlpha(51)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.broken_image, size: 16, color: Colors.orange.shade700),
+          Icon(Icons.broken_image, size: 16, color: cs.error),
           const SizedBox(width: 8),
-          Text('📊 $msg', style: TextStyle(fontSize: 12, color: Colors.orange.shade800)),
+          Text('📊 $msg', style: TextStyle(fontSize: 12, color: cs.onErrorContainer)),
         ],
       ),
     );
@@ -608,12 +615,12 @@ class GraphWidget extends StatelessWidget {
     return r;
   }
 
-  Color _parseColor(String? hex) {
-    if (hex == null || hex.isEmpty) return const Color(0xFF6C63FF);
+  Color _parseColor(String? hex, ColorScheme cs) {
+    if (hex == null || hex.isEmpty) return cs.primary;
     final h = hex.replaceFirst('#', '');
     if (h.length == 6) return Color(int.parse('FF$h', radix: 16));
     if (h.length == 8) return Color(int.parse(h, radix: 16));
-    return const Color(0xFF6C63FF);
+    return cs.primary;
   }
 
   /// 归一化 LLM 常见的格式变体
@@ -716,6 +723,7 @@ class _AngleArc {
 
 /// 几何图形绘制器：多边形 / 圆形 / 坐标轴
 class _GeometryPainter extends CustomPainter {
+  final ColorScheme cs;
   final List<Offset> points;
   final double xMin, xMax, yMin, yMax;
   final bool drawClosed;
@@ -728,6 +736,7 @@ class _GeometryPainter extends CustomPainter {
   final List<_ArrowData> tangentLines;
 
   _GeometryPainter({
+    required this.cs,
     required this.points,
     required this.xMin, required this.xMax,
     required this.yMin, required this.yMax,
@@ -758,7 +767,7 @@ class _GeometryPainter extends CustomPainter {
     final screenPoints = points.map((p) => toScreen(p.dx, p.dy)).toList();
 
     // 坐标轴
-    final axisPaint = Paint()..color = Colors.grey.shade400..strokeWidth = 0.5;
+    final axisPaint = Paint()..color = cs.outline..strokeWidth = 0.5;
     final origin = toScreen(0, 0);
     canvas.drawLine(Offset(pad, origin.dy), Offset(size.width - pad, origin.dy), axisPaint);
     canvas.drawLine(Offset(origin.dx, pad), Offset(origin.dx, size.height - pad), axisPaint);
@@ -768,16 +777,16 @@ class _GeometryPainter extends CustomPainter {
       final cc = toScreen(circleCenter!.dx, circleCenter!.dy);
       final r = circleRadius! * scale;
       final circlePaint = Paint()
-        ..color = const Color(0xFF6C63FF).withAlpha(40)
+        ..color = cs.primary.withAlpha(40)
         ..style = PaintingStyle.fill;
       canvas.drawCircle(cc, r, circlePaint);
       final strokePaint = Paint()
-        ..color = const Color(0xFF6C63FF)
+        ..color = cs.primary
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2;
       canvas.drawCircle(cc, r, strokePaint);
       // 圆心点
-      canvas.drawCircle(cc, 3, Paint()..color = const Color(0xFF6C63FF));
+      canvas.drawCircle(cc, 3, Paint()..color = cs.primary);
       return;
     }
 
@@ -791,25 +800,25 @@ class _GeometryPainter extends CustomPainter {
       if (drawClosed) path.close();
 
       final fillPaint = Paint()
-        ..color = const Color(0xFF6C63FF).withAlpha(30)
+        ..color = cs.primary.withAlpha(30)
         ..style = PaintingStyle.fill;
       canvas.drawPath(path, fillPaint);
 
       final strokePaint = Paint()
-        ..color = const Color(0xFF6C63FF)
+        ..color = cs.primary
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2;
       canvas.drawPath(path, strokePaint);
 
       // 顶点标注
       for (final sp in screenPoints) {
-        canvas.drawCircle(sp, 3, Paint()..color = const Color(0xFF6C63FF));
+        canvas.drawCircle(sp, 3, Paint()..color = cs.primary);
       }
 
       // 顶点标签
       for (var i = 0; i < screenPoints.length && i < labels.length; i++) {
         final tp = TextPainter(
-          text: TextSpan(text: labels[i], style: const TextStyle(color: Color(0xFF6C63FF), fontSize: 12, fontWeight: FontWeight.w600)),
+          text: TextSpan(text: labels[i], style: TextStyle(color: cs.primary, fontSize: 12, fontWeight: FontWeight.w600)),
           textDirection: TextDirection.ltr,
         )..layout();
         final lp = screenPoints[i];
@@ -844,7 +853,7 @@ class _GeometryPainter extends CustomPainter {
           ..moveTo(p1.dx, p1.dy)
           ..lineTo(p2.dx, p2.dy)
           ..lineTo(p3.dx, p3.dy);
-        canvas.drawPath(markPath, Paint()..color = const Color(0xFF6C63FF)..style = PaintingStyle.stroke..strokeWidth = 1.5);
+        canvas.drawPath(markPath, Paint()..color = cs.primary..style = PaintingStyle.stroke..strokeWidth = 1.5);
       }
     }
 
@@ -852,7 +861,7 @@ class _GeometryPainter extends CustomPainter {
     for (final arrow in arrows) {
       final fp = toScreen(arrow.from.dx, arrow.from.dy);
       final tp = toScreen(arrow.to.dx, arrow.to.dy);
-      final color = arrow.color ?? const Color(0xFF6C63FF);
+      final color = arrow.color ?? cs.primary;
 
       // 箭身
       canvas.drawLine(fp, tp, Paint()..color = color..strokeWidth = 2.5..strokeCap = StrokeCap.round);
@@ -929,7 +938,7 @@ class _GeometryPainter extends CustomPainter {
         final py = cnt.dy + arcR * math.sin(a);
         if (i == 0) { arcPath.moveTo(px, py); } else { arcPath.lineTo(px, py); }
       }
-      canvas.drawPath(arcPath, Paint()..color = Colors.orange..style = PaintingStyle.stroke..strokeWidth = 1.5);
+      canvas.drawPath(arcPath, Paint()..color = cs.tertiary..style = PaintingStyle.stroke..strokeWidth = 1.5);
 
       // 弧线标签
       if (arc.label != null && arc.label!.isNotEmpty) {
@@ -937,7 +946,7 @@ class _GeometryPainter extends CustomPainter {
         final lx2 = cnt.dx + (arcR + 10) * math.cos(midAngle);
         final ly2 = cnt.dy + (arcR + 10) * math.sin(midAngle);
         final tp3 = TextPainter(
-          text: TextSpan(text: arc.label, style: const TextStyle(color: Colors.orange, fontSize: 10)),
+          text: TextSpan(text: arc.label, style: TextStyle(color: cs.tertiary, fontSize: 10)),
           textDirection: TextDirection.ltr,
         )..layout();
         tp3.paint(canvas, Offset(lx2 - tp3.width / 2, ly2 - tp3.height / 2));
@@ -948,7 +957,7 @@ class _GeometryPainter extends CustomPainter {
     for (final tl in tangentLines) {
       final fp2 = toScreen(tl.from.dx, tl.from.dy);
       final tp4 = toScreen(tl.to.dx, tl.to.dy);
-      final dashPaint = Paint()..color = Colors.grey.shade500..strokeWidth = 1.5;
+      final dashPaint = Paint()..color = cs.outlineVariant..strokeWidth = 1.5;
       const dashLen = 6.0;
       const gapLen = 3.0;
       final ddx = tp4.dx - fp2.dx;
@@ -967,10 +976,10 @@ class _GeometryPainter extends CustomPainter {
         );
         pos += dashLen + gapLen;
       }
-      canvas.drawCircle(tp4, 3, Paint()..color = Colors.grey.shade600);
+      canvas.drawCircle(tp4, 3, Paint()..color = cs.onSurfaceVariant);
       if (tl.label != null && tl.label!.isNotEmpty) {
         final tp5 = TextPainter(
-          text: TextSpan(text: tl.label, style: TextStyle(color: Colors.grey.shade600, fontSize: 10)),
+          text: TextSpan(text: tl.label, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 10)),
           textDirection: TextDirection.ltr,
         )..layout();
         tp5.paint(canvas, Offset(tp4.dx - tp5.width / 2, tp4.dy - tp5.height - 6));

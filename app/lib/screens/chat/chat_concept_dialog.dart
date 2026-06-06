@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/coevo_models.dart';
 import '../../api/chat_client.dart';
 import '../../providers/auth_provider.dart';
+import '../../theme/app_theme.dart';
 
 /// 制卡确认弹窗 — 分页展示候选概念，用户勾选确认或跳过
 class ConceptDialog {
@@ -43,8 +44,8 @@ class ConceptDialog {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text('第 ${start() + 1}~${end()} 条 / 共 ${candidates.length} 条',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-                  const SizedBox(height: 8),
+                      style: Theme.of(ctx).textTheme.bodySmall?.copyWith(color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
+                  const SizedBox(height: AppTheme.spacingSm),
                   ListView.builder(
                     shrinkWrap: true,
                     itemCount: pageItems().length,

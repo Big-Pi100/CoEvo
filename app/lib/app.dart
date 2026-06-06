@@ -11,6 +11,7 @@ import 'screens/profile_screen.dart';
 import 'screens/achievements_screen.dart';
 import 'screens/conversation_list_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/k12_subject_screen.dart';
 import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
 import 'widgets/achievement_overlay.dart';
@@ -115,6 +116,18 @@ final goRouter = GoRouter(
       pageBuilder: (context, state) => CustomTransitionPage(
         key: state.pageKey,
         child: const ConversationListScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            SlideTransition(
+              position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(animation),
+              child: child,
+            ),
+      ),
+    ),
+    GoRoute(
+      path: '/k12-subject',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const K12SubjectScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             SlideTransition(
               position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(animation),

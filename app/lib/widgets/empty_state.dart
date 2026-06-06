@@ -19,20 +19,20 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final _cs = Theme.of(context).colorScheme;
+    final _tt = Theme.of(context).textTheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 56, color: Colors.grey.shade300),
+            Icon(icon, size: 56, color: _cs.onSurfaceVariant),
             const SizedBox(height: 16),
-            Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: Colors.grey.shade600,
-            )),
+            Text(title, style: _tt.titleMedium?.copyWith(color: _cs.onSurface)),
             if (subtitle != null) ...[
               const SizedBox(height: 8),
-              Text(subtitle!, style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
+              Text(subtitle!, style: _tt.bodySmall?.copyWith(color: _cs.onSurfaceVariant, fontSize: 13)),
             ],
             if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: 20),

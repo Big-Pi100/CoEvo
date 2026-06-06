@@ -1,10 +1,11 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/empty_state.dart';
+import '../theme/app_theme.dart';
 
 class ConversationListScreen extends ConsumerStatefulWidget {
   const ConversationListScreen({super.key});
@@ -15,6 +16,8 @@ class ConversationListScreen extends ConsumerStatefulWidget {
 
 class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
     with SingleTickerProviderStateMixin {
+  ColorScheme get _cs => Theme.of(context).colorScheme;
+  TextTheme get _tt => Theme.of(context).textTheme;
   late final TabController _tabController;
   List<Map<String, dynamic>> _activeConversations = [];
   List<Map<String, dynamic>> _deletedConversations = [];
@@ -117,7 +120,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: _cs.error),
             child: const Text('删除'),
           ),
         ],
@@ -142,7 +145,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: _cs.error),
             child: const Text('彻底删除'),
           ),
         ],
@@ -218,7 +221,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
     return RefreshIndicator(
       onRefresh: _loadActive,
       child: ListView.builder(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppTheme.spacingMd),
         itemCount: _activeConversations.length,
         itemBuilder: (_, i) => _buildActiveTile(_activeConversations[i]),
       ),
@@ -236,9 +239,9 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
       direction: DismissDirection.endToStart,
       background: Container(
         alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        color: Colors.red,
-        child: const Icon(Icons.delete, color: Colors.white),
+        padding: const EdgeInsets.only(right: AppTheme.spacingXl),
+        color: _cs.error,
+        child: Icon(Icons.delete, color: _cs.onError),
       ),
       confirmDismiss: (_) async {
         await _showDeleteDialog(conv);
@@ -252,7 +255,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
           ),
           title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text('$dateLabel · $turnCount 轮对话',
-              style: const TextStyle(fontSize: 12)),
+              style: _tt.bodySmall!),
           trailing: const Icon(Icons.chevron_right),
           onTap: () {
             final convId = conv['id'] as String?;
@@ -280,12 +283,12 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.delete_outline, size: 64, color: Colors.grey.shade300),
-            const SizedBox(height: 16),
-            Text('回收站为空', style: TextStyle(color: Colors.grey.shade500)),
-            const SizedBox(height: 8),
+            Icon(Icons.delete_outline, size: 64, color: _cs.outlineVariant),
+            const SizedBox(height: AppTheme.spacingLg),
+            Text('回收站为空', style: TextStyle(color: _cs.onSurfaceVariant)),
+            const SizedBox(height: AppTheme.spacingSm),
             Text('已删除的对话将保留30天',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
+                style: _tt.bodySmall?.copyWith(color: _cs.outline)),
           ],
         ),
       );
@@ -294,21 +297,21 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
       children: [
         Expanded(
           child: ListView.builder(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(AppTheme.spacingMd),
             itemCount: _deletedConversations.length,
             itemBuilder: (_, i) => _buildDeletedTile(_deletedConversations[i]),
           ),
         ),
         Container(
-          padding: const EdgeInsets.all(12),
-          color: Colors.grey.shade50,
+          padding: const EdgeInsets.all(AppTheme.spacingMd),
+          color: _cs.surfaceContainerLow,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.info_outline, size: 14, color: Colors.grey.shade400),
+              Icon(Icons.info_outline, size: 14, color: _cs.outlineVariant),
               const SizedBox(width: 6),
               Text('已删除的对话将在30天后自动清理',
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                  style: _tt.labelSmall?.copyWith(color: _cs.onSurfaceVariant)),
             ],
           ),
         ),
@@ -325,15 +328,15 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
     return Card(
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: Colors.grey.shade200,
-          child: Icon(Icons.delete_outline, size: 20, color: Colors.grey.shade600),
+          backgroundColor: _cs.surfaceContainerHighest,
+          child: Icon(Icons.delete_outline, size: 20, color: _cs.onSurfaceVariant),
         ),
         title: Text(title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: Colors.grey.shade700)),
+            style: TextStyle(color: _cs.onSurface)),
         subtitle: Text('$turnCount轮对话 · 删除于 $dateLabel',
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+            style: _tt.bodySmall?.copyWith(color: _cs.onSurfaceVariant)),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -343,7 +346,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
               onPressed: () => _restoreConversation(conv),
             ),
             IconButton(
-              icon: Icon(Icons.delete_forever, size: 20, color: Colors.red.shade300),
+              icon: Icon(Icons.delete_forever, size: 20, color: _cs.error),
               tooltip: '彻底删除',
               onPressed: () => _showPermanentDeleteDialog(conv),
             ),
@@ -353,3 +356,4 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
     );
   }
 }
+

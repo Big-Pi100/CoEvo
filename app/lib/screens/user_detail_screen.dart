@@ -1,7 +1,8 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../api/api_config.dart';
+import '../theme/app_theme.dart';
 
 class UserDetailScreen extends StatefulWidget {
   final String userId;
@@ -15,6 +16,8 @@ class UserDetailScreen extends StatefulWidget {
 }
 
 class _UserDetailScreenState extends State<UserDetailScreen> with TickerProviderStateMixin {
+  ColorScheme get _cs => Theme.of(context).colorScheme;
+  TextTheme get _tt => Theme.of(context).textTheme;
   Map<String, dynamic>? _user;
   List<Map<String, dynamic>> _cards = [];
   List<Map<String, dynamic>> _convs = [];
@@ -63,17 +66,17 @@ class _UserDetailScreenState extends State<UserDetailScreen> with TickerProvider
           : Column(children: [
               // Basic info
               Card(
-                margin: const EdgeInsets.all(12),
+                margin: const EdgeInsets.all(AppTheme.spacingMd),
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(AppTheme.spacingLg),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('ID: ${_user!['user_id'] ?? ''}', style: const TextStyle(fontSize: 13, color: Colors.grey)),
-                    const SizedBox(height: 4),
+                    Text('ID: ${_user!['user_id'] ?? ''}', style: TextStyle(fontSize: 13, color: _cs.onSurfaceVariant)),
+                    const SizedBox(height: AppTheme.spacingXs),
                     Text('用户名: ${_user!['username'] ?? ''}', style: const TextStyle(fontSize: 13)),
                     Text('真实姓名: ${_user!['real_name'] ?? '—'}', style: const TextStyle(fontSize: 13)),
                     Text('手机号: ${_user!['phone'] ?? '—'}', style: const TextStyle(fontSize: 13)),
-                    Text('注册: ${_user!['created_at']?.toString().replaceAll(RegExp(r'T.*'), '') ?? ''}', style: const TextStyle(fontSize: 13, color: Colors.grey)),
-                    const SizedBox(height: 8),
+                    Text('注册: ${_user!['created_at']?.toString().replaceAll(RegExp(r'T.*'), '') ?? ''}', style: TextStyle(fontSize: 13, color: _cs.onSurfaceVariant)),
+                    const SizedBox(height: AppTheme.spacingSm),
                     Wrap(spacing: 8, children: [
                       _statBadge('卡片', '${_user!['card_count'] ?? 0}'),
                       _statBadge('复习', '${_user!['review_count'] ?? 0}'),
@@ -96,9 +99,9 @@ class _UserDetailScreenState extends State<UserDetailScreen> with TickerProvider
 
   Widget _statBadge(String label, String value) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
-      child: Text('$label: $value', style: const TextStyle(fontSize: 12)),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: AppTheme.spacingXs),
+      decoration: BoxDecoration(color: _cs.surfaceContainerLow, borderRadius: BorderRadius.circular(12)),
+      child: Text('$label: $value', style: _tt.bodySmall!),
     );
   }
 
@@ -109,9 +112,9 @@ class _UserDetailScreenState extends State<UserDetailScreen> with TickerProvider
       final c = _cards[i];
       return ListTile(
         dense: true,
-        title: Text(c['front'] ?? '', style: const TextStyle(fontSize: 14)),
+        title: Text(c['front'] ?? '', style: _tt.bodyMedium!),
         subtitle: Text('${states[c['state'] ?? 0]} · 复习${c['reps']}次'),
-        trailing: Icon(Icons.circle, size: 10, color: [Colors.grey, Colors.orange, Colors.green, Colors.red][(c['state'] ?? 0).clamp(0, 3)]),
+        trailing: Icon(Icons.circle, size: 10, color: [_cs.outline, _cs.tertiary, _cs.primary, _cs.error][(c['state'] ?? 0).clamp(0, 3)]),
       );
     });
   }
@@ -127,3 +130,4 @@ class _UserDetailScreenState extends State<UserDetailScreen> with TickerProvider
     });
   }
 }
+

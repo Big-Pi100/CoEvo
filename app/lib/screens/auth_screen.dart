@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
 import '../utils/validators.dart';
+import '../theme/app_theme.dart';
 
 class AuthScreen extends ConsumerStatefulWidget {
   const AuthScreen({super.key});
@@ -12,6 +13,8 @@ class AuthScreen extends ConsumerStatefulWidget {
 }
 
 class _AuthScreenState extends ConsumerState<AuthScreen> {
+  ColorScheme get _cs => Theme.of(context).colorScheme;
+  TextTheme get _tt => Theme.of(context).textTheme;
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
@@ -56,7 +59,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     return Scaffold(
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(32),
+          padding: const EdgeInsets.all(AppTheme.spacingXxxl),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -66,7 +69,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 size: 48,
                 color: Theme.of(context).colorScheme.primary,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppTheme.spacingMd),
               Text(
                 'CoEvo',
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
@@ -75,16 +78,16 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   letterSpacing: 4,
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: AppTheme.spacingXs),
               Text(
                 '刻意进化学习',
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: Colors.grey.shade600,
+                  color: _cs.onSurfaceVariant,
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: AppTheme.spacingXl),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingLg, vertical: AppTheme.spacingSm),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.primary.withAlpha(8),
                   borderRadius: BorderRadius.circular(8),
@@ -99,7 +102,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   textAlign: TextAlign.center,
                 ),
               ),
-              const SizedBox(height: 48),
+              const SizedBox(height: AppTheme.spacingXxxxl),
 
               // Form
               TextField(
@@ -110,7 +113,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 ),
                 textInputAction: TextInputAction.next,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppTheme.spacingLg),
               TextField(
                 controller: _passwordController,
                 decoration: const InputDecoration(
@@ -121,7 +124,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 textInputAction: TextInputAction.next,
               ),
               if (!_isLogin) ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: AppTheme.spacingLg),
                 TextField(
                   controller: _nameController,
                   decoration: const InputDecoration(
@@ -130,7 +133,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   ),
                   textInputAction: TextInputAction.next,
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppTheme.spacingLg),
                 TextField(
                   controller: _phoneController,
                   decoration: const InputDecoration(
@@ -141,25 +144,25 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   textInputAction: TextInputAction.done,
                 ),
               ],
-              const SizedBox(height: 24),
+              const SizedBox(height: AppTheme.spacingXxl),
 
               // 客户端校验错误
               if (_validationError != null)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.only(bottom: AppTheme.spacingLg),
                   child: Text(
                     _validationError!,
-                    style: const TextStyle(color: Colors.orange, fontSize: 13),
+                    style: TextStyle(color: _cs.tertiary, fontSize: 13),
                   ),
                 ),
 
               // 服务端错误
               if (authState.error != null)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.only(bottom: AppTheme.spacingLg),
                   child: Text(
                     authState.error!,
-                    style: const TextStyle(color: Colors.red),
+                    style: TextStyle(color: _cs.error),
                   ),
                 ),
 
@@ -193,7 +196,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppTheme.spacingLg),
               TextButton(
                 onPressed: () => setState(() {
                   _isLogin = !_isLogin;
@@ -210,3 +213,4 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     );
   }
 }
+

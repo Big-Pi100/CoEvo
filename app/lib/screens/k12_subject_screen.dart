@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
 import '../config/k12_subjects.dart';
+import '../theme/app_theme.dart';
 
 /// K12 结构化学习 — 选科+选年级入口
 class K12SubjectScreen extends ConsumerStatefulWidget {
@@ -14,6 +15,8 @@ class K12SubjectScreen extends ConsumerStatefulWidget {
 }
 
 class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
+  ColorScheme get _cs => Theme.of(context).colorScheme;
+  TextTheme get _tt => Theme.of(context).textTheme;
   bool _loading = false;
   String? _error;
 
@@ -77,24 +80,24 @@ class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 CircularProgressIndicator(),
-                SizedBox(height: 16),
+                SizedBox(height: AppTheme.spacingLg),
                 Text('正在初始化学习计划...'),
               ],
             ))
           : Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppTheme.spacingLg),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('选择科目', style: theme.textTheme.titleLarge),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: AppTheme.spacingXs),
                   Text('按课程标准预生成的学习计划，选择年级后自动导入',
-                      style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey)),
+                      style: theme.textTheme.bodyMedium?.copyWith(color: _cs.onSurfaceVariant)),
                   if (_error != null) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppTheme.spacingSm),
                     Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
                   ],
-                  const SizedBox(height: 16),
+                  const SizedBox(height: AppTheme.spacingLg),
                   Expanded(
                     child: GridView.builder(
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -111,7 +114,7 @@ class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
                             borderRadius: BorderRadius.circular(12),
                             onTap: () => _selectSubject(cfg),
                             child: Padding(
-                              padding: const EdgeInsets.all(8),
+                              padding: const EdgeInsets.all(AppTheme.spacingSm),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
@@ -120,10 +123,10 @@ class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
                                     style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                                     textAlign: TextAlign.center,
                                   ),
-                                  const SizedBox(height: 4),
+                                  const SizedBox(height: AppTheme.spacingXs),
                                   Text(
                                     _gradeRangeLabel(cfg.k12Grades),
-                                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                                    style: theme.textTheme.bodySmall?.copyWith(color: _cs.onSurfaceVariant),
                                     textAlign: TextAlign.center,
                                   ),
                                 ],
@@ -148,3 +151,4 @@ class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
     return '$first ~ $lastLabel';
   }
 }
+

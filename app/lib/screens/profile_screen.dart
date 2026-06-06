@@ -1,4 +1,4 @@
-// ignore_for_file: unnecessary_cast, unnecessary_non_null_assertion, unused_element
+﻿// ignore_for_file: unnecessary_cast, unnecessary_non_null_assertion, unused_element
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +12,7 @@ import '../providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/tts_service.dart';
 import '../utils/validators.dart';
+import '../theme/app_theme.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -21,8 +22,13 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  // ── Theme access ──
+  ColorScheme get _cs => Theme.of(context).colorScheme;
+  TextTheme get _tt => Theme.of(context).textTheme;
+
   Map<String, dynamic>? _data;
   bool _isLoading = true;
+  String? _error;
   String? _avatarUrl;
   String _displayName = '';
   String? _realName;
@@ -91,7 +97,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() { _isLoading = false; _error = '加载失败，请检查网络连接'; });
     }
   }
 
@@ -166,7 +172,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       // 同步到后端
       if (auth.userId != null && auth.token != null) {
         final client = ChatClient(userId: auth.userId!, token: auth.token);
-        await client.updateDisplayName(trimmed);
+        try {
+          await client.updateDisplayName(trimmed);
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('昵称同步失败: $e'), action: SnackBarAction(label: '重试', onPressed: () => _editName())),
+            );
+          }
+        }
       }
       setState(() => _displayName = trimmed);
     }
@@ -218,15 +232,44 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         });
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已保存')));
       }
-    } catch (_) {}
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败: $e')));
+    }
+  }
+
+  Widget _buildErrorView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppTheme.spacingXxxl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_off_rounded, size: 48, color: _cs.outline),
+            const SizedBox(height: AppTheme.spacingLg),
+            Text('加载失败', style: _tt.titleLarge?.copyWith(color: _cs.onSurface)),
+            const SizedBox(height: AppTheme.spacingSm),
+            Text(_error ?? '请检查网络连接后重试', style: _tt.bodyMedium?.copyWith(color: _cs.onSurfaceVariant), textAlign: TextAlign.center),
+            const SizedBox(height: AppTheme.spacingXl),
+            FilledButton.icon(
+              onPressed: () {
+                setState(() { _isLoading = true; _error = null; });
+                _load();
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('重新加载'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildInfoTile({required IconData icon, required String label, required String value, required VoidCallback onTap}) {
     return Card(
       child: ListTile(
-        leading: Icon(icon, size: 20, color: Colors.grey),
-        title: Text(label, style: const TextStyle(fontSize: 14, color: Colors.grey)),
-        subtitle: Text(value, style: const TextStyle(fontSize: 16)),
+        leading: Icon(icon, size: 20, color: _cs.outline),
+        title: Text(label, style: _tt.bodyMedium?.copyWith(color: _cs.outline)),
+        subtitle: Text(value, style: _tt.bodyLarge!),
         trailing: const Icon(Icons.chevron_right, size: 18),
         onTap: onTap,
       ),
@@ -252,13 +295,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: () async {
-                setState(() => _isLoading = true);
-                await _load();
-              },
-              child: _buildContent(context, auth),
-            ),
+          : _error != null
+              ? _buildErrorView()
+              : RefreshIndicator(
+                  onRefresh: () async {
+                    setState(() { _isLoading = true; _error = null; });
+                    await _load();
+                  },
+                  child: _buildContent(context, auth),
+                ),
     );
   }
 
@@ -268,7 +313,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final streakDays = stats['streak_days'] ?? 0;
 
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(AppTheme.spacingXxl),
       children: [
         // 用户头像 + 名字（可点击自定义）
         Center(
@@ -287,9 +332,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           : null),
                 ),
               ),
-              const SizedBox(height: 4),
-              Text('点击更换头像', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppTheme.spacingXs),
+              Text('点击更换头像', style: _tt.labelSmall?.copyWith(color: _cs.onSurfaceVariant)),
+              const SizedBox(height: AppTheme.spacingMd),
               GestureDetector(
                 onTap: _editName,
                 child: Row(
@@ -297,27 +342,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   children: [
                     Text(_displayName, style: Theme.of(context).textTheme.titleLarge),
                     const SizedBox(width: 6),
-                    Icon(Icons.edit, size: 16, color: Colors.grey.shade400),
+                    Icon(Icons.edit, size: 16, color: _cs.outlineVariant),
                   ],
                 ),
               ),
               if (streakDays > 0)
                 Padding(
-                  padding: const EdgeInsets.only(top: 4),
+                  padding: const EdgeInsets.only(top: AppTheme.spacingXs),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.local_fire_department, color: Colors.orange, size: 18),
-                      const SizedBox(width: 4),
+                      Icon(Icons.local_fire_department, color: _cs.tertiary, size: 18),
+                      const SizedBox(width: AppTheme.spacingXs),
                       Text('连续学习 $streakDays 天',
-                          style: TextStyle(color: Colors.orange.shade700)),
+                          style: TextStyle(color: _cs.tertiaryFixedDim)),
                     ],
                   ),
                 ),
             ],
           ),
         ),
-        const SizedBox(height: 32),
+        const SizedBox(height: AppTheme.spacingXxxl),
 
         // ── 真实姓名 + 手机号 ──
         _buildInfoTile(
@@ -332,26 +377,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           value: _phone ?? '未填写',
           onTap: () => _editInfoField('手机号', _phone, Validators.phone, (v) => _updateProfile({'phone': v})),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppTheme.spacingLg),
 
         // 订阅状态
         _buildSubscriptionCard(),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppTheme.spacingLg),
 
         // 跳过的概念
         Card(
           child: ListTile(
-            leading: const Icon(Icons.skip_next, color: Colors.orange),
+            leading: Icon(Icons.skip_next, color: _cs.tertiary),
             title: const Text('跳过的概念'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/skipped'),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppTheme.spacingLg),
 
         // 主题风格
         _buildThemeTile(),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppTheme.spacingLg),
 
         // 朗读设置
         Consumer(
@@ -360,7 +405,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             final voices = tts.availableVoices;
             return Card(
               child: Padding(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(AppTheme.spacingXl),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -371,11 +416,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     Row(
                       children: [
                         const Icon(Icons.speed, size: 18),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: AppTheme.spacingSm),
                         Text('语速', style: Theme.of(context).textTheme.bodyMedium),
                         const Spacer(),
                         Text(tts.speechRate.toStringAsFixed(1),
-                            style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                            style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
                       ],
                     ),
                     Slider(
@@ -386,23 +431,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       label: tts.speechRate.toStringAsFixed(1),
                       onChanged: (v) => tts.speechRate = v,
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppTheme.spacingSm),
 
                     // 音色
                     Row(
                       children: [
                         const Icon(Icons.record_voice_over, size: 18),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: AppTheme.spacingSm),
                         Text('音色', style: Theme.of(context).textTheme.bodyMedium),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppTheme.spacingSm),
                     DropdownButtonFormField<String>(
                       value: tts.selectedVoice?['name'] as String?,
                       isExpanded: true,
                       decoration: const InputDecoration(
                         isDense: true,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        contentPadding: EdgeInsets.symmetric(horizontal: AppTheme.spacingMd, vertical: 10),
                         border: OutlineInputBorder(),
                       ),
                       hint: const Text('系统默认 (zh-CN)'),
@@ -470,7 +515,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       child: ListTile(
         leading: Icon(modeIcon, color: Theme.of(context).colorScheme.primary),
         title: const Text('主题风格'),
-        subtitle: Text(modeLabel, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+        subtitle: Text(modeLabel, style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => _showThemeDialog(),
       ),
@@ -528,14 +573,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     required bool selected,
   }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingSm),
       child: ListTile(
         leading: Icon(icon, color: Theme.of(context).colorScheme.primary),
         title: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+        subtitle: Text(subtitle, style: _tt.bodySmall!),
         trailing: selected
             ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary, size: 20)
-            : const SizedBox(width: 20),
+            : const SizedBox(width: AppTheme.spacingXl),
         onTap: () => Navigator.pop(ctx, result),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
@@ -554,26 +599,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     if (!isActivated) {
       statusText = '未激活 — 请联系服务人员开通';
-      statusColor = Colors.orange;
+      statusColor = _cs.tertiary;
       statusIcon = Icons.lock_outline;
     } else if (isExpired) {
       statusText = '已到期 — 请联系服务人员续费';
-      statusColor = Colors.red;
+      statusColor = _cs.error;
       statusIcon = Icons.lock_clock;
     } else {
       final expires = DateTime.tryParse(expiresStr!)!;
       final remaining = expires.difference(DateTime.now());
       if (remaining.inDays > 30) {
         statusText = '有效 — 到期日: ${expiresStr.substring(0, 10)}';
-        statusColor = Colors.green;
+        statusColor = _cs.primary;
         statusIcon = Icons.verified;
       } else if (remaining.inDays > 0) {
         statusText = '即将到期 — 剩余 ${remaining.inDays} 天';
-        statusColor = Colors.orange;
+        statusColor = _cs.tertiary;
         statusIcon = Icons.access_time;
       } else {
         statusText = '已到期 — 请联系服务人员续费';
-        statusColor = Colors.red;
+        statusColor = _cs.error;
         statusIcon = Icons.lock_clock;
       }
     }
@@ -605,9 +650,19 @@ class _CefrBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _levelColor(level);
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final color = switch (level) {
+      'A1' => cs.primary,
+      'A2' => cs.tertiaryFixed,
+      'B1' => cs.secondary,
+      'B2' => cs.tertiary,
+      'C1' => cs.tertiaryFixedDim,
+      'C2' => cs.error,
+      _ => cs.outline,
+    };
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingXs),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -621,7 +676,7 @@ class _CefrBar extends StatelessWidget {
                 ),
                 child: Text(level, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppTheme.spacingSm),
               Expanded(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(4),
@@ -633,11 +688,11 @@ class _CefrBar extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppTheme.spacingSm),
               SizedBox(
                 width: 80,
                 child: Text('$mastered/$total', textAlign: TextAlign.right,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                    style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
               ),
             ],
           ),
@@ -646,15 +701,6 @@ class _CefrBar extends StatelessWidget {
     );
   }
 
-  Color _levelColor(String level) {
-    switch (level) {
-      case 'A1': return Colors.green;
-      case 'A2': return Colors.teal;
-      case 'B1': return Colors.blue;
-      case 'B2': return Colors.orange;
-      case 'C1': return Colors.deepPurple;
-      case 'C2': return Colors.red;
-      default: return Colors.grey;
-    }
-  }
 }
+
+

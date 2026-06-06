@@ -96,6 +96,9 @@ class _AchievementOverlayState extends ConsumerState<AchievementOverlay>
   Timer? _autoDismiss;
   String? _displayedKey;
 
+  ColorScheme get _cs => Theme.of(context).colorScheme;
+  TextTheme get _tt => Theme.of(context).textTheme;
+
   // ── Confetti 粒子系统 ──
   final List<_Particle> _particles = [];
   late AnimationController _confettiCtrl;
@@ -186,20 +189,7 @@ class _AchievementOverlayState extends ConsumerState<AchievementOverlay>
     final midX = _screenWidth / 2;
 
     // 根据分级选择粒子颜色偏向
-    Color tierBase;
-    switch (tier) {
-      case 'gold':
-        tierBase = const Color(0xFFFFD700);
-        break;
-      case 'platinum':
-        tierBase = const Color(0xFFC0C0C0);
-        break;
-      case 'diamond':
-        tierBase = const Color(0xFF00BCD4);
-        break;
-      default:
-        tierBase = const Color(0xFFCD7F32);
-    }
+    final tierBase = tierColor(tier);
 
     // 生成 40 个粒子，分布在卡片上方区域
     for (int i = 0; i < 40; i++) {
@@ -295,7 +285,7 @@ class _AchievementOverlayState extends ConsumerState<AchievementOverlay>
       child: IgnorePointer(
         ignoring: false,
         child: Material(
-          color: Colors.black.withValues(alpha: 0.35),
+          color: _cs.scrim,
           child: GestureDetector(
             onTap: _dismissCurrent,
             child: Stack(
@@ -342,7 +332,7 @@ class _AchievementOverlayState extends ConsumerState<AchievementOverlay>
       width: 280,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _cs.surface,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
@@ -351,7 +341,7 @@ class _AchievementOverlayState extends ConsumerState<AchievementOverlay>
             spreadRadius: 4,
           ),
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.15),
+            color: _cs.shadow,
             blurRadius: 16,
             offset: const Offset(0, 8),
           ),
@@ -409,7 +399,7 @@ class _AchievementOverlayState extends ConsumerState<AchievementOverlay>
             const SizedBox(height: 8),
             Text(
               a.description!,
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+              style: TextStyle(fontSize: 13, color: _cs.onSurfaceVariant),
               textAlign: TextAlign.center,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
