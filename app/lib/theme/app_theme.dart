@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 /// CoEvo Material 3 Theme
 /// Brand: Deep Blue + Emerald Green (进化/成长)
@@ -171,6 +172,244 @@ class AppTheme {
     floatingActionButtonTheme: const FloatingActionButtonThemeData(
       backgroundColor: _secondaryDark,
       foregroundColor: Colors.black,
+    ),
+  );
+
+  // ── Duolingo Theme (Light) ──
+  // Design reference: docs/design/Duolingo/DESIGN.md
+  // Key traits: flat design, Duo Green #58cc02, Fredoka+Nunito fonts, 3D button shadow
+
+  static const Color _duoGreen = Color(0xFF58cc02);
+  static const Color _duoGreenShadow = Color(0xFF3f8f01);
+  static const Color _duoSkyBlue = Color(0xFF1cb0f6);
+  static const Color _duoSunshine = Color(0xFFffc700);
+  static const Color _duoPink = Color(0xFFcc348d);
+  static const Color _duoBorder = Color(0xFFe5e5e5);
+  static const Color _duoInputFill = Color(0xFFf7f7f7);
+
+  static ThemeData get duolingo => ThemeData(
+    useMaterial3: true,
+    brightness: Brightness.light,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: _duoGreen,
+      primary: _duoGreen,
+      secondary: _duoSkyBlue,
+      tertiary: _duoSunshine,
+      error: _duoPink,
+      surface: Colors.white,
+      brightness: Brightness.light,
+    ),
+    scaffoldBackgroundColor: Colors.white,
+    textTheme: TextTheme(
+      headlineLarge: GoogleFonts.fredoka(
+          fontSize: 28, fontWeight: FontWeight.w600, letterSpacing: 1.7),
+      headlineMedium: GoogleFonts.fredoka(
+          fontSize: 24, fontWeight: FontWeight.w600, letterSpacing: 1.5),
+      headlineSmall: GoogleFonts.fredoka(
+          fontSize: 20, fontWeight: FontWeight.w600, letterSpacing: 1.0),
+      titleLarge: GoogleFonts.fredoka(
+          fontSize: 18, fontWeight: FontWeight.w500, letterSpacing: 0.8),
+      titleMedium: GoogleFonts.nunitoSans(
+          fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: 0.8),
+      titleSmall: GoogleFonts.nunitoSans(
+          fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 0.8),
+      bodyLarge: GoogleFonts.nunitoSans(
+          fontSize: 16, fontWeight: FontWeight.normal, height: 1.5, letterSpacing: 0.8),
+      bodyMedium: GoogleFonts.nunitoSans(
+          fontSize: 14, fontWeight: FontWeight.normal, height: 1.4, letterSpacing: 0.69),
+      bodySmall: GoogleFonts.nunitoSans(
+          fontSize: 12, fontWeight: FontWeight.normal, height: 1.3, letterSpacing: 0.53),
+      labelLarge: GoogleFonts.nunitoSans(
+          fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 0.5),
+      labelSmall: GoogleFonts.nunitoSans(
+          fontSize: 11, fontWeight: FontWeight.normal, letterSpacing: 0.3),
+    ),
+    appBarTheme: const AppBarTheme(
+      centerTitle: true,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
+      backgroundColor: Colors.white,
+      foregroundColor: _duoGreen,
+    ),
+    cardTheme: CardThemeData(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: _duoBorder),
+      ),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: _duoInputFill,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: _duoBorder),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: _duoBorder),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: _duoGreen, width: 2),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: _duoGreen,
+        foregroundColor: Colors.white,
+        elevation: 4,
+        shadowColor: _duoGreenShadow,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    ),
+    floatingActionButtonTheme: const FloatingActionButtonThemeData(
+      backgroundColor: _duoGreen,
+      foregroundColor: Colors.white,
+      elevation: 4,
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: Colors.white,
+      elevation: 0,
+      surfaceTintColor: Colors.transparent,
+      indicatorColor: _duoGreen.withAlpha(30),
+      iconTheme: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return const IconThemeData(color: _duoGreen);
+        }
+        return IconThemeData(color: Colors.grey.shade500);
+      }),
+      labelTextStyle: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return const TextStyle(
+              color: _duoGreen, fontWeight: FontWeight.w700, fontSize: 12);
+        }
+        return TextStyle(
+            color: Colors.grey.shade500, fontWeight: FontWeight.w500, fontSize: 12);
+      }),
+    ),
+  );
+
+  // ── Duolingo Theme (Dark) ──
+  // Derived from light theme: brand colors preserved, backgrounds darkened
+
+  static const Color _duoDarkBg = Color(0xFF1a1a1a);
+  static const Color _duoDarkSurface = Color(0xFF2d2d2d);
+  static const Color _duoDarkBorder = Color(0xFF404040);
+  static const Color _duoDarkInputFill = Color(0xFF333333);
+  static const Color _duoDarkSkyBlue = Color(0xFF4dc9f6);
+  static const Color _duoDarkGreenShadow = Color(0xFF2d6f01);
+
+  static ThemeData get duolingoDark => ThemeData(
+    useMaterial3: true,
+    brightness: Brightness.dark,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: _duoGreen,
+      primary: _duoGreen,
+      secondary: _duoDarkSkyBlue,
+      tertiary: _duoSunshine,
+      error: _duoPink,
+      surface: _duoDarkSurface,
+      brightness: Brightness.dark,
+    ),
+    scaffoldBackgroundColor: _duoDarkBg,
+    textTheme: TextTheme(
+      headlineLarge: GoogleFonts.fredoka(
+          fontSize: 28, fontWeight: FontWeight.w600, letterSpacing: 1.7),
+      headlineMedium: GoogleFonts.fredoka(
+          fontSize: 24, fontWeight: FontWeight.w600, letterSpacing: 1.5),
+      headlineSmall: GoogleFonts.fredoka(
+          fontSize: 20, fontWeight: FontWeight.w600, letterSpacing: 1.0),
+      titleLarge: GoogleFonts.fredoka(
+          fontSize: 18, fontWeight: FontWeight.w500, letterSpacing: 0.8),
+      titleMedium: GoogleFonts.nunitoSans(
+          fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: 0.8),
+      titleSmall: GoogleFonts.nunitoSans(
+          fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 0.8),
+      bodyLarge: GoogleFonts.nunitoSans(
+          fontSize: 16, fontWeight: FontWeight.normal, height: 1.5, letterSpacing: 0.8),
+      bodyMedium: GoogleFonts.nunitoSans(
+          fontSize: 14, fontWeight: FontWeight.normal, height: 1.4, letterSpacing: 0.69),
+      bodySmall: GoogleFonts.nunitoSans(
+          fontSize: 12, fontWeight: FontWeight.normal, height: 1.3, letterSpacing: 0.53),
+      labelLarge: GoogleFonts.nunitoSans(
+          fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 0.5),
+      labelSmall: GoogleFonts.nunitoSans(
+          fontSize: 11, fontWeight: FontWeight.normal, letterSpacing: 0.3),
+    ),
+    appBarTheme: const AppBarTheme(
+      centerTitle: true,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
+      backgroundColor: _duoDarkBg,
+      foregroundColor: _duoGreen,
+    ),
+    cardTheme: CardThemeData(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: _duoDarkBorder),
+      ),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: _duoDarkInputFill,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: _duoDarkBorder),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: _duoDarkBorder),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: _duoGreen, width: 2),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: _duoGreen,
+        foregroundColor: Colors.white,
+        elevation: 4,
+        shadowColor: _duoDarkGreenShadow,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    ),
+    floatingActionButtonTheme: const FloatingActionButtonThemeData(
+      backgroundColor: _duoGreen,
+      foregroundColor: Colors.white,
+      elevation: 4,
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: _duoDarkBg,
+      elevation: 0,
+      surfaceTintColor: Colors.transparent,
+      indicatorColor: _duoGreen.withAlpha(40),
+      iconTheme: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return const IconThemeData(color: _duoGreen);
+        }
+        return IconThemeData(color: Colors.grey.shade600);
+      }),
+      labelTextStyle: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return const TextStyle(
+              color: _duoGreen, fontWeight: FontWeight.w700, fontSize: 12);
+        }
+        return TextStyle(
+            color: Colors.grey.shade600, fontWeight: FontWeight.w500, fontSize: 12);
+      }),
     ),
   );
 }

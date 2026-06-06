@@ -1366,7 +1366,7 @@ async fn plans_list_handler(
         Ok(s) => s,
         Err(e) => return Json(serde_json::json!({"error": format!("DB: {}", e)})),
     };
-    let plans: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![param_val], |row| {
+    let mut plans: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![param_val], |row| {
         // plan_content: 完整计划结构（不含状态，状态在 user_plan_progress）
         let plan_content_raw: Option<String> = row.get(7).ok();
         let plan_id: String = row.get::<_, String>(0)?;
@@ -1416,6 +1416,22 @@ async fn plans_list_handler(
             "updated_at": row.get::<_, i64>(9)?.to_string(),
         }))
     }).unwrap().filter_map(|r| r.ok()).collect();
+
+    // 为每个 plan 统计待复习卡片数（due <= now）
+    let now_ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
+    if let Ok(mut count_stmt) = conn.prepare(
+        "SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id = cm.card_id WHERE c.conversation_id = ?1 AND cm.status = 'active' AND cm.due <= ?2"
+    ) {
+        for plan in &mut plans {
+            if let Some(conv_id) = plan.get("conversation_id").and_then(|v| v.as_str()) {
+                let count: i64 = count_stmt.query_row(rusqlite::params![conv_id, now_ts], |row| row.get(0)).unwrap_or(0);
+                if let Some(obj) = plan.as_object_mut() {
+                    obj.insert("due_card_count".to_string(), serde_json::json!(count));
+                }
+            }
+        }
+    }
 
     eprintln!("[MARK] plans_list_handler EXIT");
     Json(serde_json::json!({"plans": plans}))

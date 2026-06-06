@@ -9,6 +9,7 @@ import 'dart:convert';
 import '../api/chat_client.dart';
 import '../api/api_config.dart';
 import '../providers/auth_provider.dart';
+import '../providers/theme_provider.dart';
 import '../services/tts_service.dart';
 import '../utils/validators.dart';
 
@@ -348,6 +349,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
         const SizedBox(height: 16),
 
+        // 主题风格
+        _buildThemeTile(),
+        const SizedBox(height: 16),
+
         // 朗读设置
         Consumer(
           builder: (_, ref, __) {
@@ -443,6 +448,98 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void dispose() {
     _authSub?.close();
     super.dispose();
+  }
+
+  /// 主题风格选择入口
+  Widget _buildThemeTile() {
+    final themeState = ref.watch(themeProvider);
+    final modeLabel = switch (themeState.mode) {
+      AppThemeMode.system => '跟随系统',
+      AppThemeMode.light => 'CoEvo 浅色',
+      AppThemeMode.dark => 'CoEvo 深色',
+      AppThemeMode.duolingo => 'Duolingo 风格',
+    };
+    final modeIcon = switch (themeState.mode) {
+      AppThemeMode.system => Icons.brightness_auto,
+      AppThemeMode.light => Icons.light_mode,
+      AppThemeMode.dark => Icons.dark_mode,
+      AppThemeMode.duolingo => Icons.palette,
+    };
+
+    return Card(
+      child: ListTile(
+        leading: Icon(modeIcon, color: Theme.of(context).colorScheme.primary),
+        title: const Text('主题风格'),
+        subtitle: Text(modeLabel, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => _showThemeDialog(),
+      ),
+    );
+  }
+
+  Future<void> _showThemeDialog() async {
+    final themeNotifier = ref.read(themeProvider.notifier);
+    final currentMode = ref.read(themeProvider).mode;
+
+    final result = await showDialog<AppThemeMode>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('选择主题风格'),
+        children: [
+          _themeOption(
+            ctx, result: AppThemeMode.duolingo,
+            icon: Icons.palette, label: 'Duolingo 风格',
+            subtitle: '游戏化学习界面（默认）',
+            selected: currentMode == AppThemeMode.duolingo,
+          ),
+          _themeOption(
+            ctx, result: AppThemeMode.system,
+            icon: Icons.brightness_auto, label: '跟随系统',
+            subtitle: '根据设备设置自动切换',
+            selected: currentMode == AppThemeMode.system,
+          ),
+          _themeOption(
+            ctx, result: AppThemeMode.light,
+            icon: Icons.light_mode, label: 'CoEvo 浅色',
+            subtitle: '深蓝 + 翠绿进化风格',
+            selected: currentMode == AppThemeMode.light,
+          ),
+          _themeOption(
+            ctx, result: AppThemeMode.dark,
+            icon: Icons.dark_mode, label: 'CoEvo 深色',
+            subtitle: '护眼暗色进化风格',
+            selected: currentMode == AppThemeMode.dark,
+          ),
+        ],
+      ),
+    );
+
+    if (result != null) {
+      await themeNotifier.setMode(result);
+    }
+  }
+
+  Widget _themeOption(
+    BuildContext ctx, {
+    required AppThemeMode result,
+    required IconData icon,
+    required String label,
+    required String subtitle,
+    required bool selected,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: ListTile(
+        leading: Icon(icon, color: Theme.of(context).colorScheme.primary),
+        title: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+        trailing: selected
+            ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary, size: 20)
+            : const SizedBox(width: 20),
+        onTap: () => Navigator.pop(ctx, result),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
   }
 
   /// 订阅状态卡片

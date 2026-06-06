@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import '../api/chat_client.dart';
 import '../widgets/empty_state.dart';
 import '../providers/auth_provider.dart';
@@ -253,64 +254,6 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     ]);
   }
 
-  void _showCardDetail(DueCard card) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.4,
-        maxChildSize: 0.85,
-        expand: false,
-        builder: (_, scrollController) => Padding(
-          padding: const EdgeInsets.all(24),
-          child: ListView(
-            controller: scrollController,
-            children: [
-              Center(
-                child: Container(
-                  width: 40, height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text('正面', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
-              const SizedBox(height: 4),
-              RichContentBuilder().build(card.front),
-              const Divider(height: 32),
-              Text('释义', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
-              const SizedBox(height: 4),
-              RichContentBuilder().build(card.back),
-              if (card.sourceSentence != null) ...[
-                const Divider(height: 32),
-                Text('来源', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
-                const SizedBox(height: 4),
-                RichContentBuilder().build(card.sourceSentence!),
-              ],
-              const Divider(height: 32),
-              Wrap(
-                spacing: 8, runSpacing: 8,
-                children: [
-                  _InfoChip(label: '状态', value: switch (card.state) { 0 => '新卡片', 1 => '学习中', 2 => '复习中', _ => '重学中' }),
-                  if (card.domain != null) _InfoChip(label: '领域', value: card.domain!),
-                  _InfoChip(label: '复习', value: '${card.reps} 次'),
-                  _InfoChip(label: '遗忘', value: '${card.lapses} 次'),
-                  _InfoChip(label: '难度', value: card.difficulty.toStringAsFixed(1)),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   void _showReviewDetails(String cardId) async {
     final auth = ref.read(authProvider);
     if (auth.userId == null || auth.token == null) return;
@@ -524,7 +467,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
       clipBehavior: Clip.antiAlias,
       margin: const EdgeInsets.only(top: 4),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: Colors.grey.shade200),
       ),
       child: Stack(children: [
@@ -535,14 +478,16 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
             child: Container(decoration: BoxDecoration(gradient: LinearGradient(colors: [color.withAlpha(60), color.withAlpha(20)], stops: const [0.0, 0.8]))),
           ),
         ),
-        ListTile(
-          dense: true,
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
           leading: CircleAvatar(
             backgroundColor: color.withAlpha(50),
             child: const Icon(Icons.auto_stories, color: Colors.white, size: 18),
           ),
-          title: Text(card.front, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 14)),
-          subtitle: Text(card.back, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withAlpha(200), fontSize: 12)),
+          title: Text(card.front, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white)),
+          subtitle: Text('${card.back}\n复习 ${card.reps} 次', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withAlpha(200))),
           trailing: Row(mainAxisSize: MainAxisSize.min, children: [
             if (card.lastReviewedAt != null)
               GestureDetector(
@@ -573,10 +518,122 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
               constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
               onPressed: () => _doSkipCard(card),
             ),
+            const SizedBox(width: 2),
+            Icon(_expandedCardIds.contains(card.id) ? Icons.expand_less : Icons.expand_more,
+                 size: 20, color: Colors.white.withAlpha(180)),
           ]),
-          onTap: () => _showCardDetail(card),
+          onTap: () {
+            setState(() {
+              if (_expandedCardIds.contains(card.id)) {
+                _expandedCardIds.remove(card.id);
+              } else {
+                _expandedCardIds.add(card.id);
+              }
+            });
+          },
         ),
+        if (_expandedCardIds.contains(card.id)) ...[
+          _buildCardDetailInline(card),
+        ],
       ]),
+    ]),
+    );
+  }
+
+  static String _formatTimestamp(int? ts) {
+    if (ts == null || ts == 0) return '—';
+    final dt = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
+    return DateFormat('yyyy-MM-dd HH:mm').format(dt);
+  }
+
+  static String _relativeTime(int? ts) {
+    if (ts == null || ts == 0) return '';
+    final dt = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
+    final now = DateTime.now();
+    final diff = dt.difference(now);
+    final days = diff.inDays;
+    if (days < 0) return '${-days} 天前';
+    if (days == 0) return '今天';
+    if (days == 1) return '明天';
+    return '$days 天后';
+  }
+
+  static String _intervalText(int? from, int? to) {
+    if (from == null || to == null || from == 0 || to == 0) return '';
+    final days = ((to - from) / 86400).round();
+    if (days <= 0) return '';
+    return '间隔 $days 天';
+  }
+
+  Widget _buildCardDetailInline(DueCard card) {
+    final hasTimeline = card.createdAt != null || card.lastReviewedAt != null || card.due != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 1, color: Colors.white38),
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: DefaultTextStyle(
+            style: const TextStyle(color: Colors.white),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('正面', style: TextStyle(fontSize: 12, color: Colors.white.withAlpha(150))),
+              const SizedBox(height: 4),
+              RichContentBuilder().build(card.front),
+              const Divider(height: 32, color: Colors.white38),
+              Text('释义', style: TextStyle(fontSize: 12, color: Colors.white.withAlpha(150))),
+              const SizedBox(height: 4),
+              RichContentBuilder().build(card.back),
+              if (card.sourceSentence != null) ...[
+                const Divider(height: 32, color: Colors.white38),
+                Text('来源', style: TextStyle(fontSize: 12, color: Colors.white.withAlpha(150))),
+                const SizedBox(height: 4),
+                RichContentBuilder().build(card.sourceSentence!),
+              ],
+              if (hasTimeline) ...[
+                const Divider(height: 32, color: Colors.white38),
+                Row(children: [
+                  const Icon(Icons.timeline, size: 16, color: Colors.white38),
+                  const SizedBox(width: 6),
+                  Text('复习时间线', style: TextStyle(fontSize: 12, color: Colors.white.withAlpha(150))),
+                ]),
+                const SizedBox(height: 12),
+                _TimelineRow(
+                  label: '创建时间',
+                  time: _formatTimestamp(card.createdAt),
+                ),
+                if (card.lastReviewedAt != null) ...[
+                  const SizedBox(height: 8),
+                  _TimelineRow(
+                    label: '上次复习',
+                    time: _formatTimestamp(card.lastReviewedAt),
+                    hint: _relativeTime(card.lastReviewedAt),
+                  ),
+                ],
+                if (card.due != null) ...[
+                  const SizedBox(height: 8),
+                  _TimelineRow(
+                    label: '下次复习',
+                    time: _formatTimestamp(card.due),
+                    hint: _relativeTime(card.due),
+                    extra: _intervalText(card.lastReviewedAt, card.due),
+                  ),
+                ],
+              ],
+              const Divider(height: 32, color: Colors.white38),
+              Wrap(
+                spacing: 8, runSpacing: 8,
+                children: [
+                  _InfoChip(label: '状态', value: switch (card.state) { 0 => '新卡片', 1 => '学习中', 2 => '复习中', _ => '重学中' }),
+                  if (card.domain != null) _InfoChip(label: '领域', value: card.domain!),
+                  _InfoChip(label: '复习', value: '${card.reps} 次'),
+                  _InfoChip(label: '遗忘', value: '${card.lapses} 次'),
+                  _InfoChip(label: '难度', value: card.difficulty.toStringAsFixed(1)),
+                ],
+              ),
+            ]),
+          ),
+        ),
+      ],
     );
   }
 
@@ -665,5 +722,34 @@ class _InfoChip extends StatelessWidget {
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       visualDensity: VisualDensity.compact,
     );
+  }
+}
+
+class _TimelineRow extends StatelessWidget {
+  final String label;
+  final String time;
+  final String? hint;
+  final String? extra;
+  const _TimelineRow({required this.label, required this.time, this.hint, this.extra});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(children: [
+      SizedBox(width: 56, child: Text(label, style: TextStyle(fontSize: 12, color: Colors.white.withAlpha(120)))),
+      Expanded(child: Text(time, style: const TextStyle(fontSize: 13))),
+      if (hint != null && hint!.isNotEmpty)
+        Text(hint!, style: TextStyle(fontSize: 12, color: Colors.white.withAlpha(150))),
+      if (extra != null && extra!.isNotEmpty) ...[
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.white.withAlpha(25),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(extra!, style: TextStyle(fontSize: 11, color: Colors.white.withAlpha(180))),
+        ),
+      ],
+    ]);
   }
 }

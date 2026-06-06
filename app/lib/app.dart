@@ -12,6 +12,7 @@ import 'screens/achievements_screen.dart';
 import 'screens/conversation_list_screen.dart';
 import 'screens/home_screen.dart';
 import 'providers/auth_provider.dart';
+import 'providers/theme_provider.dart';
 
 // Prevent dart2js tree-shaking of admin/guardian screens
 final _allScreens = <Widget>[
@@ -166,12 +167,42 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
   Widget build(BuildContext context) {
     // Keep admin/guardian from tree-shaking
     _allScreens;
+
+    final themeState = ref.watch(themeProvider);
+
+    ThemeData lightTheme;
+    ThemeData darkTheme;
+    ThemeMode themeMode;
+
+    switch (themeState.mode) {
+      case AppThemeMode.duolingo:
+        lightTheme = AppTheme.duolingo;
+        darkTheme = AppTheme.duolingo;   // 强制亮色，无视系统暗色模式
+        themeMode = ThemeMode.light;
+        break;
+      case AppThemeMode.light:
+        lightTheme = AppTheme.light;
+        darkTheme = AppTheme.light;
+        themeMode = ThemeMode.light;
+        break;
+      case AppThemeMode.dark:
+        lightTheme = AppTheme.dark;
+        darkTheme = AppTheme.dark;
+        themeMode = ThemeMode.dark;
+        break;
+      case AppThemeMode.system:
+        lightTheme = AppTheme.light;
+        darkTheme = AppTheme.dark;
+        themeMode = ThemeMode.system;
+        break;
+    }
+
     return MaterialApp.router(
       title: '刻意进化学习',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
-      themeMode: ThemeMode.system,
+      theme: lightTheme,
+      darkTheme: darkTheme,
+      themeMode: themeMode,
       routerConfig: goRouter,
     );
   }

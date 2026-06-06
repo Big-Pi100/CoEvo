@@ -112,6 +112,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
           final count = cardCountByConv[convId];
           if (count != null) p['card_count'] = count;
           return p;
+        }).where((p) {
+          // 隐藏没有待复习卡片的 tab（所有卡片 due 都在未来）
+          final dueCount = (p['due_card_count'] as num?)?.toInt() ?? 1;
+          return dueCount > 0;
         }).toList();
         final totalTabs = 1 + _planTabs.length;
         final oldIndex = _tabController.index;
