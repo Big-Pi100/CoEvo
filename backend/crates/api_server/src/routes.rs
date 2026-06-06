@@ -68,6 +68,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/cards/batch-status", patch(cards_batch_status_handler))
         .route("/api/cards/all", get(cards_all_handler))
         .route("/api/cards/by-plan", get(cards_by_plan_handler))
+        .route("/api/cards/search", get(cards_search_handler))
         .route("/api/cards/{card_id}/last-review", get(cards_last_review_handler))
         // ── History ──
         .route("/api/history", get(history_handler))
@@ -222,10 +223,13 @@ async fn auth_verify(Json(input): Json<TokenVerifyInput>) -> Json<serde_json::Va
 #[derive(Deserialize)]
 pub struct DueQuery {
     pub user_id: String,
+    pub conversation_id: Option<String>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
 }
 
 /// GET /api/review/due — 获取到期待复习的卡片
-/// 请求参数: ?user_id=str
+/// 请求参数: ?user_id=str[&conversation_id=str][&limit=20][&offset=0]
 /// 响应: {"cards": [...], "total_due": int, "has_more": bool}
 async fn review_due_handler(
     headers: HeaderMap,
@@ -237,11 +241,15 @@ async fn review_due_handler(
         return auth_json(e);
     }
     let conn = crate::db_pool::get_conn();
-    let (cards, total) = card_engine::fsrs_scheduler::get_due_cards(&conn, &query.user_id, 500);
+    let page_size = query.limit.unwrap_or(20);
+    let offset = query.offset.unwrap_or(0);
+    let (cards, total) = card_engine::fsrs_scheduler::get_due_cards(
+        &conn, &query.user_id, page_size, offset, query.conversation_id.as_deref(),
+    );
     Json(serde_json::json!({
         "cards": cards,
         "total_due": total,
-        "has_more": total > 20,
+        "has_more": (offset as usize + cards.len()) < total as usize,
     }))
 }
 
@@ -646,6 +654,9 @@ async fn cards_all_handler(
 pub struct CardsByPlanQuery {
     pub user_id: String,
     pub conversation_id: Option<String>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+    pub sort: Option<String>,
 }
 
 /// GET /api/cards/by-plan — 按 conversation_plan 分组返回卡片
@@ -690,8 +701,15 @@ async fn cards_by_plan_handler(
         let load_cards = query.conversation_id.as_deref() == Some(&conv_id);
 
         let (cards, effective_count): (Vec<serde_json::Value>, usize) = if load_cards {
-            let loaded = query_vec(
-                &conn,
+            let page_size = query.limit.unwrap_or(20).max(1).min(500);
+            let page_offset = query.offset.unwrap_or(0).max(0);
+            let order_col = match query.sort.as_deref() {
+                Some("front") | None => "c.front ASC",
+                Some("due") => "cm.due ASC",
+                Some("created") => "c.created_at DESC",
+                Some(s) => s, // raw passthrough for flexibility
+            };
+            let sql = format!(
                 "SELECT c.id, c.user_id, c.front, c.back, c.domain, c.card_type, c.source_sentence,
                         c.created_at, cm.state, cm.difficulty, cm.due, cm.reps, cm.lapses,
                         lrev.reviewed_at, lrev.rating,
@@ -704,28 +722,36 @@ async fn cards_by_plan_handler(
                  ) lr ON c.id = lr.card_id
                  LEFT JOIN review_log lrev
                     ON lrev.card_id = lr.card_id AND lrev.reviewed_at = lr.last_reviewed_at
-                 WHERE c.conversation_id = ?1 AND c.user_id = ?2 AND cm.status = 'active'
-                 ORDER BY cm.state ASC, cm.due ASC",
-                rusqlite::params![conv_id, query.user_id],
-                |row| Ok(serde_json::json!({
-                    "id": row.get::<_, String>(0)?,
-                    "user_id": row.get::<_, String>(1)?,
-                    "front": row.get::<_, String>(2)?,
-                    "back": row.get::<_, String>(3)?,
-                    "domain": row.get::<_, Option<String>>(4)?,
-                    "card_type": row.get::<_, String>(5)?,
-                    "source_sentence": row.get::<_, Option<String>>(6)?,
-                    "created_at": row.get::<_, i64>(7)?,
-                    "state": row.get::<_, i32>(8)?,
-                    "difficulty": row.get::<_, f64>(9)?,
-                    "due": row.get::<_, i64>(10)?,
-                    "reps": row.get::<_, i32>(11)?,
-                    "lapses": row.get::<_, i32>(12)?,
-                    "last_reviewed_at": row.get::<_, Option<i64>>(13)?,
-                    "last_review_quality": row.get::<_, Option<i32>>(14)?,
-                    "conversation_id": row.get::<_, Option<String>>(15)?,
-                })),
-            ).unwrap_or_default();
+                 WHERE c.conversation_id = '{}' AND c.user_id = '{}' AND cm.status = 'active'
+                 ORDER BY {}
+                 LIMIT {} OFFSET {}",
+                conv_id.replace('\'', "''"),
+                query.user_id.replace('\'', "''"),
+                order_col, page_size, page_offset,
+            );
+            let loaded: Vec<serde_json::Value> = match conn.prepare(&sql) {
+                Ok(mut stmt) => stmt.query_map([], |row| {
+                    Ok(serde_json::json!({
+                        "id": row.get::<_, String>(0)?,
+                        "user_id": row.get::<_, String>(1)?,
+                        "front": row.get::<_, String>(2)?,
+                        "back": row.get::<_, String>(3)?,
+                        "domain": row.get::<_, Option<String>>(4)?,
+                        "card_type": row.get::<_, String>(5)?,
+                        "source_sentence": row.get::<_, Option<String>>(6)?,
+                        "created_at": row.get::<_, i64>(7)?,
+                        "state": row.get::<_, i32>(8)?,
+                        "difficulty": row.get::<_, f64>(9)?,
+                        "due": row.get::<_, i64>(10)?,
+                        "reps": row.get::<_, i32>(11)?,
+                        "lapses": row.get::<_, i32>(12)?,
+                        "last_reviewed_at": row.get::<_, Option<i64>>(13)?,
+                        "last_review_quality": row.get::<_, Option<i32>>(14)?,
+                        "conversation_id": row.get::<_, Option<String>>(15)?,
+                    }))
+                }).unwrap().filter_map(|r| r.ok()).collect(),
+                Err(_) => vec![],
+            };
             let count = loaded.len();
             (loaded, count)
         } else {
@@ -758,6 +784,95 @@ async fn cards_by_plan_handler(
     Json(serde_json::json!({
         "plans": plans,
         "total_plans": plans.len(),
+        "has_more": cards_loaded && query.limit.is_some(),
+    }))
+}
+
+/// GET /api/cards/search — 搜索卡片的 front/back，支持分页
+#[derive(Deserialize)]
+pub struct CardsSearchQuery {
+    pub user_id: String,
+    pub q: String,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+async fn cards_search_handler(
+    headers: HeaderMap,
+    Query(query): Query<CardsSearchQuery>,
+) -> Json<serde_json::Value> {
+    tracing::info!("cards_search_handler: user_id={}, q={}", query.user_id, query.q);
+
+    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
+        return auth_json(e);
+    }
+    if query.q.trim().is_empty() {
+        return Json(serde_json::json!({"cards": [], "total": 0, "has_more": false}));
+    }
+
+    let conn = crate::db_pool::get_conn();
+    let page_size = query.limit.unwrap_or(20).max(1).min(200);
+    let page_offset = query.offset.unwrap_or(0).max(0);
+    let like = format!("%{}%", query.q.replace('%', "\\%").replace('_', "\\_"));
+
+    let sql = format!(
+        "SELECT c.id, c.user_id, c.front, c.back, c.domain, c.card_type,
+                c.source_sentence, c.created_at, c.conversation_id,
+                cm.state, cm.reps, cm.lapses, cm.difficulty, cm.due
+         FROM cards c
+         JOIN card_memory cm ON c.id = cm.card_id
+         WHERE c.user_id = '{}'
+           AND cm.status IN ('active', 'pending')
+           AND (c.front LIKE '{}' OR c.back LIKE '{}' OR c.source_sentence LIKE '{}')
+         ORDER BY c.front ASC
+         LIMIT {} OFFSET {}",
+        query.user_id.replace('\'', "''"),
+        like.replace('\'', "''"),
+        like.replace('\'', "''"),
+        like.replace('\'', "''"),
+        page_size, page_offset,
+    );
+
+    let total_sql = format!(
+        "SELECT COUNT(*) FROM cards c
+         JOIN card_memory cm ON c.id = cm.card_id
+         WHERE c.user_id = '{}'
+           AND cm.status IN ('active', 'pending')
+           AND (c.front LIKE '{}' OR c.back LIKE '{}' OR c.source_sentence LIKE '{}')",
+        query.user_id.replace('\'', "''"),
+        like.replace('\'', "''"),
+        like.replace('\'', "''"),
+        like.replace('\'', "''"),
+    );
+
+    let total: i64 = conn.query_row(&total_sql, [], |row| row.get(0)).unwrap_or(0);
+
+    let cards: Vec<serde_json::Value> = match conn.prepare(&sql) {
+        Ok(mut stmt) => stmt.query_map([], |row| {
+            Ok(serde_json::json!({
+                "id": row.get::<_, String>(0)?,
+                "user_id": row.get::<_, String>(1)?,
+                "front": row.get::<_, String>(2)?,
+                "back": row.get::<_, String>(3)?,
+                "domain": row.get::<_, Option<String>>(4)?,
+                "card_type": row.get::<_, String>(5)?,
+                "source_sentence": row.get::<_, Option<String>>(6)?,
+                "created_at": row.get::<_, i64>(7)?,
+                "conversation_id": row.get::<_, Option<String>>(8)?,
+                "state": row.get::<_, i32>(9)?,
+                "reps": row.get::<_, i32>(10)?,
+                "lapses": row.get::<_, i32>(11)?,
+                "difficulty": row.get::<_, f64>(12)?,
+                "due": row.get::<_, i64>(13)?,
+            }))
+        }).unwrap().filter_map(|r| r.ok()).collect(),
+        Err(_) => vec![],
+    };
+
+    Json(serde_json::json!({
+        "cards": cards,
+        "total": total,
+        "has_more": (page_offset as usize + cards.len()) < total as usize,
     }))
 }
 

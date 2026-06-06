@@ -5,6 +5,7 @@ import '../api/chat_client.dart';
 import '../widgets/empty_state.dart';
 import '../providers/auth_provider.dart';
 import '../models/coevo_models.dart';
+import '../widgets/markdown_span_nodes.dart';
 
 class CardListScreen extends ConsumerStatefulWidget {
   final bool embedded;
@@ -17,24 +18,23 @@ class CardListScreen extends ConsumerStatefulWidget {
 class _CardListScreenState extends ConsumerState<CardListScreen> {
   // 按 plan 分组的数据
   List<_PlanGroup> _planGroups = [];
-  // 拍平后全部卡片（供搜索/状态过滤）
-  List<DueCard> _allCards = [];
-  List<DueCard> _filteredCards = [];
   bool _isLoading = true;
   bool _hasLoadedOnce = false;
 
-  // 搜索与状态过滤
+  // 搜索
   final _searchController = TextEditingController();
-  int? _stateFilter;       // null = all
-  Map<String, int> _stateCounts = {};
+  List<Map<String, dynamic>> _searchResults = [];
+  bool _isSearching = false;
+  bool _searchHasMore = false;
+  int _searchOffset = 0;
+  int _searchTotal = 0;
 
-  static const _stateLabels = ['新卡片', '学习中', '复习中', '重学中'];
-  static const _stateColors = [Colors.blue, Colors.orange, Colors.green, Colors.purple];
+  // 卡片点击详情弹窗标识
+  final Set<String> _expandedCardIds = {};
 
   @override
   void initState() {
     super.initState();
-    _searchController.addListener(_applyFilters);
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadPlanMeta());
     ref.listenManual(cardRefreshProvider, (prev, next) {
       if (prev != next) _loadPlanMeta();
@@ -46,14 +46,15 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
 
   @override
   void dispose() {
-    _searchController.removeListener(_applyFilters);
     _searchController.dispose();
     super.dispose();
   }
 
   Future<void> _loadPlanMeta() async {
+    debugPrint('========== [_loadPlanMeta] START ==========');
     final auth = ref.read(authProvider);
     if (auth.userId == null) {
+      debugPrint('[_loadPlanMeta] no auth, skip');
       if (mounted) setState(() => _isLoading = false);
       return;
     }
@@ -61,41 +62,54 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     try {
       final resp = await client.getCardsByPlan();
       final plansRaw = (resp['plans'] as List<dynamic>?) ?? [];
+      debugPrint('[_loadPlanMeta] plansRaw count=${plansRaw.length}');
 
       final planGroups = <_PlanGroup>[];
-      final allCards = <DueCard>[];
-      final stateCounts = <String, int>{};
 
-      for (final p in plansRaw) {
-        final pMap = p as Map<String, dynamic>;
+      for (int i = 0; i < plansRaw.length; i++) {
+        final pMap = plansRaw[i] as Map<String, dynamic>;
         final cardCount = (pMap['card_count'] as num?)?.toInt() ?? 0;
+        final gid = pMap['id'] as String? ?? '';
+        final gConvId = pMap['conversation_id'] as String? ?? '';
+        final gGoal = pMap['goal'] as String? ?? '';
+        debugPrint('[_loadPlanMeta]   plan[$i]: id=${gid.substring(0,8)} convId=${gConvId.substring(0,8)} goal=$gGoal cardCount=$cardCount');
         planGroups.add(_PlanGroup(
-          id: pMap['id'] as String? ?? '',
-          goal: pMap['goal'] as String? ?? '',
-          conversationId: pMap['conversation_id'] as String? ?? '',
+          id: gid,
+          goal: gGoal,
+          conversationId: gConvId,
           cardCount: cardCount,
         ));
       }
 
       setState(() {
         _planGroups = planGroups;
-        _allCards = allCards;
-        _stateCounts = stateCounts;
         _isLoading = false;
         _hasLoadedOnce = true;
       });
-      _applyFilters();
+      debugPrint('========== [_loadPlanMeta] DONE ==========');
     } catch (e) {
       debugPrint('_loadPlanMeta error: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  /// 惰性加载指定 plan 的卡片
-  Future<void> _expandPlan(String conversationId) async {
+  /// 切换展开/收起指定 plan（展开时惰性加载 20 张）
+  Future<void> _togglePlan(String conversationId) async {
     final group = _planGroups.where((g) => g.conversationId == conversationId).firstOrNull;
-    if (group == null || group.expanded) return; // 已展开则跳过
+    if (group == null || group.isLoading) return;
 
+    // 已展开 → 收起
+    if (group.expanded) {
+      group.expanded = false;
+      group.cards = [];
+      group.displayCards = [];
+      group.loadOffset = 0;
+      group.hasMore = false;
+      setState(() {});
+      return;
+    }
+
+    // 未展开 → 展开加载
     group.isLoading = true;
     group.expanded = true;
     setState(() {});
@@ -103,56 +117,140 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     final auth = ref.read(authProvider);
     final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {
-      final resp = await client.getCardsByPlan(convId: conversationId);
+      final resp = await client.getCardsByPlan(convId: conversationId, limit: 20, offset: 0, sort: 'front');
       final plansRaw = (resp['plans'] as List<dynamic>?) ?? [];
-      if (plansRaw.isNotEmpty) {
-        final pMap = plansRaw[0] as Map<String, dynamic>;
-        final cardsRaw = (pMap['cards'] as List<dynamic>?) ?? [];
-        final loadedCards = cardsRaw
-            .map((e) => DueCard.fromJson(e as Map<String, dynamic>))
-            .toList();
-        debugPrint('[_expandPlan] loading conv=$conversationId');
-        group.cards = loadedCards;
-        group.displayCards = List.from(loadedCards);
-        debugPrint('[_expandPlan] loaded ${loadedCards.length} cards, displayCards=${group.displayCards.length}, group.cards=${group.cards.length}');
-        // 同步加到 _allCards 中（供搜索/状态过滤）
-        _allCards.addAll(loadedCards);
-        // 统计状态
-        for (final c in loadedCards) {
-          final key = switch (c.state) { 0 => 'new', 1 => 'learning', 2 => 'review', _ => 'relearning' };
-          _stateCounts[key] = (_stateCounts[key] ?? 0) + 1;
-        }
-      }
+      final matchedPlan = plansRaw.cast<Map<String, dynamic>>().firstWhere(
+        (p) => (p['conversation_id'] as String? ?? '') == conversationId,
+        orElse: () => <String, dynamic>{},
+      );
+      final cardsRaw = (matchedPlan['cards'] as List<dynamic>?) ?? [];
+      final loadedCards = cardsRaw
+          .map((e) => DueCard.fromJson(e as Map<String, dynamic>))
+          .toList();
+      group.cards = loadedCards;
+      group.displayCards = List.from(loadedCards);
+      group.loadOffset = loadedCards.length;
+      group.hasMore = loadedCards.length >= 20;
     } catch (e) {
-      debugPrint('_expandPlan error: $e');
-      // 加载失败：允许重新展开重试
       group.expanded = false;
     }
     group.isLoading = false;
     setState(() {});
   }
 
-  void _applyFilters() {
-    final query = _searchController.text.trim().toLowerCase();
-    setState(() {
-      // 按 state + 搜索 过滤拍平列表
-      _filteredCards = _allCards.where((c) {
-        if (query.isNotEmpty) {
-          if (!c.front.toLowerCase().contains(query) &&
-              !c.back.toLowerCase().contains(query)) {
-            return false;
-          }
-        }
-        if (_stateFilter != null && c.state != _stateFilter) return false;
-        return true;
-      }).toList();
+  /// 加载更多（当前 plan 追加 20 张）
+  Future<void> _loadMorePlanCards(String conversationId) async {
+    final group = _planGroups.where((g) => g.conversationId == conversationId).firstOrNull;
+    if (group == null || !group.hasMore || group.isLoading) return;
 
-      // 同步更新 planGroups 中的 cards 子集
-      final filteredIds = _filteredCards.map((c) => c.id).toSet();
-      for (final g in _planGroups) {
-        g.displayCards = g.cards.where((c) => filteredIds.contains(c.id)).toList();
-      }
-    });
+    group.isLoading = true;
+    setState(() {});
+
+    final auth = ref.read(authProvider);
+    final client = ChatClient(userId: auth.userId!, token: auth.token);
+    try {
+      final resp = await client.getCardsByPlan(convId: conversationId, limit: 20, offset: group.loadOffset, sort: 'front');
+      final plansRaw = (resp['plans'] as List<dynamic>?) ?? [];
+      final matchedPlan = plansRaw.cast<Map<String, dynamic>>().firstWhere(
+        (p) => (p['conversation_id'] as String? ?? '') == conversationId,
+        orElse: () => <String, dynamic>{},
+      );
+      final cardsRaw = (matchedPlan['cards'] as List<dynamic>?) ?? [];
+      final moreCards = cardsRaw
+          .map((e) => DueCard.fromJson(e as Map<String, dynamic>))
+          .toList();
+      group.cards.addAll(moreCards);
+      group.displayCards = List.from(group.cards);
+      group.loadOffset += moreCards.length;
+      group.hasMore = moreCards.length >= 20;
+    } catch (_) {}
+    group.isLoading = false;
+    setState(() {});
+  }
+
+  /// 通过 API 搜索卡片
+  Future<void> _doSearch(String query) async {
+    if (query.trim().isEmpty) return;
+    final auth = ref.read(authProvider);
+    if (auth.userId == null) return;
+    final client = ChatClient(userId: auth.userId!, token: auth.token);
+    setState(() { _isSearching = true; _searchOffset = 0; });
+    try {
+      final resp = await client.searchCards(query.trim(), limit: 20, offset: 0);
+      setState(() {
+        _searchResults = (resp['cards'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+        _searchTotal = (resp['total'] as num?)?.toInt() ?? 0;
+        _searchHasMore = resp['has_more'] as bool? ?? false;
+        _searchOffset = _searchResults.length;
+        _isSearching = false;
+      });
+    } catch (_) { setState(() => _isSearching = false); }
+  }
+
+  /// 搜索加载更多
+  Future<void> _loadMoreSearch() async {
+    if (_isSearching || !_searchHasMore) return;
+    final auth = ref.read(authProvider);
+    if (auth.userId == null) return;
+    final client = ChatClient(userId: auth.userId!, token: auth.token);
+    setState(() => _isSearching = true);
+    try {
+      final resp = await client.searchCards(_searchController.text.trim(), limit: 20, offset: _searchOffset);
+      final more = (resp['cards'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+      setState(() {
+        _searchResults.addAll(more);
+        _searchHasMore = resp['has_more'] as bool? ?? false;
+        _searchOffset = _searchResults.length;
+        _isSearching = false;
+      });
+    } catch (_) { setState(() => _isSearching = false); }
+  }
+
+  Widget _buildSearchResults() {
+    if (_isSearching && _searchResults.isEmpty) return const Center(child: CircularProgressIndicator());
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+        child: TextField(
+          controller: _searchController,
+          decoration: InputDecoration(
+            hintText: '搜索卡片...',
+            prefixIcon: const Icon(Icons.search, size: 20),
+            isDense: true,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
+            contentPadding: const EdgeInsets.symmetric(vertical: 10),
+            suffixIcon: IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () { _searchController.clear(); setState(() => _searchResults = []); }),
+          ),
+          onSubmitted: _doSearch,
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Text('搜索结果：共 $_searchTotal 条', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+      ),
+      Expanded(
+        child: _searchResults.isEmpty
+            ? Center(child: Text('未找到匹配卡片', style: TextStyle(color: Colors.grey.shade500)))
+            : ListView.builder(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                itemCount: _searchResults.length + (_searchHasMore ? 1 : 0),
+                itemBuilder: (ctx, i) {
+                  if (i >= _searchResults.length) {
+                    return Center(
+                      child: TextButton(
+                        onPressed: _loadMoreSearch,
+                        child: _isSearching
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Text('加载更多'),
+                      ),
+                    );
+                  }
+                  final card = DueCard.fromJson(_searchResults[i]);
+                  return _buildCardTile(card);
+                },
+              ),
+      ),
+    ]);
   }
 
   void _showCardDetail(DueCard card) {
@@ -184,26 +282,22 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
               const SizedBox(height: 24),
               Text('正面', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
               const SizedBox(height: 4),
-              Text(card.front, style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              )),
+              RichContentBuilder().build(card.front),
               const Divider(height: 32),
               Text('释义', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
               const SizedBox(height: 4),
-              Text(card.back, style: Theme.of(context).textTheme.bodyLarge),
+              RichContentBuilder().build(card.back),
               if (card.sourceSentence != null) ...[
                 const Divider(height: 32),
                 Text('来源', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
                 const SizedBox(height: 4),
-                Text(card.sourceSentence!, style: TextStyle(
-                  fontStyle: FontStyle.italic, color: Colors.grey.shade700,
-                )),
+                RichContentBuilder().build(card.sourceSentence!),
               ],
               const Divider(height: 32),
               Wrap(
                 spacing: 8, runSpacing: 8,
                 children: [
-                  _InfoChip(label: '状态', value: _stateLabels[card.state.clamp(0, 3)]),
+                  _InfoChip(label: '状态', value: switch (card.state) { 0 => '新卡片', 1 => '学习中', 2 => '复习中', _ => '重学中' }),
                   if (card.domain != null) _InfoChip(label: '领域', value: card.domain!),
                   _InfoChip(label: '复习', value: '${card.reps} 次'),
                   _InfoChip(label: '遗忘', value: '${card.lapses} 次'),
@@ -291,6 +385,11 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
   Widget _buildBody() {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
     if (_planGroups.isEmpty) return _buildEmptyState();
+
+    // 搜索状态：显示搜索结果
+    final isSearching = _searchController.text.trim().isNotEmpty;
+    if (isSearching) return _buildSearchResults();
+
     return Column(children: [
       // 搜索栏
       Padding(
@@ -304,25 +403,14 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
             contentPadding: const EdgeInsets.symmetric(vertical: 10),
             suffixIcon: _searchController.text.isNotEmpty
-                ? IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () { _searchController.clear(); _applyFilters(); })
+                ? IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () { _searchController.clear(); setState(() => _searchResults = []); })
                 : null,
           ),
+          onSubmitted: _doSearch,
+          onChanged: (v) {
+            if (v.isEmpty) setState(() => _searchResults = []);
+          },
         ),
-      ),
-      // 状态过滤
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(children: [
-          _StateBadge(label: '全部', count: _allCards.length, isActive: _stateFilter == null, onTap: () => setState(() { _stateFilter = null; _applyFilters(); })),
-          const SizedBox(width: 6),
-          _StateBadge(label: '新', count: _stateCounts['new'] ?? 0, color: Colors.blue, isActive: _stateFilter == 0, onTap: () => setState(() { _stateFilter = _stateFilter == 0 ? null : 0; _applyFilters(); })),
-          const SizedBox(width: 6),
-          _StateBadge(label: '学习中', count: _stateCounts['learning'] ?? 0, color: Colors.orange, isActive: _stateFilter == 1, onTap: () => setState(() { _stateFilter = _stateFilter == 1 ? null : 1; _applyFilters(); })),
-          const SizedBox(width: 6),
-          _StateBadge(label: '复习中', count: _stateCounts['review'] ?? 0, color: Colors.green, isActive: _stateFilter == 2, onTap: () => setState(() { _stateFilter = _stateFilter == 2 ? null : 2; _applyFilters(); })),
-          const SizedBox(width: 6),
-          _StateBadge(label: '重学', count: _stateCounts['relearning'] ?? 0, color: Colors.red, isActive: _stateFilter == 3, onTap: () => setState(() { _stateFilter = _stateFilter == 3 ? null : 3; _applyFilters(); })),
-        ]),
       ),
       // 分组卡片列表
       Expanded(
@@ -355,7 +443,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
       children: [
         // Plan 标题（可点击展开）
         GestureDetector(
-          onTap: group.isLoading ? null : () => _expandPlan(group.conversationId),
+          onTap: group.isLoading ? null : () => _togglePlan(group.conversationId),
           child: Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -395,8 +483,22 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Center(child: Text('暂无卡片', style: TextStyle(color: Colors.grey.shade500, fontSize: 13))),
             )
-          else
+          else ...[
             ...group.displayCards.map((card) => _buildCardTile(card)),
+            // 加载更多按钮
+            if (group.hasMore)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: TextButton(
+                    onPressed: group.isLoading ? null : () => _loadMorePlanCards(group.conversationId),
+                    child: group.isLoading
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Text('加载更多'),
+                  ),
+                ),
+              ),
+          ],
         ],
         const SizedBox(height: 8),
       ],
@@ -414,7 +516,8 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
   }
 
   Widget _buildCardTile(DueCard card) {
-    final color = _stateColors[card.state.clamp(0, 3)];
+    final colors = [Colors.blue, Colors.orange, Colors.green, Colors.purple];
+    final color = colors[card.state.clamp(0, 3)];
     return Card(
       color: color,
       elevation: 0,
@@ -456,7 +559,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
               ),
             if (card.lastReviewedAt != null) const SizedBox(width: 6),
             Chip(
-              label: Text(_stateLabels[card.state.clamp(0, 3)], style: const TextStyle(fontSize: 10, color: Colors.white)),
+              label: Text(switch (card.state) { 0 => '新卡片', 1 => '学习中', 2 => '复习中', _ => '重学中' }, style: const TextStyle(fontSize: 10, color: Colors.white)),
               backgroundColor: color.withAlpha(100),
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               visualDensity: VisualDensity.compact,
@@ -496,8 +599,6 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     try {
       await client.updateCardStatus(card.id, 'skipped');
       setState(() {
-        _allCards.removeWhere((c) => c.id == card.id);
-        _filteredCards.removeWhere((c) => c.id == card.id);
         for (final g in _planGroups) {
           g.cards.removeWhere((c) => c.id == card.id);
           g.displayCards.removeWhere((c) => c.id == card.id);
@@ -531,10 +632,12 @@ class _PlanGroup {
   final String goal;
   final String conversationId;
   final int cardCount;
-  List<DueCard> cards;       // 展开后加载
+  List<DueCard> cards;
   List<DueCard> displayCards;
-  bool isLoading = false;    // 正在加载中
-  bool expanded = false;     // 当前是否展开
+  bool isLoading = false;
+  bool expanded = false;
+  int loadOffset = 0;    // 已加载卡片数（用于下一页 offset）
+  bool hasMore = false;  // 是否有更多卡片
 
   _PlanGroup({
     required this.id,
@@ -547,33 +650,7 @@ class _PlanGroup {
 }
 
 // ── 小组件 ──
-
-class _StateBadge extends StatelessWidget {
-  final String label;
-  final int count;
-  final Color? color;
-  final bool isActive;
-  final VoidCallback onTap;
-
-  const _StateBadge({
-    required this.label, required this.count,
-    this.color, required this.isActive, required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final bgColor = (color ?? Colors.grey).withAlpha(isActive ? 30 : 10);
-    final txtColor = isActive ? (color ?? Colors.grey) : Colors.grey;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(16), border: isActive ? Border.all(color: (color ?? Colors.grey).withAlpha(80)) : null),
-        child: Text('$label $count', style: TextStyle(fontSize: 12, fontWeight: isActive ? FontWeight.w600 : FontWeight.normal, color: txtColor)),
-      ),
-    );
-  }
-}
+// _StateBadge removed (state filter feature removed)
 
 class _InfoChip extends StatelessWidget {
   final String label;

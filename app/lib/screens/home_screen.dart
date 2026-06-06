@@ -3,93 +3,19 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
+import '../config/k12_subjects.dart';
 import 'chat_screen.dart';
 
 /// 首页 — 科目直选 + 模式自动路由
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
-  // 科目列表（key=英文代码, value=可用学段）
-  static const _subjects = <String, List<String>>{
-    'math': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
-    'chinese': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
-    'english': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
-    'physics': ['g7-9', 'g10', 'g11-12'],
-    'chemistry': ['g7-9', 'g10', 'g11-12'],
-    'biology': ['g7-9', 'g10', 'g11-12'],
-    'history': ['g7-9', 'g10', 'g11-12'],
-    'geography': ['g7-9', 'g10', 'g11-12'],
-    'politics': ['g10', 'g11-12'],
-    'science': ['g3-4', 'g5-6', 'g7-9'],
-    'it': ['g1-2', 'g3-4', 'g5-6', 'g7-9'],
-    'japanese': ['g5-6', 'g7-9', 'g10', 'g11-12'],
-    'russian': ['g7-9', 'g10', 'g11-12'],
-  };
-
-  // 科目中文显示名
-  static const _subjectDisplayNames = <String, String>{
-    'math': '数学',
-    'chinese': '语文',
-    'english': '英语',
-    'physics': '物理',
-    'chemistry': '化学',
-    'biology': '生物',
-    'history': '历史',
-    'geography': '地理',
-    'politics': '政治',
-    'science': '科学',
-    'it': '信息技术',
-    'japanese': '日语',
-    'russian': '俄语',
-  };
-
-  static const _gradeNames = {
-    'g1-2': '小学低年级',
-    'g3-4': '小学中年级',
-    'g5-6': '小学高年级',
-    'g7-9': '初中',
-    'g10': '高中一年级',
-    'g11-12': '高中二三年级',
-    'g10-12': '高中',
-  };
-
-  // 科目颜色
-  static const _subjectColors = <String, Color>{
-    'math': Color(0xFFE57373),
-    'chinese': Color(0xFF64B5F6),
-    'english': Color(0xFF81C784),
-    'physics': Color(0xFFFFB74D),
-    'chemistry': Color(0xFFBA68C8),
-    'biology': Color(0xFF4DB6AC),
-    'history': Color(0xFFF06292),
-    'geography': Color(0xFF4FC3F7),
-    'politics': Color(0xFFA1887F),
-    'science': Color(0xFF90A4AE),
-    '信息技术': Color(0xFF7986CB),
-    'japanese': Color(0xFFE0A050),
-    'russian': Color(0xFFC0392B),
-  };
-
-  // 科目图标
-  static final _subjectIcons = <String, IconData>{
-    'math': Icons.calculate,
-    'chinese': Icons.menu_book,
-    'english': Icons.language,
-    'physics': Icons.science,
-    'chemistry': Icons.biotech,
-    'biology': Icons.pets,
-    'history': Icons.auto_stories,
-    'geography': Icons.explore,
-    'politics': Icons.account_balance,
-    'science': Icons.travel_explore,
-    'it': Icons.computer,
-    'japanese': Icons.translate,
-    'russian': Icons.translate,
-  };
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    // 只渲染 visible 的科目
+    final visibleSubjects = k12VisibleSubjects;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('刻意进化学习'),
@@ -163,16 +89,14 @@ class HomeScreen extends ConsumerWidget {
                   crossAxisSpacing: 8,
                   childAspectRatio: 0.9,
                 ),
-                itemCount: _subjects.length,
+                itemCount: visibleSubjects.length,
                 itemBuilder: (ctx, i) {
-                  final subject = _subjects.keys.elementAt(i);
-                  final color = _subjectColors[subject] ?? Colors.grey;
-                  final grades = _subjects[subject]!;
+                  final cfg = visibleSubjects[i];
                   return _SubjectCard(
-                    name: _subjectDisplayNames[subject] ?? subject,
-                    color: color,
-                    icon: _subjectIcons[subject] ?? Icons.school,
-                    onTap: () => _startSubject(context, ref, subject, grades),
+                    name: cfg.displayName,
+                    color: cfg.color,
+                    icon: cfg.icon,
+                    onTap: () => _startSubject(context, ref, cfg),
                   );
                 },
               ),
@@ -186,10 +110,10 @@ class HomeScreen extends ConsumerWidget {
   Future<void> _startSubject(
     BuildContext context,
     WidgetRef ref,
-    String subject,
-    List<String> grades,
+    K12SubjectConfig cfg,
   ) async {
     // 合并高中选项（g10 + g11-12 → g10-12），前端统一显示为"高中"
+    List<String> grades = List.from(cfg.homeGrades);
     final hasG10 = grades.contains('g10');
     final hasG1112 = grades.contains('g11-12');
     if (hasG10 || hasG1112) {
@@ -203,10 +127,10 @@ class HomeScreen extends ConsumerWidget {
     final gradeBand = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: Text('选择 ${_subjectDisplayNames[subject] ?? subject} 年级'),
+        title: Text('选择 ${cfg.displayName} 年级'),
         children: grades.map((g) => SimpleDialogOption(
           onPressed: () => Navigator.of(ctx).pop(g),
-          child: Text(_gradeNames[g] ?? g),
+          child: Text(k12GradeNames[g] ?? g),
         )).toList(),
       ),
     );
@@ -219,7 +143,7 @@ class HomeScreen extends ConsumerWidget {
         token: auth.token,
       );
 
-      final result = await client.k12Init(subject: subject, gradeBand: gradeBand);
+      final result = await client.k12Init(subject: cfg.code, gradeBand: gradeBand);
 
       final convId = result['conversation_id'] as String?;
       if (convId != null && context.mounted) {

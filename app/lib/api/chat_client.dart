@@ -73,15 +73,33 @@ class ChatClient {
 
   // ── Review API ──
 
-  Future<Map<String, dynamic>> getDueCards() async {
+  Future<Map<String, dynamic>> getDueCards({String? conversationId, int limit = 20, int offset = 0}) async {
+    final params = <String, String>{'user_id': userId, 'limit': limit.toString(), 'offset': offset.toString()};
+    if (conversationId != null && conversationId.isNotEmpty) {
+      params['conversation_id'] = conversationId;
+    }
     final resp = await http.get(
-      Uri.parse('$baseUrl/api/review/due').replace(queryParameters: {'user_id': userId}),
+      Uri.parse('$baseUrl/api/review/due').replace(queryParameters: params),
       headers: _authHeaders,
     ).timeout(ApiConfig.requestTimeout);
 
     if (resp.statusCode != 200) {
       throw Exception('Review API error: ${resp.statusCode}');
     }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  /// 搜索卡片（全文搜索 front/back）
+  Future<Map<String, dynamic>> searchCards(String query, {int limit = 20, int offset = 0}) async {
+    final params = <String, String>{
+      'user_id': userId, 'q': query,
+      'limit': limit.toString(), 'offset': offset.toString(),
+    };
+    final resp = await http.get(
+      Uri.parse('$baseUrl/api/cards/search').replace(queryParameters: params),
+      headers: _authHeaders,
+    ).timeout(ApiConfig.requestTimeout);
+    if (resp.statusCode != 200) throw Exception('Search API error: ${resp.statusCode}');
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }
 
@@ -337,8 +355,8 @@ class ChatClient {
   /// 按 conversation_plan 获取卡片（惰性加载）
   /// 当 [convId] 为空时：只返回 plan 元数据，cards 为空数组
   /// 当 [convId] 指定时：只加载该 plan 的完整卡片数据
-  Future<Map<String, dynamic>> getCardsByPlan({String? convId}) async {
-    final params = <String, String>{'user_id': userId};
+  Future<Map<String, dynamic>> getCardsByPlan({String? convId, int limit = 20, int offset = 0, String sort = 'front'}) async {
+    final params = <String, String>{'user_id': userId, 'limit': limit.toString(), 'offset': offset.toString(), 'sort': sort};
     if (convId != null && convId.isNotEmpty) {
       params['conversation_id'] = convId;
     }

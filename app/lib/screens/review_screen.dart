@@ -8,6 +8,7 @@ import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
 import '../services/tts_service.dart';
 import '../pipelines/verification_strategy.dart';
+import '../widgets/markdown_span_nodes.dart';
 import 'card_list_screen.dart';
 
 /// 复习: 内联复习队列
@@ -41,6 +42,12 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
   List<VerifyQuestion> _preloadedQuestions = [];
   bool _preloadingQuiz = false;
   bool _isJudging = false;
+  bool _hasMore = false;
+
+  // 订阅状态
+  bool _subscriptionRequired = false;
+  bool _subscriptionExpired = false;
+  bool _subscriptionChecked = false;
 
   // 计划标签 & domain 过滤
   late TabController _tabController;
@@ -54,6 +61,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadCards();
       _loadPlans();
+      _checkSubscription();
     });
     ref.listenManual(cardRefreshProvider, (prev, next) {
       if (prev != next && mounted) {
@@ -84,10 +92,27 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
     final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {
       final planList = await client.getPlans();
+      // 并行获取卡片统计（用于 tab badge 显示，不受 _cards LIMIT 500 限制）
+      Map<String, int> cardCountByConv = {};
+      try {
+        final cardCountResp = await client.getCardsByPlan();
+        final plansRaw = (cardCountResp['plans'] as List<dynamic>?) ?? [];
+        for (final p in plansRaw) {
+          final pMap = p as Map<String, dynamic>;
+          final convId = pMap['conversation_id'] as String? ?? '';
+          final count = (pMap['card_count'] as num?)?.toInt() ?? 0;
+          if (convId.isNotEmpty) cardCountByConv[convId] = count;
+        }
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
-        // 所有 plan 都生成 tab，自由对话的 plan 用 goal 作为 tab 标签
-        _planTabs = planList.toList();
+        // 合并 cardCount 到 planTabs
+        _planTabs = planList.map((p) {
+          final convId = p['conversation_id'] as String? ?? '';
+          final count = cardCountByConv[convId];
+          if (count != null) p['card_count'] = count;
+          return p;
+        }).toList();
         final totalTabs = 1 + _planTabs.length;
         final oldIndex = _tabController.index;
         _tabController.dispose();
@@ -95,6 +120,40 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
           initialIndex: oldIndex.clamp(0, totalTabs - 1));
       });
     } catch (_) {}
+  }
+
+  Future<void> _checkSubscription() async {
+    if (_client == null) return;
+    try {
+      final prefs = await _client!.getPreferences();
+      final expiresStr = prefs['subscription_expires'];
+      if (expiresStr == null || expiresStr.isEmpty) {
+        if (mounted) setState(() {
+          _subscriptionRequired = true;
+          _subscriptionExpired = false;
+          _subscriptionChecked = true;
+        });
+        return;
+      }
+      final expires = DateTime.tryParse(expiresStr);
+      if (expires == null) {
+        if (mounted) setState(() {
+          _subscriptionRequired = true;
+          _subscriptionExpired = false;
+          _subscriptionChecked = true;
+        });
+        return;
+      }
+      final now = DateTime.now();
+      if (mounted) setState(() {
+        _subscriptionExpired = now.isAfter(expires);
+        _subscriptionRequired = false;
+        _subscriptionChecked = true;
+      });
+    } catch (e) {
+      debugPrint('ReviewScreen._checkSubscription: $e');
+      if (mounted) setState(() => _subscriptionChecked = true);
+    }
   }
 
   void _initClient() {
@@ -117,33 +176,37 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
       return;
     }
     try {
-      final resp = await _client!.getDueCards();
+      final convId = _selectedConvId;
+      final resp = await _client!.getDueCards(conversationId: convId, limit: 20, offset: 0);
       setState(() {
         _cards = (resp['cards'] as List<dynamic>?)
             ?.map((e) => DueCard.fromJson(e as Map<String, dynamic>))
             .toList() ?? [];
+        _hasMore = resp['has_more'] as bool? ?? false;
         _isLoading = false;
         _hasLoadedOnce = true;
+        _activeCardIndex = _cards.isNotEmpty ? 0 : -1;
       });
     } catch (e) {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<int> _loadMoreCards() async {
+  /// 补货：队列 ≤ 10 时加载下 10 张
+  Future<void> _replenishQueue() async {
+    if (_client == null || _cards.isEmpty) return;
     try {
-      final resp = await _client!.getDueCards();
+      final convId = _selectedConvId;
+      final offset = _cards.length;
+      final resp = await _client!.getDueCards(conversationId: convId, limit: 10, offset: offset);
       final newCards = (resp['cards'] as List<dynamic>?)
           ?.map((e) => DueCard.fromJson(e as Map<String, dynamic>))
           .toList() ?? [];
       setState(() {
-        _cards = newCards;
-        _activeCardIndex = -1;
+        _cards.addAll(newCards);
+        _hasMore = resp['has_more'] as bool? ?? false;
       });
-      return newCards.length;
-    } catch (_) {
-      return 0;
-    }
+    } catch (_) {}
   }
 
   void _resetInlineReview() {
@@ -260,6 +323,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
 
   Future<void> _preloadAiQuestions(DueCard card) async {
     if (_client == null) return;
+    if (_subscriptionRequired || _subscriptionExpired) return;
     setState(() => _preloadingQuiz = true);
     try {
       final resp = await _client!.verifyQuestions(card.id, card.front, card.back);
@@ -292,6 +356,14 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
     }
     // 降级: 实时生成
     if (_client == null) return;
+    if (_subscriptionRequired || _subscriptionExpired) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('需要有效订阅才能使用 AI 问答功能')),
+        );
+      }
+      return;
+    }
     try {
       final resp = await _client!.verifyQuestions(card.id, card.front, card.back);
       final questions = (resp['questions'] as List<dynamic>?)
@@ -324,6 +396,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
 
   Future<void> _judgeInlineAnswers() async {
     if (_client == null || _cards.isEmpty || _activeCardIndex < 0) return;
+    if (_subscriptionRequired || _subscriptionExpired) return;
     setState(() => _isJudging = true);
     final card = _cards[_activeCardIndex];
     try {
@@ -395,8 +468,16 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
         _showAchievementDialog(achievements.cast<Map<String, dynamic>>());
       }
       if (_cards.isEmpty) {
-        final more = await _loadMoreCards();
-        if (more == 0 && mounted) _showCompletionStats();
+        final convId = _selectedConvId;
+        try {
+          final resp = await _client!.getDueCards(conversationId: convId, limit: 10, offset: 0);
+          final more = (resp['cards'] as List<dynamic>?)?.length ?? 0;
+          if (more == 0 && mounted) _showCompletionStats();
+        } catch (_) { if (mounted) _showCompletionStats(); }
+      }
+      // 队列 ≤ 10 且有更多卡片时自动补货
+      if (_cards.length <= 10 && _hasMore && mounted) {
+        _replenishQueue();
       }
     } catch (e) {
       if (mounted) {
@@ -409,9 +490,19 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
 
   // ── Build ──
 
-  /// 计算每个 plan 的待复习卡片数（按 conversation_id 匹配）
+  /// 按 conversation_id 匹配的待复习卡片数
+  /// 优先从 planTabs 中缓存的 cardCount 取值，兜底降级到 _cards 过滤
   int _planDueCount(String convId) {
     if (convId.isEmpty) return 0;
+    // 从 planTabs 找 cardCount（精准，不受 _cards 500 条限制影响）
+    for (final p in _planTabs) {
+      if ((p['conversation_id'] as String? ?? '') == convId) {
+        final cached = p['card_count'] as int?;
+        if (cached != null) return cached;
+        break;
+      }
+    }
+    // 兜底：从已加载的 _cards 过滤（可能因 LIMIT 500 截断而不准）
     return _cards.where((c) => c.conversationId == convId).length;
   }
 
@@ -438,7 +529,9 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
             _selectedConvId = convId;
             _activeCardIndex = -1;
             _resetInlineReview();
+            _cards = [];
           });
+          _loadCards();
         }
       } else {
         setState(() {
@@ -507,6 +600,36 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
     }
 
     final displayCards = _filteredCards;
+
+    // 订阅检查横幅
+    if (_subscriptionChecked && (_subscriptionRequired || _subscriptionExpired)) {
+      final isExpired = _subscriptionExpired;
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(isExpired ? Icons.subscriptions_outlined : Icons.info_outline,
+                  size: 48, color: isExpired ? Colors.red.shade400 : Colors.orange.shade400),
+              const SizedBox(height: 16),
+              Text(
+                isExpired ? '订阅已过期' : '需要订阅',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                isExpired
+                    ? '你的订阅已过期，续费后可继续使用 AI 复习功能'
+                    : '请先购买订阅，解锁 AI 辅助复习功能',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     if (displayCards.isEmpty) {
       return RefreshIndicator(
@@ -751,18 +874,25 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
                         sigmaX: _isVerifying ? 5.0 : 0.0,
                         sigmaY: _isVerifying ? 5.0 : 0.0,
                       ),
-                      child: Text(
-                        key: ValueKey('${_isVerifying}_$_isFlipped'),
-                        _isVerifying || !_isFlipped ? card.front : card.back,
-                        style: TextStyle(
-                          fontSize: _isVerifying || !_isFlipped ? 18 : 16,
-                          fontWeight: FontWeight.w600,
-                          color: _isVerifying
-                              ? const Color(0x051A1A2E) // 2% 可见度 + 模糊
-                              : const Color(0xFF1A1A2E),
-                          height: 1.4,
-                        ),
-                        textAlign: TextAlign.center,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        child: _isVerifying || !_isFlipped
+                          ? Text(
+                              card.front,
+                              key: const ValueKey('front'),
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: _isVerifying ? const Color(0x051A1A2E) : const Color(0xFF1A1A2E),
+                                height: 1.4,
+                              ),
+                              textAlign: TextAlign.center,
+                            )
+                          : Container(
+                              key: const ValueKey('back'),
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: RichContentBuilder(textColor: const Color(0xFF1A1A2E)).build(card.back),
+                            ),
                       ),
                     ),
                     ),

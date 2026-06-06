@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
+import '../config/k12_subjects.dart';
 
 /// K12 结构化学习 — 选科+选年级入口
 class K12SubjectScreen extends ConsumerStatefulWidget {
@@ -16,60 +17,19 @@ class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
   bool _loading = false;
   String? _error;
 
-  // 有预生成计划的科目（按课标实际覆盖的学段过滤）
-  // key=科目英文代码, value=可用学段列表
-  static const _availableSubjects = <String, List<String>>{
-    'math': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10-12'],
-    'chinese': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10-12'],
-    'english': ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10-12'],
-    'physics': ['g7-9', 'g10-12'],
-    'chemistry': ['g7-9', 'g10-12'],
-    'biology': ['g7-9', 'g10-12'],
-    'history': ['g7-9', 'g10-12'],
-    'geography': ['g7-9', 'g10-12'],
-    'politics': ['g10-12'],
-    'science': ['g3-4', 'g5-6', 'g7-9'],
-    'it': ['g1-2', 'g3-4', 'g5-6', 'g7-9'],
-    'japanese': ['g3-4', 'g5-6', 'g7-9'],
-    'russian': ['g7-9'],
-  };
+  /// 只渲染 visible 的科目
+  List<K12SubjectConfig> get _visibleSubjects => k12VisibleSubjects;
 
-  static const _subjectDisplayNames = <String, String>{
-    'math': '数学',
-    'chinese': '语文',
-    'english': '英语',
-    'physics': '物理',
-    'chemistry': '化学',
-    'biology': '生物',
-    'history': '历史',
-    'geography': '地理',
-    'politics': '政治',
-    'science': '科学',
-    'it': '信息技术',
-    'japanese': '日语',
-    'russian': '俄语',
-  };
-
-  static const _gradeNames = {
-    'g1-2': '小学低年级（1-2年级）',
-    'g3-4': '小学中年级（3-4年级）',
-    'g5-6': '小学高年级（5-6年级）',
-    'g7-9': '初中（7-9年级）',
-    'g10-12': '高中',
-  };
-
-  List<String> get _subjects => _availableSubjects.keys.toList();
-
-  Future<void> _selectSubject(String subject) async {
-    final grades = _availableSubjects[subject]!;
+  Future<void> _selectSubject(K12SubjectConfig cfg) async {
+    final grades = cfg.k12Grades;
 
     final gradeBand = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: Text('选择 ${_subjectDisplayNames[subject] ?? subject} 年级'),
+        title: Text('选择 ${cfg.displayName} 年级'),
         children: grades.map((g) => SimpleDialogOption(
           onPressed: () => Navigator.of(ctx).pop(g),
-          child: Text(_gradeNames[g] ?? g),
+          child: Text(k12GradeNames[g] ?? g),
         )).toList(),
       ),
     );
@@ -83,7 +43,7 @@ class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
         userId: auth.userId ?? 'default_user',
         token: auth.token,
       );
-      final result = await client.k12Init(subject: subject, gradeBand: gradeBand);
+      final result = await client.k12Init(subject: cfg.code, gradeBand: gradeBand);
       final convId = result['conversation_id'] as String?;
 
       if (convId != null && mounted) {
@@ -102,6 +62,8 @@ class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final visibleSubjects = _visibleSubjects;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('K12 结构化学习'),
@@ -141,27 +103,26 @@ class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
                         crossAxisSpacing: 12,
                         childAspectRatio: 1.2,
                       ),
-                      itemCount: _subjects.length,
+                      itemCount: visibleSubjects.length,
                       itemBuilder: (ctx, i) {
-                        final subject = _subjects[i];
-                        final grades = _availableSubjects[subject]!;
+                        final cfg = visibleSubjects[i];
                         return Card(
                           child: InkWell(
                             borderRadius: BorderRadius.circular(12),
-                            onTap: () => _selectSubject(subject),
+                            onTap: () => _selectSubject(cfg),
                             child: Padding(
                               padding: const EdgeInsets.all(8),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Text(
-                                    subject,
+                                    cfg.displayName,
                                     style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                                     textAlign: TextAlign.center,
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    _gradeRangeLabel(grades),
+                                    _gradeRangeLabel(cfg.k12Grades),
                                     style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
                                     textAlign: TextAlign.center,
                                   ),
@@ -181,9 +142,9 @@ class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
 
   String _gradeRangeLabel(List<String> grades) {
     if (grades.isEmpty) return '';
-    final first = _gradeNames[grades.first] ?? '';
+    final first = k12GradeNames[grades.first] ?? '';
     if (grades.length == 1) return first;
-    final lastLabel = _gradeNames[grades.last] ?? '';
+    final lastLabel = k12GradeNames[grades.last] ?? '';
     return '$first ~ $lastLabel';
   }
 }

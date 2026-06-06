@@ -34,25 +34,38 @@ pub struct DueCard {
 }
 
 /// N5: 查询到期卡片
-pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64) -> (Vec<DueCard>, i64) {
+pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64, offset: i64, conv_id: Option<&str>) -> (Vec<DueCard>, i64) {
     let now = Utc::now().timestamp();
 
-    let mut stmt = conn.prepare(
+    let (where_clause, total_where): (String, String) = if let Some(cid) = conv_id {
+        (
+            format!("c.user_id = ?1 AND c.conversation_id = '{}' AND cm.status = 'active' AND cm.due <= ?2", cid.replace('\'', "''")),
+            format!("c.user_id = ?1 AND c.conversation_id = '{}' AND cm.status = 'active' AND cm.due <= ?2", cid.replace('\'', "''")),
+        )
+    } else {
+        (
+            "c.user_id = ?1 AND cm.status = 'active' AND cm.due <= ?2".to_string(),
+            "c.user_id = ?1 AND cm.status = 'active' AND cm.due <= ?2".to_string(),
+        )
+    };
+
+    let sql = format!(
         "SELECT c.id, c.front, c.back, c.domain, c.card_type, c.source_sentence,
                 cm.state, cm.reps, cm.lapses, c.created_at, cm.difficulty, cm.due, cm.last_review,
                 (SELECT rating FROM review_log WHERE card_id = c.id ORDER BY reviewed_at DESC LIMIT 1),
                 c.conversation_id
          FROM cards c
          JOIN card_memory cm ON c.id = cm.card_id
-         WHERE c.user_id = ?1
-           AND cm.status = 'active'
-           AND cm.due <= ?2
+         WHERE {}
          ORDER BY CASE WHEN cm.state = 0 THEN 1 ELSE 0 END, cm.due ASC
-         LIMIT ?3"
-    ).unwrap();
+         LIMIT ?3 OFFSET ?4",
+        where_clause
+    );
+
+    let mut stmt = conn.prepare(&sql).unwrap();
 
     let cards: Vec<DueCard> = stmt.query_map(
-        rusqlite::params![user_id, now, limit],
+        rusqlite::params![user_id, now, limit, offset],
         |row| Ok(DueCard {
             id: row.get(0)?,
             front: row.get(1)?,
@@ -72,10 +85,15 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64) -> (Vec<DueCa
         })
     ).unwrap().filter_map(|r| r.ok()).collect();
 
-    let total: i64 = conn.query_row(
+    let total_sql = format!(
         "SELECT COUNT(*) FROM cards c
          JOIN card_memory cm ON c.id = cm.card_id
-         WHERE c.user_id = ?1 AND cm.status = 'active' AND cm.due <= ?2",
+         WHERE {}",
+        total_where
+    );
+
+    let total: i64 = conn.query_row(
+        &total_sql,
         rusqlite::params![user_id, now],
         |row| row.get(0),
     ).unwrap_or(0);
@@ -295,7 +313,7 @@ mod tests {
     #[test]
     fn test_get_due_cards_empty() {
         let conn = setup_db();
-        let (cards, total) = get_due_cards(&conn, "u1", 20);
+        let (cards, total) = get_due_cards(&conn, "u1", 20, 0, None);
         assert!(cards.is_empty());
         assert_eq!(total, 0);
     }
@@ -342,7 +360,7 @@ mod tests {
         insert_card(&conn, "c1", "e2e_user", "概念A", "概念A的解释");
 
         // 1. 到期查询
-        let (due, total) = get_due_cards(&conn, "e2e_user", 20);
+        let (due, total) = get_due_cards(&conn, "e2e_user", 20, 0, None);
         assert_eq!(due.len(), 1, "新卡片应到期");
         assert_eq!(total, 1);
         assert_eq!(due[0].state, 0, "New 状态");
@@ -474,7 +492,7 @@ mod tests {
         conn.execute("UPDATE card_memory SET due=200, state=0 WHERE card_id='cb'", []).unwrap();
         conn.execute("UPDATE card_memory SET due=500, state=2 WHERE card_id='cc'", []).unwrap();
 
-        let (due, _) = get_due_cards(&conn, "e2e_user", 20);
+        let (due, _) = get_due_cards(&conn, "e2e_user", 20, 0, None);
         assert!(due.len() >= 3, "3 张到期");
         // 新排序: 非新卡片(state≠0)优先，同组内按 due ASC
         assert_eq!(due[0].id, "cc", "复习中(cc)应排第一");
@@ -489,7 +507,7 @@ mod tests {
             let id = format!("c_{}", i);
             insert_card(&conn, &id, "e2e_user", &format!("卡{}", i), "");
         }
-        let (due, total) = get_due_cards(&conn, "e2e_user", 20);
+        let (due, total) = get_due_cards(&conn, "e2e_user", 20, 0, None);
         assert_eq!(due.len(), 20, "LIMIT 20");
         assert_eq!(total, 30, "total 报告全部数量");
     }
