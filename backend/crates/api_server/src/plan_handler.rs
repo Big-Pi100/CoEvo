@@ -98,7 +98,6 @@ pub struct PlanUpdateResult {
 ///
 /// 返回清理后的文本 + 处理结果。调用方负责：
 /// - 渲染计划文本（render_plan）
-/// - 成就检测（write_achievement）
 /// - 发送 WebSocket 通知
 pub fn handle_plan_update(
     conn: &rusqlite::Connection,
@@ -208,6 +207,11 @@ pub fn handle_plan_update(
             // 找到了 <plan_update 但找不到 >（严重截断），删掉
             final_reply.truncate(start);
         }
+    }
+
+    // Phase 2: 计划完成成就检测
+    if plan_updated && !is_new_plan {
+        crate::achievement_engine::publish(conn, crate::achievement_engine::AppEvent::PlanCompleted { user_id: user_id.to_string() });
     }
 
     PlanUpdateResult {
@@ -1365,28 +1369,6 @@ pub fn render_plan(plan: &serde_json::Value) -> String {
     out
 }
 
-/// 写入成就（去重）
-///
-/// 使用 INSERT OR IGNORE + 唯一索引保证原子性，消除 SELECT+INSERT 的 TOCTOU 竞态窗口。
-pub fn write_achievement(conn: &rusqlite::Connection, user_id: &str, key: &str, name: &str, icon: &str, tier: &str, source: &str) {
-    let now = chrono::Utc::now().timestamp();
-    let inserted = conn.execute(
-        "INSERT OR IGNORE INTO achievements (id, user_id, achievement_key, name, icon, tier, source, unlocked_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        rusqlite::params![uuid::Uuid::new_v4().to_string(), user_id, key, name, icon, tier, source, now],
-    ).unwrap_or(0);
-    if inserted > 0 {
-        tracing::debug!("Achievement unlocked: {} ({})", key, user_id);
-    }
-}
-
-/// 检查成就是否已存在
-pub fn achievement_exists(conn: &rusqlite::Connection, user_id: &str, key: &str) -> bool {
-    conn.query_row(
-        "SELECT 1 FROM achievements WHERE user_id = ?1 AND achievement_key = ?2",
-        rusqlite::params![user_id, key],
-        |_| Ok(true),
-    ).unwrap_or(false)
-}
 
 /// 从 v3 预置数据复制一张卡片到用户名下
 use std::sync::OnceLock;

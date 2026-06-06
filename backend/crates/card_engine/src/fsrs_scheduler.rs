@@ -191,24 +191,32 @@ pub fn submit_review(
     // 3. 更新 streak
     let streak_days = update_streak(conn, user_id)?;
 
-    // 4. 批量聚合成就上下文 — 单次查询替代 3 次独立查询
+    // 4. 批量聚合成就上下文 — 单次查询替代多次独立查询
     let agg: AchievementAggregate = conn.query_row(
         "SELECT
             (SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id = cm.card_id WHERE c.user_id = ?1 AND cm.status = 'active') AS total_cards,
             (SELECT COUNT(*) FROM review_log r
              JOIN cards c ON r.card_id = c.id
              WHERE c.user_id = ?1) AS total_reviews,
-            (SELECT COUNT(DISTINCT c.domain) FROM cards c JOIN card_memory cm ON c.id = cm.card_id WHERE c.user_id = ?1 AND cm.status = 'active' AND c.domain IS NOT NULL) AS domains_covered",
+            (SELECT COUNT(DISTINCT c.domain) FROM cards c JOIN card_memory cm ON c.id = cm.card_id WHERE c.user_id = ?1 AND cm.status = 'active' AND c.domain IS NOT NULL) AS domains_covered,
+            (SELECT COUNT(*) FROM conversation_plans cp
+             JOIN user_plan_progress upp ON cp.id = upp.plan_id
+             WHERE upp.user_id = ?1 AND upp.status = 'completed') AS plans_completed,
+            (SELECT COUNT(*) FROM conversations WHERE user_id = ?1) AS conversations_completed",
         rusqlite::params![user_id],
         |row| Ok(AchievementAggregate {
             total_cards: row.get(0)?,
             total_reviews: row.get(1)?,
             domains_covered: row.get(2)?,
+            plans_completed: row.get(3)?,
+            conversations_completed: row.get(4)?,
         }),
     ).unwrap_or(AchievementAggregate {
         total_cards: 0,
         total_reviews: 0,
         domains_covered: 0,
+        plans_completed: 0,
+        conversations_completed: 0,
     });
 
     Ok(AchievementContext {
@@ -217,6 +225,9 @@ pub fn submit_review(
         total_reviews: agg.total_reviews,
         streak_days,
         domains_covered: agg.domains_covered,
+        plans_completed: agg.plans_completed,
+        conversations_completed: agg.conversations_completed,
+        ..Default::default()
     })
 }
 
@@ -225,6 +236,8 @@ struct AchievementAggregate {
     total_cards: u32,
     total_reviews: u32,
     domains_covered: u32,
+    plans_completed: u32,
+    conversations_completed: u32,
 }
 
 /// FSRS-5 scheduling: compute next state and due timestamp.

@@ -630,4 +630,20 @@ extension PlanApi on ChatClient {
       return false;
     }
   }
+
+  /// 获取所有成就定义 + 进度（Phase 3 成就页面改版）
+  Future<Map<String, dynamic>?> getAchievementsAll() async {
+    try {
+      final resp = await http.get(
+        Uri.parse('$baseUrl/api/user/$userId/achievements-all'),
+        headers: _authHeaders,
+      );
+      if (resp.statusCode == 200) {
+        return jsonDecode(resp.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint('getAchievementsAll error: $e');
+    }
+    return null;
+  }
 }

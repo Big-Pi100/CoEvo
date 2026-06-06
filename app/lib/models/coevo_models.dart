@@ -31,12 +31,14 @@ class WsEvent {
   final String? content;
   final String? reply;
   final List<ConceptCandidate>? candidates;
+  final List<Map<String, dynamic>>? achievements;
 
   const WsEvent({
     required this.type,
     this.content,
     this.reply,
     this.candidates,
+    this.achievements,
   });
 
   factory WsEvent.fromJson(Map<String, dynamic> json) {
@@ -50,11 +52,17 @@ class WsEvent {
         return ConceptCandidate.fromJson(e as Map<String, dynamic>);
       }).toList();
     }
+    List<Map<String, dynamic>>? achievements;
+    final rawAch = json['achievements'];
+    if (rawAch is List) {
+      achievements = rawAch.map((e) => e as Map<String, dynamic>).toList();
+    }
     return WsEvent(
       type: json['type'] as String? ?? 'error',
       content: json['content'] as String?,
       reply: json['reply'] as String?,
       candidates: candidates,
+      achievements: achievements,
     );
   }
 }

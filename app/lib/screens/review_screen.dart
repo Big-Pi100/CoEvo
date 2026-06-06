@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../models/coevo_models.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
+import '../providers/achievement_notifier.dart';
 import '../services/tts_service.dart';
 import '../pipelines/verification_strategy.dart';
 import '../widgets/markdown_span_nodes.dart';
@@ -231,45 +232,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
     });
   }
 
-  void _showAchievementDialog(List<Map<String, dynamic>> achievements) {
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.emoji_events, color: Colors.amber, size: 28),
-            SizedBox(width: 8),
-            Text('成就解锁！'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: achievements.map((a) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              children: [
-                Text(a['icon'] as String? ?? '🌟', style: const TextStyle(fontSize: 32)),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(a['name'] as String? ?? '',
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                ),
-              ],
-            ),
-          )).toList(),
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('太棒了！'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showCompletionStats() {
+void _showCompletionStats() {
     if (!mounted) return;
     showDialog(
       context: context,
@@ -469,7 +432,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
       });
       final achievements = resp['achievements'] as List<dynamic>?;
       if (achievements != null && achievements.isNotEmpty) {
-        _showAchievementDialog(achievements.cast<Map<String, dynamic>>());
+        final notifier = ref.read(achievementNotifierProvider.notifier);
+        for (final a in achievements.cast<Map<String, dynamic>>()) {
+          notifier.push(AchievementNotification.fromJson(a));
+        }
       }
       if (_cards.isEmpty) {
         final convId = _selectedConvId;

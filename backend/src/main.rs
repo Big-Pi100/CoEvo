@@ -65,6 +65,14 @@ async fn main() {
         .expect("Failed to init DB pool");
     tracing::info!("DB: {}", db_path);
 
+    // 成就引擎（TOML 数据驱动）
+    {
+        let ach_toml = std::env::var("COEVO_ACHIEVEMENTS_TOML")
+            .unwrap_or_else(|_| "achievements.toml".to_string());
+        api_server::achievement_engine::init(&ach_toml);
+        tracing::info!("AchievementEngine: {}", ach_toml);
+    }
+
     // Load prompts from files (general + pipelines)
     chat_engine::prompt_loader::init(&prompts_dir);
     tracing::info!("Prompts: {}", prompts_dir);

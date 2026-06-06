@@ -11,6 +11,7 @@
 #![allow(clippy::unnecessary_to_owned)]
 
 pub mod admin_handlers;
+pub mod achievement_engine;
 pub mod auth;
 pub mod auth_middleware;
 pub mod db_pool;

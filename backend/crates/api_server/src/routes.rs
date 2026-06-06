@@ -81,6 +81,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/user/{user_id}/profile", put(update_user_profile_handler))
         .route("/api/user/{user_id}/display-name", post(update_display_name_handler))
         .route("/api/user/{user_id}/avatar", post(avatar_upload_handler).get(avatar_get_handler))
+        .route("/api/user/{user_id}/achievements-all", get(achievements_all_handler))
         .route("/api/user/{user_id}/preferences", get(preferences_get_handler).put(preferences_put_handler))
         .route("/api/user/bind-lookup", post(bind_lookup_handler))
         // ── Learning Plans ──
@@ -285,10 +286,22 @@ async fn review_submit_handler(
         input.details.as_deref(),
     ) {
         Ok(ctx) => {
-            // 成就检测
-            let detector = growth_engine::achievements::AchievementDetector;
-            let defs = shared_types::growth::AchievementDef::predefined();
-            let new_achievements = detector.check_and_persist(&conn, &defs, &ctx);
+            // 每日定时成就检测（24h 冷却）
+            crate::achievement_engine::check_daily(&conn, &ctx.user_id);
+
+            // 事件总线：走 TOML triggers 过滤，仅检测 review_completed 成就
+            crate::achievement_engine::publish(
+                &conn,
+                crate::achievement_engine::AppEvent::ReviewCompleted {
+                    user_id: ctx.user_id.clone(),
+                },
+            );
+
+            // 成就全量检测（兜底 + 返回新成就给前端）
+            // 必须用 build_context 重新查 DB，因为 ctx 只有 6 个字段（submit_review 返回值）
+            let fresh_ctx = crate::achievement_engine::build_context(&conn, &input.user_id);
+            let engine = crate::achievement_engine::get();
+            let new_achievements = engine.check_and_persist(&conn, &fresh_ctx);
 
             Json(serde_json::json!({
                 "status": "ok",
@@ -1145,18 +1158,33 @@ async fn profile_handler(
         |row| row.get(0),
     ).unwrap_or(0);
 
+    // 每日定时成就检测（24h 冷却）
+    crate::achievement_engine::check_daily(&conn, &user_id);
+
     let mut stmt = conn.prepare(
-        "SELECT achievement_key, name, icon, unlocked_at FROM achievements WHERE user_id = ?1 ORDER BY unlocked_at DESC"
+        "SELECT achievement_key, name, icon, tier, source, unlocked_at \
+         FROM achievements WHERE user_id = ?1 ORDER BY unlocked_at DESC"
     ).unwrap();
+    let engine = crate::achievement_engine::get();
     let achievements: Vec<serde_json::Value> = stmt.query_map(
         rusqlite::params![user_id],
-        |row| Ok(serde_json::json!({
-            "key": row.get::<_, String>(0)?,
-            "name": row.get::<_, String>(1)?,
-            "icon": row.get::<_, String>(2)?,
-            "unlocked_at": row.get::<_, String>(3)?,
-        }))
-    ).unwrap().filter_map(|r| r.ok()).collect();
+        |row| {
+            let key: String = row.get(0)?;
+            let tier: String = row.get::<_, Option<String>>(3)?.unwrap_or_else(|| "bronze".to_string());
+            let source: String = row.get::<_, Option<String>>(4)?.unwrap_or_default();
+            let def = engine.find_def(&key);
+            Ok(serde_json::json!({
+                "key": key,
+                "name": row.get::<_, String>(1)?,
+                "icon": row.get::<_, String>(2)?,
+                "tier": tier,
+                "category": if source.is_empty() { def.map(|d| d.category.clone()).unwrap_or_default() } else { source },
+                "color": def.map(|d| d.color.clone()).unwrap_or_else(|| "#CD7F32".to_string()),
+                "description": def.map(|d| d.description.clone()).unwrap_or_default(),
+                "unlocked_at": row.get::<_, String>(5)?,
+            }))
+        })
+    .unwrap().filter_map(|r| r.ok()).collect();
 
     let display_name: Option<String> = conn.query_row(
         "SELECT display_name FROM users WHERE id = ?1",
@@ -1220,6 +1248,206 @@ async fn profile_handler(
         "achievements": achievements,
         "cefr_stats": cefr_stats,
     })))
+}
+
+// ── Achievements All (Phase 3: 按 category 分组 + 进度) ──
+
+async fn achievements_all_handler(
+    headers: axum::http::HeaderMap,
+    Path(user_id): Path<String>,
+) -> impl axum::response::IntoResponse {
+    tracing::info!("achievements_all_handler: user_id={}", user_id);
+
+    let conn = crate::db_pool::get_conn();
+
+    if crate::auth_middleware::verify_auth(&user_id, &headers).is_err() {
+        return (axum::http::StatusCode::UNAUTHORIZED,
+            axum::Json(serde_json::json!({"error": "unauthorized"})));
+    }
+
+    let engine = crate::achievement_engine::get();
+    let ctx = crate::achievement_engine::build_context(&conn, &user_id);
+
+    // 持久化新解锁的成就（使用完整 ctx，补录之前因不完整 ctx 而漏掉的成就）
+    let _new_achievements = engine.check_and_persist(&conn, &ctx);
+
+    // 获取已解锁的成就
+    let unlocked: Vec<String> = {
+        let mut stmt = conn.prepare(
+            "SELECT achievement_key, unlocked_at FROM achievements WHERE user_id = ?1"
+        ).unwrap();
+        stmt.query_map(rusqlite::params![&user_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        }).unwrap()
+        .filter_map(|r| r.ok())
+        .collect::<Vec<_>>()
+        .into_iter()
+        .map(|(k, _)| k)
+        .collect()
+    };
+
+    // 已解锁成就的时间戳映射
+    let unlocked_at_map: std::collections::HashMap<String, String> = {
+        let mut stmt = conn.prepare(
+            "SELECT achievement_key, unlocked_at FROM achievements WHERE user_id = ?1"
+        ).unwrap();
+        stmt.query_map(rusqlite::params![&user_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        }).unwrap()
+        .filter_map(|r| r.ok())
+        .collect()
+    };
+
+    let unlocked_set: std::collections::HashSet<&str> =
+        unlocked.iter().map(|s| s.as_str()).collect();
+
+    // 按 category 分组
+    let category_order = ["seed", "consistency", "knowledge", "exploration", "mastery", "special"];
+    let category_labels: std::collections::HashMap<&str, &str> = [
+        ("seed", "启程"), ("consistency", "坚持"), ("knowledge", "博学"),
+        ("exploration", "探索"), ("mastery", "精进"), ("special", "特殊"),
+    ].into_iter().collect();
+
+    let mut categories: Vec<serde_json::Value> = Vec::new();
+
+    // tier 排序优先级：铜→银→金→铂→钻
+    let tier_priority = |t: &str| -> u8 {
+        match t {
+            "bronze" => 0,
+            "silver" => 1,
+            "gold" => 2,
+            "platinum" => 3,
+            "diamond" => 4,
+            _ => 5,
+        }
+    };
+
+    for cat_key in &category_order {
+        let mut defs_in_cat: Vec<&shared_types::growth::AchievementDef> = engine.definitions()
+            .iter().filter(|d| d.category == *cat_key).collect();
+        if defs_in_cat.is_empty() { continue; }
+        defs_in_cat.sort_by_key(|d| tier_priority(&d.tier));
+
+        let items: Vec<serde_json::Value> = defs_in_cat.iter().map(|def| {
+            let is_unlocked = unlocked_set.contains(def.id.as_str());
+            let unlocked_at = unlocked_at_map.get(&def.id).cloned();
+
+            // 计算进度
+            let (progress_pct, progress_label) = compute_progress(def, &ctx);
+
+            serde_json::json!({
+                "id": def.id,
+                "name": def.name.zh(),
+                "name_en": if def.name.en().is_empty() { serde_json::Value::Null } else { serde_json::Value::String(def.name.en().to_string()) },
+                "description": def.description.zh(),
+                "description_en": if def.description.en().is_empty() { serde_json::Value::Null } else { serde_json::Value::String(def.description.en().to_string()) },
+                "icon": def.icon,
+                "color": def.color,
+                "tier": def.tier,
+                "hidden": def.hidden,
+                "unlocked": is_unlocked,
+                "unlocked_at": unlocked_at,
+                "progress_pct": progress_pct,
+                "progress_label": progress_label,
+            })
+        }).collect();
+
+        categories.push(serde_json::json!({
+            "category": cat_key,
+            "label": category_labels.get(cat_key).unwrap_or(&cat_key),
+            "achievements": items,
+        }));
+    }
+
+    (axum::http::StatusCode::OK, axum::Json(serde_json::json!({
+        "user_id": user_id,
+        "categories": categories,
+    })))
+}
+
+/// 计算单个成就的进度百分比和标签
+fn compute_progress(def: &shared_types::growth::AchievementDef, ctx: &shared_types::growth::AchievementContext) -> (f64, String) {
+    if def.conditions.is_empty() {
+        return (0.0, "—".into());
+    }
+
+    let mut ratios: Vec<f64> = Vec::new();
+    let mut labels: Vec<String> = Vec::new();
+
+    for cond in &def.conditions {
+        let actual = match cond.metric.as_str() {
+            // 已有
+            "total_cards" => ctx.total_cards as f64,
+            "total_reviews" => ctx.total_reviews as f64,
+            "streak_days" => ctx.streak_days as f64,
+            "domains_covered" => ctx.domains_covered as f64,
+            "plans_completed" => ctx.plans_completed as f64,
+            "conversations_completed" => ctx.conversations_completed as f64,
+            // Phase 5 新增
+            "hard_cards_count" => ctx.hard_cards_count as f64,
+            "recent_accuracy_20" => ctx.recent_accuracy_20,
+            "recent_accuracy_50" => ctx.recent_accuracy_50,
+            "recent_accuracy_100" => ctx.recent_accuracy_100,
+            "weekend_streak" => ctx.weekend_streak as f64,
+            "night_sessions" => ctx.night_sessions as f64,
+            "early_sessions" => ctx.early_sessions as f64,
+            "hard_perfect_streak" => ctx.hard_perfect_streak as f64,
+            "perfect_session_10" => ctx.perfect_session_10 as f64,
+            "mature_cards" => ctx.mature_cards as f64,
+            "learning_cards" => ctx.learning_cards as f64,
+            "no_skip_streak" => ctx.no_skip_streak as f64,
+            "languages_count" => ctx.languages_count as f64,
+            "cards_in_1h" => ctx.cards_in_1h as f64,
+            "days_since_last_review" => ctx.days_since_last_review as f64,
+            "reviews_today" => ctx.reviews_today as f64,
+            "days_since_reg" => ctx.days_since_reg as f64,
+            "subjects_count" => ctx.subjects_count as f64,
+            _ => 0.0,
+        };
+        let ratio = if cond.value > 0.0 {
+            (actual / cond.value).min(1.0)
+        } else {
+            if actual >= 0.0 { 1.0 } else { 0.0 }
+        };
+        ratios.push(ratio);
+
+        let metric_label = match cond.metric.as_str() {
+            "total_cards" => "张卡片",
+            "total_reviews" => "次复习",
+            "streak_days" => "天",
+            "domains_covered" => "个领域",
+            "plans_completed" => "个计划",
+            "conversations_completed" => "次对话",
+            "hard_cards_count" => "张困难卡",
+            "recent_accuracy_20" => "%准确率(20)",
+            "recent_accuracy_50" => "%准确率(50)",
+            "recent_accuracy_100" => "%准确率(100)",
+            "weekend_streak" => "周",
+            "night_sessions" => "次深夜",
+            "early_sessions" => "次早起",
+            "hard_perfect_streak" => "次全对",
+            "perfect_session_10" => "次",
+            "mature_cards" => "张成熟卡",
+            "learning_cards" => "张学习卡",
+            "no_skip_streak" => "天",
+            "languages_count" => "种语言",
+            "cards_in_1h" => "张",
+            "days_since_last_review" => "天",
+            "reviews_today" => "次",
+            "days_since_reg" => "天",
+            "subjects_count" => "个学科",
+            _ => "",
+        };
+        labels.push(format!("{}/{} {}", actual as u64, cond.value as u64, metric_label));
+    }
+
+    let overall = match def.condition_logic.to_uppercase().as_str() {
+        "OR" => ratios.iter().cloned().fold(0.0_f64, f64::max),
+        _ => ratios.iter().cloned().fold(1.0_f64, f64::min), // AND
+    };
+
+    let label = labels.join(" | ");
+    (overall, label)
 }
 
 // ── Display Name ──

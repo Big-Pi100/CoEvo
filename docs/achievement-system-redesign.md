@@ -1,6 +1,6 @@
 # CoEvo 成就体系 — 重新规划与扩展性架构
 
-> 版本: V1.0 | 日期: 2026-06-06 | 状态: 方案讨论中
+> 版本: V2.2 | 日期: 2026-06-06 | 状态: ✅ 全阶段完成 (Phase 0-7) | 事件总线 + confetti 已实现
 
 ---
 
@@ -40,7 +40,7 @@
 Bronze 青铜 → Silver 白银 → Gold 黄金 → Platinum 铂金 → Diamond 钻石
 ```
 
-### 2.3 完整成就列表（共 40+ 个）
+### 2.3 完整成就列表（共 41 个）
 
 #### 🌱 启程（6个）
 
@@ -92,12 +92,13 @@ Bronze 青铜 → Silver 白银 → Gold 黄金 → Platinum 铂金 → Diamond 
 | `fsrs_learning` | 学习进行时 | 同时20张卡片在 Learning 状态 | Silver | science |
 | `no_skip_7` | 不跳过 | 连续7天不跳过任何卡片 | Gold | block |
 
-#### 🗺️ 探索（6个）
+#### 🗺️ 探索（7个）
 
 | Key | 名称 | 条件 | 分级 | 图标 |
 |-----|------|------|------|------|
 | `domains_2` | 跨界新手 | 覆盖2个领域 | Bronze | explore |
-| `domains_5` | 探索者 | 覆盖5个领域 | Silver | travel_explore |
+| `explorer_3` | 探索者 | 覆盖3个领域 | Bronze | explore |
+| `domains_5` | 领域达人 | 覆盖5个领域 | Silver | travel_explore |
 | `domains_10` | 博学家 | 覆盖10个领域 | Gold | public |
 | `subjects_3` | 三科通 | 覆盖3个学科(K12) | Silver | menu_book |
 | `languages_2` | 双语者 | 学习2种语言 | Gold | translate |
@@ -124,21 +125,38 @@ Bronze 青铜 → Silver 白银 → Gold 黄金 → Platinum 铂金 → Diamond 
 
 ### 2.5 进度 API
 
-新增 `GET /api/achievements/progress`：
+实际路由：`GET /api/user/{user_id}/achievements-all`
+
+返回按 category 分组的所有成就列表，每个成就含进度百分比与标签：
 
 ```json
 {
-  "unlocked": [
-    { "key": "first_card", "name": "初识", "tier": "bronze", "category": "seed", "unlocked_at": "2026-05-20" }
-  ],
-  "locked": [
+  "categories": [
     {
-      "key": "cards_50", "name": "收藏家", "tier": "silver", "category": "knowledge",
-      "current": 12, "threshold": 50, "progress": 0.24
+      "category": "seed",
+      "label": {"zh": "种子", "en": "Seed"},
+      "icon": "auto_stories",
+      "color": "#66BB6A",
+      "achievements": [
+        {
+          "id": "first_card",
+          "name": {"zh": "初识", "en": "First Card"},
+          "description": {"zh": "创建第一张卡片", "en": "Create your first card"},
+          "icon": "auto_stories",
+          "tier": "bronze",
+          "category": "seed",
+          "unlocked": true,
+          "unlocked_at": "2026-05-20T10:00:00Z",
+          "progress_pct": 100,
+          "progress_label": "1/1"
+        }
+      ]
     }
   ]
 }
 ```
+
+> 注：原设计文档中的 `GET /api/achievements/progress`（分 unlocked/locked 两个数组）未实现，当前实现为上述按分类分组格式，前端无需自行分拣。
 
 ---
 
@@ -404,7 +422,7 @@ Icon(_nameToIconData(json['icon']), color: _hexToColor(json['color']), size: 28)
 | 成就页面 | `achievements_screen.dart` | 数据驱动图标渲染 + 分类 Tab + 进度条 + 分级显示 |
 | 复习页面 | `review_screen.dart` | `_showAchievementDialog` → 改为调用 `notifier.push()` |
 | 对话页面 | `chat_screen.dart` | **新增** 对话结束返回 `new_achievements` 时调用 `notifier.push()` |
-| 成就 API | `api/chat_client.dart` | 新增 `/api/achievements/progress` 接口客户端 |
+| 成就 API | `api/chat_client.dart` | `getAchievementsAll()` 接口客户端（GET /api/user/{user_id}/achievements-all） |
 
 ### 4.4 特效卡可行性分析
 
@@ -435,37 +453,127 @@ Phase 0: 全局通知模块（前端先行，用户立刻可感知）
   ── 改 review_screen.dart 接入全局通知
   ── 改 chat_screen.dart 接入全局通知
   ── 成就图标彩色渲染（Icon widget 替代 Text emoji）
-  状态：前端独立，不依赖后端改动 → 可立即实施
+  状态：✅ 已完成 (2026-06-06)
 
 Phase 1: 数据驱动底座（后端）
   ── 建 backend/achievements.toml（先平移现有 11 个成就）
   ── 建 AchievementEngine（TOML 加载 + 条件求值）
   ── API 从 TOML 读取 icon/color/name 并返回
   ── DB 不变（仍用现有 achievements 表，tier/source 列开始使用）
+  状态：✅ 已完成 (2026-06-06)
 
 Phase 2: 事件总线
-  ── 定义 AppEvent 枚举
-  ── 在各触发点加 event_bus.publish()
-  ── Engine 改为事件驱动
+  ── 定义事件类型枚举（card_created/conversation_ended/plan_completed/daily_tick/review_completed）
+  ── 在各触发点加 achievement_engine::check(conn, event_type, user_id)
+  ── Engine 改为事件驱动（check_on_event 按 triggers 过滤）
+  状态：✅ 已完成 (2026-06-06)
 
 Phase 3: 前端成就页面改版
   ── 6 大分类 Tab 布局
-  ── 进度条展示（调用 /api/achievements/progress）
+  ── 进度条展示（调用 /api/user/{user_id}/achievements-all）
   ── 分级色彩系统（青铜→钻石）
   ── 隐藏成就红点提示
+  状态：✅ 已完成 (2026-06-06)，Phase 6 清理了重复图标/颜色映射
 
 Phase 4: 40+ 成就扩展
   ── 在 TOML 里批量添加新成就
   ── 加新 metric 查询（recent_accuracy_50 等）
   ── 前端分类 Tab + 进度条走通全链路
+  状态：✅ 已完成 (2026-06-06)
+
+Phase 5: DB 查询实现
+  ── build_context() 新增 17 个 SQL 查询
+  ── ComparisonEvaluator 扩展至 23 个 metric
+  ── compute_progress() 全量进度计算
+  状态：✅ 已完成 (2026-06-06)
+
+Phase 6: WS 成就通知 + 前端清理
+  ── ws.rs 每轮 done 后推送新成就到前端
+  ── WsEvent 模型扩展 achievements 字段
+  ── chat_screen 接入全局成就通知
+  ── 前端成就页面清理重复映射，统一使用 shared 模块
+  状态：✅ 已完成 (2026-06-06)
+
+Phase 7: 事件总线规范化 + Confetti 粒子特效
+  ── 定义 AppEvent enum（5 个 variant：CardCreated/ReviewCompleted/ConversationEnded/PlanCompleted/DailyTick）
+  ── 实现 publish() 入口替代直接字符串调用
+  ── 更新 3 个调用点（ws.rs, plan_handler.rs）使用 AppEvent
+  ── 前端 achievement_overlay.dart 实现 CustomPainter confetti 粒子撒花（40 粒子，1.5s 生命周期）
+  状态：✅ 已完成 (2026-06-06)
 ```
 
 ---
 
-## 六、待确认问题
+## 七、实施完成总结
 
-1. **40+ 成就是一次性全加还是分批？** 建议分 2-3 批，每批验证后 rollout
-2. **特殊成就解锁后是否公开展示？** 建议展示但标注"隐藏成就"
-3. **进度 API 的未解锁成就是否全部返回？** 建议全部返回（含进度百分比），方便前端展示"你还差多少"
-4. **多语言支持是否本次一起做？** 建议 TOML 里先写好中英双语，但前端只显示中文，国际化后续再做
-5. **achievements.toml 存储位置？** 建议 `backend/achievements.toml`，随二进制一起部署
+| 原问题 | 状态 | 实现方式 |
+|---|--------|----------|
+| 1 仅 11 个成就 | ✅ | TOML 扩展至 41 个 |
+| 2 硬编码 HashMap | ✅ | achievements.toml 数据驱动 |
+| 3 条件引擎只支持 >= | ✅ | gte/lte/eq/gt/lt + AND/OR |
+| 4 只复习提交触发 | ✅ | 5 触发点 + WS done 推送 |
+| 5 Context 只有 4 字段 | ✅ | 24 字段 + 按需 SQL 查询 |
+| 6 无分类/进度 | ✅ | 7 分类 Tab + 进度条 + 分级色彩 |
+| 7 emoji 图标 | ✅ | Material Icons + TOML 配置 |
+| 8 tier/source 未使用 | ✅ | tier 用于分级展示，source→category |
+
+### 最终实现架构
+
+```
+backend/achievements.toml    ← 41 个成就定义（唯一真理源）
+backend/crates/api_server/src/achievement_engine.rs  ← AppEvent 事件总线
+backend/crates/growth_engine/src/achievements.rs        ← 条件求值引擎
+app/lib/providers/achievement_notifier.dart      ← Riverpod 队列管理
+app/lib/widgets/achievement_overlay.dart        ← 特效卡 + confetti 粒子
+app/lib/screens/achievements_screen.dart       ← 7 分类 Tab + 进度展示
+```
+
+### 触发点覆盖
+
+| 触发点 | 实现位置 | 事件类型 |
+|---------|-----------|----------|
+| 制卡后 | ws.rs:585 | `AppEvent::CardCreated` |
+| 对话结束后 | ws.rs:687 | `AppEvent::ConversationEnded` |
+| 计划完成后 | plan_handler.rs:215 | `AppEvent::PlanCompleted` |
+| 复习提交后 | routes.rs:290 | `check_daily` (DailyTick) |
+| 每日定时 | routes.rs:1152 | `check_daily` (DailyTick) |
+| WS done 轮次后 | ws.rs:408 | `engine.check_and_persist()` (全量检测) |
+
+---
+
+## 七、参考：TOML 与 API 约定
+
+### TOML 成就定义规范
+
+```toml
+[achievements.first_card]
+category = "seed"          # 六大分类之一
+tier = "bronze"           # bronze/silver/gold/platinum/diamond
+name = { zh = "初识", en = "First Step" }
+description = { zh = "...", en = "..." }
+icon = "auto_stories"       # Material Icons 名称
+color = "#FFC107"           # 分级/分类主色
+conditions = [              # 条件列表（默认 AND）
+  { metric = "total_cards", op = "gte", value = 1 }
+]
+condition_logic = "OR"       # 可选，默认 AND
+triggers = ["card_created", "review_completed"]
+```
+
+### triggers 与事件总线对应关系
+
+| triggers 值 | AppEvent variant | 触发位置 |
+|-------------|----------------|-----------|
+| `card_created` | `AppEvent::CardCreated` | ws.rs（制卡后） |
+| `review_completed` | `AppEvent::ReviewCompleted` | routes.rs（复习提交后，通过 check_daily 间接触发） |
+| `conversation_ended` | `AppEvent::ConversationEnded` | ws.rs（对话结束后） |
+| `plan_completed` | `AppEvent::PlanCompleted` | plan_handler.rs（计划完成后） |
+| `daily_tick` | `AppEvent::DailyTick` | routes.rs（每日定时，带 24h 冷却） |
+
+### 新增成就步骤
+
+1. 在 `achievements.toml` 添加 `[achievements.XXX]` 段落
+2. 若使用新 metric → `build_context()` 加 SQL 查询，`ComparisonEvaluator` 加 arm
+3. 若新触发点 → 定义新 `AppEvent` variant，`publish()` 加 match arm，`TOML` 配置 `triggers`
+4. `cargo check` + `cargo test -p growth_engine`
+5. 部署：上传 `achievements.toml` + 重启服务

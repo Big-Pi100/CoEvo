@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/coevo_models.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
+import '../providers/achievement_notifier.dart';
 import '../widgets/skeleton.dart';
 import 'chat/chat_concept_dialog.dart';
 import 'chat/chat_input.dart';
@@ -338,6 +339,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         final list = event.candidates;
         if (list != null && list.isNotEmpty && list.any((c) => c.front.isNotEmpty)) {
           Future.delayed(Duration.zero, () { if (mounted) ConceptDialog.show(context, candidates: list, client: _client, ref: ref, conversationId: _convId); });
+        }
+        break;
+      case 'achievements':
+        final list = event.achievements;
+        if (list != null && list.isNotEmpty) {
+          final notifier = ref.read(achievementNotifierProvider.notifier);
+          for (final a in list) {
+            notifier.push(AchievementNotification.fromJson(a));
+          }
         }
         break;
       case 'error':

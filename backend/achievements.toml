@@ -1,0 +1,465 @@
+# CoEvo 成就定义文件 — 数据驱动成就系统 (Phase 4)
+# 版本: V3.0 | 日期: 2026-06-06
+# 扩展方式: 新成就 = 编辑此文件 + 部署, 不改代码、不重新编译
+#
+# 双语格式:
+#   name = {zh = "中文名", en = "English Name"}
+#   description = {zh = "中文描述", en = "English description"}
+# 单语格式（向后兼容）:
+#   name = "中文名"   → 自动解析为 {zh: "中文名", en: ""}
+#
+# 条件语法:
+#   conditions = [{ metric, op, value }]     # 单个条件 (AND 连接)
+#   conditions = [...] + condition_logic = "AND" | "OR"
+#   op 支持: gte, lte, eq, gt, lt
+#
+# 触发点 (triggers):
+#   review_completed — 复习提交后
+#   card_created — 卡片创建后（WS 概念提取/知识图谱生成）
+#   conversation_ended — 对话结束（WS 断开时）
+#   plan_completed — 学习计划任务完成
+#   daily_tick — 每日定时检查（24h 冷却，高频路径入口）
+#
+# 隐藏成就: hidden = true  → 解锁后前端标注"隐藏成就"
+
+# ─────────────────────────────────────────────────────────────────────
+# 🌱 启程 (seed) — 首次行为里程碑
+# ─────────────────────────────────────────────────────────────────────
+
+[achievements.first_card]
+category = "seed"
+tier = "bronze"
+name = {zh = "初识", en = "First Step"}
+description = {zh = "创建第一张卡片", en = "Create your first card"}
+icon = "auto_stories"
+color = "#CD7F32"
+conditions = [{ metric = "total_cards", op = "gte", value = 1 }]
+triggers = ["card_created"]
+
+[achievements.first_review]
+category = "seed"
+tier = "bronze"
+name = {zh = "首测", en = "First Review"}
+description = {zh = "完成第一次复习", en = "Complete your first review"}
+icon = "check_circle"
+color = "#CD7F32"
+conditions = [{ metric = "total_reviews", op = "gte", value = 1 }]
+triggers = ["review_completed"]
+
+[achievements.first_conversation]
+category = "seed"
+tier = "bronze"
+name = {zh = "破冰", en = "Ice Breaker"}
+description = {zh = "完成第一次对话", en = "Complete your first conversation"}
+icon = "chat"
+color = "#CD7F32"
+conditions = [{ metric = "conversations_completed", op = "gte", value = 1 }]
+triggers = ["conversation_ended"]
+
+[achievements.first_plan]
+category = "seed"
+tier = "silver"
+name = {zh = "完赛", en = "Goal Setter"}
+description = {zh = "完成第一个学习计划", en = "Complete your first learning plan"}
+icon = "task_alt"
+color = "#C0C0C0"
+conditions = [{ metric = "plans_completed", op = "gte", value = 1 }]
+triggers = ["plan_completed"]
+
+[achievements.first_hard_card]
+category = "seed"
+tier = "silver"
+name = {zh = "迎难", en = "Challenge Accepted"}
+description = {zh = "创建第一张困难卡片", en = "Create your first hard card"}
+icon = "keyboard_double_arrow_up"
+color = "#C0C0C0"
+conditions = [{ metric = "hard_cards_count", op = "gte", value = 1 }]
+triggers = ["card_created"]
+
+[achievements.ten_conversations]
+category = "seed"
+tier = "gold"
+name = {zh = "话痨", en = "Chatty"}
+description = {zh = "完成 10 次对话", en = "Complete 10 conversations"}
+icon = "forum"
+color = "#FFD700"
+conditions = [{ metric = "conversations_completed", op = "gte", value = 10 }]
+triggers = ["conversation_ended"]
+
+# ─────────────────────────────────────────────────────────────────────
+# 🔥 坚持 (consistency) — 连续学习
+# ─────────────────────────────────────────────────────────────────────
+
+[achievements.streak_3]
+category = "consistency"
+tier = "bronze"
+name = {zh = "坚持3天", en = "3-Day Streak"}
+description = {zh = "连续 3 天学习", en = "Study for 3 consecutive days"}
+icon = "whatshot"
+color = "#CD7F32"
+conditions = [{ metric = "streak_days", op = "gte", value = 3 }]
+triggers = ["review_completed", "daily_tick"]
+
+[achievements.streak_7]
+category = "consistency"
+tier = "silver"
+name = {zh = "一周达人", en = "Week Warrior"}
+description = {zh = "连续 7 天学习", en = "Study for 7 consecutive days"}
+icon = "local_fire_department"
+color = "#C0C0C0"
+conditions = [{ metric = "streak_days", op = "gte", value = 7 }]
+triggers = ["review_completed", "daily_tick"]
+
+[achievements.streak_30]
+category = "consistency"
+tier = "gold"
+name = {zh = "月学霸", en = "Month Scholar"}
+description = {zh = "连续 30 天学习", en = "Study for 30 consecutive days"}
+icon = "self_improvement"
+color = "#FFD700"
+conditions = [{ metric = "streak_days", op = "gte", value = 30 }]
+triggers = ["review_completed", "daily_tick"]
+
+[achievements.streak_100]
+category = "consistency"
+tier = "platinum"
+name = {zh = "百日毅力", en = "100-Day Grit"}
+description = {zh = "连续 100 天学习", en = "Study for 100 consecutive days"}
+icon = "trending_up"
+color = "#E5E4E2"
+conditions = [{ metric = "streak_days", op = "gte", value = 100 }]
+triggers = ["review_completed", "daily_tick"]
+
+[achievements.streak_365]
+category = "consistency"
+tier = "diamond"
+name = {zh = "年轮学者", en = "Year Scholar"}
+description = {zh = "连续 365 天学习", en = "Study for 365 consecutive days"}
+icon = "emoji_events"
+color = "#B9F2FF"
+conditions = [{ metric = "streak_days", op = "gte", value = 365 }]
+triggers = ["review_completed", "daily_tick"]
+
+[achievements.weekend_warrior]
+category = "consistency"
+tier = "gold"
+name = {zh = "周末战士", en = "Weekend Warrior"}
+description = {zh = "连续 4 个周末学习", en = "Study on 4 consecutive weekends"}
+icon = "weekend"
+color = "#FFD700"
+conditions = [{ metric = "weekend_streak", op = "gte", value = 4 }]
+triggers = ["daily_tick"]
+
+[achievements.night_owl]
+category = "consistency"
+tier = "silver"
+name = {zh = "深夜灯", en = "Night Owl"}
+description = {zh = "22:00-02:00 学习 5 次", en = "Study 5 times between 22:00-02:00"}
+icon = "nightlight"
+color = "#C0C0C0"
+conditions = [{ metric = "night_sessions", op = "gte", value = 5 }]
+triggers = ["review_completed", "card_created"]
+
+[achievements.early_bird]
+category = "consistency"
+tier = "silver"
+name = {zh = "早起鸟", en = "Early Bird"}
+description = {zh = "06:00-08:00 学习 5 次", en = "Study 5 times between 06:00-08:00"}
+icon = "wb_sunny"
+color = "#C0C0C0"
+conditions = [{ metric = "early_sessions", op = "gte", value = 5 }]
+triggers = ["review_completed", "card_created"]
+
+# ─────────────────────────────────────────────────────────────────────
+# 📚 博学 (knowledge) — 知识积累量
+# ─────────────────────────────────────────────────────────────────────
+
+[achievements.cards_10]
+category = "knowledge"
+tier = "bronze"
+name = {zh = "小有收获", en = "Collector I"}
+description = {zh = "10 张卡片", en = "10 cards created"}
+icon = "collections_bookmark"
+color = "#CD7F32"
+conditions = [{ metric = "total_cards", op = "gte", value = 10 }]
+triggers = ["card_created"]
+
+[achievements.cards_50]
+category = "knowledge"
+tier = "silver"
+name = {zh = "收藏家", en = "Collector II"}
+description = {zh = "50 张卡片", en = "50 cards created"}
+icon = "library_books"
+color = "#C0C0C0"
+conditions = [{ metric = "total_cards", op = "gte", value = 50 }]
+triggers = ["card_created"]
+
+[achievements.cards_200]
+category = "knowledge"
+tier = "gold"
+name = {zh = "图书馆", en = "Library"}
+description = {zh = "200 张卡片", en = "200 cards created"}
+icon = "account_balance"
+color = "#FFD700"
+conditions = [{ metric = "total_cards", op = "gte", value = 200 }]
+triggers = ["card_created"]
+
+[achievements.cards_500]
+category = "knowledge"
+tier = "platinum"
+name = {zh = "学者", en = "Scholar"}
+description = {zh = "500 张卡片", en = "500 cards created"}
+icon = "school"
+color = "#E5E4E2"
+conditions = [{ metric = "total_cards", op = "gte", value = 500 }]
+triggers = ["card_created"]
+
+[achievements.cards_2000]
+category = "knowledge"
+tier = "diamond"
+name = {zh = "知识王者", en = "Knowledge King"}
+description = {zh = "2000 张卡片", en = "2000 cards created"}
+icon = "castle"
+color = "#B9F2FF"
+conditions = [{ metric = "total_cards", op = "gte", value = 2000 }]
+triggers = ["card_created"]
+
+[achievements.reviews_100]
+category = "knowledge"
+tier = "bronze"
+name = {zh = "百炼", en = "Centurion"}
+description = {zh = "累计复习 100 次", en = "100 total reviews"}
+icon = "replay_100"
+color = "#CD7F32"
+conditions = [{ metric = "total_reviews", op = "gte", value = 100 }]
+triggers = ["review_completed"]
+
+[achievements.reviews_1000]
+category = "knowledge"
+tier = "gold"
+name = {zh = "千锤", en = "Millennial"}
+description = {zh = "累计复习 1000 次", en = "1000 total reviews"}
+icon = "replay_circle_filled"
+color = "#FFD700"
+conditions = [{ metric = "total_reviews", op = "gte", value = 1000 }]
+triggers = ["review_completed"]
+
+[achievements.reviews_10000]
+category = "knowledge"
+tier = "diamond"
+name = {zh = "万法归一", en = "Ten Thousand Methods"}
+description = {zh = "累计复习 10000 次", en = "10000 total reviews"}
+icon = "all_inclusive"
+color = "#B9F2FF"
+conditions = [{ metric = "total_reviews", op = "gte", value = 10000 }]
+triggers = ["review_completed"]
+
+# ─────────────────────────────────────────────────────────────────────
+# 🎯 精进 (mastery) — 复习质量
+# ─────────────────────────────────────────────────────────────────────
+
+[achievements.accuracy_80]
+category = "mastery"
+tier = "silver"
+name = {zh = "准确新手", en = "Accuracy Novice"}
+description = {zh = "最近 20 次复习准确率 ≥ 80%", en = "≥ 80% accuracy in last 20 reviews"}
+icon = "track_changes"
+color = "#C0C0C0"
+conditions = [{ metric = "recent_accuracy_20", op = "gte", value = 80 }]
+triggers = ["review_completed"]
+
+[achievements.accuracy_90]
+category = "mastery"
+tier = "gold"
+name = {zh = "精准达人", en = "Accuracy Master"}
+description = {zh = "最近 50 次复习准确率 ≥ 90%", en = "≥ 90% accuracy in last 50 reviews"}
+icon = "verified"
+color = "#FFD700"
+conditions = [{ metric = "recent_accuracy_50", op = "gte", value = 90 }]
+triggers = ["review_completed"]
+
+[achievements.accuracy_95]
+category = "mastery"
+tier = "platinum"
+name = {zh = "完美主义", en = "Perfectionist"}
+description = {zh = "最近 100 次复习准确率 ≥ 95%", en = "≥ 95% accuracy in last 100 reviews"}
+icon = "fact_check"
+color = "#E5E4E2"
+conditions = [{ metric = "recent_accuracy_100", op = "gte", value = 95 }]
+triggers = ["review_completed"]
+
+[achievements.hard_master]
+category = "mastery"
+tier = "gold"
+name = {zh = "困难克星", en = "Hard Card Slayer"}
+description = {zh = "困难卡片复习 10 次全对", en = "10 correct reviews on hard cards"}
+icon = "gavel"
+color = "#FFD700"
+conditions = [{ metric = "hard_perfect_streak", op = "gte", value = 10 }]
+triggers = ["review_completed"]
+
+[achievements.perfect_session]
+category = "mastery"
+tier = "silver"
+name = {zh = "完美回合", en = "Perfect Session"}
+description = {zh = "单次复习会话 (≥10 张) 全对", en = "Perfect session with ≥10 cards"}
+icon = "star"
+color = "#C0C0C0"
+conditions = [{ metric = "perfect_session_10", op = "gte", value = 1 }]
+triggers = ["review_completed"]
+
+[achievements.fsrs_mature]
+category = "mastery"
+tier = "gold"
+name = {zh = "成熟学者", en = "Mature Scholar"}
+description = {zh = "50 张卡片进入 FSRS Mature 状态", en = "50 cards in FSRS Mature state"}
+icon = "nature"
+color = "#FFD700"
+conditions = [{ metric = "mature_cards", op = "gte", value = 50 }]
+triggers = ["review_completed"]
+
+[achievements.fsrs_learning]
+category = "mastery"
+tier = "silver"
+name = {zh = "学习进行时", en = "Learning in Progress"}
+description = {zh = "同时 20 张卡片在 Learning 状态", en = "20 cards in Learning state"}
+icon = "science"
+color = "#C0C0C0"
+conditions = [{ metric = "learning_cards", op = "gte", value = 20 }]
+triggers = ["review_completed"]
+
+[achievements.no_skip_7]
+category = "mastery"
+tier = "gold"
+name = {zh = "不跳过", en = "No Skipping"}
+description = {zh = "连续 7 天不跳过任何卡片", en = "No skip for 7 consecutive days"}
+icon = "block"
+color = "#FFD700"
+conditions = [{ metric = "no_skip_streak", op = "gte", value = 7 }]
+triggers = ["review_completed", "daily_tick"]
+
+# ─────────────────────────────────────────────────────────────────────
+# 🗺️ 探索 (exploration) — 领域广度
+# ─────────────────────────────────────────────────────────────────────
+
+[achievements.domains_2]
+category = "exploration"
+tier = "bronze"
+name = {zh = "跨界新手", en = "Cross-Domain Novice"}
+description = {zh = "覆盖 2 个领域", en = "Cover 2 domains"}
+icon = "explore"
+color = "#CD7F32"
+conditions = [{ metric = "domains_covered", op = "gte", value = 2 }]
+triggers = ["card_created", "plan_completed"]
+
+[achievements.explorer_3]
+category = "exploration"
+tier = "bronze"
+name = {zh = "探索者", en = "Explorer"}
+description = {zh = "覆盖 3 个领域", en = "Cover 3 domains"}
+icon = "explore"
+color = "#CD7F32"
+conditions = [{ metric = "domains_covered", op = "gte", value = 3 }]
+triggers = ["card_created", "plan_completed"]
+
+[achievements.subjects_3]
+category = "exploration"
+tier = "silver"
+name = {zh = "三科通", en = "Tri-Subject Scholar"}
+description = {zh = "覆盖 3 个学科", en = "Cover 3 K12 subjects"}
+icon = "menu_book"
+color = "#C0C0C0"
+conditions = [{ metric = "subjects_count", op = "gte", value = 3 }]
+triggers = ["card_created", "plan_completed"]
+
+[achievements.domains_5]
+category = "exploration"
+tier = "silver"
+name = {zh = "探索达人", en = "Exploration Master"}
+description = {zh = "覆盖 5 个领域", en = "Cover 5 domains"}
+icon = "travel_explore"
+color = "#C0C0C0"
+conditions = [{ metric = "domains_covered", op = "gte", value = 5 }]
+triggers = ["card_created", "plan_completed"]
+
+[achievements.domains_10]
+category = "exploration"
+tier = "gold"
+name = {zh = "领域大师", en = "Domain Master"}
+description = {zh = "覆盖 10 个领域", en = "Cover 10 domains"}
+icon = "public"
+color = "#FFD700"
+conditions = [{ metric = "domains_covered", op = "gte", value = 10 }]
+triggers = ["card_created", "plan_completed"]
+
+[achievements.all_subjects]
+category = "exploration"
+tier = "diamond"
+name = {zh = "全科状元", en = "All-Subject Master"}
+description = {zh = "覆盖 10 个学科", en = "Cover 10 K12 subjects"}
+icon = "school"
+color = "#B9F2FF"
+conditions = [{ metric = "subjects_count", op = "gte", value = 10 }]
+triggers = ["card_created", "plan_completed"]
+
+[achievements.languages_2]
+category = "exploration"
+tier = "gold"
+name = {zh = "双语者", en = "Bilingual"}
+description = {zh = "学习 2 种语言", en = "Study 2 languages"}
+icon = "translate"
+color = "#FFD700"
+conditions = [{ metric = "languages_count", op = "gte", value = 2 }]
+triggers = ["card_created", "conversation_ended"]
+
+# ─────────────────────────────────────────────────────────────────────
+# ⭐ 特殊 (special) — 隐藏成就（解锁后展示但标注"隐藏"）
+# ─────────────────────────────────────────────────────────────────────
+
+[achievements.secret_speed]
+category = "special"
+tier = "platinum"
+name = {zh = "闪电学神", en = "Speed Learner"}
+description = {zh = "1 小时内创建 20 张卡片", en = "Create 20 cards within 1 hour"}
+icon = "flash_on"
+color = "#E5E4E2"
+hidden = true
+conditions = [{ metric = "cards_in_1h", op = "gte", value = 20 }]
+triggers = ["card_created"]
+
+[achievements.secret_comeback]
+category = "special"
+tier = "gold"
+name = {zh = "王者归来", en = "Comeback Kid"}
+description = {zh = "中断 30 天后回归学习", en = "Return after 30-day break"}
+icon = "restart_alt"
+color = "#FFD700"
+hidden = true
+conditions = [{ metric = "days_since_last_review", op = "gte", value = 30 }]
+triggers = ["review_completed"]
+
+[achievements.secret_daily]
+category = "special"
+tier = "platinum"
+name = {zh = "日不落", en = "Non-Stop"}
+description = {zh = "一天内完成 100 次复习", en = "100 reviews in a single day"}
+icon = "dark_mode"
+color = "#E5E4E2"
+hidden = true
+conditions = [{ metric = "reviews_today", op = "gte", value = 100 }]
+triggers = ["review_completed"]
+
+[achievements.secret_early]
+category = "special"
+tier = "diamond"
+name = {zh = "元祖用户", en = "Early Adopter"}
+description = {zh = "注册后 30 天内完成 1000 次复习", en = "1000 reviews within 30 days of registration"}
+icon = "child_care"
+color = "#B9F2FF"
+hidden = true
+conditions = [
+  { metric = "days_since_reg", op = "lte", value = 30 },
+  { metric = "total_reviews", op = "gte", value = 1000 },
+]
+condition_logic = "AND"
+triggers = ["review_completed"]

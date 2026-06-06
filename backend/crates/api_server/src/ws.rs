@@ -49,6 +49,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
     let mut pending_candidates: std::collections::BTreeMap<u32, Vec<serde_json::Value>> = std::collections::BTreeMap::new();
     let mut token_verified = false;
     let mut kick_notify: Option<Arc<tokio::sync::Notify>> = None;
+    let mut last_user_id = String::new();  // Phase 2: 用于 conversation_ended 成就检测
 
     // ⚡ Heartbeat: 每 60 秒发送 WS Ping 帧检测连接活性
     // 防止 ws.recv() 在连接被 Nginx/中间件静默切断后无限阻塞
@@ -118,6 +119,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     message: raw_req.message,
                     token: raw_req.token.clone(),
                 };
+                last_user_id = chat_req.user_id.clone();  // Phase 2: 记录最后活跃用户
 
                 // 检查订阅状态
                 {
@@ -328,32 +330,8 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         }
                     }
 
-                    // ── 成就检测（仅非新建计划的更新） ──
-                    if result.plan_updated && !result.is_new_plan {
-                        if let Some(ref plan) = result.task_status {
-                            if let Some(stages) = plan.get("stages").and_then(|v| v.as_array()) {
-                                for stage in stages {
-                                    if stage["status"] == "done" {
-                                        let stage_name = stage["name"].as_str().unwrap_or("阶段");
-                                        let key = format!("{}_silver", stage_name);
-                                        if !crate::plan_handler::achievement_exists(&conn, &chat_req.user_id, &key) {
-                                            crate::plan_handler::write_achievement(&conn, &chat_req.user_id,
-                                                &key, &format!("{}精英", stage_name), "🥈", "silver", "stage");
-                                        }
-                                        // 检查 domain done → gold
-                                        if stages.iter().all(|s| s["status"] == "done") {
-                                            let domain_name = plan.get("goal").and_then(|v| v.as_str()).unwrap_or("领域");
-                                            let dkey = format!("{}_gold", domain_name);
-                                            if !crate::plan_handler::achievement_exists(&conn, &chat_req.user_id, &dkey) {
-                                                crate::plan_handler::write_achievement(&conn, &chat_req.user_id,
-                                                    &dkey, &format!("{}大师", domain_name), "🥇", "gold", "domain");
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    // 成就检测已由 TOML 引擎 + AppEvent::PlanCompleted 事件总线统一处理
+                    // 见 plan_handler.rs:215
                 }
 
                 // 保存 assistant 回复（final_reply 已清理/渲染）
@@ -421,6 +399,26 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         tracing::warn!("WS send(plan_updated) failed — connection lost");
                         break;
                     }
+
+                // Phase 2: 轮次成就检测（每轮 done 后检查全部成就，通知前端）
+                {
+                    let conn = crate::db_pool::get_conn();
+                    let ctx = crate::achievement_engine::build_context(&conn, &chat_req.user_id);
+                    let engine = crate::achievement_engine::get();
+                    let new_achievements = engine.check_and_persist(&conn, &ctx);
+                    if !new_achievements.is_empty() {
+                        tracing::info!(
+                            "WS turn achievements: user={} count={} keys={:?}",
+                            chat_req.user_id, new_achievements.len(),
+                            new_achievements.iter().map(|a| a.achievement_key.as_str()).collect::<Vec<_>>()
+                        );
+                        if ws.send(Message::Text(
+                            json!({"type": "achievements", "achievements": new_achievements}).to_string().into()
+                        )).await.is_err() {
+                            tracing::warn!("WS send(achievements) failed");
+                        }
+                    }
+                }
 
                 let current_turn = turn_counter;
                 turn_counter += 1;
@@ -581,6 +579,11 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         }).collect()
                     };
                     tracing::info!("CP1 inserted {} pending cards for turn {}", pending_candidates.len(), cold_turn);
+                    // 成就检测：卡片创建后触发 card_created 事件
+                    if !pending_candidates.is_empty() {
+                        let conn = crate::db_pool::get_conn();
+                        crate::achievement_engine::publish(&conn, crate::achievement_engine::AppEvent::CardCreated { user_id });
+                    }
                     let _ = cold_tx.send((cold_turn, pending_candidates)).await;
                 });
 
@@ -676,6 +679,12 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 }
             }
         }
+    }
+
+    // Phase 2: 会话结束成就检测
+    if !last_user_id.is_empty() {
+        let conn = crate::db_pool::get_conn();
+        crate::achievement_engine::publish(&conn, crate::achievement_engine::AppEvent::ConversationEnded { user_id: last_user_id });
     }
 }
 

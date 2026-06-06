@@ -13,6 +13,7 @@ import 'screens/conversation_list_screen.dart';
 import 'screens/home_screen.dart';
 import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
+import 'widgets/achievement_overlay.dart';
 
 // Prevent dart2js tree-shaking of admin/guardian screens
 final _allScreens = <Widget>[
@@ -204,6 +205,12 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
       darkTheme: darkTheme,
       themeMode: themeMode,
       routerConfig: goRouter,
+      builder: (context, child) => Stack(
+        children: [
+          child!,
+          const AchievementOverlay(),
+        ],
+      ),
     );
   }
 }
