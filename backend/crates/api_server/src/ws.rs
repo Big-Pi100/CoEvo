@@ -180,13 +180,13 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 let llm_config = crate::llm::get_config();
                 let (tx, mut rx) = mpsc::channel::<LlmEvent>(256);
 
-                // 加载最近 10 轮对话历史作为上下文
+                // 加载最近 5 轮对话历史作为上下文
                 let history = {
                     let conn = crate::db_pool::get_conn();
                     let mut stmt = conn.prepare(
                         "SELECT role, content FROM conversation_turns
                          WHERE conversation_id = ?1
-                         ORDER BY created_at DESC LIMIT 10"
+                         ORDER BY created_at DESC LIMIT 5"
                     ).unwrap();
                     // 反转: 从旧到新
                     let mut turns: Vec<(String, String)> = stmt.query_map(
@@ -238,7 +238,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         let label = if role == "user" { "用户" } else { "AI" };
                         let line = format!("\n{}: {}", label, content);
                         let next = total + line.len();
-                        if next > 5000 { break; }
+                        if next > 2500 { break; }
                         total = next;
                         lines.push(line);
                     }
@@ -454,11 +454,8 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     let conn = crate::db_pool::get_conn();
                     crate::plan_handler::build_plan_context(&conn, conv_id)
                 };
-                eprintln!("[MARK] WS build_plan_context done (cold path setup)");
                 // CP2 需要 final_reply，但 CP1 spawn 会 move 走它，提前 clone
-                eprintln!("[MARK] WS about to clone final_reply (len={})", final_reply.len());
                 let cp2_reply = final_reply.clone();
-                eprintln!("[MARK] WS final_reply cloned successfully");
                 // ❄️ ColdPath 1: 概念提取 — 仅在 CP2 创建 plan 后运行
                 // 每轮先检查 conversation_plans 是否存在，有 plan 才走 LLM 提取
                 let user_id = chat_req.user_id.clone();
@@ -466,18 +463,12 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 let config = llm_config.clone();
                 let cold_tx = cold_tx.clone();
                 let cold_turn = current_turn;
-                eprintln!("[MARK] WS about to clone history (len={})", history.len());
                 let history_clone = history.clone();
-                eprintln!("[MARK] WS history cloned successfully");
                 let ctx = extract_plan_ctx.clone();
                 let ed = extract_domain.clone();
-                eprintln!("[MARK] WS about to clone final_reply second time (len={})", final_reply.len());
                 let fr = final_reply.clone();
-                eprintln!("[MARK] WS final_reply second clone done");
                 let conv_id_cp1 = chat_req.conversation_id.clone();
                 tokio::spawn(async move {
-                    eprintln!("[MARK] CP1 spawned task START turn={}", cold_turn);
-
                     let result: Option<Vec<String>> = 'db: {
                         let conn = crate::db_pool::get_conn();
 
@@ -527,7 +518,6 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     tracing::info!("CP1 starting concept extraction for turn {}", cold_turn);
 
                     // 30 秒超时：防止 LLM 挂起导致 turn 永远不到达
-                    eprintln!("[MARK] CP1 about to call extract_concepts turn={}", cold_turn);
                     let extraction = match tokio::time::timeout(
                         Duration::from_secs(30),
                         chat_engine::concept_extractor::extract_concepts(
