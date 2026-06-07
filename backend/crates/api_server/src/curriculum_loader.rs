@@ -336,10 +336,17 @@ pub fn k12_data_dir() -> std::path::PathBuf {
     }
     let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../../data/curriculum/v3");
+    // 优先检查 plans/ 子目录（v2.1 架构调整后计划文件移入 plans/）
+    if dev_path.join("plans").join("chinese.json").exists() {
+        return dev_path.join("plans");
+    }
     if dev_path.join("chinese.json").exists() {
         return dev_path;
     }
     let cwd_path = std::path::PathBuf::from("data/curriculum/v3");
+    if cwd_path.join("plans").join("chinese.json").exists() {
+        return cwd_path.join("plans");
+    }
     if cwd_path.join("chinese.json").exists() {
         return cwd_path;
     }

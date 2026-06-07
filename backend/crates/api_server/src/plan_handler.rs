@@ -1381,7 +1381,18 @@ fn load_prebuilt_card_cache() -> &'static std::collections::HashMap<String, serd
     PREBUILT_CARD_CACHE.get_or_init(|| {
         let data_dir = crate::curriculum_loader::k12_data_dir();
         let mut map = std::collections::HashMap::new();
-        for search_dir in &[data_dir.join("cards"), data_dir.join("cards").join("reading")] {
+        // 卡片文件可能在 data_dir/cards/（v3/ 时代）或 data_dir.parent()/cards/（v3/plans/ 时代）
+        let card_search_dirs: Vec<std::path::PathBuf> = {
+            let mut dirs = vec![data_dir.join("cards")];
+            if let Some(parent) = data_dir.parent() {
+                let parent_cards = parent.join("cards");
+                if parent_cards != dirs[0] && parent_cards.exists() {
+                    dirs.push(parent_cards);
+                }
+            }
+            dirs
+        };
+        for search_dir in &card_search_dirs {
             if let Ok(entries) = std::fs::read_dir(search_dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();

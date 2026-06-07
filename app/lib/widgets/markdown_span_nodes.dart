@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:markdown_widget/markdown_widget.dart';
@@ -98,6 +99,17 @@ class RichContentBuilder {
       return Text(text, style: TextStyle(color: textColor, fontSize: 15, height: 1.5));
     }
 
+    // 检测 JSON 格式的 back（课文/诗词的结构化数据）
+    final trimmed = text.trim();
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      try {
+        final parsed = jsonDecode(trimmed) as Map<String, dynamic>;
+        return _buildJsonBack(parsed);
+      } catch (_) {
+        // 不是合法 JSON，继续按普通文本处理
+      }
+    }
+
     final blocks = _splitBlockLevel(text);
 
     final children = <Widget>[];
@@ -126,6 +138,85 @@ class RichContentBuilder {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: children,
+    );
+  }
+
+  /// 渲染 JSON 格式的卡片 back（课文/诗词/古典文学等结构化数据）
+  Widget _buildJsonBack(Map<String, dynamic> data) {
+    final segments = <Widget>[];
+
+    // 正文（full_text）
+    if (data.containsKey('full_text')) {
+      segments.add(Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Text(
+          data['full_text'] as String? ?? '',
+          style: TextStyle(fontSize: 16, height: 1.6, color: textColor),
+        ),
+      ));
+    }
+
+    // 作者 + 朝代
+    final author = data['author'] as String?;
+    final dynasty = data['dynasty'] as String?;
+    if (author != null || dynasty != null) {
+      segments.add(_metaRow('作者', '${dynasty != null ? "$dynasty · " : ""}$author'));
+    }
+
+    // 意象 / 名句
+    final famousLines = data['famous_lines'] as List?;
+    if (famousLines != null && famousLines.isNotEmpty) {
+      segments.add(_metaRow('名句', (famousLines as List<dynamic>).join('；')));
+    }
+
+    // 意象
+    final imagery = data['imagery'] as List?;
+    if (imagery != null && imagery.isNotEmpty) {
+      segments.add(_metaRow('意象', (imagery as List<dynamic>).join('；')));
+    }
+
+    // 手法
+    final technique = data['technique'] as List?;
+    if (technique != null && technique.isNotEmpty) {
+      segments.add(_metaRow('手法', (technique as List<dynamic>).join('、')));
+    }
+
+    // 主题
+    final theme = data['theme'] as String?;
+    if (theme != null && theme.isNotEmpty) {
+      segments.add(_metaRow('主题', theme));
+    }
+
+    // 常见错误
+    final mistakes = data['common_mistakes'] as String?;
+    if (mistakes != null && mistakes.isNotEmpty) {
+      segments.add(_metaRow('易错', mistakes));
+    }
+
+    if (segments.isEmpty) {
+      return Text(data.toString(), style: TextStyle(color: textColor));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: segments,
+    );
+  }
+
+  /// 元数据行
+  Widget _metaRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 40,
+            child: Text('$label：', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: textColor.withAlpha(180))),
+          ),
+          Expanded(child: Text(value, style: TextStyle(fontSize: 14, color: textColor))),
+        ],
+      ),
     );
   }
 

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -511,7 +512,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
             child: Icon(Icons.auto_stories, color: _cs.onPrimary, size: 18),
           ),
           title: Text(card.front, style: TextStyle(fontWeight: FontWeight.w600, color: _cs.onPrimary)),
-          subtitle: Text('${card.back}\n复习 ${card.reps} 次', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: _cs.onPrimary.withAlpha(200))),
+          subtitle: Text('${_cardBackPreview(card.back)}\n复习 ${card.reps} 次', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: _cs.onPrimary.withAlpha(200))),
           trailing: Row(mainAxisSize: MainAxisSize.min, children: [
             if (card.lastReviewedAt != null)
               GestureDetector(
@@ -703,6 +704,17 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
       actionLabel: '去对话',
       onAction: () => context.go('/chat'),
     );
+  }
+
+  String _cardBackPreview(String back) {
+    final t = back.trim();
+    if (t.startsWith('{') && t.endsWith('}')) {
+      try {
+        final parsed = jsonDecode(t) as Map<String, dynamic>;
+        return (parsed['full_text'] as String?)?.replaceAll('\n', ' ') ?? back;
+      } catch (_) {}
+    }
+    return back;
   }
 }
 
