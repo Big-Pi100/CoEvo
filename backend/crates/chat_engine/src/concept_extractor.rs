@@ -12,6 +12,26 @@ use crate::llm_caller::{LlmCaller, LlmConfig};
 pub use shared_types::card::ConceptCandidate;
 use shared_types::card::ExtractionResult;
 
+/// 归一化 card front：去除括号注释（如 "你（人称代词）" → "你"），用于去重比较
+fn normalize_front(front: &str) -> String {
+    let f = front.trim().to_lowercase();
+    // 去除中文括号（ ）和英文括号 ( ) 内的注释内容
+    let mut result = String::with_capacity(f.len());
+    let mut depth = 0i32;
+    for ch in f.chars() {
+        match ch {
+            '(' | '（' => depth += 1,
+            ')' | '）' => {
+                if depth > 0 { depth -= 1; }
+            }
+            _ => {
+                if depth == 0 { result.push(ch); }
+            }
+        }
+    }
+    result.trim().to_string()
+}
+
 /// 检测用户消息是否包含制卡意图
 fn has_card_intent(message: &str) -> bool {
     let keywords = ["制卡", "记住", "做成卡片", "make card", "add to", "记住这个", "背下来"];
@@ -51,11 +71,11 @@ pub async fn extract_concepts(
         let all_existing: Vec<String> = existing_fronts.to_vec();
         let mut candidates = extract_candidates_from_llm(llm_config, ai_reply, &all_existing, history, domain, plan_context).await;
 
-    let existing_fronts_lower: Vec<String> = existing_fronts.iter().map(|f| f.to_lowercase()).collect();
+    let existing_fronts_normalized: Vec<String> = existing_fronts.iter().map(|f| normalize_front(f)).collect();
 
     candidates.retain(|c| {
-        let f = c.front.to_lowercase();
-        !existing_fronts_lower.contains(&f)
+        let f = normalize_front(&c.front);
+        !existing_fronts_normalized.contains(&f)
     });
 
         // 词库匹配：从 AI 回复中扫描出生词（不额外消耗 LLM）
@@ -67,7 +87,7 @@ pub async fn extract_concepts(
 
             for m in &matched {
                 let word_lower = m.word.to_lowercase();
-                if existing_fronts_lower.contains(&word_lower) {
+                if existing_fronts_normalized.contains(&word_lower) {
                     continue;
                 }
                 if candidates.iter().any(|c| c.front.to_lowercase() == word_lower) {

@@ -734,6 +734,17 @@ Row(
     );
   }
 
+  String _cardBackPreview(String back) {
+    final t = back.trim();
+    if (t.startsWith('{') && t.endsWith('}')) {
+      try {
+        final parsed = jsonDecode(t) as Map<String, dynamic>;
+        return (parsed['full_text'] as String?)?.replaceAll('\n', ' ') ?? back;
+      } catch (_) {}
+    }
+    return back;
+  }
+
   /// 蒙版宽度因子：0.0 = 无蒙版（全进度），1.0 = 全蒙版（无进度）
   double _progressOverlay(int state, int reps) {
     switch (state) {
@@ -843,7 +854,7 @@ Row(
                       child: Text('${i + 1}', style: TextStyle(fontWeight: FontWeight.bold, color: _cs.onPrimary)),
                     ),
                     title: Text(card.front, style: TextStyle(fontWeight: FontWeight.w600, color: _cs.onPrimary)),
-                    subtitle: isActive ? null : Text('${card.back}\n复习 ${card.reps} 次', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: _cs.onPrimary.withAlpha(200))),
+                    subtitle: isActive ? null : Text('${_cardBackPreview(card.back)}\n复习 ${card.reps} 次', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: _cs.onPrimary.withAlpha(200))),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
