@@ -89,6 +89,21 @@ class ChatClient {
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }
 
+  /// 按 task 进度查询卡片（仅返回 done/in_progress task 对应的卡片）
+  Future<Map<String, dynamic>> getCardsByProgress() async {
+    final params = <String, String>{'user_id': userId};
+    try {
+      final resp = await http.get(
+        Uri.parse('$baseUrl/api/review/cards-by-progress').replace(queryParameters: params),
+        headers: _authHeaders,
+      ).timeout(ApiConfig.requestTimeout);
+      if (resp.statusCode == 200) return jsonDecode(resp.body) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('getCardsByProgress error: $e');
+    }
+    return {'cards': <dynamic>[], 'count': 0};
+  }
+
   /// 搜索卡片（全文搜索 front/back）
   Future<Map<String, dynamic>> searchCards(String query, {int limit = 20, int offset = 0}) async {
     final params = <String, String>{

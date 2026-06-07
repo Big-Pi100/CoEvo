@@ -77,6 +77,7 @@ CREATE TABLE cards (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     domain TEXT,
+    subject TEXT,
     card_type TEXT NOT NULL,
     front TEXT NOT NULL,
     back TEXT NOT NULL,
@@ -213,20 +214,7 @@ CREATE TABLE admin_audit_log (
     created_at TEXT NOT NULL
 );
 
--- ── 知识图谱 ──
-CREATE TABLE knowledge_graph (
-    id TEXT PRIMARY KEY,
-    source_subject TEXT NOT NULL,
-    source_stage TEXT,
-    source_task TEXT,
-    target_subject TEXT NOT NULL,
-    target_stage TEXT,
-    target_task TEXT,
-    edge_type TEXT NOT NULL,
-    strength TEXT DEFAULT 'medium',
-    note TEXT,
-    created_at TEXT NOT NULL
-);
+-- ── 知识图谱（已废弃，保留表结构不删以免影响已有数据） ──
 
 -- ── 各科测验 ──
 CREATE TABLE k12_quiz_bank (
@@ -276,4 +264,4 @@ CREATE INDEX IF NOT EXISTS idx_guardian_assignments_student ON guardian_assignme
 CREATE INDEX IF NOT EXISTS idx_admin_audit_log_admin ON admin_audit_log(admin_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_k12_quiz_bank_subject_grade ON k12_quiz_bank(subject, grade_band);
 CREATE INDEX IF NOT EXISTS idx_k12_quiz_attempts_user_quiz ON k12_quiz_attempts(user_id, quiz_id);
-CREATE INDEX IF NOT EXISTS idx_kg_source ON knowledge_graph(source_subject, source_stage);
+-- knowledge_graph indexes removed (table deprecated)

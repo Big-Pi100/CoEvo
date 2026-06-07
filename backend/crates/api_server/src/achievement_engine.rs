@@ -357,22 +357,13 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
         |row| row.get(0),
     ).unwrap_or(0);
 
-    // 13. languages_count: 覆盖语言数（从 cards.domain 提取语言前缀，如 "EN::..." 或 "ZH::..."）
+    // 13. languages_count: 覆盖语言数（按 subject 统计语言类科目）
     let languages_count: u32 = conn.query_row(
-        "SELECT COUNT(DISTINCT 
-                CASE 
-                    WHEN c.domain LIKE 'EN::%' THEN 'EN'
-                    WHEN c.domain LIKE 'ZH::%' THEN 'ZH'
-                    WHEN c.domain LIKE 'FR::%' THEN 'FR'
-                    WHEN c.domain LIKE 'ES::%' THEN 'ES'
-                    WHEN c.domain LIKE 'DE::%' THEN 'DE'
-                    WHEN c.domain LIKE 'JA::%' THEN 'JA'
-                    WHEN c.domain LIKE 'KO::%' THEN 'KO'
-                    ELSE 'OTHER'
-                END)
+        "SELECT COUNT(DISTINCT c.subject)
          FROM cards c
          JOIN card_memory cm ON c.id = cm.card_id
-         WHERE c.user_id = ?1 AND cm.status = 'active' AND c.domain IS NOT NULL",
+         WHERE c.user_id = ?1 AND cm.status = 'active'
+           AND c.subject IN ('chinese','english','japanese','russian')",
         rusqlite::params![user_id],
         |row| row.get(0),
     ).unwrap_or(0);
@@ -421,21 +412,12 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
         |row| row.get(0),
     ).unwrap_or(9999);
 
-    // 18. subjects_count: 覆盖 K12 学科数（从 domain 提取 :: 之间的学科名去重）
+    // 18. subjects_count: 覆盖 K12 学科数（按 subject 去重）
     let subjects_count: u32 = conn.query_row(
-        "SELECT COUNT(DISTINCT 
-            CASE 
-                WHEN c.domain LIKE '%::%::%' THEN
-                    SUBSTR(c.domain, 
-                           INSTR(c.domain, '::') + 2,
-                           INSTR(SUBSTR(c.domain, INSTR(c.domain, '::') + 2), '::') - 1)
-                WHEN c.domain LIKE '%::%' THEN
-                    SUBSTR(c.domain, INSTR(c.domain, '::') + 2)
-                ELSE c.domain
-            END)
+        "SELECT COUNT(DISTINCT c.subject)
          FROM cards c
          JOIN card_memory cm ON c.id = cm.card_id
-         WHERE c.user_id = ?1 AND cm.status = 'active' AND c.domain IS NOT NULL",
+         WHERE c.user_id = ?1 AND cm.status = 'active' AND c.subject IS NOT NULL",
         rusqlite::params![user_id],
         |row| row.get(0),
     ).unwrap_or(0);

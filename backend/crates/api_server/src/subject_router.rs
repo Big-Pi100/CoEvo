@@ -4,11 +4,7 @@
 //!   1. 用户: "我想学小学数学三年级"
 //!   2. LLM 路由: subject="数学", grade="三年级"
 //!   3. 映射: domain="math", grade_band="g3-4"
-//!   4. 加载 curriculum_guide[数学][义务教育][g3-4]
-//!   5. 注入到系统 prompt
 
-use serde::{Deserialize, Serialize};
-use std::sync::OnceLock;
 
 /// 路由结果
 #[derive(Debug, Clone)]
@@ -23,20 +19,20 @@ pub struct RoutingResult {
 /// 学科 → domain 映射（与 pipeline_router::Domain enum 对齐）
 fn subject_to_domain(subject: &str) -> &'static str {
     match subject {
-        "数学" => "math",
-        "语文" | "英语" | "日语" | "俄语" => "language",
-        "化学" => "chemistry",
-        "生物" | "生物学" => "biology",
-        "物理" => "physics",
-        "历史" => "history",
-        "地理" => "geography",
-        "政治" | "道德与法治" | "道法" => "politics",
-        "科学" => "science",
-        "信息技术" | "信息科技" => "it",
-        "体育" | "体育与健康" => "pe",
-        "美术" | "音乐" | "艺术" => "art",
-        "劳动" => "labor",
-        _ => "general", // 未知科目兜底
+        "chinese" | "english" | "japanese" | "russian" => "language",
+        "math" => "math",
+        "physics" => "physics",
+        "chemistry" => "chemistry",
+        "biology" => "biology",
+        "history" => "history",
+        "geography" => "geography",
+        "politics" => "politics",
+        "science" => "science",
+        "it" => "it",
+        "pe" => "pe",
+        "art" | "music" => "art",
+        "labor" => "labor",
+        _ => "general",
     }
 }
 
@@ -86,12 +82,12 @@ pub fn build_routing_prompt(user_message: &str) -> String {
 pub fn parse_routing_response(response: &str) -> (String, String) {
     // 尝试提取 JSON
     if let Ok(json) = serde_json::from_str::<serde_json::Value>(response) {
-        let subject = json.get("subject").and_then(|v| v.as_str()).unwrap_or("数学").to_string();
+        let subject = json.get("subject").and_then(|v| v.as_str()).unwrap_or("math").to_string();
         let grade = json.get("grade").and_then(|v| v.as_str()).unwrap_or("").to_string();
         return (subject, grade);
     }
     // 降级：关键词匹配
-    ("数学".to_string(), String::new())
+    ("math".to_string(), String::new())
 }
 
 /// 执行路由（在聊天开始时调用）
@@ -112,14 +108,14 @@ pub async fn route(
         }
         Err(_) => {
             // 降级：关键词匹配
-            subject = "数学".to_string();
+            subject = "math".to_string();
             grade_text = String::new();
         }
     }
 
     let domain = subject_to_domain(&subject).to_string();
     let grade_band = grade_to_band(&grade_text).to_string();
-    let curriculum_hint = get_curriculum_hint(&subject, &grade_band);
+    let curriculum_hint = String::new();
 
     RoutingResult {
         subject, grade_text, domain, grade_band, curriculum_hint,
@@ -142,12 +138,12 @@ mod tests {
 
     #[test]
     fn test_subject_mapping() {
-        assert_eq!(subject_to_domain("数学"), "math");
-        assert_eq!(subject_to_domain("物理"), "physics");
-        assert_eq!(subject_to_domain("英语"), "language");
-        assert_eq!(subject_to_domain("化学"), "chemistry");
-        assert_eq!(subject_to_domain("生物"), "biology");
-        assert_eq!(subject_to_domain("语文"), "language");
-        assert_eq!(subject_to_domain("历史"), "history");
+        assert_eq!(subject_to_domain("math"), "math");
+        assert_eq!(subject_to_domain("physics"), "physics");
+        assert_eq!(subject_to_domain("english"), "language");
+        assert_eq!(subject_to_domain("chemistry"), "chemistry");
+        assert_eq!(subject_to_domain("biology"), "biology");
+        assert_eq!(subject_to_domain("chinese"), "language");
+        assert_eq!(subject_to_domain("history"), "history");
     }
 }

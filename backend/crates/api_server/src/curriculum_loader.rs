@@ -130,10 +130,18 @@ pub fn init() -> Result<(), String> {
     let mut plan_index: HashMap<String, PlanData> = HashMap::new();
     let mut card_index: HashMap<String, Vec<CardData>> = HashMap::new();
 
-    // 1. 扫描 top-level JSON 计划文件（如 v3/chinese.json，非 v3/plans/subdir）
-    //    注意：v3/ 目录下直接包含 {subject}.json 格式的计划文件
-    if let Ok(dir) = std::fs::read_dir(&base) {
-        for entry in dir.flatten() {
+    // 1. 扫描计划文件：先扫 v3/ 根目录（兼容旧结构），再扫 plans/ 子目录
+    let plan_dirs: Vec<std::path::PathBuf> = {
+        let mut dirs = vec![base.clone()];
+        let plans_dir = base.join("plans");
+        if plans_dir.exists() {
+            dirs.push(plans_dir);
+        }
+        dirs
+    };
+    for scan_dir in &plan_dirs {
+        if let Ok(dir) = std::fs::read_dir(scan_dir) {
+            for entry in dir.flatten() {
             let path = entry.path();
             if !path.is_file() { continue; }
             let fname = match path.file_name().and_then(|n| n.to_str()) {
@@ -161,6 +169,7 @@ pub fn init() -> Result<(), String> {
             };
             plan_index.insert(subject.clone(), plan);
         }
+    }
     }
     if plan_index.is_empty() {
         eprintln!("[K12] WARN: no plan files found in {}", base.display());

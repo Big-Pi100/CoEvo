@@ -84,6 +84,8 @@ class DueCard {
   final int? lastReviewedAt;
   final int? lastReviewQuality;
   final String? conversationId;  // 绑定到的会话 ID，用于匹配 plan tab
+  final String? planId;          // 绑定的学习计划 ID
+  final String? taskKey;         // 绑定的任务 key
 
   const DueCard({
     required this.id,
@@ -101,6 +103,8 @@ class DueCard {
     this.lastReviewedAt,
     this.lastReviewQuality,
     this.conversationId,
+    this.planId,
+    this.taskKey,
   });
 
   factory DueCard.fromJson(Map<String, dynamic> json) => DueCard(
@@ -119,6 +123,8 @@ class DueCard {
     lastReviewedAt: json['last_reviewed_at'] as int?,
     lastReviewQuality: json['last_review_quality'] as int?,
     conversationId: json['conversation_id'] as String?,
+    planId: json['plan_id'] as String?,
+    taskKey: json['task_key'] as String?,
   );
 }
 

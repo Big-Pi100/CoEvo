@@ -1418,11 +1418,12 @@ pub fn copy_prebuilt_card(
     if let Some(card) = cache.get(card_uuid) {
         let now = chrono::Utc::now().timestamp();
         let _ = conn.execute(
-            "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, plan_id, task_key)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT OR IGNORE INTO cards (id, user_id, domain, subject, card_type, front, back, source_sentence, conversation_id, created_at, plan_id, task_key)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             rusqlite::params![
                 card_uuid, user_id,
                 card["domain"].as_str().unwrap_or(""),
+                None::<Option<String>>,  // subject not available at plan insert time
                 card["card_type"].as_str().unwrap_or(""),
                 card["front"].as_str().unwrap_or(""),
                 card["back"].as_str().unwrap_or(""),

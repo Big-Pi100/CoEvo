@@ -93,10 +93,10 @@ fn insert_card_with_status(conn: &Connection, card: &Card, memory: &CardMemory, 
 
     // 3. Insert card (no status — status goes to card_memory)
     if let Err(e) = conn.execute(
-        "INSERT INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        "INSERT INTO cards (id, user_id, domain, subject, card_type, front, back, source_sentence, conversation_id, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         rusqlite::params![
-            card.id, card.user_id, card.domain, card.card_type,
+            card.id, card.user_id, card.domain, card.subject, card.card_type,
             card.front, card.back, card.source_sentence, card.conversation_id, card.created_at,
         ],
     ) {

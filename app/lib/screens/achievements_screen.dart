@@ -384,6 +384,9 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
           const Divider(height: 16),
           ..._k12Progress.map((p) {
             final goal = p['goal'] as String? ?? '';
+            final gb = (p['grade_band'] as String? ?? '').replaceAll('g', '').replaceAll('-', '～');
+            String label = goal.isNotEmpty ? goal : '学习计划';
+            if (gb.isNotEmpty) label = '$label（$gb）';
             final totalTasks = (p['total_tasks'] as num?)?.toInt() ?? 0;
             final doneTasks = (p['done_tasks'] as num?)?.toInt() ?? 0;
             final totalCards = (p['total_cards'] as num?)?.toInt() ?? 0;
@@ -393,7 +396,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
             return Padding(
               padding: const EdgeInsets.only(bottom: AppTheme.spacingMd),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(goal.isNotEmpty ? goal : '学习计划',
+                Text(label.isNotEmpty ? label : '学习计划',
                     style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                 const SizedBox(height: 6),
                 // 任务进度
@@ -519,8 +522,17 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                     color: plan['mode'] == 'completed' ? _cs.primary : theme.colorScheme.primary,
                   ),
                   const SizedBox(width: AppTheme.spacingSm),
-                  Expanded(child: Text(plan['goal'] as String? ?? '',
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
+                  Expanded(child: (() {
+                    String goal = plan['goal'] as String? ?? '';
+                    String gb = plan['grade_band'] as String? ?? '';
+                    String label = goal.isNotEmpty ? goal : '学习计划';
+                    if (gb.isNotEmpty) {
+                      gb = gb.replaceAll('g', '').replaceAll('-', '～');
+                      label = '$label（$gb）';
+                    }
+                    return Text(label.isNotEmpty ? label : '学习计划',
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14));
+                  }())),
                   if (plan['mode'] == 'completed')
                     Text('已完成', style: _tt.labelSmall?.copyWith(color: _cs.primaryFixedDim)),
                 ]),

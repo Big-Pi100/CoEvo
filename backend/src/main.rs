@@ -84,7 +84,6 @@ async fn main() {
     // Load curriculum guide
     api_server::curriculum_loader::init().unwrap_or_else(|e| tracing::warn!("K12 loader: {}", e));
     tracing::info!("Data loaders initialized");
-    tracing::info!("Knowledge graph loaded");
 
     // K12 quiz bank — 需要 DB 连接
     {
@@ -139,6 +138,9 @@ async fn main() {
             "CREATE INDEX IF NOT EXISTS idx_review_log_card_reviewed ON review_log(card_id, reviewed_at)",
             "CREATE INDEX IF NOT EXISTS idx_conversation_turns_conv_created ON conversation_turns(conversation_id, created_at)",
             "CREATE INDEX IF NOT EXISTS idx_cards_user_domain ON cards(user_id, domain)",
+            // V2.2: cards 表加 subject 列 + 索引
+            "ALTER TABLE cards ADD COLUMN subject TEXT DEFAULT NULL",
+            "CREATE INDEX IF NOT EXISTS idx_cards_user_subject ON cards(user_id, subject)",
             // 对话软删除支持
             "ALTER TABLE conversations ADD COLUMN deleted_at TEXT DEFAULT NULL",
             "CREATE INDEX IF NOT EXISTS idx_conversations_user_deleted ON conversations(user_id, deleted_at)",
@@ -238,26 +240,9 @@ async fn main() {
             "CREATE INDEX IF NOT EXISTS idx_k12_quiz_bank_subject_grade ON k12_quiz_bank(subject, grade_band)",
             "CREATE INDEX IF NOT EXISTS idx_k12_quiz_attempts_user_quiz ON k12_quiz_attempts(user_id, quiz_id)",
 
-            // V2.2 知识图谱支持
             // k12_quiz_bank 新增关联字段
             "ALTER TABLE k12_quiz_bank ADD COLUMN assessment_item_id TEXT DEFAULT NULL",
             "ALTER TABLE k12_quiz_bank ADD COLUMN plan_stage_id TEXT DEFAULT NULL",
-            // 知识图谱边表
-            "CREATE TABLE IF NOT EXISTS knowledge_graph (
-                id TEXT PRIMARY KEY,
-                source_subject TEXT NOT NULL,
-                source_stage TEXT,
-                source_task TEXT,
-                target_subject TEXT NOT NULL,
-                target_stage TEXT,
-                target_task TEXT,
-                edge_type TEXT NOT NULL,
-                strength TEXT DEFAULT 'medium',
-                note TEXT,
-                created_at TEXT NOT NULL
-            )",
-            "CREATE INDEX IF NOT EXISTS idx_kg_source ON knowledge_graph(source_subject, source_stage)",
-            "CREATE INDEX IF NOT EXISTS idx_kg_target ON knowledge_graph(target_subject, target_stage)",
 
         ];
 

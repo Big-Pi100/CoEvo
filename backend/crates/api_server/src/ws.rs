@@ -552,8 +552,8 @@ pub async fn handle_ws(mut ws: WebSocket) {
                             let now = chrono::Utc::now().timestamp();
                             // cards: 结构数据（无 status，无 card_memory 状态字段）
                             let _ = conn.execute(
-                                "INSERT OR IGNORE INTO cards (id, user_id, domain, card_type, front, back, source_sentence, conversation_id, created_at, plan_id, task_key)
-                                 VALUES (?1, ?2, ?3, 'concept', ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                                "INSERT OR IGNORE INTO cards (id, user_id, domain, subject, card_type, front, back, source_sentence, conversation_id, created_at, plan_id, task_key)
+                                 VALUES (?1, ?2, ?3, NULL, 'concept', ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                                 rusqlite::params![card_id, user_id, c.domain, c.front, c.back, c.source_sentence,
                                     conv_id_cp1, now, if cp1_plan_id.is_empty() { None } else { Some(&cp1_plan_id) },
                                     if cp1_task_key.is_empty() { None } else { Some(&cp1_task_key) }],

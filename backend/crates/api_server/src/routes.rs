@@ -63,6 +63,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/review/submit", post(review_submit_handler))
         .route("/api/review/verify", post(review_verify_handler))
         .route("/api/review/judge", post(review_judge_handler))
+        .route("/api/review/cards-by-progress", get(review_cards_by_progress_handler))
         // ── Cards ──
         .route("/api/cards/status", patch(cards_status_handler))
         .route("/api/cards/batch-status", patch(cards_batch_status_handler))
@@ -433,6 +434,83 @@ async fn review_judge_handler(
     }
 }
 
+// ── Review: cards by progress ──
+
+/// GET /api/review/cards-by-progress — 按 task 进度查询卡片
+#[derive(Deserialize)]
+struct CardsByProgressQuery {
+    user_id: String,
+}
+
+async fn review_cards_by_progress_handler(
+    headers: HeaderMap,
+    Query(query): Query<CardsByProgressQuery>,
+) -> Json<serde_json::Value> {
+    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
+        return auth_json(e);
+    }
+    let conn = crate::db_pool::get_conn();
+    let mut plan_info: std::collections::HashMap<String, serde_json::Value> = std::collections::HashMap::new();
+    let cards: Vec<serde_json::Value> = match conn.prepare(
+        "SELECT c.id, c.user_id, c.front, c.back, c.domain, c.subject, c.card_type,
+                c.source_sentence, c.created_at, c.conversation_id, c.plan_id, c.task_key,
+                upp.status as task_status,
+                cp.goal as plan_goal, cp.subject as plan_subject, cp.grade_band as plan_grade_band
+         FROM cards c
+         JOIN card_memory cm ON c.id = cm.card_id
+         JOIN user_plan_progress upp ON c.plan_id = upp.plan_id AND c.task_key = upp.task_key
+         JOIN conversation_plans cp ON c.plan_id = cp.id
+         WHERE upp.user_id = ?1
+           AND upp.status IN ('done', 'in_progress')
+           AND cm.status = 'active'
+         ORDER BY upp.status DESC, c.created_at ASC"
+    ) {
+        Ok(mut stmt) => {
+            match stmt.query_map(rusqlite::params![query.user_id], |row| {
+                let plan_id: Option<String> = row.get(10)?;
+                let plan_goal: Option<String> = row.get(13)?;
+                let plan_subject: Option<String> = row.get(14)?;
+                let plan_grade_band: Option<String> = row.get(15)?;
+                // Collect unique plan info
+                if let Some(ref pid) = plan_id {
+                    if !plan_info.contains_key(pid) {
+                        plan_info.insert(pid.clone(), serde_json::json!({
+                            "plan_id": pid,
+                            "goal": plan_goal,
+                            "subject": plan_subject,
+                            "grade_band": plan_grade_band,
+                        }));
+                    }
+                }
+                Ok(serde_json::json!({
+                    "id": row.get::<_, String>(0)?,
+                    "user_id": row.get::<_, String>(1)?,
+                    "front": row.get::<_, String>(2)?,
+                    "back": row.get::<_, String>(3)?,
+                    "domain": row.get::<_, Option<String>>(4)?,
+                    "subject": row.get::<_, Option<String>>(5)?,
+                    "card_type": row.get::<_, String>(6)?,
+                    "source_sentence": row.get::<_, Option<String>>(7)?,
+                    "created_at": row.get::<_, i64>(8)?,
+                    "conversation_id": row.get::<_, Option<String>>(9)?,
+                    "plan_id": plan_id,
+                    "task_key": row.get::<_, Option<String>>(11)?,
+                    "task_status": row.get::<_, String>(12)?,
+                    "plan_goal": plan_goal,
+                    "plan_subject": plan_subject,
+                    "plan_grade_band": plan_grade_band,
+                }))
+            }) {
+                Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+                Err(e) => return Json(serde_json::json!({"error": format!("DB query: {}", e)})),
+            }
+        }
+        Err(e) => return Json(serde_json::json!({"error": format!("DB prepare: {}", e)})),
+    };
+    let plans: Vec<serde_json::Value> = plan_info.into_values().collect();
+    Json(serde_json::json!({"cards": cards, "plans": plans, "count": cards.len()}))
+}
+
 // ── Verify Translation (V1 forward mode) ──
 
 #[derive(Deserialize)]
@@ -537,14 +615,13 @@ pub struct AllCardsQuery {
     pub user_id: String,
     pub q: Option<String>,         // 搜索关键词 (匹配 front/back)
     pub state: Option<i32>,        // 按 FSRS state 过滤
-    pub domain: Option<String>,    // 按领域过滤
+    pub subject: Option<String>,   // 按科目过滤 (替代 domain)
     pub sort: Option<String>,      // "front" | "created" | "state" | "due"
 }
 
 /// GET /api/cards/all — 获取用户所有 active 卡片（支持过滤、搜索、排序）
-/// 请求参数: ?user_id=str&domain=str&subject=str&state=int&q=str&sort=str
-///    domain: 按领域过滤 (math/chinese/english...)
-///    subject: 按科目过滤
+/// 请求参数: ?user_id=str&subject=str&state=int&q=str&sort=str
+///    subject: 按科目过滤 (chinese/english/math/...)
 ///    state:   FSRS 状态过滤 (0=new, 1=learning, 2=review)
 ///    q:       搜索关键词（匹配 front/back）
 ///    sort:    排序方式 (front/created/state/due)
@@ -562,7 +639,7 @@ async fn cards_all_handler(
     let conn = crate::db_pool::get_conn();
 
     let mut sql = String::from(
-        "SELECT c.id, c.user_id, c.front, c.back, c.domain, c.card_type, c.source_sentence,
+        "SELECT c.id, c.user_id, c.front, c.back, c.domain, c.subject, c.card_type, c.source_sentence,
                 c.created_at, cm.state, cm.difficulty, cm.due, cm.reps, cm.lapses,
                 lrev.reviewed_at, lrev.rating,
                 c.conversation_id
@@ -578,10 +655,10 @@ async fn cards_all_handler(
     );
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(query.user_id.clone())];
 
-    // 按领域过滤
-    if let Some(ref domain) = query.domain {
-        params.push(Box::new(domain.clone()));
-        sql.push_str(&format!(" AND c.domain = ?{}", params.len()));
+    // 按科目过滤
+    if let Some(ref subject) = query.subject {
+        params.push(Box::new(subject.clone()));
+        sql.push_str(&format!(" AND c.subject = ?{}", params.len()));
     }
 
     // 按状态过滤
@@ -598,6 +675,9 @@ async fn cards_all_handler(
             sql.push_str(&format!(" AND (c.front LIKE ?{} OR c.back LIKE ?{})", params.len(), params.len()));
         }
     }
+
+    // 隐藏非 vocabulary 的预制卡（对话生成卡不受影响）
+    sql.push_str(" AND NOT (c.conversation_id IS NULL AND c.card_type != 'vocabulary')");
 
     // 排序
     match query.sort.as_deref() {
@@ -618,7 +698,8 @@ async fn cards_all_handler(
         "front": row.get::<_, String>(2)?,
         "back": row.get::<_, String>(3)?,
         "domain": row.get::<_, Option<String>>(4)?,
-        "card_type": row.get::<_, String>(5)?,
+        "subject": row.get::<_, Option<String>>(5)?,
+        "card_type": row.get::<_, String>(6)?,
         "source_sentence": row.get::<_, Option<String>>(6)?,
         "created_at": row.get::<_, i64>(7)?,
         "state": row.get::<_, i32>(8)?,
@@ -689,7 +770,7 @@ async fn cards_by_plan_handler(
 
     // 1. 获取用户所有 plan
     let mut stmt = match conn.prepare(
-        "SELECT id, conversation_id, goal FROM conversation_plans WHERE user_id = ?1 ORDER BY created_at DESC"
+        "SELECT id, conversation_id, goal, grade_band FROM conversation_plans WHERE user_id = ?1 ORDER BY created_at DESC"
     ) {
         Ok(s) => s,
         Err(e) => return Json(serde_json::json!({"error": format!("DB prepare: {}", e)})),
@@ -701,6 +782,7 @@ async fn cards_by_plan_handler(
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
             row.get::<_, String>(2)?,
+            row.get::<_, Option<String>>(3)?,
         ))
     }) {
         Ok(r) => r,
@@ -708,7 +790,7 @@ async fn cards_by_plan_handler(
     };
 
     for row in rows.flatten() {
-        let (plan_id, conv_id, goal) = row;
+        let (plan_id, conv_id, goal, grade_band) = row;
 
         // 惰性加载：仅当指定了 conversation_id 时才加载该 plan 的卡片
         let load_cards = query.conversation_id.as_deref() == Some(&conv_id);
@@ -723,7 +805,7 @@ async fn cards_by_plan_handler(
                 Some(s) => s, // raw passthrough for flexibility
             };
             let sql = format!(
-                "SELECT c.id, c.user_id, c.front, c.back, c.domain, c.card_type, c.source_sentence,
+                "SELECT c.id, c.user_id, c.front, c.back, c.domain, c.subject, c.card_type, c.source_sentence,
                         c.created_at, cm.state, cm.difficulty, cm.due, cm.reps, cm.lapses,
                         lrev.reviewed_at, lrev.rating,
                         c.conversation_id
@@ -750,17 +832,17 @@ async fn cards_by_plan_handler(
                         "front": row.get::<_, String>(2)?,
                         "back": row.get::<_, String>(3)?,
                         "domain": row.get::<_, Option<String>>(4)?,
-                        "card_type": row.get::<_, String>(5)?,
-                        "source_sentence": row.get::<_, Option<String>>(6)?,
-                        "created_at": row.get::<_, i64>(7)?,
-                        "state": row.get::<_, i32>(8)?,
-                        "difficulty": row.get::<_, f64>(9)?,
-                        "due": row.get::<_, i64>(10)?,
-                        "reps": row.get::<_, i32>(11)?,
-                        "lapses": row.get::<_, i32>(12)?,
-                        "last_reviewed_at": row.get::<_, Option<i64>>(13)?,
-                        "last_review_quality": row.get::<_, Option<i32>>(14)?,
-                        "conversation_id": row.get::<_, Option<String>>(15)?,
+                        "card_type": row.get::<_, String>(6)?,
+                        "source_sentence": row.get::<_, Option<String>>(7)?,
+                        "created_at": row.get::<_, i64>(8)?,
+                        "state": row.get::<_, i32>(9)?,
+                        "difficulty": row.get::<_, f64>(10)?,
+                        "due": row.get::<_, i64>(11)?,
+                        "reps": row.get::<_, i32>(12)?,
+                        "lapses": row.get::<_, i32>(13)?,
+                        "last_reviewed_at": row.get::<_, Option<i64>>(14)?,
+                        "last_review_quality": row.get::<_, Option<i32>>(15)?,
+                        "conversation_id": row.get::<_, Option<String>>(16)?,
                     }))
                 }).unwrap().filter_map(|r| r.ok()).collect(),
                 Err(_) => vec![],
@@ -779,6 +861,7 @@ async fn cards_by_plan_handler(
         plans.push(serde_json::json!({
             "id": plan_id,
             "goal": goal,
+            "grade_band": grade_band,
             "conversation_id": conv_id,
             "cards": cards,
             "card_count": effective_count,
@@ -829,7 +912,7 @@ async fn cards_search_handler(
     let like = format!("%{}%", query.q.replace('%', "\\%").replace('_', "\\_"));
 
     let sql = format!(
-        "SELECT c.id, c.user_id, c.front, c.back, c.domain, c.card_type,
+        "SELECT c.id, c.user_id, c.front, c.back, c.domain, c.subject, c.card_type,
                 c.source_sentence, c.created_at, c.conversation_id,
                 cm.state, cm.reps, cm.lapses, cm.difficulty, cm.due
          FROM cards c
@@ -1678,18 +1761,20 @@ async fn learning_report_handler(
 
     // 1. 所有学习计划进度
     let mut stmt_plans = conn.prepare(
-        "SELECT plan_content, plan_content, goal, 'structured' as mode, updated_at FROM conversation_plans WHERE user_id = ?1 ORDER BY updated_at DESC"
+        "SELECT plan_content, plan_content, goal, grade_band, subject, 'structured' as mode, updated_at FROM conversation_plans WHERE user_id = ?1 ORDER BY updated_at DESC"
     ).unwrap();
     let mut plans: Vec<serde_json::Value> = Vec::new();
     for row in stmt_plans.query_map(rusqlite::params![user_id], |row| {
         let pj: String = row.get(0)?;
         let pc: Option<String> = row.get(1)?;
         let goal: String = row.get(2)?;
-        let mode: String = row.get(3)?;
-        let updated: String = row.get(4)?;
-        Ok((pj, pc, goal, mode, updated))
+        let grade_band: Option<String> = row.get(3)?;
+        let subject: Option<String> = row.get(4)?;
+        let mode: String = row.get(5)?;
+        let updated: String = row.get(6)?;
+        Ok((pj, pc, goal, grade_band, subject, mode, updated))
     }).unwrap().filter_map(|r| r.ok()) {
-        let (pj, pc, goal, mode, updated) = row;
+        let (pj, pc, goal, grade_band, subject, mode, updated) = row;
                 if let Ok(plan) = serde_json::from_str::<serde_json::Value>(&pj) {
                     let mut total_tasks = 0u32;
                     let mut done_tasks = 0u32;
@@ -1724,6 +1809,8 @@ async fn learning_report_handler(
                     }
             plans.push(serde_json::json!({
                 "goal": goal,
+                "grade_band": grade_band,
+                "subject": subject,
                 "mode": mode,
                 "current_stage": current_stage,
                 "total_tasks": total_tasks,
@@ -2250,7 +2337,7 @@ async fn k12_progress_handler(
 
     // 1. 查询所有 conversation_plans
     let mut stmt = match conn.prepare(
-        "SELECT cp.id, cp.plan_content, cp.goal, cp.created_at
+        "SELECT cp.id, cp.plan_content, cp.goal, cp.grade_band, cp.created_at
          FROM conversation_plans cp
          WHERE cp.user_id = ?1
          ORDER BY cp.created_at DESC"
@@ -2264,7 +2351,8 @@ async fn k12_progress_handler(
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
             row.get::<_, String>(2)?,
-            row.get::<_, i64>(3)?,
+            row.get::<_, Option<String>>(3)?,
+            row.get::<_, i64>(4)?,
         ))
     }) {
         Ok(r) => r,
@@ -2272,7 +2360,7 @@ async fn k12_progress_handler(
     };
 
     for plan_row in plans.flatten() {
-        let (plan_id, plan_content_str, goal, started_at_ts) = plan_row;
+        let (plan_id, plan_content_str, goal, grade_band, started_at_ts) = plan_row;
 
         // 2. 解析 plan_content JSON 统计总任务数
         let total_tasks = serde_json::from_str::<serde_json::Value>(&plan_content_str)
@@ -2314,6 +2402,7 @@ async fn k12_progress_handler(
 
         rows.push(serde_json::json!({
             "goal": goal,
+            "grade_band": grade_band,
             "total_tasks": total_tasks,
             "done_tasks": done_tasks,
             "total_cards": total_cards,

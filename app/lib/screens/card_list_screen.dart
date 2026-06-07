@@ -78,10 +78,12 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
         final gid = pMap['id'] as String? ?? '';
         final gConvId = pMap['conversation_id'] as String? ?? '';
         final gGoal = pMap['goal'] as String? ?? '';
-        debugPrint('[_loadPlanMeta]   plan[$i]: id=${gid.substring(0,8)} convId=${gConvId.substring(0,8)} goal=$gGoal cardCount=$cardCount');
+        final gGb = pMap['grade_band'] as String? ?? '';
+        debugPrint('[_loadPlanMeta]   plan[$i]: id=${gid.substring(0,8)} convId=${gConvId.substring(0,8)} goal=$gGoal grade_band=$gGb cardCount=$cardCount');
         planGroups.add(_PlanGroup(
           id: gid,
           goal: gGoal,
+          gradeBand: gGb,
           conversationId: gConvId,
           cardCount: cardCount,
         ));
@@ -415,8 +417,14 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                   size: 16, color: Theme.of(context).colorScheme.primary),
               const SizedBox(width: AppTheme.spacingSm),
               Expanded(
-                child: Text(
-                  group.goal.isEmpty ? '无标题计划' : group.goal,
+                child: Text(() {
+                  String label = group.goal.isEmpty ? '无标题计划' : group.goal;
+                  if (group.gradeBand.isNotEmpty) {
+                    final gb = group.gradeBand.replaceAll('g', '').replaceAll('-', '～');
+                    label = '$label（$gb）';
+                  }
+                  return label;
+                }(),
                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Theme.of(context).colorScheme.primary),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -703,6 +711,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
 class _PlanGroup {
   final String id;
   final String goal;
+  final String gradeBand;
   final String conversationId;
   final int cardCount;
   List<DueCard> cards;
@@ -717,6 +726,7 @@ class _PlanGroup {
     required this.goal,
     required this.conversationId,
     required this.cardCount,
+    this.gradeBand = '',
     List<DueCard>? cards,
   }) : cards = cards ?? [],
        displayCards = [];

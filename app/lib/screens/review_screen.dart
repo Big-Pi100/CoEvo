@@ -64,6 +64,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
   late TabController _tabController;
   List<Map<String, dynamic>> _planTabs = [];
   String? _selectedConvId;  // 当前选中的 plan tab 的 conversation_id（null=全部卡片）
+  bool _hasActivePlans = false;
 
   @override
   void initState() {
@@ -106,7 +107,18 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
     final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {
       final planList = await client.getPlans();
-      // 并行获取卡片统计（用于 tab badge 显示，不受 _cards LIMIT 500 限制）
+      // 并行获取 task 进度过滤的卡片，用于过滤哪些 plan 有活跃 task
+      Set<String> activeConvIds = {};
+      try {
+        final progressResp = await client.getCardsByProgress();
+        final progressCards = progressResp['cards'] as List<dynamic>? ?? [];
+        for (final c in progressCards) {
+          final cMap = c as Map<String, dynamic>;
+          final convId = cMap['conversation_id'] as String? ?? '';
+          if (convId.isNotEmpty) activeConvIds.add(convId);
+        }
+      } catch (_) {}
+      // 并行获取卡片统计（用于 tab badge 显示）
       Map<String, int> cardCountByConv = {};
       try {
         final cardCountResp = await client.getCardsByPlan();
@@ -120,24 +132,33 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
       } catch (_) {}
       if (!mounted) return;
       setState(() {
-        // 合并 cardCount 到 planTabs
-        _planTabs = planList.map((p) {
-          final convId = p['conversation_id'] as String? ?? '';
-          final count = cardCountByConv[convId];
-          if (count != null) p['card_count'] = count;
-          return p;
-        }).where((p) {
-          // 隐藏没有待复习卡片的 tab（所有卡片 due 都在未来）
-          final dueCount = (p['due_card_count'] as num?)?.toInt() ?? 1;
-          return dueCount > 0;
-        }).toList();
+        // 合并 cardCount 到 planTabs，过滤只保留有活跃 task 的 plan
+        _hasActivePlans = activeConvIds.isNotEmpty;
+        _planTabs = planList
+            .where((p) {
+              final convId = p['conversation_id'] as String? ?? '';
+              return activeConvIds.contains(convId);
+            })
+            .map((p) {
+              final convId = p['conversation_id'] as String? ?? '';
+              final count = cardCountByConv[convId];
+              if (count != null) p['card_count'] = count;
+              return p;
+            })
+            .where((p) {
+              // 隐藏没有待复习卡片的 tab
+              final dueCount = (p['due_card_count'] as num?)?.toInt() ?? 1;
+              return dueCount > 0;
+            }).toList();
         final totalTabs = 1 + _planTabs.length;
         final oldIndex = _tabController.index;
         _tabController.dispose();
         _tabController = TabController(length: totalTabs, vsync: this,
           initialIndex: oldIndex.clamp(0, totalTabs - 1));
       });
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) setState(() => _hasActivePlans = false);
+    }
   }
 
   Future<void> _checkSubscription() async {
@@ -453,6 +474,9 @@ Row(
         }
       }
       if (_cards.isEmpty) {
+        // 等待一小段时间确保后端落库完成
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (!mounted) return;
         final convId = _selectedConvId;
         try {
           final resp = await _client!.getDueCards(conversationId: convId, limit: 10, offset: 0);
@@ -494,7 +518,7 @@ Row(
   /// 从 plan goal + grade_band 提取简短标签
   String _planLabel(Map<String, dynamic> plan) {
     final goal = plan['goal'] as String? ?? '';
-    final gb = plan['grade_band'] as String? ?? '';
+    final gb = (plan['grade_band'] as String? ?? '').replaceAll('g', '').replaceAll('-', '～');
     final label = goal.replaceAll(RegExp(r'^K12:\s*'), '');
     if (gb.isNotEmpty) {
       return '$label（$gb）';
@@ -533,6 +557,34 @@ Row(
       _selectedConvId = _planTabs[0]['conversation_id'] as String? ?? '';
     }
 
+    // 无活跃计划时显示引导
+    if (!_hasActivePlans && _planTabs.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('复习')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.school_outlined, size: 64, color: Theme.of(context).colorScheme.primaryFixed),
+                const SizedBox(height: 16),
+                Text('还没有学习计划', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                Text('去聊天开始学习，系统会自动创建学习计划',
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                const SizedBox(height: 24),
+                FilledButton(
+                  onPressed: () => context.go('/chat'),
+                  child: const Text('去学习'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('复习'),
@@ -547,10 +599,10 @@ Row(
               final count = _planDueCount(convId);
               final label = _planLabel(p);
               // 截取前5个字符（中文字符每个占1个UTF-16单元）
-              final shortLabel = label.length > 5 ? label.substring(0, 5) : label;
+              final shortLabel = label.length > 8 ? label.substring(0, 8) : label;
               return Tab(
                 child: SizedBox(
-                  width: 90,  // ≈ 5 个中文字符宽度
+                  width: 120,
                   child: Text('$shortLabel（$count）',
                       overflow: TextOverflow.ellipsis, maxLines: 1),
                 ),
