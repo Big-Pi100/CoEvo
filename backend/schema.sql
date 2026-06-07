@@ -14,8 +14,8 @@ CREATE TABLE users (
     last_active_date TEXT,
     display_name TEXT DEFAULT NULL,
     real_name TEXT DEFAULT NULL,
-    phone TEXT DEFAULT NULL UNIQUE,
-    phone_hash TEXT DEFAULT NULL UNIQUE,
+    phone TEXT DEFAULT NULL,
+    phone_hash TEXT DEFAULT NULL,
     id_number TEXT DEFAULT NULL,
     bind_hash TEXT DEFAULT NULL,
     deleted_at TEXT DEFAULT NULL,
@@ -213,8 +213,6 @@ CREATE TABLE admin_audit_log (
     detail TEXT,
     created_at TEXT NOT NULL
 );
-
--- ── 知识图谱（已废弃，保留表结构不删以免影响已有数据） ──
 
 -- ── 各科测验 ──
 CREATE TABLE k12_quiz_bank (

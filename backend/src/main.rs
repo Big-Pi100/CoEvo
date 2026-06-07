@@ -243,6 +243,9 @@ async fn main() {
             // k12_quiz_bank 新增关联字段
             "ALTER TABLE k12_quiz_bank ADD COLUMN assessment_item_id TEXT DEFAULT NULL",
             "ALTER TABLE k12_quiz_bank ADD COLUMN plan_stage_id TEXT DEFAULT NULL",
+            // 手机号唯一性约束（先清理重复值再建索引）
+            "UPDATE users SET phone_hash = NULL WHERE id NOT IN (SELECT MIN(id) FROM users WHERE phone_hash IS NOT NULL AND phone_hash != '' GROUP BY phone_hash)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_hash ON users(phone_hash) WHERE phone_hash IS NOT NULL",
 
         ];
 

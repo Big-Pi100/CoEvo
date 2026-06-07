@@ -315,6 +315,12 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
       } else {
         _showDeleteUserDialog(ids.first, name);
       }
+    } else if (action == 'hard_delete') {
+      if (isBatch) { _snack('批量永久删除暂不支持'); return; }
+      final u = _users.firstWhere((u) => u['user_id'] == ids.first, orElse: () => <String, dynamic>{});
+      if (u.isEmpty) { _snack('用户数据未加载'); return; }
+      final name = (u['display_name'] as String?) ?? u['username'] as String? ?? '';
+      _showHardDeleteDialog(ids.first, name);
     } else if (action.startsWith('extend_')) {
       final days = int.tryParse(action.replaceFirst('extend_', '')) ?? 7;
       if (isBatch) {
@@ -672,14 +678,18 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
       if (_userTotal > 0)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-          child: Row(children: [
+          child:           Row(children: [
             Text('共 $_userTotal 人 · 显示 ${_users.length} 人', style: _tt.labelSmall?.copyWith(color:  _cs.onSurfaceVariant)),
             const Spacer(),
-            FilterChip(
-              label: const Text('显示已删除', style: TextStyle(fontSize: 10)),
-              selected: _includeDeleted,
-              onSelected: (v) { setState(() => _includeDeleted = v); _search(); },
-              visualDensity: VisualDensity.compact,
+            // 用户状态切换：正常 / 已删除
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: false, label: Text('正常用户', style: TextStyle(fontSize: 10))),
+                ButtonSegment(value: true, label: Text('已删除', style: TextStyle(fontSize: 10))),
+              ],
+              selected: {_includeDeleted},
+              onSelectionChanged: (v) { setState(() => _includeDeleted = v.first); _search(); },
+              style: ButtonStyle(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
             ),
             if (_searchCtrl.text.trim().isNotEmpty) Text(' · 搜索模式', style: _tt.labelSmall?.copyWith(color: _cs.tertiary)),
           ]),
@@ -714,6 +724,12 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
               onPressed: () => _onAction('delete'),
               style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingXs), minimumSize: Size.zero),
               child: Icon(Icons.delete_outline, size: 18, color: _cs.errorContainer),
+            ),
+          if (_includeDeleted && _role == 'super')
+            TextButton(
+              onPressed: () => _onAction('hard_delete'),
+              style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingXs), minimumSize: Size.zero),
+              child: Icon(Icons.delete_forever, size: 18, color: _cs.error),
             ),
           if (_selectedUserIds.isNotEmpty)
             IconButton(icon: const Icon(Icons.close, size: 18), onPressed: _exitSelectMode),
@@ -1106,9 +1122,20 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
   void _showDeleteUserDialog(String uid, String name) {
     showDialog(context: context, builder: (ctx) => AlertDialog(
       title: Text('删除用户', style: TextStyle(color: _cs.error)),
-      content: Text('确认删除用户 $name？\n\n用户将被标记为已删除，不会出现在默认列表中。数据保留在数据库中，超管可以恢复。'),
+      content: Text('确认删除用户 $name？\n\n普通删除：用户将被标记为已删除，可以恢复。\n${_role == 'super' ? '永久删除（仅超管）：彻底清库，不可恢复！' : ''}'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+        if (_role == 'super')
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: _cs.error),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final resp = await _api('DELETE', '/api/admin/users/$uid/hard-delete');
+              _snack(resp.containsKey('archive_id') ? '用户已永久删除（已归档）' : (resp['error'] ?? '删除失败'));
+              _search();
+            },
+            child: const Text('永久删除', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: _cs.error),
           onPressed: () async {
@@ -1137,6 +1164,26 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
             _search();
           },
           child: const Text('确认恢复'),
+        ),
+      ],
+    ));
+  }
+
+  void _showHardDeleteDialog(String uid, String name) {
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      title: Text('永久删除用户', style: TextStyle(color: _cs.error)),
+      content: Text('⚠️ 确认永久删除用户 $name？\n\n操作不可逆！该用户的所有数据（卡片、对话、学习记录等）将被完全清空。\n仅保留归档记录（用户名、手机号哈希、订阅信息等）。'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: _cs.error),
+          onPressed: () async {
+            Navigator.pop(ctx);
+            final resp = await _api('DELETE', '/api/admin/users/$uid/hard-delete');
+            _snack(resp.containsKey('archive_id') ? '用户已永久删除（已归档）' : (resp['error'] ?? '删除失败'));
+            _search();
+          },
+          child: const Text('确认永久删除', style: TextStyle(fontWeight: FontWeight.bold)),
         ),
       ],
     ));

@@ -260,6 +260,85 @@ pub async fn admin_restore_user(headers: HeaderMap, Path(uid): Path<String>) -> 
     } else { err(StatusCode::NOT_FOUND, "not_found_or_not_deleted") }
 }
 
+/// POST /api/admin/users/{user_id}/hard-delete — 超管永久删除用户（清库+归档）
+/// 归档记录写入 data/deleted_users.ndjson 文件，不留在数据库内
+pub async fn admin_hard_delete_user(headers: HeaderMap, Path(uid): Path<String>) -> impl IntoResponse {
+    let (_, role) = match verify_admin(&headers) { Ok(r) => r, Err(e) => { return e; } };
+    if role != "super" { return err(StatusCode::FORBIDDEN, "forbidden"); }
+    let c = conn();
+    let now = chrono::Utc::now().timestamp().to_string();
+    let now_rfc = chrono::Utc::now().to_rfc3339();
+
+    // 1. 读取用户归档信息（在删除之前）
+    let user_info: Result<(String, Option<String>, Option<String>, Option<String>, Option<String>), _> = c.query_row(
+        "SELECT u.username, u.display_name, u.phone_hash, up_exp.value, up_act.value
+         FROM users u
+         LEFT JOIN user_preferences up_exp ON u.id=up_exp.user_id AND up_exp.key='subscription_expires'
+         LEFT JOIN user_preferences up_act ON u.id=up_act.user_id AND up_act.key='subscription_activated_at'
+         WHERE u.id=?1",
+        rusqlite::params![&uid],
+        |row| Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, Option<String>>(2)?,
+            row.get::<_, Option<String>>(3)?,
+            row.get::<_, Option<String>>(4)?,
+        )),
+    );
+
+    let (username, display_name, phone_hash, sub_expires, sub_activated) = match user_info {
+        Ok(info) => info,
+        Err(_) => return err(StatusCode::NOT_FOUND, "user_not_found"),
+    };
+
+    // 2. 写入归档文件 data/deleted_users.ndjson
+    let archive_id = uuid::Uuid::new_v4().to_string();
+    let archive_entry = serde_json::json!({
+        "archive_id": archive_id,
+        "original_user_id": uid,
+        "username": username,
+        "display_name": display_name,
+        "phone_hash": phone_hash,
+        "subscription_expires": sub_expires,
+        "subscription_activated_at": sub_activated,
+        "deleted_by": "super",
+        "deleted_at": now,
+        "deleted_at_rfc3339": now_rfc,
+    });
+    let _ = std::fs::write(
+        std::path::Path::new("data").join("deleted_users.ndjson"),
+        format!("{}\n", serde_json::to_string(&archive_entry).unwrap_or_default()),
+    );
+
+    // 3. 删除关联数据（按外键顺序防止约束冲突）
+    let tables = [
+        "DELETE FROM review_log WHERE card_id IN (SELECT id FROM cards WHERE user_id=?1)",
+        "DELETE FROM card_memory WHERE card_id IN (SELECT id FROM cards WHERE user_id=?1)",
+        "DELETE FROM cards WHERE user_id=?1",
+        "DELETE FROM conversation_turns WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id=?1)",
+        "DELETE FROM conversations WHERE user_id=?1",
+        "DELETE FROM conversation_plans WHERE user_id=?1",
+        "DELETE FROM user_plan_progress WHERE user_id=?1",
+        "DELETE FROM user_preferences WHERE user_id=?1",
+        "DELETE FROM tokens WHERE user_id=?1",
+        "DELETE FROM guardian_assignments WHERE student_user_id=?1 OR guardian_admin_id=?1",
+        "DELETE FROM achievements WHERE user_id=?1",
+        "DELETE FROM skipped_concepts WHERE user_id=?1",
+        "DELETE FROM users WHERE id=?1",
+    ];
+    for sql in &tables {
+        let _ = c.execute(sql, rusqlite::params![&uid]);
+    }
+
+    // 4. 审计日志
+    let _ = c.execute(
+        "INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'hard_delete_user',?3,?4,?5)",
+        rusqlite::params![uuid::Uuid::new_v4().to_string(), "super", &uid, serde_json::json!({"archive_id": archive_id, "deleted_at": now}).to_string(), now],
+    );
+
+    ok(serde_json::json!({"status":"hard_deleted", "archive_id": archive_id}))
+}
+
 // ── Reveal Phone (两步揭看) ──
 #[derive(Deserialize)] pub struct RevealPhoneQuery { pub full: Option<bool> }
 pub async fn admin_reveal_phone(headers: HeaderMap, Path(uid): Path<String>, Query(query): Query<RevealPhoneQuery>) -> impl IntoResponse {
@@ -921,8 +1000,22 @@ pub async fn update_user_profile_handler(headers: HeaderMap, Path(uid): Path<Str
         let _ = c.execute("UPDATE users SET real_name=?1 WHERE id=?2", rusqlite::params![enc,uid]);
     }
     if let Some(p) = &input.phone {
+        // 检查手机号是否已被其他用户注册
+        let hash = encryption::sha256_hash(p);
+        let phone_exists: bool = match c.query_row(
+            "SELECT COUNT(*) FROM users WHERE phone_hash = ?1 AND id != ?2",
+            rusqlite::params![hash, uid],
+            |row| row.get::<_, i32>(0),
+        ) {
+            Ok(c) => c > 0,
+            Err(_) => false,
+        };
+        if phone_exists {
+            return err(StatusCode::CONFLICT, "该手机号已被其他用户占用");
+        }
         let enc = encryption::encrypt(p);
-        let _ = c.execute("UPDATE users SET phone=?1 WHERE id=?2", rusqlite::params![enc,uid]);
+        let _ = c.execute("UPDATE users SET phone=?1, phone_hash=?2 WHERE id=?3",
+            rusqlite::params![enc, hash, uid]);
     }
     // Update bind_hash if both real_name and phone were provided
     if input.real_name.is_some() || input.phone.is_some() {

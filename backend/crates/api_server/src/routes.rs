@@ -109,6 +109,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/admin/users/export", get(admin_users_export))
         .route("/api/admin/users/batch-subscription", post(admin_batch_subscription))
         .route("/api/admin/users/{user_id}", get(admin_user_detail).delete(admin_delete_user))
+        .route("/api/admin/users/{user_id}/hard-delete", delete(admin_hard_delete_user))
         .route("/api/admin/users/{user_id}/restore", post(admin_restore_user))
         .route("/api/admin/users/{user_id}/reveal-phone", post(admin_reveal_phone))
         .route("/api/admin/users/{user_id}/subscription", put(admin_set_subscription))

@@ -1381,7 +1381,10 @@ fn load_prebuilt_card_cache() -> &'static std::collections::HashMap<String, serd
     PREBUILT_CARD_CACHE.get_or_init(|| {
         let data_dir = crate::curriculum_loader::k12_data_dir();
         let mut map = std::collections::HashMap::new();
-        // 卡片文件可能在 data_dir/cards/（v3/ 时代）或 data_dir.parent()/cards/（v3/plans/ 时代）
+        // 搜索所有可能的卡片目录：
+        //   - data_dir/cards/               (v3/ 时代: v3/cards/)
+        //   - data_dir.parent()/cards/      (v3/plans/ 时代: v3/cards/)
+        //   - dev_path/cards/               (绝对路径兜底)
         let card_search_dirs: Vec<std::path::PathBuf> = {
             let mut dirs = vec![data_dir.join("cards")];
             if let Some(parent) = data_dir.parent() {
@@ -1389,6 +1392,12 @@ fn load_prebuilt_card_cache() -> &'static std::collections::HashMap<String, serd
                 if parent_cards != dirs[0] && parent_cards.exists() {
                     dirs.push(parent_cards);
                 }
+            }
+            // 尝试从 CARGO_MANIFEST_DIR 解析绝对路径（开发模式兜底）
+            let dev_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../data/curriculum/v3/cards");
+            if dev_root.exists() && !dirs.iter().any(|d| d.canonicalize().ok() == dev_root.canonicalize().ok()) {
+                dirs.push(dev_root);
             }
             dirs
         };

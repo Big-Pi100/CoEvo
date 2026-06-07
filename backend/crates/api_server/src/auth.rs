@@ -62,6 +62,16 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
     }
     if let Some(ref p) = req.phone {
         if p.len() != 11 || !p.starts_with('1') || !p.chars().all(|c| c.is_ascii_digit()) { return Err("手机号格式不正确".into()); }
+        // 检查手机号是否已被注册（通过 phone_hash 确定性匹配）
+        let hash = encryption::sha256_hash(p);
+        let phone_exists: bool = conn.query_row(
+            "SELECT COUNT(*) FROM users WHERE phone_hash = ?1",
+            rusqlite::params![hash],
+            |row| row.get::<_, i32>(0),
+        ).map(|c| c > 0).unwrap_or(false);
+        if phone_exists {
+            return Err("该手机号已被注册".into());
+        }
     }
 
     let user_id = uuid::Uuid::new_v4().to_string();
@@ -113,7 +123,7 @@ fn cleanup_old_tokens(conn: &rusqlite::Connection, user_id: &str) {
     }
 }
 
-/// Login with username or phone
+/// Login with username or phone (rejects soft-deleted users)
 pub fn login(conn: &rusqlite::Connection, req: &LoginRequest) -> Result<AuthResponse, String> {
     let input = &req.username;
 
@@ -121,17 +131,17 @@ pub fn login(conn: &rusqlite::Connection, req: &LoginRequest) -> Result<AuthResp
     let is_phone = input.len() == 11 && input.starts_with('1') && input.chars().all(|c| c.is_ascii_digit());
 
     let (user_id, stored_hash): (String, String) = if is_phone {
-        // 手机号登录：SHA-256 哈希匹配（phone 列用 AES-256-GCM 加密，无法直接查）
+        // 手机号登录：SHA-256 哈希匹配
         let phone_hash = encryption::sha256_hash(input);
         conn.query_row(
-            "SELECT id, password_hash FROM users WHERE phone_hash = ?1",
+            "SELECT id, password_hash FROM users WHERE phone_hash = ?1 AND deleted_at IS NULL",
             rusqlite::params![phone_hash],
             |row| Ok((row.get(0)?, row.get(1)?)),
         ).map_err(|_| "Invalid phone or password".to_string())?
     } else {
         // 用户名登录
         conn.query_row(
-            "SELECT id, password_hash FROM users WHERE username = ?1",
+            "SELECT id, password_hash FROM users WHERE username = ?1 AND deleted_at IS NULL",
             rusqlite::params![input],
             |row| Ok((row.get(0)?, row.get(1)?)),
         ).map_err(|_| "Invalid username or password".to_string())?
@@ -163,10 +173,10 @@ pub fn login(conn: &rusqlite::Connection, req: &LoginRequest) -> Result<AuthResp
 }
 
 /// Verify a session token against the database.
-/// Returns `true` if the token exists for the given user.
+/// Returns `true` if the token exists for the given user and the user is not soft-deleted.
 pub fn verify_token(conn: &rusqlite::Connection, user_id: &str, token: &str) -> bool {
     conn.query_row(
-        "SELECT 1 FROM tokens WHERE user_id = ?1 AND token = ?2",
+        "SELECT 1 FROM tokens t JOIN users u ON t.user_id = u.id WHERE t.user_id = ?1 AND t.token = ?2 AND u.deleted_at IS NULL",
         rusqlite::params![user_id, token],
         |_| Ok(true),
     ).unwrap_or(false)
