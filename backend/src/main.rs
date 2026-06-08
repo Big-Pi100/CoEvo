@@ -44,9 +44,9 @@ async fn main() {
         .with_ansi(false)
         .init();
 
-    // 启动时显式输出 K12 数据路径（不受 tracing 影响，一定看得到）
+    // 启动时显式输出 K12 数据路径（日志系统已就绪，通过 tracing 输出）
     let prebuilt = std::env::var("COEVO_K12_DATA_DIR").unwrap_or_else(|_| "data/curriculum/v3".to_string());
-    eprintln!("[K12] data dir: {}", prebuilt);
+    tracing::info!("[K12] data dir: {}", prebuilt);
 
     tracing::info!("CoEvo backend starting, logs: {}/coevo.log.*", log_dir);
 

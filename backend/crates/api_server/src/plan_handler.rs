@@ -187,9 +187,9 @@ pub fn handle_plan_update(
                                                          VALUES (?1, (SELECT user_id FROM conversation_plans WHERE conversation_id = ?2), (SELECT id FROM conversation_plans WHERE conversation_id = ?3), ?4, ?5, ?6)",
                                                         rusqlite::params![progress_id, conversation_id, conversation_id, task_key, status, now_ts],
                                                     ).ok();
-                                                    eprintln!("[CP2 SYNC] INSERTED: task_key='{}' status='{}'", task_key, status);
+                                                    tracing::info!("[CP2 SYNC] INSERTED: task_key='{}' status='{}'", task_key, status);
                                                 } else {
-                                                    eprintln!("[CP2 SYNC] OK: task_key='{}' → status='{}' ({} rows)", task_key, status, affected);
+                                                    tracing::info!("[CP2 SYNC] OK: task_key='{}' → status='{}' ({} rows)", task_key, status, affected);
                                                 }
                                             }
                                         }
@@ -387,7 +387,7 @@ fn apply_plan_mutations(
     let (plan_id, plan_content_str) = match plan_row {
         Some(r) => r,
         None => {
-            eprintln!("[CP2 MUTATE] no plan found in conversation_plans for conv={}", conversation_id);
+            tracing::warn!("[CP2 MUTATE] no plan found for conv={}", conversation_id);
             return None;
         }
     };
@@ -395,7 +395,7 @@ fn apply_plan_mutations(
     let mut plan: serde_json::Value = match serde_json::from_str(&plan_content_str) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("[CP2 MUTATE] JSON parse failed for conv={}: {}", conversation_id, e);
+            tracing::error!("[CP2 MUTATE] JSON parse failed for conv={}: {}", conversation_id, e);
             return None;
         }
     };

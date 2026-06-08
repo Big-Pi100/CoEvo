@@ -129,9 +129,7 @@ fn parse_filename(fname: &str) -> Option<(String, String)> {
 
 pub fn init() -> Result<(), String> {
     let base = Paths::prebuilt();
-    eprintln!("[K12] init: base={}", base.display());
-    eprintln!("[K12] cards_dir={}", base.join("cards").display());
-    tracing::info!("K12 loader: scanning {}", base.display());
+    tracing::info!("[K12] init: base={}, cards_dir={}", base.display(), base.join("cards").display());
     let cards_dir = base.join("cards");
 
     let mut plan_index: HashMap<String, PlanData> = HashMap::new();
@@ -165,7 +163,6 @@ pub fn init() -> Result<(), String> {
             let plan_file: PlanFile = match load_json(&path) {
                 Ok(f) => f,
                 Err(e) => {
-                    eprintln!("[K12] SKIP plan {}: {}", fname, e);
                     tracing::warn!("K12: skip plan {}: {}", fname, e);
                     continue;
                 }
@@ -184,11 +181,9 @@ pub fn init() -> Result<(), String> {
             }
     }
     if plan_index.is_empty() {
-        eprintln!("[K12] WARN: no plan files found in {:?}", plan_dirs.iter().map(|d| d.display()).collect::<Vec<_>>());
-        tracing::warn!("K12: no plan files found");
+        tracing::warn!("K12: no plan files found in {:?}", plan_dirs);
     } else {
-        eprintln!("[K12] loaded {} plans from {}", plan_index.len(), plan_source_dirs.join(", "));
-        tracing::info!("K12: loaded {} plans", plan_index.len());
+        tracing::info!("K12: loaded {} plans from {}", plan_index.len(), plan_source_dirs.join(", "));
     }
 
     // 2. 扫描卡片文件
@@ -207,17 +202,16 @@ pub fn init() -> Result<(), String> {
                 let card_file: CardFile = match load_json(&path) {
                     Ok(f) => f,
                     Err(e) => {
-                        eprintln!("[K12] SKIP cards {}: {}", fname, e);
-                        tracing::warn!("K12: skip cards {}: {}", fname, e);
-                        continue;
-                    }
-                };
-                let key = format!("{}_{}", subject, level);
-                eprintln!("[K12] loaded {} → key={} ({} cards)", fname, key, card_file.cards.len());
-                card_index.insert(key, card_file.cards);
-            }
+                    tracing::warn!("K12: skip cards {}: {}", fname, e);
+                    continue;
+                }
+            };
+            let key = format!("{}_{}", subject, level);
+            tracing::info!("K12: loaded {} → key={} ({} cards)", fname, key, card_file.cards.len());
+            card_index.insert(key, card_file.cards);
         }
-        eprintln!("[K12] loaded {} card sets from {}", card_index.len(), cards_dir.display());
+    }
+    tracing::info!("K12: loaded {} card sets from {}", card_index.len(), cards_dir.display());
     } else {
         tracing::warn!("K12: cards dir not found: {}", cards_dir.display());
     }
@@ -238,7 +232,7 @@ pub fn get_plan_by_key(subject_key: &str, grade: &str) -> Option<PlanData> {
     let plan = match get().plan_index.get(subject_key) {
         Some(p) => p,
         None => {
-            eprintln!("[K12] get_plan_by_key: MISS key={}", subject_key);
+            tracing::warn!("K12: plan not found: key={}", subject_key);
             return None;
         }
     };
@@ -255,10 +249,9 @@ pub fn get_plan_by_key(subject_key: &str, grade: &str) -> Option<PlanData> {
         ..plan.clone()
     };
     if result.stages.is_empty() {
-        eprintln!("[K12] WARN: {} no stages match grade_band '{}' (plan has {} stages)", subject_key, grade_for_filter, plan.stages.len());
-        tracing::warn!("K12: no stages match grade_band {} for {}", grade, subject_key);
+        tracing::warn!("K12: no stages match grade_band {} for {} (plan has {} stages)", grade_for_filter, subject_key, plan.stages.len());
     }
-    eprintln!("[K12] get_plan_by_key: {} -> {} stages (filtered for grade={})", subject_key, result.stages.len(), grade);
+    tracing::info!("K12: {} -> {} stages for grade={}", subject_key, result.stages.len(), grade);
     Some(result)
 }
 
@@ -271,18 +264,17 @@ pub fn get_cards_by_key(subject_key: &str, grade: &str) -> Option<&'static Vec<C
     // 先试 "{subject}_{level}"（旧拆分格式）
     let key = format!("{}_{}", subject_key, level);
     if let Some(cards) = get().card_index.get(&key) {
-        eprintln!("[K12] get_cards_by_key: {} -> {} cards (key={})", subject_key, cards.len(), key);
+        tracing::info!("K12: {} -> {} cards (key={})", subject_key, cards.len(), key);
         return Some(cards);
     }
     // 回退到 "{subject}_all"（合并后的单文件格式）
     let fallback_key = format!("{}_{}", subject_key, "all");
     if let Some(cards) = get().card_index.get(&fallback_key) {
-        eprintln!("[K12] get_cards_by_key: {} -> {} cards (key={}, fallback from {})",
+        tracing::info!("K12: {} -> {} cards (key={}, fallback from {})",
             subject_key, cards.len(), fallback_key, key);
         return Some(cards);
     }
-    eprintln!("[K12] get_cards_by_key: MISS key={} (subject={})", key, subject_key);
-    tracing::warn!("K12: cards not found: {} (key={})", subject_key, key);
+    tracing::warn!("K12: cards not found: key={} (subject={})", key, subject_key);
     None
 }
 

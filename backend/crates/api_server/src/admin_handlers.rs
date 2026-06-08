@@ -177,7 +177,7 @@ pub async fn admin_users_handler(headers: HeaderMap, Query(query): Query<AdminUs
     } else { (String::new(), "ORDER BY u.created_at DESC".to_string()) };
 
     let sql = format!("SELECT u.id,u.username,u.display_name,u.real_name,u.phone,u.created_at,u.streak_days,u.deleted_at FROM users u {} {} {} LIMIT ?1 OFFSET ?2", join_clause, where_clause, order_clause);
-    eprintln!("SQL: {}", sql);
+    tracing::debug!("admin_users SQL: {}", sql);
     let mut stmt = c.prepare(&sql).unwrap();
     let users: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![limit, offset], |row| {
         let uid: String = row.get(0)?;
