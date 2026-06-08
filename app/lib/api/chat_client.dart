@@ -467,6 +467,23 @@ class ChatClient {
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }
 
+  /// 获取当前 task 的课文卡片（阅读模式）
+  Future<Map<String, dynamic>?> getCurrentReadingCard(String convId) async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/k12/reading/$convId/current-card').replace(queryParameters: {
+        'user_id': userId,
+      });
+      final resp = await http.get(uri, headers: _authHeaders)
+          .timeout(ApiConfig.requestTimeout);
+      if (resp.statusCode != 200) return null;
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      return data['current_card'] as Map<String, dynamic>?;
+    } catch (e) {
+      debugPrint('getCurrentReadingCard error: $e');
+      return null;
+    }
+  }
+
   // ── Health ──
 
   Future<bool> healthCheck() async {

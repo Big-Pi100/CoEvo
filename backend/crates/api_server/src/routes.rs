@@ -1312,8 +1312,8 @@ async fn profile_handler(
         let mastered = mastered_by_level.get(&s.level).copied().unwrap_or(0);
         serde_json::json!({
             "level": s.level,
-            "total": s.total,
-            "mastered": mastered,
+            "max_count": s.total,
+            "count": mastered,
         })
     }).collect();
 
@@ -2396,7 +2396,7 @@ async fn k12_progress_handler(
         ).unwrap_or(0);
 
         let mastered_cards: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cards WHERE plan_id = ?1 AND (SELECT cm.status FROM card_memory cm WHERE cm.card_id = id) = 'archived'",
+            "SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id = cm.card_id WHERE c.plan_id = ?1 AND cm.state = 2 AND cm.reps >= 3",
             rusqlite::params![plan_id],
             |row| row.get(0),
         ).unwrap_or(0);

@@ -509,8 +509,11 @@ pub async fn handle_ws(mut ws: WebSocket) {
                             |_| Ok(true),
                         ).unwrap_or(false)
                     };
-                    if !has_plan {
-                        tracing::info!("CP1 skipped for turn {}: no conversation_plan exists yet", cold_turn);
+                    // 已预制词典的科目（english/chinese）跳过 CP1，避免重复提取和降质
+                    let has_prebuilt_vocab = ed == "english" || ed == "chinese";
+                    if !has_plan || has_prebuilt_vocab {
+                        let skip_reason = if !has_plan { "no plan".to_string() } else { format!("prebuilt vocab subject={}", ed) };
+                        tracing::info!("CP1 skipped for turn {}: {}", cold_turn, skip_reason);
                         let _ = cold_tx.send((cold_turn, vec![])).await;
                         return;
                     }

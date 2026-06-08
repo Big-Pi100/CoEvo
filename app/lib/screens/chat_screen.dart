@@ -10,6 +10,7 @@ import '../widgets/skeleton.dart';
 import 'chat/chat_concept_dialog.dart';
 import 'chat/chat_input.dart';
 import 'chat/chat_plan_panel.dart';
+import 'chat/chat_reading_passage.dart';
 import 'chat/chat_message_bubble.dart';
 import '../theme/app_theme.dart';
 
@@ -733,6 +734,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         children: [
           // 学习计划面板（持久展示，不被对话推没）
           if (_activePlan != null) ChatPlanPanel(plan: _activePlan!),
+          // 课文阅读面板（reading-first 模式，自动隐藏不可用）
+          if (_client != null && _convId.isNotEmpty)
+            ChatReadingPassage(client: _client!, conversationId: _convId),
           // 订阅状态横幅
           _buildSubscriptionBanner(),
           // 对话已删除横幅
