@@ -73,7 +73,7 @@ backend/                    # Rust 后端 (axum)
 │   ├── quiz_generate.md
 │   ├── quiz_judge.md
 │   └── grill_assessment.md
-├── data/coevo.db           # SQLite 数据库 (运行后自动创建)
+├── data/coevo.db           # SQLite 数据库 (运行后自动创建，路径: backend/data/coevo.db)
 └── crates/
     ├── api_server/         # HTTP + WS 路由 + 鉴权中间件 + 计划管理
     │   ├── auth.rs              # 注册/登录/Token验证

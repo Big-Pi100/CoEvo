@@ -33,14 +33,14 @@ pub struct DueCard {
     pub conversation_id: Option<String>,
 }
 
-/// N5: 查询到期卡片
+/// N5: 查询到期卡片（按 task 级过滤，仅返回 in_progress/done 任务的卡片）
 pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64, offset: i64, conv_id: Option<&str>) -> (Vec<DueCard>, i64) {
     let now = Utc::now().timestamp();
 
     let (where_clause, total_where): (String, String) = if let Some(cid) = conv_id {
         (
-            format!("c.user_id = ?1 AND c.conversation_id = '{}' AND cm.status = 'active' AND cm.due <= ?2", cid.replace('\'', "''")),
-            format!("c.user_id = ?1 AND c.conversation_id = '{}' AND cm.status = 'active' AND cm.due <= ?2", cid.replace('\'', "''")),
+            format!("c.user_id = ?1 AND c.conversation_id = '{}' AND cm.status = 'active' AND cm.due <= ?2 AND upp.user_id = c.user_id AND upp.status IN ('in_progress', 'done')", cid.replace('\'', "''")),
+            format!("c.user_id = ?1 AND c.conversation_id = '{}' AND cm.status = 'active' AND cm.due <= ?2 AND upp.user_id = c.user_id AND upp.status IN ('in_progress', 'done')", cid.replace('\'', "''")),
         )
     } else {
         (
@@ -56,6 +56,7 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64, offset: i64, 
                 c.conversation_id
          FROM cards c
          JOIN card_memory cm ON c.id = cm.card_id
+         LEFT JOIN user_plan_progress upp ON c.plan_id = upp.plan_id AND c.task_key = upp.task_key
          WHERE {}
          ORDER BY CASE WHEN cm.state = 0 THEN 1 ELSE 0 END, cm.due ASC
          LIMIT ?3 OFFSET ?4",
@@ -88,6 +89,7 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64, offset: i64, 
     let total_sql = format!(
         "SELECT COUNT(*) FROM cards c
          JOIN card_memory cm ON c.id = cm.card_id
+         LEFT JOIN user_plan_progress upp ON c.plan_id = upp.plan_id AND c.task_key = upp.task_key
          WHERE {}",
         total_where
     );

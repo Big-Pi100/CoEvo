@@ -109,13 +109,20 @@ fn grade_to_level(grade: &str) -> &str {
     }
 }
 
-/// 从文件名推断 subject + level："{subject}_{level}.json"
+/// 从文件名推断 subject + level："{subject}_{level}.json" 或 "{subject}.json"
 fn parse_filename(fname: &str) -> Option<(String, String)> {
     let stem = fname.strip_suffix(".json")?;
-    let underscore = stem.rfind('_')?;
-    let subject = stem[..underscore].to_string();
-    let level = stem[underscore + 1..].to_string();
-    Some((subject, level))
+    match stem.rfind('_') {
+        Some(pos) => {
+            let subject = stem[..pos].to_string();
+            let level = stem[pos + 1..].to_string();
+            Some((subject, level))
+        }
+        None => {
+            // 合并后的单文件: "{subject}.json" → key="{subject}_all"
+            Some((stem.to_string(), "all".to_string()))
+        }
+    }
 }
 
 // ── 初始化 ──
@@ -139,7 +146,9 @@ pub fn init() -> Result<(), String> {
         }
         dirs
     };
+    let mut plan_source_dirs = Vec::new();
     for scan_dir in &plan_dirs {
+        let mut count_before = plan_index.len();
         if let Ok(dir) = std::fs::read_dir(scan_dir) {
             for entry in dir.flatten() {
             let path = entry.path();
@@ -170,13 +179,16 @@ pub fn init() -> Result<(), String> {
             plan_index.insert(subject.clone(), plan);
         }
     }
+            if plan_index.len() > count_before {
+                plan_source_dirs.push(scan_dir.display().to_string());
+            }
     }
     if plan_index.is_empty() {
-        eprintln!("[K12] WARN: no plan files found in {}", base.display());
-        tracing::warn!("K12: no plan files found in {}", base.display());
+        eprintln!("[K12] WARN: no plan files found in {:?}", plan_dirs.iter().map(|d| d.display()).collect::<Vec<_>>());
+        tracing::warn!("K12: no plan files found");
     } else {
-        eprintln!("[K12] loaded {} plans from {}", plan_index.len(), base.display());
-        tracing::info!("K12: loaded {} plans from {}", plan_index.len(), base.display());
+        eprintln!("[K12] loaded {} plans from {}", plan_index.len(), plan_source_dirs.join(", "));
+        tracing::info!("K12: loaded {} plans", plan_index.len());
     }
 
     // 2. 扫描卡片文件
@@ -256,15 +268,22 @@ pub fn get_cards_by_key(subject_key: &str, grade: &str) -> Option<&'static Vec<C
         "g10" | "g10-12" | "g11-12" | "senior" => "senior",
         _ => "compulsory",
     };
+    // 先试 "{subject}_{level}"（旧拆分格式）
     let key = format!("{}_{}", subject_key, level);
-    let result = get().card_index.get(&key);
-    if let Some(cards) = result {
+    if let Some(cards) = get().card_index.get(&key) {
         eprintln!("[K12] get_cards_by_key: {} -> {} cards (key={})", subject_key, cards.len(), key);
-    } else {
-        eprintln!("[K12] get_cards_by_key: MISS key={} (subject={})", key, subject_key);
-        tracing::warn!("K12: cards not found: {} (key={})", subject_key, key);
+        return Some(cards);
     }
-    result
+    // 回退到 "{subject}_all"（合并后的单文件格式）
+    let fallback_key = format!("{}_{}", subject_key, "all");
+    if let Some(cards) = get().card_index.get(&fallback_key) {
+        eprintln!("[K12] get_cards_by_key: {} -> {} cards (key={}, fallback from {})",
+            subject_key, cards.len(), fallback_key, key);
+        return Some(cards);
+    }
+    eprintln!("[K12] get_cards_by_key: MISS key={} (subject={})", key, subject_key);
+    tracing::warn!("K12: cards not found: {} (key={})", subject_key, key);
+    None
 }
 
 /// 通过前端 subject 中文名 + grade_band 获取 Plan（已按年级过滤）

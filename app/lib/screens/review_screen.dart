@@ -51,6 +51,18 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
   bool _isJudging = false;
   bool _hasMore = false;
 
+  // 后台评判状态（按 card.id 索引）
+  final Set<String> _judgingCardIds = {};          // 正在评判中
+  final Map<String, String> _judgedResults = {};    // card.id → 'pass' | 'fail'
+  final Map<String, List<JudgeResult>> _judgeDetails = {};  // card.id → 详细每题结果
+
+  /// 清除所有已缓存的评判状态
+  void _clearJudgedStates() {
+    _judgingCardIds.clear();
+    _judgedResults.clear();
+    _judgeDetails.clear();
+  }
+
   // 订阅状态
   bool _subscriptionRequired = false;
   bool _subscriptionExpired = false;
@@ -225,6 +237,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
         _isLoading = false;
         _hasLoadedOnce = true;
         _activeCardIndex = _cards.isNotEmpty ? 0 : -1;
+        // 清除旧评判状态（卡片 ID 变化）
+        _clearJudgedStates();
       });
     } catch (e) {
       if (mounted) setState(() { _isLoading = false; _loadError = '加载失败，请检查网络连接'; });
@@ -251,6 +265,12 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
   }
 
   void _resetInlineReview() {
+    // 清除当前卡片的缓存评判结果
+    if (_activeCardIndex >= 0 && _activeCardIndex < _cards.length) {
+      final activeId = _cards[_activeCardIndex].id;
+      _judgedResults.remove(activeId);
+      _judgeDetails.remove(activeId);
+    }
     setState(() {
       _isFlipped = false;
       _isVerified = false;
@@ -400,37 +420,94 @@ Row(
   Future<void> _judgeInlineAnswers() async {
     if (_client == null || _cards.isEmpty || _activeCardIndex < 0) return;
     if (_subscriptionRequired || _subscriptionExpired) return;
-    setState(() => _isJudging = true);
     final card = _cards[_activeCardIndex];
+    final cardId = card.id;
+    // 快照当前问题和答案（后续卡片切换不影响）
+    final snapshotQuestions = List<Map<String, String>>.generate(_aiQuestions.length, (i) => {
+      'question': _aiQuestions[i].question,
+      'expected_answer': _aiQuestions[i].expectedAnswer,
+      'user_answer': i < _aiAnswers.length ? _aiAnswers[i] : '',
+    });
+    setState(() {
+      _isJudging = true;
+      _judgingCardIds.add(cardId);
+    });
     try {
-      final questions = List.generate(_aiQuestions.length, (i) => {
-        'question': _aiQuestions[i].question,
-        'expected_answer': _aiQuestions[i].expectedAnswer,
-        'user_answer': i < _aiAnswers.length ? _aiAnswers[i] : '',
-      });
-      final resp = await _client!.judgeAnswers(cardId: card.id, questions: questions);
+      final resp = await _client!.judgeAnswers(cardId: cardId, questions: snapshotQuestions);
       final results = (resp['results'] as List<dynamic>?)
           ?.map((e) => JudgeResult.fromJson(e as Map<String, dynamic>))
           .toList() ?? [];
       final correct = resp['total_correct'] as int? ?? 0;
-      _aiResults = results;
-      _verificationResult = correct >= 2 ? 'pass' : 'fail';
-      setState(() {
+      final result = correct >= 3 ? 'pass' : 'fail';  // 三题全对才通过
+      if (!mounted) return;
+      // 存储结果
+      _judgingCardIds.remove(cardId);
+      _judgedResults[cardId] = result;
+      _judgeDetails[cardId] = results;
+      // 如果当前展示的仍是这张卡片，同步到活动变量
+      if (_activeCardIndex >= 0 && _activeCardIndex < _cards.length && _cards[_activeCardIndex].id == cardId) {
+        _aiResults = results;
+        _verificationResult = result;
         _isVerified = true;
         _isVerifying = false;
         _isJudging = false;
-      });
-      // 展示 5 秒后自动提交（让用户看清结果）
-      Future.delayed(const Duration(milliseconds: 5000), () {
-        if (mounted) _submitInlineReview(_activeCardIndex);
-      });
+      } else {
+        // 卡片已关闭，只清除判定状态
+        _isJudging = false;
+        _isVerifying = false;
+      }
+      setState(() {});
+      // 后台提交
+      _submitInlineReviewByCardId(cardId, result: result, judgeResults: results);
     } catch (e) {
-      if (mounted) setState(() => _isJudging = false);
       if (mounted) {
+        _judgingCardIds.remove(cardId);
+        _isJudging = false;
+        setState(() {});
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('判断失败: $e')),
+          SnackBar(content: Text('评判失败: $e')),
         );
       }
+    }
+  }
+
+  /// 通过 card.id 后台提交 + 从本地列表移除（不全局刷新）
+  Future<void> _submitInlineReviewByCardId(String cardId, {String? result, List<JudgeResult>? judgeResults}) async {
+    if (_client == null) return;
+    final finalResult = result ?? _judgedResults[cardId] ?? 'pass';
+    final finalJudgeResults = judgeResults ?? <JudgeResult>[];
+    final rating = finalResult == 'pass' ? 3 : 1;
+    String? detailsJson;
+    if (finalJudgeResults.isNotEmpty) {
+      detailsJson = jsonEncode(List.generate(finalJudgeResults.length, (i) {
+        return {
+          'question': '',
+          'correct': finalJudgeResults[i].correct,
+          'feedback': finalJudgeResults[i].feedback,
+        };
+      }));
+    }
+    try {
+      await _client!.submitReview(
+        cardId: cardId,
+        rating: rating,
+        verificationType: 'ai_dialogue',
+        verificationResult: finalResult,
+        detailsJson: detailsJson,
+      );
+      if (!mounted) return;
+      if (finalResult == 'pass') {
+        setState(() {
+          _reviewedCount++;
+          _cards.removeWhere((c) => c.id == cardId);
+          if (_activeCardIndex >= _cards.length) _activeCardIndex = _cards.length - 1;
+        });
+      } else {
+        // 未通过：卡片留在列表中不计数
+        if (mounted) setState(() {});
+      }
+    } catch (e) {
+      debugPrint('submitReview error: $e');
     }
   }
 
@@ -739,6 +816,28 @@ Row(
     if (t.startsWith('{') && t.endsWith('}')) {
       try {
         final parsed = jsonDecode(t) as Map<String, dynamic>;
+        // 中文词典格式
+        if (parsed.containsKey('character') && parsed.containsKey('pinyin')) {
+          final defs = parsed['definitions'] as List<dynamic>? ?? [];
+          if (defs.isNotEmpty) {
+            final first = defs[0] as Map<String, dynamic>;
+            return first['meaning'] as String? ?? parsed['character'] as String;
+          }
+          return parsed['character'] as String? ?? back;
+        }
+        // 英语词典格式
+        if (parsed.containsKey('word') && parsed.containsKey('definitions')) {
+          final ch = parsed['chinese'] as String? ?? '';
+          if (ch.isNotEmpty) return ch;
+          final defs = parsed['definitions'] as List<dynamic>? ?? [];
+          if (defs.isNotEmpty) {
+            final first = defs[0] as Map<String, dynamic>;
+            final meaning = first['meaning'] as String? ?? '';
+            final dChinese = first['chinese'] as String? ?? '';
+            return dChinese.isNotEmpty ? dChinese : meaning;
+          }
+          return parsed['word'] as String? ?? back;
+        }
         return (parsed['full_text'] as String?)?.replaceAll('\n', ' ') ?? back;
       } catch (_) {}
     }
@@ -858,6 +957,40 @@ Row(
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // 评判中标签
+                    if (_judgingCardIds.contains(card.id))
+                      Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: Chip(
+                          label: Text('评判中', style: _tt.labelSmall!.copyWith(color: Colors.orange.shade800)),
+                          backgroundColor: Colors.orange.withAlpha(40),
+                          side: BorderSide(color: Colors.orange.shade300),
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    // 评判结果标签（同色同字重，与旧版一致）
+                    if (_judgedResults.containsKey(card.id))
+                      Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: Chip(
+                          label: Text(
+                            _judgedResults[card.id] == 'pass' ? '✓ 通过' : '✗ 未通过',
+                            style: _tt.labelSmall!.copyWith(
+                              color: _judgedResults[card.id] == 'pass' ? _cs.primary : _cs.error,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          backgroundColor: _judgedResults[card.id] == 'pass'
+                              ? _cs.primaryContainer : _cs.errorContainer,
+                          side: BorderSide(
+                            color: _judgedResults[card.id] == 'pass'
+                                ? _cs.primaryFixed : _cs.errorContainer,
+                          ),
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
                     Chip(
                       label: Text(stateLabels[state], style: _tt.labelSmall!),
                       backgroundColor: stateColors[state].withAlpha(20),
@@ -1004,9 +1137,37 @@ Row(
               child: TextButton.icon(
                 icon: const Icon(Icons.volume_up, size: 18),
                 label: Text(_isFlipped ? '朗读释义' : '朗读概念'),
-                onPressed: () => tts.speak(
-                  (_isFlipped ? card.back : card.front).replaceAll('**', ''),
-                ),
+                onPressed: () {
+                  String ttsText;
+                  if (_isFlipped) {
+                    final back = card.back;
+                    final trimmed = back.trim();
+                    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                      try {
+                        final parsed = jsonDecode(trimmed) as Map<String, dynamic>;
+                        // 词典格式：朗读单词 + 中文释义
+                        if (parsed.containsKey('word')) {
+                          final w = parsed['word'] as String? ?? '';
+                          final c = parsed['chinese'] as String? ?? '';
+                          ttsText = '$w. $c';
+                        } else if (parsed.containsKey('character')) {
+                          final ch = parsed['character'] as String? ?? '';
+                          final py = parsed['pinyin'] as String? ?? '';
+                          ttsText = '$ch $py';
+                        } else {
+                          ttsText = back.replaceAll('**', '');
+                        }
+                      } catch (_) {
+                        ttsText = back.replaceAll('**', '');
+                      }
+                    } else {
+                      ttsText = back.replaceAll('**', '');
+                    }
+                  } else {
+                    ttsText = card.front;
+                  }
+                  tts.speak(ttsText);
+                },
               ),
             );
           },
@@ -1099,10 +1260,10 @@ Center(
           ),
         ],
 
-        // AI 结果（自动提交前显示 1.5s）
-        if (_aiResults.isNotEmpty && !_isJudging) ...[
+        // AI 结果（或从缓存中读取已评判结果）
+        if (!_isJudging && (_aiResults.isNotEmpty || (_judgeDetails[card.id]?.isNotEmpty ?? false))) ...[
           const SizedBox(height: AppTheme.spacingSm),
-          ..._aiResults.map((r) => Padding(
+          ...(_aiResults.isNotEmpty ? _aiResults : _judgeDetails[card.id]!).map((r) => Padding(
             padding: const EdgeInsets.only(bottom: AppTheme.spacingXs),
             child: Row(
               children: [
@@ -1114,20 +1275,19 @@ Center(
             ),
           )),
         ],
-
-        // 验证结果（5 秒提示）
-        if (_isVerified)
+        // 验证结果
+        if (!_isJudging && (_isVerified || _judgedResults.containsKey(card.id)))
           Padding(
             padding: const EdgeInsets.only(top: AppTheme.spacingMd),
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 10),
               decoration: BoxDecoration(
-                color: _verificationResult == 'pass'
+                color: (_isVerified ? _verificationResult : _judgedResults[card.id]) == 'pass'
                     ? _cs.primaryContainer : _cs.errorContainer,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: _verificationResult == 'pass'
+                  color: (_isVerified ? _verificationResult : _judgedResults[card.id]) == 'pass'
                       ? _cs.primaryFixed : _cs.errorContainer,
                 ),
               ),
@@ -1135,20 +1295,17 @@ Center(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
-                    _verificationResult == 'pass'
-                        ? Icons.check_circle : Icons.cancel,
-                    color: _verificationResult == 'pass'
-                        ? _cs.primary : _cs.error,
+                    (_isVerified ? _verificationResult : _judgedResults[card.id]) == 'pass' ? Icons.check_circle : Icons.cancel,
+                    color: (_isVerified ? _verificationResult : _judgedResults[card.id]) == 'pass' ? _cs.primary : _cs.error,
                     size: 22,
                   ),
                   const SizedBox(width: AppTheme.spacingSm),
                   Text(
-                    _verificationResult == 'pass' ? '验证通过 ✅' : '未通过 ❌',
+                    (_isVerified ? _verificationResult : _judgedResults[card.id]) == 'pass' ? '验证通过' : '未通过',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color: _verificationResult == 'pass'
-                          ? _cs.primary : _cs.error,
+                      color: (_isVerified ? _verificationResult : _judgedResults[card.id]) == 'pass' ? _cs.primary : _cs.error,
                     ),
                   ),
                 ],

@@ -141,8 +141,18 @@ class RichContentBuilder {
     );
   }
 
-  /// 渲染 JSON 格式的卡片 back（课文/诗词/古典文学等结构化数据）
+  /// 渲染 JSON 格式的卡片 back（课文/诗词/古典文学/词典等结构化数据）
   Widget _buildJsonBack(Map<String, dynamic> data) {
+    // ── 英语词典查询条 ──
+    if (data.containsKey('word') && data.containsKey('definitions')) {
+      return _buildDictionaryCard(data);
+    }
+
+    // ── 中文词典查询条 ──
+    if (data.containsKey('character') && data.containsKey('pinyin')) {
+      return _buildChineseDictionaryCard(data);
+    }
+
     final segments = <Widget>[];
 
     // 正文（full_text）
@@ -200,6 +210,254 @@ class RichContentBuilder {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: segments,
+    );
+  }
+
+  /// 渲染中文词典查询条
+  Widget _buildChineseDictionaryCard(Map<String, dynamic> data) {
+    final character = data['character'] as String? ?? '';
+    final pinyin = data['pinyin'] as String? ?? '';
+    final radical = data['radical'] as String? ?? '';
+    final strokes = data['strokes'] as String? ?? '';
+    final definitions = data['definitions'] as List<dynamic>? ?? [];
+    final commonWords = data['common_words'] as String? ?? '';
+
+    final children = <Widget>[];
+
+    // 标题行：字 + 拼音 + 部首 + 笔画
+    children.add(Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(character, style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: textColor)),
+          if (pinyin.isNotEmpty) ...[
+            const SizedBox(width: 12),
+            Text(pinyin, style: TextStyle(fontSize: 16, color: textColor.withAlpha(150))),
+          ],
+          if (radical.isNotEmpty) ...[
+            const SizedBox(width: 10),
+            _buildTag('部首 $radical'),
+          ],
+          if (strokes.isNotEmpty) ...[
+            const SizedBox(width: 6),
+            _buildTag(strokes),
+          ],
+        ],
+      ),
+    ));
+
+    // 分隔线
+    children.add(Divider(height: 1, color: textColor.withAlpha(20)));
+
+    // 每条释义
+    for (int i = 0; i < definitions.length; i++) {
+      final def = definitions[i] as Map<String, dynamic>;
+      final dPos = def['pos'] as String? ?? '';
+      final meaning = def['meaning'] as String? ?? '';
+      final example = def['example'] as String? ?? '';
+
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${i + 1}. ', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textColor)),
+                if (dPos.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(right: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: textColor.withAlpha(15),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: Text(dPos, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: textColor.withAlpha(160))),
+                  ),
+                Expanded(
+                  child: Text(meaning, style: TextStyle(fontSize: 14, color: textColor)),
+                ),
+              ],
+            ),
+            if (example.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(left: 20, top: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('➤ ', style: TextStyle(fontSize: 13, color: textColor.withAlpha(100))),
+                    Expanded(
+                      child: Text(example, style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: textColor.withAlpha(160))),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ));
+    }
+
+    // 常用词
+    if (commonWords.isNotEmpty) {
+      children.add(Divider(height: 1, color: textColor.withAlpha(20)));
+      children.add(Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text.rich(
+          TextSpan(
+            text: '常用词：', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: textColor.withAlpha(180)),
+            children: [TextSpan(text: commonWords, style: TextStyle(fontWeight: FontWeight.normal, color: textColor))],
+          ),
+        ),
+      ));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: children,
+    );
+  }
+
+  /// 小型标签
+  Widget _buildTag(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: textColor.withAlpha(20),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(text, style: TextStyle(fontSize: 11, color: textColor.withAlpha(180))),
+    );
+  }
+
+  /// 渲染英语词典查询条
+  Widget _buildDictionaryCard(Map<String, dynamic> data) {
+    final word = data['word'] as String? ?? '';
+    final phonetic = data['phonetic'] as String? ?? '';
+    final pos = data['pos'] as String? ?? '';
+    final definitions = data['definitions'] as List<dynamic>? ?? [];
+    final collocations = data['collocations'] as String? ?? '';
+    final chinese = data['chinese'] as String? ?? '';
+
+    final children = <Widget>[];
+
+    // 标题行：词 + 音标 + 词性
+    children.add(Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(word, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: textColor)),
+          if (phonetic.isNotEmpty) ...[
+            const SizedBox(width: 10),
+            Text(phonetic, style: TextStyle(fontSize: 14, color: textColor.withAlpha(150))),
+          ],
+          if (pos.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: textColor.withAlpha(20),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(pos, style: TextStyle(fontSize: 11, color: textColor.withAlpha(180))),
+            ),
+          ],
+        ],
+      ),
+    ));
+
+    // 中文摘要
+    if (chinese.isNotEmpty) {
+      children.add(Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Text(chinese, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: textColor.withAlpha(200))),
+      ));
+    }
+
+    // 分隔线
+    children.add(Divider(height: 1, color: textColor.withAlpha(20)));
+
+    // 每条释义
+    for (int i = 0; i < definitions.length; i++) {
+      final def = definitions[i] as Map<String, dynamic>;
+      final dPos = def['pos'] as String? ?? '';
+      final meaning = def['meaning'] as String? ?? '';
+      final dChinese = def['chinese'] as String? ?? '';
+      final example = def['example'] as String? ?? '';
+
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 释义行：序号 + POS标签 + 英文释义 + 中文
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${i + 1}. ', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textColor)),
+                if (dPos.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(right: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: textColor.withAlpha(15),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: Text(dPos, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: textColor.withAlpha(160))),
+                  ),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(text: meaning, style: TextStyle(fontSize: 14, color: textColor)),
+                        if (dChinese.isNotEmpty)
+                          TextSpan(text: ' （$dChinese）', style: TextStyle(fontSize: 13, color: textColor.withAlpha(140))),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            // 例句
+            if (example.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(left: 20, top: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('➤ ', style: TextStyle(fontSize: 13, color: textColor.withAlpha(100))),
+                    Expanded(
+                      child: Text(example, style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: textColor.withAlpha(160))),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ));
+    }
+
+    // 搭配
+    if (collocations.isNotEmpty) {
+      children.add(Divider(height: 1, color: textColor.withAlpha(20)));
+      children.add(Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text.rich(
+          TextSpan(
+            text: '搭配：', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: textColor.withAlpha(180)),
+            children: [TextSpan(text: collocations, style: TextStyle(fontWeight: FontWeight.normal, color: textColor))],
+          ),
+        ),
+      ));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: children,
     );
   }
 
