@@ -39,9 +39,9 @@ class TtsService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     _speechRate = prefs.getDouble('tts_speech_rate') ?? 1.0;
     _enabled = prefs.getBool('tts_enabled') ?? true;
-    _loadVoices();
-    // 异步同步后端偏好（不阻塞 UI）
-    _syncFromBackend();
+    // 先同步加载本地音色（同步等待 getVoices），再同步后端（不覆盖本地）
+    await _loadVoices();
+    _syncFromBackend(); // 后端偏好仅补充，不覆盖本地已恢复的音色
   }
 
   /// 从后端同步偏好数据
@@ -73,20 +73,22 @@ class TtsService extends ChangeNotifier {
       }
     }
 
-    // 音色（best-effort 匹配）
-    if (remote.containsKey('tts_voice_name') && remote.containsKey('tts_voice_locale')) {
+    // 音色（best-effort 匹配，仅当后端有有效值且本地尚未恢复时更新）
+    if (_selectedVoice == null && remote.containsKey('tts_voice_name') && remote.containsKey('tts_voice_locale')) {
       final savedName = remote['tts_voice_name'];
       final savedLocale = remote['tts_voice_locale'];
-      await prefs.setString('tts_voice_name', savedName ?? '');
-      await prefs.setString('tts_voice_locale', savedLocale ?? '');
-      if (_availableVoices.isNotEmpty && savedName != null && savedLocale != null) {
-        final match = _availableVoices.cast<Map<String, dynamic>?>().firstWhere(
-          (v) => v?['name'] == savedName && v?['locale'] == savedLocale,
-          orElse: () => null,
-        );
-        if (match != null) {
-          _selectedVoice = match;
-          changed = true;
+      if (savedName != null && savedName.isNotEmpty && savedLocale != null && savedLocale.isNotEmpty) {
+        await prefs.setString('tts_voice_name', savedName);
+        await prefs.setString('tts_voice_locale', savedLocale);
+        if (_availableVoices.isNotEmpty) {
+          final match = _availableVoices.cast<Map<String, dynamic>?>().firstWhere(
+            (v) => v?['name'] == savedName && v?['locale'] == savedLocale,
+            orElse: () => null,
+          );
+          if (match != null) {
+            _selectedVoice = match;
+            changed = true;
+          }
         }
       }
     }
@@ -118,14 +120,15 @@ class TtsService extends ChangeNotifier {
           final prefs = await SharedPreferences.getInstance();
           final savedName = prefs.getString('tts_voice_name');
           final savedLocale = prefs.getString('tts_voice_locale');
-          if (savedName != null && savedLocale != null) {
+          if (savedName != null && savedName.isNotEmpty && savedLocale != null && savedLocale.isNotEmpty) {
             // 有保存的音色 → 恢复
             _selectedVoice = _availableVoices.cast<Map<String, dynamic>?>().firstWhere(
               (v) => v?['name'] == savedName && v?['locale'] == savedLocale,
               orElse: () => null,
             );
-          } else {
-            // 无保存音色 → 自动选最佳中文音色（默认场景多为中文学习）
+          }
+          if (_selectedVoice == null) {
+            // 无保存音色或恢复失败 → 自动选最佳中文音色（默认场景多为中文学习）
             _selectedVoice = _pickBestVoice('zh-CN');
             // 同步到本地偏好
             if (_selectedVoice != null) {

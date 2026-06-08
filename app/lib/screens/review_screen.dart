@@ -167,7 +167,17 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
         _tabController.dispose();
         _tabController = TabController(length: totalTabs, vsync: this,
           initialIndex: oldIndex.clamp(0, totalTabs - 1));
+        // 自动加载第一个 tab 的卡片
+        if (_planTabs.isNotEmpty && _selectedConvId == null) {
+          _selectedConvId = _planTabs[0]['conversation_id'] as String? ?? '';
+          _cards = [];
+          _resetInlineReview();
+        }
       });
+      // setState 外异步加载卡片
+      if (_planTabs.isNotEmpty && _selectedConvId != null) {
+        _loadCards();
+      }
     } catch (_) {
       if (mounted) setState(() => _hasActivePlans = false);
     }
@@ -400,6 +410,10 @@ Row(
       });
     } catch (e) {
       if (mounted) {
+        setState(() {
+          _isVerifying = false;
+          _isFlipped = true;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('AI 问答启动失败: $e')),
         );
@@ -463,6 +477,7 @@ Row(
       if (mounted) {
         _judgingCardIds.remove(cardId);
         _isJudging = false;
+        _isVerifying = false;
         setState(() {});
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('评判失败: $e')),
@@ -478,10 +493,12 @@ Row(
     final finalJudgeResults = judgeResults ?? <JudgeResult>[];
     final rating = finalResult == 'pass' ? 3 : 1;
     String? detailsJson;
-    if (finalJudgeResults.isNotEmpty) {
+    if (finalJudgeResults.isNotEmpty && _aiQuestions.isNotEmpty) {
       detailsJson = jsonEncode(List.generate(finalJudgeResults.length, (i) {
         return {
-          'question': '',
+          'question': i < _aiQuestions.length ? _aiQuestions[i].question : '',
+          'expected': i < _aiQuestions.length ? _aiQuestions[i].expectedAnswer : '',
+          'actual': i < _aiAnswers.length ? _aiAnswers[i] : '',
           'correct': finalJudgeResults[i].correct,
           'feedback': finalJudgeResults[i].feedback,
         };
@@ -495,6 +512,8 @@ Row(
         verificationResult: finalResult,
         detailsJson: detailsJson,
       );
+      // 通知成就页刷新
+      ref.read(cardRefreshProvider.notifier).state++;
       if (!mounted) return;
       if (finalResult == 'pass') {
         setState(() {
@@ -538,6 +557,8 @@ Row(
         verificationResult: _verificationResult,
         detailsJson: detailsJson,
       );
+      // 通知成就页刷新
+      ref.read(cardRefreshProvider.notifier).state++;
       setState(() {
         _reviewedCount++;
         _cards.removeWhere((c) => c.id == card.id);

@@ -335,13 +335,62 @@ async fn review_verify_handler(
     if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
         return auth_json(e);
     }
+
+    // ── 注入最近 10 轮考题历史 ──
+    let history_context = {
+        let conn = crate::db_pool::get_conn();
+        let mut context = String::new();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT details_json, verification_result FROM review_log
+             WHERE card_id = ?1 AND details_json IS NOT NULL AND details_json != ''
+             ORDER BY reviewed_at DESC LIMIT 10"
+        ) {
+            if let Ok(rows) = stmt.query_map(rusqlite::params![input.card_id], |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, String>(1)?,
+                ))
+            }) {
+                let logs: Vec<_> = rows.filter_map(|r| r.ok()).collect();
+                if !logs.is_empty() {
+                    context.push_str("\n\n### 近期考题记录（供参考，避免重复出题）\n");
+                    for (log_idx, (details, result)) in logs.iter().enumerate() {
+                        context.push_str(&format!("\n第{}轮（{}）：\n", logs.len() - log_idx, result));
+                        if let Some(d) = details {
+                            if let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(d) {
+                                for (i, q) in parsed.iter().enumerate() {
+                                    let question = q.get("question").and_then(|v| v.as_str()).unwrap_or("");
+                                    let expected = q.get("expected").and_then(|v| v.as_str()).unwrap_or("");
+                                    let actual = q.get("actual").and_then(|v| v.as_str()).unwrap_or("");
+                                    let correct = q.get("correct").and_then(|v| v.as_bool()).unwrap_or(false);
+                            let mark = if correct { "correct" } else { "wrong" };
+                            context.push_str(&format!(
+                                "  Q{}: {} | 预期: {} | 用户答: {} | {}\n",
+                                i + 1, question, expected, actual, mark
+                            ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        context
+    };
+
     let llm_config = crate::llm::get_config();
     let prompt = chat_engine::prompt_loader::get_quiz("general").generate.clone()
         .replace("{front}", &input.front)
         .replace("{back}", &input.back);
+    // 如果有历史记录，注入到 prompt 末尾
+    let full_prompt = if history_context.is_empty() {
+        prompt
+    } else {
+        format!("{}{}", prompt, history_context)
+    };
 
     let mut caller = chat_engine::llm_caller::LlmCaller::new(llm_config.clone());
-    match caller.generate("", &prompt).await {
+    match caller.generate("", &full_prompt).await {
         Ok(text) => {
             // 尝试 JSON 解析
             if let Ok(questions) = serde_json::from_str::<Vec<serde_json::Value>>(&text) {

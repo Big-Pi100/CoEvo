@@ -19,31 +19,45 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
   ColorScheme get _cs => Theme.of(context).colorScheme;
   TextTheme get _tt => Theme.of(context).textTheme;
 
-  Map<String, dynamic>? _data;            // profile data: stats, cefr, achievements
-  Map<String, dynamic>? _activityData;    // heatmap data
-  Map<String, dynamic>? _report;          // learning report (plans + tiers)
+  Map<String, dynamic>? _data;
+  Map<String, dynamic>? _activityData;
+  Map<String, dynamic>? _report;
   List<Map<String, dynamic>> _k12Progress = [];
-  Map<String, dynamic>? _achievementsAll; // Phase 3: achievements-all API response
+  Map<String, dynamic>? _achievementsAll;
   DateTime _calendarMonth = DateTime(DateTime.now().year, DateTime.now().month);
   bool _isLoading = true;
   String? _error;
+  bool _initialLoadDone = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    // 等 auth 就绪后加载数据
+    WidgetsBinding.instance.addPostFrameCallback((_) => _waitForAuthThenLoad());
+    // 监听卡片状态变化信号 → 刷新数据
+    ref.listen(cardRefreshProvider, (prev, next) {
+      if (prev != next && _initialLoadDone && !_isLoading) {
+        _loadWithAuth(ref.read(authProvider));
+      }
+    });
   }
 
-  Future<void> _load() async {
-    final auth = ref.read(authProvider);
-    if (auth.userId == null || auth.token == null) {
-      if (mounted) setState(() => _isLoading = false);
-      return;
+  Future<void> _waitForAuthThenLoad() async {
+    for (int i = 0; i < 50; i++) {
+      final auth = ref.read(authProvider);
+      if (auth.isRestored && auth.userId != null && auth.token != null) {
+        _loadWithAuth(auth);
+        return;
+      }
+      await Future.delayed(const Duration(milliseconds: 100));
     }
+    if (mounted) setState(() { _isLoading = false; _error = '登录状态异常，请重新登录'; });
+  }
 
-    final client = ChatClient(userId: auth.userId!, token: auth.token);
+  Future<void> _loadWithAuth(AuthState auth) async {
+    debugPrint('AchievementsScreen._loadWithAuth: userId=${auth.userId}');
+    final client = ChatClient(userId: auth.userId!, token: auth.token!);
 
-    // Phase 3: 成就详情（独立请求，失败不影响主流程）
     Map<String, dynamic>? achievementsAll;
     try {
       achievementsAll = await client.getAchievementsAll();
@@ -60,7 +74,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
       ]);
       if (mounted) {
         setState(() {
-          _data = results[0] as Map<String, dynamic>?;
+          _data = results[0] as Map<String, dynamic>? ?? <String, dynamic>{};
           _activityData = results[1] as Map<String, dynamic>?;
           _report = results[2] as Map<String, dynamic>?;
           _k12Progress = ((results[3] as Map<String, dynamic>)['progress'] as List<dynamic>?)
@@ -68,10 +82,12 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
           _achievementsAll = achievementsAll;
           _isLoading = false;
           _error = null;
+          _initialLoadDone = true;
         });
       }
     } catch (e) {
-      if (mounted) setState(() { _isLoading = false; _error = '加载失败，请检查网络连接'; });
+      debugPrint('AchievementsScreen._load: Future.wait failed: $e');
+      if (mounted) setState(() { _isLoading = false; _data = <String, dynamic>{}; _error = '加载失败，请检查网络连接'; });
     }
   }
 
@@ -104,7 +120,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
               FilledButton.icon(
                 onPressed: () {
                   setState(() { _isLoading = true; _error = null; });
-                  _load();
+                  _waitForAuthThenLoad();
                 },
                 icon: const Icon(Icons.refresh),
                 label: const Text('重新加载'),
@@ -118,6 +134,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(title: const Text('成就')),
       body: _isLoading
@@ -125,7 +142,10 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
           : _data == null
               ? _buildEmptyOrErrorState()
               : RefreshIndicator(
-                  onRefresh: _load,
+                  onRefresh: () async {
+                    setState(() { _isLoading = true; _error = null; });
+                    _loadWithAuth(ref.read(authProvider));
+                  },
                   child: ListView(
                     padding: const EdgeInsets.all(AppTheme.spacingLg),
                     children: [
