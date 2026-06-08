@@ -25,7 +25,8 @@ async fn main() {
 
     // ── Logging: file-based with daily rotation ──
     // On Android APK, stdout is invisible; logs go to files instead.
-    // Set COEVO_LOG_STDOUT=1 for dev to also see logs on console.
+    // Default level: info. Override via RUST_LOG env var (e.g. RUST_LOG=debug).
+    // Logs are written ONLY to files — not to stdout/stderr.
     let log_dir = std::env::var("COEVO_LOG_DIR").unwrap_or_else(|_| "data/logs".to_string());
     let _ = std::fs::create_dir_all(&log_dir);
     let file_appender = tracing_appender::rolling::daily(&log_dir, "coevo.log");

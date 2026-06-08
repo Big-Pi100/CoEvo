@@ -11,7 +11,6 @@ use std::sync::OnceLock;
 use std::collections::HashMap;
 
 use crate::error::AppError;
-use crate::curriculum_loader;
 use crate::admin_handlers::*;
 
 /// Helper: convert an AppError into a Json error response (for handlers returning Json<Value>)

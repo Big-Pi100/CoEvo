@@ -450,7 +450,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
 
                 // ❄️ ColdPath: 扔到后台 task，不阻塞消息接收
                 let cold_tx = cold_tx.clone();
-                let cold_turn = current_turn;
+                let _cold_turn = current_turn;
                 // 获取 domain 用于概念提取管线路由
                 let conv_id = &chat_req.conversation_id;
                 let (extract_domain, _, extract_plan_ctx) = {

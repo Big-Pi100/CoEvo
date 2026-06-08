@@ -148,7 +148,7 @@ pub fn init() -> Result<(), String> {
     };
     let mut plan_source_dirs = Vec::new();
     for scan_dir in &plan_dirs {
-        let mut count_before = plan_index.len();
+        let count_before = plan_index.len();
         if let Ok(dir) = std::fs::read_dir(scan_dir) {
             for entry in dir.flatten() {
             let path = entry.path();

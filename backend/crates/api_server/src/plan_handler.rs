@@ -229,7 +229,7 @@ fn upsert_learning_plan(
     conversation_id: &str,
     update: &serde_json::Value,
 ) {
-    let now = chrono::Utc::now().timestamp();
+    let _now = chrono::Utc::now().timestamp();
     let goal = update["goal"].as_str().unwrap_or("");
     let mut plan = update.clone();
     // 跟踪 plan_update 次数（用于评估和分析）
@@ -244,7 +244,7 @@ fn upsert_learning_plan(
     // 无论什么模式，domain 在 DB 中只是分类标签，不由业务逻辑设置
     // 真正的学科路由信息从 plan_content JSON 的 pipeline_domain 字段读取
     // 详见 build_plan_context() (pipeline_router.rs)
-    let domain = String::new();
+    let _domain = String::new();
 
     // 新格式：plan_content=完整结构，task_status=task_status 映射
     // 激活第一个未标记 in_progress 的任务（防止 reading 等模式全 pending）
@@ -266,7 +266,7 @@ fn upsert_learning_plan(
         }
     }
     let task_status_val = extract_task_status(&plan);
-    let task_status_str = serde_json::json!({"task_status": task_status_val}).to_string();
+    let _task_status_str = serde_json::json!({"task_status": task_status_val}).to_string();
     let now_ts = chrono::Utc::now().timestamp();
 
     // ── 规范化 plan JSON：补充 sort 和 task_key ──
@@ -1231,7 +1231,7 @@ pub async fn analyze_turn_progress(
         // 读取 plan + progress，获取当前 in_progress 任务名
         let current_task_name: Option<String> = 'task_name: {
             let conn = crate::db_pool::get_conn();
-            let (goal, plan_content_str) = match conn.query_row(
+            let (_goal, plan_content_str) = match conn.query_row(
                 "SELECT goal, plan_content FROM conversation_plans WHERE conversation_id = ?1 LIMIT 1",
                 rusqlite::params![conversation_id],
                 |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
@@ -1343,7 +1343,7 @@ fn unlock_next_cards(
         None => return,
     };
 
-    let now_ts = chrono::Utc::now().timestamp();
+    let _now_ts = chrono::Utc::now().timestamp();
 
     // 获取 plan_id
     let plan_id: String = conn.query_row(
@@ -1528,7 +1528,7 @@ pub fn copy_prebuilt_card(
 /// 激活指定 stage 的所有卡片（archived → active）
 /// 在 K12 init 完成时、或 stage 状态变为 in_progress 时调用
 pub fn activate_stage_cards(
-    conn: &rusqlite::Connection,
+    _conn: &rusqlite::Connection,
     user_id: &str,
     _plan_type: &str,
     plan_id: &str,
