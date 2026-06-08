@@ -1,9 +1,9 @@
-# 刻意进化学习 · coevo — 开发计划 V3.0 定稿
+# 刻意进化学习 · coevo — 开发计划 V2.1
 
 > **如果不想被 AI 取代，你需要刻意进化。**
 >
 > AI 对话中自动提取概念、用户确认制卡、FSRS 调度复习、客观验证内化。
-> Rust + Flutter · TDD 先行 · 3-4 周 MVP
+> Rust + Flutter · TDD 先行 · 2026-05 MVP · 持续迭代
 
 ---
 
@@ -16,14 +16,6 @@
 | **英文** | coevo |
 | **Slogan** | 如果不想被AI取代，你需要刻意进化。 |
 | **品牌故事** | 每一次AI对话，每一次刻意复习练习，都是你的进化。 |
-
-```
-刻意进化
- coevo
-━━━━━━━━━━━━━━━━
-不想被AI取代
-你需要刻意进化
-```
 
 ---
 
@@ -40,7 +32,7 @@
     → 每轮对话后，系统自动提取候选概念
     → 用户勾选确认，或对话中直接说"把XX制成卡片"
     → 按 FSRS 记忆曲线在最佳时间弹出复习
-    → 翻牌回忆 + 客观验证（打字/快问快答）
+    → 翻牌回忆 + 客观验证（LLM 三联问）
     → 日积月累，刻意记住 → 真正进化
 ```
 
@@ -52,254 +44,139 @@
 | 自动提取概念 | ❌ | ❌ | **✅** |
 | 用户确认制卡 | ❌ | ❌ | **✅** |
 | 记忆曲线 | ✅ | ❌ | **✅ FSRS** |
-| 客观验证 | ❌ | ❌ | **✅ 打字/AI快问快答** |
-| 通用领域 | ✅ | ✅ | ✅ |
+| 客观验证 | ❌ | ❌ | **✅ LLM 三联问** |
+| K12 课标驱动 | ❌ | ❌ | **✅ V2.1** |
+| 结构化词典 | ❌ | ❌ | **✅ 牛津/新华字典级** |
 
 ---
 
-## 二、制卡流程（完整）
+## 二、制卡流程
 
 ```
-每次对话结束
-    │
-    ▼
 ┌─────────────────────────────────────────┐
-│ N2 检测用户消息                          │
+│ CP1: 每轮对话后自动提取                   │
+│  语言类(english/chinese) → 跳过          │
+│  (已有预制词典: 英语12,791/语文2,714)    │
 │                                         │
-│ 包含"制卡"/"记住"等意图？                 │
-│   ├─ 是 → LLM 生成卡片 → N4 入库         │
-│   └─ 否 ↓                               │
-│         LLM 提取候选概念（最多 5 个）      │
-│         去重：vs 已有卡片 + vs 跳过记录    │
-│         去重后为空 → 不弹窗（零打扰）      │
-│         有剩余 → 弹窗展示                 │
-│              ├─ 用户勾选 → N4 入库        │
-│              └─ 用户跳过 → 写入跳过记录    │
+│  含"制卡/记住"意图 → LLM 直接制卡        │
+│  常规对话 → LLM 提取候选(≤5) → 去重      │
+│  → 弹窗 → 用户勾选/跳过                  │
+└─────────────────────────────────────────┘
+
+┌─────────────────────────────────────────┐
+│ CP2: 学习计划内自动挂载                   │
+│  K12 Init 激活首阶段卡片                  │
+│  Task推进时自动 copy_prebuilt_card        │
+│  对话结束 → plan_updated 检查             │
 └─────────────────────────────────────────┘
 ```
 
-### 两条制卡路径
-
-| 路径 | 触发 | 场景 |
-|------|------|------|
-| **对话后建议** | 每轮对话结束 | 系统提取候选，用户勾选确认 |
-| **对话指令** | 用户对 AI 说"把XX制成卡片" | LLM 根据上下文直接生成卡片 |
-
-### 跳过记录
-
-```sql
-skipped_concepts (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    front TEXT NOT NULL,
-    domain TEXT,
-    source_text TEXT,
-    skipped_at INTEGER
-)
-```
-
-**原则**：用户主动制卡（对话指令）时，若匹配到跳过记录，自动移除跳过记录——当前意图优先。
-
 ---
 
-## 三、复习流程（完整）
+## 三、复习流程
 
 ```
-N5 调度到期卡片
+N5 调度到期卡片 (task 级过滤)
     │
     ▼
-N6a 翻牌
-  看到正面，尝试回忆，点击翻转看反面
+N6a 翻牌 (支持结构化 JSON 渲染)
+  看到正面 → 尝试回忆 → 点击翻转
+  词典卡: 牛津/新华字典级展示
+  课文卡: full_text + translation + 语法
     │
     ▼
-N6b 验证（客观，不依赖自我判断）
-    │
-    ├─ 语言类：打字输入
-    │     看词写释义 / 看释义写词 / 听发音写词
-    │     正确 → pass   错误 → fail
-    │
-    └─ 通用类：AI 三轮快问快答
-          LLM 根据卡片内容生成三个问题
-          测试用户是否真正理解
-          3/3 或 2/3 → pass
-          1/3 或 0/3 → fail
+N6b 验证 (统一 LLM 三联问, 后台异步)
+  Step 1: LLM 出 3 题 (注入近10轮历史)
+  Step 2: 用户依次作答
+  Step 3: LLM 批量判断
+  3/3 → pass (从列表移除, 计入复习)
+  <3 → fail (留在列表, 不计, 可重试)
     │
     ▼
-N6c 评分 → FSRS 更新记忆状态
-  通过 → Good
-  未通过 → Again
+N6c 评分 → FSRS 更新 → cardRefreshProvider++
 ```
 
 ---
 
-## 四、学习计划流程
+## 四、学习计划流程 (K12 + CP2 双路径)
 
 ```
-用户表达学习目标
-    │
-    ▼
-N8 学习计划（可选结构化模式）
-    │
-    ├─ LLM 输出 <plan_update> JSON
-    │   ├─ is_new_plan: true → INSERT learning_plans
-    │   └─ 后端 render_plan() → 渲染为对话文本
-    │
-    ├─ prompt 注入：每次对话注入学习上下文
-    │   └─ 长期目标、当前阶段、任务状态
-    │
-    └─ 后端解析后续 <plan_update> → 更新 DB
-        ├─ completed_concepts 累积
-        └─ current_task_complete → 推进到下一任务
+Path A: K12 课标计划 (预制)
+  Flutter k12_init(grade_band=g1-2, subject=english)
+    → 读 v3/plans/{subject}.json
+    → 按 grade_band 过滤 stage
+    → INSERT conversation_plan
+    → copy_prebuilt_card (仅首个 stage)
+    → LLM prompt 三级提示词驱动教学
+    → CP2 检测 ✅ 已完成 → 推进 task
+    → 激活下一 task 卡片
+
+Path B: CP2 自由计划 (LLM 生成)
+  用户表达目标 → LLM 输出 <plan_update> JSON
+    → handle_plan_update → 解析 + 写入
+    → render_plan → 对话文本
+    → 后续对话注入学习上下文
 ```
 
 ---
 
 ## 五、节点定义
 
-### N1: AI 对话
+### N1: AI 对话 (2026-06-08)
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | 后端 Rust |
-| **技术** | DeepSeek V4 Flash / Qwen3 Max，OpenAI 兼容 API |
-| **输入** | 用户消息 + 最近 10 轮历史 |
-| **输出** | 流式 AI 回复 |
+| **位置** | 后端 Rust (ws.rs + llm_caller.rs) |
+| **技术** | DeepSeek V4 Flash，OpenAI 兼容 API |
+| **输入** | 用户消息 + 最近 10 轮/5000 字 + 学习上下文 |
+| **上下文注入** | 课文 full_text + translation + 句型 + 语法 |
+| **输出** | 流式 SSE (thinking→token*→done) |
 
----
-
-### N2: 意图识别 + 概念提取
-
-| 属性 | 值 |
-|------|-----|
-| **位置** | 后端 Rust（每轮对话后触发） |
-| **输入** | 用户消息 + AI 回复 + user_id |
-| **输出** | 候选概念列表 或 直接生成的卡片 |
-
-**逻辑**：
-
-```
-1. 检测用户消息是否包含制卡意图关键词
-   是 → 调用 LLM 生成卡片 → 进入 N4
-
-2. 否 → 调用 LLM 提取候选概念（最多 5 个）
-        → 去重（vs 已有卡片 + vs 跳过记录）
-        → 去重后为空：不弹窗
-        → 有剩余：返回给客户端展示
-```
-
----
-
-### N3: 卡片格式化
+### N2: 概念提取
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | 后端 Rust（纯函数） |
-| **输入** | 概念数据 |
-| **输出** | `Card` + 初始 `CardMemory`（state=New） |
+| **位置** | 后端 Rust (concept_extractor.rs) |
+| **语言类跳过** | ✅ english/chinese 跳过 |
+| **输出** | 候选概念列表 或 空 |
 
----
+### N3: 卡片格式化 — 纯函数 (已固化)
+### N4: 卡片入库 — 去重 + 事务写入 (已固化)
 
-### N4: 卡片入库
-
-| 属性 | 值 |
-|------|-----|
-| **位置** | 后端 Rust |
-| **输入** | `Card` + `CardMemory` |
-| **逻辑** | 去重（front 相似度 > 0.85 跳过）+ 写入 |
-
----
-
-### N5: 待复习队列
+### N5: 待复习队列 (2026-06-08)
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | 后端 Rust |
-| **算法** | FSRS 简化版（固定间隔数组，待集成 `fsrs` crate） |
-| **输入** | `user_id` + 当前时间 |
-| **输出** | 到期卡片列表（按 due 升序，上限 20 张） |
+| **位置** | 后端 Rust (fsrs_scheduler.rs) |
+| **算法** | 自实现 FSRS-5 (fsrs5.rs, 16/16 测试通过) |
+| **过滤** | task 级: LEFT JOIN user_plan_progress |
+| **mastered** | state=2 + reps>=3 |
 
-**FSRS 状态**：New → Learning → Review → Relearning
-**评分**：Again(1) / Hard(2) / Good(3) / Easy(4)
-
----
-
-### N6: 复习交互 + 验证
+### N6: 复习交互 (2026-06-08)
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | 客户端 Flutter + 后端 Rust |
-
-**N6a 翻牌**：显示正面 → 用户回忆 → 点击翻转 → 显示反面 + 来源句
-
-**N6b 验证**：
-
-| 卡片类型 | 验证方式 | 实现 |
-|---------|---------|------|
-| 语言类 | 打字输入 | 文本匹配，不需要 LLM |
-| 通用类 | AI 三轮快问快答 | LLM 生成问题，判断对错 |
-
-**N6c 评分**：通过→Good，未通过→Again，更新 FSRS 状态
-
----
+| **验证方式** | 统一 LLM 三联问 (3/3→pass, <3→fail) |
+| **考题历史** | 注入近10轮 review_log.details_json |
+| **异步评判** | 后台不阻塞 UI, 结果按 card.id 缓存 |
+| **失败处理** | 卡片留在队列, 不计为复习 |
 
 ### N7: 成就检测
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | 后端 Rust |
-| **触发** | 每次制卡后 + 每次复习后 |
+| **位置** | achievement_engine.rs |
+| **触发** | 制卡 + 复习 + 每日定时 (24h 冷却) |
+| **成就数** | 23+ 个 (固定 + 动态 tier) |
 
-**成就列表**：
-
-| 成就 | 条件 |
-|------|------|
-| 初识 | 第一张卡片 |
-| 收集者 | 50 张卡片 |
-| 图书馆 | 200 张卡片 |
-| 学者 | 500 张卡片 |
-| 坚持3天 | 连续 3 天复习 |
-| 坚持7天 | 连续 7 天复习 |
-| 坚持30天 | 连续 30 天复习 |
-| 探索者 | 覆盖 3 个领域 |
-| 博学家 | 覆盖 5 个领域 |
-| 百炼 | 累计复习 100 次 |
-| 千锤 | 累计复习 1000 次 |
-
-**动态成就（学习计划绑定）**：
-
-| 层级 | 触发 | 命名规则 | 示例 |
-|:--|:--|:--|:--|
-| bronze | task done | {task_name}入门 | "绝对值入门" |
-| silver | stage done | {stage_name}精英 | "数学基础精英" |
-| gold | domain done | {domain}大师 | "线性代数大师" |
-| platinum | cross-domain | {goal}宗师 | "AI入门宗师" |
-
----
-
-### N8: 学习计划
+### N8: 学习计划 (K12)
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | 后端 Rust（WS 对话内） |
-| **触发** | LLM 检测学习意图 → 用户确认 |
-| **输入** | `<plan_update>` JSON（含 stages/tasks） |
-| **逻辑** | is_new_plan → INSERT；后续更新 → UPDATE plan_json + achievements |
-| **渲染** | render_plan() 从 JSON 渲染对话文本（LLM 只输出 JSON） |
-| **注入** | 每次对话 prompt 注入学习上下文（长期目标/当前阶段/任务） |
-| **前端** | 聊天页顶部独立计划面板（可折叠，按 conversation_id 过滤） |
-| **成就** | task→bronze, stage→silver, domain→gold, cross→platinum |
-
-### N9: 图像识别输入 📷 (暂缓)
-
-| 属性 | 值 |
-|------|-----|
-| **位置** | 前端 Flutter + 后端 API |
-| **方案** | DeepSeek V4 Vision（多模态 LLM），备选 Qwen-VL |
-| **输入** | 用户拍照上传（image_picker）→ 压缩 1024px → base64 |
-| **处理** | POST DeepSeek Vision API，识别 + 理解 + 教学一站式 |
-| **成本** | ~¥0.003/张（500 token），日均 50 张 < ¥1 |
-| **状态** | 🟡 方案已定，暂缓实施 |
-| **详细** | `docs/image-recognition-proposal.md` |
+| **位置** | plan_handler.rs + ws.rs |
+| **数据表** | conversation_plans / user_plan_progress |
+| **Prompt 三级** | nursery (A1) / primary (A2-B1) / secondary (B2) |
+| **考核机制** | 2-3 题递进, CP2 自动分析 |
 
 ---
 
@@ -307,150 +184,63 @@ N8 学习计划（可选结构化模式）
 
 | 节点 | 位置 | 负责 |
 |------|------|------|
-| N1 | 后端 | AI 对话 |
-| N2 | 后端 | 意图识别 + 概念提取 + 去重 |
-| N3 | 后端 | 卡片格式化 |
-| N4 | 后端 | 卡片入库 |
-| N5 | 后端 | 待复习队列（FSRS） |
-| N6 | 客户端+后端 | 翻牌 + 验证 + 评分 |
-| N7 | 后端 | 成就检测（固定11个 + 动态成就） |
-| N8 | 后端 | 学习计划（LLM + prompt注入 + render_plan） |
-| N9 | 客户端+后端 | 📷 图像识别输入（DeepSeek V4 Vision / 暂缓） |
-
-**9 个节点 · 11 张表**
+| N1 | 后端 | AI 对话 (10轮/5000字上下文) |
+| N2 | 后端 | 概念提取 (语言类跳过) |
+| N3 | 后端 | 卡片格式化 (纯函数) |
+| N4 | 后端 | 卡片入库 (去重+事务) |
+| N5 | 后端 | FSRS 待复习队列 (task级过滤) |
+| N6 | 客户端+后端 | 翻牌 + LLM三联问 + 评分 |
+| N7 | 后端 | 成就检测 (23+ 成就) |
+| N8 | 后端 | K12 + CP2 学习计划 |
 
 ---
 
-## 七、数据库设计 (11 张表)
+## 七、数据库设计 (20 张表)
+
+### 核心表
 
 ```sql
--- 1. 用户
-users (
-    id TEXT PRIMARY KEY,
-    username TEXT,
-    password_hash TEXT,
-    streak_days INTEGER DEFAULT 0,
-    last_active_date TEXT,
-    display_name TEXT,          -- 迁移添加
-    created_at TEXT
-)
-
--- 2. 令牌（安全改进，DevPlan 后期添加）
-tokens (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    token TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-)
-
--- 3. 会话容器 (N1 对话持久化)
-conversations (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    turn_count INTEGER DEFAULT 0,
-    started_at TEXT NOT NULL,
-    learning_plan_id TEXT,            -- 关联学习计划
-    deleted_at TEXT,                  -- 软删除时间（迁移添加）
-    FOREIGN KEY (user_id) REFERENCES users(id)
-)
-
--- 4. 对话轮次 (N1 历史上下文 + N2 概念提取)
-conversation_turns (
-    id TEXT PRIMARY KEY,
-    conversation_id TEXT NOT NULL,
-    role TEXT NOT NULL,
-    content TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id)
-)
-
--- 5. 卡片
+-- 卡片 + K12 关联
 cards (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    domain TEXT,
-    card_type TEXT,        -- "vocabulary" | "concept"
-    front TEXT NOT NULL,
-    back TEXT NOT NULL,
-    source_sentence TEXT,
-    created_at INTEGER,
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    id TEXT PK, user_id TEXT, domain TEXT, subject TEXT,
+    card_type TEXT, front TEXT, back TEXT, source_sentence TEXT,
+    conversation_id TEXT, plan_id TEXT, task_key TEXT, created_at INTEGER
 )
 
--- 6. 记忆状态 (1:1 cards)
+-- FSRS 记忆状态
 card_memory (
-    card_id TEXT PRIMARY KEY,
-    state INTEGER,         -- 0:New, 1:Learning, 2:Review, 3:Relearning
-    difficulty REAL,
-    stability REAL,
-    due INTEGER,
-    last_review INTEGER,
-    reps INTEGER,
-    lapses INTEGER,
-    FOREIGN KEY (card_id) REFERENCES cards(id)
+    card_id TEXT PK, state INTEGER, status TEXT,
+    difficulty REAL, stability REAL, due INTEGER,
+    last_review INTEGER, reps INTEGER, lapses INTEGER
 )
 
--- 7. 复习日志
-review_log (
-    id TEXT PRIMARY KEY,
-    card_id TEXT NOT NULL,
-    rating INTEGER,        -- 1-4
-    verification_type TEXT,-- "spelling" | "ai_dialogue"
-    verification_result TEXT, -- "pass" | "fail"
-    details_json TEXT,          -- 迁移添加（AI 快问快答详细数据）
-    reviewed_at INTEGER,
-    FOREIGN KEY (card_id) REFERENCES cards(id)
+-- K12 学习计划 (V2.0 更名)
+conversation_plans (
+    id TEXT PK, user_id TEXT, conversation_id TEXT,
+    goal TEXT, subject TEXT, grade_band TEXT,
+    plan_content TEXT, created_at INTEGER, updated_at INTEGER
 )
 
--- 8. 成就 (含动态成就层级)
-achievements (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    achievement_key TEXT,
-    name TEXT NOT NULL,
-    icon TEXT NOT NULL,
-    tier TEXT DEFAULT 'fixed',    -- "fixed"|"bronze"|"silver"|"gold"|"platinum"
-    source TEXT,                  -- "task"|"stage"|"domain"|"cross"|NULL
-    unlocked_at TEXT,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-)
-
--- 9. 跳过记录
-skipped_concepts (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    front TEXT NOT NULL,
-    domain TEXT,
-    source_text TEXT,
-    skipped_at INTEGER,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-)
-
--- 10. 学习计划
-learning_plans (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    conversation_id TEXT,          -- 绑定的会话
-    goal TEXT NOT NULL,            -- "AI入门"
-    domain TEXT NOT NULL,          -- "linear_algebra"
-    mode TEXT DEFAULT NULL,        -- NULL / "structured" / "deleted"
-    plan_json TEXT NOT NULL,       -- 完整 stages/tasks JSON
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-)
-
--- 11. 用户偏好
-user_preferences (
-    user_id TEXT NOT NULL,
-    key TEXT NOT NULL,
-    value TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    PRIMARY KEY (user_id, key),
-    FOREIGN KEY (user_id) REFERENCES users(id)
+-- 任务进度 (按 task_key 分列)
+user_plan_progress (
+    id TEXT PK, user_id TEXT, plan_id TEXT,
+    task_key TEXT, status TEXT, updated_at INTEGER
 )
 ```
+
+### 完整表清单 (18 张)
+
+```
+users | tokens | conversations | conversation_turns
+cards | card_memory | review_log | achievements
+conversation_plans | user_plan_progress
+knowledge_graph | k12_quiz_bank | k12_quiz_attempts
+user_preferences | guardian_assignments
+admin_users | admin_audit_log | subscription_requests
+```
+
+> cards 表含 `plan_id`, `task_key`, `subject` 列用于 K12 关联
+> user_plan_progress 含 `score`, `attempt_count`, `started_at`, `completed_at`
 
 ---
 
@@ -458,80 +248,69 @@ user_preferences (
 
 | 层 | 技术 |
 |----|------|
-| 后端 | Rust (axum + tokio) |
-| 客户端 | Flutter 3.x (社区版 `D:\flutter_flutter`，支持鸿蒙) |
+| 后端 | Rust (axum + tokio + rusqlite) |
+| 客户端 | Flutter 3.x (Riverpod + GoRouter + Material3) |
 | 数据库 | SQLite (rusqlite, 后端独有) |
-| 记忆算法 | fsrs crate (FSRS-5) |
-| LLM | OpenAI 兼容 API |
-| 通信 | REST + WebSocket, Dart 手动类型序列化 |
+| 记忆算法 | FSRS-5 (自实现 fsrs5.rs) |
+| LLM | DeepSeek V4 Flash (OpenAI 兼容) |
+| 通信 | REST + WebSocket |
 
 ---
 
-## 九、实施计划（已全部完成 ✅）
+## 九、实施状态 (2026-06-08)
 
+### ✅ MVP 完成 (2026-05)
 ```
-2026-05-07 第一天完成全部 MVP 核心功能
+N1 对话 → N2 提取 → N3-N4 制卡 → N5 FSRS → N6 复习 → N7 成就
+用户认证 / 对话持久化 / WS 流式 / TTS / STT
+```
 
-✅ W1 ─────────────────────────
-  项目脚手架
-  数据库 Schema + Migration (9 表 → 迁移后 10 表)
-  用户认证 (注册/登录/Token)
-  N1 AI 对话 (REST + WebSocket 流式)
+### ✅ V2.0 完成 (2026-05-31)
+```
+Phase 0-4: K12 课标集成 + 知识图谱 + 评估管线
+conversation_plans + user_plan_progress
+Plan_templates (15行共享)
+质量评估: e2e-quality-eval (5维评分)
+```
 
-✅ W2 ─────────────────────────
-  N2 意图识别 + 概念提取 (含去重 + 过滤占位)
-  N3 卡片格式化 (纯函数)
-  N4 卡片入库（Jaro-Winkler 去重 + 事务）
-  FSRS 调度 (手动实现简化版状态机)
+### ✅ V2.1 完成 (2026-06)
+```
+重构:
+  CP1 语言类跳过 (english/chinese)  ← 2026-06-08
+  复习页竞态修复 (card.id 提交)      ← 2026-06-08
+  成就页事件驱动刷新 (cardRefreshProvider)
+  复习验证注入10轮考题历史
+  auth 限流 (reg 5/min, login 10/min)
+  头像 404 降级
+  review_screen tab 首项显示修复
+  卡文件合并 21→14  (每科一个)
+  数据目录清理 (~73MB)
 
-✅ W3 ─────────────────────────
-  N5 待复习队列 (到期查询 + streak 签到)
-  N6 翻牌 + 验证（打字 + AI 快问快答批量判断）
-  N7 成就检测 (11 个成就)
+数据:
+  英语重建 Phase 1-5:
+    20,688 词卡 → 12,791 词根 (CEFR A1-C1)
+    80 篇分级课文 (A1=15, A2=20, B1=25, B2=20)
+    名篇为主: Aesop/安徒生/Twain/Dickens/Poe/Frost/Lincoln
+  English.json plan 重写 (4 stages × 80 tasks)
+  Prompt 三级: nursery/primary/secondary + 考核机制
+  词典富集:
+    语文: 2,714 (新华字典级, 结构化 JSON)
+    英语: 12,791 (牛津级, 结构化 JSON)
+  非语言10科卡片重分配: 移除 784 条跨 topic 引用
 
-🔄 W4 ─────────────────────────
-  ✅ 跳过记录 API + 管理
-  ✅ E2E 测试 (26 个)
-  ✅ 对话上下文窗口优化 (5000 字滑动)
-  ✅ 卡片列表排序实现
-  ✅ 成就前端展示 + 庆祝动画
-  ⏭️ 部署上线 — 已确认跳过
-  ✅ UI: 内联复习 + 闭卷考试 + 头像上传 + 自动滚动
-  ✅ 文档: API.md + DEVELOPMENT.md
+前端:
+  ChatReadingPassage (课文阅读面板 + 朗读)
+  Dict card renderer (牛津/新华字典渲染)
+  TTS 音色持久化修复
+  复习页: 评判中/通过/未通过标签, 后台异步评判
+```
 
---- 新增功能 (超出原计划) ---
-  ✅ WebSocket 流式对话 (打字机效果)
-  ✅ 对话历史持久化 + 跨页面恢复
-  ✅ 批量制卡 API + 前端确认弹窗
-  ✅ 卡片搜索/状态过滤/领域过滤
-  ✅ 学习计划队列视图 (搜索+过滤)
-  ✅ Prompt 外部化 (文件驱动)
-  ✅ TTS 朗读 (flutter_tts)
-  ✅ 语音输入 (speech_to_text, 微信风格长按)
-  ✅ 卡片详情弹窗
-  ✅ 对话列表页面 (会话管理+切换)
-  ✅ 词库英文词汇匹配 (cefr_catalog.json, 10万词)
-  ✅ 个人页真实统计 + 成就展示
-  ✅ 跳过记录管理页 (查看/取消跳过)
-  ✅ 概念提取评估框架 (7用例×3变体, precision/recall 评估)
-  ✅ 概念提取 prompt 优化 (变体C, 双语+示例, 74%精准率/76%召回率)
-  ✅ 结构化学习 N8: learning_plans 表 + render_plan + prompt 注入
-  ✅ 动态成就系统: tier 层级 + 学习计划绑定
-  ✅ 学习计划面板 (前端可折叠, conversation_id 绑定)
-  ✅ Part-time 考核: grill_assessment.md + assessment 解析 + bronze/silver/gold 成就
-
---- 待做 (Phase 3: 家长看板) ---
-  ✅ 学习报告 API: GET /api/user/{user_id}/learning-report
-  ✅ 家长看板页面: profile_screen 扩展 (概览/计划详情/成就tier/日历)
-  ✅ 周报/通知: 学习报告推送 + 闲置提醒
-  ✅ 推广素材: 截图 + 视频文案
-
---- Next (V4 规划) ---
-  ⬜ 学习日志: 用 AI 生成每日学习日志，替代纯数据周报
-      - 具体夸奖 + 发现问题 + 改善建议 + 计划进度增量
-      - 难点跟踪 (difficulty 标记 + 挂起-召回-再攻克)
-      - 子任务栈 (任务被难点卡住，日志提示推进)
-      - 方案文档: docs/daily-journal-plan.md
+### ⏳ V2.2 规划
+```
+- N9 图像识别 (DeepSeek V4 Vision)
+- 学习日志 (AI 生成每日总结)
+- 难点跟踪 (挂起-召回-再攻克)
+- japanese/russian 卡片文件修复 (22+93 缺卡)
 ```
 
 ---
@@ -543,26 +322,12 @@ user_preferences (
 2. 跳过的概念不再骚扰，主动制卡覆盖跳过记录
 3. 复习不依赖自我判断，客观验证才能通过
 4. 语言类走轻量路径（词库+文本匹配），通用类走 LLM
-5. 每个节点独立可测，纯函数直接测，有依赖注入 mock
+5. 每个节点独立可测
+6. 用户状态用 DB 列，非 JSON (2026-06-01 定稿)
 ```
 
 ---
 
-## 十一、待办功能（Backlog）
-
-### 语音识别（STT）
-- **状态**: 已实现 ✅ — `POST /api/stt` 端点，ffmpeg 转码 + 科大讯飞 API
-- **环境变量**: `IFLYTEK_APPID`, `IFLYTEK_API_KEY`, `IFLYTEK_API_SECRET`
-
-### 图像文字识别（OCR）
-- **状态**: 技术调研完成，暂缓
-- **问题**: Google ML Kit 依赖 Google Play Services，国产手机兼容性同STT问题；Tesseract打包进APK会增大20-40MB
-- **后续方案**: 如果APK体积允许，走 Tesseract 端侧方案（全兼容国产手机，零后端）；否则可考虑后端OCR代理
-- **APK当前体积**: ~52MB
-
----
-
-*文档版本: V3.0 定稿*
-*日期: 2026-05-13*
-*产品: 刻意进化学习 · coevo*
-*核心: AI 对话 → 提取建议 → 用户确认 → FSRS 调度 → 客观验证 → 成就闭环*
+*文档版本: V2.1 (实施后)*
+*日期: 2026-06-08*
+*最后同步: 2026-06-08 — 覆盖 V2.0+V2.1 全部变更*

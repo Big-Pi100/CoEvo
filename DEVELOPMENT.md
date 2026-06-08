@@ -5,6 +5,7 @@
 - **Rust**: 1.81+ (rustup)
 - **Flutter**: 3.27+ (含 Dart SDK)
 - **Node.js**: 22+（可选，仅用于某些工具）
+- **Python**: 3.13 (数据脚本)
 - **操作系统**: Windows / macOS / Linux
 
 ## 快速开始
@@ -43,69 +44,113 @@ cargo run
 CoEvo API on http://0.0.0.0:8080
 LLM: deepseek-v4-flash @ https://api.deepseek.com/v1
 Prompts loaded from prompts/
+[K12] data dir: data/curriculum/v3
+[K12] loaded 14 plans from ...v3/plans
+[K12] loaded 14 card sets from ...v3/cards
 Word bank loaded: ~10万 words
-Schema initialized (10 tables, 迁移后 11 表)
+Schema initialized (18 tables)
 ```
 
-### 4. 启动前端
+### 4. 启动前端 (Flutter Web)
 
 ```bash
 cd app
-flutter run
+flutter run -d chrome --release \
+  --dart-define=API_HOST=localhost
 ```
 
-> 需要连接模拟器或真机。Flutter 默认连接 `http://localhost:8080`。
+> Flutter Web 连接 `http://localhost:8080`。生产部署时改 `--dart-define=API_HOST=<OLD_VPS_IP>`
 
 ---
 
-## 项目结构
+## 项目结构 (2026-06-08)
 
 ```
 backend/                    # Rust 后端 (axum)
-├── src/main.rs             # 入口 + 启动配置 + 内联 SCHEMA_SQL（10 表 + 迁移）
-├── cefr_catalog.json       # 英文词库 (10 万词)
-├── prompts/                # LLM Prompt 模板
-│   ├── chat_system.md
-│   ├── chat_system_free.md       # 自由对话模式
-│   ├── chat_system_structured.md # 结构化学习模式
-│   ├── concept_extract.md
-│   ├── card_direct.md
-│   ├── quiz_generate.md
-│   ├── quiz_judge.md
-│   └── grill_assessment.md
-├── data/coevo.db           # SQLite 数据库 (运行后自动创建，路径: backend/data/coevo.db)
+├── src/main.rs             # 入口 + 启动配置 + 内联 SCHEMA_SQL (18 表)
+├── prompts/                # LLM Prompt 模板 (50+ 文件)
+│   ├── chat/               # 对话 prompt
+│   │   ├── chinese/        # 语文 (三级: nursery/primary/secondary)
+│   │   ├── english/        # 英语 (free + 三级 reading + structured)
+│   │   ├── japanese/       # 日语 (free + reading 三级 + structured)
+│   │   ├── russian/        # 俄语 (同上)
+│   │   ├── math/ physics/ chemistry/ biology/  # 理科 structured
+│   │   ├── history/ geography/ politics/ it/   # 文科 structured
+│   │   ├── art/ labor/ science/ pe/           # 其他
+│   │   └── general/        # 通用 (free + structured)
+│   ├── quiz/               # 复习考题 prompt (general/chinese/english/math)
+│   ├── concept/            # 概念提取 (direct + extract)
+│   ├── plan/               # 学习计划 (analysis/creation/signal)
+│   ├── routing/            # 学科路由 (subject)
+│   ├── student/            # 学生智能体 (仅测试用)
+│   └── verify/             # 验证
+├── data/
+│   ├── coevo.db            # SQLite 数据库
+│   ├── logs/               # 运行日志
+│   ├── avatars/            # 用户头像
+│   └── deleted_users.ndjson
+├── data/curriculum/        # K12 课标数据 (V3)
+│   ├── v3/                 # 当前版本
+│   │   ├── plans/          # 14 科计划 JSON
+│   │   └── cards/          # 14 科卡片 JSON (合并后)
+│   ├── prebuilt/           # 预构建数据
+│   │   └── cefr_j/         # CEFR-J 英语分级词库
+│   ├── raw/ cleaned/ gold/ # 数据处理管线 (管线内)
+│   └── english_rebuild/    # 英语重建产物
+├── scripts/                # Python 数据脚本
+│   ├── english_rebuild/    # 英语重建管线 (Phase 1-5)
+│   ├── rebuild_subject_cards/  # 卡片重分配
+│   ├── v3_scripts/         # V3 数据迁移脚本
+│   └── eval/               # 评估管线
 └── crates/
-    ├── api_server/         # HTTP + WS 路由 + 鉴权中间件 + 计划管理
-    │   ├── auth.rs              # 注册/登录/Token验证
-    │   ├── auth_middleware.rs   # Bearer Token 鉴权（返回 AppError）
-    │   ├── error.rs             # 统一错误类型 (thiserror AppError + IntoResponse)
-    │   ├── db_pool.rs           # 连接池 (PRAGMA foreign_keys = ON)
-    │   ├── plan_handler.rs     # 学习计划解析/存储/JSON修复
-    │   ├── routes.rs           # REST API 路由（chat_handler 已拆分为5个helper函数）
-    │   └── ws.rs               # WebSocket 流式聊天
-    ├── chat_engine/        # LLM 调用 + 概念提取 + 词库 + JSON修复
-    ├── card_engine/        # 制卡 + FSRS-5 调度（fsrs5.rs 自实现 + TxGuard）
-    ├── growth_engine/      # 成就检测
+    ├── api_server/         # HTTP + WS + 鉴权 + 计划 + K12
+    │   ├── auth.rs              # 注册/登录/Token (限流 5/10 per min)
+    │   ├── auth_middleware.rs   # Bearer Token 鉴权
+    │   ├── rate_limiter.rs      # 滑动窗口限流 (2026-06-08 新增)
+    │   ├── error.rs             # 统一错误类型
+    │   ├── db_pool.rs           # 连接池
+    │   ├── plan_handler.rs      # 学习计划 (K12 + CP2)
+    │   ├── curriculum_loader.rs # K12 课标 JSON 加载器
+    │   ├── achievement_engine.rs # 成就系统 (23+ 成就)
+    │   ├── routes.rs            # REST API
+    │   └── ws.rs                # WebSocket 流式 (CP1/CP2 分离)
+    ├── chat_engine/        # LLM 调用 + 概念提取 + 词库
+    │   ├── llm_caller.rs        # OpenAI 兼容 API 调用
+    │   ├── concept_extractor.rs # N2 概念提取
+    │   ├── word_bank.rs         # CEFR 词库
+    │   └── prompt_loader.rs     # 外部 prompt 文件加载
+    ├── card_engine/        # 制卡 + FSRS-5
+    │   ├── fsrs_scheduler.rs    # N5 队列 + task 级过滤
+    │   ├── fsrs5.rs             # FSRS-5 自实现 (16/16 测试)
+    │   └── card_repository.rs   # TxGuard 事务封装
+    ├── growth_engine/      # 成就
     └── shared_types/       # 公共类型
 
 app/                        # Flutter 前端
 ├── lib/
 │   ├── api/                # HTTP/WS 客户端
-│   ├── models/             # 数据模型
+│   │   └── chat_client.dart     # REST 调用 (含 cardRefreshProvider)
 │   ├── providers/          # Riverpod 状态管理
-│   ├── screens/            # 9 个页面
+│   │   ├── auth_provider.dart   # AuthState + cardRefreshProvider
+│   │   └── ...
+│   ├── screens/            # 页面
+│   │   ├── chat_screen.dart        # AI 对话 (含课文面板入口)
+│   │   ├── review_screen.dart      # 复习 (内联验证 + 后台评判)
+│   │   ├── achievements_screen.dart # 成就 (事件驱动刷新)
+│   │   ├── profile_screen.dart     # 个人页 (头像预检)
 │   │   └── chat/
-│   │       ├── chat_concept_dialog.dart  # 制卡确认弹窗
-│   │       ├── chat_input.dart           # 文本+语音输入栏
-│   │       └── chat_plan_panel.dart      # 学习计划面板(可折叠)
+│   │       ├── chat_reading_passage.dart  # 课文阅读面板 (2026-06-08)
+│   │       ├── chat_concept_dialog.dart   # 制卡确认弹窗
+│   │       ├── chat_input.dart            # 输入栏
+│   │       ├── chat_plan_panel.dart       # 学习计划面板
+│   │       └── chat_message_bubble.dart   # 消息气泡
 │   ├── services/           # TTS / STT 服务
-│   ├── widgets/            # 通用组件 (graph_widget, skeleton)
+│   │   └── tts_service.dart     # TTS (音色持久化修复)
+│   ├── widgets/            # 通用组件
+│   │   └── markdown_span_nodes.dart  # 结构化 JSON 卡片渲染 (牛津/新华字典)
 │   └── theme/              # Material 3 主题
-├── test/
-│   ├── model_test.dart         # 数据模型序列化测试
-│   ├── review_widget_test.dart # 复习页面 Widget 测试
-│   └── ...                     # 数学公式测试等
-└── analysis_options.yaml  # dart_code_metrics 配置
+├── test/                   # 测试
+└── analysis_options.yaml
 ```
 
 ## 常用命令

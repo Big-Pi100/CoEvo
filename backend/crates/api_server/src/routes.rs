@@ -2,7 +2,7 @@
 //!
 //! 复用 LinguaFlow routes.rs 的模式
 
-use axum::{Router, routing::{get, post, put, delete, patch}, Json, extract::{Path, Query}};
+use axum::{Router, routing::{get, post, put, delete, patch}, Json, extract::{Path, Query}, response::IntoResponse};
 use axum::extract::ws::WebSocketUpgrade;
 use axum::http::HeaderMap;
 use tower_http::trace::TraceLayer;
@@ -162,8 +162,15 @@ pub struct AuthInput {
 /// POST /api/auth/register — 注册新用户
 /// 请求: {"username": "str", "password": "str", "real_name?": "str", "phone?": "str"}
 /// 响应: {"user_id": "uuid", "token": "str"} 或 {"error": "str"}
-async fn auth_register(Json(input): Json<AuthInput>) -> Json<serde_json::Value> {
+/// 限流: 5 次/分钟/IP
+async fn auth_register(
+    headers: HeaderMap,
+    Json(input): Json<AuthInput>,
+) -> impl axum::response::IntoResponse {
     tracing::info!("auth_register: user_id={}", input.username);
+
+    // Rate limit: 5 reg/min per IP
+    if let Err(resp) = crate::rate_limiter::check_rate_limit(&headers, 5, 60) { return resp; }
 
     let result = {
         let conn = crate::db_pool::get_conn();
@@ -175,8 +182,8 @@ async fn auth_register(Json(input): Json<AuthInput>) -> Json<serde_json::Value> 
         })
     };
     match result {
-        Ok(resp) => Json(serde_json::json!(resp)),
-        Err(e) => Json(serde_json::json!({"error": e})),
+        Ok(resp) => Json(serde_json::json!(resp)).into_response(),
+        Err(e) => Json(serde_json::json!({"error": e})).into_response(),
     }
 }
 
@@ -184,8 +191,15 @@ async fn auth_register(Json(input): Json<AuthInput>) -> Json<serde_json::Value> 
 /// 请求: {"username": "str", "password": "str"}
 /// 响应: {"user_id": "uuid", "token": "str"} 或 {"error": "str"}
 /// 注意: 登录后会踢掉同一用户的其他 WebSocket 连接（单设备登录）
-async fn auth_login(Json(input): Json<AuthInput>) -> Json<serde_json::Value> {
+/// 限流: 10 次/分钟/IP
+async fn auth_login(
+    headers: HeaderMap,
+    Json(input): Json<AuthInput>,
+) -> impl axum::response::IntoResponse {
     tracing::info!("auth_login: user_id={}", input.username);
+
+    // Rate limit: 10 login/min per IP
+    if let Err(resp) = crate::rate_limiter::check_rate_limit(&headers, 10, 60) { return resp; }
 
     let result = {
         let conn = crate::db_pool::get_conn();
@@ -198,9 +212,9 @@ async fn auth_login(Json(input): Json<AuthInput>) -> Json<serde_json::Value> {
         Ok(resp) => {
             // 踢掉同一用户的其他 WS 连接（单设备登录强制）
             crate::ws::kick_user_connections(&resp.user_id).await;
-            Json(serde_json::json!(resp))
+            Json(serde_json::json!(resp)).into_response()
         },
-        Err(e) => Json(serde_json::json!({"error": e})),
+        Err(e) => Json(serde_json::json!({"error": e})).into_response(),
     }
 }
 

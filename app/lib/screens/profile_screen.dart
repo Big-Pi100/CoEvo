@@ -63,8 +63,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return;
     }
 
-    // 存储头像 URL（NetworkImage 加载失败会优雅降级）
-    _avatarUrl = '${ApiConfig.baseUrl}/api/user/${auth.userId}/avatar';
+    // 存储头像 URL，预检是否有效（后台 fire-and-forget，不阻塞 UI）
+    final avatarUrl = '${ApiConfig.baseUrl}/api/user/${auth.userId}/avatar';
+    // 预检：如果头像不存在，将 URL 置 null 防止 NetworkImage 抛未捕获异常
+    try {
+      final resp = await http.head(Uri.parse(avatarUrl));
+      if (resp.statusCode == 200) {
+        _avatarUrl = avatarUrl;
+      }
+    } catch (_) {
+      // 网络错误则保持 _avatarUrl 为 null
+    }
 
     final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {

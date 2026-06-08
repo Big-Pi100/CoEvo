@@ -1,7 +1,7 @@
 # 刻意进化学习 · CoEvo — 数据流节点驱动分析
 
 > **组织原则：每个数据流节点 = 一个独立的可测试单元。节点之间仅通过类型化结构体通信。**
-> **分析日期：2026-05-07**
+> **分析日期：2026-05-07 | 最后同步：2026-06-08**
 
 ---
 
@@ -12,12 +12,12 @@
                       CoEvo 数据流全景
 
  Flow A: AI 对话 (Hot Path, 流式实时)
- Flow B: 制卡 (Cold Path, 对话后异步)
+ Flow B: 制卡 (Cold Path, 对话后异步) — 语言类已关闭 (CP1 skip)
  Flow C: 复习循环 (User-Triggered, 交互流程)
  Flow D: 成就检测 (附属于 B 和 C)
- Flow E: 跳过管理
- Flow F: 学习计划 (N8, 对话内结构化学习)
+ Flow F: 学习计划 (N8/K12, 对话内结构化学习 + K12 课标驱动)
  Flow G: 对话生命周期 (软删除/恢复/物理删除)
+ Flow H: 学习报告/成就页 (Phase 3 看板)
 ════════════════════════════════════════════════════════════════════
 
  ┌─────────────────────────────────────────────────────────────────┐
@@ -32,16 +32,17 @@
                                   │
                                   ▼ 每轮对话结束，触发 Cold Path
  ┌─────────────────────────────────────────────────────────────────┐
- │  Flow B: 制卡 Cold Path                                         │
+ │  Flow B: 制卡 Cold Path (语言类 english/chinese 已跳过)          │
  │                                                                 │
  │  用户消息 + AI回复                                               │
  │      │                                                          │
  │      ▼                                                          │
  │  ┌─────────────────────────────────────────────┐                │
- │  │ N2 意图识别 + 概念提取                       │                │
+ │  │ N2 概念提取                                  │                │
  │  │                                             │                │
- │  │ 含"制卡/记住"? ──→ Path B2 (直接制卡)       │                │
- │  │ 否 ──→ LLM提取候选(≤5) → 去重 → 候选列表    │                │
+ │  │ 已预制词典的科目(english/chinese) → 跳过      │                │
+ │  │ 含"制卡/记住"? → Path B2 (直接制卡)          │                │
+ │  │ 否 → LLM提取候选(≤5) → 去重 → 候选列表      │                │
  │  └──────────────────┬──────────────────────────┘                │
  │                     │                                           │
  │              ┌──────┴──────┐                                    │
@@ -55,15 +56,9 @@
  │                       │         │                               │
  │                       ▼         ▼                               │
  │              ┌────────────┐  skipped_                           │
- │              │ N3 卡片格式化│  concepts                          │
- │              │ (纯函数)    │  表写入                            │
- │              └─────┬──────┘                                     │
- │                    ▼                                            │
- │              ┌────────────┐                                     │
- │              │ N4 卡片入库 │                                     │
- │              │ (去重+写入) │                                     │
- │              └─────┬──────┘                                     │
- │                    │                                            │
+ │              │ N4 卡片入库  │  concepts                          │
+ │              └─────┬──────┘  (表已废弃，改用                   │
+ │                    │         卡片 skip 字段)                     │
  │                    ▼ 触发                                        │
  │              ┌────────────┐                                     │
  │              │ N7 成就检测 │                                     │
@@ -71,42 +66,47 @@
  └─────────────────────────────────────────────────────────────────┘
 
  ┌─────────────────────────────────────────────────────────────────┐
- │  Flow C: 复习循环 (用户主动触发)                                │
+ │  Flow C: 复习循环 (用户主动触发，task 级过滤)                   │
  │                                                                 │
- │  Flutter GET /api/review/due                                     │
+ │  Flutter GET /api/k12/due-cards?conv_id=xxx                      │
  │      │                                                          │
  │      ▼                                                          │
- │  ┌────────────────────────────────────────────┐                 │
- │  │ N5 FSRS 待复习队列                          │                 │
- │  │ SELECT cards JOIN card_memory              │                 │
- │  │ WHERE state IN (New,Learning,Review,       │                 │
- │  │       Relearning) AND due <= now()         │                 │
- │  │ ORDER BY due ASC LIMIT 20                  │                 │
- │  └────────────────┬───────────────────────────┘                 │
+ │  ┌────────────────────────────────────────────────────────┐     │
+ │  │ N5 FSRS 待复习队列 (按 task 级过滤)                     │     │
+ │  │ SELECT cards JOIN card_memory                          │     │
+ │  │ LEFT JOIN user_plan_progress ON plan_id+task_key        │     │
+ │  │ WHERE status IN ('in_progress','done')                  │     │
+ │  │ AND due <= now()                                       │     │
+ │  │ ORDER BY due ASC LIMIT 20                              │     │
+ │  └────────────────┬───────────────────────────────────────┘     │
  │                   │ cards[]                                     │
  │                   ▼                                             │
- │  ┌────────────────────────────────────────────┐                 │
- │  │ N6a 翻牌 (Flutter)                          │                 │
- │  │ Show front → Tap flip → Show back+source   │                 │
- │  └────────────────┬───────────────────────────┘                 │
+ │  ┌────────────────────────────────────────────────────────┐     │
+ │  │ N6a 翻牌 (Flutter)                                      │     │
+ │  │ Show front → Tap flip → Show back (支持结构化 JSON)     │     │
+ │  │ - 英语词典卡 → 牛津级渲染（音标+多义项+例句+搭配）      │     │
+ │  │ - 语文词典卡 → 新华字典级（拼音+部首+笔画+释义）        │     │
+ │  │ - 概念卡 → 普通文本渲染                                 │     │
+ │  └────────────────┬───────────────────────────────────────┘     │
  │                   │                                             │
  │                   ▼                                             │
- │  ┌────────────────────────────────────────────┐                 │
- │  │ N6b 验证 (Flutter + 后端)                   │                 │
- │  │                                             │                 │
- │  │ 语言类: 打字，本地文本匹配 → pass/fail      │                 │
- │  │ 通用类: LLM 三联问 → pass(≥2/3)/fail       │                 │
- │  └────────────────┬───────────────────────────┘                 │
- │                   │ rating + result                            │
+ │  ┌────────────────────────────────────────────────────────┐     │
+ │  │ N6b 验证 (Flutter + 后端)                               │     │
+ │  │                                                         │     │
+ │  │ 统一路径: LLM 三联问 → 3/3 pass, <3 fail               │     │
+ │  │ 注入近10轮考题历史供 LLM 参考（避免重复出题）            │     │
+ │  │ 验证失败 → 卡片留在队列，不计为复习                      │     │
+ │  └────────────────┬───────────────────────────────────────┘     │
+ │                   │ rating + result                              │
  │                   ▼                                             │
- │  ┌────────────────────────────────────────────┐                 │
- │  │ N6c 评分 + FSRS 更新                        │                 │
- │  │ POST /api/review/submit                    │                 │
- │  │ {card_id, rating, result} → FSRS.repeat()  │                 │
- │  │ → UPDATE card_memory + INSERT review_log   │                 │
- │  └────────────────┬───────────────────────────┘                 │
- │                   │                                             │
- │                   ▼ 触发                                        │
+ │  ┌────────────────────────────────────────────────────────┐     │
+ │  │ N6c 评分 + FSRS 更新                                    │     │
+ │  │ POST /api/review/submit                                │     │
+ │  │ {card_id, rating, result} → FSRS.repeat()              │     │
+ │  │ → UPDATE card_memory + INSERT review_log               │     │
+ │  │ → cardRefreshProvider++ (通知成就页刷新)                 │     │
+ │  └────────────────┬───────────────────────────────────────┘     │
+ │                   │ 触发                                        │
  │              ┌────────────┐                                     │
  │              │ N7 成就检测 │                                     │
  │              └────────────┘                                     │
@@ -127,11 +127,17 @@
 │                                                         │
 │ 位置: 后端 Rust (chat_engine/llm_caller.rs)             │
 │       前端 Dart (app/lib/screens/chat_screen.dart)       │
-│ 复用: LinguaFlow llm_caller.rs (直接复制)               │
 │                                                         │
 │ Input:                                                  │
 │   ChatRequest { user_id, conversation_id, message }     │
 │   + 最近 10 轮 conversation_turns (FROM DB)             │
+│   + 学习计划上下文 (如有 K12 plan)                       │
+│                                                         │
+│ 上下文注入 (2026-06-08 扩展):                            │
+│   - 当前任务课文全量注入 (full_text + translation)       │
+│   - 重点句型 (key_sentence_patterns)                     │
+│   - 语法要点 (key_grammar)                               │
+│   - 滑动窗口 10 轮 / 5000 字                             │
 │                                                         │
 │ Output:                                                 │
 │   流式 SSE: Thinking → Token* → Done(reply)             │
@@ -140,265 +146,126 @@
 │ 前端渲染管道 (chat_screen.dart _buildRichContent):      │
 │   ws.rs SSE → serde_json → WebSocket                    │
 │     → Dart jsonDecode → _buffer += token               │
-│     → isStreaming? 纯文本 : 正则解析公式               │
+│     → isStreaming? 纯文本 : 正则解析公式 + Markdown     │
 │     → Math.tex (flutter_math_fork) 渲染                 │
+│     → markdown_widget 渲染 (支持表格/引用/代码块)        │
 │                                                         │
-│ 数学公式支持:                                           │
-│   - 定界符: \(inline\) 和 \[display\]                   │
-│   - 流式期间: 跳过正则解析，纯文本展示（防闪烁）        │
-│   - done 事件: 一次性正则解析所有公式                   │
-│   - 正则: RegExp(r'\\[\(\[](.+?)\\[[)\]]', dotAll:true) │
-│   - dotAll 必需: LLM 输出的 \[...\] 含换行              │
-│                                                         │
-│ DB 写入:                                                │
-│   INSERT INTO conversation_turns                        │
-│   (id, conversation_id, role, content, created_at)       │
-│                                                         │
-│ 关键性能决策:                                           │
-│   - 单请求 + 失败重试 (避免连接池污染)                  │
-│   - connect_timeout=10s, pool_idle_timeout=30s          │
-│   - warmup() 启动预热                                   │
-│                                                         │
-│ 依赖:                                                   │
-│   - reqwest HTTP client (全局单例，含连接池调优)         │
-│   - OpenAI 兼容 API (DeepSeek V4/Qwen3)                 │
-│   - flutter_math_fork (前端 LaTeX 渲染)                 │
+│ 前缀事件:                                               │
+│   thinking → 流式 token → done → plan_updated           │
+│ 错误事件:                                               │
+│   subscription_required / subscription_expired          │
+│   / invalid_token / missing_token + 自定义错误           │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### N2: 意图识别 + 概念提取
+### N2: 概念提取 (Cold Path)
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ Node N2: 意图识别 + 概念提取 (Cold Path)                │
+│ Node N2: 概念提取 (Cold Path)                            │
 │                                                         │
 │ 位置: 后端 Rust (chat_engine/concept_extractor.rs)      │
-│ 复用: 适配 LinguaFlow concept_extractor.rs              │
 │                                                         │
 │ Input:                                                  │
 │   { user_id, user_message, ai_reply, conversation_id }  │
 │                                                         │
-│ Step 1 — 意图检测 (本地，无 LLM):                       │
-│   IF user_message 包含 ["制卡","记住","做成卡片",       │
-│       "make card","add to cards","记住这个"]             │
+│ 语言类跳过 (2026-06-08):                                 │
+│   English/Chinese 已预制完整词典卡片                      │
+│   ed == "english" || ed == "chinese" → 跳过 CP1         │
+│   这些科目的卡片由阅读优先(CP2) + 复习循环管理             │
+│                                                         │
+│ Step 1 — 意图检测 (本地，无 LLM):                        │
+│   IF user_message 包含 ["制卡","记住","做成卡片",...]    │
 │   → Path B2: 调用 LLM 直接生成卡片                      │
 │                                                         │
 │ Step 2 — 概念提取 (LLM 调用):                           │
 │   ELSE: 调用 LLM 提取候选概念 ≤ 5 个                    │
-│   Prompt: "从以下对话中提取值得记住的概念..."            │
-│   Output: JSON ["概念1","概念2",...]                    │
 │                                                         │
 │ Step 3 — 去重 (本地):                                   │
-│   3a. vs cards 表: SELECT front FROM cards               │
-│       WHERE user_id = ? AND LOWER(front) IN (...)       │
-│   3b. vs skipped_concepts 表:                           │
-│       SELECT front FROM skipped_concepts                │
-│       WHERE user_id = ? AND LOWER(front) IN (...)       │
-│                                                         │
-│   candidates = 提取结果 - 已有 - 已跳过                 │
+│   vs cards 表: SELECT front FROM cards                   │
+│   skipped_concepts 表已废弃 → 前端维护 skip 状态         │
 │                                                         │
 │ Output:                                                 │
 │   { candidates: [{concept, source_text}...] }           │
-│   或 { direct_card: {front, back, source, domain} }    │
-│   或 { empty: true } — 不弹窗                           │
-│                                                         │
-│ ❓ 问题:                                                │
-│   LLM 提取是否会提取到多词概念/短语?                    │
-│   去重是否只精确匹配 front, 还是需要语义去重?           │
-│   候选概念要不要带解释(back)?                           │
-│   - DevPlan 只说了 front, 但制卡需要 back              │
-│   - 推荐: LLM 同时生成 front + back + source_sentence  │
+│   或 { empty: true }                                     │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### N3: 卡片格式化
+### N5: 待复习队列 (FSRS + Task 级过滤)
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ Node N3: 卡片格式化 (纯函数)                             │
-│                                                         │
-│ 位置: 后端 Rust (card_engine/card_formatter.rs)         │
-│ 新开发                                                   │
-│                                                         │
-│ Input:                                                  │
-│   ConceptInput {                                        │
-│     user_id: String,                                    │
-│     front: String,           // 概念名                  │
-│     back: String,            // 释义/答案               │
-│     domain: String,          // 领域标签                │
-│     card_type: String,       // "vocabulary"|"concept"  │
-│     source_sentence: String, // 来源对话句               │
-│   }                                                   │
-│                                                         │
-│ Logic (纯函数):                                          │
-│   1. 生成 card_id = UUID v4                             │
-│   2. 构建 Card {                                       │
-│        id, user_id, domain, card_type,                 │
-│        front, back, source_sentence,                   │
-│        created_at: now()                              │
-│      }                                                │
-│   3. 构建初始 CardMemory {                              │
-│        card_id,                                        │
-│        state: 0 (New),                                 │
-│        difficulty: 5.0,    // FSRS 默认                │
-│        stability: 0.0,     // FSRS 默认                │
-│        due: now(),         // 立即可复习               │
-│        last_review: null,                              │
-│        reps: 0,                                        │
-│        lapses: 0                                       │
-│      }                                                │
-│                                                         │
-│ Output: (Card, CardMemory)                              │
-│                                                         │
-│ 可测试性: 100% 纯函数，无需 mock，输入→输出确定          │
-└─────────────────────────────────────────────────────────┘
-```
-
-### N4: 卡片入库
-
-```
-┌─────────────────────────────────────────────────────────┐
-│ Node N4: 卡片入库                                        │
-│                                                         │
-│ 位置: 后端 Rust (card_engine/card_repository.rs)        │
-│ 新开发                                                   │
-│                                                         │
-│ Input: (Card, CardMemory)                               │
-│                                                         │
-│ Logic:                                                  │
-│   1. 去重检查:                                          │
-│      SELECT front FROM cards WHERE user_id = ?          │
-│      计算 Jaro-Winkler 相似度                            │
-│      IF max_similarity > 0.85 → REJECT (返回已存在提示) │
-│                                                         │
-│   2. 跳过记录移除 (用户主动制卡时):                      │
-│      DELETE FROM skipped_concepts                       │
-│      WHERE user_id = ? AND LOWER(front) = LOWER(?)      │
-│                                                         │
-│   3. 事务写入 (BEGIN→INSERT×2→COMMIT):                   │
-│      INSERT INTO cards (...)                            │
-│      INSERT INTO card_memory (...)                      │
-│                                                         │
-│ Output: Result<CardId, InsertError>                     │
-│                                                         │
-│ 错误类型:                                               │
-│   - DuplicateFront(front) — 前端提示用户已存在           │
-│   - DatabaseError(msg)                                  │
-│                                                         │
-│ 🔒 事务保证: cards 和 card_memory 要么同时存在          │
-└─────────────────────────────────────────────────────────┘
-```
-
-### N5: 待复习队列 (FSRS)
-
-```
-┌─────────────────────────────────────────────────────────┐
-│ Node N5: FSRS 待复习队列                                 │
+│ Node N5: FSRS 待复习队列 (task 级过滤)                   │
 │                                                         │
 │ 位置: 后端 Rust (card_engine/fsrs_scheduler.rs)         │
-│ 新开发 (关键模块)                                        │
 │                                                         │
 │ Input:                                                  │
-│   GET /api/review/due?user_id=xxx                       │
+│   GET /api/k12/due-cards?user_id=xxx&conv_id=xxx        │
 │                                                         │
-│ Logic:                                                  │
-│   SELECT c.id, c.front, c.back, c.domain,               │
-│          c.card_type, c.source_sentence,                │
-│          cm.state, cm.difficulty, cm.stability,         │
-│          cm.due, cm.reps, cm.lapses                     │
+│ Logic (2026-06-08 升级: 按 task 过滤):                   │
+│   SELECT c.id, c.front, c.back, ...                    │
 │   FROM cards c                                          │
 │   JOIN card_memory cm ON c.id = cm.card_id             │
+│   LEFT JOIN user_plan_progress upp                       │
+│     ON c.plan_id = upp.plan_id AND c.task_key = upp.task_key
 │   WHERE c.user_id = ?                                   │
-│     AND cm.state IN (0, 1, 2, 3)  -- New/Learning/     │
-│                                    -- Review/Relearning │
-│     AND cm.due <= ?              -- now()              │
-│   ORDER BY cm.due ASC                                  │
+│     AND cm.status = 'active'                            │
+│     AND cm.due <= ?                                     │
+│     AND upp.status IN ('in_progress', 'done')            │
+│   ORDER BY CASE WHEN cm.state = 0 THEN 1 ELSE 0 END,    │
+│            cm.due ASC                                   │
 │   LIMIT 20                                              │
 │                                                         │
 │ Output:                                                 │
-│   {                                                     │
-│     cards: [{                                           │
-│       id, front, back, domain, card_type,              │
-│       source_sentence, state, reps                     │
-│     }],                                                │
-│     total_due: N,                                        │
-│     has_more: bool                                       │
-│   }                                                   │
+│   { cards: [{id, front, back, card_type, ...}],         │
+│     has_more: bool }                                   │
 │                                                         │
-│ FSRS 状态机:                                            │
-│   New ──(首次复习)→ Learning ──(Good)→ Review          │
+│ FSRS 状态机 (自实现 fsrs5.rs, 16/16 测试通过):           │
+│   New ──(复习)→ Learning ──(Good)→ Review              │
 │   Review ──(Again)→ Relearning ──(Good)→ Review        │
-│   Relearning ──(Again)→ Relearning (间隔逐渐延长)       │
 │                                                         │
-│ ❓ 需要确认:                                             │
-│   - fsrs crate 的 API 是否匹配这个状态模型?             │
-│   - New 状态的卡片何时转为 Learning?                     │
-│     → 推荐: 首次复习评分后自动转 Learning               │
-│   - 如果 fsrs crate 不支持独立状态管理，需手动维护状态   │
+│ mastered = state=2 + reps>=3                            │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### N6: 复习交互 + 验证
+### N6: 复习交互 + 验证 (统一 LLM 路径)
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ Node N6: 复习交互 (客户端驱动 + 后端验证)              │
+│ Node N6: 复习交互 (统一 LLM 验证路径)                     │
 │                                                         │
-│ 位置: Flutter (N6a翻牌 + N6b打字UI) + 后端 (AI问答)     │
-│ 新开发 (CoEvo 独有核心功能)                              │
+│ 位置: Flutter (review_screen.dart) + 后端 (routes.rs)    │
 │                                                         │
 │ N6a 翻牌 (Flutter):                                     │
-│   显示 front → 用户回忆 → 点击翻转 → 显示 back + source │
-│   UI 状态: { card, isFlipped, startTime }              │
+│   显示 front → 用户回忆 → 点击翻转 → 显示 back          │
+│   支持结构化 JSON 渲染:                                   │
+│   - 英语词典: word + 音标 + 多义项 + 例句 + 搭配        │
+│   - 语文词典: 字 + 拼音 + 部首 + 笔画 + 释义            │
+│   - 课文卡: full_text + translation + 语法              │
 │                                                         │
-│ N6b 验证 (两路径):                                      │
+│ N6b 验证 (统一路径):                                    │
+│   Step 1: POST /api/review/verify (LLM 出3题)           │
+│     { card_id, front, back, history(近10轮) }           │
+│     → [{question, expected_answer}]                     │
 │                                                         │
-│ 路径 1 — 语言类 (本地):                                 │
-│   card_type == "vocabulary"                            │
-│   Flutter 本地:                                        │
-│     - 看词写释义: 显示 front, 输入 back                │
-│     - 看释义写词: 显示 back, 输入 front                │
-│     - 文本匹配: trim + lowercase + 标点归一化           │
-│   → 匹配 → pass, 不匹配 → fail (显示正确答案)           │
-│   ❌ 不需要后端/LLM                                    │
+│   Step 2: Flutter 依次展示问题，收集答案                 │
 │                                                         │
-│ 路径 2 — 通用类 (后端 LLM, 优化: 仅2次API):           │
-│   card_type == "concept"                               │
-│   Step 1: POST /api/review/verify                       │
-│     { card_id, card_front, card_back }                 │
-│     → LLM 批量生成 3 个问题 + 答案                      │
-│     → 返回 [{question, expected_answer},...]           │
-│                                                        │
-│   Step 2: Flutter 依次展示问题，收集所有用户答案         │
-│     (本地 UI，无 LLM)                                  │
-│                                                        │
-│   Step 3: POST /api/review/judge (仅1次调用)            │
-│     { card_id, questions: [                             │
-│        {q, expected, user_answer},...] }               │
-│     → LLM 一次性批量判断全部 3 题                       │
-│     → 返回 [{correct: bool, feedback: str},...]        │
-│     → 计分: ≥2 correct → pass; <2 → fail               │
+│   Step 3: POST /api/review/judge (LLM 批量判断)          │
+│     → [{correct, feedback}], total_correct              │
+│     → 3/3 → pass, <3 → fail                             │
+│                                                         │
+│   ⚡ 后台异步: 评判不阻塞 UI，卡片可随时关闭              │
+│   评判结果缓存 (按 card.id), 关闭后再展开仍显示           │
 │                                                         │
 │ N6c 评分:                                               │
 │   POST /api/review/submit                              │
-│   { card_id, rating: 1|2|3|4,                         │
-│     verification_type, verification_result }           │
+│   通过 → 从列表移除 + cardRefreshProvider++              │
+│   失败 → 留在列表 + 不计为复习                           │
 │                                                         │
-│   后端:                                                 │
-│     1. FSRS.repeat(card_memory, rating) → new_state     │
-│     2. UPDATE card_memory SET ...                      │
-│     3. INSERT INTO review_log (...)                    │
-│     4. 触发 N7 成就检测                                │
-│                                                         │
-│ ❓ 需要确认:                                             │
-│   - AI 问答是逐个提问还是一次性全部提问?                 │
-│     → 推荐: 批量生成3问 + 逐个展示 + 逐个判断            │
-│     优点: 只需2次LLM调用 (生成+判断×3=4次总计)            │
-│     备选: 一次生成+一次批量判断 = 2次LLM调用            │
-│   - 打字验证的模糊度? 大小写不敏感 + 标点忽略足够?       │
-│   - rating 映射: pass→Good(3), fail→Again(1)            │
-│     那什么时候用 Hard(2) 和 Easy(4)?                     │
-│     → 对CoEvo, 暂时简化: 只用 Good(3) 和 Again(1)      │
+│ 近期考题历史注入 (2026-06-08):                           │
+│   review_log.details_json 存储每轮详细问答               │
+│   verify 时查询近10轮注入 prompt                         │
+│   LLM 避免重复出题，聚焦薄弱点                           │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -408,166 +275,70 @@
 ┌─────────────────────────────────────────────────────────┐
 │ Node N7: 成就检测                                        │
 │                                                         │
-│ 位置: 后端 Rust (growth_engine/achievements.rs)        │
-│ 复用: 适配 LinguaFlow achievements.rs                   │
+│ 位置: 后端 Rust (achievement_engine.rs)                 │
 │                                                         │
 │ 触发点:                                                 │
 │   - N4 卡片入库成功后                                    │
 │   - N6c 复习评分后                                      │
+│   - 每日定时检测 (24h 冷却)                               │
 │                                                         │
-│ Input (从 DB 聚合):                                     │
-│   AchievementContext {                                   │
-│     user_id,                                            │
-│     total_cards: u32,         // COUNT(*) FROM cards     │
-│     total_reviews: u32,       // COUNT(*) FROM review_log│
-│     streak_days: u32,         // FROM users              │
-│     domains_covered: u32,     // COUNT(DISTINCT domain)  │
+│ Input (单次聚合查询):                                   │
+│   AchievementAggregate {                                 │
+│     total_cards, total_reviews,                         │
+│     domains_covered, plans_completed,                   │
+│     conversations_completed                             │
 │   }                                                    │
 │                                                         │
-│ Logic:                                                  │
-│   1. 读取 achievement_defs (硬编码或配置文件)             │
-│   2. 读取 already_unlocked (FROM achievements)          │
-│   3. 逐个检查条件:                                       │
-│      - total_cards >= 1/50/200/500                     │
-│      - streak_days >= 3/7/30                           │
-│      - domains_covered >= 3/5                           │
-│      - total_reviews >= 100/1000                       │
-│   4. 过滤已解锁的                                       │
-│   5. 写入新成就 INSERT INTO achievements               │
+│ 成就列表 (2026-06-08): 23+ 个成就                       │
+│   - 固定成就: 卡片数/连续天数/领域数/复习数/计划完成数   │
+│   - 动态成就 (学习计划绑定): task→bronze, stage→silver, │
+│     domain→gold, cross→platinum                         │
+│   - 分类展示: 学习/坚持/领域/特殊/cosmos                │
 │                                                         │
-│ Output:                                                 │
-│   new_achievements: [{key, name, icon, unlocked_at}]    │
-│   (返回给客户端做动画提示)                               │
-│                                                         │
-│ ⚠️ 注意:                                                │
-│   LinguaFlow 的成就系统基于对话/概念/错误               │
-│   CoEvo 需要改为基于卡片数/复习数/领域数                 │
-│   条件解析器(parse_numeric_condition) 可直接复用         │
-│   AchievementContext 字段需要调整                        │
+│ 成就详情 API: GET /api/user/{uid}/achievements-all       │
+│   返回分组成就 + 进度 + 隐藏成就                         │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### N8: 学习计划 (结构化学习)
+### N8: 学习计划 (K12 双路径)
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ Node N8: 学习计划 (对话内结构化学习)                      │
+│ Node N8: 学习计划 (K12 课标驱动 + CP2 自由路径)          │
 │                                                         │
-│ 位置: 后端 Rust (ws.rs 对话内处理 + plan_handler 模块)    │
-│ Prompt: chat_system_free.md / chat_system_structured.md  │
+│ 位置: 后端 Rust (plan_handler.rs + ws.rs)                │
 │                                                         │
-│ 触发: LLM 检测学习意图 → 用户确认                         │
+│ 双路径 (2026-06-01 定稿):                                │
 │                                                         │
-│ 刚体流程:                                                │
+│ Path A — K12 课标计划 (预制):                           │
+│   Flutter k12_init → 读取 v3/plans/{subject}.json       │
+│   → 按 grade_band 过滤 stage → 创建 conversation_plan    │
+│   → 激活首 stage 卡片 (copy_prebuilt_card)              │
+│   → 后续 task 推进时自动激活下一批卡片                    │
+│   卡片源: v3/cards/{subject}.json (每科合并为一个文件)   │
 │                                                         │
-│ 用户:"我想学XX"                                          │
-│   → LLM 确认 + 输出 <plan_update> JSON                   │
-│   → 后端 plan_handler::handle_plan_update() 解析         │
-│     ├─ 提取 <plan_update>...</plan_update> 之间 JSON     │
-│     ├─ JSON 解析失败 → repair_json_backslashes() 修复    │
-│     │   (LLM 可能输出 \d、\w 等非法转义)                  │
-│     ├─ is_new_plan=true → upsert_learning_plan()         │
-│     │   domain=conversation_id (保证每对话独立计划)       │
-│     └─ is_new_plan=false → apply_plan_mutations()        │
-│   → render_plan() 渲染为对话文本                         │
-│   → 发 done + plan_updated WS 事件                       │
+│ Path B — CP2 自由计划 (LLM 生成):                       │
+│   用户表达学习目标 → LLM 输出 <plan_update> JSON        │
+│   → handle_plan_update() 解析                           │
+│   → upsert_learning_plan() / apply_plan_mutations()     │
+│   → render_plan() → 对话文本                            │
 │                                                         │
-│ 后续对话:                                                │
-│   → build_plan_context() 注入学习上下文到 prompt          │
-│   → LLM 教学 + 输出 <plan_update> 更新进度               │
-│   → plan_handler 解析 → UPDATE plan_json + achievements  │
-│   → plan_updated WS 事件 → Flutter 刷新面板              │
+│ 数据表:                                                 │
+│   conversation_plans (原 learning_plans, V2.0 更名)     │
+│   user_plan_progress (按 task_key 分列存储进度)          │
+│   user_plan_progress (按 task_key 分列存储进度)          │
 │                                                         │
-│ 流式拦截:                                                │
-│   检测到 <plan_update 标签 → 停止转发 token              │
-│   发 planning 事件 → Flutter 显示"计划制定中……"           │
+│ 卡片激活机制:                                           │
+│   首次 init → 仅激活第1个 stage                          │
+│   task 推进 → copy_prebuilt_card 逐个激活               │
+│   activate_stage_cards (V3 简化: no-op)                  │
 │                                                         │
-│ 截断保护:                                                │
-│   找到 <plan_update 但找不到 > 或 </plan_update>         │
-│   → truncate(start) 删掉垃圾，不写数据库                  │
-│                                                         │
-│ DB 表:                                                   │
-│   learning_plans (id, user_id, conversation_id,          │
-│     goal, domain, mode, plan_json, created_at, updated)  │
-│   UNIQUE INDEX (user_id, domain) — domain=conversation_id │
-│   → 每个对话最多一个计划，同一用户不同对话各自独立         │
-│                                                         │
-│ 成就绑定:                                                │
-│   task done → bronze/"任务名入门"                        │
-│   stage done → silver/"阶段名精英"                       │
-│   domain done → gold/"领域大师"                          │
-│   cross-domain → platinum/"目标宗师"                     │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Flow E: 跳过管理
-
-```
-┌─────────────────────────────────────────────────────────┐
-│ Flow E: 跳过管理 (附属于 Flow B)                         │
-│                                                         │
-│ 写入:                                                   │
-│   POST /api/cards/skip                                  │
-│   { user_id, front, domain, source_text }              │
-│   → INSERT INTO skipped_concepts                        │
-│                                                         │
-│ 自动移除 (用户主动制卡时):                               │
-│   N4 入库前检查:                                        │
-│   IF front 匹配 skipped_concepts                        │
-│   → DELETE FROM skipped_concepts                        │
-│   → 继续正常入库流程                                     │
-│                                                         │
-│ 读取 (管理页面):                                        │
-│   GET /api/cards/skipped?user_id=xxx                    │
-│   → SELECT * FROM skipped_concepts                      │
-│                                                         │
-│ 取消跳过:                                               │
-│   DELETE /api/cards/skipped/{skip_id}                    │
-│   → 移除跳过记录 → 同时重新创建卡片并加入复习队列         │
-│   → 概念立即出现，不等后续对话                           │
-│                                                         │
-│ ⚠️ 数据一致性问题:                                       │
-│   front 是用户写的自由文本，可能和LLM提取的front不同     │
-│   例如: 用户跳过 "machine learning"                     │
-│   LLM 提取 "machine learning" → 应该能匹配              │
-│   解决: 去重时用 LOWER(front) 做精确匹配                 │
-│   ❓ 是否需要更模糊的匹配?                               │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Flow G: 对话生命周期
-
-```
-┌─────────────────────────────────────────────────────────┐
-│ Flow G: 对话生命周期 (软删除/恢复/物理删除)              │
-│                                                         │
-│ 位置: routes.rs (conversation_*_handler)                 │
-│       conversation_list_screen.dart (UI)                 │
-│                                                         │
-│ 状态机:                                                  │
-│                                                         │
-│   新建对话 ──→ 活跃 (deleted_at = NULL)                  │
-│                   │                                     │
-│                   │ DELETE /api/conversations/{id}       │
-│                   │ 确认弹窗 → 软删除                     │
-│                   ▼                                     │
-│              已删除 (deleted_at = 当前时间)               │
-│                   │                                     │
-│       ┌───────────┴───────────┐                         │
-│       │                       │                         │
-│  POST .../restore    DELETE .../permanent               │
-│  deleted_at=NULL     物理删除 conversations              │
-│       │               + 级联删 conversation_turns        │
-│       ▼               (不可恢复)                         │
-│     活跃                                                │
-│                                                         │
-│   统计查询: 默认 AND deleted_at IS NULL                  │
-│   历史列表: include_deleted 参数控制可见性                │
-│   前端: TabBar [活跃] [已删除] 两栏切换                   │
-│                                                         │
-│   deleted_at 列: TEXT DEFAULT NULL                      │
-│   索引: idx_conversations_user_deleted(user_id, deleted_at)│
-│   定时清理: 30天后物理删除（后续迭代）                    │
+│ Prompt 注入 (2026-06-08 升级):                          │
+│   - 当前 task 课文 full_text                            │
+│   - 重点句型 + 语法要点                                  │
+│   - 任务完成信号 (✅ 已完成)                             │
+│   - LLM prompt 三级: nursery/primary/secondary           │
+│   - 考核机制 (grill): 2-3 题递进                         │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -579,19 +350,20 @@
 用户启动App
     │
     ▼
-┌──────────┐     ┌──────────┐     ┌──────────┐
-│ 登录/注册 │ ──→ │ 对话主页  │ ──→ │ AI 对话  │
-└──────────┘     └──────────┘     └────┬─────┘
-                                       │
-                    每轮对话结束后        │
-                    (后台ColdPath)       │
+┌──────────┐     ┌──────────┐     ┌───────────┐
+│ 登录/注册 │ ──→ │ 对话主页  │ ──→ │ AI 对话   │
+│ 限流:     │     └──────────┘     │ + 课文面板 │
+│ reg 5/min │                      └─────┬─────┘
+│ login 10/m│                            │
+└──────────┘         每轮对话结束后 ├─→ CP2 检查 plan_update
+                      (后台ColdPath) │    → cardRefreshProvider++
                          ┌──────────────┘
                          ▼
                   ┌──────────────┐
-                  │ N2 概念提取   │
+                  │ N2 概念提取   │ (语言类已跳过)
                   │ (后台静默)    │
                   └──────┬───────┘
-                         │
+                         │ CP1
                     ┌────┴────┐
                     ▼         ▼
                候选为空    候选有值
@@ -602,47 +374,39 @@
                        ▼           ▼
                    用户勾选     用户跳过
                        │           │
-                  ┌────▼────┐  skipped_
-                  │ N4 入库  │  concepts
-                  └─────────┘
-                       │
                   ┌────▼────┐
-                  │ N7 成就  │
-                  │ (可能触发)│
+                  │ N4 入库  │
                   └─────────┘
-
 
          复习循环 (用户主动点击"复习")
                        │
                        ▼
                 ┌──────────────┐
                 │ N5 到期队列   │
-                │ GET /review  │
+                │ task 级过滤   │
                 └──────┬───────┘
                        │ cards[]
                        ▼
                 ┌──────────────┐
                 │ N6a 翻牌     │
-                │ 单张全屏展示  │
+                │ 列表+展开式   │
                 └──────┬───────┘
                        │
-                 ┌─────┴─────┐
-                 ▼           ▼
-           vocabulary     concept
-                 │           │
-            N6b 打字    N6b AI问答
-            (本地匹配)   (LLM 三联问)
-                 │           │
-                 └─────┬─────┘
+                       ▼
+                ┌──────────────┐
+                │ N6b LLM 三联问│
+                │ 3/3→pass <3→fail│
+                │ 后台异步不阻塞 │
+                └──────┬───────┘
                        ▼
                 ┌──────────────┐
                 │ N6c 评分     │
-                │ POST /submit │
+                │ cardRefresh++ │
                 └──────┬───────┘
                        │
                   ┌────▼────┐
                   │ N7 成就  │
-                  │ (可能触发)│
+                  │ + 成就页 │
                   └─────────┘
                        │
                  还有到期卡片?
@@ -651,268 +415,168 @@
                     │    │
                     ▼    ▼
               继续循环  "今日完成"
+
+         成就页面 (tab 4)
+               │
+               ▼
+        ┌──────────────┐
+        │ 4 API 聚合    │
+        │ profile+     │
+        │ activity+    │
+        │ learning-    │
+        │ report+      │
+        │ k12-progress │
+        └──────┬───────┘
+               │
+          cardRefreshProvider 监听
+          复习/CP2 更新 → 自动刷新
 ```
 
 ---
 
-## 四、Seat-map: 数据存储位置
+## 四、Seat-map: 数据存储位置 (V2.1+)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        SQLite                                   │
+│                        SQLITE                                   │
+│                                                                 │
+│  18 张有效表 (V2.1 定稿: 用户状态用 DB 列非 JSON)               │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────┐       │
-│  │ users                  (Auth)                        │       │
-│  │ ─────────────────────────────────────────────────── │       │
-│  │ id | username | password_hash | created_at           │       │
-│  │                                  + streak_days?     │       │
+│  │ users                  (Auth + PII 加密)             │       │
+│  │ id | username | password_hash | streak_days          │       │
+│  │   | display_name | real_name(加密) | phone(加密)     │       │
+│  │   | created_at                                       │       │
 │  └─────────────────────────────────────────────────────┘       │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────┐       │
-│  │ cards                  (Data)                        │       │
-│  │ ─────────────────────────────────────────────────── │       │
-│  │ id | user_id | domain | card_type | front | back    │       │
-│  │     | source_sentence | created_at                  │       │
-│  │ 🔗 N2 去重查询     🔗 N3 格式化输出                  │       │
-│  │ 🔗 N5 复习队列     🔗 N6a UI展示                    │       │
+│  │ cards                  (Data + K12 关联)             │       │
+│  │ id | user_id | domain | subject | card_type         │       │
+│  │   | front | back | source_sentence | conversation_id │       │
+│  │   | plan_id | task_key | created_at                 │       │
 │  └─────────────────────────────────────────────────────┘       │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────┐       │
-│  │ card_memory            (FSRS State, 1:1 cards)      │       │
-│  │ ─────────────────────────────────────────────────── │       │
-│  │ card_id | state | difficulty | stability | due      │       │
-│  │         | last_review | reps | lapses               │       │
-│  │ 🔗 N4 初始创建     🔗 N5 队列筛选                    │       │
-│  │ 🔗 N6c 每次更新    🔗 FSRS.repeat()                 │       │
+│  │ card_memory            (FSRS State, 1:1)            │       │
+│  │ card_id | state | status | difficulty | stability   │       │
+│  │   | due | last_review | reps | lapses               │       │
 │  └─────────────────────────────────────────────────────┘       │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────┐       │
-│  │ review_log             (Audit Trail)                 │       │
-│  │ ─────────────────────────────────────────────────── │       │
-│  │ id | card_id | rating | verification_type           │       │
-│  │    | verification_result | reviewed_at              │       │
-│  │ 🔗 N6c 每次写入     🔗 N7 计数                       │       │
-│  │ 🔗 N7 累计复习次数  (百炼/千锤)                      │       │
+│  │ conversation_plans      (K12 + CP2 计划)             │       │
+│  │ id | user_id | conversation_id | goal | subject     │       │
+│  │   | grade_band | plan_content | created_at          │       │
 │  └─────────────────────────────────────────────────────┘       │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────┐       │
-│  │ achievements           (Progress)                    │       │
-│  │ ─────────────────────────────────────────────────── │       │
-│  │ id | user_id | achievement_key | unlocked_at         │       │
-│  │ 🔗 N7 写入          🔗 客户端展示                    │       │
+│  │ user_plan_progress      (状态列存储, 非 JSON)        │       │
+│  │ id | user_id | plan_id | task_key | status          │       │
+│  │   | updated_at                                      │       │
 │  └─────────────────────────────────────────────────────┘       │
 │                                                                 │
-│  ┌─────────────────────────────────────────────────────┐       │
-│  │ skipped_concepts       (User Preferences)            │       │
-│  │ ─────────────────────────────────────────────────── │       │
-│  │ id | user_id | front | domain | source_text         │       │
-│  │    | skipped_at                                     │       │
-│  │ 🔗 N2 去重查询     🔗 用户跳过 UI                   │       │
-│  │ 🔗 N4 自动移除 (用户主动制卡时)                      │       │
-│  └─────────────────────────────────────────────────────┘       │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────┐       │
-│  │ conversation_turns     (Dialogue History)            │       │
-│  │ ─────────────────────────────────────────────────── │       │
-│  │ id | conversation_id | role | content               │       │
-│  │    | created_at                                     │       │
-│  │ 🔗 N1 每轮写入     🔗 N2 概念提取输入               │       │
-│  │ 🔗 N1 最近10轮上下文                                │       │
-│  └─────────────────────────────────────────────────────┘       │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────┐       │
-│  │ conversations          (Session)                     │       │
-│  │ ─────────────────────────────────────────────────── │       │
-│  │ id | user_id | turn_count | started_at |            │       │
-│  │ deleted_at (NULL=活跃, 非NULL=已删除)               │       │
-│  │ 🔗 Flow G 软删除/恢复                               │       │
-│  └─────────────────────────────────────────────────────┘       │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────┐       │
-│  │ learning_plans         (Learning Progress)           │       │
-│  │ ─────────────────────────────────────────────────── │       │
-│  │ id | user_id | conversation_id | goal | domain      │       │
-│  │     | mode | plan_json | created_at | updated_at    │       │
-│  │ 🔗 N8 创建/更新   🔗 对话 prompt 注入               │       │
-│  │ 🔗 Flutter 面板   🔗 成就 (bronze~platinum)         │       │
-│  └─────────────────────────────────────────────────────┘       │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────┐       │
-│  │ user_preferences       (User Settings)               │       │
-│  │ ─────────────────────────────────────────────────── │       │
-│  │ user_id | key | value | updated_at                   │       │
-│  │ 🔗 偏好同步 (TTS语速、朗读开关等)                     │       │
-│  └─────────────────────────────────────────────────────┘       │
+│  更多表: tokens | conversations | conversation_turns           │
+│  review_log | achievements | knowledge_graph                   │
+│  k12_quiz_bank | k12_quiz_attempts | user_preferences          │
+│  guardian_assignments | admin_users | admin_audit_log          │
+│  subscription_requests                                         │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 五、API 契约
+## 五、API 契约 (V2.1+)
 
-### REST Endpoints
+### 新增 K12 端点
 
-| Method | Path | Node | Request | Response |
-|:--|:--|:--|:--|:--|
-| POST | `/api/auth/register` | - | `{username, password}` | `{user_id, token}` |
-| POST | `/api/auth/login` | - | `{username, password}` | `{user_id, token}` |
-| WS | `/ws` | N1 | `ChatRequest` (JSON) | `WsEvent` 流 |
-| POST | `/api/cards/skip` | N2 | `{user_id, front, source_text}` | `{skipped_id}` |
-| GET | `/api/cards/skipped` | - | `?user_id=xxx` | `{skipped: [...]}` |
-| DELETE | `/api/cards/skipped/{skip_id}` | - | - | `{status: "restored", card_id: "..."}` (同时恢复为卡片) |
-| GET | `/api/review/due` | N5 | `?user_id=xxx` | `{cards: [...], total_due, has_more}` |
-| POST | `/api/review/verify` | N6b | `{card_id, front, back}` | `{questions: [{q, expected}]...}` |
-| POST | `/api/review/judge` | N6b | `{card_id, questions: [{q,expected,user_answer}]}` | `{results: [{correct,feedback}], total_correct}` |
-| POST | `/api/review/submit` | N6c | `{user_id, card_id, rating, vtype, vresult, details?}` | `{status: "ok", achievements: [...]}` |
-| POST | `/api/cards/batch-create` | N3+N4 | `{user_id, candidates: [{front,back,source_sentence,domain}]}` | `{created, duplicates, achievements}` |
-| GET | `/api/cards/all` | - | `?user_id=xxx&q=&state=&domain=&sort=` | `{cards, total, state_counts, domains}` |
-| GET | `/api/history` | N1 | `?user_id=xxx&conversation_id=xxx&include_deleted=only\|true` | `{turns: [...]}` 或 `{conversations: [{..., deleted_at}]}` |
-| GET | `/api/plans` | N8 | `?conversation_id=xxx` 或 `?user_id=xxx` | `{plans: [{id, goal, plan, mode}]}` |
-| POST | `/api/plans` | N8 | `{user_id, goal, domain, plan_json}` | `{id, status}` |
-| DELETE | `/api/plans/{plan_id}` | N8 | `?user_id=xxx` | `{status: "ok"}` (软删除) |
-| DELETE | `/api/conversations/{id}` | Flow G | `?user_id=xxx` | `{status: "ok", deleted_at: "..."}` (软删除) |
-| POST | `/api/conversations/{id}/restore` | Flow G | `?user_id=xxx` | `{status: "ok"}` (恢复) |
-| DELETE | `/api/conversations/{id}/permanent` | Flow G | `?user_id=xxx` | `{status: "ok"}` (物理删除) |
+| Method | Path | 说明 |
+|:--|:--|:--|
+| POST | `/api/k12/init` | 初始化 K12 学习计划 |
+| GET | `/api/k12/progress` | 学习计划卡片进度 |
+| GET | `/api/k12/due-cards` | 到期卡片 (conv_id 过滤) |
+| GET | `/api/k12/reading/{conv_id}/current-card` | 当前课文卡片 |
+| GET | `/api/user/{uid}/profile` | 用户画像 (stats+cefr+成就) |
+| GET | `/api/user/{uid}/learning-report` | 学习报告 (家长看板) |
+| GET | `/api/user/{uid}/activity` | 活动热力图 |
+| GET | `/api/user/{uid}/achievements-all` | 全部成就详情 |
+| GET | `/api/user/{uid}/avatar` | 头像 (GET/POST 上传) |
 
-### WebSocket 协议 (HotPath / ColdPath 分离)
+### 限流
+
+| 端点 | 限流 | 生效 |
+|:--|:--|:--|
+| `/api/auth/register` | 5/min/IP | 2026-06-08 |
+| `/api/auth/login` | 10/min/IP | 2026-06-08 |
+
+### 事件驱动
 
 ```
-客户端 → 服务器 (首条消息含 token，后续可省略):
-{
-  "user_id": "...",
-  "conversation_id": "...",
-  "message": "用户输入",
-  "token": "sha256_token"           // 首条必传
-}
-
-服务器 → 客户端 (HotPath，按顺序):
-{"type":"thinking"}                       // 开始思考
-{"type":"token","content":"..."}          // 流式token (计划生成时被 planning 替代)
-{"type":"planning"}                       // 计划生成中，显示占位
-{"type":"done","reply":"..."}             // 完成 —— 立即返回，不等概念提取
-{"type":"plan_updated"}                   // 计划已更新，前端刷新面板
-
-服务器 → 客户端 (ColdPath，异步推送):
-{"type":"candidates",                     // 概念提取完成（1-3s 后）
-  "candidates": [{"front":..., "back":..., "source_sentence":..., "domain":...}]}
-
-服务器 → 客户端 (鉴权/订阅错误):
-{"type":"error","content":"missing_token"}           // 首条消息缺少 token
-{"type":"error","content":"invalid_token"}           // token 无效
-{"type":"error","content":"subscription_required"}   // 未激活订阅
-{"type":"error","content":"subscription_expired"}    // 订阅已到期
-{"type":"error","content":"..."}                     // 其他错误
+复习通过 → submitReview → cardRefreshProvider++
+CP2 plan_updated → chat_screen → cardRefreshProvider++
+成就页监听 cardRefreshProvider → 自动刷新数据
 ```
-
-#### 前端 token → 公式渲染流程
-
-```
-LLM SSE chunk → ws.rs 解析 "data: {...}"
-  → serde_json::json!({"type":"token","content":"..."})
-  → WebSocket 文本帧
-  → Dart jsonDecode → _buffer += content
-  → _buildRichContent(text, isStreaming: true)
-    ┌─ isStreaming=true  → Text(纯文本)          ← 防闪烁
-    └─ isStreaming=false → RegExp(dotAll:true)    ← done 后一次性解析
-         → Math.tex("\\sin\\theta")               ← flutter_math_fork 渲染
-```
-
-**设计决策** (2026-05-14):
-- 流式期间不解析公式：每个 chunk 到达时 `\(...` 不完整，正则无法匹配 → 原生文本闪烁
-- done 事件后一次性解析：此时全文完整，正则 100% 命中
-- `dotAll: true`：DeepSeek/Qwen 输出的 `\[...\]` 公式内部含换行，默认 `.` 不跨行导致 display 公式静默丢弃
-
-⚡ HotPath 和 ❄️ ColdPath 通过 `select!` 并发处理:
-
-```
-主循环:
-  select! {
-    ws.recv()   → 流式回复 → done → spawn(ColdPath)
-    cold_rx     → candidates → 推送给客户端
-  }
-```
-
-ColdPath 运行在 `tokio::spawn` 后台 task 中，不阻塞消息接收。
-用户连续发消息时，每条消息立即被处理（不等前一条的 ColdPath 完成）。
-
-### 词汇匹配 (新增，2026-05-08)
-
-```
-ColdPath 内:
-  1. LLM 提取概念 (已有流程)
-  2. 词库文本匹配:
-     AI回复 → 分词 → 查 cefr_catalog.json (10万词)
-     → 按难度降序排序 → 取前10个
-     → 去重: 已有卡片/跳过记录/LLM已提取 → 跳过
-     → domain: "general"|"grammar" → 改为 "vocabulary"
-     → 与 LLM 结果合并 → 返回 candidates
-```
-
-词库文件: `backend/cefr_catalog.json` (从 LinguaFlow 复制)
-词库加载: `chat_engine/src/word_bank.rs`
-加载时机: 启动时一次性读入 `OnceLock<HashMap<String, CefrEntry>>`
-匹配算法: O(n) 全量扫描 + HashSet 去重 + 多词复合匹配
 
 ---
 
-## 六、数据流分析发现的问题与建议（实施后状态）
+## 六、数据流分析发现的问题与建议（实施后状态 V2.1）
 
 ### 🔴 P0 问题 (已全部解决)
 
 | # | 问题 | 状态 | 解决方案 |
 |:--|:--|:--:|:--|
-| 1 | **N2 的 LLM 提取只输出 front** — N3 需要 front+back+source+doman | ✅ | LLM prompt 返回完整结构 `[{front, back, source, domain}]` |
-| 2 | **conversation_turns 表未在计划中出现** — N1 需要会话历史 | ✅ | 增加 `conversation_turns` + `conversations` 表 (6→8) |
-| 3 | **users 表缺少 streak_days 字段** — N7 需要 | ✅ | 增加 `streak_days` + `last_active_date` |
+| 1 | N2 LLM 提取只输出 front | ✅ | LLM prompt 返回完整结构 |
+| 2 | conversation_turns 未在计划中出现 | ✅ | 增加表 |
+| 3 | users 缺少 streak_days | ✅ | 增加字段 |
+| 4 | 安全: batch-create/skip-delete 缺鉴权 | ✅ | 已修复 |
+| 5 | 安全: cards_all_handler 缺鉴权 | ✅ | 已修复 |
+| 6 | PII 加密: real_name/phone AES-256-GCM | ✅ | encryption.rs |
+| 7 | 限流: 注册/登录无防护 | ✅ | rate_limiter 5/10 per min |
 
-### 🟡 P1 重要问题 (已全部解决)
+### 🟡 P1 改进 (已实施)
 
-| # | 问题 | 状态 | 解决方案 |
-|:--|:--|:--:|:--|
-| 4 | **FSRS 评分只用 Good/Again** | ✅ | MVP 简化策略，仅用 Good(3)/Again(1) |
-| 5 | **New 状态卡片何时转 Learning** | ✅ | 首次复习评分后自动转 Learning |
-| 6 | **AI 问答 LLM 调用次数** | ✅ | 批量生成(1次) → 收集答案(本地) → 批量判断(1次) = 2 次 |
-| 7 | **N2 去重匹配策略** | ✅ | LOWER(front) 精确匹配 + 过滤占位文本 |
-
-### 🟢 P2 采纳情况
-
-| # | 建议 | 状态 |
+| # | 改进 | 状态 |
 |:--|:--|:--:|
-| 8 | **N1 上下文: 5000 字滑动窗口** | ✅ 已实现 |
-| 9 | **achievements 表加 name + icon** | ✅ 已实现 |
-| 10 | **增加 daily_review_count 限制** | ⏭️ 已确认不需要 |
+| 1 | 复习验证无记忆 → 注入10轮历史 | ✅ 2026-06-08 |
+| 2 | 卡片状态更新竞态 → card.id 提交 | ✅ 2026-06-08 |
+| 3 | 成就页数据不刷新 → cardRefreshProvider | ✅ 2026-06-08 |
+| 4 | 复习页 tab 首项不显示 → 自动加载修复 | ✅ 2026-06-08 |
+| 5 | CP1 语言类不必要 → english/chinese 跳过 | ✅ 2026-06-08 |
 
 ---
 
-## 七、开发计划修正记录 (已全部实施)
+## 七、开发计划修正记录 (V2.1)
 
-### 修正 1: 表结构 (9 → 10 张表)
+### 修正 1: 表结构 (V2.0 动态扩展至 18 张)
 ```
-原计划 9 张表 → 增加 user_preferences
-最终 10 张表: users, conversations, conversation_turns,
-  cards, card_memory, review_log, achievements, skipped_concepts,
-  learning_plans, user_preferences
-```
-
-### 修正 2: N2 节点输出结构
-```
-原: 输出"候选概念列表" (只说了 front)
-改为: 输出 [{front, back, source_sentence, domain}]
+新增: conversation_plans, user_plan_progress
+      knowledge_graph, k12_quiz_bank, k12_quiz_attempts
+      guardian_assignments, admin_users, admin_audit_log
+      subscription_requests
+废弃: learning_plans → 备份为 learning_plans_legacy
+      skipped_concepts → 状态由前端管理
 ```
 
-### 修正 3: streak_days 持久化
+### 修正 2: 用户状态存储
 ```
-users 表增加: streak_days, last_active_date
-每次复习时更新签到逻辑
+原: user_plan_progress.plan_progress (JSON)
+改: user_plan_progress.task_key + status (列存储, 可查询)
 ```
 
-### 修正 4: 跳过记录匹配策略
+### 修正 3: 卡片卡片知识图谱
 ```
-LOWER(front) 精确匹配 + Jaro-Winkler > 0.85 模糊匹配
+新增: 4 层架构 — 入口路由 → 课标约束 → 知识图谱 → 评估反馈
+知识图谱: 177 节点, 275 边 (高中 10 科)
+```
+
+### 修正 4: Prompt 体系
+```
+新增三级阅读提示词: nursery/primary/secondary
+英语: 按 A1/A2/B1/B2 分级
+语文: 对标英语结构重写 (禁例清单+教学要点+文体差异)
+考核机制: 2-3 题递进, CP2 自动分析
 ```
 
 ---
 
 *文档版本: V2.2 (实施后)*
-*日期: 2026-05-14*
-*说明: 所有数据流分析发现的问题已在实施中解决；新增 N1 前端公式渲染管道文档*
+*日期: 2026-06-08*
+*最后同步: 2026-06-08 — 覆盖成就页刷新/复习页竞态/CP1跳过/限流/提示词优化*
