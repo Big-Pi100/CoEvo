@@ -97,7 +97,6 @@ class _AchievementOverlayState extends ConsumerState<AchievementOverlay>
   String? _displayedKey;
 
   ColorScheme get _cs => Theme.of(context).colorScheme;
-  TextTheme get _tt => Theme.of(context).textTheme;
 
   // ── Confetti 粒子系统 ──
   final List<_Particle> _particles = [];

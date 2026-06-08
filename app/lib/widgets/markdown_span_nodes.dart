@@ -176,19 +176,19 @@ class RichContentBuilder {
     // 意象 / 名句
     final famousLines = data['famous_lines'] as List?;
     if (famousLines != null && famousLines.isNotEmpty) {
-      segments.add(_metaRow('名句', (famousLines as List<dynamic>).join('；')));
+      segments.add(_metaRow('名句', famousLines.join('；')));
     }
 
     // 意象
     final imagery = data['imagery'] as List?;
     if (imagery != null && imagery.isNotEmpty) {
-      segments.add(_metaRow('意象', (imagery as List<dynamic>).join('；')));
+      segments.add(_metaRow('意象', imagery.join('；')));
     }
 
     // 手法
     final technique = data['technique'] as List?;
     if (technique != null && technique.isNotEmpty) {
-      segments.add(_metaRow('手法', (technique as List<dynamic>).join('、')));
+      segments.add(_metaRow('手法', technique.join('、')));
     }
 
     // 主题

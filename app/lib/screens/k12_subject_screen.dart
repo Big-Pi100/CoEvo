@@ -16,7 +16,6 @@ class K12SubjectScreen extends ConsumerStatefulWidget {
 
 class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
   ColorScheme get _cs => Theme.of(context).colorScheme;
-  TextTheme get _tt => Theme.of(context).textTheme;
   bool _loading = false;
   String? _error;
 

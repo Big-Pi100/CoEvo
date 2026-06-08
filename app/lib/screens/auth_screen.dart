@@ -14,7 +14,6 @@ class AuthScreen extends ConsumerStatefulWidget {
 
 class _AuthScreenState extends ConsumerState<AuthScreen> {
   ColorScheme get _cs => Theme.of(context).colorScheme;
-  TextTheme get _tt => Theme.of(context).textTheme;
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();

@@ -28,7 +28,6 @@ class ChatScreen extends ConsumerStatefulWidget {
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   ColorScheme get _cs => Theme.of(context).colorScheme;
-  TextTheme get _tt => Theme.of(context).textTheme;
   final _messageController = TextEditingController();
   final _messages = <Message>[];
   final _scrollController = ScrollController();

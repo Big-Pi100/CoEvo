@@ -44,7 +44,6 @@ class _ChatPlanPanelState extends State<ChatPlanPanel> {
 
   Widget _buildProgressBar(List<dynamic> stages) {
     final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
     final (total, done) = _countProgress(stages);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),

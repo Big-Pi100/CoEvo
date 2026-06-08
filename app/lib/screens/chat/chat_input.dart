@@ -23,7 +23,6 @@ class ChatInput extends ConsumerStatefulWidget {
 
 class _ChatInputState extends ConsumerState<ChatInput> {
   ColorScheme get _cs => Theme.of(context).colorScheme;
-  TextTheme get _tt => Theme.of(context).textTheme;
   @override
   Widget build(BuildContext context) {
     if (widget.isDeleted) return const SizedBox.shrink();
