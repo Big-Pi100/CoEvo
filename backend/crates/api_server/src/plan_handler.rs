@@ -965,7 +965,7 @@ pub fn build_plan_context(conn: &rusqlite::Connection, conversation_id: &str) ->
             .unwrap_or(&prompt_subject)
             .to_string();
 
-        let ctx = build_context_text(&merged, &goal, &mode);
+        let ctx = build_context_text(conn, &merged, &goal, &mode);
         return (pipeline_domain, mode.to_string(), ctx);
     }
 
@@ -974,7 +974,8 @@ pub fn build_plan_context(conn: &rusqlite::Connection, conversation_id: &str) ->
 }
 
 /// 从 merged plan JSON（含 status 已合并的 stages）构建 LLM 上下文文本
-fn build_context_text(merged: &serde_json::Value, goal: &str, _mode: &str) -> String {
+/// 同时从 DB 查询当前任务的第一张卡片（课文卡）注入 full_text
+fn build_context_text(conn: &rusqlite::Connection, merged: &serde_json::Value, goal: &str, _mode: &str) -> String {
     let _ = _mode; // suppress unused warning — kept for future use
     let mut ctx = format!("\n\n### 学习计划\n长期目标: {}", goal);
     let mut current_task_name: Option<String> = None;
@@ -1035,6 +1036,67 @@ fn build_context_text(merged: &serde_json::Value, goal: &str, _mode: &str) -> St
                 String::new()
             }
         ));
+
+        // ── 注入当前 task 的课文卡片 full_text ──
+        // 查找当前 in_progress task 的 card_ids[0]（阅读卡），从 DB 读取 full_text
+        if let Some(stages) = merged.get("stages").and_then(|v| v.as_array()) {
+            for stage in stages {
+                if let Some(tasks) = stage.get("tasks").and_then(|t| t.as_array()) {
+                    for task in tasks {
+                        let tstatus = task.get("status").and_then(|s| s.as_str()).unwrap_or("");
+                        if tstatus == "in_progress" {
+                            let cids = task.get("card_ids").and_then(|c| c.as_array());
+                            let first_uuid = cids.and_then(|a| a.first()).and_then(|v| v.as_str());
+                            if let Some(uuid) = first_uuid {
+                                if let Ok(back_str) = conn.query_row(
+                                    "SELECT back FROM cards WHERE id = ?1",
+                                    rusqlite::params![uuid],
+                                    |row| row.get::<_, String>(0),
+                                ) {
+                                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&back_str) {
+                                        let ft = parsed.get("full_text")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("");
+                                        if !ft.is_empty() {
+                                            ctx.push_str(&format!("\n\n### 当前课文\n{}\n", ft));
+                                        }
+                                        // 如果有 translation 也注入
+                                        if let Some(tr) = parsed.get("translation").and_then(|v| v.as_str()) {
+                                            if !tr.is_empty() {
+                                                ctx.push_str(&format!("\n中文翻译：{}\n", tr));
+                                            }
+                                        }
+                                        // 注入 key_sentence_patterns
+                                        if let Some(patterns) = parsed.get("key_sentence_patterns").and_then(|v| v.as_array()) {
+                                            if !patterns.is_empty() {
+                                                ctx.push_str("\n重点句型：\n");
+                                                for p in patterns {
+                                                    let pat = p.get("pattern").and_then(|v| v.as_str()).unwrap_or("");
+                                                    let exp = p.get("explanation").and_then(|v| v.as_str()).unwrap_or("");
+                                                    ctx.push_str(&format!("  - {}: {}\n", pat, exp));
+                                                }
+                                            }
+                                        }
+                                        // 注入 key_grammar
+                                        if let Some(grammar) = parsed.get("key_grammar").and_then(|v| v.as_array()) {
+                                            if !grammar.is_empty() {
+                                                ctx.push_str("语法要点：\n");
+                                                for g in grammar {
+                                                    let point = g.get("point").and_then(|v| v.as_str()).unwrap_or("");
+                                                    let example = g.get("example").and_then(|v| v.as_str()).unwrap_or("");
+                                                    ctx.push_str(&format!("  - {}: {}\n", point, example));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // 写入 context 日志缓冲区（供 e2e 测试捕获）

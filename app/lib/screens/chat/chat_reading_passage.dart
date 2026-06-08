@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../api/chat_client.dart';
+import '../../services/tts_service.dart';
 import '../../theme/app_theme.dart';
 
 /// 课文阅读面板 — 显示当前 task 的课文全文
@@ -112,6 +114,19 @@ class _ChatReadingPassageState extends State<ChatReadingPassage> {
                   Expanded(
                     child: Text(titleShort, style: const TextStyle(fontWeight: FontWeight.w600)),
                   ),
+                  if (fullText.isNotEmpty)
+                    Consumer(builder: (_, ref, __) {
+                      final tts = ref.read(ttsServiceProvider);
+                      return IconButton(
+                        icon: Icon(Icons.volume_up, size: 18, color: cs.secondary),
+                        onPressed: () => tts.speak(fullText),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        visualDensity: VisualDensity.compact,
+                        tooltip: '朗读课文',
+                      );
+                    }),
+                  const SizedBox(width: 4),
                   Icon(
                     _expanded ? Icons.unfold_less : Icons.unfold_more,
                     size: 18, color: cs.onSurfaceVariant,

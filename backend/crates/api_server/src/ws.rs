@@ -231,15 +231,17 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 let mut user_content = String::new();
                 if history.len() > 1 {
                     let context = &history[..history.len() - 1];
-                    // 滑动窗口: 保留最近 N 轮, 总长度 ≤5000 字, 不截断单条
+                    // 滑动窗口: 保留最近 10 轮, 总长度 ≤5000 字, 不截断单条
                     let mut lines: Vec<String> = Vec::new();
                     let mut total = 0usize;
+                    let mut turns = 0usize;
                     for (role, content) in context.iter().rev() {
                         let label = if role == "user" { "用户" } else { "AI" };
                         let line = format!("\n{}: {}", label, content);
                         let next = total + line.len();
-                        if next > 2500 { break; }
+                        if next > 5000 || turns >= 10 { break; }
                         total = next;
+                        turns += 1;
                         lines.push(line);
                     }
                     if !lines.is_empty() {
