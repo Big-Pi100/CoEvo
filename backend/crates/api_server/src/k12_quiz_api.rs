@@ -33,6 +33,7 @@ pub async fn quiz_submit_handler(
     headers: HeaderMap,
     Json(input): Json<QuizSubmitInput>,
 ) -> Json<serde_json::Value> {
+    tracing::info!("quiz_submit_handler: user_id={}, task_name={}", input.user_id, input.task_name);
     // 鉴权
     if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
         return crate::routes::auth_json(e);

@@ -112,6 +112,7 @@ fn decrypt_maybe(enc: &str) -> String {
 // ── Login ──
 #[derive(Deserialize)] pub struct AdminLoginInput { pub username: String, pub password: String }
 pub async fn admin_login(Json(input): Json<AdminLoginInput>) -> impl IntoResponse {
+    tracing::info!("admin_login: username={}", input.username);
     let c = conn();
     let r: Option<(String,String,String,String)> = c.query_row("SELECT id,role,status,password_hash FROM admin_users WHERE username=?1", rusqlite::params![input.username], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).ok();
     match r {
@@ -137,12 +138,14 @@ pub async fn admin_login(Json(input): Json<AdminLoginInput>) -> impl IntoRespons
 // admin_users 只保留 super/service，均由超管创建。
 #[derive(Deserialize)] pub struct AdminRegisterInput { pub username: String, pub password: String, pub role: String, pub real_name: String, pub phone: String, pub id_number: Option<String>, pub apply_reason: Option<String>, pub registered_from: Option<String>, pub guardian_declaration: Option<String> }
 pub async fn admin_register(Json(input): Json<AdminRegisterInput>) -> impl IntoResponse {
+    tracing::info!("admin_register: username={}", input.username);
     // admin_users 只允许 super/service，guardian/tutor 已移入 users 表
     return err(StatusCode::BAD_REQUEST, "self_register_disabled_contact_admin");
 }
 // ── User Search ──
 #[derive(Deserialize)] pub struct AdminUsersQuery { pub q: String, pub page: Option<i64>, pub sort: Option<String>, pub include_deleted: Option<bool> }
 pub async fn admin_users_handler(headers: HeaderMap, Query(query): Query<AdminUsersQuery>) -> impl IntoResponse {
+    tracing::info!("admin_users_handler: q={}, page={:?}", query.q, query.page);
     // Rate limit: 30 requests per minute per admin
     if let Err(e) = crate::rate_limiter::check_rate_limit(&headers, 30, 60) { return e; }
     let (_, role) = match verify_admin(&headers) { Ok(r) => r, Err(e) => { return e; } };
@@ -219,6 +222,7 @@ pub async fn admin_users_handler(headers: HeaderMap, Query(query): Query<AdminUs
 
 // ── User Detail ──
 pub async fn admin_user_detail(headers: HeaderMap, Path(uid): Path<String>) -> impl IntoResponse {
+    tracing::info!("admin_user_detail: user_id={}", uid);
     let _ = verify_admin(&headers);
     let c = conn();
     let u: Option<serde_json::Value> = c.query_row("SELECT id,username,display_name,real_name,phone,created_at,streak_days,last_active_date FROM users WHERE id=?1", rusqlite::params![&uid], |row| {
@@ -236,6 +240,7 @@ pub async fn admin_user_detail(headers: HeaderMap, Path(uid): Path<String>) -> i
 }
 
 pub async fn admin_delete_user(headers: HeaderMap, Path(uid): Path<String>) -> impl IntoResponse {
+    tracing::info!("admin_delete_user: user_id={}", uid);
     let (_, role) = match verify_admin(&headers) { Ok(r) => r, Err(e) => { return e; } };
     if role != "super" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     let c = conn();
@@ -248,6 +253,7 @@ pub async fn admin_delete_user(headers: HeaderMap, Path(uid): Path<String>) -> i
 }
 
 pub async fn admin_restore_user(headers: HeaderMap, Path(uid): Path<String>) -> impl IntoResponse {
+    tracing::info!("admin_restore_user: user_id={}", uid);
     let (_, role) = match verify_admin(&headers) { Ok(r) => r, Err(e) => { return e; } };
     if role != "super" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     let c = conn();
@@ -263,6 +269,7 @@ pub async fn admin_restore_user(headers: HeaderMap, Path(uid): Path<String>) -> 
 /// POST /api/admin/users/{user_id}/hard-delete — 超管永久删除用户（清库+归档）
 /// 归档记录写入 data/deleted_users.ndjson 文件，不留在数据库内
 pub async fn admin_hard_delete_user(headers: HeaderMap, Path(uid): Path<String>) -> impl IntoResponse {
+    tracing::info!("admin_hard_delete_user: user_id={}", uid);
     let (_, role) = match verify_admin(&headers) { Ok(r) => r, Err(e) => { return e; } };
     if role != "super" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     let c = conn();
@@ -342,6 +349,7 @@ pub async fn admin_hard_delete_user(headers: HeaderMap, Path(uid): Path<String>)
 // ── Reveal Phone (两步揭看) ──
 #[derive(Deserialize)] pub struct RevealPhoneQuery { pub full: Option<bool> }
 pub async fn admin_reveal_phone(headers: HeaderMap, Path(uid): Path<String>, Query(query): Query<RevealPhoneQuery>) -> impl IntoResponse {
+    tracing::info!("admin_reveal_phone: user_id={}, full={:?}", uid, query.full);
     // Rate limit: 20 requests per minute
     if let Err(e) = crate::rate_limiter::check_rate_limit(&headers, 20, 60) { return e; }
     let (admin_id, _) = match require_role(&headers, &["service"]) { Ok(r) => r, Err(e) => { return e; } };
@@ -380,6 +388,7 @@ fn has_permission(admin_id: &str, perm_key: &str) -> bool {
 }
 
 pub async fn admin_set_subscription(headers: HeaderMap, Path(uid): Path<String>, Json(input): Json<SetSubInput>) -> impl IntoResponse {
+    tracing::info!("admin_set_subscription: user_id={}, expires={:?}", uid, input.subscription_expires);
     let (admin_id, role) = guard!(&headers);
     if role != "super" && role != "service" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     // service with permission applies directly like super
@@ -404,6 +413,7 @@ pub async fn admin_set_subscription(headers: HeaderMap, Path(uid): Path<String>,
 
 // ── Quick extend (creates request for non-super) ──
 pub async fn admin_quick_extend(headers: HeaderMap, Path(uid): Path<String>, Json(input): Json<SetSubInput>) -> impl IntoResponse {
+    tracing::info!("admin_quick_extend: user_id={}, expires={:?}", uid, input.subscription_expires);
     let (admin_id, role) = guard!(&headers);
     if role != "super" && role != "service" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     if role == "service" {
@@ -437,6 +447,7 @@ pub async fn admin_quick_extend(headers: HeaderMap, Path(uid): Path<String>, Jso
 
 #[derive(Deserialize)] pub struct CreateSubReqInput { pub target_user_id: String, pub package: String, pub channel: Option<String>, pub note: Option<String> }
 pub async fn admin_create_subscription_request(headers: HeaderMap, Json(input): Json<CreateSubReqInput>) -> impl IntoResponse {
+    tracing::info!("admin_create_subscription_request: target_user_id={}, pkg={}", input.target_user_id, input.package);
     let (admin_id, role) = guard!(&headers);
     if role != "super" && role != "service" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     let c = conn(); let id = uuid::Uuid::new_v4().to_string(); let now = chrono::Utc::now().timestamp();
@@ -448,6 +459,7 @@ pub async fn admin_create_subscription_request(headers: HeaderMap, Json(input): 
 // ── Batch extend ──
 #[derive(Deserialize)] pub struct BatchSubInput { pub user_ids: Vec<String>, pub days: i64 }
 pub async fn admin_batch_subscription(headers: HeaderMap, Json(input): Json<BatchSubInput>) -> impl IntoResponse {
+    tracing::info!("admin_batch_subscription: user_count={}, days={}", input.user_ids.len(), input.days);
     let (admin_id, role) = guard!(&headers, &[]);
     if role != "super" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     let c = conn(); let now = chrono::Utc::now().timestamp();
@@ -464,6 +476,7 @@ pub async fn admin_batch_subscription(headers: HeaderMap, Json(input): Json<Batc
 
 #[derive(Deserialize)] pub struct ListReqsQuery { pub status: Option<String> }
 pub async fn admin_list_subscription_requests(headers: HeaderMap, Query(q): Query<ListReqsQuery>) -> impl IntoResponse {
+    tracing::info!("admin_list_subscription_requests: status={:?}", q.status);
     let _ = verify_admin(&headers);
     let filter = q.status.unwrap_or_else(|| "%".into());
     let c2 = conn(); let mut stmt = c2.prepare("SELECT sr.id,sr.target_user_id,sr.requested_by,sr.package,sr.channel,sr.note,sr.status,sr.reject_reason,sr.requested_at,sr.reviewed_at,u.username,au.real_name FROM subscription_requests sr JOIN users u ON sr.target_user_id=u.id JOIN admin_users au ON sr.requested_by=au.id WHERE CASE WHEN ?1='%' THEN 1 ELSE sr.status=?1 END ORDER BY sr.requested_at DESC LIMIT 50").unwrap();
@@ -481,6 +494,7 @@ pub async fn admin_approve_request(headers: HeaderMap, Path(req_id): Path<String
 pub async fn admin_reject_request(headers: HeaderMap, Path(req_id): Path<String>, Json(input): Json<ReviewInput>) -> impl IntoResponse { review_subscription(&headers, &req_id, "rejected", input.reject_reason).await }
 
 async fn review_subscription(headers: &HeaderMap, req_id: &str, status: &str, reason: Option<String>) -> axum::response::Response {
+    tracing::info!("review_subscription: req_id={}, status={}", req_id, status);
     let (admin_id, role) = guard!(headers);
     // Check permission: super always ok, service needs can_approve
     if role != "super" {
@@ -522,6 +536,7 @@ async fn review_subscription(headers: &HeaderMap, req_id: &str, status: &str, re
 
 // ── Admin Management ──
 pub async fn admin_list_admins(headers: HeaderMap) -> impl IntoResponse {
+    tracing::info!("admin_list_admins");
     let (_, _role) = guard!(&headers);
     let c2 = conn();
     // 服务人员可以看到 pending 的家长/辅导申请
@@ -543,6 +558,7 @@ pub async fn admin_list_admins(headers: HeaderMap) -> impl IntoResponse {
     ok(serde_json::json!({"admins":admins}))
 }
 pub async fn admin_approve_admin(headers: HeaderMap, Path(aid): Path<String>) -> impl IntoResponse {
+    tracing::info!("admin_approve_admin: admin_id={}", aid);
     let (reviewer, role) = guard!(&headers);
     if role == "observer" { return err(StatusCode::FORBIDDEN, "observer_readonly"); }
     // 家长/辅导申请：服务人员+超管可审批；管理员申请：仅超管
@@ -586,6 +602,7 @@ pub async fn admin_approve_admin(headers: HeaderMap, Path(aid): Path<String>) ->
     }
 }
 pub async fn admin_reject_admin(headers: HeaderMap, Path(aid): Path<String>, Json(input): Json<ReviewInput>) -> impl IntoResponse {
+    tracing::info!("admin_reject_admin: admin_id={}", aid);
     let (reviewer, role) = guard!(&headers);
     if role == "observer" { return err(StatusCode::FORBIDDEN, "observer_readonly"); }
     let target_role: Option<String> = conn().query_row("SELECT role FROM admin_users WHERE id=?1 AND status='pending'", rusqlite::params![&aid], |row| row.get(0)).ok();
@@ -600,12 +617,14 @@ pub async fn admin_reject_admin(headers: HeaderMap, Path(aid): Path<String>, Jso
     }
 }
 pub async fn admin_disable_admin(headers: HeaderMap, Path(aid): Path<String>) -> impl IntoResponse {
+    tracing::info!("admin_disable_admin: admin_id={}", aid);
     guard!(&headers, &[]);
     let _ = conn().execute("UPDATE admin_users SET status='disabled' WHERE id=?1", rusqlite::params![aid]);
     ok(serde_json::json!({"status":"disabled"}))
 }
 
 pub async fn admin_enable_admin(headers: HeaderMap, Path(aid): Path<String>) -> impl IntoResponse {
+    tracing::info!("admin_enable_admin: admin_id={}", aid);
     guard!(&headers, &[]);
     let _ = conn().execute("UPDATE admin_users SET status='active' WHERE id=?1", rusqlite::params![aid]);
     ok(serde_json::json!({"status":"active"}))
@@ -613,6 +632,7 @@ pub async fn admin_enable_admin(headers: HeaderMap, Path(aid): Path<String>) -> 
 
 #[derive(Deserialize)] pub struct CreateAdminInput { pub username: String, pub password: String, pub real_name: String, pub phone: String, pub role: String }
 pub async fn admin_create_admin(headers: HeaderMap, Json(input): Json<CreateAdminInput>) -> impl IntoResponse {
+    tracing::info!("admin_create_admin: username={}", input.username);
     let (_admin_id, role) = guard!(&headers);
     if role != "super" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     if !["service","super"].contains(&input.role.as_str()) { return err(StatusCode::BAD_REQUEST, "role_must_be_service_or_super"); }
@@ -635,6 +655,7 @@ pub async fn admin_create_admin(headers: HeaderMap, Json(input): Json<CreateAdmi
 
 #[derive(Deserialize)] pub struct ResetPasswordInput { pub password: String }
 pub async fn admin_reset_password(headers: HeaderMap, Path(aid): Path<String>, Json(input): Json<ResetPasswordInput>) -> impl IntoResponse {
+    tracing::info!("admin_reset_password: admin_id={}", aid);
     let (_, role) = guard!(&headers);
     if role != "super" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     if input.password.len() < 6 { return err(StatusCode::BAD_REQUEST, "password_6"); }
@@ -645,6 +666,7 @@ pub async fn admin_reset_password(headers: HeaderMap, Path(aid): Path<String>, J
 
 #[derive(Deserialize)] pub struct SetPermissionsInput { pub permissions: serde_json::Value }
 pub async fn admin_set_permissions(headers: HeaderMap, Path(aid): Path<String>, Json(input): Json<SetPermissionsInput>) -> impl IntoResponse {
+    tracing::info!("admin_set_permissions: admin_id={}", aid);
     let (_, role) = guard!(&headers);
     if role != "super" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     let perms_str = input.permissions.to_string();
@@ -658,6 +680,7 @@ pub async fn admin_set_permissions(headers: HeaderMap, Path(aid): Path<String>, 
     #[serde(default)] pub date_from: Option<String>, #[serde(default)] pub date_to: Option<String>, #[serde(default)] pub q: Option<String>,
 }
 pub async fn admin_audit_log(headers: HeaderMap, Query(query): Query<AuditLogQuery>) -> impl IntoResponse {
+    tracing::info!("admin_audit_log");
     let (_, role) = guard!(&headers);
     if role!="super" && role!="service" && role!="observer" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     let c2 = conn();
@@ -689,6 +712,7 @@ pub async fn admin_audit_log(headers: HeaderMap, Query(query): Query<AuditLogQue
 // ── Guardian ──
 pub async fn guardian_students(headers: HeaderMap) -> impl IntoResponse {
     let (gid, role) = guard_user!(&headers);
+    tracing::info!("guardian_students: guardian_id={}", gid);
     if role!="guardian" && role!="tutor" && role!="super" { return err(StatusCode::FORBIDDEN,"forbidden"); }
     let c = conn();
     let now = chrono::Utc::now();
@@ -737,6 +761,7 @@ fn is_guardian_of(gid: &str, sid: &str) -> bool {
 
 #[derive(Deserialize)] pub struct GuardianBindInput { pub student_user_id: String }
 pub async fn guardian_bind_request(headers: HeaderMap, Json(input): Json<GuardianBindInput>) -> impl IntoResponse {
+    tracing::info!("guardian_bind_request: student_user_id={}", input.student_user_id);
     let (gid, role) = guard_user!(&headers);
     if role != "guardian" && role != "tutor" { return err(StatusCode::FORBIDDEN,"forbidden"); }
     let c = conn();
@@ -750,6 +775,7 @@ pub async fn guardian_bind_request(headers: HeaderMap, Json(input): Json<Guardia
 }
 
 pub async fn guardian_reveal_phone(headers: HeaderMap, Path(aid): Path<String>) -> impl IntoResponse {
+    tracing::info!("guardian_reveal_phone: target_admin_id={}", aid);
     let (admin_id, role) = guard_user!(&headers);
     if role != "tutor" && role != "super" && role != "service" { return err(StatusCode::FORBIDDEN,"forbidden"); }
     let c = conn();
@@ -767,6 +793,7 @@ pub async fn guardian_reveal_phone(headers: HeaderMap, Path(aid): Path<String>) 
 }
 
 pub async fn guardian_student_cards(headers: HeaderMap, Path(sid): Path<String>) -> impl IntoResponse {
+    tracing::info!("guardian_student_cards: student_id={}", sid);
     let (gid, role) = guard_user!(&headers);
     if role != "super" && role != "service" && !is_guardian_of(&gid, &sid) { return err(StatusCode::FORBIDDEN,"forbidden"); }
     let c2 = conn(); let mut stmt = c2.prepare("SELECT c.id,c.front,c.back,c.domain,cm.state,cm.reps,cm.last_review,c.conversation_id FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id=?1 ORDER BY cm.state,cm.due").unwrap();
@@ -776,6 +803,7 @@ pub async fn guardian_student_cards(headers: HeaderMap, Path(sid): Path<String>)
     ok(serde_json::json!({"cards":cards}))
 }
 pub async fn guardian_student_conversations(headers: HeaderMap, Path(sid): Path<String>) -> impl IntoResponse {
+    tracing::info!("guardian_student_conversations: student_id={}", sid);
     let (gid, role) = guard_user!(&headers);
     if role != "super" && role != "service" && !is_guardian_of(&gid, &sid) { return err(StatusCode::FORBIDDEN,"forbidden"); }
     let c = conn();
@@ -797,6 +825,7 @@ pub async fn guardian_student_conversations(headers: HeaderMap, Path(sid): Path<
     ok(serde_json::json!({"conversations":convs}))
 }
 pub async fn guardian_student_conversation_detail(headers: HeaderMap, Path((sid, cid)): Path<(String,String)>) -> impl IntoResponse {
+    tracing::info!("guardian_student_conversation_detail: student_id={}, conv_id={}", sid, cid);
     let (gid, role) = guard_user!(&headers);
     if role != "super" && role != "service" && !is_guardian_of(&gid, &sid) { return err(StatusCode::FORBIDDEN,"forbidden"); }
     let c2 = conn(); let mut stmt = c2.prepare("SELECT role,content,created_at FROM conversation_turns WHERE conversation_id=?1 ORDER BY created_at").unwrap();
@@ -808,6 +837,7 @@ pub async fn guardian_student_conversation_detail(headers: HeaderMap, Path((sid,
 
 // ── Learning Summary (家长座舱) ──
 pub async fn guardian_learning_summary(headers: HeaderMap, Path(sid): Path<String>) -> impl IntoResponse {
+    tracing::info!("guardian_learning_summary: student_id={}", sid);
     let (gid, role) = guard_user!(&headers);
     if role != "super" && role != "service" && !is_guardian_of(&gid, &sid) { return err(StatusCode::FORBIDDEN,"forbidden"); }
     let c = conn();
@@ -977,6 +1007,7 @@ fn parse_plan_progress(json_str: &str) -> (i64, i64, String, String) {
 // ── Bind Lookup ──
 #[derive(Deserialize)] pub struct BindLookupInput { pub real_name: String, pub phone: String }
 pub async fn bind_lookup_handler(headers: HeaderMap, Json(input): Json<BindLookupInput>) -> impl IntoResponse {
+    tracing::info!("bind_lookup_handler: real_name={}", input.real_name);
     // Rate limit: 5 requests per minute per IP (no auth endpoint)
     if let Err(e) = crate::rate_limiter::check_rate_limit(&headers, 5, 60) { return e; }
     let c = conn();
@@ -989,6 +1020,7 @@ pub async fn bind_lookup_handler(headers: HeaderMap, Json(input): Json<BindLooku
 // ── User Profile Update ──
 #[derive(Deserialize)] pub struct UpdateProfileInput { pub real_name: Option<String>, pub phone: Option<String> }
 pub async fn update_user_profile_handler(headers: HeaderMap, Path(uid): Path<String>, Json(input): Json<UpdateProfileInput>) -> impl IntoResponse {
+    tracing::info!("update_user_profile_handler: user_id={}", uid);
     // Verify auth: caller must be the user themselves or admin
     let is_admin = verify_admin(&headers).is_ok();
     if !is_admin && crate::auth_middleware::verify_auth(&uid, &headers).is_err() {
@@ -1035,6 +1067,7 @@ pub async fn update_user_profile_handler(headers: HeaderMap, Path(uid): Path<Str
 // ── Guardian Assignment Management (超管) ──
 #[derive(Deserialize)] pub struct CreateAssignmentInput { pub guardian_admin_id: String, pub student_user_id: String }
 pub async fn admin_list_assignments(headers: HeaderMap) -> impl IntoResponse {
+    tracing::info!("admin_list_assignments");
     let (_, role) = guard!(&headers);
     if role != "super" && role != "service" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     let c = conn();
@@ -1065,6 +1098,7 @@ pub async fn admin_list_assignments(headers: HeaderMap) -> impl IntoResponse {
 }
 
 pub async fn admin_create_assignment(headers: HeaderMap, Json(input): Json<CreateAssignmentInput>) -> impl IntoResponse {
+    tracing::info!("admin_create_assignment: guardian={}, student={}", input.guardian_admin_id, input.student_user_id);
     let (reviewer, role) = guard!(&headers);
     if role != "super" && role != "service" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     let c = conn();
@@ -1093,6 +1127,7 @@ pub async fn admin_create_assignment(headers: HeaderMap, Json(input): Json<Creat
 }
 
 pub async fn admin_remove_assignment(headers: HeaderMap, Path(aid): Path<String>) -> impl IntoResponse {
+    tracing::info!("admin_remove_assignment: assignment_id={}", aid);
     let (_, role) = guard!(&headers);
     if role != "super" && role != "service" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     let _ = conn().execute("UPDATE guardian_assignments SET is_active=0 WHERE id=?1", rusqlite::params![aid]);
@@ -1101,6 +1136,7 @@ pub async fn admin_remove_assignment(headers: HeaderMap, Path(aid): Path<String>
 
 // ── Dashboard ──
 pub async fn admin_dashboard(headers: HeaderMap) -> impl IntoResponse {
+    tracing::info!("admin_dashboard");
     let _ = verify_admin(&headers);
     let c = conn();
     let now = chrono::Utc::now();
@@ -1142,6 +1178,7 @@ pub async fn admin_dashboard(headers: HeaderMap) -> impl IntoResponse {
 // ── Expiring Users ──
 #[derive(Deserialize)] pub struct ExpiringQuery { pub range: Option<String> }
 pub async fn admin_expiring_users(headers: HeaderMap, Query(query): Query<ExpiringQuery>) -> impl IntoResponse {
+    tracing::info!("admin_expiring_users: range={:?}", query.range);
     let _ = verify_admin(&headers);
     let range_days: i64 = match query.range.as_deref() {
         Some("today") => 0, Some("week") => 7, Some("month") => 30, _ => 7,
@@ -1168,6 +1205,7 @@ pub async fn admin_expiring_users(headers: HeaderMap, Query(query): Query<Expiri
 
 // ── CSV Export ──
 pub async fn admin_users_export(headers: HeaderMap, Query(query): Query<AdminUsersQuery>) -> axum::response::Response {
+    tracing::info!("admin_users_export: q={}", query.q);
     let (_, role) = match verify_admin(&headers) { Ok(r) => r, Err(e) => { return e; } };
     if role == "guardian" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     let c = conn();

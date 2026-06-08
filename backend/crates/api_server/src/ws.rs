@@ -37,6 +37,7 @@ struct RawChatRequest {
 }
 
 pub async fn handle_ws(mut ws: WebSocket) {
+    tracing::info!("handle_ws: new WebSocket connection established");
     // ColdPath 结果通道：后台 task 提取完概念后通过此通道发回
     let (cold_tx, mut cold_rx) = mpsc::channel::<(u32, Vec<serde_json::Value>)>(8);
     // CP2 通知通道：后台 task 更新 plan 后通知主循环发 WS 消息

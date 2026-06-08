@@ -510,6 +510,7 @@ async fn review_cards_by_progress_handler(
     headers: HeaderMap,
     Query(query): Query<CardsByProgressQuery>,
 ) -> Json<serde_json::Value> {
+    tracing::info!("review_cards_by_progress_handler: user_id={}", query.user_id);
     if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
         return auth_json(e);
     }
@@ -823,7 +824,6 @@ async fn cards_by_plan_handler(
     headers: HeaderMap,
     Query(query): Query<CardsByPlanQuery>,
 ) -> Json<serde_json::Value> {
-    eprintln!("[MARK] cards_by_plan_handler ENTER");
     tracing::info!("cards_by_plan_handler: user_id={}", query.user_id);
 
     if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
@@ -939,7 +939,7 @@ async fn cards_by_plan_handler(
     tracing::info!("cards_by_plan_handler: user_id={}, plans={}, total_cards={}, loaded_cards={}, conv_filter={:?}",
         query.user_id, plans.len(), total_cards, cards_loaded, query.conversation_id);
 
-    eprintln!("[MARK] cards_by_plan_handler EXIT");
+    tracing::info!("cards_by_plan_handler EXIT");
 
     Json(serde_json::json!({
         "plans": plans,
@@ -1725,7 +1725,7 @@ async fn avatar_get_handler(
 async fn plans_list_handler(
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Json<serde_json::Value> {
-    eprintln!("[MARK] plans_list_handler ENTER");
+    tracing::info!("plans_list_handler ENTER");
 
     let conn = crate::db_pool::get_conn();
 
@@ -1808,7 +1808,7 @@ async fn plans_list_handler(
         }
     }
 
-    eprintln!("[MARK] plans_list_handler EXIT");
+    tracing::info!("plans_list_handler EXIT");
     Json(serde_json::json!({"plans": plans}))
 }
 

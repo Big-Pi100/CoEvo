@@ -105,7 +105,7 @@ pub fn handle_plan_update(
     conversation_id: &str,
     user_id: &str,
 ) -> PlanUpdateResult {
-    eprintln!("[MARK] handle_plan_update ENTER");
+    tracing::info!("handle_plan_update ENTER: conversation_id={}, user_id={}", conversation_id, user_id);
     let mut final_reply = raw_reply.to_string();
     let mut plan_updated = false;
     let mut is_new_plan = false;
@@ -363,7 +363,7 @@ fn upsert_learning_plan(
             }
         }
     }
-    eprintln!("[MARK] handle_plan_update EXIT");
+    tracing::info!("handle_plan_update EXIT");
 }
 
 /// 应用计划更新（非新建模式：completed_concepts, task_complete 等）
@@ -885,7 +885,7 @@ pub async fn force_plan_creation(conversation_id: &str, user_intent: &str) -> bo
 /// 每 5 轮对话后由 ws.rs 调用，分析最近对话历史判断学生是否应推进到下一任务。
 /// 不修改任何数据，只返回评估结论。调用方负责注入标签和执行更新。
 pub fn build_plan_context(conn: &rusqlite::Connection, conversation_id: &str) -> (String, String, String) {
-    eprintln!("[MARK] build_plan_context ENTER");
+    tracing::info!("build_plan_context ENTER: conversation_id={}", conversation_id);
     // 不再查询 conversations.subject/grade_band 或 plan_templates（已废弃）
 
     // 从 conversation_plans 读取
@@ -1104,7 +1104,7 @@ fn build_context_text(conn: &rusqlite::Connection, merged: &serde_json::Value, g
         log.push(ctx.clone());
     }
 
-    eprintln!("[MARK] build_plan_context EXIT");
+    tracing::info!("build_plan_context EXIT");
     ctx
 }
 /// 构建计划创建 prompt（从 prompts/plan/{domain}/creation.md 加载，fallback 到 general）
@@ -1439,7 +1439,7 @@ use std::sync::OnceLock;
 static PREBUILT_CARD_CACHE: OnceLock<std::collections::HashMap<String, serde_json::Value>> = OnceLock::new();
 
 fn load_prebuilt_card_cache() -> &'static std::collections::HashMap<String, serde_json::Value> {
-    eprintln!("[CACHE] loading prebuilt cards...");
+    tracing::info!("[prebuilt_cache] loading prebuilt cards...");
     PREBUILT_CARD_CACHE.get_or_init(|| {
         let data_dir = crate::curriculum_loader::k12_data_dir();
         let mut map = std::collections::HashMap::new();
@@ -1483,7 +1483,7 @@ fn load_prebuilt_card_cache() -> &'static std::collections::HashMap<String, serd
             }
         }
         tracing::info!("[copy_prebuilt_card] loaded {} prebuilt cards into cache", map.len());
-        eprintln!("[CACHE] loaded {} cards", map.len());
+        tracing::info!("[prebuilt_cache] loaded {} cards", map.len());
         map
     })
 }
