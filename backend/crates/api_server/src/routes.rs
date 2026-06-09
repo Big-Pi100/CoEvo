@@ -2144,11 +2144,21 @@ async fn k12_init_handler(
     }
 
     // 读取 v3 JSON 计划文件（从 root 读取新格式，含 grade_band 字段）
+    // 先试 plans/ 子目录（v3 标准结构），再试根目录（旧格式兼容）
     let k12_data_dir = crate::curriculum_loader::k12_data_dir();
-    let plan_path = std::path::Path::new(&k12_data_dir).join(format!("{}.json", input.subject));
-    let plan_content_str = match std::fs::read_to_string(&plan_path) {
-        Ok(s) => s,
-        Err(e) => return Json(serde_json::json!({"error": format!("加载计划失败: {}", e)})),
+    let plan_path = std::path::Path::new(&k12_data_dir).join("plans").join(format!("{}.json", input.subject));
+    let plan_content_str = if plan_path.exists() {
+        match std::fs::read_to_string(&plan_path) {
+            Ok(s) => s,
+            Err(e) => return Json(serde_json::json!({"error": format!("加载计划失败: {}", e)})),
+        }
+    } else {
+        // fallback: 直接从 v3 根目录读取（兼容旧结构）
+        let fallback_path = std::path::Path::new(&k12_data_dir).join(format!("{}.json", input.subject));
+        match std::fs::read_to_string(&fallback_path) {
+            Ok(s) => s,
+            Err(e) => return Json(serde_json::json!({"error": format!("加载计划失败: {}", e)})),
+        }
     };
 
     // 按 grade_band 过滤 stage（从 v3 JSON 自身的 stage.grade_band 字段）

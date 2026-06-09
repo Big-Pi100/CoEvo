@@ -23,7 +23,7 @@
 | 后端端口 | `8080` |
 | **环境变量** | |
 | `COEVO_PII_KEY` | **2026-05-20 新增**：64 位十六进制字符串，用于 AES-256-GCM 加密 PII 字段（见 5.7 节） |
-| `COEVO_K12_DATA_DIR` | **2026-05-30 新增**：指向 `/opt/coevo/data/curriculum/prebuilt`，解决编译时路径与运行时路径不一致的问题（见 5.4 节） |
+| `COEVO_K12_DATA_DIR` | **2026-06-08 修正**：指向 `/opt/coevo/data/curriculum/v3`（注意不是 `prebuilt`，`v3` 目录才包含 `plans/` 和 `cards/` 子目录） |
 
 ---
 
@@ -53,8 +53,9 @@
 ```
 
 > Nginx 配置文件位置：
-> - `/etc/nginx/sites-available/coevo-landing`（port 80，入口）
+> - `/etc/nginx/sites-available/coevo`（主入口，443 SSL + 80 redirect + 80 IP direct）
 > - `/etc/nginx/sites-available/coevo-admin`（port 3000，内部）
+> - **⚠️ `sites-enabled/coevo` 是普通文件副本，不是 symlink，更新后必须手动同步**（见 7.11 节）
 >
 > **关键设计说明**：
 > - Flutter 构建时使用 `--base-href /app/`，所有资源请求会带 `/app/` 前缀。
@@ -213,7 +214,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "rm -f /tmp/coevo-web.tar.gz"
 ```bash
 # 1. 本地打包
 # ⚠️ 注意：必须从 backend/ 目录打包，这样 VPS 上解压后可直接进入 backend/ 子目录
-# ⚠️ 注意：不要排除 data/curriculum/（课程数据需要同步上传）
+# ⚠️ 注意：包含 cefr_catalog.json 和 achievements.toml（会被二进制读取）
 cd E:\CoEvo\backend
 tar czf /tmp/coevo-backend-src.tar.gz \
   --exclude=target \
@@ -227,9 +228,20 @@ scp -i ~/.ssh/coevo_key -o StrictHostKeyChecking=no \
   ubuntu@<OLD_VPS_IP>:/tmp/
 
 # 3. 课程数据打包上传（必需，编译时路径与运行时路径不同）
+# ⚠️ 注意：数据在 data/curriculum/v3/ 目录，不是 data/curriculum/prebuilt/
 cd E:\CoEvo
-tar czf /tmp/curriculum-prebuilt.tar.gz -C data/curriculum/prebuilt .
-scp -i ~/.ssh/coevo_key /tmp/curriculum-prebuilt.tar.gz \
+tar czf /tmp/curriculum-v3.tar.gz -C data/curriculum/v3 .
+scp -i ~/.ssh/coevo_key /tmp/curriculum-v3.tar.gz \
+  ubuntu@<OLD_VPS_IP>:/tmp/
+
+# 4. 上传数据库（本地覆盖 VPS）
+scp -i ~/.ssh/coevo_key backend/data/coevo.db \
+  ubuntu@<OLD_VPS_IP>:/tmp/coevo.db
+
+# 5. 上传落地页
+cd E:\CoEvo\landing
+tar czf /tmp/coevo-landing.tar.gz .
+scp -i ~/.ssh/coevo_key /tmp/coevo-landing.tar.gz \
   ubuntu@<OLD_VPS_IP>:/tmp/
 ```
 
@@ -277,55 +289,85 @@ echo 'COEVO_PII_KEY=<上面生成的密钥>' >> /opt/coevo/.env
 sudo systemctl edit coevo  # 添加 Environment=COEVO_PII_KEY=...
 ```
 
-### 5.4 替换二进制并重启
+### 5.4 替换二进制并重启（全量部署）
 
 ```bash
 ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
-  # 0. 确保课程数据已就位（编译时路径为 /tmp/coevo-build/，运行时为 /opt/coevo/）
-  sudo mkdir -p /opt/coevo/data/curriculum/prebuilt
-  sudo tar xzf /tmp/curriculum-prebuilt.tar.gz \
-    -C /opt/coevo/data/curriculum/prebuilt/
+  set -e
 
-  # 1. 停止服务
+  # 0. 停止服务
   sudo systemctl stop coevo
 
-  # 2. 备份旧二进制
-  sudo cp /opt/coevo/coevo_server \
-    /opt/coevo/coevo_server.bak.$(date +%Y%m%d-%H%M%S)
+  # 1. 备份旧数据
+  sudo mkdir -p /opt/coevo.bak.$(date +%Y%m%d-%H%M%S)
+  sudo mv /opt/coevo/coevo_server /opt/coevo.bak.*/ 2>/dev/null || true
+  sudo mv /opt/coevo/data /opt/coevo.bak.*/ 2>/dev/null || true
+  sudo mv /opt/coevo/prompts /opt/coevo.bak.*/ 2>/dev/null || true
 
-  # 3. 替换新二进制
-  sudo cp /tmp/coevo-build/backend/target/release/coevo_backend \
-    /opt/coevo/coevo_server
+  # 2. 创建新目录
+  sudo mkdir -p /opt/coevo/data/curriculum/v3
+  sudo mkdir -p /opt/coevo/prompts
+  sudo mkdir -p /opt/coevo/data/logs
+
+  # 3. 部署新二进制
+  sudo cp /tmp/coevo-build/backend/target/release/coevo_backend /opt/coevo/coevo_server
   sudo chmod +x /opt/coevo/coevo_server
-  sudo chown ubuntu:ubuntu /opt/coevo/coevo_server
 
-  # 4. ⚠️ 重要：全量覆盖 prompts、.env
-  # 这些文件不随二进制编译，修改后必须重新上传
-  sudo cp /tmp/coevo-build/backend/prompts/*.md /opt/coevo/prompts/
-  sudo chown ubuntu:ubuntu /opt/coevo/prompts/*.md
+  # 4. 部署数据库
+  sudo cp /tmp/coevo.db /opt/coevo/data/coevo.db
 
-  # 5. ⚠️ 设置 COEVO_K12_DATA_DIR 环境变量（2026-05-30）
-  # 解决编译时 CARGO_MANIFEST_DIR 指向 /tmp/coevo-build/ 的问题
-  grep -q COEVO_K12_DATA_DIR /opt/coevo/.env ||
-    echo "COEVO_K12_DATA_DIR=/opt/coevo/data/curriculum/prebuilt" >> /opt/coevo/.env
+  # 5. ⚠️ 部署 K12 数据到 v3/ （不是 prebuilt/）
+  sudo tar xzf /tmp/curriculum-v3.tar.gz -C /opt/coevo/data/curriculum/v3/
 
-  # 6. 启动服务
+  # 6. 部署 prompts（递归复制）
+  sudo cp -r /tmp/coevo-build/backend/prompts/* /opt/coevo/prompts/
+
+  # 7. ⚠️ 部署 cefr_catalog.json 和 achievements.toml（二进制会读取）
+  sudo cp /tmp/cefr_catalog.json /opt/coevo/
+  sudo cp /tmp/achievements.toml /opt/coevo/
+
+  # 8. 写入 .env
+  sudo tee /opt/coevo/.env > /dev/null <<ENVEOF
+DEEPSEEK_API_KEY=sk-xxx
+COEVO_ADMIN_KEY=xxx
+COEVO_PII_KEY=xxx
+COEVO_K12_DATA_DIR=/opt/coevo/data/curriculum/v3
+ENVEOF
+  sudo chmod 600 /opt/coevo/.env
+
+  # 9. 部署 Flutter Web 前端
+  sudo rm -rf /opt/coevo/admin-web/*
+  sudo tar xzf /tmp/coevo-web.tar.gz -C /opt/coevo/admin-web/
+
+  # 10. 部署落地页
+  sudo tar xzf /tmp/coevo-landing.tar.gz -C /var/www/coevo-landing/
+
+  # 11. 启动服务
+  sudo systemctl daemon-reload
   sudo systemctl start coevo
-  sleep 2
+  sleep 3
   echo "Service: $(sudo systemctl is-active coevo)"
+
+  # 12. ⚠️ Nginx 同步（sites-enabled 是文件副本，不是 symlink）
+  sudo cp /etc/nginx/sites-available/coevo /etc/nginx/sites-enabled/coevo
+  sudo nginx -t && sudo nginx -s reload
+  echo "Nginx: OK"
+
+  # 13. 健康检查
   echo "Health: $(curl -s http://127.0.0.1:8080/health)"
 '
 ```
 
-> **⚠️ 关键路径说明（2026-05-30 更新）**：
-> - Rust 代码中 `reading_loader.rs` 和 `curriculum_loader.rs` 在开发阶段通过 `CARGO_MANIFEST_DIR` 查找 `data/curriculum/prebuilt`。但编译后在 VPS 上运行，`CARGO_MANIFEST_DIR` 指向的是编译机器上的路径（如 `/tmp/coevo-build/...`），而非 VPS 上的 `/opt/coevo/`。
-> - **解决方案**：设置 `COEVO_K12_DATA_DIR=/opt/coevo/data/curriculum/prebuilt` 环境变量。loader 代码会优先读此变量，只有未设置时才回退到 `CARGO_MANIFEST_DIR` 路径。
+> **⚠️ 关键路径说明（2026-06-08 更新）**：
+> - Rust 代码中 `reading_loader.rs` 和 `curriculum_loader.rs` 在开发阶段通过 `CARGO_MANIFEST_DIR` 查找 `data/curriculum/v3`。但编译后在 VPS 上运行，`CARGO_MANIFEST_DIR` 指向的是编译机器上的路径（如 `/tmp/coevo-build/...`），而非 VPS 上的 `/opt/coevo/`。
+> - **解决方案**：设置 `COEVO_K12_DATA_DIR=/opt/coevo/data/curriculum/v3` 环境变量。loader 代码会优先读此变量，只有未设置时才回退到 `CARGO_MANIFEST_DIR` 路径。
+> - **⚠️ 注意**：数据目录是 `v3/` 不是 `prebuilt/`。`prebuilt/` 下没有 `plans/` 和 `cards/` 子目录，加载会失败。
 > - 每次部署后检查启动日志确认数据加载正常：
 >   ```bash
 >   sudo journalctl -u coevo -n 20 --no-pager | grep -E 'K12|READING|init done'
 >   # 期望看到:
->   # [K12] loaded 22 card sets from /opt/coevo/data/curriculum/prebuilt/cards
->   # [READING] init done: 1 plans, 775 cards
+>   # [K12] loaded 14 card sets from /opt/coevo/data/curriculum/v3/cards
+>   # [K12] loaded 14 plans from /opt/coevo/data/curriculum/v3/plans
 >   ```
 
 ### 5.5 清理
@@ -355,9 +397,7 @@ ExecStart=/opt/coevo/coevo_server
 Restart=always
 RestartSec=5
 Environment=RUST_LOG=info
-Environment=COEVO_PII_KEY=<64位十六进制密钥>
-# 2026-05-30 新增：课程数据路径（解决编译时路径与运行时路径不一致）
-Environment=COEVO_K12_DATA_DIR=/opt/coevo/data/curriculum/prebuilt
+Environment=COEVO_K12_DATA_DIR=/opt/coevo/data/curriculum/v3
 
 [Install]
 WantedBy=multi-user.target
@@ -416,15 +456,14 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
 
 ```bash
 ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
-  echo 'K12 plans:' \$(ls /opt/coevo/data/curriculum/prebuilt/plans/ | wc -l)
-  echo 'K12 cards:' \$(ls /opt/coevo/data/curriculum/prebuilt/cards/*.json | wc -l)
+  echo 'K12 plans:' \$(ls /opt/coevo/data/curriculum/v3/plans/ | wc -l)
+  echo 'K12 cards:' \$(ls /opt/coevo/data/curriculum/v3/cards/*.json | wc -l)
   sudo journalctl -u coevo -n 5 --no-pager --no-hostname | grep -E 'K12|READING'
 "
 # 期望:
 #   K12 plans: 14
-#   K12 cards: 22
-#   [K12] loaded 22 card sets from /opt/coevo/data/curriculum/prebuilt/cards
-#   [READING] init done: 1 plans, 775 cards
+#   K12 cards: 14
+#   [K12] loaded 14 card sets from /opt/coevo/data/curriculum/v3/cards
 ```
 
 ---
@@ -519,19 +558,20 @@ sudo swapon /swapfile
 
 **症状**：服务启动日志显示 `[K12] ERR: plans dir not found: /tmp/coevo-build/.../data/curriculum/prebuilt/plans` 或 `[READING] init done: 0 plans, 0 cards`
 
-**根因**：Rust 代码中的 `CARGO_MANIFEST_DIR` 是编译时路径（指向 `/tmp/coevo-build/`），部署到 `/opt/coevo/` 后这个路径不再存在。loader 代码虽然有相对路径 fallback，但需要 `.env` 中显式设置 `COEVO_K12_DATA_DIR`。
+**根因**：Rust 代码中的 `CARGO_MANIFEST_DIR` 是编译时路径（指向 `/tmp/coevo-build/`），部署到 `/opt/coevo/` 后这个路径不再存在。或 `COEVO_K12_DATA_DIR` 指向了错误的目录（如 `prebuilt/` 而非 `v3/`）。
 
-**解决**：（见 5.4 节第 5 步）
+**解决**：（见 5.4 节第 8 步）
 
 ```bash
 # 检查 .env
 grep COEVO_K12_DATA_DIR /opt/coevo/.env
 
-# 如缺失则添加
-echo 'COEVO_K12_DATA_DIR=/opt/coevo/data/curriculum/prebuilt' >> /opt/coevo/.env
+# ⚠️ 确保指向 v3/ 目录（不是 prebuilt/）
+echo 'COEVO_K12_DATA_DIR=/opt/coevo/data/curriculum/v3' >> /opt/coevo/.env
 
 # 确保数据在正确位置
-ls /opt/coevo/data/curriculum/prebuilt/plans/  # 应有 14 个文件
+ls /opt/coevo/data/curriculum/v3/plans/  # 应有 14 个文件
+ls /opt/coevo/data/curriculum/v3/cards/  # 应有 14 个文件
 
 # 重启
 sudo systemctl restart coevo
@@ -661,6 +701,75 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
 
 > ⚠️ **警告**：更换密钥后现有加密数据将不可读，必须保持密钥不变或从备份恢复旧密钥。
 
+### 7.11 Nginx 配置更新不生效：`sites-enabled` 是文件副本不是 symlink（2026-06-08 新增）
+
+**症状**：修改 `/etc/nginx/sites-available/coevo` 后执行 `nginx -s reload`，但新配置不生效。`nginx -T` 输出显示旧配置。
+
+**根因**：正常情况下 `sites-enabled` 下的文件是到 `sites-available` 的符号链接。但 CoEvo VPS 上 `sites-enabled/coevo` 是一个**普通文件副本**（`-rw-r--r--`），不是 symlink（`lrwxrwxrwx`）。修改 `sites-available/coevo` 后，nginx 不会看到变化。
+
+```bash
+# 检查是否 symlink
+ls -la /etc/nginx/sites-enabled/coevo
+# -rw-r--r--  → 是文件副本（有问题）
+# lrwxrwxrwx  → 是 symlink（正常）
+```
+
+**解决**：手动复制文件到 `sites-enabled`：
+
+```bash
+sudo cp /etc/nginx/sites-available/coevo /etc/nginx/sites-enabled/coevo
+sudo nginx -t && sudo nginx -s reload
+```
+
+### 7.12 Certbot 导致 Port 80 返回 404（2026-06-08 新增）
+
+**症状**：访问 `http://<OLD_VPS_IP>/` 返回 404，但 `http://<OLD_VPS_IP>:3000/` 正常。
+
+**根因**：Certbot 在配置 port 80 的 HTTP→HTTPS 重定向时，添加了 `return 404; # managed by Certbot` 作为兜底。这个返回适用于任何没有匹配 `server_name` 的请求——包括直接通过 IP 访问。
+
+**解决**：为 IP 直连创建独立的 server block，不经过 Certbot 的 `return 404` 逻辑：
+
+```nginx
+# Port 80 direct access (for IP users)
+server {
+    listen 80;
+    listen [::]:80;
+    server_name <OLD_VPS_IP>;
+
+    root /var/www/coevo-landing;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+    location /app/ { proxy_pass http://127.0.0.1:3000/; }
+    location /api/ { proxy_pass http://127.0.0.1:8080; }
+    location /ws   { proxy_pass http://127.0.0.1:8080/ws; proxy_http_version 1.1;
+                     proxy_set_header Upgrade $http_upgrade;
+                     proxy_set_header Connection "upgrade"; }
+}
+```
+
+### 7.13 缺少 cefr_catalog.json 或 achievements.toml（2026-06-08 新增）
+
+**症状**：启动日志中出现 `Word bank: 0 words` 或 `成就引擎 TOML 加载失败`。
+
+**原因**：这 2 个文件在部署时容易被遗漏。它们不随 Rust 二进制一起编译，需要单独上传到 `/opt/coevo/`。
+
+**检查**：
+```bash
+ls -la /opt/coevo/cefr_catalog.json /opt/coevo/achievements.toml
+```
+
+**解决**：从本地上传：
+```bash
+scp backend/cefr_catalog.json backend/achievements.toml \
+  ubuntu@<OLD_VPS_IP>:/tmp/
+ssh ubuntu@<OLD_VPS_IP> "sudo cp /tmp/cefr_catalog.json /opt/coevo/ && \
+  sudo cp /tmp/achievements.toml /opt/coevo/ && \
+  sudo systemctl restart coevo"
+```
+
 ---
 
 ## 8. 平台兼容注意事项
@@ -752,9 +861,13 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
 | 9 | 服务日志无异常 | `ssh ... "journalctl -u coevo --since '1 min ago'"` | 无 ERROR |
 | 10 | API_HOST 正确注入 | `grep -o 'keyievolution.fun' /opt/coevo/admin-web/main.dart.js \| head -1` | 匹配域名 |
 | 11 | **2026-05-20**: PII 密钥已设置 | `ssh ... "sudo systemctl show coevo --property=Environment \| grep COEVO_PII_KEY"` | 输出含 64 位 hex 密钥 |
-| 12 | **2026-05-30**: 课程数据加载 | `ssh ... "journalctl -u coevo --no-pager \| grep -E 'K12\|READING' \| tail -3"` | `1 plans, 775 cards` |
-| 13 | **2026-05-30**: COEVO_K12_DATA_DIR 已设置 | `grep COEVO_K12_DATA_DIR /opt/coevo/.env` | `/opt/coevo/data/curriculum/prebuilt` |
-| 14 | **2026-05-30**: 二进制版本 | `ssh ... "ls -lh /opt/coevo/coevo_server"` | `13M May 30 11:37` (或当天日期) |
+| 12 | **2026-06-08**: 课程数据加载 (v3) | `ssh ... "journalctl -u coevo --no-pager \| grep -E 'K12' \| tail -3"` | `14 card sets from /opt/coevo/data/curriculum/v3/cards` |
+| 13 | **2026-06-08**: COEVO_K12_DATA_DIR 指向 v3 | `grep COEVO_K12_DATA_DIR /opt/coevo/.env` | `/opt/coevo/data/curriculum/v3` |
+| 14 | **2026-06-08**: 二进制版本 | `ssh ... "ls -lh /opt/coevo/coevo_server"` | `14M Jun 8` (或当天日期) |
+| 15 | **2026-06-08**: cefr_catalog.json 存在 | `ssh ... "ls -lh /opt/coevo/cefr_catalog.json"` | 文件存在 |
+| 16 | **2026-06-08**: achievements.toml 存在 | `ssh ... "ls -lh /opt/coevo/achievements.toml"` | 文件存在 |
+| 17 | **2026-06-08**: Nginx sites-enabled 已同步 | `ssh ... "diff /etc/nginx/sites-available/coevo /etc/nginx/sites-enabled/coevo"` | 无输出（文件一致） |
+| 18 | **2026-06-08**: LLM warmup 成功 | `ssh ... "journalctl -u coevo --no-pager \| grep 'LLM warmup: OK'"` | 有匹配行 |
 
 ### 完整验证脚本
 
@@ -851,6 +964,18 @@ server {
 | tarball 目录结构不匹配 | 从 `backend/` 打包缺少子目录前缀 | 解压到 `mkdir -p /tmp/coevo-build/backend` | 5.3 |
 | DB pool 多次 init panic | 测试并发初始化 | `init()` 改为幂等 OnceLock | 已在代码中修复 |
 
+## 2026-06-08 部署问题汇总
+
+本次是 VPS 全量重部署，从头编译 + 清空数据，遇到了以下问题：
+
+| 问题 | 根因 | 解决方案 | 相关章节 |
+|:----|:-----|:---------|:--------|
+| K12 数据加载 0 plans | `COEVO_K12_DATA_DIR` 指向 `prebuilt/`（无 plans/cards 子目录） | 修正为 `v3/` 目录 | 7.5 |
+| 词库 0 words / 成就引擎加载失败 | 缺少 `cefr_catalog.json` 和 `achievements.toml` | 单独上传到 `/opt/coevo/` | 7.13 |
+| Nginx 配置更新不生效 | `sites-enabled/coevo` 是旧文件副本，不是 symlink | 手动 `cp` 同步 | 7.11 |
+| Port 80 IP 访问返回 404 | Certbot 添加了 `return 404` 兜底 | 创建独立的 IP 直连 server block | 7.12 |
+| 前端 API_HOST 连接 localhost | 构建时未传 `--dart-define=API_HOST=keyievolution.fun` | 构建时显式传入 | 3.2.1 |
+
 ---
 
 ---
@@ -862,4 +987,4 @@ server {
 | `docs/operations/maintenance-spec.md` | 生产环境维护规范（必读） |
 | `docs/architecture/cp2-eval-report-2026-05-30.md` | CP2 修复评估报告 |
 
-> 最后更新：2026-05-31（Flutter SDK 路径修正为 `D:\flutter_flutter`，移除废弃参数 `--no-wasm-dry-run`，新增 SDK 版本说明；新增维护规范引用）
+> 最后更新：2026-06-08（全量重部署，修正 K12 数据路径为 v3、新增 Nginx sites-enabled 同步说明、Certbot port 80 404 修复、部署问题汇总更新）
