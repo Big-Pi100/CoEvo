@@ -2423,8 +2423,9 @@ async fn k12_reading_current_card_handler(
     let current_card: Option<serde_json::Value> = first_card_uuid.and_then(|uuid| {
         conn.query_row(
             "SELECT c.id, pc.card_type, c.front,
-                    COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') as back,
-                    plt.translation
+                    COALESCE(psc.definition, plt.full_text, phc.body, c.front, plc.pronunciation, '') as back,
+                    plt.translation,
+                    plc.definitions
              FROM user_cards c
              LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
              LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.id
@@ -2439,6 +2440,7 @@ async fn k12_reading_current_card_handler(
                 let front: String = row.get(2)?;
                 let back: String = row.get(3)?;
                 let translation: Option<String> = row.get(4)?;
+                let definitions: Option<String> = row.get(5)?;
                 // 尝试解析 back 为 JSON（poem/song 卡片）
                 let back_val: serde_json::Value = if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&back) {
                     parsed
@@ -2459,15 +2461,20 @@ async fn k12_reading_current_card_handler(
                         }
                     }
                 }
-                // 纯文本 back（literature 卡片）：direct 设为 full_text
+                // 纯文本 back：设为 full_text（文学=全文，语言=英文原文，科学=定义）
                 if back_val.is_string() {
                     resp["full_text"] = serde_json::Value::String(back);
                 }
                 // 译文
-                if let Some(t) = translation {
-                    if !t.is_empty() {
-                        resp["translation"] = serde_json::Value::String(t);
-                    }
+                let trans_val = translation.filter(|t| !t.is_empty()).or_else(|| {
+                    // 语言卡片：从 definitions JSON 数组中提取第一条
+                    definitions.as_ref().and_then(|d| {
+                        serde_json::from_str::<Vec<serde_json::Value>>(d).ok()
+                            .and_then(|arr| arr.first().and_then(|v| v.as_str().map(|s| s.to_string())))
+                    })
+                });
+                if let Some(t) = trans_val {
+                    resp["translation"] = serde_json::Value::String(t);
                 }
                 Ok(resp)
             }

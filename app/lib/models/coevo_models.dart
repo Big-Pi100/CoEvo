@@ -118,7 +118,9 @@ class DueCard {
     reps: json['reps'] as int? ?? 0,
     lapses: json['lapses'] as int? ?? 0,
     difficulty: (json['difficulty'] as num?)?.toDouble() ?? 5.0,
-    createdAt: json['created_at'] as int?,
+    createdAt: (json['created_at'] is int) 
+        ? json['created_at'] as int? 
+        : int.tryParse(json['created_at']?.toString() ?? ''),
     due: json['due'] as int?,
     lastReviewedAt: json['last_reviewed_at'] as int?,
     lastReviewQuality: json['last_review_quality'] as int?,
