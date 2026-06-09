@@ -330,7 +330,6 @@ pub async fn admin_hard_delete_user(headers: HeaderMap, Path(uid): Path<String>)
         "DELETE FROM tokens WHERE user_id=?1",
         "DELETE FROM guardian_assignments WHERE student_user_id=?1 OR guardian_admin_id=?1",
         "DELETE FROM achievements WHERE user_id=?1",
-        "DELETE FROM skipped_concepts WHERE user_id=?1",
         "DELETE FROM users WHERE id=?1",
     ];
     for sql in &tables {

@@ -50,13 +50,18 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64, offset: i64, 
     };
 
     let sql = format!(
-        "SELECT c.id, COALESCE(c.front, pc.front) as front, COALESCE(pc.front, c.front) as back,
+        "SELECT c.id, COALESCE(c.front, pc.front) as front,
+                COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') as back,
                 c.domain, COALESCE(pc.card_type, '') as card_type, NULL as source_sentence,
                 cm.state, cm.reps, cm.lapses, 0, cm.difficulty, cm.due, cm.last_review,
                 (SELECT rating FROM review_log WHERE card_id = c.id ORDER BY reviewed_at DESC LIMIT 1),
                 pr.conversation_id
          FROM user_cards c
          LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
+         LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.id
+         LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.id
+         LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.id
+         LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.id
          JOIN plan_runs pr ON c.plan_run_id = pr.id
          JOIN card_memory cm ON c.id = cm.user_card_id
          LEFT JOIN user_plan_progress upp ON c.plan_run_id = upp.plan_id AND c.task_key = upp.task_key
@@ -89,7 +94,6 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64, offset: i64, 
             conversation_id: row.get(14)?,
         })
     ).unwrap().filter_map(|r| r.ok()).collect();
-    eprintln!("debug_due_cards={}", cards.len());
 
     let total_sql = format!(
         "SELECT COUNT(*) FROM user_cards c
@@ -314,7 +318,11 @@ mod tests {
              CREATE TABLE IF NOT EXISTS card_memory (user_card_id TEXT PRIMARY KEY, state INTEGER DEFAULT 0, status TEXT DEFAULT 'active', difficulty REAL DEFAULT 5.0, stability REAL DEFAULT 0.0, due INTEGER DEFAULT 0, last_review INTEGER, reps INTEGER DEFAULT 0, lapses INTEGER DEFAULT 0);
              CREATE TABLE IF NOT EXISTS review_log (id TEXT PRIMARY KEY, card_id TEXT NOT NULL, user_card_id TEXT REFERENCES user_cards(id) ON DELETE CASCADE, rating INTEGER NOT NULL, verification_type TEXT NOT NULL, verification_result TEXT NOT NULL, details_json TEXT DEFAULT NULL, reviewed_at INTEGER NOT NULL);
              CREATE TABLE IF NOT EXISTS achievements (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, achievement_key TEXT NOT NULL, name TEXT NOT NULL, icon TEXT NOT NULL, tier TEXT DEFAULT 'fixed', source TEXT, unlocked_at TEXT NOT NULL);
-             CREATE TABLE IF NOT EXISTS user_plan_progress (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, plan_id TEXT NOT NULL, task_key TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', score REAL, attempt_count INTEGER DEFAULT 0);"
+             CREATE TABLE IF NOT EXISTS user_plan_progress (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, plan_id TEXT NOT NULL, task_key TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', score REAL, attempt_count INTEGER DEFAULT 0);
+             CREATE TABLE IF NOT EXISTS prebuilt_science_cards (id TEXT PRIMARY KEY, definition TEXT NOT NULL DEFAULT '', key_elements TEXT NOT NULL DEFAULT '', applications TEXT NOT NULL DEFAULT '', related_concepts TEXT NOT NULL DEFAULT '', formula TEXT NOT NULL DEFAULT '', graph TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '', FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE);
+             CREATE TABLE IF NOT EXISTS prebuilt_language_cards (id TEXT PRIMARY KEY, pronunciation TEXT NOT NULL DEFAULT '', pos TEXT NOT NULL DEFAULT '', definitions TEXT NOT NULL DEFAULT '[]', related_phrases TEXT NOT NULL DEFAULT '', structure_meta TEXT NOT NULL DEFAULT '', level TEXT NOT NULL DEFAULT '', FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE);
+             CREATE TABLE IF NOT EXISTS prebuilt_literature_cards (id TEXT PRIMARY KEY, full_text TEXT NOT NULL DEFAULT '', translation TEXT NOT NULL DEFAULT '', author TEXT NOT NULL DEFAULT '', genre TEXT NOT NULL DEFAULT '', FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE);
+             CREATE TABLE IF NOT EXISTS prebuilt_humanities_cards (id TEXT PRIMARY KEY, node_type TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', period TEXT NOT NULL DEFAULT '', region TEXT NOT NULL DEFAULT '', tags TEXT NOT NULL DEFAULT '[]', FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE);"
         ).unwrap();
         // 插入测试用户
         conn.execute(
@@ -334,7 +342,11 @@ mod tests {
              CREATE TABLE review_log (id TEXT PRIMARY KEY, card_id TEXT, user_card_id TEXT, rating INTEGER, verification_type TEXT, verification_result TEXT, reviewed_at INTEGER);
              CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT, streak_days INTEGER DEFAULT 0, last_active_date TEXT, created_at TEXT);
              CREATE TABLE conversations (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, turn_count INTEGER DEFAULT 0, started_at TEXT NOT NULL);
-             CREATE TABLE user_plan_progress (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, plan_id TEXT NOT NULL, task_key TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', score REAL, attempt_count INTEGER DEFAULT 0);"
+             CREATE TABLE user_plan_progress (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, plan_id TEXT NOT NULL, task_key TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', score REAL, attempt_count INTEGER DEFAULT 0);
+             CREATE TABLE prebuilt_science_cards (id TEXT PRIMARY KEY, definition TEXT NOT NULL DEFAULT '', key_elements TEXT NOT NULL DEFAULT '', applications TEXT NOT NULL DEFAULT '', related_concepts TEXT NOT NULL DEFAULT '', formula TEXT NOT NULL DEFAULT '', graph TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '', FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE);
+             CREATE TABLE prebuilt_language_cards (id TEXT PRIMARY KEY, pronunciation TEXT NOT NULL DEFAULT '', pos TEXT NOT NULL DEFAULT '', definitions TEXT NOT NULL DEFAULT '[]', related_phrases TEXT NOT NULL DEFAULT '', structure_meta TEXT NOT NULL DEFAULT '', level TEXT NOT NULL DEFAULT '', FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE);
+             CREATE TABLE prebuilt_literature_cards (id TEXT PRIMARY KEY, full_text TEXT NOT NULL DEFAULT '', translation TEXT NOT NULL DEFAULT '', author TEXT NOT NULL DEFAULT '', genre TEXT NOT NULL DEFAULT '', FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE);
+             CREATE TABLE prebuilt_humanities_cards (id TEXT PRIMARY KEY, node_type TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', period TEXT NOT NULL DEFAULT '', region TEXT NOT NULL DEFAULT '', tags TEXT NOT NULL DEFAULT '[]', FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE);"
         ).unwrap();
         conn
     }

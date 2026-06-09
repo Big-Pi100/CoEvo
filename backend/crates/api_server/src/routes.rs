@@ -168,8 +168,8 @@ async fn auth_register(
 ) -> impl axum::response::IntoResponse {
     tracing::info!("auth_register: user_id={}", input.username);
 
-    // Rate limit: 5 reg/min per IP
-    if let Err(resp) = crate::rate_limiter::check_rate_limit(&headers, 5, 60) { return resp; }
+    // Rate limit: 20 reg/min per IP
+    if let Err(resp) = crate::rate_limiter::check_rate_limit(&headers, 20, 60) { return resp; }
 
     let result = {
         let conn = crate::db_pool::get_conn();
@@ -527,10 +527,10 @@ async fn review_cards_by_progress_handler(
          JOIN user_plan_progress upp ON c.plan_run_id = upp.plan_id AND c.task_key = upp.task_key
          LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
          LEFT JOIN plan_runs pr ON c.plan_run_id = pr.id
-         LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.prebuilt_card_id
-         LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.prebuilt_card_id
-         LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.prebuilt_card_id
-         LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.prebuilt_card_id
+                 LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.id
+                 LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.id
+                 LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.id
+                 LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.id
          WHERE upp.user_id = ?1
            AND upp.status IN ('done', 'in_progress')
            AND cm.status = 'active'
@@ -562,7 +562,7 @@ async fn review_cards_by_progress_handler(
                     "subject": row.get::<_, Option<String>>(5)?,
                     "card_type": row.get::<_, String>(6)?,
                     "source_sentence": row.get::<_, Option<String>>(7)?,
-                    "created_at": row.get::<_, i64>(8)?,
+                    "created_at": row.get::<_, String>(8)?,
                     "conversation_id": row.get::<_, Option<String>>(9)?,
                     "plan_id": plan_id,
                     "task_key": row.get::<_, Option<String>>(11)?,
@@ -721,10 +721,10 @@ async fn cards_all_handler(
          JOIN card_memory cm ON c.id = cm.user_card_id
          LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
          LEFT JOIN plan_runs pr ON c.plan_run_id = pr.id
-         LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.prebuilt_card_id
-         LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.prebuilt_card_id
-         LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.prebuilt_card_id
-         LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.prebuilt_card_id
+                 LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.id
+                 LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.id
+                 LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.id
+                 LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.id
          LEFT JOIN (
             SELECT card_id, MAX(reviewed_at) as last_reviewed_at
             FROM review_log GROUP BY card_id
@@ -781,7 +781,7 @@ async fn cards_all_handler(
         "subject": row.get::<_, Option<String>>(5)?,
         "card_type": row.get::<_, String>(6)?,
         "source_sentence": row.get::<_, Option<String>>(7)?,
-        "created_at": row.get::<_, i64>(8)?,
+        "created_at": row.get::<_, String>(8)?,
         "state": row.get::<_, i32>(9)?,
         "difficulty": row.get::<_, f64>(10)?,
         "due": row.get::<_, i64>(11)?,
@@ -897,10 +897,10 @@ async fn cards_by_plan_handler(
                  JOIN card_memory cm ON c.id = cm.user_card_id
                  LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
                  LEFT JOIN plan_runs pr ON c.plan_run_id = pr.id
-                 LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.prebuilt_card_id
-                 LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.prebuilt_card_id
-                 LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.prebuilt_card_id
-                 LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.prebuilt_card_id
+                 LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.id
+                 LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.id
+                 LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.id
+                 LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.id
                  LEFT JOIN (
                     SELECT card_id, MAX(reviewed_at) as last_reviewed_at
                     FROM review_log GROUP BY card_id
@@ -924,7 +924,7 @@ async fn cards_by_plan_handler(
                         "domain": row.get::<_, Option<String>>(4)?,
                         "card_type": row.get::<_, String>(6)?,
                         "source_sentence": row.get::<_, Option<String>>(7)?,
-                        "created_at": row.get::<_, i64>(8)?,
+                        "created_at": row.get::<_, String>(8)?,
                         "state": row.get::<_, i32>(9)?,
                         "difficulty": row.get::<_, f64>(10)?,
                         "due": row.get::<_, i64>(11)?,
@@ -1013,10 +1013,10 @@ async fn cards_search_handler(
          JOIN card_memory cm ON c.id = cm.user_card_id
          LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
          LEFT JOIN plan_runs pr ON c.plan_run_id = pr.id
-         LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.prebuilt_card_id
-         LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.prebuilt_card_id
-         LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.prebuilt_card_id
-         LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.prebuilt_card_id
+                 LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.id
+                 LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.id
+                 LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.id
+                 LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.id
          WHERE c.user_id = '{}'
            AND cm.status IN ('active', 'pending')
            AND (c.front LIKE '{}' OR COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') LIKE '{}')
@@ -1032,10 +1032,10 @@ async fn cards_search_handler(
         "SELECT COUNT(*) FROM user_cards c
          JOIN card_memory cm ON c.id = cm.user_card_id
          LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
-         LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.prebuilt_card_id
-         LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.prebuilt_card_id
-         LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.prebuilt_card_id
-         LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.prebuilt_card_id
+                 LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.id
+                 LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.id
+                 LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.id
+                 LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.id
          WHERE c.user_id = '{}'
            AND cm.status IN ('active', 'pending')
            AND (c.front LIKE '{}' OR COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') LIKE '{}')",
@@ -1056,7 +1056,7 @@ async fn cards_search_handler(
                 "domain": row.get::<_, Option<String>>(4)?,
                 "card_type": row.get::<_, String>(6)?,
                 "source_sentence": row.get::<_, Option<String>>(7)?,
-                "created_at": row.get::<_, i64>(8)?,
+                "created_at": row.get::<_, String>(8)?,
                 "conversation_id": row.get::<_, Option<String>>(9)?,
                 "plan_id": row.get::<_, Option<String>>(10)?,
                 "task_key": row.get::<_, Option<String>>(11)?,
@@ -1772,9 +1772,9 @@ async fn plans_list_handler(
     let conn = crate::db_pool::get_conn();
 
     let (sql, param_val): (&str, String) = if let Some(conv_id) = params.get("conversation_id") {
-        ("SELECT id, conversation_id, goal, subject, grade_band, '' as domain, 'structured' as mode, plan_content, created_at, updated_at FROM plan_runs WHERE conversation_id = ?1 ORDER BY created_at DESC", conv_id.clone())
+        ("SELECT id, conversation_id, goal, subject, grade_band, domain, plan_content, created_at, updated_at FROM plan_runs WHERE conversation_id = ?1 ORDER BY created_at DESC", conv_id.clone())
     } else if let Some(uid) = params.get("user_id") {
-        ("SELECT id, conversation_id, goal, subject, grade_band, '' as domain, 'structured' as mode, plan_content, created_at, updated_at FROM plan_runs WHERE user_id = ?1 ORDER BY created_at DESC", uid.clone())
+        ("SELECT id, conversation_id, goal, subject, grade_band, domain, plan_content, created_at, updated_at FROM plan_runs WHERE user_id = ?1 ORDER BY created_at DESC", uid.clone())
     } else {
         return Json(serde_json::json!({"error": "user_id or conversation_id required"}));
     };
@@ -1785,7 +1785,7 @@ async fn plans_list_handler(
     };
     let mut plans: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![param_val], |row| {
         // plan_content: 完整计划结构（不含状态，状态在 user_plan_progress）
-        let plan_content_raw: Option<String> = row.get(7).ok();
+        let plan_content_raw: Option<String> = row.get(6).ok();
         let plan_id: String = row.get::<_, String>(0)?;
         let mut merged_plan = if let Some(content_str) = &plan_content_raw {
             if let Ok(content) = serde_json::from_str::<serde_json::Value>(content_str) {
@@ -1800,12 +1800,15 @@ async fn plans_list_handler(
         // 从 user_plan_progress 合并状态到 stages[].tasks[].status
         if let Some(stages) = merged_plan.get_mut("stages").and_then(|s| s.as_array_mut()) {
             let progress_rows: Vec<(String, String)> = {
-                let mut stmt = conn.prepare(
+                let stmt = conn.prepare(
                     "SELECT task_key, status FROM user_plan_progress WHERE plan_id = ?1"
-                ).unwrap_or_else(|_| panic!("prepare progress for plan {}", plan_id));
-                stmt.query_map(rusqlite::params![plan_id], |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-                }).ok().map(|rows| rows.filter_map(|r| r.ok()).collect()).unwrap_or_default()
+                );
+                match stmt {
+                    Ok(mut s) => s.query_map(rusqlite::params![plan_id], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    }).ok().map(|rows| rows.filter_map(|r| r.ok()).collect()).unwrap_or_default(),
+                    Err(_) => vec![],
+                }
             };
             let progress_map: std::collections::HashMap<String, String> = progress_rows.into_iter().collect();
 
@@ -1827,10 +1830,9 @@ async fn plans_list_handler(
             "subject": row.get::<_, Option<String>>(3)?,
             "grade_band": row.get::<_, Option<String>>(4)?,
             "domain": row.get::<_, String>(5)?,
-            "mode": row.get::<_, Option<String>>(6)?,
             "plan": merged_plan,
-            "created_at": row.get::<_, i64>(8)?.to_string(),
-            "updated_at": row.get::<_, i64>(9)?.to_string(),
+            "created_at": row.get::<_, String>(7)?,
+            "updated_at": row.get::<_, String>(8)?,
         }))
     }).unwrap().filter_map(|r| r.ok()).collect();
 
@@ -2186,39 +2188,85 @@ async fn k12_init_handler(
         }));
     }
 
-    // 读取 v3 JSON 计划文件（从 root 读取新格式，含 grade_band 字段）
-    // 先试 plans/ 子目录（v3 标准结构），再试根目录（旧格式兼容）
-    let k12_data_dir = crate::curriculum_loader::k12_data_dir();
-    let plan_path = std::path::Path::new(&k12_data_dir).join("plans").join(format!("{}.json", input.subject));
-    let plan_content_str = if plan_path.exists() {
-        match std::fs::read_to_string(&plan_path) {
-            Ok(s) => s,
-            Err(e) => return Json(serde_json::json!({"error": format!("加载计划失败: {}", e)})),
-        }
-    } else {
-        // fallback: 直接从 v3 根目录读取（兼容旧结构）
-        let fallback_path = std::path::Path::new(&k12_data_dir).join(format!("{}.json", input.subject));
-        match std::fs::read_to_string(&fallback_path) {
-            Ok(s) => s,
-            Err(e) => return Json(serde_json::json!({"error": format!("加载计划失败: {}", e)})),
-        }
+    // 从 prebuilt_stages/tasks 规范化表重建 plan JSON
+    let prebuilt_plan_id: String = match conn.query_row(
+        "SELECT id FROM prebuilt_plans WHERE subject = ?1 LIMIT 1",
+        rusqlite::params![input.subject],
+        |row| row.get(0),
+    ) {
+        Ok(id) => id,
+        Err(_) => return Json(serde_json::json!({"error": format!("未找到 {} 的学习计划", input.subject)})),
     };
-
-    // 按 grade_band 过滤 stage（从 v3 JSON 自身的 stage.grade_band 字段）
-    let mut plan_val: serde_json::Value = serde_json::from_str(&plan_content_str).unwrap_or_default();
-    let plan_goal = plan_val.get("goal").and_then(|g| g.as_str()).unwrap_or("").to_string();
-    let plan_domain = plan_val.get("domain").and_then(|d| d.as_str()).unwrap_or("").to_string();
-    tracing::info!("[K12-INIT] plan loaded: goal={}, domain={}, subject={}", plan_goal, plan_domain, input.subject);
+    let plan_goal: String = conn.query_row(
+        "SELECT goal FROM prebuilt_plans WHERE id = ?1", rusqlite::params![prebuilt_plan_id],
+        |row| row.get(0),
+    ).unwrap_or_default();
+    let plan_domain: String = conn.query_row(
+        "SELECT domain FROM prebuilt_plans WHERE id = ?1", rusqlite::params![prebuilt_plan_id],
+        |row| row.get(0),
+    ).unwrap_or_default();
+    tracing::info!("[K12-INIT] plan loaded: id={}, goal={}, domain={}, subject={}", prebuilt_plan_id, plan_goal, plan_domain, input.subject);
     let grade_band_filter = input.grade_band.as_str();
-    if !grade_band_filter.is_empty() {
-        if let Some(stages) = plan_val.get_mut("stages").and_then(|s| s.as_array_mut()) {
-            stages.retain(|stage| {
-                let gb = stage.get("grade_band").and_then(|v| v.as_str()).unwrap_or("");
-                gb == grade_band_filter || gb.is_empty()
-            });
+
+    // 读 stages（按 grade_band 过滤）
+    let mut stages_json: Vec<serde_json::Value> = Vec::new();
+    let grade_filter = grade_band_filter.to_string();
+    if let Ok(mut stage_stmt) = conn.prepare(
+        "SELECT id, name, sort_order FROM prebuilt_stages WHERE plan_id = ?1 AND (grade_band = '' OR grade_band = ?2) ORDER BY sort_order"
+    ) {
+        if let Ok(stage_rows) = stage_stmt.query_map(rusqlite::params![prebuilt_plan_id, grade_filter], |row| {
+            Ok((row.get::<_,String>(0)?, row.get::<_,String>(1)?, row.get::<_,String>(2)?))
+        }) {
+            for stage_row in stage_rows.flatten() {
+                let stage_id = stage_row.0;
+                let stage_name = stage_row.1;
+                let stage_sort = stage_row.2;
+
+                // 读该 stage 的 tasks
+                let mut tasks_json: Vec<serde_json::Value> = Vec::new();
+                if let Ok(mut task_stmt) = conn.prepare(
+                    "SELECT task_key, name, prompt_mode, card_ids, sort_order FROM prebuilt_tasks WHERE stage_id = ?1 ORDER BY sort_order"
+                ) {
+                    if let Ok(task_rows) = task_stmt.query_map(rusqlite::params![stage_id], |row| {
+                        Ok((
+                            row.get::<_,String>(0)?,   // task_key
+                            row.get::<_,String>(1)?,   // name
+                            row.get::<_,String>(2)?,   // prompt_mode
+                            row.get::<_,String>(3)?,   // card_ids (JSON array as string)
+                            row.get::<_,String>(4)?,   // sort_order
+                        ))
+                    }) {
+                        for t in task_rows.flatten() {
+                            let card_ids: serde_json::Value = serde_json::from_str(&t.3).unwrap_or_default();
+                            tasks_json.push(serde_json::json!({
+                                "task_key": t.0,
+                                "name": t.1,
+                                "prompt_mode": t.2,
+                                "card_ids": card_ids,
+                            }));
+                        }
+                    }
+                }
+                stages_json.push(serde_json::json!({
+                    "name": stage_name,
+                    "sort": stage_sort,
+                    "grade_band": grade_band_filter,
+                    "tasks": tasks_json,
+                }));
+            }
         }
     }
-    let filtered_content_str = serde_json::to_string(&plan_val).unwrap_or_else(|_| plan_content_str.clone());
+
+    let plan_val = serde_json::json!({
+        "goal": plan_goal,
+        "domain": plan_domain,
+        "stages": stages_json,
+    });
+    let filtered_content_str = serde_json::to_string(&plan_val).unwrap_or_default();
+    tracing::info!("[K12-INIT] plan reconstructed: {} stages, {} total tasks",
+        stages_json.len(),
+        stages_json.iter().map(|s| s["tasks"].as_array().map(|a| a.len()).unwrap_or(0)).sum::<usize>()
+    );
 
     let conv_id = uuid::Uuid::new_v4().to_string();
     let plan_id = uuid::Uuid::new_v4().to_string();
@@ -2287,7 +2335,6 @@ async fn k12_init_handler(
         plan_val.get("stages").and_then(|s| s.as_array()).map(|a| a.len()).unwrap_or(0),
         activated, input.grade_band);
 
-    let plan_val: serde_json::Value = serde_json::from_str(&plan_content_str).unwrap_or_default();
     Json(serde_json::json!({
         "conversation_id": conv_id,
         "plan": plan_val,
@@ -2379,11 +2426,11 @@ async fn k12_reading_current_card_handler(
                     COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') as back
              FROM user_cards c
              LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
-             LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.prebuilt_card_id
-             LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.prebuilt_card_id
-             LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.prebuilt_card_id
-             LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.prebuilt_card_id
-             WHERE c.id = ?1 AND c.user_id = ?2",
+             LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.id
+             LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.id
+             LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.id
+             LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.id
+             WHERE c.prebuilt_card_id = ?1 AND c.user_id = ?2",
             rusqlite::params![uuid, query.user_id],
             |row| {
                 let id: String = row.get(0)?;

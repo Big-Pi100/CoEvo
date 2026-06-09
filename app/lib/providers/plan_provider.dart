@@ -33,16 +33,17 @@ class PlanData {
 
   factory PlanData.fromJson(Map<String, dynamic> json) {
     List<Map<String, dynamic>>? stages;
-    final rawContent = json['plan_content'];
-    if (rawContent is String && rawContent.isNotEmpty) {
+    // 后端返回 plan 字段（内含 stages）
+    final rawPlan = json['plan'];
+    if (rawPlan is Map<String, dynamic>) {
+      final s = rawPlan['stages'];
+      if (s is List) stages = s.cast<Map<String, dynamic>>();
+    } else if (rawPlan is String && rawPlan.isNotEmpty) {
       try {
-        final parsed = jsonDecode(rawContent);
+        final parsed = jsonDecode(rawPlan);
         final s = (parsed is Map<String, dynamic>) ? parsed['stages'] : null;
         if (s is List) stages = s.cast<Map<String, dynamic>>();
       } catch (_) {}
-    } else if (rawContent is Map<String, dynamic>) {
-      final s = rawContent['stages'];
-      if (s is List) stages = s.cast<Map<String, dynamic>>();
     }
     return PlanData(
       id: json['id']?.toString() ?? '',
@@ -51,7 +52,7 @@ class PlanData {
       subject: json['subject']?.toString(),
       gradeBand: json['grade_band']?.toString(),
       stages: stages,
-      totalCards: (json['card_count'] as num?)?.toInt() ?? 0,
+      totalCards: (json['card_count'] as num?)?.toInt() ?? (json['due_card_count'] as num?)?.toInt() ?? 0,
       dueCards: (json['due_card_count'] as num?)?.toInt() ?? 0,
     );
   }

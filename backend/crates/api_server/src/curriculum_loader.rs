@@ -6,7 +6,6 @@
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
-
 static K12_DATA: OnceLock<K12Prebuilt> = OnceLock::new();
 
 // ── 数据模型（V4 格式 + 兼容 V3 CardData） ──
@@ -377,6 +376,142 @@ pub fn init() -> Result<(), String> {
 
 pub fn get() -> &'static K12Prebuilt {
     K12_DATA.get().expect("K12 not initialized")
+}
+
+/// 将 prebuilt 数据写入 DB 表（启动时在 schema init 后调用）
+/// 从此 JSON 不再是运行时数据源，仅用作镜像。
+pub fn write_prebuilt_to_db(conn: &rusqlite::Connection) -> Result<(), String> {
+    let base = Paths::prebuilt();
+    let cards_base = base.join("cards");
+    for domain in &["science", "language", "literature", "humanities"] {
+        let dir = cards_base.join(domain);
+        if !dir.exists() { continue; }
+
+        // 父表
+        let parents: Vec<serde_json::Value> = load_json(&dir.join("prebuilt_cards.json"))
+            .map_err(|e| format!("load {} parent: {}", domain, e))?;
+        for p in &parents {
+            let id = p["id"].as_str().unwrap_or("");
+            let card_type = p["card_type"].as_str().unwrap_or("");
+            let dom = p["domain"].as_str().unwrap_or(domain);
+            let subject = p["subject"].as_str().unwrap_or("");
+            let grade = p["grade_band"].as_str().unwrap_or("");
+            let front = p["front"].as_str().unwrap_or("");
+            conn.execute(
+                "INSERT OR IGNORE INTO prebuilt_cards (id, card_type, domain, subject, grade_band, front) VALUES (?1,?2,?3,?4,?5,?6)",
+                rusqlite::params![id, card_type, dom, subject, grade, front],
+            ).map_err(|e| format!("insert prebuilt_cards {}: {}", id, e))?;
+        }
+
+        // 子表：查 DB 实际列，过滤 JSON 中不存在的列
+        let sub_name = format!("prebuilt_{}_cards.json", domain);
+        let subs: Vec<serde_json::Value> = load_json(&dir.join(&sub_name))
+            .unwrap_or_default();
+        let sub_table = format!("prebuilt_{}_cards", domain);
+        // 获取 DB 表实际列名（不含 id）
+        let db_cols: Vec<String> = {
+            let sql = format!("PRAGMA table_info({})", sub_table);
+            let mut stmt = conn.prepare(&sql)
+                .map_err(|e| format!("pragma {}: {}", sub_table, e))?;
+            let mut cols = Vec::new();
+            if let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(1)) {
+                for r in rows.flatten() {
+                    if r != "id" {
+                        cols.push(r);
+                    }
+                }
+            }
+            cols
+        };
+        for s in &subs {
+            let id = s["id"].as_str().unwrap_or("");
+            // 只取 DB 表中存在的列
+            let cols: Vec<&String> = db_cols.iter()
+                .filter(|c| s.get(c.as_str()).is_some())
+                .collect();
+            if cols.is_empty() { continue; }
+            let col_names: Vec<&str> = cols.iter().map(|c| c.as_str()).collect();
+            let placeholders: Vec<String> = cols.iter().enumerate()
+                .map(|(i, _)| format!("?{}", i + 2)).collect();
+            let sql = format!(
+                "INSERT OR IGNORE INTO {} (id, {}) VALUES (?1, {})",
+                sub_table, col_names.join(","), placeholders.join(",")
+            );
+            let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(id.to_string())];
+            for col in &cols {
+                let val = s[col.as_str()].as_str().unwrap_or("");
+                params.push(Box::new(val.to_string()));
+            }
+            let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+            conn.execute(&sql, param_refs.as_slice())
+                .map_err(|e| format!("insert {} {}: {}", sub_table, id, e))?;
+        }
+        tracing::info!("K12 DB: wrote {} {} parent cards", parents.len(), domain);
+    }
+
+    // 2. 写计划（写入 plan_content 完整 JSON + stages/tasks 子表）
+    let plans_dir = base.join("plans");
+    if plans_dir.exists() {
+        if let Ok(dir) = std::fs::read_dir(&plans_dir) {
+            for entry in dir.flatten() {
+                let path = entry.path();
+                if !path.is_file() { continue; }
+                let fname = match path.file_name().and_then(|n| n.to_str()) {
+                    Some(n) if n.ends_with(".json") => n.to_string(),
+                    _ => continue,
+                };
+                let subject = fname.strip_suffix(".json").unwrap_or("").to_string();
+                let plan_val: serde_json::Value = load_json(&path)
+                    .map_err(|e| format!("load plan {}: {}", fname, e))?;
+                let goal = plan_val["goal"].as_str().unwrap_or("");
+                let domain = plan_val["domain"].as_str().unwrap_or("");
+                let plan_id = uuid::Uuid::new_v4().to_string();
+
+                // upsert: 同 subject 先删再插（保证幂等）
+                conn.execute("DELETE FROM prebuilt_tasks WHERE plan_id IN (SELECT id FROM prebuilt_plans WHERE subject=?1)", rusqlite::params![subject]).ok();
+                conn.execute("DELETE FROM prebuilt_stages WHERE plan_id IN (SELECT id FROM prebuilt_plans WHERE subject=?1)", rusqlite::params![subject]).ok();
+                conn.execute("DELETE FROM prebuilt_plans WHERE subject=?1", rusqlite::params![subject]).ok();
+
+                conn.execute(
+                    "INSERT INTO prebuilt_plans (id, subject, grade_band, goal, domain) VALUES (?1,?2,'',?3,?4)",
+                    rusqlite::params![plan_id, subject, goal, domain],
+                ).map_err(|e| format!("insert prebuilt_plans {}: {}", subject, e))?;
+
+                // 写 stages + tasks（规范化表，替代 plan_content JSON）
+                if let Some(stages) = plan_val["stages"].as_array() {
+                    for (si, stage) in stages.iter().enumerate() {
+                        let stage_name = stage["name"].as_str().unwrap_or("");
+                        let stage_grade = stage["grade_band"].as_str().unwrap_or("");
+                        let stage_id = uuid::Uuid::new_v4().to_string();
+                        conn.execute(
+                            "INSERT OR IGNORE INTO prebuilt_stages (id, plan_id, sort_order, name, grade_band) VALUES (?1,?2,?3,?4,?5)",
+                            rusqlite::params![stage_id, plan_id, si as i64, stage_name, stage_grade],
+                        ).ok();
+
+                        if let Some(tasks) = stage["tasks"].as_array() {
+                            for (ti, task) in tasks.iter().enumerate() {
+                                let task_key = task["task_key"].as_str().unwrap_or("");
+                                let task_name = task["name"].as_str().unwrap_or("");
+                                let prompt_mode = task["prompt_mode"].as_str().unwrap_or("");
+                                let card_ids = task["card_ids"].as_array()
+                                    .map(|a| serde_json::to_string(a).unwrap_or_default())
+                                    .unwrap_or_default();
+                                let task_id = uuid::Uuid::new_v4().to_string();
+                                conn.execute(
+                                    "INSERT OR IGNORE INTO prebuilt_tasks (id, plan_id, stage_id, task_key, name, prompt_mode, card_ids, sort_order) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+                                    rusqlite::params![task_id, plan_id, stage_id, task_key, task_name, prompt_mode, card_ids, ti as i64],
+                                ).ok();
+                            }
+                        }
+                    }
+                }
+                tracing::info!("K12 DB: wrote plan {}", subject);
+            }
+        }
+    }
+
+    tracing::info!("K12 DB: prebuilt data written successfully");
+    Ok(())
 }
 
 // ── 公开查询接口 ──

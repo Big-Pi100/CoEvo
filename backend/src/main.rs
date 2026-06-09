@@ -261,6 +261,15 @@ async fn main() {
             }
         }
 
+        // K12 prebuilt 数据写入 DB（JSON → prebuilt_* 表）
+        {
+            let conn = api_server::db_pool::get_conn();
+            if let Err(e) = api_server::curriculum_loader::write_prebuilt_to_db(&conn) {
+                tracing::warn!("K12 DB prebuilt write: {}", e);
+            } else {
+                tracing::info!("K12 DB: prebuilt tables populated");
+            }
+        }
         }
 
     // ════════════════════════════════════════════

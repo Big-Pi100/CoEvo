@@ -109,6 +109,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  /// 将原始错误消息转为用户友好的中文
+  static String _friendlyError(String raw) {
+    if (raw == 'rate_limited') return '操作太频繁，请稍后再试';
+    if (raw.contains('Rate limit')) return '操作太频繁，请稍后再试';
+    return raw;
+  }
+
   Future<void> register(String username, String password, {String? realName, String? phone}) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
@@ -128,7 +135,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
-        error: e.toString().replaceFirst('Exception: ', ''),
+        error: _friendlyError(e.toString().replaceFirst('Exception: ', '')),
       );
     }
   }
@@ -152,7 +159,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
-        error: e.toString().replaceFirst('Exception: ', ''),
+        error: _friendlyError(e.toString().replaceFirst('Exception: ', '')),
       );
     }
   }

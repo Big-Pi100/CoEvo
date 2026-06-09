@@ -66,12 +66,16 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
       if (mounted) setState(() => _isLoading = false);
       return;
     }
-    final client = ChatClient(userId: auth.userId!, token: auth.token);
-    try {
+    // 从 PlanProvider 读取已缓存的 plans，不做重复 API 请求
+    // 如果 plans 尚未加载，首次会触发 loadPlans
+    final planState = ref.read(planProvider);
+    if (!planState.isLoading && planState.plans.isEmpty) {
+      final client = ChatClient(userId: auth.userId!, token: auth.token);
       await ref.read(planProvider.notifier).loadPlans(client);
       if (!mounted) return;
-      final planState = ref.read(planProvider);
-      final planGroups = planState.plans.map((p) => _PlanGroup(
+    }
+    final plans = ref.read(planProvider).plans;
+    final planGroups = plans.map((p) => _PlanGroup(
         id: p.id,
         goal: p.goal,
         gradeBand: p.gradeBand ?? '',
@@ -86,10 +90,6 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
         _hasLoadedOnce = true;
       });
       debugPrint('========== [_loadPlanMeta] DONE ==========');
-    } catch (e) {
-      debugPrint('_loadPlanMeta error: $e');
-      if (mounted) setState(() => _isLoading = false);
-    }
   }
 
   /// 切换展开/收起指定 plan（展开时惰性加载 20 张）

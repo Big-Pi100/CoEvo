@@ -1446,8 +1446,6 @@ pub fn render_plan(plan: &serde_json::Value) -> String {
 /// 从 v3 预置数据复制一张卡片到用户名下
 use std::sync::OnceLock;
 
-/// 全局预置卡缓存（UUID → JSON Value），首次调用时惰性加载
-static PREBUILT_CARD_CACHE: OnceLock<std::collections::HashMap<String, serde_json::Value>> = OnceLock::new();
 
 /// 缓存的 plan_id 条目
 struct CachedPlanId {
@@ -1486,56 +1484,6 @@ pub fn resolve_plan_id(conn: &rusqlite::Connection, conversation_id: &str) -> Op
     Some(plan_id)
 }
 
-fn load_prebuilt_card_cache() -> &'static std::collections::HashMap<String, serde_json::Value> {
-    tracing::info!("[prebuilt_cache] loading prebuilt cards...");
-    PREBUILT_CARD_CACHE.get_or_init(|| {
-        let data_dir = crate::curriculum_loader::k12_data_dir();
-        let mut map = std::collections::HashMap::new();
-        // 搜索所有可能的卡片目录：
-        //   - data_dir/cards/               (v3/ 时代: v3/cards/)
-        //   - data_dir.parent()/cards/      (v3/plans/ 时代: v3/cards/)
-        //   - dev_path/cards/               (绝对路径兜底)
-        let card_search_dirs: Vec<std::path::PathBuf> = {
-            let mut dirs = vec![data_dir.join("cards")];
-            if let Some(parent) = data_dir.parent() {
-                let parent_cards = parent.join("cards");
-                if parent_cards != dirs[0] && parent_cards.exists() {
-                    dirs.push(parent_cards);
-                }
-            }
-            // 尝试从 CARGO_MANIFEST_DIR 解析绝对路径（开发模式兜底）
-            let dev_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../../../data/curriculum/v3/cards");
-            if dev_root.exists() && !dirs.iter().any(|d| d.canonicalize().ok() == dev_root.canonicalize().ok()) {
-                dirs.push(dev_root);
-            }
-            dirs
-        };
-        for search_dir in &card_search_dirs {
-            if let Ok(entries) = std::fs::read_dir(search_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.extension().and_then(|e| e.to_str()) != Some("json") { continue; }
-                    if let Ok(content) = std::fs::read_to_string(&path) {
-                        if let Ok(data) = serde_json::from_str::<serde_json::Value>(&content) {
-                            if let Some(cards) = data.get("cards").and_then(|c| c.as_array()) {
-                                for card in cards {
-                                    if let Some(cid) = card["id"].as_str() {
-                                        map.insert(cid.to_string(), card.clone());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        tracing::info!("[copy_prebuilt_card] loaded {} prebuilt cards into cache", map.len());
-        tracing::info!("[prebuilt_cache] loaded {} cards", map.len());
-        map
-    })
-}
-
 pub fn copy_prebuilt_card(
     conn: &rusqlite::Connection,
     user_id: &str,
@@ -1543,12 +1491,16 @@ pub fn copy_prebuilt_card(
     task_key: &str,
     prebuilt_card_id: &str,
 ) -> String {
-    let cache = load_prebuilt_card_cache();
-    if let Some(card) = cache.get(prebuilt_card_id) {
+    // 从 DB prebuilt_cards 表读取卡片元数据
+    let card_info: Option<(String, String)> = conn.query_row(
+        "SELECT pc.front, pc.domain FROM prebuilt_cards pc WHERE pc.id = ?1",
+        rusqlite::params![prebuilt_card_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    ).ok();
+
+    if let Some((front, domain)) = card_info {
         let now = chrono::Utc::now().timestamp();
         let user_card_id = uuid::Uuid::new_v4().to_string();
-        let front = card["front"].as_str().unwrap_or("");
-        let domain = card["domain"].as_str().unwrap_or("");
         let _ = conn.execute(
             "INSERT INTO user_cards (id, user_id, plan_run_id, prebuilt_card_id, domain, front, status, task_key, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active', ?7, ?8)",
@@ -1564,7 +1516,7 @@ pub fn copy_prebuilt_card(
         );
         user_card_id
     } else {
-        tracing::warn!("[copy_prebuilt_card] card not found: {}", prebuilt_card_id);
+        tracing::warn!("[copy_prebuilt_card] card not found in DB: {}", prebuilt_card_id);
         String::new()
     }
 }
