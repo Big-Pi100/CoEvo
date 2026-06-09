@@ -39,8 +39,8 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64, offset: i64, 
 
     let (where_clause, total_where): (String, String) = if let Some(cid) = conv_id {
         (
-            format!("c.user_id = ?1 AND c.conversation_id = '{}' AND cm.status = 'active' AND cm.due <= ?2 AND upp.user_id = c.user_id AND upp.status IN ('in_progress', 'done')", cid.replace('\'', "''")),
-            format!("c.user_id = ?1 AND c.conversation_id = '{}' AND cm.status = 'active' AND cm.due <= ?2 AND upp.user_id = c.user_id AND upp.status IN ('in_progress', 'done')", cid.replace('\'', "''")),
+            format!("c.user_id = ?1 AND pr.conversation_id = '{}' AND cm.status = 'active' AND cm.due <= ?2 AND upp.user_id = c.user_id AND upp.status IN ('in_progress', 'done')", cid.replace('\'', "''")),
+            format!("c.user_id = ?1 AND pr.conversation_id = '{}' AND cm.status = 'active' AND cm.due <= ?2 AND upp.user_id = c.user_id AND upp.status IN ('in_progress', 'done')", cid.replace('\'', "''")),
         )
     } else {
         (
@@ -50,18 +50,22 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64, offset: i64, 
     };
 
     let sql = format!(
-        "SELECT c.id, c.front, c.back, c.domain, c.card_type, c.source_sentence,
-                cm.state, cm.reps, cm.lapses, c.created_at, cm.difficulty, cm.due, cm.last_review,
+        "SELECT c.id, COALESCE(c.front, pc.front) as front, COALESCE(pc.front, c.front) as back,
+                c.domain, COALESCE(pc.card_type, '') as card_type, NULL as source_sentence,
+                cm.state, cm.reps, cm.lapses, 0, cm.difficulty, cm.due, cm.last_review,
                 (SELECT rating FROM review_log WHERE card_id = c.id ORDER BY reviewed_at DESC LIMIT 1),
-                c.conversation_id
-         FROM cards c
-         JOIN card_memory cm ON c.id = cm.card_id
-         LEFT JOIN user_plan_progress upp ON c.plan_id = upp.plan_id AND c.task_key = upp.task_key
+                pr.conversation_id
+         FROM user_cards c
+         LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
+         JOIN plan_runs pr ON c.plan_run_id = pr.id
+         JOIN card_memory cm ON c.id = cm.user_card_id
+         LEFT JOIN user_plan_progress upp ON c.plan_run_id = upp.plan_id AND c.task_key = upp.task_key
          WHERE {}
          ORDER BY CASE WHEN cm.state = 0 THEN 1 ELSE 0 END, cm.due ASC
          LIMIT ?3 OFFSET ?4",
         where_clause
     );
+
 
     let mut stmt = conn.prepare(&sql).unwrap();
 
@@ -85,11 +89,14 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64, offset: i64, 
             conversation_id: row.get(14)?,
         })
     ).unwrap().filter_map(|r| r.ok()).collect();
+    eprintln!("debug_due_cards={}", cards.len());
 
     let total_sql = format!(
-        "SELECT COUNT(*) FROM cards c
-         JOIN card_memory cm ON c.id = cm.card_id
-         LEFT JOIN user_plan_progress upp ON c.plan_id = upp.plan_id AND c.task_key = upp.task_key
+        "SELECT COUNT(*) FROM user_cards c
+         LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
+         JOIN plan_runs pr ON c.plan_run_id = pr.id
+         JOIN card_memory cm ON c.id = cm.user_card_id
+         LEFT JOIN user_plan_progress upp ON c.plan_run_id = upp.plan_id AND c.task_key = upp.task_key
          WHERE {}",
         total_where
     );
@@ -166,14 +173,14 @@ pub fn submit_review(
     // 1. 写入 review_log
     if let Some(details) = details_json {
         conn.execute(
-            "INSERT INTO review_log (id, card_id, rating, verification_type, verification_result, details_json, reviewed_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO review_log (id, card_id, user_card_id, rating, verification_type, verification_result, details_json, reviewed_at)
+             VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7)",
             rusqlite::params![log_id, card_id, rating, verification_type, verification_result, details, now],
         ).map_err(|e| format!("Review log insert: {}", e))?;
     } else {
         conn.execute(
-            "INSERT INTO review_log (id, card_id, rating, verification_type, verification_result, reviewed_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO review_log (id, card_id, user_card_id, rating, verification_type, verification_result, reviewed_at)
+             VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6)",
             rusqlite::params![log_id, card_id, rating, verification_type, verification_result, now],
         ).map_err(|e| format!("Review log insert: {}", e))?;
     }
@@ -186,7 +193,7 @@ pub fn submit_review(
     conn.execute(
         "UPDATE card_memory SET state = ?1, due = ?2, last_review = ?3,
          reps = reps + 1, lapses = lapses + ?4
-         WHERE card_id = ?5",
+         WHERE user_card_id = ?5",
         rusqlite::params![new_state.0, new_state.1, now, if passed { 0 } else { 1 }, card_id],
     ).map_err(|e| format!("Card memory update: {}", e))?;
 
@@ -196,13 +203,13 @@ pub fn submit_review(
     // 4. 批量聚合成就上下文 — 单次查询替代多次独立查询
     let agg: AchievementAggregate = conn.query_row(
         "SELECT
-            (SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id = cm.card_id WHERE c.user_id = ?1 AND cm.status = 'active') AS total_cards,
+            (SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id = cm.user_card_id WHERE c.user_id = ?1 AND cm.status = 'active') AS total_cards,
             (SELECT COUNT(*) FROM review_log r
-             JOIN cards c ON r.card_id = c.id
+             JOIN user_cards c ON r.card_id = c.id
              WHERE c.user_id = ?1) AS total_reviews,
-            (SELECT COUNT(DISTINCT c.domain) FROM cards c JOIN card_memory cm ON c.id = cm.card_id WHERE c.user_id = ?1 AND cm.status = 'active' AND c.domain IS NOT NULL) AS domains_covered,
-            (SELECT COUNT(*) FROM conversation_plans cp
-             JOIN user_plan_progress upp ON cp.id = upp.plan_id
+            (SELECT COUNT(DISTINCT c.domain) FROM user_cards c JOIN card_memory cm ON c.id = cm.user_card_id WHERE c.user_id = ?1 AND cm.status = 'active' AND c.domain IS NOT NULL) AS domains_covered,
+            (SELECT COUNT(*) FROM plan_runs pr
+             JOIN user_plan_progress upp ON pr.id = upp.plan_id
              WHERE upp.user_id = ?1 AND upp.status = 'completed') AS plans_completed,
             (SELECT COUNT(*) FROM conversations WHERE user_id = ?1) AS conversations_completed",
         rusqlite::params![user_id],
@@ -249,7 +256,7 @@ struct AchievementAggregate {
 fn compute_next_state(conn: &Connection, card_id: &str, rating: Rating) -> (i32, i64) {
     // Read current memory state from DB
     let (current_state, difficulty, stability, reps, last_review): (i32, f64, f64, i32, Option<i64>) = conn.query_row(
-        "SELECT state, difficulty, stability, reps, last_review FROM card_memory WHERE card_id = ?1",
+        "SELECT state, difficulty, stability, reps, last_review FROM card_memory WHERE user_card_id = ?1",
         rusqlite::params![card_id],
         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
     ).unwrap_or((0, 0.0, 0.0, 0, None));
@@ -283,7 +290,7 @@ fn compute_next_state(conn: &Connection, card_id: &str, rating: Rating) -> (i32,
 
     // Update difficulty/stability in card_memory
     let _ = conn.execute(
-        "UPDATE card_memory SET difficulty = ?1, stability = ?2 WHERE card_id = ?3",
+        "UPDATE card_memory SET difficulty = ?1, stability = ?2 WHERE user_card_id = ?3",
         rusqlite::params![result.difficulty, result.stability, card_id],
     );
 
@@ -301,10 +308,13 @@ mod tests {
             "CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT, streak_days INTEGER DEFAULT 0, last_active_date TEXT, created_at TEXT NOT NULL);
              CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, turn_count INTEGER DEFAULT 0, started_at TEXT NOT NULL);
              CREATE TABLE IF NOT EXISTS conversation_turns (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
-             CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, domain TEXT, card_type TEXT NOT NULL, front TEXT NOT NULL, back TEXT NOT NULL, source_sentence TEXT, conversation_id TEXT, created_at INTEGER NOT NULL);
-             CREATE TABLE IF NOT EXISTS card_memory (card_id TEXT PRIMARY KEY, state INTEGER DEFAULT 0, status TEXT DEFAULT 'active', difficulty REAL DEFAULT 5.0, stability REAL DEFAULT 0.0, due INTEGER DEFAULT 0, last_review INTEGER, reps INTEGER DEFAULT 0, lapses INTEGER DEFAULT 0);
-             CREATE TABLE IF NOT EXISTS review_log (id TEXT PRIMARY KEY, card_id TEXT NOT NULL, rating INTEGER NOT NULL, verification_type TEXT NOT NULL, verification_result TEXT NOT NULL, details_json TEXT DEFAULT NULL, reviewed_at INTEGER NOT NULL);
-             CREATE TABLE IF NOT EXISTS achievements (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, achievement_key TEXT NOT NULL, name TEXT NOT NULL, icon TEXT NOT NULL, tier TEXT DEFAULT 'fixed', source TEXT, unlocked_at TEXT NOT NULL);"
+             CREATE TABLE IF NOT EXISTS prebuilt_cards (id TEXT PRIMARY KEY, card_type TEXT NOT NULL, domain TEXT NOT NULL, subject TEXT NOT NULL DEFAULT '', grade_band TEXT NOT NULL DEFAULT '', front TEXT NOT NULL DEFAULT '', difficulty REAL DEFAULT 0.5, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+             CREATE TABLE IF NOT EXISTS plan_runs (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, conversation_id TEXT NOT NULL, prebuilt_plan_id TEXT, subject TEXT NOT NULL DEFAULT '', domain TEXT NOT NULL, grade_band TEXT NOT NULL DEFAULT '', goal TEXT NOT NULL DEFAULT '', plan_content TEXT, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS user_cards (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, plan_run_id TEXT NOT NULL, prebuilt_card_id TEXT, domain TEXT NOT NULL, front TEXT, status TEXT NOT NULL DEFAULT 'active', task_key TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+             CREATE TABLE IF NOT EXISTS card_memory (user_card_id TEXT PRIMARY KEY, state INTEGER DEFAULT 0, status TEXT DEFAULT 'active', difficulty REAL DEFAULT 5.0, stability REAL DEFAULT 0.0, due INTEGER DEFAULT 0, last_review INTEGER, reps INTEGER DEFAULT 0, lapses INTEGER DEFAULT 0);
+             CREATE TABLE IF NOT EXISTS review_log (id TEXT PRIMARY KEY, card_id TEXT NOT NULL, user_card_id TEXT REFERENCES user_cards(id) ON DELETE CASCADE, rating INTEGER NOT NULL, verification_type TEXT NOT NULL, verification_result TEXT NOT NULL, details_json TEXT DEFAULT NULL, reviewed_at INTEGER NOT NULL);
+             CREATE TABLE IF NOT EXISTS achievements (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, achievement_key TEXT NOT NULL, name TEXT NOT NULL, icon TEXT NOT NULL, tier TEXT DEFAULT 'fixed', source TEXT, unlocked_at TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS user_plan_progress (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, plan_id TEXT NOT NULL, task_key TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', score REAL, attempt_count INTEGER DEFAULT 0);"
         ).unwrap();
         // 插入测试用户
         conn.execute(
@@ -317,10 +327,14 @@ mod tests {
     fn setup_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
-            "CREATE TABLE cards (id TEXT PRIMARY KEY, user_id TEXT, domain TEXT, card_type TEXT, front TEXT, back TEXT, source_sentence TEXT, conversation_id TEXT, created_at INTEGER);
-             CREATE TABLE card_memory (card_id TEXT PRIMARY KEY, state INTEGER DEFAULT 0, status TEXT DEFAULT 'active', difficulty REAL DEFAULT 5.0, stability REAL DEFAULT 0.0, due INTEGER DEFAULT 0, last_review INTEGER, reps INTEGER DEFAULT 0, lapses INTEGER DEFAULT 0);
-             CREATE TABLE review_log (id TEXT PRIMARY KEY, card_id TEXT, rating INTEGER, verification_type TEXT, verification_result TEXT, reviewed_at INTEGER);
-             CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT, streak_days INTEGER DEFAULT 0, last_active_date TEXT, created_at TEXT);"
+            "CREATE TABLE prebuilt_cards (id TEXT PRIMARY KEY, card_type TEXT NOT NULL, domain TEXT NOT NULL, subject TEXT NOT NULL DEFAULT '', grade_band TEXT NOT NULL DEFAULT '', front TEXT NOT NULL DEFAULT '', difficulty REAL DEFAULT 0.5, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+             CREATE TABLE plan_runs (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, conversation_id TEXT NOT NULL, domain TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+             CREATE TABLE user_cards (id TEXT PRIMARY KEY, user_id TEXT, plan_run_id TEXT NOT NULL, prebuilt_card_id TEXT, domain TEXT, front TEXT, status TEXT DEFAULT 'active', task_key TEXT, created_at TEXT DEFAULT (datetime('now')));
+             CREATE TABLE card_memory (user_card_id TEXT PRIMARY KEY, state INTEGER DEFAULT 0, status TEXT DEFAULT 'active', difficulty REAL DEFAULT 5.0, stability REAL DEFAULT 0.0, due INTEGER DEFAULT 0, last_review INTEGER, reps INTEGER DEFAULT 0, lapses INTEGER DEFAULT 0);
+             CREATE TABLE review_log (id TEXT PRIMARY KEY, card_id TEXT, user_card_id TEXT, rating INTEGER, verification_type TEXT, verification_result TEXT, reviewed_at INTEGER);
+             CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT, streak_days INTEGER DEFAULT 0, last_active_date TEXT, created_at TEXT);
+             CREATE TABLE conversations (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, turn_count INTEGER DEFAULT 0, started_at TEXT NOT NULL);
+             CREATE TABLE user_plan_progress (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, plan_id TEXT NOT NULL, task_key TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', score REAL, attempt_count INTEGER DEFAULT 0);"
         ).unwrap();
         conn
     }
@@ -337,8 +351,9 @@ mod tests {
     fn test_submit_review_updates_streak() {
         let conn = setup_db();
         conn.execute("INSERT INTO users (id, username, created_at) VALUES ('u1', 'test', '2026-01-01')", []).unwrap();
-        conn.execute("INSERT INTO cards (id, user_id, front, back, card_type, created_at) VALUES ('c1', 'u1', 'test', 'test', 'concept', 0)", []).unwrap();
-        conn.execute("INSERT INTO card_memory (card_id, due) VALUES ('c1', 0)", []).unwrap();
+        conn.execute("INSERT INTO plan_runs (id, user_id, conversation_id, domain, created_at, updated_at) VALUES ('pr_c1', 'u1', 'conv_c1', 'test', datetime('now'), datetime('now'))", []).unwrap();
+        conn.execute("INSERT INTO user_cards (id, user_id, plan_run_id, domain, front, created_at) VALUES ('c1', 'u1', 'pr_c1', 'test', 'test', '2026-01-01')", []).unwrap();
+        conn.execute("INSERT INTO card_memory (user_card_id, due) VALUES ('c1', 0)", []).unwrap();
 
         let ctx = submit_review(&conn, "c1", 3, "spelling", "pass", "u1", None).unwrap();
         assert_eq!(ctx.streak_days, 1);
@@ -347,24 +362,37 @@ mod tests {
 
     // ── E2E 全流程: 制卡 → FSRS → 复习 → 状态转移 ──
 
-    fn insert_card(conn: &Connection, id: &str, user_id: &str, front: &str, back: &str) {
+    fn insert_card(conn: &Connection, id: &str, user_id: &str, front: &str, _back: &str) {
+        // 插入一条 plan_run 记录供 FK 引用
+        let plan_run_id = format!("pr_{}", id);
+        let conv_id = format!("conv_{}", id);
         conn.execute(
-            "INSERT INTO cards (id, user_id, front, back, card_type, created_at) VALUES (?1, ?2, ?3, ?4, 'concept', 0)",
-            rusqlite::params![id, user_id, front, back],
+            "INSERT INTO plan_runs (id, user_id, conversation_id, domain, created_at, updated_at) VALUES (?1, ?2, ?3, 'test', datetime('now'), datetime('now'))",
+            rusqlite::params![plan_run_id, user_id, conv_id],
         ).unwrap();
         conn.execute(
-            "INSERT INTO card_memory (card_id, state, due) VALUES (?1, 0, 0)",
+            "INSERT INTO user_cards (id, user_id, plan_run_id, domain, front, created_at) VALUES (?1, ?2, ?3, 'test', ?4, '2026-01-01')",
+            rusqlite::params![id, user_id, plan_run_id, front],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO card_memory (user_card_id, state, due) VALUES (?1, 0, 0)",
             rusqlite::params![id],
         ).unwrap();
     }
 
-    fn insert_card_old(conn: &Connection, id: &str, user_id: &str, front: &str, back: &str) {
+    fn insert_card_old(conn: &Connection, id: &str, user_id: &str, front: &str, _back: &str) {
+        let plan_run_id = format!("pr_{}", id);
+        let conv_id = format!("conv_{}", id);
         conn.execute(
-            "INSERT INTO cards (id, user_id, front, back, card_type, created_at) VALUES (?1, ?2, ?3, ?4, 'concept', 86400)",
-            rusqlite::params![id, user_id, front, back],
+            "INSERT INTO plan_runs (id, user_id, conversation_id, domain, created_at, updated_at) VALUES (?1, ?2, ?3, 'test', datetime('now'), datetime('now'))",
+            rusqlite::params![plan_run_id, user_id, conv_id],
         ).unwrap();
         conn.execute(
-            "INSERT INTO card_memory (card_id, state, due) VALUES (?1, 2, 0)",  // old Review state
+            "INSERT INTO user_cards (id, user_id, plan_run_id, domain, front, created_at) VALUES (?1, ?2, ?3, 'test', ?4, '2026-01-02')",
+            rusqlite::params![id, user_id, plan_run_id, front],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO card_memory (user_card_id, state, due) VALUES (?1, 2, 0)",  // old Review state
             rusqlite::params![id],
         ).unwrap();
     }
@@ -385,7 +413,7 @@ mod tests {
         assert_eq!(ctx.total_reviews, 1, "第1次复习");
 
         let state: i32 = conn.query_row(
-            "SELECT state FROM card_memory WHERE card_id='c1'", [], |r| r.get(0)
+            "SELECT state FROM card_memory WHERE user_card_id='c1'", [], |r| r.get(0)
         ).unwrap();
         assert_eq!(state, 1, "New + pass → Learning");
     }
@@ -399,14 +427,14 @@ mod tests {
         submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user", None).unwrap();
 
         // 模拟 due 已到
-        conn.execute("UPDATE card_memory SET due=0 WHERE card_id='c1'", []).unwrap();
+        conn.execute("UPDATE card_memory SET due=0 WHERE user_card_id='c1'", []).unwrap();
 
         // Learning + pass → Review
         let ctx = submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user", None).unwrap();
         assert_eq!(ctx.total_reviews, 2);
 
         let state: i32 = conn.query_row(
-            "SELECT state FROM card_memory WHERE card_id='c1'", [], |r| r.get(0)
+            "SELECT state FROM card_memory WHERE user_card_id='c1'", [], |r| r.get(0)
         ).unwrap();
         assert_eq!(state, 2, "Learning + pass → Review");
     }
@@ -418,15 +446,15 @@ mod tests {
 
         // New → Learning → Review
         submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user", None).unwrap();
-        conn.execute("UPDATE card_memory SET due=0 WHERE card_id='c1'", []).unwrap();
+        conn.execute("UPDATE card_memory SET due=0 WHERE user_card_id='c1'", []).unwrap();
         submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user", None).unwrap();
-        conn.execute("UPDATE card_memory SET due=0 WHERE card_id='c1'", []).unwrap();
+        conn.execute("UPDATE card_memory SET due=0 WHERE user_card_id='c1'", []).unwrap();
 
         // Review + fail → Relearning
         submit_review(&conn, "c1", 1, "spelling", "fail", "e2e_user", None).unwrap();
 
         let state: i32 = conn.query_row(
-            "SELECT state FROM card_memory WHERE card_id='c1'", [], |r| r.get(0)
+            "SELECT state FROM card_memory WHERE user_card_id='c1'", [], |r| r.get(0)
         ).unwrap();
         assert_eq!(state, 3, "Review + fail → Relearning");
     }
@@ -438,17 +466,17 @@ mod tests {
 
         // New → Learning → Review → Relearning
         submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user", None).unwrap();
-        conn.execute("UPDATE card_memory SET due=0 WHERE card_id='c1'", []).unwrap();
+        conn.execute("UPDATE card_memory SET due=0 WHERE user_card_id='c1'", []).unwrap();
         submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user", None).unwrap();
-        conn.execute("UPDATE card_memory SET due=0 WHERE card_id='c1'", []).unwrap();
+        conn.execute("UPDATE card_memory SET due=0 WHERE user_card_id='c1'", []).unwrap();
         submit_review(&conn, "c1", 1, "spelling", "fail", "e2e_user", None).unwrap();
-        conn.execute("UPDATE card_memory SET due=0 WHERE card_id='c1'", []).unwrap();
+        conn.execute("UPDATE card_memory SET due=0 WHERE user_card_id='c1'", []).unwrap();
 
         // Relearning + pass → Review
         submit_review(&conn, "c1", 3, "spelling", "pass", "e2e_user", None).unwrap();
 
         let state: i32 = conn.query_row(
-            "SELECT state FROM card_memory WHERE card_id='c1'", [], |r| r.get(0)
+            "SELECT state FROM card_memory WHERE user_card_id='c1'", [], |r| r.get(0)
         ).unwrap();
         assert_eq!(state, 2, "Relearning + pass → Review");
     }
@@ -503,9 +531,9 @@ mod tests {
         insert_card(&conn, "ca", "e2e_user", "较早到期新卡", "");
         insert_card(&conn, "cb", "e2e_user", "较晚到期新卡", "");
         insert_card_old(&conn, "cc", "e2e_user", "复习中卡片", "");
-        conn.execute("UPDATE card_memory SET due=100, state=0 WHERE card_id='ca'", []).unwrap();
-        conn.execute("UPDATE card_memory SET due=200, state=0 WHERE card_id='cb'", []).unwrap();
-        conn.execute("UPDATE card_memory SET due=500, state=2 WHERE card_id='cc'", []).unwrap();
+        conn.execute("UPDATE card_memory SET due=100, state=0 WHERE user_card_id='ca'", []).unwrap();
+        conn.execute("UPDATE card_memory SET due=200, state=0 WHERE user_card_id='cb'", []).unwrap();
+        conn.execute("UPDATE card_memory SET due=500, state=2 WHERE user_card_id='cc'", []).unwrap();
 
         let (due, _) = get_due_cards(&conn, "e2e_user", 20, 0, None);
         assert!(due.len() >= 3, "3 张到期");
@@ -535,15 +563,15 @@ mod tests {
         // fail
         submit_review(&conn, "c_lapse", 1, "spelling", "fail", "e2e_user", None).unwrap();
         let lapses: i32 = conn.query_row(
-            "SELECT lapses FROM card_memory WHERE card_id='c_lapse'", [], |r| r.get(0)
+            "SELECT lapses FROM card_memory WHERE user_card_id='c_lapse'", [], |r| r.get(0)
         ).unwrap();
         assert_eq!(lapses, 1, "fail → lapses+1");
 
         // pass
-        conn.execute("UPDATE card_memory SET due=0 WHERE card_id='c_lapse'", []).unwrap();
+        conn.execute("UPDATE card_memory SET due=0 WHERE user_card_id='c_lapse'", []).unwrap();
         submit_review(&conn, "c_lapse", 3, "spelling", "pass", "e2e_user", None).unwrap();
         let lapses2: i32 = conn.query_row(
-            "SELECT lapses FROM card_memory WHERE card_id='c_lapse'", [], |r| r.get(0)
+            "SELECT lapses FROM card_memory WHERE user_card_id='c_lapse'", [], |r| r.get(0)
         ).unwrap();
         assert_eq!(lapses2, 1, "pass → lapses 不变");
     }

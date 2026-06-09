@@ -181,8 +181,8 @@ pub async fn admin_users_handler(headers: HeaderMap, Query(query): Query<AdminUs
     let mut stmt = c.prepare(&sql).unwrap();
     let users: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![limit, offset], |row| {
         let uid: String = row.get(0)?;
-        let cards: i64 = c.query_row("SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id=?1 AND cm.status='active'", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
-        let reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
+        let cards: i64 = c.query_row("SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id=?1 AND cm.status='active'", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
+        let reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN user_cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
         let expires: Option<String> = c.query_row("SELECT value FROM user_preferences WHERE user_id=?1 AND key='subscription_expires'", rusqlite::params![&uid], |r| r.get(0)).ok();
         let is_super = role == "super";
         let rname_raw: Option<String> = row.get(3)?;
@@ -227,8 +227,8 @@ pub async fn admin_user_detail(headers: HeaderMap, Path(uid): Path<String>) -> i
     let c = conn();
     let u: Option<serde_json::Value> = c.query_row("SELECT id,username,display_name,real_name,phone,created_at,streak_days,last_active_date FROM users WHERE id=?1", rusqlite::params![&uid], |row| {
         let uid2: String = row.get(0)?;
-        let cards: i64 = c.query_row("SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id=?1 AND cm.status='active'", rusqlite::params![&uid2],|r|r.get(0)).unwrap_or(0);
-        let reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1", rusqlite::params![&uid2],|r|r.get(0)).unwrap_or(0);
+        let cards: i64 = c.query_row("SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id=?1 AND cm.status='active'", rusqlite::params![&uid2],|r|r.get(0)).unwrap_or(0);
+        let reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN user_cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1", rusqlite::params![&uid2],|r|r.get(0)).unwrap_or(0);
         let rn_raw: Option<String> = row.get(3)?;
         let ph_raw: Option<String> = row.get(4)?;
         let expires: Option<String> = c.query_row("SELECT value FROM user_preferences WHERE user_id=?1 AND key='subscription_expires'", rusqlite::params![&uid2], |r| r.get(0)).ok();
@@ -319,12 +319,12 @@ pub async fn admin_hard_delete_user(headers: HeaderMap, Path(uid): Path<String>)
 
     // 3. 删除关联数据（按外键顺序防止约束冲突）
     let tables = [
-        "DELETE FROM review_log WHERE card_id IN (SELECT id FROM cards WHERE user_id=?1)",
-        "DELETE FROM card_memory WHERE card_id IN (SELECT id FROM cards WHERE user_id=?1)",
-        "DELETE FROM cards WHERE user_id=?1",
+        "DELETE FROM review_log WHERE card_id IN (SELECT id FROM user_cards WHERE user_id=?1)",
+        "DELETE FROM card_memory WHERE user_card_id IN (SELECT id FROM user_cards WHERE user_id=?1)",
+        "DELETE FROM user_cards WHERE user_id=?1",
         "DELETE FROM conversation_turns WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id=?1)",
         "DELETE FROM conversations WHERE user_id=?1",
-        "DELETE FROM conversation_plans WHERE user_id=?1",
+        "DELETE FROM plan_runs WHERE user_id=?1",
         "DELETE FROM user_plan_progress WHERE user_id=?1",
         "DELETE FROM user_preferences WHERE user_id=?1",
         "DELETE FROM tokens WHERE user_id=?1",
@@ -721,12 +721,12 @@ pub async fn guardian_students(headers: HeaderMap) -> impl IntoResponse {
     let mut stmt = c.prepare("SELECT ga.student_user_id,u.display_name,u.real_name,u.phone,u.streak_days,u.last_active_date FROM guardian_assignments ga JOIN users u ON ga.student_user_id=u.id WHERE ga.guardian_admin_id=?1 AND ga.is_active=1").unwrap();
     let students: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![gid], |row| {
         let uid: String = row.get(0)?;
-        let _cards: i64 = c.query_row("SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id=?1 AND cm.status='active'",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0);
-        let _reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0);
-        let _mastery: f64 = c.query_row("SELECT CAST(SUM(CASE WHEN cm.state=2 THEN 1 ELSE 0 END) AS REAL)/MAX(1,COUNT(*)) FROM card_memory cm JOIN cards cd ON cm.card_id=cd.id WHERE cd.user_id=?1",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0.0);
-        let total_plans: i64 = c.query_row("SELECT COUNT(*) FROM conversation_plans WHERE user_id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
-        let active_7d: i64 = c.query_row("SELECT COUNT(*) FROM conversation_plans WHERE user_id=?1 AND updated_at >= ?2", rusqlite::params![&uid, &seven_days_ago], |r| r.get(0)).unwrap_or(0);
-        let today_active: i64 = c.query_row("SELECT COUNT(*) FROM conversation_plans WHERE user_id=?1 AND updated_at >= ?2", rusqlite::params![&uid, &one_day_ago], |r| r.get(0)).unwrap_or(0);
+        let _cards: i64 = c.query_row("SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id=?1 AND cm.status='active'",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0);
+        let _reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN user_cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0);
+        let _mastery: f64 = c.query_row("SELECT CAST(SUM(CASE WHEN cm.state=2 THEN 1 ELSE 0 END) AS REAL)/MAX(1,COUNT(*)) FROM card_memory cm JOIN user_cards cd ON cm.user_card_id=cd.id WHERE cd.user_id=?1",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0.0);
+        let total_plans: i64 = c.query_row("SELECT COUNT(*) FROM plan_runs WHERE user_id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
+        let active_7d: i64 = c.query_row("SELECT COUNT(*) FROM plan_runs WHERE user_id=?1 AND updated_at >= ?2", rusqlite::params![&uid, &seven_days_ago], |r| r.get(0)).unwrap_or(0);
+        let today_active: i64 = c.query_row("SELECT COUNT(*) FROM plan_runs WHERE user_id=?1 AND updated_at >= ?2", rusqlite::params![&uid, &one_day_ago], |r| r.get(0)).unwrap_or(0);
         let rn_raw: Option<String> = row.get(2)?;
         let ph_raw: Option<String> = row.get(3)?;
         let rn_decrypted = rn_raw.as_ref().map(|v| decrypt_maybe(v));
@@ -796,9 +796,9 @@ pub async fn guardian_student_cards(headers: HeaderMap, Path(sid): Path<String>)
     tracing::info!("guardian_student_cards: student_id={}", sid);
     let (gid, role) = guard_user!(&headers);
     if role != "super" && role != "service" && !is_guardian_of(&gid, &sid) { return err(StatusCode::FORBIDDEN,"forbidden"); }
-    let c2 = conn(); let mut stmt = c2.prepare("SELECT c.id,c.front,c.back,c.domain,cm.state,cm.reps,cm.last_review,c.conversation_id FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id=?1 ORDER BY cm.state,cm.due").unwrap();
+    let c2 = conn(); let mut stmt = c2.prepare("SELECT c.id,c.front,COALESCE(pr.conversation_id,''),c.domain,cm.state,cm.reps,cm.last_review FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id LEFT JOIN plan_runs pr ON c.plan_run_id=pr.id WHERE c.user_id=?1 ORDER BY cm.state,cm.due").unwrap();
     let cards: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![sid], |row| Ok(serde_json::json!({
-        "id":row.get::<_,String>(0)?,"front":row.get::<_,String>(1)?,"back":row.get::<_,String>(2)?,"domain":row.get::<_,Option<String>>(3)?,"state":row.get::<_,i32>(4)?,"reps":row.get::<_,i32>(5)?,"last_review":row.get::<_,Option<i64>>(6)?,"conversation_id":row.get::<_,Option<String>>(7)?
+        "id":row.get::<_,String>(0)?,"front":row.get::<_,String>(1)?,"conversation_id":row.get::<_,Option<String>>(2)?,"domain":row.get::<_,Option<String>>(3)?,"state":row.get::<_,i32>(4)?,"reps":row.get::<_,i32>(5)?,"last_review":row.get::<_,Option<i64>>(6)?
     }))).unwrap().filter_map(|r|r.ok()).collect();
     ok(serde_json::json!({"cards":cards}))
 }
@@ -812,7 +812,7 @@ pub async fn guardian_student_conversations(headers: HeaderMap, Path(sid): Path<
         "SELECT c.id, c.started_at,
          COALESCE((SELECT content FROM conversation_turns t WHERE t.conversation_id=c.id AND t.role='user' ORDER BY t.created_at LIMIT 1), c.id),
          (SELECT COUNT(*) FROM conversation_turns t WHERE t.conversation_id=c.id),
-         COALESCE((SELECT goal FROM conversation_plans cp WHERE cp.conversation_id=c.id LIMIT 1), '')
+         COALESCE((SELECT goal FROM plan_runs pr WHERE pr.conversation_id=c.id LIMIT 1), '')
          FROM conversations c WHERE c.user_id=?1 AND c.deleted_at IS NULL ORDER BY c.started_at DESC LIMIT 20"
     ).unwrap();
     let convs: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![sid], |row| {
@@ -847,7 +847,7 @@ pub async fn guardian_learning_summary(headers: HeaderMap, Path(sid): Path<Strin
     let one_day_ago = (now - chrono::Duration::days(1)).to_rfc3339();
 
     // 1. Get all plans for this student
-    let mut plan_stmt = c.prepare("SELECT id, goal, domain, conversation_id, plan_content, updated_at FROM conversation_plans WHERE user_id=?1 ORDER BY updated_at DESC").unwrap();
+    let mut plan_stmt = c.prepare("SELECT id, goal, domain, conversation_id, plan_content, updated_at FROM plan_runs WHERE user_id=?1 ORDER BY updated_at DESC").unwrap();
     let mut plan_results: Vec<serde_json::Value> = Vec::new();
     let mut total_active_7d = 0i64;
     let mut total_today_active = 0i64;
@@ -878,11 +878,11 @@ pub async fn guardian_learning_summary(headers: HeaderMap, Path(sid): Path<Strin
         // Query cards
         let (total_cards, mastered, learning, new_cards, relearning, _last_review) = {
             let base_sql = "SELECT COUNT(*), COALESCE(SUM(CASE WHEN cm.state=2 THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN cm.state=1 THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN cm.state=0 THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN cm.state=3 THEN 1 ELSE 0 END),0), MAX(cm.last_review)
-                     FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE ";
+                     FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id LEFT JOIN plan_runs pr ON c.plan_run_id=pr.id WHERE ";
             let fallback_domain = plan_keywords_from_goal(&goal);
             let fallback_ok = !fallback_domain.is_empty();
             if let Some(cid) = &conv_id {
-                let r = c.query_row(&format!("{} c.conversation_id=?1", base_sql), rusqlite::params![cid], card_stats_from_row).unwrap_or((0,0,0,0,0,None));
+                let r = c.query_row(&format!("{} pr.conversation_id=?1", base_sql), rusqlite::params![cid], card_stats_from_row).unwrap_or((0,0,0,0,0,None));
                 if r.0 > 0 { r }
                 else if fallback_ok { c.query_row(&format!("{} c.user_id=?1 AND c.domain=?2", base_sql), rusqlite::params![sid, fallback_domain], card_stats_from_row).unwrap_or((0,0,0,0,0,None)) }
                 else { r }
@@ -1145,13 +1145,13 @@ pub async fn admin_dashboard(headers: HeaderMap) -> impl IntoResponse {
     let week_end = (now + chrono::Duration::days(7)).format("%Y-%m-%d").to_string();
 
     let total_users: i64 = c.query_row("SELECT COUNT(*) FROM users", [], |r| r.get(0)).unwrap_or(0);
-    let total_cards: i64 = c.query_row("SELECT COUNT(*) FROM cards", [], |r| r.get(0)).unwrap_or(0);
+    let total_cards: i64 = c.query_row("SELECT COUNT(*) FROM user_cards", [], |r| r.get(0)).unwrap_or(0);
     let today_users: i64 = c.query_row("SELECT COUNT(*) FROM users WHERE created_at >= ?1", rusqlite::params![today_start], |r| r.get(0)).unwrap_or(0);
     let today_active: i64 = c.query_row(
-        "SELECT COUNT(DISTINCT user_id) FROM (SELECT user_id FROM conversations WHERE started_at >= ?1 UNION ALL SELECT user_id FROM cards WHERE created_at >= ?2)",
+        "SELECT COUNT(DISTINCT user_id) FROM (SELECT user_id FROM conversations WHERE started_at >= ?1 UNION ALL SELECT user_id FROM user_cards WHERE created_at >= ?2)",
         rusqlite::params![today_start, now.timestamp()], |r| r.get(0)).unwrap_or(0);
     let today_reviews: i64 = c.query_row(
-        "SELECT COUNT(*) FROM review_log rl JOIN cards cd ON rl.card_id=cd.id WHERE rl.reviewed_at >= ?1",
+        "SELECT COUNT(*) FROM review_log rl JOIN user_cards cd ON rl.card_id=cd.id WHERE rl.reviewed_at >= ?1",
         rusqlite::params![now.timestamp() - 86400], |r| r.get(0)).unwrap_or(0);
     let expiring: Vec<serde_json::Value> = {
         let mut stmt = c.prepare(
@@ -1216,8 +1216,8 @@ pub async fn admin_users_export(headers: HeaderMap, Query(query): Query<AdminUse
     let mut csv = String::from("user_id,username,display_name,real_name,phone,created_at,streak_days,card_count,review_count,subscription_expires\n");
     if let Ok(rows) = stmt.query_map(rusqlite::params![pattern], |row| {
         let uid: String = row.get(0)?;
-        let cards: i64 = c.query_row("SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id=?1 AND cm.status='active'", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
-        let reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
+        let cards: i64 = c.query_row("SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id=?1 AND cm.status='active'", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
+        let reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN user_cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
         let expires: String = c.query_row("SELECT COALESCE(value,'') FROM user_preferences WHERE user_id=?1 AND key='subscription_expires'", rusqlite::params![&uid], |r| r.get(0)).unwrap_or_default();
         let rn_opt: Option<String> = row.get(3).ok().flatten();
         let ph_opt: Option<String> = row.get(4).ok().flatten();

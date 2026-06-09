@@ -12,6 +12,8 @@ pub struct Card {
     pub created_at: i64,
     pub subject: Option<String>,
     pub grade_band: Option<String>,
+    pub plan_id: Option<String>,
+    pub task_key: Option<String>,
 }
 
 /// FSRS 记忆状态 (1:1 cards)

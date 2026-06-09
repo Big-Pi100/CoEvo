@@ -511,7 +511,7 @@ async fn run_lifecycle(cfg: LifecycleConfig) {
         .unwrap_or(0);
     let total_cards: i64 = {
         let conn = api_server::db_pool::get_conn();
-        conn.query_row("SELECT COUNT(*) FROM cards WHERE user_id = ?1",
+        conn.query_row("SELECT COUNT(*) FROM user_cards WHERE user_id = ?1",
             rusqlite::params![uid], |r| r.get(0)).unwrap_or(0)
     };
 

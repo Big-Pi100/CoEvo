@@ -101,7 +101,7 @@ async fn main() {
     {
         let conn = api_server::db_pool::get_conn();
         let table_count: i32 = conn.query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('users','cards','card_memory')",
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('users','user_cards','card_memory')",
             [], |row| row.get(0),
         ).unwrap_or(0);
         if table_count < 3 {
@@ -119,7 +119,6 @@ async fn main() {
             "ALTER TABLE achievements ADD COLUMN tier TEXT DEFAULT 'fixed'",
             "ALTER TABLE achievements ADD COLUMN source TEXT",
             "ALTER TABLE users ADD COLUMN display_name TEXT DEFAULT NULL",
-            "ALTER TABLE cards ADD COLUMN conversation_id TEXT",
             "CREATE TABLE IF NOT EXISTS user_preferences (
                 user_id TEXT NOT NULL,
                 key TEXT NOT NULL,
@@ -138,10 +137,6 @@ async fn main() {
             )",
             "CREATE INDEX IF NOT EXISTS idx_review_log_card_reviewed ON review_log(card_id, reviewed_at)",
             "CREATE INDEX IF NOT EXISTS idx_conversation_turns_conv_created ON conversation_turns(conversation_id, created_at)",
-            "CREATE INDEX IF NOT EXISTS idx_cards_user_domain ON cards(user_id, domain)",
-            // V2.2: cards 表加 subject 列 + 索引
-            "ALTER TABLE cards ADD COLUMN subject TEXT DEFAULT NULL",
-            "CREATE INDEX IF NOT EXISTS idx_cards_user_subject ON cards(user_id, subject)",
             // 对话软删除支持
             "ALTER TABLE conversations ADD COLUMN deleted_at TEXT DEFAULT NULL",
             "CREATE INDEX IF NOT EXISTS idx_conversations_user_deleted ON conversations(user_id, deleted_at)",
@@ -255,7 +250,7 @@ async fn main() {
                 Ok(_) => {}
                 Err(e) => {
                     let err_msg = e.to_string();
-                    if err_msg.contains("duplicate column") || err_msg.contains("already exists") {
+                    if err_msg.contains("duplicate column") || err_msg.contains("already exists") || err_msg.contains("no such table") || err_msg.contains("no such index") {
                         tracing::debug!("Migration skipped (already applied): {}", err_msg);
                     } else {
                         // Propagate critical migration errors — fail startup

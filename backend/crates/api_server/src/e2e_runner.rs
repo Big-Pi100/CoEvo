@@ -304,9 +304,10 @@ pub fn create_llm_caller(model: &str) -> chat_engine::llm_caller::LlmCaller {
 /// 查询学习计划上下文（带 domain）
 pub fn build_plan_context(
     conn: &rusqlite::Connection,
+    plan_id: &str,
     conv_id: &str,
 ) -> (String, String, String) {
-    crate::plan_handler::build_plan_context(conn, conv_id)
+    crate::plan_handler::build_plan_context(conn, plan_id, conv_id)
 }
 
 /// 格式化持续时间
@@ -378,28 +379,26 @@ pub struct ReviewLogEntry {
     pub reviewed_at: i64,
 }
 
-/// 插入测试卡片（同时写入 cards + card_memory 1:1）
+/// 插入测试卡片（同时写入 user_cards + card_memory 1:1）
 pub fn insert_test_card(
     conn: &rusqlite::Connection,
     user_id: &str,
     domain: &str,
-    card_type: &str,
     front: &str,
-    back: &str,
 ) -> Result<String, String> {
     let card_id = uuid::Uuid::new_v4().to_string();
-    let now = chrono::Utc::now().timestamp();
+    let now = chrono::Utc::now().to_rfc3339();
 
     conn.execute(
-        "INSERT INTO cards (id, user_id, domain, card_type, front, back, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        rusqlite::params![card_id, user_id, domain, card_type, front, back, now],
+        "INSERT INTO user_cards (id, user_id, plan_run_id, prebuilt_card_id, domain, front, status, task_key, created_at)
+         VALUES (?1, ?2, '', NULL, ?3, ?4, 'active', '', ?5)",
+        rusqlite::params![card_id, user_id, domain, front, now],
     ).map_err(|e| format!("Insert test card: {}", e))?;
 
     conn.execute(
-        "INSERT INTO card_memory (card_id, state, status, difficulty, stability, due, last_review, reps, lapses)
-         VALUES (?1, 0, 'active', 5.0, 5.0, ?2, NULL, 0, 0)",
-        rusqlite::params![card_id, now],
+        "INSERT INTO card_memory (card_id, user_card_id, state, difficulty, due)
+         VALUES (?1, ?1, 0, 5.0, 0)",
+        rusqlite::params![card_id],
     ).map_err(|e| format!("Insert test card memory: {}", e))?;
 
     Ok(card_id)

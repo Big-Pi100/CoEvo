@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
+import '../providers/plan_provider.dart' hide cardRefreshProvider;
 import '../api/chat_client.dart';
 import '../shared/achievement_icons.dart';
 import '../providers/achievement_notifier.dart';
@@ -21,7 +22,6 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
 
   Map<String, dynamic>? _data;
   Map<String, dynamic>? _activityData;
-  Map<String, dynamic>? _report;
   List<Map<String, dynamic>> _k12Progress = [];
   Map<String, dynamic>? _achievementsAll;
   DateTime _calendarMonth = DateTime(DateTime.now().year, DateTime.now().month);
@@ -69,15 +69,13 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
       final results = await Future.wait([
         client.getProfile(),
         client.getActivity(days: 365),
-        client.getLearningReport(),
         client.getK12Progress(),
       ]);
       if (mounted) {
         setState(() {
           _data = results[0] as Map<String, dynamic>? ?? <String, dynamic>{};
           _activityData = results[1] as Map<String, dynamic>?;
-          _report = results[2] as Map<String, dynamic>?;
-          _k12Progress = ((results[3] as Map<String, dynamic>)['progress'] as List<dynamic>?)
+          _k12Progress = ((results[2] as Map<String, dynamic>)['progress'] as List<dynamic>?)
               ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
           _achievementsAll = achievementsAll;
           _isLoading = false;
@@ -159,7 +157,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                       const SizedBox(height: AppTheme.spacingLg),
                       _buildCefrSection(theme),
                       const SizedBox(height: AppTheme.spacingLg),
-                      if (_report != null) _buildLearningPlans(theme),
+                      _buildLearningPlans(theme),
                       const SizedBox(height: AppTheme.spacingLg),
                       _buildAchievements(theme),
                     ],
@@ -513,9 +511,10 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
     );
   }
 
-  // ── 学习计划进度（来源于学习报告） ──
+  // ── 学习计划进度（来源于 PlanProvider） ──
   Widget _buildLearningPlans(ThemeData theme) {
-    final plans = _report!['plans'] as List<dynamic>? ?? [];
+    final planState = ref.watch(planProvider);
+    final plans = planState.plans;
     if (plans.isEmpty) return const SizedBox.shrink();
 
     return Card(
@@ -530,54 +529,37 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
           const Divider(height: 16),
           ...plans.asMap().entries.map((entry) {
             final i = entry.key;
-            final plan = entry.value as Map<String, dynamic>;
+            final plan = entry.value;
+            final gn = plan.goal.isNotEmpty ? plan.goal : '学习计划';
+            final gb = plan.gradeBand?.replaceAll('g', '').replaceAll('-', '～') ?? '';
+            final title = gb.isNotEmpty ? '$gn（$gb）' : gn;
+
             return Padding(
               padding: i < plans.length - 1 ? const EdgeInsets.only(bottom: AppTheme.spacingLg) : EdgeInsets.zero,
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
-                  Icon(
-                    plan['mode'] == 'completed' || plan['current_stage'] == '完成'
-                        ? Icons.check_circle : Icons.play_circle,
-                    size: 16,
-                    color: plan['mode'] == 'completed' ? _cs.primary : theme.colorScheme.primary,
-                  ),
+                  const Icon(Icons.play_circle, size: 16),
                   const SizedBox(width: AppTheme.spacingSm),
-                  Expanded(child: (() {
-                    String goal = plan['goal'] as String? ?? '';
-                    String gb = plan['grade_band'] as String? ?? '';
-                    String label = goal.isNotEmpty ? goal : '学习计划';
-                    if (gb.isNotEmpty) {
-                      gb = gb.replaceAll('g', '').replaceAll('-', '～');
-                      label = '$label（$gb）';
-                    }
-                    return Text(label.isNotEmpty ? label : '学习计划',
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14));
-                  }())),
-                  if (plan['mode'] == 'completed')
-                    Text('已完成', style: _tt.labelSmall?.copyWith(color: _cs.primaryFixedDim)),
-                ]),
-                if (plan['current_stage'] is String && (plan['current_stage'] as String).isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(left: AppTheme.spacingXxl, top: AppTheme.spacingXs),
-                    child: Text('当前阶段：${plan['current_stage']}',
-                        style: _tt.bodySmall?.copyWith(color: _cs.onSurfaceVariant)),
+                  Expanded(
+                    child: Text(title,
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                   ),
-                if (((plan['total_tasks'] as int?) ?? 0) > 0) ...[
-                  const SizedBox(height: 6),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: ((plan['done_tasks'] as int?) ?? 0) / ((plan['total_tasks'] as int?) ?? 1),
-                      minHeight: 6,
-                      backgroundColor: _cs.surfaceContainerLow,
-                      valueColor: AlwaysStoppedAnimation(
-                        plan['mode'] == 'completed' ? _cs.primary : theme.colorScheme.primary),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: _cs.primary.withAlpha(20),
+                      borderRadius: BorderRadius.circular(8),
                     ),
+                    child: Text('${plan.totalCards} 卡片',
+                        style: _tt.labelSmall?.copyWith(color: _cs.primary)),
                   ),
+                ]),
+                if (plan.stages != null && plan.stages!.isNotEmpty) ...[
+                  const SizedBox(height: 6),
                   Padding(
-                    padding: const EdgeInsets.only(left: AppTheme.spacingXxl, top: AppTheme.spacingXs),
-                    child: Text('${plan['done_tasks']}/${plan['total_tasks']} 任务 (${plan['progress_pct']})',
-                        style: _tt.labelSmall?.copyWith(color: _cs.onSurfaceVariant)),
+                    padding: const EdgeInsets.only(left: AppTheme.spacingXxl),
+                    child: Text('${plan.stages!.length} 个阶段',
+                        style: _tt.bodySmall?.copyWith(color: _cs.onSurfaceVariant)),
                   ),
                 ],
               ]),

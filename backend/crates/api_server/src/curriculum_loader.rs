@@ -1,7 +1,7 @@
-//! K12 V3 预生成数据加载器
+//! K12 V4 预生成数据加载器
 //!
-//! 启动时从 data/curriculum/prebuilt/{plans,cards}/ 加载 V3 格式数据
-//! 从文件名推断 subject + level，无需数据文件内嵌。
+//! 启动时从 data/curriculum/v4/{cards/{domain}/,plans/} 加载 V4 格式数据
+//! 从目录名推断 domain，从卡片体内嵌的 subject/grade_band 构建索引。
 //! 供 /k12/init 路由直接使用。
 
 use std::collections::HashMap;
@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 
 static K12_DATA: OnceLock<K12Prebuilt> = OnceLock::new();
 
-// ── 数据模型（V3 格式） ──
+// ── 数据模型（V4 格式 + 兼容 V3 CardData） ──
 
 /// 顶层索引结构
 pub struct K12Prebuilt {
@@ -17,11 +17,12 @@ pub struct K12Prebuilt {
     pub card_index: HashMap<String, Vec<CardData>>,
 }
 
-/// Plan 文件包装（合并格式）：{stages: [...], subject: "...", ...}
+/// Plan 文件包装（合并格式）：{stages: [...], subject: "...", domain: "...", ...}
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct PlanFile {
     pub subject: Option<String>,
     pub goal: Option<String>,
+    pub domain: Option<String>,
     pub stages: Vec<StageData>,
     pub total_stages: Option<i64>,
     pub total_tasks: Option<i64>,
@@ -60,12 +61,99 @@ pub struct TaskData {
     pub origin: String,
 }
 
-/// 卡片文件包装：{"cards": [...]}
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-pub struct CardFile {
-    pub cards: Vec<CardData>,
+// ── V4 父卡记录（prebuilt_cards.json 中的条目） ──
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct V4ParentCard {
+    pub id: String,
+    #[serde(default)]
+    pub card_type: String,
+    #[serde(default)]
+    pub domain: String,
+    #[serde(default)]
+    pub subject: String,
+    #[serde(default)]
+    pub grade_band: String,
+    #[serde(default)]
+    pub front: String,
 }
 
+// ── V4 子表记录（prebuilt_{domain}_cards.json 中的条目） ──
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(untagged)]
+pub enum V4SubCard {
+    Science(V4ScienceSub),
+    Language(V4LanguageSub),
+    Literature(V4LiteratureSub),
+    Humanities(V4HumanitiesSub),
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct V4ScienceSub {
+    pub id: String,
+    #[serde(default)]
+    pub definition: String,
+    #[serde(default)]
+    pub key_elements: String,
+    #[serde(default)]
+    pub applications: String,
+    #[serde(default)]
+    pub related_concepts: String,
+    #[serde(default)]
+    pub formula: String,
+    #[serde(default)]
+    pub graph: String,
+    #[serde(default)]
+    pub source: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct V4LanguageSub {
+    pub id: String,
+    #[serde(default)]
+    pub pronunciation: String,
+    #[serde(default)]
+    pub pos: String,
+    #[serde(default)]
+    pub definitions: String,
+    #[serde(default)]
+    pub related_phrases: String,
+    #[serde(default)]
+    pub structure_meta: String,
+    #[serde(default)]
+    pub level: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct V4LiteratureSub {
+    pub id: String,
+    #[serde(default)]
+    pub full_text: String,
+    #[serde(default)]
+    pub translation: String,
+    #[serde(default)]
+    pub author: String,
+    #[serde(default)]
+    pub genre: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct V4HumanitiesSub {
+    pub id: String,
+    #[serde(default)]
+    pub node_type: String,
+    #[serde(default)]
+    pub body: String,
+    #[serde(default)]
+    pub period: String,
+    #[serde(default)]
+    pub region: String,
+    #[serde(default)]
+    pub tags: String,
+}
+
+/// 兼容 V3 CardData（public，查询接口仍返回此类型）
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct CardData {
     pub id: String,
@@ -109,19 +197,45 @@ fn grade_to_level(grade: &str) -> &str {
     }
 }
 
-/// 从文件名推断 subject + level："{subject}_{level}.json" 或 "{subject}.json"
-fn parse_filename(fname: &str) -> Option<(String, String)> {
-    let stem = fname.strip_suffix(".json")?;
-    match stem.rfind('_') {
-        Some(pos) => {
-            let subject = stem[..pos].to_string();
-            let level = stem[pos + 1..].to_string();
-            Some((subject, level))
+// ── 子表文件名映射 ──
+
+fn sub_table_name(domain: &str) -> &str {
+    match domain {
+        "science" => "prebuilt_science_cards.json",
+        "language" => "prebuilt_language_cards.json",
+        "literature" => "prebuilt_literature_cards.json",
+        "humanities" => "prebuilt_humanities_cards.json",
+        _ => "prebuilt_science_cards.json",
+    }
+}
+
+// ── 子表 back 重建 ──
+
+fn reconstruct_back(domain: &str, sub_value: &serde_json::Value) -> String {
+    match domain {
+        "science" => {
+            let d = sub_value["definition"].as_str().unwrap_or("");
+            let k = sub_value["key_elements"].as_str().unwrap_or("");
+            let a = sub_value["applications"].as_str().unwrap_or("");
+            let r = sub_value["related_concepts"].as_str().unwrap_or("");
+            let mut parts = Vec::new();
+            if !d.is_empty() { parts.push(format!("定义:{}", d)); }
+            if !k.is_empty() { parts.push(format!("关键要素:{}", k)); }
+            if !a.is_empty() { parts.push(format!("应用:{}", a)); }
+            if !r.is_empty() { parts.push(format!("关联:{}", r)); }
+            parts.join("\n\n")
         }
-        None => {
-            // 合并后的单文件: "{subject}.json" → key="{subject}_all"
-            Some((stem.to_string(), "all".to_string()))
+        "language" => {
+            // 将 language 子表序列化为 JSON（兼容旧消费方）
+            serde_json::to_string(sub_value).unwrap_or_default()
         }
+        "literature" | "humanities" => {
+            sub_value["body"].as_str()
+                .or_else(|| sub_value["full_text"].as_str())
+                .unwrap_or("")
+                .to_string()
+        }
+        _ => String::new(),
     }
 }
 
@@ -129,91 +243,132 @@ fn parse_filename(fname: &str) -> Option<(String, String)> {
 
 pub fn init() -> Result<(), String> {
     let base = Paths::prebuilt();
-    tracing::info!("[K12] init: base={}, cards_dir={}", base.display(), base.join("cards").display());
-    let cards_dir = base.join("cards");
+    tracing::info!("[K12] init v4: base={}", base.display());
 
     let mut plan_index: HashMap<String, PlanData> = HashMap::new();
     let mut card_index: HashMap<String, Vec<CardData>> = HashMap::new();
+    let mut global_cards: Vec<CardData> = Vec::new();
 
-    // 1. 扫描计划文件：先扫 v3/ 根目录（兼容旧结构），再扫 plans/ 子目录
-    let plan_dirs: Vec<std::path::PathBuf> = {
-        let mut dirs = vec![base.clone()];
-        let plans_dir = base.join("plans");
-        if plans_dir.exists() {
-            dirs.push(plans_dir);
-        }
-        dirs
-    };
-    let mut plan_source_dirs = Vec::new();
-    for scan_dir in &plan_dirs {
-        let count_before = plan_index.len();
-        if let Ok(dir) = std::fs::read_dir(scan_dir) {
-            for entry in dir.flatten() {
-            let path = entry.path();
-            if !path.is_file() { continue; }
-            let fname = match path.file_name().and_then(|n| n.to_str()) {
-                Some(n) if n.ends_with(".json") && !n.ends_with("stage_grade_filter.json") => n.to_string(),
-                _ => continue,
-            };
-            // 跳过 cards/ 子目录
-            if path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()) == Some("cards") {
+    // 1. 扫描卡片：遍历 v4/cards/{domain}/ 四个子目录
+    let cards_base = base.join("cards");
+    let domains = ["science", "language", "literature", "humanities"];
+
+    if cards_base.exists() {
+        for domain in &domains {
+            let domain_dir = cards_base.join(domain);
+            if !domain_dir.exists() {
+                tracing::warn!("K12: domain dir not found: {}", domain_dir.display());
                 continue;
             }
-            let subject = fname.strip_suffix(".json").unwrap_or("").to_string();
-            let plan_file: PlanFile = match load_json(&path) {
-                Ok(f) => f,
+
+            // 读取父卡
+            let parent_path = domain_dir.join("prebuilt_cards.json");
+            if !parent_path.exists() {
+                tracing::warn!("K12: parent cards not found: {}", parent_path.display());
+                continue;
+            }
+            let parents: Vec<V4ParentCard> = match load_json(&parent_path) {
+                Ok(p) => p,
                 Err(e) => {
-                    tracing::warn!("K12: skip plan {}: {}", fname, e);
+                    tracing::warn!("K12: skip parents {}: {}", parent_path.display(), e);
                     continue;
                 }
             };
-            let plan = PlanData {
-                id: format!("{}_plan", subject),
-                goal: plan_file.goal.unwrap_or_else(|| format!("{}学习计划", subject)),
-                stages: plan_file.stages,
-                total_crs: plan_file.total_tasks.unwrap_or(0),
+
+            // 读取子表
+            let sub_path = domain_dir.join(sub_table_name(domain));
+            let subs: HashMap<String, serde_json::Value> = if sub_path.exists() {
+                    match load_json::<Vec<serde_json::Value>>(&sub_path) {
+                        Ok(records) => records.into_iter()
+                            .filter_map(|r| {
+                                let id = r.get("id")
+                                    .and_then(|id| id.as_str())
+                                    .map(|id| id.to_string());
+                                id.map(|id_str| (id_str, r))
+                            })
+                            .collect(),
+                    Err(e) => {
+                        tracing::warn!("K12: skip sub table {}: {}", sub_path.display(), e);
+                        HashMap::new()
+                    }
+                }
+            } else {
+                HashMap::new()
             };
-            plan_index.insert(subject.clone(), plan);
-        }
-    }
-            if plan_index.len() > count_before {
-                plan_source_dirs.push(scan_dir.display().to_string());
+
+            // 合并父卡 + 子表 → CardData
+            for parent in &parents {
+                let back = subs.get(&parent.id)
+                    .map(|sub| reconstruct_back(domain, sub))
+                    .unwrap_or_default();
+
+                let card = CardData {
+                    id: parent.id.clone(),
+                    front: parent.front.clone(),
+                    back,
+                    domain: parent.domain.clone(),
+                    subject: parent.subject.clone(),
+                    grade_band: parent.grade_band.clone(),
+                    card_type: parent.card_type.clone(),
+                    gold_cr_ids: Vec::new(),
+                    origin: String::new(),
+                    source_sentence: String::new(),
+                    plan_task_id: String::new(),
+                };
+                global_cards.push(card);
             }
-    }
-    if plan_index.is_empty() {
-        tracing::warn!("K12: no plan files found in {:?}", plan_dirs);
+
+            tracing::info!("K12: loaded {} cards from domain={}", parents.len(), domain);
+        }
+
+        // 按 subject + grade_band 构建索引（兼容 get_cards_by_key 查询）
+        for card in &global_cards {
+            let level = grade_to_level(&card.grade_band);
+            let key = format!("{}_{}", card.subject, level);
+            card_index.entry(key).or_default().push(card.clone());
+            // 也插入 subject_all 方便统一查询
+            let all_key = format!("{}_all", card.subject);
+            card_index.entry(all_key).or_default().push(card.clone());
+        }
     } else {
-        tracing::info!("K12: loaded {} plans from {}", plan_index.len(), plan_source_dirs.join(", "));
+        tracing::warn!("K12: cards dir not found: {}", cards_base.display());
     }
 
-    // 2. 扫描卡片文件
-    if cards_dir.exists() {
-        if let Ok(dir) = std::fs::read_dir(&cards_dir) {
+    tracing::info!("K12: loaded {} card sets ({} total cards)", card_index.len(), global_cards.len());
+
+    // 2. 扫描计划文件
+    let plans_dir = base.join("plans");
+    if plans_dir.exists() {
+        if let Ok(dir) = std::fs::read_dir(&plans_dir) {
             for entry in dir.flatten() {
                 let path = entry.path();
+                if !path.is_file() { continue; }
                 let fname = match path.file_name().and_then(|n| n.to_str()) {
                     Some(n) if n.ends_with(".json") => n.to_string(),
                     _ => continue,
                 };
-                let (subject, level) = match parse_filename(&fname) {
-                    Some(p) => p,
-                    None => continue,
-                };
-                let card_file: CardFile = match load_json(&path) {
+                let subject = fname.strip_suffix(".json").unwrap_or("").to_string();
+                let plan_file: PlanFile = match load_json(&path) {
                     Ok(f) => f,
                     Err(e) => {
-                    tracing::warn!("K12: skip cards {}: {}", fname, e);
-                    continue;
-                }
-            };
-            let key = format!("{}_{}", subject, level);
-            tracing::info!("K12: loaded {} → key={} ({} cards)", fname, key, card_file.cards.len());
-            card_index.insert(key, card_file.cards);
+                        tracing::warn!("K12: skip plan {}: {}", fname, e);
+                        continue;
+                    }
+                };
+                let plan = PlanData {
+                    id: format!("{}_plan", subject),
+                    goal: plan_file.goal.unwrap_or_else(|| format!("{}学习计划", subject)),
+                    stages: plan_file.stages,
+                    total_crs: plan_file.total_tasks.unwrap_or(0),
+                };
+                plan_index.insert(subject.clone(), plan);
+            }
         }
     }
-    tracing::info!("K12: loaded {} card sets from {}", card_index.len(), cards_dir.display());
+    if plan_index.is_empty() {
+        tracing::warn!("K12: no plan files found in {}", plans_dir.display());
     } else {
-        tracing::warn!("K12: cards dir not found: {}", cards_dir.display());
+        tracing::info!("K12: loaded {} plans from {}", plan_index.len(), plans_dir.display());
     }
 
     let data = K12Prebuilt { plan_index, card_index };
@@ -227,7 +382,6 @@ pub fn get() -> &'static K12Prebuilt {
 // ── 公开查询接口 ──
 
 /// 通过 subject key（英文代码）+ grade_band 获取 Plan（已按年级过滤）
-/// 与 get_plan 的区别：直接使用英文 key，不经过 CHINESE_TO_ENGLISH 查找
 pub fn get_plan_by_key(subject_key: &str, grade: &str) -> Option<PlanData> {
     let plan = match get().plan_index.get(subject_key) {
         Some(p) => p,
@@ -261,13 +415,13 @@ pub fn get_cards_by_key(subject_key: &str, grade: &str) -> Option<&'static Vec<C
         "g10" | "g10-12" | "g11-12" | "senior" => "senior",
         _ => "compulsory",
     };
-    // 先试 "{subject}_{level}"（旧拆分格式）
+    // 先试 "{subject}_{level}"
     let key = format!("{}_{}", subject_key, level);
     if let Some(cards) = get().card_index.get(&key) {
         tracing::info!("K12: {} -> {} cards (key={})", subject_key, cards.len(), key);
         return Some(cards);
     }
-    // 回退到 "{subject}_all"（合并后的单文件格式）
+    // 回退到 "{subject}_all"
     let fallback_key = format!("{}_{}", subject_key, "all");
     if let Some(cards) = get().card_index.get(&fallback_key) {
         tracing::info!("K12: {} -> {} cards (key={}, fallback from {})",
@@ -279,22 +433,20 @@ pub fn get_cards_by_key(subject_key: &str, grade: &str) -> Option<&'static Vec<C
 }
 
 /// 通过前端 subject 中文名 + grade_band 获取 Plan（已按年级过滤）
-/// 兼容过渡期：中文名走 CHINESE_TO_ENGLISH，英文名直接使用
 pub fn get_plan(subject_cn: &str, grade: &str) -> Option<PlanData> {
     let subject_key = CHINESE_TO_ENGLISH.iter()
         .find(|(cn, _)| *cn == subject_cn)
         .map(|(_, en)| *en)
-        .unwrap_or(subject_cn);  // 如果找不到中文映射，直接用输入作为 key（英文代码兼容）
+        .unwrap_or(subject_cn);
     get_plan_by_key(subject_key, grade)
 }
 
 /// 通过前端 subject 中文名 + grade_band 获取 Cards
-/// 兼容过渡期：中文名走 CHINESE_TO_ENGLISH，英文名直接使用
 pub fn get_cards(subject_cn: &str, grade: &str) -> Option<&'static Vec<CardData>> {
     let subject_key = CHINESE_TO_ENGLISH.iter()
         .find(|(cn, _)| *cn == subject_cn)
         .map(|(_, en)| *en)
-        .unwrap_or(subject_cn);  // 如果找不到中文映射，直接用输入作为 key（英文代码兼容）
+        .unwrap_or(subject_cn);
     get_cards_by_key(subject_key, grade)
 }
 
@@ -326,13 +478,13 @@ impl Paths {
         }
         // 开发模式：从 CARGO_MANIFEST_DIR 定位
         let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../data/curriculum/v3");
-        if dev_path.join("plans").exists() {
+            .join("../../../data/curriculum/v4");
+        if dev_path.join("cards").exists() {
             return dev_path;
         }
         // 回退：相对 CWD（兼容在项目根目录运行）
-        let cwd_path = std::path::PathBuf::from("data/curriculum/v3");
-        if cwd_path.join("plans").exists() {
+        let cwd_path = std::path::PathBuf::from("data/curriculum/v4");
+        if cwd_path.join("cards").exists() {
             return cwd_path;
         }
         // 最终回退
@@ -340,21 +492,20 @@ impl Paths {
     }
 }
 
-/// 返回 v3 迁移后的数据目录（data/curriculum/v3）
+/// 返回 v4 数据目录（data/curriculum/v4）
 pub fn k12_data_dir() -> std::path::PathBuf {
     if let Ok(dir) = std::env::var("COEVO_K12_DATA_DIR") {
         return std::path::PathBuf::from(dir);
     }
     let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../data/curriculum/v3");
-    // 优先检查 plans/ 子目录（v2.1 架构调整后计划文件移入 plans/）
+        .join("../../../data/curriculum/v4");
     if dev_path.join("plans").join("chinese.json").exists() {
         return dev_path.join("plans");
     }
     if dev_path.join("chinese.json").exists() {
         return dev_path;
     }
-    let cwd_path = std::path::PathBuf::from("data/curriculum/v3");
+    let cwd_path = std::path::PathBuf::from("data/curriculum/v4");
     if cwd_path.join("plans").join("chinese.json").exists() {
         return cwd_path.join("plans");
     }

@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../api/chat_client.dart';
 import '../widgets/empty_state.dart';
 import '../providers/auth_provider.dart';
+import '../providers/plan_provider.dart' hide cardRefreshProvider;
 import '../models/coevo_models.dart';
 import '../widgets/markdown_span_nodes.dart';
 import '../theme/app_theme.dart';
@@ -67,28 +68,17 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     }
     final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {
-      final resp = await client.getCardsByPlan();
-      final plansRaw = (resp['plans'] as List<dynamic>?) ?? [];
-      debugPrint('[_loadPlanMeta] plansRaw count=${plansRaw.length}');
-
-      final planGroups = <_PlanGroup>[];
-
-      for (int i = 0; i < plansRaw.length; i++) {
-        final pMap = plansRaw[i] as Map<String, dynamic>;
-        final cardCount = (pMap['card_count'] as num?)?.toInt() ?? 0;
-        final gid = pMap['id'] as String? ?? '';
-        final gConvId = pMap['conversation_id'] as String? ?? '';
-        final gGoal = pMap['goal'] as String? ?? '';
-        final gGb = pMap['grade_band'] as String? ?? '';
-        debugPrint('[_loadPlanMeta]   plan[$i]: id=${gid.substring(0,8)} convId=${gConvId.substring(0,8)} goal=$gGoal grade_band=$gGb cardCount=$cardCount');
-        planGroups.add(_PlanGroup(
-          id: gid,
-          goal: gGoal,
-          gradeBand: gGb,
-          conversationId: gConvId,
-          cardCount: cardCount,
-        ));
-      }
+      await ref.read(planProvider.notifier).loadPlans(client);
+      if (!mounted) return;
+      final planState = ref.read(planProvider);
+      final planGroups = planState.plans.map((p) => _PlanGroup(
+        id: p.id,
+        goal: p.goal,
+        gradeBand: p.gradeBand ?? '',
+        conversationId: p.conversationId ?? '',
+        cardCount: p.totalCards,
+      )).toList();
+      debugPrint('[_loadPlanMeta] plans count=${planGroups.length}');
 
       setState(() {
         _planGroups = planGroups;

@@ -66,7 +66,7 @@ fn insert_card_with_status(conn: &Connection, card: &Card, memory: &CardMemory, 
     // 扫描所有卡片（含 skipped），确保同一概念不会被重复提取
     let existing_fronts: Vec<String> = {
         let mut stmt = match conn.prepare(
-            "SELECT LOWER(front) FROM cards WHERE user_id = ?1"
+            "SELECT LOWER(COALESCE(uc.front, pc.front)) FROM user_cards uc LEFT JOIN prebuilt_cards pc ON uc.prebuilt_card_id = pc.id WHERE uc.user_id = ?1"
         ) {
             Ok(s) => s,
             Err(e) => return InsertResult::DatabaseError(format!("Prepare: {}", e)),
@@ -93,11 +93,9 @@ fn insert_card_with_status(conn: &Connection, card: &Card, memory: &CardMemory, 
 
     // 3. Insert card (no status — status goes to card_memory)
     if let Err(e) = conn.execute(
-        "INSERT INTO cards (id, user_id, domain, subject, card_type, front, back, source_sentence, conversation_id, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        "INSERT INTO user_cards (id, user_id, plan_run_id, prebuilt_card_id, domain, front, status, task_key, created_at) VALUES (?1, ?2, '', NULL, ?3, ?4, ?5, '', ?6)",
         rusqlite::params![
-            card.id, card.user_id, card.domain, card.subject, card.card_type,
-            card.front, card.back, card.source_sentence, card.conversation_id, card.created_at,
+            card.id, card.user_id, card.domain, card.front, status, card.created_at,
         ],
     ) {
         return InsertResult::DatabaseError(format!("Card insert: {}", e));
@@ -105,8 +103,8 @@ fn insert_card_with_status(conn: &Connection, card: &Card, memory: &CardMemory, 
 
     // 4. Insert card memory (with lifecycle status)
     if let Err(e) = conn.execute(
-        "INSERT INTO card_memory (card_id, state, status, difficulty, stability, due, last_review, reps, lapses)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        "INSERT INTO card_memory (card_id, user_card_id, state, status, difficulty, stability, due, last_review, reps, lapses)
+         VALUES (?1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![
             memory.card_id, memory.state, status, memory.difficulty, memory.stability,
             memory.due, memory.last_review, memory.reps, memory.lapses,
@@ -152,8 +150,53 @@ mod tests {
     fn setup_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
-            "CREATE TABLE cards (id TEXT PRIMARY KEY, user_id TEXT, domain TEXT, card_type TEXT, front TEXT, back TEXT, source_sentence TEXT, conversation_id TEXT, created_at INTEGER);
-             CREATE TABLE card_memory (card_id TEXT PRIMARY KEY, state INTEGER, status TEXT DEFAULT 'active', difficulty REAL, stability REAL, due INTEGER, last_review INTEGER, reps INTEGER, lapses INTEGER);"
+            "CREATE TABLE IF NOT EXISTS user_cards (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                plan_run_id TEXT NOT NULL DEFAULT '',
+                prebuilt_card_id TEXT,
+                domain TEXT NOT NULL DEFAULT '',
+                front TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                task_key TEXT,
+                created_at TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE IF NOT EXISTS prebuilt_cards (
+                id TEXT PRIMARY KEY,
+                card_type TEXT NOT NULL DEFAULT '',
+                domain TEXT NOT NULL DEFAULT '',
+                subject TEXT NOT NULL DEFAULT '',
+                grade_band TEXT NOT NULL DEFAULT '',
+                front TEXT NOT NULL DEFAULT '',
+                difficulty REAL DEFAULT 0.5,
+                created_at TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE IF NOT EXISTS plan_runs (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                conversation_id TEXT NOT NULL DEFAULT '',
+                prebuilt_plan_id TEXT,
+                subject TEXT NOT NULL DEFAULT '',
+                domain TEXT NOT NULL,
+                grade_band TEXT NOT NULL DEFAULT '',
+                goal TEXT NOT NULL DEFAULT '',
+                plan_content TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE IF NOT EXISTS card_memory (
+                card_id TEXT PRIMARY KEY,
+                user_card_id TEXT,
+                state INTEGER DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'active',
+                difficulty REAL DEFAULT 5.0,
+                stability REAL DEFAULT 0.0,
+                due INTEGER DEFAULT 0,
+                last_review INTEGER,
+                reps INTEGER DEFAULT 0,
+                lapses INTEGER DEFAULT 0
+            );"
         ).unwrap();
         conn
     }

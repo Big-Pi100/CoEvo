@@ -516,14 +516,21 @@ async fn review_cards_by_progress_handler(
     let conn = crate::db_pool::get_conn();
     let mut plan_info: std::collections::HashMap<String, serde_json::Value> = std::collections::HashMap::new();
     let cards: Vec<serde_json::Value> = match conn.prepare(
-        "SELECT c.id, c.user_id, c.front, c.back, c.domain, c.subject, c.card_type,
-                c.source_sentence, c.created_at, c.conversation_id, c.plan_id, c.task_key,
+        "SELECT c.id, c.user_id, c.front,
+                COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') as back,
+                c.domain, pc.subject, pc.card_type,
+                '' as source_sentence, c.created_at, pr.conversation_id, c.plan_run_id, c.task_key,
                 upp.status as task_status,
-                cp.goal as plan_goal, cp.subject as plan_subject, cp.grade_band as plan_grade_band
-         FROM cards c
-         JOIN card_memory cm ON c.id = cm.card_id
-         JOIN user_plan_progress upp ON c.plan_id = upp.plan_id AND c.task_key = upp.task_key
-         JOIN conversation_plans cp ON c.plan_id = cp.id
+                pr.goal as plan_goal, pr.subject as plan_subject, pr.grade_band as plan_grade_band
+         FROM user_cards c
+         JOIN card_memory cm ON c.id = cm.user_card_id
+         JOIN user_plan_progress upp ON c.plan_run_id = upp.plan_id AND c.task_key = upp.task_key
+         LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
+         LEFT JOIN plan_runs pr ON c.plan_run_id = pr.id
+         LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.prebuilt_card_id
+         LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.prebuilt_card_id
+         LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.prebuilt_card_id
+         LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.prebuilt_card_id
          WHERE upp.user_id = ?1
            AND upp.status IN ('done', 'in_progress')
            AND cm.status = 'active'
@@ -703,12 +710,21 @@ async fn cards_all_handler(
     let conn = crate::db_pool::get_conn();
 
     let mut sql = String::from(
-        "SELECT c.id, c.user_id, c.front, c.back, c.domain, c.subject, c.card_type, c.source_sentence,
+        "SELECT c.id, c.user_id, c.front,
+                COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') as back,
+                c.domain, pc.subject, pc.card_type,
+                '' as source_sentence,
                 c.created_at, cm.state, cm.difficulty, cm.due, cm.reps, cm.lapses,
                 lrev.reviewed_at, lrev.rating,
-                c.conversation_id
-         FROM cards c
-         JOIN card_memory cm ON c.id = cm.card_id
+                pr.conversation_id, c.plan_run_id, c.task_key
+         FROM user_cards c
+         JOIN card_memory cm ON c.id = cm.user_card_id
+         LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
+         LEFT JOIN plan_runs pr ON c.plan_run_id = pr.id
+         LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.prebuilt_card_id
+         LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.prebuilt_card_id
+         LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.prebuilt_card_id
+         LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.prebuilt_card_id
          LEFT JOIN (
             SELECT card_id, MAX(reviewed_at) as last_reviewed_at
             FROM review_log GROUP BY card_id
@@ -722,7 +738,7 @@ async fn cards_all_handler(
     // 按科目过滤
     if let Some(ref subject) = query.subject {
         params.push(Box::new(subject.clone()));
-        sql.push_str(&format!(" AND c.subject = ?{}", params.len()));
+        sql.push_str(&format!(" AND pc.subject = ?{}", params.len()));
     }
 
     // 按状态过滤
@@ -736,12 +752,12 @@ async fn cards_all_handler(
         if !q.is_empty() {
             let pattern = format!("%{}%", q);
             params.push(Box::new(pattern.clone()));
-            sql.push_str(&format!(" AND (c.front LIKE ?{} OR c.back LIKE ?{})", params.len(), params.len()));
+            sql.push_str(&format!(" AND (c.front LIKE ?{} OR COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') LIKE ?{})", params.len(), params.len()));
         }
     }
 
     // 隐藏非 vocabulary 的预制卡（对话生成卡不受影响）
-    sql.push_str(" AND NOT (c.conversation_id IS NULL AND c.card_type != 'vocabulary')");
+    sql.push_str(" AND NOT (c.plan_run_id IS NULL AND pc.card_type != 'vocabulary')");
 
     // 排序
     match query.sort.as_deref() {
@@ -774,6 +790,8 @@ async fn cards_all_handler(
         "last_reviewed_at": row.get::<_, Option<i64>>(14)?,
         "last_review_quality": row.get::<_, Option<i32>>(15)?,
         "conversation_id": row.get::<_, Option<String>>(16)?,
+        "plan_id": row.get::<_, Option<String>>(17)?,
+        "task_key": row.get::<_, Option<String>>(18)?,
     }))) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
         Err(e) => return Json(serde_json::json!({"error": format!("DB query: {}", e)})),
@@ -789,7 +807,7 @@ async fn cards_all_handler(
     // 领域列表
     let domains: Vec<String> = query_vec(
         &conn,
-        "SELECT DISTINCT domain FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id = ?1 AND c.domain IS NOT NULL AND cm.status = 'active' ORDER BY domain",
+        "SELECT DISTINCT domain FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id = ?1 AND c.domain IS NOT NULL AND cm.status = 'active' ORDER BY domain",
         rusqlite::params![query.user_id], |row| row.get(0),
     ).unwrap_or_default();
 
@@ -833,7 +851,7 @@ async fn cards_by_plan_handler(
 
     // 1. 获取用户所有 plan
     let mut stmt = match conn.prepare(
-        "SELECT id, conversation_id, goal, grade_band FROM conversation_plans WHERE user_id = ?1 ORDER BY created_at DESC"
+        "SELECT id, conversation_id, goal, grade_band FROM plan_runs WHERE user_id = ?1 ORDER BY created_at DESC"
     ) {
         Ok(s) => s,
         Err(e) => return Json(serde_json::json!({"error": format!("DB prepare: {}", e)})),
@@ -868,19 +886,28 @@ async fn cards_by_plan_handler(
                 Some(s) => s, // raw passthrough for flexibility
             };
             let sql = format!(
-                "SELECT c.id, c.user_id, c.front, c.back, c.domain, c.subject, c.card_type, c.source_sentence,
+                "SELECT c.id, c.user_id, c.front,
+                        COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') as back,
+                        c.domain, pc.subject, pc.card_type,
+                        '' as source_sentence,
                         c.created_at, cm.state, cm.difficulty, cm.due, cm.reps, cm.lapses,
                         lrev.reviewed_at, lrev.rating,
-                        c.conversation_id
-                 FROM cards c
-                 JOIN card_memory cm ON c.id = cm.card_id
+                        pr.conversation_id, c.plan_run_id, c.task_key
+                 FROM user_cards c
+                 JOIN card_memory cm ON c.id = cm.user_card_id
+                 LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
+                 LEFT JOIN plan_runs pr ON c.plan_run_id = pr.id
+                 LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.prebuilt_card_id
+                 LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.prebuilt_card_id
+                 LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.prebuilt_card_id
+                 LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.prebuilt_card_id
                  LEFT JOIN (
                     SELECT card_id, MAX(reviewed_at) as last_reviewed_at
                     FROM review_log GROUP BY card_id
                  ) lr ON c.id = lr.card_id
                  LEFT JOIN review_log lrev
                     ON lrev.card_id = lr.card_id AND lrev.reviewed_at = lr.last_reviewed_at
-                 WHERE c.conversation_id = '{}' AND c.user_id = '{}' AND cm.status = 'active'
+                 WHERE pr.conversation_id = '{}' AND c.user_id = '{}' AND cm.status = 'active'
                  ORDER BY {}
                  LIMIT {} OFFSET {}",
                 conv_id.replace('\'', "''"),
@@ -906,6 +933,8 @@ async fn cards_by_plan_handler(
                         "last_reviewed_at": row.get::<_, Option<i64>>(14)?,
                         "last_review_quality": row.get::<_, Option<i32>>(15)?,
                         "conversation_id": row.get::<_, Option<String>>(16)?,
+                        "plan_id": row.get::<_, Option<String>>(17)?,
+                        "task_key": row.get::<_, Option<String>>(18)?,
                     }))
                 }).unwrap().filter_map(|r| r.ok()).collect(),
                 Err(_) => vec![],
@@ -914,7 +943,7 @@ async fn cards_by_plan_handler(
             (loaded, count)
         } else {
             let count: usize = conn.query_row(
-                "SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.conversation_id = ?1 AND c.user_id = ?2 AND cm.status = 'active'",
+                "SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id LEFT JOIN plan_runs pr ON c.plan_run_id = pr.id WHERE pr.conversation_id = ?1 AND c.user_id = ?2 AND cm.status = 'active'",
                 rusqlite::params![conv_id, query.user_id],
                 |row| row.get(0),
             ).unwrap_or(0);
@@ -975,31 +1004,42 @@ async fn cards_search_handler(
     let like = format!("%{}%", query.q.replace('%', "\\%").replace('_', "\\_"));
 
     let sql = format!(
-        "SELECT c.id, c.user_id, c.front, c.back, c.domain, c.subject, c.card_type,
-                c.source_sentence, c.created_at, c.conversation_id,
+        "SELECT c.id, c.user_id, c.front,
+                COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') as back,
+                c.domain, pc.subject, pc.card_type,
+                '' as source_sentence, c.created_at, pr.conversation_id, c.plan_run_id, c.task_key,
                 cm.state, cm.reps, cm.lapses, cm.difficulty, cm.due
-         FROM cards c
-         JOIN card_memory cm ON c.id = cm.card_id
+         FROM user_cards c
+         JOIN card_memory cm ON c.id = cm.user_card_id
+         LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
+         LEFT JOIN plan_runs pr ON c.plan_run_id = pr.id
+         LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.prebuilt_card_id
+         LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.prebuilt_card_id
+         LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.prebuilt_card_id
+         LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.prebuilt_card_id
          WHERE c.user_id = '{}'
            AND cm.status IN ('active', 'pending')
-           AND (c.front LIKE '{}' OR c.back LIKE '{}' OR c.source_sentence LIKE '{}')
+           AND (c.front LIKE '{}' OR COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') LIKE '{}')
          ORDER BY c.front ASC
          LIMIT {} OFFSET {}",
         query.user_id.replace('\'', "''"),
-        like.replace('\'', "''"),
         like.replace('\'', "''"),
         like.replace('\'', "''"),
         page_size, page_offset,
     );
 
     let total_sql = format!(
-        "SELECT COUNT(*) FROM cards c
-         JOIN card_memory cm ON c.id = cm.card_id
+        "SELECT COUNT(*) FROM user_cards c
+         JOIN card_memory cm ON c.id = cm.user_card_id
+         LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
+         LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.prebuilt_card_id
+         LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.prebuilt_card_id
+         LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.prebuilt_card_id
+         LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.prebuilt_card_id
          WHERE c.user_id = '{}'
            AND cm.status IN ('active', 'pending')
-           AND (c.front LIKE '{}' OR c.back LIKE '{}' OR c.source_sentence LIKE '{}')",
+           AND (c.front LIKE '{}' OR COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') LIKE '{}')",
         query.user_id.replace('\'', "''"),
-        like.replace('\'', "''"),
         like.replace('\'', "''"),
         like.replace('\'', "''"),
     );
@@ -1018,11 +1058,13 @@ async fn cards_search_handler(
                 "source_sentence": row.get::<_, Option<String>>(7)?,
                 "created_at": row.get::<_, i64>(8)?,
                 "conversation_id": row.get::<_, Option<String>>(9)?,
-                "state": row.get::<_, i32>(10)?,
-                "reps": row.get::<_, i32>(11)?,
-                "lapses": row.get::<_, i32>(12)?,
-                "difficulty": row.get::<_, f64>(13)?,
-                "due": row.get::<_, i64>(14)?,
+                "plan_id": row.get::<_, Option<String>>(10)?,
+                "task_key": row.get::<_, Option<String>>(11)?,
+                "state": row.get::<_, i32>(12)?,
+                "reps": row.get::<_, i32>(13)?,
+                "lapses": row.get::<_, i32>(14)?,
+                "difficulty": row.get::<_, f64>(15)?,
+                "due": row.get::<_, i64>(16)?,
             }))
         }).unwrap().filter_map(|r| r.ok()).collect(),
         Err(_) => vec![],
@@ -1148,7 +1190,7 @@ async fn history_handler(
                 (SELECT content FROM conversation_turns t
                  WHERE t.conversation_id = c.id AND t.role = 'user'
                  ORDER BY t.created_at ASC LIMIT 1) as first_msg,
-                (SELECT cp.goal FROM conversation_plans cp WHERE cp.conversation_id = c.id LIMIT 1) as plan_goal
+                (SELECT pr.goal FROM plan_runs pr WHERE pr.conversation_id = c.id LIMIT 1) as plan_goal
          FROM conversations c
          WHERE c.user_id = ?1
            AND c.turn_count > 0
@@ -1283,11 +1325,11 @@ async fn profile_handler(
     }
 
     let total_cards: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id = ?1 AND cm.status = 'active'",
+        "SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id = ?1 AND cm.status = 'active'",
         rusqlite::params![user_id], |row| row.get(0),
     ).unwrap_or(0);
     let total_reviews: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM review_log r JOIN cards c ON r.card_id = c.id WHERE c.user_id = ?1",
+        "SELECT COUNT(*) FROM review_log r JOIN user_cards c ON r.card_id = c.id WHERE c.user_id = ?1",
         rusqlite::params![user_id], |row| row.get(0),
     ).unwrap_or(0);
     let streak_days: i64 = conn.query_row(
@@ -1295,11 +1337,11 @@ async fn profile_handler(
         rusqlite::params![user_id], |row| row.get(0),
     ).unwrap_or(0);
     let domains_covered: i64 = conn.query_row(
-        "SELECT COUNT(DISTINCT c.domain) FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id = ?1 AND c.domain IS NOT NULL AND cm.status = 'active'",
+        "SELECT COUNT(DISTINCT c.domain) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id = ?1 AND c.domain IS NOT NULL AND cm.status = 'active'",
         rusqlite::params![user_id], |row| row.get(0),
     ).unwrap_or(0);
     let today_reviews: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM review_log r JOIN cards c ON r.card_id = c.id WHERE c.user_id = ?1 AND r.reviewed_at > ?2",
+        "SELECT COUNT(*) FROM review_log r JOIN user_cards c ON r.card_id = c.id WHERE c.user_id = ?1 AND r.reviewed_at > ?2",
         rusqlite::params![user_id, chrono::Utc::now().timestamp() - 86400],
         |row| row.get(0),
     ).unwrap_or(0);
@@ -1358,8 +1400,9 @@ async fn profile_handler(
 
     // 查询用户的 vocabulary 卡片中已掌握的 (state=2)，按 CEFR 等级分组
     if let Ok(mut stmt) = conn.prepare(
-        "SELECT c.front FROM cards c JOIN card_memory cm ON c.id = cm.card_id
-         WHERE c.user_id = ?1 AND c.card_type = 'vocabulary' AND cm.state = 2 AND cm.status = 'active'"
+        "SELECT c.front FROM user_cards c JOIN card_memory cm ON c.id = cm.user_card_id
+         LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
+         WHERE c.user_id = ?1 AND pc.card_type = 'vocabulary' AND cm.state = 2 AND cm.status = 'active'"
     ) {
         if let Ok(rows) = stmt.query_map(rusqlite::params![user_id], |row| row.get::<_, String>(0)) {
             for front in rows.flatten() {
@@ -1729,9 +1772,9 @@ async fn plans_list_handler(
     let conn = crate::db_pool::get_conn();
 
     let (sql, param_val): (&str, String) = if let Some(conv_id) = params.get("conversation_id") {
-        ("SELECT id, conversation_id, goal, subject, grade_band, '' as domain, 'structured' as mode, plan_content, created_at, updated_at FROM conversation_plans WHERE conversation_id = ?1 ORDER BY created_at DESC", conv_id.clone())
+        ("SELECT id, conversation_id, goal, subject, grade_band, '' as domain, 'structured' as mode, plan_content, created_at, updated_at FROM plan_runs WHERE conversation_id = ?1 ORDER BY created_at DESC", conv_id.clone())
     } else if let Some(uid) = params.get("user_id") {
-        ("SELECT id, conversation_id, goal, subject, grade_band, '' as domain, 'structured' as mode, plan_content, created_at, updated_at FROM conversation_plans WHERE user_id = ?1 ORDER BY created_at DESC", uid.clone())
+        ("SELECT id, conversation_id, goal, subject, grade_band, '' as domain, 'structured' as mode, plan_content, created_at, updated_at FROM plan_runs WHERE user_id = ?1 ORDER BY created_at DESC", uid.clone())
     } else {
         return Json(serde_json::json!({"error": "user_id or conversation_id required"}));
     };
@@ -1795,7 +1838,7 @@ async fn plans_list_handler(
     let now_ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
     if let Ok(mut count_stmt) = conn.prepare(
-        "SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id = cm.card_id WHERE c.conversation_id = ?1 AND cm.status = 'active' AND cm.due <= ?2"
+        "SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id = cm.user_card_id LEFT JOIN plan_runs pr ON c.plan_run_id = pr.id WHERE pr.conversation_id = ?1 AND cm.status = 'active' AND cm.due <= ?2"
     ) {
         for plan in &mut plans {
             if let Some(conv_id) = plan.get("conversation_id").and_then(|v| v.as_str()) {
@@ -1824,7 +1867,7 @@ async fn learning_report_handler(
 
     // 1. 所有学习计划进度
     let mut stmt_plans = conn.prepare(
-        "SELECT plan_content, plan_content, goal, grade_band, subject, 'structured' as mode, updated_at FROM conversation_plans WHERE user_id = ?1 ORDER BY updated_at DESC"
+        "SELECT plan_content, plan_content, goal, grade_band, subject, 'structured' as mode, updated_at FROM plan_runs WHERE user_id = ?1 ORDER BY updated_at DESC"
     ).unwrap();
     let mut plans: Vec<serde_json::Value> = Vec::new();
     for row in stmt_plans.query_map(rusqlite::params![user_id], |row| {
@@ -1897,11 +1940,11 @@ async fn learning_report_handler(
 
     // 3. 学习统计
     let cards_total: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id = ?1 AND cm.status = 'active'", rusqlite::params![user_id], |row| row.get(0)
+        "SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id = ?1 AND cm.status = 'active'", rusqlite::params![user_id], |row| row.get(0)
     ).unwrap_or(0);
 
     let reviews_total: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM review_log WHERE card_id IN (SELECT c.id FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id = ?1 AND cm.status = 'active')",
+        "SELECT COUNT(*) FROM review_log WHERE card_id IN (SELECT c.id FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id = ?1 AND cm.status = 'active')",
         rusqlite::params![user_id], |row| row.get(0)
     ).unwrap_or(0);
 
@@ -1979,7 +2022,7 @@ async fn activity_handler(
     // 每日复习数
     let mut stmt = conn.prepare(
         "SELECT DATE(r.reviewed_at, 'unixepoch') as d, COUNT(*) as cnt
-         FROM review_log r JOIN cards c ON r.card_id = c.id
+         FROM review_log r JOIN user_cards c ON r.card_id = c.id
          WHERE c.user_id = ?1 AND r.reviewed_at >= ?2
          GROUP BY d ORDER BY d"
     ).unwrap();
@@ -2006,7 +2049,7 @@ async fn activity_handler(
     // 每日制卡数
     let mut stmt3 = conn.prepare(
         "SELECT DATE(created_at, 'unixepoch') as d, COUNT(*) as cnt
-         FROM cards WHERE user_id = ?1 AND created_at >= ?2
+         FROM user_cards WHERE user_id = ?1 AND created_at >= ?2
          GROUP BY d ORDER BY d"
     ).unwrap();
     let cards_by_day: HashMap<String, i64> = stmt3.query_map(
@@ -2049,13 +2092,13 @@ async fn weekly_report_handler(
 
     // 本周新增卡片
     let new_cards: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id = ?1 AND c.created_at >= ?2 AND cm.status = 'active'",
+        "SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id = ?1 AND c.created_at >= ?2 AND cm.status = 'active'",
         rusqlite::params![user_id, week_ago_ts], |row| row.get(0)
     ).unwrap_or(0);
 
     // 本周复习次数
     let weekly_reviews: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM review_log r JOIN cards c ON r.card_id = c.id WHERE c.user_id = ?1 AND r.reviewed_at >= ?2",
+        "SELECT COUNT(*) FROM review_log r JOIN user_cards c ON r.card_id = c.id WHERE c.user_id = ?1 AND r.reviewed_at >= ?2",
         rusqlite::params![user_id, week_ago_ts], |row| row.get(0)
     ).unwrap_or(0);
 
@@ -2073,7 +2116,7 @@ async fn weekly_report_handler(
 
     // 当前计划进度
     let plan_goal: Option<String> = conn.query_row(
-        "SELECT goal FROM conversation_plans WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 1",
+        "SELECT goal FROM plan_runs WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 1",
         rusqlite::params![user_id], |row| row.get(0)
     ).ok();
 
@@ -2121,9 +2164,9 @@ async fn k12_init_handler(
 
     // 查找已有 plan（同科目、同年级）
     let existing_plan: Option<(String, String)> = conn.query_row(
-        "SELECT cp.id, cp.plan_content FROM conversation_plans cp
-         JOIN conversations c ON cp.conversation_id = c.id
-         WHERE c.user_id = ?1 AND c.deleted_at IS NULL AND cp.subject = ?2 AND cp.grade_band = ?3
+        "SELECT pr.id, pr.plan_content FROM plan_runs pr
+         JOIN conversations c ON pr.conversation_id = c.id
+         WHERE c.user_id = ?1 AND c.deleted_at IS NULL AND pr.subject = ?2 AND pr.grade_band = ?3
          ORDER BY c.started_at DESC LIMIT 1",
         rusqlite::params![input.user_id, input.subject, input.grade_band],
         |row| Ok((row.get::<_,String>(0)?, row.get::<_,String>(1)?)),
@@ -2133,7 +2176,7 @@ async fn k12_init_handler(
         tracing::info!("[K12-INIT] resumed existing plan={}", plan_id);
         let plan_val: serde_json::Value = serde_json::from_str(&plan_content_str).unwrap_or_default();
         let conv_id: String = conn.query_row(
-            "SELECT conversation_id FROM conversation_plans WHERE id = ?1",
+            "SELECT conversation_id FROM plan_runs WHERE id = ?1",
             rusqlite::params![plan_id], |row| row.get(0),
         ).unwrap_or_default();
         return Json(serde_json::json!({
@@ -2164,6 +2207,8 @@ async fn k12_init_handler(
     // 按 grade_band 过滤 stage（从 v3 JSON 自身的 stage.grade_band 字段）
     let mut plan_val: serde_json::Value = serde_json::from_str(&plan_content_str).unwrap_or_default();
     let plan_goal = plan_val.get("goal").and_then(|g| g.as_str()).unwrap_or("").to_string();
+    let plan_domain = plan_val.get("domain").and_then(|d| d.as_str()).unwrap_or("").to_string();
+    tracing::info!("[K12-INIT] plan loaded: goal={}, domain={}, subject={}", plan_goal, plan_domain, input.subject);
     let grade_band_filter = input.grade_band.as_str();
     if !grade_band_filter.is_empty() {
         if let Some(stages) = plan_val.get_mut("stages").and_then(|s| s.as_array_mut()) {
@@ -2184,11 +2229,11 @@ async fn k12_init_handler(
         rusqlite::params![conv_id, input.user_id, now_ts.to_string()],
     );
 
-    // 写入 K12 plan
+    // 写入 K12 plan（含 domain）
     match conn.execute(
-        "INSERT INTO conversation_plans (id, user_id, conversation_id, goal, subject, grade_band, plan_content, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        rusqlite::params![plan_id, input.user_id, conv_id, plan_goal, input.subject, input.grade_band, filtered_content_str, now_ts, now_ts],
+        "INSERT INTO plan_runs (id, user_id, conversation_id, goal, subject, grade_band, domain, plan_content, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        rusqlite::params![plan_id, input.user_id, conv_id, plan_goal, input.subject, input.grade_band, plan_domain, filtered_content_str, now_ts, now_ts],
     ) {
         Ok(_) => tracing::info!("[K12-INIT] plan inserted: id={}, subject={}, grade_band={}", plan_id, input.subject, input.grade_band),
         Err(e) => {
@@ -2206,7 +2251,7 @@ async fn k12_init_handler(
                     let task_key = task.get("task_key").and_then(|v| v.as_str()).unwrap_or("");
                     for cid in task.get("card_ids").and_then(|c| c.as_array()).into_iter().flatten() {
                         if let Some(card_uuid) = cid.as_str() {
-                            crate::plan_handler::copy_prebuilt_card(&conn, &input.user_id, &plan_id, &conv_id, task_key, card_uuid);
+                            crate::plan_handler::copy_prebuilt_card(&conn, &input.user_id, &plan_id, task_key, card_uuid);
                             activated += 1;
                         }
                     }
@@ -2272,7 +2317,7 @@ async fn k12_reading_current_card_handler(
 
     // 1. 读取 plan_content 和 user_plan_progress 状态
     let plan_content_str: String = match conn.query_row(
-        "SELECT plan_content FROM conversation_plans WHERE conversation_id = ?1",
+        "SELECT plan_content FROM plan_runs WHERE conversation_id = ?1",
         rusqlite::params![conv_id],
         |row| row.get(0),
     ) {
@@ -2288,7 +2333,7 @@ async fn k12_reading_current_card_handler(
     // 2. 从 DB 读取 user_plan_progress 确定各 task 状态
     // 读取所有 task_key 的进度
     let plan_id: String = conn.query_row(
-        "SELECT id FROM conversation_plans WHERE conversation_id = ?1",
+        "SELECT id FROM plan_runs WHERE conversation_id = ?1",
         rusqlite::params![conv_id], |row| row.get(0),
     ).unwrap_or_default();
 
@@ -2330,7 +2375,15 @@ async fn k12_reading_current_card_handler(
     // 4. 从 DB 读取卡片（用户已拥有该卡片）
     let current_card: Option<serde_json::Value> = first_card_uuid.and_then(|uuid| {
         conn.query_row(
-            "SELECT id, card_type, front, back FROM cards WHERE id = ?1 AND user_id = ?2",
+            "SELECT c.id, pc.card_type, c.front,
+                    COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') as back
+             FROM user_cards c
+             LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
+             LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.prebuilt_card_id
+             LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.prebuilt_card_id
+             LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.prebuilt_card_id
+             LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.prebuilt_card_id
+             WHERE c.id = ?1 AND c.user_id = ?2",
             rusqlite::params![uuid, query.user_id],
             |row| {
                 let id: String = row.get(0)?;
@@ -2410,10 +2463,10 @@ async fn k12_progress_handler(
 
     // 1. 查询所有 conversation_plans
     let mut stmt = match conn.prepare(
-        "SELECT cp.id, cp.plan_content, cp.goal, cp.grade_band, cp.created_at
-         FROM conversation_plans cp
-         WHERE cp.user_id = ?1
-         ORDER BY cp.created_at DESC"
+        "SELECT pr.id, pr.plan_content, pr.goal, pr.grade_band, pr.created_at
+         FROM plan_runs pr
+         WHERE pr.user_id = ?1
+         ORDER BY pr.created_at DESC"
     ) {
         Ok(s) => s,
         Err(e) => return Json(serde_json::json!({"error": format!("DB prepare: {}", e)})),
@@ -2462,13 +2515,13 @@ async fn k12_progress_handler(
 
         // 4. 卡片统计
         let total_cards: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cards WHERE plan_id = ?1",
+            "SELECT COUNT(*) FROM user_cards WHERE plan_run_id = ?1",
             rusqlite::params![plan_id],
             |row| row.get(0),
         ).unwrap_or(0);
 
         let mastered_cards: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id = cm.card_id WHERE c.plan_id = ?1 AND cm.state = 2 AND cm.reps >= 3",
+            "SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id = cm.user_card_id WHERE c.plan_run_id = ?1 AND cm.state = 2 AND cm.reps >= 3",
             rusqlite::params![plan_id],
             |row| row.get(0),
         ).unwrap_or(0);

@@ -13,6 +13,7 @@ import 'chat/chat_plan_panel.dart';
 import 'chat/chat_reading_passage.dart';
 import 'chat/chat_message_bubble.dart';
 import '../theme/app_theme.dart';
+import '../providers/plan_provider.dart' hide cardRefreshProvider;
 
 /// 持久化 conversation_id 的 provider (跨页面保持)
 final currentConversationIdProvider = StateProvider<String?>((ref) => null);
@@ -39,8 +40,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String _convId = '';
   bool _isInitializing = true;
 
-  // 学习计划
-  Map<String, dynamic>? _activePlan;
+  // 学习计划 (现由 PlanProvider 管理)
 
   // 订阅状态
   bool _subscriptionRequired = false;
@@ -171,11 +171,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _loadPlan() async {
     if (_client == null) return;
-    final plans = await _client!.getPlans(conversationId: _convId);
-    if (plans.isNotEmpty && mounted) {
-      setState(() => _activePlan = plans.first);
-    }
-
+    await ref.read(planProvider.notifier).loadPlans(_client!, conversationId: _convId);
   }
 
   Future<void> _checkSubscription() async {
@@ -226,6 +222,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _session?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
+    ref.read(planProvider.notifier).clear();
     super.dispose();
   }
 
@@ -615,6 +612,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final planState = ref.watch(planProvider);
+    final activePlan = planState.getPlanForConversation(_convId);
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -643,7 +642,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 _sessionSub?.cancel();
                 _session = null;
                 _convId = result;
-                _activePlan = null;
                 _isInitializing = true;
                 ref.read(currentConversationIdProvider.notifier).state = _convId;
                 _client = ChatClient(
@@ -716,7 +714,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   timestamp: DateTime.now(),
                 ));
                 _convId = newConvId;
-                _activePlan = null;
                 _isInitializing = false;
               });
               _client = ChatClient(
@@ -732,7 +729,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       body: Column(
         children: [
           // 学习计划面板（持久展示，不被对话推没）
-          if (_activePlan != null) ChatPlanPanel(plan: _activePlan!),
+          if (activePlan != null) ChatPlanPanel(plan: {
+            'goal': activePlan.goal,
+            'plan': {'stages': activePlan.stages ?? []},
+            'conversation_id': activePlan.conversationId,
+            'card_count': activePlan.totalCards,
+          }),
           // 课文阅读面板（reading-first 模式，自动隐藏不可用）
           if (_client != null && _convId.isNotEmpty)
             ChatReadingPassage(client: _client!, conversationId: _convId),

@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 use std::path::PathBuf;
 
 use api_server::e2e_runner;
+use api_server::plan_handler;
 use serde_json::json;
 
 // ── CLI ──
@@ -157,7 +158,7 @@ async fn phase_plan_creation(run_id: &str, cli: &CliArgs) -> e2e_runner::PhaseRe
         e2e_runner::insert_turn(&conn, TEST_CONV_ID, "user", confirm);
         log.user_message = format!("{}\n[Turn2] {}", message, confirm);
 
-        let (dom2, mode2, ctx2) = e2e_runner::build_plan_context(&conn, TEST_CONV_ID);
+        let (dom2, mode2, ctx2) = e2e_runner::build_plan_context(&conn, &plan_handler::resolve_plan_id(&conn, TEST_CONV_ID).unwrap_or_default(), TEST_CONV_ID);
         println!("  🎯 [{}] Turn2 domain={:?} mode={:?}", step, dom2, mode2);
 
         let t2 = chat_engine::prompt_loader::get_chat(&dom2);
@@ -174,11 +175,11 @@ async fn phase_plan_creation(run_id: &str, cli: &CliArgs) -> e2e_runner::PhaseRe
         // 从最近一条 assistant 回复中提取 plan_update
         let last_turns = e2e_runner::get_conversation_history(&conn, TEST_CONV_ID, 2);
         let last_assistant = last_turns.iter().rev().find(|(r, _)| r == "assistant").map(|(_, c)| c.clone()).unwrap_or_default();
-        let result = api_server::plan_handler::handle_plan_update(&conn, &last_assistant, TEST_CONV_ID, TEST_USER_ID);
+        let result = plan_handler::handle_plan_update(&conn, &last_assistant, &plan_handler::resolve_plan_id(&conn, TEST_CONV_ID).unwrap_or_default(), TEST_CONV_ID, TEST_USER_ID);
 
         // 提取 pipeline_domain
         let pipeline_domain: String = result.task_status.as_ref().and_then(|j| j.get("domain")).and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let db_domain: String = conn.query_row("SELECT COALESCE(domain, '') FROM conversation_plans WHERE conversation_id = ?1", rusqlite::params![TEST_CONV_ID], |row| row.get::<_, String>(0))
+        let db_domain: String = conn.query_row("SELECT COALESCE(domain, '') FROM plan_runs WHERE conversation_id = ?1", rusqlite::params![TEST_CONV_ID], |row| row.get::<_, String>(0))
             .unwrap_or_default();
         let matched_domain = if !pipeline_domain.is_empty() { pipeline_domain.as_str() } else { db_domain.as_str() };
         let domain_match = matched_domain == *expected_domain || (expected_domain.is_empty() && !matched_domain.is_empty());
@@ -187,7 +188,7 @@ async fn phase_plan_creation(run_id: &str, cli: &CliArgs) -> e2e_runner::PhaseRe
         println!("  💡 [{}] plan_update: is_new={} pipeline_domain={:?} match={}", step, result.is_new_plan, matched_domain, domain_match);
 
         let plan_has_stages = result.task_status.as_ref().and_then(|j| j.get("stages")).and_then(|s| s.as_array()).map(|a| !a.is_empty()).unwrap_or(false);
-        let (_, actual_mode, _) = e2e_runner::build_plan_context(&conn, TEST_CONV_ID);
+        let (_, actual_mode, _) = e2e_runner::build_plan_context(&conn, &plan_handler::resolve_plan_id(&conn, TEST_CONV_ID).unwrap_or_default(), TEST_CONV_ID);
 
         domain_results.insert(expected_domain.to_string(), json!({
             "expected": expected_domain, "actual": matched_domain,
@@ -313,7 +314,7 @@ async fn progression_domain_test(
 
     // 清理该 conv_id 的旧数据，创建独立学习计划
     conn.execute("DELETE FROM conversation_turns WHERE conversation_id = ?1", rusqlite::params![conv_id]).ok();
-    conn.execute("DELETE FROM cards WHERE user_id = ?1 AND created_at > 0", rusqlite::params![TEST_USER_ID]).ok();
+    conn.execute("DELETE FROM user_cards WHERE user_id = ?1 AND created_at > 0", rusqlite::params![TEST_USER_ID]).ok();
     // 确保 conversation 存在
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
@@ -350,7 +351,7 @@ async fn progression_domain_test(
     let confirm = "好的，帮我制定一个详细的学习计划。";
     e2e_runner::insert_turn(&conn, conv_id, "user", confirm);
 
-    let (dom2, mode2, ctx2) = e2e_runner::build_plan_context(&conn, conv_id);
+    let (dom2, mode2, ctx2) = e2e_runner::build_plan_context(&conn, &plan_handler::resolve_plan_id(&conn, conv_id).unwrap_or_default(), conv_id);
     let t2 = chat_engine::prompt_loader::get_chat(&dom2);
     let sp2 = if mode2 == "structured" { t2.structured.clone() } else { t2.free.clone() };
     let h2 = e2e_runner::get_conversation_history(&conn, conv_id, 20);
@@ -372,7 +373,7 @@ async fn progression_domain_test(
     // 解析 plan_update
     let last_turns = e2e_runner::get_conversation_history(&conn, conv_id, 2);
     let last_assistant = last_turns.iter().rev().find(|(r, _)| r == "assistant").map(|(_, c)| c.clone()).unwrap_or_default();
-    let create_result = api_server::plan_handler::handle_plan_update(&conn, &last_assistant, conv_id, TEST_USER_ID);
+    let create_result = plan_handler::handle_plan_update(&conn, &last_assistant, &plan_handler::resolve_plan_id(&conn, conv_id).unwrap_or_default(), conv_id, TEST_USER_ID);
 
     if !create_result.is_new_plan && !create_result.plan_updated {
         errors.push("计划创建失败：无 plan_update 响应".to_string());
@@ -401,7 +402,7 @@ async fn progression_domain_test(
         e2e_runner::insert_turn(&conn, conv_id, "user", &student_msg);
         log.user_message = student_msg.clone();
 
-        let (cur_domain, cur_mode, cur_ctx) = e2e_runner::build_plan_context(&conn, conv_id);
+        let (cur_domain, cur_mode, cur_ctx) = e2e_runner::build_plan_context(&conn, &plan_handler::resolve_plan_id(&conn, conv_id).unwrap_or_default(), conv_id);
         let tpl = chat_engine::prompt_loader::get_chat(&cur_domain);
         let sp = if cur_mode == "structured" { tpl.structured.clone() } else { tpl.free.clone() };
         log.system_prompt_preview = sp.clone();
@@ -421,7 +422,7 @@ async fn progression_domain_test(
 
         if check_latex(&raw_reply) { latex_found = true; println!("  📐 [{}] LaTeX 检测到！", step); }
 
-        let result = api_server::plan_handler::handle_plan_update(&conn, &raw_reply, conv_id, TEST_USER_ID);
+        let result = plan_handler::handle_plan_update(&conn, &raw_reply, &plan_handler::resolve_plan_id(&conn, conv_id).unwrap_or_default(), conv_id, TEST_USER_ID);
         e2e_runner::insert_turn(&conn, conv_id, "assistant", &result.cleaned_reply);
         println!("  👨‍🏫 教师: {}", truncate(&result.cleaned_reply, 300));
 
@@ -440,7 +441,7 @@ async fn progression_domain_test(
         // 学生 LLM 生成下一轮
         student_msg = generate_student_answer(&conn, conv_id).await;
 
-        let (_, next_mode, _) = e2e_runner::build_plan_context(&conn, conv_id);
+        let (_, next_mode, _) = e2e_runner::build_plan_context(&conn, &plan_handler::resolve_plan_id(&conn, conv_id).unwrap_or_default(), conv_id);
         if next_mode == "free" { println!("  🏁 [{}] mode=free，计划周期结束", step); break; }
     }
 
@@ -503,7 +504,7 @@ async fn phase_concept_extraction(run_id: &str, _cli: &CliArgs) -> e2e_runner::P
         ("assistant".to_string(), ai_reply.to_string()),
     ];
     let existing_fronts: Vec<String> = {
-        let stmt = conn.prepare("SELECT LOWER(front) FROM cards WHERE user_id = ?1");
+        let stmt = conn.prepare("SELECT LOWER(COALESCE(uc.front, pc.front)) FROM user_cards uc LEFT JOIN prebuilt_cards pc ON uc.prebuilt_card_id = pc.id WHERE uc.user_id = ?1");
         if let Ok(mut s) = stmt {
             if let Ok(rows) = s.query_map(rusqlite::params![TEST_USER_ID], |row| row.get::<_, String>(0)) {
                 rows.filter_map(|r| r.ok()).collect()
@@ -558,6 +559,7 @@ async fn phase_concept_extraction(run_id: &str, _cli: &CliArgs) -> e2e_runner::P
                 conversation_id: Some(CONV_LANG.to_string()),
                 created_at: chrono::Utc::now().timestamp(),
                 subject: None, grade_band: None,
+                plan_id: None, task_key: None,
             };
             match card_engine::card_repository::insert_card(&conn, &card, &memory) {
                 card_engine::card_repository::InsertResult::Success(_) => inserted += 1,
@@ -604,7 +606,7 @@ async fn phase_review_flow(run_id: &str, _cli: &CliArgs) -> e2e_runner::PhaseRes
     let conn = rusqlite::Connection::open(TEST_DB_PATH).expect("Cannot open test DB");
 
     let card_id = match e2e_runner::insert_test_card(
-        &conn, TEST_USER_ID, "language", "vocabulary", "apple", "苹果",
+        &conn, TEST_USER_ID, "language", "apple",
     ) {
         Ok(id) => id,
         Err(e) => {

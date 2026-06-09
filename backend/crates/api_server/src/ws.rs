@@ -202,7 +202,8 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 // ── 查询学习计划，判定生命周期状态 + 管线 ──
                 let (system_prompt, plan_context) = {
                     let conn = crate::db_pool::get_conn();
-                    let (domain, mode, ctx) = crate::plan_handler::build_plan_context(&conn, &chat_req.conversation_id);
+                    let plan_id = crate::plan_handler::resolve_plan_id(&conn, &chat_req.conversation_id).unwrap_or_default();
+                    let (domain, mode, ctx) = crate::plan_handler::build_plan_context(&conn, &plan_id, &chat_req.conversation_id);
                     tracing::info!("WS plan context: domain={}, mode={}", domain, mode);
                     // 记录 prompt 来源（供 e2e 测试验证）
                     crate::plan_handler::log_prompt_source(&format!("{}/{}", domain, mode));
@@ -321,8 +322,9 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 let mut plan_updated;
                 {
                     let conn = crate::db_pool::get_conn();
+                    let plan_id = crate::plan_handler::resolve_plan_id(&conn, &chat_req.conversation_id).unwrap_or_default();
                     let result = crate::plan_handler::handle_plan_update(
-                        &conn, &final_reply, &chat_req.conversation_id, &chat_req.user_id,
+                        &conn, &final_reply, &plan_id, &chat_req.conversation_id, &chat_req.user_id,
                     );
                     final_reply = result.cleaned_reply;
                     plan_updated = result.plan_updated;
@@ -364,8 +366,9 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 // 每次 LLM 回复后检查，不依赖 CP2 的二次 LLM 调用
                 if !plan_updated && final_reply.contains("**goal") && final_reply.contains("✅ 已完成") {
                     let conv_for_plan = chat_req.conversation_id.clone();
+                    let uid = chat_req.user_id.clone();
                     let extra = "";
-                    if crate::plan_handler::force_plan_creation(&conv_for_plan, extra).await {
+                    if crate::plan_handler::force_plan_creation(&uid, &conv_for_plan, extra).await {
                         plan_updated = true;
                         tracing::info!("Plan creation triggered by **goal badge in LLM reply");
                     }
@@ -374,7 +377,8 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 // ── 代码层兜底：若 LLM 未处理回退请求，自动回退（auto_revert 已迁移） ──
                 if !plan_updated {
                     let revert_conn = crate::db_pool::get_conn();
-                    if crate::plan_handler::auto_revert(&revert_conn, &chat_req.conversation_id, &chat_req.message) {
+                    let revert_plan_id = crate::plan_handler::resolve_plan_id(&revert_conn, &chat_req.conversation_id).unwrap_or_default();
+                    if crate::plan_handler::auto_revert(&revert_conn, &revert_plan_id, &chat_req.message) {
                         plan_updated = true;
                         tracing::info!("Revert signal detected: {}", &chat_req.message[..chat_req.message.len().min(80)]);
                     }
@@ -388,7 +392,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         // 将参数作为用户意图注入对话文本的前面
                         tracing::info!("Plan creation with intent: {}", extra);
                     }
-                    if crate::plan_handler::force_plan_creation(&chat_req.conversation_id, extra).await {
+                    if crate::plan_handler::force_plan_creation(&chat_req.user_id, &chat_req.conversation_id, extra).await {
                         plan_updated = true;
                         tracing::info!("Plan creation triggered by /plan command");
                     }
@@ -431,7 +435,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 let turn_card_count: i64 = {
                     let conn = crate::db_pool::get_conn();
                     conn.query_row(
-                        "SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id = ?1 AND cm.status = 'active'",
+                        "SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id = ?1 AND cm.status = 'active'",
                         rusqlite::params![&chat_req.user_id],
                         |row| row.get(0),
                     ).unwrap_or(0)
@@ -455,12 +459,13 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 let conv_id = &chat_req.conversation_id;
                 let (extract_domain, _, extract_plan_ctx) = {
                     let conn = crate::db_pool::get_conn();
-                    crate::plan_handler::build_plan_context(&conn, conv_id)
+                    let pid = crate::plan_handler::resolve_plan_id(&conn, conv_id).unwrap_or_default();
+                    crate::plan_handler::build_plan_context(&conn, &pid, conv_id)
                 };
                 // CP2 需要 final_reply，但 CP1 spawn 会 move 走它，提前 clone
                 let cp2_reply = final_reply.clone();
                 // ❄️ ColdPath 1: 概念提取 — 仅在 CP2 创建 plan 后运行
-                // 每轮先检查 conversation_plans 是否存在，有 plan 才走 LLM 提取
+                // 每轮先检查 plan_runs 是否存在，有 plan 才走 LLM 提取
                 let user_id = chat_req.user_id.clone();
                 let msg = chat_req.message.clone();
                 let config = llm_config.clone();
@@ -477,7 +482,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
 
                         let ef: Vec<String> = {
                             let mut stmt = match conn.prepare(
-                                "SELECT LOWER(c.front) FROM cards c JOIN card_memory cm ON c.id=cm.card_id WHERE c.user_id = ?1 AND cm.status = 'active'"
+                                "SELECT LOWER(COALESCE(c.front, pc.front)) FROM user_cards c LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id = ?1 AND cm.status = 'active'"
                             ) {
                                 Ok(s) => s,
                                 Err(_) => break 'db None,
@@ -503,11 +508,11 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         }
                     };
 
-                    // CP1 必须在 CP2 创建计划之后才运行 — 检查 conversation_plan 是否存在
+                    // CP1 必须在 CP2 创建计划之后才运行 — 检查 plan_run 是否存在
                     let has_plan: bool = {
                         let conn_check = crate::db_pool::get_conn();
                         conn_check.query_row(
-                            "SELECT 1 FROM conversation_plans WHERE conversation_id = ?1 LIMIT 1",
+                            "SELECT 1 FROM plan_runs WHERE conversation_id = ?1 LIMIT 1",
                             rusqlite::params![&conv_id_cp1],
                             |_| Ok(true),
                         ).unwrap_or(false)
@@ -546,33 +551,78 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     // 概念提取 → 批量入库 (status='pending')，返回 card_id 供前端 PATCH
                     let pending_candidates: Vec<serde_json::Value> = {
                         let conn = crate::db_pool::get_conn();
-                        // 查询 plan_id 和当前 task_key
-                        let (cp1_plan_id, cp1_task_key): (String, String) = conn.query_row(
-                            "SELECT cp.id, COALESCE((SELECT task_key FROM user_plan_progress WHERE plan_id = cp.id AND status = 'in_progress' LIMIT 1), '') 
-                             FROM conversation_plans cp WHERE cp.conversation_id = ?1 LIMIT 1",
+                        // 查询 plan_run_id 和当前 task_key（如无则创建临时 plan_run）
+                        let (plan_run_id, cp1_task_key): (String, String) = match conn.query_row(
+                            "SELECT pr.id, COALESCE((SELECT task_key FROM user_plan_progress WHERE plan_id = pr.id AND status = 'in_progress' LIMIT 1), '') 
+                             FROM plan_runs pr WHERE pr.conversation_id = ?1 LIMIT 1",
                             rusqlite::params![&conv_id_cp1],
-                            |r| Ok((r.get(0)?, r.get(1)?)),
-                        ).unwrap_or_default();
-                        extraction.candidates.iter().map(|c| {
+                            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+                        ) {
+                            Ok(v) => v,
+                            Err(_) => {
+                                // 无 plan_run 时创建临时记录（CP1 场景）
+                                let tmp_id = uuid::Uuid::new_v4().to_string();
+                                let now = chrono::Utc::now().timestamp();
+                                let _ = conn.execute(
+                                    "INSERT INTO plan_runs (id, user_id, conversation_id, domain, created_at, updated_at)
+                                     VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+                                    rusqlite::params![tmp_id, user_id, conv_id_cp1, ed, now],
+                                );
+                                (tmp_id, String::new())
+                            }
+                        };
+                        // 开启事务：确保 user_cards + 子表 + card_memory 原子写入
+                        conn.execute_batch("BEGIN").ok();
+                        let r: Vec<serde_json::Value> = extraction.candidates.iter().map(|c| {
                             let card_id = uuid::Uuid::new_v4().to_string();
                             let now = chrono::Utc::now().timestamp();
-                            // cards: 结构数据（无 status，无 card_memory 状态字段）
+                            // 1. 写入 user_cards（主表）
                             let _ = conn.execute(
-                                "INSERT OR IGNORE INTO cards (id, user_id, domain, subject, card_type, front, back, source_sentence, conversation_id, created_at, plan_id, task_key)
-                                 VALUES (?1, ?2, ?3, NULL, 'concept', ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-                                rusqlite::params![card_id, user_id, c.domain, c.front, c.back, c.source_sentence,
-                                    conv_id_cp1, now, if cp1_plan_id.is_empty() { None } else { Some(&cp1_plan_id) },
-                                    if cp1_task_key.is_empty() { None } else { Some(&cp1_task_key) }],
+                                "INSERT INTO user_cards (id, user_id, plan_run_id, prebuilt_card_id, domain, front, status, task_key, created_at)
+                                 VALUES (?1, ?2, ?3, NULL, ?4, ?5, 'pending', ?6, ?7)",
+                                rusqlite::params![card_id, user_id, plan_run_id, c.domain, c.front,
+                                    if cp1_task_key.is_empty() { None } else { Some(&cp1_task_key) },
+                                    now],
                             );
-                            // card_memory: 状态数据（含 lifecycle status='pending'）
+                            // 2. 根据 domain 写入对应的 user_*_cards 子表
+                            match c.domain.as_str() {
+                                "science" => {
+                                    let _ = conn.execute(
+                                        "INSERT INTO user_science_cards (id, definition, source) VALUES (?1, ?2, ?3)",
+                                        rusqlite::params![card_id, c.back, c.source_sentence],
+                                    );
+                                }
+                                "language" => {
+                                    let _ = conn.execute(
+                                        "INSERT INTO user_language_cards (id, pronunciation, related_phrases) VALUES (?1, ?2, ?3)",
+                                        rusqlite::params![card_id, c.back, c.source_sentence],
+                                    );
+                                }
+                                "literature" => {
+                                    let _ = conn.execute(
+                                        "INSERT INTO user_literature_cards (id, full_text) VALUES (?1, ?2)",
+                                        rusqlite::params![card_id, c.back],
+                                    );
+                                }
+                                "humanities" => {
+                                    let _ = conn.execute(
+                                        "INSERT INTO user_humanities_cards (id, body) VALUES (?1, ?2)",
+                                        rusqlite::params![card_id, c.back],
+                                    );
+                                }
+                                _ => {}
+                            }
+                            // 3. card_memory: 状态数据（user_card_id 指向 user_cards.id）
                             let _ = conn.execute(
-                                "INSERT OR IGNORE INTO card_memory (card_id, state, status, difficulty, stability, due, last_review, reps, lapses)
-                                 VALUES (?1, 0, 'pending', 0.3, 1.0, ?2, 0, 0, 0)",
-                                rusqlite::params![card_id, now],
+                                "INSERT INTO card_memory (card_id, user_card_id, state, status, difficulty, stability, due, last_review, reps, lapses)
+                                 VALUES (?1, ?2, 0, 'pending', 0.3, 1.0, ?3, 0, 0, 0)",
+                                rusqlite::params![card_id, card_id, now],
                             );
                             json!({"id": card_id, "front": c.front, "back": c.back,
                                    "source_sentence": c.source_sentence, "domain": &c.domain})
-                        }).collect()
+                        }).collect();
+                        conn.execute_batch("COMMIT").ok();
+                        r
                     };
                     tracing::info!("CP1 inserted {} pending cards for turn {}", pending_candidates.len(), cold_turn);
                     // 成就检测：卡片创建后触发 card_created 事件
@@ -597,13 +647,18 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     let cp2_notify = cp2_tx.clone();
                     let cp2_busy_flag = cp2_busy.clone();
                     let cp2_done_signal = cp2_done.clone();
+                    // resolve plan_id before spawning
+                    let cp2_plan_id = {
+                        let conn = crate::db_pool::get_conn();
+                        crate::plan_handler::resolve_plan_id(&conn, &conv_id).unwrap_or_default()
+                    };
                     // 标记 CP2 繁忙：下一条用户消息需等待 CP2 完成
                     cp2_busy.store(true, std::sync::atomic::Ordering::Release);
                     tokio::spawn(async move {
                         let mut caller = chat_engine::llm_caller::LlmCaller::new(cfg);
                         tokio::time::sleep(Duration::from_millis(500)).await;
                         let updated = crate::plan_handler::analyze_turn_progress(
-                            &conv_id, &uid, &mut caller, &reply,
+                            &cp2_plan_id, &conv_id, &uid, &mut caller, &reply,
                         ).await;
                         if updated {
                             let _ = cp2_notify.send(true).await;

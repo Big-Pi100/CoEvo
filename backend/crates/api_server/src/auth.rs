@@ -200,7 +200,9 @@ mod tests {
                 real_name TEXT,
                 phone TEXT,
                 phone_hash TEXT,
+                id_number TEXT,
                 bind_hash TEXT,
+                deleted_at TEXT,
                 created_at TEXT NOT NULL
             );
             CREATE TABLE tokens (

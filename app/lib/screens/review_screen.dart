@@ -7,6 +7,7 @@ import '../models/coevo_models.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
 import '../providers/achievement_notifier.dart';
+import '../providers/plan_provider.dart' hide cardRefreshProvider;
 import '../services/tts_service.dart';
 import '../pipelines/verification_strategy.dart';
 import '../widgets/markdown_span_nodes.dart';
@@ -74,9 +75,6 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
 
   // 计划标签 & domain 过滤
   late TabController _tabController;
-  List<Map<String, dynamic>> _planTabs = [];
-  String? _selectedConvId;  // 当前选中的 plan tab 的 conversation_id（null=全部卡片）
-  bool _hasActivePlans = false;
 
   @override
   void initState() {
@@ -117,69 +115,26 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
     final auth = ref.read(authProvider);
     if (auth.userId == null) return;
     final client = ChatClient(userId: auth.userId!, token: auth.token);
-    try {
-      final planList = await client.getPlans();
-      // 并行获取 task 进度过滤的卡片，用于过滤哪些 plan 有活跃 task
-      Set<String> activeConvIds = {};
-      try {
-        final progressResp = await client.getCardsByProgress();
-        final progressCards = progressResp['cards'] as List<dynamic>? ?? [];
-        for (final c in progressCards) {
-          final cMap = c as Map<String, dynamic>;
-          final convId = cMap['conversation_id'] as String? ?? '';
-          if (convId.isNotEmpty) activeConvIds.add(convId);
-        }
-      } catch (_) {}
-      // 并行获取卡片统计（用于 tab badge 显示）
-      Map<String, int> cardCountByConv = {};
-      try {
-        final cardCountResp = await client.getCardsByPlan();
-        final plansRaw = (cardCountResp['plans'] as List<dynamic>?) ?? [];
-        for (final p in plansRaw) {
-          final pMap = p as Map<String, dynamic>;
-          final convId = pMap['conversation_id'] as String? ?? '';
-          final count = (pMap['card_count'] as num?)?.toInt() ?? 0;
-          if (convId.isNotEmpty) cardCountByConv[convId] = count;
-        }
-      } catch (_) {}
-      if (!mounted) return;
-      setState(() {
-        // 合并 cardCount 到 planTabs，过滤只保留有活跃 task 的 plan
-        _hasActivePlans = activeConvIds.isNotEmpty;
-        _planTabs = planList
-            .where((p) {
-              final convId = p['conversation_id'] as String? ?? '';
-              return activeConvIds.contains(convId);
-            })
-            .map((p) {
-              final convId = p['conversation_id'] as String? ?? '';
-              final count = cardCountByConv[convId];
-              if (count != null) p['card_count'] = count;
-              return p;
-            })
-            .where((p) {
-              // 隐藏没有待复习卡片的 tab
-              final dueCount = (p['due_card_count'] as num?)?.toInt() ?? 1;
-              return dueCount > 0;
-            }).toList();
-        final totalTabs = 1 + _planTabs.length;
-        final oldIndex = _tabController.index;
-        _tabController.dispose();
-        _tabController = TabController(length: totalTabs, vsync: this,
-          initialIndex: oldIndex.clamp(0, totalTabs - 1));
-        // 自动加载第一个 tab 的卡片
-        if (_planTabs.isNotEmpty && _selectedConvId == null) {
-          _selectedConvId = _planTabs[0]['conversation_id'] as String? ?? '';
-          _cards = [];
-          _resetInlineReview();
-        }
-      });
-      // setState 外异步加载卡片
-      if (_planTabs.isNotEmpty && _selectedConvId != null) {
-        _loadCards();
+    // 由 PlanProvider 统一加载
+    await ref.read(planProvider.notifier).loadPlans(client);
+    if (!mounted) return;
+    final plans = ref.read(planProvider).plans;
+    setState(() {
+      final totalTabs = 1 + plans.length;
+      final oldIndex = _tabController.index;
+      _tabController.dispose();
+      _tabController = TabController(length: totalTabs, vsync: this,
+        initialIndex: oldIndex.clamp(0, totalTabs - 1));
+      // 自动选中第一个 plan
+      if (plans.isNotEmpty && ref.read(planProvider).selectedConversationId == null) {
+        ref.read(planProvider.notifier).selectConversation(plans.first.conversationId);
+        _cards = [];
+        _resetInlineReview();
       }
-    } catch (_) {
-      if (mounted) setState(() => _hasActivePlans = false);
+    });
+    // 异步加载卡片
+    if (plans.isNotEmpty && ref.read(planProvider).selectedConversationId != null) {
+      _loadCards();
     }
   }
 
@@ -237,7 +192,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
       return;
     }
     try {
-      final convId = _selectedConvId;
+      final convId = ref.read(planProvider).selectedConversationId;
       final resp = await _client!.getDueCards(conversationId: convId, limit: 20, offset: 0);
       setState(() {
         _cards = (resp['cards'] as List<dynamic>?)
@@ -259,7 +214,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
   Future<void> _replenishQueue() async {
     if (_client == null || _cards.isEmpty) return;
     try {
-      final convId = _selectedConvId;
+      final convId = ref.read(planProvider).selectedConversationId;
       final offset = _cards.length;
       final resp = await _client!.getDueCards(conversationId: convId, limit: 10, offset: offset);
       final newCards = (resp['cards'] as List<dynamic>?)
@@ -575,7 +530,7 @@ Row(
         // 等待一小段时间确保后端落库完成
         await Future.delayed(const Duration(milliseconds: 300));
         if (!mounted) return;
-        final convId = _selectedConvId;
+        final convId = ref.read(planProvider).selectedConversationId;
         try {
           final resp = await _client!.getDueCards(conversationId: convId, limit: 10, offset: 0);
           final more = (resp['cards'] as List<dynamic>?)?.length ?? 0;
@@ -598,25 +553,19 @@ Row(
   // ── Build ──
 
   /// 按 conversation_id 匹配的待复习卡片数
-  /// 优先从 planTabs 中缓存的 cardCount 取值，兜底降级到 _cards 过滤
-  int _planDueCount(String convId) {
+  /// 优先从 PlanState 中缓存的 dueCards 取值，兜底降级到 _cards 过滤
+  int _planDueCount(PlanData plan) {
+    final convId = plan.conversationId ?? '';
     if (convId.isEmpty) return 0;
-    // 从 planTabs 找 cardCount（精准，不受 _cards 500 条限制影响）
-    for (final p in _planTabs) {
-      if ((p['conversation_id'] as String? ?? '') == convId) {
-        final cached = p['card_count'] as int?;
-        if (cached != null) return cached;
-        break;
-      }
-    }
+    if (plan.dueCards > 0) return plan.dueCards;
     // 兜底：从已加载的 _cards 过滤（可能因 LIMIT 500 截断而不准）
     return _cards.where((c) => c.conversationId == convId).length;
   }
 
   /// 从 plan goal + grade_band 提取简短标签
-  String _planLabel(Map<String, dynamic> plan) {
-    final goal = plan['goal'] as String? ?? '';
-    final gb = (plan['grade_band'] as String? ?? '').replaceAll('g', '').replaceAll('-', '～');
+  String _planLabel(PlanData plan) {
+    final goal = plan.goal;
+    final gb = (plan.gradeBand ?? '').replaceAll('g', '').replaceAll('-', '～');
     final label = goal.replaceAll(RegExp(r'^K12:\s*'), '');
     if (gb.isNotEmpty) {
       return '$label（$gb）';
@@ -626,14 +575,19 @@ Row(
 
   @override
   Widget build(BuildContext context) {
+    final planState = ref.watch(planProvider);
+    final plans = planState.plans;
+    final selectedConvId = planState.selectedConversationId;
+    final hasActivePlans = plans.isNotEmpty;
+
     // TabBar 切换时更新 conversation_id 过滤
     void onTabChanged() {
       final i = _tabController.index;
-      if (i < _planTabs.length) {
-        final convId = _planTabs[i]['conversation_id'] as String? ?? '';
-        if (convId != _selectedConvId) {
+      if (i < plans.length) {
+        final convId = plans[i].conversationId ?? '';
+        if (convId != selectedConvId) {
+          ref.read(planProvider.notifier).selectConversation(convId);
           setState(() {
-            _selectedConvId = convId;
             _activeCardIndex = -1;
             _resetInlineReview();
             _cards = [];
@@ -641,8 +595,8 @@ Row(
           _loadCards();
         }
       } else {
+        ref.read(planProvider.notifier).selectConversation(null);
         setState(() {
-          _selectedConvId = null;
           _activeCardIndex = -1;
           _resetInlineReview();
         });
@@ -651,12 +605,12 @@ Row(
     _tabController.removeListener(onTabChanged);
     _tabController.addListener(onTabChanged);
     // 初始化时应用首 tab 的 conversation_id
-    if (_selectedConvId == null && _planTabs.isNotEmpty) {
-      _selectedConvId = _planTabs[0]['conversation_id'] as String? ?? '';
+    if (selectedConvId == null && plans.isNotEmpty) {
+      ref.read(planProvider.notifier).selectConversation(plans.first.conversationId);
     }
 
     // 无活跃计划时显示引导
-    if (!_hasActivePlans && _planTabs.isEmpty) {
+    if (!hasActivePlans && plans.isEmpty) {
       return Scaffold(
         appBar: AppBar(title: const Text('复习')),
         body: Center(
@@ -692,9 +646,8 @@ Row(
           controller: _tabController,
           labelColor: Theme.of(context).colorScheme.onSurface,
           tabs: [
-            ..._planTabs.map((p) {
-              final convId = p['conversation_id'] as String? ?? '';
-              final count = _planDueCount(convId);
+            ...plans.map((p) {
+              final count = _planDueCount(p);
               final label = _planLabel(p);
               // 截取前5个字符（中文字符每个占1个UTF-16单元）
               final shortLabel = label.length > 8 ? label.substring(0, 8) : label;
@@ -713,7 +666,7 @@ Row(
       body: TabBarView(
         controller: _tabController,
         children: [
-          ..._planTabs.map((_) => _buildReviewTab()),
+          ...plans.map((_) => _buildReviewTab()),
           const CardListScreen(embedded: true),  // 全部卡片永远放最后
         ],
       ),
@@ -725,8 +678,9 @@ Row(
   /// - 选中"全部卡片": 不过滤
   /// domain 仅用于内部分类标签，不用于 tab 匹配
   List<DueCard> get _filteredCards {
-    if (_selectedConvId == null) return _cards;
-    return _cards.where((c) => c.conversationId == _selectedConvId).toList();
+    final convId = ref.read(planProvider).selectedConversationId;
+    if (convId == null) return _cards;
+    return _cards.where((c) => c.conversationId == convId).toList();
   }
 
   Widget _buildReviewTab() {

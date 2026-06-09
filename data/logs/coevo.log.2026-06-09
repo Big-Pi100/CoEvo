@@ -1,0 +1,50 @@
+2026-06-09T12:01:09.510183Z  INFO coevo_backend: [K12] data dir: data/curriculum/v3
+2026-06-09T12:01:09.510205Z  INFO coevo_backend: CoEvo backend starting, logs: data/logs/coevo.log.*
+2026-06-09T12:01:09.520127Z  INFO coevo_backend: DB: data/coevo.db
+2026-06-09T12:01:09.521004Z  WARN api_server::achievement_engine: 成就引擎 TOML 加载失败，使用硬编码回退: 读取成就文件失败 (achievements.toml): 系统找不到指定的文件。 (os error 2)
+2026-06-09T12:01:09.521065Z  INFO growth_engine::achievements: 使用硬编码回退：10 个成就定义
+2026-06-09T12:01:09.521068Z  INFO coevo_backend: AchievementEngine: achievements.toml
+2026-06-09T12:01:09.522358Z  INFO chat_engine::prompt_loader: Prompts loaded: chat(0 subjects), concept(0), plan(0), quiz(0), verify(0), routing(0)
+2026-06-09T12:01:09.522370Z  INFO coevo_backend: Prompts: prompts
+2026-06-09T12:01:09.522526Z  WARN chat_engine::word_bank: Cannot read word bank cefr_catalog.json: 系统找不到指定的文件。 (os error 2) (vocab matching disabled)
+2026-06-09T12:01:09.522541Z  INFO coevo_backend: Wordbank: cefr_catalog.json
+2026-06-09T12:01:09.522745Z  INFO api_server::curriculum_loader: [K12] init v4: base=E:\CoEvo\backend\crates\api_server\../../../data/curriculum/v4
+2026-06-09T12:01:09.530918Z  INFO api_server::curriculum_loader: K12: loaded 1393 cards from domain=science
+2026-06-09T12:01:09.616179Z  INFO api_server::curriculum_loader: K12: loaded 17470 cards from domain=language
+2026-06-09T12:01:09.649429Z  INFO api_server::curriculum_loader: K12: loaded 804 cards from domain=literature
+2026-06-09T12:01:09.651727Z  INFO api_server::curriculum_loader: K12: loaded 194 cards from domain=humanities
+2026-06-09T12:01:09.696133Z  INFO api_server::curriculum_loader: K12: loaded 38 card sets (19861 total cards)
+2026-06-09T12:01:09.706230Z  INFO api_server::curriculum_loader: K12: loaded 14 plans from E:\CoEvo\backend\crates\api_server\../../../data/curriculum/v4\plans
+2026-06-09T12:01:09.717276Z  INFO coevo_backend: Data loaders initialized
+2026-06-09T12:01:09.718072Z  INFO api_server::k12_quiz_loader: K12 quiz bank: 0 loaded, 0 total files
+2026-06-09T12:01:09.718083Z  INFO coevo_backend: K12 quiz bank: 0 quizzes loaded
+2026-06-09T12:01:09.775134Z  INFO coevo_backend: Schema initialized (production schema)
+2026-06-09T12:01:09.784210Z  INFO coevo_backend: Avatars: data/avatars
+2026-06-09T12:01:09.784231Z  WARN chat_engine::config: No DEEPSEEK_API_KEY/LLM_API_KEY set — using empty key
+2026-06-09T12:01:09.784235Z  INFO coevo_backend: LLM: deepseek-v4-flash @ https://api.deepseek.com/v1
+2026-06-09T12:01:16.081471Z  INFO coevo_backend: [K12] data dir: data/curriculum/v3
+2026-06-09T12:01:16.081503Z  INFO coevo_backend: CoEvo backend starting, logs: data/logs/coevo.log.*
+2026-06-09T12:01:16.102021Z  INFO coevo_backend: DB: data/coevo.db
+2026-06-09T12:01:16.102681Z  WARN api_server::achievement_engine: 成就引擎 TOML 加载失败，使用硬编码回退: 读取成就文件失败 (achievements.toml): 系统找不到指定的文件。 (os error 2)
+2026-06-09T12:01:16.102722Z  INFO growth_engine::achievements: 使用硬编码回退：10 个成就定义
+2026-06-09T12:01:16.102726Z  INFO coevo_backend: AchievementEngine: achievements.toml
+2026-06-09T12:01:16.103777Z  INFO chat_engine::prompt_loader: Prompts loaded: chat(0 subjects), concept(0), plan(0), quiz(0), verify(0), routing(0)
+2026-06-09T12:01:16.103792Z  INFO coevo_backend: Prompts: prompts
+2026-06-09T12:01:16.103988Z  WARN chat_engine::word_bank: Cannot read word bank cefr_catalog.json: 系统找不到指定的文件。 (os error 2) (vocab matching disabled)
+2026-06-09T12:01:16.104003Z  INFO coevo_backend: Wordbank: cefr_catalog.json
+2026-06-09T12:01:16.104142Z  INFO api_server::curriculum_loader: [K12] init v4: base=E:\CoEvo\backend\crates\api_server\../../../data/curriculum/v4
+2026-06-09T12:01:16.112013Z  INFO api_server::curriculum_loader: K12: loaded 1393 cards from domain=science
+2026-06-09T12:01:16.192338Z  INFO api_server::curriculum_loader: K12: loaded 17470 cards from domain=language
+2026-06-09T12:01:16.217209Z  INFO api_server::curriculum_loader: K12: loaded 804 cards from domain=literature
+2026-06-09T12:01:16.219070Z  INFO api_server::curriculum_loader: K12: loaded 194 cards from domain=humanities
+2026-06-09T12:01:16.249131Z  INFO api_server::curriculum_loader: K12: loaded 38 card sets (19861 total cards)
+2026-06-09T12:01:16.255087Z  INFO api_server::curriculum_loader: K12: loaded 14 plans from E:\CoEvo\backend\crates\api_server\../../../data/curriculum/v4\plans
+2026-06-09T12:01:16.260364Z  INFO coevo_backend: Data loaders initialized
+2026-06-09T12:01:16.260723Z  INFO api_server::k12_quiz_loader: K12 quiz bank: 0 loaded, 0 total files
+2026-06-09T12:01:16.260729Z  INFO coevo_backend: K12 quiz bank: 0 quizzes loaded
+2026-06-09T12:01:16.261193Z  INFO coevo_backend: Avatars: data/avatars
+2026-06-09T12:01:16.261203Z  WARN chat_engine::config: No DEEPSEEK_API_KEY/LLM_API_KEY set — using empty key
+2026-06-09T12:01:16.261205Z  INFO coevo_backend: LLM: deepseek-v4-flash @ https://api.deepseek.com/v1
+2026-06-09T12:01:16.264188Z  INFO coevo_backend: CoEvo ready on http://0.0.0.0:8080
+2026-06-09T12:01:16.664325Z  WARN chat_engine::llm_caller: LLM generate attempt 1 failed: ApiError("HTTP 401 Unauthorized: Authentication Fails (auth header format should be Bearer sk-...)")
+2026-06-09T12:01:17.170254Z  WARN chat_engine::llm_caller: LLM warmup: ApiError("HTTP 401 Unauthorized: Authentication Fails (auth header format should be Bearer sk-...)") (non-critical)

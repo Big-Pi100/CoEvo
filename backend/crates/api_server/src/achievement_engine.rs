@@ -94,7 +94,7 @@ pub fn publish(conn: &Connection, event: AppEvent) {
 pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
     // ── 已有 6 个指标 ──
     let total_cards: u32 = conn.query_row(
-        "SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id = cm.card_id
+        "SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id = cm.user_card_id
          WHERE c.user_id = ?1 AND cm.status = 'active'",
         rusqlite::params![user_id],
         |row| row.get(0),
@@ -102,15 +102,15 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
 
     let total_reviews: u32 = conn.query_row(
         "SELECT COUNT(*) FROM review_log r
-         JOIN cards c ON r.card_id = c.id
+         JOIN user_cards c ON r.card_id = c.id
          WHERE c.user_id = ?1",
         rusqlite::params![user_id],
         |row| row.get(0),
     ).unwrap_or(0);
 
     let domains_covered: u32 = conn.query_row(
-        "SELECT COUNT(DISTINCT c.domain) FROM cards c
-         JOIN card_memory cm ON c.id = cm.card_id
+        "SELECT COUNT(DISTINCT c.domain) FROM user_cards c
+         JOIN card_memory cm ON c.id = cm.user_card_id
          WHERE c.user_id = ?1 AND cm.status = 'active' AND c.domain IS NOT NULL",
         rusqlite::params![user_id],
         |row| row.get(0),
@@ -126,13 +126,13 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
         SELECT COUNT(*) FROM dates d
         WHERE EXISTS (
             SELECT 1 FROM review_log r
-            JOIN cards c ON r.card_id = c.id
+            JOIN user_cards c ON r.card_id = c.id
             WHERE c.user_id = ?1 AND date(r.reviewed_at, 'unixepoch') = d.d
         )
         AND d >= IFNULL(
             (SELECT date(
                 (SELECT date(r.reviewed_at, 'unixepoch') FROM review_log r
-                 JOIN cards c ON r.card_id = c.id
+                 JOIN user_cards c ON r.card_id = c.id
                  WHERE c.user_id = ?1
                  ORDER BY r.reviewed_at DESC LIMIT 1),
                 '-1 day'
@@ -144,8 +144,8 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
     ).unwrap_or(0);
 
     let plans_completed: u32 = conn.query_row(
-        "SELECT COUNT(*) FROM conversation_plans cp
-         JOIN user_plan_progress upp ON cp.id = upp.plan_id
+        "SELECT COUNT(*) FROM plan_runs pr
+         JOIN user_plan_progress upp ON pr.id = upp.plan_id
          WHERE upp.user_id = ?1 AND upp.status = 'completed'",
         rusqlite::params![user_id],
         |row| row.get(0),
@@ -161,7 +161,7 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
 
     // 1. hard_cards_count: difficulty > 7.0 的活跃卡片数（硬卡片）
     let hard_cards_count: u32 = conn.query_row(
-        "SELECT COUNT(*) FROM cards c JOIN card_memory cm ON c.id = cm.card_id
+        "SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id = cm.user_card_id
          WHERE c.user_id = ?1 AND cm.status = 'active' AND cm.difficulty > 7.0",
         rusqlite::params![user_id],
         |row| row.get(0),
@@ -171,7 +171,7 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
     let recent_accuracy_20: f64 = conn.query_row(
         "WITH recent AS (
             SELECT rating FROM review_log r
-            JOIN cards c ON r.card_id = c.id
+            JOIN user_cards c ON r.card_id = c.id
             WHERE c.user_id = ?1
             ORDER BY r.reviewed_at DESC LIMIT 20
         )
@@ -187,7 +187,7 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
     let recent_accuracy_50: f64 = conn.query_row(
         "WITH recent AS (
             SELECT rating FROM review_log r
-            JOIN cards c ON r.card_id = c.id
+            JOIN user_cards c ON r.card_id = c.id
             WHERE c.user_id = ?1
             ORDER BY r.reviewed_at DESC LIMIT 50
         )
@@ -203,7 +203,7 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
     let recent_accuracy_100: f64 = conn.query_row(
         "WITH recent AS (
             SELECT rating FROM review_log r
-            JOIN cards c ON r.card_id = c.id
+            JOIN user_cards c ON r.card_id = c.id
             WHERE c.user_id = ?1
             ORDER BY r.reviewed_at DESC LIMIT 100
         )
@@ -220,7 +220,7 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
         "WITH weekend_activity AS (
              SELECT DISTINCT date(r.reviewed_at, 'weekday 6') as wk_start
              FROM review_log r
-             JOIN cards c ON r.card_id = c.id
+             JOIN user_cards c ON r.card_id = c.id
              WHERE c.user_id = ?1
                AND (strftime('%w', r.reviewed_at) = '0' OR strftime('%w', r.reviewed_at) = '6')
                AND r.reviewed_at >= CAST(strftime('%s', 'now', 'localtime', '-365 days') AS INTEGER)
@@ -248,7 +248,7 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
     // 6. night_sessions: 22:00-02:00 学习次数（去重日期，最近 30 天）
     let night_sessions: u32 = conn.query_row(
         "SELECT COUNT(DISTINCT date(r.reviewed_at, 'unixepoch')) FROM review_log r
-         JOIN cards c ON r.card_id = c.id
+         JOIN user_cards c ON r.card_id = c.id
          WHERE c.user_id = ?1
            AND (cast(strftime('%H', r.reviewed_at, 'unixepoch') as integer) >= 22
                 OR cast(strftime('%H', r.reviewed_at, 'unixepoch') as integer) < 2)
@@ -260,7 +260,7 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
     // 7. early_sessions: 06:00-08:00 学习次数（去重日期，最近 30 天）
     let early_sessions: u32 = conn.query_row(
         "SELECT COUNT(DISTINCT date(r.reviewed_at, 'unixepoch')) FROM review_log r
-         JOIN cards c ON r.card_id = c.id
+         JOIN user_cards c ON r.card_id = c.id
          WHERE c.user_id = ?1
            AND cast(strftime('%H', r.reviewed_at, 'unixepoch') as integer) >= 6
            AND cast(strftime('%H', r.reviewed_at, 'unixepoch') as integer) < 8
@@ -276,8 +276,8 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
             SELECT r.rating,
                    ROW_NUMBER() OVER (ORDER BY r.reviewed_at DESC) as rn
             FROM review_log r
-            JOIN cards c ON r.card_id = c.id
-            JOIN card_memory cm ON c.id = cm.card_id
+            JOIN user_cards c ON r.card_id = c.id
+            JOIN card_memory cm ON c.id = cm.user_card_id
             WHERE c.user_id = ?1 AND cm.difficulty > 7.0
             ORDER BY r.reviewed_at DESC
             LIMIT 100
@@ -298,7 +298,7 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
                     strftime('%H', r.reviewed_at, 'unixepoch') as session_hour,
                     r.rating
              FROM review_log r
-             JOIN cards c ON r.card_id = c.id
+             JOIN user_cards c ON r.card_id = c.id
              WHERE c.user_id = ?1
                AND r.reviewed_at >= CAST(strftime('%s', 'now', 'localtime', '-30 days') AS INTEGER)
          )
@@ -314,7 +314,7 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
     // 10. mature_cards: FSRS Review 状态卡片数（state=2）
     let mature_cards: u32 = conn.query_row(
         "SELECT COUNT(*) FROM card_memory cm
-         JOIN cards c ON cm.card_id = c.id
+         JOIN user_cards c ON cm.user_card_id = c.id
          WHERE c.user_id = ?1 AND cm.state = 2 AND cm.status = 'active'",
         rusqlite::params![user_id],
         |row| row.get(0),
@@ -323,7 +323,7 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
     // 11. learning_cards: Learning/Relearning 状态卡片数（state=1 或 3）
     let learning_cards: u32 = conn.query_row(
         "SELECT COUNT(*) FROM card_memory cm
-         JOIN cards c ON cm.card_id = c.id
+         JOIN user_cards c ON cm.user_card_id = c.id
          WHERE c.user_id = ?1 AND cm.state IN (1, 3) AND cm.status = 'active'",
         rusqlite::params![user_id],
         |row| row.get(0),
@@ -341,9 +341,9 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
         ),
         daily_status AS (
             SELECT d,
-                   EXISTS(SELECT 1 FROM review_log r JOIN cards c ON r.card_id = c.id
+                   EXISTS(SELECT 1 FROM review_log r JOIN user_cards c ON r.card_id = c.id
                           WHERE c.user_id = ?1 AND date(r.reviewed_at, 'unixepoch') = d.d) as has_review,
-                   EXISTS(SELECT 1 FROM review_log r JOIN cards c ON r.card_id = c.id
+                   EXISTS(SELECT 1 FROM review_log r JOIN user_cards c ON r.card_id = c.id
                           WHERE c.user_id = ?1 AND date(r.reviewed_at, 'unixepoch') = d.d AND r.rating = 1) as has_skip
             FROM dates d
         ),
@@ -359,11 +359,12 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
 
     // 13. languages_count: 覆盖语言数（按 subject 统计语言类科目）
     let languages_count: u32 = conn.query_row(
-        "SELECT COUNT(DISTINCT c.subject)
-         FROM cards c
-         JOIN card_memory cm ON c.id = cm.card_id
+        "SELECT COUNT(DISTINCT pc.subject)
+         FROM user_cards c
+         LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
+         JOIN card_memory cm ON c.id = cm.user_card_id
          WHERE c.user_id = ?1 AND cm.status = 'active'
-           AND c.subject IN ('chinese','english','japanese','russian')",
+           AND pc.subject IN ('chinese','english','japanese','russian')",
         rusqlite::params![user_id],
         |row| row.get(0),
     ).unwrap_or(0);
@@ -373,7 +374,7 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
         "WITH card_times AS (
              SELECT created_at,
                     LEAD(created_at, 19) OVER (ORDER BY created_at) as window_end
-             FROM cards
+             FROM user_cards
              WHERE user_id = ?1
                AND created_at >= CAST(strftime('%s', 'now', 'localtime', '-90 days') AS INTEGER)
          )
@@ -389,7 +390,7 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
     let days_since_last_review: u32 = conn.query_row(
         "SELECT COALESCE(CAST((CAST(strftime('%s', 'now') AS INTEGER) - MAX(r.reviewed_at)) / 86400 AS INTEGER), 0)
          FROM review_log r
-         JOIN cards c ON r.card_id = c.id
+         JOIN user_cards c ON r.card_id = c.id
          WHERE c.user_id = ?1",
         rusqlite::params![user_id],
         |row| row.get(0),
@@ -398,7 +399,7 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
     // 16. reviews_today: 今日复习次数
     let reviews_today: u32 = conn.query_row(
         "SELECT COUNT(*) FROM review_log r
-         JOIN cards c ON r.card_id = c.id
+         JOIN user_cards c ON r.card_id = c.id
          WHERE c.user_id = ?1 AND date(r.reviewed_at, 'unixepoch') = date('now', 'localtime')",
         rusqlite::params![user_id],
         |row| row.get(0),
@@ -414,10 +415,11 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
 
     // 18. subjects_count: 覆盖 K12 学科数（按 subject 去重）
     let subjects_count: u32 = conn.query_row(
-        "SELECT COUNT(DISTINCT c.subject)
-         FROM cards c
-         JOIN card_memory cm ON c.id = cm.card_id
-         WHERE c.user_id = ?1 AND cm.status = 'active' AND c.subject IS NOT NULL",
+        "SELECT COUNT(DISTINCT pc.subject)
+         FROM user_cards c
+         LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
+         JOIN card_memory cm ON c.id = cm.user_card_id
+         WHERE c.user_id = ?1 AND cm.status = 'active' AND pc.subject IS NOT NULL",
         rusqlite::params![user_id],
         |row| row.get(0),
     ).unwrap_or(0);

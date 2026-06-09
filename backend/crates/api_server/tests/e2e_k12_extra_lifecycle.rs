@@ -94,9 +94,9 @@ async fn e2e_k12_extra_lifecycle() {
         );
         let plan_content1 = serde_json::json!({"goal": "math基础学习", "stages": [{"name": "代数", "tasks": [{"name": "一元一次方程", "task_key": "00-00"}]}]}).to_string();
         conn.execute(
-            "INSERT INTO conversation_plans (id, user_id, conversation_id, goal, plan_content, created_at, updated_at)
-             VALUES (?1, ?2, ?3, 'math基础学习', ?4, ?5, ?5)",
-            rusqlite::params![plan1_id, uid, plan1_conv, plan_content1, now_ts],
+            "INSERT INTO plan_runs (id, user_id, conversation_id, prebuilt_plan_id, subject, domain, grade_band, goal, plan_content, status, created_at, updated_at)
+             VALUES (?1, ?2, ?3, NULL, ?4, 'math', '', 'math基础学习', ?5, 'active', ?6, ?6)",
+            rusqlite::params![plan1_id, uid, plan1_conv, "math", plan_content1, now_ts],
         ).expect("insert plan1");
 
         let plan2_id = uuid::Uuid::new_v4().to_string();
@@ -108,9 +108,9 @@ async fn e2e_k12_extra_lifecycle() {
         );
         let plan_content2 = serde_json::json!({"goal": "physics基础学习", "stages": [{"name": "力学", "tasks": [{"name": "牛顿定律", "task_key": "00-00"}]}]}).to_string();
         conn.execute(
-            "INSERT INTO conversation_plans (id, user_id, conversation_id, goal, plan_content, created_at, updated_at)
-             VALUES (?1, ?2, ?3, 'physics基础学习', ?4, ?5, ?5)",
-            rusqlite::params![plan2_id, uid, plan2_conv, plan_content2, now_ts],
+            "INSERT INTO plan_runs (id, user_id, conversation_id, prebuilt_plan_id, subject, domain, grade_band, goal, plan_content, status, created_at, updated_at)
+             VALUES (?1, ?2, ?3, NULL, ?4, 'science', '', 'physics基础学习', ?5, 'active', ?6, ?6)",
+            rusqlite::params![plan2_id, uid, plan2_conv, "physics", plan_content2, now_ts],
         ).expect("insert plan2");
     }
     println!("  inserted 2 plans: math, physics");
@@ -171,11 +171,11 @@ async fn e2e_k12_extra_lifecycle() {
             rusqlite::params![conv_id, uid, now_ts],
         ).ok();
         conn.execute(
-            "INSERT INTO conversation_plans (id, user_id, conversation_id, goal, plan_content, created_at, updated_at)
-             VALUES (?1, ?2, ?3, '语文课文阅读学习', ?4, ?5, ?5)",
+            "INSERT INTO plan_runs (id, user_id, conversation_id, prebuilt_plan_id, subject, domain, grade_band, goal, plan_content, status, created_at, updated_at)
+             VALUES (?1, ?2, ?3, NULL, ?4, 'language', '', '语文课文阅读学习', ?5, 'active', ?6, ?6)",
             rusqlite::params![
                 format!("plan_{}", conv_id), uid, conv_id,
-                reading_plan.to_string(), now_ts,
+                "chinese", reading_plan.to_string(), now_ts,
             ],
         ).ok();
     }

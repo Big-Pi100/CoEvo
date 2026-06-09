@@ -14,14 +14,16 @@
 ### 实施节奏
 
 ```
-Phase 0 (基础修复)     ─── 3 天 ───┐
-                                   ├── 代码积累，不部署
-Phase 1 (prebuilt 重构) ─── 2 周 ──┤
-                                   ├── 代码积累，不部署
-Phase 2 (Flutter 改)   ─── 3 天 ──┤
-                                   │
-                                   ▼
-                        全量编译 + 一次性部署上线
+Phase 0 (基础修复)        ─── 3 天 ───┐
+                                      ├── 代码积累，不部署
+Phase 1 (prebuilt 重构)   ─── 2 周 ───┤
+                                      ├── 代码积累，不部署
+Phase 1.5 (测试迁移+TDD)  ─── 2 天 ───┤
+                                      ├── 代码积累，不部署
+Phase 2 (Flutter 改)      ─── 3 天 ───┤
+                                      │
+                                      ▼
+                           全量编译 + 一次性部署上线
 ```
 
 ### 不部署的后果
@@ -185,6 +187,23 @@ Phase 2 (Flutter 改)   ─── 3 天 ──┤
 | P1-18 | 编译 + cargo test | — | 2h |
 | | **Phase 1 合计** | **10+ 文件** | **~60h** |
 
+### Phase 1.5：测试迁移 + TDD 先行（2 天）
+
+**强制原则**: 测试必须**先于**生产代码改造。所有测试文件改造完成后，`cargo test` 必须通过（测试旧结构生产代码）。在 Phase 1 生产代码已改但测试未改的"真空期"中，测试跑不通——本 phase 就是填补这个真空期。
+
+**⚠️ 关键风险**: `card_repository.rs` 的生产代码仍使用旧 `cards` 表，是 Phase 1 的漏网之鱼。必须同步改造，否则测试引用的被测代码本身已不一致。
+
+| # | 任务 | 涉及文件 | 预估 |
+|---|------|---------|:----:|
+| PT-1 | **`card_repository.rs` 生产代码改造** — `FROM cards` → `FROM user_cards`；`INSERT INTO cards` → `INSERT INTO user_cards` + 按 domain 写子表；`INSERT INTO card_memory (card_id)` → `(card_id, user_card_id)` | `card_engine/src/card_repository.rs` | 3h |
+| PT-2 | **`e2e_runner.rs` 辅助函数改造** — `INSERT INTO cards` → `INSERT INTO user_cards` | `api_server/src/e2e_runner.rs` | 1h |
+| PT-3 | **`card_repository.rs` 测试 DDL 改造** — `CREATE TABLE cards` → `CREATE TABLE user_cards`、`CREATE TABLE plan_runs`、`CREATE TABLE prebuilt_cards`、`CREATE TABLE prebuilt_*_cards`；`card_memory` 加 `user_card_id` 列 | `card_engine/src/card_repository.rs` (#[cfg(test)] 模块) | 2h |
+| PT-4 | **`e2e_api_lifecycle.rs` 测试改造** — `FROM cards` → `FROM user_cards`（1 处） | `api_server/tests/e2e_api_lifecycle.rs` | 0.5h |
+| PT-5 | **`e2e_k12_extra_lifecycle.rs` 测试改造** — `INSERT INTO conversation_plans` → `INSERT INTO plan_runs`（3 处，注意 `domain` 列必须填写） | `api_server/tests/e2e_k12_extra_lifecycle.rs` | 1h |
+| PT-6 | **`e2e_pipeline_test.rs` 测试改造** — `conversation_plans` → `plan_runs`（1 处）；`DELETE FROM cards` → `DELETE FROM user_cards`（1 处）；`FROM cards` → `FROM user_cards`（1 处）；更新 `card_repository::insert_card` 调用兼容性 | `src/bin/e2e_pipeline_test.rs` | 1.5h |
+| PT-7 | `cargo test` 全量验证 + e2e 测试编译 | — | 1h |
+| | **Phase 1.5 合计** | **7 个任务，5 个文件** | **~10h** |
+
 ### Phase 2：Flutter PlanProvider（收尾，3-5 天）
 
 | # | 任务 | 涉及文件 | 预估 |
@@ -256,10 +275,27 @@ flowchart TD
         P2_1 --> P2_5 --> P2_6
     end
     
-    Phase0 --> Phase1 --> Phase2
+    Phase0 --> Phase1 --> Phase1_5 --> Phase2
+
+    subgraph Phase1_5["Phase 1.5: 测试迁移 (2d)"]
+        PT1["PT-1: card_repository 生产代码"]
+        PT2["PT-2: e2e_runner 辅助函数"]
+        PT3["PT-3: card_repository 测试 DDL"]
+        PT4["PT-4: e2e_api_lifecycle"]
+        PT5["PT-5: e2e_k12_extra_lifecycle"]
+        PT6["PT-6: e2e_pipeline_test"]
+        PT7["PT-7: cargo test 全量验证"]
+        
+        PT1 --> PT3
+        PT2 --> PT7
+        PT3 --> PT4 --> PT7
+        PT3 --> PT5 --> PT7
+        PT3 --> PT6 --> PT7
+    end
     
     style Phase0 fill:#e1f5fe,stroke:#0288d1
     style Phase1 fill:#fff3e0,stroke:#f57c00
+    style Phase1_5 fill:#fce4ec,stroke:#c62828
     style Phase2 fill:#e8f5e9,stroke:#388e3c
 ```
 
@@ -288,25 +324,31 @@ flowchart TD
 | P2 | `app/lib/providers/plan_provider.dart` | 新增 | ~120 | 中 |
 | P2 | `app/lib/screens/chat_screen.dart` | provider 适配 | ~40 | 中 |
 | P2 | `app/lib/screens/review_screen.dart` | provider 适配 | ~50 | 中 |
-| P2 | `app/lib/screens/card_list_screen.dart` | provider 适配 | ~30 | 低 |
-| P2 | `app/lib/screens/achievements_screen.dart` | provider 适配 | ~20 | 低 |
-| | **总计** | **~21 个文件** | **~+1000/-200** | |
+| P1.5 | `card_engine/src/card_repository.rs` | 生产代码 + 测试 DDL 改造 | ~100 | 中 |
+| P1.5 | `api_server/src/e2e_runner.rs` | INSERT INTO cards → user_cards | ~20 | 低 |
+| P1.5 | `api_server/tests/e2e_api_lifecycle.rs` | FROM cards → user_cards | ~5 | 低 |
+| P1.5 | `api_server/tests/e2e_k12_extra_lifecycle.rs` | INSERT INTO conversation_plans → plan_runs | ~15 | 中 |
+| P1.5 | `src/bin/e2e_pipeline_test.rs` | 3 处旧表引用迁移 | ~20 | 中 |
+| | **总计** | **~26 个文件** | **~+1100/-300** | |
 
 ---
 
 ## 6. 时间线
 
 ```
-Phase 0 (20h ≈ 3天) ── 并行：基础修复 + plan_id 缓存
+Phase 0 (20h ≈ 3天) ────── 基础修复 + plan_id 缓存
          │
          ▼
-Phase 1 (60h ≈ 2周) ── 核心：prebuilt schema 重构
+Phase 1 (60h ≈ 2周) ────── Prebuilt Schema 重构
          │
          ▼
-Phase 2 (24h ≈ 3天) ── 收尾：Flutter PlanProvider
+Phase 1.5 (10h ≈ 2天) ──── 测试迁移 + TDD 先行
          │
          ▼
-      部署上线
+Phase 2 (24h ≈ 3天) ────── Flutter PlanProvider
+         │
+         ▼
+      一次性部署上线
 ```
 
 ---
