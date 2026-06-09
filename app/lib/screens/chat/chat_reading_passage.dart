@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../api/chat_client.dart';
@@ -47,32 +46,21 @@ class _ChatReadingPassageState extends State<ChatReadingPassage> {
   }
 
   String _extractFullText(Map<String, dynamic> card) {
-    // Try direct full_text field first
+    // 优先取顶层 full_text 字段（后端已平铺）
     final ft = card['full_text'] as String?;
     if (ft != null && ft.isNotEmpty) return ft;
-    // Try parsing back JSON
+    // V4 回退：back 本身已是纯文本（literature 卡片的 plt.full_text）
     final back = card['back'];
-    if (back is String) {
-      try {
-        final parsed = jsonDecode(back) as Map<String, dynamic>;
-        return parsed['full_text'] as String? ?? '';
-      } catch (_) {}
-    } else if (back is Map) {
-      return (back as Map<String, dynamic>)['full_text'] as String? ?? '';
+    if (back is String && !back.startsWith('{') && !back.startsWith('[')) {
+      return back;
     }
     return '';
   }
 
   String _extractTranslation(Map<String, dynamic> card) {
-    final back = card['back'];
-    if (back is String) {
-      try {
-        final parsed = jsonDecode(back) as Map<String, dynamic>;
-        return parsed['translation'] as String? ?? '';
-      } catch (_) {}
-    } else if (back is Map) {
-      return (back as Map<String, dynamic>)['translation'] as String? ?? '';
-    }
+    // 取顶层 translation 字段（后端已平铺）
+    final t = card['translation'] as String?;
+    if (t != null && t.isNotEmpty) return t;
     return '';
   }
 

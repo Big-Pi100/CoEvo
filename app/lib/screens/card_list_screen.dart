@@ -66,10 +66,9 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
       if (mounted) setState(() => _isLoading = false);
       return;
     }
-    // 从 PlanProvider 读取已缓存的 plans，不做重复 API 请求
-    // 如果 plans 尚未加载，首次会触发 loadPlans
-    final planState = ref.read(planProvider);
-    if (!planState.isLoading && planState.plans.isEmpty) {
+    // 从 PlanProvider 读取已缓存的 plans
+    // 如果 plans 尚未加载，触发一次加载
+    if (ref.read(planProvider).plans.isEmpty) {
       final client = ChatClient(userId: auth.userId!, token: auth.token);
       await ref.read(planProvider.notifier).loadPlans(client);
       if (!mounted) return;

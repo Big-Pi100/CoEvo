@@ -2423,7 +2423,8 @@ async fn k12_reading_current_card_handler(
     let current_card: Option<serde_json::Value> = first_card_uuid.and_then(|uuid| {
         conn.query_row(
             "SELECT c.id, pc.card_type, c.front,
-                    COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') as back
+                    COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') as back,
+                    plt.translation
              FROM user_cards c
              LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
              LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.id
@@ -2437,25 +2438,35 @@ async fn k12_reading_current_card_handler(
                 let card_type: String = row.get(1)?;
                 let front: String = row.get(2)?;
                 let back: String = row.get(3)?;
-                // 尝试解析 back 为 JSON（poem 卡片）
+                let translation: Option<String> = row.get(4)?;
+                // 尝试解析 back 为 JSON（poem/song 卡片）
                 let back_val: serde_json::Value = if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&back) {
                     parsed
                 } else {
-                    serde_json::Value::String(back)
+                    serde_json::Value::String(back.clone())
                 };
-                // Plan A: 将 back JSON 中的阅读卡片字段平铺到顶层
                 let mut resp = serde_json::json!({
                     "id": id,
                     "card_type": card_type,
                     "front": front,
                     "back": back_val,
                 });
+                // 平铺 back 中的字段到顶层（poem/song 卡片）
                 if let Some(obj) = back_val.as_object() {
-                    // 按 ReadingFullTextScreen 需要的字段逐个平铺
                     for key in &["full_text", "author", "famous_lines", "imagery", "technique", "theme", "common_mistakes", "dynasty", "level", "tags"] {
                         if let Some(val) = obj.get(*key) {
                             resp[*key] = val.clone();
                         }
+                    }
+                }
+                // 纯文本 back（literature 卡片）：direct 设为 full_text
+                if back_val.is_string() {
+                    resp["full_text"] = serde_json::Value::String(back);
+                }
+                // 译文
+                if let Some(t) = translation {
+                    if !t.is_empty() {
+                        resp["translation"] = serde_json::Value::String(t);
                     }
                 }
                 Ok(resp)
