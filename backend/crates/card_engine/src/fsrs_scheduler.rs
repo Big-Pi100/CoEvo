@@ -11,6 +11,7 @@ use shared_types::growth::AchievementContext;
 use chrono::Utc;
 use rusqlite::Connection;
 use crate::fsrs5::{self, FsrsMemory, Rating};
+use serde_json;
 
 /// 待复习的卡片 (用于 UI 展示)
 #[derive(Debug, Clone, serde::Serialize)]
@@ -55,7 +56,11 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64, offset: i64, 
                 c.domain, COALESCE(pc.card_type, '') as card_type, NULL as source_sentence,
                 cm.state, cm.reps, cm.lapses, 0, cm.difficulty, cm.due, cm.last_review,
                 (SELECT rating FROM review_log WHERE card_id = c.id ORDER BY reviewed_at DESC LIMIT 1),
-                pr.conversation_id
+                pr.conversation_id,
+                plc.definitions,
+                plc.pronunciation,
+                plc.related_phrases,
+                plc.pos
          FROM user_cards c
          LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
          LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.id
@@ -76,23 +81,59 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64, offset: i64, 
 
     let cards: Vec<DueCard> = stmt.query_map(
         rusqlite::params![user_id, now, limit, offset],
-        |row| Ok(DueCard {
-            id: row.get(0)?,
-            front: row.get(1)?,
-            back: row.get(2)?,
-            domain: row.get(3)?,
-            card_type: row.get(4)?,
-            source_sentence: row.get(5)?,
-            state: row.get(6)?,
-            reps: row.get(7)?,
-            lapses: row.get(8)?,
-            created_at: row.get(9)?,
-            difficulty: row.get(10)?,
-            due: row.get(11)?,
-            last_review: row.get(12)?,
-            last_review_quality: row.get(13)?,
-            conversation_id: row.get(14)?,
-        })
+        |row| {
+            let mut card = DueCard {
+                id: row.get(0)?,
+                front: row.get(1)?,
+                back: row.get(2)?,
+                domain: row.get(3)?,
+                card_type: row.get(4)?,
+                source_sentence: row.get(5)?,
+                state: row.get(6)?,
+                reps: row.get(7)?,
+                lapses: row.get(8)?,
+                created_at: row.get(9)?,
+                difficulty: row.get(10)?,
+                due: row.get(11)?,
+                last_review: row.get(12)?,
+                last_review_quality: row.get(13)?,
+                conversation_id: row.get(14)?,
+            };
+            // 词汇卡：构造 JSON back（复用 V3 前端的 _buildJsonBack 渲染）
+            if card.card_type == "vocabulary" {
+                let defs_str: Option<String> = row.get(15).ok().unwrap_or_default();
+                let pronunciation: Option<String> = row.get(16).ok().unwrap_or_default();
+                let related_phrases: Option<String> = row.get(17).ok().unwrap_or_default();
+                let pos: Option<String> = row.get(18).ok().unwrap_or_default();
+
+                let defs_val: serde_json::Value = defs_str.as_deref()
+                    .and_then(|s| serde_json::from_str(s).ok())
+                    .unwrap_or(serde_json::Value::Null);
+
+                let subject = card.domain.as_deref().unwrap_or("language");
+
+                // 中文词汇卡：{character, pinyin, definitions, related_phrases}
+                // 英文词汇卡：{word, phonetic, pos, definitions, collocations}
+                let json_back = if subject == "chinese" || subject == "japanese" {
+                    serde_json::json!({
+                        "character": card.front,
+                        "pinyin": pronunciation.unwrap_or_default(),
+                        "definitions": defs_val,
+                        "common_words": related_phrases.unwrap_or_default(),
+                    })
+                } else {
+                    serde_json::json!({
+                        "word": card.front,
+                        "phonetic": pronunciation.unwrap_or_default(),
+                        "pos": pos.unwrap_or_default(),
+                        "definitions": defs_val,
+                        "collocations": related_phrases.unwrap_or_default(),
+                    })
+                };
+                card.back = serde_json::to_string(&json_back).unwrap_or(card.back);
+            }
+            Ok(card)
+        }
     ).unwrap().filter_map(|r| r.ok()).collect();
 
     let total_sql = format!(

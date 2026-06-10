@@ -6,7 +6,7 @@
 请输出 JSON 格式的学习计划，包含：
 - goal: 简洁的学习目标（**15字以内**，概括即可，如"一元二次方程求解"、"Python入门"）
 - stages: 阶段数组，每个阶段包含 name、tasks 数组
-- 每项 task 包含 name、description
+- 每项 task 包含 name、description，name必须是有完整语义的概念
 - completed_concepts: []
 - current_task_complete: false
 - next_stage_suggestion: null
