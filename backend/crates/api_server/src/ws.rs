@@ -457,11 +457,13 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 let _cold_turn = current_turn;
                 // 获取 domain 用于概念提取管线路由
                 let conv_id = &chat_req.conversation_id;
-                let (extract_domain, _, extract_plan_ctx) = {
+                let (extract_domain, extract_mode, extract_plan_ctx) = {
                     let conn = crate::db_pool::get_conn();
                     let pid = crate::plan_handler::resolve_plan_id(&conn, conv_id).unwrap_or_default();
                     crate::plan_handler::build_plan_context(&conn, &pid, conv_id)
                 };
+                tracing::info!("[CP1] build_plan_context: domain={}, mode={}, plan_ctx=[{}]",
+                    extract_domain, extract_mode, extract_plan_ctx);
                 // CP2 需要 final_reply，但 CP1 spawn 会 move 走它，提前 clone
                 let cp2_reply = final_reply.clone();
                 // ❄️ ColdPath 1: 概念提取 — 仅在 CP2 创建 plan 后运行
@@ -472,7 +474,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 let cold_tx = cold_tx.clone();
                 let cold_turn = current_turn;
                 let history_clone = history.clone();
-                let ctx = extract_plan_ctx.clone();
+                let ctx = String::new();  // CP1 不需要 plan_context
                 let ed = extract_domain.clone();
                 let fr = final_reply.clone();
                 let conv_id_cp1 = chat_req.conversation_id.clone();
@@ -482,13 +484,18 @@ pub async fn handle_ws(mut ws: WebSocket) {
 
                         let ef: Vec<String> = {
                             let mut stmt = match conn.prepare(
-                                "SELECT LOWER(COALESCE(c.front, pc.front)) FROM user_cards c LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id = ?1 AND cm.status = 'active'"
+                                "SELECT LOWER(COALESCE(c.front, pc.front)) FROM user_cards c \
+                                 LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id \
+                                 JOIN card_memory cm ON c.id=cm.user_card_id \
+                                 WHERE c.user_id = ?1 AND cm.status = 'active' \
+                                   AND c.plan_run_id = (SELECT id FROM plan_runs WHERE conversation_id = ?2) \
+                                   AND c.task_key = (SELECT task_key FROM user_plan_progress WHERE plan_id = c.plan_run_id AND status = 'in_progress' LIMIT 1)"
                             ) {
                                 Ok(s) => s,
                                 Err(_) => break 'db None,
                             };
                             let rows = match stmt.query_map(
-                                rusqlite::params![user_id],
+                                rusqlite::params![user_id, conv_id_cp1],
                                 |row| row.get::<_, String>(0)
                             ) {
                                 Ok(r) => r,
@@ -576,41 +583,58 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         let r: Vec<serde_json::Value> = extraction.candidates.iter().map(|c| {
                             let card_id = uuid::Uuid::new_v4().to_string();
                             let now = chrono::Utc::now().timestamp();
+                            tracing::info!("[CP1] inserting candidate: front={}, domain={}", c.front, c.domain);
                             // 1. 写入 user_cards（主表）
-                            let _ = conn.execute(
+                            if let Err(e) = conn.execute(
                                 "INSERT INTO user_cards (id, user_id, plan_run_id, prebuilt_card_id, domain, front, status, task_key, created_at)
                                  VALUES (?1, ?2, ?3, NULL, ?4, ?5, 'pending', ?6, ?7)",
                                 rusqlite::params![card_id, user_id, plan_run_id, c.domain, c.front,
                                     if cp1_task_key.is_empty() { None } else { Some(&cp1_task_key) },
                                     now],
-                            );
+                            ) {
+                                tracing::warn!("[CP1] user_cards insert failed: {}", e);
+                                return json!({"id": "", "error": format!("user_cards: {}", e)});
+                            }
                             // 2. 根据 domain 写入对应的 user_*_cards 子表
-                            match c.domain.as_str() {
+                            //    c.back 是 V4 格式的 JSON blob，解析后提取对应字段
+                            let back_val: serde_json::Value = serde_json::from_str(&c.back).unwrap_or(serde_json::Value::Null);
+                            let sub_result = match c.domain.as_str() {
                                 "science" => {
-                                    let _ = conn.execute(
+                                    let def = back_val.get("definition").and_then(|v| v.as_str()).unwrap_or(&c.back);
+                                    conn.execute(
                                         "INSERT INTO user_science_cards (id, definition, source) VALUES (?1, ?2, ?3)",
-                                        rusqlite::params![card_id, c.back, c.source_sentence],
-                                    );
-                                }
+                                        rusqlite::params![card_id, def, c.source_sentence],
+                                    )
+                                },
                                 "language" => {
-                                    let _ = conn.execute(
+                                    let pron = back_val.get("pronunciation").and_then(|v| v.as_str()).unwrap_or("");
+                                    let phrases = back_val.get("related_phrases").and_then(|v| v.as_str()).unwrap_or("");
+                                    conn.execute(
                                         "INSERT INTO user_language_cards (id, pronunciation, related_phrases) VALUES (?1, ?2, ?3)",
-                                        rusqlite::params![card_id, c.back, c.source_sentence],
-                                    );
-                                }
+                                        rusqlite::params![card_id, pron, phrases],
+                                    )
+                                },
                                 "literature" => {
-                                    let _ = conn.execute(
+                                    let ft = back_val.get("full_text").and_then(|v| v.as_str()).unwrap_or(&c.back);
+                                    conn.execute(
                                         "INSERT INTO user_literature_cards (id, full_text) VALUES (?1, ?2)",
-                                        rusqlite::params![card_id, c.back],
-                                    );
-                                }
+                                        rusqlite::params![card_id, ft],
+                                    )
+                                },
                                 "humanities" => {
-                                    let _ = conn.execute(
+                                    let body = back_val.get("body").and_then(|v| v.as_str()).unwrap_or(&c.back);
+                                    conn.execute(
                                         "INSERT INTO user_humanities_cards (id, body) VALUES (?1, ?2)",
-                                        rusqlite::params![card_id, c.back],
-                                    );
+                                        rusqlite::params![card_id, body],
+                                    )
+                                },
+                                _ => {
+                                    tracing::warn!("[CP1] unknown domain '{}' for card '{}', no sub-table insert", c.domain, c.front);
+                                    Ok(0)
                                 }
-                                _ => {}
+                            };
+                            if let Err(e) = sub_result {
+                                tracing::warn!("[CP1] sub-table insert failed for domain={}, front={}: {}", c.domain, c.front, e);
                             }
                             // 3. card_memory: 状态数据（user_card_id 指向 user_cards.id）
                             let _ = conn.execute(
@@ -630,7 +654,10 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         let conn = crate::db_pool::get_conn();
                         crate::achievement_engine::publish(&conn, crate::achievement_engine::AppEvent::CardCreated { user_id });
                     }
-                    let _ = cold_tx.send((cold_turn, pending_candidates)).await;
+                    let send_result = cold_tx.send((cold_turn, pending_candidates)).await;
+                    if let Err(e) = send_result {
+                        tracing::warn!("[CP1] cold_tx.send failed: {:?}", e);
+                    }
                 });
 
                 // ❄️ ColdPath 2: 计划进度分析（轻量，每轮检测）

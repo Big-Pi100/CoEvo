@@ -18,3 +18,10 @@
 
 只返回 JSON，不要加其他文字：
 {{"is_new_plan": true, "goal": "...", "domain": "...", "stages": [...], "completed_concepts": [], "current_task_complete": false, "next_stage_suggestion": null}}
+
+关于 domain 字段：
+- "science": 物理、化学、生物、数学、地理、信息技术等自然科学
+- "language": 语言类（英文、中文、日文等）的词汇、语法、发音学习
+- "literature": 文学类（诗歌、散文、小说、寓言等）的赏析与理解
+- "humanities": 历史、政治等社会科学
+- 根据对话内容选择最合适的 domain，不要自造 domain 值
