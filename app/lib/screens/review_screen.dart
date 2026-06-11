@@ -75,8 +75,11 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
 
   // 计划标签 & domain 过滤
   late TabController _tabController;
-  // 当前显示的最大 tab 数（plans.length + 1），防止 TabController index 越界
+  // 当前显示的最大 tab 数（plans.length + 1 + languageTabs），防止 TabController index 越界
   int _effectiveTabCount = 2;
+  // 当前选中的语言（英语 tab 选中时='english'，否则为 null）
+  String? _selectedLanguage;
+  static const int _languageTabCount = 2;  // 英语 + 汉语常驻 tab
 
   @override
   void initState() {
@@ -120,18 +123,36 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
 
   void _onTabSelected(int index) {
     final plans = ref.read(planProvider).plans;
-    if (index < plans.length) {
-      final convId = plans[index].conversationId ?? '';
+    if (index < _languageTabCount) {
+      // 语言 tab — 清除 conversation 选择，走 language 过滤
+      final lang = _languageTabCount > 1 && index == 1 ? 'chinese' : 'english';
+      debugPrint('[CP1] _onTabSelected: language tab index=$index, lang=$lang');
+      ref.read(planProvider.notifier).selectConversation(null);
+      setState(() {
+        _selectedLanguage = lang;
+        _activeCardIndex = -1;
+        _resetInlineReview();
+        _isLoading = true;
+      });
+      _loadCards(language: lang);
+    } else if (index < _languageTabCount + plans.length) {
+      // plan tab
+      final planIndex = index - _languageTabCount;
+      final convId = plans[planIndex].conversationId ?? '';
+      debugPrint('[CP1] _onTabSelected: plan tab index=$index, convId=$convId, goal=${plans[planIndex].goal}');
       ref.read(planProvider.notifier).selectConversation(convId);
       setState(() {
+        _selectedLanguage = null;
         _activeCardIndex = -1;
         _resetInlineReview();
         _isLoading = true;
       });
       _loadCards(convId: convId);
     } else {
+      // 全部卡片 tab
       ref.read(planProvider.notifier).selectConversation(null);
       setState(() {
+        _selectedLanguage = null;
         _activeCardIndex = -1;
         _resetInlineReview();
         _isLoading = true;
@@ -157,7 +178,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
     await ref.read(planProvider.notifier).loadPlans(client);
     if (!mounted) return;
     final plans = ref.read(planProvider).plans;
-    final newTabCount = plans.length + 1;
+    final newTabCount = _languageTabCount + plans.length + 1;  // 语言tab + plan tabs + 全部卡片
     setState(() => _effectiveTabCount = newTabCount);
     // TabController 不销毁重建，只记录有效 tab 数
     if (_tabController.index >= _effectiveTabCount) {
@@ -212,7 +233,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
     );
   }
 
-  Future<void> _loadCards({String? convId}) async {
+  Future<void> _loadCards({String? convId, String? language}) async {
     final auth = ref.read(authProvider);
     if (auth.userId == null) {
       if (mounted) setState(() => _isLoading = false);
@@ -224,8 +245,13 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
       return;
     }
     try {
-      final cid = convId ?? ref.read(planProvider).selectedConversationId;
-      final resp = await _client!.getDueCards(conversationId: cid, limit: 20, offset: 0);
+      final lang = language ?? _selectedLanguage;
+      // 语言 tab 时强制清除 conversation_id，不走 plan-based 查询
+      final cid = (lang != null) ? null : (convId ?? ref.read(planProvider).selectedConversationId);
+      debugPrint('[CP1] _loadCards: convId=$cid, language=$lang, selectedLanguage=$_selectedLanguage');
+      final resp = await _client!.getDueCards(conversationId: cid, language: lang, limit: 20, offset: 0);
+      final cardsCount = (resp['cards'] as List?)?.length ?? 0;
+      debugPrint('[CP1] _loadCards result: ${cardsCount} cards, total_due=${resp["total_due"]}');
       setState(() {
         _cards = (resp['cards'] as List<dynamic>?)
             ?.map((e) => DueCard.fromJson(e as Map<String, dynamic>))
@@ -248,7 +274,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
     try {
       final offset = _cards.length;
       final cid = ref.read(planProvider).selectedConversationId;
-      final resp = await _client!.getDueCards(conversationId: cid, limit: 10, offset: offset);
+      final resp = await _client!.getDueCards(conversationId: cid, language: _selectedLanguage, limit: 10, offset: offset);
       final newCards = (resp['cards'] as List<dynamic>?)
           ?.map((e) => DueCard.fromJson(e as Map<String, dynamic>))
           .toList() ?? [];
@@ -654,6 +680,9 @@ Row(
           controller: _tabController,
           labelColor: Theme.of(context).colorScheme.onSurface,
           tabs: [
+            // 常驻语言 tab（前置于所有 plan tab）
+            const Tab(child: SizedBox(width: 90, child: Text('英语', overflow: TextOverflow.ellipsis, maxLines: 1))),
+            const Tab(child: SizedBox(width: 90, child: Text('汉语', overflow: TextOverflow.ellipsis, maxLines: 1))),
             ...plans.map((p) {
               final count = _planDueCount(p);
               final label = _planLabel(p);
@@ -674,6 +703,10 @@ Row(
       body: TabBarView(
         controller: _tabController,
         children: [
+          // 英语 tab（复用复习视图，card 已由 _loadCards 加载）
+          _buildReviewTab(null),
+          // 汉语 tab
+          _buildReviewTab(null),
           ...plans.map((p) => _buildReviewTab(p.conversationId)),
           const CardListScreen(embedded: true),  // 全部卡片
         ],
@@ -999,11 +1032,6 @@ Row(
                         );
                       }
                     });
-                    // 预生成 AI 问题（非拼写验证类卡片）
-                    final strategy = resolveStrategy(card);
-                    if (!strategy.isSpellingBased) {
-                      _preloadAiQuestions(card);
-                    }
                   }
                 },
               ),

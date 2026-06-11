@@ -116,6 +116,11 @@ class PlanNotifier extends StateNotifier<PlanState> {
     state = state.copyWith(selectedConversationId: id);
   }
 
+  /// 更新 plans 列表（用于前端过滤）
+  void updatePlans(List<PlanData> newPlans) {
+    state = state.copyWith(plans: newPlans);
+  }
+
   void clear() {
     state = const PlanState();
   }

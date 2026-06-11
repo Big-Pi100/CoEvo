@@ -36,6 +36,228 @@ struct RawChatRequest {
     token: Option<String>,
 }
 
+/// B1: AI 回复 → 词汇激活（匹配 prebuilt_cards，纯规则，0 LLM）
+/// 在 has_prebuilt_vocab 分支中调用，静默将匹配到的词汇加入 FSRS 复习队列
+fn activate_from_ai_reply(conn: &rusqlite::Connection, user_id: &str, ai_reply: &str, subject: &str) {
+    // 从 prebuilt_cards 加载该科目的所有词汇 front
+    let mut stmt = match conn.prepare("SELECT front FROM prebuilt_cards WHERE subject = ?1") {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("[CP1] activate_from_ai_reply: prepare failed for subject={}: {}", subject, e);
+            return;
+        }
+    };
+    let fronts: Vec<String> = match stmt.query_map(rusqlite::params![subject], |row| row.get::<_, String>(0)) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(e) => {
+            tracing::warn!("[CP1] activate_from_ai_reply: query failed for subject={}: {}", subject, e);
+            return;
+        }
+    };
+    if fronts.is_empty() {
+        tracing::info!("[CP1] activate_from_ai_reply: no prebuilt cards for subject={}", subject);
+        return;
+    }
+    tracing::info!("[CP1] activate_from_ai_reply: loaded {} vocab fronts for subject={}", fronts.len(), subject);
+
+    // 用 HashSet 做 O(1) 匹配
+    let vocab: std::collections::HashSet<String> = fronts.iter()
+        .map(|f| f.to_lowercase()).collect();
+
+    // 中文匹配：每个 prebuilt front 作为子串在 AI reply 中查找
+    let matched: Vec<String> = if subject == "chinese" {
+        fronts.iter()
+            .filter(|f| f.len() >= 2 && ai_reply.contains(&f.to_lowercase()))
+            .cloned()
+            .collect()
+    } else {
+        // 英文匹配：按非英文字符分割后精确匹配
+        ai_reply.split(|c: char| !c.is_ascii_alphabetic())
+            .filter(|w| w.len() >= 2 && vocab.contains(&w.to_lowercase()))
+            .map(|w| w.to_lowercase())
+            .collect()
+    };
+
+    if matched.is_empty() {
+        tracing::info!("[CP1] activate_from_ai_reply: no vocab matched in reply for subject={}, reply_len={}", subject, ai_reply.len());
+        return;
+    }
+    tracing::info!("[CP1] activate_from_ai_reply: matched {} words for subject={}: {:?}", matched.len(), subject, matched);
+
+    let language = if subject == "chinese" { "chinese" } else { "english" };
+    let now = chrono::Utc::now().timestamp();
+
+    for word in &matched {
+        let word_lower = word.to_lowercase();
+
+        // 去重
+        let exists: bool = conn.query_row(
+            "SELECT 1 FROM user_cards WHERE user_id = ?1 AND LOWER(front) = ?2 LIMIT 1",
+            rusqlite::params![user_id, word_lower],
+            |_| Ok(true),
+        ).unwrap_or(false);
+        if exists {
+            continue;
+        }
+
+        activate_single_word(conn, user_id, &word_lower, language, now);
+    }
+}
+
+/// B2: 用户输入 → 激活 + 验证（规则匹配 + LLM 判断）
+/// 在 hot path 中调用，匹配已激活词汇后用 LLM 验证用法
+/// 返回需要在 system context 中注入的纠正信息
+pub async fn verify_user_input(
+    conn: &rusqlite::Connection,
+    user_id: &str,
+    user_message: &str,
+    language: &str,
+    llm_config: &chat_engine::llm_caller::LlmConfig,
+) -> Vec<serde_json::Value> {
+    let mut corrections = Vec::new();
+
+    let mut stmt = match conn.prepare("SELECT front FROM prebuilt_cards WHERE subject = ?1") {
+        Ok(s) => s,
+        Err(_) => return corrections,
+    };
+    let fronts: Vec<String> = match stmt.query_map(rusqlite::params![language], |row| row.get::<_, String>(0)) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(_) => return corrections,
+    };
+    if fronts.is_empty() { return corrections; }
+    let vocab: std::collections::HashSet<String> = fronts.iter().map(|f| f.to_lowercase()).collect();
+
+    let matched: Vec<String> = if language == "chinese" {
+        fronts.iter()
+            .filter(|f| f.len() >= 2 && user_message.contains(&f.to_lowercase()))
+            .cloned()
+            .collect()
+    } else {
+        user_message.split(|c: char| !c.is_ascii_alphabetic())
+            .filter(|w| w.len() >= 2 && vocab.contains(&w.to_lowercase()))
+            .map(|w| w.to_lowercase())
+            .collect()
+    };
+    if matched.is_empty() { return corrections; }
+
+    let now = chrono::Utc::now().timestamp();
+    let today_start = now - (now % 86400);  // 今天的 00:00 UTC
+
+    for word in &matched {
+
+        // 查找用户是否已有该词的激活卡片
+        let card_info: Option<(String, Option<i64>)> = conn.query_row(
+            "SELECT c.id, cm.last_review FROM user_cards c \
+             JOIN card_memory cm ON c.id = cm.user_card_id \
+             WHERE c.user_id = ?1 AND LOWER(c.front) = ?2 AND c.language = 'english' \
+             LIMIT 1",
+            rusqlite::params![user_id, word],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?)),
+        ).ok();
+
+        match card_info {
+            None => {
+                // 未激活 → 首次激活（用户用出说明应认识）
+                activate_single_word(conn, user_id, word, language, now);
+            }
+            Some((card_id, last_review)) => {
+                // 已激活 → 每日频率控制
+                if let Some(lr) = last_review {
+                    if lr >= today_start {
+                        continue; // 今天已经更新过，跳过
+                    }
+                }
+
+                // 调 LLM 验证用法
+                let verify_prompt = std::fs::read_to_string("prompts/verify/verify_usage.md")
+                    .unwrap_or_else(|_| "判断用户是否正确使用了该单词。".to_string());
+                let full_prompt = format!(
+                    "{}\n\nword: {}\nuser_context: {}",
+                    verify_prompt, word, user_message
+                );
+
+                let mut caller = chat_engine::llm_caller::LlmCaller::new(llm_config.clone());
+                match caller.generate("", &full_prompt).await {
+                    Ok(response) => {
+                        if let Ok(result) = serde_json::from_str::<serde_json::Value>(&response) {
+                            let correct = result.get("correct").and_then(|v| v.as_bool()).unwrap_or(false);
+                            if correct {
+                                // 正确使用 → 更新 FSRS
+                                let _ = conn.execute(
+                                    "UPDATE card_memory SET reps = reps + 1, last_review = ?1, \
+                                     due = ?1 + 86400 WHERE user_card_id = ?2 AND last_review < ?3",
+                                    rusqlite::params![now, card_id, today_start],
+                                );
+                                tracing::info!("[CP1] verify_user_input: '{}' used correctly, FSRS updated", word);
+                            } else {
+                                // 用法错误 → 收集纠正信息
+                                if let Some(hint) = result.get("correction_hint").and_then(|v| v.as_str()) {
+                                    if !hint.is_empty() {
+                                        corrections.push(serde_json::json!({
+                                            "word": word,
+                                            "correction_hint": hint,
+                                            "reason": result.get("reason").and_then(|v| v.as_str()).unwrap_or("")
+                                        }));
+                                    }
+                                }
+                                tracing::info!("[CP1] verify_user_input: '{}' used incorrectly, will correct", word);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("[CP1] verify_user_input: LLM call failed for '{}': {}", word, e);
+                    }
+                }
+            }
+        }
+    }
+
+    corrections
+}
+
+/// 激活单个词汇（B1/B2 共用）
+fn activate_single_word(conn: &rusqlite::Connection, user_id: &str, word: &str, language: &str, now: i64) {
+    let word_lower = word.to_lowercase();
+
+    // 查找 prebuilt_card_id（按 subject 匹配）
+    let prebuilt_id: Option<String> = conn.query_row(
+        "SELECT id FROM prebuilt_cards WHERE LOWER(front) = ?1 AND subject = ?2 LIMIT 1",
+        rusqlite::params![word_lower, language],
+        |row| row.get(0),
+    ).ok();
+
+    // 从 prebuilt_language_cards 继承 level
+    let level: String = prebuilt_id.as_ref().and_then(|id| {
+        conn.query_row(
+            "SELECT level FROM prebuilt_language_cards WHERE id = ?1",
+            rusqlite::params![id],
+            |row| row.get::<_, String>(0),
+        ).ok()
+    }).unwrap_or_else(|| "A1".to_string());
+
+    let card_id = uuid::Uuid::new_v4().to_string();
+
+    if let Err(e) = conn.execute(
+        "INSERT INTO user_cards (id, user_id, plan_run_id, prebuilt_card_id, domain, front, status, language, level, created_at)
+         VALUES (?1, ?2, '', ?3, ?4, ?5, 'pending', ?6, ?7, ?8)",
+        rusqlite::params![card_id, user_id, prebuilt_id, language, word,
+            language, level, now],
+    ) {
+        tracing::warn!("[CP1] activate_single_word: user_cards insert failed for '{}': {}", word, e);
+        return;
+    }
+
+    if let Err(e) = conn.execute(
+        "INSERT INTO card_memory (user_card_id, state, status, difficulty, stability, due, last_review, reps, lapses)
+         VALUES (?1, 0, 'active', 0.3, 1.0, ?2, 0, 0, 0)",
+        rusqlite::params![card_id, now],
+    ) {
+        tracing::warn!("[CP1] activate_single_word: card_memory insert failed for '{}': {}", word, e);
+    }
+
+    tracing::info!("[CP1] activate_single_word: activated word='{}', language={}, level={}", word, language, level);
+}
+
 pub async fn handle_ws(mut ws: WebSocket) {
     tracing::info!("handle_ws: new WebSocket connection established");
     // ColdPath 结果通道：后台 task 提取完概念后通过此通道发回
@@ -529,6 +751,11 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     if !has_plan || has_prebuilt_vocab {
                         let skip_reason = if !has_plan { "no plan".to_string() } else { format!("prebuilt vocab subject={}", ed) };
                         tracing::info!("CP1 skipped for turn {}: {}", cold_turn, skip_reason);
+                        // AI 回复中出现预置词汇时静默激活（仅限有 plan 的预置词库科目）
+                        if has_prebuilt_vocab && has_plan {
+                            let conn_activate = crate::db_pool::get_conn();
+                            activate_from_ai_reply(&conn_activate, &user_id, &fr, &ed);
+                        }
                         let _ = cold_tx.send((cold_turn, vec![])).await;
                         return;
                     }
@@ -585,12 +812,17 @@ pub async fn handle_ws(mut ws: WebSocket) {
                             let now = chrono::Utc::now().timestamp();
                             tracing::info!("[CP1] inserting candidate: front={}, domain={}", c.front, c.domain);
                             // 1. 写入 user_cards（主表）
+                            // domain='language' 时记录 language 列，供语言 tab 查询
+                            let card_language = match c.domain.as_str() {
+                                "language" => Some("english"),
+                                _ => None,
+                            };
                             if let Err(e) = conn.execute(
-                                "INSERT INTO user_cards (id, user_id, plan_run_id, prebuilt_card_id, domain, front, status, task_key, created_at)
-                                 VALUES (?1, ?2, ?3, NULL, ?4, ?5, 'pending', ?6, ?7)",
+                                "INSERT INTO user_cards (id, user_id, plan_run_id, prebuilt_card_id, domain, front, status, task_key, language, created_at)
+                                 VALUES (?1, ?2, ?3, NULL, ?4, ?5, 'pending', ?6, ?7, ?8)",
                                 rusqlite::params![card_id, user_id, plan_run_id, c.domain, c.front,
                                     if cp1_task_key.is_empty() { None } else { Some(&cp1_task_key) },
-                                    now],
+                                    card_language, now],
                             ) {
                                 tracing::warn!("[CP1] user_cards insert failed: {}", e);
                                 return json!({"id": "", "error": format!("user_cards: {}", e)});
@@ -629,8 +861,16 @@ pub async fn handle_ws(mut ws: WebSocket) {
                                     )
                                 },
                                 _ => {
-                                    tracing::warn!("[CP1] unknown domain '{}' for card '{}', no sub-table insert", c.domain, c.front);
-                                    Ok(0)
+                                    // 未知 domain：存入 science 子表作为 fallback（definition 最通用）
+                                    let fallback = back_val.get("definition")
+                                        .or_else(|| back_val.get("body"))
+                                        .or_else(|| back_val.get("full_text"))
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or(&c.back);
+                                    conn.execute(
+                                        "INSERT INTO user_science_cards (id, definition, source) VALUES (?1, ?2, ?3)",
+                                        rusqlite::params![card_id, fallback, c.source_sentence],
+                                    )
                                 }
                             };
                             if let Err(e) = sub_result {
@@ -642,7 +882,19 @@ pub async fn handle_ws(mut ws: WebSocket) {
                                  VALUES (?1, ?2, 0, 'pending', 0.3, 1.0, ?3, 0, 0, 0)",
                                 rusqlite::params![card_id, card_id, now],
                             );
-                            json!({"id": card_id, "front": c.front, "back": c.back,
+                            // 为弹窗提取显示用的 back（从 V4 JSON blob 提取主字段）
+                            let display_back = back_val.get("definition")
+                                .or_else(|| back_val.get("body"))
+                                .or_else(|| back_val.get("full_text"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or(if let Some(def) = back_val.get("definitions") {
+                                    // language: 取第一个释义的 meaning
+                                    def.as_array().and_then(|a| a.first())
+                                        .and_then(|f| f.get("meaning"))
+                                        .and_then(|m| m.as_str())
+                                        .unwrap_or(&c.back)
+                                } else { &c.back });
+                            json!({"id": card_id, "front": c.front, "back": display_back,
                                    "source_sentence": c.source_sentence, "domain": &c.domain})
                         }).collect();
                         conn.execute_batch("COMMIT").ok();

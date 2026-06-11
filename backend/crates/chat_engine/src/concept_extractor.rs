@@ -70,91 +70,11 @@ pub async fn extract_concepts(
         !existing_fronts_normalized.contains(&f)
     });
 
-        tracing::info!("[CP1] after dedup: {} candidates ({} filtered out as duplicates)",
-            candidates.len(), existing_fronts.len());
+    tracing::info!("[CP1] after dedup: {} candidates ({} filtered out as duplicates)",
+        candidates.len(), existing_fronts.len());
 
-        // 词库匹配：从 AI 回复中扫描出生词（不额外消耗 LLM）
-        if crate::word_bank::is_loaded() {
-            let matched = crate::word_bank::match_text(ai_reply);
-            // 收集需要 LLM 生成释义的词汇（去重后）
-            let mut vocab_needs_llm: Vec<String> = Vec::new();
-            let mut vocab_candidates: Vec<ConceptCandidate> = Vec::new();
-
-            for m in &matched {
-                let word_lower = m.word.to_lowercase();
-                if existing_fronts_normalized.contains(&word_lower) {
-                    continue;
-                }
-                if candidates.iter().any(|c| c.front.to_lowercase() == word_lower) {
-                    continue;
-                }
-                // 所有词库匹配的都交给 LLM 生成释义
-                vocab_needs_llm.push(m.word.clone());
-            }
-
-            // 批量调用 LLM 为生词生成释义
-            if !vocab_needs_llm.is_empty() {
-                let prompt = format!(
-                    "为以下英语单词生成简洁的单词卡。每个单词包含: front(单词), pronunciation(音标), definitions(中文释义和英文例句), related_phrases(常用搭配)。\
-                     \n返回 JSON 数组，只返回 JSON，不要其他文字。\
-                     \n单词: {}",
-                    vocab_needs_llm.join(", ")
-                );
-                let mut caller = LlmCaller::new(llm_config.clone());
-                if let Ok(text) = caller.generate("", &prompt).await {
-                    let generated = parse_candidates(&text);
-                    for g in generated {
-                        let word_lower = g.front.to_lowercase();
-                        if vocab_needs_llm.iter().any(|w| w.to_lowercase() == word_lower) {
-                            let source = find_source_sentence(ai_reply, &g.front).unwrap_or_default();
-                            vocab_candidates.push(ConceptCandidate {
-                                source_sentence: source,
-                                domain: "vocabulary".to_string(),
-                                ..g
-                            });
-                        }
-                    }
-                } else {
-                    // LLM 不可用时的降级：利用词库自带释义
-                    for m in &matched {
-                        let word_lower = m.word.to_lowercase();
-                        if vocab_needs_llm.iter().any(|w| w.to_lowercase() == word_lower) {
-                            let source = find_source_sentence(ai_reply, &m.word).unwrap_or_default();
-                            let back = m.definition.clone();
-                            let ipa = m.ipa.clone().unwrap_or_default();
-                            let back_with_ipa = if ipa.is_empty() { back } else { format!("/{}/ {}", ipa, back) };
-                            vocab_candidates.push(ConceptCandidate {
-                                front: m.word.clone(),
-                                back: back_with_ipa,
-                                source_sentence: source,
-                                domain: "vocabulary".to_string(),
-                            });
-                        }
-                    }
-                }
-            }
-
-            candidates.extend(vocab_candidates);
-            tracing::info!("[CP1] after vocab matching: total candidates={}", candidates.len());
-        } else {
-            tracing::info!("[CP1] word_bank not loaded, skipping vocab matching");
-        }
-
-        tracing::info!("[CP1] extract_concepts returning: {} candidates, direct_card=false", candidates.len());        ExtractionResult { candidates, direct_card: false }
-}
-
-/// 从回复文本中找包含该词的句子
-fn find_source_sentence(reply: &str, word: &str) -> Option<String> {
-    for line in reply.lines() {
-        if line.to_lowercase().contains(&word.to_lowercase()) {
-            let trimmed = line.trim();
-            if trimmed.len() > 120 {
-                return Some(format!("{}...", &trimmed[..120]));
-            }
-            return Some(trimmed.to_string());
-        }
-    }
-    None
+    tracing::info!("[CP1] extract_concepts returning: {} candidates, direct_card=false", candidates.len());
+    ExtractionResult { candidates, direct_card: false }
 }
 
 /// LLM 提取候选概念（带上下文注入 + domain 路由）

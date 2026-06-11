@@ -1,7 +1,8 @@
 -- CoEvo 数据库 Schema V4
 -- 基于 prebuilt-schema-refactor.md 文档 §3 节
 -- 所有主键/外键统一 UUID v4
--- 生效代码: crates/api_server/src/schema.rs (SCHEMA_SQL + ADMIN_SCHEMA_SQL)
+-- 以下 DDL 应与 crates/api_server/src/schema.rs 保持完全一致
+-- 同步日期: 2026-06-12
 
 -- ── 用户身份（学生/家长/老师 统一存储） ──
 CREATE TABLE IF NOT EXISTS users (
@@ -192,7 +193,7 @@ CREATE TABLE IF NOT EXISTS card_relations (
     from_id TEXT NOT NULL,             -- prebuilt_cards.id 或 user_cards.id
     to_type TEXT NOT NULL,             -- 'prebuilt' | 'user'
     to_id TEXT NOT NULL,               -- prebuilt_cards.id 或 user_cards.id
-    relation_type TEXT NOT NULL,       -- cause|oppose|influence|precede|contemporary_of|locate|contain
+    relation_type TEXT NOT NULL,       -- prerequisite|related|part_of|example_of|contradicts
     description TEXT NOT NULL DEFAULT '',
     metadata TEXT NOT NULL DEFAULT '{}',
     user_id TEXT,                      -- NULL = 全局预置；非 NULL = 用户私有
@@ -204,11 +205,17 @@ CREATE TABLE IF NOT EXISTS card_relations (
 -- ── 预置计划模板 ──
 CREATE TABLE IF NOT EXISTS prebuilt_plans (
     id TEXT PRIMARY KEY,
-    plan_key TEXT NOT NULL UNIQUE,
-    subject TEXT NOT NULL,
+    subject TEXT NOT NULL DEFAULT '',
+    domain TEXT NOT NULL DEFAULT '',
     grade_band TEXT NOT NULL DEFAULT '',
-    goal TEXT NOT NULL,
-    domain TEXT NOT NULL,
+    goal TEXT NOT NULL DEFAULT '',
+    plan_content TEXT,
+    title TEXT NOT NULL DEFAULT '',
+    author TEXT NOT NULL DEFAULT '',
+    display_name TEXT NOT NULL DEFAULT '',
+    visible INTEGER NOT NULL DEFAULT 1,
+    theme_color TEXT NOT NULL DEFAULT '',
+    theme_icon TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -216,8 +223,8 @@ CREATE TABLE IF NOT EXISTS prebuilt_plans (
 CREATE TABLE IF NOT EXISTS prebuilt_stages (
     id TEXT PRIMARY KEY,
     plan_id TEXT NOT NULL,
-    sort INTEGER NOT NULL DEFAULT 0,
-    name TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL,
+    sort_order TEXT NOT NULL DEFAULT '',
     grade_band TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (plan_id) REFERENCES prebuilt_plans(id) ON DELETE CASCADE
 );
@@ -225,15 +232,17 @@ CREATE TABLE IF NOT EXISTS prebuilt_stages (
 -- ── 预置任务 ──
 CREATE TABLE IF NOT EXISTS prebuilt_tasks (
     id TEXT PRIMARY KEY,
-    plan_id TEXT NOT NULL,
     stage_id TEXT NOT NULL,
-    task_key TEXT NOT NULL,
-    name TEXT NOT NULL DEFAULT '',
+    plan_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    task_key TEXT NOT NULL DEFAULT '',
+    prompt_mode TEXT NOT NULL DEFAULT '',
     card_ids TEXT NOT NULL DEFAULT '[]',
-    related_prompts TEXT NOT NULL DEFAULT '[]',
-    sort_order INTEGER NOT NULL DEFAULT 0,
-    FOREIGN KEY (plan_id) REFERENCES prebuilt_plans(id) ON DELETE CASCADE,
-    FOREIGN KEY (stage_id) REFERENCES prebuilt_stages(id) ON DELETE CASCADE
+    dependencies TEXT NOT NULL DEFAULT '[]',
+    origin TEXT NOT NULL DEFAULT '',
+    sort_order TEXT NOT NULL DEFAULT '',
+    FOREIGN KEY (stage_id) REFERENCES prebuilt_stages(id) ON DELETE CASCADE,
+    FOREIGN KEY (plan_id) REFERENCES prebuilt_plans(id) ON DELETE CASCADE
 );
 
 -- ── 计划运行实例（替代旧 conversation_plans） ──

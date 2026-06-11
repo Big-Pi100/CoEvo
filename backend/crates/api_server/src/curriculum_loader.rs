@@ -23,9 +23,23 @@ pub struct PlanFile {
     pub goal: Option<String>,
     pub domain: Option<String>,
     pub stages: Vec<StageData>,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub author: String,
+    #[serde(default)]
+    pub display_name: String,
+    #[serde(default = "default_true")]
+    pub visible: bool,
+    #[serde(default)]
+    pub theme_color: String,
+    #[serde(default)]
+    pub theme_icon: String,
     pub total_stages: Option<i64>,
     pub total_tasks: Option<i64>,
 }
+
+fn default_true() -> bool { true }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct PlanData {
@@ -465,7 +479,11 @@ pub fn write_prebuilt_to_db(conn: &rusqlite::Connection) -> Result<(), String> {
                     .map_err(|e| format!("load plan {}: {}", fname, e))?;
                 let goal = plan_val["goal"].as_str().unwrap_or("");
                 let domain = plan_val["domain"].as_str().unwrap_or("");
-                let plan_id = uuid::Uuid::new_v4().to_string();
+                let plan_id = if let Some(id) = plan_val["id"].as_str() {
+                    id.to_string()
+                } else {
+                    uuid::Uuid::new_v4().to_string()
+                };
 
                 // upsert: 同 subject 先删再插（保证幂等）
                 conn.execute("DELETE FROM prebuilt_tasks WHERE plan_id IN (SELECT id FROM prebuilt_plans WHERE subject=?1)", rusqlite::params![subject]).ok();
@@ -473,8 +491,15 @@ pub fn write_prebuilt_to_db(conn: &rusqlite::Connection) -> Result<(), String> {
                 conn.execute("DELETE FROM prebuilt_plans WHERE subject=?1", rusqlite::params![subject]).ok();
 
                 conn.execute(
-                    "INSERT INTO prebuilt_plans (id, subject, grade_band, goal, domain) VALUES (?1,?2,'',?3,?4)",
-                    rusqlite::params![plan_id, subject, goal, domain],
+                    "INSERT INTO prebuilt_plans (id, subject, grade_band, goal, domain, title, author, display_name, visible, theme_color, theme_icon) VALUES (?1,?2,'',?3,?4,?5,?6,?7,?8,?9,?10)",
+                    rusqlite::params![plan_id, subject, goal, domain,
+                        plan_val["title"].as_str().unwrap_or(""),
+                        plan_val["author"].as_str().unwrap_or(""),
+                        plan_val["display_name"].as_str().unwrap_or(""),
+                        plan_val["visible"].as_bool().unwrap_or(true),
+                        plan_val["theme_color"].as_str().unwrap_or(""),
+                        plan_val["theme_icon"].as_str().unwrap_or(""),
+                    ],
                 ).map_err(|e| format!("insert prebuilt_plans {}: {}", subject, e))?;
 
                 // 写 stages + tasks（规范化表，替代 plan_content JSON）
@@ -482,7 +507,11 @@ pub fn write_prebuilt_to_db(conn: &rusqlite::Connection) -> Result<(), String> {
                     for (si, stage) in stages.iter().enumerate() {
                         let stage_name = stage["name"].as_str().unwrap_or("");
                         let stage_grade = stage["grade_band"].as_str().unwrap_or("");
-                        let stage_id = uuid::Uuid::new_v4().to_string();
+                        let stage_id = if let Some(id) = stage["id"].as_str() {
+                            id.to_string()
+                        } else {
+                            uuid::Uuid::new_v4().to_string()
+                        };
                         conn.execute(
                             "INSERT OR IGNORE INTO prebuilt_stages (id, plan_id, sort_order, name, grade_band) VALUES (?1,?2,?3,?4,?5)",
                             rusqlite::params![stage_id, plan_id, si as i64, stage_name, stage_grade],
@@ -496,7 +525,11 @@ pub fn write_prebuilt_to_db(conn: &rusqlite::Connection) -> Result<(), String> {
                                 let card_ids = task["card_ids"].as_array()
                                     .map(|a| serde_json::to_string(a).unwrap_or_default())
                                     .unwrap_or_default();
-                                let task_id = uuid::Uuid::new_v4().to_string();
+                                let task_id = if let Some(id) = task["id"].as_str() {
+                                    id.to_string()
+                                } else {
+                                    uuid::Uuid::new_v4().to_string()
+                                };
                                 conn.execute(
                                     "INSERT OR IGNORE INTO prebuilt_tasks (id, plan_id, stage_id, task_key, name, prompt_mode, card_ids, sort_order) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
                                     rusqlite::params![task_id, plan_id, stage_id, task_key, task_name, prompt_mode, card_ids, ti as i64],

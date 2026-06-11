@@ -35,24 +35,128 @@ pub struct DueCard {
 }
 
 /// N5: 查询到期卡片（按 task 级过滤，仅返回 in_progress/done 任务的卡片）
-pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64, offset: i64, conv_id: Option<&str>) -> (Vec<DueCard>, i64) {
+pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64, offset: i64, conv_id: Option<&str>, language: Option<&str>) -> (Vec<DueCard>, i64) {
     let now = Utc::now().timestamp();
+    tracing::info!("[CP1] get_due_cards: user_id={}, conv_id={:?}, language={:?}, limit={}, offset={}",
+        user_id, conv_id, language, limit, offset);
 
+    // 语言 tab 独立处理：查 prebuilt_cards 词库（含全部预置词汇），LEFT JOIN user_cards 获取 FSRS 状态
+    if let Some(lang) = language {
+        let subj = match lang {
+            "chinese" => "chinese",
+            _ => "english",
+        };
+        let sql = format!(
+            "SELECT pc.id, pc.front, COALESCE(plc.pronunciation, '') as back,
+                    pc.subject as domain, pc.card_type, NULL as source_sentence,
+                    COALESCE(cm.state, 0), COALESCE(cm.reps, 0), COALESCE(cm.lapses, 0), 0,
+                    COALESCE(cm.difficulty, 5.0), COALESCE(cm.due, 0), cm.last_review,
+                    NULL, NULL,
+                    plc.definitions, plc.pronunciation, plc.related_phrases, plc.pos,
+                    NULL,NULL,NULL,NULL,NULL,  -- usc
+                    NULL,NULL,NULL,NULL,       -- ulc
+                    NULL,NULL,NULL,NULL,       -- ulf
+                    NULL,NULL,NULL,NULL        -- uhc
+             FROM prebuilt_cards pc
+             JOIN prebuilt_language_cards plc ON pc.id = plc.id
+             JOIN user_cards uc ON uc.prebuilt_card_id = pc.id AND uc.user_id = ?1
+             JOIN card_memory cm ON cm.user_card_id = uc.id
+             WHERE pc.subject = ?2 AND pc.card_type = 'vocabulary'
+               AND cm.status = 'active'
+               AND cm.due <= ?3
+             ORDER BY CASE WHEN cm.state = 0 THEN 1 ELSE 0 END, cm.due ASC
+             LIMIT ?4 OFFSET ?5",
+        );
+        tracing::info!("[CP1] get_due_cards language SQL: {}", sql);
+
+        let mut stmt = conn.prepare(&sql).unwrap();
+        let cards: Vec<DueCard> = stmt.query_map(
+            rusqlite::params![user_id, subj, now, limit, offset],
+            |row| {
+                let mut card = DueCard {
+                    id: row.get(0)?,
+                    front: row.get(1)?,
+                    back: row.get(2)?,
+                    domain: row.get(3)?,
+                    card_type: row.get(4)?,
+                    source_sentence: row.get(5)?,
+                    state: row.get(6)?,
+                    reps: row.get(7)?,
+                    lapses: row.get(8)?,
+                    created_at: row.get(9)?,
+                    difficulty: row.get(10)?,
+                    due: row.get(11)?,
+                    last_review: row.get(12)?,
+                    last_review_quality: row.get(13)?,
+                    conversation_id: row.get(14)?,
+                };
+                // 词汇卡：构造 JSON back
+                if card.card_type == "vocabulary" {
+                    let defs_str: Option<String> = row.get(15).ok().unwrap_or_default();
+                    let pronunciation: Option<String> = row.get(16).ok().unwrap_or_default();
+                    let related_phrases: Option<String> = row.get(17).ok().unwrap_or_default();
+                    let pos: Option<String> = row.get(18).ok().unwrap_or_default();
+                    let defs_val: serde_json::Value = defs_str.as_deref()
+                        .and_then(|s| serde_json::from_str(s).ok())
+                        .unwrap_or(serde_json::Value::Null);
+                    let json_back = if subj == "chinese" {
+                        serde_json::json!({
+                            "character": card.front,
+                            "pinyin": pronunciation.unwrap_or_default(),
+                            "definitions": defs_val,
+                            "common_words": related_phrases.unwrap_or_default(),
+                        })
+                    } else {
+                        serde_json::json!({
+                            "word": card.front,
+                            "phonetic": pronunciation.unwrap_or_default(),
+                            "pos": pos.unwrap_or_default(),
+                            "definitions": defs_val,
+                            "collocations": related_phrases.unwrap_or_default(),
+                        })
+                    };
+                    card.back = serde_json::to_string(&json_back).unwrap_or(card.back);
+                }
+                Ok(card)
+            }
+        ).unwrap().filter_map(|r| r.ok()).collect();
+
+        let total_sql = format!(
+            "SELECT COUNT(*) FROM prebuilt_cards pc
+             JOIN prebuilt_language_cards plc ON pc.id = plc.id
+             JOIN user_cards uc ON uc.prebuilt_card_id = pc.id AND uc.user_id = ?1
+             JOIN card_memory cm ON cm.user_card_id = uc.id
+             WHERE pc.subject = ?2 AND pc.card_type = 'vocabulary'
+               AND cm.status = 'active'
+               AND cm.due <= ?3"
+        );
+        let total: i64 = conn.query_row(
+            &total_sql,
+            rusqlite::params![user_id, subj, now],
+            |row| row.get(0),
+        ).unwrap_or(0);
+
+        tracing::info!("[CP1] get_due_cards result: returned {} cards, total_due={}", cards.len(), total);
+        return (cards, total);
+    }
+
+    // plan-based 或默认查询（语言查询已在上方独立处理并返回）
     let (where_clause, total_where): (String, String) = if let Some(cid) = conv_id {
         (
-            format!("c.user_id = ?1 AND pr.conversation_id = '{}' AND cm.status = 'active' AND cm.due <= ?2 AND upp.user_id = c.user_id AND upp.status IN ('in_progress', 'done')", cid.replace('\'', "''")),
-            format!("c.user_id = ?1 AND pr.conversation_id = '{}' AND cm.status = 'active' AND cm.due <= ?2 AND upp.user_id = c.user_id AND upp.status IN ('in_progress', 'done')", cid.replace('\'', "''")),
+            format!("c.user_id = ?1 AND pr.conversation_id = '{}' AND cm.status = 'active' AND cm.due <= ?2 AND upp.user_id = c.user_id AND upp.status IN ('in_progress', 'done') AND (pr.subject NOT IN ('english', 'chinese') OR c.prebuilt_card_id IS NULL)", cid.replace('\'', "''")),
+            format!("c.user_id = ?1 AND pr.conversation_id = '{}' AND cm.status = 'active' AND cm.due <= ?2 AND upp.user_id = c.user_id AND upp.status IN ('in_progress', 'done') AND (pr.subject NOT IN ('english', 'chinese') OR c.prebuilt_card_id IS NULL)", cid.replace('\'', "''")),
         )
     } else {
         (
-            "c.user_id = ?1 AND cm.status = 'active' AND cm.due <= ?2".to_string(),
-            "c.user_id = ?1 AND cm.status = 'active' AND cm.due <= ?2".to_string(),
+            "c.user_id = ?1 AND c.plan_run_id != '' AND cm.status = 'active' AND cm.due <= ?2".to_string(),
+            "c.user_id = ?1 AND c.plan_run_id != '' AND cm.status = 'active' AND cm.due <= ?2".to_string(),
         )
     };
 
     let sql = format!(
         "SELECT c.id, COALESCE(c.front, pc.front) as front,
-                COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') as back,
+                COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, 
+                         usc.definition, ulc.pronunciation, ulf.full_text, uhc.body, '') as back,
                 c.domain, COALESCE(pc.card_type, '') as card_type, NULL as source_sentence,
                 cm.state, cm.reps, cm.lapses, 0, cm.difficulty, cm.due, cm.last_review,
                 (SELECT rating FROM review_log WHERE card_id = c.id ORDER BY reviewed_at DESC LIMIT 1),
@@ -60,14 +164,22 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64, offset: i64, 
                 plc.definitions,
                 plc.pronunciation,
                 plc.related_phrases,
-                plc.pos
+                plc.pos,
+                usc.definition, usc.key_elements, usc.applications, usc.related_concepts, usc.source,
+                ulc.pronunciation, ulc.definitions, ulc.related_phrases, ulc.pos,
+                ulf.full_text, ulf.translation, ulf.author, ulf.genre,
+                uhc.body, uhc.period, uhc.region, uhc.tags
          FROM user_cards c
          LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
          LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.id
          LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.id
          LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.id
          LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.id
-         JOIN plan_runs pr ON c.plan_run_id = pr.id
+         LEFT JOIN user_science_cards usc ON c.id = usc.id
+         LEFT JOIN user_language_cards ulc ON c.id = ulc.id
+         LEFT JOIN user_literature_cards ulf ON c.id = ulf.id
+         LEFT JOIN user_humanities_cards uhc ON c.id = uhc.id
+         LEFT JOIN plan_runs pr ON c.plan_run_id = pr.id AND c.plan_run_id != ''
          JOIN card_memory cm ON c.id = cm.user_card_id
          LEFT JOIN user_plan_progress upp ON c.plan_run_id = upp.plan_id AND c.task_key = upp.task_key
          WHERE {}
@@ -139,7 +251,7 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64, offset: i64, 
     let total_sql = format!(
         "SELECT COUNT(*) FROM user_cards c
          LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
-         JOIN plan_runs pr ON c.plan_run_id = pr.id
+         LEFT JOIN plan_runs pr ON c.plan_run_id = pr.id AND c.plan_run_id != ''
          JOIN card_memory cm ON c.id = cm.user_card_id
          LEFT JOIN user_plan_progress upp ON c.plan_run_id = upp.plan_id AND c.task_key = upp.task_key
          WHERE {}",
@@ -152,6 +264,7 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64, offset: i64, 
         |row| row.get(0),
     ).unwrap_or(0);
 
+    tracing::info!("[CP1] get_due_cards result: returned {} cards, total_due={}", cards.len(), total);
     (cards, total)
 }
 
@@ -355,7 +468,7 @@ mod tests {
              CREATE TABLE IF NOT EXISTS conversation_turns (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
              CREATE TABLE IF NOT EXISTS prebuilt_cards (id TEXT PRIMARY KEY, card_type TEXT NOT NULL, domain TEXT NOT NULL, subject TEXT NOT NULL DEFAULT '', grade_band TEXT NOT NULL DEFAULT '', front TEXT NOT NULL DEFAULT '', difficulty REAL DEFAULT 0.5, created_at TEXT NOT NULL DEFAULT (datetime('now')));
              CREATE TABLE IF NOT EXISTS plan_runs (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, conversation_id TEXT NOT NULL, prebuilt_plan_id TEXT, subject TEXT NOT NULL DEFAULT '', domain TEXT NOT NULL, grade_band TEXT NOT NULL DEFAULT '', goal TEXT NOT NULL DEFAULT '', plan_content TEXT, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-             CREATE TABLE IF NOT EXISTS user_cards (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, plan_run_id TEXT NOT NULL, prebuilt_card_id TEXT, domain TEXT NOT NULL, front TEXT, status TEXT NOT NULL DEFAULT 'active', task_key TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+             CREATE TABLE IF NOT EXISTS user_cards (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, plan_run_id TEXT DEFAULT '', prebuilt_card_id TEXT, domain TEXT NOT NULL, front TEXT, status TEXT NOT NULL DEFAULT 'active', task_key TEXT, language TEXT, level TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
              CREATE TABLE IF NOT EXISTS card_memory (user_card_id TEXT PRIMARY KEY, state INTEGER DEFAULT 0, status TEXT DEFAULT 'active', difficulty REAL DEFAULT 5.0, stability REAL DEFAULT 0.0, due INTEGER DEFAULT 0, last_review INTEGER, reps INTEGER DEFAULT 0, lapses INTEGER DEFAULT 0);
              CREATE TABLE IF NOT EXISTS review_log (id TEXT PRIMARY KEY, card_id TEXT NOT NULL, user_card_id TEXT REFERENCES user_cards(id) ON DELETE CASCADE, rating INTEGER NOT NULL, verification_type TEXT NOT NULL, verification_result TEXT NOT NULL, details_json TEXT DEFAULT NULL, reviewed_at INTEGER NOT NULL);
              CREATE TABLE IF NOT EXISTS achievements (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, achievement_key TEXT NOT NULL, name TEXT NOT NULL, icon TEXT NOT NULL, tier TEXT DEFAULT 'fixed', source TEXT, unlocked_at TEXT NOT NULL);
@@ -363,7 +476,11 @@ mod tests {
              CREATE TABLE IF NOT EXISTS prebuilt_science_cards (id TEXT PRIMARY KEY, definition TEXT NOT NULL DEFAULT '', key_elements TEXT NOT NULL DEFAULT '', applications TEXT NOT NULL DEFAULT '', related_concepts TEXT NOT NULL DEFAULT '', formula TEXT NOT NULL DEFAULT '', graph TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '', FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE);
              CREATE TABLE IF NOT EXISTS prebuilt_language_cards (id TEXT PRIMARY KEY, pronunciation TEXT NOT NULL DEFAULT '', pos TEXT NOT NULL DEFAULT '', definitions TEXT NOT NULL DEFAULT '[]', related_phrases TEXT NOT NULL DEFAULT '', structure_meta TEXT NOT NULL DEFAULT '', level TEXT NOT NULL DEFAULT '', FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE);
              CREATE TABLE IF NOT EXISTS prebuilt_literature_cards (id TEXT PRIMARY KEY, full_text TEXT NOT NULL DEFAULT '', translation TEXT NOT NULL DEFAULT '', author TEXT NOT NULL DEFAULT '', genre TEXT NOT NULL DEFAULT '', FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE);
-             CREATE TABLE IF NOT EXISTS prebuilt_humanities_cards (id TEXT PRIMARY KEY, node_type TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', period TEXT NOT NULL DEFAULT '', region TEXT NOT NULL DEFAULT '', tags TEXT NOT NULL DEFAULT '[]', FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE);"
+             CREATE TABLE IF NOT EXISTS prebuilt_humanities_cards (id TEXT PRIMARY KEY, node_type TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', period TEXT NOT NULL DEFAULT '', region TEXT NOT NULL DEFAULT '', tags TEXT NOT NULL DEFAULT '[]', FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE);
+             CREATE TABLE IF NOT EXISTS user_science_cards (id TEXT PRIMARY KEY, definition TEXT NOT NULL DEFAULT '', key_elements TEXT NOT NULL DEFAULT '', applications TEXT NOT NULL DEFAULT '', related_concepts TEXT NOT NULL DEFAULT '', formula TEXT NOT NULL DEFAULT '', graph TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '', FOREIGN KEY (id) REFERENCES user_cards(id) ON DELETE CASCADE);
+             CREATE TABLE IF NOT EXISTS user_language_cards (id TEXT PRIMARY KEY, pronunciation TEXT NOT NULL DEFAULT '', pos TEXT NOT NULL DEFAULT '', definitions TEXT NOT NULL DEFAULT '[]', related_phrases TEXT NOT NULL DEFAULT '', structure_meta TEXT NOT NULL DEFAULT '', level TEXT NOT NULL DEFAULT '', FOREIGN KEY (id) REFERENCES user_cards(id) ON DELETE CASCADE);
+             CREATE TABLE IF NOT EXISTS user_literature_cards (id TEXT PRIMARY KEY, full_text TEXT NOT NULL DEFAULT '', translation TEXT NOT NULL DEFAULT '', author TEXT NOT NULL DEFAULT '', genre TEXT NOT NULL DEFAULT '', FOREIGN KEY (id) REFERENCES user_cards(id) ON DELETE CASCADE);
+             CREATE TABLE IF NOT EXISTS user_humanities_cards (id TEXT PRIMARY KEY, node_type TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', period TEXT NOT NULL DEFAULT '', region TEXT NOT NULL DEFAULT '', tags TEXT NOT NULL DEFAULT '[]', FOREIGN KEY (id) REFERENCES user_cards(id) ON DELETE CASCADE);"
         ).unwrap();
         // 插入测试用户
         conn.execute(
@@ -378,7 +495,7 @@ mod tests {
         conn.execute_batch(
             "CREATE TABLE prebuilt_cards (id TEXT PRIMARY KEY, card_type TEXT NOT NULL, domain TEXT NOT NULL, subject TEXT NOT NULL DEFAULT '', grade_band TEXT NOT NULL DEFAULT '', front TEXT NOT NULL DEFAULT '', difficulty REAL DEFAULT 0.5, created_at TEXT NOT NULL DEFAULT (datetime('now')));
              CREATE TABLE plan_runs (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, conversation_id TEXT NOT NULL, domain TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-             CREATE TABLE user_cards (id TEXT PRIMARY KEY, user_id TEXT, plan_run_id TEXT NOT NULL, prebuilt_card_id TEXT, domain TEXT, front TEXT, status TEXT DEFAULT 'active', task_key TEXT, created_at TEXT DEFAULT (datetime('now')));
+             CREATE TABLE user_cards (id TEXT PRIMARY KEY, user_id TEXT, plan_run_id TEXT DEFAULT '', prebuilt_card_id TEXT, domain TEXT, front TEXT, status TEXT DEFAULT 'active', task_key TEXT, language TEXT, level TEXT, created_at TEXT DEFAULT (datetime('now')));
              CREATE TABLE card_memory (user_card_id TEXT PRIMARY KEY, state INTEGER DEFAULT 0, status TEXT DEFAULT 'active', difficulty REAL DEFAULT 5.0, stability REAL DEFAULT 0.0, due INTEGER DEFAULT 0, last_review INTEGER, reps INTEGER DEFAULT 0, lapses INTEGER DEFAULT 0);
              CREATE TABLE review_log (id TEXT PRIMARY KEY, card_id TEXT, user_card_id TEXT, rating INTEGER, verification_type TEXT, verification_result TEXT, reviewed_at INTEGER);
              CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT, streak_days INTEGER DEFAULT 0, last_active_date TEXT, created_at TEXT);
@@ -387,7 +504,11 @@ mod tests {
              CREATE TABLE prebuilt_science_cards (id TEXT PRIMARY KEY, definition TEXT NOT NULL DEFAULT '', key_elements TEXT NOT NULL DEFAULT '', applications TEXT NOT NULL DEFAULT '', related_concepts TEXT NOT NULL DEFAULT '', formula TEXT NOT NULL DEFAULT '', graph TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '', FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE);
              CREATE TABLE prebuilt_language_cards (id TEXT PRIMARY KEY, pronunciation TEXT NOT NULL DEFAULT '', pos TEXT NOT NULL DEFAULT '', definitions TEXT NOT NULL DEFAULT '[]', related_phrases TEXT NOT NULL DEFAULT '', structure_meta TEXT NOT NULL DEFAULT '', level TEXT NOT NULL DEFAULT '', FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE);
              CREATE TABLE prebuilt_literature_cards (id TEXT PRIMARY KEY, full_text TEXT NOT NULL DEFAULT '', translation TEXT NOT NULL DEFAULT '', author TEXT NOT NULL DEFAULT '', genre TEXT NOT NULL DEFAULT '', FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE);
-             CREATE TABLE prebuilt_humanities_cards (id TEXT PRIMARY KEY, node_type TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', period TEXT NOT NULL DEFAULT '', region TEXT NOT NULL DEFAULT '', tags TEXT NOT NULL DEFAULT '[]', FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE);"
+             CREATE TABLE prebuilt_humanities_cards (id TEXT PRIMARY KEY, node_type TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', period TEXT NOT NULL DEFAULT '', region TEXT NOT NULL DEFAULT '', tags TEXT NOT NULL DEFAULT '[]', FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE);
+             CREATE TABLE user_science_cards (id TEXT PRIMARY KEY, definition TEXT NOT NULL DEFAULT '', key_elements TEXT NOT NULL DEFAULT '', applications TEXT NOT NULL DEFAULT '', related_concepts TEXT NOT NULL DEFAULT '', formula TEXT NOT NULL DEFAULT '', graph TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '', FOREIGN KEY (id) REFERENCES user_cards(id) ON DELETE CASCADE);
+             CREATE TABLE user_language_cards (id TEXT PRIMARY KEY, pronunciation TEXT NOT NULL DEFAULT '', pos TEXT NOT NULL DEFAULT '', definitions TEXT NOT NULL DEFAULT '[]', related_phrases TEXT NOT NULL DEFAULT '', structure_meta TEXT NOT NULL DEFAULT '', level TEXT NOT NULL DEFAULT '', FOREIGN KEY (id) REFERENCES user_cards(id) ON DELETE CASCADE);
+             CREATE TABLE user_literature_cards (id TEXT PRIMARY KEY, full_text TEXT NOT NULL DEFAULT '', translation TEXT NOT NULL DEFAULT '', author TEXT NOT NULL DEFAULT '', genre TEXT NOT NULL DEFAULT '', FOREIGN KEY (id) REFERENCES user_cards(id) ON DELETE CASCADE);
+             CREATE TABLE user_humanities_cards (id TEXT PRIMARY KEY, node_type TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', period TEXT NOT NULL DEFAULT '', region TEXT NOT NULL DEFAULT '', tags TEXT NOT NULL DEFAULT '[]', FOREIGN KEY (id) REFERENCES user_cards(id) ON DELETE CASCADE);"
         ).unwrap();
         conn
     }
@@ -395,7 +516,7 @@ mod tests {
     #[test]
     fn test_get_due_cards_empty() {
         let conn = setup_db();
-        let (cards, total) = get_due_cards(&conn, "u1", 20, 0, None);
+        let (cards, total) = get_due_cards(&conn, "u1", 20, 0, None, None);
         assert!(cards.is_empty());
         assert_eq!(total, 0);
     }

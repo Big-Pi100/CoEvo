@@ -83,6 +83,16 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
       )).toList();
       debugPrint('[_loadPlanMeta] plans count=${planGroups.length}');
 
+      // 追加常驻语言 tab 卡片组
+      planGroups.insert(0, _PlanGroup(
+        id: '__lang_english', goal: '英语', conversationId: '',
+        cardCount: 0, isLanguage: true, language: 'english',
+      ));
+      planGroups.insert(1, _PlanGroup(
+        id: '__lang_chinese', goal: '汉语', conversationId: '',
+        cardCount: 0, isLanguage: true, language: 'chinese',
+      ));
+
       setState(() {
         _planGroups = planGroups;
         _isLoading = false;
@@ -92,8 +102,8 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
   }
 
   /// 切换展开/收起指定 plan（展开时惰性加载 20 张）
-  Future<void> _togglePlan(String conversationId) async {
-    final group = _planGroups.where((g) => g.conversationId == conversationId).firstOrNull;
+  Future<void> _togglePlan(String idOrConvId) async {
+    final group = _planGroups.where((g) => g.conversationId == idOrConvId || g.id == idOrConvId).firstOrNull;
     if (group == null || group.isLoading) return;
 
     // 已展开 → 收起
@@ -115,21 +125,35 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     final auth = ref.read(authProvider);
     final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {
-      final resp = await client.getCardsByPlan(convId: conversationId, limit: 20, offset: 0, sort: 'front');
-      if (!mounted) return;
-      final plansRaw = (resp['plans'] as List<dynamic>?) ?? [];
-      final matchedPlan = plansRaw.cast<Map<String, dynamic>>().firstWhere(
-        (p) => (p['conversation_id'] as String? ?? '') == conversationId,
-        orElse: () => <String, dynamic>{},
-      );
-      final cardsRaw = (matchedPlan['cards'] as List<dynamic>?) ?? [];
-      final loadedCards = cardsRaw
-          .map((e) => DueCard.fromJson(e as Map<String, dynamic>))
-          .toList();
-      group.cards = loadedCards;
-      group.displayCards = List.from(loadedCards);
-      group.loadOffset = loadedCards.length;
-      group.hasMore = loadedCards.length >= 20;
+      if (group.isLanguage) {
+        // 语言卡片组：调用 getDueCards 带 language 参数
+        final resp = await client.getDueCards(language: group.language, limit: 20, offset: 0);
+        if (!mounted) return;
+        final cardsRaw = (resp['cards'] as List<dynamic>?) ?? [];
+        final loadedCards = cardsRaw
+            .map((e) => DueCard.fromJson(e as Map<String, dynamic>))
+            .toList();
+        group.cards = loadedCards;
+        group.displayCards = List.from(loadedCards);
+        group.loadOffset = loadedCards.length;
+        group.hasMore = loadedCards.length >= 20;
+      } else {
+        final resp = await client.getCardsByPlan(convId: group.conversationId, limit: 20, offset: 0, sort: 'front');
+        if (!mounted) return;
+        final plansRaw = (resp['plans'] as List<dynamic>?) ?? [];
+        final matchedPlan = plansRaw.cast<Map<String, dynamic>>().firstWhere(
+          (p) => (p['conversation_id'] as String? ?? '') == group.conversationId,
+          orElse: () => <String, dynamic>{},
+        );
+        final cardsRaw = (matchedPlan['cards'] as List<dynamic>?) ?? [];
+        final loadedCards = cardsRaw
+            .map((e) => DueCard.fromJson(e as Map<String, dynamic>))
+            .toList();
+        group.cards = loadedCards;
+        group.displayCards = List.from(loadedCards);
+        group.loadOffset = loadedCards.length;
+        group.hasMore = loadedCards.length >= 20;
+      }
     } catch (e) {
       group.expanded = false;
     }
@@ -140,29 +164,45 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
   /// 加载更多（当前 plan 追加 20 张）
   Future<void> _loadMorePlanCards(String conversationId) async {
     final group = _planGroups.where((g) => g.conversationId == conversationId).firstOrNull;
-    if (group == null || !group.hasMore || group.isLoading) return;
+    // 语言组用 id 匹配（conversationId 为空）
+    final langGroup = group ?? _planGroups.where((g) => g.id == conversationId).firstOrNull;
+    final target = langGroup;
+    if (target == null || !target.hasMore || target.isLoading) return;
 
-    group.isLoading = true;
+    target.isLoading = true;
     setState(() {});
 
     final auth = ref.read(authProvider);
     final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {
-      final resp = await client.getCardsByPlan(convId: conversationId, limit: 20, offset: group.loadOffset, sort: 'front');
-      if (!mounted) return;
-      final plansRaw = (resp['plans'] as List<dynamic>?) ?? [];
-      final matchedPlan = plansRaw.cast<Map<String, dynamic>>().firstWhere(
-        (p) => (p['conversation_id'] as String? ?? '') == conversationId,
-        orElse: () => <String, dynamic>{},
-      );
-      final cardsRaw = (matchedPlan['cards'] as List<dynamic>?) ?? [];
-      final moreCards = cardsRaw
-          .map((e) => DueCard.fromJson(e as Map<String, dynamic>))
-          .toList();
-      group.cards.addAll(moreCards);
-      group.displayCards = List.from(group.cards);
-      group.loadOffset += moreCards.length;
-      group.hasMore = moreCards.length >= 20;
+      if (target.isLanguage) {
+        final resp = await client.getDueCards(language: target.language, limit: 20, offset: target.loadOffset);
+        if (!mounted) return;
+        final cardsRaw = (resp['cards'] as List<dynamic>?) ?? [];
+        final moreCards = cardsRaw
+            .map((e) => DueCard.fromJson(e as Map<String, dynamic>))
+            .toList();
+        target.cards.addAll(moreCards);
+        target.displayCards = List.from(target.cards);
+        target.loadOffset += moreCards.length;
+        target.hasMore = moreCards.length >= 20;
+      } else {
+        final resp = await client.getCardsByPlan(convId: target.conversationId, limit: 20, offset: target.loadOffset, sort: 'front');
+        if (!mounted) return;
+        final plansRaw = (resp['plans'] as List<dynamic>?) ?? [];
+        final matchedPlan = plansRaw.cast<Map<String, dynamic>>().firstWhere(
+          (p) => (p['conversation_id'] as String? ?? '') == target.conversationId,
+          orElse: () => <String, dynamic>{},
+        );
+        final cardsRaw = (matchedPlan['cards'] as List<dynamic>?) ?? [];
+        final moreCards = cardsRaw
+            .map((e) => DueCard.fromJson(e as Map<String, dynamic>))
+            .toList();
+        target.cards.addAll(moreCards);
+        target.displayCards = List.from(target.cards);
+        target.loadOffset += moreCards.length;
+        target.hasMore = moreCards.length >= 20;
+      }
     } catch (e, st) {
       debugPrint('加载更多卡片失败: $e\n$st');
       if (mounted) {
@@ -171,7 +211,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
         );
       }
     }
-    group.isLoading = false;
+    target.isLoading = false;
     setState(() {});
   }
 
@@ -394,7 +434,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
       children: [
         // Plan 标题（可点击展开）
         GestureDetector(
-          onTap: group.isLoading ? null : () => _togglePlan(group.conversationId),
+          onTap: group.isLoading ? null : () => _togglePlan(group.id),
           child: Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingMd, vertical: 10),
@@ -448,7 +488,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingXs),
                   child: TextButton(
-                    onPressed: group.isLoading ? null : () => _loadMorePlanCards(group.conversationId),
+                    onPressed: group.isLoading ? null : () => _loadMorePlanCards(group.id),
                     child: group.isLoading
                         ? const SizedBox(width: AppTheme.spacingLg, height: AppTheme.spacingLg, child: CircularProgressIndicator(strokeWidth: 2))
                         : const Text('加载更多'),
@@ -715,6 +755,8 @@ class _PlanGroup {
   final String gradeBand;
   final String conversationId;
   final int cardCount;
+  final bool isLanguage;  // 是否为常驻语言 tab 的卡片组
+  final String? language;  // 'english' | 'chinese'
   List<DueCard> cards;
   List<DueCard> displayCards;
   bool isLoading = false;
@@ -728,6 +770,8 @@ class _PlanGroup {
     required this.conversationId,
     required this.cardCount,
     this.gradeBand = '',
+    this.isLanguage = false,
+    this.language,
     List<DueCard>? cards,
   }) : cards = cards ?? [],
        displayCards = [];

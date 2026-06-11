@@ -73,10 +73,13 @@ class ChatClient {
 
   // ── Review API ──
 
-  Future<Map<String, dynamic>> getDueCards({String? conversationId, int limit = 20, int offset = 0}) async {
+  Future<Map<String, dynamic>> getDueCards({String? conversationId, String? language, int limit = 20, int offset = 0}) async {
     final params = <String, String>{'user_id': userId, 'limit': limit.toString(), 'offset': offset.toString()};
     if (conversationId != null && conversationId.isNotEmpty) {
       params['conversation_id'] = conversationId;
+    }
+    if (language != null && language.isNotEmpty) {
+      params['language'] = language;
     }
     final resp = await http.get(
       Uri.parse('$baseUrl/api/review/due').replace(queryParameters: params),

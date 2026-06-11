@@ -240,18 +240,20 @@ async fn auth_verify(Json(input): Json<TokenVerifyInput>) -> Json<serde_json::Va
 pub struct DueQuery {
     pub user_id: String,
     pub conversation_id: Option<String>,
+    pub language: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
 
 /// GET /api/review/due — 获取到期待复习的卡片
-/// 请求参数: ?user_id=str[&conversation_id=str][&limit=20][&offset=0]
+/// 请求参数: ?user_id=str[&conversation_id=str][&language=english][&limit=20][&offset=0]
 /// 响应: {"cards": [...], "total_due": int, "has_more": bool}
 async fn review_due_handler(
     headers: HeaderMap,
     Query(query): Query<DueQuery>,
 ) -> Json<serde_json::Value> {
-    tracing::info!("review_due_handler: user_id={}", query.user_id);
+    tracing::info!("review_due_handler: user_id={}, conv_id={:?}, language={:?}", 
+        query.user_id, query.conversation_id, query.language);
 
     if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
         return auth_json(e);
@@ -260,7 +262,7 @@ async fn review_due_handler(
     let page_size = query.limit.unwrap_or(20);
     let offset = query.offset.unwrap_or(0);
     let (cards, total) = card_engine::fsrs_scheduler::get_due_cards(
-        &conn, &query.user_id, page_size, offset, query.conversation_id.as_deref(),
+        &conn, &query.user_id, page_size, offset, query.conversation_id.as_deref(), query.language.as_deref(),
     );
     Json(serde_json::json!({
         "cards": cards,
@@ -887,12 +889,17 @@ async fn cards_by_plan_handler(
             };
             let sql = format!(
                 "SELECT c.id, c.user_id, c.front,
-                        COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') as back,
+                        COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, 
+                                 usc.definition, ulc.pronunciation, ulf.full_text, uhc.body, '') as back,
                         c.domain, pc.subject, pc.card_type,
                         '' as source_sentence,
                         c.created_at, cm.state, cm.difficulty, cm.due, cm.reps, cm.lapses,
                         lrev.reviewed_at, lrev.rating,
-                        pr.conversation_id, c.plan_run_id, c.task_key
+                        pr.conversation_id, c.plan_run_id, c.task_key,
+                        usc.definition, usc.key_elements, usc.applications, usc.related_concepts,
+                        ulc.pronunciation, ulc.definitions, ulc.related_phrases, ulc.pos,
+                        ulf.full_text, ulf.translation, ulf.author, ulf.genre,
+                        uhc.body, uhc.period, uhc.region, uhc.tags
                  FROM user_cards c
                  JOIN card_memory cm ON c.id = cm.user_card_id
                  LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
@@ -901,6 +908,10 @@ async fn cards_by_plan_handler(
                  LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.id
                  LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.id
                  LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.id
+                 LEFT JOIN user_science_cards usc ON c.id = usc.id
+                 LEFT JOIN user_language_cards ulc ON c.id = ulc.id
+                 LEFT JOIN user_literature_cards ulf ON c.id = ulf.id
+                 LEFT JOIN user_humanities_cards uhc ON c.id = uhc.id
                  LEFT JOIN (
                     SELECT card_id, MAX(reviewed_at) as last_reviewed_at
                     FROM review_log GROUP BY card_id
@@ -914,15 +925,17 @@ async fn cards_by_plan_handler(
                 query.user_id.replace('\'', "''"),
                 order_col, page_size, page_offset,
             );
+            tracing::info!("cards_by_plan SQL: {}", sql);
             let loaded: Vec<serde_json::Value> = match conn.prepare(&sql) {
                 Ok(mut stmt) => stmt.query_map([], |row| {
+                    let domain = row.get::<_, Option<String>>(4)?;
                     Ok(serde_json::json!({
                         "id": row.get::<_, String>(0)?,
                         "user_id": row.get::<_, String>(1)?,
                         "front": row.get::<_, String>(2)?,
                         "back": row.get::<_, String>(3)?,
-                        "domain": row.get::<_, Option<String>>(4)?,
-                        "card_type": row.get::<_, String>(6)?,
+                        "domain": domain,
+                        "card_type": row.get::<_, Option<String>>(6)?,
                         "source_sentence": row.get::<_, Option<String>>(7)?,
                         "created_at": row.get::<_, String>(8)?,
                         "state": row.get::<_, i32>(9)?,
@@ -937,7 +950,10 @@ async fn cards_by_plan_handler(
                         "task_key": row.get::<_, Option<String>>(18)?,
                     }))
                 }).unwrap().filter_map(|r| r.ok()).collect(),
-                Err(_) => vec![],
+                Err(e) => {
+                    tracing::warn!("cards_by_plan prepare failed: {}", e);
+                    vec![]
+                },
             };
             let count = loaded.len();
             (loaded, count)

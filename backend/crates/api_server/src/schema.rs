@@ -107,6 +107,12 @@ CREATE TABLE IF NOT EXISTS prebuilt_plans (
     grade_band TEXT NOT NULL DEFAULT '',
     goal TEXT NOT NULL DEFAULT '',
     plan_content TEXT,
+    title TEXT NOT NULL DEFAULT '',
+    author TEXT NOT NULL DEFAULT '',
+    display_name TEXT NOT NULL DEFAULT '',
+    visible INTEGER NOT NULL DEFAULT 1,
+    theme_color TEXT NOT NULL DEFAULT '',
+    theme_icon TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS prebuilt_stages (
@@ -199,15 +205,16 @@ CREATE TABLE IF NOT EXISTS plan_runs (
 CREATE TABLE IF NOT EXISTS user_cards (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
-    plan_run_id TEXT NOT NULL,
+    plan_run_id TEXT DEFAULT '',
     prebuilt_card_id TEXT,
     domain TEXT NOT NULL,
     front TEXT,
     status TEXT NOT NULL DEFAULT 'active',
     task_key TEXT,
+    language TEXT,
+    level TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id),
-    FOREIGN KEY (plan_run_id) REFERENCES plan_runs(id),
     FOREIGN KEY (prebuilt_card_id) REFERENCES prebuilt_cards(id)
 );
 CREATE TABLE IF NOT EXISTS user_science_cards (
@@ -390,6 +397,14 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
     let migrations: &[&str] = &[
         "ALTER TABLE users ADD COLUMN phone_hash TEXT DEFAULT NULL",
         "ALTER TABLE card_memory ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
+        "ALTER TABLE user_cards ADD COLUMN language TEXT DEFAULT NULL",
+        "ALTER TABLE user_cards ADD COLUMN level TEXT DEFAULT NULL",
+        "ALTER TABLE prebuilt_plans ADD COLUMN title TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE prebuilt_plans ADD COLUMN author TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE prebuilt_plans ADD COLUMN display_name TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE prebuilt_plans ADD COLUMN visible INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE prebuilt_plans ADD COLUMN theme_color TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE prebuilt_plans ADD COLUMN theme_icon TEXT NOT NULL DEFAULT ''",
     ];
     for sql in migrations {
         match conn.execute(sql, []) {
