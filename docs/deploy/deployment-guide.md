@@ -63,13 +63,15 @@ rm -f /tmp/coevo_key_temp
 ### 3.1 完整部署命令
 
 ```bash
-# 本地：打包源码
+# 本地：打包源码 + 课程数据
 cd /path/to/CoEvo
 tar czf /tmp/coevo-deploy.tar.gz \
   backend/Cargo.toml \
   backend/Cargo.lock \
   backend/src/ \
-  backend/crates/
+  backend/crates/ \
+  backend/prompts/ \
+  data/curriculum/v4/         # ⚠️ 课程数据文件必须包含
 
 # 上传到 VPS
 scp -i ~/.ssh/coevo_key /tmp/coevo-deploy.tar.gz ubuntu@<OLD_VPS_IP>:~/
@@ -85,6 +87,10 @@ ssh -i ~/.ssh/coevo_key -o ServerAliveInterval=30 ubuntu@<OLD_VPS_IP> "
   sudo systemctl stop coevo &&
   sudo cp target/release/coevo_backend /opt/coevo/coevo_server &&
   sudo chmod +x /opt/coevo/coevo_server &&
+  # 部署课程数据文件（必需）
+  sudo mkdir -p /opt/coevo/data/curriculum &&
+  sudo cp -r ~/data/curriculum/v4 /opt/coevo/data/curriculum/ &&
+  sudo chown -R root:root /opt/coevo/data/curriculum &&
   sudo systemctl restart coevo &&
   sleep 3 &&
   curl -s http://127.0.0.1:8080/health
@@ -162,6 +168,8 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
+> `WorkingDirectory` 和 `EnvironmentFile` 必须正确设置。`COEVO_K12_DATA_DIR` 在 `.env` 中指定后，服务自动读取；路径示例：`COEVO_K12_DATA_DIR=/opt/coevo/data/curriculum/v4`
+
 ### 5.3 常用命令
 
 ```bash
@@ -182,10 +190,15 @@ sudo journalctl -u coevo --since "5 min ago"  # 最近 5 分钟日志
 ```env
 DEEPSEEK_API_KEY=<DEEPSEEK_API_KEY>
 COEVO_ADMIN_KEY=<COEVO_ADMIN_KEY>
+COEVO_K12_DATA_DIR=/opt/coevo/data/curriculum/v4
 IFLYTEK_APPID=<IFLYTEK_APPID>
 IFLYTEK_API_KEY=<IFLYTEK_API_KEY>
 IFLYTEK_API_SECRET=<IFLYTEK_API_SECRET>
 ```
+
+> ⚠️ **`COEVO_K12_DATA_DIR` 必须设置正确**，否则课程数据管理后台无法读取 JSON 数据文件，`GET /api/k12/subjects`、`GET /api/admin/curriculum/status`、`POST /api/admin/curriculum/load` 等端点均无法正常工作。此变量指向 `data/curriculum/v4/` 目录的绝对路径。
+> 
+> 本地开发时 `.env` 示例：`COEVO_K12_DATA_DIR=E:/CoEvo/data/curriculum/v4`
 
 ## 7. 文件与目录结构
 
@@ -194,10 +207,17 @@ IFLYTEK_API_SECRET=<IFLYTEK_API_SECRET>
 ├── coevo_server        # 后端二进制（可执行文件）
 ├── .env                # 环境变量配置
 ├── data/
-│   └── avatars/        # 用户头像
+│   ├── avatars/        # 用户头像
+│   ├── curriculum/     # 课标课程数据（JSON 源文件，需部署）
+│   │   └── v4/
+│   │       ├── plans/  # 学习计划 JSON（16 个科目）
+│   │       ├── cards/  # 预置卡片 JSON（按 domain 分目录）
+│   │       └── templates/  # 导入模板
+│   └── coevo.db        # SQLite 数据库（运行时自动创建）
 ├── prompts/            # prompt 模板
 │   └── *.md
-└── cefr_catalog.json   # CEFR 分级数据
+├── cefr_catalog.json   # CEFR 分级数据
+└── logs/               # 日志输出目录
 ```
 
 ## 8. 故障排查
@@ -235,5 +255,5 @@ curl http://<OLD_VPS_IP>:8080/health
 
 ---
 
-> 最后更新: 2026-05-13
+> 最后更新: 2026-06-12
 > 维护者: DevOps

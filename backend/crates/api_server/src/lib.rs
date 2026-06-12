@@ -25,6 +25,7 @@ pub mod routes;
 pub mod schema;
 pub mod subject_router;
 pub mod test_helpers;
+pub mod curriculum_admin;
 pub mod curriculum_loader;
 pub mod k12_quiz;
 pub mod k12_quiz_api;

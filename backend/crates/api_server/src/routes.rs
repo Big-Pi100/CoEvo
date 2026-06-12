@@ -92,6 +92,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/user/{user_id}/weekly-report", get(weekly_report_handler))
         // ── K12 Structured Learning ──
         .route("/api/k12/init", post(k12_init_handler))
+        .route("/api/k12/subjects", get(k12_subjects_handler))
         .route("/api/k12/progress", get(k12_progress_handler))
         .route("/api/k12/reading/{conv_id}/current-card", get(k12_reading_current_card_handler))
         .route("/api/k12/quiz/submit", post(crate::k12_quiz_api::quiz_submit_handler))
@@ -135,6 +136,36 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/admin/guardian/reveal-phone/{admin_id}", post(guardian_reveal_phone))
         .route("/api/admin/guardian/assignments", get(admin_list_assignments).post(admin_create_assignment))
         .route("/api/admin/guardian/assignments/{assignment_id}", delete(admin_remove_assignment))
+        // ── Admin: Curriculum Management ──
+        .route("/api/admin/curriculum/load", post(crate::curriculum_admin::curriculum_load_handler))
+        .route("/api/admin/curriculum/status", get(crate::curriculum_admin::curriculum_status_handler))
+        .route("/api/admin/curriculum/git-log", get(crate::curriculum_admin::git_log_handler))
+        .route("/api/admin/curriculum/rollback", post(crate::curriculum_admin::rollback_handler))
+        // GET — 读取端点
+        .route("/api/admin/curriculum/subject/{subject}/plan", get(crate::curriculum_admin::get_plan_handler).patch(crate::curriculum_admin::patch_plan_handler).put(crate::curriculum_admin::put_plan_handler))
+        .route("/api/admin/curriculum/subject/{subject}/cards", get(crate::curriculum_admin::list_cards_handler))
+        .route("/api/admin/curriculum/subject/{subject}/relations", get(crate::curriculum_admin::list_relations_handler).post(crate::curriculum_admin::create_relation_handler))
+        .route("/api/admin/curriculum/subject/{subject}/relations/{relation_id}", delete(crate::curriculum_admin::delete_relation_handler))
+        // PATCH — 修改单个实体（即改即用）
+        .route("/api/admin/curriculum/subject/{subject}/plan/stages/{stage_id}", patch(crate::curriculum_admin::patch_stage_handler))
+        .route("/api/admin/curriculum/subject/{subject}/plan/stages/{stage_id}/tasks/{task_id}", patch(crate::curriculum_admin::patch_task_handler))
+        .route("/api/admin/curriculum/subject/{subject}/cards/{card_id}", patch(crate::curriculum_admin::patch_card_handler))
+        // POST — 新增实体
+        .route("/api/admin/curriculum/subject/{subject}/plan/stages", post(crate::curriculum_admin::post_stage_handler))
+        .route("/api/admin/curriculum/subject/{subject}/plan/stages/{stage_id}/tasks", post(crate::curriculum_admin::post_task_handler))
+        .route("/api/admin/curriculum/subject/{subject}/cards", post(crate::curriculum_admin::post_card_handler))
+        .route("/api/admin/curriculum/plan", post(crate::curriculum_admin::post_plan_handler))
+        // DELETE — 删除实体
+        .route("/api/admin/curriculum/subject/{subject}/plan/stages/{stage_id}", delete(crate::curriculum_admin::delete_stage_handler))
+        .route("/api/admin/curriculum/subject/{subject}/plan/stages/{stage_id}/tasks/{task_id}", delete(crate::curriculum_admin::delete_task_handler))
+        .route("/api/admin/curriculum/subject/{subject}/cards/{card_id}", delete(crate::curriculum_admin::delete_card_handler))
+        .route("/api/admin/curriculum/subject/{subject}/cards", put(crate::curriculum_admin::put_cards_handler))
+        // Gap 1: 模版下载
+        .route("/api/admin/curriculum/templates/plan", get(crate::curriculum_admin::get_plan_template_handler))
+        .route("/api/admin/curriculum/templates/cards", get(crate::curriculum_admin::get_cards_template_handler))
+        // Gap 2: JSON 数据导入（不触发加载）
+        .route("/api/admin/curriculum/subject/{subject}/plan/import", post(crate::curriculum_admin::import_plan_handler))
+        .route("/api/admin/curriculum/subject/{subject}/cards/import", post(crate::curriculum_admin::import_cards_handler))
         // ── 全局中间件：HTTP 请求/响应日志 ──
         .layer(TraceLayer::new_for_http())
 }
@@ -2241,24 +2272,29 @@ async fn k12_init_handler(
                 // 读该 stage 的 tasks
                 let mut tasks_json: Vec<serde_json::Value> = Vec::new();
                 if let Ok(mut task_stmt) = conn.prepare(
-                    "SELECT task_key, name, prompt_mode, card_ids, sort_order FROM prebuilt_tasks WHERE stage_id = ?1 ORDER BY sort_order"
+                    "SELECT task_key, name, prompt_mode, card_ids, dependencies, origin, sort_order FROM prebuilt_tasks WHERE stage_id = ?1 ORDER BY sort_order"
                 ) {
                     if let Ok(task_rows) = task_stmt.query_map(rusqlite::params![stage_id], |row| {
                         Ok((
                             row.get::<_,String>(0)?,   // task_key
                             row.get::<_,String>(1)?,   // name
                             row.get::<_,String>(2)?,   // prompt_mode
-                            row.get::<_,String>(3)?,   // card_ids (JSON array as string)
-                            row.get::<_,String>(4)?,   // sort_order
+                            row.get::<_,String>(3)?,   // card_ids
+                            row.get::<_,String>(4)?,   // dependencies
+                            row.get::<_,String>(5)?,   // origin
+                            row.get::<_,String>(6)?,   // sort_order
                         ))
                     }) {
                         for t in task_rows.flatten() {
                             let card_ids: serde_json::Value = serde_json::from_str(&t.3).unwrap_or_default();
+                            let deps: serde_json::Value = serde_json::from_str(&t.4).unwrap_or_default();
                             tasks_json.push(serde_json::json!({
                                 "task_key": t.0,
                                 "name": t.1,
                                 "prompt_mode": t.2,
                                 "card_ids": card_ids,
+                                "dependencies": deps,
+                                "origin": t.5,
                             }));
                         }
                     }
@@ -2355,6 +2391,131 @@ async fn k12_init_handler(
         "conversation_id": conv_id,
         "plan": plan_val,
     }))
+}
+
+/// GET /api/k12/subjects — 返回所有可见的预置计划列表
+async fn k12_subjects_handler() -> Result<Json<serde_json::Value>, AppError> {
+    let conn = crate::db_pool::get_conn();
+
+    let mut stmt = conn.prepare(
+        "SELECT subject, COALESCE(display_name, ''), COALESCE(title, ''), COALESCE(goal, ''), COALESCE(author, ''), COALESCE(theme_color, ''), COALESCE(theme_icon, '') \
+         FROM prebuilt_plans WHERE visible = 1 ORDER BY subject"
+    ).map_err(|e| AppError::Internal(format!("prepare: {}", e)))?;
+
+    let subjects: Vec<serde_json::Value> = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, String>(4)?,
+            row.get::<_, String>(5)?,
+            row.get::<_, String>(6)?,
+        ))
+    }).map_err(|e| AppError::Internal(format!("query: {}", e)))?
+    .filter_map(|r| r.ok())
+    .map(|(subject, display_name, title, goal, author, theme_color, theme_icon)| {
+        serde_json::json!({
+            "subject": subject,
+            "display_name": if display_name.is_empty() { &subject } else { &display_name },
+            "title": title,
+            "goal": goal,
+            "author": author,
+            "theme_color": theme_color,
+            "theme_icon": theme_icon,
+        })
+    }).collect();
+
+    tracing::info!("k12_subjects_handler: returned {} subjects", subjects.len());
+    Ok(Json(serde_json::json!({ "subjects": subjects })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::schema::init_database;
+
+    #[tokio::test]
+    async fn test_k12_subjects_endpoint() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        init_database(&conn).unwrap();
+
+        // Insert a test plan with new fields
+        let plan_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO prebuilt_plans (id, subject, domain, grade_band, goal, title, author, display_name, visible, theme_color, theme_icon) \
+             VALUES (?1, 'english', 'language', 'g1-12', 'English Goal', 'English Title', 'Author Name', 'English', 1, '#81C784', 'language')",
+            rusqlite::params![plan_id],
+        ).unwrap();
+
+        // Insert an invisible plan (should not appear)
+        let hidden_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO prebuilt_plans (id, subject, domain, goal, visible) \
+             VALUES (?1, 'japanese', 'language', 'Japanese Goal', 0)",
+            rusqlite::params![hidden_id],
+        ).unwrap();
+
+        // Insert a plan with empty display_name (should fallback to subject)
+        let fallback_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO prebuilt_plans (id, subject, domain, goal, visible) \
+             VALUES (?1, 'physics', 'science', 'Physics Goal', 1)",
+            rusqlite::params![fallback_id],
+        ).unwrap();
+
+        // Simulate the handler logic
+        let mut stmt = conn.prepare(
+            "SELECT subject, COALESCE(display_name, ''), COALESCE(title, ''), COALESCE(goal, ''), COALESCE(author, ''), COALESCE(theme_color, ''), COALESCE(theme_icon, '') \
+             FROM prebuilt_plans WHERE visible = 1 ORDER BY subject"
+        ).unwrap();
+
+        let subjects: Vec<serde_json::Value> = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
+            ))
+        }).unwrap()
+        .filter_map(|r| r.ok())
+        .map(|(subject, display_name, title, goal, author, theme_color, theme_icon)| {
+            serde_json::json!({
+                "subject": subject,
+                "display_name": if display_name.is_empty() { &subject } else { &display_name },
+                "title": title,
+                "goal": goal,
+                "author": author,
+                "theme_color": theme_color,
+                "theme_icon": theme_icon,
+            })
+        }).collect();
+
+        // Verify results
+        assert_eq!(subjects.len(), 2, "should return 2 visible subjects, got {}", subjects.len());
+
+        // English should have all fields
+        let eng = &subjects[0];
+        assert_eq!(eng["subject"], "english");
+        assert_eq!(eng["display_name"], "English");
+        assert_eq!(eng["title"], "English Title");
+        assert_eq!(eng["author"], "Author Name");
+        assert_eq!(eng["theme_color"], "#81C784");
+        assert_eq!(eng["theme_icon"], "language");
+
+        // Physics should fallback display_name to subject
+        let phys = &subjects[1];
+        assert_eq!(phys["subject"], "physics");
+        assert_eq!(phys["display_name"], "physics", "empty display_name should fallback to subject");
+        assert!(phys["title"].as_str().unwrap_or("").is_empty());
+        assert!(phys["author"].as_str().unwrap_or("").is_empty());
+
+        // Japanese should NOT appear (visible=0)
+        assert!(!subjects.iter().any(|s| s["subject"] == "japanese"), "invisible subject should not appear");
+    }
 }
 
 // ── Reading-First 模式初始化 ──

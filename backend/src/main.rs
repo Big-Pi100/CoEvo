@@ -82,8 +82,7 @@ async fn main() {
     chat_engine::word_bank::init(&wordbank_path);
     tracing::info!("Wordbank: {}", wordbank_path);
 
-    // Load curriculum guide
-    api_server::curriculum_loader::init().unwrap_or_else(|e| tracing::warn!("K12 loader: {}", e));
+    // Load curriculum guide (deferred — manual POST /api/admin/curriculum/load)
     tracing::info!("Data loaders initialized");
 
     // K12 quiz bank — 需要 DB 连接
@@ -95,7 +94,7 @@ async fn main() {
         }
     }
 
-    chat_engine::config::ensure_db_connection();
+    chat_engine::config::ensure_db_connection(&db_path);
 
     // --- Auto-schema ---
     {
@@ -264,7 +263,7 @@ async fn main() {
         // K12 prebuilt 数据写入 DB（JSON → prebuilt_* 表）
         {
             let conn = api_server::db_pool::get_conn();
-            if let Err(e) = api_server::curriculum_loader::write_prebuilt_to_db(&conn) {
+            if let Err(e) = api_server::curriculum_loader::write_prebuilt_to_db(&conn, None) {
                 tracing::warn!("K12 DB prebuilt write: {}", e);
             } else {
                 tracing::info!("K12 DB: prebuilt tables populated");

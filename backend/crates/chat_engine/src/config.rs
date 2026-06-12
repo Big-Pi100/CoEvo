@@ -9,9 +9,9 @@ use std::sync::OnceLock;
 static DB_PATH: OnceLock<String> = OnceLock::new();
 
 /// Ensure DB path is registered for chat_engine's internal use.
-/// Called once at startup.
-pub fn ensure_db_connection() {
-    let _ = DB_PATH.set("data/coevo.db".to_string());
+/// Called once at startup with the server's resolved db_path.
+pub fn ensure_db_connection(db_path: &str) {
+    let _ = DB_PATH.set(db_path.to_string());
 }
 
 pub fn db_path() -> &'static str {

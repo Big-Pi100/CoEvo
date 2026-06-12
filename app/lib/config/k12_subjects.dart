@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-/// K12 科目集中配置 — 所有科目的元数据统一定义于此
+/// K12 科目配置 — 纯配置类，颜色/图标/年级映射 fallback
 ///
-/// 两个页面（首页 / K12选择页）共用此配置，
-/// 不再各自硬编码科目列表、颜色、图标等。
+/// 前端不再硬编码科目列表，改为从 API 获取 display_name/title/goal/author。
+/// 颜色和图标仍然由本地 fallback 字典提供。
 class K12SubjectConfig {
   /// 英文代码，如 'math'
   final String code;
@@ -38,110 +38,101 @@ class K12SubjectConfig {
 }
 
 // ---------------------------------------------------------------------------
-// 全部 13 个科目配置（完整数据，仅通过 visible 控制是否渲染）
+// Fallback 颜色/图标字典（API 数据不包含颜色和图标时使用）
 // ---------------------------------------------------------------------------
-const k12SubjectConfigs = <K12SubjectConfig>[
-  K12SubjectConfig(
+
+/// 按 subject 代码索引的 fallback 配置列表，仅提供颜色/图标/年级映射。
+/// 显示名由 API 返回的 display_name 决定，不再硬编码。
+const k12SubjectFallbacks = <String, K12SubjectConfig>{
+  'math': K12SubjectConfig(
     code: 'math',
     displayName: '数学',
     color: Color(0xFFE57373),
     icon: Icons.calculate,
     homeGrades: ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
     k12Grades: ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10-12'],
-    visible: true,
   ),
-  K12SubjectConfig(
+  'chinese': K12SubjectConfig(
     code: 'chinese',
     displayName: '语文',
     color: Color(0xFF64B5F6),
     icon: Icons.menu_book,
     homeGrades: ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
     k12Grades: ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10-12'],
-    visible: true,
   ),
-  K12SubjectConfig(
+  'english': K12SubjectConfig(
     code: 'english',
     displayName: '英语',
     color: Color(0xFF81C784),
     icon: Icons.language,
     homeGrades: ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'],
     k12Grades: ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10-12'],
-    visible: true,
   ),
-  K12SubjectConfig(
+  'physics': K12SubjectConfig(
     code: 'physics',
     displayName: '物理',
     color: Color(0xFFFFB74D),
     icon: Icons.science,
     homeGrades: ['g7-9', 'g10', 'g11-12'],
     k12Grades: ['g7-9', 'g10-12'],
-    visible: true,
   ),
-  K12SubjectConfig(
+  'chemistry': K12SubjectConfig(
     code: 'chemistry',
     displayName: '化学',
     color: Color(0xFFBA68C8),
     icon: Icons.biotech,
     homeGrades: ['g7-9', 'g10', 'g11-12'],
     k12Grades: ['g7-9', 'g10-12'],
-    visible: true,
   ),
-  K12SubjectConfig(
+  'biology': K12SubjectConfig(
     code: 'biology',
     displayName: '生物',
     color: Color(0xFF4DB6AC),
     icon: Icons.pets,
     homeGrades: ['g7-9', 'g10', 'g11-12'],
     k12Grades: ['g7-9', 'g10-12'],
-    visible: true,
   ),
-  K12SubjectConfig(
+  'history': K12SubjectConfig(
     code: 'history',
     displayName: '历史',
     color: Color(0xFFF06292),
     icon: Icons.auto_stories,
     homeGrades: ['g7-9', 'g10', 'g11-12'],
     k12Grades: ['g7-9', 'g10-12'],
-    visible: true,
   ),
-  K12SubjectConfig(
+  'geography': K12SubjectConfig(
     code: 'geography',
     displayName: '地理',
     color: Color(0xFF4FC3F7),
     icon: Icons.explore,
     homeGrades: ['g7-9', 'g10', 'g11-12'],
     k12Grades: ['g7-9', 'g10-12'],
-    visible: true,
   ),
-  K12SubjectConfig(
+  'politics': K12SubjectConfig(
     code: 'politics',
     displayName: '政治',
     color: Color(0xFFA1887F),
     icon: Icons.account_balance,
     homeGrades: ['g10', 'g11-12'],
     k12Grades: ['g10-12'],
-    visible: true,
   ),
-  K12SubjectConfig(
+  'science': K12SubjectConfig(
     code: 'science',
     displayName: '科学',
     color: Color(0xFF90A4AE),
     icon: Icons.travel_explore,
     homeGrades: ['g3-4', 'g5-6', 'g7-9'],
     k12Grades: ['g3-4', 'g5-6', 'g7-9'],
-    visible: true,
   ),
-  K12SubjectConfig(
+  'it': K12SubjectConfig(
     code: 'it',
     displayName: '信息技术',
     color: Color(0xFF7986CB),
     icon: Icons.computer,
     homeGrades: ['g1-2', 'g3-4', 'g5-6', 'g7-9'],
     k12Grades: ['g1-2', 'g3-4', 'g5-6', 'g7-9'],
-    visible: true,
   ),
-  // —— 以下两个科目暂时隐藏，数据保留 ——
-  K12SubjectConfig(
+  'japanese': K12SubjectConfig(
     code: 'japanese',
     displayName: '日语',
     color: Color(0xFFE0A050),
@@ -150,7 +141,7 @@ const k12SubjectConfigs = <K12SubjectConfig>[
     k12Grades: ['g3-4', 'g5-6', 'g7-9'],
     visible: false,
   ),
-  K12SubjectConfig(
+  'russian': K12SubjectConfig(
     code: 'russian',
     displayName: '俄语',
     color: Color(0xFFC0392B),
@@ -159,11 +150,7 @@ const k12SubjectConfigs = <K12SubjectConfig>[
     k12Grades: ['g7-9'],
     visible: false,
   ),
-];
-
-/// 只返回 visible 的科目（供 GridView 渲染使用）
-List<K12SubjectConfig> get k12VisibleSubjects =>
-    k12SubjectConfigs.where((c) => c.visible).toList();
+};
 
 /// 学段名称映射（首页 + K12 页共用）
 const k12GradeNames = <String, String>{

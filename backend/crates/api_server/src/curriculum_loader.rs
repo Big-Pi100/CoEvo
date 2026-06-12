@@ -48,6 +48,20 @@ pub struct PlanData {
     #[serde(default)]
     pub stages: Vec<StageData>,
     pub total_crs: i64,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub display_name: String,
+    #[serde(default)]
+    pub author: String,
+    #[serde(default = "default_true")]
+    pub visible: bool,
+    #[serde(default)]
+    pub theme_color: String,
+    #[serde(default)]
+    pub theme_icon: String,
+    #[serde(default)]
+    pub domain: String,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -72,6 +86,12 @@ pub struct TaskData {
     pub cross_subject_refs: Vec<serde_json::Value>,
     #[serde(default)]
     pub origin: String,
+    #[serde(default)]
+    pub task_key: String,
+    #[serde(default)]
+    pub prompt_mode: String,
+    #[serde(default)]
+    pub card_ids: Vec<String>,
 }
 
 // ── V4 父卡记录（prebuilt_cards.json 中的条目） ──
@@ -373,6 +393,13 @@ pub fn init() -> Result<(), String> {
                     goal: plan_file.goal.unwrap_or_else(|| format!("{}学习计划", subject)),
                     stages: plan_file.stages,
                     total_crs: plan_file.total_tasks.unwrap_or(0),
+                    title: plan_file.title.clone(),
+                    display_name: plan_file.display_name.clone(),
+                    author: plan_file.author.clone(),
+                    visible: plan_file.visible,
+                    theme_color: plan_file.theme_color.clone(),
+                    theme_icon: plan_file.theme_icon.clone(),
+                    domain: plan_file.domain.clone().unwrap_or_default(),
                 };
                 plan_index.insert(subject.clone(), plan);
             }
@@ -394,7 +421,8 @@ pub fn get() -> &'static K12Prebuilt {
 
 /// 将 prebuilt 数据写入 DB 表（启动时在 schema init 后调用）
 /// 从此 JSON 不再是运行时数据源，仅用作镜像。
-pub fn write_prebuilt_to_db(conn: &rusqlite::Connection) -> Result<(), String> {
+/// subject_filter: Some(&[...]) 时只处理指定的 subject；None 时处理全部。
+pub fn write_prebuilt_to_db(conn: &rusqlite::Connection, subject_filter: Option<&[String]>) -> Result<(), String> {
     let base = Paths::prebuilt();
     let cards_base = base.join("cards");
     for domain in &["science", "language", "literature", "humanities"] {
@@ -464,6 +492,8 @@ pub fn write_prebuilt_to_db(conn: &rusqlite::Connection) -> Result<(), String> {
     }
 
     // 2. 写计划（写入 plan_content 完整 JSON + stages/tasks 子表）
+    // 收集需要写回 ID 的 JSON 文件（plan_val 在循环内已被修改，延迟统一写回）
+    let mut pending_backfills: HashMap<String, serde_json::Value> = HashMap::new();
     let plans_dir = base.join("plans");
     if plans_dir.exists() {
         if let Ok(dir) = std::fs::read_dir(&plans_dir) {
@@ -475,20 +505,32 @@ pub fn write_prebuilt_to_db(conn: &rusqlite::Connection) -> Result<(), String> {
                     _ => continue,
                 };
                 let subject = fname.strip_suffix(".json").unwrap_or("").to_string();
-                let plan_val: serde_json::Value = load_json(&path)
+                // 如果指定了 subject_filter，跳过不匹配的 subject
+                if let Some(ref filter) = subject_filter {
+                    if !filter.contains(&subject) {
+                        continue;
+                    }
+                }
+                let mut plan_val: serde_json::Value = load_json(&path)
                     .map_err(|e| format!("load plan {}: {}", fname, e))?;
-                let goal = plan_val["goal"].as_str().unwrap_or("");
-                let domain = plan_val["domain"].as_str().unwrap_or("");
+                let goal = plan_val["goal"].as_str().unwrap_or("").to_string();
+                let domain = plan_val["domain"].as_str().unwrap_or("").to_string();
                 let plan_id = if let Some(id) = plan_val["id"].as_str() {
                     id.to_string()
                 } else {
-                    uuid::Uuid::new_v4().to_string()
+                    let new_id = uuid::Uuid::new_v4().to_string();
+                    plan_val["id"] = serde_json::Value::String(new_id.clone());
+                    pending_backfills.insert(path.to_string_lossy().to_string(), plan_val.clone());
+                    new_id
                 };
 
                 // upsert: 同 subject 先删再插（保证幂等）
-                conn.execute("DELETE FROM prebuilt_tasks WHERE plan_id IN (SELECT id FROM prebuilt_plans WHERE subject=?1)", rusqlite::params![subject]).ok();
-                conn.execute("DELETE FROM prebuilt_stages WHERE plan_id IN (SELECT id FROM prebuilt_plans WHERE subject=?1)", rusqlite::params![subject]).ok();
-                conn.execute("DELETE FROM prebuilt_plans WHERE subject=?1", rusqlite::params![subject]).ok();
+                conn.execute("DELETE FROM prebuilt_tasks WHERE plan_id IN (SELECT id FROM prebuilt_plans WHERE subject=?1)", rusqlite::params![subject])
+                    .map_err(|e| format!("delete prebuilt_tasks for {}: {}", subject, e))?;
+                conn.execute("DELETE FROM prebuilt_stages WHERE plan_id IN (SELECT id FROM prebuilt_plans WHERE subject=?1)", rusqlite::params![subject])
+                    .map_err(|e| format!("delete prebuilt_stages for {}: {}", subject, e))?;
+                conn.execute("DELETE FROM prebuilt_plans WHERE subject=?1", rusqlite::params![subject])
+                    .map_err(|e| format!("delete prebuilt_plans {}: {}", subject, e))?;
 
                 conn.execute(
                     "INSERT INTO prebuilt_plans (id, subject, grade_band, goal, domain, title, author, display_name, visible, theme_color, theme_icon) VALUES (?1,?2,'',?3,?4,?5,?6,?7,?8,?9,?10)",
@@ -503,6 +545,9 @@ pub fn write_prebuilt_to_db(conn: &rusqlite::Connection) -> Result<(), String> {
                 ).map_err(|e| format!("insert prebuilt_plans {}: {}", subject, e))?;
 
                 // 写 stages + tasks（规范化表，替代 plan_content JSON）
+                // 延迟收集自动生成的 ID，避免在不可变借用期间修改 plan_val
+                let mut new_stage_ids: Vec<(usize, String)> = Vec::new();
+                let mut new_task_ids: Vec<(usize, usize, String)> = Vec::new();
                 if let Some(stages) = plan_val["stages"].as_array() {
                     for (si, stage) in stages.iter().enumerate() {
                         let stage_name = stage["name"].as_str().unwrap_or("");
@@ -510,12 +555,14 @@ pub fn write_prebuilt_to_db(conn: &rusqlite::Connection) -> Result<(), String> {
                         let stage_id = if let Some(id) = stage["id"].as_str() {
                             id.to_string()
                         } else {
-                            uuid::Uuid::new_v4().to_string()
+                            let new_id = uuid::Uuid::new_v4().to_string();
+                            new_stage_ids.push((si, new_id.clone()));
+                            new_id
                         };
                         conn.execute(
                             "INSERT OR IGNORE INTO prebuilt_stages (id, plan_id, sort_order, name, grade_band) VALUES (?1,?2,?3,?4,?5)",
                             rusqlite::params![stage_id, plan_id, si as i64, stage_name, stage_grade],
-                        ).ok();
+                        ).map_err(|e| format!("insert stage {}: {}", stage_id, e))?;
 
                         if let Some(tasks) = stage["tasks"].as_array() {
                             for (ti, task) in tasks.iter().enumerate() {
@@ -528,19 +575,55 @@ pub fn write_prebuilt_to_db(conn: &rusqlite::Connection) -> Result<(), String> {
                                 let task_id = if let Some(id) = task["id"].as_str() {
                                     id.to_string()
                                 } else {
-                                    uuid::Uuid::new_v4().to_string()
+                                    let new_id = uuid::Uuid::new_v4().to_string();
+                                    new_task_ids.push((si, ti, new_id.clone()));
+                                    new_id
                                 };
+                                let dependencies = task["dependencies"].as_array()
+                                    .map(|a| serde_json::to_string(a).unwrap_or_default())
+                                    .unwrap_or_default();
+                                let origin = task["origin"].as_str().unwrap_or("");
                                 conn.execute(
-                                    "INSERT OR IGNORE INTO prebuilt_tasks (id, plan_id, stage_id, task_key, name, prompt_mode, card_ids, sort_order) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
-                                    rusqlite::params![task_id, plan_id, stage_id, task_key, task_name, prompt_mode, card_ids, ti as i64],
-                                ).ok();
+                                    "INSERT OR IGNORE INTO prebuilt_tasks (id, plan_id, stage_id, task_key, name, prompt_mode, card_ids, dependencies, origin, sort_order) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+                                    rusqlite::params![task_id, plan_id, stage_id, task_key, task_name, prompt_mode, card_ids, dependencies, origin, ti as i64],
+                                ).map_err(|e| format!("insert task {}: {}", task_id, e))?;
                             }
                         }
                     }
                 }
+                // 将延迟收集的 ID 写回 plan_val（此时 stages 借用已释放）
+                if !new_stage_ids.is_empty() || !new_task_ids.is_empty() {
+                    if let Some(stages_arr) = plan_val["stages"].as_array_mut() {
+                        for (si, new_id) in &new_stage_ids {
+                            stages_arr[*si]["id"] = serde_json::Value::String(new_id.clone());
+                        }
+                        for (si, ti, new_id) in &new_task_ids {
+                            if *si < stages_arr.len() {
+                                if let Some(tasks_arr) = stages_arr[*si]["tasks"].as_array_mut() {
+                                    if *ti < tasks_arr.len() {
+                                        tasks_arr[*ti]["id"] = serde_json::Value::String(new_id.clone());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    pending_backfills.insert(path.to_string_lossy().to_string(), plan_val.clone());
+                }
                 tracing::info!("K12 DB: wrote plan {}", subject);
             }
         }
+    }
+
+    // 3. 将自动生成的 ID 写回 JSON 文件
+    for (plan_path, plan_val) in &pending_backfills {
+        let json_str = serde_json::to_string_pretty(plan_val)
+            .map_err(|e| format!("serialize plan JSON for write-back: {}", e))?;
+        let tmp = format!("{}.tmp", plan_path);
+        std::fs::write(&tmp, &json_str)
+            .map_err(|e| format!("write {}: {}", tmp, e))?;
+        std::fs::rename(&tmp, plan_path)
+            .map_err(|e| format!("rename {} -> {}: {}", tmp, plan_path, e))?;
+        tracing::info!("K12 DB: wrote back auto-generated IDs to {}", plan_path);
     }
 
     tracing::info!("K12 DB: prebuilt data written successfully");

@@ -494,6 +494,15 @@ mod tests {
         assert!(cols.contains(&"to_type".to_string()), "card_relations 缺 to_type");
         assert!(cols.contains(&"user_id".to_string()), "card_relations 缺 user_id");
 
+        // prebuilt_plans: 必须含新增字段
+        let cols = table_columns(&conn, "prebuilt_plans");
+        assert!(cols.contains(&"title".to_string()), "prebuilt_plans 缺 title");
+        assert!(cols.contains(&"author".to_string()), "prebuilt_plans 缺 author");
+        assert!(cols.contains(&"display_name".to_string()), "prebuilt_plans 缺 display_name");
+        assert!(cols.contains(&"visible".to_string()), "prebuilt_plans 缺 visible");
+        assert!(cols.contains(&"theme_color".to_string()), "prebuilt_plans 缺 theme_color");
+        assert!(cols.contains(&"theme_icon".to_string()), "prebuilt_plans 缺 theme_icon");
+
         // review_log: 必须含 user_card_id
         let cols = table_columns(&conn, "review_log");
         assert!(cols.contains(&"user_card_id".to_string()), "review_log 缺 user_card_id");

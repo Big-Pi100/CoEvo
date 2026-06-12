@@ -436,6 +436,17 @@ class ChatClient {
 
   // ── K12 API ──
 
+  /// 获取所有 K12 科目的 display_name/title/goal/author 等元数据
+  Future<List<Map<String, dynamic>>> getK12Subjects() async {
+    final resp = await http.get(
+      Uri.parse('$baseUrl/api/k12/subjects'),
+      headers: _authHeaders,
+    ).timeout(ApiConfig.requestTimeout);
+    if (resp.statusCode != 200) return [];
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    return (data['subjects'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+  }
+
   /// 初始化 K12 结构化学习会话
   Future<Map<String, dynamic>> k12Init({
     required String subject,

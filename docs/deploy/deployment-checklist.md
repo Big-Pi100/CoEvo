@@ -37,3 +37,4 @@ VPS 仅作为 LLM 代理网关，业务逻辑在 APK 内部。
 |:--|:--|
 | `DEEPSEEK_API_KEY` | `sk-***REDACTED***` |
 | `COEVO_ADMIN_KEY` | `coevo-admin-2026` |
+| `COEVO_K12_DATA_DIR` | `/opt/coevo/data/curriculum/v4` |

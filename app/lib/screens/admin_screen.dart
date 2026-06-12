@@ -8,6 +8,8 @@ import 'package:http/http.dart' as http;
 import '../api/api_config.dart';
 import 'user_detail_screen.dart';
 import '../theme/app_theme.dart';
+import 'curriculum_plans_page.dart';
+import 'curriculum_cards_page.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -39,6 +41,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
 
   // Tabs & sub-tabs
   late TabController _mainTabCtrl;
+  late TabController _curriculumSubTabCtrl;
   int _mainTab = 0;
   String _reqFilter = 'pending';
   List<Map<String, dynamic>> _requests = [];
@@ -57,6 +60,8 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
   bool _logLoading = false;
   bool _logLoaded = false;
 
+  // ── Curriculum tab (tree browser manages its own state) ──
+
   Map<String, String> _headers() {
     if (_adminKey != null) return {'X-Admin-Key': _adminKey!};
     if (_token != null) return {'Authorization': 'Bearer $_token'};
@@ -74,10 +79,10 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
       if (_requests.isEmpty) _loadRequests('pending');
     }
     if (_role == 'super') {
-      if (_mainTab == 2) { _loadAdmins(); _loadAssignments(); }
-      else if (_mainTab == 3) { _loadLogs(); }
+      if (_mainTab == 3) { _loadAdmins(); _loadAssignments(); }
+      else if (_mainTab == 4) { _loadLogs(); }
     } else if (_role == 'service') {
-      if (_mainTab == 2) _loadLogs();
+      if (_mainTab == 3) _loadLogs();
     }
   }
 
@@ -86,11 +91,14 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     super.initState();
     _mainTabCtrl = TabController(length: 1, vsync: this);
     _mainTabCtrl.addListener(_onTabChanged);
+    _curriculumSubTabCtrl = TabController(length: 2, vsync: this);
+    _curriculumSubTabCtrl.addListener(() { if (mounted) setState(() {}); });
   }
 
   int _tabCount() {
     int n = 1; // 仪表盘 always
     n++; // 用户管理+订阅 always
+    n++; // 课程数据 always
     if (_role == 'super') n++; // 管理员管理（含分配管理）
     if (_role == 'super' || _role == 'service') n++; // 操作日志
     return n;
@@ -106,7 +114,9 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
   @override
   void dispose() {
     _keyCtrl.dispose(); _passCtrl.dispose(); _searchCtrl.dispose();
-    _mainTabCtrl.dispose(); super.dispose();
+    _mainTabCtrl.dispose();
+    _curriculumSubTabCtrl.dispose();
+    super.dispose();
   }
 
   Future<Map<String, dynamic>> _api(String method, String path, {Map<String, dynamic>? body}) async {
@@ -569,7 +579,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
 
     final showAdminMgmt = _role == 'super';
     final showAudit = _role == 'super' || _role == 'service';
-    final tabs = <Tab>[const Tab(text: '仪表盘'), const Tab(text: '用户管理')];
+    final tabs = <Tab>[const Tab(text: '仪表盘'), const Tab(text: '用户管理'), const Tab(text: '课程数据')];
     if (showAdminMgmt) tabs.add(const Tab(text: '管理员管理'));
     if (showAudit) tabs.add(const Tab(text: '操作日志'));
 
@@ -586,6 +596,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     return IndexedStack(index: _mainTab, children: [
       _buildDashboardTab(),
       _buildUsersTab(),
+      _buildCurriculumTab(),
       if (showAdminMgmt) _buildAdminMgmtTab(),
       if (showAudit) _buildAuditTab(),
     ]);
@@ -909,6 +920,20 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
       final dt = DateTime.parse(dateStr);
       return dt.difference(DateTime.now()).inDays;
     } catch (_) { return 999; }
+  }
+
+  // ── Curriculum Tab ──
+  Widget _buildCurriculumTab() {
+    return Column(children: [
+      TabBar(controller: _curriculumSubTabCtrl, tabs: const [
+        Tab(text: '学习计划'),
+        Tab(text: '卡片数据'),
+      ]),
+      Expanded(child: IndexedStack(index: _curriculumSubTabCtrl.index, children: [
+        CurriculumPlansPage(adminKey: _adminKey, token: _token),
+        CurriculumCardsPage(adminKey: _adminKey, token: _token),
+      ])),
+    ]);
   }
 
   // ── Admin Management Tab (super only) ──
@@ -1389,4 +1414,5 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     };
   }
 }
+
 

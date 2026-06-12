@@ -8,14 +8,47 @@ import 'chat_screen.dart';
 import '../theme/app_theme.dart';
 
 /// 首页 — 科目直选 + 模式自动路由
-class HomeScreen extends ConsumerWidget {
+///
+/// 数据源改为 API 驱动，从 /api/k12/subjects 获取科目元数据。
+/// 颜色和图标从本地 fallback 字典获取。
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  bool _loading = true;
+  List<Map<String, dynamic>> _subjects = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSubjects();
+  }
+
+  Future<void> _loadSubjects() async {
+    try {
+      final auth = ref.read(authProvider);
+      final client = ChatClient(
+        userId: auth.userId ?? 'default_user',
+        token: auth.token,
+      );
+      final subjects = await client.getK12Subjects();
+      if (mounted) {
+        setState(() { _subjects = subjects; _loading = false; });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() { _loading = false; });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // 只渲染 visible 的科目
-    final visibleSubjects = k12VisibleSubjects;
 
     return Scaffold(
       appBar: AppBar(
@@ -83,24 +116,34 @@ class HomeScreen extends ConsumerWidget {
             Text('科目', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: AppTheme.spacingSm),
             Expanded(
-              child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                  childAspectRatio: 0.9,
-                ),
-                itemCount: visibleSubjects.length,
-                itemBuilder: (ctx, i) {
-                  final cfg = visibleSubjects[i];
-                  return _SubjectCard(
-                    name: cfg.displayName,
-                    color: cfg.color,
-                    icon: cfg.icon,
-                    onTap: () => _startSubject(context, ref, cfg),
-                  );
-                },
-              ),
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                  : _subjects.isEmpty
+                      ? Center(child: Text('暂无可用的学习计划', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)))
+                      : GridView.builder(
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            mainAxisSpacing: 8,
+                            crossAxisSpacing: 8,
+                            childAspectRatio: 0.9,
+                          ),
+                          itemCount: _subjects.length,
+                          itemBuilder: (ctx, i) {
+                            final s = _subjects[i];
+                            final code = (s['subject'] as String?) ?? '';
+                            final displayName = (s['display_name'] as String?) ?? code;
+                            final fallback = k12SubjectFallbacks[code];
+                            final color = fallback?.color ?? theme.colorScheme.primary;
+                            final icon = fallback?.icon ?? Icons.school;
+
+                            return _SubjectCard(
+                              name: displayName,
+                              color: color,
+                              icon: icon,
+                              onTap: () => _startSubject(context, s, fallback),
+                            );
+                          },
+                        ),
             ),
           ],
         ),
@@ -110,11 +153,17 @@ class HomeScreen extends ConsumerWidget {
 
   Future<void> _startSubject(
     BuildContext context,
-    WidgetRef ref,
-    K12SubjectConfig cfg,
+    Map<String, dynamic> subjectData,
+    K12SubjectConfig? fallback,
   ) async {
+    final code = (subjectData['subject'] as String?) ?? '';
+    final displayName = (subjectData['display_name'] as String?) ?? code;
+
+    // 从 fallback 或默认值获取年级列表
+    List<String> homeGrades = fallback?.homeGrades ?? ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'];
+
     // 合并高中选项（g10 + g11-12 → g10-12），前端统一显示为"高中"
-    List<String> grades = List.from(cfg.homeGrades);
+    List<String> grades = List.from(homeGrades);
     final hasG10 = grades.contains('g10');
     final hasG1112 = grades.contains('g11-12');
     if (hasG10 || hasG1112) {
@@ -128,7 +177,7 @@ class HomeScreen extends ConsumerWidget {
     final gradeBand = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: Text('选择 ${cfg.displayName} 年级'),
+        title: Text('选择 $displayName 年级'),
         children: grades.map((g) => SimpleDialogOption(
           onPressed: () => Navigator.of(ctx).pop(g),
           child: Text(k12GradeNames[g] ?? g),
@@ -144,7 +193,7 @@ class HomeScreen extends ConsumerWidget {
         token: auth.token,
       );
 
-      final result = await client.k12Init(subject: cfg.code, gradeBand: gradeBand);
+      final result = await client.k12Init(subject: code, gradeBand: gradeBand);
 
       final convId = result['conversation_id'] as String?;
       if (convId != null && context.mounted) {
