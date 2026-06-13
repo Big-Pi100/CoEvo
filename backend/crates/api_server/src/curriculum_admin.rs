@@ -385,6 +385,8 @@ pub async fn curriculum_status_handler(headers: HeaderMap) -> impl axum::respons
             subjects.push(SubjectStatus { subject, display_name, json_exists: true, loaded, stages_count, tasks_count });
         }
     }
+    // Sort by subject for deterministic order
+    subjects.sort_by(|a, b| a.subject.cmp(&b.subject));
     Json(CurriculumStatusResponse { subjects }).into_response()
 }
 
@@ -847,6 +849,16 @@ pub async fn post_plan_handler(
         return err_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("write: {}", e));
     }
     auto_git_commit(&subject, "plan-created");
+
+    // 同步写入 DB（与 write_prebuilt_to_db 一致）
+    let conn = db_pool::get_conn();
+    if let Err(e) = conn.execute(
+        "INSERT INTO prebuilt_plans (id, subject, grade_band, goal, domain, title, author, display_name, visible, theme_color, theme_icon) VALUES (?1,?2,'',?3,?4,?5,?6,?7,?8,?9,?10)",
+        rusqlite::params![plan_id_str, subject, goal, domain, title, author, display_name, visible, theme_color, theme_icon],
+    ) {
+        return err_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("insert plan {}: {}", subject, e));
+    }
+
     Json(serde_json::json!({"subject": subject, "status": "created"})).into_response()
 }
 
@@ -937,6 +949,35 @@ pub async fn delete_card_handler(
     for tbl in &["prebuilt_science_cards", "prebuilt_language_cards", "prebuilt_literature_cards", "prebuilt_humanities_cards"] {
         conn.execute(&format!("DELETE FROM {} WHERE id=?1", tbl), rusqlite::params![card_id]).ok();
     }
+    Json(serde_json::json!({"status": "deleted"})).into_response()
+}
+
+/// DELETE /api/admin/curriculum/subject/{subject}/plan
+pub async fn delete_plan_handler(
+    headers: HeaderMap,
+    Path(subject): Path<String>,
+) -> impl axum::response::IntoResponse {
+    if let Err(e) = admin_handlers::verify_admin(&headers) { return e; }
+    let conn = db_pool::get_conn();
+    let path = plan_path(&subject);
+    if !path.exists() {
+        return err_response(StatusCode::NOT_FOUND, &format!("plan {} not found", subject));
+    }
+
+    // 1. Delete JSON file
+    if let Err(e) = std::fs::remove_file(&path) {
+        return err_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("delete file: {}", e));
+    }
+
+    // 2. Delete DB records (cascade)
+    conn.execute("DELETE FROM prebuilt_tasks WHERE plan_id IN (SELECT id FROM prebuilt_plans WHERE subject=?1)", rusqlite::params![subject])
+        .map_err(|e| format!("delete tasks: {}", e)).ok();
+    conn.execute("DELETE FROM prebuilt_stages WHERE plan_id IN (SELECT id FROM prebuilt_plans WHERE subject=?1)", rusqlite::params![subject])
+        .map_err(|e| format!("delete stages: {}", e)).ok();
+    conn.execute("DELETE FROM prebuilt_plans WHERE subject=?1", rusqlite::params![subject])
+        .map_err(|e| format!("delete plan: {}", e)).ok();
+
+    auto_git_commit(&subject, "plan-deleted");
     Json(serde_json::json!({"status": "deleted"})).into_response()
 }
 

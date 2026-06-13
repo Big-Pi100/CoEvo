@@ -92,7 +92,6 @@ sudo certbot renew --dry-run
 - Flutter SDK: `D:\flutter_flutter\bin\flutter.bat`（3.27.5 社区版，支持华为 SDK）
 - **注意**：
   - `D:\flutter_flutter` 是社区版（含华为 SDK 支持），**这是当前使用的版本**
-  - `D:\flutter_ohos` 是鸿蒙定制版，**不要使用**
   - `D:\flutter` 是标准版 Flutter，通常也可用，但构建时需确认 API_HOST 正确注入
 
 ### 3.2 构建命令

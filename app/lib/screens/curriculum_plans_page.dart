@@ -32,6 +32,7 @@ class _TreeEntry extends StatefulWidget {
   final Future<List<_PlanTreeNode>> Function() loadChildren;
 
   const _TreeEntry({
+    super.key,
     required this.node,
     required this.depth,
     required this.selectedId,
@@ -118,6 +119,7 @@ class _TreeEntryState extends State<_TreeEntry> {
       ),
       if (_expanded && _children != null && !_loading)
         ..._children!.map((child) => _TreeEntry(
+              key: ValueKey(_itemId(child)),
               node: child,
               depth: widget.depth + 1,
               selectedId: widget.selectedId,
@@ -127,8 +129,10 @@ class _TreeEntryState extends State<_TreeEntry> {
                   final tasks = child.data['tasks'] as List? ?? [];
                   return tasks.map((t) => _PlanTreeNode(
                     type: _NodeType.task,
-                    label: '${t['task_key'] ?? ''} ${t['name'] ?? ''}'.trim(),
-                    subtitle: '${(t['card_ids'] as List?)?.length ?? 0}张',
+                    label: (t['name'] as String?)?.isNotEmpty == true
+                        ? t['name'] as String
+                        : (t['task_key'] as String?) ?? 'unnamed',
+                    subtitle: '${(t['card_ids'] as List?)?.length ?? 0}张 · ${t['task_key'] ?? ''}',
                     data: t as Map<String, dynamic>,
                     subject: child.subject,
                   )).toList();
@@ -154,6 +158,7 @@ class _CurriculumPlansPageState extends State<CurriculumPlansPage> {
   List<Map<String, dynamic>> _subjects = [];
   Map<String, Map<String, dynamic>> _planCache = {};
   String? _selectedId;
+  Map<String, dynamic>? _selectedData; // ← 直接存储选中数据，不遍历缓存查找
   bool _loading = false;
 
   Map<String, String> get _headers {
@@ -207,40 +212,7 @@ class _CurriculumPlansPageState extends State<CurriculumPlansPage> {
   }
 
   Map<String, dynamic>? _currentEditData() {
-    if (_selectedId == null) return null;
-    final parts = _selectedId!.split(':');
-    final type = parts[0];
-    if (type == 'plan') {
-      final subject = parts[1];
-      final plan = _planCache[subject];
-      if (plan == null) return null;
-      return {'_type': 'plan', '_subject': subject, ...plan};
-    }
-    final id = parts[1];
-    for (final entry in _planCache.entries) {
-      final plan = entry.value;
-      final stages = plan['stages'] as List? ?? [];
-      if (type == 'stage') {
-        for (final s in stages) {
-          final sMap = s as Map<String, dynamic>;
-          if (sMap['id'] == id) {
-            return {'_type': 'stage', '_subject': entry.key, ...sMap};
-          }
-        }
-      } else if (type == 'task') {
-        for (final s in stages) {
-          final sMap = s as Map<String, dynamic>;
-          final tasks = sMap['tasks'] as List? ?? [];
-          for (final t in tasks) {
-            final tMap = t as Map<String, dynamic>;
-            if (tMap['id'] == id) {
-              return {'_type': 'task', '_subject': entry.key, '_stageId': sMap['id'], ...tMap};
-            }
-          }
-        }
-      }
-    }
-    return null;
+    return _selectedData;
   }
 
   void _refreshNode(String subject) {
@@ -303,6 +275,94 @@ class _CurriculumPlansPageState extends State<CurriculumPlansPage> {
     );
   }
 
+  // ── Add Stage Dialog ──
+
+  void _showNewStageDialog(String subject) {
+    final nameCtrl = TextEditingController();
+    final gradeCtrl = TextEditingController();
+    final sortCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('新增阶段'),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'name *', isDense: true, border: OutlineInputBorder()), autofocus: true),
+            const SizedBox(height: 8),
+            TextField(controller: gradeCtrl, decoration: const InputDecoration(labelText: 'grade_band', isDense: true, border: OutlineInputBorder())),
+            const SizedBox(height: 8),
+            TextField(controller: sortCtrl, decoration: const InputDecoration(labelText: 'sort', isDense: true, border: OutlineInputBorder())),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () async {
+              if (nameCtrl.text.trim().isEmpty) return;
+              Navigator.pop(ctx);
+              final body = <String, dynamic>{'name': nameCtrl.text.trim()};
+              if (gradeCtrl.text.trim().isNotEmpty) body['grade_band'] = gradeCtrl.text.trim();
+              if (sortCtrl.text.trim().isNotEmpty) body['sort'] = sortCtrl.text.trim();
+              final resp = await _api('POST', '/api/admin/curriculum/subject/$subject/plan/stages', body: body);
+              if (resp['status'] == 'ok') {
+                _snack('阶段已添加');
+                _refreshNode(subject);
+              } else {
+                _snack(resp['error'] ?? '添加失败');
+              }
+            },
+            child: const Text('添加'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Add Task Dialog ──
+
+  void _showNewTaskDialog(String subject, String stageId) {
+    final nameCtrl = TextEditingController();
+    final keyCtrl = TextEditingController();
+    final modeCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('新增任务'),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(controller: keyCtrl, decoration: const InputDecoration(labelText: 'task_key', isDense: true, border: OutlineInputBorder()), autofocus: true),
+            const SizedBox(height: 8),
+            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'name *', isDense: true, border: OutlineInputBorder())),
+            const SizedBox(height: 8),
+            TextField(controller: modeCtrl, decoration: const InputDecoration(labelText: 'prompt_mode', isDense: true, border: OutlineInputBorder())),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () async {
+              if (nameCtrl.text.trim().isEmpty && keyCtrl.text.trim().isEmpty) return;
+              Navigator.pop(ctx);
+              final body = <String, dynamic>{
+                'name': nameCtrl.text.trim(),
+                'task_key': keyCtrl.text.trim(),
+              };
+              if (modeCtrl.text.trim().isNotEmpty) body['prompt_mode'] = modeCtrl.text.trim();
+              final resp = await _api('POST', '/api/admin/curriculum/subject/$subject/plan/stages/$stageId/tasks', body: body);
+              if (resp['status'] == 'ok') {
+                _snack('任务已添加');
+                _refreshNode(subject);
+              } else {
+                _snack(resp['error'] ?? '添加失败');
+              }
+            },
+            child: const Text('添加'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── Edit panels ──
 
   Widget _buildPlanEditor(Map<String, dynamic> data) {
@@ -323,8 +383,7 @@ class _CurriculumPlansPageState extends State<CurriculumPlansPage> {
         const SizedBox(height: 16),
         TextFormField(
           initialValue: subject,
-          enabled: false,
-          decoration: const InputDecoration(labelText: 'subject', isDense: true, border: OutlineInputBorder(), hintText: '只读'),
+          decoration: const InputDecoration(labelText: 'subject', isDense: true, border: OutlineInputBorder()),
         ),
         const SizedBox(height: 12),
         TextFormField(
@@ -377,14 +436,12 @@ class _CurriculumPlansPageState extends State<CurriculumPlansPage> {
         const SizedBox(height: 12),
         TextFormField(
           initialValue: planData['domain'] as String? ?? '',
-          enabled: false,
-          decoration: const InputDecoration(labelText: 'domain', isDense: true, border: OutlineInputBorder(), hintText: '只读'),
+          decoration: const InputDecoration(labelText: 'domain', isDense: true, border: OutlineInputBorder()),
         ),
         const SizedBox(height: 12),
         TextFormField(
           initialValue: (planData['grade_band'] as String?) ?? '',
-          enabled: false,
-          decoration: const InputDecoration(labelText: 'grade', isDense: true, border: OutlineInputBorder(), hintText: '只读'),
+          decoration: const InputDecoration(labelText: 'grade', isDense: true, border: OutlineInputBorder()),
         ),
         const SizedBox(height: 20),
         FilledButton(
@@ -406,6 +463,46 @@ class _CurriculumPlansPageState extends State<CurriculumPlansPage> {
             });
           },
           child: const Text('保存'),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.add, size: 18),
+          onPressed: () => _showNewStageDialog(subject),
+          label: const Text('添加阶段'),
+        ),
+        const SizedBox(height: 8),
+        TextButton.icon(
+          icon: const Icon(Icons.delete_outline, size: 18),
+          onPressed: () {
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('确认删除'),
+                content: Text('删除计划「${planData['display_name'] ?? subject}」？\n所有阶段和任务将被永久移除。'),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+                  FilledButton(
+                    onPressed: () async {
+                      Navigator.pop(ctx);
+                      final r = await _api('DELETE', '/api/admin/curriculum/subject/$subject/plan');
+                      if (r['status'] == 'deleted') {
+                        _snack('计划已删除');
+                        setState(() { _selectedId = null; _selectedData = null; });
+                        _planCache.remove(subject);
+                        _loadSubjects();
+                      } else {
+                        _snack(r['error'] ?? '删除失败');
+                      }
+                    },
+                    style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+                    child: const Text('删除'),
+                  ),
+                ],
+              ),
+            );
+          },
+          style: TextButton.styleFrom(foregroundColor: Colors.red),
+          label: const Text('删除计划'),
         ),
       ]),
     );
@@ -472,7 +569,7 @@ class _CurriculumPlansPageState extends State<CurriculumPlansPage> {
                         final r = await _api('DELETE', '/api/admin/curriculum/subject/$subject/plan/stages/$stageId');
                         if (r['status'] == 'deleted') {
                           _snack('已删除');
-                          setState(() => _selectedId = null);
+                          setState(() { _selectedId = null; _selectedData = null; });
                           _refreshNode(subject);
                         } else {
                           _snack(r['error'] ?? '删除失败');
@@ -488,6 +585,12 @@ class _CurriculumPlansPageState extends State<CurriculumPlansPage> {
             child: const Text('删除阶段', style: TextStyle(color: Colors.red)),
           ),
         ]),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.add, size: 18),
+          onPressed: () => _showNewTaskDialog(subject, stageId),
+          label: const Text('添加任务'),
+        ),
       ]),
     );
   }
@@ -512,8 +615,7 @@ class _CurriculumPlansPageState extends State<CurriculumPlansPage> {
         const SizedBox(height: 16),
         TextFormField(
           initialValue: data['task_key'] as String? ?? '',
-          enabled: false,
-          decoration: const InputDecoration(labelText: 'task_key', isDense: true, border: OutlineInputBorder(), hintText: '只读'),
+          decoration: const InputDecoration(labelText: 'task_key', isDense: true, border: OutlineInputBorder()),
         ),
         const SizedBox(height: 12),
         TextFormField(
@@ -533,14 +635,12 @@ class _CurriculumPlansPageState extends State<CurriculumPlansPage> {
         const SizedBox(height: 12),
         TextFormField(
           initialValue: data['origin'] as String? ?? '',
-          enabled: false,
-          decoration: const InputDecoration(labelText: 'origin', isDense: true, border: OutlineInputBorder(), hintText: '只读'),
+          decoration: const InputDecoration(labelText: 'origin', isDense: true, border: OutlineInputBorder()),
         ),
         const SizedBox(height: 12),
         TextFormField(
           initialValue: cardIdsStr,
-          enabled: false,
-          decoration: const InputDecoration(labelText: 'card_ids', isDense: true, border: OutlineInputBorder(), hintText: '只读'),
+          decoration: const InputDecoration(labelText: 'card_ids', isDense: true, border: OutlineInputBorder()),
         ),
         const SizedBox(height: 20),
         Row(children: [
@@ -577,7 +677,7 @@ class _CurriculumPlansPageState extends State<CurriculumPlansPage> {
                         final r = await _api('DELETE', '/api/admin/curriculum/subject/$subject/plan/stages/$stageId/tasks/$taskId');
                         if (r['status'] == 'deleted') {
                           _snack('已删除');
-                          setState(() => _selectedId = null);
+                          setState(() { _selectedId = null; _selectedData = null; });
                           _refreshNode(subject);
                         } else {
                           _snack(r['error'] ?? '删除失败');
@@ -656,6 +756,7 @@ class _CurriculumPlansPageState extends State<CurriculumPlansPage> {
                           final subj = s['subject'] as String? ?? '';
                           final loaded = s['loaded'] == true;
                           return _TreeEntry(
+                            key: ValueKey('plan:$subj'),
                             node: _PlanTreeNode(
                               type: _NodeType.plan,
                               label: s['display_name'] as String? ?? subj,
@@ -669,7 +770,40 @@ class _CurriculumPlansPageState extends State<CurriculumPlansPage> {
                               setState(() => _selectedId = id);
                               if (id.startsWith('plan:')) {
                                 final subject = id.split(':')[1];
-                                _loadPlan(subject);
+                                _loadPlan(subject).then((plan) {
+                                  _selectedData = {'_type': 'plan', '_subject': subject, ...plan};
+                                  if (mounted) setState(() {});
+                                });
+                              } else if (id.startsWith('stage:')) {
+                                final stageId = id.split(':')[1];
+                                for (final entry in _planCache.entries) {
+                                  final stages = entry.value['stages'] as List? ?? [];
+                                  for (final s in stages) {
+                                    final sMap = s as Map<String, dynamic>;
+                                    if (sMap['id'] == stageId) {
+                                      _selectedData = {'_type': 'stage', '_subject': entry.key, ...sMap};
+                                      if (mounted) setState(() {});
+                                      return;
+                                    }
+                                  }
+                                }
+                              } else if (id.startsWith('task:')) {
+                                final taskId = id.split(':')[1];
+                                for (final entry in _planCache.entries) {
+                                  final stages = entry.value['stages'] as List? ?? [];
+                                  for (final s in stages) {
+                                    final sMap = s as Map<String, dynamic>;
+                                    final tasks = sMap['tasks'] as List? ?? [];
+                                    for (final t in tasks) {
+                                      final tMap = t as Map<String, dynamic>;
+                                      if (tMap['id'] == taskId) {
+                                        _selectedData = {'_type': 'task', '_subject': entry.key, '_stageId': sMap['id'], ...tMap};
+                                        if (mounted) setState(() {});
+                                        return;
+                                      }
+                                    }
+                                  }
+                                }
                               }
                             },
                             loadChildren: () async {
@@ -694,7 +828,7 @@ class _CurriculumPlansPageState extends State<CurriculumPlansPage> {
         ]),
       ),
       VerticalDivider(width: 1, color: cs.outlineVariant),
-      Expanded(child: _buildEditor()),
+      Expanded(child: KeyedSubtree(key: ValueKey(_selectedId), child: _buildEditor())),
     ]);
   }
 }

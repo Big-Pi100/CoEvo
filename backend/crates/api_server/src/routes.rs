@@ -158,6 +158,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         // DELETE — 删除实体
         .route("/api/admin/curriculum/subject/{subject}/plan/stages/{stage_id}", delete(crate::curriculum_admin::delete_stage_handler))
         .route("/api/admin/curriculum/subject/{subject}/plan/stages/{stage_id}/tasks/{task_id}", delete(crate::curriculum_admin::delete_task_handler))
+        .route("/api/admin/curriculum/subject/{subject}/plan", delete(crate::curriculum_admin::delete_plan_handler))
         .route("/api/admin/curriculum/subject/{subject}/cards/{card_id}", delete(crate::curriculum_admin::delete_card_handler))
         .route("/api/admin/curriculum/subject/{subject}/cards", put(crate::curriculum_admin::put_cards_handler))
         // Gap 1: 模版下载
