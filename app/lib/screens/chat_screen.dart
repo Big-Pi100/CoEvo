@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/coevo_models.dart';
 import '../api/chat_client.dart';
+import '../api/api_config.dart';
 import '../providers/auth_provider.dart';
 import '../providers/achievement_notifier.dart';
 import '../widgets/skeleton.dart';
@@ -471,36 +472,47 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   void _showSubscriptionDialog(String title) {
     if (!mounted) return;
-    setState(() {
-      if (title.contains('到期') || title.contains('过期')) {
-        _subscriptionExpired = true;
-        _subscriptionRequired = false;
-      } else {
-        _subscriptionRequired = true;
-        _subscriptionExpired = false;
-      }
-      _subscriptionChecked = true;
-    });
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.lock, size: 20),
-            const SizedBox(width: AppTheme.spacingSm),
-            Text(title),
+    // setState 已由调用方处理，此处只需显示弹窗
+    // 使用微任务延迟到当前帧结束后再弹出，避免嵌套 setState 导致 context 失效
+    Future.microtask(() {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.lock, size: 20),
+              const SizedBox(width: AppTheme.spacingSm),
+              Text(title),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('请联系管理员续费。\n续费后刷新页面即可恢复使用。'),
+              const SizedBox(height: AppTheme.spacingMd),
+              ClipRRect(
+                borderRadius: const BorderRadius.all(Radius.circular(12)),
+                child: Image(
+                  image: NetworkImage('${ApiConfig.baseUrl}/api/public/qrcode'),
+                  width: 180,
+                  height: 180,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('我知道了'),
+            ),
           ],
         ),
-        content: const Text('请联系你的服务人员续费。\n续费后刷新页面即可恢复使用。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('我知道了'),
-          ),
-        ],
-      ),
-    );
+      );
+    });
   }
 
   /// 订阅状态横幅（主动检查结果显示在聊天页顶部）

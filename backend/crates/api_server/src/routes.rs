@@ -7,6 +7,7 @@ use axum::extract::ws::WebSocketUpgrade;
 use axum::http::HeaderMap;
 use tower_http::trace::TraceLayer;
 use serde::Deserialize;
+use serde_json::json;
 use std::sync::OnceLock;
 use std::collections::HashMap;
 
@@ -53,6 +54,8 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
     Router::new()
         // ── Health ──
         .route("/health", get(health_check))
+        // ── Public ──
+        .route("/api/public/qrcode", get(crate::config_admin::qrcode_handler))
         // ── Auth ──
         .route("/api/auth/register", post(auth_register))
         .route("/api/auth/login", post(auth_login))
@@ -83,6 +86,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/user/{user_id}/avatar", post(avatar_upload_handler).get(avatar_get_handler))
         .route("/api/user/{user_id}/achievements-all", get(achievements_all_handler))
         .route("/api/user/{user_id}/preferences", get(preferences_get_handler).put(preferences_put_handler))
+        .route("/api/user/{user_id}/subscription", get(user_subscription_handler))
         .route("/api/user/bind-lookup", post(bind_lookup_handler))
         // ── Learning Plans ──
         .route("/api/plans", get(plans_list_handler))
@@ -1721,6 +1725,42 @@ async fn update_display_name_handler(
 // ════════════════════════════════════════════
 // User Preferences
 // ════════════════════════════════════════════
+
+// ── Subscription check ──
+
+/// GET /api/user/{user_id}/subscription — 轻量订阅状态检查
+async fn user_subscription_handler(
+    Path(user_id): Path<String>,
+) -> Json<serde_json::Value> {
+    let conn = crate::db_pool::get_conn();
+    let expires: Option<String> = conn.query_row(
+        "SELECT value FROM user_preferences WHERE user_id = ?1 AND key = 'subscription_expires'",
+        rusqlite::params![user_id],
+        |row| row.get(0),
+    ).ok().flatten();
+
+    let now_ts = chrono::Utc::now().timestamp();
+    let expired = match &expires {
+        Some(e) => {
+            let normalized = if e.len() == 10 && e.as_bytes().get(4) == Some(&b'-') {
+                format!("{}T00:00:00Z", e)
+            } else {
+                e.clone()
+            };
+            chrono::DateTime::parse_from_rfc3339(&normalized)
+                .map(|dt| dt.timestamp() < now_ts)
+                .unwrap_or(true)
+        }
+        None => true,
+    };
+
+    Json(json!({
+        "expired": expired,
+        "expires_at": expires,
+    }))
+}
+
+// ── Preferences ──
 
 async fn preferences_get_handler(
     Path(user_id): Path<String>,

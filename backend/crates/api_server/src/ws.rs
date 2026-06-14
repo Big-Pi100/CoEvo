@@ -414,9 +414,9 @@ pub async fn handle_ws(mut ws: WebSocket) {
                             };
                             chrono::DateTime::parse_from_rfc3339(&normalized)
                                 .map(|dt| dt.timestamp() < now_ts)
-                                .unwrap_or(true) // 解析失败视为已过期
+                                .unwrap_or(true)
                         }
-                        None => true, // 无记录 = 未付费
+                        None => true,
                     };
                     if expired {
                         let msg = if expires.is_some() {

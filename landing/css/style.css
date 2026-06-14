@@ -67,6 +67,7 @@ img{max-width:100%;display:block}
 .hero-label{display:inline-block;padding:6px 18px;background:rgba(89,92,230,.1);border:1px solid rgba(157,160,240,.2);color:#9DA0F0;border-radius:100px;font-size:12px;font-weight:500;margin-bottom:32px}
 .hero-title{font-size:clamp(28px,5vw,50px);font-weight:700;color:#fff;line-height:1.15;margin-bottom:24px;letter-spacing:-.02em}
 .hero-accent{background:linear-gradient(135deg,#9DA0F0,#0EB08A);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hero-question{display:block;font-size:clamp(32px,5.8vw,58px);font-weight:800;color:#fff;margin-top:4px;letter-spacing:-.03em;text-shadow:0 0 60px rgba(157,160,240,.3)}
 .hero-subtitle{font-size:clamp(15px,1.6vw,17px);color:rgba(255,255,255,.5);line-height:1.7;max-width:480px;margin:0 auto 36px}
 .hero-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
 .btn{display:inline-flex;align-items:center;gap:8px;padding:14px 32px;border-radius:100px;font-size:15px;font-weight:600;transition:all .3s;cursor:pointer;border:none;font-family:var(--font)}

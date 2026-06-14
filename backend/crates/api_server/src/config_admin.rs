@@ -3,6 +3,7 @@
 //! - GET/POST /api/admin/config — 运行时配置 CRUD
 //! - GET/POST /api/admin/prompt/template — 模板读取/保存（super 权限）
 //! - POST /api/admin/debug/track — 开始跟踪
+//! - GET /api/public/qrcode — 联系管理员二维码
 //! - DELETE /api/admin/debug/track/{id} — 关闭
 //! - GET /api/admin/debug/tracks — 列出跟踪
 //! - GET /api/admin/debug/logs — 搜索日志
@@ -426,4 +427,27 @@ pub async fn debug_log_detail_handler(
         "created_at": ca,
         "entries": entries,
     }))
+}
+
+// ════════════════════════════════════════════
+// 公共端点
+// ════════════════════════════════════════════
+
+/// GET /api/public/qrcode — 返回管理员微信二维码图片
+pub async fn qrcode_handler() -> impl IntoResponse {
+    let img_path = "data/super_weixin.jpg";
+    match tokio::fs::read(img_path).await {
+        Ok(data) => {
+            axum::response::Response::builder()
+                .header(axum::http::header::CONTENT_TYPE, "image/jpeg")
+                .body(axum::body::Body::from(data))
+                .unwrap()
+        }
+        Err(_) => {
+            axum::response::Response::builder()
+                .header(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")
+                .body(axum::body::Body::from("二维码图片未配置，请联系管理员。"))
+                .unwrap()
+        }
+    }
 }

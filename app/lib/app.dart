@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'theme/app_theme.dart';
+import 'api/api_config.dart';
 import 'screens/auth_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/admin_screen.dart';
@@ -59,7 +63,8 @@ final goRouter = GoRouter(
       builder: (context, state) => const GuardianScreen(),
     ),
     StatefulShellRoute.indexedStack(
-      builder: (context, state, navigationShell) => _ShellScaffold(navigationShell: navigationShell),
+      builder: (context, state, navigationShell) =>
+          _ShellScaffold(navigationShell: navigationShell),
       branches: [
         StatefulShellBranch(
           routes: [
@@ -94,9 +99,10 @@ final goRouter = GoRouter(
         child: const ProfileScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             SlideTransition(
-              position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(animation),
-              child: child,
-            ),
+          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+              .animate(animation),
+          child: child,
+        ),
       ),
     ),
     GoRoute(
@@ -106,9 +112,10 @@ final goRouter = GoRouter(
         child: ChatScreen(conversationId: state.extra as String?),
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             SlideTransition(
-              position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(animation),
-              child: child,
-            ),
+          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+              .animate(animation),
+          child: child,
+        ),
       ),
     ),
     GoRoute(
@@ -118,9 +125,10 @@ final goRouter = GoRouter(
         child: const ConversationListScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             SlideTransition(
-              position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(animation),
-              child: child,
-            ),
+          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+              .animate(animation),
+          child: child,
+        ),
       ),
     ),
     GoRoute(
@@ -130,9 +138,10 @@ final goRouter = GoRouter(
         child: const K12SubjectScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             SlideTransition(
-              position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(animation),
-              child: child,
-            ),
+          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+              .animate(animation),
+          child: child,
+        ),
       ),
     ),
   ],
@@ -149,12 +158,22 @@ class _ShellScaffold extends StatelessWidget {
       bottomNavigationBar: NavigationBar(
         selectedIndex: navigationShell.currentIndex,
         onDestinationSelected: (i) {
-          navigationShell.goBranch(i, initialLocation: i == navigationShell.currentIndex);
+          navigationShell.goBranch(i,
+              initialLocation: i == navigationShell.currentIndex);
         },
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.school_outlined), selectedIcon: Icon(Icons.school), label: '学习'),
-          NavigationDestination(icon: Icon(Icons.replay_outlined), selectedIcon: Icon(Icons.replay), label: '复习'),
-          NavigationDestination(icon: Icon(Icons.emoji_events_outlined), selectedIcon: Icon(Icons.emoji_events), label: '成就'),
+          NavigationDestination(
+              icon: Icon(Icons.school_outlined),
+              selectedIcon: Icon(Icons.school),
+              label: '学习'),
+          NavigationDestination(
+              icon: Icon(Icons.replay_outlined),
+              selectedIcon: Icon(Icons.replay),
+              label: '复习'),
+          NavigationDestination(
+              icon: Icon(Icons.emoji_events_outlined),
+              selectedIcon: Icon(Icons.emoji_events),
+              label: '成就'),
         ],
       ),
     );
@@ -169,12 +188,118 @@ class CoEvoApp extends ConsumerStatefulWidget {
 }
 
 class _CoEvoAppState extends ConsumerState<CoEvoApp> {
+  Timer? _subTimer;
+  DateTime? _lastDismissed;
+  int _dismissCount = 0;
+  bool _showSubExpired = false;
+
+  static const List<int> _backoffMinutes = [10, 30, 60, 120, 360];
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(authProvider.notifier).tryRestore();
+      // 等 auth 恢复完成后首次检查
+      Future.delayed(const Duration(seconds: 3), _checkSubscription);
+      // 每 5 分钟轮询
+      _subTimer = Timer.periodic(
+          const Duration(minutes: 5), (_) => _checkSubscription());
     });
+  }
+
+  @override
+  void dispose() {
+    _subTimer?.cancel();
+    super.dispose();
+  }
+
+  void _checkSubscription() {
+    final auth = ref.read(authProvider);
+    if (!auth.isAuthenticated || auth.userId == null) return;
+    // 距上次关闭时间按 dismiss 次数递增
+    if (_lastDismissed != null) {
+      final idx = _dismissCount.clamp(0, _backoffMinutes.length - 1);
+      final minWait = _backoffMinutes[idx];
+      if (DateTime.now().difference(_lastDismissed!).inMinutes < minWait)
+        return;
+    }
+
+    http.get(
+      Uri.parse('${ApiConfig.baseUrl}/api/user/${auth.userId}/subscription'),
+      headers: {'Content-Type': 'application/json'},
+    ).then((resp) {
+      if (resp.statusCode != 200) return;
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      if (data['expired'] == true && mounted && !_showSubExpired) {
+        setState(() => _showSubExpired = true);
+      }
+    }).catchError((_) {});
+  }
+
+  Widget _buildSubExpiredOverlay() {
+    if (!_showSubExpired) return const SizedBox.shrink();
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: () {},
+            child: Container(color: Colors.black54),
+          ),
+        ),
+        Center(
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              margin: const EdgeInsets.all(32),
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.lock, size: 20),
+                      SizedBox(width: 8),
+                      Text('订阅已到期',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('请联系管理员续费。\n续费后刷新页面即可恢复使用。'),
+                  const SizedBox(height: 16),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image(
+                      image: NetworkImage(
+                          '${ApiConfig.baseUrl}/api/public/qrcode'),
+                      width: 180,
+                      height: 180,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: () {
+                      _lastDismissed = DateTime.now();
+                      _dismissCount++;
+                      setState(() => _showSubExpired = false);
+                    },
+                    child: const Text('我知道了'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -191,7 +316,7 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
     switch (themeState.mode) {
       case AppThemeMode.duolingo:
         lightTheme = AppTheme.duolingo;
-        darkTheme = AppTheme.duolingo;   // 强制亮色，无视系统暗色模式
+        darkTheme = AppTheme.duolingo; // 强制亮色，无视系统暗色模式
         themeMode = ThemeMode.light;
         break;
       case AppThemeMode.light:
@@ -222,6 +347,7 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
         children: [
           child!,
           const AchievementOverlay(),
+          _buildSubExpiredOverlay(),
         ],
       ),
     );
