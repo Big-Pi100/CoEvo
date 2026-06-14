@@ -24,6 +24,7 @@ pub mod rate_limiter;
 pub mod routes;
 pub mod schema;
 pub mod subject_router;
+pub mod tencent_tts;
 pub mod test_helpers;
 pub mod app_config_cache;
 pub mod config_admin;

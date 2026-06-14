@@ -1,12 +1,16 @@
 ﻿import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../models/coevo_models.dart';
 import '../api/chat_client.dart';
 import '../api/api_config.dart';
 import '../providers/auth_provider.dart';
 import '../providers/achievement_notifier.dart';
+import '../services/tts_service.dart';
 import '../widgets/skeleton.dart';
 import 'chat/chat_concept_dialog.dart';
 import 'chat/chat_input.dart';
@@ -102,6 +106,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         conversationId: _convId,
         token: token,
       );
+
+      // 绑定 TTS 客户端（用于朗读时读取引擎偏好）
+      ref.read(ttsServiceProvider).bindClient(_client!);
 
       // 加载学习计划和订阅状态（并行发起，统一等待完成后再渲染）
       final planFuture = _loadPlan();
@@ -405,6 +412,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _loadPlan();
         // 通知复习页重新加载（CP2 创建新计划或解锁卡片后）
         ref.read(cardRefreshProvider.notifier).state++;
+        break;
+      case 'tts_audio':
+        // 收到 TTS 音频 → 缓存并检查自动播放开关
+        if (event.audio != null) {
+          // 获取当前助理回复的文本用于缓存键
+          final text = _getLastAssistantText();
+          if (text != null) {
+            try {
+              final bytes = base64Decode(event.audio!);
+              ref.read(ttsServiceProvider).cacheAudio(text, Uint8List.fromList(bytes));
+            } catch (_) {}
+          }
+          if (ref.read(ttsAutoPlayProvider)) {
+            _playTtsAudio(event.audio);
+          }
+        }
         break;
     }
   }
@@ -741,12 +764,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       body: Column(
         children: [
           // 学习计划面板（持久展示，不被对话推没）
-          if (activePlan != null) ChatPlanPanel(plan: {
-            'goal': activePlan.goal,
-            'plan': {'stages': activePlan.stages ?? []},
-            'conversation_id': activePlan.conversationId,
-            'card_count': activePlan.totalCards,
-          }),
+          if (activePlan != null)
+            ChatPlanPanel(plan: {
+              'goal': activePlan.goal,
+              'plan': {'stages': activePlan.stages ?? []},
+              'conversation_id': activePlan.conversationId,
+              'card_count': activePlan.totalCards,
+            })
+          else if (planState.isLoading)
+            // Plan 加载中
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 16, height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  SizedBox(width: 8),
+                  Text('正在加载学习计划...', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                ],
+              ),
+            ),
           // 课文阅读面板（reading-first 模式，自动隐藏不可用）
           if (_client != null && _convId.isNotEmpty)
             ChatReadingPassage(client: _client!, conversationId: _convId),
@@ -850,6 +889,41 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingXs),
         child: ChatMessageBubble(text: msg.content, isUser: false, isStreaming: isStreaming),
       );
+    }
+  }
+
+  /// 获取最后一条助理回复的文本（用于 TTS 缓存键）
+  String? _getLastAssistantText() {
+    if (_streamingIndex >= 0 && _streamingIndex < _messages.length) {
+      final msg = _messages[_streamingIndex];
+      if (msg.role == 'assistant') return msg.content;
+    }
+    for (int i = _messages.length - 1; i >= 0; i--) {
+      if (_messages[i].role == 'assistant') return _messages[i].content;
+    }
+    return null;
+  }
+
+  AudioPlayer? _ttsPlayer;
+
+  /// 播放 TTS 音频（base64 编码的 MP3 数据）
+  void _playTtsAudio(String? audioBase64) {
+    if (audioBase64 == null || audioBase64.isEmpty) return;
+    // 停止当前播放
+    _ttsPlayer?.stop();
+    _ttsPlayer?.dispose();
+    _ttsPlayer = null;
+    try {
+      final bytes = base64Decode(audioBase64);
+      final player = AudioPlayer();
+      _ttsPlayer = player;
+      player.setSource(BytesSource(Uint8List.fromList(bytes)));
+      player.resume();
+      player.onPlayerComplete.listen((_) {
+        if (_ttsPlayer == player) _ttsPlayer = null;
+      });
+    } catch (e) {
+      debugPrint('TTS audio playback error: $e');
     }
   }
 

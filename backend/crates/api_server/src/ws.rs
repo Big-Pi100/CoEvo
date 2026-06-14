@@ -8,6 +8,7 @@
 use axum::extract::ws::{Message, WebSocket};
 use chat_engine::llm_caller::{LlmCaller, LlmEvent};
 use serde_json::json;
+use base64::Engine;
 use tokio::sync::mpsc;
 use std::sync::{LazyLock, Arc};
 use std::time::Duration;
@@ -267,6 +268,8 @@ pub async fn handle_ws(mut ws: WebSocket) {
     let (cold_tx, mut cold_rx) = mpsc::channel::<(u32, Vec<serde_json::Value>)>(8);
     // CP2 通知通道：后台 task 更新 plan 后通知主循环发 WS 消息
     let (cp2_tx, mut cp2_rx) = mpsc::channel::<bool>(1);
+    // TTS 音频通道：后台 task 合成完音频后发回主循环
+    let (tts_tx, mut tts_rx) = mpsc::channel::<Vec<u8>>(4);
     // CP2 繁忙信号：当 CP2 正在构建计划时，阻塞下一条用户消息
     let cp2_busy = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let cp2_done = Arc::new(tokio::sync::Notify::new());
@@ -700,6 +703,24 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     tracing::warn!("WS send(done) failed — connection lost");
                     break;
                 }
+
+                // ⚡ 后台 TTS 合成（不阻塞主流程）
+                let tts_text = final_reply.clone();
+                let txs = tts_tx.clone();
+                let uid = chat_req.user_id.clone();
+                tokio::task::spawn(async move {
+                    // 读取用户 TTS 偏好
+                    let (voice_type, speed) = get_user_tts_prefs(&uid);
+                    match crate::tencent_tts::synthesize(&tts_text, voice_type, speed).await {
+                        Ok(Some(audio)) => {
+                            let _ = txs.send(audio).await;
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            tracing::warn!("TTS synthesis failed: {}", e);
+                        }
+                    }
+                });
 
                 // ⚡ 从 final_reply 中检测 **goal 标记 → 立即创建学习计划
                 // 每次 LLM 回复后检查，不依赖 CP2 的二次 LLM 调用
@@ -1160,6 +1181,17 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     tracing::warn!("WS send(plan_updated from CP2) failed — connection lost");
                 }
             }
+
+            // 🔊 TTS 音频合成完成 → 发送给前端
+            Some(audio) = tts_rx.recv() => {
+                let b64 = base64::engine::general_purpose::STANDARD.encode(&audio);
+                if ws.send(Message::Text(json!({
+                    "type": "tts_audio",
+                    "audio": b64,
+                }).to_string().into())).await.is_err() {
+                    tracing::debug!("WS send(tts_audio) failed — client likely disconnected");
+                }
+            }
         }
     }
 
@@ -1195,5 +1227,40 @@ pub async fn handle_ws(mut ws: WebSocket) {
         let conn = crate::db_pool::get_conn();
         crate::achievement_engine::publish(&conn, crate::achievement_engine::AppEvent::ConversationEnded { user_id: last_user_id });
     }
+}
+
+/// 读取用户 TTS 偏好：引擎类型、音色、语速
+/// 如果用户选择"本地原生"或未设置，返回 `(None, None)` 表示跳过腾讯云 TTS
+fn get_user_tts_prefs(user_id: &str) -> (Option<i32>, Option<f32>) {
+    let conn = crate::db_pool::get_conn();
+
+    // 读取 TTS 引擎选择
+    let engine: Option<String> = conn.query_row(
+        "SELECT value FROM user_preferences WHERE user_id = ?1 AND key = 'tts_engine'",
+        rusqlite::params![user_id],
+        |row| row.get(0),
+    ).ok().flatten();
+
+    // 如果不是"tencent"，跳过
+    match engine.as_deref() {
+        Some("tencent") => {}
+        _ => return (None, None),
+    }
+
+    // 读取音色 ID
+    let voice_type: Option<i32> = conn.query_row(
+        "SELECT value FROM user_preferences WHERE user_id = ?1 AND key = 'tts_voice_type'",
+        rusqlite::params![user_id],
+        |row| row.get::<_, String>(0),
+    ).ok().and_then(|v| v.parse::<i32>().ok());
+
+    // 读取语速
+    let speed: Option<f32> = conn.query_row(
+        "SELECT value FROM user_preferences WHERE user_id = ?1 AND key = 'tts_speed'",
+        rusqlite::params![user_id],
+        |row| row.get::<_, String>(0),
+    ).ok().and_then(|v| v.parse::<f32>().ok());
+
+    (voice_type, speed)
 }
 

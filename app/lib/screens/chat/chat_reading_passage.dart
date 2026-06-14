@@ -105,9 +105,21 @@ class _ChatReadingPassageState extends State<ChatReadingPassage> {
                   if (fullText.isNotEmpty)
                     Consumer(builder: (_, ref, __) {
                       final tts = ref.read(ttsServiceProvider);
+                      final isTtsLoading = tts.state == TtsState.loading;
+                      final isPlaying = tts.isPlaying;
                       return IconButton(
-                        icon: Icon(Icons.volume_up, size: 18, color: cs.secondary),
-                        onPressed: () => tts.speak(fullText),
+                        icon: isTtsLoading
+                            ? SizedBox(
+                                width: 18, height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: cs.secondary,
+                                ),
+                              )
+                            : Icon(
+                                isPlaying ? Icons.stop_circle_outlined : Icons.volume_up,
+                                size: 18, color: cs.secondary,
+                              ),
+                        onPressed: isTtsLoading ? null : () => tts.togglePlay(fullText),
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
                         visualDensity: VisualDensity.compact,

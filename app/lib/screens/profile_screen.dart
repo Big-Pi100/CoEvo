@@ -6,8 +6,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:typed_data';
 import '../api/chat_client.dart';
 import '../api/api_config.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/tts_service.dart';
@@ -38,6 +40,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   // 订阅状态
   String? _subscriptionExpires;  // ISO 8601 或 null（未激活）
+
+  // TTS 引擎配置
+  String _ttsEngine = 'native';   // 'tencent' | 'native'
+  int _ttsVoiceType = 0;
+  double _ttsSpeed = 0.0;        // 腾讯云语速 [-2, 6]
 
   @override
   void initState() {
@@ -102,6 +109,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         setState(() {
           _data = data;
           _subscriptionExpires = serverPrefs['subscription_expires'];
+          _ttsEngine = serverPrefs['tts_engine'] ?? 'native';
+          _ttsVoiceType = int.tryParse(serverPrefs['tts_voice_type'] ?? '') ?? 0;
+          _ttsSpeed = double.tryParse(serverPrefs['tts_speed'] ?? '') ?? 0.0;
           _isLoading = false;
         });
       }
@@ -243,6 +253,56 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败: $e')));
+    }
+  }
+
+  /// 保存 TTS 引擎选择
+  Future<void> _saveTtsEngine(String engine) async {
+    final auth = ref.read(authProvider);
+    if (auth.userId == null || auth.token == null) return;
+    final client = ChatClient(userId: auth.userId!, token: auth.token);
+    await client.savePreferences({'tts_engine': engine});
+  }
+
+  /// 保存单条 TTS 偏好
+  Future<void> _saveTtsPref(String key, String value) async {
+    final auth = ref.read(authProvider);
+    if (auth.userId == null || auth.token == null) return;
+    final client = ChatClient(userId: auth.userId!, token: auth.token);
+    await client.savePreferences({key: value});
+  }
+
+  /// 试听腾讯云 TTS
+  Future<void> _previewTencentTts() async {
+    final auth = ref.read(authProvider);
+    if (auth.userId == null || auth.token == null) return;
+    try {
+      final resp = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/api/tts/preview'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'text': '你好，欢迎使用腾讯云语音合成。这是当前音色的试听效果。',
+          'voice_type': _ttsVoiceType,
+          'speed': _ttsSpeed,
+        }),
+      );
+      if (resp.statusCode == 200) {
+        final player = AudioPlayer();
+        player.setSource(BytesSource(Uint8List.fromList(resp.bodyBytes)));
+        player.resume();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('试听失败: ${resp.body}')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('试听失败: $e')),
+        );
+      }
     }
   }
 
@@ -421,73 +481,169 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     Text('朗读设置', style: Theme.of(context).textTheme.titleMedium),
                     const Divider(height: 24),
 
-                    // 语速
+                    // ── TTS 引擎选择 ──
                     Row(
                       children: [
-                        const Icon(Icons.speed, size: 18),
+                        const Icon(Icons.settings_input_component, size: 18),
                         const SizedBox(width: AppTheme.spacingSm),
-                        Text('语速', style: Theme.of(context).textTheme.bodyMedium),
-                        const Spacer(),
-                        Text(tts.speechRate.toStringAsFixed(1),
-                            style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
-                      ],
-                    ),
-                    Slider(
-                      value: tts.speechRate,
-                      min: 0.1,
-                      max: 2.0,
-                      divisions: 19,
-                      label: tts.speechRate.toStringAsFixed(1),
-                      onChanged: (v) => tts.speechRate = v,
-                    ),
-                    const SizedBox(height: AppTheme.spacingSm),
-
-                    // 音色
-                    Row(
-                      children: [
-                        const Icon(Icons.record_voice_over, size: 18),
-                        const SizedBox(width: AppTheme.spacingSm),
-                        Text('音色', style: Theme.of(context).textTheme.bodyMedium),
+                        Text('TTS 引擎', style: Theme.of(context).textTheme.bodyMedium),
                       ],
                     ),
                     const SizedBox(height: AppTheme.spacingSm),
-                    DropdownButtonFormField<String>(
-                      value: tts.selectedVoice?['name'] as String?,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(horizontal: AppTheme.spacingMd, vertical: 10),
-                        border: OutlineInputBorder(),
-                      ),
-                      hint: const Text('系统默认 (zh-CN)'),
-                      items: [
-                        const DropdownMenuItem(value: '', child: Text('系统默认 (zh-CN)')),
-                        if (voices.isNotEmpty)
-                          ...voices.map<DropdownMenuItem<String>>((v) {
-                            final name = v['name'] ?? '';
-                            final locale = v['locale'] ?? '';
-                            return DropdownMenuItem(
-                              value: name as String,
-                              child: Text('$name ($locale)',
-                                  overflow: TextOverflow.ellipsis),
-                            );
-                          }),
+                    SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(value: 'native', label: Text('本地原生', style: TextStyle(fontSize: 12))),
+                        ButtonSegment(value: 'tencent', label: Text('腾讯云', style: TextStyle(fontSize: 12))),
                       ],
-                      onChanged: (voiceName) {
-                        if (voiceName == null || voiceName.isEmpty) {
-                          tts.selectVoice(null);
-                          return;
-                        }
-                        final match = voices.cast<Map<String, dynamic>?>().firstWhere(
-                          (v) => v?['name'] == voiceName,
-                          orElse: () => null,
-                        );
-                        if (match != null) {
-                          tts.selectVoice(match);
-                          tts.speak('你好，这是试听语音', language: 'zh-CN');
-                        }
+                      selected: {_ttsEngine},
+                      onSelectionChanged: (v) {
+                        final engine = v.first;
+                        setState(() => _ttsEngine = engine);
+                        _saveTtsEngine(engine);
                       },
                     ),
+                    const SizedBox(height: AppTheme.spacingMd),
+
+                    if (_ttsEngine == 'tencent') ...[
+                      // ── 腾讯云音色 ID ──
+                      Row(
+                        children: [
+                          const Icon(Icons.record_voice_over, size: 18),
+                          const SizedBox(width: AppTheme.spacingSm),
+                          Text('音色', style: Theme.of(context).textTheme.bodyMedium),
+                          const Spacer(),
+                          SizedBox(
+                            height: 32,
+                            child: TextButton.icon(
+                              icon: const Icon(Icons.play_arrow, size: 16),
+                              label: const Text('试听', style: TextStyle(fontSize: 12)),
+                              onPressed: () => _previewTencentTts(),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppTheme.spacingSm),
+                      DropdownButtonFormField<int>(
+                        value: _ttsVoiceType,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: AppTheme.spacingMd, vertical: 10),
+                          border: OutlineInputBorder(),
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 0, child: Text('默认音色')),
+                          DropdownMenuItem(value: 101001, child: Text('智瑜 — 情感女声')),
+                          DropdownMenuItem(value: 101004, child: Text('智云 — 通用男声')),
+                          DropdownMenuItem(value: 101011, child: Text('智燕 — 新闻女声')),
+                          DropdownMenuItem(value: 101013, child: Text('智辉 — 新闻男声')),
+                          DropdownMenuItem(value: 101015, child: Text('智萌 — 男童声')),
+                          DropdownMenuItem(value: 101016, child: Text('智甜 — 女童声')),
+                          DropdownMenuItem(value: 101019, child: Text('智彤 — 粤语女声')),
+                          DropdownMenuItem(value: 101026, child: Text('智希 — 通用女声')),
+                          DropdownMenuItem(value: 101030, child: Text('智柯 — 通用男声')),
+                          DropdownMenuItem(value: 101050, child: Text('WeJack — 英文男声')),
+                          DropdownMenuItem(value: 101054, child: Text('智友 — 通用男声')),
+                          DropdownMenuItem(value: 101055, child: Text('智付 — 通用女声')),
+                        ],
+                        onChanged: (v) {
+                          if (v == null) return;
+                          setState(() => _ttsVoiceType = v);
+                          _saveTtsPref('tts_voice_type', v.toString());
+                        },
+                      ),
+                      const SizedBox(height: AppTheme.spacingMd),
+
+                      // ── 腾讯云语速 ──
+                      Row(
+                        children: [
+                          const Icon(Icons.speed, size: 18),
+                          const SizedBox(width: AppTheme.spacingSm),
+                          Text('语速', style: Theme.of(context).textTheme.bodyMedium),
+                          const Spacer(),
+                          Text(_ttsSpeed.toStringAsFixed(1),
+                              style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
+                        ],
+                      ),
+                      Slider(
+                        value: _ttsSpeed,
+                        min: -2.0,
+                        max: 6.0,
+                        divisions: 16,
+                        label: _ttsSpeed.toStringAsFixed(1),
+                        onChangeEnd: (v) => _saveTtsPref('tts_speed', v.toStringAsFixed(1)),
+                        onChanged: (v) => setState(() => _ttsSpeed = v),
+                      ),
+                    ] else ...[
+                      // ── 本地原生 TTS 设置 ──
+                      // 语速
+                      Row(
+                        children: [
+                          const Icon(Icons.speed, size: 18),
+                          const SizedBox(width: AppTheme.spacingSm),
+                          Text('语速', style: Theme.of(context).textTheme.bodyMedium),
+                          const Spacer(),
+                          Text(tts.speechRate.toStringAsFixed(1),
+                              style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
+                        ],
+                      ),
+                      Slider(
+                        value: tts.speechRate,
+                        min: 0.1,
+                        max: 2.0,
+                        divisions: 19,
+                        label: tts.speechRate.toStringAsFixed(1),
+                        onChanged: (v) => tts.speechRate = v,
+                      ),
+                      const SizedBox(height: AppTheme.spacingSm),
+
+                      // 音色
+                      Row(
+                        children: [
+                          const Icon(Icons.record_voice_over, size: 18),
+                          const SizedBox(width: AppTheme.spacingSm),
+                          Text('音色', style: Theme.of(context).textTheme.bodyMedium),
+                        ],
+                      ),
+                      const SizedBox(height: AppTheme.spacingSm),
+                      DropdownButtonFormField<String>(
+                        value: tts.selectedVoice?['name'] as String?,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: AppTheme.spacingMd, vertical: 10),
+                          border: OutlineInputBorder(),
+                        ),
+                        hint: const Text('系统默认 (zh-CN)'),
+                        items: [
+                          const DropdownMenuItem(value: '', child: Text('系统默认 (zh-CN)')),
+                          if (voices.isNotEmpty)
+                            ...voices.map<DropdownMenuItem<String>>((v) {
+                              final name = v['name'] ?? '';
+                              final locale = v['locale'] ?? '';
+                              return DropdownMenuItem(
+                                value: name as String,
+                                child: Text('$name ($locale)',
+                                    overflow: TextOverflow.ellipsis),
+                              );
+                            }),
+                        ],
+                        onChanged: (voiceName) {
+                          if (voiceName == null || voiceName.isEmpty) {
+                            tts.selectVoice(null);
+                            return;
+                          }
+                          final match = voices.cast<Map<String, dynamic>?>().firstWhere(
+                            (v) => v?['name'] == voiceName,
+                            orElse: () => null,
+                          );
+                          if (match != null) {
+                            tts.selectVoice(match);
+                            tts.speak('你好，这是试听语音', language: 'zh-CN');
+                          }
+                        },
+                      ),
+                    ],
                   ],
                 ),
               ),

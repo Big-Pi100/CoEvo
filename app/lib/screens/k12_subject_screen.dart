@@ -108,11 +108,30 @@ class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
           onPressed: () => context.go('/home'),
         ),
       ),
-      body: _subjectsLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null && _subjects.isEmpty
-              ? Center(child: Text(_error!, style: TextStyle(color: theme.colorScheme.error)))
-              : _buildContent(theme),
+      body: Stack(
+        children: [
+          _subjectsLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null && _subjects.isEmpty
+                  ? Center(child: Text(_error!, style: TextStyle(color: theme.colorScheme.error)))
+                  : _buildContent(theme),
+          // 选科后 Plan 加载中 → 全屏遮罩
+          if (_loading)
+            Container(
+              color: Colors.black26,
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: Colors.white),
+                    SizedBox(height: 16),
+                    Text('正在加载学习计划...', style: TextStyle(color: Colors.white, fontSize: 16)),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 

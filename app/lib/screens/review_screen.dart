@@ -87,6 +87,14 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
     // 固定 20 个 tab，足够容纳所有计划 + 全部卡片
     _tabController = TabController(length: 20, vsync: this);
     _tabController.addListener(_onTabChanged);
+
+    // 绑定 TTS 客户端（用于朗读时读取引擎偏好）
+    final auth = ref.read(authProvider);
+    if (auth.userId != null && auth.token != null) {
+      final client = ChatClient(userId: auth.userId!, token: auth.token);
+      ref.read(ttsServiceProvider).bindClient(client);
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadCards();
       _loadPlans();
@@ -1139,42 +1147,53 @@ Row(
             final tts = ref.watch(ttsServiceProvider);
             final enabled = ref.watch(ttsEnabledProvider);
             if (!enabled) return const SizedBox.shrink();
+            final isPlaying = tts.isPlaying;
+            final isLoading = tts.state == TtsState.loading;
             return Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
-                icon: const Icon(Icons.volume_up, size: 18),
-                label: Text(_isFlipped ? '朗读释义' : '朗读概念'),
-                onPressed: () {
-                  String ttsText;
-                  if (_isFlipped) {
-                    final back = card.back;
-                    final trimmed = back.trim();
-                    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-                      try {
-                        final parsed = jsonDecode(trimmed) as Map<String, dynamic>;
-                        // 词典格式：朗读单词 + 中文释义
-                        if (parsed.containsKey('word')) {
-                          final w = parsed['word'] as String? ?? '';
-                          final c = parsed['chinese'] as String? ?? '';
-                          ttsText = '$w. $c';
-                        } else if (parsed.containsKey('character')) {
-                          final ch = parsed['character'] as String? ?? '';
-                          final py = parsed['pinyin'] as String? ?? '';
-                          ttsText = '$ch $py';
+                icon: isLoading
+                    ? const SizedBox(
+                        width: 18, height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        isPlaying ? Icons.stop_circle_outlined : Icons.volume_up,
+                        size: 18,
+                      ),
+                label: Text(isPlaying ? '停止' : (_isFlipped ? '朗读释义' : '朗读概念')),
+                onPressed: isLoading
+                    ? null
+                    : () {
+                        String ttsText;
+                        if (_isFlipped) {
+                          final back = card.back;
+                          final trimmed = back.trim();
+                          if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                            try {
+                              final parsed = jsonDecode(trimmed) as Map<String, dynamic>;
+                              if (parsed.containsKey('word')) {
+                                final w = parsed['word'] as String? ?? '';
+                                final c = parsed['chinese'] as String? ?? '';
+                                ttsText = '$w. $c';
+                              } else if (parsed.containsKey('character')) {
+                                final ch = parsed['character'] as String? ?? '';
+                                final py = parsed['pinyin'] as String? ?? '';
+                                ttsText = '$ch $py';
+                              } else {
+                                ttsText = back.replaceAll('**', '');
+                              }
+                            } catch (_) {
+                              ttsText = back.replaceAll('**', '');
+                            }
+                          } else {
+                            ttsText = back.replaceAll('**', '');
+                          }
                         } else {
-                          ttsText = back.replaceAll('**', '');
+                          ttsText = card.front;
                         }
-                      } catch (_) {
-                        ttsText = back.replaceAll('**', '');
-                      }
-                    } else {
-                      ttsText = back.replaceAll('**', '');
-                    }
-                  } else {
-                    ttsText = card.front;
-                  }
-                  tts.speak(ttsText);
-                },
+                        tts.togglePlay(ttsText);
+                      },
               ),
             );
           },

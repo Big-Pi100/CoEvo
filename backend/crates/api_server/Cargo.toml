@@ -29,10 +29,13 @@ thiserror.workspace = true
 hex.workspace = true
 aes-gcm.workspace = true
 rand.workspace = true
+hmac = "0.12"
+sha1 = "0.10"
+tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
+futures-util.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [dev-dependencies]
 dotenvy = "0.15"
 student_llm = { path = "../student_llm" }
-tokio-tungstenite = "0.21"
 futures-util.workspace = true
