@@ -10,6 +10,8 @@ import 'user_detail_screen.dart';
 import '../theme/app_theme.dart';
 import 'curriculum_plans_page.dart';
 import 'curriculum_cards_page.dart';
+import 'config_page.dart';
+import 'debug_logs_page.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -53,6 +55,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
   bool _dashboardLoading = false;
   bool _selectMode = false;
   final Set<String> _selectedUserIds = {};
+  final Set<String> _trackedUserIds = {};
   String _logFilter = '';
   final _logSearchCtrl = TextEditingController();
   String _logDateFrom = '';
@@ -61,6 +64,17 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
   bool _logLoaded = false;
 
   // ── Curriculum tab (tree browser manages its own state) ──
+
+  /// Index of the "运行时配置" tab (depends on role)
+  int get _configTabIdx {
+    int idx = 3; // after dashboard(0)+users(1)+curriculum(2)
+    if (_role == 'super') idx++; // admin mgmt
+    if (_role == 'super' || _role == 'service') idx++; // audit log
+    return idx;
+  }
+
+  /// Index of the "调试日志" tab
+  int get _debugTabIdx => _configTabIdx + 1;
 
   Map<String, String> _headers() {
     if (_adminKey != null) return {'X-Admin-Key': _adminKey!};
@@ -81,18 +95,23 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     if (_role == 'super') {
       if (_mainTab == 3) { _loadAdmins(); _loadAssignments(); }
       else if (_mainTab == 4) { _loadLogs(); }
+      else if (_mainTab == _configTabIdx) { setState(() {}); }
+      else if (_mainTab == _debugTabIdx) { setState(() {}); }
     } else if (_role == 'service') {
       if (_mainTab == 3) _loadLogs();
+      else if (_mainTab == _configTabIdx) { setState(() {}); }
+      else if (_mainTab == _debugTabIdx) { setState(() {}); }
     }
   }
 
   @override
   void initState() {
     super.initState();
-    _mainTabCtrl = TabController(length: 1, vsync: this);
+    _mainTabCtrl = TabController(length: _tabCount(), vsync: this);
     _mainTabCtrl.addListener(_onTabChanged);
     _curriculumSubTabCtrl = TabController(length: 2, vsync: this);
     _curriculumSubTabCtrl.addListener(() { if (mounted) setState(() {}); });
+    _loadTrackedUsers();
   }
 
   int _tabCount() {
@@ -101,6 +120,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     n++; // 课程数据 always
     if (_role == 'super') n++; // 管理员管理（含分配管理）
     if (_role == 'super' || _role == 'service') n++; // 操作日志
+    if (_role == 'super' || _role == 'service') n += 2; // 运行时配置 + 调试日志
     return n;
   }
 
@@ -189,6 +209,22 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
       _userEndReached = page >= totalPages || newUsers.isEmpty;
       _loading = false;
     });
+    _loadTrackedUsers();
+  }
+
+  Future<void> _loadTrackedUsers() async {
+    try {
+      final resp = await _api('GET', '/api/admin/debug/tracks');
+      if (resp['tracks'] is List) {
+        _trackedUserIds.clear();
+        for (final t in resp['tracks']) {
+          if (t is Map && t['user_id'] is String) {
+            _trackedUserIds.add(t['user_id'] as String);
+          }
+        }
+        if (mounted) setState(() {});
+      }
+    } catch (_) {}
   }
 
   void _loadMoreUsers() {
@@ -579,9 +615,12 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
 
     final showAdminMgmt = _role == 'super';
     final showAudit = _role == 'super' || _role == 'service';
+    final showConfigDebug = _role == 'super' || _role == 'service';
     final tabs = <Tab>[const Tab(text: '仪表盘'), const Tab(text: '用户管理'), const Tab(text: '课程数据')];
     if (showAdminMgmt) tabs.add(const Tab(text: '管理员管理'));
     if (showAudit) tabs.add(const Tab(text: '操作日志'));
+    if (showConfigDebug) tabs.add(const Tab(text: '运行时配置'));
+    if (showConfigDebug) tabs.add(const Tab(text: '调试日志'));
 
     return Scaffold(
       appBar: AppBar(
@@ -593,12 +632,15 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
   }
 
   Widget _buildBody(bool showAdminMgmt, bool showAudit) {
+    final showConfigDebug = _role == 'super' || _role == 'service';
     return IndexedStack(index: _mainTab, children: [
       _buildDashboardTab(),
       _buildUsersTab(),
       _buildCurriculumTab(),
       if (showAdminMgmt) _buildAdminMgmtTab(),
       if (showAudit) _buildAuditTab(),
+      if (showConfigDebug) _buildConfigTab(),
+      if (showConfigDebug) _buildDebugTab(),
     ]);
   }
 
@@ -855,6 +897,35 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
                 padding: EdgeInsets.zero,
                 onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UserDetailScreen(userId: u['user_id'] as String, adminKey: _adminKey, token: _token, role: _role!))),
                 tooltip: '详情',
+              ),
+            ),
+            const SizedBox(width: 4),
+            TextButton(
+              onPressed: () async {
+                final uid = u['user_id'] as String;
+                try {
+                  if (_trackedUserIds.contains(uid)) {
+                    await _api('DELETE', '/api/admin/debug/track/$uid');
+                    setState(() => _trackedUserIds.remove(uid));
+                  } else {
+                    final r = await _api('POST', '/api/admin/debug/track',
+                        body: {'user_id': uid});
+                    if (r['status'] == 'active' || r['id'] != null) {
+                      setState(() => _trackedUserIds.add(uid));
+                    }
+                  }
+                } catch (_) {}
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: _trackedUserIds.contains(u['user_id'])
+                    ? Colors.red : Colors.blue,
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
+                _trackedUserIds.contains(u['user_id']) ? '关闭跟踪' : '跟踪',
+                style: const TextStyle(fontSize: 11),
               ),
             ),
           ]),
@@ -1374,6 +1445,16 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
         );
       })),
     ]);
+  }
+
+  // ── Config Tab ──
+  Widget _buildConfigTab() {
+    return ConfigPage(adminKey: _adminKey, token: _token);
+  }
+
+  // ── Debug Tab ──
+  Widget _buildDebugTab() {
+    return DebugLogsPage(headers: _headers());
   }
 
   Widget _logFilterChip(String label, String filter) => Padding(

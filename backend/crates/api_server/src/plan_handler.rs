@@ -961,12 +961,28 @@ pub fn build_plan_context(conn: &rusqlite::Connection, plan_id: &str, conversati
 
         let pipeline_domain: String = merged.get("pipeline_domain")
             .and_then(|d| d.as_str())
-            .or_else(|| merged.get("domain").and_then(|d| d.as_str()))
             .unwrap_or(&prompt_subject)
             .to_string();
 
-        let ctx = build_context_text(conn, &merged, &goal, &mode);
-        return (pipeline_domain, mode.to_string(), ctx);
+        let ctx = build_context_text(conn, &merged, &goal, &mode, conversation_id);
+        tracing::info!("build_plan_context EXIT: pipeline_domain={}, mode={}, ctx_length={}",
+            pipeline_domain, mode, ctx.len());
+        // ── 调试日志：plan_context_exit ── 后台 spawn，不阻塞当前线程
+        let conv_id = conversation_id.to_string();
+        let pd = pipeline_domain.clone();
+        let md = mode.to_string();
+        let ctx_len = ctx.len();
+        let _ = tokio::task::spawn(async move {
+            if let Ok(logger) = crate::debug_logger::DebugLogger::create(&conv_id).await {
+                let _ = logger.log("base", "plan_context_exit", json!({
+                    "pipeline_domain": &pd,
+                    "mode": &md,
+                    "ctx_length": ctx_len,
+                })).await;
+                let _ = logger.close().await;
+            }
+        });
+        return (prompt_subject, mode.to_string(), ctx);
     }
 
     // 无计划
@@ -975,7 +991,7 @@ pub fn build_plan_context(conn: &rusqlite::Connection, plan_id: &str, conversati
 
 /// 从 merged plan JSON（含 status 已合并的 stages）构建 LLM 上下文文本
 /// 同时从 DB 查询当前任务的第一张卡片（课文卡）注入 full_text
-fn build_context_text(conn: &rusqlite::Connection, merged: &serde_json::Value, goal: &str, _mode: &str) -> String {
+fn build_context_text(conn: &rusqlite::Connection, merged: &serde_json::Value, goal: &str, _mode: &str, conversation_id: &str) -> String {
     let _ = _mode; // suppress unused warning — kept for future use
     let mut ctx = format!("\n\n### 学习计划\n长期目标: {}", goal);
     let mut current_task_name: Option<String> = None;
@@ -1085,6 +1101,25 @@ fn build_context_text(conn: &rusqlite::Connection, merged: &serde_json::Value, g
                                             ctx.push_str(&format!("\n中文翻译：{}\n", tr));
                                         }
                                     }
+                                    // ── 调试日志：context_text_inject ── 后台 spawn，不阻塞当前线程
+                                    let conv_id = conversation_id.to_string();
+                                    let ft_clone = full_text.clone();
+                                    let tr_clone = translation.clone();
+                                    let _ = tokio::task::spawn(async move {
+                                        if let Ok(logger) = crate::debug_logger::DebugLogger::create(&conv_id).await {
+                                            let _ = logger.log("base", "context_text_inject", json!({
+                                                "has_full_text": ft_clone.as_ref().map_or(false, |s| !s.is_empty()),
+                                                "has_translation": tr_clone.as_ref().map_or(false, |s| !s.is_empty()),
+                                                "full_text_len": ft_clone.as_ref().map_or(0, |s| s.len()),
+                                                "translation_len": tr_clone.as_ref().map_or(0, |s| s.len()),
+                                            })).await;
+                                            let _ = logger.close().await;
+                                        }
+                                    });
+                                    tracing::info!("build_context_text injected full_text: card_id={}, full_text_len={}, has_translation={}",
+                                        uuid,
+                                        full_text.as_ref().map_or(0, |s| s.len()),
+                                        translation.as_ref().map_or(false, |s| !s.is_empty()));
                                     // key_sentence_patterns / key_grammar 可能在 structure_meta JSON 中
                                     if let Some(ref sm) = structure_meta {
                                         if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(sm) {
@@ -1125,10 +1160,10 @@ fn build_context_text(conn: &rusqlite::Connection, merged: &serde_json::Value, g
         log.push(ctx.clone());
     }
 
-    tracing::info!("build_plan_context EXIT");
+    tracing::info!("build_context_text EXIT: ctx_length={}", ctx.len());
     ctx
 }
-/// 构建计划创建 prompt（从 prompts/plan/{domain}/creation.md 加载，fallback 到 general）
+/// 构建计划创建 prompt（从 prompt_loader::get_plan("general").creation 加载）
 pub fn build_plan_creation_prompt(dialogue_text: &str) -> String {
     let tpl = chat_engine::prompt_loader::get_plan("general").creation.clone();
     if tpl.is_empty() {

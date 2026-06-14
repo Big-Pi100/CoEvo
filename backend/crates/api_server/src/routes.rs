@@ -167,6 +167,15 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         // Gap 2: JSON 数据导入（不触发加载）
         .route("/api/admin/curriculum/subject/{subject}/plan/import", post(crate::curriculum_admin::import_plan_handler))
         .route("/api/admin/curriculum/subject/{subject}/cards/import", post(crate::curriculum_admin::import_cards_handler))
+        // ── Admin: Config & Debug ──
+        .route("/api/admin/config", get(crate::config_admin::get_config_handler).post(crate::config_admin::post_config_handler))
+        .route("/api/admin/prompt/template", get(crate::config_admin::get_template_handler).post(crate::config_admin::post_template_handler))
+        .route("/api/admin/prompt/templates", get(crate::config_admin::list_templates_handler))
+        .route("/api/admin/debug/track", post(crate::config_admin::debug_track_handler))
+        .route("/api/admin/debug/track/{id}", delete(crate::config_admin::debug_untrack_handler))
+        .route("/api/admin/debug/tracks", get(crate::config_admin::debug_tracks_handler))
+        .route("/api/admin/debug/logs", get(crate::config_admin::debug_logs_handler))
+        .route("/api/admin/debug/logs/{id}", get(crate::config_admin::debug_log_detail_handler))
         // ── 全局中间件：HTTP 请求/响应日志 ──
         .layer(TraceLayer::new_for_http())
 }

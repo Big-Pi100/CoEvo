@@ -50,6 +50,7 @@ pub async fn extract_concepts(
     history: &[(String, String)],
     domain: &str,  // "language" / "math" / "general"
     plan_context: &str,  // 当前学习计划上下文，用于限定提取范围
+    max_count: usize,  // 概念提取数量上限，从 app_config 读取
 ) -> ExtractionResult {
     tracing::info!("[CP1] extract_concepts ENTERED: domain={}, msg_preview={}",
         domain, &user_message[..user_message.len().min(60)]);
@@ -59,7 +60,7 @@ pub async fn extract_concepts(
         domain, plan_context, existing_fronts.len(), history.len());
 
     let all_existing: Vec<String> = existing_fronts.to_vec();
-    let mut candidates = extract_candidates_from_llm(llm_config, ai_reply, &all_existing, history, domain, plan_context).await;
+    let mut candidates = extract_candidates_from_llm(llm_config, ai_reply, &all_existing, history, domain, plan_context, max_count).await;
 
     tracing::info!("[CP1] after LLM: {} raw candidates before dedup", candidates.len());
 
@@ -85,8 +86,16 @@ async fn extract_candidates_from_llm(
     history: &[(String, String)],
     domain: &str,
     plan_context: &str,
+    max_count: usize,
 ) -> Vec<ConceptCandidate> {
     let prompt = crate::prompt_loader::build_concept_extract_for_domain_with_plan(ai_reply, existing_concepts, history, domain, plan_context);
+    // 将配置的动态上限注入 prompt（覆盖模板/硬编码中的默认值）
+    let prompt = if max_count > 0 {
+        prompt.replace("不设数量限制", &format!("最多提取{}个", max_count))
+              .replace("最多5个", &format!("最多{}个", max_count))
+    } else {
+        prompt
+    };
     tracing::info!("[CP1] Full prompt built: domain={}, total_len={}, existing_count={}, history_count={}",
         domain, prompt.len(), existing_concepts.len(), history.len());
     tracing::info!("[CP1] Full prompt content: {}", prompt);

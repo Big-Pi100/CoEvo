@@ -16,3 +16,4 @@ reqwest.workspace = true
 futures-util.workspace = true
 futures-core.workspace = true
 rusqlite.workspace = true
+regex = "1"

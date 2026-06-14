@@ -577,7 +577,7 @@ mod tests {
         insert_card(&conn, "c1", "e2e_user", "概念A", "概念A的解释");
 
         // 1. 到期查询
-        let (due, total) = get_due_cards(&conn, "e2e_user", 20, 0, None);
+        let (due, total) = get_due_cards(&conn, "e2e_user", 20, 0, None, None);
         assert_eq!(due.len(), 1, "新卡片应到期");
         assert_eq!(total, 1);
         assert_eq!(due[0].state, 0, "New 状态");
@@ -709,7 +709,7 @@ mod tests {
         conn.execute("UPDATE card_memory SET due=200, state=0 WHERE user_card_id='cb'", []).unwrap();
         conn.execute("UPDATE card_memory SET due=500, state=2 WHERE user_card_id='cc'", []).unwrap();
 
-        let (due, _) = get_due_cards(&conn, "e2e_user", 20, 0, None);
+        let (due, _) = get_due_cards(&conn, "e2e_user", 20, 0, None, None);
         assert!(due.len() >= 3, "3 张到期");
         // 新排序: 非新卡片(state≠0)优先，同组内按 due ASC
         assert_eq!(due[0].id, "cc", "复习中(cc)应排第一");
@@ -724,7 +724,7 @@ mod tests {
             let id = format!("c_{}", i);
             insert_card(&conn, &id, "e2e_user", &format!("卡{}", i), "");
         }
-        let (due, total) = get_due_cards(&conn, "e2e_user", 20, 0, None);
+        let (due, total) = get_due_cards(&conn, "e2e_user", 20, 0, None, None);
         assert_eq!(due.len(), 20, "LIMIT 20");
         assert_eq!(total, 30, "total 报告全部数量");
     }

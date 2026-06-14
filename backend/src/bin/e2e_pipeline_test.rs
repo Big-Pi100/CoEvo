@@ -521,7 +521,7 @@ async fn phase_concept_extraction(run_id: &str, _cli: &CliArgs) -> e2e_runner::P
     let extraction: ExtractionResult = chat_engine::concept_extractor::extract_concepts(
         TEST_USER_ID, user_message, ai_reply,
         &existing_fronts, &llm_config, &history_refs,
-        "language", "",
+        "language", "", 5,
     ).await;
 
     let total = extraction.candidates.len();

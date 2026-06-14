@@ -353,6 +353,41 @@ CREATE INDEX IF NOT EXISTS idx_guardian_assignments_student ON guardian_assignme
 CREATE INDEX IF NOT EXISTS idx_admin_audit_log_admin ON admin_audit_log(admin_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_log_action ON admin_audit_log(action, created_at);
 ALTER TABLE admin_users ADD COLUMN permissions TEXT DEFAULT '{}';
+
+-- 运行时配置表
+CREATE TABLE IF NOT EXISTS app_config (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    updated_at INTEGER NOT NULL
+);
+
+-- 调试跟踪器
+CREATE TABLE IF NOT EXISTS debug_trackers (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT,
+    subject TEXT,
+    status TEXT DEFAULT 'active',
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_debug_trackers_user ON debug_trackers(user_id);
+
+-- 调试日志元数据
+CREATE TABLE IF NOT EXISTS debug_logs (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    user_id TEXT,
+    subject TEXT,
+    date TEXT NOT NULL,
+    log_file_path TEXT NOT NULL,
+    phases TEXT,
+    entry_count INTEGER DEFAULT 0,
+    file_size_bytes INTEGER DEFAULT 0,
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_debug_logs_conv ON debug_logs(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_debug_logs_date ON debug_logs(date);
 "#;
 
 /// 用户偏好表（部分测试创建，统一放在此处）

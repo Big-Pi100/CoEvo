@@ -169,12 +169,15 @@ pub async fn verify_user_input(
                 }
 
                 // 调 LLM 验证用法
-                let verify_prompt = std::fs::read_to_string("prompts/verify/verify_usage.md")
-                    .unwrap_or_else(|_| "判断用户是否正确使用了该单词。".to_string());
-                let full_prompt = format!(
-                    "{}\n\nword: {}\nuser_context: {}",
-                    verify_prompt, word, user_message
-                );
+                let verify_prompt = chat_engine::prompt_loader::get_verify("general").usage.clone();
+                let full_prompt = if verify_prompt.is_empty() {
+                    format!("判断用户是否正确使用了该单词。\n\nword: {}\nuser_context: {}", word, user_message)
+                } else {
+                    format!(
+                        "{}\n\nword: {}\nuser_context: {}",
+                        verify_prompt, word, user_message
+                    )
+                };
 
                 let mut caller = chat_engine::llm_caller::LlmCaller::new(llm_config.clone());
                 match caller.generate("", &full_prompt).await {
@@ -273,6 +276,9 @@ pub async fn handle_ws(mut ws: WebSocket) {
     let mut token_verified = false;
     let mut kick_notify: Option<Arc<tokio::sync::Notify>> = None;
     let mut last_user_id = String::new();  // Phase 2: 用于 conversation_ended 成就检测
+    let mut last_subject: Option<String> = None;  // 调试日志: 记录最后学科
+    // 调试日志
+    let mut debug_logger: Option<crate::debug_logger::DebugLogger> = None;
 
     // ⚡ Heartbeat: 每 60 秒发送 WS Ping 帧检测连接活性
     // 防止 ws.recv() 在连接被 Nginx/中间件静默切断后无限阻塞
@@ -343,6 +349,51 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     token: raw_req.token.clone(),
                 };
                 last_user_id = chat_req.user_id.clone();  // Phase 2: 记录最后活跃用户
+
+                // ── 调试日志：session_start + tracker_check ──
+                {
+                    let is_tracked = crate::debug_trackers_cache::is_tracked(&chat_req.user_id)
+                        || crate::debug_trackers_cache::is_conv_tracked(&chat_req.conversation_id);
+                    if is_tracked {
+                        match crate::debug_logger::DebugLogger::create(&chat_req.conversation_id).await {
+                            Ok(logger) => {
+                                debug_logger = Some(logger);
+                                // 立即写入 debug_logs DB 表，让管理后台能第一时间看到
+                                let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+                                let log_path = format!("data/debug_logs/{}/{}.jsonl",
+                                    today, chat_req.conversation_id);
+                                if let Err(e) = crate::db_pool::get_conn().execute(
+                                    "INSERT OR REPLACE INTO debug_logs
+                                     (id, conversation_id, user_id, subject, date, log_file_path,
+                                      entry_count, file_size_bytes, created_at)
+                                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 0, ?7)",
+                                    rusqlite::params![
+                                        chat_req.conversation_id,
+                                        chat_req.conversation_id,
+                                        Some(&chat_req.user_id),
+                                        last_subject.as_deref(), // subject
+                                        today,
+                                        log_path,
+                                        chrono::Utc::now().timestamp(),
+                                    ],
+                                ) {
+                                    tracing::warn!("Failed to insert debug_logs record at creation: {}", e);
+                                }
+                                if let Some(ref l) = debug_logger {
+                                    let _ = l.log("base", "session_start", json!({
+                                        "conversation_id": chat_req.conversation_id,
+                                        "user_id": chat_req.user_id,
+                                        "tracked": true,
+                                    })).await;
+                                }
+                                tracing::info!("Debug logging started for conv={}", chat_req.conversation_id);
+                            }
+                            Err(e) => tracing::warn!("Failed to create debug logger: {}", e),
+                        }
+                    } else {
+                        tracing::debug!("No debug tracking for user={}", chat_req.user_id);
+                    }
+                }
 
                 // 检查订阅状态
                 {
@@ -422,7 +473,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 tracing::info!("WS loaded {} turns for conv={}", history.len(), chat_req.conversation_id);
 
                 // ── 查询学习计划，判定生命周期状态 + 管线 ──
-                let (system_prompt, plan_context) = {
+                let (system_prompt, plan_context, debug_plan_info) = {
                     let conn = crate::db_pool::get_conn();
                     let plan_id = crate::plan_handler::resolve_plan_id(&conn, &chat_req.conversation_id).unwrap_or_default();
                     let (domain, mode, ctx) = crate::plan_handler::build_plan_context(&conn, &plan_id, &chat_req.conversation_id);
@@ -430,6 +481,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     // 记录 prompt 来源（供 e2e 测试验证）
                     crate::plan_handler::log_prompt_source(&format!("{}/{}", domain, mode));
                     let templates = chat_engine::prompt_loader::get_chat(&domain);
+                    let selected_mode = mode.clone();
                     let sp = match mode.as_str() {
                         "reading-nursery" | "reading_nursery" => {
                             let p = templates.reading_nursery.clone();
@@ -448,11 +500,36 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     };
                     // 将路由上下文合并到计划上下文中
                     let full_ctx = if ctx.is_empty() { String::new() } else { ctx.clone() };
-                    (sp, full_ctx)
+                    (sp, full_ctx, (domain, selected_mode, ctx.len()))
                 };
+
+                // 记录学科（用于调试日志的 subject 字段）
+                if !debug_plan_info.0.is_empty() {
+                    last_subject = Some(debug_plan_info.0.clone());
+                }
+
+                // ── 调试日志：plan_context_built + system_prompt_selected ──
+                if let Some(ref logger) = debug_logger {
+                    let _ = logger.log("base", "plan_context_built", json!({
+                        "domain": debug_plan_info.0,
+                        "mode": debug_plan_info.1,
+                        "context_length": debug_plan_info.2,
+                    })).await;
+                    let _ = logger.log("base", "system_prompt_selected", json!({
+                        "domain": debug_plan_info.0,
+                        "mode": debug_plan_info.1,
+                        "char_count": system_prompt.len(),
+                        "text_preview": &system_prompt,
+                    })).await;
+                }
 
                 // ── 构建 user_content（对话历史 + 计划上下文 + 当前消息） ──
                 let mut user_content = String::new();
+                let mut history_section_length = 0usize;
+                let max_turns: usize = crate::app_config_cache::get("prompt.history_max_turns").await
+                    .and_then(|v| v.parse().ok()).unwrap_or(10);
+                let max_chars: usize = crate::app_config_cache::get("prompt.history_max_chars").await
+                    .and_then(|v| v.parse().ok()).unwrap_or(5000);
                 if history.len() > 1 {
                     let context = &history[..history.len() - 1];
                     // 滑动窗口: 保留最近 10 轮, 总长度 ≤5000 字, 不截断单条
@@ -463,7 +540,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         let label = if role == "user" { "用户" } else { "AI" };
                         let line = format!("\n{}: {}", label, content);
                         let next = total + line.len();
-                        if next > 5000 || turns >= 10 { break; }
+                        if next > max_chars || turns >= max_turns { break; }
                         total = next;
                         turns += 1;
                         lines.push(line);
@@ -471,12 +548,38 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     if !lines.is_empty() {
                         lines.reverse();
                         user_content.push_str("\n\n### 对话历史");
-                        for l in &lines { user_content.push_str(l); }
+                        for l in &lines {
+                            user_content.push_str(l);
+                            history_section_length += l.len();
+                        }
                     }
                 }
                 user_content.push_str(&format!("\n\n### 当前对话\n用户: {}", chat_req.message));
                 if !plan_context.is_empty() {
                     user_content.push_str(&plan_context);
+                }
+
+                // ── 调试日志：history_loaded + user_content_built ──
+                if let Some(ref logger) = debug_logger {
+                    let history_total_chars: usize = history.iter().map(|(_, c)| c.len()).sum();
+                    let history_total_turns = history.len();
+                    let original_total_chars: usize = history.iter().map(|(_, c)| c.len()).sum();
+                    let _ = logger.log("base", "history_loaded", json!({
+                        "total_turns": history_total_turns,
+                        "total_chars": history_total_chars,
+                        "original_chars": original_total_chars,
+                        "truncated_turns": history_total_turns > max_turns,
+                        "truncated_chars": history_total_chars > max_chars,
+                        "max_turns": max_turns,
+                        "max_chars": max_chars,
+                        "history": history.iter().map(|(r,c)| format!("{}: {}", r, c)).collect::<Vec<_>>(),
+                    })).await;
+                    let _ = logger.log("base", "user_content_built", json!({
+                        "content_length": user_content.len(),
+                        "plan_context_length": plan_context.len(),
+                        "history_section_length": history_section_length,
+                        "text_preview": &user_content,
+                    })).await;
                 }
 
                 // 记录 LLM 输入（供 e2e 测试捕获）
@@ -552,6 +655,13 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     plan_updated = result.plan_updated;
 
                     if result.is_new_plan {
+                        // ── 调试日志：plan_created ──
+                        if let Some(ref logger) = debug_logger {
+                            let _ = logger.log("cp1", "plan_created", json!({
+                                "trigger": "goal",
+                                "domain": debug_plan_info.0,
+                            })).await;
+                        }
                         if let Some(ref plan) = result.task_status {
                             final_reply = crate::plan_handler::render_plan(plan);
                         }
@@ -562,6 +672,13 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 }
 
                 // 保存 assistant 回复（final_reply 已清理/渲染）
+                // ── 调试日志：llm_reply ──
+                if let Some(ref logger) = debug_logger {
+                    let _ = logger.log("base", "llm_reply", json!({
+                        "reply_length": final_reply.len(),
+                        "reply_preview": &final_reply,
+                    })).await;
+                }
                 let now_str = chrono::Utc::now().timestamp();
                 {
                     let conn = crate::db_pool::get_conn();
@@ -751,6 +868,15 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     if !has_plan || has_prebuilt_vocab {
                         let skip_reason = if !has_plan { "no plan".to_string() } else { format!("prebuilt vocab subject={}", ed) };
                         tracing::info!("CP1 skipped for turn {}: {}", cold_turn, skip_reason);
+                        // ── 调试日志：cp1_skipped ──
+                        if let Ok(cp1_logger) = crate::debug_logger::DebugLogger::create(&conv_id_cp1).await {
+                            let _ = cp1_logger.log("cp1", "cp1_skipped", json!({
+                                "reason": skip_reason,
+                                "turn": cold_turn,
+                                "domain": ed,
+                            })).await;
+                            let _ = cp1_logger.close().await;
+                        }
                         // AI 回复中出现预置词汇时静默激活（仅限有 plan 的预置词库科目）
                         if has_prebuilt_vocab && has_plan {
                             let conn_activate = crate::db_pool::get_conn();
@@ -762,13 +888,23 @@ pub async fn handle_ws(mut ws: WebSocket) {
 
                     tracing::info!("CP1 starting concept extraction for turn {}", cold_turn);
 
+                    // 从配置读取概念提取上限
+                    let max_concepts = {
+                        let conn = crate::db_pool::get_conn();
+                        crate::app_config_cache::get_sync(&conn, "prompt.concept_extract_max")
+                            .ok()
+                            .flatten()
+                            .and_then(|v| v.parse::<usize>().ok())
+                            .unwrap_or(5)
+                    };
+
                     // 30 秒超时：防止 LLM 挂起导致 turn 永远不到达
                     let extraction = match tokio::time::timeout(
                         Duration::from_secs(30),
                         chat_engine::concept_extractor::extract_concepts(
                             &user_id, &msg, &fr,
                             &existing_fronts, &config,
-                            &history_clone, &ed, &ctx,
+                            &history_clone, &ed, &ctx, max_concepts,
                         ),
                     ).await {
                         Ok(e) => e,
@@ -781,6 +917,15 @@ pub async fn handle_ws(mut ws: WebSocket) {
 
                     let candidate_count = extraction.candidates.len();
                     tracing::info!("CP1 extracted {} candidates for turn {}", candidate_count, cold_turn);
+                    // ── 调试日志：cp1_concept_extraction ──
+                    if let Ok(cp1_log) = crate::debug_logger::DebugLogger::create(&conv_id_cp1).await {
+                        let _ = cp1_log.log("cp1", "cp1_concept_extraction", json!({
+                            "turn": cold_turn,
+                            "candidates_count": candidate_count,
+                            "domain": ed,
+                        })).await;
+                        let _ = cp1_log.close().await;
+                    }
 
                     // 概念提取 → 批量入库 (status='pending')，返回 card_id 供前端 PATCH
                     let pending_candidates: Vec<serde_json::Value> = {
@@ -901,6 +1046,13 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         r
                     };
                     tracing::info!("CP1 inserted {} pending cards for turn {}", pending_candidates.len(), cold_turn);
+                    // ── 调试日志：cp1_cards_inserted ──
+                    if let Ok(cp1_log) = crate::debug_logger::DebugLogger::create(&conv_id_cp1).await {
+                        let _ = cp1_log.log("cp1", "cp1_cards_inserted", json!({
+                            "count": pending_candidates.len(),
+                        })).await;
+                        let _ = cp1_log.close().await;
+                    }
                     // 成就检测：卡片创建后触发 card_created 事件
                     if !pending_candidates.is_empty() {
                         let conn = crate::db_pool::get_conn();
@@ -1008,6 +1160,33 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     tracing::warn!("WS send(plan_updated from CP2) failed — connection lost");
                 }
             }
+        }
+    }
+
+    // ── 调试日志：session_end ──
+    if let Some(logger) = debug_logger {
+        match logger.close().await {
+            Ok(summary) => {
+                tracing::info!(
+                    "Debug log closed: conv={}, entries={}, size={}",
+                    summary.conversation_id, summary.entry_count, summary.file_size_bytes,
+                );
+                // 写入 debug_logs DB 表（供管理后台查询）
+                let log_path = format!("data/debug_logs/{}/{}.jsonl",
+                    summary.date, summary.conversation_id);
+                if let Err(e) = crate::db_pool::get_conn().execute(
+                    "UPDATE debug_logs SET entry_count = ?1, file_size_bytes = ?2, log_file_path = ?3 WHERE id = ?4",
+                    rusqlite::params![
+                        summary.entry_count as i64,
+                        summary.file_size_bytes as i64,
+                        log_path,
+                        summary.conversation_id,
+                    ],
+                ) {
+                    tracing::warn!("Failed to update debug_logs record: {}", e);
+                }
+            }
+            Err(e) => tracing::warn!("Debug log close failed: {}", e),
         }
     }
 

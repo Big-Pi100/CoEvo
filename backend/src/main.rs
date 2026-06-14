@@ -260,6 +260,52 @@ async fn main() {
             }
         }
 
+        // 运行时配置表 + 调试日志表
+        for sql in &[
+            "CREATE TABLE IF NOT EXISTS app_config (
+                key TEXT PRIMARY KEY, value TEXT NOT NULL,
+                description TEXT DEFAULT '', updated_at INTEGER NOT NULL)",
+            "CREATE TABLE IF NOT EXISTS debug_trackers (
+                id TEXT PRIMARY KEY, user_id TEXT NOT NULL,
+                conversation_id TEXT, subject TEXT,
+                status TEXT DEFAULT 'active', created_at INTEGER NOT NULL)",
+            "CREATE INDEX IF NOT EXISTS idx_debug_trackers_user ON debug_trackers(user_id)",
+            "CREATE TABLE IF NOT EXISTS debug_logs (
+                id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL,
+                user_id TEXT, subject TEXT, date TEXT NOT NULL,
+                log_file_path TEXT NOT NULL, phases TEXT,
+                entry_count INTEGER DEFAULT 0,
+                file_size_bytes INTEGER DEFAULT 0,
+                created_at INTEGER NOT NULL)",
+            "CREATE INDEX IF NOT EXISTS idx_debug_logs_conv ON debug_logs(conversation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_debug_logs_date ON debug_logs(date)",
+        ] {
+            match conn.execute(sql, []) {
+                Ok(_) => {}
+                Err(e) => {
+                    let err_msg = e.to_string();
+                    if !err_msg.contains("duplicate column") && !err_msg.contains("already exists") && !err_msg.contains("no such table") && !err_msg.contains("no such index") {
+                        tracing::error!("Table creation failed: {} — SQL: {}", err_msg, sql);
+                        panic!("Table creation failed: {}", err_msg);
+                    }
+                }
+            }
+        }
+
+        // 初始化运行时配置缓存
+        if let Err(e) = api_server::app_config_cache::init_cache(&conn) {
+            tracing::warn!("app_config cache init: {}", e);
+        } else {
+            tracing::info!("app_config cache initialized");
+        }
+
+        // 初始化调试跟踪器缓存
+        if let Err(e) = api_server::debug_trackers_cache::init_cache(&conn) {
+            tracing::warn!("debug_trackers cache init: {}", e);
+        } else {
+            tracing::info!("debug_trackers cache initialized");
+        }
+
         // K12 prebuilt 数据写入 DB（JSON → prebuilt_* 表）
         {
             let conn = api_server::db_pool::get_conn();

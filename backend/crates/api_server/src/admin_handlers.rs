@@ -4,8 +4,8 @@ use serde::Deserialize;
 use sha2::{Sha256, Digest};
 use crate::encryption;
 
-fn ok(v: serde_json::Value) -> axum::response::Response { Json(v).into_response() }
-fn err(code: StatusCode, msg: &str) -> axum::response::Response { (code, Json(serde_json::json!({"error": msg}))).into_response() }
+pub(crate) fn ok(v: serde_json::Value) -> axum::response::Response { Json(v).into_response() }
+pub(crate) fn err(code: StatusCode, msg: &str) -> axum::response::Response { (code, Json(serde_json::json!({"error": msg}))).into_response() }
 
 fn conn() -> crate::db_pool::DbConn { crate::db_pool::get_conn() }
 

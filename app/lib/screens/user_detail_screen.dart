@@ -22,6 +22,7 @@ class _UserDetailScreenState extends State<UserDetailScreen> with TickerProvider
   List<Map<String, dynamic>> _cards = [];
   List<Map<String, dynamic>> _convs = [];
   bool _loading = true;
+  bool? _isTracked;
   int _tabIdx = 0;
 
   Map<String, String> _headers() {
@@ -30,9 +31,13 @@ class _UserDetailScreenState extends State<UserDetailScreen> with TickerProvider
     return {};
   }
 
-  Future<Map<String, dynamic>> _api(String method, String path) async {
+  Future<Map<String, dynamic>> _api(String method, String path, {Map<String, dynamic>? body}) async {
     final uri = Uri.parse('${ApiConfig.baseUrl}$path');
-    final resp = await (method == 'GET' ? http.get(uri, headers: _headers()) : http.post(uri, headers: _headers())).timeout(const Duration(seconds: 10));
+    final h = _headers();
+    final req = method == 'GET'
+        ? http.get(uri, headers: h)
+        : http.post(uri, headers: {...h, 'Content-Type': 'application/json'}, body: jsonEncode(body ?? {}));
+    final resp = await req.timeout(const Duration(seconds: 10));
     try { return jsonDecode(resp.body) as Map<String, dynamic>; } catch (_) { return {'error': '${resp.statusCode}'}; }
   }
 
@@ -53,12 +58,57 @@ class _UserDetailScreenState extends State<UserDetailScreen> with TickerProvider
       _convs = (convs['conversations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
       _loading = false;
     });
+    _loadTrackStatus();
+  }
+
+  Future<void> _loadTrackStatus() async {
+    final resp = await _api('GET', '/api/admin/debug/tracks');
+    if (resp.containsKey('tracks')) {
+      final tracks = resp['tracks'] as List;
+      final found = tracks.any((t) => t is Map && t['user_id'] == widget.userId);
+      if (mounted) setState(() => _isTracked = found);
+    }
+  }
+
+  Future<void> _startTrack() async {
+    final resp = await _api('POST', '/api/admin/debug/track', body: {'user_id': widget.userId});
+    if (resp.containsKey('id')) {
+      if (mounted) {
+        setState(() => _isTracked = true);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已开始跟踪该用户')));
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(resp['error'] ?? '跟踪失败')));
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_user?['display_name'] ?? _user?['username'] ?? '用户详情')),
+      appBar: AppBar(
+        title: Text(_user?['display_name'] ?? _user?['username'] ?? '用户详情'),
+        actions: [
+          if (_isTracked == true)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingSm),
+              child: Chip(
+                avatar: Icon(Icons.track_changes, size: 14, color: _cs.primary),
+                label: const Text('正在跟踪', style: TextStyle(fontSize: 11)),
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            )
+          else if (_isTracked == false)
+            TextButton.icon(
+              icon: const Icon(Icons.track_changes, size: 16),
+              onPressed: _startTrack,
+              label: const Text('跟踪', style: TextStyle(fontSize: 12)),
+            ),
+        ],
+      ),
       body: _loading
         ? const Center(child: CircularProgressIndicator())
         : _user == null
