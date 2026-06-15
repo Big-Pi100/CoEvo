@@ -89,6 +89,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/user/{user_id}/subscription", get(user_subscription_handler))
         .route("/api/tts/preview", post(tts_preview_handler))
         .route("/api/tts/speak", post(tts_speak_handler))
+        .route("/api/stt/transcribe", post(stt_transcribe_handler))
         .route("/api/user/bind-lookup", post(bind_lookup_handler))
         // ── Learning Plans ──
         .route("/api/plans", get(plans_list_handler))
@@ -1865,6 +1866,40 @@ async fn tts_speak_handler(
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body(axum::body::Body::from(format!("TTS 合成失败: {}", e)))
                 .unwrap()
+        }
+    }
+}
+
+/// POST /api/stt/transcribe — 语音识别（腾讯云 ASR）
+///
+/// Body: {"audio": "<base64>", "format": "wav", "engine": "16k_zh"}
+/// Returns: {"text": "识别结果"}
+async fn stt_transcribe_handler(
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    use axum::http::StatusCode;
+
+    let audio = match payload.get("audio").and_then(|v| v.as_str()) {
+        Some(a) if !a.is_empty() => a,
+        _ => {
+            tracing::warn!("stt_transcribe: audio field missing or empty");
+            return (StatusCode::BAD_REQUEST, "audio 不能为空").into_response();
+        }
+    };
+    let data_len = payload.get("data_len").and_then(|v| v.as_i64()).unwrap_or(0) as usize;
+    let engine = payload.get("engine").and_then(|v| v.as_str()).unwrap_or("16k_zh");
+    let format = payload.get("format").and_then(|v| v.as_str()).unwrap_or("wav");
+
+    tracing::info!("stt_transcribe: len={} engine={} format={}", data_len, engine, format);
+
+    match crate::tencent_asr::recognize(audio, data_len, engine, format).await {
+        Ok(text) => {
+            tracing::info!("stt_transcribe OK: result_len={}", text.len());
+            (StatusCode::OK, serde_json::json!({"text": text}).to_string()).into_response()
+        }
+        Err(e) => {
+            tracing::error!("stt_transcribe failed: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("ASR 识别失败: {}", e)).into_response()
         }
     }
 }

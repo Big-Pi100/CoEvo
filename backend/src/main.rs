@@ -341,7 +341,8 @@ async fn main() {
         .allow_headers(Any);
 
     let app = api_server::routes::build_router(llm_config)
-        .layer(cors);
+        .layer(cors)
+        .layer(axum::extract::DefaultBodyLimit::max(10 * 1024 * 1024)); // 10MB for ASR audio
 
     let bind_addr = format!("{}:{}", host, port);
     let listener = tokio::net::TcpListener::bind(&bind_addr).await.unwrap();
