@@ -28,6 +28,14 @@ cd backend
 bash deploy.sh <OLD_VPS_IP>
 ```
 
+## SEO 文件（2026-06-15 新增）
+```bash
+# robots.txt + sitemap.xml 位于 landing/ 根目录
+# 新增内容页后务必更新 sitemap.xml
+# 详见 web-deploy-guide.md 5.6 节
+# ⚠️ sitemap 提交因百度主体资质验证暂受阻，已反馈百度
+```
+
 ### 后续架构（APK）
 VPS 仅作为 LLM 代理网关，业务逻辑在 APK 内部。
 

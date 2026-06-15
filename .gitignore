@@ -24,6 +24,9 @@ CLAUDE.md
 /frontend/assets
 /docs/deployment-guide.md
 /backend/crates/api_server/data
+/landing/baidu
+# 微信支付证书（含私钥，入 Git = 泄露密钥！）
+/backend/certs/
 # Windows 保留设备名（不可被 Git 索引）
 /nul
 

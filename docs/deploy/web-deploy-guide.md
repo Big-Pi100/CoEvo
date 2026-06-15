@@ -348,7 +348,11 @@ ENVEOF
   # ⚠️ 部署管理员微信二维码（到期弹窗用）
   sudo cp /tmp/super_weixin.jpg /opt/coevo/data/super_weixin.jpg
 
-  # 11. 启动服务
+  # 11. ⚠️ SEO 文件维护说明（见 5.6 节）
+  # robots.txt 和 sitemap.xml 已在 /var/www/coevo-landing/ 根目录
+  # 新增内容页后记得同步更新 sitemap.xml（见 5.6 节）
+
+  # 12. 启动服务
   sudo systemctl daemon-reload
   sudo systemctl start coevo
   sleep 3
@@ -387,7 +391,75 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> \
 rm -f /tmp/coevo-backend-src.tar.gz /tmp/curriculum-v4.tar.gz
 ```
 
-### 5.6 systemd 服务参考
+### 5.6 SEO 文件维护（2026-06-15 新增）
+
+CoEvo 百度SEO优化涉及两个文件，位于落地页根目录（`/var/www/coevo-landing/`）：
+
+| 文件 | 路径 | 作用 |
+|:----|:-----|:-----|
+| `robots.txt` | `/var/www/coevo-landing/robots.txt` | 指引百度爬虫可爬取/禁止的路径 |
+| `sitemap.xml` | `/var/www/coevo-landing/sitemap.xml` | 列出网站上所有重要页面，提交给百度快速发现 |
+
+#### 更新 sitemap.xml
+
+**每次新增内容页面后**，必须在本地 `E:\CoEvo\landing\sitemap.xml` 中添加一条 `<url>` 记录，然后重新部署到 VPS：
+
+```bash
+# 1. 在本地 sitemap.xml 中新增一行（手动编辑）
+# E:\CoEvo\landing\sitemap.xml
+# 例如新增一篇 "AI学习方法" 文章：
+#
+#   <url>
+#     <loc>https://keyievolution.fun/blog/ai-learning-methods.html</loc>
+#     <lastmod>2026-06-15</lastmod>
+#     <changefreq>monthly</changefreq>
+#     <priority>0.8</priority>
+#   </url>
+
+# 2. 部署到 VPS
+scp -i ~/.ssh/coevo_key E:\CoEvo\landing\sitemap.xml ubuntu@<OLD_VPS_IP>:/tmp/
+ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
+  sudo cp /tmp/sitemap.xml /var/www/coevo-landing/sitemap.xml &&
+  sudo chown www-data:www-data /var/www/coevo-landing/sitemap.xml
+"
+
+# 3. 登录百度站长平台 → 站点管理 → sitemap → 点击"刷新/更新"
+```
+
+#### robots.txt 当前内容（无需频繁修改）
+
+```
+User-agent: Baiduspider
+Allow: /
+Disallow: /app/
+Disallow: /api/
+Disallow: /ws
+
+User-agent: *
+Allow: /
+Disallow: /app/
+Disallow: /api/
+Disallow: /ws
+
+Sitemap: https://keyievolution.fun/sitemap.xml
+```
+
+> **注意**：`/app/` 路径下的 Flutter Web SPA 页面爬虫无法抓取有效内容，故禁止爬取以节省百度抓取额度，让爬虫集中索引 landing 页和未来新增的内容页。
+
+#### 提交到百度站长平台
+
+sitemap 提交后，登录 [百度资源平台](https://ziyuan.baidu.com/)：
+1. 选择站点 → "sitemap" 菜单
+2. 添加 sitemap 地址：`https://keyievolution.fun/sitemap.xml`
+3. 后续每次更新 sitemap 后，在平台点击"刷新"
+4. ⚠️ **2026-06-15 状态**：sitemap 提交需先通过百度**主体资质验证**（验证 ICP 备案主体）。
+   - 目前文件验证已通过，但百度数据库暂未同步备案信息，导致提交配额为0
+   - 已向百度提交问题反馈工单，待处理
+   - 此问题**不影响**爬虫正常爬取和收录
+
+---
+
+### 5.7 systemd 服务参考
 
 ```ini
 # /etc/systemd/system/coevo.service
@@ -875,6 +947,9 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
 | 17 | **2026-06-08**: Nginx sites-enabled 已同步 | `ssh ... "diff /etc/nginx/sites-available/coevo /etc/nginx/sites-enabled/coevo"` | 无输出（文件一致） |
 | 18 | **2026-06-08**: LLM warmup 成功 | `ssh ... "journalctl -u coevo --no-pager \| grep 'LLM warmup: OK'"` | 有匹配行 |
 | 19 | **2026-06-14**: 管理员二维码存在 | `ssh ... "ls -lh /opt/coevo/data/super_weixin.jpg"` | 308KB 图片文件 |
+| 20 | **2026-06-15**: robots.txt 可访问 | `curl -sI https://keyievolution.fun/robots.txt \| head -1` | HTTP 200 |
+| 21 | **2026-06-15**: sitemap.xml 可访问 | `curl -sI https://keyievolution.fun/sitemap.xml \| head -1` | HTTP 200 |
+| 22 | **2026-06-15**: sitemap.xml 包含所有新页面 | 手动检查 `/<loc>/` 行数 | ≥ 页面数 |
 
 ### 完整验证脚本
 

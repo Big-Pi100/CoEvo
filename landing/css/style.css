@@ -163,6 +163,16 @@ img{max-width:100%;display:block}
 .footer-foot p,.footer-foot a{font-size:12px;color:rgba(255,255,255,.2)}
 .footer-foot a:hover{color:rgba(255,255,255,.45)}
 
+/* ─── 教学流程（2026-06-15 新增） ─── */
+#how-it-works .section-header{margin-bottom:28px}
+.teach-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.teach-card{background:#151528;border:1px solid #222240;border-radius:14px;padding:20px;transition:transform .2s ease,border-color .2s ease}
+.teach-card:hover{transform:translateY(-2px);border-color:rgba(108,99,255,.38)}
+.teach-num{width:32px;height:32px;border-radius:50%;background:rgba(108,99,255,.13);display:flex;align-items:center;justify-content:center;margin-bottom:12px;color:#6C63FF;font-weight:700;font-size:14px}
+.teach-title{color:#fff;font-size:15px;margin:0 0 6px;font-weight:600}
+.teach-desc{color:#AAAACC;font-size:13px;line-height:1.7;margin:0}
+.teach-cta{text-align:center;margin-top:24px}
+
 /* ─── Reveal ─── */
 [data-reveal]{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
 [data-reveal].visible{opacity:1;transform:translateY(0)}
@@ -177,6 +187,7 @@ img{max-width:100%;display:block}
   .bento-main{grid-row:auto}
   .cta-card{flex-direction:column;text-align:center;padding:40px 32px;gap:32px}
   .steps{max-width:100%}
+  .teach-grid{grid-template-columns:1fr}
 }
 @media(max-width:640px){
   .section{padding:64px 0}
