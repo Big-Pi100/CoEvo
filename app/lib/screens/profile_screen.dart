@@ -452,6 +452,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
         // 订阅状态
         _buildSubscriptionCard(),
+        const SizedBox(height: AppTheme.spacingSm),
+
+        // 联系工作人员
+        _buildContactCard(),
         const SizedBox(height: AppTheme.spacingMd),
 
         // 历史订单
@@ -823,6 +827,47 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
+  /// 联系工作人员
+  Widget _buildContactCard() {
+    return Card(
+      child: ListTile(
+        leading: Icon(Icons.headset_mic, color: _cs.primary, size: 22),
+        title: const Text('联系工作人员', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+        trailing: Icon(Icons.chevron_right, color: _cs.onSurfaceVariant, size: 20),
+        onTap: _showContactDialog,
+      ),
+    );
+  }
+
+  void _showContactDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('联系工作人员'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('扫码添加工作人员微信', style: TextStyle(fontSize: 13)),
+            const SizedBox(height: AppTheme.spacingLg),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image(
+                image: NetworkImage('${ApiConfig.baseUrl}/api/public/qrcode'),
+                width: 200,
+                height: 200,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) =>
+                    Icon(Icons.image_not_supported, size: 64, color: _cs.onSurfaceVariant),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+        ],
+      ),
+    );
+  }
 }
 
 /// CEFR 等级进度条
@@ -891,7 +936,5 @@ class _CefrBar extends StatelessWidget {
       ),
     );
   }
-
 }
-
 

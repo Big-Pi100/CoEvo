@@ -435,7 +435,7 @@ pub async fn debug_log_detail_handler(
 
 /// GET /api/public/qrcode — 返回管理员微信二维码图片
 pub async fn qrcode_handler() -> impl IntoResponse {
-    let img_path = "data/super_weixin.jpg";
+    let img_path = "data/service_weixin.jpg";
     match tokio::fs::read(img_path).await {
         Ok(data) => {
             axum::response::Response::builder()
