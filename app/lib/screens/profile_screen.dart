@@ -13,6 +13,7 @@ import 'package:audioplayers/audioplayers.dart';
 import '../providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/tts_service.dart';
+import '../widgets/subscribe_panel.dart';
 import '../utils/validators.dart';
 import '../theme/app_theme.dart';
 
@@ -793,6 +794,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         leading: Icon(statusIcon, color: statusColor, size: 24),
         title: Text('订阅状态', style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text(statusText, style: TextStyle(color: statusColor, fontSize: 13)),
+        trailing: FilledButton.tonal(
+          onPressed: () => _showSubscribeDialog(),
+          child: const Text('续费'),
+        ),
+      ),
+    );
+  }
+
+  void _showSubscribeDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('订阅套餐'),
+        content: const SubscribePanel(),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
       ),
     );
   }

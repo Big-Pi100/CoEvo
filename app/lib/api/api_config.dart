@@ -28,15 +28,19 @@ class ApiConfig {
   /// HTTP base URL (REST + WebSocket 共用)
   ///
   /// 自动判断：
-  /// - 如果 _host 包含点号（域名），使用 https:// 且不追加端口（443 默认）
-  /// - 否则（localhost 或 IP），使用 http:// 并追加 _port
+  /// - 域名（如 keyievolution.fun）→ https://，不追加端口（443 默认）
+  /// - IP 或 localhost → http://，追加 _port
   static String get baseUrl {
-    if (_host.contains('.')) {
-      // 域名 → HTTPS, 默认端口 443
+    if (_isDomain(_host)) {
       return 'https://$_host';
     }
-    // IP 或 localhost → HTTP + 端口
     return 'http://$_host:$_port';
+  }
+
+  /// 判断是否为域名（含点号但非纯数字 IP）
+  static bool _isDomain(String host) {
+    if (!host.contains('.')) return false;
+    return !RegExp(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$').hasMatch(host);
   }
 
   /// Request timeout for normal API calls

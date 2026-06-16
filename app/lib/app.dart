@@ -11,6 +11,7 @@ import 'screens/chat_screen.dart';
 import 'screens/admin_screen.dart';
 import 'screens/guardian_screen.dart';
 import 'screens/review_screen.dart';
+import 'screens/pay_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/achievements_screen.dart';
 import 'screens/conversation_list_screen.dart';
@@ -19,6 +20,7 @@ import 'screens/k12_subject_screen.dart';
 import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
 import 'widgets/achievement_overlay.dart';
+import 'widgets/subscribe_panel.dart';
 
 // Prevent dart2js tree-shaking of admin/guardian screens
 final _allScreens = <Widget>[
@@ -143,6 +145,10 @@ final goRouter = GoRouter(
           child: child,
         ),
       ),
+    ),
+    GoRoute(
+      path: '/pay',
+      builder: (context, state) => const PayScreen(),
     ),
   ],
 );
@@ -271,27 +277,15 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  const Text('请联系管理员续费。\n续费后刷新页面即可恢复使用。'),
+                  const SubscribePanel(),
                   const SizedBox(height: 16),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image(
-                      image: NetworkImage(
-                          '${ApiConfig.baseUrl}/api/public/qrcode'),
-                      width: 180,
-                      height: 180,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton(
+                  TextButton(
                     onPressed: () {
                       _lastDismissed = DateTime.now();
                       _dismissCount++;
                       setState(() => _showSubExpired = false);
                     },
-                    child: const Text('我知道了'),
+                    child: const Text('稍后再说'),
                   ),
                 ],
               ),

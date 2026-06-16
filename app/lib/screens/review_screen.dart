@@ -11,6 +11,7 @@ import '../providers/plan_provider.dart' hide cardRefreshProvider;
 import '../services/tts_service.dart';
 import '../pipelines/verification_strategy.dart';
 import '../widgets/markdown_span_nodes.dart';
+import '../widgets/subscribe_panel.dart';
 import 'card_list_screen.dart';
 import '../theme/app_theme.dart';
 
@@ -786,6 +787,12 @@ Row(
                 textAlign: TextAlign.center,
                 style: TextStyle(color: _cs.onSurfaceVariant),
               ),
+              const SizedBox(height: AppTheme.spacingLg),
+              FilledButton.icon(
+                onPressed: () => _showSubscribePanel(context, isExpired),
+                icon: const Icon(Icons.payment, size: 18),
+                label: const Text('立即订阅'),
+              ),
             ],
           ),
         ),
@@ -1339,6 +1346,22 @@ Center(
             ),
           ),
       ],
+    );
+  }
+
+  void _showSubscribePanel(BuildContext context, bool isExpired) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(isExpired ? '订阅已到期' : '需要订阅'),
+        content: const SubscribePanel(),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
     );
   }
 }

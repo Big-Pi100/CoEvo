@@ -1233,3 +1233,39 @@ pub async fn admin_users_export(headers: HeaderMap, Query(query): Query<AdminUse
     }
     ([(axum::http::header::CONTENT_TYPE, "text/csv; charset=utf-8"), (axum::http::header::CONTENT_DISPOSITION, "attachment; filename=\"coevo-users.csv\"")], csv).into_response()
 }
+
+/// GET /api/admin/users/{user_id}/audit-log — 用户订阅操作日志
+pub async fn admin_audit_log_handler(
+    Path(user_id): Path<String>,
+) -> impl IntoResponse {
+    use axum::http::StatusCode;
+    let conn = crate::db_pool::get_conn();
+    let mut stmt = match conn.prepare(
+        "SELECT action, operator_id, old_expires, new_expires, amount, order_id, note, created_at
+         FROM subscription_audit_log
+         WHERE target_user_id = ?1
+         ORDER BY created_at DESC
+         LIMIT 50"
+    ) {
+        Ok(s) => s,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("查询失败: {}", e)).into_response(),
+    };
+
+    let rows: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![user_id], |row| {
+        Ok(serde_json::json!({
+            "action": row.get::<_, String>(0)?,
+            "operator_id": row.get::<_, Option<String>>(1)?,
+            "old_expires": row.get::<_, Option<String>>(2)?,
+            "new_expires": row.get::<_, String>(3)?,
+            "amount": row.get::<_, i64>(4)?,
+            "order_id": row.get::<_, Option<String>>(5)?,
+            "note": row.get::<_, Option<String>>(6)?,
+            "created_at": row.get::<_, String>(7)?,
+        }))
+    }) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("查询失败: {}", e)).into_response(),
+    };
+
+    (StatusCode::OK, serde_json::json!({"logs": rows}).to_string()).into_response()
+}

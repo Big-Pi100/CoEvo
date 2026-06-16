@@ -12,6 +12,7 @@ import '../providers/auth_provider.dart';
 import '../providers/achievement_notifier.dart';
 import '../services/tts_service.dart';
 import '../widgets/skeleton.dart';
+import '../widgets/subscribe_panel.dart';
 import 'chat/chat_concept_dialog.dart';
 import 'chat/chat_input.dart';
 import 'chat/chat_plan_panel.dart';
@@ -510,21 +511,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               Text(title),
             ],
           ),
-          content: Column(
+          content: const Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('请联系管理员续费。\n续费后刷新页面即可恢复使用。'),
-              const SizedBox(height: AppTheme.spacingMd),
-              ClipRRect(
-                borderRadius: const BorderRadius.all(Radius.circular(12)),
-                child: Image(
-                  image: NetworkImage('${ApiConfig.baseUrl}/api/public/qrcode'),
-                  width: 180,
-                  height: 180,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                ),
-              ),
+              SubscribePanel(),
             ],
           ),
           actions: [
@@ -561,12 +551,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              isExpired ? '订阅已到期，请联系服务人员续费' : '需要激活订阅才能使用 AI 对话',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: isExpired ? _cs.error : _cs.secondary,
+            child: GestureDetector(
+              onTap: () => _showSubscriptionDialog(isExpired ? '订阅已到期' : '需要订阅'),
+              child: Text(
+                isExpired ? '订阅已到期，点击续费' : '需要激活订阅，点击开通',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: isExpired ? _cs.error : _cs.secondary,
+                ),
               ),
             ),
           ),

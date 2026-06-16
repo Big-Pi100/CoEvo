@@ -31,6 +31,7 @@ dependencies:
   google_fonts: ^6.2.1
   record: ^6.2.1
   web: ^1.1.1
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:

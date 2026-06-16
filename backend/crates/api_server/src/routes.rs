@@ -56,6 +56,12 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/health", get(health_check))
         // ── Public ──
         .route("/api/public/qrcode", get(crate::config_admin::qrcode_handler))
+        // ── Payment & Subscription ──
+        .route("/api/pay/plans", get(crate::plans_handlers::plans_list_handler))
+        .route("/api/pay/native", post(crate::pay_handlers::native_pay_handler))
+        .route("/api/pay/notify", post(crate::pay_handlers::pay_notify_handler))
+        .route("/api/pay/orders", get(crate::pay_handlers::user_orders_handler))
+        .route("/api/pay/orders/{id}", get(crate::pay_handlers::order_status_handler))
         // ── Auth ──
         .route("/api/auth/register", post(auth_register))
         .route("/api/auth/login", post(auth_login))
@@ -124,6 +130,12 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/admin/subscription-requests", get(admin_list_subscription_requests).post(admin_create_subscription_request))
         .route("/api/admin/subscription-requests/{req_id}/approve", post(admin_approve_request))
         .route("/api/admin/subscription-requests/{req_id}/reject", post(admin_reject_request))
+        // ── Admin: 支付 & 套餐管理 ──
+        .route("/api/admin/plans", get(crate::plans_handlers::admin_plans_list_handler).post(crate::plans_handlers::admin_plan_create_handler))
+        .route("/api/admin/plans/{id}", put(crate::plans_handlers::admin_plan_update_handler))
+        .route("/api/admin/pay/orders", get(crate::pay_handlers::user_orders_handler))
+        // ── Admin: Audit Log ──
+        .route("/api/admin/users/{user_id}/audit-log", get(admin_audit_log_handler))
         .route("/api/admin/admins", get(admin_list_admins).post(admin_create_admin))
         .route("/api/admin/admins/{admin_id}/approve", post(admin_approve_admin))
         .route("/api/admin/admins/{admin_id}/reject", post(admin_reject_admin))

@@ -208,6 +208,58 @@ async fn main() {
             "CREATE INDEX IF NOT EXISTS idx_admin_audit_log_admin ON admin_audit_log(admin_id, created_at)",
             "CREATE INDEX IF NOT EXISTS idx_admin_audit_log_action ON admin_audit_log(action, created_at)",
             "ALTER TABLE admin_users ADD COLUMN permissions TEXT DEFAULT '{}'",
+            "ALTER TABLE subscription_plans ADD COLUMN once_per_user INTEGER DEFAULT 0",
+            // 订阅套餐
+            "CREATE TABLE IF NOT EXISTS subscription_plans (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                duration_days INTEGER,
+                price INTEGER NOT NULL,
+                max_uses INTEGER,
+                used_count INTEGER DEFAULT 0,
+                once_per_user INTEGER DEFAULT 0,
+                available_from TEXT,
+                available_until TEXT,
+                sort_order INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                created_at TEXT NOT NULL
+            )",
+            // 支付订单
+            "CREATE TABLE IF NOT EXISTS payment_orders (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                plan_id TEXT NOT NULL,
+                amount INTEGER NOT NULL,
+                currency TEXT DEFAULT 'CNY',
+                status TEXT DEFAULT 'NOTPAY',
+                prepay_id TEXT,
+                transaction_id TEXT,
+                paid_at TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_payment_orders_user ON payment_orders(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_payment_orders_status ON payment_orders(status)",
+            // 订阅操作审计
+            "CREATE TABLE IF NOT EXISTS subscription_audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                action TEXT NOT NULL,
+                operator_id TEXT,
+                target_user_id TEXT NOT NULL,
+                old_expires TEXT,
+                new_expires TEXT NOT NULL,
+                amount INTEGER DEFAULT 0,
+                order_id TEXT,
+                note TEXT,
+                created_at TEXT NOT NULL
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_audit_target ON subscription_audit_log(target_user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_audit_created ON subscription_audit_log(created_at)",
+            // 初始化套餐
+            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, once_per_user, sort_order, is_active, created_at) VALUES ('discount_10', '新手体验', 3, 10, 1, 0, 1, datetime('now'))",
+            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('30d', '月度会员', 30, 20000, 1, 1, datetime('now'))",
+            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('365d', '年度会员', 365, 128000, 2, 1, datetime('now'))",
+            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, max_uses, used_count, sort_order, is_active, created_at) VALUES ('lifetime', '终身会员', 3650, 128000, 100, 0, 3, 1, datetime('now'))",
             // K12 题库
             "CREATE TABLE IF NOT EXISTS k12_quiz_bank (
                 id TEXT PRIMARY KEY,
