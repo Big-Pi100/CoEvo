@@ -1,14 +1,20 @@
 //! 支付相关 Handler — 下单 / 回调 / 订单查询
 
 use axum::{
-    extract::Path,
+    extract::{Path, Query},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
+use serde::Deserialize;
 use serde_json::json;
 
 use crate::subscription;
+
+#[derive(Deserialize)]
+pub struct UserOrdersQuery {
+    pub user_id: Option<String>,
+}
 
 /// POST /api/pay/native — Native 支付下单
 pub async fn native_pay_handler(
@@ -291,19 +297,22 @@ fn decrypt_aes_256_gcm(
     String::from_utf8(plaintext).map_err(|e| format!("UTF-8 转换失败: {}", e))
 }
 
-/// GET /api/pay/orders — 查询用户订单
+/// GET /api/pay/orders?user_id=xxx — 查询用户订单
 pub async fn user_orders_handler(
-    Json(payload): Json<serde_json::Value>,
+    Query(query): Query<UserOrdersQuery>,
 ) -> impl IntoResponse {
-    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
-        Some(id) => id,
-        None => return (StatusCode::BAD_REQUEST, "user_id 不能为空").into_response(),
+    let user_id = match &query.user_id {
+        Some(id) if !id.is_empty() => id.as_str(),
+        _ => return (StatusCode::BAD_REQUEST, "user_id 不能为空").into_response(),
     };
 
     let conn = crate::db_pool::get_conn();
     let mut stmt = match conn.prepare(
-        "SELECT id, plan_id, amount, status, transaction_id, paid_at, created_at
-         FROM payment_orders WHERE user_id = ?1 ORDER BY created_at DESC"
+        "SELECT po.id, po.plan_id, sp.name, po.amount, po.status, po.transaction_id, po.paid_at, po.created_at
+         FROM payment_orders po
+         LEFT JOIN subscription_plans sp ON po.plan_id = sp.id
+         WHERE po.user_id = ?1
+         ORDER BY po.created_at DESC"
     ) {
         Ok(s) => s,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("查询失败: {}", e)).into_response(),
@@ -313,11 +322,12 @@ pub async fn user_orders_handler(
         Ok(json!({
             "id": row.get::<_, String>(0)?,
             "plan_id": row.get::<_, String>(1)?,
-            "amount": row.get::<_, i64>(2)?,
-            "status": row.get::<_, String>(3)?,
-            "transaction_id": row.get::<_, Option<String>>(4)?,
-            "paid_at": row.get::<_, Option<String>>(5)?,
-            "created_at": row.get::<_, String>(6)?,
+            "plan_name": row.get::<_, Option<String>>(2)?,
+            "amount": row.get::<_, i64>(3)?,
+            "status": row.get::<_, String>(4)?,
+            "transaction_id": row.get::<_, Option<String>>(5)?,
+            "paid_at": row.get::<_, Option<String>>(6)?,
+            "created_at": row.get::<_, String>(7)?,
         }))
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),

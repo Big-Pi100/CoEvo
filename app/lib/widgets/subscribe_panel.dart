@@ -5,8 +5,9 @@ import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import '../../api/api_config.dart';
 import '../../providers/auth_provider.dart' show authProvider;
+import '../../theme/app_theme.dart';
 
-/// 订阅套餐卡片面板 — 从 /api/pay/plans 加载，支持选套餐下单
+/// 订阅套餐面板 — 卡片式套餐展示，支持下单跳转支付
 class SubscribePanel extends ConsumerStatefulWidget {
   const SubscribePanel({super.key});
 
@@ -29,7 +30,6 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
   Future<void> _loadPlans() async {
     setState(() => _loading = true);
     try {
-      // 获取当前用户 ID（可选，用于过滤已购买的 once_per_user 套餐）
       final auth = ref.read(authProvider);
       final userId = auth.userId;
       final url = userId != null
@@ -44,10 +44,10 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
             .map((e) => e as Map<String, dynamic>)
             .toList();
       } else {
-        _error = '加载套餐失败: ${resp.statusCode}';
+        _error = '加载套餐失败';
       }
     } catch (e) {
-      _error = '网络错误: $e';
+      _error = '网络错误';
     }
     if (mounted) setState(() => _loading = false);
   }
@@ -55,41 +55,32 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
   Future<void> _createOrder(String planId) async {
     setState(() => _orderingPlan = planId);
     try {
-      // 先获取当前用户 ID（从 local storage 或 provider）
-      // 这里简单起见用 provider 获取
       final auth = ref.read(authProvider);
       if (auth.userId == null) {
         _showError('请先登录');
         return;
       }
-
       final resp = await http
           .post(
             Uri.parse('${ApiConfig.baseUrl}/api/pay/native'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'user_id': auth.userId,
-              'plan_id': planId,
-            }),
+            body: jsonEncode({'user_id': auth.userId, 'plan_id': planId}),
           )
           .timeout(const Duration(seconds: 15));
-
       if (resp.statusCode == 200 && mounted) {
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
         final orderId = data['order_id'] as String;
         final codeUrl = data['code_url'] as String;
-
-        // 跳转到支付页
         context.push('/pay', extra: {
           'order_id': orderId,
           'code_url': codeUrl,
           'plan_id': planId,
         });
       } else if (mounted) {
-        _showError('下单失败: ${resp.body}');
+        _showError('下单失败');
       }
     } catch (e) {
-      _showError('网络错误: $e');
+      _showError('网络错误');
     } finally {
       if (mounted) setState(() => _orderingPlan = null);
     }
@@ -97,22 +88,21 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
 
   void _showError(String msg) {
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(msg)));
     }
   }
 
-  String _formatPrice(int priceFen) {
-    final yuan = priceFen / 100.0;
-    if (yuan == yuan.roundToDouble()) {
-      return '¥${yuan.toInt()}';
-    }
-    return '¥${yuan.toStringAsFixed(2)}';
+  String _fmtPrice(int fen) {
+    final y = fen / 100.0;
+    if (y == y.roundToDouble()) return '¥${y.toInt()}';
+    return '¥${y.toStringAsFixed(2)}';
   }
 
   String _durationText(Map<String, dynamic> plan) {
     final days = plan['duration_days'] as int?;
     if (days == null) return '';
-    if (days >= 3650) return '永久';
+    if (days >= 3650) return '永久有效';
     if (days >= 365) return '${days ~/ 365}年';
     return '$days天';
   }
@@ -121,56 +111,56 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    if (_loading) {
-      return const Padding(
-        padding: EdgeInsets.all(32),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.error_outline, size: 40, color: cs.error),
-            const SizedBox(height: 8),
-            Text(_error!, style: TextStyle(color: cs.error)),
-            const SizedBox(height: 12),
-            TextButton(onPressed: _loadPlans, child: const Text('重试')),
+    return SizedBox(
+      width: 380,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_loading) ...[
+            const SizedBox(height: AppTheme.spacingXl),
+            const Center(child: CircularProgressIndicator()),
+            const SizedBox(height: AppTheme.spacingXl),
+          ] else if (_error != null) ...[
+            const SizedBox(height: AppTheme.spacingLg),
+            Center(
+              child: Column(
+                children: [
+                  Icon(Icons.cloud_off, size: 36, color: cs.error),
+                  const SizedBox(height: AppTheme.spacingSm),
+                  Text(_error!, style: TextStyle(color: cs.error, fontSize: 13)),
+                  const SizedBox(height: AppTheme.spacingMd),
+                  TextButton.icon(
+                    onPressed: _loadPlans,
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text('重试'),
+                  ),
+                ],
+              ),
+            ),
+          ] else if (_plans == null || _plans!.isEmpty) ...[
+            const SizedBox(height: AppTheme.spacingXl),
+            Center(
+              child: Text('暂无可用的套餐',
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+            ),
+          ] else ...[
+            const SizedBox(height: AppTheme.spacingSm),
+            ..._plans!.asMap().entries.map((entry) =>
+                _PlanCard(
+                  plan: entry.value,
+                  priceText: _fmtPrice(entry.value['price'] as int),
+                  durationText: _durationText(entry.value),
+                  loading: _orderingPlan == entry.value['id'],
+                  onPay: () => _createOrder(entry.value['id'] as String),
+                )),
           ],
-        ),
-      );
-    }
-
-    if (_plans == null || _plans!.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.all(16),
-        child: Center(
-          child: Text('暂无可用的套餐', style: TextStyle(color: cs.onSurfaceVariant)),
-        ),
-      );
-    }
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text('选择订阅套餐', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 16),
-        ..._plans!.map((plan) => _PlanCard(
-              plan: plan,
-              priceText: _formatPrice(plan['price'] as int),
-              durationText: _durationText(plan),
-              loading: _orderingPlan == plan['id'],
-              onPay: () => _createOrder(plan['id'] as String),
-            )),
-      ],
+        ],
+      ),
     );
   }
 }
 
-/// 单张套餐卡片
 class _PlanCard extends StatelessWidget {
   final Map<String, dynamic> plan;
   final String priceText;
@@ -189,47 +179,108 @@ class _PlanCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
     final name = plan['name'] as String? ?? '';
+    final price = plan['price'] as int? ?? 0;
     final maxUses = plan['max_uses'] as int?;
     final usedCount = plan['used_count'] as int? ?? 0;
-    final isFree = (plan['price'] as int?) == 0;
+    final isLifetime = (plan['duration_days'] as int?) == null ||
+        (plan['duration_days'] as int?)! >= 3650;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Row(
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppTheme.spacingSm),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: cs.outlineVariant.withAlpha(80),
+          width: 1,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: loading ? null : onPay,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                // 左侧：套餐信息
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(durationText, style: TextStyle(color: cs.primary, fontWeight: FontWeight.w600)),
-                      if (maxUses != null) ...[
-                        const SizedBox(width: 8),
-                        Text('剩余 ${maxUses - usedCount} 份', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-                      ],
+                      // 套餐名
+                      Text(name,
+                          style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 6),
+                      // 价格 + 时长 一行
+                      Row(
+                        children: [
+                          Text(priceText,
+                              style: tt.titleMedium?.copyWith(
+                                  color: cs.primary, fontWeight: FontWeight.bold)),
+                          const SizedBox(width: AppTheme.spacingSm),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: cs.primary.withAlpha(15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(durationText,
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: cs.primary,
+                                    fontWeight: FontWeight.w500)),
+                          ),
+                        ],
+                      ),
+                      // 限量/限时标识
+                      if (maxUses != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Row(
+                            children: [
+                              Icon(Icons.local_offer, size: 12, color: cs.tertiary),
+                              const SizedBox(width: 4),
+                              Text('限量 ${maxUses - usedCount} 份',
+                                  style: TextStyle(fontSize: 11, color: cs.tertiary)),
+                            ],
+                          ),
+                        ),
+                      if (isLifetime && maxUses == null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text('一次付费，永久使用',
+                              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                        ),
                     ],
                   ),
-                  if (isFree)
-                    const Text('免费', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w600))
-                  else
-                    Text(priceText, style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: cs.primary, fontWeight: FontWeight.bold)),
-                ],
-              ),
+                ),
+                const SizedBox(width: AppTheme.spacingSm),
+                // 右侧：订阅按钮
+                SizedBox(
+                  height: 34,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                    ),
+                    onPressed: loading ? null : onPay,
+                    child: loading
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
+                          )
+                        : Text(price == 0 ? '开通' : '订阅'),
+                  ),
+                ),
+              ],
             ),
-            FilledButton(
-              onPressed: loading ? null : onPay,
-              child: loading
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : Text(isFree ? '开通' : '订阅'),
-            ),
-          ],
+          ),
         ),
       ),
     );

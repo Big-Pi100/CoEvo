@@ -17,6 +17,7 @@ import 'screens/achievements_screen.dart';
 import 'screens/conversation_list_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/k12_subject_screen.dart';
+import 'screens/skipped_screen.dart';
 import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
 import 'widgets/achievement_overlay.dart';
@@ -149,6 +150,10 @@ final goRouter = GoRouter(
     GoRoute(
       path: '/pay',
       builder: (context, state) => const PayScreen(),
+    ),
+    GoRoute(
+      path: '/skipped',
+      builder: (context, state) => const SkippedScreen(),
     ),
   ],
 );

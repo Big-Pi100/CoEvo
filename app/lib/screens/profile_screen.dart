@@ -13,6 +13,7 @@ import 'package:audioplayers/audioplayers.dart';
 import '../providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/tts_service.dart';
+import '../widgets/order_history.dart';
 import '../widgets/subscribe_panel.dart';
 import '../utils/validators.dart';
 import '../theme/app_theme.dart';
@@ -451,6 +452,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
         // 订阅状态
         _buildSubscriptionCard(),
+        const SizedBox(height: AppTheme.spacingMd),
+
+        // 历史订单
+        const OrderHistory(),
         const SizedBox(height: AppTheme.spacingLg),
 
         // 跳过的概念
