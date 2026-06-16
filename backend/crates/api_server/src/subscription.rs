@@ -63,7 +63,7 @@ pub fn get_available_plans(conn: &Connection, user_id: Option<&str>) -> Result<V
             is_active: row.get::<_, i32>(10)? != 0,
         })
     };
-    let mut rows: Vec<PlanRow> = Vec::new();
+    let rows;
     if let Some(uid) = user_id {
         rows = stmt.query_map(params![uid], mapper)?.filter_map(|r| r.ok()).collect();
     } else {

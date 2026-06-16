@@ -106,14 +106,6 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
         rusqlite::params![token_id, user_id, token, now],
     ).map_err(|e| format!("Token insert error: {}", e))?;
 
-    // 新注册用户赠送 3 天试用期（直接以订阅形式写入）
-    let trial_date = (chrono::Utc::now() + chrono::Duration::days(3))
-        .format("%Y-%m-%d").to_string();
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO user_preferences (user_id, key, value, updated_at) VALUES (?1, 'subscription_expires', ?2, ?3)",
-        rusqlite::params![user_id, trial_date, now.to_string()],
-    );
-
     Ok(AuthResponse {
         user_id,
         token,
