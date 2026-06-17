@@ -71,11 +71,13 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
         final orderId = data['order_id'] as String;
         final codeUrl = data['code_url'] as String;
-        context.push('/pay', extra: {
+        await context.push('/pay', extra: {
           'order_id': orderId,
           'code_url': codeUrl,
           'plan_id': planId,
         });
+        // 从支付页返回后刷新套餐列表
+        if (mounted) _loadPlans();
       } else if (mounted) {
         _showError('下单失败');
       }

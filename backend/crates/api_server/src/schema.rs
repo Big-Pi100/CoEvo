@@ -411,8 +411,8 @@ INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_o
 VALUES ('30d', '月度会员', 30, 20000, 1, 1, datetime('now'));
 INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at)
 VALUES ('365d', '年度会员', 365, 128000, 2, 1, datetime('now'));
-INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, max_uses, used_count, sort_order, is_active, created_at)
-VALUES ('lifetime', '终身会员', 3650, 128000, 100, 0, 3, 1, datetime('now'));
+INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, max_uses, used_count, once_per_user, sort_order, is_active, created_at)
+VALUES ('lifetime', '终身会员', 3650, 128000, 100, 0, 1, 3, 1, datetime('now'));
 
 -- 运行时配置表
 CREATE TABLE IF NOT EXISTS app_config (

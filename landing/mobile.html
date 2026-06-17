@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="CoEvo 刻意进化学习 — AI 特级教师。不遗忘 · 不跑偏 · 不瞎编。">
+  <meta name="theme-color" content="#ffffff">
+  <title>刻意进化学习 · CoEvo — AI 特级教师</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="stylesheet" href="css/mobile.css">
+</head>
+<body>
+
+<!-- ═══ Nav ═══ -->
+<nav class="nav" id="nav">
+  <div class="nav-inner">
+    <div class="nav-logo"><span class="logo-mark">⟐</span> CoEvo</div>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<!-- ═══ Drawer ═══ -->
+<div class="drawer-overlay" id="drawerOverlay"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-logo">⟐ CoEvo</div>
+  <div class="drawer-links">
+    <a class="drawer-link" href="#how-it-works">了解 CoEvo</a>
+    <a class="drawer-link" href="#qa">常见问题</a>
+    <a class="drawer-link" href="/app/teacher">教师端</a>
+    <a class="drawer-link" href="/app/guardian">家长端</a>
+  </div>
+  <div class="drawer-divider"></div>
+  <a class="drawer-btn outline" href="/app/auth">登录</a>
+  <a class="drawer-btn primary" href="/app/auth">免费体验</a>
+</div>
+
+<!-- ═══ Hero ═══ -->
+<section class="hero">
+  <div class="hero-illustration">🎓</div>
+  <span class="hero-label">限时活动特惠</span>
+  <h1 class="hero-title">AI 特级教师</h1>
+  <p class="hero-subtitle">不遗忘 · 不跑偏 · 不瞎编<br>效果看得见</p>
+  <div class="hero-actions">
+    <button class="btn-secondary" onclick="location.href='/app/auth'">了解更多 →</button>
+  </div>
+  <div class="hero-badges">
+    <span class="badge">FSRS 算法</span>
+    <span class="badge">30 天退款</span>
+    <span class="badge">限 200 人</span>
+  </div>
+  <div class="scroll-hint">下滑了解更多</div>
+</section>
+
+<!-- ═══ Trust ═══ -->
+<div class="section" style="padding-top:0">
+  <div class="trust-row">
+    <div class="trust-card"><span class="trust-num" data-count="12000">0</span><span class="trust-lbl">学生</span></div>
+    <div class="trust-card"><span class="trust-num" data-count="85000">0</span><span class="trust-lbl">学习卡片</span></div>
+    <div class="trust-card"><span class="trust-num" data-count="92">0</span><span class="trust-lbl">掌握率</span></div>
+  </div>
+</div>
+
+<!-- ═══ Teaching Flow ═══ -->
+<section class="section" id="how-it-works">
+  <h2 class="section-title">AI 怎么教你的孩子？</h2>
+  <div class="steps">
+    <div class="step open">
+      <div class="step-header" onclick="toggleStep(this)">
+        <span class="step-num">1</span>
+        <span class="step-title">AI 费曼教学</span>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">AI 主动讲解知识点，不是被动问答。边讲边提问，确保孩子不是在"听天书"。</div>
+    </div>
+    <div class="step">
+      <div class="step-header" onclick="toggleStep(this)">
+        <span class="step-num">2</span>
+        <span class="step-title">边教边考</span>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">每讲完一个概念立刻出验证题，答对才通过。客观验证，不是"你觉得你会了"。</div>
+    </div>
+    <div class="step">
+      <div class="step-header" onclick="toggleStep(this)">
+        <span class="step-num">3</span>
+        <span class="step-title">FSRS 科学复习</span>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">利用 FSRS 记忆算法安排复习，在孩子即将遗忘时自动提醒，不遗忘地掌握每个知识点。</div>
+    </div>
+    <div class="step">
+      <div class="step-header" onclick="toggleStep(this)">
+        <span class="step-num">4</span>
+        <span class="step-title">游戏化成就</span>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">连续学习天数、即时反馈、奖章激励，让学习像游戏一样"想继续"。</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ Learning Report ═══ -->
+<section class="section" style="background:var(--primary-light)">
+  <h2 class="section-title">真实学习数据</h2>
+  <div class="data-grid">
+    <div class="data-card"><span class="data-num">92%</span><span class="data-lbl">整体掌握率</span></div>
+    <div class="data-card"><span class="data-num">🔥 7</span><span class="data-lbl">连续学习天数</span></div>
+  </div>
+  <div class="data-link"><a href="/app/auth">查看更多学习报告 →</a></div>
+</section>
+
+<!-- ═══ Comparison ═══ -->
+<section class="section">
+  <h2 class="section-title">CoEvo 和别的有什么不同？</h2>
+  <div class="compare-scroll" id="compareScroll">
+    <div class="compare-card">
+      <div class="compare-name">💬 对话 AI</div>
+      <div class="compare-item bad">✕ 你问一句它答一句</div>
+      <div class="compare-item bad">✕ 孩子不知道 = AI 不教</div>
+      <div class="compare-item good">✓ CoEvo 主动教学</div>
+      <div class="compare-item good">✓ 有考核有验证</div>
+    </div>
+    <div class="compare-card">
+      <div class="compare-name">📱 学习机 / 录播课</div>
+      <div class="compare-item bad">✕ 单向输出，无人辅导</div>
+      <div class="compare-item bad">✕ 学完就忘，不安排复习</div>
+      <div class="compare-item good">✓ CoEvo 实时互动</div>
+      <div class="compare-item good">✓ FSRS 科学复习</div>
+    </div>
+    <div class="compare-card">
+      <div class="compare-name">🏫 辅导班</div>
+      <div class="compare-item bad">✕ 每月 ¥2000+，价格高昂</div>
+      <div class="compare-item bad">✕ 固定时间，灵活性差</div>
+      <div class="compare-item good">✓ CoEvo 每月 ¥120 起</div>
+      <div class="compare-item good">✓ 随时随地，想学就学</div>
+    </div>
+  </div>
+  <div class="compare-dots"><span class="dot active"></span><span class="dot"></span><span class="dot"></span></div>
+</section>
+
+<!-- ═══ Testimonials ═══ -->
+<section class="section" style="background:var(--primary-light)">
+  <h2 class="section-title">家长怎么说</h2>
+  <div class="testimonial-scroll" id="testimonialScroll">
+    <div class="testimonial-card">
+      <div class="testimonial-text">"孩子第一次主动要求学数学，真的很感动。以前催都不催不动，现在自己打开电脑学。"</div>
+      <div class="testimonial-author">— 李妈妈，深圳</div>
+    </div>
+    <div class="testimonial-card">
+      <div class="testimonial-text">"用了两周明显感觉到孩子的薄弱点在哪里，以前完全不知道他在学校学了什么。"</div>
+      <div class="testimonial-author">— 王爸爸，广州</div>
+    </div>
+    <div class="testimonial-card">
+      <div class="testimonial-text">"比辅导班划算太多了，而且随时可以学，不用接送。掌握率数据很直观。"</div>
+      <div class="testimonial-author">— 陈妈妈，东莞</div>
+    </div>
+  </div>
+  <div class="compare-dots"><span class="dot active"></span><span class="dot"></span><span class="dot"></span></div>
+</section>
+
+<!-- ═══ FAQ ═══ -->
+<section class="section" id="qa">
+  <h2 class="section-title">常见问题</h2>
+  <div class="faq-item open">
+    <div class="faq-q" onclick="toggleFaq(this)">CoEvo 适合多大的孩子？<span>▼</span></div>
+    <div class="faq-a">主要面向 K12 阶段（小学到高中）学生，覆盖数学、英语、物理、化学等主要学科。</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q" onclick="toggleFaq(this)">需要什么设备？<span>▼</span></div>
+    <div class="faq-a">有网络和浏览器即可，电脑、平板、手机都能用。无需下载安装。</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q" onclick="toggleFaq(this)">不满意能退款吗？<span>▼</span></div>
+    <div class="faq-a">购买后 30 天内不满意全额退款，零风险试用。</div>
+  </div>
+</section>
+
+<!-- ═══ CTA Footer Bar ═══ -->
+<div class="cta-bar">
+  <button class="btn-primary" onclick="location.href='/app/auth'">
+    <span>立即加入 · ¥1,288 终身</span>
+    <small>30 天不满意全额退</small>
+  </button>
+</div>
+
+<!-- ═══ Footer ═══ -->
+<footer class="footer">
+  <div class="footer-logo">⟐ CoEvo · 刻意进化学习</div>
+  <div class="footer-links">
+    <a href="#how-it-works">了解</a>
+    <a href="#qa">常见问题</a>
+    <a href="/app/teacher">教师端</a>
+    <a href="/app/guardian">家长端</a>
+  </div>
+  <div class="footer-beian">
+    <a href="https://beian.miit.gov.cn/" target="_blank">粤ICP备2026061557号-1</a><br>
+    <a href="http://www.beian.gov.cn/portal/registerSystemInfo" target="_blank">粤公网安备 44060602003333号</a>
+  </div>
+  <div class="footer-copy">© 2026 刻意进化学习 · CoEvo</div>
+</footer>
+
+<script>
+// ─── Drawer ───
+const toggle = document.getElementById('navToggle');
+const drawer = document.getElementById('drawer');
+const overlay = document.getElementById('drawerOverlay');
+function openDrawer(){drawer.classList.add('open');overlay.classList.add('open');document.body.style.overflow='hidden'}
+function closeDrawer(){drawer.classList.remove('open');overlay.classList.remove('open');document.body.style.overflow=''}
+toggle.onclick=openDrawer;
+overlay.onclick=closeDrawer;
+
+// ─── Step toggle ───
+function toggleStep(el){el.parentElement.classList.toggle('open')}
+
+// ─── FAQ toggle ───
+function toggleFaq(el){el.parentElement.classList.toggle('open')}
+
+// ─── Scroll dots (compare) ───
+const compareScroll=document.getElementById('compareScroll');
+const compareDots=compareScroll?.nextElementSibling?.querySelectorAll('.dot');
+if(compareScroll&&compareDots){
+  compareScroll.addEventListener('scroll',function(){
+    const idx=Math.round(this.scrollLeft/230);
+    compareDots.forEach((d,i)=>d.classList.toggle('active',i===idx));
+  });
+}
+
+// ─── Scroll dots (testimonials) ───
+const testimonialScroll=document.getElementById('testimonialScroll');
+const testimonialDots=testimonialScroll?.nextElementSibling?.querySelectorAll('.dot');
+if(testimonialScroll&&testimonialDots){
+  testimonialScroll.addEventListener('scroll',function(){
+    const idx=Math.round(this.scrollLeft/292);
+    testimonialDots.forEach((d,i)=>d.classList.toggle('active',i===idx));
+  });
+}
+
+// ─── Number counting animation ───
+document.addEventListener('DOMContentLoaded',function(){
+  const nums=document.querySelectorAll('[data-count]');
+  const observer=new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){
+        const el=e.target;
+        const target=parseInt(el.dataset.count);
+        let current=0;
+        const step=Math.ceil(target/30);
+        const timer=setInterval(function(){
+          current+=step;
+          if(current>=target){current=target;clearInterval(timer)}
+          el.textContent=current+(target===92?'%':'');
+        },40);
+        observer.unobserve(el);
+      }
+    });
+  },{threshold:.5});
+  nums.forEach(function(n){observer.observe(n)});
+});
+</script>
+
+<!-- 百度统计 -->
+<script>
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement("script");
+  hm.src = "https://hm.baidu.com/hm.js?26e82f1f9a263ea664f3f1f412582001";
+  var s = document.getElementsByTagName("script")[0]; 
+  s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+</body>
+</html>

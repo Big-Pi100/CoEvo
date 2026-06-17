@@ -337,6 +337,39 @@ pub async fn user_orders_handler(
     (StatusCode::OK, json!({"orders": rows}).to_string()).into_response()
 }
 
+/// GET /api/admin/pay/orders — 管理端查询全部订单（含用户信息）
+pub async fn admin_orders_handler() -> impl IntoResponse {
+    let conn = crate::db_pool::get_conn();
+    let mut stmt = match conn.prepare(
+        "SELECT po.id, po.user_id, po.plan_id, sp.name, po.amount, po.status, po.transaction_id, po.paid_at, po.created_at
+         FROM payment_orders po
+         LEFT JOIN subscription_plans sp ON po.plan_id = sp.id
+         ORDER BY po.created_at DESC"
+    ) {
+        Ok(s) => s,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("查询失败: {}", e)).into_response(),
+    };
+
+    let rows: Vec<serde_json::Value> = match stmt.query_map([], |row| {
+        Ok(json!({
+            "id": row.get::<_, String>(0)?,
+            "user_id": row.get::<_, String>(1)?,
+            "plan_id": row.get::<_, String>(2)?,
+            "plan_name": row.get::<_, Option<String>>(3)?,
+            "amount": row.get::<_, i64>(4)?,
+            "status": row.get::<_, String>(5)?,
+            "transaction_id": row.get::<_, Option<String>>(6)?,
+            "paid_at": row.get::<_, Option<String>>(7)?,
+            "created_at": row.get::<_, String>(8)?,
+        }))
+    }) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("查询失败: {}", e)).into_response(),
+    };
+
+    (StatusCode::OK, json!({"orders": rows}).to_string()).into_response()
+}
+
 /// GET /api/pay/orders/{id} — 查询单笔订单状态
 ///
 /// 如本地状态为 NOTPAY，会向微信查询实际支付状态并同步

@@ -45,11 +45,11 @@ pub async fn admin_plans_list_handler() -> impl IntoResponse {
             "price": row.get::<_, i64>(3)?,
             "max_uses": row.get::<_, Option<i64>>(4)?,
             "used_count": row.get::<_, i64>(5)?,
-            "once_per_user": row.get::<_, bool>(6)?,
+            "once_per_user": row.get::<_, i64>(6)?,
             "available_from": row.get::<_, Option<String>>(7)?,
             "available_until": row.get::<_, Option<String>>(8)?,
             "sort_order": row.get::<_, i64>(9)?,
-            "is_active": row.get::<_, bool>(10)?,
+            "is_active": row.get::<_, i64>(10)?,
             "created_at": row.get::<_, String>(11)?,
         }))
     }) {

@@ -192,7 +192,7 @@ img{max-width:100%;display:block}
 @media(max-width:640px){
   .section{padding:64px 0}
   .nav-toggle{display:flex}
-  .nav-links{position:fixed;top:64px;left:0;right:0;background:rgba(255,255,255,.98);backdrop-filter:blur(16px);flex-direction:column;padding:24px;gap:16px;transform:translateY(-100%);opacity:0;transition:all .3s;pointer-events:none}
+  .nav-links{position:fixed;top:64px;left:0;right:0;background:rgba(255,255,255,.98);backdrop-filter:blur(16px);flex-direction:column;padding:24px;gap:16px;transform:translateY(-100%);opacity:0;transition:all .3s;pointer-events:none;z-index:99}
   .nav-links.open{transform:translateY(0);opacity:1;pointer-events:all}
   .nav-link{color:var(--text)!important;font-size:16px}
   .hero-stats{gap:24px;flex-wrap:wrap}
@@ -203,3 +203,48 @@ img{max-width:100%;display:block}
   .footer-links{gap:32px}
   .footer-foot{flex-wrap:wrap;gap:12px}
 }
+
+/* ─── Mobile 480 ─── */
+@media(max-width:480px){
+  .section{padding:48px 0}
+  .section-header{margin-bottom:40px}
+  .section-header h2{font-size:22px}
+  .section-header p{font-size:14px}
+
+  .hero-content{padding:0 16px}
+  .hero-label{font-size:11px;margin-bottom:20px}
+  .hero-title{font-size:24px}
+  .hero-question{font-size:28px;margin-top:2px}
+  .hero-subtitle{font-size:14px;margin-bottom:24px;max-width:100%}
+  .hero-actions{gap:8px;flex-direction:column;align-items:center}
+  .hero-actions .btn{width:100%;justify-content:center}
+  .btn-large{padding:14px 24px;font-size:14px;width:100%}
+  .hero-stats{gap:18px;margin-top:32px}
+  .stat-num{font-size:20px}
+  .hero{min-height:90svh;padding:80px 0 40px;align-items:flex-start}
+
+  .card{padding:24px 20px}
+  .pain-row{padding:16px 18px}
+  .bento-card{padding:24px 20px}
+  .bento-card h3{font-size:16px}
+  .bento-main h3{font-size:18px}
+  .mini-stats{gap:16px;flex-wrap:wrap}
+
+  .steps{padding:0}
+  .step{padding:16px 0;gap:14px}
+  .step-body h3{font-size:15px}
+  .step-body p{font-size:13px}
+
+  .cta-card{padding:32px 20px;gap:24px}
+  .cta-card h2{font-size:22px}
+
+  .footer{padding:48px 0 24px}
+  .footer-links{flex-wrap:wrap;gap:24px}
+
+  iframe[src*="animation"]{height:360px!important}
+
+  .compare-cards{
+    grid-template-columns:1fr!important;
+  }
+}
+

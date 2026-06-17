@@ -133,7 +133,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         // ── Admin: 支付 & 套餐管理 ──
         .route("/api/admin/plans", get(crate::plans_handlers::admin_plans_list_handler).post(crate::plans_handlers::admin_plan_create_handler))
         .route("/api/admin/plans/{id}", put(crate::plans_handlers::admin_plan_update_handler))
-        .route("/api/admin/pay/orders", get(crate::pay_handlers::user_orders_handler))
+        .route("/api/admin/pay/orders", get(crate::pay_handlers::admin_orders_handler))
         // ── Admin: Audit Log ──
         .route("/api/admin/users/{user_id}/audit-log", get(admin_audit_log_handler))
         .route("/api/admin/admins", get(admin_list_admins).post(admin_create_admin))

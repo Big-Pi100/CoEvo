@@ -616,7 +616,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     final showAdminMgmt = _role == 'super';
     final showAudit = _role == 'super' || _role == 'service';
     final showConfigDebug = _role == 'super' || _role == 'service';
-    final tabs = <Tab>[const Tab(text: '仪表盘'), const Tab(text: '用户管理'), const Tab(text: '课程数据')];
+    var tabs = <Tab>[const Tab(text: '仪表盘'), const Tab(text: '用户管理'), const Tab(text: '课程数据'), const Tab(text: '套餐管理'), const Tab(text: '支付订单')];
     if (showAdminMgmt) tabs.add(const Tab(text: '管理员管理'));
     if (showAudit) tabs.add(const Tab(text: '操作日志'));
     if (showConfigDebug) tabs.add(const Tab(text: '运行时配置'));
@@ -637,6 +637,8 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
       _buildDashboardTab(),
       _buildUsersTab(),
       _buildCurriculumTab(),
+      _buildPlansTab(),
+      _buildOrdersTab(),
       if (showAdminMgmt) _buildAdminMgmtTab(),
       if (showAudit) _buildAuditTab(),
       if (showConfigDebug) _buildConfigTab(),
@@ -1005,6 +1007,16 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
         CurriculumCardsPage(adminKey: _adminKey, token: _token),
       ])),
     ]);
+  }
+
+  // ── Plans Tab ──
+  Widget _buildPlansTab() {
+    return _AdminPlansPage(adminKey: _adminKey, token: _token);
+  }
+
+  // ── Orders Tab ──
+  Widget _buildOrdersTab() {
+    return _AdminOrdersPage(adminKey: _adminKey, token: _token);
   }
 
   // ── Admin Management Tab (super only) ──
@@ -1496,4 +1508,240 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
   }
 }
 
+/// 管理端套餐管理 — 完整 CRUD
+class _AdminPlansPage extends StatefulWidget {
+  final String? adminKey;
+  final String? token;
+  const _AdminPlansPage({this.adminKey, this.token});
+  @override
+  State<_AdminPlansPage> createState() => _AdminPlansPageState();
+}
+
+class _AdminPlansPageState extends State<_AdminPlansPage> {
+  List<Map<String, dynamic>>? _plans;
+  bool _loading = true;
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final headers = <String, String>{};
+      if (widget.token != null) headers['Authorization'] = 'Bearer ${widget.token}';
+      final resp = await http
+          .get(Uri.parse('${ApiConfig.baseUrl}/api/admin/plans'), headers: headers)
+          .timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200 && mounted) {
+        _plans = (jsonDecode(resp.body)['plans'] as List)
+            .map((e) => e as Map<String, dynamic>).toList();
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  String _fmtPrice(int p) { final y = p / 100.0; return y == y.roundToDouble() ? '¥${y.toInt()}' : '¥${y.toStringAsFixed(2)}'; }
+  String _durationText(int? d) { if (d == null) return ''; if (d >= 3650) return '永久'; if (d >= 365) return '${d ~/ 365}年'; return '$d天'; }
+
+  void _showPlanDialog({Map<String, dynamic>? plan}) {
+    final isEdit = plan != null;
+    final idCtl = TextEditingController(text: isEdit ? plan['id'] as String? ?? '' : '');
+    final nameCtl = TextEditingController(text: isEdit ? plan['name'] as String? ?? '' : '');
+    final priceCtl = TextEditingController(text: isEdit ? '${plan['price']}' : '');
+    final durCtl = TextEditingController(text: isEdit ? '${plan['duration_days']}' : '');
+    final maxCtl = TextEditingController(text: isEdit ? '${plan['max_uses'] ?? ''}' : '');
+    final sortCtl = TextEditingController(text: isEdit ? '${plan['sort_order'] ?? 0}' : '0');
+    final onceCtl = TextEditingController(text: isEdit ? '${plan['once_per_user'] ?? 0}' : '0');
+    final fromCtl = TextEditingController(text: isEdit ? (plan['available_from'] as String? ?? '') : '');
+    final untilCtl = TextEditingController(text: isEdit ? (plan['available_until'] as String? ?? '') : '');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(isEdit ? '编辑套餐' : '新建套餐'),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (!isEdit) TextField(controller: idCtl, decoration: const InputDecoration(labelText: 'ID (如 30d)', isDense: true), style: const TextStyle(fontSize: 13)),
+            TextField(controller: nameCtl, decoration: const InputDecoration(labelText: '名称', isDense: true), style: const TextStyle(fontSize: 13)),
+            TextField(controller: priceCtl, decoration: const InputDecoration(labelText: '价格(分)', isDense: true), keyboardType: TextInputType.number, style: const TextStyle(fontSize: 13)),
+            TextField(controller: durCtl, decoration: const InputDecoration(labelText: '时长(天)', isDense: true), keyboardType: TextInputType.number, style: const TextStyle(fontSize: 13)),
+            TextField(controller: maxCtl, decoration: const InputDecoration(labelText: '库存上限(空=不限)', isDense: true), keyboardType: TextInputType.number, style: const TextStyle(fontSize: 13)),
+            TextField(controller: sortCtl, decoration: const InputDecoration(labelText: '排序', isDense: true), keyboardType: TextInputType.number, style: const TextStyle(fontSize: 13)),
+            TextField(controller: onceCtl, decoration: const InputDecoration(labelText: '每人限购(0=不限)', isDense: true), keyboardType: TextInputType.number, style: const TextStyle(fontSize: 13)),
+            TextField(controller: fromCtl, decoration: const InputDecoration(labelText: '上架时间(空=即时)', isDense: true), style: const TextStyle(fontSize: 13)),
+            TextField(controller: untilCtl, decoration: const InputDecoration(labelText: '下架时间(空=不限)', isDense: true), style: const TextStyle(fontSize: 13)),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () async {
+              final body = <String, dynamic>{
+                'name': nameCtl.text,
+                'price': int.tryParse(priceCtl.text) ?? 0,
+                'duration_days': int.tryParse(durCtl.text),
+                'max_uses': int.tryParse(maxCtl.text),
+                'sort_order': int.tryParse(sortCtl.text) ?? 0,
+                'once_per_user': int.tryParse(onceCtl.text) ?? 0,
+                'available_from': fromCtl.text.isEmpty ? null : fromCtl.text,
+                'available_until': untilCtl.text.isEmpty ? null : untilCtl.text,
+              };
+              if (!isEdit) body['id'] = idCtl.text;
+              final headers = <String, String>{'Content-Type': 'application/json'};
+              if (widget.token != null) headers['Authorization'] = 'Bearer ${widget.token}';
+              final uri = Uri.parse('${ApiConfig.baseUrl}/api/admin/plans${isEdit ? '/${plan['id']}' : ''}');
+              final resp = await (isEdit ? http.put : http.post)(uri, headers: headers, body: jsonEncode(body));
+              if (mounted) { Navigator.pop(ctx); _load(); }
+            },
+            child: Text(isEdit ? '保存' : '创建'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_plans == null) return Center(child: Text('加载失败', style: TextStyle(color: cs.error)));
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+        child: Row(children: [
+          Text('共 ${_plans!.length} 个套餐', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+          const Spacer(),
+          FilledButton.icon(
+            onPressed: () => _showPlanDialog(),
+            icon: const Icon(Icons.add, size: 16),
+            label: const Text('新建套餐', style: TextStyle(fontSize: 12)),
+            style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+          ),
+        ]),
+      ),
+      Expanded(child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+        itemCount: _plans!.length,
+        itemBuilder: (_, i) {
+          final p = _plans![i];
+          final active = p['is_active'] == 1;
+          return Card(
+            margin: const EdgeInsets.only(bottom: 6),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${p['name']}  (${p['id']})', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                  const SizedBox(height: 4),
+                  Text('${_fmtPrice(p['price'] as int)} / ${_durationText(p['duration_days'] as int?)}',
+                      style: TextStyle(color: cs.primary, fontWeight: FontWeight.w500, fontSize: 12)),
+                  Text('已售 ${p['used_count']}${p['max_uses'] != null ? ' / ${p['max_uses']}' : ''}  排序${p['sort_order']}',
+                      style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                  Text('限购${(p['once_per_user'] as int? ?? 0) == 0 ? '不限' : p['once_per_user']}',
+                      style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                ])),
+                Text(active ? '上架' : '下架', style: TextStyle(color: active ? Colors.green : cs.error, fontSize: 12, fontWeight: FontWeight.w600)),
+                const SizedBox(width: 6),
+                SizedBox(height: 28, child: FilledButton.tonal(
+                  style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                  onPressed: () => _showPlanDialog(plan: p),
+                  child: const Icon(Icons.edit, size: 14),
+                )),
+                const SizedBox(width: 4),
+                SizedBox(height: 28, child: FilledButton.tonal(
+                  style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                  onPressed: () async {
+                    final headers = <String, String>{'Content-Type': 'application/json'};
+                    if (widget.token != null) headers['Authorization'] = 'Bearer ${widget.token}';
+                    await http.put(Uri.parse('${ApiConfig.baseUrl}/api/admin/plans/${p['id']}'), headers: headers, body: jsonEncode({'is_active': !active}));
+                    _load();
+                  },
+                  child: Text(active ? '下架' : '上架', style: const TextStyle(fontSize: 11)),
+                )),
+              ]),
+            ),
+          );
+        },
+      )),
+    ]);
+  }
+}
+
+/// 管理端订单列表
+class _AdminOrdersPage extends StatefulWidget {
+  final String? adminKey;
+  final String? token;
+  const _AdminOrdersPage({this.adminKey, this.token});
+  @override
+  State<_AdminOrdersPage> createState() => _AdminOrdersPageState();
+}
+
+class _AdminOrdersPageState extends State<_AdminOrdersPage> {
+  List<Map<String, dynamic>>? _orders;
+  bool _loading = true;
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final headers = <String, String>{};
+      if (widget.token != null) headers['Authorization'] = 'Bearer ${widget.token}';
+      final resp = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/admin/pay/orders'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200 && mounted) {
+        final data = jsonDecode(resp.body);
+        _orders = (data['orders'] as List).map((e) => e as Map<String, dynamic>).toList();
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  String _fmtPrice(int p) {
+    final y = p / 100.0;
+    return y == y.roundToDouble() ? '¥${y.toInt()}' : '¥${y.toStringAsFixed(2)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_orders == null) return Center(child: Text('加载失败', style: TextStyle(color: cs.error)));
+    if (_orders!.isEmpty) return Center(child: Text('暂无订单', style: TextStyle(color: cs.onSurfaceVariant)));
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _orders!.length,
+      itemBuilder: (_, i) {
+        final o = _orders![i];
+        final status = o['status'] as String? ?? '';
+        final statusColor = status == 'SUCCESS' ? Colors.green : (status == 'NOTPAY' ? Colors.orange : cs.error);
+        return Card(
+          margin: const EdgeInsets.only(bottom: 6),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(children: [
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(o['plan_name'] as String? ?? o['plan_id'] as String? ?? '',
+                    style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
+                const SizedBox(height: 2),
+                Text('${_fmtPrice(o['amount'] as int)}  ·  ${(o['created_at'] as String?)?.substring(0, 10) ?? ''}',
+                    style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                Text('用户 ${o['user_id'] as String? ?? ''}',
+                    style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+              ])),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(color: statusColor.withAlpha(25), borderRadius: BorderRadius.circular(4)),
+                child: Text(status, style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.w600)),
+              ),
+            ]),
+          ),
+        );
+      },
+    );
+  }
+}
 
