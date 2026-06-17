@@ -63,9 +63,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       body: Padding(
         padding: const EdgeInsets.all(AppTheme.spacingLg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             // Header
             Text('今天想学什么？', style: theme.textTheme.headlineMedium),
             const SizedBox(height: AppTheme.spacingXs),
@@ -115,13 +116,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             // 科目网格
             Text('科目', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: AppTheme.spacingSm),
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-                  : _subjects.isEmpty
-                      ? Center(child: Text('暂无可用的学习计划', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)))
-                      : GridView.builder(
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            _loading
+                ? const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
+                : _subjects.isEmpty
+                    ? Padding(padding: const EdgeInsets.all(32),
+                        child: Center(child: Text('暂无可用的学习计划', style: TextStyle(color: theme.colorScheme.onSurfaceVariant))))
+                    : GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 3,
                             mainAxisSpacing: 8,
                             crossAxisSpacing: 8,
@@ -144,12 +147,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             );
                           },
                         ),
-            ),
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Future<void> _startSubject(
     BuildContext context,
