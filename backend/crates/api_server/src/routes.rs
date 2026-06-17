@@ -2548,7 +2548,8 @@ async fn k12_init_handler(
         }
     }
 
-    // 激活第一个 stage（过滤后）的卡片
+    // 激活第一个 stage（过滤后）的卡片 — 包裹在事务中避免 2000+ 次自动提交
+    let _ = conn.execute("BEGIN", []);
     let mut activated = 0u32;
     if let Some(stages) = plan_val.get("stages").and_then(|s| s.as_array()) {
         if let Some(first_stage) = stages.first() {
@@ -2565,6 +2566,11 @@ async fn k12_init_handler(
             }
         }
     }
+
+    // 提交事务（卡片激活大量 INSERT）
+    let _ = conn.execute("COMMIT", []);
+
+    tracing::info!("[K12-INIT] activated {} cards in first stage", activated);
 
     // 初始化 user_plan_progress（统一状态管理入口）
     let now_ts_progress = chrono::Utc::now().timestamp();

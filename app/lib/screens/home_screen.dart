@@ -163,7 +163,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final displayName = (subjectData['display_name'] as String?) ?? code;
 
     // 从 fallback 或默认值获取年级列表
-    List<String> homeGrades = fallback?.homeGrades ?? ['g1-2', 'g3-4', 'g5-6', 'g7-9', 'g10', 'g11-12'];
+    List<String> homeGrades = fallback?.homeGrades ?? ['g1-2', 'g5-6', 'g7-9', 'g10', 'g11-12'];
 
     // 合并高中选项（g10 + g11-12 → g10-12），前端统一显示为"高中"
     List<String> grades = List.from(homeGrades);
