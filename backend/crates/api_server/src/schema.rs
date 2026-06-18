@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS users (
     phone_hash TEXT DEFAULT NULL,
     id_number TEXT DEFAULT NULL,
     bind_hash TEXT DEFAULT NULL,
+    deleted_at TEXT DEFAULT NULL,
+    subscription_expires TEXT DEFAULT NULL,
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS tokens (
@@ -473,7 +475,8 @@ pub fn init_database(conn: &rusqlite::Connection) -> Result<(), String> {
         "CREATE INDEX IF NOT EXISTS idx_review_log_card_reviewed ON review_log(card_id, reviewed_at);
          CREATE INDEX IF NOT EXISTS idx_conversation_turns_conv_created ON conversation_turns(conversation_id, created_at);
          CREATE INDEX IF NOT EXISTS idx_user_cards_user_plan ON user_cards(user_id, plan_run_id);
-         CREATE INDEX IF NOT EXISTS idx_conversations_user_deleted ON conversations(user_id, deleted_at);"
+         CREATE INDEX IF NOT EXISTS idx_conversations_user_deleted ON conversations(user_id, deleted_at);
+         CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_hash ON users(phone_hash) WHERE phone_hash IS NOT NULL;"
     ).map_err(|e| format!("extra indexes: {}", e))?;
 
     // ── 渐进式迁移 ──

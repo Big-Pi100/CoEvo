@@ -35,8 +35,8 @@
 │                         │                    ↑              │            │
 │                         ▼                    │              ▼            │
 │                  ┌──────────────┐            │      ┌──────────────┐     │
-│                  │ 用户收到推送   │────────────┘      │ 写入佣金记录   │     │
-│                  └──────────────┘                     └──────────────┘     │
+│                  │ 用户收到推送   │────────────┘      │ 写入佣金记录   │    │
+│                  └──────────────┘                     └──────────────┘    │
 └─────────────────────────────────────────────────────────────────────────┘
                              │
                              ▼
@@ -55,14 +55,37 @@
 
 ## 三、数据表设计（完整版）
 
+**设计原则**：优先扩展已有表，分销体系是用户系统的自然延伸，而非独立子系统。
+
+```
+扩展已有表:         新建表（无法避免）:
+users               marketing_campaigns
+  ├─ referral_code  referral_clicks
+  ├─ referred_by    settlement_batches
+  └─ subscription_expires (从 user_preferences 迁入)
+                    distribution_commissions
+payment_orders      distribution_withdrawals
+  （无需扩展）      reward_fulfillments
+                    user_notifications
+
+消灭的中间表:
+  user_referral_codes → users.referral_code
+  referral_bindings   → users.referred_by
+  referral_conversions → distribution_commissions（通过 order_id 关联）
+```
+
+---
+
 ### 3.1 marketing_campaigns（营销活动定义）
+
+保持独立，完整保留。
 
 ```sql
 CREATE TABLE marketing_campaigns (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT,
-    campaign_type TEXT NOT NULL,          -- invite_award / commission / discount_pct / discount_fix
+    campaign_type TEXT NOT NULL,          -- invite_award / commission / discount_pct / discount_fix / mixed
     status TEXT DEFAULT 'draft',          -- draft / active / paused / ended
 
     -- 时间控制
@@ -70,102 +93,192 @@ CREATE TABLE marketing_campaigns (
     valid_until TEXT,
 
     -- 推送规则
-    push_trigger TEXT,                    -- registration / first_payment / login / manual / cron
-    push_content TEXT,                    -- 推送文案 ({name} 会被替换, {role} 也可用)
+    push_trigger TEXT,                    -- registration / first_payment / login / manual
+    push_cron TEXT,                       -- cron 表达式（push_trigger='cron' 时生效）
+    push_content TEXT,                    -- 推送文案 ({name} 会被替换)
 
     -- 目标角色（JSON 数组, 空 = 全部角色）
-    target_roles TEXT DEFAULT '[]',       -- '["student"]' / '["teacher","guardian"]' / "[]"
+    target_roles TEXT DEFAULT '[]',
 
-    -- 分享文案模板
-    share_text TEXT,                      -- "推荐 CoEvo AI 学英语, 一起进步!"
+    -- LLM 提示语（控制生成内容侧重点）
+    llm_prompt_hint TEXT,               -- 如 "突出连续学习天数", "强调优惠力度"
 
-    -- 邀请者奖励
-    reward_inviter_type TEXT,             -- days / discount_coupon / commission_pct / none
-    reward_inviter_value TEXT,            -- 如 "7"（天）或 "2000"（2000分优惠券）
-
-    -- 被邀请者奖励
-    reward_invitee_type TEXT,
-    reward_invitee_value TEXT,
-
-    -- 佣金比例（仅 commission 类型生效）
-    commission_rate_l1 REAL DEFAULT 0.00, -- 一级佣金比例
-    commission_rate_l2 REAL DEFAULT 0.00, -- 二级佣金比例
+    -- 奖励规则（JSON 数组，支持组合奖励）
+    -- 示例: [{"type":"days","who":"inviter","value":7,"trigger":"registration"}]
+    rewards TEXT NOT NULL DEFAULT '[]',
 
     -- 归因窗口（天）
     attribution_window INTEGER DEFAULT 30,
 
     -- 参与限制
-    max_participants INTEGER,            -- NULL = 不限
-    per_user_limit INTEGER,              -- 每人最多参与次数, NULL = 不限
+    max_participants INTEGER,
+    per_user_limit INTEGER,
 
-    -- 统计缓存
-    participant_count INTEGER DEFAULT 0,
-    conversion_count INTEGER DEFAULT 0,
-    total_reward INTEGER DEFAULT 0,
-
+    created_by TEXT,
     created_at TEXT NOT NULL,
+    updated_by TEXT,
     updated_at TEXT
 );
 
 CREATE INDEX idx_campaigns_status ON marketing_campaigns(status, valid_from, valid_until);
 ```
 
-**campaign_type 说明**:
+---
 
-| 类型 | 说明 | 示例场景 |
-|:----|:-----|:---------|
-| `invite_award` | 邀请有奖（送时长/优惠券） | 新上线路, 邀请好友各得 3 天 |
-| `commission` | 分销返佣（现金比例） | 长期活动, 一级 10%, 二级 5% |
-| `discount_pct` | 被邀请者首单折扣 | 邀请者获赠时长, 被邀请者首单 8 折 |
-| `discount_fix` | 被邀请者首单立减 | 邀请者获赠 7 天, 被邀请者立减 ¥5 |
+### 3.2 现有表扩展
 
-**push_trigger 说明**:
-
-| 触发条件 | 说明 |
-|:---------|:-----|
-| `registration` | 新注册用户自动推送 |
-| `first_payment` | 首次支付成功后推送 |
-| `login` | 用户登录时检查是否有未推送的活动 |
-| `manual` | 仅管理员手动推送 |
-| `cron` | 按 cron 表达式定时推送 |
-
-### 3.2 user_referral_codes（用户推广码 - 全量覆盖）
-
-每个注册用户自动获得一个唯一推广码，无需手动开通。
+#### users 表（新增 3 个字段）
 
 ```sql
-CREATE TABLE user_referral_codes (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL UNIQUE,          -- 每个用户唯一一条
-    referral_code TEXT NOT NULL UNIQUE,    -- 6-8 位串, 如 "CoEvo_A1B2"
-    qr_code_url TEXT,                      -- 二维码图片URL（延时生成）
-    total_clicks INTEGER DEFAULT 0,        -- 累计点击
-    total_registrations INTEGER DEFAULT 0, -- 累计注册
-    total_conversions INTEGER DEFAULT 0,   -- 累计转化
-    total_earned INTEGER DEFAULT 0,        -- 累计收入（分）
-    created_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-
-CREATE INDEX idx_referral_code ON user_referral_codes(referral_code);
+-- 扩展现有 users 表
+ALTER TABLE users ADD COLUMN referral_code TEXT UNIQUE;
+ALTER TABLE users ADD COLUMN referred_by TEXT REFERENCES users(id);
+ALTER TABLE users ADD COLUMN subscription_expires TEXT;
 ```
 
-**referral_code 生成规则**: `CoEvo_` + 随机 4 位字母数字大写, 如 `CoEvo_A1B2`
+| 新增字段 | 类型 | 来源 | 说明 |
+|:---------|:-----|:-----|:------|
+| `referral_code` | TEXT UNIQUE | 原 `user_referral_codes` 表 | 每个用户唯一推广码，注册时自动生成 |
+| `referred_by` | TEXT FK→users(id) | 原 `referral_bindings` 表 | 谁推广了我（直接上级），NULL = 自然注册 |
+| `subscription_expires` | TEXT | 原 `user_preferences` 键值对 | 订阅到期日（ISO 8601），从 KV 表迁入正式字段 |
+
+**`subscription_expires` 迁移说明**：
+
+当前系统使用 `user_preferences` 键值表存储订阅到期日（`key='subscription_expires'`），这是一个历史遗留设计。键值表存在以下问题：
+
+| 问题 | 说明 |
+|:-----|:------|
+| ❌ 无类型约束 | 所有值都是 TEXT，无法做 NOT NULL / CHECK |
+| ❌ 无外键约束 | 不能直接关联 `payment_orders`、`subscription_audit_log` |
+| ❌ 查询效率低 | 每次查到期日需要 `WHERE key='subscription_expires'`，无法走覆盖索引 |
+| ❌ 无持久化保障 | 任何人都可以写入任意 key，数据完整性靠代码自觉 |
+
+迁移为 `users.subscription_expires` 字段后**影响范围**：
+
+| 模块 | 文件 | 改动量 |
+|:-----|:-----|:-------|
+| 订阅查询 | `subscription.rs:get_current_expires()` | 改 SQL：`user_preferences` → `users.subscription_expires` |
+| 订阅设置 | `subscription.rs:set_expires()` | 改 SQL：INSERT/UPDATE 键值对 → `UPDATE users SET subscription_expires=` |
+| 管理员用户列表 | `admin_handlers.rs` | 去掉 `LEFT JOIN user_preferences`，直接读 `users.subscription_expires` |
+| 管理员设置订阅 | `admin_handlers.rs:SetSubInput` | 直接 `UPDATE users` |
+| 前端查询 | 各 handler | `user_preferences` → `users.subscription_expires` |
+| 数据迁移（一次性） | `scripts/migrate_subscription_expires.py` | 新脚本：从 `user_preferences` 批量迁到 `users.subscription_expires` |
+
+**迁移步骤**（一次性，部署前执行）：
+
+```sql
+-- 第一步: 新增字段（已通过 ALTER TABLE 添加）
+-- 第二步: 回填已有数据
+UPDATE users SET subscription_expires = (
+    SELECT value FROM user_preferences
+    WHERE user_preferences.user_id = users.id
+    AND key = 'subscription_expires'
+);
+-- 第三步: 验证数据一致性
+SELECT COUNT(*) FROM users
+WHERE subscription_expires IS NOT NULL
+  AND subscription_expires != (
+    SELECT value FROM user_preferences
+    WHERE user_preferences.user_id = users.id
+    AND key = 'subscription_expires'
+  );
+-- 第四步: 代码发布后，旧 KV 数据可保留不动（代码不再读它），
+--         确认稳定后清理：DELETE FROM user_preferences WHERE key = 'subscription_expires';
+```
+
+**迁移后 `user_preferences` 表还剩什么**：
+
+`subscription_expires` 是 `user_preferences` 目前最主要的用途。迁移后该表仅剩少量真实用户偏好：
+
+| key | 用途 | 说明 |
+|:----|:-----|:------|
+| `tts_voice_type` | TTS 语音类型 | 用户偏好 |
+| `tts_speed` | TTS 语速 | 用户偏好 |
+| (其他任意 key) | 通用 KV 存储 | `routes.rs` 提供通用读写 API |
+
+`user_preferences` 本身设计正确——它是供用户偏好的通用 KV 表。问题是把系统关键数据（`subscription_expires`）和琐碎偏好（`tts_voice_type`）混在了一起。迁移后分工清晰：
+
+```
+users（有约束的表）           user_preferences（自由的 KV）
+┌──────────────────────┐     ┌──────────────────────┐
+│ subscription_expires │     │ tts_voice_type       │
+│ referral_code        │     │ tts_speed            │
+│ referred_by          │     │ (其他任意偏好)       │
+│ deleted_at           │     └──────────────────────┘
+│ ...核心字段          │
+└──────────────────────┘
+  系统关键字段                   用户自定义偏好
+  有 FK / UNIQUE / CHECK        无约束，任意读写
+  适合 JOIN / 索引查询           适合随意扩展
+```
+
+**层级关系通过 `referred_by` 自关联实现**：
+
+```sql
+-- 查 A 的一级下线（直接推广）
+SELECT * FROM users WHERE referred_by = 'A';
+
+-- 查 A 的二级下线（下级推广的下级）
+SELECT * FROM users WHERE referred_by IN (SELECT id FROM users WHERE referred_by = 'A');
+
+-- 查我是谁推广进来的
+SELECT u.referred_by FROM users u WHERE u.id = 'B';
+
+-- 查 A 的完整团队树（递归查询，上限 2 级）
+WITH RECURSIVE team AS (
+    SELECT id, 1 AS level FROM users WHERE referred_by = 'A'
+    UNION ALL
+    SELECT u.id, t.level + 1 FROM users u
+    JOIN team t ON u.referred_by = t.id
+    WHERE t.level < 2
+)
+SELECT * FROM team;
+```
+
+#### payment_orders 表（无需扩展）
+
+`payment_orders` 不需要新增字段。订单归因通过 `distribution_commissions.order_id` 关联查询：
+
+```sql
+-- 查 A 推广带来了哪些订单（通过 distribution_commissions 查）
+SELECT po.* FROM payment_orders po
+JOIN distribution_commissions dc ON dc.order_id = po.id
+WHERE dc.earner_id = 'A' AND po.status = 'SUCCESS';
+
+-- 查某个订单归因到谁
+SELECT po.id, po.amount, dc.earner_id AS promoter_id
+FROM payment_orders po
+LEFT JOIN distribution_commissions dc ON dc.order_id = po.id
+WHERE po.id = 'order_123';
+```
+
+**逻辑关系**：
+
+```
+users.referred_by = A        ← 注册时写入（绑定上级）
+       │
+       ▼
+B 支付 → distribution_commissions(earner_id=A, order_id=order_123)
+         → 通过 order_id JOIN payment_orders 查订单详情
+         → 不需要 payment_orders.referred_by
+```
+
+---
 
 ### 3.3 referral_clicks（分享点击追踪）
 
-每次用户点击分享链接都记录，用于归因分析。
+独立表，无法合并——点击发生在用户注册之前，没有 `users.id`。**这是归因的起点，referral_clicks.referrer_id 是后续所有绑定关系的源头。**
 
 ```sql
 CREATE TABLE referral_clicks (
     id TEXT PRIMARY KEY,
     campaign_id TEXT NOT NULL,             -- 关联活动
-    referrer_id TEXT NOT NULL,             -- 分享者 user_id
-    clicker_anonymous_id TEXT,             -- 点击者匿名标识 (device_id / IP + UA hash)
+    referrer_id TEXT NOT NULL,             -- 分享者 user_id（A）
+    clicker_anonymous_id TEXT,             -- 点击者匿名标识
     clicker_ip TEXT,
     clicker_user_agent TEXT,
+    share_channel TEXT,                    -- 分享渠道: profile / share_dialog / course_page / banner
     landed_page TEXT,                      -- 落地页
-    converted INTEGER DEFAULT 0,           -- 是否最终转化
     created_at TEXT NOT NULL,
     FOREIGN KEY (campaign_id) REFERENCES marketing_campaigns(id),
     FOREIGN KEY (referrer_id) REFERENCES users(id)
@@ -176,36 +289,65 @@ CREATE INDEX idx_clicks_referrer ON referral_clicks(referrer_id);
 CREATE INDEX idx_clicks_anonymous ON referral_clicks(clicker_anonymous_id);
 ```
 
-### 3.4 referral_conversions（转化归因表）
+**绑定流程**（两条独立路径）：
 
-记录"哪个分享最终转化成了哪个订单"，实现清晰的归属链路。
-
-```sql
-CREATE TABLE referral_conversions (
-    id TEXT PRIMARY KEY,
-    campaign_id TEXT NOT NULL,
-    click_id TEXT NOT NULL,                -- 关联 referral_clicks
-    referrer_id TEXT NOT NULL,             -- 分享者（最终获佣人）
-    buyer_id TEXT NOT NULL,                -- 购买者 user_id
-    order_id TEXT NOT NULL,                -- 关联 payment_orders
-    level INTEGER DEFAULT 1,              -- 1=一级, 2=二级
-    amount INTEGER NOT NULL,              -- 订单金额（分）
-    reward_type TEXT,                      -- 奖励类型
-    reward_value TEXT,                     -- 奖励值
-    created_at TEXT NOT NULL,
-    FOREIGN KEY (campaign_id) REFERENCES marketing_campaigns(id),
-    FOREIGN KEY (order_id) REFERENCES payment_orders(id),
-    FOREIGN KEY (buyer_id) REFERENCES users(id)
-);
-
-CREATE INDEX idx_conversion_buyer ON referral_conversions(buyer_id);
-CREATE INDEX idx_conversion_referrer ON referral_conversions(referrer_id);
-CREATE INDEX idx_conversion_order ON referral_conversions(order_id);
+```
+                  URL 携带 ?ref=CoEvo_A1B2&camp=camp_xxx
+                             │
+              ┌──────────────┴──────────────┐
+              ▼                              ▼
+     binding（注册时，必须做）      analytics（点击时，独立统计）
+              │                              │
+              ▼                              ▼
+     B 注册提交 ref 参数          POST /api/referral/click
+              │                   → referral_clicks { referrer_id=A }
+              ▼                   用于: 点击率 / 归因窗口 / 渠道分析
+     users.referred_by = A       不影响 binding，丢失不影响绑定
 ```
 
-### 3.5 settlement_batches（结算批次）
+**注册绑定**（从 URL `ref` 参数直接写入 `referred_by`，不依赖 `referral_clicks`）：
 
-每批对应一次财务人员的手动转账操作，包含唯一的转账凭证。
+```
+B 注册 ──→ POST /api/auth/register { ..., referral: { code: 'CoEvo_A1B2' } }
+  │
+  ▼
+后端:
+  1. 查 users WHERE referral_code = 'CoEvo_A1B2' → 找到推广员 A 的 user_id
+  2. 设置 users.referred_by = A    ←── 唯一绑定入口，只写一次
+  3. 自动生成 B 自己的 users.referral_code
+  │
+  ▼
+B 支付 ──→ pay_notify_handler
+  │
+  ▼
+后端:
+  1. 查 users WHERE id = B → 拿到 B.referred_by = A
+  2. 查 campaign 的 rewards 规则 → 计算佣金
+  3. 生成 distribution_commissions(earner_id=A, buyer_id=B, order_id=...)  ←── 通过 order_id 关联订单
+```
+
+**点击统计**（纯分析，不参与绑定）：
+
+```
+B 扫描/点击链接 → POST /api/referral/click { ref, camp, device_id }
+  │
+  ▼
+后端:
+  1. 查 referral_code = 'CoEvo_A1B2' → referrer_id = A
+  2. 写入 referral_clicks { campaign_id, referrer_id=A, clicker_anonymous_id=device_id }
+  3. 返回 click_id（仅用于前端统计追踪）
+```
+
+**关键规则**：
+- `users.referred_by` **只在注册时写入一次**，不可更改
+- 注册时**只认 `ref` 参数**（推广码），不需要 `click_id`
+- `referral_clicks` 用于漏斗分析，即使丢失也不影响绑定关系
+
+---
+
+### 3.4 settlement_batches（结算批次）
+
+**统一打款通道**——不论用户提现还是管理员直接结算，最终都通过结算批次打款。
 
 ```sql
 CREATE TABLE settlement_batches (
@@ -216,48 +358,82 @@ CREATE TABLE settlement_batches (
     status TEXT DEFAULT 'pending',           -- pending / paid
     proof_image_url TEXT,                    -- 转账截图凭证
     note TEXT,                               -- 备注说明
+    source TEXT DEFAULT 'admin',             -- 来源: admin / withdrawal
     created_at TEXT NOT NULL,
     paid_at TEXT,
     handled_by TEXT                          -- 操作管理员 ID
 );
 ```
 
-**批次号规则**: `ST{日期}-{当日序号}`, 如 `ST20260617-001`, `ST20260617-002`
+**批次号规则**: `ST{日期}-{当日序号}`, 如 `ST20260617-001`
 
-### 3.6 distribution_commissions（佣金结算记录）
+---
+
+### 3.5 distribution_commissions（佣金结算记录）
+
+直接关联 `payment_orders`，不经过中间表。
 
 ```sql
 CREATE TABLE distribution_commissions (
     id TEXT PRIMARY KEY,
     campaign_id TEXT NOT NULL,
-    conversion_id TEXT NOT NULL,
-    earner_id TEXT NOT NULL,               -- 获佣用户
+    earner_id TEXT NOT NULL,               -- 获佣用户（推广员A）
     level INTEGER NOT NULL,                -- 1=一级, 2=二级
     amount INTEGER NOT NULL,              -- 佣金（分）
-    status TEXT DEFAULT 'earned',           -- earned / settled / paid / cancelled
-    batch_id TEXT,                          -- 关联结算批次（null = 未归入任何批次）
-    batch_settled_at TEXT,                  -- 归入批次时间
-    paid_at TEXT,                           -- 实际到账时间
+
+    -- 直接关联 payment_orders（不经过 referral_conversions）
+    order_id TEXT NOT NULL,                -- 关联 payment_orders
+    buyer_id TEXT NOT NULL,                -- 买家 user_id（B）
+    order_amount INTEGER NOT NULL,         -- 买家实际支付金额（分）
+    rate_applied REAL NOT NULL,            -- 本次应用的佣金比例
+
+    status TEXT DEFAULT 'locked',           -- locked / available / settled / paid / cancelled
+    batch_id TEXT,                          -- 关联结算批次
+    unlocked_at TEXT,                       -- 锁定期结束时间
     created_at TEXT NOT NULL,
     FOREIGN KEY (campaign_id) REFERENCES marketing_campaigns(id),
-    FOREIGN KEY (conversion_id) REFERENCES referral_conversions(id),
     FOREIGN KEY (earner_id) REFERENCES users(id),
+    FOREIGN KEY (buyer_id) REFERENCES users(id),
+    FOREIGN KEY (order_id) REFERENCES payment_orders(id),
     FOREIGN KEY (batch_id) REFERENCES settlement_batches(id)
 );
 
 CREATE INDEX idx_commission_earner ON distribution_commissions(earner_id, status);
+CREATE INDEX idx_commission_order ON distribution_commissions(order_id);
 CREATE INDEX idx_commission_batch ON distribution_commissions(batch_id);
 ```
 
-**状态流转**:
+**与 payment_orders 的关系**：
 
 ```
-earned (待结算) ──→ settled (已结待付) ──→ paid (已打款)
-                         │                      │
-                    归入结算批次              上传凭证完成
+distribution_commissions       payment_orders（已有）
+┌─────────────────────┐       ┌──────────────────────┐
+│ earner_id = A       │       │ id = order_123       │
+│ buyer_id = B        │──┐    │ user_id = B          │
+│ order_id = order_123│  └──→ │ amount = 128000      │
+│ order_amount = 128000│       │ plan_id = lifetime   │
+│ rate_applied = 0.10  │       │ status = SUCCESS     │
+│ amount = 12800      │       │ paid_at = 2026-06-17 │
+└─────────────────────┘       └──────────────────────┘
 ```
 
-### 3.6 distribution_withdrawals（提现申请）
+**状态流转**：
+
+```
+支付成功 ──→ locked（30天锁定期）
+                │
+                ├── 退款 ──→ cancelled
+                │
+                └── 超30天 ──→ available
+                                │
+                                └── 归入批次 ──→ settled ──→ paid
+```
+
+---
+
+### 3.6 distribution_withdrawals（用户提现申请）
+
+用户主动发起的提现。审核通过后归入 `settlement_batches` 统一打款。
 
 ```sql
 CREATE TABLE distribution_withdrawals (
@@ -268,7 +444,7 @@ CREATE TABLE distribution_withdrawals (
     actual_amount INTEGER,                 -- 实际到账
     status TEXT DEFAULT 'pending',          -- pending / approved / rejected / paid
     note TEXT,                              -- 驳回原因或备注
-    batch_id TEXT,                          -- 归入的结算批次（打款时关联）
+    batch_id TEXT,                          -- 审核通过后归入的结算批次
     created_at TEXT NOT NULL,
     handled_at TEXT,
     handled_by TEXT,
@@ -278,20 +454,21 @@ CREATE TABLE distribution_withdrawals (
 CREATE INDEX idx_withdrawal_status ON distribution_withdrawals(status);
 ```
 
+---
+
 ### 3.7 user_notifications（站内通知表）
 
-用于推送营销活动到用户端。
+用于向用户推送营销活动通知、奖励到账提醒、提现状态变更等。
 
 ```sql
 CREATE TABLE user_notifications (
     id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    notification_type TEXT NOT NULL,        -- marketing_campaign / reward_earned / withdrawal_status
-    title TEXT NOT NULL,
-    body TEXT NOT NULL,
-    action_url TEXT,                        -- 点击跳转链接
-    related_id TEXT,                        -- 关联 ID（如 campaign_id）
-    read INTEGER DEFAULT 0,
+    user_id TEXT NOT NULL,               -- 通知接收者
+    notification_type TEXT NOT NULL,     -- marketing_campaign / reward_earned / withdrawal_status
+    title TEXT NOT NULL,                 -- 通知标题，如 "您有新的活动邀请"
+    body TEXT NOT NULL,                  -- 通知内容（支持 {name} 变量替换）
+    read INTEGER DEFAULT 0,             -- 0=未读, 1=已读
+    action_url TEXT,                     -- 点击后跳转路径，如 /app/activity/camp_xxx
     created_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
@@ -299,28 +476,103 @@ CREATE TABLE user_notifications (
 CREATE INDEX idx_notifications_user ON user_notifications(user_id, read, created_at);
 ```
 
-### 3.9 角色过滤逻辑
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:------|
+| `id` | TEXT PK | 通知唯一 ID |
+| `user_id` | TEXT FK | 接收通知的用户 |
+| `notification_type` | TEXT | 通知类型，决定前端图标和展示样式 |
+| `title` | TEXT | 标题，如"您获得了 7 天会员奖励" |
+| `body` | TEXT | 正文 |
+| `read` | INTEGER | 已读标记，用于前端小红点计数 |
+| `action_url` | TEXT | 点击通知后跳转的页面路径 |
 
-活动配置 `target_roles` 字段控制**哪些角色可以参与分享**。注意：无论分享者是什么角色，推广目标始终是学生用户。
+**通知类型与前端展示**：
+
+| 类型 | 触发场景 | 标题示例 | 前端图标 | 点击跳转 |
+|:-----|:---------|:---------|:---------|:---------|
+| `marketing_campaign` | 活动推送触发 | "限时邀请好友，双方得 7 天" | 🎉 | 活动详情页 `/app/activity/{id}` |
+| `reward_earned` | 奖励核销成功后 | "你获得了 ¥2 佣金" | 💰 | 收益面板 `/app/earnings` |
+| `withdrawal_status` | 提现审核通过/驳回 | "提现 ¥10 已到账" | 📋 | 提现记录 `/app/withdrawals` |
+
+**前端展现**：
 
 ```
-target_roles = '["student"]'                → 仅学生端看到, 学生分享给学生
-target_roles = '["teacher","guardian"]'     → 教师和家长端看到, 他们分享给学生
-target_roles = '[]' 或 NULL                 → 全部角色可见
+AppBar 右上角铃铛图标 + 未读小红点（实时轮询）
+
+通知中心列表:
+┌──────────────────────────────────┐
+│  🎉 限时邀请好友，双方得 7 天     │  ← 未读（加粗）
+│     邀请 3 位好友即可领取         │
+│     2 分钟前                     │
+├──────────────────────────────────┤
+│  💰 你获得了 ¥2 佣金             │  ← 已读（正常粗细）
+│     用户小明购买了月卡            │
+│     1 小时前                     │
+├──────────────────────────────────┤
+│  📋 提现 ¥10 已到账              │
+│     2026-06-17                  │
+└──────────────────────────────────┘
 ```
 
-后端查询时按角色过滤:
+**轮询**：前端每 60 秒 `GET /api/notifications?unread_only=true`，更新小红点计数。
 
-```sql
-SELECT * FROM marketing_campaigns
-WHERE status = 'active'
-  AND (target_roles IS NULL OR target_roles = '[]' OR target_roles LIKE '%"student"%')
-  AND valid_from <= datetime('now')
-  AND valid_until > datetime('now')
-```
+**API**：
+
+| 方法 | 路径 | 说明 |
+|:----|:-----|:-----|
+| GET | `/api/notifications` | 通知列表（?unread_only=true 筛选未读）|
+| PATCH | `/api/notifications/{id}/read` | 标记已读 |
+| POST | `/api/notifications/read-all` | 全部已读 |
 
 ---
 
+### 3.8 reward_fulfillments（奖励核销记录表）
+
+所有奖励的发放追踪。天数奖励发放后同时在 `subscription_audit_log` 中落审计记录。
+
+```sql
+CREATE TABLE reward_fulfillments (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL,
+    referral_click_id TEXT,                -- 关联 referral_clicks（trigger=click 用）
+    order_id TEXT,                         -- 关联 payment_orders（trigger=payment 用）
+    user_id TEXT NOT NULL,                 -- 获奖励用户
+    party TEXT NOT NULL,                   -- referrer / referee（推广方 / 被推广方）
+    reward_type TEXT NOT NULL,             -- days / commission_pct / discount_fix / discount_pct
+    reward_value TEXT NOT NULL,            -- 奖励值 JSON
+    trigger_event TEXT NOT NULL,           -- registration / click / payment
+    status TEXT DEFAULT 'pending',         -- pending / fulfilled / failed / cancelled
+    fulfilled_at TEXT,
+    error_msg TEXT,
+    retry_count INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (campaign_id) REFERENCES marketing_campaigns(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE INDEX idx_fulfillment_user ON reward_fulfillments(user_id, status);
+CREATE INDEX idx_fulfillment_campaign ON reward_fulfillments(campaign_id, trigger_event);
+```
+
+**核销动作与审计**：
+
+| reward_type | 核销动作 | 审计记录 |
+|:-----------|:---------|:---------|
+| `days` | `extend_subscription(user_id, value)` | `subscription_audit_log(source='referral_reward')` |
+| `commission_pct` | 生成 `distribution_commissions(locked)` | 本表 status=fulfilled |
+| `discount_fix/pct` | 订单创建时已应用 | 本表 status=fulfilled |
+
+---
+
+### 3.9 角色过滤逻辑
+
+活动配置 `target_roles` 字段控制哪些角色可以参与分享。推广目标始终是学生用户。
+
+```sql
+target_roles = '["student"]'                → 仅学生端看到
+target_roles = '["teacher","guardian"]'     → 教师和家长端看到
+target_roles = '[]' 或 NULL                 → 全部角色可见
+```
 ## 四、归因规则
 
 ### 4.1 分销链路归属机制
@@ -329,8 +581,9 @@ WHERE status = 'active'
 用户 A 分享链接 → 用户 B 点击 → 浏览器 localStorage 记录 "ref_by=A"
   → B 未注册离开 → 3 天后 B 再次打开
   → 浏览器读取 localStorage → "ref_by=A" (还在归因窗口内)
-  → B 注册 → user_referral_codes 写入 parent_id = A
-  → B 购买 → referral_conversions 写入 referrer_id = A
+  → B 注册 → users.referral_code（B 自己的推广码生成）
+  →         → users.referred_by = A（绑定上级）
+  → B 购买 → distribution_commissions(earner_id=A, order_id=pay_123)（佣金与订单关联）
 ```
 
 ### 4.2 归因规则
@@ -345,18 +598,47 @@ WHERE status = 'active'
 
 ### 4.3 前端追踪逻辑
 
-```javascript
-// 用户点击分享链接时，URL 参数携带: ref=CoEvo_A1B2&campaign=camp_xxx
-// 前端立即存入 localStorage:
-localStorage.setItem('coevo_ref', JSON.stringify({
-  code: 'CoEvo_A1B2',
-  campaign_id: 'camp_xxx',
-  timestamp: Date.now(),
-  clicked_by: device_id,  // 匿名设备ID
-}))
+**两条独立路径**：点击统计和注册绑定互不依赖。
 
-// 用户注册时, 前端将 localStorage 中的 ref 信息提交给后端
-POST /api/auth/register { ..., referral: { code: 'CoEvo_A1B2', campaign_id: 'camp_xxx' } }
+```
+点击统计（分析用，失败不影响绑定）:
+  B 打开链接 → POST /api/referral/click { ref, camp, device_id }
+               → referral_clicks.insert()（用于漏斗分析）
+               
+注册绑定（从 ref 参数直接写入）:
+  B 注册 → POST /api/auth/register { ..., referral: { code: 'CoEvo_A1B2' } }
+             → 查 users WHERE referral_code = ... → 找到推广员 A
+             → users.referred_by = A
+```
+
+```javascript
+// 页面加载时（扫码/H5 CTA 进入时）：立即记录点击
+async function trackClick() {
+  const params = new URLSearchParams(window.location.search);
+  const ref = params.get('ref');
+  const camp = params.get('camp');
+  if (!ref) return;
+  
+  const deviceId = getDeviceId(); // 匿名设备指纹
+  const resp = await fetch('/api/referral/click', {
+    method: 'POST',
+    body: JSON.stringify({ ref, camp, device_id: deviceId }),
+  });
+  const data = await resp.json();
+  
+  // 存 localStorage，注册时用
+  localStorage.setItem('coevo_ref', JSON.stringify({
+    click_id: data.click_id,
+    code: ref,
+    campaign_id: camp,
+    timestamp: Date.now(),
+  }));
+}
+
+// 用户注册时, 前端提交推广码给后端
+// POST /api/auth/register { ..., referral: { code: 'CoEvo_A1B2' } }
+// 后端用 referral_code 查 users → 找到推广员 A → 写入 users.referred_by = A
+// 同时生成 users.referral_code（B 自己的推广码）
 ```
 
 ---
@@ -380,7 +662,8 @@ POST /api/auth/register { ..., referral: { code: 'CoEvo_A1B2', campaign_id: 'cam
                               │    └── 前端轮询 GET /api/notifications
                               │         └── 收到 → 弹窗展示活动
                               │              └── 用户点击"立即分享"
-                              │                   └── 生成分享链接
+                              │                   ├── 调 LLM 生成 SVG 海报（含二维码）
+                              │                   └── 前端渲染海报，用户保存或分享
                               ▼
                           referral_clicks 追踪开始
 ```
@@ -390,29 +673,37 @@ POST /api/auth/register { ..., referral: { code: 'CoEvo_A1B2', campaign_id: 'cam
 ```
 用户分享                    后端                          管理端
 ────────                    ────                          ────
-A 点击"立即分享" ──→ 生成链接: /app/?ref=CoEvo_A1B2
-  │                           &campaign=camp_xxx
-  ├── 发微信给 B
+A 点击"立即分享" ──→ 调 LLM 生成 SVG 海报（含个人数据 + 推广码 + 二维码）
+  │                           └── 二维码内容: /app/auth?ref=CoEvo_A1B2&camp=camp_xxx
+  ├── 用户保存海报 → 发微信给 B
   │
   ▼
-B 点击链接 ──→ referral_clicks.insert()
-  │              (记录 referrer_id = A, clicker = B 的设备)
+B 扫码/点击链接 ──→ POST /api/referral/click { ref, camp, device_id }
+  │                    ├── referral_clicks.insert() → 返回 click_id
+  │                    ├── 查 campaign.rewards trigger=click
+  │                    │   └── days → extend_subscription(A, 1) + reward_fulfillments
+  │                    └── localStorage 存 { click_id, code, campaign_id, timestamp }
   │
   ▼
-B 注册 ──→ user_referral_codes.insert()
-  │         referral_conversions.insert()
-  │          (记录 click_id, referrer_id = A, buyer_id = B)
-  │         前端展示: "你被 {A} 邀请, 可获得首单优惠"
+B 注册 ──→ POST /api/auth/register { ..., referral: { code: 'CoEvo_A1B2' } }
+  │         ├── 查 users WHERE referral_code = ... → 找到推广员 A
+  │         ├── users.referral_code = 自动生成(B的推广码)
+  │         ├── users.referred_by = A（从 ref 参数直接写入）
+  │         ├── 查 campaign 的 rewards 规则:
+  │         │   ├── trigger=registration → days → extend_subscription(A, 7)
+  │         │   ├── trigger=registration → days → extend_subscription(B, 3)
+  │         │   └── 每条 -> reward_fulfillments.insert()（幂等保护）
+  │         └── 前端通知: "你被 {A} 邀请, 获得 3 天会员!"
   │
   ▼
 B 购买 ──→ pay_notify_handler
-  │         ├── 查 referral_conversions WHERE buyer_id = B
-  │         ├── 查 marketing_campaigns 获取佣金规则
-  │         ├── distribution_commissions.insert()   ← 一级佣金给 A
-  │         ├── 查 A 的 parent_id → C
-  │         ├── distribution_commissions.insert()   ← 二级佣金给 C
-  │         ├── user_notifications.insert()         ← 通知 A "你获得 ¥XX 佣金"
-  │         └── marketing_campaigns 统计更新
+  │         ├── 查 users.referred_by WHERE id = B（从用户绑定取推广员 A）
+  │         ├── 查 marketing_campaigns 获取 rewards 规则
+  │         ├── 按 rewards[].trigger 逐条核销:
+  │         │   ├── trigger=payment → days → extend_subscription()
+  │         │   ├── trigger=payment → commission_pct → distribution_commissions(earner_id=A, order_id=...)
+  │         │   ├── trigger=payment → discount → 订单已应用
+  │         │   └── 每条 -> reward_fulfillments.insert()（幂等）
   │
   ▼
 A 查看面板              ──→           管理端统计: 总佣金 / 转化率 / 团队树
@@ -444,9 +735,97 @@ A 查看面板              ──→           管理端统计: 总佣金 / 转
   每笔订单均可追溯: 订单 OE123456 → B 购买 → A 分享 → 活动 xxx
 ```
 
----
+### 5.4 奖励分发与核销链路
 
-## 六、管理端界面设计
+**核销引擎入口**: 统一在事件回调中（注册回调 / 支付回调）触发，按 `campaign.rewards[].trigger` 匹配。
+
+```
+支付回调 / 注册回调
+  │
+  ├── 查 conversion → 查 campaign.rewards
+  │
+  ├── for each reward in campaign.rewards:
+  │     │
+  │     ├── 检查 trigger 是否匹配当前事件
+  │     │   ├── 注册回调 → 只处理 trigger=registration 的奖励
+  │     │   ├── 支付回调 → 只处理 trigger=payment 的奖励
+  │     │   └── 不匹配 → 跳过
+  │     │
+  │     ├── 幂等检查: reward_fulfillments 是否已存在 fulfilled 记录
+  │     │   ├── 已存在 → 跳过（防止重复发放）
+  │     │   └── 不存在 → 继续
+  │     │
+  │     ├── 插入 reward_fulfillments(status=pending)
+  │     │
+  │     ├── 执行具体核销逻辑:
+  │     │   ├── days → extend_subscription(user_id, value)
+  │     │   │   └── 失败 → 标记 status=failed, 入重试队列
+  │     │   │
+  │     │   ├── commission_pct → 计算金额, 生成 distribution_commissions(locked)
+  │     │   │   └── 失败 → 标记 status=failed, 入重试队列
+  │     │   │
+  │     │   ├── discount_fix/pct → 已在订单中应用, 标记 status=fulfilled
+  │     │   └── 其他 → 按具体实现扩展
+  │     │
+  │     ├── 更新 reward_fulfillments(status=fulfilled)
+  │     │
+  │     └── 发站内通知: "恭喜你获得 X 天会员 / ¥XX 佣金"
+  │
+  └── 全部完成后 → campaign 统计更新
+```
+
+**去重与防重复规则**:
+
+| 规则 | 说明 | 实现 |
+|:-----|:-----|:-----|
+| 消费端绑定唯一性 | 一个消费者只能被一个推广者绑定 | `users.referred_by` 首次写入后不可变更 |
+| 关系不可逆 | 一旦绑定，不能解绑或改绑 | 业务规则：不提供解绑 API |
+| 奖励幂等 | 同 conversion + 同 reward_type + 同角色 不会重复发放 | `reward_fulfillments` 核销前查重 |
+| 同一活动多次触发 | 用户可多次分享、多次获奖励（如每次点击送 1 天）| 幂等检查按 conversion 粒度，不同 click 有不同 conversion |
+| 自链接排除 | 用户点击自己的链接不触发任何奖励 | `referral_clicks` 中 `referrer_id = clicker_id` 时跳过 |
+
+**失败与重试策略**:
+
+```
+核销失败流程:
+  1. 标记 reward_fulfillments.status = 'failed'
+  2. 写入 error_msg（如 "extend_subscription DB error: ..."）
+  3. 入异步重试队列
+     ├── 第 1 次: 5 分钟后重试
+     ├── 第 2 次: 再 5 分钟后重试
+     ├── 第 3 次: 再 5 分钟后重试
+     └── 仍失败 → 标记为最终失败, 触发告警（钉钉/邮件通知管理员）
+
+回滚策略:
+  - days 已发放 → 调用 reduce_subscription(天数) 回滚
+  - commission 已锁定 → 标记为 cancelled
+  - discount 已应用 → 订单已支付, 不能回滚（退款走微信退款流程）
+```
+
+**佣金生成与解锁提示**:
+
+佣金在购买时即生成 `distribution_commissions(status=locked)`，同时在用户端清晰告知：
+
+```
+用户 A 的佣金面板:
+┌────────────────────────────────────────────┐
+│  📋 佣金记录                               │
+│                                            │
+│  ● ¥20  来自 B · 月卡 ¥200 × 10%          │
+│    🔒 30天锁定期 · 预计 7月17日解锁        │
+│    解锁条件: B 超过 30 天无退款            │
+│                                            │
+│  ○ ¥64  来自 D · 终身 ¥1280 × 5%          │
+│    🔒 30天锁定期 · 预计 7月17日解锁        │
+│    解锁条件: D 超过 30 天无退款            │
+│                                            │
+│  ✅ 已解锁可结算 ¥12                       │
+│  🔒 锁定期内 ¥84                          │
+│  ✅ 已到账 ¥0                              │
+└────────────────────────────────────────────┘
+```
+
+提示文案: "佣金在购买时已生成，但需要等待 30 天退款期结束后才能结算 / 提现。这是为了保护消费者权益，如果对方在 30 天内申请退款，相应佣金将自动取消。"
 
 ### 6.1 页面结构
 
@@ -478,21 +857,26 @@ A 查看面板              ──→           管理端统计: 总佣金 / 转
 │   │   └── C (上级 A, 购买 ¥200)
 │   └── 用户详情弹窗: 分享记录 / 佣金明细 / 团队结构
 │
-├── 💰 佣金结算（批次管理）
-│   ├── 待结算佣金列表（earned 状态）
+├── 💰 佣金结算（统一打款通道）
+│   ├── 锁定中佣金列表（locked 状态）
 │   │   用户 | 金额 | 来源订单 | 时间 | 操作(勾选加入批次)
 │   ├── 创建结算批次: 勾选佣金 → 生成批次号 ST20260617-001 → 确认总金额
 │   ├── 已结待付（settled 状态, 按批次展示）
-│   │   批次号 | 条数 | 总金额 | 时间 | 状态 | 操作
+│   │   批次号 | 条数 | 总金额 | 来源(管理员/提现) | 时间 | 状态 | 操作
 │   │   ├── 查看批次明细（该批次包含的所有佣金）
 │   │   ├── 下载批次汇总（CSV, 方便对照打款）
 │   │   └── 标记已打款 + 上传转账截图
 │   └── 已打款记录（paid 状态）
-│       批次号 | 总金额 | 凭证(缩略图) | 打款时间 | 操作(查看大图)
+│       批次号 | 总金额 | 来源 | 凭证(缩略图) | 打款时间 | 操作(查看大图)
+│
+├── 📋 待审核提现（管理员待办列表）
+│   ├── 用户 | 金额 | 申请时间 | 操作
+│   ├── 审核通过 → 自动归入结算批次（跳转到结算批次页）
+│   └── 审核驳回 → 填写驳回原因
 │
 ├── 📊 按月统计
 │   ├── 月份选择器
-│   ├── 本月新增佣金 / 本月已结 / 本月打款 / 待结算
+│   ├── 本月新增佣金 / 本月解锁 / 本月打款 / 锁定中
 │   └── 按月导出报表
 │
 └── 📈 活动与财务数据
@@ -511,7 +895,7 @@ A 查看面板              ──→           管理端统计: 总佣金 / 转
 | | 活动描述 | text | 内部备注 |
 | | 活动类型 | select | invite_award / commission / discount_pct / discount_fix |
 | **目标角色** | **适用角色** | **checkbox 多选** | **student / teacher / guardian, 控制谁可以看到并分享此活动** |
-| | 分享文案 | text | 分享给他人时展示的推荐语 |
+| | LLM 提示语 | text | 控制生成内容侧重点, 如"突出学习天数" |
 | **时间控制** | 开始时间 | datetime | 在此时间之前活动不生效 |
 | | 结束时间 | datetime | 在此时间之后活动自动结束 |
 | **推送规则** | 推送触发 | select | registration / first_payment / login / manual / cron |
@@ -522,6 +906,79 @@ A 查看面板              ──→           管理端统计: 总佣金 / 转
 | | 被邀请者奖励值 | text | 数值 |
 | | 一级佣金比例 | number | 0.00 - 1.00 |
 | | 二级佣金比例 | number | 0.00 - 1.00 |
+| **归因设置** | 归因窗口(天) | number | 默认 30 |
+| **限制** | 参与人数上限 | number | 空 = 不限 |
+| | 每人参与上限 | number | 空 = 不限 |
+
+---
+
+## 六、管理端界面设计
+
+### 6.1 页面结构
+
+```
+营销管理中心
+├── 📢 活动管理
+│   ├── 活动列表（卡片视图）
+│   │   活动名称 | 类型 | 状态(badge) | 时间 | 参与/转化 | 操作
+│   ├── 创建活动弹窗
+│   │   ├── 基本信息: 名称 / 描述 / 类型 / 状态
+│   │   ├── 时间控制: 开始 / 结束
+│   │   ├── 推送规则: 触发条件 / 推送文案
+│   │   ├── 奖励设置: 邀请者 / 被邀请者 / 佣金比例
+│   │   └── 限制: 参与上限 / 每人限次 / 归因窗口
+│   └── 活动详情（查看 / 编辑 / 启停 / 手动推送按钮）
+│
+├── 👥 分销团队
+│   ├── 搜索: 用户 ID / 昵称 / referral_code
+│   ├── 团队列表（树形可展开）
+│   │   A (root, 分享 3 次, 收入 ¥104)
+│   │   ├── B (上级 A, 分享 1 次, 收入 ¥128)
+│   │   │   └── D (上级 B, 购买 ¥1280)
+│   │   └── C (上级 A, 购买 ¥200)
+│   └── 用户详情弹窗: 分享记录 / 佣金明细 / 团队结构
+│
+├── 💰 佣金结算（统一打款通道）
+│   ├── 锁定中佣金列表（locked 状态）
+│   │   用户 | 金额 | 来源订单 | 时间 | 操作(勾选加入批次)
+│   ├── 创建结算批次: 勾选佣金 → 生成批次号 → 确认总金额
+│   ├── 已结待付（settled 状态, 按批次展示）
+│   │   批次号 | 条数 | 总金额 | 来源(管理员/提现) | 时间 | 状态 | 操作
+│   │   ├── 查看批次明细
+│   │   ├── 下载批次汇总（CSV, 方便对照打款）
+│   │   └── 标记已打款 + 上传转账截图
+│   └── 已打款记录（paid 状态）
+│       批次号 | 总金额 | 来源 | 凭证(缩略图) | 打款时间 | 操作
+│
+├── 📋 待审核提现（管理员待办列表）
+│   ├── 用户 | 金额 | 申请时间 | 操作
+│   ├── 审核通过 → 自动归入结算批次
+│   └── 审核驳回 → 填写驳回原因
+│
+├── 📊 按月统计
+│   ├── 月份选择器
+│   ├── 本月新增佣金 / 本月解锁 / 本月打款 / 锁定中
+│   └── 按月导出报表
+│
+└── 📈 活动与财务数据
+    ├── 核心指标: 活动总数 / 进行中 / 总参与 / 总转化 / 总佣金
+    └── 趋势图: 日/周/月 新增分享 / 注册 / 转化 / 佣金
+```
+
+### 6.2 活动配置表单字段
+
+| 分组 | 字段 | 类型 | 说明 |
+|:----|:-----|:-----|:------|
+| **基本信息** | 活动名称 | text | 用户端展示的名称 |
+| | 活动描述 | text | 内部备注 |
+| | 活动类型 | select | invite_award / commission / discount_pct / discount_fix / mixed |
+| **时间控制** | 开始时间 | datetime | 活动开始时间 |
+| | 结束时间 | datetime | 活动结束时间 |
+| **推送规则** | 触发条件 | select | registration / first_payment / login / manual / cron |
+| | 推送文案 | textarea | 支持 {name} 变量 |
+| **目标角色** | 适用角色 | checkbox | student / teacher / guardian |
+| **奖励规则** | 邀请者奖励 | JSON 编辑器 | type/who/value/trigger 数组 |
+| | 被邀请者奖励 | JSON 编辑器 | type/who/value/trigger 数组 |
 | **归因设置** | 归因窗口(天) | number | 默认 30 |
 | **限制** | 参与人数上限 | number | 空 = 不限 |
 | | 每人参与上限 | number | 空 = 不限 |
@@ -552,26 +1009,68 @@ A 查看面板              ──→           管理端统计: 总佣金 / 转
 | GET | `/api/referral/my-team` | 查看团队（树形）|
 | GET | `/api/referral/my-commissions` | 查看佣金记录 |
 
-### 7.3 通知推送
+### 7.3 点击追踪（用户端）
+
+| 方法 | 路径 | 说明 |
+|:----|:-----|:-----|
+| POST | `/api/referral/click` | 用户B打开分享链接时调用，记录 `referral_clicks`，返回 `click_id` |
+
+**请求体**：
+```json
+{"ref": "CoEvo_A1B2", "camp": "camp_xxx", "device_id": "匿名设备指纹"}
+```
+
+**返回**：
+```json
+{"click_id": "uuid", "referrer_id": "A的用户ID"}
+```
+
+前端收到 `click_id` 后存入 localStorage，注册时提交给 `/api/auth/register`。
+
+### 7.4 退款联动
+
+| 方法 | 路径 | 说明 |
+|:----|:-----|:-----|
+| POST | `/api/admin/refund/{order_id}` | 管理员退款操作，同时取消关联佣金（locked→cancelled）|
+| POST | `/api/webhook/refund` | 微信退款回调，自动取消关联佣金 |
+
+退款时自动执行：
+1. 查 `distribution_commissions.order_id` 找到关联该订单的佣金
+2. 如果佣金状态为 `locked` → 改为 `cancelled`
+3. 写审计日志
+
+### 7.5 通知推送
 
 | 方法 | 路径 | 说明 |
 |:----|:-----|:-----|
 | GET | `/api/notifications` | 获取未读通知 |
 | PATCH | `/api/notifications/{id}/read` | 标记已读 |
 
-### 7.4 结算批次（管理员）
+### 7.6 提现审核（管理员）
+
+管理员审核用户发起的提现申请。审核通过后归入结算批次统一打款。
 
 | 方法 | 路径 | 说明 |
 |:----|:-----|:-----|
-| GET | `/api/admin/settlement/pending-commissions` | 待结算佣金列表（earned）|
-| POST | `/api/admin/settlement/create-batch` | 创建结算批次（传入佣金ID列表）|
-| GET | `/api/admin/settlement/batches` | 结算批次列表（含状态/凭证）|
+| GET | `/api/admin/distribution/withdrawals` | 提现列表（默认 pending 待审核）|
+| POST | `/api/admin/distribution/withdrawals/{id}/approve` | 审核通过 → 自动加入新结算批次 |
+| POST | `/api/admin/distribution/withdrawals/{id}/reject` | 审核驳回（需填写驳回原因）|
+
+### 7.7 结算批次（管理员）
+
+**统一打款通道**。不论是管理员主动批量结算还是用户提现审核通过，都通过此接口创建/管理批次。
+
+| 方法 | 路径 | 说明 |
+|:----|:-----|:-----|
+| GET | `/api/admin/settlement/pending-commissions` | 待结算佣金列表（available）|
+| POST | `/api/admin/settlement/create-batch` | 创建结算批次 |
+| GET | `/api/admin/settlement/batches` | 结算批次列表（含状态/来源/凭证）|
 | GET | `/api/admin/settlement/batches/{id}` | 批次明细（所有佣金 + 用户信息）|
 | GET | `/api/admin/settlement/batches/{id}/export` | 下载批次汇总 CSV（方便打款对照）|
 | POST | `/api/admin/settlement/batches/{id}/mark-paid` | 标记已打款 + 上传转账截图 |
 | GET | `/api/admin/settlement/proof/{filename}` | 查看转账截图 |
 
-### 7.5 数据统计
+### 7.8 数据统计
 
 | 方法 | 路径 | 说明 |
 |:----|:-----|:-----|
@@ -581,7 +1080,7 @@ A 查看面板              ──→           管理端统计: 总佣金 / 转
 | GET | `/api/admin/distribution/ranking` | 分销员排行 |
 | GET | `/api/admin/distribution/export` | 导出 CSV |
 
-### 7.6 凭证上传
+### 7.9 凭证上传
 
 | 方法 | 路径 | 说明 |
 |:----|:-----|:-----|
@@ -617,11 +1116,11 @@ A 查看面板              ──→           管理端统计: 总佣金 / 转
 
 分销推广码按用户绑定，**不区分角色**。学生、教师、家长各自登录后都可以看到自己的推广入口。
 
-| 角色 | 能否分享 | 推广目标 | 分享文案 |
+| 角色 | 能否分享 | 推广目标 | 生成策略 |
 |:----|:---------|:---------|:---------|
-| **学生端** | ✅ | 其他学生 | 广告文案统一 |
-| **教师端** | ✅ (若活动开放) | 学生 | 广告文案统一 |
-| **家长端** | ✅ (若活动开放) | 学生(及其他家长) | 广告文案统一 |
+| **学生端** | ✅ | 其他学生 | LLM 基于个人数据 + campaign.llm_prompt_hint 生成 |
+| **教师端** | ✅ (若活动开放) | 学生 | 同上 |
+| **家长端** | ✅ (若活动开放) | 学生(及其他家长) | 同上 |
 
 **实现方式**: 将分享组件抽离为独立 Widget `ShareWidget`, 三端各自引用：
 
@@ -634,11 +1133,715 @@ lib/
     guardian_screen.dart       ← 家长/教师端引用 ShareWidget
 ```
 
-后端无需任何修改, `user_referral_codes` 表按 `user_id` 关联，各角色共用同一套推广码和佣金系统。
+后端无需任何修改，推广码按 `users.referral_code` 关联，角色无关。
 
 ---
 
-## 九、v1.0 到 v2.0 的变更对比
+## 九、LLM 内容生成策略
+
+### 9.1 为什么需要 LLM 生成
+
+固定文案和静态海报的分享转化率很低，因为"谁都没区别"。LLM 生成可以做到：
+
+- **个性化**: 结合真实学习数据，生成"我"的推荐而不是"广告"的推荐
+- **场景化**: 根据触发时机自动匹配文案和视觉风格
+- **多版本 A/B**: 一次生成 3 种风格，取打开率最高的
+- **角色自适应**: 对学生/老师/家长用不同的语气和视觉风格
+
+### 9.2 输出格式对比
+
+| 格式 | 生成成本 | 交互性 | 微信兼容 | 适用场景 |
+|:----|:--------|:------|:--------|:---------|
+| **SVG 海报** | 低 | 无 | ✅ 保存图片发朋友圈 | 朋友圈晒数据 |
+| **海报+文案** | 低 | 无 | ✅ 图片+文字一起发 | 朋友圈/群聊推荐 |
+| **HTML 分享页** | 中 | 有点击按钮 | 🤔 待调研（微信卡片预览兼容性未验证）| 深链接引流 |
+| **HTML 动效页** | 高 | 动画+交互 | 🤔 同上 | 限时活动引爆 |
+
+### 9.3 SVG 海报生成（核心方案）
+
+后端把用户真实数据原样丢给 LLM → LLM 自己分析营销点 + 生成 SVG 海报 → 前端渲染。
+
+#### 数据采集：把用户数据原样传给 LLM
+
+后端只做一件事：把用户可以展示的学习数据从 DB 查出来，拼成一个 JSON 对象，直接发给 LLM。**不做数据分析，不选营销角度，不构造 prompt 结构**——让 LLM 自己决定什么数据最有说服力。
+
+#### Prompt 管线（复用已有信号/格式分离架构）
+
+生成海报和 H5 的 prompt 走 `prompts/signal/` + `prompts/format/` 分离管线，与 CoEvo 对话 prompt 同一套加载机制：
+
+```
+prompts/signal/share-poster.md     ← 指令逻辑: "分析数据中的营销点..."
+prompts/format/share-poster.md     ← 输出格式: "输出纯 SVG, 不要 markdown..."
+prompts/signal/share-h5.md         ← H5 指令
+prompts/format/share-h5.md         ← H5 输出格式
+```
+
+运行时拼接：
+
+```
+1. 加载 prompts/signal/share-poster.md（指令）
+2. 加载 prompts/format/share-poster.md（格式要求）
+3. 注入:
+   - 用户数据 JSON（学习数据）
+   - campaign.llm_prompt_hint（管理员提示语）
+   - campaign 基本信息（名称、奖励说明）
+4. 发给 LLM
+```
+
+`llm_prompt_hint` 只是 SQL 里一个字段，不是 prompt 文件本身。不同活动可以共用同一套 prompt 文件，只需改 `llm_prompt_hint` 就能控制 LLM 的输出方向。新增活动类型不需要新建 prompt 文件。
+
+```json
+{
+  "user": {
+    "name": "小明",
+    "role": "student"
+  },
+  "learning_today": {
+    "streak_days": 47,
+    "new_cards": 12,
+    "total_cards": 156,
+    "total_reviews": 380,
+    "overall_mastery": 85,
+    "review_accuracy": 88
+  },
+  "learning_yesterday": {
+    "new_cards": 8,
+    "total_cards": 144,
+    "total_reviews": 320,
+    "overall_mastery": 83,
+    "review_accuracy": 84
+  },
+  "current_plan": {
+    "goal": "通过系统练习，掌握一元二次方程的配方法、公式法和因式分解法",
+    "subject": "数学",
+    "grade_band": "g7-9",
+    "task_name": "配方法",
+    "task_progress": "3/5"
+  },
+  "recent_completed_tasks": ["因式分解基础", "完全平方公式", "平方差公式"],
+  "subject_mastery_today": [
+    {"subject": "数学", "mastery": 92},
+    {"subject": "英语", "mastery": 78}
+  ],
+  "subject_mastery_yesterday": [
+    {"subject": "数学", "mastery": 89},
+    {"subject": "英语", "mastery": 76}
+  ],
+  "vocabulary": {
+    "total_words": 320,
+    "mastered_today": 256,
+    "mastered_yesterday": 250,
+    "new_today": 6,
+    "recent_mastered": ["abandon→放弃", "brilliant→杰出的", "circumstance→环境"]
+  },
+  "recent_reviews": {
+    "today": {"correct": 25, "wrong": 3, "accuracy": 89},
+    "yesterday": {"correct": 20, "wrong": 5, "accuracy": 80}
+  },
+  "achievements": [
+    {"name": "连续学习 30 天", "icon": "🔥", "detail": "连续学习 30 天"},
+    {"name": "百词斩", "icon": "📖", "detail": "已掌握 256 个单词"},
+    {"name": "数学之星", "icon": "⭐", "detail": "数学掌握率 92%"},
+    {"name": "复习达人", "icon": "🔄", "detail": "累计复习 380 次"}
+  ],
+  "campaign": {
+    "name": "邀新送 7 天",
+    "reward": "双方各得 7 天会员"
+  },
+  "referral_code": "CoEvo_A1B2"
+}
+```
+
+**关键设计**：不给 LLM 算好差值，而是同时给「今天」和「昨天」两份原始数据，LLM 自己对比：
+
+```
+"learning_today":      {"mastery": 85, "reviews": 380}
+"learning_yesterday":  {"mastery": 83, "reviews": 320}
+→ LLM 自己算出 "掌握率提升 2%，复习次数多了 60 次"
+```
+
+**好处**：不需要后端新增任何字段或计算逻辑，所有数据在 DB 中本就存在，按时间戳查两次即可。只有今日和昨日两天的数据，简单直接。
+
+**前后对比如何影响 LLM 输出**：
+
+```
+只有今天数据:
+  → "掌握率 85%，连续学习 47 天"           ← 静态，缺乏叙事
+
+今天 + 昨天数据:
+  → "掌握率从 83% 到 85%，一天涨了 2%"     ← 有进步感，更真实
+  → "今天复习正确率 89%，比昨天高了 5%"     ← 有即时动态感
+
+有成就:
+  → "已解锁🔥连续学习30天 ✓ 📖百词斩 ✓"    ← 有层次，像游戏成就展示
+```
+
+#### Prompt：只有需求描述，没有数据分析
+
+后端把 JSON 直接嵌入 Prompt 发给 LLM。Prompt 不预设任何营销方向，只告诉 LLM 做什么、不做分析框架限制。
+
+**完整的 Prompt 模板**：
+
+```markdown
+你是一个教育产品的分享海报设计师 + 文案写手。以下是一个用户的真实学习数据，请你：
+1. 自己分析哪些数据最有营销价值
+2. 生成一张 SVG 分享海报（600×900px）
+3. 同步生成 1 条配合海报发布的推荐文案（60 字以内）
+
+用户数据：
+{user_data_json}
+
+## SVG 海报设计规范
+- 尺寸：600×900px，深蓝色渐变背景（#1A237E → #0D1457）
+- 文字浅色（#ffffff / #9DA0F0），数据卡片用 rgba(255,255,255,0.08)
+- 推广码区域亮色高亮突出显示
+- 圆角卡片分块展示数据（border-radius: 12px）
+- 品牌标识 "⟐ CoEvo" 放在海报底部
+- 风格克制干净，适合发微信朋友圈
+- 输出纯 SVG 代码，不要 markdown 包裹标签
+
+## 文案要求
+- 与海报内容呼应，不要重复海报上已有的信息
+- 包含推广码
+- 口语自然，像用户自己在说话
+- 60 字以内
+
+## 输出格式
+请严格按照以下 JSON 格式输出，不要增加其他内容：
+
+{
+  "svg": "<svg>...</svg>",
+  "copy": "推荐文案文字"
+}
+```
+
+**实际调用示例**（后端发给 LLM 的完整请求）：
+
+```text
+你是一个教育产品的分享海报设计师 + 文案写手。以下是一个用户的真实学习数据，请你：
+1. 自己分析哪些数据最有营销价值
+2. 生成一张 SVG 分享海报（600×900px）
+3. 同步生成 1 条配合海报发布的推荐文案（60 字以内）
+
+用户数据：
+{
+  "learning_today": {"streak_days": 47, "new_cards": 12, "total_cards": 156, "total_reviews": 380, "overall_mastery": 85, "review_accuracy": 88},
+  "learning_yesterday": {"new_cards": 8, "total_cards": 144, "total_reviews": 320, "overall_mastery": 83, "review_accuracy": 84},
+  "current_plan": {"goal": "掌握一元二次方程的配方法、公式法和因式分解法", "subject": "数学", "task_name": "配方法", "task_progress": "3/5"},
+  "vocabulary": {"total_words": 320, "mastered_today": 256, "mastered_yesterday": 250, "recent_mastered": ["abandon→放弃", "brilliant→杰出的"]},
+  "achievements": [{"name": "连续学习 30 天", "icon": "🔥"}, {"name": "百词斩", "icon": "📖"}, {"name": "数学之星", "icon": "⭐"}],
+  "referral_code": "CoEvo_A1B2"
+}
+
+[SVG 海报设计规范...]
+[文案要求...]
+[输出格式...]
+```
+
+**LLM 可能输出的回复示例**：
+
+```json
+{
+  "svg": "<svg width=\"600\" height=\"900\" viewBox=\"0 0 600 900\">...（海报SVG代码）</svg>",
+  "copy": "今天数学掌握率到 85% 了！配方法 3/5 进度，一起扫码学双方得 7 天 → CoEvo_A1B2"
+}
+```
+
+**不需要后端解析**：LLM 输出已是 JSON 格式，后端直接透传给前端。前端取 `svg` 字段渲染海报，`copy` 字段展示配文。
+
+#### 关键问题：给 LLM 看什么数据最有效？
+
+同样是真实数据，给不同的数据组合，LLM 得出的营销点完全不同：
+
+| 给 LLM 看 | LLM 会怎么营销 | 效果 |
+|:----------|:--------------|:-----|
+| 只给 overall_mastery | "掌握率 85%" | 空洞，谁都可以说 |
+| + current_plan.goal | "在学习一元二次方程的配方法，掌握率 85%" | 有具体内容，更可信 |
+| + streak_days | "连续 47 天学数学，掌握率 85%" | 有坚持的叙事感 |
+| + completed_tasks | "已搞定因式分解、完全平方公式，现在在攻克配方法" | 有进步路线图 |
+| + subject_mastery[] | "数学 92%、英语 78%、物理 65%" | 多维度，显得全面 |
+| + today_new_cards | "今天新学了 12 张卡片" | 即时感，像是在"今天" |
+
+#### 数据优先级（按营销价值排序）
+
+后端组装 JSON 时，按以下字段顺序排列（LLM 会更注意前面的数据）：
+
+```
+1. learning_today + learning_yesterday   ← 前后两天对比让 LLM 发现"进步"叙事
+2. current_plan.goal                    ← 最具体的学习内容
+3. achievements                         ← 荣誉感
+4. vocabulary                           ← 英语生词的具体成果
+5. recent_reviews.today/yesterday       ← 今昨复习对比
+6. subject_mastery_today/7d_ago         ← 学科掌握率 + 趋势
+7. streak_days                          ← 连续性社交货币
+```
+
+**数据示例 vs 营销点对照**：
+
+```
+数据: {"current_plan": {"goal": "掌握一元二次方程的配方法、公式法和因式分解法"}, "comparison": {"mastery_change_7d": "+5"}}
+→ LLM 标题: "一周数学掌握率提升了 5%，我在攻克配方法！"
+
+数据: {"recent_reviews": {"today": {"accuracy": 89}, "yesterday": {"accuracy": 80}}}
+→ LLM 标题: "今天复习正确率 89%，比昨天进步了 9%，继续加油！"
+
+数据: {"vocabulary": {"total_words": 320, "mastered_words": 256}, "achievements": [{"name": "百词斩"}]}
+→ LLM 海报: "已掌握 256/320 个单词，达成🔥百词斩成就！"
+
+数据: {"streak_days": 47, "comparison": {"streak_change_7d": "+7"}}
+→ LLM 海报: "连续学习 47 天，这周又坚持了 7 天！"
+
+数据: {"achievements": [{"name": "连续学习 30 天"}, {"name": "百词斩"}, {"name": "数学之星"}]}
+→ LLM 海报: "已解锁 3 个成就：🔥连续学习30天 · 📖百词斩 · ⭐数学之星"
+
+数据: {"recent_reviews": {"today": {"correct": 25, "wrong": 3}}, "vocabulary": {"recent_mastered": ["abandon→放弃", "brilliant→杰出的"]}}
+→ LLM 文案: "今天复习了 28 个单词，新掌握了 abandon、brilliant，一起扫码来学！"
+```
+
+**后端 JSON 拼接逻辑（最小代码量）**
+
+```python
+def build_user_data_for_llm(user_id):
+    data = {}
+    data["learning_today"] = query_learning_snapshot(user_id, today)       # 当前数据
+    data["learning_yesterday"] = query_learning_snapshot(user_id, yesterday)  # 昨天数据
+    data["subject_mastery_today"] = query_mastery(user_id, today)
+    data["subject_mastery_yesterday"] = query_mastery(user_id, yesterday)
+    data["vocabulary"] = query_vocabulary(user_id)
+    data["achievements"] = query_achievements(user_id)
+    data["current_plan"] = query_current_plan(user_id)
+    data["recent_reviews"] = query_recent_reviews(user_id)
+    return data
+```
+
+**核心原则**：不新增字段，不预计算差值。所有数据在 DB 中已存在，按时间戳查两次即可。
+
+**实际输出示例**（基于上述数据，LLM 可能会选择"连续学习 47 天 + 数学 92%"作为核心卖点）：
+
+```
+┌──────────────────────────────┐
+│       小明 邀请你一起学       │
+│                              │
+│  ┌─── 数学 92% 掌握率 ────┐  │
+│  │  ████████████████░░ 92% │  │
+│  └─────────────────────────┘  │
+│                              │
+│  🔥 连续学习 47 天           │
+│  📚 一元二次方程·配方法      │
+│                              │
+│  ┌─── CoEvo_A1B2 ─────────┐ │
+│  │  复制推广码              │ │
+│  └─────────────────────────┘ │
+│  扫二维码一起学              │
+└──────────────────────────────┘
+```
+
+#### 两条分享链路：两种 Prompt，两种解析
+
+用户分享弹窗中有两个按钮，决定走哪条链路：
+
+```
+┌─────────────────────────────────┐
+│     分享到                      │
+│                                 │
+│  ┌────────────┐  ┌────────────┐ │
+│  │ 📷 朋友圈    │  │ 💬 会话     │ │
+│  │ 保存海报图片  │  │ 复制H5链接  │ │
+│  └────────────┘  └────────────┘ │
+└─────────────────────────────────┘
+```
+
+两条链路共用同一份用户数据 JSON，但 Prompt 和输出格式不同：
+
+| 链路 | 按钮文案 | 输出格式 | 前端处理 | 用户操作 |
+|:-----|:---------|:---------|:---------|:---------|
+| 朋友圈 | "📷 朋友圈" | SVG 代码 | flutter_svg 渲染 → RepaintBoundary 截取为 PNG → 保存相册 | 发朋友圈 |
+| 会话 | "💬 会话" | 完整 HTML 文件 | 后端保存到 `/share/{code}/index.html` → 返回 URL | 复制链接发微信 |
+
+**后端 Prompt 路由**：
+
+```python
+def generate_share(user_id, output_type):
+    data = build_user_data(user_id)  # 共用同一份数据
+    if data is empty:
+        return default_template(output_type)  # 新用户兜底
+    
+    if output_type == 'poster':
+        prompt = POSTER_PROMPT_TEMPLATE.format(data=data)
+        result = call_llm(prompt)
+        # result = {"svg": "<svg>...</svg>", "copy": "..."}
+        return result["svg"], result["copy"]
+    
+    elif output_type == 'h5':
+        prompt = H5_PROMPT_TEMPLATE.format(data=data, code=data["referral_code"])
+        html = call_llm(prompt)
+        # result = 完整 HTML 字符串
+        save_to_disk(f"/share/{data['referral_code']}/index.html", html)
+        return f"https://keyievolution.fun/share/{data['referral_code']}"
+```
+
+#### 二维码生成（后端执行，非 LLM）
+
+海报上的二维码**不由 LLM 生成**，LLM 画不出一致可扫的二维码。流程如下：
+
+```
+LLM 生成的 SVG 中预留一个白色矩形占位区，标注 "QR_PLACEHOLDER"
+  │
+后端收到 SVG 后：
+  1. 用 qrcode crate 生成二维码 SVG
+     └── 二维码内容: https://keyievolution.fun/app/auth?ref=CoEvo_A1B2&camp=camp_xxx
+  2. 查找 SVG 中的 "QR_PLACEHOLDER" 标签
+  3. 替换为二维码 SVG 代码
+  4. 返回完整 SVG 给前端
+```
+
+**二维码参数**：
+
+| 属性 | 值 |
+|:-----|:----|
+| 内容 | `https://keyievolution.fun/app/auth?ref={referral_code}&camp={campaign_id}` |
+| 尺寸 | 180×180px（与 LLM 预留的占位区一致）|
+| 纠错级别 | M（7% 纠错，平衡尺寸和可扫性）|
+| 颜色 | CoEvo Deep Blue `#1A237E` |
+| 背景 | 白色 |
+| 样式 | 圆角方块，CoEvo logo 居中覆盖 |
+
+**追踪参数说明**：
+
+| 参数 | 含义 | 示例 | 用途 |
+|:-----|:-----|:-----|:-----|
+| `ref` | 推广员 referral_code | `CoEvo_A1B2` | 归因：谁分享的 |
+| `camp` | 活动 ID | `camp_001` | 归因：哪个活动的分享 |
+
+用户扫码或点击链接进入 `/app/auth`，Flutter 前端读取 URL 参数存入 localStorage，注册时携带到后端写入 `referral_clicks` 表并设置 `users.referred_by`。
+
+**为什么不在 H5 页面上放二维码？**
+
+H5 页面本身就是通过链接分享的，用户打开 H5 后不需要再扫码。二维码只出现在 SVG 海报上，因为海报是静态图片，需要二维码引导用户访问链接。
+
+#### SVG Prompt（朋友圈海报）
+
+重点关注**视觉设计**和**截图友好**：
+
+```markdown
+你是一个教育产品海报设计师。根据以下用户数据生成一张 SVG 分享海报。
+
+用户数据：
+{user_data_json}
+
+要求：
+1. 分析数据中哪些是营销亮点，自行决定展示什么
+2. SVG 尺寸 600×900px，深蓝色渐变背景
+3. 推广码区域亮色高亮
+4. 配色克制干净，适合朋友圈
+5. 输出纯 SVG 代码，不要 markdown 包裹
+
+同时生成 1 条配文（60 字以内），和海报内容呼应，包含推广码。
+
+输出 JSON 格式：
+{"svg": "<svg>...</svg>", "copy": "文案文字"}
+```
+
+#### H5 Prompt（会话分享卡片）
+
+重点关注 **OG meta 标签**和**动效呈现**：
+
+```markdown
+你是一个前端开发工程师。根据以下用户数据生成一个完整的 HTML 分享页面。
+
+用户数据：
+{user_data_json}
+
+技术要求：
+1. 包含完整的 OG meta 标签（og:title, og:description, og:image, og:url）
+2. 单页 HTML，所有 CSS 内联在 <style> 中，无外部依赖
+3. 手机端竖屏适配，白色背景，深蓝色品牌色
+4. 数据用 CSS @keyframes 动画呈现（数字滚动、进度条填充）
+5. 底部有 CTA 按钮 + 推广码
+6. OG:image 缩略图用 base64 内联 SVG（轻量且实时生成）
+
+输出完整的 HTML 代码，不要 markdown 包裹。
+```
+
+H5 返回的是文件路径 + URL，不是 JSON。后端保存后直接返回 URL。
+
+### 9.4 HTML 分享页（H5 动效页）—— 推荐方案
+
+由 LLM 生成单张 H5 页面，结合 CSS 动效，作为链接分享的落地页。**不需要微信公众号**，纯前端技术即可实现。
+
+#### 微信分享卡片原理（为什么不需要公众号）
+
+微信聊天中分享链接时显示的"卡片"（标题 + 描述 + 缩略图），由目标页面的 **OG meta 标签**控制，**不需要公众号**，任何网页只需在 `<head>` 中加入以下标签即可：
+
+```html
+<meta property="og:title" content="小明 邀请你一起学数学">
+<meta property="og:description" content="掌握率一周提升 5%，连续学习 47 天">
+<meta property="og:image" content="https://keyievolution.fun/share/og/CoEvo_A1B2.png">
+<meta property="og:url" content="https://keyievolution.fun/share/CoEvo_A1B2?ref=CoEvo_A1B2&camp=camp_xxx">
+<meta property="og:url" content="https://keyievolution.fun/share/CoEvo_A1B2?t=1718612345&ref=CoEvo_A1B2&camp=camp_xxx">
+```
+
+| 功能 | 需要什么 | 你有吗 |
+|:-----|:---------|:-------|
+| 微信聊天分享卡片 | OG meta 标签 + 公网可访问页面 | ✅ 已有服务器和域名 |
+| 微信朋友圈缩略图 | OG meta 标签（但朋友圈链接不展示卡片）| ⚠️ 朋友圈只显示文本+小图 |
+| 微信 JS-SDK 自定义分享 | 认证服务号 + 备案域名 | ❌ 订阅号不行 |
+| 推送消息给粉丝 | 订阅号可以（但一天只能群发 1 条） | ✅ 但与本功能无关 |
+
+**结论：分享卡片不需要公众号。** 订阅号对此功能没有帮助，也不构成限制。
+
+#### H5 页面结构（LLM 输出要求）
+
+LLM 生成的 HTML 必须包含以下三部分：
+
+**1. `<head>` — OG meta 标签**
+
+```html
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- OG 标签：控制在微信聊天中显示的卡片内容 -->
+  <meta property="og:title" content="{LLM生成的标题}">
+  <meta property="og:description" content="{LLM生成的描述}">
+  <meta property="og:image" content="https://keyievolution.fun/share/og/{code}.png">
+  <meta property="og:url" content="https://keyievolution.fun/share/{code}">
+  <meta property="og:type" content="website">
+  <title>{LLM生成的标题}</title>
+</head>
+```
+
+**注意**：LLM 生成时，`og:image` 的 URL 指向 `/share/og/{code}.png`，这个图片**不是 LLM 生成的**，而是由后端在 H5 页面部署后，用 SVG 海报转 PNG 存放的（见下文）。
+
+**2. `<body>` — 页面内容**
+
+用户打开链接后看到的完整页面，包含：
+- 品牌 header（⟐ CoEvo）
+- 用户数据展示（数字滚动 CSS 动画）
+- 当前学习进度（进度条动画）
+- 推广码 + CTA 按钮（脉冲动画）
+- 信任数据（如"12000+ 学生在用"）
+
+**3. `<style>` — 所有 CSS 内联**
+
+所有样式内联在 `<style>` 中，无外部依赖。CSS 动画用 `@keyframes` 实现。
+
+#### OG 图片生成（固定模板，不调 LLM）
+
+OG 缩略图在微信聊天卡片中只显示约 80×80px，生成个性化内容没有意义。因此**不额外调 LLM**，用固定品牌模板 + 推广码水印。
+
+**固定模板 SVG**（后端代码内预置，非 LLM 生成）：
+
+```svg
+<svg width="300" height="300" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+  <rect width="300" height="300" fill="#1A237E" rx="16"/>
+  <text x="150" y="100" fill="#9DA0F0" font-size="40" text-anchor="middle" font-family="sans-serif">⟐ CoEvo</text>
+  <text x="150" y="150" fill="#ffffff" font-size="18" text-anchor="middle">邀请你一起学习</text>
+  <rect x="60" y="190" width="180" height="40" rx="20" fill="rgba(255,255,255,0.1)"/>
+  <text x="150" y="216" fill="#9DA0F0" font-size="14" font-weight="700" text-anchor="middle">{code}</text>
+</svg>
+```
+
+**生成流程**：
+
+```
+部署 H5 时：
+  1. 后端读取固定 OG 模板 SVG
+  2. 替换 {code} 为实际推广码（如 CoEvo_A1B2）
+  3. resvg 渲染为 300×300 PNG
+  4. 保存到 /var/www/coevo-landing/share/og/{code}.png
+```
+
+**H5 页面的 og:image 指向此文件**：
+
+```html
+<meta property="og:image" content="https://keyievolution.fun/share/og/CoEvo_A1B2.png">
+```
+
+零额外 LLM 成本，零 API 调用。
+
+#### 生成与部署流程
+
+```
+用户点击"💬 会话"
+  → POST /api/referral/generate-h5
+  → 后端:
+      1. 查用户数据
+      2. 调 LLM（H5 Prompt）→ 返回完整 HTML
+      3. 写入 /var/www/coevo-landing/share/{code}/index.html
+      4. 生成 OG 图片
+      5. 返回 URL（含 ref + camp 参数）
+
+  → 前端复制的 URL:
+      https://keyievolution.fun/share/CoEvo_A1B2?t=1718612345&ref=CoEvo_A1B2&camp=camp_xxx
+
+  → 好友点击链接:
+      1. 打开 H5 页面（URL 携带 ref + camp）
+      2. H5 页面 JS 读取 URL 参数
+      3. POST /api/referral/click → 记录 referral_clicks → 返回 click_id
+      4. 存入 localStorage
+      5. 注册时复用 click_id → 写入 conversion
+
+  → 微信卡片预览: 同上 URL + OG meta
+```
+
+**H5 URL 携带的追踪参数**:
+
+```
+https://keyievolution.fun/share/CoEvo_A1B2?t=1718612345&ref=CoEvo_A1B2&camp=camp_xxx
+                                  ↑推广码   ↑缓存时间戳  ↑谁分享  ↑哪个活动
+```
+
+与 QR 码的追踪参数结构一致：`ref=CoEvo_A1B2&camp=camp_xxx`，不依赖 CTA 按钮。
+
+#### 微信卡片缓存说明
+
+微信会缓存 OG 卡片信息（标题/描述/缩略图），**首次抓取后缓存很久**。这意味着：
+
+- 用户 A 生成分享链接 → 第一次发微信 → 微信抓取 OG → 缓存
+- 如果用户 A 第二天学习数据变了 → 重新生成 H5 → 部署新文件 → **但微信展示的还是旧的**（因为 URL 没变）
+
+**解决方案**：在 URL 后加时间戳参数，让微信认为每次都是新链接：
+
+```html
+<meta property="og:url" content="https://keyievolution.fun/share/{code}?t={timestamp}">
+```
+
+用户每次"生成分享链接"时，URL 都带新的 `t` 参数，微信会重新抓取 OG 信息。
+
+#### 前端复制链接时的实际内容
+
+```
+https://keyievolution.fun/share/CoEvo_A1B2?t=1718612345&ref=CoEvo_A1B2&camp=camp_xxx
+```
+
+用户看到的是这个 URL，发到微信后展示卡片。下次重新生成，`t` 变了，卡片内容更新。
+| 展示动效/数据 | ❌ 静态图片 | ✅ 数字滚动 + 动画 |
+
+两者互补：**朋友圈用海报，群聊用 H5 链接**。
+
+### 9.5 预生成 + 重试 + 频率控制
+
+#### 预生成（用户不等待）
+
+分享内容**每天主动生成一次**，用户打开分享弹窗时直接展示，无需等待 LLM。
+
+```
+每日首次登录 / App 启动时：
+  → 后端检查今日是否已生成
+  → 若未生成: 后台调 LLM（先 SVG 海报，再 H5 页面），缓存到服务器
+  → 若已生成: 跳过
+
+用户点击"分享"时：
+  → 直接从缓存取，毫秒级展示
+  → 底部显示"换一批"按钮 → 重新调 LLM → 更新缓存
+
+次日再次打开：
+  → 用户数据已更新 → LLM 生成新内容 → 覆盖旧缓存
+```
+
+#### LLM 重试机制
+
+```
+首次 LLM 调用:
+  ├── 成功 → 缓存，标记今日已生成
+  └── 失败（超时/格式错误/服务不可用）
+       ├── 等待 3 秒后重试（最多 2 次）
+       ├── 仍失败 → 使用昨日缓存（如果有）
+       └── 无缓存可用 → 降级到默认模板（品牌图 + 推广码）
+```
+
+#### 生成频率限制
+
+| 限制项 | 值 |
+|:-------|:----|
+| 自动预生成 | 每天 1 次（随首次启动触发）|
+| 用户手动"换一批" | **不限次数** |
+| 两次生成最小间隔 | 60 秒 |
+| 海报 + H5 是否一次 LLM 调用 | **否，各自独立调用**。不同 Prompt 和输出格式（SVG vs HTML），混用会导致格式相互污染 |
+
+**为什么不合并成一次调用？**
+- SVG Prompt 要求输出 JSON（`{"svg": "...", "copy": "..."}`），H5 Prompt 要求输出完整 HTML
+- 如果让 LLM 一次输出两种格式，Output 会相互污染（HTML 里混入 JSON 结构，或 SVG 被看成 HTML）
+- 分开调用虽然多一次 LLM 费用，但输出质量稳定，且各自缓存互不影响
+
+**成本估算**：一次 SVG 约 500-800 tokens，一次 H5 约 800-1200 tokens。两次合计约 ¥0.02/用户/天。DAU 1000 人时日均约 ¥20。用户手动换一批按不限次数计，但缓存机制确保大部分用户每日只看一次。
+
+### 9.6 成就化分享激励
+
+把"推广分享"融入现有成就系统（见 `docs/deliverables/achievement-system-redesign.md`），让分享行为本身成为游戏化的一部分。
+
+#### 新增推广类成就
+
+| 成就名称 | 解锁条件 | 奖励 |
+|:---------|:---------|:-----|
+| 📢 初次分享 | 首次生成分享海报 | 引导弹窗（教会用户如何分享）|
+| 📢 分享达人 | 累计分享 7 天 | 7 天会员赠送 |
+| 📢 社交之星 | 累计分享 30 天 | 社区勋章 + 推广佣金加成 5% |
+| 📢 裂变之王 | 通过分享带来 3 个有效注册 | 专属推广员徽章 |
+
+#### 成就页布局
+
+现有成就页面增加"推广"分类 Tab，核心展示**今天的 SVG 分享海报本身**——用户看到的就是一张每日更新的成就卡。
+
+```
+成就页面
+├── 📚 学习（现有: 连续学习/卡片数/掌握率）
+└── 📢 推广（新增）
+   ├── ┌──────────────────────┐
+   │   │                      │
+   │   │   今日成就海报         │  ← SVG 海报直接渲染在成就页
+   │   │   （LLM 预生成）       │     用户能看到自己今天的学习成果
+   │   │                      │     以海报形式展示，本身就是成就
+   │   └──────────────────────┘
+   │
+   ├── 📊 推广数据
+   │   ├── 累计分享天数: 7 天
+   │   ├── 带来注册用户数: 3 人
+   │   └── 累计佣金: ¥128
+   │
+   └── 操作区
+       ├── [📷 发朋友圈]   ← 保存海报图片
+       └── [💬 发会话]     ← 复制 H5 分享链接
+```
+
+**设计核心**：SVG 海报本身就是每日成就的一种视觉呈现。用户打开成就页，第一眼看到的是"我今天的学习成果被变成了一张好看的海报"，而不是冷冰冰的数据。分享行为不再是一个独立操作，而是成就展示的自然延伸——"这张图真好看，分享给朋友看看"。
+
+#### 每日分享提醒
+
+用户连续 2 天未生成分享内容时（没有新的 SVG 海报），在成就页海报区域显示灰色占位 + 提示：
+
+```
+┌──────────────────────┐
+│                      │
+│  今天还没有生成海报    │
+│  点击生成今日学习成就卡 │  ← 灰色占位，点击触发预生成
+│                      │
+└──────────────────────┘
+```
+
+点击后触发 LLM 生成，完成后自动替换为彩色海报。
+
+### 9.7 缓存与成本控制
+
+| 内容类型 | 生成策略 | 缓存 |
+|:--------|:---------|:-----|
+| SVG 海报 | 每日首次启动预生成 | 当天缓存，次日刷新 |
+| H5 分享页 | 每日首次启动预生成 | 永久缓存，数据变化时更新 |
+| 默认模板 | 代码内预置，零 LLM 调用 | 永久 |
+
+**经济性**: 一张 SVG 海报的 token 消耗约 500-800 tokens，按当前模型价格不到 ¥0.01/次。每个用户每天仅生成 1 次（自动预生成），假设 DAU 1000 人，日均成本约 ¥10。
+
+### 9.8 API
+
+| 方法 | 路径 | 说明 |
+|:----|:-----|:-----|
+| POST | `/api/referral/generate-poster` | 生成 SVG 海报（返回 SVG + 配文）|
+| POST | `/api/referral/generate-h5` | 生成 H5 分享页（保存到 /share/{code}/，返回 URL）|
+| GET | `/api/referral/user-portrait` | 获取用户学习画像数据（供 LLM 使用）|
+
+---
+
+## 十、v1.0 到 v2.0 的变更对比
 
 | 维度 | v1.0 | v2.0（当前版本） |
 |:----|:-----|:----------------|
@@ -652,7 +1855,7 @@ lib/
 
 ---
 
-## 十、实施计划
+## 十一、实施计划
 
 ### P0：基础设施 + 全民推广码（3-4 天）
 
@@ -671,6 +1874,8 @@ lib/
 | 任务 | 涉及文件 |
 |:----|:---------|
 | 支付回调接入归因引擎 | pay_handlers.rs |
+| 退款回调取消佣金（locked→cancelled） | pay_handlers.rs |
+| 30天锁定期到期自动解锁（cron任务） | distribution_handler.rs |
 | 佣金/时长奖励结算 | distribution_handler.rs |
 | 提现审核 | distribution_handler.rs |
 | 用户端收益面板 | distribution_page.dart |
@@ -685,12 +1890,28 @@ lib/
 | 活动调度器（定时/条件触发） | campaign_scheduler.rs |
 | 前端通知中心 | notification_panel.dart |
 | 管理端数据统计面板 | admin_stats_page.dart |
-| 分享海报生成 | qrcode_handler.rs |
-| 分享文案 + 一键复制 | share_utils.dart |
+| LLM 海报生成 + 配文 | qrcode_handler.rs, llm_poster.rs |
 
 ---
 
-## 附录B：落脚页移动端适配
+## 十二、合规说明
+
+1. **分销层级**: 严格限制 2 级，超过 2 级属传销
+2. **佣金披露**: 用户协议中明确说明推广佣金规则
+3. **提现审核**: 所有提现需人工审核，防止洗钱
+4. **数据留存**: 完整的点击/转化/佣金流水，可审计
+5. **防刷机制**: 同一设备/同一 IP 多账号注册需风控
+6. **未成年人**: 不向未满 18 岁用户开放分销功能
+
+---
+
+
+
+## 附录B：落地页移动端适配（已废弃）
+
+> 落地页已于 2026-06-17 全面改版为 `mobile.html` + `mobile.css`（Duolingo 风格），
+> 原 `index.html` 已被替换，`style.css` 中追加 `@media` 的补丁方案不再适用。
+> 此处保留记录仅作历史参考。
 
 ### B.1 问题
 
@@ -729,12 +1950,3 @@ lib/
 仅修改了 CSS 和一行 HTML class 名，未改动 HTML 内容结构。改动已在 2026-06-17 部署到 VPS `/var/www/coevo-landing/`。
 
 ---
-
-## 十一、合规说明
-
-1. **分销层级**: 严格限制 2 级，超过 2 级属传销
-2. **佣金披露**: 用户协议中明确说明推广佣金规则
-3. **提现审核**: 所有提现需人工审核，防止洗钱
-4. **数据留存**: 完整的点击/转化/佣金流水，可审计
-5. **防刷机制**: 同一设备/同一 IP 多账号注册需风控
-6. **未成年人**: 不向未满 18 岁用户开放分销功能
