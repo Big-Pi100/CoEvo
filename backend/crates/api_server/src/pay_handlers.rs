@@ -253,6 +253,10 @@ pub async fn pay_notify_handler(
     ) {
         Ok(new_expires) => {
             tracing::info!("pay_notify: 用户 {} 订阅延期至 {}", user_id, new_expires);
+
+            // === 分销归因：订单支付成功 ===
+            let _ = distribute_commission_on_payment(&conn, &out_trade_no);
+
             (StatusCode::OK, json!({"code": "SUCCESS"}).to_string()).into_response()
         }
         Err(e) => {
@@ -260,6 +264,26 @@ pub async fn pay_notify_handler(
             (StatusCode::INTERNAL_SERVER_ERROR, format!("延期失败: {}", e)).into_response()
         }
     }
+}
+
+/// 订单支付成功时执行分销归因
+///
+/// 通过 campaign_executor 统一处理佣金分发和 subscription_days 等奖励。
+pub fn distribute_commission_on_payment(
+    conn: &rusqlite::Connection,
+    order_id: &str,
+) -> Result<(), String> {
+    // 查订单和推荐人
+    let (buyer_id, referrer_id): (String, Option<String>) = conn.query_row(
+        "SELECT user_id, referred_by FROM payment_orders WHERE id = ?1",
+        rusqlite::params![order_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    ).map_err(|e| format!("订单查询失败: {}", e))?;
+
+    // 触发支付活动（commission 分发 + subscription_days 等）
+    crate::campaign_executor::execute_campaign_trigger(
+        conn, "payment", &buyer_id, referrer_id.as_deref(), Some(order_id),
+    ).map(|_| ())
 }
 
 /// AEAD_AES_256_GCM 解密

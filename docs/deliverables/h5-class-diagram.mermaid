@@ -1,0 +1,34 @@
+classDiagram
+    class UserH5Data {
+        +String display_name
+        +i64 streak_days
+        +i64 total_cards
+        +i64 today_reviews
+        +String referral_code
+        +String share_url
+    }
+
+    class H5TemplateService {
+        +replace_h5_variables(template: &str, data: &UserH5Data) String
+        +generate_h5_template_via_llm(base_dir: &str, campaign_name: &str, rewards: &str) Result~String, String~
+        +build_user_h5_data(conn: &Connection, user_id: &str, campaign_id: &str) Result~UserH5Data, String~
+        +fallback_h5_html(referral_code: &str) String
+        +extract_html_from_llm_reply(reply: &str) Result~String, String~
+    }
+
+    class CampaignHandler {
+        +generate_h5_template(headers: HeaderMap, Path(id): Path~String~) impl IntoResponse
+    }
+
+    class ReferralHandler {
+        +generate_h5(headers: HeaderMap, Json(body): Json~UserBody~) impl IntoResponse
+    }
+
+    class CampaignScheduler {
+        +refresh_all_active_templates(db_path: &str, base_dir: &str) void
+    }
+
+    H5TemplateService ..> UserH5Data : uses
+    CampaignHandler ..> H5TemplateService : calls generate_h5_template_via_llm
+    ReferralHandler ..> H5TemplateService : calls replace_h5_variables + build_user_h5_data
+    CampaignScheduler ..> H5TemplateService : calls generate_h5_template_via_llm

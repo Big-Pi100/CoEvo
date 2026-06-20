@@ -116,10 +116,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
     return raw;
   }
 
-  Future<void> register(String username, String password, {String? realName, String? phone}) async {
+  Future<void> register(String username, String password, {String? realName, String? phone, String? referralCode}) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final result = await _client.register(username, password, realName: realName, phone: phone);
+      final result = await _client.register(username, password, realName: realName, phone: phone, referralCode: referralCode);
       final uid = result['user_id'] as String?;
       final token = result['token'] as String?;
       if (uid != null && token != null) {

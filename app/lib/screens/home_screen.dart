@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../api/chat_client.dart';
+import '../api/api_config.dart';
 import '../providers/auth_provider.dart';
 import '../config/k12_subjects.dart';
 import 'chat_screen.dart';
 import '../theme/app_theme.dart';
+import '../pages/user/distribution/notification_panel.dart';
 
 /// 首页 — 科目直选 + 模式自动路由
 ///
@@ -21,11 +25,32 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _loading = true;
   List<Map<String, dynamic>> _subjects = [];
+  int _unreadCount = 0;
 
   @override
   void initState() {
     super.initState();
     _loadSubjects();
+    _loadUnreadCount();
+  }
+
+  Future<void> _loadUnreadCount() async {
+    try {
+      final auth = ref.read(authProvider);
+      if (auth.userId == null || auth.token == null) return;
+      final uri = Uri.parse(
+          '${ApiConfig.baseUrl}/api/notifications?user_id=${auth.userId}');
+      final resp = await http
+          .get(uri, headers: {'Authorization': 'Bearer ${auth.token}'})
+          .timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200 && mounted) {
+        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+        final count = (data['unread_count'] as num?)?.toInt() ?? 0;
+        setState(() => _unreadCount = count);
+      }
+    } catch (_) {
+      // 网络异常时不阻塞页面加载
+    }
   }
 
   Future<void> _loadSubjects() async {
@@ -55,6 +80,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         title: const Text('刻意进化学习'),
         automaticallyImplyLeading: false,
         actions: [
+          Badge(
+            isLabelVisible: _unreadCount > 0,
+            label: Text('$_unreadCount', style: const TextStyle(fontSize: 10)),
+            child: IconButton(
+              icon: const Icon(Icons.notifications_outlined),
+              tooltip: '通知',
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationPanel())),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.person),
             onPressed: () => context.push('/profile'),

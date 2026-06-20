@@ -1,0 +1,216 @@
+//! 海报模板管理：LLM 生成含 {变量} 的 SVG 模板，运行时替换为用户数据
+
+use serde::Serialize;
+use serde_json::json;
+
+/// 用户海报数据（运行时替代模板中的 {变量}）
+#[derive(Debug, Serialize)]
+pub struct UserPosterData {
+    pub display_name: String,
+    pub streak_days: i64,
+    pub total_cards: i64,
+    pub today_reviews: i64,
+    pub referral_code: String,
+    pub qr_code_url: String,
+}
+
+/// 替换模板中的 {变量} 占位符为用户实际数据
+pub fn replace_template_variables(template: &str, data: &UserPosterData) -> String {
+    let mut result = template.to_string();
+    result = result.replace("{display_name}", &data.display_name);
+    result = result.replace("{streak_days}", &data.streak_days.to_string());
+    result = result.replace("{total_cards}", &data.total_cards.to_string());
+    result = result.replace("{today_reviews}", &data.today_reviews.to_string());
+    result = result.replace("{referral_code}", &data.referral_code);
+    // 生成二维码 SVG，注入到海报底部（无论模板是否含 QR_PLACEHOLDER）
+    let qr_raw = crate::referral_handler::generate_qr_svg(&data.qr_code_url, "#1A237E", "#FFFFFF");
+    // 提取 QR 码的 path 数据（去掉 <svg> 包裹、<?xml?>、rect 背景和 </svg>）
+    // qrcode crate 输出单行字符串，结构: <?xml?><svg ...><rect .../><path fill="..." d="..."/></svg>
+    let qr_path = if let Some(d_start) = qr_raw.find("d=\"") {
+        let from_d = &qr_raw[d_start..];
+        if let Some(close) = from_d.find("\"/>") {
+            let path_attr = from_d[..close+3].to_string();  // d="M20 20h5v5..."
+            format!("<path fill=\"#1A237E\" {} />", path_attr)
+        } else { String::new() }
+    } else { String::new() };
+    // 用 scale(180/205) 缩放 QR 码使其适配 180x180 白色区域
+    let qr_block = format!(
+        "  <g transform=\"translate(210, 700) scale(0.878)\"><rect x=\"0\" y=\"0\" width=\"205\" height=\"205\" rx=\"8\" fill=\"#ffffff\"/>{}\n  </g>\n",
+        qr_path
+    );
+    // 先尝试替换 QR_PLACEHOLDER（兼容含占位符的模板）
+    if result.contains("QR_PLACEHOLDER") {
+        result = result.replace("QR_PLACEHOLDER", &qr_block);
+    } else {
+        // 无占位符时，在 </svg> 前注入二维码
+        if let Some(pos) = result.rfind("</svg>") {
+            result.insert_str(pos, &qr_block);
+        }
+    }
+    result
+}
+
+/// 从 DB 构建用户海报数据
+pub fn build_user_poster_data(
+    conn: &rusqlite::Connection,
+    user_id: &str,
+    _campaign_id: &str,
+) -> Result<UserPosterData, String> {
+    let display_name: String = conn.query_row(
+        "SELECT COALESCE(display_name, username) FROM users WHERE id = ?1",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).map_err(|e| format!("user query: {}", e))?;
+
+    let streak_days: i64 = conn.query_row(
+        "SELECT streak_days FROM users WHERE id = ?1",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).unwrap_or(0);
+
+    let total_cards: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM user_cards WHERE user_id = ?1",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).unwrap_or(0);
+
+    // reviewed_at 是 INTEGER unix timestamp
+    let today_start_ts = chrono::Utc::now()
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc()
+        .timestamp();
+    let today_reviews: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM review_log r JOIN user_cards c ON r.card_id = c.id \
+         WHERE c.user_id = ?1 AND r.reviewed_at >= ?2",
+        rusqlite::params![user_id, today_start_ts], |row| row.get(0),
+    ).unwrap_or(0);
+
+    let referral_code: String = conn.query_row(
+        "SELECT referral_code FROM users WHERE id = ?1",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).unwrap_or_default();
+
+    let qr_code_url = format!("https://keyievolution.fun/app/auth?ref={}", referral_code);
+
+    Ok(UserPosterData {
+        display_name,
+        streak_days,
+        total_cards,
+        today_reviews,
+        referral_code,
+        qr_code_url,
+    })
+}
+
+/// 调 LLM 生成含 {变量} 占位符的 SVG 模板
+pub async fn generate_template_via_llm(
+    base_dir: &str,
+    campaign_name: &str,
+    rewards: &str,
+) -> Result<String, String> {
+    // 加载 prompt（使用 signal/format 分离架构）
+    let mut prompt = crate::referral_handler::load_combined_prompt(base_dir, "poster")
+        .map_err(|e| format!("load poster-template prompt failed: {}", e))?;
+
+    // 注入活动信息
+    prompt = prompt.replace("{campaign_name}", campaign_name);
+    prompt = prompt.replace("{campaign_rewards}", rewards);
+
+    // 调 LLM（使用 90 秒超时，避免 SVG 生成被截断）
+    let api_key = std::env::var("DEEPSEEK_API_KEY").unwrap_or_default();
+    if api_key.is_empty() {
+        return Err("DEEPSEEK_API_KEY not set".to_string());
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(90))
+        .build()
+        .map_err(|e| format!("http client: {}", e))?;
+    let url = "https://api.deepseek.com/chat/completions";
+    let body = serde_json::json!({
+        "model": "deepseek-v4-flash",
+        "messages": [
+            {"role": "system", "content": &prompt},
+            {"role": "user", "content": ""}
+        ],
+        "stream": false,
+        "max_tokens": 65536,
+        "temperature": 0.7,
+        "reasoning_effort": "low",
+    });
+    let resp = client
+        .post(url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("LLM request failed: {}", e))?;
+    let result: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("LLM response parse failed: {}", e))?;
+    let reply = result["choices"][0]["message"]["content"]
+        .as_str()
+        .ok_or_else(|| "LLM returned empty response".to_string())?
+        .to_string();
+
+    // 调试：记录原始回复
+    tracing::warn!("LLM raw reply (first 500c): {}", &reply[..reply.len().min(500)]);
+
+    // 提取 SVG 代码（去除可能的 markdown 包裹）
+    let mut svg = reply.trim().to_string();
+    // 去除开头的 ```svg、```html、``` 等
+    for prefix in &["```svg\n", "```html\n", "```svg\r\n", "```html\r\n", "```\n", "```\r\n"] {
+        if svg.starts_with(prefix) {
+            svg = svg[prefix.len()..].to_string();
+            break;
+        }
+    }
+    // 去除结尾的 ```
+    if svg.ends_with("```") {
+        svg = svg[..svg.len() - 3].to_string();
+    }
+    svg = svg.trim().to_string();
+
+    if !svg.starts_with("<svg") {
+        return Err("LLM did not return valid SVG".to_string());
+    }
+
+    Ok(svg)
+}
+
+/// 静态 fallback 海报（模板未生成时使用）
+pub fn fallback_poster_svg(data: &UserPosterData) -> String {
+    format!(
+        r##"<svg viewBox="0 0 600 900" xmlns="http://www.w3.org/2000/svg">
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1A237E"/><stop offset="1" stop-color="#0D1457"/></linearGradient></defs>
+  <rect width="600" height="900" fill="url(#bg)" rx="20"/>
+  <text x="300" y="120" text-anchor="middle" fill="#ffffff" font-size="32" font-weight="bold">{}</text>
+  <text x="300" y="170" text-anchor="middle" fill="#9DA0F0" font-size="18">的学习报告</text>
+  <rect x="40" y="220" width="520" height="120" rx="12" fill="rgba(255,255,255,0.08)"/>
+  <text x="80" y="270" fill="#ffffff" font-size="22" font-weight="bold">🔥 连续学习 {} 天</text>
+  <text x="80" y="310" fill="#9DA0F0" font-size="16">今日已复习 {} 张卡片</text>
+  <rect x="40" y="360" width="250" height="80" rx="12" fill="rgba(255,255,255,0.08)"/>
+  <text x="165" y="395" text-anchor="middle" fill="#ffffff" font-size="28" font-weight="bold">{}</text>
+  <text x="165" y="420" text-anchor="middle" fill="#9DA0F0" font-size="12">总卡片数</text>
+  <rect x="310" y="360" width="250" height="80" rx="12" fill="rgba(255,255,255,0.08)"/>
+  <text x="435" y="395" text-anchor="middle" fill="#ffffff" font-size="28" font-weight="bold">{}%</text>
+  <text x="435" y="420" text-anchor="middle" fill="#9DA0F0" font-size="12">掌握率</text>
+  <rect x="200" y="650" width="200" height="180" rx="12" fill="#ffffff"/>
+  <text x="300" y="760" text-anchor="middle" fill="#1A237E" font-size="14" font-weight="bold">扫码注册</text>
+  <text x="300" y="780" text-anchor="middle" fill="#1A237E" font-size="12">推广码: {}</text>
+  QR_PLACEHOLDER
+  <text x="300" y="870" text-anchor="middle" fill="#9DA0F0" font-size="12">⟐ CoEvo 刻意进化</text>
+</svg>"##,
+        data.display_name,
+        data.streak_days,
+        data.today_reviews,
+        data.total_cards,
+        85, // fallback mastery %
+        data.referral_code,
+    )
+}
+
+/// 静态 fallback 分享文案
+pub fn fallback_copy() -> String {
+    "一起扫码学习吧！".to_string()
+}

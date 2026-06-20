@@ -1,8 +1,11 @@
 ﻿import 'dart:convert';
+import 'dart:html' as html;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
+import '../api/api_config.dart';
 import '../models/coevo_models.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
@@ -322,6 +325,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
 
 void _showCompletionStats() {
     if (!mounted) return;
+    
+    // 查是否有复习完成后的营销活动
+    _checkAndShowCampaign(context);
+    
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -352,6 +359,103 @@ Row(
         ],
       ),
     );
+  }
+
+  /// 查活动 → 自动生成海报 → 直接展示海报
+  void _checkAndShowCampaign(BuildContext context) async {
+    try {
+      if (_client == null) return;
+      final result = await _client!.checkReviewCampaign();
+      if (result['has_active'] == true && mounted) {
+        final campaignId = result['campaign_id'] as String?;
+        // 延迟 0.5 秒，让复习完成弹窗先展示
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (!mounted) return;
+
+        // 调 API 生成海报
+        final auth = ref.read(authProvider);
+        String? posterPng;
+        try {
+          final http.Response resp = await http.post(
+            Uri.parse('${ApiConfig.baseUrl}/api/referral/generate-poster'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'user_id': auth.userId,
+              if (campaignId != null) 'campaign_id': campaignId,
+            }),
+          ).timeout(const Duration(seconds: 60));
+          if (resp.statusCode == 200) {
+            final data = jsonDecode(resp.body) as Map<String, dynamic>;
+            posterPng = data['poster_png'] as String?;
+          }
+        } catch (_) {}
+
+        if (!mounted || !context.mounted) return;
+
+        // 直接弹出海报展示
+        showDialog(
+          context: context,
+          builder: (ctx) => Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('今日学习报告', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 12),
+                  if (posterPng != null) ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.memory(
+                        base64Decode(posterPng.split(',').last),
+                        fit: BoxFit.contain,
+                        height: 400,
+                        errorBuilder: (_, __, ___) => const Text('海报加载失败'),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        icon: const Icon(Icons.download, size: 18),
+                        onPressed: () {
+                          final bytes = base64Decode(posterPng!.split(',').last);
+                          final blob = html.Blob([bytes], 'image/png');
+                          final objUrl = html.Url.createObjectUrlFromBlob(blob);
+                          (html.document.createElement('a') as html.AnchorElement)
+                            ..href = objUrl
+                            ..download = 'coevo_poster.png'
+                            ..click();
+                          html.Url.revokeObjectUrl(objUrl);
+                        },
+                        label: const Text('保存海报'),
+                      ),
+                    ),
+                  ] else ...[
+                    const Icon(Icons.photo_library, size: 64, color: Colors.grey),
+                    const SizedBox(height: 8),
+                    const Text('正在生成专属海报...'),
+                    const SizedBox(height: 8),
+                    const SizedBox(
+                      width: 24, height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('关闭'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      // 静默失败
+    }
   }
 
   Future<void> _skipCard(DueCard card) async {
@@ -655,7 +759,20 @@ Row(
     // 无活跃计划时显示引导
     if (!hasActivePlans && plans.isEmpty) {
       return Scaffold(
-        appBar: AppBar(title: const Text('复习')),
+        appBar: AppBar(
+          title: const Text('复习'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.notifications_outlined),
+              tooltip: '通知',
+              onPressed: () => context.push('/notifications'),
+            ),
+            IconButton(
+              icon: const Icon(Icons.person),
+              onPressed: () => context.push('/profile'),
+            ),
+          ],
+        ),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(32.0),
@@ -683,6 +800,17 @@ Row(
     return Scaffold(
       appBar: AppBar(
         title: const Text('复习'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.notifications_outlined),
+            tooltip: '通知',
+            onPressed: () => context.push('/notifications'),
+          ),
+          IconButton(
+            icon: const Icon(Icons.person),
+            onPressed: () => context.push('/profile'),
+          ),
+        ],
         bottom: TabBar(
           isScrollable: true,
           tabAlignment: TabAlignment.start,

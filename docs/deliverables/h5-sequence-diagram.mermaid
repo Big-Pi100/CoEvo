@@ -1,0 +1,21 @@
+sequenceDiagram
+    participant Admin as 管理端
+    participant Handler as campaign_handler::<br>generate_h5_template
+    participant Service as H5TemplateService
+    participant LLM as LLM (DeepSeek)
+    participant DB as SQLite
+
+    Admin->>Handler: POST /api/admin/campaigns/{id}/generate-h5-template
+    Handler->>Handler: verify_admin(headers)
+    Handler->>DB: SELECT id, name, rewards FROM marketing_campaigns WHERE id = ?
+    DB-->>Handler: campaign row
+    Handler->>Service: generate_h5_template_via_llm(base_dir, campaign_name, rewards)
+    Service->>Service: load_combined_prompt("h5-template")
+    Service->>Service: prompt = prompt.replace("{campaign_name}", name)<br>prompt = prompt.replace("{campaign_rewards}", rewards)
+    Service->>LLM: POST deepseek API (90s timeout)
+    LLM-->>Service: HTML 模板代码（含 {display_name} 等变量）
+    Service->>Service: extract_html_from_llm_reply(reply)
+    Service-->>Handler: Ok(template_html)
+    Handler->>DB: UPDATE marketing_campaigns SET h5_template = ?, updated_at = ?
+    DB-->>Handler: done
+    Handler-->>Admin: 200 { "status": "ok", "template_preview": "<!DOCTYPE html>..." }

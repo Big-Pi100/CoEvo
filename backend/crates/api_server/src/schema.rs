@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS users (
     bind_hash TEXT DEFAULT NULL,
     deleted_at TEXT DEFAULT NULL,
     subscription_expires TEXT DEFAULT NULL,
+    referral_code TEXT UNIQUE,
+    referred_by TEXT REFERENCES users(id),
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS tokens (
@@ -273,6 +275,140 @@ CREATE TABLE IF NOT EXISTS card_relations (
 );
 "#;
 
+/// 分销营销表（依赖 admin_users、payment_orders 等管理端表，需要在 ADMIN_SCHEMA_SQL 之后执行）
+pub const DISTRIBUTION_SCHEMA_SQL: &str = r#"
+-- ── Distribution & Marketing Tables ──
+CREATE TABLE IF NOT EXISTS marketing_campaigns (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    campaign_type TEXT DEFAULT 'standard',
+    description TEXT,
+    status TEXT DEFAULT 'draft',
+    rewards TEXT NOT NULL DEFAULT '[]',
+    trigger_event TEXT NOT NULL DEFAULT 'registration',
+    target_roles TEXT DEFAULT '[]',
+    push_trigger TEXT DEFAULT 'manual',
+    push_cron TEXT,
+    attribution_window INTEGER DEFAULT 30,
+    valid_from TEXT,
+    valid_until TEXT,
+    participant_limit INTEGER,
+    per_user_limit INTEGER,
+    qr_code_url TEXT,
+    created_by TEXT,                          -- "super"（管理密钥）或 admin_users.id
+    created_at TEXT NOT NULL,
+    updated_by TEXT,                          -- 最后修改者
+    updated_at TEXT,
+    poster_prompt TEXT,                        -- 自定义海报系统提示（主prompt）
+    FOREIGN KEY (created_by) REFERENCES admin_users(id),
+    FOREIGN KEY (updated_by) REFERENCES admin_users(id)
+);
+CREATE TABLE IF NOT EXISTS referral_clicks (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL,
+    referrer_id TEXT NOT NULL,
+    clicker_anonymous_id TEXT,
+    share_channel TEXT,
+    landed_page TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (campaign_id) REFERENCES marketing_campaigns(id),
+    FOREIGN KEY (referrer_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_clicks_campaign ON referral_clicks(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_clicks_referrer ON referral_clicks(referrer_id);
+CREATE INDEX IF NOT EXISTS idx_clicks_anonymous ON referral_clicks(clicker_anonymous_id);
+CREATE TABLE IF NOT EXISTS settlement_batches (
+    id TEXT PRIMARY KEY,
+    batch_no TEXT NOT NULL UNIQUE,
+    total_amount INTEGER NOT NULL DEFAULT 0,
+    item_count INTEGER NOT NULL DEFAULT 0,
+    status TEXT DEFAULT 'pending',
+    note TEXT,
+    source TEXT DEFAULT 'admin',
+    created_at TEXT NOT NULL,
+    paid_at TEXT,
+    handled_by TEXT,
+    FOREIGN KEY (handled_by) REFERENCES admin_users(id)
+);
+CREATE TABLE IF NOT EXISTS distribution_commissions (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL,
+    earner_id TEXT NOT NULL,
+    buyer_id TEXT NOT NULL,
+    order_id TEXT NOT NULL,
+    order_amount INTEGER NOT NULL,
+    rate_applied REAL NOT NULL,
+    amount INTEGER NOT NULL,
+    level INTEGER DEFAULT 1,
+    status TEXT DEFAULT 'locked',
+    batch_id TEXT,
+    batch_settled_at TEXT,
+    paid_at TEXT,
+    unlocked_at TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (campaign_id) REFERENCES marketing_campaigns(id),
+    FOREIGN KEY (earner_id) REFERENCES users(id),
+    FOREIGN KEY (buyer_id) REFERENCES users(id),
+    FOREIGN KEY (order_id) REFERENCES payment_orders(id),
+    FOREIGN KEY (batch_id) REFERENCES settlement_batches(id)
+);
+CREATE INDEX IF NOT EXISTS idx_commission_earner ON distribution_commissions(earner_id, status);
+CREATE INDEX IF NOT EXISTS idx_commission_batch ON distribution_commissions(batch_id);
+CREATE TABLE IF NOT EXISTS distribution_withdrawals (
+    id TEXT PRIMARY KEY,
+    earner_id TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    fee INTEGER DEFAULT 0,
+    actual_amount INTEGER,
+    status TEXT DEFAULT 'pending',
+    note TEXT,
+    batch_id TEXT,
+    created_at TEXT NOT NULL,
+    handled_at TEXT,
+    handled_by TEXT,
+    FOREIGN KEY (earner_id) REFERENCES users(id),
+    FOREIGN KEY (batch_id) REFERENCES settlement_batches(id),
+    FOREIGN KEY (handled_by) REFERENCES admin_users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_withdrawals_status ON distribution_withdrawals(status);
+CREATE INDEX IF NOT EXISTS idx_withdrawals_earner ON distribution_withdrawals(earner_id);
+CREATE TABLE IF NOT EXISTS user_notifications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    notification_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    read INTEGER DEFAULT 0,
+    action_url TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON user_notifications(user_id, read, created_at);
+CREATE TABLE IF NOT EXISTS reward_fulfillments (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL,
+    referral_click_id TEXT,
+    order_id TEXT,
+    user_id TEXT NOT NULL,
+    party TEXT NOT NULL,
+    reward_type TEXT NOT NULL,
+    reward_value TEXT NOT NULL,
+    trigger_event TEXT NOT NULL,
+    level INTEGER DEFAULT 1,
+    status TEXT DEFAULT 'pending',
+    fulfilled_at TEXT,
+    error_msg TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (campaign_id) REFERENCES marketing_campaigns(id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (order_id) REFERENCES payment_orders(id),
+    FOREIGN KEY (referral_click_id) REFERENCES referral_clicks(id)
+);
+CREATE INDEX IF NOT EXISTS idx_fulfillment_campaign ON reward_fulfillments(campaign_id, trigger_event);
+CREATE INDEX IF NOT EXISTS idx_fulfillment_conversion ON reward_fulfillments(referral_click_id);
+CREATE INDEX IF NOT EXISTS idx_fulfillment_order ON reward_fulfillments(order_id);
+"#;
+
 /// 管理端表（管理员、订阅审计、监护人、K12题库等）
 pub const ADMIN_SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS admin_users (
@@ -355,7 +491,6 @@ CREATE INDEX IF NOT EXISTS idx_guardian_assignments_student ON guardian_assignme
 CREATE INDEX IF NOT EXISTS idx_admin_audit_log_admin ON admin_audit_log(admin_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_log_action ON admin_audit_log(action, created_at);
 ALTER TABLE admin_users ADD COLUMN permissions TEXT DEFAULT '{}';
-ALTER TABLE subscription_plans ADD COLUMN once_per_user INTEGER DEFAULT 0;
 
 -- 订阅套餐表
 CREATE TABLE IF NOT EXISTS subscription_plans (
@@ -406,15 +541,13 @@ CREATE TABLE IF NOT EXISTS subscription_audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_target ON subscription_audit_log(target_user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON subscription_audit_log(created_at);
 
--- 初始化套餐数据
-INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, once_per_user, sort_order, is_active, created_at)
-VALUES ('discount_10', '新手体验', 3, 10, 1, 0, 1, datetime('now'));
+-- 初始化套餐数据（三档默认定价，其他特殊定价走营销活动）
 INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at)
-VALUES ('30d', '月度会员', 30, 20000, 1, 1, datetime('now'));
+VALUES ('30d', '月度会员', 30, 12000, 0, 1, datetime('now'));
+INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at)
+VALUES ('90d', '季度会员', 90, 35000, 1, 1, datetime('now'));
 INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at)
 VALUES ('365d', '年度会员', 365, 128000, 2, 1, datetime('now'));
-INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, max_uses, used_count, once_per_user, sort_order, is_active, created_at)
-VALUES ('lifetime', '终身会员', 3650, 128000, 100, 0, 1, 3, 1, datetime('now'));
 
 -- 运行时配置表
 CREATE TABLE IF NOT EXISTS app_config (
@@ -466,8 +599,19 @@ CREATE TABLE IF NOT EXISTS user_preferences (
 pub fn init_database(conn: &rusqlite::Connection) -> Result<(), String> {
     conn.execute_batch(SCHEMA_SQL)
         .map_err(|e| format!("core schema: {}", e))?;
-    conn.execute_batch(ADMIN_SCHEMA_SQL)
-        .map_err(|e| format!("admin schema: {}", e))?;
+    // ADMIN_SCHEMA_SQL 可能包含已在迁移中存在的列（如 permissions）
+    // 此时 IF NOT EXISTS 仍可接受，捕获 duplicate column 错误
+    match conn.execute_batch(ADMIN_SCHEMA_SQL) {
+        Ok(_) => {}
+        Err(e) => {
+            let msg = e.to_string();
+            if !msg.contains("duplicate column") {
+                return Err(format!("admin schema: {}", msg));
+            }
+        }
+    }
+    conn.execute_batch(DISTRIBUTION_SCHEMA_SQL)
+        .map_err(|e| format!("distribution schema: {}", e))?;
     conn.execute_batch(USER_PREFERENCES_SQL)
         .map_err(|e| format!("preferences table: {}", e))?;
     // 额外索引（部分核心索引已在 SCHEMA_SQL 中创建，这里补充交叉表索引）
@@ -481,6 +625,14 @@ pub fn init_database(conn: &rusqlite::Connection) -> Result<(), String> {
 
     // ── 渐进式迁移 ──
     run_migrations_inner(conn)?;
+
+    // ── 初始化默认数据 ──
+    // 管理密钥认证（X-Admin-Key）返回的 admin_id="super" 需要存在于 admin_users 表中
+    // 以满足 marketing_campaigns.created_by 等字段的 FK 约束
+    let _ = conn.execute(
+        "INSERT OR IGNORE INTO admin_users (id, username, password_hash, role, status, created_at) VALUES ('super', 'super', '', 'super', 'active', datetime('now'))",
+        [],
+    );
 
     Ok(())
 }
@@ -503,6 +655,24 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
         "ALTER TABLE prebuilt_plans ADD COLUMN visible INTEGER NOT NULL DEFAULT 1",
         "ALTER TABLE prebuilt_plans ADD COLUMN theme_color TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE prebuilt_plans ADD COLUMN theme_icon TEXT NOT NULL DEFAULT ''",
+        // 分销模块新字段（已有数据库升级）
+        "ALTER TABLE users ADD COLUMN subscription_expires TEXT DEFAULT NULL",
+        "ALTER TABLE users ADD COLUMN referral_code TEXT",
+        "ALTER TABLE users ADD COLUMN referred_by TEXT",
+        "ALTER TABLE admin_users ADD COLUMN permissions TEXT DEFAULT '{}'",
+        // 退款支持字段
+        "ALTER TABLE payment_orders ADD COLUMN refund_reason TEXT DEFAULT NULL",
+        "ALTER TABLE payment_orders ADD COLUMN refund_id TEXT DEFAULT NULL",
+        // 营销活动自定义海报系统提示
+        "ALTER TABLE marketing_campaigns ADD COLUMN poster_prompt TEXT DEFAULT NULL",
+        // 营销活动海报模板（LLM 生成的含 {变量} 的 SVG 模板）
+        "ALTER TABLE marketing_campaigns ADD COLUMN poster_template TEXT DEFAULT NULL",
+        // H5 分享页模板（LLM 生成的含 {变量} 的 HTML 模板）
+        "ALTER TABLE marketing_campaigns ADD COLUMN h5_template TEXT DEFAULT NULL",
+        // H5 分享页自定义 prompt
+        "ALTER TABLE marketing_campaigns ADD COLUMN h5_prompt TEXT DEFAULT NULL",
+        // 展示位置（JSON 数组，如 ["achievement_tab","review_completion"]）
+        "ALTER TABLE marketing_campaigns ADD COLUMN display_positions TEXT DEFAULT '[]'",
     ];
     for sql in migrations {
         match conn.execute(sql, []) {
@@ -528,16 +698,19 @@ mod tests {
         "subscription_plans", "payment_orders", "subscription_audit_log",
         "card_memory", "card_relations",
         "conversation_turns", "conversations",
+        "distribution_commissions", "distribution_withdrawals",
         "guardian_assignments",
         "k12_quiz_attempts", "k12_quiz_bank",
+        "marketing_campaigns",
         "plan_runs",
         "prebuilt_cards", "prebuilt_humanities_cards", "prebuilt_language_cards",
         "prebuilt_literature_cards", "prebuilt_plans", "prebuilt_science_cards",
         "prebuilt_stages", "prebuilt_tasks",
-        "review_log",
+        "referral_clicks", "reward_fulfillments", "review_log",
+        "settlement_batches",
         "subscription_requests", "tokens",
         "user_cards", "user_humanities_cards", "user_language_cards",
-        "user_literature_cards", "user_plan_progress", "user_preferences",
+        "user_literature_cards", "user_notifications", "user_plan_progress", "user_preferences",
         "user_science_cards", "users",
     ];
 

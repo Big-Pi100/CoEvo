@@ -398,30 +398,11 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     }
                 }
 
-                // 检查订阅状态
+                // 检查订阅状态（统一走 subscription::is_subscription_active）
                 {
                     let conn = crate::db_pool::get_conn();
-                    let expires: Option<String> = conn.query_row(
-                        "SELECT value FROM user_preferences WHERE user_id = ?1 AND key = 'subscription_expires'",
-                        rusqlite::params![chat_req.user_id],
-                        |row| row.get(0),
-                    ).ok().flatten();
-                    let now_ts = chrono::Utc::now().timestamp();
-                    let expired = match &expires {
-                        Some(e) => {
-                            // 兼容 "YYYY-MM-DD" 格式：自动补全为 RFC3339
-                            let normalized = if e.len() == 10 && e.as_bytes().get(4) == Some(&b'-') {
-                                format!("{}T00:00:00Z", e)
-                            } else {
-                                e.clone()
-                            };
-                            chrono::DateTime::parse_from_rfc3339(&normalized)
-                                .map(|dt| dt.timestamp() < now_ts)
-                                .unwrap_or(true)
-                        }
-                        None => true,
-                    };
-                    if expired {
+                    if !crate::subscription::is_subscription_active(&conn, &chat_req.user_id) {
+                        let expires = crate::subscription::get_current_expires(&conn, &chat_req.user_id).ok().flatten();
                         let msg = if expires.is_some() {
                             "subscription_expired".to_string()
                         } else {

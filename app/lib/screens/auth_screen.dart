@@ -18,6 +18,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _inviteCodeController = TextEditingController();
   bool _isLogin = true;
   String? _validationError;
 
@@ -39,6 +40,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   void dispose() {
     _usernameController.dispose();
     _passwordController.dispose();
+    _nameController.dispose();
+    _phoneController.dispose();
+    _inviteCodeController.dispose();
     super.dispose();
   }
 
@@ -142,6 +146,16 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   keyboardType: TextInputType.phone,
                   textInputAction: TextInputAction.done,
                 ),
+                const SizedBox(height: AppTheme.spacingLg),
+                TextField(
+                  controller: _inviteCodeController,
+                  decoration: const InputDecoration(
+                    labelText: '邀请码（选填）',
+                    prefixIcon: Icon(Icons.card_giftcard),
+                    hintText: '填写推广者的邀请码',
+                  ),
+                  textInputAction: TextInputAction.done,
+                ),
               ],
               const SizedBox(height: AppTheme.spacingXxl),
 
@@ -184,6 +198,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     ref.read(authProvider.notifier).register(username, password,
                       realName: _nameController.text.trim(),
                       phone: _phoneController.text.trim(),
+                      referralCode: _inviteCodeController.text.trim(),
                     );
                   }
                 },
@@ -200,6 +215,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 onPressed: () => setState(() {
                   _isLogin = !_isLogin;
                   _validationError = null;
+                  _inviteCodeController.clear();
                 }),
                 child: Text(
                   _isLogin ? '没有账号？注册' : '已有账号？登录',

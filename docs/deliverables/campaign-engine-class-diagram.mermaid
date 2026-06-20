@@ -1,0 +1,54 @@
+classDiagram
+    class CampaignExecutor {
+        +execute_campaign_trigger(conn: &Connection, trigger_event: &str, user_id: &str, referrer_id: Option<&str>, order_id: Option<&str>) -> Result~Vec~String~~$
+        -find_active_campaigns(conn: &Connection, trigger_event: &str) -> Vec~CampaignRow~$
+        -check_idempotent(conn: &Connection, campaign_id: &str, user_id: &str, trigger_event: &str, party: &str, reward_type: &str) -> bool$
+        -dispatch_subscription_days(conn: &Connection, campaign_id: &str, user_id: &str, value: i64) -> Result~String~$
+        -dispatch_commission(conn: &Connection, campaign_id: &str, user_id: &str, referrer_id: &str, order_id: &str, order_amount: i64, reward_type: &str, value: serde_json::Value) -> Result~String~$
+        -write_fulfillment(conn: &Connection, campaign_id: &str, user_id: &str, party: &str, reward_type: &str, reward_value: &str, trigger_event: &str, order_id: Option<&str>, status: &str) -> Result~String~$
+        -write_notification(conn: &Connection, user_id: &str, notification_type: &str, title: &str, body: &str, action_url: Option<&str>) -> Result~String~$
+    }
+
+    class CampaignRow {
+        +id: String
+        +name: String
+        +rewards: String
+        +attribution_window: i64
+    }
+
+    class RewardConfig {
+        +type: String
+        +party: String
+        +trigger: String
+        +value: serde_json::Value
+        +level: Option~i64~
+    }
+
+    class RewardFulfillment {
+        +id: String
+        +campaign_id: String
+        +user_id: String
+        +party: String
+        +reward_type: String
+        +reward_value: String
+        +trigger_event: String
+        +status: String
+        +fulfilled_at: Option~String~
+        +error_msg: Option~String~
+    }
+
+    class UserNotification {
+        +id: String
+        +user_id: String
+        +notification_type: String
+        +title: String
+        +body: String
+        +read: i32
+        +action_url: Option~String~
+        +created_at: String
+    }
+
+    CampaignExecutor --> CampaignRow : queries
+    CampaignExecutor --> RewardConfig : parses from JSON
+    CampaignExecutor --> RewardFulfillment : writes
+    CampaignExecutor --> UserNotification : writes

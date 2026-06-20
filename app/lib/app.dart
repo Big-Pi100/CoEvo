@@ -18,6 +18,10 @@ import 'screens/conversation_list_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/k12_subject_screen.dart';
 import 'screens/skipped_screen.dart';
+import 'pages/user/distribution/earnings_page.dart';
+import 'pages/user/distribution/team_page.dart';
+import 'pages/user/distribution/withdraw_page.dart';
+import 'pages/user/distribution/notification_panel.dart';
 import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
 import 'widgets/achievement_overlay.dart';
@@ -154,6 +158,22 @@ final goRouter = GoRouter(
     GoRoute(
       path: '/skipped',
       builder: (context, state) => const SkippedScreen(),
+    ),
+    GoRoute(
+      path: '/earnings',
+      builder: (context, state) => const EarningsPage(),
+    ),
+    GoRoute(
+      path: '/team',
+      builder: (context, state) => const TeamPage(),
+    ),
+    GoRoute(
+      path: '/withdraw',
+      builder: (context, state) => const WithdrawPage(),
+    ),
+    GoRoute(
+      path: '/notifications',
+      builder: (context, state) => const NotificationPanel(),
     ),
   ],
 );

@@ -6,11 +6,15 @@ import 'api_config.dart';
 /// Auth API client — /api/auth/register and /api/auth/login
 class AuthClient {
   /// Register a new user. Returns {user_id, token} or throws.
-  Future<Map<String, dynamic>> register(String username, String password, {String? realName, String? phone}) async {
+  Future<Map<String, dynamic>> register(String username, String password, {String? realName, String? phone, String? referralCode}) async {
+    final body = <String, dynamic>{'username': username, 'password': password, 'real_name': realName, 'phone': phone};
+    if (referralCode != null && referralCode.isNotEmpty) {
+      body['referral'] = {'code': referralCode};
+    }
     final resp = await http.post(
       Uri.parse('${ApiConfig.baseUrl}/api/auth/register'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'username': username, 'password': password, 'real_name': realName, 'phone': phone}),
+      body: jsonEncode(body),
     );
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     if (resp.statusCode != 200 || data.containsKey('error')) {

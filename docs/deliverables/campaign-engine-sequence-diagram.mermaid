@@ -1,0 +1,27 @@
+sequenceDiagram
+    participant Client as 前端
+    participant Auth as auth.rs
+    participant Exec as campaign_executor.rs
+    participant Sub as subscription.rs
+    participant DB as SQLite
+
+    Client->>Auth: POST /api/auth/register (含 referral.code)
+    Auth->>DB: INSERT users
+    Auth->>Auth: 提取 referred_by
+    Auth->>Exec: execute_campaign_trigger(conn, "registration", user_id, referred_by, None)
+    Exec->>DB: SELECT * FROM marketing_campaigns WHERE trigger_event='registration' AND status='active'
+    DB-->>Exec: [CampaignRow]
+    loop 每个活动
+        Exec->>Exec: 解析 rewards JSON
+        Exec->>DB: 查 reward_fulfillments 幂等检查
+        alt subscription_days & party=self
+            Exec->>Sub: extend_subscription(conn, user_id, free_plan_id)
+            Sub-->>Exec: new_expires
+            Exec->>DB: INSERT reward_fulfillments (status='fulfilled')
+            Exec->>DB: INSERT user_notifications (type='reward')
+        else commission_pct/fix & party=inviter/referrer
+            Exec->>DB: 活动无订单，跳过（仅 payment 时有值）
+        end
+    end
+    Exec-->>Auth: Ok(fulfillment_ids)
+    Auth-->>Client: 200 {user_id, token}

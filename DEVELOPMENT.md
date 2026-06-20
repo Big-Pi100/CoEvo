@@ -42,7 +42,7 @@ cargo run
 启动日志示例:
 ```
 CoEvo API on http://0.0.0.0:8080
-LLM: deepseek-v4-flash @ https://api.deepseek.com/v1
+LLM: deepseek-v4-flash @ https://api.deepseek.com
 Prompts loaded from prompts/
 [K12] data dir: data/curriculum/v3
 [K12] loaded 14 plans from ...v3/plans

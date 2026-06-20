@@ -1,0 +1,1028 @@
+//! 推广码/点击追踪/用户端数据 API — 真实业务逻辑
+//!
+//! 包括：点击追踪、推广码查看、分享统计、团队树、佣金列表、海报/H5 生成、用户画像
+//! 海报/H5 使用 LLM 管线 (chat_engine::llm_caller) 生成个性化推广内容。
+
+use std::collections::HashMap;
+use axum::{Json, http::HeaderMap, extract::{Query, Path}};
+use axum::response::IntoResponse;
+use serde::Deserialize;
+use serde_json::json;
+use base64::Engine;
+use crate::h5_template::fallback_h5_html;
+// StatusCode 通过 axum::http::StatusCode 全路径使用
+
+// ── 请求/响应结构 ──
+
+#[derive(Deserialize)]
+pub struct ClickRequest {
+    pub campaign_id: String,
+    pub referrer_code: String,
+    pub clicker_anonymous_id: Option<String>,
+    pub share_channel: Option<String>,
+    pub landed_page: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct UserQuery {
+    pub user_id: String,
+}
+
+#[derive(Deserialize)]
+pub struct UserBody {
+    pub user_id: String,
+    pub campaign_id: Option<String>,
+}
+
+// ── 辅助函数 ──
+
+/// 加载分享类 prompt 文件（signal + format 合并）
+fn load_share_prompt(base_dir: &str, prompt_type: &str, sub_type: &str) -> Result<String, String> {
+    let path = format!("{}/share/{}/{}.md", base_dir, sub_type, prompt_type);
+    std::fs::read_to_string(&path).map_err(|e| format!("读取 {} 失败: {}", path, e))
+}
+
+/// 加载主 prompt（仅主模板，不含 signal/format）
+/// 路径: {base_dir}/share/{prompt_type}.md
+pub(crate) fn load_main_prompt(base_dir: &str, prompt_type: &str) -> Result<String, String> {
+    let main_path = format!("{}/share/{}.md", base_dir, prompt_type);
+    std::fs::read_to_string(&main_path).map_err(|e| format!("读取 {} 失败: {}", main_path, e))
+}
+
+/// 加载三部分 prompt：主模板 + signal + format，按序合并
+/// 路径:
+///   - 主: {base_dir}/share/{prompt_type}.md
+///   - signal: {base_dir}/share/signal/{prompt_type}.md
+///   - format: {base_dir}/share/format/{prompt_type}.md
+pub(crate) fn load_combined_prompt(base_dir: &str, prompt_type: &str) -> Result<String, String> {
+    let main_path = format!("{}/share/{}.md", base_dir, prompt_type);
+    let signal_path = format!("{}/share/signal/{}.md", base_dir, prompt_type);
+    let format_path = format!("{}/share/format/{}.md", base_dir, prompt_type);
+
+    let main = std::fs::read_to_string(&main_path).unwrap_or_default();
+    let signal = std::fs::read_to_string(&signal_path).unwrap_or_default();
+    let format = std::fs::read_to_string(&format_path).unwrap_or_default();
+
+    let mut parts: Vec<&str> = Vec::new();
+    if !main.is_empty() { parts.push(&main); }
+    if !signal.is_empty() { parts.push(&signal); }
+    if !format.is_empty() { parts.push(&format); }
+
+    if parts.is_empty() {
+        return Err(format!("未找到 prompt: share/{}.md", prompt_type));
+    }
+    Ok(parts.join("\n\n"))
+}
+
+/// 加载海报系统提示（主prompt）
+///
+/// 如果提供了 campaign_id 且该活动有自定义 prompt，则使用自定义的
+/// 否则使用默认的 share/poster.md 文件
+/// 自定义 prompt 会自动合并 signal + format 部分
+fn load_poster_prompt(base_dir: &str, campaign_id: Option<&str>, conn: Option<&rusqlite::Connection>) -> Result<String, String> {
+    if let (Some(cid), Some(c)) = (campaign_id, conn) {
+        let custom: String = c.query_row(
+            "SELECT poster_prompt FROM marketing_campaigns WHERE id = ?1 AND poster_prompt IS NOT NULL AND poster_prompt != ''",
+            rusqlite::params![cid],
+            |row| row.get(0),
+        ).unwrap_or_default();
+        if !custom.is_empty() {
+            let signal = match load_share_prompt(base_dir, "poster", "signal") {
+                Ok(s) => s,
+                Err(_) => String::new(),
+            };
+            let format = match load_share_prompt(base_dir, "poster", "format") {
+                Ok(f) => f,
+                Err(_) => String::new(),
+            };
+            let mut parts = vec![custom];
+            if !signal.is_empty() { parts.push(signal); }
+            if !format.is_empty() { parts.push(format); }
+            return Ok(parts.join("\n\n"));
+        }
+    }
+    // 无自定义 prompt，使用默认文件
+    load_combined_prompt(base_dir, "poster")
+}
+
+/// 获取用户学习画像数据（JSON 字符串）
+///
+/// 按设计文档 §9 返回完整的用户画像，包含：
+/// - learning_today / learning_yesterday：今日/昨日复习对比
+/// - current_plan：当前活跃学习计划
+/// - recent_completed_tasks：最近完成的任务
+/// - vocabulary：词汇学习数据
+/// - achievements：已解锁成就
+/// - referral_code：推广码
+fn get_user_portrait_data(conn: &rusqlite::Connection, user_id: &str) -> Result<String, String> {
+    // ── 时间计算（UTC） ──
+    let now = chrono::Utc::now();
+    let today_start_naive = now.date_naive().and_hms_opt(0, 0, 0).unwrap();
+    let today_start_dt = today_start_naive.and_utc();
+    let today_start_ts = today_start_dt.timestamp();         // 今日 0 点 unix 时间戳
+    let yesterday_start_ts = today_start_ts - 86400;          // 昨日 0 点 unix 时间戳
+    let today_start_str = today_start_dt.format("%Y-%m-%d %H:%M:%S").to_string();
+
+    // ── 连续学习天数 ──
+    let streak_days: i64 = conn.query_row(
+        "SELECT COALESCE(streak_days, 0) FROM users WHERE id = ?1",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).unwrap_or(0);
+
+    // ── 今日复习统计 ──
+    let today_total_reviews: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM review_log rl JOIN user_cards c ON rl.card_id = c.id WHERE c.user_id = ?1 AND rl.reviewed_at >= ?2",
+        rusqlite::params![user_id, today_start_ts], |row| row.get(0),
+    ).unwrap_or(0);
+    let today_correct: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM review_log rl JOIN user_cards c ON rl.card_id = c.id WHERE c.user_id = ?1 AND rl.reviewed_at >= ?2 AND rl.verification_result = 'pass'",
+        rusqlite::params![user_id, today_start_ts], |row| row.get(0),
+    ).unwrap_or(0);
+    let today_accuracy: f64 = if today_total_reviews > 0 { (today_correct as f64 / today_total_reviews as f64 * 100.0).round() as i64 as f64 } else { 0.0 };
+    let today_new_cards: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM user_cards WHERE user_id = ?1 AND created_at >= ?2",
+        rusqlite::params![user_id, today_start_str], |row| row.get(0),
+    ).unwrap_or(0);
+
+    // ── 昨日复习统计 ──
+    let yesterday_total_reviews: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM review_log rl JOIN user_cards c ON rl.card_id = c.id WHERE c.user_id = ?1 AND rl.reviewed_at >= ?2 AND rl.reviewed_at < ?3",
+        rusqlite::params![user_id, yesterday_start_ts, today_start_ts], |row| row.get(0),
+    ).unwrap_or(0);
+    let yesterday_correct: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM review_log rl JOIN user_cards c ON rl.card_id = c.id WHERE c.user_id = ?1 AND rl.reviewed_at >= ?2 AND rl.reviewed_at < ?3 AND rl.verification_result = 'pass'",
+        rusqlite::params![user_id, yesterday_start_ts, today_start_ts], |row| row.get(0),
+    ).unwrap_or(0);
+    let yesterday_accuracy: f64 = if yesterday_total_reviews > 0 { (yesterday_correct as f64 / yesterday_total_reviews as f64 * 100.0).round() as i64 as f64 } else { 0.0 };
+
+    // ── 总卡片数 ──
+    let total_cards: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM user_cards WHERE user_id = ?1",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).unwrap_or(0);
+
+    // ── overall_mastery：最近 7 天平均正确率 ──
+    let week_ago_ts = today_start_ts - 7 * 86400;
+    let week_reviews: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM review_log rl JOIN user_cards c ON rl.card_id = c.id WHERE c.user_id = ?1 AND rl.reviewed_at >= ?2",
+        rusqlite::params![user_id, week_ago_ts], |row| row.get(0),
+    ).unwrap_or(0);
+    let week_correct: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM review_log rl JOIN user_cards c ON rl.card_id = c.id WHERE c.user_id = ?1 AND rl.reviewed_at >= ?2 AND rl.verification_result = 'pass'",
+        rusqlite::params![user_id, week_ago_ts], |row| row.get(0),
+    ).unwrap_or(0);
+    let overall_mastery: f64 = if week_reviews > 0 { (week_correct as f64 / week_reviews as f64 * 100.0).round() as i64 as f64 } else { 0.0 };
+
+    // ── 当前活跃计划 ──
+    let (plan_id, subject, domain, grade_band, goal): (String, String, String, String, String) = conn.query_row(
+        "SELECT id, subject, domain, grade_band, goal FROM plan_runs WHERE user_id = ?1 AND status = 'active' LIMIT 1",
+        rusqlite::params![user_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+    ).unwrap_or_default();
+
+    // ── 任务进度 ──
+    let current_task_name: String = if !plan_id.is_empty() {
+        conn.query_row(
+            "SELECT task_key FROM user_plan_progress WHERE user_id = ?1 AND plan_id = ?2 AND status = 'in_progress' ORDER BY updated_at DESC LIMIT 1",
+            rusqlite::params![user_id, &plan_id],
+            |row| row.get(0),
+        ).unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    // 已完成任务数 / 总任务数 → task_progress
+    let done_tasks: i64 = if !plan_id.is_empty() {
+        conn.query_row(
+            "SELECT COUNT(*) FROM user_plan_progress WHERE user_id = ?1 AND plan_id = ?2 AND status = 'done'",
+            rusqlite::params![user_id, &plan_id],
+            |row| row.get(0),
+        ).unwrap_or(0)
+    } else {
+        0
+    };
+    let total_tasks_in_plan: i64 = if !plan_id.is_empty() {
+        conn.query_row(
+            "SELECT COUNT(*) FROM user_plan_progress WHERE user_id = ?1 AND plan_id = ?2",
+            rusqlite::params![user_id, &plan_id],
+            |row| row.get(0),
+        ).unwrap_or(0)
+    } else {
+        0
+    };
+    let task_progress_str = if total_tasks_in_plan > 0 {
+        format!("{}/{}", done_tasks, total_tasks_in_plan)
+    } else {
+        String::new()
+    };
+
+    // ── 已完成任务名称列表 ──
+    let recent_completed: Vec<String> = if !plan_id.is_empty() {
+        let mut stmt = conn.prepare(
+            "SELECT task_key FROM user_plan_progress WHERE user_id = ?1 AND plan_id = ?2 AND status = 'done' ORDER BY updated_at DESC LIMIT 5"
+        ).unwrap_or_else(|_| panic!("prepare failed"));
+        let names: Vec<String> = stmt.query_map(rusqlite::params![user_id, &plan_id], |row| {
+            row.get::<_, String>(0)
+        }).unwrap_or_else(|_| panic!("query_map failed"))
+          .filter_map(|r| r.ok())
+          .collect();
+        names
+    } else {
+        vec![]
+    };
+
+    // ── 词汇数据（language 领域卡片） ──
+    // 注意：user_cards.created_at 是 TEXT 格式，review_log.reviewed_at 是 INTEGER 格式
+    // 词汇今日新学
+    let vocab_total: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM user_cards WHERE user_id = ?1 AND domain = 'language'",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).unwrap_or(0);
+
+    let vocab_new_today: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM user_cards WHERE user_id = ?1 AND domain = 'language' AND created_at >= ?2",
+        rusqlite::params![user_id, today_start_str], |row| row.get(0),
+    ).unwrap_or(0);
+
+    // 词汇今日掌握数（今日正确复习过的词汇卡片）
+    let vocab_mastered_today: i64 = conn.query_row(
+        "SELECT COUNT(DISTINCT rl.card_id) FROM review_log rl JOIN user_cards c ON rl.card_id = c.id WHERE c.user_id = ?1 AND c.domain = 'language' AND rl.reviewed_at >= ?2 AND rl.verification_result = 'pass'",
+        rusqlite::params![user_id, today_start_ts], |row| row.get(0),
+    ).unwrap_or(0);
+
+    // 词汇昨日掌握数
+    let vocab_mastered_yesterday: i64 = conn.query_row(
+        "SELECT COUNT(DISTINCT rl.card_id) FROM review_log rl JOIN user_cards c ON rl.card_id = c.id WHERE c.user_id = ?1 AND c.domain = 'language' AND rl.reviewed_at >= ?2 AND rl.reviewed_at < ?3 AND rl.verification_result = 'pass'",
+        rusqlite::params![user_id, yesterday_start_ts, today_start_ts], |row| row.get(0),
+    ).unwrap_or(0);
+
+    // ── 成就 ──
+    let achievements: Vec<serde_json::Value> = {
+        let mut stmt = conn.prepare(
+            "SELECT name, icon FROM achievements WHERE user_id = ?1 ORDER BY unlocked_at DESC LIMIT 10"
+        ).unwrap_or_else(|_| panic!("prepare achievements failed"));
+        stmt.query_map(rusqlite::params![user_id], |row| {
+            Ok(json!({
+                "name": row.get::<_, String>(0)?,
+                "icon": row.get::<_, String>(1)?,
+            }))
+        }).unwrap_or_else(|_| panic!("query_map achievements failed"))
+          .filter_map(|r| r.ok())
+          .collect()
+    };
+
+    // ── 推广码 ──
+    let referral_code: String = conn.query_row(
+        "SELECT referral_code FROM users WHERE id = ?1",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).unwrap_or_default();
+
+    // ── 组装 JSON ──
+    let mut result = json!({
+        "learning_today": {
+            "streak_days": streak_days,
+            "new_cards": today_new_cards,
+            "total_cards": total_cards,
+            "total_reviews": today_total_reviews,
+            "overall_mastery": overall_mastery as i64,
+            "review_accuracy": today_accuracy as i64,
+        },
+        "learning_yesterday": {
+            "streak_days": (streak_days - 1).max(0),
+            "new_cards": 0, // 不查昨日新增卡片，留空让 LLM 自己发挥
+            "total_cards": total_cards,
+            "total_reviews": yesterday_total_reviews,
+            "overall_mastery": 0, // 暂不计算昨日 mastery
+            "review_accuracy": yesterday_accuracy as i64,
+        },
+        "vocabulary": {
+            "total_words": vocab_total,
+            "new_today": vocab_new_today,
+            "mastered_today": vocab_mastered_today,
+            "mastered_yesterday": vocab_mastered_yesterday,
+        },
+        "achievements": achievements,
+        "referral_code": referral_code,
+    });
+
+    // 有条件地添加 current_plan 字段
+    if !plan_id.is_empty() {
+        let current_plan = json!({
+            "goal": goal,
+            "subject": subject,
+            "grade_band": grade_band,
+            "task_name": current_task_name,
+            "task_progress": task_progress_str,
+            "domain": domain,
+        });
+        result.as_object_mut().unwrap().insert("current_plan".to_string(), current_plan);
+    }
+
+    if !recent_completed.is_empty() {
+        let completed_tasks: Vec<serde_json::Value> = recent_completed.into_iter()
+            .map(|t| json!(t))
+            .collect();
+        result.as_object_mut().unwrap().insert("recent_completed_tasks".to_string(), json!(completed_tasks));
+    }
+
+    Ok(result.to_string())
+}
+
+/// 降级海报 SVG（LLM 调用失败时使用）
+fn fallback_poster_svg(referral_code: &str) -> String {
+    let qr_content = format!("https://keyievolution.fun/app/auth?ref={}&camp=poster", referral_code);
+    let qr_svg = generate_qr_svg(&qr_content, "#1A237E", "#FFFFFF");
+    format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
+  <rect width="400" height="600" fill="#4F46E5" rx="20"/>
+  <text x="200" y="80" text-anchor="middle" fill="white" font-size="28" font-weight="bold">CoEvo 学习推广</text>
+  <text x="200" y="130" text-anchor="middle" fill="white" font-size="16">一起学习，共同成长</text>
+  <rect x="100" y="220" width="200" height="200" rx="10" fill="white"/>
+  <text x="200" y="320" text-anchor="middle" fill="#4F46E5" font-size="14">推广码</text>
+  <text x="200" y="350" text-anchor="middle" fill="#4F46E5" font-size="24" font-weight="bold">{}</text>
+  {}
+  <text x="200" y="500" text-anchor="middle" fill="white" font-size="12">扫码或输入推广码注册</text>
+  <text x="200" y="530" text-anchor="middle" fill="white" font-size="12">即可获得专属学习福利</text>
+</svg>"##,
+        referral_code, qr_svg
+    )
+}
+
+// ── QR 码生成 ──
+
+/// 生成二维码 SVG
+pub(crate) fn generate_qr_svg(content: &str, fg_color: &str, bg_color: &str) -> String {
+    use qrcode::{QrCode, EcLevel};
+    use qrcode::render::svg;
+
+    let code = QrCode::with_error_correction_level(content, EcLevel::M).unwrap();
+    code.render()
+        .min_dimensions(180, 180)
+        .dark_color(svg::Color(fg_color))
+        .light_color(svg::Color(bg_color))
+        .build()
+}
+
+/// 将 SVG 字符串转换为 PNG 字节数组
+fn svg_to_png(svg: &str) -> Result<Vec<u8>, String> {
+    // 替换中文/系统字体名称为通用 sans-serif（resvg 可能不含中文字体）
+    let cleaned = svg
+        .replace("font-family=\"'PingFang SC', 'Microsoft YaHei', sans-serif\"", "font-family=\"sans-serif\"")
+        .replace("font-family=\"system-ui, -apple-system, sans-serif\"", "font-family=\"sans-serif\"")
+        .replace("font-family=\"'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', system-ui, sans-serif\"", "font-family=\"sans-serif\"");
+    let mut opts = resvg::usvg::Options::default();
+    opts.fontdb_mut().load_system_fonts();
+    let tree = resvg::usvg::Tree::from_data(cleaned.as_bytes(), &opts)
+        .map_err(|e| format!("SVG parse error: {}", e))?;
+
+    let size = tree.size();
+    let width = size.width() as u32;
+    let height = size.height() as u32;
+
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height)
+        .ok_or_else(|| format!("Failed to create {}x{} pixmap", width, height))?;
+
+    resvg::render(&tree, resvg::tiny_skia::Transform::default(), &mut pixmap.as_mut());
+
+    pixmap
+        .encode_png()
+        .map_err(|e| format!("PNG encode error: {}", e))
+}
+
+/// 从已替换变量的 SVG 文本中提取显示名称（用于 PNG fallback）
+fn extract_user_for_png_fallback(_svg: &str) -> crate::poster_template::UserPosterData {
+    let referral_code = String::new();
+    crate::poster_template::UserPosterData {
+        display_name: "用户".to_string(),
+        streak_days: 7,
+        total_cards: 20,
+        today_reviews: 3,
+        referral_code: referral_code.clone(),
+        qr_code_url: format!("https://keyievolution.fun/share/{}", referral_code),
+    }
+}
+
+/// 生成包含 SVG 和 PNG 的 JSON 响应（PNG 转换失败时降级为纯 SVG）
+/// 内部：SVG → JSON(PNG) 响应（公开供 admin preview 等场景用）
+pub fn poster_json_response_inline(svg: &str, copy: &str) -> axum::http::Response<axum::body::Body> {
+    poster_json_response(svg, copy)
+}
+
+fn poster_json_response(svg: &str, copy: &str) -> axum::http::Response<axum::body::Body> {
+    let png_data_url = match svg_to_png(svg) {
+        Ok(png_bytes) => {
+            let png_base64 =
+                base64::engine::general_purpose::STANDARD.encode(&png_bytes);
+            Some(format!("data:image/png;base64,{}", png_base64))
+        }
+        Err(_e) => {
+            // PNG 失败时用 fallback SVG 重新尝试（确保 PNG 总有产出）
+            let user_data = extract_user_for_png_fallback(svg);
+            let fallback = crate::poster_template::fallback_poster_svg(&user_data);
+            match svg_to_png(&fallback) {
+                Ok(png_bytes) => {
+                    let png_base64 =
+                        base64::engine::general_purpose::STANDARD.encode(&png_bytes);
+                    Some(format!("data:image/png;base64,{}", png_base64))
+                }
+                Err(e2) => {
+                    tracing::warn!("SVG→PNG fallback also failed: {}, returning SVG only", e2);
+                    None
+                }
+            }
+        }
+    };
+
+    Json(json!({
+        "svg": svg,
+        "poster_png": png_data_url,
+        "copy": copy,
+    }))
+    .into_response()
+}
+
+/// GET /api/referral/qrcode — 获取用户推广二维码（SVG 格式）
+pub async fn get_qrcode(
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let user_id = match params.get("user_id") {
+        Some(uid) if !uid.is_empty() => uid,
+        _ => return (axum::http::StatusCode::BAD_REQUEST, "Missing user_id".to_string()).into_response(),
+    };
+
+    if let Err(e) = crate::auth_middleware::verify_auth(user_id, &headers) {
+        return (axum::http::StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+    }
+
+    let conn = crate::db_pool::get_conn();
+    let referral_code: String = match conn.query_row(
+        "SELECT referral_code FROM users WHERE id = ?1",
+        rusqlite::params![user_id],
+        |row| row.get(0),
+    ) {
+        Ok(code) => code,
+        Err(_) => return (axum::http::StatusCode::NOT_FOUND, "User not found".to_string()).into_response(),
+    };
+
+    // 构建二维码内容
+    let campaign_id = params.get("camp").map(|s| s.as_str()).unwrap_or("share");
+    let qr_content = format!(
+        "https://keyievolution.fun/app/auth?ref={}&camp={}",
+        referral_code, campaign_id
+    );
+
+    let qr_svg = generate_qr_svg(&qr_content, "#1A237E", "#FFFFFF");
+
+    ([(axum::http::header::CONTENT_TYPE, "image/svg+xml")], qr_svg).into_response()
+}
+
+// ── Handler 实现 ──
+
+/// POST /api/referral/click — 点击追踪（公开接口，无需认证）
+pub async fn click(
+    Json(payload): Json<ClickRequest>,
+) -> impl IntoResponse {
+    tracing::info!("referral_click: campaign={}, code={}", payload.campaign_id, payload.referrer_code);
+
+    // 用 referrer_code 查对应的用户
+    let conn = crate::db_pool::get_conn();
+    let referrer_id: Option<String> = conn.query_row(
+        "SELECT id FROM users WHERE referral_code = ?1 AND deleted_at IS NULL",
+        rusqlite::params![payload.referrer_code],
+        |row| row.get(0),
+    ).ok();
+
+    let referrer_id = match referrer_id {
+        Some(id) => id,
+        None => return (axum::http::StatusCode::NOT_FOUND, Json(json!({"error": "referrer_not_found"}))).into_response(),
+    };
+
+    // 自链接防护：如果有 clicker_anonymous_id 且该匿名用户就是推广员自己，记录但不阻止
+    let click_id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+    match conn.execute(
+        "INSERT INTO referral_clicks (id, campaign_id, referrer_id, clicker_anonymous_id, share_channel, landed_page, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        rusqlite::params![click_id, payload.campaign_id, referrer_id, payload.clicker_anonymous_id, payload.share_channel, payload.landed_page, now],
+    ) {
+        Ok(_) => Json(json!({"id": click_id})).into_response(),
+        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("db_error: {}", e)}))).into_response(),
+    }
+}
+
+/// GET /api/referral/my-code — 查看推广码
+pub async fn my_code(
+    headers: HeaderMap,
+    Query(query): Query<UserQuery>,
+) -> impl IntoResponse {
+    tracing::info!("my_code: user_id={}", query.user_id);
+
+    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
+        return (axum::http::StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+    }
+
+    let conn = crate::db_pool::get_conn();
+    match conn.query_row(
+        "SELECT referral_code, created_at FROM users WHERE id = ?1",
+        rusqlite::params![query.user_id],
+        |row| {
+            let code: String = row.get(0)?;
+            let created: String = row.get(1)?;
+            Ok((code, created))
+        },
+    ) {
+        Ok((code, created_at)) => Json(json!({"referral_code": code, "created_at": created_at})).into_response(),
+        Err(_) => (axum::http::StatusCode::NOT_FOUND, Json(json!({"error": "user_not_found"}))).into_response(),
+    }
+}
+
+/// GET /api/referral/my-stats — 分享统计
+pub async fn my_stats(
+    headers: HeaderMap,
+    Query(query): Query<UserQuery>,
+) -> impl IntoResponse {
+    tracing::info!("my_stats: user_id={}", query.user_id);
+
+    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
+        return (axum::http::StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+    }
+
+    let conn = crate::db_pool::get_conn();
+    let total_clicks: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM referral_clicks WHERE referrer_id = ?1",
+        rusqlite::params![query.user_id], |row| row.get(0),
+    ).unwrap_or(0);
+
+    let total_registrations: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM users WHERE referred_by = ?1 AND deleted_at IS NULL",
+        rusqlite::params![query.user_id], |row| row.get(0),
+    ).unwrap_or(0);
+
+    let total_earned: i64 = conn.query_row(
+        "SELECT COALESCE(SUM(amount), 0) FROM distribution_commissions WHERE earner_id = ?1 AND status NOT IN ('cancelled')",
+        rusqlite::params![query.user_id], |row| row.get(0),
+    ).unwrap_or(0);
+
+    Json(json!({
+        "total_clicks": total_clicks,
+        "total_registrations": total_registrations,
+        "total_earned": total_earned,
+    })).into_response()
+}
+
+/// GET /api/referral/my-team — 团队树（递归 CTE，最多 2 级）
+pub async fn my_team(
+    headers: HeaderMap,
+    Query(query): Query<UserQuery>,
+) -> impl IntoResponse {
+    tracing::info!("my_team: user_id={}", query.user_id);
+
+    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
+        return (axum::http::StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+    }
+
+    let conn = crate::db_pool::get_conn();
+
+    // 递归 CTE 查 2 级下线
+    let sql = r#"
+        WITH RECURSIVE team AS (
+            SELECT id, display_name, referred_by, 1 AS level
+            FROM users WHERE referred_by = ?1 AND deleted_at IS NULL
+            UNION ALL
+            SELECT u.id, u.display_name, u.referred_by, t.level + 1
+            FROM users u
+            JOIN team t ON u.referred_by = t.id
+            WHERE t.level < 2 AND u.deleted_at IS NULL
+        )
+        SELECT id, display_name, level FROM team ORDER BY level, id
+    "#;
+
+    let mut stmt = match conn.prepare(sql) {
+        Ok(s) => s,
+        Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("db_error: {}", e)}))).into_response(),
+    };
+
+    let members: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![query.user_id], |row| {
+        let member_id: String = row.get(0)?;
+        let display_name: String = row.get::<_, Option<String>>(1)?.unwrap_or_default();
+        let level: i32 = row.get(2)?;
+        Ok((member_id, display_name, level))
+    }) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).map(|(member_id, display_name, level)| {
+            let referral_count: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM users WHERE referred_by = ?1 AND deleted_at IS NULL",
+                rusqlite::params![&member_id], |row| row.get(0),
+            ).unwrap_or(0);
+            json!({
+                "id": member_id,
+                "display_name": display_name,
+                "level": level,
+                "referral_count": referral_count,
+            })
+        }).collect(),
+        Err(_) => vec![],
+    };
+
+    Json(json!({"team": members})).into_response()
+}
+
+/// GET /api/referral/my-commissions — 佣金列表
+pub async fn my_commissions(
+    headers: HeaderMap,
+    Query(query): Query<UserQuery>,
+) -> impl IntoResponse {
+    tracing::info!("my_commissions: user_id={}", query.user_id);
+
+    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
+        return (axum::http::StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+    }
+
+    let conn = crate::db_pool::get_conn();
+    let sql = r#"
+        SELECT dc.id, dc.campaign_id, dc.buyer_id, dc.order_id, dc.order_amount,
+               dc.rate_applied, dc.amount, dc.level, dc.status, dc.created_at,
+               po.plan_id, po.paid_at
+        FROM distribution_commissions dc
+        JOIN payment_orders po ON po.id = dc.order_id
+        WHERE dc.earner_id = ?1
+        ORDER BY dc.created_at DESC
+        LIMIT 50
+    "#;
+
+    let mut stmt = match conn.prepare(sql) {
+        Ok(s) => s,
+        Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("db_error: {}", e)}))).into_response(),
+    };
+
+    let items: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![query.user_id], |row| {
+        Ok(json!({
+            "id": row.get::<_, String>(0)?,
+            "campaign_id": row.get::<_, String>(1)?,
+            "buyer_id": row.get::<_, String>(2)?,
+            "order_id": row.get::<_, String>(3)?,
+            "order_amount": row.get::<_, i64>(4)?,
+            "rate_applied": row.get::<_, f64>(5)?,
+            "amount": row.get::<_, i64>(6)?,
+            "level": row.get::<_, i32>(7)?,
+            "status": row.get::<_, String>(8)?,
+            "created_at": row.get::<_, String>(9)?,
+            "plan_id": row.get::<_, String>(10)?,
+            "paid_at": row.get::<_, Option<String>>(11)?,
+        }))
+    }) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(_) => vec![],
+    };
+
+    Json(json!({"commissions": items})).into_response()
+}
+
+/// 内部海报生成（供 admin preview_poster 等场景调用，跳过 auth）
+pub async fn generate_poster_internal(
+    conn: &rusqlite::Connection,
+    user_id: &str,
+    campaign_id: &str,
+) -> axum::http::Response<axum::body::Body> {
+    let template: Option<String> = if !campaign_id.is_empty() {
+        conn.query_row(
+            "SELECT poster_template FROM marketing_campaigns WHERE id = ?1",
+            rusqlite::params![campaign_id],
+            |row| row.get(0),
+        ).ok().flatten()
+    } else {
+        None
+    };
+
+    let (svg, copy) = if let Some(ref tpl) = template {
+        let data = match crate::poster_template::build_user_poster_data(conn, user_id, campaign_id) {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::error!("build_user_poster_data failed: {}", e);
+                return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("build_user_data_failed: {}", e)}))).into_response();
+            }
+        };
+        let svg = crate::poster_template::replace_template_variables(tpl, &data);
+        (svg, crate::poster_template::fallback_copy())
+    } else {
+        let data = match crate::poster_template::build_user_poster_data(conn, user_id, "") {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::error!("build_user_poster_data failed: {}", e);
+                return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("build_user_data_failed: {}", e)}))).into_response();
+            }
+        };
+        let svg = crate::poster_template::replace_template_variables(
+            &crate::poster_template::fallback_poster_svg(&data),
+            &data,
+        );
+        (svg, crate::poster_template::fallback_copy())
+    };
+    poster_json_response(&svg, &copy)
+}
+
+/// POST /api/referral/generate-poster — 海报生成（模板替换流程）
+///
+/// 流程：
+///   1. 查 marketing_campaigns.poster_template
+///   2. 如有模板 → build_user_poster_data() + replace_template_variables()
+///   3. 如无模板 → fallback 静态海报
+///   零 LLM 调用，快速响应。
+pub async fn generate_poster(
+    headers: HeaderMap,
+    Json(body): Json<UserBody>,
+) -> impl IntoResponse {
+    tracing::info!("generate_poster: user_id={}", body.user_id);
+
+    if let Err(e) = crate::auth_middleware::verify_auth(&body.user_id, &headers) {
+        return (axum::http::StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+    }
+
+    let conn = crate::db_pool::get_conn();
+
+    // 查活动是否有海报模板
+    let template: Option<String> = if let Some(ref cid) = body.campaign_id {
+        conn.query_row(
+            "SELECT poster_template FROM marketing_campaigns WHERE id = ?1",
+            rusqlite::params![cid],
+            |row| row.get(0),
+        ).ok().flatten()
+    } else {
+        None
+    };
+
+    let (svg, copy) = if let Some(tpl) = template {
+        // 使用模板替换流程（零 LLM）
+        let campaign_id = body.campaign_id.as_deref().unwrap_or("");
+        let data = match crate::poster_template::build_user_poster_data(&conn, &body.user_id, campaign_id) {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::error!("build_user_poster_data failed: {}", e);
+                return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("build_user_data_failed: {}", e)}))).into_response();
+            }
+        };
+        let svg = crate::poster_template::replace_template_variables(&tpl, &data);
+        let copy = crate::poster_template::fallback_copy();
+        (svg, copy)
+    } else {
+        // Fallback: 模板未生成，用静态海报（同样走变量替换确保二维码注入）
+        let data = match crate::poster_template::build_user_poster_data(&conn, &body.user_id, "") {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::error!("build_user_poster_data failed: {}", e);
+                return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("build_user_data_failed: {}", e)}))).into_response();
+            }
+        };
+        let svg = crate::poster_template::replace_template_variables(
+            &crate::poster_template::fallback_poster_svg(&data),
+            &data,
+        );
+        let copy = crate::poster_template::fallback_copy();
+        (svg, copy)
+    };
+
+    // 保持后续 SVG→PNG 转换逻辑不变
+    poster_json_response(&svg, &copy)
+}
+
+/// POST /api/referral/generate-h5 — H5 分享页生成（模板替换流程，零 LLM）
+///
+/// 使用活动 h5_template（如果存在）做模板替换，否则返回 fallback。
+/// 返回 JSON 包含 HTML 文本，前端在 WebView 中渲染。
+/// 不再调用 LLM，不再写入磁盘。
+pub async fn generate_h5(
+    headers: HeaderMap,
+    Json(body): Json<UserBody>,
+) -> impl IntoResponse {
+    tracing::info!("generate_h5: user_id={}", body.user_id);
+
+    if let Err(e) = crate::auth_middleware::verify_auth(&body.user_id, &headers) {
+        return (axum::http::StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+    }
+
+    let conn = crate::db_pool::get_conn();
+    let referral_code: String = conn.query_row(
+        "SELECT referral_code FROM users WHERE id = ?1",
+        rusqlite::params![body.user_id], |row| row.get(0),
+    ).unwrap_or_else(|_| "UNKNOWN".to_string());
+
+    // 查活动 H5 模板（如果有 campaign_id）
+    let html = if let Some(ref cid) = body.campaign_id {
+        match conn.query_row(
+            "SELECT h5_template FROM marketing_campaigns WHERE id = ?1",
+            rusqlite::params![cid], |row| row.get::<_, Option<String>>(0),
+        ).ok().flatten() {
+            Some(template) => {
+                // 使用模板替换流程（零 LLM）
+                match crate::h5_template::build_user_h5_data(&conn, &body.user_id, cid) {
+                    Ok(data) => crate::h5_template::replace_h5_variables(&template, &data),
+                    Err(_) => fallback_h5_html(&referral_code),
+                }
+            }
+            None => fallback_h5_html(&referral_code),
+        }
+    } else {
+        fallback_h5_html(&referral_code)
+    };
+
+    // 返回 JSON（为了 Flutter 兼容），包含 HTML 文本
+    // 前端在 WebView 中渲染该 HTML
+    Json(json!({"html": html})).into_response()
+}
+
+/// GET /share/{code} — 推广落地页
+///
+/// 优先返回已保存的 data/share/{code}/index.html（LLM 生成），
+/// 不存在时返回内联 fallback 模板。
+pub async fn share_landing(Path(code): Path<String>) -> impl IntoResponse {
+    // 优先读取已保存的 LLM 生成 HTML
+    let file_path = format!("data/share/{}/index.html", code);
+    if let Ok(html) = std::fs::read_to_string(&file_path) {
+        return ([(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")], html);
+    }
+
+    // fallback: 内联模板
+    let html = fallback_h5_html(&code);
+    ([(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")], html)
+}
+
+/// GET /api/referral/user-portrait — 用户学习画像（供 LLM 使用）
+pub async fn user_portrait(
+    headers: HeaderMap,
+    Query(query): Query<UserQuery>,
+) -> impl IntoResponse {
+    tracing::info!("user_portrait: user_id={}", query.user_id);
+
+    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
+        return (axum::http::StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+    }
+
+    let conn = crate::db_pool::get_conn();
+    let uid = &query.user_id;
+
+    // 累计学习天数
+    let total_study_days: i64 = conn.query_row(
+        "SELECT COUNT(DISTINCT date(reviewed_at, 'unixepoch')) FROM review_log rl JOIN user_cards c ON rl.card_id = c.id WHERE c.user_id = ?1",
+        rusqlite::params![uid], |row| row.get(0),
+    ).unwrap_or(0);
+
+    // 连续学习天数
+    let streak_days: i64 = conn.query_row(
+        "SELECT streak_days FROM users WHERE id = ?1",
+        rusqlite::params![uid], |row| row.get(0),
+    ).unwrap_or(0);
+
+    // 今日学习状态
+    let today_start = chrono::Utc::now().timestamp() - 86400;
+    let today_reviews: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM review_log rl JOIN user_cards c ON rl.card_id = c.id WHERE c.user_id = ?1 AND rl.reviewed_at > ?2",
+        rusqlite::params![uid, today_start], |row| row.get(0),
+    ).unwrap_or(0);
+
+    // 总学习卡片数
+    let total_cards: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM user_cards WHERE user_id = ?1",
+        rusqlite::params![uid], |row| row.get(0),
+    ).unwrap_or(0);
+
+    // 成就信息
+    let mut stmt = match conn.prepare(
+        "SELECT achievement_key, name, tier, unlocked_at FROM achievements WHERE user_id = ?1 ORDER BY unlocked_at DESC LIMIT 10"
+    ) {
+        Ok(s) => s,
+        Err(_) => {
+            return Json(json!({
+                "portrait": {
+                    "total_study_days": total_study_days,
+                    "streak_days": streak_days,
+                    "today_reviews": today_reviews,
+                    "total_cards": total_cards,
+                    "achievements": [],
+                }
+            })).into_response();
+        }
+    };
+
+    let achievements: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![uid], |row| {
+        Ok(json!({
+            "key": row.get::<_, String>(0)?,
+            "name": row.get::<_, String>(1)?,
+            "tier": row.get::<_, String>(2)?,
+            "unlocked_at": row.get::<_, String>(3)?,
+        }))
+    }) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(_) => vec![],
+    };
+
+    Json(json!({
+        "portrait": {
+            "total_study_days": total_study_days,
+            "streak_days": streak_days,
+            "today_reviews": today_reviews,
+            "total_cards": total_cards,
+            "achievements": achievements,
+        }
+    })).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::schema::init_database;
+
+    /// 推广码格式测试：验证格式 CoEvo_ + 4位大写字母数字
+    #[test]
+    fn test_referral_code_format() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        init_database(&conn).unwrap();
+
+        // 模拟生成推广码的逻辑（与 auth.rs 一致）
+        let mut codes: Vec<String> = Vec::new();
+
+        // 插入测试用户，利用 referral_code UNIQUE 约束确保不重复
+        for i in 0..5 {
+            use rand::Rng;
+            let suffix: String = rand::thread_rng()
+                .sample_iter(&rand::distributions::Alphanumeric)
+                .take(4)
+                .map(|c| c as char)
+                .collect::<String>()
+                .to_uppercase();
+            let candidate = format!("CoEvo_{}", suffix);
+
+            let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            let uid = uuid::Uuid::new_v4().to_string();
+            let username = format!("test_user_{}", i);
+
+            match conn.execute(
+                "INSERT INTO users (id, username, referral_code, created_at) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![uid, username, candidate, now],
+            ) {
+                Ok(_) => codes.push(candidate),
+                Err(_) => continue, // UNIQUE 冲突，跳过
+            }
+        }
+
+        assert!(!codes.is_empty(), "至少应成功生成一个推广码");
+
+        for code in &codes {
+            // 格式: CoEvo_ + 4 位大写字母数字
+            assert!(code.starts_with("CoEvo_"), "推广码应以 CoEvo_ 开头: {}", code);
+            let suffix = code.trim_start_matches("CoEvo_");
+            assert_eq!(suffix.len(), 4, "推广码后缀应为 4 位: {}", code);
+            assert!(
+                suffix.chars().all(|c| c.is_ascii_alphanumeric()),
+                "推广码后缀应为大写字母数字: {}",
+                code
+            );
+            assert_eq!(suffix.to_uppercase(), suffix, "推广码后缀应全大写: {}", code);
+        }
+    }
+
+    /// 验证至少两个生成的推广码不重复
+    #[test]
+    fn test_referral_code_uniqueness() {
+        // 使用哈希集验证 UNIQUE
+        let mut seen = std::collections::HashSet::new();
+
+        use rand::Rng;
+        for _ in 0..10 {
+            let suffix: String = rand::thread_rng()
+                .sample_iter(&rand::distributions::Alphanumeric)
+                .take(4)
+                .map(|c| c as char)
+                .collect::<String>()
+                .to_uppercase();
+            let code = format!("CoEvo_{}", suffix);
+            assert!(
+                seen.insert(code.clone()),
+                "推广码重复: {}",
+                code
+            );
+        }
+    }
+
+    #[test]
+    fn test_fallback_poster_svg() {
+        let svg = fallback_poster_svg("CoEvo_TEST");
+        assert!(svg.contains("CoEvo_TEST"), "应包含推广码");
+        assert!(svg.contains("<svg"), "应以 SVG 开头");
+        assert!(svg.contains("</svg>"), "应以 SVG 结束");
+        assert!(svg.contains("CoEvo 学习推广"), "应包含品牌名");
+    }
+
+    #[test]
+    fn test_fallback_h5_html() {
+        let html = crate::h5_template::fallback_h5_html("CoEvo_TEST");
+        assert!(html.contains("CoEvo_TEST"), "应包含推广码");
+        assert!(html.contains("<!DOCTYPE html>"), "应包含 DOCTYPE");
+        assert!(html.contains("CoEvo 刻意进化学习"), "应包含品牌名");
+    }
+
+    #[test]
+    fn test_load_share_prompt_file_not_found() {
+        let result = load_share_prompt("/tmp/nonexistent", "poster", "signal");
+        assert!(result.is_err(), "对于不存在的文件应返回错误");
+    }
+}

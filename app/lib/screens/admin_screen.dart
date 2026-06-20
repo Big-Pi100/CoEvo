@@ -12,6 +12,11 @@ import 'curriculum_plans_page.dart';
 import 'curriculum_cards_page.dart';
 import 'config_page.dart';
 import 'debug_logs_page.dart';
+import '../pages/admin/campaign/admin_campaign_list.dart';
+import '../pages/admin/team/admin_team_tree.dart';
+import '../pages/admin/settlement/admin_commission_list.dart';
+import '../pages/admin/withdrawal/admin_withdrawal_list.dart';
+import '../pages/admin/stats/admin_stats_dashboard.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -44,6 +49,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
   // Tabs & sub-tabs
   late TabController _mainTabCtrl;
   late TabController _curriculumSubTabCtrl;
+  late TabController _marketingSubTabCtrl;
   int _mainTab = 0;
   String _reqFilter = 'pending';
   List<Map<String, dynamic>> _requests = [];
@@ -111,6 +117,8 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     _mainTabCtrl.addListener(_onTabChanged);
     _curriculumSubTabCtrl = TabController(length: 2, vsync: this);
     _curriculumSubTabCtrl.addListener(() { if (mounted) setState(() {}); });
+    _marketingSubTabCtrl = TabController(length: 5, vsync: this);
+    _marketingSubTabCtrl.addListener(() { if (mounted) setState(() {}); });
     _loadTrackedUsers();
   }
 
@@ -118,6 +126,9 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     int n = 1; // 仪表盘 always
     n++; // 用户管理+订阅 always
     n++; // 课程数据 always
+    n++; // 营销中心 always
+    n++; // 套餐管理 always
+    n++; // 支付订单 always
     if (_role == 'super') n++; // 管理员管理（含分配管理）
     if (_role == 'super' || _role == 'service') n++; // 操作日志
     if (_role == 'super' || _role == 'service') n += 2; // 运行时配置 + 调试日志
@@ -129,6 +140,10 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     _mainTabCtrl.dispose();
     _mainTabCtrl = TabController(length: _tabCount(), vsync: this);
     _mainTabCtrl.addListener(_onTabChanged);
+    _marketingSubTabCtrl.removeListener(() {});
+    _marketingSubTabCtrl.dispose();
+    _marketingSubTabCtrl = TabController(length: 5, vsync: this);
+    _marketingSubTabCtrl.addListener(() { if (mounted) setState(() {}); });
   }
 
   @override
@@ -136,19 +151,24 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     _keyCtrl.dispose(); _passCtrl.dispose(); _searchCtrl.dispose();
     _mainTabCtrl.dispose();
     _curriculumSubTabCtrl.dispose();
+    _marketingSubTabCtrl.dispose();
     super.dispose();
   }
 
   Future<Map<String, dynamic>> _api(String method, String path, {Map<String, dynamic>? body}) async {
     final uri = Uri.parse('${ApiConfig.baseUrl}$path');
     final h = _headers();
-    final req = method == 'GET'
-        ? http.get(uri, headers: h)
-        : method == 'POST' ? http.post(uri, headers: {...h, 'Content-Type': 'application/json'}, body: jsonEncode(body ?? {}))
-        : method == 'PUT' ? http.put(uri, headers: {...h, 'Content-Type': 'application/json'}, body: jsonEncode(body ?? {}))
-        : http.delete(uri, headers: h);
-    final resp = await req.timeout(const Duration(seconds: 10));
-    try { return jsonDecode(resp.body) as Map<String, dynamic>; } catch (_) { return {'error': '${resp.statusCode}'}; }
+    try {
+      final req = method == 'GET'
+          ? http.get(uri, headers: h)
+          : method == 'POST' ? http.post(uri, headers: {...h, 'Content-Type': 'application/json'}, body: jsonEncode(body ?? {}))
+          : method == 'PUT' ? http.put(uri, headers: {...h, 'Content-Type': 'application/json'}, body: jsonEncode(body ?? {}))
+          : http.delete(uri, headers: h);
+      final resp = await req.timeout(const Duration(seconds: 10));
+      try { return jsonDecode(resp.body) as Map<String, dynamic>; } catch (_) { return {'error': '${resp.statusCode}'}; }
+    } catch (e) {
+      return {'error': '网络错误: $e'};
+    }
   }
 
   void _snack(String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -199,17 +219,21 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     if (_includeDeleted) params.add('include_deleted=true');
     if (page > 1 || (q ?? "").isEmpty) params.add('sort=expiring');
     final suffix = params.isEmpty ? '' : '?${params.join('&')}';
-    final resp = await _api('GET', '/api/admin/users$suffix');
-    final newUsers = (resp['users'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-    final total = resp['total'] as int? ?? 0;
-    final totalPages = resp['total_pages'] as int? ?? 1;
-    setState(() {
-      if (replace) { _users = newUsers; _userPage = 1; _userTotal = total; }
-      else if (append) { _users.addAll(newUsers); _userPage = page; }
-      _userEndReached = page >= totalPages || newUsers.isEmpty;
-      _loading = false;
-    });
-    _loadTrackedUsers();
+    try {
+      final resp = await _api('GET', '/api/admin/users$suffix');
+      final newUsers = (resp['users'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+      final total = resp['total'] as int? ?? 0;
+      final totalPages = resp['total_pages'] as int? ?? 1;
+      if (mounted) setState(() {
+        if (replace) { _users = newUsers; _userPage = 1; _userTotal = total; }
+        else if (append) { _users.addAll(newUsers); _userPage = page; }
+        _userEndReached = page >= totalPages || newUsers.isEmpty;
+        _loading = false;
+      });
+      _loadTrackedUsers();
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> _loadTrackedUsers() async {
@@ -401,8 +425,8 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
       content: Column(mainAxisSize: MainAxisSize.min, children: [
         DropdownButtonFormField(value: pkg, items: const [
           DropdownMenuItem(value: '30d', child: Text('30 天')),
+          DropdownMenuItem(value: '90d', child: Text('90 天')),
           DropdownMenuItem(value: '365d', child: Text('365 天')),
-          DropdownMenuItem(value: 'lifetime', child: Text('终身')),
         ], onChanged: (v) => setSt(() => pkg = v!), decoration: const InputDecoration(isDense: true, border: OutlineInputBorder())),
         const SizedBox(height: AppTheme.spacingMd),
         DropdownButtonFormField(value: channel, items: const [
@@ -491,8 +515,12 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
   // ── Dashboard ──
   Future<void> _loadDashboard() async {
     setState(() => _dashboardLoading = true);
-    final resp = await _api('GET', '/api/admin/dashboard');
-    setState(() { _dashboard = resp; _dashboardLoading = false; });
+    try {
+      final resp = await _api('GET', '/api/admin/dashboard');
+      if (mounted) setState(() { _dashboard = resp; _dashboardLoading = false; });
+    } catch (_) {
+      if (mounted) setState(() { _dashboardLoading = false; });
+    }
   }
 
   // ── Assignment Management ──
@@ -616,7 +644,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     final showAdminMgmt = _role == 'super';
     final showAudit = _role == 'super' || _role == 'service';
     final showConfigDebug = _role == 'super' || _role == 'service';
-    var tabs = <Tab>[const Tab(text: '仪表盘'), const Tab(text: '用户管理'), const Tab(text: '课程数据'), const Tab(text: '套餐管理'), const Tab(text: '支付订单')];
+    var tabs = <Tab>[const Tab(text: '仪表盘'), const Tab(text: '用户管理'), const Tab(text: '课程数据'), const Tab(text: '营销中心'), const Tab(text: '套餐管理'), const Tab(text: '支付订单')];
     if (showAdminMgmt) tabs.add(const Tab(text: '管理员管理'));
     if (showAudit) tabs.add(const Tab(text: '操作日志'));
     if (showConfigDebug) tabs.add(const Tab(text: '运行时配置'));
@@ -637,6 +665,7 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
       _buildDashboardTab(),
       _buildUsersTab(),
       _buildCurriculumTab(),
+      _buildMarketingTab(),
       _buildPlansTab(),
       _buildOrdersTab(),
       if (showAdminMgmt) _buildAdminMgmtTab(),
@@ -1007,6 +1036,61 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
         CurriculumCardsPage(adminKey: _adminKey, token: _token),
       ])),
     ]);
+  }
+
+  // ── Marketing Tab ──
+  Widget _buildMarketingTab() {
+    return Column(children: [
+      TabBar(controller: _marketingSubTabCtrl, isScrollable: true, tabs: const [
+        Tab(text: '活动管理'),
+        Tab(text: '分销团队'),
+        Tab(text: '佣金结算'),
+        Tab(text: '提现审核'),
+        Tab(text: '数据统计'),
+      ]),
+      Expanded(child: IndexedStack(index: _marketingSubTabCtrl.index, children: [
+        _buildCampaignSubTab(),
+        _buildTeamSubTab(),
+        _buildSettlementSubTab(),
+        _buildWithdrawalSubTab(),
+        _buildStatsSubTab(),
+      ])),
+    ]);
+  }
+
+  Widget _buildCampaignSubTab() {
+    return AdminCampaignListPage(adminKey: _adminKey, token: _token);
+  }
+
+  Widget _buildTeamSubTab() {
+    return AdminTeamTreePage(adminKey: _adminKey, token: _token);
+  }
+
+  Widget _buildSettlementSubTab() {
+    return AdminCommissionListPage(adminKey: _adminKey, token: _token);
+  }
+
+  Widget _buildWithdrawalSubTab() {
+    return AdminWithdrawalListPage(adminKey: _adminKey, token: _token);
+  }
+
+  Widget _buildStatsSubTab() {
+    return AdminStatsDashboardPage(adminKey: _adminKey, token: _token);
+  }
+
+  Widget _buildPlaceholder(String title, String hint) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.construction, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          const SizedBox(height: 16),
+          Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 8),
+          Text('功能开发中', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        ],
+      ),
+    );
   }
 
   // ── Plans Tab ──

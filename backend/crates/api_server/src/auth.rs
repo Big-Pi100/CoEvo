@@ -7,11 +7,18 @@ use serde::{Deserialize, Serialize};
 use crate::encryption;
 
 #[derive(Deserialize)]
+pub struct ReferralInfo {
+    pub code: Option<String>,
+    pub campaign_id: Option<String>,
+}
+
+#[derive(Deserialize)]
 pub struct RegisterRequest {
     pub username: String,
     pub password: String,
     pub real_name: Option<String>,
     pub phone: Option<String>,
+    pub referral: Option<ReferralInfo>,
 }
 
 #[derive(Deserialize)]
@@ -94,9 +101,48 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
         _ => None,
     };
 
+    // 查推广码对应的推广员（如果有）
+    let referred_by: Option<String> = if let Some(ref ref_info) = req.referral {
+        if let Some(ref code) = ref_info.code {
+            // 查推广码对应的用户，且未被删除
+            let referrer: Option<String> = conn.query_row(
+                "SELECT id FROM users WHERE referral_code = ?1 AND deleted_at IS NULL",
+                rusqlite::params![code],
+                |row| row.get(0),
+            ).ok();
+            referrer
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // 生成用户自己的推广码（CoEvo_ + 4位大写字母数字，重试最多3次）
+    let mut referral_code = String::new();
+    for _ in 0..3 {
+        use rand::Rng;
+        let suffix: String = rand::thread_rng()
+            .sample_iter(&rand::distributions::Alphanumeric)
+            .take(4)
+            .map(|c| c as char)
+            .collect::<String>()
+            .to_uppercase();
+        let candidate = format!("CoEvo_{}", suffix);
+        let exists: bool = conn.query_row(
+            "SELECT COUNT(*) FROM users WHERE referral_code = ?1",
+            rusqlite::params![candidate],
+            |row| row.get::<_, i32>(0),
+        ).map(|c| c > 0).unwrap_or(false);
+        if !exists {
+            referral_code = candidate;
+            break;
+        }
+    }
+
     conn.execute(
-        "INSERT INTO users (id, username, display_name, password_hash, real_name, phone, phone_hash, bind_hash, created_at) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        rusqlite::params![user_id, req.username, pwhash, enc_real_name, enc_phone, phone_hash, bind_hash_val, now],
+        "INSERT INTO users (id, username, display_name, password_hash, real_name, phone, phone_hash, bind_hash, referral_code, referred_by, created_at) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        rusqlite::params![user_id, req.username, pwhash, enc_real_name, enc_phone, phone_hash, bind_hash_val, referral_code, referred_by, now],
     ).map_err(|e| format!("Insert error: {}", e))?;
 
     // Store token in tokens table
@@ -105,6 +151,13 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
         "INSERT INTO tokens (id, user_id, token, created_at) VALUES (?1, ?2, ?3, ?4)",
         rusqlite::params![token_id, user_id, token, now],
     ).map_err(|e| format!("Token insert error: {}", e))?;
+
+    // 触发注册活动（不阻塞注册）
+    if let Err(e) = crate::campaign_executor::execute_campaign_trigger(
+        &conn, "registration", &user_id, referred_by.as_deref(), None,
+    ) {
+        tracing::warn!("registration campaign trigger failed: {}", e);
+    }
 
     Ok(AuthResponse {
         user_id,
@@ -203,6 +256,9 @@ mod tests {
                 id_number TEXT,
                 bind_hash TEXT,
                 deleted_at TEXT,
+                subscription_expires TEXT DEFAULT NULL,
+                referral_code TEXT UNIQUE,
+                referred_by TEXT REFERENCES users(id),
                 created_at TEXT NOT NULL
             );
             CREATE TABLE tokens (
@@ -243,6 +299,7 @@ mod tests {
             password: "secret1".into(),
             real_name: None,
             phone: None,
+            referral: None,
         }).unwrap();
         assert_eq!(resp.user_id.len(), 36, "user_id should be a UUID v4");
         assert!(!resp.token.is_empty());
@@ -265,6 +322,7 @@ mod tests {
             password: "correct1".into(),
             real_name: None,
             phone: None,
+            referral: None,
         }).unwrap();
 
         let result = login(&conn, &LoginRequest {
@@ -284,6 +342,7 @@ mod tests {
             password: "pw1pass".into(),
             real_name: None,
             phone: None,
+            referral: None,
         }).unwrap();
 
         let result = register(&conn, &RegisterRequest {
@@ -291,6 +350,7 @@ mod tests {
             password: "pw2pass".into(),
             real_name: None,
             phone: None,
+            referral: None,
         });
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("taken"));
@@ -305,6 +365,7 @@ mod tests {
             password: "pass12".into(),
             real_name: None,
             phone: None,
+            referral: None,
         }).unwrap();
 
         // Valid token should verify
@@ -328,6 +389,7 @@ mod tests {
             password: "pass123".into(),
             real_name: Some("测试".into()),
             phone: Some(phone.into()),
+            referral: None,
         }).unwrap();
         assert_eq!(resp.user_id.len(), 36);
 

@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>每天进化1%</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, 'PingFang SC', 'Helvetica Neue', system-ui, sans-serif;
+            background: linear-gradient(145deg, #1A237E 0%, #0D1457 80%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px 16px 30px;
+            color: #ffffff;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 360px;
+            margin: 0 auto;
+        }
+
+        /* ===== 顶部徽章 ===== */
+        .badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.10);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            padding: 6px 16px;
+            border-radius: 30px;
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: 0.3px;
+            color: #B0B8FF;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            margin-bottom: 18px;
+        }
+
+        /* ===== 标题区 ===== */
+        .hero {
+            text-align: left;
+            margin-bottom: 28px;
+        }
+
+        .hero h1 {
+            font-size: 30px;
+            font-weight: 700;
+            line-height: 1.2;
+            letter-spacing: -0.3px;
+            background: linear-gradient(135deg, #FFFFFF 60%, #A5B0FF);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero .sub {
+            font-size: 16px;
+            color: #9DA0F0;
+            margin-top: 8px;
+            font-weight: 400;
+            letter-spacing: 0.2px;
+            line-height: 1.5;
+        }
+
+        .hero .sub strong {
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        /* ===== 用户问候 ===== */
+        .greeting {
+            font-size: 15px;
+            color: #C5C9FF;
+            margin-bottom: 20px;
+            padding: 10px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .greeting .avatar-placeholder {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #7C8CFF, #4A5AE0);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+            flex-shrink: 0;
+        }
+
+        .greeting .name {
+            font-weight: 600;
+            color: #ffffff;
+        }
+
+        /* ===== 数据卡片网格 ===== */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.07);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            border-radius: 14px;
+            padding: 16px 8px 14px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            transition: transform 0.2s ease;
+        }
+
+        .stat-card .number {
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1.1;
+            color: #ffffff;
+            letter-spacing: -0.5px;
+        }
+
+        .stat-card .label {
+            font-size: 12px;
+            color: #9DA0F0;
+            margin-top: 6px;
+            font-weight: 400;
+            letter-spacing: 0.3px;
+        }
+
+        .stat-card .unit {
+            font-size: 14px;
+            font-weight: 500;
+            color: #B0B8FF;
+        }
+
+        /* ===== 进度激励条 ===== */
+        .progress-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 14px;
+            padding: 18px 18px 20px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            margin-bottom: 22px;
+        }
+
+        .progress-section .title {
+            font-size: 14px;
+            color: #C5C9FF;
+            font-weight: 500;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .progress-section .title span {
+            color: #A5B0FF;
+            font-size: 13px;
+        }
+
+        .progress-track {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.10);
+            border-radius: 20px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #7C8CFF, #A5B0FF);
+            border-radius: 20px;
+            transition: width 0.6s ease;
+        }
+
+        .progress-fill.dynamic {
+            width: min(100%, calc(var(--streak, 7) / 30 * 100%));
+        }
+
+        .progress-hint {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #7C82B0;
+            margin-top: 6px;
+        }
+
+        /* ===== 奖励展示 ===== */
+        .reward-block {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 14px;
+            padding: 18px 18px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            margin-bottom: 22px;
+        }
+
+        .reward-block .reward-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .reward-block .reward-title .icon {
+            font-size: 18px;
+        }
+
+        .reward-items {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .reward-item {
+            flex: 1;
+            min-width: 120px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 10px;
+            padding: 12px 12px 10px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .reward-item .days {
+            font-size: 24px;
+            font-weight: 700;
+            color: #A5B0FF;
+            line-height: 1.2;
+        }
+
+        .reward-item .days span {
+            font-size: 14px;
+            font-weight: 400;
+            color: #9DA0F0;
+        }
+
+        .reward-item .desc {
+            font-size: 12px;
+            color: #9DA0F0;
+            margin-top: 4px;
+        }
+
+        .reward-item .tag {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 600;
+            color: #7C8CFF;
+            background: rgba(124, 140, 255, 0.15);
+            padding: 2px 10px;
+            border-radius: 30px;
+            margin-top: 6px;
+            letter-spacing: 0.3px;
+        }
+
+        /* ===== 邀请码区 ===== */
+        .code-section {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 12px;
+            padding: 12px 16px;
+            border: 1px dashed rgba(165, 176, 255, 0.25);
+            margin-bottom: 22px;
+        }
+
+        .code-section .code-label {
+            font-size: 13px;
+            color: #9DA0F0;
+        }
+
+        .code-section .code-value {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.06);
+            padding: 4px 14px;
+            border-radius: 8px;
+            font-family: 'SF Mono', 'Menlo', monospace;
+        }
+
+        .code-section .copy-hint {
+            font-size: 11px;
+            color: #7C82B0;
+            margin-left: 8px;
+        }
+
+        /* ===== CTA 按钮 ===== */
+        .cta-btn {
+            display: block;
+            width: 100%;
+            padding: 16px 20px;
+            background: linear-gradient(135deg, #7C8CFF 0%, #4A5AE0 100%);
+            border-radius: 14px;
+            text-align: center;
+            font-size: 17px;
+            font-weight: 600;
+            color: #ffffff;
+            text-decoration: none;
+            letter-spacing: 0.5px;
+            box-shadow: 0 8px 24px rgba(74, 90, 224, 0.35);
+            transition: all 0.2s ease;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            margin-bottom: 14px;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .cta-btn:active {
+            transform: scale(0.97);
+            box-shadow: 0 4px 12px rgba(74, 90, 224, 0.25);
+        }
+
+        .cta-btn .sub-text {
+            font-size: 13px;
+            font-weight: 400;
+            opacity: 0.85;
+            display: block;
+            margin-top: 2px;
+        }
+
+        /* ===== 底部品牌 ===== */
+        .footer-brand {
+            text-align: center;
+            padding-top: 10px;
+            font-size: 13px;
+            color: #5A62A0;
+            letter-spacing: 1px;
+            font-weight: 400;
+        }
+
+        .footer-brand .logo {
+            font-size: 18px;
+            display: inline-block;
+            margin-right: 4px;
+            color: #7C8CFF;
+        }
+
+        .footer-brand .brand-name {
+            font-weight: 500;
+            color: #7C82B0;
+        }
+
+        /* ===== 装饰小元素 ===== */
+        .glow-dot {
+            position: fixed;
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, rgba(124, 140, 255, 0.08), transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+            top: -60px;
+            right: -60px;
+        }
+
+        .glow-dot-bottom {
+            position: fixed;
+            width: 260px;
+            height: 260px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 70% 70%, rgba(165, 176, 255, 0.06), transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+            bottom: -100px;
+            left: -80px;
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ===== 小屏适配 ===== */
+        @media (max-width: 340px) {
+            .stats-grid {
+                gap: 8px;
+            }
+            .stat-card .number {
+                font-size: 22px;
+            }
+            .hero h1 {
+                font-size: 26px;
+            }
+            .reward-item {
+                min-width: 100px;
+            }
+        }
+
+        @media (min-width: 400px) {
+            .container {
+                max-width: 380px;
+            }
+            .stat-card {
+                padding: 20px 12px 16px;
+            }
+            .stat-card .number {
+                font-size: 32px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 装饰光晕 -->
+    <div class="glow-dot"></div>
+    <div class="glow-dot-bottom"></div>
+
+    <div class="container">
+
+        <!-- 顶部徽章 -->
+        <div class="badge">✦ 每日进化</div>
+
+        <!-- 标题 -->
+        <div class="hero">
+            <h1>每天进化1%</h1>
+            <div class="sub">
+                <strong>postertest</strong> 已坚持 <strong>0</strong> 天成长
+            </div>
+        </div>
+
+        <!-- 用户问候 -->
+        <div class="greeting">
+            <div class="avatar-placeholder">
+                {display_name:char}
+            </div>
+            <div>
+                你好，<span class="name">postertest</span> · 继续进化
+            </div>
+        </div>
+
+        <!-- 数据卡片 -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="number">0</div>
+                <div class="label">连续学习</div>
+            </div>
+            <div class="stat-card">
+                <div class="number">0</div>
+                <div class="label">学习卡片</div>
+            </div>
+            <div class="stat-card">
+                <div class="number">0</div>
+                <div class="label">今日复习</div>
+            </div>
+        </div>
+
+        <!-- 进度激励 -->
+        <div class="progress-section">
+            <div class="title">
+                本月进度
+                <span>0 / 30 天</span>
+            </div>
+            <div class="progress-track">
+                <div class="progress-fill dynamic" style="--streak: 0;"></div>
+            </div>
+            <div class="progress-hint">
+                <span>🌱 萌芽</span>
+                <span>🔥 坚持</span>
+                <span>⚡ 进化</span>
+            </div>
+        </div>
+
+        <!-- 奖励展示 -->
+        <div class="reward-block">
+            <div class="reward-title">
+                <span class="icon">🎁</span> 邀请好友，一起进化
+            </div>
+            <div class="reward-items">
+                <div class="reward-item">
+                    <div class="days">7 <span>天</span></div>
+                    <div class="desc">你获得</div>
+                    <div class="tag">推荐人奖励</div>
+                </div>
+                <div class="reward-item">
+                    <div class="days">3 <span>天</span></div>
+                    <div class="desc">好友获得</div>
+                    <div class="tag">被推荐人奖励</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 邀请码 -->
+        <div class="code-section">
+            <span class="code-label">你的邀请码</span>
+            <span class="code-value">CoEvo_UHM4</span>
+            <span class="copy-hint">⤵ 分享</span>
+        </div>
+
+        <!-- CTA 按钮 -->
+        <a class="cta-btn" href="https://keyievolution.fun/share/CoEvo_UHM4">
+            邀请好友 一起进化
+            <span class="sub-text">每天进步1%，复利成长</span>
+        </a>
+
+        <!-- 底部品牌 -->
+        <div class="footer-brand">
+            <span class="logo">⟐</span><span class="brand-name">CoEvo</span>
+        </div>
+
+    </div>
+
+</body>
+</html>

@@ -1,0 +1,33 @@
+classDiagram
+    class UserPosterData {
+        +String display_name
+        +i64 streak_days
+        +i64 total_cards
+        +i64 today_reviews
+        +String referral_code
+        +String qr_code_url
+    }
+
+    class PosterTemplateService {
+        +replace_template_variables(template: &str, data: &UserPosterData) String
+        +generate_template_via_llm(campaign_id: &str, campaign_name: &str, user_data_sample: &str) Result~String, String~
+        +build_user_data(conn: &Connection, user_id: &str, campaign_id: &str) Result~UserPosterData, String~
+    }
+
+    class CampaignHandler {
+        +generate_poster_template(headers: HeaderMap, Path(id): Path~String~) impl IntoResponse
+    }
+
+    class ReferralHandler {
+        +generate_poster(headers: HeaderMap, Json(body): Json~UserBody~) impl IntoResponse
+    }
+
+    class CampaignScheduler {
+        +refresh_all_active_templates() Result~usize, String~
+        +start_scheduler(db_path: &str) void
+    }
+
+    PosterTemplateService ..> UserPosterData : uses
+    CampaignHandler ..> PosterTemplateService : calls generate_template_via_llm
+    ReferralHandler ..> PosterTemplateService : calls replace_template_variables
+    CampaignScheduler ..> PosterTemplateService : calls generate_template_via_llm

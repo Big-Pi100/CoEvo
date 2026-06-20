@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant Admin as 管理端
+    participant Handler as campaign_handler::<br>generate_poster_template
+    participant Service as PosterTemplateService
+    participant LLM as LLM (DeepSeek)
+    participant DB as SQLite
+
+    Admin->>Handler: POST /api/admin/campaigns/{id}/generate-poster-template
+    Handler->>Handler: verify_admin(headers)
+    Handler->>DB: SELECT id, name FROM marketing_campaigns WHERE id = ?
+    DB-->>Handler: campaign row
+    Handler->>Service: generate_template_via_llm(base_dir, id, name, conn)
+    Service->>Service: load_combined_prompt("poster-template")
+    Service->>LLM: prompt + campaign_info (无用户数据)
+    LLM-->>Service: SVG 模板代码（含 {display_name} 等变量）
+    Service-->>Handler: Ok(template_svg)
+    Handler->>DB: UPDATE marketing_campaigns SET poster_template = ?, updated_at = ?
+    DB-->>Handler: done
+    Handler-->>Admin: 200 { "status": "ok", "template_preview": "..." }

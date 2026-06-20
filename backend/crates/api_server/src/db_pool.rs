@@ -40,6 +40,13 @@ pub fn init(db_path: &str) -> Result<(), String> {
             .map_err(|e| format!("DB pragma: {}", e))?;
     }
 
+    // Initialize schema + run migrations on first connection
+    {
+        let conn = pool.get().map_err(|e| format!("Pool get for schema: {}", e))?;
+        crate::schema::init_database(&conn)
+            .map_err(|e| format!("Schema init: {}", e))?;
+    }
+
     DB_POOL.set(pool)
         .map_err(|_| "DB pool already initialized".to_string())
 }

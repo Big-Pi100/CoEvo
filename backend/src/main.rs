@@ -66,6 +66,10 @@ async fn main() {
         .expect("Failed to init DB pool");
     tracing::info!("DB: {}", db_path);
 
+    // 启动后台定时任务（佣金解锁 + NOTPAY 关单，每 5 分钟执行）
+    api_server::campaign_scheduler::start_scheduler(&db_path);
+    tracing::info!("Campaign scheduler started (interval: 5 min)");
+
     // 成就引擎（TOML 数据驱动）
     {
         let ach_toml = std::env::var("COEVO_ACHIEVEMENTS_TOML")
@@ -77,6 +81,10 @@ async fn main() {
     // Load prompts from files (general + pipelines)
     chat_engine::prompt_loader::init(&prompts_dir);
     tracing::info!("Prompts: {}", prompts_dir);
+
+    // 创建分享目录（存放 LLM 生成的 H5 推广页面）
+    let _ = std::fs::create_dir_all("data/share");
+    tracing::info!("Share dir: data/share");
 
     // Load word bank (CEFR catalog)
     chat_engine::word_bank::init(&wordbank_path);
@@ -255,11 +263,10 @@ async fn main() {
             )",
             "CREATE INDEX IF NOT EXISTS idx_audit_target ON subscription_audit_log(target_user_id)",
             "CREATE INDEX IF NOT EXISTS idx_audit_created ON subscription_audit_log(created_at)",
-            // 初始化套餐
-            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, once_per_user, sort_order, is_active, created_at) VALUES ('discount_10', '新手体验', 3, 10, 1, 0, 1, datetime('now'))",
-            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('30d', '月度会员', 30, 20000, 1, 1, datetime('now'))",
+            // 初始化套餐（三档默认定价，其他特殊定价走营销活动）
+            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('30d', '月度会员', 30, 12000, 0, 1, datetime('now'))",
+            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('90d', '季度会员', 90, 35000, 1, 1, datetime('now'))",
             "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('365d', '年度会员', 365, 128000, 2, 1, datetime('now'))",
-            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, max_uses, used_count, sort_order, is_active, created_at) VALUES ('lifetime', '终身会员', 3650, 128000, 100, 0, 3, 1, datetime('now'))",
             // K12 题库
             "CREATE TABLE IF NOT EXISTS k12_quiz_bank (
                 id TEXT PRIMARY KEY,

@@ -248,6 +248,16 @@ class ChatClient {
     return data['result'] as String;
   }
 
+  /// 检查复习完成后是否有可弹的营销活动
+  Future<Map<String, dynamic>> checkReviewCampaign() async {
+    final url = Uri.parse('$baseUrl/api/campaigns/check-push-trigger?push_trigger=after_complete_review');
+    final resp = await http.get(url, headers: _authHeaders).timeout(const Duration(seconds: 5));
+    if (resp.statusCode == 200) {
+      return jsonDecode(resp.body) as Map<String, dynamic>;
+    }
+    return {'has_active': false};
+  }
+
   // ── Card Status API ──
 
   /// 更新单张卡片状态: active / pending / skipped / archived

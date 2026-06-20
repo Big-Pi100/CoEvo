@@ -217,9 +217,12 @@ pub fn handle_plan_update(
         }
     }
 
-    // Phase 2: 计划完成成就检测
+    // Phase 2: 计划完成成就检测 + 活动触发
     if plan_updated && !is_new_plan {
         crate::achievement_engine::publish(conn, crate::achievement_engine::AppEvent::PlanCompleted { user_id: user_id.to_string() });
+        let _ = crate::campaign_executor::execute_campaign_trigger(
+            conn, "plan_completed", user_id, None, None,
+        );
     }
 
     // 返回 plan_id

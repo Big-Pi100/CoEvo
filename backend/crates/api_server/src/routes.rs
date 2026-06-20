@@ -195,6 +195,62 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/admin/debug/tracks", get(crate::config_admin::debug_tracks_handler))
         .route("/api/admin/debug/logs", get(crate::config_admin::debug_logs_handler))
         .route("/api/admin/debug/logs/{id}", get(crate::config_admin::debug_log_detail_handler))
+        // ── Distribution & Marketing ──
+        // 用户端 API
+        .route("/api/campaigns/check-push-trigger", get(crate::campaign_handler::check_push_trigger))
+        .route("/api/referral/click", post(crate::referral_handler::click))
+        .route("/api/referral/my-code", get(crate::referral_handler::my_code))
+        .route("/api/referral/my-stats", get(crate::referral_handler::my_stats))
+        .route("/api/referral/my-team", get(crate::referral_handler::my_team))
+        .route("/api/referral/my-commissions", get(crate::referral_handler::my_commissions))
+        .route("/api/referral/generate-poster", post(crate::referral_handler::generate_poster))
+        .route("/api/referral/generate-h5", post(crate::referral_handler::generate_h5))
+        .route("/api/referral/user-portrait", get(crate::referral_handler::user_portrait))
+        .route("/api/referral/qrcode", get(crate::referral_handler::get_qrcode))
+        // 用户端提现
+        .route("/api/referral/withdraw", post(crate::distribution_handler::user_withdraw))
+        .route("/api/referral/my-withdrawals", get(crate::distribution_handler::user_withdrawals))
+        // 推广落地页
+        .route("/share/{code}", get(crate::referral_handler::share_landing))
+        .route("/api/pay/calculate", post(crate::distribution_handler::calculate))
+        .route("/api/notifications", get(crate::distribution_handler::list_notifications))
+        .route("/api/notifications/{id}/read", post(crate::distribution_handler::mark_read))
+        .route("/api/notifications/read-all", post(crate::distribution_handler::mark_read_all))
+        // 管理端活动 API
+        .route("/api/admin/campaigns", get(crate::campaign_handler::list).post(crate::campaign_handler::create))
+        .route("/api/admin/campaigns/default-poster-prompt", get(crate::campaign_handler::default_poster_prompt))
+        .route("/api/admin/campaigns/{id}", get(crate::campaign_handler::get).put(crate::campaign_handler::update).delete(crate::campaign_handler::delete))
+        .route("/api/admin/campaigns/{id}/status", patch(crate::campaign_handler::toggle_status))
+        .route("/api/admin/campaigns/{id}/push", post(crate::campaign_handler::push))
+        .route("/api/admin/campaigns/{id}/stats", get(crate::campaign_handler::stats))
+        .route("/api/admin/campaigns/{id}/generate-poster-template", post(crate::campaign_handler::generate_poster_template))
+        .route("/api/admin/campaigns/{id}/generate-h5-template", post(crate::campaign_handler::generate_h5_template))
+        .route("/api/admin/campaigns/{id}/preview-poster", post(crate::campaign_handler::preview_poster))
+        .route("/api/admin/campaigns/{id}/preview-h5", post(crate::campaign_handler::preview_h5))
+        // 管理端结算 API
+        .route("/api/admin/settlement/pending-commissions", get(crate::distribution_handler::pending_commissions))
+        .route("/api/admin/settlement/create-batch", post(crate::distribution_handler::create_batch))
+        .route("/api/admin/settlement/batches", get(crate::distribution_handler::list_batches))
+        .route("/api/admin/settlement/batches/{id}", get(crate::distribution_handler::get_batch))
+        .route("/api/admin/settlement/batches/{id}/export", get(crate::distribution_handler::export_batch))
+        .route("/api/admin/settlement/batches/{id}/mark-paid", post(crate::distribution_handler::mark_paid))
+        // 管理端提现 API
+        .route("/api/admin/withdrawals", get(crate::distribution_handler::list_withdrawals))
+        .route("/api/admin/withdrawals/{id}/approve", post(crate::distribution_handler::approve_withdrawal))
+        .route("/api/admin/withdrawals/{id}/reject", post(crate::distribution_handler::reject_withdrawal))
+        // 管理端团队 API
+        .route("/api/admin/team", get(crate::distribution_handler::admin_team))
+        .route("/api/admin/team/{user_id}", get(crate::distribution_handler::admin_team_user))
+        // 管理端统计 API
+        .route("/api/admin/distribution/stats", get(crate::distribution_handler::admin_stats))
+        .route("/api/admin/distribution/funnel", get(crate::distribution_handler::admin_funnel))
+        .route("/api/admin/distribution/summary", get(crate::distribution_handler::admin_summary))
+        .route("/api/admin/distribution/monthly-stats", get(crate::distribution_handler::admin_monthly_stats))
+        .route("/api/admin/distribution/ranking", get(crate::distribution_handler::admin_ranking))
+        .route("/api/admin/distribution/export", get(crate::distribution_handler::admin_export))
+        // 退款 API
+        .route("/api/admin/refund/{order_id}", post(crate::distribution_handler::admin_refund))
+        .route("/api/webhook/refund", post(crate::distribution_handler::webhook_refund))
         // ── 全局中间件：HTTP 请求/响应日志 ──
         .layer(TraceLayer::new_for_http())
 }
@@ -216,6 +272,7 @@ pub struct AuthInput {
     pub password: String,
     pub real_name: Option<String>,
     pub phone: Option<String>,
+    pub referral: Option<crate::auth::ReferralInfo>,
 }
 
 /// POST /api/auth/register — 注册新用户
@@ -238,6 +295,7 @@ async fn auth_register(
             password: input.password,
             real_name: input.real_name,
             phone: input.phone,
+            referral: input.referral,
         })
     };
     match result {
@@ -1454,6 +1512,10 @@ async fn profile_handler(
         "SELECT display_name FROM users WHERE id = ?1",
         rusqlite::params![user_id], |row| row.get(0),
     ).ok().flatten();
+    let subscription_expires: Option<String> = conn.query_row(
+        "SELECT subscription_expires FROM users WHERE id = ?1",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).ok().flatten();
     let real_name_raw: Option<String> = conn.query_row(
         "SELECT real_name FROM users WHERE id = ?1",
         rusqlite::params![user_id], |row| row.get(0),
@@ -1503,6 +1565,7 @@ async fn profile_handler(
         "display_name": display_name,
         "real_name": real_name,
         "phone": phone,
+        "subscription_expires": subscription_expires,
         "stats": {
             "total_cards": total_cards,
             "total_reviews": total_reviews,
@@ -1749,7 +1812,7 @@ async fn user_subscription_handler(
 ) -> Json<serde_json::Value> {
     let conn = crate::db_pool::get_conn();
     let expires: Option<String> = conn.query_row(
-        "SELECT value FROM user_preferences WHERE user_id = ?1 AND key = 'subscription_expires'",
+        "SELECT subscription_expires FROM users WHERE id = ?1",
         rusqlite::params![user_id],
         |row| row.get(0),
     ).ok().flatten();
@@ -1933,6 +1996,14 @@ async fn preferences_get_handler(
     }).unwrap().filter_map(|r| r.ok()) {
         prefs.insert(row.0, serde_json::Value::String(row.1));
     }
+    // 合并 users 表的 subscription_expires（user_preferences 已去除订阅功能）
+    let sub_expires: Option<String> = conn.query_row(
+        "SELECT subscription_expires FROM users WHERE id = ?1",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).ok().flatten();
+    if let Some(exp) = sub_expires {
+        prefs.insert("subscription_expires".to_string(), serde_json::Value::String(exp));
+    }
     Json(serde_json::Value::Object(prefs))
 }
 
@@ -1945,17 +2016,24 @@ async fn preferences_put_handler(
     let conn = crate::db_pool::get_conn();
     let now = chrono::Utc::now().timestamp();
     for (key, value) in &input {
-        // 正规化日期：纯日期 "YYYY-MM-DD" → RFC3339
-        let value = if key == "subscription_expires" && value.len() == 10 && value.as_bytes().get(4) == Some(&b'-') {
-            format!("{}T00:00:00Z", value)
+        if key == "subscription_expires" {
+            // subscription_expires 已迁移到 users 表
+            let normalized = if value.len() == 10 && value.as_bytes().get(4) == Some(&b'-') {
+                format!("{}T00:00:00Z", value)
+            } else {
+                value.clone()
+            };
+            let _ = conn.execute(
+                "UPDATE users SET subscription_expires = ?1 WHERE id = ?2",
+                rusqlite::params![normalized, user_id],
+            );
         } else {
-            value.clone()
-        };
-        let _ = conn.execute(
-            "INSERT INTO user_preferences (user_id, key, value, updated_at) VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT(user_id, key) DO UPDATE SET value = ?3, updated_at = ?4",
-            rusqlite::params![user_id, key, value, now],
-        );
+            let _ = conn.execute(
+                "INSERT INTO user_preferences (user_id, key, value, updated_at) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(user_id, key) DO UPDATE SET value = ?3, updated_at = ?4",
+                rusqlite::params![user_id, key, value, now],
+            );
+        }
     }
     Json(serde_json::json!({"status": "ok"}))
 }

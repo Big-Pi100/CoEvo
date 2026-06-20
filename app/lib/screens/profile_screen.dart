@@ -1,4 +1,4 @@
-﻿// ignore_for_file: unnecessary_cast, unnecessary_non_null_assertion, unused_element
+﻿// ignore_for_file: unnecessary_cast, unnecessary_non_null_assertion, unused_element, unused_field
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -15,8 +15,10 @@ import '../providers/theme_provider.dart';
 import '../services/tts_service.dart';
 import '../widgets/order_history.dart';
 import '../widgets/subscribe_panel.dart';
+import '../widgets/share_widget.dart';
 import '../utils/validators.dart';
 import '../theme/app_theme.dart';
+import '../pages/user/distribution/notification_panel.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -39,9 +41,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   String? _phone;
   bool _isUploading = false;
   ProviderSubscription? _authSub;
+  int _unreadCount = 0;
 
   // 订阅状态
   String? _subscriptionExpires;  // ISO 8601 或 null（未激活）
+
+  // 推广码
+  String? _referralCode;
+  bool _referralLoading = false;
+  Map<String, dynamic>? _referralStats;
+  bool _statsLoading = false;
 
   // TTS 引擎配置
   String _ttsEngine = 'native';   // 'tencent' | 'native'
@@ -57,6 +66,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  Future<void> _loadUnreadCount() async {
+    final auth = ref.read(authProvider);
+    if (auth.userId == null || auth.token == null) return;
+    try {
+      final resp = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/notifications?user_id=${auth.userId}'),
+        headers: {'Authorization': 'Bearer ${auth.token}'},
+      ).timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200 && mounted) {
+        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+        _unreadCount = (data['unread_count'] as num?)?.toInt() ?? 0;
+      }
+    } catch (_) {}
   }
 
   Future<void> _load() async {
@@ -110,13 +134,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (mounted) {
         setState(() {
           _data = data;
-          _subscriptionExpires = serverPrefs['subscription_expires'];
+          _subscriptionExpires = data['subscription_expires'] as String?;
           _ttsEngine = serverPrefs['tts_engine'] ?? 'native';
           _ttsVoiceType = int.tryParse(serverPrefs['tts_voice_type'] ?? '') ?? 0;
           _ttsSpeed = double.tryParse(serverPrefs['tts_speed'] ?? '') ?? 0.0;
           _isLoading = false;
         });
       }
+
+      // 异步加载未读通知数（不阻塞主流程）
+      _loadUnreadCount();
+      // 异步加载推广数据
+      _loadReferralCode();
     } catch (e) {
       if (mounted) setState(() { _isLoading = false; _error = '加载失败，请检查网络连接'; });
     }
@@ -355,6 +384,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       appBar: AppBar(
         title: const Text('个人'),
         actions: [
+          Badge(
+            isLabelVisible: _unreadCount > 0,
+            label: Text('$_unreadCount', style: const TextStyle(fontSize: 10)),
+            child: IconButton(
+              icon: const Icon(Icons.notifications_outlined),
+              tooltip: '通知',
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationPanel())),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
@@ -449,6 +487,67 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           onTap: () => _editInfoField('手机号', _phone, Validators.phone, (v) => _updateProfile({'phone': v})),
         ),
         const SizedBox(height: AppTheme.spacingLg),
+
+        // 推广统计 + 导航
+        if (_referralCode != null) ...[
+          // 统计卡片
+          if (_statsLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: AppTheme.spacingMd),
+              child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingMd),
+              decoration: BoxDecoration(
+                color: _cs.surfaceContainerHighest.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Expanded(child: _statItem(Icons.people, '邀请人数', '${_referralStats?['registrations'] ?? 0}')),
+                  Container(width: 1, height: 32, color: _cs.outlineVariant),
+                  Expanded(child: _statItem(Icons.monetization_on, '累计收益', '¥${((_referralStats?['total_commission'] as num?)?.toDouble() ?? 0) / 100}')),
+                  Container(width: 1, height: 32, color: _cs.outlineVariant),
+                  Expanded(child: _statItem(Icons.timeline, '分享次数', '${_referralStats?['clicks'] ?? 0}')),
+                ],
+              ),
+            ),
+          const SizedBox(height: AppTheme.spacingMd),
+          // 导航按钮
+          Row(
+            children: [
+              Expanded(child: OutlinedButton.icon(
+                icon: const Icon(Icons.account_tree, size: 16),
+                onPressed: () => context.push('/earnings'),
+                label: const Text('收益明细', style: TextStyle(fontSize: 12)),
+              )),
+              const SizedBox(width: AppTheme.spacingSm),
+              Expanded(child: OutlinedButton.icon(
+                icon: const Icon(Icons.group, size: 16),
+                onPressed: () => context.push('/team'),
+                label: const Text('我的团队', style: TextStyle(fontSize: 12)),
+              )),
+              const SizedBox(width: AppTheme.spacingSm),
+              Expanded(child: OutlinedButton.icon(
+                icon: const Icon(Icons.payments, size: 16),
+                onPressed: () => context.push('/withdraw'),
+                label: const Text('提现', style: TextStyle(fontSize: 12)),
+              )),
+            ],
+          ),
+          const SizedBox(height: AppTheme.spacingMd),
+          // 分享入口
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.share, size: 16),
+              onPressed: () => showDialog(context: context, builder: (_) => const ShareWidget()),
+              label: const Text('分享给朋友', style: TextStyle(fontSize: 12)),
+            ),
+          ),
+          const SizedBox(height: AppTheme.spacingLg),
+        ],
 
         // 订阅状态
         _buildSubscriptionCard(),
@@ -762,7 +861,58 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  /// 订阅状态卡片
+  // ── 推广码 ──
+  Future<void> _loadReferralCode() async {
+    final auth = ref.read(authProvider);
+    if (auth.userId == null || auth.token == null) return;
+    setState(() => _referralLoading = true);
+    try {
+      final resp = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/referral/my-code?user_id=${auth.userId}'),
+        headers: {'Authorization': 'Bearer ${auth.token}'},
+      ).timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200 && mounted) {
+        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+        _referralCode = data['referral_code'] as String?;
+        _loadReferralStats();
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _referralLoading = false);
+  }
+
+  Future<void> _loadReferralStats() async {
+    final auth = ref.read(authProvider);
+    final uid = auth.userId;
+    if (uid == null) return;
+    setState(() => _statsLoading = true);
+    try {
+      final token = auth.token;
+      final headers = token != null ? {'Authorization': 'Bearer $token'} : <String, String>{};
+      final resp = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/referral/my-stats?user_id=$uid'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200 && mounted) {
+        _referralStats = jsonDecode(resp.body) as Map<String, dynamic>?;
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _statsLoading = false);
+  }
+
+  Widget _statItem(IconData icon, String label, String value) {
+    return Column(
+      children: [
+        Icon(icon, size: 18, color: _cs.primary),
+        const SizedBox(height: 4),
+        Text(value,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        Text(label,
+            style: TextStyle(fontSize: 11, color: _cs.onSurfaceVariant)),
+      ],
+    );
+  }
+
+  // ── 订阅状态卡片
   Widget _buildSubscriptionCard() {
     final expiresStr = _subscriptionExpires;
     final bool isActivated = expiresStr != null && expiresStr.isNotEmpty;

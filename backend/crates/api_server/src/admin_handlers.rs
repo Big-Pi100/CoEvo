@@ -173,17 +173,23 @@ pub async fn admin_users_handler(headers: HeaderMap, Query(query): Query<AdminUs
     // Sort: expiring soon first. ORDER BY 1) null expires last, 2) expires ASC
     let no_search = query.q.is_empty();
     let (join_clause, order_clause) = if sort == "expiring" || no_search {
-        ("LEFT JOIN user_preferences up ON u.id=up.user_id AND up.key='subscription_expires'".to_string(), "ORDER BY up.value IS NULL, up.value ASC".to_string())
+        (String::new(), "ORDER BY u.subscription_expires IS NULL, u.subscription_expires ASC".to_string())
     } else { (String::new(), "ORDER BY u.created_at DESC".to_string()) };
 
     let sql = format!("SELECT u.id,u.username,u.display_name,u.real_name,u.phone,u.created_at,u.streak_days,u.deleted_at FROM users u {} {} {} LIMIT ?1 OFFSET ?2", join_clause, where_clause, order_clause);
     tracing::debug!("admin_users SQL: {}", sql);
-    let mut stmt = c.prepare(&sql).unwrap();
+    let mut stmt = match c.prepare(&sql) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!("admin_users prepare failed: {} — SQL: {}", e, sql);
+            return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("SQL error: {}", e));
+        }
+    };
     let users: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![limit, offset], |row| {
         let uid: String = row.get(0)?;
         let cards: i64 = c.query_row("SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id=?1 AND cm.status='active'", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
         let reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN user_cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
-        let expires: Option<String> = c.query_row("SELECT value FROM user_preferences WHERE user_id=?1 AND key='subscription_expires'", rusqlite::params![&uid], |r| r.get(0)).ok();
+        let expires: Option<String> = c.query_row("SELECT subscription_expires FROM users WHERE id=?1", rusqlite::params![&uid], |r| r.get(0)).ok();
         let is_super = role == "super";
         let rname_raw: Option<String> = row.get(3)?;
         let phone_raw: Option<String> = row.get(4)?;
@@ -231,7 +237,7 @@ pub async fn admin_user_detail(headers: HeaderMap, Path(uid): Path<String>) -> i
         let reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN user_cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1", rusqlite::params![&uid2],|r|r.get(0)).unwrap_or(0);
         let rn_raw: Option<String> = row.get(3)?;
         let ph_raw: Option<String> = row.get(4)?;
-        let expires: Option<String> = c.query_row("SELECT value FROM user_preferences WHERE user_id=?1 AND key='subscription_expires'", rusqlite::params![&uid2], |r| r.get(0)).ok();
+        let expires: Option<String> = c.query_row("SELECT subscription_expires FROM users WHERE id=?1", rusqlite::params![&uid2], |r| r.get(0)).ok();
         Ok(serde_json::json!({"user_id":uid2,"username":row.get::<_,String>(1)?,"display_name":row.get::<_,Option<String>>(2)?,
             "real_name":rn_raw.as_ref().map(|v|decrypt_maybe(v)),"phone":ph_raw.as_ref().map(|v|decrypt_maybe(v)),
             "created_at":row.get::<_,String>(5)?,"streak_days":row.get::<_,i32>(6)?,"last_active_date":row.get::<_,Option<String>>(7)?,"card_count":cards,"review_count":reviews,"subscription_expires":expires}))
@@ -278,9 +284,8 @@ pub async fn admin_hard_delete_user(headers: HeaderMap, Path(uid): Path<String>)
 
     // 1. 读取用户归档信息（在删除之前）
     let user_info: Result<(String, Option<String>, Option<String>, Option<String>, Option<String>), _> = c.query_row(
-        "SELECT u.username, u.display_name, u.phone_hash, up_exp.value, up_act.value
+        "SELECT u.username, u.display_name, u.phone_hash, u.subscription_expires, up_act.value
          FROM users u
-         LEFT JOIN user_preferences up_exp ON u.id=up_exp.user_id AND up_exp.key='subscription_expires'
          LEFT JOIN user_preferences up_act ON u.id=up_act.user_id AND up_act.key='subscription_activated_at'
          WHERE u.id=?1",
         rusqlite::params![&uid],
@@ -396,7 +401,7 @@ pub async fn admin_set_subscription(headers: HeaderMap, Path(uid): Path<String>,
     let c = conn(); let now = chrono::Utc::now().timestamp();
     if can_direct {
         // Direct apply
-        let _ = c.execute("INSERT OR REPLACE INTO user_preferences (user_id,key,value,updated_at) VALUES (?1,'subscription_expires',?2,?3)", rusqlite::params![uid, input.subscription_expires, now]);
+        let _ = c.execute("UPDATE users SET subscription_expires=?1 WHERE id=?2", rusqlite::params![input.subscription_expires, uid]);
         let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'set_subscription',?3,?4,?5)",
             rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"expires":input.subscription_expires}).to_string(), now]);
         ok(serde_json::json!({"status":"ok"}))
@@ -421,7 +426,7 @@ pub async fn admin_quick_extend(headers: HeaderMap, Path(uid): Path<String>, Jso
         if has_permission(&admin_id, perm_key) {
             // Has permission — direct apply like super
             let c = conn(); let now = chrono::Utc::now().timestamp();
-            let _ = c.execute("INSERT OR REPLACE INTO user_preferences (user_id,key,value,updated_at) VALUES (?1,'subscription_expires',?2,?3)", rusqlite::params![uid, input.subscription_expires, now]);
+            let _ = c.execute("UPDATE users SET subscription_expires=?1 WHERE id=?2", rusqlite::params![input.subscription_expires, uid]);
             let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'quick_extend',?3,?4,?5)",
                 rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"expires":input.subscription_expires,"days":days}).to_string(), now]);
             return ok(serde_json::json!({"status":"ok"}));
@@ -438,7 +443,7 @@ pub async fn admin_quick_extend(headers: HeaderMap, Path(uid): Path<String>, Jso
         return ok(serde_json::json!({"request_id":req_id,"status":"pending"}));
     }
     // Super: direct extend
-    let _ = c.execute("INSERT OR REPLACE INTO user_preferences (user_id,key,value,updated_at) VALUES (?1,'subscription_expires',?2,?3)", rusqlite::params![uid, input.subscription_expires, now]);
+    let _ = c.execute("UPDATE users SET subscription_expires=?1 WHERE id=?2", rusqlite::params![input.subscription_expires, uid]);
     let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'quick_extend',?3,?4,?5)",
         rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"expires":input.subscription_expires,"days":input.days}).to_string(), now]);
     ok(serde_json::json!({"status":"ok"}))
@@ -463,10 +468,10 @@ pub async fn admin_batch_subscription(headers: HeaderMap, Json(input): Json<Batc
     if role != "super" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     let c = conn(); let now = chrono::Utc::now().timestamp();
     for uid in &input.user_ids {
-        let current: String = c.query_row("SELECT value FROM user_preferences WHERE user_id=?1 AND key='subscription_expires'", rusqlite::params![uid], |row| row.get(0)).unwrap_or_default();
+        let current: String = c.query_row("SELECT COALESCE(subscription_expires,'') FROM users WHERE id=?1", rusqlite::params![uid], |row| row.get(0)).unwrap_or_default();
         let new_exp = if current.is_empty() { (chrono::Utc::now()+chrono::Duration::days(input.days)).format("%Y-%m-%d").to_string() }
             else { (chrono::DateTime::parse_from_rfc3339(&current).unwrap()+chrono::Duration::days(input.days)).format("%Y-%m-%d").to_string() };
-        let _ = c.execute("INSERT OR REPLACE INTO user_preferences (user_id,key,value,updated_at) VALUES (?1,'subscription_expires',?2,?3)", rusqlite::params![uid, new_exp, now]);
+        let _ = c.execute("UPDATE users SET subscription_expires=?1 WHERE id=?2", rusqlite::params![new_exp, uid]);
     }
     let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'batch_set_subscription',?3,?4,?5)",
         rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, format!("{} users",input.user_ids.len()), serde_json::json!({"ids":input.user_ids,"days":input.days}).to_string(), now]);
@@ -508,13 +513,13 @@ async fn review_subscription(headers: &HeaderMap, req_id: &str, status: &str, re
         Some((uid, pkg)) => {
             let _ = c.execute("UPDATE subscription_requests SET status=?1,reviewed_by=?2,reject_reason=?3,reviewed_at=?4 WHERE id=?5", rusqlite::params![status,admin_id,reason,now,req_id]);
             if status == "approved" {
-                let days: i64 = match pkg.as_str() { "30d"=>30,"365d"=>365,"lifetime"=>3650,_ => {
+                let days: i64 = match pkg.as_str() { "30d"=>30,"90d"=>90,"365d"=>365,_ => {
                     // Try parsing "Xd" format (7d, 14d, etc.), fallback to 30
                     let trimmed = pkg.trim_end_matches('d');
                     trimmed.parse::<i64>().unwrap_or(30)
                 }};
                 // Calculate from current expiry, not from today
-                let current: String = c.query_row("SELECT value FROM user_preferences WHERE user_id=?1 AND key='subscription_expires'", rusqlite::params![&uid], |row| row.get(0)).unwrap_or_default();
+                let current: String = c.query_row("SELECT COALESCE(subscription_expires,'') FROM users WHERE id=?1", rusqlite::params![&uid], |row| row.get(0)).unwrap_or_default();
                 let exp = if current.is_empty() {
                     (chrono::Utc::now()+chrono::Duration::days(days)).format("%Y-%m-%d").to_string()
                 } else {
@@ -523,7 +528,7 @@ async fn review_subscription(headers: &HeaderMap, req_id: &str, status: &str, re
                         .unwrap_or_else(|_| chrono::Utc::now().date_naive());
                     (parsed + chrono::Duration::days(days)).format("%Y-%m-%d").to_string()
                 };
-                let _ = c.execute("INSERT OR REPLACE INTO user_preferences (user_id,key,value,updated_at) VALUES (?1,'subscription_expires',?2,?3)", rusqlite::params![&uid, &exp, now]);
+                let _ = c.execute("UPDATE users SET subscription_expires=?1 WHERE id=?2", rusqlite::params![&exp, &uid]);
             }
             let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,request_id,detail,created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
                 rusqlite::params![uuid::Uuid::new_v4().to_string(),admin_id,format!("{status}_subscription"),uid,req_id,serde_json::json!({"reason":reason}).to_string(),now]);
@@ -1153,9 +1158,14 @@ pub async fn admin_dashboard(headers: HeaderMap) -> impl IntoResponse {
         "SELECT COUNT(*) FROM review_log rl JOIN user_cards cd ON rl.card_id=cd.id WHERE rl.reviewed_at >= ?1",
         rusqlite::params![now.timestamp() - 86400], |r| r.get(0)).unwrap_or(0);
     let expiring: Vec<serde_json::Value> = {
-        let mut stmt = c.prepare(
-            "SELECT u.id, u.username, u.display_name, up.value FROM user_preferences up JOIN users u ON up.user_id=u.id WHERE up.key='subscription_expires' AND up.value <= ?1 AND up.value >= date('now') ORDER BY up.value LIMIT 20"
-        ).unwrap();
+        let sql = "SELECT u.id, u.username, u.display_name, u.subscription_expires FROM users u WHERE u.subscription_expires IS NOT NULL AND u.subscription_expires <= ?1 AND u.subscription_expires >= date('now') ORDER BY u.subscription_expires LIMIT 20";
+        let mut stmt = match c.prepare(sql) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!("dashboard expiring_soon prepare failed: {}", e);
+                return ok(serde_json::json!({"total_users": total_users, "total_cards": total_cards, "today_new_users": today_users, "today_active_users": today_active, "today_reviews": today_reviews, "expiring_soon": []}));
+            }
+        };
         stmt.query_map(rusqlite::params![week_end], |row| Ok(serde_json::json!({
             "user_id": row.get::<_,String>(0)?,
             "username": row.get::<_,String>(1)?,
@@ -1185,9 +1195,9 @@ pub async fn admin_expiring_users(headers: HeaderMap, Query(query): Query<Expiri
     let c = conn();
     let end_offset = format!("+{} days", range_days);
     let mut stmt = c.prepare(
-        "SELECT u.id, u.username, u.display_name, up.value FROM user_preferences up JOIN users u ON up.user_id=u.id \
-         WHERE up.key='subscription_expires' AND up.value >= date('now') AND up.value <= date('now', ?1) \
-         ORDER BY up.value LIMIT 50"
+        "SELECT u.id, u.username, u.display_name, u.subscription_expires FROM users u \
+         WHERE u.subscription_expires IS NOT NULL AND u.subscription_expires >= date('now') AND u.subscription_expires <= date('now', ?1) \
+         ORDER BY u.subscription_expires LIMIT 50"
     ).unwrap();
     let users: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![end_offset], |row| {
         Ok(serde_json::json!({
@@ -1217,7 +1227,7 @@ pub async fn admin_users_export(headers: HeaderMap, Query(query): Query<AdminUse
         let uid: String = row.get(0)?;
         let cards: i64 = c.query_row("SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id=?1 AND cm.status='active'", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
         let reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN user_cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
-        let expires: String = c.query_row("SELECT COALESCE(value,'') FROM user_preferences WHERE user_id=?1 AND key='subscription_expires'", rusqlite::params![&uid], |r| r.get(0)).unwrap_or_default();
+        let expires: String = c.query_row("SELECT COALESCE(subscription_expires,'') FROM users WHERE id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or_default();
         let rn_opt: Option<String> = row.get(3).ok().flatten();
         let ph_opt: Option<String> = row.get(4).ok().flatten();
         let rn = rn_opt.as_ref().map(|v| if encryption::is_encrypted(v) { encryption::decrypt(v) } else { v.clone() }).unwrap_or_default();

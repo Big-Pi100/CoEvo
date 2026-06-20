@@ -20,6 +20,9 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
   bool _loading = true;
   String? _error;
   String? _orderingPlan;
+  // 折扣信息
+  Map<String, dynamic>? _discountInfo;
+  bool _discountLoading = false;
 
   @override
   void initState() {
@@ -32,17 +35,22 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
     try {
       final auth = ref.read(authProvider);
       final userId = auth.userId;
+      final token = auth.token;
+      final h = <String, String>{};
+      if (token != null) h['Authorization'] = 'Bearer $token';
       final url = userId != null
           ? '${ApiConfig.baseUrl}/api/pay/plans?user_id=$userId'
           : '${ApiConfig.baseUrl}/api/pay/plans';
       final resp = await http
-          .get(Uri.parse(url))
+          .get(Uri.parse(url), headers: h)
           .timeout(const Duration(seconds: 10));
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
         _plans = (data['plans'] as List)
             .map((e) => e as Map<String, dynamic>)
             .toList();
+        // 加载折扣信息
+        if (userId != null) _loadDiscount(userId);
       } else {
         _error = '加载套餐失败';
       }
@@ -50,6 +58,38 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
       _error = '网络错误';
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _loadDiscount(String userId) async {
+    if (_plans == null || _plans!.isEmpty) return;
+    // 检查第一个套餐是否有折扣（代表整个活动折扣）
+    final firstPlan = _plans!.first;
+    if (firstPlan['price'] == 0) return; // 免费套餐无折扣
+    try {
+      final token = ref.read(authProvider).token;
+      final resp = await http
+          .post(
+            Uri.parse('${ApiConfig.baseUrl}/api/pay/calculate'),
+            headers: {
+              'Content-Type': 'application/json',
+              if (token != null) 'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'user_id': userId,
+              'plan_id': firstPlan['id'],
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200 && mounted) {
+        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+        final orig = data['original_price'] as int? ?? 0;
+        final disc = data['discounted_price'] as int? ?? 0;
+        if (disc < orig) {
+          _discountInfo = data;
+        }
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _discountLoading = false);
   }
 
   Future<void> _createOrder(String planId) async {
@@ -147,15 +187,52 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
                   style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
             ),
           ] else ...[
+            // 折扣横幅
+            if (_discountInfo != null)
+              Container(
+                margin: const EdgeInsets.only(bottom: AppTheme.spacingSm),
+                padding: const EdgeInsets.all(AppTheme.spacingSm),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Text('🎉', style: TextStyle(fontSize: 18)),
+                    const SizedBox(width: AppTheme.spacingSm),
+                    Expanded(
+                      child: Text(
+                        '好友邀请专属优惠，被推荐享折扣',
+                        style: TextStyle(fontSize: 12, color: Colors.brown.shade700),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             const SizedBox(height: AppTheme.spacingSm),
-            ..._plans!.asMap().entries.map((entry) =>
-                _PlanCard(
-                  plan: entry.value,
-                  priceText: _fmtPrice(entry.value['price'] as int),
-                  durationText: _durationText(entry.value),
-                  loading: _orderingPlan == entry.value['id'],
-                  onPay: () => _createOrder(entry.value['id'] as String),
-                )),
+            ..._plans!.asMap().entries.map((entry) {
+              final plan = entry.value;
+              final planId = plan['id'] as String;
+              // 如果不是折扣计算用的套餐，尝试单独计算折扣
+              int? discountedPrice;
+              if (_discountInfo != null &&
+                  _discountInfo!['campaign_id'] != null) {
+                final disc = (_discountInfo!['discounted_price'] as num?)?.toDouble() ?? 0.0;
+                final orig = (_discountInfo!['original_price'] as num?)?.toDouble() ?? 1.0;
+                final ratio = orig > 0 ? disc / orig : 1.0;
+                final planPrice = (plan['price'] as num?)?.toDouble() ?? 0.0;
+                discountedPrice = (planPrice * ratio).round();
+              }
+              return _PlanCard(
+                plan: plan,
+                priceText: discountedPrice != null ? _fmtPrice(discountedPrice) : _fmtPrice(plan['price'] as int),
+                originalPriceText: discountedPrice != null ? _fmtPrice(plan['price'] as int) : null,
+                durationText: _durationText(plan),
+                loading: _orderingPlan == planId,
+                onPay: () => _createOrder(planId),
+              );
+            }),
           ],
         ],
       ),
@@ -166,6 +243,7 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
 class _PlanCard extends StatelessWidget {
   final Map<String, dynamic> plan;
   final String priceText;
+  final String? originalPriceText;
   final String durationText;
   final bool loading;
   final VoidCallback onPay;
@@ -173,6 +251,7 @@ class _PlanCard extends StatelessWidget {
   const _PlanCard({
     required this.plan,
     required this.priceText,
+    this.originalPriceText,
     required this.durationText,
     required this.loading,
     required this.onPay,
@@ -223,6 +302,17 @@ class _PlanCard extends StatelessWidget {
                           Text(priceText,
                               style: tt.titleMedium?.copyWith(
                                   color: cs.primary, fontWeight: FontWeight.bold)),
+                          if (originalPriceText != null) ...[
+                            const SizedBox(width: AppTheme.spacingXs),
+                            Text(
+                              originalPriceText!,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: cs.onSurfaceVariant,
+                                decoration: TextDecoration.lineThrough,
+                              ),
+                            ),
+                          ],
                           const SizedBox(width: AppTheme.spacingSm),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),

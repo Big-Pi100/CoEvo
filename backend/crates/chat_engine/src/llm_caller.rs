@@ -55,7 +55,7 @@ impl LlmConfig {
     pub fn deepseek_v4_flash(api_key: &str) -> Self {
         Self {
             api_key: api_key.to_string(),
-            base_url: "https://api.deepseek.com/v1".into(),
+            base_url: "https://api.deepseek.com".into(),
             model: "deepseek-v4-flash".into(),
             max_tokens: 4096,
             temperature: 0.7,

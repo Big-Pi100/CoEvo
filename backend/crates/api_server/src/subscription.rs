@@ -5,7 +5,6 @@
 
 use rusqlite::{params, Connection, Result};
 use serde::Serialize;
-
 /// 套餐定义
 #[derive(Debug, Serialize)]
 pub struct PlanRow {
@@ -103,24 +102,38 @@ pub fn get_plan_by_id(conn: &Connection, plan_id: &str) -> Result<Option<PlanRow
 /// 获取用户当前到期日
 pub fn get_current_expires(conn: &Connection, user_id: &str) -> Result<Option<String>> {
     let result = conn.query_row(
-        "SELECT value FROM user_preferences
-         WHERE user_id = ?1 AND key = 'subscription_expires'",
+        "SELECT subscription_expires FROM users WHERE id = ?1",
         params![user_id],
-        |row| row.get::<_, String>(0),
+        |row| row.get::<_, Option<String>>(0),
     );
     match result {
-        Ok(v) if !v.is_empty() => Ok(Some(v)),
+        Ok(Some(v)) if !v.is_empty() => Ok(Some(v)),
         _ => Ok(None),
+    }
+}
+
+/// 统一订阅有效性检查（ws.rs、routes.rs 等共用）
+pub fn is_subscription_active(conn: &Connection, user_id: &str) -> bool {
+    match get_current_expires(conn, user_id) {
+        Ok(Some(expires)) => {
+            let normalized = if expires.len() == 10 && expires.as_bytes().get(4) == Some(&b'-') {
+                format!("{}T00:00:00Z", expires)
+            } else {
+                expires
+            };
+            chrono::DateTime::parse_from_rfc3339(&normalized)
+                .map(|dt| dt.timestamp() > chrono::Utc::now().timestamp())
+                .unwrap_or(false)
+        }
+        _ => false,
     }
 }
 
 /// 设置用户到期日
 pub fn set_expires(conn: &Connection, user_id: &str, expires: &str) -> Result<()> {
-    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     conn.execute(
-        "INSERT OR REPLACE INTO user_preferences (user_id, key, value, updated_at)
-         VALUES (?1, 'subscription_expires', ?2, ?3)",
-        params![user_id, expires, now],
+        "UPDATE users SET subscription_expires = ?1 WHERE id = ?2",
+        params![expires, user_id],
     )?;
     Ok(())
 }
@@ -201,7 +214,7 @@ pub fn extend_subscription(
     let new_date = base_date + chrono::Duration::days(days);
     let new_expires = new_date.format("%Y-%m-%d").to_string();
 
-    // 写 user_preferences
+    // 写 users.subscription_expires
     set_expires(conn, user_id, &new_expires)?;
 
     // 更新套餐已售数
