@@ -395,7 +395,7 @@ pub async fn push(
         .filter(|d| !d.is_empty())
         .unwrap_or(&format!("「{}」活动已上线，快来参与吧!", campaign_name))
         .to_string();
-    let action_url = "/profile".to_string();
+    let action_url = format!("share?campaign_id={}", campaign_id);
 
     let mut pushed_count = 0i64;
     for user_id in &user_ids {

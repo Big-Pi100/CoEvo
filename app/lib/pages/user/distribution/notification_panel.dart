@@ -110,8 +110,8 @@ class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
     final type = n['notification_type'] as String?;
     _markRead(n['id'] as String);
 
-    // 奖励/分享类通知 → 弹分享弹窗（不跳转页面）
-    if (type == 'reward' || type == 'share_poster' || type == 'share_h5') {
+    // 分享类通知 → 弹分享弹窗（不跳转页面）
+    if (type == 'reward' || type == 'share_poster' || type == 'share_h5' || type == 'marketing_campaign') {
       // 从 action_url 中提取 campaign_id（格式: share?campaign_id=xxx）
       String? campaignId;
       final actionUrl = n['action_url'] as String?;
@@ -126,9 +126,6 @@ class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
     }
 
     switch (type) {
-      case 'marketing_campaign':
-        GoRouter.of(context).push('/profile');
-        break;
       case 'commission':
       case 'reward_earned':
         GoRouter.of(context).push('/earnings');

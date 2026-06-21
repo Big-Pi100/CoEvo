@@ -40,7 +40,8 @@ final goRouter = GoRouter(
     if (!auth.isRestored) return null;
 
     final loc = state.uri.toString();
-    final isOnAuth = loc.endsWith('/auth');
+    final path = state.uri.path;
+    final isOnAuth = path == '/auth';
     if (loc.contains('/admin') || loc.contains('/guardian')) return null;
 
     if (auth.isAuthenticated && isOnAuth) return '/home';

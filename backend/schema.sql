@@ -532,6 +532,65 @@ CREATE INDEX IF NOT EXISTS idx_debug_logs_date ON debug_logs(date);
 -- 如需在已有 DB 上运行迁移，请参考 schema.rs 的 run_migrations_inner()。
 
 ALTER TABLE admin_users ADD COLUMN permissions TEXT DEFAULT '{}';
+-- ═══════════════════════════════════════════════
+-- 营销活动 + 分销相关表
+-- ═══════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS marketing_campaigns (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    campaign_type TEXT DEFAULT 'standard',
+    description TEXT,
+    status TEXT DEFAULT 'draft',
+    rewards TEXT NOT NULL DEFAULT '[]',
+    trigger_event TEXT NOT NULL DEFAULT 'registration',
+    target_roles TEXT DEFAULT '[]',
+    push_trigger TEXT DEFAULT 'manual',
+    push_cron TEXT,
+    attribution_window INTEGER DEFAULT 30,
+    valid_from TEXT,
+    valid_until TEXT,
+    participant_limit INTEGER,
+    per_user_limit INTEGER,
+    qr_code_url TEXT,
+    poster_prompt TEXT,
+    poster_template TEXT,
+    h5_template TEXT,
+    h5_prompt TEXT,
+    display_positions TEXT DEFAULT '[]',
+    created_by TEXT,
+    created_at TEXT NOT NULL,
+    updated_by TEXT,
+    updated_at TEXT,
+    FOREIGN KEY (created_by) REFERENCES admin_users(id),
+    FOREIGN KEY (updated_by) REFERENCES admin_users(id)
+);
+
+CREATE TABLE IF NOT EXISTS referral_clicks (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL REFERENCES marketing_campaigns(id),
+    referrer_id TEXT NOT NULL REFERENCES users(id),
+    clicker_anonymous_id TEXT,
+    share_channel TEXT,
+    landed_page TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS reward_fulfillments (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL REFERENCES marketing_campaigns(id),
+    user_id TEXT NOT NULL REFERENCES users(id),
+    party TEXT NOT NULL,
+    reward_type TEXT NOT NULL,
+    reward_value TEXT NOT NULL,
+    trigger_event TEXT NOT NULL,
+    level INTEGER DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'fulfilled',
+    fulfilled_at TEXT,
+    created_at TEXT NOT NULL,
+    order_id TEXT
+);
+
+-- ═══════════════════════════════════════════════
 -- 初始化套餐数据
 -- ═══════════════════════════════════════════════
 

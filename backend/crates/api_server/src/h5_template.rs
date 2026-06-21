@@ -7,15 +7,25 @@
 
 use serde::Serialize;
 
-/// 用户 H5 数据（运行时替代模板中的 {变量}）
+/// 获取 CoEvo 公开域名（部署时通过 COEVO_BASE_URL 环境变量配置）
+pub fn coevo_base_url() -> String {
+    std::env::var("COEVO_BASE_URL")
+        .unwrap_or_else(|_| "http://localhost:8080".to_string())
+}
 #[derive(Debug, Serialize)]
 pub struct UserH5Data {
     pub display_name: String,
+    pub real_name: String,
     pub streak_days: i64,
     pub total_cards: i64,
     pub today_reviews: i64,
     pub referral_code: String,
-    pub share_url: String,
+    pub register_url: String,
+    pub active_plans_summary: String,
+    pub current_focus: String,
+    pub plan_count: i64,
+    pub completed_plans: i64,
+    pub achievement_count: i64,
 }
 
 /// 替换 HTML 模板中的 {变量} 占位符为用户实际数据
@@ -27,11 +37,17 @@ pub struct UserH5Data {
 pub fn replace_h5_variables(template: &str, data: &UserH5Data) -> String {
     let mut result = template.to_string();
     result = result.replace("{display_name}", &data.display_name);
+    result = result.replace("{real_name}", &data.real_name);
     result = result.replace("{streak_days}", &data.streak_days.to_string());
     result = result.replace("{total_cards}", &data.total_cards.to_string());
     result = result.replace("{today_reviews}", &data.today_reviews.to_string());
     result = result.replace("{referral_code}", &data.referral_code);
-    result = result.replace("{share_url}", &data.share_url);
+    result = result.replace("{register_url}", &data.register_url);
+    result = result.replace("{active_plans_summary}", &data.active_plans_summary);
+    result = result.replace("{current_focus}", &data.current_focus);
+    result = result.replace("{plan_count}", &data.plan_count.to_string());
+    result = result.replace("{completed_plans}", &data.completed_plans.to_string());
+    result = result.replace("{achievement_count}", &data.achievement_count.to_string());
     result
 }
 
@@ -39,7 +55,8 @@ pub fn replace_h5_variables(template: &str, data: &UserH5Data) -> String {
 ///
 /// 与 build_user_poster_data() 模式相同，但：
 /// - 去掉 qr_code_url 字段
-/// - 新增 share_url: https://keyievolution.fun/share/{referral_code}
+/// - 新增 share_url: {base}/share/{referral_code}（分享链接）
+/// - 新增 register_url: {base}/app/auth?ref={referral_code}（注册按钮）
 pub fn build_user_h5_data(
     conn: &rusqlite::Connection,
     user_id: &str,
@@ -49,6 +66,11 @@ pub fn build_user_h5_data(
         "SELECT COALESCE(display_name, username) FROM users WHERE id = ?1",
         rusqlite::params![user_id], |row| row.get(0),
     ).map_err(|e| format!("user query: {}", e))?;
+
+    let real_name: String = conn.query_row(
+        "SELECT COALESCE(real_name, '') FROM users WHERE id = ?1",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).unwrap_or_default();
 
     let streak_days: i64 = conn.query_row(
         "SELECT streak_days FROM users WHERE id = ?1",
@@ -78,15 +100,88 @@ pub fn build_user_h5_data(
         rusqlite::params![user_id], |row| row.get(0),
     ).unwrap_or_default();
 
-    let share_url = format!("https://keyievolution.fun/share/{}", referral_code);
+    let base = coevo_base_url();
+    let register_url = format!("{}/app/auth?ref={}", base, referral_code);
+
+    // 活跃计划数据（与 poster_template.rs 一致的逻辑）
+    let plan_count: i64 = conn.query_row(
+        "SELECT COUNT(DISTINCT id) FROM plan_runs WHERE user_id = ?1 AND status = 'active'",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).unwrap_or(0);
+    let active_plans_summary = if plan_count > 0 {
+        let mut plans: Vec<(String, String)> = Vec::new();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT pr.subject, upp.task_key \
+             FROM plan_runs pr \
+             JOIN user_plan_progress upp ON pr.id = upp.plan_id \
+             WHERE pr.user_id = ?1 AND pr.status = 'active' \
+             ORDER BY upp.updated_at DESC"
+        ) {
+            if let Ok(rows) = stmt.query_map(rusqlite::params![user_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            }) {
+                for row in rows.flatten() {
+                    plans.push(row);
+                }
+            }
+        }
+        if plan_count <= 3 {
+            plans.iter().map(|(subject, task_key)| {
+                let task_name: String = conn.query_row(
+                    "SELECT name FROM prebuilt_tasks WHERE task_key = ?1 LIMIT 1",
+                    rusqlite::params![task_key], |row| row.get(0),
+                ).unwrap_or_default();
+                if task_name.is_empty() { subject.clone() } else { format!("{}·{}", subject, task_name) }
+            }).collect::<Vec<_>>().join("、")
+        } else {
+            format!("{} 个科目", plan_count)
+        }
+    } else { String::new() };
+    let current_focus = if plan_count > 0 {
+        let mut focus = String::new();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT pr.subject, upp.task_key \
+             FROM plan_runs pr \
+             JOIN user_plan_progress upp ON pr.id = upp.plan_id \
+             WHERE pr.user_id = ?1 AND pr.status = 'active' \
+             ORDER BY upp.updated_at DESC LIMIT 1"
+        ) {
+            if let Ok(rows) = stmt.query_map(rusqlite::params![user_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            }) {
+                for row in rows.flatten() {
+                    let task_name: String = conn.query_row(
+                        "SELECT name FROM prebuilt_tasks WHERE task_key = ?1 LIMIT 1",
+                        rusqlite::params![&row.1], |row| row.get(0),
+                    ).unwrap_or_default();
+                    focus = format!("{}·{}", row.0, task_name);
+                }
+            }
+        }
+        focus
+    } else { String::new() };
+    let completed_plans: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM plan_runs WHERE user_id = ?1 AND status = 'completed'",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).unwrap_or(0);
+    let achievement_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM achievements WHERE user_id = ?1",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).unwrap_or(0);
 
     Ok(UserH5Data {
         display_name,
+        real_name,
         streak_days,
         total_cards,
         today_reviews,
         referral_code,
-        share_url,
+        register_url,
+        active_plans_summary,
+        current_focus,
+        plan_count,
+        completed_plans,
+        achievement_count,
     })
 }
 
@@ -114,7 +209,7 @@ pub async fn generate_h5_template_via_llm(
         return Err("DEEPSEEK_API_KEY not set".to_string());
     }
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(90))
+        .timeout(std::time::Duration::from_secs(180))
         .build()
         .map_err(|e| format!("http client: {}", e))?;
     let url = "https://api.deepseek.com/chat/completions";
@@ -249,22 +344,28 @@ mod tests {
 
     #[test]
     fn test_replace_h5_variables() {
-        let template = r#"Hello {display_name}, streak: {streak_days}, share: {share_url}"#;
+        let template = r#"Hello {display_name}, streak: {streak_days}, register: {register_url}"#;
         let data = UserH5Data {
             display_name: "小明".to_string(),
+            real_name: "张三".to_string(),
             streak_days: 15,
             total_cards: 42,
             today_reviews: 8,
             referral_code: "ABC123".to_string(),
-            share_url: "https://keyievolution.fun/share/ABC123".to_string(),
+            register_url: "http://localhost:8080/app/auth?ref=ABC123".to_string(),
+            active_plans_summary: String::new(),
+            current_focus: String::new(),
+            plan_count: 0,
+            completed_plans: 0,
+            achievement_count: 0,
         };
         let result = replace_h5_variables(template, &data);
         assert!(result.contains("小明"));
         assert!(result.contains("15"));
-        assert!(result.contains("https://keyievolution.fun/share/ABC123"));
+        assert!(result.contains("http://localhost:8080/app/auth?ref=ABC123"));
         assert!(!result.contains("{display_name}"));
         assert!(!result.contains("{streak_days}"));
-        assert!(!result.contains("{share_url}"));
+        assert!(!result.contains("{register_url}"));
     }
 
     #[test]
@@ -313,14 +414,20 @@ mod tests {
     fn test_build_user_h5_data_structure() {
         let data = UserH5Data {
             display_name: "test".into(),
+            real_name: "Test".into(),
             streak_days: 0,
             total_cards: 0,
             today_reviews: 0,
             referral_code: "TEST".into(),
-            share_url: "https://keyievolution.fun/share/TEST".into(),
+            register_url: "http://localhost:8080/app/auth?ref=TEST".into(),
+            active_plans_summary: String::new(),
+            current_focus: String::new(),
+            plan_count: 0,
+            completed_plans: 0,
+            achievement_count: 0,
         };
-        assert_eq!(data.share_url, "https://keyievolution.fun/share/TEST");
-        assert!(data.share_url.contains(&data.referral_code));
+        assert_eq!(data.register_url, "http://localhost:8080/app/auth?ref=TEST");
+        assert!(data.register_url.contains(&data.referral_code));
     }
 
     #[test]
@@ -333,17 +440,23 @@ mod tests {
 
     #[test]
     fn test_replace_all_variables() {
-        let template = "{display_name}|{streak_days}|{total_cards}|{today_reviews}|{referral_code}|{share_url}";
+        let template = "{display_name}|{streak_days}|{total_cards}|{today_reviews}|{referral_code}|{register_url}";
         let data = UserH5Data {
             display_name: "Alice".into(),
+            real_name: "Alice".into(),
             streak_days: 7,
             total_cards: 100,
             today_reviews: 5,
             referral_code: "XYZ789".into(),
-            share_url: "https://keyievolution.fun/share/XYZ789".into(),
+            register_url: "http://localhost:8080/app/auth?ref=XYZ789".into(),
+            active_plans_summary: String::new(),
+            current_focus: String::new(),
+            plan_count: 0,
+            completed_plans: 0,
+            achievement_count: 0,
         };
         let result = replace_h5_variables(template, &data);
-        assert_eq!(result, "Alice|7|100|5|XYZ789|https://keyievolution.fun/share/XYZ789");
+        assert_eq!(result, "Alice|7|100|5|XYZ789|http://localhost:8080/app/auth?ref=XYZ789");
     }
 
     #[test]

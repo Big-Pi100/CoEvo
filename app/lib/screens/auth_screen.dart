@@ -21,6 +21,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   final _inviteCodeController = TextEditingController();
   bool _isLogin = true;
   String? _validationError;
+  String? _detectedRefCode;
+
+  @override
+  void initState() {
+    super.initState();
+  }
 
   String? _validateInputs() {
     final u = _usernameController.text.trim();
@@ -49,6 +55,18 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
+
+    // 首次构建时从 URL 查询参数读取推广码 ref，自动填入邀请码输入框
+    if (_detectedRefCode == null) {
+      final params = GoRouterState.of(context).uri.queryParameters;
+      final refCode = params['ref'];
+      if (refCode != null && refCode.isNotEmpty) {
+        _inviteCodeController.text = refCode;
+        _detectedRefCode = refCode;
+      } else {
+        _detectedRefCode = '';
+      }
+    }
 
     // Redirect guard in GoRouter handles initial navigation;
     // this callback is a fallback for when auth state changes
@@ -156,6 +174,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   ),
                   textInputAction: TextInputAction.done,
                 ),
+                if (_detectedRefCode != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('检测到推广码: $_detectedRefCode',
+                        style: TextStyle(fontSize: 12, color: Colors.green[600])),
+                  ),
               ],
               const SizedBox(height: AppTheme.spacingXxl),
 
@@ -195,10 +219,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   if (_isLogin) {
                     ref.read(authProvider.notifier).login(username, password);
                   } else {
+                    // 从 URL 读取推广码，绕过 TextEditingController 的 Flutter Web 兼容问题
+                    final routerState = GoRouterState.of(context);
+                    final refFromUrl = routerState.uri.queryParameters['ref'] ?? '';
+                    final inviteCode = refFromUrl.isNotEmpty ? refFromUrl : _inviteCodeController.text.trim();
                     ref.read(authProvider.notifier).register(username, password,
                       realName: _nameController.text.trim(),
                       phone: _phoneController.text.trim(),
-                      referralCode: _inviteCodeController.text.trim(),
+                      referralCode: inviteCode,
                     );
                   }
                 },

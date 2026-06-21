@@ -3,25 +3,43 @@
 use serde::Serialize;
 use serde_json::json;
 
+/// 获取 CoEvo 公开域名（部署时通过 COEVO_BASE_URL 环境变量配置）
+fn coevo_base_url() -> String {
+    std::env::var("COEVO_BASE_URL")
+        .unwrap_or_else(|_| "http://localhost:8080".to_string())
+}
+
 /// 用户海报数据（运行时替代模板中的 {变量}）
 #[derive(Debug, Serialize)]
 pub struct UserPosterData {
     pub display_name: String,
+    pub real_name: String,
     pub streak_days: i64,
     pub total_cards: i64,
     pub today_reviews: i64,
     pub referral_code: String,
     pub qr_code_url: String,
+    pub active_plans_summary: String,
+    pub current_focus: String,
+    pub plan_count: i64,
+    pub completed_plans: i64,
+    pub achievement_count: i64,
 }
 
 /// 替换模板中的 {变量} 占位符为用户实际数据
 pub fn replace_template_variables(template: &str, data: &UserPosterData) -> String {
     let mut result = template.to_string();
     result = result.replace("{display_name}", &data.display_name);
+    result = result.replace("{real_name}", &data.real_name);
     result = result.replace("{streak_days}", &data.streak_days.to_string());
     result = result.replace("{total_cards}", &data.total_cards.to_string());
     result = result.replace("{today_reviews}", &data.today_reviews.to_string());
     result = result.replace("{referral_code}", &data.referral_code);
+    result = result.replace("{active_plans_summary}", &data.active_plans_summary);
+    result = result.replace("{current_focus}", &data.current_focus);
+    result = result.replace("{plan_count}", &data.plan_count.to_string());
+    result = result.replace("{completed_plans}", &data.completed_plans.to_string());
+    result = result.replace("{achievement_count}", &data.achievement_count.to_string());
     // 生成二维码 SVG，注入到海报底部（无论模板是否含 QR_PLACEHOLDER）
     let qr_raw = crate::referral_handler::generate_qr_svg(&data.qr_code_url, "#1A237E", "#FFFFFF");
     // 提取 QR 码的 path 数据（去掉 <svg> 包裹、<?xml?>、rect 背景和 </svg>）
@@ -61,6 +79,11 @@ pub fn build_user_poster_data(
         rusqlite::params![user_id], |row| row.get(0),
     ).map_err(|e| format!("user query: {}", e))?;
 
+    let real_name: String = conn.query_row(
+        "SELECT COALESCE(real_name, '') FROM users WHERE id = ?1",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).unwrap_or_default();
+
     let streak_days: i64 = conn.query_row(
         "SELECT streak_days FROM users WHERE id = ?1",
         rusqlite::params![user_id], |row| row.get(0),
@@ -89,15 +112,99 @@ pub fn build_user_poster_data(
         rusqlite::params![user_id], |row| row.get(0),
     ).unwrap_or_default();
 
-    let qr_code_url = format!("https://keyievolution.fun/app/auth?ref={}", referral_code);
+    let qr_code_url = format!("{}/app/auth?ref={}", coevo_base_url(), referral_code);
+
+    // 活跃计划数据
+    let plan_count: i64 = conn.query_row(
+        "SELECT COUNT(DISTINCT id) FROM plan_runs WHERE user_id = ?1 AND status = 'active'",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).unwrap_or(0);
+
+    let active_plans_summary = if plan_count > 0 {
+        let mut plans: Vec<(String, String, i64)> = Vec::new();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT pr.subject, upp.task_key, COALESCE(upp.updated_at, 0) \
+             FROM plan_runs pr \
+             JOIN user_plan_progress upp ON pr.id = upp.plan_id \
+             WHERE pr.user_id = ?1 AND pr.status = 'active' \
+             ORDER BY upp.updated_at DESC"
+        ) {
+            if let Ok(rows) = stmt.query_map(rusqlite::params![user_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, i64>(2)?))
+            }) {
+                for row in rows.flatten() {
+                    plans.push(row);
+                }
+            }
+        }
+        if plan_count <= 3 {
+            plans.iter().map(|(subject, task_key, _)| {
+                let task_name: String = conn.query_row(
+                    "SELECT name FROM prebuilt_tasks WHERE task_key = ?1 LIMIT 1",
+                    rusqlite::params![task_key], |row| row.get(0),
+                ).unwrap_or_default();
+                if task_name.is_empty() {
+                    subject.clone()
+                } else {
+                    format!("{}·{}", subject, task_name)
+                }
+            }).collect::<Vec<_>>().join("、")
+        } else {
+            format!("{} 个科目", plan_count)
+        }
+    } else {
+        String::new()
+    };
+
+    let current_focus = if plan_count > 0 {
+        let mut focus = String::new();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT pr.subject, upp.task_key \
+             FROM plan_runs pr \
+             JOIN user_plan_progress upp ON pr.id = upp.plan_id \
+             WHERE pr.user_id = ?1 AND pr.status = 'active' \
+             ORDER BY upp.updated_at DESC LIMIT 1"
+        ) {
+            if let Ok(rows) = stmt.query_map(rusqlite::params![user_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            }) {
+                for row in rows.flatten() {
+                    let task_name: String = conn.query_row(
+                        "SELECT name FROM prebuilt_tasks WHERE task_key = ?1 LIMIT 1",
+                        rusqlite::params![&row.1], |row| row.get(0),
+                    ).unwrap_or_default();
+                    focus = format!("{}·{}", row.0, task_name);
+                }
+            }
+        }
+        focus
+    } else {
+        String::new()
+    };
+
+    let completed_plans: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM plan_runs WHERE user_id = ?1 AND status = 'completed'",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).unwrap_or(0);
+
+    let achievement_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM achievements WHERE user_id = ?1",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).unwrap_or(0);
 
     Ok(UserPosterData {
         display_name,
+        real_name,
         streak_days,
         total_cards,
         today_reviews,
         referral_code,
         qr_code_url,
+        active_plans_summary,
+        current_focus,
+        plan_count,
+        completed_plans,
+        achievement_count,
     })
 }
 
@@ -121,7 +228,7 @@ pub async fn generate_template_via_llm(
         return Err("DEEPSEEK_API_KEY not set".to_string());
     }
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(90))
+        .timeout(std::time::Duration::from_secs(180))
         .build()
         .map_err(|e| format!("http client: {}", e))?;
     let url = "https://api.deepseek.com/chat/completions";

@@ -505,11 +505,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
               child: Row(
                 children: [
-                  Expanded(child: _statItem(Icons.people, '邀请人数', '${_referralStats?['registrations'] ?? 0}')),
+                  Expanded(child: _statItem(Icons.people, '邀请人数', '${_referralStats?['total_registrations'] ?? 0}')),
                   Container(width: 1, height: 32, color: _cs.outlineVariant),
-                  Expanded(child: _statItem(Icons.monetization_on, '累计收益', '¥${((_referralStats?['total_commission'] as num?)?.toDouble() ?? 0) / 100}')),
+                  Expanded(child: _statItem(Icons.monetization_on, '累计收益', '¥${((_referralStats?['total_earned'] as num?)?.toDouble() ?? 0) / 100}')),
                   Container(width: 1, height: 32, color: _cs.outlineVariant),
-                  Expanded(child: _statItem(Icons.timeline, '分享次数', '${_referralStats?['clicks'] ?? 0}')),
+                  Expanded(child: _statItem(Icons.timeline, '分享次数', '${_referralStats?['total_clicks'] ?? 0}')),
                 ],
               ),
             ),

@@ -120,7 +120,7 @@ class _ShareWidgetBodyState extends State<_ShareWidgetBody> {
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
         _shareUrl = data['url'] as String?;
         setState(() {});
-        final fullUrl = '${ApiConfig.baseUrl}${_shareUrl ?? ''}';
+        final fullUrl = _shareUrl ?? ApiConfig.baseUrl;
         // 复制到剪贴板
         await _copyToClipboard(fullUrl);
         ScaffoldMessenger.of(context).showSnackBar(

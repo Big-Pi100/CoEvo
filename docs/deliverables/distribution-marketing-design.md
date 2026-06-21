@@ -87,6 +87,7 @@ CREATE TABLE marketing_campaigns (
     description TEXT,
     campaign_type TEXT NOT NULL,          -- invite_award / commission / discount_pct / discount_fix / mixed
     status TEXT DEFAULT 'draft',          -- draft / active / paused / ended
+    trigger_event TEXT NOT NULL DEFAULT 'registration',  -- 触发事件：registration / referral_signup / click / payment / order_creation / plan_completed
 
     -- 时间控制（活动有效期）
     valid_from TEXT,                       -- 活动开始时间（ISO 8601），NULL = 不限制
@@ -95,13 +96,18 @@ CREATE TABLE marketing_campaigns (
     -- 推送规则
     push_trigger TEXT,                    -- manual / registration / after_complete_review / plan_completed / login / cron
     push_cron TEXT,                       -- cron 表达式（push_trigger='cron' 时生效）
-    push_content TEXT,                    -- 推送文案 ({name} 会被替换)
 
     -- 目标角色（JSON 数组, 空 = 全部角色）
     target_roles TEXT DEFAULT '[]',
 
     -- LLM 提示语（控制生成内容侧重点）
     poster_prompt TEXT,                     -- 自定义海报系统提示（留空使用默认 prompt）
+    poster_template TEXT,                   -- LLM 生成的 SVG 海报模板（含 {变量}）
+    h5_template TEXT,                       -- LLM 生成的 H5 HTML 模板（含 {变量}）
+    h5_prompt TEXT,                         -- 自定义 H5 系统提示
+
+    -- 展示位置（JSON 数组，决定海报/弹窗出现在哪些端）
+    display_positions TEXT DEFAULT '[]',    -- achievement_tab / review_completion / notification
 
     -- 奖励规则（JSON 数组，支持组合奖励）
     -- 示例: [{"type":"subscription_days","party":"self","value":3,"trigger":"registration"}]
@@ -114,8 +120,9 @@ CREATE TABLE marketing_campaigns (
     attribution_window INTEGER DEFAULT 30,
 
     -- 参与限制
-    max_participants INTEGER,
+    participant_limit INTEGER,
     per_user_limit INTEGER,
+    qr_code_url TEXT,                       -- 自定义二维码 URL（留空使用默认推广链接）
 
     created_by TEXT,                        -- 创建人 admin_id
     created_at TEXT NOT NULL,
@@ -1174,6 +1181,11 @@ NavSection(
 | PATCH | `/api/admin/campaigns/{id}/status` | 启停活动 (active/paused/ended) |
 | POST | `/api/admin/campaigns/{id}/push` | 手动推送活动到用户 |
 | GET | `/api/admin/campaigns/{id}/stats` | 活动统计数据 |
+| GET | `/api/admin/campaigns/default-poster-prompt` | 获取默认海报 prompt |
+| POST | `/api/admin/campaigns/{id}/generate-poster-template` | 生成海报 SVG 模板（调 LLM） |
+| POST | `/api/admin/campaigns/{id}/generate-h5-template` | 生成 H5 HTML 模板（调 LLM） |
+| POST | `/api/admin/campaigns/{id}/preview-poster` | 预览海报（变量替换+SVG→PNG） |
+| POST | `/api/admin/campaigns/{id}/preview-h5` | 预览 H5（变量替换） |
 
 ### 7.2 注册接口变更（现有 auth.rs 修改）
 
@@ -1358,6 +1370,113 @@ lib/
 
 有邀请关系的用户进入支付页时，套餐列表直接展示折后价。
 
+### 8.4 分享链接链路与 URL 组成
+
+分享链接由**两个独立 URL 变量**组成，由后端 `h5_template.rs` 在分享时动态拼接：
+
+| 变量 | 用途 | 实际路径 | 含义 |
+|:-----|:------|:---------|:------|
+| `{share_url}` | 复制到剪贴板的分享链接 | `/share/{referral_code}?campaign_id=xxx` | 好友打开 → `share_landing` 渲染活动 H5 模板 |
+| `{register_url}` | H5 页面中的注册/加入按钮 | `/app/auth?ref={referral_code}` | 点击 → Flutter Web 注册页，推广码自动填入 |
+
+#### 8.4.1 分享链路完整流程
+
+```
+用户A点击分享
+    ↓
+POST /api/referral/generate-h5 (传 user_id + campaign_id)
+    ↓
+后端查 referral_code → 拼出两个 URL
+    share_url = {base}/share/{code}?campaign_id=xxx
+    register_url = {base}/app/auth?ref={code}
+    ↓
+替换 H5 模板中的 {share_url} 和 {register_url}
+返回 {"html": "已完成替换的H5", "url": share_url}
+    ↓
+前端将 url 复制到剪贴板，html 在 WebView 中展示
+    ↓
+好友打开分享链接 /share/{code}?campaign_id=xxx
+    ↓
+share_landing 渲染活动 H5 模板（带品牌、数据、推广码）
+    ↓
+好友点击"立即加入" → /app/auth?ref={code}
+    ↓
+Flutter Web 注册页自动填入推广码 → 注册 → 绑定邀请关系
+```
+
+#### 8.4.2 URL 拼接逻辑
+
+`h5_template.rs` 中的 `build_user_h5_data()`：
+
+```rust
+let base = coevo_base_url();  // 读 COEVO_BASE_URL 环境变量，默认 http://localhost:8080
+let share_url = format!("{}/share/{}", base, referral_code);
+let register_url = format!("{}/app/auth?ref={}", base, referral_code);
+```
+
+`POST /api/referral/generate-h5` 返回的 `url` 字段：
+
+```rust
+// 有 campaign_id 时追加查询参数
+let share_url = match &body.campaign_id {
+    Some(cid) => format!("{}/share/{}?campaign_id={}", base, referral_code, cid),
+    None => format!("{}/share/{}", base, referral_code),
+};
+```
+
+#### 8.4.3 前端自动填入推广码
+
+`auth_screen.dart` 读取 URL 参数 `ref` 并自动填入邀请码输入框：
+
+```dart
+// build() 方法中（非 initState，避免 Flutter Web TextField 兼容问题）
+if (_detectedRefCode == null) {
+  final refCode = GoRouterState.of(context).uri.queryParameters['ref'];
+  if (refCode != null && refCode.isNotEmpty) {
+    _inviteCodeController.text = refCode;
+  }
+}
+```
+
+GoRouter 的 redirect 判断需使用 `state.uri.path`（不含 query params）：
+
+```dart
+// 正确：path == '/auth' 忽略 ?ref=xxx 的影响
+final isOnAuth = path == '/auth';
+// 错误：endsWith 会被 /auth?ref=xxx 中的尾部参数误导
+// final isOnAuth = loc.endsWith('/auth');  // ❌
+```
+
+#### 8.4.4 本地开发注意事项
+
+| 问题 | 原因 | 解决方案 |
+|:-----|:------|:---------|
+| Flutter Web `<base href>` 被覆盖 | `flutter run -d chrome` 的无--base-href 构建覆盖 `build/web/` | 测试前停掉 flutter run，用 `flutter build web --base-href /app/` 重建 |
+| 注册页 404 | `<base href="/">` 导致资源请求到根路径 | 重建时加 `--base-href /app/` |
+| 注册推广码不绑定 | `TextEditingController.text` 在 `initState` 的 `addPostFrameCallback` 中设置后 Flutter Web 不生效 | 改在 `build()` 方法中设置 |
+| 页面显示 0 邀请人数 | 前端字段名 `registrations` 与后端 `total_registrations` 不匹配 | 统一字段名 |
+
+#### 8.4.5 `my-stats` API 返回字段
+
+```json
+{
+  "total_clicks": 5,              // 分享链接总点击数
+  "total_registrations": 1,       // 通过推广码注册的人数
+  "total_earned": 0               // 累计佣金（分）
+}
+```
+
+前端 `profile_screen.dart` 读取对应字段：
+
+```dart
+// 邀请人数
+'${_referralStats?['total_registrations'] ?? 0}'
+// 累计收益
+'${((_referralStats?['total_earned'] as num?)?.toDouble() ?? 0) / 100}'
+// 分享次数
+'${_referralStats?['total_clicks'] ?? 0}'
+```
+
 **页面加载**：`GET /api/pay/plans` 返回所有套餐，已附带折后价（由 `POST /api/pay/calculate` 并行计算）。
 
 ```
@@ -1479,34 +1598,32 @@ WHERE ...;
 LLM 生成的 SVG 模板包含 `{变量占位符}`，运行时替换为用户数据：
 
 ```xml
-<svg viewBox="0 0 800 1200">
-  <text x="400" y="100" text-anchor="middle" font-size="36" font-weight="bold">
-    {display_name} 的学习报告
-  </text>
-  <text x="50" y="200" font-size="24">
-    🔥 连续学习 {streak_days} 天
-  </text>
-  <text x="50" y="250" font-size="24">
-    📚 已学 {total_cards} 张卡片
-  </text>
-  <text x="50" y="300" font-size="24">
-    📈 今日复习 {today_reviews} 张
-  </text>
-  <!-- 变量由后端运行时替换 -->
-  <image x="300" y="900" width="200" height="200" href="{qr_code_url}"/>
+<svg viewBox="0 0 600 900">
+  <!-- 设计自由，LLM 自行发挥 -->
+  <!-- 底部放 QR_PLACEHOLDER 标记，代码会替换为实际二维码 -->
+
+  {display_name}
+  🔥 连续学习 {streak_days} 天
+  📚 当前学习: {active_plans_summary}
+  🎯 正在进行: {current_focus}
+  ...
+  {QR_PLACEHOLDER}
 </svg>
 ```
 
-**支持替换的变量**:
+**支持替换的变量**（按节点分类）:
 
-| 变量 | 来源 | 示例值 |
-|------|------|--------|
-| `{display_name}` | `users.display_name` | `小明` |
-| `{streak_days}` | `users.streak_days` | `47` |
-| `{total_cards}` | `user_cards` COUNT | `156` |
-| `{today_reviews}` | 今日 `review_log` COUNT | `12` |
-| `{referral_code}` | `users.referral_code` | `CoEvo_ABC1` |
-| `{qr_code_url}` | 推广落地页 URL | `https://...` |
+| 节点 | 变量 | 来源 | 示例值 |
+|:----|:-----|:-----|:-------|
+| N1 用户 | `{display_name}` | `users.display_name` | `小明` |
+| N1 用户 | `{real_name}` | `users.real_name` | `张三` |
+| N5 复习 | `{streak_days}` | `users.streak_days` | `47` |
+| N8 计划 | `{active_plans_summary}` | `plan_runs` JOIN `user_plan_progress` | "英语·Hello, Hello!" 或 "8 个科目" |
+| N8 计划 | `{current_focus}` | 最近活跃计划的 task_name | "Hello, Hello!" |
+| N8 计划 | `{plan_count}` | 活跃计划数 | `3` |
+| N8 计划 | `{completed_plans}` | 已完成计划数 | `5` |
+| N7 成就 | `{achievement_count}` | 成就总数 | `12` |
+| N8 推广 | `{referral_code}` | `users.referral_code` | `CoEvo_ABC1` |
 
 #### 时序图
 
@@ -1533,7 +1650,7 @@ LLM 生成的 SVG 模板包含 `{变量占位符}`，运行时替换为用户数
 | 变更 | 文件 | 说明 |
 |------|------|------|
 | 新增列 | `marketing_campaigns.poster_template TEXT` | 存储 SVG 模板 |
-| 新增 prompt | `prompts/share/signal/poster-template.md` | "生成含 {变量} 的 SVG 模板，不含用户数据" |
+| 新增 prompt | `prompts/share/poster.md`（main） + `prompts/share/signal/poster.md`（QR约定） + `prompts/share/format/poster.md`（输出约束） | 三层 prompt 架构 |
 | 新建端点 | `POST /api/admin/campaigns/{id}/generate-poster-template` | 管理端手动生成模板 |
 | 修改端点 | `POST /api/referral/generate-poster` | 加载模板→替换→SVG→PNG，不调 LLM |
 | 新增定时 | `campaign_scheduler.rs` | 每天凌晨重新生成活动模板 |
@@ -1626,101 +1743,94 @@ LLM 生成的 SVG 模板包含 `{变量占位符}`，运行时替换为用户数
 
 #### Prompt：只有需求描述，没有数据分析
 
-后端把 JSON 直接嵌入 Prompt 发给 LLM。Prompt 不预设任何营销方向，只告诉 LLM 做什么、不做分析框架限制。
+后端通过 `load_combined_prompt("poster")` 加载三层 prompt（`main` + `signal` + `format`）合并后发给 LLM。
 
-**完整的 Prompt 模板**：
+**三层 Prompt 结构**：
 
-```markdown
-你是一个教育产品的分享海报设计师 + 文案写手。以下是一个用户的真实学习数据，请你：
-1. 自己分析哪些数据最有营销价值
-2. 生成一张 SVG 分享海报（600×900px）
-3. 同步生成 1 条配合海报发布的推荐文案（60 字以内）
-
-用户数据：
-{user_data_json}
+```
+main (share/poster.md)
+  → 设计指令 + 可用变量池（根据活动主题选择展示）
+signal (share/signal/poster.md)
+  → QR_PLACEHOLDER 技术约定
+format (share/format/poster.md)
+  → 输出约束（纯 SVG / 600×900px / 不要 markdown）
+```
 
 ### 9.4 SVG 海报设计规范
-- 尺寸：600×900px，深蓝色渐变背景（#1A237E → #0D1457）
-- 文字浅色（#ffffff / #9DA0F0），数据卡片用 rgba(255,255,255,0.08)
-- 推广码区域亮色高亮突出显示
-- 圆角卡片分块展示数据（border-radius: 12px）
+- 尺寸：600×900px，背景色自由发挥
+- 色彩、风格、布局完全自由发挥
+- 鼓励使用插画、卡通角色、抽象图形、装饰元素
 - 品牌标识 "⟐ CoEvo" 放在海报底部
-- 风格克制干净，适合发微信朋友圈
 - 输出纯 SVG 代码，不要 markdown 包裹标签
 
 ### 9.5 文案要求
-- 与海报内容呼应，不要重复海报上已有的信息
-- 包含推广码
-- 口语自然，像用户自己在说话
-- 60 字以内
+（由活动配置中 activity name + rewards 自动生成，不由 LLM 生成）
 
 ### 9.6 输出格式
-请严格按照以下 JSON 格式输出，不要增加其他内容：
 
-{
-  "svg": "<svg>...</svg>",
-  "copy": "推荐文案文字"
-}
-```
+LLM 只输出纯 SVG 代码，不输出 JSON、不输出文案。文案由活动配置中的活动名称+奖励描述自动拼接。
 
-**实际调用示例**（后端发给 LLM 的完整请求）：
+**输出约束**（通过 `prompts/share/format/poster.md` 控制）：
+- 只输出纯 SVG 代码，600×900px
+- 不要 markdown 包裹
+- 品牌标识 "⟐ CoEvo" 放在底部
+
+**实际调用流程**（后端发给 LLM 的完整请求 = main + signal + format 三层合并）：
 
 ```text
-你是一个教育产品的分享海报设计师 + 文案写手。以下是一个用户的真实学习数据，请你：
-1. 自己分析哪些数据最有营销价值
-2. 生成一张 SVG 分享海报（600×900px）
-3. 同步生成 1 条配合海报发布的推荐文案（60 字以内）
+[main - share/poster.md]
+你是一个极富创意的海报设计师。请为以下营销活动设计一张 SVG 分享海报模板...
 
-用户数据：
-{
-  "learning_today": {"streak_days": 47, "new_cards": 12, "total_cards": 156, "total_reviews": 380, "overall_mastery": 85, "review_accuracy": 88},
-  "learning_yesterday": {"new_cards": 8, "total_cards": 144, "total_reviews": 320, "overall_mastery": 83, "review_accuracy": 84},
-  "current_plan": {"goal": "掌握一元二次方程的配方法、公式法和因式分解法", "subject": "数学", "task_name": "配方法", "task_progress": "3/5"},
-  "vocabulary": {"total_words": 320, "mastered_today": 256, "mastered_yesterday": 250, "recent_mastered": ["abandon→放弃", "brilliant→杰出的"]},
-  "achievements": [{"name": "连续学习 30 天", "icon": "🔥"}, {"name": "百词斩", "icon": "📖"}, {"name": "数学之星", "icon": "⭐"}],
-  "referral_code": "CoEvo_A1B2"
-}
+活动名称：{campaign_name}
+活动奖励：{campaign_rewards}
 
-[SVG 海报设计规范...]
-[文案要求...]
-[输出格式...]
+可用数据（请根据活动主题选择展示，不必全部使用）：
+- {display_name} — 用户昵称
+- {streak_days} — 连续学习天数
+- {active_plans_summary} — 正在学习的科目摘要
+- {current_focus} — 当前学习的任务
+- {plan_count} — 正在学习的科目数
+- {completed_plans} — 已完成的学习计划数
+- {achievement_count} — 已获得成就数
+- {referral_code} — 用户推广码
+
+[signal - share/signal/poster.md]
+在 SVG 中用标记 {QR_PLACEHOLDER} 指示二维码的放置位置...
+
+[format - share/format/poster.md]
+只输出纯 SVG 代码，600×900px，不要 markdown 包裹。
 ```
 
-**LLM 可能输出的回复示例**：
+**LLM 输出的回复示例**：
 
-```json
-{
-  "svg": "<svg width=\"600\" height=\"900\" viewBox=\"0 0 600 900\">...（海报SVG代码）</svg>",
-  "copy": "今天数学掌握率到 85% 了！配方法 3/5 进度，一起扫码学双方得 7 天 → CoEvo_A1B2"
-}
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 900" width="600" height="900">
+  ... 纯 SVG 代码，不含 JSON 包裹 ...
+</svg>
 ```
 
-**不需要后端解析**：LLM 输出已是 JSON 格式，后端直接透传给前端。前端取 `svg` 字段渲染海报，`copy` 字段展示配文。
+**后端处理**：LLM 输出的纯 SVG 存入 `marketing_campaigns.poster_template`，用户查看时替换 `{变量}` 为真实数据，无需解析 JSON。
 
-#### 关键问题：给 LLM 看什么数据最有效？
+#### H5 模板特有变量
 
-同样是真实数据，给不同的数据组合，LLM 得出的营销点完全不同：
+H5 模板使用三层 prompt 结构（与海报共用用户数据），但额外使用两个链接变量：
 
-| 给 LLM 看 | LLM 会怎么营销 | 效果 |
-|:----------|:--------------|:-----|
-| 只给 overall_mastery | "掌握率 85%" | 空洞，谁都可以说 |
-| + current_plan.goal | "在学习一元二次方程的配方法，掌握率 85%" | 有具体内容，更可信 |
-| + streak_days | "连续 47 天学数学，掌握率 85%" | 有坚持的叙事感 |
-| + completed_tasks | "已搞定因式分解、完全平方公式，现在在攻克配方法" | 有进步路线图 |
-| + subject_mastery[] | "数学 92%、英语 78%、物理 65%" | 多维度，显得全面 |
-| + today_new_cards | "今天新学了 12 张卡片" | 即时感，像是在"今天" |
+| 变量 | 用途 | 替换值 |
+|:-----|:------|:-------|
+| `{share_url}` | 分享链接（复制到剪贴板） | `{base}/share/{referral_code}?campaign_id=xxx` |
+| `{register_url}` | 注册按钮（"立即加入"） | `{base}/app/auth?ref={referral_code}` |
 
-#### 数据优先级（按营销价值排序）
+> ⚠️ `{share_url}` 和 `{register_url}` 不可混用。`{share_url}` 指向 landing 页（H5 模板展示），`{register_url}` 指向认证注册页（带推广码参数）。
 
-后端组装 JSON 时，按以下字段顺序排列（LLM 会更注意前面的数据）：
+H5 prompt 文件位置：
+- **main**: `prompts/share/h5.md` — 设计指令 + 可用变量
+- **format**: `prompts/share/format/h5.md` — 输出约束（纯 HTML / 移动端适配 / 禁止 script）
 
-```
-1. learning_today + learning_yesterday   ← 前后两天对比让 LLM 发现"进步"叙事
-2. current_plan.goal                    ← 最具体的学习内容
-3. achievements                         ← 荣誉感
-4. vocabulary                           ← 英语生词的具体成果
-5. recent_reviews.today/yesterday       ← 今昨复习对比
-6. subject_mastery_today/7d_ago         ← 学科掌握率 + 趋势
+H5 模板不需 signal 层（无需 QR_PLACEHOLDER）。
+
+#### 关键问题：哪些数据对海报最有效？
+
+LLM 根据活动主题（`{campaign_name}` + `{campaign_rewards}`）自行选择可用变量组合。数据在运行时由后端替换，LLM 只负责模板设计。
 7. streak_days                          ← 连续性社交货币
 ```
 

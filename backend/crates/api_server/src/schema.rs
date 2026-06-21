@@ -300,6 +300,10 @@ CREATE TABLE IF NOT EXISTS marketing_campaigns (
     updated_by TEXT,                          -- 最后修改者
     updated_at TEXT,
     poster_prompt TEXT,                        -- 自定义海报系统提示（主prompt）
+    poster_template TEXT,                      -- LLM 生成的海报 SVG 模板（含 {变量}）
+    h5_template TEXT,                          -- LLM 生成的 H5 HTML 模板（含 {变量}）
+    h5_prompt TEXT,                            -- 自定义 H5 系统提示
+    display_positions TEXT DEFAULT '[]',       -- 展示位置（JSON 数组）
     FOREIGN KEY (created_by) REFERENCES admin_users(id),
     FOREIGN KEY (updated_by) REFERENCES admin_users(id)
 );
@@ -665,14 +669,6 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
         "ALTER TABLE payment_orders ADD COLUMN refund_id TEXT DEFAULT NULL",
         // 营销活动自定义海报系统提示
         "ALTER TABLE marketing_campaigns ADD COLUMN poster_prompt TEXT DEFAULT NULL",
-        // 营销活动海报模板（LLM 生成的含 {变量} 的 SVG 模板）
-        "ALTER TABLE marketing_campaigns ADD COLUMN poster_template TEXT DEFAULT NULL",
-        // H5 分享页模板（LLM 生成的含 {变量} 的 HTML 模板）
-        "ALTER TABLE marketing_campaigns ADD COLUMN h5_template TEXT DEFAULT NULL",
-        // H5 分享页自定义 prompt
-        "ALTER TABLE marketing_campaigns ADD COLUMN h5_prompt TEXT DEFAULT NULL",
-        // 展示位置（JSON 数组，如 ["achievement_tab","review_completion"]）
-        "ALTER TABLE marketing_campaigns ADD COLUMN display_positions TEXT DEFAULT '[]'",
     ];
     for sql in migrations {
         match conn.execute(sql, []) {

@@ -330,7 +330,8 @@ fn get_user_portrait_data(conn: &rusqlite::Connection, user_id: &str) -> Result<
 
 /// 降级海报 SVG（LLM 调用失败时使用）
 fn fallback_poster_svg(referral_code: &str) -> String {
-    let qr_content = format!("https://keyievolution.fun/app/auth?ref={}&camp=poster", referral_code);
+    let base = crate::h5_template::coevo_base_url();
+    let qr_content = format!("{}/app/auth?ref={}&camp=poster", base, referral_code);
     let qr_svg = generate_qr_svg(&qr_content, "#1A237E", "#FFFFFF");
     format!(
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
@@ -391,14 +392,21 @@ fn svg_to_png(svg: &str) -> Result<Vec<u8>, String> {
 
 /// 从已替换变量的 SVG 文本中提取显示名称（用于 PNG fallback）
 fn extract_user_for_png_fallback(_svg: &str) -> crate::poster_template::UserPosterData {
+    let base = crate::h5_template::coevo_base_url();
     let referral_code = String::new();
     crate::poster_template::UserPosterData {
         display_name: "用户".to_string(),
+        real_name: String::new(),
         streak_days: 7,
         total_cards: 20,
         today_reviews: 3,
         referral_code: referral_code.clone(),
-        qr_code_url: format!("https://keyievolution.fun/share/{}", referral_code),
+        qr_code_url: format!("{}/app/auth?ref={}", base, referral_code),
+        active_plans_summary: String::new(),
+        current_focus: String::new(),
+        plan_count: 0,
+        completed_plans: 0,
+        achievement_count: 0,
     }
 }
 
@@ -467,9 +475,10 @@ pub async fn get_qrcode(
 
     // 构建二维码内容
     let campaign_id = params.get("camp").map(|s| s.as_str()).unwrap_or("share");
+    let base = crate::h5_template::coevo_base_url();
     let qr_content = format!(
-        "https://keyievolution.fun/app/auth?ref={}&camp={}",
-        referral_code, campaign_id
+        "{}/app/auth?ref={}&camp={}",
+        base, referral_code, campaign_id
     );
 
     let qr_svg = generate_qr_svg(&qr_content, "#1A237E", "#FFFFFF");
@@ -825,16 +834,43 @@ pub async fn generate_h5(
         fallback_h5_html(&referral_code)
     };
 
-    // 返回 JSON（为了 Flutter 兼容），包含 HTML 文本
-    // 前端在 WebView 中渲染该 HTML
-    Json(json!({"html": html})).into_response()
+    // 返回 JSON，包含 HTML 文本 + 分享 URL（转发给好友的链接）
+    let share_url = match &body.campaign_id {
+        Some(cid) => format!("{}/share/{}?campaign_id={}", crate::h5_template::coevo_base_url(), referral_code, cid),
+        None => format!("{}/share/{}", crate::h5_template::coevo_base_url(), referral_code),
+    };
+    Json(json!({"html": html, "url": share_url})).into_response()
 }
 
 /// GET /share/{code} — 推广落地页
 ///
-/// 优先返回已保存的 data/share/{code}/index.html（LLM 生成），
-/// 不存在时返回内联 fallback 模板。
-pub async fn share_landing(Path(code): Path<String>) -> impl IntoResponse {
+/// 支持可选 ?campaign_id=xxx 参数，启用活动 H5 模板渲染。
+pub async fn share_landing(
+    Path(code): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let conn = crate::db_pool::get_conn();
+
+    // 如果有 campaign_id，尝试用活动 H5 模板渲染
+    if let Some(cid) = params.get("campaign_id") {
+        let user_id: Option<String> = conn.query_row(
+            "SELECT id FROM users WHERE referral_code = ?1 LIMIT 1",
+            rusqlite::params![&code], |row| row.get(0),
+        ).ok();
+
+        if let Some(uid) = user_id {
+            if let Some(template) = conn.query_row(
+                "SELECT h5_template FROM marketing_campaigns WHERE id = ?1",
+                rusqlite::params![cid], |row| row.get::<_, Option<String>>(0),
+            ).ok().flatten() {
+                if let Ok(data) = crate::h5_template::build_user_h5_data(&conn, &uid, cid) {
+                    let html = crate::h5_template::replace_h5_variables(&template, &data);
+                    return ([(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")], html);
+                }
+            }
+        }
+    }
+
     // 优先读取已保存的 LLM 生成 HTML
     let file_path = format!("data/share/{}/index.html", code);
     if let Ok(html) = std::fs::read_to_string(&file_path) {

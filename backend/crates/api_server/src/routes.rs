@@ -4,15 +4,60 @@
 
 use axum::{Router, routing::{get, post, put, delete, patch}, Json, extract::{Path, Query}, response::IntoResponse};
 use axum::extract::ws::WebSocketUpgrade;
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, StatusCode, header};
 use tower_http::trace::TraceLayer;
+use std::collections::HashMap;
+use std::sync::OnceLock;
 use serde::Deserialize;
 use serde_json::json;
-use std::sync::OnceLock;
-use std::collections::HashMap;
 
 use crate::error::AppError;
 use crate::admin_handlers::*;
+
+/// 提供 Flutter Web 构建的静态文件（SPA 模式：未匹配路径返回 index.html）
+const FLUTTER_WEB_DIR: &str = "../app/build/web";
+
+async fn serve_flutter_web(Path(path): Path<String>) -> impl IntoResponse {
+    let base = std::path::Path::new(FLUTTER_WEB_DIR);
+    let file_path = if path.is_empty() || path == "index.html" || !path.contains('.') {
+        // 无扩展名路径 → SPA fallback
+        base.join("index.html")
+    } else {
+        let p = base.join(&path);
+        if p.starts_with(base) && p.is_file() { p } else { base.join("index.html") }
+    };
+
+    // 尝试读取文件
+    match tokio::fs::read(&file_path).await {
+        Ok(data) => {
+            let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            let mime = match ext {
+                "html" => "text/html; charset=utf-8",
+                "js" | "mjs" => "application/javascript",
+                "css" => "text/css",
+                "png" => "image/png",
+                "jpg" | "jpeg" => "image/jpeg",
+                "svg" => "image/svg+xml",
+                "json" => "application/json",
+                "wasm" => "application/wasm",
+                "ico" => "image/x-icon",
+                "map" => "application/json",
+                _ => "application/octet-stream",
+            };
+            (StatusCode::OK, [(header::CONTENT_TYPE, mime)], data).into_response()
+        }
+        Err(_) if file_path.ends_with("index.html") => {
+            (StatusCode::OK, [(header::CONTENT_TYPE, "text/html; charset=utf-8")], b"<h1>App not built</h1><p>Run: cd app && flutter build web</p>" as &[u8]).into_response()
+        }
+        Err(_) => {
+            // 文件不存在 → SPA fallback
+            match tokio::fs::read(base.join("index.html")).await {
+                Ok(data) => (StatusCode::OK, [(header::CONTENT_TYPE, "text/html; charset=utf-8")], data).into_response(),
+                Err(_) => (StatusCode::NOT_FOUND, "App not built").into_response(),
+            }
+        }
+    }
+}
 
 /// Helper: convert an AppError into a Json error response (for handlers returning Json<Value>)
 pub(crate) fn auth_json(e: AppError) -> Json<serde_json::Value> {
@@ -251,6 +296,8 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         // 退款 API
         .route("/api/admin/refund/{order_id}", post(crate::distribution_handler::admin_refund))
         .route("/api/webhook/refund", post(crate::distribution_handler::webhook_refund))
+        // ── Flutter Web App 静态文件（SPA 路由） ──
+        .route("/app/{*path}", get(serve_flutter_web))
         // ── 全局中间件：HTTP 请求/响应日志 ──
         .layer(TraceLayer::new_for_http())
 }
@@ -283,7 +330,7 @@ async fn auth_register(
     headers: HeaderMap,
     Json(input): Json<AuthInput>,
 ) -> impl axum::response::IntoResponse {
-    tracing::info!("auth_register: user_id={}", input.username);
+    tracing::info!("auth_register: user_id={}, referral={:?}", input.username, input.referral);
 
     // Rate limit: 20 reg/min per IP
     if let Err(resp) = crate::rate_limiter::check_rate_limit(&headers, 20, 60) { return resp; }

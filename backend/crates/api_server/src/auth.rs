@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use crate::encryption;
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct ReferralInfo {
     pub code: Option<String>,
     pub campaign_id: Option<String>,
