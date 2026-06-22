@@ -1,5 +1,5 @@
-﻿// ignore_for_file: unnecessary_cast, unnecessary_non_null_assertion, unused_element, unused_field
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,6 +7,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:html' as html;
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
 import '../api/chat_client.dart';
 import '../api/api_config.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -15,10 +18,10 @@ import '../providers/theme_provider.dart';
 import '../services/tts_service.dart';
 import '../widgets/order_history.dart';
 import '../widgets/subscribe_panel.dart';
-import '../widgets/share_widget.dart';
 import '../utils/validators.dart';
 import '../theme/app_theme.dart';
 import '../pages/user/distribution/notification_panel.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -49,6 +52,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   // 推广码
   String? _referralCode;
   bool _referralLoading = false;
+  final GlobalKey _qrKey = GlobalKey();
   Map<String, dynamic>? _referralStats;
   bool _statsLoading = false;
 
@@ -376,6 +380,32 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
+  /// 简单内联行，用于个人信息卡片内的每一行（无 Card 嵌套）
+  /// [onTap] 为 null 时只读显示（无 InkWell 和箭头）
+  /// 图标宽度固定为 32px，与昵称行的头像宽度对齐
+  Widget _buildProfileRow({required IconData icon, required String label, required String value, VoidCallback? onTap}) {
+    final row = Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingSm),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 32,
+            child: Center(child: Icon(icon, size: 20, color: _cs.outline)),
+          ),
+          const SizedBox(width: 8),
+          Text(label, style: _tt.bodyMedium?.copyWith(color: _cs.outline)),
+          const Spacer(),
+          Text(value, style: _tt.bodyLarge),
+          if (onTap != null) ...[
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right, size: 18, color: _cs.outline),
+          ],
+        ],
+      ),
+    );
+    return onTap != null ? InkWell(onTap: onTap, child: row) : row;
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
@@ -424,67 +454,147 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return ListView(
       padding: const EdgeInsets.all(AppTheme.spacingXxl),
       children: [
-        // 用户头像 + 名字（可点击自定义）
-        Center(
+        // ── 推广二维码 ──
+        if (_referralCode != null)
+          Container(
+            padding: const EdgeInsets.all(AppTheme.spacingLg),
+            decoration: BoxDecoration(
+              color: _cs.surfaceContainerHighest.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              children: [
+                // 二维码
+                InkWell(
+                  onTap: () => _saveQrCode(),
+                  child: RepaintBoundary(
+                    key: _qrKey,
+                    child: Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: _cs.outlineVariant),
+                      ),
+                      padding: const EdgeInsets.all(8),
+                      child: QrImageView(
+                        data: 'https://keyievolution.fun/app/auth?ref=$_referralCode',
+                        version: QrVersions.auto,
+                        size: 104,
+                        eyeStyle: QrEyeStyle(
+                          eyeShape: QrEyeShape.square,
+                          color: const Color(0xFF1A237E),
+                        ),
+                        dataModuleStyle: QrDataModuleStyle(
+                          dataModuleShape: QrDataModuleShape.square,
+                          color: const Color(0xFF1A237E),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: AppTheme.spacingMd),
+                // 推广码
+                InkWell(
+                  onTap: () async {
+                    await Clipboard.setData(ClipboardData(text: _referralCode!));
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('推广码已复制')),
+                      );
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: _cs.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _referralCode!,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: _cs.primary,
+                            letterSpacing: 2,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Icon(Icons.copy, size: 16, color: _cs.primary),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else if (_referralCode == null)
+          const SizedBox.shrink(),
+        const SizedBox(height: AppTheme.spacingLg),
+
+        // ── 个人信息（头像嵌入昵称行｜姓名｜手机号） ──
+        Container(
+          padding: const EdgeInsets.all(AppTheme.spacingMd),
+          decoration: BoxDecoration(
+            color: _cs.surfaceContainerHighest.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Column(
             children: [
-              GestureDetector(
-                onTap: _uploadAvatar,
-                child: CircleAvatar(
-                  radius: 44,
-                  backgroundColor: Theme.of(context).colorScheme.primary.withAlpha(30),
-                  backgroundImage: _avatarUrl != null ? NetworkImage(_avatarUrl!) : null,
-                  child: _isUploading
-                      ? const CircularProgressIndicator(strokeWidth: 2)
-                      : (_avatarUrl == null
-                          ? Icon(Icons.person, size: 40, color: Theme.of(context).colorScheme.primary)
-                          : null),
-                ),
-              ),
-              const SizedBox(height: AppTheme.spacingXs),
-              Text('点击更换头像', style: _tt.labelSmall?.copyWith(color: _cs.onSurfaceVariant)),
-              const SizedBox(height: AppTheme.spacingMd),
-              GestureDetector(
+              // Row 1：头像 + 昵称
+              InkWell(
                 onTap: _editName,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(_displayName, style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(width: 6),
-                    Icon(Icons.edit, size: 16, color: _cs.outlineVariant),
-                  ],
-                ),
-              ),
-              if (streakDays > 0)
-                Padding(
-                  padding: const EdgeInsets.only(top: AppTheme.spacingXs),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingSm),
                   child: Row(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.local_fire_department, color: _cs.tertiary, size: 18),
-                      const SizedBox(width: AppTheme.spacingXs),
-                      Text('连续学习 $streakDays 天',
-                          style: TextStyle(color: _cs.tertiaryFixedDim)),
+                      // 左栏固定宽度，与 _buildProfileRow 的图标栏对齐
+                      SizedBox(
+                        width: 32,
+                        child: GestureDetector(
+                          onTap: _uploadAvatar,
+                          child: CircleAvatar(
+                            radius: 16,
+                            backgroundColor: Theme.of(context).colorScheme.primary.withAlpha(30),
+                            backgroundImage: _avatarUrl != null ? NetworkImage(_avatarUrl!) : null,
+                            child: _isUploading
+                                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                                : (_avatarUrl == null
+                                    ? Icon(Icons.person, size: 18, color: Theme.of(context).colorScheme.primary)
+                                    : null),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text('昵称', style: _tt.bodyMedium?.copyWith(color: _cs.outline)),
+                      const Spacer(),
+                      Text(_displayName, style: _tt.bodyLarge),
+                      const SizedBox(width: 4),
+                      Icon(Icons.chevron_right, size: 18, color: _cs.outline),
                     ],
                   ),
                 ),
+              ),
+              const Divider(height: 1),
+              // Row 2：真实姓名（只读）
+              _buildProfileRow(
+                icon: Icons.badge_outlined,
+                label: '真实姓名',
+                value: _realName ?? '未填写',
+              ),
+              const Divider(height: 1),
+              // Row 3：手机号（只读）
+              _buildProfileRow(
+                icon: Icons.phone_outlined,
+                label: '手机号',
+                value: _phone ?? '未填写',
+              ),
             ],
           ),
-        ),
-        const SizedBox(height: AppTheme.spacingXxxl),
-
-        // ── 真实姓名 + 手机号 ──
-        _buildInfoTile(
-          icon: Icons.badge_outlined,
-          label: '真实姓名',
-          value: _realName ?? '未填写',
-          onTap: () => _editInfoField('真实姓名', _realName, Validators.realName, (v) => _updateProfile({'real_name': v})),
-        ),
-        _buildInfoTile(
-          icon: Icons.phone_outlined,
-          label: '手机号',
-          value: _phone ?? '未填写',
-          onTap: () => _editInfoField('手机号', _phone, Validators.phone, (v) => _updateProfile({'phone': v})),
         ),
         const SizedBox(height: AppTheme.spacingLg),
 
@@ -535,16 +645,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 label: const Text('提现', style: TextStyle(fontSize: 12)),
               )),
             ],
-          ),
-          const SizedBox(height: AppTheme.spacingMd),
-          // 分享入口
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              icon: const Icon(Icons.share, size: 16),
-              onPressed: () => showDialog(context: context, builder: (_) => const ShareWidget()),
-              label: const Text('分享给朋友', style: TextStyle(fontSize: 12)),
-            ),
           ),
           const SizedBox(height: AppTheme.spacingLg),
         ],
@@ -897,6 +997,62 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       }
     } catch (_) {}
     if (mounted) setState(() => _statsLoading = false);
+  }
+
+  /// 保存二维码图片到本地
+  void _saveQrCode() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('保存推广二维码'),
+        content: const Text('将二维码保存到本地，可分享给好友扫码注册。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _doSaveQrCode();
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _doSaveQrCode() {
+    try {
+      final boundary = _qrKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) return;
+      boundary.toImage(pixelRatio: 3.0).then((image) {
+        image.toByteData(format: ui.ImageByteFormat.png).then((data) {
+          if (data == null) return;
+          final blob = html.Blob([data.buffer.asUint8List()]);
+          final url = html.Url.createObjectUrlFromBlob(blob);
+          final anchor = html.AnchorElement(href: url)
+            ..setAttribute('download', 'coevo_qr.png')
+            ..click();
+          html.Url.revokeObjectUrl(url);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('二维码已保存')),
+            );
+          }
+        });
+      });
+    } catch (_) {
+      Clipboard.setData(ClipboardData(
+        text: 'https://keyievolution.fun/app/auth?ref=$_referralCode',
+      ));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('注册链接已复制')),
+        );
+      }
+    }
   }
 
   Widget _statItem(IconData icon, String label, String value) {

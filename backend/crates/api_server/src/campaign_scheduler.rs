@@ -3,10 +3,12 @@
 //! 包含：
 //! - 佣金锁定期到期自动解锁（30天）
 //! - NOTPAY 超时关单（30分钟未支付）
+//! - cron 定时推送（按 push_cron 匹配时间，写 user_notifications）
 //! - 后台定时任务（5分钟间隔自动执行）
 //! - 海报模板每日刷新（每天 00:30 执行）
 
 use chrono::Timelike;
+use serde_json;
 
 /// 佣金锁定期到期自动解锁
 ///
@@ -54,11 +56,131 @@ fn run_scheduler_inner(db_path: &str) -> Result<String, String> {
         .map_err(|e| format!("scheduler db open: {}", e))?;
     let unlocked = unlock_available_commissions(&conn)?;
     let cancelled = cancel_expired_orders(&conn)?;
-    let msg = format!("scheduler: unlocked={}, cancelled={}", unlocked, cancelled);
-    if unlocked > 0 || cancelled > 0 {
+    let pushed = execute_cron_pushes(&conn)?;
+    let msg = format!("scheduler: unlocked={}, cancelled={}, cron_pushed={}", unlocked, cancelled, pushed);
+    if unlocked > 0 || cancelled > 0 || pushed > 0 {
         tracing::info!("{}", msg);
     }
     Ok(msg)
+}
+
+/// 执行 cron 推送：检查 push_trigger='cron' 且 push_cron 匹配当前时间的活动
+/// push_cron 格式: "minute hour * * day"（day: 0=每天, 1-7=周一到周日）
+/// 匹配成功后查 target_roles 匹配的用户，写 user_notifications
+fn execute_cron_pushes(conn: &rusqlite::Connection) -> Result<usize, String> {
+    let now = chrono::Utc::now();
+    let minute = now.format("%M").to_string();
+    let hour = now.format("%H").to_string();
+    let day_of_week = now.format("%u").to_string(); // 1=周一, 7=周日
+
+    let mut stmt = conn.prepare(
+        "SELECT id, name, target_roles, description FROM marketing_campaigns \
+         WHERE status='active' AND push_trigger='cron' \
+         AND push_cron IS NOT NULL"
+    ).map_err(|e| format!("cron query: {}", e))?;
+
+    let campaigns: Vec<(String, String, Option<String>, Option<String>)> = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, Option<String>>(2)?,
+            row.get::<_, Option<String>>(3)?,
+        ))
+    }).map_err(|e| format!("cron fetch: {}", e))?
+    .filter_map(|r| r.ok())
+    .collect();
+
+    let mut pushed = 0;
+    for (id, name, target_roles_json, description) in &campaigns {
+        let cron = {
+            let mut tmp = conn.query_row(
+                "SELECT push_cron FROM marketing_campaigns WHERE id=?1",
+                rusqlite::params![id],
+                |row| row.get::<_, String>(0),
+            ).unwrap_or_default();
+            tmp
+        };
+        if cron.is_empty() { continue; }
+
+        let parts: Vec<&str> = cron.split(|c| c == ' ' || c == ',' || c == '\t')
+            .filter(|p| !p.is_empty())
+            .collect();
+        if parts.len() < 5 { continue; }
+
+        let c_minute = parts[0];
+        let c_hour = parts[1];
+        let c_day = parts[4];
+
+        let minute_match = c_minute == "*" || c_minute == minute;
+        let hour_match = c_hour == "*" || c_hour == hour;
+        let day_match = c_day == "*" || c_day == "0" || c_day == day_of_week;
+
+        if !(minute_match && hour_match && day_match) { continue; }
+
+        // ── 时间匹配 → 查目标用户 → 写通知 ──
+        let has_role_col = conn.prepare("SELECT role FROM users WHERE 1=0").is_ok();
+        let user_ids: Vec<String> = if has_role_col {
+            let mut user_list: Vec<String> = Vec::new();
+            match target_roles_json {
+                Some(roles_json) if roles_json != "[]" && roles_json != "null" => {
+                    if let Ok(roles) = serde_json::from_str::<Vec<String>>(roles_json) {
+                        if !roles.is_empty() {
+                            let placeholders: Vec<String> = (0..roles.len())
+                                .map(|i| format!("?{}", i + 1))
+                                .collect();
+                            let sql = format!(
+                                "SELECT id FROM users WHERE role IN ({}) AND deleted_at IS NULL LIMIT 100",
+                                placeholders.join(",")
+                            );
+                            if let Ok(mut stmt) = conn.prepare(&sql) {
+                                let params: Vec<&dyn rusqlite::types::ToSql> = roles.iter()
+                                    .map(|r| r as &dyn rusqlite::types::ToSql).collect();
+                                if let Ok(rows) = stmt.query_map(params.as_slice(), |row| row.get(0)) {
+                                    for r in rows.flatten() {
+                                        user_list.push(r);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+            user_list
+        } else {
+            conn.query_row("SELECT COUNT(*) FROM users WHERE deleted_at IS NULL", [], |row| row.get::<_, i64>(0))
+                .map(|total| if total > 0 { vec!["all".to_string()] } else { vec![] })
+                .unwrap_or_default()
+        };
+
+        for uid in &user_ids {
+            let title = format!("📢 {}", name);
+            let body = description.clone().unwrap_or_else(|| "点击查看活动详情！".to_string());
+            if uid == "all" {
+                // 全量推送：分批写通知
+                if let Ok(mut all_stmt) = conn.prepare(
+                    "SELECT id FROM users WHERE deleted_at IS NULL LIMIT 100"
+                ) {
+                    if let Ok(rows) = all_stmt.query_map([], |row| row.get::<_, String>(0)) {
+                        for rid in rows.filter_map(|r| r.ok()) {
+                            let _ = crate::campaign_executor::write_notification(
+                                conn, &rid, "campaign", &title, &body, Some(&format!("/share?campaign_id={}", id)),
+                            );
+                        }
+                    }
+                }
+            } else {
+                let _ = crate::campaign_executor::write_notification(
+                    conn, uid, "campaign", &title, &body, Some(&format!("/share?campaign_id={}", id)),
+                );
+            }
+            pushed += 1;
+        }
+
+        tracing::info!("cron push: campaign={} ({}), cron={}, users_pushed={}", name, id, cron, pushed);
+    }
+
+    Ok(pushed)
 }
 
 /// 刷新所有 active 活动的海报模板（每天 00:30 执行）

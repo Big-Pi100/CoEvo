@@ -1,5 +1,5 @@
 # CoEvo 成就定义文件 — 数据驱动成就系统 (Phase 4)
-# 版本: V3.0 | 日期: 2026-06-06
+# 版本: V3.1 | 日期: 2026-06-22
 # 扩展方式: 新成就 = 编辑此文件 + 部署, 不改代码、不重新编译
 #
 # 双语格式:
@@ -19,6 +19,8 @@
 #   conversation_ended — 对话结束（WS 断开时）
 #   plan_completed — 学习计划任务完成
 #   daily_tick — 每日定时检查（24h 冷却，高频路径入口）
+#   share_generated — 生成了分享/H5 海报
+#   referral_registered — 通过推广链接有新用户注册
 #
 # 隐藏成就: hidden = true  → 解锁后前端标注"隐藏成就"
 
@@ -463,3 +465,57 @@ conditions = [
 ]
 condition_logic = "AND"
 triggers = ["review_completed"]
+
+# ─────────────────────────────────────────────────────────────────────
+# 👥 社交 (social) — 分享推广与邀请
+# ─────────────────────────────────────────────────────────────────────
+
+[achievements.first_share]
+category = "social"
+tier = "bronze"
+name = {zh = "初次分享", en = "First Share"}
+description = {zh = "首次生成分享海报", en = "Generate your first share poster"}
+icon = "share"
+color = "#CD7F32"
+conditions = [{ metric = "share_count", op = "gte", value = 1 }]
+triggers = ["share_generated"]
+
+[achievements.share_7]
+category = "social"
+tier = "silver"
+name = {zh = "分享达人", en = "Sharing Star"}
+description = {zh = "累计分享 7 天", en = "Share for 7 days"}
+icon = "campaign"
+color = "#C0C0C0"
+conditions = [{ metric = "share_days", op = "gte", value = 7 }]
+triggers = ["share_generated"]
+
+[achievements.share_30]
+category = "social"
+tier = "gold"
+name = {zh = "社交之星", en = "Social Butterfly"}
+description = {zh = "累计分享 30 天", en = "Share for 30 days"}
+icon = "diversity_2"
+color = "#FFD700"
+conditions = [{ metric = "share_days", op = "gte", value = 30 }]
+triggers = ["share_generated"]
+
+[achievements.referral_3]
+category = "social"
+tier = "gold"
+name = {zh = "裂变之王", en = "Referral King"}
+description = {zh = "带来 3 个有效注册", en = "Bring 3 valid registrations"}
+icon = "rocket_launch"
+color = "#FFD700"
+conditions = [{ metric = "referral_count", op = "gte", value = 3 }]
+triggers = ["referral_registered"]
+
+[achievements.referral_10]
+category = "social"
+tier = "platinum"
+name = {zh = "朋友遍天下", en = "Social Networker"}
+description = {zh = "带来 10 个有效注册", en = "Bring 10 valid registrations"}
+icon = "groups"
+color = "#E5E4E2"
+conditions = [{ metric = "referral_count", op = "gte", value = 10 }]
+triggers = ["referral_registered"]

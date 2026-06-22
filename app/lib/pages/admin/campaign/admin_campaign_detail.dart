@@ -392,12 +392,6 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
                         _infoRow('Cron', _campaign!['push_cron'] as String? ?? '无'),
                       ]),
                       const SizedBox(height: AppTheme.spacingMd),
-                      // ── 展示位置卡片 ──
-                      _infoSection(cs, tt, '展示位置', [
-                        _infoRow('位置',
-                          _formatDisplayPositions(_campaign!['display_positions'] as String? ?? '[]')),
-                      ]),
-                      const SizedBox(height: AppTheme.spacingMd),
                       // ── 海报/H5 Prompt 卡片 ──
                       if ((_campaign!['poster_prompt'] as String? ?? '').isNotEmpty ||
                           (_campaign!['h5_prompt'] as String? ?? '').isNotEmpty)

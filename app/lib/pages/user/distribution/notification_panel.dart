@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,7 +7,6 @@ import 'package:http/http.dart' as http;
 import '../../../api/api_config.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../theme/app_theme.dart';
-import '../../../widgets/share_widget.dart';
 
 /// 通知中心页面
 class NotificationPanel extends ConsumerWidget {
@@ -120,7 +120,7 @@ class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
       }
       showDialog(
         context: context,
-        builder: (ctx) => ShareWidget(campaignId: campaignId),
+        builder: (ctx) => _PosterDialog(campaignId: campaignId),
       );
       return;
     }
@@ -265,6 +265,183 @@ class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
                       },
                     ),
             ),
+    );
+  }
+}
+
+/// 海报对话框 — 只显示海报 PNG（推广码+二维码已内嵌），提供下载
+class _PosterDialog extends ConsumerStatefulWidget {
+  final String? campaignId;
+  const _PosterDialog({this.campaignId});
+
+  @override
+  ConsumerState<_PosterDialog> createState() => _PosterDialogState();
+}
+
+class _PosterDialogState extends ConsumerState<_PosterDialog> {
+  String? _posterPng;
+  String? _referralCode;
+  bool _loading = true;
+  bool _generatingH5 = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPoster();
+  }
+
+  Future<void> _loadPoster() async {
+    final auth = ref.read(authProvider);
+    final userId = auth.userId;
+    final token = auth.token;
+    if (userId == null || token == null) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+
+    try {
+      final codeResp = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/referral/my-code?user_id=$userId'),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 10));
+      if (codeResp.statusCode == 200 && mounted) {
+        _referralCode = (jsonDecode(codeResp.body) as Map<String, dynamic>)['referral_code'] as String?;
+      }
+
+      final posterResp = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/api/referral/generate-poster'),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': userId,
+          if (widget.campaignId != null) 'campaign_id': widget.campaignId,
+        }),
+      ).timeout(const Duration(seconds: 60));
+      if (posterResp.statusCode == 200 && mounted) {
+        _posterPng = (jsonDecode(posterResp.body) as Map<String, dynamic>)['poster_png'] as String?;
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _generateH5() async {
+    final auth = ref.read(authProvider);
+    final userId = auth.userId;
+    final token = auth.token;
+    if (userId == null || token == null) return;
+    setState(() => _generatingH5 = true);
+    try {
+      final resp = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/api/referral/generate-h5'),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': userId,
+          if (widget.campaignId != null) 'campaign_id': widget.campaignId,
+        }),
+      ).timeout(const Duration(seconds: 60));
+      if (resp.statusCode == 200 && mounted) {
+        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+        final fullUrl = (data['url'] as String?) ?? ApiConfig.baseUrl;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('分享链接已复制: $fullUrl')),
+        );
+        // 弹 SelectableText 页供用户选择复制
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => Scaffold(
+              body: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('复制以下链接分享给好友：'),
+                    const SizedBox(height: 8),
+                    SelectableText(fullUrl),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('生成失败: $e')));
+      }
+    }
+    if (mounted) setState(() => _generatingH5 = false);
+  }
+
+  void _download() {
+    if (_posterPng == null) return;
+    try {
+      final bytes = base64Decode(_posterPng!.split(',').last);
+      final blob = html.Blob([bytes], 'image/png');
+      final objUrl = html.Url.createObjectUrlFromBlob(blob);
+      (html.document.createElement('a') as html.AnchorElement)
+        ..href = objUrl
+        ..download = 'coevo_poster_${_referralCode ?? 'share'}.png'
+        ..click();
+      html.Url.revokeObjectUrl(objUrl);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(AppTheme.spacingLg),
+        child: _loading
+            ? const SizedBox(height: 300, child: Center(child: CircularProgressIndicator()))
+            : _posterPng != null
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.memory(
+                          base64Decode(_posterPng!.split(',').last),
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                      const SizedBox(height: AppTheme.spacingMd),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          icon: const Icon(Icons.download, size: 18),
+                          onPressed: _download,
+                          label: const Text('下载海报'),
+                        ),
+                      ),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          icon: _generatingH5
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.share, size: 18),
+                          onPressed: _generatingH5 ? null : _generateH5,
+                          label: const Text('分享链接到微信'),
+                        ),
+                      ),
+                      const SizedBox(height: AppTheme.spacingMd),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('关闭'),
+                      ),
+                    ],
+                  )
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('海报生成失败，请重试'),
+                      const SizedBox(height: AppTheme.spacingMd),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('关闭'),
+                      ),
+                    ],
+                  ),
+      ),
     );
   }
 }

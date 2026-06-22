@@ -54,6 +54,10 @@ pub enum AppEvent {
     PlanCompleted { user_id: String },
     /// 每日定时触发（带 24h 冷却，调用 check_daily 而非 publish）
     DailyTick { user_id: String },
+    /// 生成分享/海报后触发
+    ShareGenerated { user_id: String },
+    /// 有效邀请注册后触发
+    ReferralRegistered { user_id: String },
 }
 
 impl AppEvent {
@@ -65,6 +69,8 @@ impl AppEvent {
             AppEvent::ConversationEnded { .. } => "conversation_ended",
             AppEvent::PlanCompleted { .. } => "plan_completed",
             AppEvent::DailyTick { .. } => "daily_tick",
+            AppEvent::ShareGenerated { .. } => "share_generated",
+            AppEvent::ReferralRegistered { .. } => "referral_registered",
         }
     }
 
@@ -74,7 +80,9 @@ impl AppEvent {
             | AppEvent::ReviewCompleted { user_id }
             | AppEvent::ConversationEnded { user_id }
             | AppEvent::PlanCompleted { user_id }
-            | AppEvent::DailyTick { user_id } => user_id,
+            | AppEvent::DailyTick { user_id }
+            | AppEvent::ShareGenerated { user_id }
+            | AppEvent::ReferralRegistered { user_id } => user_id,
         }
     }
 }
@@ -424,6 +432,28 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
         |row| row.get(0),
     ).unwrap_or(0);
 
+    // 19. share_count: 累计生成分享次数（推广类成就）
+    let share_count: u32 = conn.query_row(
+        "SELECT COUNT(*) FROM user_notifications WHERE user_id = ?1 AND notification_type IN ('share_poster','share_h5')",
+        rusqlite::params![user_id],
+        |row| row.get(0),
+    ).unwrap_or(0);
+
+    // 20. referral_count: 有效邀请注册数
+    let referral_count: u32 = conn.query_row(
+        "SELECT COUNT(*) FROM users WHERE referred_by = ?1 AND deleted_at IS NULL",
+        rusqlite::params![user_id],
+        |row| row.get(0),
+    ).unwrap_or(0);
+
+    // 21. share_days: 累计分享天数（按通知创建日期去重）
+    let share_days: u32 = conn.query_row(
+        "SELECT COUNT(DISTINCT date(created_at)) FROM user_notifications \
+         WHERE user_id = ?1 AND notification_type IN ('share_poster','share_h5')",
+        rusqlite::params![user_id],
+        |row| row.get(0),
+    ).unwrap_or(0);
+
     AchievementContext {
         user_id: user_id.to_string(),
         total_cards,
@@ -450,6 +480,9 @@ pub fn build_context(conn: &Connection, user_id: &str) -> AchievementContext {
         reviews_today,
         days_since_reg,
         subjects_count,
+        share_count,
+        referral_count,
+        share_days,
     }
 }
 

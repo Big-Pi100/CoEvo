@@ -1677,10 +1677,10 @@ async fn achievements_all_handler(
         unlocked.iter().map(|s| s.as_str()).collect();
 
     // 按 category 分组
-    let category_order = ["seed", "consistency", "knowledge", "exploration", "mastery", "special"];
+    let category_order = ["seed", "consistency", "knowledge", "exploration", "mastery", "social", "special"];
     let category_labels: std::collections::HashMap<&str, &str> = [
         ("seed", "启程"), ("consistency", "坚持"), ("knowledge", "博学"),
-        ("exploration", "探索"), ("mastery", "精进"), ("special", "特殊"),
+        ("exploration", "探索"), ("mastery", "精进"), ("social", "社交"), ("special", "特殊"),
     ].into_iter().collect();
 
     let mut categories: Vec<serde_json::Value> = Vec::new();
@@ -1777,6 +1777,9 @@ fn compute_progress(def: &shared_types::growth::AchievementDef, ctx: &shared_typ
             "reviews_today" => ctx.reviews_today as f64,
             "days_since_reg" => ctx.days_since_reg as f64,
             "subjects_count" => ctx.subjects_count as f64,
+            "share_count" => ctx.share_count as f64,
+            "share_days" => ctx.share_days as f64,
+            "referral_count" => ctx.referral_count as f64,
             _ => 0.0,
         };
         let ratio = if cond.value > 0.0 {
@@ -1811,6 +1814,9 @@ fn compute_progress(def: &shared_types::growth::AchievementDef, ctx: &shared_typ
             "reviews_today" => "次",
             "days_since_reg" => "天",
             "subjects_count" => "个学科",
+            "share_count" => "次分享",
+            "share_days" => "天",
+            "referral_count" => "个注册",
             _ => "",
         };
         labels.push(format!("{}/{} {}", actual as u64, cond.value as u64, metric_label));

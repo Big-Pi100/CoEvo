@@ -34,6 +34,7 @@ pub struct UserH5Data {
 ///   1. 遍历 UserH5Data 所有字段，做 String::replace()
 ///   2. {share_url} 替换为完整分享链接
 ///   3. 不解析嵌套变量、不支持条件逻辑
+///   4. 自动注入 OG meta 标签（og:image 等）
 pub fn replace_h5_variables(template: &str, data: &UserH5Data) -> String {
     let mut result = template.to_string();
     result = result.replace("{display_name}", &data.display_name);
@@ -48,6 +49,17 @@ pub fn replace_h5_variables(template: &str, data: &UserH5Data) -> String {
     result = result.replace("{plan_count}", &data.plan_count.to_string());
     result = result.replace("{completed_plans}", &data.completed_plans.to_string());
     result = result.replace("{achievement_count}", &data.achievement_count.to_string());
+    // 注入 OG meta 标签（在 </head> 前插入）
+    let base = crate::h5_template::coevo_base_url();
+    let share_url = format!("{}/share/{}", base, &data.referral_code);
+    let og_meta = format!(
+        r#"<meta property="og:image" content="{}/app/icons/Icon-512.png">
+<meta property="og:title" content="{} 邀请你一起学习">
+<meta property="og:description" content="在 CoEvo 刻意进化学习，如果不想被AI取代，你需要刻意进化">
+<meta property="og:url" content="{}">"#,
+        base, &data.display_name, share_url,
+    );
+    result = result.replace("</head>", &format!("{}</head>", og_meta));
     result
 }
 
@@ -305,12 +317,17 @@ fn extract_html_from_llm_reply(reply: &str) -> Result<String, String> {
 ///
 /// 原实现在 referral_handler.rs，迁移至此。
 pub fn fallback_h5_html(referral_code: &str) -> String {
-    format!(
+    let base = coevo_base_url();
+    let mut html = format!(
         r#"<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta property="og:image" content="{base}/app/icons/Icon-512.png">
+    <meta property="og:title" content="CoEvo 邀请你一起学习">
+    <meta property="og:description" content="在 CoEvo 刻意进化学习，如果不想被AI取代，你需要刻意进化">
+    <meta property="og:url" content="{base}/share/{{code}}">
     <title>CoEvo 学习推广</title>
     <style>
         body {{ font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: linear-gradient(135deg, #667eea 0%, #4F46E5 100%); }}
@@ -335,7 +352,10 @@ pub fn fallback_h5_html(referral_code: &str) -> String {
 </body>
 </html>"#,
         referral_code, referral_code
-    )
+    );
+    html = html.replace("{base}", &base);
+    html = html.replace("{code}", referral_code);
+    html
 }
 
 #[cfg(test)]

@@ -303,7 +303,7 @@ CREATE TABLE IF NOT EXISTS marketing_campaigns (
     poster_template TEXT,                      -- LLM 生成的海报 SVG 模板（含 {变量}）
     h5_template TEXT,                          -- LLM 生成的 H5 HTML 模板（含 {变量}）
     h5_prompt TEXT,                            -- 自定义 H5 系统提示
-    display_positions TEXT DEFAULT '[]',       -- 展示位置（JSON 数组）
+    display_positions TEXT DEFAULT '[]',       -- 展示方式：notification（通知中心）/ popup（弹窗）/ both（两者），默认空='both'
     FOREIGN KEY (created_by) REFERENCES admin_users(id),
     FOREIGN KEY (updated_by) REFERENCES admin_users(id)
 );

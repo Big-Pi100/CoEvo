@@ -543,7 +543,7 @@ pub async fn stats(
     }))
 }
 
-/// GET /api/campaigns/check-push-trigger — 检查是否有匹配的推送活动
+/// GET /api/campaigns/check-push-trigger — 检查是否有匹配的推送活动（仅返回弹窗可用活动）
 pub async fn check_push_trigger(
     Query(query): Query<CheckPushTriggerQuery>,
 ) -> impl IntoResponse {
@@ -551,6 +551,7 @@ pub async fn check_push_trigger(
     let result: Option<(String, String)> = conn.query_row(
         "SELECT id, name FROM marketing_campaigns \
          WHERE status='active' AND push_trigger=?1 \
+         AND (display_positions IS NULL OR display_positions NOT IN ('notification')) \
          AND (valid_from IS NULL OR valid_from <= datetime('now')) \
          AND (valid_until IS NULL OR valid_until > datetime('now')) \
          LIMIT 1",

@@ -391,9 +391,23 @@ fn svg_to_png(svg: &str) -> Result<Vec<u8>, String> {
 }
 
 /// 从已替换变量的 SVG 文本中提取显示名称（用于 PNG fallback）
-fn extract_user_for_png_fallback(_svg: &str) -> crate::poster_template::UserPosterData {
+/// 尝试从 SVG 中提取推广码，失败时使用空串
+fn extract_user_for_png_fallback(svg: &str) -> crate::poster_template::UserPosterData {
     let base = crate::h5_template::coevo_base_url();
-    let referral_code = String::new();
+    // 尝试从 SVG 中提取推广码（<text ...>推广码: XXXX</text> 或 {referral_code} 被替换后的值）
+    let referral_code = svg.lines()
+        .find_map(|line| {
+            let trimmed = line.trim();
+            if let Some(start) = trimmed.find("推广码: ") {
+                let after = &trimmed[start + 5..];  // skip "推广码: "
+                let code = after.trim_end_matches(|c: char| c == '<' || c == '/' || c == ' ' || c == '>');
+                Some(code.to_string())
+            } else {
+                None
+            }
+        })
+        .filter(|c| !c.is_empty())
+        .unwrap_or_default();
     crate::poster_template::UserPosterData {
         display_name: "用户".to_string(),
         real_name: String::new(),
@@ -413,10 +427,10 @@ fn extract_user_for_png_fallback(_svg: &str) -> crate::poster_template::UserPost
 /// 生成包含 SVG 和 PNG 的 JSON 响应（PNG 转换失败时降级为纯 SVG）
 /// 内部：SVG → JSON(PNG) 响应（公开供 admin preview 等场景用）
 pub fn poster_json_response_inline(svg: &str, copy: &str) -> axum::http::Response<axum::body::Body> {
-    poster_json_response(svg, copy)
+    poster_json_response(svg, copy, None)
 }
 
-fn poster_json_response(svg: &str, copy: &str) -> axum::http::Response<axum::body::Body> {
+fn poster_json_response(svg: &str, copy: &str, poster_data: Option<&crate::poster_template::UserPosterData>) -> axum::http::Response<axum::body::Body> {
     let png_data_url = match svg_to_png(svg) {
         Ok(png_bytes) => {
             let png_base64 =
@@ -425,9 +439,17 @@ fn poster_json_response(svg: &str, copy: &str) -> axum::http::Response<axum::bod
         }
         Err(_e) => {
             // PNG 失败时用 fallback SVG 重新尝试（确保 PNG 总有产出）
-            let user_data = extract_user_for_png_fallback(svg);
-            let fallback = crate::poster_template::fallback_poster_svg(&user_data);
-            match svg_to_png(&fallback) {
+            let fallback_svg = if let Some(data) = poster_data {
+                // 使用真实用户数据生成 fallback，并确保 QR 占位符被替换
+                let fallback = crate::poster_template::fallback_poster_svg(data);
+                crate::poster_template::replace_template_variables(&fallback, data)
+            } else {
+                // 无用户数据时最简降级
+                let data = extract_user_for_png_fallback(svg);
+                let fallback = crate::poster_template::fallback_poster_svg(&data);
+                crate::poster_template::replace_template_variables(&fallback, &data)
+            };
+            match svg_to_png(&fallback_svg) {
                 Ok(png_bytes) => {
                     let png_base64 =
                         base64::engine::general_purpose::STANDARD.encode(&png_bytes);
@@ -703,7 +725,7 @@ pub async fn generate_poster_internal(
         None
     };
 
-    let (svg, copy) = if let Some(ref tpl) = template {
+    let (svg, copy, poster_data) = if let Some(ref tpl) = template {
         let data = match crate::poster_template::build_user_poster_data(conn, user_id, campaign_id) {
             Ok(d) => d,
             Err(e) => {
@@ -712,7 +734,7 @@ pub async fn generate_poster_internal(
             }
         };
         let svg = crate::poster_template::replace_template_variables(tpl, &data);
-        (svg, crate::poster_template::fallback_copy())
+        (svg, crate::poster_template::fallback_copy(), Some(data))
     } else {
         let data = match crate::poster_template::build_user_poster_data(conn, user_id, "") {
             Ok(d) => d,
@@ -725,9 +747,9 @@ pub async fn generate_poster_internal(
             &crate::poster_template::fallback_poster_svg(&data),
             &data,
         );
-        (svg, crate::poster_template::fallback_copy())
+        (svg, crate::poster_template::fallback_copy(), Some(data))
     };
-    poster_json_response(&svg, &copy)
+    poster_json_response(&svg, &copy, poster_data.as_ref())
 }
 
 /// POST /api/referral/generate-poster — 海报生成（模板替换流程）
@@ -760,7 +782,7 @@ pub async fn generate_poster(
         None
     };
 
-    let (svg, copy) = if let Some(tpl) = template {
+    let (svg, copy, poster_data) = if let Some(tpl) = template {
         // 使用模板替换流程（零 LLM）
         let campaign_id = body.campaign_id.as_deref().unwrap_or("");
         let data = match crate::poster_template::build_user_poster_data(&conn, &body.user_id, campaign_id) {
@@ -772,7 +794,7 @@ pub async fn generate_poster(
         };
         let svg = crate::poster_template::replace_template_variables(&tpl, &data);
         let copy = crate::poster_template::fallback_copy();
-        (svg, copy)
+        (svg, copy, Some(data))
     } else {
         // Fallback: 模板未生成，用静态海报（同样走变量替换确保二维码注入）
         let data = match crate::poster_template::build_user_poster_data(&conn, &body.user_id, "") {
@@ -787,11 +809,11 @@ pub async fn generate_poster(
             &data,
         );
         let copy = crate::poster_template::fallback_copy();
-        (svg, copy)
+        (svg, copy, Some(data))
     };
 
     // 保持后续 SVG→PNG 转换逻辑不变
-    poster_json_response(&svg, &copy)
+    poster_json_response(&svg, &copy, poster_data.as_ref())
 }
 
 /// POST /api/referral/generate-h5 — H5 分享页生成（模板替换流程，零 LLM）
@@ -834,6 +856,12 @@ pub async fn generate_h5(
         fallback_h5_html(&referral_code)
     };
 
+    // 触发推广成就
+    crate::achievement_engine::publish(
+        &conn,
+        crate::achievement_engine::AppEvent::ShareGenerated { user_id: body.user_id.clone() },
+    );
+
     // 返回 JSON，包含 HTML 文本 + 分享 URL（转发给好友的链接）
     let share_url = match &body.campaign_id {
         Some(cid) => format!("{}/share/{}?campaign_id={}", crate::h5_template::coevo_base_url(), referral_code, cid),
@@ -874,7 +902,17 @@ pub async fn share_landing(
     // 优先读取已保存的 LLM 生成 HTML
     let file_path = format!("data/share/{}/index.html", code);
     if let Ok(html) = std::fs::read_to_string(&file_path) {
-        return ([(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")], html);
+        // 注入 OG meta 标签
+        let base = crate::h5_template::coevo_base_url();
+        let og = format!(
+            r#"<meta property="og:image" content="{}/app/icons/Icon-512.png">
+<meta property="og:title" content="在 CoEvo 一起学习">
+<meta property="og:description" content="如果不想被AI取代，你需要刻意进化">
+<meta property="og:url" content="{}/share/{}">"#,
+            base, base, code
+        );
+        let html_with_og = html.replace("</head>", &format!("{}</head>", og));
+        return ([(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")], html_with_og);
     }
 
     // fallback: 内联模板
@@ -1060,5 +1098,38 @@ mod tests {
     fn test_load_share_prompt_file_not_found() {
         let result = load_share_prompt("/tmp/nonexistent", "poster", "signal");
         assert!(result.is_err(), "对于不存在的文件应返回错误");
+    }
+
+    #[test]
+    fn test_qr_svg_format() {
+        let qr = super::generate_qr_svg("http://test.com/ref=ABC", "#1A237E", "#FFFFFF");
+        eprintln!("QR SVG: {}", qr);
+        let has_close = qr.contains("\"/>");
+        let has_space = qr.contains("\" />");
+        assert!(has_close || has_space, "QR SVG should have self-closing path: close={}, space={}", has_close, has_space);
+    }
+
+    #[test]
+    fn test_poster_placeholder_replaced() {
+        let data = crate::poster_template::UserPosterData {
+            display_name: "测试".to_string(),
+            real_name: "User".to_string(),
+            streak_days: 10,
+            total_cards: 50,
+            today_reviews: 5,
+            referral_code: "TEST123".to_string(),
+            qr_code_url: "http://test.com/ref=TEST123".to_string(),
+            active_plans_summary: "数学".to_string(),
+            current_focus: "高数".to_string(),
+            plan_count: 2,
+            completed_plans: 3,
+            achievement_count: 1,
+        };
+        let fallback = crate::poster_template::fallback_poster_svg(&data);
+        assert!(fallback.contains("QR_PLACEHOLDER"), "fallback should have QR_PLACEHOLDER");
+        let result = crate::poster_template::replace_template_variables(&fallback, &data);
+        assert!(!result.contains("QR_PLACEHOLDER"), "QR_PLACEHOLDER should be replaced");
+        assert!(result.contains("<path fill"), "QR path should be in the result");
+        assert!(result.contains("</g>"), "QR group should be closed");
     }
 }

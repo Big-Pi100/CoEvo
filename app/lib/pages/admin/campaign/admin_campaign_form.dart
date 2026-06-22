@@ -43,7 +43,7 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
   int _cronHour = 9;
   int _cronMinute = 0;
   List<String> _targetRoles = [];
-  List<String> _displayPositions = [];
+  String _displayStyle = 'both'; // notification / popup / both
   bool _saving = false;
 
   bool get _isEdit => widget.campaign != null;
@@ -105,21 +105,7 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
     _campaignType = c?['campaign_type'] as String? ?? 'invite_award';
     _triggerEvent = c?['trigger_event'] as String? ?? 'registration';
     _pushTrigger = c?['push_trigger'] as String? ?? 'manual';
-    if (c?['target_roles'] is String) {
-      final raw = c!['target_roles'] as String;
-      try {
-        _targetRoles = (jsonDecode(raw) as List).cast<String>();
-      } catch (_) {
-        _targetRoles = [];
-      }
-    }
-    if (c?['display_positions'] is String) {
-      try {
-        _displayPositions = (jsonDecode(c!['display_positions'] as String) as List).cast<String>();
-      } catch (_) {
-        _displayPositions = [];
-      }
-    }
+    _displayStyle = c?['display_positions'] as String? ?? 'both';
   }
 
   @override
@@ -183,7 +169,7 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
       'push_trigger': _pushTrigger,
       if (_pushTrigger == 'cron') 'push_cron': '$_cronMinute $_cronHour * * $_cronDay',
       'target_roles': jsonEncode(_targetRoles),
-      'display_positions': jsonEncode(_displayPositions),
+      'display_positions': _displayStyle,
       if (_posterPromptCtrl.text.trim().isNotEmpty)
         'poster_prompt': _posterPromptCtrl.text.trim(),
       'attribution_window':
@@ -343,24 +329,6 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                         color: cs.primary,
                         fontSize: 13)),
                 const SizedBox(height: AppThemeSpacing.sm),
-                DropdownButtonFormField<String>(
-                  value: _triggerEvent,
-                  decoration: const InputDecoration(
-                      labelText: '触发事件',
-                      border: OutlineInputBorder(),
-                      isDense: true),
-                  items: const [
-                    DropdownMenuItem(value: 'registration', child: Text('注册')),
-                    DropdownMenuItem(value: 'referral_signup', child: Text('推荐注册')),
-                    DropdownMenuItem(value: 'click', child: Text('点击')),
-                    DropdownMenuItem(value: 'payment', child: Text('支付')),
-                    DropdownMenuItem(value: 'order_creation', child: Text('下单')),
-                    DropdownMenuItem(value: 'plan_completed', child: Text('计划完成')),
-                  ],
-                  onChanged: (v) =>
-                      setState(() => _triggerEvent = v ?? 'registration'),
-                ),
-                const SizedBox(height: AppThemeSpacing.sm),
                 // 奖励规则列表
                 ..._rewards.asMap().entries.map((entry) {
                   final i = entry.key;
@@ -407,10 +375,8 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                                   decoration: const InputDecoration(
                                       labelText: '对象', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
                                   items: const [
-                                    DropdownMenuItem(value: 'self', child: Text('自己')),
-                                    DropdownMenuItem(value: 'inviter', child: Text('推广方')),
-                                    DropdownMenuItem(value: 'invitee', child: Text('被推广方')),
-                                    DropdownMenuItem(value: 'referrer', child: Text('推荐人')),
+                                    DropdownMenuItem(value: 'self', child: Text('本号')),
+                                    DropdownMenuItem(value: 'inviter', child: Text('下线')),
                                   ],
                                   onChanged: (v) => setState(() => _rewards[i]['party'] = v),
                                 ),
@@ -437,15 +403,30 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                                       labelText: '触发', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
                                   items: const [
                                     DropdownMenuItem(value: 'registration', child: Text('注册')),
-                                    DropdownMenuItem(value: 'referral_signup', child: Text('推荐注册')),
-                                    DropdownMenuItem(value: 'click', child: Text('点击')),
                                     DropdownMenuItem(value: 'payment', child: Text('支付')),
-                                    DropdownMenuItem(value: 'order_creation', child: Text('下单')),
-                                    DropdownMenuItem(value: 'plan_completed', child: Text('计划完成')),
+                                    DropdownMenuItem(value: 'plan_update', child: Text('计划更新')),
                                   ],
                                   onChanged: (v) => setState(() => _rewards[i]['trigger'] = v),
                                 ),
                               ),
+                              const SizedBox(width: 8),
+                              SizedBox(
+                                width: 72,
+                                child: DropdownButtonFormField<String>(
+                                  value: (reward['freq'] as String?) ?? 'always',
+                                  decoration: const InputDecoration(
+                                      labelText: '频率', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 8)),
+                                  items: const [
+                                    DropdownMenuItem(value: 'always', child: Text('不限')),
+                                    DropdownMenuItem(value: 'daily', child: Text('每天1次')),
+                                    DropdownMenuItem(value: 'hourly', child: Text('每小时1次')),
+                                    DropdownMenuItem(value: 'weekly', child: Text('每周1次')),
+                                    DropdownMenuItem(value: 'monthly', child: Text('每月1次')),
+                                  ],
+                                  onChanged: (v) => setState(() => _rewards[i]['freq'] = v),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
                               if (reward['type'] == 'commission_pct' || reward['type'] == 'commission_fix') ...[
                                 const SizedBox(width: 8),
                                 SizedBox(
@@ -490,7 +471,7 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                     DropdownMenuItem(value: 'manual', child: Text('手动')),
                     DropdownMenuItem(value: 'registration', child: Text('注册时')),
                     DropdownMenuItem(value: 'after_complete_review', child: Text('复习完成后')),
-                    DropdownMenuItem(value: 'plan_completed', child: Text('计划完成时')),
+                    DropdownMenuItem(value: 'plan_update', child: Text('计划更新时')),
                     DropdownMenuItem(value: 'login', child: Text('登录时')),
                     DropdownMenuItem(value: 'cron', child: Text('定时(Cron)')),
                   ],
@@ -553,21 +534,27 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                     ],
                   ),
                 ],
-                // ── 展示位置 ──
+                // ── 展示方式 ──
                 const SizedBox(height: AppThemeSpacing.lg),
-                Text('展示位置',
+                Text('展示方式',
                     style: TextStyle(
                         fontWeight: FontWeight.w600,
                         color: cs.primary,
                         fontSize: 13)),
                 const SizedBox(height: AppThemeSpacing.sm),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    _buildPositionChip('achievement_tab', '成就页推广 Tab'),
-                    _buildPositionChip('review_completion', '复习完成弹窗'),
-                    _buildPositionChip('notification', '通知中心推送'),
+                DropdownButtonFormField<String>(
+                  value: _displayStyle,
+                  decoration: const InputDecoration(
+                      labelText: '展示方式',
+                      border: OutlineInputBorder(),
+                      isDense: true),
+                  items: const [
+                    DropdownMenuItem(value: 'notification', child: Text('通知中心')),
+                    DropdownMenuItem(value: 'popup', child: Text('弹窗')),
+                    DropdownMenuItem(value: 'both', child: Text('通知+弹窗')),
                   ],
+                  onChanged: (v) =>
+                      setState(() => _displayStyle = v ?? 'both'),
                 ),
                 // ── 目标限制 ──
                 const SizedBox(height: AppThemeSpacing.lg),
@@ -701,24 +688,6 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
           visualDensity: VisualDensity.compact,
         );
       }).toList(),
-    );
-  }
-
-  Widget _buildPositionChip(String value, String label) {
-    final selected = _displayPositions.contains(value);
-    return FilterChip(
-      label: Text(label, style: const TextStyle(fontSize: 12)),
-      selected: selected,
-      onSelected: (v) {
-        setState(() {
-          if (v) {
-            _displayPositions.add(value);
-          } else {
-            _displayPositions.remove(value);
-          }
-        });
-      },
-      visualDensity: VisualDensity.compact,
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -248,15 +249,18 @@ class ChatClient {
     return data['result'] as String;
   }
 
-  /// 检查复习完成后是否有可弹的营销活动
-  Future<Map<String, dynamic>> checkReviewCampaign() async {
-    final url = Uri.parse('$baseUrl/api/campaigns/check-push-trigger?push_trigger=after_complete_review');
-    final resp = await http.get(url, headers: _authHeaders).timeout(const Duration(seconds: 5));
-    if (resp.statusCode == 200) {
-      return jsonDecode(resp.body) as Map<String, dynamic>;
-    }
+  /// 检查是否有匹配推送触发条件的营销活动
+  Future<Map<String, dynamic>> checkPushTrigger(String trigger) async {
+    final url = Uri.parse('$baseUrl/api/campaigns/check-push-trigger?push_trigger=$trigger');
+    try {
+      final resp = await http.get(url, headers: _authHeaders).timeout(const Duration(seconds: 5));
+      if (resp.statusCode == 200) return jsonDecode(resp.body) as Map<String, dynamic>;
+    } catch (_) {}
     return {'has_active': false};
   }
+
+  /// 检查复习完成后是否有可弹的营销活动（兼容旧调用）
+  Future<Map<String, dynamic>> checkReviewCampaign() => checkPushTrigger('after_complete_review');
 
   // ── Card Status API ──
 
@@ -702,4 +706,71 @@ extension PlanApi on ChatClient {
     }
     return null;
   }
+}
+
+/// 检查是否有匹配的推送活动，有则生成海报并展示
+/// @param pushTrigger 推送触发条件: registration / login / plan_update / after_complete_review
+Future<void> checkAndShowCampaign(
+  BuildContext context,
+  String userId,
+  String pushTrigger, {
+  Duration delay = Duration.zero,
+}) async {
+  try {
+    // 检查是否有匹配的推送活动
+    final uri = Uri.parse(
+        '${ApiConfig.baseUrl}/api/campaigns/check-push-trigger?push_trigger=$pushTrigger');
+    final resp = await http
+        .get(uri, headers: {'Content-Type': 'application/json'})
+        .timeout(const Duration(seconds: 5));
+    if (resp.statusCode != 200) return;
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    if (data['has_active'] != true) return;
+
+    final campaignId = data['campaign_id'] as String?;
+    if (delay > Duration.zero) {
+      await Future.delayed(delay);
+      if (!context.mounted) return;
+    }
+
+    // 生成海报
+    String? posterPng;
+    try {
+      final posterResp = await http
+          .post(
+            Uri.parse('${ApiConfig.baseUrl}/api/referral/generate-poster'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'user_id': userId,
+              if (campaignId != null) 'campaign_id': campaignId,
+            }),
+          )
+          .timeout(const Duration(seconds: 60));
+      if (posterResp.statusCode == 200) {
+        posterPng =
+            (jsonDecode(posterResp.body) as Map<String, dynamic>)['poster_png']
+                as String?;
+      }
+    } catch (_) {}
+
+    if (!context.mounted) return;
+
+    // 展示海报
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        child: posterPng != null
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child:
+                    Image.memory(base64Decode(posterPng), fit: BoxFit.contain),
+              )
+            : const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('活动进行中，快去分享吧！'),
+              ),
+      ),
+    );
+  } catch (_) {}
 }

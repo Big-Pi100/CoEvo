@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
 import '../utils/validators.dart';
 import '../theme/app_theme.dart';
@@ -217,7 +218,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   setState(() => _validationError = null);
 
                   if (_isLogin) {
-                    ref.read(authProvider.notifier).login(username, password);
+                    ref.read(authProvider.notifier).login(username, password).then((_) {
+                      checkAndShowCampaign(context, ref.read(authProvider).userId ?? '', 'login');
+                    });
                   } else {
                     // 从 URL 读取推广码，绕过 TextEditingController 的 Flutter Web 兼容问题
                     final routerState = GoRouterState.of(context);
@@ -227,7 +230,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       realName: _nameController.text.trim(),
                       phone: _phoneController.text.trim(),
                       referralCode: inviteCode,
-                    );
+                    ).then((_) {
+                      checkAndShowCampaign(context, ref.read(authProvider).userId ?? '', 'registration');
+                    });
                   }
                 },
                 child: SizedBox(

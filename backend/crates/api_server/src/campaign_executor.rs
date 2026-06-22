@@ -17,7 +17,7 @@ pub fn execute_campaign_trigger(
     referrer_id: Option<&str>,
     order_id: Option<&str>,
 ) -> Result<Vec<String>, String> {
-    let campaigns = find_active_campaigns(conn, trigger_event)?;
+    let campaigns = find_active_campaigns(conn)?;
     let mut fulfillment_ids = Vec::new();
 
     for (campaign_id, campaign_name, rewards_json, _attribution_window) in &campaigns {
@@ -47,11 +47,11 @@ pub fn execute_campaign_trigger(
 
             // 确定目标用户
             let target_user_id = match party {
-                "self" => user_id.to_string(),
-                "inviter" | "referrer" => match referrer_id {
+                "self" => match referrer_id {
                     Some(rid) => rid.to_string(),
                     None => continue, // 无推荐人，跳过
                 },
+                "inviter" => user_id.to_string(),
                 _ => continue, // 未知 party
             };
 
@@ -71,11 +71,44 @@ pub fn execute_campaign_trigger(
                 continue;
             }
 
+            // 频率检查：读取 reward.freq（always / daily / hourly / weekly / monthly）
+            let freq = reward["freq"].as_str().unwrap_or("always");
+            if freq != "always" {
+                let now = chrono::Utc::now();
+                let window_start = match freq {
+                    "daily" => now.format("%Y-%m-%d").to_string(),
+                    "hourly" => now.format("%Y-%m-%d %H:00:00").to_string(),
+                    "weekly" => {
+                        // 本周一 00:00
+                        let days_since_monday = now.format("%u").to_string().parse::<i64>().unwrap_or(0) - 1;
+                        (now - chrono::Duration::days(days_since_monday)).format("%Y-%m-%d").to_string()
+                    }
+                    "monthly" => now.format("%Y-%m-01").to_string(),
+                    _ => String::new(),
+                };
+                if !window_start.is_empty() {
+                    let recent_count: i64 = conn.query_row(
+                        "SELECT COUNT(*) FROM reward_fulfillments \
+                         WHERE campaign_id=?1 AND user_id=?2 AND trigger_event=?3 AND reward_type=?4 \
+                         AND created_at >= ?5",
+                        rusqlite::params![campaign_id, &target_user_id, trigger_event, rtype, window_start],
+                        |row| row.get(0),
+                    ).unwrap_or(0);
+                    if recent_count > 0 {
+                        tracing::debug!(
+                            "freq skip: campaign={}, user={}, type={}, party={}, freq={}",
+                            campaign_id, target_user_id, rtype, party, freq,
+                        );
+                        continue;
+                    }
+                }
+            }
+
             // ── 分发逻辑 ──
             match rtype {
                 "subscription_days" => {
                     handle_subscription_days(
-                        conn, campaign_id, campaign_name, user_id, party,
+                        conn, campaign_id, campaign_name, &target_user_id, party,
                         value, trigger_event, order_id, &mut fulfillment_ids,
                     );
                 }
@@ -93,6 +126,15 @@ pub fn execute_campaign_trigger(
                         order_id, &mut fulfillment_ids,
                     );
                 }
+                "discount_pct" | "discount_fix" => {
+                    let val_str = reward["value"].to_string();
+                    if let Ok(fid) = write_fulfillment(
+                        conn, campaign_id, &target_user_id, party, rtype,
+                        &val_str, trigger_event, order_id,
+                    ) {
+                        fulfillment_ids.push(fid);
+                    }
+                }
                 _ => {
                     tracing::debug!("unknown reward type: {}", rtype);
                 }
@@ -104,22 +146,22 @@ pub fn execute_campaign_trigger(
 }
 
 /// 查找当前有效的活动（status=active + 时间窗口内）
+/// 不按 trigger_event 过滤，由 per-reward trigger 决定
 fn find_active_campaigns(
     conn: &rusqlite::Connection,
-    trigger_event: &str,
 ) -> Result<Vec<(String, String, String, i64)>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT id, name, rewards, attribution_window \
              FROM marketing_campaigns \
-             WHERE status='active' AND trigger_event=?1 \
+             WHERE status='active' \
              AND (valid_from IS NULL OR valid_from <= datetime('now')) \
              AND (valid_until IS NULL OR valid_until > datetime('now'))",
         )
         .map_err(|e| format!("query campaigns failed: {}", e))?;
 
     let rows = stmt
-        .query_map(rusqlite::params![trigger_event], |row| {
+        .query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
@@ -217,21 +259,13 @@ fn handle_subscription_days(
     conn: &rusqlite::Connection,
     campaign_id: &str,
     campaign_name: &str,
-    user_id: &str,
-    party: &str,
+    recipient_id: &str,
+    raw_party: &str,
     value: &serde_json::Value,
     trigger_event: &str,
     order_id: Option<&str>,
     fulfillment_ids: &mut Vec<String>,
 ) {
-    if party != "self" {
-        tracing::warn!(
-            "subscription_days party must be 'self', got '{}'",
-            party
-        );
-        return;
-    }
-
     let days = match value.as_i64() {
         Some(d) if d > 0 => d,
         _ => {
@@ -242,7 +276,7 @@ fn handle_subscription_days(
 
     // 直接计算新到期日
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-    let old_expires = crate::subscription::get_current_expires(conn, user_id).unwrap_or(None);
+    let old_expires = crate::subscription::get_current_expires(conn, recipient_id).unwrap_or(None);
     let base = match &old_expires {
         Some(d) if d.as_str() >= today.as_str() => d.clone(),
         _ => today.clone(),
@@ -252,7 +286,7 @@ fn handle_subscription_days(
     let new_date = base_date + chrono::Duration::days(days);
     let new_expires = new_date.format("%Y-%m-%d").to_string();
 
-    if let Err(e) = crate::subscription::set_expires(conn, user_id, &new_expires) {
+    if let Err(e) = crate::subscription::set_expires(conn, recipient_id, &new_expires) {
         tracing::warn!("set_expires failed: {}", e);
         return;
     }
@@ -260,7 +294,7 @@ fn handle_subscription_days(
         conn,
         "reward",
         None,
-        user_id,
+        recipient_id,
         old_expires.as_deref(),
         &new_expires,
         0,
@@ -275,8 +309,8 @@ fn handle_subscription_days(
     let fid = match write_fulfillment(
         conn,
         campaign_id,
-        user_id,
-        party,
+        recipient_id,
+        raw_party,
         "subscription_days",
         &days.to_string(),
         trigger_event,
@@ -293,7 +327,7 @@ fn handle_subscription_days(
     let title = "🎉 获得会员天数".to_string();
     let body = format!("你通过「{}」获得了 {} 天会员！", campaign_name, days);
     let action_url = format!("share?campaign_id={}", campaign_id);
-    if let Err(e) = write_notification(conn, user_id, "reward", &title, &body, Some(&action_url))
+    if let Err(e) = write_notification(conn, recipient_id, "reward", &title, &body, Some(&action_url))
     {
         tracing::warn!("write_notification failed: {}", e);
     }
@@ -544,9 +578,9 @@ mod tests {
     fn test_find_active_campaigns_found() {
         let conn = setup_db();
         let cid = insert_test_campaign(&conn, "registration",
-            r#"[{"type":"subscription_days","party":"self","trigger":"registration","value":3}]"#, "active");
+            r#"[{"type":"subscription_days","party":"inviter","trigger":"registration","value":3}]"#, "active");
 
-        let results = find_active_campaigns(&conn, "registration").unwrap();
+        let results = find_active_campaigns(&conn).unwrap();
 
         assert_eq!(results.len(), 1, "应找到 1 个活动");
         assert_eq!(results[0].0, cid, "活动 ID 应匹配");
@@ -554,22 +588,22 @@ mod tests {
     }
 
     #[test]
-    fn test_find_active_campaigns_no_match_trigger() {
+    fn test_find_active_campaigns_any_trigger() {
         let conn = setup_db();
         insert_test_campaign(&conn, "payment",
             r#"[{"type":"commission_pct","party":"inviter","trigger":"payment","value":0.1}]"#, "active");
 
-        let results = find_active_campaigns(&conn, "registration").unwrap();
-        assert_eq!(results.len(), 0, "不应找到活动");
+        let results = find_active_campaigns(&conn).unwrap();
+        assert_eq!(results.len(), 1, "不再按 trigger_event 过滤，应找到");
     }
 
     #[test]
     fn test_find_active_campaigns_draft_skipped() {
         let conn = setup_db();
         insert_test_campaign(&conn, "registration",
-            r#"[{"type":"subscription_days","party":"self","trigger":"registration","value":3}]"#, "draft");
+            r#"[{"type":"subscription_days","party":"inviter","trigger":"registration","value":3}]"#, "draft");
 
-        let results = find_active_campaigns(&conn, "registration").unwrap();
+        let results = find_active_campaigns(&conn).unwrap();
         assert_eq!(results.len(), 0, "草稿状态的活动不应被找到");
     }
 
@@ -587,7 +621,7 @@ mod tests {
             rusqlite::params![id, now],
         ).unwrap();
 
-        let results = find_active_campaigns(&conn, "registration").unwrap();
+        let results = find_active_campaigns(&conn).unwrap();
         assert_eq!(results.len(), 0, "过期活动不应被找到");
     }
 
@@ -649,7 +683,7 @@ mod tests {
             "3", "registration", None).unwrap();
 
         let already = check_idempotent(
-            &conn, &campaign_id, &user_id, "payment", "inviter", "commission_pct",
+            &conn, &campaign_id, &user_id, "payment", "self", "commission_pct",
         ).unwrap();
 
         assert!(!already, "不同奖励类型应返回 false");
@@ -689,7 +723,7 @@ mod tests {
             rusqlite::params![order_id, user_id, now],
         ).unwrap();
 
-        let fid = write_fulfillment(&conn, &campaign_id, &user_id, "inviter",
+        let fid = write_fulfillment(&conn, &campaign_id, &user_id, "self",
             "commission_pct", "1200", "payment", Some(&order_id)).unwrap();
 
         let stored_order_id: Option<String> = conn.query_row(
@@ -744,7 +778,7 @@ mod tests {
         let value = serde_json::json!(3);
         let mut fulfillment_ids = Vec::new();
 
-        handle_subscription_days(&conn, &campaign_id, "测试活动", &user_id, "self",
+        handle_subscription_days(&conn, &campaign_id, "测试活动", &user_id, "inviter",
             &value, "registration", None, &mut fulfillment_ids);
 
         assert_eq!(fulfillment_ids.len(), 1, "应有 1 个 fulfillment");
@@ -773,7 +807,7 @@ mod tests {
     }
 
     #[test]
-    fn test_handle_subscription_days_wrong_party_skipped() {
+    fn test_handle_subscription_days_for_any_user() {
         let conn = setup_db();
         let campaign_id = insert_test_campaign(&conn, "registration", "[]", "active");
         let user_id = insert_test_user(&conn);
@@ -784,7 +818,7 @@ mod tests {
         handle_subscription_days(&conn, &campaign_id, "测试活动", &user_id, "inviter",
             &value, "registration", None, &mut fulfillment_ids);
 
-        assert_eq!(fulfillment_ids.len(), 0, "party 不是 self 时应跳过");
+        assert_eq!(fulfillment_ids.len(), 1, "派对过滤已移除，应正常发放");
     }
 
     #[test]
@@ -795,13 +829,13 @@ mod tests {
 
         let value = serde_json::json!(0);
         let mut fulfillment_ids = Vec::new();
-        handle_subscription_days(&conn, &campaign_id, "测试活动", &user_id, "self",
+        handle_subscription_days(&conn, &campaign_id, "测试活动", &user_id, "inviter",
             &value, "registration", None, &mut fulfillment_ids);
         assert_eq!(fulfillment_ids.len(), 0, "value 为 0 时应跳过");
 
         let value2 = serde_json::json!("invalid");
         let mut fulfillment_ids2 = Vec::new();
-        handle_subscription_days(&conn, &campaign_id, "测试活动", &user_id, "self",
+        handle_subscription_days(&conn, &campaign_id, "测试活动", &user_id, "inviter",
             &value2, "registration", None, &mut fulfillment_ids2);
         assert_eq!(fulfillment_ids2.len(), 0, "无效 value 时应跳过");
     }
@@ -812,7 +846,7 @@ mod tests {
     fn test_execute_campaign_trigger_registration_subscription_days() {
         let conn = setup_db();
         let _cid = insert_test_campaign(&conn, "registration",
-            r#"[{"type":"subscription_days","party":"self","trigger":"registration","value":5}]"#,
+            r#"[{"type":"subscription_days","party":"inviter","trigger":"registration","value":5}]"#,
             "active");
         let user_id = insert_test_user(&conn);
 
@@ -839,7 +873,7 @@ mod tests {
     fn test_execute_campaign_trigger_idempotent_skip() {
         let conn = setup_db();
         let _cid = insert_test_campaign(&conn, "registration",
-            r#"[{"type":"subscription_days","party":"self","trigger":"registration","value":5}]"#,
+            r#"[{"type":"subscription_days","party":"inviter","trigger":"registration","value":5}]"#,
             "active");
         let user_id = insert_test_user(&conn);
 
@@ -868,7 +902,7 @@ mod tests {
         let conn = setup_db();
         let _cid = insert_test_campaign(&conn, "registration",
             r#"[
-                {"type":"subscription_days","party":"self","trigger":"registration","value":3},
+                {"type":"subscription_days","party":"inviter","trigger":"registration","value":3},
                 {"type":"subscription_days","party":"inviter","trigger":"registration","value":1}
             ]"#, "active");
         let user_id = insert_test_user(&conn);
@@ -876,18 +910,18 @@ mod tests {
         let result = execute_campaign_trigger(&conn, "registration", &user_id, None, None);
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 1, "只有 self 奖励应执行");
+        assert_eq!(result.unwrap().len(), 1, "inviter(下线) 两条奖励类型相同，第二条幂等跳过");
     }
 
     #[test]
     fn test_execute_campaign_trigger_with_referrer() {
         let conn = setup_db();
-        // subscription_days 仅支持 party="self"（handle_subscription_days 会跳过非 self 的 party）
-        // 本测试验证：提供 referrer_id 时，self 奖励正常执行，inviter 奖励被正确跳过
+        // self=本号(上级), inviter=下线(新用户)
+        // 本测试验证：提供 referrer_id 时，self（上级）获得 subscription_days，inviter（下线）获得 commission
         let _cid = insert_test_campaign(&conn, "registration",
             r#"[
                 {"type":"subscription_days","party":"self","trigger":"registration","value":3},
-                {"type":"subscription_days","party":"inviter","trigger":"registration","value":1}
+                {"type":"subscription_days","party":"self","trigger":"registration","value":1}
             ]"#, "active");
         let user_id = insert_test_user(&conn);
         let referrer_id = insert_test_user(&conn);
@@ -897,32 +931,32 @@ mod tests {
 
         assert!(result.is_ok());
         let fids = result.unwrap();
-        // subscription_days 仅支持 party=self，所以只有 self 得到 fulfillment
-        assert_eq!(fids.len(), 1, "subscription_days 仅支持 self，inviter 奖励应被跳过");
+        // self=本号(上级), 有 referrer → 但两条奖励类型相同，第二条因幂等跳过
+        assert_eq!(fids.len(), 1, "两条 self 奖励类型相同，幂等保护只发一次");
 
-        // 用户的 subscription_expires 应被设置
-        let user_expires: Option<String> = conn.query_row(
-            "SELECT subscription_expires FROM users WHERE id = ?1",
-            rusqlite::params![user_id], |row| row.get(0),
-        ).unwrap();
-        assert!(user_expires.is_some(), "用户的 subscription_expires 应被设置");
-
-        // 推荐人不应收到 subscription_days（因为 party=inviter 被跳过）
+        // 推荐人（上级）的 subscription_expires 应被设置
         let referrer_expires: Option<String> = conn.query_row(
             "SELECT subscription_expires FROM users WHERE id = ?1",
             rusqlite::params![referrer_id], |row| row.get(0),
         ).unwrap();
-        assert!(referrer_expires.is_none(), "推荐人不应收到 subscription_days");
+        assert!(referrer_expires.is_some(), "推荐人的 subscription_expires 应被设置");
+
+        // 新用户不应收到 subscription_days（奖励发给了上级）
+        let user_expires: Option<String> = conn.query_row(
+            "SELECT subscription_expires FROM users WHERE id = ?1",
+            rusqlite::params![user_id], |row| row.get(0),
+        ).unwrap();
+        assert!(user_expires.is_none(), "新用户不应收到 subscription_days");
     }
 
     #[test]
     fn test_execute_campaign_trigger_multiple_campaigns() {
         let conn = setup_db();
         let _c1 = insert_test_campaign(&conn, "registration",
-            r#"[{"type":"subscription_days","party":"self","trigger":"registration","value":3}]"#,
+            r#"[{"type":"subscription_days","party":"inviter","trigger":"registration","value":3}]"#,
             "active");
         let _c2 = insert_test_campaign(&conn, "registration",
-            r#"[{"type":"subscription_days","party":"self","trigger":"registration","value":7}]"#,
+            r#"[{"type":"subscription_days","party":"inviter","trigger":"registration","value":7}]"#,
             "active");
         let user_id = insert_test_user(&conn);
 
@@ -937,8 +971,8 @@ mod tests {
         let conn = setup_db();
         let _cid = insert_test_campaign(&conn, "registration",
             r#"[
-                {"type":"subscription_days","party":"self","trigger":"registration","value":3},
-                {"type":"unknown_type","party":"self","trigger":"registration","value":99}
+                {"type":"subscription_days","party":"inviter","trigger":"registration","value":3},
+                {"type":"unknown_type","party":"inviter","trigger":"registration","value":99}
             ]"#, "active");
         let user_id = insert_test_user(&conn);
 
@@ -953,7 +987,7 @@ mod tests {
         let conn = setup_db();
         let _cid = insert_test_campaign(&conn, "registration",
             r#"[
-                {"type":"subscription_days","party":"self","trigger":"registration","value":3},
+                {"type":"subscription_days","party":"inviter","trigger":"registration","value":3},
                 {"type":"commission_fix","party":"inviter","trigger":"payment","value":500}
             ]"#, "active");
         let user_id = insert_test_user(&conn);

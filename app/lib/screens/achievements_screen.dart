@@ -1,19 +1,13 @@
 ﻿// ignore_for_file: unnecessary_cast
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import '../providers/auth_provider.dart';
 import '../providers/plan_provider.dart' hide cardRefreshProvider;
 import '../api/chat_client.dart';
-import '../api/api_config.dart';
 import '../shared/achievement_icons.dart';
 import '../providers/achievement_notifier.dart';
 import '../theme/app_theme.dart';
-import '../widgets/share_widget.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
 class AchievementsScreen extends ConsumerStatefulWidget {
   const AchievementsScreen({super.key});
@@ -35,10 +29,6 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
   bool _isLoading = true;
   String? _error;
   bool _initialLoadDone = false;
-
-  // 推广码
-  String? _referralCode;
-  bool _referralLoading = false;
 
   @override
   void initState() {
@@ -93,7 +83,6 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
           _error = null;
           _initialLoadDone = true;
         });
-        _loadReferralCode();
       }
     } catch (e) {
       debugPrint('AchievementsScreen._load: Future.wait failed: $e');
@@ -173,8 +162,6 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                     padding: const EdgeInsets.all(AppTheme.spacingLg),
                     children: [
                       _buildHeader(theme),
-                      const SizedBox(height: AppTheme.spacingLg),
-                      _buildReferralSection(),
                       const SizedBox(height: AppTheme.spacingLg),
                       _buildStatsGrid(theme),
                       const SizedBox(height: AppTheme.spacingLg),
@@ -727,129 +714,6 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
             ),
           ),
         ]),
-      ),
-    );
-  }
-  // ── 推广码 ──
-  Future<void> _loadReferralCode() async {
-    final auth = ref.read(authProvider);
-    if (auth.userId == null || auth.token == null) return;
-    setState(() => _referralLoading = true);
-    try {
-      final resp = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}/api/referral/my-code?user_id=${auth.userId}'),
-        headers: {'Authorization': 'Bearer ${auth.token}'},
-      ).timeout(const Duration(seconds: 10));
-      if (resp.statusCode == 200 && mounted) {
-        final data = jsonDecode(resp.body) as Map<String, dynamic>;
-        _referralCode = data['referral_code'] as String?;
-      }
-    } catch (_) {}
-    if (mounted) setState(() => _referralLoading = false);
-  }
-
-  Widget _buildReferralSection() {
-    if (_referralCode == null && !_referralLoading) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadReferralCode());
-      return const SizedBox.shrink();
-    }
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingMd),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.share, size: 18, color: _cs.primary),
-                const SizedBox(width: AppTheme.spacingSm),
-                const Text('我的推广', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-              ],
-            ),
-            const SizedBox(height: AppTheme.spacingSm),
-            if (_referralLoading)
-              const LinearProgressIndicator()
-            else ...[
-              // 二维码（大）
-              Center(
-                child: Container(
-                  width: 160,
-                  height: 160,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: _cs.outlineVariant),
-                  ),
-                  padding: const EdgeInsets.all(8),
-                  child: QrImageView(
-                    data: 'https://keyievolution.fun/app/auth?ref=$_referralCode',
-                    version: QrVersions.auto,
-                    size: 144,
-                    eyeStyle: QrEyeStyle(
-                      eyeShape: QrEyeShape.square,
-                      color: const Color(0xFF1A237E),
-                    ),
-                    dataModuleStyle: QrDataModuleStyle(
-                      dataModuleShape: QrDataModuleShape.square,
-                      color: const Color(0xFF1A237E),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppTheme.spacingSm),
-              // 推广码（小，置于二维码下方）
-              Center(
-                child: InkWell(
-                  onTap: () async {
-                    if (_referralCode != null) {
-                      final messenger = ScaffoldMessenger.of(context);
-                      await Clipboard.setData(ClipboardData(text: _referralCode!));
-                      messenger.showSnackBar(
-                        const SnackBar(content: Text('推广码已复制')),
-                      );
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: _cs.primary.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _referralCode ?? '--',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: _cs.primary,
-                            letterSpacing: 2,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Icon(Icons.copy, size: 14, color: _cs.primary),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppTheme.spacingSm),
-              // 分享给朋友
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.photo_library, size: 16),
-                  onPressed: () => showDialog(
-                    context: context,
-                    builder: (_) => const ShareWidget(),
-                  ),
-                  label: const Text('分享给朋友', style: TextStyle(fontSize: 12)),
-                ),
-              ),
-            ],
-          ],
-        ),
       ),
     );
   }

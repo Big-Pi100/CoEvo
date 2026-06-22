@@ -210,8 +210,8 @@ pub async fn calculate(
         for reward in &rewards {
             let rtype = reward["type"].as_str().unwrap_or("");
             let party = reward["party"].as_str().unwrap_or("");
-            // 只对购买者（buyer）生效的折扣
-            if party != "buyer" {
+            // 只对购买者（self = 新用户自己）生效的折扣
+            if party != "self" {
                 continue;
             }
             match rtype {

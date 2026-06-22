@@ -118,6 +118,13 @@ pub struct AchievementContext {
     // ── Phase 6 新增 ──
     /// 覆盖 K12 学科数（从 domain 提取 :: 之间的学科名去重统计）
     pub subjects_count: u32,
+    // ── 推广类成就 ──
+    /// 累计生成分享次数
+    pub share_count: u32,
+    /// 累计有效邀请注册数（通过推广链接注册）
+    pub referral_count: u32,
+    /// 累计分享天数
+    pub share_days: u32,
 }
 
 impl AchievementContext {
@@ -149,6 +156,9 @@ impl AchievementContext {
             reviews_today: 0,
             days_since_reg: 9999,
             subjects_count: 0,
+            share_count: 0,
+            referral_count: 0,
+            share_days: 0,
         }
     }
 }
@@ -181,6 +191,9 @@ impl Default for AchievementContext {
             reviews_today: 0,
             days_since_reg: 9999,
             subjects_count: 0,
+            share_count: 0,
+            referral_count: 0,
+            share_days: 0,
         }
     }
 }
@@ -305,6 +318,17 @@ impl AchievementDefLegacy {
                 description: "累计复习 100 次".into(), condition: "total_reviews >= 100".into() },
             Self { id: "reviews_1000".into(), name: "千锤".into(), icon: "history".into(),
                 description: "累计复习 1000 次".into(), condition: "total_reviews >= 1000".into() },
+            // ── 推广类成就 ──
+            Self { id: "first_share".into(), name: "初次分享".into(), icon: "share".into(),
+                description: "首次生成分享海报".into(), condition: "share_count >= 1".into() },
+            Self { id: "share_7".into(), name: "分享达人".into(), icon: "campaign".into(),
+                description: "累计分享 7 天".into(), condition: "share_days >= 7".into() },
+            Self { id: "share_30".into(), name: "社交之星".into(), icon: "diversity_2".into(),
+                description: "累计分享 30 天".into(), condition: "share_days >= 30".into() },
+            Self { id: "referral_3".into(), name: "裂变之王".into(), icon: "rocket_launch".into(),
+                description: "带来 3 个有效注册".into(), condition: "referral_count >= 3".into() },
+            Self { id: "referral_10".into(), name: "朋友遍天下".into(), icon: "groups".into(),
+                description: "带来 10 个有效注册".into(), condition: "referral_count >= 10".into() },
         ]
     }
 }
@@ -320,6 +344,11 @@ impl AchievementDef {
             let tier = match_tier(&legacy.id);
             let color = match_color(&legacy.id);
             let conds = parse_legacy_condition(&legacy.condition);
+            let triggers = match legacy.id.as_str() {
+                "first_share" | "share_7" | "share_30" => vec!["share_generated".into()],
+                "referral_3" | "referral_10" => vec!["referral_registered".into()],
+                _ => vec!["review_completed".into()],
+            };
             AchievementDef {
                 id: legacy.id,
                 category: cat,
@@ -330,7 +359,7 @@ impl AchievementDef {
                 color,
                 conditions: conds,
                 condition_logic: "AND".into(),
-                triggers: vec!["review_completed".into()],
+                triggers,
                 hidden: false,
             }
         }).collect()
@@ -341,15 +370,16 @@ pub fn match_category(key: &str) -> String {
     if key.starts_with("streak_") { "consistency".to_string() }
     else if key == "first_card" { "seed".to_string() }
     else if key.starts_with("explorer_") || key.starts_with("polymath_") { "exploration".to_string() }
+    else if key.starts_with("share_") || key == "first_share" || key.starts_with("referral_") { "social".to_string() }
     else { "knowledge".to_string() }
 }
 
 pub fn match_tier(key: &str) -> String {
     match key {
-        "first_card" | "streak_3" | "explorer_3" | "reviews_100" => "bronze",
-        "cards_50" | "streak_7" | "domains_5" => "silver",
-        "cards_200" | "streak_30" | "reviews_1000" => "gold",
-        "cards_500" => "platinum",
+        "first_card" | "streak_3" | "explorer_3" | "reviews_100" | "first_share" => "bronze",
+        "cards_50" | "streak_7" | "domains_5" | "share_7" => "silver",
+        "cards_200" | "streak_30" | "reviews_1000" | "share_30" | "referral_3" => "gold",
+        "cards_500" | "referral_10" => "platinum",
         _ => "bronze",
     }.to_string()
 }

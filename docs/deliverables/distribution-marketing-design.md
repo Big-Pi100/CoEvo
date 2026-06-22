@@ -1,7 +1,7 @@
 # CoEvo 微信营销与分销体系设计方案
 
-> 版本: v2.1 · 2026-06-19  
-> 状态: 实现中（持续更新）
+> 版本: v2.4 · 2026-06-22  
+> 状态: 全部实现 ✅
 
 ---
 
@@ -84,50 +84,37 @@ payment_orders      distribution_withdrawals
 CREATE TABLE marketing_campaigns (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
+    campaign_type TEXT DEFAULT 'standard',     -- standard / invite_award / commission / discount / mixed
     description TEXT,
-    campaign_type TEXT NOT NULL,          -- invite_award / commission / discount_pct / discount_fix / mixed
-    status TEXT DEFAULT 'draft',          -- draft / active / paused / ended
-    trigger_event TEXT NOT NULL DEFAULT 'registration',  -- 触发事件：registration / referral_signup / click / payment / order_creation / plan_completed
-
-    -- 时间控制（活动有效期）
-    valid_from TEXT,                       -- 活动开始时间（ISO 8601），NULL = 不限制
-    valid_until TEXT,                      -- 活动结束时间（ISO 8601），NULL = 不限制
-
-    -- 推送规则
-    push_trigger TEXT,                    -- manual / registration / after_complete_review / plan_completed / login / cron
-    push_cron TEXT,                       -- cron 表达式（push_trigger='cron' 时生效）
-
-    -- 目标角色（JSON 数组, 空 = 全部角色）
-    target_roles TEXT DEFAULT '[]',
-
-    -- LLM 提示语（控制生成内容侧重点）
-    poster_prompt TEXT,                     -- 自定义海报系统提示（留空使用默认 prompt）
-    poster_template TEXT,                   -- LLM 生成的 SVG 海报模板（含 {变量}）
-    h5_template TEXT,                       -- LLM 生成的 H5 HTML 模板（含 {变量}）
-    h5_prompt TEXT,                         -- 自定义 H5 系统提示
-
-    -- 展示位置（JSON 数组，决定海报/弹窗出现在哪些端）
-    display_positions TEXT DEFAULT '[]',    -- achievement_tab / review_completion / notification
-
-    -- 奖励规则（JSON 数组，支持组合奖励）
-    -- 示例: [{"type":"subscription_days","party":"self","value":3,"trigger":"registration"}]
-    -- type: subscription_days（送天数）/ commission_pct（佣金比例）/ commission_fix（固定佣金）/ discount_pct（折扣比例）/ discount_fix（固定折扣）
-    -- trigger: registration / referral_signup / click / payment / order_creation / plan_completed
-    -- party: self（自己）/ inviter（推广方）/ invitee（被推广方）/ referrer（推荐人）
-    rewards TEXT NOT NULL DEFAULT '[]',
-
-    -- 归因窗口（天）
-    attribution_window INTEGER DEFAULT 30,
-
-    -- 参与限制
+    status TEXT DEFAULT 'draft',               -- draft / active / paused / ended
+    rewards TEXT NOT NULL DEFAULT '[]',         -- JSON 数组，见下方注释
+    trigger_event TEXT NOT NULL DEFAULT 'registration',  -- (已废弃，保留向后兼容) 由 per-reward trigger 决定
+    target_roles TEXT DEFAULT '[]',             -- JSON 数组, 空 = 全部角色
+    push_trigger TEXT DEFAULT 'manual',         -- manual / after_complete_review / registration / plan_update / login / cron
+    push_cron TEXT,                             -- cron 表达式 "minute hour * * day"
+    attribution_window INTEGER DEFAULT 30,      -- 归因窗口（天）
+    valid_from TEXT,
+    valid_until TEXT,
     participant_limit INTEGER,
     per_user_limit INTEGER,
-    qr_code_url TEXT,                       -- 自定义二维码 URL（留空使用默认推广链接）
-
-    created_by TEXT,                        -- 创建人 admin_id
+    qr_code_url TEXT,
+    created_by TEXT,
     created_at TEXT NOT NULL,
-    updated_by TEXT,                        -- 最后修改人 admin_id
+    updated_by TEXT,
     updated_at TEXT,
+    poster_prompt TEXT,                         -- 自定义海报系统提示
+    poster_template TEXT,                       -- LLM 生成的海报 SVG 模板
+    h5_template TEXT,                           -- LLM 生成的 H5 HTML 模板
+    h5_prompt TEXT,                             -- 自定义 H5 系统提示
+    display_positions TEXT DEFAULT '[]',        -- 展示方式：notification / popup / both，默认空='both'
+
+    -- 奖励规则 JSON 字段注释
+    -- 示例: [{"type":"subscription_days","party":"self","value":3,"trigger":"registration","freq":"always"}]
+    -- type: subscription_days / commission_pct / commission_fix / discount_pct / discount_fix
+    -- trigger: registration / payment / plan_update
+    -- party: self（本号/上级）/ inviter（下线/新用户）
+    -- freq: always / daily / hourly / weekly / monthly，默认 always
+
     FOREIGN KEY (created_by) REFERENCES admin_users(id),
     FOREIGN KEY (updated_by) REFERENCES admin_users(id)
 );
@@ -562,24 +549,27 @@ AppBar 右上角铃铛图标 + 未读小红点（实时轮询）
 CREATE TABLE reward_fulfillments (
     id TEXT PRIMARY KEY,
     campaign_id TEXT NOT NULL,
-    referral_click_id TEXT,                -- 关联 referral_clicks（trigger=click 用）
-    order_id TEXT,                         -- 关联 payment_orders（trigger=payment 用）
+    referral_click_id TEXT,                -- 关联 referral_clicks
+    order_id TEXT,                         -- 关联 payment_orders
     user_id TEXT NOT NULL,                 -- 获奖励用户
-    party TEXT NOT NULL,                   -- self / inviter / invitee / referrer
+    party TEXT NOT NULL,                   -- self（本号/上级）/ inviter（下线/新用户）
     level INTEGER DEFAULT 1,               -- 1=一级, 2=二级（commission 专用）
-    reward_type TEXT NOT NULL,             -- subscription_days / commission_pct / commission_fix / discount_fix / discount_pct
+    reward_type TEXT NOT NULL,             -- subscription_days / commission_pct / commission_fix
     reward_value TEXT NOT NULL,            -- 奖励值 JSON
-    trigger_event TEXT NOT NULL,           -- registration / referral_signup / click / payment / order_creation / plan_completed
+    trigger_event TEXT NOT NULL,           -- registration / payment / plan_update
     status TEXT DEFAULT 'pending',         -- pending / fulfilled / failed / cancelled
     fulfilled_at TEXT,
-    error_msg TEXT,                        -- 失败原因（status=failed 时必填）
+    error_msg TEXT,                        -- 失败原因
     created_at TEXT NOT NULL,
     FOREIGN KEY (campaign_id) REFERENCES marketing_campaigns(id),
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (order_id) REFERENCES payment_orders(id),
+    FOREIGN KEY (referral_click_id) REFERENCES referral_clicks(id)
 );
 
-CREATE INDEX idx_fulfillment_user ON reward_fulfillments(user_id, status);
 CREATE INDEX idx_fulfillment_campaign ON reward_fulfillments(campaign_id, trigger_event);
+CREATE INDEX idx_fulfillment_conversion ON reward_fulfillments(referral_click_id);
+CREATE INDEX idx_fulfillment_order ON reward_fulfillments(order_id);
 ```
 
 **核销动作与审计**：
@@ -588,7 +578,7 @@ CREATE INDEX idx_fulfillment_campaign ON reward_fulfillments(campaign_id, trigge
 |:-----------|:---------|:---------|
 | `subscription_days` | 直接计算到期日 + `set_expires()` | `reward_fulfillments` + `user_notifications` |
 | `commission_pct` | 生成 `distribution_commissions(locked)` | 本表 status=fulfilled |
-| `discount_fix/pct` | 订单创建时已应用 | 本表 status=fulfilled |
+| `discount_fix/pct` | calculate API 计算折后价，executor 记录核销 | `reward_fulfillments` |
 
 ---
 
@@ -681,11 +671,16 @@ async function trackClick() {
 ─────────                    ────                          ────
 创建活动 (填写表单) ──→ marketing_campaigns.insert()
                               │
-                              ├── 活动调度器检查 push_trigger
-                              │    ├── registration → 新用户注册时触发推送
-                              │    ├── login → 用户登录时检查
-                              │    ├── cron → 定时任务批量推送
-                              │    └── manual → 管理端手动点"推送"
+                              ├── 展示方式=notification/both → 推送时写 user_notifications
+                              │    ├── 手动推送 → 管理员点"推送"按钮
+                              │    ├── cron 推送 → cron_scheduler 按 push_cron 匹配 → 写通知
+                              │    └── 前端轮询 GET /api/notifications → 通知中心列表
+                              │
+                              ├── 展示方式=popup/both → 前端 check-push-trigger 弹窗
+                              │    ├── registration → 注册完成后
+                              │    ├── login → 登录成功后
+                              │    └── after_complete_review → 复习完成后
+                              │    └── 匹配 → 生成海报 → Dialog 弹窗展示
                               │
                               ├── user_notifications.insert()
                               │    └── 前端轮询 GET /api/notifications
@@ -813,11 +808,11 @@ A 查看面板              ──→           管理端统计: 总佣金 / 转
 **核销引擎入口**: `campaign_executor.rs` 中的 `execute_campaign_trigger()` 函数，统一在各触发点调用。按 `campaign.rewards[].trigger` 匹配后分发。
 
 ```
-注册 / 支付 / 计划完成 / 复习完成 等触发点
+注册 / 支付 / 计划完成 等触发点
   │
   └── execute_campaign_trigger(conn, trigger_event, user_id, referrer_id, order_id)
         │
-        ├── 查 campaign_rewards WHERE status='active' AND trigger_event=?
+        ├── 查 campaign_rewards WHERE status='active'（不再按 trigger_event 过滤，由 per-reward trigger 决定）
         │
         ├── for each campaign:
         │     ├── 解析 rewards JSON
@@ -826,14 +821,22 @@ A 查看面板              ──→           管理端统计: 总佣金 / 转
         │     │     ├── 检查 trigger 是否匹配当前 trigger_event
         │     │     │   ├── registration → 只处理 trigger=registration
         │     │     │   ├── payment → 只处理 trigger=payment（佣金/天数）
-        │     │     │   ├── plan_completed → 只处理 trigger=plan_completed
+        │     │     │   ├── plan_update → 只处理 trigger=plan_update（每天每用户每活动限1次）
         │     │     │   └── 不匹配 → 跳过
         │     │     │
-        │     │     ├── 确定目标用户（self / inviter / referrer / invitee）
-        │     │     │   └── party=self → 当前用户
-        │     │     │   └── party=inviter/referrer → 推荐人（无推荐人则跳过）
+        │     │     ├── 确定目标用户（self=本号/上级, inviter=下线/新用户）
+        │     │     │   └── party=self → 推荐人（上级，无推荐人则跳过）
+        │     │     │   └── party=inviter → 事件触发者（下线/新用户）
         │     │     │
         │     │     ├── 幂等检查: reward_fulfillments 五元组去重
+        │     │     │
+        │     │     ├── 频率检查: 读取 reward.freq（always / daily / hourly / weekly / monthly）
+        │     │     │   ├── always → 不限
+        │     │     │   ├── daily → 查当天
+        │     │     │   ├── hourly → 查当小时
+        │     │     │   ├── weekly → 查本周一至今
+        │     │     │   └── monthly → 查本月1日至今
+        │     │     │   └── 有记录 → 跳过
         │     │     │
         │     │     ├── 分发:
         │     │     │   ├── subscription_days → 直接计算到期日 + set_expires()
@@ -859,12 +862,14 @@ A 查看面板              ──→           管理端统计: 总佣金 / 转
 
 ### 5.5 已实现的触发点与文件清单
 
-| 触发点 | 调用位置 | 文件 |
-|--------|---------|------|
-| `registration` | 注册成功末尾 | `auth.rs` |
-| `payment` | 支付回调成功后 | `pay_handlers.rs` → `campaign_executor.rs` |
-| `plan_completed` | 计划完成后 | `plan_handler.rs` |
-| `after_complete_review` | 前端 `check-push-trigger` 查询（复习完成弹分享） | `campaign_handler.rs:check_push_trigger()` |
+| 触发点 | 类型 | 调用位置 | 文件 |
+|--------|:----:|---------|------|
+| `registration` | 奖励/推送 | 注册成功末尾 | `auth.rs` / `auth_screen.dart` |
+| `payment` | 奖励 | 支付回调成功后 | `pay_handlers.rs` |
+| `plan_update` | 奖励 | 计划更新时（CP2 plan_update 每天限1次） | `plan_handler.rs` |
+| `after_complete_review` | 推送 | 复习完成后前端查询 | `review_screen.dart` |
+| `login` | 推送 | 登录成功后 | `auth_screen.dart` |
+| `cron` | 推送 | 后端定时调度器（5分钟间隔） | `campaign_scheduler.rs` |
 
 ### 5.6 campaign_executor.rs 文件结构
 
@@ -872,7 +877,7 @@ A 查看面板              ──→           管理端统计: 总佣金 / 转
 backend/crates/api_server/src/campaign_executor.rs
 
 pub fn execute_campaign_trigger(conn, trigger_event, user_id, referrer_id, order_id) -> Result<Vec<String>, String>
-fn find_active_campaigns(conn, trigger_event) -> Vec<CampaignRow>
+fn find_active_campaigns(conn) -> Vec<CampaignRow>  // 不再按 trigger_event 过滤
 fn check_idempotent(conn, campaign_id, user_id, trigger_event, party, reward_type) -> bool
 fn handle_subscription_days(conn, campaign_id, campaign_name, user_id, party, value, ...)
 fn handle_commission_pct(conn, campaign_id, ..., order_id, ...)
@@ -1089,11 +1094,12 @@ pub fn write_notification(conn, user_id, notification_type, title, body, action_
 | | 活动类型 | select | invite_award / commission / discount_pct / discount_fix / mixed |
 | **时间控制** | 开始时间 | datetime | 活动开始时间 |
 | | 结束时间 | datetime | 活动结束时间 |
-| **推送规则** | 触发条件 | select | registration / first_payment / login / manual / cron |
+| **推送规则** | 推送方式 | select | manual / after_complete_review / registration / plan_update / login / cron |
 | | 推送文案 | textarea | 支持 {name} 变量 |
-| **目标角色** | 适用角色 | checkbox | student / teacher / guardian |
-| **奖励规则** | 邀请者奖励 | JSON 编辑器 | type/party/value/trigger 数组 |
-| | 被邀请者奖励 | JSON 编辑器 | type/party/value/trigger 数组 |
+| | Cron 日期 (推送方式=cron) | select | 每天 / 周一~周日 |
+| | Cron 时间 (推送方式=cron) | select | 时:分 |
+| | 展示方式 | select | 通知中心（仅通知）/ 弹窗（仅弹窗）/ 通知+弹窗 |
+| **奖励规则** | 规则列表 | 卡片列表 | 每条: 类型/对象(本号/下线)/值/触发(注册/支付/计划更新)/频率(不限/每天1次/每小时1次)/级 |
 | **归因设置** | 归因窗口(天) | number | 默认 30 |
 | **LLM 提示** | LLM 提示语 | text | 控制生成内容侧重点 |
 | **限制** | 参与人数上限 | number | 空 = 不限 |
@@ -2191,7 +2197,6 @@ https://keyievolution.fun/share/CoEvo_A1B2?t=1718612345&ref=CoEvo_A1B2&camp=camp
 
 用户点击"分享"时：
   → 直接从缓存取，毫秒级展示
-  → 底部显示"换一批"按钮 → 重新调 LLM → 更新缓存
 
 次日再次打开：
   → 用户数据已更新 → LLM 生成新内容 → 覆盖旧缓存
@@ -2213,7 +2218,6 @@ https://keyievolution.fun/share/CoEvo_A1B2?t=1718612345&ref=CoEvo_A1B2&camp=camp
 | 限制项 | 值 |
 |:-------|:----|
 | 自动预生成 | 每天 1 次（随首次启动触发）|
-| 用户手动"换一批" | **不限次数** |
 | 两次生成最小间隔 | 60 秒 |
 | 海报 + H5 是否一次 LLM 调用 | **否，各自独立调用**。不同 Prompt 和输出格式（SVG vs HTML），混用会导致格式相互污染 |
 
@@ -2236,48 +2240,6 @@ https://keyievolution.fun/share/CoEvo_A1B2?t=1718612345&ref=CoEvo_A1B2&camp=camp
 | 📢 分享达人 | 累计分享 7 天 | 7 天会员赠送 |
 | 📢 社交之星 | 累计分享 30 天 | 社区勋章 + 推广佣金加成 5% |
 | 📢 裂变之王 | 通过分享带来 3 个有效注册 | 专属推广员徽章 |
-
-#### 成就页布局
-
-现有成就页面增加"推广"分类 Tab，核心展示**今天的 SVG 分享海报本身**——用户看到的就是一张每日更新的成就卡。
-
-```
-成就页面
-├── 📚 学习（现有: 连续学习/卡片数/掌握率）
-└── 📢 推广（新增）
-   ├── ┌──────────────────────┐
-   │   │                      │
-   │   │   今日成就海报         │  ← SVG 海报直接渲染在成就页
-   │   │   （LLM 预生成）       │     用户能看到自己今天的学习成果
-   │   │                      │     以海报形式展示，本身就是成就
-   │   └──────────────────────┘
-   │
-   ├── 📊 推广数据
-   │   ├── 累计分享天数: 7 天
-   │   ├── 带来注册用户数: 3 人
-   │   └── 累计佣金: ¥128
-   │
-   └── 操作区
-       ├── [📷 发朋友圈]   ← 保存海报图片
-       └── [💬 发会话]     ← 复制 H5 分享链接
-```
-
-**设计核心**：SVG 海报本身就是每日成就的一种视觉呈现。用户打开成就页，第一眼看到的是"我今天的学习成果被变成了一张好看的海报"，而不是冷冰冰的数据。分享行为不再是一个独立操作，而是成就展示的自然延伸——"这张图真好看，分享给朋友看看"。
-
-#### 每日分享提醒
-
-用户连续 2 天未生成分享内容时（没有新的 SVG 海报），在成就页海报区域显示灰色占位 + 提示：
-
-```
-┌──────────────────────┐
-│                      │
-│  今天还没有生成海报    │
-│  点击生成今日学习成就卡 │  ← 灰色占位，点击触发预生成
-│                      │
-└──────────────────────┘
-```
-
-点击后触发 LLM 生成，完成后自动替换为彩色海报。
 
 ### 9.10 缓存与成本控制
 
@@ -2381,7 +2343,55 @@ https://keyievolution.fun/share/CoEvo_A1B2?t=1718612345&ref=CoEvo_A1B2&camp=camp
 
 ---
 
-## 十二、合规说明
+## 十二、部署注意事项（微信卡片生效条件）
+
+分享链接在微信聊天中显示卡片，需满足以下条件，否则微信不抓取/不展示缩略图。
+
+### 12.1 部署前检查清单
+
+| # | 项 | 说明 |
+|:--|:----|:------|
+| 1 | 后端含 OG 注入代码 | `h5_template.rs` 中 `replace_h5_variables` / `fallback_h5_html` 已注入 og:image/title/description/url |
+| 2 | 已保存的 H5 文件也带 OG | `referral_handler.rs` 中 `share_landing` 对已保存的 LLM 生成 HTML 也做 OG 注入 |
+| 3 | `og:image` 路径正确 | 当前写死 `/icons/Icon-512.png`。VPS 上 Flutter 构建在 `/app/` 下，**部署前需改为 `/app/icons/Icon-512.png`** |
+| 4 | Icon-512.png 在 VPS 上存在 | 随 Flutter web 构建自动生成，路径为 `/opt/coevo/admin-web/icons/Icon-512.png` |
+
+### 12.2 Nginx 路由（必须）
+
+当前 `coevo-nginx.conf` 缺少 `/share/` 路由。微信访问 `https://keyievolution.fun/share/{code}` 时会 404。
+
+需在 Nginx 配置中追加：
+
+```nginx
+# 分享落地页（H5 推广页）
+location /share/ {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+}
+```
+
+### 12.3 部署步骤
+
+```
+1. 本地改 og:image 路径为 /app/icons/Icon-512.png
+2. 后端 cargo build --release → tar.gz 上传 VPS
+3. Flutter web build --base-href /app/ → tar.gz 上传 VPS
+4. Nginx 追加 /share/ 路由 → nginx -s reload
+5. 后端 systemctl restart coevo
+6. 验证: 浏览器打开 https://keyievolution.fun/share/test
+    → 应返回 H5 页面（带 OG meta 标签）
+7. 验证: https://keyievolution.fun/app/icons/Icon-512.png
+    → 应显示 512×512 图标
+```
+
+### 12.4 微信缓存说明
+
+微信对 OG 标签有 CDN 缓存，首次抓取后约 24h 内不刷新。测试时可通过 [微信公众平台接口调试工具](https://mp.weixin.qq.com/debug/) → URL 检测 → 模拟抓取。
+
+---
+
+## 十三、合规说明
 
 1. **分销层级**: 严格限制 2 级，超过 2 级属传销
 2. **佣金披露**: 用户协议中明确说明推广佣金规则

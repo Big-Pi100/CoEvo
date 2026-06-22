@@ -144,6 +144,7 @@ final _categoryIcons = <String, IconData>{
   'knowledge': Icons.library_books,
   'mastery': Icons.verified,
   'exploration': Icons.explore,
+  'social': Icons.diversity_3,
   'special': Icons.star,
 };
 
