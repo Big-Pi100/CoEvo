@@ -964,6 +964,7 @@ pub fn build_plan_context(conn: &rusqlite::Connection, plan_id: &str, conversati
 
         let pipeline_domain: String = merged.get("pipeline_domain")
             .and_then(|d| d.as_str())
+            .or_else(|| merged.get("domain").and_then(|d| d.as_str()))
             .unwrap_or(&prompt_subject)
             .to_string();
 
@@ -1220,20 +1221,26 @@ pub async fn analyze_turn_progress(
     if !has_plan {
         // ── 无 plan：先用 final_reply 快速轻量检测是否引入了学习任务 ──
         // 有信号时回退到对话全量历史创建 plan（因 plan 创建需要完整上下文）
-        let signal_prompt = chat_engine::prompt_loader::get_plan(&domain).signal
-            .replace("{final_reply}", final_reply);
-        let has_signal = match caller.generate("", &signal_prompt).await {
-            Ok(response) => {
-                if let Some(start) = response.find('{') {
-                    if let Some(end) = response[start..].find('}') {
-                        let json_str = &response[start..=start + end];
-                        if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
-                            v.get("has_task").and_then(|b| b.as_bool()).unwrap_or(false)
+        // ★ Fast Path: 先检查 badge 模式 "**...✅ 已完成"，命中直接创建 plan
+        let badge_trigger = final_reply.contains("✅ 已完成") && final_reply.contains("**");
+        let has_signal = if badge_trigger {
+            true
+        } else {
+            let signal_prompt = chat_engine::prompt_loader::get_plan(&domain).signal
+                .replace("{final_reply}", final_reply);
+            match caller.generate("", &signal_prompt).await {
+                Ok(response) => {
+                    if let Some(start) = response.find('{') {
+                        if let Some(end) = response[start..].find('}') {
+                            let json_str = &response[start..=start + end];
+                            if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
+                                v.get("has_task").and_then(|b| b.as_bool()).unwrap_or(false)
+                            } else { false }
                         } else { false }
                     } else { false }
-                } else { false }
+                }
+                Err(_) => false,
             }
-            Err(_) => false,
         };
 
         if has_signal {

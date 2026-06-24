@@ -43,6 +43,8 @@ pub mod k12_quiz_loader;
 pub mod ws;
 pub mod referral_handler;
 pub mod campaign_handler;
+pub mod campaign_member_handler;
+pub mod trial_handler;
 pub mod distribution_handler;
 pub mod campaign_scheduler;
 pub mod campaign_executor;

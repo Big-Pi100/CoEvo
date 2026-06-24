@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
-import 'package:markdown_widget/markdown_widget.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'graph_widget.dart';
 
 /// 错误边界 — 捕获子组件构建/渲染异常，兜底显示
@@ -128,6 +128,9 @@ class RichContentBuilder {
           break;
         case BlockType.displayMath:
           children.add(DisplayMathBlock(block.content, textColor: textColor));
+          break;
+        case BlockType.table:
+          children.add(_renderMarkdownTable(block.content, textColor: textColor));
           break;
       }
     }
@@ -483,21 +486,27 @@ class RichContentBuilder {
     final matches = inlineRegex.allMatches(text).toList();
 
     if (matches.isEmpty) {
-      // 纯文本块：MarkdownWidget — 强制继承 textColor
+      // 纯文本块：MarkdownBody
       // 预处理: 修复 LLM 常见 Markdown 格式问题
       final fixed = _fixMarkdown(text);
       return DefaultTextStyle(
         style: TextStyle(color: textColor, fontSize: 15, height: 1.5),
-        child: MarkdownWidget(
+        child: MarkdownBody(
           data: fixed,
-          shrinkWrap: true,
-          config: MarkdownConfig(configs: [
-            BlockquoteConfig(textColor: textColor, sideColor: textColor.withAlpha(80)),
-            PreConfig(textStyle: TextStyle(color: textColor, fontSize: 14),
-              decoration: BoxDecoration(color: textColor.withAlpha(15), borderRadius: const BorderRadius.all(Radius.circular(8)))),
-            CodeConfig(style: TextStyle(color: textColor, backgroundColor: textColor.withAlpha(20))),
-            PConfig(textStyle: TextStyle(color: textColor, fontSize: 15)),
-          ]),
+          selectable: true,
+          styleSheet: MarkdownStyleSheet(
+            p: TextStyle(color: textColor, fontSize: 15),
+            code: TextStyle(color: textColor, backgroundColor: textColor.withAlpha(20), fontSize: 14),
+            codeblockDecoration: BoxDecoration(color: textColor.withAlpha(15), borderRadius: BorderRadius.circular(8)),
+            blockquoteDecoration: BoxDecoration(
+              color: textColor.withAlpha(8),
+              border: Border(left: BorderSide(color: textColor.withAlpha(80), width: 3)),
+            ),
+            tableBorder: TableBorder.all(color: textColor.withAlpha(40), width: 0.5),
+            tableHead: TextStyle(fontWeight: FontWeight.w600),
+            tableBody: TextStyle(color: textColor, fontSize: 14),
+            tableCellsPadding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+          ),
         ),
       );
     }
@@ -592,7 +601,13 @@ class _InlineMatch {
 
 // ── 块分割 ──
 
-enum BlockType { text, graph, displayMath }
+enum BlockType { text, table, graph, displayMath }
+
+class _TableSegment {
+  final int start;
+  final int end;
+  const _TableSegment(this.start, this.end);
+}
 
 class ContentBlock {
   final BlockType type;
@@ -601,6 +616,57 @@ class ContentBlock {
 }
 
 List<ContentBlock> _splitBlockLevel(String text) {
+  final lines = text.split('\n');
+  final n = lines.length;
+
+  // 第一阶段：扫描以 | 开头的连续行，标记为表格块（至少3行）
+  final tableSegments = <_TableSegment>[];
+  int i = 0;
+  while (i < n) {
+    if (lines[i].trimLeft().startsWith('|')) {
+      final start = i;
+      while (i < n && lines[i].trimLeft().startsWith('|')) {
+        i++;
+      }
+      if (i - start >= 3) {
+        tableSegments.add(_TableSegment(start, i));
+      }
+    } else {
+      i++;
+    }
+  }
+
+  // 第二阶段：按表格位置切片，表格块之间的文本继续用原有的 graph/displayMath 分割
+  final blocks = <ContentBlock>[];
+  int lastEnd = 0;
+
+  for (final seg in tableSegments) {
+    // 表格之前的文本段
+    if (seg.start > lastEnd) {
+      final segment = lines.sublist(lastEnd, seg.start).join('\n');
+      if (segment.trim().isNotEmpty) {
+        blocks.addAll(_splitBySpecialBlocks(segment));
+      }
+    }
+    // 表格块
+    final tableText = lines.sublist(seg.start, seg.end).join('\n');
+    blocks.add(ContentBlock(BlockType.table, tableText));
+    lastEnd = seg.end;
+  }
+
+  // 尾部
+  if (lastEnd < n) {
+    final tail = lines.sublist(lastEnd).join('\n');
+    if (tail.trim().isNotEmpty) {
+      blocks.addAll(_splitBySpecialBlocks(tail));
+    }
+  }
+
+  return blocks;
+}
+
+/// 用原有的 graph/displayMath 正则分割文本块
+List<ContentBlock> _splitBySpecialBlocks(String text) {
   final blocks = <ContentBlock>[];
   final splitter = RegExp(r'(<graph>.*?</graph>|\\\[(.+?)\\\])', dotAll: true);
   final matches = splitter.allMatches(text).toList();
@@ -639,6 +705,199 @@ List<ContentBlock> _splitBlockLevel(String text) {
   }
 
   return blocks;
+}
+
+/// 将行号转换为字符串偏移
+int _lineToOffset(String text, int lineIdx) {
+  final lines = text.split('\n');
+  int offset = 0;
+  for (int i = 0; i < lineIdx && i < lines.length; i++) {
+    offset += lines[i].length + 1;
+  }
+  return offset;
+}
+
+/// 用 Flutter Table widget 渲染 Markdown 表格
+Widget _renderMarkdownTable(String tableText, {Color textColor = Colors.black87}) {
+  final lines = tableText.split('\n');
+  if (lines.length < 2) return const SizedBox.shrink();
+
+  // 表头行
+  final headerRow = _splitTableRow(lines[0]);
+  // 找分隔行（|---| 样式）
+  int dataStart = 1;
+  if (lines.length > 1 && RegExp(r'^\|[\s\-:]+\|').hasMatch(lines[1].trim())) {
+    dataStart = 2;
+  }
+
+  // 统一列数
+  int colCount = headerRow.length;
+  for (int i = dataStart; i < lines.length; i++) {
+    final row = _splitTableRow(lines[i]);
+    if (row.length > colCount) colCount = row.length;
+  }
+  if (colCount == 0) return const SizedBox.shrink();
+
+  final children = <TableRow>[];
+
+  // 表头行
+  children.add(TableRow(
+    decoration: BoxDecoration(color: textColor.withAlpha(15)),
+    children: List.generate(colCount, (i) {
+      final cellText = i < headerRow.length ? headerRow[i].trim() : '';
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+        child: _buildRichCell(cellText, bold: true, textColor: textColor),
+      );
+    }),
+  ));
+
+  // 数据行
+  for (int r = dataStart; r < lines.length; r++) {
+    final row = _splitTableRow(lines[r]);
+    final isEven = (r - dataStart) % 2 == 0;
+    children.add(TableRow(
+      decoration: isEven
+          ? BoxDecoration(color: textColor.withAlpha(6))
+          : null,
+      children: List.generate(colCount, (i) {
+        final cellText = i < row.length ? row[i].trim() : '';
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+          child: _buildRichCell(cellText, textColor: textColor),
+        );
+      }),
+    ));
+  }
+
+  return SingleChildScrollView(
+    scrollDirection: Axis.horizontal,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Table(
+        border: TableBorder.all(color: textColor.withAlpha(40), width: 0.5),
+        columnWidths: Map.fromIterables(
+          List.generate(colCount, (i) => i),
+          List.filled(colCount, const IntrinsicColumnWidth()),
+        ),
+        defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+        children: children,
+      ),
+    ),
+  );
+}
+
+/// 按 | 分割一行表格文本
+List<String> _splitTableRow(String line) {
+  final trimmed = line.trim();
+  if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) return [];
+  final inner = trimmed.substring(1, trimmed.length - 1);
+  final parts = <String>[];
+  int depth = 0;
+  final buf = StringBuffer();
+  for (int i = 0; i < inner.length; i++) {
+    final c = inner[i];
+    if (c == '|' && depth == 0) {
+      parts.add(buf.toString());
+      buf.clear();
+    } else {
+      buf.write(c);
+    }
+  }
+  parts.add(buf.toString());
+  // 分隔行（|---| 样式）跳过
+  if (parts.every((p) => RegExp(r'^-+\s*$').hasMatch(p.trim()))) return [];
+  return parts;
+}
+
+/// 构建单个单元格，支持 **bold** 和 \(...\) 公式
+Widget _buildRichCell(String text, {bool bold = false, Color textColor = Colors.black87}) {
+  if (text.isEmpty) return const SizedBox.shrink();
+
+  // 处理 **bold**
+  final boldRegex = RegExp(r'\*\*(.+?)\*\*');
+  final formulaRegex = RegExp(r'\\\((.+?)\\\)');
+
+  bool hasBold = boldRegex.hasMatch(text);
+  bool hasFormula = formulaRegex.hasMatch(text);
+
+  if (!hasBold && !hasFormula) {
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 14,
+        color: textColor,
+        fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
+      ),
+    );
+  }
+
+  final spans = <InlineSpan>[];
+  final combined = <_InlineMatch>[];
+  for (final m in boldRegex.allMatches(text)) {
+    combined.add(_InlineMatch(m.start, m.end, m.group(0)!, boldRegex));
+  }
+  for (final m in formulaRegex.allMatches(text)) {
+    combined.add(_InlineMatch(m.start, m.end, m.group(0)!, formulaRegex));
+  }
+  combined.sort((a, b) => a.start.compareTo(b.start));
+
+  int pos = 0;
+  for (final im in combined) {
+    if (im.start < pos) continue;
+    if (im.start > pos) {
+      spans.add(TextSpan(
+        text: text.substring(pos, im.start),
+        style: TextStyle(color: textColor, fontSize: 14),
+      ));
+    }
+
+    if (im.regex == boldRegex) {
+      final inner = im.match.group(1) ?? '';
+      spans.add(TextSpan(
+        text: inner,
+        style: TextStyle(
+          color: textColor,
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+        ),
+      ));
+    } else if (im.regex == formulaRegex) {
+      final formula = im.match.group(1) ?? '';
+      final fixedFormula = _addColorCmd(formula.trim(), textColor);
+      spans.add(WidgetSpan(
+        child: _ErrorBoundary(
+          fallbackMsg: '公式错误',
+          child: Math.tex(
+            fixedFormula,
+            mathStyle: MathStyle.text,
+            textStyle: TextStyle(fontSize: 14, color: textColor),
+          ),
+        ),
+        alignment: PlaceholderAlignment.middle,
+      ));
+    }
+
+    pos = im.end;
+  }
+
+  if (pos < text.length) {
+    spans.add(TextSpan(
+      text: text.substring(pos),
+      style: TextStyle(color: textColor, fontSize: 14),
+    ));
+  }
+
+  return RichText(
+    text: TextSpan(
+      style: TextStyle(
+        color: textColor,
+        fontSize: 14,
+        fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
+      ),
+      children: spans,
+    ),
+  );
 }
 
 /// 修复 LLM 常见 Markdown 格式问题

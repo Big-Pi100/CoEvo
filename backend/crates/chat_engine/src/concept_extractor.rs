@@ -53,7 +53,7 @@ pub async fn extract_concepts(
     max_count: usize,  // 概念提取数量上限，从 app_config 读取
 ) -> ExtractionResult {
     tracing::info!("[CP1] extract_concepts ENTERED: domain={}, msg_preview={}",
-        domain, &user_message[..user_message.len().min(60)]);
+        domain, &user_message[..user_message.char_indices().nth(60).map(|(i,_)| i).unwrap_or(user_message.len())]);
 
     // 从 LLM 提取候选概念（传入已有概念 + 对话历史 + plan 上下文，避免重复）
     tracing::info!("[CP1] extract_candidates_from_llm: domain={}, plan_context=[{}], existing={}, history={}", 

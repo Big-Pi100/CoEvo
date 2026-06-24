@@ -77,8 +77,15 @@ class TtsService extends ChangeNotifier {
     _currentPlayingText = text;
 
     // 检查缓存（由 auto-play 预先缓存）
+    final prefs = await SharedPreferences.getInstance();
     final cached = _ttsCache[text];
     if (cached != null) {
+      final engine = prefs.getString('tts_engine') ?? 'tencent';
+      if (engine != 'tencent') {
+        // 非云端 TTS → 跳过缓存播放，走原生
+        _speakWithNative(text);
+        return;
+      }
       // 有缓存 → 直接播放
       final player = AudioPlayer();
       _currentPlayer = player;

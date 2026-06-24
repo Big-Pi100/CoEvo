@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:convert';
+import 'dart:async';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../api/chat_client.dart';
 import '../api/api_config.dart';
 import '../providers/auth_provider.dart';
 import '../config/k12_subjects.dart';
+import '../widgets/claim_dialog.dart';
 import 'chat_screen.dart';
 import '../theme/app_theme.dart';
 import '../pages/user/distribution/notification_panel.dart';
@@ -24,14 +27,38 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _loading = true;
+  bool _authReady = false;
   List<Map<String, dynamic>> _subjects = [];
   int _unreadCount = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initAuth());
     _loadSubjects();
     _loadUnreadCount();
+  }
+
+  Future<void> _initAuth() async {
+    final auth = ref.read(authProvider);
+    if (!auth.isRestored) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (mounted) _initAuth();
+      return;
+    }
+    if (auth.isAuthenticated) {
+      if (mounted) setState(() => _authReady = true);
+      return;
+    }
+    // 新用户：自动创建临时账户
+    await ref.read(authProvider.notifier).trialStart();
+    if (mounted) {
+      final updated = ref.read(authProvider);
+      if (updated.isAuthenticated) {
+        setState(() => _authReady = true);
+      }
+      // trial 失败不处理，保持 spinner 等待用户刷新重试
+    }
   }
 
   Future<void> _loadUnreadCount() async {
@@ -74,6 +101,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    // 认证初始化中 → 显示 loading
+    if (!_authReady) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 32, height: 32,
+                child: CircularProgressIndicator(strokeWidth: 3),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'CoEvo 刻意进化学习',
+                style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurfaceVariant.withAlpha(150)),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '正在为你创建学习空间...',
+                style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant.withAlpha(100)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(

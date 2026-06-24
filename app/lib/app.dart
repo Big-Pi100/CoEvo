@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'theme/app_theme.dart';
 import 'api/api_config.dart';
-import 'screens/auth_screen.dart';
+import 'screens/home_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/admin_screen.dart';
 import 'screens/guardian_screen.dart';
@@ -34,29 +34,17 @@ final _allScreens = <Widget>[
 ];
 
 final goRouter = GoRouter(
-  initialLocation: '/auth',
+  initialLocation: '/',
   redirect: (context, state) {
-    final auth = ProviderScope.containerOf(context).read(authProvider);
-    if (!auth.isRestored) return null;
-
-    final loc = state.uri.toString();
     final path = state.uri.path;
-    final isOnAuth = path == '/auth';
-    if (loc.contains('/admin') || loc.contains('/guardian')) return null;
-
-    if (auth.isAuthenticated && isOnAuth) return '/home';
-    if (!auth.isAuthenticated && !isOnAuth) return '/auth';
+    // 管理端/家长端路由不需要认证检查
+    if (path.startsWith('/admin') || path.startsWith('/guardian')) return null;
     return null;
   },
   routes: [
     GoRoute(
-      path: '/auth',
-      pageBuilder: (context, state) => CustomTransitionPage(
-        key: state.pageKey,
-        child: const AuthScreen(),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-            FadeTransition(opacity: animation, child: child),
-      ),
+      path: '/',
+      redirect: (context, state) => '/home',
     ),
     GoRoute(
       path: '/admin',
@@ -363,13 +351,23 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
       darkTheme: darkTheme,
       themeMode: themeMode,
       routerConfig: goRouter,
-      builder: (context, child) => Stack(
-        children: [
-          child!,
-          const AchievementOverlay(),
-          _buildSubExpiredOverlay(),
-        ],
-      ),
+      builder: (context, child) {
+        final isWide = MediaQuery.of(context).size.width > 768;
+        final content = Stack(
+          children: [
+            child!,
+            const AchievementOverlay(),
+            _buildSubExpiredOverlay(),
+          ],
+        );
+        if (!isWide) return content;
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1200),
+            child: content,
+          ),
+        );
+      },
     );
   }
 }

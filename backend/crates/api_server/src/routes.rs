@@ -252,6 +252,9 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/referral/generate-h5", post(crate::referral_handler::generate_h5))
         .route("/api/referral/user-portrait", get(crate::referral_handler::user_portrait))
         .route("/api/referral/qrcode", get(crate::referral_handler::get_qrcode))
+        .route("/api/campaign/join", post(crate::campaign_member_handler::join))
+        .route("/api/trial/start", post(crate::trial_handler::start))
+        .route("/api/trial/claim", put(crate::trial_handler::claim))
         // 用户端提现
         .route("/api/referral/withdraw", post(crate::distribution_handler::user_withdraw))
         .route("/api/referral/my-withdrawals", get(crate::distribution_handler::user_withdrawals))
@@ -1386,7 +1389,7 @@ async fn history_handler(
             let plan_goal: Option<String> = row.get(5).ok().flatten();
             let title = plan_goal
                 .filter(|g| !g.is_empty())
-                .map(|g| format!("K12: {}", g))
+                .map(|g| g)
                 .or_else(|| first_msg.as_deref()
                     .map(|s| if s.len() > 50 { format!("{}...", &s[..50]) } else { s.to_string() }))
                 .unwrap_or_else(|| "新对话".to_string());

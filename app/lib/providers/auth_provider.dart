@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../api/auth_client.dart';
 
 const _tokenKey = 'coevo_auth_token';
@@ -132,6 +133,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
         username: username,
         isRestored: true,
       );
+      // 清除退出登录标记
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('coevo_show_login');
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
@@ -156,6 +160,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
         username: username,
         isRestored: true,
       );
+      // 登录成功后清除退出登录标记
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('coevo_show_login');
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
@@ -168,6 +175,76 @@ class AuthNotifier extends StateNotifier<AuthState> {
     await _clearCredentials();
     state = const AuthState(isRestored: true);
   }
+
+  /// 创建临时账户
+  Future<void> trialStart() async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final result = await _client.trialStart();
+      final uid = result['user_id'] as String?;
+      final token = result['token'] as String?;
+      final trialUsername = result['username'] as String?;
+      if (uid != null && token != null) {
+        await _saveCredentials(uid, token, trialUsername ?? uid);
+      }
+      state = AuthState(
+        isAuthenticated: true,
+        userId: uid,
+        token: token,
+        username: trialUsername ?? uid,
+        isRestored: true,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: _friendlyError(e.toString().replaceFirst('Exception: ', '')),
+      );
+    }
+  }
+
+  /// 认领临时账户（注册）
+  Future<void> trialClaim(String username, String password, {String? realName, String? phone, String? referralCode}) async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final result = await _client.trialClaim(
+        state.userId!,
+        state.token!,
+        username,
+        password,
+        realName: realName,
+        phone: phone,
+        referralCode: referralCode,
+      );
+      final newToken = result['token'] as String? ?? state.token;
+      await _saveCredentials(state.userId!, newToken!, username);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('coevo_trial_claimed', true);
+      await prefs.remove('coevo_show_login');
+      state = AuthState(
+        isAuthenticated: true,
+        userId: state.userId,
+        token: newToken,
+        username: username,
+        isRestored: true,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: _friendlyError(e.toString().replaceFirst('Exception: ', '')),
+      );
+    }
+  }
+}
+
+/// 检查用户 ID 是否为临时账户
+bool isTrialAccount(String? userId) {
+  return userId != null && userId.startsWith('trial_');
+}
+
+/// 检查是否已完成认领注册
+Future<bool> isClaimed() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getBool('coevo_trial_claimed') ?? false;
 }
 
 final authClientProvider = Provider<AuthClient>((ref) => AuthClient());

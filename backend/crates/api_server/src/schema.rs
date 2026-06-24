@@ -273,6 +273,12 @@ CREATE TABLE IF NOT EXISTS card_relations (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS trial_ip_log (
+    id TEXT PRIMARY KEY,
+    ip TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_trial_ip_log_ip_created ON trial_ip_log(ip, created_at);
 "#;
 
 /// 分销营销表（依赖 admin_users、payment_orders 等管理端表，需要在 ADMIN_SCHEMA_SQL 之后执行）
@@ -705,6 +711,7 @@ mod tests {
         "referral_clicks", "reward_fulfillments", "review_log",
         "settlement_batches",
         "subscription_requests", "tokens",
+        "trial_ip_log",
         "user_cards", "user_humanities_cards", "user_language_cards",
         "user_literature_cards", "user_notifications", "user_plan_progress", "user_preferences",
         "user_science_cards", "users",

@@ -721,6 +721,15 @@ class _AngleArc {
   _AngleArc({this.vertexIndex, this.label, this.startAngle, this.sweepAngle, this.centerX, this.centerY});
 }
 
+/// 标签数据（统一收集，最后绘制）
+class _LabelData {
+  final String text;
+  final double x, y;
+  final Color color;
+  final FontWeight fontWeight;
+  const _LabelData(this.text, this.x, this.y, this.color, {this.fontWeight = FontWeight.normal});
+}
+
 /// 几何图形绘制器：多边形 / 圆形 / 坐标轴
 class _GeometryPainter extends CustomPainter {
   final ColorScheme cs;
@@ -750,9 +759,21 @@ class _GeometryPainter extends CustomPainter {
     this.tangentLines = const [],
   });
 
+  // 多彩调色板 — 为不同箭头分配不同颜色
+  static const _palette = <Color>[
+    Color(0xFF6C63FF), // 靛蓝
+    Color(0xFFFF6B6B), // 红
+    Color(0xFF4ECDC4), // 青
+    Color(0xFFFFD93D), // 黄
+    Color(0xFFA78BFA), // 紫
+    Color(0xFFFB923C), // 橙
+    Color(0xFF34D399), // 绿
+    Color(0xFF60A5FA), // 蓝
+  ];
+
   @override
   void paint(Canvas canvas, Size size) {
-    final pad = 30.0;
+    final pad = 40.0;
     final w = size.width - pad * 2;
     final h = size.height - pad * 2;
     final scaleX = (xMax - xMin) == 0 ? 1 : w / (xMax - xMin);
@@ -766,11 +787,81 @@ class _GeometryPainter extends CustomPainter {
     // 预先计算屏幕坐标点
     final screenPoints = points.map((p) => toScreen(p.dx, p.dy)).toList();
 
-    // 坐标轴
-    final axisPaint = Paint()..color = cs.outline..strokeWidth = 0.5;
+    // 标签统一收集，最后绘制
+    final pendingLabels = <_LabelData>[];
+
+    // ── 浅色网格虚线 ──
+    final gridPaint = Paint()
+      ..color = cs.outlineVariant.withAlpha(40)
+      ..strokeWidth = 0.5;
+    final xRange = xMax - xMin;
+    final yRange = yMax - yMin;
+    final xStep = _niceInterval(xRange);
+    final yStep = _niceInterval(yRange);
+
+    if (xStep > 0 && yStep > 0) {
+      // 垂直网格线
+      double gx = (xMin / xStep).ceil() * xStep;
+      while (gx <= xMax) {
+        final sp = toScreen(gx, 0);
+        _drawDashedLine(canvas, Offset(sp.dx, pad), Offset(sp.dx, size.height - pad), gridPaint);
+        gx += xStep;
+      }
+      // 水平网格线
+      double gy = (yMin / yStep).ceil() * yStep;
+      while (gy <= yMax) {
+        final sp = toScreen(0, gy);
+        _drawDashedLine(canvas, Offset(pad, sp.dy), Offset(size.width - pad, sp.dy), gridPaint);
+        gy += yStep;
+      }
+    }
+
+    // ── 坐标轴 ──
+    final axisPaint = Paint()..color = cs.outline..strokeWidth = 1.0;
     final origin = toScreen(0, 0);
-    canvas.drawLine(Offset(pad, origin.dy), Offset(size.width - pad, origin.dy), axisPaint);
-    canvas.drawLine(Offset(origin.dx, pad), Offset(origin.dx, size.height - pad), axisPaint);
+    // X 轴
+    final xAxisY = origin.dy.clamp(pad.toDouble(), (size.height - pad).toDouble());
+    canvas.drawLine(Offset(pad, xAxisY), Offset(size.width - pad, xAxisY), axisPaint);
+    // X 轴箭头
+    _drawArrowHead(canvas, Offset(size.width - pad, xAxisY), Offset(size.width - pad + 8, xAxisY - 4), cs.outline);
+    _drawArrowHead(canvas, Offset(pad, xAxisY), Offset(pad - 8, xAxisY - 4), cs.outline);
+    // Y 轴
+    final yAxisX = origin.dx.clamp(pad.toDouble(), (size.width - pad).toDouble());
+    canvas.drawLine(Offset(yAxisX, pad), Offset(yAxisX, size.height - pad), axisPaint);
+    // Y 轴箭头
+    _drawArrowHead(canvas, Offset(yAxisX, pad), Offset(yAxisX - 4, pad - 8), cs.outline);
+    _drawArrowHead(canvas, Offset(yAxisX, size.height - pad), Offset(yAxisX - 4, size.height - pad + 8), cs.outline);
+
+    // ── 刻度线和刻度数字 ──
+    final tickPaint = Paint()..color = cs.outline..strokeWidth = 0.8;
+    if (xStep > 0) {
+      double tx = (xMin / xStep).ceil() * xStep;
+      while (tx <= xMax) {
+        final sp = toScreen(tx, 0);
+        if (sp.dx >= pad && sp.dx <= size.width - pad) {
+          canvas.drawLine(Offset(sp.dx, xAxisY - 4), Offset(sp.dx, xAxisY + 4), tickPaint);
+          pendingLabels.add(_LabelData(
+            _formatNum(tx), sp.dx, xAxisY + 14,
+            cs.outline, fontWeight: FontWeight.normal,
+          ));
+        }
+        tx += xStep;
+      }
+    }
+    if (yStep > 0) {
+      double ty = (yMin / yStep).ceil() * yStep;
+      while (ty <= yMax) {
+        final sp = toScreen(0, ty);
+        if (sp.dy >= pad && sp.dy <= size.height - pad) {
+          canvas.drawLine(Offset(yAxisX - 4, sp.dy), Offset(yAxisX + 4, sp.dy), tickPaint);
+          pendingLabels.add(_LabelData(
+            _formatNum(ty), yAxisX - 22, sp.dy - 6,
+            cs.outline, fontWeight: FontWeight.normal,
+          ));
+        }
+        ty += yStep;
+      }
+    }
 
     // 圆形
     if (circleCenter != null && circleRadius != null) {
@@ -817,19 +908,17 @@ class _GeometryPainter extends CustomPainter {
 
       // 顶点标签
       for (var i = 0; i < screenPoints.length && i < labels.length; i++) {
-        final tp = TextPainter(
-          text: TextSpan(text: labels[i], style: TextStyle(color: cs.primary, fontSize: 12, fontWeight: FontWeight.w600)),
-          textDirection: TextDirection.ltr,
-        )..layout();
         final lp = screenPoints[i];
-        // 标签偏移到顶点外侧
         final cx2 = screenPoints.fold(Offset.zero, (a, b) => a + b) / screenPoints.length.toDouble();
         final dx = lp.dx - cx2.dx;
         final dy = lp.dy - cx2.dy;
         final dist = math.sqrt(dx * dx + dy * dy);
         final ox = dist > 0 ? dx / dist * 18 : 0;
         final oy = dist > 0 ? dy / dist * 18 : 0;
-        tp.paint(canvas, Offset(lp.dx + ox - tp.width / 2, lp.dy + oy - tp.height / 2));
+        pendingLabels.add(_LabelData(
+          labels[i], lp.dx + ox, lp.dy + oy,
+          cs.primary, fontWeight: FontWeight.w600,
+        ));
       }
 
       // 直角标记
@@ -857,11 +946,12 @@ class _GeometryPainter extends CustomPainter {
       }
     }
 
-    // ── 箭头绘制 ──
-    for (final arrow in arrows) {
+    // ── 箭头绘制（多色 palette） ──
+    for (int ai = 0; ai < arrows.length; ai++) {
+      final arrow = arrows[ai];
       final fp = toScreen(arrow.from.dx, arrow.from.dy);
       final tp = toScreen(arrow.to.dx, arrow.to.dy);
-      final color = arrow.color ?? cs.primary;
+      final color = arrow.color ?? _palette[ai % _palette.length];
 
       // 箭身
       canvas.drawLine(fp, tp, Paint()..color = color..strokeWidth = 2.5..strokeCap = StrokeCap.round);
@@ -870,7 +960,8 @@ class _GeometryPainter extends CustomPainter {
       final dx = tp.dx - fp.dx;
       final dy = tp.dy - fp.dy;
       final len = math.sqrt(dx * dx + dy * dy);
-      if (len == 0) continue;      final ux = dx / len;
+      if (len == 0) continue;
+      final ux = dx / len;
       final uy = dy / len;
       const arrowLen = 12.0;
       const arrowAngle = 0.45;
@@ -889,15 +980,11 @@ class _GeometryPainter extends CustomPainter {
       // 起点圆点
       canvas.drawCircle(fp, 3.5, Paint()..color = color);
 
-      // 标签
+      // 把箭头标签加入 pendingLabels
       if (arrow.label != null && arrow.label!.isNotEmpty) {
-        final tp2 = TextPainter(
-          text: TextSpan(text: arrow.label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        final lx = (fp.dx + tp.dx) / 2 - tp2.width / 2;
-        final ly = (fp.dy + tp.dy) / 2 - tp2.height - 4;
-        tp2.paint(canvas, Offset(lx, ly));
+        final lx = (fp.dx + tp.dx) / 2;
+        final ly = (fp.dy + tp.dy) / 2 - 14;
+        pendingLabels.add(_LabelData(arrow.label!, lx, ly, color, fontWeight: FontWeight.w600));
       }
     }
 
@@ -945,11 +1032,7 @@ class _GeometryPainter extends CustomPainter {
         final midAngle = a1 + sweep / 2;
         final lx2 = cnt.dx + (arcR + 10) * math.cos(midAngle);
         final ly2 = cnt.dy + (arcR + 10) * math.sin(midAngle);
-        final tp3 = TextPainter(
-          text: TextSpan(text: arc.label, style: TextStyle(color: cs.tertiary, fontSize: 10)),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        tp3.paint(canvas, Offset(lx2 - tp3.width / 2, ly2 - tp3.height / 2));
+        pendingLabels.add(_LabelData(arc.label!, lx2, ly2, cs.tertiary));
       }
     }
 
@@ -978,13 +1061,87 @@ class _GeometryPainter extends CustomPainter {
       }
       canvas.drawCircle(tp4, 3, Paint()..color = cs.onSurfaceVariant);
       if (tl.label != null && tl.label!.isNotEmpty) {
-        final tp5 = TextPainter(
-          text: TextSpan(text: tl.label, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 10)),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        tp5.paint(canvas, Offset(tp4.dx - tp5.width / 2, tp4.dy - tp5.height - 6));
+        pendingLabels.add(_LabelData(tl.label!, tp4.dx, tp4.dy - 14, cs.onSurfaceVariant));
       }
     }
+
+    // ── 统一绘制所有标签（带半透明背景） ──
+    for (final ld in pendingLabels) {
+      final tp = TextPainter(
+        text: TextSpan(text: ld.text, style: TextStyle(
+          color: ld.color, fontSize: 11, fontWeight: ld.fontWeight,
+        )),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      // 半透明背景矩形
+      final bgRect = Rect.fromLTWH(
+        ld.x - tp.width / 2 - 3,
+        ld.y - 1,
+        tp.width + 6,
+        tp.height + 2,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(bgRect, const Radius.circular(3)),
+        Paint()..color = cs.surface.withAlpha(200),
+      );
+      tp.paint(canvas, Offset(ld.x - tp.width / 2, ld.y));
+    }
+  }
+
+  /// 绘制虚线
+  void _drawDashedLine(Canvas canvas, Offset from, Offset to, Paint paint) {
+    const dash = 4.0;
+    const gap = 3.0;
+    final dx = to.dx - from.dx;
+    final dy = to.dy - from.dy;
+    final len = math.sqrt(dx * dx + dy * dy);
+    if (len == 0) return;
+    final ux = dx / len;
+    final uy = dy / len;
+    double pos = 0;
+    while (pos < len) {
+      final segEnd = (pos + dash < len) ? pos + dash : len;
+      canvas.drawLine(
+        Offset(from.dx + ux * pos, from.dy + uy * pos),
+        Offset(from.dx + ux * segEnd, from.dy + uy * segEnd),
+        paint,
+      );
+      pos += dash + gap;
+    }
+  }
+
+  /// 画小三角箭头
+  void _drawArrowHead(Canvas canvas, Offset tip, Offset base, Color color) {
+    final paint = Paint()..color = color..style = PaintingStyle.fill;
+    final path = Path()
+      ..moveTo(tip.dx, tip.dy)
+      ..lineTo(base.dx, base.dy)
+      ..lineTo(tip.dx, tip.dy + (base.dy - tip.dy) * 2)
+      ..close();
+    canvas.drawPath(path, paint);
+  }
+
+  /// 格式化数字（去掉多余的 .0）
+  String _formatNum(double v) {
+    if (v == v.roundToDouble()) return v.toInt().toString();
+    return v.toStringAsFixed(1);
+  }
+
+  double _niceInterval(double range) {
+    if (range <= 0) return 1;
+    final rough = range / 5;
+    final magnitude = _pow10((rough.abs()).toStringAsFixed(0).length - 1);
+    final normalized = rough / magnitude;
+    if (normalized <= 1.5) return magnitude;
+    if (normalized <= 3) return 2 * magnitude;
+    if (normalized <= 7) return 5 * magnitude;
+    return 10 * magnitude;
+  }
+
+  double _pow10(int n) {
+    double r = 1;
+    for (var i = 0; i < n; i++) { r *= 10; }
+    return r;
   }
 
   @override

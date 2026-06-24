@@ -27,7 +27,7 @@ class ReviewScreen extends ConsumerStatefulWidget {
   ConsumerState<ReviewScreen> createState() => _ReviewScreenState();
 }
 
-class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerProviderStateMixin {
+class _ReviewScreenState extends ConsumerState<ReviewScreen> with TickerProviderStateMixin {
   // ── Theme access ──
   ColorScheme get _cs => Theme.of(context).colorScheme;
   TextTheme get _tt => Theme.of(context).textTheme;
@@ -89,8 +89,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
   @override
   void initState() {
     super.initState();
-    // 固定 20 个 tab，足够容纳所有计划 + 全部卡片
-    _tabController = TabController(length: 20, vsync: this);
+    // 初始长度：英语tab + 汉语tab + 全部卡片（计划加载后再调整）
+    _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(_onTabChanged);
 
     // 绑定 TTS 客户端（用于朗读时读取引擎偏好）
@@ -193,8 +193,15 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with SingleTickerPr
     final plans = ref.read(planProvider).plans;
     final newTabCount = _languageTabCount + plans.length + 1;  // 语言tab + plan tabs + 全部卡片
     setState(() => _effectiveTabCount = newTabCount);
-    // TabController 不销毁重建，只记录有效 tab 数
-    if (_tabController.index >= _effectiveTabCount) {
+    // 如果实际 tab 数变化，销毁旧 controller 重建新的正确长度
+    if (_tabController.length != newTabCount) {
+      final oldIndex = _tabController.index.clamp(0, newTabCount - 1);
+      _tabController.removeListener(_onTabChanged);
+      _tabController.dispose();
+      _tabController = TabController(length: newTabCount, vsync: this);
+      _tabController.addListener(_onTabChanged);
+      _tabController.index = oldIndex;
+    } else if (_tabController.index >= _effectiveTabCount) {
       _tabController.index = _effectiveTabCount - 1;
     }
     // 自动选中第一个 plan

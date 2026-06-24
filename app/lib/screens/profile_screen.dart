@@ -18,6 +18,7 @@ import '../providers/theme_provider.dart';
 import '../services/tts_service.dart';
 import '../widgets/order_history.dart';
 import '../widgets/subscribe_panel.dart';
+import '../widgets/claim_dialog.dart';
 import '../utils/validators.dart';
 import '../theme/app_theme.dart';
 import '../pages/user/distribution/notification_panel.dart';
@@ -38,6 +39,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Map<String, dynamic>? _data;
   bool _isLoading = true;
   String? _error;
+  bool _hasShownClaimDialog = false;
   String? _avatarUrl;
   String _displayName = '';
   String? _realName;
@@ -152,6 +154,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       _loadReferralCode();
     } catch (e) {
       if (mounted) setState(() { _isLoading = false; _error = '加载失败，请检查网络连接'; });
+    }
+  }
+
+  Future<void> _checkTrialClaim() async {
+    final auth = ref.read(authProvider);
+    final userId = auth.userId ?? '';
+    if (!userId.startsWith('trial_')) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('coevo_trial_claimed') == true) return;
+
+    if (!mounted) return;
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => const ClaimDialog(),
+    );
+    if (result == true && mounted) {
+      await prefs.setBool('coevo_trial_claimed', true);
     }
   }
 
@@ -410,6 +431,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
 
+    // 检测并弹出注册弹窗（首次进入个人页时）
+    if (!_hasShownClaimDialog && !_isLoading) {
+      _hasShownClaimDialog = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _checkTrialClaim());
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('个人'),
@@ -427,7 +454,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             icon: const Icon(Icons.logout),
             onPressed: () async {
               await ref.read(authProvider.notifier).logout();
-              if (context.mounted) context.go('/auth');
+              if (context.mounted) context.go('/');
             },
           ),
         ],
@@ -479,7 +506,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       ),
                       padding: const EdgeInsets.all(8),
                       child: QrImageView(
-                        data: 'https://keyievolution.fun/app/auth?ref=$_referralCode',
+                        data: 'https://keyievolution.fun/?ref=$_referralCode',
                         version: QrVersions.auto,
                         size: 104,
                         eyeStyle: QrEyeStyle(
@@ -1045,7 +1072,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       });
     } catch (_) {
       Clipboard.setData(ClipboardData(
-        text: 'https://keyievolution.fun/app/auth?ref=$_referralCode',
+        text: 'https://keyievolution.fun/?ref=$_referralCode',
       ));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

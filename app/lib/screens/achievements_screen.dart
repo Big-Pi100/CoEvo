@@ -36,7 +36,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
     // 等 auth 就绪后加载数据
     WidgetsBinding.instance.addPostFrameCallback((_) => _waitForAuthThenLoad());
     // 监听卡片状态变化信号 → 刷新数据
-    ref.listen(cardRefreshProvider, (prev, next) {
+    ref.listenManual(cardRefreshProvider, (prev, next) {
       if (prev != next && _initialLoadDone && !_isLoading) {
         _loadWithAuth(ref.read(authProvider));
       }

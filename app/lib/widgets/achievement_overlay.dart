@@ -89,7 +89,7 @@ class AchievementOverlay extends ConsumerStatefulWidget {
 }
 
 class _AchievementOverlayState extends ConsumerState<AchievementOverlay>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _scale;
   late Animation<double> _opacity;

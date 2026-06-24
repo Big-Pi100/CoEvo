@@ -14,7 +14,7 @@
 - current_task_complete: false
 - next_stage_suggestion: null
 
-确保计划包含 3-5 个阶段，每个阶段不少于 2-3 个任务，覆盖完整的学习路径。
+以金字塔原则为准，保证知识点不重不漏。
 
 只返回 JSON，不要加其他文字：
 {{"is_new_plan": true, "goal": "...", "domain": "...", "stages": [...], "completed_concepts": [], "current_task_complete": false, "next_stage_suggestion": null}}

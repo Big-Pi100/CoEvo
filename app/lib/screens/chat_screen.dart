@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
 import '../models/coevo_models.dart';
 import '../api/chat_client.dart';
 import '../api/api_config.dart';
@@ -13,6 +15,7 @@ import '../providers/achievement_notifier.dart';
 import '../services/tts_service.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/subscribe_panel.dart';
+import '../widgets/claim_dialog.dart';
 import 'chat/chat_concept_dialog.dart';
 import 'chat/chat_input.dart';
 import 'chat/chat_plan_panel.dart';
@@ -47,6 +50,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isInitializing = true;
 
   // 学习计划 (现由 PlanProvider 管理)
+
+  // 注册弹窗
+  Timer? _taskCheckTimer;
+  int _lastCheckedTaskCount = 0;
+  bool _claimDialogShown = false;
 
   // 订阅状态
   bool _subscriptionRequired = false;
@@ -94,7 +102,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
       if (userId == null) {
         // 认证未恢复，跳转到登录页
-        if (mounted) context.go('/auth');
+        if (mounted) context.go('/');
         return;
       }
 
@@ -173,8 +181,88 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         });
       }
     } finally {
+      // 检查是否需要弹出注册弹窗
+      if (mounted) _maybeShowClaimDialog();
+      // 启动 task 完成监听（仅 trial 未认领账户）
+      if (mounted) _startTaskCheckTimer();
       // 无论如何都要解除初始化状态，防止永久灰屏
       if (mounted) setState(() => _isInitializing = false);
+    }
+  }
+
+  Future<void> _maybeShowClaimDialog() async {
+    // 只在 trial 账户且未认领时弹
+    final auth = ref.read(authProvider);
+    final userId = auth.userId ?? '';
+    if (!userId.startsWith('trial_')) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final isClaimed = prefs.getBool('coevo_trial_claimed') ?? false;
+    if (isClaimed) return;
+
+    if (!mounted) return;
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => const ClaimDialog(),
+    );
+    if (result == true && mounted) {
+      await prefs.setBool('coevo_trial_claimed', true);
+    }
+  }
+
+  void _startTaskCheckTimer() {
+    _taskCheckTimer?.cancel();
+    _claimDialogShown = false;
+    _taskCheckTimer = Timer.periodic(const Duration(seconds: 30), (_) => _checkTaskProgress());
+  }
+
+  Future<void> _checkTaskProgress() async {
+    if (_client == null || _claimDialogShown) return;
+
+    final auth = ref.read(authProvider);
+    final userId = auth.userId ?? '';
+    if (!userId.startsWith('trial_')) {
+      _taskCheckTimer?.cancel();
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('coevo_trial_claimed') == true) {
+      _taskCheckTimer?.cancel();
+      return;
+    }
+
+    try {
+      final resp = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/user/$userId/progress/done-count'),
+        headers: {'Content-Type': 'application/json'},
+      );
+      if (resp.statusCode != 200) return;
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final doneCount = data['count'] as int? ?? 0;
+
+      if (doneCount > _lastCheckedTaskCount && _lastCheckedTaskCount > 0) {
+        // 有新的已完成 task → 弹注册窗
+        _lastCheckedTaskCount = doneCount;
+        _claimDialogShown = true;
+        if (!mounted) return;
+        final result = await showDialog<bool>(
+          context: context,
+          barrierDismissible: true,
+          builder: (_) => const ClaimDialog(),
+        );
+        if (result == true && mounted) {
+          await prefs.setBool('coevo_trial_claimed', true);
+          _taskCheckTimer?.cancel();
+        } else {
+          _claimDialogShown = false;
+        }
+      } else if (doneCount > 0) {
+        _lastCheckedTaskCount = doneCount;
+      }
+    } catch (e) {
+      debugPrint('_checkTaskProgress: $e');
     }
   }
 
@@ -227,6 +315,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
+    _taskCheckTimer?.cancel();
     _sessionSub?.cancel();
     _session?.cancel();
     _messageController.dispose();
@@ -417,26 +506,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       case 'tts_audio':
         // 收到 TTS 音频 → 缓存并检查自动播放开关
         if (event.audio != null) {
-          // 获取当前助理回复的文本用于缓存键
-          final text = _getLastAssistantText();
-          if (text != null) {
-            try {
-              final bytes = base64Decode(event.audio!);
-              ref.read(ttsServiceProvider).cacheAudio(text, Uint8List.fromList(bytes));
-            } catch (_) {}
-          }
-          if (ref.read(ttsAutoPlayProvider)) {
-            _playTtsAudio(event.audio);
-          }
+          // 先检查 TTS 引擎偏好，只有引擎是 tencent 时才缓存和播放云端音频
+          SharedPreferences.getInstance().then((prefs) {
+            final engine = prefs.getString('tts_engine') ?? 'tencent';
+            if (engine != 'tencent') return;
+            final text = _getLastAssistantText();
+            if (text != null) {
+              try {
+                final bytes = base64Decode(event.audio!);
+                ref.read(ttsServiceProvider).cacheAudio(text, Uint8List.fromList(bytes));
+              } catch (_) {}
+            }
+            if (ref.read(ttsAutoPlayProvider)) {
+              _playTtsAudio(event.audio);
+            }
+          });
         }
         break;
     }
   }
 
   void _updateStreaming(String content) {
-    debugPrint('🔵 _updateStreaming: idx=$_streamingIndex content_len=${content.length} msgCount=${_messages.length} mounted=$mounted');
     if (_streamingIndex < 0 || _streamingIndex >= _messages.length) {
-      debugPrint('🔴 _updateStreaming: SKIPPED (idx out of range)');
       return;
     }
     setState(() {
@@ -444,14 +535,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         role: 'assistant', content: content, timestamp: DateTime.now(),
       );
     });
-    debugPrint('🔵 _updateStreaming: setState done, new content="${content.substring(0, content.length > 30 ? 30 : content.length)}"');
     _scrollToBottom();
   }
 
   void _finalizeStreaming(String reply) {
-    debugPrint('🟡 _finalizeStreaming: idx=$_streamingIndex reply_len=${reply.length} mounted=$mounted');
     if (_streamingIndex < 0) {
-      debugPrint('🔴 _finalizeStreaming: SKIPPED (idx=-1)');
       return;
     }
     setState(() {
@@ -462,7 +550,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _streamingIndex = -1;
       _streamingBuffer = '';
     });
-    debugPrint('🟡 _finalizeStreaming: done, msgCount=${_messages.length}');
     _scrollToBottom();
   }
 

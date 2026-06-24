@@ -692,6 +692,10 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 tokio::task::spawn(async move {
                     // 读取用户 TTS 偏好
                     let (voice_type, speed) = get_user_tts_prefs(&uid);
+                    // 未选择云端 TTS → 跳过合成（本地原生 TTS 由前端直接调用）
+                    if voice_type.is_none() {
+                        return;
+                    }
                     match crate::tencent_tts::synthesize(&tts_text, voice_type, speed).await {
                         Ok(Some(audio)) => {
                             let _ = txs.send(audio).await;

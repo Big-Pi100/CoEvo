@@ -56,4 +56,51 @@ class AuthClient {
     }
     return true; // Be lenient on network errors
   }
+
+  /// Create a trial account. Returns {user_id, token}.
+  Future<Map<String, dynamic>> trialStart() async {
+    final resp = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/api/trial/start'),
+      headers: {'Content-Type': 'application/json'},
+      body: '{}',
+    );
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    if (resp.statusCode != 200 || data.containsKey('error')) {
+      throw Exception(data['error'] ?? 'Trial start failed');
+    }
+    return data;
+  }
+
+  /// Claim a trial account. Returns {token}.
+  Future<Map<String, dynamic>> trialClaim(
+    String userId,
+    String token,
+    String username,
+    String password, {
+    String? realName,
+    String? phone,
+    String? referralCode,
+  }) async {
+    final body = <String, dynamic>{
+      'user_id': userId,
+      'username': username,
+      'password': password,
+    };
+    if (realName != null && realName.isNotEmpty) body['real_name'] = realName;
+    if (phone != null && phone.isNotEmpty) body['phone'] = phone;
+    if (referralCode != null && referralCode.isNotEmpty) body['referral_code'] = referralCode;
+    final resp = await http.put(
+      Uri.parse('${ApiConfig.baseUrl}/api/trial/claim'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(body),
+    );
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    if (resp.statusCode != 200 || data.containsKey('error')) {
+      throw Exception(data['error'] ?? 'Trial claim failed');
+    }
+    return data;
+  }
 }

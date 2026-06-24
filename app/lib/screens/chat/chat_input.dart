@@ -77,10 +77,14 @@ class _ChatInputState extends ConsumerState<ChatInput>
           window.__coeStream = stream;
           window.__coeProc = proc;
           window.__coeSource = source;
-        });
+        }).catch(function(e) { window.__coeLastError = e.message || '录音失败'; });
       };
 
       window.__coeStop = function(callback) {
+        if (!window.__coePcm || window.__coePcm.length === 0) {
+          callback('');
+          return;
+        }
         if (window.__coeStream) {
           window.__coeStream.getTracks().forEach(function(t) { t.stop(); });
         }
@@ -160,6 +164,7 @@ class _ChatInputState extends ConsumerState<ChatInput>
     setState(() {
       _voiceMode = false;
       _isRecording = false;
+      _isTranscribing = false;
     });
   }
 
@@ -168,6 +173,16 @@ class _ChatInputState extends ConsumerState<ChatInput>
       // ignore: deprecated_member_use
       js.context.callMethod('__coeStart');
       setState(() => _isRecording = true);
+      // 100ms 后检查录音是否正常启动
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (mounted) {
+        // ignore: deprecated_member_use
+        final lastError = js.context['__coeLastError'] as String?;
+        if (lastError != null && lastError.isNotEmpty) {
+          _showError('录音启动失败: $lastError');
+          _exitVoiceMode();
+        }
+      }
     } catch (e) {
       _showError('无法启动录音: $e');
       _exitVoiceMode();
@@ -237,7 +252,7 @@ class _ChatInputState extends ConsumerState<ChatInput>
             icon: _isTranscribing
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.keyboard, size: 22),
-            onPressed: (_isRecording || _isTranscribing) ? null : _exitVoiceMode,
+            onPressed: _isRecording ? null : _exitVoiceMode,
             padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
           ),
           const SizedBox(width: 8),
