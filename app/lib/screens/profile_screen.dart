@@ -159,8 +159,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _checkTrialClaim() async {
     final auth = ref.read(authProvider);
-    final userId = auth.userId ?? '';
-    if (!userId.startsWith('trial_')) return;
+    final trialCheck = auth.username ?? '';
+    if (!trialCheck.startsWith('trial_')) return;
 
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool('coevo_trial_claimed') == true) return;

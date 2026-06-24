@@ -193,8 +193,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Future<void> _maybeShowClaimDialog() async {
     // 只在 trial 账户且未认领时弹
     final auth = ref.read(authProvider);
-    final userId = auth.userId ?? '';
-    if (!userId.startsWith('trial_')) return;
+    final trialCheck = auth.username ?? '';
+    if (!trialCheck.startsWith('trial_')) return;
 
     final prefs = await SharedPreferences.getInstance();
     final isClaimed = prefs.getBool('coevo_trial_claimed') ?? false;
@@ -221,8 +221,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (_client == null || _claimDialogShown) return;
 
     final auth = ref.read(authProvider);
+    final trialCheck = auth.username ?? '';
     final userId = auth.userId ?? '';
-    if (!userId.startsWith('trial_')) {
+    if (!trialCheck.startsWith('trial_')) {
       _taskCheckTimer?.cancel();
       return;
     }
@@ -410,7 +411,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('账号已在其他设备登录，当前连接已断开')),
           );
-          context.go('/auth');
+          context.go('/');
         }
         break;
       case 'thinking':
@@ -456,7 +457,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('账号已在其他设备登录，请重新登录')),
             );
-            context.go('/auth');
+            context.go('/');
           }
           break;
         }

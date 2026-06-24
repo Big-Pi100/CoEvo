@@ -372,24 +372,26 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                       '${reviews > 0 ? '\n复习 $reviews 次' : ''}'
                       '${convs > 0 ? '\n$convs 轮对话' : ''}'
                       '${cardCount > 0 ? '\n$cardCount 张卡' : ''}',
-                  child: Container(
+                  child: SizedBox(
                     width: cellSize,
                     height: cellSize,
-                    alignment: Alignment.center,
-                    margin: const EdgeInsets.all(1),
-                    decoration: BoxDecoration(
-                      color: cellColor(score),
-                      borderRadius: BorderRadius.circular(4),
-                      border: isToday
-                          ? Border.all(color: theme.colorScheme.primary, width: 2)
-                          : null,
-                    ),
-                    child: Text('$day',
+                    child: Container(
+                      alignment: Alignment.center,
+                      margin: const EdgeInsets.all(1),
+                      decoration: BoxDecoration(
+                        color: cellColor(score),
+                        borderRadius: BorderRadius.circular(4),
+                        border: isToday
+                            ? Border.all(color: theme.colorScheme.primary, width: 2)
+                            : null,
+                      ),
+                      child: Text('$day',
                         style: TextStyle(
                           fontSize: fontSize,
                           fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
                           color: score == 0 ? _cs.onSurfaceVariant : _cs.onSurface,
                         )),
+                  ),
                   ),
                 );
               })),

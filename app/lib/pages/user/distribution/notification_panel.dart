@@ -394,14 +394,20 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
         child: _loading
             ? const SizedBox(height: 300, child: Center(child: CircularProgressIndicator()))
             : _posterPng != null
-                ? Column(
+                ? SingleChildScrollView(
+                    child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.memory(
-                          base64Decode(_posterPng!.split(',').last),
-                          fit: BoxFit.contain,
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxHeight: MediaQuery.of(context).size.height * 0.55,
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.memory(
+                            base64Decode(_posterPng!.split(',').last),
+                            fit: BoxFit.contain,
+                          ),
                         ),
                       ),
                       const SizedBox(height: AppTheme.spacingMd),
@@ -429,7 +435,8 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
                         child: const Text('关闭'),
                       ),
                     ],
-                  )
+                  ),
+                )
                 : Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
