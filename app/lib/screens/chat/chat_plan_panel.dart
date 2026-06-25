@@ -4,8 +4,10 @@ import '../../theme/app_theme.dart';
 /// 学习计划面板 — 可折叠的阶段/任务进度视图
 class ChatPlanPanel extends StatefulWidget {
   final Map<String, dynamic> plan;
+  /// 父级通过 push 此 notifier 来触发收起（如点击聊天区域）
+  final ValueNotifier<int>? collapseSignal;
 
-  const ChatPlanPanel({super.key, required this.plan});
+  const ChatPlanPanel({super.key, required this.plan, this.collapseSignal});
 
   @override
   State<ChatPlanPanel> createState() => _ChatPlanPanelState();
@@ -13,6 +15,24 @@ class ChatPlanPanel extends StatefulWidget {
 
 class _ChatPlanPanelState extends State<ChatPlanPanel> {
   bool _expanded = false; // 默认收起
+
+  @override
+  void initState() {
+    super.initState();
+    widget.collapseSignal?.addListener(_onCollapseSignal);
+  }
+
+  @override
+  void dispose() {
+    widget.collapseSignal?.removeListener(_onCollapseSignal);
+    super.dispose();
+  }
+
+  void _onCollapseSignal() {
+    if (_expanded && mounted) {
+      setState(() => _expanded = false);
+    }
+  }
 
   String _progressSummary(List<dynamic> stages) {
     int total = 0, done = 0;

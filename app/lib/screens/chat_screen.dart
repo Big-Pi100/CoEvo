@@ -48,6 +48,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isInitializing = true;
 
   // 学习计划 (现由 PlanProvider 管理)
+  final _planCollapseSignal = ValueNotifier<int>(0);
 
   // 订阅状态
   bool _subscriptionRequired = false;
@@ -777,16 +778,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
+      body: GestureDetector(
+        onTap: () => _planCollapseSignal.value++,
+        behavior: HitTestBehavior.translucent,
+        child: Column(
+          children: [
           // 学习计划面板（持久展示，不被对话推没）
           if (activePlan != null)
-            ChatPlanPanel(plan: {
-              'goal': activePlan.goal,
-              'plan': {'stages': activePlan.stages ?? []},
-              'conversation_id': activePlan.conversationId,
-              'card_count': activePlan.totalCards,
-            })
+            ChatPlanPanel(
+              plan: {
+                'goal': activePlan.goal,
+                'plan': {'stages': activePlan.stages ?? []},
+                'conversation_id': activePlan.conversationId,
+                'card_count': activePlan.totalCards,
+              },
+              collapseSignal: _planCollapseSignal,
+            )
           else if (planState.isLoading)
             // Plan 加载中
             const Padding(
@@ -883,8 +890,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildBubble(BuildContext context, bool isUser, bool isStreaming, Message msg) {
     if (isUser) {
