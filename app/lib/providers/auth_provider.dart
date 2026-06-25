@@ -168,6 +168,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         isLoading: false,
         error: _friendlyError(e.toString().replaceFirst('Exception: ', '')),
       );
+      rethrow;
     }
   }
 

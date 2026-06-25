@@ -520,7 +520,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   void _showSubscriptionDialog(String title) {
     if (!mounted) return;
-    // setState 已由调用方处理，此处只需显示弹窗
+    final auth = ref.read(authProvider);
+    final isTrial = (auth.username ?? '').startsWith('trial_');
+
+    // 临时账户 → 弹出注册弹窗
+    if (isTrial) {
+      _showTrialClaimDialog();
+      return;
+    }
+
+    // 正常账户 → 订阅面板
     // 使用微任务延迟到当前帧结束后再弹出，避免嵌套 setState 导致 context 失效
     Future.microtask(() {
       if (!mounted) return;
@@ -552,12 +561,63 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
+  void _showTrialClaimDialog() {
+    if (!mounted) return;
+    Future.microtask(() {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => const ClaimDialog(),
+      ).then((_) {
+        // 弹窗关闭后重置标志位，允许再次触发
+        if (mounted) setState(() => _subscriptionDialogShown = false);
+      });
+    });
+  }
+
   /// 订阅状态横幅（主动检查结果显示在聊天页顶部）
   Widget _buildSubscriptionBanner() {
     if (!_subscriptionChecked) return const SizedBox.shrink();
     if (!_subscriptionRequired && !_subscriptionExpired) return const SizedBox.shrink();
 
     final isExpired = _subscriptionExpired;
+    final auth = ref.read(authProvider);
+    final isTrial = (auth.username ?? '').startsWith('trial_');
+
+    // 临时账户 → 引导注册
+    if (isTrial) {
+      return Container(
+        margin: const EdgeInsets.fromLTRB(AppTheme.spacingMd, AppTheme.spacingSm, AppTheme.spacingMd, 0),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: _cs.primaryContainer,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _cs.primary),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.card_giftcard, size: 18, color: _cs.primary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: GestureDetector(
+                onTap: () => _showTrialClaimDialog(),
+                child: Text(
+                  '试用已到期，立即注册即可获得3天免费试用',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: _cs.primary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 正常账户 → 续费引导
     return Container(
       margin: const EdgeInsets.fromLTRB(AppTheme.spacingMd, AppTheme.spacingSm, AppTheme.spacingMd, 0),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
