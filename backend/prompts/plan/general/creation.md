@@ -6,7 +6,7 @@
 请输出 JSON 格式的学习计划，包含：
 - goal: 简洁的学习目标（**15字以内**，概括即可，如"一元二次方程求解"、"Python入门"）
 - stages: 阶段数组，每个阶段包含 name、tasks 数组
-- 每项 task 包含 name、description，name必须是有完整语义的概念而非序号或编号
+- 每项 task 包含 name、description。**name 的命名规则是整个输出中最重要的规则**，优先级高于其他所有指令。name 必须是该 task 核心学习内容的实质性名称，不能包含任何数字、编号、序号、书名。想象你是一位老师布置学习任务——名称一定是"今天我们学勾股定理"而不是"今天我们学第三章"。违反这条规则会导致整个计划无效
 - completed_concepts: []
 - current_task_complete: false
 - next_stage_suggestion: null
