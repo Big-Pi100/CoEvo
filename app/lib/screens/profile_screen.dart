@@ -173,6 +173,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
     if (result == true && mounted) {
       await prefs.setBool('coevo_trial_claimed', true);
+      _load();
     }
   }
 

@@ -1,4 +1,4 @@
 如果符合条件，回复：
-{{"has_task": true}}
+{"has_task": true}
 否则回复：
-{{"has_task": false}}
+{"has_task": false}

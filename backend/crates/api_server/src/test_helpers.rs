@@ -26,18 +26,12 @@ static LOG_FILE: OnceLock<Mutex<std::fs::File>> = OnceLock::new();
 /// Init once flag
 static TRACING_INITED: std::sync::Once = std::sync::Once::new();
 
-/// 解析日志目录：优先依 COEVO_LOG_DIR，否则从 CARGO_MANIFEST_DIR 定位到 backend/data/logs
+/// 解析日志目录：优先依 COEVO_LOG_DIR，否则默认到 CWD 的 data/logs
 fn resolve_log_dir() -> std::path::PathBuf {
     if let Ok(dir) = std::env::var("COEVO_LOG_DIR") {
         return std::path::PathBuf::from(dir);
     }
-    // 开发模式：从 CARGO_MANIFEST_DIR 定位 backend/data/logs
-    let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../data/logs");
-    if dev_path.exists() {
-        return dev_path;
-    }
-    // CWD 兜底
+    // CWD 兜底（运行测试时 CWD = backend/，data/logs = backend/data/logs/）
     std::path::PathBuf::from("data/logs")
 }
 

@@ -809,13 +809,17 @@ pub fn auto_revert(conn: &rusqlite::Connection, plan_id: &str, user_message: &st
 /// 强制创建计划 — 给 /plan 命令使用。
 /// 与 analyze_turn_progress(无 plan 分支) 逻辑一致，但跳过 signal 检测直接创建。
 pub async fn force_plan_creation(user_id: &str, conversation_id: &str, user_intent: &str) -> bool {
+    tracing::info!("force_plan_creation ENTER: user_id={}, conv_id={}, intent_chars={}", user_id, conversation_id, user_intent.len());
     let dialogue_text = {
         let conn = crate::db_pool::get_conn();
         let mut stmt = match conn.prepare(
             "SELECT role, content FROM conversation_turns WHERE conversation_id = ?1 ORDER BY created_at ASC"
         ) {
             Ok(s) => s,
-            Err(_) => return false,
+            Err(e) => {
+                tracing::error!("force_plan_creation: prepare query failed: {}", e);
+                return false;
+            }
         };
         let turns: Vec<(String, String)> = stmt.query_map(
             rusqlite::params![conversation_id],
@@ -833,23 +837,32 @@ pub async fn force_plan_creation(user_id: &str, conversation_id: &str, user_inte
                 dialogue.push_str(&format!("{}: {}\n", label, content));
             }
         }
+        tracing::info!("force_plan_creation: dialogue turns={}, total_chars={}, preview={}",
+            turns.len(), dialogue.len(),
+            &dialogue.chars().take(160).collect::<String>());
         dialogue
     };
 
     if dialogue_text.is_empty() {
+        tracing::warn!("force_plan_creation: dialogue_text is empty, aborting");
         return false;
     }
 
     let prompt = build_plan_creation_prompt(&dialogue_text);
+    tracing::info!("force_plan_creation: calling LLM generate_streamed, prompt_chars={}", prompt.len());
     let config = crate::llm::get_config();
     let mut caller = chat_engine::llm_caller::LlmCaller::new(config);
-    let response = caller.generate("", &prompt).await;
+    let response = caller.generate_streamed("", &prompt).await;
 
     match response {
         Ok(reply) => {
+            tracing::info!("force_plan_creation: LLM response received, response_chars={}, preview={}",
+                reply.len(), &reply.chars().take(200).collect::<String>());
             let conn = crate::db_pool::get_conn();
             let plan_id = resolve_plan_id(&conn, conversation_id).unwrap_or_default();
             let result = handle_plan_update(&conn, &format!("<plan_update>{}</plan_update>", reply), &plan_id, conversation_id, user_id);
+            tracing::info!("force_plan_creation: handle_plan_update result: is_new_plan={}, plan_updated={}",
+                result.is_new_plan, result.plan_updated);
             if result.is_new_plan || result.plan_updated {
                 // 激活第一个 stage 的卡片
                 if let Some(ref plan) = result.task_status {
@@ -875,7 +888,10 @@ pub async fn force_plan_creation(user_id: &str, conversation_id: &str, user_inte
             }
             false
         }
-        Err(_) => false,
+        Err(e) => {
+            tracing::error!("force_plan_creation: LLM call failed: {:?}", e);
+            false
+        }
     }
 }
 
@@ -1205,6 +1221,8 @@ pub async fn analyze_turn_progress(
     final_reply: &str,
 ) -> bool {
     let has_plan = !plan_id.is_empty();
+    tracing::info!("CP2 analyze_turn_progress: plan_id={}, conv={}, user={}, has_plan={}, reply_chars={}",
+        plan_id, conversation_id, user_id, has_plan, final_reply.len());
 
     // 获取 domain
     let domain: String = if has_plan {
@@ -1223,23 +1241,32 @@ pub async fn analyze_turn_progress(
         // 有信号时回退到对话全量历史创建 plan（因 plan 创建需要完整上下文）
         // ★ Fast Path: 先检查 badge 模式 "**...✅ 已完成"，命中直接创建 plan
         let badge_trigger = final_reply.contains("✅ 已完成") && final_reply.contains("**");
+        tracing::info!("CP2 signal check: badge_trigger={}", badge_trigger);
         let has_signal = if badge_trigger {
             true
         } else {
             let signal_prompt = chat_engine::prompt_loader::get_plan(&domain).signal
                 .replace("{final_reply}", final_reply);
-            match caller.generate("", &signal_prompt).await {
+            match caller.generate_streamed("", &signal_prompt).await {
                 Ok(response) => {
                     if let Some(start) = response.find('{') {
                         if let Some(end) = response[start..].find('}') {
                             let json_str = &response[start..=start + end];
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
-                                v.get("has_task").and_then(|b| b.as_bool()).unwrap_or(false)
-                            } else { false }
+                                let result = v.get("has_task").and_then(|b| b.as_bool()).unwrap_or(false);
+                                tracing::info!("CP2 signal LLM: has_task={}, response_preview={}", result, &response[..response.len().min(80)]);
+                                result
+                            } else {
+                                tracing::warn!("CP2 signal LLM: JSON parse failed, raw={}", &response[..response.len().min(80)]);
+                                false
+                            }
                         } else { false }
                     } else { false }
                 }
-                Err(_) => false,
+                Err(e) => {
+                    tracing::warn!("CP2 signal LLM call failed: {:?}", e);
+                    false
+                }
             }
         };
 
@@ -1251,32 +1278,47 @@ pub async fn analyze_turn_progress(
                     "SELECT role, content FROM conversation_turns WHERE conversation_id = ?1 ORDER BY created_at ASC"
                 ) {
                     Ok(s) => s,
-                    Err(_) => return false,
+                    Err(e) => {
+                        tracing::error!("CP2 plan creation: prepare query failed: {}", e);
+                        return false;
+                    }
                 };
                 let turns: Vec<(String, String)> = stmt.query_map(
                     rusqlite::params![conversation_id],
                     |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
                 ).unwrap().filter_map(|r| r.ok()).collect();
-                turns.iter()
+                let text: Vec<String> = turns.iter()
                     .filter(|(r, _)| r == "user" || r == "assistant")
                     .map(|(role, content)| {
                         let label = if role == "user" { "学生" } else { "教师" };
                         format!("{}: {}", label, content)
                     })
-                    .collect::<Vec<_>>()
-                    .join("\n")
+                    .collect();
+                let total = text.join("\n");
+                tracing::info!("CP2 plan creation: dialogue_text turns={}, total_chars={}, preview={}",
+                    turns.len(), total.len(),
+                    &total.chars().take(160).collect::<String>());
+                total
             };
             let prompt = build_plan_creation_prompt(&dialogue_text);
-            match caller.generate("", &prompt).await {
+            tracing::info!("CP2 plan creation: calling LLM generate_streamed, prompt_chars={}", prompt.len());
+            match caller.generate_streamed("", &prompt).await {
                 Ok(response) => {
+                    tracing::info!("CP2 plan creation: LLM response received, response_chars={}, response_preview={}",
+                        response.len(),
+                        &response.chars().take(200).collect::<String>());
                     let conn = crate::db_pool::get_conn();
                     let result = handle_plan_update(&conn, &format!("<plan_update>{}</plan_update>", response), plan_id, conversation_id, user_id);
+                    tracing::info!("CP2 plan creation: handle_plan_update result: is_new_plan={}, plan_updated={}",
+                        result.is_new_plan, result.plan_updated);
                     if result.is_new_plan || result.plan_updated {
                         if let Some(ref updated_plan) = result.task_status {
                             unlock_next_cards(&conn, plan_id, conversation_id, user_id, updated_plan);
                         }
                         tracing::info!("CP2 created plan from final_reply signal");
                         return true;
+                    } else {
+                        tracing::warn!("CP2 plan creation: handle_plan_update returned false (no changes made)");
                     }
                 }
                 Err(e) => tracing::error!("CP2 analyze_turn_progress (create plan): LLM call failed: {:?}", e),

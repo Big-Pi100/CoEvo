@@ -34,7 +34,7 @@ pub fn init_cache(conn: &rusqlite::Connection) -> Result<(), String> {
 /// 确保默认配置存在
 fn ensure_defaults(conn: &rusqlite::Connection) -> Result<(), String> {
     let defaults: &[(&str, &str, &str)] = &[
-        ("prompt.history_max_chars", "5000", "对话历史截断字数"),
+        ("prompt.history_max_chars", "20000", "对话历史截断字数"),
         ("prompt.history_max_turns", "10", "对话历史保留轮次"),
         ("prompt.concept_extract_max", "5", "概念提取最多数量"),
         ("debug_log.enabled", "true", "是否启用调试日志"),
@@ -42,7 +42,7 @@ fn ensure_defaults(conn: &rusqlite::Connection) -> Result<(), String> {
     ];
     for (key, value, desc) in defaults {
         conn.execute(
-            "INSERT OR IGNORE INTO app_config (key, value, description, updated_at) VALUES (?1, ?2, ?3, ?4)",
+            "INSERT OR REPLACE INTO app_config (key, value, description, updated_at) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![key, value, desc, chrono::Utc::now().timestamp()],
         ).map_err(|e| format!("插入默认配置 {} 失败: {}", key, e))?;
     }

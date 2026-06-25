@@ -24,14 +24,19 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
   bool _isLoadingActive = true;
   bool _isLoadingDeleted = false;
   bool _hasLoadedOnce = false;
+  bool _deletedLoadedOnce = false;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
-      if (!_tabController.indexIsChanging) {
-        setState(() {}); // 刷新 Tab 内容
+      if (!_tabController.indexIsChanging && _tabController.index == 1) {
+        // 切换到已删除 tab 时加载一次
+        if (!_deletedLoadedOnce) {
+          _deletedLoadedOnce = true;
+          _loadDeleted();
+        }
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadActive());
@@ -91,7 +96,8 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
     final resp = await client.deleteConversation(convId);
     if (resp != null) {
       _loadActive();
-      if (_tabController.index == 1) _loadDeleted();
+      // 重置已删除列表缓存，下次切到该 tab 时自动刷新
+      _deletedLoadedOnce = false;
     }
   }
 
@@ -100,7 +106,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
     final client = _makeClient();
     final ok = await client.restoreConversation(convId);
     if (ok) {
-      _loadDeleted();
+      _deletedLoadedOnce = false;
       _loadActive();
       _tabController.animateTo(0);
     }
@@ -154,7 +160,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
     if (confirmed == true && mounted) {
       final client = _makeClient();
       await client.permanentDeleteConversation(conv['id'] as String);
-      _loadDeleted();
+      _deletedLoadedOnce = false;
     }
   }
 
@@ -271,10 +277,6 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
   // ── 已删除列表（回收站） ──
 
   Widget _buildDeletedList() {
-    // 首次切换到已删除 Tab 时加载
-    if (_deletedConversations.isEmpty && !_isLoadingDeleted) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadDeleted());
-    }
     if (_isLoadingDeleted) {
       return const Center(child: CircularProgressIndicator());
     }

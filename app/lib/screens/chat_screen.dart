@@ -6,10 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
 import '../models/coevo_models.dart';
 import '../api/chat_client.dart';
-import '../api/api_config.dart';
 import '../providers/auth_provider.dart';
 import '../providers/achievement_notifier.dart';
 import '../services/tts_service.dart';
@@ -50,11 +48,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isInitializing = true;
 
   // 学习计划 (现由 PlanProvider 管理)
-
-  // 注册弹窗
-  Timer? _taskCheckTimer;
-  int _lastCheckedTaskCount = 0;
-  bool _claimDialogShown = false;
 
   // 订阅状态
   bool _subscriptionRequired = false;
@@ -183,8 +176,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     } finally {
       // 检查是否需要弹出注册弹窗
       if (mounted) _maybeShowClaimDialog();
-      // 启动 task 完成监听（仅 trial 未认领账户）
-      if (mounted) _startTaskCheckTimer();
       // 无论如何都要解除初始化状态，防止永久灰屏
       if (mounted) setState(() => _isInitializing = false);
     }
@@ -208,62 +199,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
     if (result == true && mounted) {
       await prefs.setBool('coevo_trial_claimed', true);
-    }
-  }
-
-  void _startTaskCheckTimer() {
-    _taskCheckTimer?.cancel();
-    _claimDialogShown = false;
-    _taskCheckTimer = Timer.periodic(const Duration(seconds: 30), (_) => _checkTaskProgress());
-  }
-
-  Future<void> _checkTaskProgress() async {
-    if (_client == null || _claimDialogShown) return;
-
-    final auth = ref.read(authProvider);
-    final trialCheck = auth.username ?? '';
-    final userId = auth.userId ?? '';
-    if (!trialCheck.startsWith('trial_')) {
-      _taskCheckTimer?.cancel();
-      return;
-    }
-
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('coevo_trial_claimed') == true) {
-      _taskCheckTimer?.cancel();
-      return;
-    }
-
-    try {
-      final resp = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}/api/user/$userId/progress/done-count'),
-        headers: {'Content-Type': 'application/json'},
-      );
-      if (resp.statusCode != 200) return;
-      final data = jsonDecode(resp.body) as Map<String, dynamic>;
-      final doneCount = data['count'] as int? ?? 0;
-
-      if (doneCount > _lastCheckedTaskCount && _lastCheckedTaskCount > 0) {
-        // 有新的已完成 task → 弹注册窗
-        _lastCheckedTaskCount = doneCount;
-        _claimDialogShown = true;
-        if (!mounted) return;
-        final result = await showDialog<bool>(
-          context: context,
-          barrierDismissible: true,
-          builder: (_) => const ClaimDialog(),
-        );
-        if (result == true && mounted) {
-          await prefs.setBool('coevo_trial_claimed', true);
-          _taskCheckTimer?.cancel();
-        } else {
-          _claimDialogShown = false;
-        }
-      } else if (doneCount > 0) {
-        _lastCheckedTaskCount = doneCount;
-      }
-    } catch (e) {
-      debugPrint('_checkTaskProgress: $e');
     }
   }
 
@@ -316,7 +251,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
-    _taskCheckTimer?.cancel();
     _sessionSub?.cancel();
     _session?.cancel();
     _messageController.dispose();
@@ -503,6 +437,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _loadPlan();
         // 通知复习页重新加载（CP2 创建新计划或解锁卡片后）
         ref.read(cardRefreshProvider.notifier).state++;
+        _maybeShowClaimDialog();  // 触发试用用户注册弹窗
         break;
       case 'tts_audio':
         // 收到 TTS 音频 → 缓存并检查自动播放开关

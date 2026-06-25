@@ -311,9 +311,9 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     }
                 };
 
-                // ── CP2 繁忙等待：仅在 CP2 正在运行时阻塞用户消息 ──
+                // ── CP2 繁忙等待：仅短暂等待 500ms，不让用户消息被长时间阻塞 ──
                 if cp2_busy.load(std::sync::atomic::Ordering::Acquire) {
-                    cp2_done.notified().await;
+                    tokio::time::timeout(Duration::from_millis(500), cp2_done.notified()).await.ok();
                 }
 
                 // ── 鉴权：首条消息必须携带有效 token ──
@@ -438,17 +438,24 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 let llm_config = crate::llm::get_config();
                 let (tx, mut rx) = mpsc::channel::<LlmEvent>(256);
 
-                // 加载最近 5 轮对话历史作为上下文
+                // 获取配置：历史截断参数
+                let max_turns: usize = crate::app_config_cache::get("prompt.history_max_turns").await
+                    .and_then(|v| v.parse().ok()).unwrap_or(10);
+                let max_chars: usize = crate::app_config_cache::get("prompt.history_max_chars").await
+                    .and_then(|v| v.parse().ok()).unwrap_or(20000);
+
+                // 加载对话历史作为上下文（SQL 取数上限 = max_turns + 1，防边界溢出）
                 let history = {
                     let conn = crate::db_pool::get_conn();
+                    let sql_limit = max_turns + 5; // 留余量，确保滑动窗口有足够数据
                     let mut stmt = conn.prepare(
                         "SELECT role, content FROM conversation_turns
                          WHERE conversation_id = ?1
-                         ORDER BY created_at DESC LIMIT 5"
+                         ORDER BY created_at DESC LIMIT ?2"
                     ).unwrap();
                     // 反转: 从旧到新
                     let mut turns: Vec<(String, String)> = stmt.query_map(
-                        rusqlite::params![chat_req.conversation_id],
+                        rusqlite::params![chat_req.conversation_id, sql_limit],
                         |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
                     ).unwrap().filter_map(|r| r.ok()).collect();
                     turns.reverse();
@@ -507,74 +514,65 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     })).await;
                 }
 
-                // ── 构建 user_content（对话历史 + 计划上下文 + 当前消息） ──
-                let mut user_content = String::new();
-                let mut history_section_length = 0usize;
-                let max_turns: usize = crate::app_config_cache::get("prompt.history_max_turns").await
-                    .and_then(|v| v.parse().ok()).unwrap_or(10);
-                let max_chars: usize = crate::app_config_cache::get("prompt.history_max_chars").await
-                    .and_then(|v| v.parse().ok()).unwrap_or(5000);
+                // ── 构建 messages（带 role 的对话历史，不再拼成单条 user 消息） ──
+                let mut history_turns: Vec<(String, String)> = Vec::new();
+                tracing::info!("HISTORY_DEBUG: history_len={}, max_turns={}, max_chars={}", history.len(), max_turns, max_chars);
                 if history.len() > 1 {
                     let context = &history[..history.len() - 1];
-                    // 滑动窗口: 保留最近 10 轮, 总长度 ≤5000 字, 不截断单条
-                    let mut lines: Vec<String> = Vec::new();
-                    let mut total = 0usize;
-                    let mut turns = 0usize;
-                    for (role, content) in context.iter().rev() {
-                        let label = if role == "user" { "用户" } else { "AI" };
-                        let line = format!("\n{}: {}", label, content);
-                        let next = total + line.len();
-                        if next > max_chars || turns >= max_turns { break; }
-                        total = next;
-                        turns += 1;
-                        lines.push(line);
+                    // 滑动窗口：计算总字数，从最旧的开始截断
+                    let total_chars: usize = context.iter().map(|(_, c)| c.len()).sum();
+                    let mut start = 0usize;
+                    let mut remaining = total_chars;
+                    while remaining > max_chars && start < context.len() {
+                        remaining -= context[start].1.len();
+                        start += 1;
                     }
-                    if !lines.is_empty() {
-                        lines.reverse();
-                        user_content.push_str("\n\n### 对话历史");
-                        for l in &lines {
-                            user_content.push_str(l);
-                            history_section_length += l.len();
-                        }
+                    // 同时受 max_turns 约束（保留最近的 N 条消息）
+                    let keep_from = std::cmp::max(start, context.len().saturating_sub(max_turns));
+                    tracing::info!("HISTORY_DEBUG: total={}, start={}, keep_from={}, keep={}/{}", 
+                        total_chars, start, keep_from, context.len() - keep_from, context.len());
+                    for i in keep_from..context.len() {
+                        history_turns.push(context[i].clone());
                     }
                 }
-                user_content.push_str(&format!("\n\n### 当前对话\n用户: {}", chat_req.message));
-                if !plan_context.is_empty() {
-                    user_content.push_str(&plan_context);
-                }
+                tracing::info!("HISTORY_DEBUG: history_turns_len={}, current_msg_len={}", history_turns.len(), chat_req.message.len());
+                let current_message = chat_req.message.clone();
 
-                // ── 调试日志：history_loaded + user_content_built ──
+                // ── 调试日志：history_loaded ──
                 if let Some(ref logger) = debug_logger {
                     let history_total_chars: usize = history.iter().map(|(_, c)| c.len()).sum();
                     let history_total_turns = history.len();
-                    let original_total_chars: usize = history.iter().map(|(_, c)| c.len()).sum();
                     let _ = logger.log("base", "history_loaded", json!({
                         "total_turns": history_total_turns,
                         "total_chars": history_total_chars,
-                        "original_chars": original_total_chars,
-                        "truncated_turns": history_total_turns > max_turns,
-                        "truncated_chars": history_total_chars > max_chars,
+                        "used_turns": history_turns.len(),
+                        "used_chars": history_turns.iter().map(|(_,c)| c.len()).sum::<usize>(),
                         "max_turns": max_turns,
                         "max_chars": max_chars,
                         "history": history.iter().map(|(r,c)| format!("{}: {}", r, c)).collect::<Vec<_>>(),
                     })).await;
                     let _ = logger.log("base", "user_content_built", json!({
-                        "content_length": user_content.len(),
                         "plan_context_length": plan_context.len(),
-                        "history_section_length": history_section_length,
-                        "text_preview": &user_content,
+                        "history_turns": history_turns.len(),
                     })).await;
                 }
 
                 // 记录 LLM 输入（供 e2e 测试捕获）
-                crate::plan_handler::log_llm_input(&system_prompt, &user_content);
+                let user_content_for_log = format!("history_turns={}, current={}",
+                    history_turns.len(), current_message);
+                crate::plan_handler::log_llm_input(&system_prompt, &user_content_for_log);
 
-                // 后台流式生成 LLM 回复
+                // 后台流式生成 LLM 回复（使用带角色历史的消息格式）
                 let cfg = llm_config.clone();
                 let tx2 = tx.clone();
+                let history_clone = history_turns.clone();
+                let plan_ctx = plan_context.clone();
+                let sp = system_prompt.clone();
                 tokio::spawn(async move {
                     let mut caller = LlmCaller::new(cfg);
-                    if let Err(e) = caller.stream_generate(&system_prompt, &user_content, tx2).await {
+                    if let Err(e) = caller.stream_generate_with_history(
+                        &sp, &history_clone, &current_message, &plan_ctx, tx2,
+                    ).await {
                         let _ = tx.send(LlmEvent::Done(format!("[LLM 暂时不可用: {}]", e))).await;
                     }
                 });
@@ -707,9 +705,13 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     }
                 });
 
-                // ⚡ 从 final_reply 中检测 **goal 标记 → 立即创建学习计划
-                // 每次 LLM 回复后检查，不依赖 CP2 的二次 LLM 调用
-                if !plan_updated && final_reply.contains("**goal") && final_reply.contains("✅ 已完成") {
+                // ⚡ 从 final_reply 中检测 **Goal学习计划创建✅ 已完成 标记 → 立即创建学习计划
+                // 阻塞是刻意的：CP2（第 1078 行）依赖 plan_id 来区分"创建"与"更新"，
+                // 如果这里不阻塞，CP2 也会尝试创建 plan，导致重复 LLM 调用。
+                // prompt 已改为鼓励 LLM 直接在回复中输出 <plan_update> 内联 JSON，
+                // handle_plan_update（第 634 行）会先解析，命中后 plan_updated=true，
+                // 此处的 force_plan_creation 仅作为兜底。
+                if !plan_updated && final_reply.to_lowercase().contains("**goal") && final_reply.contains("✅ 已完成") {
                     let conv_for_plan = chat_req.conversation_id.clone();
                     let uid = chat_req.user_id.clone();
                     let extra = "";
@@ -1094,9 +1096,16 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     tokio::spawn(async move {
                         let mut caller = chat_engine::llm_caller::LlmCaller::new(cfg);
                         tokio::time::sleep(Duration::from_millis(500)).await;
-                        let updated = crate::plan_handler::analyze_turn_progress(
-                            &cp2_plan_id, &conv_id, &uid, &mut caller, &reply,
-                        ).await;
+                        // 给 CP2 最多 300 秒（5分钟），超时后释放 busy 锁让用户继续发消息
+                        let updated = tokio::time::timeout(
+                            Duration::from_secs(300),
+                            crate::plan_handler::analyze_turn_progress(
+                                &cp2_plan_id, &conv_id, &uid, &mut caller, &reply,
+                            ),
+                        ).await.unwrap_or_else(|_| {
+                            tracing::warn!("CP2 timeout after 60s, releasing busy lock");
+                            false
+                        });
                         if updated {
                             let _ = cp2_notify.send(true).await;
                         }

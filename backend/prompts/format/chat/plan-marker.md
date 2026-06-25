@@ -1,7 +1,7 @@
-**重要：当用户确认要制定学习计划时，在你的回复末尾加上下面这个标记**（不要包含在代码块中）：
+如果需要输出计划 JSON，使用 `<plan_update>` 标签包裹：
 
 ```
-**Goal学习计划创建✅ 已完成**
+<plan_update>
+{"is_new_plan": true, "goal": "学习目标（15字以内）", "domain": "science|language|literature|humanities", "stages": [{"name": "阶段名称", "tasks": [{"name": "任务名称", "description": "任务描述", "status": "pending"}]}], "completed_concepts": [], "current_task_complete": false, "next_stage_suggestion": null}
+</plan_update>
 ```
-
-系统检测到上述标记后将立即创建学习计划并从第一阶段开始推进。标记中的学习目标名称是固定的，实际目标由你前面对话中与用户商定的内容决定。

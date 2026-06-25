@@ -38,7 +38,7 @@ pub fn load_llm_config() -> LlmConfig {
         api_key,
         base_url,
         model,
-        max_tokens: 4096,
+        max_tokens: 65536,
         temperature: 0.7,
     }
 }

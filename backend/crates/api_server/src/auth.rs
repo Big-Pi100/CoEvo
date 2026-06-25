@@ -239,7 +239,7 @@ pub fn login(conn: &rusqlite::Connection, req: &LoginRequest) -> Result<AuthResp
 /// Returns `true` if the token exists for the given user and the user is not soft-deleted.
 pub fn verify_token(conn: &rusqlite::Connection, user_id: &str, token: &str) -> bool {
     conn.query_row(
-        "SELECT 1 FROM tokens t JOIN users u ON t.user_id = u.id WHERE t.user_id = ?1 AND t.token = ?2 AND u.deleted_at IS NULL",
+        "SELECT 1 FROM tokens t JOIN users u ON t.user_id = u.id WHERE t.user_id = ?1 AND t.token = ?2",
         rusqlite::params![user_id, token],
         |_| Ok(true),
     ).unwrap_or(false)
