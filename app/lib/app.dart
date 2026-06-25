@@ -345,7 +345,7 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
     }
 
     return MaterialApp.router(
-      title: '刻意进化学习',
+      title: '刻意进化',
       debugShowCheckedModeBanner: false,
       theme: lightTheme,
       darkTheme: darkTheme,

@@ -136,11 +136,8 @@ impl LlmCaller {
 
     /// Non-streaming chat completion.
     ///
-    /// Single request with one retry on failure. Previously used a
-    /// `tokio::select!` race of two parallel requests — this was the
-    /// root cause of connection-pool corruption: the losing request's
-    /// connection was dropped mid-flight back into the reqwest pool,
-    /// poisoning it for all subsequent callers.
+    /// Single request with one retry on failure. Uses the default 30s
+    /// http_client — suitable for quick queries.
     pub async fn generate(&mut self, system_prompt: &str, user_content: &str) -> Result<String, LlmError> {
         let url = format!("{}/chat/completions", self.config.base_url);
         let body = build_request_body(&self.config, system_prompt, user_content);
@@ -166,6 +163,46 @@ impl LlmCaller {
         }
 
         *consecutive += 1;
+        Err(last_error)
+    }
+
+    /// Non-streaming chat completion with long timeout (300s).
+    ///
+    /// Uses `long_http_client()` for plan creation etc. where the LLM
+    /// needs significant time to generate long JSON output. Non-streaming
+    /// is faster than streaming for large outputs because the LLM
+    /// generates everything at once instead of token by token.
+    pub async fn generate_long(&mut self, system_prompt: &str, user_content: &str) -> Result<String, LlmError> {
+        let url = format!("{}/chat/completions", self.config.base_url);
+        let body = build_request_body(&self.config, system_prompt, user_content);
+        let consecutive = &mut self.consecutive_failures;
+
+        let start = std::time::Instant::now();
+        tracing::info!("generate_long ENTER: user_chars={}, max_tokens={}", user_content.len(), self.config.max_tokens);
+
+        let mut last_error = LlmError::EmptyResponse;
+        for attempt in 0..2 {
+            match post_one(long_http_client(), &url, &self.config.api_key, &body).await {
+                Ok(reply) => {
+                    *consecutive = 0;
+                    let elapsed = start.elapsed();
+                    tracing::info!("generate_long OK: elapsed={:?}, reply_chars={}, preview={}",
+                        elapsed, reply.len(), &reply.chars().take(200).collect::<String>());
+                    return Ok(reply);
+                }
+                Err(e) => {
+                    if attempt == 0 {
+                        tracing::warn!("LLM generate_long attempt 1 failed after {:?}: {:?}", start.elapsed(), e);
+                        let delay = std::cmp::min(250 * 2u64.pow(attempt as u32), 2000);
+                        tokio::time::sleep(Duration::from_millis(delay)).await;
+                    }
+                    last_error = e;
+                }
+            }
+        }
+
+        *consecutive += 1;
+        tracing::error!("generate_long FAILED after {:?}: {:?}", start.elapsed(), last_error);
         Err(last_error)
     }
 

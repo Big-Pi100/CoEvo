@@ -116,7 +116,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
               const SizedBox(height: 24),
               Text(
-                'CoEvo 刻意进化学习',
+                'CoEvo 刻意进化',
                 style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurfaceVariant.withAlpha(150)),
               ),
               const SizedBox(height: 8),
@@ -132,7 +132,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('刻意进化学习'),
+        title: const Text('刻意进化'),
         automaticallyImplyLeading: false,
         actions: [
           Badge(

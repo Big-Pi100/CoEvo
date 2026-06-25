@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../widgets/markdown_span_nodes.dart';
 import '../../services/tts_service.dart';
@@ -37,8 +38,40 @@ class ChatMessageBubble extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         content,
-        _buildTtsButton(context, _cleanText(text)),
+        Padding(
+          padding: const EdgeInsets.only(top: AppTheme.spacingXs),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _buildTtsButton(context, _cleanText(text)),
+              const SizedBox(width: 8),
+              _buildCopyButton(context, _cleanText(text)),
+            ],
+          ),
+        ),
       ],
+    );
+  }
+
+  Widget _buildCopyButton(BuildContext context, String cleanText) {
+    return GestureDetector(
+      onTap: () {
+        Clipboard.setData(ClipboardData(text: cleanText));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('已复制到剪贴板'),
+            duration: const Duration(seconds: 1),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(bottom: 60, left: 16, right: 16),
+          ),
+        );
+      },
+      child: Icon(
+        Icons.copy_rounded,
+        size: 16,
+        color: Theme.of(context).colorScheme.onSecondaryContainer.withAlpha(120),
+      ),
     );
   }
 

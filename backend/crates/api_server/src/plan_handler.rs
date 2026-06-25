@@ -849,10 +849,10 @@ pub async fn force_plan_creation(user_id: &str, conversation_id: &str, user_inte
     }
 
     let prompt = build_plan_creation_prompt(&dialogue_text);
-    tracing::info!("force_plan_creation: calling LLM generate_streamed, prompt_chars={}", prompt.len());
+    tracing::info!("force_plan_creation: calling LLM generate_long, prompt_chars={}", prompt.len());
     let config = crate::llm::get_config();
     let mut caller = chat_engine::llm_caller::LlmCaller::new(config);
-    let response = caller.generate_streamed("", &prompt).await;
+    let response = caller.generate_long("", &prompt).await;
 
     match response {
         Ok(reply) => {
@@ -1301,8 +1301,8 @@ pub async fn analyze_turn_progress(
                 total
             };
             let prompt = build_plan_creation_prompt(&dialogue_text);
-            tracing::info!("CP2 plan creation: calling LLM generate_streamed, prompt_chars={}", prompt.len());
-            match caller.generate_streamed("", &prompt).await {
+            tracing::info!("CP2 plan creation: calling LLM generate_long, prompt_chars={}", prompt.len());
+            match caller.generate_long("", &prompt).await {
                 Ok(response) => {
                     tracing::info!("CP2 plan creation: LLM response received, response_chars={}, response_preview={}",
                         response.len(),
