@@ -163,7 +163,7 @@ fn build_ws_url(config: &TtsConfig, text: &str, voice_type: Option<i32>, speed: 
         url_param_str, encoded_sig
     );
 
-    tracing::debug!("TTS WS URL (param_str): {}", &param_str[..param_str.len().min(200)]);
+    tracing::debug!("TTS WS URL (param_str): {}", &param_str.chars().take(200).collect::<String>());
     tracing::debug!("TTS signature: {}", signature);
 
     Ok(url)

@@ -14,6 +14,7 @@ import '../api/chat_client.dart';
 import '../api/api_config.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../providers/auth_provider.dart';
+import '../providers/subscription_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/tts_service.dart';
 import '../widgets/order_history.dart';
@@ -47,9 +48,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _isUploading = false;
   ProviderSubscription? _authSub;
   int _unreadCount = 0;
-
-  // 订阅状态
-  String? _subscriptionExpires;  // ISO 8601 或 null（未激活）
 
   // 推广码
   String? _referralCode;
@@ -140,7 +138,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (mounted) {
         setState(() {
           _data = data;
-          _subscriptionExpires = data['subscription_expires'] as String?;
           _ttsEngine = serverPrefs['tts_engine'] ?? 'native';
           _ttsVoiceType = int.tryParse(serverPrefs['tts_voice_type'] ?? '') ?? 0;
           _ttsSpeed = double.tryParse(serverPrefs['tts_speed'] ?? '') ?? 0.0;
@@ -1098,9 +1095,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   // ── 订阅状态卡片
   Widget _buildSubscriptionCard() {
-    final expiresStr = _subscriptionExpires;
+    final sub = ref.watch(subscriptionProvider);
+    final expiresStr = sub.expiresAt;
     final bool isActivated = expiresStr != null && expiresStr.isNotEmpty;
-    final bool isExpired = isActivated && DateTime.tryParse(expiresStr)?.isBefore(DateTime.now()) == true;
+    final bool isExpired = sub.isExpired;
 
     String statusText;
     Color statusColor;

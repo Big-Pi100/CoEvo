@@ -117,6 +117,8 @@ pub async fn admin_login(Json(input): Json<AdminLoginInput>) -> impl IntoRespons
     let r: Option<(String,String,String,String)> = c.query_row("SELECT id,role,status,password_hash FROM admin_users WHERE username=?1", rusqlite::params![input.username], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).ok();
     match r {
         Some((id,role,status,hash)) => {
+            let hash_prefix = if hash.len() > 12 { &hash[..12] } else { &hash };
+            tracing::info!("admin_login: id={}, role={}, status={}, hash_prefix={}", id, role, status, hash_prefix);
             if status == "active" && bcrypt::verify(&input.password, &hash).unwrap_or(false) {
                 ok(serde_json::json!({"token":hash,"role":role,"admin_id":id}))
             } else if status == "active" {
@@ -162,8 +164,8 @@ pub async fn admin_users_handler(headers: HeaderMap, Query(query): Query<AdminUs
         where_parts.push("u.deleted_at IS NULL".to_string());
     }
     if !query.q.is_empty() {
-        let p = format!("%{}%", query.q);
-        where_parts.push(format!("(u.id LIKE '{}' OR u.username LIKE '{}' OR u.display_name LIKE '{}')", p, p, p));
+        let p = query.q.replace('\'', "''");
+        where_parts.push(format!("(u.id LIKE '%{}%' OR u.username LIKE '%{}%' OR u.display_name LIKE '%{}%')", p, p, p));
     }
     let where_clause = if where_parts.is_empty() { String::new() } else { format!("WHERE {}", where_parts.join(" AND ")) };
 
@@ -381,9 +383,46 @@ pub async fn admin_reveal_phone(headers: HeaderMap, Path(uid): Path<String>, Que
     }
 }
 
+/// 天数增量延期：读取当前到期日，从原值或今天累加天数，写入 DB
+fn apply_days_extension(c: &rusqlite::Connection, uid: &str, days: i64) -> Result<String, String> {
+    let current: String = c.query_row(
+        "SELECT COALESCE(subscription_expires,'') FROM users WHERE id=?1",
+        rusqlite::params![uid], |row| row.get(0)
+    ).unwrap_or_default();
+
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let base = if current.is_empty() || current.as_str() < today.as_str() {
+        today.clone()
+    } else {
+        current.clone()
+    };
+    let base_date = chrono::NaiveDate::parse_from_str(&base, "%Y-%m-%d")
+        .unwrap_or_else(|_| chrono::Utc::now().date_naive());
+    let new_date = base_date + chrono::Duration::days(days);
+    let new_expires = new_date.format("%Y-%m-%d").to_string();
+
+    c.execute("UPDATE users SET subscription_expires=?1 WHERE id=?2",
+        rusqlite::params![new_expires, uid])
+        .map_err(|e| format!("db_update: {e}"))?;
+    Ok(new_expires)
+}
+
 // ── Set Subscription ──
 // Super: direct apply. Service: creates pending request.
 #[derive(Deserialize)] pub struct SetSubInput { pub subscription_expires: String, pub days: Option<i64> }
+
+/// 验证并规范化到期日期字符串，返回 %Y-%m-%d 格式或 None
+fn normalize_expires(input: &str) -> Option<String> {
+    // 支持 YYYY-MM-DD 和 YYYY-MM-DDThh:mm:ssZ
+    if input.len() == 10 && input.as_bytes().get(4) == Some(&b'-') {
+        return Some(input.to_string());
+    }
+    chrono::NaiveDateTime::parse_from_str(input, "%Y-%m-%dT%H:%M:%S")
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(input, "%Y-%m-%dT%H:%M:%SZ"))
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(input, "%Y-%m-%d %H:%M:%S"))
+        .ok()
+        .map(|dt| dt.format("%Y-%m-%d").to_string())
+}
 
 fn has_permission(admin_id: &str, perm_key: &str) -> bool {
     let perms_str: Option<String> = conn().query_row("SELECT permissions FROM admin_users WHERE id=?1", rusqlite::params![admin_id], |row| row.get(0)).ok().flatten();
@@ -392,23 +431,44 @@ fn has_permission(admin_id: &str, perm_key: &str) -> bool {
 }
 
 pub async fn admin_set_subscription(headers: HeaderMap, Path(uid): Path<String>, Json(input): Json<SetSubInput>) -> impl IntoResponse {
-    tracing::info!("admin_set_subscription: user_id={}, expires={:?}", uid, input.subscription_expires);
+    tracing::info!("admin_set_subscription: user_id={}", uid);
     let (admin_id, role) = guard!(&headers);
     if role != "super" && role != "service" { return err(StatusCode::FORBIDDEN, "forbidden"); }
     // service with permission applies directly like super
     let can_direct = role == "super" || (role == "service" && has_permission(&admin_id, "set_expiry"));
     if role == "service" && !has_permission(&admin_id, "set_expiry") { return err(StatusCode::FORBIDDEN, "no_permission"); }
+
     let c = conn(); let now = chrono::Utc::now().timestamp();
+
     if can_direct {
-        // Direct apply
-        let _ = c.execute("UPDATE users SET subscription_expires=?1 WHERE id=?2", rusqlite::params![input.subscription_expires, uid]);
+        // 有 days 参数 → 走增量累加（安全路径）
+        if let Some(days) = input.days {
+            if days > 0 {
+                match apply_days_extension(&c, &uid, days) {
+                    Ok(new_expires) => {
+                        let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'set_subscription',?3,?4,?5)",
+                            rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"days":days,"expires":new_expires}).to_string(), now]);
+                        return ok(serde_json::json!({"status":"ok","expires":new_expires}));
+                    }
+                    Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("extend_failed: {e}")),
+                }
+            }
+        }
+
+        // 无 days 参数 → 校验格式后直接设值（覆盖模式）
+        let normalized = normalize_expires(&input.subscription_expires);
+        let normalized = match normalized {
+            Some(d) => d,
+            None => return err(StatusCode::BAD_REQUEST, "invalid_date_format"),
+        };
+        let _ = c.execute("UPDATE users SET subscription_expires=?1 WHERE id=?2", rusqlite::params![normalized, uid]);
         let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'set_subscription',?3,?4,?5)",
-            rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"expires":input.subscription_expires}).to_string(), now]);
+            rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"expires":normalized}).to_string(), now]);
         ok(serde_json::json!({"status":"ok"}))
     } else {
         // Create pending request
         let req_id = uuid::Uuid::new_v4().to_string();
-        let pkg = "custom"; // custom expiry via set
+        let pkg = "custom";
         let _ = c.execute("INSERT INTO subscription_requests (id,target_user_id,requested_by,package,channel,note,status,requested_at) VALUES (?1,?2,?3,?4,'admin',?5,'pending',?6)",
             rusqlite::params![req_id, uid, admin_id, pkg, serde_json::json!({"expires":input.subscription_expires}).to_string(), now]);
         ok(serde_json::json!({"request_id":req_id,"status":"pending"}))
@@ -417,36 +477,57 @@ pub async fn admin_set_subscription(headers: HeaderMap, Path(uid): Path<String>,
 
 // ── Quick extend (creates request for non-super) ──
 pub async fn admin_quick_extend(headers: HeaderMap, Path(uid): Path<String>, Json(input): Json<SetSubInput>) -> impl IntoResponse {
-    tracing::info!("admin_quick_extend: user_id={}, expires={:?}", uid, input.subscription_expires);
+    tracing::info!("admin_quick_extend: user_id={}, days={:?}", uid, input.days);
     let (admin_id, role) = guard!(&headers);
     if role != "super" && role != "service" { return err(StatusCode::FORBIDDEN, "forbidden"); }
-    if role == "service" {
-        let days = input.days.unwrap_or(7);
+
+    let c = conn(); let now = chrono::Utc::now().timestamp();
+
+    // 有 days 参数 → 后端算到期日（增量累加，避免前端计算错误）
+    if let Some(days) = input.days {
+        if days <= 0 { return err(StatusCode::BAD_REQUEST, "days_must_be_positive"); }
+
+        if role == "super" {
+            match apply_days_extension(&c, &uid, days) {
+                Ok(new_expires) => {
+                    let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'quick_extend',?3,?4,?5)",
+                        rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"days":days,"expires":new_expires}).to_string(), now]);
+                    return ok(serde_json::json!({"status":"ok","expires":new_expires}));
+                }
+                Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("extend_failed: {e}")),
+            }
+        }
+
+        // service: check permission by day range
         let perm_key = match days { 1..=7 => "extend_7d", 8..=30 => "extend_30d", _ => "extend_365d" };
         if has_permission(&admin_id, perm_key) {
-            // Has permission — direct apply like super
-            let c = conn(); let now = chrono::Utc::now().timestamp();
-            let _ = c.execute("UPDATE users SET subscription_expires=?1 WHERE id=?2", rusqlite::params![input.subscription_expires, uid]);
-            let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'quick_extend',?3,?4,?5)",
-                rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"expires":input.subscription_expires,"days":days}).to_string(), now]);
-            return ok(serde_json::json!({"status":"ok"}));
+            match apply_days_extension(&c, &uid, days) {
+                Ok(new_expires) => {
+                    let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'quick_extend',?3,?4,?5)",
+                        rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"days":days,"expires":new_expires}).to_string(), now]);
+                    return ok(serde_json::json!({"status":"ok","expires":new_expires}));
+                }
+                Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("extend_failed: {e}")),
+            }
         }
-    }
-    // Fallback: service without permission → create pending request
-    let c = conn(); let now = chrono::Utc::now().timestamp();
-    if role == "service" {
-        let days = input.days.unwrap_or(7);
+
+        // service without permission: create pending request
         let pkg = format!("{}d", days);
         let req_id = uuid::Uuid::new_v4().to_string();
         let _ = c.execute("INSERT INTO subscription_requests (id,target_user_id,requested_by,package,channel,note,status,requested_at) VALUES (?1,?2,?3,?4,'admin',?5,'pending',?6)",
-            rusqlite::params![req_id, uid, admin_id, pkg, serde_json::json!({"expires":input.subscription_expires}).to_string(), now]);
+            rusqlite::params![req_id, uid, admin_id, pkg, serde_json::json!({"days":days}).to_string(), now]);
+        let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'quick_extend_pending',?3,?4,?5)",
+            rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"days":days}).to_string(), now]);
         return ok(serde_json::json!({"request_id":req_id,"status":"pending"}));
     }
-    // Super: direct extend
-    let _ = c.execute("UPDATE users SET subscription_expires=?1 WHERE id=?2", rusqlite::params![input.subscription_expires, uid]);
-    let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'quick_extend',?3,?4,?5)",
-        rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"expires":input.subscription_expires,"days":input.days}).to_string(), now]);
-    ok(serde_json::json!({"status":"ok"}))
+
+    // 无 days 参数 → 降级：转为 pending request，让有权限的人审批
+    let req_id = uuid::Uuid::new_v4().to_string();
+    let _ = c.execute("INSERT INTO subscription_requests (id,target_user_id,requested_by,package,channel,note,status,requested_at) VALUES (?1,?2,?3,?4,'admin',?5,'pending',?6)",
+        rusqlite::params![req_id, uid, admin_id, "custom", serde_json::json!({"expires":input.subscription_expires}).to_string(), now]);
+    let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'quick_extend_pending',?3,?4,?5)",
+        rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"expires":input.subscription_expires}).to_string(), now]);
+    ok(serde_json::json!({"request_id":req_id,"status":"pending"}))
 }
 
 #[derive(Deserialize)] pub struct CreateSubReqInput { pub target_user_id: String, pub package: String, pub channel: Option<String>, pub note: Option<String> }
@@ -470,7 +551,7 @@ pub async fn admin_batch_subscription(headers: HeaderMap, Json(input): Json<Batc
     for uid in &input.user_ids {
         let current: String = c.query_row("SELECT COALESCE(subscription_expires,'') FROM users WHERE id=?1", rusqlite::params![uid], |row| row.get(0)).unwrap_or_default();
         let new_exp = if current.is_empty() { (chrono::Utc::now()+chrono::Duration::days(input.days)).format("%Y-%m-%d").to_string() }
-            else { (chrono::DateTime::parse_from_rfc3339(&current).unwrap()+chrono::Duration::days(input.days)).format("%Y-%m-%d").to_string() };
+            else { (chrono::NaiveDate::parse_from_str(&current, "%Y-%m-%d").unwrap_or_else(|_| chrono::Utc::now().date_naive())+chrono::Duration::days(input.days)).format("%Y-%m-%d").to_string() };
         let _ = c.execute("UPDATE users SET subscription_expires=?1 WHERE id=?2", rusqlite::params![new_exp, uid]);
     }
     let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'batch_set_subscription',?3,?4,?5)",

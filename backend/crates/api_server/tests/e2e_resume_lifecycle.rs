@@ -163,7 +163,7 @@ async fn e2e_resume_lifecycle() {
     for c in &conversations {
         let cid = c["id"].as_str().unwrap_or("");
         let turns = c["turn_count"].as_u64().unwrap_or(0);
-        println!("    conv={}, turn_count={}", &cid[..cid.len().min(36)], turns);
+        println!("    conv={}, turn_count={}", &cid.chars().take(36).collect::<String>(), turns);
     }
 
     // ── Step 4: 对每个对话重建连接验证 ──

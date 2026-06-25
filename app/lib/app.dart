@@ -23,6 +23,7 @@ import 'pages/user/distribution/team_page.dart';
 import 'pages/user/distribution/withdraw_page.dart';
 import 'pages/user/distribution/notification_panel.dart';
 import 'providers/auth_provider.dart';
+import 'providers/subscription_provider.dart';
 import 'providers/theme_provider.dart';
 import 'widgets/achievement_overlay.dart';
 import 'widgets/subscribe_panel.dart';
@@ -245,16 +246,13 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
         return;
     }
 
-    http.get(
-      Uri.parse('${ApiConfig.baseUrl}/api/user/${auth.userId}/subscription'),
-      headers: {'Content-Type': 'application/json'},
-    ).then((resp) {
-      if (resp.statusCode != 200) return;
-      final data = jsonDecode(resp.body) as Map<String, dynamic>;
-      if (data['expired'] == true && mounted && !_showSubExpired) {
+    ref.fetchSubscription().then((_) {
+      // provider 状态更新后，检查是否需要弹出覆盖层
+      final sub = ref.read(subscriptionProvider);
+      if (sub.isExpired && mounted && !_showSubExpired) {
         setState(() => _showSubExpired = true);
       }
-    }).catchError((_) {});
+    });
   }
 
   Widget _buildSubExpiredOverlay() {

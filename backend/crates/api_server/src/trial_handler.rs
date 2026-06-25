@@ -39,21 +39,6 @@ pub async fn start(
         .unwrap_or("")
         .to_string();
 
-    if !client_ip.is_empty() {
-        let today_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM trial_ip_log WHERE ip = ?1 AND date(created_at) = date('now')",
-            rusqlite::params![client_ip],
-            |row| row.get(0),
-        ).unwrap_or(0);
-
-        if today_count >= 3 {
-            return (StatusCode::TOO_MANY_REQUESTS, Json(json!({
-                "error": "daily_limit_reached",
-                "message": "今日创建临时账户次数已达上限"
-            }))).into_response();
-        }
-    }
-
     let uid = Uuid::new_v4().to_string();
     let short_id = &uid[..8];
     let trial_username = format!("trial_{}", short_id);
@@ -62,6 +47,28 @@ pub async fn start(
     // 不可登录密码（防止 login 入口异常）
     let password_hash = bcrypt::hash(format!("trial_no_login_{}", uid), 4)
         .unwrap_or_default();
+
+    // 事务包裹：IP 限频检测 + users + tokens + IP 日志原子写入
+    if let Err(e) = conn.execute_batch("BEGIN") {
+        tracing::error!("trial/start begin tx failed: {}", e);
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "create_failed"}))).into_response();
+    }
+
+    // ── IP 防滥用检测（在事务内执行，防止 TOCTOU）──
+    if !client_ip.is_empty() {
+        let today_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM trial_ip_log WHERE ip = ?1 AND date(created_at) = date('now')",
+            rusqlite::params![client_ip],
+            |row| row.get(0),
+        ).unwrap_or(0);
+        if today_count >= 3 {
+            conn.execute_batch("ROLLBACK").ok();
+            return (StatusCode::TOO_MANY_REQUESTS, Json(json!({
+                "error": "daily_limit_reached",
+                "message": "今日创建临时账户次数已达上限"
+            }))).into_response();
+        }
+    }
 
     // 5 分钟试用订阅（测试用）
     let now = chrono::Utc::now();
@@ -75,6 +82,7 @@ pub async fn start(
         rusqlite::params![uid, trial_username, password_hash, referral_code, expires, created_at],
     ) {
         tracing::error!("trial/start insert user failed: {}", e);
+        conn.execute_batch("ROLLBACK").ok();
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "create_user_failed"}))).into_response();
     }
 
@@ -86,6 +94,7 @@ pub async fn start(
         rusqlite::params![token_id, uid, token, created_at],
     ) {
         tracing::error!("trial/start insert token failed: {}", e);
+        conn.execute_batch("ROLLBACK").ok();
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "create_token_failed"}))).into_response();
     }
 
@@ -99,6 +108,8 @@ pub async fn start(
     }
 
     tracing::info!("trial/start: user_id={}, username={}", uid, trial_username);
+
+    conn.execute_batch("COMMIT").ok();
 
     (StatusCode::OK, Json(json!({
         "user_id": uid,

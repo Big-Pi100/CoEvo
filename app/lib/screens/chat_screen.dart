@@ -14,6 +14,7 @@ import '../services/tts_service.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/subscribe_panel.dart';
 import '../widgets/claim_dialog.dart';
+import '../providers/subscription_provider.dart';
 import 'chat/chat_concept_dialog.dart';
 import 'chat/chat_input.dart';
 import 'chat/chat_plan_panel.dart';
@@ -51,9 +52,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _planCollapseSignal = ValueNotifier<int>(0);
 
   // 订阅状态
-  bool _subscriptionRequired = false;
-  bool _subscriptionExpired = false;
-  bool _subscriptionChecked = false;
   bool _subscriptionDialogShown = false;
 
   // 对话删除状态
@@ -209,44 +207,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _checkSubscription() async {
-    if (_client == null) return;
-    try {
-      final prefs = await _client!.getPreferences();
-      final expiresStr = prefs['subscription_expires'];
-      if (expiresStr == null || expiresStr.isEmpty) {
-        if (mounted) {
-          setState(() {
-            _subscriptionRequired = true;
-            _subscriptionExpired = false;
-            _subscriptionChecked = true;
-          });
-        }
-        return;
-      }
-      final expires = DateTime.tryParse(expiresStr);
-      if (expires == null) {
-        if (mounted) {
-          setState(() {
-            _subscriptionRequired = true;
-            _subscriptionExpired = false;
-            _subscriptionChecked = true;
-          });
-        }
-        return;
-      }
-      final now = DateTime.now();
-      if (mounted) {
-        setState(() {
-          _subscriptionExpired = now.isAfter(expires);
-          _subscriptionRequired = false;
-          _subscriptionChecked = true;
-        });
-      }
-    } catch (e) {
-      // 网络错误等，不阻断使用
-      debugPrint('ChatScreen._checkSubscription: $e');
-      if (mounted) setState(() => _subscriptionChecked = true);
-    }
+    await ref.fetchSubscription();
+    // provider 状态已更新，后续 build 通过 ref.watch 自动响应
   }
 
 
@@ -397,10 +359,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           break;
         }
         if (event.content == 'subscription_expired') {
+          ref.read(subscriptionProvider.notifier).setExpired();
           setState(() {
-            _subscriptionExpired = true;
-            _subscriptionRequired = false;
-            _subscriptionChecked = true;
             _isWaiting = false;
           });
           // 清理空的 AI 气泡
@@ -414,10 +374,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             _showSubscriptionDialog('订阅已到期');
           }
         } else if (event.content == 'subscription_required') {
+          ref.read(subscriptionProvider.notifier).setRequired();
           setState(() {
-            _subscriptionRequired = true;
-            _subscriptionExpired = false;
-            _subscriptionChecked = true;
             _isWaiting = false;
           });
           // 清理空的 AI 气泡
@@ -578,10 +536,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   /// 订阅状态横幅（主动检查结果显示在聊天页顶部）
   Widget _buildSubscriptionBanner() {
-    if (!_subscriptionChecked) return const SizedBox.shrink();
-    if (!_subscriptionRequired && !_subscriptionExpired) return const SizedBox.shrink();
+    final subStatus = ref.watch(subscriptionProvider);
+    if (!subStatus.isChecked) return const SizedBox.shrink();
+    if (!subStatus.isRequired && !subStatus.isExpired) return const SizedBox.shrink();
 
-    final isExpired = _subscriptionExpired;
+    final isExpired = subStatus.isExpired;
     final auth = ref.read(authProvider);
     final isTrial = (auth.username ?? '').startsWith('trial_');
 

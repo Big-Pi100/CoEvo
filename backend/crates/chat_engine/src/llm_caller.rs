@@ -377,6 +377,22 @@ impl LlmCaller {
             }
         }
 
+        // 处理缓冲区剩余数据（不以 \n\n 结尾的不完整帧）
+        if !buffer.is_empty() {
+            let line = String::from_utf8_lossy(&buffer);
+            for ln in line.lines() {
+                if let Some(data) = ln.strip_prefix("data: ") {
+                    if data.trim() == "[DONE]" { break; }
+                    if let Ok(parsed) = serde_json::from_str::<Value>(data) {
+                        if let Some(c) = parsed["choices"][0]["delta"]["content"].as_str() {
+                            full_text.push_str(c);
+                            let _ = tx.send(LlmEvent::Token(c.to_string())).await;
+                        }
+                    }
+                }
+            }
+        }
+
         let elapsed = start.elapsed();
         tracing::info!("LLM SSE stream done: elapsed={:?}, chunks={}, frames={}, full_text={}chars, final_buffer={}B",
             elapsed, chunk_count, frame_count, full_text.len(), buffer.len());

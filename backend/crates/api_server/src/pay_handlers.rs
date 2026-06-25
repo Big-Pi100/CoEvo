@@ -275,7 +275,7 @@ pub fn distribute_commission_on_payment(
 ) -> Result<(), String> {
     // 查订单和推荐人
     let (buyer_id, referrer_id): (String, Option<String>) = conn.query_row(
-        "SELECT user_id, referred_by FROM payment_orders WHERE id = ?1",
+        "SELECT po.user_id, u.referred_by FROM payment_orders po JOIN users u ON po.user_id = u.id WHERE po.id = ?1",
         rusqlite::params![order_id],
         |row| Ok((row.get(0)?, row.get(1)?)),
     ).map_err(|e| format!("订单查询失败: {}", e))?;
@@ -431,23 +431,47 @@ pub async fn order_status_handler(
             match crate::wechat_pay::query_order_status(config, &order_id).await {
                 Ok(wechat_status) => {
                     if wechat_status == "SUCCESS" {
-                        // 微信已支付，同步更新本地
+                        // 微信已支付，同步更新本地（条件更新，防止竞态翻倍）
                         let paid_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-                        let _ = conn.execute(
+                        let updated = conn.execute(
                             "UPDATE payment_orders SET status='SUCCESS', paid_at=?1 WHERE id=?2 AND status='NOTPAY'",
                             rusqlite::params![paid_at, order_id],
-                        );
-                        order_json["status"] = json!("SUCCESS");
-                        order_json["paid_at"] = json!(paid_at);
+                        ).unwrap_or(0);
+                        if updated == 0 {
+                            // 另一个请求已处理，跳过
+                            // 重新查最新状态
+                            if let Ok(new_order) = conn.query_row(
+                                "SELECT id, user_id, plan_id, amount, status, transaction_id, paid_at, created_at
+                                 FROM payment_orders WHERE id = ?1",
+                                rusqlite::params![order_id],
+                                |row| {
+                                    Ok(json!({
+                                        "id": row.get::<_, String>(0)?,
+                                        "user_id": row.get::<_, String>(1)?,
+                                        "plan_id": row.get::<_, String>(2)?,
+                                        "amount": row.get::<_, i64>(3)?,
+                                        "status": row.get::<_, String>(4)?,
+                                        "transaction_id": row.get::<_, Option<String>>(5)?,
+                                        "paid_at": row.get::<_, Option<String>>(6)?,
+                                        "created_at": row.get::<_, String>(7)?,
+                                    }))
+                                },
+                            ) {
+                                order_json = new_order;
+                            }
+                        } else {
+                            order_json["status"] = json!("SUCCESS");
+                            order_json["paid_at"] = json!(paid_at);
 
-                        // 延期订阅
-                        let user_id = order_json["user_id"].as_str().unwrap_or("");
-                        let plan_id = order_json["plan_id"].as_str().unwrap_or("");
-                        if !user_id.is_empty() && !plan_id.is_empty() {
-                            let _ = subscription::extend_subscription(
-                                &conn, user_id, plan_id,
-                                None, Some(&order_id), Some("微信支付"),
-                            );
+                            // 延期订阅（仅在本次成功更新时执行）
+                            let user_id = order_json["user_id"].as_str().unwrap_or("");
+                            let plan_id = order_json["plan_id"].as_str().unwrap_or("");
+                            if !user_id.is_empty() && !plan_id.is_empty() {
+                                let _ = subscription::extend_subscription(
+                                    &conn, user_id, plan_id,
+                                    None, Some(&order_id), Some("微信支付"),
+                                );
+                            }
                         }
                     } else if wechat_status == "CLOSED" || wechat_status == "REVOKED" {
                         let _ = conn.execute(

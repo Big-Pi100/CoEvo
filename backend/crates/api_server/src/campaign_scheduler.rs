@@ -218,16 +218,31 @@ fn execute_cron_pushes(conn: &rusqlite::Connection) -> Result<usize, String> {
                 ) {
                     if let Ok(rows) = all_stmt.query_map([], |row| row.get::<_, String>(0)) {
                         for rid in rows.filter_map(|r| r.ok()) {
-                            let _ = crate::campaign_executor::write_notification(
-                                conn, &rid, "campaign", &title, &body, Some(&format!("/share?campaign_id={}", id)),
-                            );
+                            // 幂等性检查：同一活动同一用户 60 秒内不重复推送
+                            let recent: bool = conn.query_row(
+                                "SELECT COUNT(*) FROM user_notifications WHERE user_id=?1 AND title=?2 AND created_at > datetime('now', '-60 seconds')",
+                                rusqlite::params![&rid, &title],
+                                |r| r.get::<_, i64>(0),
+                            ).unwrap_or(0) > 0;
+                            if !recent {
+                                let _ = crate::campaign_executor::write_notification(
+                                    conn, &rid, "campaign", &title, &body, Some(&format!("/share?campaign_id={}", id)),
+                                );
+                            }
                         }
                     }
                 }
             } else {
-                let _ = crate::campaign_executor::write_notification(
-                    conn, uid, "campaign", &title, &body, Some(&format!("/share?campaign_id={}", id)),
-                );
+                let recent: bool = conn.query_row(
+                    "SELECT COUNT(*) FROM user_notifications WHERE user_id=?1 AND title=?2 AND created_at > datetime('now', '-60 seconds')",
+                    rusqlite::params![uid, &title],
+                    |r| r.get::<_, i64>(0),
+                ).unwrap_or(0) > 0;
+                if !recent {
+                    let _ = crate::campaign_executor::write_notification(
+                        conn, uid, "campaign", &title, &body, Some(&format!("/share?campaign_id={}", id)),
+                    );
+                }
             }
             pushed += 1;
         }

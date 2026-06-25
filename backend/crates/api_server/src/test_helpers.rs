@@ -89,7 +89,7 @@ pub async fn body_json(resp: reqwest::Response) -> Value {
     let val: Value = match serde_json::from_str(&text) {
         Ok(v) => v,
         Err(e) => {
-            let preview = &text[..text.len().min(500)];
+            let preview: String = text.chars().take(500).collect();
             panic!(
                 "[body_json] HTTP {} response is not valid JSON.\nError: {}\nBody preview (500 chars):\n{}",
                 status, e, preview
@@ -101,7 +101,7 @@ pub async fn body_json(resp: reqwest::Response) -> Value {
         eprintln!(
             "[body_json] HTTP {} body (first 300): {}",
             status,
-            &text[..text.len().min(300)]
+            &text.chars().take(300).collect::<String>()
         );
     }
 
@@ -123,7 +123,7 @@ pub async fn body_json_or(resp: reqwest::Response, default: Value) -> Value {
                 "[body_json_or] HTTP {} parse failed (using default): {}\nbody: {}",
                 status,
                 e,
-                &text[..text.len().min(200)]
+                &text.chars().take(200).collect::<String>()
             );
             return default;
         }
@@ -133,7 +133,7 @@ pub async fn body_json_or(resp: reqwest::Response, default: Value) -> Value {
         eprintln!(
             "[body_json_or] HTTP {} body (first 200): {}",
             status,
-            &text[..text.len().min(200)]
+            &text.chars().take(200).collect::<String>()
         );
     }
 

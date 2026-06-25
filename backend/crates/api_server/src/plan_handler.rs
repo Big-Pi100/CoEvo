@@ -140,7 +140,7 @@ pub fn handle_plan_update(
                             Err(e2) => {
                                 tracing::error!(
                                     "Plan JSON parse failed after repair. Original: {}. Repaired: {}. JSON (first 300): {}...",
-                                    e, e2, &json_str[..json_str.len().min(300)]
+                                    e, e2, &json_str.chars().take(300).collect::<String>()
                                 );
                                 None
                             }
@@ -1254,10 +1254,10 @@ pub async fn analyze_turn_progress(
                             let json_str = &response[start..=start + end];
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
                                 let result = v.get("has_task").and_then(|b| b.as_bool()).unwrap_or(false);
-                                tracing::info!("CP2 signal LLM: has_task={}, response_preview={}", result, &response[..response.len().min(80)]);
+                                tracing::info!("CP2 signal LLM: has_task={}, response_preview={}", result, &response.chars().take(80).collect::<String>());
                                 result
                             } else {
-                                tracing::warn!("CP2 signal LLM: JSON parse failed, raw={}", &response[..response.len().min(80)]);
+                                tracing::warn!("CP2 signal LLM: JSON parse failed, raw={}", &response.chars().take(80).collect::<String>());
                                 false
                             }
                         } else { false }

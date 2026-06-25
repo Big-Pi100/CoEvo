@@ -950,12 +950,29 @@ pub async fn handle_ws(mut ws: WebSocket) {
                                 // 无 plan_run 时创建临时记录（CP1 场景）
                                 let tmp_id = uuid::Uuid::new_v4().to_string();
                                 let now = chrono::Utc::now().timestamp();
-                                let _ = conn.execute(
-                                    "INSERT INTO plan_runs (id, user_id, conversation_id, domain, created_at, updated_at)
-                                     VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-                                    rusqlite::params![tmp_id, user_id, conv_id_cp1, ed, now],
-                                );
-                                (tmp_id, String::new())
+                                // 先检查是否有其他请求已创建（竞态防护）
+                                let existing: Option<String> = conn.query_row(
+                                    "SELECT id FROM plan_runs WHERE conversation_id=?1 LIMIT 1",
+                                    rusqlite::params![conv_id_cp1],
+                                    |r| r.get(0),
+                                ).ok();
+                                let plan_id = match existing {
+                                    Some(pid) => pid,
+                                    None => {
+                                        let _ = conn.execute(
+                                            "INSERT OR IGNORE INTO plan_runs (id, user_id, conversation_id, domain, created_at, updated_at)
+                                             VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+                                            rusqlite::params![tmp_id, user_id, conv_id_cp1, ed, now],
+                                        );
+                                        // 再查一次（可能被其他并发 INSERT 抢写）
+                                        conn.query_row(
+                                            "SELECT id FROM plan_runs WHERE conversation_id=?1 LIMIT 1",
+                                            rusqlite::params![conv_id_cp1],
+                                            |r| r.get(0),
+                                        ).unwrap_or(tmp_id)
+                                    }
+                                };
+                                (plan_id, String::new())
                             }
                         };
                         // 开启事务：确保 user_cards + 子表 + card_memory 原子写入

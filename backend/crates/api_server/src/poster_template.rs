@@ -261,7 +261,7 @@ pub async fn generate_template_via_llm(
         .to_string();
 
     // 调试：记录原始回复
-    tracing::warn!("LLM raw reply (first 500c): {}", &reply[..reply.len().min(500)]);
+    tracing::warn!("LLM raw reply (first 500c): {}", &reply.chars().take(500).collect::<String>());
 
     // 提取 SVG 代码（去除可能的 markdown 包裹）
     let mut svg = reply.trim().to_string();

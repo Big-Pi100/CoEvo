@@ -417,6 +417,7 @@ CREATE TABLE IF NOT EXISTS reward_fulfillments (
 CREATE INDEX IF NOT EXISTS idx_fulfillment_campaign ON reward_fulfillments(campaign_id, trigger_event);
 CREATE INDEX IF NOT EXISTS idx_fulfillment_conversion ON reward_fulfillments(referral_click_id);
 CREATE INDEX IF NOT EXISTS idx_fulfillment_order ON reward_fulfillments(order_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fulfillment_unique ON reward_fulfillments(campaign_id, user_id, trigger_event, party, reward_type);
 "#;
 
 /// 管理端表（管理员、订阅审计、监护人、K12题库等）

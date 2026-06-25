@@ -149,7 +149,7 @@ pub fn parse_candidates(text: &str) -> Vec<ConceptCandidate> {
         }
     } else {
         tracing::info!("[CP1] parse_candidates: no JSON array found, preview={}",
-            &text[..text.len().min(100)]);
+            &text.chars().take(100).collect::<String>());
         None
     };
 

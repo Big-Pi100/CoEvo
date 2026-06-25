@@ -192,6 +192,24 @@ pub fn extend_subscription(
     order_id: Option<&str>,
     note: Option<&str>,
 ) -> Result<String> {
+    // 幂等性检查：同一 order_id 只处理一次
+    if let Some(oid) = order_id {
+        let already_done: bool = conn.query_row(
+            "SELECT COUNT(*) FROM subscription_audit_log WHERE action='pay' AND order_id=?1",
+            params![oid],
+            |row| row.get::<_, i64>(0),
+        ).unwrap_or(0) > 0;
+        if already_done {
+            // 查询已写入的到期日
+            let expires = conn.query_row(
+                "SELECT subscription_expires FROM users WHERE id=?1",
+                params![user_id],
+                |row| row.get::<_, String>(0),
+            ).unwrap_or_default();
+            return Ok(expires);
+        }
+    }
+
     // 从 DB 查套餐时长和价格
     let (duration_days, price) = conn.query_row(
         "SELECT duration_days, price FROM subscription_plans WHERE id = ?1",

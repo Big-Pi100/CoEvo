@@ -1837,10 +1837,14 @@ fn compute_progress(def: &shared_types::growth::AchievementDef, ctx: &shared_typ
 // ── Display Name ──
 
 async fn update_display_name_handler(
+    headers: HeaderMap,
     Path(user_id): Path<String>,
     Json(input): Json<serde_json::Value>,
 ) -> Json<serde_json::Value> {
     tracing::info!("update_display_name_handler: user_id={}", user_id);
+    if crate::auth_middleware::verify_auth(&user_id, &headers).is_err() {
+        return Json(serde_json::json!({"error": "unauthorized"}));
+    }
 
     let conn = crate::db_pool::get_conn();
     let name = input.get("display_name").and_then(|v| v.as_str()).unwrap_or("");
@@ -2073,23 +2077,14 @@ async fn preferences_put_handler(
     let now = chrono::Utc::now().timestamp();
     for (key, value) in &input {
         if key == "subscription_expires" {
-            // subscription_expires 已迁移到 users 表
-            let normalized = if value.len() == 10 && value.as_bytes().get(4) == Some(&b'-') {
-                format!("{}T00:00:00Z", value)
-            } else {
-                value.clone()
-            };
-            let _ = conn.execute(
-                "UPDATE users SET subscription_expires = ?1 WHERE id = ?2",
-                rusqlite::params![normalized, user_id],
-            );
-        } else {
-            let _ = conn.execute(
+            // 拒绝普通用户自设订阅到期时间，应通过管理员后台或支付流程处理
+            continue;
+        }
+        let _ = conn.execute(
                 "INSERT INTO user_preferences (user_id, key, value, updated_at) VALUES (?1, ?2, ?3, ?4)
                  ON CONFLICT(user_id, key) DO UPDATE SET value = ?3, updated_at = ?4",
                 rusqlite::params![user_id, key, value, now],
             );
-        }
     }
     Json(serde_json::json!({"status": "ok"}))
 }
@@ -2107,10 +2102,14 @@ fn avatar_dir() -> &'static str {
 }
 
 async fn avatar_upload_handler(
+    headers: HeaderMap,
     Path(user_id): Path<String>,
     mut multipart: axum::extract::Multipart,
 ) -> Json<serde_json::Value> {
     tracing::info!("avatar_upload_handler: user_id={}", user_id);
+    if crate::auth_middleware::verify_auth(&user_id, &headers).is_err() {
+        return Json(serde_json::json!({"error": "unauthorized"}));
+    }
 
     use tokio::io::AsyncWriteExt;
     let _ = tokio::fs::create_dir_all(avatar_dir()).await;
@@ -2152,6 +2151,7 @@ async fn avatar_get_handler(
 // ════════════════════════════════════════════
 
 async fn plans_list_handler(
+    headers: HeaderMap,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Json<serde_json::Value> {
     tracing::info!("plans_list_handler ENTER");
@@ -2161,6 +2161,9 @@ async fn plans_list_handler(
     let (sql, param_val): (&str, String) = if let Some(conv_id) = params.get("conversation_id") {
         ("SELECT id, conversation_id, goal, subject, grade_band, domain, plan_content, created_at, updated_at FROM plan_runs WHERE conversation_id = ?1 ORDER BY created_at DESC", conv_id.clone())
     } else if let Some(uid) = params.get("user_id") {
+        if crate::auth_middleware::verify_auth(uid, &headers).is_err() {
+            return Json(serde_json::json!({"error": "unauthorized"}));
+        }
         ("SELECT id, conversation_id, goal, subject, grade_band, domain, plan_content, created_at, updated_at FROM plan_runs WHERE user_id = ?1 ORDER BY created_at DESC", uid.clone())
     } else {
         return Json(serde_json::json!({"error": "user_id or conversation_id required"}));
@@ -2248,9 +2251,13 @@ async fn plans_list_handler(
 // ════════════════════════════════════════════
 
 async fn learning_report_handler(
+    headers: HeaderMap,
     Path(user_id): Path<String>,
 ) -> Json<serde_json::Value> {
     tracing::info!("learning_report_handler: user_id={}", user_id);
+    if crate::auth_middleware::verify_auth(&user_id, &headers).is_err() {
+        return Json(serde_json::json!({"error": "unauthorized"}));
+    }
 
     let conn = crate::db_pool::get_conn();
 
@@ -2400,10 +2407,14 @@ fn compute_plan_totals(plan_content_str: &str, task_status: &serde_json::Value) 
 
 
 async fn activity_handler(
+    headers: HeaderMap,
     Path(user_id): Path<String>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Json<serde_json::Value> {
     tracing::info!("activity_handler: user_id={}", user_id);
+    if crate::auth_middleware::verify_auth(&user_id, &headers).is_err() {
+        return Json(serde_json::json!({"error": "unauthorized"}));
+    }
 
     let conn = crate::db_pool::get_conn();
     let days: i64 = params.get("days").and_then(|v| v.parse().ok()).unwrap_or(90);
@@ -2471,9 +2482,13 @@ async fn activity_handler(
 // ════════════════════════════════════════════
 
 async fn weekly_report_handler(
+    headers: HeaderMap,
     Path(user_id): Path<String>,
 ) -> Json<serde_json::Value> {
     tracing::info!("weekly_report_handler: user_id={}", user_id);
+    if crate::auth_middleware::verify_auth(&user_id, &headers).is_err() {
+        return Json(serde_json::json!({"error": "unauthorized"}));
+    }
 
     let conn = crate::db_pool::get_conn();
     let week_ago = (chrono::Utc::now() - chrono::Duration::days(7)).to_rfc3339();
