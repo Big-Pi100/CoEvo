@@ -115,6 +115,7 @@ pub async fn mark_read_all(
 pub struct CalculateRequest {
     pub user_id: String,
     pub plan_id: String,
+    pub campaign_id: String,  // 活动 ID，由前端根据参与关系传入
 }
 
 /// POST /api/pay/calculate — 计算折后价
@@ -139,67 +140,24 @@ pub async fn calculate(
         Err(_) => return err(StatusCode::NOT_FOUND, "plan_not_found"),
     };
 
-    // 2. 查用户是否有推荐人
-    let referred_by: Option<String> = conn.query_row(
-        "SELECT referred_by FROM users WHERE id = ?1",
-        rusqlite::params![body.user_id], |row| row.get(0),
-    ).ok().flatten();
-
-    let referrer_id = match referred_by {
-        Some(ref id) if !id.is_empty() => id.clone(),
-        _ => {
-            // 无推荐人，原价
-            return ok(json!({
-                "original_price": original_price,
-                "discounted_price": original_price,
-                "campaign_id": null,
-                "discount_note": "无可用折扣",
-            }));
-        }
-    };
-
-    // 3. 查推荐人是否有效
-    let referrer_active: bool = conn.query_row(
-        "SELECT deleted_at FROM users WHERE id = ?1",
-        rusqlite::params![referrer_id], |row| row.get::<_, Option<String>>(0),
-    ).ok().flatten().is_none();
-
-    if !referrer_active {
-        return ok(json!({
-            "original_price": original_price,
-            "discounted_price": original_price,
-            "campaign_id": null,
-            "discount_note": "推荐人已失效",
-        }));
-    }
-
-    // 4. 查推荐人参与的最新有效活动
+    // 2. 查指定活动是否有效
     let campaign = conn.query_row(
         "SELECT id, rewards FROM marketing_campaigns \
-         WHERE status = 'active' \
+         WHERE id = ?1 AND status = 'active' \
          AND (valid_from IS NULL OR valid_from <= datetime('now')) \
-         AND (valid_until IS NULL OR valid_until > datetime('now')) \
-         AND id IN (SELECT DISTINCT campaign_id FROM referral_clicks WHERE referrer_id = ?1) \
-         ORDER BY created_at DESC LIMIT 1",
-        rusqlite::params![referrer_id],
-        |row| {
-            let cid: String = row.get(0)?;
-            let rewards_str: String = row.get(1)?;
-            Ok((cid, rewards_str))
-        },
+         AND (valid_until IS NULL OR valid_until > datetime('now'))",
+        rusqlite::params![body.campaign_id],
+        |row| { Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)) },
     );
 
     let (campaign_id, rewards_str) = match campaign {
         Ok(c) => c,
-        Err(_) => {
-            // 无有效活动
-            return ok(json!({
-                "original_price": original_price,
-                "discounted_price": original_price,
-                "campaign_id": null,
-                "discount_note": "无有效推广活动",
-            }));
-        }
+        Err(_) => return ok(json!({
+            "original_price": original_price,
+            "discounted_price": original_price,
+            "campaign_id": null,
+            "discount_note": "活动已过期或不存在",
+        })),
     };
 
     // 5. 解析 rewards JSON 寻找 discount
@@ -210,8 +168,8 @@ pub async fn calculate(
         for reward in &rewards {
             let rtype = reward["type"].as_str().unwrap_or("");
             let party = reward["party"].as_str().unwrap_or("");
-            // 只对购买者（self = 新用户自己）生效的折扣
-            if party != "self" {
+            // 只对推广员（self=推荐人）或全员（all=拼团）关联的折扣生效
+            if party != "self" && party != "all" {
                 continue;
             }
             match rtype {

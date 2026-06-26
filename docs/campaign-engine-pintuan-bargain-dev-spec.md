@@ -110,13 +110,22 @@ WHERE cm.user_id = 'user_A' AND mc.valid_until > datetime('now');
 
 | 改动 | 文件 | 行数 | 说明 |
 |------|------|------|------|
-| 建表 DDL | `schema.rs` | 10 行 | `campaign_members` 表 |
-| 入会 API | 新增 `campaign_handler.rs` 或 `referral_handler.rs` | ~30 行 | 用户通过链接进入时 INSERT campaign_members |
-| 支付传折后价 | `pay_handlers.rs` | +2 行 | `native_pay_handler` 接受 `actual_price` 参数 |
-| campaign 统计 | `campaign_handler.rs::stats` | +10 行 | 查询成员数、已支付人数 |
-| **后端合计** | | **~50 行** | |
+| 建表 DDL | `schema.rs` | 10 行 | `campaign_members` 表 + 2 索引 |
+| `all` party 支持 | `campaign_executor.rs` | ~20 行 | party `"all"` = 发奖给活动所有成员（从 `campaign_members` 查） |
+| 入会 API | `campaign_member_handler.rs` | ~30 行 | 已实现，`POST /api/campaign/join`，幂等写入 |
+| 支付传折后价 | `pay_handlers.rs` | +5 行 | `native_pay_handler` 接受 `actual_price` 参数，覆盖 `plan.price` |
+| campaign 统计 | `campaign_handler.rs::stats` | +15 行 | 新增 `member_count` + `paid_count` |
+| **后端合计** | | **~75 行** | |
 
-### 4.2 管理端配置
+### 4.2 前端改动
+
+| 改动 | 文件 | 说明 |
+|------|------|------|
+| `campaign_type` 下拉 | `admin_campaign_form.dart` | 改为 `distribution`（分销）/ `team_discount`（拼团）/ `bargain`（砍价），去掉旧分类 |
+| `party` 下拉 | `admin_campaign_form.dart` | 新增 `all`（所有人），改 `self` 为 `推广员` |
+| 类型展示 | `admin_campaign_detail.dart` | 新增 `_campaignTypeLabel` 中文映射，`_rewardPartyLabel` 更新标签 |
+
+### 4.3 管理端配置
 
 拼团活动的 `campaign_type` = `team_discount`，砍价活动的 `campaign_type` = `bargain`，配置参数通过 `rewards` JSON 控制：
 
@@ -126,7 +135,7 @@ WHERE cm.user_id = 'user_A' AND mc.valid_until > datetime('now');
   "name": "3 人拼团 — 月度会员",
   "campaign_type": "team_discount",
   "rewards": [
-    {"type": "discount_pct", "party": "self", "trigger": "payment", "value": 50},
+    {"type": "discount_pct", "party": "all", "trigger": "payment", "value": 50},
     {"type": "commission_pct", "party": "self", "trigger": "payment", "value": 0.08}
   ],
   "trigger_event": "payment",
@@ -136,7 +145,7 @@ WHERE cm.user_id = 'user_A' AND mc.valid_until > datetime('now');
 }
 ```
 
-`discount_pct: 50` = 5 折。团长额外佣金通过 `commission_pct` 拿。
+`party: "all"` = 奖励发送给活动所有参与者（从 `campaign_members` 表查询），`discount_pct: 50` = 5 折。团长额外佣金通过 `commission_pct` + `party: "self"` 拿（self = 推广员即团长）。
 
 **砍价活动示例：**
 ```json
@@ -144,7 +153,7 @@ WHERE cm.user_id = 'user_A' AND mc.valid_until > datetime('now');
   "name": "砍价 — 月度会员体验",
   "campaign_type": "bargain",
   "rewards": [
-    {"type": "discount_fix", "party": "self", "trigger": "payment", "value": 500}
+    {"type": "discount_fix", "party": "all", "trigger": "payment", "value": 500}
   ],
   "trigger_event": "payment",
   "per_user_limit": 10,

@@ -46,99 +46,116 @@ pub fn execute_campaign_trigger(
             }
 
             // 确定目标用户
-            let target_user_id = match party {
+            // party: "self" = 推广员（推荐人/上级），"inviter" = 被邀请人（买家/新用户），
+            //         "all" = 活动所有参与者（拼团/砍价等共同活动）
+            let target_users: Vec<String> = match party {
                 "self" => match referrer_id {
-                    Some(rid) => rid.to_string(),
+                    Some(rid) => vec![rid.to_string()],
                     None => continue, // 无推荐人，跳过
                 },
-                "inviter" => user_id.to_string(),
+                "inviter" => vec![user_id.to_string()],
+                "all" => {
+                    // 查活动所有参与者
+                    let mut stmt = match conn.prepare(
+                        "SELECT user_id FROM campaign_members WHERE campaign_id = ?1"
+                    ) {
+                        Ok(s) => s,
+                        Err(_) => continue,
+                    };
+                    let users: Vec<String> = stmt.query_map(
+                        rusqlite::params![campaign_id], |row| row.get(0)
+                    ).ok().map(|rows| rows.filter_map(|r| r.ok()).collect()).unwrap_or_default();
+                    if users.is_empty() { continue; }
+                    users
+                }
                 _ => continue, // 未知 party
             };
 
-            // 幂等检查：同一用户同一活动同一奖励只发一次
-            let already_fulfilled = check_idempotent(
-                conn, campaign_id, &target_user_id, trigger_event, party, rtype,
-            )
-            .unwrap_or(false);
-            if already_fulfilled {
-                tracing::debug!(
-                    "idempotent skip: campaign={}, user={}, type={}, party={}",
-                    campaign_id,
-                    target_user_id,
-                    rtype,
-                    party
-                );
-                continue;
-            }
+            for target_user_id in &target_users {
+                // 幂等检查：同一用户同一活动同一奖励只发一次
+                let already_fulfilled = check_idempotent(
+                    conn, campaign_id, target_user_id, trigger_event, party, rtype,
+                )
+                .unwrap_or(false);
+                if already_fulfilled {
+                    tracing::debug!(
+                        "idempotent skip: campaign={}, user={}, type={}, party={}",
+                        campaign_id,
+                        target_user_id,
+                        rtype,
+                        party
+                    );
+                    continue;
+                }
 
-            // 频率检查：读取 reward.freq（always / daily / hourly / weekly / monthly）
-            let freq = reward["freq"].as_str().unwrap_or("always");
-            if freq != "always" {
-                let now = chrono::Utc::now();
-                let window_start = match freq {
-                    "daily" => now.format("%Y-%m-%d").to_string(),
-                    "hourly" => now.format("%Y-%m-%d %H:00:00").to_string(),
-                    "weekly" => {
-                        // 本周一 00:00
-                        let days_since_monday = now.format("%u").to_string().parse::<i64>().unwrap_or(0) - 1;
-                        (now - chrono::Duration::days(days_since_monday)).format("%Y-%m-%d").to_string()
+                // 频率检查：读取 reward.freq（always / daily / hourly / weekly / monthly）
+                let freq = reward["freq"].as_str().unwrap_or("always");
+                if freq != "always" {
+                    let now = chrono::Utc::now();
+                    let window_start = match freq {
+                        "daily" => now.format("%Y-%m-%d").to_string(),
+                        "hourly" => now.format("%Y-%m-%d %H:00:00").to_string(),
+                        "weekly" => {
+                            let days_since_monday = now.format("%u").to_string().parse::<i64>().unwrap_or(0) - 1;
+                            (now - chrono::Duration::days(days_since_monday)).format("%Y-%m-%d").to_string()
+                        }
+                        "monthly" => now.format("%Y-%m-01").to_string(),
+                        _ => String::new(),
+                    };
+                    if !window_start.is_empty() {
+                        let recent_count: i64 = conn.query_row(
+                            "SELECT COUNT(*) FROM reward_fulfillments \
+                             WHERE campaign_id=?1 AND user_id=?2 AND trigger_event=?3 AND reward_type=?4 \
+                             AND created_at >= ?5",
+                            rusqlite::params![campaign_id, target_user_id, trigger_event, rtype, window_start],
+                            |row| row.get(0),
+                        ).unwrap_or(0);
+                        if recent_count > 0 {
+                            tracing::debug!(
+                                "freq skip: campaign={}, user={}, type={}, party={}, freq={}",
+                                campaign_id, target_user_id, rtype, party, freq,
+                            );
+                            continue;
+                        }
                     }
-                    "monthly" => now.format("%Y-%m-01").to_string(),
-                    _ => String::new(),
-                };
-                if !window_start.is_empty() {
-                    let recent_count: i64 = conn.query_row(
-                        "SELECT COUNT(*) FROM reward_fulfillments \
-                         WHERE campaign_id=?1 AND user_id=?2 AND trigger_event=?3 AND reward_type=?4 \
-                         AND created_at >= ?5",
-                        rusqlite::params![campaign_id, &target_user_id, trigger_event, rtype, window_start],
-                        |row| row.get(0),
-                    ).unwrap_or(0);
-                    if recent_count > 0 {
-                        tracing::debug!(
-                            "freq skip: campaign={}, user={}, type={}, party={}, freq={}",
-                            campaign_id, target_user_id, rtype, party, freq,
+                }
+
+                // ── 分发逻辑 ──
+                match rtype {
+                    "subscription_days" => {
+                        handle_subscription_days(
+                            conn, campaign_id, campaign_name, target_user_id, party,
+                            value, trigger_event, order_id, &mut fulfillment_ids,
                         );
-                        continue;
+                    }
+                    "commission_pct" => {
+                        handle_commission_pct(
+                            conn, campaign_id, campaign_name, user_id,
+                            target_user_id, party, value, trigger_event,
+                            order_id, &mut fulfillment_ids,
+                        );
+                    }
+                    "commission_fix" => {
+                        handle_commission_fix(
+                            conn, campaign_id, campaign_name, user_id,
+                            target_user_id, party, value, trigger_event,
+                            order_id, &mut fulfillment_ids,
+                        );
+                    }
+                    "discount_pct" | "discount_fix" => {
+                        let val_str = reward["value"].to_string();
+                        if let Ok(fid) = write_fulfillment(
+                            conn, campaign_id, target_user_id, party, rtype,
+                            &val_str, trigger_event, order_id,
+                        ) {
+                            fulfillment_ids.push(fid);
+                        }
+                    }
+                    _ => {
+                        tracing::debug!("unknown reward type: {}", rtype);
                     }
                 }
-            }
-
-            // ── 分发逻辑 ──
-            match rtype {
-                "subscription_days" => {
-                    handle_subscription_days(
-                        conn, campaign_id, campaign_name, &target_user_id, party,
-                        value, trigger_event, order_id, &mut fulfillment_ids,
-                    );
-                }
-                "commission_pct" => {
-                    handle_commission_pct(
-                        conn, campaign_id, campaign_name, user_id,
-                        &target_user_id, party, value, trigger_event,
-                        order_id, &mut fulfillment_ids,
-                    );
-                }
-                "commission_fix" => {
-                    handle_commission_fix(
-                        conn, campaign_id, campaign_name, user_id,
-                        &target_user_id, party, value, trigger_event,
-                        order_id, &mut fulfillment_ids,
-                    );
-                }
-                "discount_pct" | "discount_fix" => {
-                    let val_str = reward["value"].to_string();
-                    if let Ok(fid) = write_fulfillment(
-                        conn, campaign_id, &target_user_id, party, rtype,
-                        &val_str, trigger_event, order_id,
-                    ) {
-                        fulfillment_ids.push(fid);
-                    }
-                }
-                _ => {
-                    tracing::debug!("unknown reward type: {}", rtype);
-                }
-            }
+            } // end for target_user_id
         }
     }
 
@@ -916,8 +933,8 @@ mod tests {
     #[test]
     fn test_execute_campaign_trigger_with_referrer() {
         let conn = setup_db();
-        // self=本号(上级), inviter=下线(新用户)
-        // 本测试验证：提供 referrer_id 时，self（上级）获得 subscription_days，inviter（下线）获得 commission
+        // self=推广员（推荐人/上级），inviter=被邀请人（下线/新用户）
+        // 本测试验证：提供 referrer_id 时，self（推广员）获得 subscription_days，inviter（下线）获得 commission
         let _cid = insert_test_campaign(&conn, "registration",
             r#"[
                 {"type":"subscription_days","party":"self","trigger":"registration","value":3},

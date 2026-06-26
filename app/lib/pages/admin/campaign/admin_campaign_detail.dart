@@ -350,6 +350,10 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
                                 '注册转化', '${_stats!['registrations'] ?? 0}', Icons.person_add),
                             _statCard(
                                 '佣金总额', '${_stats!['commission_total'] ?? 0}', Icons.monetization_on),
+                            _statCard(
+                                '拼团成员', '${_stats!['member_count'] ?? 0}', Icons.group),
+                            _statCard(
+                                '已支付', '${_stats!['paid_count'] ?? 0}', Icons.payment),
                           ],
                         ),
                         const SizedBox(height: AppTheme.spacingLg),
@@ -358,7 +362,7 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
                       _infoSection(cs, tt, '基本信息', [
                         _infoRow('活动名称', _campaign!['name'] as String? ?? ''),
                         _infoRow('活动类型',
-                            _campaign!['campaign_type'] as String? ?? 'standard'),
+                            _campaignTypeLabel(_campaign!['campaign_type'] as String? ?? '')),
                         _infoRow('状态',
                             _statusLabel(_campaign!['status'] as String?)),
                         _infoRow('描述',
@@ -646,11 +650,19 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
 
   String _rewardPartyLabel(String party) {
     switch (party) {
-      case 'self': return '自己';
-      case 'inviter': return '推广方';
-      case 'invitee': return '被推广方';
-      case 'referrer': return '推荐人';
+      case 'self': return '推广员';
+      case 'inviter': return '下线';
+      case 'all': return '所有人';
       default: return party;
+    }
+  }
+
+  String _campaignTypeLabel(String type) {
+    switch (type) {
+      case 'distribution': return '分销模式';
+      case 'team_discount': return '拼团';
+      case 'bargain': return '砍价';
+      default: return type;
     }
   }
 }

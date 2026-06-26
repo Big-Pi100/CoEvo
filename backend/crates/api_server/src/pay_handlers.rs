@@ -29,6 +29,9 @@ pub async fn native_pay_handler(
         _ => return (StatusCode::BAD_REQUEST, "plan_id 不能为空").into_response(),
     };
 
+    // 折后价（拼团/砍价场景覆盖 plan.price）
+    let actual_price: Option<i64> = payload.get("actual_price").and_then(|v| v.as_i64());
+
     // 查套餐
     let conn = crate::db_pool::get_conn();
     let plan = match subscription::get_plan_by_id(&conn, &plan_id) {
@@ -48,16 +51,21 @@ pub async fn native_pay_handler(
         }
     }
 
+    // 实际支付金额（actual_price 覆盖 plan.price，砍价/拼团场景）
+    let final_price = actual_price.unwrap_or(plan.price);
+    if final_price > plan.price {
+        return (StatusCode::BAD_REQUEST, "actual_price 不能高于 plan.price").into_response();
+    }
+
     // 生成订单号
     let now = chrono::Utc::now();
-    let ts = now.timestamp();
-    let order_id = format!("OE{}", ts);
+    let order_id = format!("OE{}", &uuid::Uuid::new_v4().to_string()[..20]);
 
     // 到期时间（下单后 10 分钟未支付自动关闭）
     let expire = (now + chrono::Duration::minutes(10)).format("%Y-%m-%dT%H:%M:%S+08:00").to_string();
 
-    // 免费套餐（price=0）跳过微信支付，直接激活
-    if plan.price <= 0 {
+    // 免费（price=0 或折扣后为 0）跳过微信支付，直接激活
+    if final_price <= 0 {
         let created_at = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
         // 写订单（已支付）
         if let Err(e) = conn.execute(
@@ -97,7 +105,7 @@ pub async fn native_pay_handler(
         &wechat_config,
         &order_id,
         &format!("CoEvo {}", plan.name),
-        plan.price,
+        final_price,
         &expire,
     )
     .await
@@ -108,7 +116,7 @@ pub async fn native_pay_handler(
             if let Err(e) = conn.execute(
                 "INSERT INTO payment_orders (id, user_id, plan_id, amount, status, prepay_id, created_at)
                  VALUES (?1, ?2, ?3, ?4, 'NOTPAY', ?5, ?6)",
-                rusqlite::params![order_id, user_id, plan_id, plan.price, resp.prepay_id, created_at],
+                rusqlite::params![order_id, user_id, plan_id, final_price, resp.prepay_id, created_at],
             ) {
                 return (StatusCode::INTERNAL_SERVER_ERROR, format!("写入订单失败: {}", e)).into_response();
             }
@@ -119,7 +127,7 @@ pub async fn native_pay_handler(
                     "order_id": order_id,
                     "code_url": resp.code_url,
                     "prepay_id": resp.prepay_id,
-                    "amount": plan.price,
+                    "amount": final_price,
                 })
                 .to_string(),
             )

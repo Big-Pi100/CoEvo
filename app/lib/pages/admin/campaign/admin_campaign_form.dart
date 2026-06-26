@@ -35,7 +35,7 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
   late TextEditingController _validFromCtrl;
   late TextEditingController _validUntilCtrl;
 
-  String _campaignType = 'invite_award';
+  String _campaignType = 'distribution';
   String _triggerEvent = 'registration';
   List<Map<String, dynamic>> _rewards = [];
   String _pushTrigger = 'manual';
@@ -65,6 +65,12 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
         final decoded = jsonDecode(c['rewards'] as String);
         if (decoded is List) {
           _rewards = decoded.cast<Map<String, dynamic>>();
+          // 清洗每个奖励字段，确保值在下拉菜单中存在
+          for (final r in _rewards) {
+            r['trigger'] = _validValue(r['trigger'] as String?, ['registration', 'payment', 'plan_update'], 'registration');
+            r['party'] = _validValue(r['party'] as String?, ['self', 'inviter', 'all'], 'self');
+            r['freq'] = _validValue(r['freq'] as String?, ['always', 'daily', 'hourly', 'weekly', 'monthly'], 'always');
+          }
         }
       } catch (_) {
         _rewards = [];
@@ -102,10 +108,16 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
     _validUntilCtrl =
         TextEditingController(text: c?['valid_until'] as String? ?? '');
 
-    _campaignType = c?['campaign_type'] as String? ?? 'invite_award';
-    _triggerEvent = c?['trigger_event'] as String? ?? 'registration';
-    _pushTrigger = c?['push_trigger'] as String? ?? 'manual';
-    _displayStyle = c?['display_positions'] as String? ?? 'both';
+    _campaignType = _validValue(c?['campaign_type'] as String?, ['distribution', 'team_discount', 'bargain'], 'distribution');
+    _triggerEvent = _validValue(c?['trigger_event'] as String?, ['registration', 'payment', 'plan_update', 'after_complete_review', 'login'], 'registration');
+    _pushTrigger = _validValue(c?['push_trigger'] as String?, ['manual', 'registration', 'after_complete_review', 'plan_update', 'login', 'cron'], 'manual');
+    _displayStyle = _validValue(c?['display_positions'] as String?, ['both', 'notification', 'popup'], 'both');
+  }
+
+  /// 确保值存在于列表中，否则用默认值（防止旧数据导致 DropdownButton 断言崩溃）
+  String _validValue(String? stored, List<String> validValues, String defaultValue) {
+    if (stored != null && validValues.contains(stored)) return stored;
+    return defaultValue;
   }
 
   @override
@@ -271,13 +283,11 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                       border: OutlineInputBorder(),
                       isDense: true),
                   items: const [
-                    DropdownMenuItem(value: 'invite_award', child: Text('邀请奖励')),
-                    DropdownMenuItem(value: 'commission', child: Text('佣金推广')),
-                    DropdownMenuItem(value: 'discount_pct', child: Text('折扣(百分比)')),
-                    DropdownMenuItem(value: 'discount_fix', child: Text('折扣(固定金额)')),
-                    DropdownMenuItem(value: 'mixed', child: Text('混合')),
+                    DropdownMenuItem(value: 'distribution', child: Text('分销模式')),
+                    DropdownMenuItem(value: 'team_discount', child: Text('拼团')),
+                    DropdownMenuItem(value: 'bargain', child: Text('砍价')),
                   ],
-                  onChanged: (v) => setState(() => _campaignType = v ?? 'invite_award'),
+                  onChanged: (v) => setState(() => _campaignType = v ?? 'distribution'),
                 ),
                 const SizedBox(height: AppThemeSpacing.sm),
                 TextFormField(
@@ -375,8 +385,9 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                                   decoration: const InputDecoration(
                                       labelText: '对象', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
                                   items: const [
-                                    DropdownMenuItem(value: 'self', child: Text('本号')),
+                                    DropdownMenuItem(value: 'self', child: Text('推广员')),
                                     DropdownMenuItem(value: 'inviter', child: Text('下线')),
+                                    DropdownMenuItem(value: 'all', child: Text('所有人')),
                                   ],
                                   onChanged: (v) => setState(() => _rewards[i]['party'] = v),
                                 ),

@@ -418,6 +418,18 @@ CREATE INDEX IF NOT EXISTS idx_fulfillment_campaign ON reward_fulfillments(campa
 CREATE INDEX IF NOT EXISTS idx_fulfillment_conversion ON reward_fulfillments(referral_click_id);
 CREATE INDEX IF NOT EXISTS idx_fulfillment_order ON reward_fulfillments(order_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_fulfillment_unique ON reward_fulfillments(campaign_id, user_id, trigger_event, party, reward_type);
+-- ── 拼团/砍价活动成员表 ──
+CREATE TABLE IF NOT EXISTS campaign_members (
+    campaign_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    role TEXT DEFAULT 'member',
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (campaign_id, user_id),
+    FOREIGN KEY (campaign_id) REFERENCES marketing_campaigns(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_campaign_members_campaign ON campaign_members(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_campaign_members_user ON campaign_members(user_id);
 "#;
 
 /// 管理端表（管理员、订阅审计、监护人、K12题库等）

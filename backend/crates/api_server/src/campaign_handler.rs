@@ -536,10 +536,22 @@ pub async fn stats(
         rusqlite::params![id], |row| row.get(0),
     ).unwrap_or(0);
 
+    let member_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM campaign_members WHERE campaign_id = ?1",
+        rusqlite::params![id], |row| row.get(0),
+    ).unwrap_or(0);
+
+    let paid_count: i64 = conn.query_row(
+        "SELECT COUNT(DISTINCT buyer_id) FROM distribution_commissions WHERE campaign_id = ?1 AND status NOT IN ('cancelled')",
+        rusqlite::params![id], |row| row.get(0),
+    ).unwrap_or(0);
+
     ok(json!({
         "clicks": clicks,
         "registrations": registrations,
         "commission_total": commission_total,
+        "member_count": member_count,
+        "paid_count": paid_count,
     }))
 }
 
@@ -938,5 +950,24 @@ mod tests {
             )
             .unwrap_or(0);
         assert_eq!(commission_total, 0, "新建活动佣金总额应为 0");
+
+        let member_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM campaign_members WHERE campaign_id = ?1",
+                rusqlite::params![id],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        assert_eq!(member_count, 0, "新建活动成员数应为 0");
+
+        let paid_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(DISTINCT buyer_id) FROM distribution_commissions \
+                 WHERE campaign_id = ?1 AND status NOT IN ('cancelled')",
+                rusqlite::params![id],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        assert_eq!(paid_count, 0, "新建活动已支付人数应为 0");
     }
 }
