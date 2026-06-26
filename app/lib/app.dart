@@ -2,10 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'theme/app_theme.dart';
-import 'api/api_config.dart';
 import 'screens/home_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/admin_screen.dart';
@@ -15,7 +12,6 @@ import 'screens/pay_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/achievements_screen.dart';
 import 'screens/conversation_list_screen.dart';
-import 'screens/home_screen.dart';
 import 'screens/k12_subject_screen.dart';
 import 'screens/skipped_screen.dart';
 import 'pages/user/distribution/earnings_page.dart';
@@ -249,7 +245,10 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
     ref.fetchSubscription().then((_) {
       // provider 状态更新后，检查是否需要弹出覆盖层
       final sub = ref.read(subscriptionProvider);
-      if (sub.isExpired && mounted && !_showSubExpired) {
+      final auth = ref.read(authProvider);
+      final isTrial = (auth.username ?? '').startsWith('trial_');
+      // 临时账户不弹订阅覆盖层，引导注册由 ChatScreen 处理
+      if (sub.isExpired && mounted && !_showSubExpired && !isTrial) {
         setState(() => _showSubExpired = true);
       }
     });

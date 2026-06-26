@@ -8,7 +8,6 @@ import 'package:http/http.dart' as http;
 import '../api/api_config.dart';
 import '../api/chat_client.dart';
 import '../models/coevo_models.dart';
-import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
 import '../providers/achievement_notifier.dart';
 import '../providers/plan_provider.dart' hide cardRefreshProvider;
@@ -282,6 +281,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with TickerProvider
         _activeCardIndex = _cards.isNotEmpty ? 0 : -1;
         // 清除旧评判状态（卡片 ID 变化）
         _clearJudgedStates();
+        // 预加载首张卡片的 AI 评测题
+        if (_cards.isNotEmpty) {
+          _preloadAiQuestions(_cards[0]);
+        }
       });
     } catch (e) {
       if (mounted) setState(() { _isLoading = false; _loadError = '加载失败，请检查网络连接'; });
@@ -1170,6 +1173,10 @@ Row(
                     setState(() => _activeCardIndex = -1);
                   } else {
                     setState(() => _activeCardIndex = i);
+                    // 预加载选中卡片的 AI 评测题
+                    if (i < _cards.length) {
+                      _preloadAiQuestions(_cards[i]);
+                    }
                     _resetInlineReview();
                     // 展开后只滚动到刚好可视
                     WidgetsBinding.instance.addPostFrameCallback((_) {

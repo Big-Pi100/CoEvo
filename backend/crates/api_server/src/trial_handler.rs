@@ -72,7 +72,7 @@ pub async fn start(
 
     // 5 分钟试用订阅（测试用）
     let now = chrono::Utc::now();
-    let expires = (now + chrono::Duration::minutes(5))
+    let expires = (now + chrono::Duration::hours(1))
         .format("%Y-%m-%dT%H:%M:%SZ")
         .to_string();
     let created_at = now.format("%Y-%m-%d %H:%M:%S").to_string();

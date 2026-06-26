@@ -307,20 +307,6 @@ class TtsService extends ChangeNotifier {
     await _client!.savePreferences(prefs);
   }
 
-  Future<void> _loadVoices() async {
-    for (int i = 0; i < 20; i++) {
-      try {
-        final voices = await _tts.getVoices;
-        if (voices.isNotEmpty) {
-          _availableVoices = voices;
-          notifyListeners();
-          return;
-        }
-      } catch (_) {}
-      await Future.delayed(const Duration(milliseconds: 500));
-    }
-  }
-
   String _detectLanguage(String text) {
     if (text.isEmpty) return 'en-US';
     final hasCjk = text.runes.any((r) =>

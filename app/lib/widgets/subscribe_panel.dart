@@ -22,7 +22,6 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
   String? _orderingPlan;
   // 折扣信息
   Map<String, dynamic>? _discountInfo;
-  bool _discountLoading = false;
 
   @override
   void initState() {
@@ -89,7 +88,6 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
         }
       }
     } catch (_) {}
-    if (mounted) setState(() => _discountLoading = false);
   }
 
   Future<void> _createOrder(String planId) async {

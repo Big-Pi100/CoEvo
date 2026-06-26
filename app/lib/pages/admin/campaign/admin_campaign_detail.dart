@@ -30,7 +30,6 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
   Map<String, dynamic>? _stats;
   bool _loading = true;
   bool _pushLoading = false;
-  bool _statsLoading = false;
   bool _generatingPoster = false;
   bool _generatingH5 = false;
 
@@ -62,7 +61,7 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
   }
 
   Future<void> _loadStats() async {
-    setState(() => _statsLoading = true);
+    setState(() => _loading = true);
     try {
       final uri = Uri.parse(
           '${ApiConfig.baseUrl}/api/admin/campaigns/${widget.campaignId}/stats');
@@ -71,7 +70,7 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
         _stats = jsonDecode(resp.body) as Map<String, dynamic>;
       }
     } catch (_) {}
-    if (mounted) setState(() => _statsLoading = false);
+    if (mounted) setState(() => _loading = false);
   }
 
   Color _statusColor(String? status) {
@@ -390,6 +389,10 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
                         _infoRow('推送方式',
                             _campaign!['push_trigger'] as String? ?? 'manual'),
                         _infoRow('Cron', _campaign!['push_cron'] as String? ?? '无'),
+                        _infoRow(
+                          '展示位置',
+                          _formatDisplayPositions(_campaign!['display_positions'] as String? ?? '[]'),
+                        ),
                       ]),
                       const SizedBox(height: AppTheme.spacingMd),
                       // ── 海报/H5 Prompt 卡片 ──
@@ -540,7 +543,7 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
                       child: OutlinedButton.icon(
                         icon: const Icon(Icons.visibility, size: 14),
                         label: const Text('预览', style: TextStyle(fontSize: 11)),
-                        onPressed: () => _showTemplatePreview(template!),
+                        onPressed: () => _showTemplatePreview(template),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           visualDensity: VisualDensity.compact,

@@ -707,16 +707,6 @@ List<ContentBlock> _splitBySpecialBlocks(String text) {
   return blocks;
 }
 
-/// 将行号转换为字符串偏移
-int _lineToOffset(String text, int lineIdx) {
-  final lines = text.split('\n');
-  int offset = 0;
-  for (int i = 0; i < lineIdx && i < lines.length; i++) {
-    offset += lines[i].length + 1;
-  }
-  return offset;
-}
-
 /// 用 Flutter Table widget 渲染 Markdown 表格
 Widget _renderMarkdownTable(String tableText, {Color textColor = Colors.black87}) {
   final lines = tableText.split('\n');

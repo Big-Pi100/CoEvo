@@ -41,8 +41,8 @@ pub async fn list(
 
     let conn = crate::db_pool::get_conn();
 
-    let sql = if let Some(ref status) = filter.status {
-        format!("SELECT * FROM marketing_campaigns WHERE status = ?1 ORDER BY created_at DESC")
+    let sql = if filter.status.is_some() {
+        "SELECT * FROM marketing_campaigns WHERE status = ?1 ORDER BY created_at DESC".to_string()
     } else {
         "SELECT * FROM marketing_campaigns ORDER BY created_at DESC".to_string()
     };

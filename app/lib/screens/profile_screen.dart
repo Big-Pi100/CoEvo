@@ -20,7 +20,6 @@ import '../services/tts_service.dart';
 import '../widgets/order_history.dart';
 import '../widgets/subscribe_panel.dart';
 import '../widgets/claim_dialog.dart';
-import '../utils/validators.dart';
 import '../theme/app_theme.dart';
 import '../pages/user/distribution/notification_panel.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -37,7 +36,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   ColorScheme get _cs => Theme.of(context).colorScheme;
   TextTheme get _tt => Theme.of(context).textTheme;
 
-  Map<String, dynamic>? _data;
   bool _isLoading = true;
   String? _error;
   bool _hasShownClaimDialog = false;
@@ -51,7 +49,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   // 推广码
   String? _referralCode;
-  bool _referralLoading = false;
   final GlobalKey _qrKey = GlobalKey();
   Map<String, dynamic>? _referralStats;
   bool _statsLoading = false;
@@ -122,8 +119,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         client.getProfile(),
         client.getPreferences(),
       ]);
-      final data = results[0] as Map<String, dynamic>;
-      final serverPrefs = results[1] as Map<String, String>;
+      final data = results[0];
+      final serverPrefs = results[1];
       // 如果后端有 display_name，覆盖本地缓存
       final backendName = data['display_name'] as String?;
       if (backendName != null && backendName != _displayName && mounted) {
@@ -137,7 +134,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       });
       if (mounted) {
         setState(() {
-          _data = data;
           _ttsEngine = serverPrefs['tts_engine'] ?? 'native';
           _ttsVoiceType = int.tryParse(serverPrefs['tts_voice_type'] ?? '') ?? 0;
           _ttsSpeed = double.tryParse(serverPrefs['tts_speed'] ?? '') ?? 0.0;
@@ -387,18 +383,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Widget _buildInfoTile({required IconData icon, required String label, required String value, required VoidCallback onTap}) {
-    return Card(
-      child: ListTile(
-        leading: Icon(icon, size: 20, color: _cs.outline),
-        title: Text(label, style: _tt.bodyMedium?.copyWith(color: _cs.outline)),
-        subtitle: Text(value, style: _tt.bodyLarge!),
-        trailing: const Icon(Icons.chevron_right, size: 18),
-        onTap: onTap,
-      ),
-    );
-  }
-
   /// 简单内联行，用于个人信息卡片内的每一行（无 Card 嵌套）
   /// [onTap] 为 null 时只读显示（无 InkWell 和箭头）
   /// 图标宽度固定为 32px，与昵称行的头像宽度对齐
@@ -472,9 +456,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Widget _buildContent(BuildContext context, AuthState auth) {
-    final stats = _data?['stats'] as Map<String, dynamic>? ?? {};
-
-    final streakDays = stats['streak_days'] ?? 0;
 
     return ListView(
       padding: const EdgeInsets.all(AppTheme.spacingXxl),
@@ -605,18 +586,33 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ),
               ),
               const Divider(height: 1),
-              // Row 2：真实姓名（只读）
+              // Row 2：真实姓名（可编辑）
               _buildProfileRow(
                 icon: Icons.badge_outlined,
                 label: '真实姓名',
                 value: _realName ?? '未填写',
+                onTap: () => _editInfoField(
+                  '真实姓名', _realName,
+                  (v) => (v == null || v.isEmpty) ? '请输入真实姓名' : null,
+                  (v) => _updateProfile({'real_name': v}),
+                ),
               ),
               const Divider(height: 1),
-              // Row 3：手机号（只读）
+              // Row 3：手机号（可编辑）
               _buildProfileRow(
                 icon: Icons.phone_outlined,
                 label: '手机号',
                 value: _phone ?? '未填写',
+                onTap: () => _editInfoField(
+                  '手机号', _phone,
+                  (v) {
+                    if (v == null || v.isEmpty) return '请输入手机号';
+                    final digitsOnly = v.replaceAll(RegExp(r'\D'), '');
+                    if (digitsOnly.length != 11) return '手机号格式不正确';
+                    return null;
+                  },
+                  (v) => _updateProfile({'phone': v}),
+                ),
               ),
             ],
           ),
@@ -990,7 +986,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Future<void> _loadReferralCode() async {
     final auth = ref.read(authProvider);
     if (auth.userId == null || auth.token == null) return;
-    setState(() => _referralLoading = true);
     try {
       final resp = await http.get(
         Uri.parse('${ApiConfig.baseUrl}/api/referral/my-code?user_id=${auth.userId}'),
@@ -1002,7 +997,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _loadReferralStats();
       }
     } catch (_) {}
-    if (mounted) setState(() => _referralLoading = false);
   }
 
   Future<void> _loadReferralStats() async {
@@ -1057,7 +1051,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           if (data == null) return;
           final blob = html.Blob([data.buffer.asUint8List()]);
           final url = html.Url.createObjectUrlFromBlob(blob);
-          final anchor = html.AnchorElement(href: url)
+          html.AnchorElement(href: url)
             ..setAttribute('download', 'coevo_qr.png')
             ..click();
           html.Url.revokeObjectUrl(url);
@@ -1113,7 +1107,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       statusColor = _cs.error;
       statusIcon = Icons.lock_clock;
     } else {
-      final expires = DateTime.tryParse(expiresStr!)!;
+      final expires = DateTime.tryParse(expiresStr) ?? DateTime.now();
       final remaining = expires.difference(DateTime.now());
       if (remaining.inDays > 30) {
         statusText = '有效 — 到期日: ${expiresStr.substring(0, 10)}';
@@ -1196,74 +1190,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
-        ],
-      ),
-    );
-  }
-}
-
-/// CEFR 等级进度条
-class _CefrBar extends StatelessWidget {
-  final String level;
-  final int total;
-  final int mastered;
-  final double ratio;
-
-  const _CefrBar({
-    required this.level,
-    required this.total,
-    required this.mastered,
-    required this.ratio,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-    final color = switch (level) {
-      'A1' => cs.primary,
-      'A2' => cs.tertiaryFixed,
-      'B1' => cs.secondary,
-      'B2' => cs.tertiary,
-      'C1' => cs.tertiaryFixedDim,
-      'C2' => cs.error,
-      _ => cs.outline,
-    };
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingXs),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(
-                  color: color.withAlpha(30),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(level, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
-              ),
-              const SizedBox(width: AppTheme.spacingSm),
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: ratio,
-                    backgroundColor: color.withAlpha(25),
-                    valueColor: AlwaysStoppedAnimation(color),
-                    minHeight: 10,
-                  ),
-                ),
-              ),
-              const SizedBox(width: AppTheme.spacingSm),
-              SizedBox(
-                width: 80,
-                child: Text('$mastered/$total', textAlign: TextAlign.right,
-                    style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-              ),
-            ],
-          ),
         ],
       ),
     );

@@ -1,7 +1,6 @@
 //! 海报模板管理：LLM 生成含 {变量} 的 SVG 模板，运行时替换为用户数据
 
 use serde::Serialize;
-use serde_json::json;
 
 /// 获取 CoEvo 公开域名（部署时通过 COEVO_BASE_URL 环境变量配置）
 fn coevo_base_url() -> String {
@@ -47,7 +46,8 @@ pub fn replace_template_variables(template: &str, data: &UserPosterData) -> Stri
     let qr_path = if let Some(d_start) = qr_raw.find("d=\"") {
         let from_d = &qr_raw[d_start..];
         if let Some(close) = from_d.find("\"/>") {
-            let path_attr = from_d[..close+3].to_string();  // d="M20 20h5v5..."
+            // 只取到 "/>" 之前，由 format! 追加 "/>"，避免重复
+            let path_attr = from_d[..close].to_string();  // d="M20 20h5v5..."
             format!("<path fill=\"#1A237E\" {} />", path_attr)
         } else { String::new() }
     } else { String::new() };

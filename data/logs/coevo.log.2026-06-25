@@ -321,3 +321,108 @@
 2026-06-25T13:51:01.112947Z  INFO coevo_backend: CoEvo ready on http://0.0.0.0:8080
 2026-06-25T13:51:01.447423Z  WARN chat_engine::llm_caller: LLM generate attempt 1 failed: ApiError("HTTP 401 Unauthorized: Authentication Fails (auth header format should be Bearer sk-...)")
 2026-06-25T13:51:01.956977Z  WARN chat_engine::llm_caller: LLM warmup: ApiError("HTTP 401 Unauthorized: Authentication Fails (auth header format should be Bearer sk-...)") (non-critical)
+2026-06-25T15:22:14.268164Z  INFO coevo_backend: [K12] data dir: data/curriculum/v3
+2026-06-25T15:22:14.268226Z  INFO coevo_backend: CoEvo backend starting, logs: data/logs/coevo.log.*
+2026-06-25T15:22:14.278907Z  INFO coevo_backend: DB: data/coevo.db
+2026-06-25T15:22:14.278930Z  INFO api_server::campaign_scheduler: campaign_scheduler: 启动后台定时任务（每 5 分钟），db=data/coevo.db
+2026-06-25T15:22:14.279025Z  INFO coevo_backend: Campaign scheduler started (interval: 5 min)
+2026-06-25T15:22:14.279617Z  WARN api_server::achievement_engine: 成就引擎 TOML 加载失败，使用硬编码回退: 读取成就文件失败 (achievements.toml): 系统找不到指定的文件。 (os error 2)
+2026-06-25T15:22:14.279688Z  INFO growth_engine::achievements: 使用硬编码回退：15 个成就定义
+2026-06-25T15:22:14.279693Z  INFO coevo_backend: AchievementEngine: achievements.toml
+2026-06-25T15:22:14.280297Z  INFO api_server::campaign_scheduler: poster template refresh scheduler: first run in 4065s
+2026-06-25T15:22:14.280374Z  INFO chat_engine::prompt_loader: Prompts loaded: chat(0 subjects), concept(0), plan(0), quiz(0), verify(0), routing(0)
+2026-06-25T15:22:14.280382Z  INFO coevo_backend: Prompts: prompts
+2026-06-25T15:22:14.280899Z  INFO coevo_backend: Share dir: data/share
+2026-06-25T15:22:14.281080Z  WARN chat_engine::word_bank: Cannot read word bank cefr_catalog.json: 系统找不到指定的文件。 (os error 2) (vocab matching disabled)
+2026-06-25T15:22:14.281097Z  INFO coevo_backend: Wordbank: cefr_catalog.json
+2026-06-25T15:22:14.281103Z  INFO coevo_backend: Data loaders initialized
+2026-06-25T15:22:14.281456Z  INFO api_server::k12_quiz_loader: K12 quiz bank: 0 loaded, 0 total files
+2026-06-25T15:22:14.281462Z  INFO coevo_backend: K12 quiz bank: 0 quizzes loaded
+2026-06-25T15:22:14.290361Z  INFO coevo_backend: app_config cache initialized
+2026-06-25T15:22:14.290677Z  INFO coevo_backend: debug_trackers cache initialized
+2026-06-25T15:22:14.393788Z  INFO api_server::curriculum_loader: K12 DB: wrote 1390 science parent cards
+2026-06-25T15:22:14.848671Z  INFO api_server::curriculum_loader: K12 DB: wrote 17438 language parent cards
+2026-06-25T15:22:14.891614Z  INFO api_server::curriculum_loader: K12 DB: wrote 836 literature parent cards
+2026-06-25T15:22:14.898464Z  INFO api_server::curriculum_loader: K12 DB: wrote 194 humanities parent cards
+2026-06-25T15:22:14.934987Z  INFO api_server::curriculum_loader: K12 DB: wrote plan art
+2026-06-25T15:22:15.007497Z  INFO api_server::curriculum_loader: K12 DB: wrote plan biology
+2026-06-25T15:22:15.068124Z  INFO api_server::curriculum_loader: K12 DB: wrote plan chemistry
+2026-06-25T15:22:15.826872Z  INFO api_server::curriculum_loader: K12 DB: wrote plan chinese
+2026-06-25T15:22:15.918800Z  INFO api_server::curriculum_loader: K12 DB: wrote plan english
+2026-06-25T15:22:15.973806Z  INFO api_server::curriculum_loader: K12 DB: wrote plan geography
+2026-06-25T15:22:16.042043Z  INFO api_server::curriculum_loader: K12 DB: wrote plan history
+2026-06-25T15:22:16.099186Z  INFO api_server::curriculum_loader: K12 DB: wrote plan it
+2026-06-25T15:22:16.117319Z  INFO api_server::curriculum_loader: K12 DB: wrote plan japanese
+2026-06-25T15:22:16.123893Z  INFO api_server::curriculum_loader: K12 DB: wrote plan labor
+2026-06-25T15:22:16.221963Z  INFO api_server::curriculum_loader: K12 DB: wrote plan math
+2026-06-25T15:22:16.261528Z  INFO api_server::curriculum_loader: K12 DB: wrote plan pe
+2026-06-25T15:22:16.380398Z  INFO api_server::curriculum_loader: K12 DB: wrote plan physics
+2026-06-25T15:22:16.422868Z  INFO api_server::curriculum_loader: K12 DB: wrote plan politics
+2026-06-25T15:22:16.439992Z  INFO api_server::curriculum_loader: K12 DB: wrote plan russian
+2026-06-25T15:22:16.471027Z  INFO api_server::curriculum_loader: K12 DB: wrote plan science
+2026-06-25T15:22:16.471142Z  INFO api_server::curriculum_loader: K12 DB: prebuilt data written successfully
+2026-06-25T15:22:16.471149Z  INFO coevo_backend: K12 DB: prebuilt tables populated
+2026-06-25T15:22:16.471156Z  INFO coevo_backend: Avatars: data/avatars
+2026-06-25T15:22:16.471166Z  WARN chat_engine::config: No DEEPSEEK_API_KEY/LLM_API_KEY set — using empty key
+2026-06-25T15:22:16.471169Z  INFO coevo_backend: LLM: deepseek-v4-flash @ https://api.deepseek.com
+2026-06-25T15:22:16.475147Z  INFO coevo_backend: CoEvo ready on http://0.0.0.0:8080
+2026-06-25T15:22:16.779836Z  WARN chat_engine::llm_caller: LLM generate attempt 1 failed: ApiError("HTTP 401 Unauthorized: Authentication Fails (auth header format should be Bearer sk-...)")
+2026-06-25T15:22:17.176110Z  WARN chat_engine::llm_caller: LLM warmup: ApiError("HTTP 401 Unauthorized: Authentication Fails (auth header format should be Bearer sk-...)") (non-critical)
+2026-06-25T15:51:00.983864Z  INFO coevo_backend: [K12] data dir: data/curriculum/v3
+2026-06-25T15:51:00.983956Z  INFO coevo_backend: CoEvo backend starting, logs: data/logs/coevo.log.*
+2026-06-25T15:51:01.021020Z  INFO coevo_backend: DB: data/coevo.db
+2026-06-25T15:51:01.021047Z  INFO api_server::campaign_scheduler: campaign_scheduler: 启动后台定时任务（每 5 分钟），db=data/coevo.db
+2026-06-25T15:51:01.021158Z  INFO coevo_backend: Campaign scheduler started (interval: 5 min)
+2026-06-25T15:51:01.022033Z  WARN api_server::achievement_engine: 成就引擎 TOML 加载失败，使用硬编码回退: 读取成就文件失败 (achievements.toml): 系统找不到指定的文件。 (os error 2)
+2026-06-25T15:51:01.022132Z  INFO growth_engine::achievements: 使用硬编码回退：15 个成就定义
+2026-06-25T15:51:01.022140Z  INFO coevo_backend: AchievementEngine: achievements.toml
+2026-06-25T15:51:01.022709Z  INFO api_server::campaign_scheduler: poster template refresh scheduler: first run in 2338s
+2026-06-25T15:51:01.023041Z  INFO chat_engine::prompt_loader: Prompts loaded: chat(0 subjects), concept(0), plan(0), quiz(0), verify(0), routing(0)
+2026-06-25T15:51:01.023052Z  INFO coevo_backend: Prompts: prompts
+2026-06-25T15:51:01.023584Z  INFO coevo_backend: Share dir: data/share
+2026-06-25T15:51:01.023753Z  WARN chat_engine::word_bank: Cannot read word bank cefr_catalog.json: 系统找不到指定的文件。 (os error 2) (vocab matching disabled)
+2026-06-25T15:51:01.023771Z  INFO coevo_backend: Wordbank: cefr_catalog.json
+2026-06-25T15:51:01.023776Z  INFO coevo_backend: Data loaders initialized
+2026-06-25T15:51:01.024390Z  INFO api_server::k12_quiz_loader: K12 quiz bank: 0 loaded, 0 total files
+2026-06-25T15:51:01.024400Z  INFO coevo_backend: K12 quiz bank: 0 quizzes loaded
+2026-06-25T15:51:01.031409Z  INFO coevo_backend: app_config cache initialized
+2026-06-25T15:51:01.031759Z  INFO coevo_backend: debug_trackers cache initialized
+2026-06-25T15:51:01.155945Z  INFO api_server::curriculum_loader: K12 DB: wrote 1390 science parent cards
+2026-06-25T15:51:01.781984Z  INFO api_server::curriculum_loader: K12 DB: wrote 17438 language parent cards
+2026-06-25T15:51:01.837982Z  INFO api_server::curriculum_loader: K12 DB: wrote 836 literature parent cards
+2026-06-25T15:51:01.847440Z  INFO api_server::curriculum_loader: K12 DB: wrote 194 humanities parent cards
+2026-06-25T15:51:01.882101Z  INFO api_server::curriculum_loader: K12 DB: wrote plan art
+2026-06-25T15:51:01.960540Z  INFO api_server::curriculum_loader: K12 DB: wrote plan biology
+2026-06-25T15:51:02.019198Z  INFO api_server::curriculum_loader: K12 DB: wrote plan chemistry
+2026-06-25T15:51:02.763429Z  INFO api_server::curriculum_loader: K12 DB: wrote plan chinese
+2026-06-25T15:51:02.867043Z  INFO api_server::curriculum_loader: K12 DB: wrote plan english
+2026-06-25T15:51:02.925255Z  INFO api_server::curriculum_loader: K12 DB: wrote plan geography
+2026-06-25T15:51:02.990375Z  INFO api_server::curriculum_loader: K12 DB: wrote plan history
+2026-06-25T15:51:03.035317Z  INFO api_server::curriculum_loader: K12 DB: wrote plan it
+2026-06-25T15:51:03.055889Z  INFO api_server::curriculum_loader: K12 DB: wrote plan japanese
+2026-06-25T15:51:03.062122Z  INFO api_server::curriculum_loader: K12 DB: wrote plan labor
+2026-06-25T15:51:03.170565Z  INFO api_server::curriculum_loader: K12 DB: wrote plan math
+2026-06-25T15:51:03.211953Z  INFO api_server::curriculum_loader: K12 DB: wrote plan pe
+2026-06-25T15:51:03.333477Z  INFO api_server::curriculum_loader: K12 DB: wrote plan physics
+2026-06-25T15:51:03.373569Z  INFO api_server::curriculum_loader: K12 DB: wrote plan politics
+2026-06-25T15:51:03.393189Z  INFO api_server::curriculum_loader: K12 DB: wrote plan russian
+2026-06-25T15:51:03.424124Z  INFO api_server::curriculum_loader: K12 DB: wrote plan science
+2026-06-25T15:51:03.424246Z  INFO api_server::curriculum_loader: K12 DB: prebuilt data written successfully
+2026-06-25T15:51:03.424260Z  INFO coevo_backend: K12 DB: prebuilt tables populated
+2026-06-25T15:51:03.424271Z  INFO coevo_backend: Avatars: data/avatars
+2026-06-25T15:51:03.424284Z  WARN chat_engine::config: No DEEPSEEK_API_KEY/LLM_API_KEY set — using empty key
+2026-06-25T15:51:03.424289Z  INFO coevo_backend: LLM: deepseek-v4-flash @ https://api.deepseek.com
+2026-06-25T15:51:03.429191Z  INFO coevo_backend: CoEvo ready on http://0.0.0.0:8080
+2026-06-25T15:51:03.786388Z  WARN chat_engine::llm_caller: LLM generate attempt 1 failed: ApiError("HTTP 401 Unauthorized: Authentication Fails (auth header format should be Bearer sk-...)")
+2026-06-25T15:51:04.183210Z  WARN chat_engine::llm_caller: LLM warmup: ApiError("HTTP 401 Unauthorized: Authentication Fails (auth header format should be Bearer sk-...)") (non-critical)
+2026-06-25T16:06:01.462128Z  INFO api_server::routes: auth_verify: user_id=4a3ed31c-d3f1-42e8-bcab-4f4aa833582d
+2026-06-25T16:06:09.122719Z  INFO api_server::routes: k12_subjects_handler: returned 11 subjects
+2026-06-25T16:06:09.126342Z  INFO api_server::trial_handler: trial/start: user_id=98c843d9-70f2-4ef3-8dea-b02b9ad68d4e, username=trial_98c843d9
+2026-06-25T16:06:12.398740Z  INFO api_server::distribution_handler: calculate: user_id=46b23f41-9106-4821-8fc7-db802f52797a, plan_id=30d
+2026-06-25T16:06:14.737068Z  INFO api_server::distribution_handler: list_notifications: user_id=46b23f41-9106-4821-8fc7-db802f52797a
+2026-06-25T16:06:17.609441Z  INFO api_server::routes: avatar_get_handler: user_id=46b23f41-9106-4821-8fc7-db802f52797a
+2026-06-25T16:06:17.633180Z  INFO api_server::routes: preferences_get_handler: user_id=46b23f41-9106-4821-8fc7-db802f52797a
+2026-06-25T16:06:17.633432Z  INFO api_server::routes: profile_handler: user_id=46b23f41-9106-4821-8fc7-db802f52797a
+2026-06-25T16:06:19.090121Z  INFO api_server::routes: avatar_get_handler: user_id=46b23f41-9106-4821-8fc7-db802f52797a
+2026-06-25T16:06:19.117467Z  INFO api_server::routes: profile_handler: user_id=46b23f41-9106-4821-8fc7-db802f52797a
+2026-06-25T16:06:19.117676Z  INFO api_server::routes: preferences_get_handler: user_id=46b23f41-9106-4821-8fc7-db802f52797a

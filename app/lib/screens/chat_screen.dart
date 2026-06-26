@@ -369,9 +369,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           }
           _streamingIndex = -1;
           _streamingBuffer = '';
-          if (!_subscriptionDialogShown) {
-            _subscriptionDialogShown = true;
-            _showSubscriptionDialog('订阅已到期');
+          // 临时账户不弹订阅窗，只引导注册认领
+          if (!_isTrialUser()) {
+            if (!_subscriptionDialogShown) {
+              _subscriptionDialogShown = true;
+              _showSubscriptionDialog('订阅已到期');
+            }
           }
         } else if (event.content == 'subscription_required') {
           ref.read(subscriptionProvider.notifier).setRequired();
@@ -384,9 +387,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           }
           _streamingIndex = -1;
           _streamingBuffer = '';
-          if (!_subscriptionDialogShown) {
-            _subscriptionDialogShown = true;
-            _showSubscriptionDialog('需要激活');
+          // 临时账户不弹订阅窗，只引导注册认领
+          if (!_isTrialUser()) {
+            if (!_subscriptionDialogShown) {
+              _subscriptionDialogShown = true;
+              _showSubscriptionDialog('需要激活');
+            }
           }
         } else {
           _finalizeStreamingWithRetry('抱歉，出了点问题：${event.content}');
@@ -474,6 +480,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         );
       }
     });
+  }
+
+  bool _isTrialUser() {
+    final auth = ref.read(authProvider);
+    return (auth.username ?? '').startsWith('trial_');
   }
 
   void _showSubscriptionDialog(String title) {

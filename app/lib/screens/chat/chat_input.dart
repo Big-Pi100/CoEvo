@@ -1,13 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:html' as html;
 import 'dart:js' as js;
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import '../../api/api_config.dart';
-import '../../theme/app_theme.dart';
 
 /// 聊天输入栏 — 文本输入 + 语音输入（按住说话，腾讯云 ASR）
 class ChatInput extends ConsumerStatefulWidget {
@@ -35,9 +32,6 @@ class _ChatInputState extends ConsumerState<ChatInput>
   bool _voiceMode = false;
   bool _isRecording = false;
   bool _isTranscribing = false;
-
-  // 纯 JS 方案：所有录制逻辑在 JS 中执行，Dart 只负责调用
-  List<Float32List> _pcmChunks = [];
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
