@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:convert';
 import '../api/chat_client.dart';
@@ -94,12 +93,24 @@ class PlanState {
 /// Plan Notifier — 接受 ChatClient 实例，管理 Plan 加载和选中状态
 class PlanNotifier extends StateNotifier<PlanState> {
   PlanNotifier() : super(const PlanState());
+  int _requestGen = 0;
+
+  @override
+  set state(PlanState value) {
+    try {
+      super.state = value;
+    } catch (_) {
+      // Consumer widget 已 defunct，忽略
+    }
+  }
 
   /// 从 API 加载 plans
   Future<void> loadPlans(ChatClient client, {String? conversationId}) async {
+    final gen = ++_requestGen;
     state = state.copyWith(isLoading: true);
     try {
       final raw = await client.getPlans(conversationId: conversationId);
+      if (gen != _requestGen) return; // 已被 dispose
       final list = (raw as List<dynamic>?)
               ?.where((p) => p is Map<String, dynamic>)
               .map((p) => PlanData.fromJson(p as Map<String, dynamic>))
@@ -107,8 +118,9 @@ class PlanNotifier extends StateNotifier<PlanState> {
           [];
       state = state.copyWith(plans: list, isLoading: false);
     } catch (e) {
-      debugPrint('PlanNotifier.loadPlans error: $e');
-      state = state.copyWith(isLoading: false);
+      if (gen == _requestGen) {
+        state = state.copyWith(isLoading: false);
+      }
     }
   }
 

@@ -49,20 +49,33 @@ class SubscriptionState {
 /// 订阅状态管理 — 单一数据源，所有页面共用
 class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   SubscriptionNotifier() : super(const SubscriptionState());
+  http.Client? _client;
+
+  @override
+  void dispose() {
+    _client?.close(); // 取消进行中的 HTTP 请求
+    _client = null;
+    super.dispose();
+  }
 
   /// 从后端 API 获取订阅状态
   Future<void> fetch({required String userId, required String? token}) async {
     if (userId.isEmpty) return;
     state = state.copyWith(isLoading: true);
+    _client?.close();
+    final c = http.Client();
+    _client = c;
 
     try {
       final headers = <String, String>{'Content-Type': 'application/json'};
       if (token != null) headers['Authorization'] = 'Bearer $token';
 
-      final resp = await http.get(
+      final resp = await c.get(
         Uri.parse('${ApiConfig.baseUrl}/api/user/$userId/subscription'),
         headers: headers,
       );
+
+      if (_client != c) return; // 已被取消或新的请求已发起
 
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
@@ -83,10 +96,14 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         );
       }
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error: e.toString(),
-      );
+      if (_client == c) {
+        state = state.copyWith(
+          isLoading: false,
+          error: e.toString(),
+        );
+      }
+    } finally {
+      if (_client == c) _client = null;
     }
   }
 

@@ -19,7 +19,7 @@ dependencies:
   path_provider: ^2.1.0
   image_picker: ^1.1.2
   flutter_math_fork: ^0.7.4
-  flutter_markdown_plus: ^1.0.3
+  gpt_markdown: 1.0.8
   flutter_secure_storage: ^9.2.4
   flutter_web_plugins:
     sdk: flutter
@@ -32,6 +32,7 @@ dependencies:
   record: ^6.2.1
   web: ^1.1.1
   qr_flutter: ^4.1.0
+  graphic: ^2.7.0
 
 dev_dependencies:
   flutter_test:

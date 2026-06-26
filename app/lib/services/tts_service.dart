@@ -297,7 +297,7 @@ class TtsService extends ChangeNotifier {
   Future<void> _syncToBackend() async {
     if (_client == null) return;
     final prefs = <String, String>{
-      'tts_speech_rate': _speechRate.toString(),
+      'tts_speed': _speechRate.toString(),
       'tts_enabled': _enabled.toString(),
     };
     if (_selectedVoice != null) {

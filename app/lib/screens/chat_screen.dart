@@ -53,6 +53,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   // 订阅状态
   bool _subscriptionDialogShown = false;
+  bool _claimDialogShown = false;
 
   // 对话删除状态
   // ignore: prefer_final_fields
@@ -173,14 +174,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         });
       }
     } finally {
-      // 检查是否需要弹出注册弹窗
-      if (mounted) _maybeShowClaimDialog();
       // 无论如何都要解除初始化状态，防止永久灰屏
       if (mounted) setState(() => _isInitializing = false);
+      // 页面渲染完后再弹注册窗，避免加载中弹出
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowClaimDialog());
+      }
     }
   }
 
   Future<void> _maybeShowClaimDialog() async {
+    if (_claimDialogShown) return;
+    _claimDialogShown = true;
     // 只在 trial 账户且未认领时弹
     final auth = ref.read(authProvider);
     final trialCheck = auth.username ?? '';
@@ -230,6 +235,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void _sendMessage() {
     final text = _messageController.text.trim();
     if (text.isEmpty || _client == null || _isWaiting) return;
+
+    // 用户发新消息时停止正在播放的 TTS，避免与即将到来的新回复音频交叠
+    _ttsPlayer?.stop();
+    _ttsPlayer?.dispose();
+    _ttsPlayer = null;
+    ref.read(ttsServiceProvider).stop();
 
     debugPrint('📤 _sendMessage: text="$text" convId=$_convId session=${_session != null ? "reuse" : "new"}');
 
@@ -538,10 +549,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         context: context,
         barrierDismissible: true,
         builder: (_) => const ClaimDialog(),
-      ).then((_) {
-        // 弹窗关闭后重置标志位，允许再次触发
-        if (mounted) setState(() => _subscriptionDialogShown = false);
-      });
+      );
     });
   }
 

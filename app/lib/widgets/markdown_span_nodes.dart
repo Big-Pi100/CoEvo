@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:gpt_markdown/gpt_markdown.dart';
 import 'graph_widget.dart';
 
 /// 错误边界 — 捕获子组件构建/渲染异常，兜底显示
@@ -128,6 +128,15 @@ class RichContentBuilder {
           break;
         case BlockType.displayMath:
           children.add(DisplayMathBlock(block.content, textColor: textColor));
+          break;
+        case BlockType.hr:
+          children.add(Container(
+            height: 1,
+            margin: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: textColor.withAlpha(50),
+            ),
+          ));
           break;
         case BlockType.table:
           children.add(_renderMarkdownTable(block.content, textColor: textColor));
@@ -482,112 +491,30 @@ class RichContentBuilder {
   }
 
   Widget _renderTextWithInlineMath(String text) {
-    final inlineRegex = RegExp(r'\\\((.+?)\\\)');
-    final matches = inlineRegex.allMatches(text).toList();
-
-    if (matches.isEmpty) {
-      // 纯文本块：MarkdownBody
-      // 预处理: 修复 LLM 常见 Markdown 格式问题
-      final fixed = _fixMarkdown(text);
-      return DefaultTextStyle(
-        style: TextStyle(color: textColor, fontSize: 15, height: 1.5),
-        child: MarkdownBody(
-          data: fixed,
-          selectable: true,
-          styleSheet: MarkdownStyleSheet(
-            p: TextStyle(color: textColor, fontSize: 15),
-            code: TextStyle(color: textColor, backgroundColor: textColor.withAlpha(20), fontSize: 14),
-            codeblockDecoration: BoxDecoration(color: textColor.withAlpha(15), borderRadius: BorderRadius.circular(8)),
-            blockquoteDecoration: BoxDecoration(
-              color: textColor.withAlpha(8),
-              border: Border(left: BorderSide(color: textColor.withAlpha(80), width: 3)),
-            ),
-            tableBorder: TableBorder.all(color: textColor.withAlpha(40), width: 0.5),
-            tableHead: TextStyle(fontWeight: FontWeight.w600),
-            tableBody: TextStyle(color: textColor, fontSize: 14),
-            tableCellsPadding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-          ),
-        ),
-      );
-    }
-
-    final spans = <InlineSpan>[];
-    int lastEnd = 0;
-
-    for (final m in matches) {
-      if (m.start > lastEnd) {
-        final mdText = text.substring(lastEnd, m.start);
-        _appendMarkdownInline(mdText, spans);
-      }
-
-      final formula = m.group(1)!.trim();
-      final fixedFormula = _addColorCmd(formula, textColor);
-      spans.add(WidgetSpan(
-        child: _ErrorBoundary(
-          fallbackMsg: '公式错误',
-          child: Math.tex(
-            fixedFormula,
-            mathStyle: MathStyle.text,
-            textStyle: TextStyle(fontSize: 14, color: textColor),
-          ),
-        ),
-        alignment: PlaceholderAlignment.middle,
-      ));
-
-      lastEnd = m.end;
-    }
-
-    if (lastEnd < text.length) {
-      _appendMarkdownInline(text.substring(lastEnd), spans);
-    }
-
-    return RichText(
-      text: TextSpan(style: TextStyle(color: textColor), children: spans),
+    // 预处理: 修复 LLM 常见 Markdown 格式问题
+    final fixed = _fixMarkdown(text);
+    // 替换 keycap 序号（1️⃣→①）解决 CanvasKit 下序号黑框不居中问题
+    final cleaned = _fixKeycaps(fixed);
+    final theme = GptMarkdownThemeData(
+      brightness: Brightness.light,
+      h1: TextStyle(color: textColor, fontSize: 17, fontWeight: FontWeight.w600, height: 1.4),
+      h2: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.w600, height: 1.4),
+      h3: TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.w600, height: 1.4),
+      h4: TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.w600),
+      h5: TextStyle(color: textColor, fontSize: 14, fontWeight: FontWeight.w500),
+      h6: TextStyle(color: textColor.withAlpha(180), fontSize: 13),
+      hrLineThickness: 1,
+      hrLineColor: textColor.withAlpha(50),
+      highlightColor: textColor.withAlpha(25),
     );
-  }
-
-  void _appendMarkdownInline(String mdText, List<InlineSpan> spans) {
-    final boldRegex = RegExp(r'\*\*(.+?)\*\*');
-    final codeRegex = RegExp(r'`([^`]+)`');
-    final italicRegex = RegExp(r'(?<!\*)\*([^*]+)\*(?!\*)');
-
-    final allMatches = <_InlineMatch>[];
-    for (final regex in [boldRegex, codeRegex, italicRegex]) {
-      for (final m in regex.allMatches(mdText)) {
-        allMatches.add(_InlineMatch(m.start, m.end, m.group(0)!, regex));
-      }
-    }
-    allMatches.sort((a, b) => a.start.compareTo(b.start));
-
-    if (allMatches.isEmpty) {
-      spans.add(TextSpan(text: mdText, style: TextStyle(color: textColor)));
-      return;
-    }
-
-    int pos = 0;
-    for (final im in allMatches) {
-      if (im.start < pos) continue;
-      if (im.start > pos) {
-        spans.add(TextSpan(text: mdText.substring(pos, im.start), style: TextStyle(color: textColor)));
-      }
-
-      final inner = im.match.group(1) ?? '';
-      TextStyle style = TextStyle(color: textColor);
-      if (im.regex == boldRegex) {
-        style = style.copyWith(fontWeight: FontWeight.bold);
-      } else if (im.regex == codeRegex) {
-        style = style.copyWith(fontFamily: 'monospace', backgroundColor: textColor.withAlpha(15));
-      } else if (im.regex == italicRegex) {
-        style = style.copyWith(fontStyle: FontStyle.italic);
-      }
-
-      spans.add(TextSpan(text: inner, style: style));
-      pos = im.end;
-    }
-
-    if (pos < mdText.length) {
-      spans.add(TextSpan(text: mdText.substring(pos), style: TextStyle(color: textColor)));
-    }
+    return GptMarkdownTheme(
+      gptThemeData: theme,
+      child: GptMarkdown(
+        cleaned,
+        style: TextStyle(color: textColor, fontSize: 15, height: 1.5),
+        textDirection: TextDirection.ltr,
+      ),
+    );
   }
 }
 
@@ -601,7 +528,7 @@ class _InlineMatch {
 
 // ── 块分割 ──
 
-enum BlockType { text, table, graph, displayMath }
+enum BlockType { text, table, graph, displayMath, hr }
 
 class _TableSegment {
   final int start;
@@ -665,14 +592,57 @@ List<ContentBlock> _splitBlockLevel(String text) {
   return blocks;
 }
 
-/// 用原有的 graph/displayMath 正则分割文本块
+/// 用原有的 graph/displayMath 正则分割文本块，并在文本块内再分割标题和分割线
 List<ContentBlock> _splitBySpecialBlocks(String text) {
   final blocks = <ContentBlock>[];
   final splitter = RegExp(r'(<graph>.*?</graph>|\\\[(.+?)\\\])', dotAll: true);
   final matches = splitter.allMatches(text).toList();
 
+  /// 将文本段按标题（##+ 或 ###文本）和分割线（---）进一步分割为独立块
+  void splitTextBlock(String segment) {
+    final lines = segment.split('\n');
+    var buf = <String>[];
+    for (int i = 0; i < lines.length; i++) {
+      final trimmed = lines[i].trim();
+      // 检测标题：已带空格（### 标题）或未带空格（###标题 → 补空格）
+      final headingMatch = RegExp(r'^(#{1,6})(\s?.*)$').firstMatch(trimmed);
+      if (headingMatch != null) {
+        final hash = headingMatch.group(1)!;
+        final rest = headingMatch.group(2)!;
+        if (rest.isNotEmpty && !rest.startsWith('#')) {
+          if (buf.isNotEmpty) {
+            blocks.add(ContentBlock(BlockType.text, buf.join('\n')));
+            buf = <String>[];
+          }
+          // 确保 hash 后有空格
+          final fixed = rest.startsWith(' ') ? trimmed : '$hash $rest';
+          blocks.add(ContentBlock(BlockType.text, fixed));
+          continue;
+        }
+      }
+      if (RegExp(r'^-{3,}$').hasMatch(trimmed)) {
+        if (buf.isNotEmpty) {
+          blocks.add(ContentBlock(BlockType.text, buf.join('\n')));
+          buf = <String>[];
+        }
+        blocks.add(ContentBlock(BlockType.text, trimmed));
+      } else if (RegExp(r'^-{3,}$').hasMatch(trimmed)) {
+        if (buf.isNotEmpty) {
+          blocks.add(ContentBlock(BlockType.text, buf.join('\n')));
+          buf = <String>[];
+        }
+        blocks.add(ContentBlock(BlockType.hr, '---'));
+      } else {
+        buf.add(lines[i]);
+      }
+    }
+    if (buf.isNotEmpty) {
+      blocks.add(ContentBlock(BlockType.text, buf.join('\n')));
+    }
+  }
+
   if (matches.isEmpty) {
-    blocks.add(ContentBlock(BlockType.text, text));
+    splitTextBlock(text);
     return blocks;
   }
 
@@ -681,7 +651,7 @@ List<ContentBlock> _splitBySpecialBlocks(String text) {
     if (m.start > lastEnd) {
       final segment = text.substring(lastEnd, m.start);
       if (segment.trim().isNotEmpty) {
-        blocks.add(ContentBlock(BlockType.text, segment));
+        splitTextBlock(segment);
       }
     }
 
@@ -925,4 +895,19 @@ String _fixMarkdown(String text) {
     }
   }
   return buf.join('\n');
+}
+
+/// 替换 keycap 序号表情（1️⃣ 2️⃣ 3️⃣ 4️⃣ 5️⃣）为 circled 数字（① ② ③ ④ ⑤）
+/// CanvasKit 不擅长渲染 U+FE0F+U+20E3 组合，导致黑框+不居中+重叠。
+String _fixKeycaps(String text) {
+  const map = {
+    '0️⃣': '⓪', '1️⃣': '①', '2️⃣': '②', '3️⃣': '③', '4️⃣': '④',
+    '5️⃣': '⑤', '6️⃣': '⑥', '7️⃣': '⑦', '8️⃣': '⑧', '9️⃣': '⑨',
+    '🔟': '⑩',
+  };
+  var result = text;
+  for (final e in map.entries) {
+    result = result.replaceAll(e.key, e.value);
+  }
+  return result;
 }
