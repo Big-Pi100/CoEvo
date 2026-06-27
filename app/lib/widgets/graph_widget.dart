@@ -2,7 +2,19 @@
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:graphic/graphic.dart' as graphic;
+import 'package:fl_chart/fl_chart.dart' as fl;
+
+/// 图表调色板（8 色）
+const _chartColors = [
+  Color(0xFF378ADD),
+  Color(0xFFD85A30),
+  Color(0xFF639922),
+  Color(0xFF7F77DD),
+  Color(0xFFEF9F27),
+  Color(0xFF1D9E75),
+  Color(0xFFD4537E),
+  Color(0xFF5F5E5A),
+];
 
 /// 内联图形渲染组件 — 解析 `<graph>` JSON 并渲染对应图表
 class GraphWidget extends StatelessWidget {
@@ -78,13 +90,13 @@ class GraphWidget extends StatelessWidget {
     try {
       switch (type) {
         case 'line':
-          return _buildGraphicLine(data);
+          return _buildGraphicLine(data, _cs);
         case 'bar':
-          return _buildGraphicBar(data);
+          return _buildGraphicBar(data, _cs);
         case 'scatter':
-          return _buildGraphicScatter(data);
+          return _buildGraphicScatter(data, _cs);
         case 'pie':
-          return _buildGraphicPie(data);
+          return _buildGraphicPie(data, _cs);
         case 'polygon':
           return _buildPolygon(data, context);
         case 'circle':
@@ -99,15 +111,69 @@ class GraphWidget extends StatelessWidget {
     }
   }
 
-  // ── graphic 折线图 ──
-  Widget _buildGraphicLine(Map<String, dynamic> data) {
+  // ── fl_chart 折线图 ──
+  Widget _buildGraphicLine(Map<String, dynamic> data, ColorScheme cs) {
     final list = _safeList(data['data']);
-    if (list.isEmpty) return _buildError('无数据', ThemeData().colorScheme);
+    if (list.isEmpty) return _buildError('无数据', cs);
     final title = data['title'] as String? ?? '';
+    final xlabel = data['xlabel'] as String? ?? '';
+    final ylabel = data['ylabel'] as String? ?? '';
+
+    // 支持 datasets 数组（多组折线）或单组 data
+    final rawDataSets = _safeList(data['datasets']);
+    final hasMultiple = rawDataSets.length >= 2;
+
+    List<fl.LineChartBarData> lineBars;
+    if (hasMultiple) {
+      lineBars = rawDataSets.asMap().entries.map((e) {
+        final ds = e.value as Map<String, dynamic>;
+        final pts = _safeList(ds['data']).map((p) {
+          final m = p as Map<String, dynamic>;
+          return fl.FlSpot(_safeDouble(m['x']), _safeDouble(m['y']));
+        }).toList();
+        return fl.LineChartBarData(
+          spots: pts,
+          isCurved: true,
+          color: _chartColors[e.key % _chartColors.length],
+          barWidth: 2,
+          dotData: const fl.FlDotData(show: false),
+          belowBarData: fl.BarAreaData(show: true, color: _chartColors[e.key % _chartColors.length].withAlpha(25)),
+        );
+      }).toList();
+    } else {
+      final spots = list.map((p) {
+        final m = p as Map<String, dynamic>;
+        return fl.FlSpot(_safeDouble(m['x']), _safeDouble(m['y']));
+      }).toList();
+      lineBars = [
+        fl.LineChartBarData(
+          spots: spots,
+          isCurved: true,
+          color: cs.primary,
+          barWidth: 2,
+          dotData: fl.FlDotData(show: spots.length <= 20),
+          belowBarData: fl.BarAreaData(show: true, color: cs.primary.withAlpha(25)),
+        ),
+      ];
+    }
+
+    // 计算范围
+    final allSpots = lineBars.expand((b) => b.spots).toList();
+    if (allSpots.isEmpty) return _buildError('无数据点', cs);
+    final xVals = allSpots.map((s) => s.x);
+    final yVals = allSpots.map((s) => s.y);
+    final xMin = xVals.reduce((a, b) => a < b ? a : b);
+    final xMax = xVals.reduce((a, b) => a > b ? a : b);
+    final yMin = yVals.reduce((a, b) => a < b ? a : b);
+    final yMax = yVals.reduce((a, b) => a > b ? a : b);
+    final xPad = (xMax - xMin) * 0.05;
+    final yPad = (yMax - yMin) * 0.1;
+    if (xPad == 0 && yPad == 0) { /* single point */ }
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
-      padding: const EdgeInsets.fromLTRB(0, 12, 16, 8),
-      decoration: _chartBoxDeco(),
+      padding: const EdgeInsets.fromLTRB(4, 12, 16, 8),
+      decoration: _chartBoxDeco(cs),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -115,14 +181,52 @@ class GraphWidget extends StatelessWidget {
             Padding(padding: const EdgeInsets.only(bottom: 8),
               child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
           SizedBox(height: 200,
-            child: graphic.Chart(
-              data: list,
-              variables: {
-                'x': graphic.Variable(accessor: (Map m) => _safeDouble(m['x'])),
-                'y': graphic.Variable(accessor: (Map m) => _safeDouble(m['y'])),
-              },
-              marks: [graphic.LineMark()],
-              axes: [graphic.Defaults.horizontalAxis, graphic.Defaults.verticalAxis],
+            child: fl.LineChart(
+              fl.LineChartData(
+                minX: xMin - xPad,
+                maxX: xMax + xPad,
+                minY: yMin - yPad,
+                maxY: yMax + yPad,
+                gridData: fl.FlGridData(
+                  show: true,
+                  drawVerticalLine: true,
+                  horizontalInterval: _niceInterval(yMax - yMin),
+                  verticalInterval: _niceInterval(xMax - xMin),
+                  getDrawingHorizontalLine: (_) => fl.FlLine(color: cs.outlineVariant.withAlpha(60), strokeWidth: 0.5),
+                  getDrawingVerticalLine: (_) => fl.FlLine(color: cs.outlineVariant.withAlpha(60), strokeWidth: 0.5),
+                ),
+                titlesData: fl.FlTitlesData(
+                  bottomTitles: fl.AxisTitles(
+                    axisNameWidget: xlabel.isEmpty ? null : Text(xlabel, style: TextStyle(fontSize: 11, color: cs.outline)),
+                    sideTitles: fl.SideTitles(
+                      showTitles: true,
+                      reservedSize: 32,
+                      interval: _niceInterval(xMax - xMin),
+                      getTitlesWidget: (v, _) => Text(_fmtTick(v), style: TextStyle(fontSize: 11, color: cs.outline)),
+                    ),
+                  ),
+                  leftTitles: fl.AxisTitles(
+                    axisNameWidget: ylabel.isEmpty ? null : Text(ylabel, style: TextStyle(fontSize: 11, color: cs.outline)),
+                    sideTitles: fl.SideTitles(
+                      showTitles: true,
+                      reservedSize: 36,
+                      interval: _niceInterval(yMax - yMin),
+                      getTitlesWidget: (v, _) => Text(_fmtTick(v), style: TextStyle(fontSize: 11, color: cs.outline)),
+                    ),
+                  ),
+                  topTitles: fl.AxisTitles(sideTitles: fl.SideTitles(showTitles: false)),
+                  rightTitles: fl.AxisTitles(sideTitles: fl.SideTitles(showTitles: false)),
+                ),
+                lineBarsData: lineBars,
+                lineTouchData: fl.LineTouchData(
+                  touchTooltipData: fl.LineTouchTooltipData(
+                    getTooltipItems: (spots) => spots.map((s) =>
+                      fl.LineTooltipItem('(${_fmtTick(s.x)}, ${_fmtTick(s.y)})',
+                        const TextStyle(fontSize: 11, color: Colors.white))).toList(),
+                  ),
+                ),
+                borderData: fl.FlBorderData(show: false),
+              ),
             ),
           ),
         ],
@@ -130,15 +234,28 @@ class GraphWidget extends StatelessWidget {
     );
   }
 
-  // ── graphic 柱状图 ──
-  Widget _buildGraphicBar(Map<String, dynamic> data) {
+  // ── fl_chart 柱状图 ──
+  Widget _buildGraphicBar(Map<String, dynamic> data, ColorScheme cs) {
     final list = _safeList(data['data']);
-    if (list.isEmpty) return _buildError('无数据', ThemeData().colorScheme);
+    if (list.isEmpty) return _buildError('无数据', cs);
     final title = data['title'] as String? ?? '';
+    final labels = list.map((p) => (p as Map<String, dynamic>)['label'] as String? ?? '').toList();
+    final groups = list.asMap().entries.map((e) {
+      final m = e.value as Map<String, dynamic>;
+      return fl.BarChartGroupData(
+        x: e.key,
+        barRods: [fl.BarChartRodData(
+          toY: _safeDouble(m['value']),
+          color: _chartColors[e.key % _chartColors.length],
+          width: 16,
+        )],
+      );
+    }).toList();
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
-      padding: const EdgeInsets.fromLTRB(0, 12, 16, 8),
-      decoration: _chartBoxDeco(),
+      padding: const EdgeInsets.fromLTRB(4, 12, 16, 8),
+      decoration: _chartBoxDeco(cs),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -146,14 +263,34 @@ class GraphWidget extends StatelessWidget {
             Padding(padding: const EdgeInsets.only(bottom: 8),
               child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
           SizedBox(height: 200,
-            child: graphic.Chart(
-              data: list,
-              variables: {
-                'label': graphic.Variable(accessor: (Map m) => m['label'] as String),
-                'value': graphic.Variable(accessor: (Map m) => _safeDouble(m['value'])),
-              },
-              marks: [graphic.IntervalMark()],
-              axes: [graphic.Defaults.horizontalAxis, graphic.Defaults.verticalAxis],
+            child: fl.BarChart(
+              fl.BarChartData(
+                barGroups: groups,
+                gridData: const fl.FlGridData(show: true, drawVerticalLine: false),
+                titlesData: fl.FlTitlesData(
+                  bottomTitles: fl.AxisTitles(
+                    sideTitles: fl.SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (v, _) {
+                        final i = v.toInt();
+                        return i < labels.length
+                            ? Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Text(labels[i], style: TextStyle(fontSize: 10, color: cs.outline)),
+                              )
+                            : const SizedBox();
+                      },
+                    ),
+                  ),
+                  leftTitles: fl.AxisTitles(
+                    sideTitles: fl.SideTitles(showTitles: true, reservedSize: 32,
+                      getTitlesWidget: (v, _) => Text(_fmtTick(v), style: TextStyle(fontSize: 11, color: cs.outline))),
+                  ),
+                  topTitles: const fl.AxisTitles(sideTitles: fl.SideTitles(showTitles: false)),
+                  rightTitles: const fl.AxisTitles(sideTitles: fl.SideTitles(showTitles: false)),
+                ),
+                borderData: fl.FlBorderData(show: false),
+              ),
             ),
           ),
         ],
@@ -161,15 +298,28 @@ class GraphWidget extends StatelessWidget {
     );
   }
 
-  // ── graphic 散点图 ──
-  Widget _buildGraphicScatter(Map<String, dynamic> data) {
+  // ── fl_chart 散点图 ──
+  Widget _buildGraphicScatter(Map<String, dynamic> data, ColorScheme cs) {
     final list = _safeList(data['data']);
-    if (list.isEmpty) return _buildError('无数据', ThemeData().colorScheme);
+    if (list.isEmpty) return _buildError('无数据', cs);
     final title = data['title'] as String? ?? '';
+    final spots = list.asMap().entries.map((e) {
+      final m = e.value as Map<String, dynamic>;
+      return fl.ScatterSpot(_safeDouble(m['x']), _safeDouble(m['y']));
+    }).toList();
+    final xVals = spots.map((s) => s.x);
+    final yVals = spots.map((s) => s.y);
+    final xMin = xVals.reduce((a, b) => a < b ? a : b);
+    final xMax = xVals.reduce((a, b) => a > b ? a : b);
+    final yMin = yVals.reduce((a, b) => a < b ? a : b);
+    final yMax = yVals.reduce((a, b) => a > b ? a : b);
+    final xPad = (xMax - xMin) * 0.1;
+    final yPad = (yMax - yMin) * 0.1;
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
-      padding: const EdgeInsets.fromLTRB(0, 12, 16, 8),
-      decoration: _chartBoxDeco(),
+      padding: const EdgeInsets.fromLTRB(4, 12, 16, 8),
+      decoration: _chartBoxDeco(cs),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -177,14 +327,28 @@ class GraphWidget extends StatelessWidget {
             Padding(padding: const EdgeInsets.only(bottom: 8),
               child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
           SizedBox(height: 200,
-            child: graphic.Chart(
-              data: list,
-              variables: {
-                'x': graphic.Variable(accessor: (Map m) => _safeDouble(m['x'])),
-                'y': graphic.Variable(accessor: (Map m) => _safeDouble(m['y'])),
-              },
-              marks: [graphic.PointMark()],
-              axes: [graphic.Defaults.horizontalAxis, graphic.Defaults.verticalAxis],
+            child: fl.ScatterChart(
+              fl.ScatterChartData(
+                scatterSpots: spots,
+                minX: xMin - xPad,
+                maxX: xMax + xPad,
+                minY: yMin - yPad,
+                maxY: yMax + yPad,
+                gridData: const fl.FlGridData(show: true, drawVerticalLine: true),
+                titlesData: fl.FlTitlesData(
+                  bottomTitles: fl.AxisTitles(
+                    sideTitles: fl.SideTitles(showTitles: true, reservedSize: 32,
+                      getTitlesWidget: (v, _) => Text(_fmtTick(v), style: TextStyle(fontSize: 11, color: cs.outline))),
+                  ),
+                  leftTitles: fl.AxisTitles(
+                    sideTitles: fl.SideTitles(showTitles: true, reservedSize: 36,
+                      getTitlesWidget: (v, _) => Text(_fmtTick(v), style: TextStyle(fontSize: 11, color: cs.outline))),
+                  ),
+                  topTitles: const fl.AxisTitles(sideTitles: fl.SideTitles(showTitles: false)),
+                  rightTitles: const fl.AxisTitles(sideTitles: fl.SideTitles(showTitles: false)),
+                ),
+                borderData: fl.FlBorderData(show: false),
+              ),
             ),
           ),
         ],
@@ -192,15 +356,26 @@ class GraphWidget extends StatelessWidget {
     );
   }
 
-  // ── graphic 饼图 ──
-  Widget _buildGraphicPie(Map<String, dynamic> data) {
+  // ── fl_chart 饼图 ──
+  Widget _buildGraphicPie(Map<String, dynamic> data, ColorScheme cs) {
     final list = _safeList(data['data']);
-    if (list.isEmpty) return _buildError('无数据', ThemeData().colorScheme);
+    if (list.isEmpty) return _buildError('无数据', cs);
     final title = data['title'] as String? ?? '';
+    final sections = list.asMap().entries.map((e) {
+      final m = e.value as Map<String, dynamic>;
+      return fl.PieChartSectionData(
+        value: _safeDouble(m['value']),
+        title: '${m['label'] ?? ''}\n${_fmtTick(_safeDouble(m['value']))}',
+        color: _chartColors[e.key % _chartColors.length],
+        radius: 55,
+        titleStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white),
+      );
+    }).toList();
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
-      padding: const EdgeInsets.fromLTRB(0, 12, 16, 8),
-      decoration: _chartBoxDeco(),
+      padding: const EdgeInsets.fromLTRB(4, 12, 16, 8),
+      decoration: _chartBoxDeco(cs),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -208,14 +383,8 @@ class GraphWidget extends StatelessWidget {
             Padding(padding: const EdgeInsets.only(bottom: 8),
               child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
           SizedBox(height: 200,
-            child: graphic.Chart(
-              data: list,
-              variables: {
-                'label': graphic.Variable(accessor: (Map m) => m['label'] as String),
-                'value': graphic.Variable(accessor: (Map m) => _safeDouble(m['value'])),
-              },
-              marks: [graphic.IntervalMark()],
-              coord: graphic.PolarCoord(transposed: true),
+            child: fl.PieChart(
+              fl.PieChartData(sections: sections),
             ),
           ),
         ],
@@ -223,12 +392,33 @@ class GraphWidget extends StatelessWidget {
     );
   }
 
-  BoxDecoration _chartBoxDeco() {
-    // placeholder — actual colors come from parent context at build time
+  String _fmtTick(double v) {
+    if (v == v.roundToDouble()) return v.toInt().toString();
+    return v.toStringAsFixed(1);
+  }
+
+  double _niceInterval(double range) {
+    if (range <= 0) return 1;
+    final rough = range / 5;
+    final magnitude = _pow10((rough.abs()).toStringAsFixed(0).length - 1);
+    final normalized = rough / magnitude;
+    if (normalized <= 1.5) return magnitude;
+    if (normalized <= 3) return 2 * magnitude;
+    if (normalized <= 7) return 5 * magnitude;
+    return 10 * magnitude;
+  }
+
+  double _pow10(int n) {
+    double r = 1;
+    for (var i = 0; i < n; i++) { r *= 10; }
+    return r;
+  }
+
+  BoxDecoration _chartBoxDeco(ColorScheme cs) {
     return BoxDecoration(
-      color: const Color(0xFFF5F5F5),
+      color: cs.surfaceContainerLow,
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: const Color(0xFFE0E0E0)),
+      border: Border.all(color: cs.outlineVariant),
     );
   }
 

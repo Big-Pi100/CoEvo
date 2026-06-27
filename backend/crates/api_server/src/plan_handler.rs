@@ -1002,7 +1002,7 @@ pub fn build_plan_context(conn: &rusqlite::Connection, plan_id: &str, conversati
                 let _ = logger.close().await;
             }
         });
-        return (prompt_subject, mode.to_string(), ctx);
+        return (pipeline_domain, mode.to_string(), ctx);
     }
 
     // 无计划
