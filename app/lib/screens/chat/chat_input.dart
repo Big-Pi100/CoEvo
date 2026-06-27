@@ -11,6 +11,7 @@ class ChatInput extends ConsumerStatefulWidget {
   final TextEditingController textController;
   final bool isWaiting;
   final bool isDeleted;
+  final bool isBlocked;
   final VoidCallback onSend;
 
   const ChatInput({
@@ -18,6 +19,7 @@ class ChatInput extends ConsumerStatefulWidget {
     required this.textController,
     required this.isWaiting,
     required this.isDeleted,
+    this.isBlocked = false,
     required this.onSend,
   });
 
@@ -302,12 +304,12 @@ class _ChatInputState extends ConsumerState<ChatInput>
               hintText: '输入消息...', isDense: true, border: OutlineInputBorder(),
               contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             ),
-            textInputAction: TextInputAction.send, onSubmitted: (_) => widget.onSend(),
+            textInputAction: TextInputAction.send, onSubmitted: widget.isBlocked ? null : (_) => widget.onSend(),
           ),
         ),
         const SizedBox(width: 8),
         IconButton.filled(
-          onPressed: widget.isWaiting ? null : widget.onSend,
+          onPressed: (widget.isWaiting || widget.isBlocked) ? null : widget.onSend,
           icon: widget.isWaiting
               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
               : const Icon(Icons.send),

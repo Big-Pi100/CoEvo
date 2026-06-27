@@ -45,6 +45,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   WsChatSession? _session;
   StreamSubscription<WsEvent>? _sessionSub;
   bool _isWaiting = false;
+  bool _subscriptionBlocked = false;
   String _convId = '';
   bool _isInitializing = true;
 
@@ -234,7 +235,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   void _sendMessage() {
     final text = _messageController.text.trim();
-    if (text.isEmpty || _client == null || _isWaiting) return;
+    if (text.isEmpty || _client == null || _isWaiting || _subscriptionBlocked) return;
 
     // 用户发新消息时停止正在播放的 TTS，避免与即将到来的新回复音频交叠
     _ttsPlayer?.stop();
@@ -373,6 +374,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ref.read(subscriptionProvider.notifier).setExpired();
           setState(() {
             _isWaiting = false;
+            _subscriptionBlocked = true;
           });
           // 清理空的 AI 气泡
           if (_streamingIndex >= 0 && _streamingIndex < _messages.length) {
@@ -380,10 +382,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           }
           _streamingIndex = -1;
           _streamingBuffer = '';
-          // 临时账户不弹订阅窗，只引导注册认领
-          if (!_isTrialUser()) {
-            if (!_subscriptionDialogShown) {
-              _subscriptionDialogShown = true;
+          if (!_subscriptionDialogShown) {
+            _subscriptionDialogShown = true;
+            if (_isTrialUser()) {
+              _showTrialClaimDialog();
+            } else {
               _showSubscriptionDialog('订阅已到期');
             }
           }
@@ -391,6 +394,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ref.read(subscriptionProvider.notifier).setRequired();
           setState(() {
             _isWaiting = false;
+            _subscriptionBlocked = true;
           });
           // 清理空的 AI 气泡
           if (_streamingIndex >= 0 && _streamingIndex < _messages.length) {
@@ -398,10 +402,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           }
           _streamingIndex = -1;
           _streamingBuffer = '';
-          // 临时账户不弹订阅窗，只引导注册认领
-          if (!_isTrialUser()) {
-            if (!_subscriptionDialogShown) {
-              _subscriptionDialogShown = true;
+          if (!_subscriptionDialogShown) {
+            _subscriptionDialogShown = true;
+            if (_isTrialUser()) {
+              _showTrialClaimDialog();
+            } else {
               _showSubscriptionDialog('需要激活');
             }
           }
@@ -924,6 +929,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             textController: _messageController,
             isWaiting: _isWaiting,
             isDeleted: _isDeleted,
+            isBlocked: _subscriptionBlocked,
             onSend: _sendMessage,
           ),
         ],
