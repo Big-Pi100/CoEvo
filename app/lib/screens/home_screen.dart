@@ -48,6 +48,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (mounted) setState(() => _authReady = true);
       return;
     }
+    // 新用户：已使用过试用 → 跳登录页
+    if (AuthNotifier.hasUsedTrial()) {
+      if (mounted) {
+        Navigator.of(context).pushReplacementNamed('/login');
+      }
+      return;
+    }
     // 新用户：自动创建临时账户
     await ref.read(authProvider.notifier).trialStart();
     if (mounted) {

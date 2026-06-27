@@ -199,21 +199,7 @@ pub async fn claim(
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "update_user_failed"}))).into_response();
     }
 
-    // 8. 注册成功，延长订阅 30 天
-    let now = chrono::Utc::now();
-    let new_expires = (now + chrono::Duration::days(30))
-        .format("%Y-%m-%d")
-        .to_string();
-    let old_expires = crate::subscription::get_current_expires(&conn, &body.user_id).ok().flatten();
-    tracing::info!(
-        "trial/claim: extending subscription for user_id={}, old_expires={:?}, new_expires={}",
-        body.user_id, old_expires, new_expires,
-    );
-    if let Err(e) = crate::subscription::set_expires(&conn, &body.user_id, &new_expires) {
-        tracing::warn!("trial/claim set_expires failed: {}", e);
-    }
-
-    // 9. 触发注册活动
+    // 8. 触发注册活动
     if let Err(e) = crate::campaign_executor::execute_campaign_trigger(
         &conn, "registration", &body.user_id, referred_by.as_deref(), None,
     ) {
@@ -230,7 +216,7 @@ pub async fn claim(
         }
     }
 
-    // 10. 删除旧 token、创建新 token
+    // 9. 删除旧 token、创建新 token
     let new_token = Uuid::new_v4().to_string();
     let token_id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();

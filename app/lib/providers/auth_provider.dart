@@ -1,3 +1,4 @@
+import 'dart:html' as html;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -187,6 +188,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final trialUsername = result['username'] as String?;
       if (uid != null && token != null) {
         await _saveCredentials(uid, token, trialUsername ?? uid);
+        // 标记浏览器已使用过试用，防止退出后无限创建新试用
+        _setTrialUsedFlag();
       }
       state = AuthState(
         isAuthenticated: true,
@@ -200,6 +203,25 @@ class AuthNotifier extends StateNotifier<AuthState> {
         isLoading: false,
         error: _friendlyError(e.toString().replaceFirst('Exception: ', '')),
       );
+    }
+  }
+
+  /// 在浏览器 localStorage 设置"已使用试用"标记
+  void _setTrialUsedFlag() {
+    try {
+      // dart:html 在 Flutter Web 中可用
+      final storage = html.window.localStorage;
+      storage['coevo_trial_used'] = '1';
+    } catch (_) {}
+  }
+
+  /// 检查当前浏览器是否已创建过试用账户
+  static bool hasUsedTrial() {
+    try {
+      final storage = html.window.localStorage;
+      return storage['coevo_trial_used'] == '1';
+    } catch (_) {
+      return false;
     }
   }
 
