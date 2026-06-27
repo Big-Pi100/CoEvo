@@ -308,7 +308,7 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
                             label:
                                 const Text('编辑', style: TextStyle(fontSize: 12)),
                           ),
-                          if (_campaign!['status'] == 'draft')
+                          if (_campaign!['status'] != 'active')
                             OutlinedButton.icon(
                               icon: const Icon(Icons.delete, size: 16),
                               onPressed: _delete,

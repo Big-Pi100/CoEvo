@@ -1108,8 +1108,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       statusIcon = Icons.lock_clock;
     } else {
       final expires = DateTime.tryParse(expiresStr) ?? DateTime.now();
-      final remaining = expires.difference(DateTime.now());
-      if (remaining.inDays > 30) {
+      final remaining = expires.difference(DateTime.now().toUtc());
+      if (remaining.isNegative) {
+        statusText = '已到期 — 请联系服务人员续费';
+        statusColor = _cs.error;
+        statusIcon = Icons.lock_clock;
+      } else if (remaining.inDays > 30) {
         statusText = '有效 — 到期日: ${expiresStr.substring(0, 10)}';
         statusColor = _cs.primary;
         statusIcon = Icons.verified;
@@ -1118,9 +1122,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         statusColor = _cs.tertiary;
         statusIcon = Icons.access_time;
       } else {
-        statusText = '已到期 — 请联系服务人员续费';
-        statusColor = _cs.error;
-        statusIcon = Icons.lock_clock;
+        final hours = remaining.inHours;
+        statusText = hours > 0
+            ? '即将到期 — 剩余 $hours 小时'
+            : '即将到期 — 剩余 ${remaining.inMinutes} 分钟';
+        statusColor = _cs.tertiary;
+        statusIcon = Icons.access_time;
       }
     }
 

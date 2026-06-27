@@ -105,120 +105,6 @@ fn activate_from_ai_reply(conn: &rusqlite::Connection, user_id: &str, ai_reply: 
     }
 }
 
-/// B2: 用户输入 → 激活 + 验证（规则匹配 + LLM 判断）
-/// 在 hot path 中调用，匹配已激活词汇后用 LLM 验证用法
-/// 返回需要在 system context 中注入的纠正信息
-pub async fn verify_user_input(
-    conn: &rusqlite::Connection,
-    user_id: &str,
-    user_message: &str,
-    language: &str,
-    llm_config: &chat_engine::llm_caller::LlmConfig,
-) -> Vec<serde_json::Value> {
-    let mut corrections = Vec::new();
-
-    let mut stmt = match conn.prepare("SELECT front FROM prebuilt_cards WHERE subject = ?1") {
-        Ok(s) => s,
-        Err(_) => return corrections,
-    };
-    let fronts: Vec<String> = match stmt.query_map(rusqlite::params![language], |row| row.get::<_, String>(0)) {
-        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(_) => return corrections,
-    };
-    if fronts.is_empty() { return corrections; }
-    let vocab: std::collections::HashSet<String> = fronts.iter().map(|f| f.to_lowercase()).collect();
-
-    let matched: Vec<String> = if language == "chinese" {
-        fronts.iter()
-            .filter(|f| f.len() >= 2 && user_message.contains(&f.to_lowercase()))
-            .cloned()
-            .collect()
-    } else {
-        user_message.split(|c: char| !c.is_ascii_alphabetic())
-            .filter(|w| w.len() >= 2 && vocab.contains(&w.to_lowercase()))
-            .map(|w| w.to_lowercase())
-            .collect()
-    };
-    if matched.is_empty() { return corrections; }
-
-    let now = chrono::Utc::now().timestamp();
-    let today_start = now - (now % 86400);  // 今天的 00:00 UTC
-
-    for word in &matched {
-
-        // 查找用户是否已有该词的激活卡片
-        let card_info: Option<(String, Option<i64>)> = conn.query_row(
-            "SELECT c.id, cm.last_review FROM user_cards c \
-             JOIN card_memory cm ON c.id = cm.user_card_id \
-             WHERE c.user_id = ?1 AND LOWER(c.front) = ?2 AND c.language = 'english' \
-             LIMIT 1",
-            rusqlite::params![user_id, word],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?)),
-        ).ok();
-
-        match card_info {
-            None => {
-                // 未激活 → 首次激活（用户用出说明应认识）
-                activate_single_word(conn, user_id, word, language, now);
-            }
-            Some((card_id, last_review)) => {
-                // 已激活 → 每日频率控制
-                if let Some(lr) = last_review {
-                    if lr >= today_start {
-                        continue; // 今天已经更新过，跳过
-                    }
-                }
-
-                // 调 LLM 验证用法
-                let verify_prompt = chat_engine::prompt_loader::get_verify("general").usage.clone();
-                let full_prompt = if verify_prompt.is_empty() {
-                    format!("判断用户是否正确使用了该单词。\n\nword: {}\nuser_context: {}", word, user_message)
-                } else {
-                    format!(
-                        "{}\n\nword: {}\nuser_context: {}",
-                        verify_prompt, word, user_message
-                    )
-                };
-
-                let mut caller = chat_engine::llm_caller::LlmCaller::new(llm_config.clone());
-                match caller.generate("", &full_prompt).await {
-                    Ok(response) => {
-                        if let Ok(result) = serde_json::from_str::<serde_json::Value>(&response) {
-                            let correct = result.get("correct").and_then(|v| v.as_bool()).unwrap_or(false);
-                            if correct {
-                                // 正确使用 → 更新 FSRS
-                                let _ = conn.execute(
-                                    "UPDATE card_memory SET reps = reps + 1, last_review = ?1, \
-                                     due = ?1 + 86400 WHERE user_card_id = ?2 AND last_review < ?3",
-                                    rusqlite::params![now, card_id, today_start],
-                                );
-                                tracing::info!("[CP1] verify_user_input: '{}' used correctly, FSRS updated", word);
-                            } else {
-                                // 用法错误 → 收集纠正信息
-                                if let Some(hint) = result.get("correction_hint").and_then(|v| v.as_str()) {
-                                    if !hint.is_empty() {
-                                        corrections.push(serde_json::json!({
-                                            "word": word,
-                                            "correction_hint": hint,
-                                            "reason": result.get("reason").and_then(|v| v.as_str()).unwrap_or("")
-                                        }));
-                                    }
-                                }
-                                tracing::info!("[CP1] verify_user_input: '{}' used incorrectly, will correct", word);
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!("[CP1] verify_user_input: LLM call failed for '{}': {}", word, e);
-                    }
-                }
-            }
-        }
-    }
-
-    corrections
-}
-
 /// 激活单个词汇（B1/B2 共用）
 fn activate_single_word(conn: &rusqlite::Connection, user_id: &str, word: &str, language: &str, now: i64) {
     let word_lower = word.to_lowercase();
@@ -497,6 +383,64 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 // 记录学科（用于调试日志的 subject 字段）
                 if !debug_plan_info.0.is_empty() {
                     last_subject = Some(debug_plan_info.0.clone());
+                }
+
+                // ── B2: 用户输入匹配词库词汇 → 激活（仅 english/chinese） ──
+                let domain = &debug_plan_info.0;
+                tracing::info!("[CP1 B2] check: domain={}, msg_len={}, msg_preview={:?}", 
+                    domain, chat_req.message.len(), &chat_req.message[..std::cmp::min(30, chat_req.message.len())]);
+                if (domain == "english" || domain == "chinese") && !chat_req.message.trim().is_empty() {
+                    let conn_b2 = crate::db_pool::get_conn();
+                    let uid_b2 = &chat_req.user_id;
+                    let msg_b2 = &chat_req.message;
+                    // 同步执行匹配 + 激活，不调用 LLM 验证
+                    let fronts: Vec<String> = (|| -> Option<Vec<String>> {
+                        let mut stmt = conn_b2.prepare("SELECT front FROM prebuilt_cards WHERE subject = ?1").ok()?;
+                        let rows = stmt.query_map(rusqlite::params![domain], |row| row.get::<_, String>(0)).ok()?;
+                        Some(rows.filter_map(|r| r.ok()).collect())
+                    })().unwrap_or_default();
+                    if !fronts.is_empty() {
+                        tracing::info!("[CP1 B2] loaded {} fronts for subject={}", fronts.len(), domain);
+                        let vocab: std::collections::HashSet<String> = fronts.iter()
+                            .map(|f| f.to_lowercase()).collect();
+                        let matched: Vec<String> = if *domain == "chinese" {
+                            fronts.iter()
+                                .filter(|f| f.len() >= 2 && msg_b2.contains(&f.to_lowercase()))
+                                .cloned().collect()
+                        } else {
+                            msg_b2.split(|c: char| !c.is_ascii_alphabetic())
+                                .filter(|w| w.len() >= 2 && vocab.contains(&w.to_lowercase()))
+                                .map(|w| w.to_lowercase())
+                                .collect()
+                        };
+                        let now = chrono::Utc::now().timestamp();
+                        let today_start = now - (now % 86400);
+                        for word in &matched {
+                            let has_card = conn_b2.query_row(
+                                "SELECT 1 FROM user_cards WHERE user_id = ?1 AND LOWER(front) = ?2 LIMIT 1",
+                                rusqlite::params![uid_b2, word],
+                                |_| Ok(true),
+                            ).unwrap_or(false);
+                            if !has_card {
+                                activate_single_word(&conn_b2, uid_b2, word, domain, now);
+                            } else {
+                                // 已激活：走完整 FSRS 隐式复习流程（更新 state/due/reps + 写 review_log）
+                                let card_ids: Vec<String> = (|| -> Option<Vec<String>> {
+                                    let mut stmt = conn_b2.prepare(
+                                        "SELECT id FROM user_cards WHERE user_id = ?1 AND LOWER(front) = ?2"
+                                    ).ok()?;
+                                    let rows = stmt.query_map(rusqlite::params![uid_b2, word], |row| row.get::<_, String>(0)).ok()?;
+                                    Some(rows.filter_map(|r| r.ok()).collect())
+                                })().unwrap_or_default();
+                                for cid in &card_ids {
+                                    card_engine::fsrs_scheduler::record_implicit_review(&conn_b2, cid);
+                                }
+                            }
+                        }
+                        if !matched.is_empty() {
+                            tracing::info!("[CP1 B2] activated {} words from user input: {:?}", matched.len(), matched);
+                        }
+                    }
                 }
 
                 // ── 调试日志：plan_context_built + system_prompt_selected ──

@@ -1,14 +1,20 @@
 // 全局成就通知 Overlay
 //
 // 挂载在 MaterialApp.builder 中，监听 achievementNotifierProvider 队列，
-// 逐个展示成就特效卡（入场弹跳动效 + 分级光效 + 粒子撒花 + 3s 自动消失）。
+// 逐个展示成就特效卡（入场弹跳动效 + 分级光效 + 粒子撒花）。
+// 分享海报也在同一 Stack 中渲染，不用 OverlayEntry。
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
+import '../api/api_config.dart';
 import '../providers/achievement_notifier.dart';
+import '../providers/auth_provider.dart';
 import '../shared/achievement_icons.dart';
+import 'achievement_share_card.dart';
 
 // ── Confetti 粒子 ──
 
@@ -22,7 +28,7 @@ class _Particle {
     required this.size,
     required this.rotation,
     required this.rotationSpeed,
-    this.shape, // 0=rect, 1=circle, 2=star-like
+    this.shape,
   });
 
   double x, y;
@@ -53,16 +59,13 @@ class _ConfettiPainter extends CustomPainter {
 
       final shape = p.shape ?? 0;
       if (shape == 0) {
-        // 矩形
         canvas.drawRect(
           Rect.fromCenter(center: Offset.zero, width: p.size, height: p.size * 0.6),
           paint,
         );
       } else if (shape == 1) {
-        // 圆形
         canvas.drawCircle(Offset.zero, p.size * 0.4, paint);
       } else {
-        // 星形近似（小菱形）
         final path = Path()
           ..moveTo(0, -p.size * 0.5)
           ..lineTo(p.size * 0.3, 0)
@@ -88,49 +91,52 @@ class AchievementOverlay extends ConsumerStatefulWidget {
   ConsumerState<AchievementOverlay> createState() => _AchievementOverlayState();
 }
 
+/// 分享海报所需数据，加载后缓存避免重复请求
+class _ShareData {
+  _ShareData({
+    required this.achievementKey,
+    required this.achievementName,
+    this.achievementDesc,
+    required this.tier,
+    required this.iconColor,
+    required this.userName,
+    this.referralCode,
+  });
+
+  final String achievementKey;
+  final String achievementName;
+  final String? achievementDesc;
+  final String tier;
+  final Color iconColor;
+  final String userName;
+  final String? referralCode;
+}
+
 class _AchievementOverlayState extends ConsumerState<AchievementOverlay>
     with TickerProviderStateMixin {
-  late AnimationController _ctrl;
-  late Animation<double> _scale;
-  late Animation<double> _opacity;
-  Timer? _autoDismiss;
   String? _displayedKey;
+  _ShareData? _shareData;
 
   ColorScheme get _cs => Theme.of(context).colorScheme;
 
   // ── Confetti 粒子系统 ──
   final List<_Particle> _particles = [];
   late AnimationController _confettiCtrl;
-  double _screenWidth = 390; // 默认值，build 时更新
+  double _screenWidth = 390;
   static const _confettiColors = [
-    Color(0xFFFFD700), // gold
-    Color(0xFFC0C0C0), // silver
-    Color(0xFFCD7F32), // bronze
-    Color(0xFFFF6B6B), // coral
-    Color(0xFF4ECDC4), // teal
-    Color(0xFF9B59B6), // purple
-    Color(0xFFFF8C00), // orange
-    Color(0xFF3498DB), // blue
+    Color(0xFFFFD700),
+    Color(0xFFC0C0C0),
+    Color(0xFFCD7F32),
+    Color(0xFFFF6B6B),
+    Color(0xFF4ECDC4),
+    Color(0xFF9B59B6),
+    Color(0xFFFF8C00),
+    Color(0xFF3498DB),
   ];
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
-    _scale = Tween<double>(begin: 0.3, end: 1.0).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut),
-    );
-    _opacity = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _ctrl,
-        curve: const Interval(0.0, 0.4, curve: Curves.easeOut),
-      ),
-    );
-
-    // Confetti 动画控制器（1.5s 粒子生命周期）
     _confettiCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
@@ -153,31 +159,77 @@ class _AchievementOverlayState extends ConsumerState<AchievementOverlay>
   }
 
   void _showCurrent(AchievementNotification a) {
-    _autoDismiss?.cancel();
     _displayedKey = a.key;
-    _ctrl.reset();
-    _ctrl.forward();
     _spawnConfetti(a.tier);
-    _autoDismiss = Timer(const Duration(seconds: 3), () {
-      _dismissCurrent();
-    });
+    // 直接触发加载用户数据 → 显示全屏海报，无中间小弹窗
+    _loadAndShowPoster(a);
   }
 
   void _hide() {
-    _autoDismiss?.cancel();
-    _ctrl.reset();
     _displayedKey = null;
+    _shareData = null;
     if (mounted) setState(() {});
   }
 
   void _dismissCurrent() {
-    _autoDismiss?.cancel();
-    _ctrl.reverse().then((_) {
-      if (mounted) {
-        ref.read(achievementNotifierProvider.notifier).dismiss();
-        _displayedKey = null;
+    ref.read(achievementNotifierProvider.notifier).dismiss();
+    _displayedKey = null;
+    _shareData = null;
+    if (mounted) setState(() {});
+  }
+
+  /// 异步加载用户数据，完成后直接设置 _shareData 渲染全屏海报
+  Future<void> _loadAndShowPoster(AchievementNotification a) async {
+    String userName = '';
+    String? referralCode;
+
+    try {
+      final auth = ref.read(authProvider);
+      final uid = auth.userId;
+      final token = auth.token;
+      if (uid != null && token != null) {
+        final headers = ApiConfig.headers(token: token);
+
+        final codeResp = await http.get(
+          Uri.parse('${ApiConfig.baseUrl}/api/referral/my-code?user_id=$uid'),
+          headers: headers,
+        );
+        if (codeResp.statusCode == 200) {
+          final data = jsonDecode(codeResp.body);
+          referralCode = data['code'] as String? ?? data['referral_code'] as String?;
+        }
+
+        final profileResp = await http.get(
+          Uri.parse('${ApiConfig.baseUrl}/api/user/$uid/profile'),
+          headers: headers,
+        );
+        if (profileResp.statusCode == 200) {
+          final data = jsonDecode(profileResp.body);
+          userName = data['real_name'] as String? ??
+              data['display_name'] as String? ??
+              data['username'] as String? ??
+              '';
+        }
       }
+    } catch (_) {}
+
+    if (!mounted || _displayedKey != a.key) return;
+
+    setState(() {
+      _shareData = _ShareData(
+        achievementKey: a.key,
+        achievementName: a.name,
+        achievementDesc: a.description,
+        tier: a.tier,
+        iconColor: _resolveColor(a),
+        userName: userName,
+        referralCode: referralCode,
+      );
     });
+  }
+
+  void _closeShare() {
+    setState(() => _shareData = null);
   }
 
   // ── Confetti 粒子逻辑 ──
@@ -186,11 +238,8 @@ class _AchievementOverlayState extends ConsumerState<AchievementOverlay>
     _particles.clear();
     final rng = math.Random();
     final midX = _screenWidth / 2;
-
-    // 根据分级选择粒子颜色偏向
     final tierBase = tierColor(tier);
 
-    // 生成 40 个粒子，分布在卡片上方区域
     for (int i = 0; i < 40; i++) {
       final isAccent = rng.nextDouble() < 0.3;
       final color = isAccent
@@ -202,12 +251,12 @@ class _AchievementOverlayState extends ConsumerState<AchievementOverlay>
             );
 
       _particles.add(_Particle(
-        x: midX + rng.nextDouble() * 300 - 150, // 左右 150px
-        y: -20 - rng.nextDouble() * 100, // 屏幕上方
-        vx: rng.nextDouble() * 200 - 100, // 水平速度
-        vy: rng.nextDouble() * 150 + 50, // 下落速度
+        x: midX + rng.nextDouble() * 300 - 150,
+        y: -20 - rng.nextDouble() * 100,
+        vx: rng.nextDouble() * 200 - 100,
+        vy: rng.nextDouble() * 150 + 50,
         color: color,
-        size: rng.nextDouble() * 8 + 4, // 4-12px
+        size: rng.nextDouble() * 8 + 4,
         rotation: rng.nextDouble() * math.pi * 2,
         rotationSpeed: (rng.nextDouble() - 0.5) * 8,
         shape: rng.nextInt(3),
@@ -222,14 +271,12 @@ class _AchievementOverlayState extends ConsumerState<AchievementOverlay>
     setState(() {
       final progress = _confettiCtrl.value;
       for (final p in _particles) {
-        // 应用重力和阻力
         p.x += p.vx * 0.016;
         p.y += p.vy * 0.016;
-        p.vy += 300 * 0.016; // 重力加速
-        p.vx *= 0.98; // 水平阻力
+        p.vy += 300 * 0.016;
+        p.vx *= 0.98;
         p.rotation += p.rotationSpeed * 0.016;
 
-        // 后半段开始淡出
         if (progress > 0.6) {
           p.opacity = 1.0 - (progress - 0.6) / 0.4;
         }
@@ -239,19 +286,8 @@ class _AchievementOverlayState extends ConsumerState<AchievementOverlay>
 
   @override
   void dispose() {
-    _autoDismiss?.cancel();
-    _ctrl.dispose();
     _confettiCtrl.dispose();
     super.dispose();
-  }
-
-  Color _tierGlowColor(String tier) {
-    final c = tierColor(tier);
-    return c.withValues(alpha: 0.6);
-  }
-
-  IconData _resolveIcon(AchievementNotification a) {
-    return achievementIcon(a.key);
   }
 
   Color _resolveColor(AchievementNotification a) {
@@ -272,152 +308,53 @@ class _AchievementOverlayState extends ConsumerState<AchievementOverlay>
     final current = queue.isNotEmpty ? queue.first : null;
 
     if (current == null || _displayedKey == null) {
+      // 没有成就通知但有分享海报残留（极少情况）
+      if (_shareData != null) {
+        return Positioned.fill(
+          child: AchievementShareCard(
+            achievementKey: _shareData!.achievementKey,
+            achievementName: _shareData!.achievementName,
+            achievementDesc: _shareData!.achievementDesc,
+            tier: _shareData!.tier,
+            iconColor: _shareData!.iconColor,
+            userName: _shareData!.userName,
+            referralCode: _shareData!.referralCode,
+            onClose: _closeShare,
+          ),
+        );
+      }
       return const SizedBox.shrink();
     }
 
-    final a = current;
-    final glow = _tierGlowColor(a.tier);
-    final iconColor = _resolveColor(a);
-    final iconData = _resolveIcon(a);
-
+    // 有成就 → 全屏海报（数据就绪时）或只显示粒子（数据加载中）
     return Positioned.fill(
-      child: IgnorePointer(
-        ignoring: false,
-        child: Material(
-          color: _cs.scrim,
-          child: GestureDetector(
-            onTap: _dismissCurrent,
-            child: Stack(
-              children: [
-                // 粒子撒花层（在卡片上方）
-                if (_particles.isNotEmpty)
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: CustomPaint(
-                        painter: _ConfettiPainter(_particles),
-                      ),
-                    ),
-                  ),
-                // 成就卡片
-                Center(
-                  child: AnimatedBuilder(
-                    animation: _ctrl,
-                    builder: (context, child) => Opacity(
-                      opacity: _opacity.value,
-                      child: Transform.scale(
-                        scale: _scale.value,
-                        child: child,
-                      ),
-                    ),
-                    child: _buildCard(a, glow, iconColor, iconData),
+      child: Material(
+        color: _shareData != null ? Colors.transparent : _cs.scrim,
+        child: Stack(
+          children: [
+            // 粒子撒花层
+            if (_particles.isNotEmpty)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _ConfettiPainter(_particles),
                   ),
                 ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCard(
-    AchievementNotification a,
-    Color glowColor,
-    Color iconColor,
-    IconData iconData,
-  ) {
-    final tLabel = tierLabel(a.tier);
-    return Container(
-      width: 280,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: _cs.surface,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: glowColor,
-            blurRadius: 24,
-            spreadRadius: 4,
-          ),
-          BoxShadow(
-            color: _cs.shadow,
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 分级缎带标签
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: glowColor.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: glowColor.withValues(alpha: 0.4)),
-            ),
-            child: Text(
-              tLabel,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: glowColor,
               ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          // 图标（带光晕背景）
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: iconColor.withValues(alpha: 0.3),
-                  blurRadius: 16,
-                  spreadRadius: 2,
-                ),
-              ],
-            ),
-            child: Icon(iconData, size: 36, color: iconColor),
-          ),
-          const SizedBox(height: 16),
-          // 成就名称
-          Text(
-            a.name,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          if (a.description != null && a.description!.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              a.description!,
-              style: TextStyle(fontSize: 13, color: _cs.onSurfaceVariant),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
+            // 全屏海报（数据就绪后显示）
+            if (_shareData != null)
+              AchievementShareCard(
+                achievementKey: _shareData!.achievementKey,
+                achievementName: _shareData!.achievementName,
+                achievementDesc: _shareData!.achievementDesc,
+                tier: _shareData!.tier,
+                iconColor: _shareData!.iconColor,
+                userName: _shareData!.userName,
+                referralCode: _shareData!.referralCode,
+                onClose: _dismissCurrent,
+              ),
           ],
-          const SizedBox(height: 16),
-          // 解锁提示
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.emoji_events, size: 16, color: glowColor),
-              const SizedBox(width: 6),
-              const Text(
-                '成就解锁！',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }

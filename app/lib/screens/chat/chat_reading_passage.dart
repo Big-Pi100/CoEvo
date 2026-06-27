@@ -3,10 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../api/chat_client.dart';
 import '../../services/tts_service.dart';
 import '../../theme/app_theme.dart';
+import '../../providers/plan_provider.dart';
 
 /// 课文阅读面板 — 显示当前 task 的课文全文
 /// 仅对 reading-first 模式（english/chinese）生效
-class ChatReadingPassage extends StatefulWidget {
+class ChatReadingPassage extends ConsumerStatefulWidget {
   final ChatClient client;
   final String conversationId;
 
@@ -17,10 +18,10 @@ class ChatReadingPassage extends StatefulWidget {
   });
 
   @override
-  State<ChatReadingPassage> createState() => _ChatReadingPassageState();
+  ConsumerState<ChatReadingPassage> createState() => _ChatReadingPassageState();
 }
 
-class _ChatReadingPassageState extends State<ChatReadingPassage> {
+class _ChatReadingPassageState extends ConsumerState<ChatReadingPassage> {
   Map<String, dynamic>? _card;
   bool _loading = true;
   bool _expanded = false;
@@ -29,6 +30,15 @@ class _ChatReadingPassageState extends State<ChatReadingPassage> {
   void initState() {
     super.initState();
     _loadCard();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 监听 plan/task 状态变化，自动刷新课文卡
+    ref.listen<int>(cardRefreshProvider, (prev, next) {
+      if (prev != next) _loadCard();
+    });
   }
 
   Future<void> _loadCard() async {

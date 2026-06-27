@@ -46,14 +46,16 @@ pub fn execute_campaign_trigger(
             }
 
             // 确定目标用户
-            // party: "self" = 推广员（推荐人/上级），"inviter" = 被邀请人（买家/新用户），
+            // party: "self" = 触发者自己（无推荐人时）或推广员（有推荐人时），
+            //         "inviter" = 被邀请人（买家/新用户），
+            //         "invitee" / "referee" = 同一含义，被邀请人，
             //         "all" = 活动所有参与者（拼团/砍价等共同活动）
             let target_users: Vec<String> = match party {
                 "self" => match referrer_id {
-                    Some(rid) => vec![rid.to_string()],
-                    None => continue, // 无推荐人，跳过
+                    Some(rid) => vec![rid.to_string()],   // 有推荐人 → 给推荐人
+                    None => vec![user_id.to_string()],    // 无推荐人 → 给自己
                 },
-                "inviter" => vec![user_id.to_string()],
+                "inviter" | "invitee" | "referee" => vec![user_id.to_string()],
                 "all" => {
                     // 查活动所有参与者
                     let mut stmt = match conn.prepare(
