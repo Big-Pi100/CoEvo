@@ -423,21 +423,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       case 'tts_audio':
         // 收到 TTS 音频 → 缓存并检查自动播放开关
         if (event.audio != null) {
-          // 先检查 TTS 引擎偏好，只有引擎是 tencent 时才缓存和播放云端音频
-          SharedPreferences.getInstance().then((prefs) {
-            final engine = prefs.getString('tts_engine') ?? 'tencent';
-            if (engine != 'tencent') return;
-            final text = _getLastAssistantText();
-            if (text != null) {
-              try {
-                final bytes = base64Decode(event.audio!);
-                ref.read(ttsServiceProvider).cacheAudio(text, Uint8List.fromList(bytes));
-              } catch (_) {}
-            }
-            if (ref.read(ttsAutoPlayProvider)) {
-              _playTtsAudio(event.audio);
-            }
-          });
+          final text = _getLastAssistantText();
+          if (text != null) {
+            try {
+              final bytes = base64Decode(event.audio!);
+              ref.read(ttsServiceProvider).cacheAudio(text, Uint8List.fromList(bytes));
+            } catch (_) {}
+          }
+          if (ref.read(ttsAutoPlayProvider)) {
+            _playTtsAudio(event.audio);
+          }
         }
         break;
     }

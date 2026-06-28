@@ -25,6 +25,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
   Map<String, dynamic>? _activityData;
   List<Map<String, dynamic>> _k12Progress = [];
   Map<String, dynamic>? _achievementsAll;
+  Map<String, dynamic>? _planAchievements;
   DateTime _calendarMonth = DateTime(DateTime.now().year, DateTime.now().month);
   bool _isLoading = true;
   String? _error;
@@ -60,8 +61,10 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
     final client = ChatClient(userId: auth.userId!, token: auth.token!);
 
     Map<String, dynamic>? achievementsAll;
+    Map<String, dynamic>? planAchievements;
     try {
       achievementsAll = await client.getAchievementsAll();
+      planAchievements = await client.getPlanAchievements();
     } catch (e) {
       debugPrint('AchievementsScreen: getAchievementsAll failed: $e');
     }
@@ -79,6 +82,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
           _k12Progress = ((results[2] as Map<String, dynamic>)['progress'] as List<dynamic>?)
               ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
           _achievementsAll = achievementsAll;
+          _planAchievements = planAchievements;
           _isLoading = false;
           _error = null;
           _initialLoadDone = true;
@@ -591,8 +595,12 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
     final categories = (_achievementsAll?['categories'] as List<dynamic>?)
         ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
 
+    // 合并 plan 成就 tab
+    final plans = (_planAchievements?['plans'] as List<dynamic>?)
+        ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
+
     // 回退：如果新 API 无数据，用旧 profile 成就
-    if (categories.isEmpty) {
+    if (categories.isEmpty && plans.isEmpty) {
       final achievements = (_data!['achievements'] as List<dynamic>?)
           ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
       if (achievements.isEmpty) return const SizedBox.shrink();
@@ -630,10 +638,17 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
       );
     }
 
-    // Phase 3: Tab 布局
+    // Phase 3: Tab 布局（含 plan 成就 tab）
+    final allTabs = [...categories, ...plans.map((p) => {
+      'category': 'plan_${p['plan_id']}',
+      'label': p['plan_name'],
+      'achievements': p['achievements'],
+      '_isPlan': true,
+    })];
+
     return Card(
       child: DefaultTabController(
-        length: categories.length,
+        length: allTabs.length,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(AppTheme.spacingXl, AppTheme.spacingXl, AppTheme.spacingXl, 0),
@@ -649,10 +664,21 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
             labelColor: theme.colorScheme.primary,
             unselectedLabelColor: _cs.outline,
             indicatorSize: TabBarIndicatorSize.label,
-            tabs: categories.map((cat) {
-              final catKey = cat['category'] as String? ?? '';
-              final count = (cat['achievements'] as List<dynamic>?)?.length ?? 0;
-              final unlocked = (cat['achievements'] as List<dynamic>?)
+            tabs: allTabs.map((tab) {
+              final isPlan = tab['_isPlan'] == true;
+              final catKey = tab['category'] as String? ?? '';
+              if (isPlan) {
+                return Tab(
+                  height: 52,
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.flag, size: 16, color: _cs.primary),
+                    const SizedBox(width: AppTheme.spacingXs),
+                    Text(tab['label'] as String? ?? ''),
+                  ]),
+                );
+              }
+              final count = (tab['achievements'] as List<dynamic>?)?.length ?? 0;
+              final unlocked = (tab['achievements'] as List<dynamic>?)
                   ?.where((a) => (a as Map<String, dynamic>)['unlocked'] == true).length ?? 0;
               return Tab(
                 height: 52,
@@ -660,7 +686,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                   Icon(categoryIcon(catKey),
                       size: 16, color: tierColor('bronze')),
                   const SizedBox(width: AppTheme.spacingXs),
-                  Text('${cat['label'] ?? catKey}'),
+                  Text('${tab['label'] ?? catKey}'),
                   const SizedBox(width: 2),
                   Text('$unlocked/$count',
                       style: const TextStyle(fontSize: 10)),
@@ -669,22 +695,45 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
             }).toList(),
           ),
           SizedBox(
-            height: 12 + categories.fold<int>(0, (h, cat) {
-              final list = (cat['achievements'] as List<dynamic>?) ?? [];
+            height: 12 + allTabs.fold<int>(0, (h, tab) {
+              final list = (tab['achievements'] as List<dynamic>?) ?? [];
               final cardsH = list.length * 108;
               return h > cardsH ? h : cardsH;
             }).toDouble(),
             child: TabBarView(
-              children: categories.map((cat) {
-                final items = (cat['achievements'] as List<dynamic>?)
+              children: allTabs.map((tab) {
+                final items = (tab['achievements'] as List<dynamic>?)
                     ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
+                final isPlan = tab['_isPlan'] == true;
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingLg, vertical: AppTheme.spacingSm),
                   child: SingleChildScrollView(
                     physics: const NeverScrollableScrollPhysics(),
                     child: Column(
                       children: items.map((a) {
-                        final catKey = cat['category'] as String? ?? '';
+                        final name = a['name'] as String? ?? '';
+                        final tier = a['tier'] as String? ?? 'bronze';
+                        if (isPlan) {
+                          // plan 成就：显示名 + tier 图标
+                          final icon = a['icon'] as String? ?? 'emoji_events';
+                          final key = a['achievement_key'] as String? ?? '';
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: AppTheme.spacingSm),
+                            child: _PlanAchievementCard(
+                              name: name, tier: tier, icon: icon,
+                              onTap: () {
+                                ref.read(achievementNotifierProvider.notifier).push(
+                                  AchievementNotification(
+                                    key: key,
+                                    name: name,
+                                    tier: tier,
+                                  ),
+                                );
+                              },
+                            ),
+                          );
+                        }
+                        final catKey = tab['category'] as String? ?? '';
                         return Padding(
                           padding: const EdgeInsets.only(bottom: AppTheme.spacingSm),
                           child: _AchievementCard(
@@ -715,6 +764,46 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
               }).toList(),
             ),
           ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// plan 成就卡片
+class _PlanAchievementCard extends StatelessWidget {
+  final String name;
+  final String tier;
+  final String icon;
+  final VoidCallback? onTap;
+  const _PlanAchievementCard({required this.name, required this.tier, required this.icon, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final (IconData iconData, Color color) = switch (tier) {
+      'bronze' => (Icons.emoji_events, const Color(0xFFCD7F32)),
+      'silver' => (Icons.emoji_events, const Color(0xFFC0C0C0)),
+      'gold' => (Icons.emoji_events, const Color(0xFFFFD700)),
+      'platinum' => (Icons.diamond, const Color(0xFFE5E4E2)),
+      'diamond' => (Icons.diamond, const Color(0xFFB9F2FF)),
+      'special' => (Icons.stars, const Color(0xFFFF69B4)),
+      _ => (Icons.emoji_events, const Color(0xFFCD7F32)),
+    };
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: cs.outlineVariant),
+        ),
+        child: Row(children: [
+          Icon(iconData, color: color, size: 22),
+          const SizedBox(width: 10),
+          Expanded(child: Text(name, style: TextStyle(fontSize: 14, color: cs.onSurface))),
+          Icon(Icons.check_circle, size: 16, color: color.withAlpha(150)),
         ]),
       ),
     );

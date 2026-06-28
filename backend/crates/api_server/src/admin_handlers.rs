@@ -903,7 +903,10 @@ pub async fn guardian_student_conversations(headers: HeaderMap, Path(sid): Path<
     let convs: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![sid], |row| {
         let first_msg: String = row.get::<_,String>(2).unwrap_or_default();
         let plan_goal: String = row.get::<_,String>(4).unwrap_or_default();
-        let truncated = if first_msg.len() > 25 { format!("{}...", &first_msg[..25]) } else { first_msg };
+        let truncated = if first_msg.chars().count() > 25 {
+            let cut: String = first_msg.chars().take(25).collect();
+            format!("{}...", cut)
+        } else { first_msg };
         let title = if plan_goal.is_empty() { truncated } else { format!("【{}】{}", plan_goal, truncated) };
         Ok(serde_json::json!({"id":row.get::<_,String>(0)?,"title":title,"started_at":row.get::<_,String>(1)?,"turn_count":row.get::<_,i64>(3)?}))
     }).unwrap().filter_map(|r|r.ok()).collect();

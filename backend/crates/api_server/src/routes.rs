@@ -136,6 +136,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/user/{user_id}/display-name", post(update_display_name_handler))
         .route("/api/user/{user_id}/avatar", post(avatar_upload_handler).get(avatar_get_handler))
         .route("/api/user/{user_id}/achievements-all", get(achievements_all_handler))
+        .route("/api/user/{user_id}/plan-achievements", get(plan_achievements_handler))
         .route("/api/user/{user_id}/preferences", get(preferences_get_handler).put(preferences_put_handler))
         .route("/api/user/{user_id}/subscription", get(user_subscription_handler))
         .route("/api/tts/preview", post(tts_preview_handler))
@@ -1391,7 +1392,7 @@ async fn history_handler(
                 .filter(|g| !g.is_empty())
                 .map(|g| g)
                 .or_else(|| first_msg.as_deref()
-                    .map(|s| if s.len() > 50 { format!("{}...", &s[..50]) } else { s.to_string() }))
+                    .map(|s| if s.chars().count() > 50 { format!("{}...", s.chars().take(50).collect::<String>()) } else { s.to_string() }))
                 .unwrap_or_else(|| "新对话".to_string());
             Ok(serde_json::json!({
                 "id": row.get::<_, String>(0)?,
@@ -1832,6 +1833,78 @@ fn compute_progress(def: &shared_types::growth::AchievementDef, ctx: &shared_typ
 
     let label = labels.join(" | ");
     (overall, label)
+}
+
+// ── Plan Achievements ──
+
+/// 查询 plan 成就（source='plan_achievement'），按 plan_id 分组返回
+async fn plan_achievements_handler(
+    headers: axum::http::HeaderMap,
+    Path(user_id): Path<String>,
+) -> impl axum::response::IntoResponse {
+    let conn = crate::db_pool::get_conn();
+    if crate::auth_middleware::verify_auth(&user_id, &headers).is_err() {
+        return (axum::http::StatusCode::UNAUTHORIZED,
+            axum::Json(serde_json::json!({"error": "unauthorized"})));
+    }
+
+    let mut stmt = match conn.prepare(
+        "SELECT id, achievement_key, name, icon, tier, unlocked_at \
+         FROM achievements WHERE user_id = ?1 AND source = 'plan_achievement' \
+         ORDER BY unlocked_at DESC"
+    ) {
+        Ok(s) => s,
+        Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(serde_json::json!({"error": format!("DB error: {}", e)}))),
+    };
+
+    let rows: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![&user_id], |row| {
+        Ok(serde_json::json!({
+            "id": row.get::<_, String>(0)?,
+            "achievement_key": row.get::<_, String>(1)?,
+            "name": row.get::<_, String>(2)?,
+            "icon": row.get::<_, String>(3)?,
+            "tier": row.get::<_, String>(4)?,
+            "unlocked_at": row.get::<_, String>(5)?,
+        }))
+    }).unwrap()
+    .filter_map(|r| r.ok())
+    .collect();
+
+    // 按 plan_id 分组 (achievement_key: plan_stage_{plan_id}_{idx} 或 plan_complete_{plan_id})
+    let mut plan_map: std::collections::HashMap<String, Vec<serde_json::Value>> = std::collections::HashMap::new();
+    let mut plan_name_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+
+    for row in &rows {
+        let key = row["achievement_key"].as_str().unwrap_or("");
+        let name = row["name"].as_str().unwrap_or("");
+        let plan_id = if let Some(rest) = key.strip_prefix("plan_stage_") {
+            rest.rfind('_').map(|p| &rest[..p])
+        } else if let Some(rest) = key.strip_prefix("plan_complete_") {
+            Some(rest)
+        } else {
+            None
+        };
+        if let Some(pid) = plan_id {
+            plan_map.entry(pid.to_string()).or_default().push(row.clone());
+            if let Some(dot) = name.find('·') {
+                plan_name_map.entry(pid.to_string()).or_insert_with(|| name[..dot].to_string());
+            }
+        }
+    }
+
+    let mut plans: Vec<serde_json::Value> = plan_map.into_iter().map(|(pid, achs)| {
+        serde_json::json!({
+            "plan_id": pid,
+            "plan_name": plan_name_map.get(&pid).unwrap_or(&pid),
+            "achievements": achs,
+        })
+    }).collect();
+    plans.sort_by(|a, b| {
+        a["plan_name"].as_str().unwrap_or("").cmp(&b["plan_name"].as_str().unwrap_or(""))
+    });
+
+    (axum::http::StatusCode::OK, axum::Json(serde_json::json!({"plans": plans})))
 }
 
 // ── Display Name ──

@@ -29,7 +29,7 @@ class AchievementNotification {
   /// 从 API JSON 构造
   factory AchievementNotification.fromJson(Map<String, dynamic> json) =>
       AchievementNotification(
-        key: json['key'] as String? ?? '',
+        key: json['key'] as String? ?? json['achievement_key'] as String? ?? '',
         name: json['name'] as String? ?? '成就',
         description: json['description'] as String?,
         icon: json['icon'] as String?,

@@ -706,6 +706,21 @@ extension PlanApi on ChatClient {
     }
     return null;
   }
+
+  Future<Map<String, dynamic>?> getPlanAchievements() async {
+    try {
+      final resp = await http.get(
+        Uri.parse('$baseUrl/api/user/$userId/plan-achievements'),
+        headers: _authHeaders,
+      );
+      if (resp.statusCode == 200) {
+        return jsonDecode(resp.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint('getPlanAchievements error: $e');
+    }
+    return null;
+  }
 }
 
 /// 检查是否有匹配的推送活动，有则生成海报并展示

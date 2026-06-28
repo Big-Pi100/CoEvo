@@ -388,7 +388,8 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 // ── B2: 用户输入匹配词库词汇 → 激活（仅 english/chinese） ──
                 let domain = &debug_plan_info.0;
                 tracing::info!("[CP1 B2] check: domain={}, msg_len={}, msg_preview={:?}", 
-                    domain, chat_req.message.len(), &chat_req.message[..std::cmp::min(30, chat_req.message.len())]);
+                    domain, chat_req.message.len(), 
+                    chat_req.message.chars().take(30).collect::<String>());
                 if (domain == "english" || domain == "chinese") && !chat_req.message.trim().is_empty() {
                     let conn_b2 = crate::db_pool::get_conn();
                     let uid_b2 = &chat_req.user_id;
@@ -595,6 +596,15 @@ pub async fn handle_ws(mut ws: WebSocket) {
 
                     // 成就检测已由 TOML 引擎 + AppEvent::PlanCompleted 事件总线统一处理
                     // 见 plan_handler.rs:215
+
+                    // 推送 plan 成就（如有）
+                    if !result.plan_achievements.is_empty() {
+                        if ws.send(Message::Text(
+                            json!({"type": "achievements", "achievements": result.plan_achievements}).to_string().into()
+                        )).await.is_err() {
+                            tracing::warn!("WS send(plan_achievements) failed");
+                        }
+                    }
                 }
 
                 // 保存 assistant 回复（final_reply 已清理/渲染）

@@ -94,6 +94,8 @@ pub struct PlanUpdateResult {
     pub task_status: Option<serde_json::Value>,
     /// 计划 ID
     pub plan_id: Option<String>,
+    /// 本次触发的 plan 成就（用于 WS 推送）
+    pub plan_achievements: Vec<serde_json::Value>,
 }
 
 /// 解析并处理 LLM 回复中的 <plan_update> 标签
@@ -113,6 +115,7 @@ pub fn handle_plan_update(
     let mut plan_updated = false;
     let mut is_new_plan = false;
     let mut task_status: Option<serde_json::Value> = None;
+    let mut plan_achievements: Vec<serde_json::Value> = Vec::new();
 
     // 用 <plan_update 或 <reading_update 匹配（可能被截断）
     if let Some(start) = final_reply.find("<plan_update") {
@@ -157,7 +160,7 @@ pub fn handle_plan_update(
                         task_status = Some(update.clone());
                         upsert_learning_plan(conn, user_id, conversation_id, plan_id, &update);
                         plan_updated = true;
-                    } else if let Some(plan) = apply_plan_mutations(conn, plan_id, &update) {
+                    } else if let Some(plan) = apply_plan_mutations(conn, plan_id, &update, user_id, &mut plan_achievements) {
                         task_status = Some(plan.clone());
                         plan_updated = true;
                     }
@@ -219,6 +222,40 @@ pub fn handle_plan_update(
 
     // Phase 2: 计划完成成就检测 + 活动触发
     if plan_updated && !is_new_plan {
+        // 检查所有 stage 是否完成 → 写入「修成」成就
+        if let Some(merged) = task_status.as_ref() {
+            if let Some(stages) = merged.get("stages").and_then(|s| s.as_array()) {
+                if stages.iter().all(|s| s["status"] == "done") {
+                    let plan_name = merged["goal"].as_str().unwrap_or("学习计划");
+                    let achievement_name = format!("{}·修成", plan_name);
+                    let achievement_key = format!("plan_complete_{}", plan_id);
+                    let now_ts = chrono::Utc::now().to_rfc3339();
+                    let _ = conn.execute(
+                        "INSERT OR IGNORE INTO achievements \
+                         (id, user_id, achievement_key, name, icon, tier, source, unlocked_at) \
+                         VALUES (?1, ?2, ?3, ?4, 'stars', 'special', 'plan_achievement', ?5)",
+                        rusqlite::params![
+                            format!("{}-{}", user_id, achievement_key),
+                            user_id,
+                            achievement_key,
+                            achievement_name,
+                            now_ts,
+                        ],
+                    );
+                    plan_achievements.push(serde_json::json!({
+                        "achievement_key": achievement_key,
+                        "name": achievement_name,
+                        "tier": "special",
+                        "icon": "stars",
+                        "key": achievement_key,
+                    }));
+                    tracing::info!(
+                        "[plan_achievement] plan completed: '{}' for user={}, plan={}",
+                        achievement_name, user_id, plan_id
+                    );
+                }
+            }
+        }
         crate::achievement_engine::publish(conn, crate::achievement_engine::AppEvent::PlanCompleted { user_id: user_id.to_string() });
         let _ = crate::campaign_executor::execute_campaign_trigger(
             conn, "plan_update", user_id, None, None,
@@ -238,6 +275,7 @@ pub fn handle_plan_update(
         plan_updated,
         task_status,
         plan_id: result_plan_id,
+        plan_achievements,
     }
 }
 
@@ -391,6 +429,8 @@ fn apply_plan_mutations(
     conn: &rusqlite::Connection,
     plan_id: &str,
     update: &serde_json::Value,
+    user_id: &str,
+    plan_achievements: &mut Vec<serde_json::Value>,
 ) -> Option<serde_json::Value> {
     // 通过 plan_id 查询 plan_content
     let plan_content_str: String = conn.query_row(
@@ -411,6 +451,8 @@ fn apply_plan_mutations(
             return None;
         }
     };
+    // 提取 plan 名称（在 mutable borrow 前，用于 plan 成就命名）
+    let plan_name = plan["goal"].as_str().unwrap_or("学习计划").to_string();
     // plan_content 的 task 可能不含 status（status 在 user_plan_progress 中），需合并
     let progress_rows: Vec<(String, String)> = conn.prepare(
         "SELECT task_key, status FROM user_plan_progress WHERE plan_id = ?1"
@@ -579,6 +621,44 @@ fn apply_plan_mutations(
                             // 当前 stage 所有 task 完成 → stage done
                             if tasks.iter().all(|t| t["status"] == "done") {
                                 stage["status"] = json!("done");
+                                // Plan stage 成就写入（复用 achievements 表，source='plan_achievement'）
+                                let done_count = stages.iter().filter(|s| s["status"] == "done").count();
+                                let (suffix, tier) = match done_count {
+                                    1 => ("入门", "bronze"),
+                                    2 => ("初窥", "silver"),
+                                    3 => ("进阶", "gold"),
+                                    4 => ("精研", "platinum"),
+                                    5 => ("达人", "diamond"),
+                                    _ => ("精通", "diamond"),
+                                };
+                                let achievement_name = format!("{}·{}", plan_name, suffix);
+                                let achievement_key = format!("plan_stage_{}_{}", plan_id, done_count);
+                                let now_ts = chrono::Utc::now().to_rfc3339();
+                                let _ = conn.execute(
+                                    "INSERT OR IGNORE INTO achievements \
+                                     (id, user_id, achievement_key, name, icon, tier, source, unlocked_at) \
+                                     VALUES (?1, ?2, ?3, ?4, 'emoji_events', ?5, 'plan_achievement', ?6)",
+                                    rusqlite::params![
+                                        format!("{}-{}", user_id, achievement_key),
+                                        user_id,
+                                        achievement_key,
+                                        achievement_name,
+                                        tier,
+                                        now_ts,
+                                    ],
+                                );
+                                // 收集推送数据
+                                plan_achievements.push(serde_json::json!({
+                                    "achievement_key": achievement_key,
+                                    "name": achievement_name,
+                                    "tier": tier,
+                                    "icon": "emoji_events",
+                                    "key": achievement_key,
+                                }));
+                                tracing::info!(
+                                    "[plan_achievement] stage {}: '{}' for user={}, plan={}",
+                                    done_count, achievement_name, user_id, plan_id
+                                );
                                 // 如果有下一阶段建议 → 激活下一阶段
                                 let next_activated = if let Some(next) = update.get("next_stage_suggestion")
                                     .and_then(|v| v.as_str())

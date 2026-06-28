@@ -730,20 +730,22 @@ Widget _renderMarkdownTable(String tableText, {Color textColor = Colors.black87}
     ));
   }
 
-  return SingleChildScrollView(
-    scrollDirection: Axis.horizontal,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Table(
-        border: TableBorder.all(color: textColor.withAlpha(40), width: 0.5),
-        columnWidths: Map.fromIterables(
-          List.generate(colCount, (i) => i),
-          List.filled(colCount, const IntrinsicColumnWidth()),
+  return LayoutBuilder(
+    builder: (context, constraints) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Table(
+          border: TableBorder.all(color: textColor.withAlpha(40), width: 0.5),
+          columnWidths: Map.fromIterables(
+            List.generate(colCount, (i) => i),
+            // 所有列均分父容器宽度，文字自动换行，不会撑爆屏幕
+            List.filled(colCount, FlexColumnWidth(1.0 / colCount)),
+          ),
+          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+          children: children,
         ),
-        defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-        children: children,
-      ),
-    ),
+      );
+    },
   );
 }
 
@@ -784,6 +786,7 @@ Widget _buildRichCell(String text, {bool bold = false, Color textColor = Colors.
   if (!hasBold && !hasFormula) {
     return Text(
       text,
+      softWrap: true,
       style: TextStyle(
         fontSize: 14,
         color: textColor,
