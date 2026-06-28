@@ -48,11 +48,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (mounted) setState(() => _authReady = true);
       return;
     }
-    // 新用户：已使用过试用 → 跳登录页
+    // 新用户：已使用过试用 → 弹出注册/登录弹窗
     if (AuthNotifier.hasUsedTrial()) {
-      if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/login');
-      }
+      if (mounted) _showAuthDialog();
       return;
     }
     // 新用户：自动创建临时账户
@@ -64,6 +62,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }
       // trial 失败不处理，保持 spinner 等待用户刷新重试
     }
+  }
+
+  void _showAuthDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => _AuthDialog(
+        onLogin: (username, password) async {
+          final notifier = ref.read(authProvider.notifier);
+          await notifier.login(username, password);
+          if (ctx.mounted) Navigator.of(ctx).pop();
+        },
+        onRegister: (username, password, {realName, phone, referralCode}) async {
+          final notifier = ref.read(authProvider.notifier);
+          await notifier.trialClaim(username, password,
+              realName: realName, phone: phone, referralCode: referralCode);
+          if (ctx.mounted) Navigator.of(ctx).pop();
+        },
+      ),
+    ).then((_) {
+      if (mounted) setState(() => _authReady = true);
+    });
   }
 
   Future<void> _loadUnreadCount() async {
@@ -151,7 +171,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.person),
-            onPressed: () => context.push('/profile'),
+            onPressed: () {
+              if (AuthNotifier.hasUsedTrial() && !ref.read(authProvider).isAuthenticated) {
+                _showAuthDialog();
+              } else {
+                context.push('/profile');
+              }
+            },
           ),
         ],
       ),
@@ -344,6 +370,178 @@ class _SubjectCard extends StatelessWidget {
                 ),
                 textAlign: TextAlign.center),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Auth Dialog ──
+
+class _AuthDialog extends StatefulWidget {
+  final Future<void> Function(String username, String password) onLogin;
+  final Future<void> Function(
+    String username,
+    String password, {
+    String? realName,
+    String? phone,
+    String? referralCode,
+  }) onRegister;
+
+  const _AuthDialog({
+    required this.onLogin,
+    required this.onRegister,
+  });
+
+  @override
+  State<_AuthDialog> createState() => _AuthDialogState();
+}
+
+class _AuthDialogState extends State<_AuthDialog> {
+  final _userCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+  final _nameCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _refCtrl = TextEditingController();
+  bool _showRegister = false;
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _userCtrl.dispose();
+    _passCtrl.dispose();
+    _nameCtrl.dispose();
+    _phoneCtrl.dispose();
+    _refCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final username = _userCtrl.text.trim();
+    final password = _passCtrl.text.trim();
+    if (username.isEmpty || password.isEmpty) {
+      setState(() => _error = '用户名和密码不能为空');
+      return;
+    }
+    if (password.length < 6) {
+      setState(() => _error = '密码至少 6 位');
+      return;
+    }
+    setState(() { _loading = true; _error = null; });
+    try {
+      if (_showRegister) {
+        await widget.onRegister(username, password,
+            realName: _nameCtrl.text.trim().isEmpty ? null : _nameCtrl.text.trim(),
+            phone: _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
+            referralCode: _refCtrl.text.trim().isEmpty ? null : _refCtrl.text.trim());
+      } else {
+        await widget.onLogin(username, password);
+      }
+    } catch (e) {
+      if (mounted) setState(() {
+        _loading = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.person_outline_rounded, size: 40, color: cs.primary),
+            const SizedBox(height: 12),
+            Text(_showRegister ? '注册账号' : '登录账号',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Text('试用已结束，请登录或注册以继续使用',
+                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+            const SizedBox(height: 20),
+            TextField(
+              controller: _userCtrl,
+              decoration: const InputDecoration(
+                labelText: '用户名',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.person_outline),
+              ),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _passCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: '密码',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.lock_outline),
+              ),
+              textInputAction: _showRegister ? TextInputAction.next : TextInputAction.done,
+            ),
+            if (_showRegister) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _nameCtrl,
+                decoration: const InputDecoration(
+                  labelText: '姓名（可选）',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.badge_outlined),
+                ),
+                textInputAction: TextInputAction.next,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _phoneCtrl,
+                decoration: const InputDecoration(
+                  labelText: '手机号（可选）',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.phone_outlined),
+                ),
+                keyboardType: TextInputType.phone,
+                textInputAction: TextInputAction.next,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _refCtrl,
+                decoration: const InputDecoration(
+                  labelText: '邀请码（可选）',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.discount_outlined),
+                ),
+                textInputAction: TextInputAction.done,
+              ),
+            ],
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(_error!, style: TextStyle(color: cs.error, fontSize: 13)),
+              ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: FilledButton(
+                onPressed: _loading ? null : _submit,
+                child: _loading
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text(_showRegister ? '注册并开始学习' : '登录'),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () => setState(() {
+                _showRegister = !_showRegister;
+                _error = null;
+              }),
+              child: Text(_showRegister ? '已有账号？去登录' : '没有账号？去注册'),
+            ),
+          ]),
         ),
       ),
     );

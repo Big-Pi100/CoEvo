@@ -188,9 +188,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (_claimDialogShown) return;
     _claimDialogShown = true;
     // 只在 trial 账户且未认领时弹
-    final auth = ref.read(authProvider);
-    final trialCheck = auth.username ?? '';
-    if (!trialCheck.startsWith('trial_')) return;
+    String? trialCheck;
+    try {
+      trialCheck = ref.read(authProvider).username;
+    } catch (_) {
+      return; // 提供者尚未就绪，跳过
+    }
+    if (trialCheck == null || !trialCheck.startsWith('trial_')) return;
 
     final prefs = await SharedPreferences.getInstance();
     final isClaimed = prefs.getBool('coevo_trial_claimed') ?? false;
@@ -463,6 +467,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _streamingBuffer = '';
     });
     _scrollToBottom();
+    // 本地 TTS 自动朗读（云端 TTS 走 tts_audio WS 消息触发）
+    if (ref.read(ttsAutoPlayProvider)) {
+      SharedPreferences.getInstance().then((prefs) {
+        final engine = prefs.getString('tts_engine') ?? 'native';
+        if (engine != 'tencent') {
+          ref.read(ttsServiceProvider).speak(reply);
+        }
+      });
+    }
   }
 
   /// 带重试按钮的错误提示

@@ -239,12 +239,39 @@ pub async fn delete(
     };
 
     let conn = crate::db_pool::get_conn();
+
+    // 先检查状态，非 active 才可删
+    let status: Option<String> = conn.query_row(
+        "SELECT status FROM marketing_campaigns WHERE id = ?1",
+        rusqlite::params![id],
+        |row| row.get(0),
+    ).ok();
+    match status.as_deref() {
+        Some("active") => return err(StatusCode::BAD_REQUEST, "active_campaign_cannot_be_deleted"),
+        None => return err(StatusCode::NOT_FOUND, "campaign_not_found"),
+        _ => {} // draft / paused / ended 均可删
+    }
+
+    // 删除关联子表数据（FK 约束要求先删子表）
+    if let Err(e) = conn.execute("DELETE FROM reward_fulfillments WHERE campaign_id = ?1", rusqlite::params![id]) {
+        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("delete_child_failed: {}", e));
+    }
+    if let Err(e) = conn.execute("DELETE FROM referral_clicks WHERE campaign_id = ?1", rusqlite::params![id]) {
+        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("delete_child_failed: {}", e));
+    }
+    if let Err(e) = conn.execute("DELETE FROM distribution_commissions WHERE campaign_id = ?1", rusqlite::params![id]) {
+        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("delete_child_failed: {}", e));
+    }
+    if let Err(e) = conn.execute("DELETE FROM campaign_members WHERE campaign_id = ?1", rusqlite::params![id]) {
+        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("delete_child_failed: {}", e));
+    }
+
     match conn.execute(
-        "DELETE FROM marketing_campaigns WHERE id = ?1 AND status = 'draft'",
+        "DELETE FROM marketing_campaigns WHERE id = ?1",
         rusqlite::params![id],
     ) {
         Ok(rows) if rows > 0 => ok(json!({"status": "deleted"})),
-        Ok(_) => err(StatusCode::BAD_REQUEST, "only_draft_can_be_deleted"),
+        Ok(_) => err(StatusCode::INTERNAL_SERVER_ERROR, "delete_failed"),
         Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, &format!("delete_error: {}", e)),
     }
 }

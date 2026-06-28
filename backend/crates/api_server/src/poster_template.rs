@@ -39,23 +39,27 @@ pub fn replace_template_variables(template: &str, data: &UserPosterData) -> Stri
     result = result.replace("{plan_count}", &data.plan_count.to_string());
     result = result.replace("{completed_plans}", &data.completed_plans.to_string());
     result = result.replace("{achievement_count}", &data.achievement_count.to_string());
-    // 生成二维码 SVG，注入到海报底部（无论模板是否含 QR_PLACEHOLDER）
+    // 生成二维码图片（先渲染为 PNG base64，再嵌入为 <image> 元素）
+    // 目的：避免 SVG 嵌套/坐标转换带来的渲染不一致
     let qr_raw = crate::referral_handler::generate_qr_svg(&data.qr_code_url, "#1A237E", "#FFFFFF");
-    // 提取 QR 码的 path 数据（去掉 <svg> 包裹、<?xml?>、rect 背景和 </svg>）
-    // qrcode crate 输出单行字符串，结构: <?xml?><svg ...><rect .../><path fill="..." d="..."/></svg>
-    let qr_path = if let Some(d_start) = qr_raw.find("d=\"") {
-        let from_d = &qr_raw[d_start..];
-        if let Some(close) = from_d.find("\"/>") {
-            // 只取到 "/>" 之前，由 format! 追加 "/>"，避免重复
-            let path_attr = from_d[..close].to_string();  // d="M20 20h5v5..."
-            format!("<path fill=\"#1A237E\" {} />", path_attr)
-        } else { String::new() }
-    } else { String::new() };
-    // 用 scale(180/205) 缩放 QR 码使其适配 180x180 白色区域
-    let qr_block = format!(
-        "  <g transform=\"translate(210, 700) scale(0.878)\"><rect x=\"0\" y=\"0\" width=\"205\" height=\"205\" rx=\"8\" fill=\"#ffffff\"/>{}\n  </g>\n",
-        qr_path
-    );
+    let qr_png_b64 = crate::referral_handler::svg_to_png(&qr_raw)
+        .ok()
+        .and_then(|bytes| {
+            use base64::Engine;
+            Some(base64::engine::general_purpose::STANDARD.encode(&bytes))
+        })
+        .unwrap_or_default();
+    let qr_block = if !qr_png_b64.is_empty() {
+        // translate(-90,-90) 自居中：假设模板把 {QR_PLACEHOLDER} 放在 QR 框中心
+        format!(
+            "<g transform=\"translate(-90, -90)\"><image href=\"data:image/png;base64,{}\" width=\"180\" height=\"180\" preserveAspectRatio=\"xMidYMid meet\"/></g>\n",
+            qr_png_b64
+        )
+    } else {
+        // PNG 失败时的 fallback：用原始 QR SVG 替换
+        let bare_svg = if let Some(pos) = qr_raw.find("<svg") { &qr_raw[pos..] } else { "<svg/>" };
+        format!("<g transform=\"translate(-90, -90)\">{}</g>\n", bare_svg)
+    };
     // 先尝试替换 QR_PLACEHOLDER（兼容含占位符的模板）
     if result.contains("QR_PLACEHOLDER") {
         result = result.replace("QR_PLACEHOLDER", &qr_block);
@@ -305,7 +309,9 @@ pub fn fallback_poster_svg(data: &UserPosterData) -> String {
   <rect x="200" y="650" width="200" height="180" rx="12" fill="#ffffff"/>
   <text x="300" y="760" text-anchor="middle" fill="#1A237E" font-size="14" font-weight="bold">扫码注册</text>
   <text x="300" y="780" text-anchor="middle" fill="#1A237E" font-size="12">推广码: {}</text>
+  <g transform="translate(300, 740)">
   QR_PLACEHOLDER
+  </g>
   <text x="300" y="870" text-anchor="middle" fill="#9DA0F0" font-size="12">⟐ CoEvo 刻意进化</text>
 </svg>"##,
         data.display_name,

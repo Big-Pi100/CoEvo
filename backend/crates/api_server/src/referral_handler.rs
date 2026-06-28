@@ -365,7 +365,7 @@ pub(crate) fn generate_qr_svg(content: &str, fg_color: &str, bg_color: &str) -> 
 }
 
 /// 将 SVG 字符串转换为 PNG 字节数组
-fn svg_to_png(svg: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn svg_to_png(svg: &str) -> Result<Vec<u8>, String> {
     // 替换中文/系统字体名称为通用 sans-serif（resvg 可能不含中文字体）
     let cleaned = svg
         .replace("font-family=\"'PingFang SC', 'Microsoft YaHei', sans-serif\"", "font-family=\"sans-serif\"")
@@ -374,7 +374,11 @@ fn svg_to_png(svg: &str) -> Result<Vec<u8>, String> {
     let mut opts = resvg::usvg::Options::default();
     opts.fontdb_mut().load_system_fonts();
     let tree = resvg::usvg::Tree::from_data(cleaned.as_bytes(), &opts)
-        .map_err(|e| format!("SVG parse error: {}", e))?;
+        .map_err(|e| {
+            let preview: String = cleaned.chars().take(500).collect();
+            tracing::warn!("SVG→PNG failed, first 500 chars of SVG:\n---\n{}\n---", preview);
+            format!("SVG parse error: {}", e)
+        })?;
 
     let size = tree.size();
     let width = size.width() as u32;
@@ -770,6 +774,18 @@ pub async fn generate_poster(
     }
 
     let conn = crate::db_pool::get_conn();
+
+    // 如果传了 campaign_id 但活动不存在（已删除），返回已结束标记
+    if let Some(ref cid) = body.campaign_id {
+        let exists: bool = conn.query_row(
+            "SELECT 1 FROM marketing_campaigns WHERE id = ?1",
+            rusqlite::params![cid],
+            |_| Ok(true),
+        ).unwrap_or(false);
+        if !exists {
+            return (axum::http::StatusCode::OK, Json(json!({"status": "campaign_ended"}))).into_response();
+        }
+    }
 
     // 查活动是否有海报模板
     let template: Option<String> = if let Some(ref cid) = body.campaign_id {

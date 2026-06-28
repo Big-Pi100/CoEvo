@@ -283,6 +283,7 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
   String? _referralCode;
   bool _loading = true;
   bool _generatingH5 = false;
+  bool _campaignEnded = false;
 
   @override
   void initState() {
@@ -317,7 +318,12 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
         }),
       ).timeout(const Duration(seconds: 60));
       if (posterResp.statusCode == 200 && mounted) {
-        _posterPng = (jsonDecode(posterResp.body) as Map<String, dynamic>)['poster_png'] as String?;
+        final data = jsonDecode(posterResp.body) as Map<String, dynamic>;
+        if (data['status'] == 'campaign_ended') {
+          setState(() => _campaignEnded = true);
+        } else {
+          _posterPng = data['poster_png'] as String?;
+        }
       }
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
@@ -392,7 +398,19 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
         padding: const EdgeInsets.all(AppTheme.spacingLg),
         child: _loading
             ? const SizedBox(height: 300, child: Center(child: CircularProgressIndicator()))
-            : _posterPng != null
+            : _campaignEnded
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 48, horizontal: 16),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.event_busy, size: 48, color: Colors.grey),
+                      SizedBox(height: 16),
+                      Text('该活动已结束', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                      SizedBox(height: 8),
+                      Text('该活动已被管理员删除或已过期', style: TextStyle(color: Colors.grey)),
+                      SizedBox(height: 24),
+                    ]),
+                  )
+                : _posterPng != null
                 ? SingleChildScrollView(
                     child: Column(
                     mainAxisSize: MainAxisSize.min,
