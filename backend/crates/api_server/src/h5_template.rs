@@ -121,52 +121,83 @@ pub fn build_user_h5_data(
         rusqlite::params![user_id], |row| row.get(0),
     ).unwrap_or(0);
     let active_plans_summary = if plan_count > 0 {
-        let mut plans: Vec<(String, String)> = Vec::new();
+        let mut latest_plan: Option<(String, Option<String>, String)> = None;
         if let Ok(mut stmt) = conn.prepare(
-            "SELECT pr.subject, upp.task_key \
+            "SELECT pr.goal,
+                    (SELECT upp2.task_key FROM user_plan_progress upp2
+                     WHERE upp2.plan_id = pr.id AND upp2.status = 'in_progress' LIMIT 1) as task_key,
+                    pr.plan_content \
              FROM plan_runs pr \
-             JOIN user_plan_progress upp ON pr.id = upp.plan_id \
              WHERE pr.user_id = ?1 AND pr.status = 'active' \
-             ORDER BY upp.updated_at DESC"
+             ORDER BY task_key IS NULL,
+               (SELECT MAX(up2.updated_at) FROM user_plan_progress up2 WHERE up2.plan_id = pr.id) DESC
+             LIMIT 1"
         ) {
             if let Ok(rows) = stmt.query_map(rusqlite::params![user_id], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
             }) {
                 for row in rows.flatten() {
-                    plans.push(row);
+                    latest_plan = Some(row);
                 }
             }
         }
-        if plan_count <= 3 {
-            plans.iter().map(|(subject, task_key)| {
-                let task_name: String = conn.query_row(
-                    "SELECT name FROM prebuilt_tasks WHERE task_key = ?1 LIMIT 1",
-                    rusqlite::params![task_key], |row| row.get(0),
-                ).unwrap_or_default();
-                if task_name.is_empty() { subject.clone() } else { format!("{}·{}", subject, task_name) }
-            }).collect::<Vec<_>>().join("、")
+        let summary = match latest_plan {
+            Some((goal, Some(task_key), plan_content)) => {
+                let task_name = match serde_json::from_str::<serde_json::Value>(&plan_content) {
+                    Ok(v) => v["stages"].as_array().and_then(|stages| {
+                        stages.iter().find_map(|stage| {
+                            stage["tasks"].as_array().and_then(|tasks| {
+                                tasks.iter().find(|t| t["task_key"].as_str() == Some(task_key.as_str()))
+                            })
+                        })
+                    }).and_then(|t| t["name"].as_str().map(String::from))
+                    .unwrap_or_default(),
+                    Err(_) => String::new(),
+                };
+                if task_name.is_empty() { goal } else { format!("{}·{}", goal, task_name) }
+            }
+            Some((goal, None, _)) => goal,
+            None => format!("{} 个未开始科目", plan_count),
+        };
+        if plan_count > 1 {
+            format!("{} 等 {} 个科目", summary, plan_count - 1)
         } else {
-            format!("{} 个科目", plan_count)
+            summary
         }
     } else { String::new() };
     let current_focus = if plan_count > 0 {
         let mut focus = String::new();
         if let Ok(mut stmt) = conn.prepare(
-            "SELECT pr.subject, upp.task_key \
+            "SELECT pr.goal,
+                    (SELECT upp2.task_key FROM user_plan_progress upp2
+                     WHERE upp2.plan_id = pr.id AND upp2.status = 'in_progress' LIMIT 1) as task_key,
+                    pr.plan_content \
              FROM plan_runs pr \
-             JOIN user_plan_progress upp ON pr.id = upp.plan_id \
              WHERE pr.user_id = ?1 AND pr.status = 'active' \
-             ORDER BY upp.updated_at DESC LIMIT 1"
+             ORDER BY (SELECT MAX(up4.updated_at) FROM user_plan_progress up4 WHERE up4.plan_id = pr.id) DESC LIMIT 1"
         ) {
             if let Ok(rows) = stmt.query_map(rusqlite::params![user_id], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
             }) {
                 for row in rows.flatten() {
-                    let task_name: String = conn.query_row(
-                        "SELECT name FROM prebuilt_tasks WHERE task_key = ?1 LIMIT 1",
-                        rusqlite::params![&row.1], |row| row.get(0),
-                    ).unwrap_or_default();
-                    focus = format!("{}·{}", row.0, task_name);
+                    // 从 plan_content JSON 中查找 task_key 对应的 task name
+                    let task_name = match serde_json::from_str::<serde_json::Value>(&row.2) {
+                        Ok(v) => v["stages"].as_array().and_then(|stages| {
+                            stages.iter().find_map(|stage| {
+                                stage["tasks"].as_array().and_then(|tasks| {
+                                    tasks.iter().find(|t| t["task_key"].as_str() == Some(&row.1))
+                                })
+                            })
+                        }).and_then(|t| t["name"].as_str().map(String::from))
+                        .unwrap_or_default(),
+                        Err(_) => String::new(),
+                    };
+                    if task_name.is_empty() { focus = row.0; }
+                    else { focus = format!("{}·{}", row.0, task_name); }
                 }
             }
         }
