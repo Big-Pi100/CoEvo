@@ -58,11 +58,15 @@ class AuthClient {
   }
 
   /// Create a trial account. Returns {user_id, token}.
-  Future<Map<String, dynamic>> trialStart() async {
+  Future<Map<String, dynamic>> trialStart({String? referralCode}) async {
+    final body = <String, String>{};
+    if (referralCode != null && referralCode.isNotEmpty) {
+      body['referral_code'] = referralCode;
+    }
     final resp = await http.post(
       Uri.parse('${ApiConfig.baseUrl}/api/trial/start'),
       headers: {'Content-Type': 'application/json'},
-      body: '{}',
+      body: jsonEncode(body),
     );
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     if (resp.statusCode != 200 || data.containsKey('error')) {

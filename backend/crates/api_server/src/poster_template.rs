@@ -1,14 +1,11 @@
 //! 海报模板管理：LLM 生成含 {变量} 的 SVG 模板，运行时替换为用户数据
+//!
+//! 数据层已抽取到 `share_data` 模块，本文件只保留 SVG 特有的逻辑。
 
 use serde::Serialize;
 
-/// 获取 CoEvo 公开域名（部署时通过 COEVO_BASE_URL 环境变量配置）
-fn coevo_base_url() -> String {
-    std::env::var("COEVO_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:8080".to_string())
-}
-
 /// 用户海报数据（运行时替代模板中的 {变量}）
+/// 由 `build_user_poster_data` 从 `UserShareData` 映射而来
 #[derive(Debug, Serialize)]
 pub struct UserPosterData {
     pub display_name: String,
@@ -72,169 +69,26 @@ pub fn replace_template_variables(template: &str, data: &UserPosterData) -> Stri
     result
 }
 
-/// 从 DB 构建用户海报数据
+/// 从 DB 构建用户海报数据（数据层委托给 share_data）
 pub fn build_user_poster_data(
     conn: &rusqlite::Connection,
     user_id: &str,
-    _campaign_id: &str,
+    campaign_id: &str,
 ) -> Result<UserPosterData, String> {
-    let display_name: String = conn.query_row(
-        "SELECT COALESCE(display_name, username) FROM users WHERE id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).map_err(|e| format!("user query: {}", e))?;
-
-    let real_name: String = conn.query_row(
-        "SELECT COALESCE(real_name, '') FROM users WHERE id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or_default();
-
-    let streak_days: i64 = conn.query_row(
-        "SELECT streak_days FROM users WHERE id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-
-    let total_cards: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM user_cards WHERE user_id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-
-    // reviewed_at 是 INTEGER unix timestamp
-    let today_start_ts = chrono::Utc::now()
-        .date_naive()
-        .and_hms_opt(0, 0, 0)
-        .unwrap()
-        .and_utc()
-        .timestamp();
-    let today_reviews: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM review_log r JOIN user_cards c ON r.card_id = c.id \
-         WHERE c.user_id = ?1 AND r.reviewed_at >= ?2",
-        rusqlite::params![user_id, today_start_ts], |row| row.get(0),
-    ).unwrap_or(0);
-
-    let referral_code: String = conn.query_row(
-        "SELECT referral_code FROM users WHERE id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or_default();
-
-    let qr_code_url = format!("{}/app/auth?ref={}", coevo_base_url(), referral_code);
-
-    // 活跃计划数据
-    let plan_count: i64 = conn.query_row(
-        "SELECT COUNT(DISTINCT id) FROM plan_runs WHERE user_id = ?1 AND status = 'active'",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-
-    let active_plans_summary = if plan_count > 0 {
-        let mut latest_plan: Option<(String, Option<String>, String)> = None;
-        if let Ok(mut stmt) = conn.prepare(
-            "SELECT pr.goal,
-                    (SELECT upp2.task_key FROM user_plan_progress upp2
-                     WHERE upp2.plan_id = pr.id AND upp2.status = 'in_progress' LIMIT 1) as task_key,
-                    pr.plan_content \
-             FROM plan_runs pr \
-             WHERE pr.user_id = ?1 AND pr.status = 'active' \
-             ORDER BY task_key IS NULL,
-               (SELECT MAX(up2.updated_at) FROM user_plan_progress up2 WHERE up2.plan_id = pr.id) DESC
-             LIMIT 1"
-        ) {
-            if let Ok(rows) = stmt.query_map(rusqlite::params![user_id], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, Option<String>>(1)?,
-                    row.get::<_, String>(2)?,
-                ))
-            }) {
-                for row in rows.flatten() {
-                    latest_plan = Some(row);
-                }
-            }
-        }
-        let summary = match latest_plan {
-            Some((goal, Some(task_key), plan_content)) => {
-                let task_name = match serde_json::from_str::<serde_json::Value>(&plan_content) {
-                    Ok(v) => v["stages"].as_array().and_then(|stages| {
-                        stages.iter().find_map(|stage| {
-                            stage["tasks"].as_array().and_then(|tasks| {
-                                tasks.iter().find(|t| t["task_key"].as_str() == Some(task_key.as_str()))
-                            })
-                        })
-                    }).and_then(|t| t["name"].as_str().map(String::from))
-                    .unwrap_or_default(),
-                    Err(_) => String::new(),
-                };
-                if task_name.is_empty() { goal } else { format!("{}·{}", goal, task_name) }
-            }
-            Some((goal, None, _)) => goal,
-            None => format!("{} 个未开始科目", plan_count),
-        };
-        if plan_count > 1 {
-            format!("{} 等 {} 个科目", summary, plan_count - 1)
-        } else {
-            summary
-        }
-    } else {
-        String::new()
-    };
-
-    let current_focus = if plan_count > 0 {
-        let mut focus = String::new();
-        if let Ok(mut stmt) = conn.prepare(
-            "SELECT pr.goal,
-                    (SELECT upp2.task_key FROM user_plan_progress upp2
-                     WHERE upp2.plan_id = pr.id AND upp2.status = 'in_progress' LIMIT 1) as task_key,
-                    pr.plan_content \
-             FROM plan_runs pr \
-             WHERE pr.user_id = ?1 AND pr.status = 'active' \
-             ORDER BY (SELECT MAX(up4.updated_at) FROM user_plan_progress up4 WHERE up4.plan_id = pr.id) DESC LIMIT 1"
-        ) {
-            if let Ok(rows) = stmt.query_map(rusqlite::params![user_id], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
-            }) {
-                for row in rows.flatten() {
-                    let task_name = match serde_json::from_str::<serde_json::Value>(&row.2) {
-                        Ok(v) => v["stages"].as_array().and_then(|stages| {
-                            stages.iter().find_map(|stage| {
-                                stage["tasks"].as_array().and_then(|tasks| {
-                                    tasks.iter().find(|t| t["task_key"].as_str() == Some(&row.1))
-                                })
-                            })
-                        }).and_then(|t| t["name"].as_str().map(String::from))
-                        .unwrap_or_default(),
-                        Err(_) => String::new(),
-                    };
-                    if task_name.is_empty() { focus = row.0; }
-                    else { focus = format!("{}·{}", row.0, task_name); }
-                }
-            }
-        }
-        focus
-    } else {
-        String::new()
-    };
-
-    let completed_plans: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM plan_runs WHERE user_id = ?1 AND status = 'completed'",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-
-    let achievement_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM achievements WHERE user_id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-
+    let shared = crate::share_data::build_user_share_data(conn, user_id, campaign_id)?;
     Ok(UserPosterData {
-        display_name,
-        real_name,
-        streak_days,
-        total_cards,
-        today_reviews,
-        referral_code,
-        qr_code_url,
-        active_plans_summary,
-        current_focus,
-        plan_count,
-        completed_plans,
-        achievement_count,
+        qr_code_url: shared.register_url.clone(), // register_url 直接用作 QR 码链接
+        display_name: shared.display_name,
+        real_name: shared.real_name,
+        streak_days: shared.streak_days,
+        total_cards: shared.total_cards,
+        today_reviews: shared.today_reviews,
+        referral_code: shared.referral_code,
+        active_plans_summary: shared.active_plans_summary,
+        current_focus: shared.current_focus,
+        plan_count: shared.plan_count,
+        completed_plans: shared.completed_plans,
+        achievement_count: shared.achievement_count,
     })
 }
 
@@ -244,15 +98,10 @@ pub async fn generate_template_via_llm(
     campaign_name: &str,
     rewards: &str,
 ) -> Result<String, String> {
-    // 加载 prompt（使用 signal/format 分离架构）
     let mut prompt = crate::referral_handler::load_combined_prompt(base_dir, "poster")
         .map_err(|e| format!("load poster-template prompt failed: {}", e))?;
-
-    // 注入活动信息
     prompt = prompt.replace("{campaign_name}", campaign_name);
     prompt = prompt.replace("{campaign_rewards}", rewards);
-
-    // 调 LLM（使用 90 秒超时，避免 SVG 生成被截断）
     let api_key = std::env::var("DEEPSEEK_API_KEY").unwrap_or_default();
     if api_key.is_empty() {
         return Err("DEEPSEEK_API_KEY not set".to_string());
@@ -289,29 +138,21 @@ pub async fn generate_template_via_llm(
         .as_str()
         .ok_or_else(|| "LLM returned empty response".to_string())?
         .to_string();
-
-    // 调试：记录原始回复
     tracing::warn!("LLM raw reply (first 500c): {}", &reply.chars().take(500).collect::<String>());
-
-    // 提取 SVG 代码（去除可能的 markdown 包裹）
     let mut svg = reply.trim().to_string();
-    // 去除开头的 ```svg、```html、``` 等
     for prefix in &["```svg\n", "```html\n", "```svg\r\n", "```html\r\n", "```\n", "```\r\n"] {
         if svg.starts_with(prefix) {
             svg = svg[prefix.len()..].to_string();
             break;
         }
     }
-    // 去除结尾的 ```
     if svg.ends_with("```") {
         svg = svg[..svg.len() - 3].to_string();
     }
     svg = svg.trim().to_string();
-
     if !svg.starts_with("<svg") {
         return Err("LLM did not return valid SVG".to_string());
     }
-
     Ok(svg)
 }
 
@@ -344,7 +185,7 @@ pub fn fallback_poster_svg(data: &UserPosterData) -> String {
         data.streak_days,
         data.today_reviews,
         data.total_cards,
-        85, // fallback mastery %
+        85,
         data.referral_code,
     )
 }

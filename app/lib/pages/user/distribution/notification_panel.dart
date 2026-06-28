@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:html' as html;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
@@ -347,26 +348,12 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
       if (resp.statusCode == 200 && mounted) {
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
         final fullUrl = (data['url'] as String?) ?? ApiConfig.baseUrl;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('分享链接已复制: $fullUrl')),
-        );
-        // 弹 SelectableText 页供用户选择复制
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => Scaffold(
-              body: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('复制以下链接分享给好友：'),
-                    const SizedBox(height: 8),
-                    SelectableText(fullUrl),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
+        await Clipboard.setData(ClipboardData(text: fullUrl));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('链接已复制')),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {

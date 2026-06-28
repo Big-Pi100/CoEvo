@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
 import '../utils/validators.dart';
 
@@ -18,24 +17,9 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _inviteCodeController = TextEditingController();
   bool _isLogin = true;
   bool _isSubmitting = false;
   String? _validationError;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPendingRef());
-  }
-
-  Future<void> _loadPendingRef() async {
-    final prefs = await SharedPreferences.getInstance();
-    final refCode = prefs.getString('pending_ref_code');
-    if (refCode != null && refCode.isNotEmpty && mounted) {
-      _inviteCodeController.text = refCode;
-    }
-  }
 
   @override
   void dispose() {
@@ -43,7 +27,6 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
     _passwordController.dispose();
     _nameController.dispose();
     _phoneController.dispose();
-    _inviteCodeController.dispose();
     super.dispose();
   }
 
@@ -84,11 +67,7 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
           _passwordController.text,
           realName: _nameController.text.trim(),
           phone: _phoneController.text.trim(),
-          referralCode: _inviteCodeController.text.trim(),
         );
-        // 注册成功，清理缓存的推广码
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.remove('pending_ref_code');
       }
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
@@ -178,16 +157,7 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
                     keyboardType: TextInputType.phone,
                     textInputAction: TextInputAction.next,
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _inviteCodeController,
-                    decoration: const InputDecoration(
-                      labelText: '邀请码（选填）',
-                      prefixIcon: Icon(Icons.card_giftcard),
-                      hintText: '填写推广者的邀请码',
-                    ),
-                    textInputAction: TextInputAction.done,
-                  ),
+
                 ],
 
                 const SizedBox(height: 16),

@@ -178,11 +178,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = const AuthState(isRestored: true);
   }
 
-  /// 创建临时账户
-  Future<void> trialStart() async {
+  /// 创建临时账户，可选推广码（来自 URL ?ref=）
+  Future<void> trialStart({String? refCode}) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final result = await _client.trialStart();
+      final result = await _client.trialStart(referralCode: refCode);
       final uid = result['user_id'] as String?;
       final token = result['token'] as String?;
       final trialUsername = result['username'] as String?;

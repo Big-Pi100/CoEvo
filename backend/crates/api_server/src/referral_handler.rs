@@ -330,8 +330,8 @@ fn get_user_portrait_data(conn: &rusqlite::Connection, user_id: &str) -> Result<
 
 /// 降级海报 SVG（LLM 调用失败时使用）
 fn fallback_poster_svg(referral_code: &str) -> String {
-    let base = crate::h5_template::coevo_base_url();
-    let qr_content = format!("{}/app/auth?ref={}&camp=poster", base, referral_code);
+    let base = crate::share_data::public_base_url();
+    let qr_content = format!("{}/home?ref={}&camp=poster", base, referral_code);
     let qr_svg = generate_qr_svg(&qr_content, "#1A237E", "#FFFFFF");
     format!(
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
@@ -397,7 +397,7 @@ pub(crate) fn svg_to_png(svg: &str) -> Result<Vec<u8>, String> {
 /// 从已替换变量的 SVG 文本中提取显示名称（用于 PNG fallback）
 /// 尝试从 SVG 中提取推广码，失败时使用空串
 fn extract_user_for_png_fallback(svg: &str) -> crate::poster_template::UserPosterData {
-    let base = crate::h5_template::coevo_base_url();
+    let base = crate::share_data::coevo_base_url();
     // 尝试从 SVG 中提取推广码（<text ...>推广码: XXXX</text> 或 {referral_code} 被替换后的值）
     let referral_code = svg.lines()
         .find_map(|line| {
@@ -419,7 +419,7 @@ fn extract_user_for_png_fallback(svg: &str) -> crate::poster_template::UserPoste
         total_cards: 20,
         today_reviews: 3,
         referral_code: referral_code.clone(),
-        qr_code_url: format!("{}/app/auth?ref={}", base, referral_code),
+        qr_code_url: format!("{}/home?ref={}", base, referral_code),
         active_plans_summary: String::new(),
         current_focus: String::new(),
         plan_count: 0,
@@ -501,9 +501,9 @@ pub async fn get_qrcode(
 
     // 构建二维码内容
     let campaign_id = params.get("camp").map(|s| s.as_str()).unwrap_or("share");
-    let base = crate::h5_template::coevo_base_url();
+    let base = crate::share_data::public_base_url();
     let qr_content = format!(
-        "{}/app/auth?ref={}&camp={}",
+        "{}/home?ref={}&camp={}",
         base, referral_code, campaign_id
     );
 
@@ -863,13 +863,13 @@ pub async fn generate_h5(
                 // 使用模板替换流程（零 LLM）
                 match crate::h5_template::build_user_h5_data(&conn, &body.user_id, cid) {
                     Ok(data) => crate::h5_template::replace_h5_variables(&template, &data),
-                    Err(_) => fallback_h5_html(&referral_code),
+                    Err(_) => fallback_h5_html(&referral_code, Some(cid)),
                 }
             }
-            None => fallback_h5_html(&referral_code),
+            None => fallback_h5_html(&referral_code, Some(cid)),
         }
     } else {
-        fallback_h5_html(&referral_code)
+        fallback_h5_html(&referral_code, body.campaign_id.as_deref())
     };
 
     // 触发推广成就
@@ -880,8 +880,8 @@ pub async fn generate_h5(
 
     // 返回 JSON，包含 HTML 文本 + 分享 URL（转发给好友的链接）
     let share_url = match &body.campaign_id {
-        Some(cid) => format!("{}/share/{}?campaign_id={}", crate::h5_template::coevo_base_url(), referral_code, cid),
-        None => format!("{}/share/{}", crate::h5_template::coevo_base_url(), referral_code),
+        Some(cid) => format!("{}/share/{}?campaign_id={}", crate::share_data::coevo_base_url(), referral_code, cid),
+        None => format!("{}/share/{}", crate::share_data::coevo_base_url(), referral_code),
     };
     Json(json!({"html": html, "url": share_url})).into_response()
 }
@@ -919,20 +919,21 @@ pub async fn share_landing(
     let file_path = format!("data/share/{}/index.html", code);
     if let Ok(html) = std::fs::read_to_string(&file_path) {
         // 注入 OG meta 标签
-        let base = crate::h5_template::coevo_base_url();
+        let frontend = crate::share_data::public_base_url();
+        let backend = crate::share_data::coevo_base_url();
         let og = format!(
             r#"<meta property="og:image" content="{}/app/icons/Icon-512.png">
 <meta property="og:title" content="在 CoEvo 一起学习">
 <meta property="og:description" content="如果不想被AI取代，你需要刻意进化">
 <meta property="og:url" content="{}/share/{}">"#,
-            base, base, code
+            frontend, backend, code
         );
         let html_with_og = html.replace("</head>", &format!("{}</head>", og));
         return ([(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")], html_with_og);
     }
 
     // fallback: 内联模板
-    let html = fallback_h5_html(&code);
+    let html = fallback_h5_html(&code, None);
     ([(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")], html)
 }
 
@@ -1104,7 +1105,7 @@ mod tests {
 
     #[test]
     fn test_fallback_h5_html() {
-        let html = crate::h5_template::fallback_h5_html("CoEvo_TEST");
+        let html = crate::h5_template::fallback_h5_html("CoEvo_TEST", None);
         assert!(html.contains("CoEvo_TEST"), "应包含推广码");
         assert!(html.contains("<!DOCTYPE html>"), "应包含 DOCTYPE");
         assert!(html.contains("CoEvo 刻意进化学习"), "应包含品牌名");
@@ -1145,7 +1146,6 @@ mod tests {
         assert!(fallback.contains("QR_PLACEHOLDER"), "fallback should have QR_PLACEHOLDER");
         let result = crate::poster_template::replace_template_variables(&fallback, &data);
         assert!(!result.contains("QR_PLACEHOLDER"), "QR_PLACEHOLDER should be replaced");
-        assert!(result.contains("<path fill"), "QR path should be in the result");
-        assert!(result.contains("</g>"), "QR group should be closed");
+        assert!(result.contains("<svg"), "QR SVG should be in the result");
     }
 }

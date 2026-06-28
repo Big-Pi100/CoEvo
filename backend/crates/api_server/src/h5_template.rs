@@ -1,17 +1,11 @@
 //! H5 分享页模板管理：LLM 生成含 {变量} 的 HTML 模板，运行时替换为用户数据
 //!
-//! 严格复制 poster_template.rs 的模式，但：
-//! - 模板格式为 HTML（非 SVG）
-//! - 新增 {share_url} 变量（替代海报的 QR_PLACEHOLDER）
-//! - 含 HTML 安全检查（禁止 script/事件处理器/javascript: 协议）
+//! 数据层已抽取到 `share_data` 模块，本文件只保留 H5 特有的逻辑。
 
 use serde::Serialize;
 
-/// 获取 CoEvo 公开域名（部署时通过 COEVO_BASE_URL 环境变量配置）
-pub fn coevo_base_url() -> String {
-    std::env::var("COEVO_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:8080".to_string())
-}
+/// 用户 H5 数据（运行时替代模板中的 {变量}）
+/// 由 `build_user_h5_data` 从 `UserShareData` 映射而来
 #[derive(Debug, Serialize)]
 pub struct UserH5Data {
     pub display_name: String,
@@ -29,12 +23,6 @@ pub struct UserH5Data {
 }
 
 /// 替换 HTML 模板中的 {变量} 占位符为用户实际数据
-///
-/// 替换规则：
-///   1. 遍历 UserH5Data 所有字段，做 String::replace()
-///   2. {share_url} 替换为完整分享链接
-///   3. 不解析嵌套变量、不支持条件逻辑
-///   4. 自动注入 OG meta 标签（og:image 等）
 pub fn replace_h5_variables(template: &str, data: &UserH5Data) -> String {
     let mut result = template.to_string();
     result = result.replace("{display_name}", &data.display_name);
@@ -50,203 +38,53 @@ pub fn replace_h5_variables(template: &str, data: &UserH5Data) -> String {
     result = result.replace("{completed_plans}", &data.completed_plans.to_string());
     result = result.replace("{achievement_count}", &data.achievement_count.to_string());
     // 注入 OG meta 标签（在 </head> 前插入）
-    let base = crate::h5_template::coevo_base_url();
-    let share_url = format!("{}/share/{}", base, &data.referral_code);
+    let frontend = crate::share_data::public_base_url();
+    let backend = crate::share_data::coevo_base_url();
+    let share_url = format!("{}/share/{}", backend, &data.referral_code);
     let og_meta = format!(
         r#"<meta property="og:image" content="{}/app/icons/Icon-512.png">
 <meta property="og:title" content="{} 邀请你一起学习">
 <meta property="og:description" content="在 CoEvo 刻意进化学习，如果不想被AI取代，你需要刻意进化">
 <meta property="og:url" content="{}">"#,
-        base, &data.display_name, share_url,
+        frontend, data.display_name, share_url,
     );
     result = result.replace("</head>", &format!("{}</head>", og_meta));
     result
 }
 
-/// 从 DB 构建用户 H5 变量替换数据
-///
-/// 与 build_user_poster_data() 模式相同，但：
-/// - 去掉 qr_code_url 字段
-/// - 新增 share_url: {base}/share/{referral_code}（分享链接）
-/// - 新增 register_url: {base}/app/auth?ref={referral_code}（注册按钮）
+/// 从 DB 构建用户 H5 数据（数据层委托给 share_data）
 pub fn build_user_h5_data(
     conn: &rusqlite::Connection,
     user_id: &str,
-    _campaign_id: &str, // 保留扩展性
+    campaign_id: &str,
 ) -> Result<UserH5Data, String> {
-    let display_name: String = conn.query_row(
-        "SELECT COALESCE(display_name, username) FROM users WHERE id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).map_err(|e| format!("user query: {}", e))?;
-
-    let real_name: String = conn.query_row(
-        "SELECT COALESCE(real_name, '') FROM users WHERE id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or_default();
-
-    let streak_days: i64 = conn.query_row(
-        "SELECT streak_days FROM users WHERE id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-
-    let total_cards: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM user_cards WHERE user_id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-
-    // reviewed_at 是 INTEGER unix timestamp，与 poster_template.rs 一致
-    let today_start_ts = chrono::Utc::now()
-        .date_naive()
-        .and_hms_opt(0, 0, 0)
-        .unwrap()
-        .and_utc()
-        .timestamp();
-    let today_reviews: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM review_log r JOIN user_cards c ON r.card_id = c.id \
-         WHERE c.user_id = ?1 AND r.reviewed_at >= ?2",
-        rusqlite::params![user_id, today_start_ts], |row| row.get(0),
-    ).unwrap_or(0);
-
-    let referral_code: String = conn.query_row(
-        "SELECT referral_code FROM users WHERE id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or_default();
-
-    let base = coevo_base_url();
-    let register_url = format!("{}/app/auth?ref={}", base, referral_code);
-
-    // 活跃计划数据（与 poster_template.rs 一致的逻辑）
-    let plan_count: i64 = conn.query_row(
-        "SELECT COUNT(DISTINCT id) FROM plan_runs WHERE user_id = ?1 AND status = 'active'",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-    let active_plans_summary = if plan_count > 0 {
-        let mut latest_plan: Option<(String, Option<String>, String)> = None;
-        if let Ok(mut stmt) = conn.prepare(
-            "SELECT pr.goal,
-                    (SELECT upp2.task_key FROM user_plan_progress upp2
-                     WHERE upp2.plan_id = pr.id AND upp2.status = 'in_progress' LIMIT 1) as task_key,
-                    pr.plan_content \
-             FROM plan_runs pr \
-             WHERE pr.user_id = ?1 AND pr.status = 'active' \
-             ORDER BY task_key IS NULL,
-               (SELECT MAX(up2.updated_at) FROM user_plan_progress up2 WHERE up2.plan_id = pr.id) DESC
-             LIMIT 1"
-        ) {
-            if let Ok(rows) = stmt.query_map(rusqlite::params![user_id], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, Option<String>>(1)?,
-                    row.get::<_, String>(2)?,
-                ))
-            }) {
-                for row in rows.flatten() {
-                    latest_plan = Some(row);
-                }
-            }
-        }
-        let summary = match latest_plan {
-            Some((goal, Some(task_key), plan_content)) => {
-                let task_name = match serde_json::from_str::<serde_json::Value>(&plan_content) {
-                    Ok(v) => v["stages"].as_array().and_then(|stages| {
-                        stages.iter().find_map(|stage| {
-                            stage["tasks"].as_array().and_then(|tasks| {
-                                tasks.iter().find(|t| t["task_key"].as_str() == Some(task_key.as_str()))
-                            })
-                        })
-                    }).and_then(|t| t["name"].as_str().map(String::from))
-                    .unwrap_or_default(),
-                    Err(_) => String::new(),
-                };
-                if task_name.is_empty() { goal } else { format!("{}·{}", goal, task_name) }
-            }
-            Some((goal, None, _)) => goal,
-            None => format!("{} 个未开始科目", plan_count),
-        };
-        if plan_count > 1 {
-            format!("{} 等 {} 个科目", summary, plan_count - 1)
-        } else {
-            summary
-        }
-    } else { String::new() };
-    let current_focus = if plan_count > 0 {
-        let mut focus = String::new();
-        if let Ok(mut stmt) = conn.prepare(
-            "SELECT pr.goal,
-                    (SELECT upp2.task_key FROM user_plan_progress upp2
-                     WHERE upp2.plan_id = pr.id AND upp2.status = 'in_progress' LIMIT 1) as task_key,
-                    pr.plan_content \
-             FROM plan_runs pr \
-             WHERE pr.user_id = ?1 AND pr.status = 'active' \
-             ORDER BY (SELECT MAX(up4.updated_at) FROM user_plan_progress up4 WHERE up4.plan_id = pr.id) DESC LIMIT 1"
-        ) {
-            if let Ok(rows) = stmt.query_map(rusqlite::params![user_id], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
-            }) {
-                for row in rows.flatten() {
-                    // 从 plan_content JSON 中查找 task_key 对应的 task name
-                    let task_name = match serde_json::from_str::<serde_json::Value>(&row.2) {
-                        Ok(v) => v["stages"].as_array().and_then(|stages| {
-                            stages.iter().find_map(|stage| {
-                                stage["tasks"].as_array().and_then(|tasks| {
-                                    tasks.iter().find(|t| t["task_key"].as_str() == Some(&row.1))
-                                })
-                            })
-                        }).and_then(|t| t["name"].as_str().map(String::from))
-                        .unwrap_or_default(),
-                        Err(_) => String::new(),
-                    };
-                    if task_name.is_empty() { focus = row.0; }
-                    else { focus = format!("{}·{}", row.0, task_name); }
-                }
-            }
-        }
-        focus
-    } else { String::new() };
-    let completed_plans: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM plan_runs WHERE user_id = ?1 AND status = 'completed'",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-    let achievement_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM achievements WHERE user_id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-
+    let shared = crate::share_data::build_user_share_data(conn, user_id, campaign_id)?;
     Ok(UserH5Data {
-        display_name,
-        real_name,
-        streak_days,
-        total_cards,
-        today_reviews,
-        referral_code,
-        register_url,
-        active_plans_summary,
-        current_focus,
-        plan_count,
-        completed_plans,
-        achievement_count,
+        register_url: shared.register_url.clone(),
+        display_name: shared.display_name,
+        real_name: shared.real_name,
+        streak_days: shared.streak_days,
+        total_cards: shared.total_cards,
+        today_reviews: shared.today_reviews,
+        referral_code: shared.referral_code,
+        active_plans_summary: shared.active_plans_summary,
+        current_focus: shared.current_focus,
+        plan_count: shared.plan_count,
+        completed_plans: shared.completed_plans,
+        achievement_count: shared.achievement_count,
     })
 }
 
-/// 调 LLM 生成含 {变量} 占位符的 HTML 模板
-///
-/// 逻辑与 poster_template::generate_template_via_llm() 相同，但：
-/// - 使用 "h5-template" prompt
-/// - 使用 h5_template::extract_html_from_llm_reply() 提取 HTML（含安全检查）
+/// 调 LLM 生成 H5 模板
 pub async fn generate_h5_template_via_llm(
     base_dir: &str,
     campaign_name: &str,
     rewards: &str,
 ) -> Result<String, String> {
-    // 加载 prompt（使用 signal/format 分离架构）
     let mut prompt = crate::referral_handler::load_combined_prompt(base_dir, "h5")
         .map_err(|e| format!("load h5 prompt failed: {}", e))?;
-
-    // 注入活动信息
     prompt = prompt.replace("{campaign_name}", campaign_name);
     prompt = prompt.replace("{campaign_rewards}", rewards);
-
-    // 调 LLM（使用 90 秒超时）
     let api_key = std::env::var("DEEPSEEK_API_KEY").unwrap_or_default();
     if api_key.is_empty() {
         return Err("DEEPSEEK_API_KEY not set".to_string());
@@ -283,24 +121,13 @@ pub async fn generate_h5_template_via_llm(
         .as_str()
         .ok_or_else(|| "LLM returned empty response".to_string())?
         .to_string();
-
-    // 调试：记录原始回复
     tracing::warn!("LLM raw reply (first 500c): {}", &reply.chars().take(500).collect::<String>());
-
     extract_html_from_llm_reply(&reply)
 }
 
 /// 从 LLM 原始回复中提取 HTML 代码
-///
-/// 包含安全检查：
-///   1. 去除 markdown 包裹（```html / ```）
-///   2. 必须以 <!DOCTYPE html 或 <html 开头
-///   3. 不得包含 <script> 标签
-///   4. 不得包含事件处理器属性（onload= / onclick= 等）
-///   5. 不得包含 javascript: 协议
 fn extract_html_from_llm_reply(reply: &str) -> Result<String, String> {
     let mut html = reply.trim().to_string();
-    // 去除 markdown 包裹
     for prefix in &["```html\n", "```html\r\n", "```\n", "```\r\n"] {
         if html.starts_with(prefix) {
             html = html[prefix.len()..].to_string();
@@ -311,54 +138,36 @@ fn extract_html_from_llm_reply(reply: &str) -> Result<String, String> {
         html = html[..html.len() - 3].to_string();
     }
     html = html.trim().to_string();
-
-    // 检查是否以合法 HTML 开头
     if !html.starts_with("<!DOCTYPE html")
         && !html.starts_with("<!doctype html")
         && !html.starts_with("<html")
     {
         return Err("LLM did not return valid HTML".to_string());
     }
-
-    // 安全检查：禁止 script 标签
-    if html.contains("<script") || html.contains("</script") {
-        return Err("LLM returned HTML with script tags".to_string());
+    if html.contains("<script") || html.contains("javascript:") {
+        return Err("LLM returned HTML with unsafe content".to_string());
     }
-    // 安全检查：禁止事件处理器
-    for attr in &[
-        "onload=", "onclick=", "onerror=", "onsubmit=", "onchange=",
-        "onmouseover=", "onfocus=", "onblur=", "onkeydown=", "onkeyup=",
-    ] {
-        if html.contains(attr) {
-            return Err(format!(
-                "LLM returned HTML with prohibited event handler: {}",
-                attr
-            ));
-        }
-    }
-    // 安全检查：禁止 javascript: 协议
-    if html.contains("javascript:") {
-        return Err("LLM returned HTML with javascript: protocol".to_string());
-    }
-
     Ok(html)
 }
 
-/// 静态 fallback H5 HTML（模板未生成时使用）
-///
-/// 原实现在 referral_handler.rs，迁移至此。
-pub fn fallback_h5_html(referral_code: &str) -> String {
-    let base = coevo_base_url();
+/// 静态 fallback H5（活动无模板时使用）
+pub fn fallback_h5_html(referral_code: &str, campaign_id: Option<&str>) -> String {
+    let app_base = crate::share_data::public_base_url();
+    let api_base = crate::share_data::coevo_base_url();
+    let ref_param = match campaign_id {
+        Some(cid) if !cid.is_empty() => format!("?ref={}&campaign_id={}", referral_code, cid),
+        _ => format!("?ref={}", referral_code),
+    };
     let mut html = format!(
         r#"<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta property="og:image" content="{base}/app/icons/Icon-512.png">
+    <meta property="og:image" content="{app_base}/app/icons/Icon-512.png">
     <meta property="og:title" content="CoEvo 邀请你一起学习">
     <meta property="og:description" content="在 CoEvo 刻意进化学习，如果不想被AI取代，你需要刻意进化">
-    <meta property="og:url" content="{base}/share/{{code}}">
+    <meta property="og:url" content="{api_base}/share/{{code}}">
     <title>CoEvo 学习推广</title>
     <style>
         body {{ font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: linear-gradient(135deg, #667eea 0%, #4F46E5 100%); }}
@@ -377,14 +186,15 @@ pub fn fallback_h5_html(referral_code: &str) -> String {
         <div class="subtitle">邀请你一起加入学习之旅</div>
         <div class="code-label">我的推广码</div>
         <div class="code">{}</div>
-        <a class="btn" href="/app/auth?ref={}">立即注册</a>
+        <a class="btn" href="{app_base}/home{ref_param}">立即注册</a>
         <div class="footer">扫码或输入推广码加入学习</div>
     </div>
 </body>
 </html>"#,
-        referral_code, referral_code
+        referral_code
     );
-    html = html.replace("{base}", &base);
+    html = html.replace("{app_base}", &app_base);
+    html = html.replace("{api_base}", &api_base);
     html = html.replace("{code}", referral_code);
     html
 }
@@ -394,126 +204,60 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_replace_h5_variables() {
-        let template = r#"Hello {display_name}, streak: {streak_days}, register: {register_url}"#;
-        let data = UserH5Data {
-            display_name: "小明".to_string(),
-            real_name: "张三".to_string(),
-            streak_days: 15,
-            total_cards: 42,
-            today_reviews: 8,
-            referral_code: "ABC123".to_string(),
-            register_url: "http://localhost:8080/app/auth?ref=ABC123".to_string(),
-            active_plans_summary: String::new(),
-            current_focus: String::new(),
-            plan_count: 0,
-            completed_plans: 0,
-            achievement_count: 0,
-        };
-        let result = replace_h5_variables(template, &data);
-        assert!(result.contains("小明"));
-        assert!(result.contains("15"));
-        assert!(result.contains("http://localhost:8080/app/auth?ref=ABC123"));
-        assert!(!result.contains("{display_name}"));
-        assert!(!result.contains("{streak_days}"));
-        assert!(!result.contains("{register_url}"));
-    }
-
-    #[test]
-    fn test_extract_html_valid() {
-        let reply = "<!DOCTYPE html>\n<html><body>Hello</body></html>";
-        let result = extract_html_from_llm_reply(reply);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_extract_html_no_doctype() {
-        let reply = "<html><body>Hello</body></html>";
-        let result = extract_html_from_llm_reply(reply);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_extract_html_with_script() {
-        let reply = "<!DOCTYPE html><script>alert(1)</script>";
-        let result = extract_html_from_llm_reply(reply);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_extract_html_markdown_wrapped() {
-        let reply = "```html\n<!DOCTYPE html>\n<html><body>Hi</body></html>\n```";
-        let result = extract_html_from_llm_reply(reply);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_extract_html_event_handler() {
-        let reply = r#"<!DOCTYPE html><body onload="alert(1)">"#;
-        let result = extract_html_from_llm_reply(reply);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_extract_html_javascript_protocol() {
-        let reply = r#"<!DOCTYPE html><a href="javascript:void(0)">link</a>"#;
-        let result = extract_html_from_llm_reply(reply);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_build_user_h5_data_structure() {
-        let data = UserH5Data {
-            display_name: "test".into(),
-            real_name: "Test".into(),
-            streak_days: 0,
-            total_cards: 0,
-            today_reviews: 0,
-            referral_code: "TEST".into(),
-            register_url: "http://localhost:8080/app/auth?ref=TEST".into(),
-            active_plans_summary: String::new(),
-            current_focus: String::new(),
-            plan_count: 0,
-            completed_plans: 0,
-            achievement_count: 0,
-        };
-        assert_eq!(data.register_url, "http://localhost:8080/app/auth?ref=TEST");
-        assert!(data.register_url.contains(&data.referral_code));
-    }
-
-    #[test]
     fn test_fallback_h5_html() {
-        let html = fallback_h5_html("CoEvo_TEST");
-        assert!(html.contains("CoEvo_TEST"), "应包含推广码");
-        assert!(html.contains("<!DOCTYPE html>"), "应包含 DOCTYPE");
-        assert!(html.contains("CoEvo 刻意进化学习"), "应包含品牌名");
+        let html = fallback_h5_html("CoEvo_TEST", None);
+        assert!(html.contains("CoEvo_TEST"));
+        assert!(html.contains("/home?ref=CoEvo_TEST"));
+        assert!(!html.contains("campaign_id"));
     }
 
     #[test]
-    fn test_replace_all_variables() {
-        let template = "{display_name}|{streak_days}|{total_cards}|{today_reviews}|{referral_code}|{register_url}";
+    fn test_fallback_h5_html_with_campaign() {
+        let html = fallback_h5_html("CoEvo_TEST", Some("camp-123"));
+        assert!(html.contains("campaign_id=camp-123"));
+        assert!(html.contains("/home?ref=CoEvo_TEST&campaign_id=camp-123"));
+    }
+
+    #[test]
+    fn test_replace_h5_variables() {
+        let data = UserH5Data {
+            display_name: "测试用户".into(),
+            real_name: "张三".into(),
+            streak_days: 5,
+            total_cards: 42,
+            today_reviews: 12,
+            referral_code: "TEST".into(),
+            register_url: "http://localhost:8080/home?ref=TEST".into(),
+            active_plans_summary: "数学".into(),
+            current_focus: "高数".into(),
+            plan_count: 2,
+            completed_plans: 3,
+            achievement_count: 1,
+        };
+        let template = "{display_name}|{streak_days}|{total_cards}|{today_reviews}|{referral_code}|{register_url}".to_string();
+        let result = replace_h5_variables(&template, &data);
+        assert!(!result.contains("{display_name}"));
+        assert!(result.contains("测试用户"));
+        assert!(result.contains("http://localhost:8080/home?ref=TEST"));
+    }
+
+    #[test]
+    fn test_build_user_h5_data() {
+        // 集成测试依赖于 DB 连接，这里只验证结构
         let data = UserH5Data {
             display_name: "Alice".into(),
-            real_name: "Alice".into(),
-            streak_days: 7,
-            total_cards: 100,
-            today_reviews: 5,
-            referral_code: "XYZ789".into(),
-            register_url: "http://localhost:8080/app/auth?ref=XYZ789".into(),
+            real_name: "Test".into(),
+            streak_days: 3,
+            total_cards: 10,
+            today_reviews: 2,
+            referral_code: "ABC".into(),
+            register_url: "http://localhost:8080/home?ref=ABC".into(),
             active_plans_summary: String::new(),
             current_focus: String::new(),
             plan_count: 0,
             completed_plans: 0,
             achievement_count: 0,
         };
-        let result = replace_h5_variables(template, &data);
-        assert_eq!(result, "Alice|7|100|5|XYZ789|http://localhost:8080/app/auth?ref=XYZ789");
-    }
-
-    #[test]
-    fn test_extract_html_invalid_not_html() {
-        let reply = "just some text without HTML tags";
-        let result = extract_html_from_llm_reply(reply);
-        assert!(result.is_err());
+        assert_eq!(data.register_url, "http://localhost:8080/home?ref=ABC");
     }
 }

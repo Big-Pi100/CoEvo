@@ -51,3 +51,4 @@ pub mod campaign_executor;
 pub mod llm_poster;
 pub mod poster_template;
 pub mod h5_template;
+pub mod share_data;

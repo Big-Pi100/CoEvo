@@ -4,9 +4,14 @@
 //! 临时账户获得 1 天试用订阅，到期后由现有 is_subscription_active() 自动拦截。
 
 use axum::{Json, http::{HeaderMap, StatusCode}, response::IntoResponse};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
+
+#[derive(Deserialize)]
+pub struct StartRequest {
+    pub referral_code: Option<String>,
+}
 
 #[derive(Deserialize)]
 pub struct ClaimRequest {
@@ -24,6 +29,7 @@ pub struct ClaimRequest {
 /// 返回 user_id + token。
 pub async fn start(
     headers: HeaderMap,
+    Json(body): Json<StartRequest>,
 ) -> impl IntoResponse {
     let conn = crate::db_pool::get_conn();
 
@@ -84,6 +90,25 @@ pub async fn start(
         tracing::error!("trial/start insert user failed: {}", e);
         conn.execute_batch("ROLLBACK").ok();
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "create_user_failed"}))).into_response();
+    }
+
+    // ── 处理推广码（trial 创建时直接绑定推荐关系）──
+    let referred_by: Option<String> = if let Some(ref code) = body.referral_code {
+        if !code.is_empty() {
+            conn.query_row(
+                "SELECT id FROM users WHERE referral_code = ?1 AND deleted_at IS NULL",
+                rusqlite::params![code],
+                |row| row.get(0),
+            ).ok()
+        } else { None }
+    } else { None };
+    if let Some(ref rid) = referred_by {
+        if let Err(e) = conn.execute(
+            "UPDATE users SET referred_by = ?1 WHERE id = ?2",
+            rusqlite::params![rid, uid],
+        ) {
+            tracing::warn!("trial/start set referred_by failed: {}", e);
+        }
     }
 
     // 创建 token

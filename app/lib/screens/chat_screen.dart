@@ -54,7 +54,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   // 订阅状态
   bool _subscriptionDialogShown = false;
-  bool _claimDialogShown = false;
 
   // 对话删除状态
   // ignore: prefer_final_fields
@@ -177,37 +176,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     } finally {
       // 无论如何都要解除初始化状态，防止永久灰屏
       if (mounted) setState(() => _isInitializing = false);
-      // 页面渲染完后再弹注册窗，避免加载中弹出
-      if (mounted) {
-        WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowClaimDialog());
-      }
-    }
-  }
-
-  Future<void> _maybeShowClaimDialog() async {
-    if (_claimDialogShown) return;
-    _claimDialogShown = true;
-    // 只在 trial 账户且未认领时弹
-    String? trialCheck;
-    try {
-      trialCheck = ref.read(authProvider).username;
-    } catch (_) {
-      return; // 提供者尚未就绪，跳过
-    }
-    if (trialCheck == null || !trialCheck.startsWith('trial_')) return;
-
-    final prefs = await SharedPreferences.getInstance();
-    final isClaimed = prefs.getBool('coevo_trial_claimed') ?? false;
-    if (isClaimed) return;
-
-    if (!mounted) return;
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      builder: (_) => const ClaimDialog(),
-    );
-    if (result == true && mounted) {
-      await prefs.setBool('coevo_trial_claimed', true);
+      // 注册/认领弹窗由首页 HomeScreen 统一处理，聊天页不再独立弹出
     }
   }
 
@@ -422,7 +391,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _loadPlan();
         // 通知复习页重新加载（CP2 创建新计划或解锁卡片后）
         ref.read(cardRefreshProvider.notifier).state++;
-        _maybeShowClaimDialog();  // 触发试用用户注册弹窗
         break;
       case 'tts_audio':
         // 收到 TTS 音频 → 缓存并检查自动播放开关
