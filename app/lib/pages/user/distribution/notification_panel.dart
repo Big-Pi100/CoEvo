@@ -350,17 +350,43 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
         final fullUrl = (data['url'] as String?) ?? ApiConfig.baseUrl;
         await Clipboard.setData(ClipboardData(text: fullUrl));
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('链接已复制')),
-          );
+          setState(() => _generatingH5 = false);
+          _showToast('链接已复制');
         }
+      } else if (mounted) {
+        setState(() => _generatingH5 = false);
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('生成失败: $e')));
-      }
+      if (mounted) setState(() => _generatingH5 = false);
+      if (mounted) _showToast('生成失败');
     }
-    if (mounted) setState(() => _generatingH5 = false);
+  }
+
+  void _showToast(String message) {
+    final overlay = Overlay.of(context);
+    late OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (_) => Positioned(
+        bottom: 120,
+        left: 0,
+        right: 0,
+        child: Material(
+          color: Colors.transparent,
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.black87,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Text(message, style: const TextStyle(color: Colors.white, fontSize: 14)),
+            ),
+          ),
+        ),
+      ),
+    );
+    overlay.insert(entry);
+    Future.delayed(const Duration(seconds: 2), () => entry.remove());
   }
 
   void _download() {
@@ -402,15 +428,17 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
                     child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxHeight: MediaQuery.of(context).size.height * 0.55,
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.memory(
-                            base64Decode(_posterPng!.split(',').last),
-                            fit: BoxFit.contain,
+                      RepaintBoundary(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: MediaQuery.of(context).size.height * 0.55,
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.memory(
+                              base64Decode(_posterPng!.split(',').last),
+                              fit: BoxFit.contain,
+                            ),
                           ),
                         ),
                       ),

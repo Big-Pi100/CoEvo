@@ -35,10 +35,6 @@ class _ChatReadingPassageState extends ConsumerState<ChatReadingPassage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // 监听 plan/task 状态变化，自动刷新课文卡
-    ref.listen<int>(cardRefreshProvider, (prev, next) {
-      if (prev != next) _loadCard();
-    });
   }
 
   Future<void> _loadCard() async {
@@ -76,6 +72,11 @@ class _ChatReadingPassageState extends ConsumerState<ChatReadingPassage> {
 
   @override
   Widget build(BuildContext context) {
+    // 监听 plan/task 状态变化，自动刷新课文卡
+    ref.listen<int>(cardRefreshProvider, (prev, next) {
+      if (prev != next) _loadCard();
+    });
+
     final cs = Theme.of(context).colorScheme;
 
     if (_loading) return const SizedBox.shrink();

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:convert';
 import '../api/chat_client.dart';
@@ -108,19 +109,24 @@ class PlanNotifier extends StateNotifier<PlanState> {
   Future<void> loadPlans(ChatClient client, {String? conversationId}) async {
     final gen = ++_requestGen;
     state = state.copyWith(isLoading: true);
+    debugPrint('[loadPlans] start gen=$gen conv=$conversationId');
     try {
       final raw = await client.getPlans(conversationId: conversationId);
-      if (gen != _requestGen) return; // 已被 dispose
+      debugPrint('[loadPlans] got response gen=$gen raw=${raw?.length}');
+      if (gen != _requestGen) {
+        debugPrint('[loadPlans] stale gen=$gen != $_requestGen, discard');
+        return;
+      }
       final list = (raw as List<dynamic>?)
               ?.where((p) => p is Map<String, dynamic>)
               .map((p) => PlanData.fromJson(p as Map<String, dynamic>))
               .toList() ??
           [];
       state = state.copyWith(plans: list, isLoading: false);
+      debugPrint('[loadPlans] done gen=$gen plans=${list.length}');
     } catch (e) {
-      if (gen == _requestGen) {
-        state = state.copyWith(isLoading: false);
-      }
+      debugPrint('[loadPlans] error gen=$gen: $e');
+      state = state.copyWith(isLoading: false);
     }
   }
 

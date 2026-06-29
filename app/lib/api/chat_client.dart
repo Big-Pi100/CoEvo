@@ -557,7 +557,8 @@ extension PlanApi on ChatClient {
       final resp = await http.get(
         Uri.parse('$baseUrl/api/plans?$queryParams'),
         headers: _authHeaders,
-      );
+      ).timeout(const Duration(seconds: 10));
+      debugPrint('[getPlans] status=${resp.statusCode}');
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
         return (data['plans'] as List?)
