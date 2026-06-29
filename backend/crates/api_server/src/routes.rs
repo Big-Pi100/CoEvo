@@ -262,6 +262,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         // 推广落地页
         .route("/share/{code}", get(crate::referral_handler::share_landing))
         .route("/api/pay/calculate", post(crate::distribution_handler::calculate))
+        .route("/api/referral/user-campaign", get(crate::distribution_handler::user_campaign))
         .route("/api/notifications", get(crate::distribution_handler::list_notifications))
         .route("/api/notifications/{id}/read", post(crate::distribution_handler::mark_read))
         .route("/api/notifications/read-all", post(crate::distribution_handler::mark_read_all))

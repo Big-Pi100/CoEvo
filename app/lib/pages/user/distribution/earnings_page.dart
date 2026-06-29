@@ -85,6 +85,8 @@ class _EarningsPageBodyState extends State<_EarningsPageBody> {
         return Colors.grey;
       case 'cancelled':
         return Colors.red;
+      case 'used':
+        return Colors.grey;
       default:
         return Colors.grey;
     }
@@ -102,8 +104,38 @@ class _EarningsPageBodyState extends State<_EarningsPageBody> {
         return '锁定中';
       case 'cancelled':
         return '已取消';
+      case 'used':
+        return '已抵扣';
       default:
         return status ?? '未知';
+    }
+  }
+
+  /// 根据 status 返回金额显示符号：available→+，used/settled/paid→−，其他→空
+  String _amountPrefix(String? status) {
+    switch (status) {
+      case 'available':
+        return '+';
+      case 'used':
+      case 'settled':
+      case 'paid':
+        return '\u2212'; // 减号 −
+      default:
+        return '';
+    }
+  }
+
+  /// 根据 status 返回金额颜色：available→绿色，used/settled/paid→红色，其他→默认
+  Color _amountColor(String? status, ColorScheme cs) {
+    switch (status) {
+      case 'available':
+        return Colors.green;
+      case 'used':
+      case 'settled':
+      case 'paid':
+        return Colors.red;
+      default:
+        return cs.onSurface;
     }
   }
 
@@ -184,10 +216,11 @@ class _EarningsPageBodyState extends State<_EarningsPageBody> {
                                     children: [
                                       Row(children: [
                                         Text(
-                                            '¥${(c['amount'] as num?)?.toDouble() ?? 0}',
-                                            style: const TextStyle(
+                                            '${_amountPrefix(c['status'] as String?)}¥${(c['amount'] as num?)?.toDouble() ?? 0}',
+                                            style: TextStyle(
                                                 fontSize: 15,
-                                                fontWeight: FontWeight.bold)),
+                                                fontWeight: FontWeight.bold,
+                                                color: _amountColor(c['status'] as String?, cs))),
                                         const Spacer(),
                                         Container(
                                           padding: const EdgeInsets.symmetric(

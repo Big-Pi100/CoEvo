@@ -32,8 +32,11 @@ pub async fn native_pay_handler(
     // 折后价（拼团/砍价场景覆盖 plan.price）
     let actual_price: Option<i64> = payload.get("actual_price").and_then(|v| v.as_i64());
 
+    // 佣金抵扣金额（分），0 或 None 表示不使用佣金抵扣
+    let commission_discount: Option<i64> = payload.get("commission_discount").and_then(|v| v.as_i64());
+
     // 查套餐
-    let conn = crate::db_pool::get_conn();
+    let mut conn = crate::db_pool::get_conn();
     let plan = match subscription::get_plan_by_id(&conn, &plan_id) {
         Ok(Some(p)) => p,
         Ok(None) => return (StatusCode::NOT_FOUND, "套餐不存在").into_response(),
@@ -52,10 +55,63 @@ pub async fn native_pay_handler(
     }
 
     // 实际支付金额（actual_price 覆盖 plan.price，砍价/拼团场景）
-    let final_price = actual_price.unwrap_or(plan.price);
-    if final_price > plan.price {
+    let base_price = actual_price.unwrap_or(plan.price);
+    if base_price > plan.price {
         return (StatusCode::BAD_REQUEST, "actual_price 不能高于 plan.price").into_response();
     }
+
+    // ── 佣金抵扣校验（只读，不操作 DB）──
+    let mut commission_used: i64 = 0;
+    let mut commission_ids: Vec<String> = Vec::new();
+
+    if let Some(discount) = commission_discount.filter(|&d| d > 0) {
+        if discount > base_price {
+            return (StatusCode::BAD_REQUEST, "抵扣金额不能超过套餐价格").into_response();
+        }
+
+        // 查可用佣金总额
+        let available: i64 = match conn.query_row(
+            "SELECT COALESCE(SUM(amount),0) FROM distribution_commissions WHERE earner_id=?1 AND status='available'",
+            rusqlite::params![user_id],
+            |row| row.get(0),
+        ) {
+            Ok(v) => v,
+            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("查询佣金失败: {}", e)).into_response(),
+        };
+
+        if discount > available {
+            return (StatusCode::BAD_REQUEST, "佣金不足").into_response();
+        }
+
+        // FIFO 取佣金记录（预计算需要扣的佣金 ID）
+        let records: Vec<(String, i64)> = {
+            let mut stmt = match conn.prepare(
+                "SELECT id, amount FROM distribution_commissions WHERE earner_id=?1 AND status='available' ORDER BY created_at ASC",
+            ) {
+                Ok(s) => s,
+                Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("查询佣金记录失败: {}", e)).into_response(),
+            };
+            let mapped = match stmt.query_map(rusqlite::params![user_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            }) {
+                Ok(rows) => rows,
+                Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("遍历佣金记录失败: {}", e)).into_response(),
+            };
+            mapped.filter_map(|r| r.ok()).collect()
+        };
+
+        let mut remaining = discount;
+        for (id, amount) in &records {
+            if remaining <= 0 {
+                break;
+            }
+            commission_ids.push(id.clone());
+            commission_used += amount;
+            remaining -= amount;
+        }
+    }
+
+    let final_price = base_price - commission_used;
 
     // 生成订单号
     let now = chrono::Utc::now();
@@ -67,19 +123,41 @@ pub async fn native_pay_handler(
     // 免费（price=0 或折扣后为 0）跳过微信支付，直接激活
     if final_price <= 0 {
         let created_at = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
-        // 写订单（已支付）
-        if let Err(e) = conn.execute(
+        let order_amount = final_price.max(0);
+
+        // 事务内：扣佣金 + 写订单 + 激活订阅，任一失败整体回滚
+        let tx = match conn.transaction() {
+            Ok(t) => t,
+            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("事务启动失败: {}", e)).into_response(),
+        };
+
+        // 扣佣金（rows_affected 验证防并发超扣）
+        for cid in &commission_ids {
+            if let Err(e) = tx.execute(
+                "UPDATE distribution_commissions SET status='used' WHERE id=?1 AND status='available'",
+                rusqlite::params![cid],
+            ) {
+                return (StatusCode::INTERNAL_SERVER_ERROR, format!("更新佣金状态失败: {}", e)).into_response();
+            }
+        }
+
+        // 写订单
+        if let Err(e) = tx.execute(
             "INSERT INTO payment_orders (id, user_id, plan_id, amount, status, paid_at, created_at)
-             VALUES (?1, ?2, ?3, 0, 'SUCCESS', ?4, ?4)",
-            rusqlite::params![order_id, user_id, plan_id, created_at],
+             VALUES (?1, ?2, ?3, ?4, 'SUCCESS', ?5, ?5)",
+            rusqlite::params![order_id, user_id, plan_id, order_amount, created_at],
         ) {
             return (StatusCode::INTERNAL_SERVER_ERROR, format!("写入订单失败: {}", e)).into_response();
         }
+
         // 激活订阅
         match subscription::extend_subscription(
-            &conn, &user_id, &plan_id, None, Some(&order_id), None,
+            &tx, &user_id, &plan_id, None, Some(&order_id), None,
         ) {
             Ok(new_expires) => {
+                if let Err(e) = tx.commit() {
+                    return (StatusCode::INTERNAL_SERVER_ERROR, format!("事务提交失败: {}", e)).into_response();
+                }
                 return (
                     StatusCode::OK,
                     json!({
@@ -88,6 +166,8 @@ pub async fn native_pay_handler(
                         "amount": 0,
                         "paid": true,
                         "new_expires": new_expires,
+                        "commission_used": commission_used,
+                        "commission_ids": commission_ids,
                     }).to_string(),
                 ).into_response();
             }
@@ -96,6 +176,7 @@ pub async fn native_pay_handler(
     }
 
     // 调微信下单（price > 0）
+    // 先调微信 API（外部 HTTP 调用，不在 DB 事务内），成功后再事务扣佣金+写订单
     let wechat_config = match crate::wechat_pay::WechatPayConfig::from_env() {
         Some(c) => c,
         None => return (StatusCode::INTERNAL_SERVER_ERROR, "微信支付未配置").into_response(),
@@ -111,14 +192,34 @@ pub async fn native_pay_handler(
     .await
     {
         Ok(resp) => {
-            // 写订单
+            let order_amount = final_price.max(0);
             let created_at = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
-            if let Err(e) = conn.execute(
+
+            // 事务内：扣佣金 + 写 NOTPAY 订单，微信已返回成功才扣佣金
+            let tx = match conn.transaction() {
+                Ok(t) => t,
+                Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("事务启动失败: {}", e)).into_response(),
+            };
+
+            for cid in &commission_ids {
+                if let Err(e) = tx.execute(
+                    "UPDATE distribution_commissions SET status='used' WHERE id=?1 AND status='available'",
+                    rusqlite::params![cid],
+                ) {
+                    return (StatusCode::INTERNAL_SERVER_ERROR, format!("更新佣金状态失败: {}", e)).into_response();
+                }
+            }
+
+            if let Err(e) = tx.execute(
                 "INSERT INTO payment_orders (id, user_id, plan_id, amount, status, prepay_id, created_at)
                  VALUES (?1, ?2, ?3, ?4, 'NOTPAY', ?5, ?6)",
-                rusqlite::params![order_id, user_id, plan_id, final_price, resp.prepay_id, created_at],
+                rusqlite::params![order_id, user_id, plan_id, order_amount, resp.prepay_id, created_at],
             ) {
                 return (StatusCode::INTERNAL_SERVER_ERROR, format!("写入订单失败: {}", e)).into_response();
+            }
+
+            if let Err(e) = tx.commit() {
+                return (StatusCode::INTERNAL_SERVER_ERROR, format!("事务提交失败: {}", e)).into_response();
             }
 
             (
@@ -128,6 +229,8 @@ pub async fn native_pay_handler(
                     "code_url": resp.code_url,
                     "prepay_id": resp.prepay_id,
                     "amount": final_price,
+                    "commission_used": commission_used,
+                    "commission_ids": commission_ids,
                 })
                 .to_string(),
             )
@@ -479,6 +582,9 @@ pub async fn order_status_handler(
                                     &conn, user_id, plan_id,
                                     None, Some(&order_id), Some("微信支付"),
                                 );
+                                // 分销归因：此分支为 order_status_handler 同步微信状态，
+                                // 不会触发 pay_notify_handler，需手动分发佣金
+                                let _ = distribute_commission_on_payment(&conn, &order_id);
                             }
                         }
                     } else if wechat_status == "CLOSED" || wechat_status == "REVOKED" {

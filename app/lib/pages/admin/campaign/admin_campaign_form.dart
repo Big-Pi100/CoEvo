@@ -386,7 +386,7 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                                       labelText: '对象', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
                                   items: const [
                                     DropdownMenuItem(value: 'self', child: Text('推广员')),
-                                    DropdownMenuItem(value: 'inviter', child: Text('下线')),
+                                    DropdownMenuItem(value: 'invitee', child: Text('被邀请人')),
                                     DropdownMenuItem(value: 'all', child: Text('所有人')),
                                   ],
                                   onChanged: (v) => setState(() => _rewards[i]['party'] = v),

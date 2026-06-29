@@ -1,0 +1,37 @@
+sequenceDiagram
+    participant Flutter as Flutter App
+    participant PayAPI as POST /api/pay/native
+    participant DB as SQLite DB
+    participant WeChat as 微信支付
+    participant Notify as POST /api/pay/notify
+
+    Flutter->>PayAPI: {user_id, plan_id, commission_discount: 5000}
+    Note over PayAPI: 套餐价 12000
+
+    PayAPI->>DB: BEGIN TRANSACTION
+    PayAPI->>DB: SELECT SUM(amount) FROM distribution_commissions<br/>WHERE earner_id=? AND status='available'
+    DB-->>PayAPI: 8000
+    Note over PayAPI: 可用佣金 8000 ≥ 抵扣金额 5000 ✓
+
+    PayAPI->>DB: SELECT id, amount FROM distribution_commissions<br/>WHERE earner_id=? AND status='available'<br/>ORDER BY created_at ASC
+    DB-->>PayAPI: [{id:c1, amount:3000}, {id:c2, amount:2000}, {id:c3, amount:5000}]
+    Note over PayAPI: FIFO 扣减：c1(3000) + c2(2000) = 5000 ✓
+
+    PayAPI->>DB: UPDATE distribution_commissions SET status='used'<br/>WHERE id IN ('c1','c2') AND status='available'
+    Note over PayAPI: rows_affected=2 ✓
+
+    PayAPI->>DB: INSERT INTO payment_orders (id, ..., amount=12000, status='NOTPAY')
+    PayAPI->>DB: COMMIT
+
+    Note over PayAPI: final_price = 12000 - 5000 = 7000
+
+    PayAPI->>WeChat: native_order(order_id, "CoEvo xxx", 7000)
+    WeChat-->>PayAPI: code_url, prepay_id
+    PayAPI-->>Flutter: {order_id, code_url, amount:7000, paid:false,<br/>commission_used:5000, commission_ids:["c1","c2"]}
+
+    Note over Flutter: 用户扫码微信支付 7000 元
+
+    WeChat-->>Notify: 支付回调
+    Notify->>DB: UPDATE payment_orders SET status='SUCCESS' WHERE id=?
+    Notify->>DB: extend_subscription(user_id, plan_id, order_id, "佣金+微信混合支付")
+    Notify-->>WeChat: {"code":"SUCCESS"}

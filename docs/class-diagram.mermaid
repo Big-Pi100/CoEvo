@@ -1,0 +1,40 @@
+classDiagram
+    class DistributionCommission {
+        +String id
+        +String campaign_id
+        +String earner_id
+        +String buyer_id
+        +String order_id
+        +i64 order_amount
+        +f64 rate_applied
+        +i64 amount
+        +i64 level
+        +String status           // locked | available | settled | cancelled | used(NEW)
+        +String batch_id
+        +String batch_settled_at
+        +String paid_at
+        +String unlocked_at
+        +String created_at
+    }
+
+    class PaymentOrder {
+        +String id
+        +String user_id
+        +String plan_id
+        +i64 amount
+        +String status           // NOTPAY | SUCCESS | CLOSED | REFUND
+        +String transaction_id
+        +String prepay_id
+        +String paid_at
+        +String created_at
+    }
+
+    class PayService {
+        +native_pay_handler(user_id, plan_id, actual_price?, commission_discount?) Response
+        +pay_notify_handler(wechat_params) Response
+        +distribute_commission_on_payment(order_id) void
+        +deduct_commissions(conn, earner_id, amount) Result~Vec<String>~
+    }
+
+    DistributionCommission "many" <-- PayService : 查询/扣减/恢复
+    PaymentOrder "many" <-- PayService : 创建/更新

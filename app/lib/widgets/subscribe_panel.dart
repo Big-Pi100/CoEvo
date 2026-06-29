@@ -61,9 +61,8 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
 
   Future<void> _loadDiscount(String userId) async {
     if (_plans == null || _plans!.isEmpty) return;
-    // 检查第一个套餐是否有折扣（代表整个活动折扣）
     final firstPlan = _plans!.first;
-    if (firstPlan['price'] == 0) return; // 免费套餐无折扣
+    if (firstPlan['price'] == 0) return;
     try {
       final token = ref.read(authProvider).token;
       final resp = await http
@@ -84,13 +83,13 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
         final orig = data['original_price'] as int? ?? 0;
         final disc = data['discounted_price'] as int? ?? 0;
         if (disc < orig) {
-          _discountInfo = data;
+          if (mounted) setState(() => _discountInfo = data);
         }
       }
     } catch (_) {}
   }
 
-  Future<void> _createOrder(String planId) async {
+  Future<void> _createOrder(String planId, {int? planPrice, String? planName, int? actualPrice}) async {
     setState(() => _orderingPlan = planId);
     try {
       final auth = ref.read(authProvider);
@@ -98,6 +97,22 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
         _showError('请先登录');
         return;
       }
+
+      // 有金额的套餐进入 PayScreen 后再下单（支持佣金抵扣选择）
+      if (planPrice != null && planPrice > 0) {
+        if (mounted) {
+          await context.push('/pay', extra: {
+            'plan_id': planId,
+            'plan_price': planPrice,
+            'plan_name': planName,
+            if (actualPrice != null) 'actual_price': actualPrice,
+          });
+          if (mounted) _loadPlans();
+        }
+        return;
+      }
+
+      // 免费套餐：直接下单
       final resp = await http
           .post(
             Uri.parse('${ApiConfig.baseUrl}/api/pay/native'),
@@ -228,7 +243,7 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
                 originalPriceText: discountedPrice != null ? _fmtPrice(plan['price'] as int) : null,
                 durationText: _durationText(plan),
                 loading: _orderingPlan == planId,
-                onPay: () => _createOrder(planId),
+                onPay: () => _createOrder(planId, planPrice: plan['price'] as int?, planName: plan['name'] as String?, actualPrice: discountedPrice),
               );
             }),
           ],

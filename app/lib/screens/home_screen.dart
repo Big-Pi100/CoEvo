@@ -41,6 +41,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _initAuth() async {
     // 首次创建试用时读取 URL 推广码
     final refCode = _readRefCode();
+
+    // ── 点击追踪：来自推广链接或二维码扫码 → 记录一次分享点击 ──
+    if (refCode != null && refCode.isNotEmpty) {
+      try {
+        final uri = GoRouter.of(context).state.uri;
+        final campaignId = uri.queryParameters['campaign_id'] ?? uri.queryParameters['camp'];
+        final baseUrl = ApiConfig.baseUrl;
+        http.post(
+          Uri.parse('$baseUrl/api/referral/click'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'campaign_id': campaignId ?? 'share',
+            'referrer_code': refCode,
+            'share_channel': 'direct_link',
+            'landed_page': '/home',
+          }),
+        ); // fire-and-forget，不需要 await
+      } catch (_) {}
+    }
+
     final auth = ref.read(authProvider);
     if (!auth.isRestored) {
       await Future.delayed(const Duration(milliseconds: 300));

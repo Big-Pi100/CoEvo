@@ -108,14 +108,67 @@ pub async fn mark_read_all(
 }
 
 // ════════════════════════════════════════════════════════════════
-// 用户端支付计算（2个）
+// 用户端支付计算（3个）
 // ════════════════════════════════════════════════════════════════
+
+/// GET /api/referral/user-campaign — 查询用户适用的有效活动（前端取 campaign_id）
+pub async fn user_campaign(
+    headers: HeaderMap,
+    Query(query): Query<UserQuery>,
+) -> impl IntoResponse {
+    tracing::info!("user_campaign: user_id={}", query.user_id);
+    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
+        return err(StatusCode::UNAUTHORIZED, &e.to_string());
+    }
+
+    let conn = crate::db_pool::get_conn();
+    let mut stmt = match conn.prepare(
+        "SELECT id, name, rewards FROM marketing_campaigns \
+         WHERE status = 'active' \
+         AND (valid_from IS NULL OR valid_from <= datetime('now')) \
+         AND (valid_until IS NULL OR valid_until > datetime('now')) \
+         ORDER BY valid_from DESC"
+    ) {
+        Ok(s) => s,
+        Err(_) => return ok(json!({"campaign_id": null})),
+    };
+
+    let rows: Vec<serde_json::Value> = match stmt.query_map([], |row| {
+        let id: String = row.get(0)?;
+        let name: String = row.get::<_, Option<String>>(1)?.unwrap_or_default();
+        let rewards: String = row.get(2)?;
+        Ok(json!({"id": id, "name": name, "rewards": rewards}))
+    }) {
+        Ok(mapped) => mapped.filter_map(|r| r.ok()).collect(),
+        Err(_) => vec![],
+    };
+
+    // 只返回包含 discount 类型的活动
+    for campaign in &rows {
+        if let Some(rewards_str) = campaign["rewards"].as_str() {
+            if let Ok(rewards) = serde_json::from_str::<Vec<serde_json::Value>>(rewards_str) {
+                if rewards.iter().any(|r| {
+                    let rtype = r["type"].as_str().unwrap_or("");
+                    rtype == "discount_pct" || rtype == "discount_fix"
+                }) {
+                    return ok(json!({
+                        "campaign_id": campaign["id"],
+                        "campaign_name": campaign["name"],
+                    }));
+                }
+            }
+        }
+    }
+
+    ok(json!({"campaign_id": null}))
+}
 
 #[derive(Deserialize)]
 pub struct CalculateRequest {
     pub user_id: String,
     pub plan_id: String,
-    pub campaign_id: String,  // 活动 ID，由前端根据参与关系传入
+    #[serde(default)]
+    pub campaign_id: Option<String>,  // 可选：指定活动 ID，不传时自动查有效折扣活动
 }
 
 /// POST /api/pay/calculate — 计算折后价
@@ -141,14 +194,46 @@ pub async fn calculate(
     };
 
     // 2. 查指定活动是否有效
-    let campaign = conn.query_row(
-        "SELECT id, rewards FROM marketing_campaigns \
-         WHERE id = ?1 AND status = 'active' \
-         AND (valid_from IS NULL OR valid_from <= datetime('now')) \
-         AND (valid_until IS NULL OR valid_until > datetime('now'))",
-        rusqlite::params![body.campaign_id],
-        |row| { Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)) },
-    );
+    let campaign: Result<(String, String), rusqlite::Error> = match body.campaign_id.as_ref() {
+        Some(cid) if !cid.is_empty() => {
+            conn.query_row(
+                "SELECT id, rewards FROM marketing_campaigns \
+                 WHERE id = ?1 AND status = 'active' \
+                 AND (valid_from IS NULL OR valid_from <= datetime('now')) \
+                 AND (valid_until IS NULL OR valid_until > datetime('now'))",
+                rusqlite::params![cid],
+                |row| { Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)) },
+            )
+        }
+        _ => {
+            // 未指定 campaign_id 时兜底：找第一个含 discount 的有效活动
+            let mut stmt = conn.prepare(
+                "SELECT id, rewards FROM marketing_campaigns \
+                 WHERE status = 'active' \
+                 AND (valid_from IS NULL OR valid_from <= datetime('now')) \
+                 AND (valid_until IS NULL OR valid_until > datetime('now')) \
+                 LIMIT 5"
+            );
+            match stmt {
+                Ok(mut s) => {
+                    let rows: Vec<(String, String)> = match s.query_map([], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    }) {
+                        Ok(mapped) => mapped
+                            .filter_map(|r| r.ok())
+                            .filter(|(_, r)| r.contains("discount_pct") || r.contains("discount_fix"))
+                            .collect(),
+                        Err(_) => vec![],
+                    };
+                    match rows.into_iter().next() {
+                        Some(c) => Ok(c),
+                        None => Err(rusqlite::Error::QueryReturnedNoRows),
+                    }
+                }
+                Err(_) => Err(rusqlite::Error::QueryReturnedNoRows),
+            }
+        }
+    };
 
     let (campaign_id, rewards_str) = match campaign {
         Ok(c) => c,
@@ -168,8 +253,8 @@ pub async fn calculate(
         for reward in &rewards {
             let rtype = reward["type"].as_str().unwrap_or("");
             let party = reward["party"].as_str().unwrap_or("");
-            // 只对推广员（self=推荐人）或全员（all=拼团）关联的折扣生效
-            if party != "self" && party != "all" {
+            // 只对推广员（self=推荐人）、被邀请人（invitee）或全员（all=拼团）关联的折扣生效
+            if party != "self" && party != "invitee" && party != "all" {
                 continue;
             }
             match rtype {
@@ -181,8 +266,8 @@ pub async fn calculate(
                 }
                 "discount_pct" => {
                     if let Some(val) = reward["value"].as_f64() {
-                        // value 如 80 = 8折
-                        let pct = (val / 100.0).clamp(0.0, 1.0);
+                        // value 如 0.85 = 付85%(减15%), 统一为小数格式与 commission_pct 一致
+                        let pct = val.clamp(0.0, 1.0);
                         discounted_price = (original_price as f64 * pct) as i64;
                         discount_note = format!("推荐折扣: {}%", (pct * 100.0) as i64);
                     }

@@ -774,7 +774,7 @@ mod tests {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             rusqlite::params![
                 id, "双11大促", "standard", "双11限时折扣活动", "draft",
-                r#"[{"type":"discount_pct","party":"buyer","value":80}]"#,
+                r#"[{"type":"discount_pct","party":"buyer","value":0.80}]"#,
                 "registration", r#"["student"]"#, "manual", 30, "admin-1", now,
             ],
         )

@@ -74,16 +74,41 @@ pub fn execute_campaign_trigger(
             };
 
             for target_user_id in &target_users {
-                // 幂等检查：同一用户同一活动同一奖励只发一次
+                // ── 多级推广追溯 ──
+                // 对 commission 类型且 level>1 的奖励，从 target_user 往上追溯找到上级
+                let reward_level = reward["level"].as_i64().unwrap_or(1);
+                let actual_earner = if (rtype == "commission_pct" || rtype == "commission_fix")
+                    && party == "self"
+                    && reward_level > 1
+                {
+                    let mut upstream: Option<String> = Some(target_user_id.clone());
+                    for _ in 1..reward_level {
+                        let current = match upstream {
+                            Some(ref uid) => uid.clone(),
+                            None => break,
+                        };
+                        upstream = conn.query_row(
+                            "SELECT referred_by FROM users WHERE id = ?1 AND deleted_at IS NULL",
+                            rusqlite::params![current],
+                            |row| row.get(0),
+                        ).ok().flatten();
+                    }
+                    upstream
+                } else {
+                    None
+                };
+                let earner_id: &str = actual_earner.as_deref().unwrap_or(target_user_id);
+
+                // 幂等检查：同一活动同一接收人同一奖励只发一次（用 earner_id 非 target_user_id）
                 let already_fulfilled = check_idempotent(
-                    conn, campaign_id, target_user_id, trigger_event, party, rtype,
+                    conn, campaign_id, earner_id, trigger_event, party, rtype,
                 )
                 .unwrap_or(false);
                 if already_fulfilled {
                     tracing::debug!(
-                        "idempotent skip: campaign={}, user={}, type={}, party={}",
+                        "idempotent skip: campaign={}, earner={}, type={}, party={}",
                         campaign_id,
-                        target_user_id,
+                        earner_id,
                         rtype,
                         party
                     );
@@ -133,15 +158,15 @@ pub fn execute_campaign_trigger(
                     "commission_pct" => {
                         handle_commission_pct(
                             conn, campaign_id, campaign_name, user_id,
-                            target_user_id, party, value, trigger_event,
-                            order_id, &mut fulfillment_ids,
+                            earner_id, party, value, trigger_event,
+                            order_id, &mut fulfillment_ids, reward_level,
                         );
                     }
                     "commission_fix" => {
                         handle_commission_fix(
                             conn, campaign_id, campaign_name, user_id,
-                            target_user_id, party, value, trigger_event,
-                            order_id, &mut fulfillment_ids,
+                            earner_id, party, value, trigger_event,
+                            order_id, &mut fulfillment_ids, reward_level,
                         );
                     }
                     "discount_pct" | "discount_fix" => {
@@ -366,6 +391,7 @@ fn handle_commission_pct(
     trigger_event: &str,
     order_id: Option<&str>,
     fulfillment_ids: &mut Vec<String>,
+    level: i64,
 ) {
     let rate = match value.as_f64() {
         Some(r) if r > 0.0 => r,
@@ -405,10 +431,10 @@ fn handle_commission_pct(
         "INSERT INTO distribution_commissions \
          (id, campaign_id, earner_id, buyer_id, order_id, order_amount, \
           rate_applied, amount, level, status, created_at) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, 'locked', ?9)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'locked', ?10)",
         rusqlite::params![
             commission_id, campaign_id, earner_id, buyer_id,
-            order_id_str, order_amount, rate, amount, now,
+            order_id_str, order_amount, rate, amount, level, now,
         ],
     ) {
         tracing::warn!("insert commission failed: {}", e);
@@ -463,6 +489,7 @@ fn handle_commission_fix(
     trigger_event: &str,
     order_id: Option<&str>,
     fulfillment_ids: &mut Vec<String>,
+    level: i64,
 ) {
     let amount = match value.as_i64() {
         Some(v) if v > 0 => v,
@@ -497,10 +524,10 @@ fn handle_commission_fix(
         "INSERT INTO distribution_commissions \
          (id, campaign_id, earner_id, buyer_id, order_id, order_amount, \
           rate_applied, amount, level, status, created_at) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0.0, ?7, 1, 'locked', ?8)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0.0, ?7, ?8, 'locked', ?9)",
         rusqlite::params![
             commission_id, campaign_id, earner_id, buyer_id,
-            order_id_str, order_amount, amount, now,
+            order_id_str, order_amount, amount, level, now,
         ],
     ) {
         tracing::warn!("insert commission failed: {}", e);

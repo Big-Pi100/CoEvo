@@ -595,7 +595,12 @@ pub async fn my_stats(
     ).unwrap_or(0);
 
     let total_earned: i64 = conn.query_row(
-        "SELECT COALESCE(SUM(amount), 0) FROM distribution_commissions WHERE earner_id = ?1 AND status NOT IN ('cancelled')",
+        "SELECT COALESCE(SUM(amount), 0) FROM distribution_commissions WHERE earner_id = ?1 AND status NOT IN ('cancelled', 'used')",
+        rusqlite::params![query.user_id], |row| row.get(0),
+    ).unwrap_or(0);
+
+    let available_commission: i64 = conn.query_row(
+        "SELECT COALESCE(SUM(amount), 0) FROM distribution_commissions WHERE earner_id = ?1 AND status = 'available'",
         rusqlite::params![query.user_id], |row| row.get(0),
     ).unwrap_or(0);
 
@@ -603,6 +608,7 @@ pub async fn my_stats(
         "total_clicks": total_clicks,
         "total_registrations": total_registrations,
         "total_earned": total_earned,
+        "available_commission": available_commission,
     })).into_response()
 }
 
@@ -630,7 +636,9 @@ pub async fn my_team(
             JOIN team t ON u.referred_by = t.id
             WHERE t.level < 2 AND u.deleted_at IS NULL
         )
-        SELECT id, display_name, level FROM team ORDER BY level, id
+        SELECT u.id, COALESCE(u.display_name, u.username), u.referred_by, t.level FROM team t
+        JOIN users u ON u.id = t.id
+        ORDER BY t.level, u.id
     "#;
 
     let mut stmt = match conn.prepare(sql) {
@@ -641,10 +649,11 @@ pub async fn my_team(
     let members: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![query.user_id], |row| {
         let member_id: String = row.get(0)?;
         let display_name: String = row.get::<_, Option<String>>(1)?.unwrap_or_default();
-        let level: i32 = row.get(2)?;
-        Ok((member_id, display_name, level))
+        let referred_by: String = row.get::<_, Option<String>>(2)?.unwrap_or_default();
+        let level: i32 = row.get(3)?;
+        Ok((member_id, display_name, referred_by, level))
     }) {
-        Ok(rows) => rows.filter_map(|r| r.ok()).map(|(member_id, display_name, level)| {
+        Ok(rows) => rows.filter_map(|r| r.ok()).map(|(member_id, display_name, referred_by, level)| {
             let referral_count: i64 = conn.query_row(
                 "SELECT COUNT(*) FROM users WHERE referred_by = ?1 AND deleted_at IS NULL",
                 rusqlite::params![&member_id], |row| row.get(0),
@@ -652,6 +661,7 @@ pub async fn my_team(
             json!({
                 "id": member_id,
                 "display_name": display_name,
+                "referred_by": referred_by,
                 "level": level,
                 "referral_count": referral_count,
             })
