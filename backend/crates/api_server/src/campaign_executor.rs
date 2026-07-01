@@ -99,18 +99,19 @@ pub fn execute_campaign_trigger(
                 };
                 let earner_id: &str = actual_earner.as_deref().unwrap_or(target_user_id);
 
-                // 幂等检查：同一活动同一接收人同一奖励只发一次（用 earner_id 非 target_user_id）
+                // 幂等检查：同一活动同一接收人同一奖励只在同一订单发一次（用 earner_id + order_id 区分）
                 let already_fulfilled = check_idempotent(
-                    conn, campaign_id, earner_id, trigger_event, party, rtype,
+                    conn, campaign_id, earner_id, trigger_event, party, rtype, order_id,
                 )
                 .unwrap_or(false);
                 if already_fulfilled {
                     tracing::debug!(
-                        "idempotent skip: campaign={}, earner={}, type={}, party={}",
+                        "idempotent skip: campaign={}, earner={}, type={}, party={}, order={:?}",
                         campaign_id,
                         earner_id,
                         rtype,
-                        party
+                        party,
+                        order_id,
                     );
                     continue;
                 }
@@ -228,13 +229,15 @@ fn check_idempotent(
     trigger_event: &str,
     party: &str,
     reward_type: &str,
+    order_id: Option<&str>,
 ) -> Result<bool, String> {
     let count: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM reward_fulfillments \
              WHERE campaign_id=?1 AND user_id=?2 AND trigger_event=?3 \
-             AND party=?4 AND reward_type=?5 AND status='fulfilled'",
-            rusqlite::params![campaign_id, user_id, trigger_event, party, reward_type],
+             AND party=?4 AND reward_type=?5 AND status='fulfilled' \
+             AND (?6 IS NULL AND order_id IS NULL OR order_id = ?6)",
+            rusqlite::params![campaign_id, user_id, trigger_event, party, reward_type, order_id],
             |row| row.get(0),
         )
         .map_err(|e| format!("idempotent check failed: {}", e))?;
@@ -680,58 +683,58 @@ mod tests {
         let user_id = insert_test_user(&conn);
 
         let already = check_idempotent(
-            &conn, &campaign_id, &user_id, "registration", "self", "subscription_days",
+            &conn, &campaign_id, &user_id, "registration", "self", "subscription_days", None,
         ).unwrap();
-
+        
         assert!(!already, "未发放的奖励应返回 false");
     }
-
+    
     #[test]
     fn test_check_idempotent_already_fulfilled() {
         let conn = setup_db();
         let campaign_id = insert_test_campaign(&conn, "registration", "[]", "active");
         let user_id = insert_test_user(&conn);
-
+        
         write_fulfillment(&conn, &campaign_id, &user_id, "self", "subscription_days",
             "3", "registration", None).unwrap();
-
+        
         let already = check_idempotent(
-            &conn, &campaign_id, &user_id, "registration", "self", "subscription_days",
+            &conn, &campaign_id, &user_id, "registration", "self", "subscription_days", None,
         ).unwrap();
-
+        
         assert!(already, "已发放的奖励应返回 true");
     }
-
+    
     #[test]
     fn test_check_idempotent_different_user() {
         let conn = setup_db();
         let campaign_id = insert_test_campaign(&conn, "registration", "[]", "active");
         let user_a = insert_test_user(&conn);
         let user_b = insert_test_user(&conn);
-
+        
         write_fulfillment(&conn, &campaign_id, &user_a, "self", "subscription_days",
             "3", "registration", None).unwrap();
-
+        
         let already = check_idempotent(
-            &conn, &campaign_id, &user_b, "registration", "self", "subscription_days",
+            &conn, &campaign_id, &user_b, "registration", "self", "subscription_days", None,
         ).unwrap();
-
+        
         assert!(!already, "其他用户的未发放奖励应返回 false");
     }
-
+    
     #[test]
     fn test_check_idempotent_different_reward_type() {
         let conn = setup_db();
         let campaign_id = insert_test_campaign(&conn, "payment", "[]", "active");
         let user_id = insert_test_user(&conn);
-
+        
         write_fulfillment(&conn, &campaign_id, &user_id, "self", "subscription_days",
             "3", "registration", None).unwrap();
-
+        
         let already = check_idempotent(
-            &conn, &campaign_id, &user_id, "payment", "self", "commission_pct",
+            &conn, &campaign_id, &user_id, "payment", "self", "commission_pct", None,
         ).unwrap();
-
+        
         assert!(!already, "不同奖励类型应返回 false");
     }
 

@@ -13,6 +13,7 @@ import 'package:flutter/rendering.dart';
 import '../api/chat_client.dart';
 import '../api/api_config.dart';
 import 'package:audioplayers/audioplayers.dart';
+import '../widgets/referral_qr_code.dart';
 import '../providers/auth_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../providers/theme_provider.dart';
@@ -484,18 +485,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         border: Border.all(color: _cs.outlineVariant),
                       ),
                       padding: const EdgeInsets.all(8),
-                      child: QrImageView(
-                        data: 'https://keyievolution.fun/?ref=$_referralCode',
-                        version: QrVersions.auto,
+                      child: ReferralQrCode(
+                        referralCode: _referralCode ?? '',
+                        camp: 'profile',
                         size: 104,
-                        eyeStyle: QrEyeStyle(
-                          eyeShape: QrEyeShape.square,
-                          color: const Color(0xFF1A237E),
-                        ),
-                        dataModuleStyle: QrDataModuleStyle(
-                          dataModuleShape: QrDataModuleShape.square,
-                          color: const Color(0xFF1A237E),
-                        ),
                       ),
                     ),
                   ),

@@ -87,14 +87,15 @@ class _WithdrawPageBodyState extends State<_WithdrawPageBody> {
 
   Future<void> _submitWithdraw() async {
     final amountText = _amountCtrl.text.trim();
-    final amount = int.tryParse(amountText);
-    if (amount == null || amount <= 0) {
+    final yuan = int.tryParse(amountText);
+    if (yuan == null || yuan <= 0) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('请输入有效金额')));
       return;
     }
+    final amount = yuan * 100; // 元转分
 
-    final available = (_stats?['total_earned'] as num?)?.toInt() ?? 0;
+    final available = (_stats?['available_commission'] as num?)?.toInt() ?? 0;
     if (amount > available) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('可提现金额不足')));
@@ -105,7 +106,7 @@ class _WithdrawPageBodyState extends State<_WithdrawPageBody> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('确认提现'),
-        content: Text('确定提现 $amount 元？\n'
+        content: Text('确定提现 $yuan 元？\n'
             '手续费: 提现金额的 1%（最低 1 元）'),
         actions: [
           TextButton(
@@ -142,8 +143,8 @@ class _WithdrawPageBodyState extends State<_WithdrawPageBody> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('提现申请已提交，请等待审核\n'
-                  '到账金额: ¥${(data['actual_amount'] as num?)?.toDouble() ?? amount}'),
+                  content: Text('提现申请已提交，请等待审核\n'
+                      '到账金额: ¥${((data['actual_amount'] as num?)?.toDouble() ?? 0) / 100}'),
             ),
           );
           _amountCtrl.clear();
@@ -169,7 +170,7 @@ class _WithdrawPageBodyState extends State<_WithdrawPageBody> {
     switch (status) {
       case 'pending':
         return '审核中';
-      case 'approved':
+      case 'confirmed':
         return '已通过';
       case 'rejected':
         return '已驳回';
@@ -184,7 +185,7 @@ class _WithdrawPageBodyState extends State<_WithdrawPageBody> {
     switch (status) {
       case 'pending':
         return cs.tertiary;
-      case 'approved':
+      case 'confirmed':
         return cs.primary;
       case 'rejected':
         return cs.error;
@@ -206,24 +207,65 @@ class _WithdrawPageBodyState extends State<_WithdrawPageBody> {
           : ListView(
               padding: const EdgeInsets.all(AppTheme.spacingLg),
               children: [
-                // 可提现金额
+                // 佣金概览
                 Card(
                   child: Padding(
-                    padding: const EdgeInsets.all(AppTheme.spacingXxl),
+                    padding: const EdgeInsets.all(AppTheme.spacingMd),
                     child: Column(
                       children: [
-                        Text('可提现金额',
-                            style: TextStyle(
-                                fontSize: 13,
-                                color: cs.onSurfaceVariant)),
-                        const SizedBox(height: AppTheme.spacingSm),
-                        Text(
-                          '¥${_stats?['total_earned'] ?? 0}',
-                          style: TextStyle(
-                              fontSize: 36,
-                              fontWeight: FontWeight.bold,
-                              color: cs.primary),
+                        // 可用佣金
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  Text('可用佣金',
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          color: cs.onSurfaceVariant)),
+                                  const SizedBox(height: AppTheme.spacingSm),
+                                  Text(
+                                    '¥${((_stats?['available_commission'] as num?)?.toDouble() ?? 0) / 100}',
+                                    style: TextStyle(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.green),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            // 分隔
+                            Container(
+                              width: 1,
+                              height: 48,
+                              color: cs.outlineVariant,
+                            ),
+                            // 锁定中
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  Text('锁定中',
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          color: cs.onSurfaceVariant)),
+                                  const SizedBox(height: AppTheme.spacingSm),
+                                  Text(
+                                    '¥${(((_stats?['total_earned'] as num?)?.toDouble() ?? 0) - ((_stats?['available_commission'] as num?)?.toDouble() ?? 0)) / 100}',
+                                    style: TextStyle(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.grey),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
+                        const SizedBox(height: AppTheme.spacingSm),
+                        Text('佣金到账后锁定30天自动解锁',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: cs.onSurfaceVariant)),
                       ],
                     ),
                   ),
@@ -296,7 +338,7 @@ class _WithdrawPageBodyState extends State<_WithdrawPageBody> {
                         margin:
                             const EdgeInsets.only(bottom: AppTheme.spacingXs),
                         child: ListTile(
-                          title: Text('¥${r['amount']}'),
+                          title: Text('¥${((r['amount'] as num?)?.toDouble() ?? 0) / 100}'),
                           subtitle: Row(
                             children: [
                               Container(
@@ -328,7 +370,7 @@ class _WithdrawPageBodyState extends State<_WithdrawPageBody> {
                             ],
                           ),
                           trailing: Text(
-                            '手续费: ¥${r['fee'] ?? 0}',
+                            '手续费: ¥${((r['fee'] as num?)?.toDouble() ?? 0) / 100}',
                             style: TextStyle(
                                 fontSize: 11,
                                 color: cs.onSurfaceVariant),

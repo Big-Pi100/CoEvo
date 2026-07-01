@@ -128,7 +128,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
         if (history.isNotEmpty && mounted) {
           final ascTurns = history.reversed.toList();
-          setState(() {
+          try { setState(() {
             for (final turn in ascTurns) {
               _messages.add(Message(
                 role: turn['role'] as String? ?? 'assistant',
@@ -136,26 +136,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 timestamp: DateTime.now(),
               ));
             }
-          });
+          }); } catch (_) {}
           _scrollToBottom();
         } else {
-          setState(() {
+          try { if (mounted) setState(() {
             _messages.add(Message(
               role: 'assistant',
               content: '你好！我是你的 AI 学习助手。有什么想学的吗？',
               timestamp: DateTime.now(),
             ));
-          });
+          }); } catch (_) {}
         }
       } catch (e) {
         debugPrint('_init: history load failed: $e');
-        setState(() {
+        try { if (mounted) setState(() {
           _messages.add(Message(
             role: 'assistant',
             content: '你好！我是你的 AI 学习助手。有什么想学的吗？',
             timestamp: DateTime.now(),
           ));
-        });
+        }); } catch (_) {}
       }
 
       // 等待计划和订阅加载完成
@@ -164,25 +164,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     } catch (e) {
       debugPrint('_init: fatal error: $e');
-      if (mounted) {
-        setState(() {
-          _messages.add(Message(
-            role: 'assistant',
-            content: '你好！我是你的 AI 学习助手。有什么想学的吗？',
-            timestamp: DateTime.now(),
-          ));
-        });
-      }
+      try { if (mounted) setState(() {
+        _messages.add(Message(
+          role: 'assistant',
+          content: '你好！我是你的 AI 学习助手。有什么想学的吗？',
+          timestamp: DateTime.now(),
+        ));
+      }); } catch (_) {}
     } finally {
       // 无论如何都要解除初始化状态，防止永久灰屏
-      if (mounted) setState(() => _isInitializing = false);
+      try { if (mounted) setState(() => _isInitializing = false); } catch (_) {}
       // 注册/认领弹窗由首页 HomeScreen 统一处理，聊天页不再独立弹出
     }
   }
 
   Future<void> _loadPlan() async {
     if (_client == null) return;
-    await ref.read(planProvider.notifier).loadPlans(_client!, conversationId: _convId);
+    try { await ref.read(planProvider.notifier).loadPlans(_client!, conversationId: _convId); } catch (_) {}
   }
 
   Future<void> _checkSubscription() async {
@@ -197,7 +195,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _session?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
-    ref.read(planProvider.notifier).clear();
+    try { ref.read(planProvider.notifier).clear(); } catch (_) {}
     super.dispose();
   }
 

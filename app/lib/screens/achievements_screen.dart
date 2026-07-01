@@ -53,7 +53,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
       }
       await Future.delayed(const Duration(milliseconds: 100));
     }
-    if (mounted) setState(() { _isLoading = false; _error = '登录状态异常，请重新登录'; });
+    try { if (mounted) setState(() { _isLoading = false; _error = '登录状态异常，请重新登录'; }); } catch (_) {}
   }
 
   Future<void> _loadWithAuth(AuthState auth) async {

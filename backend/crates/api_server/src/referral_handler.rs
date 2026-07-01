@@ -10,6 +10,7 @@ use serde::Deserialize;
 use serde_json::json;
 use base64::Engine;
 use crate::h5_template::fallback_h5_html;
+use crate::distribution_handler::net_available_commission;
 // StatusCode 通过 axum::http::StatusCode 全路径使用
 
 // ── 请求/响应结构 ──
@@ -594,15 +595,20 @@ pub async fn my_stats(
         rusqlite::params![query.user_id], |row| row.get(0),
     ).unwrap_or(0);
 
-    let total_earned: i64 = conn.query_row(
-        "SELECT COALESCE(SUM(amount), 0) FROM distribution_commissions WHERE earner_id = ?1 AND status NOT IN ('cancelled', 'used')",
-        rusqlite::params![query.user_id], |row| row.get(0),
-    ).unwrap_or(0);
+    let total_earned: i64 = {
+        // 净收益 = 所有佣金 - 所有支出
+        let comm_total: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(amount), 0) FROM distribution_commissions WHERE earner_id = ?1 AND status NOT IN ('cancelled')",
+            rusqlite::params![query.user_id], |row| row.get(0),
+        ).unwrap_or(0);
+        let expenses: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(amount), 0) FROM distribution_expenses WHERE earner_id = ?1 AND status = 'confirmed'",
+            rusqlite::params![query.user_id], |row| row.get(0),
+        ).unwrap_or(0);
+        comm_total - expenses
+    };
 
-    let available_commission: i64 = conn.query_row(
-        "SELECT COALESCE(SUM(amount), 0) FROM distribution_commissions WHERE earner_id = ?1 AND status = 'available'",
-        rusqlite::params![query.user_id], |row| row.get(0),
-    ).unwrap_or(0);
+    let available_commission: i64 = net_available_commission(&conn, &query.user_id);
 
     Json(json!({
         "total_clicks": total_clicks,

@@ -50,7 +50,7 @@ class _AdminBatchListPageState extends State<AdminBatchListPage> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => AdminBatchDetailPage(
-          batchId: batch['id'] as String,
+          batchNo: batch['batch_no'] as String? ?? '',
           adminKey: widget.adminKey,
           token: widget.token,
         ),
@@ -104,7 +104,7 @@ class _AdminBatchListPageState extends State<AdminBatchListPage> {
                           ),
                         ]),
                         subtitle: Text(
-                          '¥${(b['total_amount'] as num?)?.toDouble() ?? 0} · ${b['commission_count'] ?? 0}条 · ${(b['created_at'] as String? ?? '').replaceAll(RegExp(r'T.*'), '')}',
+                          '${b['earner_name'] as String? ?? ''}${(b['earner_name'] as String? ?? '').isEmpty ? '' : ' · '}${(b['created_at'] as String? ?? '').replaceAll(RegExp(r'T.*'), '')}',
                           style:
                               TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                         ),

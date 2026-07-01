@@ -99,7 +99,8 @@ sudo certbot renew --dry-run
 ```bash
 cd E:\CoEvo\app
 D:\flutter_flutter\bin\flutter.bat build web --base-href /app/ \
-  --dart-define=API_HOST=keyievolution.fun
+  --dart-define=API_HOST=keyievolution.fun \
+  --dart-define=PUBLIC_BASE_URL=https://keyievolution.fun
 ```
 
 | 参数 | 说明 |
@@ -107,6 +108,7 @@ D:\flutter_flutter\bin\flutter.bat build web --base-href /app/ \
 | `--base-href /app/` | 设置资源基础路径，匹配 Nginx 的 `/app/` 路由 |
 | `--dart-define=API_HOST=...` | **2026-05-15 新增**：编译时注入 API 服务器地址（见 3.2.1 节） |
 | `--dart-define=API_PORT=...` | API 端口，VPS 上为 `8080` |
+| `--dart-define=PUBLIC_BASE_URL=...` | **2026-06-30 新增**：分享链接/二维码指向的前端域名（见 3.2.3 节） |
 
 > **注意**：旧版文档中的 `--no-wasm-dry-run` 在新版 Flutter 中已废弃，不再使用。
 
@@ -134,6 +136,19 @@ static String get baseUrl {
 | **真机调试** | `flutter run --dart-define=API_HOST=<电脑局域网IP>` |
 
 > ⚠️ 部署到 VPS 时必须显式传入 `API_HOST`，否则前端会尝试连接 `localhost:8080` 导致 API 请求失败。
+
+### 3.2.2 分享链接域名配置
+
+`app/lib/api/api_config.dart` 中新增 `publicBaseUrl`，用于二维码和分享链接中的前端域名。
+
+```dart
+static const String publicBaseUrl = String.fromEnvironment(
+    'PUBLIC_BASE_URL', defaultValue: 'http://localhost:3000');
+```
+
+- **默认值** `http://localhost:3000` 适配本地开发
+- **VPS 部署** 必须传入 `--dart-define=PUBLIC_BASE_URL=https://keyievolution.fun`
+- 影响范围：用户个人页二维码、分享海报二维码、成就分享卡片二维码
 
 ### 3.3 构建输出
 

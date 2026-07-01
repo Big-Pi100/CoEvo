@@ -327,19 +327,7 @@ CREATE TABLE IF NOT EXISTS referral_clicks (
 CREATE INDEX IF NOT EXISTS idx_clicks_campaign ON referral_clicks(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_clicks_referrer ON referral_clicks(referrer_id);
 CREATE INDEX IF NOT EXISTS idx_clicks_anonymous ON referral_clicks(clicker_anonymous_id);
-CREATE TABLE IF NOT EXISTS settlement_batches (
-    id TEXT PRIMARY KEY,
-    batch_no TEXT NOT NULL UNIQUE,
-    total_amount INTEGER NOT NULL DEFAULT 0,
-    item_count INTEGER NOT NULL DEFAULT 0,
-    status TEXT DEFAULT 'pending',
-    note TEXT,
-    source TEXT DEFAULT 'admin',
-    created_at TEXT NOT NULL,
-    paid_at TEXT,
-    handled_by TEXT,
-    FOREIGN KEY (handled_by) REFERENCES admin_users(id)
-);
+-- 佣金表（只 INSERT 不修改，所有资金操作通过 distribution_expenses 追溯）
 CREATE TABLE IF NOT EXISTS distribution_commissions (
     id TEXT PRIMARY KEY,
     campaign_id TEXT NOT NULL,
@@ -359,29 +347,54 @@ CREATE TABLE IF NOT EXISTS distribution_commissions (
     FOREIGN KEY (campaign_id) REFERENCES marketing_campaigns(id),
     FOREIGN KEY (earner_id) REFERENCES users(id),
     FOREIGN KEY (buyer_id) REFERENCES users(id),
-    FOREIGN KEY (order_id) REFERENCES payment_orders(id),
-    FOREIGN KEY (batch_id) REFERENCES settlement_batches(id)
+    FOREIGN KEY (order_id) REFERENCES payment_orders(id)
 );
 CREATE INDEX IF NOT EXISTS idx_commission_earner ON distribution_commissions(earner_id, status);
 CREATE INDEX IF NOT EXISTS idx_commission_batch ON distribution_commissions(batch_id);
-CREATE TABLE IF NOT EXISTS distribution_withdrawals (
+-- 支出记录表（所有资金操作只 INSERT，永不修改原始佣金记录）
+-- expense_type: 'subscription' | 'withdrawal'
+-- status:
+--   subscription: pending → confirmed
+--   withdrawal:   pending → confirmed(已审批) → paid(已打款)
+CREATE TABLE IF NOT EXISTS distribution_expenses (
     id TEXT PRIMARY KEY,
     earner_id TEXT NOT NULL,
     amount INTEGER NOT NULL,
+    expense_type TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',
     fee INTEGER DEFAULT 0,
     actual_amount INTEGER,
-    status TEXT DEFAULT 'pending',
-    note TEXT,
-    batch_id TEXT,
-    created_at TEXT NOT NULL,
-    handled_at TEXT,
+    ref_commission_id TEXT,
     handled_by TEXT,
-    FOREIGN KEY (earner_id) REFERENCES users(id),
-    FOREIGN KEY (batch_id) REFERENCES settlement_batches(id),
-    FOREIGN KEY (handled_by) REFERENCES admin_users(id)
+    handled_at TEXT,
+    batch_no TEXT,
+    batch_paid_at TEXT,
+    note TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (earner_id) REFERENCES users(id)
 );
-CREATE INDEX IF NOT EXISTS idx_withdrawals_status ON distribution_withdrawals(status);
-CREATE INDEX IF NOT EXISTS idx_withdrawals_earner ON distribution_withdrawals(earner_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_earner ON distribution_expenses(earner_id, status);
+CREATE INDEX IF NOT EXISTS idx_expenses_batch_no ON distribution_expenses(batch_no);
+
+-- 用户净可用余额视图（统一公式，避免多处重复 SQL）
+CREATE VIEW IF NOT EXISTS v_user_available_balance AS
+SELECT dc.earner_id,
+       COALESCE(SUM(dc.amount), 0)
+       - COALESCE((
+           SELECT COALESCE(SUM(amount), 0) FROM distribution_expenses
+           WHERE earner_id = dc.earner_id AND expense_type = 'withdrawal' AND status NOT IN ('cancelled')
+       ), 0)
+       - COALESCE((
+           SELECT COALESCE(SUM(amount), 0) FROM distribution_expenses
+           WHERE ref_commission_id IN (
+               SELECT id FROM distribution_commissions
+               WHERE earner_id = dc.earner_id AND status = 'available'
+           ) AND expense_type = 'subscription' AND status = 'confirmed'
+       ), 0) AS available_balance
+FROM distribution_commissions dc
+WHERE dc.status = 'available'
+GROUP BY dc.earner_id;
+
 CREATE TABLE IF NOT EXISTS user_notifications (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -713,7 +726,7 @@ mod tests {
         "subscription_plans", "payment_orders", "subscription_audit_log",
         "card_memory", "card_relations",
         "conversation_turns", "conversations",
-        "distribution_commissions", "distribution_withdrawals",
+        "distribution_commissions", "distribution_expenses",
         "guardian_assignments",
         "k12_quiz_attempts", "k12_quiz_bank",
         "marketing_campaigns",
@@ -722,7 +735,6 @@ mod tests {
         "prebuilt_literature_cards", "prebuilt_plans", "prebuilt_science_cards",
         "prebuilt_stages", "prebuilt_tasks",
         "referral_clicks", "reward_fulfillments", "review_log",
-        "settlement_batches",
         "subscription_requests", "tokens",
         "trial_ip_log",
         "user_cards", "user_humanities_cards", "user_language_cards",

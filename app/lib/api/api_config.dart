@@ -25,6 +25,14 @@ class ApiConfig {
   static const String _host = String.fromEnvironment('API_HOST', defaultValue: 'localhost');
   static const String _port = String.fromEnvironment('API_PORT', defaultValue: '8080');
 
+  /// 前端公开域名（分享链接、二维码指向的地址）
+  ///
+  /// 通过 `--dart-define=PUBLIC_BASE_URL=xxx` 注入
+  /// 默认: http://localhost:3000（本地开发 flutter web-server）
+  /// 部署: https://keyievolution.fun
+  static const String publicBaseUrl = String.fromEnvironment(
+      'PUBLIC_BASE_URL', defaultValue: 'http://localhost:3000');
+
   /// HTTP base URL (REST + WebSocket 共用)
   ///
   /// 自动判断：

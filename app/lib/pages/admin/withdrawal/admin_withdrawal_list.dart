@@ -116,6 +116,46 @@ class _AdminWithdrawalListPageState extends State<AdminWithdrawalListPage> {
     if (mounted) setState(() => _processingId = null);
   }
 
+  void _revealPhone(String uid) {
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('确认查看手机号'),
+      content: const Text('此操作将被记录到审计日志。'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+        FilledButton(onPressed: () async {
+          Navigator.pop(ctx);
+          try {
+            final uri = Uri.parse('${ApiConfig.baseUrl}/api/admin/users/$uid/reveal-phone?full=true');
+            final resp = await http.post(uri, headers: _headers).timeout(const Duration(seconds: 10));
+            if (resp.statusCode == 200 && mounted) {
+              final data = jsonDecode(resp.body) as Map<String, dynamic>;
+              if (mounted) {
+                showDialog(context: context, builder: (ctx) => AlertDialog(
+                  title: const Text('完整手机号'),
+                  content: Text(data['phone'] as String? ?? ''),
+                  actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭'))],
+                ));
+              }
+            }
+          } catch (_) {}
+        }, child: const Text('确认查看')),
+      ],
+    ));
+  }
+
+  void _revealName(String uid, String masked, Map<String, dynamic> w) {
+    final full = w['real_name_full'] as String?;
+    if (full != null && full != masked) {
+      if (mounted) {
+        showDialog(context: context, builder: (ctx) => AlertDialog(
+          title: const Text('真实姓名'),
+          content: Text(full),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭'))],
+        ));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -163,8 +203,33 @@ class _AdminWithdrawalListPageState extends State<AdminWithdrawalListPage> {
                                       children: [
                                         Text(w['earner_name'] as String? ?? '',
                                             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                                        Text('¥${(w['amount'] as num?)?.toDouble() ?? 0}',
-                                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: cs.primary)),
+                                        GestureDetector(
+                                          onTap: () {
+                                            final uid = w['earner_id'] as String;
+                                            final masked = w['real_name'] as String? ?? '';
+                                            if (masked.endsWith('*')) {
+                                              _revealName(uid, masked, w);
+                                            }
+                                          },
+                                          child: Text('${w['real_name'] as String? ?? ''} @${w['username'] as String? ?? ''}',
+                                              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                                        ),
+                                        if ((w['phone'] as String? ?? '').isNotEmpty)
+                                          GestureDetector(
+                                            onTap: () => _revealPhone(w['earner_id'] as String),
+                                            child: Text('📞 ${w['phone'] as String}',
+                                                style: TextStyle(fontSize: 11, color: cs.primary, decoration: TextDecoration.underline)),
+                                          ),
+                                        const SizedBox(height: AppTheme.spacingXs),
+                                        Row(children: [
+                                          Text('¥${((w['apply_amount'] as num?)?.toDouble() ?? 0) / 100}',
+                                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: cs.primary)),
+                                          const SizedBox(width: AppTheme.spacingSm),
+                                          Text('→ ¥${((w['actual_amount'] as num?)?.toDouble() ?? 0) / 100}',
+                                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.green)),
+                                        ]),
+                                        Text('手续费 ¥${((w['fee'] as num?)?.toDouble() ?? 0) / 100} · 锁定 ¥${((w['locked_amount'] as num?)?.toDouble() ?? 0) / 100} · 可用 ¥${((w['available_amount'] as num?)?.toDouble() ?? 0) / 100}',
+                                            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
                                       ],
                                     ),
                                   ),

@@ -279,11 +279,12 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/admin/campaigns/{id}/preview-h5", post(crate::campaign_handler::preview_h5))
         // 管理端结算 API
         .route("/api/admin/settlement/pending-commissions", get(crate::distribution_handler::pending_commissions))
-        .route("/api/admin/settlement/create-batch", post(crate::distribution_handler::create_batch))
+        .route("/api/admin/settlement/batches/export-all", get(crate::distribution_handler::export_all_batches))
         .route("/api/admin/settlement/batches", get(crate::distribution_handler::list_batches))
-        .route("/api/admin/settlement/batches/{id}", get(crate::distribution_handler::get_batch))
-        .route("/api/admin/settlement/batches/{id}/export", get(crate::distribution_handler::export_batch))
-        .route("/api/admin/settlement/batches/{id}/mark-paid", post(crate::distribution_handler::mark_paid))
+        .route("/api/admin/settlement/batches/{batch_no}", get(crate::distribution_handler::get_batch))
+        .route("/api/admin/settlement/batches/{batch_no}/export", get(crate::distribution_handler::export_batch))
+        .route("/api/admin/settlement/complete-payment", post(crate::distribution_handler::mark_paid))
+        .route("/api/admin/settlement/pending-export", get(crate::distribution_handler::export_pending_csv))
         // 管理端提现 API
         .route("/api/admin/withdrawals", get(crate::distribution_handler::list_withdrawals))
         .route("/api/admin/withdrawals/{id}/approve", post(crate::distribution_handler::approve_withdrawal))

@@ -4,6 +4,7 @@ import 'dart:html' as html;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'referral_qr_code.dart';
 import 'package:flutter/rendering.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../shared/achievement_icons.dart';
@@ -38,13 +39,6 @@ class _AchievementShareCardState extends State<AchievementShareCard> {
   final GlobalKey _repaintKey = GlobalKey();
   bool _saving = false;
   String? _saveFeedback;
-
-  String? get _qrData {
-    if (widget.referralCode == null || widget.referralCode!.isEmpty) {
-      return null;
-    }
-    return 'https://keyievolution.fun/r/${widget.referralCode}';
-  }
 
   Future<void> _saveImage() async {
     setState(() => _saving = true);
@@ -250,7 +244,7 @@ class _AchievementShareCardState extends State<AchievementShareCard> {
                   TextStyle(fontSize: 12, color: cs.onSurface)),
           const SizedBox(height: 16),
           // 二维码
-          if (_qrData != null)
+          if (widget.referralCode != null && widget.referralCode!.isNotEmpty)
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -258,16 +252,13 @@ class _AchievementShareCardState extends State<AchievementShareCard> {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: cs.outlineVariant),
               ),
-              child: QrImageView(
-                data: _qrData!,
-                version: QrVersions.auto,
+              child: ReferralQrCode(
+                referralCode: widget.referralCode!,
+                camp: 'achievement',
                 size: 100,
                 backgroundColor: Colors.white,
-                eyeStyle: QrEyeStyle(
-                    eyeShape: QrEyeShape.square, color: cs.primary),
-                dataModuleStyle: QrDataModuleStyle(
-                    dataModuleShape: QrDataModuleShape.square,
-                    color: Colors.black),
+                moduleColor: Colors.black,
+                eyeColor: cs.primary,
               ),
             ),
           const SizedBox(height: 8),

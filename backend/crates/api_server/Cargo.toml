@@ -37,6 +37,8 @@ tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
 futures-util.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 qrcode = "0.14"
+encoding_rs = "0.8"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 dotenvy = "0.15"

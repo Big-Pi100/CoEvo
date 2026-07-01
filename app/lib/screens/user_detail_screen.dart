@@ -49,25 +49,31 @@ class _UserDetailScreenState extends State<UserDetailScreen> with TickerProvider
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    final user = await _api('GET', '/api/admin/users/${widget.userId}');
-    final cards = await _api('GET', '/api/admin/guardian/students/${widget.userId}/cards');
-    final convs = await _api('GET', '/api/admin/guardian/students/${widget.userId}/conversations');
-    setState(() {
-      _user = user;
-      _cards = (cards['cards'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-      _convs = (convs['conversations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-      _loading = false;
-    });
+    try {
+      final user = await _api('GET', '/api/admin/users/${widget.userId}');
+      final cards = await _api('GET', '/api/admin/guardian/students/${widget.userId}/cards');
+      final convs = await _api('GET', '/api/admin/guardian/students/${widget.userId}/conversations');
+      if (mounted) setState(() {
+        _user = user;
+        _cards = (cards['cards'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        _convs = (convs['conversations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
     _loadTrackStatus();
   }
 
   Future<void> _loadTrackStatus() async {
-    final resp = await _api('GET', '/api/admin/debug/tracks');
-    if (resp.containsKey('tracks')) {
-      final tracks = resp['tracks'] as List;
-      final found = tracks.any((t) => t is Map && t['user_id'] == widget.userId);
-      if (mounted) setState(() => _isTracked = found);
-    }
+    try {
+      final resp = await _api('GET', '/api/admin/debug/tracks');
+      if (resp.containsKey('tracks')) {
+        final tracks = resp['tracks'] as List;
+        final found = tracks.any((t) => t is Map && t['user_id'] == widget.userId);
+        if (mounted) setState(() => _isTracked = found);
+      }
+    } catch (_) {}
   }
 
   Future<void> _startTrack() async {

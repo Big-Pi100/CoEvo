@@ -10,6 +10,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::subscription;
+use crate::distribution_handler::net_available_commission;
 
 #[derive(Deserialize)]
 pub struct UserOrdersQuery {
@@ -63,21 +64,17 @@ pub async fn native_pay_handler(
     // ── 佣金抵扣校验（只读，不操作 DB）──
     let mut commission_used: i64 = 0;
     let mut commission_ids: Vec<String> = Vec::new();
-
+    let mut full_deduct_ids: Vec<String> = Vec::new();
+    let mut full_deduct_amounts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    let mut partial_deduct_id: Option<(String, i64)> = None;
     if let Some(discount) = commission_discount.filter(|&d| d > 0) {
-        if discount > base_price {
-            return (StatusCode::BAD_REQUEST, "抵扣金额不能超过套餐价格").into_response();
+        if discount >= base_price {
+            // 全额抵扣，final_price=0 走免费路径
+            // 无需再校验
         }
 
         // 查可用佣金总额
-        let available: i64 = match conn.query_row(
-            "SELECT COALESCE(SUM(amount),0) FROM distribution_commissions WHERE earner_id=?1 AND status='available'",
-            rusqlite::params![user_id],
-            |row| row.get(0),
-        ) {
-            Ok(v) => v,
-            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("查询佣金失败: {}", e)).into_response(),
-        };
+        let available = net_available_commission(&conn, &user_id);
 
         if discount > available {
             return (StatusCode::BAD_REQUEST, "佣金不足").into_response();
@@ -101,13 +98,29 @@ pub async fn native_pay_handler(
         };
 
         let mut remaining = discount;
+
         for (id, amount) in &records {
             if remaining <= 0 {
                 break;
             }
-            commission_ids.push(id.clone());
-            commission_used += amount;
-            remaining -= amount;
+            if *amount <= remaining {
+                // 整条扣，标记 used
+                full_deduct_ids.push(id.clone());
+                full_deduct_amounts.insert(id.clone(), *amount);
+                commission_used += amount;
+                remaining -= amount;
+            } else {
+                // 部分扣：只扣需要的金额，记录保留
+                partial_deduct_id = Some((id.clone(), remaining));
+                commission_used += remaining;
+                remaining = 0;
+                break;
+            }
+        }
+        // 合并佣金 ID 用于响应
+        commission_ids = full_deduct_ids.clone();
+        if let Some((pid, _)) = &partial_deduct_id {
+            commission_ids.push(pid.clone());
         }
     }
 
@@ -131,13 +144,26 @@ pub async fn native_pay_handler(
             Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("事务启动失败: {}", e)).into_response(),
         };
 
-        // 扣佣金（rows_affected 验证防并发超扣）
-        for cid in &commission_ids {
+        // 扣佣金：INSERT expense 记录（佣金记录本身不可变，只靠 expense 表追溯可用余额）
+        for cid in &full_deduct_ids {
+            let orig_amount = full_deduct_amounts.get(cid).copied().unwrap_or(0);
             if let Err(e) = tx.execute(
-                "UPDATE distribution_commissions SET status='used' WHERE id=?1 AND status='available'",
-                rusqlite::params![cid],
+                "INSERT INTO distribution_expenses (id, earner_id, amount, expense_type, status, ref_commission_id, created_at)
+                 SELECT ?1, earner_id, ?2, 'subscription', 'confirmed', id, datetime('now')
+                 FROM distribution_commissions WHERE id=?3 AND status='available'",
+                rusqlite::params![uuid::Uuid::new_v4().to_string(), orig_amount, cid],
             ) {
-                return (StatusCode::INTERNAL_SERVER_ERROR, format!("更新佣金状态失败: {}", e)).into_response();
+                return (StatusCode::INTERNAL_SERVER_ERROR, format!("插入抵扣记录失败: {}", e)).into_response();
+            }
+        }
+        if let Some((pid, deduct_amount)) = &partial_deduct_id {
+            if let Err(e) = tx.execute(
+                "INSERT INTO distribution_expenses (id, earner_id, amount, expense_type, status, ref_commission_id, created_at)
+                 SELECT ?1, earner_id, ?2, 'subscription', 'confirmed', id, datetime('now')
+                 FROM distribution_commissions WHERE id=?3 AND status='available' AND amount >= ?2",
+                rusqlite::params![uuid::Uuid::new_v4().to_string(), deduct_amount, pid],
+            ) {
+                return (StatusCode::INTERNAL_SERVER_ERROR, format!("插入部分抵扣记录失败: {}", e)).into_response();
             }
         }
 
@@ -201,12 +227,24 @@ pub async fn native_pay_handler(
                 Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("事务启动失败: {}", e)).into_response(),
             };
 
-            for cid in &commission_ids {
+            for cid in &full_deduct_ids {
                 if let Err(e) = tx.execute(
-                    "UPDATE distribution_commissions SET status='used' WHERE id=?1 AND status='available'",
-                    rusqlite::params![cid],
+                    "INSERT INTO distribution_expenses (id, earner_id, amount, expense_type, status, ref_commission_id, created_at)
+                     SELECT ?1, earner_id, amount, 'subscription', 'confirmed', id, datetime('now')
+                     FROM distribution_commissions WHERE id=?2 AND status='available'",
+                    rusqlite::params![uuid::Uuid::new_v4().to_string(), cid],
                 ) {
-                    return (StatusCode::INTERNAL_SERVER_ERROR, format!("更新佣金状态失败: {}", e)).into_response();
+                    return (StatusCode::INTERNAL_SERVER_ERROR, format!("写入抵扣记录失败: {}", e)).into_response();
+                }
+            }
+            if let Some((pid, deduct_amount)) = &partial_deduct_id {
+                if let Err(e) = tx.execute(
+                    "INSERT INTO distribution_expenses (id, earner_id, amount, expense_type, status, ref_commission_id, created_at)
+                     SELECT ?1, earner_id, ?2, 'subscription', 'confirmed', id, datetime('now')
+                     FROM distribution_commissions WHERE id=?3 AND status='available' AND amount >= ?2",
+                    rusqlite::params![uuid::Uuid::new_v4().to_string(), deduct_amount, pid],
+                ) {
+                    return (StatusCode::INTERNAL_SERVER_ERROR, format!("写入抵扣记录失败: {}", e)).into_response();
                 }
             }
 

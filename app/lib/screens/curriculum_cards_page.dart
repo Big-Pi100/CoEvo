@@ -85,7 +85,9 @@ class _CardsTreeEntryState extends State<_CardsTreeEntry> {
     setState(() => _expanded = true);
     if (_children == null) {
       setState(() => _loading = true);
-      _children = await widget.loadChildren();
+      try {
+        _children = await widget.loadChildren();
+      } catch (_) {}
       if (mounted) setState(() => _loading = false);
     }
     widget.onSelect(_itemId(widget.node));

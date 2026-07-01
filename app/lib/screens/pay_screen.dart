@@ -87,8 +87,10 @@ class _PayScreenState extends ConsumerState<PayScreen> {
   Future<void> _loadPlanPrice() async {
     if (_planPrice > 0) return;
     try {
+      final authHeaders = <String, String>{};
+      if (_token != null) authHeaders['Authorization'] = 'Bearer $_token';
       final resp = await http
-          .get(Uri.parse('${ApiConfig.baseUrl}/api/pay/plans?user_id=$_userId'))
+          .get(Uri.parse('${ApiConfig.baseUrl}/api/pay/plans?user_id=$_userId'), headers: authHeaders)
           .timeout(const Duration(seconds: 10));
       if (resp.statusCode == 200 && mounted) {
         final data = jsonDecode(resp.body);
@@ -142,7 +144,8 @@ class _PayScreenState extends ConsumerState<PayScreen> {
         body['actual_price'] = _actualPrice;
       }
       if (_useCommission && _commissionDiscount > 0) {
-        body['commission_discount'] = _commissionDiscount;
+        final basePrice = _actualPrice ?? _planPrice;
+        body['commission_discount'] = _commissionDiscount.clamp(0, basePrice);
       }
 
       final resp = await http
@@ -409,7 +412,10 @@ class _PayScreenState extends ConsumerState<PayScreen> {
                           setState(() {
                             _useCommission = v;
                             if (v) {
-                              _commissionDiscount = _availableCommission!;
+                              final basePrice = _actualPrice ?? _planPrice;
+                              _commissionDiscount = _availableCommission! < basePrice
+                                  ? _availableCommission!
+                                  : basePrice;
                             } else {
                               _commissionDiscount = 0;
                             }
@@ -431,7 +437,9 @@ class _PayScreenState extends ConsumerState<PayScreen> {
                                     .toDouble()
                                     .clamp(0, _availableCommission!.toDouble()),
                                 min: 0,
-                                max: _availableCommission!.toDouble(),
+                                max: basePrice < _availableCommission!
+                                    ? basePrice.toDouble()
+                                    : _availableCommission!.toDouble(),
                                 divisions: _availableCommission! > 100
                                     ? (_availableCommission! / 100)
                                         .round()

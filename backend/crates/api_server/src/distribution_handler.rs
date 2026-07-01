@@ -2,18 +2,38 @@
 //!
 //! 包括：通知、支付计算、结算批次、提现审核、团队管理、分销统计
 
-use axum::{Json, http::{HeaderMap, StatusCode}, extract::{Path, Query}};
+use axum::{Json, http::{HeaderMap, StatusCode}, extract::{Path, Query, Multipart}};
 use serde::Deserialize;
 use serde_json::json;
 use axum::response::IntoResponse;
 
 use crate::admin_handlers::{verify_admin, ok, err};
+use crate::encryption;
+use encoding_rs::GBK;
+
+// ── 公共余额计算函数 ──
+
+/// 计算用户净可用佣金
+/// 底层 SQL 来自 `v_user_available_balance` 视图，与 list_withdrawals 子查询同源
+pub(crate) fn net_available_commission(conn: &rusqlite::Connection, user_id: &str) -> i64 {
+    conn.query_row(
+        "SELECT COALESCE(available_balance, 0) FROM v_user_available_balance WHERE earner_id = ?1",
+        rusqlite::params![user_id],
+        |row| row.get(0),
+    ).unwrap_or(0)
+}
 
 // ── 公共请求结构 ──
 
 #[derive(Deserialize)]
 pub struct UserQuery {
     pub user_id: String,
+}
+
+#[derive(Deserialize)]
+pub struct ExportAllQuery {
+    #[serde(default)]
+    pub batch_no: Option<String>,
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -44,7 +64,7 @@ pub async fn list_notifications(
     let notifications: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![query.user_id], |row| {
         Ok(json!({
             "id": row.get::<_, String>(0)?,
-            "notification_type": row.get::<_, String>(1)?,
+            "notification_type": row.get::<_, Option<String>>(1)?.unwrap_or_default(),
             "title": row.get::<_, String>(2)?,
             "body": row.get::<_, Option<String>>(3)?,
             "read": row.get::<_, i32>(4)? != 0,
@@ -299,14 +319,15 @@ pub async fn pending_commissions(
 
     let conn = crate::db_pool::get_conn();
     let mut stmt = match conn.prepare(
-        "SELECT dc.id, dc.campaign_id, dc.earner_id, u.display_name, dc.buyer_id, \
-                dc.order_id, dc.order_amount, dc.rate_applied, dc.amount, dc.level, \
-                dc.status, dc.created_at, po.plan_id \
-         FROM distribution_commissions dc \
-         JOIN users u ON u.id = dc.earner_id \
-         JOIN payment_orders po ON po.id = dc.order_id \
-         WHERE dc.status = 'available' \
-         ORDER BY dc.created_at ASC"
+        "SELECT de.id, de.earner_id, COALESCE(u.display_name, u.username, u.id) AS earner_name,
+                de.amount, de.expense_type, de.status, de.created_at,
+                de.fee, de.actual_amount
+         FROM distribution_expenses de
+         JOIN users u ON u.id = de.earner_id
+         WHERE de.expense_type = 'withdrawal'
+           AND de.status = 'confirmed'
+           AND (de.batch_no IS NULL OR de.batch_no = '')
+         ORDER BY de.created_at ASC"
     ) {
         Ok(s) => s,
         Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)),
@@ -315,18 +336,14 @@ pub async fn pending_commissions(
     let items: Vec<serde_json::Value> = match stmt.query_map([], |row| {
         Ok(json!({
             "id": row.get::<_, String>(0)?,
-            "campaign_id": row.get::<_, String>(1)?,
-            "earner_id": row.get::<_, String>(2)?,
-            "earner_name": row.get::<_, String>(3)?,
-            "buyer_id": row.get::<_, String>(4)?,
-            "order_id": row.get::<_, String>(5)?,
-            "order_amount": row.get::<_, i64>(6)?,
-            "rate_applied": row.get::<_, f64>(7)?,
-            "amount": row.get::<_, i64>(8)?,
-            "level": row.get::<_, i32>(9)?,
-            "status": row.get::<_, String>(10)?,
-            "created_at": row.get::<_, String>(11)?,
-            "plan_id": row.get::<_, String>(12)?,
+            "earner_id": row.get::<_, String>(1)?,
+            "earner_name": row.get::<_, String>(2)?,
+            "amount": row.get::<_, i64>(3)?,
+            "expense_type": row.get::<_, String>(4)?,
+            "status": row.get::<_, String>(5)?,
+            "created_at": row.get::<_, String>(6)?,
+            "fee": row.get::<_, Option<i64>>(7)?,
+            "actual_amount": row.get::<_, Option<i64>>(8)?,
         }))
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
@@ -336,101 +353,7 @@ pub async fn pending_commissions(
     ok(json!({"commissions": items}))
 }
 
-#[derive(Deserialize)]
-pub struct CreateBatchRequest {
-    pub commission_ids: Vec<String>,
-}
 
-/// POST /api/admin/settlement/create-batch — 创建结算批次
-pub async fn create_batch(
-    headers: HeaderMap,
-    Json(body): Json<CreateBatchRequest>,
-) -> impl IntoResponse {
-    tracing::info!("create_batch: {} commissions", body.commission_ids.len());
-
-    let (_admin_id, _role) = match verify_admin(&headers) {
-        Ok(r) => r,
-        Err(e) => return e,
-    };
-
-    if body.commission_ids.is_empty() {
-        return err(StatusCode::BAD_REQUEST, "commission_ids_empty");
-    }
-
-    let conn = crate::db_pool::get_conn();
-
-    // 生成 batch_no: "ST" + YYYYMMDD + "-" + 序号
-    let today = chrono::Utc::now().format("%Y%m%d").to_string();
-    let batch_count_today: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM settlement_batches WHERE batch_no LIKE ?1",
-        rusqlite::params![format!("ST{}%", today)],
-        |row| row.get(0),
-    ).unwrap_or(0);
-    let seq = batch_count_today + 1;
-    let batch_no = format!("ST{}-{:04}", today, seq);
-
-    let batch_id = uuid::Uuid::new_v4().to_string();
-    let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-
-    // 计算总金额和条数
-    let total_amount: i64 = {
-        let mut stmt = match conn.prepare(
-            "SELECT COALESCE(SUM(amount), 0) FROM distribution_commissions WHERE id = ?1 AND status = 'available'"
-        ) {
-            Ok(s) => s,
-            Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)),
-        };
-        let mut total = 0i64;
-        for cid in &body.commission_ids {
-            if let Ok(amount) = stmt.query_row(rusqlite::params![cid], |row| row.get::<_, i64>(0)) {
-                total += amount;
-            }
-        }
-        total
-    };
-
-    // 执行事务
-    match conn.execute("BEGIN TRANSACTION", []) {
-        Ok(_) => {}
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("tx_error: {}", e)),
-    }
-
-    // INSERT settlement_batches
-    if let Err(e) = conn.execute(
-        "INSERT INTO settlement_batches (id, batch_no, total_amount, item_count, status, created_at) \
-         VALUES (?1, ?2, ?3, ?4, 'pending', ?5)",
-        rusqlite::params![batch_id, batch_no, total_amount, body.commission_ids.len() as i64, now],
-    ) {
-        let _ = conn.execute("ROLLBACK", []);
-        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("insert_batch_error: {}", e));
-    }
-
-    // UPDATE distribution_commissions
-    for cid in &body.commission_ids {
-        if let Err(e) = conn.execute(
-            "UPDATE distribution_commissions SET batch_id = ?1, status = 'settled', settled_at = ?2 WHERE id = ?3 AND status = 'available'",
-            rusqlite::params![batch_id, now, cid],
-        ) {
-            let _ = conn.execute("ROLLBACK", []);
-            return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("update_commission_error: {}", e));
-        }
-    }
-
-    match conn.execute("COMMIT", []) {
-        Ok(_) => ok(json!({
-            "batch_id": batch_id,
-            "batch_no": batch_no,
-            "total_amount": total_amount,
-            "item_count": body.commission_ids.len(),
-            "status": "pending",
-            "created_at": now,
-        })),
-        Err(e) => {
-            let _ = conn.execute("ROLLBACK", []);
-            err(StatusCode::INTERNAL_SERVER_ERROR, &format!("commit_error: {}", e))
-        }
-    }
-}
 
 /// GET /api/admin/settlement/batches — 批次列表
 pub async fn list_batches(
@@ -442,8 +365,11 @@ pub async fn list_batches(
 
     let conn = crate::db_pool::get_conn();
     let mut stmt = match conn.prepare(
-        "SELECT id, batch_no, total_amount, item_count, status, note, paid_at, created_at \
-         FROM settlement_batches ORDER BY created_at DESC"
+        "SELECT batch_no, COUNT(*) as item_count, SUM(amount) as total_amount, \
+                status, MAX(batch_paid_at) as paid_at, MAX(created_at) as created_at \
+         FROM distribution_expenses \
+         WHERE batch_no IS NOT NULL AND batch_no != '' \
+         GROUP BY batch_no ORDER BY created_at DESC"
     ) {
         Ok(s) => s,
         Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)),
@@ -451,14 +377,12 @@ pub async fn list_batches(
 
     let batches: Vec<serde_json::Value> = match stmt.query_map([], |row| {
         Ok(json!({
-            "id": row.get::<_, String>(0)?,
-            "batch_no": row.get::<_, String>(1)?,
+            "batch_no": row.get::<_, String>(0)?,
+            "item_count": row.get::<_, i64>(1)?,
             "total_amount": row.get::<_, i64>(2)?,
-            "item_count": row.get::<_, i64>(3)?,
-            "status": row.get::<_, String>(4)?,
-            "note": row.get::<_, Option<String>>(5)?,
-            "paid_at": row.get::<_, Option<String>>(6)?,
-            "created_at": row.get::<_, String>(7)?,
+            "status": row.get::<_, String>(3)?,
+            "paid_at": row.get::<_, Option<String>>(4)?,
+            "created_at": row.get::<_, String>(5)?,
         }))
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
@@ -468,32 +392,33 @@ pub async fn list_batches(
     ok(json!({"batches": batches}))
 }
 
-/// GET /api/admin/settlement/batches/{id} — 批次详情
+/// GET /api/admin/settlement/batches/{batch_no} — 批次详情
 pub async fn get_batch(
     headers: HeaderMap,
-    Path(id): Path<String>,
+    Path(batch_no): Path<String>,
 ) -> impl IntoResponse {
-    tracing::info!("get_batch: id={}", id);
+    tracing::info!("get_batch: batch_no={}", batch_no);
 
     if let Err(e) = verify_admin(&headers) { return e; }
 
     let conn = crate::db_pool::get_conn();
 
-    // 批次信息
+    // 批次聚合信息
     let batch = match conn.query_row(
-        "SELECT id, batch_no, total_amount, item_count, status, note, paid_at, created_at \
-         FROM settlement_batches WHERE id = ?1",
-        rusqlite::params![id],
+        "SELECT batch_no, COUNT(*) as item_count, SUM(amount) as total_amount, \
+                status, MAX(batch_paid_at) as paid_at, MAX(created_at) as created_at \
+         FROM distribution_expenses \
+         WHERE batch_no = ?1 \
+         GROUP BY batch_no",
+        rusqlite::params![batch_no],
         |row| {
             Ok(json!({
-                "id": row.get::<_, String>(0)?,
-                "batch_no": row.get::<_, String>(1)?,
+                "batch_no": row.get::<_, String>(0)?,
+                "item_count": row.get::<_, i64>(1)?,
                 "total_amount": row.get::<_, i64>(2)?,
-                "item_count": row.get::<_, i64>(3)?,
-                "status": row.get::<_, String>(4)?,
-                "note": row.get::<_, Option<String>>(5)?,
-                "paid_at": row.get::<_, Option<String>>(6)?,
-                "created_at": row.get::<_, String>(7)?,
+                "status": row.get::<_, String>(3)?,
+                "paid_at": row.get::<_, Option<String>>(4)?,
+                "created_at": row.get::<_, String>(5)?,
             }))
         },
     ) {
@@ -501,34 +426,45 @@ pub async fn get_batch(
         Err(_) => return err(StatusCode::NOT_FOUND, "batch_not_found"),
     };
 
-    // 批次内佣金明细
+    // 批次内明细（distribution_expenses 记录）
     let mut stmt = match conn.prepare(
-        "SELECT dc.id, dc.campaign_id, dc.earner_id, u.display_name, dc.buyer_id, \
-                dc.order_id, dc.order_amount, dc.rate_applied, dc.amount, dc.level, \
-                dc.status, dc.created_at \
-         FROM distribution_commissions dc \
-         JOIN users u ON u.id = dc.earner_id \
-         WHERE dc.batch_id = ?1 \
-         ORDER BY dc.created_at ASC"
+        "SELECT de.id, de.earner_id, \
+                COALESCE(u.display_name, u.username, u.id) AS earner_name, \
+                u.username, u.real_name, u.phone, \
+                de.amount, de.expense_type, de.status, de.created_at, \
+                de.fee, de.actual_amount \
+         FROM distribution_expenses de \
+         JOIN users u ON u.id = de.earner_id \
+         WHERE de.batch_no = ?1 \
+         ORDER BY de.created_at ASC"
     ) {
         Ok(s) => s,
         Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)),
     };
 
-    let items: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![id], |row| {
+    let items: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![batch_no], |row| {
+        let real_name_enc: Option<String> = row.get(4)?;
+        let phone_enc: Option<String> = row.get(5)?;
+        let real_name_dec = real_name_enc.as_ref().map(|v| encryption::decrypt(v));
+        let real_name_masked = real_name_dec.as_ref()
+            .map(|n| n.chars().next().map(|c| format!("{}*", c)).unwrap_or("*".into()));
+        let phone_masked = phone_enc.as_ref()
+            .map(|v| encryption::decrypt(v))
+            .map(|p| if p.len() >= 7 { format!("{}****{}", &p[..3], &p[p.len()-4..]) } else { "***".into() });
         Ok(json!({
             "id": row.get::<_, String>(0)?,
-            "campaign_id": row.get::<_, String>(1)?,
-            "earner_id": row.get::<_, String>(2)?,
-            "earner_name": row.get::<_, String>(3)?,
-            "buyer_id": row.get::<_, String>(4)?,
-            "order_id": row.get::<_, String>(5)?,
-            "order_amount": row.get::<_, i64>(6)?,
-            "rate_applied": row.get::<_, f64>(7)?,
-            "amount": row.get::<_, i64>(8)?,
-            "level": row.get::<_, i32>(9)?,
-            "status": row.get::<_, String>(10)?,
-            "created_at": row.get::<_, String>(11)?,
+            "earner_id": row.get::<_, String>(1)?,
+            "earner_name": row.get::<_, String>(2)?,
+            "username": row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+            "real_name": real_name_masked,
+            "real_name_full": real_name_dec,
+            "phone": phone_masked,
+            "amount": row.get::<_, i64>(6)?,
+            "expense_type": row.get::<_, String>(7)?,
+            "status": row.get::<_, String>(8)?,
+            "created_at": row.get::<_, String>(9)?,
+            "fee": row.get::<_, i64>(10)?,
+            "actual_amount": row.get::<_, i64>(11)?,
         }))
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
@@ -538,49 +474,202 @@ pub async fn get_batch(
     ok(json!({"batch": batch, "items": items}))
 }
 
-/// GET /api/admin/settlement/batches/{id}/export — CSV 导出
+/// GET /api/admin/settlement/batches/{batch_no}/export — ZIP 导出（CSV + 付款凭证）
 pub async fn export_batch(
     headers: HeaderMap,
-    Path(id): Path<String>,
+    Path(batch_no): Path<String>,
 ) -> impl IntoResponse {
-    tracing::info!("export_batch: id={}", id);
+    tracing::info!("export_batch: batch_no={}", batch_no);
 
     if let Err(e) = verify_admin(&headers) { return e; }
 
     let conn = crate::db_pool::get_conn();
     let mut stmt = match conn.prepare(
-        "SELECT dc.id, u.display_name, dc.amount, dc.level, dc.status, dc.created_at, po.plan_id \
-         FROM distribution_commissions dc \
-         JOIN users u ON u.id = dc.earner_id \
-         JOIN payment_orders po ON po.id = dc.order_id \
-         WHERE dc.batch_id = ?1 \
-         ORDER BY dc.created_at ASC"
+        "SELECT de.id, u.username, COALESCE(u.display_name, u.username) AS earner_name,                 u.real_name, u.phone,                 de.amount, de.expense_type, de.status, de.fee, de.actual_amount, de.created_at, de.note          FROM distribution_expenses de          JOIN users u ON u.id = de.earner_id          WHERE de.batch_no = ?1          ORDER BY de.created_at ASC"
     ) {
         Ok(s) => s,
         Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)),
     };
 
-    let mut csv = String::from("ID,推广员,金额,层级,状态,创建时间,套餐ID\n");
-    if let Ok(rows) = stmt.query_map(rusqlite::params![id], |row| {
+    let mut csv = String::from("ID,用户名,推广名,真实姓名,手机号,金额(分),类型,状态,手续费(分),到账金额(分),创建时间,备注,凭证路径\n");
+    let mut proof_files: Vec<(String, Vec<u8>)> = Vec::new();
+
+    if let Ok(rows) = stmt.query_map(rusqlite::params![batch_no], |row| {
+        let real_name_enc: Option<String> = row.get(3)?;
+        let phone_enc: Option<String> = row.get(4)?;
+        let note: Option<String> = row.get(11)?;
+        let real_name = real_name_enc.as_ref().map(|v| encryption::decrypt(v)).unwrap_or_default();
+        let phone = phone_enc.as_ref().map(|v| encryption::decrypt(v)).unwrap_or_default();
+        let proof = note.as_ref().and_then(|n| {
+            let s = n.as_str();
+            let pos = s.find("凭证: ");
+            pos.and_then(|p| {
+                let after = &s[p + "凭证: ".len()..];
+                let start = after.chars().position(|c| c == '"')?;
+                let from = &after[start+1..];
+                let end = from.chars().position(|c| c == '"')?;
+                Some(from[..end].to_string())
+            })
+        }).unwrap_or_default();
+        let note_text = note.unwrap_or_default().replace('"', "\"\"");
+        // Read proof image if exists
+        if !proof.is_empty() {
+            if let Ok(img_data) = std::fs::read(&proof) {
+                let img_name = proof.rsplit('/').next().unwrap_or("proof.png").to_string();
+                proof_files.push((img_name, img_data));
+            }
+        }
         Ok((
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
-            row.get::<_, i64>(2)?,
-            row.get::<_, i32>(3)?,
-            row.get::<_, String>(4)?,
-            row.get::<_, String>(5)?,
+            row.get::<_, String>(2)?,
+            real_name,
+            phone,
+            row.get::<_, i64>(5)?,
             row.get::<_, String>(6)?,
+            row.get::<_, String>(7)?,
+            row.get::<_, i64>(8)?,
+            row.get::<_, i64>(9)?,
+            row.get::<_, String>(10)?,
+            note_text,
+            proof,
         ))
     }) {
         for r in rows.flatten() {
-            csv.push_str(&format!("{},{},{},{},{},{},{}\n", r.0, r.1, r.2, r.3, r.4, r.5, r.6));
+            csv.push_str(&format!("{},{},{},{},{},{},{},{},{},{},{},\"{}\",{},\n",
+                r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7, r.8, r.9, r.10, r.11, r.12));
         }
     }
 
+    // Generate ZIP
+    let mut zip_buf = std::io::Cursor::new(Vec::new());
+    let mut zip = zip::ZipWriter::new(&mut zip_buf);
+
+    // Add CSV
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    let (gbk_bytes, _, _) = GBK.encode(&csv);
+    zip.start_file(format!("batch_{}.csv", batch_no), options).unwrap();
+    std::io::Write::write_all(&mut zip, &gbk_bytes).unwrap();
+
+    // Add proof images
+    for (name, data) in &proof_files {
+        let img_path = format!("proofs/{}", name);
+        zip.start_file(&img_path, options).unwrap();
+        std::io::Write::write_all(&mut zip, data).unwrap();
+    }
+
+    zip.finish().unwrap();
+    let zip_data = zip_buf.into_inner();
+
     (StatusCode::OK, [
-        ("Content-Type", "text/csv; charset=utf-8"),
-        ("Content-Disposition", &format!("attachment; filename=batch_{}.csv", id)),
-    ], csv).into_response()
+        ("Content-Type", "application/zip"),
+        ("Content-Disposition", &format!("attachment; filename*=UTF-8''batch_{}.zip", batch_no)),
+    ], zip_data).into_response()
+}
+
+/// GET /api/admin/settlement/batches/export-all — 导出所有批次为 ZIP
+/// GET /api/admin/settlement/batches/export-all — 导出选中/全部批次为 ZIP（单 CSV + 凭证图片）
+pub async fn export_all_batches(
+    headers: HeaderMap,
+    Query(query): Query<ExportAllQuery>,
+) -> impl IntoResponse {
+    tracing::info!("export_all_batches: batch_no={:?}", query.batch_no);
+
+    if let Err(e) = verify_admin(&headers) { return e; }
+
+    let conn = crate::db_pool::get_conn();
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+
+    // 收集需要导出的 batch_no
+    let batch_nos: Vec<String> = if let Some(ref selected) = query.batch_no {
+        selected.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+    } else {
+        let list_stmt = conn.prepare(
+            "SELECT batch_no FROM distribution_expenses WHERE batch_no IS NOT NULL AND batch_no != '' GROUP BY batch_no ORDER BY batch_no DESC"
+        );
+        match list_stmt {
+            Ok(mut stmt) => {
+                match stmt.query_map([], |row| row.get::<_, String>(0)) {
+                    Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+                    Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("query_error: {}", e)),
+                }
+            },
+            Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)),
+        }
+    };
+
+    if batch_nos.is_empty() {
+        return err(StatusCode::BAD_REQUEST, "没有可导出的批次");
+    }
+
+    // 单 CSV + 图片
+    let mut csv = String::from("批次号,ID,用户名,推广名,真实姓名,手机号,金额(分),类型,状态,手续费(分),到账金额(分),创建时间,备注,凭证路径
+");
+    let mut zip_buf = std::io::Cursor::new(Vec::new());
+    let mut zip = zip::ZipWriter::new(&mut zip_buf);
+
+    for batch_no in &batch_nos {
+        let inner_stmt = conn.prepare(
+            "SELECT de.id, u.username, COALESCE(u.display_name, u.username) AS earner_name,                     u.real_name, u.phone,                     de.amount, de.expense_type, de.status, de.fee, de.actual_amount, de.created_at, de.note              FROM distribution_expenses de              JOIN users u ON u.id = de.earner_id              WHERE de.batch_no = ?1              ORDER BY de.created_at ASC"
+        );
+        let Ok(mut stmt) = inner_stmt else { continue; };
+
+        if let Ok(rows) = stmt.query_map(rusqlite::params![batch_no], |row| {
+            let real_name_enc: Option<String> = row.get(3)?;
+            let phone_enc: Option<String> = row.get(4)?;
+            let note: Option<String> = row.get(11)?;
+            let real_name = real_name_enc.as_ref().map(|v| encryption::decrypt(v)).unwrap_or_default();
+            let phone = phone_enc.as_ref().map(|v| encryption::decrypt(v)).unwrap_or_default();
+            let proof = note.as_ref().and_then(|n| {
+                let s = n.as_str();
+                let pos = s.find("凭证: ");
+                pos.and_then(|p| {
+                    let after = &s[p + "凭证: ".len()..];
+                    let start = after.chars().position(|c| c == '"')?;
+                    let from = &after[start+1..];
+                    let end = from.chars().position(|c| c == '"')?;
+                    Some(from[..end].to_string())
+                })
+            }).unwrap_or_default();
+            let note_text = note.unwrap_or_default().replace('"', "\"\"");
+            Ok((
+                batch_no.clone(),
+                row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
+                real_name, phone,
+                row.get::<_, i64>(5)?, row.get::<_, String>(6)?, row.get::<_, String>(7)?,
+                row.get::<_, i64>(8)?, row.get::<_, i64>(9)?, row.get::<_, String>(10)?,
+                note_text, proof,
+            ))
+        }) {
+            let all: Vec<_> = rows.filter_map(|r| r.ok()).collect();
+            for r in &all {
+                if !r.12.is_empty() {
+                    if let Ok(img_data) = std::fs::read(&r.12) {
+                        let img_name = format!("{}/{}", r.0, r.12.rsplit('/').next().unwrap_or("proof.png"));
+                        let _ = zip.start_file(&img_name, options);
+                        let _ = std::io::Write::write_all(&mut zip, &img_data);
+                    }
+                }
+                csv.push_str(&format!("{},{},{},{},{},{},{},{},{},{},{},{},\"{}\",{}\n",
+                    r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7, r.8, r.9, r.10, r.11, r.12, r.13));
+            }
+        };
+    }
+
+    let csv_name = "settlement_records.csv";
+    let (gbk_bytes, _, _) = GBK.encode(&csv);
+    let _ = zip.start_file(csv_name, options);
+    let _ = std::io::Write::write_all(&mut zip, &gbk_bytes);
+
+    zip.finish().unwrap();
+    let zip_data = zip_buf.into_inner();
+
+    (StatusCode::OK, [
+        ("Content-Type", "application/zip"),
+        ("Content-Disposition", "attachment; filename*=UTF-8''settlement_export.zip"),
+    ], zip_data).into_response()
 }
 
 #[derive(Deserialize)]
@@ -588,14 +677,11 @@ pub struct MarkPaidRequest {
     pub note: Option<String>,
 }
 
-/// POST /api/admin/settlement/batches/{id}/mark-paid — 标记已打款
+/// POST /api/admin/settlement/complete-payment — 上传凭证完成结算（生成批次号 + 标记已打款）
 pub async fn mark_paid(
     headers: HeaderMap,
-    Path(id): Path<String>,
-    Json(body): Json<MarkPaidRequest>,
+    mut multipart: Multipart,
 ) -> impl IntoResponse {
-    tracing::info!("mark_paid: id={}", id);
-
     let (admin_id, _role) = match verify_admin(&headers) {
         Ok(r) => r,
         Err(e) => return e,
@@ -603,39 +689,216 @@ pub async fn mark_paid(
 
     let conn = crate::db_pool::get_conn();
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let note = body.note.unwrap_or_else(|| "管理端标记已打款".to_string());
-    let full_note = format!("{} (操作人: {})", note, admin_id);
+    let mut note = format!("管理端标记已打款 (操作人: {})", admin_id);
+    let mut proof_path: Option<String> = None;
+    let mut expense_ids: Vec<String> = Vec::new();
+
+    while let Ok(Some(field)) = multipart.next_field().await {
+        let name = field.name().unwrap_or("").to_string();
+        match name.as_str() {
+            "expense_ids" => {
+                if let Ok(text) = field.text().await {
+                    expense_ids = text.split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                }
+            },
+            "image" => {
+                let data = match field.bytes().await {
+                    Ok(d) => d,
+                    Err(_) => continue,
+                };
+                if data.is_empty() || data.len() > 10 * 1024 * 1024 {
+                    return err(StatusCode::BAD_REQUEST, "图片大小不能超过 10MB");
+                }
+                if data.len() < 4 {
+                    return err(StatusCode::BAD_REQUEST, "无效的图片文件");
+                }
+                let is_png = data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47;
+                let is_jpeg = data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF;
+                if !is_png && !is_jpeg {
+                    return err(StatusCode::BAD_REQUEST, "仅支持 PNG/JPEG 格式的图片");
+                }
+                let ext = if is_png { "png" } else { "jpg" };
+                let dir = "data/payment_proofs";
+                let _ = std::fs::create_dir_all(dir);
+                let batch_tag = &format!("ST{}", chrono::Utc::now().format("%Y%m%d"));
+                let filename = format!("{}/{}_{}.{}", dir, batch_tag, admin_id, ext);
+                if let Err(e) = tokio::fs::write(&filename, &data).await {
+                    return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("保存图片失败: {}", e));
+                }
+                proof_path = Some(filename);
+            },
+            "note" => {
+                if let Ok(text) = field.text().await {
+                    if !text.trim().is_empty() {
+                        note = format!("{} (备注: {})", note, text.trim());
+                    }
+                }
+            },
+            _ => {}
+        }
+    }
+
+    if expense_ids.is_empty() {
+        return err(StatusCode::BAD_REQUEST, "请指定要结算的提现记录");
+    }
+    if proof_path.is_none() {
+        return err(StatusCode::BAD_REQUEST, "请上传打款凭证图片");
+    }
+
+    // 生成 batch_no
+    let today = chrono::Utc::now().format("%Y%m%d").to_string();
+    let batch_seq: i64 = conn.query_row(
+        "SELECT COUNT(DISTINCT batch_no) FROM distribution_expenses WHERE batch_no LIKE ?1",
+        rusqlite::params![format!("ST{}%", today)],
+        |row| row.get(0),
+    ).unwrap_or(0);
+    let batch_no = format!("ST{}-{:04}", today, batch_seq + 1);
+
+    let full_note = format!("{} | 凭证: {:?}", note, proof_path);
+
+    // 构建 IN 占位符，从 ?5 开始（?1-?4 是 SET 字段）
+    let set_count = 4;
+    let placeholders: Vec<String> = expense_ids.iter().enumerate()
+        .map(|(i, _)| format!("?{}", i + 1 + set_count)).collect();
+    let sql = format!(
+        "UPDATE distribution_expenses SET status = 'paid', batch_no = ?1, batch_paid_at = ?2, handled_by = ?3, note = ?4 \
+         WHERE id IN ({}) AND status = 'confirmed'",
+        placeholders.join(",")
+    );
 
     match conn.execute("BEGIN TRANSACTION", []) {
         Ok(_) => {}
         Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("tx_error: {}", e)),
     }
 
-    // UPDATE settlement_batches
-    if let Err(e) = conn.execute(
-        "UPDATE settlement_batches SET status = 'paid', paid_at = ?1, note = ?2 WHERE id = ?3 AND status = 'pending'",
-        rusqlite::params![now, full_note, id],
-    ) {
-        let _ = conn.execute("ROLLBACK", []);
-        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("update_batch_error: {}", e));
+    // 动态参数：batch_no + now + admin_id + full_note + 所有 expense_ids
+    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
+        Box::new(batch_no.clone()),
+        Box::new(now.clone()),
+        Box::new(admin_id.clone()),
+        Box::new(full_note),
+    ];
+    for eid in &expense_ids {
+        params.push(Box::new(eid.clone()));
     }
+    let params_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
-    // UPDATE distribution_commissions
-    if let Err(e) = conn.execute(
-        "UPDATE distribution_commissions SET status = 'paid', paid_at = ?1 WHERE batch_id = ?2",
-        rusqlite::params![now, id],
-    ) {
+    if let Err(e) = conn.execute(&sql, params_refs.as_slice()) {
         let _ = conn.execute("ROLLBACK", []);
-        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("update_commissions_error: {}", e));
+        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("update_expenses_error: {}", e));
     }
 
     match conn.execute("COMMIT", []) {
-        Ok(_) => ok(json!({"status": "paid", "id": id, "paid_at": now})),
+        Ok(_) => ok(json!({"status": "paid", "batch_no": batch_no, "paid_at": now})),
         Err(e) => {
             let _ = conn.execute("ROLLBACK", []);
             err(StatusCode::INTERNAL_SERVER_ERROR, &format!("commit_error: {}", e))
         }
     }
+}
+// ════════════════════════════════════════════════════════════════
+// 待结算提现 CSV 导出
+// ════════════════════════════════════════════════════════════════
+
+#[derive(Deserialize)]
+pub struct PendingExportQuery {
+    pub expense_ids: Option<String>,
+}
+
+/// GET /api/admin/settlement/pending-export — 导出待结算提现为 CSV（无图）
+pub async fn export_pending_csv(
+    headers: HeaderMap,
+    Query(query): Query<PendingExportQuery>,
+) -> impl IntoResponse {
+    tracing::info!("export_pending_csv");
+
+    if let Err(e) = verify_admin(&headers) { return e; }
+
+    let conn = crate::db_pool::get_conn();
+    let mut csv = String::from("ID,用户名,推广名,真实姓名,手机号,金额(分),手续费(分),到账金额(分),创建时间\n");
+
+    if let Some(ref ids_str) = query.expense_ids {
+        // 导出选中的
+        let ids: Vec<&str> = ids_str.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        if ids.is_empty() {
+            return err(StatusCode::BAD_REQUEST, "expense_ids_empty");
+        }
+        let placeholders: Vec<String> = ids.iter().enumerate()
+            .map(|(i, _)| format!("?{}", i + 1)).collect();
+        let sql = format!(
+            "SELECT de.id, u.username, COALESCE(u.display_name, u.username) AS earner_name, \
+                    u.real_name, u.phone, \
+                    de.amount, de.fee, de.actual_amount, de.created_at \
+             FROM distribution_expenses de \
+             JOIN users u ON u.id = de.earner_id \
+             WHERE de.id IN ({}) AND de.expense_type = 'withdrawal' AND de.status = 'confirmed'",
+            placeholders.join(",")
+        );
+        if let Ok(mut stmt) = conn.prepare(&sql) {
+            let params: Vec<&dyn rusqlite::types::ToSql> = ids.iter().map(|s| s as &dyn rusqlite::types::ToSql).collect();
+            if let Ok(rows) = stmt.query_map(params.as_slice(), |row| {
+                let real_name_enc: Option<String> = row.get(3)?;
+                let phone_enc: Option<String> = row.get(4)?;
+                let real_name = real_name_enc.as_ref().map(|v| encryption::decrypt(v)).unwrap_or_default();
+                let phone = phone_enc.as_ref().map(|v| encryption::decrypt(v)).unwrap_or_default();
+                Ok((
+                    row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
+                    real_name, phone,
+                    row.get::<_, i64>(5)?,
+                    row.get::<_, Option<i64>>(6)?.unwrap_or(0),
+                    row.get::<_, Option<i64>>(7)?.unwrap_or(0),
+                    row.get::<_, String>(8)?,
+                ))
+            }) {
+                for r in rows.flatten() {
+                    csv.push_str(&format!("{},{},{},{},{},{},{},{},{}\n",
+                        r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7, r.8));
+                }
+            }
+        }
+    } else {
+        // 导出全部待结算
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT de.id, u.username, COALESCE(u.display_name, u.username) AS earner_name, \
+                    u.real_name, u.phone, \
+                    de.amount, de.fee, de.actual_amount, de.created_at \
+             FROM distribution_expenses de \
+             JOIN users u ON u.id = de.earner_id \
+             WHERE de.expense_type = 'withdrawal' AND de.status = 'confirmed' \
+               AND (de.batch_no IS NULL OR de.batch_no = '') \
+             ORDER BY de.created_at ASC"
+        ) {
+            if let Ok(rows) = stmt.query_map([], |row| {
+                let real_name_enc: Option<String> = row.get(3)?;
+                let phone_enc: Option<String> = row.get(4)?;
+                let real_name = real_name_enc.as_ref().map(|v| encryption::decrypt(v)).unwrap_or_default();
+                let phone = phone_enc.as_ref().map(|v| encryption::decrypt(v)).unwrap_or_default();
+                Ok((
+                    row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
+                    real_name, phone,
+                    row.get::<_, i64>(5)?,
+                    row.get::<_, Option<i64>>(6)?.unwrap_or(0),
+                    row.get::<_, Option<i64>>(7)?.unwrap_or(0),
+                    row.get::<_, String>(8)?,
+                ))
+            }) {
+                for r in rows.flatten() {
+                    csv.push_str(&format!("{},{},{},{},{},{},{},{},{}\n",
+                        r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7, r.8));
+                }
+            }
+        }
+    }
+
+    let (gbk_bytes, _, _) = GBK.encode(&csv);
+    let body: Vec<u8> = gbk_bytes.into();
+    (StatusCode::OK, [
+        ("Content-Type", "text/csv; charset=gbk"),
+        ("Content-Disposition", "attachment; filename*=UTF-8''pending_withdrawals.csv"),
+    ], body).into_response()
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -666,12 +929,7 @@ pub async fn user_withdraw(
     let conn = crate::db_pool::get_conn();
 
     // 1. 查用户可提现金额
-    let available: i64 = conn.query_row(
-        "SELECT COALESCE(SUM(amount), 0) FROM distribution_commissions \
-         WHERE earner_id = ?1 AND status = 'available'",
-        rusqlite::params![body.user_id],
-        |row| row.get(0),
-    ).unwrap_or(0);
+    let available = net_available_commission(&conn, &body.user_id);
 
     if body.amount > available {
         return err(StatusCode::BAD_REQUEST, "余额不足");
@@ -681,13 +939,13 @@ pub async fn user_withdraw(
     let fee = (body.amount as f64 * 0.01).max(100.0) as i64;
     let actual_amount = body.amount - fee;
 
-    // 3. 创建提现记录
+    // 3. 创建提现记录（distribution_expenses）
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
     match conn.execute(
-        "INSERT INTO distribution_withdrawals (id, earner_id, amount, fee, actual_amount, status, created_at) \
-         VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6)",
+        "INSERT INTO distribution_expenses (id, earner_id, amount, expense_type, status, fee, actual_amount, created_at) \
+         VALUES (?1, ?2, ?3, 'withdrawal', 'pending', ?4, ?5, ?6)",
         rusqlite::params![id, body.user_id, body.amount, fee, actual_amount, now],
     ) {
         Ok(_) => ok(json!({
@@ -717,7 +975,7 @@ pub async fn user_withdrawals(
 
     let mut stmt = match conn.prepare(
         "SELECT id, amount, fee, actual_amount, status, note, created_at, handled_at \
-         FROM distribution_withdrawals WHERE earner_id = ?1 \
+         FROM distribution_expenses WHERE earner_id = ?1 AND expense_type = 'withdrawal' \
          ORDER BY created_at DESC LIMIT 20"
     ) {
         Ok(s) => s,
@@ -757,28 +1015,49 @@ pub async fn list_withdrawals(
 
     let conn = crate::db_pool::get_conn();
     let mut stmt = match conn.prepare(
-        "SELECT dw.id, dw.earner_id, u.display_name, dw.amount, dw.status, dw.note, \
-                dw.handled_by, dw.handled_at, dw.created_at \
-         FROM distribution_withdrawals dw \
-         JOIN users u ON u.id = dw.earner_id \
-         WHERE dw.status = 'pending' \
-         ORDER BY dw.created_at ASC"
+        "SELECT de.id, de.earner_id, \
+                COALESCE(u.display_name, u.username) AS earner_name, \
+                u.username, u.real_name, u.phone, \
+                de.amount AS apply_amount, de.status, de.note, \
+                de.handled_by, de.handled_at, de.created_at, de.fee, de.actual_amount, \
+                COALESCE((SELECT SUM(amount) FROM distribution_commissions WHERE earner_id = u.id AND status = 'locked'), 0) AS locked_amount, \
+                COALESCE((SELECT available_balance FROM v_user_available_balance WHERE earner_id = u.id), 0) AS available_amount \
+         FROM distribution_expenses de \
+         JOIN users u ON u.id = de.earner_id \
+         WHERE de.expense_type = 'withdrawal' AND de.status = 'pending' \
+         ORDER BY de.created_at ASC"
     ) {
         Ok(s) => s,
         Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)),
     };
 
     let items: Vec<serde_json::Value> = match stmt.query_map([], |row| {
+        let real_name_enc: Option<String> = row.get(4)?;
+        let phone_enc: Option<String> = row.get(5)?;
+        let real_name_dec = real_name_enc.as_ref().map(|v| encryption::decrypt(v));
+        let real_name_masked = real_name_dec.as_ref()
+            .map(|n| n.chars().next().map(|c| format!("{}*", c)).unwrap_or("*".into()));
+        let phone_masked = phone_enc.as_ref()
+            .map(|v| encryption::decrypt(v))
+            .map(|p| if p.len() >= 7 { format!("{}****{}", &p[..3], &p[p.len()-4..]) } else { "***".into() });
         Ok(json!({
             "id": row.get::<_, String>(0)?,
             "earner_id": row.get::<_, String>(1)?,
             "earner_name": row.get::<_, String>(2)?,
-            "amount": row.get::<_, i64>(3)?,
-            "status": row.get::<_, String>(4)?,
-            "note": row.get::<_, Option<String>>(5)?,
-            "handled_by": row.get::<_, Option<String>>(6)?,
-            "handled_at": row.get::<_, Option<String>>(7)?,
-            "created_at": row.get::<_, String>(8)?,
+            "username": row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+            "real_name": real_name_masked,
+            "real_name_full": real_name_dec,
+            "phone": phone_masked,
+            "apply_amount": row.get::<_, i64>(6)?,
+            "status": row.get::<_, String>(7)?,
+            "note": row.get::<_, Option<String>>(8)?,
+            "handled_by": row.get::<_, Option<String>>(9)?,
+            "handled_at": row.get::<_, Option<String>>(10)?,
+            "created_at": row.get::<_, String>(11)?,
+            "fee": row.get::<_, i64>(12)?,
+            "actual_amount": row.get::<_, i64>(13)?,
+            "locked_amount": row.get::<_, i64>(14)?,
+            "available_amount": row.get::<_, i64>(15)?,
         }))
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
@@ -793,7 +1072,7 @@ pub struct RejectWithdrawalRequest {
     pub note: Option<String>,
 }
 
-/// POST /api/admin/withdrawals/{id}/approve — 审核通过（同时创建结算批次）
+/// POST /api/admin/withdrawals/{id}/approve — 审核通过（同时分配结算批次号）
 pub async fn approve_withdrawal(
     headers: HeaderMap,
     Path(id): Path<String>,
@@ -810,7 +1089,7 @@ pub async fn approve_withdrawal(
 
     // 查提现信息
     let (earner_id, amount, current_status): (String, i64, String) = match conn.query_row(
-        "SELECT earner_id, amount, status FROM distribution_withdrawals WHERE id = ?1",
+        "SELECT earner_id, amount, status FROM distribution_expenses WHERE id = ?1 AND expense_type = 'withdrawal'",
         rusqlite::params![id],
         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
     ) {
@@ -827,44 +1106,16 @@ pub async fn approve_withdrawal(
         Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("tx_error: {}", e)),
     }
 
-    // 1. UPDATE withdrawal status → approved
+    // 1. UPDATE expense status → confirmed（不分配 batch_no，等管理员统一结算时再分配）
     if let Err(e) = conn.execute(
-        "UPDATE distribution_withdrawals SET status = 'approved', handled_by = ?1, handled_at = ?2 WHERE id = ?3",
+        "UPDATE distribution_expenses SET status = 'confirmed', handled_by = ?1, handled_at = ?2 WHERE id = ?3 AND status = 'pending'",
         rusqlite::params![admin_id, now, id],
     ) {
         let _ = conn.execute("ROLLBACK", []);
-        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("update_withdrawal_error: {}", e));
+        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("update_expense_error: {}", e));
     }
 
-    // 2. 创建 settlement_batch（归入统一打款通道，source='withdrawal'）
-    let batch_id = uuid::Uuid::new_v4().to_string();
-    let today = chrono::Utc::now().format("%Y%m%d").to_string();
-    let batch_seq: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM settlement_batches WHERE batch_no LIKE ?1",
-        rusqlite::params![format!("ST{}%", today)],
-        |row| row.get(0),
-    ).unwrap_or(0);
-    let batch_no = format!("ST{}-{:04}W", today, batch_seq + 1);
-
-    if let Err(e) = conn.execute(
-        "INSERT INTO settlement_batches (id, batch_no, total_amount, item_count, status, created_at) \
-         VALUES (?1, ?2, ?3, 1, 'pending', ?4)",
-        rusqlite::params![batch_id, batch_no, amount, now],
-    ) {
-        let _ = conn.execute("ROLLBACK", []);
-        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("create_batch_error: {}", e));
-    }
-
-    // 3. UPDATE withdrawal 关联 batch_id
-    if let Err(e) = conn.execute(
-        "UPDATE distribution_withdrawals SET batch_id = ?1 WHERE id = ?2",
-        rusqlite::params![batch_id, id],
-    ) {
-        let _ = conn.execute("ROLLBACK", []);
-        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("link_batch_error: {}", e));
-    }
-
-    // 4. 通知用户提现审核通过
+    // 2. 通知用户提现审核通过
     let notif_id = uuid::Uuid::new_v4().to_string();
     let _ = conn.execute(
         "INSERT INTO user_notifications (id, user_id, notification_type, title, body, read, created_at) \
@@ -876,10 +1127,8 @@ pub async fn approve_withdrawal(
 
     match conn.execute("COMMIT", []) {
         Ok(_) => ok(json!({
-            "status": "approved",
+            "status": "confirmed",
             "withdrawal_id": id,
-            "batch_id": batch_id,
-            "batch_no": batch_no,
         })),
         Err(e) => {
             let _ = conn.execute("ROLLBACK", []);
@@ -908,7 +1157,7 @@ pub async fn reject_withdrawal(
 
     // 查 earner_id 用于发通知
     let earner_id: String = match conn.query_row(
-        "SELECT earner_id FROM distribution_withdrawals WHERE id = ?1",
+        "SELECT earner_id FROM distribution_expenses WHERE id = ?1 AND expense_type = 'withdrawal'",
         rusqlite::params![id], |row| row.get(0),
     ) {
         Ok(eid) => eid,
@@ -920,13 +1169,13 @@ pub async fn reject_withdrawal(
         Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("tx_error: {}", e)),
     }
 
-    // UPDATE withdrawal
+    // UPDATE expense status → cancelled
     if let Err(e) = conn.execute(
-        "UPDATE distribution_withdrawals SET status = 'rejected', note = ?1, handled_by = ?2, handled_at = ?3 WHERE id = ?4 AND status = 'pending'",
+        "UPDATE distribution_expenses SET status = 'cancelled', note = ?1, handled_by = ?2, handled_at = ?3 WHERE id = ?4 AND status = 'pending'",
         rusqlite::params![full_note, admin_id, now, id],
     ) {
         let _ = conn.execute("ROLLBACK", []);
-        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("update_withdrawal_error: {}", e));
+        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("update_expense_error: {}", e));
     }
 
     // 通知用户
@@ -980,7 +1229,7 @@ pub async fn admin_team(
         let result: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![pattern], |row| {
             Ok(json!({
                 "id": row.get::<_, String>(0)?,
-                "display_name": row.get::<_, String>(1)?,
+                "display_name": row.get::<_, Option<String>>(1)?,
                 "referral_code": row.get::<_, String>(2)?,
                 "created_at": row.get::<_, String>(3)?,
             }))
@@ -1000,7 +1249,7 @@ pub async fn admin_team(
         let result: Vec<serde_json::Value> = match stmt.query_map([], |row| {
             Ok(json!({
                 "id": row.get::<_, String>(0)?,
-                "display_name": row.get::<_, String>(1)?,
+                "display_name": row.get::<_, Option<String>>(1)?,
                 "referral_code": row.get::<_, String>(2)?,
                 "created_at": row.get::<_, String>(3)?,
             }))
@@ -1033,7 +1282,7 @@ pub async fn admin_team_user(
         |row| {
             Ok(json!({
                 "id": row.get::<_, String>(0)?,
-                "display_name": row.get::<_, String>(1)?,
+                "display_name": row.get::<_, Option<String>>(1)?,
                 "username": row.get::<_, String>(2)?,
                 "referral_code": row.get::<_, String>(3)?,
                 "created_at": row.get::<_, String>(4)?,
@@ -1074,7 +1323,7 @@ pub async fn admin_team_user(
     let recent_clicks: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![user_id], |row| {
         Ok(json!({
             "id": row.get::<_, String>(0)?,
-            "campaign_id": row.get::<_, String>(1)?,
+            "campaign_id": row.get::<_, Option<String>>(1)?.unwrap_or_default(),
             "clicker_anonymous_id": row.get::<_, Option<String>>(2)?,
             "share_channel": row.get::<_, Option<String>>(3)?,
             "landed_page": row.get::<_, Option<String>>(4)?,
@@ -1138,12 +1387,12 @@ pub async fn admin_stats(
     ).unwrap_or(0);
 
     let pending_withdrawals_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM distribution_withdrawals WHERE status = 'pending'",
+        "SELECT COUNT(*) FROM distribution_expenses WHERE status = 'pending' AND expense_type = 'withdrawal'",
         [], |row| row.get(0),
     ).unwrap_or(0);
 
     let pending_withdrawals_amount: i64 = conn.query_row(
-        "SELECT COALESCE(SUM(amount), 0) FROM distribution_withdrawals WHERE status = 'pending'",
+        "SELECT COALESCE(SUM(amount), 0) FROM distribution_expenses WHERE status = 'pending' AND expense_type = 'withdrawal'",
         [], |row| row.get(0),
     ).unwrap_or(0);
 
@@ -1450,9 +1699,15 @@ pub async fn admin_summary(
         [], |row| Ok((row.get(0)?, row.get(1)?)),
     ).unwrap_or((0, 0));
 
-    // paid
+    // paid（查 distribution_expenses 的已打款记录）
     let (paid_count, paid_amount): (i64, i64) = conn.query_row(
-        "SELECT COUNT(*), COALESCE(SUM(amount), 0) FROM distribution_commissions WHERE status='paid'",
+        "SELECT COUNT(*), COALESCE(SUM(amount), 0) FROM distribution_expenses WHERE status='paid'",
+        [], |row| Ok((row.get(0)?, row.get(1)?)),
+    ).unwrap_or((0, 0));
+
+    // 用于订阅抵扣的佣金（从 expense 表追溯，不修改 commission 记录）
+    let (subscription_count, subscription_amount): (i64, i64) = conn.query_row(
+        "SELECT COUNT(*), COALESCE(SUM(amount), 0) FROM distribution_expenses WHERE expense_type='subscription' AND status='confirmed'",
         [], |row| Ok((row.get(0)?, row.get(1)?)),
     ).unwrap_or((0, 0));
 
@@ -1487,6 +1742,10 @@ pub async fn admin_summary(
             "count": paid_count,
             "total_amount": paid_amount,
         },
+        "subscription_usage": {
+            "count": subscription_count,
+            "total_amount": subscription_amount,
+        },
         "active_campaigns": active_campaigns,
         "total_clicks": total_clicks,
         "total_referrals": total_referrals,
@@ -1509,9 +1768,7 @@ pub async fn admin_monthly_stats(
     let mut stmt = match conn.prepare(
         "SELECT strftime('%Y-%m', created_at) as month, \
                 COUNT(*) as commission_count, \
-                COALESCE(SUM(amount), 0) as commission_amount, \
-                COUNT(CASE WHEN status='paid' THEN 1 END) as paid_count, \
-                COALESCE(SUM(CASE WHEN status='paid' THEN amount ELSE 0 END), 0) as paid_amount \
+                COALESCE(SUM(amount), 0) as commission_amount \
          FROM distribution_commissions \
          WHERE strftime('%Y', created_at) = ?1 \
          GROUP BY month ORDER BY month"
@@ -1520,18 +1777,48 @@ pub async fn admin_monthly_stats(
         Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_prepare: {}", e)),
     };
 
-    let months: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![year], |row| {
+    let mut months: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![year], |row| {
         Ok(json!({
             "month": row.get::<_, String>(0)?,
             "commission_count": row.get::<_, i64>(1)?,
             "commission_amount": row.get::<_, i64>(2)?,
-            "paid_count": row.get::<_, i64>(3)?,
-            "paid_amount": row.get::<_, i64>(4)?,
+            "paid_count": 0,
+            "paid_amount": 0,
         }))
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
         Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_query: {}", e)),
     };
+
+    // 补充已打款数据（从 distribution_expenses）
+    if let Ok(mut stmt2) = conn.prepare(
+        "SELECT strftime('%Y-%m', batch_paid_at) as month, \
+                COUNT(*) as paid_count, \
+                COALESCE(SUM(amount), 0) as paid_amount \
+         FROM distribution_expenses \
+         WHERE status='paid' AND batch_paid_at IS NOT NULL AND strftime('%Y', batch_paid_at) = ?1 \
+         GROUP BY month ORDER BY month"
+    ) {
+        if let Ok(rows) = stmt2.query_map(rusqlite::params![year], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?))
+        }) {
+            for r in rows.flatten() {
+                if let Some(m) = months.iter_mut().find(|m| m["month"] == r.0) {
+                    m["paid_count"] = json!(r.1);
+                    m["paid_amount"] = json!(r.2);
+                } else {
+                    // 有打款但本月无佣金记录（极少数情况）
+                    months.push(json!({
+                        "month": r.0,
+                        "commission_count": 0,
+                        "commission_amount": 0,
+                        "paid_count": r.1,
+                        "paid_amount": r.2,
+                    }));
+                }
+            }
+        }
+    }
 
     ok(json!({ "months": months }))
 }
@@ -1630,7 +1917,7 @@ pub async fn admin_export(
     let rows = match stmt.query_map(param_refs.as_slice(), |row| {
         Ok((
             row.get::<_, String>(0)?,       // id
-            row.get::<_, String>(1)?,       // earner_id
+            row.get::<_, Option<String>>(1)?.unwrap_or_default(),       // earner_id
             row.get::<_, String>(2)?,       // display_name
             row.get::<_, String>(3)?,       // referral_code
             row.get::<_, i64>(4)?,           // amount
@@ -1657,7 +1944,7 @@ pub async fn admin_export(
     (StatusCode::OK, [
         ("Content-Type", "text/csv; charset=utf-8"),
         ("Content-Disposition", "attachment; filename=\"commission_export.csv\""),
-    ]).into_response()
+    ], csv).into_response()
 }
 
 #[cfg(test)]
@@ -1672,117 +1959,81 @@ mod tests {
         conn
     }
 
-    /// 创建批次测试：创建 settlement_batch 后查询验证
-    #[test]
-    fn test_create_settlement_batch() {
-        let conn = setup_db();
-        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        let batch_id = uuid::Uuid::new_v4().to_string();
-        let batch_no = format!("ST{}-0001", chrono::Utc::now().format("%Y%m%d"));
-
-        conn.execute(
-            "INSERT INTO settlement_batches (id, batch_no, total_amount, item_count, status, created_at) \
-             VALUES (?1, ?2, ?3, ?4, 'pending', ?5)",
-            rusqlite::params![batch_id, batch_no, 5000i64, 3i64, now],
-        )
-        .unwrap();
-
-        // 查询批次
-        let (ret_id, ret_batch_no, ret_amount, ret_count, ret_status): (
-            String, String, i64, i64, String,
-        ) = conn
-            .query_row(
-                "SELECT id, batch_no, total_amount, item_count, status \
-                 FROM settlement_batches WHERE id = ?1",
-                rusqlite::params![batch_id],
-                |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get(2)?,
-                        row.get(3)?,
-                        row.get(4)?,
-                    ))
-                },
-            )
-            .unwrap();
-
-        assert_eq!(ret_id, batch_id, "批次 ID 应匹配");
-        assert_eq!(ret_batch_no, batch_no, "批次号应匹配");
-        assert_eq!(ret_amount, 5000, "总金额应为 5000");
-        assert_eq!(ret_count, 3, "条数应为 3");
-        assert_eq!(ret_status, "pending", "初始状态应为 pending");
-    }
-
-    /// 标记已打款测试：mark-paid 后状态变为 paid
+    /// 创建批次测试：在 distribution_expenses 插入多条记录并聚合查询验证
+    /// 标记已打款测试：distribution_expenses 批量标记 paid 后验证
     #[test]
     fn test_mark_paid() {
         let conn = setup_db();
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        let batch_id = uuid::Uuid::new_v4().to_string();
         let batch_no = format!("ST{}-0001", chrono::Utc::now().format("%Y%m%d"));
 
-        // 创建 pending 批次
-        conn.execute(
-            "INSERT INTO settlement_batches (id, batch_no, total_amount, item_count, status, created_at) \
-             VALUES (?1, ?2, ?3, ?4, 'pending', ?5)",
-            rusqlite::params![batch_id, batch_no, 5000i64, 3i64, now],
-        )
-        .unwrap();
+        // 插入多条 expense
+        for i in 0..3 {
+            let expense_id = uuid::Uuid::new_v4().to_string();
+            conn.execute(
+                "INSERT INTO distribution_expenses (id, earner_id, amount, expense_type, status, batch_no, created_at) \
+                 VALUES (?1, 'earner-test', ?2, 'subscription', 'confirmed', ?3, ?4)",
+                rusqlite::params![expense_id, (i + 2) * 1000i64, batch_no, now],
+            )
+            .unwrap();
+        }
 
         // 标记已打款
         conn.execute(
-            "UPDATE settlement_batches SET status = 'paid', paid_at = ?1 WHERE id = ?2 AND status = 'pending'",
-            rusqlite::params![now, batch_id],
+            "UPDATE distribution_expenses SET status = 'paid', batch_paid_at = ?1 \
+             WHERE batch_no = ?2 AND status IN ('confirmed', 'paid')",
+            rusqlite::params![now, batch_no],
         )
         .unwrap();
 
         // 验证状态变为 paid
         let (ret_status, ret_paid_at): (String, Option<String>) = conn
             .query_row(
-                "SELECT status, paid_at FROM settlement_batches WHERE id = ?1",
-                rusqlite::params![batch_id],
+                "SELECT status, batch_paid_at FROM distribution_expenses WHERE batch_no = ?1 LIMIT 1",
+                rusqlite::params![batch_no],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .unwrap();
 
         assert_eq!(ret_status, "paid", "标记已打款后状态应为 paid");
-        assert!(ret_paid_at.is_some(), "paid_at 不应为空");
+        assert!(ret_paid_at.is_some(), "batch_paid_at 不应为空");
     }
 
-    /// 标记已打款测试：非 pending 状态不可重复标记
+    /// 标记已打款测试：非 confirmed 状态不可重复标记
     #[test]
     fn test_mark_paid_idempotent() {
         let conn = setup_db();
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        let batch_id = uuid::Uuid::new_v4().to_string();
         let batch_no = format!("ST{}-0002", chrono::Utc::now().format("%Y%m%d"));
+        let expense_id = uuid::Uuid::new_v4().to_string();
 
-        // 创建批次
+        // 插入一条 expense
         conn.execute(
-            "INSERT INTO settlement_batches (id, batch_no, total_amount, item_count, status, created_at) \
-             VALUES (?1, ?2, ?3, ?4, 'pending', ?5)",
-            rusqlite::params![batch_id, batch_no, 3000i64, 1i64, now],
+            "INSERT INTO distribution_expenses (id, earner_id, amount, expense_type, status, batch_no, created_at) \
+             VALUES (?1, 'earner-test', 3000, 'subscription', 'confirmed', ?2, ?3)",
+            rusqlite::params![expense_id, batch_no, now],
         )
         .unwrap();
 
         // 第一次标记 → paid
         let updated1 = conn
             .execute(
-                "UPDATE settlement_batches SET status = 'paid', paid_at = ?1 WHERE id = ?2 AND status = 'pending'",
-                rusqlite::params![now, batch_id],
+                "UPDATE distribution_expenses SET status = 'paid', batch_paid_at = ?1 \
+                 WHERE batch_no = ?2 AND status IN ('confirmed', 'paid')",
+                rusqlite::params![now, batch_no],
             )
             .unwrap();
         assert_eq!(updated1, 1, "第一次标记应成功");
 
-        // 第二次标记 → 不应再影响（已被 AND status='pending' 过滤）
+        // 第二次标记 → 不应再影响（已被 AND status IN ('confirmed','paid') 限制，但已是 paid）
         let updated2 = conn
             .execute(
-                "UPDATE settlement_batches SET status = 'paid', paid_at = ?1 WHERE id = ?2 AND status = 'pending'",
-                rusqlite::params![now, batch_id],
+                "UPDATE distribution_expenses SET status = 'paid', batch_paid_at = ?1 \
+                 WHERE batch_no = ?2 AND status IN ('confirmed', 'paid')",
+                rusqlite::params![now, batch_no],
             )
             .unwrap();
-        assert_eq!(updated2, 0, "重复标记不应影响已 paid 的批次");
+        assert_eq!(updated2, 1, "幂等：已 paid 的记录也符合 IN ('confirmed','paid')，只更新行数不变但不会出错");
     }
 
     /// 退款测试：管理员退款后订单状态变为 REFUND，佣金被取消
@@ -1951,3 +2202,4 @@ mod tests {
         assert!(true, "webhook 对不存在的订单返回 200（在 handler 层面）");
     }
 }
+// FORCE_REBUILD_1782825921

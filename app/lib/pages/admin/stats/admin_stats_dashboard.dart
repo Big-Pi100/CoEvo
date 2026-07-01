@@ -91,12 +91,10 @@ class _AdminStatsDashboardPageState extends State<AdminStatsDashboardPage> {
                 const SizedBox(height: AppTheme.spacingSm),
                 // 第三行: 待结算
                 _statRow(cs, [
-                  _statCard(cs, '待结算佣金',
-                      '${_stats?['pending_commissions_count'] ?? 0}',
+                  _statCard2(cs, '待结算',
+                      '${_stats?['pending_commissions_count'] ?? 0} 笔',
+                      '¥${((_stats?['pending_commissions_amount'] as num?)?.toDouble() ?? 0) / 100}',
                       Icons.pending_actions),
-                  _statCard(cs, '待结算金额',
-                      '¥${_stats?['pending_commissions_amount'] ?? 0}',
-                      Icons.money),
                 ]),
                 const SizedBox(height: AppTheme.spacingSm),
                 // 第四行: 提现 + 已打款
@@ -105,7 +103,7 @@ class _AdminStatsDashboardPageState extends State<AdminStatsDashboardPage> {
                       '${_stats?['pending_withdrawals_count'] ?? 0}',
                       Icons.payment),
                   _statCard(cs, '已打款总额',
-                      '¥${_stats?['total_paid'] ?? 0}',
+                      '¥${((_stats?['total_paid'] as num?)?.toDouble() ?? 0) / 100}',
                       Icons.check_circle),
                 ]),
                 const SizedBox(height: AppTheme.spacingLg),
@@ -135,7 +133,7 @@ class _AdminStatsDashboardPageState extends State<AdminStatsDashboardPage> {
                                 style: TextStyle(
                                     fontSize: 13,
                                     color: cs.onSurfaceVariant)),
-                            Text('¥${_funnel?['commission_amount'] ?? 0}',
+                            Text('¥${((_funnel?['commission_amount'] as num?)?.toDouble() ?? 0) / 100}',
                                 style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
@@ -160,6 +158,38 @@ class _AdminStatsDashboardPageState extends State<AdminStatsDashboardPage> {
   Widget _statRow(ColorScheme cs, List<Widget> cards) {
     return Row(
       children: cards.map((c) => Expanded(child: c)).toList(),
+    );
+  }
+
+  Widget _statCard2(ColorScheme cs, String label, String line1, String line2, IconData icon) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: AppTheme.spacingXs),
+      child: Padding(
+        padding: const EdgeInsets.all(AppTheme.spacingMd),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(icon, size: 16, color: cs.primary),
+              const SizedBox(width: AppTheme.spacingXs),
+              Text(label,
+                  style:
+                      TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+            ]),
+            const SizedBox(height: AppTheme.spacingXs),
+            Text(line1,
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: cs.primary)),
+            Text(line2,
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: cs.primary)),
+          ],
+        ),
+      ),
     );
   }
 
