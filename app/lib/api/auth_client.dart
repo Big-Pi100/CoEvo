@@ -39,7 +39,9 @@ class AuthClient {
 
   /// Verify that a stored token is still valid on the server.
   /// Returns true if the token is valid, false otherwise.
-  Future<bool> verifyToken(String userId, String token) async {
+  /// 验证 token 是否仍有效（用于应用重启后的会话恢复）
+  /// 返回 {valid: bool, real_name: String?}
+  Future<Map<String, dynamic>> verifyToken(String userId, String token) async {
     try {
       final resp = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/auth/verify'),
@@ -47,14 +49,12 @@ class AuthClient {
         body: jsonEncode({'user_id': userId, 'token': token}),
       ).timeout(const Duration(seconds: 5));
       if (resp.statusCode == 200) {
-        final data = jsonDecode(resp.body) as Map<String, dynamic>;
-        return data['valid'] == true;
+        return jsonDecode(resp.body) as Map<String, dynamic>;
       }
     } catch (e) {
-      // Network error — don't invalidate, assume valid
       debugPrint('verifyToken: network error: $e');
     }
-    return true; // Be lenient on network errors
+    return {'valid': true}; // Be lenient on network errors
   }
 
   /// Create a trial account. Returns {user_id, token}.

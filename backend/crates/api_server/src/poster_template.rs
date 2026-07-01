@@ -37,7 +37,6 @@ pub fn replace_template_variables(template: &str, data: &UserPosterData) -> Stri
     result = result.replace("{completed_plans}", &data.completed_plans.to_string());
     result = result.replace("{achievement_count}", &data.achievement_count.to_string());
     // 生成二维码图片（先渲染为 PNG base64，再嵌入为 <image> 元素）
-    // 目的：避免 SVG 嵌套/坐标转换带来的渲染不一致
     let qr_raw = crate::referral_handler::generate_qr_svg(&data.qr_code_url, "#1A237E", "#FFFFFF");
     let qr_png_b64 = crate::referral_handler::svg_to_png(&qr_raw)
         .ok()
@@ -46,25 +45,26 @@ pub fn replace_template_variables(template: &str, data: &UserPosterData) -> Stri
             Some(base64::engine::general_purpose::STANDARD.encode(&bytes))
         })
         .unwrap_or_default();
+    // 二维码块
+    // translate(-90,-90) 自居中：模板把 QR_PLACEHOLDER 放在 QR 框中心，偏移一半尺寸使其居中
+    // clipPath 防止图像溢出 180×180 区域
     let qr_block = if !qr_png_b64.is_empty() {
-        // translate(-90,-90) 自居中：假设模板把 {QR_PLACEHOLDER} 放在 QR 框中心
         format!(
-            "<g transform=\"translate(-90, -90)\"><image href=\"data:image/png;base64,{}\" width=\"180\" height=\"180\" preserveAspectRatio=\"xMidYMid meet\"/></g>\n",
-            qr_png_b64
+            r#"<g transform="translate(-90, -90)"><clipPath id="qr-clip-{uid}"><rect width="180" height="180"/></clipPath><g clip-path="url(#qr-clip-{uid})"><image href="data:image/png;base64,{b64}" width="180" height="180" preserveAspectRatio="xMidYMid meet"/></g></g>"#,
+            uid = data.referral_code.replace(|c: char| !c.is_alphanumeric(), "_"),
+            b64 = qr_png_b64,
         )
     } else {
-        // PNG 失败时的 fallback：用原始 QR SVG 替换
         let bare_svg = if let Some(pos) = qr_raw.find("<svg") { &qr_raw[pos..] } else { "<svg/>" };
-        format!("<g transform=\"translate(-90, -90)\">{}</g>\n", bare_svg)
+        format!(
+            r#"<g transform="translate(-90, -90)"><clipPath id="qr-clip-{uid}"><rect width="180" height="180"/></clipPath><g clip-path="url(#qr-clip-{uid})">{svg}</g></g>"#,
+            uid = data.referral_code.replace(|c: char| !c.is_alphanumeric(), "_"),
+            svg = bare_svg,
+        )
     };
-    // 先尝试替换 QR_PLACEHOLDER（兼容含占位符的模板）
+    // 替换 QR_PLACEHOLDER（模板应包含此占位符；若不包含则不注入）
     if result.contains("QR_PLACEHOLDER") {
         result = result.replace("QR_PLACEHOLDER", &qr_block);
-    } else {
-        // 无占位符时，在 </svg> 前注入二维码
-        if let Some(pos) = result.rfind("</svg>") {
-            result.insert_str(pos, &qr_block);
-        }
     }
     result
 }
@@ -176,9 +176,7 @@ pub fn fallback_poster_svg(data: &UserPosterData) -> String {
   <rect x="200" y="650" width="200" height="180" rx="12" fill="#ffffff"/>
   <text x="300" y="760" text-anchor="middle" fill="#1A237E" font-size="14" font-weight="bold">扫码注册</text>
   <text x="300" y="780" text-anchor="middle" fill="#1A237E" font-size="12">推广码: {}</text>
-  <g transform="translate(300, 740)">
-  QR_PLACEHOLDER
-  </g>
+  <g transform="translate(300, 740)">QR_PLACEHOLDER</g>
   <text x="300" y="870" text-anchor="middle" fill="#9DA0F0" font-size="12">⟐ CoEvo 刻意进化</text>
 </svg>"##,
         data.display_name,

@@ -795,17 +795,15 @@ class _PosterPreviewDialogState extends State<_PosterPreviewDialog> {
   Widget _buildSvgView(ColorScheme cs) {
     final svg = _data!['svg'] as String?;
     if (svg == null) return const Text('无 SVG 预览');
-    // 用原生 <img> 显示 SVG（浏览器原生支持，自动适配容器）
-    final viewId = 'svg-img-${widget.campaignId}-${DateTime.now().millisecondsSinceEpoch}';
-    final blob = html.Blob([svg], 'image/svg+xml');
-    final url = html.Url.createObjectUrlFromBlob(blob);
-    final img = html.ImageElement()
-      ..src = url
+    // 用 iframe + srcdoc 展示 SVG，iframe 天然隔离不会溢出覆盖其他元素
+    final viewId = 'svg-iframe-${widget.campaignId}-${DateTime.now().millisecondsSinceEpoch}';
+    final frame = html.IFrameElement()
+      ..srcdoc = '<!DOCTYPE html><html><body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#f5f5f5">$svg</body></html>'
       ..style.width = '100%'
       ..style.height = '100%'
-      ..style.objectFit = 'contain';
+      ..style.border = 'none';
     // ignore: undefined_prefixed_name
-    ui.platformViewRegistry.registerViewFactory(viewId, (int id) => img);
+    ui.platformViewRegistry.registerViewFactory(viewId, (int id) => frame);
     return SizedBox(
       height: 400,
       width: double.infinity,

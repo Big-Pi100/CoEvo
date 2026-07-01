@@ -153,11 +153,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _checkTrialClaim() async {
     final auth = ref.read(authProvider);
-    final trialCheck = auth.username ?? '';
-    if (!trialCheck.startsWith('trial_')) return;
-
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('coevo_trial_claimed') == true) return;
+    // 已有真实姓名 → 已认领，跳过
+    if (auth.realName != null && auth.realName!.trim().isNotEmpty) return;
 
     if (!mounted) return;
     final result = await showDialog<bool>(
@@ -166,7 +163,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       builder: (_) => const ClaimDialog(),
     );
     if (result == true && mounted) {
-      await prefs.setBool('coevo_trial_claimed', true);
       _load();
     }
   }

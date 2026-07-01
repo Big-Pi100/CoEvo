@@ -402,7 +402,16 @@ async fn auth_verify(Json(input): Json<TokenVerifyInput>) -> Json<serde_json::Va
 
     let conn = crate::db_pool::get_conn();
     let valid = crate::auth::verify_token(&conn, &input.user_id, &input.token);
-    Json(serde_json::json!({"valid": valid}))
+    let real_name: Option<String> = if valid {
+        conn.query_row(
+            "SELECT real_name FROM users WHERE id = ?1",
+            rusqlite::params![input.user_id],
+            |row| row.get(0),
+        ).ok().flatten()
+    } else {
+        None
+    };
+    Json(serde_json::json!({"valid": valid, "real_name": real_name}))
 }
 
 // ── Review Handlers ──

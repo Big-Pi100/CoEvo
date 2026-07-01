@@ -32,6 +32,7 @@ pub struct AuthResponse {
     pub user_id: String,
     pub token: String,
     pub message: String,
+    pub real_name: Option<String>,
 }
 
 /// Hash a password using bcrypt (with salt).
@@ -173,6 +174,7 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
         user_id,
         token,
         message: "Registration successful".into(),
+        real_name: req.real_name.clone(),
     })
 }
 
@@ -228,10 +230,17 @@ pub fn login(conn: &rusqlite::Connection, req: &LoginRequest) -> Result<AuthResp
         rusqlite::params![token_id, user_id, token, now],
     ).map_err(|e| format!("Token insert error: {}", e))?;
 
+    let real_name: Option<String> = conn.query_row(
+        "SELECT real_name FROM users WHERE id = ?1",
+        rusqlite::params![user_id],
+        |row| row.get(0),
+    ).ok().flatten();
+
     Ok(AuthResponse {
         user_id,
         token,
         message: "Login successful".into(),
+        real_name,
     })
 }
 

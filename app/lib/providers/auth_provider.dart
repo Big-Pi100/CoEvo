@@ -17,15 +17,17 @@ class AuthState {
   final String? userId;
   final String? token;
   final String? username;
+  final String? realName;
   final String? error;
   final bool isLoading;
-  final bool isRestored; // true after tryRestore() completes
+  final bool isRestored;
 
   const AuthState({
     this.isAuthenticated = false,
     this.userId,
     this.token,
     this.username,
+    this.realName,
     this.error,
     this.isLoading = false,
     this.isRestored = false,
@@ -36,6 +38,7 @@ class AuthState {
     String? userId,
     String? token,
     String? username,
+    String? realName,
     String? error,
     bool? isLoading,
     bool? isRestored,
@@ -45,6 +48,7 @@ class AuthState {
       userId: userId ?? this.userId,
       token: token ?? this.token,
       username: username ?? this.username,
+      realName: realName ?? this.realName,
       error: error,
       isLoading: isLoading ?? this.isLoading,
       isRestored: isRestored ?? this.isRestored,
@@ -62,31 +66,40 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> tryRestore() async {
     try {
+      debugPrint('tryRestore: 开始恢复认证...');
       final token = await _storage.read(key: _tokenKey);
       final userId = await _storage.read(key: _userIdKey);
       final username = await _storage.read(key: _usernameKey);
+      debugPrint('tryRestore: token=$token userId=$userId');
       if (token != null && userId != null) {
-        // Verify token with backend to ensure it's still valid
-        final valid = await _client.verifyToken(userId, token);
-        if (valid) {
+        final result = await _client.verifyToken(userId, token);
+        final isValid = result['valid'] == true;
+        final realName = result['real_name'] as String?;
+        debugPrint('tryRestore: verifyToken=$isValid realName=$realName');
+        if (isValid) {
           state = AuthState(
             isAuthenticated: true,
             userId: userId,
             token: token,
             username: username,
+            realName: realName,
             isRestored: true,
           );
+          debugPrint('tryRestore: 认证恢复成功');
           return;
         }
-        // Token invalid on server — clear local storage
         debugPrint('tryRestore: token invalid on server, clearing credentials');
         await _clearCredentials();
+      } else {
+        debugPrint('tryRestore: 本地无存储的认证信息, 清理试用标记');
+        // 凭证不存在（或被清过），但也清理试用标记，防止 hasUsedTrial() 卡住流程
+        _clearTrialStorageFlags();
       }
     } catch (e) {
       debugPrint('tryRestore: failed to read secure storage: $e');
     }
-    // Mark restore as complete even on failure
     state = state.copyWith(isRestored: true);
+    debugPrint('tryRestore: 完成 (isRestored=true)');
   }
 
   Future<void> _saveCredentials(String userId, String token, String? username) async {
@@ -106,9 +119,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
       await _storage.delete(key: _tokenKey);
       await _storage.delete(key: _userIdKey);
       await _storage.delete(key: _usernameKey);
+      // 清除 localStorage 中的试用标记，下次可重新创建试用账户
+      _clearTrialStorageFlags();
     } catch (e) {
       debugPrint('_clearCredentials: failed to clear secure storage: $e');
     }
+  }
+
+  /// 清除浏览器 localStorage 中的试用状态标记
+  void _clearTrialStorageFlags() {
+    try {
+      final storage = html.window.localStorage;
+      storage.remove('coevo_trial_used');
+    } catch (_) {}
+    // SharedPreferences 中的认领标记在应用重启后会被清除，无需手动处理
   }
 
   /// 将原始错误消息转为用户友好的中文
@@ -132,6 +156,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         userId: uid,
         token: token,
         username: username,
+        realName: realName,
         isRestored: true,
       );
       // 清除退出登录标记
@@ -159,6 +184,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         userId: uid,
         token: token,
         username: username,
+        realName: result['real_name'] as String?,
         isRestored: true,
       );
       // 登录成功后清除退出登录标记
@@ -248,6 +274,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         userId: state.userId,
         token: newToken,
         username: username,
+        realName: realName,
         isRestored: true,
       );
     } catch (e) {
@@ -259,9 +286,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 }
 
-/// 检查用户 ID 是否为临时账户
-bool isTrialAccount(String? userId) {
-  return userId != null && userId.startsWith('trial_');
+/// 检查用户是否为临时试用账户（username 以 trial_ 开头）
+/// userId 是 UUID 格式，不能用于判断
+bool isTrialAccount(String? username) {
+  return username != null && username.startsWith('trial_');
 }
 
 /// 检查是否已完成认领注册

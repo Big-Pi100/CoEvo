@@ -91,10 +91,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           token = auth.token;
           break;
         }
+        // 认证已恢复但 userId 仍为 null → 用户已在后端被删除，提前退出
+        if (auth.isRestored) break;
         await Future.delayed(const Duration(milliseconds: 150));
       }
       if (userId == null) {
-        // 认证未恢复，跳转到登录页
+        debugPrint('ChatScreen._init: 认证不可用 (用户可能已在后端被删除), 跳转到首页');
         if (mounted) context.go('/');
         return;
       }
@@ -681,6 +683,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('ChatScreen.build: mounted=$mounted isInitializing=$_isInitializing');
     final planState = ref.watch(planProvider);
     final activePlan = planState.getPlanForConversation(_convId);
     return Scaffold(

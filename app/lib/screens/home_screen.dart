@@ -62,48 +62,59 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     final auth = ref.read(authProvider);
+    debugPrint('_initAuth: isRestored=${auth.isRestored} isAuthenticated=${auth.isAuthenticated} userId=${auth.userId}');
     if (!auth.isRestored) {
       await Future.delayed(const Duration(milliseconds: 300));
       if (mounted) _initAuth();
       return;
     }
     if (auth.isAuthenticated) {
-      // 已认证但未认领的试用账户 → 弹注册框
-      if (isTrialAccount(auth.userId) && !await isClaimed()) {
+      debugPrint('_initAuth: 已认证 userId=${auth.userId} username=${auth.username} realName=${auth.realName}');
+      if (auth.realName == null || auth.realName!.trim().isEmpty) {
+        debugPrint('_initAuth: 未设置真实姓名，弹注册框');
         if (mounted) _showAuthDialog();
         return;
       }
-      // 正常用户 → 首页
       if (mounted) setState(() => _authReady = true);
       return;
     }
-    // 未认证但已使用过试用 → 弹注册框
     if (AuthNotifier.hasUsedTrial()) {
+      debugPrint('_initAuth: 已使用过试用，弹登录/注册框');
       if (mounted) _showAuthDialog();
       return;
     }
-    // 新用户：自动创建临时账户（携带推广码，后端直接绑定关系）
+    debugPrint('_initAuth: 新用户，自动创建试用账户');
     await ref.read(authProvider.notifier).trialStart(refCode: refCode);
     if (mounted) {
       final updated = ref.read(authProvider);
+      debugPrint('_initAuth: trialStart 完成, isAuthenticated=${updated.isAuthenticated} userId=${updated.userId}');
       if (updated.isAuthenticated) {
-        // 来自推广链接的新用户 → 弹注册框
-        if (refCode != null && refCode.isNotEmpty) {
-          if (mounted) _showAuthDialog();
+        debugPrint('_initAuth: trialStart 成功, 弹出注册对话框');
+        if (mounted) {
+          _showAuthDialog();
         } else {
-          setState(() => _authReady = true);
+          debugPrint('_initAuth: 未 mounted, 跳过弹框');
         }
+      } else {
+        debugPrint('_initAuth: trialStart 失败 isAuthenticated=false');
       }
     }
   }
 
   void _showAuthDialog() {
+    debugPrint('_showAuthDialog: 开始显示注册对话框');
     showDialog(
       context: context,
       barrierDismissible: true,
-      builder: (_) => const ClaimDialog(),
-    ).then((_) {
+      builder: (_) {
+        debugPrint('_showAuthDialog: dialog builder 被调用');
+        return const ClaimDialog();
+      },
+    ).then((result) {
+      debugPrint('_showAuthDialog: 对话框关闭 result=$result');
       if (mounted) setState(() => _authReady = true);
+    }).catchError((e) {
+      debugPrint('_showAuthDialog: 异常 $e');
     });
   }
 
