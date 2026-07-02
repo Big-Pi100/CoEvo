@@ -362,4 +362,4 @@ final ttsServiceProvider = ChangeNotifierProvider<TtsService>((ref) {
 final ttsEnabledProvider = StateProvider<bool>((ref) => true);
 
 /// Riverpod provider for TTS auto-play toggle
-final ttsAutoPlayProvider = StateProvider<bool>((ref) => false);
+final ttsAutoPlayProvider = StateProvider<bool>((ref) => true);

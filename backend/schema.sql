@@ -14,6 +14,7 @@ CREATE TABLE users (
     subscription_expires TEXT DEFAULT NULL,
     referral_code TEXT UNIQUE,
     referred_by TEXT REFERENCES users(id),
+    referred_campaign_id TEXT REFERENCES marketing_campaigns(id),
     created_at TEXT NOT NULL
 );
 CREATE TABLE tokens (
@@ -544,7 +545,7 @@ CREATE TABLE trial_ip_log (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX idx_trial_ip_log_ip_created ON trial_ip_log(ip, created_at);
-CREATE UNIQUE INDEX idx_fulfillment_unique ON reward_fulfillments(campaign_id, user_id, trigger_event, party, reward_type);
+CREATE UNIQUE INDEX idx_fulfillment_unique ON reward_fulfillments(campaign_id, user_id, trigger_event, party, reward_type, order_id);
 CREATE INDEX idx_campaign_members_user ON campaign_members(user_id);
 CREATE TABLE distribution_expenses (
     id TEXT PRIMARY KEY,

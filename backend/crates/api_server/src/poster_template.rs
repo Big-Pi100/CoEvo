@@ -4,6 +4,139 @@
 
 use serde::Serialize;
 
+const ZONE_MIN_GAP: i32 = 20; // zone 之间最小间距
+
+/// 根据 zone 类型返回合理的内容高度估算
+fn zone_estimated_height(name: &str, zone_y: i32) -> i32 {
+    match name {
+        "qr" => 250,     // 180px QR + 装饰框 + padding
+        "footer" => 50,
+        "title" => 200,  // 标题 + 副标题 + 装饰线
+        "code" => 130,   // 推广码 + 文本框
+        _ => 260,        // stats 等数据卡片区
+    }
+}
+
+/// 检测 SVG 中 `<g data-zone="xxx">` 的重叠并按顺序修正。
+/// 保持 LLM 的原始创意（X 坐标、大小、装饰），只修正 Y 重叠：
+/// 按 zone 在文档中出现的顺序，如果后一个 zone 的 Y 与前一个重叠，则将其下移。
+/// 不在 data-zone 列表中的 zone 原样保留。
+pub fn reflow_svg_zones(svg: &str) -> String {
+    let mut result = svg.to_string();
+
+    // Pass 1: 收集所有 zone 的信息（名称、原始 Y、在字符串中的位置）
+    struct ZoneInfo {
+        name: String,
+        orig_y: i32,
+        orig_x: String,
+        abs_start: usize,   // "translate(" 的起始位置
+        paren_end: usize,   // ")" 的结束位置
+        tag_end: usize,     // 标签 > 的位置
+    }
+    let mut zones: Vec<ZoneInfo> = Vec::new();
+    let mut search_from: usize = 0;
+
+    loop {
+        let remaining = &result[search_from..];
+        let zone_start_rel = match remaining.find("data-zone=\"") {
+            Some(pos) => pos,
+            None => break,
+        };
+        let zone_start = search_from + zone_start_rel;
+        let val_start = zone_start + "data-zone=\"".len();
+        let val_end = match result[val_start..].find('"') {
+            Some(pos) => val_start + pos,
+            None => break,
+        };
+        let zone_name = result[val_start..val_end].to_string();
+
+        let g_start = match result[..zone_start].rfind("<g") {
+            Some(pos) => pos,
+            None => { search_from = val_end; continue; }
+        };
+        let tag_end = match result[g_start..].find('>') {
+            Some(pos) => g_start + pos,
+            None => break,
+        };
+
+    let tag_slice = &result[g_start..=tag_end].to_string();
+    if let Some(trans_start_rel) = tag_slice.find("translate(") {
+        let abs_start = g_start + trans_start_rel;
+        let after_trans = abs_start + "translate(".len();
+        if let Some(paren_end_rel) = result[after_trans..].find(')') {
+            let paren_end = after_trans + paren_end_rel;
+            let coord = result[after_trans..paren_end].to_string();
+            let parts: Vec<&str> = coord.split(',').collect();
+            if parts.len() == 2 {
+                let x_str = parts[0].trim().to_string();
+                let y_str = parts[1].trim();
+                if let Ok(y) = y_str.parse::<i32>() {
+                    zones.push(ZoneInfo {
+                        name: zone_name,
+                        orig_y: y,
+                        orig_x: x_str,
+                        abs_start,
+                        paren_end,
+                        tag_end,
+                    });
+                    }
+                }
+            }
+        }
+        search_from = tag_end;
+    }
+
+    if zones.is_empty() {
+        return result;
+    }
+
+    // Pass 2: 碰撞检测，按文档顺序处理所有 zone
+    let mut corrected_y: Vec<i32> = zones.iter().map(|z| z.orig_y).collect();
+    let mut prev_bottom = 0i32;
+
+    for i in 0..zones.len() {
+        let z = &zones[i];
+        let zone_height = zone_estimated_height(&z.name, z.orig_y);
+
+        let desired_y = z.orig_y;
+        if desired_y < prev_bottom + ZONE_MIN_GAP {
+            corrected_y[i] = prev_bottom + ZONE_MIN_GAP;
+        }
+        prev_bottom = corrected_y[i] + zone_height;
+    }
+
+    // 检查是否超出 SVG 底部（900px），超出则上提
+    for i in (0..zones.len()).rev() {
+        let z = &zones[i];
+        let zone_height = zone_estimated_height(&z.name, z.orig_y);
+        let zone_bottom = corrected_y[i] + zone_height;
+        if zone_bottom > 890 {
+            let max_y = 890 - zone_height;
+            if max_y > 0 && corrected_y[i] > max_y {
+                corrected_y[i] = max_y;
+            }
+        }
+    }
+
+    // Pass 3: 从后往前替换，避免位置偏移影响后续替换
+    for i in (0..zones.len()).rev() {
+        if corrected_y[i] == zones[i].orig_y {
+            continue; // 不需要修正
+        }
+        let z = &zones[i];
+        let old_trans = result[z.abs_start..=z.paren_end].to_string();
+        let new_trans = format!("translate({}, {})", z.orig_x, corrected_y[i]);
+        if old_trans == new_trans {
+            continue;
+        }
+        let before = result[..z.abs_start].to_string();
+        let after = result[z.paren_end + 1..].to_string();
+        result = format!("{}{}{}", before, new_trans, after);
+    }
+
+    result
+}
+
 /// 用户海报数据（运行时替代模板中的 {变量}）
 /// 由 `build_user_poster_data` 从 `UserShareData` 映射而来
 #[derive(Debug, Serialize)]
@@ -66,6 +199,8 @@ pub fn replace_template_variables(template: &str, data: &UserPosterData) -> Stri
     if result.contains("QR_PLACEHOLDER") {
         result = result.replace("QR_PLACEHOLDER", &qr_block);
     }
+    // data-zone 重排：将各区块按预设 Y 坐标重新定位
+    result = reflow_svg_zones(&result);
     result
 }
 
@@ -162,22 +297,33 @@ pub fn fallback_poster_svg(data: &UserPosterData) -> String {
         r##"<svg viewBox="0 0 600 900" xmlns="http://www.w3.org/2000/svg">
   <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1A237E"/><stop offset="1" stop-color="#0D1457"/></linearGradient></defs>
   <rect width="600" height="900" fill="url(#bg)" rx="20"/>
-  <text x="300" y="120" text-anchor="middle" fill="#ffffff" font-size="32" font-weight="bold">{}</text>
-  <text x="300" y="170" text-anchor="middle" fill="#9DA0F0" font-size="18">的学习报告</text>
-  <rect x="40" y="220" width="520" height="120" rx="12" fill="rgba(255,255,255,0.08)"/>
-  <text x="80" y="270" fill="#ffffff" font-size="22" font-weight="bold">🔥 连续学习 {} 天</text>
-  <text x="80" y="310" fill="#9DA0F0" font-size="16">今日已复习 {} 张卡片</text>
-  <rect x="40" y="360" width="250" height="80" rx="12" fill="rgba(255,255,255,0.08)"/>
-  <text x="165" y="395" text-anchor="middle" fill="#ffffff" font-size="28" font-weight="bold">{}</text>
-  <text x="165" y="420" text-anchor="middle" fill="#9DA0F0" font-size="12">总卡片数</text>
-  <rect x="310" y="360" width="250" height="80" rx="12" fill="rgba(255,255,255,0.08)"/>
-  <text x="435" y="395" text-anchor="middle" fill="#ffffff" font-size="28" font-weight="bold">{}%</text>
-  <text x="435" y="420" text-anchor="middle" fill="#9DA0F0" font-size="12">掌握率</text>
-  <rect x="200" y="650" width="200" height="180" rx="12" fill="#ffffff"/>
-  <text x="300" y="760" text-anchor="middle" fill="#1A237E" font-size="14" font-weight="bold">扫码注册</text>
-  <text x="300" y="780" text-anchor="middle" fill="#1A237E" font-size="12">推广码: {}</text>
-  <g transform="translate(300, 740)">QR_PLACEHOLDER</g>
-  <text x="300" y="870" text-anchor="middle" fill="#9DA0F0" font-size="12">⟐ CoEvo 刻意进化</text>
+  <g data-zone="title" transform="translate(0, 100)">
+    <text x="300" y="60" text-anchor="middle" fill="#ffffff" font-size="32" font-weight="bold">{}</text>
+    <text x="300" y="110" text-anchor="middle" fill="#9DA0F0" font-size="18">的学习报告</text>
+  </g>
+  <g data-zone="stats" transform="translate(40, 200)">
+    <rect x="0" y="0" width="520" height="120" rx="12" fill="rgba(255,255,255,0.08)"/>
+    <text x="40" y="50" fill="#ffffff" font-size="22" font-weight="bold">🔥 连续学习 {} 天</text>
+    <text x="40" y="90" fill="#9DA0F0" font-size="16">今日已复习 {} 张卡片</text>
+    <rect x="0" y="140" width="250" height="80" rx="12" fill="rgba(255,255,255,0.08)"/>
+    <text x="125" y="175" text-anchor="middle" fill="#ffffff" font-size="28" font-weight="bold">{}</text>
+    <text x="125" y="200" text-anchor="middle" fill="#9DA0F0" font-size="12">总卡片数</text>
+    <rect x="270" y="140" width="250" height="80" rx="12" fill="rgba(255,255,255,0.08)"/>
+    <text x="395" y="175" text-anchor="middle" fill="#ffffff" font-size="28" font-weight="bold">{}%</text>
+    <text x="395" y="200" text-anchor="middle" fill="#9DA0F0" font-size="12">掌握率</text>
+  </g>
+  <g data-zone="code" transform="translate(40, 400)">
+    <rect x="160" y="0" width="200" height="40" rx="12" fill="rgba(255,255,255,0.08)"/>
+    <text x="260" y="26" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="bold">推广码: {}</text>
+  </g>
+  <g data-zone="qr" transform="translate(300, 670)">
+    <rect x="-90" y="-90" width="180" height="180" rx="12" fill="#ffffff"/>
+    <text x="0" y="110" text-anchor="middle" fill="#1A237E" font-size="14" font-weight="bold">扫码注册</text>
+    {{QR_PLACEHOLDER}}
+  </g>
+  <g data-zone="footer" transform="translate(0, 840)">
+    <text x="300" y="20" text-anchor="middle" fill="#9DA0F0" font-size="12">⟐ CoEvo 刻意进化</text>
+  </g>
 </svg>"##,
         data.display_name,
         data.streak_days,

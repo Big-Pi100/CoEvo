@@ -118,6 +118,9 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
     } else {
         None
     };
+    // 保存推广活动 ID（使用什么活动推广过来的）
+    let referred_campaign_id: Option<String> = req.referral.as_ref()
+        .and_then(|r| r.campaign_id.as_ref().filter(|c| !c.is_empty()).cloned());
 
     // 生成用户自己的推广码（CoEvo_ + 4位大写字母数字，重试最多3次）
     let mut referral_code = String::new();
@@ -142,8 +145,8 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
     }
 
     conn.execute(
-        "INSERT INTO users (id, username, display_name, password_hash, real_name, phone, phone_hash, bind_hash, referral_code, referred_by, created_at) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-        rusqlite::params![user_id, req.username, pwhash, enc_real_name, enc_phone, phone_hash, bind_hash_val, referral_code, referred_by, now],
+        "INSERT INTO users (id, username, display_name, password_hash, real_name, phone, phone_hash, bind_hash, referral_code, referred_by, referred_campaign_id, created_at) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        rusqlite::params![user_id, req.username, pwhash, enc_real_name, enc_phone, phone_hash, bind_hash_val, referral_code, referred_by, referred_campaign_id, now],
     ).map_err(|e| format!("Insert error: {}", e))?;
 
     // Store token in tokens table

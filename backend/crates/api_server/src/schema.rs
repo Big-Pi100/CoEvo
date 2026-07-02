@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS users (
     subscription_expires TEXT DEFAULT NULL,
     referral_code TEXT UNIQUE,
     referred_by TEXT REFERENCES users(id),
+    referred_campaign_id TEXT REFERENCES marketing_campaigns(id),
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS tokens (
@@ -430,7 +431,7 @@ CREATE TABLE IF NOT EXISTS reward_fulfillments (
 CREATE INDEX IF NOT EXISTS idx_fulfillment_campaign ON reward_fulfillments(campaign_id, trigger_event);
 CREATE INDEX IF NOT EXISTS idx_fulfillment_conversion ON reward_fulfillments(referral_click_id);
 CREATE INDEX IF NOT EXISTS idx_fulfillment_order ON reward_fulfillments(order_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_fulfillment_unique ON reward_fulfillments(campaign_id, user_id, trigger_event, party, reward_type);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fulfillment_unique ON reward_fulfillments(campaign_id, user_id, trigger_event, party, reward_type, order_id);
 -- ── 拼团/砍价活动成员表 ──
 CREATE TABLE IF NOT EXISTS campaign_members (
     campaign_id TEXT NOT NULL,
@@ -701,6 +702,11 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
         "ALTER TABLE payment_orders ADD COLUMN refund_id TEXT DEFAULT NULL",
         // 营销活动自定义海报系统提示
         "ALTER TABLE marketing_campaigns ADD COLUMN poster_prompt TEXT DEFAULT NULL",
+        // users 表增加 referred_campaign_id：追踪注册来源活动
+        "ALTER TABLE users ADD COLUMN referred_campaign_id TEXT DEFAULT NULL",
+        // 唯一索引加入 order_id：同一用户不同订单可获多次佣金，登记注册只触发一次
+        "DROP INDEX IF EXISTS idx_fulfillment_unique",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_fulfillment_unique ON reward_fulfillments(campaign_id, user_id, trigger_event, party, reward_type, order_id)",
     ];
     for sql in migrations {
         match conn.execute(sql, []) {

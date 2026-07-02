@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 /// CoEvo Material 3 Theme
 /// Brand: Deep Blue + Emerald Green (进化/成长)
@@ -201,28 +200,39 @@ class AppTheme {
     ),
     scaffoldBackgroundColor: Colors.white,
     textTheme: TextTheme(
-      headlineLarge: GoogleFonts.fredoka(
-          fontSize: 28, fontWeight: FontWeight.w600, letterSpacing: 1.7),
-      headlineMedium: GoogleFonts.fredoka(
-          fontSize: 24, fontWeight: FontWeight.w600, letterSpacing: 1.5),
-      headlineSmall: GoogleFonts.fredoka(
-          fontSize: 20, fontWeight: FontWeight.w600, letterSpacing: 1.0),
-      titleLarge: GoogleFonts.fredoka(
-          fontSize: 18, fontWeight: FontWeight.w500, letterSpacing: 0.8),
-      titleMedium: GoogleFonts.nunitoSans(
-          fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: 0.8),
-      titleSmall: GoogleFonts.nunitoSans(
-          fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 0.8),
-      bodyLarge: GoogleFonts.nunitoSans(
-          fontSize: 16, fontWeight: FontWeight.normal, height: 1.5, letterSpacing: 0.8),
-      bodyMedium: GoogleFonts.nunitoSans(
-          fontSize: 14, fontWeight: FontWeight.normal, height: 1.4, letterSpacing: 0.69),
-      bodySmall: GoogleFonts.nunitoSans(
-          fontSize: 12, fontWeight: FontWeight.normal, height: 1.3, letterSpacing: 0.53),
-      labelLarge: GoogleFonts.nunitoSans(
-          fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 0.5),
-      labelSmall: GoogleFonts.nunitoSans(
-          fontSize: 11, fontWeight: FontWeight.normal, letterSpacing: 0.3),
+      headlineLarge: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.w500,
+          fontSize: 28, letterSpacing: 1.7),
+      headlineMedium: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.w500,
+          fontSize: 24, letterSpacing: 1.5),
+      headlineSmall: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.w500,
+          fontSize: 20, letterSpacing: 1.0),
+      titleLarge: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.w500,
+          fontSize: 18, letterSpacing: 0.8),
+      titleMedium: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.w500,
+          fontSize: 16, letterSpacing: 0.8),
+      titleSmall: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.w500,
+          fontSize: 14, letterSpacing: 0.8),
+      bodyLarge: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.normal,
+          fontSize: 16, height: 1.5, letterSpacing: 0.8),
+      bodyMedium: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.normal,
+          fontSize: 14, height: 1.4, letterSpacing: 0.69),
+      bodySmall: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.normal,
+          fontSize: 12, height: 1.3, letterSpacing: 0.53),
+      labelLarge: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.w500,
+          fontSize: 14, letterSpacing: 0.5),
+      labelSmall: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.normal,
+          fontSize: 11, letterSpacing: 0.3),
     ),
     appBarTheme: const AppBarTheme(
       centerTitle: true,
@@ -319,28 +329,39 @@ class AppTheme {
     ),
     scaffoldBackgroundColor: _duoDarkBg,
     textTheme: TextTheme(
-      headlineLarge: GoogleFonts.fredoka(
-          fontSize: 28, fontWeight: FontWeight.w600, letterSpacing: 1.7),
-      headlineMedium: GoogleFonts.fredoka(
-          fontSize: 24, fontWeight: FontWeight.w600, letterSpacing: 1.5),
-      headlineSmall: GoogleFonts.fredoka(
-          fontSize: 20, fontWeight: FontWeight.w600, letterSpacing: 1.0),
-      titleLarge: GoogleFonts.fredoka(
-          fontSize: 18, fontWeight: FontWeight.w500, letterSpacing: 0.8),
-      titleMedium: GoogleFonts.nunitoSans(
-          fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: 0.8),
-      titleSmall: GoogleFonts.nunitoSans(
-          fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 0.8),
-      bodyLarge: GoogleFonts.nunitoSans(
-          fontSize: 16, fontWeight: FontWeight.normal, height: 1.5, letterSpacing: 0.8),
-      bodyMedium: GoogleFonts.nunitoSans(
-          fontSize: 14, fontWeight: FontWeight.normal, height: 1.4, letterSpacing: 0.69),
-      bodySmall: GoogleFonts.nunitoSans(
-          fontSize: 12, fontWeight: FontWeight.normal, height: 1.3, letterSpacing: 0.53),
-      labelLarge: GoogleFonts.nunitoSans(
-          fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 0.5),
-      labelSmall: GoogleFonts.nunitoSans(
-          fontSize: 11, fontWeight: FontWeight.normal, letterSpacing: 0.3),
+      headlineLarge: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.w500,
+          fontSize: 28, letterSpacing: 1.7),
+      headlineMedium: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.w500,
+          fontSize: 24, letterSpacing: 1.5),
+      headlineSmall: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.w500,
+          fontSize: 20, letterSpacing: 1.0),
+      titleLarge: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.w500,
+          fontSize: 18, letterSpacing: 0.8),
+      titleMedium: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.w500,
+          fontSize: 16, letterSpacing: 0.8),
+      titleSmall: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.w500,
+          fontSize: 14, letterSpacing: 0.8),
+      bodyLarge: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.normal,
+          fontSize: 16, height: 1.5, letterSpacing: 0.8),
+      bodyMedium: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.normal,
+          fontSize: 14, height: 1.4, letterSpacing: 0.69),
+      bodySmall: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.normal,
+          fontSize: 12, height: 1.3, letterSpacing: 0.53),
+      labelLarge: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.w500,
+          fontSize: 14, letterSpacing: 0.5),
+      labelSmall: TextStyle(
+          fontFamily: 'AlibabaPuHuiTi', fontWeight: FontWeight.normal,
+          fontSize: 11, letterSpacing: 0.3),
     ),
     appBarTheme: const AppBarTheme(
       centerTitle: true,

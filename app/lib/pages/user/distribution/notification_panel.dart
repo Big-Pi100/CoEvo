@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:html' as html;
+import 'dart:ui_web' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -31,6 +32,7 @@ class _NotificationPanelBody extends StatefulWidget {
 class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
   List<Map<String, dynamic>> _notifications = [];
   bool _loading = true;
+  bool _dialogOpen = false; // 防弹窗堆叠锁
 
   Map<String, String> get _headers {
     final token = widget.auth.token;
@@ -113,6 +115,8 @@ class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
 
     // 分享类通知 → 弹分享弹窗（不跳转页面）
     if (type == 'reward' || type == 'share_poster' || type == 'share_h5' || type == 'marketing_campaign') {
+      if (_dialogOpen) return; // 防止重复/堆叠弹窗
+      _dialogOpen = true;
       // 从 action_url 中提取 campaign_id（格式: share?campaign_id=xxx）
       String? campaignId;
       final actionUrl = n['action_url'] as String?;
@@ -121,7 +125,17 @@ class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
       }
       showDialog(
         context: context,
-        builder: (ctx) => _PosterDialog(campaignId: campaignId),
+        barrierDismissible: true,
+        builder: (ctx) {
+          // dialog 关闭时解锁
+          return PopScope(
+            canPop: true,
+            onPopInvokedWithResult: (didPop, _) {
+              _dialogOpen = false;
+            },
+            child: _PosterDialog(campaignId: campaignId),
+          );
+        },
       );
       return;
     }
@@ -270,7 +284,7 @@ class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
   }
 }
 
-/// 海报对话框 — 只显示海报 PNG（推广码+二维码已内嵌），提供下载
+/// H5 海报对话框 — 调 API 获取 H5 内容，iframe 展示
 class _PosterDialog extends ConsumerStatefulWidget {
   final String? campaignId;
   const _PosterDialog({this.campaignId});
@@ -280,19 +294,19 @@ class _PosterDialog extends ConsumerStatefulWidget {
 }
 
 class _PosterDialogState extends ConsumerState<_PosterDialog> {
-  String? _posterPng;
-  String? _referralCode;
+  String? _h5Html;
+  String? _shareUrl;
+  String? _error;
   bool _loading = true;
-  bool _generatingH5 = false;
   bool _campaignEnded = false;
 
   @override
   void initState() {
     super.initState();
-    _loadPoster();
+    _loadH5();
   }
 
-  Future<void> _loadPoster() async {
+  Future<void> _loadH5() async {
     final auth = ref.read(authProvider);
     final userId = auth.userId;
     final token = auth.token;
@@ -301,41 +315,6 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
       return;
     }
 
-    try {
-      final codeResp = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}/api/referral/my-code?user_id=$userId'),
-        headers: {'Authorization': 'Bearer $token'},
-      ).timeout(const Duration(seconds: 10));
-      if (codeResp.statusCode == 200 && mounted) {
-        _referralCode = (jsonDecode(codeResp.body) as Map<String, dynamic>)['referral_code'] as String?;
-      }
-
-      final posterResp = await http.post(
-        Uri.parse('${ApiConfig.baseUrl}/api/referral/generate-poster'),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'user_id': userId,
-          if (widget.campaignId != null) 'campaign_id': widget.campaignId,
-        }),
-      ).timeout(const Duration(seconds: 60));
-      if (posterResp.statusCode == 200 && mounted) {
-        final data = jsonDecode(posterResp.body) as Map<String, dynamic>;
-        if (data['status'] == 'campaign_ended') {
-          setState(() => _campaignEnded = true);
-        } else {
-          _posterPng = data['poster_png'] as String?;
-        }
-      }
-    } catch (_) {}
-    if (mounted) setState(() => _loading = false);
-  }
-
-  Future<void> _generateH5() async {
-    final auth = ref.read(authProvider);
-    final userId = auth.userId;
-    final token = auth.token;
-    if (userId == null || token == null) return;
-    setState(() => _generatingH5 = true);
     try {
       final resp = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/referral/generate-h5'),
@@ -347,19 +326,38 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
       ).timeout(const Duration(seconds: 60));
       if (resp.statusCode == 200 && mounted) {
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
-        final fullUrl = (data['url'] as String?) ?? ApiConfig.baseUrl;
-        await Clipboard.setData(ClipboardData(text: fullUrl));
-        if (mounted) {
-          setState(() => _generatingH5 = false);
-          _showToast('链接已复制');
+        if (data['status'] == 'campaign_ended') {
+          setState(() => _campaignEnded = true);
+        } else {
+          _h5Html = data['html'] as String?;
+          _shareUrl = data['url'] as String?;
         }
-      } else if (mounted) {
-        setState(() => _generatingH5 = false);
+      } else {
+        if (mounted) setState(() => _error = '加载失败 (${resp.statusCode})');
       }
     } catch (e) {
-      if (mounted) setState(() => _generatingH5 = false);
-      if (mounted) _showToast('生成失败');
+      if (mounted) setState(() => _error = e.toString());
     }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  void _copyShareLink() {
+    if (_shareUrl == null) return;
+    Clipboard.setData(ClipboardData(text: _shareUrl!));
+    _showToast('链接已复制');
+  }
+
+  String _h5ViewId() {
+    final id = 'h5-${widget.campaignId ?? 'default'}-${DateTime.now().millisecondsSinceEpoch}';
+    if (_h5Html == null) return id;
+    final frame = html.IFrameElement()
+      ..srcdoc = _h5Html!
+      ..style.width = '100%'
+      ..style.height = '100%'
+      ..style.border = 'none';
+    // ignore: undefined_prefixed_name
+    ui.platformViewRegistry.registerViewFactory(id, (int _) => frame);
+    return id;
   }
 
   void _showToast(String message) {
@@ -389,20 +387,6 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
     Future.delayed(const Duration(seconds: 2), () => entry.remove());
   }
 
-  void _download() {
-    if (_posterPng == null) return;
-    try {
-      final bytes = base64Decode(_posterPng!.split(',').last);
-      final blob = html.Blob([bytes], 'image/png');
-      final objUrl = html.Url.createObjectUrlFromBlob(blob);
-      (html.document.createElement('a') as html.AnchorElement)
-        ..href = objUrl
-        ..download = 'coevo_poster_${_referralCode ?? 'share'}.png'
-        ..click();
-      html.Url.revokeObjectUrl(objUrl);
-    } catch (_) {}
-  }
-
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -423,42 +407,26 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
                       SizedBox(height: 24),
                     ]),
                   )
-                : _posterPng != null
+                : _h5Html != null
                 ? SingleChildScrollView(
                     child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      RepaintBoundary(
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxHeight: MediaQuery.of(context).size.height * 0.55,
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.memory(
-                              base64Decode(_posterPng!.split(',').last),
-                              fit: BoxFit.contain,
-                            ),
-                          ),
+                      // H5 预览 — iframe 渲染
+                      SizedBox(
+                        height: MediaQuery.of(context).size.height * 0.55,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: HtmlElementView(viewType: _h5ViewId()),
                         ),
                       ),
                       const SizedBox(height: AppTheme.spacingMd),
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
-                          icon: const Icon(Icons.download, size: 18),
-                          onPressed: _download,
-                          label: const Text('下载海报'),
-                        ),
-                      ),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          icon: _generatingH5
-                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                              : const Icon(Icons.share, size: 18),
-                          onPressed: _generatingH5 ? null : _generateH5,
-                          label: const Text('分享链接到微信'),
+                          icon: const Icon(Icons.share, size: 18),
+                          onPressed: _copyShareLink,
+                          label: const Text('复制分享链接'),
                         ),
                       ),
                       const SizedBox(height: AppTheme.spacingMd),
@@ -469,16 +437,28 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
                     ],
                   ),
                 )
-                : Column(
+                : _error != null
+                ? Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text('海报生成失败，请重试'),
+                      Text('加载失败: $_error'),
                       const SizedBox(height: AppTheme.spacingMd),
                       TextButton(
                         onPressed: () => Navigator.of(context).pop(),
                         child: const Text('关闭'),
                       ),
                     ],
+                  )
+                : Padding(
+                    padding: EdgeInsets.symmetric(vertical: 48, horizontal: 16),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text('加载失败', style: TextStyle(fontSize: 16)),
+                      SizedBox(height: 16),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: Text('关闭'),
+                      ),
+                    ]),
                   ),
       ),
     );

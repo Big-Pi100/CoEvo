@@ -103,6 +103,13 @@ D:\flutter_flutter\bin\flutter.bat build web --base-href /app/ \
   --dart-define=PUBLIC_BASE_URL=https://keyievolution.fun
 ```
 
+> **2026-07-02 新增**：构建后检查字体文件是否已包含：
+> ```bash
+> ls app/build/web/assets/fonts/
+> # 期望看到 3 个 AlibabaPuHuiTi-3-*.ttf 文件
+> ```
+> 如字体文件缺失，检查 `app/pubspec.yaml` 中 fonts 声明和 `app/assets/fonts/` 目录是否存在。
+
 | 参数 | 说明 |
 |:--|:--|
 | `--base-href /app/` | 设置资源基础路径，匹配 Nginx 的 `/app/` 路由 |
@@ -160,7 +167,13 @@ app/build/web/
 ├── flutter.js               # Flutter 引擎 JS
 ├── flutter_service_worker.js
 ├── canvaskit/               # CanvasKit 渲染器（CDN 托管）
-├── assets/                  # 字体、素材等
+│
+├── assets/                  # 字体、素材等（含 AlibabaPuHuiTi-3 本地字体）
+│   └── fonts/
+│       ├── AlibabaPuHuiTi-3-55-Regular.ttf
+│       ├── AlibabaPuHuiTi-3-65-Medium.ttf
+│       └── AlibabaPuHuiTi-3-85-Bold.ttf
+├── icons/                   # PWA 图标
 ├── icons/                   # PWA 图标
 ├── favicon.png
 └── manifest.json
@@ -965,6 +978,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
 | 20 | **2026-06-15**: robots.txt 可访问 | `curl -sI https://keyievolution.fun/robots.txt \| head -1` | HTTP 200 |
 | 21 | **2026-06-15**: sitemap.xml 可访问 | `curl -sI https://keyievolution.fun/sitemap.xml \| head -1` | HTTP 200 |
 | 22 | **2026-06-15**: sitemap.xml 包含所有新页面 | 手动检查 `/<loc>/` 行数 | ≥ 页面数 |
+| 23 | **2026-07-02**: 本地字体已打包 | `ls /opt/coevo/admin-web/assets/fonts/` | 3 个 .ttf 文件（AlibabaPuHuiTi） |
 
 ### 完整验证脚本
 

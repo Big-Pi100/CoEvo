@@ -28,7 +28,6 @@ dependencies:
   sherpa_onnx: ^1.13.2
   audioplayers: ^6.1.0
   intl: ^0.19.0
-  google_fonts: ^6.2.1
   record: ^6.2.1
   web: ^1.1.1
   qr_flutter: ^4.1.0
@@ -51,3 +50,13 @@ dependency_overrides:
 
 flutter:
   uses-material-design: true
+
+  fonts:
+    - family: AlibabaPuHuiTi
+      fonts:
+        - asset: assets/fonts/AlibabaPuHuiTi-3-55-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/AlibabaPuHuiTi-3-65-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/AlibabaPuHuiTi-3-85-Bold.ttf
+          weight: 700

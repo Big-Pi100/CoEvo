@@ -46,16 +46,26 @@ pub fn execute_campaign_trigger(
             }
 
             // 确定目标用户
-            // party: "self" = 触发者自己（无推荐人时）或推广员（有推荐人时），
-            //         "inviter" = 被邀请人（买家/新用户），
-            //         "invitee" / "referee" = 同一含义，被邀请人，
-            //         "all" = 活动所有参与者（拼团/砍价等共同活动）
+            // party: "self"    = 触发事件的用户本人（任何人，不验证推荐关系）
+            //         "inviter"  = 邀请人/推荐人（需有 referrer_id，否则跳过）
+            //         "invitee"  = 被邀请人（触发者必须有推荐人，否则跳过）
+            //         "all"      = 活动所有参与者（拼团/砍价等共同活动）
             let target_users: Vec<String> = match party {
-                "self" => match referrer_id {
-                    Some(rid) => vec![rid.to_string()],   // 有推荐人 → 给推荐人
-                    None => vec![user_id.to_string()],    // 无推荐人 → 给自己
+                "self" => vec![user_id.to_string()],
+                "inviter" => match referrer_id {
+                    Some(rid) => vec![rid.to_string()],
+                    None => continue, // 无推荐人时跳过
                 },
-                "inviter" | "invitee" | "referee" => vec![user_id.to_string()],
+                "invitee" => {
+                    // 被邀请人：触发者必须有上级推荐人
+                    let has_referrer: bool = conn.query_row(
+                        "SELECT COUNT(*) FROM users WHERE id = ?1 AND referred_by IS NOT NULL",
+                        rusqlite::params![user_id],
+                        |row| row.get::<_, i64>(0),
+                    ).unwrap_or(0) > 0;
+                    if !has_referrer { continue; }
+                    vec![user_id.to_string()]
+                }
                 "all" => {
                     // 查活动所有参与者
                     let mut stmt = match conn.prepare(
@@ -116,9 +126,9 @@ pub fn execute_campaign_trigger(
                     continue;
                 }
 
-                // 频率检查：读取 reward.freq（always / daily / hourly / weekly / monthly）
-                let freq = reward["freq"].as_str().unwrap_or("always");
-                if freq != "always" {
+                // 频率检查（once=只一次，靠幂等+唯一索引保障，不查时间窗口）
+                let freq = reward["freq"].as_str().unwrap_or("once");
+                if freq != "once" && freq != "always" {
                     let now = chrono::Utc::now();
                     let window_start = match freq {
                         "daily" => now.format("%Y-%m-%d").to_string(),

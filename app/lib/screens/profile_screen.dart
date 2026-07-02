@@ -55,8 +55,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _statsLoading = false;
 
   // TTS 引擎配置
-  String _ttsEngine = 'native';   // 'tencent' | 'native'
-  int _ttsVoiceType = 0;
+  String _ttsEngine = 'tencent';   // 'tencent' | 'native'
+  int _ttsVoiceType = 101016;      // 默认智甜-女童声
   double _ttsSpeed = 0.0;        // 腾讯云语速 [-2, 6]
 
   @override
@@ -135,8 +135,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       });
       if (mounted) {
         setState(() {
-          _ttsEngine = serverPrefs['tts_engine'] ?? 'native';
-          _ttsVoiceType = int.tryParse(serverPrefs['tts_voice_type'] ?? '') ?? 0;
+          _ttsEngine = serverPrefs['tts_engine'] ?? 'tencent';
+          _ttsVoiceType = int.tryParse(serverPrefs['tts_voice_type'] ?? '') ?? 101016;
           _ttsSpeed = double.tryParse(serverPrefs['tts_speed'] ?? '') ?? 0.0;
           _isLoading = false;
         });
@@ -767,7 +767,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         ],
                         onChanged: (v) {
                           if (v == null) return;
-                          setState(() => _ttsVoiceType = v);
+                          setState(() {
+                            _ttsVoiceType = v;
+                            // 选中音色时自动切换到腾讯云引擎
+                            if (_ttsEngine != 'tencent') {
+                              _ttsEngine = 'tencent';
+                              _saveTtsEngine('tencent');
+                            }
+                          });
                           _saveTtsPref('tts_voice_type', v.toString());
                         },
                       ),

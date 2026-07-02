@@ -265,16 +265,52 @@ pub async fn calculate(
         })),
     };
 
-    // 5. 解析 rewards JSON 寻找 discount
+    // 5. 检查该用户是否已用过此活动的折扣（只用一次）
+    let already_used: bool = conn.query_row(
+        "SELECT COUNT(*) FROM reward_fulfillments \
+         WHERE campaign_id = ?1 AND user_id = ?2 AND reward_type IN ('discount_pct', 'discount_fix') AND status = 'fulfilled'",
+        rusqlite::params![&campaign_id, &body.user_id],
+        |row| row.get::<_, i64>(0),
+    ).unwrap_or(0) > 0;
+
     let mut discounted_price = original_price;
     let mut discount_note = String::new();
 
-    if let Ok(rewards) = serde_json::from_str::<Vec<serde_json::Value>>(&rewards_str) {
-        for reward in &rewards {
+    if !already_used {
+        if let Ok(rewards) = serde_json::from_str::<Vec<serde_json::Value>>(&rewards_str) {
+            for reward in &rewards {
             let rtype = reward["type"].as_str().unwrap_or("");
             let party = reward["party"].as_str().unwrap_or("");
-            // 只对推广员（self=推荐人）、被邀请人（invitee）或全员（all=拼团）关联的折扣生效
-            if party != "self" && party != "invitee" && party != "all" {
+            // self=触发者本人, inviter=邀请人, invitee=被邀请人, all=全体
+            if party != "self" && party != "inviter" && party != "invitee" && party != "all" {
+                continue;
+            }
+            // 验证用户资格
+            let eligible = match party {
+                "self" => {
+                    // 触发者自己——只要在支付就符合资格
+                    true
+                }
+                "inviter" => {
+                    // 邀请人资格：有人通过此用户的推广码 AND 通过此活动注册
+                    conn.query_row(
+                        "SELECT COUNT(*) FROM users WHERE referred_by = ?1 AND referred_campaign_id = ?2",
+                        rusqlite::params![&body.user_id, &campaign_id],
+                        |row| row.get::<_, i64>(0),
+                    ).unwrap_or(0) > 0
+                }
+                "invitee" => {
+                    // 被邀请人资格：此用户是通过此活动被邀请的
+                    conn.query_row(
+                        "SELECT COUNT(*) FROM users WHERE id = ?1 AND referred_by IS NOT NULL AND referred_campaign_id = ?2",
+                        rusqlite::params![&body.user_id, &campaign_id],
+                        |row| row.get::<_, i64>(0),
+                    ).unwrap_or(0) > 0
+                }
+                "all" => true,
+                _ => false,
+            };
+            if !eligible {
                 continue;
             }
             match rtype {
@@ -295,6 +331,7 @@ pub async fn calculate(
                 _ => {}
             }
         }
+    }
     }
 
     ok(json!({

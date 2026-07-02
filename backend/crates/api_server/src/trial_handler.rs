@@ -185,8 +185,8 @@ pub async fn claim(
         }
     };
 
-    // 5. 处理推广码
-    let referred_by: Option<String> = if let Some(ref code) = body.referral_code {
+    // 5. 处理推广码 — 优先使用请求体中的，其次使用 DB 中已有记录（trial 创建时已绑定）
+    let referred_by_body: Option<String> = if let Some(ref code) = body.referral_code {
         if !code.is_empty() {
             conn.query_row(
                 "SELECT id FROM users WHERE referral_code = ?1 AND deleted_at IS NULL",
@@ -195,6 +195,14 @@ pub async fn claim(
             ).ok()
         } else { None }
     } else { None };
+    // 如果请求体没有推广码，从 DB 读已有的推荐关系
+    let referred_by: Option<String> = referred_by_body.or_else(|| {
+        conn.query_row(
+            "SELECT referred_by FROM users WHERE id = ?1",
+            rusqlite::params![&body.user_id],
+            |row| row.get(0),
+        ).ok().flatten()
+    });
 
     // 6. 加密 PII 字段
     let enc_real_name = body.real_name.as_ref().map(|n| crate::encryption::encrypt(n));

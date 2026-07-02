@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:html' as html;
-import 'dart:ui' as ui;
+import 'dart:ui_web' as ui;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../../api/api_config.dart';
@@ -30,7 +30,6 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
   Map<String, dynamic>? _stats;
   bool _loading = true;
   bool _pushLoading = false;
-  bool _generatingPoster = false;
   bool _generatingH5 = false;
 
   Map<String, String> get _headers {
@@ -195,24 +194,6 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
       if (mounted) _snack('网络错误: $e');
     }
     if (mounted) setState(() => _pushLoading = false);
-  }
-
-  Future<void> _generatePosterTemplate() async {
-    setState(() => _generatingPoster = true);
-    try {
-      final uri = Uri.parse('${ApiConfig.baseUrl}/api/admin/campaigns/${widget.campaignId}/generate-poster-template');
-      final resp = await http.post(uri, headers: _headers).timeout(const Duration(seconds: 120));
-      if (resp.statusCode == 200 && mounted) {
-        _snack('海报模板已生成');
-        _load(); // 刷新活动详情
-      } else if (mounted) {
-        final body = jsonDecode(resp.body);
-        _snack('生成失败: ${body['error'] ?? resp.body}');
-      }
-    } catch (e) {
-      if (mounted) _snack('网络错误: $e');
-    }
-    if (mounted) setState(() => _generatingPoster = false);
   }
 
   Future<void> _generateH5Template() async {
@@ -411,8 +392,6 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
                       const SizedBox(height: AppTheme.spacingMd),
                       // ── 模板管理卡片 ──
                       _infoSection(cs, tt, '模板管理', [
-                        _templateRow('海报模板', _campaign!['poster_template'] as String?,
-                            _generatingPoster, _generatePosterTemplate),
                         _templateRow('H5 模板', _campaign!['h5_template'] as String?,
                             _generatingH5, _generateH5Template),
                       ]),
@@ -576,12 +555,7 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
   }
 
   void _showTemplatePreview(String content) {
-    final isSvg = content.startsWith('<svg') || content.contains('xmlns="http://www.w3.org/2000/svg"');
-    if (isSvg) {
-      _showPosterPreview();
-    } else {
-      _showH5Preview();
-    }
+    _showH5Preview();
   }
 
   void _showH5Preview() {
@@ -589,16 +563,6 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
     showDialog(
       context: context,
       builder: (ctx) => _H5PreviewDialog(
-        campaignId: widget.campaignId,
-        headers: _headers,
-      ),
-    );
-  }
-
-  void _showPosterPreview() {
-    showDialog(
-      context: context,
-      builder: (ctx) => _PosterPreviewDialog(
         campaignId: widget.campaignId,
         headers: _headers,
       ),
@@ -668,151 +632,6 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
 }
 
 /// 海报预览弹窗 — 调 API 获取渲染后的 SVG+PNG，双 Tab 展示
-class _PosterPreviewDialog extends StatefulWidget {
-  final String campaignId;
-  final Map<String, String> headers;
-
-  const _PosterPreviewDialog({
-    required this.campaignId,
-    required this.headers,
-  });
-
-  @override
-  State<_PosterPreviewDialog> createState() => _PosterPreviewDialogState();
-}
-
-class _PosterPreviewDialogState extends State<_PosterPreviewDialog> {
-  int _tabIndex = 0;
-  Map<String, dynamic>? _data;
-  String? _error;
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    try {
-      final uri = Uri.parse(
-          '${ApiConfig.baseUrl}/api/admin/campaigns/${widget.campaignId}/preview-poster');
-      final resp = await http
-          .post(uri, headers: widget.headers)
-          .timeout(const Duration(seconds: 30));
-      if (resp.statusCode == 200) {
-        if (mounted) setState(() { _data = jsonDecode(resp.body) as Map<String, dynamic>; _loading = false; });
-      } else {
-        if (mounted) setState(() { _error = 'HTTP ${resp.statusCode}'; _loading = false; });
-      }
-    } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loading = false; });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Dialog(
-      insetPadding: const EdgeInsets.all(16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                const Text('海报预览',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 20),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-            const Divider(),
-            Row(
-              children: [
-                _tabBtn('PNG 预览', 0),
-                const SizedBox(width: 8),
-                _tabBtn('SVG 预览', 1),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (_loading)
-              const Padding(
-                padding: EdgeInsets.all(32),
-                child: CircularProgressIndicator(),
-              )
-            else if (_error != null)
-              Text('加载失败: $_error', style: const TextStyle(color: Colors.red))
-            else if (_data == null)
-              const Text('无数据')
-            else if (_tabIndex == 0)
-              _buildPngView(cs)
-            else
-              _buildSvgView(cs),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _tabBtn(String label, int index) {
-    final selected = _tabIndex == index;
-    return TextButton(
-      style: TextButton.styleFrom(
-        backgroundColor: selected ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15) : null,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-      onPressed: () => setState(() => _tabIndex = index),
-      child: Text(label, style: TextStyle(
-        fontSize: 12,
-        fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-        color: selected ? Theme.of(context).colorScheme.primary : null,
-      )),
-    );
-  }
-
-  Widget _buildPngView(ColorScheme cs) {
-    final png = _data!['poster_png'] as String?;
-    if (png == null) return const Text('无 PNG 预览');
-    final bytes = base64Decode(png.split(',').last);
-    return SizedBox(
-      height: 400,
-      child: InteractiveViewer(
-        minScale: 0.5,
-        maxScale: 4.0,
-        child: Center(
-          child: Image.memory(bytes, fit: BoxFit.contain),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSvgView(ColorScheme cs) {
-    final svg = _data!['svg'] as String?;
-    if (svg == null) return const Text('无 SVG 预览');
-    // 用 iframe + srcdoc 展示 SVG，iframe 天然隔离不会溢出覆盖其他元素
-    final viewId = 'svg-iframe-${widget.campaignId}-${DateTime.now().millisecondsSinceEpoch}';
-    final frame = html.IFrameElement()
-      ..srcdoc = '<!DOCTYPE html><html><body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#f5f5f5">$svg</body></html>'
-      ..style.width = '100%'
-      ..style.height = '100%'
-      ..style.border = 'none';
-    // ignore: undefined_prefixed_name
-    ui.platformViewRegistry.registerViewFactory(viewId, (int id) => frame);
-    return SizedBox(
-      height: 400,
-      width: double.infinity,
-      child: HtmlElementView(viewType: viewId),
-    );
-  }
-}
-
-/// H5 预览弹窗 — 调 API 获取变量替换后的 HTML，iframe 渲染
 class _H5PreviewDialog extends StatefulWidget {
   final String campaignId;
   final Map<String, String> headers;

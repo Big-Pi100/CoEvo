@@ -1212,12 +1212,13 @@ fn get_user_tts_prefs(user_id: &str) -> (Option<i32>, Option<f32>) {
         _ => return (None, None),
     }
 
-    // 读取音色 ID
+    // 读取音色 ID（默认 101016 = 智甜-女童声）
     let voice_type: Option<i32> = conn.query_row(
         "SELECT value FROM user_preferences WHERE user_id = ?1 AND key = 'tts_voice_type'",
         rusqlite::params![user_id],
         |row| row.get::<_, String>(0),
-    ).ok().and_then(|v| v.parse::<i32>().ok());
+    ).ok().and_then(|v| v.parse::<i32>().ok())
+    .or(Some(101016)); // 未手动设置时使用默认音色
 
     // 读取语速
     let speed: Option<f32> = conn.query_row(

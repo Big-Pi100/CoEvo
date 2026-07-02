@@ -68,8 +68,8 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
           // 清洗每个奖励字段，确保值在下拉菜单中存在
           for (final r in _rewards) {
             r['trigger'] = _validValue(r['trigger'] as String?, ['registration', 'payment', 'plan_update'], 'registration');
-            r['party'] = _validValue(r['party'] as String?, ['self', 'inviter', 'all'], 'self');
-            r['freq'] = _validValue(r['freq'] as String?, ['always', 'daily', 'hourly', 'weekly', 'monthly'], 'always');
+            r['party'] = _validValue(r['party'] as String?, ['self', 'inviter', 'invitee', 'all'], 'self');
+            r['freq'] = _validValue(r['freq'] as String?, ['once', 'daily', 'hourly', 'weekly', 'monthly'], 'once');
           }
         }
       } catch (_) {
@@ -78,7 +78,7 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
     }
     if (_rewards.isEmpty) {
       _rewards = [
-        {'type': 'subscription_days', 'party': 'self', 'value': 3, 'trigger': 'registration'}
+        {'type': 'subscription_days', 'party': 'self', 'value': 3, 'trigger': 'registration', 'freq': 'once'}
       ];
     }
     // 解析 cron 表达式为星期+时间（cron格式: "minute hour * * day"）
@@ -385,7 +385,8 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                                   decoration: const InputDecoration(
                                       labelText: '对象', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
                                   items: const [
-                                    DropdownMenuItem(value: 'self', child: Text('推广员')),
+                                    DropdownMenuItem(value: 'self', child: Text('触发者（自己）')),
+                                    DropdownMenuItem(value: 'inviter', child: Text('邀请人（推广员）')),
                                     DropdownMenuItem(value: 'invitee', child: Text('被邀请人')),
                                     DropdownMenuItem(value: 'all', child: Text('所有人')),
                                   ],
@@ -424,11 +425,11 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                               SizedBox(
                                 width: 72,
                                 child: DropdownButtonFormField<String>(
-                                  value: (reward['freq'] as String?) ?? 'always',
+                                  value: (reward['freq'] as String?) ?? 'once',
                                   decoration: const InputDecoration(
                                       labelText: '频率', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 8)),
                                   items: const [
-                                    DropdownMenuItem(value: 'always', child: Text('不限')),
+                                    DropdownMenuItem(value: 'once', child: Text('仅1次')),
                                     DropdownMenuItem(value: 'daily', child: Text('每天1次')),
                                     DropdownMenuItem(value: 'hourly', child: Text('每小时1次')),
                                     DropdownMenuItem(value: 'weekly', child: Text('每周1次')),
