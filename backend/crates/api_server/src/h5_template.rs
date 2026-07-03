@@ -15,6 +15,7 @@ pub struct UserH5Data {
     pub today_reviews: i64,
     pub referral_code: String,
     pub register_url: String,
+    pub avatar_url: String,
     pub active_plans_summary: String,
     pub current_focus: String,
     pub plan_count: i64,
@@ -37,6 +38,35 @@ pub fn replace_h5_variables(template: &str, data: &UserH5Data) -> String {
     result = result.replace("{plan_count}", &data.plan_count.to_string());
     result = result.replace("{completed_plans}", &data.completed_plans.to_string());
     result = result.replace("{achievement_count}", &data.achievement_count.to_string());
+    result = result.replace("{avatar_url}", &data.avatar_url);
+    // 移除 Google Fonts 引用（国内访问慢/被墙）
+    result = result.replace("@import url(\"https://fonts.googleapis.com/", "/* blocked: @import url(\"https://fonts.googleapis.com/");
+    result = result.replace("@import url('https://fonts.googleapis.com/", "/* blocked: @import url('https://fonts.googleapis.com/");
+    result = result.replace("<link href=\"https://fonts.googleapis.com/", "<!-- blocked: <link href=\"https://fonts.googleapis.com/");
+    result = result.replace("<link href='https://fonts.googleapis.com/", "<!-- blocked: <link href='https://fonts.googleapis.com/");
+    // 替换 font-family 为阿里普惠体（LLM 常生成长串英文字体栈）
+    result = result.replace("font-family: 'Nunito',", "font-family: 'AlibabaPuHuiTi',");
+    result = result.replace("font-family: Nunito,", "font-family: 'AlibabaPuHuiTi',");
+    result = result.replace("font-family: \"Nunito\",", "font-family: 'AlibabaPuHuiTi',");
+    // 替换所有 font-family: "..." 或 font-family: '...' 中的英文字体栈为 AlibabaPuHuiTi
+    // 匹配 font-family: 后跟系统英文字体栈的场景
+    let system_fonts = [
+        "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif",
+        "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif",
+        "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+        "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif",
+        "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        "'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        "'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+        "\"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif",
+        "\"Segoe UI\", Roboto, Helvetica, Arial, sans-serif",
+        "-apple-system, 'PingFang SC', 'Helvetica Neue', system-ui, sans-serif",
+        "-apple-system, 'PingFang SC', 'Helvetica Neue', 'Noto Sans CJK SC', system-ui, sans-serif",
+    ];
+    for sys_font in &system_fonts {
+        result = result.replace(&format!("font-family: {}", sys_font), "font-family: 'AlibabaPuHuiTi', -apple-system, sans-serif");
+    }
     // 注入 OG meta 标签（在 </head> 前插入）
     let frontend = crate::share_data::public_base_url();
     let backend = crate::share_data::coevo_base_url();
@@ -61,6 +91,7 @@ pub fn build_user_h5_data(
     let shared = crate::share_data::build_user_share_data(conn, user_id, campaign_id)?;
     Ok(UserH5Data {
         register_url: shared.register_url.clone(),
+        avatar_url: shared.avatar_url.clone(),
         display_name: shared.display_name,
         real_name: shared.real_name,
         streak_days: shared.streak_days,
@@ -151,12 +182,19 @@ fn extract_html_from_llm_reply(reply: &str) -> Result<String, String> {
 }
 
 /// 静态 fallback H5（活动无模板时使用）
-pub fn fallback_h5_html(referral_code: &str, campaign_id: Option<&str>) -> String {
+pub fn fallback_h5_html(referral_code: &str, campaign_id: Option<&str>, avatar_url: Option<&str>) -> String {
     let app_base = crate::share_data::public_base_url();
     let api_base = crate::share_data::coevo_base_url();
     let ref_param = match campaign_id {
         Some(cid) if !cid.is_empty() => format!("?ref={}&campaign_id={}", referral_code, cid),
         _ => format!("?ref={}", referral_code),
+    };
+    let avatar_html = match avatar_url.filter(|u| !u.is_empty()) {
+        Some(url) => format!(
+            r#"<div style="margin-bottom:16px"><img src="{}" style="width:72px;height:72px;border-radius:50%;object-fit:cover;border:3px solid #E0E7FF"/></div>"#,
+            url
+        ),
+        None => String::new(),
     };
     let mut html = format!(
         r#"<!DOCTYPE html>
@@ -170,7 +208,7 @@ pub fn fallback_h5_html(referral_code: &str, campaign_id: Option<&str>) -> Strin
     <meta property="og:url" content="{api_base}/share/{{code}}">
     <title>CoEvo 学习推广</title>
     <style>
-        body {{ font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: linear-gradient(135deg, #667eea 0%, #4F46E5 100%); }}
+        body {{ font-family: AlibabaPuHuiTi, -apple-system, BlinkMacSystemFont, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: linear-gradient(135deg, #667eea 0%, #4F46E5 100%); }}
         .card {{ background: white; border-radius: 20px; padding: 40px 24px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.15); max-width: 360px; width: 90%; }}
         .brand {{ color: #4F46E5; font-size: 22px; font-weight: bold; margin-bottom: 8px; }}
         .subtitle {{ color: #666; font-size: 14px; margin-bottom: 24px; }}
@@ -182,20 +220,20 @@ pub fn fallback_h5_html(referral_code: &str, campaign_id: Option<&str>) -> Strin
 </head>
 <body>
     <div class="card">
+        {avatar_html}
         <div class="brand">CoEvo 刻意进化学习</div>
         <div class="subtitle">邀请你一起加入学习之旅</div>
         <div class="code-label">我的推广码</div>
-        <div class="code">{}</div>
+        <div class="code">{code}</div>
         <a class="btn" href="{app_base}/home{ref_param}">立即注册</a>
         <div class="footer">扫码或输入推广码加入学习</div>
     </div>
 </body>
 </html>"#,
-        referral_code
+        avatar_html = avatar_html, code = referral_code,
+        app_base = app_base, ref_param = ref_param,
     );
-    html = html.replace("{app_base}", &app_base);
     html = html.replace("{api_base}", &api_base);
-    html = html.replace("{code}", referral_code);
     html
 }
 
@@ -205,7 +243,7 @@ mod tests {
 
     #[test]
     fn test_fallback_h5_html() {
-        let html = fallback_h5_html("CoEvo_TEST", None);
+        let html = fallback_h5_html("CoEvo_TEST", None, None);
         assert!(html.contains("CoEvo_TEST"));
         assert!(html.contains("/home?ref=CoEvo_TEST"));
         assert!(!html.contains("campaign_id"));
@@ -213,7 +251,7 @@ mod tests {
 
     #[test]
     fn test_fallback_h5_html_with_campaign() {
-        let html = fallback_h5_html("CoEvo_TEST", Some("camp-123"));
+        let html = fallback_h5_html("CoEvo_TEST", Some("camp-123"), None);
         assert!(html.contains("campaign_id=camp-123"));
         assert!(html.contains("/home?ref=CoEvo_TEST&campaign_id=camp-123"));
     }
@@ -228,6 +266,7 @@ mod tests {
             today_reviews: 12,
             referral_code: "TEST".into(),
             register_url: "http://localhost:8080/home?ref=TEST".into(),
+            avatar_url: "http://localhost:8080/api/user/test/avatar".into(),
             active_plans_summary: "数学".into(),
             current_focus: "高数".into(),
             plan_count: 2,
@@ -252,6 +291,7 @@ mod tests {
             today_reviews: 2,
             referral_code: "ABC".into(),
             register_url: "http://localhost:8080/home?ref=ABC".into(),
+            avatar_url: "http://localhost:8080/api/user/test/avatar".into(),
             active_plans_summary: String::new(),
             current_focus: String::new(),
             plan_count: 0,

@@ -31,6 +31,7 @@ pub struct UserShareData {
     pub today_reviews: i64,
     pub referral_code: String,
     pub register_url: String,  // 统一命名，海报取此值生成 QR 码
+    pub avatar_url: String,    // 用户头像 URL
     pub plan_count: i64,
     pub active_plans_summary: String,
     pub current_focus: String,
@@ -222,6 +223,9 @@ pub fn build_user_share_data(
         format!("{}/home?ref={}&campaign_id={}", base, referral_code, campaign_id)
     };
 
+    // 头像 URL（永远指向 API base）
+    let avatar_url = format!("{}/api/user/{}/avatar", coevo_base_url(), user_id);
+
     let stats = build_user_plan_stats(conn, user_id);
 
     Ok(UserShareData {
@@ -232,6 +236,7 @@ pub fn build_user_share_data(
         today_reviews,
         referral_code,
         register_url,
+        avatar_url,
         plan_count: stats.plan_count,
         active_plans_summary: stats.active_plans_summary,
         current_focus: stats.current_focus,

@@ -148,6 +148,7 @@ pub struct UserPosterData {
     pub today_reviews: i64,
     pub referral_code: String,
     pub qr_code_url: String,
+    pub avatar_url: String,
     pub active_plans_summary: String,
     pub current_focus: String,
     pub plan_count: i64,
@@ -169,6 +170,11 @@ pub fn replace_template_variables(template: &str, data: &UserPosterData) -> Stri
     result = result.replace("{plan_count}", &data.plan_count.to_string());
     result = result.replace("{completed_plans}", &data.completed_plans.to_string());
     result = result.replace("{achievement_count}", &data.achievement_count.to_string());
+    result = result.replace("{avatar_url}", &data.avatar_url);
+    // 替换 font-family 为通用 sans-serif（避免 resvg 找不到字体）
+    result = result.replace("font-family=\"system-ui, -apple-system, sans-serif\"", "font-family=\"sans-serif\"");
+    result = result.replace("font-family=\"'PingFang SC', 'Microsoft YaHei', sans-serif\"", "font-family=\"sans-serif\"");
+    result = result.replace("font-family=\"'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', system-ui, sans-serif\"", "font-family=\"sans-serif\"");
     // 生成二维码图片（先渲染为 PNG base64，再嵌入为 <image> 元素）
     let qr_raw = crate::referral_handler::generate_qr_svg(&data.qr_code_url, "#1A237E", "#FFFFFF");
     let qr_png_b64 = crate::referral_handler::svg_to_png(&qr_raw)
@@ -212,7 +218,8 @@ pub fn build_user_poster_data(
 ) -> Result<UserPosterData, String> {
     let shared = crate::share_data::build_user_share_data(conn, user_id, campaign_id)?;
     Ok(UserPosterData {
-        qr_code_url: shared.register_url.clone(), // register_url 直接用作 QR 码链接
+        qr_code_url: shared.register_url.clone(),
+        avatar_url: shared.avatar_url.clone(),
         display_name: shared.display_name,
         real_name: shared.real_name,
         streak_days: shared.streak_days,
@@ -293,6 +300,14 @@ pub async fn generate_template_via_llm(
 
 /// 静态 fallback 海报（模板未生成时使用）
 pub fn fallback_poster_svg(data: &UserPosterData) -> String {
+    let avatar_html = if !data.avatar_url.is_empty() {
+        format!(
+            r#"<clipPath id="avatar-clip"><circle cx="220" cy="85" r="28"/></clipPath><g clip-path="url(#avatar-clip)"><image href="{}" x="192" y="57" width="56" height="56" preserveAspectRatio="xMidYMid meet"/></g>"#,
+            data.avatar_url
+        )
+    } else {
+        String::new()
+    };
     format!(
         r##"<svg viewBox="0 0 600 900" xmlns="http://www.w3.org/2000/svg">
   <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1A237E"/><stop offset="1" stop-color="#0D1457"/></linearGradient></defs>
@@ -300,6 +315,8 @@ pub fn fallback_poster_svg(data: &UserPosterData) -> String {
   <g data-zone="title" transform="translate(0, 100)">
     <text x="300" y="60" text-anchor="middle" fill="#ffffff" font-size="32" font-weight="bold">{}</text>
     <text x="300" y="110" text-anchor="middle" fill="#9DA0F0" font-size="18">的学习报告</text>
+    <circle cx="220" cy="85" r="28" fill="rgba(255,255,255,0.15)"/>
+    {}
   </g>
   <g data-zone="stats" transform="translate(40, 200)">
     <rect x="0" y="0" width="520" height="120" rx="12" fill="rgba(255,255,255,0.08)"/>
@@ -326,6 +343,7 @@ pub fn fallback_poster_svg(data: &UserPosterData) -> String {
   </g>
 </svg>"##,
         data.display_name,
+        avatar_html,
         data.streak_days,
         data.today_reviews,
         data.total_cards,

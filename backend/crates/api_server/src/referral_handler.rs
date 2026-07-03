@@ -421,6 +421,7 @@ fn extract_user_for_png_fallback(svg: &str) -> crate::poster_template::UserPoste
         today_reviews: 3,
         referral_code: referral_code.clone(),
         qr_code_url: format!("{}/home?ref={}", base, referral_code),
+        avatar_url: String::new(),
         active_plans_summary: String::new(),
         current_focus: String::new(),
         plan_count: 0,
@@ -869,6 +870,8 @@ pub async fn generate_h5(
         rusqlite::params![body.user_id], |row| row.get(0),
     ).unwrap_or_else(|_| "UNKNOWN".to_string());
 
+    let avatar_url = format!("{}/api/user/{}/avatar", crate::share_data::coevo_base_url(), body.user_id);
+
     // 查活动 H5 模板（如果有 campaign_id）
     let html = if let Some(ref cid) = body.campaign_id {
         match conn.query_row(
@@ -879,13 +882,13 @@ pub async fn generate_h5(
                 // 使用模板替换流程（零 LLM）
                 match crate::h5_template::build_user_h5_data(&conn, &body.user_id, cid) {
                     Ok(data) => crate::h5_template::replace_h5_variables(&template, &data),
-                    Err(_) => fallback_h5_html(&referral_code, Some(cid)),
+                    Err(_) => fallback_h5_html(&referral_code, Some(cid), Some(&avatar_url)),
                 }
             }
-            None => fallback_h5_html(&referral_code, Some(cid)),
+            None => fallback_h5_html(&referral_code, Some(cid), Some(&avatar_url)),
         }
     } else {
-        fallback_h5_html(&referral_code, body.campaign_id.as_deref())
+        fallback_h5_html(&referral_code, body.campaign_id.as_deref(), Some(&avatar_url))
     };
 
     // 触发推广成就
@@ -949,7 +952,7 @@ pub async fn share_landing(
     }
 
     // fallback: 内联模板
-    let html = fallback_h5_html(&code, None);
+    let html = fallback_h5_html(&code, None, None);
     ([(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")], html)
 }
 
@@ -1121,7 +1124,7 @@ mod tests {
 
     #[test]
     fn test_fallback_h5_html() {
-        let html = crate::h5_template::fallback_h5_html("CoEvo_TEST", None);
+        let html = crate::h5_template::fallback_h5_html("CoEvo_TEST", None, None);
         assert!(html.contains("CoEvo_TEST"), "应包含推广码");
         assert!(html.contains("<!DOCTYPE html>"), "应包含 DOCTYPE");
         assert!(html.contains("CoEvo 刻意进化学习"), "应包含品牌名");
@@ -1152,6 +1155,7 @@ mod tests {
             today_reviews: 5,
             referral_code: "TEST123".to_string(),
             qr_code_url: "http://test.com/ref=TEST123".to_string(),
+            avatar_url: String::new(),
             active_plans_summary: "数学".to_string(),
             current_focus: "高数".to_string(),
             plan_count: 2,

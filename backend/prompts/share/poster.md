@@ -35,6 +35,7 @@
 - {completed_plans} — 已完成的学习计划数
 - {achievement_count} — 已获得成就数
 - {referral_code} — 用户推广码
+- {avatar_url} — 用户头像链接（用于 <image> 标签嵌入）
 
 ### QR码
 在 qr zone 内将 `{QR_PLACEHOLDER}` 放在二维码中心位置。代码会替换为 180×180px 的二维码。
