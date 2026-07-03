@@ -398,7 +398,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               final tts = ref.read(ttsServiceProvider);
               tts.cacheAudio(text, Uint8List.fromList(bytes));
               if (ref.read(ttsAutoPlayProvider)) {
-                tts.cacheAndPlay(text, Uint8List.fromList(bytes));
+                tts.playAutoStream(Uint8List.fromList(bytes));
               }
             } catch (_) {}
           }

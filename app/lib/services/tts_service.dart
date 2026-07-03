@@ -21,16 +21,27 @@ class TtsService extends ChangeNotifier {
   Map<String, dynamic>? _selectedVoice;
   List<Map<String, dynamic>> _availableVoices = [];
   ChatClient? _client;
+
+  // 当前正在播放的 AudioPlayer（Tencent TTS，用户点击触发）
   AudioPlayer? _currentPlayer;
+  // auto-play 独立播放器（WS tts_audio 触发）
+  AudioPlayer? _autoPlayer;
   String? _currentPlayingText;
+
+  // 单调递增的"代"计数器。每次发起新请求时 +1，
+  // 异步回调完成时检查回调请求的代是否仍是最新一代，否则丢弃。
+  int _playGen = 0;
 
   // TTS 缓存: 已合成的文本 → 音频字节
   final Map<String, Uint8List> _ttsCache = {};
 
   TtsService() {
-    _tts.setCompletionHandler(() => state = TtsState.stopped);
+    _tts.setCompletionHandler(() {
+      debugPrint('[TTS] native completion');
+      state = TtsState.stopped;
+    });
     _tts.setErrorHandler((msg) {
-      debugPrint('TTS error: $msg');
+      debugPrint('[TTS] native error: $msg');
       state = TtsState.stopped;
     });
   }
@@ -56,12 +67,15 @@ class TtsService extends ChangeNotifier {
   Future<void> togglePlay(String text) async {
     if (!_enabled || text.isEmpty) return;
 
+    debugPrint('[TTS] togglePlay: "${_trunc(text)}" gen=$_playGen');
+
     // 如果正在播放同一段文本 → 停止
     if (_currentPlayingText == text && state == TtsState.playing) {
+      debugPrint('[TTS]  same text playing, stopping');
       _currentPlayingText = null;
+      _playGen++;  // 废弃当前代，阻止任何进行中的回调继续播放
       state = TtsState.stopped;
       notifyListeners();
-      // 停止两种引擎
       await _currentPlayer?.stop();
       _currentPlayer?.dispose();
       _currentPlayer = null;
@@ -69,37 +83,29 @@ class TtsService extends ChangeNotifier {
       return;
     }
 
-    // 停止当前播放，准备播新的
+    // 递增代，使之前进行中的异步回调失效
+    _playGen++;
+    final myGen = _playGen;
+    debugPrint('[TTS]  new gen=$myGen');
+
+    // 停止当前播放
     await _currentPlayer?.stop();
     _currentPlayer?.dispose();
     _currentPlayer = null;
     await _tts.stop();
-    _currentPlayingText = text;
 
     // 检查缓存（由 auto-play 预先缓存）
     final prefs = await SharedPreferences.getInstance();
+    if (myGen != _playGen) {
+      debugPrint('[TTS]  gen changed during cache check, abort');
+      return;
+    }
+
+    _currentPlayingText = text;
     final cached = _ttsCache[text];
     if (cached != null) {
-      final engine = prefs.getString('tts_engine') ?? 'tencent';
-      if (engine != 'tencent') {
-        // 非云端 TTS → 跳过缓存播放，走原生
-        _speakWithNative(text);
-        return;
-      }
-      // 有缓存 → 直接播放
-      final player = AudioPlayer();
-      _currentPlayer = player;
-      player.setSource(BytesSource(Uint8List.fromList(cached)));
-      player.resume();
-      state = TtsState.playing;
-      notifyListeners();
-      player.onPlayerComplete.listen((_) {
-        if (_currentPlayer == player) {
-          state = TtsState.stopped;
-          _currentPlayer = null;
-          notifyListeners();
-        }
-      });
+      debugPrint('[TTS]  playing from cache');
+      _playCached(myGen, text, cached);
       return;
     }
 
@@ -107,17 +113,21 @@ class TtsService extends ChangeNotifier {
     state = TtsState.loading;
     notifyListeners();
 
-    final engine = await _getTtsEngine();
+    final engine = prefs.getString('tts_engine') ?? 'tencent';
     if (engine == 'tencent') {
-      await _fetchAndPlayTencent(text);
+      await _fetchAndPlayTencent(myGen, text);
     } else {
-      await _speakWithNative(text);
+      await _speakWithNative(myGen, text);
     }
   }
 
   /// 兼容旧接口：直接播放（不切换停止）
   Future<void> speak(String text, {String? language}) async {
     if (!_enabled || text.isEmpty) return;
+
+    _playGen++;
+    final myGen = _playGen;
+    debugPrint('[TTS] speak gen=$myGen: "${_trunc(text)}"');
 
     await _currentPlayer?.stop();
     _currentPlayer?.dispose();
@@ -129,39 +139,81 @@ class TtsService extends ChangeNotifier {
     notifyListeners();
 
     final engine = await _getTtsEngine();
+    if (myGen != _playGen) {
+      debugPrint('[TTS]  gen changed, abort speak');
+      return;
+    }
+
     if (engine == 'tencent') {
-      await _fetchAndPlayTencent(text);
+      await _fetchAndPlayTencent(myGen, text);
     } else {
-      await _speakWithNative(text, language: language);
+      await _speakWithNative(myGen, text, language: language);
     }
   }
 
   /// 缓存音频（不播放）
+  /// 缓存音频（不播放）— 自动清理文本格式以匹配按钮 key
   void cacheAudio(String text, Uint8List audio) {
-    _ttsCache[text] = audio;
+    _ttsCache[_cleanText(text)] = audio;
+  }
+
+  /// 播放 auto-play 音频（独立播放器，与按钮互不干扰）
+  void playAutoStream(Uint8List audio) {
+    _autoPlayer?.stop();
+    _autoPlayer?.dispose();
+    final player = AudioPlayer();
+    _autoPlayer = player;
+    player.setSource(BytesSource(audio));
+    player.resume();
+    player.onPlayerComplete.listen((_) {
+      if (_autoPlayer == player) _autoPlayer = null;
+    });
   }
 
   /// 缓存并播放（由 auto-play 调用）
   Future<void> cacheAndPlay(String text, Uint8List audio) async {
     _ttsCache[text] = audio;
+
+    _playGen++;
+    final myGen = _playGen;
+    debugPrint('[TTS] cacheAndPlay gen=$myGen');
+
     // 停止当前
     await _currentPlayer?.stop();
     _currentPlayer?.dispose();
     _currentPlayer = null;
     await _tts.stop();
-    // 播放
+
     _currentPlayingText = text;
+    _playCached(myGen, text, audio);
+  }
+
+  /// 播放已缓存的音频（带代检查）
+  void _playCached(int myGen, String text, Uint8List audio) {
+    if (myGen != _playGen) {
+      debugPrint('[TTS]  gen stale in _playCached, abort');
+      return;
+    }
     final player = AudioPlayer();
     _currentPlayer = player;
-    player.setSource(BytesSource(audio));
+    player.setSource(BytesSource(Uint8List.fromList(audio)));
     player.resume();
     state = TtsState.playing;
     notifyListeners();
+    _listenPlayerComplete(player, myGen);
+  }
+
+  /// 监听播放完成，携带代检查
+  void _listenPlayerComplete(AudioPlayer player, int myGen) {
     player.onPlayerComplete.listen((_) {
       if (_currentPlayer == player) {
-        state = TtsState.stopped;
+        debugPrint('[TTS]  player complete, gen=$myGen current=$_playGen');
         _currentPlayer = null;
-        notifyListeners();
+        if (myGen == _playGen) {
+          state = TtsState.stopped;
+          notifyListeners();
+        }
+        // if myGen != _playGen: 已有新的播放请求，不重置 state
       }
     });
   }
@@ -177,8 +229,8 @@ class TtsService extends ChangeNotifier {
     }
   }
 
-  /// 用腾讯云 TTS 合成并播放（带缓存）
-  Future<void> _fetchAndPlayTencent(String text) async {
+  /// 用腾讯云 TTS 合成并播放（带缓存 + 代检查）
+  Future<void> _fetchAndPlayTencent(int myGen, String text) async {
     try {
       final resp = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/tts/speak'),
@@ -188,39 +240,54 @@ class TtsService extends ChangeNotifier {
           'user_id': _client?.userId ?? '',
         }),
       );
+
+      if (myGen != _playGen) {
+        debugPrint('[TTS]  gen stale after tencent fetch, discard');
+        return;
+      }
+
       if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) {
-        // 缓存
         _ttsCache[text] = Uint8List.fromList(resp.bodyBytes);
-        // 播放
+        debugPrint('[TTS]  tencent got ${resp.bodyBytes.length} bytes, gen=$myGen');
+
+        if (myGen != _playGen) {
+          debugPrint('[TTS]  gen stale before create player, discard');
+          return;
+        }
+
         final player = AudioPlayer();
         _currentPlayer = player;
         player.setSource(BytesSource(Uint8List.fromList(resp.bodyBytes)));
         player.resume();
         state = TtsState.playing;
         notifyListeners();
-        player.onPlayerComplete.listen((_) {
-          if (_currentPlayer == player) {
-            state = TtsState.stopped;
-            _currentPlayer = null;
-            notifyListeners();
-          }
-        });
+        _listenPlayerComplete(player, myGen);
       } else {
+        debugPrint('[TTS]  tencent http ${resp.statusCode}, gen=$myGen');
+        if (myGen == _playGen) {
+          state = TtsState.stopped;
+          notifyListeners();
+        }
+      }
+    } catch (e) {
+      debugPrint('[TTS] tencent error: $e, gen=$myGen');
+      if (myGen == _playGen) {
         state = TtsState.stopped;
         notifyListeners();
       }
-    } catch (e) {
-      debugPrint('Tencent TTS error: $e');
-      state = TtsState.stopped;
-      notifyListeners();
     }
   }
 
-  /// 使用本地原生 TTS 朗读
-  Future<void> _speakWithNative(String text, {String? language}) async {
+  /// 使用本地原生 TTS 朗读（带代检查）
+  Future<void> _speakWithNative(int myGen, String text, {String? language}) async {
     try {
       await _tts.stop();
       await Future.delayed(const Duration(milliseconds: 100));
+
+      if (myGen != _playGen) {
+        debugPrint('[TTS]  gen stale before native speak, abort');
+        return;
+      }
 
       final lang = language ?? _detectLanguage(text);
 
@@ -243,28 +310,38 @@ class TtsService extends ChangeNotifier {
       notifyListeners();
       final result = await _tts.speak(text);
       if (result != 1) {
-        state = TtsState.stopped;
-        notifyListeners();
+        if (myGen == _playGen) {
+          state = TtsState.stopped;
+          notifyListeners();
+        }
       }
     } catch (e) {
       debugPrint('TTS speak error: $e');
-      state = TtsState.stopped;
-      notifyListeners();
+      if (myGen == _playGen) {
+        state = TtsState.stopped;
+        notifyListeners();
+      }
     }
   }
 
   /// Stop playback
   Future<void> stop() async {
+    debugPrint('[TTS] stop  gen=$_playGen');
+    _playGen++;  // 废弃当前代
     await _currentPlayer?.stop();
     _currentPlayer?.dispose();
     _currentPlayer = null;
+    await _autoPlayer?.stop();
+    _autoPlayer?.dispose();
+    _autoPlayer = null;
     await _tts.stop();
     state = TtsState.stopped;
+    _currentPlayingText = null;
     notifyListeners();
   }
 
   // ── Getters / Setters ──
-  bool get isPlaying => state == TtsState.playing && _currentPlayingText != null;
+  bool get isPlaying => (state == TtsState.playing && _currentPlayingText != null) || _autoPlayer != null;
   bool get enabled => _enabled;
   set enabled(bool v) {
     _enabled = v;
@@ -349,6 +426,10 @@ class TtsService extends ChangeNotifier {
         .replaceAll('\\]', '')
         .replaceAll(RegExp(r'<graph>.*?</graph>', dotAll: true), '');
   }
+
+  /// 日志截断辅助
+  String _trunc(String s, [int max = 30]) =>
+      s.length > max ? '${s.substring(0, max)}...' : s;
 }
 
 /// Riverpod provider for TTS service
