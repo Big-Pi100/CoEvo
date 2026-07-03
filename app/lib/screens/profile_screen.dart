@@ -56,8 +56,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   // TTS 引擎配置
   String _ttsEngine = 'tencent';   // 'tencent' | 'native'
-  int _ttsVoiceType = 101016;      // 默认智甜-女童声
-  double _ttsSpeed = 0.0;        // 腾讯云语速 [-2, 6]
+  int _ttsVoiceType = 101016;      // 智甜-女童声
+  double _ttsSpeed = 1.2;          // 腾讯云语速 [-2, 6]
 
   @override
   void initState() {
@@ -137,7 +137,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         setState(() {
           _ttsEngine = serverPrefs['tts_engine'] ?? 'tencent';
           _ttsVoiceType = int.tryParse(serverPrefs['tts_voice_type'] ?? '') ?? 101016;
-          _ttsSpeed = double.tryParse(serverPrefs['tts_speed'] ?? '') ?? 0.0;
+          _ttsSpeed = double.tryParse(serverPrefs['tts_speed'] ?? '') ?? 1.2;
           _isLoading = false;
         });
       }
@@ -767,14 +767,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         ],
                         onChanged: (v) {
                           if (v == null) return;
-                          setState(() {
-                            _ttsVoiceType = v;
-                            // 选中音色时自动切换到腾讯云引擎
-                            if (_ttsEngine != 'tencent') {
-                              _ttsEngine = 'tencent';
-                              _saveTtsEngine('tencent');
-                            }
-                          });
+                          setState(() => _ttsVoiceType = v);
                           _saveTtsPref('tts_voice_type', v.toString());
                         },
                       ),

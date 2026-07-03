@@ -1195,7 +1195,8 @@ pub async fn handle_ws(mut ws: WebSocket) {
 }
 
 /// 读取用户 TTS 偏好：引擎类型、音色、语速
-/// 如果用户选择"本地原生"或未设置，返回 `(None, None)` 表示跳过腾讯云 TTS
+/// 读取用户 TTS 偏好：引擎类型、音色、语速
+/// 仅当显式选了"本地原生"时跳过腾讯云 TTS
 fn get_user_tts_prefs(user_id: &str) -> (Option<i32>, Option<f32>) {
     let conn = crate::db_pool::get_conn();
 
@@ -1206,10 +1207,10 @@ fn get_user_tts_prefs(user_id: &str) -> (Option<i32>, Option<f32>) {
         |row| row.get(0),
     ).ok().flatten();
 
-    // 如果不是"tencent"，跳过
+    // 显式选了 native 才跳过，未设置或 tencent 都走腾讯云
     match engine.as_deref() {
-        Some("tencent") => {}
-        _ => return (None, None),
+        Some("native") => return (None, None),
+        _ => {}
     }
 
     // 读取音色 ID（默认 101016 = 智甜-女童声）
@@ -1218,7 +1219,7 @@ fn get_user_tts_prefs(user_id: &str) -> (Option<i32>, Option<f32>) {
         rusqlite::params![user_id],
         |row| row.get::<_, String>(0),
     ).ok().and_then(|v| v.parse::<i32>().ok())
-    .or(Some(101016)); // 未手动设置时使用默认音色
+    .or(Some(101016));
 
     // 读取语速
     let speed: Option<f32> = conn.query_row(

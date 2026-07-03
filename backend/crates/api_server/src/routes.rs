@@ -2059,7 +2059,8 @@ async fn tts_speak_handler(
         "SELECT value FROM user_preferences WHERE user_id = ?1 AND key = 'tts_voice_type'",
         rusqlite::params![user_id],
         |row| row.get::<_, String>(0),
-    ).ok().and_then(|v| v.parse::<i32>().ok());
+    ).ok().and_then(|v| v.parse::<i32>().ok())
+    .or(Some(101016)); // 默认智甜-女童声
 
     let speed: Option<f32> = conn.query_row(
         "SELECT value FROM user_preferences WHERE user_id = ?1 AND key = 'tts_speed'",

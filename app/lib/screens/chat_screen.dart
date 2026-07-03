@@ -4,8 +4,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:audioplayers/audioplayers.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/coevo_models.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
@@ -211,9 +209,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (text.isEmpty || _client == null || _isWaiting || _subscriptionBlocked) return;
 
     // 用户发新消息时停止正在播放的 TTS，避免与即将到来的新回复音频交叠
-    _ttsPlayer?.stop();
-    _ttsPlayer?.dispose();
-    _ttsPlayer = null;
     ref.read(ttsServiceProvider).stop();
 
     debugPrint('📤 _sendMessage: text="$text" convId=$_convId session=${_session != null ? "reuse" : "new"}');
@@ -399,11 +394,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           if (text != null) {
             try {
               final bytes = base64Decode(event.audio!);
-              ref.read(ttsServiceProvider).cacheAudio(text, Uint8List.fromList(bytes));
+              final tts = ref.read(ttsServiceProvider);
+              tts.cacheAudio(text, Uint8List.fromList(bytes));
+              if (ref.read(ttsAutoPlayProvider)) {
+                tts.cacheAndPlay(text, Uint8List.fromList(bytes));
+              }
             } catch (_) {}
-          }
-          if (ref.read(ttsAutoPlayProvider)) {
-            _playTtsAudio(event.audio);
           }
         }
         break;
@@ -435,15 +431,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _streamingBuffer = '';
     });
     _scrollToBottom();
-    // 本地 TTS 自动朗读（云端 TTS 走 tts_audio WS 消息触发）
-    if (ref.read(ttsAutoPlayProvider)) {
-      SharedPreferences.getInstance().then((prefs) {
-        final engine = prefs.getString('tts_engine') ?? 'native';
-        if (engine != 'tencent') {
-          ref.read(ttsServiceProvider).speak(reply);
-        }
-      });
-    }
+    // 自动朗读：WS tts_audio 消息由 case 'tts_audio' 统一处理
+    // （腾讯云引擎走 WS 推送，本地引擎走用户点击按钮）
   }
 
   /// 带重试按钮的错误提示
@@ -947,29 +936,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (_messages[i].role == 'assistant') return _messages[i].content;
     }
     return null;
-  }
-
-  AudioPlayer? _ttsPlayer;
-
-  /// 播放 TTS 音频（base64 编码的 MP3 数据）
-  void _playTtsAudio(String? audioBase64) {
-    if (audioBase64 == null || audioBase64.isEmpty) return;
-    // 停止当前播放
-    _ttsPlayer?.stop();
-    _ttsPlayer?.dispose();
-    _ttsPlayer = null;
-    try {
-      final bytes = base64Decode(audioBase64);
-      final player = AudioPlayer();
-      _ttsPlayer = player;
-      player.setSource(BytesSource(Uint8List.fromList(bytes)));
-      player.resume();
-      player.onPlayerComplete.listen((_) {
-        if (_ttsPlayer == player) _ttsPlayer = null;
-      });
-    } catch (e) {
-      debugPrint('TTS audio playback error: $e');
-    }
   }
 
 }

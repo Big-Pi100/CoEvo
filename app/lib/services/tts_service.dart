@@ -171,9 +171,9 @@ class TtsService extends ChangeNotifier {
     if (_client == null) return 'native';
     try {
       final prefs = await _client!.getPreferences();
-      return prefs['tts_engine'] ?? 'native';
+      return prefs['tts_engine'] ?? 'tencent';
     } catch (_) {
-      return 'native';
+      return 'tencent';
     }
   }
 

@@ -24,6 +24,9 @@
 | **环境变量** | |
 | `COEVO_PII_KEY` | **2026-05-20 新增**：64 位十六进制字符串，用于 AES-256-GCM 加密 PII 字段（见 5.7 节） |
 | `COEVO_K12_DATA_DIR` | **2026-06-08 修正**：指向 `/opt/coevo/data/curriculum/v3`（注意不是 `prebuilt`，`v3` 目录才包含 `plans/` 和 `cards/` 子目录） |
+| `TENCENT_SECRET_ID` | **2026-07-02 新增**：腾讯云 API 密钥 ID，用于 TTS 语音合成 |
+| `TENCENT_SECRET_KEY` | **2026-07-02 新增**：腾讯云 API 密钥 Key |
+| `TENCENT_APP_ID` | **2026-07-02 新增**：腾讯云应用 ID |
 
 ---
 
@@ -363,6 +366,9 @@ DEEPSEEK_API_KEY=sk-xxx
 COEVO_ADMIN_KEY=xxx
 COEVO_PII_KEY=xxx
 COEVO_K12_DATA_DIR=/opt/coevo/data/curriculum/v4
+TENCENT_SECRET_ID=xxx
+TENCENT_SECRET_KEY=xxx
+TENCENT_APP_ID=xxx
 ENVEOF
   sudo chmod 600 /opt/coevo/.env
 
@@ -504,6 +510,9 @@ Restart=always
 RestartSec=5
 Environment=RUST_LOG=info
 Environment=COEVO_K12_DATA_DIR=/opt/coevo/data/curriculum/v4
+Environment=TENCENT_SECRET_ID=xxx
+Environment=TENCENT_SECRET_KEY=xxx
+Environment=TENCENT_APP_ID=xxx
 
 [Install]
 WantedBy=multi-user.target
