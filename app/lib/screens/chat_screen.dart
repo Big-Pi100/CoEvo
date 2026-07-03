@@ -20,6 +20,7 @@ import 'chat/chat_reading_passage.dart';
 import 'chat/chat_message_bubble.dart';
 import '../theme/app_theme.dart';
 import '../providers/plan_provider.dart' hide cardRefreshProvider;
+import '../widgets/twemoji.dart';
 
 /// 持久化 conversation_id 的 provider (跨页面保持)
 final currentConversationIdProvider = StateProvider<String?>((ref) => null);
@@ -503,7 +504,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('我知道了'),
+              child: Tw('我知道了'),
             ),
           ],
         ),
@@ -550,7 +551,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             Expanded(
               child: GestureDetector(
                 onTap: () => _showTrialClaimDialog(),
-                child: Text(
+                child: Tw(
                   '试用已到期，立即注册即可获得3天免费试用',
                   style: TextStyle(
                     fontSize: 13,
@@ -585,7 +586,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           Expanded(
             child: GestureDetector(
               onTap: () => _showSubscriptionDialog(isExpired ? '订阅已到期' : '需要订阅'),
-              child: Text(
+              child: Tw(
                 isExpired ? '订阅已到期，点击续费' : '需要激活订阅，点击开通',
                 style: TextStyle(
                   fontSize: 13,
@@ -615,7 +616,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           Icon(Icons.info_outline, size: 18, color: _cs.onSurfaceVariant),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
+            child: Tw(
               '此对话已被删除。你可以在对话列表的回收站中恢复。',
               style: TextStyle(fontSize: 13, color: _cs.onSurfaceVariant),
             ),
@@ -875,7 +876,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 }
                               },
                               icon: const Icon(Icons.refresh, size: 16),
-                              label: const Text('重试', style: TextStyle(fontSize: 13)),
+                              label: Tw('重试', style: TextStyle(fontSize: 13)),
                             ),
                           ),
                       ],

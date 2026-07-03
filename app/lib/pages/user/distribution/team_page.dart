@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../../../api/api_config.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/twemoji.dart';
 
 /// 团队页面 — 树形展示下线成员（最多 2 级）
 class TeamPage extends ConsumerWidget {
@@ -69,7 +70,7 @@ class _TeamPageBodyState extends State<_TeamPageBody> {
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('我的团队')),
+      appBar: AppBar(title: Tw('我的团队')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -189,7 +190,7 @@ class _TeamPageBodyState extends State<_TeamPageBody> {
           leading: CircleAvatar(
             radius: 16,
             backgroundColor: cs.primary.withValues(alpha: 0.15),
-            child: Text(
+            child: Tw(
               name.isNotEmpty ? name.substring(0, 1).toUpperCase() : '?',
               style:
                   TextStyle(fontSize: 14, color: cs.primary, fontWeight: FontWeight.bold),

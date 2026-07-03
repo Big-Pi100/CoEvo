@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import '../../../api/api_config.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/twemoji.dart';
 
 /// 通知中心页面
 class NotificationPanel extends ConsumerWidget {
@@ -161,12 +162,12 @@ class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('通知中心'),
+        title: Tw('通知中心'),
         actions: [
           if (unreadCount > 0)
             TextButton(
               onPressed: _markAllRead,
-              child: Text('全部已读 ($unreadCount)',
+              child: Tw('全部已读 ($unreadCount)',
                   style: const TextStyle(fontSize: 12)),
             ),
         ],
@@ -299,11 +300,24 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
   String? _error;
   bool _loading = true;
   bool _campaignEnded = false;
+  String? _viewId;
 
   @override
   void initState() {
     super.initState();
     _loadH5();
+  }
+
+  void _initView(String h5Content) {
+    final id = 'h5-${widget.campaignId ?? 'default'}-${DateTime.now().millisecondsSinceEpoch}';
+    final frame = html.IFrameElement()
+      ..srcdoc = h5Content
+      ..style.width = '100%'
+      ..style.height = '100%'
+      ..style.border = 'none';
+    // ignore: undefined_prefixed_name
+    ui.platformViewRegistry.registerViewFactory(id, (int _) => frame);
+    _viewId = id;
   }
 
   Future<void> _loadH5() async {
@@ -331,6 +345,7 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
         } else {
           _h5Html = data['html'] as String?;
           _shareUrl = data['url'] as String?;
+          if (_h5Html != null) _initView(_h5Html!);
         }
       } else {
         if (mounted) setState(() => _error = '加载失败 (${resp.statusCode})');
@@ -345,19 +360,6 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
     if (_shareUrl == null) return;
     Clipboard.setData(ClipboardData(text: _shareUrl!));
     _showToast('链接已复制');
-  }
-
-  String _h5ViewId() {
-    final id = 'h5-${widget.campaignId ?? 'default'}-${DateTime.now().millisecondsSinceEpoch}';
-    if (_h5Html == null) return id;
-    final frame = html.IFrameElement()
-      ..srcdoc = _h5Html!
-      ..style.width = '100%'
-      ..style.height = '100%'
-      ..style.border = 'none';
-    // ignore: undefined_prefixed_name
-    ui.platformViewRegistry.registerViewFactory(id, (int _) => frame);
-    return id;
   }
 
   void _showToast(String message) {
@@ -377,7 +379,7 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
                 color: Colors.black87,
                 borderRadius: BorderRadius.circular(24),
               ),
-              child: Text(message, style: const TextStyle(color: Colors.white, fontSize: 14)),
+              child: Tw(message, style: const TextStyle(color: Colors.white, fontSize: 14)),
             ),
           ),
         ),
@@ -389,6 +391,7 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final viewId = _viewId;
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Padding(
@@ -417,7 +420,7 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
                         height: MediaQuery.of(context).size.height * 0.55,
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(12),
-                          child: HtmlElementView(viewType: _h5ViewId()),
+                          child: HtmlElementView(viewType: viewId!),
                         ),
                       ),
                       const SizedBox(height: AppTheme.spacingMd),
@@ -426,13 +429,13 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
                         child: FilledButton.icon(
                           icon: const Icon(Icons.share, size: 18),
                           onPressed: _copyShareLink,
-                          label: const Text('复制分享链接'),
+                          label: Tw('复制分享链接'),
                         ),
                       ),
                       const SizedBox(height: AppTheme.spacingMd),
                       TextButton(
                         onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('关闭'),
+                        child: Tw('关闭'),
                       ),
                     ],
                   ),
@@ -445,7 +448,7 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
                       const SizedBox(height: AppTheme.spacingMd),
                       TextButton(
                         onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('关闭'),
+                        child: Tw('关闭'),
                       ),
                     ],
                   )
@@ -456,7 +459,7 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
                       SizedBox(height: 16),
                       TextButton(
                         onPressed: () => Navigator.of(context).pop(),
-                        child: Text('关闭'),
+                        child: Tw('关闭'),
                       ),
                     ]),
                   ),

@@ -17,6 +17,7 @@ import '../widgets/markdown_span_nodes.dart';
 import '../widgets/subscribe_panel.dart';
 import 'card_list_screen.dart';
 import '../theme/app_theme.dart';
+import '../widgets/twemoji.dart';
 
 /// 复习: 内联复习队列
 class ReviewScreen extends ConsumerStatefulWidget {
@@ -343,7 +344,7 @@ void _showCompletionStats() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('今日复习完成'),
+        title: Tw('今日复习完成'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -365,7 +366,7 @@ Row(
         actions: [
           FilledButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('继续'),
+            child: Tw('继续'),
           ),
         ],
       ),
@@ -413,7 +414,7 @@ Row(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('今日学习报告', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Tw('今日学习报告', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 12),
                   if (posterPng != null) ...[
                     ClipRRect(
@@ -422,7 +423,7 @@ Row(
                         base64Decode(posterPng.split(',').last),
                         fit: BoxFit.contain,
                         height: 400,
-                        errorBuilder: (_, __, ___) => const Text('海报加载失败'),
+                        errorBuilder: (_, __, ___) => Tw('海报加载失败'),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -440,13 +441,13 @@ Row(
                             ..click();
                           html.Url.revokeObjectUrl(objUrl);
                         },
-                        label: const Text('保存海报'),
+                        label: Tw('保存海报'),
                       ),
                     ),
                   ] else ...[
                     const Icon(Icons.photo_library, size: 64, color: Colors.grey),
                     const SizedBox(height: 8),
-                    const Text('正在生成专属海报...'),
+                    Tw('正在生成专属海报...'),
                     const SizedBox(height: 8),
                     const SizedBox(
                       width: 24, height: 24,
@@ -456,7 +457,7 @@ Row(
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed: () => Navigator.pop(ctx),
-                    child: const Text('关闭'),
+                    child: Tw('关闭'),
                   ),
                 ],
               ),
@@ -771,7 +772,7 @@ Row(
     if (!hasActivePlans && plans.isEmpty) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text('复习'),
+          title: Tw('复习'),
           actions: [
             IconButton(
               icon: const Icon(Icons.notifications_outlined),
@@ -799,7 +800,7 @@ Row(
                 const SizedBox(height: 24),
                 FilledButton(
                   onPressed: () => context.go('/chat'),
-                  child: const Text('去学习'),
+                  child: Tw('去学习'),
                 ),
               ],
             ),
@@ -810,7 +811,7 @@ Row(
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('复习'),
+        title: Tw('复习'),
         actions: [
           IconButton(
             icon: const Icon(Icons.notifications_outlined),
@@ -829,8 +830,8 @@ Row(
           labelColor: Theme.of(context).colorScheme.onSurface,
           tabs: [
             // 常驻语言 tab（前置于所有 plan tab）
-            const Tab(child: SizedBox(width: 90, child: Text('英语', overflow: TextOverflow.ellipsis, maxLines: 1))),
-            const Tab(child: SizedBox(width: 90, child: Text('汉语', overflow: TextOverflow.ellipsis, maxLines: 1))),
+            const Tab(child: SizedBox(width: 90, child: Tw('英语', overflow: TextOverflow.ellipsis, maxLines: 1))),
+            const Tab(child: SizedBox(width: 90, child: Tw('汉语', overflow: TextOverflow.ellipsis, maxLines: 1))),
             ...plans.map((p) {
               final count = _planDueCount(p);
               final label = _planLabel(p);
@@ -839,12 +840,12 @@ Row(
               return Tab(
                 child: SizedBox(
                   width: 120,
-                  child: Text('$shortLabel（$count）',
+                  child: Tw('$shortLabel（$count）',
                       overflow: TextOverflow.ellipsis, maxLines: 1),
                 ),
               );
             }),
-            const Tab(child: SizedBox(width: 90, child: Text('全部卡片', overflow: TextOverflow.ellipsis, maxLines: 1))),
+            const Tab(child: SizedBox(width: 90, child: Tw('全部卡片', overflow: TextOverflow.ellipsis, maxLines: 1))),
           ],
         ),
       ),
@@ -891,7 +892,7 @@ Row(
                   _loadCards();
                 },
                 icon: const Icon(Icons.refresh),
-                label: const Text('重新加载'),
+                label: Tw('重新加载'),
               ),
             ],
           ),
@@ -930,7 +931,7 @@ Row(
               FilledButton.icon(
                 onPressed: () => _showSubscribePanel(context, isExpired),
                 icon: const Icon(Icons.payment, size: 18),
-                label: const Text('立即订阅'),
+                label: Tw('立即订阅'),
               ),
             ],
           ),
@@ -959,7 +960,7 @@ Row(
                     const SizedBox(height: AppTheme.spacingXxl),
                     FilledButton(
                       onPressed: () => context.go('/chat'),
-                      child: const Text('返回'),
+                      child: Tw('返回'),
                     ),
                   ],
                 ),
@@ -1068,11 +1069,11 @@ Row(
             final confirmed = await showDialog<bool>(
               context: context,
               builder: (ctx) => AlertDialog(
-                title: const Text('跳过这张卡片？'),
+                title: Tw('跳过这张卡片？'),
                 content: Text('跳过「${card.front}」后将不再作为候选概念推荐。'),
                 actions: [
-                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-                  TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('跳过', style: TextStyle(color: _cs.error))),
+                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: Tw('取消')),
+                  TextButton(onPressed: () => Navigator.pop(ctx, true), child: Tw('跳过', style: TextStyle(color: _cs.error))),
                 ],
               ),
             );
@@ -1116,7 +1117,7 @@ Row(
                   ListTile(
                     leading: CircleAvatar(
                       backgroundColor: stateColors[state].withAlpha(50),
-                      child: Text('${i + 1}', style: TextStyle(fontWeight: FontWeight.bold, color: _cs.onPrimary)),
+                      child: Tw('${i + 1}', style: TextStyle(fontWeight: FontWeight.bold, color: _cs.onPrimary)),
                     ),
                     title: Text(card.front, style: TextStyle(fontWeight: FontWeight.w600, color: _cs.onPrimary)),
                     subtitle: isActive ? null : Text('${_cardBackPreview(card.back)}\n复习 ${card.reps} 次', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: _cs.onPrimary.withAlpha(200))),
@@ -1275,7 +1276,7 @@ Row(
                   const SizedBox(height: AppTheme.spacingSm),
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 200),
-                    child: Text('来源: ${card.sourceSentence}',
+                    child: Tw('来源: ${card.sourceSentence}',
                         key: ValueKey(card.sourceSentence),
                         style: _tt.bodySmall?.copyWith(color: _cs.onSurfaceVariant, fontStyle: FontStyle.italic)),
                   ),
@@ -1501,7 +1502,7 @@ Center(
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('取消'),
+            child: Tw('取消'),
           ),
         ],
       ),

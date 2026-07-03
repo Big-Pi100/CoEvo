@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../../../api/api_config.dart';
 import '../../../theme/app_theme.dart';
 import 'admin_campaign_form.dart';
+import '../../../widgets/twemoji.dart';
 
 /// 活动详情页 — 展示完整信息 + 操作按钮 + 统计
 class AdminCampaignDetailPage extends StatefulWidget {
@@ -141,16 +142,16 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('确认删除'),
+        title: Tw('确认删除'),
         content: Text('确定要删除活动「${_campaign!['name']}」吗？此操作不可恢复。'),
         actions: [
           TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('取消')),
+              child: Tw('取消')),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('删除'),
+            child: Tw('删除'),
           ),
         ],
       ),
@@ -246,7 +247,7 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
                 color: _statusColor(_campaign!['status'] as String?),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: Text(
+              child: Tw(
                 _statusLabel(_campaign!['status'] as String?),
                 style: const TextStyle(
                     color: Colors.white,
@@ -287,7 +288,7 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
                             icon: const Icon(Icons.edit, size: 16),
                             onPressed: _edit,
                             label:
-                                const Text('编辑', style: TextStyle(fontSize: 12)),
+                                Tw('编辑', style: TextStyle(fontSize: 12)),
                           ),
                           if (_campaign!['status'] != 'active')
                             OutlinedButton.icon(
@@ -295,7 +296,7 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
                               onPressed: _delete,
                               style: OutlinedButton.styleFrom(
                                   foregroundColor: Colors.red),
-                              label: const Text('删除',
+                              label: Tw('删除',
                                   style: TextStyle(fontSize: 12)),
                             ),
                           FilledButton.tonalIcon(
@@ -307,7 +308,7 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
                                         strokeWidth: 2))
                                 : const Icon(Icons.notifications, size: 16),
                             onPressed: _pushLoading ? null : _push,
-                            label: const Text('手动推送',
+                            label: Tw('手动推送',
                                 style: TextStyle(fontSize: 12)),
                           ),
                         ],
@@ -380,12 +381,9 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
                         ),
                       ]),
                       const SizedBox(height: AppTheme.spacingMd),
-                      // ── 海报/H5 Prompt 卡片 ──
-                      if ((_campaign!['poster_prompt'] as String? ?? '').isNotEmpty ||
-                          (_campaign!['h5_prompt'] as String? ?? '').isNotEmpty)
+                      // ── H5 Prompt ──
+                      if ((_campaign!['h5_prompt'] as String? ?? '').isNotEmpty)
                         _infoSection(cs, tt, '自定义 Prompt', [
-                          if ((_campaign!['poster_prompt'] as String? ?? '').isNotEmpty)
-                            _infoRow('海报 Prompt', _campaign!['poster_prompt'] as String),
                           if ((_campaign!['h5_prompt'] as String? ?? '').isNotEmpty)
                             _infoRow('H5 Prompt', _campaign!['h5_prompt'] as String),
                         ]),
@@ -456,13 +454,13 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
         children: [
           SizedBox(
             width: 100,
-            child: Text(label,
+            child: Tw(label,
                 style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 13)),
           ),
           Expanded(
-            child: Text(value, style: const TextStyle(fontSize: 13)),
+            child: Tw(value, style: const TextStyle(fontSize: 13)),
           ),
         ],
       ),
@@ -503,7 +501,7 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
         children: [
           SizedBox(
             width: 80,
-            child: Text(label,
+            child: Tw(label,
                 style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 13)),
@@ -525,7 +523,7 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
                       height: 28,
                       child: OutlinedButton.icon(
                         icon: const Icon(Icons.visibility, size: 14),
-                        label: const Text('预览', style: TextStyle(fontSize: 11)),
+                        label: Tw('预览', style: TextStyle(fontSize: 11)),
                         onPressed: () => _showTemplatePreview(template),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -682,7 +680,7 @@ class _H5PreviewDialogState extends State<_H5PreviewDialog> {
           children: [
             Row(
               children: [
-                const Text('H5 预览',
+                Tw('H5 预览',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 const Spacer(),
                 IconButton(
@@ -700,7 +698,7 @@ class _H5PreviewDialogState extends State<_H5PreviewDialog> {
             else if (_error != null)
               Text('加载失败: $_error', style: const TextStyle(color: Colors.red))
             else if (_html == null)
-              const Text('无内容')
+              Tw('无内容')
             else
               _buildPreview(),
           ],

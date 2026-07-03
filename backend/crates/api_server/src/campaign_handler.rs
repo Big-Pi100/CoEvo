@@ -614,9 +614,10 @@ pub async fn check_push_trigger(
 
 /// GET /api/admin/campaigns/default-poster-prompt — 获取默认海报系统提示模板
 pub async fn default_poster_prompt() -> impl IntoResponse {
+    // 海报已废弃，返回 H5 prompt 内容供参考
     let base_dir = std::env::var("COEVO_PROMPTS_DIR").unwrap_or_else(|_| "prompts".to_string());
-    match crate::referral_handler::load_combined_prompt(&base_dir, "poster") {
-        Ok(prompt) => ok(json!({"prompt": prompt})),
+    match crate::referral_handler::load_combined_prompt(&base_dir, "h5") {
+        Ok(prompt) => ok(json!({"prompt": prompt, "note": "海报已废弃，当前为 H5 prompt"})),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response(),
     }
 }

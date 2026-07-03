@@ -24,6 +24,7 @@ import '../widgets/claim_dialog.dart';
 import '../theme/app_theme.dart';
 import '../pages/user/distribution/notification_panel.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import '../widgets/twemoji.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -210,7 +211,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('修改昵称'),
+        title: Tw('修改昵称'),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -221,11 +222,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
+            child: Tw('取消'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('保存'),
+            child: Tw('保存'),
           ),
         ],
       ),
@@ -268,12 +269,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           },
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Tw('取消')),
           FilledButton(onPressed: () {
             final v = controller.text.trim();
             if (validator(v) == null) { Navigator.pop(ctx, v); }
             else { ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(validator(v)!))); }
-          }, child: const Text('保存')),
+          }, child: Tw('保存')),
         ],
       ),
     );
@@ -372,7 +373,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 _load();
               },
               icon: const Icon(Icons.refresh),
-              label: const Text('重新加载'),
+              label: Tw('重新加载'),
             ),
           ],
         ),
@@ -418,7 +419,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('个人'),
+        title: Tw('个人'),
         actions: [
           Badge(
             isLabelVisible: _unreadCount > 0,
@@ -490,40 +491,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                 ),
                 const SizedBox(height: AppTheme.spacingMd),
-                // 推广码
-                InkWell(
-                  onTap: () async {
-                    await Clipboard.setData(ClipboardData(text: _referralCode!));
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('推广码已复制')),
-                      );
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: _cs.primary.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _referralCode!,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: _cs.primary,
-                            letterSpacing: 2,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Icon(Icons.copy, size: 16, color: _cs.primary),
-                      ],
-                    ),
-                  ),
-                ),
               ],
             ),
           )
@@ -640,19 +607,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               Expanded(child: OutlinedButton.icon(
                 icon: const Icon(Icons.account_tree, size: 16),
                 onPressed: () => context.push('/earnings'),
-                label: const Text('收益明细', style: TextStyle(fontSize: 12)),
+                label: Tw('收益明细', style: TextStyle(fontSize: 12)),
               )),
               const SizedBox(width: AppTheme.spacingSm),
               Expanded(child: OutlinedButton.icon(
                 icon: const Icon(Icons.group, size: 16),
                 onPressed: () => context.push('/team'),
-                label: const Text('我的团队', style: TextStyle(fontSize: 12)),
+                label: Tw('我的团队', style: TextStyle(fontSize: 12)),
               )),
               const SizedBox(width: AppTheme.spacingSm),
               Expanded(child: OutlinedButton.icon(
                 icon: const Icon(Icons.payments, size: 16),
                 onPressed: () => context.push('/withdraw'),
-                label: const Text('提现', style: TextStyle(fontSize: 12)),
+                label: Tw('提现', style: TextStyle(fontSize: 12)),
               )),
             ],
           ),
@@ -675,7 +642,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         Card(
           child: ListTile(
             leading: Icon(Icons.skip_next, color: _cs.tertiary),
-            title: const Text('跳过的概念'),
+            title: Tw('跳过的概念'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/skipped'),
           ),
@@ -735,7 +702,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             height: 32,
                             child: TextButton.icon(
                               icon: const Icon(Icons.play_arrow, size: 16),
-                              label: const Text('试听', style: TextStyle(fontSize: 12)),
+                              label: Tw('试听', style: TextStyle(fontSize: 12)),
                               onPressed: () => _previewTencentTts(),
                             ),
                           ),
@@ -751,19 +718,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           border: OutlineInputBorder(),
                         ),
                         items: const [
-                          DropdownMenuItem(value: 0, child: Text('默认音色')),
-                          DropdownMenuItem(value: 101001, child: Text('智瑜 — 情感女声')),
-                          DropdownMenuItem(value: 101004, child: Text('智云 — 通用男声')),
-                          DropdownMenuItem(value: 101011, child: Text('智燕 — 新闻女声')),
-                          DropdownMenuItem(value: 101013, child: Text('智辉 — 新闻男声')),
-                          DropdownMenuItem(value: 101015, child: Text('智萌 — 男童声')),
-                          DropdownMenuItem(value: 101016, child: Text('智甜 — 女童声')),
-                          DropdownMenuItem(value: 101019, child: Text('智彤 — 粤语女声')),
-                          DropdownMenuItem(value: 101026, child: Text('智希 — 通用女声')),
-                          DropdownMenuItem(value: 101030, child: Text('智柯 — 通用男声')),
-                          DropdownMenuItem(value: 101050, child: Text('WeJack — 英文男声')),
-                          DropdownMenuItem(value: 101054, child: Text('智友 — 通用男声')),
-                          DropdownMenuItem(value: 101055, child: Text('智付 — 通用女声')),
+                          DropdownMenuItem(value: 0, child: Tw('默认音色')),
+                          DropdownMenuItem(value: 101001, child: Tw('智瑜 — 情感女声')),
+                          DropdownMenuItem(value: 101004, child: Tw('智云 — 通用男声')),
+                          DropdownMenuItem(value: 101011, child: Tw('智燕 — 新闻女声')),
+                          DropdownMenuItem(value: 101013, child: Tw('智辉 — 新闻男声')),
+                          DropdownMenuItem(value: 101015, child: Tw('智萌 — 男童声')),
+                          DropdownMenuItem(value: 101016, child: Tw('智甜 — 女童声')),
+                          DropdownMenuItem(value: 101019, child: Tw('智彤 — 粤语女声')),
+                          DropdownMenuItem(value: 101026, child: Tw('智希 — 通用女声')),
+                          DropdownMenuItem(value: 101030, child: Tw('智柯 — 通用男声')),
+                          DropdownMenuItem(value: 101050, child: Tw('WeJack — 英文男声')),
+                          DropdownMenuItem(value: 101054, child: Tw('智友 — 通用男声')),
+                          DropdownMenuItem(value: 101055, child: Tw('智付 — 通用女声')),
                         ],
                         onChanged: (v) {
                           if (v == null) return;
@@ -833,16 +800,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           contentPadding: EdgeInsets.symmetric(horizontal: AppTheme.spacingMd, vertical: 10),
                           border: OutlineInputBorder(),
                         ),
-                        hint: const Text('系统默认 (zh-CN)'),
+                        hint: Tw('系统默认 (zh-CN)'),
                         items: [
-                          const DropdownMenuItem(value: '', child: Text('系统默认 (zh-CN)')),
+                          const DropdownMenuItem(value: '', child: Tw('系统默认 (zh-CN)')),
                           if (voices.isNotEmpty)
                             ...voices.map<DropdownMenuItem<String>>((v) {
                               final name = v['name'] ?? '';
                               final locale = v['locale'] ?? '';
                               return DropdownMenuItem(
                                 value: name as String,
-                                child: Text('$name ($locale)',
+                                child: Tw('$name ($locale)',
                                     overflow: TextOverflow.ellipsis),
                               );
                             }),
@@ -898,7 +865,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return Card(
       child: ListTile(
         leading: Icon(modeIcon, color: Theme.of(context).colorScheme.primary),
-        title: const Text('主题风格'),
+        title: Tw('主题风格'),
         subtitle: Text(modeLabel, style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => _showThemeDialog(),
@@ -913,7 +880,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final result = await showDialog<AppThemeMode>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: const Text('选择主题风格'),
+        title: Tw('选择主题风格'),
         children: [
           _themeOption(
             ctx, result: AppThemeMode.duolingo,
@@ -1012,19 +979,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('保存推广二维码'),
-        content: const Text('将二维码保存到本地，可分享给好友扫码注册。'),
+        title: Tw('保存推广二维码'),
+        content: Tw('将二维码保存到本地，可分享给好友扫码注册。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('取消'),
+            child: Tw('取消'),
           ),
           TextButton(
             onPressed: () {
               Navigator.of(ctx).pop();
               _doSaveQrCode();
             },
-            child: const Text('保存'),
+            child: Tw('保存'),
           ),
         ],
       ),
@@ -1127,7 +1094,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         subtitle: Text(statusText, style: TextStyle(color: statusColor, fontSize: 13)),
         trailing: FilledButton.tonal(
           onPressed: () => _showSubscribeDialog(),
-          child: const Text('续费'),
+          child: Tw('续费'),
         ),
       ),
     );
@@ -1137,12 +1104,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('订阅套餐'),
+        title: Tw('订阅套餐'),
         content: const SubscribePanel(),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('关闭'),
+            child: Tw('关闭'),
           ),
         ],
       ),
@@ -1154,7 +1121,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return Card(
       child: ListTile(
         leading: Icon(Icons.headset_mic, color: _cs.primary, size: 22),
-        title: const Text('联系工作人员', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+        title: Tw('联系工作人员', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
         trailing: Icon(Icons.chevron_right, color: _cs.onSurfaceVariant, size: 20),
         onTap: _showContactDialog,
       ),
@@ -1165,11 +1132,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('联系工作人员'),
+        title: Tw('联系工作人员'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('扫码添加工作人员微信', style: TextStyle(fontSize: 13)),
+            Tw('扫码添加工作人员微信', style: TextStyle(fontSize: 13)),
             const SizedBox(height: AppTheme.spacingLg),
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
@@ -1185,7 +1152,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Tw('关闭')),
         ],
       ),
     );

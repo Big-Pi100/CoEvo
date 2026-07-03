@@ -32,6 +32,7 @@ dependencies:
   web: ^1.1.1
   qr_flutter: ^4.1.0
   graphic: ^2.7.0
+  flutter_twemoji: ^1.1.0
 
 dev_dependencies:
   flutter_test:

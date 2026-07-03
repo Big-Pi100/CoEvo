@@ -331,7 +331,7 @@ pub fn fallback_poster_svg(data: &UserPosterData) -> String {
   </g>
   <g data-zone="code" transform="translate(40, 400)">
     <rect x="160" y="0" width="200" height="40" rx="12" fill="rgba(255,255,255,0.08)"/>
-    <text x="260" y="26" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="bold">推广码: {}</text>
+    <text x="260" y="26" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="bold">扫码即可注册</text>
   </g>
   <g data-zone="qr" transform="translate(300, 670)">
     <rect x="-90" y="-90" width="180" height="180" rx="12" fill="#ffffff"/>
@@ -348,7 +348,6 @@ pub fn fallback_poster_svg(data: &UserPosterData) -> String {
         data.today_reviews,
         data.total_cards,
         85,
-        data.referral_code,
     )
 }
 

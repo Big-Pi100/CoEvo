@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../../../api/api_config.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/twemoji.dart';
 
 /// 收益面板页
 class EarningsPage extends ConsumerWidget {
@@ -186,7 +187,7 @@ class _EarningsPageBodyState extends State<_EarningsPageBody> {
                         color: _statusColor(c['status'] as String?).withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Text(
+                      child: Tw(
                         _statusLabel(c['status'] as String?),
                         style: TextStyle(fontSize: 10, color: _statusColor(c['status'] as String?), fontWeight: FontWeight.w500),
                       ),
@@ -242,7 +243,7 @@ class _EarningsPageBodyState extends State<_EarningsPageBody> {
                         color: Colors.orange.withAlpha(25),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Text(statusLabel,
+                      child: Tw(statusLabel,
                           style: const TextStyle(fontSize: 10, color: Colors.orange, fontWeight: FontWeight.w500)),
                     ),
                   ]),
@@ -265,7 +266,7 @@ class _EarningsPageBodyState extends State<_EarningsPageBody> {
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('收益面板')),
+      appBar: AppBar(title: Tw('收益面板')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -316,7 +317,7 @@ class _EarningsPageBodyState extends State<_EarningsPageBody> {
                     Center(
                       child: Padding(
                         padding: const EdgeInsets.all(AppTheme.spacingXxl),
-                        child: Text('暂无记录',
+                        child: Tw('暂无记录',
                             style: TextStyle(
                                 fontSize: 13,
                                 color: cs.onSurfaceVariant)),

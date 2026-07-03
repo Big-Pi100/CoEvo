@@ -5,6 +5,7 @@ import '../../../api/api_config.dart';
 import '../../../theme/app_theme.dart';
 import 'admin_campaign_form.dart';
 import 'admin_campaign_detail.dart';
+import '../../../widgets/twemoji.dart';
 
 /// 活动列表页 — 卡片式展示全部活动
 class AdminCampaignListPage extends StatefulWidget {
@@ -129,13 +130,13 @@ class _AdminCampaignListPageState extends State<AdminCampaignListPage> {
                 FilledButton.icon(
                   icon: const Icon(Icons.add, size: 16),
                   onPressed: _showCreateDialog,
-                  label: const Text('新建活动', style: TextStyle(fontSize: 12)),
+                  label: Tw('新建活动', style: TextStyle(fontSize: 12)),
                 ),
                 const SizedBox(width: AppTheme.spacingSm),
                 TextButton.icon(
                   icon: const Icon(Icons.refresh, size: 16),
                   onPressed: _load,
-                  label: const Text('刷新', style: TextStyle(fontSize: 12)),
+                  label: Tw('刷新', style: TextStyle(fontSize: 12)),
                 ),
               ]),
             ],
@@ -168,7 +169,7 @@ class _AdminCampaignListPageState extends State<AdminCampaignListPage> {
                   ? Center(
                       child: TextButton(
                           onPressed: _load,
-                          child: const Text('暂无活动，点击刷新')))
+                          child: Tw('暂无活动，点击刷新')))
                   : ListView.builder(
                       itemCount: filtered.length,
                       padding: const EdgeInsets.symmetric(
@@ -218,7 +219,7 @@ class _AdminCampaignListPageState extends State<AdminCampaignListPage> {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
+                    child: Tw(
                       c['name'] as String? ?? '',
                       style: const TextStyle(
                           fontSize: 14, fontWeight: FontWeight.w600),
@@ -231,7 +232,7 @@ class _AdminCampaignListPageState extends State<AdminCampaignListPage> {
                       color: _statusColor(status).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Text(
+                    child: Tw(
                       _statusLabel(status),
                       style: TextStyle(
                           fontSize: 11,

@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../../../api/api_config.dart';
 import '../../../theme/app_theme.dart';
 import 'admin_user_detail_sheet.dart';
+import '../../../widgets/twemoji.dart';
 
 /// 分销团队搜索页面
 class AdminTeamTreePage extends StatefulWidget {
@@ -114,7 +115,7 @@ class _AdminTeamTreePageState extends State<AdminTeamTreePage> {
                   ? Center(
                       child: TextButton(
                           onPressed: _search,
-                          child: const Text('暂无数据，点击刷新')))
+                          child: Tw('暂无数据，点击刷新')))
                   : ListView.builder(
                       itemCount: _members.length,
                       padding: const EdgeInsets.symmetric(
@@ -127,7 +128,7 @@ class _AdminTeamTreePageState extends State<AdminTeamTreePage> {
                           child: ListTile(
                             leading: CircleAvatar(
                               backgroundColor: cs.primary.withValues(alpha: 0.15),
-                              child: Text(
+                              child: Tw(
                                 (m['display_name'] as String? ?? '?')
                                     .substring(0, 1)
                                     .toUpperCase(),

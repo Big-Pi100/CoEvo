@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../../api/api_config.dart';
+import '../../../widgets/twemoji.dart';
 
 /// 新建/编辑活动弹窗表单
 class AdminCampaignFormDialog extends StatefulWidget {
@@ -283,9 +284,9 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                       border: OutlineInputBorder(),
                       isDense: true),
                   items: const [
-                    DropdownMenuItem(value: 'distribution', child: Text('分销模式')),
-                    DropdownMenuItem(value: 'team_discount', child: Text('拼团')),
-                    DropdownMenuItem(value: 'bargain', child: Text('砍价')),
+                    DropdownMenuItem(value: 'distribution', child: Tw('分销模式')),
+                    DropdownMenuItem(value: 'team_discount', child: Tw('拼团')),
+                    DropdownMenuItem(value: 'bargain', child: Tw('砍价')),
                   ],
                   onChanged: (v) => setState(() => _campaignType = v ?? 'distribution'),
                 ),
@@ -369,11 +370,11 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                                   decoration: const InputDecoration(
                                       labelText: '类型', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
                   items: const [
-                    DropdownMenuItem(value: 'subscription_days', child: Text('送天数')),
-                    DropdownMenuItem(value: 'commission_pct', child: Text('佣金(比例)')),
-                    DropdownMenuItem(value: 'commission_fix', child: Text('佣金(固定)')),
-                    DropdownMenuItem(value: 'discount_fix', child: Text('折扣(固定金额)')),
-                    DropdownMenuItem(value: 'discount_pct', child: Text('折扣(百分比)')),
+                    DropdownMenuItem(value: 'subscription_days', child: Tw('送天数')),
+                    DropdownMenuItem(value: 'commission_pct', child: Tw('佣金(比例)')),
+                    DropdownMenuItem(value: 'commission_fix', child: Tw('佣金(固定)')),
+                    DropdownMenuItem(value: 'discount_fix', child: Tw('折扣(固定金额)')),
+                    DropdownMenuItem(value: 'discount_pct', child: Tw('折扣(百分比)')),
                   ],
                                   onChanged: (v) => setState(() => _rewards[i]['type'] = v),
                                 ),
@@ -385,10 +386,10 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                                   decoration: const InputDecoration(
                                       labelText: '对象', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
                                   items: const [
-                                    DropdownMenuItem(value: 'self', child: Text('触发者（自己）')),
-                                    DropdownMenuItem(value: 'inviter', child: Text('邀请人（推广员）')),
-                                    DropdownMenuItem(value: 'invitee', child: Text('被邀请人')),
-                                    DropdownMenuItem(value: 'all', child: Text('所有人')),
+                                    DropdownMenuItem(value: 'self', child: Tw('触发者（自己）')),
+                                    DropdownMenuItem(value: 'inviter', child: Tw('邀请人（推广员）')),
+                                    DropdownMenuItem(value: 'invitee', child: Tw('被邀请人')),
+                                    DropdownMenuItem(value: 'all', child: Tw('所有人')),
                                   ],
                                   onChanged: (v) => setState(() => _rewards[i]['party'] = v),
                                 ),
@@ -414,9 +415,9 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                                   decoration: const InputDecoration(
                                       labelText: '触发', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
                                   items: const [
-                                    DropdownMenuItem(value: 'registration', child: Text('注册')),
-                                    DropdownMenuItem(value: 'payment', child: Text('支付')),
-                                    DropdownMenuItem(value: 'plan_update', child: Text('计划更新')),
+                                    DropdownMenuItem(value: 'registration', child: Tw('注册')),
+                                    DropdownMenuItem(value: 'payment', child: Tw('支付')),
+                                    DropdownMenuItem(value: 'plan_update', child: Tw('计划更新')),
                                   ],
                                   onChanged: (v) => setState(() => _rewards[i]['trigger'] = v),
                                 ),
@@ -429,11 +430,11 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                                   decoration: const InputDecoration(
                                       labelText: '频率', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 8)),
                                   items: const [
-                                    DropdownMenuItem(value: 'once', child: Text('仅1次')),
-                                    DropdownMenuItem(value: 'daily', child: Text('每天1次')),
-                                    DropdownMenuItem(value: 'hourly', child: Text('每小时1次')),
-                                    DropdownMenuItem(value: 'weekly', child: Text('每周1次')),
-                                    DropdownMenuItem(value: 'monthly', child: Text('每月1次')),
+                                    DropdownMenuItem(value: 'once', child: Tw('仅1次')),
+                                    DropdownMenuItem(value: 'daily', child: Tw('每天1次')),
+                                    DropdownMenuItem(value: 'hourly', child: Tw('每小时1次')),
+                                    DropdownMenuItem(value: 'weekly', child: Tw('每周1次')),
+                                    DropdownMenuItem(value: 'monthly', child: Tw('每月1次')),
                                   ],
                                   onChanged: (v) => setState(() => _rewards[i]['freq'] = v),
                                 ),
@@ -462,7 +463,7 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                 const SizedBox(height: AppThemeSpacing.sm),
                 TextButton.icon(
                   icon: const Icon(Icons.add, size: 16),
-                  label: const Text('添加奖励规则'),
+                  label: Tw('添加奖励规则'),
                   onPressed: _addReward,
                 ),
                 // ── 推送设置 ──
@@ -480,12 +481,12 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                       border: OutlineInputBorder(),
                       isDense: true),
                   items: const [
-                    DropdownMenuItem(value: 'manual', child: Text('手动')),
-                    DropdownMenuItem(value: 'registration', child: Text('注册时')),
-                    DropdownMenuItem(value: 'after_complete_review', child: Text('复习完成后')),
-                    DropdownMenuItem(value: 'plan_update', child: Text('计划更新时')),
-                    DropdownMenuItem(value: 'login', child: Text('登录时')),
-                    DropdownMenuItem(value: 'cron', child: Text('定时(Cron)')),
+                    DropdownMenuItem(value: 'manual', child: Tw('手动')),
+                    DropdownMenuItem(value: 'registration', child: Tw('注册时')),
+                    DropdownMenuItem(value: 'after_complete_review', child: Tw('复习完成后')),
+                    DropdownMenuItem(value: 'plan_update', child: Tw('计划更新时')),
+                    DropdownMenuItem(value: 'login', child: Tw('登录时')),
+                    DropdownMenuItem(value: 'cron', child: Tw('定时(Cron)')),
                   ],
                   onChanged: (v) =>
                       setState(() => _pushTrigger = v ?? 'manual'),
@@ -503,14 +504,14 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                               isDense: true,
                               contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
                           items: const [
-                            DropdownMenuItem(value: 0, child: Text('每天')),
-                            DropdownMenuItem(value: 1, child: Text('周一')),
-                            DropdownMenuItem(value: 2, child: Text('周二')),
-                            DropdownMenuItem(value: 3, child: Text('周三')),
-                            DropdownMenuItem(value: 4, child: Text('周四')),
-                            DropdownMenuItem(value: 5, child: Text('周五')),
-                            DropdownMenuItem(value: 6, child: Text('周六')),
-                            DropdownMenuItem(value: 7, child: Text('周日')),
+                            DropdownMenuItem(value: 0, child: Tw('每天')),
+                            DropdownMenuItem(value: 1, child: Tw('周一')),
+                            DropdownMenuItem(value: 2, child: Tw('周二')),
+                            DropdownMenuItem(value: 3, child: Tw('周三')),
+                            DropdownMenuItem(value: 4, child: Tw('周四')),
+                            DropdownMenuItem(value: 5, child: Tw('周五')),
+                            DropdownMenuItem(value: 6, child: Tw('周六')),
+                            DropdownMenuItem(value: 7, child: Tw('周日')),
                           ],
                           onChanged: (v) => setState(() => _cronDay = v ?? 0),
                         ),
@@ -525,7 +526,7 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                               isDense: true,
                               contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
                           items: List.generate(24, (h) =>
-                            DropdownMenuItem(value: h, child: Text('${h.toString().padLeft(2, '0')}:00'))),
+                            DropdownMenuItem(value: h, child: Tw('${h.toString().padLeft(2, '0')}:00'))),
                           onChanged: (v) => setState(() => _cronHour = v ?? 9),
                         ),
                       ),
@@ -539,7 +540,7 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                               isDense: true,
                               contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
                           items: [0, 15, 30, 45].map((m) =>
-                            DropdownMenuItem(value: m, child: Text('${m.toString().padLeft(2, '0')}分'))).toList(),
+                            DropdownMenuItem(value: m, child: Tw('${m.toString().padLeft(2, '0')}分'))).toList(),
                           onChanged: (v) => setState(() => _cronMinute = v ?? 0),
                         ),
                       ),
@@ -561,9 +562,9 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                       border: OutlineInputBorder(),
                       isDense: true),
                   items: const [
-                    DropdownMenuItem(value: 'notification', child: Text('通知中心')),
-                    DropdownMenuItem(value: 'popup', child: Text('弹窗')),
-                    DropdownMenuItem(value: 'both', child: Text('通知+弹窗')),
+                    DropdownMenuItem(value: 'notification', child: Tw('通知中心')),
+                    DropdownMenuItem(value: 'popup', child: Tw('弹窗')),
+                    DropdownMenuItem(value: 'both', child: Tw('通知+弹窗')),
                   ],
                   onChanged: (v) =>
                       setState(() => _displayStyle = v ?? 'both'),
@@ -612,16 +613,16 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                       border: OutlineInputBorder(),
                       isDense: true),
                 ),
-                // ── 海报系统提示 ──
+                // ── H5 系统提示 ──
                 const SizedBox(height: AppThemeSpacing.lg),
-                Text('海报系统提示',
+                Text('H5 系统提示',
                     style: TextStyle(
                         fontWeight: FontWeight.w600,
                         color: cs.primary,
                         fontSize: 14)),
                 const SizedBox(height: AppThemeSpacing.sm),
                 Text(
-                  '自定义海报生成的系统提示。留空则使用默认提示。',
+                  '自定义 H5 生成的系统提示。留空则使用默认提示。',
                   style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                 ),
                 const SizedBox(height: AppThemeSpacing.sm),
@@ -651,7 +652,7 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
       actions: [
         TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消')),
+            child: Tw('取消')),
         FilledButton(
           onPressed: _saving ? null : _save,
           child: _saving
@@ -659,7 +660,7 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                   width: 16,
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('保存'),
+              : Tw('保存'),
         ),
       ],
     );

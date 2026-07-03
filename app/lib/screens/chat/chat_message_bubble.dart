@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../widgets/markdown_span_nodes.dart';
 import '../../services/tts_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/twemoji.dart';
 
 /// 消息气泡渲染 — 块分割 + Markdown + LaTeX + Graph
 class ChatMessageBubble extends StatelessWidget {
@@ -60,7 +61,7 @@ class ChatMessageBubble extends StatelessWidget {
         Clipboard.setData(ClipboardData(text: cleanText));
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('已复制到剪贴板'),
+            content: Tw('已复制到剪贴板'),
             duration: const Duration(seconds: 1),
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.only(bottom: 60, left: 16, right: 16),

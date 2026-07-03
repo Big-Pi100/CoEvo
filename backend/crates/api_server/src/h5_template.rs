@@ -223,14 +223,12 @@ pub fn fallback_h5_html(referral_code: &str, campaign_id: Option<&str>, avatar_u
         {avatar_html}
         <div class="brand">CoEvo 刻意进化学习</div>
         <div class="subtitle">邀请你一起加入学习之旅</div>
-        <div class="code-label">我的推广码</div>
-        <div class="code">{code}</div>
         <a class="btn" href="{app_base}/home{ref_param}">立即注册</a>
-        <div class="footer">扫码或输入推广码加入学习</div>
+        <div class="footer">打开链接即可加入学习</div>
     </div>
 </body>
 </html>"#,
-        avatar_html = avatar_html, code = referral_code,
+        avatar_html = avatar_html,
         app_base = app_base, ref_param = ref_param,
     );
     html = html.replace("{api_base}", &api_base);

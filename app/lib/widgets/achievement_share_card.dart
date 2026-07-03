@@ -8,6 +8,7 @@ import 'referral_qr_code.dart';
 import 'package:flutter/rendering.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../shared/achievement_icons.dart';
+import '../widgets/twemoji.dart';
 
 class AchievementShareCard extends StatefulWidget {
   final String achievementKey;
@@ -125,7 +126,7 @@ class _AchievementShareCardState extends State<AchievementShareCard> {
                     color: cs.primary,
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: Text(
+                  child: Tw(
                     _saveFeedback!,
                     style: const TextStyle(
                         color: Colors.white,
@@ -187,7 +188,7 @@ class _AchievementShareCardState extends State<AchievementShareCard> {
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: glowColor.withAlpha(80)),
             ),
-            child: Text(tLabel,
+            child: Tw(tLabel,
                 style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,

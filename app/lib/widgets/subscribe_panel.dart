@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../../api/api_config.dart';
 import '../../providers/auth_provider.dart' show authProvider;
 import '../../theme/app_theme.dart';
+import '../widgets/twemoji.dart';
 
 /// 订阅套餐面板 — 卡片式套餐展示，支持下单跳转支付
 class SubscribePanel extends ConsumerStatefulWidget {
@@ -188,7 +189,7 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
                   TextButton.icon(
                     onPressed: _loadPlans,
                     icon: const Icon(Icons.refresh, size: 16),
-                    label: const Text('重试'),
+                    label: Tw('重试'),
                   ),
                 ],
               ),
@@ -196,7 +197,7 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
           ] else if (_plans == null || _plans!.isEmpty) ...[
             const SizedBox(height: AppTheme.spacingXl),
             Center(
-              child: Text('暂无可用的套餐',
+              child: Tw('暂无可用的套餐',
                   style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
             ),
           ] else ...[
@@ -212,10 +213,10 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
                 ),
                 child: Row(
                   children: [
-                    const Text('🎉', style: TextStyle(fontSize: 18)),
+                    Tw('🎉', style: TextStyle(fontSize: 18)),
                     const SizedBox(width: AppTheme.spacingSm),
                     Expanded(
-                      child: Text(
+                      child: Tw(
                         '好友邀请专属优惠，被推荐享折扣',
                         style: TextStyle(fontSize: 12, color: Colors.brown.shade700),
                       ),
@@ -333,7 +334,7 @@ class _PlanCard extends StatelessWidget {
                               color: cs.primary.withAlpha(15),
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: Text(durationText,
+                            child: Tw(durationText,
                                 style: TextStyle(
                                     fontSize: 11,
                                     color: cs.primary,
@@ -357,7 +358,7 @@ class _PlanCard extends StatelessWidget {
                       if (isLifetime && maxUses == null)
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
-                          child: Text('一次付费，永久使用',
+                          child: Tw('一次付费，永久使用',
                               style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
                         ),
                     ],

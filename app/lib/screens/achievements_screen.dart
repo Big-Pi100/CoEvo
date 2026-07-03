@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/twemoji.dart';
 import '../providers/plan_provider.dart' hide cardRefreshProvider;
 import '../api/chat_client.dart';
 import '../shared/achievement_icons.dart';
@@ -126,7 +127,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                   _waitForAuthThenLoad();
                 },
                 icon: const Icon(Icons.refresh),
-                label: const Text('重新加载'),
+                label: Tw('重新加载'),
               ),
           ],
         ),
@@ -140,7 +141,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('成就'),
+        title: Tw('成就'),
         actions: [
           IconButton(
             icon: const Icon(Icons.notifications_outlined),
@@ -348,7 +349,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
             Row(children: ['一', '二', '三', '四', '五', '六', '日'].map((d) =>
               SizedBox(
                 width: cellSize,
-                child: Text(d,
+                child: Tw(d,
                     textAlign: TextAlign.center,
                     style: _tt.labelSmall?.copyWith(color: _cs.onSurfaceVariant)),
               ),
@@ -389,7 +390,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                             ? Border.all(color: theme.colorScheme.primary, width: 2)
                             : null,
                       ),
-                      child: Text('$day',
+                      child: Tw('$day',
                         style: TextStyle(
                           fontSize: fontSize,
                           fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
@@ -509,7 +510,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
             return Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Row(children: [
-                SizedBox(width: AppTheme.spacingXxxl, child: Text('$level',
+                SizedBox(width: AppTheme.spacingXxxl, child: Tw('$level',
                   style: TextStyle(fontWeight: FontWeight.w600,
                     color: colors[level] ?? _cs.outline, fontSize: 13))),
                 const SizedBox(width: AppTheme.spacingSm),
@@ -520,7 +521,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                     valueColor: AlwaysStoppedAnimation(colors[level] ?? _cs.outline)),
                 )),
                 const SizedBox(width: AppTheme.spacingSm),
-                SizedBox(width: 36, child: Text('$count',
+                SizedBox(width: 36, child: Tw('$count',
                   textAlign: TextAlign.right,
                   style: TextStyle(fontSize: 13, color: _cs.onSurface))),
               ]),
@@ -561,7 +562,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                   const Icon(Icons.play_circle, size: 16),
                   const SizedBox(width: AppTheme.spacingSm),
                   Expanded(
-                    child: Text(title,
+                    child: Tw(title,
                         style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                   ),
                   Container(
@@ -570,7 +571,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                       color: _cs.primary.withAlpha(20),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Text('${plan.totalCards} 卡片',
+                    child: Tw('${plan.totalCards} 卡片',
                         style: _tt.labelSmall?.copyWith(color: _cs.primary)),
                   ),
                 ]),
@@ -578,7 +579,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                   const SizedBox(height: 6),
                   Padding(
                     padding: const EdgeInsets.only(left: AppTheme.spacingXxl),
-                    child: Text('${plan.stages!.length} 个阶段',
+                    child: Tw('${plan.stages!.length} 个阶段',
                         style: _tt.bodySmall?.copyWith(color: _cs.onSurfaceVariant)),
                   ),
                 ],
@@ -840,7 +841,7 @@ class _AchievementTile extends StatelessWidget {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Icon(iconData, color: iconColor, size: 28),
         const SizedBox(height: AppTheme.spacingXs),
-        SizedBox(width: 64, child: Text(name, textAlign: TextAlign.center,
+        SizedBox(width: 64, child: Tw(name, textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 10), maxLines: 2, overflow: TextOverflow.ellipsis)),
       ]),
     );
@@ -925,7 +926,7 @@ class _AchievementCard extends StatelessWidget {
                     color: tierColorVal.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: Text(tierLabel,
+                  child: Tw(tierLabel,
                     style: TextStyle(fontSize: 10, color: tierColorVal, fontWeight: FontWeight.w600)),
                 ),
               ],
@@ -937,7 +938,7 @@ class _AchievementCard extends StatelessWidget {
                     color: _cs.tertiaryFixedDim.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: Text('隐藏', style: TextStyle(fontSize: 10, color: _cs.tertiary, fontWeight: FontWeight.w600)),
+                  child: Tw('隐藏', style: TextStyle(fontSize: 10, color: _cs.tertiary, fontWeight: FontWeight.w600)),
                 ),
               ],
               if (unlocked) ...[

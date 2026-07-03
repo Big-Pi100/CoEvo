@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../../api/api_config.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/twemoji.dart';
 
 /// 用户详情底部弹窗
 class AdminUserDetailSheet extends StatefulWidget {
@@ -74,7 +75,7 @@ class _AdminUserDetailSheetState extends State<AdminUserDetailSheet> {
                         child: CircleAvatar(
                           radius: 32,
                           backgroundColor: cs.primary.withValues(alpha: 0.15),
-                          child: Text(
+                          child: Tw(
                             (_data!['user']?['display_name'] as String? ?? '?')
                                 .substring(0, 1)
                                 .toUpperCase(),

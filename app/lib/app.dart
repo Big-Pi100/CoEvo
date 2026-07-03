@@ -309,6 +309,13 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
 
   @override
   Widget build(BuildContext context) {
+    // 监听 auth 切换：用户 ID 变化时重新获取订阅状态
+    ref.listen<String?>(authProvider.select((a) => a.userId), (prev, next) {
+      if (next != null && next != prev) {
+        ref.fetchSubscription();
+      }
+    });
+
     // Keep admin/guardian from tree-shaking
     _allScreens;
 

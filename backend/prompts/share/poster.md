@@ -34,7 +34,7 @@
 - {plan_count} — 正在学习的科目数
 - {completed_plans} — 已完成的学习计划数
 - {achievement_count} — 已获得成就数
-- {referral_code} — 用户推广码
+- {referral_code} — 用户推广码（仅用于 QR 码链接，不要显示为文字）
 - {avatar_url} — 用户头像链接（用于 <image> 标签嵌入）
 
 ### QR码
