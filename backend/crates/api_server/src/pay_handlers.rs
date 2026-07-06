@@ -429,9 +429,49 @@ pub fn distribute_commission_on_payment(
     ).map_err(|e| format!("订单查询失败: {}", e))?;
 
     // 触发支付活动（commission 分发 + subscription_days 等）
-    crate::campaign_executor::execute_campaign_trigger(
+    let _ = crate::campaign_executor::execute_campaign_trigger(
         conn, "payment", &buyer_id, referrer_id.as_deref(), Some(order_id), None,
-    ).map(|_| ())
+    );
+
+    // 核销折扣：用户支付后，将 status=granted 的折扣标记为 fulfilled（已使用）
+    let discount_campaign: Option<(String, String)> = {
+        let cid: Option<String> = conn.query_row(
+            "SELECT referred_campaign_id FROM users WHERE id = ?1",
+            rusqlite::params![buyer_id],
+            |row| row.get(0),
+        ).ok().flatten();
+        match cid {
+            Some(ref c) if !c.is_empty() => {
+                conn.query_row(
+                    "SELECT id, name FROM marketing_campaigns \
+                     WHERE id = ?1 AND status='active' AND rewards LIKE '%discount_pct%'",
+                    rusqlite::params![c],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                ).ok()
+            }
+            _ => None,
+        }
+    };
+
+    if let Some((_campaign_id, campaign_name)) = discount_campaign {
+        let redeemed = conn.execute(
+            "UPDATE reward_fulfillments SET status = 'fulfilled', order_id = ?1 \
+             WHERE user_id = ?2 AND party = 'invitee' AND reward_type IN ('discount_pct', 'discount_fix') \
+             AND status = 'granted' AND order_id IS NULL",
+            rusqlite::params![order_id, buyer_id],
+        ).unwrap_or(0);
+        if redeemed > 0 {
+            let _ = crate::campaign_executor::write_notification(
+                conn, &buyer_id, "reward_redeem",
+                &format!("📉 折扣已使用"),
+                &format!("你在本次支付中使用了「{}」推荐折扣优惠！", campaign_name),
+                None,
+            );
+            tracing::info!("distribute_commission_on_payment: redeemed discount for {}, order={}", buyer_id, order_id);
+        }
+    }
+
+    Ok(())
 }
 
 /// AEAD_AES_256_GCM 解密
