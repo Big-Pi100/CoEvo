@@ -158,7 +158,7 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
 
     // 触发注册活动（不阻塞注册）
     if let Err(e) = crate::campaign_executor::execute_campaign_trigger(
-        &conn, "registration", &user_id, referred_by.as_deref(), None,
+        &conn, "registration", &user_id, referred_by.as_deref(), None, None,
     ) {
         tracing::warn!("registration campaign trigger failed: {}", e);
     }
@@ -264,33 +264,7 @@ mod tests {
 
     fn setup_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE users (
-                id TEXT PRIMARY KEY,
-                username TEXT NOT NULL UNIQUE,
-                password_hash TEXT,
-                streak_days INTEGER DEFAULT 0,
-                last_active_date TEXT,
-                display_name TEXT,
-                real_name TEXT,
-                phone TEXT,
-                phone_hash TEXT,
-                id_number TEXT,
-                bind_hash TEXT,
-                deleted_at TEXT,
-                subscription_expires TEXT DEFAULT NULL,
-                referral_code TEXT UNIQUE,
-                referred_by TEXT REFERENCES users(id),
-                created_at TEXT NOT NULL
-            );
-            CREATE TABLE tokens (
-                id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                token TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            );"
-        ).unwrap();
+        crate::schema::init_database(&conn).unwrap();
         conn
     }
 

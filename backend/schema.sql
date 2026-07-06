@@ -439,7 +439,7 @@ CREATE TABLE marketing_campaigns (
     created_at TEXT NOT NULL,
     updated_by TEXT,                          -- 最后修改者
     updated_at TEXT,
-    poster_prompt TEXT, poster_template TEXT DEFAULT NULL, h5_template TEXT DEFAULT NULL, h5_prompt TEXT DEFAULT NULL, display_positions TEXT DEFAULT '[]',                        -- 自定义海报系统提示（主prompt）
+    poster_prompt TEXT, poster_template TEXT DEFAULT NULL, h5_template TEXT DEFAULT NULL, h5_prompt TEXT DEFAULT NULL, display_positions TEXT DEFAULT '[]', min_member_count INTEGER DEFAULT 1,                        -- 自定义海报系统提示（主prompt）+ 最小成团人数
     FOREIGN KEY (created_by) REFERENCES admin_users(id),
     FOREIGN KEY (updated_by) REFERENCES admin_users(id)
 );

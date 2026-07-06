@@ -113,7 +113,6 @@ pub async fn native_pay_handler(
                 // 部分扣：只扣需要的金额，记录保留
                 partial_deduct_id = Some((id.clone(), remaining));
                 commission_used += remaining;
-                remaining = 0;
                 break;
             }
         }
@@ -431,7 +430,7 @@ pub fn distribute_commission_on_payment(
 
     // 触发支付活动（commission 分发 + subscription_days 等）
     crate::campaign_executor::execute_campaign_trigger(
-        conn, "payment", &buyer_id, referrer_id.as_deref(), Some(order_id),
+        conn, "payment", &buyer_id, referrer_id.as_deref(), Some(order_id), None,
     ).map(|_| ())
 }
 

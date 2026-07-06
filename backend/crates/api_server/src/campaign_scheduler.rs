@@ -209,7 +209,7 @@ fn execute_cron_pushes(conn: &rusqlite::Connection) -> Result<usize, String> {
         };
 
         for uid in &user_ids {
-            let title = format!("📢 {}", name);
+            let title = format!("新活动: {}", name);
             let body = description.clone().unwrap_or_else(|| "点击查看活动详情！".to_string());
             if uid == "all" {
                 // 全量推送：分批写通知
@@ -226,7 +226,7 @@ fn execute_cron_pushes(conn: &rusqlite::Connection) -> Result<usize, String> {
                             ).unwrap_or(0) > 0;
                             if !recent {
                                 let _ = crate::campaign_executor::write_notification(
-                                    conn, &rid, "campaign", &title, &body, Some(&format!("/share?campaign_id={}", id)),
+                                    conn, &rid, "campaign", &title, &body, Some(&format!("share?campaign_id={}", id)),
                                 );
                             }
                         }
@@ -240,7 +240,7 @@ fn execute_cron_pushes(conn: &rusqlite::Connection) -> Result<usize, String> {
                 ).unwrap_or(0) > 0;
                 if !recent {
                     let _ = crate::campaign_executor::write_notification(
-                        conn, uid, "campaign", &title, &body, Some(&format!("/share?campaign_id={}", id)),
+                        conn, uid, "campaign", &title, &body, Some(&format!("share?campaign_id={}", id)),
                     );
                 }
             }

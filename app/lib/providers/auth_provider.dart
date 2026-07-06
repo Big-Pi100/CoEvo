@@ -205,10 +205,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   /// 创建临时账户，可选推广码（来自 URL ?ref=）
-  Future<void> trialStart({String? refCode}) async {
+  Future<void> trialStart({String? refCode, String? campaignId}) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final result = await _client.trialStart(referralCode: refCode);
+      final result = await _client.trialStart(referralCode: refCode, campaignId: campaignId);
       final uid = result['user_id'] as String?;
       final token = result['token'] as String?;
       final trialUsername = result['username'] as String?;
@@ -252,7 +252,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   /// 认领临时账户（注册）
-  Future<void> trialClaim(String username, String password, {String? realName, String? phone, String? referralCode}) async {
+  Future<void> trialClaim(String username, String password, {String? realName, String? phone, String? referralCode, String? campaignId}) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
       final result = await _client.trialClaim(
@@ -263,6 +263,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         realName: realName,
         phone: phone,
         referralCode: referralCode,
+        campaignId: campaignId,
       );
       final newToken = result['token'] as String? ?? state.token;
       await _saveCredentials(state.userId!, newToken!, username);

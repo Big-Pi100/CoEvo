@@ -7,7 +7,7 @@ use serde::Serialize;
 const ZONE_MIN_GAP: i32 = 20; // zone 之间最小间距
 
 /// 根据 zone 类型返回合理的内容高度估算
-fn zone_estimated_height(name: &str, zone_y: i32) -> i32 {
+fn zone_estimated_height(name: &str, _zone_y: i32) -> i32 {
     match name {
         "qr" => 250,     // 180px QR + 装饰框 + padding
         "footer" => 50,

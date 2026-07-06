@@ -4,13 +4,14 @@
 //! 临时账户获得 1 天试用订阅，到期后由现有 is_subscription_active() 自动拦截。
 
 use axum::{Json, http::{HeaderMap, StatusCode}, response::IntoResponse};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
 
 #[derive(Deserialize)]
 pub struct StartRequest {
     pub referral_code: Option<String>,
+    pub campaign_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -21,6 +22,7 @@ pub struct ClaimRequest {
     pub real_name: Option<String>,
     pub phone: Option<String>,
     pub referral_code: Option<String>,
+    pub campaign_id: Option<String>,
 }
 
 /// POST /api/trial/start — 创建临时账户
@@ -102,12 +104,22 @@ pub async fn start(
             ).ok()
         } else { None }
     } else { None };
+    tracing::info!("trial/start referral: referred_by={:?}, referred_campaign_id={:?}", referred_by, body.campaign_id);
     if let Some(ref rid) = referred_by {
         if let Err(e) = conn.execute(
             "UPDATE users SET referred_by = ?1 WHERE id = ?2",
             rusqlite::params![rid, uid],
         ) {
             tracing::warn!("trial/start set referred_by failed: {}", e);
+        }
+        // 如果有 campaign_id，同时记录 referred_campaign_id（用于资格判断）
+        if let Some(ref cid) = body.campaign_id {
+            if !cid.is_empty() {
+                let _ = conn.execute(
+                    "UPDATE users SET referred_campaign_id = ?1 WHERE id = ?2",
+                    rusqlite::params![cid, uid],
+                );
+            }
         }
     }
 
@@ -231,10 +243,21 @@ pub async fn claim(
         tracing::error!("trial/claim update user failed: {}", e);
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "update_user_failed"}))).into_response();
     }
+    // 如果有推荐人和 campaign_id，同时记录 referred_campaign_id
+    if referred_by.is_some() {
+        if let Some(ref cid) = body.campaign_id {
+            if !cid.is_empty() {
+                let _ = conn.execute(
+                    "UPDATE users SET referred_campaign_id = ?1 WHERE id = ?2",
+                    rusqlite::params![cid, body.user_id],
+                );
+            }
+        }
+    }
 
     // 8. 触发注册活动
     if let Err(e) = crate::campaign_executor::execute_campaign_trigger(
-        &conn, "registration", &body.user_id, referred_by.as_deref(), None,
+        &conn, "registration", &body.user_id, referred_by.as_deref(), None, None,
     ) {
         tracing::warn!("trial/claim campaign trigger failed: {}", e);
     }
@@ -266,7 +289,8 @@ pub async fn claim(
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "create_token_failed"}))).into_response();
     }
 
-    tracing::info!("trial/claim: user_id={}, new_username={}", body.user_id, body.username);
+    tracing::info!("trial/claim: user_id={}, new_username={}, referred_by={:?}, campaign_id={:?}",
+        body.user_id, body.username, referred_by, body.campaign_id);
 
     (StatusCode::OK, Json(json!({
         "token": new_token,

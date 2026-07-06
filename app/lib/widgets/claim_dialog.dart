@@ -5,7 +5,10 @@ import '../utils/validators.dart';
 
 /// 临时账户认领弹窗 — 与 auth_screen 登录/注册逻辑完全一致
 class ClaimDialog extends ConsumerStatefulWidget {
-  const ClaimDialog({super.key});
+  const ClaimDialog({super.key, this.pendingRefCode, this.pendingCampaignId});
+
+  final String? pendingRefCode;
+  final String? pendingCampaignId;
 
   @override
   ConsumerState<ClaimDialog> createState() => _ClaimDialogState();
@@ -67,6 +70,8 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
           _passwordController.text,
           realName: _nameController.text.trim(),
           phone: _phoneController.text.trim(),
+          referralCode: widget.pendingRefCode,
+          campaignId: widget.pendingCampaignId,
         );
       }
       if (mounted) Navigator.of(context).pop(true);

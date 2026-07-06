@@ -45,6 +45,7 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
   int _cronMinute = 0;
   List<String> _targetRoles = [];
   String _displayStyle = 'both'; // notification / popup / both
+  int _minMemberCount = 1;
   bool _saving = false;
 
   bool get _isEdit => widget.campaign != null;
@@ -79,7 +80,7 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
     }
     if (_rewards.isEmpty) {
       _rewards = [
-        {'type': 'subscription_days', 'party': 'self', 'value': 3, 'trigger': 'registration', 'freq': 'once'}
+        {'type': 'subscription_days', 'party': 'self', 'value': 3, 'trigger': 'registration', 'freq': 'once', 'grant_title': '', 'grant_body': '', 'redeem_title': '', 'redeem_body': ''}
       ];
     }
     // 解析 cron 表达式为星期+时间（cron格式: "minute hour * * day"）
@@ -112,7 +113,18 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
     _campaignType = _validValue(c?['campaign_type'] as String?, ['distribution', 'team_discount', 'bargain'], 'distribution');
     _triggerEvent = _validValue(c?['trigger_event'] as String?, ['registration', 'payment', 'plan_update', 'after_complete_review', 'login'], 'registration');
     _pushTrigger = _validValue(c?['push_trigger'] as String?, ['manual', 'registration', 'after_complete_review', 'plan_update', 'login', 'cron'], 'manual');
-    _displayStyle = _validValue(c?['display_positions'] as String?, ['both', 'notification', 'popup'], 'both');
+    _displayStyle = ((){
+      final raw = c?['display_positions'] as String? ?? 'both';
+      // 支持 JSON 数组格式 ["notification"] 和旧版纯字符串格式 "notification"
+      try {
+        final list = jsonDecode(raw) as List;
+        return _validValue(list.isNotEmpty ? list.first as String : 'both',
+            ['both', 'notification', 'popup'], 'both');
+      } catch (_) {
+        return _validValue(raw, ['both', 'notification', 'popup'], 'both');
+      }
+    })();
+    _minMemberCount = c?['min_member_count'] as int? ?? 1;
   }
 
   /// 确保值存在于列表中，否则用默认值（防止旧数据导致 DropdownButton 断言崩溃）
@@ -142,6 +154,11 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
         'party': 'self',
         'value': 3,
         'trigger': 'registration',
+        'freq': 'once',
+        'grant_title': '',
+        'grant_body': '',
+        'redeem_title': '',
+        'redeem_body': '',
       });
     });
   }
@@ -182,7 +199,7 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
       'push_trigger': _pushTrigger,
       if (_pushTrigger == 'cron') 'push_cron': '$_cronMinute $_cronHour * * $_cronDay',
       'target_roles': jsonEncode(_targetRoles),
-      'display_positions': _displayStyle,
+      'display_positions': '[$_displayStyle]',
       if (_posterPromptCtrl.text.trim().isNotEmpty)
         'poster_prompt': _posterPromptCtrl.text.trim(),
       'attribution_window':
@@ -202,6 +219,7 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
       'qr_code_url': _qrCtrl.text.trim().isEmpty
           ? null
           : _qrCtrl.text.trim(),
+      'min_member_count': _minMemberCount,
     };
 
     try {
@@ -455,6 +473,50 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                               ],
                             ],
                           ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  initialValue: (reward['grant_title'] as String?) ?? '',
+                                  decoration: const InputDecoration(
+                                      labelText: '发放通知标题', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
+                                  onChanged: (v) => _rewards[i]['grant_title'] = v,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: TextFormField(
+                                  initialValue: (reward['redeem_title'] as String?) ?? '',
+                                  decoration: const InputDecoration(
+                                      labelText: '核销通知标题', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
+                                  onChanged: (v) => _rewards[i]['redeem_title'] = v,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  initialValue: (reward['grant_body'] as String?) ?? '',
+                                  decoration: const InputDecoration(
+                                      labelText: '发放通知文案', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
+                                  onChanged: (v) => _rewards[i]['grant_body'] = v,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: TextFormField(
+                                  initialValue: (reward['redeem_body'] as String?) ?? '',
+                                  decoration: const InputDecoration(
+                                      labelText: '核销通知文案', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
+                                  onChanged: (v) => _rewards[i]['redeem_body'] = v,
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     ),
@@ -612,6 +674,17 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                       labelText: '归因窗口(天)',
                       border: OutlineInputBorder(),
                       isDense: true),
+                ),
+                const SizedBox(height: AppThemeSpacing.sm),
+                TextFormField(
+                  initialValue: _minMemberCount.toString(),
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                      labelText: '最小成团人数',
+                      border: OutlineInputBorder(),
+                      isDense: true),
+                  onChanged: (v) =>
+                      _minMemberCount = int.tryParse(v) ?? 1,
                 ),
                 // ── H5 系统提示 ──
                 const SizedBox(height: AppThemeSpacing.lg),

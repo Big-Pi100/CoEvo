@@ -347,6 +347,8 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
                             _campaignTypeLabel(_campaign!['campaign_type'] as String? ?? '')),
                         _infoRow('状态',
                             _statusLabel(_campaign!['status'] as String?)),
+                        _infoRow('最小成团人数',
+                            '${_campaign!['min_member_count'] ?? 1}'),
                         _infoRow('描述',
                             _campaign!['description'] as String? ?? '无'),
                       ]),
@@ -587,13 +589,31 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
   List<Widget> _formatRewards(String jsonStr) {
     try {
       final list = jsonDecode(jsonStr) as List;
-      return list.asMap().entries.map((entry) {
+      final widgets = <Widget>[];
+      for (final entry in list.asMap().entries) {
         final r = entry.value as Map<String, dynamic>;
         final type = _rewardTypeLabel(r['type'] as String? ?? '');
         final party = _rewardPartyLabel(r['party'] as String? ?? '');
         final value = r['value'] ?? '';
-        return _infoRow('规则 ${entry.key + 1}', '$type · $party · 值: $value');
-      }).toList();
+        widgets.add(_infoRow('规则 ${entry.key + 1}', '$type · $party · 值: $value'));
+        final grantTitle = r['grant_title'] as String? ?? '';
+        final grantBody = r['grant_body'] as String? ?? '';
+        final redeemTitle = r['redeem_title'] as String? ?? '';
+        final redeemBody = r['redeem_body'] as String? ?? '';
+        if (grantTitle.isNotEmpty) {
+          widgets.add(_infoRow('  发放标题', grantTitle));
+        }
+        if (grantBody.isNotEmpty) {
+          widgets.add(_infoRow('  发放文案', grantBody));
+        }
+        if (redeemTitle.isNotEmpty) {
+          widgets.add(_infoRow('  核销标题', redeemTitle));
+        }
+        if (redeemBody.isNotEmpty) {
+          widgets.add(_infoRow('  核销文案', redeemBody));
+        }
+      }
+      return widgets;
     } catch (_) {
       return [];
     }

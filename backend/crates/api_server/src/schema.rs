@@ -311,6 +311,7 @@ CREATE TABLE IF NOT EXISTS marketing_campaigns (
     h5_template TEXT,                          -- LLM 生成的 H5 HTML 模板（含 {变量}）
     h5_prompt TEXT,                            -- 自定义 H5 系统提示
     display_positions TEXT DEFAULT '[]',       -- 展示方式：notification（通知中心）/ popup（弹窗）/ both（两者），默认空='both'
+    min_member_count INTEGER DEFAULT 1,        -- party=all 时的最小成团人数，默认 1 人人即发
     FOREIGN KEY (created_by) REFERENCES admin_users(id),
     FOREIGN KEY (updated_by) REFERENCES admin_users(id)
 );
@@ -707,6 +708,8 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
         // 唯一索引加入 order_id：同一用户不同订单可获多次佣金，登记注册只触发一次
         "DROP INDEX IF EXISTS idx_fulfillment_unique",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_fulfillment_unique ON reward_fulfillments(campaign_id, user_id, trigger_event, party, reward_type, order_id)",
+        // 活动最小成团人数
+        "ALTER TABLE marketing_campaigns ADD COLUMN min_member_count INTEGER DEFAULT 1",
     ];
     for sql in migrations {
         match conn.execute(sql, []) {

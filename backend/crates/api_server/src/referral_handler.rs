@@ -879,15 +879,23 @@ pub async fn generate_h5(
             rusqlite::params![cid], |row| row.get::<_, Option<String>>(0),
         ).ok().flatten() {
             Some(template) => {
+                tracing::info!("generate_h5: using custom template for campaign={}, template_len={}", cid, template.len());
                 // 使用模板替换流程（零 LLM）
                 match crate::h5_template::build_user_h5_data(&conn, &body.user_id, cid) {
                     Ok(data) => crate::h5_template::replace_h5_variables(&template, &data),
-                    Err(_) => fallback_h5_html(&referral_code, Some(cid), Some(&avatar_url)),
+                    Err(e) => {
+                        tracing::warn!("generate_h5: build_user_h5_data failed: {}", e);
+                        fallback_h5_html(&referral_code, Some(cid), Some(&avatar_url))
+                    }
                 }
             }
-            None => fallback_h5_html(&referral_code, Some(cid), Some(&avatar_url)),
+            None => {
+                tracing::info!("generate_h5: no h5_template for campaign={}, using fallback", cid);
+                fallback_h5_html(&referral_code, Some(cid), Some(&avatar_url))
+            }
         }
     } else {
+        tracing::info!("generate_h5: no campaign_id, using fallback");
         fallback_h5_html(&referral_code, body.campaign_id.as_deref(), Some(&avatar_url))
     };
 

@@ -27,6 +27,8 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _loading = true;
   bool _authReady = false;
+  String? _pendingRefCode;
+  String? _pendingCampaignId;
   List<Map<String, dynamic>> _subjects = [];
   int _unreadCount = 0;
 
@@ -39,21 +41,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _initAuth() async {
-    // 首次创建试用时读取 URL 推广码
-    final refCode = _readRefCode();
+    // 首次创建试用时读取 URL 推广码（只读一次，防止递归调用时 GoRouter 状态变化丢失）
+    if (_pendingRefCode == null) {
+      final refCode = _readRefCode();
+      final uri = GoRouter.of(context).state.uri;
+      final campaignId = uri.queryParameters['campaign_id'] ?? uri.queryParameters['camp'];
+      _pendingRefCode = refCode;
+      _pendingCampaignId = campaignId;
+      debugPrint('_initAuth refCode=$refCode campaignId=$campaignId href=${Uri.base}');
+    }
 
     // ── 点击追踪：来自推广链接或二维码扫码 → 记录一次分享点击 ──
-    if (refCode != null && refCode.isNotEmpty) {
+    if (_pendingRefCode != null && _pendingRefCode!.isNotEmpty) {
       try {
-        final uri = GoRouter.of(context).state.uri;
-        final campaignId = uri.queryParameters['campaign_id'] ?? uri.queryParameters['camp'];
         final baseUrl = ApiConfig.baseUrl;
         http.post(
           Uri.parse('$baseUrl/api/referral/click'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
-            'campaign_id': campaignId ?? 'share',
-            'referrer_code': refCode,
+            'campaign_id': _pendingCampaignId ?? 'share',
+            'referrer_code': _pendingRefCode,
             'share_channel': 'direct_link',
             'landed_page': '/home',
           }),
@@ -62,16 +69,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     final auth = ref.read(authProvider);
-    debugPrint('_initAuth: isRestored=${auth.isRestored} isAuthenticated=${auth.isAuthenticated} userId=${auth.userId}');
     if (!auth.isRestored) {
       await Future.delayed(const Duration(milliseconds: 300));
       if (mounted) _initAuth();
       return;
     }
     if (auth.isAuthenticated) {
-      debugPrint('_initAuth: 已认证 userId=${auth.userId} username=${auth.username} realName=${auth.realName}');
+      // 已登录用户：有 campaign_id 则加入活动（拼团/砍价）
+      if (_pendingRefCode != null && _pendingCampaignId != null && _pendingCampaignId!.isNotEmpty && mounted) {
+        _joinCampaign(auth.userId!, auth.token!, _pendingCampaignId!);
+      }
+      // 登录时触发活动推送检查（写 campaign_push 通知）
+      _checkLoginCampaignPush(auth.userId!, auth.token!);
       if (auth.realName == null || auth.realName!.trim().isEmpty) {
-        debugPrint('_initAuth: 未设置真实姓名，弹注册框');
         if (mounted) _showAuthDialog();
         return;
       }
@@ -79,26 +89,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return;
     }
     if (AuthNotifier.hasUsedTrial()) {
-      debugPrint('_initAuth: 已使用过试用，弹登录/注册框');
       if (mounted) _showAuthDialog();
       return;
     }
-    debugPrint('_initAuth: 新用户，自动创建试用账户');
-    await ref.read(authProvider.notifier).trialStart(refCode: refCode);
-    if (mounted) {
-      final updated = ref.read(authProvider);
-      debugPrint('_initAuth: trialStart 完成, isAuthenticated=${updated.isAuthenticated} userId=${updated.userId}');
-      if (updated.isAuthenticated) {
-        debugPrint('_initAuth: trialStart 成功, 弹出注册对话框');
-        if (mounted) {
-          _showAuthDialog();
-        } else {
-          debugPrint('_initAuth: 未 mounted, 跳过弹框');
-        }
-      } else {
-        debugPrint('_initAuth: trialStart 失败 isAuthenticated=false');
-      }
-    }
+    debugPrint('_initAuth trialStart refCode=${_pendingRefCode} campaignId=${_pendingCampaignId}');
+    await ref.read(authProvider.notifier).trialStart(refCode: _pendingRefCode, campaignId: _pendingCampaignId);
   }
 
   void _showAuthDialog() {
@@ -108,7 +103,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       barrierDismissible: true,
       builder: (_) {
         debugPrint('_showAuthDialog: dialog builder 被调用');
-        return const ClaimDialog();
+        return ClaimDialog(pendingRefCode: _pendingRefCode, pendingCampaignId: _pendingCampaignId);
       },
     ).then((result) {
       debugPrint('_showAuthDialog: 对话框关闭 result=$result');
@@ -118,12 +113,41 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
   }
 
+  /// 登录时触发活动推送检查（写 campaign_push 通知到通知中心）
+  void _checkLoginCampaignPush(String userId, String token) {
+    http.get(
+      Uri.parse('${ApiConfig.baseUrl}/api/campaigns/check-push-trigger?push_trigger=login&user_id=$userId'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+    ); // fire-and-forget
+  }
+
+  /// 已登录用户点击活动分享链接 → 加入活动成员（拼团/砍价类）
+  void _joinCampaign(String userId, String token, String campaignId) {
+    http.post(
+      Uri.parse('${ApiConfig.baseUrl}/api/campaign/join'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode({
+        'campaign_id': campaignId,
+        'user_id': userId,
+        'role': 'member',
+      }),
+    ); // fire-and-forget
+  }
+
   String? _readRefCode() {
+    // 优先从 GoRouter URI 读，兜底从 window.location.href 解析（防止 GoRouter 丢参数）
     try {
-      return GoRouter.of(context).state.uri.queryParameters['ref'];
-    } catch (_) {
-      return null;
-    }
+      final fromRouter = GoRouter.of(context).state.uri.queryParameters['ref'];
+      if (fromRouter != null && fromRouter.isNotEmpty) return fromRouter;
+    } catch (_) {}
+    try {
+      // ignore: undefined_prefixed_name
+      final href = Uri.base.toString();
+      final parsed = Uri.parse(href);
+      final fromUrl = parsed.queryParameters['ref'];
+      if (fromUrl != null && fromUrl.isNotEmpty) return fromUrl;
+    } catch (_) {}
+    return null;
   }
 
   Future<void> _loadUnreadCount() async {

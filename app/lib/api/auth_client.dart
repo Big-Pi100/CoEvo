@@ -58,10 +58,13 @@ class AuthClient {
   }
 
   /// Create a trial account. Returns {user_id, token}.
-  Future<Map<String, dynamic>> trialStart({String? referralCode}) async {
+  Future<Map<String, dynamic>> trialStart({String? referralCode, String? campaignId}) async {
     final body = <String, String>{};
     if (referralCode != null && referralCode.isNotEmpty) {
       body['referral_code'] = referralCode;
+    }
+    if (campaignId != null && campaignId.isNotEmpty) {
+      body['campaign_id'] = campaignId;
     }
     final resp = await http.post(
       Uri.parse('${ApiConfig.baseUrl}/api/trial/start'),
@@ -84,6 +87,7 @@ class AuthClient {
     String? realName,
     String? phone,
     String? referralCode,
+    String? campaignId,
   }) async {
     final body = <String, dynamic>{
       'user_id': userId,
@@ -93,6 +97,7 @@ class AuthClient {
     if (realName != null && realName.isNotEmpty) body['real_name'] = realName;
     if (phone != null && phone.isNotEmpty) body['phone'] = phone;
     if (referralCode != null && referralCode.isNotEmpty) body['referral_code'] = referralCode;
+    if (campaignId != null && campaignId.isNotEmpty) body['campaign_id'] = campaignId;
     final resp = await http.put(
       Uri.parse('${ApiConfig.baseUrl}/api/trial/claim'),
       headers: {

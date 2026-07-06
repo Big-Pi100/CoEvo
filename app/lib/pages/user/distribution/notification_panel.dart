@@ -114,8 +114,8 @@ class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
     final type = n['notification_type'] as String?;
     _markRead(n['id'] as String);
 
-    // 分享类通知 → 弹分享弹窗（不跳转页面）
-    if (type == 'reward' || type == 'share_poster' || type == 'share_h5' || type == 'marketing_campaign') {
+    // 活动推送和分享类通知 → 弹分享弹窗（不跳转页面）；发放和核销通知不弹窗
+    if (type == 'campaign_push' || type == 'share_poster' || type == 'share_h5' || type == 'marketing_campaign') {
       if (_dialogOpen) return; // 防止重复/堆叠弹窗
       _dialogOpen = true;
       // 从 action_url 中提取 campaign_id（格式: share?campaign_id=xxx）

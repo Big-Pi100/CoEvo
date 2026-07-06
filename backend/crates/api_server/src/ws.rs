@@ -415,7 +415,6 @@ pub async fn handle_ws(mut ws: WebSocket) {
                                 .collect()
                         };
                         let now = chrono::Utc::now().timestamp();
-                        let today_start = now - (now % 86400);
                         for word in &matched {
                             let has_card = conn_b2.query_row(
                                 "SELECT 1 FROM user_cards WHERE user_id = ?1 AND LOWER(front) = ?2 LIMIT 1",

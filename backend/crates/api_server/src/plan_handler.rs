@@ -258,7 +258,7 @@ pub fn handle_plan_update(
         }
         crate::achievement_engine::publish(conn, crate::achievement_engine::AppEvent::PlanCompleted { user_id: user_id.to_string() });
         let _ = crate::campaign_executor::execute_campaign_trigger(
-            conn, "plan_update", user_id, None, None,
+            conn, "plan_update", user_id, None, None, None,
         );
     }
 

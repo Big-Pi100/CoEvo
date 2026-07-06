@@ -227,7 +227,7 @@ pub async fn calculate(
         }
         _ => {
             // 未指定 campaign_id 时兜底：找第一个含 discount 的有效活动
-            let mut stmt = conn.prepare(
+            let stmt = conn.prepare(
                 "SELECT id, rewards FROM marketing_campaigns \
                  WHERE status = 'active' \
                  AND (valid_from IS NULL OR valid_from <= datetime('now')) \
@@ -2004,6 +2004,12 @@ mod tests {
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let batch_no = format!("ST{}-0001", chrono::Utc::now().format("%Y%m%d"));
 
+        // 先创建测试用户（FOREIGN KEY 约束需要）
+        conn.execute(
+            "INSERT INTO users (id, username, referral_code, created_at) VALUES ('earner-test', 'earner-test-user', 'earner-test-code', ?1)",
+            rusqlite::params![now],
+        ).unwrap();
+
         // 插入多条 expense
         for i in 0..3 {
             let expense_id = uuid::Uuid::new_v4().to_string();
@@ -2043,6 +2049,12 @@ mod tests {
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let batch_no = format!("ST{}-0002", chrono::Utc::now().format("%Y%m%d"));
         let expense_id = uuid::Uuid::new_v4().to_string();
+
+        // 先创建测试用户（FOREIGN KEY 约束需要）
+        conn.execute(
+            "INSERT INTO users (id, username, referral_code, created_at) VALUES ('earner-test', 'earner-test-user', 'earner-test-code', ?1)",
+            rusqlite::params![now],
+        ).unwrap();
 
         // 插入一条 expense
         conn.execute(

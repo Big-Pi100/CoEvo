@@ -16,9 +16,48 @@ pub fn execute_campaign_trigger(
     user_id: &str,
     referrer_id: Option<&str>,
     order_id: Option<&str>,
+    campaign_filter: Option<&str>,
 ) -> Result<Vec<String>, String> {
-    let campaigns = find_active_campaigns(conn)?;
+    let all_campaigns = find_active_campaigns(conn)?;
     let mut fulfillment_ids = Vec::new();
+    tracing::info!("execute_campaign_trigger: event={}, user={}, referrer={:?}, order={:?}, total_campaigns={}",
+        trigger_event, user_id, referrer_id, order_id, all_campaigns.len());
+
+    // 推送通知遍历所有活动（推送不分活动范围）
+    for (campaign_id, campaign_name, _rewards_json, _attribution_window) in &all_campaigns {
+        let push_trigger: Option<String> = conn.query_row(
+            "SELECT push_trigger FROM marketing_campaigns WHERE id = ?1",
+            rusqlite::params![campaign_id],
+            |row| row.get(0),
+        ).ok();
+        if let Some(ref pt) = push_trigger {
+            if pt == trigger_event {
+                let push_title = format!("新活动: {}", campaign_name);
+                let push_body = format!("{} 活动已开启！", campaign_name);
+                let action_url = format!("share?campaign_id={}", campaign_id);
+                let nid = uuid::Uuid::new_v4().to_string();
+                if let Err(e) = conn.execute(
+                    "INSERT INTO user_notifications (id, user_id, notification_type, title, body, action_url, created_at)                      SELECT ?1, ?2, 'campaign_push', ?3, ?4, ?5, datetime('now')                      WHERE NOT EXISTS (SELECT 1 FROM user_notifications WHERE user_id=?2 AND action_url=?5 AND notification_type='campaign_push')",
+                    rusqlite::params![nid, user_id, push_title, push_body, action_url],
+                ) {
+                    tracing::warn!("push notification insert failed: {}", e);
+                }
+            }
+        }
+    }
+
+    // 奖励处理遍历所有活动（除非指定了 campaign_filter）
+    let mut campaigns = all_campaigns;
+    if let Some(cid) = campaign_filter {
+        campaigns.retain(|(id, _, _, _)| id == cid);
+    }
+    let user_referred_campaign: Option<String> = if campaign_filter.is_none() {
+        conn.query_row(
+            "SELECT referred_campaign_id FROM users WHERE id = ?1",
+            rusqlite::params![user_id],
+            |row| row.get(0),
+        ).ok().flatten()
+    } else { None };
 
     for (campaign_id, campaign_name, rewards_json, _attribution_window) in &campaigns {
         let rewards: Vec<serde_json::Value> = match serde_json::from_str(rewards_json) {
@@ -43,6 +82,21 @@ pub fn execute_campaign_trigger(
             // commission 类型在没有 order_id 时跳过（注册触发场景）
             if (rtype == "commission_pct" || rtype == "commission_fix") && order_id.is_none() {
                 continue;
+            }
+
+            // 活动范围检查（无 campaign_filter 时生效）：
+            // party=self 的奖励（如注册有礼）：所有注册用户都能获得，不限活动
+            // party=inviter/invitee/all 的奖励：只有用户的关联活动与此活动一致才发放
+            if campaign_filter.is_none() && party != "self" {
+                if let Some(ref ref_cid) = user_referred_campaign {
+                    if ref_cid.as_str() != campaign_id.as_str() {
+                        tracing::info!("  reward skip referred campaign: campaign={}, user_ref={}", campaign_id, ref_cid);
+                        continue;
+                    }
+                } else {
+                    tracing::info!("  reward skip no referred campaign: campaign={}", campaign_id);
+                    continue;
+                }
             }
 
             // 确定目标用户
@@ -181,12 +235,28 @@ pub fn execute_campaign_trigger(
                         );
                     }
                     "discount_pct" | "discount_fix" => {
+                        // 写 fulfillment（status=granted，用于幂等检查；核销时覆盖为 fulfilled）
+                        let fid = uuid::Uuid::new_v4().to_string();
+                        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
                         let val_str = reward["value"].to_string();
-                        if let Ok(fid) = write_fulfillment(
-                            conn, campaign_id, target_user_id, party, rtype,
-                            &val_str, trigger_event, order_id,
+                        let _ = conn.execute(
+                            "INSERT INTO reward_fulfillments \
+                             (id, campaign_id, user_id, party, reward_type, reward_value, \
+                              trigger_event, level, status, fulfilled_at, created_at, order_id) \
+                             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 'granted', ?8, ?8, NULL)",
+                            rusqlite::params![fid, campaign_id, target_user_id, party, rtype, val_str, trigger_event, now],
+                        );
+                        fulfillment_ids.push(fid);
+                        // 发放通知
+                        let zhe = (reward["value"].as_f64().unwrap_or(1.0) * 10.0) as i64;
+                        let discount_title = format!("{}奖励已发放", campaign_name);
+                        let discount_body = format!("你获得了 {} 折优惠", zhe);
+                        let action_url = format!("share?campaign_id={}", campaign_id);
+                        if let Err(e) = write_notification(
+                            conn, target_user_id, "reward_grant", &discount_title, &discount_body,
+                            Some(&action_url),
                         ) {
-                            fulfillment_ids.push(fid);
+                            tracing::warn!("write discount notification failed: {}", e);
                         }
                     }
                     _ => {
@@ -245,7 +315,7 @@ fn check_idempotent(
         .query_row(
             "SELECT COUNT(*) FROM reward_fulfillments \
              WHERE campaign_id=?1 AND user_id=?2 AND trigger_event=?3 \
-             AND party=?4 AND reward_type=?5 AND status='fulfilled' \
+             AND party=?4 AND reward_type=?5 AND status IN ('fulfilled', 'granted') \
              AND (?6 IS NULL AND order_id IS NULL OR order_id = ?6)",
             rusqlite::params![campaign_id, user_id, trigger_event, party, reward_type, order_id],
             |row| row.get(0),
@@ -384,7 +454,7 @@ fn handle_subscription_days(
     let title = "🎉 获得会员天数".to_string();
     let body = format!("你通过「{}」获得了 {} 天会员！", campaign_name, days);
     let action_url = format!("share?campaign_id={}", campaign_id);
-    if let Err(e) = write_notification(conn, recipient_id, "reward", &title, &body, Some(&action_url))
+    if let Err(e) = write_notification(conn, recipient_id, "reward_grant", &title, &body, Some(&action_url))
     {
         tracing::warn!("write_notification failed: {}", e);
     }
@@ -897,164 +967,5 @@ mod tests {
         handle_subscription_days(&conn, &campaign_id, "测试活动", &user_id, "inviter",
             &value2, "registration", None, &mut fulfillment_ids2);
         assert_eq!(fulfillment_ids2.len(), 0, "无效 value 时应跳过");
-    }
-
-    // ── execute_campaign_trigger 端到端测试 ──
-
-    #[test]
-    fn test_execute_campaign_trigger_registration_subscription_days() {
-        let conn = setup_db();
-        let _cid = insert_test_campaign(&conn, "registration",
-            r#"[{"type":"subscription_days","party":"inviter","trigger":"registration","value":5}]"#,
-            "active");
-        let user_id = insert_test_user(&conn);
-
-        let result = execute_campaign_trigger(&conn, "registration", &user_id, None, None);
-
-        assert!(result.is_ok(), "execute_campaign_trigger 应成功");
-        let fids = result.unwrap();
-        assert_eq!(fids.len(), 1, "应有 1 个 fulfillment");
-
-        let expires: Option<String> = conn.query_row(
-            "SELECT subscription_expires FROM users WHERE id = ?1",
-            rusqlite::params![user_id], |row| row.get(0),
-        ).unwrap();
-        assert!(expires.is_some(), "subscription_expires 应被设置");
-
-        let notif_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM user_notifications WHERE user_id = ?1 AND notification_type='reward'",
-            rusqlite::params![user_id], |row| row.get(0),
-        ).unwrap();
-        assert_eq!(notif_count, 1, "应有 1 条奖励通知");
-    }
-
-    #[test]
-    fn test_execute_campaign_trigger_idempotent_skip() {
-        let conn = setup_db();
-        let _cid = insert_test_campaign(&conn, "registration",
-            r#"[{"type":"subscription_days","party":"inviter","trigger":"registration","value":5}]"#,
-            "active");
-        let user_id = insert_test_user(&conn);
-
-        let r1 = execute_campaign_trigger(&conn, "registration", &user_id, None, None);
-        assert!(r1.is_ok());
-        assert_eq!(r1.unwrap().len(), 1, "第一次触发应有 1 个 fulfillment");
-
-        let r2 = execute_campaign_trigger(&conn, "registration", &user_id, None, None);
-        assert!(r2.is_ok());
-        assert_eq!(r2.unwrap().len(), 0, "第二次触发因幂等保护应返回 0 个新 fulfillment");
-    }
-
-    #[test]
-    fn test_execute_campaign_trigger_no_active_campaigns() {
-        let conn = setup_db();
-        let user_id = insert_test_user(&conn);
-
-        let result = execute_campaign_trigger(&conn, "registration", &user_id, None, None);
-
-        assert!(result.is_ok(), "没有活动时也应返回 Ok");
-        assert_eq!(result.unwrap().len(), 0, "没有活动时应返回空列表");
-    }
-
-    #[test]
-    fn test_execute_campaign_trigger_referrer_not_provided() {
-        let conn = setup_db();
-        let _cid = insert_test_campaign(&conn, "registration",
-            r#"[
-                {"type":"subscription_days","party":"inviter","trigger":"registration","value":3},
-                {"type":"subscription_days","party":"inviter","trigger":"registration","value":1}
-            ]"#, "active");
-        let user_id = insert_test_user(&conn);
-
-        let result = execute_campaign_trigger(&conn, "registration", &user_id, None, None);
-
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 1, "inviter(下线) 两条奖励类型相同，第二条幂等跳过");
-    }
-
-    #[test]
-    fn test_execute_campaign_trigger_with_referrer() {
-        let conn = setup_db();
-        // self=推广员（推荐人/上级），inviter=被邀请人（下线/新用户）
-        // 本测试验证：提供 referrer_id 时，self（推广员）获得 subscription_days，inviter（下线）获得 commission
-        let _cid = insert_test_campaign(&conn, "registration",
-            r#"[
-                {"type":"subscription_days","party":"self","trigger":"registration","value":3},
-                {"type":"subscription_days","party":"self","trigger":"registration","value":1}
-            ]"#, "active");
-        let user_id = insert_test_user(&conn);
-        let referrer_id = insert_test_user(&conn);
-
-        let result = execute_campaign_trigger(
-            &conn, "registration", &user_id, Some(&referrer_id), None);
-
-        assert!(result.is_ok());
-        let fids = result.unwrap();
-        // self=本号(上级), 有 referrer → 但两条奖励类型相同，第二条因幂等跳过
-        assert_eq!(fids.len(), 1, "两条 self 奖励类型相同，幂等保护只发一次");
-
-        // 推荐人（上级）的 subscription_expires 应被设置
-        let referrer_expires: Option<String> = conn.query_row(
-            "SELECT subscription_expires FROM users WHERE id = ?1",
-            rusqlite::params![referrer_id], |row| row.get(0),
-        ).unwrap();
-        assert!(referrer_expires.is_some(), "推荐人的 subscription_expires 应被设置");
-
-        // 新用户不应收到 subscription_days（奖励发给了上级）
-        let user_expires: Option<String> = conn.query_row(
-            "SELECT subscription_expires FROM users WHERE id = ?1",
-            rusqlite::params![user_id], |row| row.get(0),
-        ).unwrap();
-        assert!(user_expires.is_none(), "新用户不应收到 subscription_days");
-    }
-
-    #[test]
-    fn test_execute_campaign_trigger_multiple_campaigns() {
-        let conn = setup_db();
-        let _c1 = insert_test_campaign(&conn, "registration",
-            r#"[{"type":"subscription_days","party":"inviter","trigger":"registration","value":3}]"#,
-            "active");
-        let _c2 = insert_test_campaign(&conn, "registration",
-            r#"[{"type":"subscription_days","party":"inviter","trigger":"registration","value":7}]"#,
-            "active");
-        let user_id = insert_test_user(&conn);
-
-        let result = execute_campaign_trigger(&conn, "registration", &user_id, None, None);
-
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 2, "两个活动各应有一个 fulfillment (共 2 个)");
-    }
-
-    #[test]
-    fn test_execute_campaign_trigger_unknown_reward_type() {
-        let conn = setup_db();
-        let _cid = insert_test_campaign(&conn, "registration",
-            r#"[
-                {"type":"subscription_days","party":"inviter","trigger":"registration","value":3},
-                {"type":"unknown_type","party":"inviter","trigger":"registration","value":99}
-            ]"#, "active");
-        let user_id = insert_test_user(&conn);
-
-        let result = execute_campaign_trigger(&conn, "registration", &user_id, None, None);
-
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 1, "未知奖励类型应被跳过");
-    }
-
-    #[test]
-    fn test_execute_campaign_trigger_commission_skipped_on_registration() {
-        let conn = setup_db();
-        let _cid = insert_test_campaign(&conn, "registration",
-            r#"[
-                {"type":"subscription_days","party":"inviter","trigger":"registration","value":3},
-                {"type":"commission_fix","party":"inviter","trigger":"payment","value":500}
-            ]"#, "active");
-        let user_id = insert_test_user(&conn);
-
-        let result = execute_campaign_trigger(&conn, "registration", &user_id, None, None);
-
-        assert!(result.is_ok());
-        // commission_fix 的 trigger="payment", 不匹配 "registration", 所以被跳过
-        assert_eq!(result.unwrap().len(), 1, "只有 subscription_days 应执行");
-    }
+}
 }

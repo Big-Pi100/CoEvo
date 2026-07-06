@@ -735,7 +735,7 @@ Future<void> checkAndShowCampaign(
   try {
     // 检查是否有匹配的推送活动
     final uri = Uri.parse(
-        '${ApiConfig.baseUrl}/api/campaigns/check-push-trigger?push_trigger=$pushTrigger');
+        '${ApiConfig.baseUrl}/api/campaigns/check-push-trigger?push_trigger=$pushTrigger&user_id=$userId');
     final resp = await http
         .get(uri, headers: {'Content-Type': 'application/json'})
         .timeout(const Duration(seconds: 5));
