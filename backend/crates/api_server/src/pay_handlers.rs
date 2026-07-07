@@ -499,6 +499,32 @@ pub fn distribute_commission_on_payment(
         tracing::info!("distribute_commission_on_payment: redeemed inviter discount for {}, order={}", buyer_id, order_id);
     }
 
+    // 核销 party=all 折扣（拼团/组队活动成员支付时）
+    let all_redeemed = conn.execute(
+        "UPDATE reward_fulfillments SET status = 'fulfilled', order_id = ?1 \
+         WHERE user_id = ?2 AND party = 'all' AND reward_type IN ('discount_pct', 'discount_fix') \
+         AND status = 'granted' AND order_id IS NULL",
+        rusqlite::params![order_id, buyer_id],
+    ).unwrap_or(0);
+    if all_redeemed > 0 {
+        let camp_name: String = conn.query_row(
+            "SELECT COALESCE(mc.name, '') FROM reward_fulfillments rf \
+             LEFT JOIN marketing_campaigns mc ON rf.campaign_id = mc.id \
+             WHERE rf.user_id = ?1 AND rf.party = 'all' AND rf.status = 'fulfilled' AND rf.order_id = ?2 \
+             LIMIT 1",
+            rusqlite::params![buyer_id, order_id],
+            |row| row.get(0),
+        ).unwrap_or_default();
+        let display_name = if camp_name.is_empty() { "拼团活动" } else { &camp_name };
+        let _ = crate::campaign_executor::write_notification(
+            conn, &buyer_id, "reward_redeem",
+            &format!("📉 折扣已使用"),
+            &format!("你在本次支付中使用了「{}」拼团折扣优惠！", display_name),
+            None,
+        );
+        tracing::info!("distribute_commission_on_payment: redeemed all-party discount for {}, order={}", buyer_id, order_id);
+    }
+
     Ok(())
 }
 

@@ -172,7 +172,7 @@ class _PayScreenState extends ConsumerState<PayScreen> {
             _codeUrl = null;
           });
           Future.delayed(const Duration(seconds: 2), () {
-            if (mounted) context.pop(true);
+            if (mounted) context.go('/home');
           });
         } else {
           // 混合支付：显示微信二维码
@@ -228,7 +228,7 @@ class _PayScreenState extends ConsumerState<PayScreen> {
           setState(() => _status = 'SUCCESS');
           _pollTimer?.cancel();
           Future.delayed(const Duration(seconds: 2), () {
-            if (mounted) context.pop(true);
+            if (mounted) context.go('/home');
           });
         } else if (status == 'CLOSED' && mounted) {
           setState(() => _status = 'CLOSED');

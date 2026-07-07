@@ -265,7 +265,16 @@ pub async fn calculate(
         })),
     };
 
-    // 5. 检查该用户是否已用过此活动的折扣（只用一次）
+    // 5. 检查折扣状态
+    //    没有 fulfillment → 折扣从未发放（min_member_count 未达标等）→ 不显示
+    //    status=granted → 已发放未使用 → 显示折扣
+    //    status=fulfilled → 已使用 → 不显示
+    let has_discount: bool = conn.query_row(
+        "SELECT COUNT(*) FROM reward_fulfillments \
+         WHERE campaign_id = ?1 AND user_id = ?2 AND reward_type IN ('discount_pct', 'discount_fix') AND status IN ('fulfilled', 'granted')",
+        rusqlite::params![&campaign_id, &body.user_id],
+        |row| row.get::<_, i64>(0),
+    ).unwrap_or(0) > 0;
     let already_used: bool = conn.query_row(
         "SELECT COUNT(*) FROM reward_fulfillments \
          WHERE campaign_id = ?1 AND user_id = ?2 AND reward_type IN ('discount_pct', 'discount_fix') AND status = 'fulfilled'",
@@ -276,7 +285,7 @@ pub async fn calculate(
     let mut discounted_price = original_price;
     let mut discount_note = String::new();
 
-    if !already_used {
+    if has_discount && !already_used {
         if let Ok(rewards) = serde_json::from_str::<Vec<serde_json::Value>>(&rewards_str) {
             for reward in &rewards {
             let rtype = reward["type"].as_str().unwrap_or("");

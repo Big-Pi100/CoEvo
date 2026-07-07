@@ -234,12 +234,13 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
   void _checkSubscription() {
     final auth = ref.read(authProvider);
     if (!auth.isAuthenticated || auth.userId == null) return;
-    // 距上次关闭时间按 dismiss 次数递增
-    if (_lastDismissed != null) {
+    // 距上次关闭时间按 dismiss 次数递增（已显示的覆盖层不在此限，支付后需立即刷新）
+    if (_lastDismissed != null && !_showSubExpired) {
       final idx = _dismissCount.clamp(0, _backoffMinutes.length - 1);
       final minWait = _backoffMinutes[idx];
-      if (DateTime.now().difference(_lastDismissed!).inMinutes < minWait)
+      if (DateTime.now().difference(_lastDismissed!).inMinutes < minWait) {
         return;
+      }
     }
 
     ref.fetchSubscription().then((_) {
@@ -250,6 +251,10 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
       // 临时账户不弹订阅覆盖层，引导注册由 ChatScreen 处理
       if (sub.isExpired && mounted && !_showSubExpired && !isTrial) {
         setState(() => _showSubExpired = true);
+      }
+      // 订阅已激活（刚支付完成）→ 关闭覆盖层
+      if (!sub.isExpired && mounted && _showSubExpired) {
+        setState(() => _showSubExpired = false);
       }
     });
   }
@@ -309,6 +314,9 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
 
   @override
   Widget build(BuildContext context) {
+    // 每次 build 时检查订阅状态（支付后路由变化触发刷新，有 backoff 保护不会频繁请求）
+    Future.microtask(_checkSubscription);
+
     // 监听 auth 切换：用户 ID 变化时重新获取订阅状态
     ref.listen<String?>(authProvider.select((a) => a.userId), (prev, next) {
       if (next != null && next != prev) {
