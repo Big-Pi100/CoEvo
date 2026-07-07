@@ -105,6 +105,9 @@ pub async fn start(
         } else { None }
     } else { None };
     tracing::info!("trial/start referral: referred_by={:?}, referred_campaign_id={:?}", referred_by, body.campaign_id);
+    // 记录推荐关系（用于 trial/claim 读取和 scope check），但不加入 campaign_members
+    // campaign_members 在 trial/claim 中完成，要求用户提供真实姓名和手机号
+    // 防止临时试用账户成为有效「下线」
     if let Some(ref rid) = referred_by {
         if let Err(e) = conn.execute(
             "UPDATE users SET referred_by = ?1 WHERE id = ?2",
@@ -112,7 +115,6 @@ pub async fn start(
         ) {
             tracing::warn!("trial/start set referred_by failed: {}", e);
         }
-        // 如果有 campaign_id，同时记录 referred_campaign_id（用于资格判断）
         if let Some(ref cid) = body.campaign_id {
             if !cid.is_empty() {
                 let _ = conn.execute(
@@ -188,7 +190,22 @@ pub async fn claim(
         return (StatusCode::CONFLICT, Json(json!({"error": "用户名已存在"}))).into_response();
     }
 
-    // 4. 密码加密
+    // 4. 校验手机号唯一（有 phone_hash 时）
+    if let Some(ref p) = body.phone {
+        if !p.is_empty() {
+            let phone_hash = crate::encryption::sha256_hash(p);
+            let phone_exists: bool = conn.query_row(
+                "SELECT COUNT(*) FROM users WHERE phone_hash = ?1 AND id != ?2",
+                rusqlite::params![phone_hash, body.user_id],
+                |row| row.get::<_, i64>(0),
+            ).map(|c| c > 0).unwrap_or(false);
+            if phone_exists {
+                return (StatusCode::CONFLICT, Json(json!({"error": "手机号已被注册"}))).into_response();
+            }
+        }
+    }
+
+    // 5. 密码加密
     let password_hash = match bcrypt::hash(&body.password, 4) {
         Ok(h) => h,
         Err(e) => {
@@ -197,24 +214,31 @@ pub async fn claim(
         }
     };
 
-    // 5. 处理推广码 — 优先使用请求体中的，其次使用 DB 中已有记录（trial 创建时已绑定）
-    let referred_by_body: Option<String> = if let Some(ref code) = body.referral_code {
-        if !code.is_empty() {
+    // 5. 处理推广码 — 仅当用户提供了真实姓名和手机号时，才记录推荐关系
+    //    防止临时试用账户成为有效「下线」
+    let has_real_info = body.real_name.is_some() && body.phone.is_some();
+    let referred_by: Option<String> = if has_real_info {
+        // 优先使用请求体中的推广码
+        let from_body: Option<String> = if let Some(ref code) = body.referral_code {
+            if !code.is_empty() {
+                conn.query_row(
+                    "SELECT id FROM users WHERE referral_code = ?1 AND deleted_at IS NULL",
+                    rusqlite::params![code],
+                    |row| row.get(0),
+                ).ok()
+            } else { None }
+        } else { None };
+        // 请求体没有推广码，从 DB 读已有的推荐关系（仅当用户之前已通过 trial/start 绑定）
+        from_body.or_else(|| {
             conn.query_row(
-                "SELECT id FROM users WHERE referral_code = ?1 AND deleted_at IS NULL",
-                rusqlite::params![code],
+                "SELECT referred_by FROM users WHERE id = ?1",
+                rusqlite::params![&body.user_id],
                 |row| row.get(0),
-            ).ok()
-        } else { None }
-    } else { None };
-    // 如果请求体没有推广码，从 DB 读已有的推荐关系
-    let referred_by: Option<String> = referred_by_body.or_else(|| {
-        conn.query_row(
-            "SELECT referred_by FROM users WHERE id = ?1",
-            rusqlite::params![&body.user_id],
-            |row| row.get(0),
-        ).ok().flatten()
-    });
+            ).ok().flatten()
+        })
+    } else {
+        None // 未提供真实信息 → 不建立推荐关系
+    };
 
     // 6. 加密 PII 字段
     let enc_real_name = body.real_name.as_ref().map(|n| crate::encryption::encrypt(n));
@@ -255,7 +279,28 @@ pub async fn claim(
         }
     }
 
-    // 8. 触发注册活动
+    // 如果有 campaign_id，加入活动成员（仅用户提供了真实信息时才记入）
+    if has_real_info {
+        if let Some(ref cid) = body.campaign_id {
+            if !cid.is_empty() {
+                // 新用户以 member 身份加入
+                let now_str = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+                let _ = conn.execute(
+                    "INSERT OR IGNORE INTO campaign_members (campaign_id, user_id, role, created_at) VALUES (?1, ?2, 'member', ?3)",
+                    rusqlite::params![cid, body.user_id, now_str],
+                );
+                // 如果有推荐人，也以 inviter 身份加入
+                if let Some(ref rid) = referred_by {
+                    let _ = conn.execute(
+                        "INSERT OR IGNORE INTO campaign_members (campaign_id, user_id, role, created_at) VALUES (?1, ?2, 'inviter', ?3)",
+                        rusqlite::params![cid, rid, now_str],
+                    );
+                }
+            }
+        }
+    }
+
+    // 8. 触发注册活动（不传 campaign_filter，scope check 由 executor 内部基于 referred_campaign_id 匹配）
     if let Err(e) = crate::campaign_executor::execute_campaign_trigger(
         &conn, "registration", &body.user_id, referred_by.as_deref(), None, None,
     ) {

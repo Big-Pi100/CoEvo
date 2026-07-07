@@ -24,7 +24,7 @@ pub fn execute_campaign_trigger(
         trigger_event, user_id, referrer_id, order_id, all_campaigns.len());
 
     // 推送通知遍历所有活动（推送不分活动范围）
-    for (campaign_id, campaign_name, _rewards_json, _attribution_window) in &all_campaigns {
+    for (campaign_id, campaign_name, _rewards_json, _attribution_window, _min_member_count, _campaign_type) in &all_campaigns {
         let push_trigger: Option<String> = conn.query_row(
             "SELECT push_trigger FROM marketing_campaigns WHERE id = ?1",
             rusqlite::params![campaign_id],
@@ -49,7 +49,7 @@ pub fn execute_campaign_trigger(
     // 奖励处理遍历所有活动（除非指定了 campaign_filter）
     let mut campaigns = all_campaigns;
     if let Some(cid) = campaign_filter {
-        campaigns.retain(|(id, _, _, _)| id == cid);
+        campaigns.retain(|(id, _, _, _, _, _)| id == cid);
     }
     let user_referred_campaign: Option<String> = if campaign_filter.is_none() {
         conn.query_row(
@@ -59,7 +59,7 @@ pub fn execute_campaign_trigger(
         ).ok().flatten()
     } else { None };
 
-    for (campaign_id, campaign_name, rewards_json, _attribution_window) in &campaigns {
+    for (campaign_id, campaign_name, rewards_json, _attribution_window, min_member_count, campaign_type) in &campaigns {
         let rewards: Vec<serde_json::Value> = match serde_json::from_str(rewards_json) {
             Ok(v) => v,
             Err(e) => {
@@ -121,9 +121,11 @@ pub fn execute_campaign_trigger(
                     vec![user_id.to_string()]
                 }
                 "all" => {
-                    // 查活动所有参与者
+                    // 查活动所有参与者（过滤掉临时试用账户）
                     let mut stmt = match conn.prepare(
-                        "SELECT user_id FROM campaign_members WHERE campaign_id = ?1"
+                        "SELECT cm.user_id FROM campaign_members cm \
+                         JOIN users u ON cm.user_id = u.id \
+                         WHERE cm.campaign_id = ?1 AND u.username NOT LIKE 'trial_%'"
                     ) {
                         Ok(s) => s,
                         Err(_) => continue,
@@ -132,6 +134,17 @@ pub fn execute_campaign_trigger(
                         rusqlite::params![campaign_id], |row| row.get(0)
                     ).ok().map(|rows| rows.filter_map(|r| r.ok()).collect()).unwrap_or_default();
                     if users.is_empty() { continue; }
+                    // 仅拼团模式（team_discount）检查最小成团人数
+                    if *campaign_type == "team_discount" {
+                        let unfulfilled: Vec<&String> = users.iter().filter(|uid| {
+                            !check_idempotent(conn, campaign_id, uid, trigger_event, party, rtype, order_id).unwrap_or(true)
+                        }).collect();
+                        if unfulfilled.len() < *min_member_count as usize {
+                            tracing::info!("  party=all 拼团 skip: campaign={}, unfulfilled={} < min={}", campaign_id, unfulfilled.len(), min_member_count);
+                            continue;
+                        }
+                        tracing::info!("  party=all 拼团 成团: campaign={}, total={}, unfulfilled={}, min={}", campaign_id, users.len(), unfulfilled.len(), min_member_count);
+                    }
                     users
                 }
                 _ => continue, // 未知 party
@@ -274,10 +287,10 @@ pub fn execute_campaign_trigger(
 /// 不按 trigger_event 过滤，由 per-reward trigger 决定
 fn find_active_campaigns(
     conn: &rusqlite::Connection,
-) -> Result<Vec<(String, String, String, i64)>, String> {
+) -> Result<Vec<(String, String, String, i64, i64, String)>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, name, rewards, attribution_window \
+            "SELECT id, name, rewards, attribution_window, COALESCE(min_member_count, 1), campaign_type \
              FROM marketing_campaigns \
              WHERE status='active' \
              AND (valid_from IS NULL OR valid_from <= datetime('now')) \
@@ -292,11 +305,13 @@ fn find_active_campaigns(
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
                 row.get::<_, i64>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, String>(5)?,
             ))
         })
         .map_err(|e| format!("query campaigns failed: {}", e))?;
 
-    let campaigns: Vec<(String, String, String, i64)> =
+    let campaigns: Vec<(String, String, String, i64, i64, String)> =
         rows.filter_map(|r| r.ok()).collect();
     Ok(campaigns)
 }

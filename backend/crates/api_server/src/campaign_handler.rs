@@ -177,6 +177,7 @@ pub async fn update(
         "trigger_event", "target_roles", "push_trigger", "push_cron",
         "poster_prompt", "h5_prompt", "attribution_window", "valid_from", "valid_until",
         "participant_limit", "per_user_limit", "qr_code_url", "display_positions",
+        "min_member_count",
     ];
 
     for field in &updatable {

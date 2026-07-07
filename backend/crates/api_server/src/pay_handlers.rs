@@ -454,6 +454,7 @@ pub fn distribute_commission_on_payment(
     };
 
     if let Some((_campaign_id, campaign_name)) = discount_campaign {
+        // 核销 invitee 折扣（被邀请人自己支付时）
         let redeemed = conn.execute(
             "UPDATE reward_fulfillments SET status = 'fulfilled', order_id = ?1 \
              WHERE user_id = ?2 AND party = 'invitee' AND reward_type IN ('discount_pct', 'discount_fix') \
@@ -467,8 +468,35 @@ pub fn distribute_commission_on_payment(
                 &format!("你在本次支付中使用了「{}」推荐折扣优惠！", campaign_name),
                 None,
             );
-            tracing::info!("distribute_commission_on_payment: redeemed discount for {}, order={}", buyer_id, order_id);
+            tracing::info!("distribute_commission_on_payment: redeemed invitee discount for {}, order={}", buyer_id, order_id);
         }
+    }
+
+    // 核销 inviter 折扣（邀请人自己支付时）
+    let inviter_redeemed = conn.execute(
+        "UPDATE reward_fulfillments SET status = 'fulfilled', order_id = ?1 \
+         WHERE user_id = ?2 AND party = 'inviter' AND reward_type IN ('discount_pct', 'discount_fix') \
+         AND status = 'granted' AND order_id IS NULL",
+        rusqlite::params![order_id, buyer_id],
+    ).unwrap_or(0);
+    if inviter_redeemed > 0 {
+        // 查活动名
+        let camp_name: String = conn.query_row(
+            "SELECT COALESCE(mc.name, '') FROM reward_fulfillments rf \
+             LEFT JOIN marketing_campaigns mc ON rf.campaign_id = mc.id \
+             WHERE rf.user_id = ?1 AND rf.party = 'inviter' AND rf.status = 'fulfilled' AND rf.order_id = ?2 \
+             LIMIT 1",
+            rusqlite::params![buyer_id, order_id],
+            |row| row.get(0),
+        ).unwrap_or_default();
+        let display_name = if camp_name.is_empty() { "推荐活动" } else { &camp_name };
+        let _ = crate::campaign_executor::write_notification(
+            conn, &buyer_id, "reward_redeem",
+            &format!("📉 折扣已使用"),
+            &format!("你在本次支付中使用了邀请「{}」获得的折扣优惠！", display_name),
+            None,
+        );
+        tracing::info!("distribute_commission_on_payment: redeemed inviter discount for {}, order={}", buyer_id, order_id);
     }
 
     Ok(())

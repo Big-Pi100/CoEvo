@@ -41,6 +41,14 @@ pub async fn join(
         |row| row.get(0),
     ).unwrap_or(0);
 
+    // 触发活动奖励检查：新成员加入后可能达到成团人数
+    // 只处理该活动的 party=all 奖励（group-buy / team discount）
+    if let Err(e) = crate::campaign_executor::execute_campaign_trigger(
+        &conn, "registration", &body.user_id, None, None, Some(&body.campaign_id),
+    ) {
+        tracing::warn!("campaign/join campaign trigger failed: {}", e);
+    }
+
     (StatusCode::OK, Json(json!({
         "status": "ok",
         "campaign_id": body.campaign_id,
