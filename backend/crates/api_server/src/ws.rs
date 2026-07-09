@@ -429,7 +429,13 @@ pub async fn handle_ws(mut ws: WebSocket) {
                                 .map(|w| w.to_lowercase())
                                 .collect()
                         };
+                        // 去重：同一条消息中多次出现的同一个词只处理一次
+                        let mut seen_in_msg = std::collections::HashSet::new();
+                        let matched = matched.into_iter().filter(|w| seen_in_msg.insert(w.clone())).collect::<Vec<_>>();
                         let now = chrono::Utc::now().timestamp();
+                        let today_start = chrono::Utc::now().date_naive().and_hms_opt(0, 0, 0)
+                            .map(|d| d.and_utc().timestamp())
+                            .unwrap_or(0);
                         for word in &matched {
                             let has_card = conn_b2.query_row(
                                 "SELECT 1 FROM user_cards WHERE user_id = ?1 AND LOWER(front) = ?2 LIMIT 1",
@@ -439,16 +445,27 @@ pub async fn handle_ws(mut ws: WebSocket) {
                             if !has_card {
                                 activate_single_word(&conn_b2, uid_b2, word, subject, now);
                             } else {
-                                // 已激活：走完整 FSRS 隐式复习流程（更新 state/due/reps + 写 review_log）
-                                let card_ids: Vec<String> = (|| -> Option<Vec<String>> {
-                                    let mut stmt = conn_b2.prepare(
-                                        "SELECT id FROM user_cards WHERE user_id = ?1 AND LOWER(front) = ?2"
-                                    ).ok()?;
-                                    let rows = stmt.query_map(rusqlite::params![uid_b2, word], |row| row.get::<_, String>(0)).ok()?;
-                                    Some(rows.filter_map(|r| r.ok()).collect())
-                                })().unwrap_or_default();
-                                for cid in &card_ids {
-                                    card_engine::fsrs_scheduler::record_implicit_review(&conn_b2, cid);
+                                // 已激活：检查今天是否已隐式复习过，避免重复推送
+                                let already_reviewed_today = conn_b2.query_row(
+                                    "SELECT 1 FROM review_log rl \
+                                     JOIN user_cards uc ON rl.user_card_id = uc.id \
+                                     WHERE uc.user_id = ?1 AND LOWER(uc.front) = ?2 \
+                                       AND rl.verification_type = 'ai_dialogue' \
+                                       AND rl.reviewed_at >= ?3 LIMIT 1",
+                                    rusqlite::params![uid_b2, word, today_start],
+                                    |_| Ok(true),
+                                ).unwrap_or(false);
+                                if !already_reviewed_today {
+                                    let card_ids: Vec<String> = (|| -> Option<Vec<String>> {
+                                        let mut stmt = conn_b2.prepare(
+                                            "SELECT id FROM user_cards WHERE user_id = ?1 AND LOWER(front) = ?2"
+                                        ).ok()?;
+                                        let rows = stmt.query_map(rusqlite::params![uid_b2, word], |row| row.get::<_, String>(0)).ok()?;
+                                        Some(rows.filter_map(|r| r.ok()).collect())
+                                    })().unwrap_or_default();
+                                    for cid in &card_ids {
+                                        card_engine::fsrs_scheduler::record_implicit_review(&conn_b2, cid);
+                                    }
                                 }
                             }
                         }
