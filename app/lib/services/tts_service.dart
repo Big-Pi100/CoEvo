@@ -159,15 +159,24 @@ class TtsService extends ChangeNotifier {
 
   /// 播放 auto-play 音频（独立播放器，与按钮互不干扰）
   void playAutoStream(Uint8List audio) {
+    if (audio.isEmpty) {
+      debugPrint('[TTS] auto-play: empty audio, skipping');
+      return;
+    }
     _autoPlayer?.stop();
     _autoPlayer?.dispose();
     final player = AudioPlayer();
     _autoPlayer = player;
-    player.setSource(BytesSource(audio));
-    player.resume();
-    player.onPlayerComplete.listen((_) {
-      if (_autoPlayer == player) _autoPlayer = null;
-    });
+    try {
+      player.setSource(BytesSource(Uint8List.fromList(audio)));
+      player.resume();
+      player.onPlayerComplete.listen((_) {
+        if (_autoPlayer == player) _autoPlayer = null;
+      });
+    } catch (e) {
+      debugPrint('[TTS] auto-play exception: $e');
+      _autoPlayer = null;
+    }
   }
 
   /// 缓存并播放（由 auto-play 调用）

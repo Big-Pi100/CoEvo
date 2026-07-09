@@ -390,17 +390,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         break;
       case 'tts_audio':
         // 收到 TTS 音频 → 缓存并检查自动播放开关
-        if (event.audio != null) {
+        if (event.audio != null && event.audio!.isNotEmpty) {
           final text = _getLastAssistantText();
           if (text != null) {
             try {
               final bytes = base64Decode(event.audio!);
+              if (bytes.isEmpty) {
+                debugPrint('[TTS] WS tts_audio: decoded audio is empty');
+                break;
+              }
               final tts = ref.read(ttsServiceProvider);
               tts.cacheAudio(text, Uint8List.fromList(bytes));
               if (ref.read(ttsAutoPlayProvider)) {
                 tts.playAutoStream(Uint8List.fromList(bytes));
               }
-            } catch (_) {}
+            } catch (e) {
+              debugPrint('[TTS] WS tts_audio decode failed: $e');
+            }
           }
         }
         break;

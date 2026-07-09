@@ -1134,7 +1134,7 @@ Row(
                     title: Text(card.front, style: TextStyle(fontWeight: FontWeight.w600, color: _cs.onPrimary)),
                     subtitle: isActive ? null : Text('${_cardBackPreview(card.back)}\n复习 ${card.reps} 次', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: _cs.onPrimary.withAlpha(200))),
                 trailing: SizedBox(
-                  width: 200,
+                  width: MediaQuery.of(context).size.width > 480 ? 200 : null,
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
@@ -1251,10 +1251,13 @@ Row(
             ),
             child: Column(
               children: [
-                // 卡片内容（考试模式降低不透明度，大字体下限制缩放防溢出）
+                // 卡片内容（考试模式降低不透明度，增加滚动兜底防溢出）
                 Padding(
                   padding: const EdgeInsets.all(AppTheme.spacingSm),
-                    child: AnimatedSwitcher(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 240),
+                    child: SingleChildScrollView(
+                      child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 300),
                       transitionBuilder: (child, animation) {
                         return FadeTransition(
@@ -1288,8 +1291,10 @@ Row(
                             ),
                       ),
                     ),
-                    ),
                   ),
+                  ),
+                ),
+                ),
                 if (!_isVerifying && _isFlipped && card.sourceSentence != null) ...[
                   const SizedBox(height: AppTheme.spacingSm),
                   AnimatedSwitcher(
