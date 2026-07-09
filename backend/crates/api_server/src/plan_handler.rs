@@ -948,14 +948,40 @@ pub async fn force_plan_creation(user_id: &str, conversation_id: &str, user_inte
                 if let Some(ref plan) = result.task_status {
                     let resolved_plan_id = result.plan_id.as_deref().unwrap_or(&plan_id);
                     if !resolved_plan_id.is_empty() && !user_id.is_empty() {
-                        if let Some(stages) = plan.get("stages").and_then(|s| s.as_array()) {
-                            if let Some(first_stage) = stages.first() {
-                                if let Some(tasks) = first_stage.get("tasks").and_then(|t| t.as_array()) {
-                                    for task in tasks {
-                                        let task_key = task.get("task_key").and_then(|v| v.as_str()).unwrap_or("");
-                                        for cid in task.get("card_ids").and_then(|c| c.as_array()).into_iter().flatten() {
-                                            if let Some(card_uuid) = cid.as_str() {
-                                                let _ = crate::plan_handler::copy_prebuilt_card(&conn, user_id, resolved_plan_id, task_key, card_uuid);
+                        // 预置词库科目（english/chinese）：只激活第一个 task 的卡片，逐课渐进激活
+                        let is_vocab = conn.query_row(
+                            "SELECT 1 FROM plan_runs WHERE id = ?1 AND subject IN ('english','chinese')",
+                            rusqlite::params![resolved_plan_id],
+                            |_| Ok(true),
+                        ).unwrap_or(false);
+                        if is_vocab {
+                            // 只激活第一个 task 的卡片，后续随任务推进逐步激活
+                            if let Some(stages) = plan.get("stages").and_then(|s| s.as_array()) {
+                                if let Some(first_stage) = stages.first() {
+                                    if let Some(tasks) = first_stage.get("tasks").and_then(|t| t.as_array()) {
+                                        if let Some(first_task) = tasks.first() {
+                                            let task_key = first_task.get("task_key").and_then(|v| v.as_str()).unwrap_or("");
+                                            for cid in first_task.get("card_ids").and_then(|c| c.as_array()).into_iter().flatten() {
+                                                if let Some(card_uuid) = cid.as_str() {
+                                                    let _ = crate::plan_handler::copy_prebuilt_card(&conn, user_id, resolved_plan_id, task_key, card_uuid);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            tracing::info!("[force_plan_creation] activated first task cards for vocab subject (plan={})", resolved_plan_id);
+                        } else {
+                            // 非词库科目：批量激活全部 stage 1 卡片
+                            if let Some(stages) = plan.get("stages").and_then(|s| s.as_array()) {
+                                if let Some(first_stage) = stages.first() {
+                                    if let Some(tasks) = first_stage.get("tasks").and_then(|t| t.as_array()) {
+                                        for task in tasks {
+                                            let task_key = task.get("task_key").and_then(|v| v.as_str()).unwrap_or("");
+                                            for cid in task.get("card_ids").and_then(|c| c.as_array()).into_iter().flatten() {
+                                                if let Some(card_uuid) = cid.as_str() {
+                                                    let _ = crate::plan_handler::copy_prebuilt_card(&conn, user_id, resolved_plan_id, task_key, card_uuid);
+                                                }
                                             }
                                         }
                                     }

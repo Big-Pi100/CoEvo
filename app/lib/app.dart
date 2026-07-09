@@ -375,12 +375,17 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
       routerConfig: goRouter,
       builder: (context, child) {
         final isWide = MediaQuery.of(context).size.width > 768;
-        final content = Stack(
+        // 限制系统字体缩放最大 1.3 倍，防止卡片内容溢出撑爆布局
+        final scale = MediaQuery.of(context).textScaleFactor.clamp(1.0, 1.3);
+        final content = MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaleFactor: scale),
+          child: Stack(
           children: [
             child!,
             const AchievementOverlay(),
             _buildSubExpiredOverlay(),
           ],
+          ),
         );
         if (!isWide) return content;
         return Center(

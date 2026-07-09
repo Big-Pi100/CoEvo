@@ -385,26 +385,41 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     last_subject = Some(debug_plan_info.0.clone());
                 }
 
-                // ── B2: 用户输入匹配词库词汇 → 激活（仅 english/chinese） ──
+                // ── B2: 用户输入匹配词库词汇 → 激活（仅 english/chinese 及 language 大类） ──
                 let domain = &debug_plan_info.0;
                 tracing::info!("[CP1 B2] check: domain={}, msg_len={}, msg_preview={:?}", 
                     domain, chat_req.message.len(), 
                     chat_req.message.chars().take(30).collect::<String>());
-                if (domain == "english" || domain == "chinese") && !chat_req.message.trim().is_empty() {
+                // 解析实际科目：domain 可能是 "english"/"chinese" 或 "language"（需查 subject）
+                let b2_subject: Option<String> = if domain == "english" || domain == "chinese" {
+                    Some(domain.clone())
+                } else if domain == "language" {
+                    // language 大类需从 plan_runs 查具体 subject
+                    let conn_temp = crate::db_pool::get_conn();
+                    conn_temp.query_row(
+                        "SELECT subject FROM plan_runs WHERE conversation_id = ?1 AND subject IS NOT NULL AND subject != '' LIMIT 1",
+                        rusqlite::params![&chat_req.conversation_id],
+                        |row| row.get::<_, String>(0),
+                    ).ok()
+                } else {
+                    None
+                };
+                if let Some(ref subject) = b2_subject {
+                    if !chat_req.message.trim().is_empty() {
                     let conn_b2 = crate::db_pool::get_conn();
                     let uid_b2 = &chat_req.user_id;
                     let msg_b2 = &chat_req.message;
                     // 同步执行匹配 + 激活，不调用 LLM 验证
                     let fronts: Vec<String> = (|| -> Option<Vec<String>> {
                         let mut stmt = conn_b2.prepare("SELECT front FROM prebuilt_cards WHERE subject = ?1").ok()?;
-                        let rows = stmt.query_map(rusqlite::params![domain], |row| row.get::<_, String>(0)).ok()?;
+                        let rows = stmt.query_map(rusqlite::params![subject], |row| row.get::<_, String>(0)).ok()?;
                         Some(rows.filter_map(|r| r.ok()).collect())
                     })().unwrap_or_default();
                     if !fronts.is_empty() {
-                        tracing::info!("[CP1 B2] loaded {} fronts for subject={}", fronts.len(), domain);
+                        tracing::info!("[CP1 B2] loaded {} fronts for subject={}", fronts.len(), subject);
                         let vocab: std::collections::HashSet<String> = fronts.iter()
                             .map(|f| f.to_lowercase()).collect();
-                        let matched: Vec<String> = if *domain == "chinese" {
+                        let matched: Vec<String> = if subject == "chinese" {
                             fronts.iter()
                                 .filter(|f| f.len() >= 2 && msg_b2.contains(&f.to_lowercase()))
                                 .cloned().collect()
@@ -422,7 +437,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                                 |_| Ok(true),
                             ).unwrap_or(false);
                             if !has_card {
-                                activate_single_word(&conn_b2, uid_b2, word, domain, now);
+                                activate_single_word(&conn_b2, uid_b2, word, subject, now);
                             } else {
                                 // 已激活：走完整 FSRS 隐式复习流程（更新 state/due/reps + 写 review_log）
                                 let card_ids: Vec<String> = (|| -> Option<Vec<String>> {
@@ -440,6 +455,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         if !matched.is_empty() {
                             tracing::info!("[CP1 B2] activated {} words from user input: {:?}", matched.len(), matched);
                         }
+                    }
                     }
                 }
 
@@ -824,8 +840,20 @@ pub async fn handle_ws(mut ws: WebSocket) {
                             |_| Ok(true),
                         ).unwrap_or(false)
                     };
-                    // 已预制词典的科目（english/chinese）跳过 CP1，避免重复提取和降质
+                    // 已预制词典的科目（english/chinese/language）跳过 CP1，避免重复提取和降质
                     let has_prebuilt_vocab = ed == "english" || ed == "chinese";
+                    // language 大类也属于预置词库科目（需查 subject 确认）
+                    let has_language_vocab = if !has_prebuilt_vocab && ed == "language" {
+                        let conn_check = crate::db_pool::get_conn();
+                        conn_check.query_row(
+                            "SELECT 1 FROM plan_runs WHERE conversation_id = ?1 AND subject IN ('english','chinese') LIMIT 1",
+                            rusqlite::params![&conv_id_cp1],
+                            |_| Ok(true),
+                        ).unwrap_or(false)
+                    } else {
+                        false
+                    };
+                    let has_prebuilt_vocab = has_prebuilt_vocab || has_language_vocab;
                     if !has_plan || has_prebuilt_vocab {
                         let skip_reason = if !has_plan { "no plan".to_string() } else { format!("prebuilt vocab subject={}", ed) };
                         tracing::info!("CP1 skipped for turn {}: {}", cold_turn, skip_reason);
@@ -838,11 +866,8 @@ pub async fn handle_ws(mut ws: WebSocket) {
                             })).await;
                             let _ = cp1_logger.close().await;
                         }
-                        // AI 回复中出现预置词汇时静默激活（仅限有 plan 的预置词库科目）
-                        if has_prebuilt_vocab && has_plan {
-                            let conn_activate = crate::db_pool::get_conn();
-                            activate_from_ai_reply(&conn_activate, &user_id, &fr, &ed);
-                        }
+                        // 不再按 AI 回复匹配词汇（课文卡已在 plan 初始化时按 task 激活）
+                        // B2: 用户输入匹配保留，作为补充
                         let _ = cold_tx.send((cold_turn, vec![])).await;
                         return;
                     }

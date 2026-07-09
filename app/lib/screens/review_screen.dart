@@ -1251,7 +1251,7 @@ Row(
             ),
             child: Column(
               children: [
-                // 卡片内容（考试模式降低不透明度）
+                // 卡片内容（考试模式降低不透明度，大字体下限制缩放防溢出）
                 Padding(
                   padding: const EdgeInsets.all(AppTheme.spacingSm),
                     child: AnimatedSwitcher(

@@ -2783,29 +2783,48 @@ async fn k12_init_handler(
         }
     }
 
-    // 激活第一个 stage（过滤后）的卡片 — 包裹在事务中避免 2000+ 次自动提交
-    let _ = conn.execute("BEGIN", []);
+    // 预置词库科目（english/chinese）：只激活第一个 task 的卡片，逐课渐进激活
+    let is_vocab_subject = input.subject == "english" || input.subject == "chinese";
     let mut activated = 0u32;
-    if let Some(stages) = plan_val.get("stages").and_then(|s| s.as_array()) {
-        if let Some(first_stage) = stages.first() {
-            if let Some(tasks) = first_stage.get("tasks").and_then(|t| t.as_array()) {
-                for task in tasks {
-                    let task_key = task.get("task_key").and_then(|v| v.as_str()).unwrap_or("");
-                    for cid in task.get("card_ids").and_then(|c| c.as_array()).into_iter().flatten() {
-                        if let Some(card_uuid) = cid.as_str() {
-                            crate::plan_handler::copy_prebuilt_card(&conn, &input.user_id, &plan_id, task_key, card_uuid);
-                            activated += 1;
+    if is_vocab_subject {
+        // 只激活第一个 task 的卡片
+        if let Some(stages) = plan_val.get("stages").and_then(|s| s.as_array()) {
+            if let Some(first_stage) = stages.first() {
+                if let Some(tasks) = first_stage.get("tasks").and_then(|t| t.as_array()) {
+                    if let Some(first_task) = tasks.first() {
+                        let task_key = first_task.get("task_key").and_then(|v| v.as_str()).unwrap_or("");
+                        for cid in first_task.get("card_ids").and_then(|c| c.as_array()).into_iter().flatten() {
+                            if let Some(card_uuid) = cid.as_str() {
+                                crate::plan_handler::copy_prebuilt_card(&conn, &input.user_id, &plan_id, task_key, card_uuid);
+                                activated += 1;
+                            }
                         }
                     }
                 }
             }
         }
+        tracing::info!("[K12-INIT] activated {} cards in first task for vocab subject={}", activated, input.subject);
+    } else {
+        // 非词库科目：批量激活第一个 stage 所有 task 的卡片
+        let _ = conn.execute("BEGIN", []);
+        if let Some(stages) = plan_val.get("stages").and_then(|s| s.as_array()) {
+            if let Some(first_stage) = stages.first() {
+                if let Some(tasks) = first_stage.get("tasks").and_then(|t| t.as_array()) {
+                    for task in tasks {
+                        let task_key = task.get("task_key").and_then(|v| v.as_str()).unwrap_or("");
+                        for cid in task.get("card_ids").and_then(|c| c.as_array()).into_iter().flatten() {
+                            if let Some(card_uuid) = cid.as_str() {
+                                crate::plan_handler::copy_prebuilt_card(&conn, &input.user_id, &plan_id, task_key, card_uuid);
+                                activated += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let _ = conn.execute("COMMIT", []);
+        tracing::info!("[K12-INIT] activated {} cards in first stage", activated);
     }
-
-    // 提交事务（卡片激活大量 INSERT）
-    let _ = conn.execute("COMMIT", []);
-
-    tracing::info!("[K12-INIT] activated {} cards in first stage", activated);
 
     // 初始化 user_plan_progress（统一状态管理入口）
     let now_ts_progress = chrono::Utc::now().timestamp();
