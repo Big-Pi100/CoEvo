@@ -40,6 +40,16 @@ final goRouter = GoRouter(
   },
   routes: [
     GoRoute(
+      path: '/share/:refCode',
+      redirect: (context, state) {
+        final refCode = state.pathParameters['refCode'] ?? '';
+        final campaignId = state.uri.queryParameters['campaign_id'] ?? '';
+        var dest = '/home?ref=$refCode';
+        if (campaignId.isNotEmpty) dest += '&campaign_id=$campaignId';
+        return dest;
+      },
+    ),
+    GoRoute(
       path: '/',
       redirect: (context, state) => '/home',
     ),

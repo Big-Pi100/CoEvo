@@ -337,7 +337,7 @@ class _PosterDialogState extends ConsumerState<_PosterDialog> {
           'user_id': userId,
           if (widget.campaignId != null) 'campaign_id': widget.campaignId,
         }),
-      ).timeout(const Duration(seconds: 60));
+      ).timeout(const Duration(seconds: 15));
       if (resp.statusCode == 200 && mounted) {
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
         if (data['status'] == 'campaign_ended') {

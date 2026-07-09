@@ -201,6 +201,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> logout() async {
     await _clearCredentials();
+    // 清除 SharedPreferences 缓存（display_name 等）
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('display_name');
+    } catch (_) {}
     state = const AuthState(isRestored: true);
   }
 

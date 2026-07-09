@@ -261,6 +261,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/referral/my-withdrawals", get(crate::distribution_handler::user_withdrawals))
         // 推广落地页
         .route("/share/{code}", get(crate::referral_handler::share_landing))
+        .route("/go/{code}", get(crate::referral_handler::share_landing))
         .route("/api/pay/calculate", post(crate::distribution_handler::calculate))
         .route("/api/referral/user-campaign", get(crate::distribution_handler::user_campaign))
         .route("/api/notifications", get(crate::distribution_handler::list_notifications))

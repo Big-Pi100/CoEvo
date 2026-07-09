@@ -331,10 +331,11 @@ pub async fn calculate(
                 }
                 "discount_pct" => {
                     if let Some(val) = reward["value"].as_f64() {
-                        // value 如 0.85 = 付85%(减15%), 统一为小数格式与 commission_pct 一致
+                        // value 如 0.85 = 85 折 (付85%)
                         let pct = val.clamp(0.0, 1.0);
                         discounted_price = (original_price as f64 * pct) as i64;
-                        discount_note = format!("推荐折扣: {}%", (pct * 100.0) as i64);
+                        let zhe = (pct * 100.0) as i64;
+                        discount_note = format!("推荐折扣: {}折", zhe);
                     }
                 }
                 _ => {}

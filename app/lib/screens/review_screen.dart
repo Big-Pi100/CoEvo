@@ -407,14 +407,19 @@ Row(
         // 直接弹出海报展示
         showDialog(
           context: context,
+          barrierColor: Colors.black,
           builder: (ctx) => Dialog(
+            backgroundColor: Colors.black,
+            surfaceTintColor: Colors.black,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Tw('今日学习报告', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Tw('今日学习报告',
+                      style: TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 12),
                   if (posterPng != null) ...[
                     ClipRRect(
@@ -432,10 +437,14 @@ Row(
                       child: FilledButton.icon(
                         icon: const Icon(Icons.download, size: 18),
                         onPressed: () {
-                          final bytes = base64Decode(posterPng!.split(',').last);
-                          final blob = html.Blob([bytes], 'image/png');
-                          final objUrl = html.Url.createObjectUrlFromBlob(blob);
-                          (html.document.createElement('a') as html.AnchorElement)
+                          final bytes =
+                              base64Decode(posterPng!.split(',').last);
+                          final blob =
+                              html.Blob([bytes], 'image/png');
+                          final objUrl =
+                              html.Url.createObjectUrlFromBlob(blob);
+                          (html.document.createElement('a')
+                                  as html.AnchorElement)
                             ..href = objUrl
                             ..download = 'coevo_poster.png'
                             ..click();
@@ -445,13 +454,16 @@ Row(
                       ),
                     ),
                   ] else ...[
-                    const Icon(Icons.photo_library, size: 64, color: Colors.grey),
+                    const Icon(Icons.photo_library,
+                        size: 64, color: Colors.grey),
                     const SizedBox(height: 8),
                     Tw('正在生成专属海报...'),
                     const SizedBox(height: 8),
                     const SizedBox(
-                      width: 24, height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      width: 24,
+                      height: 24,
+                      child:
+                          CircularProgressIndicator(strokeWidth: 2),
                     ),
                   ],
                   const SizedBox(height: 8),
@@ -1121,7 +1133,11 @@ Row(
                     ),
                     title: Text(card.front, style: TextStyle(fontWeight: FontWeight.w600, color: _cs.onPrimary)),
                     subtitle: isActive ? null : Text('${_cardBackPreview(card.back)}\n复习 ${card.reps} 次', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: _cs.onPrimary.withAlpha(200))),
-                trailing: Row(
+                trailing: SizedBox(
+                  width: 200,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     // 评判中标签
@@ -1168,6 +1184,8 @@ Row(
                       Icon(Icons.expand_more, size: 20, color: _cs.outlineVariant),
                     ],
                   ],
+                ),
+                  ),
                 ),
                 onTap: () {
                   if (isActive) {

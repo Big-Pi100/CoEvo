@@ -151,6 +151,17 @@ pub fn execute_campaign_trigger(
             };
 
             for target_user_id in &target_users {
+                // ── 未提供真实身份信息（姓名+手机号）的用户不能获得奖励 ──
+                let has_real_info: bool = conn.query_row(
+                    "SELECT COUNT(*) FROM users WHERE id = ?1 AND real_name IS NOT NULL AND phone_hash IS NOT NULL",
+                    rusqlite::params![target_user_id],
+                    |row| row.get::<_, i64>(0),
+                ).unwrap_or(0) > 0;
+                if !has_real_info {
+                    tracing::info!("  reward skip: user {} has no real_name/phone", target_user_id);
+                    continue;
+                }
+
                 // ── 多级推广追溯 ──
                 // 对 commission 类型且 level>1 的奖励，从 target_user 往上追溯找到上级
                 let reward_level = reward["level"].as_i64().unwrap_or(1);
@@ -260,8 +271,8 @@ pub fn execute_campaign_trigger(
                             rusqlite::params![fid, campaign_id, target_user_id, party, rtype, val_str, trigger_event, now],
                         );
                         fulfillment_ids.push(fid);
-                        // 发放通知
-                        let zhe = (reward["value"].as_f64().unwrap_or(1.0) * 10.0) as i64;
+                        // 发放通知 — value 如 0.85 = 85 折
+                        let zhe = (reward["value"].as_f64().unwrap_or(1.0) * 100.0) as i64;
                         let discount_title = format!("{}奖励已发放", campaign_name);
                         let discount_body = format!("你获得了 {} 折优惠", zhe);
                         let action_url = format!("share?campaign_id={}", campaign_id);
@@ -420,7 +431,10 @@ fn handle_subscription_days(
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let old_expires = crate::subscription::get_current_expires(conn, recipient_id).unwrap_or(None);
     let base = match &old_expires {
-        Some(d) if d.as_str() >= today.as_str() => d.clone(),
+        Some(d) if d.len() >= 10 && &d[..10] >= today.as_str() => {
+            // 兼容 ISO 8601 ("2026-07-08T14:44:42Z") 和纯日期格式
+            d[..10].to_string()
+        }
         _ => today.clone(),
     };
     let base_date = chrono::NaiveDate::parse_from_str(&base, "%Y-%m-%d")
@@ -982,5 +996,116 @@ mod tests {
         handle_subscription_days(&conn, &campaign_id, "测试活动", &user_id, "inviter",
             &value2, "registration", None, &mut fulfillment_ids2);
         assert_eq!(fulfillment_ids2.len(), 0, "无效 value 时应跳过");
-}
+    }
+
+    /// 插入一个带 ISO 8601 subscription_expires 的测试用户
+    fn insert_test_user_with_iso_expires(conn: &Connection) -> String {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let iso_expires = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        conn.execute(
+            "INSERT INTO users (id, username, subscription_expires, created_at) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![id, format!("test_user_{}", &id[..8]), iso_expires, now],
+        )
+        .unwrap();
+        id
+    }
+
+    /// 插入一个带 real_name 和 phone_hash 的测试用户
+    fn insert_test_user_with_real_info(conn: &Connection) -> String {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let unique_hash = format!("sha256_phone_{}", &id[..8]);
+        conn.execute(
+            "INSERT INTO users (id, username, real_name, phone_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![id, format!("test_user_{}", &id[..8]), "encrypted_name", unique_hash, now],
+        )
+        .unwrap();
+        id
+    }
+
+    #[test]
+    fn test_handle_subscription_days_iso8601_expires() {
+        let conn = setup_db();
+        let campaign_id = insert_test_campaign(&conn, "registration", "[]", "active");
+        let user_id = insert_test_user_with_iso_expires(&conn);
+
+        // 第一次添加 3 天
+        let mut fids1 = Vec::new();
+        handle_subscription_days(&conn, &campaign_id, "测试活动", &user_id, "inviter",
+            &serde_json::json!(3), "registration", None, &mut fids1);
+        assert_eq!(fids1.len(), 1, "第一次应创建 fulfillment");
+
+        let expires1: String = conn.query_row(
+            "SELECT subscription_expires FROM users WHERE id = ?1",
+            rusqlite::params![user_id], |row| row.get(0),
+        ).unwrap();
+
+        // 第二次再添加 7 天（模拟两条奖励叠加）
+        let mut fids2 = Vec::new();
+        handle_subscription_days(&conn, &campaign_id, "测试活动2", &user_id, "inviter",
+            &serde_json::json!(7), "registration", None, &mut fids2);
+        assert_eq!(fids2.len(), 1, "第二次应创建 fulfillment");
+
+        let expires2: String = conn.query_row(
+            "SELECT subscription_expires FROM users WHERE id = ?1",
+            rusqlite::params![user_id], |row| row.get(0),
+        ).unwrap();
+
+        // expires2 应在 expires1 之后 7 天（累加，非覆盖）
+        let d1 = chrono::NaiveDate::parse_from_str(&expires1[..10], "%Y-%m-%d").unwrap();
+        let d2 = chrono::NaiveDate::parse_from_str(&expires2[..10], "%Y-%m-%d").unwrap();
+        let diff = (d2 - d1).num_days();
+        assert!(diff >= 7, "第二次应累加 7 天，实际只差 {} 天", diff);
+    }
+
+    #[test]
+    fn test_executor_has_real_info_check() {
+        let conn = setup_db();
+        let campaign_id = insert_test_campaign(&conn, "registration",
+            r#"[{"type":"subscription_days","party":"self","value":3,"trigger":"registration","freq":"once"}]"#,
+            "active");
+        // 无 real_name 的用户
+        let user_no_info = insert_test_user(&conn);
+
+        // 有 real_name 的用户
+        let user_with_info = insert_test_user_with_real_info(&conn);
+
+        // 调用 execute_campaign_trigger 处理无认证信息的用户
+        let result_no = execute_campaign_trigger(&conn, "registration", &user_no_info,
+            None, None, None).unwrap();
+        assert_eq!(result_no.len(), 0, "无 real_name/phone 的用户不应获得奖励");
+
+        // 处理有认证信息的用户
+        let result_yes = execute_campaign_trigger(&conn, "registration", &user_with_info,
+            None, None, None).unwrap();
+        assert_eq!(result_yes.len(), 1, "有 real_name/phone 的用户应获得奖励");
+    }
+
+    #[test]
+    fn test_executor_campaign_filter_scope() {
+        let conn = setup_db();
+        // 创建两个活动：一个 self 奖励，一个 inviter 奖励
+        let cid_self = insert_test_campaign(&conn, "registration",
+            r#"[{"type":"subscription_days","party":"self","value":3,"trigger":"registration","freq":"once"}]"#,
+            "active");
+        let cid_inviter = insert_test_campaign(&conn, "registration",
+            r#"[{"type":"subscription_days","party":"inviter","value":7,"trigger":"registration","freq":"once"}]"#,
+            "active");
+
+        let inviter_id = insert_test_user_with_real_info(&conn);
+        let invitee_id = insert_test_user_with_real_info(&conn);
+
+        // 设置 invitee 的 referred_by 和 referred_campaign_id
+        conn.execute(
+            "UPDATE users SET referred_by = ?1, referred_campaign_id = ?2 WHERE id = ?3",
+            rusqlite::params![inviter_id, cid_inviter, invitee_id],
+        ).unwrap();
+
+        // 不加 campaign_filter（处理所有活动）
+        let results = execute_campaign_trigger(&conn, "registration", &invitee_id,
+            Some(&inviter_id), None, None).unwrap();
+        // self 奖励 + inviter 奖励 = 2 条 fulfillment
+        assert_eq!(results.len(), 2, "应有 2 条 fulfillment（self + inviter）");
+    }
 }

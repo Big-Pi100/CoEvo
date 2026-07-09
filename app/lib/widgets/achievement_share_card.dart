@@ -1,5 +1,6 @@
 /// 成就分享海报 — 固定模板，全屏 Overlay 展示
 /// 不含 Scaffold/Navigator，适配 Flutter Web
+/// 已适配系统字体缩放 + 手机小屏
 import 'dart:html' as html;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -78,71 +79,92 @@ class _AchievementShareCardState extends State<AchievementShareCard> {
     final iconData = achievementIcon(widget.achievementKey);
     final tLabel = _tierLabel(widget.tier);
     final glowColor = _tierColor(widget.tier);
+    final topPad = MediaQuery.of(context).padding.top + 8;
+    // 限制文字缩放，防止海报溢出
+    final textScale = MediaQuery.textScalerOf(context).clamp(minScaleFactor: 0.8, maxScaleFactor: 1.1);
 
     return Container(
-      color: Colors.black.withAlpha(200),
+      color: Colors.black,
       child: Stack(
         children: [
-          // 关闭按钮
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 4,
-            left: 8,
-            child: IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: widget.onClose,
+          // 海报主体（可滚动）
+          Positioned.fill(
+            child: SafeArea(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.only(
+                    top: topPad + 40,  // 给按钮留空间
+                    bottom: 24,
+                    left: 16,
+                    right: 16,
+                  ),
+                  child: RepaintBoundary(
+                    key: _repaintKey,
+                    child: MediaQuery(
+                      data: MediaQuery.of(context).copyWith(
+                        textScaler: textScale,
+                      ),
+                      child: _buildPoster(cs, iconData, tLabel, glowColor),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
-          // 保存按钮
+          // 顶层按钮区（浮在可滚动内容之上，始终可见）
           Positioned(
-            top: MediaQuery.of(context).padding.top + 4,
-            right: 8,
-            child: TextButton.icon(
-              onPressed: _saving ? null : _saveImage,
-              icon: _saving
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Icon(Icons.download, size: 16, color: Colors.white),
-              label: Text(
-                _saving ? '保存中...' : '保存图片',
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-              ),
+            top: topPad,
+            left: 0,
+            right: 0,
+            child: Row(
+              children: [
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: widget.onClose,
+                ),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: _saving ? null : _saveImage,
+                  icon: _saving
+                      ? const SizedBox(
+                          width: 14, height: 14,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.download, size: 16, color: Colors.white),
+                  label: Text(
+                    _saving ? '保存中...' : '保存图片',
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
             ),
           ),
           // 保存反馈
           if (_saveFeedback != null)
             Positioned(
-              top: MediaQuery.of(context).padding.top + 52,
+              top: topPad + 44,
               left: 0,
               right: 0,
-              child: Center(
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: cs.primary,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Tw(
-                    _saveFeedback!,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500),
+              child: IgnorePointer(
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: cs.primary,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Tw(
+                      _saveFeedback!,
+                      style: const TextStyle(
+                          color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                    ),
                   ),
                 ),
               ),
             ),
-          // 海报主体
-          Center(
-            child: RepaintBoundary(
-              key: _repaintKey,
-              child: _buildPoster(cs, iconData, tLabel, glowColor),
-            ),
-          ),
         ],
       ),
     );
@@ -150,8 +172,12 @@ class _AchievementShareCardState extends State<AchievementShareCard> {
 
   Widget _buildPoster(
       ColorScheme cs, IconData iconData, String tLabel, Color glowColor) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    // 海报最大宽度 340，手机小屏自适应（左右留 16px 边距）
+    final posterWidth = (screenWidth - 32).clamp(280.0, 340.0);
+
     return Container(
-      width: 340,
+      width: posterWidth,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
@@ -215,7 +241,9 @@ class _AchievementShareCardState extends State<AchievementShareCard> {
           Text(widget.achievementName,
               style: TextStyle(
                   fontSize: 20, fontWeight: FontWeight.bold, color: cs.onSurface),
-              textAlign: TextAlign.center),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis),
           if (widget.achievementDesc != null &&
               widget.achievementDesc!.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -238,11 +266,15 @@ class _AchievementShareCardState extends State<AchievementShareCard> {
                 style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: cs.onSurface)),
+                    color: cs.onSurface),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
           const SizedBox(height: 4),
           Text('在 CoEvo 获得「${widget.achievementName}」',
               style:
-                  TextStyle(fontSize: 12, color: cs.onSurface)),
+                  TextStyle(fontSize: 12, color: cs.onSurface),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
           const SizedBox(height: 16),
           // 二维码
           if (widget.referralCode != null && widget.referralCode!.isNotEmpty)
@@ -265,12 +297,16 @@ class _AchievementShareCardState extends State<AchievementShareCard> {
           const SizedBox(height: 8),
           Text('扫码一起学',
               style: TextStyle(
-                  fontSize: 11, fontWeight: FontWeight.w500, color: cs.onSurface)),
+                  fontSize: 11, fontWeight: FontWeight.w500, color: cs.onSurface),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
           const SizedBox(height: 16),
           Text('keyievolution.fun',
               style: TextStyle(
                   fontSize: 10,
-                  color: cs.onSurfaceVariant)),
+                  color: cs.onSurfaceVariant),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
           const SizedBox(height: 8),
         ],
       ),

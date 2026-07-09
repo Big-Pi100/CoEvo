@@ -40,60 +40,78 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _loadUnreadCount();
   }
 
+  bool _authInitBusy = false;
+
   Future<void> _initAuth() async {
-    // 首次创建试用时读取 URL 推广码（只读一次，防止递归调用时 GoRouter 状态变化丢失）
-    if (_pendingRefCode == null) {
-      final refCode = _readRefCode();
-      final uri = GoRouter.of(context).state.uri;
-      final campaignId = uri.queryParameters['campaign_id'] ?? uri.queryParameters['camp'];
-      _pendingRefCode = refCode;
-      _pendingCampaignId = campaignId;
-      debugPrint('_initAuth refCode=$refCode campaignId=$campaignId href=${Uri.base}');
-    }
-
-    // ── 点击追踪：来自推广链接或二维码扫码 → 记录一次分享点击 ──
-    if (_pendingRefCode != null && _pendingRefCode!.isNotEmpty) {
-      try {
-        final baseUrl = ApiConfig.baseUrl;
-        http.post(
-          Uri.parse('$baseUrl/api/referral/click'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'campaign_id': _pendingCampaignId ?? 'share',
-            'referrer_code': _pendingRefCode,
-            'share_channel': 'direct_link',
-            'landed_page': '/home',
-          }),
-        ); // fire-and-forget，不需要 await
-      } catch (_) {}
-    }
-
-    final auth = ref.read(authProvider);
-    if (!auth.isRestored) {
-      await Future.delayed(const Duration(milliseconds: 300));
-      if (mounted) _initAuth();
-      return;
-    }
-    if (auth.isAuthenticated) {
-      // 已登录用户：有 campaign_id 则加入活动（拼团/砍价）
-      if (_pendingRefCode != null && _pendingCampaignId != null && _pendingCampaignId!.isNotEmpty && mounted) {
-        _joinCampaign(auth.userId!, auth.token!, _pendingCampaignId!);
+    // 防止并发调用
+    if (_authInitBusy) return;
+    _authInitBusy = true;
+    try {
+      // 首次创建试用时读取 URL 推广码（只读一次，防止递归调用时 GoRouter 状态变化丢失）
+      if (_pendingRefCode == null) {
+        final refCode = _readRefCode();
+        final uri = GoRouter.of(context).state.uri;
+        final campaignId = uri.queryParameters['campaign_id'] ?? uri.queryParameters['camp'];
+        _pendingRefCode = refCode;
+        _pendingCampaignId = campaignId;
+        debugPrint('_initAuth refCode=$refCode campaignId=$campaignId href=${Uri.base}');
       }
-      // 登录时触发活动推送检查（写 campaign_push 通知）
-      _checkLoginCampaignPush(auth.userId!, auth.token!);
-      if (auth.realName == null || auth.realName!.trim().isEmpty) {
+
+      // ── 点击追踪：来自推广链接或二维码扫码 → 记录一次分享点击 ──
+      if (_pendingRefCode != null && _pendingRefCode!.isNotEmpty) {
+        try {
+          final baseUrl = ApiConfig.baseUrl;
+          http.post(
+            Uri.parse('$baseUrl/api/referral/click'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'campaign_id': _pendingCampaignId ?? 'share',
+              'referrer_code': _pendingRefCode,
+              'share_channel': 'direct_link',
+              'landed_page': '/home',
+            }),
+          );
+        } catch (_) {}
+      }
+
+      final auth = ref.read(authProvider);
+      if (!auth.isRestored) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (mounted) { _authInitBusy = false; _initAuth(); }
+        return;
+      }
+      if (auth.isAuthenticated) {
+        // 已登录用户：有 campaign_id 则加入活动（拼团/砍价）
+        if (_pendingRefCode != null && _pendingCampaignId != null && _pendingCampaignId!.isNotEmpty && mounted) {
+          _joinCampaign(auth.userId!, auth.token!, _pendingCampaignId!);
+        }
+        // 登录时触发活动推送检查（写 campaign_push 通知）
+        _checkLoginCampaignPush(auth.userId!, auth.token!);
+        if (auth.realName == null || auth.realName!.trim().isEmpty) {
+          if (mounted) _showAuthDialog();
+          return;
+        }
+        if (mounted) setState(() => _authReady = true);
+        return;
+      }
+      if (AuthNotifier.hasUsedTrial()) {
         if (mounted) _showAuthDialog();
         return;
       }
-      if (mounted) setState(() => _authReady = true);
-      return;
+      debugPrint('_initAuth trialStart refCode=${_pendingRefCode} campaignId=${_pendingCampaignId}');
+      await ref.read(authProvider.notifier).trialStart(refCode: _pendingRefCode, campaignId: _pendingCampaignId);
+      // trial 完成后重新读取 auth 状态，继续流程
+      final auth2 = ref.read(authProvider);
+      if (auth2.isAuthenticated && mounted) {
+        if (auth2.realName == null || auth2.realName!.trim().isEmpty) {
+          _showAuthDialog();
+          return;
+        }
+        setState(() => _authReady = true);
+      }
+    } finally {
+      _authInitBusy = false;
     }
-    if (AuthNotifier.hasUsedTrial()) {
-      if (mounted) _showAuthDialog();
-      return;
-    }
-    debugPrint('_initAuth trialStart refCode=${_pendingRefCode} campaignId=${_pendingCampaignId}');
-    await ref.read(authProvider.notifier).trialStart(refCode: _pendingRefCode, campaignId: _pendingCampaignId);
   }
 
   void _showAuthDialog() {
@@ -146,6 +164,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final parsed = Uri.parse(href);
       final fromUrl = parsed.queryParameters['ref'];
       if (fromUrl != null && fromUrl.isNotEmpty) return fromUrl;
+      // 兜底：从 /share/{refCode} 路径提取
+      if (parsed.path.contains('/share/')) {
+        final parts = parsed.path.split('/share/');
+        if (parts.length > 1) {
+          final ref = parts[1].split('?')[0].split('&')[0];
+          if (ref.isNotEmpty) return ref;
+        }
+      }
     } catch (_) {}
     return null;
   }
@@ -224,6 +250,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         title: const Text('刻意进化'),
         automaticallyImplyLeading: false,
         actions: [
+          // 通知铃铛（手机上确保可见）
+          const SizedBox(width: 4),
           Badge(
             isLabelVisible: _unreadCount > 0,
             label: Text('$_unreadCount', style: const TextStyle(fontSize: 10)),
@@ -233,6 +261,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationPanel())),
             ),
           ),
+          const SizedBox(width: 4),
           IconButton(
             icon: const Icon(Icons.person),
             onPressed: () {
@@ -432,7 +461,9 @@ class _SubjectCard extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                   fontSize: 13,
                 ),
-                textAlign: TextAlign.center),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis),
           ],
         ),
       ),

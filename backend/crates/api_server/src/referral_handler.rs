@@ -935,7 +935,22 @@ pub async fn share_landing(
                 rusqlite::params![cid], |row| row.get::<_, Option<String>>(0),
             ).ok().flatten() {
                 if let Ok(data) = crate::h5_template::build_user_h5_data(&conn, &uid, cid) {
-                    let html = crate::h5_template::replace_h5_variables(&template, &data);
+                    let mut html = crate::h5_template::replace_h5_variables(&template, &data);
+                    // 注入 OG meta 标签
+                    let campaign_name: String = conn.query_row(
+                        "SELECT name FROM marketing_campaigns WHERE id = ?1",
+                        rusqlite::params![cid], |row| row.get(0),
+                    ).unwrap_or_default();
+                    let frontend = crate::share_data::public_base_url();
+                    let backend = crate::share_data::coevo_base_url();
+                    let og = format!(
+                        r#"<meta property="og:image" content="{}/app/icons/Icon-512.png">
+<meta property="og:title" content="{} 邀请你一起学习">
+<meta property="og:description" content="在 CoEvo 一起学习，{}活动等你参加！">
+<meta property="og:url" content="{}/go/{}?campaign_id={}">"#,
+                        frontend, data.display_name, campaign_name, backend, &data.referral_code, cid
+                    );
+                    html = html.replace("</head>", &format!("{}</head>", og));
                     return ([(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")], html);
                 }
             }
@@ -952,7 +967,7 @@ pub async fn share_landing(
             r#"<meta property="og:image" content="{}/app/icons/Icon-512.png">
 <meta property="og:title" content="在 CoEvo 一起学习">
 <meta property="og:description" content="如果不想被AI取代，你需要刻意进化">
-<meta property="og:url" content="{}/share/{}">"#,
+<meta property="og:url" content="{}/go/{}">"#,
             frontend, backend, code
         );
         let html_with_og = html.replace("</head>", &format!("{}</head>", og));

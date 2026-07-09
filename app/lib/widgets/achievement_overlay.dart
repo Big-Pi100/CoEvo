@@ -329,7 +329,7 @@ class _AchievementOverlayState extends ConsumerState<AchievementOverlay>
     // 有成就 → 全屏海报（数据就绪时）或只显示粒子（数据加载中）
     return Positioned.fill(
       child: Material(
-        color: _shareData != null ? Colors.transparent : _cs.scrim,
+        color: Colors.black,
         child: Stack(
           children: [
             // 粒子撒花层

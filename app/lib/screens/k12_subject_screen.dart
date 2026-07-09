@@ -208,6 +208,8 @@ class _K12SubjectScreenState extends ConsumerState<K12SubjectScreen> {
                               author,
                               style: TextStyle(color: _cs.onSurfaceVariant.withAlpha(150), fontSize: 9),
                               textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ],

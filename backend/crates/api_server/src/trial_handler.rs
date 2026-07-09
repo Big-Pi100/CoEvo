@@ -57,7 +57,7 @@ pub async fn start(
         .unwrap_or_default();
 
     // 事务包裹：IP 限频检测 + users + tokens + IP 日志原子写入
-    if let Err(e) = conn.execute_batch("BEGIN") {
+    if let Err(e) = conn.execute_batch("BEGIN IMMEDIATE") {
         tracing::error!("trial/start begin tx failed: {}", e);
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "create_failed"}))).into_response();
     }
@@ -249,12 +249,12 @@ pub async fn claim(
         _ => None,
     };
 
-    // 7. 更新用户
+    // 7. 更新用户 — real_name/phone/phone_hash 一旦设置不可修改
     if let Err(e) = conn.execute(
         "UPDATE users SET username = ?1, password_hash = ?2, \
-         real_name = COALESCE(?3, real_name), \
-         phone = COALESCE(?4, phone), \
-         phone_hash = COALESCE(?5, phone_hash), \
+         real_name = CASE WHEN real_name IS NULL THEN ?3 ELSE real_name END, \
+         phone = CASE WHEN phone IS NULL THEN ?4 ELSE phone END, \
+         phone_hash = CASE WHEN phone_hash IS NULL THEN ?5 ELSE phone_hash END, \
          bind_hash = COALESCE(?6, bind_hash), \
          referred_by = COALESCE(?7, referred_by) \
          WHERE id = ?8",
@@ -300,7 +300,7 @@ pub async fn claim(
         }
     }
 
-    // 8. 触发注册活动（不传 campaign_filter，scope check 由 executor 内部基于 referred_campaign_id 匹配）
+    // 8. 触发注册活动（不传 campaign_filter，scope check 由 executor 内部处理）
     if let Err(e) = crate::campaign_executor::execute_campaign_trigger(
         &conn, "registration", &body.user_id, referred_by.as_deref(), None, None,
     ) {

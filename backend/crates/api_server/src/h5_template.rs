@@ -67,18 +67,25 @@ pub fn replace_h5_variables(template: &str, data: &UserH5Data) -> String {
     for sys_font in &system_fonts {
         result = result.replace(&format!("font-family: {}", sys_font), "font-family: 'AlibabaPuHuiTi', -apple-system, sans-serif");
     }
-    // 注入 OG meta 标签（在 </head> 前插入）
-    let frontend = crate::share_data::public_base_url();
-    let backend = crate::share_data::coevo_base_url();
-    let share_url = format!("{}/share/{}", backend, &data.referral_code);
-    let og_meta = format!(
-        r#"<meta property="og:image" content="{}/app/icons/Icon-512.png">
-<meta property="og:title" content="{} 邀请你一起学习">
-<meta property="og:description" content="在 CoEvo 刻意进化学习，如果不想被AI取代，你需要刻意进化">
-<meta property="og:url" content="{}">"#,
-        frontend, data.display_name, share_url,
-    );
-    result = result.replace("</head>", &format!("{}</head>", og_meta));
+    // 注入系统字体缩放适配
+    // 1. viewport 禁止缩放
+    if !result.contains("user-scalable=no") {
+        result = result.replace(
+            "content=\"width=device-width, initial-scale=1.0\"",
+            "content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\"",
+        );
+    }
+    // 2. -webkit-text-size-adjust 防止字体自动放大
+    if !result.contains("-webkit-text-size-adjust") {
+        result = result.replace("</style>", "html { -webkit-text-size-adjust: 100%; }</style>");
+    }
+    // 3. 文本容器防溢出
+    if !result.contains("word-break: break-word") {
+        result = result.replace(
+            "box-sizing: border-box;",
+            "box-sizing: border-box; overflow-wrap: break-word; word-break: break-word;",
+        );
+    }
     result
 }
 
@@ -201,15 +208,16 @@ pub fn fallback_h5_html(referral_code: &str, campaign_id: Option<&str>, avatar_u
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta property="og:image" content="{app_base}/app/icons/Icon-512.png">
     <meta property="og:title" content="CoEvo 邀请你一起学习">
     <meta property="og:description" content="在 CoEvo 刻意进化学习，如果不想被AI取代，你需要刻意进化">
-    <meta property="og:url" content="{api_base}/share/{{code}}">
+    <meta property="og:url" content="{api_base}/go/{{code}}">
     <title>CoEvo 学习推广</title>
     <style>
+        html {{ -webkit-text-size-adjust: 100%; }}
         body {{ font-family: AlibabaPuHuiTi, -apple-system, BlinkMacSystemFont, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: linear-gradient(135deg, #667eea 0%, #4F46E5 100%); }}
-        .card {{ background: white; border-radius: 20px; padding: 40px 24px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.15); max-width: 360px; width: 90%; }}
+        .card {{ background: white; border-radius: 20px; padding: 40px 24px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.15); max-width: 360px; width: 90%; overflow-wrap: break-word; word-break: break-word; }}
         .brand {{ color: #4F46E5; font-size: 22px; font-weight: bold; margin-bottom: 8px; }}
         .subtitle {{ color: #666; font-size: 14px; margin-bottom: 24px; }}
         .code-label {{ color: #999; font-size: 12px; margin-bottom: 4px; }}

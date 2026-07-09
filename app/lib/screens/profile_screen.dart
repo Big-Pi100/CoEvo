@@ -396,12 +396,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           const SizedBox(width: 8),
           Text(label, style: _tt.bodyMedium?.copyWith(color: _cs.outline)),
           const Spacer(),
-          Text(value, style: _tt.bodyLarge),
-          if (onTap != null) ...[
-            const SizedBox(width: 4),
-            Icon(Icons.chevron_right, size: 18, color: _cs.outline),
+          Flexible(
+            child: Text(value, style: _tt.bodyLarge, overflow: TextOverflow.ellipsis, maxLines: 1),
+          ),
           ],
-        ],
       ),
     );
     return onTap != null ? InkWell(onTap: onTap, child: row) : row;

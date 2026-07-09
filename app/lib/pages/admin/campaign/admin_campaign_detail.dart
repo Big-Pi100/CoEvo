@@ -595,7 +595,16 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
         final type = _rewardTypeLabel(r['type'] as String? ?? '');
         final party = _rewardPartyLabel(r['party'] as String? ?? '');
         final value = r['value'] ?? '';
+        final trigger = r['trigger'] as String? ?? '';
+        final freq = r['freq'] as String? ?? '';
+        final freqLabel = _freqLabel(freq);
         widgets.add(_infoRow('规则 ${entry.key + 1}', '$type · $party · 值: $value'));
+        if (trigger.isNotEmpty) {
+          widgets.add(_infoRow('  触发事件', trigger));
+        }
+        if (freqLabel.isNotEmpty) {
+          widgets.add(_infoRow('  发放频率', freqLabel));
+        }
         final grantTitle = r['grant_title'] as String? ?? '';
         final grantBody = r['grant_body'] as String? ?? '';
         final redeemTitle = r['redeem_title'] as String? ?? '';
@@ -636,6 +645,17 @@ class _AdminCampaignDetailPageState extends State<AdminCampaignDetailPage> {
       case 'inviter': return '下线';
       case 'all': return '所有人';
       default: return party;
+    }
+  }
+
+  String _freqLabel(String freq) {
+    switch (freq) {
+      case 'once': return '仅 1 次';
+      case 'daily': return '每天 1 次';
+      case 'hourly': return '每小时 1 次';
+      case 'weekly': return '每周 1 次';
+      case 'monthly': return '每月 1 次';
+      default: return freq;
     }
   }
 
