@@ -39,6 +39,11 @@ pub fn replace_h5_variables(template: &str, data: &UserH5Data) -> String {
     result = result.replace("{completed_plans}", &data.completed_plans.to_string());
     result = result.replace("{achievement_count}", &data.achievement_count.to_string());
     result = result.replace("{avatar_url}", &data.avatar_url);
+    // 兼容 LLM 生成的 {var || default} 占位符语法
+    result = result.replace("{achievement_count || 0}", &data.achievement_count.to_string());
+    result = result.replace("{current_focus || '提升自我'}", &data.current_focus);
+    result = result.replace("{plan_count || 0}", &data.plan_count.to_string());
+    // 兜底：未匹配的 {var || default} 用 default 值（仅处理简单情况）
     // 移除 Google Fonts 引用（国内访问慢/被墙）
     result = result.replace("@import url(\"https://fonts.googleapis.com/", "/* blocked: @import url(\"https://fonts.googleapis.com/");
     result = result.replace("@import url('https://fonts.googleapis.com/", "/* blocked: @import url('https://fonts.googleapis.com/");
