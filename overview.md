@@ -1,37 +1,23 @@
-# SEO + 免费试用方案修复完成
+# CoEvo 产品介绍视频 — 制作完成
 
-## 改动概览
+## 成果
+- 已生成完整的 Remotion 视频项目
+- 8 个场景 × 60 秒 × 1080p 全高清
+- TypeScript 编译验证通过
 
-针对 `docs/seo-and-landing-agent-plan.md` 中发现的 10 项缺失，逐项修复完成（仅本地，未部署）。
+## 场景脚本（8 场景 / 60s）
+1. **Hook** (0-5s) — "你以为你学会了，实际没有" + 90% vs 40% 数据
+2. **Problem** (5-13s) — 三大学习陷阱：流畅度错觉、元认知偏差、遗忘曲线
+3. **Solution** (13-19s) — CoEvo AI特级教师 · 三大支柱
+4. **Feature 1** (19-29s) — AI主动教学：对话自动发现、确认制卡
+5. **Feature 2** (29-39s) — FSRS科学复习：间隔重复
+6. **Feature 3** (39-49s) — 客观验证：LLM三联问
+7. **Feature 4** (49-55s) — K12课标 + 预制词库
+8. **CTA** (55-60s) — 开始你的刻意进化 · keyievolution.fun
 
-### ✅ 后端修复（2项）
-| 改动 | 文件 | 内容 |
-|:-----|:-----|:------|
-| IP 防滥用 | `trial_handler.rs` + `schema.rs` | 同IP每日限3次trial创建，新增 `trial_ip_log` 表 |
-| 定时清理 | `campaign_scheduler.rs` | 7天软删除 + 37天硬删除，含完整单元测试 |
+## 渲染方式
+用户选择本地渲染。项目路径: `E:\CoEvo\remotion-videos`
 
-### ✅ 前端修复（3项）
-| 改动 | 文件 | 内容 |
-|:-----|:-----|:------|
-| 注册弹窗-聊天页 | `chat_screen.dart` | 首次进入 + task完成监听（30秒轮询） |
-| 注册弹窗-个人页 | `profile_screen.dart` | 进入个人页时检测弹窗 |
-| PC宽屏约束 | `app/lib/app.dart` | >768px时限制内容宽度≤1200px |
-
-### ✅ SEO（1项）
-| 改动 | 文件 | 内容 |
-|:-----|:-----|:------|
-| Title/Meta/FAQ | `app/web/index.html` | 标题、描述、FAQ Schema JSON-LD |
-
-### ✅ 清理（1项）
-| 改动 | 文件 | 内容 |
-|:-----|:-----|:------|
-| 删除landing目录 | `landing/` | 已删除，不再维护独立landing page |
-
-## 验证结果
-- **后端**: `cargo check` 零错误 / 7 个新增测试全部通过
-- **前端**: `flutter analyze` 零新增 warnings（仅预存issues在其它文件）
-
-## 待部署项（需用户确认后执行）
-1. VPS Nginx 配置改为指向 Flutter Web 根路径
-2. Flutter Web 构建（去掉 `--base-href /app/`）
-3. VPS 后端替换（带 `trial_ip_log` 表）
+## 下一步
+- 用户本地渲染 MP4 后可发我审查
+- 可迭代修改文案/动画/配色

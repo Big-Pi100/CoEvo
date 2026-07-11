@@ -116,6 +116,8 @@ class _AchievementOverlayState extends ConsumerState<AchievementOverlay>
     with TickerProviderStateMixin {
   String? _displayedKey;
   _ShareData? _shareData;
+  // ignore: unused_field — kept alive for subscription lifecycle
+  ProviderSubscription? _achSub;
 
   ColorScheme get _cs => Theme.of(context).colorScheme;
 
@@ -147,7 +149,8 @@ class _AchievementOverlayState extends ConsumerState<AchievementOverlay>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    ref.listenManual(achievementNotifierProvider, (prev, next) {
+    _achSub?.close();
+    _achSub = ref.listenManual(achievementNotifierProvider, (prev, next) {
       final current = next.isNotEmpty ? next.first : null;
       if (current != null && current.key != _displayedKey) {
         _showCurrent(current);
@@ -286,6 +289,7 @@ class _AchievementOverlayState extends ConsumerState<AchievementOverlay>
 
   @override
   void dispose() {
+    _achSub?.close();
     _confettiCtrl.dispose();
     super.dispose();
   }
