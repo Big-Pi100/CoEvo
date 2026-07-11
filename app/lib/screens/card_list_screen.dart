@@ -449,7 +449,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
               Expanded(
                 child: Text(() {
                   String label = group.goal.isEmpty ? '无标题计划' : group.goal;
-                  if (group.gradeBand.isNotEmpty) {
+                  if (group.gradeBand.isNotEmpty && !label.endsWith('）')) {
                     final gb = group.gradeBand.replaceAll('g', '').replaceAll('-', '～');
                     label = '$label（$gb）';
                   }

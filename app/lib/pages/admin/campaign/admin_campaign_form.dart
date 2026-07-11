@@ -71,7 +71,7 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
           for (final r in _rewards) {
             r['trigger'] = _validValue(r['trigger'] as String?, ['registration', 'payment', 'plan_update'], 'registration');
             r['party'] = _validValue(r['party'] as String?, ['self', 'inviter', 'invitee', 'all'], 'self');
-            r['freq'] = _validValue(r['freq'] as String?, ['once', 'daily', 'hourly', 'weekly', 'monthly'], 'once');
+            r['freq'] = _validValue(r['freq'] as String?, ['once', 'always'], 'once');
           }
         }
       } catch (_) {
@@ -130,6 +130,12 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
   /// 确保值存在于列表中，否则用默认值（防止旧数据导致 DropdownButton 断言崩溃）
   String _validValue(String? stored, List<String> validValues, String defaultValue) {
     if (stored != null && validValues.contains(stored)) return stored;
+    return defaultValue;
+  }
+
+  /// 确保 int 值在合法范围内
+  int _validInt(int? stored, int min, int defaultValue) {
+    if (stored != null && stored >= min) return stored;
     return defaultValue;
   }
 
@@ -448,26 +454,26 @@ class _AdminCampaignFormDialogState extends State<AdminCampaignFormDialog> {
                                   decoration: const InputDecoration(
                                       labelText: '频率', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 8)),
                                   items: const [
-                                    DropdownMenuItem(value: 'once', child: Tw('仅1次')),
-                                    DropdownMenuItem(value: 'daily', child: Tw('每天1次')),
-                                    DropdownMenuItem(value: 'hourly', child: Tw('每小时1次')),
-                                    DropdownMenuItem(value: 'weekly', child: Tw('每周1次')),
-                                    DropdownMenuItem(value: 'monthly', child: Tw('每月1次')),
+                                    DropdownMenuItem(value: 'once', child: Tw('只一次')),
+                                    DropdownMenuItem(value: 'always', child: Tw('每次触发')),
                                   ],
                                   onChanged: (v) => setState(() => _rewards[i]['freq'] = v),
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              if (reward['type'] == 'commission_pct' || reward['type'] == 'commission_fix') ...[
+                              if (reward['party'] == 'inviter') ...[
                                 const SizedBox(width: 8),
                                 SizedBox(
                                   width: 60,
-                                  child: TextFormField(
-                                    initialValue: (reward['level'] ?? 1).toString(),
+                                  child: DropdownButtonFormField<int>(
+                                    value: _validInt(reward['level'] as int?, 1, 1),
                                     decoration: const InputDecoration(
                                         labelText: '级', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
-                                    keyboardType: TextInputType.number,
-                                    onChanged: (v) => _rewards[i]['level'] = int.tryParse(v) ?? 1,
+                                    items: const [
+                                      DropdownMenuItem(value: 1, child: Text('1')),
+                                      DropdownMenuItem(value: 2, child: Text('2')),
+                                    ],
+                                    onChanged: (v) => setState(() => _rewards[i]['level'] = v ?? 1),
                                   ),
                                 ),
                               ],

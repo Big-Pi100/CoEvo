@@ -21,7 +21,7 @@ use tokio_tungstenite::connect_async;
 type HmacSha1 = Hmac<Sha1>;
 
 /// TTS 配置
-struct TtsConfig {
+pub struct TtsConfig {
     app_id: String,
     secret_id: String,
     secret_key: String,
@@ -29,7 +29,7 @@ struct TtsConfig {
 
 impl TtsConfig {
     /// 从环境变量加载配置
-    fn from_env() -> Option<Self> {
+    pub fn from_env() -> Option<Self> {
         let app_id = std::env::var("TENCENT_APP_ID").ok()?;
         let secret_id = std::env::var("TENCENT_SECRET_ID").ok()?;
         let secret_key = std::env::var("TENCENT_SECRET_KEY").ok()?;
@@ -46,7 +46,7 @@ impl TtsConfig {
 }
 
 /// 文本分片：按句子边界切分，每片 ≤ max_chars
-fn split_text(text: &str, max_chars: usize) -> Vec<String> {
+pub fn split_text(text: &str, max_chars: usize) -> Vec<String> {
     if text.chars().count() <= max_chars {
         return vec![text.to_string()];
     }
@@ -227,7 +227,7 @@ pub async fn synthesize(text: &str, voice_type: Option<i32>, speed: Option<f32>)
 }
 
 /// 合成单个文本片段（≤600 汉字）
-async fn synthesize_chunk(config: &TtsConfig, text: &str, voice_type: Option<i32>, speed: Option<f32>) -> Result<Vec<u8>, String> {
+pub async fn synthesize_chunk(config: &TtsConfig, text: &str, voice_type: Option<i32>, speed: Option<f32>) -> Result<Vec<u8>, String> {
     use futures_util::StreamExt;
 
     let url = build_ws_url(config, text, voice_type, speed)?;

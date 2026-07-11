@@ -1,11 +1,12 @@
 {
-    "name": "coevo_app",
-    "short_name": "coevo_app",
+    "name": "CoEvo AI特级教师",
+    "short_name": "CoEvo",
     "start_url": ".",
+    "scope": "/app/",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#1a1a2e",
+    "theme_color": "#1a1a2e",
+    "description": "基于FSRS记忆算法的AI特级教师平台 - 不遗忘不跑偏的一对一学习",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -458,7 +458,7 @@ fn compute_next_state(conn: &Connection, card_id: &str, rating: Rating) -> (i32,
 /// B2 隐式复习：用户输入命中词库词汇时，记录为一次通过（pass）的隐式复习。
 /// 与 submit_review 不同的是，不触发成就检测和 streak 更新。
 /// 由 ws.rs hot path 中的 B2 逻辑调用。
-pub fn record_implicit_review(conn: &Connection, user_card_id: &str) {
+pub fn record_implicit_review(conn: &Connection, user_card_id: &str, user_id: &str) {
     let now = Utc::now().timestamp();
     let rating = Rating::from_pass(true, false);
     let new_state = compute_next_state(conn, user_card_id, rating);
@@ -476,6 +476,9 @@ pub fn record_implicit_review(conn: &Connection, user_card_id: &str) {
          VALUES (?1, ?2, ?2, 4, 'ai_dialogue', 'pass', ?3)",
         rusqlite::params![log_id, user_card_id, now],
     );
+
+    // 同步更新活跃天数
+    let _ = update_streak(conn, user_id);
 }
 
 #[cfg(test)]

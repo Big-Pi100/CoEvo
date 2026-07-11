@@ -425,7 +425,8 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
             final goal = p['goal'] as String? ?? '';
             final gb = (p['grade_band'] as String? ?? '').replaceAll('g', '').replaceAll('-', '～');
             String label = goal.isNotEmpty ? goal : '学习计划';
-            if (gb.isNotEmpty) label = '$label（$gb）';
+            // goal 已含年级信息（以 ）结尾）则不追加 grade_band
+            if (gb.isNotEmpty && !goal.endsWith('）')) label = '$label（$gb）';
             final totalTasks = (p['total_tasks'] as num?)?.toInt() ?? 0;
             final doneTasks = (p['done_tasks'] as num?)?.toInt() ?? 0;
             final totalCards = (p['total_cards'] as num?)?.toInt() ?? 0;
@@ -553,7 +554,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
             final plan = entry.value;
             final gn = plan.goal.isNotEmpty ? plan.goal : '学习计划';
             final gb = plan.gradeBand?.replaceAll('g', '').replaceAll('-', '～') ?? '';
-            final title = gb.isNotEmpty ? '$gn（$gb）' : gn;
+            final title = (gb.isNotEmpty && !gn.endsWith('）')) ? '$gn（$gb）' : gn;
 
             return Padding(
               padding: i < plans.length - 1 ? const EdgeInsets.only(bottom: AppTheme.spacingLg) : EdgeInsets.zero,

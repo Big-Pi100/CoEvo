@@ -17,15 +17,17 @@ class TtsService extends ChangeNotifier {
   final FlutterTts _tts = FlutterTts();
   TtsState state = TtsState.stopped;
   bool _enabled = true;
-  double _speechRate = 1.0;
+  double _speechRate = 1.5;
   Map<String, dynamic>? _selectedVoice;
   List<Map<String, dynamic>> _availableVoices = [];
   ChatClient? _client;
 
   // 当前正在播放的 AudioPlayer（Tencent TTS，用户点击触发）
   AudioPlayer? _currentPlayer;
-  // auto-play 独立播放器（WS tts_audio 触发）
+  // auto-play 独立播放器（WS tts_audio 触发，流式分块播放）
   AudioPlayer? _autoPlayer;
+  final List<Uint8List> _autoQueue = [];
+  bool _autoPlaying = false;
   String? _currentPlayingText;
 
   // 单调递增的"代"计数器。每次发起新请求时 +1，
@@ -54,7 +56,7 @@ class TtsService extends ChangeNotifier {
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _enabled = prefs.getBool('tts_enabled') ?? true;
-    _speechRate = prefs.getDouble('tts_speech_rate') ?? 1.0;
+    _speechRate = prefs.getDouble('tts_speech_rate') ?? 1.5;
     try {
       _availableVoices = await _tts.getVoices;
     } catch (_) {
@@ -157,25 +159,41 @@ class TtsService extends ChangeNotifier {
     _ttsCache[_cleanText(text)] = audio;
   }
 
-  /// 播放 auto-play 音频（独立播放器，与按钮互不干扰）
+  /// 播放 auto-play 音频（流式：多个 chunk 逐个播放）
   void playAutoStream(Uint8List audio) {
     if (audio.isEmpty) {
       debugPrint('[TTS] auto-play: empty audio, skipping');
       return;
     }
+    _autoQueue.add(Uint8List.fromList(audio));
+    if (!_autoPlaying) {
+      _autoPlaying = true;
+      _playNextAuto();
+    }
+  }
+
+  void _playNextAuto() {
+    if (_autoQueue.isEmpty) {
+      _autoPlaying = false;
+      _autoPlayer = null;
+      return;
+    }
+    final audio = _autoQueue.removeAt(0);
     _autoPlayer?.stop();
     _autoPlayer?.dispose();
     final player = AudioPlayer();
     _autoPlayer = player;
     try {
-      player.setSource(BytesSource(Uint8List.fromList(audio)));
+      player.setSource(BytesSource(audio));
       player.resume();
       player.onPlayerComplete.listen((_) {
-        if (_autoPlayer == player) _autoPlayer = null;
+        if (_autoPlayer == player) {
+          _playNextAuto();
+        }
       });
     } catch (e) {
       debugPrint('[TTS] auto-play exception: $e');
-      _autoPlayer = null;
+      _playNextAuto();
     }
   }
 
@@ -343,6 +361,8 @@ class TtsService extends ChangeNotifier {
     await _autoPlayer?.stop();
     _autoPlayer?.dispose();
     _autoPlayer = null;
+    _autoQueue.clear();
+    _autoPlaying = false;
     await _tts.stop();
     state = TtsState.stopped;
     _currentPlayingText = null;

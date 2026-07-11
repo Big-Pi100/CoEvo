@@ -1059,6 +1059,48 @@ pub async fn user_portrait(
     })).into_response()
 }
 
+/// GET /share/ 或 /go/ — 无 referral code 时的通用落地页
+pub async fn share_landing_home() -> impl IntoResponse {
+    let html = r#"<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CoEvo AI特级教师 — 主动式一对一学习，不遗忘不跑偏</title>
+<meta name="description" content="CoEvo刻意进化学习，基于FSRS记忆算法的AI特级教师。AI一对一辅导，FSRS科学复习。不遗忘·不跑偏·不瞎编·效果看得见。免费试用，30天不满意全额退。">
+<meta property="og:title" content="CoEvo AI特级教师">
+<meta property="og:description" content="基于FSRS记忆算法的AI特级教师，不遗忘·不跑偏·不瞎编。">
+<meta property="og:url" content="https://www.keyievolution.fun/">
+<meta property="og:image" content="https://www.keyievolution.fun/icons/Icon-512.png">
+<link rel="canonical" href="https://www.keyievolution.fun/">
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;margin:0;padding:0;background:linear-gradient(135deg,#1565C0,#1A237E);color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px}
+h1{font-size:2em;margin-bottom:0.5em}
+p{font-size:1.1em;line-height:1.6;max-width:500px;margin:0.5em auto}
+.features{margin:2em 0}
+.feature{margin:0.8em 0;padding:8px 16px;background:rgba(255,255,255,0.1);border-radius:8px;display:inline-block}
+.cta{display:inline-block;margin-top:2em;padding:14px 40px;background:#fff;color:#1565C0;border-radius:30px;text-decoration:none;font-weight:bold;font-size:1.1em}
+.url{margin-top:3em;font-size:0.85em;opacity:0.6}
+</style>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"CoEvo是什么？","acceptedAnswer":{"@type":"Answer","text":"CoEvo是一个基于FSRS记忆算法的AI特级教师平台，提供一对一辅导、科学复习和个性化学习方案。"}},{"@type":"Question","name":"CoEvo和豆包/ChatGPT有什么区别？","acceptedAnswer":{"@type":"Answer","text":"CoEvo不仅提供AI对话，还通过FSRS算法自动规划复习、提取概念制卡，确保学过的内容真正内化。"}},{"@type":"Question","name":"CoEvo免费吗？","acceptedAnswer":{"@type":"Answer","text":"CoEvo提供免费试用，新用户无需注册即可立即体验全部功能。"}}]}
+</script>
+</head>
+<body>
+<h1>CoEvo AI特级教师</h1>
+<p>基于FSRS记忆算法的主动式一对一学习平台。<br>不遗忘 · 不跑偏 · 不瞎编 · 效果看得见</p>
+<div class="features">
+<div class="feature">AI 一对一辅导</div>
+<div class="feature">FSRS 科学复习</div>
+<div class="feature">客观验证内化</div>
+</div>
+<a class="cta" href="https://www.keyievolution.fun/">免费试用</a>
+<div class="url">www.keyievolution.fun</div>
+</body>
+</html>"#;
+    ([(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")], html)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

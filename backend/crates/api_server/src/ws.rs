@@ -3,14 +3,25 @@
 //! ⚡ HotPath: 流式回复 → done 立即发送 → 不等概念提取
 //! ❄️ ColdPath: 通过 channel 异步提取概念，不阻塞消息接收
 //!
-//! 鉴权: token 由首条消息 payload 传递（不出现在 URL 查询参数中）
+// TTS 并发控制：全局信号量限制最多 3 个并发 TTS WebSocket 连接，
+// 防止 1GB VPS 因过多并发 WS 连接导致 OOM。
+
+use std::sync::OnceLock;
+use tokio::sync::Semaphore;
+
+fn tts_semaphore() -> &'static Semaphore {
+    static SEM: OnceLock<Semaphore> = OnceLock::new();
+    SEM.get_or_init(|| Semaphore::new(3))
+}
+
+// 鉴权: token 由首条消息 payload 传递（不出现在 URL 查询参数中）
 
 use axum::extract::ws::{Message, WebSocket};
 use chat_engine::llm_caller::{LlmCaller, LlmEvent};
 use serde_json::json;
 use base64::Engine;
+use std::sync::{Arc, LazyLock};
 use tokio::sync::mpsc;
-use std::sync::{LazyLock, Arc};
 use std::time::Duration;
 use std::future;
 
@@ -404,6 +415,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 } else {
                     None
                 };
+                tracing::info!("[CP1 B2] resolved subject={:?}, msg={:?}", b2_subject, chat_req.message.chars().take(50).collect::<String>());
                 if let Some(ref subject) = b2_subject {
                     if !chat_req.message.trim().is_empty() {
                     let conn_b2 = crate::db_pool::get_conn();
@@ -436,12 +448,16 @@ pub async fn handle_ws(mut ws: WebSocket) {
                         let today_start = chrono::Utc::now().date_naive().and_hms_opt(0, 0, 0)
                             .map(|d| d.and_utc().timestamp())
                             .unwrap_or(0);
+                        if !matched.is_empty() {
+                            tracing::info!("[CP1 B2] processing {} words for subject={}: {:?}", matched.len(), subject, matched);
+                        }
                         for word in &matched {
                             let has_card = conn_b2.query_row(
                                 "SELECT 1 FROM user_cards WHERE user_id = ?1 AND LOWER(front) = ?2 LIMIT 1",
                                 rusqlite::params![uid_b2, word],
                                 |_| Ok(true),
                             ).unwrap_or(false);
+                            tracing::info!("[CP1 B2] word='{}' has_card={}", word, has_card);
                             if !has_card {
                                 activate_single_word(&conn_b2, uid_b2, word, subject, now);
                             } else {
@@ -463,9 +479,12 @@ pub async fn handle_ws(mut ws: WebSocket) {
                                         let rows = stmt.query_map(rusqlite::params![uid_b2, word], |row| row.get::<_, String>(0)).ok()?;
                                         Some(rows.filter_map(|r| r.ok()).collect())
                                     })().unwrap_or_default();
+                                    tracing::info!("[CP1 B2] reviewing {} card(s) for word='{}'", card_ids.len(), word);
                                     for cid in &card_ids {
-                                        card_engine::fsrs_scheduler::record_implicit_review(&conn_b2, cid);
+                                        card_engine::fsrs_scheduler::record_implicit_review(&conn_b2, cid, uid_b2);
                                     }
+                                } else {
+                                    tracing::info!("[CP1 B2] skip review for word='{}' (already reviewed today)", word);
                                 }
                             }
                         }
@@ -661,6 +680,8 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 }
 
                 // ⚡ HotPath: 发 done — 失败则连接已断，跳过后序处理
+                // 在发送前扫描 graph 类型
+                detect_unknown_graph_types(&final_reply);
                 if ws.send(Message::Text(json!({
                     "type": "done",
                     "reply": final_reply,
@@ -669,26 +690,50 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     break;
                 }
 
-                // ⚡ 后台 TTS 合成（不阻塞主流程）
+                // ⚡ 后台 TTS 合成（不阻塞主流程，流式发送每个 chunk）
                 let tts_text = final_reply.clone();
                 let txs = tts_tx.clone();
                 let uid = chat_req.user_id.clone();
                 tokio::task::spawn(async move {
-                    // 读取用户 TTS 偏好
                     let (voice_type, speed) = get_user_tts_prefs(&uid);
-                    // 未选择云端 TTS → 跳过合成（本地原生 TTS 由前端直接调用）
-                    if voice_type.is_none() {
-                        return;
-                    }
-                    match crate::tencent_tts::synthesize(&tts_text, voice_type, speed).await {
-                        Ok(Some(audio)) => {
-                            let _ = txs.send(audio).await;
+                    if voice_type.is_none() { return; }
+                    let config = match crate::tencent_tts::TtsConfig::from_env() {
+                        Some(c) => c,
+                        None => {
+                            tracing::warn!("TTS not configured: TENCENT_SECRET_ID/KEY/APP_ID missing");
+                            return;
                         }
-                        Ok(None) => {}
-                        Err(e) => {
-                            tracing::warn!("TTS synthesis failed: {}", e);
+                    };
+                    let chunks = crate::tencent_tts::split_text(&tts_text, 300);
+                    tracing::info!("TTS: streaming {} chunks ({} chars)", chunks.len(), tts_text.chars().count());
+                    let start_all = std::time::Instant::now();
+                    for (i, chunk) in chunks.iter().enumerate() {
+                        if chunk.trim().is_empty() { continue; }
+                        // 获取信号量许可（最多 3 个并发 TTS 连接）
+                        let _permit = tts_semaphore().acquire().await;
+                        let t0 = std::time::Instant::now();
+                        let result = crate::tencent_tts::synthesize_chunk(&config, chunk, voice_type, speed).await;
+                        drop(_permit); // 立即释放，让下一个等待者开始
+                        // 失败重试一次
+                        let result = if result.is_err() {
+                            tracing::warn!("TTS chunk {}/{} retrying...", i + 1, chunks.len());
+                            crate::tencent_tts::synthesize_chunk(&config, chunk, voice_type, speed).await
+                        } else {
+                            result
+                        };
+                        match result {
+                            Ok(audio) => {
+                                let elapsed = t0.elapsed().as_millis();
+                                tracing::info!("TTS chunk {}/{} done: {}ms, {} bytes", i + 1, chunks.len(), elapsed, audio.len());
+                                let _ = txs.send(audio).await;
+                            }
+                            Err(e) => {
+                                tracing::error!("TTS chunk {}/{} failed after retry: {}", i + 1, chunks.len(), e);
+                            }
                         }
                     }
+                    let total = start_all.elapsed().as_millis();
+                    tracing::info!("TTS total: {}ms for {} chunks", total, chunks.len());
                 });
 
                 // ⚡ 从 final_reply 中检测 **Goal学习计划创建✅ 已完成 标记 → 立即创建学习计划
@@ -1270,5 +1315,33 @@ fn get_user_tts_prefs(user_id: &str) -> (Option<i32>, Option<f32>) {
     ).ok().and_then(|v| v.parse::<f32>().ok());
 
     (voice_type, speed)
+}
+
+/// 已知的 graph JSON 类型列表
+const KNOWN_GRAPH_TYPES: &[&str] = &["line", "bar", "scatter", "pie", "polygon", "circle", "arrow", "canvas", "function"];
+
+/// 扫描回复中 <graph> 标签内 JSON 的 type 字段，记录未知类型到日志
+fn detect_unknown_graph_types(reply: &str) {
+    // 查找 "type":"xxx" 或 "type": "xxx" 模式
+    let mut search_start = 0;
+    while let Some(start) = reply[search_start..].find(r#""type""#) {
+        let abs_start = search_start + start + 6; // after "type"
+        let after = &reply[abs_start..];
+        // 跳过空白和冒号
+        let colon_pos = after.find(':').map(|p| p + 1).unwrap_or(0);
+        let after_colon = after[colon_pos..].trim_start();
+        // 提取引号内的值
+        if after_colon.starts_with('"') {
+            if let Some(end) = after_colon[1..].find('"') {
+                let t = &after_colon[1..=end];
+                if !KNOWN_GRAPH_TYPES.contains(&t) && !t.starts_with("_") {
+                    tracing::warn!("[graph_monitor] unknown graph type='{}' in reply (len={})", t, reply.len());
+                }
+                search_start = abs_start + colon_pos + 1 + end;
+                continue;
+            }
+        }
+        search_start = abs_start + 1;
+    }
 }
 

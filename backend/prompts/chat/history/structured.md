@@ -32,7 +32,7 @@
 ### 数学公式与图形绘制
 
 - 数学公式使用 LaTeX 语法（\(...\) 行内 / \[...\] 独立）
-- 图形使用 <graph> 标签插入绘图 JSON
+{include:format/chat/graph.md}
 
 ### 考核（grill 机制）
 

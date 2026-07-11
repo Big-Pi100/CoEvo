@@ -1,7 +1,9 @@
 // ignore_for_file: invalid_null_aware_operator, unnecessary_cast
 import 'dart:convert';
+import 'dart:js' as js;
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:fl_chart/fl_chart.dart' as fl;
 
 /// 图表调色板（8 色）
@@ -16,63 +18,72 @@ const _chartColors = [
   Color(0xFF5F5E5A),
 ];
 
-/// 内联图形渲染组件 — 解析 `<graph>` JSON 并渲染对应图表
+/// 内联图形渲染组件 — 优先渲染 SVG，降级解析 `<graph>` JSON
 class GraphWidget extends StatelessWidget {
   final String jsonStr;
 
   const GraphWidget({super.key, required this.jsonStr});
 
-  /// 截断长文本用于错误显示
-  static String _shorten(String s, int maxLen) {
-    if (s.length <= maxLen) return s;
-    return '${s.substring(0, maxLen)}...';
-  }
-
-  static List<dynamic> _safeList(dynamic value) {
-    if (value == null) return <dynamic>[];
-    if (value is List) return value as List<dynamic>;
-    return <dynamic>[];
-  }
-
-  static double _safeDouble(dynamic value, [double fallback = 0]) {
-    if (value == null) return fallback;
-    if (value is num) return value.toDouble();
-    if (value is String) {
-      final d = double.tryParse(value);
-      if (d != null) return d;
-      final i = int.tryParse(value);
-      if (i != null) return i.toDouble();
-    }
-    if (value is bool) return value ? 1.0 : 0.0;
-    return fallback;
-  }
-
-  static int _safeInt(dynamic value, [int fallback = 0]) {
-    if (value == null) return fallback;
-    if (value is int) return value;
-    if (value is double) return value.round();
-    if (value is num) return value.toInt();
-    if (value is String) {
-      final i = int.tryParse(value);
-      if (i != null) return i;
-      final d = double.tryParse(value);
-      if (d != null) return d.round();
-    }
-    return fallback;
-  }
-
   @override
   Widget build(BuildContext context) {
     final _cs = Theme.of(context).colorScheme;
-    Map<String, dynamic> data;
-    String? rawJson;
+    final content = jsonStr.trim();
+
+    // 检测是否为 SVG
+    if (content.startsWith('<svg') || content.startsWith('<svg ') || content.startsWith('<?xml')) {
+      return _buildSvg(content, _cs);
+    }
+
+    // 否则按 JSON 解析（原有逻辑）
+    return _buildJsonGraph(content, _cs, context);
+  }
+
+  /// SVG 渲染
+  Widget _buildSvg(String svgContent, ColorScheme cs) {
     try {
-      String cleaned = jsonStr.trim();
-      rawJson = cleaned;
-      // 去除可能的 markdown 代码块包裹（含前置换行的情况）
+      // 提取 <svg>...</svg>
+      final start = svgContent.indexOf('<svg');
+      final end = svgContent.lastIndexOf('</svg>');
+      if (start < 0 || end < 0) return _buildError('SVG 格式不正确', cs);
+      var cleanSvg = svgContent.substring(start, end + 6);
+      // 兜底：给所有 <text> 加上白色描边（LLM 可能忘记加）
+      if (!cleanSvg.contains('paint-order="stroke fill"')) {
+        cleanSvg = cleanSvg.replaceAllMapped(
+          RegExp(r'<text\b', caseSensitive: false),
+          (m) => '${m.group(0)} paint-order="stroke fill" stroke="white" stroke-width="1.5"',
+        );
+      }
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: cs.outlineVariant),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SvgPicture.string(
+            cleanSvg,
+            width: double.infinity,
+            height: 240,
+            fit: BoxFit.contain,
+            placeholderBuilder: (_) => const SizedBox(height: 240, child: Center(child: Text('加载中...'))),
+          ),
+        ),
+      );
+    } catch (e) {
+      return _buildError('SVG 渲染失败: $e', cs);
+    }
+  }
+
+  /// JSON 图形渲染（原有 fl_chart + canvas 逻辑）
+  Widget _buildJsonGraph(String content, ColorScheme cs, BuildContext context) {
+    Map<String, dynamic> data;
+    try {
+      String cleaned = content;
       cleaned = cleaned.replaceAll(RegExp(r'^```\w*\n?', multiLine: true), '');
       cleaned = cleaned.replaceAll('```', '').trim();
-      // 容错：LLM 有时在 JSON 前后加多余字符，截取第一个 { 到最后一个 }
       final braceStart = cleaned.indexOf('{');
       final braceEnd = cleaned.lastIndexOf('}');
       if (braceStart >= 0 && braceEnd > braceStart) {
@@ -81,33 +92,37 @@ class GraphWidget extends StatelessWidget {
       data = jsonDecode(cleaned) as Map<String, dynamic>;
       data = _normalize(data);
     } catch (e) {
-      return _buildError('图形数据解析失败: ${_shorten(rawJson ?? jsonStr, 200)}\n$e', _cs);
+      return _buildError('图形数据解析失败\n$e', cs);
     }
 
     final type = data['type'] as String?;
-    if (type == null) return _buildError('缺少 type 字段', _cs);
+    if (type == null) return _buildError('缺少 type 字段', cs);
 
     try {
       switch (type) {
         case 'line':
-          return _buildGraphicLine(data, _cs);
+          return _buildGraphicLine(data, cs);
         case 'bar':
-          return _buildGraphicBar(data, _cs);
+          return _buildGraphicBar(data, cs);
         case 'scatter':
-          return _buildGraphicScatter(data, _cs);
+          return _buildGraphicScatter(data, cs);
         case 'pie':
-          return _buildGraphicPie(data, _cs);
+          return _buildGraphicPie(data, cs);
         case 'polygon':
           return _buildPolygon(data, context);
         case 'circle':
           return _buildCircle(data, context);
         case 'arrow':
           return _buildArrowChart(data, context);
+        case 'canvas':
+          return _buildCanvas(data, context);
+        case 'function':
+          return _buildFunctionGraph(data, context);
         default:
-          return _buildError('不支持的图形类型: $type', _cs);
+          return _buildError('不支持的图形类型: $type', cs);
       }
     } catch (e) {
-      return _buildError('图形渲染失败: $e', _cs);
+      return _buildError('图形渲染失败: $e', cs);
     }
   }
 
@@ -631,6 +646,105 @@ class GraphWidget extends StatelessWidget {
     );
   }
 
+  // ── 函数图像 (function type) — 用 dart:js 计算函数值，生成 SVG ──
+  Widget _buildFunctionGraph(Map<String, dynamic> data, BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    try {
+      final xRange = data['xRange'] as List? ?? [-5, 5];
+      final yRange = data['yRange'] as List? ?? [-5, 5];
+      final xMin = _safeDouble(xRange[0], -5);
+      final xMax = _safeDouble(xRange[1], 5);
+      final yMin = _safeDouble(yRange[0], -5);
+      final yMax = _safeDouble(yRange[1], 5);
+      final rawFuncs = _safeList(data['functions']);
+      if (rawFuncs.isEmpty) return _buildError('函数图像：无函数表达式', cs);
+      final specialPoints = _safeList(data['specialPoints']);
+      final showGrid = data['grid'] != false;
+      final funcColors = ['#4285F4', '#EA4335', '#34A853', '#FBBC04', '#A142F4', '#46BDC6'];
+      // 计算物理像素范围
+      const pad = 50;
+      const w = 360 - pad * 2;
+      const h = 280 - pad * 2;
+      // SVG 坐标系 (0,0) 对应 (pad, pad+h)
+      double toSvgX(double x) => pad + ((x - xMin) / (xMax - xMin)) * w;
+      double toSvgY(double y) => (pad + h) - ((y - yMin) / (yMax - yMin)) * h;
+      var svg = '<svg viewBox="0 0 360 280" xmlns="http://www.w3.org/2000/svg">';
+      // 坐标轴
+      final ox = toSvgX(0).clamp(pad.toDouble(), (pad + w).toDouble());
+      final oy = toSvgY(0).clamp(pad.toDouble(), (pad + h).toDouble());
+      svg += '<line x1="$pad" y1="$oy" x2="${pad + w}" y2="$oy" stroke="#333" stroke-width="1.5"/>';
+      svg += '<line x1="$ox" y1="$pad" x2="$ox" y2="${pad + h}" stroke="#333" stroke-width="1.5"/>';
+      svg += '<text x="${pad + w + 4}" y="${oy + 4}" font-size="11" fill="#333">x</text>';
+      svg += '<text x="${ox + 4}" y="${pad - 4}" font-size="11" fill="#333">y</text>';
+      // 网格
+      if (showGrid) {
+        for (var x = (xMin / 1).ceil() * 1.0; x <= xMax; x += 1) {
+          final sx = toSvgX(x);
+          if (sx >= pad && sx <= pad + w) {
+            svg += '<line x1="$sx" y1="$pad" x2="$sx" y2="${pad + h}" stroke="#ddd" stroke-width="0.5" stroke-dasharray="2,2"/>';
+            if (x != 0) svg += '<text x="$sx" y="${oy + 14}" text-anchor="middle" font-size="9" fill="#999">${x.toInt()}</text>';
+          }
+        }
+        for (var y = (yMin / 1).ceil() * 1.0; y <= yMax; y += 1) {
+          final sy = toSvgY(y);
+          if (sy >= pad && sy <= pad + h) {
+            svg += '<line x1="$pad" y1="$sy" x2="${pad + w}" y2="$sy" stroke="#ddd" stroke-width="0.5" stroke-dasharray="2,2"/>';
+            if (y != 0) svg += '<text x="${ox - 8}" y="${sy + 3}" text-anchor="end" font-size="9" fill="#999">${y.toInt()}</text>';
+          }
+        }
+      }
+      // 函数曲线
+      const sampleCount = 40;
+      for (var fi = 0; fi < rawFuncs.length; fi++) {
+        final f = rawFuncs[fi] as Map<String, dynamic>;
+        final expr = f['expr'] as String? ?? '';
+        final color = f['color'] as String? ?? funcColors[fi % funcColors.length];
+        final label = f['label'] as String? ?? '';
+        // 将表达式中的 ^ 替换为 JS ** 求幂运算符
+        final jsExpr = expr.replaceAll('^', '**');
+        // 采样点
+        final pts = <String>[];
+        js.context['__cfx'] = 0; // init
+        for (var i = 0; i <= sampleCount; i++) {
+          final x = xMin + (xMax - xMin) * i / sampleCount;
+          js.context['__cfx'] = x;
+          final y = js.context.callMethod('eval', [jsExpr]) as num?;
+          if (y != null && y.isFinite && y >= yMin && y <= yMax) {
+            pts.add('${toSvgX(x).toStringAsFixed(1)},${toSvgY(y.toDouble()).toStringAsFixed(1)}');
+          }
+        }
+        if (pts.length >= 2) {
+          svg += '<polyline points="${pts.join(' ')}" fill="none" stroke="$color" stroke-width="2"/>';
+          if (label.isNotEmpty) {
+            // 在曲线末端附近标注
+            final lastX = xMin + (xMax - xMin) * 0.85;
+            js.context['__cfx'] = lastX;
+            final lastY = js.context.callMethod('eval', [jsExpr]) as num?;
+            if (lastY != null && lastY.isFinite) {
+              final ly = lastY.toDouble().clamp(yMin, yMax);
+              svg += '<text x="${toSvgX(lastX) + 6}" y="${toSvgY(ly) + 4}" fill="$color" font-size="11" paint-order="stroke fill" stroke="white" stroke-width="1.5">$label</text>';
+            }
+          }
+        }
+      }
+      // 特殊点
+      for (final sp in specialPoints) {
+        final arr = sp as List;
+        if (arr.length >= 2) {
+          final sx = toSvgX(_safeDouble(arr[0]));
+          final sy = toSvgY(_safeDouble(arr[1]));
+          svg += '<circle cx="$sx" cy="$sy" r="4" fill="#D32F2F"/>';
+          svg += '<text x="${sx + 6}" y="${sy + 4}" font-size="10" fill="#D32F2F" paint-order="stroke fill" stroke="white" stroke-width="1.5">(${arr[0]}, ${arr[1]})</text>';
+        }
+      }
+      svg += '</svg>';
+      // 用已有 SVG 渲染器
+      return _buildSvg(svg, cs);
+    } catch (e) {
+      return _buildError('函数图像渲染失败: $e', cs);
+    }
+  }
+
   Widget _buildError(String msg, ColorScheme cs) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
@@ -651,12 +765,130 @@ class GraphWidget extends StatelessWidget {
     );
   }
 
+  // ── Canvas: 复合图形容器（scripts 数组），LLM 用于几何教学组合图 ──
+  Widget _buildCanvas(Map<String, dynamic> data, BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final scripts = _safeList(data['scripts']);
+    if (scripts.isEmpty) return _buildError('canvas 无 scripts', cs);
+
+    // 收集所有坐标用于自动缩放
+    var xMin = double.infinity, xMax = double.negativeInfinity;
+    var yMin = double.infinity, yMax = double.negativeInfinity;
+    for (final s in scripts) {
+      final m = s as Map<String, dynamic>;
+      final t = m['type'] as String?;
+      if (t == 'line') {
+        final start = m['start'] as List? ?? [];
+        final end = m['end'] as List? ?? [];
+        if (start.length >= 2) { final x = _safeDouble(start[0]); final y = _safeDouble(start[1]); if (x < xMin) xMin = x; if (x > xMax) xMax = x; if (y < yMin) yMin = y; if (y > yMax) yMax = y; }
+        if (end.length >= 2) { final x = _safeDouble(end[0]); final y = _safeDouble(end[1]); if (x < xMin) xMin = x; if (x > xMax) xMax = x; if (y < yMin) yMin = y; if (y > yMax) yMax = y; }
+      } else if (t == 'polygon' || t == 'polyline') {
+        final verts = _safeList(m['vertices'] ?? m['points']);
+        for (final v in verts) {
+          final arr = v as List;
+          if (arr.length >= 2) { final x = _safeDouble(arr[0]); final y = _safeDouble(arr[1]); if (x < xMin) xMin = x; if (x > xMax) xMax = x; if (y < yMin) yMin = y; if (y > yMax) yMax = y; }
+        }
+      } else if (t == 'circle') {
+        final center = m['center'] as List? ?? [];
+        if (center.length >= 2) { final x = _safeDouble(center[0]); final y = _safeDouble(center[1]); if (x < xMin) xMin = x; if (x > xMax) xMax = x; if (y < yMin) yMin = y; if (y > yMax) yMax = y; }
+        final r = _safeDouble(m['radius'], 1);
+        if (xMin < double.infinity) { xMin -= r; xMax += r; yMin -= r; yMax += r; }
+      } else if (t == 'arrow') {
+        final from = m['from'] as List? ?? [];
+        final to = m['to'] as List? ?? [];
+        if (from.length >= 2) { final x = _safeDouble(from[0]); final y = _safeDouble(from[1]); if (x < xMin) xMin = x; if (x > xMax) xMax = x; if (y < yMin) yMin = y; if (y > yMax) yMax = y; }
+        if (to.length >= 2) { final x = _safeDouble(to[0]); final y = _safeDouble(to[1]); if (x < xMin) xMin = x; if (x > xMax) xMax = x; if (y < yMin) yMin = y; if (y > yMax) yMax = y; }
+      } else if (t == 'rect') {
+        final tl = m['topLeft'] as List? ?? m['p1'] as List?;
+        final br = m['bottomRight'] as List? ?? m['p2'] as List?;
+        if (tl != null && tl.length >= 2) { final x = _safeDouble(tl[0]); final y = _safeDouble(tl[1]); if (x < xMin) xMin = x; if (x > xMax) xMax = x; if (y < yMin) yMin = y; if (y > yMax) yMax = y; }
+        if (br != null && br.length >= 2) { final x = _safeDouble(br[0]); final y = _safeDouble(br[1]); if (x < xMin) xMin = x; if (x > xMax) xMax = x; if (y < yMin) yMin = y; if (y > yMax) yMax = y; }
+      } else if (t == 'ellipse') {
+        final center = m['center'] as List? ?? [];
+        if (center.length >= 2) { final x = _safeDouble(center[0]); final y = _safeDouble(center[1]); if (x < xMin) xMin = x; if (x > xMax) xMax = x; if (y < yMin) yMin = y; if (y > yMax) yMax = y; }
+        final rx = _safeDouble(m['rx'] ?? m['radiusX'], 1);
+        final ry = _safeDouble(m['ry'] ?? m['radiusY'], 1);
+        if (xMin < double.infinity) { xMin -= rx; xMax += rx; yMin -= ry; yMax += ry; }
+      } else if (t == 'point') {
+        final pos = m['position'] as List? ?? m['pos'] as List?;
+        if (pos != null && pos.length >= 2) { final x = _safeDouble(pos[0]); final y = _safeDouble(pos[1]); if (x < xMin) xMin = x; if (x > xMax) xMax = x; if (y < yMin) yMin = y; if (y > yMax) yMax = y; }
+      } else if (t == 'text') {
+        final pos = m['position'] as List? ?? m['pos'] as List?;
+        if (pos != null && pos.length >= 2) { final x = _safeDouble(pos[0]); final y = _safeDouble(pos[1]); if (x < xMin) xMin = x; if (x > xMax) xMax = x; if (y < yMin) yMin = y; if (y > yMax) yMax = y; }
+      }
+    }
+    if (xMin == double.infinity) { xMin = 0; xMax = 200; yMin = 0; yMax = 200; }
+    final pad = (xMax - xMin + yMax - yMin) * 0.1 + 1;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      child: SizedBox(
+        height: 240,
+        child: CustomPaint(
+          size: const Size(double.infinity, 240),
+          painter: _CanvasPainter(
+            cs: cs,
+            scripts: scripts,
+            xMin: xMin - pad, xMax: xMax + pad,
+            yMin: yMin - pad, yMax: yMax + pad,
+          ),
+        ),
+      ),
+    );
+  }
+
+
   Color _parseColor(String? hex, ColorScheme cs) {
     if (hex == null || hex.isEmpty) return cs.primary;
     final h = hex.replaceFirst('#', '');
     if (h.length == 6) return Color(int.parse('FF$h', radix: 16));
     if (h.length == 8) return Color(int.parse(h, radix: 16));
     return cs.primary;
+  }
+
+  /// 截断长文本用于错误显示
+  static String _shorten(String s, int maxLen) {
+    if (s.length <= maxLen) return s;
+    return '${s.substring(0, maxLen)}...';
+  }
+
+  static List<dynamic> _safeList(dynamic value) {
+    if (value == null) return <dynamic>[];
+    if (value is List) return value as List<dynamic>;
+    return <dynamic>[];
+  }
+
+  static double _safeDouble(dynamic value, [double fallback = 0]) {
+    if (value == null) return fallback;
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      final d = double.tryParse(value);
+      if (d != null) return d;
+      final i = int.tryParse(value);
+      if (i != null) return i.toDouble();
+    }
+    if (value is bool) return value ? 1.0 : 0.0;
+    return fallback;
+  }
+
+  static int _safeInt(dynamic value, [int fallback = 0]) {
+    if (value == null) return fallback;
+    if (value is int) return value;
+    if (value is double) return value.round();
+    if (value is num) return value.toInt();
+    if (value is String) {
+      final i = int.tryParse(value);
+      if (i != null) return i;
+      final d = double.tryParse(value);
+      if (d != null) return d.round();
+    }
+    return fallback;
   }
 
   static Map<String, dynamic> _normalize(Map<String, dynamic> raw) {
@@ -1096,4 +1328,314 @@ class _GeometryPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _GeometryPainter old) => true;
+}
+
+/// Canvas 绘制器：遍历 scripts 数组，渲染组合图形
+class _CanvasPainter extends CustomPainter {
+  final ColorScheme cs;
+  final List<dynamic> scripts;
+  final double xMin, xMax, yMin, yMax;
+
+  _CanvasPainter({
+    required this.cs,
+    required this.scripts,
+    required this.xMin, required this.xMax,
+    required this.yMin, required this.yMax,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const pad = 40.0;
+    final w = size.width - pad * 2;
+    final h = size.height - pad * 2;
+    final xRange = xMax - xMin;
+    final yRange = yMax - yMin;
+    final scaleX = xRange == 0 ? 1 : w / xRange;
+    final scaleY = yRange == 0 ? 1 : h / yRange;
+    final scale = scaleX < scaleY ? scaleX : scaleY;
+    final cx = pad + w / 2 - (xMin + xRange / 2) * scale;
+    final cy = pad + h / 2 + (yMin + yRange / 2) * scale;
+
+    Offset toScreen(double x, double y) => Offset(cx + x * scale, cy - y * scale);
+
+    for (final raw in scripts) {
+      final m = raw as Map<String, dynamic>;
+      final t = m['type'] as String? ?? '';
+      final color = _parseColor(m['color'] as String?, cs);
+      final label = m['label'] as String?;
+      final filled = m['filled'] == true;
+      final opacity = _safeDouble(m['opacity'], 1.0);
+      final dash = m['dash'] == true;
+      final thick = m['thick'] == true;
+      final strokeWidth = thick ? 3.5 : 2.0;
+
+      try {
+        switch (t) {
+          case 'point': {
+            final pos = _safeList(m['position'] ?? m['pos']);
+            if (pos.length >= 2) {
+              final pt = toScreen(_safeDouble(pos[0]), _safeDouble(pos[1]));
+              canvas.drawCircle(pt, 4, Paint()..color = color..style = PaintingStyle.fill);
+              if (label != null && label.isNotEmpty) {
+                _drawCanvasLabel(canvas, label, pt + const Offset(10, -10), color);
+              }
+            }
+            break;
+          }
+          case 'line': {
+            final start = _safeList(m['start']);
+            final end = _safeList(m['end']);
+            if (start.length >= 2 && end.length >= 2) {
+              final p1 = toScreen(_safeDouble(start[0]), _safeDouble(start[1]));
+              final p2 = toScreen(_safeDouble(end[0]), _safeDouble(end[1]));
+              final paint = Paint()
+                ..color = color
+                ..strokeWidth = strokeWidth
+                ..strokeCap = StrokeCap.round;
+              if (dash) {
+                _drawDashedLine(canvas, p1, p2, paint);
+              } else {
+                canvas.drawLine(p1, p2, paint);
+              }
+              if (label != null && label.isNotEmpty) {
+                _drawCanvasLabel(canvas, label, (p1 + p2) / 2 + const Offset(0, -14), color);
+              }
+            }
+            break;
+          }
+          case 'polygon':
+          case 'polyline': {
+            final verts = _safeList(m['vertices'] ?? m['points']);
+            if (verts.length >= 2) {
+              final pts = verts.map((v) {
+                final arr = v as List;
+                return toScreen(_safeDouble(arr[0]), _safeDouble(arr[1]));
+              }).toList();
+              final path = Path()..moveTo(pts[0].dx, pts[0].dy);
+              for (var i = 1; i < pts.length; i++) {
+                path.lineTo(pts[i].dx, pts[i].dy);
+              }
+              final closePath = t == 'polygon';
+              if (closePath) path.close();
+              final drawPaint = Paint()
+                ..color = color.withAlpha((opacity * 255).round())
+                ..strokeWidth = strokeWidth
+                ..style = closePath && filled ? PaintingStyle.fill : PaintingStyle.stroke;
+              canvas.drawPath(path, drawPaint);
+              // 描边
+              if (!closePath || !filled || dash) {
+                canvas.drawPath(path, Paint()
+                  ..color = color
+                  ..strokeWidth = strokeWidth
+                  ..style = PaintingStyle.stroke);
+              }
+              if (label != null && label.isNotEmpty) {
+                final center = pts.fold(Offset.zero, (a, b) => a + b) / pts.length.toDouble();
+                _drawCanvasLabel(canvas, label, center + const Offset(0, -16), color);
+              }
+            }
+            break;
+          }
+          case 'circle': {
+            final centerArr = _safeList(m['center']);
+            if (centerArr.length >= 2) {
+              final cc = toScreen(_safeDouble(centerArr[0]), _safeDouble(centerArr[1]));
+              final r = _safeDouble(m['radius'], 1) * scale;
+              final paint = Paint()
+                ..color = color.withAlpha((opacity * 255).round())
+                ..style = filled ? PaintingStyle.fill : PaintingStyle.stroke
+                ..strokeWidth = strokeWidth;
+              if (dash) {
+                _drawDashedCircle(canvas, cc, r, paint);
+                if (filled) {
+                  canvas.drawCircle(cc, r, Paint()
+                    ..color = color.withAlpha((opacity * 100).round())
+                    ..style = PaintingStyle.fill);
+                }
+              } else {
+                canvas.drawCircle(cc, r, paint);
+                if (filled) {
+                  canvas.drawCircle(cc, r, Paint()
+                    ..color = color..style = PaintingStyle.stroke..strokeWidth = strokeWidth);
+                }
+              }
+              if (label != null && label.isNotEmpty) {
+                _drawCanvasLabel(canvas, label, cc + Offset(r + 10, 0), color);
+              }
+            }
+            break;
+          }
+          case 'arrow': {
+            // 兼容 start/end 和 from/to
+            final fromArr = _safeList(m['from'] ?? m['start']);
+            final toArr = _safeList(m['to'] ?? m['end']);
+            if (fromArr.length >= 2 && toArr.length >= 2) {
+              final fp = toScreen(_safeDouble(fromArr[0]), _safeDouble(fromArr[1]));
+              final tp = toScreen(_safeDouble(toArr[0]), _safeDouble(toArr[1]));
+              canvas.drawLine(fp, tp, Paint()..color = color..strokeWidth = strokeWidth..strokeCap = StrokeCap.round);
+              // 箭头头
+              final dx = tp.dx - fp.dx;
+              final dy = tp.dy - fp.dy;
+              final len = math.sqrt(dx * dx + dy * dy);
+              if (len > 0) {
+                final ux = dx / len, uy = dy / len;
+                const al = 10.0;
+                const aa = 0.45;
+                final ax1 = tp.dx - al * (ux * math.cos(aa) - uy * math.sin(aa));
+                final ay1 = tp.dy - al * (ux * math.sin(aa) + uy * math.cos(aa));
+                final ax2 = tp.dx - al * (ux * math.cos(aa) + uy * math.sin(aa));
+                final ay2 = tp.dy - al * (-ux * math.sin(aa) + uy * math.cos(aa));
+                canvas.drawPath(
+                  Path()..moveTo(tp.dx, tp.dy)..lineTo(ax1, ay1)..lineTo(ax2, ay2)..close(),
+                  Paint()..color = color..style = PaintingStyle.fill,
+                );
+              }
+              if (label != null && label.isNotEmpty) {
+                _drawCanvasLabel(canvas, label, (fp + tp) / 2 + const Offset(0, -14), color);
+              }
+            }
+            break;
+          }
+          case 'rect': {
+            final tl = _safeList(m['topLeft'] ?? m['p1']);
+            final br = _safeList(m['bottomRight'] ?? m['p2']);
+            if (tl.length >= 2 && br.length >= 2) {
+              final p1 = toScreen(_safeDouble(tl[0]), _safeDouble(tl[1]));
+              final p2 = toScreen(_safeDouble(br[0]), _safeDouble(br[1]));
+              final rect = Rect.fromPoints(p1, p2);
+              final paint = Paint()
+                ..color = color.withAlpha(filled ? (opacity * 255).round() : 255)
+                ..strokeWidth = strokeWidth
+                ..style = filled ? PaintingStyle.fill : PaintingStyle.stroke;
+              canvas.drawRect(rect, paint);
+              if (!filled) {
+                canvas.drawRect(rect, Paint()..color = color..strokeWidth = strokeWidth..style = PaintingStyle.stroke);
+              }
+              if (label != null && label.isNotEmpty) {
+                _drawCanvasLabel(canvas, label, (p1 + p2) / 2 + const Offset(0, -16), color);
+              }
+            }
+            break;
+          }
+          case 'ellipse': {
+            final centerArr = _safeList(m['center']);
+            if (centerArr.length >= 2) {
+              final cc = toScreen(_safeDouble(centerArr[0]), _safeDouble(centerArr[1]));
+              final rx = _safeDouble(m['rx'] ?? m['radiusX'], 1) * scale;
+              final ry = _safeDouble(m['ry'] ?? m['radiusY'], 1) * scale;
+              final rect = Rect.fromCenter(center: cc, width: rx * 2, height: ry * 2);
+              canvas.drawOval(rect, Paint()
+                ..color = color.withAlpha(filled ? (opacity * 255).round() : 255)
+                ..style = filled ? PaintingStyle.fill : PaintingStyle.stroke
+                ..strokeWidth = strokeWidth);
+              if (label != null && label.isNotEmpty) {
+                _drawCanvasLabel(canvas, label, cc + Offset(rx + 8, 0), color);
+              }
+            }
+            break;
+          }
+          case 'text': {
+            final posArr = _safeList(m['position'] ?? m['pos']);
+            if (posArr.length >= 2 && label != null && label.isNotEmpty) {
+              final pt = toScreen(_safeDouble(posArr[0]), _safeDouble(posArr[1]));
+              final txt = m['text'] as String? ?? label;
+              _drawCanvasLabel(canvas, txt, pt, color);
+            }
+            break;
+          }
+        }
+      } catch (_) {
+        // 单个 script 渲染失败不影响其他
+      }
+    }
+  }
+
+  void _drawCanvasLabel(Canvas canvas, String text, Offset pos, Color color) {
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final bg = Rect.fromLTWH(pos.dx - tp.width / 2 - 4, pos.dy - 1, tp.width + 8, tp.height + 3);
+    canvas.drawRRect(RRect.fromRectAndRadius(bg, const Radius.circular(4)),
+        Paint()..color = Colors.white.withAlpha(230));
+    canvas.drawRRect(RRect.fromRectAndRadius(bg, const Radius.circular(4)),
+        Paint()..color = color.withAlpha(25)..style = PaintingStyle.stroke..strokeWidth = 0.5);
+    tp.paint(canvas, Offset(pos.dx - tp.width / 2, pos.dy));
+  }
+
+  @override
+  bool shouldRepaint(covariant _CanvasPainter old) => true;
+
+  // ── 安全类型转换辅助 ──
+  double _safeDouble(dynamic value, [double fallback = 0]) {
+    if (value == null) return fallback;
+    if (value is num) return value.toDouble();
+    if (value is String) { final d = double.tryParse(value); if (d != null) return d; }
+    return fallback;
+  }
+
+  List<dynamic> _safeList(dynamic value) {
+    if (value == null) return <dynamic>[];
+    if (value is List) return value as List<dynamic>;
+    return <dynamic>[];
+  }
+
+  Color _parseColor(String? hex, ColorScheme cs) {
+    if (hex == null || hex.isEmpty) return cs.primary;
+    // Named color support
+    switch (hex.toLowerCase()) {
+      case 'red': return Colors.red;
+      case 'blue': return Colors.blue;
+      case 'green': return Colors.green;
+      case 'gray': case 'grey': return Colors.grey.shade600;
+      case 'black': return Colors.black;
+      case 'white': return Colors.white;
+      case 'yellow': return Colors.yellow.shade700;
+      case 'orange': return Colors.orange;
+      case 'purple': return Colors.purple;
+      case 'pink': return Colors.pink;
+      case 'brown': return Colors.brown;
+      case 'cyan': return Colors.cyan;
+      case 'teal': return Colors.teal;
+    }
+    // Hex support
+    final h = hex.replaceFirst('#', '');
+    if (h.length == 6) return Color(int.parse('FF$h', radix: 16));
+    if (h.length == 8) return Color(int.parse(h, radix: 16));
+    return cs.primary;
+  }
+
+  /// 绘制虚线（线段）
+  void _drawDashedLine(Canvas canvas, Offset from, Offset to, Paint paint,
+      {double dashLen = 6, double gapLen = 4}) {
+    final dx = to.dx - from.dx;
+    final dy = to.dy - from.dy;
+    final len = math.sqrt(dx * dx + dy * dy);
+    if (len == 0) return;
+    final ux = dx / len, uy = dy / len;
+    double pos = 0;
+    while (pos < len) {
+      final seg = (pos + dashLen < len) ? dashLen : len - pos;
+      canvas.drawLine(
+        Offset(from.dx + ux * pos, from.dy + uy * pos),
+        Offset(from.dx + ux * (pos + seg), from.dy + uy * (pos + seg)),
+        paint,
+      );
+      pos += dashLen + gapLen;
+    }
+  }
+
+  /// 绘制虚线圆
+  void _drawDashedCircle(Canvas canvas, Offset center, double radius, Paint paint,
+      {int segments = 24}) {
+    final path = Path();
+    for (var i = 0; i <= segments; i++) {
+      final angle = 2 * math.pi * i / segments;
+      final x = center.dx + radius * math.cos(angle);
+      final y = center.dy + radius * math.sin(angle);
+      if (i == 0) { path.moveTo(x, y); } else { path.lineTo(x, y); }
+    }
+    path.close();
+    canvas.drawPath(path, paint);
+  }
 }

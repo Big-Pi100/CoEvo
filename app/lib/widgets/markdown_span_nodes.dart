@@ -58,7 +58,8 @@ class DisplayMathBlock extends StatelessWidget {
       fallbackMsg: '公式渲染失败',
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Center(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
           child: Math.tex(
             fixed,
             mathStyle: MathStyle.display,
@@ -831,10 +832,13 @@ Widget _buildRichCell(String text, {bool bold = false, Color textColor = Colors.
       spans.add(WidgetSpan(
         child: _ErrorBoundary(
           fallbackMsg: '公式错误',
-          child: Math.tex(
-            fixedFormula,
-            mathStyle: MathStyle.text,
-            textStyle: TextStyle(fontSize: 14, color: textColor),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Math.tex(
+              fixedFormula,
+              mathStyle: MathStyle.text,
+              textStyle: TextStyle(fontSize: 14, color: textColor),
+            ),
           ),
         ),
         alignment: PlaceholderAlignment.middle,

@@ -34,6 +34,9 @@ class _ChatInputState extends ConsumerState<ChatInput>
   bool _voiceMode = false;
   bool _isRecording = false;
   bool _isTranscribing = false;
+  int _recordSeconds = 0;
+  Timer? _recordTimer;
+  static const int _maxRecordSeconds = 60;
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
@@ -140,6 +143,7 @@ class _ChatInputState extends ConsumerState<ChatInput>
   @override
   void dispose() {
     _pulseController.dispose();
+    _recordTimer?.cancel();
     _cleanup();
     super.dispose();
   }
@@ -168,7 +172,22 @@ class _ChatInputState extends ConsumerState<ChatInput>
     try {
       // ignore: deprecated_member_use
       js.context.callMethod('__coeStart');
-      setState(() => _isRecording = true);
+      setState(() {
+        _isRecording = true;
+        _recordSeconds = 0;
+      });
+      // 启动 60 秒倒计时，到时自动停止
+      _recordTimer?.cancel();
+      _recordTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) { _recordTimer?.cancel(); return; }
+        final next = _recordSeconds + 1;
+        if (next >= _maxRecordSeconds) {
+          _recordTimer?.cancel();
+          _stopRecording();
+        } else {
+          setState(() => _recordSeconds = next);
+        }
+      });
       // 100ms 后检查录音是否正常启动
       await Future.delayed(const Duration(milliseconds: 100));
       if (mounted) {
@@ -186,6 +205,7 @@ class _ChatInputState extends ConsumerState<ChatInput>
   }
 
   void _stopRecording() {
+    _recordTimer?.cancel();
     setState(() => _isRecording = false);
     setState(() => _isTranscribing = true);
 
@@ -273,9 +293,17 @@ class _ChatInputState extends ConsumerState<ChatInput>
                             SizedBox(width: 8), Text('识别中...', style: TextStyle(fontSize: 15)),
                           ])
                         : _isRecording
-                            ? const Row(mainAxisSize: MainAxisSize.min, children: [
-                                SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 3, color: Colors.red)),
-                                SizedBox(width: 8), Text('松手 结束', style: TextStyle(color: Colors.red, fontSize: 15)),
+                            ? Row(mainAxisSize: MainAxisSize.min, children: [
+                                SizedBox(
+                                  width: 20, height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 3, color: Colors.red,
+                                    value: _recordSeconds / _maxRecordSeconds,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text('${_maxRecordSeconds - _recordSeconds}s 松手结束',
+                                    style: const TextStyle(color: Colors.red, fontSize: 15)),
                               ])
                             : const Text('按住 说话', style: TextStyle(fontSize: 15)),
                   ),

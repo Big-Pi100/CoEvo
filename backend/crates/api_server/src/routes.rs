@@ -261,7 +261,11 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/referral/my-withdrawals", get(crate::distribution_handler::user_withdrawals))
         // 推广落地页
         .route("/share/{code}", get(crate::referral_handler::share_landing))
+        .route("/share/", get(crate::referral_handler::share_landing_home))
+        .route("/share", get(crate::referral_handler::share_landing_home))
         .route("/go/{code}", get(crate::referral_handler::share_landing))
+        .route("/go/", get(crate::referral_handler::share_landing_home))
+        .route("/go", get(crate::referral_handler::share_landing_home))
         .route("/api/pay/calculate", post(crate::distribution_handler::calculate))
         .route("/api/referral/user-campaign", get(crate::distribution_handler::user_campaign))
         .route("/api/notifications", get(crate::distribution_handler::list_notifications))
@@ -2750,9 +2754,20 @@ async fn k12_init_handler(
         }
     }
 
+    let grade_label = match input.grade_band.as_str() {
+        "g1-2" => "（小学1-2年级）",
+        "g3-4" => "（小学3-4年级）",
+        "g5-6" => "（小学5-6年级）",
+        "g7-9" => "（初中）",
+        "g10-12" => "（高中）",
+        _ => "",
+    };
+    let display_goal = format!("{}{}", plan_goal, grade_label);
+
     let plan_val = serde_json::json!({
-        "goal": plan_goal,
+        "goal": display_goal,
         "domain": plan_domain,
+        "grade_label": grade_label.trim_start_matches('（').trim_end_matches('）'),
         "stages": stages_json,
     });
     let filtered_content_str = serde_json::to_string(&plan_val).unwrap_or_default();
@@ -2774,7 +2789,7 @@ async fn k12_init_handler(
     match conn.execute(
         "INSERT INTO plan_runs (id, user_id, conversation_id, goal, subject, grade_band, domain, plan_content, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-        rusqlite::params![plan_id, input.user_id, conv_id, plan_goal, input.subject, input.grade_band, plan_domain, filtered_content_str, now_ts, now_ts],
+        rusqlite::params![plan_id, input.user_id, conv_id, display_goal, input.subject, input.grade_band, plan_domain, filtered_content_str, now_ts, now_ts],
     ) {
         Ok(_) => tracing::info!("[K12-INIT] plan inserted: id={}, subject={}, grade_band={}", plan_id, input.subject, input.grade_band),
         Err(e) => {

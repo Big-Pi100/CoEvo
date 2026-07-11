@@ -214,10 +214,14 @@ pub fn fallback_h5_html(referral_code: &str, campaign_id: Option<&str>, avatar_u
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta property="og:site_name" content="CoEvo AI特级教师">
+    <meta property="og:type" content="website">
     <meta property="og:image" content="{app_base}/app/icons/Icon-512.png">
-    <meta property="og:title" content="CoEvo 邀请你一起学习">
-    <meta property="og:description" content="在 CoEvo 刻意进化学习，如果不想被AI取代，你需要刻意进化">
-    <meta property="og:url" content="{api_base}/go/{{code}}">
+    <meta property="og:image:width" content="512">
+    <meta property="og:image:height" content="512">
+    <meta property="og:title" content="收到一份 CoEvo 学习邀请">
+    <meta property="og:description" content="AI主动教学 + FSRS科学复习，不遗忘不跑偏，一起刻意进化。">
+    <meta property="og:url" content="{api_base}/go/{referral_code}">
     <title>CoEvo 学习推广</title>
     <style>
         html {{ -webkit-text-size-adjust: 100%; }}
@@ -243,6 +247,7 @@ pub fn fallback_h5_html(referral_code: &str, campaign_id: Option<&str>, avatar_u
 </html>"#,
         avatar_html = avatar_html,
         app_base = app_base, ref_param = ref_param,
+        referral_code = referral_code,
     );
     html = html.replace("{api_base}", &api_base);
     html

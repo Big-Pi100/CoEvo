@@ -759,7 +759,7 @@ Row(
     final goal = plan.goal;
     final gb = (plan.gradeBand ?? '').replaceAll('g', '').replaceAll('-', '～');
     final label = goal.replaceAll(RegExp(r'^K12:\s*'), '');
-    if (gb.isNotEmpty) {
+    if (gb.isNotEmpty && !label.endsWith('）')) {
       return '$label（$gb）';
     }
     return label;

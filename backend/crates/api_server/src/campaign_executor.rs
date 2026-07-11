@@ -166,7 +166,7 @@ pub fn execute_campaign_trigger(
                 // 对 commission 类型且 level>1 的奖励，从 target_user 往上追溯找到上级
                 let reward_level = reward["level"].as_i64().unwrap_or(1);
                 let actual_earner = if (rtype == "commission_pct" || rtype == "commission_fix")
-                    && party == "self"
+                    && party == "inviter"
                     && reward_level > 1
                 {
                     let mut upstream: Option<String> = Some(target_user_id.clone());
@@ -204,36 +204,12 @@ pub fn execute_campaign_trigger(
                     continue;
                 }
 
-                // 频率检查（once=只一次，靠幂等+唯一索引保障，不查时间窗口）
+                // 频率检查（once=只一次，靠幂等+唯一索引保障；always=每次触发，无限制）
                 let freq = reward["freq"].as_str().unwrap_or("once");
-                if freq != "once" && freq != "always" {
-                    let now = chrono::Utc::now();
-                    let window_start = match freq {
-                        "daily" => now.format("%Y-%m-%d").to_string(),
-                        "hourly" => now.format("%Y-%m-%d %H:00:00").to_string(),
-                        "weekly" => {
-                            let days_since_monday = now.format("%u").to_string().parse::<i64>().unwrap_or(0) - 1;
-                            (now - chrono::Duration::days(days_since_monday)).format("%Y-%m-%d").to_string()
-                        }
-                        "monthly" => now.format("%Y-%m-01").to_string(),
-                        _ => String::new(),
-                    };
-                    if !window_start.is_empty() {
-                        let recent_count: i64 = conn.query_row(
-                            "SELECT COUNT(*) FROM reward_fulfillments \
-                             WHERE campaign_id=?1 AND user_id=?2 AND trigger_event=?3 AND reward_type=?4 \
-                             AND created_at >= ?5",
-                            rusqlite::params![campaign_id, target_user_id, trigger_event, rtype, window_start],
-                            |row| row.get(0),
-                        ).unwrap_or(0);
-                        if recent_count > 0 {
-                            tracing::debug!(
-                                "freq skip: campaign={}, user={}, type={}, party={}, freq={}",
-                                campaign_id, target_user_id, rtype, party, freq,
-                            );
-                            continue;
-                        }
-                    }
+                if freq == "always" {
+                    // always: 无额外频率限制，靠幂等检查兜底
+                } else {
+                    // once: 幂等检查已在上方完成，此处不再重复
                 }
 
                 // ── 分发逻辑 ──

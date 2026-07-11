@@ -140,10 +140,16 @@ static String get baseUrl {
 
 | 场景 | 命令 |
 |:--|:--|
-| **VPS 部署（Web）** | `flutter build web --base-href /app/ --dart-define=API_HOST=keyievolution.fun` |
-| **VPS 部署（Android APK）** | `flutter build apk --release --dart-define=API_HOST=keyievolution.fun` |
-| **本地测试（默认）** | `flutter run`（默认连接 `localhost:8080`） |
+| **VPS 部署（Web）** | `flutter build web --base-href /app/ --dart-define=API_HOST=keyievolution.fun --dart-define=PUBLIC_BASE_URL=https://keyievolution.fun` |
+| **VPS 部署（Android APK）** | `flutter build apk --release --dart-define=API_HOST=keyievolution.fun --dart-define=PUBLIC_BASE_URL=https://keyievolution.fun` |
+| **本地测试（默认）** | `flutter run`（默认连接 `localhost:8080`，QR 码指向 localhost） |
 | **真机调试** | `flutter run --dart-define=API_HOST=<电脑局域网IP>` |
+
+> ⚠️ **两个 `--dart-define` 必须同时传，缺一不可：**
+> - `API_HOST` — 控制 API 请求地址（缺了 API 全挂）
+> - `PUBLIC_BASE_URL` — 控制分享链接/二维码指向的域名（缺了 QR 码指向 localhost）
+>
+> 以前漏传 `PUBLIC_BASE_URL` 导致 QR 码打不开，这个坑已经踩过了。
 
 > ⚠️ 部署到 VPS 时必须显式传入 `API_HOST`，否则前端会尝试连接 `localhost:8080` 导致 API 请求失败。
 
@@ -207,13 +213,40 @@ ssh -i ~/.ssh/coevo_key -o StrictHostKeyChecking=no ubuntu@<OLD_VPS_IP> "
   sudo rm -rf /opt/coevo/admin-web/* &&
   sudo tar xzf /tmp/coevo-web.tar.gz -C /opt/coevo/admin-web/ &&
   sudo chown -R ubuntu:ubuntu /opt/coevo/admin-web/ &&
+  # SEO: 同步 robots.txt、sitemap、baidu_verify、crawler.html
+  sudo cp /var/www/coevo-landing/robots.txt /opt/coevo/admin-web/robots.txt &&
+  sudo cp /var/www/coevo-landing/sitemap.xml /opt/coevo/admin-web/sitemap.xml &&
+  sudo cp /var/www/coevo-landing/baidu_verify_codeva-k3gx3YOTTR.html /opt/coevo/admin-web/ &&
+  sudo cp /opt/coevo/admin-web/index.html /opt/coevo/admin-web/crawler.html &&
   sudo nginx -s reload
 "
 ```
 
 > **说明**：Nginx 热重载（`nginx -s reload`）零停机，不影响在线用户。
 
-### 4.3 清理
+### 4.3 SEO 文件维护
+
+每次部署新版后需要手动同步以下 SEO 文件：
+
+| 文件 | 源路径 | 目的 |
+|------|--------|------|
+| `robots.txt` | `/var/www/coevo-landing/robots.txt` | 爬虫规则 + sitemap 地址 |
+| `sitemap.xml` | `/var/www/coevo-landing/sitemap.xml` | 可收录页面清单 |
+| `baidu_verify_*.html` | `/var/www/coevo-landing/` | 百度站点验证 |
+| `crawler.html` | 从 Flutter 的 `index.html` 复制 | 爬虫预渲染页面（提交给百度的 `/bot-page`） |
+
+**`crawler.html` 更新说明：**
+- 每次 Flutter 构建后，`index.html` 中的 SEO 元数据（title/description/JSON-LD/FAQ Schema）可能已更新
+- 部署脚本中的 `cp index.html crawler.html` 自动同步
+- 如果需要手动更新 crawler.html 内容（如新增 FAQ 问答、修改产品描述），直接修改 `E:/CoEvo/app/web/index.html`，下次构建时自动包含
+
+**Bot 预渲染页面：**
+- 地址：`https://www.keyievolution.fun/bot-page`
+- 已在百度资源平台注册的站点 `www.keyievolution.fun` 中使用
+- 内容是 Flutter 应用的 SEO HTML 壳（含标题、描述、JSON-LD、FAQ Schema、百度统计）
+- 百度爬虫可读取全部结构化数据
+
+### 4.4 清理
 
 ```bash
 # 本地和 VPS 临时文件
