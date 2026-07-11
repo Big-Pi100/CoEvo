@@ -46,11 +46,11 @@ class GraphWidget extends StatelessWidget {
       final end = svgContent.lastIndexOf('</svg>');
       if (start < 0 || end < 0) return _buildError('SVG 格式不正确', cs);
       var cleanSvg = svgContent.substring(start, end + 6);
-      // 兜底：给所有 <text> 加上白色描边（LLM 可能忘记加）
-      if (!cleanSvg.contains('paint-order="stroke fill"')) {
+      // 兜底：所有 <text> 加上 paint-order（LLM 可能忘记加），不加描边
+      if (!cleanSvg.contains('paint-order="stroke fill"') && !cleanSvg.contains('paint-order="fill"')) {
         cleanSvg = cleanSvg.replaceAllMapped(
           RegExp(r'<text\b', caseSensitive: false),
-          (m) => '${m.group(0)} paint-order="stroke fill" stroke="white" stroke-width="1.5"',
+          (m) => '${m.group(0)} paint-order="fill"',
         );
       }
       return Container(

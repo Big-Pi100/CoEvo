@@ -679,6 +679,9 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     );
                 }
 
+                // 转换 {type:"graph", elements:...} 格式为 SVG（LLM 可能自创此格式）
+                final_reply = convert_graph_elements_to_svg(&final_reply);
+
                 // ⚡ HotPath: 发 done — 失败则连接已断，跳过后序处理
                 // 在发送前扫描 graph 类型
                 detect_unknown_graph_types(&final_reply);
@@ -1318,7 +1321,124 @@ fn get_user_tts_prefs(user_id: &str) -> (Option<i32>, Option<f32>) {
 }
 
 /// 已知的 graph JSON 类型列表
-const KNOWN_GRAPH_TYPES: &[&str] = &["line", "bar", "scatter", "pie", "polygon", "circle", "arrow", "canvas", "function"];
+const KNOWN_GRAPH_TYPES: &[&str] = &["line", "bar", "scatter", "pie", "polygon", "circle", "arrow", "canvas", "function", "graph"];
+
+/// 将 {type:"graph", elements:[...]} 格式的 JSON 转换为 SVG
+fn graph_elements_to_svg(json_str: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(json_str).ok()?;
+    if v["type"].as_str()? != "graph" { return None; }
+    let elements = v["elements"].as_array()?;
+
+    let bbox = v["boundingBox"].as_array()?;
+    let bw: f64 = bbox.get(2).and_then(|v| v.as_f64()).unwrap_or(6.0);
+    let bh: f64 = bbox.get(3).and_then(|v| v.as_f64()).unwrap_or(4.0);
+    let pad = 0.5;
+    let scale_x = 380.0 / (bw + pad * 2.0);
+    let scale_y = 260.0 / (bh + pad * 2.0);
+    let ox = -(bbox.get(0).and_then(|v| v.as_f64()).unwrap_or(0.0) - pad);
+    let oy = -(bbox.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0) - pad);
+
+    let mut svg = String::from(r##"<svg viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg"><rect width="400" height="300" fill="#ffffff" rx="4"/>"##);
+
+    for el in elements {
+        let el_type = el["type"].as_str().unwrap_or("");
+        let empty_vec = vec![];
+        match el_type {
+            "axis" => {
+                svg.push_str(r##"<line x1="40" y1="260" x2="380" y2="260" stroke="#333" stroke-width="1.5"/>"##);
+                svg.push_str(r##"<line x1="40" y1="260" x2="40" y2="20" stroke="#333" stroke-width="1.5"/>"##);
+                svg.push_str(r##"<text x="375" y="275" font-size="12" fill="#333">x</text>"##);
+                svg.push_str(r##"<text x="25" y="30" font-size="12" fill="#333">y</text>"##);
+            }
+            "point" => {
+                let x = el["x"].as_f64().unwrap_or(0.0);
+                let y = el["y"].as_f64().unwrap_or(0.0);
+                let sx = 40.0 + (x + ox) * scale_x;
+                let sy = 260.0 - (y + oy) * scale_y;
+                let color = el["color"].as_str().unwrap_or("#333");
+                let label = el["label"].as_str().unwrap_or("");
+                svg.push_str(&format!(r##"<circle cx="{}" cy="{}" r="4" fill="{}"/>"##, sx, sy, color));
+                if !label.is_empty() {
+                    let tw = label.len() as f64 * 7.0;
+                    svg.push_str(&format!("<rect x=\"{:.0}\" y=\"{:.0}\" width=\"{:.0}\" height=\"16\" fill=\"white\" opacity=\"0.85\"/>", sx + 6.0, sy - 14.0, tw));
+                    svg.push_str(&format!("<text x=\"{:.0}\" y=\"{:.0}\" font-size=\"12\" fill=\"#333\">{}</text>", sx + 9.0, sy - 2.0, label));
+                }
+            }
+            "line" => {
+                let pts = el["points"].as_array().unwrap_or(&empty_vec);
+                let color = el["color"].as_str().unwrap_or("#333");
+                let dashed = el["dashed"].as_bool().unwrap_or(false);
+                let dash_attr = if dashed { r##" stroke-dasharray="4,3""## } else { "" };
+                let mut points_str = String::new();
+                for pt in pts {
+                    let x = pt[0].as_f64().unwrap_or(0.0);
+                    let y = pt[1].as_f64().unwrap_or(0.0);
+                    let sx = 40.0 + (x + ox) * scale_x;
+                    let sy = 260.0 - (y + oy) * scale_y;
+                    points_str.push_str(&format!("{:.1},{:.1} ", sx, sy));
+                }
+                svg.push_str(&format!(r##"<polyline points="{}" fill="none" stroke="{}" stroke-width="2"{} />"##, points_str.trim(), color, dash_attr));
+            }
+            "arrow" => {
+                let from = el["from"].as_array().unwrap_or(&empty_vec);
+                let to = el["to"].as_array().unwrap_or(&empty_vec);
+                let color = el["color"].as_str().unwrap_or("#333");
+                let lw = el["linewidth"].as_f64().unwrap_or(2.0);
+                if from.len() >= 2 && to.len() >= 2 {
+                    let x1 = 40.0 + (from[0].as_f64().unwrap_or(0.0) + ox) * scale_x;
+                    let y1 = 260.0 - (from[1].as_f64().unwrap_or(0.0) + oy) * scale_y;
+                    let x2 = 40.0 + (to[0].as_f64().unwrap_or(0.0) + ox) * scale_x;
+                    let y2 = 260.0 - (to[1].as_f64().unwrap_or(0.0) + oy) * scale_y;
+                    let label = el["label"].as_str().unwrap_or("");
+                    svg.push_str(&format!(r##"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="{}" stroke-width="{}" marker-end="url(#arrow)"/>"##, x1, y1, x2, y2, color, lw));
+                    if !label.is_empty() {
+                        // 将标签放在箭头中点外侧（垂直于箭头方向偏移）
+                        let dx = x2 - x1;
+                        let dy = y2 - y1;
+                        let len = (dx * dx + dy * dy).sqrt().max(1.0);
+                        let mx = (x1 + x2) / 2.0 + dy / len * 14.0;
+                        let my = (y1 + y2) / 2.0 - dx / len * 14.0;
+                        let tw = label.len() as f64 * 7.0;
+                        svg.push_str(&format!("<rect x=\"{:.0}\" y=\"{:.0}\" width=\"{:.0}\" height=\"16\" fill=\"white\" opacity=\"0.85\"/>", mx - 3.0, my - 11.0, tw));
+                        svg.push_str(&format!("<text x=\"{:.0}\" y=\"{:.0}\" font-size=\"12\" fill=\"#333\">{}</text>", mx, my, label));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Arrow marker definition
+    svg.push_str(r##"<defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#333"/></marker></defs>"##);
+    svg.push_str("</svg>");
+    Some(svg)
+}
+
+/// 转换回复中 <graph>{"type":"graph","elements":[...]}</graph> 为 SVG
+fn convert_graph_elements_to_svg(reply: &str) -> String {
+    let mut result = reply.to_string();
+    let mut search_start = 0;
+    while let Some(tag_start) = result[search_start..].find("<graph>") {
+        let abs_start = search_start + tag_start + 7;
+        if let Some(tag_end) = result[abs_start..].find("</graph>") {
+            let inner = &result[abs_start..abs_start + tag_end];
+            let trimmed = inner.trim();
+            if trimmed.starts_with('{') {
+                if let Some(svg) = graph_elements_to_svg(trimmed) {
+                    let wrapped = format!("<graph>{}</graph>", svg);
+                    let full_tag = format!("<graph>{}</graph>", inner);
+                    result = result.replace(&full_tag, &wrapped);
+                    search_start = abs_start + wrapped.len() - 7;
+                    continue;
+                }
+            }
+            search_start = abs_start + tag_end + 8;
+        } else {
+            break;
+        }
+    }
+    result
+}
 
 /// 扫描回复中 <graph> 标签内 JSON 的 type 字段，记录未知类型到日志
 fn detect_unknown_graph_types(reply: &str) {

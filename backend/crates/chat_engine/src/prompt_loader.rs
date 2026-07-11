@@ -130,8 +130,9 @@ fn read_signal_or_flat(dir: &str, type_name: &str, base_dir: &str, _fallback: &s
     let format_path = dir_path.join("format").join(format!("{}.md", type_name));
     let flat_path = dir_path.join(format!("{}.md", type_name));
 
-    // 1. 主模板（{type}.md）
-    let main = read_file(&flat_path.to_string_lossy());
+    // 1. 主模板（{type}.md）— 需要解析 {include:...} 引用
+    let main_raw = read_file(&flat_path.to_string_lossy());
+    let main = if !main_raw.is_empty() { resolve_includes(&main_raw, base_dir) } else { String::new() };
     // 2. subject 级 signal
     let signal_raw = read_file(&signal_path.to_string_lossy());
     let subject_signal = if !signal_raw.is_empty() { resolve_includes(&signal_raw, base_dir) } else { String::new() };

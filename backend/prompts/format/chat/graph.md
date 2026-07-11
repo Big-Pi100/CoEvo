@@ -15,14 +15,15 @@
 - `<text>` 文字标注 — `x y fill font-size`
 - `<g>` 分组
 
-**文字标注的三大原则（否则看不清）：**
+**文字标注原则：**
 1. **文字必须远离线条和图形** — 顶点标签放在顶点外 12~15px，不要放在顶点上
 2. **线段标签放在线段上方 15px**（水平线）或左侧 15px（垂直线），不要放在线段中间
-3. **所有 `<text>` 加白色描边**作为最后保障：
+3. **文字直接用纯色填充，不要加任何描边**：
    ```
-   <text ... paint-order="stroke fill" stroke="white" stroke-width="1.5">文字</text>
+   <text x="..." y="..." font-size="12" fill="#333">文字内容</text>
    ```
-   （描边宽度 1.5 足够清晰，不会过多遮挡图形）
+4. **图例（如 A(2,3)、y=x²、受力标注等）必须放在坐标轴外侧**，不能放在坐标轴内部遮挡图形。放在图形的右上角或左上角空白处。
+5. **函数曲线/公式标签**（如 y=x²）放在曲线上方或右侧，不要放在曲线中间。
 
 **SVG 通用技巧：**
 - 函数曲线：用 `<polyline points="x,y x,y ..." fill="none">` 取 20~30 个采样点模拟任意函数
@@ -43,7 +44,7 @@
   <line x1="40" y1="220" x2="380" y2="220" stroke="#ddd" stroke-width="0.5" stroke-dasharray="2,2"/>
   <line x1="40" y1="180" x2="380" y2="180" stroke="#ddd" stroke-width="0.5" stroke-dasharray="2,2"/>
   <polyline points="40,260 60,200 80,148 100,104 120,68 140,40 160,20 180,8 200,4 220,8 240,20 260,40 280,68 300,104 320,148 340,200 360,260" fill="none" stroke="#4285F4" stroke-width="2"/>
-  <text x="200" y="4" text-anchor="middle" fill="#4285F4" font-size="13" paint-order="stroke fill" stroke="white" stroke-width="1.5">y=x²</text>
+  <text x="200" y="4" text-anchor="middle" fill="#4285F4" font-size="13">y=x²</text>
 </svg>
 </graph>
 ```
