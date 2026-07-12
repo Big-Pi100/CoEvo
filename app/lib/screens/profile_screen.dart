@@ -540,33 +540,37 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ),
               ),
               const Divider(height: 1),
-              // Row 2：真实姓名（可编辑）
+              // Row 2：真实姓名（已认领后不可修改）
               _buildProfileRow(
                 icon: Icons.badge_outlined,
                 label: '真实姓名',
                 value: _realName ?? '未填写',
-                onTap: () => _editInfoField(
-                  '真实姓名', _realName,
-                  (v) => (v == null || v.isEmpty) ? '请输入真实姓名' : null,
-                  (v) => _updateProfile({'real_name': v}),
-                ),
+                onTap: (_realName != null && _realName!.isNotEmpty)
+                    ? null
+                    : () => _editInfoField(
+                      '真实姓名', _realName,
+                      (v) => (v == null || v.isEmpty) ? '请输入真实姓名' : null,
+                      (v) => _updateProfile({'real_name': v}),
+                    ),
               ),
               const Divider(height: 1),
-              // Row 3：手机号（可编辑）
+              // Row 3：手机号（已认领后不可修改）
               _buildProfileRow(
                 icon: Icons.phone_outlined,
                 label: '手机号',
                 value: _phone ?? '未填写',
-                onTap: () => _editInfoField(
-                  '手机号', _phone,
-                  (v) {
-                    if (v == null || v.isEmpty) return '请输入手机号';
-                    final digitsOnly = v.replaceAll(RegExp(r'\D'), '');
-                    if (digitsOnly.length != 11) return '手机号格式不正确';
-                    return null;
-                  },
-                  (v) => _updateProfile({'phone': v}),
-                ),
+                onTap: (_realName != null && _realName!.isNotEmpty)
+                    ? null
+                    : () => _editInfoField(
+                      '手机号', _phone,
+                      (v) {
+                        if (v == null || v.isEmpty) return '请输入手机号';
+                        final digitsOnly = v.replaceAll(RegExp(r'\D'), '');
+                        if (digitsOnly.length != 11) return '手机号格式不正确';
+                        return null;
+                      },
+                      (v) => _updateProfile({'phone': v}),
+                    ),
               ),
             ],
           ),

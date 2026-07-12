@@ -118,9 +118,11 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
     } else {
         None
     };
-    // 保存推广活动 ID（使用什么活动推广过来的）
+    // 保存推广活动 ID（只有合法的 UUID 才写入，防止 camp=share 等非活动参数污染）
     let referred_campaign_id: Option<String> = req.referral.as_ref()
-        .and_then(|r| r.campaign_id.as_ref().filter(|c| !c.is_empty()).cloned());
+        .and_then(|r| r.campaign_id.as_ref()
+            .filter(|c| c.len() == 36 && c.chars().filter(|&c| c == '-').count() == 4)
+            .cloned());
 
     // 生成用户自己的推广码（CoEvo_ + 4位大写字母数字，重试最多3次）
     let mut referral_code = String::new();

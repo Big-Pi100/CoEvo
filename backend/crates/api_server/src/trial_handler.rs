@@ -116,7 +116,7 @@ pub async fn start(
             tracing::warn!("trial/start set referred_by failed: {}", e);
         }
         if let Some(ref cid) = body.campaign_id {
-            if !cid.is_empty() {
+            if !cid.is_empty() && cid.len() == 36 && cid.chars().filter(|&c| c == '-').count() == 4 {
                 let _ = conn.execute(
                     "UPDATE users SET referred_campaign_id = ?1 WHERE id = ?2",
                     rusqlite::params![cid, uid],

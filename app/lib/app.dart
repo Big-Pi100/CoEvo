@@ -171,7 +171,19 @@ final goRouter = GoRouter(
       path: '/notifications',
       builder: (context, state) => const NotificationPanel(),
     ),
+    // 兜底路由：未知路径->首页
+    GoRoute(
+      path: '/:unknown',
+      redirect: (context, state) => '/home',
+    ),
   ],
+  errorBuilder: (context, state) {
+    // 路由错误时回到首页，不白屏
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      GoRouter.of(context).go('/home');
+    });
+    return const SizedBox.shrink();
+  },
 );
 
 class _ShellScaffold extends StatelessWidget {
