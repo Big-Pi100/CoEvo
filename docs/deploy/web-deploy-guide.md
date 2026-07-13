@@ -117,7 +117,7 @@ D:\flutter_flutter\bin\flutter.bat build web --base-href /app/ \
 |:--|:--|
 | `--base-href /app/` | 设置资源基础路径，匹配 Nginx 的 `/app/` 路由 |
 | `--dart-define=API_HOST=...` | **2026-05-15 新增**：编译时注入 API 服务器地址（见 3.2.1 节） |
-| `--dart-define=API_PORT=...` | API 端口，VPS 上为 `8080` |
+| `--dart-define=API_PORT=...` | API 端口（仅 IP/localhost 时需要，域名部署用默认 443）|
 | `--dart-define=PUBLIC_BASE_URL=...` | **2026-06-30 新增**：分享链接/二维码指向的前端域名（见 3.2.3 节） |
 
 > **注意**：旧版文档中的 `--no-wasm-dry-run` 在新版 Flutter 中已废弃，不再使用。
@@ -152,6 +152,11 @@ static String get baseUrl {
 > 以前漏传 `PUBLIC_BASE_URL` 导致 QR 码打不开，这个坑已经踩过了。
 
 > ⚠️ 部署到 VPS 时必须显式传入 `API_HOST`，否则前端会尝试连接 `localhost:8080` 导致 API 请求失败。
+>
+> ⚠️ **2026-07-13 踩坑：Mixed Content**
+> - ❌ `API_HOST=<OLD_VPS_IP>` → 构造 `http://IP:8080/...` → HTTPS 页面调用 HTTP API 被浏览器拦截（所有 API 静默失败）
+> - ✅ `API_HOST=keyievolution.fun` → 构造 `https://keyievolution.fun/api/...` → 同源 HTTPS 正常
+> - **线上部署必须用域名，不得用 IP。** Nginx 已有 `location /api/` 代理到后端 8080。
 
 ### 3.2.2 分享链接域名配置
 
@@ -645,9 +650,9 @@ curl -s -o /dev/null -w "%{http_code}" http://<OLD_VPS_IP>/app/main.dart.js
 1. **API 地址是否匹配部署环境**（2026-05-15 新增）：
    ```bash
    # 查看构建产物中注入的 API 地址
-   grep -o '"http://[^"]*"' /opt/coevo/admin-web/main.dart.js | head -5
-   # 期望 VPS 部署：http://<OLD_VPS_IP>:8080
-   # 如出现 localhost:8080 或 keyievolution.fun:8080 说明构建时忘记传 --dart-define=API_HOST
+   grep -o '"https://[^"]*"' /opt/coevo/admin-web/main.dart.js | head -5
+   # 期望 VPS 部署：https://keyievolution.fun
+   # 如出现 localhost:8080 或 http://IP:8080 说明构建时忘记传 --dart-define=API_HOST=keyievolution.fun
    ```
 
 2. **后端服务是否正常**：

@@ -1,0 +1,92 @@
+classDiagram
+    class DeferQueue {
+        +String user_id
+        +int deferred_until
+        +List~String~ card_ids
+        +int created_at
+    }
+
+    class ReviewHandler {
+        +getReviewStatus(conn, user_id) Json
+        +deferReview(conn, user_id, defer_seconds, card_ids) Json
+    }
+
+    class FsrsScheduler {
+        +getDueCards(conn, user_id, limit, offset, conv_id, language) (Vec~DueCard~, i64)
+        +submitReview(conn, card_id, rating, vtype, vresult, user_id, details) Result
+    }
+
+    ReviewHandler ..> FsrsScheduler : uses for due query
+
+    class DialogQueue {
+        -List~DialogItem~ _queue
+        -DialogItem _activeDialog
+        +enqueue(item) void
+        +dequeue() void
+        +clear() void
+        +prioritize() DialogItem
+    }
+
+    class DialogItem {
+        +String id
+        +DialogPriority priority
+        +WidgetBuilder builder
+        +bool isPreemptive
+        +bool isDismissible
+        +DialogType type
+    }
+
+    class DialogPriority {
+        <<enumeration>>
+        P0_PAYMENT
+        P1_SHARE
+        P2_CP1_CONCEPT
+        P2_ACHIEVEMENT
+        P2_NOTIFICATION_H5
+        P3_REVIEW
+    }
+
+    class DialogType {
+        <<enumeration>>
+        PAYMENT
+        SHARE
+        CONCEPT_EXTRACTION
+        ACHIEVEMENT_POSTER
+        NOTIFICATION_H5
+        REVIEW_POPUP
+    }
+
+    class ReviewDialog {
+        +List~DueCard~ dueCards
+        +int currentIndex
+        +bool isDeferred
+        +startReview() void
+        +nextCard() void
+        +handleDefer() void
+        +onReviewComplete() void
+    }
+
+    class ReviewCardWidget {
+        +DueCard card
+        +bool isFlipped
+        +bool isVerifying
+        +String verificationResult
+        +build(context) Widget
+        +startVerification() void
+        +submitReview() void
+    }
+
+    class DialogOverlay {
+        +build(context) Widget
+    }
+
+    class ChatScreen {
+        +checkReviewStatus() void
+        +showReviewDialog() void
+    }
+
+    DialogOverlay --> DialogQueue : watches
+    DialogQueue o-- DialogItem
+    ReviewDialog --> ReviewCardWidget : uses
+    ReviewScreen --> ReviewCardWidget : uses
+    ChatScreen --> DialogQueue : enqueues review

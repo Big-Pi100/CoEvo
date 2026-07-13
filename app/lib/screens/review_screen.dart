@@ -224,7 +224,9 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with TickerProvider
         });
         return;
       }
-      final expires = DateTime.tryParse(expiresStr);
+      final expires = expiresStr.contains('T')
+          ? DateTime.tryParse(expiresStr)
+          : DateTime.tryParse('${expiresStr}T00:00:00Z');
       if (expires == null) {
         if (mounted) setState(() {
           _subscriptionRequired = true;

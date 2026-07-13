@@ -1065,7 +1065,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       statusColor = _cs.error;
       statusIcon = Icons.lock_clock;
     } else {
-      final expires = DateTime.tryParse(expiresStr) ?? DateTime.now();
+      final dt = expiresStr.contains('T')
+          ? DateTime.tryParse(expiresStr)
+          : DateTime.tryParse('${expiresStr.substring(0, 10)}T00:00:00Z');
+      final expires = dt ?? DateTime.now().toUtc();
       final remaining = expires.difference(DateTime.now().toUtc());
       if (remaining.isNegative) {
         statusText = '已到期 — 请联系服务人员续费';
