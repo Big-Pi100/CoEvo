@@ -76,7 +76,7 @@ class LanguageVerificationStrategy extends VerificationStrategy {
 
     final hint = _mode == VerificationMode.forward
         ? '输入中文释义...'
-        : '输入英文单词...';
+        : '输入答案...';
 
     return Column(
       children: [
@@ -197,7 +197,7 @@ class LanguageVerificationStrategy extends VerificationStrategy {
 VerificationMode resolveMode(DueCard card) {
   if (card.cardType != 'vocabulary') return VerificationMode.forward;
   final reps = card.reps;
-  if (reps == 0) return VerificationMode.forward;       // 首次：正向理解
-  if (reps <= 3) return VerificationMode.reverse;        // 2-3次：反向拼写
-  return VerificationMode.dictation;                      // 4次+：听写综合
+  if (reps <= 2) return VerificationMode.forward;      // 0-2 次：LLM 正向理解
+  if (reps == 3) return VerificationMode.reverse;       // 第 3 次：反向默写
+  return VerificationMode.dictation;                      // 4 次及以上：听写
 }

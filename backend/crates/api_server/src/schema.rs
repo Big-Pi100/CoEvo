@@ -710,6 +710,25 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_fulfillment_unique ON reward_fulfillments(campaign_id, user_id, trigger_event, party, reward_type, order_id)",
         // 活动最小成团人数
         "ALTER TABLE marketing_campaigns ADD COLUMN min_member_count INTEGER DEFAULT 1",
+        // V5: defer_queue 表（复习推迟调度）
+        "CREATE TABLE IF NOT EXISTS defer_queue (
+            user_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL DEFAULT '',
+            deferred_until INTEGER NOT NULL DEFAULT 0,
+            card_ids TEXT NOT NULL DEFAULT '[]',
+            created_at INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (user_id, conversation_id)
+        )",
+        // V6: defer_queue 改为 (user_id, conversation_id) 复合主键
+        "DROP TABLE IF EXISTS defer_queue",
+        "CREATE TABLE IF NOT EXISTS defer_queue (
+            user_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL DEFAULT '',
+            deferred_until INTEGER NOT NULL DEFAULT 0,
+            card_ids TEXT NOT NULL DEFAULT '[]',
+            created_at INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (user_id, conversation_id)
+        )",
     ];
     for sql in migrations {
         match conn.execute(sql, []) {
@@ -749,6 +768,7 @@ mod tests {
         "user_cards", "user_humanities_cards", "user_language_cards",
         "user_literature_cards", "user_notifications", "user_plan_progress", "user_preferences",
         "user_science_cards", "users",
+        "defer_queue",
     ];
 
     const FORBIDDEN_OLD_TABLES: &[&str] = &["cards", "conversation_plans", "learning_plans"];

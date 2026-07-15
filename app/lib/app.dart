@@ -22,6 +22,7 @@ import 'providers/auth_provider.dart';
 import 'providers/subscription_provider.dart';
 import 'providers/theme_provider.dart';
 import 'widgets/achievement_overlay.dart';
+import 'widgets/dialog_overlay.dart';
 import 'widgets/subscribe_panel.dart';
 
 // Prevent dart2js tree-shaking of admin/guardian screens
@@ -391,12 +392,14 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
         final scale = MediaQuery.of(context).textScaleFactor.clamp(1.0, 1.3);
         final content = MediaQuery(
           data: MediaQuery.of(context).copyWith(textScaleFactor: scale),
-          child: Stack(
-          children: [
-            child!,
-            const AchievementOverlay(),
-            _buildSubExpiredOverlay(),
-          ],
+          child: DialogOverlay(
+            child: Stack(
+            children: [
+              child!,
+              const AchievementOverlay(),
+              _buildSubExpiredOverlay(),
+            ],
+            ),
           ),
         );
         if (!isWide) return content;

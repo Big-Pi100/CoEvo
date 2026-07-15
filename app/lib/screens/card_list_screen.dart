@@ -66,8 +66,6 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
       if (mounted) setState(() => _isLoading = false);
       return;
     }
-    // 从 PlanProvider 读取已缓存的 plans
-    // 如果 plans 尚未加载，触发一次加载
     if (ref.read(planProvider).plans.isEmpty) {
       final client = ChatClient(userId: auth.userId!, token: auth.token);
       await ref.read(planProvider.notifier).loadPlans(client);
@@ -405,7 +403,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
       ),
       // 分组卡片列表
       Expanded(
-        child: _planGroups.where((g) => g.cardCount > 0).isEmpty
+        child: _planGroups.isEmpty
             ? Center(child: Text('没有匹配的卡片', style: TextStyle(color: _cs.onSurfaceVariant)))
             : RefreshIndicator(
                 onRefresh: _loadPlanMeta,
@@ -419,7 +417,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                           style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
                     ),
                     // 每个 plan 一个折叠组
-                    ..._planGroups.where((g) => g.cardCount > 0).map((g) => _buildPlanSection(g)),
+                    ..._planGroups.map((g) => _buildPlanSection(g)),
                   ],
                 ),
               ),
@@ -634,9 +632,10 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
               const SizedBox(height: AppTheme.spacingXs),
               RichContentBuilder(textColor: _cs.onPrimary).build(card.front),
               Divider(height: 32, color: _cs.onPrimary.withAlpha(96)),
+              // 解析语言词卡的 JSON back，提取可读内容
               Text('释义', style: _tt.bodySmall?.copyWith(color: _cs.onPrimary.withAlpha(150))),
               const SizedBox(height: AppTheme.spacingXs),
-              RichContentBuilder(textColor: _cs.onPrimary).build(card.back),
+              RichContentBuilder(textColor: _cs.onPrimary).build(_formatBack(card.back, card.domain)),
               if (card.sourceSentence != null) ...[
                 Divider(height: 32, color: _cs.onPrimary.withAlpha(96)),
                 Text('来源', style: _tt.bodySmall?.copyWith(color: _cs.onPrimary.withAlpha(150))),
@@ -740,15 +739,79 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     if (t.startsWith('{') && t.endsWith('}')) {
       try {
         final parsed = jsonDecode(t) as Map<String, dynamic>;
-        return (parsed['full_text'] as String?)?.replaceAll('\n', ' ') ?? back;
+        // 语言词卡 JSON：提取 pinyin + 第一个释义
+        final pinyin = parsed['pinyin'] as String? ?? parsed['phonetic'] as String?;
+        final definitions = parsed['definitions'];
+        String preview = '';
+        if (pinyin != null) preview = pinyin;
+        if (definitions is List && definitions.isNotEmpty) {
+          final firstDef = definitions.first;
+          if (firstDef is Map) {
+            final meaning = firstDef['meaning'] as String? ?? '';
+            if (preview.isNotEmpty) preview += ' · ';
+            preview += meaning;
+          }
+        }
+        if (preview.isNotEmpty) return preview;
+        // 通用 JSON：尝试 full_text
+        final fullText = parsed['full_text'] as String?;
+        if (fullText != null) return fullText.replaceAll('\n', ' ');
+        return back;
       } catch (_) {}
+    }
+    return back;
+  }
+
+  /// 格式化卡片 back 字段：语言词卡 back 可能是 JSON 字符串，提取为可读文本
+  String _formatBack(String back, String? domain) {
+    if ((domain == 'language' || domain == 'vocabulary') && back.startsWith('{')) {
+      try {
+        final d = jsonDecode(back) as Map<String, dynamic>;
+        final parts = <String>[];
+        final character = d['character'] as String?;
+        final word = d['word'] as String?;
+        final pinyin = d['pinyin'] as String?;
+        final phonetic = d['phonetic'] as String?;
+        final definitions = d['definitions'];
+        final collocations = d['common_words'] as String? ?? d['collocations'] as String?;
+
+        if (character != null || word != null) {
+          parts.add('${character ?? word}');
+        }
+        if (pinyin != null) parts.add('拼音: $pinyin');
+        if (phonetic != null) parts.add('音标: $phonetic');
+
+        if (definitions is List) {
+          for (final def in definitions) {
+            if (def is Map) {
+              final pos = def['pos'] as String? ?? '';
+              final meaning = def['meaning'] as String? ?? '';
+              final example = def['example'] as String? ?? '';
+              String line = '';
+              if (pos.isNotEmpty) line = '$pos ';
+              line += meaning;
+              if (example.isNotEmpty) line += '\n  例: $example';
+              parts.add(line);
+            }
+          }
+        } else if (definitions is String) {
+          parts.add(definitions);
+        }
+
+        if (collocations != null && collocations.isNotEmpty) {
+          parts.add('常用搭配: $collocations');
+        }
+
+        return parts.join('\n');
+      } catch (_) {
+        return back;
+      }
     }
     return back;
   }
 }
 
 // ── 数据模型 ──
-
 class _PlanGroup {
   final String id;
   final String goal;

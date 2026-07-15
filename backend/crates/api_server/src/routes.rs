@@ -117,6 +117,9 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/review/verify", post(review_verify_handler))
         .route("/api/review/judge", post(review_judge_handler))
         .route("/api/review/cards-by-progress", get(review_cards_by_progress_handler))
+        // ── Review Defer Queue ──
+        .route("/api/review/status", get(crate::review_handler::status_handler))
+        .route("/api/review/defer", post(crate::review_handler::defer_handler))
         // ── Cards ──
         .route("/api/cards/status", patch(cards_status_handler))
         .route("/api/cards/batch-status", patch(cards_batch_status_handler))

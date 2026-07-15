@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import '../models/coevo_models.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
@@ -12,7 +13,9 @@ import '../services/tts_service.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/subscribe_panel.dart';
 import '../widgets/claim_dialog.dart';
+import '../widgets/review_dialog.dart';
 import '../providers/subscription_provider.dart';
+import '../providers/dialog_queue_provider.dart';
 import 'chat/chat_concept_dialog.dart';
 import 'chat/chat_input.dart';
 import 'chat/chat_plan_panel.dart';
@@ -163,6 +166,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       await planFuture;
       await subFuture;
 
+      // ── 检查复习状态 → 触发复习弹窗 ──
+      debugPrint('_init: planFuture + subFuture done, calling _checkReviewStatus');
+      _checkReviewStatus();
+
     } catch (e) {
       debugPrint('_init: fatal error: $e');
       try { if (mounted) setState(() {
@@ -189,6 +196,90 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     // provider 状态已更新，后续 build 通过 ref.watch 自动响应
   }
 
+  /// 查询复习状态，有到期卡片且未推迟时触发复习弹窗
+  Future<void> _checkReviewStatus() async {
+    final client = _client;
+    if (client == null) return;
+    // 重新拉取订阅状态（切换会话时缓存可能过期）
+    await ref.fetchSubscription();
+    final subStatus = ref.read(subscriptionProvider);
+    if (subStatus.isExpired || subStatus.isRequired) {
+      debugPrint('_checkReviewStatus: skipped (subscription not active)');
+      return;
+    }
+    try {
+      final uri = Uri.parse('${client.baseUrl}/api/review/status').replace(
+        queryParameters: {
+          'user_id': client.userId,
+          if (_convId.isNotEmpty) 'conversation_id': _convId,
+        },
+      );
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        if (client.token != null && client.token!.isNotEmpty)
+          'Authorization': 'Bearer ${client.token}',
+      };
+      final resp = await http.get(uri, headers: headers).timeout(const Duration(seconds: 5));
+      debugPrint('_checkReviewStatus: status=${resp.statusCode} body=${resp.body}');
+      if (resp.statusCode != 200) return;
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final hasDue = data['has_due'] as bool? ?? false;
+      final isDeferred = data['is_deferred'] as bool? ?? false;
+      if (!hasDue || isDeferred) return;
+
+      // 锁定当前会话 ID（防止 async 期间 _convId 因 widget 重建而变化）
+      final lockedConvId = _convId;
+
+      // 有到期卡片且未推迟 → 获取所有到期卡片（支持分页累加）
+      List<DueCard> allCards = [];
+      int offset = 0;
+      const int pageSize = 200;
+      bool hasMore = true;
+      while (hasMore) {
+        final dueUri = Uri.parse('${client.baseUrl}/api/review/due').replace(
+          queryParameters: {
+            'user_id': client.userId,
+            'limit': pageSize.toString(),
+            'offset': offset.toString(),
+            if (lockedConvId.isNotEmpty) 'conversation_id': lockedConvId,
+          },
+        );
+        final dueResp = await http.get(dueUri, headers: {
+          'Content-Type': 'application/json',
+          if (client.token != null && client.token!.isNotEmpty)
+            'Authorization': 'Bearer ${client.token}',
+        }).timeout(const Duration(seconds: 10));
+        if (dueResp.statusCode != 200) return;
+        final dueData = jsonDecode(dueResp.body) as Map<String, dynamic>;
+        final batch = (dueData['cards'] as List<dynamic>?)
+                ?.map((e) => DueCard.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            [];
+        allCards.addAll(batch);
+        hasMore = dueData['has_more'] as bool? ?? false;
+        offset += batch.length;
+      }
+      if (allCards.isEmpty) return;
+
+      if (!mounted) return;
+      debugPrint('_checkReviewStatus: ReviewDialog with ${allCards.length} cards');
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => ReviewDialog(
+          cards: allCards,
+          conversationId: lockedConvId.isNotEmpty ? lockedConvId : null,
+        ),
+      ).then((_) {
+        // 对话框关闭后重新检查是否还有到期卡片
+        if (mounted) _checkReviewStatus();
+      });
+      debugPrint('_checkReviewStatus: review dialog shown');
+    } catch (e) {
+      debugPrint('ChatScreen._checkReviewStatus error: $e');
+    }
+  }
 
   @override
   void dispose() {
@@ -757,7 +848,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     ));
                   });
                 }
-                if (mounted) setState(() => _isInitializing = false);
+                if (mounted) {
+                  setState(() => _isInitializing = false);
+                  _checkReviewStatus(); // 新会话的复习检查
+                }
               } else if (mounted) {
                 // 返回但没选会话：重置 WS 连接，避免使用过期连接
                 _sessionSub?.cancel();

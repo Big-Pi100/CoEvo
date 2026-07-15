@@ -151,7 +151,7 @@ fn activate_single_word(conn: &rusqlite::Connection, user_id: &str, word: &str, 
     if let Err(e) = conn.execute(
         "INSERT INTO card_memory (user_card_id, state, status, difficulty, stability, due, last_review, reps, lapses)
          VALUES (?1, 0, 'active', 0.3, 1.0, ?2, 0, 0, 0)",
-        rusqlite::params![card_id, now],
+        rusqlite::params![card_id, now + 86400],
     ) {
         tracing::warn!("[CP1] activate_single_word: card_memory insert failed for '{}': {}", word, e);
     }
@@ -1093,7 +1093,7 @@ pub async fn handle_ws(mut ws: WebSocket) {
                             let _ = conn.execute(
                                 "INSERT INTO card_memory (card_id, user_card_id, state, status, difficulty, stability, due, last_review, reps, lapses)
                                  VALUES (?1, ?2, 0, 'pending', 0.3, 1.0, ?3, 0, 0, 0)",
-                                rusqlite::params![card_id, card_id, now],
+                                rusqlite::params![card_id, card_id, now + 86400],
                             );
                             // 为弹窗提取显示用的 back（从 V4 JSON blob 提取主字段）
                             let display_back = back_val.get("definition")

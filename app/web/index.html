@@ -252,54 +252,56 @@
     var barInner = document.getElementById('loading-bar-inner');
     var status = document.getElementById('load-status');
 
-    // 监听 flutter_bootstrap 加载完成 → 更新状态
-    var scripts = document.querySelectorAll('script');
-    for (var i = 0; i < scripts.length; i++) {
-      if (scripts[i].src && scripts[i].src.indexOf('flutter_bootstrap') >= 0) {
-        if (scripts[i].readyState === 'complete' || scripts[i].readyState === 'loaded') {
-          status.textContent = '正在初始化学习引擎...';
-        } else {
-          scripts[i].addEventListener('load', function(){
-            status.textContent = '正在初始化学习引擎...';
-          });
-        }
-        break;
-      }
+    function done() {
+      barInner.style.animation = 'none';
+      barInner.style.width = '100%';
+      status.textContent = '加载完成';
+      setTimeout(function() {
+        bar.style.opacity = '0';
+        status.style.opacity = '0';
+        setTimeout(function() {
+          bar.style.display = 'none';
+          status.style.display = 'none';
+        }, 500);
+      }, 500);
     }
 
-    // 检测 Flutter canvas → 加载完成
-    var check = setInterval(function(){
-      if (document.querySelector('canvas')) {
-        clearInterval(check);
-        // 停止动画，填满条
-        barInner.style.animation = 'none';
-        barInner.style.width = '100%';
-        status.textContent = '加载完成';
-        // 淡出
-        setTimeout(function() {
-          bar.style.opacity = '0';
-          status.style.opacity = '0';
-          setTimeout(function() {
-            bar.style.display = 'none';
-            status.style.display = 'none';
-          }, 500);
-        }, 500);
-      }
-    }, 300);
+    function checkFlutter() {
+      return document.querySelector('canvas')
+          || document.querySelector('flt-glass-pane')
+          || document.querySelector('flt-scene');
+    }
 
-    // 30s 兜底
-    setTimeout(function(){
-      clearInterval(check);
-      bar.style.opacity = '0';
-      status.style.opacity = '0';
-      setTimeout(function() {
-        bar.style.display = 'none';
-        status.style.display = 'none';
-      }, 500);
+    // MutationObserver: 只要 DOM 有变化就检查 Flutter 元素
+    var observer = new MutationObserver(function() {
+      if (checkFlutter()) {
+        observer.disconnect();
+        clearTimeout(failsafe);
+        done();
+      }
+    });
+    observer.observe(document.body || document.documentElement, {
+      childList: true, subtree: true
+    });
+
+    // 兜底: 30s 强制隐藏 + 每 500ms 轮询一次
+    var failsafe = setTimeout(function(){
+      observer.disconnect();
+      bar.style.display = 'none';
+      status.style.display = 'none';
     }, 30000);
+
+    var poll = setInterval(function(){
+      if (checkFlutter()) {
+        clearInterval(poll);
+        clearTimeout(failsafe);
+        observer.disconnect();
+        done();
+      }
+    }, 500);
   })();
   </script>
-  <script src="flutter_bootstrap.js?v=1783767526" async></script>
+  <script src="flutter_bootstrap.js?v=1783767526" defer></script>
   <!-- SEO: 爬虫可见的页面链接（Flutter Canvas 覆盖，用户看不到） -->
   <div style="display:none;">
     <a href="/blog/">CoEvo博客</a>

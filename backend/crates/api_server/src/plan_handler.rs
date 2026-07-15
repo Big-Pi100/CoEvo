@@ -1704,8 +1704,8 @@ pub fn copy_prebuilt_card(
         );
         let _ = conn.execute(
             "INSERT INTO card_memory (card_id, user_card_id, state, difficulty, due)
-             VALUES (?1, ?2, 0, 5.0, 0)",
-            rusqlite::params![user_card_id, user_card_id],
+             VALUES (?1, ?2, 0, 5.0, ?3)",
+            rusqlite::params![user_card_id, user_card_id, now + 86400],
         );
         user_card_id
     } else {

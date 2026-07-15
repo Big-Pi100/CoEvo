@@ -143,8 +143,8 @@ pub fn get_due_cards(conn: &Connection, user_id: &str, limit: i64, offset: i64, 
     // plan-based 或默认查询（语言查询已在上方独立处理并返回）
     let (where_clause, total_where): (String, String) = if let Some(cid) = conv_id {
         (
-            format!("c.user_id = ?1 AND pr.conversation_id = '{}' AND cm.status = 'active' AND cm.due <= ?2 AND upp.user_id = c.user_id AND upp.status IN ('in_progress', 'done') AND (pr.subject NOT IN ('english', 'chinese') OR c.prebuilt_card_id IS NULL)", cid.replace('\'', "''")),
-            format!("c.user_id = ?1 AND pr.conversation_id = '{}' AND cm.status = 'active' AND cm.due <= ?2 AND upp.user_id = c.user_id AND upp.status IN ('in_progress', 'done') AND (pr.subject NOT IN ('english', 'chinese') OR c.prebuilt_card_id IS NULL)", cid.replace('\'', "''")),
+            format!("c.user_id = ?1 AND pr.conversation_id = '{}' AND cm.status = 'active' AND cm.due <= ?2", cid.replace('\'', "''")),
+            format!("c.user_id = ?1 AND pr.conversation_id = '{}' AND cm.status = 'active' AND cm.due <= ?2", cid.replace('\'', "''")),
         )
     } else {
         (
@@ -350,9 +350,9 @@ pub fn submit_review(
 
     conn.execute(
         "UPDATE card_memory SET state = ?1, due = ?2, last_review = ?3,
-         reps = reps + 1, lapses = lapses + ?4
-         WHERE user_card_id = ?5",
-        rusqlite::params![new_state.0, new_state.1, now, if passed { 0 } else { 1 }, card_id],
+         reps = reps + ?4, lapses = lapses + ?5
+         WHERE user_card_id = ?6",
+        rusqlite::params![new_state.0, new_state.1, now, if passed { 1 } else { 0 }, if passed { 0 } else { 1 }, card_id],
     ).map_err(|e| format!("Card memory update: {}", e))?;
 
     // 3. 更新 streak

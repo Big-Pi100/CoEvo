@@ -21,6 +21,7 @@ pub mod error;
 pub mod llm;
 pub mod plan_handler;
 pub mod rate_limiter;
+pub mod review_handler;
 pub mod routes;
 pub mod schema;
 pub mod subject_router;
