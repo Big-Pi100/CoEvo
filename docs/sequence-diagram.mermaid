@@ -1,43 +1,45 @@
 sequenceDiagram
-    participant User as 用户
-    participant Chat as ChatScreen
-    participant API as backend /api
-    participant DB as SQLite
-    participant DQ as DialogQueue
-    participant DO as DialogOverlay
-    participant RD as ReviewDialog
-    participant RC as ReviewCardWidget
+    participant Engine as smart-paginate-pretext.js
+    participant Pretext as Pretext Engine
+    participant Playwright as Playwright Browser
 
-    User->>Chat: 进入对话页
-    Chat->>API: GET /api/review/status?user_id=xxx
-    API->>DB: SELECT deferred_until FROM defer_queue
-    API->>DB: SELECT COUNT(*) FROM card_memory WHERE due <= now AND status='active'
-    API-->>Chat: {"has_due": true, "due_count": 5, "is_deferred": false}
+    Note over Engine,Pretext: Phase 1: 一次性 Prepare
+    Engine->>Pretext: prepare(atoms[0].text, font)
+    Engine->>Pretext: prepare(atoms[1].text, font)
+    Engine->>Pretext: prepare(atoms[2].text, font)
+    Note over Pretext: 缓存所有字形宽度
+    Pretext-->>Engine: 返回 handles[]
 
-    alt has_due && !is_deferred
-        Chat->>DQ: enqueue(ReviewDialog, P3)
-        DQ-->>DO: notify state changed
-        DO->>RD: build ReviewDialog
-        RD->>API: GET /api/review/due?user_id=xxx&limit=20
-        API->>DB: get_due_cards()
-        API-->>RD: [{DueCard}, ...]
-        Note over RD: 队列式逐张复习
-        RD->>RC: build card at currentIndex
-        RC-->>RD: 翻转/输入/验证
-        RC->>API: POST /api/review/submit
-        API->>DB: submit_review() + FSRS update
-        API-->>RC: {"status":"ok"}
-        RD->>RC: next card
-        RC-->>RD: 重复直到队列为空
-        Note over RD: 全部答完 → 退出
-        RD->>DQ: dequeue()
-    end
+    Note over Engine,Playwright: Phase 2+3: 逐页预判与验证
 
-    alt 用户点击"推迟30分钟"
-        User->>RD: 点击推迟按钮
-        RD->>API: POST /api/review/defer
-        API->>DB: UPSERT defer_queue SET deferred_until=now+1800
-        API-->>RD: {"status":"ok"}
-        RD->>DQ: dequeue()
-        DQ-->>DO: 关闭弹窗
+    loop 每页
+        Note over Engine: --- 预判阶段（纯CPU）---
+        Engine->>Engine: startIdx → 逐个累加段落
+        
+        loop 累加原子段
+            Engine->>Pretext: layout(handles[i], 968, 60.8)
+            Pretext-->>Engine: { height, lineCount }
+            Engine->>Engine: estimated = 88 + 38*N + totalH + 8*brCount
+            alt estimated ≤ 1296
+                Engine->>Engine: 继续累加
+            else estimated > 1296
+                Engine->>Engine: 回退一段 → 预测边界 endIdx
+            end
+        end
+
+        Note over Engine: --- 验证阶段（1次 Playwright）---
+        Engine->>Playwright: setContent(HTML[ startIdx..endIdx ])
+        Engine->>Playwright: evaluate('document.body.scrollHeight')
+        Playwright-->>Engine: scrollHeight
+
+        alt scrollHeight ≤ 1296
+            Note over Engine: ✅ 验证通过
+        else scrollHeight > 1296
+            Note over Engine: ⚠️ Pretext 低估了，回退一段
+            Engine->>Playwright: setContent(HTML[ startIdx..endIdx-1 ])
+            Playwright-->>Engine: scrollHeight ✅
+        end
+
+        Engine->>Engine: 记录 pages [{startIdx, endIdx}]
+        Engine->>Engine: startIdx = endIdx + 1
     end

@@ -1,92 +1,60 @@
 classDiagram
-    class DeferQueue {
-        +String user_id
-        +int deferred_until
-        +List~String~ card_ids
-        +int created_at
+    class Atom {
+        +int index
+        +string html
+        +string text
+        +string type
     }
-
-    class ReviewHandler {
-        +getReviewStatus(conn, user_id) Json
-        +deferReview(conn, user_id, defer_seconds, card_ids) Json
+    
+    class PageRange {
+        +int startIdx
+        +int endIdx
+        +float pretextHeight
+        +float measuredHeight
+        +bool overflow
     }
-
-    class FsrsScheduler {
-        +getDueCards(conn, user_id, limit, offset, conv_id, language) (Vec~DueCard~, i64)
-        +submitReview(conn, card_id, rating, vtype, vresult, user_id, details) Result
+    
+    class SmartPaginate {
+        +smartPaginate(browser, atoms, pageHeight, options) PageRange[]
+        +measureHeight(browser, html, viewportWidth) float
+        +createPageHTML(atoms, startIdx, endIdx, wrapperFn, options) string
+        +splitAtom(atom, pageHeight) Atom[]
     }
-
-    ReviewHandler ..> FsrsScheduler : uses for due query
-
-    class DialogQueue {
-        -List~DialogItem~ _queue
-        -DialogItem _activeDialog
-        +enqueue(item) void
-        +dequeue() void
-        +clear() void
-        +prioritize() DialogItem
+    
+    class PretextPaginate {
+        +smartPaginateWithPretext(browser, atoms, font, options) PageRange[]
+        +prepareAtoms(atoms, font) Handle[]
+        +estimateScrollHeight(pretextHeight, paragraphCount, brCount) float
+        +getUsableHeight() float
     }
-
-    class DialogItem {
-        +String id
-        +DialogPriority priority
-        +WidgetBuilder builder
-        +bool isPreemptive
-        +bool isDismissible
-        +DialogType type
+    
+    class PretextEngine {
+        +prepare(text, fontOptions) Handle
+        +layout(handle, layoutOptions) LayoutResult
     }
-
-    class DialogPriority {
-        <<enumeration>>
-        P0_PAYMENT
-        P1_SHARE
-        P2_CP1_CONCEPT
-        P2_ACHIEVEMENT
-        P2_NOTIFICATION_H5
-        P3_REVIEW
+    
+    class LayoutResult {
+        +float height
+        +int lineCount
     }
-
-    class DialogType {
-        <<enumeration>>
-        PAYMENT
-        SHARE
-        CONCEPT_EXTRACTION
-        ACHIEVEMENT_POSTER
-        NOTIFICATION_H5
-        REVIEW_POPUP
+    
+    class CSSConstants {
+        +int bodyPaddingTop = 44
+        +int bodyPaddingBottom = 44
+        +int paragraphPaddingTop = 38
+        +int brMargin = 8
+        +int contentWidth = 968
+        +float lineHeight = 60.8
+        +int decorativeLine = 20
+        +int pageNumberArea = 36
+        +int viewportHeight = 1440
     }
-
-    class ReviewDialog {
-        +List~DueCard~ dueCards
-        +int currentIndex
-        +bool isDeferred
-        +startReview() void
-        +nextCard() void
-        +handleDefer() void
-        +onReviewComplete() void
-    }
-
-    class ReviewCardWidget {
-        +DueCard card
-        +bool isFlipped
-        +bool isVerifying
-        +String verificationResult
-        +build(context) Widget
-        +startVerification() void
-        +submitReview() void
-    }
-
-    class DialogOverlay {
-        +build(context) Widget
-    }
-
-    class ChatScreen {
-        +checkReviewStatus() void
-        +showReviewDialog() void
-    }
-
-    DialogOverlay --> DialogQueue : watches
-    DialogQueue o-- DialogItem
-    ReviewDialog --> ReviewCardWidget : uses
-    ReviewScreen --> ReviewCardWidget : uses
-    ChatScreen --> DialogQueue : enqueues review
+    
+    SmartPaginate --> Atom : uses
+    SmartPaginate --> PageRange : produces
+    PretextPaginate --> Atom : uses
+    PretextPaginate --> PageRange : produces
+    PretextPaginate --> PretextEngine : delegates text measurement
+    PretextPaginate --> CSSConstants : reads compensation parameters
+    PretextPaginate --> SmartPaginate : reuses measureHeight
+    PretextEngine --> LayoutResult : returns

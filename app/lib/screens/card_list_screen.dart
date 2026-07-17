@@ -81,14 +81,26 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
       )).toList();
       debugPrint('[_loadPlanMeta] plans count=${planGroups.length}');
 
-      // 追加常驻语言 tab 卡片组
+      // 追加常驻语言 tab 卡片组 — 先获取真实卡片数量
+      int englishCount = 0;
+      int chineseCount = 0;
+      try {
+        final countClient = ChatClient(userId: auth.userId!, token: auth.token);
+        final engResp = await countClient.getDueCards(language: 'english', limit: 1, offset: 0);
+        englishCount = (engResp['total_due'] as num?)?.toInt() ?? 0;
+        final chnResp = await countClient.getDueCards(language: 'chinese', limit: 1, offset: 0);
+        chineseCount = (chnResp['total_due'] as num?)?.toInt() ?? 0;
+      } catch (_) {
+        // 查询失败时保持 0，不影响主流程
+      }
+
       planGroups.insert(0, _PlanGroup(
         id: '__lang_english', goal: '英语', conversationId: '',
-        cardCount: 0, isLanguage: true, language: 'english',
+        cardCount: englishCount, isLanguage: true, language: 'english',
       ));
       planGroups.insert(1, _PlanGroup(
         id: '__lang_chinese', goal: '汉语', conversationId: '',
-        cardCount: 0, isLanguage: true, language: 'chinese',
+        cardCount: chineseCount, isLanguage: true, language: 'chinese',
       ));
 
       setState(() {

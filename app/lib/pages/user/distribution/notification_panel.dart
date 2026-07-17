@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:html' as html;
-import 'dart:ui_web' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -110,34 +109,51 @@ class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
     }
   }
 
-  void _navigateByType(BuildContext context, Map<String, dynamic> n) {
-    final type = n['notification_type'] as String?;
-    _markRead(n['id'] as String);
-
-    // 活动推送和分享类通知 → 弹分享弹窗（不跳转页面）；发放和核销通知不弹窗
-    if (type == 'campaign_push' || type == 'share_poster' || type == 'share_h5' || type == 'marketing_campaign') {
-      if (_dialogOpen) return; // 防止重复/堆叠弹窗
-      _dialogOpen = true;
-      // 从 action_url 中提取 campaign_id（格式: share?campaign_id=xxx）
+  /// 活动/分享通知 → 调 API 获取 H5 分享链接，在新标签页打开
+  Future<void> _openH5InNewTab(Map<String, dynamic> n) async {
+    try {
+      final auth = widget.auth;
+      final userId = auth.userId;
+      final token = auth.token;
       String? campaignId;
       final actionUrl = n['action_url'] as String?;
       if (actionUrl != null && actionUrl.startsWith('share?campaign_id=')) {
         campaignId = actionUrl.substring('share?campaign_id='.length);
       }
-      showDialog(
-        context: context,
-        barrierDismissible: true,
-        builder: (ctx) {
-          // dialog 关闭时解锁
-          return PopScope(
-            canPop: true,
-            onPopInvokedWithResult: (didPop, _) {
-              _dialogOpen = false;
-            },
-            child: _PosterDialog(campaignId: campaignId),
-          );
-        },
-      );
+      // 调 API 获取 H5 分享 URL（含用户邀请码）
+      if (userId != null && token != null && campaignId != null) {
+        final resp = await http.post(
+          Uri.parse('${ApiConfig.baseUrl}/api/referral/generate-h5'),
+          headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+          body: jsonEncode({'user_id': userId, 'campaign_id': campaignId}),
+        ).timeout(const Duration(seconds: 10));
+        if (resp.statusCode == 200) {
+          final data = jsonDecode(resp.body) as Map<String, dynamic>;
+          final url = data['url'] as String?;
+          if (url != null && url.isNotEmpty) {
+            html.window.open(url, '_blank');
+            _dialogOpen = false;
+            return;
+          }
+        }
+      }
+    } catch (_) {}
+    // fallback: 打开通用分享页
+    try {
+      html.window.open('${ApiConfig.baseUrl}/share/', '_blank');
+    } catch (_) {}
+    _dialogOpen = false;
+  }
+
+  void _navigateByType(BuildContext context, Map<String, dynamic> n) {
+    final type = n['notification_type'] as String?;
+    _markRead(n['id'] as String);
+
+    // 活动推送和分享类通知 → 在新标签页打开 H5 分享页（避免 Flutter Web iframe 卡死）
+    if (type == 'campaign_push' || type == 'share_poster' || type == 'share_h5' || type == 'marketing_campaign') {
+      if (_dialogOpen) return; // 防止重复点击
+      _dialogOpen = true;
+      _openH5InNewTab(n);
       return;
     }
 
@@ -285,185 +301,3 @@ class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
   }
 }
 
-/// H5 海报对话框 — 调 API 获取 H5 内容，iframe 展示
-class _PosterDialog extends ConsumerStatefulWidget {
-  final String? campaignId;
-  const _PosterDialog({this.campaignId});
-
-  @override
-  ConsumerState<_PosterDialog> createState() => _PosterDialogState();
-}
-
-class _PosterDialogState extends ConsumerState<_PosterDialog> {
-  String? _h5Html;
-  String? _shareUrl;
-  String? _error;
-  bool _loading = true;
-  bool _campaignEnded = false;
-  String? _viewId;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadH5();
-  }
-
-  void _initView(String h5Content) {
-    final id = 'h5-${widget.campaignId ?? 'default'}-${DateTime.now().millisecondsSinceEpoch}';
-    final frame = html.IFrameElement()
-      ..srcdoc = h5Content
-      ..style.width = '100%'
-      ..style.height = '100%'
-      ..style.border = 'none';
-    // ignore: undefined_prefixed_name
-    ui.platformViewRegistry.registerViewFactory(id, (int _) => frame);
-    _viewId = id;
-  }
-
-  Future<void> _loadH5() async {
-    final auth = ref.read(authProvider);
-    final userId = auth.userId;
-    final token = auth.token;
-    if (userId == null || token == null) {
-      if (mounted) setState(() => _loading = false);
-      return;
-    }
-
-    try {
-      final resp = await http.post(
-        Uri.parse('${ApiConfig.baseUrl}/api/referral/generate-h5'),
-        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'user_id': userId,
-          if (widget.campaignId != null) 'campaign_id': widget.campaignId,
-        }),
-      ).timeout(const Duration(seconds: 15));
-      if (resp.statusCode == 200 && mounted) {
-        final data = jsonDecode(resp.body) as Map<String, dynamic>;
-        if (data['status'] == 'campaign_ended') {
-          setState(() => _campaignEnded = true);
-        } else {
-          _h5Html = data['html'] as String?;
-          _shareUrl = data['url'] as String?;
-          if (_h5Html != null) _initView(_h5Html!);
-        }
-      } else {
-        if (mounted) setState(() => _error = '加载失败 (${resp.statusCode})');
-      }
-    } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
-    }
-    if (mounted) setState(() => _loading = false);
-  }
-
-  void _copyShareLink() {
-    if (_shareUrl == null) return;
-    Clipboard.setData(ClipboardData(text: _shareUrl!));
-    _showToast('链接已复制');
-  }
-
-  void _showToast(String message) {
-    final overlay = Overlay.of(context);
-    late OverlayEntry entry;
-    entry = OverlayEntry(
-      builder: (_) => Positioned(
-        bottom: 120,
-        left: 0,
-        right: 0,
-        child: Material(
-          color: Colors.transparent,
-          child: Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.black87,
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Tw(message, style: const TextStyle(color: Colors.white, fontSize: 14)),
-            ),
-          ),
-        ),
-      ),
-    );
-    overlay.insert(entry);
-    Future.delayed(const Duration(seconds: 2), () => entry.remove());
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final viewId = _viewId;
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingLg),
-        child: _loading
-            ? const SizedBox(height: 300, child: Center(child: CircularProgressIndicator()))
-            : _campaignEnded
-                ? const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 48, horizontal: 16),
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.event_busy, size: 48, color: Colors.grey),
-                      SizedBox(height: 16),
-                      Text('该活动已结束', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-                      SizedBox(height: 8),
-                      Text('该活动已被管理员删除或已过期', style: TextStyle(color: Colors.grey)),
-                      SizedBox(height: 24),
-                    ]),
-                  )
-                : _h5Html != null
-                ? SingleChildScrollView(
-                    child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // H5 预览 — iframe 渲染
-                      SizedBox(
-                        height: MediaQuery.of(context).size.height * 0.55,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: HtmlElementView(viewType: viewId!),
-                        ),
-                      ),
-                      const SizedBox(height: AppTheme.spacingMd),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          icon: const Icon(Icons.share, size: 18),
-                          onPressed: _copyShareLink,
-                          label: Tw('复制分享链接'),
-                        ),
-                      ),
-                      const SizedBox(height: AppTheme.spacingMd),
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: Tw('关闭'),
-                      ),
-                    ],
-                  ),
-                )
-                : _error != null
-                ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('加载失败: $_error'),
-                      const SizedBox(height: AppTheme.spacingMd),
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: Tw('关闭'),
-                      ),
-                    ],
-                  )
-                : Padding(
-                    padding: EdgeInsets.symmetric(vertical: 48, horizontal: 16),
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      Text('加载失败', style: TextStyle(fontSize: 16)),
-                      SizedBox(height: 16),
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: Tw('关闭'),
-                      ),
-                    ]),
-                  ),
-      ),
-    );
-  }
-}
