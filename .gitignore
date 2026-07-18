@@ -37,3 +37,14 @@ deploy.ps1
 .gitnexus
 .claude
 AGENTS.md
+
+# Flutter / Dart
+**/.dart_tool/
+**/build/
+**/.packages
+**/.pub/
+**/pubspec.lock
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/*.iml
+**/.metadata
