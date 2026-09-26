@@ -180,3 +180,74 @@ git push --force origin main
 | **1** | 选 **A**（filter-repo）/ **B**（不做，只保留止血）/ **C**（重建仓库，丢历史）？ |
 | **2** | 清理范围：**9 类全清**（推荐）/ 只清隐私相关的 `backend/data` / 其它取舍？ |
 | **3** | 是否包含 `marketing/**`（136 MB 营销素材）与 `docs/marketing`+`docs/redbook`（25.5 MB）？<br>⚠️ 注意：这些素材在工作区**仍然保留**（只是从历史里清掉），已确认「不进仓库」 |
+
+---
+
+## 八、✅ 执行记录（2026-09-27 03:25）
+
+### 白哥决策
+**A（filter-repo 全清）+ 9 类全清**
+
+### 前置动作（强制）
+
+| 步骤 | 结果 |
+|---|---|
+| 备份 `.git` | `E:/CoEvo_git_backup_20260927.tar`（**945 MB** · 318 条目 · 含 packed-refs 与 HEAD）✅ 验证可读 |
+| 回滚锚点 | 第一轮前 `f769c84` · 第二轮前 `fdb3609`（存于 `.git/_rollback_sha*.txt`） |
+| HEAD 快照 | `git ls-tree -r HEAD` → **1,097 条**（用于事后逐行 diff） |
+
+### 执行（两轮）
+
+| 轮次 | 清理路径 | 结果 |
+|---|---|---|
+| **第一轮** | `backend/data` · `data/curriculum/raw` · `marketing` · `sherpa-models` · `app_user` `app_admin` `coevo_shared` · `docs/marketing` `docs/redbook` · `remotion-videos` · `miniprogram` | 209 提交重写 · 946 → **532 MB** |
+| **第二轮** | 🆕 **补清漏网**：`docs/curriculum`（K12 PDF **副本** 468 MB）· `data/curriculum/{cleaned,gold,v3,v4,backups,english_rebuild,templates}` · `data/coevo.db{,-wal,-shm}`（117 MB）· `backend/docs`（33 MB）· 根目录 3 个 `*.tar.gz`（35 MB） | 206 提交重写 · 532 → **86 MB** |
+
+> 🔑 **第二轮为什么存在**：第一轮只清了 `data/curriculum/raw`，
+> 但同一批 K12 课标 PDF 在 **`docs/curriculum/raw`** 还有一份副本（468 MB）；
+> 且第一轮删除的 K12 数据（cleaned/gold/v3/v4）**其历史 blob 仍在**。
+> → **教训：清理时要按「内容」找全所有副本，不能只按一条路径。**
+
+### 🎯 最终结果
+
+| 项 | 清理前 | 清理后 | 降幅 |
+|---|---|---|---|
+| **`.git` 体积** | **946 MB** | **86 MB** | 🔥 **−90.9%** |
+| HEAD 条目数 | 1,097 | **1,097** | ✅ 不变 |
+| 提交数 | 207 | 195 | 少了 12 个「只改动被清文件」的空提交 |
+
+### ✅ 验证（8 项全过）
+
+| # | 验证 | 结果 |
+|---|---|---|
+| 1 | 🔑 **清理前后 HEAD 逐行 diff** | ✅ **完全一致**（1097 → 1097，两轮都验） |
+| 2 | `data/word.db` 在 HEAD | ✅ |
+| 3 | `README.md` / `backend/cefr_catalog.json`（后端在用） | ✅ |
+| 4 | App 图标（iOS/macOS/Web/Android） | ✅ 52 个 |
+| 5 | 现用字体 8 个 · 词库产出 29 个 · K12 归档文档 16 个 | ✅ |
+| 6 | `git fsck` | ✅ 无错误 |
+| 7 | `tokens_verify` | ✅ **267 项全过**（工作区代码未受影响） |
+| 8 | 本地 = 远程 · 工作区干净 | ✅ `1403479` |
+
+### force push
+
+```
++ f769c84...1403479 main -> main (forced update)
+```
+
+### 回滚方式（万一需要）
+
+```bash
+# 从备份恢复
+tar xf E:/CoEvo_git_backup_20260927.tar -C <目标目录>
+# 或从 reflog（清理前 reflog 已 expire，故必须用 tar 备份）
+```
+
+> ⚠️ 备份 `E:/CoEvo_git_backup_20260927.tar`（945 MB）**建议保留一段时间**再删。
+
+### 🔑 三条可复用教训（已写入 skill）
+
+1. **隐私数据进 git 历史 = 改文件无用，只能改写历史** —— 止血（移出跟踪 + ignore）与根治（filter-repo）是两步，不能只做前者。
+2. **清理要按「内容」找全所有副本** —— 同一批文件可能在多个路径各有一份（本例 `data/curriculum/raw` 与 `docs/curriculum/raw` 重复 468 MB）。
+3. 🔴 **`--path` 会删该路径的全部历史包括 HEAD** → 清历史前必须逐一核实「目标路径在 HEAD 上还有没有文件」；
+   对「混装目录」（如 `data/curriculum` 同时含 K12 数据与英语词库产出）**绝不能整目录清**。
