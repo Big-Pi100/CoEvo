@@ -1,8 +1,8 @@
 # Git 仓库现状与提交风险报告
 
-> 日期：2026-09-27 01:50
+> 日期：2026-09-27 01:50（创建）· 02:05（**已执行完毕**）
 > 触发：白哥指出「你好像从来没有提交 git，没有 push 过」
-> 状态：🔴 **待批准**（涉及 `git reset` + 分批提交 + push，未动手）
+> 状态：✅ **已完成** —— 6 个提交已 push（`abbe160..8e220da`）· 工作区干净
 
 ---
 
@@ -192,3 +192,74 @@ git push origin main
 **SQLite WAL 文件**、**469 MB K12 课标 PDF**、**320 张营销 PNG**）混在暂存区里。
 **直接 commit 会污染仓库**；正确做法是 **补 `.gitignore` → `git reset` 取消暂存 → 按逻辑分批重新提交 → push**。
 其中 `marketing/` 与 `data/` 的体积取舍**需要白哥拍板**。
+
+---
+
+## 八、✅ 执行记录（2026-09-27 02:05）
+
+### ① 白哥决策
+
+| # | 决策 | 选择 |
+|---|---|---|
+| 1 | 处理方式 | ✅ **按方案执行**（补 ignore → reset → 分批提交 → push） |
+| 2 | 营销素材 | ✅ **全部不进**（`marketing/` + `docs/marketing/` + `docs/redbook/`） |
+| 3 | 数据文件 | ✅ **db 不进，prebuilt 进** |
+
+### ② 实际执行
+
+| 步骤 | 动作 | 结果 |
+|---|---|---|
+| 0 | 补 `.gitignore` | 新增 **12 类排除**（每类附理由注释） |
+| 1 | **`git reset`** | 暂存区清空 · 🔑 **文件指纹验证零改动**（`app.dart` / `theme_builder.dart` / `word.db` 三个 md5 完全一致） |
+| 2 | `git rm -r --cached` | 移出已入库但应排除的：marketing 1075 · docs/marketing 46 · docs/redbook 78 · curriculum/raw 47 · coevo.db 1 = **1,247 文件**（工作区文件全部保留） |
+| 3 | 分批提交 | **6 个提交**（见下） |
+| 4 | `git push origin main` | ✅ `abbe160..8e220da` · 远程 SHA = 本地 HEAD |
+
+### ③ 六个提交
+
+| SHA | 内容 | 规模 |
+|---|---|---|
+| `4a7715f` | chore: 补充 .gitignore 并移出不该进版本控制的内容 | 1,248 文件 |
+| `759e7a4` | chore: 删除废弃项目（app_admin / app_user / coevo_shared / sherpa-models） | 216 |
+| `2764fdc` | build: 移除鸿蒙改写版 flutter_math_fork + 摘除 K12 公式渲染 | 394 |
+| `a7ed50d` | feat(app): 设计系统 · TTS 端侧化 · FSRS 端侧 · Step 1 清障收口 | 74 |
+| `a475165` | chore(scripts): 词库 / 合规 / 字体 / 验收脚本入库 | 117 |
+| `8e220da` | docs: 设计文档 · 调查报告 · 数据与后端同步 | 127 |
+
+### ④ 安全检查（提交前做了三道）
+
+| 检查 | 结果 |
+|---|---|
+| 真实密钥模式扫描（`AKID*` / PEM / `sk-*{32,}` / `ghp_*` / `xox*`） | ✅ **未发现** |
+| 「疑似」命中复核 | ✅ **2 处均为误报** —— 一处是本文档里的**探测正则本身**，一处是讨论「腾讯云 SecretId/SecretKey 该放哪」的**架构问答** |
+| >100 MB 单文件（GitHub 硬限） | ✅ 无（最大 32 MB = `data/word.db`） |
+| 已入库的 3 个含密钥文件是否有改动 | ✅ 未修改（不在本次提交范围） |
+
+### ⑤ 🔑 一条关键技术点（本次踩到）
+
+**`.gitignore` 对「已被跟踪」的文件无效** —— 这是本次最核心的机制：
+
+```
+git check-ignore data/coevo.db          → ❌ 未忽略（因为它已被跟踪）
+git check-ignore --no-index -v data/coevo.db → ✅ .gitignore:99:/data/coevo.db
+```
+
+→ 所以「让一个已入库文件不再被跟踪」需要**两步**：
+1. 写进 `.gitignore`（管住**未来**的未跟踪文件）
+2. `git rm --cached <path>`（把它从**当前**索引里摘掉）
+
+**只做第 1 步是无效的** —— 这也是为什么必须先 `git reset` 清空暂存、再逐类处理。
+
+### ⑥ 一个额外收获：push 会触发 CI
+
+`.github/workflows/ci.yml` 也在本次提交里 → **push 已触发一次 CI 运行**。
+这正好可以验证 §四 的推断：**移除 `flutter_math_fork` 的 override 后，`frontend` 与 iOS 两个 job 是否转绿**。
+→ ⏳ **请白哥在 GitHub Actions 页面看一眼本次运行结果**。
+
+### ⑦ 遗留（本次未处理，需单独定）
+
+| # | 事项 | 说明 |
+|---|---|---|
+| 1 | **密钥轮换** | 3 把 key 仍在 `origin/main` 历史里（§四）。**改文件无用，必须轮换** |
+| 2 | **仓库历史瘦身** | `.git` 已 **951 MB**（历史含 325 张 PNG 等）。本次只让新提交不含它们，**历史体积不变**。真减肥需 `git filter-repo`（**破坏性，须单独批准**） |
+| 3 | `scripts/card_generators/` 与 `retry_k12.cmd` | 多学科/K12 制卡脚本，项目已不做 K12 → 是否清理 |
