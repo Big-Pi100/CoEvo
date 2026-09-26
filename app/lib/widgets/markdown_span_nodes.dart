@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 import 'graph_widget.dart';
 
@@ -42,51 +41,19 @@ Widget _renderFallback(String msg, ColorScheme cs) {
   );
 }
 
-/// 将 LaTeX display 公式渲染为独立块
-///
-/// flutter_math_fork 0.7.x 存在已知问题: textStyle.color 不会传递到所有 TeX 原子
-/// 这里使用 \textcolor 注入来强制数字/符号的颜色一致
-class DisplayMathBlock extends StatelessWidget {
-  final String formula;
-  final Color textColor;
-  const DisplayMathBlock(this.formula, {this.textColor = Colors.black87, super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final fixed = _addColorCmd(formula, textColor);
-    return _ErrorBoundary(
-      fallbackMsg: '公式渲染失败',
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Math.tex(
-            fixed,
-            mathStyle: MathStyle.display,
-            textStyle: TextStyle(fontSize: 16, color: textColor),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 在 LaTeX 公式外包裹 \textcolor，解决数字/符号颜色不继承的问题
-/// 如果公式已有颜色指令则跳过。仅对简单公式注入，复杂公式（含环境）跳过以免破坏语法
-String _addColorCmd(String formula, Color color) {
-  if (color == Colors.black87 || color == Colors.black || color == Colors.white) return formula;
-  // 已有颜色指令
-  if (formula.contains(r'\color') || formula.contains(r'\textcolor')) return formula;
-  // 含复杂环境时跳过，\textcolor 包裹会破坏内部结构
-  if (formula.contains(r'\begin') || formula.contains(r'\\') || formula.contains(r'\cr')) return formula;
-  // 颜色接近深色/黑色时也跳过（flutter_math_fork 对深色渲染正常）
-  if (color.r < 60 && color.g < 60 && color.b < 60) return formula;
-  final r = (color.r * 255).round();
-  final g = (color.g * 255).round();
-  final b = (color.b * 255).round();
-  final hex = '#${r.toRadixString(16).padLeft(2, '0')}${g.toRadixString(16).padLeft(2, '0')}${b.toRadixString(16).padLeft(2, '0')}';
-  return r'\textcolor{' '$hex' '}{' '$formula' '}';
-}
+// 🔴 2026-09-27：LaTeX 公式渲染（原 `DisplayMathBlock` + `Math.tex` + `_addColorCmd`）**已移除**。
+//
+// 原因有两层：
+//   ① **技术**：`flutter_math_fork` 的本地改写副本是为**鸿蒙定制版 Flutter**（3.27.5-ohos）降级适配的
+//      （删掉 `RenderObjectWithLayoutCallbackMixin`、补 4 处 `TargetPlatform.ohos`）→
+//      与官方 Flutter 3.41 **不兼容**，`flutter run` 直接编译失败。
+//   ② **需求**：本项目（英语阅读 + 划词查词）**零公式需求** ——
+//      实测词库 11,523 张卡 `content` 含 LaTeX = **0 条**，`DisplayMathBlock` 外部调用 **0 处**。
+//      该能力源自**已废止的 K12 数学课程**，属遗留。
+//
+// → 处置：**优雅降级**，不报错 —— 公式定界符在 [_fixMarkdown] 里剥离，内容按普通文本渲染。
+//
+// 依据：`docs/review/flutter-run-blocker-2026-09-27.md`
 
 /// 预处理管线入口：块分割 → Markdown + 自定义块混合渲染
 class RichContentBuilder {
@@ -126,9 +93,6 @@ class RichContentBuilder {
             fallbackMsg: '图形渲染失败',
             child: GraphWidget(jsonStr: block.content),
           ));
-          break;
-        case BlockType.displayMath:
-          children.add(DisplayMathBlock(block.content, textColor: textColor));
           break;
         case BlockType.hr:
           children.add(Container(
@@ -529,7 +493,7 @@ class _InlineMatch {
 
 // ── 块分割 ──
 
-enum BlockType { text, table, graph, displayMath, hr }
+enum BlockType { text, table, graph, hr }
 
 class _TableSegment {
   final int start;
@@ -564,7 +528,7 @@ List<ContentBlock> _splitBlockLevel(String text) {
     }
   }
 
-  // 第二阶段：按表格位置切片，表格块之间的文本继续用原有的 graph/displayMath 分割
+  // 第二阶段：按表格位置切片，表格块之间的文本继续用 graph 正则分割
   final blocks = <ContentBlock>[];
   int lastEnd = 0;
 
@@ -593,10 +557,12 @@ List<ContentBlock> _splitBlockLevel(String text) {
   return blocks;
 }
 
-/// 用原有的 graph/displayMath 正则分割文本块，并在文本块内再分割标题和分割线
+/// 用 graph 正则分割文本块，并在文本块内再分割标题和分割线
 List<ContentBlock> _splitBySpecialBlocks(String text) {
   final blocks = <ContentBlock>[];
-  final splitter = RegExp(r'(<graph>.*?</graph>|\\\[(.+?)\\\])', dotAll: true);
+  // 🔴 原正则还匹配 `\[...\]`（LaTeX display 公式）→ 公式渲染已于 2026-09-27 移除（见文件头说明），
+  //    现在只切 `<graph>`；公式定界符改由 [_fixMarkdown] 剥离
+  final splitter = RegExp(r'<graph>.*?</graph>', dotAll: true);
   final matches = splitter.allMatches(text).toList();
 
   /// 将文本段按标题（##+ 或 ###文本）和分割线（---）进一步分割为独立块
@@ -657,13 +623,8 @@ List<ContentBlock> _splitBySpecialBlocks(String text) {
     }
 
     final raw = m.group(0)!;
-    if (raw.startsWith('<graph>')) {
-      final json = raw.replaceFirst('<graph>', '').replaceFirst('</graph>', '').trim();
-      blocks.add(ContentBlock(BlockType.graph, json));
-    } else {
-      final formula = m.group(2)?.trim() ?? '';
-      blocks.add(ContentBlock(BlockType.displayMath, formula));
-    }
+    final json = raw.replaceFirst('<graph>', '').replaceFirst('</graph>', '').trim();
+    blocks.add(ContentBlock(BlockType.graph, json));
 
     lastEnd = m.end;
   }
@@ -773,18 +734,17 @@ List<String> _splitTableRow(String line) {
   return parts;
 }
 
-/// 构建单个单元格，支持 **bold** 和 \(...\) 公式
+/// 构建单个单元格，支持 `**bold**`
+///
+/// 🔴 原来的 `\(...\)` 行内公式分支已移除（2026-09-27，见文件头说明）——
+/// 定界符在 [_fixMarkdown] 里就已剥离，这里不可能再遇到公式。
 Widget _buildRichCell(String text, {bool bold = false, Color textColor = Colors.black87}) {
   if (text.isEmpty) return const SizedBox.shrink();
 
   // 处理 **bold**
   final boldRegex = RegExp(r'\*\*(.+?)\*\*');
-  final formulaRegex = RegExp(r'\\\((.+?)\\\)');
 
-  bool hasBold = boldRegex.hasMatch(text);
-  bool hasFormula = formulaRegex.hasMatch(text);
-
-  if (!hasBold && !hasFormula) {
+  if (!boldRegex.hasMatch(text)) {
     return Text(
       text,
       softWrap: true,
@@ -800,9 +760,6 @@ Widget _buildRichCell(String text, {bool bold = false, Color textColor = Colors.
   final combined = <_InlineMatch>[];
   for (final m in boldRegex.allMatches(text)) {
     combined.add(_InlineMatch(m.start, m.end, m.group(0)!, boldRegex));
-  }
-  for (final m in formulaRegex.allMatches(text)) {
-    combined.add(_InlineMatch(m.start, m.end, m.group(0)!, formulaRegex));
   }
   combined.sort((a, b) => a.start.compareTo(b.start));
 
@@ -825,23 +782,6 @@ Widget _buildRichCell(String text, {bool bold = false, Color textColor = Colors.
           fontSize: 14,
           fontWeight: FontWeight.bold,
         ),
-      ));
-    } else if (im.regex == formulaRegex) {
-      final formula = im.match.group(1) ?? '';
-      final fixedFormula = _addColorCmd(formula.trim(), textColor);
-      spans.add(WidgetSpan(
-        child: _ErrorBoundary(
-          fallbackMsg: '公式错误',
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Math.tex(
-              fixedFormula,
-              mathStyle: MathStyle.text,
-              textStyle: TextStyle(fontSize: 14, color: textColor),
-            ),
-          ),
-        ),
-        alignment: PlaceholderAlignment.middle,
       ));
     }
 
@@ -870,6 +810,7 @@ Widget _buildRichCell(String text, {bool bold = false, Color textColor = Colors.
 /// 修复 LLM 常见 Markdown 格式问题
 /// 1. `##text` → `## text`（CommonMark 要求 # 后有空格）
 /// 2. 缺失表格分隔行 → 自动补 `|---|---|`
+/// 3. 🆕 **LaTeX 定界符剥离**（2026-09-27，配合公式渲染移除）
 String _fixMarkdown(String text) {
   // 1. ATX 标题：确保 # 后有空格
   var fixed = text.replaceAllMapped(
@@ -877,7 +818,22 @@ String _fixMarkdown(String text) {
     (m) => '${m.group(1)} ${m.group(2)}',
   );
 
-  // 2. 表格：如果第一行是 |...|，第二行不是 |---|，自动补分隔行
+  // 2. 🔴 LaTeX 定界符剥离 —— **优雅降级**（公式渲染已于 2026-09-27 移除，见文件头说明）
+  //
+  //    `\[ x^2 \]` → 独立段落；`\( x \)` → 行内文本
+  //    🔑 为什么要剥而不是直接删：内容**不能丢**。留着定界符会让用户看到裸反斜杠
+  //    （`\[x^2\]` 在 markdown 里还会被当转义符吃掉一部分），剥掉后 `x^2` 至少可读。
+  //    ⚠️ 这是**降级**而非支持：不假装能渲染数学，只是不让它变乱码。
+  fixed = fixed.replaceAllMapped(
+    RegExp(r'\\\[(.+?)\\\]', dotAll: true),
+    (m) => '\n\n${m.group(1)!.trim()}\n\n',
+  );
+  fixed = fixed.replaceAllMapped(
+    RegExp(r'\\\((.+?)\\\)'),
+    (m) => m.group(1)!.trim(),
+  );
+
+  // 3. 表格：如果第一行是 |...|，第二行不是 |---|，自动补分隔行
   final lines = fixed.split('\n');
   final buf = <String>[];
   for (int i = 0; i < lines.length; i++) {

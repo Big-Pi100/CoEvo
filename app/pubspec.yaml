@@ -19,13 +19,17 @@ dependencies:
   path_provider: ^2.1.0
   image_picker: ^1.1.2
   flutter_math_fork: ^0.7.4
-  gpt_markdown: 1.0.8
+  # 🔴 1.0.8 与官方 Flutter 3.41 不兼容 —— `_RenderSelectableAdapter` 缺
+  #    `SelectionHandler.contentLength` / `getSelection`（1.0.9 已补，CHANGELOG：Fixed issues with flutter 3.29.0）
+  gpt_markdown: 1.0.9
   flutter_secure_storage: ^9.2.4
   flutter_web_plugins:
     sdk: flutter
   freezed_annotation: ^2.4.0
   json_annotation: ^4.9.0
-  sherpa_onnx: ^1.13.2
+  # 🔴 sherpa_onnx 已于 2026-09-26 移除：TTS 全量端侧 flutter_tts，离线神经网络 TTS 路线废弃
+  #    （sherpa_tts.dart 已删，实测零引用；详见 docs/design/tts-unified-client-side-2026-09-26.md）
+  #    保留 audioplayers —— 后端 TTS（腾讯云）保留，音频仍需端侧播放
   audioplayers: ^6.1.0
   intl: ^0.19.0
   record: ^6.2.1
@@ -34,24 +38,48 @@ dependencies:
   graphic: ^2.7.0
   flutter_twemoji: ^1.1.0
   flutter_svg: ^2.2.0
+  # FSRS 间隔重复调度（端侧权威）—— 纯 Dart，仅 fsrs + meta 两个依赖
+  # 见 docs/design/fsrs-client-side-migration-plan-2026-09-26.md
+  fsrs: ^2.0.1
+  # Step 1 清障：替换 web-only 依赖（见 ui-ux-refactor-assessment §1.2 映射表）
+  # 用途：分享图片（原 html.Blob + AnchorElement 下载）/ 打开外部链接（原 html.window.open）
+  share_plus: ^10.1.4
+  url_launcher: ^6.3.2
+  # 端侧 SQLite —— 查词（word.db 只读）+ 复习状态（user.db）
+  # 见 docs/design/word-query-indexing-audit-2026-09-26.md
+  # 服务层只 import `package:sqflite_common/sqlite_api.dart`（纯 Dart 接口）
+  # → 可在无 Flutter 环境下用 sqflite_common_ffi 跑真库断言
+  sqflite: ^2.4.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
   fl_chart: ^0.70.0
+  # 让「查询层」能在纯 Dart 下用真库验证（Ffi 实现 = 桌面端 sqlite3）
+  sqflite_common_ffi: ^2.3.4
   dart_code_metrics: ^5.7.1
   build_runner: ^2.4.0
   freezed: ^2.5.0
   json_serializable: ^6.8.0
 
+# 🔴 flutter_math_fork 的**本地改写副本**（`packages/flutter_math_fork/`）已于 2026-09-27 移除，此处的 override 一并删除。
+#    它当初是为**鸿蒙定制版 Flutter**（3.27.5-ohos）降级适配的 —— 删掉了 `RenderObjectWithLayoutCallbackMixin`
+#    （`runLayoutCallback()` 改成旧的 `rebuildIfNecessary()`）+ 补了 4 处 `case TargetPlatform.ohos`。
+#    官方 Flutter 3.41 没有 `ohos` 平台、且这些 API 已变 → 必然编译失败。
+#    → 现在回落到 **pub 官方 0.7.4**（`flutter_math_fork` 是 `gpt_markdown` 的依赖，不在我们的代码里直接用）。
+#    依据：docs/review/flutter-run-blocker-2026-09-27.md
 dependency_overrides:
   http: ^1.3.0
-  flutter_math_fork:
-    path: packages/flutter_math_fork
 
 flutter:
   uses-material-design: true
+
+  # 🔴 assets 必须显式声明 —— 未声明的文件**不会被打包**，
+  # 且编译不报错、只在运行时炸（2026-09-26 实测踩到：
+  # `assets/sql/user_db_schema.sql` 曾因此不会进包）。
+  assets:
+    - assets/sql/
 
   fonts:
     - family: AlibabaPuHuiTi
@@ -61,4 +89,29 @@ flutter:
         - asset: assets/fonts/AlibabaPuHuiTi-3-65-Medium.ttf
           weight: 500
         - asset: assets/fonts/AlibabaPuHuiTi-3-85-Bold.ttf
+          weight: 700
+
+    # ── 英文阅读正文（design-system-spec §4.1 · A′ 方案）──
+    # 🔴 缺 18 个 IPA 码位 → 音标**必须**由 CharisSIL 承担（见下方注释）
+    # 子集来源：scripts/build_fonts.py --candidate literata --ttf
+    - family: Literata
+      fonts:
+        - asset: assets/fonts/Literata-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Literata-Bold.ttf
+          weight: 700
+        # 🔑 独立 Italic —— 不声明则 Flutter 只能合成斜体（词库有 39 张卡的书名标记 `*Faust*`）
+        - asset: assets/fonts/Literata-Italic.ttf
+          weight: 400
+          style: italic
+
+    # ── IPA 音标（design-system-spec §4.1）──
+    # 🔴 **只能用在「音标元素」上**（`CoFonts.ipaSerif`）：
+    #    若当作整段文字的 fallback 链，会让 93.9% 的音标「一条音标两种字体」
+    #    —— 实测 10,823/11,523，见 spec §4.1.1
+    - family: CharisSIL
+      fonts:
+        - asset: assets/fonts/CharisSIL-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/CharisSIL-Bold.ttf
           weight: 700
