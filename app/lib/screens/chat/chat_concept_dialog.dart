@@ -5,7 +5,7 @@ import '../../api/chat_client.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/dialog_queue_provider.dart';
 import '../../providers/plan_provider.dart' hide cardRefreshProvider;
-import '../../theme/app_theme.dart';
+import '../../theme/co_spacing.dart';
 
 /// 制卡确认弹窗 — 分页展示候选概念，用户勾选确认或跳过
 class ConceptDialog {
@@ -48,7 +48,7 @@ class ConceptDialog {
               children: [
                 Text('第 ${start() + 1}~${end()} 条 / 共 ${candidates.length} 条',
                     style: Theme.of(ctx).textTheme.bodySmall?.copyWith(color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
-                const SizedBox(height: AppTheme.spacingSm),
+                const SizedBox(height: CoSpacing.sm),
                 ListView.builder(
                   shrinkWrap: true,
                   itemCount: pageItems().length,
@@ -159,7 +159,7 @@ class ConceptDialog {
                 children: [
                   Text('第 ${start() + 1}~${end()} 条 / 共 ${candidates.length} 条',
                       style: Theme.of(ctx).textTheme.bodySmall?.copyWith(color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
-                  const SizedBox(height: AppTheme.spacingSm),
+                  const SizedBox(height: CoSpacing.sm),
                   ListView.builder(
                     shrinkWrap: true,
                     itemCount: pageItems().length,

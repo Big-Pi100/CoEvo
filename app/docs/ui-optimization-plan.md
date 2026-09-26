@@ -40,6 +40,10 @@
 **现状:** `AppTheme` 定义了 `spacingXs(4) / Sm(8) / Md(12) / Lg(16) / Xl(20) / Xxl(24) / Xxxl(32) / Xxxxl(48)`，
 但全项目用裸数字 `8`, `16`, `20` 等。统一间距有助于视觉一致性。
 
+> ⚠️ **2026-09-27 更新**：`AppTheme` 已随旧主题（4 套手写 `ThemeData`）整体删除 →
+> 间距常量迁到 `app/lib/theme/co_spacing.dart` 的 **`CoSpacing.*`**（数值不变，325 处引用已迁移）。
+> 见 `docs/plan-and-progress-2026-09-26.md` §3.15。**本行以上为 2026-06 的历史记录，勿当现状。**
+
 **完成情况:** 304 处替换，16/16 屏幕文件全部迁移，含 import 自动添加。Python 脚本：`tools/migrate_spacing.py`
 **完成日期:** 2026-06-06
 

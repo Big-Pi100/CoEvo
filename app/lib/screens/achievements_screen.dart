@@ -8,7 +8,7 @@ import '../providers/plan_provider.dart' hide cardRefreshProvider;
 import '../api/chat_client.dart';
 import '../shared/achievement_icons.dart';
 import '../providers/achievement_notifier.dart';
-import '../theme/app_theme.dart';
+import '../theme/co_spacing.dart';
 
 class AchievementsScreen extends ConsumerStatefulWidget {
   const AchievementsScreen({super.key});
@@ -99,7 +99,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
     final isError = _error != null;
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingXxxl),
+        padding: const EdgeInsets.all(CoSpacing.xxxl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -108,18 +108,18 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
               size: 64,
               color: isError ? _cs.outline : _cs.outlineVariant,
             ),
-            const SizedBox(height: AppTheme.spacingLg),
+            const SizedBox(height: CoSpacing.lg),
             Text(
               isError ? '加载失败' : '暂无成就数据',
               style: _tt.titleLarge?.copyWith(color: _cs.onSurface),
             ),
-            const SizedBox(height: AppTheme.spacingSm),
+            const SizedBox(height: CoSpacing.sm),
             Text(
               isError ? _error! : '完成学习任务后，你的成就将在这里展示',
               style: _tt.bodyMedium?.copyWith(color: _cs.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: AppTheme.spacingXl),
+            const SizedBox(height: CoSpacing.xl),
             if (isError)
               FilledButton.icon(
                 onPressed: () {
@@ -164,20 +164,20 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                     _loadWithAuth(ref.read(authProvider));
                   },
                   child: ListView(
-                    padding: const EdgeInsets.all(AppTheme.spacingLg),
+                    padding: const EdgeInsets.all(CoSpacing.lg),
                     children: [
                       _buildHeader(theme),
-                      const SizedBox(height: AppTheme.spacingLg),
+                      const SizedBox(height: CoSpacing.lg),
                       _buildStatsGrid(theme),
-                      const SizedBox(height: AppTheme.spacingLg),
+                      const SizedBox(height: CoSpacing.lg),
                       if (_activityData != null) _buildHeatmap(theme),
-                      const SizedBox(height: AppTheme.spacingLg),
+                      const SizedBox(height: CoSpacing.lg),
                       if (_k12Progress.isNotEmpty) _buildK12Progress(theme),
-                      const SizedBox(height: AppTheme.spacingLg),
+                      const SizedBox(height: CoSpacing.lg),
                       _buildCefrSection(theme),
-                      const SizedBox(height: AppTheme.spacingLg),
+                      const SizedBox(height: CoSpacing.lg),
                       _buildLearningPlans(theme),
-                      const SizedBox(height: AppTheme.spacingLg),
+                      const SizedBox(height: CoSpacing.lg),
                       _buildAchievements(theme),
                     ],
                   ),
@@ -193,7 +193,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingXl, horizontal: AppTheme.spacingXl),
+        padding: const EdgeInsets.symmetric(vertical: CoSpacing.xl, horizontal: CoSpacing.xl),
         child: Row(
           children: [
             Container(
@@ -213,7 +213,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                 ],
               ),
             ),
-            const SizedBox(width: AppTheme.spacingLg),
+            const SizedBox(width: CoSpacing.lg),
             Expanded(child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -241,7 +241,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingXl),
+        padding: const EdgeInsets.all(CoSpacing.xl),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -251,7 +251,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
               Expanded(child: _statCol(items[0])),
               Expanded(child: _statCol(items[1])),
             ]),
-            const SizedBox(height: AppTheme.spacingMd),
+            const SizedBox(height: CoSpacing.md),
             Row(children: [
               Expanded(child: _statCol(items[2])),
               Expanded(child: _statCol(items[3])),
@@ -265,7 +265,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
   Widget _statCol(_SItem item) {
     return Row(children: [
       Icon(item.icon, size: 18, color: _cs.onSurfaceVariant),
-      const SizedBox(width: AppTheme.spacingSm),
+      const SizedBox(width: CoSpacing.sm),
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(item.value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
         Text(item.label, style: _tt.labelSmall?.copyWith(color: _cs.onSurfaceVariant)),
@@ -319,7 +319,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingLg),
+        padding: const EdgeInsets.all(CoSpacing.lg),
         child: LayoutBuilder(builder: (context, constraints) {
           final cellSize = constraints.maxWidth / 7;
           final fontSize = (cellSize * 0.32).clamp(10.0, 15.0);
@@ -328,7 +328,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
             // ── 月份导航 ──
             Row(children: [
               const Icon(Icons.calendar_month, size: 20),
-              const SizedBox(width: AppTheme.spacingSm),
+              const SizedBox(width: CoSpacing.sm),
               Text(headerLabel, style: theme.textTheme.titleMedium),
               const Spacer(),
               IconButton(
@@ -344,7 +344,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                 }),
               ),
             ]),
-            const SizedBox(height: AppTheme.spacingSm),
+            const SizedBox(height: CoSpacing.sm),
             // ── 星期标题（与下方格子严格对齐） ──
             Row(children: ['一', '二', '三', '四', '五', '六', '日'].map((d) =>
               SizedBox(
@@ -354,7 +354,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                     style: _tt.labelSmall?.copyWith(color: _cs.onSurfaceVariant)),
               ),
             ).toList()),
-            const SizedBox(height: AppTheme.spacingXs),
+            const SizedBox(height: CoSpacing.xs),
             // ── 日历格子（严格 7 列 × N 行） ──
             for (int row = 0; row < totalRows; row++) ...[
               Row(children: List.generate(7, (col) {
@@ -413,11 +413,11 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingXl),
+        padding: const EdgeInsets.all(CoSpacing.xl),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             const Icon(Icons.school, size: 20),
-            const SizedBox(width: AppTheme.spacingSm),
+            const SizedBox(width: CoSpacing.sm),
             Text('学习计划进度', style: theme.textTheme.titleMedium),
           ]),
           const Divider(height: 16),
@@ -434,7 +434,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
             final pct = totalTasks > 0 ? doneTasks / totalTasks : 0.0;
 
             return Padding(
-              padding: const EdgeInsets.only(bottom: AppTheme.spacingMd),
+              padding: const EdgeInsets.only(bottom: CoSpacing.md),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(label.isNotEmpty ? label : '学习计划',
                     style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
@@ -442,23 +442,23 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                 // 任务进度
                 Row(children: [
                   Text('任务', style: _tt.labelSmall?.copyWith(color: _cs.onSurfaceVariant)),
-                  const SizedBox(width: AppTheme.spacingSm),
+                  const SizedBox(width: CoSpacing.sm),
                   Expanded(child: ClipRRect(
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(value: pct, minHeight: 6,
                         backgroundColor: _cs.surfaceContainerLow,
                         valueColor: AlwaysStoppedAnimation(theme.colorScheme.primary)),
                   )),
-                  const SizedBox(width: AppTheme.spacingSm),
+                  const SizedBox(width: CoSpacing.sm),
                   Text('$doneTasks/$totalTasks',
                       style: _tt.labelSmall?.copyWith(color: _cs.onSurfaceVariant)),
                 ]),
-                const SizedBox(height: AppTheme.spacingXs),
+                const SizedBox(height: CoSpacing.xs),
                 // 卡片进度
                 if (totalCards > 0)
                   Row(children: [
                     Text('卡片', style: _tt.labelSmall?.copyWith(color: _cs.onSurfaceVariant)),
-                    const SizedBox(width: AppTheme.spacingSm),
+                    const SizedBox(width: CoSpacing.sm),
                     Expanded(child: ClipRRect(
                       borderRadius: BorderRadius.circular(4),
                       child: LinearProgressIndicator(
@@ -466,7 +466,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                           backgroundColor: _cs.surfaceContainerLow,
                           valueColor: AlwaysStoppedAnimation(_cs.primary)),
                     )),
-                    const SizedBox(width: AppTheme.spacingSm),
+                    const SizedBox(width: CoSpacing.sm),
                     Text('$masteredCards/$totalCards',
                         style: _tt.labelSmall?.copyWith(color: _cs.onSurfaceVariant)),
                   ]),
@@ -493,11 +493,11 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingXl),
+        padding: const EdgeInsets.all(CoSpacing.xl),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             const Icon(Icons.language, size: 20),
-            const SizedBox(width: AppTheme.spacingSm),
+            const SizedBox(width: CoSpacing.sm),
             Text('词汇掌握度', style: theme.textTheme.titleMedium),
             const Spacer(),
             Text('$total 词', style: TextStyle(fontSize: 13, color: _cs.onSurfaceVariant)),
@@ -511,17 +511,17 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
             return Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Row(children: [
-                SizedBox(width: AppTheme.spacingXxxl, child: Tw('$level',
+                SizedBox(width: CoSpacing.xxxl, child: Tw('$level',
                   style: TextStyle(fontWeight: FontWeight.w600,
                     color: colors[level] ?? _cs.outline, fontSize: 13))),
-                const SizedBox(width: AppTheme.spacingSm),
+                const SizedBox(width: CoSpacing.sm),
                 Expanded(child: ClipRRect(
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(value: ratio, minHeight: 10,
                     backgroundColor: _cs.surfaceContainerLow,
                     valueColor: AlwaysStoppedAnimation(colors[level] ?? _cs.outline)),
                 )),
-                const SizedBox(width: AppTheme.spacingSm),
+                const SizedBox(width: CoSpacing.sm),
                 SizedBox(width: 36, child: Tw('$count',
                   textAlign: TextAlign.right,
                   style: TextStyle(fontSize: 13, color: _cs.onSurface))),
@@ -541,11 +541,11 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingXl),
+        padding: const EdgeInsets.all(CoSpacing.xl),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             const Icon(Icons.assignment, size: 20),
-            const SizedBox(width: AppTheme.spacingSm),
+            const SizedBox(width: CoSpacing.sm),
             Text('学习计划 (${plans.length})', style: theme.textTheme.titleMedium),
           ]),
           const Divider(height: 16),
@@ -557,11 +557,11 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
             final title = (gb.isNotEmpty && !gn.endsWith('）')) ? '$gn（$gb）' : gn;
 
             return Padding(
-              padding: i < plans.length - 1 ? const EdgeInsets.only(bottom: AppTheme.spacingLg) : EdgeInsets.zero,
+              padding: i < plans.length - 1 ? const EdgeInsets.only(bottom: CoSpacing.lg) : EdgeInsets.zero,
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
                   const Icon(Icons.play_circle, size: 16),
-                  const SizedBox(width: AppTheme.spacingSm),
+                  const SizedBox(width: CoSpacing.sm),
                   Expanded(
                     child: Tw(title,
                         style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
@@ -579,7 +579,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                 if (plan.stages != null && plan.stages!.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Padding(
-                    padding: const EdgeInsets.only(left: AppTheme.spacingXxl),
+                    padding: const EdgeInsets.only(left: CoSpacing.xxl),
                     child: Tw('${plan.stages!.length} 个阶段',
                         style: _tt.bodySmall?.copyWith(color: _cs.onSurfaceVariant)),
                   ),
@@ -608,11 +608,11 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
       if (achievements.isEmpty) return const SizedBox.shrink();
       return Card(
         child: Padding(
-          padding: const EdgeInsets.all(AppTheme.spacingXl),
+          padding: const EdgeInsets.all(CoSpacing.xl),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               const Icon(Icons.emoji_events, size: 20),
-              const SizedBox(width: AppTheme.spacingSm),
+              const SizedBox(width: CoSpacing.sm),
               Text('成就 (${achievements.length})', style: theme.textTheme.titleMedium),
             ]),
             const Divider(height: 16),
@@ -653,10 +653,10 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
         length: allTabs.length,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(AppTheme.spacingXl, AppTheme.spacingXl, AppTheme.spacingXl, 0),
+            padding: const EdgeInsets.fromLTRB(CoSpacing.xl, CoSpacing.xl, CoSpacing.xl, 0),
             child: Row(children: [
               const Icon(Icons.emoji_events, size: 20),
-              const SizedBox(width: AppTheme.spacingSm),
+              const SizedBox(width: CoSpacing.sm),
               Text('成就徽章', style: theme.textTheme.titleMedium),
             ]),
           ),
@@ -674,7 +674,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                   height: 52,
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(Icons.flag, size: 16, color: _cs.primary),
-                    const SizedBox(width: AppTheme.spacingXs),
+                    const SizedBox(width: CoSpacing.xs),
                     Text(tab['label'] as String? ?? ''),
                   ]),
                 );
@@ -687,7 +687,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(categoryIcon(catKey),
                       size: 16, color: tierColor('bronze')),
-                  const SizedBox(width: AppTheme.spacingXs),
+                  const SizedBox(width: CoSpacing.xs),
                   Text('${tab['label'] ?? catKey}'),
                   const SizedBox(width: 2),
                   Text('$unlocked/$count',
@@ -708,7 +708,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                     ?.map((e) => e as Map<String, dynamic>).toList() ?? [];
                 final isPlan = tab['_isPlan'] == true;
                 return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingLg, vertical: AppTheme.spacingSm),
+                  padding: const EdgeInsets.symmetric(horizontal: CoSpacing.lg, vertical: CoSpacing.sm),
                   child: SingleChildScrollView(
                     physics: const NeverScrollableScrollPhysics(),
                     child: Column(
@@ -720,7 +720,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                           final icon = a['icon'] as String? ?? 'emoji_events';
                           final key = a['achievement_key'] as String? ?? '';
                           return Padding(
-                            padding: const EdgeInsets.only(bottom: AppTheme.spacingSm),
+                            padding: const EdgeInsets.only(bottom: CoSpacing.sm),
                             child: _PlanAchievementCard(
                               name: name, tier: tier, icon: icon,
                               onTap: () {
@@ -737,7 +737,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen> {
                         }
                         final catKey = tab['category'] as String? ?? '';
                         return Padding(
-                          padding: const EdgeInsets.only(bottom: AppTheme.spacingSm),
+                          padding: const EdgeInsets.only(bottom: CoSpacing.sm),
                           child: _AchievementCard(
                             item: a,
                             theme: theme,
@@ -841,7 +841,7 @@ class _AchievementTile extends StatelessWidget {
       message: unlockedAt.isNotEmpty ? '获得于 $unlockedAt' : '',
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Icon(iconData, color: iconColor, size: 28),
-        const SizedBox(height: AppTheme.spacingXs),
+        const SizedBox(height: CoSpacing.xs),
         SizedBox(width: 64, child: Tw(name, textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 10), maxLines: 2, overflow: TextOverflow.ellipsis)),
       ]),
@@ -897,7 +897,7 @@ class _AchievementCard extends StatelessWidget {
             ? Border.all(color: displayBgColor.withValues(alpha: 0.3))
             : null,
       ),
-      padding: const EdgeInsets.all(AppTheme.spacingMd),
+      padding: const EdgeInsets.all(CoSpacing.md),
       child: Row(children: [
         Container(
           width: 44, height: 44,
@@ -910,7 +910,7 @@ class _AchievementCard extends StatelessWidget {
           child: Icon(displayIcon,
             color: (isHidden || !unlocked) ? _cs.outlineVariant : displayBgColor, size: 24),
         ),
-        const SizedBox(width: AppTheme.spacingMd),
+        const SizedBox(width: CoSpacing.md),
         Expanded(child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -947,7 +947,7 @@ class _AchievementCard extends StatelessWidget {
                 Icon(Icons.check_circle, size: 16, color: _cs.primaryFixedDim),
               ],
             ]),
-            const SizedBox(height: AppTheme.spacingXs),
+            const SizedBox(height: CoSpacing.xs),
             Text(displayDesc,
               style: _tt.labelSmall?.copyWith(color: _cs.onSurfaceVariant),
               maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -966,7 +966,7 @@ class _AchievementCard extends StatelessWidget {
                   ),
                 )),
                 if (progressLabel.isNotEmpty) ...[
-                  const SizedBox(width: AppTheme.spacingSm),
+                  const SizedBox(width: CoSpacing.sm),
                   Text(progressLabel,
                     style: TextStyle(fontSize: 10, color: _cs.onSurfaceVariant)),
                 ],

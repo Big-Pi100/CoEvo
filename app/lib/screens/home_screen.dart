@@ -9,7 +9,7 @@ import '../api/api_config.dart';
 import '../providers/auth_provider.dart';
 import '../config/k12_subjects.dart';
 import 'chat_screen.dart';
-import '../theme/app_theme.dart';
+import '../theme/co_spacing.dart';
 import '../pages/user/distribution/notification_panel.dart';
 import '../widgets/claim_dialog.dart';
 
@@ -94,7 +94,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         if (mounted) setState(() => _authReady = true);
         return;
       }
-      if (AuthNotifier.hasUsedTrial()) {
+      if (await AuthNotifier.hasUsedTrial()) {
         if (mounted) _showAuthDialog();
         return;
       }
@@ -264,8 +264,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           const SizedBox(width: 4),
           IconButton(
             icon: const Icon(Icons.person),
-            onPressed: () {
-              if (AuthNotifier.hasUsedTrial() && !ref.read(authProvider).isAuthenticated) {
+            onPressed: () async {
+              // hasUsedTrial 已改为 async（原为同步读 localStorage）
+              final usedTrial = await AuthNotifier.hasUsedTrial();
+              if (!mounted) return;
+              if (usedTrial && !ref.read(authProvider).isAuthenticated) {
                 _showAuthDialog();
               } else {
                 context.push('/profile');
@@ -275,17 +278,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingLg),
+        padding: const EdgeInsets.all(CoSpacing.lg),
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
             // Header
             Text('今天想学什么？', style: theme.textTheme.headlineMedium),
-            const SizedBox(height: AppTheme.spacingXs),
+            const SizedBox(height: CoSpacing.xs),
             Text('选择科目开始结构化学习',
                 style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-            const SizedBox(height: AppTheme.spacingLg),
+            const SizedBox(height: CoSpacing.lg),
 
             // 自由对话入口
             Card(
@@ -303,7 +306,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 },
               ),
             ),
-            const SizedBox(height: AppTheme.spacingLg),
+            const SizedBox(height: CoSpacing.lg),
 
             // 历史对话入口
             Card(
@@ -324,11 +327,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 },
               ),
             ),
-            const SizedBox(height: AppTheme.spacingLg),
+            const SizedBox(height: CoSpacing.lg),
 
             // 科目网格
             Text('科目', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: AppTheme.spacingSm),
+            const SizedBox(height: CoSpacing.sm),
             _loading
                 ? const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
                 : _subjects.isEmpty

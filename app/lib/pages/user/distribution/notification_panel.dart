@@ -1,13 +1,13 @@
 import 'dart:convert';
-import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import '../../../api/api_config.dart';
 import '../../../providers/auth_provider.dart';
-import '../../../theme/app_theme.dart';
+import '../../../theme/co_spacing.dart';
 import '../../../widgets/twemoji.dart';
 
 /// 通知中心页面
@@ -131,7 +131,7 @@ class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
           final data = jsonDecode(resp.body) as Map<String, dynamic>;
           final url = data['url'] as String?;
           if (url != null && url.isNotEmpty) {
-            html.window.open(url, '_blank');
+            await _openExternal(url);
             _dialogOpen = false;
             return;
           }
@@ -139,10 +139,20 @@ class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
       }
     } catch (_) {}
     // fallback: 打开通用分享页
-    try {
-      html.window.open('${ApiConfig.baseUrl}/share/', '_blank');
-    } catch (_) {}
+    await _openExternal('${ApiConfig.baseUrl}/share/');
     _dialogOpen = false;
+  }
+
+  /// 在系统浏览器中打开外部链接。
+  ///
+  /// 原实现用 `html.window.open(url, '_blank')`（web-only）→ 改为 `url_launcher`。
+  Future<void> _openExternal(String url) async {
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // 打不开时退回复制链接，至少让用户能手动粘贴
+      await Clipboard.setData(ClipboardData(text: url));
+    }
   }
 
   void _navigateByType(BuildContext context, Map<String, dynamic> n) {
@@ -204,7 +214,7 @@ class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
                                 Icon(Icons.notifications_none,
                                     size: 64,
                                     color: cs.onSurfaceVariant),
-                                const SizedBox(height: AppTheme.spacingMd),
+                                const SizedBox(height: CoSpacing.md),
                                 Text('暂无通知',
                                     style: TextStyle(
                                         fontSize: 16,
@@ -222,13 +232,13 @@ class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
                         final isRead = n['read'] == true;
                         return Card(
                           margin: const EdgeInsets.symmetric(
-                              horizontal: AppTheme.spacingMd,
+                              horizontal: CoSpacing.md,
                               vertical: 3),
                           child: InkWell(
                             onTap: () => _navigateByType(context, n),
                             child: Padding(
                               padding: const EdgeInsets.all(
-                                  AppTheme.spacingMd),
+                                  CoSpacing.md),
                               child: Row(
                                 crossAxisAlignment:
                                     CrossAxisAlignment.start,
@@ -246,14 +256,14 @@ class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
                                     )
                                   else
                                     const SizedBox(width: 16),
-                                  const SizedBox(width: AppTheme.spacingSm),
+                                  const SizedBox(width: CoSpacing.sm),
                                   Icon(
                                     _typeIcon(
                                         n['notification_type'] as String?),
                                     size: 20,
                                     color: cs.onSurfaceVariant,
                                   ),
-                                  const SizedBox(width: AppTheme.spacingSm),
+                                  const SizedBox(width: CoSpacing.sm),
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:

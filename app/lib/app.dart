@@ -2,21 +2,14 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'theme/app_theme.dart';
+import 'theme/coevo_tokens.dart';
+import 'theme/theme_builder.dart';
 import 'screens/home_screen.dart';
 import 'screens/chat_screen.dart';
-import 'screens/admin_screen.dart';
-import 'screens/guardian_screen.dart';
 import 'screens/review_screen.dart';
 import 'screens/pay_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/achievements_screen.dart';
-import 'screens/conversation_list_screen.dart';
-import 'screens/k12_subject_screen.dart';
-import 'screens/skipped_screen.dart';
-import 'pages/user/distribution/earnings_page.dart';
-import 'pages/user/distribution/team_page.dart';
-import 'pages/user/distribution/withdraw_page.dart';
 import 'pages/user/distribution/notification_panel.dart';
 import 'providers/auth_provider.dart';
 import 'providers/subscription_provider.dart';
@@ -25,18 +18,9 @@ import 'widgets/achievement_overlay.dart';
 import 'widgets/dialog_overlay.dart';
 import 'widgets/subscribe_panel.dart';
 
-// Prevent dart2js tree-shaking of admin/guardian screens
-final _allScreens = <Widget>[
-  AdminScreen(),
-  GuardianScreen(),
-];
-
 final goRouter = GoRouter(
   initialLocation: '/',
   redirect: (context, state) {
-    final path = state.uri.path;
-    // 管理端/家长端路由不需要认证检查
-    if (path.startsWith('/admin') || path.startsWith('/guardian')) return null;
     return null;
   },
   routes: [
@@ -53,18 +37,6 @@ final goRouter = GoRouter(
     GoRoute(
       path: '/',
       redirect: (context, state) => '/home',
-    ),
-    GoRoute(
-      path: '/admin',
-      builder: (context, state) => const AdminScreen(),
-    ),
-    GoRoute(
-      path: '/guardian',
-      builder: (context, state) => const GuardianScreen(),
-    ),
-    GoRoute(
-      path: '/teacher',
-      builder: (context, state) => const GuardianScreen(),
     ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) =>
@@ -123,50 +95,8 @@ final goRouter = GoRouter(
       ),
     ),
     GoRoute(
-      path: '/conversations',
-      pageBuilder: (context, state) => CustomTransitionPage(
-        key: state.pageKey,
-        child: const ConversationListScreen(),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-            SlideTransition(
-          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
-              .animate(animation),
-          child: child,
-        ),
-      ),
-    ),
-    GoRoute(
-      path: '/k12-subject',
-      pageBuilder: (context, state) => CustomTransitionPage(
-        key: state.pageKey,
-        child: const K12SubjectScreen(),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-            SlideTransition(
-          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
-              .animate(animation),
-          child: child,
-        ),
-      ),
-    ),
-    GoRoute(
       path: '/pay',
       builder: (context, state) => const PayScreen(),
-    ),
-    GoRoute(
-      path: '/skipped',
-      builder: (context, state) => const SkippedScreen(),
-    ),
-    GoRoute(
-      path: '/earnings',
-      builder: (context, state) => const EarningsPage(),
-    ),
-    GoRoute(
-      path: '/team',
-      builder: (context, state) => const TeamPage(),
-    ),
-    GoRoute(
-      path: '/withdraw',
-      builder: (context, state) => const WithdrawPage(),
     ),
     GoRoute(
       path: '/notifications',
@@ -347,44 +277,26 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
       }
     });
 
-    // Keep admin/guardian from tree-shaking
-    _allScreens;
+    final settings = ref.watch(themeProvider);
 
-    final themeState = ref.watch(themeProvider);
-
-    ThemeData lightTheme;
-    ThemeData darkTheme;
-    ThemeMode themeMode;
-
-    switch (themeState.mode) {
-      case AppThemeMode.duolingo:
-        lightTheme = AppTheme.duolingo;
-        darkTheme = AppTheme.duolingo; // 强制亮色，无视系统暗色模式
-        themeMode = ThemeMode.light;
-        break;
-      case AppThemeMode.light:
-        lightTheme = AppTheme.light;
-        darkTheme = AppTheme.light;
-        themeMode = ThemeMode.light;
-        break;
-      case AppThemeMode.dark:
-        lightTheme = AppTheme.dark;
-        darkTheme = AppTheme.dark;
-        themeMode = ThemeMode.dark;
-        break;
-      case AppThemeMode.system:
-        lightTheme = AppTheme.light;
-        darkTheme = AppTheme.dark;
-        themeMode = ThemeMode.system;
-        break;
-    }
+    // 🔑 三档主题共用一个 buildTheme（spec §7.3：不写手写 ThemeData）：
+    //   浅色槽 = 用户选的档（选「夜」时白天回落「墨」，见 ThemeSettings.lightTheme）
+    //   深色槽 = 固定「夜」
+    // 这样「跟随系统」交给 Flutter 自己按 platformBrightness 二选一，
+    // 不需要在这里读 MediaQuery（MaterialApp 之上拿不到）。
+    final lightTheme = buildTheme(allTokens[settings.lightTheme]!);
+    final darkTheme = buildTheme(nightTokens);
 
     return MaterialApp.router(
       title: '刻意进化',
       debugShowCheckedModeBanner: false,
       theme: lightTheme,
       darkTheme: darkTheme,
-      themeMode: themeMode,
+      themeMode: settings.followSystem
+          ? ThemeMode.system
+          : (settings.theme == ReadingTheme.night
+              ? ThemeMode.dark
+              : ThemeMode.light),
       routerConfig: goRouter,
       builder: (context, child) {
         final isWide = MediaQuery.of(context).size.width > 768;

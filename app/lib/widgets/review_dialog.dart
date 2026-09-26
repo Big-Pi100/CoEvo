@@ -9,7 +9,7 @@ import '../api/api_config.dart';
 import '../providers/auth_provider.dart';
 import '../providers/dialog_queue_provider.dart';
 import '../providers/plan_provider.dart' hide cardRefreshProvider;
-import '../theme/app_theme.dart';
+import '../theme/co_spacing.dart';
 import 'review_card_widget.dart';
 import 'twemoji.dart';
 
@@ -210,7 +210,7 @@ class _ReviewDialogState extends ConsumerState<ReviewDialog> {
         insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 60),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Padding(
-          padding: const EdgeInsets.all(AppTheme.spacingLg),
+          padding: const EdgeInsets.all(CoSpacing.lg),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -225,7 +225,7 @@ class _ReviewDialogState extends ConsumerState<ReviewDialog> {
                   ),
                 ],
               ),
-              const SizedBox(height: AppTheme.spacingSm),
+              const SizedBox(height: CoSpacing.sm),
               Text('本次复习', style: tt.titleLarge),
               const SizedBox(height: 2),
               Text(
@@ -234,7 +234,7 @@ class _ReviewDialogState extends ConsumerState<ReviewDialog> {
                     : '全部完成',
                 style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
               ),
-              const SizedBox(height: AppTheme.spacingSm),
+              const SizedBox(height: CoSpacing.sm),
 
               // 统计数字
               Row(
@@ -248,11 +248,11 @@ class _ReviewDialogState extends ConsumerState<ReviewDialog> {
 
               // 失败卡片列表（含 LLM 评审详情）
               if (_failedCards.isNotEmpty) ...[
-                const SizedBox(height: AppTheme.spacingMd),
+                const SizedBox(height: CoSpacing.md),
                 const Divider(),
-                const SizedBox(height: AppTheme.spacingSm),
+                const SizedBox(height: CoSpacing.sm),
                 Text('评审详情 — 未通过的卡片', style: tt.titleSmall?.copyWith(color: Colors.red.shade700)),
-                const SizedBox(height: AppTheme.spacingSm),
+                const SizedBox(height: CoSpacing.sm),
                 ConstrainedBox(
                   constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.3),
                   child: ListView.separated(
@@ -314,7 +314,7 @@ class _ReviewDialogState extends ConsumerState<ReviewDialog> {
                 ),
               ],
 
-              const SizedBox(height: AppTheme.spacingLg),
+              const SizedBox(height: CoSpacing.lg),
               // 底部按钮
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -350,12 +350,12 @@ class _ReviewDialogState extends ConsumerState<ReviewDialog> {
         insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 80),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Padding(
-          padding: const EdgeInsets.all(AppTheme.spacingXl),
+          padding: const EdgeInsets.all(CoSpacing.xl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text('没有待复习的卡片'),
-              const SizedBox(height: AppTheme.spacingLg),
+              const SizedBox(height: CoSpacing.lg),
               FilledButton(
                 onPressed: () {
                   Navigator.of(context, rootNavigator: true).pop();
@@ -372,7 +372,7 @@ class _ReviewDialogState extends ConsumerState<ReviewDialog> {
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 80),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingLg),
+        padding: const EdgeInsets.all(CoSpacing.lg),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -381,7 +381,7 @@ class _ReviewDialogState extends ConsumerState<ReviewDialog> {
             Row(
               children: [
                 Icon(Icons.replay, color: cs.primary),
-                const SizedBox(width: AppTheme.spacingSm),
+                const SizedBox(width: CoSpacing.sm),
                 Text(
                   '复习',
                   style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600),
@@ -393,7 +393,7 @@ class _ReviewDialogState extends ConsumerState<ReviewDialog> {
                 ),
               ],
             ),
-            const SizedBox(height: AppTheme.spacingMd),
+            const SizedBox(height: CoSpacing.md),
 
             // 卡片内容
             Flexible(
@@ -409,7 +409,7 @@ class _ReviewDialogState extends ConsumerState<ReviewDialog> {
             ),
 
             // 推迟按钮
-            const SizedBox(height: AppTheme.spacingMd),
+            const SizedBox(height: CoSpacing.md),
             if (!_isComplete)
               TextButton.icon(
                 onPressed: _isDeferring ? null : _deferAndClose,

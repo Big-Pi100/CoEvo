@@ -1,10 +1,10 @@
 // ignore_for_file: invalid_null_aware_operator, unnecessary_cast
 import 'dart:convert';
-import 'dart:js' as js;
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:fl_chart/fl_chart.dart' as fl;
+import '../utils/math_expr.dart';
 
 /// 图表调色板（8 色）
 const _chartColors = [
@@ -646,7 +646,7 @@ class GraphWidget extends StatelessWidget {
     );
   }
 
-  // ── 函数图像 (function type) — 用 dart:js 计算函数值，生成 SVG ──
+  // ── 函数图像 (function type) — 用纯 Dart 求值器计算函数值，生成 SVG ──
   Widget _buildFunctionGraph(Map<String, dynamic> data, BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     try {
@@ -700,17 +700,13 @@ class GraphWidget extends StatelessWidget {
         final expr = f['expr'] as String? ?? '';
         final color = f['color'] as String? ?? funcColors[fi % funcColors.length];
         final label = f['label'] as String? ?? '';
-        // 将表达式中的 ^ 替换为 JS ** 求幂运算符
-        final jsExpr = expr.replaceAll('^', '**');
-        // 采样点
+        // 采样点（用纯 Dart 求值器，替代原 web-only 的 `js.context.eval`）
         final pts = <String>[];
-        js.context['__cfx'] = 0; // init
         for (var i = 0; i <= sampleCount; i++) {
           final x = xMin + (xMax - xMin) * i / sampleCount;
-          js.context['__cfx'] = x;
-          final y = js.context.callMethod('eval', [jsExpr]) as num?;
+          final y = evalMathExpr(expr, x);
           if (y != null && y.isFinite && y >= yMin && y <= yMax) {
-            pts.add('${toSvgX(x).toStringAsFixed(1)},${toSvgY(y.toDouble()).toStringAsFixed(1)}');
+            pts.add('${toSvgX(x).toStringAsFixed(1)},${toSvgY(y).toStringAsFixed(1)}');
           }
         }
         if (pts.length >= 2) {
@@ -718,10 +714,9 @@ class GraphWidget extends StatelessWidget {
           if (label.isNotEmpty) {
             // 在曲线末端附近标注
             final lastX = xMin + (xMax - xMin) * 0.85;
-            js.context['__cfx'] = lastX;
-            final lastY = js.context.callMethod('eval', [jsExpr]) as num?;
+            final lastY = evalMathExpr(expr, lastX);
             if (lastY != null && lastY.isFinite) {
-              final ly = lastY.toDouble().clamp(yMin, yMax);
+              final ly = lastY.clamp(yMin, yMax);
               svg += '<text x="${toSvgX(lastX) + 6}" y="${toSvgY(ly) + 4}" fill="$color" font-size="11" paint-order="stroke fill" stroke="white" stroke-width="1.5">$label</text>';
             }
           }

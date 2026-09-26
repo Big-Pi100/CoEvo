@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../api/chat_client.dart';
 import '../../services/tts_service.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/co_spacing.dart';
 import '../../providers/plan_provider.dart';
 
 /// 课文阅读面板 — 显示当前 task 的课文全文
@@ -90,7 +90,7 @@ class _ChatReadingPassageState extends ConsumerState<ChatReadingPassage> {
     final translation = _extractTranslation(_card!);
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(AppTheme.spacingMd, AppTheme.spacingSm, AppTheme.spacingMd, 0),
+      margin: const EdgeInsets.fromLTRB(CoSpacing.md, CoSpacing.sm, CoSpacing.md, 0),
       decoration: BoxDecoration(
         color: cs.secondaryContainer.withAlpha(60),
         borderRadius: BorderRadius.circular(12),
@@ -109,7 +109,7 @@ class _ChatReadingPassageState extends ConsumerState<ChatReadingPassage> {
               child: Row(
                 children: [
                   Icon(Icons.menu_book, size: 18, color: cs.secondary),
-                  const SizedBox(width: AppTheme.spacingSm),
+                  const SizedBox(width: CoSpacing.sm),
                   Expanded(
                     child: Text(titleShort, style: const TextStyle(fontWeight: FontWeight.w600)),
                   ),
@@ -160,7 +160,7 @@ class _ChatReadingPassageState extends ConsumerState<ChatReadingPassage> {
                     style: TextStyle(fontSize: 14, height: 1.6, color: cs.onSurface),
                   ),
                   if (translation.isNotEmpty) ...[
-                    const SizedBox(height: AppTheme.spacingSm),
+                    const SizedBox(height: CoSpacing.sm),
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(

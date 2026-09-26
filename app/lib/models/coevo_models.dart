@@ -30,7 +30,6 @@ class WsEvent {
   final String type;
   final String? content;
   final String? reply;
-  final String? audio;
   final List<ConceptCandidate>? candidates;
   final List<Map<String, dynamic>>? achievements;
 
@@ -38,7 +37,6 @@ class WsEvent {
     required this.type,
     this.content,
     this.reply,
-    this.audio,
     this.candidates,
     this.achievements,
   });
@@ -63,7 +61,6 @@ class WsEvent {
       type: json['type'] as String? ?? 'error',
       content: json['content'] as String?,
       reply: json['reply'] as String?,
-      audio: json['audio'] as String?,
       candidates: candidates,
       achievements: achievements,
     );

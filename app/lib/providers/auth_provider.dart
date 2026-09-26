@@ -1,4 +1,3 @@
-import 'dart:html' as html;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -8,6 +7,12 @@ import '../api/auth_client.dart';
 const _tokenKey = 'coevo_auth_token';
 const _userIdKey = 'coevo_auth_user_id';
 const _usernameKey = 'coevo_auth_username';
+
+/// 「本设备已用过试用」标记的 prefs key。
+///
+/// 原实现用 `dart:html` 的 `window.localStorage`（仅 Web 可用）→ 原生编不过；
+/// 改为 `shared_preferences`（Web 上底层同样是 localStorage，行为等价）。
+const _kTrialUsedKey = 'coevo_trial_used';
 
 /// 卡片刷新信号 — 制卡成功后递增
 final cardRefreshProvider = StateProvider<int>((ref) => 0);
@@ -127,12 +132,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   /// 清除浏览器 localStorage 中的试用状态标记
+  /// 清除「已用过试用」标记（原为 localStorage，现为 shared_preferences）。
   void _clearTrialStorageFlags() {
-    try {
-      final storage = html.window.localStorage;
-      storage.remove('coevo_trial_used');
-    } catch (_) {}
-    // SharedPreferences 中的认领标记在应用重启后会被清除，无需手动处理
+    SharedPreferences.getInstance().then((prefs) async {
+      await prefs.remove(_kTrialUsedKey);
+    }).catchError((Object e) {
+      debugPrint('_clearTrialStorageFlags failed: $e');
+    });
   }
 
   /// 将原始错误消息转为用户友好的中文
@@ -237,21 +243,26 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  /// 在浏览器 localStorage 设置"已使用试用"标记
+  /// 标记「本设备已使用过试用」，防止退出后无限创建新试用。
+  ///
+  /// 原实现写 `html.window.localStorage`（web-only）→ 改为 `shared_preferences`。
   void _setTrialUsedFlag() {
-    try {
-      // dart:html 在 Flutter Web 中可用
-      final storage = html.window.localStorage;
-      storage['coevo_trial_used'] = '1';
-    } catch (_) {}
+    SharedPreferences.getInstance().then((prefs) async {
+      await prefs.setBool(_kTrialUsedKey, true);
+    }).catchError((Object e) {
+      debugPrint('_setTrialUsedFlag failed: $e');
+    });
   }
 
-  /// 检查当前浏览器是否已创建过试用账户
-  static bool hasUsedTrial() {
+  /// 检查本设备是否已创建过试用账户。
+  ///
+  /// ⚠️ 原实现是**同步**读 `localStorage`；改用 `shared_preferences` 后必须 `await`。
+  static Future<bool> hasUsedTrial() async {
     try {
-      final storage = html.window.localStorage;
-      return storage['coevo_trial_used'] == '1';
-    } catch (_) {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(_kTrialUsedKey) ?? false;
+    } catch (e) {
+      debugPrint('hasUsedTrial failed: $e');
       return false;
     }
   }

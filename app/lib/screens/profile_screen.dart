@@ -6,13 +6,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'dart:typed_data';
-import 'dart:html' as html;
 import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 import '../api/chat_client.dart';
 import '../api/api_config.dart';
-import 'package:audioplayers/audioplayers.dart';
 import '../widgets/referral_qr_code.dart';
 import '../providers/auth_provider.dart';
 import '../providers/subscription_provider.dart';
@@ -21,7 +18,9 @@ import '../services/tts_service.dart';
 import '../widgets/order_history.dart';
 import '../widgets/subscribe_panel.dart';
 import '../widgets/claim_dialog.dart';
-import '../theme/app_theme.dart';
+import '../theme/co_spacing.dart';
+import '../theme/coevo_tokens.dart';
+import '../utils/image_export.dart';
 import '../pages/user/distribution/notification_panel.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../widgets/twemoji.dart';
@@ -55,10 +54,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Map<String, dynamic>? _referralStats;
   bool _statsLoading = false;
 
-  // TTS 引擎配置
-  String _ttsEngine = 'tencent';   // 'tencent' | 'native'
-  int _ttsVoiceType = 101016;      // 智甜-女童声
-  double _ttsSpeed = 1.2;          // 腾讯云语速 [-2, 6]
+  // TTS：2026-09-26 起只剩端侧 flutter_tts（腾讯云分支与引擎选择已取消）
+  // 语速/音色由 `TtsService` 自持（`speechRate` / `selectedVoice`），本页不再另存状态
 
   @override
   void initState() {
@@ -113,16 +110,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     final client = ChatClient(userId: auth.userId!, token: auth.token);
     try {
-      // 绑定 TTS 客户端（用于偏好同步）
-      final tts = ref.read(ttsServiceProvider);
-      tts.bindClient(client);
-
       final results = await Future.wait([
         client.getProfile(),
         client.getPreferences(),
       ]);
       final data = results[0];
-      final serverPrefs = results[1];
+      // ⚠️ `results[1]`（用户偏好）自 2026-09-26 起本页不再消费：
+      // TTS 偏好已改为 `TtsService` 自持（引擎只剩端侧，无偏好需同步）。
+      // 请求暂留（通用接口，`review_screen` 仍在用；且本页后续可能展示其他偏好）。
       // 如果后端有 display_name，覆盖本地缓存
       final backendName = data['display_name'] as String?;
       if (backendName != null && backendName != _displayName && mounted) {
@@ -136,9 +131,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       });
       if (mounted) {
         setState(() {
-          _ttsEngine = serverPrefs['tts_engine'] ?? 'tencent';
-          _ttsVoiceType = int.tryParse(serverPrefs['tts_voice_type'] ?? '') ?? 101016;
-          _ttsSpeed = double.tryParse(serverPrefs['tts_speed'] ?? '') ?? 1.2;
           _isLoading = false;
         });
       }
@@ -304,69 +296,37 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
-  /// 保存 TTS 引擎选择
-  Future<void> _saveTtsEngine(String engine) async {
-    final auth = ref.read(authProvider);
-    if (auth.userId == null || auth.token == null) return;
-    final client = ChatClient(userId: auth.userId!, token: auth.token);
-    await client.savePreferences({'tts_engine': engine});
+  /// 试听本地原生 TTS —— 用**当前选中的音色 + 当前语速**
+  ///
+  /// 设计要点（2026-09-26 修正）：
+  /// - 🔴 **文本必须是英文**：本产品是英语学习 App，用户实际听到的永远是英文；
+  ///   原先读「你好，这是试听语音」(zh-CN) 无法反映真实朗读效果。
+  /// - ✅ **跟随语速**：`TtsService.speak` → `_speakWithNative` 每次都会
+  ///   `setSpeechRate(_speechRate)`，因此自动跟随上方语速滑块。
+  /// - 🔑 **复用 `TtsService`** 而非新建 `FlutterTts`：继承其音色选择（`_selectedVoice`）、
+  ///   代检查（`_playGen`）与停止逻辑，避免出现两套播放状态。
+  Future<void> _previewNativeTts() async {
+    final tts = ref.read(ttsServiceProvider);
+    await tts.speak(_nativePreviewText, language: 'en-US');
   }
 
-  /// 保存单条 TTS 偏好
-  Future<void> _saveTtsPref(String key, String value) async {
-    final auth = ref.read(authProvider);
-    if (auth.userId == null || auth.token == null) return;
-    final client = ChatClient(userId: auth.userId!, token: auth.token);
-    await client.savePreferences({key: value});
-  }
-
-  /// 试听腾讯云 TTS
-  Future<void> _previewTencentTts() async {
-    final auth = ref.read(authProvider);
-    if (auth.userId == null || auth.token == null) return;
-    try {
-      final resp = await http.post(
-        Uri.parse('${ApiConfig.baseUrl}/api/tts/preview'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'text': '你好，欢迎使用腾讯云语音合成。这是当前音色的试听效果。',
-          'voice_type': _ttsVoiceType,
-          'speed': _ttsSpeed,
-        }),
-      );
-      if (resp.statusCode == 200) {
-        final player = AudioPlayer();
-        player.setSource(BytesSource(Uint8List.fromList(resp.bodyBytes)));
-        player.resume();
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('试听失败: ${resp.body}')),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('试听失败: $e')),
-        );
-      }
-    }
-  }
+  /// 本地音色试听文本（纯英文，贴近词卡朗读场景：先单词、后例句）
+  static const String _nativePreviewText =
+      'Hello. This is a sample sentence.';
 
   Widget _buildErrorView() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingXxxl),
+        padding: const EdgeInsets.all(CoSpacing.xxxl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.cloud_off_rounded, size: 48, color: _cs.outline),
-            const SizedBox(height: AppTheme.spacingLg),
+            const SizedBox(height: CoSpacing.lg),
             Text('加载失败', style: _tt.titleLarge?.copyWith(color: _cs.onSurface)),
-            const SizedBox(height: AppTheme.spacingSm),
+            const SizedBox(height: CoSpacing.sm),
             Text(_error ?? '请检查网络连接后重试', style: _tt.bodyMedium?.copyWith(color: _cs.onSurfaceVariant), textAlign: TextAlign.center),
-            const SizedBox(height: AppTheme.spacingXl),
+            const SizedBox(height: CoSpacing.xl),
             FilledButton.icon(
               onPressed: () {
                 setState(() { _isLoading = true; _error = null; });
@@ -386,7 +346,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   /// 图标宽度固定为 32px，与昵称行的头像宽度对齐
   Widget _buildProfileRow({required IconData icon, required String label, required String value, VoidCallback? onTap}) {
     final row = Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingSm),
+      padding: const EdgeInsets.symmetric(vertical: CoSpacing.sm),
       child: Row(
         children: [
           SizedBox(
@@ -454,12 +414,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget _buildContent(BuildContext context, AuthState auth) {
 
     return ListView(
-      padding: const EdgeInsets.all(AppTheme.spacingXxl),
+      padding: const EdgeInsets.all(CoSpacing.xxl),
       children: [
         // ── 推广二维码 ──
         if (_referralCode != null)
           Container(
-            padding: const EdgeInsets.all(AppTheme.spacingLg),
+            padding: const EdgeInsets.all(CoSpacing.lg),
             decoration: BoxDecoration(
               color: _cs.surfaceContainerHighest.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(16),
@@ -488,17 +448,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: AppTheme.spacingMd),
+                const SizedBox(height: CoSpacing.md),
               ],
             ),
           )
         else if (_referralCode == null)
           const SizedBox.shrink(),
-        const SizedBox(height: AppTheme.spacingLg),
+        const SizedBox(height: CoSpacing.lg),
 
         // ── 个人信息（头像嵌入昵称行｜姓名｜手机号） ──
         Container(
-          padding: const EdgeInsets.all(AppTheme.spacingMd),
+          padding: const EdgeInsets.all(CoSpacing.md),
           decoration: BoxDecoration(
             color: _cs.surfaceContainerHighest.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(16),
@@ -509,7 +469,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               InkWell(
                 onTap: _editName,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingSm),
+                  padding: const EdgeInsets.symmetric(vertical: CoSpacing.sm),
                   child: Row(
                     children: [
                       // 左栏固定宽度，与 _buildProfileRow 的图标栏对齐
@@ -575,19 +535,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ],
           ),
         ),
-        const SizedBox(height: AppTheme.spacingLg),
+        const SizedBox(height: CoSpacing.lg),
 
         // 推广统计 + 导航
         if (_referralCode != null) ...[
           // 统计卡片
           if (_statsLoading)
             const Padding(
-              padding: EdgeInsets.symmetric(vertical: AppTheme.spacingMd),
+              padding: EdgeInsets.symmetric(vertical: CoSpacing.md),
               child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
             )
           else
             Container(
-              padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingMd),
+              padding: const EdgeInsets.symmetric(vertical: CoSpacing.md),
               decoration: BoxDecoration(
                 color: _cs.surfaceContainerHighest.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(12),
@@ -602,7 +562,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ],
               ),
             ),
-          const SizedBox(height: AppTheme.spacingMd),
+          const SizedBox(height: CoSpacing.md),
           // 导航按钮
           Row(
             children: [
@@ -611,13 +571,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 onPressed: () => context.push('/earnings'),
                 label: Tw('收益明细', style: TextStyle(fontSize: 12)),
               )),
-              const SizedBox(width: AppTheme.spacingSm),
+              const SizedBox(width: CoSpacing.sm),
               Expanded(child: OutlinedButton.icon(
                 icon: const Icon(Icons.group, size: 16),
                 onPressed: () => context.push('/team'),
                 label: Tw('我的团队', style: TextStyle(fontSize: 12)),
               )),
-              const SizedBox(width: AppTheme.spacingSm),
+              const SizedBox(width: CoSpacing.sm),
               Expanded(child: OutlinedButton.icon(
                 icon: const Icon(Icons.payments, size: 16),
                 onPressed: () => context.push('/withdraw'),
@@ -625,20 +585,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               )),
             ],
           ),
-          const SizedBox(height: AppTheme.spacingLg),
+          const SizedBox(height: CoSpacing.lg),
         ],
 
         // 订阅状态
         _buildSubscriptionCard(),
-        const SizedBox(height: AppTheme.spacingSm),
+        const SizedBox(height: CoSpacing.sm),
 
         // 联系工作人员
         _buildContactCard(),
-        const SizedBox(height: AppTheme.spacingMd),
+        const SizedBox(height: CoSpacing.md),
 
         // 历史订单
         const OrderHistory(),
-        const SizedBox(height: AppTheme.spacingLg),
+        const SizedBox(height: CoSpacing.lg),
 
         // 跳过的概念
         Card(
@@ -649,11 +609,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             onTap: () => context.push('/skipped'),
           ),
         ),
-        const SizedBox(height: AppTheme.spacingLg),
+        const SizedBox(height: CoSpacing.lg),
 
         // 主题风格
         _buildThemeTile(),
-        const SizedBox(height: AppTheme.spacingLg),
+        const SizedBox(height: CoSpacing.lg),
 
         // 朗读设置
         Consumer(
@@ -662,176 +622,96 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             final voices = tts.availableVoices;
             return Card(
               child: Padding(
-                padding: const EdgeInsets.all(AppTheme.spacingXl),
+                padding: const EdgeInsets.all(CoSpacing.xl),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('朗读设置', style: Theme.of(context).textTheme.titleMedium),
                     const Divider(height: 24),
 
-                    // ── TTS 引擎选择 ──
+                    // ── 朗读设置：端侧 flutter_tts（2026-09-26 起唯一引擎，腾讯云分支已取消）──
+                    // ── 本地原生 TTS 设置 ──
+                    // 语速
                     Row(
                       children: [
-                        const Icon(Icons.settings_input_component, size: 18),
-                        const SizedBox(width: AppTheme.spacingSm),
-                        Text('TTS 引擎', style: Theme.of(context).textTheme.bodyMedium),
+                        const Icon(Icons.speed, size: 18),
+                        const SizedBox(width: CoSpacing.sm),
+                        Text('语速', style: Theme.of(context).textTheme.bodyMedium),
+                        const Spacer(),
+                        Text(tts.speechRate.toStringAsFixed(1),
+                            style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
                       ],
                     ),
-                    const SizedBox(height: AppTheme.spacingSm),
-                    SegmentedButton<String>(
-                      segments: const [
-                        ButtonSegment(value: 'native', label: Text('本地原生', style: TextStyle(fontSize: 12))),
-                        ButtonSegment(value: 'tencent', label: Text('腾讯云', style: TextStyle(fontSize: 12))),
+                    Slider(
+                      value: tts.speechRate,
+                      min: 0.1,
+                      max: 2.0,
+                      divisions: 19,
+                      label: tts.speechRate.toStringAsFixed(1),
+                      onChanged: (v) => tts.speechRate = v,
+                    ),
+                    const SizedBox(height: CoSpacing.sm),
+
+                    // 音色
+                    Row(
+                      children: [
+                        const Icon(Icons.record_voice_over, size: 18),
+                        const SizedBox(width: CoSpacing.sm),
+                        Text('音色', style: Theme.of(context).textTheme.bodyMedium),
+                        const Spacer(),
+                        // 🆕 显式试听按钮（2026-09-26 修正）——
+                        // 原先只有「切换音色时自动读一句」，用户想重听必须来回切音色，不直观
+                        SizedBox(
+                          height: 32,
+                          child: TextButton.icon(
+                            icon: const Icon(Icons.play_arrow, size: 16),
+                            label: Tw('试听', style: TextStyle(fontSize: 12)),
+                            onPressed: () => _previewNativeTts(),
+                          ),
+                        ),
                       ],
-                      selected: {_ttsEngine},
-                      onSelectionChanged: (v) {
-                        final engine = v.first;
-                        setState(() => _ttsEngine = engine);
-                        _saveTtsEngine(engine);
+                    ),
+                    const SizedBox(height: CoSpacing.sm),
+                    DropdownButtonFormField<String>(
+                      value: tts.selectedVoice?['name'] as String?,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: CoSpacing.md, vertical: 10),
+                        border: OutlineInputBorder(),
+                      ),
+                      // 🔴 原为「系统默认 (zh-CN)」—— 语义错误：本产品朗读英文，
+                      // 未指定音色时 `_pickBestVoice` 会按**文本语言**自动匹配（英文 → en-US）
+                      hint: Tw('系统默认（自动匹配语言）'),
+                      items: [
+                        const DropdownMenuItem(value: '', child: Tw('系统默认（自动匹配语言）')),
+                        if (voices.isNotEmpty)
+                          ...voices.map<DropdownMenuItem<String>>((v) {
+                            final name = v['name'] ?? '';
+                            final locale = v['locale'] ?? '';
+                            return DropdownMenuItem(
+                              value: name as String,
+                              child: Tw('$name ($locale)',
+                                  overflow: TextOverflow.ellipsis),
+                            );
+                          }),
+                      ],
+                      onChanged: (voiceName) {
+                        if (voiceName == null || voiceName.isEmpty) {
+                          tts.selectVoice(null);
+                          return;
+                        }
+                        final match = voices.cast<Map<String, dynamic>?>().firstWhere(
+                          (v) => v?['name'] == voiceName,
+                          orElse: () => null,
+                        );
+                        if (match != null) {
+                          tts.selectVoice(match);
+                          // 切换音色后自动试听（英文），方便立即对比
+                          tts.speak(_nativePreviewText, language: 'en-US');
+                        }
                       },
                     ),
-                    const SizedBox(height: AppTheme.spacingMd),
-
-                    if (_ttsEngine == 'tencent') ...[
-                      // ── 腾讯云音色 ID ──
-                      Row(
-                        children: [
-                          const Icon(Icons.record_voice_over, size: 18),
-                          const SizedBox(width: AppTheme.spacingSm),
-                          Text('音色', style: Theme.of(context).textTheme.bodyMedium),
-                          const Spacer(),
-                          SizedBox(
-                            height: 32,
-                            child: TextButton.icon(
-                              icon: const Icon(Icons.play_arrow, size: 16),
-                              label: Tw('试听', style: TextStyle(fontSize: 12)),
-                              onPressed: () => _previewTencentTts(),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: AppTheme.spacingSm),
-                      DropdownButtonFormField<int>(
-                        value: _ttsVoiceType,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(horizontal: AppTheme.spacingMd, vertical: 10),
-                          border: OutlineInputBorder(),
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 0, child: Tw('默认音色')),
-                          DropdownMenuItem(value: 101001, child: Tw('智瑜 — 情感女声')),
-                          DropdownMenuItem(value: 101004, child: Tw('智云 — 通用男声')),
-                          DropdownMenuItem(value: 101011, child: Tw('智燕 — 新闻女声')),
-                          DropdownMenuItem(value: 101013, child: Tw('智辉 — 新闻男声')),
-                          DropdownMenuItem(value: 101015, child: Tw('智萌 — 男童声')),
-                          DropdownMenuItem(value: 101016, child: Tw('智甜 — 女童声')),
-                          DropdownMenuItem(value: 101019, child: Tw('智彤 — 粤语女声')),
-                          DropdownMenuItem(value: 101026, child: Tw('智希 — 通用女声')),
-                          DropdownMenuItem(value: 101030, child: Tw('智柯 — 通用男声')),
-                          DropdownMenuItem(value: 101050, child: Tw('WeJack — 英文男声')),
-                          DropdownMenuItem(value: 101054, child: Tw('智友 — 通用男声')),
-                          DropdownMenuItem(value: 101055, child: Tw('智付 — 通用女声')),
-                        ],
-                        onChanged: (v) {
-                          if (v == null) return;
-                          setState(() => _ttsVoiceType = v);
-                          _saveTtsPref('tts_voice_type', v.toString());
-                        },
-                      ),
-                      const SizedBox(height: AppTheme.spacingMd),
-
-                      // ── 腾讯云语速 ──
-                      Row(
-                        children: [
-                          const Icon(Icons.speed, size: 18),
-                          const SizedBox(width: AppTheme.spacingSm),
-                          Text('语速', style: Theme.of(context).textTheme.bodyMedium),
-                          const Spacer(),
-                          Text(_ttsSpeed.toStringAsFixed(1),
-                              style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
-                        ],
-                      ),
-                      Slider(
-                        value: _ttsSpeed,
-                        min: -2.0,
-                        max: 6.0,
-                        divisions: 16,
-                        label: _ttsSpeed.toStringAsFixed(1),
-                        onChangeEnd: (v) => _saveTtsPref('tts_speed', v.toStringAsFixed(1)),
-                        onChanged: (v) => setState(() => _ttsSpeed = v),
-                      ),
-                    ] else ...[
-                      // ── 本地原生 TTS 设置 ──
-                      // 语速
-                      Row(
-                        children: [
-                          const Icon(Icons.speed, size: 18),
-                          const SizedBox(width: AppTheme.spacingSm),
-                          Text('语速', style: Theme.of(context).textTheme.bodyMedium),
-                          const Spacer(),
-                          Text(tts.speechRate.toStringAsFixed(1),
-                              style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
-                        ],
-                      ),
-                      Slider(
-                        value: tts.speechRate,
-                        min: 0.1,
-                        max: 2.0,
-                        divisions: 19,
-                        label: tts.speechRate.toStringAsFixed(1),
-                        onChanged: (v) => tts.speechRate = v,
-                      ),
-                      const SizedBox(height: AppTheme.spacingSm),
-
-                      // 音色
-                      Row(
-                        children: [
-                          const Icon(Icons.record_voice_over, size: 18),
-                          const SizedBox(width: AppTheme.spacingSm),
-                          Text('音色', style: Theme.of(context).textTheme.bodyMedium),
-                        ],
-                      ),
-                      const SizedBox(height: AppTheme.spacingSm),
-                      DropdownButtonFormField<String>(
-                        value: tts.selectedVoice?['name'] as String?,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(horizontal: AppTheme.spacingMd, vertical: 10),
-                          border: OutlineInputBorder(),
-                        ),
-                        hint: Tw('系统默认 (zh-CN)'),
-                        items: [
-                          const DropdownMenuItem(value: '', child: Tw('系统默认 (zh-CN)')),
-                          if (voices.isNotEmpty)
-                            ...voices.map<DropdownMenuItem<String>>((v) {
-                              final name = v['name'] ?? '';
-                              final locale = v['locale'] ?? '';
-                              return DropdownMenuItem(
-                                value: name as String,
-                                child: Tw('$name ($locale)',
-                                    overflow: TextOverflow.ellipsis),
-                              );
-                            }),
-                        ],
-                        onChanged: (voiceName) {
-                          if (voiceName == null || voiceName.isEmpty) {
-                            tts.selectVoice(null);
-                            return;
-                          }
-                          final match = voices.cast<Map<String, dynamic>?>().firstWhere(
-                            (v) => v?['name'] == voiceName,
-                            orElse: () => null,
-                          );
-                          if (match != null) {
-                            tts.selectVoice(match);
-                            tts.speak('你好，这是试听语音', language: 'zh-CN');
-                          }
-                        },
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -848,93 +728,94 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     super.dispose();
   }
 
-  /// 主题风格选择入口
+  /// 主题入口 —— **三档底色**（墨 / 格 / 夜）+「跟随系统」开关（spec §二）。
+  ///
+  /// 🔑 「跟随系统」是**开关不是第四个主题**：浅色环境用所选档，深色环境用「夜」。
   Widget _buildThemeTile() {
-    final themeState = ref.watch(themeProvider);
-    final modeLabel = switch (themeState.mode) {
-      AppThemeMode.system => '跟随系统',
-      AppThemeMode.light => 'CoEvo 浅色',
-      AppThemeMode.dark => 'CoEvo 深色',
-      AppThemeMode.duolingo => 'Duolingo 风格',
-    };
-    final modeIcon = switch (themeState.mode) {
-      AppThemeMode.system => Icons.brightness_auto,
-      AppThemeMode.light => Icons.light_mode,
-      AppThemeMode.dark => Icons.dark_mode,
-      AppThemeMode.duolingo => Icons.palette,
-    };
+    final settings = ref.watch(themeProvider);
+    final tokens = allTokens[settings.theme]!;
+    final label = settings.followSystem
+        ? '${tokens.label} · 跟随系统'
+        : '${tokens.label} · ${tokens.character}';
 
     return Card(
       child: ListTile(
-        leading: Icon(modeIcon, color: Theme.of(context).colorScheme.primary),
-        title: Tw('主题风格'),
-        subtitle: Text(modeLabel, style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
+        leading: Icon(_themeIcon(settings.theme),
+            color: Theme.of(context).colorScheme.primary),
+        title: Tw('主题'),
+        subtitle: Text(label,
+            style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => _showThemeDialog(),
       ),
     );
   }
 
-  Future<void> _showThemeDialog() async {
-    final themeNotifier = ref.read(themeProvider.notifier);
-    final currentMode = ref.read(themeProvider).mode;
+  static IconData _themeIcon(ReadingTheme theme) => switch (theme) {
+        ReadingTheme.ink => Icons.menu_book_outlined,
+        ReadingTheme.grid => Icons.grid_on,
+        ReadingTheme.night => Icons.dark_mode_outlined,
+      };
 
-    final result = await showDialog<AppThemeMode>(
+  Future<void> _showThemeDialog() async {
+    final notifier = ref.read(themeProvider.notifier);
+
+    await showDialog<void>(
       context: context,
-      builder: (ctx) => SimpleDialog(
-        title: Tw('选择主题风格'),
-        children: [
-          _themeOption(
-            ctx, result: AppThemeMode.duolingo,
-            icon: Icons.palette, label: 'Duolingo 风格',
-            subtitle: '游戏化学习界面（默认）',
-            selected: currentMode == AppThemeMode.duolingo,
-          ),
-          _themeOption(
-            ctx, result: AppThemeMode.system,
-            icon: Icons.brightness_auto, label: '跟随系统',
-            subtitle: '根据设备设置自动切换',
-            selected: currentMode == AppThemeMode.system,
-          ),
-          _themeOption(
-            ctx, result: AppThemeMode.light,
-            icon: Icons.light_mode, label: 'CoEvo 浅色',
-            subtitle: '深蓝 + 翠绿进化风格',
-            selected: currentMode == AppThemeMode.light,
-          ),
-          _themeOption(
-            ctx, result: AppThemeMode.dark,
-            icon: Icons.dark_mode, label: 'CoEvo 深色',
-            subtitle: '护眼暗色进化风格',
-            selected: currentMode == AppThemeMode.dark,
-          ),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          // 每次重建都重新读 —— 切档要即时看到选中态
+          final settings = ref.read(themeProvider);
+          return SimpleDialog(
+            title: Tw('选择主题'),
+            children: [
+              for (final theme in ReadingTheme.values)
+                _themeOption(
+                  theme,
+                  selected: settings.theme == theme,
+                  onTap: () async {
+                    await notifier.setTheme(theme);
+                    if (ctx.mounted) setDialogState(() {});
+                  },
+                ),
+              const Divider(height: 1),
+              SwitchListTile(
+                value: settings.followSystem,
+                secondary: Icon(Icons.brightness_auto,
+                    color: Theme.of(context).colorScheme.primary),
+                title: const Text('跟随系统',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text('深色时自动切到「夜」', style: _tt.bodySmall!),
+                onChanged: (v) async {
+                  await notifier.setFollowSystem(v);
+                  if (ctx.mounted) setDialogState(() {});
+                },
+              ),
+            ],
+          );
+        },
       ),
     );
-
-    if (result != null) {
-      await themeNotifier.setMode(result);
-    }
   }
 
   Widget _themeOption(
-    BuildContext ctx, {
-    required AppThemeMode result,
-    required IconData icon,
-    required String label,
-    required String subtitle,
+    ReadingTheme theme, {
     required bool selected,
+    required VoidCallback onTap,
   }) {
+    final tokens = allTokens[theme]!;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingSm),
+      padding: const EdgeInsets.symmetric(horizontal: CoSpacing.sm),
       child: ListTile(
-        leading: Icon(icon, color: Theme.of(context).colorScheme.primary),
-        title: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(subtitle, style: _tt.bodySmall!),
+        leading: Icon(_themeIcon(theme),
+            color: Theme.of(context).colorScheme.primary),
+        title: Text('${tokens.label} · ${tokens.character}',
+            style: const TextStyle(fontWeight: FontWeight.w600)),
         trailing: selected
-            ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary, size: 20)
-            : const SizedBox(width: AppTheme.spacingXl),
-        onTap: () => Navigator.pop(ctx, result),
+            ? Icon(Icons.check_circle,
+                color: Theme.of(context).colorScheme.primary, size: 20)
+            : const SizedBox(width: CoSpacing.xl),
+        onTap: onTap,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
@@ -1000,28 +881,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  void _doSaveQrCode() {
+  Future<void> _doSaveQrCode() async {
     try {
       final boundary = _qrKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null) return;
-      boundary.toImage(pixelRatio: 3.0).then((image) {
-        image.toByteData(format: ui.ImageByteFormat.png).then((data) {
-          if (data == null) return;
-          final blob = html.Blob([data.buffer.asUint8List()]);
-          final url = html.Url.createObjectUrlFromBlob(blob);
-          html.AnchorElement(href: url)
-            ..setAttribute('download', 'coevo_qr.png')
-            ..click();
-          html.Url.revokeObjectUrl(url);
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('二维码已保存')),
-            );
-          }
-        });
-      });
+      final image = await boundary.toImage(pixelRatio: 3.0);
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (data == null) return;
+      // 原实现为 web-only（Blob + AnchorElement 下载）→ 见 utils/image_export.dart
+      final err = await exportPngBytes(
+        data.buffer.asUint8List(),
+        fileName: 'coevo_qr.png',
+        shareText: 'https://keyievolution.fun/?ref=$_referralCode',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(err == null ? '二维码已导出' : '导出失败，已复制链接')),
+      );
+      if (err != null) {
+        await Clipboard.setData(ClipboardData(
+          text: 'https://keyievolution.fun/?ref=$_referralCode',
+        ));
+      }
     } catch (_) {
-      Clipboard.setData(ClipboardData(
+      await Clipboard.setData(ClipboardData(
         text: 'https://keyievolution.fun/?ref=$_referralCode',
       ));
       if (mounted) {
@@ -1142,7 +1025,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Tw('扫码添加工作人员微信', style: TextStyle(fontSize: 13)),
-            const SizedBox(height: AppTheme.spacingLg),
+            const SizedBox(height: CoSpacing.lg),
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: Image(

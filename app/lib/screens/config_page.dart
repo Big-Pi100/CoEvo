@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../api/api_config.dart';
-import '../theme/app_theme.dart';
+import '../theme/co_spacing.dart';
 
 class ConfigPage extends StatefulWidget {
   final String? adminKey;
@@ -120,7 +120,7 @@ class _ConfigPageState extends State<ConfigPage> {
             if (entry['description'] != null &&
                 (entry['description'] as String).isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(bottom: AppTheme.spacingSm),
+                padding: const EdgeInsets.only(bottom: CoSpacing.sm),
                 child: Text(entry['description'] as String,
                     style:
                         _tt.bodySmall?.copyWith(color: _cs.onSurfaceVariant)),
@@ -187,7 +187,7 @@ class _ConfigPageState extends State<ConfigPage> {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppTheme.spacingLg),
+      padding: const EdgeInsets.all(CoSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -225,17 +225,17 @@ class _ConfigPageState extends State<ConfigPage> {
                       style: const TextStyle(fontSize: 12)),
                   style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: AppTheme.spacingMd)),
+                          horizontal: CoSpacing.md)),
                 ),
             ],
           ),
-          const SizedBox(height: AppTheme.spacingMd),
+          const SizedBox(height: CoSpacing.md),
           if (_loading)
             const Center(child: CircularProgressIndicator(strokeWidth: 2))
           else if (_configs.isEmpty)
             Card(
               child: Padding(
-                padding: const EdgeInsets.all(AppTheme.spacingXxl),
+                padding: const EdgeInsets.all(CoSpacing.xxl),
                 child: Center(
                   child: Text('暂无配置数据',
                       style: TextStyle(color: _cs.onSurfaceVariant)),
@@ -246,12 +246,12 @@ class _ConfigPageState extends State<ConfigPage> {
             ...List.generate(_configs.length, (i) {
               final c = _configs[i];
               return Card(
-                margin: const EdgeInsets.only(bottom: AppTheme.spacingSm),
+                margin: const EdgeInsets.only(bottom: CoSpacing.sm),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(16),
                   onTap: () => _editConfig(i),
                   child: Padding(
-                    padding: const EdgeInsets.all(AppTheme.spacingMd),
+                    padding: const EdgeInsets.all(CoSpacing.md),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -280,11 +280,11 @@ class _ConfigPageState extends State<ConfigPage> {
                             ],
                           ),
                         ),
-                        const SizedBox(width: AppTheme.spacingMd),
+                        const SizedBox(width: CoSpacing.md),
                         Expanded(
                           flex: 3,
                           child: Container(
-                            padding: const EdgeInsets.all(AppTheme.spacingSm),
+                            padding: const EdgeInsets.all(CoSpacing.sm),
                             decoration: BoxDecoration(
                               color: _cs.surfaceContainerLow,
                               borderRadius: BorderRadius.circular(8),
@@ -295,7 +295,7 @@ class _ConfigPageState extends State<ConfigPage> {
                             ),
                           ),
                         ),
-                        const SizedBox(width: AppTheme.spacingSm),
+                        const SizedBox(width: CoSpacing.sm),
                         Icon(Icons.edit, size: 16, color: _cs.onSurfaceVariant),
                       ],
                     ),
@@ -303,17 +303,17 @@ class _ConfigPageState extends State<ConfigPage> {
                 ),
               );
             }),
-          const SizedBox(height: AppTheme.spacingXxl),
+          const SizedBox(height: CoSpacing.xxl),
           const Divider(),
-          const SizedBox(height: AppTheme.spacingLg),
+          const SizedBox(height: CoSpacing.lg),
 
           // ── Prompt Template Section ──
           Text('Prompt 模板编辑',
               style: _tt.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-          const SizedBox(height: AppTheme.spacingSm),
+          const SizedBox(height: CoSpacing.sm),
           Text('修改模板需要 super 权限',
               style: _tt.bodySmall?.copyWith(color: _cs.error)),
-          const SizedBox(height: AppTheme.spacingMd),
+          const SizedBox(height: CoSpacing.md),
 
           Row(
             children: [
@@ -359,7 +359,7 @@ class _ConfigPageState extends State<ConfigPage> {
                         },
                       ),
               ),
-              const SizedBox(width: AppTheme.spacingSm),
+              const SizedBox(width: CoSpacing.sm),
               TextButton.icon(
                 icon: const Icon(Icons.refresh, size: 16),
                 onPressed: _loadTemplateFiles,
@@ -367,12 +367,12 @@ class _ConfigPageState extends State<ConfigPage> {
               ),
             ],
           ),
-          const SizedBox(height: AppTheme.spacingSm),
+          const SizedBox(height: CoSpacing.sm),
           // ── Selected file path display ──
           if (_selectedTemplate != null)
             Container(
               padding: const EdgeInsets.symmetric(
-                  horizontal: AppTheme.spacingMd, vertical: AppTheme.spacingSm),
+                  horizontal: CoSpacing.md, vertical: CoSpacing.sm),
               width: double.infinity,
               decoration: BoxDecoration(
                 color: _cs.surfaceContainerLow,
@@ -382,7 +382,7 @@ class _ConfigPageState extends State<ConfigPage> {
                 children: [
                   Icon(Icons.description,
                       size: 14, color: _cs.onSurfaceVariant),
-                  const SizedBox(width: AppTheme.spacingSm),
+                  const SizedBox(width: CoSpacing.sm),
                   Expanded(
                     child: Text(
                       _selectedTemplate!,
@@ -395,7 +395,7 @@ class _ConfigPageState extends State<ConfigPage> {
                 ],
               ),
             ),
-          const SizedBox(height: AppTheme.spacingMd),
+          const SizedBox(height: CoSpacing.md),
           TextField(
             controller: _contentCtrl,
             decoration: const InputDecoration(
@@ -407,7 +407,7 @@ class _ConfigPageState extends State<ConfigPage> {
             minLines: 8,
             style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
           ),
-          const SizedBox(height: AppTheme.spacingSm),
+          const SizedBox(height: CoSpacing.sm),
           Row(
             children: [
               const Spacer(),

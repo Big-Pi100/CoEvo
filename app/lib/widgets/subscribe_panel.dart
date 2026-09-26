@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import '../../api/api_config.dart';
 import '../../providers/auth_provider.dart' show authProvider;
-import '../../theme/app_theme.dart';
+import '../../theme/co_spacing.dart';
 import '../widgets/twemoji.dart';
 
 /// 订阅套餐面板 — 卡片式套餐展示，支持下单跳转支付
@@ -174,18 +174,18 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (_loading) ...[
-            const SizedBox(height: AppTheme.spacingXl),
+            const SizedBox(height: CoSpacing.xl),
             const Center(child: CircularProgressIndicator()),
-            const SizedBox(height: AppTheme.spacingXl),
+            const SizedBox(height: CoSpacing.xl),
           ] else if (_error != null) ...[
-            const SizedBox(height: AppTheme.spacingLg),
+            const SizedBox(height: CoSpacing.lg),
             Center(
               child: Column(
                 children: [
                   Icon(Icons.cloud_off, size: 36, color: cs.error),
-                  const SizedBox(height: AppTheme.spacingSm),
+                  const SizedBox(height: CoSpacing.sm),
                   Text(_error!, style: TextStyle(color: cs.error, fontSize: 13)),
-                  const SizedBox(height: AppTheme.spacingMd),
+                  const SizedBox(height: CoSpacing.md),
                   TextButton.icon(
                     onPressed: _loadPlans,
                     icon: const Icon(Icons.refresh, size: 16),
@@ -195,7 +195,7 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
               ),
             ),
           ] else if (_plans == null || _plans!.isEmpty) ...[
-            const SizedBox(height: AppTheme.spacingXl),
+            const SizedBox(height: CoSpacing.xl),
             Center(
               child: Tw('暂无可用的套餐',
                   style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
@@ -204,8 +204,8 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
             // 折扣横幅
             if (_discountInfo != null)
               Container(
-                margin: const EdgeInsets.only(bottom: AppTheme.spacingSm),
-                padding: const EdgeInsets.all(AppTheme.spacingSm),
+                margin: const EdgeInsets.only(bottom: CoSpacing.sm),
+                padding: const EdgeInsets.all(CoSpacing.sm),
                 decoration: BoxDecoration(
                   color: Colors.amber.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(10),
@@ -214,7 +214,7 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
                 child: Row(
                   children: [
                     Tw('🎉', style: TextStyle(fontSize: 18)),
-                    const SizedBox(width: AppTheme.spacingSm),
+                    const SizedBox(width: CoSpacing.sm),
                     Expanded(
                       child: Tw(
                         '好友邀请专属优惠，被推荐享折扣',
@@ -224,7 +224,7 @@ class _SubscribePanelState extends ConsumerState<SubscribePanel> {
                   ],
                 ),
               ),
-            const SizedBox(height: AppTheme.spacingSm),
+            const SizedBox(height: CoSpacing.sm),
             ..._plans!.asMap().entries.map((entry) {
               final plan = entry.value;
               final planId = plan['id'] as String;
@@ -283,7 +283,7 @@ class _PlanCard extends StatelessWidget {
         (plan['duration_days'] as int?)! >= 3650;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: AppTheme.spacingSm),
+      margin: const EdgeInsets.only(bottom: CoSpacing.sm),
       decoration: BoxDecoration(
         color: cs.surface,
         borderRadius: BorderRadius.circular(12),
@@ -317,7 +317,7 @@ class _PlanCard extends StatelessWidget {
                               style: tt.titleMedium?.copyWith(
                                   color: cs.primary, fontWeight: FontWeight.bold)),
                           if (originalPriceText != null) ...[
-                            const SizedBox(width: AppTheme.spacingXs),
+                            const SizedBox(width: CoSpacing.xs),
                             Text(
                               originalPriceText!,
                               style: TextStyle(
@@ -327,7 +327,7 @@ class _PlanCard extends StatelessWidget {
                               ),
                             ),
                           ],
-                          const SizedBox(width: AppTheme.spacingSm),
+                          const SizedBox(width: CoSpacing.sm),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                             decoration: BoxDecoration(
@@ -364,7 +364,7 @@ class _PlanCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: AppTheme.spacingSm),
+                const SizedBox(width: CoSpacing.sm),
                 // 右侧：订阅按钮
                 SizedBox(
                   height: 34,

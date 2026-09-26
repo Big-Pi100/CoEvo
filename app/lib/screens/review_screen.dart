@@ -1,5 +1,4 @@
 ﻿import 'dart:convert';
-import 'dart:html' as html;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../api/api_config.dart';
 import '../api/chat_client.dart';
 import '../models/coevo_models.dart';
+import '../utils/image_export.dart';
 import '../providers/auth_provider.dart';
 import '../providers/achievement_notifier.dart';
 import '../providers/plan_provider.dart' hide cardRefreshProvider;
@@ -16,7 +16,7 @@ import '../pipelines/verification_strategy.dart';
 import '../widgets/markdown_span_nodes.dart';
 import '../widgets/subscribe_panel.dart';
 import 'card_list_screen.dart';
-import '../theme/app_theme.dart';
+import '../theme/co_spacing.dart';
 import '../widgets/twemoji.dart';
 
 /// 复习: 内联复习队列
@@ -92,13 +92,6 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> with TickerProvider
     // 初始长度：英语tab + 汉语tab + 全部卡片（计划加载后再调整）
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(_onTabChanged);
-
-    // 绑定 TTS 客户端（用于朗读时读取引擎偏好）
-    final auth = ref.read(authProvider);
-    if (auth.userId != null && auth.token != null) {
-      final client = ChatClient(userId: auth.userId!, token: auth.token);
-      ref.read(ttsServiceProvider).bindClient(client);
-    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadCards();
@@ -357,10 +350,10 @@ Row(
                 Icon(Icons.check_circle, color: _cs.primary, size: 48),
               ],
             ),
-            const SizedBox(height: AppTheme.spacingLg),
+            const SizedBox(height: CoSpacing.lg),
             Text('本次复习了 $_reviewedCount 张卡片',
                 style: _tt.bodyLarge!),
-            const SizedBox(height: AppTheme.spacingSm),
+            const SizedBox(height: CoSpacing.sm),
             Text('保持节奏，每天进步一点点！',
                 style: TextStyle(color: _cs.onSurfaceVariant)),
           ],
@@ -438,19 +431,23 @@ Row(
                       width: double.infinity,
                       child: FilledButton.icon(
                         icon: const Icon(Icons.download, size: 18),
-                        onPressed: () {
+                        onPressed: () async {
                           final bytes =
                               base64Decode(posterPng!.split(',').last);
-                          final blob =
-                              html.Blob([bytes], 'image/png');
-                          final objUrl =
-                              html.Url.createObjectUrlFromBlob(blob);
-                          (html.document.createElement('a')
-                                  as html.AnchorElement)
-                            ..href = objUrl
-                            ..download = 'coevo_poster.png'
-                            ..click();
-                          html.Url.revokeObjectUrl(objUrl);
+                          // 原实现为 web-only（Blob + AnchorElement 下载）
+                          // → 见 utils/image_export.dart
+                          final err = await exportPngBytes(
+                            bytes,
+                            fileName: 'coevo_poster.png',
+                          );
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(err == null
+                                  ? '海报已导出'
+                                  : '导出失败: $err'),
+                            ),
+                          );
                         },
                         label: Tw('保存海报'),
                       ),
@@ -890,16 +887,16 @@ Row(
     if (_loadError != null) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(AppTheme.spacingXxxl),
+          padding: const EdgeInsets.all(CoSpacing.xxxl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.cloud_off_rounded, size: 48, color: _cs.outline),
-              const SizedBox(height: AppTheme.spacingLg),
+              const SizedBox(height: CoSpacing.lg),
               Text('加载失败', style: _tt.titleLarge?.copyWith(color: _cs.onSurface)),
-              const SizedBox(height: AppTheme.spacingSm),
+              const SizedBox(height: CoSpacing.sm),
               Text(_loadError!, style: _tt.bodyMedium?.copyWith(color: _cs.onSurfaceVariant), textAlign: TextAlign.center),
-              const SizedBox(height: AppTheme.spacingXl),
+              const SizedBox(height: CoSpacing.xl),
               FilledButton.icon(
                 onPressed: () {
                   setState(() { _isLoading = true; _loadError = null; });
@@ -922,18 +919,18 @@ Row(
       final isExpired = _subscriptionExpired;
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(AppTheme.spacingXxl),
+          padding: const EdgeInsets.all(CoSpacing.xxl),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(isExpired ? Icons.subscriptions_outlined : Icons.info_outline,
                   size: 48, color: isExpired ? _cs.errorContainer : _cs.tertiaryFixedDim),
-              const SizedBox(height: AppTheme.spacingLg),
+              const SizedBox(height: CoSpacing.lg),
               Text(
                 isExpired ? '订阅已过期' : '需要订阅',
                 style: Theme.of(context).textTheme.titleLarge,
               ),
-              const SizedBox(height: AppTheme.spacingSm),
+              const SizedBox(height: CoSpacing.sm),
               Text(
                 isExpired
                     ? '你的订阅已过期，续费后可继续使用 AI 复习功能'
@@ -941,7 +938,7 @@ Row(
                 textAlign: TextAlign.center,
                 style: TextStyle(color: _cs.onSurfaceVariant),
               ),
-              const SizedBox(height: AppTheme.spacingLg),
+              const SizedBox(height: CoSpacing.lg),
               FilledButton.icon(
                 onPressed: () => _showSubscribePanel(context, isExpired),
                 icon: const Icon(Icons.payment, size: 18),
@@ -966,12 +963,12 @@ Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(Icons.check_circle_outline, size: 64, color: _cs.primaryFixed),
-                    const SizedBox(height: AppTheme.spacingLg),
+                    const SizedBox(height: CoSpacing.lg),
                     Text('今日复习完成！', style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(height: AppTheme.spacingSm),
+                    const SizedBox(height: CoSpacing.sm),
                     Text('共复习 $_reviewedCount 张卡片',
                         style: TextStyle(color: _cs.onSurfaceVariant)),
-                    const SizedBox(height: AppTheme.spacingXxl),
+                    const SizedBox(height: CoSpacing.xxl),
                     FilledButton(
                       onPressed: () => context.go('/chat'),
                       child: Tw('返回'),
@@ -1053,7 +1050,7 @@ Row(
     return ListView.builder(
       controller: _scrollController,
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(AppTheme.spacingLg),
+      padding: const EdgeInsets.all(CoSpacing.lg),
       itemCount: displayCards.length,
       itemBuilder: (_, i) {
         final card = displayCards[i];
@@ -1065,7 +1062,7 @@ Row(
           direction: DismissDirection.endToStart,
           background: Container(
             alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: AppTheme.spacingXxl),
+            padding: const EdgeInsets.only(right: CoSpacing.xxl),
             decoration: BoxDecoration(
               color: _cs.errorContainer,
               borderRadius: BorderRadius.circular(12),
@@ -1074,7 +1071,7 @@ Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 Icon(Icons.skip_next, color: _cs.onPrimary),
-                SizedBox(width: AppTheme.spacingSm),
+                SizedBox(width: CoSpacing.sm),
                 Text('跳过', style: TextStyle(color: _cs.onPrimary, fontWeight: FontWeight.w600)),
               ],
             ),
@@ -1182,7 +1179,7 @@ Row(
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                     if (!isActive) ...[
-                      const SizedBox(width: AppTheme.spacingXs),
+                      const SizedBox(width: CoSpacing.xs),
                       Icon(Icons.expand_more, size: 20, color: _cs.outlineVariant),
                     ],
                   ],
@@ -1219,7 +1216,7 @@ Row(
               if (isActive) ...[
                 Divider(height: 1, color: _cs.onPrimary.withAlpha(38)),
                 Padding(
-                  padding: const EdgeInsets.all(AppTheme.spacingLg),
+                  padding: const EdgeInsets.all(CoSpacing.lg),
                   child: DefaultTextStyle(
                     style: TextStyle(color: _cs.onPrimary),
                     child: _buildInlineReview(card),
@@ -1244,7 +1241,7 @@ Row(
         GestureDetector(
           onTap: _isVerifying ? null : () => setState(() => _isFlipped = !_isFlipped),
           child: Container(
-            padding: const EdgeInsets.all(AppTheme.spacingXl),
+            padding: const EdgeInsets.all(CoSpacing.xl),
             decoration: BoxDecoration(
               color: _isVerifying ? const Color(0xFFF5F5FF) :
                      _isFlipped ? _cs.surface : _cs.primary,
@@ -1255,7 +1252,7 @@ Row(
               children: [
                 // 卡片内容（考试模式降低不透明度，增加滚动兜底防溢出）
                 Padding(
-                  padding: const EdgeInsets.all(AppTheme.spacingSm),
+                  padding: const EdgeInsets.all(CoSpacing.sm),
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxHeight: 240),
                     child: SingleChildScrollView(
@@ -1288,7 +1285,7 @@ Row(
                             )
                           : Container(
                               key: const ValueKey('back'),
-                              padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingLg),
+                              padding: const EdgeInsets.symmetric(horizontal: CoSpacing.lg),
                               child: RichContentBuilder(textColor: _cs.onSurface).build(card.back),
                             ),
                       ),
@@ -1298,7 +1295,7 @@ Row(
                 ),
                 ),
                 if (!_isVerifying && _isFlipped && card.sourceSentence != null) ...[
-                  const SizedBox(height: AppTheme.spacingSm),
+                  const SizedBox(height: CoSpacing.sm),
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 200),
                     child: Tw('来源: ${card.sourceSentence}',
@@ -1306,7 +1303,7 @@ Row(
                         style: _tt.bodySmall?.copyWith(color: _cs.onSurfaceVariant, fontStyle: FontStyle.italic)),
                   ),
                 ],
-                const SizedBox(height: AppTheme.spacingSm),
+                const SizedBox(height: CoSpacing.sm),
                 Text(
                   _isVerifying ? '闭卷考试中' :
                   _isFlipped ? '点击收回' : '点击翻转查看释义',
@@ -1315,7 +1312,7 @@ Row(
             ),
           ),
         ),
-        const SizedBox(height: AppTheme.spacingMd),
+        const SizedBox(height: CoSpacing.md),
 
         // TTS
         Consumer(
@@ -1377,7 +1374,7 @@ Row(
 
         // 记忆验证（正面背面均显示）
         if (!_isVerified && !_isVerifying) ...[
-          const SizedBox(height: AppTheme.spacingSm),
+          const SizedBox(height: CoSpacing.sm),
           resolveStrategy(card).buildButton(
             context,
             () {
@@ -1420,14 +1417,14 @@ Row(
 
         // AI 问答（闭卷中）
         if (_isVerifying && !_isJudging && _isAiQuiz && _aiQuestions.isNotEmpty && _aiResults.isEmpty && _aiQuestionIndex < _aiQuestions.length) ...[
-          const SizedBox(height: AppTheme.spacingSm),
+          const SizedBox(height: CoSpacing.sm),
           Text('问题 ${_aiQuestionIndex + 1}/${_aiQuestions.length}',
               style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: AppTheme.spacingXs),
+          const SizedBox(height: CoSpacing.xs),
           Text(_aiQuestions[_aiQuestionIndex].question,
               style: Theme.of(context).textTheme.bodyMedium,
               textAlign: TextAlign.center),
-          const SizedBox(height: AppTheme.spacingSm),
+          const SizedBox(height: CoSpacing.sm),
           Row(
             children: [
               Expanded(
@@ -1438,7 +1435,7 @@ Row(
                   onSubmitted: (_) => _submitInlineAiAnswer(),
                 ),
               ),
-              const SizedBox(width: AppTheme.spacingSm),
+              const SizedBox(width: CoSpacing.sm),
               IconButton.filled(
                 onPressed: _submitInlineAiAnswer,
                 icon: const Icon(Icons.arrow_forward, size: 18),
@@ -1449,13 +1446,13 @@ Row(
 
         // 判断中...
         if (_isJudging) ...[
-          const SizedBox(height: AppTheme.spacingMd),
+          const SizedBox(height: CoSpacing.md),
 Center(
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox(width: AppTheme.spacingLg, height: AppTheme.spacingLg, child: CircularProgressIndicator(strokeWidth: 2)),
-                SizedBox(width: AppTheme.spacingSm),
+                SizedBox(width: CoSpacing.lg, height: CoSpacing.lg, child: CircularProgressIndicator(strokeWidth: 2)),
+                SizedBox(width: CoSpacing.sm),
                 Text('正在判断答案...', style: TextStyle(color: _cs.outline)),
               ],
             ),
@@ -1464,9 +1461,9 @@ Center(
 
         // AI 结果（或从缓存中读取已评判结果）
         if (!_isJudging && (_aiResults.isNotEmpty || (_judgeDetails[card.id]?.isNotEmpty ?? false))) ...[
-          const SizedBox(height: AppTheme.spacingSm),
+          const SizedBox(height: CoSpacing.sm),
           ...(_aiResults.isNotEmpty ? _aiResults : _judgeDetails[card.id]!).map((r) => Padding(
-            padding: const EdgeInsets.only(bottom: AppTheme.spacingXs),
+            padding: const EdgeInsets.only(bottom: CoSpacing.xs),
             child: Row(
               children: [
                 Icon(r.correct ? Icons.check_circle : Icons.cancel,
@@ -1480,7 +1477,7 @@ Center(
         // 验证结果
         if (!_isJudging && (_isVerified || _judgedResults.containsKey(card.id)))
           Padding(
-            padding: const EdgeInsets.only(top: AppTheme.spacingMd),
+            padding: const EdgeInsets.only(top: CoSpacing.md),
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 10),
@@ -1501,7 +1498,7 @@ Center(
                     color: (_isVerified ? _verificationResult : _judgedResults[card.id]) == 'pass' ? _cs.primary : _cs.error,
                     size: 22,
                   ),
-                  const SizedBox(width: AppTheme.spacingSm),
+                  const SizedBox(width: CoSpacing.sm),
                   Text(
                     (_isVerified ? _verificationResult : _judgedResults[card.id]) == 'pass' ? '验证通过' : '未通过',
                     style: TextStyle(

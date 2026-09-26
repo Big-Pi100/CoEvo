@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../api/api_config.dart';
-import '../theme/app_theme.dart';
+import '../theme/co_spacing.dart';
 
 class DebugLogsPage extends StatefulWidget {
   final Map<String, String> headers;
@@ -133,9 +133,9 @@ class _DebugLogsPageState extends State<DebugLogsPage>
                   itemBuilder: (_, i) {
                     final e = entries[i];
                     return Card(
-                      margin: const EdgeInsets.only(bottom: AppTheme.spacingSm),
+                      margin: const EdgeInsets.only(bottom: CoSpacing.sm),
                       child: Padding(
-                        padding: const EdgeInsets.all(AppTheme.spacingMd),
+                        padding: const EdgeInsets.all(CoSpacing.md),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -155,7 +155,7 @@ class _DebugLogsPageState extends State<DebugLogsPage>
                                         color: _cs.onPrimaryContainer),
                                   ),
                                 ),
-                                const SizedBox(width: AppTheme.spacingSm),
+                                const SizedBox(width: CoSpacing.sm),
                                 Text(
                                   e['step'] as String? ?? '',
                                   style: _tt.labelLarge?.copyWith(
@@ -172,7 +172,7 @@ class _DebugLogsPageState extends State<DebugLogsPage>
                                 ),
                               ],
                             ),
-                            const SizedBox(height: AppTheme.spacingXs),
+                            const SizedBox(height: CoSpacing.xs),
                             Text(
                               _formatDetails(e['details']),
                               style: const TextStyle(fontSize: 12),
@@ -224,7 +224,7 @@ class _DebugLogsPageState extends State<DebugLogsPage>
                 border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: AppTheme.spacingSm),
+            const SizedBox(height: CoSpacing.sm),
             TextField(
               controller: convIdCtrl,
               decoration: const InputDecoration(
@@ -233,7 +233,7 @@ class _DebugLogsPageState extends State<DebugLogsPage>
                 border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: AppTheme.spacingSm),
+            const SizedBox(height: CoSpacing.sm),
             TextField(
               controller: subjectCtrl,
               decoration: const InputDecoration(
@@ -313,7 +313,7 @@ class _DebugLogsPageState extends State<DebugLogsPage>
         // Search fields
         Padding(
           padding: const EdgeInsets.fromLTRB(
-              AppTheme.spacingMd, AppTheme.spacingMd, AppTheme.spacingMd, 0),
+              CoSpacing.md, CoSpacing.md, CoSpacing.md, 0),
           child: Column(
             children: [
               Row(
@@ -329,7 +329,7 @@ class _DebugLogsPageState extends State<DebugLogsPage>
                       style: const TextStyle(fontSize: 13),
                     ),
                   ),
-                  const SizedBox(width: AppTheme.spacingSm),
+                  const SizedBox(width: CoSpacing.sm),
                   Expanded(
                     child: TextField(
                       controller: _convIdCtrl,
@@ -343,7 +343,7 @@ class _DebugLogsPageState extends State<DebugLogsPage>
                   ),
                 ],
               ),
-              const SizedBox(height: AppTheme.spacingSm),
+              const SizedBox(height: CoSpacing.sm),
               Row(
                 children: [
                   Expanded(
@@ -357,7 +357,7 @@ class _DebugLogsPageState extends State<DebugLogsPage>
                       style: const TextStyle(fontSize: 13),
                     ),
                   ),
-                  const SizedBox(width: AppTheme.spacingSm),
+                  const SizedBox(width: CoSpacing.sm),
                   SizedBox(
                     width: 80,
                     child: TextField(
@@ -372,7 +372,7 @@ class _DebugLogsPageState extends State<DebugLogsPage>
                       keyboardType: TextInputType.number,
                     ),
                   ),
-                  const SizedBox(width: AppTheme.spacingSm),
+                  const SizedBox(width: CoSpacing.sm),
                   FilledButton(
                     onPressed: _logsLoading ? null : _loadLogs,
                     child: const Text('查询', style: TextStyle(fontSize: 13)),
@@ -382,10 +382,10 @@ class _DebugLogsPageState extends State<DebugLogsPage>
             ],
           ),
         ),
-        const SizedBox(height: AppTheme.spacingSm),
+        const SizedBox(height: CoSpacing.sm),
         // Results count
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingMd),
+          padding: const EdgeInsets.symmetric(horizontal: CoSpacing.md),
           child: Row(
             children: [
               Text('${_logs.length} 条记录',
@@ -406,7 +406,7 @@ class _DebugLogsPageState extends State<DebugLogsPage>
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: AppTheme.spacingMd),
+                          horizontal: CoSpacing.md),
                       itemCount: _logs.length,
                       itemBuilder: (_, i) {
                         final l = _logs[i];
@@ -420,12 +420,12 @@ class _DebugLogsPageState extends State<DebugLogsPage>
                         }
                         return Card(
                           margin:
-                              const EdgeInsets.only(bottom: AppTheme.spacingSm),
+                              const EdgeInsets.only(bottom: CoSpacing.sm),
                           child: InkWell(
                             borderRadius: BorderRadius.circular(16),
                             onTap: () => _showLogDetail(l),
                             child: Padding(
-                              padding: const EdgeInsets.all(AppTheme.spacingMd),
+                              padding: const EdgeInsets.all(CoSpacing.md),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -456,7 +456,7 @@ class _DebugLogsPageState extends State<DebugLogsPage>
                                         ),
                                     ],
                                   ),
-                                  const SizedBox(height: AppTheme.spacingXs),
+                                  const SizedBox(height: CoSpacing.xs),
                                   Text(
                                     '${l['user_id'] ?? ''}  ·  会话: ${(l['conversation_id'] as String? ?? '').substring(0, ((l['conversation_id'] as String? ?? '').length).clamp(0, 12))}',
                                     style: _tt.bodySmall
@@ -474,7 +474,7 @@ class _DebugLogsPageState extends State<DebugLogsPage>
                                       ),
                                       if (l['entry_count'] != null) ...[
                                         const SizedBox(
-                                            width: AppTheme.spacingSm),
+                                            width: CoSpacing.sm),
                                         Text(
                                           '${l['entry_count']} 条目',
                                           style: _tt.labelSmall
@@ -500,7 +500,7 @@ class _DebugLogsPageState extends State<DebugLogsPage>
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(
-              AppTheme.spacingMd, AppTheme.spacingMd, AppTheme.spacingMd, 0),
+              CoSpacing.md, CoSpacing.md, CoSpacing.md, 0),
           child: Row(
             children: [
               Text(
@@ -513,7 +513,7 @@ class _DebugLogsPageState extends State<DebugLogsPage>
                 onPressed: _createTrack,
                 label: const Text('新建跟踪', style: TextStyle(fontSize: 12)),
               ),
-              const SizedBox(width: AppTheme.spacingSm),
+              const SizedBox(width: CoSpacing.sm),
               TextButton.icon(
                 icon: const Icon(Icons.refresh, size: 16),
                 onPressed: _loadTracks,
@@ -534,13 +534,13 @@ class _DebugLogsPageState extends State<DebugLogsPage>
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: AppTheme.spacingMd),
+                          horizontal: CoSpacing.md),
                       itemCount: _tracks.length,
                       itemBuilder: (_, i) {
                         final t = _tracks[i];
                         return Card(
                           margin:
-                              const EdgeInsets.only(bottom: AppTheme.spacingSm),
+                              const EdgeInsets.only(bottom: CoSpacing.sm),
                           child: InkWell(
                             borderRadius: BorderRadius.circular(16),
                             onTap: () {
@@ -552,8 +552,8 @@ class _DebugLogsPageState extends State<DebugLogsPage>
                             },
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: AppTheme.spacingMd,
-                                  vertical: AppTheme.spacingSm),
+                                  horizontal: CoSpacing.md,
+                                  vertical: CoSpacing.sm),
                               child: Row(
                                 children: [
                                   Expanded(

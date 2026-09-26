@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  iOS 归档导出选项（App Store 上传用）
+
+  来源：从已删除的 app_user/.github/export-options.plist 抢救并修正。
+  完整流程与启用前提见 docs/operations/ios-appstore-ci-reference.md
+
+  ⚠️ 待 Phase 0 完成后填写：
+     - teamID：Apple Developer 账号办好后拿到（10 位）
+     - 且需在 CI 配好 App Store Connect API Key（ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_P8）
+
+  修正记录（相对原文件）：
+     1. teamID 由 YOUR_TEAM_ID 占位 → 保留占位（待填）
+     2. 删除 uploadBitcode / compileBitcode —— Bitcode 自 Xcode 14 起已废弃
+     3. 新增 signingStyle=automatic —— 免去 fastlane match 证书管理
+     4. method 保持 app-store（Xcode 15+ 亦可写 app-store-connect，两者兼容）
+-->
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>app-store</string>
+
+    <key>teamID</key>
+    <string>YOUR_TEAM_ID</string>
+
+    <key>signingStyle</key>
+    <string>automatic</string>
+
+    <key>uploadSymbols</key>
+    <true/>
+
+    <!-- destination=upload 时 exportArchive 会直接上传；不写则只导出 IPA -->
+    <key>destination</key>
+    <string>export</string>
+</dict>
+</plist>

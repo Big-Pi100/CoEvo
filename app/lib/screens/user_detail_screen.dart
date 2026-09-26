@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../api/api_config.dart';
-import '../theme/app_theme.dart';
+import '../theme/co_spacing.dart';
 
 class UserDetailScreen extends StatefulWidget {
   final String userId;
@@ -98,7 +98,7 @@ class _UserDetailScreenState extends State<UserDetailScreen> with TickerProvider
         actions: [
           if (_isTracked == true)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingSm),
+              padding: const EdgeInsets.symmetric(horizontal: CoSpacing.sm),
               child: Chip(
                 avatar: Icon(Icons.track_changes, size: 14, color: _cs.primary),
                 label: const Text('正在跟踪', style: TextStyle(fontSize: 11)),
@@ -122,17 +122,17 @@ class _UserDetailScreenState extends State<UserDetailScreen> with TickerProvider
           : Column(children: [
               // Basic info
               Card(
-                margin: const EdgeInsets.all(AppTheme.spacingMd),
+                margin: const EdgeInsets.all(CoSpacing.md),
                 child: Padding(
-                  padding: const EdgeInsets.all(AppTheme.spacingLg),
+                  padding: const EdgeInsets.all(CoSpacing.lg),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text('ID: ${_user!['user_id'] ?? ''}', style: TextStyle(fontSize: 13, color: _cs.onSurfaceVariant)),
-                    const SizedBox(height: AppTheme.spacingXs),
+                    const SizedBox(height: CoSpacing.xs),
                     Text('用户名: ${_user!['username'] ?? ''}', style: const TextStyle(fontSize: 13)),
                     Text('真实姓名: ${_user!['real_name'] ?? '—'}', style: const TextStyle(fontSize: 13)),
                     Text('手机号: ${_user!['phone'] ?? '—'}', style: const TextStyle(fontSize: 13)),
                     Text('注册: ${_user!['created_at']?.toString().replaceAll(RegExp(r'T.*'), '') ?? ''}', style: TextStyle(fontSize: 13, color: _cs.onSurfaceVariant)),
-                    const SizedBox(height: AppTheme.spacingSm),
+                    const SizedBox(height: CoSpacing.sm),
                     Wrap(spacing: 8, children: [
                       _statBadge('卡片', '${_user!['card_count'] ?? 0}'),
                       _statBadge('复习', '${_user!['review_count'] ?? 0}'),
@@ -155,7 +155,7 @@ class _UserDetailScreenState extends State<UserDetailScreen> with TickerProvider
 
   Widget _statBadge(String label, String value) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: AppTheme.spacingXs),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: CoSpacing.xs),
       decoration: BoxDecoration(color: _cs.surfaceContainerLow, borderRadius: BorderRadius.circular(12)),
       child: Text('$label: $value', style: _tt.bodySmall!),
     );

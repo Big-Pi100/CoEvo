@@ -1,13 +1,13 @@
 /// 成就分享海报 — 固定模板，全屏 Overlay 展示
 /// 不含 Scaffold/Navigator，适配 Flutter Web
 /// 已适配系统字体缩放 + 手机小屏
-import 'dart:html' as html;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'referral_qr_code.dart';
 import 'package:flutter/rendering.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import '../utils/image_export.dart';
 import '../shared/achievement_icons.dart';
 import '../widgets/twemoji.dart';
 
@@ -54,15 +54,13 @@ class _AchievementShareCardState extends State<AchievementShareCard> {
       if (byteData == null) throw Exception('图片编码失败');
 
       final Uint8List pngBytes = byteData.buffer.asUint8List();
-      // Flutter Web: 使用 Blob + AnchorElement 触发下载
-      final blob = html.Blob([pngBytes], 'image/png');
-      final url = html.Url.createObjectUrlFromBlob(blob);
-      html.AnchorElement(href: url)
-        ..setAttribute('download', 'coevo_achievement_${widget.achievementKey}.png')
-        ..click();
-      html.Url.revokeObjectUrl(url);
+      // 原实现为 web-only（Blob + AnchorElement 下载）→ 见 utils/image_export.dart
+      final err = await exportPngBytes(
+        pngBytes,
+        fileName: 'coevo_achievement_${widget.achievementKey}.png',
+      );
 
-      setState(() => _saveFeedback = '海报已保存');
+      setState(() => _saveFeedback = err == null ? '海报已导出' : '导出失败: $err');
     } catch (e) {
       setState(() => _saveFeedback = '保存失败: $e');
     } finally {

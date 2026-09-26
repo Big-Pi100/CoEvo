@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../widgets/markdown_span_nodes.dart';
 import '../../services/tts_service.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/co_spacing.dart';
 import '../../widgets/twemoji.dart';
 
 /// 消息气泡渲染 — 块分割 + Markdown + LaTeX + Graph
@@ -40,7 +40,7 @@ class ChatMessageBubble extends StatelessWidget {
       children: [
         content,
         Padding(
-          padding: const EdgeInsets.only(top: AppTheme.spacingXs),
+          padding: const EdgeInsets.only(top: CoSpacing.xs),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -88,7 +88,7 @@ class ChatMessageBubble extends StatelessWidget {
         return Align(
           alignment: Alignment.centerRight,
           child: Padding(
-            padding: const EdgeInsets.only(top: AppTheme.spacingXs),
+            padding: const EdgeInsets.only(top: CoSpacing.xs),
             child: GestureDetector(
               onTap: isLoading ? null : () {
                 if (autoPlay || isPlayingTts) {

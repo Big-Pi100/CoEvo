@@ -9,7 +9,7 @@ import '../providers/auth_provider.dart';
 import '../providers/plan_provider.dart' hide cardRefreshProvider;
 import '../models/coevo_models.dart';
 import '../widgets/markdown_span_nodes.dart';
-import '../theme/app_theme.dart';
+import '../theme/co_spacing.dart';
 
 class CardListScreen extends ConsumerStatefulWidget {
   final bool embedded;
@@ -269,7 +269,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     if (_isSearching && _searchResults.isEmpty) return const Center(child: CircularProgressIndicator());
     return Column(children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(AppTheme.spacingLg, AppTheme.spacingMd, AppTheme.spacingLg, 0),
+        padding: const EdgeInsets.fromLTRB(CoSpacing.lg, CoSpacing.md, CoSpacing.lg, 0),
         child: TextField(
           controller: _searchController,
           decoration: InputDecoration(
@@ -284,14 +284,14 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
         ),
       ),
       Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingLg, vertical: AppTheme.spacingSm),
+        padding: const EdgeInsets.symmetric(horizontal: CoSpacing.lg, vertical: CoSpacing.sm),
         child: Text('搜索结果：共 $_searchTotal 条', style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
       ),
       Expanded(
         child: _searchResults.isEmpty
             ? Center(child: Text('未找到匹配卡片', style: TextStyle(color: _cs.onSurfaceVariant)))
             : ListView.builder(
-                padding: const EdgeInsets.fromLTRB(AppTheme.spacingLg, 0, AppTheme.spacingLg, AppTheme.spacingXxl),
+                padding: const EdgeInsets.fromLTRB(CoSpacing.lg, 0, CoSpacing.lg, CoSpacing.xxl),
                 itemCount: _searchResults.length + (_searchHasMore ? 1 : 0),
                 itemBuilder: (ctx, i) {
                   if (i >= _searchResults.length) {
@@ -299,7 +299,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                       child: TextButton(
                         onPressed: _loadMoreSearch,
                         child: _isSearching
-                            ? const SizedBox(width: AppTheme.spacingLg, height: AppTheme.spacingLg, child: CircularProgressIndicator(strokeWidth: 2))
+                            ? const SizedBox(width: CoSpacing.lg, height: CoSpacing.lg, child: CircularProgressIndicator(strokeWidth: 2))
                             : const Text('加载更多'),
                       ),
                     );
@@ -334,14 +334,14 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
         maxChildSize: 0.7,
         expand: false,
         builder: (_, scrollController) => Padding(
-          padding: const EdgeInsets.all(AppTheme.spacingXxl),
+          padding: const EdgeInsets.all(CoSpacing.xxl),
           child: ListView(
             controller: scrollController,
             children: [
               Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: _cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: AppTheme.spacingXxl),
-              Row(children: [const Icon(Icons.history, size: 20), const SizedBox(width: AppTheme.spacingSm), Text('上次考试结果', style: Theme.of(context).textTheme.titleMedium)]),
-              const SizedBox(height: AppTheme.spacingLg),
+              const SizedBox(height: CoSpacing.xxl),
+              Row(children: [const Icon(Icons.history, size: 20), const SizedBox(width: CoSpacing.sm), Text('上次考试结果', style: Theme.of(context).textTheme.titleMedium)]),
+              const SizedBox(height: CoSpacing.lg),
               if (questionDetails != null && questionDetails.isNotEmpty)
                 ...questionDetails.map((d) {
                   final q = d as Map<String, dynamic>;
@@ -349,9 +349,9 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                   return Card(
                     color: correct ? _cs.primaryContainer : _cs.errorContainer,
                     child: Padding(
-                      padding: const EdgeInsets.all(AppTheme.spacingMd),
+                      padding: const EdgeInsets.all(CoSpacing.md),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Row(children: [Icon(correct ? Icons.check_circle : Icons.cancel, color: correct ? _cs.primary : _cs.error, size: 18), const SizedBox(width: AppTheme.spacingSm), Expanded(child: Text(q['question'] as String? ?? '', style: const TextStyle(fontWeight: FontWeight.w600)))]),
+                        Row(children: [Icon(correct ? Icons.check_circle : Icons.cancel, color: correct ? _cs.primary : _cs.error, size: 18), const SizedBox(width: CoSpacing.sm), Expanded(child: Text(q['question'] as String? ?? '', style: const TextStyle(fontWeight: FontWeight.w600)))]),
                         const SizedBox(height: 6),
                         Text(q['feedback'] as String? ?? '', style: TextStyle(fontSize: 13, color: _cs.outline)),
                       ]),
@@ -359,8 +359,8 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                   );
                 }),
               if (questionDetails == null || questionDetails.isEmpty)
-                Padding(padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingXxl), child: Center(child: Text(review['verification_result'] as String? ?? '完成', style: TextStyle(color: _cs.onSurfaceVariant)))),
-              const SizedBox(height: AppTheme.spacingMd),
+                Padding(padding: const EdgeInsets.symmetric(vertical: CoSpacing.xxl), child: Center(child: Text(review['verification_result'] as String? ?? '完成', style: TextStyle(color: _cs.onSurfaceVariant)))),
+              const SizedBox(height: CoSpacing.md),
               Center(child: Chip(avatar: Icon(review['verification_result'] == 'pass' ? Icons.check_circle : Icons.cancel, size: 16, color: review['verification_result'] == 'pass' ? _cs.primary : _cs.error), label: Text(review['verification_result'] == 'pass' ? '已通过' : '未通过', style: TextStyle(color: review['verification_result'] == 'pass' ? _cs.primary : _cs.error)))),
             ],
           ),
@@ -394,7 +394,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
     return Column(children: [
       // 搜索栏
       Padding(
-        padding: const EdgeInsets.fromLTRB(AppTheme.spacingLg, AppTheme.spacingSm, AppTheme.spacingLg, 0),
+        padding: const EdgeInsets.fromLTRB(CoSpacing.lg, CoSpacing.sm, CoSpacing.lg, 0),
         child: TextField(
           controller: _searchController,
           decoration: InputDecoration(
@@ -420,11 +420,11 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
             : RefreshIndicator(
                 onRefresh: _loadPlanMeta,
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(AppTheme.spacingLg, 0, AppTheme.spacingLg, AppTheme.spacingXxl),
+                  padding: const EdgeInsets.fromLTRB(CoSpacing.lg, 0, CoSpacing.lg, CoSpacing.xxl),
                   children: [
                     // 总卡片数
                     Padding(
-                      padding: const EdgeInsets.only(bottom: AppTheme.spacingSm),
+                      padding: const EdgeInsets.only(bottom: CoSpacing.sm),
                       child: Text('${_planGroups.fold<int>(0, (s, g) => s + g.cardCount)} 张卡片 · ${_planGroups.length} 个计划',
                           style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
                     ),
@@ -447,7 +447,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
           onTap: group.isLoading ? null : () => _togglePlan(group.id),
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingMd, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: CoSpacing.md, vertical: 10),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.primary.withAlpha(12),
               borderRadius: BorderRadius.circular(10),
@@ -455,7 +455,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
             child: Row(children: [
               Icon(group.expanded ? Icons.expand_less : Icons.expand_more,
                   size: 16, color: Theme.of(context).colorScheme.primary),
-              const SizedBox(width: AppTheme.spacingSm),
+              const SizedBox(width: CoSpacing.sm),
               Expanded(
                 child: Text(() {
                   String label = group.goal.isEmpty ? '无标题计划' : group.goal;
@@ -470,9 +470,9 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                 ),
               ),
               if (group.isLoading)
-                const SizedBox(width: AppTheme.spacingMd, height: AppTheme.spacingMd, child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(width: CoSpacing.md, height: CoSpacing.md, child: CircularProgressIndicator(strokeWidth: 2)),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingSm, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: CoSpacing.sm, vertical: 2),
                 decoration: BoxDecoration(
                   color: _cs.outline.withAlpha(30),
                   borderRadius: BorderRadius.circular(8),
@@ -484,10 +484,10 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
         ),
         // 展开后显示卡片
         if (group.expanded) ...[
-          const SizedBox(height: AppTheme.spacingXs),
+          const SizedBox(height: CoSpacing.xs),
           if (group.cards.isEmpty && !group.isLoading)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingSm),
+              padding: const EdgeInsets.symmetric(vertical: CoSpacing.sm),
               child: Center(child: Text('暂无卡片', style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13))),
             )
           else ...[
@@ -496,18 +496,18 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
             if (group.hasMore)
               Center(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingXs),
+                  padding: const EdgeInsets.symmetric(vertical: CoSpacing.xs),
                   child: TextButton(
                     onPressed: group.isLoading ? null : () => _loadMorePlanCards(group.id),
                     child: group.isLoading
-                        ? const SizedBox(width: AppTheme.spacingLg, height: AppTheme.spacingLg, child: CircularProgressIndicator(strokeWidth: 2))
+                        ? const SizedBox(width: CoSpacing.lg, height: CoSpacing.lg, child: CircularProgressIndicator(strokeWidth: 2))
                         : const Text('加载更多'),
                   ),
                 ),
               ),
           ],
         ],
-        const SizedBox(height: AppTheme.spacingSm),
+        const SizedBox(height: CoSpacing.sm),
       ],
     );
   }
@@ -529,7 +529,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
       color: color,
       elevation: 0,
       clipBehavior: Clip.antiAlias,
-      margin: const EdgeInsets.only(top: AppTheme.spacingXs),
+      margin: const EdgeInsets.only(top: CoSpacing.xs),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: _cs.outlineVariant),
@@ -573,7 +573,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               visualDensity: VisualDensity.compact,
             ),
-            const SizedBox(width: AppTheme.spacingXs),
+            const SizedBox(width: CoSpacing.xs),
             IconButton(
               icon: const Icon(Icons.block, size: 16),
               color: _cs.onPrimary.withAlpha(180),
@@ -636,22 +636,22 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
       children: [
         Divider(height: 1, color: _cs.onPrimary.withAlpha(96)),
         Padding(
-          padding: const EdgeInsets.all(AppTheme.spacingLg),
+          padding: const EdgeInsets.all(CoSpacing.lg),
           child: DefaultTextStyle(
             style: TextStyle(color: _cs.onPrimary),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('正面', style: _tt.bodySmall?.copyWith(color: _cs.onPrimary.withAlpha(150))),
-              const SizedBox(height: AppTheme.spacingXs),
+              const SizedBox(height: CoSpacing.xs),
               RichContentBuilder(textColor: _cs.onPrimary).build(card.front),
               Divider(height: 32, color: _cs.onPrimary.withAlpha(96)),
               // 解析语言词卡的 JSON back，提取可读内容
               Text('释义', style: _tt.bodySmall?.copyWith(color: _cs.onPrimary.withAlpha(150))),
-              const SizedBox(height: AppTheme.spacingXs),
+              const SizedBox(height: CoSpacing.xs),
               RichContentBuilder(textColor: _cs.onPrimary).build(_formatBack(card.back, card.domain)),
               if (card.sourceSentence != null) ...[
                 Divider(height: 32, color: _cs.onPrimary.withAlpha(96)),
                 Text('来源', style: _tt.bodySmall?.copyWith(color: _cs.onPrimary.withAlpha(150))),
-                const SizedBox(height: AppTheme.spacingXs),
+                const SizedBox(height: CoSpacing.xs),
                 RichContentBuilder(textColor: _cs.onPrimary).build(card.sourceSentence!),
               ],
               if (hasTimeline) ...[
@@ -661,13 +661,13 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                   const SizedBox(width: 6),
                   Text('复习时间线', style: _tt.bodySmall?.copyWith(color: _cs.onPrimary.withAlpha(150))),
                 ]),
-                const SizedBox(height: AppTheme.spacingMd),
+                const SizedBox(height: CoSpacing.md),
                 _TimelineRow(
                   label: '创建时间',
                   time: _formatTimestamp(card.createdAt),
                 ),
                 if (card.lastReviewedAt != null) ...[
-                  const SizedBox(height: AppTheme.spacingSm),
+                  const SizedBox(height: CoSpacing.sm),
                   _TimelineRow(
                     label: '上次复习',
                     time: _formatTimestamp(card.lastReviewedAt),
@@ -675,7 +675,7 @@ class _CardListScreenState extends ConsumerState<CardListScreen> {
                   ),
                 ],
                 if (card.due != null) ...[
-                  const SizedBox(height: AppTheme.spacingSm),
+                  const SizedBox(height: CoSpacing.sm),
                   _TimelineRow(
                     label: '下次复习',
                     time: _formatTimestamp(card.due),
@@ -889,7 +889,7 @@ class _TimelineRow extends StatelessWidget {
       if (hint != null && hint!.isNotEmpty)
         Text(hint!, style: tt.bodySmall?.copyWith(color: cs.onPrimary.withAlpha(150))),
       if (extra != null && extra!.isNotEmpty) ...[
-        const SizedBox(width: AppTheme.spacingSm),
+        const SizedBox(width: CoSpacing.sm),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(

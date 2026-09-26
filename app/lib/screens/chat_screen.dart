@@ -1,6 +1,5 @@
 ﻿import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,7 +20,7 @@ import 'chat/chat_input.dart';
 import 'chat/chat_plan_panel.dart';
 import 'chat/chat_reading_passage.dart';
 import 'chat/chat_message_bubble.dart';
-import '../theme/app_theme.dart';
+import '../theme/co_spacing.dart';
 import '../providers/plan_provider.dart' hide cardRefreshProvider;
 import '../widgets/twemoji.dart';
 
@@ -112,9 +111,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         conversationId: _convId,
         token: token,
       );
-
-      // 绑定 TTS 客户端（用于朗读时读取引擎偏好）
-      ref.read(ttsServiceProvider).bindClient(_client!);
 
       // 加载学习计划和订阅状态（并行发起，统一等待完成后再渲染）
       final planFuture = _loadPlan();
@@ -479,28 +475,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         // 通知复习页重新加载（CP2 创建新计划或解锁卡片后）
         ref.read(cardRefreshProvider.notifier).state++;
         break;
-      case 'tts_audio':
-        // 收到 TTS 音频 → 缓存并检查自动播放开关
-        if (event.audio != null && event.audio!.isNotEmpty) {
-          final text = _getLastAssistantText();
-          if (text != null) {
-            try {
-              final bytes = base64Decode(event.audio!);
-              if (bytes.isEmpty) {
-                debugPrint('[TTS] WS tts_audio: decoded audio is empty');
-                break;
-              }
-              final tts = ref.read(ttsServiceProvider);
-              tts.cacheAudio(text, Uint8List.fromList(bytes));
-              if (ref.read(ttsAutoPlayProvider)) {
-                tts.playAutoStream(Uint8List.fromList(bytes));
-              }
-            } catch (e) {
-              debugPrint('[TTS] WS tts_audio decode failed: $e');
-            }
-          }
-        }
-        break;
     }
   }
 
@@ -529,8 +503,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _streamingBuffer = '';
     });
     _scrollToBottom();
-    // 自动朗读：WS tts_audio 消息由 case 'tts_audio' 统一处理
-    // （腾讯云引擎走 WS 推送，本地引擎走用户点击按钮）
+    // 自动朗读（2026-09-26：改端侧 flutter_tts —— 后端 ws.rs 不再合成/推送音频）
+    if (ref.read(ttsAutoPlayProvider)) {
+      ref.read(ttsServiceProvider).speak(reply);
+    }
   }
 
   /// 带重试按钮的错误提示
@@ -588,7 +564,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           title: Row(
             children: [
               const Icon(Icons.lock, size: 20),
-              const SizedBox(width: AppTheme.spacingSm),
+              const SizedBox(width: CoSpacing.sm),
               Text(title),
             ],
           ),
@@ -634,7 +610,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     // 临时账户 → 引导注册
     if (isTrial) {
       return Container(
-        margin: const EdgeInsets.fromLTRB(AppTheme.spacingMd, AppTheme.spacingSm, AppTheme.spacingMd, 0),
+        margin: const EdgeInsets.fromLTRB(CoSpacing.md, CoSpacing.sm, CoSpacing.md, 0),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: _cs.primaryContainer,
@@ -665,7 +641,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     // 正常账户 → 续费引导
     return Container(
-      margin: const EdgeInsets.fromLTRB(AppTheme.spacingMd, AppTheme.spacingSm, AppTheme.spacingMd, 0),
+      margin: const EdgeInsets.fromLTRB(CoSpacing.md, CoSpacing.sm, CoSpacing.md, 0),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: isExpired ? _cs.errorContainer : _cs.secondaryContainer,
@@ -701,7 +677,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   /// 对话已删除横幅
   Widget _buildDeletedBanner() {
     return Container(
-      margin: const EdgeInsets.fromLTRB(AppTheme.spacingMd, AppTheme.spacingSm, AppTheme.spacingMd, 0),
+      margin: const EdgeInsets.fromLTRB(CoSpacing.md, CoSpacing.sm, CoSpacing.md, 0),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: _cs.surfaceContainerLow,
@@ -730,7 +706,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: TextButton.icon(
         icon: _loadingMore
-            ? const SizedBox(width: AppTheme.spacingLg, height: AppTheme.spacingLg, child: CircularProgressIndicator(strokeWidth: 2))
+            ? const SizedBox(width: CoSpacing.lg, height: CoSpacing.lg, child: CircularProgressIndicator(strokeWidth: 2))
             : const Icon(Icons.expand_less, size: 18),
         label: Text(_loadingMore ? '加载中...' : '查看更早对话 ($remaining 条)',
             style: const TextStyle(fontSize: 13)),
@@ -782,7 +758,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         title: Row(
           children: [
             Icon(Icons.auto_awesome, size: 20, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(width: AppTheme.spacingSm),
+            const SizedBox(width: CoSpacing.sm),
             Text('CoEvo', style: TextStyle(
               fontWeight: FontWeight.bold,
               letterSpacing: 2,
@@ -937,7 +913,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   child: ListView.builder(
                     controller: _scrollController,
                     itemCount: _messages.length,
-                    padding: const EdgeInsets.all(AppTheme.spacingLg),
+                    padding: const EdgeInsets.all(CoSpacing.lg),
                     itemBuilder: (_, i) {
                       final msg = _messages[i];
                 final isUser = msg.role == 'user';
@@ -946,7 +922,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Padding(
-                          padding: const EdgeInsets.only(bottom: AppTheme.spacingSm),
+                          padding: const EdgeInsets.only(bottom: CoSpacing.sm),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
@@ -966,7 +942,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         // 错误重试按钮
                         if (!isUser && msg.content.startsWith('抱歉') || msg.content.startsWith('连接错误'))
                           Padding(
-                            padding: const EdgeInsets.only(bottom: AppTheme.spacingMd, left: AppTheme.spacingSm),
+                            padding: const EdgeInsets.only(bottom: CoSpacing.md, left: CoSpacing.sm),
                             child: TextButton.icon(
                               onPressed: _isWaiting ? null : () {
                                 final lastUserIdx = _messages.lastIndexWhere((m) => m.role == 'user');
@@ -989,7 +965,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
           if (_isWaiting)
             const Padding(
-              padding: EdgeInsets.all(AppTheme.spacingSm),
+              padding: EdgeInsets.all(CoSpacing.sm),
               child: LinearProgressIndicator(),
             ),
           ChatInput(
@@ -1009,7 +985,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (isUser) {
       // 用户消息：带气泡的完整宽度
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingLg, vertical: AppTheme.spacingMd),
+        padding: const EdgeInsets.symmetric(horizontal: CoSpacing.lg, vertical: CoSpacing.md),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.primary,
           borderRadius: BorderRadius.circular(20).copyWith(
@@ -1021,22 +997,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     } else {
       // AI 消息：无气泡，无背景，满宽显示
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingXs),
+        padding: const EdgeInsets.symmetric(horizontal: CoSpacing.xs),
         child: ChatMessageBubble(text: msg.content, isUser: false, isStreaming: isStreaming),
       );
     }
-  }
-
-  /// 获取最后一条助理回复的文本（用于 TTS 缓存键）
-  String? _getLastAssistantText() {
-    if (_streamingIndex >= 0 && _streamingIndex < _messages.length) {
-      final msg = _messages[_streamingIndex];
-      if (msg.role == 'assistant') return msg.content;
-    }
-    for (int i = _messages.length - 1; i >= 0; i--) {
-      if (_messages[i].role == 'assistant') return _messages[i].content;
-    }
-    return null;
   }
 
 }

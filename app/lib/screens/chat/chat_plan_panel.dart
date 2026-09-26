@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/co_spacing.dart';
 
 /// 学习计划面板 — 可折叠的阶段/任务进度视图
 class ChatPlanPanel extends StatefulWidget {
@@ -90,7 +90,7 @@ class _ChatPlanPanelState extends State<ChatPlanPanel> {
     final stages = planJson['stages'] as List<dynamic>? ?? [];
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(AppTheme.spacingMd, AppTheme.spacingSm, AppTheme.spacingMd, 0),
+      margin: const EdgeInsets.fromLTRB(CoSpacing.md, CoSpacing.sm, CoSpacing.md, 0),
       decoration: BoxDecoration(
         color: colorScheme.primary.withAlpha(10),
         borderRadius: BorderRadius.circular(12),
@@ -108,7 +108,7 @@ class _ChatPlanPanelState extends State<ChatPlanPanel> {
               child: Row(
                 children: [
                   Icon(Icons.school, size: 18, color: colorScheme.primary),
-                  const SizedBox(width: AppTheme.spacingSm),
+                  const SizedBox(width: CoSpacing.sm),
                   Expanded(
                     child: Text(goal, style: const TextStyle(fontWeight: FontWeight.w600)),
                   ),
@@ -134,7 +134,7 @@ class _ChatPlanPanelState extends State<ChatPlanPanel> {
               child: Scrollbar(
                 child: ListView(
                   shrinkWrap: true,
-                  padding: const EdgeInsets.only(top: AppTheme.spacingSm),
+                  padding: const EdgeInsets.only(top: CoSpacing.sm),
                   children: stages.map((stage) {
                     final s = stage as Map<String, dynamic>;
                     final stageName = s['name'] as String? ?? '';
@@ -147,7 +147,7 @@ class _ChatPlanPanelState extends State<ChatPlanPanel> {
                     }).length;
 
                     return Padding(
-                      padding: const EdgeInsets.only(left: 14, right: 14, bottom: AppTheme.spacingSm),
+                      padding: const EdgeInsets.only(left: 14, right: 14, bottom: CoSpacing.sm),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -171,7 +171,7 @@ class _ChatPlanPanelState extends State<ChatPlanPanel> {
                                 style: textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
                             ],
                           ),
-                          const SizedBox(height: AppTheme.spacingXs),
+                          const SizedBox(height: CoSpacing.xs),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(4),
                             child: LinearProgressIndicator(
@@ -182,14 +182,14 @@ class _ChatPlanPanelState extends State<ChatPlanPanel> {
                                 stageStatus == 'done' ? colorScheme.tertiary : colorScheme.primary),
                             ),
                           ),
-                          const SizedBox(height: AppTheme.spacingXs),
+                          const SizedBox(height: CoSpacing.xs),
                           ...tasks.map((task) {
                             final t = task as Map<String, dynamic>;
                             final taskName = t['name'] as String? ?? '';
                             final taskStatus = t['status'] as String? ?? 'pending';
                             final isTaskActive = taskStatus == 'in_progress';
                             return Padding(
-                              padding: const EdgeInsets.only(left: AppTheme.spacingLg, top: 2),
+                              padding: const EdgeInsets.only(left: CoSpacing.lg, top: 2),
                               child: Row(
                                 children: [
                                   Icon(
@@ -199,7 +199,7 @@ class _ChatPlanPanelState extends State<ChatPlanPanel> {
                                     color: taskStatus == 'done' ? colorScheme.tertiary :
                                            isTaskActive ? colorScheme.primary : colorScheme.outline,
                                   ),
-                                  const SizedBox(width: AppTheme.spacingXs),
+                                  const SizedBox(width: CoSpacing.xs),
                                   Text(taskName,
                                     style: TextStyle(
                                       fontSize: 12,

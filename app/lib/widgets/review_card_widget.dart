@@ -12,7 +12,7 @@ import '../api/api_config.dart';
 import '../pipelines/verification_strategy.dart';
 import '../providers/plan_provider.dart';
 import '../services/tts_service.dart';
-import '../theme/app_theme.dart';
+import '../theme/co_spacing.dart';
 import 'markdown_span_nodes.dart';
 
 /// 复习卡片组件 — 支持翻转、验证、AI 问答、评判展示
@@ -464,7 +464,7 @@ class _ReviewCardWidgetState extends ConsumerState<ReviewCardWidget>
         // ── 牌号提示 ──
         if (widget.totalCount > 1)
           Padding(
-            padding: const EdgeInsets.only(bottom: AppTheme.spacingSm),
+            padding: const EdgeInsets.only(bottom: CoSpacing.sm),
             child: Text(
               '卡片 ${widget.reviewIndex + 1}/${widget.totalCount}',
               style: _tt.labelMedium?.copyWith(color: _cs.onSurfaceVariant),
@@ -476,7 +476,7 @@ class _ReviewCardWidgetState extends ConsumerState<ReviewCardWidget>
         GestureDetector(
           onTap: _isVerifying ? null : () => setState(() => _isFlipped = !_isFlipped),
           child: Container(
-            padding: const EdgeInsets.all(AppTheme.spacingXl),
+            padding: const EdgeInsets.all(CoSpacing.xl),
             decoration: BoxDecoration(
               color: _isVerifying
                   ? const Color(0xFFF5F5FF)
@@ -488,7 +488,7 @@ class _ReviewCardWidgetState extends ConsumerState<ReviewCardWidget>
               children: [
                 // 卡片内容
                 Padding(
-                  padding: const EdgeInsets.all(AppTheme.spacingSm),
+                  padding: const EdgeInsets.all(CoSpacing.sm),
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxHeight: 240),
                     child: SingleChildScrollView(
@@ -524,7 +524,7 @@ class _ReviewCardWidgetState extends ConsumerState<ReviewCardWidget>
                                 : Container(
                                     key: const ValueKey('back'),
                                     padding: const EdgeInsets.symmetric(
-                                      horizontal: AppTheme.spacingLg,
+                                      horizontal: CoSpacing.lg,
                                     ),
                                     child: RichContentBuilder(textColor: _cs.onSurface)
                                         .build(card.back),
@@ -536,7 +536,7 @@ class _ReviewCardWidgetState extends ConsumerState<ReviewCardWidget>
                   ),
                 ),
                 if (!_isVerifying && _isFlipped && card.sourceSentence != null) ...[
-                  const SizedBox(height: AppTheme.spacingSm),
+                  const SizedBox(height: CoSpacing.sm),
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 200),
                     child: Text(
@@ -549,7 +549,7 @@ class _ReviewCardWidgetState extends ConsumerState<ReviewCardWidget>
                     ),
                   ),
                 ],
-                const SizedBox(height: AppTheme.spacingSm),
+                const SizedBox(height: CoSpacing.sm),
                 Text(
                   _isVerifying
                       ? '闭卷考试中'
@@ -562,7 +562,7 @@ class _ReviewCardWidgetState extends ConsumerState<ReviewCardWidget>
             ),
           ),
         ),
-        const SizedBox(height: AppTheme.spacingMd),
+        const SizedBox(height: CoSpacing.md),
 
         // ── TTS ──
         Consumer(
@@ -629,7 +629,7 @@ class _ReviewCardWidgetState extends ConsumerState<ReviewCardWidget>
 
         // ── 验证按钮 ──
         if (!_isVerified && !_isVerifying) ...[
-          const SizedBox(height: AppTheme.spacingSm),
+          const SizedBox(height: CoSpacing.sm),
           strategy.buildButton(
             context,
             () {
@@ -663,18 +663,18 @@ class _ReviewCardWidgetState extends ConsumerState<ReviewCardWidget>
         if (_isVerifying && !_isJudging && _isAiQuiz &&
             _aiQuestions.isNotEmpty && _aiResults.isEmpty &&
             _aiQuestionIndex < _aiQuestions.length) ...[
-          const SizedBox(height: AppTheme.spacingSm),
+          const SizedBox(height: CoSpacing.sm),
           Text(
             '问题 ${_aiQuestionIndex + 1}/${_aiQuestions.length}',
             style: _tt.titleSmall,
           ),
-          const SizedBox(height: AppTheme.spacingXs),
+          const SizedBox(height: CoSpacing.xs),
           Text(
             _aiQuestions[_aiQuestionIndex].question,
             style: _tt.bodyMedium,
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: AppTheme.spacingSm),
+          const SizedBox(height: CoSpacing.sm),
           // ── AI 问答输入（语音模式切换） ──
           if (_voiceMode)
             // 语音模式：按住说话（与 chat_input 一致）
@@ -739,7 +739,7 @@ class _ReviewCardWidgetState extends ConsumerState<ReviewCardWidget>
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                 ),
-                const SizedBox(width: AppTheme.spacingSm),
+                const SizedBox(width: CoSpacing.sm),
                 Expanded(
                   child: TextField(
                     controller: _answerController,
@@ -752,7 +752,7 @@ class _ReviewCardWidgetState extends ConsumerState<ReviewCardWidget>
                     onSubmitted: (_) => _submitAiAnswer(),
                   ),
                 ),
-                const SizedBox(width: AppTheme.spacingXs),
+                const SizedBox(width: CoSpacing.xs),
                 IconButton.filled(
                   onPressed: _submitAiAnswer,
                   icon: const Icon(Icons.arrow_forward, size: 18),
@@ -763,17 +763,17 @@ class _ReviewCardWidgetState extends ConsumerState<ReviewCardWidget>
 
         // ── 评判中 ──
         if (_isJudging) ...[
-          const SizedBox(height: AppTheme.spacingMd),
+          const SizedBox(height: CoSpacing.md),
           Center(
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 SizedBox(
-                  width: AppTheme.spacingLg,
-                  height: AppTheme.spacingLg,
+                  width: CoSpacing.lg,
+                  height: CoSpacing.lg,
                   child: const CircularProgressIndicator(strokeWidth: 2),
                 ),
-                const SizedBox(width: AppTheme.spacingSm),
+                const SizedBox(width: CoSpacing.sm),
                 Text('正在判断答案...', style: TextStyle(color: _cs.outline)),
               ],
             ),
@@ -782,10 +782,10 @@ class _ReviewCardWidgetState extends ConsumerState<ReviewCardWidget>
 
         // ── AI 评判结果 ──
         if (!_isJudging && _aiResults.isNotEmpty) ...[
-          const SizedBox(height: AppTheme.spacingSm),
+          const SizedBox(height: CoSpacing.sm),
           ..._aiResults.map(
             (r) => Padding(
-              padding: const EdgeInsets.only(bottom: AppTheme.spacingXs),
+              padding: const EdgeInsets.only(bottom: CoSpacing.xs),
               child: Row(
                 children: [
                   Icon(
@@ -804,7 +804,7 @@ class _ReviewCardWidgetState extends ConsumerState<ReviewCardWidget>
         // ── 验证结果 ──
         if (!_isJudging && _isVerified)
           Padding(
-            padding: const EdgeInsets.only(top: AppTheme.spacingMd),
+            padding: const EdgeInsets.only(top: CoSpacing.md),
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 10),
@@ -827,7 +827,7 @@ class _ReviewCardWidgetState extends ConsumerState<ReviewCardWidget>
                     color: _verificationResult == 'pass' ? _cs.primary : _cs.error,
                     size: 22,
                   ),
-                  const SizedBox(width: AppTheme.spacingSm),
+                  const SizedBox(width: CoSpacing.sm),
                   Text(
                     _verificationResult == 'pass' ? '验证通过' : '未通过',
                     style: TextStyle(
