@@ -2,7 +2,7 @@
 
 > 日期：2026-09-27 01:25（创建）· 01:40（**方案 A 已实施**）
 > 触发：白哥实测 `D:\flutter\bin\flutter.bat run -d chrome` → `Failed to compile application`
-> 状态：✅ **方案 A 已实施完成** —— 待白哥跑真编译验证（§八）
+> 状态：✅✅ **方案 A 已实施 + 真编译验证通过（2026-09-27 03:36）** —— 见 §九
 
 ---
 
@@ -338,25 +338,49 @@ pubspec 里 `gpt_markdown: 1.0.8` 是**精确锁定**（无 `^`）→ 也从未�
 
 ---
 
-## 九、请白哥跑（真编译验证）
+## 九、✅ 真编译验证通过（2026-09-27 03:36 · 白哥执行）
 
-在 `E:\CoEvo\app` 目录下依次执行：
+```powershell
+cd E:\CoEvo\app
+D:\flutter\bin\flutter.bat run -d chrome
+```
 
-| # | 命令 | 作用 |
-|---|---|---|
-| ① | `D:\flutter\bin\flutter.bat pub get` | **必须重算依赖** —— override 删了、`gpt_markdown` 升了，lock 需更新 |
-| ② | `D:\flutter\bin\flutter.bat analyze` | 先静态检查，确认没有新错误浮出来 |
-| ③ | `D:\flutter\bin\flutter.bat run -d chrome` | **真编译 —— 这是终判** |
+**结果：编译通过，Chrome 正常启动应用。**
 
-### 期望结果与对应处置
+```
+Launching lib\main.dart on Chrome in debug mode...
+Waiting for connection from debug service on Chrome...  89.1s
+Flutter run key commands.  (r/R/h/d/c/q)
+A Dart VM Service on Chrome is available at: http://127.0.0.1:54095/...
+Starting application from main method in: org-dartlang-app:/web_entrypoint.dart.
+tryRestore: 开始时恢复认证... → 完成 (isRestored=true)
+```
 
-| 情况 | 说明 |
+| 验证项 | 结果 |
 |---|---|
-| ✅ **编译通过 + Chrome 打开** | 方案 A 成功 → 顺手看三档主题（验证项见 `plan-and-progress` §3.15 ⑦） |
-| 🔴 仍报 **`flutter_math_fork` 相关错误** | 官方 0.7.4 还有未知 API 漂移 → **转方案 C**（彻底去掉 `gpt_markdown`，自研行内渲染） |
-| 🔴 报**其它包**的错误 | 新问题 → 把错误贴给我 |
+| **官方 Flutter 3.41.1 / Dart 3.11.0 真编译** | ✅ **通过** ← 方案 A 唯一的未知项 |
+| `flutter_math_fork` **0.7.4（pub 官方版）** 能否编译 | ✅ **能**（此前是鸿蒙改写版才编不过） |
+| `gpt_markdown` **1.0.9** | ✅ 通过 |
+| 应用启动（认证恢复 `tryRestore` 流程） | ✅ 正常执行 |
 
-> 📌 `pub get` 后 `pubspec.lock` 有变化是**预期的**：`flutter_math_fork` 从 `path:` 变成 `hosted:`，`gpt_markdown` 升版本。
+> 🔑 **推论：方案 A 成立** —— 「删掉鸿蒙改写副本 + 删 override + 回落 pub 官方 0.7.4」这条路**走通了**。
+> 同时反证 §六 的结论：**自建 AST 分析器验证不了的「依赖能否编译」，一次真编译就给出答案**。
+
+### 📌 顺带诊断：启动后界面仍是 K12 时代页面（**与本次改动无关**）
+
+白哥反馈「看上去是旧版的界面」。**已核实 —— 不是主题没生效，而是页面层本身还是 K12 遗留**：
+
+| 页面 | 行数 | 实际内容 |
+|---|---:|---|
+| `screens/home_screen.dart` | 475 | 🔴 **K12 科目直选页**（`getK12Subjects()` → `/api/k12/subjects`；「选择科目开始结构化学习」+ 年级选择 → `k12Init`） |
+| `screens/review_screen.dart` | 1,533 | 🔴 「**英语 tab + 汉语 tab** + 全部卡片」（多学科遗留） |
+| `screens/achievements_screen.dart` | 999 | 🔴 `_k12Progress`（K12 进度） |
+
+**主题层已生效**（代码核实：`inkTokens.page = 0xF1EDE4` · `accent = 0xB4432C`，
+与设计稿 `visual-feed-bookmark-2026-09-25.html` 的 `[data-theme="ink"]` **色值完全一致**），
+`app.dart` 接线正确（浅色槽 `allTokens[ink]` / 深色槽 `nightTokens`）。
+
+→ **页面层重写 = Step 3**（`plan-and-progress` §480 早已明确：「`home_screen` 本质就是 K12 学科选择页，要整体重写成信息流首页」）。
 
 ---
 
@@ -365,5 +389,8 @@ pubspec 里 `gpt_markdown: 1.0.8` 是**精确锁定**（无 `^`）→ 也从未�
 **项目原本只在鸿蒙定制版 Flutter 上能编译** —— 根因是仓库里存着一份为鸿蒙降级改写的 `flutter_math_fork` 副本
 （由 `dependency_overrides` 指向）+ 一个版本过旧的 `gpt_markdown`。两者均已处置，**回到官方 Flutter 路线**；
 公式渲染随之移除（对本项目**零需求**，属 K12 遗留）。
-**静态层面全部通过（全库 error=3/warning=13 与基线一致 · tokens 验收 267 项全过）**，
-**真编译待白哥一节命令确认。**
+静态层面全部通过（全库 error=3/warning=13 与基线一致 · tokens 验收 267 项全过），
+**✅ 且真编译已通过（2026-09-27 03:36，`flutter run -d chrome` 成功启动应用）** —— 本问题**闭环**。
+
+> ⚠️ 唯一未变的是**页面本身还是 K12 遗留**（首页=科目直选 / 复习页含汉语 tab / 成就页=K12 进度）——
+> 那属于 **Step 3 核心界面重写**的范围，不是本问题的遗留。

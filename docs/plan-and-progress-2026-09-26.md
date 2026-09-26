@@ -9,7 +9,7 @@
 
 ---
 
-## 🔍 实测核对快照（2026-09-**27 01:45** · 全部为本机实测输出）
+## 🔍 实测核对快照（2026-09-**27 03:40** · 全部为本机实测输出）
 
 > 🔑 **本节的意义**：文档里的数字会随开发漂移。**核对时以本节为准，或重新跑一遍下表命令。**
 > ⚠️ **教训（本轮踩过）**：核对数字时**判据要可靠** —— 我用 `grep "dart:html"` 查出「5 个 web-only 文件」，
@@ -35,7 +35,7 @@
 | **`scripts/` 入库** | **111 文件**（git 跟踪）· **+3 待入库**（本轮新增 `fetch_fonts` / `build_fonts` / `build_font_compare`）· 工作区 129（已排除 `__pycache__`） | `git ls-files scripts/ \| wc -l` |
 | **`data/coevo.db`（生产库）** | **45 表 · 30 空** · `users` 2 · `tokens` 2 · `user_cards`/`card_memory`/`review_log` **全 0** · mtime **`09-25 22:48`（未被本轮触碰 ✅）** | `SELECT COUNT(*) FROM ...` |
 | 前端静态分析 | **error=3**（全是既有 web-only）· warning=13 · info=7 | `scripts/analyze_inproc/` |
-| 🆕 **Flutter 真编译** | 🔴 **必须先修**（官方 3.41 编不过）→ §3.16 已按方案 A 修复完毕，**待白哥跑真编译确认** | `D:\flutter\bin\flutter.bat run -d chrome` |
+| ✅ **Flutter 真编译** | ✅✅ **通过** —— `flutter run -d chrome` 成功启动应用（**2026-09-27 03:36**）｜⚠️ 启动后界面仍是 **K12 遗留页面**（属 **Step 3 范围**，非本项遗留） | `D:\flutter\bin\flutter.bat run -d chrome` |
 | 🆕 **SDK** | 官方 **`D:\flutter`（3.41.1 / Dart 3.11.0）不在 PATH**；PATH 里是**鸿蒙定制版** `D:\flutter_flutter`（3.27.5-ohos）→ **必须写全路径** | `D:\flutter\bin\flutter.bat --version` |
 | 后端编译 | ✅ `cargo check` **EXIT=0** | `cd backend && cargo check` |
 
@@ -1730,10 +1730,10 @@ themeMode: settings.followSystem ? ThemeMode.system
 | 优先级 | 事项 | 为什么现在做 | 依赖 | 状态 |
 |---|---|---|---|---|
 | ~~✅ P0~~ | ~~🔴 **修 `taiwan`/`tibet` 释义**~~ | — | — | ✅ **已完成 2026-09-26 23:24** —— **P0 2 → 0**（见 §3.10） |
-| **P1** | **Step 2 设计系统落地**（token → 代码） | token 已定稿；**是 Step 3 的前置** | ✅ Step 1 | 🟠 **三批已完成**：token 层（§3.12）· A′ 字体（§3.13/§3.14）· **旧主题删除 + `buildTheme` 接线**（§3.15）→ **验收 267 项全过**｜🔴 **剩 `ClayDecoration` 粘土组件**（§7.4，立体感空窗） |
+| **P1** | **Step 2 设计系统落地**（token → 代码） | token 已定稿；**是 Step 3 的前置** | ✅ Step 1 | 🟠 **三批已完成**：token 层（§3.12）· A′ 字体（§3.13/§3.14）· **旧主题删除 + `buildTheme` 接线**（§3.15）→ **验收 267 项全过** ＋ ✅ **`flutter run -d chrome` 真编译通过（2026-09-27 03:36）**｜🔴 **剩 `ClayDecoration` 粘土组件**（§7.4，立体感空窗） |
 | **P1** | **Phase 4 #1 `user.db` 接入** | 表结构 + 查询层已就绪（79 项断言过），差**落库接线** | — | ⏳ |
 | **P2** | **Phase 3 内容抓取**（服务端 RSS） | 无内容 = 端侧没东西可读；可与 P1 并行 | — | ⏳ |
-| **P2** | **Step 3 核心界面**（信息流/阅读器/**划词**） | 🔴 **最大工作量项**（划词仍 0 命中、无 feed/reader 文件） | Step 2 | ⏳ |
+| **P2** | **Step 3 核心界面**（信息流/阅读器/**划词**） | 🔴 **最大工作量项**（划词仍 0 命中、无 feed/reader 文件） | Step 2 | ⏳ **待开始** —— 🔑 **重写对象已实测确认**（这就是「跑起来看还是旧界面」的真身）：`home_screen` 475 行（**K12 科目直选**，调 `/api/k12/subjects`）· `review_screen` 1,533 行（含**汉语 tab**）· `achievements_screen` 999 行（**`_k12Progress`**）· 个人页 · 卡片组件。**主题层已就位**（朱砂 `#B4432C` + 三档底色），页面层仍是 K12 遗留 |
 | **P3** | 🟠 **清理待办**：`fsrs5.rs` 删除 · 轮换泄漏 key · `data/` git 状态 · `marketing` key | 见 §五 风险 5/9/10 | — | ⏳ |
 | **最后** | **Phase 0 Apple 账号**（$99/年） | 🟠 **白哥 2026-09-26 决定置末** —— 不阻塞当前开发；但**上架前必须办**（且 810 号令填报依赖它） | — | ⏳ **按白哥指示放最后** |
 | ~~✅~~ | ~~打通验证链路~~ | — | — | ✅ **已完成**（CI 5 job + 进程内 analyzer + 纯 Dart 验收三层） |
