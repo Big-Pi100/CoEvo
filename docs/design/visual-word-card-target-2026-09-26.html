@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="ink">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CoEvo 单词卡片 · 目标形态（界面锚点）</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/literata@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5/600.css">
+<style>
+@font-face{font-family:'Charis SIL IPA';src:url('fonts/charis-sil.woff2') format('woff2'),
+  url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/charissil/CharisSIL-Regular.ttf') format('truetype');font-display:swap}
+:root{
+  --serif:'Literata',Georgia,serif; --ipa:'Charis SIL IPA',Georgia,serif;
+  --ui:'Inter',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+  --round:'Quicksand','Inter',sans-serif; --mono:ui-monospace,Menlo,monospace;
+}
+[data-theme="ink"]{
+  --page:#F1EDE4; --read:#FAF8F4; --card:#FFFFFF;
+  --ink:#24211C; --ink2:#6E6659; --ink3:#9A917F;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFF; --accent-out:rgba(180,67,44,.40);
+  --line:#EFE9DE; --sunken:#EDE6DA;
+  --cl-out:rgba(150,125,95,.24); --cl-shade:rgba(186,166,138,.55); --cl-light:rgba(255,255,255,1);
+  --cl-radius:26px;
+}
+[data-theme="grid"]{
+  --page:#EDEEF0; --read:#FFF; --card:#FFF;
+  --ink:#0A0A0A; --ink2:#5A5A5A; --ink3:#8A8A8A;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFF; --accent-out:rgba(180,67,44,.40);
+  --line:#E8E8E8; --sunken:#F0F0F0;
+  --cl-out:rgba(120,120,120,.18); --cl-shade:rgba(158,158,158,.46); --cl-light:rgba(255,255,255,1);
+  --cl-radius:10px;
+}
+[data-theme="night"]{
+  --page:#0B0D12; --read:#14161C; --card:#1C1F27;
+  --ink:#EDEBE6; --ink2:#9AA0AE; --ink3:#6E7484;
+  --accent:#DB7E6B; --accent-bright:#E89B8C; --accent-ink:#2A1405; --accent-out:rgba(219,126,107,.40);
+  --line:#262A34; --sunken:#0B0D12;
+  --cl-out:rgba(0,0,0,.55); --cl-shade:rgba(0,0,0,.42); --cl-light:rgba(255,255,255,.062);
+  --cl-radius:24px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--page);color:var(--ink);font-family:var(--ui);-webkit-font-smoothing:antialiased;padding:0 0 100px}
+.wrap{max-width:1400px;margin:0 auto;padding:0 32px}
+header.top{padding:52px 0 0}
+.eyebrow{font-size:12px;letter-spacing:.15em;text-transform:uppercase;color:var(--ink3);margin-bottom:14px}
+h1{font-family:var(--round);font-size:33px;font-weight:600;line-height:1.2;margin-bottom:14px;max-width:900px}
+.lede{font-size:15px;line-height:1.75;color:var(--ink2);max-width:920px}
+h2{font-family:var(--round);font-size:21px;font-weight:600;margin:48px 0 6px;letter-spacing:-.01em}
+h2 .num{color:var(--ink3);font-size:15px;margin-right:9px;font-family:var(--ui)}
+.sub{font-size:13.5px;color:var(--ink2);line-height:1.72;margin-bottom:18px;max-width:920px}
+.rule{height:1px;background:var(--line);margin:42px 0 0}
+code{font-family:var(--mono);font-size:12.5px;background:var(--sunken);padding:1px 5px;border-radius:4px}
+
+.switch{display:flex;gap:8px;margin:20px 0 0}
+.switch button{font-family:var(--ui);font-size:13px;padding:7px 16px;border:0;border-radius:99px;cursor:pointer;
+  background:var(--card);color:var(--ink2);box-shadow:0 2px 5px var(--cl-out)}
+.switch button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);box-shadow:4px 5px 12px var(--accent-out)}
+
+.screens{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;margin-top:22px}
+.phone{width:378px;flex:0 0 auto;background:var(--read);border-radius:var(--cl-radius);
+  box-shadow:8px 10px 26px var(--cl-out), inset -4px -4px 12px var(--cl-shade), inset 3px 3px 10px var(--cl-light);
+  overflow:hidden}
+.pbar{display:flex;align-items:center;justify-content:space-between;padding:15px 20px 12px;
+  font-size:12px;color:var(--ink3);border-bottom:1px solid var(--line)}
+.pbar b{font-weight:500;color:var(--ink2);font-size:12.5px}
+.pbody{padding:20px}
+.cap{font-size:12px;color:var(--ink3);margin:11px 2px 0;line-height:1.6;width:378px}
+.cap b{color:var(--ink2);font-weight:500}
+
+.card{border-radius:var(--cl-radius);padding:20px 19px;
+  background:var(--card);
+  box-shadow:6px 8px 18px var(--cl-out), inset -5px -5px 12px var(--cl-shade), inset 4px 4px 10px var(--cl-light)}
+
+.w-head{text-align:center;padding-bottom:15px;border-bottom:1px solid var(--line)}
+.w-word{font-family:var(--serif);font-size:32px;font-weight:400;letter-spacing:-.015em;line-height:1.15}
+.w-meta{display:flex;align-items:center;justify-content:center;gap:9px;margin-top:6px}
+.w-ipa{font-family:var(--ipa);font-size:15px;color:var(--ink2)}
+.spk{width:26px;height:26px;border-radius:50%;background:var(--card);display:inline-flex;align-items:center;justify-content:center;
+  box-shadow:2px 3px 7px var(--cl-out), inset -2px -2px 5px var(--cl-shade), inset 2px 2px 4px var(--cl-light);flex:0 0 auto}
+.spk svg{width:12px;height:12px;fill:var(--accent)}
+
+/* 记忆法块（可点击展开聚合页）
+   🔑 权重靠「强调色 + 凹陷底色 + 拆分结构」，不靠字号 ——
+      记忆法是线索、释义是答案，字号上线索不应压过答案。 */
+.mnem{margin-top:14px;border-radius:16px;padding:14px 14px 13px;background:var(--sunken);
+  box-shadow:inset 3px 3px 9px var(--cl-shade), inset -3px -3px 8px var(--cl-light);
+  cursor:pointer;position:relative;transition:transform .12s}
+.mnem:hover{transform:translateY(-1px)}
+.mnem-head{display:flex;align-items:center;gap:7px;margin-bottom:8px}
+.mnem-tag{display:inline-flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.05em;
+  color:var(--accent);font-weight:500}
+.mnem-tag .dot{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.pill{font-size:10.5px;color:var(--ink3);border:1px solid var(--line);padding:1px 7px;border-radius:99px}
+.mnem-head .open{margin-left:auto;font-size:11px;color:var(--accent);display:flex;align-items:center;gap:2px}
+.mnem-main{font-family:var(--serif);font-size:15.5px;line-height:1.6}
+.mnem-main .aff{color:var(--accent)}
+.mnem-main .gl{color:var(--ink3);font-size:13.5px}
+.mnem-main .sep{color:var(--ink3);margin:0 3px}
+.mnem-note{font-size:12.5px;color:var(--ink2);margin-top:8px;line-height:1.62;padding-top:8px;border-top:1px dashed var(--line)}
+.mnem-note .lead{color:var(--accent);font-weight:500}
+
+.def{margin-top:15px}
+.lab{font-size:11px;letter-spacing:.05em;color:var(--ink3);margin-bottom:4px}
+.def-txt{font-size:16.5px;font-weight:500;line-height:1.5}
+.def-en{font-family:var(--serif);font-size:13px;color:var(--ink2);line-height:1.6;margin-top:3px}
+.ctx{margin-top:14px;padding-left:12px;border-left:2px solid var(--accent-bright)}
+.ctx-txt{font-family:var(--serif);font-size:14.5px;line-height:1.7}
+.ctx .spk{display:inline-flex;margin-left:6px;vertical-align:-8px;width:22px;height:22px}
+
+.rate{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:17px}
+.rate button{font-family:var(--ui);font-size:12.5px;padding:9px 0 8px;border:0;border-radius:13px;cursor:pointer;
+  background:var(--card);color:var(--ink);box-shadow:3px 4px 11px var(--cl-out), inset -3px -3px 8px var(--cl-shade), inset 2px 2px 6px var(--cl-light)}
+.rate button small{display:block;font-size:9.5px;color:var(--ink3);margin-top:1px;letter-spacing:.02em}
+/* 🔴 第三行 = 按这个按钮后「下次什么时候再见」。数字来自端侧 FSRS 实测预览，不是文案 */
+.rate button i{display:block;font-style:normal;font-size:11px;font-weight:500;color:var(--ink2);margin-top:3px;
+  padding-top:3px;border-top:1px solid var(--line)}
+
+/* 复习列表页 */
+.lbar{display:flex;align-items:baseline;justify-content:space-between;padding:14px 20px 10px}
+.lbar .t{font-family:var(--round);font-size:19px;font-weight:600}
+.lbar .n{font-size:12px;color:var(--accent);font-weight:500}
+.lgroup{font-size:11px;letter-spacing:.05em;color:var(--ink3);padding:6px 20px 4px;border-top:1px solid var(--line)}
+.litem{display:flex;align-items:center;gap:10px;padding:11px 20px;border-bottom:1px solid var(--line);cursor:pointer}
+.litem:hover{background:var(--sunken)}
+.litem .w{font-family:var(--serif);font-size:15px;flex:0 0 auto}
+.litem .z{font-size:12px;color:var(--ink2);flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.litem .d{font-size:11.5px;color:var(--ink);font-weight:500;flex:0 0 auto;min-width:56px;text-align:right}
+.litem .d.over{color:var(--accent)}
+.litem .dots{display:flex;gap:3px;flex:0 0 auto}
+.litem .dots span{width:5px;height:5px;border-radius:50%;background:var(--line)}
+.litem .dots span.on{background:var(--accent)}
+.litem .dots span.half{background:var(--cl-shade)}
+
+/* 聚合页：分拆法 + 释义 */
+.agg-item{display:flex;align-items:baseline;gap:9px;padding:9px 0;border-bottom:1px solid var(--line)}
+.agg-item:last-child{border-bottom:0}
+.agg-w{font-family:var(--serif);font-size:14.5px;flex:0 0 auto;min-width:96px}
+.agg-w.me{color:var(--accent);font-weight:500}
+.agg-z{font-size:12.5px;color:var(--ink);margin-left:auto;text-align:right;flex:0 0 auto;max-width:118px}
+.agg-bd{font-size:11.5px;color:var(--ink3);line-height:1.5;margin-top:2px;flex:1 1 100%}
+.agg-bd .r{color:var(--accent)}
+.agg-src{text-align:center;padding:6px 0 13px;border-bottom:1px solid var(--line)}
+.agg-src .f{font-family:var(--serif);font-size:23px}
+.agg-src .m{font-size:12.5px;color:var(--ink2);margin-top:4px}
+.agg-src .n{font-size:11.5px;color:var(--ink3);margin-top:3px}
+
+.cmp{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;margin-top:18px}
+.tagline{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:500;margin-bottom:8px}
+.tagline .dot{width:7px;height:7px;border-radius:50%}
+.bad .dot{background:#C0392B}.bad{color:#C0392B}
+.good .dot{background:#2E7D52}.good{color:#2E7D52}
+.secs{font-family:var(--mono);font-size:11px;color:var(--ink3);margin:7px 0 0;line-height:1.7}
+.secs .x{color:#C0392B;font-weight:600}
+.secs .v{color:#2E7D52;font-weight:600}
+.stat{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:13px}
+.stat div{background:var(--sunken);border-radius:10px;padding:9px 11px;box-shadow:inset 2px 2px 6px var(--cl-shade), inset -2px -2px 5px var(--cl-light)}
+.stat .k{font-size:11px;color:var(--ink3)}
+.stat .v{font-size:18px;font-weight:500;margin-top:2px}
+.stat .v.bad{color:#C0392B}.stat .v.good{color:#2E7D52}
+
+.check{margin-top:14px}
+.check li{list-style:none;display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13.5px;line-height:1.6}
+.check li .box{width:16px;height:16px;border-radius:5px;border:1.5px solid var(--ink3);flex:0 0 auto;margin-top:2px}
+.check li b{font-weight:500}
+.check li span.q{color:var(--ink2);display:block;font-size:12.5px;margin-top:3px}
+
+.foot{margin-top:52px;padding-top:20px;border-top:1px solid var(--line);font-size:12.5px;color:var(--ink3);line-height:1.8}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="eyebrow">界面锚点 · v6 · 2026-09-26</div>
+  <h1>单词卡片的目标形态 —— 界面即验收标准</h1>
+  <p class="lede">
+    卡片只显示四样：<b>① 当前单词的词根词缀 · ② 词源故事 · ③ 释义 · ④ 语境原句</b>。
+    <b>同源串记与词根族是聚合页，不铺在卡上</b> —— 点①②展开。
+    聚合页里每一条都显示<b>分拆法 + 释义</b>（不是单纯列单词）—— 让人看到「同一个 <code>cept</code>（拿取）换前缀就换含义」。
+    全部数据来自 <code>word.db</code> 真实词条。
+  </p>
+  <div class="switch" role="group" aria-label="主题">
+    <button data-t="ink" aria-pressed="true">墨</button>
+    <button data-t="grid" aria-pressed="false">格</button>
+    <button data-t="night" aria-pressed="false">夜</button>
+  </div>
+</header>
+
+<div class="rule"></div>
+
+<h2><span class="num">01</span>复习卡片 · 四段结构</h2>
+<p class="sub">
+  <b>disorganized</b>（B1）· 库级可用性 <code>root ✓</code> <code>cognate ✓</code> ——
+  ①② 两块是<b>记忆法</b>，可点击展开聚合页（② 的内部 code 是 <code>cognate</code>，<b>UI 显示名「词源故事」</b>）；③④ 是辅证。
+  <b>正好四段，与 v1 §5.1「4 sections」上限天然吻合</b>，而且聚合入口内嵌在 ① ② 里，不需要额外的 <code>aggregate_link</code> 段。
+  <br>⚠️ 但 <b>② 不该无条件显示</b> —— 实测它对可拆词 78.3% 与 ① 重复，<b>见 06 节</b>。（`disorganized` 属于「有增量」那类，所以保留。）
+</p>
+
+<div class="screens">
+  <div>
+    <div class="phone">
+      <div class="pbar"><span>复习 · 7 / 23</span><b>记忆曲线</b></div>
+      <div class="pbody">
+        <div class="card">
+          <div class="w-head">
+            <div class="w-word">disorganized</div>
+            <div class="w-meta">
+              <span class="w-ipa">/dɪsˈɔːrɡənaɪzd/</span>
+              <span class="spk"><svg viewBox="0 0 16 16"><path d="M4 6h2.3L10 3v10l-3.7-3H4z"/><path d="M11.7 6.2a2.6 2.6 0 010 3.6" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></span>
+            </div>
+          </div>
+
+          <div class="mnem" title="点击展开 词根族聚合页">
+            <div class="mnem-head">
+              <span class="mnem-tag"><span class="dot"></span>① 词根词缀</span>
+              <span class="open">词根族 15 词 ›</span>
+            </div>
+            <div class="mnem-main">
+              <span class="aff">dis-</span><span class="gl">（不，相反）</span><span class="sep">+</span>
+              <span class="aff">organ</span><span class="gl">（器官，组织）</span><span class="sep">+</span>
+              <span class="aff">-ized</span><span class="gl">（使…化）</span>
+            </div>
+          </div>
+
+          <div class="mnem" title="点击展开 词源族聚合页">
+            <div class="mnem-head">
+              <span class="mnem-tag"><span class="dot"></span>② 词源故事</span>
+              <span class="open">词源族 18 词 ›</span>
+            </div>
+            <div class="mnem-note" style="margin-top:0;padding-top:0;border-top:0">
+              <span class="lead">organon</span>（希腊·工具／器官）→ 拉丁 <i>organizare</i> → 古法语 <i>organiser</i> → 英语 organize → disorganized
+            </div>
+          </div>
+
+          <div class="def">
+            <div class="lab">③ 释义</div>
+            <div class="def-txt">杂乱无章的，缺乏条理的</div>
+            <div class="def-en">not properly planned or controlled; lacking order or efficiency.</div>
+          </div>
+
+          <div class="ctx">
+            <div class="lab">④ 语境原句</div>
+            <div class="ctx-txt">The office was completely disorganized after the move.
+              <span class="spk"><svg viewBox="0 0 16 16"><path d="M4 6h2.3L10 3v10l-3.7-3H4z"/><path d="M11.7 6.2a2.6 2.6 0 010 3.6" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></span>
+            </div>
+          </div>
+
+          <div class="rate">
+            <button>忘了<small>again</small><i>10 分钟</i></button>
+            <button>困难<small>hard</small><i>21 天</i></button>
+            <button>记得<small>good</small><i>1.5 个月</i></button>
+            <button>熟练<small>easy</small><i>3.5 个月</i></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>四个按钮各标出「下次什么时候再见」</b>（数字来自端侧 FSRS 实时预览，<b>不是写死的文案</b>）——<br>用户能看到选择的后果，而不是凭感觉点。记忆法占<b>上半页</b>；① ② 都有 <b>›</b> 表示可展开。<br><b>权重不靠字号</b>：记忆法是线索、释义是答案，<b>字号上线索不压过答案</b>，靠强调色 + 凹陷底色 + 拆分结构建立视觉权重。</div>
+  </div>
+
+  <div>
+    <div class="phone">
+      <div class="pbar"><span>复习 · 12 / 23</span><b>记忆曲线</b></div>
+      <div class="pbody">
+        <div class="card">
+          <div class="w-head">
+            <div class="w-word">laser</div>
+            <div class="w-meta">
+              <span class="w-ipa">/ˈleɪ.zər/</span>
+              <span class="spk"><svg viewBox="0 0 16 16"><path d="M4 6h2.3L10 3v10l-3.7-3H4z"/><path d="M11.7 6.2a2.6 2.6 0 010 3.6" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></span>
+            </div>
+          </div>
+
+          <div class="mnem" title="点击展开 词源族聚合页">
+            <div class="mnem-head">
+              <span class="mnem-tag"><span class="dot"></span>① 词源故事</span>
+              <span class="open">无同源族</span>
+            </div>
+            <div class="mnem-main" style="font-size:14.5px;line-height:1.75">
+              <span class="aff">L</span>ight <span class="aff">A</span>mplification by
+              <span class="aff">S</span>timulated <span class="aff">E</span>mission of
+              <span class="aff">R</span>adiation
+            </div>
+            <div class="mnem-note">五个词的首字母拼成的缩写 → <span class="lead">激光器</span>。整体造词，没有词根可拆 —— 词源就是最好的记忆法。</div>
+          </div>
+
+          <div class="def">
+            <div class="lab">② 释义</div>
+            <div class="def-txt">激光器</div>
+            <div class="def-en">a device that produces an intense, narrow beam of light by stimulated emission of radiation.</div>
+          </div>
+
+          <div class="ctx">
+            <div class="lab">③ 语境原句</div>
+            <div class="ctx-txt">The surgeon used a laser to correct the patient's vision.
+              <span class="spk"><svg viewBox="0 0 16 16"><path d="M4 6h2.3L10 3v10l-3.7-3H4z"/><path d="M11.7 6.2a2.6 2.6 0 010 3.6" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></span>
+            </div>
+          </div>
+
+          <div class="rate">
+            <button>忘了<small>again</small><i>10 分钟</i></button>
+            <button>困难<small>hard</small><i>6 天</i></button>
+            <button>记得<small>good</small><i>14 天</i></button>
+            <button>熟练<small>easy</small><i>1.1 个月</i></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>不可拆词：词源故事顶上第一段。</b>这符合 v1 §4.1 的优先级逻辑 ——<br>有词根用词根，没词根用词源／搭配，而不是统一铺义项。<br>⚠️ 两张卡的间隔不同，因为它们的<b>熟练度不同</b>（`laser` 较新、`disorganized` 较熟）—— <b>间隔是算出来的，不是统一的</b>。</div>
+  </div>
+</div>
+
+<div class="rule"></div>
+
+<h2><span class="num">02</span>复习列表 · 排序依据必须看得见</h2>
+<p class="sub">
+  白哥问：「<b>在复习界面不是按 FSRS 排序的吗，<s>没有时间怎么排序</s>？</b>」——
+  <b>对，这就是列表项必须显示到期时间的原因</b>：排序依据是到期时间，却不让用户看见，顺序就成了玄学。
+  <br>依据：<b>v1 §10.2「复习队列排序 —— 综合考虑 FSRS 到期时间…」</b>；列表形态见 <code>ui-ux-refactor-assessment</code> §6.2（单一列表，无「移入移出」）。
+</p>
+
+<div class="screens">
+  <div>
+    <div class="phone">
+      <div class="pbar"><span>9:41</span><b>记忆曲线</b></div>
+      <div class="lbar"><span class="t">复习</span><span class="n">23 个今天该看</span></div>
+      <div class="lgroup">今天该复习</div>
+      <div class="litem"><span class="w">courage</span><span class="z">勇气</span><span class="dots"><span class="on"></span><span></span><span></span></span><span class="d over">已到期</span></div>
+      <div class="litem"><span class="w">instruct</span><span class="z">教导</span><span class="dots"><span class="on"></span><span class="on"></span><span></span></span><span class="d over">已到期</span></div>
+      <div class="litem"><span class="w">traffic jam</span><span class="z">交通堵塞</span><span class="dots"><span class="on"></span><span></span><span></span></span><span class="d">2 小时</span></div>
+      <div class="lgroup">之后</div>
+      <div class="litem"><span class="w">disorganized</span><span class="z">杂乱无章的</span><span class="dots"><span class="on"></span><span class="on"></span><span class="half"></span></span><span class="d">4 天</span></div>
+      <div class="litem"><span class="w">laser</span><span class="z">激光器</span><span class="dots"><span class="on"></span><span class="half"></span><span></span></span><span class="d">14 天</span></div>
+      <div class="litem"><span class="w">intercept</span><span class="z">拦截</span><span class="dots"><span class="on"></span><span class="on"></span><span class="on"></span></span><span class="d">3.5 个月</span></div>
+    </div>
+    <div class="cap"><b>列表项 = 单词 + 释义 + 熟练度三点 + 下次到期时间</b>（<code>ui-ux</code> §6.2 已定）。<br>「已到期」用强调色 —— 用户一眼看到今天必须做的。<br>点任意一项 → 进入翻卡（<b>翻卡 → 自评四档 → 自动下一张</b>）。</div>
+  </div>
+
+  <div style="flex:1 1 380px;min-width:340px">
+    <div style="background:var(--background-primary,#fff);border:0.5px solid var(--line);border-radius:12px;padding:15px 17px">
+      <div style="font-size:12.5px;font-weight:500;margin-bottom:10px">🔴 为什么「到期时间」是整个复习页的骨架</div>
+      <div style="font-size:11.5px;color:var(--ink2);line-height:1.75">
+        FSRS 的产出<b>只有一个东西</b>：<b>这张卡下次什么时候该复习</b>。
+        <br>所以：
+        <br>· <b>排序</b> = 按到期时间升序（默认「记忆曲线」档）
+        <br>· <b>分组</b> = 「今天该复习 / 之后」（也是按到期时间切的）
+        <br>· <b>「23 个今天该看」</b> = 到期时间 ≤ 今天的卡片数
+        <br>· <b>卡片按钮上的「下次 X 天」</b> = 按下之后到期时间会变成什么
+        <br><br>→ <b>四处用的是同一个数</b>。把「到期时间」藏起来，四处就都失去了依据。
+      </div>
+      <div style="font-size:11.5px;color:var(--ink2);line-height:1.75;margin-top:11px;padding-top:11px;border-top:0.5px solid var(--line)">
+        <b>三档排序</b>（<code>ui-ux</code> §6.2）：<b>记忆曲线</b>（默认，按到期时间）· 最近（最近加入或复习）· A–Z。
+        <br>⚠️ 「熟练度三点」直接映射 FSRS 三态，与阅读界面的<b>痕迹</b>共用定义 —— 一致的心智模型。
+      </div>
+    </div>
+
+    <div style="background:var(--sunken);border-radius:12px;padding:15px 17px;margin-top:12px">
+      <div style="font-size:12.5px;font-weight:500;margin-bottom:10px">窗口里能看到「下次 X 天」的 4 个位置</div>
+      <div style="font-size:11.5px;color:var(--ink3);line-height:1.9">
+        <b style="color:var(--ink)">① 列表项右侧</b> —— 「已到期 / 2 小时 / 4 天 / 3.5 个月」<br>
+        <b style="color:var(--ink)">② 顶部计数</b> —— 「23 个今天该看」<br>
+        <b style="color:var(--ink)">③ 分组标题</b> —— 「今天该复习 / 之后」<br>
+        <b style="color:var(--ink)">④ 卡片按钮</b> —— 「忘了 10 分钟 / 困难 21 天 / 记得 1.5 个月 / 熟练 3.5 个月」
+      </div>
+      <div style="font-size:11.5px;color:var(--ink2);line-height:1.7;margin-top:10px;padding-top:10px;border-top:0.5px solid var(--line)">
+        🔑 <b>④ 是本次唯一需要「预测」的地方</b>：提交之前就要知道四个分支各自的结果。
+        端侧 FSRS 的 <code>reviewCard()</code> <b>不改原卡</b>（内部先 copyWith）→ 对四个评分各调一次即可预览，<b>无需额外的预测 API</b>。
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="rule"></div>
+
+<h2><span class="num">03</span>渲染规则 · 库级只说「可以」，渲染层决定顺序</h2>
+<p class="sub">
+  <b>制卡时不该分「主要/次要」，该问「可不可以」。</b>
+  库级逐类独立记录可否；<b>优先级是渲染层的事</b> —— 从槽位①开始按 1→6 找第一个可用的，继续找填②。
+  这样<b>改渲染规则不用动数据</b>。
+  <br>→ <b>卡片上也不出现「主要记忆法」这类标注</b> —— 主次是判断，不是可核验的事实；标签会把它固化成读者以为的事实。
+</p>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:6px">
+
+  <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:12px;padding:15px">
+    <div style="display:flex;align-items:center;gap:7px;margin-bottom:9px">
+      <span style="width:7px;height:7px;border-radius:50%;background:var(--color-text-tertiary)"></span>
+      <span style="font-size:13px;font-weight:500">库级 · 这个可以吗？</span>
+      <span style="font-size:10.5px;color:var(--color-text-tertiary);border:1px solid var(--color-border-tertiary);padding:1px 6px;border-radius:99px">每类独立</span>
+    </div>
+    <div style="font-size:11.5px;color:var(--color-text-secondary);line-height:1.75">
+      <code style="font-family:var(--font-mono)">root</code> 有 <code style="font-family:var(--font-mono)">word_morpheme</code> 记录吗？有 → 存<br>
+      <code style="font-family:var(--font-mono)">etymology</code> 有词源故事吗？有 → 存<br>
+      <code style="font-family:var(--font-mono)">collocation</code> 有固定搭配吗？有 → 存
+    </div>
+    <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:9px;padding-top:9px;border-top:0.5px solid var(--color-border-tertiary);line-height:1.6">
+      ✅ 稳定、可独立更新<br>
+      ⚠️ 1 类变更不影响其他类
+    </div>
+  </div>
+
+  <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-info);border-radius:12px;padding:15px">
+    <div style="display:flex;align-items:center;gap:7px;margin-bottom:9px">
+      <span style="width:7px;height:7px;border-radius:50%;background:var(--color-text-info)"></span>
+      <span style="font-size:13px;font-weight:500">渲染层 · 展示哪些、什么顺序</span>
+    </div>
+    <div style="font-size:11.5px;color:var(--color-text-secondary);line-height:1.75">
+      按 <b>priority 1→6</b> 找第一个「可以」的填槽位①<br>
+      继续往后找填槽位②（<b>顺序位，不是主次</b>）<br>
+      ① 无内容 → ③④ 直接渲染，<b>不留空段</b>
+    </div>
+    <div style="font-size:11px;color:var(--color-text-secondary);margin-top:9px;padding-top:9px;border-top:0.5px solid var(--color-border-tertiary);line-height:1.6">
+      ✅ <b>改优先级不用动数据</b><br>
+      📌 <code style="font-family:var(--font-mono)">mnemonic_type.priority</code>（6 行静态表）= 渲染层配置
+    </div>
+  </div>
+
+</div>
+
+<div style="background:var(--color-background-secondary);border-radius:12px;padding:15px 17px;margin-top:14px">
+  <div style="font-size:12px;font-weight:500;margin-bottom:11px">槽位填充流水线</div>
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11.5px;margin-bottom:13px">
+    <span style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:5px 9px;font-family:var(--font-mono)">①记忆法一</span>
+    <span style="color:var(--color-text-tertiary)">←</span>
+    <span style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:5px 9px;font-family:var(--font-mono)">②记忆法二</span>
+    <span style="color:var(--color-text-tertiary)">←</span>
+    <span style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:5px 9px;font-family:var(--font-mono)">③释义</span>
+    <span style="color:var(--color-text-tertiary)">←</span>
+    <span style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:6px;padding:5px 9px;font-family:var(--font-mono)">④语境</span>
+  </div>
+  <div style="font-size:11.5px;color:var(--color-text-secondary);line-height:1.7;margin-bottom:9px">
+    候选池（按优先级）：<b>root(1) → cognate(2) → collocation(3) → etymology(4) → image(5)</b>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px">
+    <div style="background:var(--color-background-primary);border-radius:8px;padding:9px 10px">
+      <div style="font-size:11px;font-family:var(--font-mono);color:var(--color-text-tertiary)">1 root</div>
+      <div style="font-size:15px;font-weight:500;margin-top:3px;line-height:1.3">5,484</div>
+      <div style="font-size:10.5px;color:var(--color-text-tertiary);margin-top:2px">有词素记录（判据不能用 <code>type='root'</code>，那会漏 36 个）</div>
+    </div>
+    <div style="background:var(--color-background-primary);border-radius:8px;padding:9px 10px">
+      <div style="font-size:11px;font-family:var(--font-mono);color:var(--color-text-tertiary)">2 cognate</div>
+      <div style="font-size:15px;font-weight:500;margin-top:3px;line-height:1.3">2,988</div>
+      <div style="font-size:10.5px;color:var(--color-text-tertiary);margin-top:2px">有词群</div>
+    </div>
+    <div style="background:var(--color-background-primary);border-radius:8px;padding:9px 10px;border:1px dashed var(--color-border-warning)">
+      <div style="font-size:11px;font-family:var(--font-mono);color:var(--color-text-warning)">3 collocation</div>
+      <div style="font-size:15px;font-weight:500;margin-top:3px;line-height:1.3;color:var(--color-text-warning)">待判</div>
+      <div style="font-size:10.5px;color:var(--color-text-warning);margin-top:2px">需 LLM 判「固定」</div>
+    </div>
+    <div style="background:var(--color-background-primary);border-radius:8px;padding:9px 10px">
+      <div style="font-size:11px;font-family:var(--font-mono);color:var(--color-text-tertiary)">4 etymology</div>
+      <div style="font-size:15px;font-weight:500;margin-top:3px;line-height:1.3">11,407</div>
+      <div style="font-size:10.5px;color:var(--color-text-tertiary);margin-top:2px">有词源（含整体借词）· 分母 11,523</div>
+    </div>
+    <div style="background:var(--color-background-primary);border-radius:8px;padding:9px 10px;border:1px dashed var(--color-border-tertiary)">
+      <div style="font-size:11px;font-family:var(--font-mono);color:var(--color-text-tertiary)">5 image</div>
+      <div style="font-size:15px;font-weight:500;margin-top:3px;line-height:1.3;color:var(--color-text-tertiary)">0</div>
+      <div style="font-size:10.5px;color:var(--color-text-tertiary);margin-top:2px">无数据源 · 留位不渲染</div>
+    </div>
+  </div>
+  <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:10px;line-height:1.6">
+    🔴 <b>所有覆盖率的分母统一是 <code style="font-family:var(--font-mono)">word</code> 表 = 11,523</b> ——
+    <b>11,493 不是「完整词库」</b>，它是「有例句」的词数（<b>99.74%</b>）。
+    与 11,407 相减得出「87」是<b>假差</b>（不同分子，不能相减）；真差是 <b>11,523 − 11,406 = 117</b>（无词源）。
+    槽位④ <code style="font-family:var(--font-mono)">context</code>（<b>11,493 / 11,523</b>）<b>默认附加</b> —— 每张卡都有，<b>不参与竞争</b>。
+  </div>
+</div>
+
+<div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-info);border-radius:12px;padding:14px 16px;margin-top:14px">
+  <div style="font-size:12.5px;font-weight:500;margin-bottom:9px">🔴 段的<b>显示名</b> vs <b>内部 code</b> —— 消除一处文档矛盾</div>
+  <div style="font-size:11.5px;color:var(--color-text-secondary);line-height:1.7;margin-bottom:11px">
+    界面稿 ② 标的是「<b>词源故事</b>」，数据侧叫 <code style="font-family:var(--font-mono)">cognate</code> ——
+    <b>不是两件事</b>，是同一段的「显示名」与「内部 code」。
+    <br>「同源串记」<b>本身不铺在卡片上</b>（它是聚合页）；卡片 ② 显示<b>当前词的词源故事文本</b>，<b>点击才展开</b>同源串记聚合页。
+  </div>
+  <div style="display:grid;grid-template-columns:56px 1fr 96px 1.4fr;gap:0;font-size:11px">
+    <div style="padding:6px 8px;font-weight:500;border-bottom:0.5px solid var(--color-border-tertiary);color:var(--color-text-tertiary)">槽位</div>
+    <div style="padding:6px 8px;font-weight:500;border-bottom:0.5px solid var(--color-border-tertiary);color:var(--color-text-tertiary)">显示名</div>
+    <div style="padding:6px 8px;font-weight:500;border-bottom:0.5px solid var(--color-border-tertiary);color:var(--color-text-tertiary)">内部 code</div>
+    <div style="padding:6px 8px;font-weight:500;border-bottom:0.5px solid var(--color-border-tertiary);color:var(--color-text-tertiary)">点击展开</div>
+
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)">①</div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)"><b>词根词缀</b></div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);font-family:var(--font-mono)">root (1)</div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)">词根族聚合页</div>
+
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)">① 备选</div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)"><b>固定搭配</b></div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);font-family:var(--font-mono)">collocation (3)</div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);color:var(--color-text-tertiary)">无</div>
+
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)">②</div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)"><b>词源故事</b></div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);font-family:var(--font-mono)">cognate (2)</div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)"><b>同源串记</b>聚合页（展示名「XX 词源族」）</div>
+
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)">② 备选</div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)"><b>词源故事</b></div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);font-family:var(--font-mono)">etymology (4)</div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)">有族则展开（见下）</div>
+
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)">③</div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)">释义</div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);color:var(--color-text-tertiary)">—（只首义）</div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);color:var(--color-text-tertiary)">无</div>
+
+    <div style="padding:6px 8px">④</div>
+    <div style="padding:6px 8px">语境原句</div>
+    <div style="padding:6px 8px;font-family:var(--font-mono)">context (6)</div>
+    <div style="padding:6px 8px;color:var(--color-text-tertiary)">无</div>
+  </div>
+  <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.7;margin-top:10px">
+    🔑 <b>段标题随实际填入的类型变化，不是固定标签</b> —— 这正是 v1 §4.2 示例
+    <code style="font-family:var(--font-mono)">[root, definition, context]</code> 的含义（示例词 <code style="font-family:var(--font-mono)">incredible</code> 恰好可拆，所以首段是 <code>root</code>）。
+    <br>✅ <b>为什么 <code>cognate</code> 与 <code>etymology</code> 共用显示名「词源故事」不撞车</b>：
+    有同源族的 2,988 词 <b>100% 都可拆</b> → 有 <code>cognate</code> 必有 <code>root</code>（①=root、②=cognate）；
+    不可拆词<b>必无</b> <code>cognate</code> → ② 只能命中 <code>etymology</code>。两者<b>不可能同卡</b>。
+  </div>
+</div>
+
+<div style="background:var(--color-background-secondary);border-radius:12px;padding:13px 16px;margin-top:12px">
+  <div style="font-size:12px;font-weight:500;margin-bottom:8px">聚合页门槛 = 族规模 <b>≥3</b>（v1 §8.5 原文有，此前文档未写明）</div>
+  <div style="font-size:11.5px;color:var(--color-text-secondary);line-height:1.7">
+    实测与 v1 的「<b>≥ N（如 3）</b>」一致，且数据层<b>早已实施</b>：<code style="font-family:var(--font-mono)">aggregate_page</code>
+    两类页的 <code style="font-family:var(--font-mono)">min(member_count)</code> 都正好是 <b>3</b>
+    （root 596 页 / etymon 1,181 页）。
+    <br>而 <code style="font-family:var(--font-mono)">cognate_group</code> <b>保留完整分组</b>：2,650 族 = 1 词族 <b>1,562</b> + 2 词族 <b>492</b> + ≥3 词族 <b>596</b>。
+    <br>→ <b>入口有无要按门槛判</b>：① 可点击 = 有 root 型页（<b>2,988</b> 词）｜② 可点击 = 有 etymon 型页（<b>6,188</b> 词）。
+  </div>
+  <div style="font-size:11px;color:var(--color-text-warning);line-height:1.7;margin-top:9px;padding-top:9px;border-top:0.5px solid var(--color-border-tertiary)">
+    ⚠️ <b><code style="font-family:var(--font-mono)">capture</code> 暴露的状态：① 有内容但无入口，而 ② 有入口</b> ——
+    它的 <code style="font-family:var(--font-mono)">capt</code> 词根族只有 2 词（capture + captive），未达门槛 → 不建 root 型页；
+    但它的 <b>② 词源故事可点击</b>（<code style="font-family:var(--font-mono)">capere</code> 词源族 <b>56 词</b>）。
+    <br>→ <b>两个入口各自独立判断</b>：渲染层必须能处理「① 无箭头、② 有箭头」这种组合，
+    <b>不能默认「有拆解就有族页」</b>，也不能「一个没有就以为都没有」（<b>不显示「›」箭头</b>）。
+  </div>
+</div>
+
+<div style="margin-top:16px">
+  <div style="font-size:13px;font-weight:500;margin-bottom:8px">真实样本：同一个词，可用哪几类 → 填哪个槽位</div>
+  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+
+    <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:10px;padding:12px 13px">
+      <div style="display:flex;align-items:baseline;gap:7px;margin-bottom:6px">
+        <span style="font-family:var(--serif);font-size:15px">disorganized</span>
+        <span style="font-size:11px;color:var(--color-text-tertiary)">B1</span>
+      </div>
+      <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.6;font-family:var(--font-mono)">
+        ① root &nbsp; ② cognate &nbsp; ✗collocation &nbsp; ✗etymology
+      </div>
+      <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:5px">拆 dis- + organ + -ized ｜ 族 organ(15)</div>
+    </div>
+
+    <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:10px;padding:12px 13px">
+      <div style="display:flex;align-items:baseline;gap:7px;margin-bottom:6px">
+        <span style="font-family:var(--serif);font-size:15px">capture</span>
+        <span style="font-size:11px;color:var(--color-text-tertiary)">B1</span>
+      </div>
+      <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.6;font-family:var(--font-mono)">
+        ① root &nbsp; ② etymology
+      </div>
+      <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:5px">拆 capt + -ure ｜ 源 capere（拿取）</div>
+    </div>
+
+    <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-danger);border-radius:10px;padding:12px 13px">
+      <div style="display:flex;align-items:baseline;gap:7px;margin-bottom:6px">
+        <span style="font-family:var(--serif);font-size:15px">laser</span>
+        <span style="font-size:11px;color:var(--color-text-tertiary)">B2</span>
+        <span style="font-size:10px;color:var(--color-text-danger);background:var(--color-background-danger);padding:1px 6px;border-radius:99px">旧判据排除过它</span>
+      </div>
+      <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.6;font-family:var(--font-mono)">
+        ① etymology（不可拆）&nbsp; ✗root
+      </div>
+      <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:5px">
+        源 首字母缩略词 Light Amplification by<br>Stimulated Emission of Radiation
+      </div>
+    </div>
+
+    <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:10px;padding:12px 13px">
+      <div style="display:flex;align-items:baseline;gap:7px;margin-bottom:6px">
+        <span style="font-family:var(--serif);font-size:15px">courage</span>
+        <span style="font-size:11px;color:var(--color-text-tertiary)">B1</span>
+      </div>
+      <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.6;font-family:var(--font-mono)">
+        ① etymology（不可拆）&nbsp; ✗root
+      </div>
+      <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:5px">源 拉丁 cor（心）→ 内心力量 → 勇气</div>
+    </div>
+
+  </div>
+</div>
+
+<div style="margin-top:14px;padding:12px 15px;background:var(--color-background-primary);border:0.5px solid var(--color-border-info);border-radius:12px">
+  <div style="font-size:12px;font-weight:500;margin-bottom:7px">🔑 一个自然验证：cognate 天然落在槽位②</div>
+  <div style="font-size:11.5px;color:var(--color-text-secondary);line-height:1.7">
+    <b>有同源族的 2,988 词 —— 100% 都可拆。</b>所以 cognate 在槽位① 命中数是 <b>0</b>，它天然出现在 ②。
+    <br>这不是缺陷，<b>正符合 v1 的定位</b>：词根词缀讲「这个词怎么构成」（主体），同源串记讲「和哪些词联想」（辅助）。
+    <br>→ 反过来说，现状把 cognate 判成 195 个词的「主要记忆法」，<b>从架构上就不可能对</b>。
+  </div>
+</div>
+
+<div style="margin-top:12px;padding:12px 15px;background:var(--color-background-secondary);border-radius:12px">
+  <div style="font-size:12px;font-weight:500;margin-bottom:7px">⚠️ 「可以」的判据要含质量门槛（我在这上面错了两次）</div>
+  <table style="width:100%;border-collapse:collapse;font-size:11.5px">
+    <tr>
+      <td style="padding:5px 8px;color:var(--color-text-tertiary);white-space:nowrap">collocation</td>
+      <td style="padding:5px 8px;color:var(--color-text-danger)">「有任意搭配」= 99.3% → 会盖过词源</td>
+      <td style="padding:5px 8px;color:var(--color-text-success)">「<b>固定搭配强</b>」（v1 原文）→ 需 LLM 判</td>
+    </tr>
+    <tr>
+      <td style="padding:5px 8px;color:var(--color-text-tertiary);white-space:nowrap">etymology</td>
+      <td style="padding:5px 8px;color:var(--color-text-danger)">我写成 <code style="font-family:var(--font-mono)">role≠whole</code></td>
+      <td style="padding:5px 8px;color:var(--color-text-success)">含<b>整体借词</b>（v1：café ← French café）→ 5,733 词被错误排除</td>
+    </tr>
+    <tr>
+      <td style="padding:5px 8px;color:var(--color-text-tertiary);white-space:nowrap">cognate</td>
+      <td style="padding:5px 8px;color:var(--color-text-danger)">「有词源亲缘」</td>
+      <td style="padding:5px 8px;color:var(--color-text-success)">「与另一个<b>英语词</b>成词群」（v1 明文「谐音不算」）</td>
+    </tr>
+  </table>
+</div>
+
+<div class="rule"></div>
+
+<h2><span class="num">04</span>点击 ① 展开：词根族聚合页</h2>
+<p class="sub">
+  <b>这是本次最重要的修正。</b>聚合页里每一条都带<b>分拆法</b> ——
+  一眼看出「同一个 <code>cept</code>（拿取）配合不同前缀就产生完全不同的含义」。
+  只列单词是没意义的：那是「22 个不相干的词」；带分拆法才是「<b>一个词根 × 22 种前缀</b>」。
+  <br>数据实测：<b>分拆法可算率 100%</b>（<code>cept</code> 22/22 · <code>man</code> 32/32 · <code>organ</code> 15/15 …），来自 <code>word_morpheme</code>。
+</p>
+
+<div class="screens">
+  <div>
+    <div class="phone">
+      <div class="pbar"><span>‹ 返回</span><b>cept 词根族</b><span></span></div>
+      <div class="pbody" style="padding:18px">
+        <div class="agg-src">
+          <div class="f">cept</div>
+          <div class="m">Latin · 拿取 · 22 个同族词</div>
+          <div class="n">来自 intercept 的 ① 词根词缀</div>
+        </div>
+        <div style="margin-top:8px">
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w me">intercept</span><span class="agg-z">拦截；截获</span>
+            <span class="agg-bd"><span class="r">inter-</span>（在…之间）+ <span class="r">cept</span>（拿取）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">accept</span><span class="agg-z">接受，收受</span>
+            <span class="agg-bd"><span class="r">ac-</span>（向，加强）+ <span class="r">cept</span>（拿，取）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">concept</span><span class="agg-z">概念，观念</span>
+            <span class="agg-bd"><span class="r">con-</span>（共同、一起）+ <span class="r">cept</span>（拿、抓）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">except</span><span class="agg-z">除……之外</span>
+            <span class="agg-bd"><span class="r">ex-</span>（出）+ <span class="r">cept</span>（拿取）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">deception</span><span class="agg-z">欺骗，欺诈</span>
+            <span class="agg-bd"><span class="r">de-</span>（离开／向下）+ <span class="r">cept</span>（拿取）+ <span class="r">-ion</span>（名词后缀）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">receptionist</span><span class="agg-z">接待员</span>
+            <span class="agg-bd"><span class="r">re-</span>（回，再）+ <span class="r">cept</span>（拿，取）+ <span class="r">-ion</span>＋<span class="r">-ist</span>（人）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">susceptible</span><span class="agg-z">易受影响的</span>
+            <span class="agg-bd"><span class="r">sus-</span>（在下面）+ <span class="r">cept</span>（拿取）+ <span class="r">-ible</span>（可…的）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">contraception</span><span class="agg-z">避孕，节育</span>
+            <span class="agg-bd"><span class="r">contra-</span>（相反）+ <span class="r">cept</span>（拿取）+ <span class="r">-ion</span>（名词后缀）</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">同一词根 <b>cept</b> 是每条都出现的锚点（强调色）——<br>
+      用户横向扫一遍就看懂「前缀决定含义」这个规律。</div>
+  </div>
+
+  <div>
+    <div class="phone">
+      <div class="pbar"><span>‹ 返回</span><b>man 词根族</b><span></span></div>
+      <div class="pbody" style="padding:18px">
+        <div class="agg-src">
+          <div class="f">man</div>
+          <div class="m">Old English · 人 · 32 个同族词</div>
+          <div class="n">复合词族 —— 拆分同样清晰</div>
+        </div>
+        <div style="margin-top:8px">
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">policeman</span><span class="agg-z">男警察</span>
+            <span class="agg-bd"><span class="r">police</span>（警察）+ <span class="r">man</span>（男人）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">businessman</span><span class="agg-z">商人，企业家</span>
+            <span class="agg-bd"><span class="r">business</span>（商业）+ <span class="r">man</span>（男人）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">craftsman</span><span class="agg-z">工匠</span>
+            <span class="agg-bd"><span class="r">craft</span>（手艺）+ <span class="r">s</span>（连接成分）+ <span class="r">man</span>（人）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">chapman</span><span class="agg-z">小贩，行商</span>
+            <span class="agg-bd"><span class="r">chap</span>（买卖）+ <span class="r">man</span>（人）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">chairman</span><span class="agg-z">主席，会长</span>
+            <span class="agg-bd"><span class="r">chair</span>（椅子；主持）+ <span class="r">man</span>（人）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">iceman</span><span class="agg-z">卖冰人，送冰人</span>
+            <span class="agg-bd"><span class="r">ice</span>（冰）+ <span class="r">man</span>（人）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">mankind</span><span class="agg-z">人类</span>
+            <span class="agg-bd"><span class="r">man</span>（人）+ <span class="r">kind</span>（种类）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">anchorman</span><span class="agg-z">男新闻主播</span>
+            <span class="agg-bd"><span class="r">anchor</span>（锚；固定）+ <span class="r">man</span>（男人；人）</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">复合词族也成立 —— <b>「什么 + man」直接读懂词义</b>。<br>v1 §4.3 的 <code>gloss</code> 字段（「拿回来 → 接收」）正是这个思路。</div>
+  </div>
+</div>
+
+<div class="rule"></div>
+
+<h2><span class="num">05</span>点击 ② 展开：词源族聚合页</h2>
+<p class="sub">
+  <b>capere</b>（拉丁·拿取）—— <b>56 个词</b>。这些词的拼写各不相同（<code>ceive</code> / <code>cept</code> / <code>cip</code> / <code>capt</code> / <code>cup</code>），
+  词根族只能抓住其中一部分；<b>但它们都源自同一个拉丁词</b> —— 这类连接只有词源族能表达。
+  <br><br>
+  <b>更有力的证据在第二页</b>：<b>vertere</b>（拉丁·转）33 词里，<b>有 9 个根本不可拆</b>
+  （<code>vertical</code> · <code>verse</code> · <code>vertex</code> · <code>vertebra</code> · <code>versus</code> · <code>converse</code> …）——
+  <b>它们不属于任何词根族，但都在这个词源族里。</b>
+</p>
+
+<div class="screens">
+  <div>
+    <div class="phone">
+      <div class="pbar"><span>‹ 返回</span><b>capere 词源族</b><span></span></div>
+      <div class="pbody" style="padding:18px">
+        <div class="agg-src">
+          <div class="f">capere</div>
+          <div class="m">Latin · 拿取 · 56 个同源词</div>
+          <div class="n">来自 intercept 的 ② 词源故事</div>
+        </div>
+        <div style="margin-top:8px">
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w me">intercept</span><span class="agg-z">拦截；截获</span>
+            <span class="agg-bd"><span class="r">inter-</span>（在…之间）+ <span class="r">cept</span>（拿取）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">receive</span><span class="agg-z">收到，接到</span>
+            <span class="agg-bd"><span class="r">re-</span>（回，再）+ <span class="r">ceive</span>（拿取，抓住）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">perceptual</span><span class="agg-z">感知的；知觉的</span>
+            <span class="agg-bd"><span class="r">per-</span>（完全）+ <span class="r">cept</span>（拿取）+ <span class="r">-ual</span>（…的）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">capture</span><span class="agg-z">俘获，捕获</span>
+            <span class="agg-bd"><span class="r">capt</span>（拿取）+ <span class="r">-ure</span>（名词/动词后缀）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">capacity</span><span class="agg-z">容量，容纳能力</span>
+            <span class="agg-bd"><span class="r">cap</span>（拿取）+ <span class="r">-acity</span>（名词后缀，表状态）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">anticipate</span><span class="agg-z">预期，预料</span>
+            <span class="agg-bd"><span class="r">ante-</span>（前）+ <span class="r">cip</span>（拿取）+ <span class="r">-ate</span>（动词后缀）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">occupy</span><span class="agg-z">占据，占用</span>
+            <span class="agg-bd"><span class="r">oc-</span>（朝向；加强）+ <span class="r">cup</span>（拿；抓）+ <span class="r">-y</span>（动词后缀）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">incipient</span><span class="agg-z">初期的；早期的</span>
+            <span class="agg-bd"><span class="r">in-</span>（在…上）+ <span class="r">cip</span>（拿取）+ <span class="r">-ient</span>（…的）</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>拼写变了，词源没变。</b><code>ceive</code>／<code>cept</code>／<code>cip</code>／<code>capt</code>／<code>cup</code>
+      同源 —— 横向扫一遍就看得出「都是『拿』」。</div>
+  </div>
+
+  <div>
+    <div class="phone">
+      <div class="pbar"><span>‹ 返回</span><b>vertere 词源族</b><span></span></div>
+      <div class="pbody" style="padding:18px">
+        <div class="agg-src">
+          <div class="f">vertere</div>
+          <div class="m">Latin · 转 · 33 个同源词</div>
+          <div class="n">来自 vertical 的 ② 词源故事</div>
+        </div>
+        <div style="margin-top:8px">
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w me">vertical</span><span class="agg-z">垂直的</span>
+            <span class="agg-bd" style="color:var(--ink3)">整体词，不可拆 —— 但同属 <span class="r">vertere</span>（转）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">convert</span><span class="agg-z">转换，转化</span>
+            <span class="agg-bd"><span class="r">con-</span>（完全）+ <span class="r">vert</span>（转）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">revert</span><span class="agg-z">恢复，回复原状</span>
+            <span class="agg-bd"><span class="r">re-</span>（回，再）+ <span class="r">vert</span>（转）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">divert</span><span class="agg-z">使转向，使改道</span>
+            <span class="agg-bd"><span class="r">di-</span>（离开）+ <span class="r">vert</span>（转）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">diverse</span><span class="agg-z">不同的，多样的</span>
+            <span class="agg-bd"><span class="r">di-</span>（分开）+ <span class="r">vers</span>（转）+ <span class="r">-e</span>（形容词后缀）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">reverse</span><span class="agg-z">逆转，倒转</span>
+            <span class="agg-bd"><span class="r">re-</span>（向后，相反）+ <span class="r">vers</span>（转）+ <span class="r">-e</span></span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">controversial</span><span class="agg-z">有争议的</span>
+            <span class="agg-bd"><span class="r">contro-</span>（相反）+ <span class="r">vers</span>（转）+ <span class="r">-ial</span>（…的）</span>
+          </div>
+          <div class="agg-item" style="flex-wrap:wrap">
+            <span class="agg-w">verse</span><span class="agg-z">诗，韵文</span>
+            <span class="agg-bd" style="color:var(--ink3)">整体词，不可拆 —— 但同属 <span class="r">vertere</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>词源族的价值在这里：</b>9 个不可拆的词
+      （<code>vertical</code>／<code>verse</code>／<code>vertex</code>／<code>vertebra</code>／<code>versus</code>…）
+      <b>词根族一个都抓不到</b>，但它们和 <code>convert</code>／<code>revert</code> 是同一个源词的后代。</div>
+  </div>
+</div>
+
+<div class="rule"></div>
+
+<h2><span class="num">06</span>对照：同一张卡，目标 vs 当前实现</h2>
+<p class="sub">
+  <b>intercept</b>（B1）· 左边是<b>现在 word.db 里的卡</b>，右边是<b>按本节规则重建后的卡</b>。
+  这就是「用界面对齐文档」的用法。
+</p>
+
+<div class="cmp">
+  <div>
+    <div class="tagline bad"><span class="dot"></span>当前实现（词典信息重排）</div>
+    <div class="phone" style="width:362px">
+      <div class="pbody" style="padding:16px">
+        <div class="card" style="padding:16px">
+          <div class="w-head"><div class="w-word" style="font-size:26px">intercept</div>
+            <div class="w-meta"><span class="w-ipa">/ˌɪntəˈsɛpt/</span></div></div>
+          <div style="margin-top:12px;font-size:12.5px;line-height:1.55">
+            <div style="padding:8px 0;border-bottom:1px solid var(--line)">
+              <b style="font-weight:500">v 拦截；截获</b>
+              <div style="color:var(--ink2)">to stop, catch, or seize someone or something before it reaches its intended destination</div>
+              <div style="color:var(--ink3);font-style:italic">The police intercepted the stolen vehicle…</div></div>
+            <div style="padding:8px 0;border-bottom:1px solid var(--line)">
+              <b style="font-weight:500">v 拦截；截断传球</b>
+              <div style="color:var(--ink2)">(sports) to gain possession of a pass or thrown ball…</div>
+              <div style="color:var(--ink3);font-style:italic">The defender intercepted the pass…</div></div>
+            <div style="padding:8px 0;border-bottom:1px solid var(--line)">
+              <b style="font-weight:500">v 截取；相交于</b>
+              <div style="color:var(--ink2)">(mathematics) to mark or cut off a line, curve, or surface…</div>
+              <div style="color:var(--ink3);font-style:italic">The line intercepts the x-axis…</div></div>
+            <div style="padding:8px 0">
+              <b style="font-weight:500">n 拦截；截获</b>
+              <div style="color:var(--ink2)">an act of intercepting something…</div>
+              <div style="color:var(--ink3);font-style:italic">The quarterback threw an interception…</div></div>
+            <div style="padding:8px 0;border-top:1px dashed var(--line);color:var(--ink3);font-size:12px">
+              root inter-（在…之间）+ cept（拿取） ← <b style="font-weight:500">排最后一位</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="secs">sections = [<span class="x">sense</span>, <span class="x">sense</span>, <span class="x">sense</span>, <span class="x">sense</span>, root]</div>
+    <div class="stat">
+      <div><div class="k">卡面字数</div><div class="v bad">550+</div></div>
+      <div><div class="k">sections</div><div class="v bad">5</div></div>
+      <div><div class="k">记忆法位置</div><div class="v bad">第 5 位</div></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="tagline good"><span class="dot"></span>目标（记忆法驱动）</div>
+    <div class="phone" style="width:362px">
+      <div class="pbody" style="padding:16px">
+        <div class="card" style="padding:16px">
+          <div class="w-head"><div class="w-word" style="font-size:26px">intercept</div>
+            <div class="w-meta"><span class="w-ipa">/ˌɪntəˈsɛpt/</span>
+              <span class="spk"><svg viewBox="0 0 16 16"><path d="M4 6h2.3L10 3v10l-3.7-3H4z"/><path d="M11.7 6.2a2.6 2.6 0 010 3.6" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></span></div></div>
+
+          <div class="mnem" style="margin-top:12px;padding:12px">
+            <div class="mnem-head" style="margin-bottom:6px">
+              <span class="mnem-tag"><span class="dot"></span>① 词根词缀</span>
+              <span class="open">词根族 22 词 ›</span>
+            </div>
+            <div class="mnem-main" style="font-size:15px">
+              <span class="aff">inter-</span><span class="gl">（在…之间）</span><span class="sep">+</span>
+              <span class="aff">cept</span><span class="gl">（拿取）</span>
+            </div>
+          </div>
+
+          <div class="mnem" style="margin-top:10px;padding:12px">
+            <div class="mnem-head" style="margin-bottom:6px">
+              <span class="mnem-tag"><span class="dot"></span>② 词源故事</span>
+              <span class="open">词源族 56 词 ›</span>
+            </div>
+            <div style="font-size:12.5px;color:var(--ink2);line-height:1.6">
+              拉丁 <i>inter</i>（之间）+ <i>capere</i>（拿取）→ 在中间拿住 → 拦截
+            </div>
+          </div>
+
+          <div class="def" style="margin-top:13px">
+            <div class="lab">③ 释义</div>
+            <div class="def-txt" style="font-size:15px">拦截；截获</div>
+          </div>
+
+          <div class="ctx" style="margin-top:12px">
+            <div class="lab">④ 语境原句</div>
+            <div class="ctx-txt" style="font-size:13.5px">The police intercepted the stolen vehicle on the highway.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="secs">sections = [<span class="v">root</span>, <span class="v">etymology</span>, <span class="v">definition</span>, <span class="v">context</span>]</div>
+    <div class="stat">
+      <div><div class="k">卡面字数</div><div class="v good">约 90</div></div>
+      <div><div class="k">sections</div><div class="v good">4</div></div>
+      <div><div class="k">记忆法位置</div><div class="v good">第 1 位</div></div>
+    </div>
+  </div>
+</div>
+
+<p class="sub" style="margin-top:22px">
+  <b>差别不在信息量，在这张卡让用户记住什么。</b>
+  左边 4 个词典义项（含体育、数学两个冷门义），读完不知道记哪个；
+  右边一条构造逻辑（inter- + cept）＋ 两个可展开的族（22 词 / 56 词），
+  <b>记住一个词根，22 个词同时有了线索</b>。
+  <br><br>
+  所需数据全部已在 <code>word.db</code> 里 —— <b>不需要重跑 LLM，只需重组</b>。
+</p>
+
+<div class="rule"></div>
+
+<h2><span class="num">07</span>划词浮层 · 可拆与不可拆两种形态</h2>
+<p class="sub">
+  浮层与卡片<b>同一套四段结构</b>（一致的心智模型），记忆法在释义之前。
+  两页对比出关键差异：<b>可拆词的第①段是词根词缀；不可拆词的词源故事顶上第①段</b>，不硬凑词根。
+</p>
+
+<div class="screens">
+  <div>
+    <div class="tagline" style="color:var(--ink2)"><span class="dot" style="background:var(--ink3)"></span>不可拆词 · 词源顶上</div>
+    <div class="phone">
+      <div class="pbar"><span>‹ 返回</span><b>A New Way to Grow Food</b><span>🔖</span></div>
+      <div class="pbody" style="padding:20px 20px 26px">
+        <div style="font-family:var(--serif);font-size:17px;line-height:1.82;color:var(--ink)">
+          In the middle of Singapore, a tall glass building produces more than
+          <span style="background:rgba(180,67,44,.15);border-radius:3px;padding:1px 3px">ten times</span>
+          the food of a conventional farm of the same size. The
+          <span style="background:rgba(180,67,44,.15);border-radius:3px;padding:1px 3px">vertical</span>
+          farm uses a fraction of the water…
+        </div>
+        <div class="card" style="margin-top:12px;padding:14px">
+          <div style="display:flex;align-items:baseline;gap:8px">
+            <span style="font-family:var(--serif);font-size:21px">vertical</span>
+            <span class="w-ipa">/ˈvɜːrtɪkəl/</span>
+            <span class="spk" style="margin-left:auto"><svg viewBox="0 0 16 16"><path d="M4 6h2.3L10 3v10l-3.7-3H4z"/><path d="M11.7 6.2a2.6 2.6 0 010 3.6" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></span>
+          </div>
+          <div class="mnem" style="margin-top:10px;padding:11px 12px">
+            <div class="mnem-head" style="margin-bottom:5px">
+              <span class="mnem-tag"><span class="dot"></span>① 词源故事</span>
+              <span class="open" style="font-size:10.5px">词源族 33 词 ›</span>
+            </div>
+            <div style="font-size:12.5px;color:var(--ink2);line-height:1.62">
+              拉丁 <i>vertere</i>（转）→ <i>vertex</i>（顶点，即「转」之处）→ <i>verticalis</i> → vertical
+            </div>
+            <div style="font-size:11.5px;color:var(--ink3);margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)">
+              整体词，无词根可拆
+            </div>
+          </div>
+          <div class="def" style="margin-top:11px">
+            <div class="lab">② 释义</div>
+            <div class="def-txt" style="font-size:15px">垂直的</div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px;font-size:12px">
+            <span style="color:var(--accent)">＋ 加入生词本</span>
+            <span style="color:var(--ink3)">·</span>
+            <span style="color:var(--ink3)">✓ 已加入</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">已查词用<b>极淡强调色底</b>（痕迹）。<br>
+      不可拆时<b>不摆空段</b>，把词源故事提为第①段。</div>
+  </div>
+
+  <div>
+    <div class="tagline" style="color:var(--ink2)"><span class="dot" style="background:var(--accent)"></span>可拆词 · 词根顶上</div>
+    <div class="phone">
+      <div class="pbar"><span>‹ 返回</span><b>Police Intercept Stolen…</b><span>🔖</span></div>
+      <div class="pbody" style="padding:20px 20px 26px">
+        <div style="font-family:var(--serif);font-size:17px;line-height:1.82;color:var(--ink)">
+          The police
+          <span style="background:rgba(180,67,44,.15);border-radius:3px;padding:1px 3px">intercepted</span>
+          the stolen vehicle on the highway north of the city, and two suspects were
+          <span style="background:rgba(180,67,44,.15);border-radius:3px;padding:1px 3px">arrested</span>
+          at the scene.
+        </div>
+        <div class="card" style="margin-top:12px;padding:14px">
+          <div style="display:flex;align-items:baseline;gap:8px">
+            <span style="font-family:var(--serif);font-size:21px">intercept</span>
+            <span class="w-ipa">/ˌɪntəˈsɛpt/</span>
+            <span class="spk" style="margin-left:auto"><svg viewBox="0 0 16 16"><path d="M4 6h2.3L10 3v10l-3.7-3H4z"/><path d="M11.7 6.2a2.6 2.6 0 010 3.6" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></span>
+          </div>
+          <div class="mnem" style="margin-top:10px;padding:11px 12px">
+            <div class="mnem-head" style="margin-bottom:5px">
+              <span class="mnem-tag"><span class="dot"></span>① 词根词缀</span>
+              <span class="open" style="font-size:10.5px">词根族 22 词 ›</span>
+            </div>
+            <div class="mnem-main" style="font-size:14px">
+              <span class="aff">inter-</span><span class="gl">（在…之间）</span><span class="sep">+</span>
+              <span class="aff">cept</span><span class="gl">（拿取）</span>
+            </div>
+          </div>
+          <div class="def" style="margin-top:11px">
+            <div class="lab">② 释义</div>
+            <div class="def-txt" style="font-size:15px">拦截；截获</div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px;font-size:12px">
+            <span style="color:var(--accent)">＋ 加入生词本</span>
+            <span style="color:var(--ink3)">·</span>
+            <span style="color:var(--ink3)">✓ 已加入</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">浮层 → 聚合页 → 回到浮层，<b>不打断阅读</b>。<br>
+      条目上都标了族规模，用户点之前就知道里面有多少。</div>
+  </div>
+</div>
+
+<div class="rule"></div>
+
+<h2><span class="num">08</span>🔴 ① 与 ② 的重叠 —— ② 该不该独立成段</h2>
+<p class="sub">
+  实测：<b>可拆词里 100% 都有词源文本</b>，而 <b>② 的义项与 ① 重复的占 78.3%</b>（其中 <b>65.0% 是逐字重复</b>）。
+  下面两张是真实数据 —— 左边 ② 一个字都没多，右边 ② 提供了历史路径。
+</p>
+
+<div class="screens">
+  <div>
+    <div class="tagline bad"><span class="dot"></span>② 纯冗余 · 65.0%（3,565 词）</div>
+    <div class="phone" style="width:362px">
+      <div class="pbody" style="padding:16px">
+        <div class="card" style="padding:16px">
+          <div class="w-head"><div class="w-word" style="font-size:25px">disappear</div>
+            <div class="w-meta"><span class="w-ipa">/ˌdɪsəˈpɪər/</span></div></div>
+          <div class="mnem" style="margin-top:12px;padding:11px">
+            <div class="mnem-tag" style="margin-bottom:5px"><span class="dot"></span>① 词根词缀</div>
+            <div class="mnem-main" style="font-size:14px">
+              <span class="aff">dis-</span><span class="gl">（不，相反）</span><span class="sep">+</span>
+              <span class="aff">appear</span><span class="gl">（出现）</span></div>
+          </div>
+          <div class="mnem" style="margin-top:9px;padding:11px">
+            <div class="mnem-tag" style="margin-bottom:5px"><span class="dot"></span>② 词源故事</div>
+            <div style="font-size:12.5px;color:var(--color-text-secondary);line-height:1.6">
+              <span style="color:#C0392B">dis-（不）+ appear（出现）</span> → 不出现，即消失</div>
+          </div>
+          <div class="def" style="margin-top:12px"><div class="lab">③ 释义</div>
+            <div class="def-txt" style="font-size:15px">消失</div></div>
+          <div class="ctx" style="margin-top:11px"><div class="lab">④ 语境原句</div>
+            <div class="ctx-txt" style="font-size:13.5px">The sun disappeared behind the clouds.</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">② 里的「<span style="color:#C0392B">dis-（不）+ appear（出现）</span>」<b>与 ① 完全相同</b>，<br>
+      只多了一个「→ 不出现，即消失」。<b>这段占容量但不给新信息。</b></div>
+  </div>
+
+  <div>
+    <div class="tagline good"><span class="dot"></span>② 有增量 · 20.5%（1,123 词）</div>
+    <div class="phone" style="width:362px">
+      <div class="pbody" style="padding:16px">
+        <div class="card" style="padding:16px">
+          <div class="w-head"><div class="w-word" style="font-size:25px">instruct</div>
+            <div class="w-meta"><span class="w-ipa">/ɪnˈstrʌkt/</span></div></div>
+          <div class="mnem" style="margin-top:12px;padding:11px">
+            <div class="mnem-tag" style="margin-bottom:5px"><span class="dot"></span>① 词根词缀</div>
+            <div class="mnem-main" style="font-size:14px">
+              <span class="aff">in-</span><span class="gl">（进入；在内）</span><span class="sep">+</span>
+              <span class="aff">struct</span><span class="gl">（建造；堆叠）</span></div>
+          </div>
+          <div class="mnem" style="margin-top:9px;padding:11px">
+            <div class="mnem-tag" style="margin-bottom:5px"><span class="dot"></span>② 词源故事</div>
+            <div style="font-size:12.5px;color:var(--color-text-secondary);line-height:1.6">
+              拉丁 <i>instruere</i>（建造、安排）→ <span style="color:#2E7D52">在头脑中构建知识</span> → 教导</div>
+          </div>
+          <div class="def" style="margin-top:12px"><div class="lab">③ 释义</div>
+            <div class="def-txt" style="font-size:15px">教授，指导</div></div>
+          <div class="ctx" style="margin-top:11px"><div class="lab">④ 语境原句</div>
+            <div class="ctx-txt" style="font-size:13.5px">She instructed the students in mathematics.</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">② 的增量是<b>语义演变</b>：<span style="color:#2E7D52">instruere（建造）→ 在头脑中构建知识</span>。<br>
+      <b>这解释了「为什么 instruct 是『教导』」—— 对学习者有价值。</b></div>
+  </div>
+</div>
+
+<div style="margin-top:22px">
+  <div style="font-size:14px;font-weight:500;margin-bottom:4px">三个方案</div>
+  <div style="font-size:13px;color:var(--color-text-secondary);line-height:1.7;margin-bottom:14px;max-width:920px">
+    <b>关键实测</b>：5,115（可拆 + 有词源）+ 2,784（不可拆 + 有词源）= <b>7,899 = 「有真词源」总数</b> ——
+    每个有词源的词，<b>要么可拆（用 ①），要么不可拆（用 ②），正好二选一</b>。
+    <br>v1 §4.2 的示例也正是 3 段 <code>[root, definition, context]</code>，<b>没有 etymology 段</b>（而它的示例词 <code>incredible</code> 恰好可拆）。
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+
+    <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:12px;padding:15px">
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">
+        <span style="font-size:13px;font-weight:500">A · 严格互斥</span>
+        <span style="font-size:10.5px;color:var(--color-text-tertiary);border:1px solid var(--color-border-tertiary);padding:1px 6px;border-radius:99px">3 段</span>
+      </div>
+      <div style="font-size:11.5px;color:var(--color-text-secondary);line-height:1.65;font-family:var(--font-mono)">
+        [① root] <span style="color:var(--color-text-tertiary)">或</span> [① etymology]<br>
+        [③ definition]<br>
+        [④ context]
+      </div>
+      <div style="font-size:11.5px;color:var(--color-text-secondary);margin-top:9px;line-height:1.6">
+        ✅ 符合 v1 示例 · 最省容量<br>
+        🔴 <b>丢 20.5% 的增量</b>（1,123 词的语义演变看不到）
+      </div>
+    </div>
+
+    <div style="background:var(--color-background-primary);border:2px solid var(--color-border-info);border-radius:12px;padding:15px;position:relative">
+      <div style="position:absolute;top:-9px;left:15px;font-size:10.5px;background:var(--color-background-info);color:var(--color-text-info);padding:1px 8px;border-radius:99px">建议</div>
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">
+        <span style="font-size:13px;font-weight:500">B · ② 只取增量</span>
+        <span style="font-size:10.5px;color:var(--color-text-tertiary);border:1px solid var(--color-border-tertiary);padding:1px 6px;border-radius:99px">4 段</span>
+      </div>
+      <div style="font-size:11.5px;color:var(--color-text-secondary);line-height:1.65;font-family:var(--font-mono)">
+        [① root 拆解]<br>
+        [② etymology <span style="color:var(--color-text-info)">仅增量</span>]<br>
+        [③ definition]<br>
+        [④ context]
+      </div>
+      <div style="font-size:11.5px;color:var(--color-text-secondary);margin-top:9px;line-height:1.6">
+        ✅ <b>零冗余</b> · 符合你要求的四样<br>
+        ✅ 保留 20.5% 的增量<br>
+        🟠 需自动判定「② 有无增量」
+      </div>
+      <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:8px;padding-top:8px;border-top:0.5px solid var(--color-border-tertiary);line-height:1.55">
+        无增量时 ② <b style="color:var(--color-text-info)">不显示</b>（回到 3 段）：
+        <code style="font-family:var(--font-mono)">disappear</code> 就没有 ②。
+      </div>
+    </div>
+
+    <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-danger);border-radius:12px;padding:15px">
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">
+        <span style="font-size:13px;font-weight:500">C · 两段都完整</span>
+        <span style="font-size:10.5px;color:var(--color-text-danger);border:1px solid var(--color-border-danger);padding:1px 6px;border-radius:99px">现状</span>
+      </div>
+      <div style="font-size:11.5px;color:var(--color-text-secondary);line-height:1.65;font-family:var(--font-mono)">
+        [① root 拆解]<br>
+        [② etymology 完整]<br>
+        [③ definition]<br>
+        [④ context]
+      </div>
+      <div style="font-size:11.5px;color:var(--color-text-secondary);margin-top:9px;line-height:1.6">
+        🔴 <b>65% 逐字重复</b> · 🔴 占容量<br>
+        🔴 4 段上限下没有余量
+      </div>
+    </div>
+
+  </div>
+
+  <div style="margin-top:14px;padding:11px 14px;background:var(--color-background-secondary);border-radius:8px;font-size:11.5px;color:var(--color-text-secondary);line-height:1.65">
+    <b>方案 B 的 ② 判定怎么自动做</b>：比对 ② 里标注的义项（如 <code style="font-family:var(--font-mono)">dis-（不）</code>）与 ① 的 <code style="font-family:var(--font-mono)">gloss</code> ——
+    重合的部分不进 ②，只保留历史路径（来源语 + 语义演变）。<b>规则可完成初筛，边界情况交 LLM。</b>
+  </div>
+</div>
+
+<div class="rule"></div>
+
+<h2><span class="num">09</span>验收清单 · 用这个界面校文档</h2>
+<p class="sub">以后任何文档改动、任何实现，都在这四张卡 + 两个聚合页 + 复习列表上过一遍 —— <b>一眼能看出不对的，就是偏离</b>。</p>
+
+<ul class="check">
+  <li><span class="box"></span><div>🔴 <b>四个评分按钮各显示「下次 X 天」，且数字由端侧 FSRS 实时预览得出</b>（不是写死的文案）。<span class="q">白哥 2026-09-26 定：「要『下次 X 天』——而且在复习界面不是按 FSRS 排序的吗，没有时间怎么排序」。实现要点：端侧 <code>reviewCard()</code> 不改原卡 → 对四个评分各调一次即可预览</span></div></li>
+  <li><span class="box"></span><div>🔴 <b>复习列表项显示「下次到期时间」</b>，因为默认排序（记忆曲线）的依据就是它。<span class="q">依据 v1 §10.2「复习队列排序 —— 综合考虑 FSRS 到期时间…」+ <code>ui-ux</code> §6.2「列表项 = 单词 + IPA + 中文释义 + 熟练度三点 + 下次到期时间」。v6 新增 02 节</span></div></li>
+  <li><span class="box"></span><div>评分按钮中文为「<b>忘了 / 困难 / 记得 / 熟练</b>」（`Good` 不译「一般」），<b>英文副标题保留</b>（`again/hard/good/easy`）。<span class="q">白哥 2026-09-26 定：译名改「记得」；英文「留着」（可在按钮上直接显示间隔后，英文仍作为对齐 Anki 习惯的辅助）</span></div></li>
+  <li><span class="box"></span><div>🔴 <b>库级只回答「可不可以」，不回答「哪个是主要记忆法」</b> —— 不存在 `primary_code`/`secondary_codes`。<span class="q">当前实现：`word_mnemonic_profile` 把渲染决策固化成了库字段 → 改优先级要重跑全库</span></div></li>
+  <li><span class="box"></span><div>🔴 <b>卡片上不出现「主要记忆法」这类主次标注</b> —— 显示层只呈现内容，不呈现判断。<span class="q">判断会随渲染规则变化，而标签会让读者把它当成事实读。v3 已删掉 3 处（`主要记忆法` ×2 + `主要` ×1）；v4 把「①记忆法／②次记忆法」改为「①记忆法一／②记忆法二」</span></div></li>
+  <li><span class="box"></span><div>🔴 <b>顺序由渲染层现算</b>：按 priority 1→6 找第一个「可以」的填槽位①，继续找填②。<span class="q">当前实现：实测 `image` 组 99.5% 满足 collocation、`context` 组 97.9% —— 本该先命中 3，判定却没按顺序</span></div></li>
+  <li><span class="box"></span><div>「可以」= 素材存在 <b>且过质量门槛</b>（`collocation` 是「固定搭配强」而非「有搭配」；`cognate` 是「与英语词成词群」<b>且族规模 ≥3</b>）。<span class="q">当前口径：`collocation` 有任意搭配 = 99.3% → 会盖过词源；`cognate` 若不加 ≥3 门槛则有 5,127 词，其中 2,139 个只有 1–2 词族 → 入口点进去只有自己</span></div></li>
+  <li><span class="box"></span><div>卡片只有<b>四段</b>：① 记忆法一 ② 记忆法二 ③ 释义 ④ 语境原句（①② 是<b>顺序位</b>，不是主次位）。<span class="q">当前实现：`sense`×4 + root，共 5 段</span></div></li>
+  <li><span class="box"></span><div>记忆法（槽位①）排<b>在最前</b>，但<b>字号不超过释义</b>。<span class="q">权重靠<b>强调色 + 凹陷底色 + 拆分结构</b>建立，不靠字号 —— 记忆法是线索、释义是答案。v5 已把 `.mnem-main` <b>17.5px → 15.5px</b>（原比释义 16px 还大）。当前实现：root 在位置 1–4 都出现过，从不保证第一</span></div></li>
+  <li><span class="box"></span><div>字号层级：<b>单词 32 > 释义 16.5 > 记忆法 15.5 > 语境 14.5 > 括号注释 13.5 > 英文释义 13 > 词源说明 12.5 > 段标签 11</b>。<span class="q">🔑 内容层最大的字号应落在<b>释义</b>（要记的答案），不是记忆法（线索）</span></div></li>
+  <li><span class="box"></span><div>卡片上<b>没有</b>同源族／词根族的成员列表 —— 那是聚合页的内容。<span class="q">我上一版把它做成 chip 铺在卡上，是错的</span></div></li>
+  <li><span class="box"></span><div>槽位①② <b>都可点击展开聚合页</b>，入口标出族规模（「词根族 22 词」）。<span class="q">当前实现：card 里没有任何聚合入口，1,777 页不可达</span></div></li>
+  <li><span class="box"></span><div>🔴 <b>② 不重复 ① 已经说过的东西</b> —— 只在有增量（历史路径／语义演变）时显示。<span class="q">实测：可拆词里 ② 的义项与 ① 重复的占 <b>78.3%</b>（其中 <b>65.0% 逐字重复</b>）—— 如 <code>disappear</code> 的 ② 完全等于 ①</span></div></li>
+  <li><span class="box"></span><div>🔴 <b>聚合页每一条都带「分拆法 + 释义」</b>，共享词根用强调色标出。<span class="q">当前实现：<code>{"word":"affair","gloss":"事件；事情"}</code> —— 只列单词 + 词典释义，没有分拆，等于 22 个不相干的词</span></div></li>
+  <li><span class="box"></span><div>聚合页里<b>不可拆的成员也要显示</b>，注明「整体词，同属 X 族」。<span class="q">实测 vertere 族 33 词里 9 个不可拆（vertical／verse／vertex…），词根族抓不到</span></div></li>
+  <li><span class="box"></span><div><b>释义只有一条</b>；其余义项进 <code>card_extra</code> 可展开。<span class="q">当前实现：卡面最多铺 4 个义项</span></div></li>
+  <li><span class="box"></span><div>槽位① 无内容时<b>直接渲染 ③④ 两段</b>，不留空段 —— 实测 116 词。<span class="q">已核查：这 116 词的 ③ 释义与 ④ 例句 <b>100% 完整</b>（见 `no-mnemonic-116-words-audit-2026-09-26.md`）；其中 41 条为词组／缩写／专名，天然不适用记忆法。当前实现：6,189 词（53.7%）的记忆法在卡里不存在</span></div></li>
+  <li><span class="box"></span><div>例句的 section type 是 <code>context</code>（能被朗读清单命中）。<span class="q">当前实现：例句塞在 `sense` 里 → 240 MB 例句音频会全丢</span></div></li>
+  <li><span class="box"></span><div>槽位①② 的<b>段标题随实际填入的类型变</b>（「词根词缀」/「固定搭配」/「词源故事」），<b>不是固定标签</b>。<span class="q">v1 §4.2 示例就是 <code>[root, definition, context]</code>。⚠️ 按 priority 顺序，不可拆词的槽位① 也可能落在 <code>collocation</code>(3)，不能默认写「词根词缀」</span></div></li>
+  <li><span class="box"></span><div>槽位② 的显示名是「<b>词源故事</b>」，内部 code 可能是 <code>cognate</code>(2) 或 <code>etymology</code>(4) —— <b>同一段的两个名字，不是两件事</b>。<span class="q">「同源串记」本身是聚合页，不铺在卡片上；卡片 ② 显示当前词的词源故事文本，点击才展开</span></div></li>
+  <li><span class="box"></span><div>聚合入口的<b>箭头只在族规模 ≥3 时显示</b>，且<b>①② 各自独立判断</b>。<span class="q">门槛来自 v1 §8.5「成员数 ≥ N（如 3）」，数据层已实施（<code>aggregate_page</code> min=3 正好是 3）。⚠️ 反例：<code>capture</code> 的 <code>capt</code> 词根族只有 2 词 → <b>① 有内容但无入口</b>；而它的 ② 词源故事<b>有</b>入口（capere 族 56 词）→ 不能默认「有拆解就有族页」，也不能「一个没有就以为都没有」</span></div></li>
+  <li><span class="box"></span><div>不可拆词（<code>vertical</code>／<code>laser</code>）<b>不摆空段</b>，槽位①② 按 priority 顺序往后取（不可拆 → 无 <code>cognate</code> → 试 <code>collocation</code>(3) → 再试 <code>etymology</code>(4)）。<span class="q">实测「不可拆+有词源」占槽位① 的 51.4% —— 这是词源故事的主力场景。⚠️ 注意此处必须按顺序，不能直接跳到 4</span></div></li>
+  <li><span class="box"></span><div>四段结构 = v1 §5.1 的「4 sections」上限，<b>天然吻合</b>；聚合入口内嵌在 ①②里，无需单列一段。<span class="q">顺带解决了上一轮的「191 张超限」问题</span></div></li>
+</ul>
+
+<div class="foot">
+  <b>数据来源</b>：<code>data/word.db</code> 真实词条，<b>分拆法与释义均为实测数据</b>（来自 <code>word_morpheme</code> + <code>card.sections[0].zh</code>），未经改写：
+  <br>　· 卡片／浮层：<code>disorganized</code>（B1）· <code>laser</code>（B2）· <code>intercept</code>（B1）· <code>vertical</code>（B1）
+  <br>　· 聚合页：<code>cept</code> 词根族 22 词 · <code>man</code> 词根族 32 词 · <code>capere</code> 词源族 56 词 · <code>vertere</code> 词源族 33 词
+  <br><b>分拆法可算率实测</b>：≥8 词的词根族 <b>100%</b>（cept 22/22 · man 32/32 · organ 15/15 · act 23/23 · graph 23/23 · vers 19/19 …）。
+  <br><b>视觉规范</b>：沿用 <code>design-system-spec-2026-09-25.md</code> 的三档主题 × 粘土 token，未新造样式。
+  <br><b>本稿作用</b>：把最终目标摆上台面 —— 后续文档与实现的偏离，用本界面校一遍即可发现。
+</div>
+
+</div>
+
+<script>
+document.querySelectorAll('.switch button').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var t = b.getAttribute('data-t');
+    document.documentElement.setAttribute('data-theme', t);
+    document.querySelectorAll('.switch button').forEach(function (x) {
+      x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
+    });
+  });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,269 @@
+{
+  "_meta": {
+    "executed_at": "2026-09-25T22:24:42",
+    "backup": "data\\backups\\coevo_before_inline_chinese_20260925_222441.db",
+    "fixed": 6,
+    "filled": 0,
+    "dedup": 6
+  },
+  "changes": [
+    {
+      "word": "ye",
+      "before": [
+        {
+          "pos": "[pron]",
+          "meaning": "archaic or dialect form of you (plural or singular, especially in second person plural).",
+          "chinese": "你们；你——古语或方言用法",
+          "example": "Hear ye, hear ye! (宣告用语)"
+        },
+        {
+          "pos": "[pron]",
+          "meaning": "used in religious and poetic contexts.",
+          "chinese": "用于宗教和诗歌语境",
+          "example": "Ye of little faith."
+        },
+        {
+          "pos": "[n]",
+          "meaning": "a rune or symbol representing the sound /θ/ or /ð/ (thorn), sometimes confused with 'y' in early printing.",
+          "chinese": "古英语字母þ的变体，常误拼为y",
+          "example": "\"Ye\" in \"Ye Olde Shoppe\" is a misreading of \"Þe\"."
+        }
+      ],
+      "after": [
+        {
+          "pos": "[pron]",
+          "meaning": "archaic or dialect form of you (plural or singular, especially in second person plural).",
+          "chinese": "你们；你——古语或方言用法",
+          "example": "Hear ye, hear ye!"
+        },
+        {
+          "pos": "[pron]",
+          "meaning": "used in religious and poetic contexts.",
+          "chinese": "用于宗教和诗歌语境",
+          "example": "Ye of little faith."
+        },
+        {
+          "pos": "[n]",
+          "meaning": "a rune or symbol representing the sound /θ/ or /ð/ (thorn), sometimes confused with 'y' in early printing.",
+          "chinese": "古英语字母þ的变体，常误拼为y",
+          "example": "\"Ye\" in \"Ye Olde Shoppe\" is a misreading of \"Þe\"."
+        }
+      ]
+    },
+    {
+      "word": "bengal",
+      "before": [
+        {
+          "pos": "[n]",
+          "meaning": "a region in eastern South Asia, divided between India and Bangladesh.",
+          "chinese": "孟加拉地区",
+          "example": "Bengal has a rich cultural heritage."
+        },
+        {
+          "pos": "[n]",
+          "meaning": "a breed of domestic cat with a wild-looking coat.",
+          "chinese": "孟加拉猫",
+          "example": "She owns a bengal with striking rosettes."
+        },
+        {
+          "pos": "[adj]",
+          "meaning": "relating to Bengal or its people.",
+          "chinese": "孟加拉的",
+          "example": "Bengal tiger (孟加拉虎)"
+        }
+      ],
+      "after": [
+        {
+          "pos": "[n]",
+          "meaning": "a region in eastern South Asia, divided between India and Bangladesh.",
+          "chinese": "孟加拉地区",
+          "example": "Bengal has a rich cultural heritage."
+        },
+        {
+          "pos": "[n]",
+          "meaning": "a breed of domestic cat with a wild-looking coat.",
+          "chinese": "孟加拉猫",
+          "example": "She owns a bengal with striking rosettes."
+        },
+        {
+          "pos": "[adj]",
+          "meaning": "relating to Bengal or its people.",
+          "chinese": "孟加拉的",
+          "example": "Bengal tiger"
+        }
+      ]
+    },
+    {
+      "word": "spot",
+      "before": [
+        {
+          "pos": "[n]",
+          "meaning": "a small round mark or area of colour.",
+          "chinese": "斑点，圆点",
+          "example": "A leopard has black spots."
+        },
+        {
+          "pos": "[n]",
+          "meaning": "a particular place or location.",
+          "chinese": "地点，场所",
+          "example": "This is a nice spot for a picnic."
+        },
+        {
+          "pos": "[v]",
+          "meaning": "to see or notice something, especially suddenly.",
+          "chinese": "看见，发现",
+          "example": "I spotted a mistake in the report."
+        },
+        {
+          "pos": "[v]",
+          "meaning": "to mark or stain something with spots.",
+          "chinese": "使……有斑点",
+          "example": "The rain spotted the windows."
+        },
+        {
+          "pos": "[adj]",
+          "meaning": "[only before noun] relating to a spot; made on the spot.",
+          "chinese": "现场的，即时的",
+          "example": "a spot check（突击检查）"
+        }
+      ],
+      "after": [
+        {
+          "pos": "[n]",
+          "meaning": "a small round mark or area of colour.",
+          "chinese": "斑点，圆点",
+          "example": "A leopard has black spots."
+        },
+        {
+          "pos": "[n]",
+          "meaning": "a particular place or location.",
+          "chinese": "地点，场所",
+          "example": "This is a nice spot for a picnic."
+        },
+        {
+          "pos": "[v]",
+          "meaning": "to see or notice something, especially suddenly.",
+          "chinese": "看见，发现",
+          "example": "I spotted a mistake in the report."
+        },
+        {
+          "pos": "[v]",
+          "meaning": "to mark or stain something with spots.",
+          "chinese": "使……有斑点",
+          "example": "The rain spotted the windows."
+        },
+        {
+          "pos": "[adj]",
+          "meaning": "[only before noun] relating to a spot; made on the spot.",
+          "chinese": "现场的，即时的",
+          "example": "a spot check"
+        }
+      ]
+    },
+    {
+      "word": "holy",
+      "before": [
+        {
+          "pos": "[adj]",
+          "meaning": "relating to God or a religion; sacred.",
+          "chinese": "神圣的，圣洁的",
+          "example": "They visited the holy city of Jerusalem."
+        },
+        {
+          "pos": "[adj]",
+          "meaning": "used to emphasize that something is very good or very bad.",
+          "chinese": "用于强调，极好的或极糟的",
+          "example": "That was a holy mess! （真是一团糟！）"
+        }
+      ],
+      "after": [
+        {
+          "pos": "[adj]",
+          "meaning": "relating to God or a religion; sacred.",
+          "chinese": "神圣的，圣洁的",
+          "example": "They visited the holy city of Jerusalem."
+        },
+        {
+          "pos": "[adj]",
+          "meaning": "used to emphasize that something is very good or very bad.",
+          "chinese": "用于强调，极好的或极糟的",
+          "example": "That was a holy mess!"
+        }
+      ]
+    },
+    {
+      "word": "scarlet",
+      "before": [
+        {
+          "pos": "[adj]",
+          "meaning": "of a bright red colour.",
+          "chinese": "猩红色的，鲜红色的",
+          "example": "She wore a scarlet dress."
+        },
+        {
+          "pos": "[adj]",
+          "meaning": "(literary) associated with sin or immorality.",
+          "chinese": "罪恶的，淫荡的",
+          "example": "scarlet woman（淫妇）"
+        },
+        {
+          "pos": "[n]",
+          "meaning": "a bright red colour.",
+          "chinese": "猩红色，鲜红色",
+          "example": "The room was decorated in scarlet."
+        }
+      ],
+      "after": [
+        {
+          "pos": "[adj]",
+          "meaning": "of a bright red colour.",
+          "chinese": "猩红色的，鲜红色的",
+          "example": "She wore a scarlet dress."
+        },
+        {
+          "pos": "[adj]",
+          "meaning": "(literary) associated with sin or immorality.",
+          "chinese": "罪恶的，淫荡的",
+          "example": "scarlet woman"
+        },
+        {
+          "pos": "[n]",
+          "meaning": "a bright red colour.",
+          "chinese": "猩红色，鲜红色",
+          "example": "The room was decorated in scarlet."
+        }
+      ]
+    },
+    {
+      "word": "scheduled",
+      "before": [
+        {
+          "pos": "[adj]",
+          "meaning": "arranged or planned to happen at a particular time.",
+          "chinese": "预定的，安排好的",
+          "example": "The scheduled flight was cancelled."
+        },
+        {
+          "pos": "[adj]",
+          "meaning": "officially listed or recognized.",
+          "chinese": "正式的，列入计划的",
+          "example": "a scheduled monument（受保护的历史遗迹）"
+        }
+      ],
+      "after": [
+        {
+          "pos": "[adj]",
+          "meaning": "arranged or planned to happen at a particular time.",
+          "chinese": "预定的，安排好的",
+          "example": "The scheduled flight was cancelled."
+        },
+        {
+          "pos": "[adj]",
+          "meaning": "officially listed or recognized.",
+          "chinese": "正式的，列入计划的",
+          "example": "a scheduled monument"
+        }
+      ]
+    }
+  ]
+}

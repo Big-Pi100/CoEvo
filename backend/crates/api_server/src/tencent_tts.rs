@@ -4,6 +4,19 @@
 //!
 //! API 文档: https://cloud.tencent.com/document/product/1073/94308
 //!
+//! # 🔴 当前无调用方（2026-09-26）—— 保留供后续功能扩展，不要删
+//!
+//! 词卡朗读 / 文章朗读 / chat 回复朗读**全部改为端侧 `flutter_tts`**（零成本、零延迟、
+//! 文本不出端），因此本模块的两个调用方已被移除：
+//! - `ws.rs` 的流式合成（原 chat 回复自动朗读）
+//! - `routes.rs` 的 `POST /api/tts/preview` + `POST /api/tts/speak`
+//!
+//! **白哥定案（2026-09-26）：后端 TTS 全链保留**，标注「后续 **chat、AI 考核**功能扩展」。
+//! AI 考核（口语评测等）如需服务端高质量语音合成，可直接复用本模块。
+//! 决策依据：`docs/design/tts-unified-client-side-2026-09-26.md` §7.3
+//!
+//! ⚠️ 因是 `pub mod`，Rust 不会报 `dead_code` —— **若无此注释，后人会误以为它是死代码而删除**。
+//!
 //! # Usage
 //!
 //! ```ignore

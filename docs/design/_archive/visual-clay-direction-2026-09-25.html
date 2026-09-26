@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CoEvo 视觉方向 D · 粘土</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/literata@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5/400.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5/500.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5/600.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5/index.css">
+<style>
+/* ── 本地 IPA 子集字体（含完整 32 个音标字符，含 ˈ 重音 · ː 长音 · θ）──
+   为什么不直接用 @fontsource：它的 latin / latin-ext 分包不含全套 IPA
+   （Charis SIL 仅 22/32），用它会让音标静默回退到系统字体，
+   造成「看起来没差别」的假象 —— 而那正是要判断的东西。 */
+@font-face{font-family:'Charis SIL IPA';src:url('fonts/charis-sil.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/charissil/CharisSIL-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Gentium Book Plus IPA';src:url('fonts/gentium-book-plus.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/gentiumbookplus/GentiumBookPlus-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Andika IPA';src:url('fonts/andika.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/andika/Andika-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Noto Serif IPA';src:url('fonts/noto-serif.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notoserif/NotoSerif%5Bwdth,wght%5D.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Noto Sans IPA';src:url('fonts/noto-sans.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosans/NotoSans%5Bwdth,wght%5D.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+
+:root{
+  --serif:'Literata',Georgia,serif;
+  --ipa:'Charis SIL IPA',Georgia,serif;
+  --round:'Quicksand','Inter',-apple-system,'PingFang SC',sans-serif;
+  --ui:'Inter',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+  --mono:ui-monospace,'SFMono-Regular',Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#EFE9DF;color:#29251F;font-family:var(--ui);-webkit-font-smoothing:antialiased;padding:0 0 90px}
+.wrap{max-width:1420px;margin:0 auto;padding:0 34px}
+
+header.top{padding:58px 0 40px;border-bottom:1px solid #DED5C8}
+.eyebrow{font-size:12px;letter-spacing:.15em;text-transform:uppercase;color:#8C8271;margin-bottom:14px}
+h1{font-family:var(--round);font-size:40px;font-weight:600;letter-spacing:-.015em;line-height:1.14;margin-bottom:18px}
+.lede{font-size:16px;line-height:1.72;color:#5C5648;max-width:800px}
+.lede strong{color:#29251F;font-weight:500}
+.lede code{font-family:var(--mono);font-size:13px;background:#E5DDD0;padding:1px 5px;border-radius:4px}
+
+.sect{margin-top:76px}
+.sect-head{padding-bottom:22px;border-bottom:1px solid #DED5C8;margin-bottom:30px;display:flex;align-items:flex-end;gap:20px}
+.sect-letter{font-family:var(--mono);font-size:13px;color:#8C8271;border:1.5px solid #DED5C8;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:#fff}
+.sect-title{font-family:var(--round);font-size:25px;font-weight:600;letter-spacing:-.01em}
+.sect-sub{font-size:14px;color:#7A7263;margin-top:6px;line-height:1.6}
+.sect-meta{margin-left:auto;text-align:right;flex-shrink:0}
+.sect-meta span{font-size:12px;color:#8C8271;font-family:var(--mono)}
+
+/* ===== 三重阴影拆解 ===== */
+.anat{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;margin-bottom:12px}
+.ademo{background:#FDFBF7;border-radius:26px;padding:30px 22px 22px;text-align:center;position:relative}
+.ademo .shape{width:78px;height:78px;border-radius:24px;margin:0 auto 20px;background:#FDFBF7}
+.ademo .nm{font-family:var(--round);font-size:13.5px;font-weight:600;margin-bottom:6px}
+.ademo .fn{font-family:var(--mono);font-size:10px;color:#9A917F;line-height:1.6;word-break:break-all;min-height:30px}
+.ademo .role{font-size:11.5px;color:#7A7263;line-height:1.5;margin-top:8px;padding-top:8px;border-top:1px dashed #E5DDD0}
+
+/* layer 1: outer only */
+.s-l1{box-shadow:7px 9px 18px rgba(150,125,95,.26)}
+/* layer 2: + inset dark */
+.s-l2{box-shadow:7px 9px 18px rgba(150,125,95,.26), inset -5px -5px 11px rgba(186,166,138,.55)}
+/* layer 3: + inset light = clay */
+.s-l3{box-shadow:7px 9px 18px rgba(150,125,95,.26), inset -5px -5px 11px rgba(186,166,138,.55), inset 4px 4px 10px rgba(255,255,255,1)}
+/* pressed */
+.s-l4{box-shadow:inset 4px 4px 10px rgba(178,156,126,.55), inset -3px -3px 8px rgba(255,255,255,.85)}
+
+.recipe{background:#FDFBF7;border-radius:20px;padding:22px 24px;margin-top:16px}
+.recipe .lb{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#8C8271;margin-bottom:12px}
+.recipe pre{font-family:var(--mono);font-size:12px;line-height:1.85;color:#3A352C;overflow-x:auto;white-space:pre}
+.recipe pre .c{color:#A8543C}
+.recipe pre .k{color:#6B7A4A}
+
+/* ===== rails ===== */
+.rail{display:flex;gap:26px;overflow-x:auto;padding:4px 4px 24px}
+.slot{flex-shrink:0}
+.slot-cap{font-family:var(--round);font-size:13px;font-weight:600;color:#5C5648;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.slot-cap i{width:16px;height:2px;background:#C4533A;border-radius:1px;display:inline-block;font-style:normal}
+.slot-note{font-size:11.5px;color:#8C8271;margin-top:10px;width:390px;line-height:1.55}
+
+.phone{width:390px;height:788px;border-radius:44px;overflow:hidden;position:relative;display:flex;flex-direction:column;font-family:var(--ui)}
+.p-light{background:#F2EDE4;box-shadow:0 2px 4px rgba(120,100,75,.1),0 16px 40px -10px rgba(120,100,75,.3)}
+.p-dark{background:#0F1116;box-shadow:0 2px 4px rgba(0,0,0,.4),0 16px 40px -10px rgba(0,0,0,.6)}
+.statusbar{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 28px;font-size:13px;font-weight:500;flex-shrink:0;position:relative;z-index:9}
+.p-light .statusbar{color:#29251F}
+.p-dark .statusbar{color:#E9E7E2}
+.sb-r{display:flex;align-items:center;gap:5px}
+.batt{width:20px;height:10px;border:1.2px solid currentColor;border-radius:2.5px;position:relative;opacity:.85}
+.batt::after{content:'';position:absolute;right:-3px;top:2.5px;width:1.5px;height:4px;background:currentColor;border-radius:0 1px 1px 0}
+.batt i{position:absolute;left:1.2px;top:1.2px;bottom:1.2px;width:11px;background:currentColor;border-radius:1px}
+.sig{display:flex;align-items:flex-end;gap:1.5px;height:10px}
+.sig i{width:2.5px;background:currentColor;border-radius:1px}
+.hd{font-family:var(--round);font-weight:600;letter-spacing:-.01em}
+
+/* ===== 粘土基础类 ===== */
+.p-light .clay{background:#FDFBF7;box-shadow:6px 8px 16px rgba(150,125,95,.20), inset -5px -5px 12px rgba(190,172,145,.5), inset 4px 4px 10px rgba(255,255,255,.98)}
+.p-dark .clay{background:#1D212B;box-shadow:6px 8px 18px rgba(0,0,0,.55), inset -4px -4px 10px rgba(0,0,0,.42), inset 3px 3px 8px rgba(255,255,255,.062)}
+.p-light .sunken{background:#EDE6DA;box-shadow:inset 5px 5px 11px rgba(180,158,128,.5), inset -4px -4px 9px rgba(255,255,255,.95)}
+.p-dark .sunken{background:#0B0D12;box-shadow:inset 5px 5px 12px rgba(0,0,0,.62), inset -3px -3px 8px rgba(255,255,255,.045)}
+
+/* tab bar */
+.tabbar{margin-top:auto;display:flex;padding:14px 22px 26px;gap:10px;flex-shrink:0;position:relative;z-index:9}
+.p-light .tabbar{background:#F2EDE4}
+.p-dark .tabbar{background:#0F1116}
+.tabbar .tb{flex:1;text-align:center;font-family:var(--round);font-size:11px;font-weight:600;border-radius:18px;padding:9px 0 8px}
+.p-light .tabbar .tb{color:#9A917F}
+.p-dark .tabbar .tb{color:#5E6472}
+.tabbar .tb.on{background:#C4533A;color:#fff;box-shadow:4px 5px 12px rgba(160,70,45,.4), inset -3px -3px 7px rgba(0,0,0,.16), inset 3px 3px 7px rgba(255,255,255,.3)}
+.p-dark .tabbar .tb.on{background:#FF8A45;color:#2A1405;box-shadow:4px 5px 14px rgba(255,138,69,.28), inset -3px -3px 7px rgba(140,60,10,.35), inset 3px 3px 7px rgba(255,255,255,.35)}
+.tabbar .ic{width:16px;height:16px;border-radius:6px;border:2px solid currentColor;margin:0 auto 4px;opacity:.7}
+.tabbar .tb.on .ic{opacity:1;border-color:currentColor}
+
+/* ===== S1 信息流 ===== */
+.feed{padding:2px 20px 0;flex:1;overflow:hidden}
+.feed-hd{display:flex;align-items:baseline;justify-content:space-between;padding:2px 6px 16px}
+.feed-hd h2{font-family:var(--round);font-size:25px;font-weight:600;letter-spacing:-.015em}
+.feed-hd .dt{font-family:var(--mono);font-size:11px;color:#9A917F}
+.p-dark .feed-hd .dt{color:#5E6472}
+.fcards{display:flex;flex-direction:column;gap:16px}
+.fc{border-radius:26px;padding:22px 21px 19px}
+.fc .cat{font-family:var(--round);font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#C4533A;margin-bottom:10px}
+.p-dark .fc .cat{color:#FF8A45}
+.fc h3{font-family:var(--serif);font-size:20px;font-weight:500;line-height:1.3;letter-spacing:-.01em;margin-bottom:11px}
+.p-light .fc h3{color:#24211C}
+.p-dark .fc h3{color:#EDEBE6}
+.fc .ex{font-family:var(--serif);font-size:14px;line-height:1.72}
+.p-light .fc .ex{color:#6E6659}
+.p-dark .fc .ex{color:#9AA0AE}
+.fc .mt{margin-top:16px;display:flex;align-items:center;gap:9px}
+.pill{font-family:var(--round);font-size:11px;font-weight:600;border-radius:11px;padding:4px 10px}
+.p-light .pill.n{background:#C4533A;color:#fff;box-shadow:2px 3px 7px rgba(160,70,45,.34), inset -2px -2px 5px rgba(0,0,0,.15), inset 2px 2px 5px rgba(255,255,255,.28)}
+.p-dark .pill.n{background:#FF8A45;color:#2A1405;box-shadow:2px 3px 8px rgba(255,138,69,.24), inset -2px -2px 5px rgba(140,60,10,.3), inset 2px 2px 5px rgba(255,255,255,.34)}
+.p-light .pill.g{background:#EDE6DA;color:#8C8271;box-shadow:inset 3px 3px 7px rgba(180,158,128,.42), inset -2px -2px 6px rgba(255,255,255,.9)}
+.p-dark .pill.g{background:#0B0D12;color:#6E7484;box-shadow:inset 3px 3px 7px rgba(0,0,0,.55), inset -2px -2px 6px rgba(255,255,255,.04)}
+
+/* ===== S2 复习页 ===== */
+.rev{padding:2px 20px 0;flex:1;overflow:hidden;display:flex;flex-direction:column}
+.rev-hd{padding:2px 6px 15px;display:flex;align-items:baseline;justify-content:space-between}
+.rev-hd h2{font-family:var(--round);font-size:25px;font-weight:600;letter-spacing:-.015em}
+.rev-hd .cnt{font-family:var(--round);font-size:12px;font-weight:600;color:#C4533A}
+.p-dark .rev-hd .cnt{color:#FF8A45}
+.search{border-radius:18px;padding:13px 17px;display:flex;align-items:center;gap:10px;margin-bottom:13px}
+.search .mag{width:14px;height:14px;border:2px solid #A79D8B;border-radius:50%;position:relative;flex-shrink:0}
+.search .mag::after{content:'';position:absolute;right:-5px;bottom:-4px;width:6px;height:2px;background:#A79D8B;transform:rotate(45deg)}
+.p-dark .search .mag{border-color:#6E7484}
+.p-dark .search .mag::after{background:#6E7484}
+.search span{font-size:13.5px;color:#A79D8B}
+.p-dark .search span{color:#6E7484}
+.sorts{display:flex;gap:9px;margin-bottom:17px}
+.sort{font-family:var(--round);font-size:11.5px;font-weight:600;border-radius:14px;padding:7px 14px}
+.p-light .sort{background:#EDE6DA;color:#8C8271;box-shadow:inset 3px 3px 7px rgba(180,158,128,.4), inset -2px -2px 6px rgba(255,255,255,.9)}
+.p-dark .sort{background:#0B0D12;color:#6E7484;box-shadow:inset 3px 3px 7px rgba(0,0,0,.55), inset -2px -2px 6px rgba(255,255,255,.04)}
+.p-light .sort.on{background:#C4533A;color:#fff;box-shadow:3px 4px 9px rgba(160,70,45,.34), inset -2px -2px 5px rgba(0,0,0,.15), inset 2px 2px 5px rgba(255,255,255,.28)}
+.p-dark .sort.on{background:#FF8A45;color:#2A1405;box-shadow:3px 4px 10px rgba(255,138,69,.24), inset -2px -2px 5px rgba(140,60,10,.3), inset 2px 2px 5px rgba(255,255,255,.34)}
+.grph{font-family:var(--round);font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9A917F;padding:0 6px;margin-bottom:9px;display:flex;align-items:center;gap:8px}
+.p-dark .grph{color:#5E6472}
+.grph::after{content:'';flex:1;height:1px;background:currentColor;opacity:.22}
+.wlist{display:flex;flex-direction:column;gap:11px;overflow:hidden}
+.wcard{border-radius:20px;padding:14px 16px;display:flex;align-items:center;gap:13px}
+.wcard .lft{flex:1;min-width:0}
+.wcard .w{font-family:var(--serif);font-size:17.5px;font-weight:500;letter-spacing:-.01em;line-height:1.2}
+.p-light .wcard .w{color:#24211C}
+.p-dark .wcard .w{color:#EDEBE6}
+.wcard .ip{font-family:var(--ipa);font-size:12.5px;margin-top:3px}
+.p-light .wcard .ip{color:#9A917F}
+.p-dark .wcard .ip{color:#6E7484}
+.wcard .df{font-size:12.5px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.p-light .wcard .df{color:#6E6659}
+.p-dark .wcard .df{color:#9AA0AE}
+.dots{display:flex;gap:4px;flex-shrink:0}
+.dots i{width:7px;height:7px;border-radius:50%;display:block}
+.p-light .dots i.on{background:#C4533A;box-shadow:1px 1px 3px rgba(160,70,45,.5), inset 1px 1px 2px rgba(255,255,255,.4)}
+.p-light .dots i.off{background:#DFD6C6;box-shadow:inset 1px 1px 2px rgba(170,150,120,.45)}
+.p-dark .dots i.on{background:#FF8A45;box-shadow:1px 1px 3px rgba(255,138,69,.5)}
+.p-dark .dots i.off{background:#282D38;box-shadow:inset 1px 1px 2px rgba(0,0,0,.5)}
+.wcard .due{font-family:var(--mono);font-size:10.5px;flex-shrink:0;text-align:right;line-height:1.5}
+.p-light .wcard .due{color:#9A917F}
+.p-dark .wcard .due{color:#6E7484}
+.wcard .due b{font-family:var(--round);font-size:11px;font-weight:600;display:block}
+.p-light .wcard .due b{color:#C4533A}
+.p-dark .wcard .due b{color:#FF8A45}
+
+/* ===== S3 阅读（干净） ===== */
+.rd{padding:0 30px;flex:1;overflow:hidden}
+.p-light .rd{background:#FAF8F4}
+.p-dark .rd{background:#14161C}
+.rd-hd{padding:8px 0 22px}
+.rd-hd .src{font-family:var(--round);font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;margin-bottom:9px}
+.p-light .rd-hd .src{color:#C4533A}
+.p-dark .rd-hd .src{color:#FF8A45}
+.rd-hd h3{font-family:var(--serif);font-size:23px;font-weight:500;line-height:1.28;letter-spacing:-.012em}
+.p-light .rd-hd h3{color:#24211C}
+.p-dark .rd-hd h3{color:#EDEBE6}
+.rd .body{font-family:var(--serif);font-size:17px;line-height:1.82;letter-spacing:.002em}
+.p-light .rd .body{color:#2A261F}
+.p-dark .rd .body{color:#C9C7C2}
+.rd .body p+p{margin-top:18px}
+.p-light .tk-n{background:rgba(196,83,58,.155);border-radius:3px;padding:1px 3px}
+.p-light .tk-m{background:rgba(196,83,58,.075);border-radius:3px;padding:1px 3px}
+.p-light .tk-d{background:rgba(196,83,58,.026);border-radius:3px;padding:1px 3px}
+.p-dark .tk-n{color:#FFD9B8}
+.p-dark .tk-m{color:#DEDCD7}
+.p-dark .tk-d{color:#8E939F}
+.rd-note{margin-top:auto;padding:16px 0 0;display:flex;align-items:center;gap:9px;font-size:11.5px;font-family:var(--round);font-weight:600}
+.p-light .rd-note{color:#9A917F}
+.p-dark .rd-note{color:#5E6472}
+.rd-note i{width:13px;height:13px;border-radius:4px;background:#C4533A;display:block;flex-shrink:0}
+.p-dark .rd-note i{background:#FF8A45}
+.rd .tabbar{background:transparent}
+.p-light .rd .tabbar{background:#FAF8F4}
+.p-dark .rd .tabbar{background:#14161C}
+
+/* ===== S4 成就 ===== */
+.ach{padding:2px 20px 0;flex:1;overflow:hidden}
+.ach-hd{padding:2px 6px 20px}
+.ach-hd h2{font-family:var(--round);font-size:25px;font-weight:600;letter-spacing:-.015em}
+.ach-hd p{font-size:13px;margin-top:5px;color:#8C8271}
+.p-dark .ach-hd p{color:#6E7484}
+.bigcard{border-radius:30px;padding:28px 22px 24px;text-align:center;margin-bottom:16px}
+.ring{width:120px;height:120px;border-radius:50%;margin:0 auto 18px;display:flex;align-items:center;justify-content:center;flex-direction:column}
+.p-light .ring{background:#C4533A;box-shadow:8px 10px 22px rgba(160,70,45,.28), inset -6px -6px 14px rgba(120,45,25,.35), inset 5px 5px 12px rgba(255,255,255,.3)}
+.p-dark .ring{background:#FF8A45;box-shadow:8px 10px 24px rgba(255,138,69,.2), inset -6px -6px 14px rgba(150,65,10,.4), inset 5px 5px 12px rgba(255,255,255,.4)}
+.ring .n{font-family:var(--round);font-size:38px;font-weight:600;line-height:1}
+.p-light .ring .n{color:#fff}
+.p-dark .ring .n{color:#2A1405}
+.ring .u{font-family:var(--round);font-size:11.5px;font-weight:600;margin-top:3px}
+.p-light .ring .u{color:rgba(255,255,255,.85)}
+.p-dark .ring .u{color:rgba(42,20,5,.7)}
+.bigcard h3{font-family:var(--round);font-size:18px;font-weight:600;margin-bottom:7px}
+.p-light .bigcard h3{color:#29251F}
+.p-dark .bigcard h3{color:#EDEBE6}
+.bigcard p{font-size:13px;line-height:1.6;color:#8C8271}
+.p-dark .bigcard p{color:#6E7484}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+.stat{border-radius:22px;padding:18px 17px}
+.stat .n{font-family:var(--round);font-size:26px;font-weight:600;line-height:1}
+.p-light .stat .n{color:#29251F}
+.p-dark .stat .n{color:#EDEBE6}
+.stat .l{font-size:11.5px;margin-top:6px;color:#8C8271}
+.p-dark .stat .l{color:#6E7484}
+
+/* 深色说明 */
+.switchbox{display:flex;gap:18px;margin-top:6px}
+.sw-half{flex:1;background:#FDFBF7;border-radius:22px;padding:22px 24px}
+.sw-half h4{font-family:var(--round);font-size:14px;font-weight:600;margin-bottom:10px}
+.sw-half p{font-size:12.5px;line-height:1.7;color:#6E6659}
+.sw-half code{font-family:var(--mono);font-size:11px;background:#EDE6DA;padding:1px 4px;border-radius:3px}
+.tag-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.tg{font-family:var(--round);font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:9px;background:#EDE6DA;color:#7A7263}
+.tg.warn{background:#F7E4DA;color:#A8543C}
+.tg.ok{background:#E4EDDA;color:#5A7340}
+
+.foot{margin-top:70px;padding-top:34px;border-top:1px solid #DED5C8;font-size:13.5px;line-height:1.8;color:#5C5648}
+.foot b{color:#29251F;font-weight:500}
+.foot ul{margin:14px 0 0 20px}
+.foot li{margin-bottom:8px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:20px}
+.gcard{background:#FDFBF7;border-radius:20px;padding:20px 22px}
+.gcard h4{font-family:var(--round);font-size:13.5px;font-weight:600;margin-bottom:9px}
+.gcard p{font-size:12.5px;line-height:1.7;color:#6E6659}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="eyebrow">CoEvo · 视觉方向 D · 粘土拟态</div>
+  <h1>粘土：让「可触摸」变成界面语言</h1>
+  <p class="lede">
+    Claymorphism 的核心是一条几乎被忽视的规则 —— <strong>元素的填充色可以与背景无关</strong>。这恰好绕开了 Neumorphism 死掉的真正原因（必须与背景同色，导致对比度天花板极低）。
+    <br><br>
+    但它的正确用法不是「全都做成粘土」。我建议的规则是：<strong>内容保持平面，可交互的东西才有体积</strong>。文字永远不动，能被戳的东西才是粘土。<br><br>
+    这带来一个额外好处 —— 粘土感本身就在说「按我」，可点击性变成了直觉，不需要边框或下划线去提示。
+  </p>
+</header>
+
+<section class="sect">
+  <div class="sect-head">
+    <div class="sect-letter">01</div>
+    <div>
+      <div class="sect-title">三重阴影：每一层在做什么</div>
+      <div class="sect-sub">Claymorphism 不是「大圆角 + 阴影」。它是一条三个阴影层的固定公式 —— 少任何一层，效果就塌。</div>
+    </div>
+    <div class="sect-meta"><span>逐层叠加</span></div>
+  </div>
+
+  <div class="anat">
+    <div class="ademo">
+      <div class="shape s-l1"></div>
+      <div class="nm">① 仅外阴影</div>
+      <div class="fn">7px 9px 18px rgba(150,125,95,.26)</div>
+      <div class="role">只做一件事：把形状从背景上抬起来</div>
+    </div>
+    <div class="ademo">
+      <div class="shape s-l2"></div>
+      <div class="nm">② + 内暗影</div>
+      <div class="fn">inset -5px -5px 11px rgba(186,166,138,.55)</div>
+      <div class="role">右下沉下去 —— 产生体积与凹面</div>
+    </div>
+    <div class="ademo">
+      <div class="shape s-l3"></div>
+      <div class="nm">③ + 内亮影 ＝ 粘土</div>
+      <div class="fn">inset 4px 4px 10px rgba(255,255,255,1)</div>
+      <div class="role">左上鼓起来 —— 这一步才「充气」</div>
+    </div>
+    <div class="ademo">
+      <div class="shape s-l4"></div>
+      <div class="nm">④ 按下状态</div>
+      <div class="fn">两个 inset 反向，去掉外阴影</div>
+      <div class="role">外阴影消失 = 沉进页面 —— 按压反馈</div>
+    </div>
+  </div>
+
+  <div class="recipe">
+    <div class="lb">阴影公式（三条必须同一条声明，顺序不能改）</div>
+<pre>box-shadow:
+  <span class="c">7px 9px 18px</span>   <span class="k">rgba(150,125,95,.26)</span>,      <span class="c">/* ① 外阴影 · 浮起 */</span>
+  <span class="c">inset -5px -5px 11px</span> <span class="k">rgba(186,166,138,.55)</span>,  <span class="c">/* ② 内暗 · 体积 */</span>
+  <span class="c">inset 4px 4px 10px</span>  <span class="k">rgba(255,255,255,1)</span>;      <span class="c">/* ③ 内亮 · 充气 */</span></pre>
+    <div style="font-size:12.5px;line-height:1.7;color:#6E6659;margin-top:14px">
+      三个细节决定成败：<b style="color:#29251F;font-weight:500">外阴影要染成元素自身的色相</b>（用中性灰/黑会让粘土发脏）；两个 inset 必须反向且与全站光方向一致（左上光）；<b style="color:#29251F;font-weight:500">内亮要比内暗更亮、更透明</b> —— 完全对称的一对会读成塑料而不是粘土。
+    </div>
+  </div>
+</section>
+
+<section class="sect">
+  <div class="sect-head">
+    <div class="sect-letter">02</div>
+    <div>
+      <div class="sect-title">在真实界面上的样子</div>
+      <div class="sect-sub">五屏，横向滚动。注意第三屏 —— 阅读界面里<b>没有任何粘土</b>，那是有意的。</div>
+    </div>
+    <div class="sect-meta"><span>暖纸底 + 朱砂</span></div>
+  </div>
+
+  <div class="rail">
+
+    <div class="slot">
+      <div class="slot-cap"><i></i>信息流</div>
+      <div class="phone p-light">
+        <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+        <div class="feed">
+          <div class="feed-hd"><h2>今日精选</h2><span class="dt">09 · 25</span></div>
+          <div class="fcards">
+            <div class="fc clay">
+              <div class="cat">Science · 4 min</div>
+              <h3>A New Way to Grow Food in Cities</h3>
+              <div class="ex">In the middle of Singapore, a tall glass building produces more than 800 tons of vegetables every year. It has no soil, no sunlight, and almost no water.</div>
+              <div class="mt"><span class="pill n">6 个生词</span><span class="pill g">未读</span></div>
+            </div>
+            <div class="fc clay">
+              <div class="cat">Culture · 6 min</div>
+              <h3>Why We Sing Together</h3>
+              <div class="ex">Every human culture has music, and almost every one of them sings in groups. Researchers think this is not a coincidence.</div>
+              <div class="mt"><span class="pill n">3 个生词</span><span class="pill g">未读</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="tabbar"><div class="tb on"><div class="ic"></div>阅读</div><div class="tb"><div class="ic"></div>复习</div><div class="tb"><div class="ic"></div>我的</div></div>
+      </div>
+      <div class="slot-note">卡片是凸起的粘土块，分类标签是粘土药丸。整屏只有一个视觉动作：抬起。</div>
+    </div>
+
+    <div class="slot">
+      <div class="slot-cap"><i></i>复习页（你的新设计）</div>
+      <div class="phone p-light">
+        <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+        <div class="rev">
+          <div class="rev-hd"><h2>复习</h2><span class="cnt">23 个今天该看</span></div>
+          <div class="search sunken"><span class="mag"></span><span>搜索单词或释义</span></div>
+          <div class="sorts">
+            <span class="sort on">记忆曲线</span>
+            <span class="sort">最近</span>
+            <span class="sort">A–Z</span>
+          </div>
+          <div class="grph">今天该复习</div>
+          <div class="wlist">
+            <div class="wcard clay">
+              <div class="lft">
+                <div class="w">vertical</div>
+                <div class="ip">/ˈvɜːtɪkl/</div>
+                <div class="df">竖直的；垂直的</div>
+              </div>
+              <div class="dots"><i class="on"></i><i class="on"></i><i class="off"></i></div>
+              <div class="due"><b>今天</b>3 天前</div>
+            </div>
+            <div class="wcard clay">
+              <div class="lft">
+                <div class="w">instead</div>
+                <div class="ip">/ɪnˈsted/</div>
+                <div class="df">代替；反而</div>
+              </div>
+              <div class="dots"><i class="on"></i><i class="off"></i><i class="off"></i></div>
+              <div class="due"><b>今天</b>1 天前</div>
+            </div>
+            <div class="grph" style="margin-top:6px">之后</div>
+            <div class="wcard clay">
+              <div class="lft">
+                <div class="w">traditional</div>
+                <div class="ip">/trəˈdɪʃənl/</div>
+                <div class="df">传统的</div>
+              </div>
+              <div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></div>
+              <div class="due"><b>4 天后</b>已复习 3 次</div>
+            </div>
+          </div>
+        </div>
+        <div class="tabbar"><div class="tb"><div class="ic"></div>阅读</div><div class="tb on"><div class="ic"></div>复习</div><div class="tb"><div class="ic"></div>我的</div></div>
+      </div>
+      <div class="slot-note">搜索框是<b>凹陷</b>的粘土（可输入）。排序药丸是凹槽，选中项凸起。三态小圆点直接映射 FSRS 熟练度 —— 一屏内既是列表也是进度总览。</div>
+    </div>
+
+    <div class="slot">
+      <div class="slot-cap"><i></i>阅读界面 · 零粘土</div>
+      <div class="phone p-light">
+        <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+        <div class="rd">
+          <div class="rd-hd">
+            <div class="src">Science · VOA Learning English</div>
+            <h3>A New Way to Grow Food in Cities</h3>
+          </div>
+          <div class="body">
+            <p>In the middle of Singapore, a tall glass building <span class="tk-d">produces</span> more than 800 tons of vegetables every year. It has no soil, no sunlight, and almost no water. <span class="tk-m">Instead</span>, the plants grow in a special <span class="tk-m">liquid</span>, and pink lights help them grow faster than on a normal farm.</p>
+            <p>This type of farming is called <span class="tk-n">vertical</span> farming. It uses 95% less water than <span class="tk-d">traditional</span> farms, and because the building is in the city, the food travels only a few <span class="tk-d">kilometres</span> to reach shops.</p>
+            <p>Shoppers say the vegetables taste better than those shipped from far away.</p>
+          </div>
+          <div class="rd-note"><i></i>这里一个粘土块都没有</div>
+        </div>
+        <div class="tabbar"><div class="tb on"><div class="ic"></div>阅读</div><div class="tb"><div class="ic"></div>复习</div><div class="tb"><div class="ic"></div>我的</div></div>
+      </div>
+      <div class="slot-note">这是整个方案里最关键的一屏。阅读时只有文字和痕迹 —— 粘土全部退场。<b>沉浸感来自「什么都没有」，不是来自「很好看」。</b></div>
+    </div>
+
+    <div class="slot">
+      <div class="slot-cap"><i></i>成就与分享（粘土的强项）</div>
+      <div class="phone p-light">
+        <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+        <div class="ach">
+          <div class="ach-hd"><h2>我的</h2><p>第 47 天，你读了 128 篇文章</p></div>
+          <div class="bigcard clay">
+            <div class="ring"><span class="n">47</span><span class="u">连续天数</span></div>
+            <h3>超过 82% 的学习者</h3>
+            <p>再坚持 3 天，就能解锁「五十天」徽章</p>
+          </div>
+          <div class="stats">
+            <div class="stat clay"><div class="n">1,203</div><div class="l">已掌握的词</div></div>
+            <div class="stat clay"><div class="n">128</div><div class="l">读完的文章</div></div>
+            <div class="stat clay"><div class="n">18.5</div><div class="l">小时阅读</div></div>
+            <div class="stat clay"><div class="n">94%</div><div class="l">复习完成率</div></div>
+          </div>
+        </div>
+        <div class="tabbar"><div class="tb"><div class="ic"></div>阅读</div><div class="tb"><div class="ic"></div>复习</div><div class="tb on"><div class="ic"></div>我的</div></div>
+      </div>
+      <div class="slot-note">粘土在这里是最合适的 —— 徽章、奖章、进度环本来就应该有实体感。这也是分享图的视觉基础。</div>
+    </div>
+
+    <div class="slot">
+      <div class="slot-cap"><i></i>深色适配（已知弱点）</div>
+      <div class="phone p-dark">
+        <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+        <div class="feed">
+          <div class="feed-hd"><h2>今日精选</h2><span class="dt">09 · 25</span></div>
+          <div class="fcards">
+            <div class="fc clay">
+              <div class="cat">Science · 4 min</div>
+              <h3>A New Way to Grow Food in Cities</h3>
+              <div class="ex">In the middle of Singapore, a tall glass building produces more than 800 tons of vegetables every year. It has no soil, no sunlight, and almost no water.</div>
+              <div class="mt"><span class="pill n">6 个生词</span><span class="pill g">未读</span></div>
+            </div>
+            <div class="fc clay">
+              <div class="cat">Culture · 6 min</div>
+              <h3>Why We Sing Together</h3>
+              <div class="ex">Every human culture has music, and almost every one of them sings in groups. Researchers think this is not a coincidence.</div>
+              <div class="mt"><span class="pill n">3 个生词</span><span class="pill g">未读</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="tabbar"><div class="tb on"><div class="ic"></div>阅读</div><div class="tb"><div class="ic"></div>复习</div><div class="tb"><div class="ic"></div>我的</div></div>
+      </div>
+      <div class="slot-note">内亮降到 <b>rgba(255,255,255,.062)</b>（浅色是 1.0），外阴影加深。体积感明显弱于浅色 —— 但「浮起」的逻辑仍在，且不再发光刺眼。</div>
+    </div>
+
+  </div>
+</section>
+
+<section class="sect">
+  <div class="sect-head">
+    <div class="sect-letter">03</div>
+    <div>
+      <div class="sect-title">深色模式：需要如实说明的取舍</div>
+      <div class="sect-sub">Claymorphism 在深色下是公认的弱点 —— 不是不能做，是做不到浅色那么好。</div>
+    </div>
+  </div>
+  <div class="switchbox">
+    <div class="sw-half">
+      <h4>浅色 · 粘土的原生环境</h4>
+      <p>粘土感依赖「亮部高光」。浅色底上，白色内亮影可以开到 <code>rgba(255,255,255,1)</code> —— 膨胀感完整。这是 claymorphism 真正的主场。</p>
+      <div class="tag-row"><span class="tg ok">膨胀感完整</span><span class="tg ok">对比度可控</span><span class="tg ok">阴影自然</span></div>
+    </div>
+    <div class="sw-half">
+      <h4>深色 · 必须降级处理</h4>
+      <p>白高光在深色底上会变成「发光」而非「膨胀」。必须把内亮压到 <code>0.05–0.07</code>，同时加大外阴影不透明度。结果是<b>体积感减弱约一半</b>，但换来不刺眼。</p>
+      <div class="tag-row"><span class="tg warn">高光要压到 6%</span><span class="tg warn">膨胀感弱化</span><span class="tg">夜读友好</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="sect">
+  <div class="sect-head">
+    <div class="sect-letter">04</div>
+    <div>
+      <div class="sect-title">Flutter 实现：技术成本要说清楚</div>
+      <div class="sect-sub">这是 HTML 原型，但真正要跑在 Flutter 上。有一个原生缺口。</div>
+    </div>
+  </div>
+  <div class="grid2">
+    <div class="gcard">
+      <h4>🔴 Flutter 不支持 inset 阴影</h4>
+      <p>Flutter 的 <code style="font-family:var(--mono);font-size:11px;background:#EDE6DA;padding:1px 4px;border-radius:3px">BoxShadow</code> 只有外阴影，没有 <code style="font-family:var(--mono);font-size:11px;background:#EDE6DA;padding:1px 4px;border-radius:3px">inset</code> 属性。而粘土效果的核心恰恰是两个 inset 阴影。<br><br>所以我实测了现成的包 <code style="font-family:var(--mono);font-size:11px;background:#EDE6DA;padding:1px 4px;border-radius:3px">flutter_inset_box_shadow</code> —— <b>最新版 2022-04 发布，已 4 年未更新</b>，且要求 <code style="font-family:var(--mono);font-size:11px;background:#EDE6DA;padding:1px 4px;border-radius:3px">hide BoxDecoration</code> 替换整个类型，风险高。<b>不建议引入。</b></p>
+    </div>
+    <div class="gcard">
+      <h4>✅ 推荐：自研 200 行，渐进式落地</h4>
+      <p><b>第一步（覆盖约 80% 效果，零依赖）</b>：外阴影用原生 BoxShadow，内阴影用 <code style="font-family:var(--mono);font-size:11px;background:#EDE6DA;padding:1px 4px;border-radius:3px">foregroundDecoration</code> + <code style="font-family:var(--mono);font-size:11px;background:#EDE6DA;padding:1px 4px;border-radius:3px">LinearGradient</code> 模拟。<br><br><b>第二步（若视觉不够）</b>：写一个 <code style="font-family:var(--mono);font-size:11px;background:#EDE6DA;padding:1px 4px;border-radius:3px">ClayDecoration</code> CustomPainter，按 Chromium 的做法「画一个被圆角矩形挖空的矩形再模糊」，约 150–200 行，零第三方依赖、完全可控。</p>
+    </div>
+    <div class="gcard">
+      <h4>动效是粘土感的一半</h4>
+      <p>粘土不仅靠阴影，还靠<b>弹性</b>。按下时缩放 0.95 并用 <code style="font-family:var(--mono);font-size:11px;background:#EDE6DA;padding:1px 4px;border-radius:3px">Curves.elasticOut</code> 回弹 —— 这是 Flutter 的原生强项，几乎零成本。<br><br>缺了动效，粘土只是个圆角卡片。有了它，用户会真的想去戳。</p>
+    </div>
+    <div class="gcard">
+      <h4>额外工程量：约 1 周</h4>
+      <p>ClayDecoration 组件 + 设计 token（光方向、模糊比例、按尺寸缩放的圆角）+ 现有 theme 扩展。<br><br>建议在 Step 2「设计系统」阶段做，与调色板一起定。<b>不影响 Phase 1 的清障工作。</b></p>
+    </div>
+  </div>
+</section>
+
+<div class="foot">
+  <b>这一版的框架做了修正</b>
+  <p style="margin-top:12px">上一版我把 A 墨 / B 格 / C 夜 并列成「三选一」。加入粘土之后，框架应该分成两层 —— 因为<b>粘土是一种质感语言，不是配色语言</b>，它可以叠加在任何底色上：</p>
+  <ul>
+    <li><b>层级一 · 底色氛围</b>：墨（暖纸） / 格（纯白） / 夜（深墨）→ 决定阅读体验与痕迹语法</li>
+    <li><b>层级二 · 质感语言</b>：平面 / 粘土 → 决定交互元素的手感</li>
+  </ul>
+  <p style="margin-top:16px">
+    所以真正的选项是<b>组合</b>，不只是「选一个」。从搭配协调度看：<br>
+    <b>墨 + 粘土</b> —— 最协调（暖沙色系与粘土天然的柔和感同源）<br>
+    <b>格 + 粘土</b> —— 张力最大（Swiss 网格的硬朗与粘土的柔软相冲，但冲得有意思）<br>
+    <b>夜 + 粘土</b> —— 最独特但有代价（深色下粘土要降级处理，膨胀感减半）<br><br>
+    还有一个纯粘土方案：<b>全粘土</b>（不做底色方向，整站粘土化）—— 视觉记忆点最强，风险是阅读界面必须仍然保持零粘土，否则读不下去。
+  </p>
+</div>
+
+</div>
+</body>
+</html>

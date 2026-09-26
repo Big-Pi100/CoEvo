@@ -1,0 +1,5770 @@
+{
+ "count": 1153,
+ "items": [
+  {
+   "word": "absurd",
+   "phrase": "absolutely absurd",
+   "chinese": "极其荒谬"
+  },
+  {
+   "word": "alsop",
+   "phrase": "Alsop-en-le-Dale",
+   "chinese": "阿尔索普勒代尔"
+  },
+  {
+   "word": "agent",
+   "phrase": "travel agent",
+   "chinese": "旅行社"
+  },
+  {
+   "word": "agent",
+   "phrase": "chemical agent",
+   "chinese": "化学制剂"
+  },
+  {
+   "word": "acquiesce",
+   "phrase": "acquiesce in/ to",
+   "chinese": "默许，顺从"
+  },
+  {
+   "word": "aggrieved",
+   "phrase": "aggrieved customers",
+   "chinese": "受委屈的顾客"
+  },
+  {
+   "word": "apologize",
+   "phrase": "apologize to",
+   "chinese": "向…道歉"
+  },
+  {
+   "word": "apologize",
+   "phrase": "apologize for",
+   "chinese": "为…道歉"
+  },
+  {
+   "word": "amplify",
+   "phrase": "amplify sound",
+   "chinese": "放大声音"
+  },
+  {
+   "word": "amplify",
+   "phrase": "amplify a point",
+   "chinese": "详述观点"
+  },
+  {
+   "word": "apostolic",
+   "phrase": "Apostolic See",
+   "chinese": "宗座"
+  },
+  {
+   "word": "apostolic",
+   "phrase": "apostolic mission",
+   "chinese": "使徒使命"
+  },
+  {
+   "word": "bel",
+   "phrase": "bel curve",
+   "chinese": "贝尔曲线"
+  },
+  {
+   "word": "bel",
+   "phrase": "bel rating",
+   "chinese": "贝尔等级"
+  },
+  {
+   "word": "arise",
+   "phrase": "difficulty arises",
+   "chinese": "出现问题"
+  },
+  {
+   "word": "arise",
+   "phrase": "arise early",
+   "chinese": "早起"
+  },
+  {
+   "word": "bankrupt",
+   "phrase": "bankruptcy court",
+   "chinese": "破产法庭"
+  },
+  {
+   "word": "bankrupt",
+   "phrase": "morally bankrupt",
+   "chinese": "道德沦丧"
+  },
+  {
+   "word": "begin",
+   "phrase": "begin again",
+   "chinese": "重新开始"
+  },
+  {
+   "word": "brutality",
+   "phrase": "act of brutality",
+   "chinese": "暴行"
+  },
+  {
+   "word": "burglar",
+   "phrase": "burglar proof",
+   "chinese": ""
+  },
+  {
+   "word": "capital",
+   "phrase": "write in capital letters",
+   "chinese": "用大写字母书写"
+  },
+  {
+   "word": "caution",
+   "phrase": "caution against（警告不要）",
+   "chinese": "中文翻译：exercise caution 谨慎行事；caution against 警告不要"
+  },
+  {
+   "word": "chalk",
+   "phrase": "chalk and cheese",
+   "chinese": "天壤之别"
+  },
+  {
+   "word": "chalk",
+   "phrase": "chalkboard",
+   "chinese": "黑板"
+  },
+  {
+   "word": "cheap",
+   "phrase": "cheap ticket",
+   "chinese": "廉价票"
+  },
+  {
+   "word": "cheap",
+   "phrase": "cheaply made",
+   "chinese": "粗制滥造"
+  },
+  {
+   "word": "cheap",
+   "phrase": "cheap shot",
+   "chinese": "卑劣的打击"
+  },
+  {
+   "word": "clone",
+   "phrase": "clone technology",
+   "chinese": "克隆技术"
+  },
+  {
+   "word": "clone",
+   "phrase": "clone a sheep",
+   "chinese": "克隆羊"
+  },
+  {
+   "word": "citation",
+   "phrase": "citation format",
+   "chinese": "引用格式"
+  },
+  {
+   "word": "close",
+   "phrase": "close by",
+   "chinese": "在附近"
+  },
+  {
+   "word": "close",
+   "phrase": "close together",
+   "chinese": "紧靠在一起"
+  },
+  {
+   "word": "cocky",
+   "phrase": "cocky attitude",
+   "chinese": "狂妄的态度"
+  },
+  {
+   "word": "cocky",
+   "phrase": "get cocky",
+   "chinese": "变得自大"
+  },
+  {
+   "word": "collar",
+   "phrase": "white-collar worker",
+   "chinese": "白领工人"
+  },
+  {
+   "word": "collar",
+   "phrase": "collar and tie",
+   "chinese": "西装领带"
+  },
+  {
+   "word": "colourful",
+   "phrase": "colourful character",
+   "chinese": ""
+  },
+  {
+   "word": "commit",
+   "phrase": "commit to a relationship",
+   "chinese": "对一段关系作出承诺"
+  },
+  {
+   "word": "concurrent",
+   "phrase": "concurrent processing",
+   "chinese": "并发处理"
+  },
+  {
+   "word": "concurrent",
+   "phrase": "concurrent jurisdiction",
+   "chinese": "共同管辖权"
+  },
+  {
+   "word": "daylight",
+   "phrase": "daylight robbery",
+   "chinese": "公开抢劫"
+  },
+  {
+   "word": "daylight",
+   "phrase": "broad daylight",
+   "chinese": "光天化日"
+  },
+  {
+   "word": "daylight",
+   "phrase": "daylight hours",
+   "chinese": "白天"
+  },
+  {
+   "word": "destructive",
+   "phrase": "destructive behaviour",
+   "chinese": "破坏性行为"
+  },
+  {
+   "word": "destructive",
+   "phrase": "destructive force",
+   "chinese": "破坏力"
+  },
+  {
+   "word": "ellen",
+   "phrase": "Ellen show",
+   "chinese": "埃伦秀"
+  },
+  {
+   "word": "douglass",
+   "phrase": "Douglass College",
+   "chinese": ""
+  },
+  {
+   "word": "elevation",
+   "phrase": "elevation map",
+   "chinese": "高程图"
+  },
+  {
+   "word": "elevation",
+   "phrase": "elevation gain",
+   "chinese": "海拔上升"
+  },
+  {
+   "word": "emancipation",
+   "phrase": "emancipation movement",
+   "chinese": "解放运动"
+  },
+  {
+   "word": "emancipation",
+   "phrase": "emancipation from",
+   "chinese": "从…解放"
+  },
+  {
+   "word": "enchanting",
+   "phrase": "enchanting smile  — 中文翻译：迷人的微笑",
+   "chinese": "迷人的微笑"
+  },
+  {
+   "word": "espionage",
+   "phrase": "counter-espionage",
+   "chinese": "反间谍活动"
+  },
+  {
+   "word": "eradication",
+   "phrase": "eradication program",
+   "chinese": "根除计划"
+  },
+  {
+   "word": "event",
+   "phrase": "current events",
+   "chinese": "时事"
+  },
+  {
+   "word": "event",
+   "phrase": "special event",
+   "chinese": "特别活动"
+  },
+  {
+   "word": "event",
+   "phrase": "in any event",
+   "chinese": "无论如何"
+  },
+  {
+   "word": "evening",
+   "phrase": "evening meal",
+   "chinese": "晚餐"
+  },
+  {
+   "word": "father",
+   "phrase": "father figure",
+   "chinese": "父亲般的人物"
+  },
+  {
+   "word": "father",
+   "phrase": "Father's Day",
+   "chinese": "父亲节"
+  },
+  {
+   "word": "fell",
+   "phrase": "fell down",
+   "chinese": "跌倒"
+  },
+  {
+   "word": "fell",
+   "phrase": "fell asleep",
+   "chinese": "入睡"
+  },
+  {
+   "word": "fell",
+   "phrase": "fell ill",
+   "chinese": "生病"
+  },
+  {
+   "word": "fell",
+   "phrase": "fell tree",
+   "chinese": "砍树"
+  },
+  {
+   "word": "fork",
+   "phrase": "fork over",
+   "chinese": "支付，交出"
+  },
+  {
+   "word": "frustration",
+   "phrase": "frustration tolerance",
+   "chinese": "挫折承受力"
+  },
+  {
+   "word": "fry",
+   "phrase": "fried chicken",
+   "chinese": "炸鸡"
+  },
+  {
+   "word": "fry",
+   "phrase": "fry up",
+   "chinese": "用油炸/煎，炒菜"
+  },
+  {
+   "word": "fun",
+   "phrase": "fun-loving",
+   "chinese": "爱玩的"
+  },
+  {
+   "word": "fume",
+   "phrase": "fume and fret",
+   "chinese": "气愤又烦恼"
+  },
+  {
+   "word": "have",
+   "phrase": "have a look",
+   "chinese": "看一看"
+  },
+  {
+   "word": "grammatical",
+   "phrase": "grammatical gender",
+   "chinese": "语法性"
+  },
+  {
+   "word": "hetman",
+   "phrase": "hetman of the Cossacks",
+   "chinese": "哥萨克盖特曼"
+  },
+  {
+   "word": "hound",
+   "phrase": "hound someone out",
+   "chinese": "将某人逼走"
+  },
+  {
+   "word": "hound",
+   "phrase": "basset hound",
+   "chinese": "巴吉度猎犬"
+  },
+  {
+   "word": "hp",
+   "phrase": "hp rating",
+   "chinese": ""
+  },
+  {
+   "word": "hp",
+   "phrase": "hp unit",
+   "chinese": ""
+  },
+  {
+   "word": "insulin",
+   "phrase": "insulin therapy",
+   "chinese": "胰岛素疗法"
+  },
+  {
+   "word": "injection",
+   "phrase": "receive an injection",
+   "chinese": "接受注射"
+  },
+  {
+   "word": "intruder",
+   "phrase": "burglary intruder",
+   "chinese": "入室窃贼"
+  },
+  {
+   "word": "intruder",
+   "phrase": "detect an intruder",
+   "chinese": "发现入侵者"
+  },
+  {
+   "word": "jockey",
+   "phrase": "jockey and horse",
+   "chinese": "n"
+  },
+  {
+   "word": "jockey",
+   "phrase": "jockey’s weight",
+   "chinese": ""
+  },
+  {
+   "word": "jockey",
+   "phrase": "jockey for power",
+   "chinese": "v"
+  },
+  {
+   "word": "jockey",
+   "phrase": "jockey into position",
+   "chinese": "骑师与马，骑师的体重；争夺权力，巧妙安排"
+  },
+  {
+   "word": "len",
+   "phrase": "check the len",
+   "chinese": "检查长度"
+  },
+  {
+   "word": "killing",
+   "phrase": "killing spree",
+   "chinese": "连续杀人"
+  },
+  {
+   "word": "killing",
+   "phrase": "killing floor",
+   "chinese": "屠宰场"
+  },
+  {
+   "word": "leering",
+   "phrase": "leering expression",
+   "chinese": ""
+  },
+  {
+   "word": "leering",
+   "phrase": "leering glance",
+   "chinese": ""
+  },
+  {
+   "word": "loudspeaker",
+   "phrase": "public address /PA/ loudspeaker (公共广播扬声器) | loudspeaker system",
+   "chinese": "扬声器系统"
+  },
+  {
+   "word": "martian",
+   "phrase": "martian invasion",
+   "chinese": "火星人入侵"
+  },
+  {
+   "word": "mm",
+   "phrase": "mm‑hmm",
+   "chinese": "嗯哼"
+  },
+  {
+   "word": "mm",
+   "phrase": "mm‑hm",
+   "chinese": "嗯嗯"
+  },
+  {
+   "word": "mat",
+   "phrase": "wresting mat",
+   "chinese": "摔跤垫"
+  },
+  {
+   "word": "mental",
+   "phrase": "mental arithmetic",
+   "chinese": "心算"
+  },
+  {
+   "word": "music",
+   "phrase": "play music",
+   "chinese": "演奏音乐"
+  },
+  {
+   "word": "music",
+   "phrase": "music to one’s ears",
+   "chinese": "悦耳的话，好消息"
+  },
+  {
+   "word": "mover",
+   "phrase": "mover and shaker",
+   "chinese": "有影响力的人"
+  },
+  {
+   "word": "mover",
+   "phrase": "furniture movers",
+   "chinese": "家具搬运工"
+  },
+  {
+   "word": "monument",
+   "phrase": "ancient monument",
+   "chinese": "古代遗迹"
+  },
+  {
+   "word": "monument",
+   "phrase": "monument of achievement",
+   "chinese": "成就的丰碑"
+  },
+  {
+   "word": "none",
+   "phrase": "none the less",
+   "chinese": "尽管如此"
+  },
+  {
+   "word": "out",
+   "phrase": "out loud",
+   "chinese": "大声地"
+  },
+  {
+   "word": "out",
+   "phrase": "out and about",
+   "chinese": "四处走动"
+  },
+  {
+   "word": "out",
+   "phrase": "out of order",
+   "chinese": "故障"
+  },
+  {
+   "word": "old",
+   "phrase": "old age",
+   "chinese": "老年"
+  },
+  {
+   "word": "old",
+   "phrase": "grow old",
+   "chinese": "变老"
+  },
+  {
+   "word": "old",
+   "phrase": "old-fashioned",
+   "chinese": "老式的"
+  },
+  {
+   "word": "parenchyma",
+   "phrase": "plant parenchyma",
+   "chinese": "植物薄壁组织"
+  },
+  {
+   "word": "ph",
+   "phrase": "pH level",
+   "chinese": "pH值"
+  },
+  {
+   "word": "ph",
+   "phrase": "pH balance",
+   "chinese": "酸碱平衡"
+  },
+  {
+   "word": "pizza",
+   "phrase": "pizza toppings",
+   "chinese": ""
+  },
+  {
+   "word": "playful",
+   "phrase": "playful mood",
+   "chinese": "嬉戏的心情"
+  },
+  {
+   "word": "pop",
+   "phrase": "pop in",
+   "chinese": "顺便拜访"
+  },
+  {
+   "word": "proscription",
+   "phrase": "proscription list",
+   "chinese": "禁书目录"
+  },
+  {
+   "word": "proscription",
+   "phrase": "drug proscription",
+   "chinese": "毒品禁令"
+  },
+  {
+   "word": "quick",
+   "phrase": "quick thinking",
+   "chinese": "思维敏捷"
+  },
+  {
+   "word": "quick",
+   "phrase": "quick as a flash",
+   "chinese": "快如闪电"
+  },
+  {
+   "word": "quotation",
+   "phrase": "get a quotation",
+   "chinese": "得到报价"
+  },
+  {
+   "word": "radiosterilization",
+   "phrase": "gamma radiosterilization",
+   "chinese": "伽马辐射灭菌"
+  },
+  {
+   "word": "ray",
+   "phrase": "ray of light",
+   "chinese": "光线"
+  },
+  {
+   "word": "ray",
+   "phrase": "ray of hope",
+   "chinese": "一线希望"
+  },
+  {
+   "word": "rhine",
+   "phrase": "Rhine river",
+   "chinese": "莱茵河"
+  },
+  {
+   "word": "return",
+   "phrase": "return on investment",
+   "chinese": ""
+  },
+  {
+   "word": "return",
+   "phrase": "return journey",
+   "chinese": ""
+  },
+  {
+   "word": "return",
+   "phrase": "return to sender",
+   "chinese": ""
+  },
+  {
+   "word": "rose",
+   "phrase": "rose-colored",
+   "chinese": "玫瑰色的"
+  },
+  {
+   "word": "rope",
+   "phrase": "end of one's rope",
+   "chinese": "黔驴技穷/忍无可忍"
+  },
+  {
+   "word": "rope",
+   "phrase": "skip rope",
+   "chinese": "跳绳"
+  },
+  {
+   "word": "scuse",
+   "phrase": "no scuse",
+   "chinese": "没有借口"
+  },
+  {
+   "word": "scuse",
+   "phrase": "scuse me",
+   "chinese": "对不起"
+  },
+  {
+   "word": "sailor",
+   "phrase": "merchant sailor",
+   "chinese": "商船海员"
+  },
+  {
+   "word": "saint",
+   "phrase": "saint’s day",
+   "chinese": "圣徒节"
+  },
+  {
+   "word": "should",
+   "phrase": "should have",
+   "chinese": "shouldn’t"
+  },
+  {
+   "word": "should",
+   "phrase": "should be",
+   "chinese": ""
+  },
+  {
+   "word": "should",
+   "phrase": "it should",
+   "chinese": ""
+  },
+  {
+   "word": "should",
+   "phrase": "as it should be",
+   "chinese": ""
+  },
+  {
+   "word": "should",
+   "phrase": "should not",
+   "chinese": "shouldn’t"
+  },
+  {
+   "word": "secco",
+   "phrase": "secco painting",
+   "chinese": "干壁画"
+  },
+  {
+   "word": "secco",
+   "phrase": "secco recitative",
+   "chinese": "干宣叙调"
+  },
+  {
+   "word": "silly",
+   "phrase": "silly season",
+   "chinese": "新闻淡季；无聊季节"
+  },
+  {
+   "word": "staccato",
+   "phrase": "staccato rhythm",
+   "chinese": "断奏节奏"
+  },
+  {
+   "word": "staccato",
+   "phrase": "staccato bursts",
+   "chinese": "断续的爆发"
+  },
+  {
+   "word": "sing",
+   "phrase": "community sing",
+   "chinese": ""
+  },
+  {
+   "word": "sing",
+   "phrase": "sing-song",
+   "chinese": ""
+  },
+  {
+   "word": "stanton",
+   "phrase": "Stanton number (engineering)",
+   "chinese": "斯坦顿数"
+  },
+  {
+   "word": "spoil",
+   "phrase": "spare the rod and spoil the child",
+   "chinese": "不打不成器"
+  },
+  {
+   "word": "spoil",
+   "phrase": "spoils system",
+   "chinese": "分赃制"
+  },
+  {
+   "word": "swallow",
+   "phrase": "swallow your pride",
+   "chinese": "放下自尊"
+  },
+  {
+   "word": "swallow",
+   "phrase": "swallow up",
+   "chinese": "吞没"
+  },
+  {
+   "word": "swallow",
+   "phrase": "swallow dive",
+   "chinese": "燕式跳水"
+  },
+  {
+   "word": "under",
+   "phrase": "go under",
+   "chinese": "沉没，破产"
+  },
+  {
+   "word": "tyrosine",
+   "phrase": "L‑tyrosine supplement",
+   "chinese": ""
+  },
+  {
+   "word": "unequivocally",
+   "phrase": "unequivocally deny",
+   "chinese": "断然否认"
+  },
+  {
+   "word": "useful",
+   "phrase": "useful life",
+   "chinese": ""
+  },
+  {
+   "word": "useful",
+   "phrase": "useful purpose",
+   "chinese": ""
+  },
+  {
+   "word": "useful",
+   "phrase": "come in useful",
+   "chinese": ""
+  },
+  {
+   "word": "violet",
+   "phrase": "violet eyes",
+   "chinese": "紫色眼睛"
+  },
+  {
+   "word": "wear",
+   "phrase": "wear and tear",
+   "chinese": "损耗"
+  },
+  {
+   "word": "where",
+   "phrase": "where from",
+   "chinese": "从哪里来"
+  },
+  {
+   "word": "weaken",
+   "phrase": "weaken one's resolve",
+   "chinese": "动摇决心"
+  },
+  {
+   "word": "with",
+   "phrase": "it is",
+   "chinese": "它是"
+  },
+  {
+   "word": "with",
+   "phrase": "it seems",
+   "chinese": "看起来"
+  },
+  {
+   "word": "mystery",
+   "phrase": "shrouded in mystery",
+   "chinese": "笼罩在神秘之中"
+  },
+  {
+   "word": "oersted",
+   "phrase": "oersted unit",
+   "chinese": ""
+  },
+  {
+   "word": "oersted",
+   "phrase": "Oersted’s experiment",
+   "chinese": ""
+  },
+  {
+   "word": "stony",
+   "phrase": "stony ground",
+   "chinese": "石质地面"
+  },
+  {
+   "word": "acknowledge",
+   "phrase": "acknowledge receipt",
+   "chinese": "确认收到"
+  },
+  {
+   "word": "acknowledge",
+   "phrase": "acknowledge defeat",
+   "chinese": "承认失败"
+  },
+  {
+   "word": "able",
+   "phrase": "be able to do sth",
+   "chinese": "能够做某事"
+  },
+  {
+   "word": "able",
+   "phrase": "able-bodied",
+   "chinese": "体格健全的"
+  },
+  {
+   "word": "acetone",
+   "phrase": "acetone solvent",
+   "chinese": "丙酮溶剂"
+  },
+  {
+   "word": "accumulate",
+   "phrase": "accumulate knowledge",
+   "chinese": "积累知识"
+  },
+  {
+   "word": "across",
+   "phrase": "across the world",
+   "chinese": "全世界"
+  },
+  {
+   "word": "across",
+   "phrase": "cross the street",
+   "chinese": "穿过街道"
+  },
+  {
+   "word": "addiction",
+   "phrase": "overcome addiction",
+   "chinese": "克服成瘾"
+  },
+  {
+   "word": "addiction",
+   "phrase": "addiction treatment",
+   "chinese": "成瘾治疗"
+  },
+  {
+   "word": "adios",
+   "phrase": "adios amigo",
+   "chinese": "再见，朋友"
+  },
+  {
+   "word": "aerosol",
+   "phrase": "aerosol propellant",
+   "chinese": "气溶胶推进剂"
+  },
+  {
+   "word": "advanced",
+   "phrase": "advanced warning",
+   "chinese": "预先警告"
+  },
+  {
+   "word": "adjournment",
+   "phrase": "seek an adjournment",
+   "chinese": "请求延期"
+  },
+  {
+   "word": "adjournment",
+   "phrase": "adjournment sine die",
+   "chinese": "无限期休会"
+  },
+  {
+   "word": "aflame",
+   "phrase": "aflame with anger",
+   "chinese": "怒火中烧"
+  },
+  {
+   "word": "adore",
+   "phrase": "absolutely adore",
+   "chinese": "非常喜爱"
+  },
+  {
+   "word": "admission",
+   "phrase": "admission ticket",
+   "chinese": "门票"
+  },
+  {
+   "word": "adopt",
+   "phrase": "adopt a resolution",
+   "chinese": "通过决议"
+  },
+  {
+   "word": "aeroplane",
+   "phrase": "aeroplane ticket",
+   "chinese": "飞机票"
+  },
+  {
+   "word": "aeroplane",
+   "phrase": "aeroplane pilot",
+   "chinese": "飞行员"
+  },
+  {
+   "word": "african",
+   "phrase": "African continent",
+   "chinese": "非洲大陆"
+  },
+  {
+   "word": "ago",
+   "phrase": "years ago",
+   "chinese": "多年前"
+  },
+  {
+   "word": "aircraft",
+   "phrase": "commercial aircraft",
+   "chinese": "商用飞机"
+  },
+  {
+   "word": "agglutinin",
+   "phrase": "immune agglutinin",
+   "chinese": "免疫凝集素"
+  },
+  {
+   "word": "alarm clock",
+   "phrase": "set an alarm clock",
+   "chinese": "设闹钟"
+  },
+  {
+   "word": "alarm clock",
+   "phrase": "alarm clock goes off",
+   "chinese": "闹钟响了"
+  },
+  {
+   "word": "alabama",
+   "phrase": "Alabama Crimson Tide (University of Alabama football team)",
+   "chinese": "阿拉巴马深红潮橄榄球队"
+  },
+  {
+   "word": "alert",
+   "phrase": "be on alert",
+   "chinese": "处于警戒状态"
+  },
+  {
+   "word": "alert",
+   "phrase": "alert system",
+   "chinese": "警报系统"
+  },
+  {
+   "word": "alert",
+   "phrase": "alertness",
+   "chinese": "警觉"
+  },
+  {
+   "word": "alienated",
+   "phrase": "alienated from someone",
+   "chinese": "与某人疏远"
+  },
+  {
+   "word": "alabaster",
+   "phrase": "alabaster white",
+   "chinese": "雪白色"
+  },
+  {
+   "word": "am",
+   "phrase": "I am sorry",
+   "chinese": "对不起"
+  },
+  {
+   "word": "am",
+   "phrase": "I am fine",
+   "chinese": "我很好"
+  },
+  {
+   "word": "ammonia",
+   "phrase": "liquid ammonia",
+   "chinese": "液氨"
+  },
+  {
+   "word": "amongst",
+   "phrase": "amongst others",
+   "chinese": "其中"
+  },
+  {
+   "word": "amongst",
+   "phrase": "amongst themselves",
+   "chinese": "在他们之间"
+  },
+  {
+   "word": "amongst",
+   "phrase": "amongst the crowd",
+   "chinese": "在人群中"
+  },
+  {
+   "word": "anthropological",
+   "phrase": "anthropological study",
+   "chinese": "人类学研究"
+  },
+  {
+   "word": "america",
+   "phrase": "America's Cup",
+   "chinese": "美洲杯"
+  },
+  {
+   "word": "america",
+   "phrase": "Central America",
+   "chinese": "中美洲"
+  },
+  {
+   "word": "ambitious",
+   "phrase": "ambitious goal",
+   "chinese": "远大的目标"
+  },
+  {
+   "word": "ambitious",
+   "phrase": "ambitious person",
+   "chinese": "有抱负的人"
+  },
+  {
+   "word": "anymore",
+   "phrase": "not … anymore",
+   "chinese": "不再"
+  },
+  {
+   "word": "anyone",
+   "phrase": "anyone can do it",
+   "chinese": "任何人都能做到"
+  },
+  {
+   "word": "apartment",
+   "phrase": "apartment block",
+   "chinese": ""
+  },
+  {
+   "word": "apartment",
+   "phrase": "apartment complex",
+   "chinese": ""
+  },
+  {
+   "word": "apart",
+   "phrase": "set apart",
+   "chinese": "使分离，使突出"
+  },
+  {
+   "word": "appeasement",
+   "phrase": "appeasement of anger",
+   "chinese": "平息愤怒"
+  },
+  {
+   "word": "appearance",
+   "phrase": "first appearance",
+   "chinese": "首次出现"
+  },
+  {
+   "word": "appearance",
+   "phrase": "in appearance",
+   "chinese": "外表上"
+  },
+  {
+   "word": "arbor",
+   "phrase": "shady arbor",
+   "chinese": "荫蔽的凉亭"
+  },
+  {
+   "word": "arena",
+   "phrase": "arena of competition",
+   "chinese": "竞技舞台"
+  },
+  {
+   "word": "appreciate",
+   "phrase": "appreciate someone’s efforts",
+   "chinese": "感激某人的努力"
+  },
+  {
+   "word": "appreciate",
+   "phrase": "appreciate in value",
+   "chinese": "增值"
+  },
+  {
+   "word": "as",
+   "phrase": "as well",
+   "chinese": "也"
+  },
+  {
+   "word": "arte",
+   "phrase": "arte sacra",
+   "chinese": "圣艺"
+  },
+  {
+   "word": "arte",
+   "phrase": "belle arti (sacred art, fine arts)",
+   "chinese": "美术"
+  },
+  {
+   "word": "around",
+   "phrase": "all around",
+   "chinese": "处处"
+  },
+  {
+   "word": "ask",
+   "phrase": "ask about",
+   "chinese": ""
+  },
+  {
+   "word": "ask",
+   "phrase": "ask for",
+   "chinese": ""
+  },
+  {
+   "word": "ask",
+   "phrase": "ask out",
+   "chinese": ""
+  },
+  {
+   "word": "ask",
+   "phrase": "ask around",
+   "chinese": ""
+  },
+  {
+   "word": "ask",
+   "phrase": "ask a favour",
+   "chinese": ""
+  },
+  {
+   "word": "atom",
+   "phrase": "atom of",
+   "chinese": "一点点……"
+  },
+  {
+   "word": "auction",
+   "phrase": "auction sale",
+   "chinese": "拍卖会"
+  },
+  {
+   "word": "auction",
+   "phrase": "auction off",
+   "chinese": "拍卖掉"
+  },
+  {
+   "word": "attitude",
+   "phrase": "attitude problem",
+   "chinese": "态度问题"
+  },
+  {
+   "word": "attitude",
+   "phrase": "change of attitude",
+   "chinese": "态度转变"
+  },
+  {
+   "word": "assailed",
+   "phrase": "assailed by doubts",
+   "chinese": "被疑虑困扰"
+  },
+  {
+   "word": "assailed",
+   "phrase": "assailed by criticism",
+   "chinese": "受到批评"
+  },
+  {
+   "word": "athletics",
+   "phrase": "athletics club",
+   "chinese": "田径俱乐部"
+  },
+  {
+   "word": "austrian",
+   "phrase": "Austrian Empire",
+   "chinese": "奥地利帝国"
+  },
+  {
+   "word": "austrian",
+   "phrase": "Austrian Alps",
+   "chinese": "奥地利阿尔卑斯山"
+  },
+  {
+   "word": "authenticity",
+   "phrase": "verify authenticity",
+   "chinese": "验证真伪"
+  },
+  {
+   "word": "authenticity",
+   "phrase": "historical authenticity",
+   "chinese": "历史真实性"
+  },
+  {
+   "word": "authenticity",
+   "phrase": "emotional authenticity",
+   "chinese": "情感真挚"
+  },
+  {
+   "word": "autonomic",
+   "phrase": "autonomic response",
+   "chinese": "自主反应"
+  },
+  {
+   "word": "balloon",
+   "phrase": "balloon up",
+   "chinese": "膨胀起来"
+  },
+  {
+   "word": "basis",
+   "phrase": "on a daily basis",
+   "chinese": "每天"
+  },
+  {
+   "word": "basis",
+   "phrase": "basis point",
+   "chinese": "基点"
+  },
+  {
+   "word": "bawdy",
+   "phrase": "bawdy humour",
+   "chinese": "低级幽默"
+  },
+  {
+   "word": "bee",
+   "phrase": "bee hive",
+   "chinese": "蜂巢"
+  },
+  {
+   "word": "bee",
+   "phrase": "busy as a bee",
+   "chinese": "忙得团团转"
+  },
+  {
+   "word": "bathroom",
+   "phrase": "bathroom cabinet",
+   "chinese": "浴室柜"
+  },
+  {
+   "word": "beads",
+   "phrase": "counting beads",
+   "chinese": "念珠；计数珠子"
+  },
+  {
+   "word": "beef",
+   "phrase": "beef steak",
+   "chinese": "牛排"
+  },
+  {
+   "word": "beef",
+   "phrase": "ground beef",
+   "chinese": "碎牛肉"
+  },
+  {
+   "word": "bernard",
+   "phrase": "Bernard of Clairvaux",
+   "chinese": "克莱尔沃的伯纳德"
+  },
+  {
+   "word": "benedick",
+   "phrase": "Benedick and Beatrice",
+   "chinese": "班尼迪克与贝特丽丝"
+  },
+  {
+   "word": "benedick",
+   "phrase": "a happy benedick",
+   "chinese": "幸福的结婚男子"
+  },
+  {
+   "word": "behind",
+   "phrase": "behind closed doors",
+   "chinese": "秘密地"
+  },
+  {
+   "word": "behind",
+   "phrase": "left behind",
+   "chinese": "被落下"
+  },
+  {
+   "word": "berry",
+   "phrase": "berry picking",
+   "chinese": "采摘浆果"
+  },
+  {
+   "word": "berry",
+   "phrase": "berry pie",
+   "chinese": "浆果派"
+  },
+  {
+   "word": "berry",
+   "phrase": "berry season",
+   "chinese": "浆果季"
+  },
+  {
+   "word": "big",
+   "phrase": "big city",
+   "chinese": "大城市"
+  },
+  {
+   "word": "best",
+   "phrase": "at best",
+   "chinese": "充其量"
+  },
+  {
+   "word": "best",
+   "phrase": "best man",
+   "chinese": "伴郎"
+  },
+  {
+   "word": "best",
+   "phrase": "do one’s best",
+   "chinese": "尽力而为"
+  },
+  {
+   "word": "bin",
+   "phrase": "bread bin",
+   "chinese": "面包箱"
+  },
+  {
+   "word": "blatz",
+   "phrase": "a bottle of blatz",
+   "chinese": "一瓶廉价啤酒"
+  },
+  {
+   "word": "birmingham",
+   "phrase": "Birmingham City FC",
+   "chinese": "伯明翰城足球俱乐部"
+  },
+  {
+   "word": "biscuit",
+   "phrase": "digestive biscuit",
+   "chinese": "消化饼干"
+  },
+  {
+   "word": "bookish",
+   "phrase": "bookish person",
+   "chinese": "书呆子；爱读书的人"
+  },
+  {
+   "word": "born",
+   "phrase": "born and bred",
+   "chinese": "土生土长的"
+  },
+  {
+   "word": "born",
+   "phrase": "born again",
+   "chinese": "重生的"
+  },
+  {
+   "word": "born",
+   "phrase": "born to be",
+   "chinese": "生来就是"
+  },
+  {
+   "word": "breeze",
+   "phrase": "breeze in",
+   "chinese": "飘然而入"
+  },
+  {
+   "word": "bookshop",
+   "phrase": "independent bookshop",
+   "chinese": "独立书店"
+  },
+  {
+   "word": "bookshop",
+   "phrase": "second-hand bookshop",
+   "chinese": "二手书店"
+  },
+  {
+   "word": "breathe",
+   "phrase": "breathe in/out",
+   "chinese": "吸气／呼气"
+  },
+  {
+   "word": "breathe",
+   "phrase": "breathe a sigh of relief",
+   "chinese": "松了一口气"
+  },
+  {
+   "word": "brodie",
+   "phrase": "Brodie helmet",
+   "chinese": "布罗迪钢盔"
+  },
+  {
+   "word": "brodie",
+   "phrase": "do a Brodie (做旋圈特技)",
+   "chinese": "中文翻译：布罗迪钢盔，做旋圈特技"
+  },
+  {
+   "word": "bristling",
+   "phrase": "bristling hostility",
+   "chinese": ""
+  },
+  {
+   "word": "bucket",
+   "phrase": "bucket of water",
+   "chinese": "一桶水"
+  },
+  {
+   "word": "bucket",
+   "phrase": "a bucket list",
+   "chinese": "遗愿清单"
+  },
+  {
+   "word": "bulk",
+   "phrase": "bulk buying",
+   "chinese": "批量购买"
+  },
+  {
+   "word": "cabinet",
+   "phrase": "file cabinet",
+   "chinese": "文件柜"
+  },
+  {
+   "word": "burmese",
+   "phrase": "Burmese cat",
+   "chinese": "缅甸猫"
+  },
+  {
+   "word": "burmese",
+   "phrase": "Burmese python",
+   "chinese": "缅甸蟒"
+  },
+  {
+   "word": "additional",
+   "phrase": "additional layer",
+   "chinese": "额外的层次"
+  },
+  {
+   "word": "calenda",
+   "phrase": "Roman Calends",
+   "chinese": "罗马历的初一"
+  },
+  {
+   "word": "calenda",
+   "phrase": "Greek Calends",
+   "chinese": "希腊历的初一（比喻永远不会到来的日子）"
+  },
+  {
+   "word": "campus",
+   "phrase": "campus tour",
+   "chinese": "校园参观"
+  },
+  {
+   "word": "camusfearna",
+   "phrase": "the village of Camusfearna",
+   "chinese": ""
+  },
+  {
+   "word": "camusfearna",
+   "phrase": "Camusfearna coastline",
+   "chinese": ""
+  },
+  {
+   "word": "cancel",
+   "phrase": "cancel out",
+   "chinese": "抵消"
+  },
+  {
+   "word": "cancel",
+   "phrase": "cancel a cheque",
+   "chinese": "注销支票"
+  },
+  {
+   "word": "candle",
+   "phrase": "burn the candle at both ends",
+   "chinese": "过分消耗精力"
+  },
+  {
+   "word": "candle",
+   "phrase": "not hold a candle to",
+   "chinese": "无法与…相比"
+  },
+  {
+   "word": "candy",
+   "phrase": "candy store",
+   "chinese": "糖果店"
+  },
+  {
+   "word": "carton",
+   "phrase": "milk carton",
+   "chinese": "牛奶盒"
+  },
+  {
+   "word": "carton",
+   "phrase": "egg carton",
+   "chinese": "鸡蛋盒"
+  },
+  {
+   "word": "carton",
+   "phrase": "juice carton",
+   "chinese": "果汁盒"
+  },
+  {
+   "word": "carriage",
+   "phrase": "carriage ride",
+   "chinese": "马车游览"
+  },
+  {
+   "word": "carriage",
+   "phrase": "baby carriage",
+   "chinese": "婴儿车"
+  },
+  {
+   "word": "carriage",
+   "phrase": "carriage of goods",
+   "chinese": "货物运输"
+  },
+  {
+   "word": "careful",
+   "phrase": "careful thought",
+   "chinese": "深思熟虑"
+  },
+  {
+   "word": "careful",
+   "phrase": "careful planning",
+   "chinese": "仔细规划"
+  },
+  {
+   "word": "case",
+   "phrase": "case the joint",
+   "chinese": "踩点；事先窥探"
+  },
+  {
+   "word": "cat",
+   "phrase": "cat nap",
+   "chinese": "小睡"
+  },
+  {
+   "word": "cease",
+   "phrase": "cease operations",
+   "chinese": "停止运营"
+  },
+  {
+   "word": "chambre",
+   "phrase": "chambre d’hôte",
+   "chinese": "家庭旅馆客房"
+  },
+  {
+   "word": "championship",
+   "phrase": "win a championship",
+   "chinese": "赢得冠军"
+  },
+  {
+   "word": "championship",
+   "phrase": "defend a championship",
+   "chinese": "卫冕冠军"
+  },
+  {
+   "word": "charlotte",
+   "phrase": "Charlotte Amalie",
+   "chinese": "夏洛特阿马利亚，美属维尔京群岛首府"
+  },
+  {
+   "word": "checkout",
+   "phrase": "self-checkout",
+   "chinese": "自助结账"
+  },
+  {
+   "word": "checkout",
+   "phrase": "checkout time",
+   "chinese": "退房时间"
+  },
+  {
+   "word": "cheese",
+   "phrase": "cheese board",
+   "chinese": "奶酪拼盘"
+  },
+  {
+   "word": "cheese",
+   "phrase": "big cheese",
+   "chinese": "大人物"
+  },
+  {
+   "word": "circumstance",
+   "phrase": "circumstances beyond control",
+   "chinese": "无法控制的情况"
+  },
+  {
+   "word": "clean",
+   "phrase": "clean slate",
+   "chinese": "清白历史"
+  },
+  {
+   "word": "chromatography",
+   "phrase": "liquid chromatography",
+   "chinese": "液相色谱法"
+  },
+  {
+   "word": "clock",
+   "phrase": "clock in/out",
+   "chinese": "打卡上下班"
+  },
+  {
+   "word": "clock",
+   "phrase": "clock up",
+   "chinese": "累计达到"
+  },
+  {
+   "word": "clayton",
+   "phrase": "—",
+   "chinese": ""
+  },
+  {
+   "word": "clothes",
+   "phrase": "clothes hanger",
+   "chinese": "衣架"
+  },
+  {
+   "word": "clothes",
+   "phrase": "clothes line",
+   "chinese": "晾衣绳"
+  },
+  {
+   "word": "color",
+   "phrase": "local color",
+   "chinese": "地方特色"
+  },
+  {
+   "word": "color",
+   "phrase": "off-color",
+   "chinese": "不得体的"
+  },
+  {
+   "word": "cold",
+   "phrase": "cold war",
+   "chinese": "冷战"
+  },
+  {
+   "word": "cold",
+   "phrase": "cold shoulder",
+   "chinese": "冷遇，冷淡对待"
+  },
+  {
+   "word": "comprehension",
+   "phrase": "beyond one’s comprehension",
+   "chinese": "超出某人的理解"
+  },
+  {
+   "word": "complacency",
+   "phrase": "avoid complacency",
+   "chinese": "避免自满"
+  },
+  {
+   "word": "concentrate",
+   "phrase": "fruit concentrate",
+   "chinese": ""
+  },
+  {
+   "word": "concentrate",
+   "phrase": "protein concentrate",
+   "chinese": ""
+  },
+  {
+   "word": "concentrate",
+   "phrase": "concentrate solution",
+   "chinese": ""
+  },
+  {
+   "word": "congregation",
+   "phrase": "congregation member",
+   "chinese": "会众成员"
+  },
+  {
+   "word": "congregation",
+   "phrase": "congregation church",
+   "chinese": "集会教堂"
+  },
+  {
+   "word": "convenience",
+   "phrase": "convenience store",
+   "chinese": "便利店"
+  },
+  {
+   "word": "conversation",
+   "phrase": "strike up a conversation",
+   "chinese": "搭讪"
+  },
+  {
+   "word": "conversation",
+   "phrase": "make conversation",
+   "chinese": "找话题聊天"
+  },
+  {
+   "word": "constrictor",
+   "phrase": "constrictor muscle",
+   "chinese": "缩肌"
+  },
+  {
+   "word": "contrast",
+   "phrase": "in contrast",
+   "chinese": "相比之下"
+  },
+  {
+   "word": "convey",
+   "phrase": "convey an impression",
+   "chinese": "传递印象"
+  },
+  {
+   "word": "convey",
+   "phrase": "convey goods",
+   "chinese": "运送货物"
+  },
+  {
+   "word": "correct",
+   "phrase": "correct a mistake",
+   "chinese": "纠正错误"
+  },
+  {
+   "word": "corridor",
+   "phrase": "hospital corridor",
+   "chinese": "医院走廊"
+  },
+  {
+   "word": "counselor",
+   "phrase": "camp counselor",
+   "chinese": "夏令营辅导员"
+  },
+  {
+   "word": "crowd",
+   "phrase": "crowd control",
+   "chinese": "人群控制"
+  },
+  {
+   "word": "crowd",
+   "phrase": "crowd of people",
+   "chinese": "一群人"
+  },
+  {
+   "word": "crowd",
+   "phrase": "crowd into",
+   "chinese": "挤进"
+  },
+  {
+   "word": "crowd",
+   "phrase": "crowd out",
+   "chinese": "挤出"
+  },
+  {
+   "word": "crowd",
+   "phrase": "follow the crowd",
+   "chinese": "随大流"
+  },
+  {
+   "word": "crucial",
+   "phrase": "crucial moment",
+   "chinese": "关键时刻"
+  },
+  {
+   "word": "crusade",
+   "phrase": "crusade for justice",
+   "chinese": "为正义而战"
+  },
+  {
+   "word": "crusade",
+   "phrase": "personal crusade",
+   "chinese": "个人运动"
+  },
+  {
+   "word": "dad",
+   "phrase": "dad joke",
+   "chinese": "爸爸式笑话"
+  },
+  {
+   "word": "dad",
+   "phrase": "dad bod",
+   "chinese": "爸爸身材"
+  },
+  {
+   "word": "da",
+   "phrase": "ma and da",
+   "chinese": "妈妈和爸爸"
+  },
+  {
+   "word": "dance",
+   "phrase": "dance partner",
+   "chinese": "舞伴"
+  },
+  {
+   "word": "dance",
+   "phrase": "dance to the music",
+   "chinese": "随着音乐跳舞"
+  },
+  {
+   "word": "dalton",
+   "phrase": "Dalton atomic theory",
+   "chinese": "道尔顿原子理论"
+  },
+  {
+   "word": "dalton",
+   "phrase": "Dalton's law",
+   "chinese": "道尔顿定律"
+  },
+  {
+   "word": "december",
+   "phrase": "December weather",
+   "chinese": "十二月天气"
+  },
+  {
+   "word": "december",
+   "phrase": "December solstice",
+   "chinese": "冬至"
+  },
+  {
+   "word": "december",
+   "phrase": "December 31st",
+   "chinese": "12月31日"
+  },
+  {
+   "word": "december",
+   "phrase": "the December issue",
+   "chinese": "十二月刊"
+  },
+  {
+   "word": "darling",
+   "phrase": "darling of the family",
+   "chinese": "家中的宠儿"
+  },
+  {
+   "word": "darling",
+   "phrase": "darling child",
+   "chinese": "可爱的孩子"
+  },
+  {
+   "word": "deaf",
+   "phrase": "deaf mute",
+   "chinese": "聋哑人"
+  },
+  {
+   "word": "deaf",
+   "phrase": "turn a deaf ear",
+   "chinese": "置若罔闻"
+  },
+  {
+   "word": "decent",
+   "phrase": "decent living",
+   "chinese": "体面的生活"
+  },
+  {
+   "word": "decent",
+   "phrase": "decent amount",
+   "chinese": "相当数量"
+  },
+  {
+   "word": "chattanooga",
+   "phrase": "Chattanooga Choo Choo",
+   "chinese": "查塔努加火车，一首著名歌曲"
+  },
+  {
+   "word": "deck",
+   "phrase": "deck of cards",
+   "chinese": "一副牌"
+  },
+  {
+   "word": "deck",
+   "phrase": "deck out",
+   "chinese": "装饰"
+  },
+  {
+   "word": "decorate",
+   "phrase": "decorate a Christmas tree",
+   "chinese": "装饰圣诞树"
+  },
+  {
+   "word": "decorate",
+   "phrase": "decorate a room",
+   "chinese": "装修房间"
+  },
+  {
+   "word": "defence",
+   "phrase": "defence",
+   "chinese": ""
+  },
+  {
+   "word": "dehumanize",
+   "phrase": "dehumanize the workforce",
+   "chinese": "使劳动力非人化"
+  },
+  {
+   "word": "delineation",
+   "phrase": "delineation of responsibilities",
+   "chinese": "责任的划分"
+  },
+  {
+   "word": "delta",
+   "phrase": "Delta Force",
+   "chinese": "三角洲部队"
+  },
+  {
+   "word": "delta",
+   "phrase": "river delta",
+   "chinese": "河流三角洲"
+  },
+  {
+   "word": "demonstrable",
+   "phrase": "demonstrable effect",
+   "chinese": "明显的效果"
+  },
+  {
+   "word": "demonstrable",
+   "phrase": "demonstrable skill",
+   "chinese": "可证明的技能"
+  },
+  {
+   "word": "demonstration",
+   "phrase": "peaceful demonstration",
+   "chinese": "和平示威"
+  },
+  {
+   "word": "demonstration",
+   "phrase": "demonstration of support",
+   "chinese": "支持的表现"
+  },
+  {
+   "word": "demonstration",
+   "phrase": "live demonstration",
+   "chinese": "现场演示"
+  },
+  {
+   "word": "denmark",
+   "phrase": "Kingdom of Denmark",
+   "chinese": "丹麦王国"
+  },
+  {
+   "word": "denmark",
+   "phrase": "Denmark Strait",
+   "chinese": "丹麦海峡"
+  },
+  {
+   "word": "dervishes",
+   "phrase": "Sufi dervishes",
+   "chinese": "苏菲派苦行僧"
+  },
+  {
+   "word": "departure",
+   "phrase": "departure from tradition",
+   "chinese": "背离传统"
+  },
+  {
+   "word": "describe",
+   "phrase": "describe someone’s appearance",
+   "chinese": "描述某人的外貌"
+  },
+  {
+   "word": "describe",
+   "phrase": "describe a process",
+   "chinese": "描述过程"
+  },
+  {
+   "word": "describe",
+   "phrase": "hard to describe",
+   "chinese": "难以描述"
+  },
+  {
+   "word": "destruction",
+   "phrase": "destruction of property",
+   "chinese": "财产破坏"
+  },
+  {
+   "word": "developed",
+   "phrase": "developed world",
+   "chinese": "发达国家"
+  },
+  {
+   "word": "developed",
+   "phrase": "well-developed muscles",
+   "chinese": "发达的肌肉"
+  },
+  {
+   "word": "deux",
+   "phrase": "deux-chevaux",
+   "chinese": "双马（雪铁龙2CV）"
+  },
+  {
+   "word": "determine",
+   "phrase": "determine the outcome",
+   "chinese": "决定结果"
+  },
+  {
+   "word": "diagnose",
+   "phrase": "diagnose  with",
+   "chinese": "someone"
+  },
+  {
+   "word": "diagnose",
+   "phrase": "diagnose as",
+   "chinese": "诊断某人患有，诊断为"
+  },
+  {
+   "word": "diameter",
+   "phrase": "inside diameter",
+   "chinese": "内径"
+  },
+  {
+   "word": "diameter",
+   "phrase": "outside diameter",
+   "chinese": "外径"
+  },
+  {
+   "word": "difference",
+   "phrase": "difference of opinion",
+   "chinese": "意见分歧"
+  },
+  {
+   "word": "dilatation",
+   "phrase": "pupil dilatation",
+   "chinese": "瞳孔扩张"
+  },
+  {
+   "word": "difficult",
+   "phrase": "difficult decision",
+   "chinese": "艰难的决定"
+  },
+  {
+   "word": "difficult",
+   "phrase": "difficult situation",
+   "chinese": "困难的处境"
+  },
+  {
+   "word": "diocesan",
+   "phrase": "diocesan council",
+   "chinese": "教区理事会"
+  },
+  {
+   "word": "discontinuity",
+   "phrase": "structural discontinuity",
+   "chinese": "结构性不连续"
+  },
+  {
+   "word": "discontinuity",
+   "phrase": "temporal discontinuity",
+   "chinese": "时间不连续"
+  },
+  {
+   "word": "discontinuous",
+   "phrase": "discontinuous distribution",
+   "chinese": "不连续分布"
+  },
+  {
+   "word": "dish",
+   "phrase": "dish up",
+   "chinese": "上菜"
+  },
+  {
+   "word": "dish",
+   "phrase": "side dish",
+   "chinese": "配菜"
+  },
+  {
+   "word": "disorderly",
+   "phrase": "disorderly house",
+   "chinese": ""
+  },
+  {
+   "word": "disorderly",
+   "phrase": "disorderly behaviour",
+   "chinese": ""
+  },
+  {
+   "word": "ditch",
+   "phrase": "dig a ditch",
+   "chinese": ""
+  },
+  {
+   "word": "ditch",
+   "phrase": "ditch the plan",
+   "chinese": ""
+  },
+  {
+   "word": "ditch",
+   "phrase": "last-ditch effort",
+   "chinese": ""
+  },
+  {
+   "word": "dive",
+   "phrase": "dive bar",
+   "chinese": ""
+  },
+  {
+   "word": "dive",
+   "phrase": "a nose dive",
+   "chinese": "廉价酒吧，俯冲，暴跌"
+  },
+  {
+   "word": "dog",
+   "phrase": "let sleeping dogs lie",
+   "chinese": "莫惹是非"
+  },
+  {
+   "word": "dog",
+   "phrase": "top dog",
+   "chinese": "头号人物"
+  },
+  {
+   "word": "dog",
+   "phrase": "dog eat dog",
+   "chinese": "残酷竞争"
+  },
+  {
+   "word": "doaty",
+   "phrase": "doaty odor",
+   "chinese": "霉味"
+  },
+  {
+   "word": "doaty",
+   "phrase": "doaty grain",
+   "chinese": "发霉的谷物"
+  },
+  {
+   "word": "door",
+   "phrase": "door handle",
+   "chinese": "门把手"
+  },
+  {
+   "word": "door",
+   "phrase": "door to door",
+   "chinese": "挨家挨户的"
+  },
+  {
+   "word": "downfall",
+   "phrase": "bring about a downfall",
+   "chinese": "导致垮台"
+  },
+  {
+   "word": "downfall",
+   "phrase": "financial downfall",
+   "chinese": "财政崩溃"
+  },
+  {
+   "word": "downfall",
+   "phrase": "downfall of a regime",
+   "chinese": "政权垮台"
+  },
+  {
+   "word": "dr",
+   "phrase": "Dr Jones",
+   "chinese": "琼斯医生/博士"
+  },
+  {
+   "word": "dr",
+   "phrase": "Dr of Philosophy",
+   "chinese": "哲学博士"
+  },
+  {
+   "word": "club",
+   "phrase": "club together",
+   "chinese": ""
+  },
+  {
+   "word": "club",
+   "phrase": "club someone over the head",
+   "chinese": ""
+  },
+  {
+   "word": "dream",
+   "phrase": "daydream",
+   "chinese": "白日梦"
+  },
+  {
+   "word": "dream",
+   "phrase": "pipe dream",
+   "chinese": "空想"
+  },
+  {
+   "word": "dream",
+   "phrase": "dream up",
+   "chinese": "凭空想出"
+  },
+  {
+   "word": "driving licence",
+   "phrase": "provisional driving licence",
+   "chinese": "临时驾驶执照"
+  },
+  {
+   "word": "driving licence",
+   "phrase": "full driving licence",
+   "chinese": "正式驾驶执照"
+  },
+  {
+   "word": "drug",
+   "phrase": "drug addiction",
+   "chinese": "毒瘾"
+  },
+  {
+   "word": "dupont",
+   "phrase": "DuPont analysis",
+   "chinese": "杜邦分析法"
+  },
+  {
+   "word": "dvd",
+   "phrase": "DVD‑R",
+   "chinese": "可刻录DVD"
+  },
+  {
+   "word": "earring",
+   "phrase": "pair of earrings",
+   "chinese": "一对耳环"
+  },
+  {
+   "word": "earring",
+   "phrase": "drop earrings",
+   "chinese": "耳坠"
+  },
+  {
+   "word": "earring",
+   "phrase": "stud earrings",
+   "chinese": "耳钉"
+  },
+  {
+   "word": "editor",
+   "phrase": "editor in chief",
+   "chinese": "总编辑"
+  },
+  {
+   "word": "editor",
+   "phrase": "news editor",
+   "chinese": "新闻编辑"
+  },
+  {
+   "word": "editor",
+   "phrase": "photo editor",
+   "chinese": "图片编辑"
+  },
+  {
+   "word": "efficiency",
+   "phrase": "operational efficiency",
+   "chinese": "运营效率"
+  },
+  {
+   "word": "efficiency",
+   "phrase": "improve efficiency",
+   "chinese": "提高效率"
+  },
+  {
+   "word": "eh",
+   "phrase": "nice day",
+   "chinese": ""
+  },
+  {
+   "word": "bodybuilder",
+   "phrase": "bodybuilding contest",
+   "chinese": "健美比赛"
+  },
+  {
+   "word": "elevator",
+   "phrase": "elevator shaft",
+   "chinese": ""
+  },
+  {
+   "word": "elevator",
+   "phrase": "elevator operator",
+   "chinese": ""
+  },
+  {
+   "word": "elevator",
+   "phrase": "service elevator",
+   "chinese": ""
+  },
+  {
+   "word": "encroachment",
+   "phrase": "encroachment on privacy  — 中文翻译：对隐私的侵犯",
+   "chinese": "侵犯隐私"
+  },
+  {
+   "word": "entropy",
+   "phrase": "increase in entropy",
+   "chinese": "熵增"
+  },
+  {
+   "word": "entropy",
+   "phrase": "entropy of a system",
+   "chinese": "系统的熵"
+  },
+  {
+   "word": "enver",
+   "phrase": "en dash",
+   "chinese": "短破折号"
+  },
+  {
+   "word": "enver",
+   "phrase": "en route (借自法语)",
+   "chinese": "在路上"
+  },
+  {
+   "word": "enviable",
+   "phrase": "enviable position",
+   "chinese": "令人羡慕的地位"
+  },
+  {
+   "word": "esplanade",
+   "phrase": "seaside esplanade",
+   "chinese": "海滨大道"
+  },
+  {
+   "word": "esplanade",
+   "phrase": "esplanade walk",
+   "chinese": "散步道"
+  },
+  {
+   "word": "essex",
+   "phrase": "Essex County",
+   "chinese": "埃塞克斯郡"
+  },
+  {
+   "word": "essayist",
+   "phrase": "literary essayist",
+   "chinese": "文学随笔作家"
+  },
+  {
+   "word": "esprit",
+   "phrase": "esprit d’escalier",
+   "chinese": "事后灵机"
+  },
+  {
+   "word": "esquire",
+   "phrase": "John Doe",
+   "chinese": "约翰·多伊先生"
+  },
+  {
+   "word": "esquire",
+   "phrase": "Esq.",
+   "chinese": "约翰·多伊先生"
+  },
+  {
+   "word": "esthetic",
+   "phrase": "esthetic sense",
+   "chinese": "审美感"
+  },
+  {
+   "word": "eugene",
+   "phrase": "en dash",
+   "chinese": "短破折号"
+  },
+  {
+   "word": "eugene",
+   "phrase": "en route (借自法语)",
+   "chinese": "在路上"
+  },
+  {
+   "word": "ethan",
+   "phrase": "Ethan Hawke (actor)",
+   "chinese": "伊桑·艾伦，伊桑·霍克"
+  },
+  {
+   "word": "everything",
+   "phrase": "everything but",
+   "chinese": "除了……全部"
+  },
+  {
+   "word": "everything",
+   "phrase": "everything being equal",
+   "chinese": "在同等条件下"
+  },
+  {
+   "word": "excited",
+   "phrase": "excited about",
+   "chinese": "对…兴奋"
+  },
+  {
+   "word": "excited",
+   "phrase": "excited to",
+   "chinese": "很兴奋做…"
+  },
+  {
+   "word": "expense",
+   "phrase": "business expense",
+   "chinese": "业务开支"
+  },
+  {
+   "word": "excommunicated",
+   "phrase": "excommunicated from the church",
+   "chinese": "被逐出教会"
+  },
+  {
+   "word": "execution",
+   "phrase": "execution of a contract",
+   "chinese": "合同执行"
+  },
+  {
+   "word": "expansiveness",
+   "phrase": "expansiveness of mind",
+   "chinese": "心胸开阔"
+  },
+  {
+   "word": "exploit",
+   "phrase": "exploit a loophole",
+   "chinese": "利用漏洞"
+  },
+  {
+   "word": "exploit",
+   "phrase": "exploit someone's weakness",
+   "chinese": "利用某人的弱点"
+  },
+  {
+   "word": "dispensation",
+   "phrase": "divine dispensation",
+   "chinese": "天意"
+  },
+  {
+   "word": "disco",
+   "phrase": "disco dance",
+   "chinese": "迪斯科舞"
+  },
+  {
+   "word": "faith",
+   "phrase": "keep faith with",
+   "chinese": "信守对…的承诺"
+  },
+  {
+   "word": "faith",
+   "phrase": "blind faith",
+   "chinese": "盲目相信"
+  },
+  {
+   "word": "fail",
+   "phrase": "fail to",
+   "chinese": "未能做到"
+  },
+  {
+   "word": "fail",
+   "phrase": "fail safe",
+   "chinese": "故障安全的"
+  },
+  {
+   "word": "faust",
+   "phrase": "Faustian pact",
+   "chinese": "浮士德式交易"
+  },
+  {
+   "word": "faust",
+   "phrase": "Faustian theme",
+   "chinese": "浮士德主题"
+  },
+  {
+   "word": "fete",
+   "phrase": "fête champêtre",
+   "chinese": "田园宴会"
+  },
+  {
+   "word": "fertilizer",
+   "phrase": "nitrogen fertilizer",
+   "chinese": "氮肥"
+  },
+  {
+   "word": "financial",
+   "phrase": "financial year",
+   "chinese": "财政年度"
+  },
+  {
+   "word": "find",
+   "phrase": "find fault with",
+   "chinese": "挑剔；批评"
+  },
+  {
+   "word": "fire brigade",
+   "phrase": "report to the fire station",
+   "chinese": "到消防站报到"
+  },
+  {
+   "word": "first",
+   "phrase": "first and foremost",
+   "chinese": "首要的是"
+  },
+  {
+   "word": "first",
+   "phrase": "first come",
+   "chinese": ""
+  },
+  {
+   "word": "first",
+   "phrase": "first served",
+   "chinese": "先到先得"
+  },
+  {
+   "word": "flannagan",
+   "phrase": "flannagan talk",
+   "chinese": "花言巧语"
+  },
+  {
+   "word": "flexible",
+   "phrase": "flexible material",
+   "chinese": "柔性材料"
+  },
+  {
+   "word": "flock",
+   "phrase": "flock to a place",
+   "chinese": "涌向某地"
+  },
+  {
+   "word": "flock",
+   "phrase": "flock together",
+   "chinese": "聚集在一起"
+  },
+  {
+   "word": "fluorescent",
+   "phrase": "fluorescent marker",
+   "chinese": ""
+  },
+  {
+   "word": "fluorescent",
+   "phrase": "fluorescent dye",
+   "chinese": ""
+  },
+  {
+   "word": "flower",
+   "phrase": "flower garden",
+   "chinese": "花园"
+  },
+  {
+   "word": "food",
+   "phrase": "food chain",
+   "chinese": "食物链"
+  },
+  {
+   "word": "food",
+   "phrase": "food poisoning",
+   "chinese": "食物中毒"
+  },
+  {
+   "word": "foreigner",
+   "phrase": "illegal foreigner",
+   "chinese": "非法外国人"
+  },
+  {
+   "word": "friday",
+   "phrase": "Friday the thirteenth",
+   "chinese": "十三号星期五"
+  },
+  {
+   "word": "friend",
+   "phrase": "friend request",
+   "chinese": "好友请求"
+  },
+  {
+   "word": "frightening",
+   "phrase": "frighteningly realistic",
+   "chinese": "逼真得吓人"
+  },
+  {
+   "word": "frustrating",
+   "phrase": "frustrating experience",
+   "chinese": "令人沮丧的经历"
+  },
+  {
+   "word": "frustrating",
+   "phrase": "frustratingly slow",
+   "chinese": "慢得令人懊恼"
+  },
+  {
+   "word": "fulfillment",
+   "phrase": "self-fulfillment",
+   "chinese": "自我实现"
+  },
+  {
+   "word": "fulfillment",
+   "phrase": "order fulfillment",
+   "chinese": "订单履行"
+  },
+  {
+   "word": "gage",
+   "phrase": "gage pressure",
+   "chinese": "表压"
+  },
+  {
+   "word": "gadfly",
+   "phrase": "gadfly critic",
+   "chinese": "爱批评的人"
+  },
+  {
+   "word": "gadfly",
+   "phrase": "gadfly politician",
+   "chinese": "爱找茬的政治家"
+  },
+  {
+   "word": "galli",
+   "phrase": "galli of Cybele",
+   "chinese": "库柏勒的祭司"
+  },
+  {
+   "word": "galli",
+   "phrase": "galli gallinacei",
+   "chinese": "家鸡"
+  },
+  {
+   "word": "gantry",
+   "phrase": "gantry crane",
+   "chinese": "龙门起重机"
+  },
+  {
+   "word": "gantry",
+   "phrase": "launch gantry",
+   "chinese": "发射架"
+  },
+  {
+   "word": "game",
+   "phrase": "give the game away",
+   "chinese": "泄露秘密"
+  },
+  {
+   "word": "garde",
+   "phrase": "garde à vous",
+   "chinese": "立正，法语口令"
+  },
+  {
+   "word": "garlic",
+   "phrase": "garlic clove",
+   "chinese": "蒜瓣"
+  },
+  {
+   "word": "gastrocnemius",
+   "phrase": "gastrocnemius strain",
+   "chinese": "腓肠肌拉伤"
+  },
+  {
+   "word": "gelding",
+   "phrase": "riding gelding",
+   "chinese": "骑乘骟马"
+  },
+  {
+   "word": "gelding",
+   "phrase": "gelding knife",
+   "chinese": "阉割刀"
+  },
+  {
+   "word": "gift",
+   "phrase": "gift card",
+   "chinese": "礼品卡"
+  },
+  {
+   "word": "ghost",
+   "phrase": "give up the ghost",
+   "chinese": "死机/报废"
+  },
+  {
+   "word": "ghost",
+   "phrase": "ghost writer",
+   "chinese": "代笔作者"
+  },
+  {
+   "word": "glass",
+   "phrase": "a glass of wine",
+   "chinese": "一杯葡萄酒"
+  },
+  {
+   "word": "glass",
+   "phrase": "glass ceiling",
+   "chinese": "玻璃天花板"
+  },
+  {
+   "word": "glass",
+   "phrase": "under glass",
+   "chinese": "在玻璃下面/温室中"
+  },
+  {
+   "word": "glimpse",
+   "phrase": "catch a glimpse",
+   "chinese": ""
+  },
+  {
+   "word": "glimpse",
+   "phrase": "steal a glimpse",
+   "chinese": ""
+  },
+  {
+   "word": "glimpse",
+   "phrase": "fleeting glimpse",
+   "chinese": "瞥见，偷看一眼，短暂的一瞥"
+  },
+  {
+   "word": "glasses",
+   "phrase": "sunglasses",
+   "chinese": "太阳镜"
+  },
+  {
+   "word": "globe",
+   "phrase": "global warming",
+   "chinese": "全球变暖"
+  },
+  {
+   "word": "globe",
+   "phrase": "globe artichoke",
+   "chinese": "洋蓟"
+  },
+  {
+   "word": "glove",
+   "phrase": "glove compartment",
+   "chinese": "手套箱/杂物箱"
+  },
+  {
+   "word": "glove",
+   "phrase": "fit like a glove",
+   "chinese": "完全合适"
+  },
+  {
+   "word": "glove",
+   "phrase": "oven glove",
+   "chinese": "防烫手套"
+  },
+  {
+   "word": "gloomy",
+   "phrase": "gloomy day",
+   "chinese": ""
+  },
+  {
+   "word": "gloomy",
+   "phrase": "gloomy mood",
+   "chinese": ""
+  },
+  {
+   "word": "gloomy",
+   "phrase": "gloomy forecast",
+   "chinese": "阴天，忧郁的心情，悲观的预测"
+  },
+  {
+   "word": "golf",
+   "phrase": "golf ball",
+   "chinese": "高尔夫球"
+  },
+  {
+   "word": "gonna",
+   "phrase": "gonna do",
+   "chinese": "将要做"
+  },
+  {
+   "word": "good-looking",
+   "phrase": "good-looking couple",
+   "chinese": "好看的一对"
+  },
+  {
+   "word": "good-looking",
+   "phrase": "extraordinarily good-looking",
+   "chinese": "异常英俊"
+  },
+  {
+   "word": "gop",
+   "phrase": "GOP leadership",
+   "chinese": "共和党领导层"
+  },
+  {
+   "word": "gop",
+   "phrase": "GOP primary",
+   "chinese": "共和党初选"
+  },
+  {
+   "word": "gorboduc",
+   "phrase": "*Gorboduc*",
+   "chinese": "play"
+  },
+  {
+   "word": "gorboduc",
+   "phrase": "Tragedy of Gorboduc",
+   "chinese": "戏剧《戈博杜克》，《戈博杜克之悲剧》"
+  },
+  {
+   "word": "gospels",
+   "phrase": "Synoptic Gospels",
+   "chinese": "对观福音"
+  },
+  {
+   "word": "goodness",
+   "phrase": "goodness of heart",
+   "chinese": ""
+  },
+  {
+   "word": "goodness",
+   "phrase": "my goodness",
+   "chinese": ""
+  },
+  {
+   "word": "goodness",
+   "phrase": "goodness gracious",
+   "chinese": ""
+  },
+  {
+   "word": "grain",
+   "phrase": "grain of truth",
+   "chinese": "一丝真相"
+  },
+  {
+   "word": "greet",
+   "phrase": "greet the dawn",
+   "chinese": ""
+  },
+  {
+   "word": "grille",
+   "phrase": "grille work",
+   "chinese": "格栅工艺"
+  },
+  {
+   "word": "grok",
+   "phrase": "grok the meaning",
+   "chinese": "领会含义"
+  },
+  {
+   "word": "grok",
+   "phrase": "grok in full",
+   "chinese": "完全理解"
+  },
+  {
+   "word": "grove",
+   "phrase": "sacred grove",
+   "chinese": "神树林"
+  },
+  {
+   "word": "grove",
+   "phrase": "citrus grove",
+   "chinese": "柑橘园"
+  },
+  {
+   "word": "gubernatorial",
+   "phrase": "gubernatorial race",
+   "chinese": "州长竞选"
+  },
+  {
+   "word": "hafta",
+   "phrase": "hafta go",
+   "chinese": "得走了"
+  },
+  {
+   "word": "hafta",
+   "phrase": "hafta do",
+   "chinese": "必须做"
+  },
+  {
+   "word": "gym",
+   "phrase": "gym equipment",
+   "chinese": "健身器材"
+  },
+  {
+   "word": "hanoverian",
+   "phrase": "Hanoverian dynasty",
+   "chinese": "汉诺威王朝"
+  },
+  {
+   "word": "hanoverian",
+   "phrase": "Hanoverian king",
+   "chinese": "汉诺威国王"
+  },
+  {
+   "word": "hansen",
+   "phrase": "Hansen’s disease",
+   "chinese": "汉森氏病"
+  },
+  {
+   "word": "hansen",
+   "phrase": "Hansen’s bacillus",
+   "chinese": "汉森杆菌"
+  },
+  {
+   "word": "harbor",
+   "phrase": "harbor suspicions",
+   "chinese": "心怀怀疑"
+  },
+  {
+   "word": "harbor",
+   "phrase": "harbor view",
+   "chinese": "港口景色"
+  },
+  {
+   "word": "harmony",
+   "phrase": "work in harmony",
+   "chinese": "和谐地工作"
+  },
+  {
+   "word": "hat",
+   "phrase": "top hat",
+   "chinese": "高顶礼帽"
+  },
+  {
+   "word": "hat",
+   "phrase": "baseball hat",
+   "chinese": "棒球帽"
+  },
+  {
+   "word": "hat",
+   "phrase": "take off your hat",
+   "chinese": "脱帽"
+  },
+  {
+   "word": "help",
+   "phrase": "need help",
+   "chinese": "需要帮助"
+  },
+  {
+   "word": "help",
+   "phrase": "with the help of",
+   "chinese": "在……的帮助下"
+  },
+  {
+   "word": "heart",
+   "phrase": "lose heart",
+   "chinese": "失去信心"
+  },
+  {
+   "word": "hen",
+   "phrase": "hen house",
+   "chinese": "鸡舍"
+  },
+  {
+   "word": "hemoglobin",
+   "phrase": "hemoglobin test",
+   "chinese": "血红蛋白检测"
+  },
+  {
+   "word": "hemoglobin",
+   "phrase": "hemoglobin A1c",
+   "chinese": "糖化血红蛋白"
+  },
+  {
+   "word": "high",
+   "phrase": "high speed",
+   "chinese": "高速"
+  },
+  {
+   "word": "hettie",
+   "phrase": "Aunt Hettie",
+   "chinese": "赫蒂阿姨"
+  },
+  {
+   "word": "hi",
+   "phrase": "say hi",
+   "chinese": "打招呼"
+  },
+  {
+   "word": "highly",
+   "phrase": "highly recommended",
+   "chinese": "强烈推荐"
+  },
+  {
+   "word": "histochemistry",
+   "phrase": "immunohistochemistry",
+   "chinese": "免疫组织化学"
+  },
+  {
+   "word": "hoc",
+   "phrase": "hoc committee",
+   "chinese": "临时委员会"
+  },
+  {
+   "word": "hoeve",
+   "phrase": "hoeve wine",
+   "chinese": "农场葡萄酒"
+  },
+  {
+   "word": "hoeve",
+   "phrase": "working hoeve",
+   "chinese": "经营中的农场"
+  },
+  {
+   "word": "hogan",
+   "phrase": "hogan ceremony",
+   "chinese": "泥盖木屋仪式"
+  },
+  {
+   "word": "hole",
+   "phrase": "rabbit hole",
+   "chinese": ""
+  },
+  {
+   "word": "hole",
+   "phrase": "in a hole",
+   "chinese": ""
+  },
+  {
+   "word": "holocaust",
+   "phrase": "Holocaust denial",
+   "chinese": "否认大屠杀"
+  },
+  {
+   "word": "horse",
+   "phrase": "horse about/around",
+   "chinese": "胡闹"
+  },
+  {
+   "word": "horse",
+   "phrase": "eat like a horse",
+   "chinese": "吃得很多"
+  },
+  {
+   "word": "horse",
+   "phrase": "straight from the horse’s mouth",
+   "chinese": "从可靠来源得知"
+  },
+  {
+   "word": "hub",
+   "phrase": "hub and spoke",
+   "chinese": ""
+  },
+  {
+   "word": "humble",
+   "phrase": "humble yourself",
+   "chinese": "谦卑自省"
+  },
+  {
+   "word": "humorous",
+   "phrase": "humorous side",
+   "chinese": "幽默的一面"
+  },
+  {
+   "word": "humor",
+   "phrase": "black humor",
+   "chinese": ""
+  },
+  {
+   "word": "humor",
+   "phrase": "to humor someone",
+   "chinese": "verb"
+  },
+  {
+   "word": "id card",
+   "phrase": "national id card",
+   "chinese": "国民身份证"
+  },
+  {
+   "word": "ill",
+   "phrase": "ill will",
+   "chinese": "恶意"
+  },
+  {
+   "word": "hypocrisy",
+   "phrase": "political hypocrisy",
+   "chinese": "政治虚伪"
+  },
+  {
+   "word": "hypocrisy",
+   "phrase": "accuse of hypocrisy",
+   "chinese": "指责虚伪"
+  },
+  {
+   "word": "hypothalamic",
+   "phrase": "hypothalamic-pituitary axis",
+   "chinese": "下丘脑-垂体轴"
+  },
+  {
+   "word": "hypothalamic",
+   "phrase": "hypothalamic regulation",
+   "chinese": "下丘脑调节"
+  },
+  {
+   "word": "immediate",
+   "phrase": "immediate vicinity",
+   "chinese": "附近"
+  },
+  {
+   "word": "in",
+   "phrase": "be in",
+   "chinese": "在家；进进出出"
+  },
+  {
+   "word": "in",
+   "phrase": "in and out",
+   "chinese": "在家；进进出出"
+  },
+  {
+   "word": "indies",
+   "phrase": "indie music",
+   "chinese": "独立音乐"
+  },
+  {
+   "word": "indies",
+   "phrase": "indie film",
+   "chinese": "独立电影"
+  },
+  {
+   "word": "inboard",
+   "phrase": "inboard brakes",
+   "chinese": "内制动器"
+  },
+  {
+   "word": "incentive",
+   "phrase": "incentive programme",
+   "chinese": "奖励计划"
+  },
+  {
+   "word": "indebted",
+   "phrase": "indebted to",
+   "chinese": "欠……的债"
+  },
+  {
+   "word": "indebted",
+   "phrase": "indebtedness",
+   "chinese": "负债状态"
+  },
+  {
+   "word": "inflammatory",
+   "phrase": "inflammatory language",
+   "chinese": "煽动性语言"
+  },
+  {
+   "word": "inflammatory",
+   "phrase": "inflammatory condition",
+   "chinese": "炎症性疾病"
+  },
+  {
+   "word": "inherently",
+   "phrase": "inherently unstable",
+   "chinese": "本质上不稳定"
+  },
+  {
+   "word": "inquisition",
+   "phrase": "Spanish Inquisition",
+   "chinese": "西班牙宗教法庭"
+  },
+  {
+   "word": "inquisition",
+   "phrase": "undergo an inquisition",
+   "chinese": "接受审讯"
+  },
+  {
+   "word": "insecurity",
+   "phrase": "feelings of insecurity",
+   "chinese": "不安全感"
+  },
+  {
+   "word": "innovator",
+   "phrase": "pioneer and innovator",
+   "chinese": "先驱和创新者"
+  },
+  {
+   "word": "innovator",
+   "phrase": "young innovator",
+   "chinese": "年轻的创新者"
+  },
+  {
+   "word": "inscription",
+   "phrase": "stone inscription",
+   "chinese": "石刻铭文"
+  },
+  {
+   "word": "inscription",
+   "phrase": "commemorative inscription",
+   "chinese": "纪念题词"
+  },
+  {
+   "word": "inspiration",
+   "phrase": "source of inspiration",
+   "chinese": "灵感来源"
+  },
+  {
+   "word": "inspiration",
+   "phrase": "a moment of inspiration",
+   "chinese": "灵感的瞬间"
+  },
+  {
+   "word": "installation",
+   "phrase": "installation ceremony",
+   "chinese": "就职仪式"
+  },
+  {
+   "word": "into",
+   "phrase": "come into",
+   "chinese": "进入；继承"
+  },
+  {
+   "word": "into",
+   "phrase": "be into",
+   "chinese": "热衷于"
+  },
+  {
+   "word": "interface",
+   "phrase": "graphical interface",
+   "chinese": "用户界面，图形界面"
+  },
+  {
+   "word": "interface",
+   "phrase": "interface between",
+   "chinese": "与…交互，之间的界面"
+  },
+  {
+   "word": "instant",
+   "phrase": "instant response",
+   "chinese": "即时响应"
+  },
+  {
+   "word": "instant",
+   "phrase": "instant noodle",
+   "chinese": "方便面"
+  },
+  {
+   "word": "intrigues",
+   "phrase": "intrigues and conspiracies",
+   "chinese": "诡计与密谋"
+  },
+  {
+   "word": "interlobular",
+   "phrase": "interlobular septum",
+   "chinese": ""
+  },
+  {
+   "word": "interlobular",
+   "phrase": "interlobular fibrosis",
+   "chinese": "小叶间纤维化"
+  },
+  {
+   "word": "investigate",
+   "phrase": "investigate thoroughly",
+   "chinese": "彻底调查"
+  },
+  {
+   "word": "inviolate",
+   "phrase": "keep inviolate",
+   "chinese": ""
+  },
+  {
+   "word": "inviolate",
+   "phrase": "remain inviolate",
+   "chinese": ""
+  },
+  {
+   "word": "inventor",
+   "phrase": "inventor of the telephone",
+   "chinese": "电话的发明者"
+  },
+  {
+   "word": "inventor",
+   "phrase": "a brilliant inventor",
+   "chinese": "杰出的发明家"
+  },
+  {
+   "word": "its",
+   "phrase": "its purpose",
+   "chinese": "它的目的"
+  },
+  {
+   "word": "its",
+   "phrase": "its importance",
+   "chinese": "它的重要性"
+  },
+  {
+   "word": "irenaeus",
+   "phrase": "Irenaeus of Lyons",
+   "chinese": "里昂的爱任纽"
+  },
+  {
+   "word": "irenaeus",
+   "phrase": "Against Heresies",
+   "chinese": "《反异端》"
+  },
+  {
+   "word": "ivy",
+   "phrase": "ivy leaf",
+   "chinese": "常春藤叶"
+  },
+  {
+   "word": "japanese",
+   "phrase": "Japanese garden",
+   "chinese": "日本园林"
+  },
+  {
+   "word": "japanese",
+   "phrase": "Japanese knotweed",
+   "chinese": "虎杖"
+  },
+  {
+   "word": "jet",
+   "phrase": "jet fuel",
+   "chinese": "喷气燃料"
+  },
+  {
+   "word": "jealousy",
+   "phrase": "green with jealousy",
+   "chinese": "十分嫉妒"
+  },
+  {
+   "word": "jealousy",
+   "phrase": "jealousy of someone",
+   "chinese": "对某人的嫉妒"
+  },
+  {
+   "word": "jig",
+   "phrase": "jig and reel",
+   "chinese": "n"
+  },
+  {
+   "word": "jig",
+   "phrase": "jig tool",
+   "chinese": ""
+  },
+  {
+   "word": "jude",
+   "phrase": "Epistle of Jude",
+   "chinese": "犹大书"
+  },
+  {
+   "word": "journey",
+   "phrase": "return journey",
+   "chinese": "回程"
+  },
+  {
+   "word": "journey",
+   "phrase": "journey time",
+   "chinese": "旅行时间"
+  },
+  {
+   "word": "judith",
+   "phrase": "Judith and Holofernes",
+   "chinese": "犹滴与荷罗孚尼"
+  },
+  {
+   "word": "junior",
+   "phrase": "junior to",
+   "chinese": "比…年轻/级别低"
+  },
+  {
+   "word": "junior",
+   "phrase": "junior partner",
+   "chinese": "初级合伙人"
+  },
+  {
+   "word": "kettle",
+   "phrase": "whistle kettle",
+   "chinese": "鸣笛水壶"
+  },
+  {
+   "word": "kick",
+   "phrase": "kick off",
+   "chinese": "开始"
+  },
+  {
+   "word": "kitchen",
+   "phrase": "kitchen knife",
+   "chinese": "厨房刀"
+  },
+  {
+   "word": "king",
+   "phrase": "king of the hill",
+   "chinese": "山大王"
+  },
+  {
+   "word": "king",
+   "phrase": "king-size",
+   "chinese": "特大号的"
+  },
+  {
+   "word": "king",
+   "phrase": "king's ransom",
+   "chinese": "巨额财富"
+  },
+  {
+   "word": "kizzie",
+   "phrase": "give someone a kizzie",
+   "chinese": "给某人一个吻"
+  },
+  {
+   "word": "knee",
+   "phrase": "knee pain",
+   "chinese": "膝盖痛"
+  },
+  {
+   "word": "knee",
+   "phrase": "knee-jerk reaction",
+   "chinese": "膝跳反射"
+  },
+  {
+   "word": "knee",
+   "phrase": "on one’s knees",
+   "chinese": "跪下"
+  },
+  {
+   "word": "kodiak",
+   "phrase": "Kodiak salmon",
+   "chinese": ""
+  },
+  {
+   "word": "know",
+   "phrase": "know by heart",
+   "chinese": "熟记于心"
+  },
+  {
+   "word": "krystallographie",
+   "phrase": "—",
+   "chinese": "无常见搭配"
+  },
+  {
+   "word": "lazy",
+   "phrase": "lazy days",
+   "chinese": "悠闲的日子"
+  },
+  {
+   "word": "leak",
+   "phrase": "security leak",
+   "chinese": "安全泄密"
+  },
+  {
+   "word": "letter",
+   "phrase": "letter of resignation",
+   "chinese": ""
+  },
+  {
+   "word": "letter",
+   "phrase": "cover letter",
+   "chinese": ""
+  },
+  {
+   "word": "letter",
+   "phrase": "capital letters",
+   "chinese": ""
+  },
+  {
+   "word": "lewis",
+   "phrase": "Lewis structure (chemistry)",
+   "chinese": "路易斯结构式"
+  },
+  {
+   "word": "liter",
+   "phrase": "liters per hour",
+   "chinese": "每小时升数"
+  },
+  {
+   "word": "line",
+   "phrase": "finish line",
+   "chinese": "终点线"
+  },
+  {
+   "word": "line",
+   "phrase": "line of sight",
+   "chinese": "视线"
+  },
+  {
+   "word": "line",
+   "phrase": "on the line",
+   "chinese": "处于危险中/在线"
+  },
+  {
+   "word": "lifestyle",
+   "phrase": "lifestyle choice",
+   "chinese": "生活方式选择"
+  },
+  {
+   "word": "lifestyle",
+   "phrase": "lavish lifestyle",
+   "chinese": "奢华的生活方式"
+  },
+  {
+   "word": "lifestyle",
+   "phrase": "lifestyle brand",
+   "chinese": "生活方式品牌"
+  },
+  {
+   "word": "living room",
+   "phrase": "living room sofa",
+   "chinese": "起居室沙发"
+  },
+  {
+   "word": "look",
+   "phrase": "good looks",
+   "chinese": "美貌"
+  },
+  {
+   "word": "look",
+   "phrase": "look out",
+   "chinese": "当心"
+  },
+  {
+   "word": "lobby",
+   "phrase": "lobbying effort",
+   "chinese": "游说努力"
+  },
+  {
+   "word": "lobby",
+   "phrase": "lobby against",
+   "chinese": "游说反对"
+  },
+  {
+   "word": "long",
+   "phrase": "long for",
+   "chinese": "渴望"
+  },
+  {
+   "word": "long",
+   "phrase": "no longer",
+   "chinese": "不再"
+  },
+  {
+   "word": "louisville",
+   "phrase": "Louisville Slugger",
+   "chinese": "路易斯维尔棒球棒"
+  },
+  {
+   "word": "louisville",
+   "phrase": "Louisville Cardinals",
+   "chinese": "路易斯维尔红雀队"
+  },
+  {
+   "word": "lump",
+   "phrase": "lump together",
+   "chinese": "合并"
+  },
+  {
+   "word": "lump",
+   "phrase": "lump it",
+   "chinese": "忍气吞声"
+  },
+  {
+   "word": "magnum",
+   "phrase": "magnum opus",
+   "chinese": "代表作"
+  },
+  {
+   "word": "magnum",
+   "phrase": "magnum bottle",
+   "chinese": "大酒瓶"
+  },
+  {
+   "word": "magnetism",
+   "phrase": "magnetic field",
+   "chinese": "磁场"
+  },
+  {
+   "word": "maladjusted",
+   "phrase": "emotionally maladjusted",
+   "chinese": "情感失调的"
+  },
+  {
+   "word": "malnutrition",
+   "phrase": "severe malnutrition",
+   "chinese": "严重营养不良"
+  },
+  {
+   "word": "mama",
+   "phrase": "mama bear",
+   "chinese": "熊妈妈；保护欲强的母亲"
+  },
+  {
+   "word": "mama",
+   "phrase": "mama’s boy",
+   "chinese": "妈宝男"
+  },
+  {
+   "word": "margin",
+   "phrase": "safety margin",
+   "chinese": "安全余量"
+  },
+  {
+   "word": "massage",
+   "phrase": "massage oil",
+   "chinese": "按摩油"
+  },
+  {
+   "word": "massage",
+   "phrase": "massage therapist",
+   "chinese": "按摩治疗师"
+  },
+  {
+   "word": "marlborough",
+   "phrase": "Marlborough wine",
+   "chinese": "马尔堡葡萄酒"
+  },
+  {
+   "word": "marlborough",
+   "phrase": "Marlboro cigarettes",
+   "chinese": "万宝路香烟"
+  },
+  {
+   "word": "marlborough",
+   "phrase": "Duke of Marlborough",
+   "chinese": "马尔博罗公爵"
+  },
+  {
+   "word": "mayor",
+   "phrase": "deputy mayor",
+   "chinese": "副市长"
+  },
+  {
+   "word": "mayor",
+   "phrase": "mayor’s office",
+   "chinese": "市长办公室"
+  },
+  {
+   "word": "meal",
+   "phrase": "square meal",
+   "chinese": "丰盛的一餐"
+  },
+  {
+   "word": "meal",
+   "phrase": "meal ticket",
+   "chinese": "饭票"
+  },
+  {
+   "word": "meal",
+   "phrase": "mealtime",
+   "chinese": "进餐时间"
+  },
+  {
+   "word": "meditation",
+   "phrase": "mindfulness meditation",
+   "chinese": "正念冥想"
+  },
+  {
+   "word": "memorandum",
+   "phrase": "official memorandum",
+   "chinese": "官方备忘录"
+  },
+  {
+   "word": "melodic",
+   "phrase": "melodic contour",
+   "chinese": "旋律轮廓"
+  },
+  {
+   "word": "melodic",
+   "phrase": "melodic structure",
+   "chinese": "旋律结构"
+  },
+  {
+   "word": "metaphysic",
+   "phrase": "Aristotelian metaphysic",
+   "chinese": "亚里士多德的形而上学"
+  },
+  {
+   "word": "miami",
+   "phrase": "South Beach",
+   "chinese": ""
+  },
+  {
+   "word": "miami",
+   "phrase": "Miami Heat",
+   "chinese": "basketball team"
+  },
+  {
+   "word": "micrometeorite",
+   "phrase": "micrometeorite bombardment",
+   "chinese": "微陨石轰击"
+  },
+  {
+   "word": "micelles",
+   "phrase": "lipid micelles",
+   "chinese": "脂质胶束"
+  },
+  {
+   "word": "micelles",
+   "phrase": "polymeric micelles",
+   "chinese": "聚合物胶束"
+  },
+  {
+   "word": "modal verb",
+   "phrase": "list of modal verbs",
+   "chinese": "情态动词列表"
+  },
+  {
+   "word": "modal verb",
+   "phrase": "use of modal verbs",
+   "chinese": "情态动词的用法"
+  },
+  {
+   "word": "misbehavior",
+   "phrase": "act of misbehavior",
+   "chinese": "不良行为举动"
+  },
+  {
+   "word": "misbehavior",
+   "phrase": "pattern of misbehavior",
+   "chinese": "不良行为模式"
+  },
+  {
+   "word": "mobile phone",
+   "phrase": "mobile phone charger",
+   "chinese": "手机充电器"
+  },
+  {
+   "word": "modification",
+   "phrase": "modification to the plan",
+   "chinese": "对计划的修改"
+  },
+  {
+   "word": "moll",
+   "phrase": "mob moll",
+   "chinese": "黑帮情妇"
+  },
+  {
+   "word": "monsoon",
+   "phrase": "monsoon rains",
+   "chinese": "季风雨"
+  },
+  {
+   "word": "monastery",
+   "phrase": "visit a monastery",
+   "chinese": "参观修道院"
+  },
+  {
+   "word": "molding",
+   "phrase": "molding powder",
+   "chinese": "模塑粉"
+  },
+  {
+   "word": "motif",
+   "phrase": "decorative motif",
+   "chinese": "装饰图案"
+  },
+  {
+   "word": "motif",
+   "phrase": "motif in fiction",
+   "chinese": "小说中的母题"
+  },
+  {
+   "word": "mp3 player",
+   "phrase": "MP3 player software",
+   "chinese": "MP3播放器软件"
+  },
+  {
+   "word": "mrs",
+   "phrase": "Mrs. Grundy",
+   "chinese": "拘泥礼节的人"
+  },
+  {
+   "word": "mrs",
+   "phrase": "Mrs. Robinson",
+   "chinese": "罗宾逊太太——指年长女性"
+  },
+  {
+   "word": "my",
+   "phrase": "my dear",
+   "chinese": "我亲爱的"
+  },
+  {
+   "word": "mug",
+   "phrase": "coffee mug",
+   "chinese": "咖啡杯"
+  },
+  {
+   "word": "mug",
+   "phrase": "get mugged",
+   "chinese": "被抢劫"
+  },
+  {
+   "word": "nano",
+   "phrase": "nano particle",
+   "chinese": "纳米颗粒"
+  },
+  {
+   "word": "nano",
+   "phrase": "nano tech",
+   "chinese": "纳米技术"
+  },
+  {
+   "word": "narragansett",
+   "phrase": "Narragansett beer",
+   "chinese": "纳拉甘西特啤酒"
+  },
+  {
+   "word": "necessity",
+   "phrase": "out of necessity",
+   "chinese": "出于必要"
+  },
+  {
+   "word": "necessity",
+   "phrase": "daily necessities",
+   "chinese": "日常必需品"
+  },
+  {
+   "word": "needle",
+   "phrase": "needle in a haystack",
+   "chinese": "大海捞针"
+  },
+  {
+   "word": "needle",
+   "phrase": "give someone the needle",
+   "chinese": "惹恼某人"
+  },
+  {
+   "word": "necrosis",
+   "phrase": "ischemic necrosis",
+   "chinese": "缺血性坏死"
+  },
+  {
+   "word": "nice",
+   "phrase": "nice one",
+   "chinese": "干得好"
+  },
+  {
+   "word": "nice",
+   "phrase": "nice and easy",
+   "chinese": "舒舒服服的；容易的"
+  },
+  {
+   "word": "night",
+   "phrase": "night and day",
+   "chinese": "夜以继日"
+  },
+  {
+   "word": "night",
+   "phrase": "last night",
+   "chinese": "昨晚"
+  },
+  {
+   "word": "nickname",
+   "phrase": "acquire a nickname",
+   "chinese": "获得绰号"
+  },
+  {
+   "word": "nickname",
+   "phrase": "nickname for",
+   "chinese": "对…的昵称"
+  },
+  {
+   "word": "nine",
+   "phrase": "nine to five",
+   "chinese": "朝九晚五"
+  },
+  {
+   "word": "nine",
+   "phrase": "dressed to the nines",
+   "chinese": "穿着华丽"
+  },
+  {
+   "word": "nose",
+   "phrase": "nose to nose",
+   "chinese": "面对面"
+  },
+  {
+   "word": "nose",
+   "phrase": "under someone's nose",
+   "chinese": "就在某人眼前"
+  },
+  {
+   "word": "nose",
+   "phrase": "nose around",
+   "chinese": "四处探查"
+  },
+  {
+   "word": "nurture",
+   "phrase": "nurture a relationship",
+   "chinese": "培养关系"
+  },
+  {
+   "word": "nurture",
+   "phrase": "nature vs nurture",
+   "chinese": "先天与后天"
+  },
+  {
+   "word": "obscure",
+   "phrase": "obscure origin",
+   "chinese": "起源不明"
+  },
+  {
+   "word": "nothing",
+   "phrase": "for nothing",
+   "chinese": "免费；徒劳"
+  },
+  {
+   "word": "nothing",
+   "phrase": "nothing else（没有别的）",
+   "chinese": "中文翻译：nothing but 仅仅，只有；for nothing 免费/徒劳；nothing else 没有别的"
+  },
+  {
+   "word": "nutritious",
+   "phrase": "nutritious snack",
+   "chinese": "营养零食"
+  },
+  {
+   "word": "occasional",
+   "phrase": "occasional visit",
+   "chinese": "偶尔拜访"
+  },
+  {
+   "word": "occasional",
+   "phrase": "occasional work",
+   "chinese": "零时工作"
+  },
+  {
+   "word": "on",
+   "phrase": "be on",
+   "chinese": "开着"
+  },
+  {
+   "word": "of",
+   "phrase": "because of",
+   "chinese": "因为"
+  },
+  {
+   "word": "of",
+   "phrase": "out of",
+   "chinese": "出于"
+  },
+  {
+   "word": "of",
+   "phrase": "a lot of",
+   "chinese": "许多"
+  },
+  {
+   "word": "oh",
+   "phrase": "oh dear",
+   "chinese": "哦，天哪"
+  },
+  {
+   "word": "oh",
+   "phrase": "oh well",
+   "chinese": "哦，算了"
+  },
+  {
+   "word": "offensive",
+   "phrase": "offensive behaviour",
+   "chinese": "冒犯性行为"
+  },
+  {
+   "word": "offensive",
+   "phrase": "take the offensive",
+   "chinese": "采取攻势"
+  },
+  {
+   "word": "ok",
+   "phrase": "OK hand sign",
+   "chinese": "OK手势"
+  },
+  {
+   "word": "ok",
+   "phrase": "that's OK",
+   "chinese": "没关系"
+  },
+  {
+   "word": "origen",
+   "phrase": "Origenist controversies",
+   "chinese": "奥利金主义争论"
+  },
+  {
+   "word": "ossification",
+   "phrase": "endochondral ossification",
+   "chinese": "软骨内骨化"
+  },
+  {
+   "word": "ossification",
+   "phrase": "ossification of thought",
+   "chinese": "思想僵化"
+  },
+  {
+   "word": "own",
+   "phrase": "on one’s own",
+   "chinese": "独自"
+  },
+  {
+   "word": "own",
+   "phrase": "get one’s own back",
+   "chinese": "报复"
+  },
+  {
+   "word": "orthodontist",
+   "phrase": "consult an orthodontist",
+   "chinese": "咨询正畸医生"
+  },
+  {
+   "word": "paie",
+   "phrase": "paie day",
+   "chinese": "发薪日"
+  },
+  {
+   "word": "paie",
+   "phrase": "paie roll",
+   "chinese": "工资单"
+  },
+  {
+   "word": "pants",
+   "phrase": "pants suit",
+   "chinese": "裤套装"
+  },
+  {
+   "word": "pants",
+   "phrase": "boring as watching paint dry and pants",
+   "chinese": "无聊至极"
+  },
+  {
+   "word": "pam",
+   "phrase": "none",
+   "chinese": ""
+  },
+  {
+   "word": "paperless",
+   "phrase": "paperless workflow",
+   "chinese": "无纸化工作流程"
+  },
+  {
+   "word": "pasadena",
+   "phrase": "Pasadena City Hall",
+   "chinese": "帕萨迪纳市政厅"
+  },
+  {
+   "word": "path",
+   "phrase": "pathway to success",
+   "chinese": "成功之路"
+  },
+  {
+   "word": "patient",
+   "phrase": "cancer patient",
+   "chinese": "癌症患者"
+  },
+  {
+   "word": "patient",
+   "phrase": "patient attitude",
+   "chinese": "耐心的态度"
+  },
+  {
+   "word": "penny",
+   "phrase": "penny for your thoughts",
+   "chinese": ""
+  },
+  {
+   "word": "penny",
+   "phrase": "a penny saved is a penny earned",
+   "chinese": ""
+  },
+  {
+   "word": "penny",
+   "phrase": "penny dreadful",
+   "chinese": ""
+  },
+  {
+   "word": "pembina",
+   "phrase": "Pembina Gorge",
+   "chinese": "彭比纳峡谷"
+  },
+  {
+   "word": "perforated",
+   "phrase": "perforated line",
+   "chinese": ""
+  },
+  {
+   "word": "phedre",
+   "phrase": "no common phrases",
+   "chinese": ""
+  },
+  {
+   "word": "person",
+   "phrase": "first person",
+   "chinese": "第一人称"
+  },
+  {
+   "word": "phillips",
+   "phrase": "Phillips head screw",
+   "chinese": "十字螺丝"
+  },
+  {
+   "word": "philharmonic",
+   "phrase": "philharmonic society",
+   "chinese": "爱乐协会"
+  },
+  {
+   "word": "philharmonic",
+   "phrase": "philharmonic concert",
+   "chinese": "爱乐音乐会"
+  },
+  {
+   "word": "piety",
+   "phrase": "religious piety",
+   "chinese": "宗教虔诚"
+  },
+  {
+   "word": "pig",
+   "phrase": "piglet",
+   "chinese": "小猪"
+  },
+  {
+   "word": "plane",
+   "phrase": "plane crash",
+   "chinese": "飞机失事"
+  },
+  {
+   "word": "plate",
+   "phrase": "paper plate",
+   "chinese": "纸盘"
+  },
+  {
+   "word": "playground",
+   "phrase": "adventure playground",
+   "chinese": ""
+  },
+  {
+   "word": "plea",
+   "phrase": "plea bargain",
+   "chinese": "认罪协商"
+  },
+  {
+   "word": "plural",
+   "phrase": "plural verb",
+   "chinese": "复数动词"
+  },
+  {
+   "word": "pm",
+   "phrase": "PM office",
+   "chinese": "首相办公室"
+  },
+  {
+   "word": "pm",
+   "phrase": "10 pm",
+   "chinese": "晚上10点"
+  },
+  {
+   "word": "pond",
+   "phrase": "pond life",
+   "chinese": "池塘生物"
+  },
+  {
+   "word": "pollution",
+   "phrase": "water pollution",
+   "chinese": "水污染"
+  },
+  {
+   "word": "pollution",
+   "phrase": "noise pollution",
+   "chinese": "噪音污染"
+  },
+  {
+   "word": "pons",
+   "phrase": "pons region",
+   "chinese": "脑桥区域"
+  },
+  {
+   "word": "polynomial",
+   "phrase": "polynomial degree",
+   "chinese": "多项式的次数"
+  },
+  {
+   "word": "porto",
+   "phrase": "Porto Cathedral",
+   "chinese": "波尔图大教堂"
+  },
+  {
+   "word": "pose",
+   "phrase": "pose as",
+   "chinese": "假装成"
+  },
+  {
+   "word": "power",
+   "phrase": "power of attorney",
+   "chinese": "授权委托书"
+  },
+  {
+   "word": "power",
+   "phrase": "power plant",
+   "chinese": "发电厂"
+  },
+  {
+   "word": "powell",
+   "phrase": "Lake Powell",
+   "chinese": "鲍威尔湖"
+  },
+  {
+   "word": "preacher",
+   "phrase": "street preacher",
+   "chinese": "街头布道者"
+  },
+  {
+   "word": "preacher",
+   "phrase": "televangelist preacher",
+   "chinese": "电视福音布道者"
+  },
+  {
+   "word": "premises",
+   "phrase": "vacate the premises",
+   "chinese": ""
+  },
+  {
+   "word": "preposterous",
+   "phrase": "preposterous notion",
+   "chinese": ""
+  },
+  {
+   "word": "prince",
+   "phrase": "prince of darkness",
+   "chinese": "黑暗王子，指撒旦"
+  },
+  {
+   "word": "principle",
+   "phrase": "first principles",
+   "chinese": "基本原理"
+  },
+  {
+   "word": "prison",
+   "phrase": "prison cell",
+   "chinese": "牢房"
+  },
+  {
+   "word": "prison",
+   "phrase": "break out of prison",
+   "chinese": "越狱"
+  },
+  {
+   "word": "professedly",
+   "phrase": "none specific",
+   "chinese": ""
+  },
+  {
+   "word": "proletariat",
+   "phrase": "industrial proletariat",
+   "chinese": "工业无产阶级"
+  },
+  {
+   "word": "propagandist",
+   "phrase": "skilled propagandist",
+   "chinese": "熟练的宣传者"
+  },
+  {
+   "word": "protest",
+   "phrase": "in protest",
+   "chinese": "以示抗议"
+  },
+  {
+   "word": "proud",
+   "phrase": "proud of",
+   "chinese": "以…为荣"
+  },
+  {
+   "word": "provide",
+   "phrase": "provide with",
+   "chinese": ""
+  },
+  {
+   "word": "provide",
+   "phrase": "provide evidence",
+   "chinese": ""
+  },
+  {
+   "word": "psalmist",
+   "phrase": "ancient psalmist",
+   "chinese": "古代赞美诗作者"
+  },
+  {
+   "word": "psyche",
+   "phrase": "human psyche",
+   "chinese": "人类心灵"
+  },
+  {
+   "word": "psyche",
+   "phrase": "collective psyche",
+   "chinese": "集体心理"
+  },
+  {
+   "word": "pull",
+   "phrase": "pull a face",
+   "chinese": "做鬼脸"
+  },
+  {
+   "word": "pull",
+   "phrase": "pull strings",
+   "chinese": "走后门"
+  },
+  {
+   "word": "pull",
+   "phrase": "pull up",
+   "chinese": "停车"
+  },
+  {
+   "word": "pullover",
+   "phrase": "knit a pullover",
+   "chinese": "织一件套头毛衣"
+  },
+  {
+   "word": "pullover",
+   "phrase": "cashmere pullover",
+   "chinese": "羊绒套头毛衣"
+  },
+  {
+   "word": "pupil",
+   "phrase": "former pupil",
+   "chinese": "以前的学生"
+  },
+  {
+   "word": "pupil",
+   "phrase": "dilated pupil",
+   "chinese": "放大的瞳孔"
+  },
+  {
+   "word": "put",
+   "phrase": "put away",
+   "chinese": "放好；收拾"
+  },
+  {
+   "word": "quirt",
+   "phrase": "none",
+   "chinese": ""
+  },
+  {
+   "word": "quotable",
+   "phrase": "quotable quote",
+   "chinese": "可引用的名言"
+  },
+  {
+   "word": "radic",
+   "phrase": "radic hair (root hair)",
+   "chinese": "根毛"
+  },
+  {
+   "word": "ranch",
+   "phrase": "ranch hand",
+   "chinese": "牧场工人"
+  },
+  {
+   "word": "radiochlorine",
+   "phrase": "none",
+   "chinese": ""
+  },
+  {
+   "word": "rattle",
+   "phrase": "rattle through",
+   "chinese": ""
+  },
+  {
+   "word": "rattle",
+   "phrase": "rattle someone",
+   "chinese": ""
+  },
+  {
+   "word": "rattle",
+   "phrase": "death rattle",
+   "chinese": ""
+  },
+  {
+   "word": "burgeoning",
+   "phrase": "burgeoning economy",
+   "chinese": "蓬勃发展的经济"
+  },
+  {
+   "word": "burgeoning",
+   "phrase": "burgeoning interest",
+   "chinese": "日益增长的兴趣"
+  },
+  {
+   "word": "recognizable",
+   "phrase": "barely recognizable",
+   "chinese": "几乎认不出"
+  },
+  {
+   "word": "reconnaissance",
+   "phrase": "reconnaissance aircraft",
+   "chinese": "侦察机"
+  },
+  {
+   "word": "refrain",
+   "phrase": "refrain from doing",
+   "chinese": "克制不做"
+  },
+  {
+   "word": "refrain",
+   "phrase": "common refrain",
+   "chinese": "常见的反复话语"
+  },
+  {
+   "word": "redeposition",
+   "phrase": "redeposition of material",
+   "chinese": "材料再沉积"
+  },
+  {
+   "word": "refrigeration",
+   "phrase": "refrigeration cycle",
+   "chinese": "制冷循环"
+  },
+  {
+   "word": "bronchiole",
+   "phrase": "bronchiolar obstruction",
+   "chinese": "细支气管阻塞"
+  },
+  {
+   "word": "refusal",
+   "phrase": "point-blank refusal",
+   "chinese": "直截了当的拒绝"
+  },
+  {
+   "word": "remain",
+   "phrase": "remain in force",
+   "chinese": "仍然有效"
+  },
+  {
+   "word": "remain",
+   "phrase": "remain calm",
+   "chinese": "保持冷静"
+  },
+  {
+   "word": "regarding",
+   "phrase": "regarding your query",
+   "chinese": "关于你的询问"
+  },
+  {
+   "word": "regarding",
+   "phrase": "regarding this matter",
+   "chinese": "关于此事"
+  },
+  {
+   "word": "reliance",
+   "phrase": "place reliance in",
+   "chinese": "依赖于；信赖"
+  },
+  {
+   "word": "remarkable",
+   "phrase": "remarkable resemblance（惊人的相似）",
+   "chinese": "中文翻译：remarkable achievement 非凡成就；remarkable resemblance 惊人的相似"
+  },
+  {
+   "word": "renew",
+   "phrase": "renew a subscription",
+   "chinese": "续订"
+  },
+  {
+   "word": "renew",
+   "phrase": "renew one’s strength",
+   "chinese": "恢复体力"
+  },
+  {
+   "word": "rhodes",
+   "phrase": "Rhodes Island",
+   "chinese": "罗得岛"
+  },
+  {
+   "word": "rig",
+   "phrase": "rig the game",
+   "chinese": "操纵比赛"
+  },
+  {
+   "word": "rig",
+   "phrase": "dr",
+   "chinese": ""
+  },
+  {
+   "word": "rinse",
+   "phrase": "rinse cycle",
+   "chinese": "漂洗周期"
+  },
+  {
+   "word": "rinse",
+   "phrase": "mouth rinse",
+   "chinese": "漱口水"
+  },
+  {
+   "word": "roadside",
+   "phrase": "roadside attraction",
+   "chinese": "路边景点"
+  },
+  {
+   "word": "roadside",
+   "phrase": "roadside bomb",
+   "chinese": "路边炸弹"
+  },
+  {
+   "word": "ripe",
+   "phrase": "ripe for the taking",
+   "chinese": "唾手可得"
+  },
+  {
+   "word": "ripe",
+   "phrase": "ripe old age",
+   "chinese": "高龄"
+  },
+  {
+   "word": "robin",
+   "phrase": "early bird",
+   "chinese": "早起的人，与robin无关但可配"
+  },
+  {
+   "word": "rodding",
+   "phrase": "rodding machine",
+   "chinese": "疏通机器"
+  },
+  {
+   "word": "rodding",
+   "phrase": "rodding out",
+   "chinese": "用杆清除"
+  },
+  {
+   "word": "ronnie",
+   "phrase": "Ronnie Corbett",
+   "chinese": "罗尼·科贝特"
+  },
+  {
+   "word": "ronnie",
+   "phrase": "Ronnie Wood",
+   "chinese": "罗尼·伍德"
+  },
+  {
+   "word": "roleplaying",
+   "phrase": "roleplaying exercise",
+   "chinese": "角色扮演练习"
+  },
+  {
+   "word": "rooster",
+   "phrase": "rooster tail",
+   "chinese": "公鸡尾巴"
+  },
+  {
+   "word": "roof",
+   "phrase": "hit the roof",
+   "chinese": "勃然大怒"
+  },
+  {
+   "word": "roof",
+   "phrase": "under one roof",
+   "chinese": "在同一屋檐下"
+  },
+  {
+   "word": "rusk",
+   "phrase": "rusk coating",
+   "chinese": "面包粉涂层"
+  },
+  {
+   "word": "russian",
+   "phrase": "Russian Federation",
+   "chinese": "俄罗斯联邦"
+  },
+  {
+   "word": "russian",
+   "phrase": "Russian roulette",
+   "chinese": "俄罗斯轮盘赌"
+  },
+  {
+   "word": "russian",
+   "phrase": "Russian doll",
+   "chinese": "套娃"
+  },
+  {
+   "word": "salary",
+   "phrase": "salary scale",
+   "chinese": "薪资等级"
+  },
+  {
+   "word": "satiric",
+   "phrase": "satiric wit",
+   "chinese": "讽刺的机智"
+  },
+  {
+   "word": "sax",
+   "phrase": "sax player",
+   "chinese": "萨克斯手"
+  },
+  {
+   "word": "scabbard",
+   "phrase": "scabbard of a sword",
+   "chinese": "剑鞘"
+  },
+  {
+   "word": "scandal",
+   "phrase": "scandal sheet",
+   "chinese": "八卦小报"
+  },
+  {
+   "word": "schooner",
+   "phrase": "sailing schooner",
+   "chinese": "航行纵帆船"
+  },
+  {
+   "word": "schooner",
+   "phrase": "schooner of beer",
+   "chinese": "一大杯啤酒"
+  },
+  {
+   "word": "plenary",
+   "phrase": "plenary power",
+   "chinese": "全权"
+  },
+  {
+   "word": "cosmology",
+   "phrase": "theoretical cosmology",
+   "chinese": "理论宇宙学"
+  },
+  {
+   "word": "recent",
+   "phrase": "recent news",
+   "chinese": "最新消息"
+  },
+  {
+   "word": "recent",
+   "phrase": "recent history",
+   "chinese": "近代史"
+  },
+  {
+   "word": "recent",
+   "phrase": "in recent years",
+   "chinese": "近年来"
+  },
+  {
+   "word": "search",
+   "phrase": "search warrant",
+   "chinese": "搜查令"
+  },
+  {
+   "word": "seat",
+   "phrase": "front seat",
+   "chinese": "前排座位"
+  },
+  {
+   "word": "secrecy",
+   "phrase": "sworn to secrecy",
+   "chinese": "发誓保密"
+  },
+  {
+   "word": "secondary",
+   "phrase": "secondary school teacher",
+   "chinese": "中学教师"
+  },
+  {
+   "word": "secondary",
+   "phrase": "secondary school education",
+   "chinese": "中学教育"
+  },
+  {
+   "word": "segregated",
+   "phrase": "segregated communities",
+   "chinese": "隔离社区"
+  },
+  {
+   "word": "semicolon",
+   "phrase": "semicolon and colon",
+   "chinese": "分号与冒号"
+  },
+  {
+   "word": "semitic",
+   "phrase": "Semitic script",
+   "chinese": "闪米特文字"
+  },
+  {
+   "word": "revelation",
+   "phrase": "shocking revelation",
+   "chinese": "惊人揭露"
+  },
+  {
+   "word": "revelation",
+   "phrase": "divine revelation",
+   "chinese": "神圣启示"
+  },
+  {
+   "word": "send",
+   "phrase": "send for someone",
+   "chinese": "派人去叫"
+  },
+  {
+   "word": "send",
+   "phrase": "send out",
+   "chinese": "发出"
+  },
+  {
+   "word": "sesame",
+   "phrase": "sesame seed",
+   "chinese": "芝麻籽"
+  },
+  {
+   "word": "several",
+   "phrase": "several others",
+   "chinese": "其他几个"
+  },
+  {
+   "word": "seventy",
+   "phrase": "in the seventies",
+   "chinese": "在七十年代/七十多岁"
+  },
+  {
+   "word": "ship",
+   "phrase": "ship of state",
+   "chinese": "国家船舰，喻指国家"
+  },
+  {
+   "word": "shop assistant",
+   "phrase": "shop assistant job",
+   "chinese": "店员工作"
+  },
+  {
+   "word": "shop assistant",
+   "phrase": "retail shop assistant",
+   "chinese": "零售店店员"
+  },
+  {
+   "word": "shoplifting",
+   "phrase": "accuse of shoplifting",
+   "chinese": "指控犯有入店行窃罪"
+  },
+  {
+   "word": "shine",
+   "phrase": "shine a light on something",
+   "chinese": "使某事物明显；阐明"
+  },
+  {
+   "word": "shine",
+   "phrase": "shine through",
+   "chinese": "表现出来，显露"
+  },
+  {
+   "word": "shu",
+   "phrase": "shu away",
+   "chinese": "嘘声赶走"
+  },
+  {
+   "word": "shopping",
+   "phrase": "online shopping",
+   "chinese": "网上购物"
+  },
+  {
+   "word": "silence",
+   "phrase": "silence is golden",
+   "chinese": "沉默是金"
+  },
+  {
+   "word": "sin",
+   "phrase": "deadly sin",
+   "chinese": "不可饶恕之罪"
+  },
+  {
+   "word": "sin",
+   "phrase": "sin tax",
+   "chinese": "罪恶税"
+  },
+  {
+   "word": "ski",
+   "phrase": "ski slope",
+   "chinese": "滑雪坡"
+  },
+  {
+   "word": "ski",
+   "phrase": "ski lift",
+   "chinese": "滑雪缆车"
+  },
+  {
+   "word": "sink",
+   "phrase": "sink in",
+   "chinese": "理解；下沉"
+  },
+  {
+   "word": "sixty",
+   "phrase": "sixty minutes",
+   "chinese": "六十分钟"
+  },
+  {
+   "word": "smoker",
+   "phrase": "heavy smoker",
+   "chinese": "烟瘾大的人"
+  },
+  {
+   "word": "smoker",
+   "phrase": "non-smoker",
+   "chinese": "不吸烟者"
+  },
+  {
+   "word": "snowy",
+   "phrase": "snowy day",
+   "chinese": "雪天"
+  },
+  {
+   "word": "snowy",
+   "phrase": "snowy mountain",
+   "chinese": "雪山"
+  },
+  {
+   "word": "snowy",
+   "phrase": "snowy owl",
+   "chinese": "雪鸮"
+  },
+  {
+   "word": "soft",
+   "phrase": "soft spot",
+   "chinese": "喜好，弱点"
+  },
+  {
+   "word": "soldier",
+   "phrase": "toy soldier",
+   "chinese": "玩具士兵"
+  },
+  {
+   "word": "sociological",
+   "phrase": "sociological theory",
+   "chinese": ""
+  },
+  {
+   "word": "sociological",
+   "phrase": "sociological research",
+   "chinese": ""
+  },
+  {
+   "word": "somebody",
+   "phrase": "or somebody",
+   "chinese": "或类似的什么人"
+  },
+  {
+   "word": "some",
+   "phrase": "some time",
+   "chinese": "一段时间"
+  },
+  {
+   "word": "someone",
+   "phrase": "someone's",
+   "chinese": "某人的"
+  },
+  {
+   "word": "someone",
+   "phrase": "someone special",
+   "chinese": "特别的人"
+  },
+  {
+   "word": "soon",
+   "phrase": "as soon as",
+   "chinese": "一…就"
+  },
+  {
+   "word": "soon",
+   "phrase": "sooner or later",
+   "chinese": "迟早"
+  },
+  {
+   "word": "south",
+   "phrase": "South Pole",
+   "chinese": "南极"
+  },
+  {
+   "word": "south",
+   "phrase": "south wind",
+   "chinese": "南风"
+  },
+  {
+   "word": "south",
+   "phrase": "go south",
+   "chinese": "向南去"
+  },
+  {
+   "word": "sophistication",
+   "phrase": "technological sophistication",
+   "chinese": "技术复杂性"
+  },
+  {
+   "word": "sophistication",
+   "phrase": "cultural sophistication",
+   "chinese": "文化素养"
+  },
+  {
+   "word": "sox",
+   "phrase": "sox and shoes",
+   "chinese": "袜子和鞋"
+  },
+  {
+   "word": "span",
+   "phrase": "wing span",
+   "chinese": "翼展"
+  },
+  {
+   "word": "speck",
+   "phrase": "a speck of hope",
+   "chinese": "一线希望"
+  },
+  {
+   "word": "spectral",
+   "phrase": "spectral lines",
+   "chinese": "谱线"
+  },
+  {
+   "word": "speeder",
+   "phrase": "speeder ticket",
+   "chinese": "超速罚单"
+  },
+  {
+   "word": "speeder",
+   "phrase": "speeder fine",
+   "chinese": "超速罚款"
+  },
+  {
+   "word": "spirito",
+   "phrase": "con spirito",
+   "chinese": "有精神地——音乐术语"
+  },
+  {
+   "word": "staff",
+   "phrase": "staff development",
+   "chinese": "员工发展"
+  },
+  {
+   "word": "stark",
+   "phrase": "stark choice",
+   "chinese": "严峻选择"
+  },
+  {
+   "word": "stark",
+   "phrase": "stark raving mad",
+   "chinese": "完全疯狂"
+  },
+  {
+   "word": "stay",
+   "phrase": "stay home",
+   "chinese": "待在家里"
+  },
+  {
+   "word": "stay",
+   "phrase": "stay up",
+   "chinese": "熬夜"
+  },
+  {
+   "word": "stay",
+   "phrase": "stay tuned",
+   "chinese": "继续关注"
+  },
+  {
+   "word": "stay",
+   "phrase": "stay the night",
+   "chinese": "过夜"
+  },
+  {
+   "word": "step",
+   "phrase": "step aside",
+   "chinese": ""
+  },
+  {
+   "word": "stomach",
+   "phrase": "turn one's stomach",
+   "chinese": "使恶心，使反感"
+  },
+  {
+   "word": "stout",
+   "phrase": "stout heart",
+   "chinese": "勇敢的心"
+  },
+  {
+   "word": "straw",
+   "phrase": "straw poll",
+   "chinese": "民意测验"
+  },
+  {
+   "word": "straw",
+   "phrase": "last straw",
+   "chinese": "最后一根稻草"
+  },
+  {
+   "word": "straw",
+   "phrase": "straw man",
+   "chinese": "稻草人"
+  },
+  {
+   "word": "stove",
+   "phrase": "stove top",
+   "chinese": "炉灶面"
+  },
+  {
+   "word": "subdued",
+   "phrase": "subdued mood",
+   "chinese": "沉郁的心情"
+  },
+  {
+   "word": "subdued",
+   "phrase": "subdued colours",
+   "chinese": "暗淡的色彩"
+  },
+  {
+   "word": "exaggeration",
+   "phrase": "wild exaggeration",
+   "chinese": "离谱的夸张"
+  },
+  {
+   "word": "exaggeration",
+   "phrase": "a slight exaggeration",
+   "chinese": "稍许夸张"
+  },
+  {
+   "word": "successful",
+   "phrase": "successful outcome",
+   "chinese": "成功的结果"
+  },
+  {
+   "word": "suggest",
+   "phrase": "suggest itself",
+   "chinese": "浮现在脑海中"
+  },
+  {
+   "word": "suffice",
+   "phrase": "suffice to say",
+   "chinese": "只需说…"
+  },
+  {
+   "word": "suffice",
+   "phrase": "will suffice",
+   "chinese": "就够了"
+  },
+  {
+   "word": "sukarno",
+   "phrase": "Sukarno's policies",
+   "chinese": "苏加诺的政策"
+  },
+  {
+   "word": "suicide",
+   "phrase": "suicide bomber",
+   "chinese": "自杀式炸弹袭击者"
+  },
+  {
+   "word": "sunday",
+   "phrase": "Sunday roast",
+   "chinese": "星期日烤肉"
+  },
+  {
+   "word": "sundial",
+   "phrase": "sundial gnomon",
+   "chinese": "日晷指针"
+  },
+  {
+   "word": "sundial",
+   "phrase": "read a sundial",
+   "chinese": "读日晷"
+  },
+  {
+   "word": "superb",
+   "phrase": "superb performance",
+   "chinese": "精彩表演"
+  },
+  {
+   "word": "superb",
+   "phrase": "absolutely superb",
+   "chinese": "绝对出色"
+  },
+  {
+   "word": "super",
+   "phrase": "super powerful",
+   "chinese": "超级强大"
+  },
+  {
+   "word": "super",
+   "phrase": "super easy",
+   "chinese": "超级简单"
+  },
+  {
+   "word": "super",
+   "phrase": "super star",
+   "chinese": "超级巨星"
+  },
+  {
+   "word": "supra",
+   "phrase": "supra cited",
+   "chinese": "上文引用"
+  },
+  {
+   "word": "swimming",
+   "phrase": "heated swimming pool",
+   "chinese": "温水泳池"
+  },
+  {
+   "word": "swimming",
+   "phrase": "swimming pool area",
+   "chinese": "泳池区"
+  },
+  {
+   "word": "sur",
+   "phrase": "sur mesure (custom-made)",
+   "chinese": "现场，定制"
+  },
+  {
+   "word": "taiwan",
+   "phrase": "Taiwan Semiconductor Manufacturing Company (TSMC)",
+   "chinese": "台积电"
+  },
+  {
+   "word": "tank",
+   "phrase": "water tank",
+   "chinese": "水箱"
+  },
+  {
+   "word": "tank",
+   "phrase": "fuel tank",
+   "chinese": "燃料箱"
+  },
+  {
+   "word": "tale",
+   "phrase": "cautionary tale",
+   "chinese": ""
+  },
+  {
+   "word": "tale",
+   "phrase": "tell tales",
+   "chinese": ""
+  },
+  {
+   "word": "tale",
+   "phrase": "tall tale",
+   "chinese": ""
+  },
+  {
+   "word": "tarzan",
+   "phrase": "Tar",
+   "chinese": ""
+  },
+  {
+   "word": "teach",
+   "phrase": "teach sb sth",
+   "chinese": "教某人某事"
+  },
+  {
+   "word": "tee",
+   "phrase": "tee up",
+   "chinese": "架球"
+  },
+  {
+   "word": "technology",
+   "phrase": "cutting-edge technology",
+   "chinese": "尖端技术"
+  },
+  {
+   "word": "technology",
+   "phrase": "technology transfer",
+   "chinese": "技术转让"
+  },
+  {
+   "word": "technology",
+   "phrase": "high technology",
+   "chinese": "高科技"
+  },
+  {
+   "word": "temperature",
+   "phrase": "low temperature",
+   "chinese": "低温"
+  },
+  {
+   "word": "temperature",
+   "phrase": "take someone's temperature",
+   "chinese": "量体温"
+  },
+  {
+   "word": "tent",
+   "phrase": "tent camping",
+   "chinese": "帐篷露营"
+  },
+  {
+   "word": "terrify",
+   "phrase": "terrify into submission",
+   "chinese": "吓得屈服"
+  },
+  {
+   "word": "them",
+   "phrase": "with them",
+   "chinese": "和他们一起"
+  },
+  {
+   "word": "them",
+   "phrase": "each of them",
+   "chinese": "他们每一个"
+  },
+  {
+   "word": "thiouracil",
+   "phrase": "thiouracil therapy",
+   "chinese": "硫脲嘧啶疗法"
+  },
+  {
+   "word": "thou",
+   "phrase": "ten thou",
+   "chinese": "十密耳"
+  },
+  {
+   "word": "thomas",
+   "phrase": "Thomas the Tank Engine",
+   "chinese": "托马斯小火车"
+  },
+  {
+   "word": "thomas",
+   "phrase": "St. Thomas",
+   "chinese": "圣托马斯"
+  },
+  {
+   "word": "thru",
+   "phrase": "thruway",
+   "chinese": "直达公路"
+  },
+  {
+   "word": "thyroglobulin",
+   "phrase": "thyroglobulin antibody",
+   "chinese": "甲状腺球蛋白抗体"
+  },
+  {
+   "word": "ticket",
+   "phrase": "round-trip ticket",
+   "chinese": "往返票"
+  },
+  {
+   "word": "ticket",
+   "phrase": "lottery ticket",
+   "chinese": "彩票"
+  },
+  {
+   "word": "toast",
+   "phrase": "a slice of toast",
+   "chinese": "一片吐司"
+  },
+  {
+   "word": "toil",
+   "phrase": "toil and trouble",
+   "chinese": "辛劳与烦恼"
+  },
+  {
+   "word": "toil",
+   "phrase": "hard toil",
+   "chinese": "艰辛劳动"
+  },
+  {
+   "word": "torquer",
+   "phrase": "reaction torquer",
+   "chinese": "反作用扭矩器"
+  },
+  {
+   "word": "torquer",
+   "phrase": "torquer coil",
+   "chinese": "扭矩线圈"
+  },
+  {
+   "word": "totally",
+   "phrase": "totally free",
+   "chinese": "完全免费"
+  },
+  {
+   "word": "totally",
+   "phrase": "totally unacceptable",
+   "chinese": "完全不能接受"
+  },
+  {
+   "word": "tour guide",
+   "phrase": "professional tour guide",
+   "chinese": "专业导游"
+  },
+  {
+   "word": "tour guide",
+   "phrase": "guided tour",
+   "chinese": "有导游的旅行"
+  },
+  {
+   "word": "traffic jam",
+   "phrase": "avoid a traffic jam",
+   "chinese": ""
+  },
+  {
+   "word": "traffic jam",
+   "phrase": "traffic jam on the motorway",
+   "chinese": ""
+  },
+  {
+   "word": "transaction",
+   "phrase": "financial transaction",
+   "chinese": "金融交易"
+  },
+  {
+   "word": "strong",
+   "phrase": "strong personality",
+   "chinese": "坚强的个性"
+  },
+  {
+   "word": "strong",
+   "phrase": "strong winds",
+   "chinese": "强风"
+  },
+  {
+   "word": "transform",
+   "phrase": "transform one’s life",
+   "chinese": "改变某人的生活"
+  },
+  {
+   "word": "transform",
+   "phrase": "transformative change",
+   "chinese": "变革性的变化"
+  },
+  {
+   "word": "translate",
+   "phrase": "translate from",
+   "chinese": "从…翻译"
+  },
+  {
+   "word": "translate",
+   "phrase": "translate well",
+   "chinese": "翻译得很好"
+  },
+  {
+   "word": "truth",
+   "phrase": "in truth",
+   "chinese": "事实上，的确"
+  },
+  {
+   "word": "truth",
+   "phrase": "truth be told",
+   "chinese": "老实说"
+  },
+  {
+   "word": "tuxapoka",
+   "phrase": "Tuxapoka station",
+   "chinese": "塔克萨波卡车站"
+  },
+  {
+   "word": "tuxapoka",
+   "phrase": "Tuxapoka Creek",
+   "chinese": "塔克萨波卡溪"
+  },
+  {
+   "word": "turning",
+   "phrase": "turning circle",
+   "chinese": "回转圆"
+  },
+  {
+   "word": "tunnel",
+   "phrase": "tunnel through",
+   "chinese": "掘进穿过"
+  },
+  {
+   "word": "tunnel",
+   "phrase": "tunnel under",
+   "chinese": "在…下挖隧道"
+  },
+  {
+   "word": "turbulence",
+   "phrase": "emotional turbulence",
+   "chinese": "情绪波动"
+  },
+  {
+   "word": "turn",
+   "phrase": "turn into",
+   "chinese": "变成"
+  },
+  {
+   "word": "turn",
+   "phrase": "in turn",
+   "chinese": "依次"
+  },
+  {
+   "word": "twirler",
+   "phrase": "twirler competition",
+   "chinese": ""
+  },
+  {
+   "word": "twice",
+   "phrase": "twice as many",
+   "chinese": "两倍之多"
+  },
+  {
+   "word": "twelve",
+   "phrase": "twelve o’clock",
+   "chinese": "十二点"
+  },
+  {
+   "word": "twelve",
+   "phrase": "twelve inches",
+   "chinese": "十二英寸"
+  },
+  {
+   "word": "twelve",
+   "phrase": "the Twelve Apostles",
+   "chinese": "十二使徒"
+  },
+  {
+   "word": "twilight",
+   "phrase": "twilight years",
+   "chinese": ""
+  },
+  {
+   "word": "twilight",
+   "phrase": "evening twilight",
+   "chinese": ""
+  },
+  {
+   "word": "umbrella",
+   "phrase": "beach umbrella",
+   "chinese": "沙滩伞"
+  },
+  {
+   "word": "uh",
+   "phrase": "uh‑oh",
+   "chinese": "呃哦"
+  },
+  {
+   "word": "uh",
+   "phrase": "uh‑huh",
+   "chinese": "嗯哼"
+  },
+  {
+   "word": "unabashed",
+   "phrase": "unabashed confidence",
+   "chinese": ""
+  },
+  {
+   "word": "unabashed",
+   "phrase": "unabashed admirer",
+   "chinese": ""
+  },
+  {
+   "word": "unabashed",
+   "phrase": "unabashed by criticism",
+   "chinese": ""
+  },
+  {
+   "word": "uncertain",
+   "phrase": "uncertain times",
+   "chinese": "不确定的时代"
+  },
+  {
+   "word": "undergo",
+   "phrase": "undergo a transformation",
+   "chinese": "经历转变"
+  },
+  {
+   "word": "undergo",
+   "phrase": "undergo an operation",
+   "chinese": "接受手术"
+  },
+  {
+   "word": "unaccompanied",
+   "phrase": "unaccompanied luggage",
+   "chinese": ""
+  },
+  {
+   "word": "unaccompanied",
+   "phrase": "unaccompanied travel",
+   "chinese": ""
+  },
+  {
+   "word": "underneath",
+   "phrase": "crawl underneath",
+   "chinese": "爬到下面"
+  },
+  {
+   "word": "underneath",
+   "phrase": "underneath the surface",
+   "chinese": "表面之下"
+  },
+  {
+   "word": "unconcerned",
+   "phrase": "unconcerned attitude",
+   "chinese": "无所谓的态度"
+  },
+  {
+   "word": "unhurried",
+   "phrase": "unhurried pace",
+   "chinese": "从容的节奏"
+  },
+  {
+   "word": "unfit",
+   "phrase": "unfit for purpose",
+   "chinese": "不适合用途"
+  },
+  {
+   "word": "unexpected",
+   "phrase": "unexpected visitor",
+   "chinese": "不速之客"
+  },
+  {
+   "word": "uninterrupted",
+   "phrase": "uninterrupted view",
+   "chinese": ""
+  },
+  {
+   "word": "uninterrupted",
+   "phrase": "uninterrupted service",
+   "chinese": ""
+  },
+  {
+   "word": "unpredictable",
+   "phrase": "unpredictable behaviour",
+   "chinese": "不可预测的行为"
+  },
+  {
+   "word": "unpredictable",
+   "phrase": "unpredictable outcome",
+   "chinese": "不可预测的结果"
+  },
+  {
+   "word": "unpredictable",
+   "phrase": "unpredictable nature",
+   "chinese": "不可预测的性质"
+  },
+  {
+   "word": "unpredictable",
+   "phrase": "highly/unpredictably",
+   "chinese": "高度不可预测的"
+  },
+  {
+   "word": "unreconstructed",
+   "phrase": "unreconstructed rebel",
+   "chinese": "顽固的叛逆者"
+  },
+  {
+   "word": "used",
+   "phrase": "be used to  sth",
+   "chinese": "doing"
+  },
+  {
+   "word": "utilise",
+   "phrase": "utilise technology",
+   "chinese": "利用技术"
+  },
+  {
+   "word": "unsettled",
+   "phrase": "unsettled debt",
+   "chinese": "未结清的债务"
+  },
+  {
+   "word": "unsettled",
+   "phrase": "unsettled mind",
+   "chinese": "不安的心绪"
+  },
+  {
+   "word": "variability",
+   "phrase": "variability in data",
+   "chinese": "数据变异性"
+  },
+  {
+   "word": "violin",
+   "phrase": "violin player",
+   "chinese": ""
+  },
+  {
+   "word": "violin",
+   "phrase": "violin case",
+   "chinese": ""
+  },
+  {
+   "word": "virgin",
+   "phrase": "Virgin Islands",
+   "chinese": "维尔京群岛"
+  },
+  {
+   "word": "vietnam",
+   "phrase": "South Vietnam",
+   "chinese": "南越"
+  },
+  {
+   "word": "vital",
+   "phrase": "vital sign",
+   "chinese": "生命体征"
+  },
+  {
+   "word": "voltaire",
+   "phrase": "Voltaire's philosophy",
+   "chinese": "伏尔泰哲学"
+  },
+  {
+   "word": "voltaire",
+   "phrase": "the Voltaire effect",
+   "chinese": "伏尔泰效应"
+  },
+  {
+   "word": "vote",
+   "phrase": "vote of confidence",
+   "chinese": "信任投票"
+  },
+  {
+   "word": "vote",
+   "phrase": "vote for/against",
+   "chinese": "投票赞成/反对"
+  },
+  {
+   "word": "volume",
+   "phrase": "volume control",
+   "chinese": "音量控制"
+  },
+  {
+   "word": "volume",
+   "phrase": "sales volume",
+   "chinese": "销售量"
+  },
+  {
+   "word": "waco",
+   "phrase": "Waco siege",
+   "chinese": "韦科惨案"
+  },
+  {
+   "word": "waco",
+   "phrase": "Waco Tribune-Herald",
+   "chinese": "韦科论坛先驱报"
+  },
+  {
+   "word": "waddell",
+   "phrase": "Waddell Lake",
+   "chinese": "沃德尔湖"
+  },
+  {
+   "word": "waddell",
+   "phrase": "Waddell family",
+   "chinese": "沃德尔家族"
+  },
+  {
+   "word": "wail",
+   "phrase": "wail in grief",
+   "chinese": "悲痛地哭嚎"
+  },
+  {
+   "word": "wail",
+   "phrase": "siren’s wail",
+   "chinese": "警笛的呼啸声"
+  },
+  {
+   "word": "waitress",
+   "phrase": "waitress uniform",
+   "chinese": "女服务员制服"
+  },
+  {
+   "word": "waitress",
+   "phrase": "waitress job",
+   "chinese": "服务员工作"
+  },
+  {
+   "word": "water",
+   "phrase": "water down",
+   "chinese": "稀释；削弱"
+  },
+  {
+   "word": "water",
+   "phrase": "by water",
+   "chinese": "由水路"
+  },
+  {
+   "word": "water",
+   "phrase": "water supply",
+   "chinese": "供水"
+  },
+  {
+   "word": "web",
+   "phrase": "create a web page",
+   "chinese": "创建网页"
+  },
+  {
+   "word": "web",
+   "phrase": "visit a web page",
+   "chinese": "访问网页"
+  },
+  {
+   "word": "west",
+   "phrase": "the Wild West",
+   "chinese": "西部荒野"
+  },
+  {
+   "word": "what",
+   "phrase": "what for",
+   "chinese": ""
+  },
+  {
+   "word": "while",
+   "phrase": "a while ago",
+   "chinese": "不久前"
+  },
+  {
+   "word": "while",
+   "phrase": "while away the time",
+   "chinese": "消磨时间"
+  },
+  {
+   "word": "while",
+   "phrase": "all the while",
+   "chinese": "一直"
+  },
+  {
+   "word": "whichever",
+   "phrase": "whichever way",
+   "chinese": "无论哪种方式"
+  },
+  {
+   "word": "whip",
+   "phrase": "whip hand",
+   "chinese": "控制权"
+  },
+  {
+   "word": "whoever",
+   "phrase": "whoever it is",
+   "chinese": "不管是谁"
+  },
+  {
+   "word": "whoever",
+   "phrase": "whoever said that",
+   "chinese": "谁说的"
+  },
+  {
+   "word": "why",
+   "phrase": "the whys and wherefores",
+   "chinese": "原因和理由"
+  },
+  {
+   "word": "wing",
+   "phrase": "take under one’s wing",
+   "chinese": "庇护，照料"
+  },
+  {
+   "word": "wing",
+   "phrase": "wing chair",
+   "chinese": "翼状靠背椅"
+  },
+  {
+   "word": "without",
+   "phrase": "without a doubt",
+   "chinese": "毫无疑问"
+  },
+  {
+   "word": "without",
+   "phrase": "do without",
+   "chinese": "将就着过"
+  },
+  {
+   "word": "workplace",
+   "phrase": "workplace harassment",
+   "chinese": "职场骚扰"
+  },
+  {
+   "word": "yoghourt",
+   "phrase": "Greek yoghourt",
+   "chinese": "希腊酸奶"
+  },
+  {
+   "word": "yellow",
+   "phrase": "yellow with age",
+   "chinese": "因年代久远而发黄"
+  },
+  {
+   "word": "yorker",
+   "phrase": "yorker length",
+   "chinese": ""
+  },
+  {
+   "word": "yorker",
+   "phrase": "yorker specialist",
+   "chinese": ""
+  },
+  {
+   "word": "young",
+   "phrase": "with young",
+   "chinese": "怀孕的"
+  },
+  {
+   "word": "preserve",
+   "phrase": "preserve the peace",
+   "chinese": "维护和平"
+  },
+  {
+   "word": "preserve",
+   "phrase": "wildlife preserve",
+   "chinese": "野生动物保护区"
+  },
+  {
+   "word": "preserve",
+   "phrase": "preserve of",
+   "chinese": "…的专有领域"
+  },
+  {
+   "word": "scorn",
+   "phrase": "pour scorn on",
+   "chinese": ""
+  },
+  {
+   "word": "scorn",
+   "phrase": "scornful look",
+   "chinese": ""
+  },
+  {
+   "word": "semitism",
+   "phrase": "Semitism in linguistics",
+   "chinese": "语言学中的闪米特语特征"
+  }
+ ]
+}

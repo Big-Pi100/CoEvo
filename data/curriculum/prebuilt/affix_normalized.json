@@ -1,0 +1,9442 @@
+{
+ "version": "v5",
+ "source": "fullrun",
+ "affixes": [
+  {
+   "form": "-",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "past_tense",
+     "meaning_zh": "过去式/过去分词",
+     "aliases": [
+      "过去式",
+      "过去式/过去分词",
+      "动词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-a",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "plural",
+     "meaning_zh": "复数后缀",
+     "aliases": [
+      "复数后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-abil",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "capability",
+     "meaning_zh": "可…的",
+     "aliases": [
+      "可…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-abil-",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "capability",
+     "meaning_zh": "可…的",
+     "aliases": [
+      "可…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ability",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "capability_noun",
+     "meaning_zh": "可…性",
+     "aliases": [
+      "可…性"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-able",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "capability",
+     "meaning_zh": "可…的；能…的",
+     "aliases": [
+      "可…的",
+      "可…的；能…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ably",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "capability_adverb",
+     "meaning_zh": "可…地",
+     "aliases": [
+      "可…地"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-about",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "around",
+     "meaning_zh": "到处",
+     "aliases": [
+      "到处"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ac",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "…的人",
+     "aliases": [
+      "…的人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-acious",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "full_of",
+     "meaning_zh": "充满…的",
+     "aliases": [
+      "充满…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-acity",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "state_noun",
+     "meaning_zh": "名词后缀，表状态",
+     "aliases": [
+      "名词后缀，表状态"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-acle",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "thing_noun",
+     "meaning_zh": "名词后缀，表事物",
+     "aliases": [
+      "名词后缀，表事物"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-active",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "活性的",
+     "aliases": [
+      "活性的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-acular",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-acy",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "state_quality",
+     "meaning_zh": "状态、性质",
+     "aliases": [
+      "状态，性质",
+      "状态、性质",
+      "状态、职位",
+      "状态，行为",
+      "名词后缀，表性质",
+      "状态、机构",
+      "名词后缀，表状态",
+      "名词后缀，表状态或性质",
+      "性质、状态",
+      "行为、状态"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ade",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "drink",
+     "meaning_zh": "饮料",
+     "aliases": [
+      "饮料"
+     ]
+    },
+    {
+     "sense": "collective_noun",
+     "meaning_zh": "集合名词后缀",
+     "aliases": [
+      "集合名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ae",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "plural",
+     "meaning_zh": "复数",
+     "aliases": [
+      "复数"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-after",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "after",
+     "meaning_zh": "在…之后",
+     "aliases": [
+      "在…之后"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-age",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀",
+      "名词后缀，表行为或结果",
+      "名词后缀，表行为或工具",
+      "名词后缀，表状态/集合",
+      "动词后缀",
+      "总称；量",
+      "行为、状态",
+      "状态、年龄",
+      "名词后缀，表量",
+      "场所；状态",
+      "总称",
+      "名词/动词后缀",
+      "名词后缀，表状态",
+      "行为或场所",
+      "名词后缀，表行为或状态",
+      "名词后缀，表状态/量"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-aholic",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "addict",
+     "meaning_zh": "沉迷…的人",
+     "aliases": [
+      "沉迷…的人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ain",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "verb_suffix",
+     "meaning_zh": "动词后缀",
+     "aliases": [
+      "动词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-aire",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "人",
+     "aliases": [
+      "人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-al",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的",
+      "形容词后缀，表“…的”",
+      "…的/…物",
+      "…的/…的行为"
+     ]
+    },
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ale",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "place_noun",
+     "meaning_zh": "名词后缀，表场所",
+     "aliases": [
+      "名词后缀，表场所"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ality",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "…性（名词后缀）",
+     "aliases": [
+      "…性"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ally",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adverbial",
+     "meaning_zh": "以…方式地",
+     "aliases": [
+      "以…方式",
+      "…地"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-am",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "past_tense",
+     "meaning_zh": "过去式（不规则）",
+     "aliases": [
+      "过去式（不规则）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ame",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "past_tense",
+     "meaning_zh": "过去式（不规则）",
+     "aliases": [
+      "过去式（不规则）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ament",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-amin",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "chemical_compound",
+     "meaning_zh": "胺（含氮化合物）",
+     "aliases": [
+      "胺（含氮化合物）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-an",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    },
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "…人",
+     "aliases": [
+      "…的人"
+     ]
+    },
+    {
+     "sense": "language",
+     "meaning_zh": "…语",
+     "aliases": [
+      "…语"
+     ]
+    },
+    {
+     "sense": "past_tense",
+     "meaning_zh": "过去式",
+     "aliases": [
+      "过去式"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ance",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀（表状态、行为等）",
+     "aliases": [
+      "名词后缀",
+      "名词后缀，表状态",
+      "名词后缀，表行为",
+      "名词后缀，表状态/行为",
+      "名词后缀，表状态/量",
+      "名词后缀，表状态或事物",
+      "状态/性质",
+      "名词后缀，表行为或状态",
+      "状态、性质"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ancy",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀（表状态、性质）",
+     "aliases": [
+      "状态、性质",
+      "名词后缀",
+      "状态；性质"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-andum",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "future_passive_participle",
+     "meaning_zh": "应被…的（将来被动分词）",
+     "aliases": [
+      "应被…的（将来被动分词）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ane",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-anean",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-aneous",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的",
+      "…性质的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-angle",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "noun_angle",
+     "meaning_zh": "角",
+     "aliases": [
+      "角"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ant",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的",
+      "形容词后缀",
+      "…的（事物）",
+      "…的/…的人",
+      "…的/…物",
+      "…的/…者"
+     ]
+    },
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "…的人",
+     "aliases": [
+      "人",
+      "…的人",
+      "做…的人",
+      "从事…的人",
+      "人/物"
+     ]
+    },
+    {
+     "sense": "substance_agent",
+     "meaning_zh": "…剂",
+     "aliases": [
+      "表物质或剂",
+      "…剂"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ante",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "表示人的名词后缀",
+     "aliases": [
+      "表示人的名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ar",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    },
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "…的人",
+     "aliases": [
+      "…的人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-arche",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "beginning",
+     "meaning_zh": "开始",
+     "aliases": [
+      "开始"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-arian",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival_noun",
+     "meaning_zh": "…主义的（人）",
+     "aliases": [
+      "…主义的（人）",
+      "…主义的/者"
+     ]
+    },
+    {
+     "sense": "related_to",
+     "meaning_zh": "与…相关的",
+     "aliases": [
+      "与…相关的"
+     ]
+    },
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "…的人",
+     "aliases": [
+      "…的人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ary",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的",
+      "与…有关的",
+      "与…相关的",
+      "…的/…的人",
+      "…的；…者"
+     ]
+    },
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "…的人",
+     "aliases": [
+      "…的人"
+     ]
+    },
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    },
+    {
+     "sense": "place",
+     "meaning_zh": "场所",
+     "aliases": [
+      "场所"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ase",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "enzyme",
+     "meaning_zh": "酶",
+     "aliases": [
+      "酶"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-astic",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的",
+      "…的；与…有关的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ate",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "verb",
+     "meaning_zh": "动词后缀",
+     "aliases": [
+      "动词后缀",
+      "使…",
+      "使…化",
+      "使…；动词后缀",
+      "动词/名词后缀",
+      "使…，动词后缀",
+      "使…；…的",
+      "使…、动词后缀",
+      "…的/使…",
+      "动词化",
+      "有…的；使…",
+      "使…、…的",
+      "形容词/动词后缀",
+      "使…的"
+     ]
+    },
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的",
+      "形容词后缀",
+      "有…的",
+      "充满…的",
+      "具有…性质的",
+      "具有…的"
+     ]
+    },
+    {
+     "sense": "noun_chemical",
+     "meaning_zh": "盐/酯",
+     "aliases": [
+      "盐/酯"
+     ]
+    },
+    {
+     "sense": "noun",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    },
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "…的人",
+     "aliases": [
+      "…的/人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ated",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "形容词后缀",
+     "aliases": [
+      "形容词后缀",
+      "被…的",
+      "已…的",
+      "…的",
+      "已…的（过去分词）"
+     ]
+    },
+    {
+     "sense": "past_participle",
+     "meaning_zh": "过去分词后缀",
+     "aliases": [
+      "过去分词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-atic",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的（形容词后缀）",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ating",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "progressive_participle",
+     "meaning_zh": "正在…的（现在分词）",
+     "aliases": [
+      "正在…的",
+      "现在分词后缀",
+      "现在分词"
+     ]
+    },
+    {
+     "sense": "adjectival",
+     "meaning_zh": "令人…的（形容词化）",
+     "aliases": [
+      "使…的",
+      "…的",
+      "令人…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ation",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀，表行为、过程或结果",
+     "aliases": [
+      "名词后缀",
+      "名词后缀，表行为或结果",
+      "名词后缀，表过程",
+      "名词后缀，表行为",
+      "名词后缀，表行为或状态",
+      "名词后缀，表状态",
+      "名词后缀，表示行为或结果",
+      "名词后缀，表示过程",
+      "名词后缀，表示行为或状态",
+      "名词后缀，表动作或状态",
+      "行为/过程",
+      "名词后缀，表示动作或结果",
+      "名词后缀，表动作或结果",
+      "名词后缀，表过程或状态",
+      "名词后缀，表状态或结果",
+      "过程、结果",
+      "名词后缀，表状态/结果",
+      "名词后缀，表状态或动作",
+      "名词后缀，表示状态",
+      "名词后缀，表示动作或状态",
+      "名词后缀，表状态或行为",
+      "名词后缀，表示过程或结果",
+      "动作或结果",
+      "名词后缀，表行为/状态",
+      "行为/结果",
+      "名词后缀，表过程或结果"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ational",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的（形容词后缀）",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ative",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "有…性质的（形容词后缀）",
+     "aliases": [
+      "有…性质的",
+      "有…倾向的",
+      "…的（形容词后缀）",
+      "…的（形容词/名词后缀）",
+      "…性质的",
+      "有…性质的；表…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ator",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "做…的人或物（施动者）",
+     "aliases": [
+      "做…的人",
+      "做…的物/人",
+      "做…的物",
+      "仪器",
+      "做…的装置",
+      "做…的人/物",
+      "…的装置",
+      "人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-atory",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "有…性质的（形容词后缀）",
+     "aliases": [
+      "有…性质的",
+      "有…作用的",
+      "与…有关的"
+     ]
+    },
+    {
+     "sense": "place_noun",
+     "meaning_zh": "表场所或机构的名词后缀",
+     "aliases": [
+      "表场所或机构",
+      "…的场所/术"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ature",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀，表状态、行为或结果",
+     "aliases": [
+      "状态；结果",
+      "…的事物；集合",
+      "名词后缀，表行为或结果"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-bics",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "domain_noun",
+     "meaning_zh": "表生命或运动领域",
+     "aliases": [
+      "生命/运动"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ble",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "multiplicative",
+     "meaning_zh": "倍（倍数后缀）",
+     "aliases": [
+      "倍"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-cation",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀，表行为或结果",
+     "aliases": [
+      "名词后缀，表行为/结果"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ce",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "verb_suffix",
+     "meaning_zh": "动词后缀",
+     "aliases": [
+      "动词后缀（-escere 的缩略）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-cide",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "killing",
+     "meaning_zh": "杀",
+     "aliases": [
+      "杀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-cle",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "noun_suffix",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-cracy",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "rule_power",
+     "meaning_zh": "统治；权力",
+     "aliases": [
+      "统治",
+      "统治；权力"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-crat",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "ruler_supporter",
+     "meaning_zh": "统治者/支持者",
+     "aliases": [
+      "统治者/支持者"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-cy",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "state_quality",
+     "meaning_zh": "状态、性质",
+     "aliases": [
+      "状态、性质",
+      "状态",
+      "状态，性质"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-d",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "past_participle",
+     "meaning_zh": "过去式/过去分词",
+     "aliases": [
+      "过去式/过去分词",
+      "过去分词后缀",
+      "过去式",
+      "动词过去分词/形容词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-der",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "noun_suffix",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-dom",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "state_domain",
+     "meaning_zh": "状态、领域",
+     "aliases": [
+      "状态，领域",
+      "状态、领域",
+      "领域，状态",
+      "领域、状态"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-e",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "verb_suffix",
+     "meaning_zh": "动词后缀",
+     "aliases": [
+      "动词后缀",
+      "动词词尾"
+     ]
+    },
+    {
+     "sense": "noun_suffix",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀",
+      "名词词尾",
+      "名词化"
+     ]
+    },
+    {
+     "sense": "adjective_suffix",
+     "meaning_zh": "形容词后缀",
+     "aliases": [
+      "形容词后缀"
+     ]
+    },
+    {
+     "sense": "verb_noun_suffix",
+     "meaning_zh": "动词/名词后缀",
+     "aliases": [
+      "动词/名词后缀",
+      "名词/动词词尾"
+     ]
+    },
+    {
+     "sense": "past_tense_marker",
+     "meaning_zh": "过去式标记",
+     "aliases": [
+      "过去式标记"
+     ]
+    },
+    {
+     "sense": "adjective_verb_suffix",
+     "meaning_zh": "形容词/动词后缀",
+     "aliases": [
+      "形容词/动词后缀",
+      "动词/形容词后缀"
+     ]
+    },
+    {
+     "sense": "inflectional_suffix",
+     "meaning_zh": "屈折后缀（阴性/复数）",
+     "aliases": [
+      "屈折后缀（阴性/复数）"
+     ]
+    },
+    {
+     "sense": "adjective_noun_suffix",
+     "meaning_zh": "形容词/名词后缀",
+     "aliases": [
+      "形容词/名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ed",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "past_participle",
+     "meaning_zh": "过去式/过去分词",
+     "aliases": [
+      "过去式/过去分词",
+      "过去分词后缀",
+      "过去式",
+      "过去分词",
+      "过去分词/形容词后缀",
+      "过去分词/形容词",
+      "过去/被动"
+     ]
+    },
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的（形容词化）",
+     "aliases": [
+      "…的",
+      "已…的",
+      "被…的",
+      "具有…的",
+      "形容词后缀",
+      "有…的",
+      "充满…的",
+      "…的（形容词后缀）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-edian",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "person_noun",
+     "meaning_zh": "…的人",
+     "aliases": [
+      "…的人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ee",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "passive_recipient",
+     "meaning_zh": "被…的人",
+     "aliases": [
+      "被…的人",
+      "受…的人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-eer",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "从事…的人",
+     "aliases": [
+      "从事…的人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-eeth",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "irregular_plural",
+     "meaning_zh": "复数（不规则）",
+     "aliases": [
+      "复数（不规则）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-eity",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "quality_state",
+     "meaning_zh": "性质、状态",
+     "aliases": [
+      "性质、状态"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-emia",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "blood_condition",
+     "meaning_zh": "血液状况",
+     "aliases": [
+      "血液状况"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-emic",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "phonemic",
+     "meaning_zh": "音位的",
+     "aliases": [
+      "音位的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-emics",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "discipline",
+     "meaning_zh": "学科",
+     "aliases": [
+      "学科"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-en",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "causative_verb",
+     "meaning_zh": "使…（动词后缀）",
+     "aliases": [
+      "使…",
+      "使…（动词后缀）"
+     ]
+    },
+    {
+     "sense": "past_participle",
+     "meaning_zh": "过去分词后缀",
+     "aliases": [
+      "过去分词后缀"
+     ]
+    },
+    {
+     "sense": "plural",
+     "meaning_zh": "复数后缀",
+     "aliases": [
+      "复数",
+      "复数后缀"
+     ]
+    },
+    {
+     "sense": "made_of",
+     "meaning_zh": "由…制成的",
+     "aliases": [
+      "由…制成的；像…的",
+      "由…制成的；变成…的",
+      "由…制成的"
+     ]
+    },
+    {
+     "sense": "domain",
+     "meaning_zh": "…的领域",
+     "aliases": [
+      "…的领域"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ence",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀，表状态/性质",
+     "aliases": [
+      "名词后缀",
+      "名词后缀，表状态",
+      "状态",
+      "性质、状态",
+      "名词后缀，表状态/集合",
+      "性质",
+      "名词后缀，表性质",
+      "名词后缀，表状态或结果",
+      "状态、性质",
+      "名词后缀，表示状态或过程",
+      "名词后缀，表状态或行为"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ency",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀，表状态/性质",
+     "aliases": [
+      "名词后缀，表状态",
+      "状态/性质",
+      "状态",
+      "性质、状态",
+      "状态，性质",
+      "状态/职位"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-end",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "应被…的",
+     "aliases": [
+      "应被…的",
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ene",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "alkene",
+     "meaning_zh": "烯（含双键）",
+     "aliases": [
+      "烯（含双键）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ent",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的（形容词后缀）",
+     "aliases": [
+      "…的",
+      "形容词后缀",
+      "具有…性质的",
+      "…的（形容词后缀）",
+      "形容词后缀，…的"
+     ]
+    },
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "人/物（名词后缀）",
+     "aliases": [
+      "人/物",
+      "人",
+      "人/形容词后缀",
+      "…的/…物",
+      "…的物",
+      "…的/…者",
+      "…的/物",
+      "…的事物",
+      "起…作用的物"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ent-",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-entious",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "有…性质的",
+     "aliases": [
+      "有…性质的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-eous",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "有…性质的",
+     "aliases": [
+      "有…性质的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-er",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "做…的人/物",
+     "aliases": [
+      "…的人",
+      "人",
+      "做…的人",
+      "从事…的人",
+      "者",
+      "…的人/物",
+      "做…的人/物",
+      "…的东西",
+      "…者",
+      "…的装置",
+      "工具",
+      "表物或人",
+      "…的人或物",
+      "做…的物",
+      "物或人",
+      "做…的人或物",
+      "…物",
+      "…的器皿",
+      "施动者",
+      "表工具或结果",
+      "…的",
+      "从事…的人/物",
+      "…器",
+      "…的东西/人",
+      "…者/物",
+      "…的物",
+      "…的物或人",
+      "…之一",
+      "…者/…器",
+      "物/者",
+      "…的容器/物",
+      "…的器具",
+      "者/物",
+      "表名词",
+      "表动作或结果的名词后缀",
+      "表行为或施动者",
+      "做…的动作",
+      "表工具或施动者",
+      "动词后缀",
+      "人/物",
+      "…剂",
+      "表状态（古）"
+     ]
+    },
+    {
+     "sense": "comparative",
+     "meaning_zh": "更…的",
+     "aliases": [
+      "更…的",
+      "更…的（比较级）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ern",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "directional",
+     "meaning_zh": "…方向的",
+     "aliases": [
+      "…方向的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ery",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "place_noun",
+     "meaning_zh": "…的场所",
+     "aliases": [
+      "场所",
+      "场所/地点",
+      "…的场所/工艺/制品"
+     ]
+    },
+    {
+     "sense": "behavior_state_noun",
+     "meaning_zh": "行为/状态",
+     "aliases": [
+      "行为/状态",
+      "行为，行业",
+      "表集合或状态",
+      "状态、行为、制度",
+      "行为、状态"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-es",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "plural",
+     "meaning_zh": "复数",
+     "aliases": [
+      "复数",
+      "复数后缀"
+     ]
+    },
+    {
+     "sense": "third_person_singular",
+     "meaning_zh": "第三人称单数",
+     "aliases": [
+      "第三人称单数"
+     ]
+    },
+    {
+     "sense": "plural_or_third_person_singular",
+     "meaning_zh": "复数/第三人称单数",
+     "aliases": [
+      "复数/第三人称单数",
+      "第三人称单数/复数"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-escence",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "process_state_noun",
+     "meaning_zh": "过程/状态",
+     "aliases": [
+      "过程",
+      "状态、过程"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-escent",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "becoming",
+     "meaning_zh": "正在…的/开始…的",
+     "aliases": [
+      "正在发…的",
+      "开始…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ese",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "pertaining_to",
+     "meaning_zh": "…的；…人/语",
+     "aliases": [
+      "…的；…人/语",
+      "…的/…人",
+      "…的；…人；…语"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-esimal",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-esis",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "process_state_noun",
+     "meaning_zh": "过程/状态",
+     "aliases": [
+      "过程，状态"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-esque",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "in_the_style_of",
+     "meaning_zh": "如…风格的",
+     "aliases": [
+      "如…风格的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ess",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "female_noun",
+     "meaning_zh": "女性",
+     "aliases": [
+      "女性"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-est",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "superlative",
+     "meaning_zh": "最…的",
+     "aliases": [
+      "最…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-estic",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-estrial",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-estrian",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "person_noun",
+     "meaning_zh": "…的人",
+     "aliases": [
+      "…的人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-et",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "diminutive",
+     "meaning_zh": "小…",
+     "aliases": [
+      "小…组",
+      "小"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-eth",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "ordinal",
+     "meaning_zh": "第…",
+     "aliases": [
+      "第…"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-etic",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-etta",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "diminutive",
+     "meaning_zh": "小",
+     "aliases": [
+      "小"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ety",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-eur",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "从事…的人",
+     "aliases": [
+      "从事…的人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-eutic",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "relating_to",
+     "meaning_zh": "与…有关的",
+     "aliases": [
+      "与…有关的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ever",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "universal_concessive",
+     "meaning_zh": "无论…",
+     "aliases": [
+      "无论…",
+      "无论"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ew",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "past_tense",
+     "meaning_zh": "过去式标记",
+     "aliases": [
+      "过去式标记"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ex",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "noun_forming",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-fer",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "bearing",
+     "meaning_zh": "带来…的",
+     "aliases": [
+      "带来…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-fice",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "making",
+     "meaning_zh": "做，制作",
+     "aliases": [
+      "做，制作"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-fier",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_causative",
+     "meaning_zh": "使…者",
+     "aliases": [
+      "使…者"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-forth",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "forward",
+     "meaning_zh": "向前",
+     "aliases": [
+      "向前"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-fuge",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "driving_away",
+     "meaning_zh": "驱赶",
+     "aliases": [
+      "驱赶"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ful",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "full_of",
+     "meaning_zh": "充满…的",
+     "aliases": [
+      "充满…的"
+     ]
+    },
+    {
+     "sense": "amount_contained",
+     "meaning_zh": "充满…的量",
+     "aliases": [
+      "充满…的量"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-fy",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "causative_verb",
+     "meaning_zh": "使…化",
+     "aliases": [
+      "使…化",
+      "使…"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ged",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "past_participle",
+     "meaning_zh": "过去式/过去分词",
+     "aliases": [
+      "过去分词后缀",
+      "过去式/过去分词"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-gen",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "producer",
+     "meaning_zh": "产生者；产生…的",
+     "aliases": [
+      "产生者",
+      "产生",
+      "产生…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-gon",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "angle",
+     "meaning_zh": "角",
+     "aliases": [
+      "角"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-graphie",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "descriptive_discipline",
+     "meaning_zh": "描述学科",
+     "aliases": [
+      "描述学科"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-graphy",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "writing_recording",
+     "meaning_zh": "书写、记录；记录法",
+     "aliases": [
+      "记录法",
+      "书写、记录"
+     ]
+    },
+    {
+     "sense": "field_of_study",
+     "meaning_zh": "…学，…志",
+     "aliases": [
+      "…学，…志"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-gy",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "有…的",
+     "aliases": [
+      "有…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-hood",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "state_condition",
+     "meaning_zh": "状态；身份；时期",
+     "aliases": [
+      "时期、状态",
+      "状态，身份",
+      "身份；状态",
+      "状态，群体",
+      "状态；群体"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-i",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "plural",
+     "meaning_zh": "复数（拉丁语阳性）",
+     "aliases": [
+      "复数",
+      "复数（阳性）",
+      "复数（拉丁语阳性）",
+      "复数（拉丁语）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ia",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "disease_state",
+     "meaning_zh": "病，状态",
+     "aliases": [
+      "病，状态",
+      "病症",
+      "状态"
+     ]
+    },
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ial",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的；与…有关的",
+     "aliases": [
+      "…的",
+      "…的，与…有关的",
+      "与…有关的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ian",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival_person",
+     "meaning_zh": "…的；…的人",
+     "aliases": [
+      "…的；…人",
+      "…的；…的人",
+      "…的/…的人",
+      "…的人/…的",
+      "…的，…的人",
+      "…的/…人",
+      "…的；…类的"
+     ]
+    },
+    {
+     "sense": "person_agent",
+     "meaning_zh": "…的人；从事…的人",
+     "aliases": [
+      "…的人",
+      "从事…的人"
+     ]
+    },
+    {
+     "sense": "adherent",
+     "meaning_zh": "…的信徒",
+     "aliases": [
+      "…的；…的信徒"
+     ]
+    },
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-iastic",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-iate",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "verb_suffix",
+     "meaning_zh": "动词后缀",
+     "aliases": [
+      "动词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-iation",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀，表行为或过程",
+     "aliases": [
+      "名词后缀，表行为或过程"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-iative",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的/…性",
+     "aliases": [
+      "…的/…性"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-iatry",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "medical_treatment",
+     "meaning_zh": "治疗、医学",
+     "aliases": [
+      "治疗、医学"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ibility",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "ability_noun",
+     "meaning_zh": "可…性",
+     "aliases": [
+      "可…性"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ible",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "capability_adjective",
+     "meaning_zh": "可…的",
+     "aliases": [
+      "可…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ic",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    },
+    {
+     "sense": "person_noun",
+     "meaning_zh": "…的人",
+     "aliases": [
+      "…的、…的人"
+     ]
+    },
+    {
+     "sense": "place_noun",
+     "meaning_zh": "…场所",
+     "aliases": [
+      "…的；…场所"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ical",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的",
+      "…的，与…有关的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-icate",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "causative_verb",
+     "meaning_zh": "使…（动词后缀）",
+     "aliases": [
+      "使…（动词后缀）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ication",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀，表行为/过程",
+     "aliases": [
+      "名词后缀，表行为/过程"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ice",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "noun_state",
+     "meaning_zh": "名词后缀，表状态",
+     "aliases": [
+      "名词后缀",
+      "名词后缀，表状态"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ician",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "从事…的人",
+     "aliases": [
+      "从事…的人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-icity",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "quality_noun",
+     "meaning_zh": "性质",
+     "aliases": [
+      "性质"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-icle",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "diminutive",
+     "meaning_zh": "小…的东西",
+     "aliases": [
+      "小…的东西",
+      "小…的",
+      "小…"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ics",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "field_of_study",
+     "meaning_zh": "…学；学科",
+     "aliases": [
+      "学科",
+      "…学",
+      "学科/活动",
+      "…学，…术",
+      "…学；…术",
+      "学科；活动",
+      "…学，…学科",
+      "…学；…学科",
+      "…学/…术"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-iculous",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "可…的",
+     "aliases": [
+      "可…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-id",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ide",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "chemical_compound",
+     "meaning_zh": "化合物",
+     "aliases": [
+      "化合物",
+      "…类物质"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ie",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "diminutive_nickname",
+     "meaning_zh": "小称/昵称后缀",
+     "aliases": [
+      "表昵称的后缀",
+      "名词后缀，表小或昵称",
+      "小称/昵称后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ied",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ience",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-iency",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "state_quality",
+     "meaning_zh": "性质，状态",
+     "aliases": [
+      "名词后缀，表状态",
+      "性质，状态"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ient",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的",
+      "具有…性质的",
+      "形容词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ier",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "…的人",
+     "aliases": [
+      "…的人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ies",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "plural",
+     "meaning_zh": "复数",
+     "aliases": [
+      "复数",
+      "复数后缀"
+     ]
+    },
+    {
+     "sense": "kind_category",
+     "meaning_zh": "种类",
+     "aliases": [
+      "种类（名词后缀）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ific",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "causing_making",
+     "meaning_zh": "使…的；产生…的",
+     "aliases": [
+      "使…的",
+      "使…化",
+      "产生…的",
+      "做…的",
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ification",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "…化（名词后缀）",
+     "aliases": [
+      "…化",
+      "使…化（名词后缀）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ify",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "causative_verb",
+     "meaning_zh": "使…化；使成为",
+     "aliases": [
+      "使…化",
+      "使…",
+      "使…，使成为"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ile",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "可…的；易…的",
+     "aliases": [
+      "可…的",
+      "…的",
+      "易于…的",
+      "易…的",
+      "可…的/物",
+      "可…的，与…有关的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ility",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "quality_state",
+     "meaning_zh": "…的性质",
+     "aliases": [
+      "…的性质"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-illion",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "large_number",
+     "meaning_zh": "百万（大数后缀）",
+     "aliases": [
+      "百万（大数后缀）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ily",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adverbial",
+     "meaning_zh": "…地",
+     "aliases": [
+      "…地"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-in",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "chemical_substance",
+     "meaning_zh": "化学物质/素",
+     "aliases": [
+      "化学名词后缀",
+      "素（物质）",
+      "物质，素",
+      "蛋白质",
+      "化学元素后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ine",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的；似…的",
+     "aliases": [
+      "…的",
+      "…的，似…的"
+     ]
+    },
+    {
+     "sense": "chemical_substance",
+     "meaning_zh": "化学元素/化合物后缀",
+     "aliases": [
+      "化学元素后缀",
+      "素/化合物",
+      "化学物质后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ing",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "progressive_participle",
+     "meaning_zh": "正在…的（现在分词）",
+     "aliases": [
+      "正在…的",
+      "现在分词后缀",
+      "现在分词",
+      "正在…",
+      "现在分词/动名词",
+      "现在分词/动名词后缀",
+      "进行/动名词",
+      "动名词/现在分词后缀",
+      "…的/正在…",
+      "构成现在分词/介词",
+      "动词现在分词后缀",
+      "进行体/动名词",
+      "动作进行",
+      "动名词/形容词后缀"
+     ]
+    },
+    {
+     "sense": "adjectival",
+     "meaning_zh": "令人…的；具有…性质的",
+     "aliases": [
+      "…的",
+      "令人…的",
+      "形容词后缀",
+      "具有…性质的",
+      "…的/…着"
+     ]
+    },
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀，表动作、行为或结果",
+     "aliases": [
+      "名词后缀",
+      "动作/活动",
+      "名词化后缀",
+      "动名词后缀",
+      "动作/结果",
+      "活动",
+      "动作/过程",
+      "动作/进行",
+      "…的行为",
+      "名词化",
+      "动作或结果",
+      "名词化/进行",
+      "动作或过程",
+      "名词后缀，表示动作或结果",
+      "行为/结果",
+      "动作；活动",
+      "动作/过程/系统",
+      "行为/动名词",
+      "行为或结果",
+      "构成动名词/名词",
+      "活动/运动",
+      "行为或活动",
+      "…业/活动",
+      "名词后缀，表示行为或结果",
+      "…的动作/进行",
+      "名词后缀，表示行为或过程",
+      "…的动作/结果",
+      "动作或事件",
+      "行为/行业",
+      "…的行为/活动",
+      "…的活动/学科",
+      "…的活动",
+      "名词后缀，表示材料或结果",
+      "…的；…行为",
+      "…的；…的动作",
+      "…系统/活动",
+      "行为/活动",
+      "行为",
+      "动作/结果名词",
+      "名词后缀，表行为或结果",
+      "正在…/…的行为",
+      "活动/动名词",
+      "名词后缀，表行为或行业",
+      "…的/…行为",
+      "…的/…声",
+      "…的/…的行为",
+      "动作或结果",
+      "行为或过程",
+      "名词后缀，表示行为或过程"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ings",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀，表事物",
+     "aliases": [
+      "名词后缀，表事物"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ion",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀，表行为、过程或状态",
+     "aliases": [
+      "名词后缀",
+      "名词后缀，表行为或结果",
+      "名词后缀，表状态",
+      "名词后缀，表过程",
+      "名词后缀，表行为或状态",
+      "名词后缀，表示过程",
+      "名词后缀，表示行为或状态",
+      "名词后缀，表状态/结果"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ions",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "plural_noun",
+     "meaning_zh": "复数名词后缀",
+     "aliases": [
+      "复数名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ior",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "comparative",
+     "meaning_zh": "较…的",
+     "aliases": [
+      "较…的"
+     ]
+    },
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "从事…的人",
+     "aliases": [
+      "从事…的人"
+     ]
+    },
+    {
+     "sense": "noun_suffix",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ious",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "充满…的；有…性质的",
+     "aliases": [
+      "充满…的",
+      "有…性质的",
+      "充满…的，有…性质的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-is",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "noun_suffix",
+     "meaning_zh": "名词后缀（表状态）",
+     "aliases": [
+      "名词后缀",
+      "名词后缀，表状态"
+     ]
+    },
+    {
+     "sense": "verb_suffix",
+     "meaning_zh": "使…化",
+     "aliases": [
+      "使…化"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-is-",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "verb_suffix",
+     "meaning_zh": "动词后缀",
+     "aliases": [
+      "动词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-isan",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "…的拥护者",
+     "aliases": [
+      "…的拥护者"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-iscent",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "正在…的",
+     "aliases": [
+      "正在…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ise",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "verb_suffix",
+     "meaning_zh": "使…化（动词后缀）",
+     "aliases": [
+      "使…化",
+      "动词后缀",
+      "使…化（动词后缀）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ish",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "有…性质的；…的",
+     "aliases": [
+      "有…性质的",
+      "…的",
+      "…的；…语",
+      "有…特征的"
+     ]
+    },
+    {
+     "sense": "verb_suffix",
+     "meaning_zh": "使…（动词后缀）",
+     "aliases": [
+      "使…",
+      "动词后缀",
+      "使…（动词后缀）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ism",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "doctrine",
+     "meaning_zh": "主义；学说",
+     "aliases": [
+      "主义",
+      "主义；行为",
+      "主义；体系",
+      "…的性质/现象",
+      "主义/特征",
+      "主义、态度",
+      "主义、制度",
+      "主义，态度",
+      "…主义，…行业",
+      "主义，精神",
+      "主义；行业",
+      "…主义；…病",
+      "状态；主义",
+      "主义，现象",
+      "主义/学说",
+      "主义；学说",
+      "主义，行为",
+      "主义、体系",
+      "系统、学说",
+      "体系，状态",
+      "主义；状态",
+      "主义；态度",
+      "主义，歧视"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ison",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "noun_suffix",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-issim-",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "superlative",
+     "meaning_zh": "最…的（最高级）",
+     "aliases": [
+      "最…的（最高级）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ist",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "从事…的人",
+     "aliases": [
+      "从事…的人",
+      "人",
+      "…者",
+      "…的人"
+     ]
+    },
+    {
+     "sense": "ideology_adherent",
+     "meaning_zh": "…主义者",
+     "aliases": [
+      "…主义者"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-istic",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的",
+      "…的、具有…性质的",
+      "…性质的"
+     ]
+    },
+    {
+     "sense": "ideological",
+     "meaning_zh": "…主义的",
+     "aliases": [
+      "…主义的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-istry",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "discipline",
+     "meaning_zh": "学科",
+     "aliases": [
+      "学科"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-it",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "verb_suffix",
+     "meaning_zh": "动词后缀",
+     "aliases": [
+      "动词后缀"
+     ]
+    },
+    {
+     "sense": "adjective_suffix",
+     "meaning_zh": "形容词后缀",
+     "aliases": [
+      "形容词后缀",
+      "…的"
+     ]
+    },
+    {
+     "sense": "noun_suffix",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-it-",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "connective",
+     "meaning_zh": "连接成分",
+     "aliases": [
+      "连接成分"
+     ]
+    },
+    {
+     "sense": "causative",
+     "meaning_zh": "使…",
+     "aliases": [
+      "使…"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-itarian",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "ideology_adherent",
+     "meaning_zh": "…主义的（人）",
+     "aliases": [
+      "…主义的（人）",
+      "…主义的",
+      "…主义的(人)"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-itation",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀，表动作或状态",
+     "aliases": [
+      "名词后缀，表动作或状态"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-itative",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…性质的",
+     "aliases": [
+      "…性质的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ite",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    },
+    {
+     "sense": "mineral_noun",
+     "meaning_zh": "矿物、岩石",
+     "aliases": [
+      "矿物、岩石",
+      "矿物/岩石",
+      "矿物、爆炸物"
+     ]
+    },
+    {
+     "sense": "product_noun",
+     "meaning_zh": "产物",
+     "aliases": [
+      "产物"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-itim",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "符合…的",
+     "aliases": [
+      "符合…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-itimate",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ition",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀",
+      "名词后缀，表状态或结果",
+      "名词后缀，表行为或结果"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-itis",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "inflammation",
+     "meaning_zh": "炎症",
+     "aliases": [
+      "炎症"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-itive",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "有…性质的",
+     "aliases": [
+      "有…性质的",
+      "…的",
+      "…的（人）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-itor",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "…的人",
+     "aliases": [
+      "人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-itory",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "place_noun",
+     "meaning_zh": "…的场所",
+     "aliases": [
+      "场所"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-itude",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "state_quality",
+     "meaning_zh": "状态、性质",
+     "aliases": [
+      "状态、性质",
+      "状态，程度",
+      "状态",
+      "状态、程度"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-iture",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀，表行为",
+     "aliases": [
+      "名词后缀，表行为",
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ity",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "state_quality",
+     "meaning_zh": "…的性质、状态",
+     "aliases": [
+      "名词后缀，表状态",
+      "名词后缀",
+      "…的性质",
+      "性质、状态",
+      "名词后缀，表性质",
+      "…性",
+      "性质",
+      "…的性质/状态",
+      "状态，性质",
+      "性质/状态",
+      "性质，状态",
+      "…的状态",
+      "性质；状态",
+      "状态、性质",
+      "名词后缀，表性质、状态",
+      "…性，…状态"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ium",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "metallic_element",
+     "meaning_zh": "金属元素",
+     "aliases": [
+      "金属元素"
+     ]
+    },
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ius",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "形容词后缀",
+     "aliases": [
+      "形容词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-iv-",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    },
+    {
+     "sense": "nominalization",
+     "meaning_zh": "形容词/名词化",
+     "aliases": [
+      "形容词/名词化"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ival",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的（形容词/名词后缀）",
+     "aliases": [
+      "…的（形容词/名词后缀）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ive",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "有…性质的",
+     "aliases": [
+      "有…性质的",
+      "…的",
+      "有…倾向的",
+      "…的；有…性质的"
+     ]
+    },
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "…的人",
+     "aliases": [
+      "…的人",
+      "…的/…的人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ivity",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "…性，…状态",
+     "aliases": [
+      "…性，…状态"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ix",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "noun_suffix",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-iz",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "causative_verbalization",
+     "meaning_zh": "使…化",
+     "aliases": [
+      "使…化"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-iz-",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "causative_verbalization",
+     "meaning_zh": "使…化",
+     "aliases": [
+      "使…化"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ization",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization_process",
+     "meaning_zh": "…化（过程）",
+     "aliases": [
+      "化过程",
+      "化",
+      "…化过程",
+      "…化，过程",
+      "…化（名词后缀）",
+      "…化"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ize",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "causative_verbalization",
+     "meaning_zh": "使…化",
+     "aliases": [
+      "使…化"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ized",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "causative_verbalization",
+     "meaning_zh": "使…化",
+     "aliases": [
+      "使…化"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-izer",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "使…的人/物",
+     "aliases": [
+      "使…的东西"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-late",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "verb_forming",
+     "meaning_zh": "带来/提出",
+     "aliases": [
+      "带来/提出"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-le",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "noun_suffix",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    },
+    {
+     "sense": "instrumental_frequentative",
+     "meaning_zh": "工具/反复动作",
+     "aliases": [
+      "工具/反复动作",
+      "反复/表小"
+     ]
+    },
+    {
+     "sense": "adjectival",
+     "meaning_zh": "可…的",
+     "aliases": [
+      "可…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ledge",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "noun_state",
+     "meaning_zh": "名词后缀，表状态",
+     "aliases": [
+      "名词后缀，表状态"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-less",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "negation",
+     "meaning_zh": "无…的",
+     "aliases": [
+      "无…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-let",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "diminutive",
+     "meaning_zh": "小",
+     "aliases": [
+      "小"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ling",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "diminutive_affectionate",
+     "meaning_zh": "指小/爱称后缀",
+     "aliases": [
+      "指小/爱称后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-logical",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "relating_to_study",
+     "meaning_zh": "…学的",
+     "aliases": [
+      "…学的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-logist",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "…学家",
+     "aliases": [
+      "…学家"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-logy",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "field_of_study",
+     "meaning_zh": "学科；…学",
+     "aliases": [
+      "学科",
+      "学科、研究",
+      "…学",
+      "…学，…论",
+      "学说"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ly",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adverbial",
+     "meaning_zh": "…地；以…方式",
+     "aliases": [
+      "…地",
+      "以…方式",
+      "副词后缀",
+      "…地/…的"
+     ]
+    },
+    {
+     "sense": "adjectival",
+     "meaning_zh": "有…性质的；…的",
+     "aliases": [
+      "有…性质的",
+      "…的",
+      "如…的；有…性质的",
+      "具有…性质的"
+     ]
+    },
+    {
+     "sense": "per",
+     "meaning_zh": "每…的/地",
+     "aliases": [
+      "每…的",
+      "每…的/地",
+      "像…的；每…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-lysis",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "decomposition",
+     "meaning_zh": "分解",
+     "aliases": [
+      "分解"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-lyze",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "decomposition",
+     "meaning_zh": "松开；分解",
+     "aliases": [
+      "松开；分解"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-man",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "人",
+     "aliases": [
+      "人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-matic",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "relating_to",
+     "meaning_zh": "与…相关的",
+     "aliases": [
+      "与…相关的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-med",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "past_participle",
+     "meaning_zh": "过去式/过去分词",
+     "aliases": [
+      "过去式/过去分词"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-men",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "plural",
+     "meaning_zh": "复数",
+     "aliases": [
+      "复数"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ment",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀，表行为、结果或状态",
+     "aliases": [
+      "名词后缀",
+      "名词后缀，表行为或结果",
+      "名词后缀，表结果",
+      "名词后缀，表物或结果",
+      "名词后缀，表状态",
+      "名词后缀，表示行为或结果"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-meter",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "measuring_instrument",
+     "meaning_zh": "测量仪器",
+     "aliases": [
+      "测量仪",
+      "测量仪器"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-mony",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀，表结果",
+     "aliases": [
+      "名词后缀，表结果"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-more",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "comparative",
+     "meaning_zh": "更…",
+     "aliases": [
+      "更…"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-most",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "superlative",
+     "meaning_zh": "最…的",
+     "aliases": [
+      "最…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-mycin",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "antibiotic",
+     "meaning_zh": "霉素（抗生素）",
+     "aliases": [
+      "霉素（抗生素）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-n",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "past_participle",
+     "meaning_zh": "过去分词后缀",
+     "aliases": [
+      "过去分词后缀",
+      "过去分词"
+     ]
+    },
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的/…人",
+     "aliases": [
+      "…的/…人",
+      "…的/人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-n-",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "connective",
+     "meaning_zh": "连接成分",
+     "aliases": [
+      "连接成分"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ned",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "past_participle",
+     "meaning_zh": "过去式/过去分词",
+     "aliases": [
+      "过去式/过去分词"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ness",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀，表性质或状态",
+     "aliases": [
+      "性质、状态",
+      "名词后缀，表状态",
+      "名词后缀，表性质",
+      "…的性质",
+      "…的状态",
+      "状态，性质",
+      "性质",
+      "状态、性质",
+      "名词后缀，表性质、状态",
+      "状态",
+      "状态；性质",
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ning",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "progressive",
+     "meaning_zh": "现在分词",
+     "aliases": [
+      "现在分词"
+     ]
+    },
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-nomy",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "discipline",
+     "meaning_zh": "法则、学科",
+     "aliases": [
+      "法则、学科"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-o",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词化后缀",
+     "aliases": [
+      "名词化",
+      "名词化后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-o-",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "connecting_vowel",
+     "meaning_zh": "连接元音",
+     "aliases": [
+      "连接元音"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ocre",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-oid",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "resembling",
+     "meaning_zh": "像…的",
+     "aliases": [
+      "像…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ol",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "diminutive",
+     "meaning_zh": "小",
+     "aliases": [
+      "小"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ole",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "diminutive",
+     "meaning_zh": "小",
+     "aliases": [
+      "小"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ological",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "pertaining_to_study",
+     "meaning_zh": "…学的",
+     "aliases": [
+      "…学的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ology",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "study_of",
+     "meaning_zh": "学科；…学",
+     "aliases": [
+      "学科",
+      "…学",
+      "学科，研究"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-oneous",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "having_quality",
+     "meaning_zh": "有…性质的",
+     "aliases": [
+      "有…性质的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-or",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "…的人/物",
+     "aliases": [
+      "…的人",
+      "人",
+      "者",
+      "做…的人",
+      "…者、…物",
+      "…的装置",
+      "…的物",
+      "表工具或人",
+      "…的人/物",
+      "…者/物",
+      "者/物",
+      "做…的人/物",
+      "…者",
+      "…的人或物"
+     ]
+    },
+    {
+     "sense": "comparative",
+     "meaning_zh": "比较级后缀",
+     "aliases": [
+      "比较级后缀"
+     ]
+    },
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-orial",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-orious",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ory",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的（形容词后缀）",
+     "aliases": [
+      "…的",
+      "有…性质的"
+     ]
+    },
+    {
+     "sense": "place_noun",
+     "meaning_zh": "…的地方（场所名词后缀）",
+     "aliases": [
+      "…的地方"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-os",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "充满…的（形容词后缀）",
+     "aliases": [
+      "充满…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-osis",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "pathological_state",
+     "meaning_zh": "病态、异常状态（病理名词后缀）",
+     "aliases": [
+      "病态、过程",
+      "病态，异常状态",
+      "病态、状态",
+      "病态",
+      "疾病状态"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ot",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "表人（名词后缀）",
+     "aliases": [
+      "表人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-otic",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的（形容词后缀）",
+     "aliases": [
+      "…的（形容词后缀）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ous",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "充满…的、有…性质的（形容词后缀）",
+     "aliases": [
+      "充满…的",
+      "…的",
+      "有…性质的",
+      "充满…的、有…性质的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-p-",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "spelling_rule",
+     "meaning_zh": "双写辅音（拼写规则）",
+     "aliases": [
+      "双写辅音（拼写规则）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ption",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀，表行为",
+     "aliases": [
+      "名词后缀，表行为"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-red",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "past_tense",
+     "meaning_zh": "过去式",
+     "aliases": [
+      "过去式"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ress",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "feminine",
+     "meaning_zh": "女性（名词后缀）",
+     "aliases": [
+      "女性"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-rity",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ry",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "collection",
+     "meaning_zh": "…的集合/总称（名词后缀）",
+     "aliases": [
+      "…的作品/集合",
+      "…系统/集合",
+      "…的总称",
+      "场所/集合"
+     ]
+    },
+    {
+     "sense": "activity_skill",
+     "meaning_zh": "…的技能/行为（名词后缀）",
+     "aliases": [
+      "…的技能/行为",
+      "…的技艺/行业"
+     ]
+    },
+    {
+     "sense": "state_quality",
+     "meaning_zh": "…的状态/性质（名词后缀）",
+     "aliases": [
+      "…的状态/性质"
+     ]
+    },
+    {
+     "sense": "field_of_study",
+     "meaning_zh": "…学，…业（名词后缀）",
+     "aliases": [
+      "…学，…业"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-s",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "plural",
+     "meaning_zh": "复数",
+     "aliases": [
+      "复数",
+      "复数后缀",
+      "复数（但此处单复数同形）"
+     ]
+    },
+    {
+     "sense": "third_person_singular",
+     "meaning_zh": "第三人称单数",
+     "aliases": [
+      "第三人称单数",
+      "复数/第三人称单数",
+      "第三人称单数/复数",
+      "复数/三单",
+      "复数/第三人称"
+     ]
+    },
+    {
+     "sense": "possessive",
+     "meaning_zh": "所有格",
+     "aliases": [
+      "所有格后缀",
+      "所有格",
+      "所有格代词后缀",
+      "属格",
+      "物主代词后缀",
+      "所有格/连接成分"
+     ]
+    },
+    {
+     "sense": "adverbial_genitive",
+     "meaning_zh": "副词性属格",
+     "aliases": [
+      "副词属格",
+      "副词性属格"
+     ]
+    },
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词化",
+     "aliases": [
+      "复数/名词化",
+      "复数/名词后缀"
+     ]
+    },
+    {
+     "sense": "adverbial",
+     "meaning_zh": "副词后缀",
+     "aliases": [
+      "副词后缀",
+      "复数/副词性"
+     ]
+    },
+    {
+     "sense": "academic_discipline",
+     "meaning_zh": "学科名词后缀",
+     "aliases": [
+      "学科名词后缀",
+      "学科"
+     ]
+    },
+    {
+     "sense": "adjectival",
+     "meaning_zh": "形容词后缀",
+     "aliases": [
+      "复数/形容词后缀"
+     ]
+    },
+    {
+     "sense": "connecting_element",
+     "meaning_zh": "连接成分",
+     "aliases": [
+      "连接成分"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-scopy",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "observation_method",
+     "meaning_zh": "观察法",
+     "aliases": [
+      "观察法"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-self",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "reflexive_self",
+     "meaning_zh": "自己",
+     "aliases": [
+      "自己"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ship",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "state_identity",
+     "meaning_zh": "状态；身份",
+     "aliases": [
+      "状态；身份",
+      "身份/状态",
+      "身份、状态",
+      "状态、身份",
+      "身份、地位",
+      "状态；关系",
+      "状态、关系"
+     ]
+    },
+    {
+     "sense": "skill",
+     "meaning_zh": "技能",
+     "aliases": [
+      "技艺；状态",
+      "技能、状态",
+      "技能、身份",
+      "身份/技能"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-sion",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-sis",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "state_condition",
+     "meaning_zh": "状态",
+     "aliases": [
+      "名词后缀，表状态"
+     ]
+    },
+    {
+     "sense": "pathological_state",
+     "meaning_zh": "病态",
+     "aliases": [
+      "病态"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-some",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "causing",
+     "meaning_zh": "引起…的",
+     "aliases": [
+      "引起…的"
+     ]
+    },
+    {
+     "sense": "having_quality",
+     "meaning_zh": "具有…性质的",
+     "aliases": [
+      "具有…性质的"
+     ]
+    },
+    {
+     "sense": "tending",
+     "meaning_zh": "有…倾向的",
+     "aliases": [
+      "有…倾向的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-st",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "从事…的人",
+     "aliases": [
+      "从事…的人",
+      "表施动者"
+     ]
+    },
+    {
+     "sense": "adverbial",
+     "meaning_zh": "副词性后缀",
+     "aliases": [
+      "副词性后缀"
+     ]
+    },
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-stal",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "place_of_standing",
+     "meaning_zh": "站立处",
+     "aliases": [
+      "站立处"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ster",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "从事…的人",
+     "aliases": [
+      "从事…的人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-stood",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "past_participle",
+     "meaning_zh": "过去式/过去分词",
+     "aliases": [
+      "过去式/过去分词"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-stor",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "者",
+     "aliases": [
+      "者"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-t",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "past_participle",
+     "meaning_zh": "过去式/过去分词",
+     "aliases": [
+      "过去式/过去分词",
+      "过去分词后缀",
+      "过去式"
+     ]
+    },
+    {
+     "sense": "noun",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    },
+    {
+     "sense": "adjective",
+     "meaning_zh": "形容词后缀",
+     "aliases": [
+      "形容词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-t-",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "linking_consonant",
+     "meaning_zh": "连接辅音",
+     "aliases": [
+      "连接辅音",
+      "连接音"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-table",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "able",
+     "meaning_zh": "可…的",
+     "aliases": [
+      "可…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-te",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "verb",
+     "meaning_zh": "动词后缀",
+     "aliases": [
+      "动词后缀",
+      "动词/名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-teen",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "teen_number",
+     "meaning_zh": "十几（十加几）",
+     "aliases": [
+      "十几（十加几）",
+      "十（构成13-19）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ten",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "past_participle",
+     "meaning_zh": "过去分词后缀",
+     "aliases": [
+      "过去分词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-th",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀，表状态或结果",
+     "aliases": [
+      "名词后缀，表状态",
+      "名词后缀",
+      "名词后缀，表状态或结果"
+     ]
+    },
+    {
+     "sense": "ordinal",
+     "meaning_zh": "第…",
+     "aliases": [
+      "第…"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ther",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "comparative",
+     "meaning_zh": "比较级后缀",
+     "aliases": [
+      "比较级后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-thest",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "superlative",
+     "meaning_zh": "最…的",
+     "aliases": [
+      "最…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-tic",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的",
+      "与…有关的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-tile",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "able",
+     "meaning_zh": "可…的",
+     "aliases": [
+      "可…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-tion",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-tor",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "…者/物",
+     "aliases": [
+      "…者/物"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ture",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization_result",
+     "meaning_zh": "名词后缀，表结果",
+     "aliases": [
+      "名词后缀，表结果"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ty",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization_quality_state",
+     "meaning_zh": "名词后缀，表性质或状态",
+     "aliases": [
+      "名词后缀，表性质",
+      "名词后缀，表状态",
+      "…的状态/集体",
+      "名词后缀，表性质或状态",
+      "名词后缀",
+      "有…性质的"
+     ]
+    },
+    {
+     "sense": "numeral_ten",
+     "meaning_zh": "十…（基数词后缀）",
+     "aliases": [
+      "十…",
+      "十…（基数词后缀）",
+      "十"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ual",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-uate",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "causative_verb",
+     "meaning_zh": "使…（动词后缀）",
+     "aliases": [
+      "使…（动词后缀）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-uble",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "capability",
+     "meaning_zh": "可…的",
+     "aliases": [
+      "可…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ude",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization_state",
+     "meaning_zh": "名词后缀，表状态",
+     "aliases": [
+      "名词后缀，表状态"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ul-",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "diminutive",
+     "meaning_zh": "小（指小）",
+     "aliases": [
+      "小",
+      "指小或工具"
+     ]
+    },
+    {
+     "sense": "tendency",
+     "meaning_zh": "倾向于…的",
+     "aliases": [
+      "倾向于…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ular",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ulent",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "full_of",
+     "meaning_zh": "充满…的",
+     "aliases": [
+      "充满…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ulous",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "abounding_in",
+     "meaning_zh": "多…的",
+     "aliases": [
+      "多…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ulty",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-um",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    },
+    {
+     "sense": "metallic_element",
+     "meaning_zh": "金属元素",
+     "aliases": [
+      "金属元素"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-un",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "past_participle",
+     "meaning_zh": "过去分词标记",
+     "aliases": [
+      "过去分词标记"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ung",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "past_participle",
+     "meaning_zh": "过去分词后缀",
+     "aliases": [
+      "过去分词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-uous",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "有…性质的",
+     "aliases": [
+      "有…性质的",
+      "多…的",
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ur-",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "verbalization",
+     "meaning_zh": "动词后缀",
+     "aliases": [
+      "动词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ure",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀",
+      "名词后缀，表状态",
+      "名词后缀，表行为或结果",
+      "名词后缀，表状态/结果",
+      "名词后缀，表机构或结果",
+      "名词后缀，表结果",
+      "名词后缀，表动作或结果"
+     ]
+    },
+    {
+     "sense": "nominal_verbal",
+     "meaning_zh": "名词/动词后缀",
+     "aliases": [
+      "名词/动词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-uri",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "形容词后缀",
+     "aliases": [
+      "形容词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-urn",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的（事物）",
+     "aliases": [
+      "…的（事物）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-urnal",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "adjectival",
+     "meaning_zh": "…的",
+     "aliases": [
+      "…的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-us",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "masculine_nominative",
+     "meaning_zh": "阳性主格词尾",
+     "aliases": [
+      "阳性主格词尾"
+     ]
+    },
+    {
+     "sense": "nominalization",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ves",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "plural",
+     "meaning_zh": "复数（-f/-fe变-ves）",
+     "aliases": [
+      "复数（-f/-fe变-ves）",
+      "复数（-f变-v加-es）",
+      "复数后缀（f→v）",
+      "复数后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-ward",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "directional",
+     "meaning_zh": "朝…方向",
+     "aliases": [
+      "朝…方向",
+      "向…方向"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-wise",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "manner",
+     "meaning_zh": "方式",
+     "aliases": [
+      "方式"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-x",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "noun_suffix",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-y",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "noun_suffix",
+     "meaning_zh": "名词后缀",
+     "aliases": [
+      "名词后缀",
+      "名词后缀，表状态",
+      "名词后缀，表行为或结果",
+      "名词后缀，表性质"
+     ]
+    },
+    {
+     "sense": "adjective_suffix",
+     "meaning_zh": "有…性质的",
+     "aliases": [
+      "有…性质的",
+      "多…的",
+      "有…的",
+      "多…的；有…性质的",
+      "充满…的",
+      "像…的",
+      "…的",
+      "有…特征的",
+      "有…倾向的",
+      "充满…的；有…性质的",
+      "如…的",
+      "充满…的、有…性质的",
+      "有…特性的",
+      "多…的；如…的"
+     ]
+    },
+    {
+     "sense": "diminutive",
+     "meaning_zh": "表亲昵或指小",
+     "aliases": [
+      "表亲昵或指小",
+      "表亲昵的小称后缀",
+      "昵称后缀"
+     ]
+    },
+    {
+     "sense": "verb_suffix",
+     "meaning_zh": "动词后缀",
+     "aliases": [
+      "动词后缀"
+     ]
+    },
+    {
+     "sense": "discipline",
+     "meaning_zh": "学科",
+     "aliases": [
+      "学科",
+      "…术、…学",
+      "…学/术",
+      "学科、研究",
+      "…术/…法",
+      "…术/…店",
+      "…术；…学"
+     ]
+    },
+    {
+     "sense": "multiple_of_ten",
+     "meaning_zh": "十的倍数",
+     "aliases": [
+      "十的倍数"
+     ]
+    },
+    {
+     "sense": "collection",
+     "meaning_zh": "…的集合",
+     "aliases": [
+      "…的集合"
+     ]
+    },
+    {
+     "sense": "state",
+     "meaning_zh": "状态",
+     "aliases": [
+      "状态"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-yer",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "从事…的人",
+     "aliases": [
+      "从事…的人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "-yl",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "chemical_group",
+     "meaning_zh": "基团",
+     "aliases": [
+      "基团"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "a-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "on",
+     "meaning_zh": "在…上",
+     "aliases": [
+      "在…上",
+      "在…上/处于…状态",
+      "在…之上/处于…状态",
+      "在…上/到…"
+     ]
+    },
+    {
+     "sense": "in_state",
+     "meaning_zh": "处于…状态",
+     "aliases": [
+      "在…状态",
+      "处于…状态",
+      "在…状态中"
+     ]
+    },
+    {
+     "sense": "negation",
+     "meaning_zh": "不",
+     "aliases": [
+      "不",
+      "无",
+      "无、不"
+     ]
+    },
+    {
+     "sense": "intensive",
+     "meaning_zh": "加强",
+     "aliases": [
+      "加强"
+     ]
+    },
+    {
+     "sense": "in",
+     "meaning_zh": "在…",
+     "aliases": [
+      "在…"
+     ]
+    },
+    {
+     "sense": "up",
+     "meaning_zh": "向上",
+     "aliases": [
+      "向上"
+     ]
+    },
+    {
+     "sense": "causative",
+     "meaning_zh": "使",
+     "aliases": [
+      "使",
+      "使…"
+     ]
+    },
+    {
+     "sense": "away",
+     "meaning_zh": "离开",
+     "aliases": [
+      "离开",
+      "去除，脱离"
+     ]
+    },
+    {
+     "sense": "toward",
+     "meaning_zh": "向，往",
+     "aliases": [
+      "向，往",
+      "向，到",
+      "向",
+      "向，至"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ab-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "away",
+     "meaning_zh": "离开",
+     "aliases": [
+      "离开",
+      "离开，去",
+      "偏离"
+     ]
+    },
+    {
+     "sense": "intensive",
+     "meaning_zh": "加强",
+     "aliases": [
+      "加强"
+     ]
+    },
+    {
+     "sense": "away_intensive",
+     "meaning_zh": "离开；加强",
+     "aliases": [
+      "离开；加强"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "abs-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "away",
+     "meaning_zh": "离开",
+     "aliases": [
+      "离开"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ac-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "toward",
+     "meaning_zh": "向，朝",
+     "aliases": [
+      "向，朝",
+      "朝向",
+      "向、朝（ad- 的同化形式）",
+      "向、朝"
+     ]
+    },
+    {
+     "sense": "intensive",
+     "meaning_zh": "加强",
+     "aliases": [
+      "加强"
+     ]
+    },
+    {
+     "sense": "toward_intensive",
+     "meaning_zh": "向，加强",
+     "aliases": [
+      "向，加强",
+      "朝向；加强",
+      "朝向，加强"
+     ]
+    },
+    {
+     "sense": "causative",
+     "meaning_zh": "使",
+     "aliases": [
+      "使",
+      "向、使"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "acro-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "high",
+     "meaning_zh": "高处的",
+     "aliases": [
+      "高处的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ad-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "toward",
+     "meaning_zh": "向，朝",
+     "aliases": [
+      "向，朝",
+      "向、朝",
+      "朝向",
+      "向，趋近",
+      "向，往",
+      "向，至",
+      "向",
+      "向，靠近",
+      "向，到",
+      "朝向；对着"
+     ]
+    },
+    {
+     "sense": "intensive",
+     "meaning_zh": "加强",
+     "aliases": [
+      "向，加强"
+     ]
+    },
+    {
+     "sense": "opposite",
+     "meaning_zh": "相反",
+     "aliases": [
+      "朝向；相反"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "aero-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "air",
+     "meaning_zh": "空气",
+     "aliases": [
+      "空气"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "af-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "directional",
+     "meaning_zh": "向，朝",
+     "aliases": [
+      "向，朝",
+      "朝向"
+     ]
+    },
+    {
+     "sense": "intensive",
+     "meaning_zh": "加强",
+     "aliases": [
+      "加强"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ag-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "directional",
+     "meaning_zh": "向，朝",
+     "aliases": [
+      "向，朝",
+      "向、往"
+     ]
+    },
+    {
+     "sense": "intensive",
+     "meaning_zh": "加强",
+     "aliases": [
+      "加强",
+      "向，加强"
+     ]
+    },
+    {
+     "sense": "action",
+     "meaning_zh": "做，行动",
+     "aliases": [
+      "做，行动"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "al-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "directional",
+     "meaning_zh": "向，往",
+     "aliases": [
+      "向，往",
+      "向，朝",
+      "向，到"
+     ]
+    },
+    {
+     "sense": "intensive",
+     "meaning_zh": "加强",
+     "aliases": [
+      "加强"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "amb-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "around",
+     "meaning_zh": "周围",
+     "aliases": [
+      "周围"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ambi-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "both",
+     "meaning_zh": "两，双",
+     "aliases": [
+      "两边",
+      "两、双",
+      "两"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "an-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "negation",
+     "meaning_zh": "无，不",
+     "aliases": [
+      "无",
+      "不"
+     ]
+    },
+    {
+     "sense": "directional",
+     "meaning_zh": "向，朝",
+     "aliases": [
+      "向，朝"
+     ]
+    },
+    {
+     "sense": "upward",
+     "meaning_zh": "向上",
+     "aliases": [
+      "向上"
+     ]
+    },
+    {
+     "sense": "intensive",
+     "meaning_zh": "加强",
+     "aliases": [
+      "向，加强"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ana-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "upward",
+     "meaning_zh": "向上",
+     "aliases": [
+      "向上/彻底",
+      "向上；彻底",
+      "按照；向上"
+     ]
+    },
+    {
+     "sense": "apart",
+     "meaning_zh": "分开",
+     "aliases": [
+      "向上；分开"
+     ]
+    },
+    {
+     "sense": "according",
+     "meaning_zh": "按照",
+     "aliases": [
+      "按照"
+     ]
+    },
+    {
+     "sense": "opposite",
+     "meaning_zh": "反，错误",
+     "aliases": [
+      "反，错误"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ant-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "against",
+     "meaning_zh": "对抗",
+     "aliases": [
+      "对抗"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ante-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "before",
+     "meaning_zh": "前",
+     "aliases": [
+      "前"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "anti-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "against",
+     "meaning_zh": "反对，抗",
+     "aliases": [
+      "抗，反对",
+      "反，抗",
+      "反对",
+      "抗，防",
+      "反对；抗",
+      "相反"
+     ]
+    },
+    {
+     "sense": "before",
+     "meaning_zh": "先，前",
+     "aliases": [
+      "先、前"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ap-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "directional",
+     "meaning_zh": "向，朝",
+     "aliases": [
+      "朝向",
+      "向，朝",
+      "向，往",
+      "向，趋近"
+     ]
+    },
+    {
+     "sense": "intensive",
+     "meaning_zh": "加强",
+     "aliases": [
+      "加强",
+      "向，加强"
+     ]
+    },
+    {
+     "sense": "additional",
+     "meaning_zh": "附加",
+     "aliases": [
+      "向，附加"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "apo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "away",
+     "meaning_zh": "离开",
+     "aliases": [
+      "离开"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ar-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "directional",
+     "meaning_zh": "向，朝",
+     "aliases": [
+      "向，加强",
+      "向，朝",
+      "向，朝（ad- 的变体）"
+     ]
+    },
+    {
+     "sense": "intensive",
+     "meaning_zh": "加强",
+     "aliases": [
+      "加强"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "archaeo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "ancient",
+     "meaning_zh": "古代的",
+     "aliases": [
+      "古代的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "archi-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "chief",
+     "meaning_zh": "主要的",
+     "aliases": [
+      "主要的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "aryl-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "aryl",
+     "meaning_zh": "芳基",
+     "aliases": [
+      "芳基"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "as-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "directional",
+     "meaning_zh": "向，朝",
+     "aliases": [
+      "向，朝",
+      "向，加强",
+      "向，到",
+      "使，向",
+      "向，往"
+     ]
+    },
+    {
+     "sense": "causative",
+     "meaning_zh": "使",
+     "aliases": [
+      "使"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "astro-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "star",
+     "meaning_zh": "星",
+     "aliases": [
+      "星",
+      "星、天体",
+      "星星"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "at-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "directional",
+     "meaning_zh": "向，朝",
+     "aliases": [
+      "朝向",
+      "向，朝",
+      "向"
+     ]
+    },
+    {
+     "sense": "intensive",
+     "meaning_zh": "加强",
+     "aliases": [
+      "加强"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "atmo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "vapor",
+     "meaning_zh": "蒸汽",
+     "aliases": [
+      "蒸汽"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "aureo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "golden",
+     "meaning_zh": "金色的",
+     "aliases": [
+      "金色的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "auto-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "self",
+     "meaning_zh": "自己",
+     "aliases": [
+      "自己",
+      "自",
+      "自身"
+     ]
+    },
+    {
+     "sense": "automatic",
+     "meaning_zh": "自动",
+     "aliases": [
+      "自动"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "baro-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "pressure",
+     "meaning_zh": "重量；压力",
+     "aliases": [
+      "重量；压力"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "be-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "intensive",
+     "meaning_zh": "加强",
+     "aliases": [
+      "加强",
+      "加强语气",
+      "使…，加强语气",
+      "在…周围/加强",
+      "周围、彻底"
+     ]
+    },
+    {
+     "sense": "causative",
+     "meaning_zh": "使…",
+     "aliases": [
+      "使…"
+     ]
+    },
+    {
+     "sense": "locational",
+     "meaning_zh": "在…旁边",
+     "aliases": [
+      "在…旁边",
+      "在…旁/附近",
+      "在…周围/附近",
+      "在…",
+      "在…旁"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "bene-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "good",
+     "meaning_zh": "好",
+     "aliases": [
+      "好"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "bi-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "two",
+     "meaning_zh": "二",
+     "aliases": [
+      "二"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "bio-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "life",
+     "meaning_zh": "生命",
+     "aliases": [
+      "生命"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "by",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "beside",
+     "meaning_zh": "旁边",
+     "aliases": [
+      "旁边"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "by-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "secondary",
+     "meaning_zh": "次要的",
+     "aliases": [
+      "次要的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "cata-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "downward",
+     "meaning_zh": "向下",
+     "aliases": [
+      "向下"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "cathodo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "cathode",
+     "meaning_zh": "阴极",
+     "aliases": [
+      "阴极"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "centi-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "hundred",
+     "meaning_zh": "百",
+     "aliases": [
+      "百"
+     ]
+    },
+    {
+     "sense": "hundredth",
+     "meaning_zh": "百分之一",
+     "aliases": [
+      "百分之一"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "centri-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "center",
+     "meaning_zh": "中心",
+     "aliases": [
+      "中心"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "chemo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "chemical",
+     "meaning_zh": "化学的",
+     "aliases": [
+      "化学的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "choreo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "dance",
+     "meaning_zh": "舞蹈",
+     "aliases": [
+      "舞蹈"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "circum-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "around",
+     "meaning_zh": "周围",
+     "aliases": [
+      "周围",
+      "环绕"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "co-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "together",
+     "meaning_zh": "共同；一起",
+     "aliases": [
+      "共同",
+      "共同、加强"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "col-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "together",
+     "meaning_zh": "共同；一起",
+     "aliases": [
+      "共同",
+      "一起",
+      "共同，一起"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "com-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "together",
+     "meaning_zh": "共同；一起",
+     "aliases": [
+      "共同",
+      "共同，一起",
+      "一起",
+      "共同，加强",
+      "共同；加强",
+      "共同、加强",
+      "共同/加强"
+     ]
+    },
+    {
+     "sense": "intensive",
+     "meaning_zh": "完全；加强",
+     "aliases": [
+      "完全",
+      "加强",
+      "一起，完全"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "con-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "together",
+     "meaning_zh": "共同；一起",
+     "aliases": [
+      "共同",
+      "共同，一起",
+      "共同、一起",
+      "一起",
+      "一起、共同",
+      "共同/一起",
+      "共同；一起"
+     ]
+    },
+    {
+     "sense": "intensive",
+     "meaning_zh": "完全；加强",
+     "aliases": [
+      "完全",
+      "共同、加强",
+      "共同/加强",
+      "一起、加强",
+      "共同，加强",
+      "共同、完全",
+      "加强",
+      "共同；加强",
+      "共同/完全",
+      "共同，完全",
+      "共同；完全"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "contra-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "opposition",
+     "meaning_zh": "相反；反对",
+     "aliases": [
+      "相反",
+      "反对"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "contro-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "opposition",
+     "meaning_zh": "相反；反对",
+     "aliases": [
+      "相反"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "cor-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "together",
+     "meaning_zh": "共同；一起",
+     "aliases": [
+      "共同"
+     ]
+    },
+    {
+     "sense": "intensive",
+     "meaning_zh": "完全；加强",
+     "aliases": [
+      "完全",
+      "加强"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "cyber-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "cybernetic",
+     "meaning_zh": "网络的",
+     "aliases": [
+      "网络的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "cyto-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "cell",
+     "meaning_zh": "细胞",
+     "aliases": [
+      "细胞"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "de-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "down",
+     "meaning_zh": "向下",
+     "aliases": [
+      "向下",
+      "向下/完全",
+      "向下，彻底",
+      "向下，完全",
+      "向下；离开",
+      "离开，向下",
+      "向下；彻底",
+      "向下/彻底",
+      "向下，减少",
+      "向下/离开",
+      "向下/从…引出",
+      "离开/向下",
+      "向下/相反",
+      "向下；出",
+      "从…向下",
+      "完全、向下",
+      "向下；完全",
+      "向下；缺少"
+     ]
+    },
+    {
+     "sense": "away",
+     "meaning_zh": "离开；去除",
+     "aliases": [
+      "离开",
+      "去除",
+      "离开；向下",
+      "去除，相反",
+      "去掉",
+      "离开、去除",
+      "去除；相反",
+      "去除，向下",
+      "去掉；离开",
+      "去除，否定"
+     ]
+    },
+    {
+     "sense": "intensive",
+     "meaning_zh": "完全；加强",
+     "aliases": [
+      "完全",
+      "完全地",
+      "彻底地",
+      "完全地；向下",
+      "完全、加强",
+      "向下/加强",
+      "加强",
+      "离开；加强",
+      "完全；离开"
+     ]
+    },
+    {
+     "sense": "out",
+     "meaning_zh": "出；展开",
+     "aliases": [
+      "展开",
+      "出"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "dec-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "ten",
+     "meaning_zh": "十",
+     "aliases": [
+      "十"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "demo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "people",
+     "meaning_zh": "人民",
+     "aliases": [
+      "人民"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "di-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "separation",
+     "meaning_zh": "分开；离开",
+     "aliases": [
+      "分开",
+      "离开",
+      "远离"
+     ]
+    },
+    {
+     "sense": "two",
+     "meaning_zh": "二",
+     "aliases": [
+      "二"
+     ]
+    },
+    {
+     "sense": "intensive",
+     "meaning_zh": "完全",
+     "aliases": [
+      "完全"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "dia-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "through",
+     "meaning_zh": "穿过；横跨",
+     "aliases": [
+      "穿过",
+      "穿过；彻底",
+      "穿过；横跨"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "dif-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "separation",
+     "meaning_zh": "分开",
+     "aliases": [
+      "分开"
+     ]
+    },
+    {
+     "sense": "negation",
+     "meaning_zh": "不",
+     "aliases": [
+      "不"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "dino-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "fearful",
+     "meaning_zh": "恐怖的",
+     "aliases": [
+      "恐怖的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "dis-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "separation",
+     "meaning_zh": "分开；分离",
+     "aliases": [
+      "分开",
+      "分开；离开",
+      "分开，散开",
+      "分离",
+      "离开",
+      "完全；离",
+      "完全；分开",
+      "相反，离开"
+     ]
+    },
+    {
+     "sense": "negation",
+     "meaning_zh": "不；否定",
+     "aliases": [
+      "不",
+      "不，相反",
+      "否定，相反",
+      "不、相反",
+      "不，非",
+      "不/相反",
+      "不；相反",
+      "不，取消",
+      "分开；否定"
+     ]
+    },
+    {
+     "sense": "reversal_removal",
+     "meaning_zh": "去除；相反",
+     "aliases": [
+      "去除，相反",
+      "去除",
+      "相反",
+      "相反，去除",
+      "不，去除",
+      "去除；揭开",
+      "不，剥夺",
+      "相反、去除"
+     ]
+    },
+    {
+     "sense": "intensive",
+     "meaning_zh": "完全地",
+     "aliases": [
+      "完全地"
+     ]
+    },
+    {
+     "sense": "pejorative",
+     "meaning_zh": "坏；恶",
+     "aliases": [
+      "坏，恶"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "down",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "downward",
+     "meaning_zh": "向下",
+     "aliases": [
+      "向下"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "du-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "two",
+     "meaning_zh": "二",
+     "aliases": [
+      "二"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "dys-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "bad",
+     "meaning_zh": "坏的；不良的",
+     "aliases": [
+      "坏",
+      "坏的，不良的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "e-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "outward",
+     "meaning_zh": "向外；出",
+     "aliases": [
+      "出",
+      "向外",
+      "向外、向上"
+     ]
+    },
+    {
+     "sense": "electronic",
+     "meaning_zh": "电子的",
+     "aliases": [
+      "电子的"
+     ]
+    },
+    {
+     "sense": "causative",
+     "meaning_zh": "使…",
+     "aliases": [
+      "使…"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ec-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "outward",
+     "meaning_zh": "出",
+     "aliases": [
+      "出"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "eco-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "ecology",
+     "meaning_zh": "生态；环境",
+     "aliases": [
+      "生态/环境",
+      "家、环境",
+      "生态"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ef-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "outward",
+     "meaning_zh": "向外；出",
+     "aliases": [
+      "向外",
+      "出",
+      "出，向外"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "electro-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "electricity",
+     "meaning_zh": "电",
+     "aliases": [
+      "电"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "em-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "causative_put_into",
+     "meaning_zh": "使…进入",
+     "aliases": [
+      "使…进入",
+      "使…",
+      "进入"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "en-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "causative_put_into",
+     "meaning_zh": "使…进入",
+     "aliases": [
+      "使…",
+      "使进入",
+      "使",
+      "使…进入",
+      "进入"
+     ]
+    },
+    {
+     "sense": "in_inside",
+     "meaning_zh": "在内；在…之中",
+     "aliases": [
+      "在内",
+      "在…之中"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "enter-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "between",
+     "meaning_zh": "在…之间",
+     "aliases": [
+      "在…之间"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "epi-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "upon_on",
+     "meaning_zh": "在…之上",
+     "aliases": [
+      "在…之上"
+     ]
+    },
+    {
+     "sense": "additional",
+     "meaning_zh": "附加",
+     "aliases": [
+      "附加"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "equi-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "equal",
+     "meaning_zh": "相等",
+     "aliases": [
+      "相等"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "er",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "agent_noun",
+     "meaning_zh": "人（施动者）",
+     "aliases": [
+      "人"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "eu-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "good_well",
+     "meaning_zh": "好",
+     "aliases": [
+      "好"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ev-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "out_outward",
+     "meaning_zh": "出；向外",
+     "aliases": [
+      "出；向外"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ex-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "out_outward",
+     "meaning_zh": "出；向外",
+     "aliases": [
+      "出",
+      "向外",
+      "出，向外",
+      "出、向外",
+      "出；向外"
+     ]
+    },
+    {
+     "sense": "intensive_completely",
+     "meaning_zh": "完全；极度（加强）",
+     "aliases": [
+      "向外，极度",
+      "加强",
+      "完全"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "exo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "outside_external",
+     "meaning_zh": "外部",
+     "aliases": [
+      "外部"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "extra-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "beyond_outside",
+     "meaning_zh": "超出；向外",
+     "aliases": [
+      "超出",
+      "向外",
+      "外"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "for",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "for_purpose_duration",
+     "meaning_zh": "为了；持续",
+     "aliases": [
+      "为了；持续"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "for-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "intensive_completely",
+     "meaning_zh": "完全，彻底",
+     "aliases": [
+      "完全，彻底"
+     ]
+    },
+    {
+     "sense": "negation",
+     "meaning_zh": "否定",
+     "aliases": [
+      "否定"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "fore-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "before_in_time",
+     "meaning_zh": "预先；前",
+     "aliases": [
+      "预先",
+      "前",
+      "前，预先"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ful",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "full",
+     "meaning_zh": "满",
+     "aliases": [
+      "满"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ful-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "full",
+     "meaning_zh": "满",
+     "aliases": [
+      "满"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "geo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "earth_land",
+     "meaning_zh": "地球；土地",
+     "aliases": [
+      "地球",
+      "土地"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "glotto-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "language",
+     "meaning_zh": "语言",
+     "aliases": [
+      "语言"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "grand-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "one_generation_removed",
+     "meaning_zh": "隔一代的；祖辈的",
+     "aliases": [
+      "隔一代的",
+      "祖辈的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "hemi-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "half",
+     "meaning_zh": "半",
+     "aliases": [
+      "半"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "hemo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "blood",
+     "meaning_zh": "血",
+     "aliases": [
+      "血"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "hetero-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "different",
+     "meaning_zh": "不同的",
+     "aliases": [
+      "不同的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "hexa-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "six",
+     "meaning_zh": "六",
+     "aliases": [
+      "六"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "histo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "tissue",
+     "meaning_zh": "组织",
+     "aliases": [
+      "组织"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "holo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "whole",
+     "meaning_zh": "全部",
+     "aliases": [
+      "全部"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "homo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "same",
+     "meaning_zh": "相同",
+     "aliases": [
+      "相同"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "hydro-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "water",
+     "meaning_zh": "水",
+     "aliases": [
+      "水"
+     ]
+    },
+    {
+     "sense": "hydrogen",
+     "meaning_zh": "氢",
+     "aliases": [
+      "氢"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "hyper-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "excess",
+     "meaning_zh": "超过",
+     "aliases": [
+      "超过"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "hypo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "under",
+     "meaning_zh": "在…下",
+     "aliases": [
+      "下",
+      "在…下",
+      "在…下面"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ig-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "negation",
+     "meaning_zh": "不",
+     "aliases": [
+      "不"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "il-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "negation",
+     "meaning_zh": "不",
+     "aliases": [
+      "不"
+     ]
+    },
+    {
+     "sense": "causative",
+     "meaning_zh": "使…",
+     "aliases": [
+      "使…",
+      "使…（加强）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "im-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "negation",
+     "meaning_zh": "不",
+     "aliases": [
+      "不"
+     ]
+    },
+    {
+     "sense": "inward",
+     "meaning_zh": "向内/进入",
+     "aliases": [
+      "向内",
+      "进入",
+      "进入；使",
+      "在内",
+      "进入；在…上",
+      "在…之上",
+      "使…",
+      "进入；在内",
+      "进入；在…之中",
+      "进入，在内",
+      "进入、向内",
+      "进入；使…",
+      "进入，使",
+      "在…上；进入",
+      "在…上"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "in",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "inward",
+     "meaning_zh": "向内/进入",
+     "aliases": [
+      "在内",
+      "进入",
+      "在…之中",
+      "向内"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "in-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "negation",
+     "meaning_zh": "不",
+     "aliases": [
+      "不",
+      "反、不"
+     ]
+    },
+    {
+     "sense": "inward",
+     "meaning_zh": "向内/进入",
+     "aliases": [
+      "进入",
+      "向内",
+      "在…上",
+      "在内",
+      "使…",
+      "进入；使",
+      "使",
+      "进入；使…",
+      "进入；在…上",
+      "向，朝",
+      "进入；在内",
+      "向内；加强",
+      "向内/加强",
+      "朝向",
+      "在…内",
+      "向",
+      "向…上",
+      "在…之后",
+      "内/入",
+      "向…；加强",
+      "向内；使…",
+      "进入；加强",
+      "向；朝",
+      "向…；在…上",
+      "进入，使"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "infra-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "under",
+     "meaning_zh": "在…下",
+     "aliases": [
+      "在…下"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "intel-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "between",
+     "meaning_zh": "在…之间",
+     "aliases": [
+      "在…之间"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "inter-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "between",
+     "meaning_zh": "在…之间",
+     "aliases": [
+      "在…之间",
+      "之间"
+     ]
+    },
+    {
+     "sense": "reciprocal",
+     "meaning_zh": "相互",
+     "aliases": [
+      "相互",
+      "在…之间；相互"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "intra-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "within",
+     "meaning_zh": "在内",
+     "aliases": [
+      "在内"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "intro-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "inward",
+     "meaning_zh": "向内",
+     "aliases": [
+      "向内"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "iodo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "iodine",
+     "meaning_zh": "碘",
+     "aliases": [
+      "碘"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "iono-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "ion",
+     "meaning_zh": "离子",
+     "aliases": [
+      "离子"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ir-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "negation",
+     "meaning_zh": "不",
+     "aliases": [
+      "不"
+     ]
+    },
+    {
+     "sense": "causative",
+     "meaning_zh": "使…",
+     "aliases": [
+      "使…",
+      "向内/使…"
+     ]
+    },
+    {
+     "sense": "inward",
+     "meaning_zh": "进入",
+     "aliases": [
+      "进入"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "iso-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "equal",
+     "meaning_zh": "相等",
+     "aliases": [
+      "相等"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "juxta-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "beside",
+     "meaning_zh": "旁边",
+     "aliases": [
+      "旁边"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "less",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "comparative_less",
+     "meaning_zh": "较少",
+     "aliases": [
+      "较少"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "lexico-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "lexical",
+     "meaning_zh": "词汇",
+     "aliases": [
+      "词汇"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "mal-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "bad",
+     "meaning_zh": "坏，不良",
+     "aliases": [
+      "坏，不良",
+      "坏；不良",
+      "坏"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "mega-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "million",
+     "meaning_zh": "百万",
+     "aliases": [
+      "百万"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "melo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "music",
+     "meaning_zh": "音乐",
+     "aliases": [
+      "音乐"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "meta-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "beyond",
+     "meaning_zh": "超越",
+     "aliases": [
+      "超越"
+     ]
+    },
+    {
+     "sense": "change",
+     "meaning_zh": "变化",
+     "aliases": [
+      "变化"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "micro-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "small",
+     "meaning_zh": "微小",
+     "aliases": [
+      "微小"
+     ]
+    },
+    {
+     "sense": "one_millionth",
+     "meaning_zh": "百万分之一",
+     "aliases": [
+      "百万分之一"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "mid-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "middle",
+     "meaning_zh": "中部",
+     "aliases": [
+      "中部"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "milli-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "one_thousandth",
+     "meaning_zh": "千分之一",
+     "aliases": [
+      "千分之一"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "mis-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "wrongly",
+     "meaning_zh": "错误地",
+     "aliases": [
+      "错误地",
+      "坏，错误",
+      "坏；错误",
+      "坏",
+      "错误地；坏地",
+      "不；错误地"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "mon-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "single",
+     "meaning_zh": "单一",
+     "aliases": [
+      "单一"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "mono-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "single",
+     "meaning_zh": "单一",
+     "aliases": [
+      "单一"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "morpho-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "form",
+     "meaning_zh": "形态",
+     "aliases": [
+      "形态"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "multi-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "many",
+     "meaning_zh": "多",
+     "aliases": [
+      "多"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "myo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "muscle",
+     "meaning_zh": "肌肉",
+     "aliases": [
+      "肌肉"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "n-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "negation",
+     "meaning_zh": "不",
+     "aliases": [
+      "不"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "neg-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "negation",
+     "meaning_zh": "不",
+     "aliases": [
+      "不"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "neo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "new",
+     "meaning_zh": "新的",
+     "aliases": [
+      "新的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "neutro-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "neutral",
+     "meaning_zh": "中性",
+     "aliases": [
+      "中性"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "nitro-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "nitro",
+     "meaning_zh": "硝石",
+     "aliases": [
+      "硝石"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "non-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "negation",
+     "meaning_zh": "非，不",
+     "aliases": [
+      "不",
+      "非，不",
+      "不、非",
+      "非",
+      "不，非"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "not",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "negation",
+     "meaning_zh": "不",
+     "aliases": [
+      "不"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ob-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "toward",
+     "meaning_zh": "朝向",
+     "aliases": [
+      "朝向；对着",
+      "朝向",
+      "朝向，加强",
+      "朝向；在前",
+      "向，朝",
+      "朝向；对面",
+      "向；对着",
+      "朝向；在…前面",
+      "朝向；反对",
+      "向，在前"
+     ]
+    },
+    {
+     "sense": "opposition",
+     "meaning_zh": "反对",
+     "aliases": [
+      "朝向，反对",
+      "反对",
+      "反对；在前",
+      "反对，阻碍",
+      "反对；阻碍"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "oc-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "toward",
+     "meaning_zh": "朝向",
+     "aliases": [
+      "朝向，加强",
+      "朝向；加强",
+      "向，朝"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "oct-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "eight",
+     "meaning_zh": "八",
+     "aliases": [
+      "八"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "octa-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "eight",
+     "meaning_zh": "八",
+     "aliases": [
+      "八"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "of-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "opposition",
+     "meaning_zh": "反对",
+     "aliases": [
+      "对着；反对"
+     ]
+    },
+    {
+     "sense": "intensive",
+     "meaning_zh": "加强",
+     "aliases": [
+      "加强"
+     ]
+    },
+    {
+     "sense": "toward",
+     "meaning_zh": "朝向",
+     "aliases": [
+      "向，朝"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "off",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "away",
+     "meaning_zh": "离开",
+     "aliases": [
+      "离开"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "oleo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "oil",
+     "meaning_zh": "油",
+     "aliases": [
+      "油"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "on",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "on_surface",
+     "meaning_zh": "在…上",
+     "aliases": [
+      "在…上/接通",
+      "在…上"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "on-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "forward",
+     "meaning_zh": "向前",
+     "aliases": [
+      "向前"
+     ]
+    },
+    {
+     "sense": "on_surface",
+     "meaning_zh": "在…上",
+     "aliases": [
+      "在…上"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "onto-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "existence",
+     "meaning_zh": "存在",
+     "aliases": [
+      "存在"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "op-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "opposition",
+     "meaning_zh": "相反",
+     "aliases": [
+      "相反"
+     ]
+    },
+    {
+     "sense": "toward_intensive",
+     "meaning_zh": "朝向；加强",
+     "aliases": [
+      "朝向；加强"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ortho-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "correct",
+     "meaning_zh": "正确",
+     "aliases": [
+      "正确",
+      "正、直",
+      "正",
+      "正确的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "out",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "outward",
+     "meaning_zh": "向外",
+     "aliases": [
+      "向外",
+      "外",
+      "出、向外",
+      "在外",
+      "外、远"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "out-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "exceed",
+     "meaning_zh": "超过",
+     "aliases": [
+      "超过",
+      "超出"
+     ]
+    },
+    {
+     "sense": "outward",
+     "meaning_zh": "向外",
+     "aliases": [
+      "外",
+      "向外"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "over",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "over_across",
+     "meaning_zh": "越过",
+     "aliases": [
+      "越过",
+      "在…之上",
+      "越过；覆盖",
+      "越过；贯穿"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "over-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "excessive",
+     "meaning_zh": "过度",
+     "aliases": [
+      "过度",
+      "超过",
+      "过度/翻转",
+      "过度/彻底",
+      "在上方；过度",
+      "过度；在上",
+      "过度；翻转"
+     ]
+    },
+    {
+     "sense": "above",
+     "meaning_zh": "在上方",
+     "aliases": [
+      "在上方"
+     ]
+    },
+    {
+     "sense": "over_across",
+     "meaning_zh": "越过",
+     "aliases": [
+      "越过；无意中"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "oxy-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "oxygen",
+     "meaning_zh": "含氧的",
+     "aliases": [
+      "含氧的"
+     ]
+    },
+    {
+     "sense": "acid",
+     "meaning_zh": "酸",
+     "aliases": [
+      "酸"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "pan-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "all_everything",
+     "meaning_zh": "全、泛",
+     "aliases": [
+      "全、泛"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "para-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "beside_alongside",
+     "meaning_zh": "旁边；旁",
+     "aliases": [
+      "旁边",
+      "旁边；偏离",
+      "超越；旁",
+      "旁；类似",
+      "旁，副",
+      "相反；旁边"
+     ]
+    },
+    {
+     "sense": "defense_protection",
+     "meaning_zh": "防，挡；保护",
+     "aliases": [
+      "防，挡",
+      "保护，防"
+     ]
+    },
+    {
+     "sense": "auxiliary",
+     "meaning_zh": "辅助",
+     "aliases": [
+      "辅助"
+     ]
+    },
+    {
+     "sense": "parachute",
+     "meaning_zh": "降落伞",
+     "aliases": [
+      "降落伞"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "penta-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "five",
+     "meaning_zh": "五",
+     "aliases": [
+      "五"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "per-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "completely_thoroughly",
+     "meaning_zh": "完全，彻底",
+     "aliases": [
+      "完全",
+      "彻底",
+      "完全，彻底"
+     ]
+    },
+    {
+     "sense": "through_throughout",
+     "meaning_zh": "贯穿，始终",
+     "aliases": [
+      "贯穿",
+      "穿过",
+      "贯穿、始终",
+      "通过",
+      "贯穿；始终",
+      "始终",
+      "贯穿，始终",
+      "贯穿/始终"
+     ]
+    },
+    {
+     "sense": "each",
+     "meaning_zh": "每",
+     "aliases": [
+      "每"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "peri-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "around",
+     "meaning_zh": "周围",
+     "aliases": [
+      "周围"
+     ]
+    },
+    {
+     "sense": "attempt",
+     "meaning_zh": "尝试",
+     "aliases": [
+      "尝试"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "phil-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "love",
+     "meaning_zh": "爱",
+     "aliases": [
+      "爱"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "philo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "love",
+     "meaning_zh": "爱",
+     "aliases": [
+      "爱"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "photo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "light",
+     "meaning_zh": "光",
+     "aliases": [
+      "光"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "physio-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "nature_body",
+     "meaning_zh": "自然、身体",
+     "aliases": [
+      "自然、身体"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "piezo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "pressure",
+     "meaning_zh": "压",
+     "aliases": [
+      "压"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "poly-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "many",
+     "meaning_zh": "多",
+     "aliases": [
+      "多"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "pos-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "place_put",
+     "meaning_zh": "放置",
+     "aliases": [
+      "放置"
+     ]
+    },
+    {
+     "sense": "toward_upon",
+     "meaning_zh": "朝向；在…之上",
+     "aliases": [
+      "朝向；在…之上"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "post-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "after",
+     "meaning_zh": "在…之后",
+     "aliases": [
+      "在…之后",
+      "在后"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "pre-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "before",
+     "meaning_zh": "在…之前",
+     "aliases": [
+      "在前",
+      "前，预先",
+      "前",
+      "在…之前",
+      "先、前",
+      "前，先",
+      "之前",
+      "先，前"
+     ]
+    },
+    {
+     "sense": "beforehand",
+     "meaning_zh": "预先",
+     "aliases": [
+      "预先",
+      "预先，提前"
+     ]
+    },
+    {
+     "sense": "forward",
+     "meaning_zh": "向前",
+     "aliases": [
+      "向前"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "pro-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "forward",
+     "meaning_zh": "向前",
+     "aliases": [
+      "向前",
+      "在前",
+      "向前；为了",
+      "向前；公开",
+      "向前、公开",
+      "向前/出",
+      "向前/向下",
+      "向前/为了"
+     ]
+    },
+    {
+     "sense": "publicly",
+     "meaning_zh": "公开地",
+     "aliases": [
+      "公开地"
+     ]
+    },
+    {
+     "sense": "beforehand",
+     "meaning_zh": "预先",
+     "aliases": [
+      "预先"
+     ]
+    },
+    {
+     "sense": "instead",
+     "meaning_zh": "代替",
+     "aliases": [
+      "代替"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "proli-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "offspring",
+     "meaning_zh": "后代",
+     "aliases": [
+      "后代"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "proto-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "primitive",
+     "meaning_zh": "原始/早期",
+     "aliases": [
+      "原始/早期"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "pseudo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "false",
+     "meaning_zh": "假的",
+     "aliases": [
+      "假的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "psycho-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "mind",
+     "meaning_zh": "心理",
+     "aliases": [
+      "心理",
+      "心理、灵魂",
+      "精神/心理"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "pyro-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "fire",
+     "meaning_zh": "火",
+     "aliases": [
+      "火"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "radio-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "radiation",
+     "meaning_zh": "辐射",
+     "aliases": [
+      "辐射",
+      "放射性的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "re-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "again",
+     "meaning_zh": "再",
+     "aliases": [
+      "再",
+      "再，重新",
+      "再；回",
+      "再/回",
+      "再，反复",
+      "再，回",
+      "再；加强",
+      "再；重新",
+      "再/加强",
+      "再、反复",
+      "回、再",
+      "再次",
+      "回/再",
+      "再/向后",
+      "再；又",
+      "回；再",
+      "再、重复",
+      "再、重新",
+      "再，又",
+      "再次；反",
+      "再、加强",
+      "反；再"
+     ]
+    },
+    {
+     "sense": "back",
+     "meaning_zh": "回",
+     "aliases": [
+      "回，再",
+      "回，向后",
+      "向后",
+      "回",
+      "向后；再",
+      "向后、回",
+      "向后，相反",
+      "反；回"
+     ]
+    },
+    {
+     "sense": "opposite",
+     "meaning_zh": "相反",
+     "aliases": [
+      "相反"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "retro-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "backward",
+     "meaning_zh": "向后",
+     "aliases": [
+      "向后"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "s",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "plural",
+     "meaning_zh": "复数",
+     "aliases": [
+      "复数/连接"
+     ]
+    },
+    {
+     "sense": "possessive",
+     "meaning_zh": "所有格",
+     "aliases": [
+      "所有格",
+      "所有格/连接成分"
+     ]
+    },
+    {
+     "sense": "connective",
+     "meaning_zh": "连接成分",
+     "aliases": [
+      "连接成分"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "s-",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "plural_or_possessive",
+     "meaning_zh": "表复数或所有格",
+     "aliases": [
+      "表复数或所有格"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "satis-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "sufficient",
+     "meaning_zh": "足够",
+     "aliases": [
+      "足够"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "schizo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "split",
+     "meaning_zh": "分裂",
+     "aliases": [
+      "分裂"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "se-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "apart",
+     "meaning_zh": "分开",
+     "aliases": [
+      "分开",
+      "离开"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "self-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "self",
+     "meaning_zh": "自我",
+     "aliases": [
+      "自我"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "semi-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "half",
+     "meaning_zh": "半",
+     "aliases": [
+      "半"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "socio-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "social",
+     "meaning_zh": "社会的",
+     "aliases": [
+      "社会的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "spectro-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "spectrum",
+     "meaning_zh": "光谱",
+     "aliases": [
+      "光谱"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "step-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "step_relation",
+     "meaning_zh": "继（因再婚而关联）",
+     "aliases": [
+      "继（因再婚而关联）",
+      "继（因再婚而）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "stereo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "solid_or_three_dimensional",
+     "meaning_zh": "坚固的；立体的",
+     "aliases": [
+      "坚固的；立体的",
+      "立体"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "su-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "under",
+     "meaning_zh": "在下面",
+     "aliases": [
+      "在下面"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "sub-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "under",
+     "meaning_zh": "在下面",
+     "aliases": [
+      "在下面",
+      "在…之下",
+      "下",
+      "在…下",
+      "在下",
+      "在…下面",
+      "下面",
+      "靠近、下面",
+      "下、下面"
+     ]
+    },
+    {
+     "sense": "secondary_or_subordinate",
+     "meaning_zh": "次；亚；分支",
+     "aliases": [
+      "下；次",
+      "下；子",
+      "下，亚",
+      "下；次级",
+      "下；再",
+      "次、亚",
+      "下；分支"
+     ]
+    },
+    {
+     "sense": "after_or_subsequent",
+     "meaning_zh": "在…之后",
+     "aliases": [
+      "在…之后"
+     ]
+    },
+    {
+     "sense": "instead_of",
+     "meaning_zh": "代替",
+     "aliases": [
+      "下面/代替"
+     ]
+    },
+    {
+     "sense": "up_to",
+     "meaning_zh": "向上到",
+     "aliases": [
+      "向上到"
+     ]
+    },
+    {
+     "sense": "following",
+     "meaning_zh": "接着",
+     "aliases": [
+      "下面/接着"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "suc-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "under",
+     "meaning_zh": "在下面",
+     "aliases": [
+      "在下面",
+      "在下面；接着"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "suf-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "under",
+     "meaning_zh": "在下面",
+     "aliases": [
+      "在下面",
+      "在下；足够",
+      "在下；向上"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "sug-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "under",
+     "meaning_zh": "在下面",
+     "aliases": [
+      "在下面",
+      "下"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "sui-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "self",
+     "meaning_zh": "自己",
+     "aliases": [
+      "自己"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "sup-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "under",
+     "meaning_zh": "在下面",
+     "aliases": [
+      "在下面",
+      "从下",
+      "在下面/从下面"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "super",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "super",
+     "meaning_zh": "超级",
+     "aliases": [
+      "超级"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "super-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "above",
+     "meaning_zh": "在上",
+     "aliases": [
+      "在上"
+     ]
+    },
+    {
+     "sense": "beyond",
+     "meaning_zh": "超过",
+     "aliases": [
+      "超过"
+     ]
+    },
+    {
+     "sense": "super",
+     "meaning_zh": "超级",
+     "aliases": [
+      "超级"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "sur-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "above",
+     "meaning_zh": "在上",
+     "aliases": [
+      "在上",
+      "在上；超过",
+      "在上/超过",
+      "在上，超过"
+     ]
+    },
+    {
+     "sense": "beyond",
+     "meaning_zh": "超过",
+     "aliases": [
+      "超过"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "sus-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "under",
+     "meaning_zh": "在下面",
+     "aliases": [
+      "在下面"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "sym-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "together",
+     "meaning_zh": "共同",
+     "aliases": [
+      "共同",
+      "一起"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "syn-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "together",
+     "meaning_zh": "共同",
+     "aliases": [
+      "一起",
+      "共同"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "tele-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "far",
+     "meaning_zh": "远",
+     "aliases": [
+      "远"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "terior",
+   "type": "suffix",
+   "senses": [
+    {
+     "sense": "comparative",
+     "meaning_zh": "比较级后缀",
+     "aliases": [
+      "比较级后缀"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "tetra-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "four",
+     "meaning_zh": "四",
+     "aliases": [
+      "四"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "theo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "god",
+     "meaning_zh": "神",
+     "aliases": [
+      "神"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "thermo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "heat",
+     "meaning_zh": "热",
+     "aliases": [
+      "热"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "thio-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "sulfur",
+     "meaning_zh": "硫",
+     "aliases": [
+      "硫"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "thyro-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "thyroid",
+     "meaning_zh": "甲状腺",
+     "aliases": [
+      "甲状腺"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "to",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "direction_to",
+     "meaning_zh": "向、到",
+     "aliases": [
+      "向、到",
+      "到，至",
+      "此（古英语介词）"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "topo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "place",
+     "meaning_zh": "地方",
+     "aliases": [
+      "地方"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "tra-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "across",
+     "meaning_zh": "横过；跨越",
+     "aliases": [
+      "跨越",
+      "横过",
+      "横过；转移"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "trans-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "across",
+     "meaning_zh": "横过；穿过；越过",
+     "aliases": [
+      "横过；转移",
+      "穿过",
+      "越过",
+      "跨越",
+      "穿过；转移",
+      "超越",
+      "越过；转变",
+      "转移",
+      "越过；转移",
+      "转变",
+      "横过",
+      "横过；越过",
+      "跨越；转变",
+      "越过、穿过"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "tres-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "across",
+     "meaning_zh": "越过",
+     "aliases": [
+      "越过"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "tri-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "three",
+     "meaning_zh": "三",
+     "aliases": [
+      "三"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "twi-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "two",
+     "meaning_zh": "二",
+     "aliases": [
+      "二"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "typo-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "type_printing",
+     "meaning_zh": "类型；印刷",
+     "aliases": [
+      "类型；印刷"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ultra-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "beyond_excess",
+     "meaning_zh": "超；超出",
+     "aliases": [
+      "超",
+      "超出"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "un-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "negation",
+     "meaning_zh": "不",
+     "aliases": [
+      "不"
+     ]
+    },
+    {
+     "sense": "reversal",
+     "meaning_zh": "相反动作；取消；解除",
+     "aliases": [
+      "相反动作",
+      "相反，取消",
+      "相反动作；去除",
+      "解开",
+      "相反动作；解除"
+     ]
+    },
+    {
+     "sense": "one",
+     "meaning_zh": "一",
+     "aliases": [
+      "一"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "under",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "below",
+     "meaning_zh": "在…下面",
+     "aliases": [
+      "在…下面"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "under-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "insufficient",
+     "meaning_zh": "不足；低于",
+     "aliases": [
+      "不足",
+      "低于"
+     ]
+    },
+    {
+     "sense": "below",
+     "meaning_zh": "在下",
+     "aliases": [
+      "在下"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "uni-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "one_single",
+     "meaning_zh": "一；单一",
+     "aliases": [
+      "一",
+      "单一"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "up",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "upward",
+     "meaning_zh": "向上",
+     "aliases": [
+      "向上",
+      "向上；保持"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "up-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "upward",
+     "meaning_zh": "向上",
+     "aliases": [
+      "向上"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "ver-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "true",
+     "meaning_zh": "真实",
+     "aliases": [
+      "真实"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "vis-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "deputy",
+     "meaning_zh": "副的",
+     "aliases": [
+      "副的"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "with-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "away_back",
+     "meaning_zh": "向后；离开；相反",
+     "aliases": [
+      "向后；离开",
+      "向后、离开",
+      "向后；相反"
+     ]
+    }
+   ]
+  },
+  {
+   "form": "yester-",
+   "type": "prefix",
+   "senses": [
+    {
+     "sense": "time_yesterday",
+     "meaning_zh": "昨日的",
+     "aliases": [
+      "昨日的"
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<!-- 配色说明：本页保留当时（三选一框架下）的配色值，「格」强调色为 #00C08B。
+     现行值见 design-system-spec-2026-09-25.md §2.1：
+       --accent: #00A87A（实心填充）/ --accent-bright: #00C08B（细线、描边） -->
+
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CoEvo 视觉方向探索 · 痕迹</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/literata@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5/index.css">
+<style>
+/* ── 本地 IPA 子集字体（含完整 32 个音标字符，含 ˈ 重音 · ː 长音 · θ）──
+   为什么不直接用 @fontsource：它的 latin / latin-ext 分包不含全套 IPA
+   （Charis SIL 仅 22/32），用它会让音标静默回退到系统字体，
+   造成「看起来没差别」的假象 —— 而那正是要判断的东西。 */
+@font-face{font-family:'Charis SIL IPA';src:url('fonts/charis-sil.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/charissil/CharisSIL-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Gentium Book Plus IPA';src:url('fonts/gentium-book-plus.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/gentiumbookplus/GentiumBookPlus-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Andika IPA';src:url('fonts/andika.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/andika/Andika-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Noto Serif IPA';src:url('fonts/noto-serif.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notoserif/NotoSerif%5Bwdth,wght%5D.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Noto Sans IPA';src:url('fonts/noto-sans.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosans/NotoSans%5Bwdth,wght%5D.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+
+:root{
+  --page:#f5f5f3; --page-ink:#1a1a18; --page-ink2:#6b6b64; --page-line:#e2e2dd;
+  --serif:'Literata',Georgia,serif;
+  --ipa:'Charis SIL IPA',Georgia,serif;
+  --sans:'Inter',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--page);color:var(--page-ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;padding:0 0 80px}
+
+.wrap{max-width:1400px;margin:0 auto;padding:0 32px}
+
+header.top{padding:56px 0 36px;border-bottom:1px solid var(--page-line)}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--page-ink2);margin-bottom:14px}
+h1{font-size:38px;font-weight:500;letter-spacing:-.02em;line-height:1.15;margin-bottom:16px}
+.lede{font-size:16px;line-height:1.7;color:var(--page-ink2);max-width:760px}
+.lede strong{color:var(--page-ink);font-weight:500}
+
+.concept{margin:44px 0 8px;display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.ccard{background:#fff;border:1px solid var(--page-line);border-radius:14px;padding:22px 24px}
+.ccard .st{font-size:12px;font-weight:500;letter-spacing:.06em;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.demo-line{font-family:var(--serif);font-size:19px;line-height:1.85;color:#24211C}
+.ccard p{font-size:13px;line-height:1.65;color:var(--page-ink2);margin-top:14px}
+.ccard .num{font-family:var(--mono);font-size:11px;color:#9a9a92}
+
+.trace-n{background:rgba(180,67,44,.15);border-radius:3px;padding:1px 3px}
+.trace-m{background:rgba(180,67,44,.075);border-radius:3px;padding:1px 3px}
+.trace-d{background:rgba(180,67,44,.026);border-radius:3px;padding:1px 3px}
+
+.sect{margin-top:72px}
+.sect-head{display:flex;align-items:flex-end;gap:20px;padding-bottom:20px;border-bottom:1px solid var(--page-line);margin-bottom:28px}
+.sect-letter{font-size:13px;font-family:var(--mono);color:var(--page-ink2);border:1px solid var(--page-line);border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sect-title{font-size:24px;font-weight:500;letter-spacing:-.01em}
+.sect-sub{font-size:14px;color:var(--page-ink2);margin-top:5px;line-height:1.6}
+.sect-meta{margin-left:auto;text-align:right;flex-shrink:0}
+.swatches{display:flex;gap:6px;justify-content:flex-end;margin-bottom:8px}
+.sw{width:26px;height:26px;border-radius:6px;border:1px solid rgba(0,0,0,.08)}
+.sect-meta span{font-size:12px;color:var(--page-ink2);font-family:var(--mono)}
+
+.rail{display:flex;gap:26px;overflow-x:auto;padding:4px 4px 22px;scrollbar-width:thin}
+.slot{flex-shrink:0}
+.slot-cap{font-size:12px;color:var(--page-ink2);margin-bottom:10px;letter-spacing:.04em}
+
+.phone{width:390px;height:780px;border-radius:38px;overflow:hidden;position:relative;display:flex;flex-direction:column;font-family:var(--sans);
+  box-shadow:0 1px 2px rgba(0,0,0,.06),0 12px 32px -8px rgba(0,0,0,.14)}
+.statusbar{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:13px;font-weight:500;flex-shrink:0;position:relative;z-index:5}
+.sb-right{display:flex;align-items:center;gap:5px}
+.batt{width:20px;height:10px;border:1.2px solid currentColor;border-radius:2.5px;position:relative;opacity:.85}
+.batt::after{content:'';position:absolute;right:-3px;top:2.5px;width:1.5px;height:4px;background:currentColor;border-radius:0 1px 1px 0}
+.batt i{position:absolute;left:1.2px;top:1.2px;bottom:1.2px;width:11px;background:currentColor;border-radius:1px}
+.sig{display:flex;align-items:flex-end;gap:1.5px;height:10px}
+.sig i{width:2.5px;background:currentColor;border-radius:1px}
+
+/* ============ 方向 A · 墨 ============ */
+.d-a .phone{background:#FAF8F4;color:#24211C}
+.d-a .statusbar{color:#24211C}
+.d-a .feed-hd{padding:4px 24px 16px;display:flex;align-items:baseline;justify-content:space-between}
+.d-a .feed-hd h2{font-family:var(--serif);font-size:23px;font-weight:500;letter-spacing:-.01em}
+.d-a .feed-hd .date{font-size:12px;color:#8C8378}
+.d-a .cards{padding:0 16px;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.d-a .fcard{background:#fff;border:1px solid #EFE9DE;border-radius:16px;padding:20px 20px 18px}
+.d-a .fcat{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#A8806C;margin-bottom:9px}
+.d-a .fcard h3{font-family:var(--serif);font-size:20px;font-weight:500;line-height:1.28;letter-spacing:-.01em;margin-bottom:10px}
+.d-a .fex{font-family:var(--serif);font-size:14px;line-height:1.72;color:#6E6659}
+.d-a .fmeta{margin-top:15px;padding-top:13px;border-top:1px solid #F2EDE4;display:flex;gap:16px;font-size:12px;color:#8C8378}
+.d-a .newdot{color:#B4432C;font-weight:500}
+
+.d-a .reader{padding:0 26px;flex:1;overflow:hidden}
+.d-a .r-hd{padding:6px 0 20px}
+.d-a .r-hd .src{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#A8806C;margin-bottom:8px}
+.d-a .r-hd h3{font-family:var(--serif);font-size:22px;font-weight:500;line-height:1.3;letter-spacing:-.01em}
+.d-a .body{font-family:var(--serif);font-size:17px;line-height:1.82;color:#2A261F;letter-spacing:.002em}
+.d-a .body p+p{margin-top:18px}
+.d-a .tk-n{background:rgba(180,67,44,.145);border-radius:3px;padding:1px 3px;margin:0 -1px}
+.d-a .tk-m{background:rgba(180,67,44,.072);border-radius:3px;padding:1px 3px;margin:0 -1px}
+.d-a .tk-d{background:rgba(180,67,44,.025);border-radius:3px;padding:1px 3px;margin:0 -1px}
+
+.d-a .sheet{margin:auto 12px 12px;background:#fff;border-radius:20px;padding:24px 22px 20px;border:1px solid #EFE9DE}
+.d-a .sh-top{display:flex;align-items:flex-start;justify-content:space-between}
+.d-a .sh-word{font-family:var(--serif);font-size:27px;font-weight:500;letter-spacing:-.01em}
+.d-a .sh-ipa{font-family:var(--ipa);font-size:15px;color:#8C8378;margin-top:5px}
+.d-a .sh-pos{font-size:11px;color:#A8806C;border:1px solid #E4D9CB;border-radius:5px;padding:2px 7px;font-family:var(--mono)}
+.d-a .sh-def{font-size:16px;margin-top:16px;color:#24211C}
+.d-a .sh-ex{font-family:var(--serif);font-size:14.5px;line-height:1.7;color:#6E6659;margin-top:9px;padding-left:12px;border-left:2px solid #EDE5D8}
+.d-a .sh-col{margin-top:16px;padding-top:14px;border-top:1px solid #F2EDE4}
+.d-a .sh-col .lb{font-size:11px;color:#A8806C;letter-spacing:.08em;margin-bottom:8px}
+.d-a .chips{display:flex;gap:7px;flex-wrap:wrap}
+.d-a .chip{font-family:var(--serif);font-size:13px;background:#F7F3EB;border-radius:6px;padding:4px 9px;color:#5C5449}
+.d-a .sh-act{margin-top:18px;display:flex;align-items:center;justify-content:space-between}
+.d-a .sh-saved{font-size:12.5px;color:#8C8378}
+.d-a .sh-saved b{color:#B4432C;font-weight:500}
+.d-a .play{width:38px;height:38px;border-radius:50%;background:#B4432C;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px}
+
+/* ============ 方向 B · 格 ============ */
+.d-b .phone{background:#fff;color:#0A0A0A}
+.d-b .statusbar{color:#0A0A0A}
+.d-b .feed-hd{padding:4px 24px 18px;display:flex;align-items:baseline;justify-content:space-between}
+.d-b .feed-hd h2{font-size:22px;font-weight:500;letter-spacing:-.02em}
+.d-b .feed-hd .date{font-family:var(--mono);font-size:11px;color:#8A8A8A}
+.d-b .cards{padding:0 16px;display:flex;flex-direction:column;gap:0;overflow:hidden}
+.d-b .fcard{background:#fff;border-top:1px solid #E8E8E8;padding:22px 8px 20px;position:relative}
+.d-b .fcard:first-child{border-top:none;padding-top:4px}
+.d-b .fcat{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#0A0A0A;margin-bottom:11px;display:flex;align-items:center;gap:8px}
+.d-b .fcat::before{content:'';width:18px;height:2px;background:#00C08B;display:inline-block}
+.d-b .fcard h3{font-family:var(--serif);font-size:20px;font-weight:500;line-height:1.3;letter-spacing:-.015em;margin-bottom:10px}
+.d-b .fex{font-family:var(--serif);font-size:14px;line-height:1.7;color:#5A5A5A}
+.d-b .fmeta{margin-top:16px;display:flex;gap:0;font-family:var(--mono);font-size:11px;color:#8A8A8A}
+.d-b .fmeta span{padding-right:14px;margin-right:14px;border-right:1px solid #E8E8E8}
+.d-b .fmeta span:last-child{border-right:none}
+.d-b .newdot{color:#0A0A0A;font-weight:500;border-bottom:2px solid #00C08B}
+
+.d-b .reader{padding:0 24px;flex:1;overflow:hidden}
+.d-b .r-hd{padding:8px 0 18px;border-bottom:1px solid #EDEDED;margin-bottom:20px}
+.d-b .r-hd .src{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#00A87A;margin-bottom:9px}
+.d-b .r-hd h3{font-family:var(--serif);font-size:21px;font-weight:500;line-height:1.32;letter-spacing:-.015em}
+.d-b .body{font-family:var(--serif);font-size:16.5px;line-height:1.74;color:#141414;letter-spacing:.003em}
+.d-b .body p+p{margin-top:16px}
+.d-b .tk-n{border-bottom:2.5px solid #00C08B;padding-bottom:1px}
+.d-b .tk-m{border-bottom:1.5px solid rgba(0,192,139,.42);padding-bottom:1px}
+.d-b .tk-d{border-bottom:1px dashed rgba(10,10,10,.16);padding-bottom:1px}
+
+.d-b .sheet{margin:auto 12px 12px;background:#fff;border:1.5px solid #0A0A0A;border-radius:4px;padding:22px 20px 18px}
+.d-b .sh-top{display:flex;align-items:flex-start;justify-content:space-between}
+.d-b .sh-word{font-family:var(--serif);font-size:26px;font-weight:500;letter-spacing:-.015em}
+.d-b .sh-ipa{font-family:var(--mono);font-size:14px;color:#5A5A5A;margin-top:6px}
+.d-b .sh-pos{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;background:#00C08B;color:#04231A;padding:3px 8px;border-radius:2px;font-weight:500}
+.d-b .sh-def{font-size:16px;margin-top:18px;color:#0A0A0A;font-weight:500}
+.d-b .sh-ex{font-family:var(--serif);font-size:14.5px;line-height:1.7;color:#5A5A5A;margin-top:8px}
+.d-b .sh-ex::before{content:'→ ';font-family:var(--mono);color:#00C08B}
+.d-b .sh-col{margin-top:18px;padding-top:14px;border-top:1px solid #EDEDED}
+.d-b .sh-col .lb{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:#8A8A8A;margin-bottom:9px}
+.d-b .chips{display:flex;gap:6px;flex-wrap:wrap}
+.d-b .chip{font-family:var(--serif);font-size:13px;border:1px solid #E0E0E0;border-radius:3px;padding:4px 9px;color:#2A2A2A}
+.d-b .sh-act{margin-top:20px;display:flex;align-items:center;justify-content:space-between}
+.d-b .sh-saved{font-family:var(--mono);font-size:11.5px;color:#5A5A5A;letter-spacing:.02em}
+.d-b .sh-saved b{color:#00A87A;font-weight:500}
+.d-b .play{width:36px;height:36px;border-radius:2px;background:#0A0A0A;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px}
+
+/* ============ 方向 C · 夜 ============ */
+.d-c .phone{background:#14161C;color:#E9E7E2}
+.d-c .statusbar{color:#E9E7E2}
+.d-c .feed-hd{padding:4px 24px 18px;display:flex;align-items:baseline;justify-content:space-between}
+.d-c .feed-hd h2{font-family:var(--serif);font-size:23px;font-weight:500;letter-spacing:-.01em}
+.d-c .feed-hd .date{font-size:12px;color:#7C8290}
+.d-c .cards{padding:0 16px;display:flex;flex-direction:column;gap:14px;overflow:hidden}
+.d-c .fcard{background:#1C1F27;border-radius:18px;padding:22px 20px 18px}
+.d-c .fcat{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#FF8A45;margin-bottom:10px}
+.d-c .fcard h3{font-family:var(--serif);font-size:20px;font-weight:500;line-height:1.3;letter-spacing:-.01em;margin-bottom:11px}
+.d-c .fex{font-family:var(--serif);font-size:14px;line-height:1.72;color:#9AA0AE}
+.d-c .fmeta{margin-top:16px;padding-top:14px;border-top:1px solid #262A34;display:flex;gap:16px;font-size:12px;color:#7C8290}
+.d-c .newdot{color:#FFD9B8;font-weight:500}
+
+.d-c .reader{padding:0 24px;flex:1;overflow:hidden}
+.d-c .r-hd{padding:6px 0 22px}
+.d-c .r-hd .src{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#FF8A45;margin-bottom:9px}
+.d-c .r-hd h3{font-family:var(--serif);font-size:22px;font-weight:500;line-height:1.3;letter-spacing:-.01em}
+.d-c .body{font-family:var(--serif);font-size:17px;line-height:1.84;color:#C9C7C2;letter-spacing:.004em}
+.d-c .body p+p{margin-top:18px}
+.d-c .tk-n{color:#FFD9B8;text-shadow:0 0 16px rgba(255,138,69,.5)}
+.d-c .tk-m{color:#DEDCD7}
+.d-c .tk-d{color:#8E939F}
+
+.d-c .sheet{margin:auto 12px 12px;background:#1C1F27;border-radius:20px;padding:24px 22px 20px;border:1px solid #262A34}
+.d-c .sh-top{display:flex;align-items:flex-start;justify-content:space-between}
+.d-c .sh-word{font-family:var(--serif);font-size:27px;font-weight:500;letter-spacing:-.01em;color:#F2F0EB}
+.d-c .sh-ipa{font-family:var(--ipa);font-size:15px;color:#8E939F;margin-top:5px}
+.d-c .sh-pos{font-size:11px;color:#FF8A45;border:1px solid rgba(255,138,69,.35);border-radius:5px;padding:2px 7px;font-family:var(--mono)}
+.d-c .sh-def{font-size:16px;margin-top:16px;color:#E9E7E2}
+.d-c .sh-ex{font-family:var(--serif);font-size:14.5px;line-height:1.7;color:#9AA0AE;margin-top:9px;padding-left:12px;border-left:2px solid #2E3340}
+.d-c .sh-col{margin-top:16px;padding-top:14px;border-top:1px solid #262A34}
+.d-c .sh-col .lb{font-size:11px;color:#7C8290;letter-spacing:.08em;margin-bottom:8px}
+.d-c .chips{display:flex;gap:7px;flex-wrap:wrap}
+.d-c .chip{font-family:var(--serif);font-size:13px;background:#22262F;border-radius:6px;padding:4px 9px;color:#B4B9C6}
+.d-c .sh-act{margin-top:18px;display:flex;align-items:center;justify-content:space-between}
+.d-c .sh-saved{font-size:12.5px;color:#7C8290}
+.d-c .sh-saved b{color:#6EE7B7;font-weight:500}
+.d-c .play{width:38px;height:38px;border-radius:50%;background:#FF8A45;color:#1A1005;display:flex;align-items:center;justify-content:center;font-size:15px}
+
+/* 共用：底部 tab */
+.tabbar{margin-top:auto;display:flex;border-top:1px solid;padding:11px 0 24px;flex-shrink:0}
+.d-a .tabbar{border-color:#EFE9DE;background:#FAF8F4}
+.d-b .tabbar{border-color:#E8E8E8;background:#fff}
+.d-c .tabbar{border-color:#242833;background:#14161C}
+.tabbar .tb{flex:1;text-align:center;font-size:10.5px;letter-spacing:.02em}
+.d-a .tabbar .tb{color:#A39A8C}.d-a .tabbar .tb.on{color:#B4432C;font-weight:500}
+.d-b .tabbar .tb{color:#9A9A9A}.d-b .tabbar .tb.on{color:#0A0A0A;font-weight:500}
+.d-c .tabbar .tb{color:#6B7180}.d-c .tabbar .tb.on{color:#FF8A45;font-weight:500}
+.tabbar .glyph{width:17px;height:17px;margin:0 auto 5px;border-radius:4px;border:1.5px solid currentColor;opacity:.75}
+.tabbar .tb.on .glyph{opacity:1;background:currentColor}
+
+.watermark{position:absolute;bottom:12px;right:16px;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;opacity:.3;z-index:6}
+.dim{position:absolute;inset:0;background:rgba(0,0,0,.16);z-index:4}
+.d-c .dim{background:rgba(0,0,0,.42)}
+
+.foot{margin-top:64px;padding-top:32px;border-top:1px solid var(--page-line);font-size:13.5px;line-height:1.8;color:var(--page-ink2)}
+.foot b{color:var(--page-ink);font-weight:500}
+.foot ul{margin:12px 0 0 18px}
+.foot li{margin-bottom:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="eyebrow">CoEvo · 英语学习 App · 视觉方向探索</div>
+  <h1>痕迹：把「记住」变成看得见的东西</h1>
+  <div style="background:#fff3e6;border-left:4px solid #d97706;border-radius:0 10px 10px 0;padding:14px 18px;margin:0 0 22px;font-size:13.5px;line-height:1.7;color:#7c4a03;max-width:900px">
+    <b>⚠️ 本页结论已被同日后续决策修正。</b>白哥指出「这三种不能用风格管理来切换吗？我觉得三种风格应该都需要」—— 正确。
+    本文档把墨/格/夜并列成「三选一」是框架错误，<b>修正后：三档全做、作为主题族、用户可切换</b>（默认「墨 + 跟随系统」），且<b>痕迹语法跟着主题走</b>。<br>
+    另：「粘土是质感语言而非配色语言」，与主题是叠加关系。<br>
+    <b>请以新原型为准 →</b> <code style="font-family:monospace;background:#fde9c8;padding:1px 5px;border-radius:3px">visual-theme-system-2026-09-25.html</code>
+  </div>
+  <p class="lede">功能简单意味着没有功能护城河，视觉必须成为产品本身。但阅读场景要求克制——克制不等于平淡，它需要一条<strong>别人做不出来的视觉主线</strong>。<br><br>我找到的这条主线是：<strong>查词的痕迹</strong>。用户读文章 → 划词 → 这个词被记住 → 复习让它从陌生变成「我的」。这个过程可以在页面上留下痕迹，而痕迹会随熟练度<strong>逐渐淡去</strong>。学习的终点，是痕迹的消失。</p>
+
+  <div class="concept">
+    <div class="ccard">
+      <div class="st"><span class="dot" style="background:#B4432C;opacity:1"></span>刚查过 · 陌生</div>
+      <div class="demo-line">the plants grow in a special <span class="trace-n">liquid</span></div>
+      <p>痕迹最明显。这个词你还不认识，需要被看见。</p>
+    </div>
+    <div class="ccard">
+      <div class="st"><span class="dot" style="background:#B4432C;opacity:.45"></span>复习中 · 半熟</div>
+      <div class="demo-line">the plants grow in a special <span class="trace-m">liquid</span></div>
+      <p>复习几轮后，痕迹变淡。你开始有印象了。</p>
+    </div>
+    <div class="ccard">
+      <div class="st"><span class="dot" style="background:#B4432C;opacity:.16"></span>已掌握 · 我的词</div>
+      <div class="demo-line">the plants grow in a special <span class="trace-d">liquid</span></div>
+      <p>几乎不可见。真正的掌握，是它变回普通文字。</p>
+    </div>
+  </div>
+</header>
+
+<main id="dirs"></main>
+
+<div class="foot">
+  <b>三个方向的差异在哪</b>
+  <ul>
+    <li><b>墨</b>——暖纸底 + 朱砂印记。痕迹用「底色浸染」表达，最接近真实书本上的铅笔划线。气质安静、有书卷气。</li>
+    <li><b>格</b>——纯白 + Swiss 网格 + 等宽音标。痕迹用「下划线」表达，像校对稿的批注。气质精密、工具感、理性。</li>
+    <li><b>夜</b>——深墨底 + 暖橙。痕迹用「光」表达（熟练度 = 亮度）。气质沉浸、夜间友好、像音乐 App。</li>
+  </ul>
+  <p style="margin-top:18px">三者的差异不在配色，而在<b>痕迹的语法</b>——同一个概念用三种完全不同的视觉语言表达。这决定的不只是好看，而是用户感受到的<b>产品性格</b>。</p>
+</div>
+
+</div>
+
+<script>
+const FEED = (d) => `
+  <div class="statusbar"><span>9:41</span><span class="sb-right"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+  <div class="feed-hd"><h2>今日精选</h2><span class="date">9 月 25 日</span></div>
+  <div class="cards">
+    <div class="fcard">
+      <div class="fcat">Science · 4 min</div>
+      <h3>A New Way to Grow Food in Cities</h3>
+      <div class="fex">In the middle of Singapore, a tall glass building produces more than 800 tons of vegetables every year. It has no soil, no sunlight, and almost no water.</div>
+      <div class="fmeta"><span><span class="newdot">6</span> 个生词</span><span>未读</span></div>
+    </div>
+    <div class="fcard">
+      <div class="fcat">Culture · 6 min</div>
+      <h3>Why We Sing Together</h3>
+      <div class="fex">Every human culture has music, and almost every one of them sings in groups. Researchers think this is not a coincidence.</div>
+      <div class="fmeta"><span><span class="newdot">3</span> 个生词</span><span>未读</span></div>
+    </div>
+  </div>
+  <div class="tabbar"><div class="tb on"><div class="glyph"></div>阅读</div><div class="tb"><div class="glyph"></div>复习</div><div class="tb"><div class="glyph"></div>我的</div></div>
+  <div class="watermark">${d}</div>`;
+
+const READ = (d) => `
+  <div class="statusbar"><span>9:41</span><span class="sb-right"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+  <div class="reader">
+    <div class="r-hd">
+      <div class="src">Science · VOA Learning English</div>
+      <h3>A New Way to Grow Food in Cities</h3>
+    </div>
+    <div class="body">
+      <p>In the middle of Singapore, a tall glass building <span class="tk-d">produces</span> more than 800 tons of vegetables every year. It has no soil, no sunlight, and almost no water. <span class="tk-m">Instead</span>, the plants grow in a special <span class="tk-m">liquid</span>, and pink lights help them grow faster than on a normal farm.</p>
+      <p>This type of farming is called <span class="tk-n">vertical</span> farming. It uses 95% less water than <span class="tk-d">traditional</span> farms, and because the building is in the city, the food travels only a few <span class="tk-d">kilometres</span> to reach shops.</p>
+      <p>Shoppers say the vegetables taste better than those shipped from far away.</p>
+    </div>
+  </div>
+  <div class="tabbar"><div class="tb on"><div class="glyph"></div>阅读</div><div class="tb"><div class="glyph"></div>复习</div><div class="tb"><div class="glyph"></div>我的</div></div>
+  <div class="watermark">${d}</div>`;
+
+const CARD = (d) => `
+  <div class="statusbar"><span>9:41</span><span class="sb-right"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+  <div class="reader" style="position:relative">
+    <div class="r-hd">
+      <div class="src">Science · VOA Learning English</div>
+      <h3>A New Way to Grow Food in Cities</h3>
+    </div>
+    <div class="body" style="opacity:.42;filter:saturate(.7)">
+      <p>In the middle of Singapore, a tall glass building produces more than 800 tons of vegetables every year. It has no soil, and almost no water. Instead, the plants grow in a special liquid, and pink lights help them.</p>
+    </div>
+    <div class="dim"></div>
+  </div>
+  <div class="sheet">
+    <div class="sh-top">
+      <div>
+        <div class="sh-word">vertical</div>
+        <div class="sh-ipa">/ˈvɜːtɪkl/</div>
+      </div>
+      <span class="sh-pos">adj.</span>
+    </div>
+    <div class="sh-def">竖直的；垂直的</div>
+    <div class="sh-ex">The plants grow on vertical shelves.</div>
+    <div class="sh-col">
+      <div class="lb">搭配</div>
+      <div class="chips"><span class="chip">vertical farming</span><span class="chip">vertical line</span><span class="chip">vertical axis</span></div>
+    </div>
+    <div class="sh-act">
+      <div class="sh-saved">已加入生词本 · <b>第 1 次</b></div>
+      <div class="play">▶</div>
+    </div>
+  </div>
+  <div class="watermark">${d}</div>`;
+
+const DIRS = [
+  { id:'a', letter:'A', name:'墨 · Paper & Ink', sub:'暖纸底 · 朱砂印记 · 痕迹用「底色浸染」', sw:['#FAF8F4','#B4432C','#24211C','#EFE9DE'] },
+  { id:'b', letter:'B', name:'格 · Grid & Lab', sub:'纯白 · Swiss 网格 · 等宽音标 · 痕迹用「下划线」', sw:['#FFFFFF','#00C08B','#0A0A0A','#E8E8E8'] },
+  { id:'c', letter:'C', name:'夜 · Field & Sound', sub:'深墨底 · 暖橙 · 痕迹用「光」（熟练度 = 亮度）', sw:['#14161C','#FF8A45','#E9E7E2','#6EE7B7'] }
+];
+
+const CAPS = ['信息流（首页）','阅读界面（痕迹可见）','划词卡片'];
+
+document.getElementById('dirs').innerHTML = DIRS.map(D => `
+  <section class="sect d-${D.id}">
+    <div class="sect-head">
+      <div class="sect-letter">${D.letter}</div>
+      <div>
+        <div class="sect-title">${D.name}</div>
+        <div class="sect-sub">${D.sub}</div>
+      </div>
+      <div class="sect-meta">
+        <div class="swatches">${D.sw.map(c=>`<span class="sw" style="background:${c}"></span>`).join('')}</div>
+        <span>${D.sw.join(' · ')}</span>
+      </div>
+    </div>
+    <div class="rail">
+      ${[FEED(D.letter),READ(D.letter),CARD(D.letter)].map((html,i)=>`
+        <div class="slot"><div class="slot-cap">${CAPS[i]}</div><div class="phone">${html}</div></div>`).join('')}
+    </div>
+  </section>`).join('');
+</script>
+</body>
+</html>

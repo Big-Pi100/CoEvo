@@ -3,23 +3,11 @@
 //! ⚡ HotPath: 流式回复 → done 立即发送 → 不等概念提取
 //! ❄️ ColdPath: 通过 channel 异步提取概念，不阻塞消息接收
 //!
-// TTS 并发控制：全局信号量限制最多 3 个并发 TTS WebSocket 连接，
-// 防止 1GB VPS 因过多并发 WS 连接导致 OOM。
-
-use std::sync::OnceLock;
-use tokio::sync::Semaphore;
-
-fn tts_semaphore() -> &'static Semaphore {
-    static SEM: OnceLock<Semaphore> = OnceLock::new();
-    SEM.get_or_init(|| Semaphore::new(3))
-}
-
 // 鉴权: token 由首条消息 payload 传递（不出现在 URL 查询参数中）
 
 use axum::extract::ws::{Message, WebSocket};
 use chat_engine::llm_caller::{LlmCaller, LlmEvent};
 use serde_json::json;
-use base64::Engine;
 use std::sync::{Arc, LazyLock};
 use tokio::sync::mpsc;
 use std::time::Duration;
@@ -165,8 +153,6 @@ pub async fn handle_ws(mut ws: WebSocket) {
     let (cold_tx, mut cold_rx) = mpsc::channel::<(u32, Vec<serde_json::Value>)>(8);
     // CP2 通知通道：后台 task 更新 plan 后通知主循环发 WS 消息
     let (cp2_tx, mut cp2_rx) = mpsc::channel::<bool>(1);
-    // TTS 音频通道：后台 task 合成完音频后发回主循环
-    let (tts_tx, mut tts_rx) = mpsc::channel::<Vec<u8>>(4);
     // CP2 繁忙信号：当 CP2 正在构建计划时，阻塞下一条用户消息
     let cp2_busy = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let cp2_done = Arc::new(tokio::sync::Notify::new());
@@ -693,52 +679,6 @@ pub async fn handle_ws(mut ws: WebSocket) {
                     break;
                 }
 
-                // ⚡ 后台 TTS 合成（不阻塞主流程，流式发送每个 chunk）
-                let tts_text = final_reply.clone();
-                let txs = tts_tx.clone();
-                let uid = chat_req.user_id.clone();
-                tokio::task::spawn(async move {
-                    let (voice_type, speed) = get_user_tts_prefs(&uid);
-                    if voice_type.is_none() { return; }
-                    let config = match crate::tencent_tts::TtsConfig::from_env() {
-                        Some(c) => c,
-                        None => {
-                            tracing::warn!("TTS not configured: TENCENT_SECRET_ID/KEY/APP_ID missing");
-                            return;
-                        }
-                    };
-                    let chunks = crate::tencent_tts::split_text(&tts_text, 300);
-                    tracing::info!("TTS: streaming {} chunks ({} chars)", chunks.len(), tts_text.chars().count());
-                    let start_all = std::time::Instant::now();
-                    for (i, chunk) in chunks.iter().enumerate() {
-                        if chunk.trim().is_empty() { continue; }
-                        // 获取信号量许可（最多 3 个并发 TTS 连接）
-                        let _permit = tts_semaphore().acquire().await;
-                        let t0 = std::time::Instant::now();
-                        let result = crate::tencent_tts::synthesize_chunk(&config, chunk, voice_type, speed).await;
-                        drop(_permit); // 立即释放，让下一个等待者开始
-                        // 失败重试一次
-                        let result = if result.is_err() {
-                            tracing::warn!("TTS chunk {}/{} retrying...", i + 1, chunks.len());
-                            crate::tencent_tts::synthesize_chunk(&config, chunk, voice_type, speed).await
-                        } else {
-                            result
-                        };
-                        match result {
-                            Ok(audio) => {
-                                let elapsed = t0.elapsed().as_millis();
-                                tracing::info!("TTS chunk {}/{} done: {}ms, {} bytes", i + 1, chunks.len(), elapsed, audio.len());
-                                let _ = txs.send(audio).await;
-                            }
-                            Err(e) => {
-                                tracing::error!("TTS chunk {}/{} failed after retry: {}", i + 1, chunks.len(), e);
-                            }
-                        }
-                    }
-                    let total = start_all.elapsed().as_millis();
-                    tracing::info!("TTS total: {}ms for {} chunks", total, chunks.len());
-                });
-
                 // ⚡ 从 final_reply 中检测 **Goal学习计划创建✅ 已完成 标记 → 立即创建学习计划
                 // 阻塞是刻意的：CP2（第 1078 行）依赖 plan_id 来区分"创建"与"更新"，
                 // 如果这里不阻塞，CP2 也会尝试创建 plan，导致重复 LLM 调用。
@@ -1236,16 +1176,6 @@ pub async fn handle_ws(mut ws: WebSocket) {
                 }
             }
 
-            // 🔊 TTS 音频合成完成 → 发送给前端
-            Some(audio) = tts_rx.recv() => {
-                let b64 = base64::engine::general_purpose::STANDARD.encode(&audio);
-                if ws.send(Message::Text(json!({
-                    "type": "tts_audio",
-                    "audio": b64,
-                }).to_string().into())).await.is_err() {
-                    tracing::debug!("WS send(tts_audio) failed — client likely disconnected");
-                }
-            }
         }
     }
 
@@ -1281,43 +1211,6 @@ pub async fn handle_ws(mut ws: WebSocket) {
         let conn = crate::db_pool::get_conn();
         crate::achievement_engine::publish(&conn, crate::achievement_engine::AppEvent::ConversationEnded { user_id: last_user_id });
     }
-}
-
-/// 读取用户 TTS 偏好：引擎类型、音色、语速
-/// 读取用户 TTS 偏好：引擎类型、音色、语速
-/// 仅当显式选了"本地原生"时跳过腾讯云 TTS
-fn get_user_tts_prefs(user_id: &str) -> (Option<i32>, Option<f32>) {
-    let conn = crate::db_pool::get_conn();
-
-    // 读取 TTS 引擎选择
-    let engine: Option<String> = conn.query_row(
-        "SELECT value FROM user_preferences WHERE user_id = ?1 AND key = 'tts_engine'",
-        rusqlite::params![user_id],
-        |row| row.get(0),
-    ).ok().flatten();
-
-    // 显式选了 native 才跳过，未设置或 tencent 都走腾讯云
-    match engine.as_deref() {
-        Some("native") => return (None, None),
-        _ => {}
-    }
-
-    // 读取音色 ID（默认 101016 = 智甜-女童声）
-    let voice_type: Option<i32> = conn.query_row(
-        "SELECT value FROM user_preferences WHERE user_id = ?1 AND key = 'tts_voice_type'",
-        rusqlite::params![user_id],
-        |row| row.get::<_, String>(0),
-    ).ok().and_then(|v| v.parse::<i32>().ok())
-    .or(Some(101016));
-
-    // 读取语速
-    let speed: Option<f32> = conn.query_row(
-        "SELECT value FROM user_preferences WHERE user_id = ?1 AND key = 'tts_speed'",
-        rusqlite::params![user_id],
-        |row| row.get::<_, String>(0),
-    ).ok().and_then(|v| v.parse::<f32>().ok());
-
-    (voice_type, speed)
 }
 
 /// 已知的 graph JSON 类型列表

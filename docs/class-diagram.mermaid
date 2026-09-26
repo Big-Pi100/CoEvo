@@ -1,60 +1,204 @@
 classDiagram
-    class Atom {
-        +int index
-        +string html
-        +string text
-        +string type
+    class VocabWord {
+        +String id
+        +String word
+        +String translation
+        +String pronunciation
+        +String partOfSpeech
+        +List~String~ definitions
+        +List~String~ examples
+        +int difficultyLevel
+        +String languageCode
+        +String? source
     }
-    
-    class PageRange {
-        +int startIdx
-        +int endIdx
-        +float pretextHeight
-        +float measuredHeight
-        +bool overflow
+
+    class LessonData {
+        +String id
+        +String title
+        +String languageCode
+        +int level
+        +String content
+        +List~String~ paragraphTexts
+        +List~String~ vocabWordIds
+        +List~int~ wordPositions
+        +String? source
+        +String? sourceUrl
     }
-    
-    class SmartPaginate {
-        +smartPaginate(browser, atoms, pageHeight, options) PageRange[]
-        +measureHeight(browser, html, viewportWidth) float
-        +createPageHTML(atoms, startIdx, endIdx, wrapperFn, options) string
-        +splitAtom(atom, pageHeight) Atom[]
+
+    class UserProgress {
+        +String id
+        +String vocabWordId
+        +String languageCode
+        +int lessonIndex
+        +bool isMastered
+        +int correctCount
+        +int totalAttempts
+        +double accuracy
+        +DateTime? lastPracticed
+        +DateTime? createdAt
+        +FsrsMemory fsrsMemory
     }
-    
-    class PretextPaginate {
-        +smartPaginateWithPretext(browser, atoms, font, options) PageRange[]
-        +prepareAtoms(atoms, font) Handle[]
-        +estimateScrollHeight(pretextHeight, paragraphCount, brCount) float
-        +getUsableHeight() float
+
+    class QuizQuestion {
+        +String id
+        +String vocabWordId
+        +String lessonId
+        +QuizType type
+        +String prompt
+        +String correctAnswer
+        +List~String~ options
+        +String? hint
+        +bool isSpelling
     }
-    
-    class PretextEngine {
-        +prepare(text, fontOptions) Handle
-        +layout(handle, layoutOptions) LayoutResult
+
+    class FsrsMemory {
+        +double difficulty
+        +double stability
+        +int reps
+        +int lapses
+        +DateTime? lastReview
+        +DateTime? due
+        +int state
     }
-    
-    class LayoutResult {
-        +float height
-        +int lineCount
+
+    class FsrsRating {
+        <<enumeration>>
+        +Again = 1
+        +Hard = 2
+        +Good = 3
+        +Easy = 4
     }
-    
-    class CSSConstants {
-        +int bodyPaddingTop = 44
-        +int bodyPaddingBottom = 44
-        +int paragraphPaddingTop = 38
-        +int brMargin = 8
-        +int contentWidth = 968
-        +float lineHeight = 60.8
-        +int decorativeLine = 20
-        +int pageNumberArea = 36
-        +int viewportHeight = 1440
+
+    class FsrsAlgorithm {
+        +ScheduleResult schedule(FsrsMemory, FsrsRating, double)
+        +double getRetrievability(FsrsMemory, double)
+        #double nextDifficulty(double, double)
+        #double nextStability(double, double, double, double)
+        #double firstStability(double)
+        #double initDifficulty(double)
+        #double stabilityAfterFailure(double, double, double)
+        #double stabilityAfterSuccess(double, double, double, double)
     }
-    
-    SmartPaginate --> Atom : uses
-    SmartPaginate --> PageRange : produces
-    PretextPaginate --> Atom : uses
-    PretextPaginate --> PageRange : produces
-    PretextPaginate --> PretextEngine : delegates text measurement
-    PretextPaginate --> CSSConstants : reads compensation parameters
-    PretextPaginate --> SmartPaginate : reuses measureHeight
-    PretextEngine --> LayoutResult : returns
+
+    class FsrsScheduler {
+        +List~VocabWord~ getDueWords(String, int)
+        +void submitReview(String, FsrsRating)
+        +int getReviewCountToday()
+        +List~VocabWord~ getOverdueWords()
+    }
+
+    class TtsService {
+        <<abstract>>
+        +Future~void~ init()
+        +Future~void~ speak(String, {String? language})
+        +Future~void~ stop()
+        +Future~void~ dispose()
+        +Stream~TtsState~ get onStateChanged
+        +bool get isSpeaking
+    }
+
+    class TencentTtsService {
+        -String _secretId
+        -String _secretKey
+        -TTSController _controller
+        +Future~void~ init()
+        +Future~void~ speak(String, {String? language})
+        +Future~void~ stop()
+        +Future~void~ dispose()
+        +Stream~TtsState~ get onStateChanged
+        +bool get isSpeaking
+    }
+
+    class SystemTtsService {
+        -FlutterTts _flutterTts
+        +Future~void~ init()
+        +Future~void~ speak(String, {String? language})
+        +Future~void~ stop()
+        +Future~void~ dispose()
+        +Stream~TtsState~ get onStateChanged
+        +bool get isSpeaking
+    }
+
+    class AiChatService {
+        +Future~AiChatResponse~ sendMessage(String, {String? lessonContext})
+        +Future~void~ startLessonChat(LessonData)
+        +Stream~AiChatResponse~ get onResponse
+        +void dispose()
+    }
+
+    class LlmApiService {
+        -String _apiKey
+        -String _apiEndpoint
+        +Future~String~ chatComplete(List~ChatMessage~)
+        +Future~Stream~String~~ chatCompleteStream(List~ChatMessage~)
+    }
+
+    class QuizGenerator {
+        +List~QuizQuestion~ generateForLesson(LessonData)
+        +QuizQuestion generateSpellingQuestion(VocabWord)
+        +QuizQuestion generateTranslationQuestion(VocabWord)
+        +QuizQuestion generateDefinitionQuestion(VocabWord)
+        +String generateHint(String)
+    }
+
+    class MagicGame {
+        -FlameGame _game
+        +void startLessonWordSequence(List~VocabWord~)
+        +void activateNextWord()
+        +void onSpellResult(String, bool)
+        +void playGoldTextEffect(String)
+        +void stop()
+    }
+
+    class WordDragonComponent {
+        -String _word
+        -Vector2 _position
+        -Vector2 _targetPosition
+        -double _animationProgress
+        +Future~void~ flyToWord(String, Rect)
+        +void startCirclingAnimation()
+        +void stop()
+        +void update(double)
+        +void render(Canvas)
+    }
+
+    class GoldTextComponent {
+        -String _word
+        -double _opacity
+        -double _scale
+        -List~Particle~ _particles
+        +void triggerAnimation(String)
+        +void update(double)
+        +void render(Canvas)
+    }
+
+    class SpellCircleComponent {
+        -double _radius
+        -double _rotationAngle
+        -Color _color
+        +void cast(bool)
+        +void update(double)
+        +void render(Canvas)
+    }
+
+    class PretextFlashOverlay {
+        +ObstacleTextFlow buildObstacleFlow(String, List~Rect~)
+        +void highlightWord(String, Rect)
+        +void animateWordActivation(String)
+    }
+
+    VocabWord "1" --> "1" UserProgress : 对应
+    UserProgress "1" --> "1" FsrsMemory : 包含
+    LessonData "1" --> "*" VocabWord : 包含
+    LessonData "1" --> "*" QuizQuestion : 预生成
+    VocabWord "1" --> "*" QuizQuestion : 关联
+    FsrsMemory --> FsrsRating : 评分输入
+    TtsService <|-- TencentTtsService : 实现
+    TtsService <|-- SystemTtsService : 实现
+    AiChatService --> LlmApiService : 委托
+    FsrsAlgorithm --> FsrsScheduler : 算法提供者
+    QuizGenerator --> VocabWord : 依赖词数据
+    MagicGame --> WordDragonComponent : 管理
+    MagicGame --> GoldTextComponent : 管理
+    MagicGame --> SpellCircleComponent : 管理
+    MagicGame --> PretextFlashOverlay : 管理

@@ -1,0 +1,343 @@
+{
+  "_meta": {
+    "count": 48
+  },
+  "variants": [
+    {
+      "form": "aluminium",
+      "lemma": "aluminum",
+      "rule": "spelling_variant",
+      "variant_of": "aluminum",
+      "how": "explicit"
+    },
+    {
+      "form": "grey",
+      "lemma": "gray",
+      "rule": "spelling_variant",
+      "variant_of": "gray",
+      "how": "explicit"
+    },
+    {
+      "form": "metre",
+      "lemma": "meter",
+      "rule": "spelling_variant",
+      "variant_of": "meter",
+      "how": "explicit"
+    },
+    {
+      "form": "litre",
+      "lemma": "liter",
+      "rule": "spelling_variant",
+      "variant_of": "liter",
+      "how": "explicit"
+    },
+    {
+      "form": "defence",
+      "lemma": "defense",
+      "rule": "spelling_variant",
+      "variant_of": "defense",
+      "how": "explicit"
+    },
+    {
+      "form": "licence",
+      "lemma": "license",
+      "rule": "spelling_variant",
+      "variant_of": "license",
+      "how": "explicit"
+    },
+    {
+      "form": "practise",
+      "lemma": "practice",
+      "rule": "spelling_variant",
+      "variant_of": "practice",
+      "how": "explicit"
+    },
+    {
+      "form": "cheque",
+      "lemma": "check",
+      "rule": "spelling_variant",
+      "variant_of": "check",
+      "how": "explicit"
+    },
+    {
+      "form": "mould",
+      "lemma": "mold",
+      "rule": "spelling_variant",
+      "variant_of": "mold",
+      "how": "explicit"
+    },
+    {
+      "form": "sulphur",
+      "lemma": "sulfur",
+      "rule": "spelling_variant",
+      "variant_of": "sulfur",
+      "how": "explicit"
+    },
+    {
+      "form": "draught",
+      "lemma": "draft",
+      "rule": "spelling_variant",
+      "variant_of": "draft",
+      "how": "explicit"
+    },
+    {
+      "form": "favour",
+      "lemma": "favor",
+      "rule": "spelling_variant",
+      "variant_of": "favor",
+      "how": "explicit"
+    },
+    {
+      "form": "neighbour",
+      "lemma": "neighbor",
+      "rule": "spelling_variant",
+      "variant_of": "neighbor",
+      "how": "explicit"
+    },
+    {
+      "form": "rumour",
+      "lemma": "rumor",
+      "rule": "spelling_variant",
+      "variant_of": "rumor",
+      "how": "explicit"
+    },
+    {
+      "form": "humour",
+      "lemma": "humor",
+      "rule": "spelling_variant",
+      "variant_of": "humor",
+      "how": "explicit"
+    },
+    {
+      "form": "vigour",
+      "lemma": "vigor",
+      "rule": "spelling_variant",
+      "variant_of": "vigor",
+      "how": "explicit"
+    },
+    {
+      "form": "diarrhoea",
+      "lemma": "diarrhea",
+      "rule": "spelling_variant",
+      "variant_of": "diarrhea",
+      "how": "explicit"
+    },
+    {
+      "form": "apologise",
+      "lemma": "apologize",
+      "rule": "spelling_variant",
+      "variant_of": "apologize",
+      "how": "-ise ↔ -ize"
+    },
+    {
+      "form": "colour",
+      "lemma": "color",
+      "rule": "spelling_variant",
+      "variant_of": "color",
+      "how": "-our ↔ -or"
+    },
+    {
+      "form": "sports centre",
+      "lemma": "sports center",
+      "rule": "spelling_variant",
+      "variant_of": "sports center",
+      "how": "-re ↔ -er"
+    },
+    {
+      "form": "flavour",
+      "lemma": "flavor",
+      "rule": "spelling_variant",
+      "variant_of": "flavor",
+      "how": "-our ↔ -or"
+    },
+    {
+      "form": "harbour",
+      "lemma": "harbor",
+      "rule": "spelling_variant",
+      "variant_of": "harbor",
+      "how": "-our ↔ -or"
+    },
+    {
+      "form": "recognise",
+      "lemma": "recognize",
+      "rule": "spelling_variant",
+      "variant_of": "recognize",
+      "how": "-ise ↔ -ize"
+    },
+    {
+      "form": "emphasise",
+      "lemma": "emphasize",
+      "rule": "spelling_variant",
+      "variant_of": "emphasize",
+      "how": "-ise ↔ -ize"
+    },
+    {
+      "form": "analyse",
+      "lemma": "analyze",
+      "rule": "spelling_variant",
+      "variant_of": "analyze",
+      "how": "-yse ↔ -yze"
+    },
+    {
+      "form": "archaeologist",
+      "lemma": "archeologist",
+      "rule": "spelling_variant",
+      "variant_of": "archeologist",
+      "how": "-ae- ↔ -e-"
+    },
+    {
+      "form": "categorisation",
+      "lemma": "categorization",
+      "rule": "spelling_variant",
+      "variant_of": "categorization",
+      "how": "-isation ↔ -ization"
+    },
+    {
+      "form": "categorise",
+      "lemma": "categorize",
+      "rule": "spelling_variant",
+      "variant_of": "categorize",
+      "how": "-ise ↔ -ize"
+    },
+    {
+      "form": "civilisation",
+      "lemma": "civilization",
+      "rule": "spelling_variant",
+      "variant_of": "civilization",
+      "how": "-isation ↔ -ization"
+    },
+    {
+      "form": "counselling",
+      "lemma": "counseling",
+      "rule": "spelling_variant",
+      "variant_of": "counseling",
+      "how": "-ll- ↔ -l-"
+    },
+    {
+      "form": "crystallise",
+      "lemma": "crystallize",
+      "rule": "spelling_variant",
+      "variant_of": "crystallize",
+      "how": "-ise ↔ -ize"
+    },
+    {
+      "form": "dehumanise",
+      "lemma": "dehumanize",
+      "rule": "spelling_variant",
+      "variant_of": "dehumanize",
+      "how": "-ise ↔ -ize"
+    },
+    {
+      "form": "encyclopaedia",
+      "lemma": "encyclopedia",
+      "rule": "spelling_variant",
+      "variant_of": "encyclopedia",
+      "how": "-ae- ↔ -e-"
+    },
+    {
+      "form": "generalisation",
+      "lemma": "generalization",
+      "rule": "spelling_variant",
+      "variant_of": "generalization",
+      "how": "-isation ↔ -ization"
+    },
+    {
+      "form": "glamour",
+      "lemma": "glamor",
+      "rule": "spelling_variant",
+      "variant_of": "glamor",
+      "how": "-our ↔ -or"
+    },
+    {
+      "form": "italicise",
+      "lemma": "italicize",
+      "rule": "spelling_variant",
+      "variant_of": "italicize",
+      "how": "-ise ↔ -ize"
+    },
+    {
+      "form": "jeopardise",
+      "lemma": "jeopardize",
+      "rule": "spelling_variant",
+      "variant_of": "jeopardize",
+      "how": "-ise ↔ -ize"
+    },
+    {
+      "form": "mechanise",
+      "lemma": "mechanize",
+      "rule": "spelling_variant",
+      "variant_of": "mechanize",
+      "how": "-ise ↔ -ize"
+    },
+    {
+      "form": "memorise",
+      "lemma": "memorize",
+      "rule": "spelling_variant",
+      "variant_of": "memorize",
+      "how": "-ise ↔ -ize"
+    },
+    {
+      "form": "modernisation",
+      "lemma": "modernization",
+      "rule": "spelling_variant",
+      "variant_of": "modernization",
+      "how": "-isation ↔ -ization"
+    },
+    {
+      "form": "organisation",
+      "lemma": "organization",
+      "rule": "spelling_variant",
+      "variant_of": "organization",
+      "how": "-isation ↔ -ization"
+    },
+    {
+      "form": "overemphasise",
+      "lemma": "overemphasize",
+      "rule": "spelling_variant",
+      "variant_of": "overemphasize",
+      "how": "-ise ↔ -ize"
+    },
+    {
+      "form": "paralyse",
+      "lemma": "paralyze",
+      "rule": "spelling_variant",
+      "variant_of": "paralyze",
+      "how": "-yse ↔ -yze"
+    },
+    {
+      "form": "realisation",
+      "lemma": "realization",
+      "rule": "spelling_variant",
+      "variant_of": "realization",
+      "how": "-isation ↔ -ization"
+    },
+    {
+      "form": "reorganise",
+      "lemma": "reorganize",
+      "rule": "spelling_variant",
+      "variant_of": "reorganize",
+      "how": "-ise ↔ -ize"
+    },
+    {
+      "form": "sympathise",
+      "lemma": "sympathize",
+      "rule": "spelling_variant",
+      "variant_of": "sympathize",
+      "how": "-ise ↔ -ize"
+    },
+    {
+      "form": "tumour",
+      "lemma": "tumor",
+      "rule": "spelling_variant",
+      "variant_of": "tumor",
+      "how": "-our ↔ -or"
+    },
+    {
+      "form": "utilise",
+      "lemma": "utilize",
+      "rule": "spelling_variant",
+      "variant_of": "utilize",
+      "how": "-ise ↔ -ize"
+    }
+  ]
+}

@@ -1,0 +1,2615 @@
+{
+ "_meta": {
+  "model": "deepseek-flash",
+  "per_level": 30,
+  "usage": {
+   "in": 50759,
+   "out": 6663
+  }
+ },
+ "items": [
+  {
+   "word": "summer",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "supermarket",
+   "level": "A1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "super-",
+     "type": "prefix",
+     "meaning": "超级；超过"
+    },
+    {
+     "form": "market",
+     "type": "root",
+     "meaning": "市场"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 59
+  },
+  {
+   "word": "said",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "subway",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "sub-",
+     "type": "prefix",
+     "meaning": "在下面"
+    },
+    {
+     "form": "way",
+     "type": "root",
+     "meaning": "道路"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 58
+  },
+  {
+   "word": "both",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "goal",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "america",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "feet",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "tell",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "mary",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 19
+  },
+  {
+   "word": "car",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "knife",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "anything",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "any",
+     "type": "root",
+     "meaning": "任何"
+    },
+    {
+     "form": "thing",
+     "type": "root",
+     "meaning": "事物"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 56
+  },
+  {
+   "word": "lovely",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "love",
+     "type": "root",
+     "meaning": "爱"
+    },
+    {
+     "form": "-ly",
+     "type": "suffix",
+     "meaning": "有……性质的；像……的"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 63
+  },
+  {
+   "word": "yellow",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "pete",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 19
+  },
+  {
+   "word": "wonderful",
+   "level": "A1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "wonder",
+     "type": "root",
+     "meaning": "惊奇；奇迹"
+    },
+    {
+     "form": "-ful",
+     "type": "suffix",
+     "meaning": "充满……的；有……性质的"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 66
+  },
+  {
+   "word": "many",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "aw",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "did",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "skirt",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "work",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "paper",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "best",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "spent",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "miss",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "soccer",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "jerry",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 19
+  },
+  {
+   "word": "mexico",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 19
+  },
+  {
+   "word": "fan",
+   "level": "A1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "owed",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "ow",
+     "type": "root",
+     "meaning": "欠（债）"
+    },
+    {
+     "form": "-ed",
+     "type": "suffix",
+     "meaning": "过去式/过去分词后缀"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 65
+  },
+  {
+   "word": "smoke",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "exhibition",
+   "level": "A2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "ex-",
+     "type": "prefix",
+     "meaning": "向外"
+    },
+    {
+     "form": "hibit",
+     "type": "root",
+     "meaning": "拿、持"
+    },
+    {
+     "form": "-ion",
+     "type": "suffix",
+     "meaning": "名词后缀，表行为或结果"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 84
+  },
+  {
+   "word": "agency",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "ag-",
+     "type": "root",
+     "meaning": "做；行动"
+    },
+    {
+     "form": "-ency",
+     "type": "suffix",
+     "meaning": "名词后缀，表状态或性质"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 338,
+   "out_tok": 66
+  },
+  {
+   "word": "walton",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 19
+  },
+  {
+   "word": "omelette",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 19
+  },
+  {
+   "word": "childhood",
+   "level": "A2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "child",
+     "type": "root",
+     "meaning": "孩子"
+    },
+    {
+     "form": "-hood",
+     "type": "suffix",
+     "meaning": "状态、时期、身份"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 61
+  },
+  {
+   "word": "according",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "might",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "novel",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "medical",
+   "level": "A2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "medic-",
+     "type": "root",
+     "meaning": "治疗"
+    },
+    {
+     "form": "-al",
+     "type": "suffix",
+     "meaning": "与…有关的"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 338,
+   "out_tok": 61
+  },
+  {
+   "word": "raw",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "private",
+   "level": "A2",
+   "rule": true,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "earthquake",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "earth",
+     "type": "root",
+     "meaning": "地球；土地"
+    },
+    {
+     "form": "quake",
+     "type": "root",
+     "meaning": "震动；颤抖"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 60
+  },
+  {
+   "word": "cambridge",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 19
+  },
+  {
+   "word": "context",
+   "level": "A2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "con-",
+     "type": "prefix",
+     "meaning": "共同、一起"
+    },
+    {
+     "form": "text",
+     "type": "root",
+     "meaning": "编织、文本"
+    },
+    {
+     "form": "-t",
+     "type": "suffix",
+     "meaning": "过去分词后缀"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 338,
+   "out_tok": 82
+  },
+  {
+   "word": "running",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "run",
+     "type": "root",
+     "meaning": "跑"
+    },
+    {
+     "form": "-n-",
+     "type": "suffix",
+     "meaning": "动词现在分词/动名词标记（双写 n 后接 -ing）"
+    },
+    {
+     "form": "-ing",
+     "type": "suffix",
+     "meaning": "表示进行或动名词"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 97
+  },
+  {
+   "word": "lively",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "live",
+     "type": "root",
+     "meaning": "生活；活"
+    },
+    {
+     "form": "-ly",
+     "type": "suffix",
+     "meaning": "具有……性质的"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 61
+  },
+  {
+   "word": "visitor",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "visit",
+     "type": "root",
+     "meaning": "访问"
+    },
+    {
+     "form": "-or",
+     "type": "suffix",
+     "meaning": "表示做某事的人"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 60
+  },
+  {
+   "word": "captain",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "drizzle",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "harmful",
+   "level": "A2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "harm",
+     "type": "root",
+     "meaning": "伤害"
+    },
+    {
+     "form": "-ful",
+     "type": "suffix",
+     "meaning": "充满……的；有……性质的"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 63
+  },
+  {
+   "word": "red",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "soap",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "destroy",
+   "level": "A2",
+   "rule": true,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "kingdom",
+   "level": "A2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "king",
+     "type": "root",
+     "meaning": "国王"
+    },
+    {
+     "form": "-dom",
+     "type": "suffix",
+     "meaning": "领域、状态、身份"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 61
+  },
+  {
+   "word": "anxious",
+   "level": "A2",
+   "rule": true,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "essay",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "sweet",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "howl",
+   "level": "A2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 19
+  },
+  {
+   "word": "fool",
+   "level": "B1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "jumper",
+   "level": "B1",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "jump",
+     "type": "root",
+     "meaning": "跳"
+    },
+    {
+     "form": "-er",
+     "type": "suffix",
+     "meaning": "做…的人或物"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 62
+  },
+  {
+   "word": "motivate",
+   "level": "B1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "mot-",
+     "type": "root",
+     "meaning": "移动"
+    },
+    {
+     "form": "-iv-",
+     "type": "suffix",
+     "meaning": "倾向于…的"
+    },
+    {
+     "form": "-ate",
+     "type": "suffix",
+     "meaning": "使…；动词后缀"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 338,
+   "out_tok": 84
+  },
+  {
+   "word": "drunk",
+   "level": "B1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "underage",
+   "level": "B1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "under-",
+     "type": "prefix",
+     "meaning": "低于；不足"
+    },
+    {
+     "form": "age",
+     "type": "root",
+     "meaning": "年龄"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 59
+  },
+  {
+   "word": "baptist",
+   "level": "B1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "bapt-",
+     "type": "root",
+     "meaning": "浸洗"
+    },
+    {
+     "form": "-ist",
+     "type": "suffix",
+     "meaning": "从事…的人"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 339,
+   "out_tok": 62
+  },
+  {
+   "word": "hunger",
+   "level": "B1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "cotton",
+   "level": "B1",
+   "rule": true,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "conserving",
+   "level": "B1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "con-",
+     "type": "prefix",
+     "meaning": "共同；加强"
+    },
+    {
+     "form": "serv",
+     "type": "root",
+     "meaning": "保持；保存"
+    },
+    {
+     "form": "-ing",
+     "type": "suffix",
+     "meaning": "表示进行或动名词"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 84
+  },
+  {
+   "word": "pars",
+   "level": "B1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "worth",
+   "level": "B1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "quill",
+   "level": "B1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 19
+  },
+  {
+   "word": "chemistry",
+   "level": "B1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "etiquette",
+   "level": "B1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "positively",
+   "level": "B1",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "posit-",
+     "type": "root",
+     "meaning": "放置；肯定"
+    },
+    {
+     "form": "-ive",
+     "type": "suffix",
+     "meaning": "形容词后缀，具有…性质的"
+    },
+    {
+     "form": "-ly",
+     "type": "suffix",
+     "meaning": "副词后缀，以…方式"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 338,
+   "out_tok": 89
+  },
+  {
+   "word": "lie",
+   "level": "B1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "daisy",
+   "level": "B1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 19
+  },
+  {
+   "word": "acrylic",
+   "level": "B1",
+   "rule": true,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "adverbial",
+   "level": "B1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "ad-",
+     "type": "prefix",
+     "meaning": "向、朝"
+    },
+    {
+     "form": "verb",
+     "type": "root",
+     "meaning": "词、言语"
+    },
+    {
+     "form": "-ial",
+     "type": "suffix",
+     "meaning": "……的（形容词后缀）"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 339,
+   "out_tok": 85
+  },
+  {
+   "word": "grill",
+   "level": "B1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "engraved",
+   "level": "B1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "en-",
+     "type": "prefix",
+     "meaning": "使进入；使成为"
+    },
+    {
+     "form": "grave",
+     "type": "root",
+     "meaning": "雕刻"
+    },
+    {
+     "form": "-ed",
+     "type": "suffix",
+     "meaning": "过去分词后缀"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 338,
+   "out_tok": 82
+  },
+  {
+   "word": "disastrous",
+   "level": "B1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "dis-",
+     "type": "prefix",
+     "meaning": "坏；恶"
+    },
+    {
+     "form": "astr",
+     "type": "root",
+     "meaning": "星；星辰"
+    },
+    {
+     "form": "-ous",
+     "type": "suffix",
+     "meaning": "……的；充满……的"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 338,
+   "out_tok": 86
+  },
+  {
+   "word": "wetland",
+   "level": "B1",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "wet",
+     "type": "root",
+     "meaning": "湿的"
+    },
+    {
+     "form": "land",
+     "type": "root",
+     "meaning": "土地"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 57
+  },
+  {
+   "word": "radii",
+   "level": "B1",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "radi",
+     "type": "root",
+     "meaning": "光线；辐射"
+    },
+    {
+     "form": "-i",
+     "type": "suffix",
+     "meaning": "复数（拉丁语阳性复数词尾）"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 338,
+   "out_tok": 67
+  },
+  {
+   "word": "participle",
+   "level": "B1",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "parti-",
+     "type": "root",
+     "meaning": "部分"
+    },
+    {
+     "form": "-cip-",
+     "type": "root",
+     "meaning": "拿、取"
+    },
+    {
+     "form": "-le",
+     "type": "suffix",
+     "meaning": "名词或形容词后缀"
+    }
+   ],
+   "confidence": 0.7,
+   "in_tok": 338,
+   "out_tok": 83
+  },
+  {
+   "word": "trance",
+   "level": "B1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 19
+  },
+  {
+   "word": "aluminium",
+   "level": "B1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "agriculture",
+   "level": "B1",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "agri-",
+     "type": "root",
+     "meaning": "田地；农业"
+    },
+    {
+     "form": "-culture",
+     "type": "root",
+     "meaning": "耕作；培育"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 62
+  },
+  {
+   "word": "excitedly",
+   "level": "B1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "ex-",
+     "type": "prefix",
+     "meaning": "向外"
+    },
+    {
+     "form": "cit",
+     "type": "root",
+     "meaning": "唤起、激起"
+    },
+    {
+     "form": "-ed",
+     "type": "suffix",
+     "meaning": "形容词后缀，表示处于某种状态"
+    },
+    {
+     "form": "-ly",
+     "type": "suffix",
+     "meaning": "副词后缀，以……方式"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 339,
+   "out_tok": 108
+  },
+  {
+   "word": "curb",
+   "level": "B1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "monastic",
+   "level": "B2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "monast",
+     "type": "root",
+     "meaning": "修道；独居"
+    },
+    {
+     "form": "-ic",
+     "type": "suffix",
+     "meaning": "……的；与……有关的"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 338,
+   "out_tok": 66
+  },
+  {
+   "word": "contaminate",
+   "level": "B2",
+   "rule": true,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.85,
+   "in_tok": 340,
+   "out_tok": 19
+  },
+  {
+   "word": "transducer",
+   "level": "B2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "trans-",
+     "type": "prefix",
+     "meaning": "横跨；转移"
+    },
+    {
+     "form": "duc",
+     "type": "root",
+     "meaning": "引导；带领"
+    },
+    {
+     "form": "-er",
+     "type": "suffix",
+     "meaning": "表示做某事的人或物"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 86
+  },
+  {
+   "word": "clad",
+   "level": "B2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "undeniable",
+   "level": "B2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "un-",
+     "type": "prefix",
+     "meaning": "不"
+    },
+    {
+     "form": "deny",
+     "type": "root",
+     "meaning": "否认"
+    },
+    {
+     "form": "-able",
+     "type": "suffix",
+     "meaning": "可…的"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 79
+  },
+  {
+   "word": "foul",
+   "level": "B2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "principal",
+   "level": "B2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "princip-",
+     "type": "root",
+     "meaning": "首要的；第一的"
+    },
+    {
+     "form": "-al",
+     "type": "suffix",
+     "meaning": "……的（形容词后缀）"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 338,
+   "out_tok": 68
+  },
+  {
+   "word": "demography",
+   "level": "B2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "demo-",
+     "type": "root",
+     "meaning": "人民"
+    },
+    {
+     "form": "-graphy",
+     "type": "suffix",
+     "meaning": "记录、研究"
+    },
+    {
+     "form": "-y",
+     "type": "suffix",
+     "meaning": "学科、方法"
+    }
+   ],
+   "confidence": 0.9,
+   "in_tok": 339,
+   "out_tok": 82
+  },
+  {
+   "word": "muzzle",
+   "level": "B2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "symbolic",
+   "level": "B2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "symbol",
+     "type": "root",
+     "meaning": "符号；象征"
+    },
+    {
+     "form": "-ic",
+     "type": "suffix",
+     "meaning": "……的；与……有关的"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 64
+  },
+  {
+   "word": "walkabout",
+   "level": "B2",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "walk",
+     "type": "root",
+     "meaning": "走"
+    },
+    {
+     "form": "about",
+     "type": "suffix",
+     "meaning": "到处；四处"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 339,
+   "out_tok": 59
+  },
+  {
+   "word": "bewilderment",
+   "level": "B2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "be-",
+     "type": "prefix",
+     "meaning": "使，加强语气"
+    },
+    {
+     "form": "wilder",
+     "type": "root",
+     "meaning": "使迷失方向，使困惑"
+    },
+    {
+     "form": "-ment",
+     "type": "suffix",
+     "meaning": "名词后缀，表示状态或结果"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 340,
+   "out_tok": 91
+  },
+  {
+   "word": "review",
+   "level": "B2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "re-",
+     "type": "prefix",
+     "meaning": "再、重新"
+    },
+    {
+     "form": "view",
+     "type": "root",
+     "meaning": "看"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 59
+  },
+  {
+   "word": "fine",
+   "level": "B2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "dumb",
+   "level": "B2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "explode",
+   "level": "B2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "ex-",
+     "type": "prefix",
+     "meaning": "向外"
+    },
+    {
+     "form": "plod",
+     "type": "root",
+     "meaning": "拍手、撞击"
+    },
+    {
+     "form": "-e",
+     "type": "suffix",
+     "meaning": "动词后缀"
+    }
+   ],
+   "confidence": 0.7,
+   "in_tok": 338,
+   "out_tok": 81
+  },
+  {
+   "word": "specialization",
+   "level": "B2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "special",
+     "type": "root",
+     "meaning": "特殊的；专门的"
+    },
+    {
+     "form": "-ize",
+     "type": "suffix",
+     "meaning": "使……化"
+    },
+    {
+     "form": "-ation",
+     "type": "suffix",
+     "meaning": "名词后缀，表示行为或结果"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 86
+  },
+  {
+   "word": "racism",
+   "level": "B2",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "rac-",
+     "type": "root",
+     "meaning": "种族"
+    },
+    {
+     "form": "-ism",
+     "type": "suffix",
+     "meaning": "主义；歧视体系"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 61
+  },
+  {
+   "word": "sue",
+   "level": "B2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "walnut",
+   "level": "B2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "cooperate",
+   "level": "B2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "co-",
+     "type": "prefix",
+     "meaning": "共同"
+    },
+    {
+     "form": "oper",
+     "type": "root",
+     "meaning": "工作"
+    },
+    {
+     "form": "-ate",
+     "type": "suffix",
+     "meaning": "动词后缀"
+    }
+   ],
+   "confidence": 0.9,
+   "in_tok": 338,
+   "out_tok": 77
+  },
+  {
+   "word": "segregation",
+   "level": "B2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "se-",
+     "type": "prefix",
+     "meaning": "分开"
+    },
+    {
+     "form": "greg",
+     "type": "root",
+     "meaning": "群、群体"
+    },
+    {
+     "form": "-ation",
+     "type": "suffix",
+     "meaning": "名词后缀，表示行为或状态"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 84
+  },
+  {
+   "word": "eroded",
+   "level": "B2",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "e-",
+     "type": "prefix",
+     "meaning": "出、向外"
+    },
+    {
+     "form": "rod",
+     "type": "root",
+     "meaning": "咬、啃"
+    },
+    {
+     "form": "-ed",
+     "type": "suffix",
+     "meaning": "过去分词后缀"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 338,
+   "out_tok": 82
+  },
+  {
+   "word": "respectability",
+   "level": "B2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "re-",
+     "type": "prefix",
+     "meaning": "再；回"
+    },
+    {
+     "form": "spect",
+     "type": "root",
+     "meaning": "看"
+    },
+    {
+     "form": "-abil-",
+     "type": "suffix",
+     "meaning": "能够……的"
+    },
+    {
+     "form": "-ity",
+     "type": "suffix",
+     "meaning": "名词后缀，表性质或状态"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 339,
+   "out_tok": 106
+  },
+  {
+   "word": "transcript",
+   "level": "B2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "trans-",
+     "type": "prefix",
+     "meaning": "跨越；转移"
+    },
+    {
+     "form": "script",
+     "type": "root",
+     "meaning": "写；文字"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 61
+  },
+  {
+   "word": "liner",
+   "level": "B2",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "line",
+     "type": "root",
+     "meaning": "线"
+    },
+    {
+     "form": "-er",
+     "type": "suffix",
+     "meaning": "表示人或物的后缀"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 60
+  },
+  {
+   "word": "frame",
+   "level": "B2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "accumulate",
+   "level": "B2",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "ac-",
+     "type": "prefix",
+     "meaning": "朝向；加强"
+    },
+    {
+     "form": "cumul",
+     "type": "root",
+     "meaning": "堆积"
+    },
+    {
+     "form": "-ate",
+     "type": "suffix",
+     "meaning": "动词后缀"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 338,
+   "out_tok": 80
+  },
+  {
+   "word": "test",
+   "level": "B2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "alert",
+   "level": "B2",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 19
+  },
+  {
+   "word": "mechanization",
+   "level": "C1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "mechan-",
+     "type": "root",
+     "meaning": "机械"
+    },
+    {
+     "form": "-ize",
+     "type": "suffix",
+     "meaning": "使……化"
+    },
+    {
+     "form": "-ation",
+     "type": "suffix",
+     "meaning": "名词后缀，表示过程或结果"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 85
+  },
+  {
+   "word": "radic",
+   "level": "C1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 19
+  },
+  {
+   "word": "rebs",
+   "level": "C1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 19
+  },
+  {
+   "word": "ellipsoids",
+   "level": "C1",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "ellips-",
+     "type": "root",
+     "meaning": "椭圆"
+    },
+    {
+     "form": "-oid",
+     "type": "suffix",
+     "meaning": "类似…的"
+    },
+    {
+     "form": "-s",
+     "type": "suffix",
+     "meaning": "复数"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 340,
+   "out_tok": 80
+  },
+  {
+   "word": "molly",
+   "level": "C1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 19
+  },
+  {
+   "word": "gehrig",
+   "level": "C1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 340,
+   "out_tok": 19
+  },
+  {
+   "word": "ebullient",
+   "level": "C1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "e-",
+     "type": "prefix",
+     "meaning": "向外，出"
+    },
+    {
+     "form": "bull",
+     "type": "root",
+     "meaning": "沸腾，冒泡"
+    },
+    {
+     "form": "-ient",
+     "type": "suffix",
+     "meaning": "形容词后缀，表示处于某种状态"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 340,
+   "out_tok": 87
+  },
+  {
+   "word": "millidegree",
+   "level": "C1",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "milli-",
+     "type": "prefix",
+     "meaning": "千分之一"
+    },
+    {
+     "form": "degree",
+     "type": "root",
+     "meaning": "度"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 340,
+   "out_tok": 59
+  },
+  {
+   "word": "reputedly",
+   "level": "C1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "re-",
+     "type": "prefix",
+     "meaning": "再次"
+    },
+    {
+     "form": "pute",
+     "type": "root",
+     "meaning": "思考；认为"
+    },
+    {
+     "form": "-ed",
+     "type": "suffix",
+     "meaning": "过去分词后缀"
+    },
+    {
+     "form": "-ly",
+     "type": "suffix",
+     "meaning": "副词后缀"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 339,
+   "out_tok": 100
+  },
+  {
+   "word": "autocoder",
+   "level": "C1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "auto-",
+     "type": "prefix",
+     "meaning": "自动"
+    },
+    {
+     "form": "cod",
+     "type": "root",
+     "meaning": "代码"
+    },
+    {
+     "form": "-er",
+     "type": "suffix",
+     "meaning": "做…的人或物"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 339,
+   "out_tok": 80
+  },
+  {
+   "word": "pezza",
+   "level": "C1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 19
+  },
+  {
+   "word": "perpetrated",
+   "level": "C1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "per-",
+     "type": "prefix",
+     "meaning": "彻底，完全"
+    },
+    {
+     "form": "petr",
+     "type": "root",
+     "meaning": "石头"
+    },
+    {
+     "form": "-ate",
+     "type": "suffix",
+     "meaning": "动词后缀，使……"
+    },
+    {
+     "form": "-ed",
+     "type": "suffix",
+     "meaning": "过去分词后缀"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 339,
+   "out_tok": 104
+  },
+  {
+   "word": "acquiesce",
+   "level": "C1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.85,
+   "in_tok": 339,
+   "out_tok": 19
+  },
+  {
+   "word": "arp",
+   "level": "C1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 19
+  },
+  {
+   "word": "fluorescent",
+   "level": "C1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "fluor-",
+     "type": "root",
+     "meaning": "荧光；流动"
+    },
+    {
+     "form": "-esc-",
+     "type": "suffix",
+     "meaning": "开始成为；逐渐"
+    },
+    {
+     "form": "-ent",
+     "type": "suffix",
+     "meaning": "形容词后缀，具有…性质的"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 338,
+   "out_tok": 88
+  },
+  {
+   "word": "faust",
+   "level": "C1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 19
+  },
+  {
+   "word": "immanent",
+   "level": "C1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "im-",
+     "type": "prefix",
+     "meaning": "不"
+    },
+    {
+     "form": "man",
+     "type": "root",
+     "meaning": "停留、居住"
+    },
+    {
+     "form": "-ent",
+     "type": "suffix",
+     "meaning": "形容词后缀，表示……的"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 339,
+   "out_tok": 83
+  },
+  {
+   "word": "howe",
+   "level": "C1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 19
+  },
+  {
+   "word": "venerable",
+   "level": "C1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "vener-",
+     "type": "root",
+     "meaning": "尊敬"
+    },
+    {
+     "form": "-able",
+     "type": "suffix",
+     "meaning": "可……的"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 339,
+   "out_tok": 61
+  },
+  {
+   "word": "gaulle",
+   "level": "C1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 19
+  },
+  {
+   "word": "benedick",
+   "level": "C1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 340,
+   "out_tok": 19
+  },
+  {
+   "word": "surreptitiously",
+   "level": "C1",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "sur-",
+     "type": "prefix",
+     "meaning": "在下面；暗中"
+    },
+    {
+     "form": "rept",
+     "type": "root",
+     "meaning": "爬；偷偷拿"
+    },
+    {
+     "form": "-itious",
+     "type": "suffix",
+     "meaning": "形容词后缀，具有…性质的"
+    },
+    {
+     "form": "-ly",
+     "type": "suffix",
+     "meaning": "副词后缀，以…方式"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 342,
+   "out_tok": 112
+  },
+  {
+   "word": "inveterate",
+   "level": "C1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "in-",
+     "type": "prefix",
+     "meaning": "不"
+    },
+    {
+     "form": "veter-",
+     "type": "root",
+     "meaning": "老"
+    },
+    {
+     "form": "-ate",
+     "type": "suffix",
+     "meaning": "形容词后缀"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 340,
+   "out_tok": 79
+  },
+  {
+   "word": "visceral",
+   "level": "C1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "viscer-",
+     "type": "root",
+     "meaning": "内脏"
+    },
+    {
+     "form": "-al",
+     "type": "suffix",
+     "meaning": "……的"
+    }
+   ],
+   "confidence": 0.95,
+   "in_tok": 338,
+   "out_tok": 60
+  },
+  {
+   "word": "occluded",
+   "level": "C1",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "oc-",
+     "type": "prefix",
+     "meaning": "朝向；加强"
+    },
+    {
+     "form": "clud",
+     "type": "root",
+     "meaning": "关闭"
+    },
+    {
+     "form": "-ed",
+     "type": "suffix",
+     "meaning": "过去分词后缀"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 339,
+   "out_tok": 80
+  },
+  {
+   "word": "diocesan",
+   "level": "C1",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "dioces-",
+     "type": "root",
+     "meaning": "教区"
+    },
+    {
+     "form": "-an",
+     "type": "suffix",
+     "meaning": "……的；……的人"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 339,
+   "out_tok": 65
+  },
+  {
+   "word": "fractionated",
+   "level": "C1",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "fract",
+     "type": "root",
+     "meaning": "打破；碎裂"
+    },
+    {
+     "form": "-ion",
+     "type": "suffix",
+     "meaning": "名词后缀，表动作或结果"
+    },
+    {
+     "form": "-ate",
+     "type": "suffix",
+     "meaning": "动词后缀，使成为"
+    },
+    {
+     "form": "-ed",
+     "type": "suffix",
+     "meaning": "过去分词后缀"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 339,
+   "out_tok": 110
+  },
+  {
+   "word": "denunciation",
+   "level": "C1",
+   "rule": true,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "de-",
+     "type": "prefix",
+     "meaning": "向下；彻底"
+    },
+    {
+     "form": "nunci",
+     "type": "root",
+     "meaning": "宣布；报告"
+    },
+    {
+     "form": "-ation",
+     "type": "suffix",
+     "meaning": "名词后缀，表示行为或结果"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 339,
+   "out_tok": 87
+  },
+  {
+   "word": "phosphor",
+   "level": "C1",
+   "rule": false,
+   "ok": true,
+   "analyzable": true,
+   "parts": [
+    {
+     "form": "phos-",
+     "type": "root",
+     "meaning": "光"
+    },
+    {
+     "form": "-phor",
+     "type": "root",
+     "meaning": "携带者"
+    }
+   ],
+   "confidence": 0.85,
+   "in_tok": 339,
+   "out_tok": 60
+  },
+  {
+   "word": "nyu",
+   "level": "C1",
+   "rule": false,
+   "ok": true,
+   "analyzable": false,
+   "parts": [],
+   "confidence": 0.95,
+   "in_tok": 339,
+   "out_tok": 19
+  }
+ ]
+}

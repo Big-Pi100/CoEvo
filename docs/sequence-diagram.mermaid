@@ -1,45 +1,70 @@
 sequenceDiagram
-    participant Engine as smart-paginate-pretext.js
-    participant Pretext as Pretext Engine
-    participant Playwright as Playwright Browser
+    actor U as 用户
+    participant CV as CoverScreen
+    participant LL as LessonListScreen
+    participant LR as LessonReaderScreen
+    participant SC as SpellChallengeScreen
+    participant MG as MagicGame(Flame)
+    participant WD as WordDragonComponent
+    participant GT as GoldTextComponent
+    participant PT as PretextFlashOverlay
+    participant TS as TtsService
+    participant QG as QuizGenerator
+    participant FSRS as FsrsScheduler
+    participant DB as AppDatabase
 
-    Note over Engine,Pretext: Phase 1: 一次性 Prepare
-    Engine->>Pretext: prepare(atoms[0].text, font)
-    Engine->>Pretext: prepare(atoms[1].text, font)
-    Engine->>Pretext: prepare(atoms[2].text, font)
-    Note over Pretext: 缓存所有字形宽度
-    Pretext-->>Engine: 返回 handles[]
+    U->>CV: 打开 App
+    CV->>CV: 渲染魔法书封面
+    U->>CV: 点击「翻开魔法书」
+    CV->>LL: navigate to /lessons
 
-    Note over Engine,Playwright: Phase 2+3: 逐页预判与验证
+    U->>LL: 选择第 3 课
+    LL->>DB: loadLesson("lesson-3")
+    DB-->>LL: LessonData + VocabWord[]
+    LL->>QG: generateForLesson(lesson)
+    QG-->>LL: List~QuizQuestion~
+    LL->>LR: navigate with lessonData + quizQuestions
 
-    loop 每页
-        Note over Engine: --- 预判阶段（纯CPU）---
-        Engine->>Engine: startIdx → 逐个累加段落
-        
-        loop 累加原子段
-            Engine->>Pretext: layout(handles[i], 968, 60.8)
-            Pretext-->>Engine: { height, lineCount }
-            Engine->>Engine: estimated = 88 + 38*N + totalH + 8*brCount
-            alt estimated ≤ 1296
-                Engine->>Engine: 继续累加
-            else estimated > 1296
-                Engine->>Engine: 回退一段 → 预测边界 endIdx
-            end
+    Note over LR,SC: === 课文阅读阶段 (P0-2) ===
+    LR->>LR: 逐句渲染羊皮卷课文
+    LR->>PT: renderObstacleText(content)
+    U->>LR: 点击「开始学习」按钮
+
+    Note over LR,SC: === 词龙激活动画 (P0-3) ===
+    LR->>MG: startLessonWordSequence(vocabWords)
+    loop 逐个生词激活
+        MG->>WD: flyToWord(nextWord, targetRect)
+        WD->>WD: 词龙从边缘飞入 + 盘旋
+        MG->>PT: highlightWord(word)
+        PT->>PT: Pretext 高亮 + 几何环绕动画
+        MG->>WD: startCirclingAnimation()
+
+        Note over LR,SC: === TTS 跟读 (P0-4) ===
+        MG->>TS: speak(word, language)
+        TS-->>LR: 朗读发音
+        U->>U: 跟读
+
+        Note over LR,SC: === 拼写验证 (P0-5) ===
+        LR->>SC: navigate to spellChallenge(word, question)
+        U->>SC: 输入拼写 "jumps"
+        SC->>SC: validateSpelling(input, correctAnswer)
+        alt 拼写正确 (P0-7)
+            SC-->>MG: playGoldTextEffect("jumps")
+            MG->>GT: triggerAnimation("jumps")
+            GT->>GT: 金色浮动文字 + 粒子特效
+            MG->>WD: 词龙飞离（带金色尾迹）
+            SC-->>FSRS: submitReview(wordId, Rating.Good)
+            FSRS->>DB: updateCardMemory(fsrsMemory)
+            SC-->>SC: 标记生词已掌握
+        else 拼写错误 (P0-8)
+            SC-->>SC: 显示错误提示
+            SC-->>TS: speak(word) 重新播放发音
+            SC-->>SC: 留在队列，等待重试
+            U->>SC: 重新输入
         end
-
-        Note over Engine: --- 验证阶段（1次 Playwright）---
-        Engine->>Playwright: setContent(HTML[ startIdx..endIdx ])
-        Engine->>Playwright: evaluate('document.body.scrollHeight')
-        Playwright-->>Engine: scrollHeight
-
-        alt scrollHeight ≤ 1296
-            Note over Engine: ✅ 验证通过
-        else scrollHeight > 1296
-            Note over Engine: ⚠️ Pretext 低估了，回退一段
-            Engine->>Playwright: setContent(HTML[ startIdx..endIdx-1 ])
-            Playwright-->>Engine: scrollHeight ✅
-        end
-
-        Engine->>Engine: 记录 pages [{startIdx, endIdx}]
-        Engine->>Engine: startIdx = endIdx + 1
     end
+
+    Note over SC,FSRS: === 一课完成：FSRS 更新 ===
+    FSRS->>DB: batchUpdateProgress()
+    SC-->>LR: navigate back
+    LR-->>LL: 更新课程进度

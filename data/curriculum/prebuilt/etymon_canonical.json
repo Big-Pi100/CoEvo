@@ -1,0 +1,3521 @@
+{
+ "source": "word.db",
+ "clusters": 390,
+ "cost": 0.402,
+ "merged": [
+  {
+   "language": "Latin",
+   "tier": "exact",
+   "canonical": "dis-",
+   "members": [
+    "dis-",
+    "dis"
+   ],
+   "reason": "同一拉丁前缀，仅连字符差异"
+  },
+  {
+   "language": "Latin",
+   "tier": "exact",
+   "canonical": "sulfur",
+   "members": [
+    "sulfur",
+    "sulphur"
+   ],
+   "reason": "同一拉丁词硫的两种拼写变体"
+  },
+  {
+   "language": "Latin",
+   "tier": "exact",
+   "canonical": "baiulus",
+   "members": [
+    "baiulus",
+    "bajulus"
+   ],
+   "reason": "同一拉丁词，i/j 拼写变体，义近"
+  },
+  {
+   "language": "Latin",
+   "tier": "exact",
+   "canonical": "iacere",
+   "members": [
+    "jacere",
+    "iacere"
+   ],
+   "reason": "同一拉丁词，j/i 为书写变体，均表投掷"
+  },
+  {
+   "language": "Latin",
+   "tier": "exact",
+   "canonical": "Iulius",
+   "members": [
+    "Julius",
+    "Iulius"
+   ],
+   "reason": "同一拉丁氏族名的I/J拼写变体"
+  },
+  {
+   "language": "Latin",
+   "tier": "exact",
+   "canonical": "in",
+   "members": [
+    "in-",
+    "in"
+   ],
+   "reason": "同一拉丁词in的带连字符与不带连字符拼写"
+  },
+  {
+   "language": "Latin",
+   "tier": "exact",
+   "canonical": "Scotti",
+   "members": [
+    "Scoti",
+    "Scotti"
+   ],
+   "reason": "同一词的单双辅音拼写变体"
+  },
+  {
+   "language": "Latin",
+   "tier": "exact",
+   "canonical": "major",
+   "members": [
+    "maior",
+    "major"
+   ],
+   "reason": "同一拉丁词的不同拼写变体"
+  },
+  {
+   "language": "Latin",
+   "tier": "exact",
+   "canonical": "sub",
+   "members": [
+    "sub",
+    "sub-"
+   ],
+   "reason": "同一拉丁词，仅连字符拼写差异"
+  },
+  {
+   "language": "Latin",
+   "tier": "exact",
+   "canonical": "ad",
+   "members": [
+    "ad-",
+    "ad"
+   ],
+   "reason": "同一拉丁介词，仅连字符差异"
+  },
+  {
+   "language": "Latin",
+   "tier": "exact",
+   "canonical": "praeparare",
+   "members": [
+    "praeparare",
+    "preparare"
+   ],
+   "reason": "同一词，仅ae/e拼写变体"
+  },
+  {
+   "language": "Latin",
+   "tier": "exact",
+   "canonical": "ianitor",
+   "members": [
+    "janitor",
+    "ianitor"
+   ],
+   "reason": "同一拉丁词，j/i 拼写变体"
+  },
+  {
+   "language": "Latin",
+   "tier": "exact",
+   "canonical": "Johannes",
+   "members": [
+    "Johannes",
+    "iohannes"
+   ],
+   "reason": "同一人名约翰的拼写变体"
+  },
+  {
+   "language": "Latin",
+   "tier": "exact",
+   "canonical": "justus",
+   "members": [
+    "iustus",
+    "justus"
+   ],
+   "reason": "同一词iustus的j/i拼写变体"
+  },
+  {
+   "language": "Latin",
+   "tier": "exact",
+   "canonical": "iniungere",
+   "members": [
+    "injungere",
+    "iniungere"
+   ],
+   "reason": "同一词，in- 前缀拼写变体"
+  },
+  {
+   "language": "Latin",
+   "tier": "exact",
+   "canonical": "jungere",
+   "members": [
+    "jungere",
+    "iungere"
+   ],
+   "reason": "同一拉丁词，j/i 拼写变体"
+  },
+  {
+   "language": "Latin",
+   "tier": "exact",
+   "canonical": "de",
+   "members": [
+    "de-",
+    "de"
+   ],
+   "reason": "同一拉丁介词de的带连字符与不带连字符写法"
+  },
+  {
+   "language": "Latin",
+   "tier": "exact",
+   "canonical": "inter",
+   "members": [
+    "inter",
+    "inter-"
+   ],
+   "reason": "同一拉丁词，连字符为构词变体"
+  },
+  {
+   "language": "Latin",
+   "tier": "near",
+   "canonical": "capitulum",
+   "members": [
+    "capitellum",
+    "capitulum"
+   ],
+   "reason": "同源异体，均指小头"
+  },
+  {
+   "language": "Latin",
+   "tier": "near",
+   "canonical": "munitio",
+   "members": [
+    "munitio",
+    "munition"
+   ],
+   "reason": "同一拉丁词的不同拼写变体，均指防御工事"
+  },
+  {
+   "language": "French",
+   "tier": "exact",
+   "canonical": "regretter",
+   "members": [
+    "regreter",
+    "regretter"
+   ],
+   "reason": "同一法语词，拼写变体，均表后悔/哀悼"
+  },
+  {
+   "language": "Latin",
+   "tier": "near",
+   "canonical": "adventus",
+   "members": [
+    "adventurus",
+    "adventus"
+   ],
+   "reason": "同源词，仅分词与名词形态差异"
+  },
+  {
+   "language": "French",
+   "tier": "exact",
+   "canonical": "payer",
+   "members": [
+    "paier",
+    "payer"
+   ],
+   "reason": "同一法语动词的拼写变体，均意为支付"
+  },
+  {
+   "language": "French",
+   "tier": "exact",
+   "canonical": "allouer",
+   "members": [
+    "alouer",
+    "allouer"
+   ],
+   "reason": "同一词的不同拼写，均意为允许"
+  },
+  {
+   "language": "French",
+   "tier": "exact",
+   "canonical": "couvrir",
+   "members": [
+    "couvrir",
+    "covrir"
+   ],
+   "reason": "同一动词的拼写变体，均表覆盖"
+  },
+  {
+   "language": "Latin",
+   "tier": "near",
+   "canonical": "circumire",
+   "members": [
+    "circuire",
+    "circumire"
+   ],
+   "reason": "同一拉丁词，circum-与circu-拼写变体"
+  },
+  {
+   "language": "French",
+   "tier": "exact",
+   "canonical": "warrant",
+   "members": [
+    "warant",
+    "warrant"
+   ],
+   "reason": "同一词，单双r拼写变体，义近"
+  },
+  {
+   "language": "French",
+   "tier": "near",
+   "canonical": "detachier",
+   "members": [
+    "destachier",
+    "detachier"
+   ],
+   "reason": "同一词，c前s/t拼写变体"
+  },
+  {
+   "language": "French",
+   "tier": "exact",
+   "canonical": "role",
+   "members": [
+    "role",
+    "rolle"
+   ],
+   "reason": "同一词的不同拼写，均指卷轴/角色"
+  },
+  {
+   "language": "French",
+   "tier": "near",
+   "canonical": "garde",
+   "members": [
+    "garde",
+    "garder"
+   ],
+   "reason": "同源词，名词与动词拼写变体"
+  },
+  {
+   "language": "French",
+   "tier": "near",
+   "canonical": "blond",
+   "members": [
+    "blond",
+    "blonde"
+   ],
+   "reason": "同一形容词的阴阳性拼写变体"
+  },
+  {
+   "language": "Latin",
+   "tier": "near",
+   "canonical": "mirabilis",
+   "members": [
+    "mirabilia",
+    "mirabilis"
+   ],
+   "reason": "同词根，形容词与名词复数形式"
+  },
+  {
+   "language": "Latin",
+   "tier": "near",
+   "canonical": "universum",
+   "members": [
+    "universum",
+    "universus"
+   ],
+   "reason": "同词根不同词性，中性名词与阳性形容词"
+  },
+  {
+   "language": "French",
+   "tier": "near",
+   "canonical": "madame",
+   "members": [
+    "ma dame",
+    "madame"
+   ],
+   "reason": "同源，ma dame为古拼写变体"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "first",
+   "members": [
+    "fyrst",
+    "first"
+   ],
+   "reason": "同一词的不同拼写，均为第一"
+  },
+  {
+   "language": "French",
+   "tier": "near",
+   "canonical": "bailli",
+   "members": [
+    "bailli",
+    "baillif"
+   ],
+   "reason": "同源异拼，均指行政/司法官"
+  },
+  {
+   "language": "French",
+   "tier": "near",
+   "canonical": "genre",
+   "members": [
+    "gendre",
+    "genre"
+   ],
+   "reason": "同一词的不同拼写，均指类型/体裁"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "up",
+   "members": [
+    "up",
+    "upp"
+   ],
+   "reason": "同一词的单双辅音拼写变体，均为'向上'"
+  },
+  {
+   "language": "French",
+   "tier": "near",
+   "canonical": "fete",
+   "members": [
+    "feste",
+    "fete"
+   ],
+   "reason": "同源词，节日/盛宴，拼写变体"
+  },
+  {
+   "language": "French",
+   "tier": "near",
+   "canonical": "nourrir",
+   "members": [
+    "norrir",
+    "nourrir"
+   ],
+   "reason": "同一词的不同拼写，均表滋养"
+  },
+  {
+   "language": "French",
+   "tier": "near",
+   "canonical": "developper",
+   "members": [
+    "desveloper",
+    "developper"
+   ],
+   "reason": "同一法语词的不同拼写变体，均意为展开"
+  },
+  {
+   "language": "French",
+   "tier": "near",
+   "canonical": "poste",
+   "members": [
+    "post",
+    "poste"
+   ],
+   "reason": "同源词，法语拼写变体，均指驿站"
+  },
+  {
+   "language": "French",
+   "tier": "near",
+   "canonical": "piece",
+   "members": [
+    "piece",
+    "pieche"
+   ],
+   "reason": "同一词的古法语拼写变体，均指碎片"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "man",
+   "members": [
+    "man",
+    "mann"
+   ],
+   "reason": "同一词的单双辅音拼写变体，均指人"
+  },
+  {
+   "language": "French",
+   "tier": "near",
+   "canonical": "estiquette",
+   "members": [
+    "estiquet",
+    "estiquette"
+   ],
+   "reason": "同一词的法语拼写变体，均指标签"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "bin",
+   "members": [
+    "binn",
+    "bin"
+   ],
+   "reason": "同一词，双写n与单写n拼写变体"
+  },
+  {
+   "language": "French",
+   "tier": "near",
+   "canonical": "laisse",
+   "members": [
+    "lais",
+    "laisse"
+   ],
+   "reason": "同源词lais/laisse，意为皮带/绳索"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "cocc",
+   "members": [
+    "cok",
+    "cocc"
+   ],
+   "reason": "均为公鸡，拼写变体"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "web",
+   "members": [
+    "webb",
+    "web"
+   ],
+   "reason": "同一词，双写b与单写b拼写变体"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "well",
+   "members": [
+    "well",
+    "wel"
+   ],
+   "reason": "同一词的单双写变体，均为‘好地’"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "tiht",
+   "members": [
+    "tiht",
+    "tyht"
+   ],
+   "reason": "同一词，i/y拼写变体，均为'紧的'"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "sticca",
+   "members": [
+    "styca",
+    "sticca"
+   ],
+   "reason": "同源异拼，均指小枝/棍"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "-lice",
+   "members": [
+    "-lice",
+    "lice"
+   ],
+   "reason": "同一副词后缀，拼写变体"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "scipe",
+   "members": [
+    "-scipe",
+    "scipe"
+   ],
+   "reason": "同一词，仅连字符拼写差异"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "spoc",
+   "members": [
+    "spok",
+    "spoc"
+   ],
+   "reason": "同一词c/k拼写变体，均为说话"
+  },
+  {
+   "language": "French",
+   "tier": "near",
+   "canonical": "deployer",
+   "members": [
+    "deployer",
+    "desployer"
+   ],
+   "reason": "同词异拼，s脱落变体，均为展开"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "baby",
+   "members": [
+    "baby",
+    "babi"
+   ],
+   "reason": "同一词的不同拼写变体"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "weard",
+   "members": [
+    "weard",
+    "-weard"
+   ],
+   "reason": "同一词，连字符仅表示后缀用法"
+  },
+  {
+   "language": "French",
+   "tier": "near",
+   "canonical": "vamp",
+   "members": [
+    "vamp",
+    "vampe"
+   ],
+   "reason": "同一词，拼写变体，均指鞋面"
+  },
+  {
+   "language": "French",
+   "tier": "near",
+   "canonical": "toile",
+   "members": [
+    "toaille",
+    "toile"
+   ],
+   "reason": "同源异拼，均指布/毛巾"
+  },
+  {
+   "language": "French",
+   "tier": "near",
+   "canonical": "violet",
+   "members": [
+    "violet",
+    "violette"
+   ],
+   "reason": "同源词，阴阳性拼写变体，均指紫色/紫罗兰"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "cynd",
+   "members": [
+    "kind",
+    "cynd"
+   ],
+   "reason": "同源异拼，义为种类天性"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "watt",
+   "members": [
+    "Wat",
+    "watt"
+   ],
+   "reason": "同一人名Watt的拼写变体"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "til",
+   "members": [
+    "til",
+    "till"
+   ],
+   "reason": "同一词，拼写变体，均表'直到'"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "twin",
+   "members": [
+    "twinn",
+    "twin"
+   ],
+   "reason": "同一词，双写n为拼写变体"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "cross",
+   "members": [
+    "cross",
+    "cros"
+   ],
+   "reason": "同一词，拼写变体，均指十字架"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "leas",
+   "members": [
+    "leas",
+    "-leas"
+   ],
+   "reason": "同一词，带连字符为构词变体"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "mid",
+   "members": [
+    "mid",
+    "midd"
+   ],
+   "reason": "同一词，拼写变体，均表中间"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "rest",
+   "members": [
+    "raest",
+    "rest"
+   ],
+   "reason": "同一词，æ/e拼写变体，均表休息"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "sum",
+   "members": [
+    "sum",
+    "-sum"
+   ],
+   "reason": "同一词根，前缀/后缀拼写变体"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "by",
+   "members": [
+    "bi",
+    "by"
+   ],
+   "reason": "同一介词，拼写变体，义近"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "setlan",
+   "members": [
+    "setlan",
+    "settlan"
+   ],
+   "reason": "同一词，双写辅音拼写变体"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "eall",
+   "members": [
+    "eall",
+    "eal"
+   ],
+   "reason": "同一词，拼写变体，均为‘全部’"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "weorc",
+   "members": [
+    "weorc",
+    "work"
+   ],
+   "reason": "同一词，拼写变体，均意为工作"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "tene",
+   "members": [
+    "tene",
+    "tiene"
+   ],
+   "reason": "同为古英语十的拼写变体"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "sae",
+   "members": [
+    "sae",
+    "se"
+   ],
+   "reason": "同一词‘海’的拼写变体"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "stocc",
+   "members": [
+    "stocc",
+    "stock"
+   ],
+   "reason": "同一词，拼写变体，均指树干"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "board",
+   "members": [
+    "bord",
+    "board"
+   ],
+   "reason": "同词，拼写变体，均指船板/板"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "feor",
+   "members": [
+    "feorr",
+    "feor"
+   ],
+   "reason": "同一词，拼写变体，均为'远'"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "wis",
+   "members": [
+    "wis",
+    "wys"
+   ],
+   "reason": "同一词的不同拼写，均为明智/聪明"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "daed",
+   "members": [
+    "daed",
+    "ded"
+   ],
+   "reason": "同一词'行为'的拼写变体"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "hlaehhan",
+   "members": [
+    "hlaehhan",
+    "hlaekhan"
+   ],
+   "reason": "同一词，kh为h的转写变体"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "news",
+   "members": [
+    "newes",
+    "news"
+   ],
+   "reason": "同一词的单复数拼写变体"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "crawe",
+   "members": [
+    "craw",
+    "crawe"
+   ],
+   "reason": "同一词，拼写变体，均指乌鸦"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "gyrela",
+   "members": [
+    "gyrel",
+    "gyrela"
+   ],
+   "reason": "同一词的不同拼写变体，均为女孩"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "maest",
+   "members": [
+    "maest",
+    "mest"
+   ],
+   "reason": "同一词'最多'的拼写变体"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "penny",
+   "members": [
+    "penig",
+    "pening",
+    "penny"
+   ],
+   "reason": "同一词的不同拼写变体，均指便士"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "pinn",
+   "members": [
+    "pinn",
+    "pin"
+   ],
+   "reason": "同一词，拼写变体，均指别针/栓"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "thin",
+   "members": [
+    "thin",
+    "thynne"
+   ],
+   "reason": "同一词，拼写变体，均表薄"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "table",
+   "members": [
+    "table",
+    "tabule"
+   ],
+   "reason": "同一词的不同拼写，均指桌子"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "sprenklen",
+   "members": [
+    "sprenklen",
+    "sprinklen"
+   ],
+   "reason": "同一词元音e/i拼写变体，义同"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "clawu",
+   "members": [
+    "clawa",
+    "clawu"
+   ],
+   "reason": "同一词的不同拼写，均为爪"
+  },
+  {
+   "language": "Old English",
+   "tier": "exact",
+   "canonical": "bikeren",
+   "members": [
+    "bickeren",
+    "bikeren"
+   ],
+   "reason": "拼写变体，同义争吵"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "stel",
+   "members": [
+    "stel",
+    "steli"
+   ],
+   "reason": "同一词，仅词尾i为变体"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "ciele",
+   "members": [
+    "cele",
+    "ciele"
+   ],
+   "reason": "同一词，拼写变体，均为寒冷"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "soft",
+   "members": [
+    "soft",
+    "softe"
+   ],
+   "reason": "同一词的拼写变体，词义相同"
+  },
+  {
+   "language": "Greek",
+   "tier": "exact",
+   "canonical": "bronchos",
+   "members": [
+    "bronchos",
+    "bronkhos"
+   ],
+   "reason": "同一希腊词βρόγχος的转写变体，均指气管"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "thwirl",
+   "members": [
+    "thwiril",
+    "thwirl"
+   ],
+   "reason": "同一词，元音/拼写变体，均指旋转"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "sprawlian",
+   "members": [
+    "sprawlian",
+    "spreawlian"
+   ],
+   "reason": "同一词的不同拼写变体，义近"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "half",
+   "members": [
+    "half",
+    "healf"
+   ],
+   "reason": "同一词的不同拼写，均为'一半'"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "scinu",
+   "members": [
+    "scinn",
+    "scinu"
+   ],
+   "reason": "同为古英语'小腿前部'的拼写变体"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "uttra",
+   "members": [
+    "utera",
+    "uttra"
+   ],
+   "reason": "同一词比较级拼写变体，均表'外面的'"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "stump",
+   "members": [
+    "stump",
+    "stumpe"
+   ],
+   "reason": "同一词，词尾e拼写变体"
+  },
+  {
+   "language": "Greek",
+   "tier": "exact",
+   "canonical": "chartes",
+   "members": [
+    "chartes",
+    "khartes"
+   ],
+   "reason": "同一希腊词χάρτης的转写变体"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "pegge",
+   "members": [
+    "paegel",
+    "pegge"
+   ],
+   "reason": "同源词，拼写变体，均指木钉/小容器"
+  },
+  {
+   "language": "Greek",
+   "tier": "near",
+   "canonical": "diarrhoia",
+   "members": [
+    "diarrhoia",
+    "diarroia"
+   ],
+   "reason": "同一希腊词的不同转写，均指腹泻"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "withdrawan",
+   "members": [
+    "withdraw",
+    "withdrawan"
+   ],
+   "reason": "同一词，拼写变体，均表撤回"
+  },
+  {
+   "language": "Greek",
+   "tier": "exact",
+   "canonical": "dys-",
+   "members": [
+    "dys",
+    "dys-"
+   ],
+   "reason": "同一希腊词根，仅连字符差异"
+  },
+  {
+   "language": "Greek",
+   "tier": "exact",
+   "canonical": "chronos",
+   "members": [
+    "chronos",
+    "khronos"
+   ],
+   "reason": "同一希腊词χρόνος的转写变体，均表时间"
+  },
+  {
+   "language": "other",
+   "tier": "near",
+   "canonical": "jangala",
+   "members": [
+    "jangal",
+    "jangala"
+   ],
+   "reason": "同一梵语词，仅词尾a有无之别"
+  },
+  {
+   "language": "Greek",
+   "tier": "exact",
+   "canonical": "techne",
+   "members": [
+    "tekhne",
+    "techne"
+   ],
+   "reason": "同一希腊词τέχνη的转写变体"
+  },
+  {
+   "language": "Greek",
+   "tier": "near",
+   "canonical": "Jesus",
+   "members": [
+    "Iesous",
+    "Jesus"
+   ],
+   "reason": "同一希腊语人名耶稣的转写变体"
+  },
+  {
+   "language": "Greek",
+   "tier": "exact",
+   "canonical": "genes",
+   "members": [
+    "-genes",
+    "genes"
+   ],
+   "reason": "同一词根，连字符为构词变体"
+  },
+  {
+   "language": "Greek",
+   "tier": "exact",
+   "canonical": "graphein",
+   "members": [
+    "grafein",
+    "graphein"
+   ],
+   "reason": "同一希腊词γράφειν的转写变体，均意为写"
+  },
+  {
+   "language": "other",
+   "tier": "near",
+   "canonical": "dhyana",
+   "members": [
+    "dhyan",
+    "dhyana"
+   ],
+   "reason": "同一梵语词的拼写变体，均指冥想"
+  },
+  {
+   "language": "Old Norse",
+   "tier": "exact",
+   "canonical": "happ",
+   "members": [
+    "hap",
+    "happ"
+   ],
+   "reason": "同一词的单双辅音拼写变体，均为运气"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "ceald",
+   "members": [
+    "cald",
+    "ceald"
+   ],
+   "reason": "同一词的不同拼写，均意为冷"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "scamu",
+   "members": [
+    "scamu",
+    "sceamu"
+   ],
+   "reason": "同一词，拼写变体，均意为羞耻"
+  },
+  {
+   "language": "Greek",
+   "tier": "exact",
+   "canonical": "mikros",
+   "members": [
+    "mikros",
+    "micros"
+   ],
+   "reason": "同一希腊词μικρός的转写变体，均表小"
+  },
+  {
+   "language": "Greek",
+   "tier": "exact",
+   "canonical": "chole",
+   "members": [
+    "chole",
+    "khole"
+   ],
+   "reason": "同一希腊词χολή的转写变体，均表胆汁"
+  },
+  {
+   "language": "Greek",
+   "tier": "exact",
+   "canonical": "planetes",
+   "members": [
+    "planetēs",
+    "planetes"
+   ],
+   "reason": "同一希腊词πλανήτης的转写变体，仅长短音符号不同"
+  },
+  {
+   "language": "Greek",
+   "tier": "exact",
+   "canonical": "chorde",
+   "members": [
+    "khorde",
+    "chorde"
+   ],
+   "reason": "同一希腊词χορδή的转写变体，均指弦"
+  },
+  {
+   "language": "Greek",
+   "tier": "near",
+   "canonical": "georgos",
+   "members": [
+    "Georgios",
+    "georgos"
+   ],
+   "reason": "同一希腊词γεωργός的转写变体，均指农夫"
+  },
+  {
+   "language": "Greek",
+   "tier": "exact",
+   "canonical": "echō",
+   "members": [
+    "echō",
+    "ekho"
+   ],
+   "reason": "同一希腊词ἠχώ的转写变体，均表回声"
+  },
+  {
+   "language": "Greek",
+   "tier": "exact",
+   "canonical": "koma",
+   "members": [
+    "koma",
+    "komma"
+   ],
+   "reason": "同一词不同拼写，均指深睡"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "tucian",
+   "members": [
+    "tucian",
+    "twiccian"
+   ],
+   "reason": "同源异体，均表拉扯"
+  },
+  {
+   "language": "Greek",
+   "tier": "exact",
+   "canonical": "skhole",
+   "members": [
+    "skhole",
+    "schole"
+   ],
+   "reason": "同一希腊词σχολή的转写变体"
+  },
+  {
+   "language": "other",
+   "tier": "exact",
+   "canonical": "bolwerk",
+   "members": [
+    "bolwerc",
+    "bolwerk"
+   ],
+   "reason": "同源词，拼写变体，均指堡垒"
+  },
+  {
+   "language": "Greek",
+   "tier": "exact",
+   "canonical": "archaios",
+   "members": [
+    "archaios",
+    "arkhaios"
+   ],
+   "reason": "同一词的不同转写，k/kh对应χ"
+  },
+  {
+   "language": "other",
+   "tier": "near",
+   "canonical": "Jugoslavija",
+   "members": [
+    "Jugoslav",
+    "Jugoslavija"
+   ],
+   "reason": "同词根，一为形容词/人，一为国名"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "best",
+   "members": [
+    "best",
+    "betst"
+   ],
+   "reason": "同一词的不同拼写，均为'最好'"
+  },
+  {
+   "language": "other",
+   "tier": "near",
+   "canonical": "yank",
+   "members": [
+    "janken",
+    "yank"
+   ],
+   "reason": "同义猛拉，拼写变体"
+  },
+  {
+   "language": "Greek",
+   "tier": "near",
+   "canonical": "monos",
+   "members": [
+    "monos",
+    "mono"
+   ],
+   "reason": "同一希腊词μόνος的拼写变体，均表单一"
+  },
+  {
+   "language": "Hebrew",
+   "tier": "near",
+   "canonical": "Yohanan",
+   "members": [
+    "yochanan",
+    "Yohanan"
+   ],
+   "reason": "同一名字的希伯来语转写变体，含义相同"
+  },
+  {
+   "language": "Old Norse",
+   "tier": "exact",
+   "canonical": "sen",
+   "members": [
+    "-sen",
+    "sen"
+   ],
+   "reason": "同一词，仅连字符拼写差异"
+  },
+  {
+   "language": "other",
+   "tier": "near",
+   "canonical": "Vietnam",
+   "members": [
+    "Viet Nam",
+    "Vietnam"
+   ],
+   "reason": "同一国名，仅空格拼写差异"
+  },
+  {
+   "language": "Greek",
+   "tier": "near",
+   "canonical": "chemia",
+   "members": [
+    "khemeia",
+    "chemia"
+   ],
+   "reason": "同一希腊词χημεία的转写变体，均指化学"
+  },
+  {
+   "language": "Greek",
+   "tier": "exact",
+   "canonical": "-oeides",
+   "members": [
+    "oeides",
+    "-oeides"
+   ],
+   "reason": "同一词根，连字符为构词变体"
+  },
+  {
+   "language": "other",
+   "tier": "near",
+   "canonical": "uisge beatha",
+   "members": [
+    "uisce beatha",
+    "uisge beatha"
+   ],
+   "reason": "苏格兰/爱尔兰语同一词拼写变体，均指生命之水"
+  },
+  {
+   "language": "Old Norse",
+   "tier": "near",
+   "canonical": "skur",
+   "members": [
+    "skur",
+    "skura"
+   ],
+   "reason": "同源词，仅词尾元音差异"
+  },
+  {
+   "language": "Greek",
+   "tier": "exact",
+   "canonical": "phantasia",
+   "members": [
+    "fantasia",
+    "phantasia"
+   ],
+   "reason": "同一希腊词φαντασία的转写变体"
+  },
+  {
+   "language": "Old Norse",
+   "tier": "near",
+   "canonical": "theirra",
+   "members": [
+    "theirra",
+    "their"
+   ],
+   "reason": "同词不同拼写，均为指示代词"
+  },
+  {
+   "language": "Hebrew",
+   "tier": "exact",
+   "canonical": "Joseph",
+   "members": [
+    "yosef",
+    "Joseph"
+   ],
+   "reason": "同一希伯来语人名的不同拼写"
+  },
+  {
+   "language": "Old English",
+   "tier": "near",
+   "canonical": "wild",
+   "members": [
+    "wild",
+    "wilde"
+   ],
+   "reason": "同一词，仅词尾e拼写变体"
+  },
+  {
+   "language": "Old French",
+   "tier": "near",
+   "canonical": "estorer",
+   "members": [
+    "estore",
+    "estorer"
+   ],
+   "reason": "同源动词变体，词义相关"
+  },
+  {
+   "language": "Proto-Germanic",
+   "tier": "near",
+   "canonical": "Haimirich",
+   "members": [
+    "Haimirich",
+    "Heimirich"
+   ],
+   "reason": "同一人名，ai/ei拼写变体，义同"
+  },
+  {
+   "language": "Old French",
+   "tier": "exact",
+   "canonical": "trac",
+   "members": [
+    "track",
+    "trac"
+   ],
+   "reason": "同一词，拼写变体，均指痕迹/轨道"
+  },
+  {
+   "language": "Italian",
+   "tier": "near",
+   "canonical": "allarme",
+   "members": [
+    "all'arme",
+    "allarme"
+   ],
+   "reason": "同一词的不同拼写，意为拿起武器"
+  },
+  {
+   "language": "Hebrew",
+   "tier": "near",
+   "canonical": "Reuben",
+   "members": [
+    "Reuben",
+    "Reuven"
+   ],
+   "reason": "同一希伯来名字的英译变体"
+  }
+ ],
+ "kept": [
+  {
+   "language": "Latin",
+   "form": "adorare"
+  },
+  {
+   "language": "Latin",
+   "form": "adornare"
+  },
+  {
+   "language": "Latin",
+   "form": "tendere"
+  },
+  {
+   "language": "Latin",
+   "form": "tenere"
+  },
+  {
+   "language": "Latin",
+   "form": "attendere"
+  },
+  {
+   "language": "Latin",
+   "form": "caedere"
+  },
+  {
+   "language": "Latin",
+   "form": "cedere"
+  },
+  {
+   "language": "Latin",
+   "form": "marinus"
+  },
+  {
+   "language": "Latin",
+   "form": "Martinus"
+  },
+  {
+   "language": "Latin",
+   "form": "per-"
+  },
+  {
+   "language": "Latin",
+   "form": "per"
+  },
+  {
+   "language": "Latin",
+   "form": "deprimere"
+  },
+  {
+   "language": "Latin",
+   "form": "exprimere"
+  },
+  {
+   "language": "Latin",
+   "form": "vannus"
+  },
+  {
+   "language": "Latin",
+   "form": "vanus"
+  },
+  {
+   "language": "Latin",
+   "form": "nona"
+  },
+  {
+   "language": "Latin",
+   "form": "nonna"
+  },
+  {
+   "language": "Latin",
+   "form": "tegere"
+  },
+  {
+   "language": "Latin",
+   "form": "tergere"
+  },
+  {
+   "language": "Latin",
+   "form": "arrogare"
+  },
+  {
+   "language": "Latin",
+   "form": "rogare"
+  },
+  {
+   "language": "Latin",
+   "form": "quaerere"
+  },
+  {
+   "language": "Latin",
+   "form": "currere"
+  },
+  {
+   "language": "Latin",
+   "form": "mutus"
+  },
+  {
+   "language": "Latin",
+   "form": "mutuus"
+  },
+  {
+   "language": "Latin",
+   "form": "praedicare"
+  },
+  {
+   "language": "Latin",
+   "form": "praedicere"
+  },
+  {
+   "language": "Latin",
+   "form": "defendere"
+  },
+  {
+   "language": "Latin",
+   "form": "dependere"
+  },
+  {
+   "language": "Latin",
+   "form": "cuppa"
+  },
+  {
+   "language": "Latin",
+   "form": "cupa"
+  },
+  {
+   "language": "Latin",
+   "form": "ponere"
+  },
+  {
+   "language": "Latin",
+   "form": "opponere"
+  },
+  {
+   "language": "Latin",
+   "form": "factum"
+  },
+  {
+   "language": "Latin",
+   "form": "fatum"
+  },
+  {
+   "language": "Latin",
+   "form": "demonstrare"
+  },
+  {
+   "language": "Latin",
+   "form": "monstrare"
+  },
+  {
+   "language": "Latin",
+   "form": "ius"
+  },
+  {
+   "language": "Latin",
+   "form": "jus"
+  },
+  {
+   "language": "Latin",
+   "form": "addicere"
+  },
+  {
+   "language": "Latin",
+   "form": "adjicere"
+  },
+  {
+   "language": "Latin",
+   "form": "prae"
+  },
+  {
+   "language": "Latin",
+   "form": "pre"
+  },
+  {
+   "language": "Latin",
+   "form": "compellere"
+  },
+  {
+   "language": "Latin",
+   "form": "complere"
+  },
+  {
+   "language": "Latin",
+   "form": "spondere"
+  },
+  {
+   "language": "Latin",
+   "form": "respondere"
+  },
+  {
+   "language": "Latin",
+   "form": "sedere"
+  },
+  {
+   "language": "Latin",
+   "form": "edere"
+  },
+  {
+   "language": "Latin",
+   "form": "facere"
+  },
+  {
+   "language": "Latin",
+   "form": "acere"
+  },
+  {
+   "language": "Latin",
+   "form": "labii"
+  },
+  {
+   "language": "Latin",
+   "form": "labi"
+  },
+  {
+   "language": "Latin",
+   "form": "investigare"
+  },
+  {
+   "language": "Latin",
+   "form": "investire"
+  },
+  {
+   "language": "Latin",
+   "form": "stringere"
+  },
+  {
+   "language": "Latin",
+   "form": "stinguere"
+  },
+  {
+   "language": "Latin",
+   "form": "penna"
+  },
+  {
+   "language": "Latin",
+   "form": "poena"
+  },
+  {
+   "language": "Latin",
+   "form": "residere"
+  },
+  {
+   "language": "Latin",
+   "form": "praesidere"
+  },
+  {
+   "language": "Latin",
+   "form": "capsa"
+  },
+  {
+   "language": "Latin",
+   "form": "cappa"
+  },
+  {
+   "language": "Latin",
+   "form": "sanus"
+  },
+  {
+   "language": "Latin",
+   "form": "annus"
+  },
+  {
+   "language": "Latin",
+   "form": "concurrere"
+  },
+  {
+   "language": "Latin",
+   "form": "conquirere"
+  },
+  {
+   "language": "Latin",
+   "form": "miles"
+  },
+  {
+   "language": "Latin",
+   "form": "mille"
+  },
+  {
+   "language": "Latin",
+   "form": "antae"
+  },
+  {
+   "language": "Latin",
+   "form": "ante"
+  },
+  {
+   "language": "Latin",
+   "form": "carrus"
+  },
+  {
+   "language": "Latin",
+   "form": "carus"
+  },
+  {
+   "language": "Latin",
+   "form": "fama"
+  },
+  {
+   "language": "Latin",
+   "form": "flamma"
+  },
+  {
+   "language": "Latin",
+   "form": "aemulus"
+  },
+  {
+   "language": "Latin",
+   "form": "mulus"
+  },
+  {
+   "language": "Latin",
+   "form": "coctus"
+  },
+  {
+   "language": "Latin",
+   "form": "coquus"
+  },
+  {
+   "language": "Latin",
+   "form": "magia"
+  },
+  {
+   "language": "Latin",
+   "form": "Maia"
+  },
+  {
+   "language": "Latin",
+   "form": "palus"
+  },
+  {
+   "language": "Latin",
+   "form": "Paulus"
+  },
+  {
+   "language": "Latin",
+   "form": "praecedere"
+  },
+  {
+   "language": "Latin",
+   "form": "recedere"
+  },
+  {
+   "language": "Latin",
+   "form": "castus"
+  },
+  {
+   "language": "Latin",
+   "form": "casus"
+  },
+  {
+   "language": "Latin",
+   "form": "deferre"
+  },
+  {
+   "language": "Latin",
+   "form": "efferre"
+  },
+  {
+   "language": "Latin",
+   "form": "expandere"
+  },
+  {
+   "language": "Latin",
+   "form": "expendere"
+  },
+  {
+   "language": "Latin",
+   "form": "conformare"
+  },
+  {
+   "language": "Latin",
+   "form": "confortare"
+  },
+  {
+   "language": "Latin",
+   "form": "constare"
+  },
+  {
+   "language": "Latin",
+   "form": "consultare"
+  },
+  {
+   "language": "Latin",
+   "form": "comprimere"
+  },
+  {
+   "language": "Latin",
+   "form": "opprimere"
+  },
+  {
+   "language": "Latin",
+   "form": "fatuus"
+  },
+  {
+   "language": "Latin",
+   "form": "flatus"
+  },
+  {
+   "language": "Latin",
+   "form": "virtus"
+  },
+  {
+   "language": "Latin",
+   "form": "virus"
+  },
+  {
+   "language": "Latin",
+   "form": "portio"
+  },
+  {
+   "language": "Latin",
+   "form": "potio"
+  },
+  {
+   "language": "Latin",
+   "form": "plus"
+  },
+  {
+   "language": "Latin",
+   "form": "polus"
+  },
+  {
+   "language": "Latin",
+   "form": "impossibilis"
+  },
+  {
+   "language": "Latin",
+   "form": "impossibilitas"
+  },
+  {
+   "language": "Latin",
+   "form": "unitas"
+  },
+  {
+   "language": "Latin",
+   "form": "vanitas"
+  },
+  {
+   "language": "Latin",
+   "form": "graduare"
+  },
+  {
+   "language": "Latin",
+   "form": "gravare"
+  },
+  {
+   "language": "Latin",
+   "form": "deliberare"
+  },
+  {
+   "language": "Latin",
+   "form": "delirare"
+  },
+  {
+   "language": "Latin",
+   "form": "ritus"
+  },
+  {
+   "language": "Latin",
+   "form": "rivus"
+  },
+  {
+   "language": "Latin",
+   "form": "mustum"
+  },
+  {
+   "language": "Latin",
+   "form": "muttum"
+  },
+  {
+   "language": "Latin",
+   "form": "excurrere"
+  },
+  {
+   "language": "Latin",
+   "form": "exquirere"
+  },
+  {
+   "language": "Latin",
+   "form": "praecidere"
+  },
+  {
+   "language": "Latin",
+   "form": "praecipere"
+  },
+  {
+   "language": "Latin",
+   "form": "candidatus"
+  },
+  {
+   "language": "Latin",
+   "form": "candidus"
+  },
+  {
+   "language": "Latin",
+   "form": "abscedere"
+  },
+  {
+   "language": "Latin",
+   "form": "ascendere"
+  },
+  {
+   "language": "Latin",
+   "form": "Palatium"
+  },
+  {
+   "language": "Latin",
+   "form": "palatum"
+  },
+  {
+   "language": "Latin",
+   "form": "villus"
+  },
+  {
+   "language": "Latin",
+   "form": "vivus"
+  },
+  {
+   "language": "Latin",
+   "form": "petra"
+  },
+  {
+   "language": "Latin",
+   "form": "poeta"
+  },
+  {
+   "language": "French",
+   "form": "agreer"
+  },
+  {
+   "language": "French",
+   "form": "agree"
+  },
+  {
+   "language": "Latin",
+   "form": "Januarius"
+  },
+  {
+   "language": "Latin",
+   "form": "manuarius"
+  },
+  {
+   "language": "Latin",
+   "form": "alescere"
+  },
+  {
+   "language": "Latin",
+   "form": "coalescere"
+  },
+  {
+   "language": "Latin",
+   "form": "perfectus"
+  },
+  {
+   "language": "Latin",
+   "form": "profectus"
+  },
+  {
+   "language": "Latin",
+   "form": "deminuere"
+  },
+  {
+   "language": "Latin",
+   "form": "diminuere"
+  },
+  {
+   "language": "Latin",
+   "form": "violare"
+  },
+  {
+   "language": "Latin",
+   "form": "volare"
+  },
+  {
+   "language": "French",
+   "form": "-age"
+  },
+  {
+   "language": "French",
+   "form": "aage"
+  },
+  {
+   "language": "Latin",
+   "form": "detegere"
+  },
+  {
+   "language": "Latin",
+   "form": "detergere"
+  },
+  {
+   "language": "French",
+   "form": "veue"
+  },
+  {
+   "language": "French",
+   "form": "queue"
+  },
+  {
+   "language": "Latin",
+   "form": "ventus"
+  },
+  {
+   "language": "Latin",
+   "form": "Venus"
+  },
+  {
+   "language": "Latin",
+   "form": "vetus"
+  },
+  {
+   "language": "Latin",
+   "form": "perficere"
+  },
+  {
+   "language": "Latin",
+   "form": "praeficere"
+  },
+  {
+   "language": "Latin",
+   "form": "impartialis"
+  },
+  {
+   "language": "Latin",
+   "form": "martialis"
+  },
+  {
+   "language": "Latin",
+   "form": "pelvis"
+  },
+  {
+   "language": "Latin",
+   "form": "pellis"
+  },
+  {
+   "language": "Latin",
+   "form": "viscus"
+  },
+  {
+   "language": "Latin",
+   "form": "visus"
+  },
+  {
+   "language": "Latin",
+   "form": "lacus"
+  },
+  {
+   "language": "Latin",
+   "form": "laicus"
+  },
+  {
+   "language": "Latin",
+   "form": "innatus"
+  },
+  {
+   "language": "Latin",
+   "form": "intus"
+  },
+  {
+   "language": "Latin",
+   "form": "serius"
+  },
+  {
+   "language": "Latin",
+   "form": "servus"
+  },
+  {
+   "language": "French",
+   "form": "estoffe"
+  },
+  {
+   "language": "French",
+   "form": "estoffer"
+  },
+  {
+   "language": "French",
+   "form": "George"
+  },
+  {
+   "language": "French",
+   "form": "gorge"
+  },
+  {
+   "language": "French",
+   "form": "pas"
+  },
+  {
+   "language": "French",
+   "form": "pass"
+  },
+  {
+   "language": "Latin",
+   "form": "effluere"
+  },
+  {
+   "language": "Latin",
+   "form": "eluere"
+  },
+  {
+   "language": "Latin",
+   "form": "condicere"
+  },
+  {
+   "language": "Latin",
+   "form": "conicere"
+  },
+  {
+   "language": "Latin",
+   "form": "agglomerare"
+  },
+  {
+   "language": "Latin",
+   "form": "glomerare"
+  },
+  {
+   "language": "Latin",
+   "form": "cultus"
+  },
+  {
+   "language": "Latin",
+   "form": "culus"
+  },
+  {
+   "language": "French",
+   "form": "categorie"
+  },
+  {
+   "language": "French",
+   "form": "categoriser"
+  },
+  {
+   "language": "Latin",
+   "form": "procreare"
+  },
+  {
+   "language": "Latin",
+   "form": "procurare"
+  },
+  {
+   "language": "French",
+   "form": "baile"
+  },
+  {
+   "language": "French",
+   "form": "bale"
+  },
+  {
+   "language": "French",
+   "form": "Diane"
+  },
+  {
+   "language": "French",
+   "form": "Jane"
+  },
+  {
+   "language": "French",
+   "form": "carier"
+  },
+  {
+   "language": "French",
+   "form": "crier"
+  },
+  {
+   "language": "Latin",
+   "form": "obstruere"
+  },
+  {
+   "language": "Latin",
+   "form": "obtrudere"
+  },
+  {
+   "language": "French",
+   "form": "suite"
+  },
+  {
+   "language": "French",
+   "form": "suit"
+  },
+  {
+   "language": "French",
+   "form": "buffe"
+  },
+  {
+   "language": "French",
+   "form": "buffer"
+  },
+  {
+   "language": "French",
+   "form": "buffet"
+  },
+  {
+   "language": "French",
+   "form": "-ese"
+  },
+  {
+   "language": "French",
+   "form": "esse"
+  },
+  {
+   "language": "French",
+   "form": "baffler"
+  },
+  {
+   "language": "French",
+   "form": "baller"
+  },
+  {
+   "language": "French",
+   "form": "role"
+  },
+  {
+   "language": "French",
+   "form": "rolle"
+  },
+  {
+   "language": "French",
+   "form": "langage"
+  },
+  {
+   "language": "French",
+   "form": "language"
+  },
+  {
+   "language": "French",
+   "form": "parleor"
+  },
+  {
+   "language": "French",
+   "form": "parler"
+  },
+  {
+   "language": "French",
+   "form": "bevee"
+  },
+  {
+   "language": "French",
+   "form": "bevel"
+  },
+  {
+   "language": "Latin",
+   "form": "pullus"
+  },
+  {
+   "language": "Latin",
+   "form": "puls"
+  },
+  {
+   "language": "Latin",
+   "form": "pulsus"
+  },
+  {
+   "language": "French",
+   "form": "escuier"
+  },
+  {
+   "language": "French",
+   "form": "esquiper"
+  },
+  {
+   "language": "French",
+   "form": "resne"
+  },
+  {
+   "language": "French",
+   "form": "-resse"
+  },
+  {
+   "language": "French",
+   "form": "aire"
+  },
+  {
+   "language": "French",
+   "form": "maire"
+  },
+  {
+   "language": "French",
+   "form": "paire"
+  },
+  {
+   "language": "French",
+   "form": "cler"
+  },
+  {
+   "language": "French",
+   "form": "coller"
+  },
+  {
+   "language": "French",
+   "form": "chaiere"
+  },
+  {
+   "language": "French",
+   "form": "chiere"
+  },
+  {
+   "language": "Latin",
+   "form": "lucidus"
+  },
+  {
+   "language": "Latin",
+   "form": "Lucius"
+  },
+  {
+   "language": "French",
+   "form": "garir"
+  },
+  {
+   "language": "French",
+   "form": "garnir"
+  },
+  {
+   "language": "French",
+   "form": "aigle"
+  },
+  {
+   "language": "French",
+   "form": "aile"
+  },
+  {
+   "language": "French",
+   "form": "limon"
+  },
+  {
+   "language": "French",
+   "form": "lion"
+  },
+  {
+   "language": "French",
+   "form": "escachier"
+  },
+  {
+   "language": "French",
+   "form": "esclachier"
+  },
+  {
+   "language": "Latin",
+   "form": "purificare"
+  },
+  {
+   "language": "Latin",
+   "form": "verificare"
+  },
+  {
+   "language": "Latin",
+   "form": "paria"
+  },
+  {
+   "language": "Latin",
+   "form": "patria"
+  },
+  {
+   "language": "French",
+   "form": "blanche"
+  },
+  {
+   "language": "French",
+   "form": "blanchet"
+  },
+  {
+   "language": "French",
+   "form": "petrol"
+  },
+  {
+   "language": "French",
+   "form": "petrole"
+  },
+  {
+   "language": "Old English",
+   "form": "kiken"
+  },
+  {
+   "language": "Old English",
+   "form": "cicen"
+  },
+  {
+   "language": "French",
+   "form": "rage"
+  },
+  {
+   "language": "French",
+   "form": "range"
+  },
+  {
+   "language": "French",
+   "form": "question"
+  },
+  {
+   "language": "French",
+   "form": "questionner"
+  },
+  {
+   "language": "Old English",
+   "form": "fellan"
+  },
+  {
+   "language": "Old English",
+   "form": "felan"
+  },
+  {
+   "language": "French",
+   "form": "werre"
+  },
+  {
+   "language": "French",
+   "form": "luere"
+  },
+  {
+   "language": "French",
+   "form": "barbe"
+  },
+  {
+   "language": "French",
+   "form": "barre"
+  },
+  {
+   "language": "French",
+   "form": "tonel"
+  },
+  {
+   "language": "French",
+   "form": "tonne"
+  },
+  {
+   "language": "French",
+   "form": "masle"
+  },
+  {
+   "language": "French",
+   "form": "masse"
+  },
+  {
+   "language": "French",
+   "form": "aconter"
+  },
+  {
+   "language": "French",
+   "form": "conter"
+  },
+  {
+   "language": "Latin",
+   "form": "scrupulosus"
+  },
+  {
+   "language": "Latin",
+   "form": "scrupulus"
+  },
+  {
+   "language": "French",
+   "form": "gant"
+  },
+  {
+   "language": "French",
+   "form": "geant"
+  },
+  {
+   "language": "French",
+   "form": "graant"
+  },
+  {
+   "language": "Old English",
+   "form": "-nes"
+  },
+  {
+   "language": "Old English",
+   "form": "naes"
+  },
+  {
+   "language": "French",
+   "form": "dresser"
+  },
+  {
+   "language": "French",
+   "form": "addresser"
+  },
+  {
+   "language": "Old English",
+   "form": "in"
+  },
+  {
+   "language": "Old English",
+   "form": "inn"
+  },
+  {
+   "language": "French",
+   "form": "quite"
+  },
+  {
+   "language": "French",
+   "form": "quiter"
+  },
+  {
+   "language": "French",
+   "form": "lais"
+  },
+  {
+   "language": "French",
+   "form": "laisse"
+  },
+  {
+   "language": "Old English",
+   "form": "coc"
+  },
+  {
+   "language": "French",
+   "form": "reconnaitre"
+  },
+  {
+   "language": "French",
+   "form": "renaitre"
+  },
+  {
+   "language": "Old English",
+   "form": "dic"
+  },
+  {
+   "language": "Old English",
+   "form": "Dick"
+  },
+  {
+   "language": "Old English",
+   "form": "boc"
+  },
+  {
+   "language": "Old English",
+   "form": "book"
+  },
+  {
+   "language": "French",
+   "form": "sire"
+  },
+  {
+   "language": "French",
+   "form": "sivre"
+  },
+  {
+   "language": "French",
+   "form": "usage"
+  },
+  {
+   "language": "French",
+   "form": "wage"
+  },
+  {
+   "language": "French",
+   "form": "message"
+  },
+  {
+   "language": "French",
+   "form": "messager"
+  },
+  {
+   "language": "Old English",
+   "form": "of"
+  },
+  {
+   "language": "Old English",
+   "form": "off"
+  },
+  {
+   "language": "Old English",
+   "form": "pytt"
+  },
+  {
+   "language": "Old English",
+   "form": "Pitt"
+  },
+  {
+   "language": "Old English",
+   "form": "tol"
+  },
+  {
+   "language": "Old English",
+   "form": "toll"
+  },
+  {
+   "language": "Old English",
+   "form": "liccian"
+  },
+  {
+   "language": "Old English",
+   "form": "lician"
+  },
+  {
+   "language": "French",
+   "form": "toaille"
+  },
+  {
+   "language": "French",
+   "form": "toile"
+  },
+  {
+   "language": "Old English",
+   "form": "-dom"
+  },
+  {
+   "language": "Old English",
+   "form": "dom"
+  },
+  {
+   "language": "Old English",
+   "form": "cynn"
+  },
+  {
+   "language": "Old English",
+   "form": "cin"
+  },
+  {
+   "language": "Old English",
+   "form": "batt"
+  },
+  {
+   "language": "Old English",
+   "form": "bat"
+  },
+  {
+   "language": "Old English",
+   "form": "ridan"
+  },
+  {
+   "language": "Old English",
+   "form": "ryddan"
+  },
+  {
+   "language": "Old English",
+   "form": "baecce"
+  },
+  {
+   "language": "Old English",
+   "form": "baece"
+  },
+  {
+   "language": "Old English",
+   "form": "tunne"
+  },
+  {
+   "language": "Old English",
+   "form": "tune"
+  },
+  {
+   "language": "Old English",
+   "form": "god"
+  },
+  {
+   "language": "Old English",
+   "form": "good"
+  },
+  {
+   "language": "Old English",
+   "form": "cross"
+  },
+  {
+   "language": "Old English",
+   "form": "pak"
+  },
+  {
+   "language": "Old English",
+   "form": "pac"
+  },
+  {
+   "language": "French",
+   "form": "nice"
+  },
+  {
+   "language": "French",
+   "form": "niece"
+  },
+  {
+   "language": "Old English",
+   "form": "full"
+  },
+  {
+   "language": "Old English",
+   "form": "ful"
+  },
+  {
+   "language": "Old English",
+   "form": "-ful"
+  },
+  {
+   "language": "Old English",
+   "form": "acan"
+  },
+  {
+   "language": "Old English",
+   "form": "bacan"
+  },
+  {
+   "language": "Old English",
+   "form": "Scott"
+  },
+  {
+   "language": "Old English",
+   "form": "scot"
+  },
+  {
+   "language": "Old English",
+   "form": "yow"
+  },
+  {
+   "language": "Old English",
+   "form": "you"
+  },
+  {
+   "language": "Old English",
+   "form": "hoppian"
+  },
+  {
+   "language": "Old English",
+   "form": "hopian"
+  },
+  {
+   "language": "Old English",
+   "form": "aefen"
+  },
+  {
+   "language": "Old English",
+   "form": "efen"
+  },
+  {
+   "language": "Old English",
+   "form": "buc"
+  },
+  {
+   "language": "Old English",
+   "form": "buck"
+  },
+  {
+   "language": "Old English",
+   "form": "be"
+  },
+  {
+   "language": "Old English",
+   "form": "be-"
+  },
+  {
+   "language": "Old English",
+   "form": "her"
+  },
+  {
+   "language": "Old English",
+   "form": "haer"
+  },
+  {
+   "language": "Old English",
+   "form": "will"
+  },
+  {
+   "language": "Old English",
+   "form": "wil"
+  },
+  {
+   "language": "Old English",
+   "form": "aefre"
+  },
+  {
+   "language": "Old English",
+   "form": "naefre"
+  },
+  {
+   "language": "Old English",
+   "form": "see"
+  },
+  {
+   "language": "Old English",
+   "form": "maegden"
+  },
+  {
+   "language": "Old English",
+   "form": "maegen"
+  },
+  {
+   "language": "Old English",
+   "form": "raecan"
+  },
+  {
+   "language": "Old English",
+   "form": "reccan"
+  },
+  {
+   "language": "Old English",
+   "form": "bike"
+  },
+  {
+   "language": "Old English",
+   "form": "birce"
+  },
+  {
+   "language": "Old English",
+   "form": "geat"
+  },
+  {
+   "language": "Old English",
+   "form": "great"
+  },
+  {
+   "language": "Old English",
+   "form": "haelan"
+  },
+  {
+   "language": "Old English",
+   "form": "helan"
+  },
+  {
+   "language": "Old English",
+   "form": "maes"
+  },
+  {
+   "language": "Old English",
+   "form": "mess"
+  },
+  {
+   "language": "Old English",
+   "form": "baec"
+  },
+  {
+   "language": "Old English",
+   "form": "becc"
+  },
+  {
+   "language": "Old English",
+   "form": "cene"
+  },
+  {
+   "language": "Old English",
+   "form": "claene"
+  },
+  {
+   "language": "Old English",
+   "form": "dol"
+  },
+  {
+   "language": "Old English",
+   "form": "doll"
+  },
+  {
+   "language": "Old English",
+   "form": "laestan"
+  },
+  {
+   "language": "Old English",
+   "form": "laetan"
+  },
+  {
+   "language": "Old English",
+   "form": "fleogan"
+  },
+  {
+   "language": "Old English",
+   "form": "leogan"
+  },
+  {
+   "language": "Old English",
+   "form": "hela"
+  },
+  {
+   "language": "Old English",
+   "form": "helma"
+  },
+  {
+   "language": "Old English",
+   "form": "hyrtan"
+  },
+  {
+   "language": "Old English",
+   "form": "hyttan"
+  },
+  {
+   "language": "Old English",
+   "form": "hwil"
+  },
+  {
+   "language": "Old English",
+   "form": "hwylc"
+  },
+  {
+   "language": "Old English",
+   "form": "gieldan"
+  },
+  {
+   "language": "Old English",
+   "form": "gyldan"
+  },
+  {
+   "language": "Old English",
+   "form": "muth"
+  },
+  {
+   "language": "Old English",
+   "form": "mutha"
+  },
+  {
+   "language": "Old English",
+   "form": "stan"
+  },
+  {
+   "language": "Old English",
+   "form": "settan"
+  },
+  {
+   "language": "Old English",
+   "form": "sittan"
+  },
+  {
+   "language": "Old English",
+   "form": "meltan"
+  },
+  {
+   "language": "Old English",
+   "form": "metan"
+  },
+  {
+   "language": "Old English",
+   "form": "dwellan"
+  },
+  {
+   "language": "Old English",
+   "form": "daelan"
+  },
+  {
+   "language": "Old English",
+   "form": "etan"
+  },
+  {
+   "language": "Old English",
+   "form": "getan"
+  },
+  {
+   "language": "Old English",
+   "form": "seam"
+  },
+  {
+   "language": "Old English",
+   "form": "steam"
+  },
+  {
+   "language": "Old English",
+   "form": "cnyttan"
+  },
+  {
+   "language": "Old English",
+   "form": "cyttan"
+  },
+  {
+   "language": "Old English",
+   "form": "gasen"
+  },
+  {
+   "language": "Old English",
+   "form": "gaspen"
+  },
+  {
+   "language": "Old English",
+   "form": "raedan"
+  },
+  {
+   "language": "Old English",
+   "form": "bredan"
+  },
+  {
+   "language": "Old English",
+   "form": "lihtan"
+  },
+  {
+   "language": "Old English",
+   "form": "alihtan"
+  },
+  {
+   "language": "Old English",
+   "form": "deore"
+  },
+  {
+   "language": "Old English",
+   "form": "deor"
+  },
+  {
+   "language": "Old English",
+   "form": "steoran"
+  },
+  {
+   "language": "Old English",
+   "form": "steorra"
+  },
+  {
+   "language": "Old English",
+   "form": "waescan"
+  },
+  {
+   "language": "Old English",
+   "form": "wesan"
+  },
+  {
+   "language": "Old English",
+   "form": "bridd"
+  },
+  {
+   "language": "Old English",
+   "form": "brid"
+  },
+  {
+   "language": "Old English",
+   "form": "bryd"
+  },
+  {
+   "language": "Old English",
+   "form": "pike"
+  },
+  {
+   "language": "Old English",
+   "form": "piken"
+  },
+  {
+   "language": "Old English",
+   "form": "sawan"
+  },
+  {
+   "language": "Old English",
+   "form": "swan"
+  },
+  {
+   "language": "Old English",
+   "form": "tale"
+  },
+  {
+   "language": "Old English",
+   "form": "tweel"
+  },
+  {
+   "language": "Old English",
+   "form": "twelf"
+  },
+  {
+   "language": "Old English",
+   "form": "bickeren"
+  },
+  {
+   "language": "Old English",
+   "form": "bikeren"
+  },
+  {
+   "language": "Old English",
+   "form": "flac"
+  },
+  {
+   "language": "Old English",
+   "form": "flanc"
+  },
+  {
+   "language": "Old English",
+   "form": "spaec"
+  },
+  {
+   "language": "Old English",
+   "form": "specca"
+  },
+  {
+   "language": "Old English",
+   "form": "bita"
+  },
+  {
+   "language": "Old English",
+   "form": "bitan"
+  },
+  {
+   "language": "Old English",
+   "form": "beor"
+  },
+  {
+   "language": "Old English",
+   "form": "beorc"
+  },
+  {
+   "language": "Old English",
+   "form": "clathian"
+  },
+  {
+   "language": "Old English",
+   "form": "lathian"
+  },
+  {
+   "language": "Old English",
+   "form": "bald"
+  },
+  {
+   "language": "Old English",
+   "form": "balled"
+  },
+  {
+   "language": "Old English",
+   "form": "sican"
+  },
+  {
+   "language": "Old English",
+   "form": "snican"
+  },
+  {
+   "language": "Old English",
+   "form": "cwysan"
+  },
+  {
+   "language": "Old English",
+   "form": "cyssan"
+  },
+  {
+   "language": "Old English",
+   "form": "while"
+  },
+  {
+   "language": "Old English",
+   "form": "wile"
+  },
+  {
+   "language": "Old English",
+   "form": "twincian"
+  },
+  {
+   "language": "Old English",
+   "form": "wincian"
+  },
+  {
+   "language": "Old English",
+   "form": "wildeor"
+  },
+  {
+   "language": "Old English",
+   "form": "wilder"
+  },
+  {
+   "language": "Old English",
+   "form": "laenan"
+  },
+  {
+   "language": "Old English",
+   "form": "lengan"
+  },
+  {
+   "language": "Old English",
+   "form": "dran"
+  },
+  {
+   "language": "Old English",
+   "form": "durran"
+  },
+  {
+   "language": "Old English",
+   "form": "wele"
+  },
+  {
+   "language": "Old English",
+   "form": "wellen"
+  },
+  {
+   "language": "Greek",
+   "form": "polios"
+  },
+  {
+   "language": "Greek",
+   "form": "polos"
+  },
+  {
+   "language": "Old English",
+   "form": "sceal"
+  },
+  {
+   "language": "Old English",
+   "form": "sceald"
+  },
+  {
+   "language": "Greek",
+   "form": "chloros"
+  },
+  {
+   "language": "Greek",
+   "form": "khloros"
+  },
+  {
+   "language": "Old English",
+   "form": "tendan"
+  },
+  {
+   "language": "Old English",
+   "form": "trendan"
+  },
+  {
+   "language": "Old English",
+   "form": "pician"
+  },
+  {
+   "language": "Old English",
+   "form": "prician"
+  },
+  {
+   "language": "Greek",
+   "form": "klima"
+  },
+  {
+   "language": "Greek",
+   "form": "klimax"
+  },
+  {
+   "language": "Greek",
+   "form": "Anna"
+  },
+  {
+   "language": "Greek",
+   "form": "ana"
+  },
+  {
+   "language": "Italian",
+   "form": "milione"
+  },
+  {
+   "language": "Italian",
+   "form": "millione"
+  },
+  {
+   "language": "Italian",
+   "form": "-ista"
+  },
+  {
+   "language": "Italian",
+   "form": "vista"
+  },
+  {
+   "language": "Old English",
+   "form": "sceoh"
+  },
+  {
+   "language": "Old English",
+   "form": "scoh"
+  },
+  {
+   "language": "Old Norse",
+   "form": "skirra"
+  },
+  {
+   "language": "Old Norse",
+   "form": "skyrta"
+  },
+  {
+   "language": "Old English",
+   "form": "wealh"
+  },
+  {
+   "language": "Old English",
+   "form": "wealth"
+  },
+  {
+   "language": "Old English",
+   "form": "sceap"
+  },
+  {
+   "language": "Old English",
+   "form": "scearp"
+  },
+  {
+   "language": "Greek",
+   "form": "Delphi"
+  },
+  {
+   "language": "Greek",
+   "form": "delphis"
+  },
+  {
+   "language": "Old Norse",
+   "form": "kalla"
+  },
+  {
+   "language": "Old Norse",
+   "form": "kallar"
+  },
+  {
+   "language": "other",
+   "form": "Jiang"
+  },
+  {
+   "language": "other",
+   "form": "yang"
+  },
+  {
+   "language": "Greek",
+   "form": "ethos"
+  },
+  {
+   "language": "Greek",
+   "form": "ethnos"
+  },
+  {
+   "language": "Greek",
+   "form": "Graikos"
+  },
+  {
+   "language": "Greek",
+   "form": "graphikos"
+  },
+  {
+   "language": "Italian",
+   "form": "trillo"
+  },
+  {
+   "language": "Italian",
+   "form": "trio"
+  },
+  {
+   "language": "Greek",
+   "form": "sandalon"
+  },
+  {
+   "language": "Greek",
+   "form": "skandalon"
+  },
+  {
+   "language": "Old English",
+   "form": "blaest"
+  },
+  {
+   "language": "other",
+   "form": "Janke"
+  },
+  {
+   "language": "English",
+   "form": "bouncer"
+  },
+  {
+   "language": "English",
+   "form": "bunker"
+  },
+  {
+   "language": "other",
+   "form": "hang"
+  },
+  {
+   "language": "other",
+   "form": "hwang"
+  },
+  {
+   "language": "Italian",
+   "form": "quaranta"
+  },
+  {
+   "language": "Italian",
+   "form": "quarantena"
+  },
+  {
+   "language": "Greek",
+   "form": "topos"
+  },
+  {
+   "language": "Greek",
+   "form": "tropos"
+  },
+  {
+   "language": "Greek",
+   "form": "polys"
+  },
+  {
+   "language": "Greek",
+   "form": "polis"
+  },
+  {
+   "language": "Old Norse",
+   "form": "slugga"
+  },
+  {
+   "language": "Old Norse",
+   "form": "lugga"
+  },
+  {
+   "language": "Old Norse",
+   "form": "vafla"
+  },
+  {
+   "language": "Old Norse",
+   "form": "vala"
+  },
+  {
+   "language": "Spanish",
+   "form": "Marin"
+  },
+  {
+   "language": "Spanish",
+   "form": "Martin"
+  },
+  {
+   "language": "Proto-Germanic",
+   "form": "pak"
+  },
+  {
+   "language": "Proto-Germanic",
+   "form": "pac"
+  },
+  {
+   "language": "Old French",
+   "form": "rente"
+  },
+  {
+   "language": "Old French",
+   "form": "rete"
+  },
+  {
+   "language": "Hebrew",
+   "form": "Yehudi"
+  },
+  {
+   "language": "Hebrew",
+   "form": "Yehudit"
+  },
+  {
+   "language": "Italian",
+   "form": "piazza"
+  },
+  {
+   "language": "Italian",
+   "form": "pizza"
+  },
+  {
+   "language": "Old Norse",
+   "form": "leggr"
+  },
+  {
+   "language": "Old Norse",
+   "form": "sloegr"
+  }
+ ],
+ "unresolved": []
+}

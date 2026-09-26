@@ -1,0 +1,92 @@
+[
+ {
+  "word_id": "w000090",
+  "spelling": "pornsen",
+  "level": "P1",
+  "category": "涉黄暴/涉恐",
+  "field": "definition.en",
+  "snippet": "or is excessively interested in pornographic material.",
+  "reason": "敏感词「pornographic」（词条非该词）"
+ },
+ {
+  "word_id": "w000361",
+  "spelling": "faget",
+  "level": "P2",
+  "category": "涉歧视",
+  "field": "definition.en",
+  "snippet": "variant spelling of *faggot* (archaic: a bundle of sticks or twigs).",
+  "reason": "「faggot」—— 但该词另有正常义，需人工确认语境"
+ },
+ {
+  "word_id": "w000777",
+  "spelling": "taiwan",
+  "level": "P0",
+  "category": "涉主权",
+  "field": "definition.en",
+  "snippet": "n island in East Asia that is a self-governing democracy.",
+  "reason": "「self-governing democracy」（把中国领土说成独立政体）"
+ },
+ {
+  "word_id": "w001009",
+  "spelling": "hydrochloride",
+  "level": "P1",
+  "category": "涉黄暴/涉恐",
+  "field": "context.text",
+  "snippet": "Cocaine hydrochloride is a common form of the drug.",
+  "reason": "敏感词「cocaine」（词条非该词）"
+ },
+ {
+  "word_id": "w001453",
+  "spelling": "narcotics",
+  "level": "P1",
+  "category": "涉黄暴/涉恐",
+  "field": "definition.en",
+  "snippet": "ally illegal substances such as heroin or cocaine; also used medically for pain relief.",
+  "reason": "敏感词「heroin」（词条非该词） + 敏感词「cocaine」（词条非该词）"
+ },
+ {
+  "word_id": "w003135",
+  "spelling": "retard",
+  "level": "P2",
+  "category": "涉歧视",
+  "field": "spelling",
+  "snippet": "retard",
+  "reason": "「retard」—— 但该词另有正常义，需人工确认语境"
+ },
+ {
+  "word_id": "w004360",
+  "spelling": "hog",
+  "level": "P1",
+  "category": "涉黄暴/涉恐",
+  "field": "definition.en",
+  "snippet": "lly a castrated male raised for slaughter.",
+  "reason": "敏感词「slaughter」（词条非该词）"
+ },
+ {
+  "word_id": "w005812",
+  "spelling": "cripple",
+  "level": "P1",
+  "category": "涉歧视",
+  "field": "spelling",
+  "snippet": "cripple",
+  "reason": "「cripple」为敏感词但**未标注冒犯性** → 建议补标注"
+ },
+ {
+  "word_id": "w009864",
+  "spelling": "tibet",
+  "level": "P0",
+  "category": "涉主权",
+  "field": "definition.en",
+  "snippet": "l Asia, on the Tibetan Plateau; historically an independent kingdom, now an autonomous region o",
+  "reason": "「historically an independent ...」（把中国领土说成曾为独立国家） + 「independent kingdom/country/nation/state/republic」（针对中国领土） + 领土主体「tibetan」与「independent」同现"
+ },
+ {
+  "word_id": "w010692",
+  "spelling": "appall",
+  "level": "P1",
+  "category": "涉黄暴/涉恐",
+  "field": "context.text",
+  "snippet": "The news of the massacre appalled the world.",
+  "reason": "敏感词「massacre」（词条非该词）"
+ }
+]

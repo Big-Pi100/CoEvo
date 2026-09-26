@@ -1,0 +1,244 @@
+============================================================================================
+一、✅ 必须保留：地理实体（白哥批评的核心）
+============================================================================================
+
+  【国家】15 条  → ✅ 全部保留
+    india            A country in South Asia with a very large population.
+    china            a country in East Asia.
+    russia           a country in northern Eurasia, the largest country in the 
+    israel           A country in the Middle East, with Jerusalem as its capita
+    jordan           a country in the Middle East, east of the Jordan River.
+    mexico           a country in southern North America, bordering the USA, Gu
+    sweden           A country in northern Europe, known for its forests, lakes
+    switzerland      A country in central Europe known for its mountains, banks
+    venezuela        a country on the northern coast of South America, known fo
+    vietnam          a country in Southeast Asia, on the eastern coast of the I
+    wales            a country that is part of the United Kingdom, west of Engl
+    egypt            a country in northeastern Africa, known for its ancient ci
+    italy            a country in southern Europe, known for its historical and
+    greece           a country in southeastern Europe, on the southern Balkan P
+    america          the United States of America.
+
+  【大洲/大洋】2 条  → ✅ 全部保留
+    africa           the world’s second-largest continent, south of Europe
+    asia             the largest continent, located mostly in the eastern and n
+
+  【美国州名】10 条  → ✅ 全部保留
+    texas            a state in the southern US, known for its size and oil ind
+    virginia         a state in the eastern United States, originally an Englis
+    kansas           a state in the central United States.
+    colorado         a state in the western central United States, known for th
+    delaware         a state on the eastern coast of the United States.
+    kentucky         a state in the southeastern United States, known for horse
+    maryland         a state in the eastern United States, on the Atlantic coas
+    michigan         A state in the northern United States, known for its lakes
+    utah             a state in the western United States, known for its mounta
+    vermont          A state in the northeastern United States, known for its g
+
+  【主要城市】16 条  → ✅ 全部保留
+    london           The capital city of England and the United Kingdom.
+    sydney           The capital city of New South Wales, Australia, and the co
+    istanbul         the largest city in Turkey, straddling the Bosphorus strai
+    vienna           the capital city of Austria, situated on the Danube River,
+    venice           a city in northeastern Italy, built on a group of 118 smal
+    petersburg       a city in northwestern Russia, on the Neva River, known as
+    denver           the capital and most populous city of Colorado, USA, locat
+    detroit          the largest city in the US state of Michigan, historically
+    miami            A city in the southeastern United States, in the state of 
+    jerusalem        the capital city of Israel, holy to Judaism, Christianity,
+    cambridge        a city in eastern England, on the River Cam, home to the U
+    bristol          a city and port in South West England
+    memphis          a city in southwestern Tennessee, USA, on the Mississippi 
+    pittsburgh       a city in southwestern Pennsylvania, USA, known historical
+    lyon             a city in east-central France, on the Rhône River.
+    porto            a city in northwestern Portugal, on the Douro River, known
+
+  【地区】4 条  → ✅ 全部保留
+    bengal           a region in eastern South Asia, divided between India and 
+    tibet            a region in central Asia, on the Tibetan Plateau; historic
+    rhodes           an island in the southeastern Aegean Sea, part of Greece; 
+    calcutta         the former name (until 2001) of Kolkata, a major city in e
+
+============================================================================================
+二、🗑️ 建议删除：人名/姓氏/名人（严格判据：释义明说是「名字」）
+============================================================================================
+  严格判据命中: 178 条
+    chen                 a Chinese surname.
+    billy                a male given name.
+    clayton              a surname or given name (from Old English ‘clay’ + ‘tun’ m
+    dan                  a male given name, often a short form of Daniel.
+    henry                a male given name of Germanic origin.
+    jefferson            a surname; especially Thomas Jefferson, third US President
+    jones                a surname.
+    joseph               a male first name, from Hebrew.
+    kennedy              an Irish surname; notably the family of U.S. President Joh
+    lewis                a male first name; also a surname.
+    louis                a male first name, from French.
+    marshall             a male first name or surname.
+    martin               a male first name from Latin Martinus.
+    mary                 a female first name, from Hebrew Miryam.
+    sam                  a male given name, short for Samuel.
+    scotty               a male given name, often a nickname for Scott.
+    stanley              a male given name.
+    thomas               a male given name, derived from Aramaic meaning 'twin'.
+    thompson             a surname of Scottish origin.
+    watson               an English surname.
+    wilson               an English surname.
+    ada                  a female given name.
+    benington            a surname.
+    benjamin             a male given name; also a biblical figure.
+    benson               a surname.
+    berger               a surname.
+    bernard              a male given name of Germanic origin, meaning 'brave bear'
+    bertha               a female given name, of Germanic origin, meaning 'bright, 
+    bienville            a surname, notably Jean-Baptiste Le Moyne de Bienville, Fr
+    birkhead             a surname, notably that of Harry Birkhead, a British actor
+    brodie               a male given name or surname
+    budd                 a surname; notably Ralph Budd, American railroad executive
+    cedric               a masculine given name, of Old English or Celtic origin.
+    charley              a male given name, diminutive of Charles.
+    cherkasov            a Russian surname.
+    chiang               a Chinese surname, often romanized as Jiang or Chiang, not
+    clarence             a male given name, from the Latin title Clarensis.
+    daniel               a masculine given name; also the name of a biblical prophe
+    delphine             a female given name, from the French Delphine, meaning "of
+    dennis               a masculine given name, from the Greek name Dionysius.
+    … 还有 138 条
+
+============================================================================================
+三、🗑️ 建议删除：名人（严格判据：释义含生卒年）
+============================================================================================
+  命中: 45 条
+    bultmann             the German Protestant theologian Rudolf Bultmann (1884–1976), 
+    calvin               the French Protestant theologian John Calvin (1509–1564), a le
+    cicero               a Roman statesman, orator, and philosopher (106–43 BCE).
+    defoe                Daniel Defoe (c. 1660–1731), English writer, journalist, and p
+    elizabeth            a female given name, borne notably by Queen Elizabeth I of Eng
+    elman                a surname, notably associated with Mischa Elman (1891–1967), U
+    emerson              a surname and male given name, notably Ralph Waldo Emerson (18
+    kafka                Franz Kafka (1883–1924), Czech-born German-language writer, kn
+    melzi                an Italian surname; notably Francesco Melzi (c. 1491–c. 1570),
+    nehru                Jawaharlal Nehru (1889–1964), first Prime Minister of India, a
+    picasso              Pablo Picasso (1881–1973), Spanish painter, sculptor, and co-f
+    poe                  Edgar Allan Poe (1809–1849), American writer and poet, known f
+    udall                a surname, notably of the American politician Morris K. Udall 
+    voltaire             French Enlightenment writer, historian, and philosopher (1694–
+    khrushchev           Nikita Khrushchev (1894–1971), Soviet statesman; First Secreta
+    maris                Roger Maris (1934–1985), American baseball player who broke Ba
+    aeschylus            (c. 525–456 BC) An ancient Greek playwright, considered the fa
+    bede                 (often Saint Bede) an English monk, scholar, and historian (c.
+    calhoun              a Scottish or Irish surname; notably John C. Calhoun (1782–185
+    couperin             a French composer of the Baroque era, especially François Coup
+    durkheim             Émile Durkheim (1858–1917), French sociologist, a founder of m
+    elizabethan          relating to the reign of Queen Elizabeth I of England (1558–16
+    euripides            (c. 480–406 BC) an ancient Greek tragedian, author of plays su
+    gaulle               (often as de Gaulle) Charles de Gaulle (1890–1970), French gen
+    gehrig               Lou Gehrig (1903–1941), American baseball player known as the 
+    georgian             relating to the reigns of the British kings George I–IV (1714–
+    hammarskjold         Dag Hammarskjöld (1905–1961), Swedish diplomat and second Secr
+    han                  a Chinese dynasty (206 BCE–220 CE) known for its cultural and 
+    irenaeus             (St. Irenaeus) an early Christian bishop and theologian (c. 13
+    mccarthy             a surname; notably Joseph McCarthy (1908–1957), the US senator
+    mckinley             a surname; notably William McKinley (1843–1901), 25th Presiden
+    melies               Georges Méliès (1861–1938), French film director and pioneer o
+    melville             Herman Melville (1819–1891), American novelist, author of *Mob
+    mussorgsky           a Russian composer (1839–1881), known for works such as "Pictu
+    origen               a Christian theologian and scholar of the early Church (c.185–
+    phouma               a Laotian royal family name; especially Prince Souvanna Phouma
+    plato                (c. 428–348 BC) an ancient Greek philosopher, pupil of Socrate
+    protogeometric       relating to or designating an early phase of Greek pottery (c.
+    rexroth              Kenneth Rexroth (1905–1982), an American poet, writer, and ana
+    reynolds             a surname, notably of the American actor Burt Reynolds (1936–2
+    sophocles            (c. 497–406 BCE) ancient Greek playwright, author of tragedies
+    stuart               (proper noun) a royal house that ruled Scotland (1371–1714) an
+    tchaikovsky          (proper) Pyotr Ilyich Tchaikovsky (1840–1893), Russian compose
+    ussr                 the Union of Soviet Socialist Republics, a former federation o
+    wesleyan             relating to John Wesley (1703–1791) or the Methodist movement 
+
+============================================================================================
+四、🗑️ 建议删除：外语片段（严格判据：释义以「(语种)」开头）
+============================================================================================
+    los                  (Spanish) a definite article used before masculine plural noun
+    chemische            (German) chemical; often used in German compound terms.
+    chien                (French) dog; often used in English contexts as a breed name o
+    ciudad               (Spanish) city; used in place names, e.g., Ciudad de México (M
+    jason                (Greek mythology) the leader of the Argonauts who sought the G
+    von                  (German origin) used in surnames to indicate nobility or origi
+    de                   (Latin, used in phrases) of; from; concerning.
+    du                   (French, used in English phrases) of the; from the.
+    et                   (Latin) and; used in phrases such as "et cetera" (etc.) and "e
+    cetera               (Latin) the rest; other similar things.
+    crus                 (French, used in wine terminology) a named vineyard or wine-pr
+    dolce                (Italian) Sweetness; a sweet substance or dish.
+    evadna               (Greek mythology) the wife of Capaneus, who threw herself onto
+    garson               (French) a waiter.
+    grazie               (Italian, used in English contexts) thank you.
+    krystallographie     (German) the science of crystal structure; = crystallography.
+    kulturbund           (German) a cultural league; specifically, a Nazi-era organizat
+    mais                 (French) but; however – used in English occasionally as a borr
+    rex                  (Latin, formal) a king; used in titles or formal contexts.
+    titan                (Greek mythology) a member of a race of giant gods who ruled t
+    vous                 (French, used in English contexts) the formal or plural second
+
+============================================================================================
+五、🗑️ 建议删除：拟声/感叹词（白哥已批）
+============================================================================================
+    oh           used to express surprise, pain, pleasure, etc.
+    ah           used to express surprise, pleasure, realization, or sympathy
+    aw           used to express mild sympathy, disappointment, or tenderness
+    eh           used to express surprise, inquiry, or to seek confirmation (
+    huh          used to express mild surprise, disbelief, or a request for r
+    uh           used to express hesitation, uncertainty, or a pause in speec
+    um           used to express a pause or hesitation in speech, often while
+    uhhu         used to express informal affirmation, agreement, or acknowle
+    ow           used to express sudden pain.
+    mm           used to express thought, hesitation, or agreement, often wit
+    gee          (informal, especially North American English) used to expres
+    shucks       used to express disappointment, embarrassment, or modesty.
+    alas         used to express grief, disappointment, or regret.
+    hurrah       Used to express joy, approval, or encouragement.
+    adios        used to express farewell; Spanish for ‘goodbye’.
+
+============================================================================================
+六、🗑️ 建议删除：撇号剥落残留
+============================================================================================
+    ll       (contraction of ‘shall’ or ‘will’) used to form future tenses or e
+    ve       The name of the letter that comes after U in the English alphabet.
+    （re 保留 —— 它是音阶名，虽也是're 剥落，但 re 作为音乐术语合法）
+
+============================================================================================
+七、⚠️ 需单独判的历史/政治词（不属上述类别）
+============================================================================================
+    nazi                 a member of the National Socialist German Workers’ Party that 
+    nazis                a member of the National Socialist German Workers’ Party that 
+    ussr                 the Union of Soviet Socialist Republics, a former federation o
+    nato                 acronym for the North Atlantic Treaty Organization, a military
+    un                   (the UN) the United Nations, an international organization fou
+    ching                a Chinese dynasty (the Qing) that ruled from 1644 to 1912.
+    ku                   a Chinese surname.
+    mao                  a Chinese surname, notably Mao Zedong (Mao Tse-tung), founder 
+    stuart               (proper noun) a royal house that ruled Scotland (1371–1714) an
+    vasa                 (historical) a Swedish royal dynasty that ruled from 1523 to 1
+    georgian             relating to the reigns of the British kings George I–IV (1714–
+    elizabethan          relating to the reign of Queen Elizabeth I of England (1558–16
+    medieval             relating to the Middle Ages (approximately AD 500–1500)
+    kulturbund           (German) a cultural league; specifically, a Nazi-era organizat
+    krystallographie     (German) the science of crystal structure; = crystallography.
+    hanoverian           relating to the German princely house of Hanover, which suppli
+
+============================================================================================
+八、汇总
+============================================================================================
+  ✅ 保留（地理实体）  : 47（示例，实际更多）
+  🗑️ 人名/姓氏        : 178
+  🗑️ 名人             : 45
+  🗑️ 外语片段         : 22
+  🗑️ 拟声词           : ~14
+  🗑️ 撇号剥落         : 2
+
+  🔴 我上一轮说「147 条专名全隔离」是错的 —— 混进了国家名/州名/城市名。
+     正确做法：**地理实体保留，人名/名人/外语片段删**。
+
+  ⚠️ 但上面的严格判据仍不完整（`chen`/`jenkins` 这类无生卒年的纯姓氏，
+     以及 `bizerte`/`chattanooga` 这类生僻小城，正则判不准）
+     → **精确分类只能靠 LLM**（这也是本轮已证实的：entry_type=proper 检测器）

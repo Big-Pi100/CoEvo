@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>英文字体对比 · CoEvo 阅读层</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/literata@5/400.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/literata@5/700.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/lora@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/lora@5/700.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/source-serif-4@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/source-serif-4@5/700.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/merriweather@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/merriweather@5/700.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/crimson-pro@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/crimson-pro@5/700.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/eb-garamond@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/eb-garamond@5/700.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/libre-baskerville@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/libre-baskerville@5/700.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/spectral@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/spectral@5/700.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/newsreader@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/newsreader@5/700.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5/700.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/source-sans-3@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/source-sans-3@5/700.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/atkinson-hyperlegible@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/atkinson-hyperlegible@5/700.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/open-sans@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/open-sans@5/700.css">
+<style>
+/* ── 本地 IPA 子集字体（含完整 32 个音标字符，含 ˈ 重音 · ː 长音 · θ）──
+   为什么不直接用 @fontsource：它的 latin / latin-ext 分包不含全套 IPA
+   （Charis SIL 仅 22/32），用它会让音标静默回退到系统字体，
+   造成「看起来没差别」的假象 —— 而那正是要判断的东西。 */
+@font-face{font-family:'Charis SIL IPA';src:url('fonts/charis-sil.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/charissil/CharisSIL-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Gentium Book Plus IPA';src:url('fonts/gentium-book-plus.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/gentiumbookplus/GentiumBookPlus-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Andika IPA';src:url('fonts/andika.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/andika/Andika-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Noto Serif IPA';src:url('fonts/noto-serif.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notoserif/NotoSerif%5Bwdth,wght%5D.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Noto Sans IPA';src:url('fonts/noto-sans.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosans/NotoSans%5Bwdth,wght%5D.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+
+  :root {
+    --bg: #ffffff;
+    --surface: #f7f7f5;
+    --border: #e3e3e0;
+    --text: #1a1a1a;
+    --muted: #6b6b6b;
+    --faint: #9a9a9a;
+    --accent: #1a5fb4;
+    --known: #c8d8ee;
+    --size: 18px;
+    --lh: 1.7;
+    --reading-font: 'Literata', Georgia, serif;
+  }
+  [data-theme="sepia"] {
+    --bg: #faf6ec;
+    --surface: #f3ede0;
+    --border: #e2d9c6;
+    --text: #33302a;
+    --muted: #6e675c;
+    --faint: #9b9284;
+    --accent: #8a5a1e;
+    --known: #e8dcc0;
+  }
+  [data-theme="dark"] {
+    --bg: #16181a;
+    --surface: #1e2124;
+    --border: #2e3236;
+    --text: #dcdcda;
+    --muted: #8b9095;
+    --faint: #666c72;
+    --accent: #7cb0e8;
+    --known: #33414f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    font-size: 14px; line-height: 1.6;
+    transition: background .2s, color .2s;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 32px 20px 80px; }
+
+  header h1 { font-size: 22px; font-weight: 700; margin: 0 0 6px; letter-spacing: .3px; }
+  header p { color: var(--muted); margin: 0 0 4px; font-size: 13px; }
+  header .note {
+    background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    padding: 10px 14px; border-radius: 6px; margin-top: 14px; font-size: 13px; color: var(--muted);
+  }
+
+  .controls {
+    position: sticky; top: 0; z-index: 20;
+    background: var(--bg); border-bottom: 1px solid var(--border);
+    padding: 12px 0; margin: 20px 0 24px;
+    display: flex; flex-wrap: wrap; gap: 18px; align-items: center;
+  }
+  .ctrl { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .ctrl label { white-space: nowrap; }
+  input[type=range] { width: 110px; accent-color: var(--accent); }
+  .val { font-variant-numeric: tabular-nums; color: var(--text); min-width: 42px; font-weight: 600; }
+  .seg { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .seg button {
+    background: transparent; border: 0; border-right: 1px solid var(--border);
+    padding: 5px 11px; font: inherit; font-size: 12.5px; color: var(--muted); cursor: pointer;
+  }
+  .seg button:last-child { border-right: 0; }
+  .seg button.on { background: var(--accent); color: #fff; }
+  [data-theme="dark"] .seg button.on { color: #10121a; }
+
+  h2.grp {
+    font-size: 12px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase;
+    color: var(--faint); margin: 34px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border);
+  }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 20px 18px; margin-bottom: 14px;
+  }
+  .meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+  .fname { font-family: system-ui, sans-serif; font-size: 15px; font-weight: 700; letter-spacing: .2px; }
+  .tag {
+    font-family: system-ui, sans-serif; font-size: 11px; padding: 2px 7px; border-radius: 4px;
+    background: var(--known); color: var(--text); letter-spacing: .2px;
+  }
+  .desc { font-family: system-ui, sans-serif; font-size: 12.5px; color: var(--muted); flex: 1 1 260px; }
+
+  .sample {
+    font-size: var(--size); line-height: var(--lh);
+    color: var(--text);
+    word-break: normal; overflow-wrap: break-word;
+  }
+  .sample em { font-style: italic; }
+  .known { background: var(--known); border-radius: 2px; padding: 0 1px; }
+  .u { border-bottom: 1px solid var(--accent); }
+  .sample .zh { font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; }
+
+  .mini {
+    font-family: system-ui, sans-serif; font-size: 12px; color: var(--faint);
+    margin-top: 10px; padding-top: 9px; border-top: 1px dashed var(--border);
+    display: flex; flex-wrap: wrap; gap: 14px;
+  }
+  .mini b { font-weight: 600; color: var(--muted); }
+
+  .focus-body { display: none; }
+  body.focus-mode .card { display: none; }
+  body.focus-mode .card.picked { display: block; background: var(--bg); border-color: var(--accent); border-width: 2px; }
+  body.focus-mode .card.picked .full { display: block; }
+  .card.expanded .full { display: block; }
+  .full { display: none; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); }
+  .full .sample { margin-bottom: 14px; }
+
+  .card { cursor: pointer; }
+  .card.picked { border-color: var(--accent); }
+  .card .more { font-family: system-ui, sans-serif; font-size: 11.5px; color: var(--faint); margin-top: 8px; }
+  .card.expanded .more { display: none; }
+  .hint { font-family: system-ui, sans-serif; font-size: 12px; color: var(--faint); margin-top: 8px; }
+
+  ul.tips { font-size: 13px; color: var(--muted); padding-left: 20px; margin: 10px 0 0; }
+  ul.tips li { margin-bottom: 5px; }
+  code { background: var(--surface); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; font-size: 12px; }
+</style>
+</head>
+<body data-theme="light">
+<div class="wrap">
+
+  <header>
+    <h1>英文字体对比 · CoEvo 阅读层</h1>
+    <p>内容源已定为 RSS（VOA / BBC Learning English 等），阅读层需要一款专门的英文字体。</p>
+    <p>下面用真实阅读内容 + 词卡 + 中英混排做对比。请按视觉感受判断，不用看技术参数。</p>
+    <div class="note">
+      <b>怎么看：</b>先调好你习惯的字号和行高（默认 18px / 1.7），然后从上往下扫一遍，找出「不累眼、想继续读下去」的那几个。
+      点击任意卡片可放大只看它。
+    </div>
+  </header>
+
+  <div class="controls">
+    <div class="ctrl">
+      <label>字号</label>
+      <input type="range" id="size" min="15" max="24" step="1" value="18">
+      <span class="val" id="sizeVal">18px</span>
+    </div>
+    <div class="ctrl">
+      <label>行高</label>
+      <input type="range" id="lh" min="140" max="200" step="5" value="170">
+      <span class="val" id="lhVal">1.70</span>
+    </div>
+    <div class="ctrl">
+      <label>主题</label>
+      <div class="seg" id="theme">
+        <button data-v="light" class="on">白</button>
+        <button data-v="sepia">米黄</button>
+        <button data-v="dark">深色</button>
+      </div>
+    </div>
+    <div class="ctrl">
+      <div class="seg" id="mode">
+        <button data-v="list" class="on">全部</button>
+        <button data-v="focus">放大</button>
+      </div>
+    </div>
+    <div class="hint" id="hint"></div>
+  </div>
+
+  <h2 class="grp">衬线 · Serif</h2>
+  <div id="serif"></div>
+
+  <h2 class="grp">无衬线 · Sans-serif</h2>
+  <div id="sans"></div>
+
+  <h2 class="grp">⚠️ IPA 音标字体（必须单独选一款）</h2>
+  <div class="card" style="cursor:default; border-left:3px solid #d9534f">
+    <p style="margin:0 0 10px; font-family:system-ui,sans-serif; font-size:13.5px; line-height:1.7">
+      <b>实测发现：上面的阅读字体都不能显示 IPA 音标。</b><br>
+      以 Literata 为例——完整字体（非子集）只有 <b>3/96</b> 个 IPA 扩展字符，缺失
+      <span style="font-family:monospace; font-size:13px">ɪ ʊ ʃ ʒ ː ʌ ɔ ɜ ɒ ɹ ɛ</span>。
+      而我们的词卡里有 <b>90.2%（11,585 / 12,839 张）</b>的音标用到这些字符，其中
+      <span style="font-family:monospace">ɪ</span> 出现 9,892 次、
+      <span style="font-family:monospace">ː</span> 4,340 次。
+      <br><br>
+      <b>后果</b>：若只用一款阅读字体，90% 的词卡音标会<b>回退到系统字体</b>，出现字体混排、大小不一。
+      <br><br>
+      <b>解决</b>：阅读正文用 Literata，音标另配一款<b>覆盖完整 IPA</b> 的字体。下面是候选——都实测过我们语料里的全部 32 个 IPA 字符。
+    </p>
+  </div>
+  <div id="ipa"></div>
+
+  <h2 class="grp">判断建议</h2>
+  <div class="card" style="cursor:default">
+    <ul class="tips">
+      <li><b>看耐力</b>：连续读三段，哪一款眼睛最不需要"使劲"。</li>
+      <li><b>看辨识度</b>：注意 <code>l</code> <code>I</code> <code>1</code>、<code>rn</code> vs <code>m</code>、<code>a</code> 的字形差异 —— 学习场景里辨错字母的代价比母语读者高。</li>
+      <li><b>看混排</b>：词卡是「英文释义 + 中文释义」混排，中英两种字体的视觉重量要匹配。</li>
+      <li><b>看深色模式</b>：切到深色再看一遍。衬线字体在深色背景上的表现差异很大，晚间阅读是高频场景。</li>
+      <li><b>看小字号</b>：把字号拖到 15px 再看 —— 用户在通勤、光线差的环境会用小字号。</li>
+      <li><b>注意</b>：不同字体的视觉大小不同（x-height 差异），同样 18px 有的看起来大有的小。这是真实差异，不是错觉。</li>
+      <li><b>IPA 部分</b>：重点看 <span style="font-family:monospace">ʊ ʃ ʒ ʌ ɒ</span> 这几个 —— 有的字体里它们和基础字母视觉重量不协调。另外 Literata 那栏是<b>反例</b>（会回退成系统字体，明显不一致）。</li>
+    </ul>
+  </div>
+
+</div>
+
+<script>
+const PARA_1 = `Officials in the northern province said the storm had damaged more than two hundred homes and forced thousands of families to <span class="known">evacuate</span> to temporary shelters. Rescue teams worked through the night to reach villages cut off by flooding. A local <span class="known">spokesman</span> told reporters that no deaths had been reported so far, but warned that the situation remained <span class="known">severe</span>. Forecasters expect the rain to continue for at least another two days. "We are asking residents to stay calm and follow instructions," he said.`;
+
+const PARA_2 = `The researchers examined data collected over a period of fifteen years, drawing on records from more than forty weather stations across the region. Their analysis suggests that the pattern is not random. Rather, it appears to reflect a <span class="known">gradual</span> shift that began decades ago and has since <span class="known">accelerated</span>. What makes the finding notable is not the direction of the change, which many had <span class="known">anticipated</span>, but its pace — considerably faster than earlier models had predicted.`;
+
+const PARA_3 = `She had always believed that the hardest part of learning a language was the beginning: the first few hundred words, when every sentence feels like a wall. What she discovered, years later, was that the beginning is in fact the easiest part. The wall never disappears. It simply moves, and you move with it, until one day you notice that you are standing on the other side and cannot quite remember climbing over.`;
+
+const CARD_HTML = `<div class="sample"><b>severe</b> <span style="font-family:system-ui,sans-serif;font-size:.78em;color:var(--muted)">/sɪˈvɪə(r)/</span>
+<br><span style="font-family:system-ui,sans-serif;font-size:.78em;color:var(--muted)">adjective</span>
+<br>very bad or serious; causing great harm or suffering
+<br><span class="zh" style="font-size:.82em;color:var(--muted)">严重的；剧烈的；严峻的</span>
+<br><span style="font-size:.9em;color:var(--muted)">The storm caused severe damage to the coastal towns.</span>
+<br><span class="zh" style="font-size:.82em;color:var(--muted)">这场风暴对沿海城镇造成了严重破坏。</span>
+</div>`;
+
+const SERIF = [
+  ['literata', 'Literata', 'Google Play Books 官方阅读字体，为长文阅读专门设计', '阅读专项'],
+  ['newsreader', 'Newsreader', '为新闻阅读设计，气质与我们的内容源高度契合', '阅读专项'],
+  ['source-serif-4', 'Source Serif 4', 'Adobe 出品，笔画稳健，屏幕表现成熟', '专业'],
+  ['lora', 'Lora', '现代衬线，字腔开，长文舒适度好', '热门'],
+  ['merriweather', 'Merriweather', '为屏幕阅读优化，x-height 大、辨识度强', '屏幕优化'],
+  ['spectral', 'Spectral', '现代衬线，笔画对比克制，偏安静', '克制的'],
+  ['crimson-pro', 'Crimson Pro', '古典书卷气，字号偏小、气质文雅', '古典'],
+  ['eb-garamond', 'EB Garamond', '经典 Garamond 复刻，优雅但笔画偏细', '古典'],
+  ['libre-baskerville', 'Libre Baskerville', '传统书籍感，笔画粗、黑白分明', '传统'],
+];
+
+const SANS = [
+  ['atkinson-hyperlegible', 'Atkinson Hyperlegible', '专为低视力设计，l/I/1、O/0 等易混字符做了区分（学习场景很实用）', '无障碍'],
+  ['inter', 'Inter', '现代 UI 字体标杆，中性、清晰', 'UI 标准'],
+  ['source-sans-3', 'Source Sans 3', 'Adobe 出品，比 Inter 略有人情味', '专业'],
+  ['open-sans', 'Open Sans', '通用，字腔开、辨识度高', '通用'],
+];
+
+function render(list, el, fallback) {
+  el.innerHTML = list.map(([id, name, desc, tag]) => {
+    const ff = `font-family:'${name}',${fallback}`;
+    const cardHtml = CARD_HTML.replace('class="sample"', () => `class="sample" style="${ff}"`);
+    return `
+    <div class="card" data-f="${id}">
+      <div class="meta">
+        <span class="fname">${name}</span>
+        <span class="tag">${tag}</span>
+        <span class="desc">${desc}</span>
+      </div>
+      <div class="sample" style="${ff}">${PARA_1}</div>
+      <div class="full">
+        <div class="sample" style="${ff}">${PARA_2}</div>
+        <div class="sample" style="${ff}">${PARA_3}</div>
+        ${cardHtml}
+      </div>
+      <div class="mini">
+        <span><b>l I 1</b> &nbsp;lI1</span>
+        <span><b>rn / m</b> &nbsp;rn m</span>
+        <span><b>a g</b> &nbsp;ag</span>
+        <span><b>连读</b> &nbsp;office first difficult</span>
+      </div>
+      <div class="more">点击展开：三段长文 + 词卡 + 中英混排</div>
+    </div>`;
+  }).join('');
+}
+
+render(SERIF, document.getElementById('serif'), 'Georgia, serif');
+render(SANS, document.getElementById('sans'), 'system-ui, sans-serif');
+
+// ── IPA 音标字体对比 ──
+const IPA_SAMPLES = [
+  ['severe',        'sɪˈvɪə(r)'],
+  ['incredible',    'ɪnˈkrɛdɪbl'],
+  ['receive',       'rɪˈsiːv'],
+  ['charcoal',      'ˈtʃɑːkəʊl'],
+  ['stubby',        'ˈstʌbi'],
+  ['beautiful',     'ˈbjuːtɪfəl'],
+  ['thought',       'θɔːt'],
+  ['pleasure',      'ˈplɛʒə(r)'],
+  ['sure',          'ʃʊə(r)'],
+  ['banana',        'bəˈnɑːnə'],
+  ['bird',          'bɜːd'],
+  ['hot',           'hɒt'],
+];
+
+const IPA_CANDS = [
+  ['Charis SIL IPA',          'Charis SIL IPA',          'SIL 出品，语言学专业字体，衬线 —— 与 Literata 气质相配', '衬线·推荐'],
+  ['Gentium Book Plus IPA',   'Gentium Book Plus IPA',   'SIL 出品，衬线，学术出版常用', '衬线'],
+  ['Andika IPA',              'Andika IPA',              'SIL 出品，无衬线，专为识字教学设计（字形极清晰）', '无衬线·教学'],
+  ['Noto Serif IPA',          'Noto Serif IPA',          'Google，衬线，覆盖广', '衬线·通用'],
+  ['Noto Sans IPA',           'Noto Sans IPA',           'Google，无衬线，覆盖最广', '无衬线·通用'],
+  ['Literata (对照)',      'Literata',            '⚠️ 阅读字体本身 —— 缺 ɪ ʊ ʃ ʒ ː 等，会回退显示', '对照·不合格'],
+];
+
+function renderIPA() {
+  const el = document.getElementById('ipa');
+  el.innerHTML = IPA_CANDS.map(([id, name, desc, tag]) => {
+    const bad = id.includes('对照');
+    const rows = IPA_SAMPLES.map(([w, ipa]) =>
+      `<div style="display:flex; gap:14px; align-items:baseline; font-family:'${name}',serif">
+         <span style="font-family:system-ui,sans-serif; font-size:11.5px; color:var(--faint); min-width:76px">${w}</span>
+         <span style="font-size:calc(var(--size) + 2px); letter-spacing:.4px">/${ipa}/</span>
+       </div>`).join('');
+    return `
+    <div class="card" style="cursor:default; ${bad ? 'border-color:#d9534f' : ''}">
+      <div class="meta">
+        <span class="fname">${name}</span>
+        <span class="tag" style="${bad ? 'background:#f5c4b3;color:#4A1B0C' : ''}">${tag}</span>
+        <span class="desc">${desc}</span>
+      </div>
+      ${rows}
+    </div>`;
+  }).join('');
+}
+renderIPA();
+
+const sizeEl = document.getElementById('size');
+const lhEl = document.getElementById('lh');
+sizeEl.oninput = () => {
+  document.documentElement.style.setProperty('--size', sizeEl.value + 'px');
+  document.getElementById('sizeVal').textContent = sizeEl.value + 'px';
+};
+lhEl.oninput = () => {
+  const v = (lhEl.value / 100).toFixed(2);
+  document.documentElement.style.setProperty('--lh', v);
+  document.getElementById('lhVal').textContent = v;
+};
+
+document.querySelectorAll('#theme button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#theme button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  document.body.dataset.theme = b.dataset.v;
+});
+
+document.querySelectorAll('#mode button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#mode button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  const focus = b.dataset.v === 'focus';
+  document.body.classList.toggle('focus-mode', focus);
+  if (focus) {
+    if (!document.querySelector('.card.picked')) {
+      const first = document.querySelector('.card[data-f]');
+      first.classList.add('picked', 'expanded');
+    }
+    document.getElementById('hint').textContent = '点击任意卡片即可切换';
+  } else {
+    document.getElementById('hint').textContent = '';
+  }
+});
+
+document.body.addEventListener('click', e => {
+  const card = e.target.closest('.card[data-f]');
+  if (!card) return;
+  const wasPicked = card.classList.contains('picked');
+  document.querySelectorAll('.card').forEach(c => c.classList.remove('picked'));
+  if (!wasPicked) card.classList.add('picked');
+  if (!document.body.classList.contains('focus-mode')) {
+    card.classList.toggle('expanded');
+  }
+});
+</script>
+</body>
+</html>

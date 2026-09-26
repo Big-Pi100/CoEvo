@@ -142,8 +142,6 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/user/{user_id}/plan-achievements", get(plan_achievements_handler))
         .route("/api/user/{user_id}/preferences", get(preferences_get_handler).put(preferences_put_handler))
         .route("/api/user/{user_id}/subscription", get(user_subscription_handler))
-        .route("/api/tts/preview", post(tts_preview_handler))
-        .route("/api/tts/speak", post(tts_speak_handler))
         .route("/api/stt/transcribe", post(stt_transcribe_handler))
         .route("/api/user/bind-lookup", post(bind_lookup_handler))
         // ── Learning Plans ──
@@ -1988,114 +1986,6 @@ async fn user_subscription_handler(
         "expired": expired,
         "expires_at": expires,
     }))
-}
-
-// ── TTS Preview ──
-
-/// POST /api/tts/preview — 试听指定音色
-///
-/// Body: {"text": "...", "voice_type": 101001, "speed": 0.0}
-/// Returns: audio/mpeg 二进制流
-async fn tts_preview_handler(
-    _headers: HeaderMap,
-    Json(payload): Json<serde_json::Value>,
-) -> impl IntoResponse {
-    use axum::http::StatusCode;
-
-    // 无需鉴权（只是预览）
-    let text = payload.get("text").and_then(|v| v.as_str()).unwrap_or("你好，欢迎使用腾讯云语音合成。");
-    let voice_type = payload.get("voice_type").and_then(|v| v.as_i64()).map(|v| v as i32);
-    let speed = payload.get("speed").and_then(|v| v.as_f64()).map(|v| v as f32);
-
-    match crate::tencent_tts::synthesize(text, voice_type, speed).await {
-        Ok(Some(audio)) => {
-            axum::response::Response::builder()
-                .header(axum::http::header::CONTENT_TYPE, "audio/mpeg")
-                .body(axum::body::Body::from(audio))
-                .unwrap()
-        }
-        Ok(None) => {
-            axum::response::Response::builder()
-                .status(StatusCode::SERVICE_UNAVAILABLE)
-                .header(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")
-                .body(axum::body::Body::from("TTS 未配置，请在 .env 中设置腾讯云密钥"))
-                .unwrap()
-        }
-        Err(e) => {
-            axum::response::Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .header(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")
-                .body(axum::body::Body::from(format!("TTS 合成失败: {}", e)))
-                .unwrap()
-        }
-    }
-}
-
-/// POST /api/tts/speak — 用用户 TTS 偏好朗读文本
-///
-/// Body: {"text": "...", "user_id": "..."}
-/// 从 user_preferences 读取 tts_voice_type / tts_speed
-/// Returns audio/mpeg
-async fn tts_speak_handler(
-    Json(payload): Json<serde_json::Value>,
-) -> impl IntoResponse {
-    use axum::http::StatusCode;
-
-    let text = match payload.get("text").and_then(|v| v.as_str()) {
-        Some(t) if !t.is_empty() => t,
-        _ => {
-            return axum::response::Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .body(axum::body::Body::from("text 不能为空"))
-                .unwrap();
-        }
-    };
-
-    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
-        Some(id) => id,
-        _ => {
-            return axum::response::Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .body(axum::body::Body::from("user_id 不能为空"))
-                .unwrap();
-        }
-    };
-
-    // 从 user_preferences 读取 TTS 偏好
-    let conn = crate::db_pool::get_conn();
-    let voice_type: Option<i32> = conn.query_row(
-        "SELECT value FROM user_preferences WHERE user_id = ?1 AND key = 'tts_voice_type'",
-        rusqlite::params![user_id],
-        |row| row.get::<_, String>(0),
-    ).ok().and_then(|v| v.parse::<i32>().ok())
-    .or(Some(101016)); // 默认智甜-女童声
-
-    let speed: Option<f32> = conn.query_row(
-        "SELECT value FROM user_preferences WHERE user_id = ?1 AND key = 'tts_speed'",
-        rusqlite::params![user_id],
-        |row| row.get::<_, String>(0),
-    ).ok().and_then(|v| v.parse::<f32>().ok());
-
-    match crate::tencent_tts::synthesize(text, voice_type, speed).await {
-        Ok(Some(audio)) => {
-            axum::response::Response::builder()
-                .header(axum::http::header::CONTENT_TYPE, "audio/mpeg")
-                .body(axum::body::Body::from(audio))
-                .unwrap()
-        }
-        Ok(None) => {
-            axum::response::Response::builder()
-                .status(StatusCode::SERVICE_UNAVAILABLE)
-                .body(axum::body::Body::from("TTS 未配置"))
-                .unwrap()
-        }
-        Err(e) => {
-            axum::response::Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(axum::body::Body::from(format!("TTS 合成失败: {}", e)))
-                .unwrap()
-        }
-    }
 }
 
 /// POST /api/stt/transcribe — 语音识别（腾讯云 ASR）

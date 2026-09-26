@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="ink">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CoEvo 主题系统 · 墨 / 格 / 夜</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/literata@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5/500.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5/600.css">
+<style>
+/* ── 本地 IPA 子集字体（含完整 32 个音标字符，含 ˈ 重音 · ː 长音 · θ）──
+   为什么不直接用 @fontsource：它的 latin / latin-ext 分包不含全套 IPA
+   （Charis SIL 仅 22/32），用它会让音标静默回退到系统字体，
+   造成「看起来没差别」的假象 —— 而那正是要判断的东西。 */
+@font-face{font-family:'Charis SIL IPA';src:url('fonts/charis-sil.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/charissil/CharisSIL-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Gentium Book Plus IPA';src:url('fonts/gentium-book-plus.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/gentiumbookplus/GentiumBookPlus-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Andika IPA';src:url('fonts/andika.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/andika/Andika-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Noto Serif IPA';src:url('fonts/noto-serif.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notoserif/NotoSerif%5Bwdth,wght%5D.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Noto Sans IPA';src:url('fonts/noto-sans.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosans/NotoSans%5Bwdth,wght%5D.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+
+:root{
+  --serif:'Literata',Georgia,serif;
+  --ipa:'Charis SIL IPA',Georgia,serif;
+  --ui:'Inter',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+  --round:'Quicksand','Inter',sans-serif;
+  --mono:ui-monospace,'SFMono-Regular',Menlo,monospace;
+}
+
+/* ============================================================
+   主题 token —— 纯变量驱动，任何容器加 .theme-x 或根上设 data-theme
+   ============================================================ */
+.theme-ink,[data-theme="ink"]{
+  --page:#F1EDE4; --read:#FAF8F4; --card:#FFFFFF;
+  --ink:#24211C; --ink2:#6E6659; --ink3:#9A917F;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent2:#C4533A; --accent-ink:#FFFFFF; --accent-out:rgba(180,67,44,.40);
+  --line:#EFE9DE; --line2:#E5DDD0; --sunken:#EDE6DA; --dim:rgba(0,0,0,.16);
+  --cl-out:rgba(150,125,95,.24); --cl-shade:rgba(186,166,138,.55); --cl-light:rgba(255,255,255,1);
+  --cl-radius:26px; --read-lh:1.82; --rd-bg:var(--read);
+  --tk-n-bg:rgba(180,67,44,.15); --tk-n-bd:none; --tk-n-fg:inherit; --tk-n-r:3px; --tk-n-p:1px 3px;
+  --tk-m-bg:rgba(180,67,44,.075);--tk-m-bd:none; --tk-m-fg:inherit; --tk-m-r:3px; --tk-m-p:1px 3px;
+  --tk-d-bg:rgba(180,67,44,.026);--tk-d-bd:none; --tk-d-fg:inherit; --tk-d-r:3px; --tk-d-p:1px 3px;
+}
+.theme-grid,[data-theme="grid"]{
+  --page:#EDEEF0; --read:#FFFFFF; --card:#FFFFFF;
+  --ink:#0A0A0A; --ink2:#5A5A5A; --ink3:#8A8A8A;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent2:var(--accent-bright); --accent-ink:#FFFFFF; --accent-out:rgba(180,67,44,.40);
+  --line:#E8E8E8; --line2:#DEDEDE; --sunken:#F0F0F0; --dim:rgba(0,0,0,.14);
+  --cl-out:rgba(120,120,120,.18); --cl-shade:rgba(158,158,158,.46); --cl-light:rgba(255,255,255,1);
+  --cl-radius:8px; --read-lh:1.74; --rd-bg:var(--read);
+  --tk-n-bg:transparent; --tk-n-bd:2.5px solid var(--accent-bright); --tk-n-fg:inherit; --tk-n-r:0; --tk-n-p:0 0 1px 0;
+  --tk-m-bg:transparent; --tk-m-bd:1.5px solid rgba(196,83,58,.42); --tk-m-fg:inherit; --tk-m-r:0; --tk-m-p:0 0 1px 0;
+  --tk-d-bg:transparent; --tk-d-bd:1px dashed rgba(10,10,10,.16); --tk-d-fg:inherit; --tk-d-r:0; --tk-d-p:0 0 1px 0;
+}
+.theme-night,[data-theme="night"]{
+  --page:#0B0D12; --read:#14161C; --card:#1C1F27;
+  --ink:#EDEBE6; --ink2:#9AA0AE; --ink3:#6E7484;
+  --accent:#DB7E6B; --accent-bright:#E89B8C; --accent2:#DB7E6B; --accent-ink:#2A1405; --accent-out:rgba(219,126,107,.40);
+  --line:#262A34; --line2:#22262F; --sunken:#0B0D12; --dim:rgba(0,0,0,.45);
+  --cl-out:rgba(0,0,0,.55); --cl-shade:rgba(0,0,0,.42); --cl-light:rgba(255,255,255,.062);
+  --cl-radius:24px; --read-lh:1.84; --rd-bg:var(--read);
+  --tk-n-bg:transparent; --tk-n-bd:none; --tk-n-fg:#FFD9B8; --tk-n-r:3px; --tk-n-p:1px 3px;
+  --tk-m-bg:transparent; --tk-m-bd:none; --tk-m-fg:#DEDCD7; --tk-m-r:3px; --tk-m-p:1px 3px;
+  --tk-d-bg:transparent; --tk-d-bd:none; --tk-d-fg:#8E939F; --tk-d-r:3px; --tk-d-p:1px 3px;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#E4E0D8;color:#29251F;font-family:var(--ui);-webkit-font-smoothing:antialiased;padding:0 0 90px}
+.wrap{max-width:1440px;margin:0 auto;padding:0 34px}
+
+header.top{padding:52px 0 0}
+.eyebrow{font-size:12px;letter-spacing:.15em;text-transform:uppercase;color:#8C8271;margin-bottom:14px}
+h1{font-family:var(--round);font-size:38px;font-weight:600;letter-spacing:-.015em;line-height:1.16;margin-bottom:16px;max-width:920px}
+.lede{font-size:15.5px;line-height:1.74;color:#5C5648;max-width:860px}
+.lede strong{color:#29251F;font-weight:500}
+
+.switcher{position:sticky;top:0;z-index:60;background:rgba(228,224,216,.94);backdrop-filter:blur(12px);border-bottom:1px solid #CFC8BA;padding:13px 0;margin-top:26px}
+.sw-inner{max-width:1440px;margin:0 auto;padding:0 34px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.sw-label{font-family:var(--round);font-size:12.5px;font-weight:600;color:#6E6659}
+.sw-btn{font-family:var(--round);font-size:13px;font-weight:600;border:1px solid #C6BFB0;background:#F7F4EC;color:#5C5648;border-radius:12px;padding:8px 17px;cursor:pointer;transition:all .16s}
+.sw-btn:hover{border-color:#A89E8C;color:#29251F}
+.sw-btn.on{background:#29251F;border-color:#29251F;color:#F7F4EC}
+.sw-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;vertical-align:-1px}
+.sw-note{font-size:12.5px;color:#7A7263;margin-left:auto}
+.sw-note b{color:#29251F;font-weight:500}
+
+.sect{margin-top:62px}
+.sect-head{padding-bottom:20px;border-bottom:1px solid #CFC8BA;margin-bottom:28px;display:flex;align-items:flex-end;gap:18px}
+.sect-n{font-family:var(--mono);font-size:13px;color:#8C8271;border:1.5px solid #CFC8BA;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:#F7F4EC}
+.sect-title{font-family:var(--round);font-size:24px;font-weight:600;letter-spacing:-.01em}
+.sect-sub{font-size:13.5px;color:#7A7263;margin-top:5px;line-height:1.6;max-width:780px}
+.sect-sub code{font-family:var(--mono);font-size:12px;background:#DCD6C9;padding:1px 5px;border-radius:3px}
+
+.rail{display:flex;gap:24px;overflow-x:auto;padding:4px 4px 22px}
+.slot{flex-shrink:0}
+.slot-cap{font-family:var(--round);font-size:13px;font-weight:600;color:#5C5648;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.slot-cap i{width:16px;height:2px;background:#B4432C;border-radius:1px;display:block;font-style:normal}
+.slot-note{font-size:11.5px;color:#7A7263;margin-top:10px;width:372px;line-height:1.6}
+.slot-note b{color:#29251F;font-weight:500}
+
+/* ===== 手机框（全部用变量） ===== */
+.phone{width:372px;height:766px;border-radius:42px;overflow:hidden;position:relative;display:flex;flex-direction:column;background:var(--page);color:var(--ink);font-family:var(--ui);box-shadow:0 2px 4px rgba(120,100,75,.1),0 14px 36px -10px rgba(120,100,75,.28);transition:background .28s,color .28s,box-shadow .28s}
+.statusbar{height:42px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:12.5px;font-weight:500;flex-shrink:0;position:relative;z-index:9;color:var(--ink)}
+.sb-r{display:flex;align-items:center;gap:5px}
+.batt{width:20px;height:10px;border:1.2px solid currentColor;border-radius:2.5px;position:relative;opacity:.85}
+.batt::after{content:'';position:absolute;right:-3px;top:2.5px;width:1.5px;height:4px;background:currentColor;border-radius:0 1px 1px 0}
+.batt i{position:absolute;left:1.2px;top:1.2px;bottom:1.2px;width:11px;background:currentColor;border-radius:1px}
+.sig{display:flex;align-items:flex-end;gap:1.5px;height:10px}
+.sig i{width:2.5px;background:currentColor;border-radius:1px}
+
+/* 粘土：三段阴影，跨主题同一段代码 */
+.clay{background:var(--card);border-radius:var(--cl-radius);box-shadow:6px 8px 16px var(--cl-out), inset -5px -5px 12px var(--cl-shade), inset 4px 4px 10px var(--cl-light);transition:background .28s,box-shadow .28s,border-radius .28s}
+.sunken{background:var(--sunken);border-radius:16px;box-shadow:inset 4px 4px 10px var(--cl-shade), inset -3px -3px 8px var(--cl-light);transition:background .28s,box-shadow .28s}
+.raised{background:var(--accent);color:var(--accent-ink);box-shadow:3px 4px 10px var(--accent-out), inset -2px -2px 6px rgba(0,0,0,.16), inset 2px 2px 6px rgba(255,255,255,.28);transition:background .28s,color .28s}
+
+.pill{font-family:var(--round);font-size:11px;font-weight:600;border-radius:11px;padding:4px 10px;display:inline-block;transition:background .28s,color .28s}
+.pill-n{background:var(--accent);color:var(--accent-ink);box-shadow:2px 3px 7px var(--accent-out), inset -1px -1px 4px rgba(0,0,0,.15), inset 1px 1px 4px rgba(255,255,255,.26)}
+.pill-g{background:var(--sunken);color:var(--ink3);box-shadow:inset 2px 2px 6px var(--cl-shade), inset -2px -2px 5px var(--cl-light)}
+
+/* 痕迹三态：纯变量驱动 */
+.tk{background:var(--tk-bg,transparent);border-bottom:var(--tk-bd,none);color:var(--tk-fg,inherit);border-radius:var(--tk-r,3px);padding:var(--tk-p,1px 3px);margin:0 -1px;transition:background .28s,color .28s,border-color .28s,opacity .28s}
+.tk-n{--tk-bg:var(--tk-n-bg);--tk-bd:var(--tk-n-bd);--tk-fg:var(--tk-n-fg);--tk-r:var(--tk-n-r);--tk-p:var(--tk-n-p)}
+.tk-m{--tk-bg:var(--tk-m-bg);--tk-bd:var(--tk-m-bd);--tk-fg:var(--tk-m-fg);--tk-r:var(--tk-m-r);--tk-p:var(--tk-m-p)}
+.tk-d{--tk-bg:var(--tk-d-bg);--tk-bd:var(--tk-d-bd);--tk-fg:var(--tk-d-fg);--tk-r:var(--tk-d-r);--tk-p:var(--tk-d-p)}
+
+.tabbar{margin-top:auto;display:flex;padding:12px 20px 24px;gap:9px;flex-shrink:0;position:relative;z-index:9}
+.tb{flex:1;text-align:center;font-family:var(--round);font-size:11px;font-weight:600;border-radius:17px;padding:8px 0 7px;color:var(--ink3);transition:color .28s,background .28s}
+.tb.on{background:var(--accent);color:var(--accent-ink);box-shadow:3px 4px 10px var(--accent-out), inset -2px -2px 6px rgba(0,0,0,.15), inset 2px 2px 6px rgba(255,255,255,.26)}
+.tb .ic{width:15px;height:15px;border-radius:5px;border:2px solid currentColor;margin:0 auto 4px;opacity:.75}
+.tb.on .ic{opacity:1}
+
+.feed{padding:2px 18px 0;flex:1;overflow:hidden}
+.feed-hd{display:flex;align-items:baseline;justify-content:space-between;padding:2px 6px 14px}
+.feed-hd h2{font-family:var(--round);font-size:24px;font-weight:600;letter-spacing:-.015em}
+.feed-hd .dt{font-family:var(--mono);font-size:11px;color:var(--ink3)}
+.fcards{display:flex;flex-direction:column;gap:15px}
+.fc{border-radius:var(--cl-radius);padding:21px 20px 18px}
+.fc .cat{font-family:var(--round);font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--accent);margin-bottom:9px;transition:color .28s}
+.fc h3{font-family:var(--serif);font-size:19.5px;font-weight:500;line-height:1.3;letter-spacing:-.01em;margin-bottom:10px;color:var(--ink)}
+.fc .ex{font-family:var(--serif);font-size:13.5px;line-height:1.72;color:var(--ink2)}
+.fc .mt{margin-top:15px;display:flex;align-items:center;gap:8px}
+
+.rev{padding:2px 18px 0;flex:1;display:flex;flex-direction:column;overflow:hidden}
+.rev-hd{padding:2px 6px 13px;display:flex;align-items:baseline;justify-content:space-between}
+.rev-hd h2{font-family:var(--round);font-size:24px;font-weight:600;letter-spacing:-.015em}
+.rev-hd .cnt{font-family:var(--round);font-size:12px;font-weight:600;color:var(--accent);transition:color .28s}
+.search{border-radius:16px;padding:12px 16px;display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.search .mag{width:13px;height:13px;border:2px solid var(--ink3);border-radius:50%;position:relative;flex-shrink:0}
+.search .mag::after{content:'';position:absolute;right:-5px;bottom:-4px;width:6px;height:2px;background:var(--ink3);transform:rotate(45deg)}
+.search span{font-size:13px;color:var(--ink3)}
+.sorts{display:flex;gap:8px;margin-bottom:15px}
+.sort{font-family:var(--round);font-size:11px;font-weight:600;border-radius:13px;padding:6px 13px;background:var(--sunken);color:var(--ink3);box-shadow:inset 2px 2px 6px var(--cl-shade), inset -2px -2px 5px var(--cl-light);transition:background .28s,color .28s}
+.sort.on{background:var(--accent);color:var(--accent-ink);box-shadow:3px 4px 9px var(--accent-out), inset -2px -2px 5px rgba(0,0,0,.15), inset 2px 2px 5px rgba(255,255,255,.26)}
+.grph{font-family:var(--round);font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);padding:0 6px;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.grph::after{content:'';flex:1;height:1px;background:currentColor;opacity:.22}
+.wlist{display:flex;flex-direction:column;gap:10px;overflow:hidden}
+.wcard{border-radius:18px;padding:13px 15px;display:flex;align-items:center;gap:12px}
+.wcard .lft{flex:1;min-width:0}
+.wcard .w{font-family:var(--serif);font-size:17px;font-weight:500;letter-spacing:-.01em;line-height:1.2;color:var(--ink)}
+.wcard .ip{font-family:var(--ipa);font-size:12px;margin-top:2px;color:var(--ink3)}
+.wcard .df{font-size:12px;margin-top:3px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dots{display:flex;gap:4px;flex-shrink:0}
+.dots i{width:6.5px;height:6.5px;border-radius:50%;display:block;transition:background .28s}
+.dots i.on{background:var(--accent)}
+.dots i.off{background:var(--sunken);box-shadow:inset 1px 1px 2px var(--cl-shade)}
+.wcard .due{font-family:var(--mono);font-size:10px;flex-shrink:0;text-align:right;line-height:1.5;color:var(--ink3)}
+.wcard .due b{font-family:var(--round);font-size:10.5px;font-weight:600;display:block;color:var(--accent);transition:color .28s}
+
+.rd{padding:0 28px;flex:1;overflow:hidden;background:var(--rd-bg);transition:background .28s,color .28s}
+.rd-hd{padding:6px 0 20px}
+.rd-hd .src{font-family:var(--round);font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;margin-bottom:8px;color:var(--accent);transition:color .28s}
+.rd-hd h3{font-family:var(--serif);font-size:22px;font-weight:500;line-height:1.28;letter-spacing:-.012em;color:var(--ink)}
+.rd .body{font-family:var(--serif);font-size:16.5px;line-height:var(--read-lh);letter-spacing:.002em;color:var(--ink);transition:line-height .28s,color .28s}
+.rd .body p+p{margin-top:17px}
+.rd-note{margin-top:auto;padding:14px 0 0;display:flex;align-items:center;gap:8px;font-size:11px;font-family:var(--round);font-weight:600;color:var(--ink3)}
+.rd-note i{width:12px;height:12px;border-radius:4px;background:var(--accent);display:block;flex-shrink:0;transition:background .28s}
+
+.reader-dim{padding:0 28px;flex:1;overflow:hidden;background:var(--rd-bg);position:relative;transition:background .28s}
+.reader-dim .body{font-family:var(--serif);font-size:16.5px;line-height:1.8;color:var(--ink);opacity:.4}
+.dimv{position:absolute;inset:0;background:var(--dim);z-index:4;transition:background .28s}
+.sheet{margin:auto 11px 11px;border-radius:20px;padding:23px 21px 19px;position:relative;z-index:6}
+.sh-top{display:flex;align-items:flex-start;justify-content:space-between}
+.sh-word{font-family:var(--serif);font-size:26px;font-weight:500;letter-spacing:-.01em;color:var(--ink)}
+.sh-ipa{font-family:var(--ipa);font-size:14.5px;color:var(--ink3);margin-top:4px}
+.sh-pos{font-size:10.5px;color:var(--accent);border:1px solid var(--line2);border-radius:5px;padding:2px 7px;font-family:var(--mono);transition:color .28s}
+.sh-def{font-size:15.5px;margin-top:15px;color:var(--ink)}
+.sh-ex{font-family:var(--serif);font-size:14px;line-height:1.7;color:var(--ink2);margin-top:8px;padding-left:12px;border-left:2px solid var(--line2)}
+.sh-col{margin-top:15px;padding-top:13px;border-top:1px solid var(--line)}
+.sh-col .lb{font-size:10.5px;color:var(--ink3);letter-spacing:.08em;margin-bottom:7px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-family:var(--serif);font-size:12.5px;background:var(--sunken);border-radius:6px;padding:4px 9px;color:var(--ink2);transition:background .28s}
+.sh-act{margin-top:17px;display:flex;align-items:center;justify-content:space-between}
+.sh-saved{font-size:12px;color:var(--ink3)}
+.sh-saved b{color:var(--accent);font-weight:500;transition:color .28s}
+.play{width:36px;height:36px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;font-size:14px;transition:background .28s,color .28s}
+
+.ach{padding:2px 18px 0;flex:1;overflow:hidden}
+.ach-hd{padding:2px 6px 18px}
+.ach-hd h2{font-family:var(--round);font-size:24px;font-weight:600;letter-spacing:-.015em}
+.ach-hd p{font-size:12.5px;margin-top:4px;color:var(--ink3)}
+.bigcard{border-radius:28px;padding:26px 20px 22px;text-align:center;margin-bottom:14px}
+.ring{width:112px;height:112px;border-radius:50%;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;flex-direction:column;background:var(--accent);color:var(--accent-ink);box-shadow:7px 9px 20px var(--accent-out), inset -5px -5px 13px rgba(0,0,0,.3), inset 4px 4px 11px rgba(255,255,255,.28);transition:background .28s,color .28s}
+.ring .n{font-family:var(--round);font-size:35px;font-weight:600;line-height:1}
+.ring .u{font-family:var(--round);font-size:11px;font-weight:600;margin-top:2px;opacity:.85}
+.bigcard h3{font-family:var(--round);font-size:17px;font-weight:600;margin-bottom:6px;color:var(--ink)}
+.bigcard p{font-size:12.5px;line-height:1.6;color:var(--ink3)}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.stat{border-radius:20px;padding:16px 15px}
+.stat .n{font-family:var(--round);font-size:24px;font-weight:600;line-height:1;color:var(--ink)}
+.stat .l{font-size:11px;margin-top:5px;color:var(--ink3)}
+
+/* 并排对比 */
+.cmp{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.cmp-col{background:#F7F4EC;border:1px solid #CFC8BA;border-radius:20px;padding:18px 16px 16px}
+.cmp-col > .nm{font-family:var(--round);font-size:14px;font-weight:600;margin-bottom:3px;color:#29251F}
+.cmp-col > .ds{font-size:11.5px;color:#7A7263;line-height:1.55;margin-bottom:14px;min-height:34px}
+.mini{border-radius:14px;padding:16px 15px;background:var(--rd-bg);color:var(--ink)}
+.mini .bh{font-family:var(--serif);font-size:14.5px;font-weight:500;margin-bottom:10px;line-height:1.3}
+.mini .bd{font-family:var(--serif);font-size:13.5px;line-height:var(--read-lh);letter-spacing:.002em}
+.cmp-tag{margin-top:11px;font-size:11px;color:#7A7263;line-height:1.6}
+.cmp-tag b{color:#29251F;font-weight:500;font-family:var(--mono);font-size:10.5px}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:8px}
+.gcard{background:#F7F4EC;border:1px solid #CFC8BA;border-radius:20px;padding:22px 24px}
+.gcard h4{font-family:var(--round);font-size:15px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:9px}
+.gcard h4 span{font-size:11px;font-family:var(--mono);font-weight:400;color:#8C8271}
+.gcard ul{margin:0 0 0 18px}
+.gcard li{font-size:13px;line-height:1.75;color:#5C5648;margin-bottom:7px}
+.gcard li b{color:#29251F;font-weight:500}
+.gcard code{font-family:var(--mono);font-size:11.5px;background:#E3DDD0;padding:1px 5px;border-radius:3px}
+
+.codebox{background:#F7F4EC;border:1px solid #CFC8BA;border-radius:20px;padding:22px 24px;margin-top:8px}
+.codebox .lb{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#8C8271;margin-bottom:12px}
+.codebox pre{font-family:var(--mono);font-size:12px;line-height:1.85;color:#3A352C;overflow-x:auto;white-space:pre}
+.codebox pre .c{color:#A8543C}
+.codebox pre .k{color:#6B7A4A}
+
+.note-band{margin-top:18px;background:#F7F4EC;border-left:3px solid #B4432C;border-radius:0 12px 12px 0;padding:16px 20px;font-size:13px;line-height:1.75;color:#5C5648}
+.note-band b{color:#29251F;font-weight:500}
+.note-band code{font-family:var(--mono);font-size:11.5px;background:#E3DDD0;padding:1px 5px;border-radius:3px}
+
+.brand{display:grid;grid-template-columns:210px 1fr;gap:26px;align-items:center;background:#F7F4EC;border:1px solid #CFC8BA;border-radius:20px;padding:26px 28px;margin-top:8px}
+.brand-mark{width:146px;height:146px;border-radius:34px;background:#B4432C;display:flex;align-items:center;justify-content:center;flex-direction:column;box-shadow:0 3px 6px rgba(120,60,40,.18),0 16px 32px -10px rgba(120,60,40,.4);margin:0 auto}
+.brand-mark .ltr{font-family:var(--round);font-size:50px;font-weight:600;color:#fff;line-height:1}
+.brand-mark .sb{font-family:var(--round);font-size:10px;font-weight:600;color:rgba(255,255,255,.8);letter-spacing:.16em;margin-top:6px}
+.brand-txt h4{font-family:var(--round);font-size:16.5px;font-weight:600;margin-bottom:11px}
+.brand-txt p{font-size:13.5px;line-height:1.75;color:#5C5648;margin-bottom:9px}
+.brand-txt p b{color:#29251F;font-weight:500}
+
+.foot{margin-top:64px;padding-top:32px;border-top:1px solid #CFC8BA;font-size:13.5px;line-height:1.8;color:#5C5648}
+.foot b{color:#29251F;font-weight:500}
+.foot ul{margin:14px 0 0 20px}
+.foot li{margin-bottom:8px}
+.foot code{font-family:var(--mono);font-size:11.5px;background:#DCD6C9;padding:1px 5px;border-radius:3px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="eyebrow">CoEvo · 主题系统设计</div>
+  <h1>底色是主题，不是品牌单选</h1>
+  <p class="lede">
+    你说得对 —— 墨 / 格 / 夜 对应的根本不是三种审美，而是<strong>三种使用场景</strong>（白天长读 / 需要通透感 / 夜间暗光）。Kindle、Apple Books、微信读书都是给多档阅读主题让用户自己选。<br><br>
+    而且这个改动带来一个很好的副作用：<strong>痕迹语法可以跟着主题走</strong> —— 每档底色用最适合自己的痕迹语法（暖纸上用底色浸染、纯白上用下划线、深色上用「光」）。实现上仍是<strong>同一段代码</strong>，只是 token 不同；切换时还有过渡动画。
+  </p>
+</header>
+
+<div class="switcher">
+  <div class="sw-inner">
+    <span class="sw-label">切换主题：</span>
+    <button class="sw-btn on" data-t="ink"><span class="sw-dot" style="background:#B4432C"></span>墨 · 暖纸</button>
+    <button class="sw-btn" data-t="grid"><span class="sw-dot" style="background:var(--accent-bright)"></span>格 · 纯白</button>
+    <button class="sw-btn" data-t="night"><span class="sw-dot" style="background:#DB7E6B"></span>夜 · 深墨</button>
+    <span class="sw-note">下面全部界面 + <b>痕迹语法</b> + 粘土质感 实时跟着变</span>
+  </div>
+</div>
+
+<section class="sect">
+  <div class="sect-head">
+    <div class="sect-n">01</div>
+    <div>
+      <div class="sect-title">切换看效果</div>
+      <div class="sect-sub">五屏联动。特别看阅读屏里那三个阴影词 —— 语法随主题改变，但表达的是同一件事（刚查过 / 复习中 / 已掌握）。</div>
+    </div>
+  </div>
+
+  <div class="rail">
+    <div class="slot">
+      <div class="slot-cap"><i></i>信息流</div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+        <div class="feed">
+          <div class="feed-hd"><h2>今日精选</h2><span class="dt">09 · 25</span></div>
+          <div class="fcards">
+            <div class="fc clay"><div class="cat">Science · 4 min</div><h3>A New Way to Grow Food in Cities</h3><div class="ex">In the middle of Singapore, a tall glass building produces more than 800 tons of vegetables every year. It has no soil, no sunlight, and almost no water.</div><div class="mt"><span class="pill pill-n">6 个生词</span><span class="pill pill-g">未读</span></div></div>
+            <div class="fc clay"><div class="cat">Culture · 6 min</div><h3>Why We Sing Together</h3><div class="ex">Every human culture has music, and almost every one of them sings in groups. Researchers think this is not a coincidence.</div><div class="mt"><span class="pill pill-n">3 个生词</span><span class="pill pill-g">未读</span></div></div>
+          </div>
+        </div>
+        <div class="tabbar"><div class="tb on"><div class="ic"></div>阅读</div><div class="tb"><div class="ic"></div>复习</div><div class="tb"><div class="ic"></div>我的</div></div>
+      </div>
+      <div class="slot-note">卡片是凸起的粘土块。<b>同一段阴影代码</b>，三个主题只是 token 不同 —— 墨偏暖棕、格偏中性灰、夜是纯黑 + 6% 白高光。</div>
+    </div>
+
+    <div class="slot">
+      <div class="slot-cap"><i></i>阅读界面</div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+        <div class="rd">
+          <div class="rd-hd"><div class="src">Science · VOA Learning English</div><h3>A New Way to Grow Food in Cities</h3></div>
+          <div class="body">
+            <p>In the middle of Singapore, a tall glass building <span class="tk tk-d">produces</span> more than 800 tons of vegetables every year. It has no soil, no sunlight, and almost no water. <span class="tk tk-m">Instead</span>, the plants grow in a special <span class="tk tk-m">liquid</span>, and pink lights help them grow faster than on a normal farm.</p>
+            <p>This type of farming is called <span class="tk tk-n">vertical</span> farming. It uses 95% less water than <span class="tk tk-d">traditional</span> farms, and because the building is in the city, the food travels only a few <span class="tk tk-d">kilometres</span> to reach shops.</p>
+            <p>Shoppers say the vegetables taste better than those shipped from far away.</p>
+          </div>
+          <div class="rd-note"><i></i>阅读界面零粘土</div>
+        </div>
+        <div class="tabbar"><div class="tb on"><div class="ic"></div>阅读</div><div class="tb"><div class="ic"></div>复习</div><div class="tb"><div class="ic"></div>我的</div></div>
+      </div>
+      <div class="slot-note"><b>关键屏。</b>粘土在这里完全退场，只有文字和痕迹。痕迹语法随主题变：墨=底色浸染 / 格=下划线 / 夜=光。行高也随主题微调（1.82 / 1.74 / 1.84）。</div>
+    </div>
+
+    <div class="slot">
+      <div class="slot-cap"><i></i>划词卡片</div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+        <div class="reader-dim">
+          <div class="rd-hd"><div class="src">Science · VOA Learning English</div><h3>A New Way to Grow Food in Cities</h3></div>
+          <div class="body"><p>In the middle of Singapore, a tall glass building produces more than 800 tons of vegetables every year. It has no soil, and almost no water. Instead, the plants grow in a special liquid, and pink lights help them.</p></div>
+          <div class="dimv"></div>
+        </div>
+        <div class="sheet clay">
+          <div class="sh-top"><div><div class="sh-word">vertical</div><div class="sh-ipa">/ˈvɜːtɪkl/</div></div><span class="sh-pos">adj.</span></div>
+          <div class="sh-def">竖直的；垂直的</div>
+          <div class="sh-ex">The plants grow on vertical shelves.</div>
+          <div class="sh-col"><div class="lb">搭配</div><div class="chips"><span class="chip">vertical farming</span><span class="chip">vertical line</span></div></div>
+          <div class="sh-act"><div class="sh-saved">已加入生词本 · <b>第 1 次</b></div><div class="play">▶</div></div>
+        </div>
+      </div>
+      <div class="slot-note">弹层是阅读时唯一出现的粘土 —— 因为它不是内容，是交互。深色下它的内高光只有 6.2%，体积感明显弱于浅色，这是粘土的固有代价。</div>
+    </div>
+
+    <div class="slot">
+      <div class="slot-cap"><i></i>复习页（单一列表）</div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+        <div class="rev">
+          <div class="rev-hd"><h2>复习</h2><span class="cnt">23 个今天该看</span></div>
+          <div class="search sunken"><span class="mag"></span><span>搜索单词或释义</span></div>
+          <div class="sorts"><span class="sort on">记忆曲线</span><span class="sort">最近</span><span class="sort">A–Z</span></div>
+          <div class="grph">今天该复习</div>
+          <div class="wlist">
+            <div class="wcard clay"><div class="lft"><div class="w">vertical</div><div class="ip">/ˈvɜːtɪkl/</div><div class="df">竖直的；垂直的</div></div><div class="dots"><i class="on"></i><i class="on"></i><i class="off"></i></div><div class="due"><b>今天</b>3 天前</div></div>
+            <div class="wcard clay"><div class="lft"><div class="w">instead</div><div class="ip">/ɪnˈsted/</div><div class="df">代替；反而</div></div><div class="dots"><i class="on"></i><i class="off"></i><i class="off"></i></div><div class="due"><b>今天</b>1 天前</div></div>
+            <div class="grph" style="margin-top:5px">之后</div>
+            <div class="wcard clay"><div class="lft"><div class="w">traditional</div><div class="ip">/trəˈdɪʃənl/</div><div class="df">传统的</div></div><div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></div><div class="due"><b>4 天后</b>已复习 3 次</div></div>
+          </div>
+        </div>
+        <div class="tabbar"><div class="tb"><div class="ic"></div>阅读</div><div class="tb on"><div class="ic"></div>复习</div><div class="tb"><div class="ic"></div>我的</div></div>
+      </div>
+      <div class="slot-note">搜索框凹陷、排序药丸选中项凸起、词卡是粘土块。三态小圆点与阅读界面的痕迹<b>共用同一套定义</b>。</div>
+    </div>
+
+    <div class="slot">
+      <div class="slot-cap"><i></i>我的 / 成就</div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+        <div class="ach">
+          <div class="ach-hd"><h2>我的</h2><p>第 47 天，你读了 128 篇文章</p></div>
+          <div class="bigcard clay"><div class="ring"><span class="n">47</span><span class="u">连续天数</span></div><h3>超过 82% 的学习者</h3><p>再坚持 3 天，就能解锁「五十天」徽章</p></div>
+          <div class="stats">
+            <div class="stat clay"><div class="n">1,203</div><div class="l">已掌握的词</div></div>
+            <div class="stat clay"><div class="n">128</div><div class="l">读完的文章</div></div>
+            <div class="stat clay"><div class="n">18.5</div><div class="l">小时阅读</div></div>
+            <div class="stat clay"><div class="n">94%</div><div class="l">复习完成率</div></div>
+          </div>
+        </div>
+        <div class="tabbar"><div class="tb"><div class="ic"></div>阅读</div><div class="tb"><div class="ic"></div>复习</div><div class="tb on"><div class="ic"></div>我的</div></div>
+      </div>
+      <div class="slot-note">成就页是粘土最合适的地方 —— 徽章、进度环本来就该有实体感。这也是分享图的视觉基础。</div>
+    </div>
+  </div>
+</section>
+
+<section class="sect">
+  <div class="sect-head">
+    <div class="sect-n">02</div>
+    <div>
+      <div class="sect-title">并排看痕迹语法的差异</div>
+      <div class="sect-sub">同一段文字、同一份痕迹数据。注意 <span style="font-family:var(--serif)">liquid</span> 这个词 —— 它是最需要被看见的那个。</div>
+    </div>
+  </div>
+  <div class="cmp">
+    <div class="cmp-col theme-ink">
+      <div class="nm">墨 · 暖纸</div>
+      <div class="ds">底色浸染 —— 像书上用铅笔涂过</div>
+      <div class="mini">
+        <div class="bh">A New Way to Grow Food in Cities</div>
+        <div class="bd"><p>It has no soil, and almost no water. <span class="tk tk-m">Instead</span>, the plants grow in a special <span class="tk tk-n">liquid</span>, and pink lights help them grow faster than on a normal <span class="tk tk-d">farm</span>.</p></div>
+      </div>
+      <div class="cmp-tag"><b>alpha .15 / .075 / .026</b><br>暖底 + 淡朱砂，最接近真实纸张手感</div>
+    </div>
+    <div class="cmp-col theme-grid">
+      <div class="nm">格 · 纯白</div>
+      <div class="ds">下划线 —— 像校对稿的批注线</div>
+      <div class="mini">
+        <div class="bh">A New Way to Grow Food in Cities</div>
+        <div class="bd"><p>It has no soil, and almost no water. <span class="tk tk-m">Instead</span>, the plants grow in a special <span class="tk tk-n">liquid</span>, and pink lights help them grow faster than on a normal <span class="tk tk-d">farm</span>.</p></div>
+      </div>
+      <div class="cmp-tag"><b>2.5px solid / 1.5px 42% / 1px dashed</b><br>纯白底上底色浸染几乎看不见，线才是对的</div>
+    </div>
+    <div class="cmp-col theme-night">
+      <div class="nm">夜 · 深墨</div>
+      <div class="ds">光 —— 熟练度 = 亮度</div>
+      <div class="mini">
+        <div class="bh">A New Way to Grow Food in Cities</div>
+        <div class="bd"><p>It has no soil, and almost no water. <span class="tk tk-m">Instead</span>, the plants grow in a special <span class="tk tk-n">liquid</span>, and pink lights help them grow faster than on a normal <span class="tk tk-d">farm</span>.</p></div>
+      </div>
+      <div class="cmp-tag"><b>#FFD9B8 / #DEDCD7 / #8E939F</b><br>深底上「加亮」比「加色」更自然</div>
+    </div>
+  </div>
+</section>
+
+<section class="sect">
+  <div class="sect-head">
+    <div class="sect-n">03</div>
+    <div>
+      <div class="sect-title">那品牌身份靠什么？</div>
+      <div class="sect-sub">这是「三档都能切」之后唯一需要认真回答的新问题。</div>
+    </div>
+  </div>
+  <div class="grid2">
+    <div class="gcard">
+      <h4>随主题变 <span>token 不同，代码相同</span></h4>
+      <ul>
+        <li>底色 / 纸色 / 卡片色</li>
+        <li>文字三档（主 / 次 / 弱）</li>
+        <li><b>强调色</b>（朱砂 / 青绿 / 暖橙）</li>
+        <li><b>痕迹语法</b>（浸染 / 下划线 / 光）</li>
+        <li>粘土的三个阴影参数</li>
+        <li>行高（1.82 / 1.74 / 1.84）与圆角</li>
+      </ul>
+    </div>
+    <div class="gcard">
+      <h4>跨主题稳定 <span>品牌身份在这里</span></h4>
+      <ul>
+        <li><b>字体组合</b> —— Literata + Charis SIL + Inter，永不变</li>
+        <li><b>粘土质感</b> —— 三种底色都成立，反而是最稳的签名</li>
+        <li><b>「痕迹」这个概念</b> —— 「学过的词在变淡」这个行为不变</li>
+        <li><b>内容平面 / 交互粘土 / 输入凹陷</b> 的三分原则</li>
+        <li>信息架构、交互方式、文案语气</li>
+        <li><b>品牌色</b> —— 图标 / 启动页 / 分享图用固定色</li>
+      </ul>
+    </div>
+  </div>
+  <div class="note-band">
+    <b>一个反直觉的结论：粘土在这里帮了大忙。</b>三套底色配三套强调色，本来会让品牌形象散掉。但粘土是<strong>跨底色的质感语言</strong> —— 无论用户选哪个主题，界面的「手感」完全一致。所以品牌签名从「一种配色」变成了<strong>「一种材质 + 一套字体 + 一个行为概念」</strong>，这比单一配色更耐得住主题切换。
+  </div>
+</section>
+
+<section class="sect">
+  <div class="sect-head">
+    <div class="sect-n">04</div>
+    <div>
+      <div class="sect-title">品牌基准</div>
+      <div class="sect-sub">主题可以切，但对外形象需要一个固定锚点。</div>
+    </div>
+  </div>
+  <div class="brand">
+    <div class="brand-mark"><span class="ltr">C</span><span class="sb">COEVO</span></div>
+    <div class="brand-txt">
+      <h4>建议：品牌色 = 朱砂 #B4432C，默认主题 = 墨 + 跟随系统</h4>
+      <p><b>为什么是朱砂：</b>它是默认主题「墨」的强调色，同时是暖色 —— 在 App Store 列表页的缩略图尺寸下，暖色图标比冷色更容易被注意到。而且朱砂在中文语境里有「印记」的联想，与「痕迹」这个概念天然呼应。</p>
+      <p><b>品牌触点用固定色</b>（App 图标、启动页、官网、分享图、商店截图），<b>应用内用主题色</b>。两者可以不同 —— 就像 Slack 的图标固定，但可以切浅色 / 深色主题。</p>
+      <p><b>默认「墨 + 跟随系统」</b>：白天打开是暖纸，日落后自动切深墨。用户不动设置也能得到合适的体验；想换的人随时能换。</p>
+    </div>
+  </div>
+</section>
+
+<section class="sect">
+  <div class="sect-head">
+    <div class="sect-n">05</div>
+    <div>
+      <div class="sect-title">技术实现：现有架构只差一步</div>
+      <div class="sect-sub">项目里已经有主题切换的骨架（<code>theme_provider.dart</code> + 4 套 ThemeData），需要的是重新组织。</div>
+    </div>
+  </div>
+  <div class="codebox">
+    <div class="lb">现状 → 目标</div>
+<pre><span class="c">// 现状：一维，且混了「风格」和「明暗」两个概念</span>
+enum AppThemeMode { system, light, dark, duolingo }
+
+<span class="c">// 目标：把「底色氛围」独立成主题族</span>
+enum ReadingTheme { <span class="k">ink</span>, <span class="k">grid</span>, <span class="k">night</span> }   <span class="c">// 三档底色</span>
+<span class="c">// 「跟随系统」不再是主题之一，而是一个开关：</span>
+<span class="c">//   浅色 → 用户选的浅色主题（ink 或 grid）</span>
+<span class="c">//   深色 → night</span>
+
+<span class="c">// 主题由一组 token 生成，而不是四个手写的 ThemeData</span>
+<span class="k">class</span> CoEvoTokens {
+  <span class="k">final</span> Color read;         <span class="c">// 阅读区底色</span>
+  <span class="k">final</span> Color accent;       <span class="c">// 主题强调色</span>
+  <span class="k">final</span> TraceStyle trace;    <span class="c">// 痕迹语法（浸染 / 下划线 / 光）</span>
+  <span class="k">final</span> ClaySpec clay;       <span class="c">// 粘土三参数</span>
+  <span class="k">final</span> <span class="k">double</span> readLineHeight;
+}
+
+ThemeData buildTheme(CoEvoTokens t) =&gt; ThemeData(...);
+
+<span class="c">// 持久化：ReadingTheme + followSystem 两个字段就够</span></pre>
+  </div>
+  <div class="note-band" style="border-left-color:#6B7A4A">
+    <b>额外工作量不大，但验证工作是真的。</b>三套主题意味着三倍的视觉验证：文字对比度、痕迹三态在不同字号下的可读性、粘土深度、IPA 音标显示、深色下长时间阅读的舒适度。<b>建议把「三主题验收」列为一个独立里程碑</b>，而不是散在各功能里做。
+    <br><br>
+    还有一点值得做：<b>跟随系统 + 日落自动切换</b>。阅读类 App 的常见特性，成本很低（<code>MediaQuery.platformBrightness</code> 已够用），但体验提升明显。
+  </div>
+</section>
+
+<div class="foot">
+  <b>这一版改了什么</b>
+  <ul>
+    <li><b>底色从「三选一」变成「主题族」</b> —— 三档都保留，用户自己选；默认「墨 + 跟随系统」</li>
+    <li><b>痕迹语法跟随主题切换</b> —— 每档底色用最适合自己的语法，实现上仍是同一段代码（token 不同），切换有过渡动画</li>
+    <li><b>框架维持两层</b> —— 底色氛围（三档主题）× 质感语言（平面 / 粘土），互相独立</li>
+    <li><b>品牌身份重新定位</b> —— 从「一种配色」变成「材质 + 字体 + 行为概念」，因此不受主题切换影响</li>
+  </ul>
+  <p style="margin-top:18px">
+    还剩一个待定：<b>质感语言</b>（平面 / 粘土）。粘土原型在 <code>visual-clay-direction-2026-09-25.html</code>，可以和本页的主题一起看。<b>痕迹默认状态</b>建议开启、但界面上不放开关（开关藏阅读设置面板）。
+  </p>
+</div>
+
+</div>
+
+<script>
+const root = document.documentElement;
+const btns = [...document.querySelectorAll('.sw-btn')];
+btns.forEach(b => {
+  b.addEventListener('click', () => {
+    root.setAttribute('data-theme', b.dataset.t);
+    btns.forEach(x => x.classList.toggle('on', x === b));
+  });
+});
+</script>
+</body>
+</html>

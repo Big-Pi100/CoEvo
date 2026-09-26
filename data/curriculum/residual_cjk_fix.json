@@ -1,0 +1,350 @@
+{
+ "_meta": {
+  "finished": "2026-09-25T22:47:54",
+  "backup": "data\\backups\\coevo_before_residual_cjk_20260925_224617.db",
+  "fixed": 34,
+  "failed": 0,
+  "cost_cny": 0.0154
+ },
+ "fixed": [
+  {
+   "word": "description",
+   "idx": 1,
+   "data": {
+    "pos": "n",
+    "meaning": "a type or kind of something",
+    "chinese": "种类"
+   }
+  },
+  {
+   "word": "gran",
+   "idx": 0,
+   "data": {
+    "pos": "n",
+    "meaning": "An informal word for grandmother.",
+    "chinese": "奶奶；外婆"
+   }
+  },
+  {
+   "word": "article",
+   "idx": 2,
+   "data": {
+    "pos": "n",
+    "meaning": "(grammar) a word such as 'a', 'an', or 'the' used before a noun.",
+    "chinese": "冠词"
+   }
+  },
+  {
+   "word": "color",
+   "idx": 4,
+   "data": {
+    "pos": "v",
+    "meaning": "to influence or change something, often in an unfair way",
+    "chinese": "影响，扭曲"
+   }
+  },
+  {
+   "word": "hafta",
+   "idx": 0,
+   "data": {
+    "pos": "v",
+    "meaning": "informal contraction of 'have to', showing that something is necessary or required",
+    "chinese": "必须，不得不"
+   }
+  },
+  {
+   "word": "halted",
+   "idx": 0,
+   "data": {
+    "pos": "v",
+    "meaning": "past tense and past participle of halt; stopped moving or came to a stop.",
+    "chinese": "停止的；停下的"
+   }
+  },
+  {
+   "word": "hood",
+   "idx": 2,
+   "data": {
+    "pos": "n",
+    "meaning": "(informal) a neighborhood, especially one known for violence or crime.",
+    "chinese": "街区，社区（尤指治安差的）"
+   }
+  },
+  {
+   "word": "len",
+   "idx": 1,
+   "data": {
+    "pos": "n",
+    "meaning": "(rare) a variant spelling of 'linn', meaning a waterfall or a pool.",
+    "chinese": "瀑布或水潭"
+   }
+  },
+  {
+   "word": "hop",
+   "idx": 2,
+   "data": {
+    "pos": "v",
+    "meaning": "(informal) to get into or onto something quickly",
+    "chinese": "快速进入；跳上"
+   }
+  },
+  {
+   "word": "horrible",
+   "idx": 1,
+   "data": {
+    "pos": "adj",
+    "meaning": "(informal) very bad or unkind",
+    "chinese": "糟糕的；不友善的"
+   }
+  },
+  {
+   "word": "hopeless",
+   "idx": 1,
+   "data": {
+    "pos": "adj",
+    "meaning": "(informal) very bad or inadequate; useless.",
+    "chinese": "糟糕的；没用的"
+   }
+  },
+  {
+   "word": "elevated",
+   "idx": 1,
+   "data": {
+    "pos": "adj",
+    "meaning": "(of ideas or style) at a high moral or intellectual level",
+    "chinese": "高尚的，崇高的"
+   }
+  },
+  {
+   "word": "logic",
+   "idx": 0,
+   "data": {
+    "pos": "n",
+    "meaning": "a system of reasoning used to think clearly and reach sensible conclusions",
+    "chinese": "逻辑；推理方法"
+   }
+  },
+  {
+   "word": "transport",
+   "idx": 5,
+   "data": {
+    "pos": "v",
+    "meaning": "to fill someone with a very strong emotion",
+    "chinese": "使陶醉"
+   }
+  },
+  {
+   "word": "emitted",
+   "idx": 0,
+   "data": {
+    "pos": "v",
+    "meaning": "past tense and past participle of emit; produced and sent out",
+    "chinese": "排放；发出"
+   }
+  },
+  {
+   "word": "enact",
+   "idx": 0,
+   "data": {
+    "pos": "v",
+    "meaning": "to make a law or regulation official",
+    "chinese": "颁布，制定"
+   }
+  },
+  {
+   "word": "elevated",
+   "idx": 2,
+   "data": {
+    "pos": "adj",
+    "meaning": "higher than normal in level, amount, or value",
+    "chinese": "偏高的"
+   }
+  },
+  {
+   "word": "emphasized",
+   "idx": 0,
+   "data": {
+    "pos": "v",
+    "meaning": "past tense and past participle of emphasize; means to give special importance to something",
+    "chinese": "强调（过去式/过去分词）"
+   }
+  },
+  {
+   "word": "emphasizes",
+   "idx": 0,
+   "data": {
+    "pos": "v",
+    "meaning": "third person singular present of emphasize; to give special importance or attention to something",
+    "chinese": "强调"
+   }
+  },
+  {
+   "word": "enacted",
+   "idx": 0,
+   "data": {
+    "pos": "v",
+    "meaning": "past tense and past participle of enact; put a law or plan into action",
+    "chinese": "颁布；制定"
+   }
+  },
+  {
+   "word": "enacting",
+   "idx": 0,
+   "data": {
+    "pos": "v",
+    "meaning": "present participle of enact; in the process of making a law or performing a role",
+    "chinese": "颁布中；制定中"
+   }
+  },
+  {
+   "word": "larry",
+   "idx": 1,
+   "data": {
+    "pos": "n",
+    "meaning": "a foolish or naive person (informal, dated)",
+    "chinese": "冒失鬼"
+   }
+  },
+  {
+   "word": "encompassed",
+   "idx": 0,
+   "data": {
+    "pos": "v",
+    "meaning": "past tense and past participle of encompass; included or surrounded something.",
+    "chinese": "包含；包围"
+   }
+  },
+  {
+   "word": "enchanted",
+   "idx": 2,
+   "data": {
+    "pos": "v",
+    "meaning": "past tense and past participle of enchant, meaning to charm or put under a magic spell.",
+    "chinese": "使着迷；施魔法"
+   }
+  },
+  {
+   "word": "howe",
+   "idx": 0,
+   "data": {
+    "pos": "n",
+    "meaning": "a hill, mound, or hollow, chiefly in Scottish and Northern English place names",
+    "chinese": "小山；土丘；洼地"
+   }
+  },
+  {
+   "word": "megatons",
+   "idx": 0,
+   "data": {
+    "pos": "n",
+    "meaning": "plural of megaton; a unit of explosive force equal to one million tons of TNT.",
+    "chinese": "百万吨（TNT当量）"
+   }
+  },
+  {
+   "word": "memorized",
+   "idx": 1,
+   "data": {
+    "pos": "v",
+    "meaning": "past tense and past participle of memorize; learned something by heart.",
+    "chinese": "记住了"
+   }
+  },
+  {
+   "word": "minimizing",
+   "idx": 0,
+   "data": {
+    "pos": "n",
+    "meaning": "the act of reducing something to the smallest possible amount or degree",
+    "chinese": "最小化"
+   }
+  },
+  {
+   "word": "mencken",
+   "idx": 0,
+   "data": {
+    "pos": "n",
+    "meaning": "H. L. Mencken was an American journalist, satirist, and critic.",
+    "chinese": "门肯，美国记者、讽刺作家"
+   }
+  },
+  {
+   "word": "paralyze",
+   "idx": 0,
+   "data": {
+    "pos": "v",
+    "meaning": "to make a person or animal unable to move or feel part of the body",
+    "chinese": "使瘫痪"
+   }
+  },
+  {
+   "word": "shunts",
+   "idx": 0,
+   "data": {
+    "pos": "v",
+    "meaning": "to push or turn something aside, especially to move a train to a different track",
+    "chinese": "使转向；调车"
+   }
+  },
+  {
+   "word": "memorize",
+   "idx": 0,
+   "data": {
+    "pos": "v",
+    "meaning": "US spelling of memorise: to learn something so you can remember it exactly.",
+    "chinese": "记忆，背诵"
+   }
+  },
+  {
+   "word": "gotten",
+   "idx": 0,
+   "data": {
+    "pos": "v",
+    "meaning": "past participle of get",
+    "chinese": "get的过去分词"
+   }
+  },
+  {
+   "word": "emphasizing",
+   "idx": 0,
+   "data": {
+    "pos": "v",
+    "meaning": "present participle of emphasize; giving special importance to something",
+    "chinese": "强调"
+   }
+  }
+ ],
+ "failed": [],
+ "skipped_justified": [
+  {
+   "word": "onleh",
+   "idx": 0,
+   "meaning": "a rare surname; also a variant transliteration of a Chinese given name (e.g., 温利 / Wēn Lì).",
+   "reason": "正当引用"
+  },
+  {
+   "word": "hwang",
+   "idx": 1,
+   "meaning": "a Chinese surname, typically written as 黄 (Huáng) in Mandarin, often romanized as Hwang in older systems.",
+   "reason": "正当引用"
+  },
+  {
+   "word": "pas",
+   "idx": 1,
+   "meaning": "(French in English) used in phrases meaning ‘step’ or ‘not’ (e.g., pas de problème). （步",
+   "reason": "正当引用"
+  },
+  {
+   "word": "pasha",
+   "idx": 1,
+   "meaning": "(French in English) used in phrases meaning ‘step’ or ‘not’ (e.g., pas de problème). （步",
+   "reason": "正当引用"
+  },
+  {
+   "word": "paso",
+   "idx": 1,
+   "meaning": "(French in English) used in phrases meaning ‘step’ or ‘not’ (e.g., pas de problème). （步",
+   "reason": "正当引用"
+  }
+ ]
+}

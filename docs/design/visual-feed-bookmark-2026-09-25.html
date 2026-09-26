@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="ink">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CoEvo 信息流卡片 + 收藏</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/literata@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5/500.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5/600.css">
+<style>
+/* ── 本地 IPA 子集字体（含完整 32 个音标字符，含 ˈ 重音 · ː 长音 · θ）──
+   为什么不直接用 @fontsource：它的 latin / latin-ext 分包不含全套 IPA
+   （Charis SIL 仅 22/32），用它会让音标静默回退到系统字体，
+   造成「看起来没差别」的假象 —— 而那正是要判断的东西。 */
+@font-face{font-family:'Charis SIL IPA';src:url('fonts/charis-sil.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/charissil/CharisSIL-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Gentium Book Plus IPA';src:url('fonts/gentium-book-plus.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/gentiumbookplus/GentiumBookPlus-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Andika IPA';src:url('fonts/andika.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/andika/Andika-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Noto Serif IPA';src:url('fonts/noto-serif.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notoserif/NotoSerif%5Bwdth,wght%5D.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Noto Sans IPA';src:url('fonts/noto-sans.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosans/NotoSans%5Bwdth,wght%5D.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+
+:root{
+  --serif:'Literata',Georgia,serif; --ipa:'Charis SIL IPA',Georgia,serif;
+  --ui:'Inter',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+  --round:'Quicksand','Inter',sans-serif;
+  --mono:ui-monospace,'SFMono-Regular',Menlo,monospace;
+}
+
+.theme-ink,[data-theme="ink"]{
+  --page:#F1EDE4; --read:#FAF8F4; --card:#FFFFFF;
+  --ink:#24211C; --ink2:#6E6659; --ink3:#9A917F;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF; --accent-out:rgba(180,67,44,.40); --mark:#B4432C;
+  --line:#EFE9DE; --sunken:#EDE6DA; --dim:rgba(0,0,0,.16);
+  --cl-out:rgba(150,125,95,.24); --cl-shade:rgba(186,166,138,.55); --cl-light:rgba(255,255,255,1);
+  --cl-radius:26px; --read-lh:1.82;
+  --tk-n-bg:rgba(180,67,44,.15); --tk-n-bd:none; --tk-n-r:3px; --tk-n-p:1px 3px;
+  --tk-m-bg:rgba(180,67,44,.075);--tk-m-bd:none; --tk-m-r:3px; --tk-m-p:1px 3px;
+  --tk-d-bg:rgba(180,67,44,.026);--tk-d-bd:none; --tk-d-r:3px; --tk-d-p:1px 3px;
+}
+.theme-grid,[data-theme="grid"]{
+  --page:#EDEEF0; --read:#FFFFFF; --card:#FFFFFF;
+  --ink:#0A0A0A; --ink2:#5A5A5A; --ink3:#8A8A8A;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF; --accent-out:rgba(180,67,44,.40); --mark:var(--accent-bright);
+  --line:#E8E8E8; --sunken:#F0F0F0; --dim:rgba(0,0,0,.14);
+  --cl-out:rgba(120,120,120,.18); --cl-shade:rgba(158,158,158,.46); --cl-light:rgba(255,255,255,1);
+  --cl-radius:8px; --read-lh:1.74;
+  --tk-n-bg:transparent; --tk-n-bd:2.5px solid var(--accent-bright); --tk-n-r:0; --tk-n-p:0 0 1px 0;
+  --tk-m-bg:transparent; --tk-m-bd:1.5px solid rgba(196,83,58,.42); --tk-m-r:0; --tk-m-p:0 0 1px 0;
+  --tk-d-bg:transparent; --tk-d-bd:1px dashed rgba(10,10,10,.16); --tk-d-r:0; --tk-d-p:0 0 1px 0;
+}
+.theme-night,[data-theme="night"]{
+  --page:#0B0D12; --read:#14161C; --card:#1C1F27;
+  --ink:#EDEBE6; --ink2:#9AA0AE; --ink3:#6E7484;
+  --accent:#DB7E6B; --accent-bright:#E89B8C; --accent-ink:#2A1405; --accent-out:rgba(219,126,107,.40); --mark:#FFD9B8;
+  --line:#262A34; --sunken:#0B0D12; --dim:rgba(0,0,0,.45);
+  --cl-out:rgba(0,0,0,.55); --cl-shade:rgba(0,0,0,.42); --cl-light:rgba(255,255,255,.062);
+  --cl-radius:24px; --read-lh:1.84;
+  --tk-n-bg:transparent; --tk-n-bd:none; --tk-n-fg:#FFD9B8; --tk-n-r:3px; --tk-n-p:1px 3px;
+  --tk-m-bg:transparent; --tk-m-bd:none; --tk-m-fg:#DEDCD7; --tk-m-r:3px; --tk-m-p:1px 3px;
+  --tk-d-bg:transparent; --tk-d-bd:none; --tk-d-fg:#8E939F; --tk-d-r:3px; --tk-d-p:1px 3px;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#E4E0D8;color:#29251F;font-family:var(--ui);-webkit-font-smoothing:antialiased;padding:0 0 90px}
+.wrap{max-width:1480px;margin:0 auto;padding:0 34px}
+
+header.top{padding:52px 0 0}
+.eyebrow{font-size:12px;letter-spacing:.15em;text-transform:uppercase;color:#8C8271;margin-bottom:14px}
+h1{font-family:var(--round);font-size:36px;font-weight:600;letter-spacing:-.015em;line-height:1.18;margin-bottom:16px;max-width:920px}
+.lede{font-size:15px;line-height:1.74;color:#5C5648;max-width:880px}
+.lede strong{color:#29251F;font-weight:500}
+.lede code{font-family:var(--mono);font-size:12.5px;background:#DCD6C9;padding:1px 5px;border-radius:3px}
+
+.changes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:24px}
+.chg{background:#F7F4EC;border:1px solid #CFC8BA;border-radius:18px;padding:18px 20px}
+.chg .tag{font-family:var(--round);font-size:11px;font-weight:600;letter-spacing:.05em;padding:3px 9px;border-radius:8px;display:inline-block;margin-bottom:11px}
+.chg .tag.del{background:#EFDCDC;color:#8C3A2E}
+.chg .tag.add{background:#DDE8D8;color:#4A6B33}
+.chg h3{font-family:var(--round);font-size:15px;font-weight:600;margin-bottom:7px}
+.chg p{font-size:12.5px;line-height:1.65;color:#6E6659}
+.chg code{font-family:var(--mono);font-size:11.5px;background:#E3DDD0;padding:1px 4px;border-radius:3px}
+
+.switcher{position:sticky;top:0;z-index:60;background:rgba(228,224,216,.94);backdrop-filter:blur(12px);border-bottom:1px solid #CFC8BA;padding:13px 0;margin-top:28px}
+.sw-inner{max-width:1480px;margin:0 auto;padding:0 34px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.sw-label{font-family:var(--round);font-size:12.5px;font-weight:600;color:#6E6659}
+.sw-btn{font-family:var(--round);font-size:13px;font-weight:600;border:1px solid #C6BFB0;background:#F7F4EC;color:#5C5648;border-radius:12px;padding:8px 17px;cursor:pointer;transition:all .16s}
+.sw-btn:hover{border-color:#A89E8C;color:#29251F}
+.sw-btn.on{background:#29251F;border-color:#29251F;color:#F7F4EC}
+.sw-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;vertical-align:-1px}
+.sw-note{font-size:12.5px;color:#7A7263;margin-left:auto}
+.sw-note b{color:#29251F;font-weight:500}
+
+.sect{margin-top:60px}
+.sect-head{padding-bottom:20px;border-bottom:1px solid #CFC8BA;margin-bottom:26px;display:flex;align-items:flex-end;gap:18px}
+.sect-n{font-family:var(--mono);font-size:13px;color:#8C8271;border:1.5px solid #CFC8BA;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:#F7F4EC}
+.sect-title{font-family:var(--round);font-size:23px;font-weight:600;letter-spacing:-.01em}
+.sect-sub{font-size:13px;color:#7A7263;margin-top:5px;line-height:1.6;max-width:800px}
+.sect-sub code{font-family:var(--mono);font-size:12px;background:#DCD6C9;padding:1px 5px;border-radius:3px}
+
+.rail{display:flex;gap:22px;overflow-x:auto;padding:4px 4px 20px}
+.slot{flex-shrink:0}
+.slot-cap{font-family:var(--round);font-size:13px;font-weight:600;color:#5C5648;margin-bottom:11px;display:flex;align-items:center;gap:8px}
+.slot-cap i{width:15px;height:2px;background:#B4432C;border-radius:1px;display:block;font-style:normal}
+.slot-note{font-size:11.5px;color:#7A7263;margin-top:10px;width:360px;line-height:1.6}
+.slot-note b{color:#29251F;font-weight:500}
+
+.phone{width:360px;height:748px;border-radius:42px;overflow:hidden;position:relative;display:flex;flex-direction:column;background:var(--page);color:var(--ink);font-family:var(--ui);box-shadow:0 2px 4px rgba(120,100,75,.1),0 14px 36px -10px rgba(120,100,75,.28);transition:background .28s,color .28s}
+.statusbar{height:42px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:12.5px;font-weight:500;flex-shrink:0;position:relative;z-index:9;color:var(--ink)}
+.sb-r{display:flex;align-items:center;gap:5px}
+.batt{width:20px;height:10px;border:1.2px solid currentColor;border-radius:2.5px;position:relative;opacity:.85}
+.batt::after{content:'';position:absolute;right:-3px;top:2.5px;width:1.5px;height:4px;background:currentColor;border-radius:0 1px 1px 0}
+.batt i{position:absolute;left:1.2px;top:1.2px;bottom:1.2px;width:11px;background:currentColor;border-radius:1px}
+.sig{display:flex;align-items:flex-end;gap:1.5px;height:10px}
+.sig i{width:2.5px;background:currentColor;border-radius:1px}
+
+.clay{background:var(--card);border-radius:var(--cl-radius);box-shadow:6px 8px 16px var(--cl-out), inset -5px -5px 12px var(--cl-shade), inset 4px 4px 10px var(--cl-light);transition:background .28s,box-shadow .28s,border-radius .28s}
+.sunken{background:var(--sunken);border-radius:16px;box-shadow:inset 4px 4px 10px var(--cl-shade), inset -3px -3px 8px var(--cl-light);transition:background .28s,box-shadow .28s}
+
+/* ===== 标题栏 ===== */
+.feed-hd{display:flex;align-items:center;justify-content:space-between;padding:2px 18px 14px;gap:12px}
+.feed-hd h2{font-family:var(--round);font-size:23px;font-weight:600;letter-spacing:-.015em}
+.bm-entry{display:flex;align-items:center;gap:6px;font-family:var(--round);font-size:11.5px;font-weight:600;color:var(--accent);background:var(--sunken);border-radius:13px;padding:7px 12px;box-shadow:inset 2px 2px 6px var(--cl-shade), inset -2px -2px 5px var(--cl-light);cursor:pointer;transition:all .2s;white-space:nowrap}
+.bm-entry:hover{color:var(--ink)}
+.bm-entry .n{font-family:var(--mono);font-size:10.5px;opacity:.7}
+
+/* ===== 书签按钮 ===== */
+.bm{width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:10px;flex-shrink:0;cursor:pointer;transition:all .18s;background:var(--sunken);box-shadow:inset 2px 2px 5px var(--cl-shade), inset -2px -2px 5px var(--cl-light)}
+.bm svg{width:15px;height:15px;display:block}
+.bm .ico{stroke:var(--ink3);fill:none;stroke-width:1.9;stroke-linejoin:round;transition:all .18s}
+.bm.on{background:var(--accent);box-shadow:3px 4px 9px var(--accent-out), inset -2px -2px 5px rgba(0,0,0,.15), inset 2px 2px 5px rgba(255,255,255,.26)}
+.bm.on .ico{stroke:var(--accent-ink);fill:var(--accent-ink)}
+
+/* ===== 信息流卡片 ===== */
+.feed{padding:0 16px;flex:1;overflow:hidden}
+.fcards{display:flex;flex-direction:column;gap:13px}
+.fc{border-radius:var(--cl-radius);padding:19px 18px 17px;position:relative;transition:all .28s}
+.fc-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:11px}
+.fc .cat{font-family:var(--round);font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--accent);transition:color .28s}
+.fc h3{font-family:var(--serif);font-size:19px;font-weight:500;line-height:1.31;letter-spacing:-.011em;margin-bottom:10px;color:var(--ink)}
+.fc .ex{font-family:var(--serif);font-size:13.5px;line-height:1.7;color:var(--ink2);
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+
+.tabbar{margin-top:auto;display:flex;padding:12px 20px 24px;gap:9px;flex-shrink:0;position:relative;z-index:9}
+.tb{flex:1;text-align:center;font-family:var(--round);font-size:11px;font-weight:600;border-radius:17px;padding:8px 0 7px;color:var(--ink3);transition:color .28s,background .28s}
+.tb.on{background:var(--accent);color:var(--accent-ink);box-shadow:3px 4px 10px var(--accent-out), inset -2px -2px 6px rgba(0,0,0,.15), inset 2px 2px 6px rgba(255,255,255,.26)}
+.tb .ic{width:15px;height:15px;border-radius:5px;border:2px solid currentColor;margin:0 auto 4px;opacity:.75}
+.tb.on .ic{opacity:1}
+
+/* ===== 收藏清单 ===== */
+.bm-hd{padding:2px 6px 4px;display:flex;align-items:baseline;justify-content:space-between}
+.bm-hd h2{font-family:var(--round);font-size:23px;font-weight:600;letter-spacing:-.015em}
+.bm-hd .back{font-size:12px;color:var(--accent);font-family:var(--round);font-weight:600}
+.bm-sub{padding:0 6px 16px;font-size:12px;color:var(--ink3);line-height:1.6}
+.empty{padding:52px 22px;text-align:center}
+.empty .ring{width:74px;height:74px;border-radius:50%;margin:0 auto 20px;display:flex;align-items:center;justify-content:center;background:var(--sunken);box-shadow:inset 4px 4px 10px var(--cl-shade), inset -3px -3px 8px var(--cl-light)}
+.empty .ring svg{width:26px;height:26px}
+.empty .ring .ico{stroke:var(--ink3);fill:none;stroke-width:1.7;stroke-linejoin:round}
+.empty h3{font-family:var(--round);font-size:16px;font-weight:600;margin-bottom:9px}
+.empty p{font-size:13px;line-height:1.7;color:var(--ink2);max-width:250px;margin:0 auto}
+.empty .hint{margin-top:20px;font-size:12px;color:var(--ink3);display:flex;align-items:center;justify-content:center;gap:7px}
+.empty .hint .bm{width:24px;height:24px}
+.empty .hint .bm svg{width:12px;height:12px}
+
+/* ===== 阅读界面 ===== */
+.rd-bar{display:flex;align-items:center;justify-content:space-between;padding:0 20px 14px;gap:12px;flex-shrink:0;position:relative;z-index:9}
+.rd-bar .lft{display:flex;align-items:center;gap:12px;min-width:0;flex:1}
+.rd-bar .back{font-size:19px;color:var(--ink3);line-height:1;flex-shrink:0}
+.rd-bar .ttl{font-family:var(--round);font-size:12.5px;font-weight:600;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rd{padding:0 26px;flex:1;overflow:hidden;background:var(--read);transition:background .28s}
+.rd-hd{padding:6px 0 20px}
+.rd-hd .src{font-family:var(--round);font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;margin-bottom:8px;color:var(--accent)}
+.rd-hd h3{font-family:var(--serif);font-size:21px;font-weight:500;line-height:1.3;letter-spacing:-.012em;color:var(--ink)}
+.rd .body{font-family:var(--serif);font-size:16.5px;line-height:var(--read-lh);letter-spacing:.002em;color:var(--ink);transition:line-height .28s}
+.rd .body p+p{margin-top:16px}
+.tk{background:var(--tk-bg,transparent);border-bottom:var(--tk-bd,none);color:var(--tk-fg,inherit);border-radius:var(--tk-r,3px);padding:var(--tk-p,1px 3px);margin:0 -1px;transition:all .28s}
+.tk-n{--tk-bg:var(--tk-n-bg);--tk-bd:var(--tk-n-bd);--tk-fg:var(--tk-n-fg);--tk-r:var(--tk-n-r);--tk-p:var(--tk-n-p)}
+.tk-m{--tk-bg:var(--tk-m-bg);--tk-bd:var(--tk-m-bd);--tk-fg:var(--tk-m-fg);--tk-r:var(--tk-m-r);--tk-p:var(--tk-m-p)}
+.tk-d{--tk-bg:var(--tk-d-bg);--tk-bd:var(--tk-d-bd);--tk-fg:var(--tk-d-fg);--tk-r:var(--tk-d-r);--tk-p:var(--tk-d-p)}
+
+/* 收藏 toast */
+.toast{position:absolute;left:50%;transform:translateX(-50%);bottom:104px;background:var(--ink);color:var(--page);font-family:var(--round);font-size:12px;font-weight:600;padding:10px 18px;border-radius:14px;z-index:20;white-space:nowrap;opacity:0;transition:opacity .2s}
+.toast.show{opacity:.94}
+
+.foot{margin-top:60px;padding-top:30px;border-top:1px solid #CFC8BA;font-size:13.5px;line-height:1.8;color:#5C5648}
+.foot b{color:#29251F;font-weight:500}
+.foot ul{margin:14px 0 0 20px}
+.foot li{margin-bottom:8px}
+.foot code{font-family:var(--mono);font-size:11.5px;background:#DCD6C9;padding:1px 5px;border-radius:3px}
+.note-band{margin-top:20px;background:#F7F4EC;border-left:3px solid #B4432C;border-radius:0 12px 12px 0;padding:16px 20px;font-size:13px;line-height:1.75;color:#5C5648}
+.note-band b{color:#29251F;font-weight:500}
+.note-band code{font-family:var(--mono);font-size:11.5px;background:#E3DDD0;padding:1px 5px;border-radius:3px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="eyebrow">CoEvo · 信息流卡片重做 + 收藏</div>
+  <h1>卡片减法：去掉数字，加回一件事</h1>
+  <p class="lede">
+    你的三条改动让卡片回到最必要的形态。去掉「N 个生词」和「已读/未读」之后，卡片上只剩四个元素：<strong>分类·时长 / 标题 / 摘要 / 收藏</strong>。<br><br>
+    有个意外收获：<strong>去掉数字反而让「痕迹」更突出</strong> —— 之前卡片上有个「6 个生词」的数字，阅读界面里的痕迹反而像它的补充说明；现在数字没了，痕迹成了唯一的进度表达，也更符合我们已经定下的视觉签名。
+  </p>
+
+  <div class="changes">
+    <div class="chg">
+      <span class="tag del">已去掉</span>
+      <h3>「N 个生词」统计</h3>
+      <p>连同背后那套口径设计（三档渐进个性化、CEFR 分级计数）一并作废。原型里的数字本来就是手写示例，现在彻底不要了。</p>
+    </div>
+    <div class="chg">
+      <span class="tag del">已去掉</span>
+      <h3>已读 / 未读标签</h3>
+      <p>位置腾出来给收藏。读没读过不影响要不要读 —— 内容本身说了算。</p>
+    </div>
+    <div class="chg">
+      <span class="tag add">新增</span>
+      <h3>收藏（书签）</h3>
+      <p>信息流卡片右上角一键收藏；阅读界面顶部栏也能收藏。<strong>收藏清单独立成视图</strong>，从信息流标题栏进入。</p>
+    </div>
+  </div>
+</header>
+
+<div class="switcher">
+  <div class="sw-inner">
+    <span class="sw-label">切换主题：</span>
+    <button class="sw-btn on" data-t="ink"><span class="sw-dot" style="background:#B4432C"></span>墨 · 暖纸</button>
+    <button class="sw-btn" data-t="grid"><span class="sw-dot" style="background:var(--accent-bright)"></span>格 · 纯白</button>
+    <button class="sw-btn" data-t="night"><span class="sw-dot" style="background:#DB7E6B"></span>夜 · 深墨</button>
+    <span class="sw-note">书签的形状/状态变化 也随主题走</span>
+  </div>
+</div>
+
+<section class="sect">
+  <div class="sect-head">
+    <div class="sect-n">01</div>
+    <div>
+      <div class="sect-title">信息流卡片：四屏对比</div>
+      <div class="sect-sub">① 未收藏 · ② 已收藏（注意书签的填充与强调色）· ③ 收藏清单（含空状态）· ④ 阅读界面（顶部栏收藏）</div>
+    </div>
+  </div>
+
+  <div class="rail">
+
+    <div class="slot">
+      <div class="slot-cap"><i></i>信息流 · 未收藏</div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+        <div class="feed-hd">
+          <h2>今日精选</h2>
+          <span class="bm-entry"><svg viewBox="0 0 24 24" width="13" height="13"><path class="ico" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" stroke="currentColor" fill="none" stroke-width="2" stroke-linejoin="round"/></svg>收藏 <span class="n">12</span></span>
+        </div>
+        <div class="feed">
+          <div class="fcards">
+            <div class="fc clay">
+              <div class="fc-top">
+                <span class="cat">Science · 4 min</span>
+                <span class="bm"><svg viewBox="0 0 24 24"><path class="ico" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span>
+              </div>
+              <h3>A New Way to Grow Food in Cities</h3>
+              <div class="ex">In the middle of Singapore, a tall glass building produces more than 800 tons of vegetables every year. It has no soil, no sunlight, and almost no water.</div>
+            </div>
+
+            <div class="fc clay">
+              <div class="fc-top">
+                <span class="cat">Culture · 6 min</span>
+                <span class="bm"><svg viewBox="0 0 24 24"><path class="ico" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span>
+              </div>
+              <h3>Why We Sing Together</h3>
+              <div class="ex">Every human culture has music, and almost every one of them sings in groups. Researchers think this is not a coincidence.</div>
+            </div>
+
+            <div class="fc clay">
+              <div class="fc-top">
+                <span class="cat">Business · 5 min</span>
+                <span class="bm"><svg viewBox="0 0 24 24"><path class="ico" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span>
+              </div>
+              <h3>Why Small Shops Are Coming Back</h3>
+              <div class="ex">After years of decline, small local shops are opening again in many cities. The reasons are partly about money, and partly about something harder to measure.</div>
+            </div>
+          </div>
+        </div>
+        <div class="tabbar"><div class="tb on"><div class="ic"></div>阅读</div><div class="tb"><div class="ic"></div>复习</div><div class="tb"><div class="ic"></div>我的</div></div>
+      </div>
+      <div class="slot-note">卡片只剩 4 个元素。书签在右上角（拇指可达），未收藏时是<b>凹陷的空书签</b>，点一下变实心。</div>
+    </div>
+
+    <div class="slot">
+      <div class="slot-cap"><i></i>信息流 · 已收藏状态</div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+        <div class="feed-hd">
+          <h2>今日精选</h2>
+          <span class="bm-entry"><svg viewBox="0 0 24 24" width="13" height="13"><path class="ico" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" stroke="currentColor" fill="none" stroke-width="2" stroke-linejoin="round"/></svg>收藏 <span class="n">13</span></span>
+        </div>
+        <div class="feed">
+          <div class="fcards">
+            <div class="fc clay">
+              <div class="fc-top">
+                <span class="cat">Science · 4 min</span>
+                <span class="bm on"><svg viewBox="0 0 24 24"><path class="ico" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span>
+              </div>
+              <h3>A New Way to Grow Food in Cities</h3>
+              <div class="ex">In the middle of Singapore, a tall glass building produces more than 800 tons of vegetables every year. It has no soil, no sunlight, and almost no water.</div>
+            </div>
+
+            <div class="fc clay">
+              <div class="fc-top">
+                <span class="cat">Culture · 6 min</span>
+                <span class="bm"><svg viewBox="0 0 24 24"><path class="ico" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span>
+              </div>
+              <h3>Why We Sing Together</h3>
+              <div class="ex">Every human culture has music, and almost every one of them sings in groups. Researchers think this is not a coincidence.</div>
+            </div>
+
+            <div class="fc clay">
+              <div class="fc-top">
+                <span class="cat">Business · 5 min</span>
+                <span class="bm on"><svg viewBox="0 0 24 24"><path class="ico" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span>
+              </div>
+              <h3>Why Small Shops Are Coming Back</h3>
+              <div class="ex">After years of decline, small local shops are opening again in many cities. The reasons are partly about money, and partly about something harder to measure.</div>
+            </div>
+          </div>
+        </div>
+        <div class="tabbar"><div class="tb on"><div class="ic"></div>阅读</div><div class="tb"><div class="ic"></div>复习</div><div class="tb"><div class="ic"></div>我的</div></div>
+        <div class="toast show">已收藏 · 可在「收藏」里重读</div>
+      </div>
+      <div class="slot-note">已收藏 = 书签<b>实心 + 强调色底</b>，与粘土语汇一致（凸起表示「已激活」）。标题栏的收藏计数 +1。<br>底部浮一个轻提示，1.5 秒后消失 —— 不做常驻标签。</div>
+    </div>
+
+    <div class="slot">
+      <div class="slot-cap"><i></i>收藏清单（含空状态）</div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+        <div class="feed-hd">
+          <h2>收藏</h2>
+        </div>
+        <div class="feed" style="flex:none">
+          <div class="bm-sub" style="padding:0 6px 14px">收藏的文章会一直留在这里，方便随时重读。</div>
+          <div class="fcards">
+            <div class="fc clay">
+              <div class="fc-top">
+                <span class="cat">Science · 4 min</span>
+                <span class="bm on"><svg viewBox="0 0 24 24"><path class="ico" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span>
+              </div>
+              <h3>A New Way to Grow Food in Cities</h3>
+              <div class="ex">In the middle of Singapore, a tall glass building produces more than 800 tons of vegetables every year.</div>
+            </div>
+            <div class="fc clay">
+              <div class="fc-top">
+                <span class="cat">Business · 5 min</span>
+                <span class="bm on"><svg viewBox="0 0 24 24"><path class="ico" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span>
+              </div>
+              <h3>Why Small Shops Are Coming Back</h3>
+              <div class="ex">After years of decline, small local shops are opening again in many cities.</div>
+            </div>
+          </div>
+        </div>
+        <div class="tabbar"><div class="tb on"><div class="ic"></div>阅读</div><div class="tb"><div class="ic"></div>复习</div><div class="tb"><div class="ic"></div>我的</div></div>
+      </div>
+      <div class="slot-note">同一套卡片组件，只是筛选过 —— <b>没有新界面要设计</b>。空状态用粘土凹陷圆环 + 引导文案。</div>
+    </div>
+
+    <div class="slot">
+      <div class="slot-cap"><i></i>收藏清单 · 空状态</div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+        <div class="feed-hd"><h2>收藏</h2></div>
+        <div class="empty">
+          <div class="ring"><svg viewBox="0 0 24 24"><path class="ico" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
+          <h3>还没有收藏的文章</h3>
+          <p>读到喜欢的文章，点右上角的书签就能存下来，以后随时回来重读。</p>
+          <div class="hint">在卡片上找这个 <span class="bm"><svg viewBox="0 0 24 24"><path class="ico" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span> 图标</div>
+        </div>
+        <div class="tabbar"><div class="tb on"><div class="ic"></div>阅读</div><div class="tb"><div class="ic"></div>复习</div><div class="tb"><div class="ic"></div>我的</div></div>
+      </div>
+      <div class="slot-note">空状态要教会用户「书签在哪」，而不是只说「没有内容」。<b>用真实图标做引导</b>，用户下次一眼就认出来。</div>
+    </div>
+
+    <div class="slot">
+      <div class="slot-cap"><i></i>阅读界面 · 顶部栏收藏</div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+        <div class="rd-bar">
+          <div class="lft"><span class="back">‹</span><span class="ttl">Science</span></div>
+          <span class="bm on"><svg viewBox="0 0 24 24"><path class="ico" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span>
+        </div>
+        <div class="rd">
+          <div class="rd-hd">
+            <div class="src">Science · VOA Learning English</div>
+            <h3>A New Way to Grow Food in Cities</h3>
+          </div>
+          <div class="body">
+            <p>In the middle of Singapore, a tall glass building <span class="tk tk-d">produces</span> more than 800 tons of vegetables every year. It has no soil, no sunlight, and almost no water. <span class="tk tk-m">Instead</span>, the plants grow in a special <span class="tk tk-m">liquid</span>, and pink lights help them grow faster.</p>
+            <p>This type of farming is called <span class="tk tk-n">vertical</span> farming. It uses 95% less water than <span class="tk tk-d">traditional</span> farms, and because the building is in the city, the food travels only a few <span class="tk tk-d">kilometres</span> to reach shops.</p>
+            <p>Shoppers say the vegetables taste better than those shipped from far away.</p>
+          </div>
+        </div>
+        <div class="tabbar"><div class="tb on"><div class="ic"></div>阅读</div><div class="tb"><div class="ic"></div>复习</div><div class="tb"><div class="ic"></div>我的</div></div>
+      </div>
+      <div class="slot-note">顶部栏只有三个元素：返回 / 分类 / 书签。<b>书签是「动作」不是「显示元素」</b> —— 不占版面、不干扰阅读，也不违反「阅读界面保持单纯」。</div>
+    </div>
+
+  </div>
+</section>
+
+<section class="sect">
+  <div class="sect-head">
+    <div class="sect-n">02</div>
+    <div>
+      <div class="sect-title">去掉数字之后，卡片的表达力反而更强</div>
+      <div class="sect-sub">这是你这三条改动里我最没预料到的收获。</div>
+    </div>
+  </div>
+
+  <div class="note-band" style="border-left-color:#6B7A4A">
+    <b>数字会和「痕迹」抢角色。</b>之前卡片上有「6 个生词」，阅读界面里有痕迹 —— 两者都在表达「这篇有多难 / 我掌握了多少」，用户需要判断该信哪个。<br><br>
+    去掉数字之后，<b>痕迹成了唯一的进度表达</b>：你在文章里看到的淡色词，就是你和这篇文章的关系。<b>一个概念，一个表达</b> —— 这比两个数字更清晰，也更符合我们定的视觉签名。<br><br>
+    顺带：<b>不用再建那套 CEFR 分级计数和用户级缓存了</b>（<code>cefr_band_counts</code> / <code>user_article_stats</code> 两张字段设计作废），实现成本降一截。
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px">
+    <div class="chg">
+      <span class="tag del">原设计（已作废）</span>
+      <h3>卡片上「N 个生词」</h3>
+      <p style="margin-bottom:9px">需要：分词 → 词形还原 → 词表比对 → 三档口径（按 CEFR / 按词表 / 按掌握度）→ 入库预计算 + 用户级缓存。</p>
+      <p><b style="color:#29251F">为的是让用户预判难度。但预判难度这件事，痕迹已经做了。</b></p>
+    </div>
+    <div class="chg">
+      <span class="tag add">现在</span>
+      <h3>只有痕迹 + 收藏</h3>
+      <p style="margin-bottom:9px">痕迹在阅读界面里自然呈现（无需额外计算 —— 它本来就要标）；收藏是一个布尔状态。</p>
+      <p><b style="color:#29251F">卡片更安静，实现更简单，概念更统一。</b></p>
+    </div>
+  </div>
+</section>
+
+<section class="sect">
+  <div class="sect-head">
+    <div class="sect-n">03</div>
+    <div>
+      <div class="sect-title">收藏的四个设计决定</div>
+      <div class="sect-sub">都是为了让「重读」这件事变得容易。</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+    <div class="chg">
+      <h3>① 入口在信息流标题栏，不新增 tab</h3>
+      <p>收藏是<b>信息流的一个视图</b>，不是独立的一级入口。所以导航维持 3 tab 不变，信息流本身也还是一整条流 —— 只是标题栏右侧多了个「收藏 N」的入口（N 是收藏数）。</p>
+    </div>
+    <div class="chg">
+      <h3>② 收藏清单复用同一套卡片</h3>
+      <p>不做新的列表样式。<b>同一套卡片组件，只是数据源筛选过</b>。开发成本几乎为零，用户也不需要学新的界面。</p>
+    </div>
+    <div class="chg">
+      <h3>③ 两处都能收藏</h3>
+      <p>信息流卡片右上角（扫的时候收藏）+ 阅读界面顶部栏（读的时候收藏）。<b>「读到一半觉得好」是最常见的收藏时机</b>，不能要求用户退出再收藏。</p>
+    </div>
+    <div class="chg">
+      <h3>④ ⚠️ 收藏 ≠ 已读标记</h3>
+      <p>收藏是<b>用户主动的意图</b>（「我还要再读」），不是系统状态。<b>所以不自动收藏、不预置、不根据阅读时长推断</b> —— 保持它的语义纯净。</p>
+    </div>
+  </div>
+
+  <div class="note-band">
+    <b>关于「再读」的一个额外想法（供你判断）</b><br>
+    既然收藏的目的是重读，那要不要给用户一个<b>「该重读了」的提示</b>？比如收藏超过 30 天且没再打开过的，在收藏清单里轻轻标一下。<br>
+    <b>我的建议是先不做。</b>理由：「痕迹变淡」本身已经在邀请用户重读旧文（这是上一轮定下的机制）；再加一层系统催prompt会让收藏变成一个待办清单，压力就来了。收藏应该是<b>没有压力的书签</b>。<br>
+    <b>留到有真实用户数据后再看</b> —— 如果数据显示收藏夹在「只进不出」（收藏了但从不重读），那时再加提示才有依据。
+  </div>
+</section>
+
+<section class="sect">
+  <div class="sect-head">
+    <div class="sect-n">04</div>
+    <div>
+      <div class="sect-title">数据层：极简</div>
+      <div class="sect-sub">收藏是整个方案里最轻的功能。</div>
+    </div>
+  </div>
+
+  <div style="background:#F7F4EC;border:1px solid #CFC8BA;border-radius:20px;padding:22px 24px">
+<div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#8C8271;margin-bottom:12px">端侧（user.db）</div>
+<pre style="font-family:var(--mono);font-size:12px;line-height:1.85;color:#3A352C;overflow-x:auto;white-space:pre">CREATE TABLE bookmark (
+  content_id   INTEGER PRIMARY KEY,      <span style="color:#A8543C">-- 一篇文章只收藏一次</span>
+  bookmarked_at TEXT DEFAULT (datetime('now')),
+  pending_push INTEGER DEFAULT 1
+);
+CREATE INDEX idx_bm_time ON bookmark (bookmarked_at DESC);</pre>
+<div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#8C8271;margin:16px 0 12px">服务端（PostgreSQL）</div>
+<pre style="font-family:var(--mono);font-size:12px;line-height:1.85;color:#3A352C;overflow-x:auto;white-space:pre">CREATE TABLE bookmark (
+  user_id       BIGINT REFERENCES app_user(id),
+  content_id    BIGINT NOT NULL,
+  bookmarked_at TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (user_id, content_id)
+);</pre>
+  </div>
+
+  <div class="note-band" style="border-left-color:#6B7A4A">
+    <b>设计要点</b>：<br>
+    ① <code>content_id</code> 直接当主键 —— <b>收藏没有数量、顺序、分类的需求</b>，不需要额外 id 和排序字段<br>
+    ② 时间戳 <code>DESC</code> 排序（最近收藏的在前），符合「我刚存了什么」的直觉<br>
+    ③ 跟着已有的同步机制走（<code>pending_push</code> + 增量 pull/push），<b>不需要新接口</b><br>
+    ④ 取消收藏 = <code>DELETE</code>。因为收藏是可再生的用户意图，不是学习数据 —— 与「生词本不能硬删」不同<br>
+    ⑤ <b>收藏数不需要单独存</b>，<code>SELECT COUNT(*)</code> 即可（单用户量级极小）
+  </div>
+</section>
+
+<div class="foot">
+  <b>本轮改动汇总</b>
+  <ul>
+    <li><b>去掉</b>「N 个生词」统计 → 连同 CEFR 分级计数、用户级缓存两张字段设计一并作废</li>
+    <li><b>去掉</b>「已读 / 未读」标签 → 位置腾给收藏</li>
+    <li><b>新增</b> 收藏：卡片右上角 + 阅读界面顶部栏两个入口；收藏清单复用同一套卡片；数据层一张表</li>
+    <li><b>意外收获</b>：去掉数字后，「痕迹」成为唯一的进度表达 —— 一个概念一个表达</li>
+    <li><b>导航不变</b>：仍是 3 tab，收藏是信息流的一个视图而非新入口</li>
+  </ul>
+  <p style="margin-top:16px">
+    还有一件事我要单独说明 —— 关于<b>词形还原</b>：你说它是「词表数据库的关键」，这个定位比我之前写的更准。我把它单独整理成一份文档（见回复）。
+  </p>
+</div>
+
+</div>
+
+<script>
+const root = document.documentElement;
+const btns = [...document.querySelectorAll('.sw-btn')];
+btns.forEach(b => {
+  b.addEventListener('click', () => {
+    root.setAttribute('data-theme', b.dataset.t);
+    btns.forEach(x => x.classList.toggle('on', x === b));
+  });
+});
+</script>
+</body>
+</html>

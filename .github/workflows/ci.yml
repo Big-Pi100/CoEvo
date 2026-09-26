@@ -5,6 +5,8 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  # 手动触发（用于 iOS 构建等重量级 job）
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -68,3 +70,83 @@ jobs:
 
       - name: Test
         run: flutter test
+
+  # ── 纯 Dart 验收：FSRS 调度 ──
+  #
+  # 为什么单独跑：这两个脚本**不依赖 Flutter**（核心层刻意设计成零框架依赖），
+  # 所以能在最便宜的环境里跑，且退出码可直接判定。
+  # 覆盖：四档单调性 / elapsed 敏感性 / 预览==提交 / 重放与同日去重 / UTC 强制。
+  # 依据：docs/design/fsrs-client-side-migration-plan-2026-09-26.md §七（白哥定：单测强制）
+  fsrs-verify:
+    name: FSRS Verify (pure Dart)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scripts/fsrs_verify
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Pub get
+        run: dart pub get
+
+      - name: Verify fsrs package behavior
+        run: dart run bin/verify.dart
+
+      - name: Verify FsrsService (imports real app source)
+        run: dart run bin/verify_service.dart
+
+  # ── 原生就绪度结构检查 ──
+  #
+  # 为什么需要：本地 Flutter 是**鸿蒙定制版**，`dart/flutter analyze` 会崩
+  # （analysis_server 启动失败：CreateFile failed 231）。
+  # 本 job 把「Step 1 清障的目标」变成断言：dart:html 残留 / admin 残留 / 代码量。
+  # ⚠️ 目前**预期失败**（Step 1 未做：13 处 dart:html + ≈14,946 行 admin）。
+  #    加 `continue-on-error` 让它先作为**度量**而非门禁；Step 1 完成后去掉。
+  native-readiness:
+    name: Native Readiness (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Check
+        run: python3 scripts/check_native_readiness.py --verbose
+
+  # ── iOS 构建（仅手动/tag 触发）──
+  #
+  # 为什么不是每次 push：macOS runner 在私有仓库按 **10 倍**消耗免费额度
+  # （2,000 分钟/月 → 实际 200 macOS 分钟）。日常迭代用 analyze/test 就够，
+  # iOS 构建只在「要确认能出包」时手动跑。
+  #
+  # 只做 build --no-codesign：验证**能否编译**，不涉签名与上传
+  # （Apple 账号 $99 未办，且 `altool --upload-app` 已被 Apple 弃用，
+  #   将来接上传应改用 App Store Connect API）。
+  ios-build:
+    name: iOS Build (no codesign)
+    runs-on: macos-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build iOS (no codesign)
+        run: flutter build ios --release --no-codesign

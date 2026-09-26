@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CoEvo · 粘土质感规格（定稿）</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/literata@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/literata@5/700.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5/600.css">
+<style>
+/* ── 本地 IPA 子集字体（含完整 32 个音标字符，含 ˈ 重音 · ː 长音 · θ）──
+   为什么不直接用 @fontsource：它的 latin / latin-ext 分包不含全套 IPA
+   （Charis SIL 仅 22/32），用它会让音标静默回退到系统字体，
+   造成「看起来没差别」的假象 —— 而那正是要判断的东西。 */
+@font-face{font-family:'Charis SIL IPA';src:url('fonts/charis-sil.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/charissil/CharisSIL-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Gentium Book Plus IPA';src:url('fonts/gentium-book-plus.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/gentiumbookplus/GentiumBookPlus-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Andika IPA';src:url('fonts/andika.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/andika/Andika-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Noto Serif IPA';src:url('fonts/noto-serif.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notoserif/NotoSerif%5Bwdth,wght%5D.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Noto Sans IPA';src:url('fonts/noto-sans.woff2') format('woff2'),
+               url('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosans/NotoSans%5Bwdth,wght%5D.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+
+/* ============================================================
+   CoEvo 主题 token（三档底色 × 粘土）
+   粘土的四个参数是主题 token 的一部分，不是全局常量
+   ============================================================ */
+:root{
+  --font-read: 'Literata','Charis SIL IPA',Georgia,serif;
+  --font-ipa:  'Charis SIL IPA',Georgia,serif;
+  --font-ui:   'Inter',system-ui,-apple-system,sans-serif;
+  --t: 280ms cubic-bezier(.4,0,.2,1);
+}
+
+/* ---------- 墨 · 暖纸（默认） ---------- */
+[data-theme="ink"]{
+  --page:#F1EDE4; --read:#FAF8F4; --card:#FFFFFF;
+  --ink:#24211C; --ink2:#6E6659; --ink3:#9A917F;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF; --accent-out:rgba(180,67,44,.40);
+  --line:#EFE9DE; --line2:#E5DDD0; --sunken:#EDE6DA;
+  --tk-n-bg:rgba(180,67,44,.15);  --tk-n-bd:none; --tk-n-fg:inherit;
+  --tk-m-bg:rgba(180,67,44,.075); --tk-m-bd:none; --tk-m-fg:inherit;
+  --tk-d-bg:rgba(180,67,44,.026); --tk-d-bd:none; --tk-d-fg:inherit;
+  --tk-n-p:1px 3px; --tk-n-r:3px; --tk-m-p:1px 3px; --tk-m-r:3px; --tk-d-p:1px 3px; --tk-d-r:3px;
+  --read-lh:1.82;
+  /* 粘土四参数 */
+  --cl-out:rgba(150,125,95,.24);
+  --cl-shade:rgba(186,166,138,.55);
+  --cl-light:rgba(255,255,255,1);
+  --cl-radius:26px;
+}
+/* ---------- 格 · 纯白 ---------- */
+[data-theme="grid"]{
+  --page:#EDEEF0; --read:#FFFFFF; --card:#FFFFFF;
+  --ink:#0A0A0A; --ink2:#5A5A5A; --ink3:#8A8A8A;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF; --accent-out:rgba(180,67,44,.40);
+  --line:#E8E8E8; --line2:#DEDEDE; --sunken:#F0F0F0;
+  --tk-n-bg:transparent; --tk-n-bd:2.5px solid var(--accent-bright); --tk-n-fg:inherit;
+  --tk-m-bg:transparent; --tk-m-bd:1.5px solid rgba(196,83,58,.42); --tk-m-fg:inherit;
+  --tk-d-bg:transparent; --tk-d-bd:1px dashed rgba(10,10,10,.16); --tk-d-fg:inherit;
+  --tk-n-p:0 0 1px 0; --tk-n-r:0; --tk-m-p:0 0 1px 0; --tk-m-r:0; --tk-d-p:0 0 1px 0; --tk-d-r:0;
+  --read-lh:1.74;
+  --cl-out:rgba(110,115,125,.22);
+  --cl-shade:rgba(158,158,158,.46);
+  --cl-light:rgba(255,255,255,1);
+  --cl-radius:14px;
+}
+/* ---------- 夜 · 深墨 ---------- */
+[data-theme="night"]{
+  --page:#0B0D12; --read:#14161C; --card:#1C1F27;
+  --ink:#EDEBE6; --ink2:#9AA0AE; --ink3:#6E7484;
+  --accent:#DB7E6B; --accent-bright:#E89B8C; --accent-ink:#2A1405; --accent-out:rgba(219,126,107,.40);
+  --line:#262A34; --line2:#22262F; --sunken:#0B0D12;
+  --tk-n-bg:transparent; --tk-n-bd:none; --tk-n-fg:#FFD9B8;
+  --tk-m-bg:transparent; --tk-m-bd:none; --tk-m-fg:#DEDCD7;
+  --tk-d-bg:transparent; --tk-d-bd:none; --tk-d-fg:#8E939F;
+  --tk-n-p:1px 3px; --tk-n-r:3px; --tk-m-p:1px 3px; --tk-m-r:3px; --tk-d-p:1px 3px; --tk-d-r:3px;
+  --read-lh:1.84;
+  --cl-out:rgba(0,0,0,.55);
+  --cl-shade:rgba(0,0,0,.42);
+  --cl-light:rgba(255,255,255,.062);   /* 深底必须压到 .05–.07 */
+  --cl-radius:24px;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--page); color:var(--ink);
+  font-family:var(--font-ui); font-size:14px; line-height:1.65;
+  transition:background var(--t), color var(--t);
+  padding-bottom:80px;
+}
+
+/* ---------- 页头 / 切换器 ---------- */
+header{
+  padding:44px 24px 22px; max-width:1080px; margin:0 auto;
+}
+.eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);margin-bottom:10px}
+h1{font-family:var(--font-read);font-size:29px;font-weight:700;line-height:1.3;letter-spacing:-.01em}
+.lede{margin-top:14px;max-width:720px;color:var(--ink2);font-size:14px}
+.lede strong{color:var(--ink)}
+
+.switcher{
+  position:sticky; top:0; z-index:50;
+  background:color-mix(in srgb, var(--page) 88%, transparent);
+  backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--line);
+  padding:11px 24px; margin-bottom:8px;
+  display:flex; gap:22px; flex-wrap:wrap; align-items:center;
+}
+.swgroup{display:flex;gap:5px;align-items:center}
+.swlabel{font-size:11px;color:var(--ink3);letter-spacing:.06em;margin-right:5px}
+.swbtn{
+  border:1px solid var(--line2); background:transparent; color:var(--ink2);
+  padding:5px 13px; border-radius:20px; cursor:pointer;
+  font-family:var(--font-ui); font-size:12px; font-weight:600;
+  transition:all 160ms;
+}
+.swbtn:hover{color:var(--ink);border-color:var(--ink3)}
+.swbtn.on{background:var(--ink);color:var(--page);border-color:var(--ink)}
+
+main{max-width:1080px;margin:0 auto;padding:0 24px}
+section{margin-top:54px}
+h2{
+  font-family:var(--font-read);font-size:19px;font-weight:700;
+  padding-bottom:11px;border-bottom:1px solid var(--line2);margin-bottom:8px;
+}
+h2 .n{color:var(--ink3);font-size:13px;font-family:var(--font-ui);font-weight:600;margin-right:9px}
+.note{color:var(--ink2);font-size:13px;margin:10px 0 20px;max-width:760px}
+.note b{color:var(--ink)}
+.note code{font-family:var(--font-ipa);background:var(--sunken);padding:1px 5px;border-radius:3px;font-size:12.5px}
+
+/* ---------- 粘土基类：三档尺寸由 .cl-sm/.cl-md/.cl-lg 覆盖 ---------- */
+.cl{
+  background:var(--card); border-radius:var(--cl-radius);
+  box-shadow:
+    6px 8px 16px var(--cl-out),
+    inset -5px -5px 12px var(--cl-shade),
+    inset 4px 4px 10px var(--cl-light);
+  transition:background var(--t), box-shadow var(--t), border-radius var(--t), transform 120ms;
+}
+.cl-sm{
+  box-shadow:
+    2px 3px 5px var(--cl-out),
+    inset -2px -2px 5px var(--cl-shade),
+    inset 2px 2px 4px var(--cl-light);
+}
+.cl-md{
+  box-shadow:
+    4px 5px 10px var(--cl-out),
+    inset -3px -3px 8px var(--cl-shade),
+    inset 3px 3px 7px var(--cl-light);
+}
+/* 凹陷（输入）：两个 inset 方向互换 —— 最容易写错的一处 */
+.cl-sink{
+  box-shadow:
+    1px 1px 3px var(--cl-out),
+    inset 3px 3px 8px var(--cl-shade),
+    inset -3px -3px 6px var(--cl-light);
+}
+/* 按下 = 凸起转凹陷 */
+.cl:active{transform:scale(.97);
+  box-shadow:
+    inset 3px 3px 8px var(--cl-shade),
+    inset -3px -3px 6px var(--cl-light);
+}
+/* 禁用：抽掉内亮 → 视觉上「塌了」 */
+.cl-off{
+  box-shadow:2px 3px 6px color-mix(in srgb, var(--cl-out) 55%, transparent);
+  opacity:.5;
+}
+/* 选中：保持凸起 + 强调色染外阴影 */
+.cl-on{
+  background:var(--accent); color:var(--accent-ink);
+  box-shadow:
+    6px 8px 16px color-mix(in srgb, var(--accent) 26%, transparent),
+    inset -5px -5px 12px rgba(0,0,0,.16),
+    inset 4px 4px 10px rgba(255,255,255,.24);
+}
+
+/* ---------- §1 解剖 ---------- */
+.anat{display:flex;gap:30px;align-items:flex-start;flex-wrap:wrap}
+.anat-demo{
+  flex:0 0 260px;height:180px;display:flex;align-items:center;justify-content:center;
+  background:var(--read);border-radius:18px;border:1px solid var(--line);
+}
+.anat-sq{width:118px;height:118px;background:var(--card);border-radius:var(--cl-radius);transition:box-shadow var(--t)}
+.anat-layers{flex:1;min-width:300px;display:flex;flex-direction:column;gap:9px}
+.layer{
+  display:flex;align-items:center;gap:12px;
+  padding:11px 14px;border-radius:10px;border:1px solid var(--line2);
+  transition:opacity 200ms, border-color 200ms; background:var(--read);
+}
+.layer.off{opacity:.32}
+.layer .dot{width:11px;height:11px;border-radius:50%;flex:0 0 auto}
+.layer .txt{flex:1;min-width:0}
+.layer .t1{font-size:12.5px;font-weight:600}
+.layer .t2{font-family:var(--font-ipa);font-size:11.5px;color:var(--ink2);word-break:break-all}
+.layer input{accent-color:var(--accent);cursor:pointer;width:15px;height:15px}
+
+/* ---------- §2 尺寸阶梯 ---------- */
+.scale{display:flex;gap:20px;align-items:flex-end;flex-wrap:wrap;
+  background:var(--read);padding:26px 22px;border-radius:18px;border:1px solid var(--line)}
+.scale-item{display:flex;flex-direction:column;align-items:center;gap:11px}
+.scale-item .cap{font-size:11px;color:var(--ink3);text-align:center;line-height:1.5}
+.chip{width:74px;height:26px;border-radius:13px;background:var(--card)}
+.btn-sq{width:44px;height:44px;border-radius:12px;background:var(--card);display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--ink2)}
+.card-mini{width:120px;height:78px;border-radius:calc(var(--cl-radius) * .6);background:var(--card)}
+
+/* ---------- §3 圆角冲突 ---------- */
+.rconflict{display:flex;gap:18px;flex-wrap:wrap}
+.rc{flex:1;min-width:200px;background:var(--read);border:1px solid var(--line);border-radius:16px;padding:20px 16px;text-align:center}
+.rc .box{height:88px;background:var(--card);margin:0 auto 14px;transition:box-shadow var(--t)}
+.rc .cap{font-size:12px;line-height:1.7;color:var(--ink2)}
+.rc .cap b{color:var(--ink);display:block;font-size:12.5px;margin-bottom:3px}
+.rc .tagline{display:inline-block;margin-top:9px;font-size:10.5px;padding:2px 9px;border-radius:11px;font-weight:600;letter-spacing:.04em}
+.tag-bad{background:rgba(200,60,40,.14);color:#B4432C}
+.tag-ok{background:rgba(0,168,122,.14);color:#00875F}
+[data-theme="night"] .tag-ok{color:#3FD9A8}
+[data-theme="night"] .tag-bad{color:#FF9C7A}
+
+/* ---------- §4 组件 ---------- */
+.grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:18px}
+.spec{background:var(--read);border:1px solid var(--line);border-radius:16px;padding:18px 17px}
+.spec .lab{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3);margin-bottom:13px}
+.spec .body{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.spec .hint{margin-top:12px;font-size:11.5px;color:var(--ink2);line-height:1.6;font-family:var(--font-ipa)}
+
+.pill{padding:8px 17px;border-radius:20px;font-size:12.5px;font-weight:600;cursor:pointer;border:none;font-family:var(--font-ui);color:var(--ink)}
+.pill.sel{background:var(--accent);color:var(--accent-ink);
+  box-shadow:4px 5px 10px color-mix(in srgb,var(--accent) 24%,transparent), inset -3px -3px 8px rgba(0,0,0,.14), inset 3px 3px 7px rgba(255,255,255,.22)}
+.tag{padding:4px 11px;border-radius:13px;font-size:10.5px;font-weight:600;letter-spacing:.05em;color:var(--ink2)}
+.iconbtn{width:44px;height:44px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:17px;cursor:pointer;border:none;background:var(--card);color:var(--ink2)}
+.bm{width:40px;height:40px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;border:none;background:var(--card);color:var(--ink3)}
+.bm.on{background:var(--accent);color:var(--accent-ink)}
+.bm.on svg{fill:currentColor}
+.ring{width:62px;height:62px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:700;color:var(--ink);background:var(--card)}
+.ring i{font-style:normal;font-size:10px;color:var(--ink3);font-weight:600}
+.search{display:flex;align-items:center;gap:9px;padding:11px 15px;border-radius:16px;background:var(--card);flex:1;min-width:150px}
+.search span{font-size:13px;color:var(--ink3)}
+.badge{display:flex;flex-direction:column;align-items:center;gap:6px;padding:13px 15px;border-radius:18px;background:var(--card);min-width:74px}
+.badge .b1{font-size:19px;font-weight:700;font-family:var(--font-read);color:var(--ink)}
+.badge .b2{font-size:10px;color:var(--ink3);letter-spacing:.04em}
+.fcard{flex:1;min-width:190px;padding:18px 19px;border-radius:20px;background:var(--card)}
+.fcard .fc-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
+.fcard .fc-cat{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink3)}
+.fcard .fc-h{font-family:var(--font-read);font-size:15.5px;font-weight:700;line-height:1.35;margin-bottom:7px}
+.fcard .fc-s{font-family:var(--font-read);font-size:12.5px;line-height:1.6;color:var(--ink2)}
+
+/* ---------- §5 状态 ---------- */
+.states{display:flex;gap:16px;flex-wrap:wrap}
+.st{flex:1;min-width:150px;text-align:center}
+.st .cap{font-size:11.5px;color:var(--ink3);margin-top:11px}
+.st .btnw{padding:12px 0;border-radius:18px;font-size:12.5px;font-weight:600;background:var(--card);color:var(--ink);display:block;width:100%;border:none;font-family:var(--font-ui)}
+
+/* ---------- §6 平面 vs 粘土 ---------- */
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:760px){.vs{grid-template-columns:1fr}}
+.vs-col{background:var(--read);border:1px solid var(--line);border-radius:16px;padding:20px}
+.vs-col .vh{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);margin-bottom:15px}
+.flat-row{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--line)}
+.flat-row:last-child{border-bottom:none}
+.flat-row .w{font-family:var(--font-read);font-size:15px;font-weight:700}
+.flat-row .p{font-family:var(--font-ipa);font-size:12px;color:var(--ink2)}
+.flat-row .d{font-size:12.5px;color:var(--ink2);margin-left:auto;text-align:right}
+
+/* ---------- §7 速查表 ---------- */
+table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line)}
+th{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);font-weight:600}
+td.mono{font-family:var(--font-ipa);font-size:11.5px;color:var(--ink2)}
+tbody tr:last-child td{border-bottom:none}
+
+pre{
+  background:var(--read);border:1px solid var(--line);border-radius:14px;
+  padding:16px 18px;overflow-x:auto;margin-top:8px;
+}
+pre code{font-family:var(--font-ipa);font-size:12px;line-height:1.75;color:var(--ink2)}
+
+footer{max-width:1080px;margin:60px auto 0;padding:26px 24px 0;border-top:1px solid var(--line2);color:var(--ink2);font-size:13px}
+footer h3{font-family:var(--font-read);font-size:16px;color:var(--ink);margin-bottom:12px}
+footer ol{margin-left:19px;line-height:2}
+footer li b{color:var(--ink)}
+.warn{
+  background:var(--read);border-left:3px solid var(--accent);border-radius:0 12px 12px 0;
+  padding:14px 18px;margin:16px 0;font-size:13px;color:var(--ink2);
+}
+.warn b{color:var(--ink)}
+</style>
+</head>
+<body data-theme="ink">
+
+<header>
+  <div class="eyebrow">CoEvo · 英语学习 App · 设计系统</div>
+  <h1>粘土质感规格（定稿）</h1>
+  <p class="lede">
+    质感语言已定：<strong>粘土</strong>。底色氛围三档全做，用户可切换。
+    这两者不是并列选项，而是两层叠加 —— 粘土的四个参数是<strong>每档主题各自的一组 token</strong>。<br><br>
+    这一页是给开发照着做的规格：三层阴影公式、尺寸阶梯、圆角与粘土强度的匹配规则、状态、动效。
+    <strong>顶部切换主题</strong>，全部组件会跟着变。
+  </p>
+</header>
+
+<div class="switcher">
+  <div class="swgroup">
+    <span class="swlabel">主题</span>
+    <button class="swbtn on" data-set-theme="ink">墨</button>
+    <button class="swbtn" data-set-theme="grid">格</button>
+    <button class="swbtn" data-set-theme="night">夜</button>
+  </div>
+  <div class="swgroup">
+    <span class="swlabel">阴影层</span>
+    <label class="swbtn" style="display:flex;gap:6px;align-items:center;cursor:pointer">
+      <input type="checkbox" data-layer="out" checked style="accent-color:var(--accent)"> 外
+    </label>
+    <label class="swbtn" style="display:flex;gap:6px;align-items:center;cursor:pointer">
+      <input type="checkbox" data-layer="shade" checked style="accent-color:var(--accent)"> 内暗
+    </label>
+    <label class="swbtn" style="display:flex;gap:6px;align-items:center;cursor:pointer">
+      <input type="checkbox" data-layer="light" checked style="accent-color:var(--accent)"> 内亮
+    </label>
+  </div>
+</div>
+
+<main>
+
+<!-- ===================== §1 ===================== -->
+<section id="anat">
+  <h2><span class="n">01</span>粘土解剖：三层阴影，缺一层就不成立</h2>
+  <p class="note">
+    顺序不能改。勾掉顶部任意一层，就能看到它负责什么 ——
+    <b>外阴影负责「浮起」，内暗负责「体积」，内亮负责「充气」</b>。
+    少掉内亮的粘土只是个带阴影的圆角方块；少掉内暗会变成纸片。
+  </p>
+  <div class="anat">
+    <div class="anat-demo"><div class="anat-sq" id="anatSq"></div></div>
+    <div class="anat-layers">
+      <div class="layer" data-l="out">
+        <span class="dot" style="background:var(--cl-out)"></span>
+        <div class="txt">
+          <div class="t1">① 外阴影 · 浮起</div>
+          <div class="t2">6px 8px 16px <span id="v-out"></span></div>
+        </div>
+      </div>
+      <div class="layer" data-l="shade">
+        <span class="dot" style="background:var(--cl-shade)"></span>
+        <div class="txt">
+          <div class="t1">② 内暗 · 体积（inset 右下）</div>
+          <div class="t2">inset -5px -5px 12px <span id="v-shade"></span></div>
+        </div>
+      </div>
+      <div class="layer" data-l="light">
+        <span class="dot" style="background:var(--cl-light)"></span>
+        <div class="txt">
+          <div class="t1">③ 内亮 · 充气（inset 左上）</div>
+          <div class="t2">inset 4px 4px 10px <span id="v-light"></span></div>
+        </div>
+      </div>
+      <div class="layer" style="border-style:dashed;background:transparent">
+        <span class="dot" style="background:var(--ink3)"></span>
+        <div class="txt">
+          <div class="t1">全站光照方向：左上</div>
+          <div class="t2">外阴影像素方向 = 内暗方向 = 右下 · 三者必须一致，否则立体感会「打架」</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== §2 ===================== -->
+<section id="scale">
+  <h2><span class="n">02</span>尺寸阶梯：同一组参数不能套所有尺寸</h2>
+  <p class="note">
+    26px 的圆角 + 8px 的阴影偏移，放在 120px 的卡片上成立，放在 26px 高的药丸上会糊成一团。
+    <b>阴影参数必须随元素尺寸缩放</b> —— 这是最容易在实现时被忽略、上线后才发现的细节。
+  </p>
+  <div class="scale">
+    <div class="scale-item">
+      <div class="chip cl cl-sm"></div>
+      <div class="cap"><b>sm</b><br>高 24–40px<br>药丸 · 标签 · 图标按钮<br><span class="mono" style="font-size:10.5px;color:var(--ink3)">2 3 5 / inset 2 5</span></div>
+    </div>
+    <div class="scale-item">
+      <div class="btn-sq cl cl-md">♪</div>
+      <div class="cap"><b>md</b><br>高 40–72px<br>按钮 · 书签 · 输入框<br><span class="mono" style="font-size:10.5px;color:var(--ink3)">4 5 10 / inset 3 8</span></div>
+    </div>
+    <div class="scale-item">
+      <div class="card-mini cl"></div>
+      <div class="cap"><b>lg</b><br>高 100px+<br>卡片 · 面板 · 翻卡<br><span class="mono" style="font-size:10.5px;color:var(--ink3)">6 8 16 / inset 5 12</span></div>
+    </div>
+    <div style="flex:1;min-width:220px;font-size:12.5px;color:var(--ink2);line-height:1.85;padding-left:8px">
+      <b style="color:var(--ink)">两个硬规则</b><br>
+      · 高度 &lt; 24px 的元素：<b>完全去掉 inset</b>，只留外阴影（没空间表现高光）<br>
+      · 圆角随尺寸缩小：lg 用 <code>--cl-radius</code>，md 取 55%，sm 取 50%
+    </div>
+  </div>
+</section>
+
+<!-- ===================== §3 ===================== -->
+<section id="radius">
+  <h2><span class="n">03</span>⚠️ 一个必须先解决的冲突：圆角承载不了内阴影</h2>
+  <p class="note">
+    校验三档主题参数时发现：<b>「格」主题原本的圆角是 8px</b>（Swiss 网格、硬朗、工具感），
+    但粘土的内阴影是 <code>inset -5px -5px 12px</code> —— 影响范围从边缘算起约 <b>17px</b>，
+    远超 8px 圆角能承载的尺度。<br><br>
+    <b>几何关系是硬约束</b>：<code>圆角半径 ≥ inset 偏移 × 3</code> 左右。
+    圆角不够时，内阴影会绕过圆角形成「月牙状」伪影，边缘看起来发脏 —— 比不做粘土更难看。<br><br>
+    下面是「格」主题的三档实测对照（切到「格」看最清楚）：
+  </p>
+  <div class="rconflict">
+    <div class="rc">
+      <div class="box" style="border-radius:8px;box-shadow:6px 8px 16px var(--cl-out), inset -5px -5px 12px var(--cl-shade), inset 4px 4px 10px var(--cl-light)"></div>
+      <div class="cap"><b>R = 8px</b>原「格」气质<br>内阴影溢出圆角</div>
+      <span class="tagline tag-bad">几何不成立</span>
+    </div>
+    <div class="rc">
+      <div class="box" style="border-radius:14px;box-shadow:4px 5px 10px var(--cl-out), inset -3px -3px 8px var(--cl-shade), inset 3px 3px 7px var(--cl-light)"></div>
+      <div class="cap"><b>R = 14px + 参数缩到 md</b>温和粘土<br>保留精密感</div>
+      <span class="tagline tag-ok">推荐</span>
+    </div>
+    <div class="rc">
+      <div class="box" style="border-radius:24px;box-shadow:6px 8px 16px var(--cl-out), inset -5px -5px 12px var(--cl-shade), inset 4px 4px 10px var(--cl-light)"></div>
+      <div class="cap"><b>R = 24px + 完整参数</b>体积感最足<br>但与「墨」差别缩小</div>
+      <span class="tagline tag-ok">可接受</span>
+    </div>
+  </div>
+  <div class="warn">
+    <b>这是「格 + 粘土」的真实代价，需要你拍板。</b>
+    三档主题里，「墨」和「夜」的圆角本来就大（26 / 24px），与粘土天然匹配；
+    <b>只有「格」需要妥协</b> —— 要么放大圆角（削弱瑞士网格的硬朗感），要么缩小粘土参数（削弱质感）。
+    我推荐中间那条：<b>圆角 8px → 14px，参数降到 md 档</b>。这样它仍然是三档里最「精确」的那一个，
+    因为有更小的圆角、更紧的阴影、以及独一无二的等宽音标字体。
+  </div>
+</section>
+
+<!-- ===================== §4 ===================== -->
+<section id="components">
+  <h2><span class="n">04</span>全组件清单（切主题实时渲染）</h2>
+  <p class="note">
+    采用规则：<b>内容平面 / 交互粘土 / 输入凹陷</b>。下面全部是可点击元素 —— 试着按下它们，
+    会从「凸起」变成「凹陷」，这是粘土最重要的一条直觉反馈。
+  </p>
+  <div class="grid2">
+
+    <div class="spec">
+      <div class="lab">信息流卡片（lg）</div>
+      <div class="body">
+        <div class="cl fcard">
+          <div class="fc-top">
+            <span class="fc-cat">Science · 4 min</span>
+            <button class="bm cl-sm" title="收藏" aria-label="收藏">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+            </button>
+          </div>
+          <div class="fc-h">A New Way to Grow Food in Cities</div>
+          <div class="fc-s">In the middle of Singapore, a tall glass building produces more than a hundred times the vegetables of a normal farm.</div>
+        </div>
+      </div>
+      <div class="hint">整卡可点（进入阅读）；书签是卡内的独立点击区，不冒泡</div>
+    </div>
+
+    <div class="spec">
+      <div class="lab">收藏书签（两态）</div>
+      <div class="body">
+        <button class="bm cl-sm" aria-label="未收藏">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+        </button>
+        <button class="bm cl-sm on" aria-label="已收藏">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+        </button>
+      </div>
+      <div class="hint">未收藏＝空轮廓；已收藏＝实心 + 强调色凸起。<br>凸起＝已激活，与粘土的物理直觉一致</div>
+    </div>
+
+    <div class="spec">
+      <div class="lab">排序药丸（sm）</div>
+      <div class="body">
+        <button class="pill cl cl-sm">记忆曲线</button>
+        <button class="pill cl cl-sm sel">最近</button>
+        <button class="pill cl cl-sm">A–Z</button>
+      </div>
+      <div class="hint">选中态仍保持凸起（选中＝激活，不是按下）</div>
+    </div>
+
+    <div class="spec">
+      <div class="lab">分类标签（sm）</div>
+      <div class="body">
+        <span class="tag cl cl-sm">SCIENCE</span>
+        <span class="tag cl cl-sm">BUSINESS</span>
+        <span class="tag cl cl-sm">CULTURE</span>
+      </div>
+      <div class="hint">高度 24px → 已去掉 inset，只剩外阴影</div>
+    </div>
+
+    <div class="spec">
+      <div class="lab">搜索框（凹陷）</div>
+      <div class="body">
+        <div class="search cl-sink">
+          <span>⌕</span><span>搜索单词或释义</span>
+        </div>
+      </div>
+      <div class="hint">凹陷公式的两个 inset <b>方向互换</b>：<br>inset 3px 3px shade（左上变暗）+ inset -3px -3px light（右下受光）</div>
+    </div>
+
+    <div class="spec">
+      <div class="lab">进度环</div>
+      <div class="body">
+        <div class="ring cl" style="background:conic-gradient(var(--accent) 0 62%, color-mix(in srgb,var(--cl-shade) 60%, var(--card)) 62% 100%)">
+          <div class="cl cl-sm" style="width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:700">
+            12<i>/23</i>
+          </div>
+        </div>
+      </div>
+      <div class="hint">外环粘土凸起；内圈是更小一档的粘土圆盘。环用 conic-gradient，不用 SVG</div>
+    </div>
+
+    <div class="spec">
+      <div class="lab">统计徽章（成就区）</div>
+      <div class="body">
+        <div class="badge cl">​<span class="b1">47</span><span class="b2">连续天数</span></div>
+        <div class="badge cl">​<span class="b1">1,203</span><span class="b2">已收录</span></div>
+      </div>
+      <div class="hint">数字用 Literata（衬线），标签用 Inter</div>
+    </div>
+
+    <div class="spec">
+      <div class="lab">图标按钮（md）</div>
+      <div class="body">
+        <button class="iconbtn cl cl-md">♪</button>
+        <button class="iconbtn cl cl-md">⚙</button>
+        <button class="iconbtn cl cl-md">☰</button>
+      </div>
+      <div class="hint">发音 / 设置 / 目录。最小点击区 44×44</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ===================== §5 ===================== -->
+<section id="states">
+  <h2><span class="n">05</span>四态：按下靠「塌陷」，禁用靠「抽掉内亮」</h2>
+  <p class="note">
+    粘土的物理直觉让状态表达变得非常直接 —— 不需要换颜色或加边框。
+    <b>按下＝凸起转凹陷</b>（它真的被压下去了）；<b>禁用＝抽掉内亮</b>（它瘪了）。
+    真按一下下面第一个按钮试试。
+  </p>
+  <div class="states">
+    <div class="st">
+      <button class="btnw cl cl-md">默认（凸起）</button>
+      <div class="cap">三层齐全</div>
+    </div>
+    <div class="st">
+      <button class="btnw cl-md cl-sink" style="background:var(--card);color:var(--ink);box-shadow:inset 3px 3px 8px var(--cl-shade), inset -3px -3px 6px var(--cl-light)">按下（凹陷）</button>
+      <div class="cap">inset 方向互换 + <code>scale(.97)</code></div>
+    </div>
+    <div class="st">
+      <button class="btnw cl-md cl-on">选中（强调）</button>
+      <div class="cap">保持凸起 + 强调色填 + 外阴影染强调色</div>
+    </div>
+    <div class="st">
+      <button class="btnw cl-md cl-off" disabled>禁用</button>
+      <div class="cap">只留极淡外阴影 → 视觉上「塌了」</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== §6 ===================== -->
+<section id="flat">
+  <h2><span class="n">06</span>边界：阅读界面零粘土</h2>
+  <p class="note">
+    左边是<b>阅读界面</b> —— 一个粘土块都没有。右边是<b>交互界面</b> —— 全部粘土。
+    沉浸感来自「什么都没有」，不是来自「很好看」。
+  </p>
+  <div class="vs">
+    <div class="vs-col" style="background:var(--read);padding:26px 24px">
+      <div class="vh">阅读界面 · 零粘土</div>
+      <div class="flat-row">
+        <div>
+          <div class="w">vertical</div>
+          <div class="p">/ˈvɜːtɪkl/</div>
+        </div>
+        <div class="d">adj. 垂直的；竖直的</div>
+      </div>
+      <p style="font-family:var(--font-read);font-size:14.5px;line-height:var(--read-lh);margin-top:16px;color:var(--ink)">
+        The towers rise <span style="background:var(--tk-n-bg);border-bottom:var(--tk-n-bd);padding:var(--tk-n-p);border-radius:var(--tk-n-r)">vertical</span> from
+        the ground, their glass walls catching the morning light. Inside, rows of
+        <span style="background:var(--tk-m-bg);padding:var(--tk-m-p);border-radius:var(--tk-m-r)">trays</span>
+        hold <span style="background:var(--tk-d-bg);padding:var(--tk-d-p);border-radius:var(--tk-d-r);color:var(--tk-d-fg,inherit)">seedlings</span> under
+        pink lamps — a farm stacked thirty-nine floors high.
+      </p>
+      <div class="hint" style="margin-top:18px;font-size:11.5px;color:var(--ink3);font-family:var(--font-ui)">
+        正文 Literata · IPA Charis SIL · 无边框无阴影，只有文字与痕迹
+      </div>
+    </div>
+    <div class="vs-col">
+      <div class="vh">交互界面 · 全粘土</div>
+      <div class="body" style="display:flex;flex-direction:column;gap:13px">
+        <div class="cl" style="padding:15px 17px;border-radius:20px">
+          <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);margin-bottom:6px">Today</div>
+          <div style="font-family:var(--font-read);font-size:16px;font-weight:700">23 张待复习</div>
+        </div>
+        <div style="display:flex;gap:11px">
+          <button class="pill cl cl-sm sel" style="flex:1">开始</button>
+          <button class="pill cl cl-sm" style="flex:0 0 62px">稍后</button>
+        </div>
+        <div class="search cl-sink"><span>⌕</span><span>搜索单词</span></div>
+      </div>
+      <div class="hint" style="margin-top:18px;font-size:11.5px;color:var(--ink3);font-family:var(--font-ui)">
+        同样的色板、同样的字体 —— 差别只在「有没有体积」
+      </div>
+    </div>
+  </div>
+  <div class="warn">
+    <b>为什么这条规则值得写死：</b>
+    粘土是注意力磁铁 —— 有体积的东西会抓住视线。阅读时用户唯一该注意的是文字。
+    如果阅读界面里有一个粘土卡片，每次滚动它都会把视线拉过去。
+    <b>这不是审美判断，是注意力预算的问题。</b>
+  </div>
+</section>
+
+<!-- ===================== §7 ===================== -->
+<section id="table">
+  <h2><span class="n">07</span>三档主题的粘土 token 速查</h2>
+  <p class="note">
+    这一组值直接对应 <code>CoEvoTokens.clay</code>。<b>每个主题各有一组，不是全局常量</b> ——
+    这也是为什么「三档主题 × 粘土」不冲突：它们本来就是同一个 token 表里的不同字段。
+  </p>
+  <table>
+    <thead>
+      <tr><th>token</th><th>墨 · 暖纸</th><th>格 · 纯白</th><th>夜 · 深墨</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>填充（clay fill）</td><td class="mono">#FFFFFF</td><td class="mono">#FFFFFF</td><td class="mono">#1C1F27</td></tr>
+      <tr><td>外阴影 cl-out</td><td class="mono">rgba(150,125,95,.24)</td><td class="mono">rgba(110,115,125,.22)</td><td class="mono">rgba(0,0,0,.55)</td></tr>
+      <tr><td>内暗 cl-shade</td><td class="mono">rgba(186,166,138,.55)</td><td class="mono">rgba(158,158,158,.46)</td><td class="mono">rgba(0,0,0,.42)</td></tr>
+      <tr><td>内亮 cl-light</td><td class="mono">rgba(255,255,255,1)</td><td class="mono">rgba(255,255,255,1)</td><td class="mono">rgba(255,255,255,.062)</td></tr>
+      <tr><td>圆角 --cl-radius</td><td class="mono">26px</td><td class="mono">14px <span style="color:#B4432C">（原 8px，需改）</span></td><td class="mono">24px</td></tr>
+      <tr><td>粘土强度</td><td>完整</td><td>中等（参数降 md 档）</td><td>完整但内亮受限</td></tr>
+      <tr><td>独有气质</td><td>暖沙 · 纸感 · 书卷</td><td>精密 · 网格 · 等宽音标</td><td>沉浸 · 暗房 · 发光</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ===================== §8 ===================== -->
+<section id="flutter">
+  <h2><span class="n">08</span>Flutter 实现路径（有个原生缺口）</h2>
+  <p class="note">
+    🔴 <b>Flutter 的 <code>BoxShadow</code> 不支持 <code>inset</code></b> ——
+    而粘土的核心恰恰是两个 inset。现成的 <code>flutter_inset_box_shadow</code> 最新版发布于 2022-04，
+    已 4 年未更新，且要求 <code>hide BoxDecoration, BoxShadow</code> 替换整个类型（侵入性高）。<b>不建议引入。</b>
+  </p>
+  <pre><code>// 第一步：零依赖方案（约 80% 效果），先用这个上线
+BoxDecoration(
+  color: t.clayFill,
+  borderRadius: BorderRadius.circular(r),
+  boxShadow: [BoxShadow(offset: Offset(6, 8), blurRadius: 16, color: t.clOut)],  // ① 外阴影
+)
+// 内阴影用前景渐变模拟：左上亮 → 右下暗
+foregroundDecoration: BoxDecoration(
+  borderRadius: BorderRadius.circular(r),
+  gradient: LinearGradient(
+    begin: Alignment.topLeft, end: Alignment.bottomRight,
+    colors: [t.clLight, t.clLight.withOpacity(0), t.clShade.withOpacity(0), t.clShade],
+    stops: const [0, .42, .58, 1],
+  ),
+)
+
+// 第二步：若视觉不够，写 ClayDecoration（约 150–200 行）
+// 做法与 Chromium 相同 —— 画一个巨大矩形，用圆角矩形 Path.combine 挖空，
+// 再对结果 MaskFilter.blur，最后平移向边缘方向。可 100% 还原 inset。</code></pre>
+  <div class="warn">
+    <b>动效是粘土感的一半。</b> 按下 <code>scale(.97)</code> 90ms + 松手 <code>Curves.elasticOut</code> 回弹 320ms ——
+    这是 Flutter 的原生强项，几乎零成本。缺了动效，粘土只是个圆角卡片。
+    <b>额外工程量约 1 周</b>（ClayDecoration 组件 + token 扩展 + 三主题验收）。
+  </div>
+</section>
+
+<footer>
+  <h3>看这一页时，重点看三件事</h3>
+  <ol>
+    <li><b>切到「格」看第 03 节</b> —— 这是唯一需要你拍板的地方：圆角放宽到 14px，还是把粘土参数缩得更小、保住 8px 的硬朗？（我推荐前者）</li>
+    <li><b>切到「夜」看第 01 和第 04 节</b> —— 深色下内亮必须压到 6.2%，体积感会明显弱于浅色。这是 claymorphism 的公认弱点，不是实现问题。看这个降级你是否接受。</li>
+    <li><b>按一下第 04、05 节的按钮</b> —— 粘土的手感一半在动效（凸起 → 凹陷 → 弹性回弹）。静态截图看不出这个。</li>
+  </ol>
+  <p style="margin-top:18px;font-size:12px;color:var(--ink3)">
+    CoEvo · 设计系统 · 2026-09-25 ｜ 字体：Literata（正文）+ Charis SIL（IPA）+ Inter（UI）+ 阿里普惠体（中文）
+  </p>
+</footer>
+
+</main>
+
+<script>
+/* ---------- 主题切换 ---------- */
+const THEME_VARS = {
+  ink:  {out:'rgba(150,125,95,.24)', shade:'rgba(186,166,138,.55)', light:'rgba(255,255,255,1)'},
+  grid: {out:'rgba(110,115,125,.22)', shade:'rgba(158,158,158,.46)', light:'rgba(255,255,255,1)'},
+  night:{out:'rgba(0,0,0,.55)',       shade:'rgba(0,0,0,.42)',       light:'rgba(255,255,255,.062)'},
+};
+let cur = 'ink';
+
+function paint(){
+  const v = THEME_VARS[cur];
+  document.getElementById('v-out').textContent   = v.out;
+  document.getElementById('v-shade').textContent = v.shade;
+  document.getElementById('v-light').textContent = v.light;
+}
+
+document.querySelectorAll('[data-set-theme]').forEach(b => {
+  b.addEventListener('click', () => {
+    cur = b.dataset.set;
+    document.body.dataset.theme = cur;
+    document.querySelectorAll('[data-set-theme]').forEach(x => x.classList.toggle('on', x === b));
+    paint();
+  });
+});
+
+/* ---------- 三层阴影逐层开关 ---------- */
+const layerState = {out:true, shade:true, light:true};
+
+function rebuild(){
+  const cs = getComputedStyle(document.body);
+  const parts = [];
+  if (layerState.out)   parts.push(`6px 8px 16px ${cs.getPropertyValue('--cl-out').trim()}`);
+  if (layerState.shade) parts.push(`inset -5px -5px 12px ${cs.getPropertyValue('--cl-shade').trim()}`);
+  if (layerState.light) parts.push(`inset 4px 4px 10px ${cs.getPropertyValue('--cl-light').trim()}`);
+  document.getElementById('anatSq').style.boxShadow = parts.join(', ');
+}
+
+document.querySelectorAll('input[data-layer]').forEach(cb => {
+  cb.addEventListener('change', () => {
+    layerState[cb.dataset.layer] = cb.checked;
+    document.querySelector('.layer[data-l="' + cb.dataset.layer + '"]').classList.toggle('off', !cb.checked);
+    rebuild();
+  });
+});
+
+/* ---------- 书签 / 药丸切换 ---------- */
+document.querySelectorAll('.bm').forEach(b => {
+  b.addEventListener('click', e => { e.stopPropagation(); b.classList.toggle('on'); });
+});
+document.querySelectorAll('.pill').forEach(p => {
+  p.addEventListener('click', () => {
+    const sib = p.parentElement.querySelectorAll('.pill');
+    if (sib.length > 1) sib.forEach(x => x.classList.remove('sel'));
+    p.classList.add('sel');
+  });
+});
+
+paint();
+rebuild();
+</script>
+</body>
+</html>
