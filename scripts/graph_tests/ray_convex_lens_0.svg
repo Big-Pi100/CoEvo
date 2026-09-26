@@ -1,0 +1,61 @@
+
+<svg viewBox="0 0 500 300" xmlns="http://www.w3.org/2000/svg">
+  <!-- 主光轴 -->
+  <line x1="50" y1="150" x2="450" y2="150" stroke="black" stroke-width="1.5" stroke-dasharray="5,3"/>
+  
+  <!-- 凸透镜（用双弧线表示） -->
+  <path d="M 250,60 Q 270,150 250,240" stroke="black" stroke-width="2" fill="none"/>
+  <path d="M 250,60 Q 230,150 250,240" stroke="black" stroke-width="2" fill="none"/>
+  <!-- 透镜竖直中线 -->
+  <line x1="250" y1="60" x2="250" y2="240" stroke="gray" stroke-width="1" stroke-dasharray="3,3" opacity="0.5"/>
+  
+  <!-- 焦点 F 和 2F（左侧） -->
+  <circle cx="170" cy="150" r="3" fill="black"/>
+  <text x="162" y="140" font-size="14" fill="black">F</text>
+  <circle cx="90" cy="150" r="3" fill="black"/>
+  <text x="82" y="140" font-size="14" fill="black">2F</text>
+  
+  <!-- 焦点 F 和 2F（右侧） -->
+  <circle cx="330" cy="150" r="3" fill="black"/>
+  <text x="322" y="140" font-size="14" fill="black">F</text>
+  <circle cx="410" cy="150" r="3" fill="black"/>
+  <text x="402" y="140" font-size="14" fill="black">2F</text>
+  
+  <!-- 物体（红色箭头，在 2F 左侧之外） -->
+  <line x1="60" y1="150" x2="60" y2="90" stroke="red" stroke-width="3"/>
+  <polygon points="60,90 57,98 63,98" fill="red"/>
+  <text x="50" y="80" font-size="14" fill="red">物体</text>
+  
+  <!-- 光线1：平行于主光轴，经透镜折射过焦点 -->
+  <line x1="60" y1="90" x2="250" y2="90" stroke="blue" stroke-width="1.5" stroke-dasharray="4,2"/>
+  <line x1="250" y1="90" x2="450" y2="220" stroke="blue" stroke-width="1.5"/>
+  <!-- 箭头 -->
+  <polygon points="400,190 395,188 398,195" fill="blue" transform="rotate(30,400,190)"/>
+  
+  <!-- 光线2：过光心（透镜中心）直线传播 -->
+  <line x1="60" y1="90" x2="250" y2="150" stroke="green" stroke-width="1.5" stroke-dasharray="4,2"/>
+  <line x1="250" y1="150" x2="430" y2="222" stroke="green" stroke-width="1.5"/>
+  <polygon points="410,215 405,213 408,220" fill="green"/>
+  
+  <!-- 光线3：过焦点，经透镜平行于主光轴 -->
+  <line x1="60" y1="90" x2="170" y2="150" stroke="purple" stroke-width="1.5" stroke-dasharray="4,2"/>
+  <line x1="170" y1="150" x2="250" y2="150" stroke="purple" stroke-width="1.5" stroke-dasharray="4,2"/>
+  <line x1="250" y1="150" x2="450" y2="150" stroke="purple" stroke-width="1.5"/>
+  <polygon points="430,150 425,147 425,153" fill="purple"/>
+  
+  <!-- 像（倒立缩小的实像，在 F 和 2F 之间） -->
+  <line x1="380" y1="150" x2="380" y2="205" stroke="orange" stroke-width="3"/>
+  <polygon points="380,205 377,197 383,197" fill="orange"/>
+  <text x="385" y="215" font-size="14" fill="orange">像</text>
+  
+  <!-- 图例 -->
+  <text x="20" y="280" font-size="12" fill="black">图例：</text>
+  <line x1="80" y1="277" x2="120" y2="277" stroke="blue" stroke-width="2"/>
+  <text x="125" y="281" font-size="11" fill="blue">平行于主光轴的光线</text>
+  <line x1="80" y1="292" x2="120" y2="292" stroke="green" stroke-width="2"/>
+  <text x="125" y="296" font-size="11" fill="green">过光心的光线</text>
+  <line x1="280" y1="277" x2="320" y2="277" stroke="purple" stroke-width="2"/>
+  <text x="325" y="281" font-size="11" fill="purple">过焦点的光线</text>
+  <line x1="280" y1="292" x2="320" y2="292" stroke="orange" stroke-width="2"/>
+  <text x="325" y="296" font-size="11" fill="orange">所成的像</text>
+</svg>

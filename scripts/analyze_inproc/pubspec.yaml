@@ -1,0 +1,7 @@
+name: analyze_inproc
+description: 进程内静态分析（绕过 analysis_server fork 限制）
+publish_to: none
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+dependencies:
+  analyzer: any

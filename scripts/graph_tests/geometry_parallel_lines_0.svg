@@ -1,0 +1,35 @@
+
+<svg viewBox="0 0 500 300" xmlns="http://www.w3.org/2000/svg">
+  <!-- 上方平行线 -->
+  <line x1="50" y1="100" x2="450" y2="100" stroke="black" stroke-width="2"/>
+  <!-- 下方平行线 -->
+  <line x1="50" y1="200" x2="450" y2="200" stroke="black" stroke-width="2"/>
+  <!-- 截线（斜线） -->
+  <line x1="80" y1="50" x2="420" y2="250" stroke="red" stroke-width="2"/>
+
+  <!-- 交点圆点 -->
+  <circle cx="140" cy="100" r="3" fill="black"/>
+  <circle cx="310" cy="200" r="3" fill="black"/>
+
+  <!-- 标注文字：上方线 -->
+  <text x="460" y="105" font-size="14" fill="black">m</text>
+  <text x="460" y="205" font-size="14" fill="black">n</text>
+  <text x="430" y="260" font-size="14" fill="red">l</text>
+
+  <!-- 同位角标注：上方左侧角（∠1） -->
+  <path d="M 140 100 L 120 80 L 140 80" fill="none" stroke="blue" stroke-width="1.5"/>
+  <text x="110" y="78" font-size="14" fill="blue">∠1</text>
+
+  <!-- 同位角标注：下方左侧角（∠2，与∠1同位） -->
+  <path d="M 310 200 L 290 180 L 310 180" fill="none" stroke="blue" stroke-width="1.5"/>
+  <text x="280" y="178" font-size="14" fill="blue">∠2</text>
+
+  <!-- 另外一组同位角：上方右侧角（∠3） -->
+  <path d="M 140 100 L 160 120 L 140 120" fill="none" stroke="green" stroke-width="1.5"/>
+  <text x="165" y="125" font-size="14" fill="green">∠3</text>
+
+  <!-- 另外一组同位角：下方右侧角（∠4） -->
+  <path d="M 310 200 L 330 220 L 310 220" fill="none" stroke="green" stroke-width="1.5"/>
+  <text x="335" y="225" font-size="14" fill="green">∠4</text>
+
+</svg>

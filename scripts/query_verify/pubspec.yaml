@@ -1,0 +1,10 @@
+name: query_verify
+description: CoEvo 端侧查询层验收 —— 查词 / 词形还原 / 卡片段 / 聚合页入口 / 复习列表
+publish_to: 'none'
+version: 1.0.0
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+
+dependencies:
+  sqflite_common_ffi: ^2.3.4

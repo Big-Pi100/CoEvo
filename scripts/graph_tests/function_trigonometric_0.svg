@@ -1,0 +1,89 @@
+
+<svg viewBox="0 0 450 300" xmlns="http://www.w3.org/2000/svg">
+  <!-- 坐标轴 -->
+  <line x1="40" y1="150" x2="420" y2="150" stroke="black" stroke-width="2" />
+  <line x1="40" y1="20" x2="40" y2="280" stroke="black" stroke-width="2" />
+  
+  <!-- 箭头 -->
+  <polygon points="415,150 420,150 418,145" fill="black" />
+  <polygon points="40,25 40,20 35,22" fill="black" />
+  
+  <!-- x轴刻度标签 -->
+  <text x="40" y="170" font-size="12" text-anchor="middle">0</text>
+  <text x="135" y="170" font-size="12" text-anchor="middle">π/2</text>
+  <text x="230" y="170" font-size="12" text-anchor="middle">π</text>
+  <text x="325" y="170" font-size="12" text-anchor="middle">3π/2</text>
+  <text x="420" y="170" font-size="12" text-anchor="middle">2π</text>
+  
+  <!-- y轴刻度标签 -->
+  <text x="30" y="55" font-size="12" text-anchor="end">1</text>
+  <text x="30" y="150" font-size="12" text-anchor="end">0</text>
+  <text x="30" y="248" font-size="12" text-anchor="end">-1</text>
+  
+  <!-- 网格线（浅灰色） -->
+  <line x1="135" y1="20" x2="135" y2="280" stroke="#ccc" stroke-width="0.5" stroke-dasharray="4,4" />
+  <line x1="230" y1="20" x2="230" y2="280" stroke="#ccc" stroke-width="0.5" stroke-dasharray="4,4" />
+  <line x1="325" y1="20" x2="325" y2="280" stroke="#ccc" stroke-width="0.5" stroke-dasharray="4,4" />
+  <line x1="40" y1="55" x2="420" y2="55" stroke="#ccc" stroke-width="0.5" stroke-dasharray="4,4" />
+  <line x1="40" y1="248" x2="420" y2="248" stroke="#ccc" stroke-width="0.5" stroke-dasharray="4,4" />
+  
+  <!-- 正弦曲线 y = sin(x) 从 0 到 2π，使用多段线近似 -->
+  <polyline points="
+    40,150
+    50,135
+    60,120
+    70,106
+    80,93
+    90,82
+    100,73
+    110,67
+    120,63
+    130,62
+    135,62
+    140,63
+    150,67
+    160,73
+    170,82
+    180,93
+    190,106
+    200,120
+    210,135
+    220,148
+    230,150
+    240,152
+    250,165
+    260,178
+    270,189
+    280,198
+    290,205
+    300,209
+    310,211
+    315,211
+    320,211
+    330,209
+    340,205
+    350,198
+    360,189
+    370,178
+    380,165
+    390,152
+    400,150
+    410,148
+    420,150
+  " fill="none" stroke="#d32f2f" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
+  
+  <!-- 关键点标记 -->
+  <!-- (0,0) -->
+  <circle cx="40" cy="150" r="3.5" fill="#d32f2f" />
+  <!-- (π/2, 1) -->
+  <circle cx="135" cy="62" r="3.5" fill="#d32f2f" />
+  <!-- (π, 0) -->
+  <circle cx="230" cy="150" r="3.5" fill="#d32f2f" />
+  <!-- (3π/2, -1) -->
+  <circle cx="325" cy="211" r="3.5" fill="#d32f2f" />
+  <!-- (2π, 0) -->
+  <circle cx="420" cy="150" r="3.5" fill="#d32f2f" />
+  
+  <!-- 图例 -->
+  <text x="300" y="40" font-size="14" fill="#d32f2f" font-weight="bold">y = sin(x)</text>
+</svg>

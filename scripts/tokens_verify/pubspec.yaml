@@ -1,0 +1,11 @@
+name: tokens_verify
+description: CoEvo 视觉 token 验收 —— 逐项对照 design-system-spec-2026-09-25.md
+publish_to: 'none'
+version: 1.0.0
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+
+# 🔑 零依赖 —— token 层是纯 Dart（不 import Flutter），所以本脚本不拉任何包。
+#    这与 fsrs_verify 的理由相同：本地 Flutter 是鸿蒙定制版、analyze 会崩，
+#    纯 Dart 才能本地独立验证。
