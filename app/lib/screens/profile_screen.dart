@@ -18,6 +18,7 @@ import '../services/tts_service.dart';
 import '../widgets/order_history.dart';
 import '../widgets/subscribe_panel.dart';
 import '../widgets/claim_dialog.dart';
+import '../theme/clay.dart';
 import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../utils/image_export.dart';
@@ -798,25 +799,63 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
+  /// 单档预览 —— **用该档自己的 token 画一块粘土**（而不是当前主题的参数）。
+  ///
+  /// 🔑 这样「切换主题」是**所见即所得**：看到的就是那一档真实的 底 / 卡 / 强调色。
+  /// 顺带让**粘土组件**（`Clay`）第一次出现在真实界面里：未选中 = 凸起，选中 = 选中态。
   Widget _themeOption(
     ReadingTheme theme, {
     required bool selected,
     required VoidCallback onTap,
   }) {
-    final tokens = allTokens[theme]!;
+    final t = allTokens[theme]!;
+    // 选中态填充 `accent` → 字用 `accentInk`；默认态填充 = 卡面色 → 字用 `ink`
+    final fg = selected ? t.accentInk : t.ink;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: CoSpacing.sm),
-      child: ListTile(
-        leading: Icon(_themeIcon(theme),
-            color: Theme.of(context).colorScheme.primary),
-        title: Text('${tokens.label} · ${tokens.character}',
-            style: const TextStyle(fontWeight: FontWeight.w600)),
-        trailing: selected
-            ? Icon(Icons.check_circle,
-                color: Theme.of(context).colorScheme.primary, size: 20)
-            : const SizedBox(width: CoSpacing.xl),
+      padding: const EdgeInsets.symmetric(
+        horizontal: CoSpacing.sm,
+        vertical: CoSpacing.xs,
+      ),
+      child: Clay(
+        // 🔴 必须传**目标档**的 token —— 否则预览块会跟着当前主题变，失去比较意义
+        tokens: t,
+        state: selected ? ClayState.selected : ClayState.raised,
         onTap: onTap,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        padding: const EdgeInsets.symmetric(
+          horizontal: CoSpacing.lg,
+          vertical: CoSpacing.md,
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    t.label,
+                    style: TextStyle(
+                      color: Color(fg.argb32),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    t.character,
+                    style: TextStyle(
+                      color: Color(fg.scaleAlpha(0.72).argb32),
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (selected)
+              Icon(Icons.check_circle, size: 20, color: Color(fg.argb32)),
+          ],
+        ),
       ),
     );
   }

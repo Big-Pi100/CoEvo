@@ -184,6 +184,7 @@ class Clay extends StatefulWidget {
     required this.child,
     this.state = ClayState.raised,
     this.onTap,
+    this.tokens,
     this.fill,
     this.borderRadius,
     this.scaleSize,
@@ -191,6 +192,14 @@ class Clay extends StatefulWidget {
   });
 
   final Widget child;
+
+  /// 显式指定 token 档。
+  ///
+  /// 不传时从 [CoEvoTokensExt.of] 取**当前主题档**；
+  /// 传了就用它 —— 用途是「**预览其它档**」：比如设置页要用「墨」的粘土参数
+  /// 画一块「夜」的预览，就必须把那一档的 token 递进来，
+  /// 否则预览块会跟着当前主题变，失去比较意义。
+  final CoEvoTokens? tokens;
 
   /// 当前态。配合 `setState` 切换（或由父层控制）。
   final ClayState state;
@@ -228,11 +237,12 @@ class _ClayState extends State<Clay> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = CoEvoTokensExt.of(context);
+    // 🔑 默认取**当前主题档**；显式传入时用它（见 [Clay.tokens] 的预览场景）
+    final active = widget.tokens ?? CoEvoTokensExt.of(context);
 
     Widget surface = CustomPaint(
       painter: ClayPainter(
-        tokens: tokens,
+        tokens: active,
         state: _effective,
         fill: widget.fill,
         borderRadius: widget.borderRadius,

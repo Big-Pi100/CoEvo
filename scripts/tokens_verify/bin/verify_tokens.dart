@@ -705,4 +705,15 @@ void _s10ClayRender() {
   //    （否则自绘阴影与 Material 组件会是「两种模糊味」）
   check('blur→sigma 换算与原生同口径（×0.57735+0.5）',
       clay.contains('0.57735'));
+
+  // ⑧ 🆕 真的有人用 —— 防「组件写好了但没人接」
+  //    🔑 这是接线验收的**最后一环**：组件存在 ≠ 界面用上了。
+  final prof = src('screens/profile_screen.dart');
+  check('设置页已接入 Clay（档位预览）', prof.contains('Clay('));
+  check('设置页用**目标档**的 token 画预览（`tokens: t`）',
+      RegExp(r'tokens:\s*t\b').hasMatch(prof));
+  check('设置页用到 selected 态（选中＝激活，不是按下）',
+      prof.contains('ClayState.selected'));
+  check('Clay 支持显式 tokens（预览其它档的前提）',
+      clay.contains('CoEvoTokens? tokens'));
 }
