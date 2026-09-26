@@ -123,3 +123,75 @@
 **后端+前端是活代码**（删了编不过，建议并入首页重写）·
 另有 **miniprogram（微信）/ remotion-videos（683 MB）/ 根目录垃圾** 是「仓库不干净」的另一半来源。
 ⚠️ 且有 **1 个名字像 K12 实际是英语词库工具**（`split_inline_chinese.py`）**必须保留**。
+
+---
+
+## 九、✅ 执行记录（2026-09-27 02:40）
+
+### 白哥决策
+
+| # | 决策 | 选择 |
+|---|---|---|
+| 1 | K12 数据 221 文件 | ✅ **全删** |
+| 2 | K12 后端活代码 | ✅ **并入 Step 3 首页重写**（本次不动） |
+| 3 | 其它废弃 | ✅ **全选**：miniprogram + remotion-videos + 根目录垃圾 + backend/target |
+| 4 | english_rebuild | ✅ **删**（属 K12 管道） |
+
+### 执行结果
+
+| 批次 | 内容 | 规模 | SHA |
+|---|---|---|---|
+| **A** | K12 脚本 | **16 文件** | `d9ffe02` |
+| **B** | K12 数据（229） | cleaned 98 · gold 45 · v3 31 · v4 20 · plans_merged 14 · vocab_enriched 5 · templates 5 · backups 3 · english_rebuild 8 | `06e2769` |
+| **C** | miniprogram + remotion-videos | **32 文件**（+ overview.md 移出） | `19e6247` |
+| **D** | 根目录垃圾 | flutter_01~05.log ×5 · blog_deploy.tar.gz · r2_details.txt · indiehackers_*.json ×3 · AGENTS.md · CLAUDE.md · backups/seo | 本批 |
+
+### 本地空间释放
+
+| 对象 | 前 | 后 | 释放 |
+|---|---|---|---|
+| `backend/target`（Cargo 构建产物） | **2.0 GB** | 0 | **≈1.95 GB** |
+| `remotion-videos`（含 680MB node_modules） | **683 MB** | 移出 git（磁盘留 2.9MB 精编版） | **≈680 MB** |
+| K12 数据 + miniprogram + 其它 | — | — | 数 MB |
+| **合计** | | | **≈2.6 GB** |
+
+### 🔑 抢救的唯一价值（铁律 2 的实践）
+
+删 `remotion-videos/` 前发现 **`output/coevo-intro.mp4` 是唯一的产品介绍视频成品** →
+连同 `src/` 源码复制到 `marketing/remotion-videos/`（已 gitignore）**再删原目录**：
+- git 干净 ✅ · 素材不丢 ✅ · 体积从 683MB 降到 2.9MB ✅（node_modules 可 `npm ci` 重建）
+- 并加了 `README.md` 说明「为什么在这里 + 如何重建 + 如何恢复跟踪」
+
+### 安全验证
+
+| 验证 | 结果 |
+|---|---|
+| **英语词库资产** | ✅ **11 个关键文件全在** + `word.db` md5 `e7495c549b84` **与删除前完全一致** |
+| `tokens_verify` | ✅ **267 项全过 / 0 实现失败** |
+| `analyze_inproc` | ✅ **error=3 / warning=13 / info=7** 与基线一致 |
+| 引用图（A 类脚本） | ✅ **0 处代码引用**（删前验证） |
+| CI 引用完整性 | ✅ CI 只引用 `scripts/fsrs_verify` 与 `check_native_readiness.py`，均存在 |
+| git 变更对账 | ✅ 261 D + 1 R 与预期分布 **完全一致**（229 data + 18 remotion + 13 miniprogram + 1 移出 + 1 tarball） |
+
+### 🔴 一处执行瑕疵（已修正）
+
+首批提交时**忘了「暂存区里已積累全部 git rm 的删除」** → 一次 commit 把
+229 data + 18 remotion + 13 miniprogram 全提交了，**message 却只写了 K12 数据**
+（message 与内容不符 → 违背「按语义分批」）。
+
+→ **修正方式**：`git reset --soft HEAD~1`（保留暂存区）→ `git reset`（清空）
+→ 重新分批 `git add` 三次提交。
+
+> 🔑 **教训**：`git rm` 会**立即暂存**删除记录。批量删除后分批提交时，
+> 每批 commit 前必须 `git diff --cached --name-only` **确认本批范围**，
+> 不能假设「只有我刚 add 的那些」。
+
+### 未处理（本次范围外）
+
+| # | 事项 | 原因 |
+|---|---|---|
+| 1 | **C 类 K12 后端 + 前端** | 按决策**并入 Step 3 首页重写**（删了编不过） |
+| 2 | `NUL` | Windows 保留设备名，`rm`/`find -delete`/`git rm` 全部失败（0 字节，**已 gitignore**，对仓库零影响） |
+| 3 | 根目录 4 个文档 | `API.md`（1936 行，含已删的 admin 内容）· `CoEvo_DataFlow.md`（同步于 2026-06-08）· `CoEvo_Devplan.md`（**用户铁律指定的必读**）· `DEVELOPMENT.md` → **待白哥判** |
+| 4 | `app/build`（204 MB）· `app/.dart_tool/` | Flutter 构建产物（已 ignore）—— 与 backend/target 同类，可一并清 |
+| 5 | `docs/_archive/`（47 文件） | E 类第 3 项，未拍板 |
