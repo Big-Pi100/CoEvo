@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'coevo_tokens.dart';
+import 'tokens_ext.dart';
 
 /// token → `ThemeData` 的**唯一入口**（spec §7.3）。
 ///
@@ -26,6 +27,9 @@ ThemeData buildTheme(CoEvoTokens t) {
     useMaterial3: true,
     brightness: brightness,
     colorScheme: scheme,
+    // 🔑 把 token 挂进主题 —— 组件侧用 `CoEvoTokensExt.of(context)` 取当前档，
+    //    不必把 tokens 一层层传下去（粘土组件、卡片都要用）。
+    extensions: <ThemeExtension<dynamic>>[CoEvoTokensExt(t)],
     scaffoldBackgroundColor: _c(t.page),
     canvasColor: _c(t.page),
     dividerColor: _c(t.line),

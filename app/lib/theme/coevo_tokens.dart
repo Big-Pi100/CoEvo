@@ -75,6 +75,12 @@ class CoRgba {
     return (ai << 24) | (r << 16) | (g << 8) | b;
   }
 
+  /// 按倍率缩放 alpha（保持 RGB）。
+  ///
+  /// 用法：粘土**禁用态**的「外阴影减半」= `scaleAlpha(0.55)`（spec §3.7）。
+  CoRgba scaleAlpha(double factor) =>
+      CoRgba(r, g, b, (a * factor).clamp(0.0, 1.0));
+
   // ── WCAG 相对亮度 / 对比度（验证要用，Flutter 层将来也能用）──
 
   /// 单个分量：sRGB → 线性光。
@@ -259,6 +265,13 @@ class CoShadow {
   final bool inset;
 
   const CoShadow(this.dx, this.dy, this.blur, {this.inset = false});
+
+  /// 方向互换 —— **凸起 ↔ 凹陷**（spec §3.6「最容易写错的一处」）。
+  ///
+  /// 凸起：内暗在右下 `(-,-)`、内亮在左上 `(+,+)`；
+  /// 凹陷：**正好相反**（左上变暗、右下受光）。
+  /// 遮罩/偏移以外的参数（模糊、是否 inset）保持不变。
+  CoShadow get flipped => CoShadow(-dx, -dy, blur, inset: inset);
 
   @override
   bool operator ==(Object other) =>

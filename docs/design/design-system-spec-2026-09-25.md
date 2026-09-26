@@ -891,6 +891,15 @@ ThemeData buildTheme(CoEvoTokens t) => ThemeData(...);
 
 **约 1 周**（ClayDecoration 组件 + token 扩展 + 三主题接入），放在 Step 2 设计系统阶段。
 
+> ✅ **已实现（2026-09-27）**：`app/lib/theme/clay.dart` ——
+> `ClayPainter`（**自绘真 inset**：大矩形 → `evenOdd` 挖空成环 → `MaskFilter.blur` → `clipRRect`）
+> + `Clay` 容器（四态 + 按下动效）。
+> 配套 `tokens_ext.dart`（`CoEvoTokensExt` 把 token 挂进 `ThemeData.extensions`，
+> 组件侧用 `CoEvoTokensExt.of(context)` 取当前档）。
+> 验收：`tokens_verify` **新增【10】粘土渲染 20 项 → 287 项全过**。
+> ⚠️ **尚未接入任何页面**（接入点属 Step 3）；看效果可开
+> `visual-clay-spec-2026-09-25.html`。复盘见 `plan-and-progress` §3.17。
+
 ---
 
 ## 八、验收清单

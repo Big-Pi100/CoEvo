@@ -111,6 +111,7 @@ void main() {
   _s7Fonts();
   _s8Invariants();
   _s9Wiring();
+  _s10ClayRender();
 
   print('\n' + '═' * 72);
   print('通过 $_pass 项，实现类失败 $_fail 项，规格内部冲突 ${_conflicts.length} 项');
@@ -629,4 +630,79 @@ void _s9Wiring() {
         m != null && double.parse(m.group(1)!) == e.value,
         m == null ? '未找到声明' : '实得 ${m.group(1)}');
   }
+}
+
+// ── ⑩ 粘土渲染层（防「参数对但没画出来」）─────────────────────
+//
+// 🔑 为什么需要这一节：【3】【5】验的是**参数值**，验不到「有没有真的画出来」。
+// 设计系统最典型的失效方式**不是数值写错，而是写了但没接上** ——
+// 参数全对、界面照旧，编译器不会报错。所以这里全是**结构级**断言：
+// 用哪个 API 画的、四态齐不齐、有没有硬编码色、token 挂没挂进主题。
+void _s10ClayRender() {
+  print('\n【10】粘土渲染层（防「参数对但没画出来」）');
+
+  final root = _repoRoot();
+  String src(String p) => File('$root/app/lib/$p').readAsStringSync();
+  bool has(String p) => File('$root/app/lib/$p').existsSync();
+
+  check('clay.dart 存在', has('theme/clay.dart'));
+  check('tokens_ext.dart 存在', has('theme/tokens_ext.dart'));
+  if (!has('theme/clay.dart')) return;
+
+  final clay = src('theme/clay.dart');
+  final ext = src('theme/tokens_ext.dart');
+  final builder = src('theme/theme_builder.dart');
+  final tokens = src('theme/coevo_tokens.dart');
+
+  // ① 必须走**真 inset**（自绘），不能停在 gradient 兜底
+  //    spec §7.2：gradient 方案只有「约 80%」（圆角处会出现色带）→ 最终须 CustomPainter
+  check('用 MaskFilter 实现 inset（不是 gradient 兜底）',
+      clay.contains('MaskFilter.blur'));
+  check('用 evenOdd 差集把圆角矩形挖空成环', clay.contains('PathFillType.evenOdd'));
+  check('渲染前 clipRRect 裁剪（只留渗入内部的那半）', clay.contains('clipRRect'));
+
+  // ② 零硬编码色 —— 视觉全部来自 token
+  final hard = RegExp(r'Color\(0x').allMatches(clay).length;
+  check('clay.dart 无硬编码颜色', hard == 0, '发现 $hard 处');
+  final named = RegExp(r'Colors\.(?!transparent)').allMatches(clay).length;
+  check('clay.dart 无具名色常量（Colors.xxx）', named == 0, '发现 $named 处');
+
+  // ③ 四态齐全，且**都真的被 switch 覆盖**（不是只声明了枚举）
+  final cases = RegExp(r'case ClayState\.(\w+):')
+      .allMatches(clay)
+      .map((m) => m.group(1)!)
+      .toSet();
+  check(
+    'painter 的 switch 覆盖全部四态',
+    cases.length == 4 &&
+        const ['raised', 'pressed', 'selected', 'disabled']
+            .every(cases.contains),
+    '实得 ${(cases.toList()..sort()).join(" / ")}',
+  );
+
+  // ④ 关键语义（每条都对应 spec 明文）
+  check('选中态外阴影用 accentOut（外阴影染自身色相 §3.2）',
+      clay.contains('clay.accentOut'));
+  check('按下态 inset 方向互换（§3.6「最容易写错的一处」）',
+      clay.contains('.flipped'));
+  check('禁用态外阴影减半 ×0.55（§3.7）', clay.contains('scaleAlpha(0.55)'));
+  check('高度 <24px 去掉 inset（§3.5 硬规则）', clay.contains('clayNoInsetBelow'));
+  check('选中填充 accent / 默认填充 clayFill（§3.3.2）',
+      clay.contains('tokens.accent') && clay.contains('tokens.clayFill'));
+
+  // ⑤ 接线：token 必须挂进主题，否则 CoEvoTokensExt.of(context) 取不到
+  check('buildTheme 挂 extensions', builder.contains('extensions:'));
+  check('buildTheme 挂的是 CoEvoTokensExt', builder.contains('CoEvoTokensExt(t)'));
+  check('CoEvoTokensExt.of(context) 存在',
+      ext.contains('static CoEvoTokens of(BuildContext'));
+  check('取不到时**抛错**而非静默回退（防掩盖接线错误）', ext.contains('assert('));
+
+  // ⑥ 为渲染层补的两个 token 能力（spec §3.6 / §3.7 需要）
+  check('CoShadow.flipped 方向取反', tokens.contains('CoShadow(-dx, -dy'));
+  check('CoRgba.scaleAlpha 存在', tokens.contains('CoRgba scaleAlpha'));
+
+  // ⑦ shadow 参数到 MaskFilter 的换算必须与原生 BoxShadow 同口径
+  //    （否则自绘阴影与 Material 组件会是「两种模糊味」）
+  check('blur→sigma 换算与原生同口径（×0.57735+0.5）',
+      clay.contains('0.57735'));
 }
