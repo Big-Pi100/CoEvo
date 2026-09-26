@@ -15,7 +15,11 @@ backend/.env.local
 /.idea
 /.vscode
 /vendor
-/scripts
+# /scripts 自 2026-09-26 起纳入版本控制（原为整目录忽略）
+#   原因：CI 的 fsrs-verify / native-readiness 两个 job 引用了 scripts/ 下的路径，
+#         被忽略则 checkout 后目录不存在 → job 必然失败；
+#         且词库落库 / 形态链 / 验收脚本等有长期价值的工具无法协作与回溯。
+#   只排除缓存（见末尾「Python」段与「Flutter / Dart」段）。
 .rtk
 CLAUDE.md
 /.workbuddy
@@ -29,6 +33,19 @@ CLAUDE.md
 /backend/certs/
 # Windows 保留设备名（不可被 Git 索引）
 /nul
+
+# 删除操作的回滚备份（二进制快照，体积大且不适合 Git）
+# 被删文件本身在 Git 跟踪内，可直接 git checkout 恢复 → 备份无需入库
+/data/backups/
+
+# 字体：源文件与构建产物都不进仓库，靠脚本复现
+# ── `data/fonts-src/`   源文件（完整 TTF 合计 ~10 MB）
+#      → `scripts/fetch_fonts.py`（jsdelivr → google/fonts，含 sha256 校验）
+# ── `data/fonts-build/` 子集构建产物（对照页用；选定后才复制进 App）
+#      → `scripts/build_fonts.py`
+# → 真正**进仓库**的是 `app/assets/fonts/`（App 实际打包的子集，~60 KB/字重）
+/data/fonts-src/
+/data/fonts-build/
 
 # 废弃的部署脚本（已删除，防止重新出现）
 deploy*.sh
@@ -48,3 +65,63 @@ AGENTS.md
 **/.flutter-plugins-dependencies
 **/*.iml
 **/.metadata
+
+# Python（原先完全未忽略 → __pycache__ 里的 .pyc 可能混入仓库）
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# ═══════════════════════════════════════════════════════════════════
+# 2026-09-27 补充（依据 docs/review/git-repo-status-2026-09-27.md）
+# 仓库自 2026-07-26 起两个月未提交，1,689 个文件的暂存区里混入了
+# 若干「绝对不该进版本控制」的东西 → 逐条排除并说明理由。
+# ═══════════════════════════════════════════════════════════════════
+
+# ── 别的项目的 .git 目录备份（2026-08-05 抢救时误放进本仓库）──
+# 🔴 它内含 index / logs / hooks / objects —— 且 logs/HEAD 记录的是
+#    Godot 场景 / vulkan / 小黑跳马，与 CoEvo 完全无关。
+#    提交它 = 把别人的仓库历史塞进本仓库。
+/.git-corrupt-*/
+
+# ── SQLite WAL 运行时文件 ──
+# 🔴 WAL/SHM 是数据库未正常关闭时的运行时状态文件。
+#    提交它们会让别人 clone 后库状态不一致、甚至损坏。
+#    正确做法：只提交 .db，WAL 由 SQLite 自行管理。
+*.db-wal
+*.db-shm
+
+# ── 数据库文件 ──
+# 🔴 只排除 `coevo.db`（**生产库**：45 表、含线上用户数据、且频繁变化）
+# ✅ **`data/word.db` 要进仓库** —— 它是**词库核心资产**（11,523 词 / 19 表），
+#    由 `data/curriculum/prebuilt/*.json` + 脚本产出，重建成本高（含 LLM 费用）。
+/data/coevo.db
+
+# ── 营销素材（白哥 2026-09-27 定：全部不进）──
+# 原已入库 1,075 个含 325 张 PNG；新增的也不再进。
+# 需要用素材时从网盘/对象存储取。
+/marketing/
+/docs/marketing/
+/docs/redbook/
+
+# ── K12 义务教育课程标准 PDF（469 MB）──
+# 项目已明确**不做 K12**，这批 PDF 无用途。
+/data/curriculum/raw/
+
+# ── 临时 / 生成产物 ──
+/generated-images/
+/r2_details.txt
+/indiehackers_latest_post.json
+/indiehackers_posts_translated.json
+
+# ── Android 构建缓存（上面的 **/build/ 覆盖不到 .gradle）──
+**/.gradle/
+
+# ── 通用：编辑器/系统/压缩包残留 ──
+*.orig
+*.rej
+*.bak
+*~
+Thumbs.db
+desktop.ini
