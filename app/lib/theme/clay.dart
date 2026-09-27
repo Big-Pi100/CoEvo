@@ -222,9 +222,9 @@ class Clay extends StatefulWidget {
 class _ClayState extends State<Clay> {
   bool _pointerDown = false;
 
-  /// 按下动效参数（spec §3.8）：按下 90ms `ease-out`；松手 320ms **elasticOut** 回弹。
-  static const Duration _pressMs = Duration(milliseconds: 90);
-  static const Duration _releaseMs = Duration(milliseconds: 320);
+  // 🔑 动效参数**取自 `CoEvoTokens` 的常量**（spec §3.8 的单一出处）——
+  //    不在这里另写 90 / 320 / 0.97，否则改 spec 时要改两处
+  //    （[8] 结构不变量已断言那 4 个常数）。
 
   bool get _disabled => widget.state == ClayState.disabled;
   bool get _interactive => widget.onTap != null && !_disabled;
@@ -271,8 +271,9 @@ class _ClayState extends State<Clay> {
     }
 
     return AnimatedScale(
-      scale: (_pointerDown && _interactive) ? 0.97 : 1.0,
-      duration: _pointerDown ? _pressMs : _releaseMs,
+      scale: (_pointerDown && _interactive) ? CoEvoTokens.pressScale : 1.0,
+      duration:
+          _pointerDown ? CoEvoTokens.pressDuration : CoEvoTokens.releaseDuration,
       curve: _pointerDown ? Curves.easeOut : Curves.elasticOut,
       child: surface,
     );

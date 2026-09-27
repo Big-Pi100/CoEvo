@@ -297,6 +297,14 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
           : (settings.theme == ReadingTheme.night
               ? ThemeMode.dark
               : ThemeMode.light),
+      // 🔑 主题切换动效（spec §3.8）：280ms + `cubic-bezier(.4,0,.2,1)`。
+      //    Flutter 默认是 200ms `Curves.linear` —— 比 spec 又短又生硬。
+      //    `Curves.fastOutSlowIn` 的定义**正是** `Cubic(0.4, 0.0, 0.2, 1.0)`，
+      //    与 spec 写的那条 cubic-bezier 逐位相同。
+      //    背景 / 文字 / 阴影 / 圆角**同过渡** —— 因为 Flutter 的 `AnimatedTheme`
+      //    走 `ThemeData.lerp`，会把上述全部字段一起插值，无需逐项声明。
+      themeAnimationDuration: CoEvoTokens.transitionDuration,
+      themeAnimationCurve: Curves.fastOutSlowIn,
       routerConfig: goRouter,
       builder: (context, child) {
         final isWide = MediaQuery.of(context).size.width > 768;

@@ -716,4 +716,33 @@ void _s10ClayRender() {
       prof.contains('ClayState.selected'));
   check('Clay 支持显式 tokens（预览其它档的前提）',
       clay.contains('CoEvoTokens? tokens'));
+
+  // ⑨ 🆕 动效（spec §3.8）—— 两条：**参数对** + **不重复定义**
+  //
+  // 🔑 为什么单列：动效常数在 `CoEvoTokens` 上已有单一出处，
+  // 但**很容易在调用处顺手再写一遍裸值**（本轮就犯过：`clay.dart` 里
+  // 另写了 `Duration(milliseconds: 90)` 和 `0.97`）→ 改 spec 时要改两处。
+  final app = src('app.dart');
+  check('主题切换时长取 token 常量（不写魔数）',
+      app.contains('CoEvoTokens.transitionDuration'));
+  check('主题切换曲线 = Curves.fastOutSlowIn',
+      app.contains('Curves.fastOutSlowIn'));
+  //     📌 `Curves.fastOutSlowIn` 定义为 `Cubic(0.4, 0.0, 0.2, 1.0)`
+  //        （Flutter `animation/curves.dart`）—— 与 spec §3.8 写的
+  //        `cubic-bezier(.4,0,.2,1)` **逐位相同**，不是近似值。
+  check('按下/回弹取 token 常量（不写魔数）',
+      clay.contains('CoEvoTokens.pressDuration') &&
+          clay.contains('CoEvoTokens.releaseDuration') &&
+          clay.contains('CoEvoTokens.pressScale'));
+
+  // 「动效常数只有一处定义」：调用处不得出现这四个裸值
+  final bareRe = RegExp(r'Duration\(milliseconds:\s*(280|90|320)\b');
+  final bareHits = <String>[];
+  for (final e in {'app.dart': app, 'theme/clay.dart': clay}.entries) {
+    if (bareRe.hasMatch(e.value) || e.value.contains('? 0.97')) {
+      bareHits.add(e.key);
+    }
+  }
+  check('动效常数只在 CoEvoTokens 定义一处（调用处零裸值）',
+      bareHits.isEmpty, bareHits.join(' · '));
 }

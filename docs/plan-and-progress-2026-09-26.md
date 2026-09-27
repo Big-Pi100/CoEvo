@@ -23,12 +23,12 @@
 | `word_morpheme` / `card_extra` / `word_form` | 13,489 / 13,812 / **22,829** | 同上 |
 | `aggregate_page` / `etymon` / `word_etymon` / `affix` | 1,777 / 8,384 / 16,790 / 841 | 同上 |
 | **`card.content_hash`** | ✅ **100% 与 `content` 一致**（11,523/11,523）—— 2026-09-26 回填 **8,255 条**（原仅 28.4%）· ⚠️ 前端**只存不用** | `sha256(content)[:32] == content_hash` |
-| `app/lib` | **65 文件 / 23,166 行**（§3.15 主题换代 −436/+343 · §3.16 摘公式 **−44** · §3.17 粘土层 **+369**：`clay.dart` **280** + `tokens_ext.dart` 50 + `profile_screen` 接入 **+39**） | `find app/lib -name '*.dart' \| wc -l` |
+| `app/lib` | **65 文件 / 23,175 行**（§3.15 主题换代 −436/+343 · §3.16 摘公式 **−44** · §3.17 粘土层 **+369** · §3.18 动效 **+9**：`app.dart` 327→335 · `clay.dart` 280→281） | `find app/lib -name '*.dart' \| wc -l` |
 | **web-only 文件** | ✅ **2 个**（`chat_input.dart` · `review_card_widget.dart`） | 🔴 **必须用 `^import 'dart:(html\|js\|ui_web)` 精确匹配** —— 搜文本会把注释算进去 |
 | 划词查词 | 🔴 **仍 0 命中**（无 `SelectableText`/`SelectionArea`/`contextMenuBuilder`） | `rg "SelectableText\|SelectionArea"` |
 | 信息流/阅读器 | 🔴 **仍无文件**（`app/lib` 无 feed/reader） | `find app/lib -iname '*feed*' -o -iname '*reader*'` |
 | `user.db` 接入 | 🟠 **表结构已定义、查询层已建**（`word_query_service` / `review_list_query` import `sqflite_common`）｜🔴 **UI 未接入** | `rg "sqflite" app/lib` |
-| **视觉 token 层** | ✅ **已建且已接入**（`coevo_tokens.dart` **811 行** · 零 Flutter 依赖）· ✅ `buildTheme` 已接 `app.dart` → **三档主题生效**（旧 4 套主题已删）· 验收 **291 项全过 / 0 规格冲突**（含【9】接线 26 项 + 🆕【10】粘土渲染 24 项） | `cd scripts/tokens_verify && dart run bin/verify_tokens.dart` |
+| **视觉 token 层** | ✅ **已建且已接入**（`coevo_tokens.dart` **811 行** · 零 Flutter 依赖）· ✅ `buildTheme` 已接 `app.dart` → **三档主题生效**（旧 4 套主题已删）· 验收 **295 项全过 / 0 规格冲突**（含【9】接线 26 项 + 【10】粘土渲染与动效 **28 项**） | `cd scripts/tokens_verify && dart run bin/verify_tokens.dart` |
 | 🆕 **粘土 / 痕迹** | 🟠 **粘土已实现**（`theme/clay.dart` · **四态 + 真 inset** · §3.17）｜🔴 **痕迹仍零实现** | `rg "ClayPainter\|TraceText" app/lib` |
 | **字体资产** | ✅ **A′ 已落地**：`app/assets/fonts/` = 阿里普惠体 + **Literata(3) + CharisSIL(2)**（**+296 KB**）· pubspec 已声明 3 个 family | `ls app/assets/fonts/` |
 | 🆕 **IPA 真实字符集** | ✅ **30 个**（含 **4 个组合符号**）—— 从 11,523 张卡的 `card.content.ipa` 提取 | `python scripts/build_fonts.py --list` |
@@ -199,7 +199,7 @@ Phase 6 激励与增长
 | Phase | 状态 | 证据 |
 |---|---|---|
 | Phase 5 云端与变现（8 项） | ⏳ **未开始** | `coevo.db` 里有 `users` 2 / `tokens` 2 行（骨架在），但**订阅/降级/合规材料全未做**；`user_cards`/`card_memory`/`review_log` **全 0 行** |
-| Phase 5.5 三主题验收（9 项） | 🟠 **可开始了** | 三档 token + `buildTheme` 已接入 `app.dart`（§3.15）→ ✅ **粘土组件已建**（§3.17）→ **可开始**「三档 × 粘土四态」验收（spec §八） |
+| Phase 5.5 三主题验收（9 项） | 🟢 **前置全部就绪，可开始** | 三档 token + `buildTheme` 接线（§3.15）· **粘土组件**（§3.17）· **280ms 过渡**（§3.18）全部落齐 → 「三档 × 粘土四态」验收（spec §八）**现在可做** |
 | Phase 6 激励与增长 | ⏳ **未开始** | |
 | Phase 7 后续可选 | ⏳ | |
 
@@ -208,7 +208,7 @@ Phase 6 激励与增长
 | Step | 内容 | 状态 | 证据 |
 |---|---|---|---|
 | **1** | **清障** | ✅ **已推进（2026-09-26）** | ✅ **admin 已全删**（app 内 0 行 + `app_admin` 项目已删）· `app/lib` **76 → 60 文件 / 29,799 → 21,818 行**（清障当刻）· 累计删除 **17,205 行**（app 内 7,981 + app_admin 9,224）· **web-only 13 → 2 文件**（详见 §3.5）<br>⚠️ **当前值**：**61 文件 / 22,065 行**（清障后新增 6 个文件共 1,658 行：`fsrs_service` / `open_with_handler` / `review_list_query` / `word_query_service` / `image_export` / `math_expr`）—— 见顶部实测快照 |
-| **2** | **设计系统** | 🟢 **四批已落（§3.12–§3.17）** | ✅ token 层（811 行）· ✅ A′ 字体（+296 KB · +`CoFonts`）· ✅ **旧主题整体删除** + `buildTheme` 接线 + 设置页三档切换 · ✅ **粘土渲染层**（`clay.dart` · 四态 + 真 inset）—— 验收 **291 项全过**｜🟠 **剩**：主题切换 280ms 动效（粘土**已接入设置页档位预览**） |
+| **2** | **设计系统** | ✅ **五批全落 · Step 2 完成（§3.12–§3.18）** | ✅ token 层（811 行）· ✅ A′ 字体（+296 KB）· ✅ **旧主题整体删除** + `buildTheme` 接线 + 设置页三档切换 · ✅ **粘土渲染层**（`clay.dart` · 四态 + 真 inset · 已接入设置页预览）· ✅ **280ms 主题切换动效** —— 验收 **295 项全过**｜⏳ 剩：真机目视（闪烁 / 三档观感）· token lerp 插值（§3.18 ⑤，当前零影响） |
 | 3 | 核心界面（信息流/阅读器/划词/复习列表） | ⏳ | 🔴 **全部未开始** |
 | 3.5 | 内容扩展（文章朗读 + 电子书导入） | 🟠 | 「用 CoEvo 打开」✅；其余未做 |
 | 4 | 复习与个人页 | 🟠 | FSRS 服务层 ✅（本轮）；翻卡 UI + 我的页未做 |
@@ -1777,7 +1777,7 @@ spec §7.1：**Flutter 的 `BoxShadow` 不支持 `inset`** —— 而粘土的�
 | 验证 | 结果 |
 |---|---|
 | 🆕【10】粘土渲染断言 | ✅ **24 项全过**（真 inset API · 零硬编码色 · switch 覆盖四态 · 四态语义 · token 挂进 `extensions` · blur 同口径 · 🆕 **设置页已接入**） |
-| `tokens_verify` 总数 | ✅ **291 项全过 / 0 实现失败 / 0 规格冲突**（267 → 291） |
+| `tokens_verify` 总数 | ✅ **295 项全过 / 0 实现失败 / 0 规格冲突**（267 → 295） |
 | 全库静态分析 | ✅ **error=3 / warning=13 / info=7** 与基线**完全一致** |
 
 #### ⑥ ✅ 已接入设置页档位预览（**跑起来能看到了**）
@@ -1794,6 +1794,66 @@ spec §7.1：**Flutter 的 `BoxShadow` 不支持 `inset`** —— 而粘土的�
 
 ---
 
+### 3.18 ✅ Step 2 第五批（收口）：主题切换 280ms 动效（2026-09-27 11:15）
+
+> spec §3.8「**动效（粘土感的一半）**」的最后一项 —— 落完它 **Step 2 设计系统即全部完成**。
+
+#### ① 交付
+
+| 文件 | 改动 | 说明 |
+|---|---|---|
+| `app/lib/app.dart` | +9 行 | `themeAnimationDuration: CoEvoTokens.transitionDuration`（280ms）+ `themeAnimationCurve: Curves.fastOutSlowIn` |
+| `app/lib/theme/clay.dart` | −5/+4 行 | 🔴 **修掉我上轮引入的重复定义**：按下/回弹的 `90`/`320`/`0.97` 裸值 → 改取 `CoEvoTokens.pressDuration`/`releaseDuration`/`pressScale` |
+
+#### ② 🔑 两个核实结论（都不是猜的）
+
+| 结论 | 依据 |
+|---|---|
+| **`Curves.fastOutSlowIn` 就是 spec 那条曲线**（不是近似） | Flutter `animation/curves.dart`：`static const Cubic fastOutSlowIn = Cubic(0.4, 0.0, 0.2, 1.0)` —— 与 spec §3.8 的 `cubic-bezier(.4,0,.2,1)` **逐位相同** |
+| **「背景/文字/阴影/圆角同过渡」不需要逐项声明** | `AnimatedTheme` 走 `ThemeData.lerp`（`material/theme.dart`），而 `ThemeData.lerp` **会连同 `extensions` 一起插值**（`theme_data.dart` L1789）→ 上述字段自动同步过渡 |
+
+**Flutter 默认值是 200ms `Curves.linear`** —— 比 spec 又短又生硬，所以这一项必须显式设置。
+
+#### ③ 🔴 修掉一处「动效常数重复定义」（我上轮埋的）
+
+`CoEvoTokens` 上**早就有**四个动效常数（`transitionDuration`/`pressDuration`/`releaseDuration`/`pressScale`），
+且【8】结构不变量**已断言这 4 个值** —— 但我上轮写 `clay.dart` 时**又手写了一遍**：
+`Duration(milliseconds: 90)` / `Duration(milliseconds: 320)` / `?. 0.97`。
+
+→ 后果：**改 spec 时要改两处**，且第二处没有断言保护。
+→ 已改为取常量，并**新增断言「动效常数只在 `CoEvoTokens` 定义一处（调用处零裸值）」**。
+
+> 🔑 **可复用教训**：*数值常数已经在 token 层定义 ≠ 调用处不会再写一遍*。
+> 断言要**同时验「用没用常量」和「有没有裸值」** —— 只验前者抓不到本轮这种漏。
+
+#### ④ ✅ 验收
+
+| 验证 | 结果 |
+|---|---|
+| `tokens_verify` | ✅ **295 项全过 / 0 实现失败 / 0 规格冲突**（291 → 295，新增 4 条动效断言） |
+| 全库静态分析 | ✅ **error=3 / warning=13 / info=7** 与基线**完全一致** |
+
+⏳ **仍待目视**：spec §八 那条「主题切换 280ms 过渡**无闪烁**，且不打断正在进行的阅读」——
+闪烁与否**只有真机能验**（本地跑 `run -d chrome` 也可，切档时看是否闪白）。
+
+#### ⑤ ⏸ 顺带核实出一个**未来隐患**（已核实影响，待白哥定是否现在修）
+
+`tokens_ext.dart` 的 `CoEvoTokensExt.lerp` 目前是**阶跃实现**（`t < 0.5 ? this : other`）——
+而 `ThemeData` 的 `colorScheme` / `scaffoldBackgroundColor` 等是**平滑插值**的，两者机制不一致。
+
+| 项 | 实测结论 |
+|---|---|
+| **当前实际影响** | 🟢 **零** —— ① `ThemeData` 层面的颜色全部平滑过渡（`AnimatedTheme` 处理）② `CoEvoTokensExt.of(context)` 的**唯一调用点是 `clay.dart:241`**，而设置页传了显式 `tokens` → **走不到 ext** |
+| **未来风险** | 🔴 Step 3 用 `Clay()`（不传 tokens）画卡片/按钮时 → 主题切换时**粘土块会在 140ms 处「啪」地跳变**，而周围背景平滑渐变 → 观感不协调 |
+| **技术陷阱**（若要修） | 不能无脑逐字段插值：`ClayTokens.scaleRadius` 是 bool（只能阶跃），而 `radiusFor()` = `scaleRadius ? radius×factor : radius` → 若 `radius` 插值而 `scaleRadius` 阶跃，圆角会在 t=0.5 **从 11px 跳到 19.9px**，比不插值更难看 |
+
+**建议方向**（供拍板）：**颜色插值 + 几何/枚举整组阶跃** —— 即 `CoRgba` 等颜色字段插值，
+`radius`/`maxSize`/`scaleRadius`/`syntax` 等同侧取值（保证派生值自洽）。预估 **约 76 行**
+（`CoRgba.lerp` 10 · `CoEvoTokens.lerp` 22 · `ClayTokens.lerp` 12 · `TraceTokens.lerp` 8 ·
+`TraceStyle.lerp` 12 · `CoTypography.lerp` 12），且可**纯 Dart 验证**（tokens 层零 Flutter 依赖）。
+
+---
+
 ## 四、下一步建议（按依赖排序 · 已按白哥 2026-09-26「按计划进行」开始执行）
 
 > **修订说明**：初版把 P0 写成「建 `codemagic.yaml`」——**已改为「扩展已有的 GitHub Actions」**
@@ -1802,7 +1862,7 @@ spec §7.1：**Flutter 的 `BoxShadow` 不支持 `inset`** —— 而粘土的�
 | 优先级 | 事项 | 为什么现在做 | 依赖 | 状态 |
 |---|---|---|---|---|
 | ~~✅ P0~~ | ~~🔴 **修 `taiwan`/`tibet` 释义**~~ | — | — | ✅ **已完成 2026-09-26 23:24** —— **P0 2 → 0**（见 §3.10） |
-| **P1** | **Step 2 设计系统落地**（token → 代码） | token 已定稿；**是 Step 3 的前置** | ✅ Step 1 | ✅ **四批已完成（§3.12–§3.17）**：token 层 · A′ 字体 · **旧主题删除 + `buildTheme` 接线** · **粘土渲染层**（四态 + 真 inset）→ **验收 291 项全过** ＋ ✅ **`flutter run -d chrome` 真编译通过（03:36）**｜🟠 剩：主题切换 280ms 动效 · 粘土在 Step 3 全面接入 |
+| ~~✅~~ | ~~**Step 2 设计系统落地**（token → 代码）~~ | — | — | ✅✅ **五批全部完成（§3.12–§3.18）**：token 层 · A′ 字体 · **旧主题删除 + `buildTheme` 接线** · **粘土渲染层**（四态 + 真 inset + 接入设置页）· **280ms 主题切换动效** → **验收 295 项全过** ＋ ✅ **`flutter run -d chrome` 真编译通过**｜⏳ 剩真机目视 + token lerp 插值（当前零影响） |
 | **P1** | **Phase 4 #1 `user.db` 接入** | 表结构 + 查询层已就绪（79 项断言过），差**落库接线** | — | ⏳ |
 | **P2** | **Phase 3 内容抓取**（服务端 RSS） | 无内容 = 端侧没东西可读；可与 P1 并行 | — | ⏳ |
 | **P2** | **Step 3 核心界面**（信息流/阅读器/**划词**） | 🔴 **最大工作量项**（划词仍 0 命中、无 feed/reader 文件） | Step 2 | ⏳ **待开始** —— 🔑 **重写对象已实测确认**（这就是「跑起来看还是旧界面」的真身）：`home_screen` 475 行（**K12 科目直选**，调 `/api/k12/subjects`）· `review_screen` 1,533 行（含**汉语 tab**）· `achievements_screen` 999 行（**`_k12Progress`**）· 个人页 · 卡片组件。**主题层已就位**（朱砂 `#B4432C` + 三档底色），页面层仍是 K12 遗留 |

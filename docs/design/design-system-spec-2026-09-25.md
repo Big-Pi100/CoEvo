@@ -468,6 +468,23 @@ inset -3px -3px 6px var(--cl-light);   /* 右下受光 */
 
 **这是 Flutter 的原生强项，几乎零成本。缺了动效，粘土只是个圆角卡片。**
 
+> ✅ **已实现（2026-09-27）**：
+> - **按下 / 回弹** —— `Clay` 容器内置（`AnimatedScale` + `Curves.elasticOut`）
+> - **主题切换** —— `app.dart` 的 `themeAnimationDuration: CoEvoTokens.transitionDuration`
+>   + `themeAnimationCurve: Curves.fastOutSlowIn`
+>   · 后者定义**正是** `Cubic(0.4, 0.0, 0.2, 1.0)`（Flutter `animation/curves.dart`），
+>     与上表那条 `cubic-bezier(.4,0,.2,1)` **逐位相同**
+>   · Flutter 默认是 **200ms `Curves.linear`**（比本表又短又生硬）→ 必须显式设置
+>   · 「背景/文字/阴影/圆角同过渡」**不需逐项声明** —— `AnimatedTheme` 走 `ThemeData.lerp`，
+>     而它会**连同 `extensions` 一起插值**（`theme_data.dart`）
+> - 🔑 四个动效常数**只在 `CoEvoTokens` 定义一处**，调用处零裸值（已加验收断言拦这种漏）
+>
+> ⏳ **待目视**：§八 的「主题切换 280ms 过渡**无闪烁**」—— 只有真机能验。
+> ⚠️ **已知取舍**：`CoEvoTokensExt.lerp` 目前是**阶跃**（token 是离散档位），
+> 而 `ThemeData` 的颜色是平滑插值。**当前零影响**（`CoEvoTokensExt.of` 尚无真实消费者）；
+> 待 Step 3 粘土全面接入时需改为「颜色插值 + 几何/枚举阶跃」——
+> 详见 `plan-and-progress` §3.18 ⑤。
+
 ### 3.9 深色模式的取舍（如实说明）
 
 | | 浅色 | 深色 |

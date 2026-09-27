@@ -25,7 +25,7 @@ dart run bin/verify_tokens.dart
 - **退出码 0 = 通过；1 = 有实现类失败** —— 可直接挂 CI
 - 🔑 用**相对路径直接 import app 的源码** → 验证的是**实际要发布的实现**，不是副本
 
-## 断言分布（291 项）
+## 断言分布（295 项）
 
 | 节 | 覆盖 | 项数 |
 |---|---|---:|
@@ -38,7 +38,7 @@ dart run bin/verify_tokens.dart
 | 🆕【7】**字体** | spec §4.1 · A′ 不变量 + **pubspec 交叉验证**（family 声明 + 文件存在） | ~17 |
 | 【8】结构不变量 | 三档齐备 · 方案甲色相共用 · 动效常数 | ~18 |
 | 🆕【9】**接线** | 文件到位/删除 · 全库零残留 · **`ThemeData` 唯一产出点** · builder 无硬编码色 · `app.dart` 三件套 · provider 两字段 · `CoSpacing` 8 值 | **26** |
-| 🆕【10】**粘土渲染层** | 真 inset（`MaskFilter` + `evenOdd` + `clipRRect`，非 gradient 兜底）· 零硬编码色 · **switch 覆盖四态** · 四态语义（accentOut / flipped / ×0.55 / <24px）· token 挂进 `extensions` · blur→sigma 同口径 · 🆕 **设置页真的接了**（`Clay(` / `ClayState.selected` / `CoEvoTokens? tokens`） | **24** |
+| 🆕【10】**粘土渲染层 + 动效** | 真 inset（`MaskFilter` + `evenOdd` + `clipRRect`，非 gradient 兜底）· 零硬编码色 · **switch 覆盖四态** · 四态语义（accentOut / flipped / ×0.55 / <24px）· token 挂进 `extensions` · blur→sigma 同口径 · **设置页真的接了** · 🆕 **动效 4 项**（280ms 取 token 常量 · 曲线 = `fastOutSlowIn` · 按下/回弹取常量 · **常数只在 `CoEvoTokens` 定义一处，调用处零裸值**） | **28** |
 
 ## 三类断言（分工不同，别混）
 
