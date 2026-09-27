@@ -22,6 +22,39 @@
 import 'dart:math' as math;
 
 // ─────────────────────────────────────────────────────────────
+// ⓪ 插值（主题切换过渡用 —— spec §3.8「280ms 背景/文字/阴影/圆角同过渡」）
+// ─────────────────────────────────────────────────────────────
+//
+// 🔴 **核心原则：插值只能作用在「不会引发派生量不连续」的字段上。**
+//
+// | 类别 | 处理 | 理由 |
+// |---|---|---|
+// | **颜色**（`CoRgba`） | ✅ 插值 | 视觉上唯一「看得出平滑」的部分，且无派生约束 |
+// | **纯数值字号**（`CoTypography` 11 项 · `readLineHeight`） | ✅ 插值 | 线性插值**保序** → `hierarchyHolds` 在过渡期间仍成立 |
+// | **几何**（`ClayTokens.radius` · inset 偏移 · 痕迹 padding） | ❌ **整组阶跃** | ⚠️ 见下 |
+// | **枚举 / bool / 字符串**（`theme`/`label`/`maxSize`/`scaleRadius`/`syntax`） | ❌ 阶跃 | 值域离散，物理上无法插值 |
+//
+// ⚠️ **为什么几何不能插值（本轮最关键的判断）**：
+// 粘土圆角是**派生量**：`radiusFor() = scaleRadius ? radius × factor : radius`。
+// 若 `radius` 插值而 `scaleRadius`（bool，只能阶跃）在 t=0.5 翻转，
+// 「墨 → 格」的过渡里圆角会：
+//   · t=0.49 → `lerp(26,14,.49) × 0.55 = 20.1 × 0.55 = 11.1px`
+//   · t=0.51 → `lerp(26,14,.51) × 1.00 = 19.9px`
+// → **从 11px 跳到 19.9px**，比完全不插值更难看（还会撞上 §3.4 的「月牙伪影」）。
+//
+// **推论（可复用）**：当输入与输出是**非线性关系**时，插值要作用在**最终量**上，
+// 而不是输入参数上；做不到就**整组阶跃**，别让一组关联字段各自为政。
+
+/// 取「离 `t` 更近的那一侧」—— 用于**不能插值**的字段。
+///
+/// 🔑 阈值 `0.5` 是刻意的：一组关联字段（如 `radius` 与 `scaleRadius`）必须**同时**切换，
+/// 否则会造出「没人设计过」的中间形态。所以它们全部走这一个函数，天然同步。
+T _pick<T>(T a, T b, double t) => t < 0.5 ? a : b;
+
+/// 线性插值一个 double（`t` 已夹在 0–1）。
+double _lerpD(double a, double b, double t) => a + (b - a) * t;
+
+// ─────────────────────────────────────────────────────────────
 // ① 颜色值类型（纯 Dart，零依赖）
 // ─────────────────────────────────────────────────────────────
 
@@ -80,6 +113,23 @@ class CoRgba {
   /// 用法：粘土**禁用态**的「外阴影减半」= `scaleAlpha(0.55)`（spec §3.7）。
   CoRgba scaleAlpha(double factor) =>
       CoRgba(r, g, b, (a * factor).clamp(0.0, 1.0));
+
+  /// 颜色插值（主题切换过渡用）。
+  ///
+  /// 🔑 **`t <= 0` / `t >= 1` 直接返回端点实例**（不新建对象）——
+  /// 这既省分配，也让 `identical` 判断（如 `ClayPainter.shouldRepaint`）
+  /// 在稳态下能识别出「没变」。
+  static CoRgba lerp(CoRgba a, CoRgba b, double t) {
+    if (t <= 0) return a;
+    if (t >= 1) return b;
+    return CoRgba(
+      _lerpD(a.r.toDouble(), b.r.toDouble(), t).round(),
+      _lerpD(a.g.toDouble(), b.g.toDouble(), t).round(),
+      _lerpD(a.b.toDouble(), b.b.toDouble(), t).round(),
+      // alpha **不取整** —— 半透明过渡对精度敏感
+      _lerpD(a.a, b.a, t),
+    );
+  }
 
   // ── WCAG 相对亮度 / 对比度（验证要用，Flutter 层将来也能用）──
 
@@ -229,6 +279,24 @@ class TraceStyle {
 
   @override
   int get hashCode => Object.hash(bg, border, fg, padding, radius);
+
+  /// 插值（主题切换过渡用）。
+  ///
+  /// 只插 `bg` 与 `fg`（颜色）；`border` / `padding` / `radius` 取一侧：
+  /// - `border` 是**可空**且带 `dashed`（bool）→ 存在性与虚实都是离散的
+  /// - `padding` / `radius` 是几何 → 与粘土同一条原则（见文件头 ⓪）
+  ///
+  /// ⚠️ `fg` 可空（`null` = `inherit`）：**两端都非空才插值**，
+  /// 否则取一侧 —— 避免造出「半透明地继承」这种不存在的语义。
+  static TraceStyle lerp(TraceStyle a, TraceStyle b, double t) => TraceStyle(
+        bg: CoRgba.lerp(a.bg, b.bg, t),
+        border: _pick(a.border, b.border, t),
+        fg: (a.fg != null && b.fg != null)
+            ? CoRgba.lerp(a.fg!, b.fg!, t)
+            : _pick(a.fg, b.fg, t),
+        padding: _pick(a.padding, b.padding, t),
+        radius: _pick(a.radius, b.radius, t),
+      );
 }
 
 /// 痕迹三态（刚查过 / 复习中 / 已掌握）。
@@ -251,6 +319,17 @@ class TraceTokens {
     if (reps >= 3 && lapses == 0) return mastered;
     return reviewing;
   }
+
+  /// 插值（主题切换过渡用）。
+  ///
+  /// 🔑 `syntax` 取一侧（枚举，无法插值），但**三态样式照插** ——
+  /// 于是「已被标记的词」在切主题时会平滑变色，而不是整块闪一下。
+  static TraceTokens lerp(TraceTokens a, TraceTokens b, double t) => TraceTokens(
+        syntax: _pick(a.syntax, b.syntax, t),
+        fresh: TraceStyle.lerp(a.fresh, b.fresh, t),
+        reviewing: TraceStyle.lerp(a.reviewing, b.reviewing, t),
+        mastered: TraceStyle.lerp(a.mastered, b.mastered, t),
+      );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -448,6 +527,23 @@ class ClayTokens {
     final offset = s.shade.dx.abs();
     return radiusFor(height) >= offset * 3;
   }
+
+  /// 插值（主题切换过渡用）。
+  ///
+  /// 🔴 **只有颜色插值；几何与枚举整组取一侧** —— 这是本文件里最容易写错的一处：
+  /// `radius` 必须与 `scaleRadius` / `maxSize` **同侧**，否则 `radiusFor()`
+  /// 会在 t=0.5 跳变（见文件头 ⓪ 的完整推导）。
+  static ClayTokens lerp(ClayTokens a, ClayTokens b, double t) => ClayTokens(
+        out: CoRgba.lerp(a.out, b.out, t),
+        shade: CoRgba.lerp(a.shade, b.shade, t),
+        light: CoRgba.lerp(a.light, b.light, t),
+        accentOut: CoRgba.lerp(a.accentOut, b.accentOut, t),
+        // ↓ 以下三项**必须同时取同一侧**（几何硬约束，见文件头 ⓪）
+        radius: _pick(a.radius, b.radius, t),
+        maxSize: _pick(a.maxSize, b.maxSize, t),
+        scaleRadius: _pick(a.scaleRadius, b.scaleRadius, t),
+        syntaxLabel: _pick(a.syntaxLabel, b.syntaxLabel, t),
+      );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -512,6 +608,27 @@ class CoTypography {
   /// 🔑 不变量：记忆法不得压过释义（含紧凑档）。
   bool get hierarchyHolds =>
       defText >= mnemMain && mnemMain > ctxText && compact.defText >= compact.mnemMain;
+
+  /// 插值（主题切换过渡用）。
+  ///
+  /// 🔑 **字号可以放心全插** —— 线性插值**保序**：
+  /// 若两端都满足 `defText >= mnemMain`，中间值也必然满足 → `hierarchyHolds`
+  /// 在整个过渡期间保持成立（这是「纯数值」与「几何」的分界，见文件头 ⓪）。
+  static CoTypography lerp(CoTypography a, CoTypography b, double t) =>
+      CoTypography(
+        word: _lerpD(a.word, b.word, t),
+        defText: _lerpD(a.defText, b.defText, t),
+        mnemMain: _lerpD(a.mnemMain, b.mnemMain, t),
+        ctxText: _lerpD(a.ctxText, b.ctxText, t),
+        gloss: _lerpD(a.gloss, b.gloss, t),
+        defEn: _lerpD(a.defEn, b.defEn, t),
+        mnemNote: _lerpD(a.mnemNote, b.mnemNote, t),
+        ipa: _lerpD(a.ipa, b.ipa, t),
+        label: _lerpD(a.label, b.label, t),
+        compactScale: _lerpD(a.compactScale, b.compactScale, t),
+        sentenceLineHeight:
+            _lerpD(a.sentenceLineHeight, b.sentenceLineHeight, t),
+      );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -647,6 +764,42 @@ class CoEvoTokens {
 
   /// 松手回弹 320ms `Curves.elasticOut`（§3.8）。
   static const Duration releaseDuration = Duration(milliseconds: 320);
+
+  /// 两档之间插值（**主题切换 280ms 过渡的驱动函数** · spec §3.8）。
+  ///
+  /// Flutter 的 `AnimatedTheme` 会通过 `ThemeData.lerp` 调用各
+  /// `ThemeExtension.lerp`（本档经 `CoEvoTokensExt` 挂载）→ 最终落到这里。
+  ///
+  /// **插值策略**（完整依据见文件头 ⓪）：
+  /// - ✅ **颜色 12 项 + `readLineHeight` + 字号 11 项** → 插值
+  /// - ❌ `theme` / `label` / `character` → 取一侧（枚举 / 字符串）
+  /// - ❌ `clay` / `trace` 内部按各自规则（几何与枚举整组阶跃）
+  static CoEvoTokens lerp(CoEvoTokens a, CoEvoTokens b, double t) {
+    // 🔑 端点短路：不新建对象 → `identical` 能识别稳态，省去无谓重绘
+    if (t <= 0) return a;
+    if (t >= 1) return b;
+    return CoEvoTokens(
+      theme: _pick(a.theme, b.theme, t),
+      label: _pick(a.label, b.label, t),
+      character: _pick(a.character, b.character, t),
+      page: CoRgba.lerp(a.page, b.page, t),
+      read: CoRgba.lerp(a.read, b.read, t),
+      card: CoRgba.lerp(a.card, b.card, t),
+      ink: CoRgba.lerp(a.ink, b.ink, t),
+      ink2: CoRgba.lerp(a.ink2, b.ink2, t),
+      ink3: CoRgba.lerp(a.ink3, b.ink3, t),
+      accent: CoRgba.lerp(a.accent, b.accent, t),
+      accentBright: CoRgba.lerp(a.accentBright, b.accentBright, t),
+      accentInk: CoRgba.lerp(a.accentInk, b.accentInk, t),
+      accentOut: CoRgba.lerp(a.accentOut, b.accentOut, t),
+      line: CoRgba.lerp(a.line, b.line, t),
+      sunken: CoRgba.lerp(a.sunken, b.sunken, t),
+      readLineHeight: _lerpD(a.readLineHeight, b.readLineHeight, t),
+      clay: ClayTokens.lerp(a.clay, b.clay, t),
+      trace: TraceTokens.lerp(a.trace, b.trace, t),
+      type: CoTypography.lerp(a.type, b.type, t),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────

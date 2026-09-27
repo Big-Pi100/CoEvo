@@ -112,6 +112,7 @@ void main() {
   _s8Invariants();
   _s9Wiring();
   _s10ClayRender();
+  _s11Lerp();
 
   print('\n' + '═' * 72);
   print('通过 $_pass 项，实现类失败 $_fail 项，规格内部冲突 ${_conflicts.length} 项');
@@ -499,6 +500,24 @@ void _s7Fonts() {
 }
 
 /// 仓库根目录（从 cwd 向上找到含 app/ 的目录）。
+/// 🔴 **「检查代码里有没有某个东西」必须先滤掉注释行** —— 两个方向都会出错：
+///
+/// | 方向 | 误判 | 后果 |
+/// |---|---|---|
+/// | 「**无残留**」检查 | 注释里解释「为什么**不用** X」被当成「还在**用** X」 | 🔴 **假红** —— 断言失败但代码没错 |
+/// | 「**已接线**」检查 | 注释里提到 API 名，被当成「代码里调了」 | 🔴🔴 **假绿，更危险** —— 明明没接却显示通过 |
+///
+/// 本轮就是被第一种咬到：【11】检查「已无阶跃实现」时，
+/// 命中的是注释里那句「为什么不能是阶跃（`t < 0.5 ? this : other`）」。
+///
+/// ⚠️ **只滤「整行注释」**（行首 `//`）—— 不敢去行尾 `//`，
+/// 因为源码里有大量 URL（`https://…`），正则去尾注释会误伤字符串。
+/// 这是刻意的折中：行尾注释的误判概率远低于整行注释。
+String _codeOnly(String src) => src
+    .split('\n')
+    .where((l) => !l.trimLeft().startsWith('//'))
+    .join('\n');
+
 String _repoRoot() {
   var d = Directory.current;
   for (var i = 0; i < 6; i++) {
@@ -561,7 +580,8 @@ void _s9Wiring() {
   print('\n【9】设计系统接线（防「写了但没接通」）');
 
   final root = _repoRoot();
-  String src(String p) => File('$root/app/lib/$p').readAsStringSync();
+  // 🔑 统一经 `_codeOnly` —— 否则「注释里提到」会冒充「代码里写了」
+  String src(String p) => _codeOnly(File('$root/app/lib/$p').readAsStringSync());
   bool has(String p) => File('$root/app/lib/$p').existsSync();
 
   // ① 文件到位 / 旧文件已删（语义残留清理）
@@ -577,7 +597,7 @@ void _s9Wiring() {
   final legacyHits = <String>[];
   final themeDataProducers = <String>[];
   for (final f in dartFiles) {
-    final s = f.readAsStringSync();
+    final s = _codeOnly(f.readAsStringSync());
     if (RegExp(r'\bAppTheme\b|\bAppThemeMode\b').hasMatch(s)) {
       legacyHits.add(f.path.split(RegExp(r'[/\\]')).last);
     }
@@ -642,7 +662,8 @@ void _s10ClayRender() {
   print('\n【10】粘土渲染层（防「参数对但没画出来」）');
 
   final root = _repoRoot();
-  String src(String p) => File('$root/app/lib/$p').readAsStringSync();
+  // 🔑 统一经 `_codeOnly` —— 否则「注释里提到」会冒充「代码里写了」
+  String src(String p) => _codeOnly(File('$root/app/lib/$p').readAsStringSync());
   bool has(String p) => File('$root/app/lib/$p').existsSync();
 
   check('clay.dart 存在', has('theme/clay.dart'));
@@ -745,4 +766,119 @@ void _s10ClayRender() {
   }
   check('动效常数只在 CoEvoTokens 定义一处（调用处零裸值）',
       bareHits.isEmpty, bareHits.join(' · '));
+}
+
+// ── ⑪ token 插值（主题切换过渡 · spec §3.8）─────────────────
+//
+// 🔑 为什么需要这一节：主题切换时 `ThemeData.lerp` 会把 `colorScheme` 等平滑插值，
+// 而 token 走 `ThemeExtension.lerp` —— 若它**阶跃**（t<0.5 保持原档），
+// 用 token 取色的组件（粘土）会在过渡中途「啪」地跳变，与周围不协调。
+//
+// 但插值**不能无脑做**：几何量是某些派生值的输入，插值会造成更难看的不连续。
+// 所以本节的核心是 —— **验「颜色确实插值」+「几何确实整组阶跃」**。
+void _s11Lerp() {
+  print('\n【11】token 插值（主题切换过渡 · spec §3.8）');
+
+  // ① 端点短路：t=0 / t=1 必须返回**原实例**（identical）
+  //    🔑 不只是省分配 —— `ClayPainter.shouldRepaint` 用 identical 判断，
+  //    若稳态也返回新对象 → 每帧无谓重绘。
+  var allBegin = true, allEnd = true;
+  for (final (_, ta) in _themes) {
+    for (final (_, tb) in _themes) {
+      if (!identical(CoEvoTokens.lerp(ta, tb, 0), ta)) allBegin = false;
+      if (!identical(CoEvoTokens.lerp(ta, tb, 1), tb)) allEnd = false;
+    }
+  }
+  check('t=0 / t=1 返回原实例（三档两两共 6 组）', allBegin && allEnd);
+
+  final ink = _themes[0].$2, grid = _themes[1].$2, night = _themes[2].$2;
+  final a = ink, b = grid;
+
+  // ② 颜色**确实插值**（不是阶跃）
+  final midPage = CoRgba.lerp(a.page, b.page, 0.5);
+  final expR = (a.page.r + b.page.r) / 2;
+  check('颜色在中点取均值（±1 取整误差）',
+      (midPage.r - expR).abs() <= 1,
+      '实得 ${midPage.r} / 期望 ≈${expR.toStringAsFixed(1)}');
+  check('中点色 ≠ 任一端点（确认真的插了，没阶跃）',
+      midPage != a.page && midPage != b.page);
+  // alpha 不取整（半透明过渡对精度敏感）
+  final alphaMid = CoRgba.lerp(
+      const CoRgba(0, 0, 0, 0.0), const CoRgba(0, 0, 0, 0.55), 0.5);
+  near('alpha 插值不取整（0 → .55 中点为 .275）', alphaMid.a, 0.275, tol: 0.001);
+
+  // ③ 🔴 几何**整组阶跃**（本轮最关键的判断）
+  final midClay = ClayTokens.lerp(a.clay, b.clay, 0.5);
+  check('radius 只取端点值（不插值）',
+      midClay.radius == a.clay.radius || midClay.radius == b.clay.radius,
+      '实得 ${midClay.radius}');
+  check('maxSize 只取端点值', midClay.maxSize == a.clay.maxSize || midClay.maxSize == b.clay.maxSize);
+  //    🔑 核心不变量：radius 与 scaleRadius **必须同侧** ——
+  //    否则 radiusFor() 会在 t=0.5 跳变（见 coevo_tokens.dart 文件头 ⓪）
+  check('radius 与 scaleRadius 同侧（派生量自洽）',
+      (midClay.radius == a.clay.radius) == (midClay.scaleRadius == a.clay.scaleRadius));
+
+  // ④ 🔴 端到端：`radiusFor()` 在整个过渡期间**不得跳变**
+  //    这是 ③ 的可观测后果 —— 三档两两组合全扫。
+  var maxJump = 0.0;
+  String worst = '';
+  for (final (la, ta) in _themes) {
+    for (final (lb, tb) in _themes) {
+      if (identical(ta, tb)) continue;
+      double prev = double.nan;
+      for (var i = 0; i <= 100; i++) {
+        final r = CoEvoTokens.lerp(ta, tb, i / 100).clay.radiusFor(60);
+        if (i > 0) {
+          final jump = (r - prev).abs();
+          if (jump > maxJump) {
+            maxJump = jump;
+            worst = '$la→$lb @t=${(i / 100).toStringAsFixed(2)}';
+          }
+        }
+        prev = r;
+      }
+    }
+  }
+  //    阈值 2px —— **不是拍的**，依据如下：
+  //    · 各档 md（高度 60）的实际圆角：墨 `26×0.55=14.3` · 格 `14×1.0=14.0` · 夜 `24×0.55=13.2`
+  //      → 任意两档最大差 **1.1px**，这就是「整组阶跃」的**固有代价**
+  //    · 对照：若错误地只插 `radius` 而 `scaleRadius` 仍阶跃（墨→格），
+  //      跳变会是 `|11.1 − 19.9| = 8.8px`（见 coevo_tokens.dart 文件头 ⓪）
+  //    → 阈值 2px 与 8.8px 相差 4 倍，**有足够区分度**：能把「固有代价」和「真写错」分开
+  //
+  //    🔑 为什么这个代价可以接受：1.1px 的圆角变化，在一帧内完成，肉眼基本不可察；
+  //       而要消除它需把 token 结构从「基准 radius + 缩放开关」改成「三档最终半径」——
+  //       会连带改 spec §3.4/§3.5 与既有【3】【5】断言，**代价远大于收益**。
+  //       → 记为**已知取舍**（如实在 spec §3.8 说明），不当成 bug。
+  check('radiusFor 全程无跳变（相邻步进 ≤ 2px）', maxJump <= 2.0,
+      '最大跳变 ${maxJump.toStringAsFixed(2)}px${worst.isEmpty ? '' : " @ $worst"}');
+
+  // ⑤ 字号**可以放心插值** —— 线性插值保序 → 层级不变量在过渡期间仍成立
+  var hierOk = true;
+  for (final (_, ta) in _themes) {
+    for (final (_, tb) in _themes) {
+      for (var i = 0; i <= 20; i++) {
+        if (!CoEvoTokens.lerp(ta, tb, i / 20).type.hierarchyHolds) hierOk = false;
+      }
+    }
+  }
+  check('过渡期间「线索不压过答案」始终成立（字号保序）', hierOk);
+
+  // ⑥ 三态痕迹都参与插值（不能只插 fresh）
+  final midTrace = TraceTokens.lerp(a.trace, b.trace, 0.5);
+  final changed = <String>[];
+  if (midTrace.fresh.bg != a.trace.fresh.bg &&
+      midTrace.fresh.bg != b.trace.fresh.bg) changed.add('fresh');
+  if (midTrace.reviewing.bg != a.trace.reviewing.bg &&
+      midTrace.reviewing.bg != b.trace.reviewing.bg) changed.add('reviewing');
+  if (midTrace.mastered.bg != a.trace.mastered.bg &&
+      midTrace.mastered.bg != b.trace.mastered.bg) changed.add('mastered');
+  check('三态痕迹的 bg 都被插值', changed.length == 3, '实得 ${changed.join(" / ")}');
+
+  // ⑦ 接线：`ThemeExtension.lerp` 必须真的调 `CoEvoTokens.lerp`
+  final ext = _codeOnly(
+      File('${_repoRoot()}/app/lib/theme/tokens_ext.dart').readAsStringSync());
+  check('CoEvoTokensExt.lerp 调用 CoEvoTokens.lerp', ext.contains('CoEvoTokens.lerp('));
+  check('tokens_ext 里已无阶跃实现（t<0.5 ? this : other）',
+      !RegExp(r't\s*<\s*0\.5\s*\?\s*this').hasMatch(ext));
 }

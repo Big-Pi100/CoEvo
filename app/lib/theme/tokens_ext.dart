@@ -38,13 +38,18 @@ class CoEvoTokensExt extends ThemeExtension<CoEvoTokensExt> {
   CoEvoTokensExt copyWith({CoEvoTokens? tokens}) =>
       CoEvoTokensExt(tokens ?? this.tokens);
 
-  /// 🔑 token 是**离散档位**（墨 / 格 / 夜），没有「中间值」可言 ——
-  /// 不过半就保持原档，避免插值出第四种配色。
+  /// 主题切换过渡 —— 把两档 token 真正**插值**（spec §3.8：280ms「背景/文字/阴影/圆角同过渡」）。
   ///
-  /// 主题切换的观感过渡由 `MaterialApp` 自身的 280ms 动画承担。
+  /// 🔑 **为什么不能是阶跃**（`t < 0.5 ? this : other`）：
+  /// `ThemeData.lerp` 会把 `colorScheme` / `scaffoldBackgroundColor` 等**平滑插值**，
+  /// 而 `ThemeExtension` 若在 t=0.5 一次性切换 → 用 token 取色的组件（如粘土）
+  /// 会在过渡中途**「啪」地跳变**，与周围平滑渐变的背景不协调。
+  ///
+  /// 插值策略见 [CoEvoTokens.lerp]：**颜色与字号插值，几何与枚举整组阶跃**
+  /// （几何是派生量的输入，插值会造成更难看的不连续 —— 依据见 `coevo_tokens.dart` 文件头 ⓪）。
   @override
   CoEvoTokensExt lerp(ThemeExtension<CoEvoTokensExt>? other, double t) {
     if (other is! CoEvoTokensExt) return this;
-    return t < 0.5 ? this : other;
+    return CoEvoTokensExt(CoEvoTokens.lerp(tokens, other.tokens, t));
   }
 }
