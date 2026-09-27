@@ -447,7 +447,7 @@ CREATE INDEX IF NOT EXISTS idx_campaign_members_campaign ON campaign_members(cam
 CREATE INDEX IF NOT EXISTS idx_campaign_members_user ON campaign_members(user_id);
 "#;
 
-/// 管理端表（管理员、订阅审计、监护人、K12题库等）
+/// 管理端表（管理员、订阅审计、监护人等）
 pub const ADMIN_SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS admin_users (
     id TEXT PRIMARY KEY,
@@ -498,29 +498,6 @@ CREATE TABLE IF NOT EXISTS guardian_assignments (
     assigned_at TEXT NOT NULL,
     is_active INTEGER DEFAULT 1,
     UNIQUE(guardian_admin_id, student_user_id)
-);
-CREATE TABLE IF NOT EXISTS k12_quiz_bank (
-    id TEXT PRIMARY KEY,
-    subject TEXT NOT NULL,
-    grade_band TEXT NOT NULL,
-    task_name TEXT,
-    question TEXT NOT NULL,
-    answer TEXT NOT NULL,
-    question_type TEXT,
-    options TEXT,
-    source_dataset TEXT,
-    difficulty REAL DEFAULT 0.5
-);
-CREATE TABLE IF NOT EXISTS k12_quiz_attempts (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    quiz_id TEXT NOT NULL,
-    conversation_id TEXT,
-    user_answer TEXT,
-    is_correct INTEGER,
-    attempted_at TEXT NOT NULL,
-    task_name TEXT,
-    FOREIGN KEY (user_id) REFERENCES users(id)
 );
 CREATE INDEX IF NOT EXISTS idx_admin_users_role_status ON admin_users(role, status);
 CREATE INDEX IF NOT EXISTS idx_subscription_requests_status ON subscription_requests(status);
@@ -756,7 +733,6 @@ mod tests {
         "conversation_turns", "conversations",
         "distribution_commissions", "distribution_expenses",
         "guardian_assignments",
-        "k12_quiz_attempts", "k12_quiz_bank",
         "marketing_campaigns",
         "plan_runs",
         "prebuilt_cards", "prebuilt_humanities_cards", "prebuilt_language_cards",

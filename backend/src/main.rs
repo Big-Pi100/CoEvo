@@ -44,10 +44,6 @@ async fn main() {
         .with_ansi(false)
         .init();
 
-    // 启动时显式输出 K12 数据路径（日志系统已就绪，通过 tracing 输出）
-    let prebuilt = std::env::var("COEVO_K12_DATA_DIR").unwrap_or_else(|_| "data/curriculum/v3".to_string());
-    tracing::info!("[K12] data dir: {}", prebuilt);
-
     tracing::info!("CoEvo backend starting, logs: {}/coevo.log.*", log_dir);
 
     // --- Paths from environment (with hardcoded defaults for dev) ---
@@ -92,15 +88,6 @@ async fn main() {
 
     // Load curriculum guide (deferred — manual POST /api/admin/curriculum/load)
     tracing::info!("Data loaders initialized");
-
-    // K12 quiz bank — 需要 DB 连接
-    {
-        let conn = api_server::db_pool::get_conn();
-        match api_server::k12_quiz_loader::load_quiz_bank(&conn, &prebuilt) {
-            Ok(n) => tracing::info!("K12 quiz bank: {} quizzes loaded", n),
-            Err(e) => tracing::warn!("K12 quiz bank: {}", e),
-        }
-    }
 
     chat_engine::config::ensure_db_connection(&db_path);
 
@@ -267,36 +254,6 @@ async fn main() {
             "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('30d', '月度会员', 30, 12000, 0, 1, datetime('now'))",
             "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('90d', '季度会员', 90, 35000, 1, 1, datetime('now'))",
             "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('365d', '年度会员', 365, 128000, 2, 1, datetime('now'))",
-            // K12 题库
-            "CREATE TABLE IF NOT EXISTS k12_quiz_bank (
-                id TEXT PRIMARY KEY,
-                subject TEXT NOT NULL,
-                grade_band TEXT NOT NULL,
-                task_name TEXT,
-                question TEXT NOT NULL,
-                answer TEXT NOT NULL,
-                question_type TEXT,
-                options TEXT,
-                source_dataset TEXT,
-                difficulty REAL DEFAULT 0.5
-            )",
-            "CREATE TABLE IF NOT EXISTS k12_quiz_attempts (
-                id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                quiz_id TEXT NOT NULL,
-                conversation_id TEXT,
-                user_answer TEXT,
-                is_correct INTEGER,
-                attempted_at TEXT NOT NULL,
-                task_name TEXT,
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            )",
-            "CREATE INDEX IF NOT EXISTS idx_k12_quiz_bank_subject_grade ON k12_quiz_bank(subject, grade_band)",
-            "CREATE INDEX IF NOT EXISTS idx_k12_quiz_attempts_user_quiz ON k12_quiz_attempts(user_id, quiz_id)",
-
-            // k12_quiz_bank 新增关联字段
-            "ALTER TABLE k12_quiz_bank ADD COLUMN assessment_item_id TEXT DEFAULT NULL",
-            "ALTER TABLE k12_quiz_bank ADD COLUMN plan_stage_id TEXT DEFAULT NULL",
             // 手机号唯一性约束（先清理重复值再建索引）
             "UPDATE users SET phone_hash = NULL WHERE id NOT IN (SELECT MIN(id) FROM users WHERE phone_hash IS NOT NULL AND phone_hash != '' GROUP BY phone_hash)",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_hash ON users(phone_hash) WHERE phone_hash IS NOT NULL",
@@ -365,15 +322,6 @@ async fn main() {
             tracing::info!("debug_trackers cache initialized");
         }
 
-        // K12 prebuilt 数据写入 DB（JSON → prebuilt_* 表）
-        {
-            let conn = api_server::db_pool::get_conn();
-            if let Err(e) = api_server::curriculum_loader::write_prebuilt_to_db(&conn, None) {
-                tracing::warn!("K12 DB prebuilt write: {}", e);
-            } else {
-                tracing::info!("K12 DB: prebuilt tables populated");
-            }
-        }
         }
 
     // ════════════════════════════════════════════

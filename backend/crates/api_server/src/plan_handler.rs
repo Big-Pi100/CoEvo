@@ -1526,23 +1526,18 @@ fn unlock_next_cards(
     user_id: &str,
     task_status: &serde_json::Value,
 ) {
-    // 从计划中找下一个 task（当前完成后面第一个 in_progress/pending）
+    // 从计划中找下一个 task（第一个 in_progress/pending）
     let next_task: Option<&serde_json::Value> = (|| {
         let stages = task_status.get("stages").and_then(|v| v.as_array())?;
-        let mut found_complete = false;
         for stage in stages {
             let tasks = stage.get("tasks").and_then(|v| v.as_array())?;
             for task in tasks {
                 let status = task.get("status").and_then(|v| v.as_str()).unwrap_or("pending");
                 if status == "in_progress" || status == "pending" {
-                    if !found_complete {
-                        let task_name = task.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                        if crate::k12_quiz::should_mark_task_complete(conn, user_id, task_name) {
-                            found_complete = true;
-                            continue;
-                        }
-                        return None;
-                    }
+                    // 🔴 2026-09-27：原此处先调 `k12_quiz::should_mark_task_complete`
+                    //    （K12 专属的「自动判定任务完成」）来决定是否**跳过**该 task；
+                    //    那套「任务完成信号」判断随 K12 体系一并清退
+                    //    → 不再自动跳过，直接返回第一个未完成的 task。
                     return Some(task);
                 }
             }

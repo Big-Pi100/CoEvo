@@ -10,8 +10,10 @@
 //!
 //! 三种 init 方式共用一个生命周期 runner：
 //!   - free: 无 init，CP2 自由创建计划
-//!   - k12: /api/k12/init → 预建 K12 计划+卡片
-//!   - reading: /api/k12/reading/init → 预建阅读计划+卡片
+//!
+//! 📌 2026-09-27：原覆盖 free / k12 / reading 三模式 —— K12 结构化管道已整体清退
+//!    （路由 + quiz 题库 + 课程加载器全部移除），`/api/k12/reading/init` 路由更早已不存在，
+//!    故只保留 **free** 模式（另两个场景已删）。
 //!
 //! 与 e2e_main_lifecycle 互为对照组：
 //!   - e2e_main_lifecycle: 直接调内部函数 → 验证业务逻辑
@@ -25,30 +27,17 @@ use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::Message;
 
 const FREE_USER: &str = "e2eapitest";
-const K12_USER: &str = "e2eapitest";
-const READING_USER: &str = "e2eapitest";
 const TEST_PASS: &str = "pass123word456";
 
 const FREE_CONV: &str = "e2e-api-test-free";
-const K12_CONV: &str = "e2e-api-test-k12";
-const READING_CONV: &str = "e2e-api-test-read";
-
-const K12_SUBJECT: &str = "physics";
-const K12_GRADE: &str = "g7-9";
-const READING_SUBJECT: &str = "chinese";
-const READING_GRADE: &str = "g3-4";
 
 const MAX_DIALOGUE_ROUNDS: usize = 5;
 const TIMEOUT_MINS: u64 = 15;
-
-/// 三种 init 模式
-enum InitMode { Free, K12, Reading }
 
 struct LifecycleConfig {
     name: &'static str,
     conv_id: &'static str,
     user: &'static str,
-    init: InitMode,
 }
 
 /// 每轮诊断数据
@@ -245,66 +234,26 @@ async fn run_lifecycle(cfg: LifecycleConfig) {
         .send().await.unwrap();
     calls += 1;
 
-    // Step 3b: Init (K12 / Reading) — 使用 init 返回的 conv_id
-    let mut active_conv_id = cfg.conv_id.to_string();
-    match &cfg.init {
-        InitMode::K12 => {
-            println!("\n--- Step 3b: K12 Init ---");
-            let resp = client.post(format!("{}/api/k12/init", base))
-                .header("Authorization", format!("Bearer {}", token))
-                .json(&json!({"user_id": uid, "subject": K12_SUBJECT, "grade_band": K12_GRADE}))
-                .send().await.unwrap();
-            let init_val: Value = body_json(resp).await;
-            calls += 1;
-            let conv = init_val["conversation_id"].as_str().unwrap_or("").to_string();
-            assert!(!conv.is_empty(), "K12 init should return conversation_id");
-            active_conv_id = conv.clone();
-            println!("  K12 conv_id={}, resumed={}", conv, init_val["resumed"].as_bool().unwrap_or(false));
-        }
-        InitMode::Reading => {
-            println!("\n--- Step 3b: Reading Init ---");
-            let resp = client.post(format!("{}/api/k12/reading/init", base))
-                .header("Authorization", format!("Bearer {}", token))
-                .json(&json!({"user_id": uid, "subject": READING_SUBJECT, "grade_band": READING_GRADE}))
-                .send().await.unwrap();
-            let init_val: Value = body_json(resp).await;
-            calls += 1;
-            let conv = init_val["conversation_id"].as_str().unwrap_or("").to_string();
-            assert!(!conv.is_empty(), "Reading init should return conversation_id");
-            active_conv_id = conv.clone();
-            println!("  Reading conv_id={}, imported_cards={}", conv, init_val["imported_cards"].as_i64().unwrap_or(0));
-        }
-        InitMode::Free => {}
-    }
+    // 📌 原 Step 3b（K12 / Reading 预建 init）已随两条管道一并移除。
+    //    free 模式没有预建流程 —— 对话由 WS 首条消息懒创建。
+    let active_conv_id = cfg.conv_id.to_string();
 
-    // Step 4: 检查初始状态（无对话 / K12已预建）
+    // Step 4: 检查初始状态（free 模式首次运行应为空）
     // 注意：使用生产 DB 时前次测试数据可能残留，断言容忍 residual
+    // 📌 原另有 K12 / Reading 两支（init 预建 plan、对话由 WS 懒创建）—— 两条管道已清退。
     println!("\n--- Step 4: Check initial state ---");
     let init_state = check_dialogue_state(&client, &base, &active_conv_id, &uid, &token, "init").await;
-    match &cfg.init {
-        InitMode::Free => {
-            // 首次运行应为空，但生产 DB 可能有残留数据
-            if init_state["conv_exists"].as_bool() == Some(true) {
-                println!("  ⚠️ free: conv exists (residual), turns={}", init_state["turn_count"].as_u64().unwrap_or(0));
-            } else {
-                assert_eq!(init_state["conv_exists"].as_bool(), Some(false));
-                assert_eq!(init_state["has_plan"].as_bool(), Some(false));
-                assert_eq!(init_state["turn_count"].as_u64(), Some(0));
-            }
-        }
-        InitMode::K12 | InitMode::Reading => {
-            // init 创建了 plan 但 conversations 由 WS 懒惰创建
-            println!("  ⚠️ init: conv_exists={:?}", init_state["conv_exists"].as_bool());
-        }
+    if init_state["conv_exists"].as_bool() == Some(true) {
+        println!("  ⚠️ free: conv exists (residual), turns={}", init_state["turn_count"].as_u64().unwrap_or(0));
+    } else {
+        assert_eq!(init_state["conv_exists"].as_bool(), Some(false));
+        assert_eq!(init_state["has_plan"].as_bool(), Some(false));
+        assert_eq!(init_state["turn_count"].as_u64(), Some(0));
     }
 
     // Step 5: WS 对话
     println!("\n--- Step 5: WebSocket dialogue ---");
-    let run_id = format!("e2e_api_{}_{}", match &cfg.init {
-        InitMode::Free => "free",
-        InitMode::K12 => "k12",
-        InitMode::Reading => "reading",
-    }, chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+    let run_id = format!("e2e_api_free_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
     let report_dir = format!("data/eval_runs/{}", run_id);
     let _ = std::fs::create_dir_all(&report_dir);
 
@@ -335,11 +284,7 @@ async fn run_lifecycle(cfg: LifecycleConfig) {
     let mut read = read;
 
     // 5a. 初始消息——自由对话需 CP2 建计划，K12/Reading 已有计划
-    let init_msg = match &cfg.init {
-        InitMode::Free => "Hello, I want to learn the Pythagorean theorem.",
-        InitMode::K12 => format!("I want to study {} for grade {}.", K12_SUBJECT, K12_GRADE).leak(),
-        InitMode::Reading => format!("I want to read Chinese texts for grade {}.", READING_GRADE).leak(),
-    };
+    let init_msg = "Hello, I want to learn the Pythagorean theorem.";
 
     let ws_msg = json!({
         "user_id": uid, "conversation_id": active_conv_id.as_str(),
@@ -354,25 +299,23 @@ async fn run_lifecycle(cfg: LifecycleConfig) {
     state_snapshots.push(state);
 
     // free chat 需要第二条消息触发 CP2 创建计划
-    if matches!(cfg.init, InitMode::Free) {
-        let ws_msg2 = json!({
-            "user_id": uid, "conversation_id": active_conv_id.as_str(),
-            "message": "OK, please make a study plan for me.", "token": token,
-        }).to_string();
-        let (reply2, candidates2, updated2) = ws_send_and_recv(&mut write, &mut read, &ws_msg2, 120).await;
-        calls += 1;
-        plan_created = updated2;
-        println!("  plan request: {} chars", reply2.len());
+    let ws_msg2 = json!({
+        "user_id": uid, "conversation_id": active_conv_id.as_str(),
+        "message": "OK, please make a study plan for me.", "token": token,
+    }).to_string();
+    let (reply2, candidates2, updated2) = ws_send_and_recv(&mut write, &mut read, &ws_msg2, 120).await;
+    calls += 1;
+    plan_created = updated2;
+    println!("  plan request: {} chars", reply2.len());
 
-        let (sys_prompt, user_content) = capture_llm_input();
-        turn_diags.push(TurnDiag {
-            label: "创建计划(对话2)".into(), user_msg: "OK, please make a study plan for me.".into(),
-            teacher_reply: reply2, student_reply: String::new(), candidates: candidates2.len(),
-            plan_updated: updated2, cp1_concepts: candidates2, plan_state_after: None,
-            system_prompt: sys_prompt, user_content,
-            prompt_source: capture_prompt_source(),
-        });
-    }
+    let (sys_prompt, user_content) = capture_llm_input();
+    turn_diags.push(TurnDiag {
+        label: "创建计划(对话2)".into(), user_msg: "OK, please make a study plan for me.".into(),
+        teacher_reply: reply2, student_reply: String::new(), candidates: candidates2.len(),
+        plan_updated: updated2, cp1_concepts: candidates2, plan_state_after: None,
+        system_prompt: sys_prompt, user_content,
+        prompt_source: capture_prompt_source(),
+    });
 
     let (sys_prompt, user_content) = capture_llm_input();
     turn_diags.push(TurnDiag {
@@ -472,9 +415,8 @@ async fn run_lifecycle(cfg: LifecycleConfig) {
     let plans_resp: Value = body_json(resp).await;
     calls += 1;
     let list = plans_resp["plans"].as_array().unwrap();
-    if matches!(cfg.init, InitMode::Free) {
-        assert!(!list.is_empty(), "CP2 should create a plan for free chat");
-    }
+    // free 模式下 CP2 应已创建计划
+    assert!(!list.is_empty(), "CP2 should create a plan for free chat");
     let plan_json = serde_json::to_string_pretty(&plans_resp).unwrap_or_default();
 
     // Step 7: Verify conversation history
@@ -547,11 +489,9 @@ async fn run_lifecycle(cfg: LifecycleConfig) {
         }
     };
     let plan_created_label = if plan_created { "✅" } else { "❌" };
-    let init_conv = !matches!(cfg.init, InitMode::Free);
-    let init_has_plan = match &cfg.init {
-        InitMode::Free => false,
-        _ => plan_stages > 0,
-    };
+    // 📌 原用于区分「init 预建」vs「free 懒建」；预建的两条管道已清退 → free 下两者恒 false
+    let init_conv = false;
+    let init_has_plan = false;
     let init_turns = init_state["turn_count"].as_u64().unwrap_or(0);
 
     // ── Save report ──
@@ -687,7 +627,9 @@ r#"# {} E2E 测试报告
     println!("{}", "=".repeat(70));
 }
 
-// ── 三个测试场景 ──
+// ── 测试场景 ──
+// 📌 原另有 `e2e_api_k12` / `e2e_api_reading` 两个场景 —— K12 结构化管道已整体清退，
+//    Reading 所依赖的 `/api/k12/reading/init` 路由更早已不存在，故一并移除。
 
 #[tokio::test]
 #[ignore]
@@ -696,28 +638,5 @@ async fn e2e_api_free_chat() {
         name: "Free Chat",
         conv_id: FREE_CONV,
         user: FREE_USER,
-        init: InitMode::Free,
-    }).await;
-}
-
-#[tokio::test]
-#[ignore]
-async fn e2e_api_k12() {
-    run_lifecycle(LifecycleConfig {
-        name: "K12 Structured",
-        conv_id: K12_CONV,
-        user: K12_USER,
-        init: InitMode::K12,
-    }).await;
-}
-
-#[tokio::test]
-#[ignore]
-async fn e2e_api_reading() {
-    run_lifecycle(LifecycleConfig {
-        name: "Reading",
-        conv_id: READING_CONV,
-        user: READING_USER,
-        init: InitMode::Reading,
     }).await;
 }

@@ -56,7 +56,7 @@
 | `--tk-n-p` 内边距 | `1px 3px` | `0 0 1px 0` | `1px 3px` |
 | `--tk-n-r` 圆角 | `3px` | `0` | `3px` |
 | `--tk-m-bg` 复习中 | `rgba(180,67,44,.075)` | `transparent` | `transparent` |
-| `--tk-m-bd` | `none` | `1.5px solid rgba(0,192,139,.42)` | `none` |
+| `--tk-m-bd` | `none` | `1.5px solid rgba(196,83,58,.42)` | `none` |
 | `--tk-m-fg` | `inherit` | `inherit` | `#DEDCD7` |
 | `--tk-m-p` / `--tk-m-r` | `1px 3px` / `3px` | `0 0 1px 0` / `0` | `1px 3px` / `3px` |
 | `--tk-d-bg` 已掌握 | `rgba(180,67,44,.026)` | `transparent` | `transparent` |

@@ -348,7 +348,23 @@ void _s4Trace() {
   color('格.n.bd.color', grid.fresh.border!.color, const CoRgba.hex(0xC4533A));
   check('格.n.bd 实线', !grid.fresh.border!.dashed);
   near('格.m.bd.width', grid.reviewing.border!.width, 1.5, tol: 0.001);
-  color('格.m.bd.color', grid.reviewing.border!.color, const CoRgba(0, 192, 139, 0.42));
+  //    🔴 2026-09-27 白哥定：由绿 `rgba(0,192,139,.42)` 改朱砂 —— 原值是旧「翠绿进化」
+  //       时代残留，与方案甲「统一色相 = 朱砂」冲突（色相 155°）。取值 = `accentBright`
+  //       (`0xC4533A`) 的 42% 透明版，与 fresh 的实色同源（对齐 `visual-feed-bookmark` L53）。
+  color('格.m.bd.color', grid.reviewing.border!.color, const CoRgba(196, 83, 58, 0.42));
+
+  //    🔑 不变量：格档两态的边框必须**同色相**（都来自 accentBright 的染色版）——
+  //       否则又回到「一条痕迹两种色系」。fresh 是实色、reviewing 是 42% 透明，只差 alpha。
+  {
+    final n = grid.fresh.border!.color;
+    final m = grid.reviewing.border!.color;
+    final nDiff = (n.r - 196).abs() + (n.g - 83).abs() + (n.b - 58).abs();
+    final mDiff = (m.r - 196).abs() + (m.g - 83).abs() + (m.b - 58).abs();
+    check('格档两态边框同色相（均源自 accentBright #C4533A）',
+        nDiff == 0 && mDiff == 0, 'fresh=$n / reviewing=$m');
+    check('两态只差 alpha（实色 1.0 vs .42）',
+        n.a == 1.0 && m.a == 0.42, 'a=${n.a} / ${m.a}');
+  }
   near('格.d.bd.width', grid.mastered.border!.width, 1.0, tol: 0.001);
   color('格.d.bd.color', grid.mastered.border!.color, const CoRgba(10, 10, 10, 0.16));
   check('格.d.bd 虚线', grid.mastered.border!.dashed);

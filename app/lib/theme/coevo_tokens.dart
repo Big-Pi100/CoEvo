@@ -902,7 +902,12 @@ const CoEvoTokens gridTokens = CoEvoTokens(
     ),
     reviewing: TraceStyle(
       bg: CoRgba.transparent,
-      border: TraceBorder(width: 1.5, color: CoRgba(0, 192, 139, 0.42)),
+      // 🔴 2026-09-27 白哥定：原 `rgba(0,192,139,.42)`（绿）→ 改朱砂版。
+      //    根因：绿色是旧「翠绿进化」时代的残留，与**方案甲「统一色相 = 朱砂」冲突**
+      //    （色相相差 155°）—— 正是 spec §3.2「外阴影/描边要染自身色相」要避免的「发脏」。
+      //    对齐设计稿 `visual-feed-bookmark-2026-09-25.html` L53，取值 = `accentBright`
+      //    （`#C4533A` = 196,83,58）的 42% 透明版 —— 与 fresh 的实色 accentBright 同源。
+      border: TraceBorder(width: 1.5, color: CoRgba(196, 83, 58, 0.42)),
       padding: TracePadding(0, 0, 1, 0),
       radius: 0,
     ),
