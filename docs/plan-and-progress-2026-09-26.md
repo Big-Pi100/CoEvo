@@ -1934,6 +1934,85 @@ spec §7.1：**Flutter 的 `BoxShadow` 不支持 `inset`** —— 而粘土的�
 
 ---
 
+### 3.20 ✅ Step 3.0 清退：K12 体系 + 痕迹「格」档颜色（2026-09-27 11:50）
+
+> 白哥 4 项决策：① 痕迹改朱砂 ② 内容先用 mock ③ **先做 3.0 清退** ④ 后端 admin·plan 一并清。
+> 📄 规划依据：`docs/review/step3-core-ui-plan-2026-09-27.md`
+
+#### ① 痕迹「格」档「复习中」颜色：绿 → 朱砂
+
+| 位置 | 改动 |
+|---|---|
+| `design-system-spec` §1.1 | `--tk-m-bd`：`rgba(0,192,139,.42)` → **`rgba(196,83,58,.42)`** |
+| `coevo_tokens.dart` | `gridTokens.reviewing.border` 同步 |
+| 断言 | 新增 2 条：**两态同色相** + **只差 alpha** |
+
+**依据**：取值 = `accentBright`（`#C4533A` = 196,83,58）的 42% 透明版，
+与 `fresh` 的实色 `accentBright` **同源**（对齐 `visual-feed-bookmark` L53）。
+原绿色是**旧「翠绿进化」时代残留**，与方案甲「统一色相 = 朱砂」冲突（色相差 155°）。
+
+#### ② 前端：删 5 个零引用死代码（**2,652 行**）
+
+`curriculum_plans_page` 836 · `debug_logs_page` 611 · `curriculum_cards_page` 583 ·
+`config_page` 433 · `user_detail_screen` 189
+
+- 🔑 **顺带核实**：`card_list_screen`（904 行）**不是**死代码 —— 被 `review_screen:18` import
+- `app/lib` **23,333 → 20,686 行** · `analyze_inproc` **error=3/warning=13/info=7 与基线一致**
+
+#### ③ 后端 K12 清退（**≈1,293 行**）
+
+| 文件 | 行数变化 | 内容 |
+|---|---|---|
+| `routes.rs` | 3162 → **2533**（−629） | 5 条 `/api/k12/*` 路由 + 4 个 handler + 1 个测试 mod |
+| `main.rs` | 410 → **358**（−52） | quiz bank 加载块 + 预建写入块 + 表结构 + 数据路径变量 |
+| `schema.rs` | 845 → **821**（−24） | `k12_quiz_bank` / `k12_quiz_attempts` 表定义 + 表清单项 |
+| `lib.rs` | 55 → **52**（−3） | 3 行模块声明 |
+| 🗑 文件 | **−504** | `k12_quiz.rs` 130 · `k12_quiz_api.rs` 100 · `k12_quiz_loader.rs` 67 · `e2e_k12_extra_lifecycle.rs` 207 |
+| `e2e_api_lifecycle.rs` | 723 → **642**（−81） | 摘除 K12 / Reading 两个**失效**场景（保留 free） |
+| `plan_handler.rs` | 摘掉一处调用 | 原调 `k12_quiz::should_mark_task_complete` 决定是否跳过 task → 改为不自动跳过 |
+
+> 🔑 **保留 `activate_first_task`**：零调用，但注释明确属 **plan 体系**（非 K12 语义）。
+
+#### ④ 🔴 重要：白哥批准的两块**实际不能删**（核实后未动）
+
+原报告估计「`plan_handler` 1,987 + admin 3,091 ≈ **5,100 行**可一并清」—— **核实后是活代码**：
+
+| 目标 | 核实结论 |
+|---|---|
+| `plan_handler.rs` **1,987 行** | 🔴 **不能删** —— `ws.rs:352-353`（**chat 对话流程**）用它的 `resolve_plan_id` / `build_plan_context` / `log_prompt_source` 来**选 system prompt** → 是 **AI 对话的依赖**，不是 K12 专属 |
+| `admin_handlers.rs` **1,365 行** | 🔴 **不能删** —— **共享工具模块**（`verify_admin`/`ok`/`err`），被 `distribution_handler` / `campaign_handler` / `config_admin` **4 个要保留的模块**引用 |
+| `config_admin` · `plans_handlers` | ⚠️ **混装** —— 各含非 admin 路由（`/api/public/qrcode`、`/api/pay/plans`）→ 不能整文件删 |
+| `distribution_handler` **2,264 行** | ✅ **必须保留** —— 有 **8 处非 admin 路由**（含 `/api/pay/calculate`、`/api/notifications`） |
+
+→ **教训（第 N 次复现）**：**「按名字/印象定范围」会算错量级** ——
+`plan` / `admin` 这两个词听起来都属于「已定不做」，但代码里它们**同时服务着保留中的 chat 流程**。
+要清 admin 路由需**逐条剥离**，属**独立一轮**。
+
+#### ⑤ 顺带发现：既有 clippy 问题（**非本次引入**）
+
+本机 `cargo clippy`（Rust **1.95**）对 `api_server` 报 **48 个 lint 错误** ——
+分布于 **15+ 个本次未改动**的文件（`ws.rs` 5 · `review_handler` 5 · `referral_handler` 4 · `auth.rs` 2 …）。
+
+**已核实与本次无关**：改动文件里报错的行号（如 `plan_handler.rs:368/1101/1234/1433/1572/1582`）
+与本次改动区域（1536 附近）**不重叠**。
+
+⚠️ CI 用 `actions-rust-lang/setup-rust-toolchain@v1`（默认 **stable**）
+→ 若 CI 的 clippy 版本同为 1.95+，则 **clippy job 会红**（⏳ 待白哥在 Actions 页面确认）。
+
+#### ⑥ ✅ 验证
+
+| 验证 | 结果 |
+|---|---|
+| 后端 `cargo check --all-targets` | ✅ **通过**（零 error/warning，**含测试编译**） |
+| 前端 `analyze_inproc` | ✅ **error=3/warning=13/info=7** 与基线**完全一致** |
+| `tokens_verify` | ✅ **309 项全过**（+2 痕迹色相断言） |
+
+🔑 **过程中被 `cargo check` 抓到一次漏网**：`backend/src/main.rs:99` 引用 `k12_quiz_loader`
+—— 我后来只在 `crates/api_server/src/` 里搜引用，**漏了 `backend/src/` 与 `tests/`**。
+→ **教训：搜引用图必须覆盖整个 workspace，不能只搜「主目录」**（与「按内容找全所有副本」同源）。
+
+---
+
 ## 四、下一步建议（按依赖排序 · 已按白哥 2026-09-26「按计划进行」开始执行）
 
 > **修订说明**：初版把 P0 写成「建 `codemagic.yaml`」——**已改为「扩展已有的 GitHub Actions」**
@@ -1945,7 +2024,7 @@ spec §7.1：**Flutter 的 `BoxShadow` 不支持 `inset`** —— 而粘土的�
 | ~~✅~~ | ~~**Step 2 设计系统落地**（token → 代码）~~ | — | — | ✅✅ **完成（§3.12–§3.19）**：token 层 · A′ 字体 · **旧主题删除 + `buildTheme` 接线** · **粘土渲染层**（四态 + 真 inset + 接入设置页）· **280ms 动效 + token 插值** → **验收 307 项全过** ＋ ✅ **`flutter run -d chrome` 真编译通过**｜⏳ 仅剩真机目视（非代码工作） |
 | **P1** | **Phase 4 #1 `user.db` 接入** | 表结构 + 查询层已就绪（79 项断言过），差**落库接线** | — | ⏳ |
 | **P2** | **Phase 3 内容抓取**（服务端 RSS） | 无内容 = 端侧没东西可读；可与 P1 并行 | — | ⏳ |
-| **P2** | **Step 3 核心界面**（信息流/阅读器/**划词**） | 🔴 **最大工作量项**（划词仍 0 命中、无 feed/reader 文件） | Step 2 | ⏳ **待开始** —— 🔑 **重写对象已实测确认**（这就是「跑起来看还是旧界面」的真身）：`home_screen` 475 行（**K12 科目直选**，调 `/api/k12/subjects`）· `review_screen` 1,533 行（含**汉语 tab**）· `achievements_screen` 999 行（**`_k12Progress`**）· 个人页 · 卡片组件。**主题层已就位**（朱砂 `#B4432C` + 三档底色），页面层仍是 K12 遗留 |
+| **P2** | **Step 3 核心界面**（信息流/阅读器/**划词**） | 🔴 **最大工作量项**（划词仍 0 命中、无 feed/reader 文件） | Step 2 | 🟠 **3.0 清退已完成（§3.20）** → 下一步 3.1 导航骨架 —— 🔑 **重写对象已实测确认**（这就是「跑起来看还是旧界面」的真身）：`home_screen` 475 行（**K12 科目直选**，调 `/api/k12/subjects`）· `review_screen` 1,533 行（含**汉语 tab**）· `achievements_screen` 999 行（**`_k12Progress`**）· 个人页 · 卡片组件。**主题层已就位**（朱砂 `#B4432C` + 三档底色），页面层仍是 K12 遗留 |
 | **P3** | 🟠 **清理待办**：`fsrs5.rs` 删除 · 轮换泄漏 key · `data/` git 状态 · `marketing` key | 见 §五 风险 5/9/10 | — | ⏳ |
 | **最后** | **Phase 0 Apple 账号**（$99/年） | 🟠 **白哥 2026-09-26 决定置末** —— 不阻塞当前开发；但**上架前必须办**（且 810 号令填报依赖它） | — | ⏳ **按白哥指示放最后** |
 | ~~✅~~ | ~~打通验证链路~~ | — | — | ✅ **已完成**（CI 5 job + 进程内 analyzer + 纯 Dart 验收三层） |
