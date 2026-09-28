@@ -1,0 +1,14 @@
+# ── 行尾符（2026-09-28）────────────────────────────────────────
+#
+# 🔴 本机 `core.autocrlf=true`（来源：PortableGit **系统级** gitconfig，
+#    见 `D:/.../PortableGit/versions/1.2.0/etc/gitconfig`）→ 默认行为是
+#    「入库 CRLF→LF、**checkout 时 LF→CRLF**」→ **工作区会被改成 CRLF**。
+#
+# 但 `.workbuddy/memory/` 的行尾是**被工具依赖的**，不能随默认漂移：
+#   · 体积口径 `wc -c`（MEMORY.md 有 ≤16 KB 的字节预算）→ CRLF 让每行 +1 字节（虚增 ~190 B）
+#   · 分层「锚点核对」按**逐行逐字**比对 → 行尾 `\r` 会让命中率**虚降**（假丢失）
+#
+# → 对本目录 pin `eol=lf`。
+#   ⚠️ **只作用于本目录** —— 仓库其它 `*.md` 当前是 `i/lf w/crlf`（既有状态），
+#      不写全仓库级 `* text=auto` 以免触发一次性大规模重写。
+.workbuddy/memory/** text eol=lf
