@@ -35,9 +35,7 @@ library;
 
 import 'package:flutter/material.dart';
 
-import '../services/fsrs_service.dart';
 import '../services/word_query_service.dart';
-import '../theme/clay.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
 

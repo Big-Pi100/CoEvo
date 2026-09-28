@@ -1,0 +1,9 @@
+name: static_check
+description: 对 app/lib 做**语义级**静态分析（找 error），补 dart format 抓不到的「未定义符号」类错误。
+publish_to: none
+version: 1.0.0
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+dependencies:
+  analyzer: ^14.4.0

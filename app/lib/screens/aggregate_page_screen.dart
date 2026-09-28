@@ -76,7 +76,7 @@ class AggregatePageScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _topBar(t),
+            const _TopBar(),
             Expanded(
               child: page.when(
                 // 首次加载 → 什么都不画（画空态会先闪一下「打不开」，是谎报）
@@ -88,49 +88,6 @@ class AggregatePageScreen extends ConsumerWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  // ── 顶栏：「‹ 返回」────────────────────────────────────────
-  Widget _topBar(CoEvoTokens t) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 2, 18, 8),
-      child: Row(
-        children: [
-          // 返回：点击区域比图标大（图标 20 + padding 10×2 = 40 起）
-          InkWell(
-            onTap: () => context.pop(),
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '‹',
-                    style: TextStyle(
-                      fontFamily: CoFonts.uiSans,
-                      fontSize: 20,
-                      height: 1,
-                      color: Color(t.ink2.argb32),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    '返回',
-                    style: TextStyle(
-                      fontFamily: CoFonts.uiSans,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Color(t.ink2.argb32),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -215,6 +172,65 @@ class AggregatePageScreen extends ConsumerWidget {
       if (p.memberCount > 0) '${p.memberCount} 个同族词',
     ];
     return parts.join(' · ');
+  }
+}
+
+/// 顶栏：`‹ 返回`。
+///
+/// ⚠️ **做成独立 widget 而不是页面的实例方法**（2026-09-28 编译错误后改）：
+///    实例方法 `Widget _topBar(CoEvoTokens t)` **拿不到 `context`** ——
+///    而返回按钮要 `context.pop()` → `Error: The getter 'context' isn't defined`。
+///    🔑 独立 widget 的 `build(context)` **天然有 context**，且与项目惯例一致
+///    （本文件的 `_MemberRow` / `_Split` / `_Unavailable`，
+///      复习页的 `_SearchIconButton` / `_SortChip` 都是独立 widget）。
+///
+/// 📌 **教训**：这类「未定义符号」错误 `dart format`（纯语法解析）**抓不到** ——
+///    只有语义分析能发现。已补 `scripts/static_check`（见该目录 README）。
+class _TopBar extends StatelessWidget {
+  const _TopBar();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 2, 18, 8),
+      child: Row(
+        children: [
+          // 返回：点击区域比图标大（图标 20 + padding 10×2 = 40 起）
+          InkWell(
+            onTap: () => context.pop(),
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '‹',
+                    style: TextStyle(
+                      fontFamily: CoFonts.uiSans,
+                      fontSize: 20,
+                      height: 1,
+                      color: Color(t.ink2.argb32),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '返回',
+                    style: TextStyle(
+                      fontFamily: CoFonts.uiSans,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(t.ink2.argb32),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

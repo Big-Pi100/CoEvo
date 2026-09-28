@@ -11,7 +11,6 @@ import '../data/mock_feed.dart';
 import '../providers/auth_provider.dart';
 import '../providers/bookmark_provider.dart';
 import '../theme/co_spacing.dart';
-import '../theme/clay.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
 import '../widgets/bookmark_toggle.dart';
