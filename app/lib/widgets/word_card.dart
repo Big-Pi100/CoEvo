@@ -120,7 +120,8 @@ class WordCardView extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _head(t),
-                const SizedBox(height: 18),
+                // 🔑 锚点 `.def{margin-top:15px}`（原 18）—— 词头 → 释义段
+                const SizedBox(height: 15),
                 // 🔴 顺序（白哥 2026-09-28 定）：**释义 + 语境原句在上，记忆法在下**。
                 //
                 // 与设计稿原稿（①② 记忆法在上、③④ 在下）**相反** ——
@@ -143,11 +144,27 @@ class WordCardView extends StatelessWidget {
   }
 
   // ── 词头：单词 + 音标 + 喇叭 ───────────────────────────────
+  //
+  // 🔴 词头下的**分隔线**（2026-09-28 排版整理）——
+  //    锚点 `.w-head{padding-bottom:15px; border-bottom:1px solid var(--line)}`。
+  //
+  // 🔑 它是「让词头成为头」的关键：没有它，词头就是「下面第一段的一个大字号行」，
+  //    与内容黏在一起（这正是白哥说的「乱」的来源之一）。
+  //    ⚠️ 白哥在 Q1 选了**保持左对齐**（不居中）→ 分隔线**保留** ——
+  //       两者是独立的：居中与否是排布，分隔线是分层。
   Widget _head(CoEvoTokens t) {
     final ipa = (card.ipa ?? '').trim();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.only(bottom: 15),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: Color(t.line.argb32), width: 1),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
         Text(
           card.spelling,
           style: TextStyle(
@@ -194,7 +211,8 @@ class WordCardView extends StatelessWidget {
             ],
           ),
         ],
-      ],
+        ],
+      ),
     );
   }
 
@@ -211,10 +229,21 @@ class WordCardView extends StatelessWidget {
     if (slots.isEmpty) return const [];
 
     final out = <Widget>[];
+    // 🔑 记忆法组与上方（答案区）之间 —— **类别切换**，比段间更大（20 vs 14/15）。
+    //
+    // 白哥 2026-09-28 把顺序改成「答案解析在上、记忆法在下」之后，
+    // 这里成了一次**类别切换**（不是同类段落的继续）→ 间距要能读出来。
+    // ⚠️ 锚点的 `.mnem{margin-top:14px}` 是「记忆法在上、答案在下」时的值
+    //    （那时 14 是段间，且下方还有 .def 的 15）→ 顺序换了，这个值要重新定。
+    out.add(const SizedBox(height: 20));
     for (var i = 0; i < slots.length; i++) {
-      if (i > 0) out.add(const SizedBox(height: 16));
+      if (i > 0) out.add(const SizedBox(height: 14)); // 锚点 `.mnem{margin-top:14px}`
       out.add(_mnemonicBlock(t, slot: slots[i]));
     }
+    // ⚠️ 末尾留白 18 **保持原值** —— 它不在本次诊断的 4 条内（未与白哥讨论过），
+    //    不擅自改。⚠️ 但要如实记一笔：卡片 padding 是 `22,4,22,18`，
+    //    再加这 18 → **下边距 36 vs 上边距 4**，上下呼吸不对称（锚点是均匀 20）。
+    //    → 待白哥看真机后定（见报告「未做」）。
     out.add(const SizedBox(height: 18));
     return out;
   }
@@ -244,26 +273,26 @@ class WordCardView extends StatelessWidget {
     final ctx = card.sectionOfType('context');
     final ctxText = (ctx?.text ?? '').trim();
     if (ctxText.isNotEmpty) {
-      if (out.isNotEmpty) out.add(const SizedBox(height: 18));
+      // 锚点 `.ctx{margin-top:14px}`（原 18）
+      if (out.isNotEmpty) out.add(const SizedBox(height: 14));
       out.add(_block(
         t,
         label: '语境原句',
         accentLabel: false,
-        child: Container(
-          padding: const EdgeInsets.only(left: 11),
-          decoration: BoxDecoration(
-            border: Border(
-              left: BorderSide(color: Color(t.line.argb32), width: 2),
-            ),
-          ),
-          child: Text(
-            ctxText,
-            style: TextStyle(
-              fontFamily: CoFonts.latinSerif,
-              fontSize: t.type.ctxText,
-              height: 1.55,
-              color: Color(t.ink2.argb32),
-            ),
+        // 🔴 色条改用 `accentBright`（2026-09-28 白哥定 Q4）。
+        //    原用 `line`（#EFE9DE）在浅纸上**几乎看不见** —— 等于白设了这条竖线。
+        //    ⚠️ 与 ①② 的色条靠五处差异区分（粗细 2 vs 3 · 色相亮 vs 深 ·
+        //       左内边距 12 vs 14 · 标签色 ink3 vs accent · 有没有 `›`）。
+        leftBar: Color(t.accentBright.argb32),
+        leftBarWidth: 2,
+        leftBarInset: 12,
+        child: Text(
+          ctxText,
+          style: TextStyle(
+            fontFamily: CoFonts.latinSerif,
+            fontSize: t.type.ctxText,
+            height: 1.55,
+            color: Color(t.ink2.argb32),
           ),
         ),
       ));
@@ -298,6 +327,12 @@ class WordCardView extends StatelessWidget {
       accentLabel: true,
       trailing: trailing,
       onTap: onTap,
+      // 🔴 ①② 左侧色条（2026-09-28 白哥定：**用色条，不用凹陷底块**）。
+      //    ⚠️ 规格冲突已记录：spec §5.2 原写「①② 独占 sunken，全卡唯一有底色」
+      //       → 改色条后卡片上**没有任何段有底色**，那条描述已失效，需同步改 spec。
+      leftBar: Color(t.accent.argb32),
+      leftBarWidth: 3,
+      leftBarInset: 14,
       child: _sectionBody(t, slot.section),
     );
   }
@@ -494,6 +529,18 @@ class WordCardView extends StatelessWidget {
   }
 
   /// 段块 = 标签行（+ 可选右侧入口） + 内容。
+  ///
+  /// # 🆕 段落色条（2026-09-28 排版整理）
+  /// [leftBar] 非空时，给**整节**（标签行 + 内容）加一条左侧竖线 ——
+  /// 这是「建立层级」的手段之一：**不靠排得松一点，靠容器与分隔**。
+  ///
+  /// 🔑 为什么色条包**整节**（而不是只包内容）：
+  /// · 语义上「这一节是记忆法 / 这一节是引文」—— 节 = 标签 + 内容
+  /// · 代码上**只有一处实现**（若 ①② 包整节、④ 只包内容，就是两套逻辑要各自维护）
+  ///
+  /// ⚠️ ①②（`accent` 3px）与 ④（`accentBright` 2px）**都是色条** ——
+  ///    形态会撞，靠**五处差异**分开：粗细 / 色相 / 左内边距 / 标签色 / 有没有 `›`。
+  ///    详见 `docs/design/word-card-layout-refine-2026-09-28.html` §3.5。
   Widget _block(
     CoEvoTokens t, {
     required String label,
@@ -501,8 +548,16 @@ class WordCardView extends StatelessWidget {
     required Widget child,
     String? trailing,
     VoidCallback? onTap,
+    Color? leftBar,
+    double leftBarWidth = 3,
+    double leftBarInset = 14,
   }) {
-    final body = Column(
+    // ⚠️ 必须显式声明 `Widget`（不能用 `var`）—— 否则类型被推断为 `Column`，
+    //    下面赋 `Container`（加色条时）会报
+    //    `A value of type 'Container' can't be assigned to a variable of type 'Column'`。
+    //    🔑 这类错误 `dart format` 抓不到（纯语法），只有语义分析能发现
+    //       → 由 `scripts/static_check` 捕获（2026-09-28 首次实战）。
+    Widget content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
@@ -546,18 +601,33 @@ class WordCardView extends StatelessWidget {
               ),
           ],
         ),
-        const SizedBox(height: 8),
+        // 🔑 4px（锚点 `.lab{margin-bottom:4px}`）—— 原为 8px。
+        //    「标签下距」这一档要**明显小于**段内其他间距（8），
+        //    否则标签读起来像独立一段，而不是「它下面那段的名字」。
+        const SizedBox(height: 4),
         child,
       ],
     );
 
-    if (onTap == null) return body;
+    if (leftBar != null) {
+      content = Container(
+        padding: EdgeInsets.only(left: leftBarInset),
+        decoration: BoxDecoration(
+          border: Border(
+            left: BorderSide(color: leftBar, width: leftBarWidth),
+          ),
+        ),
+        child: content,
+      );
+    }
+
+    if (onTap == null) return content;
 
     // 整块可点（大点击目标 —— 段内还有文字，只有标题行可点会很难点中）
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: body,
+      child: content,
     );
   }
 }

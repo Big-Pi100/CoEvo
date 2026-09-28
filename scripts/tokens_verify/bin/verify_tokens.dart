@@ -602,45 +602,8 @@ String _codeOnly(String src) => src
 /// ⚠️ 已知边界：按**花括号**配对，不理解字符串字面量 —— 若方法体里有含 `{`/`}`
 /// 的字符串（如 `'${a ? "}" : "{"}'`）会数错。本项目的方法体无此写法；
 /// 真需要时再补「带引号状态的扫描器」（同 `splitSqlStatements` 的处理原则）。
-String _braceBody(String src, String name) {
-  // 🔴 **优先按类匹配**（`class name`），再退回方法（`name(`）。
-  //
-  // 为什么顺序重要（2026-09-28 实测踩到）：
-  //   类名会**同时出现在类声明与构造函数**里 ——
-  //     `class WordPromptView extends StatelessWidget {`
-  //     `  const WordPromptView({ ... });`
-  //   若先找 `name(`，命中的是**构造函数** → 切出来的是构造函数体（只到 `});`）
-  //   → 范围**严重偏小**。
-  //
-  // ⚠️ 而这个错误**不会让所有断言都报红**：
-  //   切到构造函数体（几乎什么都不含）时——
-  //     · 正向断言（「应含 X」）→ 报红 ✅ 能被发现
-  //     · **反向断言（「不得含 X」）→ 全部假绿** ❌ 静默失效
-  //   🔑 所以调用方**必须**同时断言「切片是类体」（见下面的 `@override` 检查），
-  //      否则一个范围切错的切片会让「考核不得泄露答案」这类守护**完全失效**。
-  var i = src.indexOf('class $name');
-  if (i < 0) {
-    // 🔴 **必须匹配「定义处」**（前面带返回类型），不能只找 `name(`。
-    //
-    // 为什么（2026-09-28 实测）：方法**调用处可能先于定义处出现** ——
-    //   本项目的 `build()` 在文件前段调 `_header(t, dueCount)` / `_sortBar(t)`，
-    //   而它们的定义在文件后段。只找 `name(` 会命中**调用处**，
-    //   再从那里配对花括号 → 切出一段**与该方法无关**的区间。
-    //
-    // ⚠️ 危害与「切到构造函数」同类且**更隐蔽**：
-    //   切出的区间**非空**（不会触发「切片为空」的自检），
-    //   只是内容不对 → 「不得含 X」的反向断言可能**假绿**。
-    //   🔑 所以调用方仍须断言切片**含该方法的特征**（如标题文案）。
-    final def = RegExp(
-      r'(?:Widget|void|Future<[^>]*>|List<Widget>|bool|String|int|double|'
-      r'Iterable<[^>]*>|Map<[^>]*>)\s+'
-      '${RegExp.escape(name)}' r'\(',
-    ).firstMatch(src);
-    i = def?.start ?? src.indexOf('$name(');
-  }
-  if (i < 0) return '';
-  final start = src.indexOf('{', i);
-  if (start < 0) return '';
+/// 从 [start]（指向 `{`）起按**配对**取出区间（天然含嵌套）。
+String _braces(String src, int start) {
   var depth = 0;
   for (var j = start; j < src.length; j++) {
     final c = src[j];
@@ -652,6 +615,54 @@ String _braceBody(String src, String name) {
     }
   }
   return '';
+}
+
+/// 取「**类体**」或「**方法体**」的切片 —— 文本断言的「范围纪律」的基础工具。
+///
+/// # 🔴🔴 这个函数踩过**四个坑**，每个都让「反向断言」静默假绿
+/// | # | 坑 | 后果 |
+/// |---|---|---|
+/// | 1 | 切出**空串**（`indexOf` 返回 -1 → 兜底 `''`） | 空串不含任何东西 →「不得含 X」全绿 |
+/// | 2 | 找**类体**时命中**构造函数**（`const Foo({`） | 切到构造函数体（几乎不含东西）→ 反向断言全绿 |
+/// | 3 | 找**方法体**时命中**调用处**（调用在前、定义在后） | 切成一段无关代码（**非空**，更隐蔽） |
+/// | 4 | 方法体 `{` 命中**命名参数的 `{}`**（`f(a, {required X})`） | 切成**参数列表**（实测可短到 24 字符） |
+///
+/// 🔑 **四坑的共同点：切错后区间往往仍「非空」** → 「切片非空」这条自检
+/// **挡不住 2/3/4**。所以调用方**必须**另加「**特征哨兵**」断言
+/// （切片里应含该结构独有的字符串），否则守护是假的。
+///
+/// 🔑 **危害方向始终不对称**：正向断言（「应含 X」）会报红、能被发现 ✅；
+/// **反向断言（「不得含 X」）全部假绿** ❌ —— 已多次靠正向断言救回。
+String _braceBody(String src, String name) {
+  // ── 路径 A：**类**（`class Foo extends Bar {`）──
+  //   类**没有参数列表** → 声明后的第一个 `{` 就是类体。
+  //   ⚠️ 不能让类走下面 `) {` 的路径 —— 那会命中**构造函数**或别处（坑 2 的变体）。
+  final classAt = src.indexOf('class ' + name);
+  if (classAt >= 0) {
+    final b = src.indexOf('{', classAt);
+    return b < 0 ? '' : _braces(src, b);
+  }
+
+  // ── 路径 B：**方法** ──
+  //   🔴 坑 3：必须匹配「**定义式**」（前面带返回类型），不能只找 `name(` ——
+  //      调用处可能先于定义处出现（本项目的 `build()` 在文件前段调
+  //      `_header(t, dueCount)` / `_sortBar(t)`，而它们的定义在文件后段）
+  //      → 从调用处配对会切出一段**与该方法无关**的区间。
+  final def = RegExp(
+    r'(?:Widget|void|Future<[^>]*>|List<Widget>|bool|String|int|double|'
+    r'Iterable<[^>]*>|Map<[^>]*>)\s+'
+    + RegExp.escape(name) + r'\(',
+  ).firstMatch(src);
+  final i = def?.start ?? src.indexOf(name + '(');
+  if (i < 0) return '';
+
+  //   🔴 坑 4：方法体的 `{` 必须在「**参数列表结束**」之后 ——
+  //      签名里的命名参数也用花括号：`Widget f(a, {required X x}) {`
+  //      → `indexOf('{', i)` 会命中**参数列表**（实测 `_mnemonicBlock` 只切到 24 字符）。
+  //   ✅ 找「`)` + 可选空白 + `{`」—— 那才是方法体开始。
+  final bodyOpen = RegExp(r'\)\s*\{').firstMatch(src.substring(i));
+  final start = bodyOpen != null ? i + bodyOpen.end - 1 : src.indexOf('{', i);
+  return start < 0 ? '' : _braces(src, start);
 }
 
 String _repoRoot() {
@@ -1815,6 +1826,64 @@ void _s17ReviewList() {
   }
   check('词卡有释义段与语境段',
       cardW.contains("label: '释义'") && cardW.contains("label: '语境原句'"));
+
+  // ⑤-b 🔴 **建立层级的三件套**（2026-09-28 排版整理 · 白哥「排版有点乱」）
+  //
+  // 🔴 为什么这一组必须存在（本轮教训）：
+  //    这三条**上轮全漏了**，而它们**编译器、analyzer、任何逻辑断言都看不到** ——
+  //    它们不是符号、不是行为，只是「有没有那条边线 / 那个色条」。
+  //    → 只能靠**对照锚点 CSS**逐条写成断言，否则下次改动又会悄悄改回扁平。
+  //
+  // 🔑 判据（新）：**视觉「乱」先查「容器与分隔」，最后才查字号。**
+  //    「排得松一点」≠「有层级」；层级靠 `border` / 色条 / 虚线。
+  //
+  // ⚠️ 全部用**方法体切片**（`_braceBody`）—— 这些符号在卡片里出现多次
+  //    （`leftBar` 在 ①② 与 ④ 各一处），全文件 `contains` 会互相顶替。
+  final mnemBody = _braceBody(cardW, '_mnemonicBlock');
+  final ansBody = _braceBody(cardW, '_answerSlots');
+  final headBody2 = _braceBody(cardW, '_head');
+  final blockBody = _braceBody(cardW, '_block');
+  check('能切出词卡的关键方法体（结构断言的前提）',
+      mnemBody.isNotEmpty &&
+          ansBody.isNotEmpty &&
+          headBody2.isNotEmpty &&
+          blockBody.isNotEmpty,
+      'mnem=${mnemBody.isNotEmpty} ans=${ansBody.isNotEmpty} '
+          'head=${headBody2.isNotEmpty} block=${blockBody.isNotEmpty}');
+
+  // ① 词头**下分隔线** —— 让「词头」成为头，不与内容黏一起
+  check('🔴 词头有下分隔线（`border` + `bottom:`）',
+      headBody2.contains('border:') && headBody2.contains('bottom:'));
+
+  // ② ①② 左侧色条 = **3px `accent`**（白哥 2026-09-28 定：用色条不用凹陷块）
+  check('🔴 ①② 有左侧色条（leftBar = accent，3px）',
+      mnemBody.contains('leftBar: Color(t.accent.argb32)') &&
+          mnemBody.contains('leftBarWidth: 3'),
+      'leftBar 在不在: ${mnemBody.contains('leftBar')}');
+
+  // ③ ④ 语境左侧色条 = **2px `accentBright`**（原用 `line`，浅到看不见）
+  check('🔴 ④ 语境色条用 accentBright（2px，不是 line）',
+      ansBody.contains('leftBar: Color(t.accentBright.argb32)') &&
+          ansBody.contains('leftBarWidth: 2'));
+  check('🔴 语境不再用 `line` 做边框（浅到几乎看不见 = 白设）',
+      !ansBody.contains('t.line.argb32'));
+
+  // ④ 两者**靠粗细 + 色相区分**（形态会撞 → 必须查）
+  //    🔑 若哪天两处都用同一个色/同一个粗细，这条会红 —— 那正是「读成同类」的时刻
+  check('🔑 ①② 与 ④ 的色条**粗细不同**（3 vs 2，否则读成同类）',
+      mnemBody.contains('leftBarWidth: 3') &&
+          ansBody.contains('leftBarWidth: 2'));
+
+  // ⑤ 段标签下距 **4px**（锚点 `.lab{margin-bottom:4px}`，原为 8）
+  //    🔑 它要**明显小于**段内其他间距，否则标签读起来像独立一段
+  check('🔴 标签下距 4px（不是 8 —— 否则标签像独立一段）',
+      blockBody.contains('SizedBox(height: 4)'));
+
+  // ⑥ 记忆法组与答案区之间 **20px**（类别切换，比段间 14/15 更大）
+  //    ⚠️ 锚点的 14 是「记忆法在上」时的段间值；顺序换过 → 这个值要重定
+  final mnemSlotsBody = _braceBody(cardW, '_mnemonicSlots');
+  check('🔴 记忆法组上距 20px（类别切换 > 段间 14/15）',
+      mnemSlotsBody.contains('SizedBox(height: 20)'));
 
   // ⑥ 🔴 **顺序**（白哥 2026-09-28）：「释义 + 语境原句在上，记忆法在下」
   //
