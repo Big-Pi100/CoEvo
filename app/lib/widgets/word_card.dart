@@ -48,6 +48,7 @@ class WordCardView extends StatelessWidget {
     required this.profile,
     required this.mnemonicNames,
     this.onSpeak,
+    this.onOpenAggregate,
     this.scrollController,
     this.footer,
   });
@@ -69,6 +70,25 @@ class WordCardView extends StatelessWidget {
   /// 传 `null` = 不显示喇叭（如未来某处复用本组件但不提供朗读）。
   /// ⚠️ 考核态**不传**（喇叭会念出答案）。
   final VoidCallback? onSpeak;
+
+  /// 点 ① / ② 展开**聚合页**（词根族 / 词源族）。
+  ///
+  /// 🔑 白哥原话（`mnemonic-layer-separation-2026-09-26.md` §188）：
+  /// > 「同源串记是个聚合页面**不应该直接显示在卡片上**，卡片上应该显示的是
+  /// >   『**词源故事**』而**点击词源故事展开同源串记聚合页**；**词根词缀也是一样**。」
+  ///
+  /// 即：**族成员列表不进卡片，而是点开看** —— 卡片只留「这一段讲了什么」
+  /// + 一个带族规模的入口。
+  ///
+  /// ⚠️ 与 `footer` / `onSpeak` 同一取舍：**组件不认识路由**，
+  ///    由页面注入「点开哪一页」。这样卡片在考核态（不该有聚合入口）也能复用。
+  /// ⚠️ 传 `null` = 不可点（也**不显示箭头** —— 见 `_mnemonicBlock`）。
+  ///
+  /// 第二个参数是该槽位的**显示名**（「词根词缀」/「词源故事」…）——
+  /// 聚合页要用它写来处（「来自 intercept 的 ① 词根词缀」）。
+  /// 🔑 由本组件提供而不是让页面自己查：显示名来自 `mnemonicNames`，
+  ///    而那是本组件持有的（页面再查一次 = 两处定义）。
+  final void Function(int pageId, String slotLabel)? onOpenAggregate;
 
   /// 内容区的滚动控制器（由页面持有 —— 换卡时要 `jumpTo(0)` 回顶部）。
   final ScrollController? scrollController;
@@ -103,8 +123,17 @@ class WordCardView extends StatelessWidget {
               children: [
                 _head(t),
                 const SizedBox(height: 18),
-                ..._mnemonicSlots(t),
+                // 🔴 顺序（白哥 2026-09-28 定）：**释义 + 语境原句在上，记忆法在下**。
+                //
+                // 与设计稿原稿（①② 记忆法在上、③④ 在下）**相反** ——
+                // 这是白哥明确要求的调整，理由是：
+                // · 释义是**答案**、是用户查这个词的目的 → 先看到
+                // · 记忆法（词根/词源）是**线索**，服务于理解释义
+                // 🔑 顺序变了，但「线索不压过答案」的**字号铁律不变**
+                //    （`defText` 16.5 > `mnemMain` 15.5）——
+                //    两者是**独立的两条规则**，不要因为顺序变了就顺手反转字号。
                 ..._answerSlots(t),
+                ..._mnemonicSlots(t),
               ],
             ),
           ),
@@ -173,38 +202,22 @@ class WordCardView extends StatelessWidget {
 
   // ── ① ② 记忆法（线索）────────────────────────────────────
   //
+  // 🔴 2026-09-28 改：槽位不再直接读 `profile.primaryCode` / `secondaryCode`，
+  //    改为走 `CardSlots.resolve` —— 因为它排除 `context`（= ④ 固定段，
+  //    否则**重复显示**）与 `cognate`（= 聚合页，只有族标签）。
+  //    详见 `CardSlots` 的文档。
+  //
   // ⚠️ 用 `if (s != null)` 收集 → 段取不到就**不留空段**（设计稿 §03）。
   List<Widget> _mnemonicSlots(CoEvoTokens t) {
-    final p = profile;
-    if (p == null) return const [];
+    final slots = CardSlots.resolve(card: card, profile: profile);
+    if (slots.isEmpty) return const [];
 
     final out = <Widget>[];
-    final first = _sectionOf(p.primaryCode);
-    if (first != null) {
-      out.add(_mnemonicBlock(
-        t,
-        code: p.primaryCode,
-        section: first,
-        // 「词根族 15 词」这类入口 —— ⚠️ 本次**不带 `›`**：
-        // 聚合页（点击展开）属 Step 3.7，尚未实现。
-        // 🔑 显示 `›` 而点不动 = 「看起来能点」的静默无效（本项目已定为禁忌）。
-        entry: _entryOf(first),
-      ));
+    for (var i = 0; i < slots.length; i++) {
+      if (i > 0) out.add(const SizedBox(height: 16));
+      out.add(_mnemonicBlock(t, slot: slots[i]));
     }
-
-    final secondCode = p.secondaryCode;
-    final second = secondCode == null ? null : _sectionOf(secondCode);
-    if (second != null) {
-      if (out.isNotEmpty) out.add(const SizedBox(height: 16));
-      out.add(_mnemonicBlock(
-        t,
-        code: secondCode!,
-        section: second,
-        entry: _entryOf(second),
-      ));
-    }
-
-    if (out.isNotEmpty) out.add(const SizedBox(height: 18));
+    out.add(const SizedBox(height: 18));
     return out;
   }
 
@@ -264,18 +277,30 @@ class WordCardView extends StatelessWidget {
   // ── 渲染：记忆法块（①②）────────────────────────────────
   //
   // 权重靠**强调色标签 + 凹陷底**建立，不靠字号（字号 ≤ 释义）。
-  Widget _mnemonicBlock(
-    CoEvoTokens t, {
-    required String code,
-    required WordSection section,
-    String? entry,
-  }) {
+  Widget _mnemonicBlock(CoEvoTokens t, {required CardSlot slot}) {
+    final e = slot.entry;
+    final label = mnemonicNames[slot.code] ?? slot.code;
+    final trailing = e == null
+        ? null
+        // 设计稿：「入口标出族规模（『词根族 22 词』）」
+        : (e.memberCount > 0 ? '${e.title} · ${e.memberCount} 词' : e.title);
+
+    // 🔴 **有族页才可点、才给箭头**（`onOpenAggregate` 未注入时同样不可点）。
+    //
+    // 🔑 判据：「显示箭头却点不动」= **静默无效**（本项目已定为禁忌）。
+    //    所以箭头由 `onTap` 是否存在**推导**，而不是单独一个 bool ——
+    //    两者分开写迟早会出现「有箭头没回调」。
+    final onTap = (e == null || onOpenAggregate == null)
+        ? null
+        : () => onOpenAggregate!(e.pageId, label);
+
     return _block(
       t,
-      label: mnemonicNames[code] ?? code,
+      label: label,
       accentLabel: true,
-      trailing: entry,
-      child: _sectionBody(t, section),
+      trailing: trailing,
+      onTap: onTap,
+      child: _sectionBody(t, slot.section),
     );
   }
 
@@ -477,8 +502,9 @@ class WordCardView extends StatelessWidget {
     required bool accentLabel,
     required Widget child,
     String? trailing,
+    VoidCallback? onTap,
   }) {
-    return Column(
+    final body = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
@@ -508,28 +534,33 @@ class WordCardView extends StatelessWidget {
                 ),
               ),
             ],
+            // 🔴 箭头**由 `onTap` 推导** —— 见 `_mnemonicBlock` 的说明：
+            //    「显示箭头却点不动」= 静默无效，所以两者绝不能各写各的。
+            if (onTap != null)
+              Text(
+                '›',
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: t.type.label + 2,
+                  height: 1,
+                  color: Color(t.ink3.argb32),
+                ),
+              ),
           ],
         ),
         const SizedBox(height: 8),
         child,
       ],
     );
-  }
 
-  /// 段的「聚合页入口」文字（如「organ 词根族（Greek）· 15 词」）。
-  ///
-  /// ⚠️ 本次**不带 `›`**、也不可点 —— 聚合页属 3.7（见 `_mnemonicSlots` 的说明）。
-  String? _entryOf(WordSection s) {
-    final e = s.entry;
-    if (e == null) return null;
-    final title = e.title.trim();
-    if (title.isEmpty) return null;
-    return e.memberCount > 0 ? '$title · ${e.memberCount} 词' : title;
-  }
+    if (onTap == null) return body;
 
-  WordSection? _sectionOf(String code) {
-    if (code.isEmpty) return null;
-    return card.sectionOfType(code);
+    // 整块可点（大点击目标 —— 段内还有文字，只有标题行可点会很难点中）
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: body,
+    );
   }
 }
 

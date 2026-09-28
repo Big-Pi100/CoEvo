@@ -185,6 +185,20 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
     });
   }
 
+  /// 打开**聚合页**（词根族 / 词源族）—— 点卡片的 ① / ②。
+  ///
+  /// 🔑 用 **query 参数**传来处（而不是 `extra`）：纯字符串上下文可序列化，
+  ///    走系统返回手势后也还在（`extra` 容易丢）。
+  /// ⚠️ 两个值都要 `encodeComponent` —— 词里可能有空格/连字符
+  ///    （实测 218 个词含空格或连字符，如 `according to`）。
+  void _openAggregate(int pageId, String slotLabel, String word) {
+    context.push(
+      '/aggregate/$pageId'
+      '?from=${Uri.encodeComponent(word)}'
+      '&slot=${Uri.encodeComponent(slotLabel)}',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = CoEvoTokensExt.of(context);
@@ -254,6 +268,9 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
               scrollController: _scroll,
               // 判定后**可以**听发音了（已经答完，不构成泄露）
               onSpeak: () => _speak(b.card.spelling),
+              // 判定后**可以**点 ① / ② 展开聚合页 —— 同上，答案已经揭晓
+              onOpenAggregate: (pageId, slotLabel) =>
+                  _openAggregate(pageId, slotLabel, b.card.spelling),
               footer: _NextBar(label: '下一个', onTap: _next),
             ),
           ),
@@ -269,6 +286,8 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
         mnemonicNames: b.names,
         scrollController: _scroll,
         onSpeak: () => _speak(b.card.spelling),
+        onOpenAggregate: (pageId, slotLabel) =>
+            _openAggregate(pageId, slotLabel, b.card.spelling),
         footer: _NextBar(
           label: '下一个',
           hint: '还没到期 · ${_dueLabel(row.item.nextReviewAt, DateTime.now())}',

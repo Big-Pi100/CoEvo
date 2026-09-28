@@ -11,6 +11,7 @@ import 'theme/clay.dart';
 import 'theme/tokens_ext.dart';
 import 'theme/theme_builder.dart';
 import 'screens/home_screen.dart';
+import 'screens/aggregate_page_screen.dart';
 import 'screens/bookmark_list_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/review_screen.dart';
@@ -154,6 +155,29 @@ final goRouter = GoRouter(
     GoRoute(
       path: '/review/session',
       builder: (context, state) => const ReviewSessionScreen(),
+    ),
+    // ── 聚合页（词根族 / 词源族）──────────────────────────────
+    //
+    // 从复习卡片的 ① / ② 点进来（白哥 2026-09-28：「之前说词根词缀、
+    // 词源故事点击应该进入聚合页，也没有实现」）。
+    //
+    // 🔑 同样按**顶层路由**处理（判据同上：覆盖全屏的沉浸态，不是 tab 的内容）。
+    //    阅读器 `/article/:id` 与翻卡 `/review/session` 都是这么放的。
+    //
+    // 参数：
+    // · `:pageId` —— `aggregate_page.id`（1,777 页，数据已就绪）
+    // · `?from=` / `?slot=` —— 来处（「来自 intercept 的 ① 词根词缀」）。
+    //   用 **query 参数**而不是 `extra`：这类纯字符串上下文可序列化、
+    //   刷新/深链也还在；`extra` 在走系统返回后容易丢。
+    // ⚠️ `pageId` 解析失败 → 传 -1（查不到 → 页面显示「这一页暂时打不开」），
+    //    而不是让路由抛错把用户卡在空白页。
+    GoRoute(
+      path: '/aggregate/:pageId',
+      builder: (context, state) => AggregatePageScreen(
+        pageId: int.tryParse(state.pathParameters['pageId'] ?? '') ?? -1,
+        fromWord: state.uri.queryParameters['from'],
+        fromSlotLabel: state.uri.queryParameters['slot'],
+      ),
     ),
     GoRoute(
       path: '/chat',

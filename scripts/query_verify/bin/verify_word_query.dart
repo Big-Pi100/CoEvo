@@ -153,6 +153,31 @@ Future<void> main(List<String> args) async {
         if (members.isNotEmpty) {
           print('     例: ${members.first.spelling} → ${members.first.breakdown}');
         }
+
+        // 🆕 聚合页**页头 + 成员**（`aggregatePageOf`）—— 2026-09-28 补
+        //    🔴 关键：它**不该自己再查一遍成员**（复用 `aggregateMembers`）
+        //    —— 我第一版正是这么错的（重复实现，见该方法的文档）。
+        final page = await svc.aggregatePageOf(rootLink.pageId);
+        check('  聚合页可打开（aggregatePageOf）', page != null);
+        if (page != null) {
+          check('  页头有标题（front）', page.front.isNotEmpty, page.front);
+          check(
+              '  页头有词根本体（source.form）—— 设计稿的「大字」',
+              (page.source?.form ?? '').isNotEmpty,
+              '${page.source?.form} / ${page.source?.origin} / ${page.source?.meaning}');
+          check('  成员与 aggregateMembers 一致（复用，不是重查）',
+              page.members.length == members.length,
+              '${page.members.length} vs ${members.length}');
+          check('  成员带中文释义（设计稿的成员行要显示）',
+              page.glosses.isNotEmpty, '${page.glosses.length} 条');
+          // 释义要能按 wordId 取到（UI 就是这样用的）
+          if (members.isNotEmpty) {
+            final w0 = members.first.wordId;
+            check('  释义可按 wordId 取（UI 的取法）',
+                (page.glosses[w0] ?? '').isNotEmpty,
+                '$w0 → ${page.glosses[w0]}');
+          }
+        }
       }
     }
     // capture：有拆解内容但族未达门槛 → 无入口（合法）
@@ -239,6 +264,94 @@ Future<void> main(List<String> args) async {
       print('    （词库无 traffic jam，跳过）');
       check('规范化逻辑可用（测 receive 前加空格）',
           (await svc.lookup('  receive  ')) != null);
+    }
+
+    // ── 11. 卡片槽位解析（白哥 2026-09-28 报的第 1、3 条）──────────
+    //
+    // 🔑 这是**纯逻辑**，不依赖词库数据 → 造对象直接测（不必查库）。
+    //    它守护的是「哪些记忆法类型**能上卡**」这条产品规则。
+    print('\n【12】卡片槽位 CardSlots.resolve（排除 context / cognate + 补位）');
+
+    WordSection secOf(String t) => WordSection({'type': t});
+    WordCard cardOf(List<String> types) => WordCard(
+          wordId: 'w1',
+          spelling: 'test',
+          sections: [for (final t in types) secOf(t)],
+        );
+    WordMnemonicProfile profOf(String pri, [List<String> sec = const []]) =>
+        WordMnemonicProfile(wordId: 'w1', primaryCode: pri, secondaryCodes: sec);
+
+    // ① ``context`` 不能上卡 —— 它是 ④ 的固定位置，上卡就**重复显示**
+    //    实测：**1,410 词**的 `primary_code` 是它（achieve / begin / close …）
+    {
+      final s = CardSlots.resolve(
+        card: cardOf(['etymology', 'definition', 'context']),
+        profile: profOf('context'),
+      );
+      check('🔴 排除 context（它是 ④ 固定段 → 上卡会与 ④ 重复显示）',
+          !s.any((x) => x.code == 'context'), s.map((x) => x.code).join(','));
+      check('  且**补位**到实际存在的段（不是留空）',
+          s.isNotEmpty && s.first.code == 'etymology',
+          s.map((x) => x.code).join(','));
+    }
+
+    // ② ``cognate`` 不能上卡 —— 它是聚合页（白哥原话），且段里**只有族标签**
+    //    实测：**195 词**的 `primary_code` 是它（receive …）
+    {
+      final s = CardSlots.resolve(
+        card: cardOf(['root', 'cognate', 'etymology', 'definition', 'context']),
+        profile: profOf('cognate', ['root', 'etymology']),
+      );
+      check('🔴 排除 cognate（它是聚合页，不铺在卡上）',
+          !s.any((x) => x.code == 'cognate'), s.map((x) => x.code).join(','));
+      check('  profile 给的候选**顺序仍被尊重**（root 在前）',
+          s.isNotEmpty && s.first.code == 'root',
+          s.map((x) => x.code).join(','));
+    }
+
+    // ③ 补位顺序 + 上限
+    {
+      final s = CardSlots.resolve(
+        card: cardOf(['collocation', 'etymology', 'definition', 'context']),
+        profile: profOf('context', ['context']),
+      );
+      check('  最多两个槽位（设计稿「卡片只显示四样」）',
+          s.length <= CardSlots.maxSlots, '${s.length}');
+      check('  补位按 mnemonic_type.priority（etymology 先于 collocation）',
+          s.map((x) => x.code).join(',') == 'etymology,collocation',
+          s.map((x) => x.code).join(','));
+    }
+
+    // ④ 段不存在 → **不留空槽位**（设计稿 §03）
+    {
+      final s = CardSlots.resolve(
+        card: cardOf(['etymology', 'definition', 'context']),
+        profile: profOf('image', ['cognate']),
+      );
+      check('  候选都取不到时不报错、不留空槽位',
+          s.every((x) => x.code == 'etymology'), s.map((x) => x.code).join(','));
+    }
+
+    // ⑤ `profile == null`（罕见）→ 仍按 priority 补位，而不是整段消失
+    {
+      final s = CardSlots.resolve(
+        card: cardOf(['root', 'etymology', 'definition']),
+        profile: null,
+      );
+      check('  profile=null 时按 priority 补位（不是① ② 都不显示）',
+          s.length == 2, s.map((x) => x.code).join(','));
+    }
+
+    // ⑥ 上限是**排除法的正确性**而非巧合：offCard 恰为 context/cognate
+    {
+      check('  offCard 恰好是 {context, cognate}（多一个都会让卡片少内容）',
+          CardSlots.offCard.length == 2 &&
+              CardSlots.offCard.contains('context') &&
+              CardSlots.offCard.contains('cognate'),
+          CardSlots.offCard.join(','));
+      check('  order 不含被排除的两类（否则补位又会把它们加回来）',
+          !CardSlots.order.any((c) => CardSlots.offCard.contains(c)),
+          CardSlots.order.join(','));
     }
   } finally {
     await svc.close();

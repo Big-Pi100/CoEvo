@@ -249,6 +249,77 @@ class WordQueryService {
     return (card: card, profile: await profileOf(wordId));
   }
 
+  /// **聚合页**（词根族 / 词源族）—— 点卡片 ① / ② 打开的那一页。
+  ///
+  /// # 🔴 本方法**只补页头**；成员列表**复用 [aggregateMembers]**
+  /// `aggregateMembers` **先前就已存在**（自带「分拆法」，且有验收覆盖），
+  /// 卡片上的入口（`AggregateLink`）也一直用它给的 `pageId`。
+  /// → 这里若再查一遍成员，就是**同一件事两处实现**（本项目已多次踩过）。
+  ///   ⚠️ 我 2026-09-28 第一次写这段时**正是这么错的**：没先搜既有 API，
+  ///      重复定义了一个 `AggregateMember` 类、又自己查了一遍成员表。
+  ///
+  /// 所以现在只查三样：**标题 / 词根本体 / 语种含义**（都只在 `aggregate_page` 里）。
+  ///
+  /// ## 为什么还需要 `source`（词根本体）
+  /// 设计稿的页头是 `cept` 大字 + `Latin · 拿取 · 22 个同族词` ——
+  /// 这个「大字 + 语种/含义」取自 `content.sections[0].source`，
+  /// 而 `AggregateLink`（卡片入口用的）只有 title / memberCount，**没有它**。
+  Future<AggregatePage?> aggregatePageOf(int pageId) async {
+    final rows = await _db.rawQuery(
+      'SELECT id, page_type, front, content, member_count '
+      'FROM aggregate_page WHERE id = ?',
+      [pageId],
+    );
+    if (rows.isEmpty) return null;
+
+    final r = rows.first;
+    final contentRaw = r['content'] as String?;
+    var front = (r['front'] as String?) ?? '';
+    AggregateSource? source;
+    final glosses = <String, String>{};
+
+    if (contentRaw != null && contentRaw.isNotEmpty) {
+      try {
+        final d = (jsonDecode(contentRaw) as Map).cast<String, Object?>();
+        final f = d['front'] as String?;
+        if (f != null && f.isNotEmpty) front = f;
+        final sections = d['sections'];
+        if (sections is List && sections.isNotEmpty) {
+          final s0 = (sections.first as Map);
+          source = AggregateSource.fromMap(s0['source']);
+          // 成员释义（设计稿的成员行要显示）—— 顺手收成一张表
+          final items = s0['items'];
+          if (items is List) {
+            for (final it in items.whereType<Map>()) {
+              final wid = it['word_id'];
+              final g = it['gloss'];
+              if (wid is String && g is String && g.isNotEmpty) {
+                glosses[wid] = g;
+              }
+            }
+          }
+        }
+      } catch (_) {
+        // 🔑 坏 JSON 不让整页打不开 —— 至少还能显示标题。
+        //    ⚠️ 这里**故意不写日志**：本层是**纯 Dart**（零 Flutter 依赖，
+        //       这是「验证脚本能 import 真源码」的前提）→ 用不了 `debugPrint`。
+        //       与 `WordMnemonicProfile._parseCodes` 同一原则：
+        //       「一条坏数据不该让整个界面渲染不出来」。
+      }
+    }
+
+    return AggregatePage(
+      pageId: r['id']! as int,
+      pageType: (r['page_type'] as String?) ?? '',
+      front: front.trim(),
+      memberCount: (r['member_count'] as int?) ?? 0,
+      source: source,
+      // 🔑 成员走**既有实现**（自带分拆法）
+      members: await aggregateMembers(pageId),
+      glosses: glosses,
+    );
+  }
+
   /// 记忆法类型的**显示名**（`mnemonic_type.name`：`root` → 「词根词缀」…）。
   ///
   /// # 🔴 为什么从库里读而不在 UI 层硬编码
@@ -562,6 +633,18 @@ class WordSection {  WordSection(this.raw);
 /// ⚠️ 设计稿 HTML 写的是 `…collocation(3) → etymology(4)`，**与库表相反**。
 ///    本实现以库为准（数据 > 手绘稿），且因为直接用本表的分配结果，
 ///    **不经过优先级排序** → 绕开了这处矛盾。
+///
+/// # 🔴 但「分配结果」≠「能上卡的类型」 —— 见 `resolveCardSlots`
+/// 上表把 `cognate` / `context` 也列为**合法记忆法类型**，于是
+/// `primary_code` 里真的出现了它们（实测：`context` **1,410 词**、
+/// `cognate` **195 词**）。但这两类**不该出现在卡片上**：
+/// · `context` —— 它是卡片 **④ 的固定位置**（`applicable_when` 写着「默认附加」）
+///   → 进 ① 就会与 ④ **重复显示**（白哥 2026-09-28 报的就是这个）
+/// · `cognate` —— 白哥原话（`mnemonic-layer-separation-2026-09-26.md` §188）：
+///   > 「**同源串记是个聚合页面不应该直接显示在卡片上**，卡片上应该显示的是
+///   >   『词源故事』而点击词源故事展开同源串记聚合页；**词根词缀也是一样**。」
+///   · 数据侧佐证：`cognate` 段**只有族标签**（`group_id`/`label`/`size`/`origin`），
+///     **没有故事文本** → 它天然只是**聚合页入口信息**，不是一段可读的内容
 class WordMnemonicProfile {
   WordMnemonicProfile({
     required this.wordId,
@@ -623,6 +706,105 @@ class WordMnemonicProfile {
 }
 
 /// 聚合页入口（内嵌在卡片段里）
+/// 卡片上的**一个记忆法槽位**（渲染用）—— 已经过「哪些类型能上卡」的过滤。
+///
+/// 🔑 与 `WordMnemonicProfile` 的分工必须分清（这是本组 bug 的根子）：
+/// | | 表达什么 | 谁决定 |
+/// |---|---|---|
+/// | `WordMnemonicProfile` | 制卡时**判定的记忆法优先级**（数据） | LLM/脚本，存库 |
+/// | `CardSlot` | **这张卡上实际显示哪两段**（展示） | 产品规则，运行时 |
+///
+/// 把两者混为一谈，就会出现「库说 `primary=cognate` → 卡片真的铺出同源串记」。
+class CardSlot {
+  const CardSlot({required this.code, required this.section});
+
+  /// `root` / `etymology` / `collocation` / `image`（**不会是** `context` / `cognate`）
+  final String code;
+
+  final WordSection section;
+
+  /// 聚合页入口（`null` = 该段没有族页 → 卡片上**不给箭头、不可点**）。
+  AggregateLink? get entry => section.entry;
+}
+
+/// 卡片槽位解析 —— 从「profile 判定」得到「实际能铺在卡上的两段」。
+///
+/// # 🔴 排除两类（白哥 2026-09-28 报的两个 bug）
+/// ```dart
+/// const kMnemonicOffCard = {'context', 'cognate'};
+/// ```
+/// | code | 为什么不能上卡 |
+/// |---|---|
+/// | `context` | 它是 **④ 的固定位置**（`applicable_when`=「默认附加」）→ 上 ① 就与 ④ **重复显示**。实测 **1,410 词**的 `primary_code` 是它（如 `achieve` / `begin` / `close`） |
+/// | `cognate` | 它是**聚合页**（白哥原话见 `WordMnemonicProfile` 的文档）；数据侧它**只有族标签、没有故事文本** → 铺在卡上只是一个孤零零的族名。实测 **195 词**的 `primary_code` 是它 |
+///
+/// # 🔑 为什么要「补位」而不是「过滤后留空」
+/// 排除上述两类后，那 1,605 个词的 ① 会空掉 → 卡片少一段记忆法。
+/// 而白哥的原话是「**从记忆法排序抓取中去掉**」——
+/// 「抓取」本身就是**按优先级依次取**的过程，去掉某类自然抓到下一个。
+/// → 过滤后若不足两个，按 [kMnemonicSlotOrder] 从**该词实际有的段**里补位。
+///
+/// # ⚠️ 补位只看「段是否存在」，不看「质量好不好」
+/// 这是有意的：判断「这个词源故事值不值得显示」需要看内容，
+/// 而**内容已经在库里**（制卡时 `sections` 就是筛过的）→
+/// 段存在即表示制卡时认为它可用。运行时不再重新评价。
+class CardSlots {
+  CardSlots._();
+
+  /// 不上卡的类型（理由见类文档）。
+  static const Set<String> offCard = {'context', 'cognate'};
+
+  /// 补位顺序 —— **必须与库表 `mnemonic_type.priority` 一致**
+  /// （已排除 [offCard] 两类）。由 `scripts/query_verify` 的断言守护一致性。
+  static const List<String> order = [
+    'root', // 1 词根词缀
+    'etymology', // 3 词源故事
+    'collocation', // 4 搭配整记
+    'image', // 5 联想图像
+  ];
+
+  /// 最多两个槽位（设计稿 §03：「卡片只显示四样」，其中 ①② 是记忆法）。
+  static const int maxSlots = 2;
+
+  /// 解析出卡片上要渲染的记忆法槽位（**顺序即渲染顺序**）。
+  ///
+  /// 两轮：
+  /// 1. **按 profile 给的顺序取**（`primary` → `secondary_codes`）——
+  ///    尊重制卡时的判定（它知道哪个词根/词源更适合这个词）
+  /// 2. 不足 [maxSlots] 时，按 [order] 从卡片实际段里**补位**
+  static List<CardSlot> resolve({
+    required WordCard card,
+    required WordMnemonicProfile? profile,
+  }) {
+    final out = <CardSlot>[];
+    final used = <String>{};
+
+    void take(String code) {
+      if (out.length >= maxSlots) return;
+      if (offCard.contains(code)) return;
+      if (!used.add(code)) return; // 同一个 code 只占一个槽位
+      final s = card.sectionOfType(code);
+      if (s == null) return; // 段不存在 → 跳过（不留空段）
+      out.add(CardSlot(code: code, section: s));
+    }
+
+    // ① 尊重 profile 的判定顺序
+    if (profile != null) {
+      take(profile.primaryCode);
+      for (final c in profile.secondaryCodes) {
+        take(c);
+      }
+    }
+
+    // ② 补位
+    for (final c in order) {
+      take(c);
+    }
+
+    return out;
+  }
+}
+
 class AggregateLink {
   AggregateLink({
     required this.pageId,
@@ -640,6 +822,79 @@ class AggregateLink {
   final String title;
 
   final int memberCount;
+}
+
+// ─────────────────────────────────────────────────────────────
+// 聚合页（词根族 / 词源族）
+// ─────────────────────────────────────────────────────────────
+
+/// 聚合页的**来源词根/词源**（`content.sections[0].source`）。
+///
+/// 用于两件事：
+/// 1. 页头那行 `Latin · 拿取 · 22 个同族词`（语种 / 含义 / 规模）
+/// 2. 🔑 **标出共享词根** —— 成员的分拆法里，`surface` 等于 [form] 的那一段
+///    用强调色（设计稿：「共享词根用强调色标出」，是「一眼看出同一族」的钩子）
+class AggregateSource {
+  const AggregateSource({this.form, this.type, this.origin, this.meaning});
+
+  /// 词根/词源的形式（如 `organ` / `capere`）
+  final String? form;
+
+  /// `root` / `etymon`
+  final String? type;
+
+  /// 语种（`Greek` / `Latin` / `Old English` …）
+  final String? origin;
+
+  final String? meaning;
+
+  static AggregateSource? fromMap(Object? v) {
+    if (v is! Map) return null;
+    final m = v.cast<String, Object?>();
+    return AggregateSource(
+      form: m['form'] as String?,
+      type: m['type'] as String?,
+      origin: m['origin'] as String?,
+      meaning: m['meaning'] as String?,
+    );
+  }
+}
+
+/// 聚合页的**页头 + 成员**。
+class AggregatePage {
+  const AggregatePage({
+    required this.pageId,
+    required this.pageType,
+    required this.front,
+    required this.memberCount,
+    this.source,
+    this.members = const [],
+    this.glosses = const {},
+  });
+
+  final int pageId;
+
+  /// `root`（词根族）/ `etymon`（词源族）
+  final String pageType;
+
+  /// 页头标题（如「organ 词根族（Greek）」）
+  final String front;
+
+  final int memberCount;
+  final AggregateSource? source;
+
+  /// 成员列表（**来自既有的 `aggregateMembers`** —— 自带「分拆法」）
+  final List<AggregateMember> members;
+
+  /// `word_id → 中文释义`（设计稿的成员行是「词 + 释义 + 分拆法」）。
+  ///
+  /// # 🔑 为什么不给 `AggregateMember` 加 `gloss` 字段
+  /// `AggregateMember` 是**既有模型**（`aggregateMembers` 在用，有验收覆盖），
+  /// 为一个展示需求改它的签名会牵动那条既有链路。
+  /// 而释义**本来就在** `aggregate_page.content` 里（制卡时已预渲染）——
+  /// 本方法顺手把它收成一张表，UI 按 `wordId` 取即可。
+  /// 🔑 判据：**能在不扩散改动面的前提下满足需求，就不动既有结构**。
+  final Map<String, String> glosses;
 }
 
 /// 聚合页成员 —— 带**分拆法**（白哥要求：不是单纯列单词）

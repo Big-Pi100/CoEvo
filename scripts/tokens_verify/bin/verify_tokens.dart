@@ -1816,9 +1816,60 @@ void _s17ReviewList() {
   check('词卡有释义段与语境段',
       cardW.contains("label: '释义'") && cardW.contains("label: '语境原句'"));
 
-  // ⑥ 🔴 词卡**不显示 `›`**（聚合页属 3.7 —— 显示箭头却点不动 = 静默无效）
-  check('🔴 词卡不给未实现的聚合页入口加 ›（避免「看起来能点」）',
-      !cardW.contains('›'));
+  // ⑥ 🔴 **顺序**（白哥 2026-09-28）：「释义 + 语境原句在上，记忆法在下」
+  //
+  //    ⚠️ 与设计稿原稿（①② 记忆法在上）**相反** —— 这是白哥明确要求的调整。
+  //    ⚠️ 必须用**位置**断言（`indexOf` 比大小），不能只看「两个都在」——
+  //       后者在顺序反转时**照样为绿**。
+  final iAnswer = cardW.indexOf('_answerSlots(t)');
+  final iMnem = cardW.indexOf('_mnemonicSlots(t)');
+  check('能定位两个槽位方法的调用处（顺序断言的前提）',
+      iAnswer > 0 && iMnem > 0, 'answer@$iAnswer mnemonic@$iMnem');
+  check('🔴 释义/语境在**前**、记忆法在**后**（白哥定的顺序）',
+      iAnswer < iMnem, 'answer@$iAnswer mnemonic@$iMnem');
+
+  // ⑦ 🔴 卡片①② 是**聚合页入口**（白哥 2026-09-28：「之前说词根词缀、词源故事
+  //    点击应该进入聚合页，也没有实现」）
+  //
+  //    ⚠️ **本条是反转型断言**：它**原先**是「词卡**不**给未实现的聚合页入口加 `›`」
+  //       （那时聚合页属 3.7）。现在聚合页已实现 → **方向必须反转**。
+  //       🔑 若不反转：它会一直报红；更糟的是有人为了让绿而**把箭头删掉**
+  //          —— 那是「断言反向驱动实现」。
+  check('🔴 词卡有聚合页入口箭头（聚合页已实现 → 该给 `›`）',
+      cardW.contains('›'));
+  //    🔑 箭头必须**由 onTap 推导** —— 两者分开写迟早出现「有箭头没回调」
+  //       （= 显示箭头却点不动 = 静默无效）
+  check('🔑 箭头由 `onTap` 推导（不单独写一个 bool）',
+      RegExp(r'if \(onTap != null\)').hasMatch(cardW) &&
+          cardW.contains("'›'"));
+  check('词卡有聚合页入口回调（onOpenAggregate）',
+      cardW.contains('onOpenAggregate'));
+  //    🔴 槽位必须走 `CardSlots.resolve`（排除 context/cognate + 补位），
+  //       而不是直接读 `profile.primaryCode` —— 后者正是
+  //       「语境原句重复显示」「同源串记铺在卡上」两个 bug 的来源。
+  check('🔴 槽位走 CardSlots.resolve（不直接读 primaryCode）',
+      cardW.contains('CardSlots.resolve') &&
+          !RegExp(r'_sectionOf\(p\.primaryCode\)').hasMatch(cardW));
+  //    🔴 这里**必须断言「被调用」而不是「存在这个方法」** ——
+  //       实测证伪：删掉 `WordCardView(onOpenAggregate: ...)` 后，
+  //       `_openAggregate` 的**方法定义**还在 → `contains('_openAggregate')`
+  //       **照样为真** → 断言 0 红（假绿）。
+  //       🔑 又一次「同一符号在别处也出现」——**定义处与调用处**是两件事。
+  //          判据升级：**断言「接线」就断言调用处的特有形态**（带实参）。
+  check('复习页把「打开聚合页」**调用**接上了（不是只留一个方法定义）',
+      sess.contains('onOpenAggregate:') &&
+          sess.contains('_openAggregate(pageId'));
+  //    🔴 **路由必须真的注册** —— 页面写了但路由没接，**编译期不报错**，
+  //       表现是「点了没反应」（正是白哥报过的「静默无效」那一类）。
+  //       实测证伪：把 `path: '/aggregate/:pageId'` 改名后，
+  //       若不写本条**全程 0 红**。
+  check('🔴 聚合页路由已注册（/aggregate/:pageId）',
+      app.contains("path: '/aggregate/:pageId'"));
+  check('聚合页 screen 已接入路由（不是只建了文件）',
+      app.contains('AggregatePageScreen'));
+  check('聚合页是**顶层路由**（在 shell 之外 —— 全屏沉浸态）',
+      app.indexOf("path: '/aggregate/:pageId'") >
+          app.indexOf('StatefulShellRoute'));
 
   // ⑦ 🔴 卡片**有发音入口**（设计稿 mockup 的 `spk`）
   //    ⚠️ 我上一轮曾误判「设计稿卡片上无喇叭」并据此没做 → 这条防它再被删掉。
