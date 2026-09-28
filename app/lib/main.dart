@@ -3,11 +3,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show BrowserContextMenu;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
+import 'shared/achievement_icons.dart';
 import 'app.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   usePathUrlStrategy();
+
+  // 🔑 **debug 自检**：成就图标映射表必须覆盖 `AchievementIcons.all`。
+  //
+  // 为什么需要：漏映射一个图标名 → 该成就**静默显示默认奖杯图标**
+  // （不报错、不崩 —— 只在实际翻到那个成就时看出来，极难发现）。
+  // 覆盖性无法在 `query_verify` 里验（那套是纯 Dart，不能 import Flutter），
+  // 所以放在这里：**debug 构建启动即断言**，release 下 `assert` 自动消失（零成本）。
+  assert(iconsCoverAll(),
+      '成就图标映射表未覆盖全部图标名（见 shared/achievement_icons.dart）');
 
   // ══════════════════════════════════════════════════════════════════════
   // 🔴 **仅 debug · 仅 web**：关掉浏览器原生右键菜单

@@ -227,6 +227,41 @@ CREATE INDEX IF NOT EXISTS idx_le_word ON lookup_event (word_id, looked_up_at);
 CREATE INDEX IF NOT EXISTS idx_le_time ON lookup_event (looked_up_at DESC);
 
 -- ─────────────────────────────────────────────────────────────
+-- 成就解锁记录（v1.4 · Step 3.8 成就体系端侧化）
+-- ─────────────────────────────────────────────────────────────
+-- 依据：`docs/design/achievement-redesign-2026-09-29.md`（成就改为**端侧计算**）
+--       + `achievement_rules.dart`（成就清单与判定纯函数 · 唯一真理源）
+--
+-- # 🔴 为什么必须有这张表（不能「纯计算」）
+-- 「当前满足哪些成就」可以纯算出来，但**算不出**这两件事：
+--   ① **解锁时间** —— 成就的意义之一就是「我什么时候拿到的」
+--   ② **「新解锁」** —— 「上次检查时还没有、现在有了」需要**历史状态**做差
+--      → 没有它**无法弹解锁通知**，成就就退化成「统计数字」，失去激励作用
+--
+-- 🔑 表极小（一行 ≈ 40 字节 · 20 个成就全解锁 ≈ 1 KB）——
+--    这不是「为未知需求建表」，是**已定需求的最小持久化**。
+--
+-- # ⚠️ 本表**不参与多端同步**（有意如此 · 第一版）
+-- 若加 `pending_push` 走既有同步机制，就要处理「两台设备各自解锁」的**合并语义**
+-- （unlocked_at 取谁的？A 端解锁 B 端没解锁怎么办？）
+-- → 第一版**只本地记录**：换设备后成就会重算（**靠指标能重新算出来**，
+--   只是 `unlocked_at` 会变成新设备的首次检查时刻）。
+-- 🔑 这是**有意的取舍**：成就内容不丢（指标在端侧库里），丢的只是「首次解锁时间」。
+--    将来若要同步，加 `pending_push` 列 + 合并规则即可（同 `bookmark` 的模式）。
+--
+-- # 🔑 与 `achievement_rules.dart` 的关系
+-- 本表的 `key` **必须**是 `kAchievements` 里的 `key`（它也是**主键**）。
+-- 🔴 因此成就 key **一旦发布不可改** —— 改了 = 用户既有解锁记录对不上
+--    （旧 key 永远留在表里，新 key 永远算不解锁）。
+CREATE TABLE IF NOT EXISTS achievement_unlock (
+  key         TEXT PRIMARY KEY,                     -- 成就 key（见 achievement_rules.dart）
+  unlocked_at TEXT NOT NULL                         -- UTC ISO8601（本库硬约束 1）
+              DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+  -- ⚠️ 无索引、无 `pending_push`：本表只有「全表读」与「按 key 插入」两种查询，
+  --    主键即索引；不参与同步（见上）。
+);
+
+-- ─────────────────────────────────────────────────────────────
 -- 说明（不在本次范围）
 -- ─────────────────────────────────────────────────────────────
 -- · **词库外生词**（`external_word_cache` + LLM 制卡）—— 属 **Phase 3**。
@@ -255,6 +290,10 @@ CREATE INDEX IF NOT EXISTS idx_le_time ON lookup_event (looked_up_at DESC);
 --   · 4 个索引 · 🔴 `user_word` 用**软删**（与 `bookmark` 硬删相反）
 --   · ⚠️ 三处偏离 v1 原文（均为现库事实约束，见该表注释）
 --   · 📄 决策依据：`docs/review/step3-4c-word-writeback-plan-2026-09-28.md` §〇
+-- v1.4 (2026-09-29) Step 3.8：新增 `achievement_unlock`（成就解锁记录）
+--   · 成就改为**端侧计算**（后端成就引擎已退役，见 `backend-legacy-chain-retirement-2026-09-29.md`）
+--   · 只加**一张表**（不参与同步）· 清单与判定见 `app/lib/services/achievement_rules.dart`
+--   · 📄 决策依据：`docs/design/achievement-redesign-2026-09-29.md`
 --
 -- 🔴🔴 **升级注意（本次起「已有用户库」必须走迁移）**
 --    v1.2 时本库尚无任何端创建，故 version 停在 1。
@@ -266,4 +305,6 @@ CREATE INDEX IF NOT EXISTS idx_le_time ON lookup_event (looked_up_at DESC);
 --    ⚠️ **但这只覆盖「新增表/索引」**。将来若需**改已有表的列**（`ALTER TABLE` /
 --      `NOT NULL` 加列），`IF NOT EXISTS` 是**空操作**，必须在 `onUpgrade` 里
 --      按版本号写专门分支，且 `NOT NULL` 加列**必须给默认值或回填**（SQLite 已知限制）。
+--    🆕 v1.4 同理：真机上现存的库是 **v2**（或 v1）→ 必须靠 `onUpgrade` 建出
+--      `achievement_unlock`。**守护断言见 `scripts/query_verify/bin/verify_userdb_migration.dart`**
 

@@ -10,6 +10,8 @@ import 'package:go_router/go_router.dart';
 
 import '../data/mock_articles.dart';
 import '../models/article.dart';
+import '../providers/achievement_notifier.dart';
+import '../providers/achievement_provider.dart';
 import '../providers/bookmark_provider.dart';
 import '../providers/user_db_provider.dart';
 import '../providers/user_word_provider.dart';
@@ -352,6 +354,8 @@ Future<void> _writeBackLookup(
   // 而 `Notifier` **实例**的存活与 widget 无关（`userDbRevisionProvider`
   // 是非 autoDispose，只要 app 在就一直在）→ 拿着引用调 `bump()` 永远安全。
   final revision = ref.read(userDbRevisionProvider.notifier);
+  // 🔑 同理：成就解锁队列的 notifier **实例**（存活与 widget 无关）
+  final unlockNotifier = ref.read(achievementUnlockProvider.notifier);
 
   try {
     final repo = await ref.read(userWordProvider.future);
@@ -398,11 +402,38 @@ Future<void> _writeBackLookup(
     //   · `added`   → 新增 `user_word` + `card_review_state` → 复习页会多一个词
     //   · `revived` → `user_word.deleted = 0` + `updated_at` 刷新 → 复习页重新看到它
     revision.bump();
+
+    // 🔑 成就检查（**写库成功之后** · 与 bump 同一时机原则：「数据变了」才检查）。
+    //    `unawaited` —— 不阻塞查词浮层；失败在 `checkAndRefreshAchievements` 内 catch
+    //    （成就永不影响查词主流程）。
+    unawaited(_checkAchievementsAfterLookup(ref, unlockNotifier));
   } catch (e, st) {
     // 🔑 **只记日志**（见调用处说明）：查词写入失败不影响「看到词义」。
     debugPrint('[lookup] 写入失败 spelling=$spelling：$e\n$st');
   }
 }
+
+/// 查词写回后的成就检查（**不阻塞查词流程**）。
+///
+/// 🔑 与 `review_session_screen._checkAchievements` 同一模式：
+///    · `unawaited` 调用 → 队列 notifier 由调用方传入（`ref` 可能已失效）
+///    · 失败在 `checkAndRefreshAchievements` 内 catch → 不打断查词
+///
+/// 🔴 **必须定义在 `_writeBackLookup` 之外** —— 2026-09-29 两次踩坑记录：
+///   ① 用「大括号计数」找函数结尾时，`_writeBackLookup` 的**命名参数 `{`**
+///      （`WidgetRef ref, {`）会先被当成函数体 → 函数被插进签名中间。
+///   ② 更隐蔽：**先插入、再定位**时，刚插入的 helper 里也有 `) async {`
+///      → 第二次定位找到的是**自己**，越修越坏。
+///   🔑 正确做法：**从 `) async {` 之后开始计数**，且**先定位再插入**（一次完成）。
+Future<void> _checkAchievementsAfterLookup(
+  WidgetRef ref,
+  AchievementUnlockNotifier notifier,
+) async {
+  final newly = await checkAndRefreshAchievements(ref);
+  if (newly.isEmpty) return;
+  notifier.pushAll(newly);
+}
+
 
 /// 轻提示（沿用首页 toast 的样式 —— `snackBarTheme` 已是「ink 底 + page 字 + floating」）。
 void _hint(BuildContext context, String message) {

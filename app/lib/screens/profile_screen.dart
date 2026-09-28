@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,6 +17,9 @@ import '../providers/auth_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/tts_service.dart';
+import '../providers/achievement_notifier.dart';
+import '../providers/achievement_provider.dart';
+import '../widgets/achievement_section.dart';
 import '../widgets/order_history.dart';
 import '../widgets/subscribe_panel.dart';
 import '../widgets/claim_dialog.dart';
@@ -67,6 +72,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+
+    // 🔑 **兜底检查**：进入「我的」页时检查一次成就解锁。
+    //
+    // 为什么需要它（即使复习/查词处都已触发）：
+    //   · 那两处是**主动路径**，但用户可能「上次解锁条件已满足、却因 App 被杀
+    //     而没走到检查」→ 成就永远不亮
+    //   · 而 `checkAndUnlock` 是**幂等**的 → 多调一次零代价
+    // 🔑 判据：**宁可多调，不可漏调**（漏调 = 静默不解锁，且无法自愈）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_checkAchievements());
+    });
+  }
+
+  /// 「我的」页的兜底成就检查（失败只记日志 —— 见 `achievement_provider.dart`）。
+  Future<void> _checkAchievements() async {
+    final newly = await checkAndRefreshAchievements(ref);
+    if (newly.isEmpty || !mounted) return;
+    ref.read(achievementUnlockProvider.notifier).pushAll(newly);
   }
 
   Future<void> _loadUnreadCount() async {
@@ -421,6 +444,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       padding: const EdgeInsets.fromLTRB(CoSpacing.xxl, CoSpacing.xxl,
           CoSpacing.xxl, CoSpacing.tabBarClearance),
       children: [
+        // ── 成就区（**顶部** · 规格 §4.2/§6.1：「顶部成就区（连续天数 / 掌握词数 + 分享入口）」）──
+        //    🔑 放在最前：它是「我的」页的信息主体，账号/订阅是配置项。
+        //    ⚠️ 它自己处理 loading/error（**不阻塞**本页其它内容）—— 见该 widget 的文件头。
+        AchievementSection(referralCode: _referralCode),
+        const SizedBox(height: CoSpacing.lg),
+
         // ── 推广二维码 ──
         if (_referralCode != null)
           Container(

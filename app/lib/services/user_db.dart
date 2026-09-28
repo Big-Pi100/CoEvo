@@ -35,6 +35,7 @@ import 'package:sqflite_common/sqlite_api.dart';
 /// |---|---|
 /// | **1** | 初版：`card_review_state` · `review_log` · `bookmark` |
 /// | **2** | Step 3.4c：+ `user_word`（生词本）· `lookup_event`（查词记录） |
+/// | **3** | Step 3.8：+ `achievement_unlock`（成就解锁记录 —— 成就改为端侧计算） |
 ///
 /// ## 🔴🔴 为什么必须递增（2026-09-28 发现）
 /// 此前本文件写着「**本库从未在任何端创建**」→ 所以 version 停在 1、`onUpgrade` 直接抛错。
@@ -50,7 +51,10 @@ import 'package:sqflite_common/sqlite_api.dart';
 /// 🔑 **而且验收脚本验不出来**：脚本用**临时新库** → `onCreate` 会跑 → 全过。
 ///    这是「**在错条件下验证**」的又一种形态 —— 差异不是平台，而是**初始状态**。
 ///    → 守护见 `scripts/query_verify/bin/verify_userdb_migration.dart`（专测「老库升级」）。
-const int kUserDbVersion = 2;
+///
+/// 🆕 v3（2026-09-29）同理：真机上现存的库是 **v2**（或更早的 v1）
+/// → 必须靠 `onUpgrade` 建出 `achievement_unlock`。
+const int kUserDbVersion = 3;
 
 /// `user.db` 的文件名（调用方拼路径用）。
 const String kUserDbFileName = 'user.db';

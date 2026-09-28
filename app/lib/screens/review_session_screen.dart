@@ -45,6 +45,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'dart:async';
+
+import '../providers/achievement_notifier.dart';
+import '../providers/achievement_provider.dart';
 import '../providers/review_list_provider.dart';
 import '../providers/review_session_provider.dart';
 import '../providers/user_db_provider.dart';
@@ -100,6 +104,8 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
     //    拿着 notifier **实例**引用则不受影响（`userDbRevisionProvider`
     //    是非 autoDispose，生命周期与 app 一致）。
     final revision = ref.read(userDbRevisionProvider.notifier);
+    // 🔑 同理提前取（成就解锁队列的 notifier 实例与 app 同生命周期）
+    final unlockNotifier = ref.read(achievementUnlockProvider.notifier);
 
     setState(() => _busy = true);
     try {
@@ -140,6 +146,11 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
       //    因为这两次 `await` 期间页面可能已被销毁。
       revision.bump();
 
+      // 🔑 成就检查放在**写库成功之后**（与 bump 同理：「数据变了」才是检查时机）。
+      //    `unawaited` —— 不让成就查询拖慢「提交 → 下一张」的节奏；
+      //    失败在 `checkAndRefreshAchievements` 内被 catch（成就永不影响复习主流程）。
+      unawaited(_checkAchievements(unlockNotifier));
+
       if (!mounted) return;
       ref.read(reviewSessionProvider.notifier).markAnswered(
             correct: correct,
@@ -162,6 +173,17 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// 检查成就解锁并入队（**不阻塞复习流程**）。
+  ///
+  /// 🔑 队列 notifier 由调用方传入（**不用 `ref`**）：
+  ///    本方法是 `unawaited` 的，期间页面可能已销毁 → `ref` 失效。
+  ///    notifier **实例**的存活与 widget 无关（与 `revision` 同一处理）。
+  Future<void> _checkAchievements(AchievementUnlockNotifier notifier) async {
+    final newly = await checkAndRefreshAchievements(ref);
+    if (newly.isEmpty) return;
+    notifier.pushAll(newly);
   }
 
   /// 下一张；已到队尾 → 退出（`dispose` 会刷新列表）。

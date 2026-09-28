@@ -1,36 +1,43 @@
-// CoEvo · `user.db` **迁移验收**（★ Step 3.4c 最关键的一条）
+// CoEvo · `user.db` **迁移验收**（★ 端侧最容易被漏掉的一类保护）
 //
 // 跑法：cd scripts/query_verify && dart run bin/verify_userdb_migration.dart
 //
 // # 🔴🔴 为什么必须单独有这一个脚本
 //
-// 现有**全部** `user.db` 验收（`verify_bookmark` / `verify_review_list` / …）
+// 其他 `user.db` 验收（`verify_bookmark` / `verify_review_list` / …）
 // 都跑在**新建的临时库**上 → 走的是 `onCreate` → **天然覆盖不到升级路径**。
 //
-// 而真机上的情况**完全不同**：白哥已验过收藏功能 → `user.db` **早已存在且
-// `user_version = 1`** → 加了新表之后：
-//   · `onCreate` **不重跑**（不是新库）
-//   · 只有 `onUpgrade` 会触发
+// 而真机上的情况**完全不同**：
+//   · 白哥已验过收藏 → 设备上早有 `user.db`（`user_version = 1`）
+//   · 后来又验过生词本 → 可能已升到 **2**
+//   → 加了新表之后：`onCreate` **不重跑**，**只有 `onUpgrade`** 会触发。
 //
-// → 若 `onUpgrade` 是坏的（或仍是「无条件抛错」），**新表根本不会创建**，
-//   而**所有现有验收照样全绿** → 一个「在错条件下验证」的完美盲区。
+// → 若 `onUpgrade` 坏了，**新表根本不会创建**，而**所有其他验收照样全绿**
+//   → 一个「在错条件下验证」的完美盲区。
 //
 // 🔑 判据：**「验收环境的初始状态」必须与「生产的初始状态」一致**。
 //    这里的差异不是平台，而是**初始状态**（新库 vs 老库）—— 更隐蔽，
 //    因为跑在同一台机器、同一个命令上，只差前置数据。
 //
-// 本脚本因此**显式构造一个 v1 老库**：
-//   ① 用 **v1 的 DDL**（不含 `user_word` / `lookup_event`）建库
-//   ② 写入真实数据（几条 `bookmark`）
-//   ③ 用 **当前 `openUserDb`（version = 2，含全量 schema）** 重新打开
-//   ④ 断言：新表存在 + **旧数据完好** + `user_version == 2`
+// # 本脚本的两个升级路径（2026-09-29 起）
+// | 起始 | 快照 | 场景 |
+// |---|---|---|
+// | **v1** | `_v1Schema` | 最早装机的用户（只有 3 表） |
+// | **v2** | `_v2Schema` | 验过生词本的用户（5 表） |
+// → 两条都要能升到当前版本，且**旧数据完好**。
 //
-// 🔑 **证伪方式**（本脚本自身的有效性验证）：
-//    把 `user_db.dart` 里的 `kUserDbVersion` 改回 `1` → 本脚本**必须变红**。
-//    （version 不变 → 不触发 `onUpgrade` → 新表不会建 → 步骤 ④ 失败）
+// # 🔑 自动覆盖「将来新增的表」
+// §【4】从 `user_db_schema.sql` **直接提取全部建表语句**，断言升级后**全都在**
+// → 以后再加表**不用改本脚本**也能被覆盖（防「加了表忘了加断言」）。
+//
+// # 🔑 本脚本自身的证伪方式
+// 把 `user_db.dart` 的 `kUserDbVersion` 改回 **2** → 本脚本**必须变红**
+// （version 不变 → 不触发 `onUpgrade` → `achievement_unlock` 不会建 → §【3】失败）。
+// 已实测过一次（见方案 §七 实施记录）。
 
 import 'dart:io';
 
+import 'package:sqflite_common/sqlite_api.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../../app/lib/services/user_db.dart';
@@ -46,6 +53,13 @@ void check(String label, bool ok, [String detail = '']) {
     _failures.add('$label  $detail');
     print('  🔴 $label${detail.isEmpty ? '' : '  ($detail)'}');
   }
+}
+
+void section(String t) {
+  print('');
+  print('─' * 74);
+  print(t);
+  print('─' * 74);
 }
 
 /// **v1 的 schema**（2026-09-27 时点的样子）—— 有意**不含** `user_word` / `lookup_event`。
@@ -91,30 +105,93 @@ CREATE INDEX IF NOT EXISTS idx_bm_pending ON bookmark (pending_push)
   WHERE pending_push = 1;
 ''';
 
-Future<void> main() async {
-  sqfliteFfiInit();
-  final factory = databaseFactoryFfi;
+/// **v2 的 schema**（2026-09-28 时点的样子）= v1 + `user_word` + `lookup_event`。
+///
+/// 🔑 同样是**历史快照**，只增不改（理由见 `_v1Schema`）。
+const String _v2Schema = '''
+$_v1Schema
+CREATE TABLE IF NOT EXISTS user_word (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  word_id           TEXT    NOT NULL,
+  spelling          TEXT    NOT NULL COLLATE NOCASE,
+  source_article_id INTEGER,
+  source_sentence   TEXT,
+  added_at          TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  updated_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  deleted           INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1)),
+  pending_push      INTEGER NOT NULL DEFAULT 1 CHECK (pending_push IN (0, 1)),
+  UNIQUE (word_id)
+);
+CREATE TABLE IF NOT EXISTS lookup_event (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  word_id      TEXT,
+  spelling     TEXT    NOT NULL COLLATE NOCASE,
+  article_id   INTEGER,
+  sentence     TEXT,
+  position     INTEGER,
+  looked_up_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_le_word ON lookup_event (word_id, looked_up_at);
+''';
 
-  final dir = await Directory.systemTemp.createTemp('coevo_migrate_');
+/// 从 schema 文件里提取**全部建表语句的表名**。
+///
+/// 🔑 这样本脚本**不需要**维护一份「应该有哪张表」的清单 ——
+///    将来新增表会自动纳入断言范围（防「加了表忘了加断言」）。
+List<String> tableNamesInSchema(String sql) {
+  final re = RegExp(r'CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+([a-z_]+)',
+      caseSensitive: false);
+  // ⚠️ 先剥掉注释 —— 否则「注释里举例的建表语句」也会被数进去
+  final noComment = splitSqlStatements(sql).join('\n');
+  return re
+      .allMatches(noComment)
+      .map((m) => m.group(1)!)
+      .toSet()
+      .toList()
+    ..sort();
+}
+
+Future<List<String>> tableNames(Database db) async {
+  final rows = await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+  return rows.map((r) => r['name'] as String).toList();
+}
+
+int firstInt(List<Map<String, Object?>> rows) {
+  if (rows.isEmpty) return -1;
+  final v = rows.first.values.first;
+  return v is num ? v.toInt() : -1;
+}
+
+/// 跑一条升级路径：建 `fromVersion` 老库 → 写数据 → 用当前实现打开 → 断言。
+Future<void> runUpgradeCase({
+  required DatabaseFactory factory,
+  required String schemaSql,
+  required int fromVersion,
+  required String oldSchema,
+  required List<String> expectedTables,
+}) async {
+  print('');
+  print('═' * 74);
+  print('▶ 升级路径：v$fromVersion → v$kUserDbVersion');
+  print('═' * 74);
+
+  final dir = await Directory.systemTemp.createTemp('coevo_migrate_v$fromVersion');
   final path = '${dir.path}/user.db';
-  // 当前 schema —— 与 App 侧 `rootBundle.loadString(kUserDbSchemaAsset)` 读的是**同一份文件**
-  final schemaSql =
-      File('../../app/assets/sql/user_db_schema.sql').readAsStringSync();
 
-  print('\n【1】构造一个真实的「v1 老库」（模拟白哥手机上已有的 user.db）');
-
+  section('【1】构造真实的「v$fromVersion 老库」（模拟用户设备上已有的 user.db）');
   final old = await factory.openDatabase(
     path,
     options: OpenDatabaseOptions(
-      version: 1,
+      version: fromVersion,
       onCreate: (db, _) async {
-        for (final s in splitSqlStatements(_v1Schema)) {
+        for (final s in splitSqlStatements(oldSchema)) {
           await db.execute(s);
         }
       },
     ),
   );
-  // 写入真实数据（旧数据必须在升级后**完好无损**）
+  // 真实数据（旧数据必须在升级后**完好无损**）
   await old.insert('bookmark', {'content_id': 42});
   await old.insert('bookmark', {'content_id': 99});
   await old.insert('card_review_state', {
@@ -122,119 +199,100 @@ Future<void> main() async {
     'spelling': 'abandon',
     'next_review_at': '2026-09-28T00:00:00Z',
   });
+  if (fromVersion >= 2) {
+    await old.insert('user_word', {'word_id': 'w000002', 'spelling': 'benefit'});
+  }
 
   final oldVer = firstInt(await old.rawQuery('PRAGMA user_version'));
   final oldTables = await tableNames(old);
-  check('老库已建立且 user_version = 1', oldVer == 1, '$oldVer');
-  check('老库**不含** user_word（前提成立）', !oldTables.contains('user_word'));
-  check('老库**不含** lookup_event（前提成立）', !oldTables.contains('lookup_event'));
+  check('老库已建立且 user_version = $fromVersion', oldVer == fromVersion, '$oldVer');
+  check('🔴 前提成立：老库**不含** achievement_unlock',
+      !oldTables.contains('achievement_unlock'));
   check('老库已有 bookmark 数据（2 条）',
       firstInt(await old.rawQuery('SELECT count(*) AS n FROM bookmark')) == 2);
   await old.close();
 
-  print('\n【2】用「当前实现」（version=${kUserDbVersion} + 全量 schema）重新打开 → 触发升级');
-
-  final db = await openUserDb(
-    factory: factory,
-    path: path,
-    schemaSql: schemaSql,
-  );
-
+  section('【2】用「当前实现」（version=$kUserDbVersion + 全量 schema）重新打开 → 触发升级');
+  final db =
+      await openUserDb(factory: factory, path: path, schemaSql: schemaSql);
   final tables = await tableNames(db);
   final ver = firstInt(await db.rawQuery('PRAGMA user_version'));
 
-  print('\n【3】升级结果 —— 🔴 本脚本的核心断言');
-
-  check('被断言的前提：kUserDbVersion > 1（否则不会触发 onUpgrade）',
-      kUserDbVersion > 1, '当前 $kUserDbVersion');
-  check('🔴 user_word 已创建（老库升级拿到了新表）', tables.contains('user_word'));
-  check('🔴 lookup_event 已创建（老库升级拿到了新表）',
-      tables.contains('lookup_event'));
+  section('【3】升级结果 —— 🔴 核心断言');
+  check('被断言的前提：kUserDbVersion > $fromVersion（否则不触发 onUpgrade）',
+      kUserDbVersion > fromVersion, '当前 $kUserDbVersion');
+  check('🔴 achievement_unlock 已创建（老库升级拿到了新表）',
+      tables.contains('achievement_unlock'));
   check('user_version 已升到 $kUserDbVersion', ver == kUserDbVersion, '$ver');
 
-  print('\n【4】旧数据完好（升级不能丢数据）');
-  check(
-      'bookmark 旧数据仍是 2 条',
+  section('【4】🔑 全量表清单（从 schema 自动提取 → 将来加表自动覆盖）');
+  final missing = expectedTables.where((t) => !tables.contains(t)).toList();
+  check('schema 里声明的 ${expectedTables.length} 张表**升级后全都在**',
+      missing.isEmpty, missing.isEmpty ? '' : '缺: ${missing.join(", ")}');
+
+  section('【5】旧数据完好（升级不能丢数据）');
+  check('bookmark 旧数据仍是 2 条',
       firstInt(await db.rawQuery('SELECT count(*) AS n FROM bookmark')) == 2);
-  check('bookmark 内容未被改动',
+  check(
+      'bookmark 内容未被改动',
       (await db.query('bookmark', columns: ['content_id'], orderBy: 'content_id'))
               .map((r) => r['content_id'])
               .toList()
               .toString() ==
           '[42, 99]');
-  check(
-      'card_review_state 旧数据仍是 1 条',
-      firstInt(await db.rawQuery(
-              'SELECT count(*) AS n FROM card_review_state')) ==
+  check('card_review_state 旧数据仍是 1 条',
+      firstInt(await db
+              .rawQuery('SELECT count(*) AS n FROM card_review_state')) ==
           1);
-  check(
-      'card_review_state 的 spelling 未丢',
-      (await db.query('card_review_state', columns: ['spelling'])).first['spelling'] ==
+  check('card_review_state 的 spelling 未丢',
+      (await db.query('card_review_state', columns: ['spelling']))
+              .first['spelling'] ==
           'abandon');
-
-  print('\n【5】新表可正常使用（不只是「存在」）');
-  //
-  // 🔴 **前置守卫**：若 §3 已判定「新表没建出来」，这里继续 `INSERT` 会**直接抛异常**
-  //    → 脚本崩溃退出，**后面的断言一条都不跑**、汇总也不会打印。
-  //    ⚠️ 崩溃比「干净报红」糟：崩溃容易被误读成「环境问题」，
-  //       而这里要表达的恰恰是「**实现的迁移逻辑错了**」。
-  //    → 所以显式跳过后面的节，并保留 §3 的报红作为结论。
-  final brandNewTablesOk =
-      tables.contains('user_word') && tables.contains('lookup_event');
-  if (!brandNewTablesOk) {
-    print('  ⏭  跳过：user_word / lookup_event 未创建 → 后续插入必然抛异常');
-    print('      （**这是预期行为** —— 说明 §3 的报红已经定位到根因，不必再往下跑）');
-  } else {
-    await db.insert('user_word', {
-      'word_id': 'w000001',
-      'spelling': 'abandon',
-      'source_sentence': 'He decided to abandon the plan.',
-    });
-    await db.insert('lookup_event', {
-      'word_id': 'w000001',
-      'spelling': 'abandon',
-      'sentence': 'He decided to abandon the plan.',
-    });
-    await db.insert('lookup_event', {
-      'word_id': null, // 未命中的词（白哥定：未命中也要记）
-      'spelling': 'nonexistentword',
-    });
-    check('user_word 可写入并可读回',
+  if (fromVersion >= 2) {
+    check('user_word 旧数据仍是 1 条（v2 库特有）',
         firstInt(await db.rawQuery('SELECT count(*) AS n FROM user_word')) == 1);
-    check('lookup_event 可写入并可读回（含未命中那条）',
-        firstInt(await db.rawQuery('SELECT count(*) AS n FROM lookup_event')) ==
-            2);
-    check('lookup_event 允许 word_id 为 NULL（未命中留痕）',
-        firstInt(await db.rawQuery(
-                'SELECT count(*) AS n FROM lookup_event WHERE word_id IS NULL')) ==
-            1);
+  }
 
-    print('\n【6】约束真的生效（不只是「表建出来了」）');
-    // user_word 按 word_id 唯一
+  section('【6】新表**可正常使用**（不只是「存在」）');
+  // 🔴 前置守卫：若 §3 判定「新表没建出来」，继续 INSERT 会**直接抛异常** →
+  //    脚本崩溃、后面的断言一条都不跑、汇总也不打印。
+  //    ⚠️ 崩溃比「干净报红」糟：容易被误读成「环境问题」，
+  //       而这里要表达的恰恰是「**迁移逻辑错了**」。
+  if (!tables.contains('achievement_unlock')) {
+    print('  ⏭  跳过：achievement_unlock 未创建 → 后续插入必然抛异常');
+    print('      （**这是预期行为** —— §3 的报红已定位到根因，不必再往下跑）');
+  } else {
+    await db.insert('achievement_unlock', {'key': 'first_review'});
+    check('可写入、可读回',
+        firstInt(await db.rawQuery('SELECT count(*) AS n FROM achievement_unlock')) ==
+            1);
+    // 🔑 DEFAULT 生效（插入时不提供 unlocked_at）
+    final row = (await db.query('achievement_unlock')).first;
+    check('🔴 unlocked_at 有 DEFAULT（未显式提供也写入）',
+        (row['unlocked_at'] as String?)?.isNotEmpty == true,
+        '${row['unlocked_at']}');
+    check('🔴 unlocked_at 是 UTC ISO8601 带 Z（本库硬约束 1）',
+        (row['unlocked_at'] as String).endsWith('Z'),
+        '${row['unlocked_at']}');
+
+    section('【7】约束真的生效');
     var dupRejected = false;
     try {
-      await db.insert('user_word', {'word_id': 'w000001', 'spelling': 'abandon'});
+      await db.insert('achievement_unlock', {'key': 'first_review'});
     } catch (_) {
       dupRejected = true;
     }
-    check('user_word 的 UNIQUE(word_id) 生效（重复词被拒）', dupRejected);
-
-    // deleted / pending_push 的 CHECK
-    var checkRejected = false;
-    try {
-      await db.update('user_word', {'deleted': 7},
-          where: 'word_id = ?', whereArgs: ['w000001']);
-    } catch (_) {
-      checkRejected = true;
-    }
-    check('user_word 的 CHECK (deleted IN (0,1)) 生效', checkRejected);
+    check('🔴 PRIMARY KEY(key) 生效（同一成就不会重复解锁）', dupRejected);
   }
 
-  print('\n【7】幂等：再次打开不应报错、不应重复建表（App 每次启动都会走）');
+  section('【8】幂等：再次打开不应报错、不应重复建表（App 每次启动都会走）');
   await db.close();
   final again =
       await openUserDb(factory: factory, path: path, schemaSql: schemaSql);
   check('二次打开成功（schema 全为 IF NOT EXISTS → 重跑安全）', true);
+  final againTables = await tableNames(again);
+  check('二次打开后全部表仍在',
+      expectedTables.every(againTables.contains));
   check('二次打开后旧数据仍在（未误删）',
       firstInt(await again.rawQuery('SELECT count(*) AS n FROM bookmark')) == 2);
   check('二次打开后 user_version 仍为 $kUserDbVersion',
@@ -242,32 +300,51 @@ Future<void> main() async {
   await again.close();
 
   await dir.delete(recursive: true);
+}
 
-  print('\n${'═' * 62}');
+Future<void> main() async {
+  sqfliteFfiInit();
+  final factory = databaseFactoryFfi;
+
+  // 当前 schema —— 与 App 侧 `rootBundle.loadString(kUserDbSchemaAsset)` 读的是**同一份文件**
+  final schemaSql =
+      File('../../app/assets/sql/user_db_schema.sql').readAsStringSync();
+  final expectedTables = tableNamesInSchema(schemaSql);
+
+  print('');
+  print('#' * 74);
+  print('# user.db 迁移验收 —— 起止版本 v1/v2 → v$kUserDbVersion');
+  print('# schema 声明的表：${expectedTables.join(", ")}');
+  print('#' * 74);
+
+  await runUpgradeCase(
+    factory: factory,
+    schemaSql: schemaSql,
+    fromVersion: 1,
+    oldSchema: _v1Schema,
+    expectedTables: expectedTables,
+  );
+  await runUpgradeCase(
+    factory: factory,
+    schemaSql: schemaSql,
+    fromVersion: 2,
+    oldSchema: _v2Schema,
+    expectedTables: expectedTables,
+  );
+
+  print('');
+  print('═' * 74);
   if (_failures.isEmpty) {
-    print('通过 $_pass 项，失败 0 项');
-    print('\n✅ 老库能升级出新表，且旧数据完好、新表约束生效');
+    print('✅ 全部通过：$_pass 项（v1→v$kUserDbVersion 与 v2→v$kUserDbVersion 两条路径）');
   } else {
-    print('通过 $_pass 项，**失败 ${_failures.length} 项**');
-    print('\n失败项：');
+    print('🔴 失败 ${_failures.length} 项 / 通过 $_pass 项：');
     for (final f in _failures) {
-      print('  🔴 $f');
+      print('    · $f');
     }
-    print('\n🔑 若「user_word 已创建」失败 → 检查 user_db.dart 的 '
-        'kUserDbVersion 是否 > 1、onUpgrade 是否真的执行了 schema');
-    exitCode = 1;
+    print('');
+    print('🔑 若「achievement_unlock 已创建」失败 → 检查 `user_db.dart` 的');
+    print('    `kUserDbVersion` 是否 > 起始版本、`onUpgrade` 是否真的重跑了 schema。');
   }
-}
-
-/// `PRAGMA user_version` / `count(*)` 这类单值查询的取值（缺行返回 -1）。
-int firstInt(List<Map<String, Object?>> rows) {
-  if (rows.isEmpty) return -1;
-  final v = rows.first.values.first;
-  return v is num ? v.toInt() : -1;
-}
-
-Future<List<String>> tableNames(Database db) async {
-  final rows = await db.rawQuery(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
-  return rows.map((r) => r['name'] as String).toList();
+  print('═' * 74);
+  if (_failures.isNotEmpty) exitCode = 1;
 }

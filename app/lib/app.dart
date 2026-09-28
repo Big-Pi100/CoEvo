@@ -11,6 +11,7 @@ import 'theme/clay.dart';
 import 'theme/tokens_ext.dart';
 import 'theme/theme_builder.dart';
 import 'screens/home_screen.dart';
+import 'screens/achievements_screen.dart';
 import 'screens/aggregate_page_screen.dart';
 import 'screens/bookmark_list_screen.dart';
 import 'screens/chat_screen.dart';
@@ -23,6 +24,7 @@ import 'pages/user/distribution/notification_panel.dart';
 import 'providers/auth_provider.dart';
 import 'providers/subscription_provider.dart';
 import 'providers/theme_provider.dart';
+import 'widgets/achievement_unlock_overlay.dart';
 import 'widgets/dialog_overlay.dart';
 import 'widgets/subscribe_panel.dart';
 
@@ -177,6 +179,11 @@ final goRouter = GoRouter(
         fromWord: state.uri.queryParameters['from'],
         fromSlotLabel: state.uri.queryParameters['slot'],
       ),
+    ),
+    // 成就墙（二级页 · 顶层路由）—— 从「我的」页顶部成就区进入
+    GoRoute(
+      path: '/achievements',
+      builder: (context, state) => const AchievementsScreen(),
     ),
     GoRoute(
       path: '/chat',
@@ -724,6 +731,9 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
             child: Stack(
             children: [
               child!,
+              // 全局成就解锁弹窗（**任何页面**解锁都会弹）—— 顶层 Stack 最上层
+              // 数据源：端侧（见 providers/achievement_notifier.dart）
+              const AchievementUnlockOverlay(),
               _buildSubExpiredOverlay(),
             ],
             ),

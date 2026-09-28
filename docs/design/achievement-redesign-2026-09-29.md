@@ -196,4 +196,86 @@
 
 ---
 
+---
+
+## 八、✅ 实施记录（2026-09-29 01:0x ~ 01:4x）
+
+白哥「同意」→ 6 项决策全部按建议执行（清单取 §三 · 加解锁表 · 要弹通知 ·
+掌握词数用 `stability >= 21` · 推广类缓做 · 我的页精简分开）。
+
+### 8.1 交付清单
+
+| 层 | 文件 | 说明 |
+|---|---|---|
+| **规则（纯 Dart）** | `app/lib/services/achievement_rules.dart` | 20 个成就的**唯一真理源** + 判定纯函数（零 Flutter / 零 DB） |
+| **采集** | `app/lib/services/achievement_service.dart` | 指标 SQL + UTC→本地转换 + 解锁 diff 落库（幂等） |
+| **持久化** | `app/assets/sql/user_db_schema.sql` + `services/user_db.dart` | + `achievement_unlock` 表 · schema 版本 **2 → 3** |
+| **Provider** | `app/lib/providers/achievement_provider.dart` · `achievement_notifier.dart` | 快照 / 解锁时间 / 通知队列 |
+| **展示** | `app/lib/widgets/achievement_section.dart` · `screens/achievements_screen.dart` | 「我的」页顶部成就区 + 成就墙二级页 |
+| **图标映射** | `app/lib/shared/achievement_icons.dart`（重写） | 从旧 46 key 改为按 `AchievementIcons.all` 映射 |
+| **通知** | `app/lib/widgets/achievement_unlock_overlay.dart` | 解锁弹窗（入场弹跳 + 自动消失） |
+| **接线** | `app/lib/main.dart`（debug 自检）· `app.dart`（挂载 + 路由）· `profile_screen`（成就区 + 兜底检查）· `review_session_screen`（提交后触发）· `reader_screen`（查词后触发） | 三处触发点 |
+| **验证** | `scripts/query_verify/bin/verify_achievement_rules.dart`（**55 项**）· `verify_achievement_service.dart`（**31 项**）· `verify_userdb_migration.dart`（**39 项**，扩为 v1/v2 两条路径） | |
+
+### 8.2 三个口径决策（**与方案草稿的差异**，都在文件头写明了理由）
+
+| # | 方案草稿 | **实施取值** | 理由 |
+|---|---|---|---|
+| ① | 准确率 `rating >= 3` | **`rating >= 2`** | SRS 惯例（Anki）= 「非 Again 占比」；「困难」也是成功回忆。按 `>=3` 会让「评困难」反而降准确率，**与直觉相反** |
+| ② | 用 `review_log.utc_day` 算 streak | **用 `reviewed_at` 转本地日** | `utc_day` 是**同步幂等键**（不能改），但它是 UTC 日 → 北京凌晨学习会错位。streak 是**用户体感**概念 → 必须本地日 |
+| ③ | —（草稿未定「1 小时查词」口径） | **先按词去重再算窗口** | 语义是「1 小时内遇到多少个**不同**的词」（重复查同一个词不算） |
+
+### 8.3 🔴 两个自己踩出来的坑（都记进了代码注释）
+
+**① 「大括号计数找函数结尾」被命名参数 `{` 骗了**
+`Future<void> _writeBackLookup(WidgetRef ref, { ... }) async {` ——
+计数从签名开始 → **参数列表的 `{` 先被当成函数体** → helper 被插进签名中间 → 编译报「未定义」。
+🔑 正确做法：**从 `) async {` 之后开始计数**（真正的函数体起点）。
+> 这与项目已有判据「`) async {` 会跳过真函数体」是**同一族**，只是这次是**插代码**而非**切代码**。
+
+**② 「先插入、再定位」→ 定位到自己**
+第一次修错时，我**先插了 helper**，然后重新定位函数结尾 ——
+而刚插入的 helper 里**也有 `) async {`** → 计数定位到 helper 自己 → **越修越坏**。
+→ 最终**回滚该文件重做**（一次完成：先定位、后插入）。
+
+### 8.4 验证结果（全部通过）
+
+| 验证 | 结果 |
+|---|---|
+| `verify_achievement_rules`（判定纯函数） | ✅ **55 项** |
+| `verify_achievement_service`（真库 · ffi） | ✅ **31 项** |
+| `verify_userdb_migration`（v1→v3 与 v2→v3 两条路径） | ✅ **39 项** |
+| `query_verify` 全套（含上述） | ✅ **354 项** |
+| `tokens_verify` | ✅ **609 项** |
+| `static_check`（`package:analyzer`） | ✅ **error = 0** |
+
+**证伪测试（3 次，逐条实测报红）**：
+
+| # | 改坏什么 | 期望报红 | 实际 |
+|---|---|---|---|
+| A | `computeStreakDays` 的 `gap > 1` → `gap > 0` | 对应断言红 | ✅ 精确命中该条 |
+| B | 某成就的 `metric` 拼错 | 【6】清单自洽性红 | ✅ 红 1 条 + 连带 4 条行为断言 |
+| C | **去掉 `toLocal()`** | 时段统计红 | ✅ `early_sessions` 5→**0**、`night` 6→**5** |
+| D | `kUserDbVersion` 改回 2 | 迁移断言红 | ✅ 红 4 条（两条路径各 2） |
+
+> 🔑 **C 是最有价值的一次**：它证明「时区守护」真的有效 ——
+> 而那正是**纯函数层验不到**、只能靠采集层真库验证的部分。
+
+### 8.5 修复了两条**自己写的假绿断言**（看输出发现的）
+
+| 断言 | 为什么是假绿 | 修法 |
+|---|---|---|
+| 「软删后 `unlocked` 仍含 `words_10`」 | 只造了 3 个生词 → `words_10` 从未解锁 → **前后都 false**（恒真） | 造够 **10 个**生词 + **加前置断言**确认它真解锁过 |
+| 「凌晨那条没被算成 28 日」 | 无论算 28 还是 29，streak 都是 3 → **验不出差异** | **删掉**，改为注明「真正的时区守护在时段统计组」 |
+
+### 8.6 遗留（如实标注）
+
+- ⏳ **构建验证只能白哥跑**（`D://flutter//bin//flutter.bat`）—— 我这边 `flutter` 必崩
+- ⚠️ **粒子撒花（confetti）未做** —— 旧设计稿 §4.2 有（40 粒子 · 1.5s），
+  本版只做了「入场弹跳 + 自动消失」。属**装饰**，不影响「解锁是否成立」。
+- ⏳ **推广类成就（分享 / 推荐）缓做** —— 要后端接口，与端侧主线不同源。
+- ⏳ **「我的」页其余精简**（删分销 / 实名 / 数据导出）**未并入** —— 按决策 6 分开做。
+- 📌 真机待验：成就区在「我的」页顶部的视觉、徽章色在三档主题下的可读性、
+  解锁弹窗的动画节奏。
+
 *本文为方案产出，**未改动任何代码/数据**。*
