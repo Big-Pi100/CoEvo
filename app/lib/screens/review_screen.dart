@@ -54,6 +54,7 @@ import '../theme/clay.dart';
 import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
+import '../widgets/header_chip.dart';
 
 class ReviewScreen extends ConsumerStatefulWidget {
   const ReviewScreen({super.key});
@@ -74,11 +75,16 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   /// 搜索输入框的焦点 —— 展开时自动聚焦（否则用户还要再点一下输入框）。
   final _searchFocus = FocusNode();
 
-  /// 搜索是否**已展开**（默认收起为左上角一个放大镜图标）。
+  /// 搜索是否**已展开**（默认收起为排序行最右侧一个放大镜图标）。
   ///
-  /// 🔑 白哥 2026-09-28：「复习页的搜索单词**缩小成左上角图标，点击才展开**」。
+  /// 🔑 白哥 2026-09-28：「复习页的搜索单词**缩小成图标，点击才展开**」。
   ///    理由：搜索是**低频**动作，不该常驻占一行 —— 常驻会把「今天该复习什么」
   ///    这个主要信息挤下去。
+  ///
+  /// ⚠️ 位置后来调整过一次（同一天）：从标题栏**最左**移到**排序行最右**
+  ///    （白哥：「应该放到『记忆曲线、最近、A-Z』这个排序按钮的同一行最右侧」）。
+  ///    🔑 展开态也**跟着留在这一行**（排序 chip 让位）——
+  ///       否则展开会把输入框放回标题栏，两态分处两行、列表会整体位移。
   ///
   /// 🔴 **收起时一并清空搜索词**（见 [_collapseSearch]）——
   ///    若保留搜索词，界面收起后看不出「列表正被筛着」→ 用户会以为**词丢了**。
@@ -226,57 +232,37 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           // 🔑 两态**共用同一行**（而不是「搜索框另起一行」）——
           //    这样展开/收起时下方内容**不会跳动**
           //    （另起一行会让列表整体下移，是廉价但明显的抖）。
-          if (!_searchExpanded)
-            Row(
-              children: [
-                _SearchIconButton(onTap: _expandSearch),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '复习',
-                    style: TextStyle(
-                      fontFamily: CoFonts.uiSans,
-                      fontSize: 23,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 23 * -0.015,
-                      color: Color(t.ink.argb32),
-                    ),
+          // 标题行**恒定**为「复习 + 筛选」—— 搜索的两态都搬到了下面的排序行，
+          // 所以这一行在展开/收起时**完全不动**（原「两态共用一行防抖动」的延伸）。
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '复习',
+                  style: TextStyle(
+                    fontFamily: CoFonts.uiSans,
+                    fontSize: 23,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 23 * -0.015,
+                    color: Color(t.ink.argb32),
                   ),
                 ),
-                // 🆕 筛选：显示全部 / 显示已到期（白哥 2026-09-28 定）
-                _FilterChip(
-                  dueOnly: _args.dueOnly,
-                  onTap: () => setState(
-                      () => _args = _args.copyWith(dueOnly: !_args.dueOnly)),
-                ),
-              ],
-            )
-          else
-            Row(
-              children: [
-                Expanded(child: _searchField(t)),
-                const SizedBox(width: 6),
-                // 「取消」而**不是**一个 ✕ 图标：清空输入与退出搜索是**两件事**，
-                // 两个都要有出口 —— ✕ 语义含糊（用户不知道是清空还是退出）。
-                InkWell(
-                  onTap: _collapseSearch,
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 6),
-                    child: Text(
-                      '取消',
-                      style: TextStyle(
-                        fontFamily: CoFonts.uiSans,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Color(t.accent.argb32),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              ),
+              // 🔴 筛选用**公共组件 `HeaderChip`** —— 白哥 2026-09-28：
+              //    「『全部、已到期』按钮应该和阅读页的**收藏按钮的外观保持一致**」。
+              //    🔑 状态靠**文字 + 图标实心/描边**表达，不靠填充色：
+              //       原先「选中 → 强调色填充」会与 `_SortChip` 的选中态撞脸
+              //       （两者都变成实心药丸 → 用户会以为它们是同一组单选）。
+              HeaderChip(
+                icon: _args.dueOnly
+                    ? Icons.filter_alt
+                    : Icons.filter_alt_outlined,
+                label: _args.dueOnly ? '已到期' : '全部',
+                onTap: () => setState(
+                    () => _args = _args.copyWith(dueOnly: !_args.dueOnly)),
+              ),
+            ],
+          ),
 
           // 副标题只在**收起态**显示 —— 展开搜索时它让位于输入框（那才是当下焦点）
           if (!_searchExpanded) ...[
@@ -354,22 +340,62 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   }
 
   // ────────────────────────────────────────────────────────────
-  // 三档排序
+  // 三档排序 + 搜索入口（同一行）
   // ────────────────────────────────────────────────────────────
+  //
+  // 🔴 搜索入口的位置（白哥 2026-09-28 定）：**这一行的最右侧**。
+  //    此前它在标题栏最左侧。移过来的理由：它属于「对列表的操纵」，
+  //    与排序 / 筛选是**同一类动作** → 放在同一区域，视线不必来回跳。
+  //
+  // 🔑 两态共用**同一行**（展开时排序 chip 让位给输入框）——
+  //    这样展开/收起时下方列表**不会整体位移**。若给输入框另起一行，
+  //    列表会被推下去，是廉价但明显的抖。
   Widget _sortBar(CoEvoTokens t) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18),
       child: Row(
         children: [
-          for (final s in ReviewSort.values) ...[
-            if (s != ReviewSort.values.first) const SizedBox(width: 8),
-            _SortChip(
-              label: s.label,
-              selected: _args.sort == s,
-              onTap: () => setState(() => _args = _args.copyWith(sort: s)),
-            ),
+          if (_searchExpanded) ...[
+            Expanded(child: _searchField(t)),
+            const SizedBox(width: 6),
+            _cancelSearch(t),
+          ] else ...[
+            for (final s in ReviewSort.values) ...[
+              if (s != ReviewSort.values.first) const SizedBox(width: 8),
+              _SortChip(
+                label: s.label,
+                selected: _args.sort == s,
+                onTap: () => setState(() => _args = _args.copyWith(sort: s)),
+              ),
+            ],
+            // 🔴 用 `Spacer` 把它推到行尾 —— 排序 chip 的宽度随文案变化，
+            //    写死一个 `SizedBox` 会在换字号/换语种时错位。
+            const Spacer(),
+            const SizedBox(width: 8),
+            _SearchIconButton(onTap: _expandSearch),
           ],
         ],
+      ),
+    );
+  }
+
+  /// 「取消」而**不是**一个 ✕ 图标：清空输入（✕）与退出搜索（取消）是**两件事**，
+  /// 两个都要有出口 —— ✕ 语义含糊（用户不知道是清空还是退出）。
+  Widget _cancelSearch(CoEvoTokens t) {
+    return InkWell(
+      onTap: _collapseSearch,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Text(
+          '取消',
+          style: TextStyle(
+            fontFamily: CoFonts.uiSans,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Color(t.accent.argb32),
+          ),
+        ),
       ),
     );
   }
@@ -428,19 +454,22 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       itemBuilder: (_, i) => out[i],
     );
   }
-
-  // ────────────────────────────────────────────────────────────
-  // 翻卡态
 }
 
 // ════════════════════════════════════════════════════════════════
 // 子组件
 // ════════════════════════════════════════════════════════════════
 
-/// 左上角的搜索图标 —— 搜索的**唯一入口**（默认收起态）。
+/// 搜索图标 —— 搜索的**唯一入口**（默认收起态）。
 ///
-/// 🔑 形态与 `_FilterChip` 同族：**粘土凹陷**（`Clay(pressed)` + `sunken` 底）。
-///    凹陷 = 「可以按下去」，与筛选药丸、收藏入口是同一种物理语汇。
+/// 🔴 位置（白哥 2026-09-28 定）：**排序行的最右侧**（此前在标题栏最左侧）。
+///    理由：它属于「对列表的操纵」，与三档排序 / 筛选是**同一类动作**
+///    → 放在同一区域，视线不必在页面上下两处来回跳。
+///
+/// 🔑 形态与 `HeaderChip`（收藏入口 / 筛选药丸）**同族**：
+///    **粘土凹陷**（`Clay(pressed)` + `sunken` 底）—— 凹陷 = 「可以按下去」。
+///    ⚠️ 但圆角用 10 而非 13：它是**方形图标按钮**（正方形、无文字），
+///    与细长药丸不是同一形状（同 `BookmarkButton` 的 10）。
 ///
 /// 🔑 字色用 `ink2` 而非 `ink3`：它是**可点元素**，必须可辨认。
 ///    （`ink3` 在三种底色上对比度都 < 4.5 —— 见 `_ClayTabBar` 的实测表。）
@@ -463,49 +492,6 @@ class _SearchIconButton extends StatelessWidget {
   }
 }
 
-/// 筛选按钮 —— 「全部 / 已到期」二态切换。
-///
-/// 🔑 它是**筛选**不是**排序** —— 与三档排序正交，用**不同形态**表达：
-///    排序是「平坦文字 + 选中变药丸」（`_SortChip`），筛选是「一个会翻面的小药丸」。
-///    ⚠️ 若两者长得一样，用户会以为它们是一组单选。
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({required this.dueOnly, required this.onTap});
-
-  final bool dueOnly;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = CoEvoTokensExt.of(context);
-    // 选中（只看已到期）→ 强调色填充；未选中 → 凹陷
-    final bg = dueOnly ? t.accent : t.sunken;
-    final fg = dueOnly ? t.accentInk : t.ink2;
-
-    return Clay(
-      state: dueOnly ? ClayState.selected : ClayState.pressed,
-      fill: bg,
-      borderRadius: BorderRadius.circular(13),
-      onTap: onTap,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.filter_alt_outlined, size: 13, color: Color(fg.argb32)),
-          const SizedBox(width: 5),
-          Text(
-            dueOnly ? '已到期' : '全部',
-            style: TextStyle(
-              fontFamily: CoFonts.uiSans,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-              color: Color(fg.argb32),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 /// 三档排序的一个档位。
 class _SortChip extends StatelessWidget {

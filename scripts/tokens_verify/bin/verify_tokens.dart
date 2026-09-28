@@ -618,7 +618,25 @@ String _braceBody(String src, String name) {
   //   🔑 所以调用方**必须**同时断言「切片是类体」（见下面的 `@override` 检查），
   //      否则一个范围切错的切片会让「考核不得泄露答案」这类守护**完全失效**。
   var i = src.indexOf('class $name');
-  if (i < 0) i = src.indexOf('$name(');
+  if (i < 0) {
+    // 🔴 **必须匹配「定义处」**（前面带返回类型），不能只找 `name(`。
+    //
+    // 为什么（2026-09-28 实测）：方法**调用处可能先于定义处出现** ——
+    //   本项目的 `build()` 在文件前段调 `_header(t, dueCount)` / `_sortBar(t)`，
+    //   而它们的定义在文件后段。只找 `name(` 会命中**调用处**，
+    //   再从那里配对花括号 → 切出一段**与该方法无关**的区间。
+    //
+    // ⚠️ 危害与「切到构造函数」同类且**更隐蔽**：
+    //   切出的区间**非空**（不会触发「切片为空」的自检），
+    //   只是内容不对 → 「不得含 X」的反向断言可能**假绿**。
+    //   🔑 所以调用方仍须断言切片**含该方法的特征**（如标题文案）。
+    final def = RegExp(
+      r'(?:Widget|void|Future<[^>]*>|List<Widget>|bool|String|int|double|'
+      r'Iterable<[^>]*>|Map<[^>]*>)\s+'
+      '${RegExp.escape(name)}' r'\(',
+    ).firstMatch(src);
+    i = def?.start ?? src.indexOf('$name(');
+  }
   if (i < 0) return '';
   final start = src.indexOf('{', i);
   if (start < 0) return '';
@@ -1329,8 +1347,17 @@ void _s14BookmarkList() {
   check('首页标题栏有收藏入口（文案为「收藏」）', home.contains("label: '收藏'"));
   check('入口指向 /home/bookmarks（与 ② 的路由一致）',
       home.contains('/home/bookmarks'));
-  //    🔑 入口显示计数（设计稿 `.bm-entry .n`）
-  check('入口显示计数（设计稿 `.bm-entry .n`）', home.contains(r'$count'));
+  //    🔑 计数按设计稿呈现（`.bm-entry .n{font-size:10.5px;opacity:.7}`）
+  //
+  //    ⚠️ 2026-09-28：计数渲染已移入**公共组件** `widgets/header_chip.dart`
+  //       → 断言对象**必须跟着搬**。继续查 `home` 会**假绿**：
+  //         那里已无任何渲染代码（只剩一次调用）。
+  //       🔑 又一次「断言范围必须等于被测对象」。
+  final chip = src('widgets/header_chip.dart');
+  check('药丸渲染在公共组件里（首页与复习页**共用一处定义**）',
+      has('widgets/header_chip.dart') && chip.isNotEmpty);
+  check('入口计数按设计稿呈现（`.bm-entry .n` 的 opacity:.7）',
+      chip.contains('opacity: 0.7'));
   //    🆕 入口走**统一实现** —— 防「再有一个入口时另写一份」
   //
   //    ⚠️ 2026-09-28 修正：原断言是 `RegExp(r'_HeaderChip\(')` **计数 ≥ 2**，
@@ -1339,8 +1366,8 @@ void _s14BookmarkList() {
   //       也照样 ≥2 → **假绿**。
   //       🔑 这是「文本断言的范围纪律」问题：**计数类断言必须排除定义处**。
   //    生词入口已于当天下线 → `_HeaderChip` 只有收藏一个消费者，不再计数。
-  check('首页标题栏入口用 _HeaderChip（统一实现，不另写一份）',
-      home.contains('_HeaderChip('));
+  check('首页标题栏入口用公共组件 HeaderChip（统一实现，不另写一份）',
+      home.contains('HeaderChip('));
 
   // ⑦ **extendBody 配套**：清单页也要留出 tabbar 高度，否则最后一张卡被压住
   //    （同三个 tab 页的处理 —— 少一处就出现「最后一条看不到」）
@@ -1595,6 +1622,16 @@ void _s17ReviewList() {
   // ⑤ 筛选（白哥 2026-09-28 新增「显示全部 / 显示已到期」）
   check('数据层支持 dueOnly 筛选', q.contains('dueOnly'));
   check('界面有筛选切换', page.contains('dueOnly'));
+  //    🔴 筛选按钮与首页「收藏」入口**外观一致**（白哥 2026-09-28）
+  //
+  //    🔑 做法**不是**「把两处参数抄成一样」，而是**共用同一个组件** ——
+  //       抄参数会在下次只改一处时**静默走偏**（编译器看不出来，
+  //       往往到真机才被发现）。同 `toggleBookmarkWithToast` 的判据。
+  //    ⚠️ 反向：复习页**不许**再自写一份筛选药丸。
+  check('🔴 筛选用公共组件 HeaderChip（与收藏入口同一处定义）',
+      page.contains('HeaderChip('));
+  check('🔴 复习页不再自写筛选药丸（`_FilterChip` 已删）',
+      !page.contains('_FilterChip'));
 
   // ⑥ 分组走**数据层**静态方法（不在 UI 里重算「是否到期」）
   check('分组走 ReviewListQuery.group（不在 UI 重算到期）',
@@ -1638,9 +1675,32 @@ void _s17ReviewList() {
   //       （实测：证伪时把 _collapseSearch 改成 `_args = _args` 后，全文件断言照样通过。）
   //       🔑 「文本断言的**范围**必须等于被测对象」—— 先切片，再断言。
   check('搜索默认收起（_searchExpanded 状态）', page.contains('_searchExpanded'));
-  check('左上角有搜索图标入口', page.contains('_SearchIconButton'));
   check('展开时请求焦点（不必再点一次输入框）',
       page.contains('requestFocus()'));
+
+  //    🔴 **位置**（白哥 2026-09-28）：搜索入口在「记忆曲线 / 最近 / A–Z」
+  //       **排序行的最右侧**（此前在标题栏最左侧）。
+  //
+  //       ⚠️ 这里**必须切片**：全文件 `contains('_SearchIconButton')` 在
+  //          「入口被放回标题行」时**照样为绿** → 位置改动**完全抓不到**。
+  //       🔑 「断言范围必须等于被测对象」：被测的是**位置**，
+  //          就必须断言它**在哪个方法体里**、以及**不在哪个**里。
+  final sortBar = _braceBody(page, '_sortBar');
+  final headerBar = _braceBody(page, '_header');
+  check('能切出 _sortBar / _header 方法体（位置断言的前提）',
+      sortBar.isNotEmpty && headerBar.isNotEmpty,
+      sortBar.isEmpty || headerBar.isEmpty ? '切不出：确认方法是否改名' : '');
+  //    🔑 切片「非空」还不够 —— 调用处先于定义处出现时，slice 会**非空但错位**
+  //       （`_braceBody` 已修为优先匹配定义处；这里再加一道特征校验）
+  check('切片确实是 _header（含标题文案「复习」）', headerBar.contains('复习'));
+  check('🔴 搜索入口在**排序行**内（白哥定的位置）',
+      sortBar.contains('_SearchIconButton'));
+  check('🔴 搜索入口**不在标题行**（否则等于没搬）',
+      !headerBar.contains('_SearchIconButton'));
+  check('搜索入口被推到该行**最右侧**（用 Spacer，不写死间距）',
+      sortBar.contains('Spacer()'));
+  check('展开态也留在排序行（排序 chip 让位 → 列表不位移）',
+      sortBar.contains('_searchField') && sortBar.contains('_cancelSearch'));
 
   final collapse = _braceBody(page, '_collapseSearch');
   // 🔑 切片必须非空 —— 否则「方法改名/删除」会让断言**空串通关**（另一种假绿）

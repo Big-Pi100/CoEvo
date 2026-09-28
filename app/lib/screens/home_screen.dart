@@ -17,6 +17,7 @@ import '../theme/tokens_ext.dart';
 import '../widgets/bookmark_toggle.dart';
 import '../widgets/claim_dialog.dart';
 import '../widgets/feed_card.dart';
+import '../widgets/header_chip.dart';
 
 /// 首页 —— **信息流**（导航第一个 tab「阅读」）。
 ///
@@ -290,7 +291,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   //    而复习**本身就是一个 tab** —— 底部导航已经有它了。
                   //    再放一个标题栏按钮，是**同一目的的第二个入口**；
                   //    而且它指过去只是「切 tab」，等于把导航按钮做了第二遍。
-                  _HeaderChip(
+                  HeaderChip(
                     icon: Icons.bookmark_border,
                     label: '收藏',
                     count: bookmarkIds.length,
@@ -349,98 +350,4 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       toggleBookmarkWithToast(context, ref, contentId);
 }
 
-/// 信息流标题栏上的**药丸入口** —— 目前只有「收藏 N」一个消费者。
-///
-/// # 形态来源：设计稿 `.bm-entry`
-/// ```
-/// .bm-entry{display:flex;align-items:center;gap:6px;
-///   font-size:11.5px;font-weight:600;color:var(--accent);
-///   background:var(--sunken);border-radius:13px;padding:7px 12px;
-///   box-shadow:inset 2px 2px 6px var(--cl-shade), inset -2px -2px 5px var(--cl-light)}
-/// ```
-///
-/// 🔑 **它是「凹陷」的** —— `background:var(--sunken)` + **两个 inset**（没有外阴影）=
-/// 粘土语汇里的 `pressed`（凹）。与 `BookmarkButton` 的未收藏态**同一种物理形态**：
-/// 凹陷 = 「可以按下去」。这不是巧合，设计稿把「未激活的入口」统一做成凹陷。
-///
-/// # ⚠️ 为什么还叫 `_HeaderChip` 而不改回 `_BookmarkEntry`
-/// 这个名字描述的是**形态**（标题栏上的药丸）而不是用途。
-/// 它**曾经**同时承载「生词 N」与「收藏 N」两个入口（2026-09-28 上午）；
-/// 当天中午白哥要求取消「生词」入口（底部 tab 已经是它了）→ 只剩一个消费者。
-/// 保留通用名与通用形参（`icon` / `label` / `count` / `onTap`）是**有意的**：
-/// 再有第二个入口时不必重抽一次 —— 而**重抽正是让两处走偏的起点**
-/// （同 `toggleBookmarkWithToast` 被抽出来的理由）。
-///
-/// ⚠️ **圆角显式传 13、不走 token 档位**（同 `_ClayTabBar` 的 17、`BookmarkButton` 的 10）：
-/// 设计稿写死 `13px` 且不在主题变量里 → 三档共用。这是项目已定的处理方式。
-///
-/// ⚠️ **字体用 `CoFonts.uiSans` 而非设计稿的 `--round`**：`--round` 是 Quicksand，
-/// 项目未打包该字体 → 与 `FeedCard` / `_ClayTabBar` 同一取舍。
-class _HeaderChip extends StatelessWidget {
-  const _HeaderChip({
-    required this.icon,
-    required this.label,
-    required this.count,
-    required this.onTap,
-  });
 
-  /// 图标（由调用方注入 —— 「生词」用卡片叠图标，与收藏的书签区分开）。
-  final IconData icon;
-
-  /// 入口文案（「生词」/「收藏」）。
-  final String label;
-
-  /// 计数（设计稿 `.bm-entry .n`）。
-  final int count;
-
-  final VoidCallback onTap;
-
-  /// 设计稿 `.bm-entry{border-radius:13px}` —— 写死，不走 token。
-  static final BorderRadius _radius = BorderRadius.circular(13);
-
-  @override
-  Widget build(BuildContext context) {
-    final t = CoEvoTokensExt.of(context);
-    final fg = Color(t.accent.argb32);
-
-    return Clay(
-      state: ClayState.pressed,
-      // ⚠️ 必须显式给 `sunken`：`Clay` 默认填充是 `clayFill`（= `card`），
-      //    而设计稿这里的底是 `--sunken`（比 `page` 更暗）。同 `BookmarkButton`。
-      fill: t.sunken,
-      borderRadius: _radius,
-      onTap: onTap,
-      // 设计稿 `.bm-entry{padding:7px 12px}`
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 设计稿 `<svg width="13" height="13">`（书签轮廓，2px 描边）
-          Icon(icon, size: 13, color: fg),
-          // 设计稿 `.bm-entry{gap:6px}`
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(
-              fontFamily: CoFonts.uiSans,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-              color: fg,
-            ),
-          ),
-          const SizedBox(width: 6),
-          // 设计稿 `.bm-entry .n{font-size:10.5px;opacity:.7}`
-          // ⚠️ 用 `Opacity` 而不是改 alpha：与设计稿的 `opacity` 语义一致
-          //    （整段变淡，而不是换一个更浅的颜色）。
-          Opacity(
-            opacity: 0.7,
-            child: Text(
-              '$count',
-              style: TextStyle(fontFamily: CoFonts.uiSans, fontSize: 10.5, color: fg),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
