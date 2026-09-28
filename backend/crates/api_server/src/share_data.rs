@@ -52,113 +52,19 @@ pub struct UserPlanStats {
 
 /// 从 DB 构建用户计划统计数据（两处模板共用同一实现）
 pub fn build_user_plan_stats(
-    conn: &rusqlite::Connection,
-    user_id: &str,
+    _conn: &rusqlite::Connection,
+    _user_id: &str,
 ) -> UserPlanStats {
-    let plan_count: i64 = conn.query_row(
-        "SELECT COUNT(DISTINCT id) FROM plan_runs WHERE user_id = ?1 AND status = 'active'",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-
-    let active_plans_summary = if plan_count > 0 {
-        let mut latest_plan: Option<(String, Option<String>, String)> = None;
-        if let Ok(mut stmt) = conn.prepare(
-            "SELECT pr.goal,
-                    (SELECT upp2.task_key FROM user_plan_progress upp2
-                     WHERE upp2.plan_id = pr.id AND upp2.status = 'in_progress' LIMIT 1) as task_key,
-                    pr.plan_content \
-             FROM plan_runs pr \
-             WHERE pr.user_id = ?1 AND pr.status = 'active' \
-             ORDER BY task_key IS NULL,
-               (SELECT MAX(up2.updated_at) FROM user_plan_progress up2 WHERE up2.plan_id = pr.id) DESC
-             LIMIT 1"
-        ) {
-            if let Ok(rows) = stmt.query_map(rusqlite::params![user_id], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, Option<String>>(1)?,
-                    row.get::<_, String>(2)?,
-                ))
-            }) {
-                for row in rows.flatten() {
-                    latest_plan = Some(row);
-                }
-            }
-        }
-        let summary = match latest_plan {
-            Some((goal, Some(task_key), plan_content)) => {
-                let task_name = match serde_json::from_str::<serde_json::Value>(&plan_content) {
-                    Ok(v) => v["stages"].as_array().and_then(|stages| {
-                        stages.iter().find_map(|stage| {
-                            stage["tasks"].as_array().and_then(|tasks| {
-                                tasks.iter().find(|t| t["task_key"].as_str() == Some(task_key.as_str()))
-                            })
-                        })
-                    }).and_then(|t| t["name"].as_str().map(String::from))
-                    .unwrap_or_default(),
-                    Err(_) => String::new(),
-                };
-                if task_name.is_empty() { goal } else { format!("{}·{}", goal, task_name) }
-            }
-            Some((goal, None, _)) => goal,
-            None => format!("{} 个未开始科目", plan_count),
-        };
-        if plan_count > 1 {
-            format!("{} 等 {} 个科目", summary, plan_count - 1)
-        } else {
-            summary
-        }
-    } else {
-        String::new()
-    };
-
-    let current_focus = if plan_count > 0 {
-        let mut focus = String::new();
-        if let Ok(mut stmt) = conn.prepare(
-            "SELECT pr.goal,
-                    (SELECT upp2.task_key FROM user_plan_progress upp2
-                     WHERE upp2.plan_id = pr.id AND upp2.status = 'in_progress' LIMIT 1) as task_key,
-                    pr.plan_content \
-             FROM plan_runs pr \
-             WHERE pr.user_id = ?1 AND pr.status = 'active' \
-             ORDER BY (SELECT MAX(up4.updated_at) FROM user_plan_progress up4 WHERE up4.plan_id = pr.id) DESC LIMIT 1"
-        ) {
-            if let Ok(rows) = stmt.query_map(rusqlite::params![user_id], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
-            }) {
-                for row in rows.flatten() {
-                    let task_name = match serde_json::from_str::<serde_json::Value>(&row.2) {
-                        Ok(v) => v["stages"].as_array().and_then(|stages| {
-                            stages.iter().find_map(|stage| {
-                                stage["tasks"].as_array().and_then(|tasks| {
-                                    tasks.iter().find(|t| t["task_key"].as_str() == Some(&row.1))
-                                })
-                            })
-                        }).and_then(|t| t["name"].as_str().map(String::from))
-                        .unwrap_or_default(),
-                        Err(_) => String::new(),
-                    };
-                    if task_name.is_empty() { focus = row.0; }
-                    else { focus = format!("{}·{}", row.0, task_name); }
-                }
-            }
-        }
-        focus
-    } else {
-        String::new()
-    };
-
-    let completed_plans: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM plan_runs WHERE user_id = ?1 AND status = 'completed'",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-
-    let achievement_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM achievements WHERE user_id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-
-    UserPlanStats { plan_count, active_plans_summary, current_focus, completed_plans, achievement_count }
+    // 🔴 2026-09-29 已退役：原实现从 `plan_runs` / `user_plan_progress` / `achievements`
+    //     读取学习计划统计（K12 计划体系已整体清退；成就改为「端侧计算」）→ 统计恒 0 / 空。
+    //     结构保留以兼容海报模板与前端。
+    UserPlanStats {
+        plan_count: 0,
+        active_plans_summary: String::new(),
+        current_focus: String::new(),
+        completed_plans: 0,
+        achievement_count: 0,
+    }
 }
 
 // ── 共享：构建用户全量数据 ──
@@ -194,22 +100,10 @@ pub fn build_user_share_data(
         rusqlite::params![user_id], |row| row.get(0),
     ).unwrap_or(0);
 
-    let total_cards: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM user_cards WHERE user_id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-
-    let today_start_ts = chrono::Utc::now()
-        .date_naive()
-        .and_hms_opt(0, 0, 0)
-        .unwrap()
-        .and_utc()
-        .timestamp();
-    let today_reviews: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM review_log r JOIN user_cards c ON r.card_id = c.id \
-         WHERE c.user_id = ?1 AND r.reviewed_at >= ?2",
-        rusqlite::params![user_id, today_start_ts], |row| row.get(0),
-    ).unwrap_or(0);
+    // 🔴 2026-09-29：学习状态已迁端侧 `user.db` → 后端不再持有卡片/复习数据，统计恒为 0。
+    //     分享落地页保留字段（值为 0），文案由 LLM 依 `streak_days` 发挥。
+    let total_cards: i64 = 0;
+    let today_reviews: i64 = 0;
 
     let referral_code: String = conn.query_row(
         "SELECT referral_code FROM users WHERE id = ?1",

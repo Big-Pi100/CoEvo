@@ -30,68 +30,14 @@ CREATE TABLE IF NOT EXISTS tokens (
     created_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
-CREATE TABLE IF NOT EXISTS conversations (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    turn_count INTEGER DEFAULT 0,
-    started_at TEXT NOT NULL,
-    deleted_at TEXT,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-CREATE TABLE IF NOT EXISTS conversation_turns (
-    id TEXT PRIMARY KEY,
-    conversation_id TEXT NOT NULL,
-    role TEXT NOT NULL,
-    content TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id)
-);
-CREATE TABLE IF NOT EXISTS card_memory (
-    card_id TEXT PRIMARY KEY,
-    user_card_id TEXT REFERENCES user_cards(id) ON DELETE CASCADE,
-    state INTEGER DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'active'
-        CHECK(status IN ('active', 'pending', 'skipped', 'archived')),
-    difficulty REAL DEFAULT 5.0,
-    stability REAL DEFAULT 0.0,
-    due INTEGER DEFAULT 0,
-    last_review INTEGER,
-    reps INTEGER DEFAULT 0,
-    lapses INTEGER DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS review_log (
-    id TEXT PRIMARY KEY,
-    card_id TEXT NOT NULL,
-    user_card_id TEXT REFERENCES user_cards(id) ON DELETE CASCADE,
-    rating INTEGER NOT NULL,
-    verification_type TEXT NOT NULL
-        CHECK(verification_type IN ('spelling', 'typing', 'ai_dialogue')),
-    verification_result TEXT NOT NULL
-        CHECK(verification_result IN ('pass', 'fail')),
-    reviewed_at INTEGER NOT NULL,
-    details_json TEXT
-);
-CREATE TABLE IF NOT EXISTS achievements (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    achievement_key TEXT NOT NULL,
-    name TEXT NOT NULL,
-    icon TEXT NOT NULL,
-    tier TEXT DEFAULT 'fixed',
-    source TEXT,
-    unlocked_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-CREATE INDEX IF NOT EXISTS idx_card_memory_due ON card_memory(due);
-CREATE INDEX IF NOT EXISTS idx_card_memory_user_card ON card_memory(user_card_id);
-CREATE INDEX IF NOT EXISTS idx_review_log_user_card ON review_log(user_card_id, reviewed_at);
-CREATE INDEX IF NOT EXISTS idx_conversation_turns_conv ON conversation_turns(conversation_id);
+-- 🔴 2026-09-29 已退役：`conversations` / `conversation_turns`（对话链）·
+--    `card_memory` / `review_log`（后端 FSRS 复习状态）· `achievements`（成就改为端侧计算）
 -- ── 已移除：K12 课程体系（2026-09-28 白哥决定 · 整体清退）──
 -- 🔴 `user_plan_progress` / `prebuilt_plans` / `prebuilt_stages` / `prebuilt_tasks` / `plan_runs`
 --    的建表语句**必须一并移除** —— 否则全新库初始化时会把**空表建回来**。
---    （`init_database` 由 `main.rs:101` 的 `table_count < 3` 守卫触发：
---      现有库因 `users`/`user_cards`/`card_memory` 已存在而**不会**重建；
---      但全新部署时 `table_count = 0` → 会执行 → 空表就回来了。）
+--    （`init_database` 由 `main.rs` 的守卫触发。🔴 该守卫**已于 2026-09-29 改**：
+--      原查 `users`/`user_cards`/`card_memory` —— 后两者随旧学习链退役后守卫会**恒成立**
+--      → 每次启动都跑 init。现改查 `users`/`tokens`/`payment_orders`（现役业务表）。）
 -- 🔑 判据：**「删掉数据」与「让它不再产生」是两件事** —— 只 DROP TABLE 是治标。
 -- 📄 决策与执行记录 → `docs/design/coevo-db-wordcard-removal-2026-09-28.md`
 
@@ -103,80 +49,12 @@ CREATE INDEX IF NOT EXISTS idx_conversation_turns_conv ON conversation_turns(con
 --    `prebuilt_cards`，直接 `DROP TABLE prebuilt_cards` 会报 `FOREIGN KEY constraint failed`
 --    （后端启用 `PRAGMA foreign_keys = ON`，见 `db_pool.rs:29`）。
 --    数据层已通过重建 `user_cards` 去掉该外键（见 `scripts/purge_coevo_wordcards.py`）。
--- ⚠️ `user_cards.prebuilt_card_id` / `plan_run_id` **列保留**（只是不再有外键约束）。
+-- 🔄 后续（2026-09-29）：`user_cards` **整表已退役**（学习状态迁端侧 `user.db`），
+--    故上条「列保留」已不再适用 —— 见下方「已退役：user_cards 一族」。
 -- 📄 → `docs/design/coevo-db-wordcard-removal-2026-09-28.md`
 
-CREATE TABLE IF NOT EXISTS user_cards (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    plan_run_id TEXT DEFAULT '',
-    prebuilt_card_id TEXT,
-    domain TEXT NOT NULL,
-    front TEXT,
-    status TEXT NOT NULL DEFAULT 'active',
-    task_key TEXT,
-    language TEXT,
-    level TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (user_id) REFERENCES users(id)
-    -- ⚠️ 原 `FOREIGN KEY (prebuilt_card_id) REFERENCES prebuilt_cards(id)` **已移除**
-    --    （2026-09-28 随 `prebuilt_cards` 一并清退）。
-    --    🔑 `prebuilt_card_id` **列保留** —— 它是历史 ID，去掉列会破坏既有数据；
-    --       去掉的只是**外键约束**（这正是 `DROP TABLE prebuilt_cards` 的前提）。
-    --    📄 → `docs/design/coevo-db-wordcard-removal-2026-09-28.md`
-);
-CREATE TABLE IF NOT EXISTS user_science_cards (
-    id TEXT PRIMARY KEY,
-    definition TEXT NOT NULL DEFAULT '',
-    key_elements TEXT NOT NULL DEFAULT '',
-    applications TEXT NOT NULL DEFAULT '',
-    related_concepts TEXT NOT NULL DEFAULT '',
-    formula TEXT NOT NULL DEFAULT '',
-    graph TEXT NOT NULL DEFAULT '',
-    source TEXT NOT NULL DEFAULT '',
-    FOREIGN KEY (id) REFERENCES user_cards(id) ON DELETE CASCADE
-);
-CREATE TABLE IF NOT EXISTS user_language_cards (
-    id TEXT PRIMARY KEY,
-    pronunciation TEXT NOT NULL DEFAULT '',
-    pos TEXT NOT NULL DEFAULT '',
-    definitions TEXT NOT NULL DEFAULT '[]',
-    related_phrases TEXT NOT NULL DEFAULT '',
-    structure_meta TEXT NOT NULL DEFAULT '',
-    level TEXT NOT NULL DEFAULT '',
-    FOREIGN KEY (id) REFERENCES user_cards(id) ON DELETE CASCADE
-);
-CREATE TABLE IF NOT EXISTS user_literature_cards (
-    id TEXT PRIMARY KEY,
-    full_text TEXT NOT NULL DEFAULT '',
-    translation TEXT NOT NULL DEFAULT '',
-    author TEXT NOT NULL DEFAULT '',
-    genre TEXT NOT NULL DEFAULT '',
-    FOREIGN KEY (id) REFERENCES user_cards(id) ON DELETE CASCADE
-);
-CREATE TABLE IF NOT EXISTS user_humanities_cards (
-    id TEXT PRIMARY KEY,
-    node_type TEXT NOT NULL DEFAULT '',
-    body TEXT NOT NULL DEFAULT '',
-    period TEXT NOT NULL DEFAULT '',
-    region TEXT NOT NULL DEFAULT '',
-    tags TEXT NOT NULL DEFAULT '[]',
-    FOREIGN KEY (id) REFERENCES user_cards(id) ON DELETE CASCADE
-);
-CREATE TABLE IF NOT EXISTS card_relations (
-    id TEXT PRIMARY KEY,
-    from_type TEXT NOT NULL,
-    from_id TEXT NOT NULL,
-    to_type TEXT NOT NULL,
-    to_id TEXT NOT NULL,
-    relation_type TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
-    metadata TEXT NOT NULL DEFAULT '{}',
-    user_id TEXT,
-    sort_order INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
+-- 🔴 2026-09-29 已退役：`user_cards` / `user_{science,language,literature,humanities}_cards` /
+--    `card_relations` —— 学习状态已整体迁到端侧 `user.db`（`card_review_state` 等）
 CREATE TABLE IF NOT EXISTS trial_ip_log (
     id TEXT PRIMARY KEY,
     ip TEXT NOT NULL,
@@ -467,32 +345,7 @@ CREATE TABLE IF NOT EXISTS app_config (
     updated_at INTEGER NOT NULL
 );
 
--- 调试跟踪器
-CREATE TABLE IF NOT EXISTS debug_trackers (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    conversation_id TEXT,
-    subject TEXT,
-    status TEXT DEFAULT 'active',
-    created_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_debug_trackers_user ON debug_trackers(user_id);
-
--- 调试日志元数据
-CREATE TABLE IF NOT EXISTS debug_logs (
-    id TEXT PRIMARY KEY,
-    conversation_id TEXT NOT NULL,
-    user_id TEXT,
-    subject TEXT,
-    date TEXT NOT NULL,
-    log_file_path TEXT NOT NULL,
-    phases TEXT,
-    entry_count INTEGER DEFAULT 0,
-    file_size_bytes INTEGER DEFAULT 0,
-    created_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_debug_logs_conv ON debug_logs(conversation_id);
-CREATE INDEX IF NOT EXISTS idx_debug_logs_date ON debug_logs(date);
+-- 🔴 2026-09-29 已退役：`debug_trackers` / `debug_logs`（只服务 admin 调试面板）
 "#;
 
 /// 用户偏好表（部分测试创建，统一放在此处）
@@ -526,11 +379,7 @@ pub fn init_database(conn: &rusqlite::Connection) -> Result<(), String> {
         .map_err(|e| format!("preferences table: {}", e))?;
     // 额外索引（部分核心索引已在 SCHEMA_SQL 中创建，这里补充交叉表索引）
     conn.execute_batch(
-        "CREATE INDEX IF NOT EXISTS idx_review_log_card_reviewed ON review_log(card_id, reviewed_at);
-         CREATE INDEX IF NOT EXISTS idx_conversation_turns_conv_created ON conversation_turns(conversation_id, created_at);
-         CREATE INDEX IF NOT EXISTS idx_user_cards_user_plan ON user_cards(user_id, plan_run_id);
-         CREATE INDEX IF NOT EXISTS idx_conversations_user_deleted ON conversations(user_id, deleted_at);
-         CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_hash ON users(phone_hash) WHERE phone_hash IS NOT NULL;"
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_hash ON users(phone_hash) WHERE phone_hash IS NOT NULL;"
     ).map_err(|e| format!("extra indexes: {}", e))?;
 
     // ── 渐进式迁移 ──
@@ -582,25 +431,7 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_fulfillment_unique ON reward_fulfillments(campaign_id, user_id, trigger_event, party, reward_type, order_id)",
         // 活动最小成团人数
         "ALTER TABLE marketing_campaigns ADD COLUMN min_member_count INTEGER DEFAULT 1",
-        // V5: defer_queue 表（复习推迟调度）
-        "CREATE TABLE IF NOT EXISTS defer_queue (
-            user_id TEXT NOT NULL,
-            conversation_id TEXT NOT NULL DEFAULT '',
-            deferred_until INTEGER NOT NULL DEFAULT 0,
-            card_ids TEXT NOT NULL DEFAULT '[]',
-            created_at INTEGER NOT NULL DEFAULT 0,
-            PRIMARY KEY (user_id, conversation_id)
-        )",
-        // V6: defer_queue 改为 (user_id, conversation_id) 复合主键
-        "DROP TABLE IF EXISTS defer_queue",
-        "CREATE TABLE IF NOT EXISTS defer_queue (
-            user_id TEXT NOT NULL,
-            conversation_id TEXT NOT NULL DEFAULT '',
-            deferred_until INTEGER NOT NULL DEFAULT 0,
-            card_ids TEXT NOT NULL DEFAULT '[]',
-            created_at INTEGER NOT NULL DEFAULT 0,
-            PRIMARY KEY (user_id, conversation_id)
-        )",
+        // 🔴 2026-09-29 已退役：defer_queue（V5/V6）—— 复习推迟调度改在端侧
     ];
     for sql in migrations {
         match conn.execute(sql, []) {

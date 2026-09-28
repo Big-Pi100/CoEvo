@@ -165,15 +165,7 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
         tracing::warn!("registration campaign trigger failed: {}", e);
     }
 
-    // 如果有推荐人，触发推广成就
-    if let Some(ref rid) = referred_by {
-        if !rid.is_empty() {
-            crate::achievement_engine::publish(
-                &conn,
-                crate::achievement_engine::AppEvent::ReferralRegistered { user_id: rid.clone() },
-            );
-        }
-    }
+    // 🔴 2026-09-29 已退役：推荐注册成就事件（成就改为「端侧计算」，后端不再处理）
 
     Ok(AuthResponse {
         user_id,

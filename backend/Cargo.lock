@@ -87,13 +87,11 @@ dependencies = [
  "axum",
  "base64",
  "bcrypt",
- "card_engine",
  "chat_engine",
  "chrono",
  "dotenvy",
  "encoding_rs",
  "futures-util",
- "growth_engine",
  "hex",
  "hmac",
  "md5",
@@ -297,21 +295,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
-name = "card_engine"
-version = "0.2.0"
-dependencies = [
- "chrono",
- "rusqlite",
- "serde",
- "serde_json",
- "shared_types",
- "strsim",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "cc"
 version = "1.2.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -386,7 +369,6 @@ version = "0.2.0"
 dependencies = [
  "api_server",
  "axum",
- "card_engine",
  "chat_engine",
  "chrono",
  "dotenvy",
@@ -851,19 +833,6 @@ checksum = "4ae047235e33e2829703574b54fdec96bfbad892062d97fed2f76022287de61b"
 dependencies = [
  "color_quant",
  "weezl",
-]
-
-[[package]]
-name = "growth_engine"
-version = "0.2.0"
-dependencies = [
- "chrono",
- "rusqlite",
- "serde",
- "serde_json",
- "shared_types",
- "toml",
- "tracing",
 ]
 
 [[package]]
@@ -2385,12 +2354,6 @@ checksum = "6637bab7722d379c8b41ba849228d680cc12d0a45ba1fa2b48f2a30577a06731"
 dependencies = [
  "float-cmp",
 ]
-
-[[package]]
-name = "strsim"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "student_llm"

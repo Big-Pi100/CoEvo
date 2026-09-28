@@ -66,13 +66,7 @@ async fn main() {
     api_server::campaign_scheduler::start_scheduler(&db_path);
     tracing::info!("Campaign scheduler started (interval: 5 min)");
 
-    // 成就引擎（TOML 数据驱动）
-    {
-        let ach_toml = std::env::var("COEVO_ACHIEVEMENTS_TOML")
-            .unwrap_or_else(|_| "achievements.toml".to_string());
-        api_server::achievement_engine::init(&ach_toml);
-        tracing::info!("AchievementEngine: {}", ach_toml);
-    }
+    // 成就引擎已于 2026-09-29 退役（成就方向定为「端侧计算」→ 后端这份不再使用）
 
     // Load prompts from files (general + pipelines)
     chat_engine::prompt_loader::init(&prompts_dir);
@@ -94,8 +88,10 @@ async fn main() {
     // --- Auto-schema ---
     {
         let conn = api_server::db_pool::get_conn();
+        // 🔑 2026-09-29：旧学习链已退役（user_cards / card_memory 已删）→ 守卫改用**现役业务表**。
+        //    若仍查旧表，守卫会**恒成立** → 每次启动都跑 init_database（把已退役的表建回来）。
         let table_count: i32 = conn.query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('users','user_cards','card_memory')",
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('users','tokens','payment_orders')",
             [], |row| row.get(0),
         ).unwrap_or(0);
         if table_count < 3 {
@@ -110,8 +106,6 @@ async fn main() {
         let migrations: &[&str] = &[
             "ALTER TABLE users ADD COLUMN streak_days INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN last_active_date TEXT",
-            "ALTER TABLE achievements ADD COLUMN tier TEXT DEFAULT 'fixed'",
-            "ALTER TABLE achievements ADD COLUMN source TEXT",
             "ALTER TABLE users ADD COLUMN display_name TEXT DEFAULT NULL",
             "CREATE TABLE IF NOT EXISTS user_preferences (
                 user_id TEXT NOT NULL,
@@ -121,7 +115,6 @@ async fn main() {
                 PRIMARY KEY (user_id, key),
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )",
-            "ALTER TABLE review_log ADD COLUMN details_json TEXT DEFAULT NULL",
             "CREATE TABLE IF NOT EXISTS tokens (
                 id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
@@ -129,11 +122,6 @@ async fn main() {
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )",
-            "CREATE INDEX IF NOT EXISTS idx_review_log_card_reviewed ON review_log(card_id, reviewed_at)",
-            "CREATE INDEX IF NOT EXISTS idx_conversation_turns_conv_created ON conversation_turns(conversation_id, created_at)",
-            // 对话软删除支持
-            "ALTER TABLE conversations ADD COLUMN deleted_at TEXT DEFAULT NULL",
-            "CREATE INDEX IF NOT EXISTS idx_conversations_user_deleted ON conversations(user_id, deleted_at)",
             // 管理后台重构 — PII 字段
             "ALTER TABLE users ADD COLUMN real_name TEXT DEFAULT NULL",
             "ALTER TABLE users ADD COLUMN phone TEXT DEFAULT NULL",
@@ -185,21 +173,8 @@ async fn main() {
                 detail TEXT,
                 created_at TEXT NOT NULL
             )",
-            // 监护关系
-            "CREATE TABLE IF NOT EXISTS guardian_assignments (
-                id TEXT PRIMARY KEY,
-                guardian_admin_id TEXT NOT NULL,
-                student_user_id TEXT NOT NULL,
-                bind_key TEXT NOT NULL,
-                assigned_by TEXT,
-                assigned_at TEXT NOT NULL,
-                is_active INTEGER DEFAULT 1,
-                UNIQUE(guardian_admin_id, student_user_id)
-            )",
             "CREATE INDEX IF NOT EXISTS idx_admin_users_role_status ON admin_users(role, status)",
             "CREATE INDEX IF NOT EXISTS idx_subscription_requests_status ON subscription_requests(status)",
-            "CREATE INDEX IF NOT EXISTS idx_guardian_assignments_guardian ON guardian_assignments(guardian_admin_id)",
-            "CREATE INDEX IF NOT EXISTS idx_guardian_assignments_student ON guardian_assignments(student_user_id)",
             "CREATE INDEX IF NOT EXISTS idx_admin_audit_log_admin ON admin_audit_log(admin_id, created_at)",
             "CREATE INDEX IF NOT EXISTS idx_admin_audit_log_action ON admin_audit_log(action, created_at)",
             "ALTER TABLE admin_users ADD COLUMN permissions TEXT DEFAULT '{}'",
@@ -276,25 +251,11 @@ async fn main() {
             }
         }
 
-        // 运行时配置表 + 调试日志表
+        // 运行时配置表（debug_trackers / debug_logs 已于 2026-09-29 随旧学习链退役）
         for sql in &[
             "CREATE TABLE IF NOT EXISTS app_config (
                 key TEXT PRIMARY KEY, value TEXT NOT NULL,
                 description TEXT DEFAULT '', updated_at INTEGER NOT NULL)",
-            "CREATE TABLE IF NOT EXISTS debug_trackers (
-                id TEXT PRIMARY KEY, user_id TEXT NOT NULL,
-                conversation_id TEXT, subject TEXT,
-                status TEXT DEFAULT 'active', created_at INTEGER NOT NULL)",
-            "CREATE INDEX IF NOT EXISTS idx_debug_trackers_user ON debug_trackers(user_id)",
-            "CREATE TABLE IF NOT EXISTS debug_logs (
-                id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL,
-                user_id TEXT, subject TEXT, date TEXT NOT NULL,
-                log_file_path TEXT NOT NULL, phases TEXT,
-                entry_count INTEGER DEFAULT 0,
-                file_size_bytes INTEGER DEFAULT 0,
-                created_at INTEGER NOT NULL)",
-            "CREATE INDEX IF NOT EXISTS idx_debug_logs_conv ON debug_logs(conversation_id)",
-            "CREATE INDEX IF NOT EXISTS idx_debug_logs_date ON debug_logs(date)",
         ] {
             match conn.execute(sql, []) {
                 Ok(_) => {}
@@ -315,12 +276,7 @@ async fn main() {
             tracing::info!("app_config cache initialized");
         }
 
-        // 初始化调试跟踪器缓存
-        if let Err(e) = api_server::debug_trackers_cache::init_cache(&conn) {
-            tracing::warn!("debug_trackers cache init: {}", e);
-        } else {
-            tracing::info!("debug_trackers cache initialized");
-        }
+        // 调试跟踪器缓存已于 2026-09-29 退役（debug_trackers / debug_logs 表已删）
 
         }
 

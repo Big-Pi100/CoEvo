@@ -307,15 +307,7 @@ pub async fn claim(
         tracing::warn!("trial/claim campaign trigger failed: {}", e);
     }
 
-    // 9. 如果有推荐人，触发推广成就
-    if let Some(ref rid) = referred_by {
-        if !rid.is_empty() {
-            crate::achievement_engine::publish(
-                &conn,
-                crate::achievement_engine::AppEvent::ReferralRegistered { user_id: rid.clone() },
-            );
-        }
-    }
+    // 9. 🔴 2026-09-29 已退役：推荐注册成就事件（成就改为「端侧计算」）
 
     // 9. 删除旧 token、创建新 token
     let new_token = Uuid::new_v4().to_string();

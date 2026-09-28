@@ -115,216 +115,50 @@ fn load_poster_prompt(base_dir: &str, campaign_id: Option<&str>, conn: Option<&r
 /// - vocabulary：词汇学习数据
 /// - achievements：已解锁成就
 /// - referral_code：推广码
+/// 生成用户画像数据（供 LLM 生成分享海报文案）
+///
+/// 🔴 2026-09-29 已退役：原实现从 `user_cards` / `card_memory` / `review_log` /
+///     `plan_runs` / `user_plan_progress` / `achievements` 读取学习战绩。
+///     学习状态已整体迁到端侧（`user.db`）→ 后端不再持有这些数据；成就方向定为「端侧计算」。
+///     → 战绩类字段一律返回 0 / 空。⚠️ 战绩展示 UI 已同步移除（待「成就体系重新规划」重做）。
+/// 仅保留 `users` 表内可得的字段（`streak_days` / `referral_code`）。
 fn get_user_portrait_data(conn: &rusqlite::Connection, user_id: &str) -> Result<String, String> {
-    // ── 时间计算（UTC） ──
-    let now = chrono::Utc::now();
-    let today_start_naive = now.date_naive().and_hms_opt(0, 0, 0).unwrap();
-    let today_start_dt = today_start_naive.and_utc();
-    let today_start_ts = today_start_dt.timestamp();         // 今日 0 点 unix 时间戳
-    let yesterday_start_ts = today_start_ts - 86400;          // 昨日 0 点 unix 时间戳
-    let today_start_str = today_start_dt.format("%Y-%m-%d %H:%M:%S").to_string();
-
-    // ── 连续学习天数 ──
     let streak_days: i64 = conn.query_row(
         "SELECT COALESCE(streak_days, 0) FROM users WHERE id = ?1",
         rusqlite::params![user_id], |row| row.get(0),
     ).unwrap_or(0);
 
-    // ── 今日复习统计 ──
-    let today_total_reviews: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM review_log rl JOIN user_cards c ON rl.card_id = c.id WHERE c.user_id = ?1 AND rl.reviewed_at >= ?2",
-        rusqlite::params![user_id, today_start_ts], |row| row.get(0),
-    ).unwrap_or(0);
-    let today_correct: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM review_log rl JOIN user_cards c ON rl.card_id = c.id WHERE c.user_id = ?1 AND rl.reviewed_at >= ?2 AND rl.verification_result = 'pass'",
-        rusqlite::params![user_id, today_start_ts], |row| row.get(0),
-    ).unwrap_or(0);
-    let today_accuracy: f64 = if today_total_reviews > 0 { (today_correct as f64 / today_total_reviews as f64 * 100.0).round() as i64 as f64 } else { 0.0 };
-    let today_new_cards: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM user_cards WHERE user_id = ?1 AND created_at >= ?2",
-        rusqlite::params![user_id, today_start_str], |row| row.get(0),
-    ).unwrap_or(0);
-
-    // ── 昨日复习统计 ──
-    let yesterday_total_reviews: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM review_log rl JOIN user_cards c ON rl.card_id = c.id WHERE c.user_id = ?1 AND rl.reviewed_at >= ?2 AND rl.reviewed_at < ?3",
-        rusqlite::params![user_id, yesterday_start_ts, today_start_ts], |row| row.get(0),
-    ).unwrap_or(0);
-    let yesterday_correct: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM review_log rl JOIN user_cards c ON rl.card_id = c.id WHERE c.user_id = ?1 AND rl.reviewed_at >= ?2 AND rl.reviewed_at < ?3 AND rl.verification_result = 'pass'",
-        rusqlite::params![user_id, yesterday_start_ts, today_start_ts], |row| row.get(0),
-    ).unwrap_or(0);
-    let yesterday_accuracy: f64 = if yesterday_total_reviews > 0 { (yesterday_correct as f64 / yesterday_total_reviews as f64 * 100.0).round() as i64 as f64 } else { 0.0 };
-
-    // ── 总卡片数 ──
-    let total_cards: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM user_cards WHERE user_id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-
-    // ── overall_mastery：最近 7 天平均正确率 ──
-    let week_ago_ts = today_start_ts - 7 * 86400;
-    let week_reviews: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM review_log rl JOIN user_cards c ON rl.card_id = c.id WHERE c.user_id = ?1 AND rl.reviewed_at >= ?2",
-        rusqlite::params![user_id, week_ago_ts], |row| row.get(0),
-    ).unwrap_or(0);
-    let week_correct: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM review_log rl JOIN user_cards c ON rl.card_id = c.id WHERE c.user_id = ?1 AND rl.reviewed_at >= ?2 AND rl.verification_result = 'pass'",
-        rusqlite::params![user_id, week_ago_ts], |row| row.get(0),
-    ).unwrap_or(0);
-    let overall_mastery: f64 = if week_reviews > 0 { (week_correct as f64 / week_reviews as f64 * 100.0).round() as i64 as f64 } else { 0.0 };
-
-    // ── 当前活跃计划 ──
-    let (plan_id, subject, domain, grade_band, goal): (String, String, String, String, String) = conn.query_row(
-        "SELECT id, subject, domain, grade_band, goal FROM plan_runs WHERE user_id = ?1 AND status = 'active' LIMIT 1",
-        rusqlite::params![user_id],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
-    ).unwrap_or_default();
-
-    // ── 任务进度 ──
-    let current_task_name: String = if !plan_id.is_empty() {
-        conn.query_row(
-            "SELECT task_key FROM user_plan_progress WHERE user_id = ?1 AND plan_id = ?2 AND status = 'in_progress' ORDER BY updated_at DESC LIMIT 1",
-            rusqlite::params![user_id, &plan_id],
-            |row| row.get(0),
-        ).unwrap_or_default()
-    } else {
-        String::new()
-    };
-
-    // 已完成任务数 / 总任务数 → task_progress
-    let done_tasks: i64 = if !plan_id.is_empty() {
-        conn.query_row(
-            "SELECT COUNT(*) FROM user_plan_progress WHERE user_id = ?1 AND plan_id = ?2 AND status = 'done'",
-            rusqlite::params![user_id, &plan_id],
-            |row| row.get(0),
-        ).unwrap_or(0)
-    } else {
-        0
-    };
-    let total_tasks_in_plan: i64 = if !plan_id.is_empty() {
-        conn.query_row(
-            "SELECT COUNT(*) FROM user_plan_progress WHERE user_id = ?1 AND plan_id = ?2",
-            rusqlite::params![user_id, &plan_id],
-            |row| row.get(0),
-        ).unwrap_or(0)
-    } else {
-        0
-    };
-    let task_progress_str = if total_tasks_in_plan > 0 {
-        format!("{}/{}", done_tasks, total_tasks_in_plan)
-    } else {
-        String::new()
-    };
-
-    // ── 已完成任务名称列表 ──
-    let recent_completed: Vec<String> = if !plan_id.is_empty() {
-        let mut stmt = conn.prepare(
-            "SELECT task_key FROM user_plan_progress WHERE user_id = ?1 AND plan_id = ?2 AND status = 'done' ORDER BY updated_at DESC LIMIT 5"
-        ).unwrap_or_else(|_| panic!("prepare failed"));
-        let names: Vec<String> = stmt.query_map(rusqlite::params![user_id, &plan_id], |row| {
-            row.get::<_, String>(0)
-        }).unwrap_or_else(|_| panic!("query_map failed"))
-          .filter_map(|r| r.ok())
-          .collect();
-        names
-    } else {
-        vec![]
-    };
-
-    // ── 词汇数据（language 领域卡片） ──
-    // 注意：user_cards.created_at 是 TEXT 格式，review_log.reviewed_at 是 INTEGER 格式
-    // 词汇今日新学
-    let vocab_total: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM user_cards WHERE user_id = ?1 AND domain = 'language'",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-
-    let vocab_new_today: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM user_cards WHERE user_id = ?1 AND domain = 'language' AND created_at >= ?2",
-        rusqlite::params![user_id, today_start_str], |row| row.get(0),
-    ).unwrap_or(0);
-
-    // 词汇今日掌握数（今日正确复习过的词汇卡片）
-    let vocab_mastered_today: i64 = conn.query_row(
-        "SELECT COUNT(DISTINCT rl.card_id) FROM review_log rl JOIN user_cards c ON rl.card_id = c.id WHERE c.user_id = ?1 AND c.domain = 'language' AND rl.reviewed_at >= ?2 AND rl.verification_result = 'pass'",
-        rusqlite::params![user_id, today_start_ts], |row| row.get(0),
-    ).unwrap_or(0);
-
-    // 词汇昨日掌握数
-    let vocab_mastered_yesterday: i64 = conn.query_row(
-        "SELECT COUNT(DISTINCT rl.card_id) FROM review_log rl JOIN user_cards c ON rl.card_id = c.id WHERE c.user_id = ?1 AND c.domain = 'language' AND rl.reviewed_at >= ?2 AND rl.reviewed_at < ?3 AND rl.verification_result = 'pass'",
-        rusqlite::params![user_id, yesterday_start_ts, today_start_ts], |row| row.get(0),
-    ).unwrap_or(0);
-
-    // ── 成就 ──
-    let achievements: Vec<serde_json::Value> = {
-        let mut stmt = conn.prepare(
-            "SELECT name, icon FROM achievements WHERE user_id = ?1 ORDER BY unlocked_at DESC LIMIT 10"
-        ).unwrap_or_else(|_| panic!("prepare achievements failed"));
-        stmt.query_map(rusqlite::params![user_id], |row| {
-            Ok(json!({
-                "name": row.get::<_, String>(0)?,
-                "icon": row.get::<_, String>(1)?,
-            }))
-        }).unwrap_or_else(|_| panic!("query_map achievements failed"))
-          .filter_map(|r| r.ok())
-          .collect()
-    };
-
-    // ── 推广码 ──
     let referral_code: String = conn.query_row(
         "SELECT referral_code FROM users WHERE id = ?1",
         rusqlite::params![user_id], |row| row.get(0),
     ).unwrap_or_default();
 
-    // ── 组装 JSON ──
-    let mut result = json!({
+    let result = json!({
         "learning_today": {
             "streak_days": streak_days,
-            "new_cards": today_new_cards,
-            "total_cards": total_cards,
-            "total_reviews": today_total_reviews,
-            "overall_mastery": overall_mastery as i64,
-            "review_accuracy": today_accuracy as i64,
+            "new_cards": 0,
+            "total_cards": 0,
+            "total_reviews": 0,
+            "overall_mastery": 0,
+            "review_accuracy": 0,
         },
         "learning_yesterday": {
             "streak_days": (streak_days - 1).max(0),
-            "new_cards": 0, // 不查昨日新增卡片，留空让 LLM 自己发挥
-            "total_cards": total_cards,
-            "total_reviews": yesterday_total_reviews,
-            "overall_mastery": 0, // 暂不计算昨日 mastery
-            "review_accuracy": yesterday_accuracy as i64,
+            "new_cards": 0,
+            "total_cards": 0,
+            "total_reviews": 0,
+            "overall_mastery": 0,
+            "review_accuracy": 0,
         },
         "vocabulary": {
-            "total_words": vocab_total,
-            "new_today": vocab_new_today,
-            "mastered_today": vocab_mastered_today,
-            "mastered_yesterday": vocab_mastered_yesterday,
+            "total_words": 0,
+            "new_today": 0,
+            "mastered_today": 0,
+            "mastered_yesterday": 0,
         },
-        "achievements": achievements,
+        "achievements": [],
         "referral_code": referral_code,
     });
-
-    // 有条件地添加 current_plan 字段
-    if !plan_id.is_empty() {
-        let current_plan = json!({
-            "goal": goal,
-            "subject": subject,
-            "grade_band": grade_band,
-            "task_name": current_task_name,
-            "task_progress": task_progress_str,
-            "domain": domain,
-        });
-        result.as_object_mut().unwrap().insert("current_plan".to_string(), current_plan);
-    }
-
-    if !recent_completed.is_empty() {
-        let completed_tasks: Vec<serde_json::Value> = recent_completed.into_iter()
-            .map(|t| json!(t))
-            .collect();
-        result.as_object_mut().unwrap().insert("recent_completed_tasks".to_string(), json!(completed_tasks));
-    }
 
     Ok(result.to_string())
 }
@@ -899,11 +733,7 @@ pub async fn generate_h5(
         fallback_h5_html(&referral_code, body.campaign_id.as_deref(), Some(&avatar_url))
     };
 
-    // 触发推广成就
-    crate::achievement_engine::publish(
-        &conn,
-        crate::achievement_engine::AppEvent::ShareGenerated { user_id: body.user_id.clone() },
-    );
+    // 🔴 2026-09-29 已退役：分享生成成就事件（成就改为「端侧计算」）
 
     // 返回 JSON，包含 HTML 文本 + 分享 URL（转发给好友的链接）
     let share_url = match &body.campaign_id {
@@ -979,7 +809,10 @@ pub async fn share_landing(
     ([(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")], html)
 }
 
-/// GET /api/referral/user-portrait — 用户学习画像（供 LLM 使用）
+/// GET /api/referral/user-portrait — 用户学习画像
+///
+/// 🔴 2026-09-29 已退役：原实现从 `review_log` / `user_cards` / `achievements` 读取战绩。
+///     学习状态已迁端侧 → 仅返回 `users` 表内的 `streak_days`，战绩类字段一律 0 / 空。
 pub async fn user_portrait(
     headers: HeaderMap,
     Query(query): Query<UserQuery>,
@@ -993,68 +826,19 @@ pub async fn user_portrait(
     let conn = crate::db_pool::get_conn();
     let uid = &query.user_id;
 
-    // 累计学习天数
-    let total_study_days: i64 = conn.query_row(
-        "SELECT COUNT(DISTINCT date(reviewed_at, 'unixepoch')) FROM review_log rl JOIN user_cards c ON rl.card_id = c.id WHERE c.user_id = ?1",
-        rusqlite::params![uid], |row| row.get(0),
-    ).unwrap_or(0);
-
-    // 连续学习天数
+    // 连续学习天数（`users` 表）
     let streak_days: i64 = conn.query_row(
         "SELECT streak_days FROM users WHERE id = ?1",
         rusqlite::params![uid], |row| row.get(0),
     ).unwrap_or(0);
 
-    // 今日学习状态
-    let today_start = chrono::Utc::now().timestamp() - 86400;
-    let today_reviews: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM review_log rl JOIN user_cards c ON rl.card_id = c.id WHERE c.user_id = ?1 AND rl.reviewed_at > ?2",
-        rusqlite::params![uid, today_start], |row| row.get(0),
-    ).unwrap_or(0);
-
-    // 总学习卡片数
-    let total_cards: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM user_cards WHERE user_id = ?1",
-        rusqlite::params![uid], |row| row.get(0),
-    ).unwrap_or(0);
-
-    // 成就信息
-    let mut stmt = match conn.prepare(
-        "SELECT achievement_key, name, tier, unlocked_at FROM achievements WHERE user_id = ?1 ORDER BY unlocked_at DESC LIMIT 10"
-    ) {
-        Ok(s) => s,
-        Err(_) => {
-            return Json(json!({
-                "portrait": {
-                    "total_study_days": total_study_days,
-                    "streak_days": streak_days,
-                    "today_reviews": today_reviews,
-                    "total_cards": total_cards,
-                    "achievements": [],
-                }
-            })).into_response();
-        }
-    };
-
-    let achievements: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![uid], |row| {
-        Ok(json!({
-            "key": row.get::<_, String>(0)?,
-            "name": row.get::<_, String>(1)?,
-            "tier": row.get::<_, String>(2)?,
-            "unlocked_at": row.get::<_, String>(3)?,
-        }))
-    }) {
-        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(_) => vec![],
-    };
-
     Json(json!({
         "portrait": {
-            "total_study_days": total_study_days,
+            "total_study_days": 0,
             "streak_days": streak_days,
-            "today_reviews": today_reviews,
-            "total_cards": total_cards,
-            "achievements": achievements,
+            "today_reviews": 0,
+            "total_cards": 0,
+            "achievements": [],
         }
     })).into_response()
 }

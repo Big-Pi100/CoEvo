@@ -1,6 +1,21 @@
-//! API Server — Axum 路由 + WS + 中间件
+//! API Server — Axum 路由 + 中间件
 //!
 //! 复用 LinguaFlow: auth.rs, auth_middleware.rs, db_pool.rs
+//!
+//! # 🔴 2026-09-29：旧学习链已退役
+//! 学习状态整体迁到端侧（`user.db`：`card_review_state` / `review_log` / `user_word` / `bookmark`），
+//! 后端随之退役以下模块（原依赖的表已从 `coevo.db` 删除）：
+//!
+//! | 已退役模块 | 原依赖的表 | 原因 |
+//! |---|---|---|
+//! | `ws`（WebSocket chat） | `conversations` · `user_cards` · `card_memory` | app 内 `/chat` **无 UI 入口** |
+//! | `plan_handler`（K12 计划 XML） | `conversations` · `user_plan_progress` | K12 体系整体清退 |
+//! | `review_handler`（status/defer） | `defer_queue` · `card_memory` | 只被 chat 链调用 |
+//! | `curriculum_admin` / `curriculum_loader` | `card_relations` · `prebuilt_*` | K12 后台 |
+//! | `debug_logger` / `debug_trackers_cache` | `debug_logs` · `debug_trackers` | 只服务 admin 调试面板 |
+//! | `achievement_engine`（+ crate `growth_engine`） | `user_cards` · `review_log` · `achievements` | 成就方向定为「**端侧计算**」 |
+//!
+//! crate `card_engine`（后端 FSRS 调度）同时退役 —— 端侧已自行实现 FSRS。
 
 #![allow(clippy::result_large_err)]
 #![allow(clippy::too_many_arguments)]
@@ -11,42 +26,33 @@
 #![allow(clippy::unnecessary_to_owned)]
 
 pub mod admin_handlers;
-pub mod achievement_engine;
+pub mod app_config_cache;
 pub mod auth;
 pub mod auth_middleware;
+pub mod campaign_executor;
+pub mod campaign_handler;
+pub mod campaign_member_handler;
+pub mod campaign_scheduler;
+pub mod config_admin;
 pub mod db_pool;
-pub mod e2e_runner;
+pub mod distribution_handler;
 pub mod encryption;
 pub mod error;
+pub mod h5_template;
 pub mod llm;
-pub mod plan_handler;
+pub mod llm_poster;
+pub mod pay_handlers;
+pub mod plans_handlers;
+pub mod poster_template;
 pub mod rate_limiter;
-pub mod review_handler;
+pub mod referral_handler;
 pub mod routes;
 pub mod schema;
+pub mod share_data;
 pub mod subject_router;
+pub mod subscription;
 pub mod tencent_asr;
 pub mod tencent_tts;
 pub mod test_helpers;
-pub mod app_config_cache;
-pub mod config_admin;
-pub mod curriculum_admin;
-pub mod curriculum_loader;
-pub mod debug_logger;
-pub mod subscription;
-pub mod wechat_pay;
-pub mod pay_handlers;
-pub mod plans_handlers;
-pub mod debug_trackers_cache;
-pub mod ws;
-pub mod referral_handler;
-pub mod campaign_handler;
-pub mod campaign_member_handler;
 pub mod trial_handler;
-pub mod distribution_handler;
-pub mod campaign_scheduler;
-pub mod campaign_executor;
-pub mod llm_poster;
-pub mod poster_template;
-pub mod h5_template;
-pub mod share_data;
+pub mod wechat_pay;

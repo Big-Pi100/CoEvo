@@ -2,8 +2,7 @@
 //!
 //! 复用 LinguaFlow routes.rs 的模式
 
-use axum::{Router, routing::{get, post, put, delete, patch}, Json, extract::{Path, Query}, response::IntoResponse};
-use axum::extract::ws::WebSocketUpgrade;
+use axum::{Router, routing::{get, post, put, delete, patch}, Json, extract::Path, response::IntoResponse};
 use axum::http::{HeaderMap, StatusCode, header};
 use tower_http::trace::TraceLayer;
 use std::collections::HashMap;
@@ -111,47 +110,27 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/auth/register", post(auth_register))
         .route("/api/auth/login", post(auth_login))
         .route("/api/auth/verify", post(auth_verify))
-        // ── Review / Spaced Repetition ──
-        .route("/api/review/due", get(review_due_handler))
-        .route("/api/review/submit", post(review_submit_handler))
-        .route("/api/review/verify", post(review_verify_handler))
-        .route("/api/review/judge", post(review_judge_handler))
-        .route("/api/review/cards-by-progress", get(review_cards_by_progress_handler))
-        // ── Review Defer Queue ──
-        .route("/api/review/status", get(crate::review_handler::status_handler))
-        .route("/api/review/defer", post(crate::review_handler::defer_handler))
-        // ── Cards ──
-        .route("/api/cards/status", patch(cards_status_handler))
-        .route("/api/cards/batch-status", patch(cards_batch_status_handler))
-        .route("/api/cards/all", get(cards_all_handler))
-        .route("/api/cards/by-plan", get(cards_by_plan_handler))
-        .route("/api/cards/search", get(cards_search_handler))
-        .route("/api/cards/{card_id}/last-review", get(cards_last_review_handler))
-        // ── History ──
-        .route("/api/history", get(history_handler))
-        // ── Conversation Management ──
-        .route("/api/conversations/{conv_id}", delete(conversation_delete_handler))
-        .route("/api/conversations/{conv_id}/restore", post(conversation_restore_handler))
-        .route("/api/conversations/{conv_id}/permanent", delete(conversation_permanent_delete_handler))
+        // ── 🔴 2026-09-29 已退役：/api/review/* · /api/cards/* · /api/history · /api/conversations/* ──
+        //     学习状态已整体迁到端侧 `user.db`（`card_review_state` / `review_log` / `user_word`）：
+        //       · `/api/review/*` 与 `/api/cards/*` 原由后端 FSRS（crate `card_engine`）驱动
+        //       · `/api/history` 与 `/api/conversations/*` 属对话链（依赖 `conversation_turns`）
+        //     这些接口的唯一调用方是 app 的 `chat_client`，而 app 内 `/chat` **无 UI 入口**。
+        //     → 相关表已从 `coevo.db` 删除；模块 `card_engine` / `review_handler` / `ws` 一并退役。
         // ── User Profile ──
         .route("/api/user/{user_id}/profile", get(profile_handler))
         .route("/api/user/{user_id}/profile", put(update_user_profile_handler))
         .route("/api/user/{user_id}/display-name", post(update_display_name_handler))
         .route("/api/user/{user_id}/avatar", post(avatar_upload_handler).get(avatar_get_handler))
-        .route("/api/user/{user_id}/achievements-all", get(achievements_all_handler))
-        .route("/api/user/{user_id}/plan-achievements", get(plan_achievements_handler))
+        // 🔴 2026-09-29 已退役：/api/user/*/achievements-all · plan-achievements（表 achievements 已删；成就改为「端侧计算」）
         .route("/api/user/{user_id}/preferences", get(preferences_get_handler).put(preferences_put_handler))
         .route("/api/user/{user_id}/subscription", get(user_subscription_handler))
         .route("/api/stt/transcribe", post(stt_transcribe_handler))
         .route("/api/user/bind-lookup", post(bind_lookup_handler))
         // ── Learning Plans ──
-        .route("/api/plans", get(plans_list_handler))
-        // ── Learning Reports (Dashboard) ──
-        .route("/api/user/{user_id}/learning-report", get(learning_report_handler))
-        .route("/api/user/{user_id}/activity", get(activity_handler))
-        .route("/api/user/{user_id}/weekly-report", get(weekly_report_handler))
-        // ── WebSocket ──
-        .route("/ws", get(ws_upgrade))
+        // 🔴 2026-09-29 已退役：/api/plans（依赖 plan_runs / user_plan_progress，表已删）
+        // 🔴 2026-09-29 已退役：学习报表（learning-report / activity / weekly-report）
+        //     与 WebSocket（/ws）—— 依赖已迁端侧的学习状态（user_cards / review_log / conversation_turns）
+        // 🔴 2026-09-29 已退役：/ws（WebSocket chat —— app 内无 UI 入口）
         // ── Verify Translation (V1 forward mode) ──
         .route("/api/verify-translation", post(verify_translation_handler))
         // ── Admin ──
@@ -185,57 +164,14 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/admin/admins/{admin_id}/disable", delete(admin_disable_admin))
         .route("/api/admin/admins/{admin_id}/enable", post(admin_enable_admin))
         .route("/api/admin/audit-log", get(admin_audit_log))
-        // ── Admin: Guardian (Parent) ──
-        .route("/api/admin/guardian/students", get(guardian_students))
-        .route("/api/admin/guardian/students/{student_id}", get(guardian_student_cards))
-        .route("/api/admin/guardian/students/{student_id}/cards", get(guardian_student_cards))
-        .route("/api/admin/guardian/students/{student_id}/conversations", get(guardian_student_conversations))
-        .route("/api/admin/guardian/students/{student_id}/conversations/{conv_id}", get(guardian_student_conversation_detail))
-        .route("/api/admin/guardian/students/{student_id}/learning-summary", get(guardian_learning_summary))
-        .route("/api/admin/guardian/bind", post(guardian_bind_request))
-        .route("/api/admin/guardian/reveal-phone/{admin_id}", post(guardian_reveal_phone))
-        .route("/api/admin/guardian/assignments", get(admin_list_assignments).post(admin_create_assignment))
-        .route("/api/admin/guardian/assignments/{assignment_id}", delete(admin_remove_assignment))
-        // ── Admin: Curriculum Management ──
-        .route("/api/admin/curriculum/load", post(crate::curriculum_admin::curriculum_load_handler))
-        .route("/api/admin/curriculum/status", get(crate::curriculum_admin::curriculum_status_handler))
-        .route("/api/admin/curriculum/git-log", get(crate::curriculum_admin::git_log_handler))
-        .route("/api/admin/curriculum/rollback", post(crate::curriculum_admin::rollback_handler))
-        // GET — 读取端点
-        .route("/api/admin/curriculum/subject/{subject}/plan", get(crate::curriculum_admin::get_plan_handler).patch(crate::curriculum_admin::patch_plan_handler).put(crate::curriculum_admin::put_plan_handler))
-        .route("/api/admin/curriculum/subject/{subject}/cards", get(crate::curriculum_admin::list_cards_handler))
-        .route("/api/admin/curriculum/subject/{subject}/relations", get(crate::curriculum_admin::list_relations_handler).post(crate::curriculum_admin::create_relation_handler))
-        .route("/api/admin/curriculum/subject/{subject}/relations/{relation_id}", delete(crate::curriculum_admin::delete_relation_handler))
-        // PATCH — 修改单个实体（即改即用）
-        .route("/api/admin/curriculum/subject/{subject}/plan/stages/{stage_id}", patch(crate::curriculum_admin::patch_stage_handler))
-        .route("/api/admin/curriculum/subject/{subject}/plan/stages/{stage_id}/tasks/{task_id}", patch(crate::curriculum_admin::patch_task_handler))
-        .route("/api/admin/curriculum/subject/{subject}/cards/{card_id}", patch(crate::curriculum_admin::patch_card_handler))
-        // POST — 新增实体
-        .route("/api/admin/curriculum/subject/{subject}/plan/stages", post(crate::curriculum_admin::post_stage_handler))
-        .route("/api/admin/curriculum/subject/{subject}/plan/stages/{stage_id}/tasks", post(crate::curriculum_admin::post_task_handler))
-        .route("/api/admin/curriculum/subject/{subject}/cards", post(crate::curriculum_admin::post_card_handler))
-        .route("/api/admin/curriculum/plan", post(crate::curriculum_admin::post_plan_handler))
-        // DELETE — 删除实体
-        .route("/api/admin/curriculum/subject/{subject}/plan/stages/{stage_id}", delete(crate::curriculum_admin::delete_stage_handler))
-        .route("/api/admin/curriculum/subject/{subject}/plan/stages/{stage_id}/tasks/{task_id}", delete(crate::curriculum_admin::delete_task_handler))
-        .route("/api/admin/curriculum/subject/{subject}/plan", delete(crate::curriculum_admin::delete_plan_handler))
-        .route("/api/admin/curriculum/subject/{subject}/cards/{card_id}", delete(crate::curriculum_admin::delete_card_handler))
-        .route("/api/admin/curriculum/subject/{subject}/cards", put(crate::curriculum_admin::put_cards_handler))
-        // Gap 1: 模版下载
-        .route("/api/admin/curriculum/templates/plan", get(crate::curriculum_admin::get_plan_template_handler))
-        .route("/api/admin/curriculum/templates/cards", get(crate::curriculum_admin::get_cards_template_handler))
-        // Gap 2: JSON 数据导入（不触发加载）
-        .route("/api/admin/curriculum/subject/{subject}/plan/import", post(crate::curriculum_admin::import_plan_handler))
-        .route("/api/admin/curriculum/subject/{subject}/cards/import", post(crate::curriculum_admin::import_cards_handler))
+        // ── 🔴 2026-09-29 已退役：Admin K12 后台（Guardian + Curriculum，41 个路由）──
+        //     依赖的表已删（`guardian_assignments` / `prebuilt_*` / `card_relations` /
+        //     `plan_runs` / `user_plan_progress`）→ 模块 `curriculum_admin` / `curriculum_loader` 一并退役。
         // ── Admin: Config & Debug ──
         .route("/api/admin/config", get(crate::config_admin::get_config_handler).post(crate::config_admin::post_config_handler))
         .route("/api/admin/prompt/template", get(crate::config_admin::get_template_handler).post(crate::config_admin::post_template_handler))
         .route("/api/admin/prompt/templates", get(crate::config_admin::list_templates_handler))
-        .route("/api/admin/debug/track", post(crate::config_admin::debug_track_handler))
-        .route("/api/admin/debug/track/{id}", delete(crate::config_admin::debug_untrack_handler))
-        .route("/api/admin/debug/tracks", get(crate::config_admin::debug_tracks_handler))
-        .route("/api/admin/debug/logs", get(crate::config_admin::debug_logs_handler))
-        .route("/api/admin/debug/logs/{id}", get(crate::config_admin::debug_log_detail_handler))
+        // 🔴 2026-09-29 已退役：/api/admin/debug/*（依赖已删表 debug_logs / debug_trackers）
         // ── Distribution & Marketing ──
         // 用户端 API
         .route("/api/campaigns/check-push-trigger", get(crate::campaign_handler::check_push_trigger))
@@ -380,8 +316,7 @@ async fn auth_login(
     };
     match result {
         Ok(resp) => {
-            // 踢掉同一用户的其他 WS 连接（单设备登录强制）
-            crate::ws::kick_user_connections(&resp.user_id).await;
+            // 🔴 2026-09-29 已退役：踢同用户其他 WS 连接（WebSocket chat 已退役，无需再踢）
             Json(serde_json::json!(resp)).into_response()
         },
         Err(e) => Json(serde_json::json!({"error": e})).into_response(),
@@ -425,31 +360,7 @@ pub struct DueQuery {
     pub offset: Option<i64>,
 }
 
-/// GET /api/review/due — 获取到期待复习的卡片
-/// 请求参数: ?user_id=str[&conversation_id=str][&language=english][&limit=20][&offset=0]
-/// 响应: {"cards": [...], "total_due": int, "has_more": bool}
-async fn review_due_handler(
-    headers: HeaderMap,
-    Query(query): Query<DueQuery>,
-) -> Json<serde_json::Value> {
-    tracing::info!("review_due_handler: user_id={}, conv_id={:?}, language={:?}", 
-        query.user_id, query.conversation_id, query.language);
-
-    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return auth_json(e);
-    }
-    let conn = crate::db_pool::get_conn();
-    let page_size = query.limit.unwrap_or(20);
-    let offset = query.offset.unwrap_or(0);
-    let (cards, total) = card_engine::fsrs_scheduler::get_due_cards(
-        &conn, &query.user_id, page_size, offset, query.conversation_id.as_deref(), query.language.as_deref(),
-    );
-    Json(serde_json::json!({
-        "cards": cards,
-        "total_due": total,
-        "has_more": (offset as usize + cards.len()) < total as usize,
-    }))
-}
+// 🔴 2026-09-29 已退役：review_due_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
 #[derive(Deserialize)]
 pub struct ReviewSubmitInput {
@@ -461,53 +372,7 @@ pub struct ReviewSubmitInput {
     pub details: Option<String>,  // JSON 数组: [{question, correct, feedback}]
 }
 
-/// POST /api/review/submit — 提交复习结果（含 FSRS 调度更新 + 成就检测）
-/// 请求: {"user_id": "str", "card_id": "str", "rating": int(0-4),
-///        "verification_type": "str", "verification_result": "str",
-///        "details?": "[{question,correct,feedback}]"}
-/// 响应: {"status": "ok", "achievements": [...]} 或 {"error": "str"}
-async fn review_submit_handler(
-    headers: HeaderMap,
-    Json(input): Json<ReviewSubmitInput>,
-) -> Json<serde_json::Value> {
-    tracing::info!("review_submit_handler: user_id={}", input.user_id);
-
-    if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
-        return auth_json(e);
-    }
-    let conn = crate::db_pool::get_conn();
-
-    match card_engine::fsrs_scheduler::submit_review(
-        &conn, &input.card_id, input.rating,
-        &input.verification_type, &input.verification_result, &input.user_id,
-        input.details.as_deref(),
-    ) {
-        Ok(ctx) => {
-            // 每日定时成就检测（24h 冷却）
-            crate::achievement_engine::check_daily(&conn, &ctx.user_id);
-
-            // 事件总线：走 TOML triggers 过滤，仅检测 review_completed 成就
-            crate::achievement_engine::publish(
-                &conn,
-                crate::achievement_engine::AppEvent::ReviewCompleted {
-                    user_id: ctx.user_id.clone(),
-                },
-            );
-
-            // 成就全量检测（兜底 + 返回新成就给前端）
-            // 必须用 build_context 重新查 DB，因为 ctx 只有 6 个字段（submit_review 返回值）
-            let fresh_ctx = crate::achievement_engine::build_context(&conn, &input.user_id);
-            let engine = crate::achievement_engine::get();
-            let new_achievements = engine.check_and_persist(&conn, &fresh_ctx);
-
-            Json(serde_json::json!({
-                "status": "ok",
-                "achievements": new_achievements,
-            }))
-        }
-        Err(e) => Json(serde_json::json!({"error": e})),
-    }
-}
+// 🔴 2026-09-29 已退役：review_submit_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
 #[derive(Deserialize)]
 pub struct VerifyInput {
@@ -517,93 +382,7 @@ pub struct VerifyInput {
     pub back: String,
 }
 
-/// AI 快问快答: 生成 3 个问题
-/// POST /api/review/verify — LLM 生成快问快答题目（3 题）
-/// 请求: {"user_id": "str", "card_id": "str", "front": "str", "back": "str"}
-/// 响应: {"questions": [{question, expected_answer}, ...]} 或 {"error": "str", "raw": "str"}
-async fn review_verify_handler(
-    headers: HeaderMap,
-    Json(input): Json<VerifyInput>,
-) -> Json<serde_json::Value> {
-    tracing::info!("review_verify_handler: user_id={}", input.user_id);
-
-    if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
-        return auth_json(e);
-    }
-
-    // ── 注入最近 10 轮考题历史 ──
-    let history_context = {
-        let conn = crate::db_pool::get_conn();
-        let mut context = String::new();
-        if let Ok(mut stmt) = conn.prepare(
-            "SELECT details_json, verification_result FROM review_log
-             WHERE card_id = ?1 AND details_json IS NOT NULL AND details_json != ''
-             ORDER BY reviewed_at DESC LIMIT 10"
-        ) {
-            if let Ok(rows) = stmt.query_map(rusqlite::params![input.card_id], |row| {
-                Ok((
-                    row.get::<_, Option<String>>(0)?,
-                    row.get::<_, String>(1)?,
-                ))
-            }) {
-                let logs: Vec<_> = rows.filter_map(|r| r.ok()).collect();
-                if !logs.is_empty() {
-                    context.push_str("\n\n### 近期考题记录（供参考，避免重复出题）\n");
-                    for (log_idx, (details, result)) in logs.iter().enumerate() {
-                        context.push_str(&format!("\n第{}轮（{}）：\n", logs.len() - log_idx, result));
-                        if let Some(d) = details {
-                            if let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(d) {
-                                for (i, q) in parsed.iter().enumerate() {
-                                    let question = q.get("question").and_then(|v| v.as_str()).unwrap_or("");
-                                    let expected = q.get("expected").and_then(|v| v.as_str()).unwrap_or("");
-                                    let actual = q.get("actual").and_then(|v| v.as_str()).unwrap_or("");
-                                    let correct = q.get("correct").and_then(|v| v.as_bool()).unwrap_or(false);
-                            let mark = if correct { "correct" } else { "wrong" };
-                            context.push_str(&format!(
-                                "  Q{}: {} | 预期: {} | 用户答: {} | {}\n",
-                                i + 1, question, expected, actual, mark
-                            ));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        context
-    };
-
-    let llm_config = crate::llm::get_config();
-    let prompt = chat_engine::prompt_loader::get_quiz("general").generate.clone()
-        .replace("{front}", &input.front)
-        .replace("{back}", &input.back);
-    // 如果有历史记录，注入到 prompt 末尾
-    let full_prompt = if history_context.is_empty() {
-        prompt
-    } else {
-        format!("{}{}", prompt, history_context)
-    };
-
-    let mut caller = chat_engine::llm_caller::LlmCaller::new(llm_config.clone());
-    match caller.generate("", &full_prompt).await {
-        Ok(text) => {
-            // 尝试 JSON 解析
-            if let Ok(questions) = serde_json::from_str::<Vec<serde_json::Value>>(&text) {
-                return Json(serde_json::json!({"questions": questions}));
-            }
-            // fallback: 从文本提取
-            if let Some(start) = text.find('[') {
-                if let Some(end) = text.rfind(']') {
-                    if let Ok(questions) = serde_json::from_str::<Vec<serde_json::Value>>(&text[start..=end]) {
-                        return Json(serde_json::json!({"questions": questions}));
-                    }
-                }
-            }
-            Json(serde_json::json!({"error": "Failed to parse questions", "raw": text}))
-        }
-        Err(e) => Json(serde_json::json!({"error": format!("LLM: {}", e)})),
-    }
-}
+// 🔴 2026-09-29 已退役：review_verify_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
 #[derive(Deserialize)]
 pub struct JudgeInput {
@@ -619,65 +398,7 @@ pub struct JudgeQuestionInput {
     pub user_answer: String,
 }
 
-/// AI 快问快答: 批量判断 3 个答案
-/// POST /api/review/judge — LLM 批量判断用户答案是否正确
-/// 请求: {"user_id": "str", "card_id": "str",
-///        "questions": [{"question":"str","expected_answer":"str","user_answer":"str"}, ...]}
-/// 响应: {"results": [{"correct": bool, "feedback": "str"}, ...]} 或 {"error": "str"}
-async fn review_judge_handler(
-    headers: HeaderMap,
-    Json(input): Json<JudgeInput>,
-) -> Json<serde_json::Value> {
-    tracing::info!("review_judge_handler: user_id={}", input.user_id);
-
-    if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
-        return auth_json(e);
-    }
-    let llm_config = crate::llm::get_config();
-
-    let mut q_parts = Vec::new();
-    for (i, q) in input.questions.iter().enumerate() {
-        q_parts.push(format!(
-            "Q{}: {}\nExpected: {}\nUser answered: {}",
-            i + 1, q.question, q.expected_answer, q.user_answer
-        ));
-    }
-
-    let prompt = chat_engine::prompt_loader::get_quiz("general").judge.clone()
-        .replace("{questions}", &q_parts.join("\n---\n"));
-
-    let mut caller = chat_engine::llm_caller::LlmCaller::new(llm_config.clone());
-    match caller.generate("", &prompt).await {
-        Ok(text) => {
-            if let Ok(results) = serde_json::from_str::<Vec<serde_json::Value>>(&text) {
-                let total_correct = results.iter()
-                    .filter(|r| r.get("correct").and_then(|c| c.as_bool()).unwrap_or(false))
-                    .count();
-                return Json(serde_json::json!({
-                    "results": results,
-                    "total_correct": total_correct,
-                    "total": results.len(),
-                }));
-            }
-            if let Some(start) = text.find('[') {
-                if let Some(end) = text.rfind(']') {
-                    if let Ok(results) = serde_json::from_str::<Vec<serde_json::Value>>(&text[start..=end]) {
-                        let total_correct = results.iter()
-                            .filter(|r| r.get("correct").and_then(|c| c.as_bool()).unwrap_or(false))
-                            .count();
-                        return Json(serde_json::json!({
-                            "results": results,
-                            "total_correct": total_correct,
-                            "total": results.len(),
-                        }));
-                    }
-                }
-            }
-            Json(serde_json::json!({"error": "Parse failed", "raw": text}))
-        }
-        Err(e) => Json(serde_json::json!({"error": format!("LLM: {}", e)})),
-    }
-}
+// 🔴 2026-09-29 已退役：review_judge_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
 // ── Review: cards by progress ──
 
@@ -687,82 +408,7 @@ struct CardsByProgressQuery {
     user_id: String,
 }
 
-async fn review_cards_by_progress_handler(
-    headers: HeaderMap,
-    Query(query): Query<CardsByProgressQuery>,
-) -> Json<serde_json::Value> {
-    tracing::info!("review_cards_by_progress_handler: user_id={}", query.user_id);
-    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return auth_json(e);
-    }
-    let conn = crate::db_pool::get_conn();
-    let mut plan_info: std::collections::HashMap<String, serde_json::Value> = std::collections::HashMap::new();
-    let cards: Vec<serde_json::Value> = match conn.prepare(
-        "SELECT c.id, c.user_id, c.front,
-                COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') as back,
-                c.domain, pc.subject, pc.card_type,
-                '' as source_sentence, c.created_at, pr.conversation_id, c.plan_run_id, c.task_key,
-                upp.status as task_status,
-                pr.goal as plan_goal, pr.subject as plan_subject, pr.grade_band as plan_grade_band
-         FROM user_cards c
-         JOIN card_memory cm ON c.id = cm.user_card_id
-         JOIN user_plan_progress upp ON c.plan_run_id = upp.plan_id AND c.task_key = upp.task_key
-         LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
-         LEFT JOIN plan_runs pr ON c.plan_run_id = pr.id
-                 LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.id
-                 LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.id
-                 LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.id
-                 LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.id
-         WHERE upp.user_id = ?1
-           AND upp.status IN ('done', 'in_progress')
-           AND cm.status = 'active'
-         ORDER BY upp.status DESC, c.created_at ASC"
-    ) {
-        Ok(mut stmt) => {
-            match stmt.query_map(rusqlite::params![query.user_id], |row| {
-                let plan_id: Option<String> = row.get(10)?;
-                let plan_goal: Option<String> = row.get(13)?;
-                let plan_subject: Option<String> = row.get(14)?;
-                let plan_grade_band: Option<String> = row.get(15)?;
-                // Collect unique plan info
-                if let Some(ref pid) = plan_id {
-                    if !plan_info.contains_key(pid) {
-                        plan_info.insert(pid.clone(), serde_json::json!({
-                            "plan_id": pid,
-                            "goal": plan_goal,
-                            "subject": plan_subject,
-                            "grade_band": plan_grade_band,
-                        }));
-                    }
-                }
-                Ok(serde_json::json!({
-                    "id": row.get::<_, String>(0)?,
-                    "user_id": row.get::<_, String>(1)?,
-                    "front": row.get::<_, String>(2)?,
-                    "back": row.get::<_, String>(3)?,
-                    "domain": row.get::<_, Option<String>>(4)?,
-                    "subject": row.get::<_, Option<String>>(5)?,
-                    "card_type": row.get::<_, String>(6)?,
-                    "source_sentence": row.get::<_, Option<String>>(7)?,
-                    "created_at": row.get::<_, String>(8)?,
-                    "conversation_id": row.get::<_, Option<String>>(9)?,
-                    "plan_id": plan_id,
-                    "task_key": row.get::<_, Option<String>>(11)?,
-                    "task_status": row.get::<_, String>(12)?,
-                    "plan_goal": plan_goal,
-                    "plan_subject": plan_subject,
-                    "plan_grade_band": plan_grade_band,
-                }))
-            }) {
-                Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-                Err(e) => return Json(serde_json::json!({"error": format!("DB query: {}", e)})),
-            }
-        }
-        Err(e) => return Json(serde_json::json!({"error": format!("DB prepare: {}", e)})),
-    };
-    let plans: Vec<serde_json::Value> = plan_info.into_values().collect();
-    Json(serde_json::json!({"cards": cards, "plans": plans, "count": cards.len()}))
-}
+// 🔴 2026-09-29 已退役：review_cards_by_progress_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
 // ── Verify Translation (V1 forward mode) ──
 
@@ -821,46 +467,11 @@ pub struct BatchStatusInput {
     pub status: String,
 }
 
-/// PATCH /api/cards/status — 更新卡片状态 (active/pending/skipped/archived)
-async fn cards_status_handler(
-    headers: HeaderMap,
-    Json(input): Json<UpdateStatusInput>,
-) -> Json<serde_json::Value> {
-    tracing::info!("cards_status_handler: user_id={}", input.user_id);
+// 🔴 2026-09-29 已退役：cards_status_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
-    if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
-        return auth_json(e);
-    }
-    let conn = crate::db_pool::get_conn();
-    match card_engine::card_repository::update_card_status(&conn, &input.card_id, &input.status) {
-        Ok(_) => Json(serde_json::json!({"status": "ok"})),
-        Err(e) => Json(serde_json::json!({"error": e})),
-    }
-}
+// 🔴 2026-09-29 已退役：cards_batch_status_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
-/// PATCH /api/cards/batch-status — 批量更新卡片状态
-async fn cards_batch_status_handler(
-    headers: HeaderMap,
-    Json(input): Json<BatchStatusInput>,
-) -> Json<serde_json::Value> {
-    tracing::info!("cards_batch_status_handler: user_id={}", input.user_id);
-
-    if let Err(e) = crate::auth_middleware::verify_auth(&input.user_id, &headers) {
-        return auth_json(e);
-    }
-    let conn = crate::db_pool::get_conn();
-    match card_engine::card_repository::batch_update_status(&conn, &input.card_ids, &input.status) {
-        Ok(_) => Json(serde_json::json!({
-            "updated": input.card_ids.len(),
-            "status": "ok",
-        })),
-        Err(e) => Json(serde_json::json!({"error": e})),
-    }
-}
-
-async fn ws_upgrade(ws: WebSocketUpgrade) -> impl axum::response::IntoResponse {
-    ws.on_upgrade(crate::ws::handle_ws)
-}
+// 🔴 2026-09-29 已退役：ws_upgrade（依赖已删除的表 / 已退役模块，路由已同步移除）
 
 /// GET /api/cards/all — 获取用户所有卡片 (含搜索过滤)
 #[derive(Deserialize)]
@@ -872,139 +483,7 @@ pub struct AllCardsQuery {
     pub sort: Option<String>,      // "front" | "created" | "state" | "due"
 }
 
-/// GET /api/cards/all — 获取用户所有 active 卡片（支持过滤、搜索、排序）
-/// 请求参数: ?user_id=str&subject=str&state=int&q=str&sort=str
-///    subject: 按科目过滤 (chinese/english/math/...)
-///    state:   FSRS 状态过滤 (0=new, 1=learning, 2=review)
-///    q:       搜索关键词（匹配 front/back）
-///    sort:    排序方式 (front/created/state/due)
-/// 响应: {"cards": [{id,front,back,domain,card_type,state,difficulty,due,reps,...}], ...}
-async fn cards_all_handler(
-    headers: HeaderMap,
-    Query(query): Query<AllCardsQuery>,
-) -> Json<serde_json::Value> {
-    tracing::info!("cards_all_handler: user_id={}", query.user_id);
-
-    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return auth_json(e);
-    }
-
-    let conn = crate::db_pool::get_conn();
-
-    let mut sql = String::from(
-        "SELECT c.id, c.user_id, c.front,
-                COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') as back,
-                c.domain, pc.subject, pc.card_type,
-                '' as source_sentence,
-                c.created_at, cm.state, cm.difficulty, cm.due, cm.reps, cm.lapses,
-                lrev.reviewed_at, lrev.rating,
-                pr.conversation_id, c.plan_run_id, c.task_key
-         FROM user_cards c
-         JOIN card_memory cm ON c.id = cm.user_card_id
-         LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
-         LEFT JOIN plan_runs pr ON c.plan_run_id = pr.id
-                 LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.id
-                 LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.id
-                 LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.id
-                 LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.id
-         LEFT JOIN (
-            SELECT card_id, MAX(reviewed_at) as last_reviewed_at
-            FROM review_log GROUP BY card_id
-         ) lr ON c.id = lr.card_id
-         LEFT JOIN review_log lrev
-            ON lrev.card_id = lr.card_id AND lrev.reviewed_at = lr.last_reviewed_at
-         WHERE c.user_id = ?1 AND cm.status = 'active'"
-    );
-    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(query.user_id.clone())];
-
-    // 按科目过滤
-    if let Some(ref subject) = query.subject {
-        params.push(Box::new(subject.clone()));
-        sql.push_str(&format!(" AND pc.subject = ?{}", params.len()));
-    }
-
-    // 按状态过滤
-    if let Some(state) = query.state {
-        params.push(Box::new(state));
-        sql.push_str(&format!(" AND cm.state = ?{}", params.len()));
-    }
-
-    // 搜索
-    if let Some(ref q) = query.q {
-        if !q.is_empty() {
-            let pattern = format!("%{}%", q);
-            params.push(Box::new(pattern.clone()));
-            sql.push_str(&format!(" AND (c.front LIKE ?{} OR COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') LIKE ?{})", params.len(), params.len()));
-        }
-    }
-
-    // 隐藏非 vocabulary 的预制卡（对话生成卡不受影响）
-    sql.push_str(" AND NOT (c.plan_run_id IS NULL AND pc.card_type != 'vocabulary')");
-
-    // 排序
-    match query.sort.as_deref() {
-        Some("front") => sql.push_str(" ORDER BY c.front ASC"),
-        Some("created") => sql.push_str(" ORDER BY c.created_at DESC"),
-        Some("due") => sql.push_str(" ORDER BY cm.due ASC"),
-        _ => sql.push_str(" ORDER BY cm.state ASC, cm.due ASC"), // 默认: 按状态+到期排序
-    }
-
-    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-    let mut stmt = match conn.prepare(&sql) {
-        Ok(s) => s,
-        Err(e) => return Json(serde_json::json!({"error": format!("DB prepare: {}", e)})),
-    };
-    let rows: Vec<serde_json::Value> = match stmt.query_map(param_refs.as_slice(), |row| Ok(serde_json::json!({
-        "id": row.get::<_, String>(0)?,
-        "user_id": row.get::<_, String>(1)?,
-        "front": row.get::<_, String>(2)?,
-        "back": row.get::<_, String>(3)?,
-        "domain": row.get::<_, Option<String>>(4)?,
-        "subject": row.get::<_, Option<String>>(5)?,
-        "card_type": row.get::<_, String>(6)?,
-        "source_sentence": row.get::<_, Option<String>>(7)?,
-        "created_at": row.get::<_, String>(8)?,
-        "state": row.get::<_, i32>(9)?,
-        "difficulty": row.get::<_, f64>(10)?,
-        "due": row.get::<_, i64>(11)?,
-        "reps": row.get::<_, i32>(12)?,
-        "lapses": row.get::<_, i32>(13)?,
-        "last_reviewed_at": row.get::<_, Option<i64>>(14)?,
-        "last_review_quality": row.get::<_, Option<i32>>(15)?,
-        "conversation_id": row.get::<_, Option<String>>(16)?,
-        "plan_id": row.get::<_, Option<String>>(17)?,
-        "task_key": row.get::<_, Option<String>>(18)?,
-    }))) {
-        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(e) => return Json(serde_json::json!({"error": format!("DB query: {}", e)})),
-    };
-
-    // 聚合统计数据
-    let total = rows.len();
-    let states = [0, 1, 2, 3];
-    let state_counts: Vec<i32> = states.iter().map(|&s| {
-        rows.iter().filter(|r| r["state"].as_i64() == Some(s as i64)).count() as i32
-    }).collect();
-
-    // 领域列表
-    let domains: Vec<String> = query_vec(
-        &conn,
-        "SELECT DISTINCT domain FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id = ?1 AND c.domain IS NOT NULL AND cm.status = 'active' ORDER BY domain",
-        rusqlite::params![query.user_id], |row| row.get(0),
-    ).unwrap_or_default();
-
-    Json(serde_json::json!({
-        "cards": rows,
-        "total": total,
-        "state_counts": {
-            "new": state_counts[0],
-            "learning": state_counts[1],
-            "review": state_counts[2],
-            "relearning": state_counts[3],
-        },
-        "domains": domains,
-    }))
-}
+// 🔴 2026-09-29 已退役：cards_all_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
 // ── Cards by Plan (grouped by conversation_plans) ──
 
@@ -1017,160 +496,7 @@ pub struct CardsByPlanQuery {
     pub sort: Option<String>,
 }
 
-/// GET /api/cards/by-plan — 按 conversation_plan 分组返回卡片
-/// 遍历用户的全部 conversation_plans，对每个 plan 用 conversation_id 取对应卡片
-async fn cards_by_plan_handler(
-    headers: HeaderMap,
-    Query(query): Query<CardsByPlanQuery>,
-) -> Json<serde_json::Value> {
-    tracing::info!("cards_by_plan_handler: user_id={}", query.user_id);
-
-    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return auth_json(e);
-    }
-
-    let conn = crate::db_pool::get_conn();
-
-    // 1. 获取用户所有 plan
-    let mut stmt = match conn.prepare(
-        "SELECT id, conversation_id, goal, grade_band FROM plan_runs WHERE user_id = ?1 ORDER BY created_at DESC"
-    ) {
-        Ok(s) => s,
-        Err(e) => return Json(serde_json::json!({"error": format!("DB prepare: {}", e)})),
-    };
-
-    let mut plans: Vec<serde_json::Value> = Vec::new();
-    let rows = match stmt.query_map(rusqlite::params![query.user_id], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, Option<String>>(3)?,
-        ))
-    }) {
-        Ok(r) => r,
-        Err(e) => return Json(serde_json::json!({"error": format!("DB query plan: {}", e)})),
-    };
-
-    for row in rows.flatten() {
-        let (plan_id, conv_id, goal, grade_band) = row;
-
-        // 惰性加载：仅当指定了 conversation_id 时才加载该 plan 的卡片
-        let load_cards = query.conversation_id.as_deref() == Some(&conv_id);
-
-        let (cards, effective_count): (Vec<serde_json::Value>, usize) = if load_cards {
-            let page_size = query.limit.unwrap_or(20).max(1).min(500);
-            let page_offset = query.offset.unwrap_or(0).max(0);
-            let order_col = match query.sort.as_deref() {
-                Some("front") | None => "c.front ASC",
-                Some("due") => "cm.due ASC",
-                Some("created") => "c.created_at DESC",
-                Some(s) => s, // raw passthrough for flexibility
-            };
-            let sql = format!(
-                "SELECT c.id, c.user_id, c.front,
-                        COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, 
-                                 usc.definition, ulc.pronunciation, ulf.full_text, uhc.body, '') as back,
-                        c.domain, pc.subject, pc.card_type,
-                        '' as source_sentence,
-                        c.created_at, cm.state, cm.difficulty, cm.due, cm.reps, cm.lapses,
-                        lrev.reviewed_at, lrev.rating,
-                        pr.conversation_id, c.plan_run_id, c.task_key,
-                        usc.definition, usc.key_elements, usc.applications, usc.related_concepts,
-                        ulc.pronunciation, ulc.definitions, ulc.related_phrases, ulc.pos,
-                        ulf.full_text, ulf.translation, ulf.author, ulf.genre,
-                        uhc.body, uhc.period, uhc.region, uhc.tags
-                 FROM user_cards c
-                 JOIN card_memory cm ON c.id = cm.user_card_id
-                 LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
-                 LEFT JOIN plan_runs pr ON c.plan_run_id = pr.id
-                 LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.id
-                 LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.id
-                 LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.id
-                 LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.id
-                 LEFT JOIN user_science_cards usc ON c.id = usc.id
-                 LEFT JOIN user_language_cards ulc ON c.id = ulc.id
-                 LEFT JOIN user_literature_cards ulf ON c.id = ulf.id
-                 LEFT JOIN user_humanities_cards uhc ON c.id = uhc.id
-                 LEFT JOIN (
-                    SELECT card_id, MAX(reviewed_at) as last_reviewed_at
-                    FROM review_log GROUP BY card_id
-                 ) lr ON c.id = lr.card_id
-                 LEFT JOIN review_log lrev
-                    ON lrev.card_id = lr.card_id AND lrev.reviewed_at = lr.last_reviewed_at
-                 WHERE pr.conversation_id = '{}' AND c.user_id = '{}' AND cm.status = 'active'
-                 ORDER BY {}
-                 LIMIT {} OFFSET {}",
-                conv_id.replace('\'', "''"),
-                query.user_id.replace('\'', "''"),
-                order_col, page_size, page_offset,
-            );
-            tracing::info!("cards_by_plan SQL: {}", sql);
-            let loaded: Vec<serde_json::Value> = match conn.prepare(&sql) {
-                Ok(mut stmt) => stmt.query_map([], |row| {
-                    let domain = row.get::<_, Option<String>>(4)?;
-                    Ok(serde_json::json!({
-                        "id": row.get::<_, String>(0)?,
-                        "user_id": row.get::<_, String>(1)?,
-                        "front": row.get::<_, String>(2)?,
-                        "back": row.get::<_, String>(3)?,
-                        "domain": domain,
-                        "card_type": row.get::<_, Option<String>>(6)?,
-                        "source_sentence": row.get::<_, Option<String>>(7)?,
-                        "created_at": row.get::<_, String>(8)?,
-                        "state": row.get::<_, i32>(9)?,
-                        "difficulty": row.get::<_, f64>(10)?,
-                        "due": row.get::<_, i64>(11)?,
-                        "reps": row.get::<_, i32>(12)?,
-                        "lapses": row.get::<_, i32>(13)?,
-                        "last_reviewed_at": row.get::<_, Option<i64>>(14)?,
-                        "last_review_quality": row.get::<_, Option<i32>>(15)?,
-                        "conversation_id": row.get::<_, Option<String>>(16)?,
-                        "plan_id": row.get::<_, Option<String>>(17)?,
-                        "task_key": row.get::<_, Option<String>>(18)?,
-                    }))
-                }).unwrap().filter_map(|r| r.ok()).collect(),
-                Err(e) => {
-                    tracing::warn!("cards_by_plan prepare failed: {}", e);
-                    vec![]
-                },
-            };
-            let count = loaded.len();
-            (loaded, count)
-        } else {
-            let count: usize = conn.query_row(
-                "SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id LEFT JOIN plan_runs pr ON c.plan_run_id = pr.id WHERE pr.conversation_id = ?1 AND c.user_id = ?2 AND cm.status = 'active'",
-                rusqlite::params![conv_id, query.user_id],
-                |row| row.get(0),
-            ).unwrap_or(0);
-            (vec![], count)
-        };
-
-        plans.push(serde_json::json!({
-            "id": plan_id,
-            "goal": goal,
-            "grade_band": grade_band,
-            "conversation_id": conv_id,
-            "cards": cards,
-            "card_count": effective_count,
-        }));
-    }
-
-    let total_cards: usize = plans.iter()
-        .map(|p| p["card_count"].as_u64().unwrap_or(0) as usize)
-        .sum();
-    let cards_loaded = query.conversation_id.is_some();
-    tracing::info!("cards_by_plan_handler: user_id={}, plans={}, total_cards={}, loaded_cards={}, conv_filter={:?}",
-        query.user_id, plans.len(), total_cards, cards_loaded, query.conversation_id);
-
-    tracing::info!("cards_by_plan_handler EXIT");
-
-    Json(serde_json::json!({
-        "plans": plans,
-        "total_plans": plans.len(),
-        "has_more": cards_loaded && query.limit.is_some(),
-    }))
-}
+// 🔴 2026-09-29 已退役：cards_by_plan_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
 /// GET /api/cards/search — 搜索卡片的 front/back，支持分页
 #[derive(Deserialize)]
@@ -1181,97 +507,7 @@ pub struct CardsSearchQuery {
     pub offset: Option<i64>,
 }
 
-async fn cards_search_handler(
-    headers: HeaderMap,
-    Query(query): Query<CardsSearchQuery>,
-) -> Json<serde_json::Value> {
-    tracing::info!("cards_search_handler: user_id={}, q={}", query.user_id, query.q);
-
-    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return auth_json(e);
-    }
-    if query.q.trim().is_empty() {
-        return Json(serde_json::json!({"cards": [], "total": 0, "has_more": false}));
-    }
-
-    let conn = crate::db_pool::get_conn();
-    let page_size = query.limit.unwrap_or(20).max(1).min(200);
-    let page_offset = query.offset.unwrap_or(0).max(0);
-    let like = format!("%{}%", query.q.replace('%', "\\%").replace('_', "\\_"));
-
-    let sql = format!(
-        "SELECT c.id, c.user_id, c.front,
-                COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') as back,
-                c.domain, pc.subject, pc.card_type,
-                '' as source_sentence, c.created_at, pr.conversation_id, c.plan_run_id, c.task_key,
-                cm.state, cm.reps, cm.lapses, cm.difficulty, cm.due
-         FROM user_cards c
-         JOIN card_memory cm ON c.id = cm.user_card_id
-         LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
-         LEFT JOIN plan_runs pr ON c.plan_run_id = pr.id
-                 LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.id
-                 LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.id
-                 LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.id
-                 LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.id
-         WHERE c.user_id = '{}'
-           AND cm.status IN ('active', 'pending')
-           AND (c.front LIKE '{}' OR COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') LIKE '{}')
-         ORDER BY c.front ASC
-         LIMIT {} OFFSET {}",
-        query.user_id.replace('\'', "''"),
-        like.replace('\'', "''"),
-        like.replace('\'', "''"),
-        page_size, page_offset,
-    );
-
-    let total_sql = format!(
-        "SELECT COUNT(*) FROM user_cards c
-         JOIN card_memory cm ON c.id = cm.user_card_id
-         LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
-                 LEFT JOIN prebuilt_science_cards psc ON pc.id = psc.id
-                 LEFT JOIN prebuilt_language_cards plc ON pc.id = plc.id
-                 LEFT JOIN prebuilt_literature_cards plt ON pc.id = plt.id
-                 LEFT JOIN prebuilt_humanities_cards phc ON pc.id = phc.id
-         WHERE c.user_id = '{}'
-           AND cm.status IN ('active', 'pending')
-           AND (c.front LIKE '{}' OR COALESCE(psc.definition, plc.pronunciation, plt.full_text, phc.body, '') LIKE '{}')",
-        query.user_id.replace('\'', "''"),
-        like.replace('\'', "''"),
-        like.replace('\'', "''"),
-    );
-
-    let total: i64 = conn.query_row(&total_sql, [], |row| row.get(0)).unwrap_or(0);
-
-    let cards: Vec<serde_json::Value> = match conn.prepare(&sql) {
-        Ok(mut stmt) => stmt.query_map([], |row| {
-            Ok(serde_json::json!({
-                "id": row.get::<_, String>(0)?,
-                "user_id": row.get::<_, String>(1)?,
-                "front": row.get::<_, String>(2)?,
-                "back": row.get::<_, String>(3)?,
-                "domain": row.get::<_, Option<String>>(4)?,
-                "card_type": row.get::<_, String>(6)?,
-                "source_sentence": row.get::<_, Option<String>>(7)?,
-                "created_at": row.get::<_, String>(8)?,
-                "conversation_id": row.get::<_, Option<String>>(9)?,
-                "plan_id": row.get::<_, Option<String>>(10)?,
-                "task_key": row.get::<_, Option<String>>(11)?,
-                "state": row.get::<_, i32>(12)?,
-                "reps": row.get::<_, i32>(13)?,
-                "lapses": row.get::<_, i32>(14)?,
-                "difficulty": row.get::<_, f64>(15)?,
-                "due": row.get::<_, i64>(16)?,
-            }))
-        }).unwrap().filter_map(|r| r.ok()).collect(),
-        Err(_) => vec![],
-    };
-
-    Json(serde_json::json!({
-        "cards": cards,
-        "total": total,
-        "has_more": (page_offset as usize + cards.len()) < total as usize,
-    }))
-}
+// 🔴 2026-09-29 已退役：cards_search_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
 /// 历史查询
 #[derive(Deserialize)]
@@ -1285,141 +521,9 @@ pub struct HistoryQuery {
     pub offset: Option<i64>,
 }
 
-/// GET /api/cards/{card_id}/last-review — 最近一次考试详情
-async fn cards_last_review_handler(
-    headers: HeaderMap,
-    Query(query): Query<DueQuery>,
-    Path(card_id): Path<String>,
-) -> Json<serde_json::Value> {
-    tracing::info!("cards_last_review_handler: card_id={}, user_id={}", card_id, query.user_id);
+// 🔴 2026-09-29 已退役：cards_last_review_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
-    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return auth_json(e);
-    }
-    let conn = crate::db_pool::get_conn();
-    match conn.query_row(
-        "SELECT id, rating, verification_type, verification_result, details_json, reviewed_at
-         FROM review_log WHERE card_id = ?1
-         ORDER BY reviewed_at DESC LIMIT 1",
-        rusqlite::params![card_id],
-        |row| Ok(serde_json::json!({
-            "id": row.get::<_, String>(0)?,
-            "rating": row.get::<_, i32>(1)?,
-            "verification_type": row.get::<_, String>(2)?,
-            "verification_result": row.get::<_, String>(3)?,
-            "details": row.get::<_, Option<String>>(4)?,
-            "reviewed_at": row.get::<_, i64>(5)?,
-        })),
-    ) {
-        Ok(data) => {
-            // 如果 details_json 存在，解析为数组
-            let mut result = data;
-            if let Some(details_str) = result.get("details").and_then(|v| v.as_str()) {
-                if let Ok(details) = serde_json::from_str::<serde_json::Value>(details_str) {
-                    // result is always a JSON object (built from json!({...}))
-                    if let Some(obj) = result.as_object_mut() {
-                        obj.insert("details".to_string(), details);
-                    }
-                }
-            }
-            Json(result)
-        }
-        Err(_) => Json(serde_json::json!({"error": "No review found"})),
-    }
-}
-
-/// GET /api/history — 获取对话历史
-async fn history_handler(
-    headers: HeaderMap,
-    Query(query): Query<HistoryQuery>,
-) -> Json<serde_json::Value> {
-    tracing::info!("history_handler: user_id={}", query.user_id);
-
-    // 鉴权：验证 Bearer token
-    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return auth_json(e);
-    }
-
-    let conn = crate::db_pool::get_conn();
-    let limit = query.limit.unwrap_or(50).min(200);
-
-    if let Some(conv_id) = &query.conversation_id {
-        // 查询指定对话的轮次（支持分页：offset=0 为最新）
-        let offset = query.offset.unwrap_or(0).max(0);
-        let mut stmt = conn.prepare(
-            "SELECT id, role, content, created_at
-             FROM conversation_turns WHERE conversation_id = ?1
-             ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"
-        ).unwrap();
-        let turns: Vec<serde_json::Value> = stmt.query_map(
-            rusqlite::params![conv_id, limit, offset],
-            |row| Ok(serde_json::json!({
-                "id": row.get::<_, String>(0)?,
-                "role": row.get::<_, String>(1)?,
-                "content": row.get::<_, String>(2)?,
-                "created_at": row.get::<_, String>(3)?,
-            }))
-        ).unwrap().filter_map(|r| r.ok()).collect();
-        // 获取总轮次数（用于前端判断"还有更多"）
-        let total: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM conversation_turns WHERE conversation_id = ?1",
-            rusqlite::params![conv_id],
-            |row| row.get(0),
-        ).unwrap_or(0);
-        return Json(serde_json::json!({
-            "conversation_id": conv_id,
-            "turns": turns,
-            "count": turns.len(),
-            "total": total,
-        }));
-    }
-
-    // 查询用户的所有对话列表（标题：有 plan 的显示 goal，否则显示第一条消息）
-    // include_deleted: "only"=仅已删除, "true"=全部, 默认=仅活跃
-    let deleted_filter = match query.include_deleted.as_deref() {
-        Some("only") => " AND c.deleted_at IS NOT NULL",
-        Some("true") => "",
-        _ => " AND c.deleted_at IS NULL",
-    };
-    let sql = format!(
-        "SELECT c.id, c.turn_count, c.started_at, c.deleted_at,
-                (SELECT content FROM conversation_turns t
-                 WHERE t.conversation_id = c.id AND t.role = 'user'
-                 ORDER BY t.created_at ASC LIMIT 1) as first_msg,
-                (SELECT pr.goal FROM plan_runs pr WHERE pr.conversation_id = c.id LIMIT 1) as plan_goal
-         FROM conversations c
-         WHERE c.user_id = ?1
-           AND c.turn_count > 0
-           {} ORDER BY c.started_at DESC LIMIT ?2",
-        deleted_filter
-    );
-    let mut stmt = conn.prepare(&sql).unwrap();
-    let conversations: Vec<serde_json::Value> = stmt.query_map(
-        rusqlite::params![query.user_id, limit],
-        |row| {
-            let first_msg: Option<String> = row.get(4).ok().flatten();
-            let plan_goal: Option<String> = row.get(5).ok().flatten();
-            let title = plan_goal
-                .filter(|g| !g.is_empty())
-                .map(|g| g)
-                .or_else(|| first_msg.as_deref()
-                    .map(|s| if s.chars().count() > 50 { format!("{}...", s.chars().take(50).collect::<String>()) } else { s.to_string() }))
-                .unwrap_or_else(|| "新对话".to_string());
-            Ok(serde_json::json!({
-                "id": row.get::<_, String>(0)?,
-                "turn_count": row.get::<_, i32>(1)?,
-                "started_at": row.get::<_, String>(2)?,
-                "deleted_at": row.get::<_, Option<String>>(3)?,
-                "title": title,
-            }))
-        }
-    ).unwrap().filter_map(|r| r.ok()).collect();
-    Json(serde_json::json!({
-        "user_id": query.user_id,
-        "conversations": conversations,
-        "count": conversations.len(),
-    }))
-}
+// 🔴 2026-09-29 已退役：history_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
 // ════════════════════════════════════════════
 // 对话管理 — 软删除 / 恢复 / 彻底删除
@@ -1430,145 +534,31 @@ struct ConversationActionQuery {
     user_id: String,
 }
 
-/// DELETE /api/conversations/{conv_id} — 软删除对话
-async fn conversation_delete_handler(
-    headers: HeaderMap,
-    Path(conv_id): Path<String>,
-    Query(query): Query<ConversationActionQuery>,
-) -> Json<serde_json::Value> {
-    tracing::info!("conversation_delete_handler: conv_id={}", conv_id);
+// 🔴 2026-09-29 已退役：conversation_delete_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
-    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return auth_json(e);
-    }
-    let conn = crate::db_pool::get_conn();
-    let now = chrono::Utc::now().timestamp();
-    match conn.execute(
-        "UPDATE conversations SET deleted_at = ?1 WHERE id = ?2 AND user_id = ?3 AND deleted_at IS NULL",
-        rusqlite::params![now, conv_id, query.user_id],
-    ) {
-        Ok(0) => Json(serde_json::json!({"error": "Conversation not found or already deleted"})),
-        Ok(_) => {
-            Json(serde_json::json!({"status": "ok", "deleted_at": now}))
-        },
-        Err(e) => Json(serde_json::json!({"error": format!("DB: {}", e)})),
-    }
-}
+// 🔴 2026-09-29 已退役：conversation_restore_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
-/// POST /api/conversations/{conv_id}/restore — 恢复已删除对话
-async fn conversation_restore_handler(
-    headers: HeaderMap,
-    Path(conv_id): Path<String>,
-    Query(query): Query<ConversationActionQuery>,
-) -> Json<serde_json::Value> {
-    tracing::info!("conversation_restore_handler: conv_id={}", conv_id);
+// 🔴 2026-09-29 已退役：conversation_permanent_delete_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
-    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return auth_json(e);
-    }
-    let conn = crate::db_pool::get_conn();
-    match conn.execute(
-        "UPDATE conversations SET deleted_at = NULL WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NOT NULL",
-        rusqlite::params![conv_id, query.user_id],
-    ) {
-        Ok(0) => Json(serde_json::json!({"error": "Conversation not found or not deleted"})),
-        Ok(_) => {
-            Json(serde_json::json!({"status": "ok"}))
-        },
-        Err(e) => Json(serde_json::json!({"error": format!("DB: {}", e)})),
-    }
-}
-
-/// DELETE /api/conversations/{conv_id}/permanent — 物理删除（不可恢复）
-async fn conversation_permanent_delete_handler(
-    headers: HeaderMap,
-    Path(conv_id): Path<String>,
-    Query(query): Query<ConversationActionQuery>,
-) -> Json<serde_json::Value> {
-    tracing::info!("conversation_permanent_delete_handler: conv_id={}", conv_id);
-
-    if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return auth_json(e);
-    }
-    let conn = crate::db_pool::get_conn();
-    // 级联删除 conversation_turns
-    let _ = conn.execute(
-        "DELETE FROM conversation_turns WHERE conversation_id = ?1",
-        rusqlite::params![conv_id],
-    );
-    match conn.execute(
-        "DELETE FROM conversations WHERE id = ?1 AND user_id = ?2",
-        rusqlite::params![conv_id, query.user_id],
-    ) {
-        Ok(0) => Json(serde_json::json!({"error": "Conversation not found"})),
-        Ok(_) => Json(serde_json::json!({"status": "ok"})),
-        Err(e) => Json(serde_json::json!({"error": format!("DB: {}", e)})),
-    }
-}
-
-/// GET /api/user/:user_id/profile — 用户统计 + 成就
+/// GET /api/user/:user_id/profile — 用户资料
+///
+/// 🔴 2026-09-29 已退役：原返回的 `stats` / `achievements` / `cefr_stats` 三项 ——
+/// 它们都依赖**已迁到端侧**的学习状态（`user_cards` / `card_memory` / `review_log`）
+/// 或已删除的表（`prebuilt_cards` / `achievements`）。
+/// → 学习统计改为「**端侧计算**」（数据在 `user.db`）；成就待「成就体系重新规划」。
+/// 现仅返回 `users` 表内的资料字段。
 async fn profile_handler(
     headers: axum::http::HeaderMap,
     Path(user_id): Path<String>,
-) -> impl axum::response::IntoResponse {
+) -> axum::response::Response {
     tracing::info!("profile_handler: user_id={}", user_id);
 
     let conn = crate::db_pool::get_conn();
 
     // Verify auth: caller must be the user themselves
     if crate::auth_middleware::verify_auth(&user_id, &headers).is_err() {
-        return (axum::http::StatusCode::UNAUTHORIZED, axum::Json(serde_json::json!({"error": "unauthorized"})));
+        return (axum::http::StatusCode::UNAUTHORIZED, axum::Json(serde_json::json!({"error": "unauthorized"}))).into_response();
     }
-
-    let total_cards: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id = ?1 AND cm.status = 'active'",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-    let total_reviews: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM review_log r JOIN user_cards c ON r.card_id = c.id WHERE c.user_id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-    let streak_days: i64 = conn.query_row(
-        "SELECT streak_days FROM users WHERE id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-    let domains_covered: i64 = conn.query_row(
-        "SELECT COUNT(DISTINCT c.domain) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id = ?1 AND c.domain IS NOT NULL AND cm.status = 'active'",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
-    let today_reviews: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM review_log r JOIN user_cards c ON r.card_id = c.id WHERE c.user_id = ?1 AND r.reviewed_at > ?2",
-        rusqlite::params![user_id, chrono::Utc::now().timestamp() - 86400],
-        |row| row.get(0),
-    ).unwrap_or(0);
-
-    // 每日定时成就检测（24h 冷却）
-    crate::achievement_engine::check_daily(&conn, &user_id);
-
-    let mut stmt = conn.prepare(
-        "SELECT achievement_key, name, icon, tier, source, unlocked_at \
-         FROM achievements WHERE user_id = ?1 ORDER BY unlocked_at DESC"
-    ).unwrap();
-    let engine = crate::achievement_engine::get();
-    let achievements: Vec<serde_json::Value> = stmt.query_map(
-        rusqlite::params![user_id],
-        |row| {
-            let key: String = row.get(0)?;
-            let tier: String = row.get::<_, Option<String>>(3)?.unwrap_or_else(|| "bronze".to_string());
-            let source: String = row.get::<_, Option<String>>(4)?.unwrap_or_default();
-            let def = engine.find_def(&key);
-            Ok(serde_json::json!({
-                "key": key,
-                "name": row.get::<_, String>(1)?,
-                "icon": row.get::<_, String>(2)?,
-                "tier": tier,
-                "category": if source.is_empty() { def.map(|d| d.category.clone()).unwrap_or_default() } else { source },
-                "color": def.map(|d| d.color.clone()).unwrap_or_else(|| "#CD7F32".to_string()),
-                "description": def.map(|d| d.description.clone()).unwrap_or_default(),
-                "unlocked_at": row.get::<_, String>(5)?,
-            }))
-        })
-    .unwrap().filter_map(|r| r.ok()).collect();
 
     let display_name: Option<String> = conn.query_row(
         "SELECT display_name FROM users WHERE id = ?1",
@@ -1593,34 +583,10 @@ async fn profile_handler(
     let phone = phone_raw.as_ref().map(|v| {
         if crate::encryption::is_encrypted(v) { crate::encryption::decrypt(v) } else { v.clone() }
     });
-
-    // CEFR 词汇统计
-    let catalog_stats = chat_engine::word_bank::get_cefr_catalog_stats();
-    let mut mastered_by_level: HashMap<String, u64> = HashMap::new();
-
-    // 查询用户的 vocabulary 卡片中已掌握的 (state=2)，按 CEFR 等级分组
-    if let Ok(mut stmt) = conn.prepare(
-        "SELECT c.front FROM user_cards c JOIN card_memory cm ON c.id = cm.user_card_id
-         LEFT JOIN prebuilt_cards pc ON c.prebuilt_card_id = pc.id
-         WHERE c.user_id = ?1 AND pc.card_type = 'vocabulary' AND cm.state = 2 AND cm.status = 'active'"
-    ) {
-        if let Ok(rows) = stmt.query_map(rusqlite::params![user_id], |row| row.get::<_, String>(0)) {
-            for front in rows.flatten() {
-                if let Some(level) = chat_engine::word_bank::lookup_cefr(&front) {
-                    *mastered_by_level.entry(level).or_insert(0) += 1;
-                }
-            }
-        }
-    }
-
-    let cefr_stats: Vec<serde_json::Value> = catalog_stats.into_iter().map(|s| {
-        let mastered = mastered_by_level.get(&s.level).copied().unwrap_or(0);
-        serde_json::json!({
-            "level": s.level,
-            "max_count": s.total,
-            "count": mastered,
-        })
-    }).collect();
+    let streak_days: i64 = conn.query_row(
+        "SELECT streak_days FROM users WHERE id = ?1",
+        rusqlite::params![user_id], |row| row.get(0),
+    ).unwrap_or(0);
 
     (axum::http::StatusCode::OK, axum::Json(serde_json::json!({
         "user_id": user_id,
@@ -1628,295 +594,19 @@ async fn profile_handler(
         "real_name": real_name,
         "phone": phone,
         "subscription_expires": subscription_expires,
-        "stats": {
-            "total_cards": total_cards,
-            "total_reviews": total_reviews,
-            "streak_days": streak_days,
-            "domains_covered": domains_covered,
-            "today_reviews": today_reviews,
-        },
-        "achievements": achievements,
-        "cefr_stats": cefr_stats,
-    })))
+        "streak_days": streak_days,
+    }))).into_response()
 }
 
 // ── Achievements All (Phase 3: 按 category 分组 + 进度) ──
 
-async fn achievements_all_handler(
-    headers: axum::http::HeaderMap,
-    Path(user_id): Path<String>,
-) -> impl axum::response::IntoResponse {
-    tracing::info!("achievements_all_handler: user_id={}", user_id);
+// 🔴 2026-09-29 已退役：achievements_all_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
-    let conn = crate::db_pool::get_conn();
-
-    if crate::auth_middleware::verify_auth(&user_id, &headers).is_err() {
-        return (axum::http::StatusCode::UNAUTHORIZED,
-            axum::Json(serde_json::json!({"error": "unauthorized"})));
-    }
-
-    let engine = crate::achievement_engine::get();
-    let ctx = crate::achievement_engine::build_context(&conn, &user_id);
-
-    // 持久化新解锁的成就（使用完整 ctx，补录之前因不完整 ctx 而漏掉的成就）
-    let _new_achievements = engine.check_and_persist(&conn, &ctx);
-
-    // 获取已解锁的成就
-    let unlocked: Vec<String> = {
-        let mut stmt = conn.prepare(
-            "SELECT achievement_key, unlocked_at FROM achievements WHERE user_id = ?1"
-        ).unwrap();
-        stmt.query_map(rusqlite::params![&user_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        }).unwrap()
-        .filter_map(|r| r.ok())
-        .collect::<Vec<_>>()
-        .into_iter()
-        .map(|(k, _)| k)
-        .collect()
-    };
-
-    // 已解锁成就的时间戳映射
-    let unlocked_at_map: std::collections::HashMap<String, String> = {
-        let mut stmt = conn.prepare(
-            "SELECT achievement_key, unlocked_at FROM achievements WHERE user_id = ?1"
-        ).unwrap();
-        stmt.query_map(rusqlite::params![&user_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        }).unwrap()
-        .filter_map(|r| r.ok())
-        .collect()
-    };
-
-    let unlocked_set: std::collections::HashSet<&str> =
-        unlocked.iter().map(|s| s.as_str()).collect();
-
-    // 按 category 分组
-    let category_order = ["seed", "consistency", "knowledge", "exploration", "mastery", "social", "special"];
-    let category_labels: std::collections::HashMap<&str, &str> = [
-        ("seed", "启程"), ("consistency", "坚持"), ("knowledge", "博学"),
-        ("exploration", "探索"), ("mastery", "精进"), ("social", "社交"), ("special", "特殊"),
-    ].into_iter().collect();
-
-    let mut categories: Vec<serde_json::Value> = Vec::new();
-
-    // tier 排序优先级：铜→银→金→铂→钻
-    let tier_priority = |t: &str| -> u8 {
-        match t {
-            "bronze" => 0,
-            "silver" => 1,
-            "gold" => 2,
-            "platinum" => 3,
-            "diamond" => 4,
-            _ => 5,
-        }
-    };
-
-    for cat_key in &category_order {
-        let mut defs_in_cat: Vec<&shared_types::growth::AchievementDef> = engine.definitions()
-            .iter().filter(|d| d.category == *cat_key).collect();
-        if defs_in_cat.is_empty() { continue; }
-        defs_in_cat.sort_by_key(|d| tier_priority(&d.tier));
-
-        let items: Vec<serde_json::Value> = defs_in_cat.iter().map(|def| {
-            let is_unlocked = unlocked_set.contains(def.id.as_str());
-            let unlocked_at = unlocked_at_map.get(&def.id).cloned();
-
-            // 计算进度
-            let (progress_pct, progress_label) = compute_progress(def, &ctx);
-
-            serde_json::json!({
-                "id": def.id,
-                "name": def.name.zh(),
-                "name_en": if def.name.en().is_empty() { serde_json::Value::Null } else { serde_json::Value::String(def.name.en().to_string()) },
-                "description": def.description.zh(),
-                "description_en": if def.description.en().is_empty() { serde_json::Value::Null } else { serde_json::Value::String(def.description.en().to_string()) },
-                "icon": def.icon,
-                "color": def.color,
-                "tier": def.tier,
-                "hidden": def.hidden,
-                "unlocked": is_unlocked,
-                "unlocked_at": unlocked_at,
-                "progress_pct": progress_pct,
-                "progress_label": progress_label,
-            })
-        }).collect();
-
-        categories.push(serde_json::json!({
-            "category": cat_key,
-            "label": category_labels.get(cat_key).unwrap_or(&cat_key),
-            "achievements": items,
-        }));
-    }
-
-    (axum::http::StatusCode::OK, axum::Json(serde_json::json!({
-        "user_id": user_id,
-        "categories": categories,
-    })))
-}
-
-/// 计算单个成就的进度百分比和标签
-fn compute_progress(def: &shared_types::growth::AchievementDef, ctx: &shared_types::growth::AchievementContext) -> (f64, String) {
-    if def.conditions.is_empty() {
-        return (0.0, "—".into());
-    }
-
-    let mut ratios: Vec<f64> = Vec::new();
-    let mut labels: Vec<String> = Vec::new();
-
-    for cond in &def.conditions {
-        let actual = match cond.metric.as_str() {
-            // 已有
-            "total_cards" => ctx.total_cards as f64,
-            "total_reviews" => ctx.total_reviews as f64,
-            "streak_days" => ctx.streak_days as f64,
-            "domains_covered" => ctx.domains_covered as f64,
-            "plans_completed" => ctx.plans_completed as f64,
-            "conversations_completed" => ctx.conversations_completed as f64,
-            // Phase 5 新增
-            "hard_cards_count" => ctx.hard_cards_count as f64,
-            "recent_accuracy_20" => ctx.recent_accuracy_20,
-            "recent_accuracy_50" => ctx.recent_accuracy_50,
-            "recent_accuracy_100" => ctx.recent_accuracy_100,
-            "weekend_streak" => ctx.weekend_streak as f64,
-            "night_sessions" => ctx.night_sessions as f64,
-            "early_sessions" => ctx.early_sessions as f64,
-            "hard_perfect_streak" => ctx.hard_perfect_streak as f64,
-            "perfect_session_10" => ctx.perfect_session_10 as f64,
-            "mature_cards" => ctx.mature_cards as f64,
-            "learning_cards" => ctx.learning_cards as f64,
-            "no_skip_streak" => ctx.no_skip_streak as f64,
-            "languages_count" => ctx.languages_count as f64,
-            "cards_in_1h" => ctx.cards_in_1h as f64,
-            "days_since_last_review" => ctx.days_since_last_review as f64,
-            "reviews_today" => ctx.reviews_today as f64,
-            "days_since_reg" => ctx.days_since_reg as f64,
-            "subjects_count" => ctx.subjects_count as f64,
-            "share_count" => ctx.share_count as f64,
-            "share_days" => ctx.share_days as f64,
-            "referral_count" => ctx.referral_count as f64,
-            _ => 0.0,
-        };
-        let ratio = if cond.value > 0.0 {
-            (actual / cond.value).min(1.0)
-        } else {
-            if actual >= 0.0 { 1.0 } else { 0.0 }
-        };
-        ratios.push(ratio);
-
-        let metric_label = match cond.metric.as_str() {
-            "total_cards" => "张卡片",
-            "total_reviews" => "次复习",
-            "streak_days" => "天",
-            "domains_covered" => "个领域",
-            "plans_completed" => "个计划",
-            "conversations_completed" => "次对话",
-            "hard_cards_count" => "张困难卡",
-            "recent_accuracy_20" => "%准确率(20)",
-            "recent_accuracy_50" => "%准确率(50)",
-            "recent_accuracy_100" => "%准确率(100)",
-            "weekend_streak" => "周",
-            "night_sessions" => "次深夜",
-            "early_sessions" => "次早起",
-            "hard_perfect_streak" => "次全对",
-            "perfect_session_10" => "次",
-            "mature_cards" => "张成熟卡",
-            "learning_cards" => "张学习卡",
-            "no_skip_streak" => "天",
-            "languages_count" => "种语言",
-            "cards_in_1h" => "张",
-            "days_since_last_review" => "天",
-            "reviews_today" => "次",
-            "days_since_reg" => "天",
-            "subjects_count" => "个学科",
-            "share_count" => "次分享",
-            "share_days" => "天",
-            "referral_count" => "个注册",
-            _ => "",
-        };
-        labels.push(format!("{}/{} {}", actual as u64, cond.value as u64, metric_label));
-    }
-
-    let overall = match def.condition_logic.to_uppercase().as_str() {
-        "OR" => ratios.iter().cloned().fold(0.0_f64, f64::max),
-        _ => ratios.iter().cloned().fold(1.0_f64, f64::min), // AND
-    };
-
-    let label = labels.join(" | ");
-    (overall, label)
-}
+// 🔴 2026-09-29 已退役：compute_progress（依赖已删除的表 / 已退役模块，路由已同步移除）
 
 // ── Plan Achievements ──
 
-/// 查询 plan 成就（source='plan_achievement'），按 plan_id 分组返回
-async fn plan_achievements_handler(
-    headers: axum::http::HeaderMap,
-    Path(user_id): Path<String>,
-) -> impl axum::response::IntoResponse {
-    let conn = crate::db_pool::get_conn();
-    if crate::auth_middleware::verify_auth(&user_id, &headers).is_err() {
-        return (axum::http::StatusCode::UNAUTHORIZED,
-            axum::Json(serde_json::json!({"error": "unauthorized"})));
-    }
-
-    let mut stmt = match conn.prepare(
-        "SELECT id, achievement_key, name, icon, tier, unlocked_at \
-         FROM achievements WHERE user_id = ?1 AND source = 'plan_achievement' \
-         ORDER BY unlocked_at DESC"
-    ) {
-        Ok(s) => s,
-        Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            axum::Json(serde_json::json!({"error": format!("DB error: {}", e)}))),
-    };
-
-    let rows: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![&user_id], |row| {
-        Ok(serde_json::json!({
-            "id": row.get::<_, String>(0)?,
-            "achievement_key": row.get::<_, String>(1)?,
-            "name": row.get::<_, String>(2)?,
-            "icon": row.get::<_, String>(3)?,
-            "tier": row.get::<_, String>(4)?,
-            "unlocked_at": row.get::<_, String>(5)?,
-        }))
-    }).unwrap()
-    .filter_map(|r| r.ok())
-    .collect();
-
-    // 按 plan_id 分组 (achievement_key: plan_stage_{plan_id}_{idx} 或 plan_complete_{plan_id})
-    let mut plan_map: std::collections::HashMap<String, Vec<serde_json::Value>> = std::collections::HashMap::new();
-    let mut plan_name_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-
-    for row in &rows {
-        let key = row["achievement_key"].as_str().unwrap_or("");
-        let name = row["name"].as_str().unwrap_or("");
-        let plan_id = if let Some(rest) = key.strip_prefix("plan_stage_") {
-            rest.rfind('_').map(|p| &rest[..p])
-        } else if let Some(rest) = key.strip_prefix("plan_complete_") {
-            Some(rest)
-        } else {
-            None
-        };
-        if let Some(pid) = plan_id {
-            plan_map.entry(pid.to_string()).or_default().push(row.clone());
-            if let Some(dot) = name.find('·') {
-                plan_name_map.entry(pid.to_string()).or_insert_with(|| name[..dot].to_string());
-            }
-        }
-    }
-
-    let mut plans: Vec<serde_json::Value> = plan_map.into_iter().map(|(pid, achs)| {
-        serde_json::json!({
-            "plan_id": pid,
-            "plan_name": plan_name_map.get(&pid).unwrap_or(&pid),
-            "achievements": achs,
-        })
-    }).collect();
-    plans.sort_by(|a, b| {
-        a["plan_name"].as_str().unwrap_or("").cmp(&b["plan_name"].as_str().unwrap_or(""))
-    });
-
-    (axum::http::StatusCode::OK, axum::Json(serde_json::json!({"plans": plans})))
-}
+// 🔴 2026-09-29 已退役：plan_achievements_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
 // ── Display Name ──
 
@@ -2127,407 +817,28 @@ async fn avatar_get_handler(
 // Learning Plan Handlers
 // ════════════════════════════════════════════
 
-async fn plans_list_handler(
-    headers: HeaderMap,
-    Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Json<serde_json::Value> {
-    tracing::info!("plans_list_handler ENTER");
-
-    let conn = crate::db_pool::get_conn();
-
-    let (sql, param_val): (&str, String) = if let Some(conv_id) = params.get("conversation_id") {
-        ("SELECT id, conversation_id, goal, subject, grade_band, domain, plan_content, created_at, updated_at FROM plan_runs WHERE conversation_id = ?1 ORDER BY created_at DESC", conv_id.clone())
-    } else if let Some(uid) = params.get("user_id") {
-        if crate::auth_middleware::verify_auth(uid, &headers).is_err() {
-            return Json(serde_json::json!({"error": "unauthorized"}));
-        }
-        ("SELECT id, conversation_id, goal, subject, grade_band, domain, plan_content, created_at, updated_at FROM plan_runs WHERE user_id = ?1 ORDER BY created_at DESC", uid.clone())
-    } else {
-        return Json(serde_json::json!({"error": "user_id or conversation_id required"}));
-    };
-
-    let mut stmt = match conn.prepare(sql) {
-        Ok(s) => s,
-        Err(e) => return Json(serde_json::json!({"error": format!("DB: {}", e)})),
-    };
-    let mut plans: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![param_val], |row| {
-        // plan_content: 完整计划结构（不含状态，状态在 user_plan_progress）
-        let plan_content_raw: Option<String> = row.get(6).ok();
-        let plan_id: String = row.get::<_, String>(0)?;
-        let mut merged_plan = if let Some(content_str) = &plan_content_raw {
-            if let Ok(content) = serde_json::from_str::<serde_json::Value>(content_str) {
-                content
-            } else {
-                serde_json::Value::Null
-            }
-        } else {
-            serde_json::Value::Null
-        };
-
-        // 从 user_plan_progress 合并状态到 stages[].tasks[].status
-        if let Some(stages) = merged_plan.get_mut("stages").and_then(|s| s.as_array_mut()) {
-            let progress_rows: Vec<(String, String)> = {
-                let stmt = conn.prepare(
-                    "SELECT task_key, status FROM user_plan_progress WHERE plan_id = ?1"
-                );
-                match stmt {
-                    Ok(mut s) => s.query_map(rusqlite::params![plan_id], |row| {
-                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-                    }).ok().map(|rows| rows.filter_map(|r| r.ok()).collect()).unwrap_or_default(),
-                    Err(_) => vec![],
-                }
-            };
-            let progress_map: std::collections::HashMap<String, String> = progress_rows.into_iter().collect();
-
-            for stage in stages.iter_mut() {
-                if let Some(tasks) = stage.get_mut("tasks").and_then(|t| t.as_array_mut()) {
-                    for task in tasks {
-                        let task_key = task.get("task_key").and_then(|k| k.as_str()).unwrap_or("");
-                        let status = progress_map.get(task_key).map(|s| s.as_str()).unwrap_or("pending");
-                        task["status"] = serde_json::json!(status);
-                    }
-                }
-            }
-        }
-
-        Ok(serde_json::json!({
-            "id": plan_id,
-            "conversation_id": row.get::<_, String>(1)?,
-            "goal": row.get::<_, String>(2)?,
-            "subject": row.get::<_, Option<String>>(3)?,
-            "grade_band": row.get::<_, Option<String>>(4)?,
-            "domain": row.get::<_, String>(5)?,
-            "plan": merged_plan,
-            "created_at": row.get::<_, String>(7)?,
-            "updated_at": row.get::<_, String>(8)?,
-        }))
-    }).unwrap().filter_map(|r| r.ok()).collect();
-
-    // 为每个 plan 统计待复习卡片数（due <= now）
-    let now_ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
-    if let Ok(mut count_stmt) = conn.prepare(
-        "SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id = cm.user_card_id LEFT JOIN plan_runs pr ON c.plan_run_id = pr.id WHERE pr.conversation_id = ?1 AND cm.status = 'active' AND cm.due <= ?2"
-    ) {
-        for plan in &mut plans {
-            if let Some(conv_id) = plan.get("conversation_id").and_then(|v| v.as_str()) {
-                let count: i64 = count_stmt.query_row(rusqlite::params![conv_id, now_ts], |row| row.get(0)).unwrap_or(0);
-                if let Some(obj) = plan.as_object_mut() {
-                    obj.insert("due_card_count".to_string(), serde_json::json!(count));
-                }
-            }
-        }
-    }
-
-    tracing::info!("plans_list_handler EXIT");
-    Json(serde_json::json!({"plans": plans}))
-}
+// 🔴 2026-09-29 已退役：plans_list_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
 // ════════════════════════════════════════════
 // Phase 3 — Learning Report
 // ════════════════════════════════════════════
 
-async fn learning_report_handler(
-    headers: HeaderMap,
-    Path(user_id): Path<String>,
-) -> Json<serde_json::Value> {
-    tracing::info!("learning_report_handler: user_id={}", user_id);
-    if crate::auth_middleware::verify_auth(&user_id, &headers).is_err() {
-        return Json(serde_json::json!({"error": "unauthorized"}));
-    }
+// 🔴 2026-09-29 已退役：learning_report_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
-    let conn = crate::db_pool::get_conn();
-
-    // 1. 所有学习计划进度
-    let mut stmt_plans = conn.prepare(
-        "SELECT plan_content, plan_content, goal, grade_band, subject, 'structured' as mode, updated_at FROM plan_runs WHERE user_id = ?1 ORDER BY updated_at DESC"
-    ).unwrap();
-    let mut plans: Vec<serde_json::Value> = Vec::new();
-    for row in stmt_plans.query_map(rusqlite::params![user_id], |row| {
-        let pj: String = row.get(0)?;
-        let pc: Option<String> = row.get(1)?;
-        let goal: String = row.get(2)?;
-        let grade_band: Option<String> = row.get(3)?;
-        let subject: Option<String> = row.get(4)?;
-        let mode: String = row.get(5)?;
-        let updated: String = row.get(6)?;
-        Ok((pj, pc, goal, grade_band, subject, mode, updated))
-    }).unwrap().filter_map(|r| r.ok()) {
-        let (pj, pc, goal, grade_band, subject, mode, updated) = row;
-                if let Ok(plan) = serde_json::from_str::<serde_json::Value>(&pj) {
-                    let mut total_tasks = 0u32;
-                    let mut done_tasks = 0u32;
-                    let mut current_stage = "";
-                    // task_status 可能只有 task_status（被 apply_plan_mutations 改写后），
-                    // 需要从 plan_content 中读取 stages 结构
-                    let stages = plan.get("stages").and_then(|v| v.as_array());
-                    if stages.map_or(true, |s| s.is_empty()) {
-                        // 从 plan_content 取 stages
-                        if let Some(ref pc_str) = pc {
-                            let (ct, dd) = compute_plan_totals(pc_str, &plan);
-                            total_tasks = ct;
-                            done_tasks = dd;
-                        }
-                    } else {
-                        // task_status 有 stages（旧格式）
-                        for stage in stages.unwrap() {
-                            let sname = stage["name"].as_str().unwrap_or("");
-                            let sstatus = stage["status"].as_str().unwrap_or("pending");
-                            if sstatus == "in_progress" && current_stage.is_empty() {
-                                current_stage = sname;
-                            }
-                            if let Some(tasks) = stage["tasks"].as_array() {
-                                for task in tasks {
-                                    total_tasks += 1;
-                                    if task["status"].as_str().unwrap_or("") == "done" {
-                                        done_tasks += 1;
-                                    }
-                                }
-                            }
-                        }
-                    }
-            plans.push(serde_json::json!({
-                "goal": goal,
-                "grade_band": grade_band,
-                "subject": subject,
-                "mode": mode,
-                "current_stage": current_stage,
-                "total_tasks": total_tasks,
-                "done_tasks": done_tasks,
-                "progress_pct": if total_tasks > 0 { format!("{:.0}%", done_tasks as f64 / total_tasks as f64 * 100.0) } else { "0%".to_string() },
-                "updated_at": updated,
-            }));
-        }
-    }
-
-    // 2. 成就统计
-    let mut stmt = conn.prepare(
-        "SELECT tier, COUNT(*) as cnt FROM achievements WHERE user_id = ?1 GROUP BY tier ORDER BY tier"
-    ).unwrap();
-    let tier_counts: serde_json::Value = stmt.query_map(rusqlite::params![user_id], |row| {
-        Ok(serde_json::json!({
-            "tier": row.get::<_, String>(0)?,
-            "count": row.get::<_, i64>(1)?,
-        }))
-    }).unwrap().filter_map(|r| r.ok()).collect();
-
-    // 3. 学习统计
-    let cards_total: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id = ?1 AND cm.status = 'active'", rusqlite::params![user_id], |row| row.get(0)
-    ).unwrap_or(0);
-
-    let reviews_total: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM review_log WHERE card_id IN (SELECT c.id FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id = ?1 AND cm.status = 'active')",
-        rusqlite::params![user_id], |row| row.get(0)
-    ).unwrap_or(0);
-
-    let conv_total: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM conversation_turns WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = ?1 AND deleted_at IS NULL)",
-        rusqlite::params![user_id], |row| row.get(0)
-    ).unwrap_or(0);
-
-    let streak_days: i64 = conn.query_row(
-        "SELECT streak_days FROM users WHERE id = ?1", rusqlite::params![user_id], |row| row.get(0)
-    ).unwrap_or(0);
-
-    // 4. 考核统计 —— bronze 成就数作为已通过任务的近似
-    let bronze_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM achievements WHERE user_id = ?1 AND tier = 'bronze'",
-        rusqlite::params![user_id], |row| row.get(0)
-    ).unwrap_or(0);
-
-    Json(serde_json::json!({
-        "plans": plans,
-        "achievements_by_tier": tier_counts,
-        "stats": {
-            "total_cards": cards_total,
-            "total_reviews": reviews_total,
-            "total_conversation_turns": conv_total,
-            "streak_days": streak_days,
-        },
-        "assessment": {
-            "tasks_passed": bronze_count,
-        }
-    }))
-}
-
-/// 从 plan_content JSON 字符串中计算任务总数和完成数
-/// status_map (task_status 的 task_status) 用于 reading 模式的状态覆盖
-fn compute_plan_totals(plan_content_str: &str, task_status: &serde_json::Value) -> (u32, u32) {
-    let mut total: u32 = 0;
-    let mut done: u32 = 0;
-    let status_map = task_status.get("task_status").and_then(|v| v.as_object());
-    if let Ok(pc_v) = serde_json::from_str::<serde_json::Value>(plan_content_str) {
-        if let Some(stages) = pc_v.get("stages").and_then(|v| v.as_array()) {
-            for stage in stages {
-                if let Some(tasks) = stage["tasks"].as_array() {
-                    for task in tasks {
-                        total += 1;
-                        if let Some(name) = task.get("name").and_then(|n| n.as_str()) {
-                            if status_map.and_then(|m| m.get(name)).and_then(|v| v.as_str()) == Some("done") {
-                                done += 1;
-                            }
-                        } else if task["status"].as_str().unwrap_or("") == "done" {
-                            done += 1;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    (total, done)
-}
+// 🔴 2026-09-29 已退役：compute_plan_totals（依赖已删除的表 / 已退役模块，路由已同步移除）
 
 // ════════════════════════════════════════════
 // Activity Heatmap API
 // ════════════════════════════════════════════
 
 
-async fn activity_handler(
-    headers: HeaderMap,
-    Path(user_id): Path<String>,
-    Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Json<serde_json::Value> {
-    tracing::info!("activity_handler: user_id={}", user_id);
-    if crate::auth_middleware::verify_auth(&user_id, &headers).is_err() {
-        return Json(serde_json::json!({"error": "unauthorized"}));
-    }
-
-    let conn = crate::db_pool::get_conn();
-    let days: i64 = params.get("days").and_then(|v| v.parse().ok()).unwrap_or(90);
-
-    // 每日复习数
-    let mut stmt = conn.prepare(
-        "SELECT DATE(r.reviewed_at, 'unixepoch') as d, COUNT(*) as cnt
-         FROM review_log r JOIN user_cards c ON r.card_id = c.id
-         WHERE c.user_id = ?1 AND r.reviewed_at >= ?2
-         GROUP BY d ORDER BY d"
-    ).unwrap();
-    let since = chrono::Utc::now() - chrono::Duration::days(days);
-    let since_ts = since.timestamp();
-    let reviews_by_day: HashMap<String, i64> = stmt.query_map(
-        rusqlite::params![user_id, since_ts],
-        |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-    ).unwrap().filter_map(|r| r.ok()).collect();
-
-    // 每日对话轮次数
-    let mut stmt2 = conn.prepare(
-        "SELECT DATE(created_at) as d, COUNT(*) as cnt
-         FROM conversation_turns ct
-         WHERE ct.conversation_id IN (SELECT id FROM conversations WHERE user_id = ?1)
-           AND ct.created_at >= ?2
-         GROUP BY d ORDER BY d"
-    ).unwrap();
-    let convs_by_day: HashMap<String, i64> = stmt2.query_map(
-        rusqlite::params![user_id, since.to_rfc3339()],
-        |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-    ).unwrap().filter_map(|r| r.ok()).collect();
-
-    // 每日制卡数
-    let mut stmt3 = conn.prepare(
-        "SELECT DATE(created_at, 'unixepoch') as d, COUNT(*) as cnt
-         FROM user_cards WHERE user_id = ?1 AND created_at >= ?2
-         GROUP BY d ORDER BY d"
-    ).unwrap();
-    let cards_by_day: HashMap<String, i64> = stmt3.query_map(
-        rusqlite::params![user_id, since_ts],
-        |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-    ).unwrap().filter_map(|r| r.ok()).collect();
-
-    // 生成日期序列 + 活动数据
-    let mut days_data: Vec<serde_json::Value> = Vec::new();
-    for i in (0..days).rev() {
-        let date = (chrono::Utc::now() - chrono::Duration::days(i)).format("%Y-%m-%d").to_string();
-        let reviews = reviews_by_day.get(&date).copied().unwrap_or(0);
-        let convs = convs_by_day.get(&date).copied().unwrap_or(0);
-        let cards = cards_by_day.get(&date).copied().unwrap_or(0);
-        let score = reviews + convs + cards; // 活跃度
-        days_data.push(serde_json::json!({
-            "date": date,
-            "score": score,
-            "reviews": reviews,
-            "conversations": convs,
-            "cards": cards,
-        }));
-    }
-
-    Json(serde_json::json!({"days": days_data}))
-}
+// 🔴 2026-09-29 已退役：activity_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
 // ════════════════════════════════════════════
 // Weekly Report API
 // ════════════════════════════════════════════
 
-async fn weekly_report_handler(
-    headers: HeaderMap,
-    Path(user_id): Path<String>,
-) -> Json<serde_json::Value> {
-    tracing::info!("weekly_report_handler: user_id={}", user_id);
-    if crate::auth_middleware::verify_auth(&user_id, &headers).is_err() {
-        return Json(serde_json::json!({"error": "unauthorized"}));
-    }
+// 🔴 2026-09-29 已退役：weekly_report_handler（依赖已删除的表 / 已退役模块，路由已同步移除）
 
-    let conn = crate::db_pool::get_conn();
-    let week_ago = (chrono::Utc::now() - chrono::Duration::days(7)).to_rfc3339();
-    let week_ago_ts = (chrono::Utc::now() - chrono::Duration::days(7)).timestamp();
-
-    // 本周新增卡片
-    let new_cards: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id = ?1 AND c.created_at >= ?2 AND cm.status = 'active'",
-        rusqlite::params![user_id, week_ago_ts], |row| row.get(0)
-    ).unwrap_or(0);
-
-    // 本周复习次数
-    let weekly_reviews: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM review_log r JOIN user_cards c ON r.card_id = c.id WHERE c.user_id = ?1 AND r.reviewed_at >= ?2",
-        rusqlite::params![user_id, week_ago_ts], |row| row.get(0)
-    ).unwrap_or(0);
-
-    // 本周对话轮次
-    let weekly_convs: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM conversation_turns WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = ?1) AND created_at >= ?2",
-        rusqlite::params![user_id, week_ago], |row| row.get(0)
-    ).unwrap_or(0);
-
-    // 本周新成就
-    let weekly_achievements: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM achievements WHERE user_id = ?1 AND unlocked_at >= ?2",
-        rusqlite::params![user_id, week_ago], |row| row.get(0)
-    ).unwrap_or(0);
-
-    // 当前计划进度
-    let plan_goal: Option<String> = conn.query_row(
-        "SELECT goal FROM plan_runs WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 1",
-        rusqlite::params![user_id], |row| row.get(0)
-    ).ok();
-
-    Json(serde_json::json!({
-        "week_start": (chrono::Utc::now() - chrono::Duration::days(7)).format("%Y-%m-%d").to_string(),
-        "week_end": chrono::Utc::now().format("%Y-%m-%d").to_string(),
-        "new_cards": new_cards,
-        "reviews": weekly_reviews,
-        "conversation_turns": weekly_convs,
-        "new_achievements": weekly_achievements,
-        "active_plan": plan_goal,
-    }))
-}
-
-/// 激活计划中的第一个任务：将第一 stage 的第一个 task 设为 in_progress
-/// 防止 reading/structured 模式创建计划后所有任务全 pending，CP2 无法推进
-fn activate_first_task(mut status_map: serde_json::Value, plan_content: &serde_json::Value) -> serde_json::Value {
-    if let Some(first_task_name) = plan_content.get("stages")
-        .and_then(|s| s.as_array())
-        .and_then(|a| a.first())
-        .and_then(|stage| stage.get("tasks"))
-        .and_then(|t| t.as_array())
-        .and_then(|a| a.first())
-        .and_then(|task| task.get("name"))
-        .and_then(|n| n.as_str())
-    {
-        if let Some(map) = status_map.as_object_mut() {
-            map.insert(first_task_name.to_string(), serde_json::json!("in_progress"));
-        }
-    }
-    status_map
-}
+// 🔴 2026-09-29 已退役：activate_first_task（依赖已删除的表 / 已退役模块，路由已同步移除）
 

@@ -23,7 +23,6 @@ import 'pages/user/distribution/notification_panel.dart';
 import 'providers/auth_provider.dart';
 import 'providers/subscription_provider.dart';
 import 'providers/theme_provider.dart';
-import 'widgets/achievement_overlay.dart';
 import 'widgets/dialog_overlay.dart';
 import 'widgets/subscribe_panel.dart';
 
@@ -725,7 +724,6 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
             child: Stack(
             children: [
               child!,
-              const AchievementOverlay(),
               _buildSubExpiredOverlay(),
             ],
             ),

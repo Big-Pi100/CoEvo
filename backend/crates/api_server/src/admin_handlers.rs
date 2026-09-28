@@ -1,7 +1,7 @@
 //! Admin API handlers
 use axum::{extract::{Path, Query}, http::{HeaderMap, StatusCode}, Json, response::IntoResponse};
 use serde::Deserialize;
-use sha2::{Sha256, Digest};
+// 🔴 2026-09-29：`sha2::Digest` / `guard_user!` 随 K12 guardian 退役而不再需要
 use crate::encryption;
 
 pub(crate) fn ok(v: serde_json::Value) -> axum::response::Response { Json(v).into_response() }
@@ -83,11 +83,6 @@ macro_rules! guard {                                 // admin_users 专用
     };
     ($headers:expr) => {
         match verify_admin($headers) { Ok(r) => r, Err(e) => return e }
-    };
-}
-macro_rules! guard_user {                           // guardian/tutor + admin_users 双通道
-    ($headers:expr) => {
-        match crate::admin_handlers::verify_guardian_or_admin($headers) { Ok(r) => r, Err(e) => return e }
     };
 }
 
@@ -189,29 +184,19 @@ pub async fn admin_users_handler(headers: HeaderMap, Query(query): Query<AdminUs
     };
     let users: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![limit, offset], |row| {
         let uid: String = row.get(0)?;
-        let cards: i64 = c.query_row("SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id=?1 AND cm.status='active'", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
-        let reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN user_cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
+        // 🔴 2026-09-29：学习状态已迁端侧 `user.db` → 后端不再持有卡片/复习数据，统计恒为 0
+        let cards: i64 = 0;
+        let reviews: i64 = 0;
         let expires: Option<String> = c.query_row("SELECT subscription_expires FROM users WHERE id=?1", rusqlite::params![&uid], |r| r.get(0)).ok();
         let is_super = role == "super";
         let rname_raw: Option<String> = row.get(3)?;
         let phone_raw: Option<String> = row.get(4)?;
         let rname_dec = rname_raw.as_ref().map(|v| decrypt_maybe(v));
         let phone_dec = phone_raw.as_ref().map(|v| decrypt_maybe(v));
-    // Guardian info (从 admin_users 查询——过渡期：实际旧数据仍在此)
-    // TODO: guardian/tutor 完全迁移到 users 表后改为 JOIN users
-    let (g_id, g_name, g_phone): (Option<String>, Option<String>, Option<String>) = c.query_row(
-        "SELECT u.id, u.real_name, u.phone FROM guardian_assignments ga JOIN users u ON ga.guardian_admin_id=u.id WHERE ga.student_user_id=?1 AND ga.is_active=1 AND u.role='guardian' LIMIT 1",
-        rusqlite::params![&uid], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-    ).unwrap_or((None, None, None));
-    let g_name_dec = g_name.as_ref().map(|v| decrypt_maybe(v));
-    let g_phone_dec = g_phone.as_ref().map(|v| decrypt_maybe(v));
-    // Tutor info
-    let (t_id, t_name, t_phone): (Option<String>, Option<String>, Option<String>) = c.query_row(
-        "SELECT u.id, u.real_name, u.phone FROM guardian_assignments ga JOIN users u ON ga.guardian_admin_id=u.id WHERE ga.student_user_id=?1 AND ga.is_active=1 AND u.role='tutor' LIMIT 1",
-        rusqlite::params![&uid], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-    ).unwrap_or((None, None, None));
-        let t_name_dec = t_name.as_ref().map(|v| decrypt_maybe(v));
-        let t_phone_dec = t_phone.as_ref().map(|v| decrypt_maybe(v));
+        // 🔴 2026-09-29 已退役：guardian / tutor 绑定查询（依赖已删除的 `guardian_assignments` 表）
+        //     JSON 字段保留（值为 null），兼容 admin 前端。
+        let (g_id, t_id): (Option<String>, Option<String>) = (None, None);
+        let (g_name_dec, g_phone_dec, t_name_dec, t_phone_dec): (Option<String>, Option<String>, Option<String>, Option<String>) = (None, None, None, None);
         Ok(serde_json::json!({
             "user_id":uid, "username": row.get::<_,String>(1)?, "display_name": row.get::<_,Option<String>>(2)?,
             "real_name": if is_super { rname_dec.clone() } else { rname_dec.as_ref().map(|n| mask_name(n)) },
@@ -235,8 +220,9 @@ pub async fn admin_user_detail(headers: HeaderMap, Path(uid): Path<String>) -> i
     let c = conn();
     let u: Option<serde_json::Value> = c.query_row("SELECT id,username,display_name,real_name,phone,created_at,streak_days,last_active_date FROM users WHERE id=?1", rusqlite::params![&uid], |row| {
         let uid2: String = row.get(0)?;
-        let cards: i64 = c.query_row("SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id=?1 AND cm.status='active'", rusqlite::params![&uid2],|r|r.get(0)).unwrap_or(0);
-        let reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN user_cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1", rusqlite::params![&uid2],|r|r.get(0)).unwrap_or(0);
+        // 🔴 2026-09-29：学习状态已迁端侧 → 统计恒为 0
+        let cards: i64 = 0;
+        let reviews: i64 = 0;
         let rn_raw: Option<String> = row.get(3)?;
         let ph_raw: Option<String> = row.get(4)?;
         let expires: Option<String> = c.query_row("SELECT subscription_expires FROM users WHERE id=?1", rusqlite::params![&uid2], |r| r.get(0)).ok();
@@ -325,18 +311,12 @@ pub async fn admin_hard_delete_user(headers: HeaderMap, Path(uid): Path<String>)
     );
 
     // 3. 删除关联数据（按外键顺序防止约束冲突）
+    // 🔴 2026-09-29：旧学习链（user_cards / card_memory / review_log / conversations /
+    //     plan_runs / user_plan_progress / guardian_assignments / achievements）已退役，
+    //     这些表已删除 → 级联删除只剩现役表。
     let tables = [
-        "DELETE FROM review_log WHERE card_id IN (SELECT id FROM user_cards WHERE user_id=?1)",
-        "DELETE FROM card_memory WHERE user_card_id IN (SELECT id FROM user_cards WHERE user_id=?1)",
-        "DELETE FROM user_cards WHERE user_id=?1",
-        "DELETE FROM conversation_turns WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id=?1)",
-        "DELETE FROM conversations WHERE user_id=?1",
-        "DELETE FROM plan_runs WHERE user_id=?1",
-        "DELETE FROM user_plan_progress WHERE user_id=?1",
         "DELETE FROM user_preferences WHERE user_id=?1",
         "DELETE FROM tokens WHERE user_id=?1",
-        "DELETE FROM guardian_assignments WHERE student_user_id=?1 OR guardian_admin_id=?1",
-        "DELETE FROM achievements WHERE user_id=?1",
         "DELETE FROM users WHERE id=?1",
     ];
     for sql in &tables {
@@ -653,33 +633,8 @@ pub async fn admin_approve_admin(headers: HeaderMap, Path(aid): Path<String>) ->
             let now = chrono::Utc::now().timestamp();
             let c = conn();
             let _ = c.execute("UPDATE admin_users SET status='active',approved_at=?1,created_by=?2 WHERE id=?3 AND status='pending'", rusqlite::params![now,reviewer,aid]);
-            // 如果是家长通过审批，自动创建监护绑定
-            if r == "guardian" {
-                let decl: Option<String> = c.query_row("SELECT guardian_declaration FROM admin_users WHERE id=?1", rusqlite::params![&aid], |row| row.get(0)).ok().flatten();
-                if let Some(d) = decl {
-                    // Decrypt guardian_declaration if encrypted
-                    let decl_plain = if encryption::is_encrypted(&d) { encryption::decrypt(&d) } else { d };
-                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&decl_plain) {
-                        if let Some(sid) = v.get("student_user_id").and_then(|v| v.as_str()) {
-                            let guardian_name_enc: Option<String> = c.query_row("SELECT real_name FROM admin_users WHERE id=?1", rusqlite::params![&aid], |row| row.get(0)).ok();
-                            let student_name_enc: Option<String> = c.query_row("SELECT real_name FROM users WHERE id=?1", rusqlite::params![sid], |row| row.get(0)).ok();
-                            // Decrypt names for bind_key generation
-                            let guardian_name = guardian_name_enc.as_ref().map(|v| if encryption::is_encrypted(v) { encryption::decrypt(v) } else { v.clone() });
-                            let student_name = student_name_enc.as_ref().map(|v| if encryption::is_encrypted(v) { encryption::decrypt(v) } else { v.clone() });
-                            // SHA-256(guardian_name + student_name) as bind_key
-                            let bind_key = {
-                                let mut hasher = Sha256::new();
-                                hasher.update(guardian_name.as_deref().unwrap_or("").as_bytes());
-                                hasher.update(student_name.as_deref().unwrap_or("").as_bytes());
-                                hex::encode(hasher.finalize())
-                            };
-                            let bind_id = uuid::Uuid::new_v4().to_string();
-                            let _ = c.execute("INSERT OR IGNORE INTO guardian_assignments (id, guardian_admin_id, student_user_id, bind_key, assigned_by, assigned_at, is_active) VALUES (?1,?2,?3,?4,?5,?6,1)",
-                                rusqlite::params![bind_id, aid, sid, bind_key, reviewer, now]);
-                        }
-                    }
-                }
-            }
+            // 🔴 2026-09-29 已退役：家长审批通过时自动创建 `guardian_assignments` 绑定
+            //     （K12 体系已整体清退，该表已删除）
             ok(serde_json::json!({"status":"approved"}))
         }
         Some(_) => err(StatusCode::FORBIDDEN, "only_super_admin_approval"),
@@ -794,304 +749,14 @@ pub async fn admin_audit_log(headers: HeaderMap, Query(query): Query<AuditLogQue
     ok(serde_json::json!({"logs":logs}))
 }
 
-// ── Guardian ──
-pub async fn guardian_students(headers: HeaderMap) -> impl IntoResponse {
-    let (gid, role) = guard_user!(&headers);
-    tracing::info!("guardian_students: guardian_id={}", gid);
-    if role!="guardian" && role!="tutor" && role!="super" { return err(StatusCode::FORBIDDEN,"forbidden"); }
-    let c = conn();
-    let now = chrono::Utc::now();
-    let seven_days_ago = (now - chrono::Duration::days(7)).to_rfc3339();
-    let one_day_ago = (now - chrono::Duration::days(1)).to_rfc3339();
-    let mut stmt = c.prepare("SELECT ga.student_user_id,u.display_name,u.real_name,u.phone,u.streak_days,u.last_active_date FROM guardian_assignments ga JOIN users u ON ga.student_user_id=u.id WHERE ga.guardian_admin_id=?1 AND ga.is_active=1").unwrap();
-    let students: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![gid], |row| {
-        let uid: String = row.get(0)?;
-        let _cards: i64 = c.query_row("SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id=?1 AND cm.status='active'",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0);
-        let _reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN user_cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0);
-        let _mastery: f64 = c.query_row("SELECT CAST(SUM(CASE WHEN cm.state=2 THEN 1 ELSE 0 END) AS REAL)/MAX(1,COUNT(*)) FROM card_memory cm JOIN user_cards cd ON cm.user_card_id=cd.id WHERE cd.user_id=?1",rusqlite::params![&uid],|r|r.get(0)).unwrap_or(0.0);
-        let total_plans: i64 = c.query_row("SELECT COUNT(*) FROM plan_runs WHERE user_id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
-        let active_7d: i64 = c.query_row("SELECT COUNT(*) FROM plan_runs WHERE user_id=?1 AND updated_at >= ?2", rusqlite::params![&uid, &seven_days_ago], |r| r.get(0)).unwrap_or(0);
-        let today_active: i64 = c.query_row("SELECT COUNT(*) FROM plan_runs WHERE user_id=?1 AND updated_at >= ?2", rusqlite::params![&uid, &one_day_ago], |r| r.get(0)).unwrap_or(0);
-        let rn_raw: Option<String> = row.get(2)?;
-        let ph_raw: Option<String> = row.get(3)?;
-        let rn_decrypted = rn_raw.as_ref().map(|v| decrypt_maybe(v));
-        let ph_decrypted = ph_raw.as_ref().map(|v| decrypt_maybe(v));
-        // Guardian info (for tutor role) — 从 users 表查
-        let (g_aid, guardian_name, guardian_phone) = if role == "tutor" {
-            let g: (Option<String>, Option<String>, Option<String>) = c.query_row(
-                "SELECT ga2.guardian_admin_id, u.real_name, u.phone FROM guardian_assignments ga2 JOIN users u ON ga2.guardian_admin_id=u.id WHERE ga2.student_user_id=?1 AND ga2.is_active=1 AND u.role='guardian' LIMIT 1",
-                rusqlite::params![&uid], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-            ).unwrap_or((None, None, None));
-            (g.0, g.1.as_ref().map(|v| decrypt_maybe(v)), g.2.as_ref().map(|v| decrypt_maybe(v)))
-        } else { (None, None, None) };
-        Ok(serde_json::json!({
-            "student_user_id":uid,
-            "display_name":row.get::<_,Option<String>>(1)?,
-            "real_name":rn_decrypted,
-            "phone_masked":ph_decrypted.as_ref().map(|p| if p.len() >= 7 { format!("{}****{}", &p[..3], &p[p.len()-4..]) } else { "***".into() }),
-            "streak_days":row.get::<_,i32>(4)?,
-            "last_active":row.get::<_,Option<String>>(5)?,
-            "plan_total":total_plans,"plan_active_7d":active_7d,"plan_today":today_active,
-            "guardian_admin_id":g_aid,
-            "guardian_name":guardian_name,
-            "guardian_phone_masked":guardian_phone.as_ref().map(|p| if p.len() >= 7 { format!("{}****{}", &p[..3], &p[p.len()-4..]) } else { "***".into() }),
-        }))
-    }).unwrap().filter_map(|r|r.ok()).collect();
-    ok(serde_json::json!({"students":students}))
-}
-
-fn is_guardian_of(gid: &str, sid: &str) -> bool {
-    conn().query_row("SELECT 1 FROM guardian_assignments WHERE guardian_admin_id=?1 AND student_user_id=?2 AND is_active=1", rusqlite::params![gid,sid], |_| Ok(())).is_ok()
-}
-
-#[derive(Deserialize)] pub struct GuardianBindInput { pub student_user_id: String }
-pub async fn guardian_bind_request(headers: HeaderMap, Json(input): Json<GuardianBindInput>) -> impl IntoResponse {
-    tracing::info!("guardian_bind_request: student_user_id={}", input.student_user_id);
-    let (gid, role) = guard_user!(&headers);
-    if role != "guardian" && role != "tutor" { return err(StatusCode::FORBIDDEN,"forbidden"); }
-    let c = conn();
-    let now = chrono::Utc::now().timestamp().to_string();
-    let bind_id = uuid::Uuid::new_v4().to_string();
-    if let Err(e) = c.execute(
-        "INSERT INTO guardian_assignments (id, guardian_admin_id, student_user_id, bind_key, assigned_by, assigned_at, is_active) VALUES (?1,?2,?3,'auto',?4,?5,1)",
-        rusqlite::params![bind_id, gid, input.student_user_id, gid, now],
-    ) { return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("DB: {}", e)); }
-    ok(serde_json::json!({"success":true,"assignment_id":bind_id}))
-}
-
-pub async fn guardian_reveal_phone(headers: HeaderMap, Path(aid): Path<String>) -> impl IntoResponse {
-    tracing::info!("guardian_reveal_phone: target_admin_id={}", aid);
-    let (admin_id, role) = guard_user!(&headers);
-    if role != "tutor" && role != "super" && role != "service" { return err(StatusCode::FORBIDDEN,"forbidden"); }
-    let c = conn();
-    // guardian/tutor 已移入 users 表；super/service 的 phone 仍在 admin_users
-    let phone_enc: Option<String> = if role == "super" || role == "service" {
-        c.query_row("SELECT phone FROM admin_users WHERE id=?1", rusqlite::params![aid], |row| row.get(0)).ok().flatten()
-    } else {
-        c.query_row("SELECT phone FROM users WHERE id=?1", rusqlite::params![aid], |row| row.get(0)).ok().flatten()
-    };
-    let phone = match phone_enc { Some(ref enc) if !enc.is_empty() => decrypt_maybe(enc), _ => return err(StatusCode::NOT_FOUND, "phone not found") };
-    let now = chrono::Utc::now().timestamp().to_string();
-    let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'reveal_guardian_phone',?3,'Phone revealed by tutor',?4)",
-        rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, aid, now]);
-    ok(serde_json::json!({"phone":phone}))
-}
-
-pub async fn guardian_student_cards(headers: HeaderMap, Path(sid): Path<String>) -> impl IntoResponse {
-    tracing::info!("guardian_student_cards: student_id={}", sid);
-    let (gid, role) = guard_user!(&headers);
-    if role != "super" && role != "service" && !is_guardian_of(&gid, &sid) { return err(StatusCode::FORBIDDEN,"forbidden"); }
-    let c2 = conn(); let mut stmt = c2.prepare("SELECT c.id,c.front,COALESCE(pr.conversation_id,''),c.domain,cm.state,cm.reps,cm.last_review FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id LEFT JOIN plan_runs pr ON c.plan_run_id=pr.id WHERE c.user_id=?1 ORDER BY cm.state,cm.due").unwrap();
-    let cards: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![sid], |row| Ok(serde_json::json!({
-        "id":row.get::<_,String>(0)?,"front":row.get::<_,String>(1)?,"conversation_id":row.get::<_,Option<String>>(2)?,"domain":row.get::<_,Option<String>>(3)?,"state":row.get::<_,i32>(4)?,"reps":row.get::<_,i32>(5)?,"last_review":row.get::<_,Option<i64>>(6)?
-    }))).unwrap().filter_map(|r|r.ok()).collect();
-    ok(serde_json::json!({"cards":cards}))
-}
-pub async fn guardian_student_conversations(headers: HeaderMap, Path(sid): Path<String>) -> impl IntoResponse {
-    tracing::info!("guardian_student_conversations: student_id={}", sid);
-    let (gid, role) = guard_user!(&headers);
-    if role != "super" && role != "service" && !is_guardian_of(&gid, &sid) { return err(StatusCode::FORBIDDEN,"forbidden"); }
-    let c = conn();
-    // Get conversations with first user message + learning plan title as combined title
-    let mut stmt = c.prepare(
-        "SELECT c.id, c.started_at,
-         COALESCE((SELECT content FROM conversation_turns t WHERE t.conversation_id=c.id AND t.role='user' ORDER BY t.created_at LIMIT 1), c.id),
-         (SELECT COUNT(*) FROM conversation_turns t WHERE t.conversation_id=c.id),
-         COALESCE((SELECT goal FROM plan_runs pr WHERE pr.conversation_id=c.id LIMIT 1), '')
-         FROM conversations c WHERE c.user_id=?1 AND c.deleted_at IS NULL ORDER BY c.started_at DESC LIMIT 20"
-    ).unwrap();
-    let convs: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![sid], |row| {
-        let first_msg: String = row.get::<_,String>(2).unwrap_or_default();
-        let plan_goal: String = row.get::<_,String>(4).unwrap_or_default();
-        let truncated = if first_msg.chars().count() > 25 {
-            let cut: String = first_msg.chars().take(25).collect();
-            format!("{}...", cut)
-        } else { first_msg };
-        let title = if plan_goal.is_empty() { truncated } else { format!("【{}】{}", plan_goal, truncated) };
-        Ok(serde_json::json!({"id":row.get::<_,String>(0)?,"title":title,"started_at":row.get::<_,String>(1)?,"turn_count":row.get::<_,i64>(3)?}))
-    }).unwrap().filter_map(|r|r.ok()).collect();
-    ok(serde_json::json!({"conversations":convs}))
-}
-pub async fn guardian_student_conversation_detail(headers: HeaderMap, Path((sid, cid)): Path<(String,String)>) -> impl IntoResponse {
-    tracing::info!("guardian_student_conversation_detail: student_id={}, conv_id={}", sid, cid);
-    let (gid, role) = guard_user!(&headers);
-    if role != "super" && role != "service" && !is_guardian_of(&gid, &sid) { return err(StatusCode::FORBIDDEN,"forbidden"); }
-    let c2 = conn(); let mut stmt = c2.prepare("SELECT role,content,created_at FROM conversation_turns WHERE conversation_id=?1 ORDER BY created_at").unwrap();
-    let turns: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![cid], |row| Ok(serde_json::json!({
-        "role":row.get::<_,String>(0)?,"content":row.get::<_,String>(1)?,"created_at":row.get::<_,String>(2)?
-    }))).unwrap().filter_map(|r|r.ok()).collect();
-    ok(serde_json::json!({"turns":turns}))
-}
-
-// ── Learning Summary (家长座舱) ──
-pub async fn guardian_learning_summary(headers: HeaderMap, Path(sid): Path<String>) -> impl IntoResponse {
-    tracing::info!("guardian_learning_summary: student_id={}", sid);
-    let (gid, role) = guard_user!(&headers);
-    if role != "super" && role != "service" && !is_guardian_of(&gid, &sid) { return err(StatusCode::FORBIDDEN,"forbidden"); }
-    let c = conn();
-    let now = chrono::Utc::now();
-    let now_ts = now.timestamp();
-    let seven_days_ago = (now - chrono::Duration::days(7)).to_rfc3339();
-    let one_day_ago = (now - chrono::Duration::days(1)).to_rfc3339();
-
-    // 1. Get all plans for this student
-    let mut plan_stmt = c.prepare("SELECT id, goal, domain, conversation_id, plan_content, updated_at FROM plan_runs WHERE user_id=?1 ORDER BY updated_at DESC").unwrap();
-    let mut plan_results: Vec<serde_json::Value> = Vec::new();
-    let mut total_active_7d = 0i64;
-    let mut total_today_active = 0i64;
-    let mut total_completed = 0i64;
-    let mut total_all_tasks = 0i64;
-    let mut total_done_tasks = 0i64;
-    let mut total_all_cards = 0i64;
-    let mut total_mastered_cards = 0i64;
-
-    let rows = plan_stmt.query_map(rusqlite::params![sid], |row| -> rusqlite::Result<()> {
-        let plan_id: String = row.get(0)?;
-        let goal: String = row.get(1)?;
-        let _domain: String = row.get(2)?;
-        let conv_id: Option<String> = row.get(3)?;
-        let task_status_str: String = row.get(4)?;
-        let updated_at_str: String = row.get(5)?;
-
-        // Parse plan progress
-        let (total_tasks, done_tasks, current_stage, current_task) = parse_plan_progress(&task_status_str);
-
-        // Parse updated_at as unix timestamp for activity calculation
-        let updated_ts = chrono::DateTime::parse_from_rfc3339(&updated_at_str).map(|d| d.timestamp()).unwrap_or(0);
-        let days_since_active = if updated_ts > 0 { (now_ts - updated_ts) / 86400 } else { 999i64 };
-        let is_active_7d = updated_at_str >= seven_days_ago;
-        let is_today_active = updated_at_str >= one_day_ago;
-        let is_completed = total_tasks > 0 && done_tasks >= total_tasks;
-
-        // Query cards
-        let (total_cards, mastered, learning, new_cards, relearning, _last_review) = {
-            let base_sql = "SELECT COUNT(*), COALESCE(SUM(CASE WHEN cm.state=2 THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN cm.state=1 THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN cm.state=0 THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN cm.state=3 THEN 1 ELSE 0 END),0), MAX(cm.last_review)
-                     FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id LEFT JOIN plan_runs pr ON c.plan_run_id=pr.id WHERE ";
-            let fallback_domain = plan_keywords_from_goal(&goal);
-            let fallback_ok = !fallback_domain.is_empty();
-            if let Some(cid) = &conv_id {
-                let r = c.query_row(&format!("{} pr.conversation_id=?1", base_sql), rusqlite::params![cid], card_stats_from_row).unwrap_or((0,0,0,0,0,None));
-                if r.0 > 0 { r }
-                else if fallback_ok { c.query_row(&format!("{} c.user_id=?1 AND c.domain=?2", base_sql), rusqlite::params![sid, fallback_domain], card_stats_from_row).unwrap_or((0,0,0,0,0,None)) }
-                else { r }
-            } else if fallback_ok { c.query_row(&format!("{} c.user_id=?1 AND c.domain=?2", base_sql), rusqlite::params![sid, fallback_domain], card_stats_from_row).unwrap_or((0,0,0,0,0,None)) }
-            else { (0,0,0,0,0,None) }
-        };
-
-        // Scores
-        let progress_rate = if total_tasks > 0 { done_tasks as f64 / total_tasks as f64 } else { 0.0 };
-        let card_rate = if total_cards > 0 { mastered as f64 / total_cards as f64 } else { progress_rate };
-        let plan_score = 0.4 * progress_rate + 0.6 * card_rate;
-
-        // Health determination
-        let (health, reason) =
-            if days_since_active > 30 && done_tasks >= 3 { ("abandoned", "30天无活动已弃坑") }
-            else if days_since_active > 14 { ("stale", "14天未学习") }
-            else if total_cards > 0 && new_cards > 50 && days_since_active >= 7 { ("attention", "卡片积压超过50张") }
-            else if progress_rate > 0.5 && card_rate < 0.2 { ("attention", "推进快但记住的少") }
-            else if total_tasks == 0 && total_cards == 0 { ("not_started", "未开始") }
-            else if plan_score < 0.2 && days_since_active <= 7 { ("attention", "活跃但进度缓慢") }
-            else { ("good", "") };
-
-        // Accumulate totals
-        if is_active_7d { total_active_7d += 1; }
-        if is_today_active { total_today_active += 1; }
-        if is_completed { total_completed += 1; }
-        total_all_tasks += total_tasks;
-        total_done_tasks += done_tasks;
-        total_all_cards += total_cards;
-        total_mastered_cards += mastered;
-
-        plan_results.push(serde_json::json!({
-            "plan_id": plan_id, "goal": goal,
-            "progress": {"total_tasks": total_tasks, "done_tasks": done_tasks, "current_stage": current_stage, "current_task": current_task},
-            "cards": {"total": total_cards, "mastered": mastered, "learning": learning, "new": new_cards, "relearning": relearning},
-            "score": (plan_score * 100.0).round() as i32,
-            "health": health, "reason": reason, "days_since_active": days_since_active,
-        }));
-        Ok(())
-    });
-    if let Ok(rows) = rows { for r in rows { let _ = r; } }
-
-    // Second pass: scatter detection
-    let scatter_plans = plan_results.iter().filter(|p| {
-        let prog = p["progress"]["done_tasks"].as_i64().unwrap_or(0);
-        let total = p["progress"]["total_tasks"].as_i64().unwrap_or(1);
-        let rate = if total > 0 { prog as f64 / total as f64 } else { 0.0 };
-        rate < 0.1
-    }).count();
-    let global_attention = if scatter_plans >= 4 {
-        Some(serde_json::json!({"type":"scatter","plans":scatter_plans,"detail":"同时开启4+个计划但每个进度不足10%"}))
-    } else { None };
-
-    // Overview
-    let overall_progress = if total_all_tasks > 0 { total_done_tasks as f64 / total_all_tasks as f64 } else { 0.0 };
-    let overall_cards = if total_all_cards > 0 { total_mastered_cards as f64 / total_all_cards as f64 } else { overall_progress };
-    let overall_score = 0.4 * overall_progress + 0.6 * overall_cards;
-
-    let mut resp = serde_json::json!({
-        "overview": {
-            "total_plans": plan_results.len(),
-            "active_7d": total_active_7d,
-            "today_active": total_today_active,
-            "completed_plans": total_completed,
-            "overall_progress": format!("{:.0}%", overall_progress * 100.0),
-            "overall_cards": format!("{:.0}%", overall_cards * 100.0),
-            "overall_score": (overall_score * 100.0).round() as i32,
-        },
-        "plans": plan_results,
-    });
-    if let Some(scatter) = global_attention {
-        resp["overview"]["attention"] = scatter;
-    }
-    ok(resp)
-}
-
-/// Map plan goal to card domain for fallback matching
-fn plan_keywords_from_goal(goal: &str) -> &'static str {
-    let g = goal.to_lowercase();
-    if g.contains("物理") || g.contains("physics") { "physics" }
-    else if g.contains("几何") || g.contains("geometry") || g.contains("三角") || g.contains("三角形") { "geometry" }
-    else if g.contains("线性代数") || g.contains("linear_algebra") || g.contains("矩阵") || g.contains("向量") { "linear_algebra" }
-    else if g.contains("rust") || g.contains("编程") || g.contains("tech") { "tech" }
-    else if g.contains("英语") || g.contains("vocabulary") { "vocabulary" }
-    else { "math" }
-}
-
-fn card_stats_from_row(row: &rusqlite::Row) -> rusqlite::Result<(i64,i64,i64,i64,i64,Option<i64>)> {
-    Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?))
-}
-
-fn parse_plan_progress(json_str: &str) -> (i64, i64, String, String) {
-    let v: serde_json::Value = match serde_json::from_str(json_str) { Ok(v) => v, Err(_) => return (0,0,"".into(),"".into()) };
-    let stages = v["stages"].as_array();
-    let stages = match stages { Some(s) => s, None => return (0,0,"".into(),"".into()) };
-    let mut total = 0i64;
-    let mut done = 0i64;
-    let mut current_stage = String::new();
-    let mut current_task = String::new();
-    for stage in stages {
-        let sname = stage["name"].as_str().unwrap_or("");
-        let tasks = stage["tasks"].as_array();
-        if let Some(tasks) = tasks {
-            for task in tasks {
-                total += 1;
-                let status = task["status"].as_str().unwrap_or("");
-                let tname = task["name"].as_str().unwrap_or("");
-                if status == "done" { done += 1; }
-                else if current_task.is_empty() {
-                    if current_stage.is_empty() { current_stage = sname.to_string(); }
-                    current_task = tname.to_string();
-                }
-            }
-        }
-        if current_stage.is_empty() && stage["status"].as_str().unwrap_or("") != "done" {
-            current_stage = sname.to_string();
-        }
-    }
-    (total, done, current_stage, current_task)
-}
-
+// 🔴 2026-09-29 已退役：K12 Guardian（家长/导师）一族 ——
+//     `guardian_students` / `guardian_bind_request` / `guardian_reveal_phone` /
+//     `guardian_student_cards` / `guardian_student_conversations` /
+//     `guardian_student_conversation_detail` / `guardian_learning_summary`
+//     及其 helper（`is_guardian_of` / `plan_keywords_from_goal` /
+//     `card_stats_from_row` / `parse_plan_progress`）。
+//     依赖已删除的表：`guardian_assignments` / `user_cards` / `conversations` /
+//     `plan_runs`；K12 体系已整体清退，路由亦已移除。
 // ── Bind Lookup ──
 #[derive(Deserialize)] pub struct BindLookupInput { pub real_name: String, pub phone: String }
 pub async fn bind_lookup_handler(headers: HeaderMap, Json(input): Json<BindLookupInput>) -> impl IntoResponse {
@@ -1152,75 +817,7 @@ pub async fn update_user_profile_handler(headers: HeaderMap, Path(uid): Path<Str
     ok(serde_json::json!({"status":"ok"}))
 }
 
-// ── Guardian Assignment Management (超管) ──
-#[derive(Deserialize)] pub struct CreateAssignmentInput { pub guardian_admin_id: String, pub student_user_id: String }
-pub async fn admin_list_assignments(headers: HeaderMap) -> impl IntoResponse {
-    tracing::info!("admin_list_assignments");
-    let (_, role) = guard!(&headers);
-    if role != "super" && role != "service" { return err(StatusCode::FORBIDDEN, "forbidden"); }
-    let c = conn();
-    let mut stmt = c.prepare(
-        "SELECT ga.id, ga.guardian_admin_id, ga.student_user_id, ga.bind_key, ga.assigned_by, ga.assigned_at, ga.is_active, u2.real_name, u.display_name, u.real_name
-         FROM guardian_assignments ga
-         JOIN users u2 ON ga.guardian_admin_id = u2.id
-         JOIN users u ON ga.student_user_id = u.id
-         ORDER BY ga.assigned_at DESC LIMIT 50"
-    ).unwrap();
-    let assignments: Vec<serde_json::Value> = stmt.query_map([], |row| {
-        let aname_raw: Option<String> = row.get(7)?;
-        let sname_raw: Option<String> = row.get(9)?;
-        Ok(serde_json::json!({
-            "id": row.get::<_,String>(0)?,
-            "guardian_admin_id": row.get::<_,String>(1)?,
-            "student_user_id": row.get::<_,String>(2)?,
-            "bind_key": row.get::<_,String>(3)?,
-            "assigned_by": row.get::<_,String>(4)?,
-            "assigned_at": row.get::<_,String>(5)?,
-            "is_active": row.get::<_,i32>(6)?,
-            "guardian_name": aname_raw.as_ref().map(|v| decrypt_maybe(v)),
-            "student_display_name": row.get::<_,Option<String>>(8)?,
-            "student_real_name": sname_raw.as_ref().map(|v| decrypt_maybe(v)),
-        }))
-    }).unwrap().filter_map(|r| r.ok()).collect();
-    ok(serde_json::json!({"assignments": assignments}))
-}
-
-pub async fn admin_create_assignment(headers: HeaderMap, Json(input): Json<CreateAssignmentInput>) -> impl IntoResponse {
-    tracing::info!("admin_create_assignment: guardian={}, student={}", input.guardian_admin_id, input.student_user_id);
-    let (reviewer, role) = guard!(&headers);
-    if role != "super" && role != "service" { return err(StatusCode::FORBIDDEN, "forbidden"); }
-    let c = conn();
-    let now = chrono::Utc::now().timestamp();
-    let id = uuid::Uuid::new_v4().to_string();
-    // Generate bind_key from names
-    // guardian/tutor 已移入 users 表
-    let guardian_name: String = c.query_row("SELECT COALESCE(real_name,'') FROM users WHERE id=?1", rusqlite::params![&input.guardian_admin_id], |row| row.get(0)).unwrap_or_default();
-    let student_name: String = c.query_row("SELECT COALESCE(real_name,'') FROM users WHERE id=?1", rusqlite::params![&input.student_user_id], |row| row.get(0)).unwrap_or_default();
-    let gname = if encryption::is_encrypted(&guardian_name) { encryption::decrypt(&guardian_name) } else { guardian_name.clone() };
-    let sname = if encryption::is_encrypted(&student_name) { encryption::decrypt(&student_name) } else { student_name.clone() };
-    let bind_key = {
-        let mut hasher = Sha256::new();
-        hasher.update(gname.as_bytes());
-        hasher.update(sname.as_bytes());
-        hex::encode(hasher.finalize())
-    };
-    match c.execute(
-        "INSERT INTO guardian_assignments (id,guardian_admin_id,student_user_id,bind_key,assigned_by,assigned_at,is_active) VALUES (?1,?2,?3,?4,?5,?6,1)",
-        rusqlite::params![id, input.guardian_admin_id, input.student_user_id, bind_key, reviewer, now],
-    ) {
-        Ok(_) => ok(serde_json::json!({"id": id, "status": "created"})),
-        Err(e) if e.to_string().contains("UNIQUE") => err(StatusCode::CONFLICT, "assignment_already_exists"),
-        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
-    }
-}
-
-pub async fn admin_remove_assignment(headers: HeaderMap, Path(aid): Path<String>) -> impl IntoResponse {
-    tracing::info!("admin_remove_assignment: assignment_id={}", aid);
-    let (_, role) = guard!(&headers);
-    if role != "super" && role != "service" { return err(StatusCode::FORBIDDEN, "forbidden"); }
-    let _ = conn().execute("UPDATE guardian_assignments SET is_active=0 WHERE id=?1", rusqlite::params![aid]);
-    ok(serde_json::json!({"status": "disabled"}))
-}
+// 🔴 2026-09-29 已退役：Guardian Assignment 管理（超管）—— 依赖已删除的 `guardian_assignments` 表
 
 // ── Dashboard ──
 pub async fn admin_dashboard(headers: HeaderMap) -> impl IntoResponse {
@@ -1233,14 +830,12 @@ pub async fn admin_dashboard(headers: HeaderMap) -> impl IntoResponse {
     let week_end = (now + chrono::Duration::days(7)).format("%Y-%m-%d").to_string();
 
     let total_users: i64 = c.query_row("SELECT COUNT(*) FROM users", [], |r| r.get(0)).unwrap_or(0);
-    let total_cards: i64 = c.query_row("SELECT COUNT(*) FROM user_cards", [], |r| r.get(0)).unwrap_or(0);
+    // 🔴 2026-09-29：旧学习链已退役（user_cards / review_log）→ 卡片/活跃/复习统计恒为 0；
+    //     `users` 表相关的统计照常。
+    let total_cards: i64 = 0;
     let today_users: i64 = c.query_row("SELECT COUNT(*) FROM users WHERE created_at >= ?1", rusqlite::params![today_start], |r| r.get(0)).unwrap_or(0);
-    let today_active: i64 = c.query_row(
-        "SELECT COUNT(DISTINCT user_id) FROM (SELECT user_id FROM conversations WHERE started_at >= ?1 UNION ALL SELECT user_id FROM user_cards WHERE created_at >= ?2)",
-        rusqlite::params![today_start, now.timestamp()], |r| r.get(0)).unwrap_or(0);
-    let today_reviews: i64 = c.query_row(
-        "SELECT COUNT(*) FROM review_log rl JOIN user_cards cd ON rl.card_id=cd.id WHERE rl.reviewed_at >= ?1",
-        rusqlite::params![now.timestamp() - 86400], |r| r.get(0)).unwrap_or(0);
+    let today_active: i64 = 0;
+    let today_reviews: i64 = 0;
     let expiring: Vec<serde_json::Value> = {
         let sql = "SELECT u.id, u.username, u.display_name, u.subscription_expires FROM users u WHERE u.subscription_expires IS NOT NULL AND u.subscription_expires <= ?1 AND u.subscription_expires >= date('now') ORDER BY u.subscription_expires LIMIT 20";
         let mut stmt = match c.prepare(sql) {
@@ -1309,8 +904,9 @@ pub async fn admin_users_export(headers: HeaderMap, Query(query): Query<AdminUse
     let mut csv = String::from("user_id,username,display_name,real_name,phone,created_at,streak_days,card_count,review_count,subscription_expires\n");
     if let Ok(rows) = stmt.query_map(rusqlite::params![pattern], |row| {
         let uid: String = row.get(0)?;
-        let cards: i64 = c.query_row("SELECT COUNT(*) FROM user_cards c JOIN card_memory cm ON c.id=cm.user_card_id WHERE c.user_id=?1 AND cm.status='active'", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
-        let reviews: i64 = c.query_row("SELECT COUNT(*) FROM review_log rl JOIN user_cards cd ON rl.card_id=cd.id WHERE cd.user_id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or(0);
+        // 🔴 2026-09-29：学习状态已迁端侧 → 统计恒为 0（CSV 列保留，兼容前端）
+        let cards: i64 = 0;
+        let reviews: i64 = 0;
         let expires: String = c.query_row("SELECT COALESCE(subscription_expires,'') FROM users WHERE id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or_default();
         let rn_opt: Option<String> = row.get(3).ok().flatten();
         let ph_opt: Option<String> = row.get(4).ok().flatten();

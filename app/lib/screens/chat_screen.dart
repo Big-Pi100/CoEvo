@@ -7,7 +7,6 @@ import 'package:http/http.dart' as http;
 import '../models/coevo_models.dart';
 import '../api/chat_client.dart';
 import '../providers/auth_provider.dart';
-import '../providers/achievement_notifier.dart';
 import '../services/tts_service.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/subscribe_panel.dart';
@@ -406,15 +405,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           Future.delayed(Duration.zero, () { if (mounted) ConceptDialog.show(context, candidates: list, client: _client, ref: ref, conversationId: _convId); });
         }
         break;
-      case 'achievements':
-        final list = event.achievements;
-        if (list != null && list.isNotEmpty) {
-          final notifier = ref.read(achievementNotifierProvider.notifier);
-          for (final a in list) {
-            notifier.push(AchievementNotification.fromJson(a));
-          }
-        }
-        break;
+      // 🔴 2026-09-29 已退役：成就事件 —— 后端成就引擎已退役（成就改为「端侧计算」）
       case 'error':
         if (event.content == 'invalid_token' || event.content == 'missing_token') {
           // 被踢下线：token 已失效
