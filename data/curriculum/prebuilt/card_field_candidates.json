@@ -1,0 +1,2216 @@
+[
+ {
+  "spelling": "a",
+  "entry_type": "word",
+  "ipa": "/ˈhæpi/",
+  "signals": [
+   "S3b",
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'I am happy to see you.'",
+   "与 'happy' 的 ipa 相同: /ˈhæpi/"
+  ]
+ },
+ {
+  "spelling": "a.m.",
+  "entry_type": "abbreviation",
+  "ipa": "/ˌeɪ ˈem/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The meeting is at 10 a.m.'"
+  ]
+ },
+ {
+  "spelling": "abortive",
+  "entry_type": "word",
+  "ipa": "/viː/",
+  "signals": [
+   "S2"
+  ],
+  "reasons": [
+   "ipa 疑截断 '/viː/'（实质 3 / 字母 8 = 0.38）"
+  ]
+ },
+ {
+  "spelling": "air conditioning",
+  "entry_type": "phrase",
+  "ipa": "/ˈɛr fɔːrs/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'air force' 的 ipa 相同: /ˈɛr fɔːrs/"
+  ]
+ },
+ {
+  "spelling": "air force",
+  "entry_type": "phrase",
+  "ipa": "/ˈɛr fɔːrs/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'air conditioning' 的 ipa 相同: /ˈɛr fɔːrs/"
+  ]
+ },
+ {
+  "spelling": "alumnus",
+  "entry_type": "word",
+  "ipa": "/əˈlʌmnəs/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'She is an alumna of Harvard University.'"
+  ]
+ },
+ {
+  "spelling": "anta",
+  "entry_type": "word",
+  "ipa": "/ˈæn.tə/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: \"The temple's porch is flanked by antae.\""
+  ]
+ },
+ {
+  "spelling": "bank account",
+  "entry_type": "phrase",
+  "ipa": "/bæn/",
+  "signals": [
+   "S2",
+   "S4"
+  ],
+  "reasons": [
+   "ipa 疑截断 '/bæn/'（实质 3 / 字母 11 = 0.27）",
+   "例句不含该词: 'The government banned smoking in public places.'"
+  ]
+ },
+ {
+  "spelling": "bring up",
+  "entry_type": "phrase",
+  "ipa": "/brɪŋ ʌp/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'She brought up three children on her own.'"
+  ]
+ },
+ {
+  "spelling": "bulletin",
+  "entry_type": "word",
+  "ipa": "/bʊl/",
+  "signals": [
+   "S2",
+   "S3b"
+  ],
+  "reasons": [
+   "ipa 疑截断 '/bʊl/'（实质 3 / 字母 8 = 0.38）",
+   "与 'bully' 的 ipa 相同: /bʊl/"
+  ]
+ },
+ {
+  "spelling": "bully",
+  "entry_type": "word",
+  "ipa": "/bʊl/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'bulletin' 的 ipa 相同: /bʊl/"
+  ]
+ },
+ {
+  "spelling": "bury",
+  "entry_type": "word",
+  "ipa": "/ˈberi/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'They buried him in the local churchyard.'"
+  ]
+ },
+ {
+  "spelling": "bus station",
+  "entry_type": "phrase",
+  "ipa": "/ˈbʌs ˌstɒp/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'bus stop' 的 ipa 相同: /ˈbʌs ˌstɒp/"
+  ]
+ },
+ {
+  "spelling": "bus stop",
+  "entry_type": "phrase",
+  "ipa": "/ˈbʌs ˌstɒp/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'bus station' 的 ipa 相同: /ˈbʌs ˌstɒp/"
+  ]
+ },
+ {
+  "spelling": "calenda",
+  "entry_type": "word",
+  "ipa": "/kəˈlɛndə/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The Calends were a day of settling debts and religious observance.'"
+  ]
+ },
+ {
+  "spelling": "capital letter",
+  "entry_type": "phrase",
+  "ipa": "/kæp/",
+  "signals": [
+   "S2",
+   "S4"
+  ],
+  "reasons": [
+   "ipa 疑截断 '/kæp/'（实质 3 / 字母 13 = 0.23）",
+   "例句不含该词: 'He wore a baseball cap.'"
+  ]
+ },
+ {
+  "spelling": "carbon dioxide",
+  "entry_type": "phrase",
+  "ipa": "/ˈkɑːbən məˈnɒksaɪd/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'carbon footprint' 的 ipa 相同: /ˈkɑːbən məˈnɒksaɪd/",
+   "与短语 'carbon monoxide' 的 ipa 相同: /ˈkɑːbən məˈnɒksaɪd/"
+  ]
+ },
+ {
+  "spelling": "carbon footprint",
+  "entry_type": "phrase",
+  "ipa": "/ˈkɑːbən məˈnɒksaɪd/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'carbon monoxide' 的 ipa 相同: /ˈkɑːbən məˈnɒksaɪd/",
+   "与短语 'carbon dioxide' 的 ipa 相同: /ˈkɑːbən məˈnɒksaɪd/"
+  ]
+ },
+ {
+  "spelling": "carbon monoxide",
+  "entry_type": "phrase",
+  "ipa": "/ˈkɑːbən məˈnɒksaɪd/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'carbon footprint' 的 ipa 相同: /ˈkɑːbən məˈnɒksaɪd/",
+   "与短语 'carbon dioxide' 的 ipa 相同: /ˈkɑːbən məˈnɒksaɪd/"
+  ]
+ },
+ {
+  "spelling": "check",
+  "entry_type": "word",
+  "ipa": "/tʃek/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'cheque' 的 ipa 相同: /tʃek/"
+  ]
+ },
+ {
+  "spelling": "check-in counter",
+  "entry_type": "phrase",
+  "ipa": "/ˌtʃekɪn ˈdɛsk/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'check-in desk' 的 ipa 相同: /ˌtʃekɪn ˈdɛsk/"
+  ]
+ },
+ {
+  "spelling": "check-in desk",
+  "entry_type": "phrase",
+  "ipa": "/ˌtʃekɪn ˈdɛsk/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'check-in counter' 的 ipa 相同: /ˌtʃekɪn ˈdɛsk/"
+  ]
+ },
+ {
+  "spelling": "cheque",
+  "entry_type": "word",
+  "ipa": "/tʃek/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'check' 的 ipa 相同: /tʃek/"
+  ]
+ },
+ {
+  "spelling": "chewing gum",
+  "entry_type": "phrase",
+  "ipa": "/tʃuː/",
+  "signals": [
+   "S2",
+   "S4"
+  ],
+  "reasons": [
+   "ipa 疑截断 '/tʃuː/'（实质 4 / 字母 10 = 0.40）",
+   "例句不含该词: 'She chewed her food slowly.'"
+  ]
+ },
+ {
+  "spelling": "cilium",
+  "entry_type": "word",
+  "ipa": "/ˈsɪliəm/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'psyllium' 的 ipa 相同: /ˈsɪliəm/"
+  ]
+ },
+ {
+  "spelling": "cite",
+  "entry_type": "word",
+  "ipa": "/saɪt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'sight' 的 ipa 相同: /saɪt/"
+  ]
+ },
+ {
+  "spelling": "civilization",
+  "entry_type": "word",
+  "ipa": "/ˌsɪvɪlaɪˈzeɪʃən/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The rise of civilisation transformed human life.'"
+  ]
+ },
+ {
+  "spelling": "classical music",
+  "entry_type": "phrase",
+  "ipa": "/klɑːs/",
+  "signals": [
+   "S2"
+  ],
+  "reasons": [
+   "ipa 疑截断 '/klɑːs/'（实质 5 / 字母 14 = 0.36）"
+  ]
+ },
+ {
+  "spelling": "coup",
+  "entry_type": "word",
+  "ipa": "/kuː/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'ku' 的 ipa 相同: /kuː/"
+  ]
+ },
+ {
+  "spelling": "crystallise",
+  "entry_type": "word",
+  "ipa": "/ˈkrɪstəlaɪz/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The sugar solution crystallized as it cooled.'"
+  ]
+ },
+ {
+  "spelling": "cue",
+  "entry_type": "word",
+  "ipa": "/kjuː/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'queue' 的 ipa 相同: /kjuː/"
+  ]
+ },
+ {
+  "spelling": "dc",
+  "entry_type": "abbreviation",
+  "ipa": "/diː siː/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'She lives in Washington, D.C.'"
+  ]
+ },
+ {
+  "spelling": "de facto",
+  "entry_type": "phrase",
+  "ipa": "/diː ˈfæktoʊ/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'debit card' 的 ipa 相同: /diː ˈfæktoʊ/"
+  ]
+ },
+ {
+  "spelling": "debit card",
+  "entry_type": "phrase",
+  "ipa": "/diː ˈfæktoʊ/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'de facto' 的 ipa 相同: /diː ˈfæktoʊ/"
+  ]
+ },
+ {
+  "spelling": "die",
+  "entry_type": "word",
+  "ipa": "/daɪ/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'diffusion' 的 ipa 相同: /daɪ/"
+  ]
+ },
+ {
+  "spelling": "diffusion",
+  "entry_type": "word",
+  "ipa": "/daɪ/ (abbreviation of diameter)",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'dye' 的 ipa 相同: /daɪ/",
+   "与 'die' 的 ipa 相同: /daɪ/"
+  ]
+ },
+ {
+  "spelling": "dissatisfy",
+  "entry_type": "word",
+  "ipa": "/dɪsˈsætɪsfaɪ/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The poor service dissatisfied many customers.'"
+  ]
+ },
+ {
+  "spelling": "dr.",
+  "entry_type": "abbreviation",
+  "ipa": "/ˈdɒktər/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'I have an appointment with Dr. Lee.'"
+  ]
+ },
+ {
+  "spelling": "dye",
+  "entry_type": "word",
+  "ipa": "/daɪ/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'diffusion' 的 ipa 相同: /daɪ/"
+  ]
+ },
+ {
+  "spelling": "enver",
+  "entry_type": "proper",
+  "ipa": "/ɛn/",
+  "signals": [
+   "S2",
+   "S3b"
+  ],
+  "reasons": [
+   "ipa 疑截断 '/ɛn/'（实质 2 / 字母 5 = 0.40）",
+   "与 'eugene' 的 ipa 相同: /ɛn/"
+  ]
+ },
+ {
+  "spelling": "environmentally friendly",
+  "entry_type": "phrase",
+  "ipa": "/ɪnˌvaɪrənˈmentl/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'Environmental protection is a global issue.'"
+  ]
+ },
+ {
+  "spelling": "esquire",
+  "entry_type": "word",
+  "ipa": "/ɪˈskwaɪə/, /ˈɛskwaɪə/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The envelope was addressed to Jonathan Smith, Esq.'"
+  ]
+ },
+ {
+  "spelling": "eugene",
+  "entry_type": "proper",
+  "ipa": "/ɛn/",
+  "signals": [
+   "S2",
+   "S3b"
+  ],
+  "reasons": [
+   "ipa 疑截断 '/ɛn/'（实质 2 / 字母 6 = 0.33）",
+   "与 'enver' 的 ipa 相同: /ɛn/"
+  ]
+ },
+ {
+  "spelling": "exemplify",
+  "entry_type": "word",
+  "ipa": "/ɪɡˈzæmplɪfaɪ/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: \"This painting exemplifies the artist's early style.\""
+  ]
+ },
+ {
+  "spelling": "eye",
+  "entry_type": "word",
+  "ipa": "/aɪ/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'white' 的 ipa 相同: /aɪ/",
+   "与 'i' 的 ipa 相同: /aɪ/"
+  ]
+ },
+ {
+  "spelling": "fact",
+  "entry_type": "word",
+  "ipa": "/fækt",
+  "signals": [
+   "S1"
+  ],
+  "reasons": [
+   "ipa 无完整 /…/ 段: '/fækt'"
+  ]
+ },
+ {
+  "spelling": "fill",
+  "entry_type": "word",
+  "ipa": "/fɪl/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'phil' 的 ipa 相同: /fɪl/"
+  ]
+ },
+ {
+  "spelling": "fire brigade",
+  "entry_type": "phrase",
+  "ipa": "/ˈfaɪə ˌsteɪʃən/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'fire station' 的 ipa 相同: /ˈfaɪə ˌsteɪʃən/"
+  ]
+ },
+ {
+  "spelling": "fire station",
+  "entry_type": "phrase",
+  "ipa": "/ˈfaɪə ˌsteɪʃən/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'fire brigade' 的 ipa 相同: /ˈfaɪə ˌsteɪʃən/"
+  ]
+ },
+ {
+  "spelling": "first floor",
+  "entry_type": "phrase",
+  "ipa": "/fɜːst ˈpɜːsən/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'first lady' 的 ipa 相同: /fɜːst ˈpɜːsən/",
+   "与短语 'first person' 的 ipa 相同: /fɜːst ˈpɜːsən/",
+   "与短语 'first language' 的 ipa 相同: /fɜːst ˈpɜːsən/"
+  ]
+ },
+ {
+  "spelling": "first lady",
+  "entry_type": "phrase",
+  "ipa": "/fɜːst ˈpɜːsən/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'first person' 的 ipa 相同: /fɜːst ˈpɜːsən/",
+   "与短语 'first language' 的 ipa 相同: /fɜːst ˈpɜːsən/",
+   "与短语 'first floor' 的 ipa 相同: /fɜːst ˈpɜːsən/"
+  ]
+ },
+ {
+  "spelling": "first language",
+  "entry_type": "phrase",
+  "ipa": "/fɜːst ˈpɜːsən/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'first lady' 的 ipa 相同: /fɜːst ˈpɜːsən/",
+   "与短语 'first person' 的 ipa 相同: /fɜːst ˈpɜːsən/",
+   "与短语 'first floor' 的 ipa 相同: /fɜːst ˈpɜːsən/"
+  ]
+ },
+ {
+  "spelling": "first person",
+  "entry_type": "phrase",
+  "ipa": "/fɜːst ˈpɜːsən/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'first lady' 的 ipa 相同: /fɜːst ˈpɜːsən/",
+   "与短语 'first language' 的 ipa 相同: /fɜːst ˈpɜːsən/",
+   "与短语 'first floor' 的 ipa 相同: /fɜːst ˈpɜːsən/"
+  ]
+ },
+ {
+  "spelling": "freshman",
+  "entry_type": "word",
+  "ipa": "/ˈfreʃmən/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The freshmen attended an orientation session on campus.'"
+  ]
+ },
+ {
+  "spelling": "frying pan",
+  "entry_type": "phrase",
+  "ipa": "/fraɪ/",
+  "signals": [
+   "S2",
+   "S4"
+  ],
+  "reasons": [
+   "ipa 疑截断 '/fraɪ/'（实质 4 / 字母 9 = 0.44）",
+   "例句不含该词: 'She fried the eggs in butter.'"
+  ]
+ },
+ {
+  "spelling": "funk",
+  "entry_type": "word",
+  "ipa": "/fʌŋk/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The band played a funky tune that made everyone dance.'"
+  ]
+ },
+ {
+  "spelling": "gene",
+  "entry_type": "word",
+  "ipa": "/dʒiːn/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'jean' 的 ipa 相同: /dʒiːn/"
+  ]
+ },
+ {
+  "spelling": "generalisation",
+  "entry_type": "word",
+  "ipa": "/ˌdʒenrəlaɪˈzeɪʃən/ (British) or /ˌdʒenrəlɪˈzeɪʃən/ (American)",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'This is a'"
+  ]
+ },
+ {
+  "spelling": "good afternoon",
+  "entry_type": "phrase",
+  "ipa": "/ɡʊd ˈnaɪt/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'good morning' 的 ipa 相同: /ɡʊd ˈnaɪt/",
+   "与短语 'good night' 的 ipa 相同: /ɡʊd ˈnaɪt/"
+  ]
+ },
+ {
+  "spelling": "good morning",
+  "entry_type": "phrase",
+  "ipa": "/ɡʊd ˈnaɪt/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'good afternoon' 的 ipa 相同: /ɡʊd ˈnaɪt/",
+   "与短语 'good night' 的 ipa 相同: /ɡʊd ˈnaɪt/"
+  ]
+ },
+ {
+  "spelling": "good night",
+  "entry_type": "phrase",
+  "ipa": "/ɡʊd ˈnaɪt/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'good morning' 的 ipa 相同: /ɡʊd ˈnaɪt/",
+   "与短语 'good afternoon' 的 ipa 相同: /ɡʊd ˈnaɪt/"
+  ]
+ },
+ {
+  "spelling": "gorilla",
+  "entry_type": "word",
+  "ipa": "/ɡəˈrɪlə/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'guerrilla' 的 ipa 相同: /ɡəˈrɪlə/"
+  ]
+ },
+ {
+  "spelling": "grandchild",
+  "entry_type": "word",
+  "ipa": "/ˈɡræntʃaɪld/ (US /ˈɡrænd-/)",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'They have three grandchildren.'"
+  ]
+ },
+ {
+  "spelling": "guerrilla",
+  "entry_type": "word",
+  "ipa": "/ɡəˈrɪlə/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'gorilla' 的 ipa 相同: /ɡəˈrɪlə/"
+  ]
+ },
+ {
+  "spelling": "happy",
+  "entry_type": "word",
+  "ipa": "/ˈhæpi/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'a' 的 ipa 相同: /ˈhæpi/"
+  ]
+ },
+ {
+  "spelling": "health care",
+  "entry_type": "phrase",
+  "ipa": "/hiːl/",
+  "signals": [
+   "S2",
+   "S3b",
+   "S4"
+  ],
+  "reasons": [
+   "ipa 疑截断 '/hiːl/'（实质 4 / 字母 10 = 0.40）",
+   "例句不含该词: 'The cut healed within a week.'",
+   "与 'heel' 的 ipa 相同: /hiːl/"
+  ]
+ },
+ {
+  "spelling": "heel",
+  "entry_type": "word",
+  "ipa": "/hiːl/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'health care' 的 ipa 相同: /hiːl/"
+  ]
+ },
+ {
+  "spelling": "hoc",
+  "entry_type": "word",
+  "ipa": "/hɒk/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'hough' 的 ipa 相同: /hɒk/"
+  ]
+ },
+ {
+  "spelling": "hough",
+  "entry_type": "word",
+  "ipa": "/hɒk/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'hoc' 的 ipa 相同: /hɒk/"
+  ]
+ },
+ {
+  "spelling": "hr",
+  "entry_type": "abbreviation",
+  "ipa": "/ˌeɪtʃ ˈɑː(r)/ (abbreviation)",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'humphrey' 的 ipa 相同: /ˌeɪtʃ ˈɑː(r)/"
+  ]
+ },
+ {
+  "spelling": "humphrey",
+  "entry_type": "proper",
+  "ipa": "/ˌeɪtʃ ˈɑː(r)/ (abbreviation)",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'hr' 的 ipa 相同: /ˌeɪtʃ ˈɑː(r)/"
+  ]
+ },
+ {
+  "spelling": "hysterical",
+  "entry_type": "word",
+  "ipa": "/hɪs/",
+  "signals": [
+   "S2"
+  ],
+  "reasons": [
+   "ipa 疑截断 '/hɪs/'（实质 3 / 字母 10 = 0.30）"
+  ]
+ },
+ {
+  "spelling": "i",
+  "entry_type": "word",
+  "ipa": "/aɪ/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'white' 的 ipa 相同: /aɪ/",
+   "与 'eye' 的 ipa 相同: /aɪ/"
+  ]
+ },
+ {
+  "spelling": "ice hockey",
+  "entry_type": "phrase",
+  "ipa": "/ˈaɪs skeɪtɪŋ/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'ice skating' 的 ipa 相同: /ˈaɪs skeɪtɪŋ/"
+  ]
+ },
+ {
+  "spelling": "ice skating",
+  "entry_type": "phrase",
+  "ipa": "/ˈaɪs skeɪtɪŋ/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'ice hockey' 的 ipa 相同: /ˈaɪs skeɪtɪŋ/"
+  ]
+ },
+ {
+  "spelling": "il",
+  "entry_type": "word",
+  "ipa": "/ɪl/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The rules are illegal.'"
+  ]
+ },
+ {
+  "spelling": "india",
+  "entry_type": "proper",
+  "ipa": "/",
+  "signals": [
+   "S1"
+  ],
+  "reasons": [
+   "ipa 无完整 /…/ 段: '/'"
+  ]
+ },
+ {
+  "spelling": "intensify",
+  "entry_type": "word",
+  "ipa": "/ɪnˈtensɪfaɪ/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The storm intensified overnight.'"
+  ]
+ },
+ {
+  "spelling": "it",
+  "entry_type": "word",
+  "ipa": "/ɪt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'with' 的 ipa 相同: /ɪt/"
+  ]
+ },
+ {
+  "spelling": "jan",
+  "entry_type": "abbreviation",
+  "ipa": "/dʒæn/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'My birthday is in January, the first month of the year.'"
+  ]
+ },
+ {
+  "spelling": "janice",
+  "entry_type": "proper",
+  "ipa": "/dʒæn/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'janssen' 的 ipa 相同: /dʒæn/"
+  ]
+ },
+ {
+  "spelling": "janssen",
+  "entry_type": "proper",
+  "ipa": "/dʒæn/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'janice' 的 ipa 相同: /dʒæn/"
+  ]
+ },
+ {
+  "spelling": "jean",
+  "entry_type": "word",
+  "ipa": "/dʒiːn/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'gene' 的 ipa 相同: /dʒiːn/"
+  ]
+ },
+ {
+  "spelling": "ku",
+  "entry_type": "word",
+  "ipa": "/kuː/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'coup' 的 ipa 相同: /kuː/"
+  ]
+ },
+ {
+  "spelling": "leaf",
+  "entry_type": "word",
+  "ipa": "/liːf/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The leaves turn brown in autumn.'"
+  ]
+ },
+ {
+  "spelling": "leap",
+  "entry_type": "word",
+  "ipa": "/liːp/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The deer leapt over the fence effortlessly.'"
+  ]
+ },
+ {
+  "spelling": "lied",
+  "entry_type": "word",
+  "ipa": "(noun) /liːd/; (verb) /laɪd/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'Schubert’s lieder are world‑renowned.'"
+  ]
+ },
+ {
+  "spelling": "literally",
+  "entry_type": "word",
+  "ipa": "/ˈlɪtər",
+  "signals": [
+   "S1"
+  ],
+  "reasons": [
+   "ipa 无完整 /…/ 段: '/ˈlɪtər'"
+  ]
+ },
+ {
+  "spelling": "loom",
+  "entry_type": "word",
+  "ipa": "/luːm/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'She worked at a handloom.'"
+  ]
+ },
+ {
+  "spelling": "make up",
+  "entry_type": "phrase",
+  "ipa": "/meɪk ʌp/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'He made up an excuse for being late.'"
+  ]
+ },
+ {
+  "spelling": "maker",
+  "entry_type": "word",
+  "ipa": "/ˈmeɪkər/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The watchmaker is a skilled craftsman.'"
+  ]
+ },
+ {
+  "spelling": "marriage",
+  "entry_type": "word",
+  "ipa": "/ˈmærɪdʒ/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'They celebrated their 25th wedding anniversary.'"
+  ]
+ },
+ {
+  "spelling": "meet",
+  "entry_type": "word",
+  "ipa": "/miː/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'mi' 的 ipa 相同: /miː/"
+  ]
+ },
+ {
+  "spelling": "message board",
+  "entry_type": "phrase",
+  "ipa": "/mɛs/",
+  "signals": [
+   "S2",
+   "S4"
+  ],
+  "reasons": [
+   "ipa 疑截断 '/mɛs/'（实质 3 / 字母 12 = 0.25）",
+   "例句不含该词: 'The room was a complete mess after the party.'"
+  ]
+ },
+ {
+  "spelling": "mi",
+  "entry_type": "word",
+  "ipa": "/miː/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'meet' 的 ipa 相同: /miː/"
+  ]
+ },
+ {
+  "spelling": "midge",
+  "entry_type": "word",
+  "ipa": "/mɪdʒ/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'mij' 的 ipa 相同: /mɪdʒ/"
+  ]
+ },
+ {
+  "spelling": "mij",
+  "entry_type": "word",
+  "ipa": "/mɪdʒ/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'midge' 的 ipa 相同: /mɪdʒ/"
+  ]
+ },
+ {
+  "spelling": "mimic",
+  "entry_type": "word",
+  "ipa": "/ˈmɪmɪk/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'He mimicked the teacher’s accent perfectly.'"
+  ]
+ },
+ {
+  "spelling": "mink",
+  "entry_type": "word",
+  "ipa": "/mɪn/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'minneapolis' 的 ipa 相同: /mɪn/"
+  ]
+ },
+ {
+  "spelling": "minneapolis",
+  "entry_type": "proper",
+  "ipa": "/mɪn/",
+  "signals": [
+   "S2",
+   "S3b"
+  ],
+  "reasons": [
+   "ipa 疑截断 '/mɪn/'（实质 3 / 字母 11 = 0.27）",
+   "与 'mink' 的 ipa 相同: /mɪn/"
+  ]
+ },
+ {
+  "spelling": "mixing bowl",
+  "entry_type": "phrase",
+  "ipa": "/mɪks/",
+  "signals": [
+   "S2",
+   "S4"
+  ],
+  "reasons": [
+   "ipa 疑截断 '/mɪks/'（实质 4 / 字母 10 = 0.40）",
+   "例句不含该词: 'Mix the flour and eggs together.'"
+  ]
+ },
+ {
+  "spelling": "mosk",
+  "entry_type": "word",
+  "ipa": "/mɒsk/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'mosque' 的 ipa 相同: /mɒsk/"
+  ]
+ },
+ {
+  "spelling": "mosque",
+  "entry_type": "word",
+  "ipa": "/mɒsk/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'mosk' 的 ipa 相同: /mɒsk/"
+  ]
+ },
+ {
+  "spelling": "mr.",
+  "entry_type": "abbreviation",
+  "ipa": "/ˈmɪstə/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'Mr. Smith will see you now.'"
+  ]
+ },
+ {
+  "spelling": "mrs.",
+  "entry_type": "abbreviation",
+  "ipa": "/ˈmɪsɪz/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'Mrs. Brown has just arrived.'"
+  ]
+ },
+ {
+  "spelling": "ms.",
+  "entry_type": "abbreviation",
+  "ipa": "/mɪz/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'Ms. Garcia is on the phone.'"
+  ]
+ },
+ {
+  "spelling": "neal",
+  "entry_type": "word",
+  "ipa": "/ˌen ˈiː/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'nebraska' 的 ipa 相同: /ˌen ˈiː/"
+  ]
+ },
+ {
+  "spelling": "nebraska",
+  "entry_type": "proper",
+  "ipa": "/ˌen ˈiː/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'neal' 的 ipa 相同: /ˌen ˈiː/"
+  ]
+ },
+ {
+  "spelling": "noel",
+  "entry_type": "word",
+  "ipa": "/nəʊˈel/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The choir sang “The First Nowell” at the service.'"
+  ]
+ },
+ {
+  "spelling": "nonsingular",
+  "entry_type": "word",
+  "ipa": "/ˌnɒnˈsɪŋɡjʊlə/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'ns' 的 ipa 相同: /ˌnɒnˈsɪŋɡjʊlə/"
+  ]
+ },
+ {
+  "spelling": "ns",
+  "entry_type": "abbreviation",
+  "ipa": "/ˌnɒnˈsɪŋɡjʊlə/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'nonsingular' 的 ipa 相同: /ˌnɒnˈsɪŋɡjʊlə/"
+  ]
+ },
+ {
+  "spelling": "outgrow",
+  "entry_type": "word",
+  "ipa": "/ˌaʊtˈɡrəʊ/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'He has outgrown his school uniform.'"
+  ]
+ },
+ {
+  "spelling": "outshine",
+  "entry_type": "word",
+  "ipa": "/ˌaʊtˈʃaɪn/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'Her performance outshone everyone else’s.'"
+  ]
+ },
+ {
+  "spelling": "overpay",
+  "entry_type": "word",
+  "ipa": "/ˌoʊvərˈpeɪ/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'I think I overpaid for this car.'"
+  ]
+ },
+ {
+  "spelling": "overtake",
+  "entry_type": "word",
+  "ipa": "/ˌəʊvəˈteɪk/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The red car overtook the lorry on the motorway.'"
+  ]
+ },
+ {
+  "spelling": "overthrow",
+  "entry_type": "word",
+  "ipa": "/ˌəʊvəˈθrəʊ/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The rebels overthrew the dictator.'"
+  ]
+ },
+ {
+  "spelling": "p.m.",
+  "entry_type": "abbreviation",
+  "ipa": "/piː ˈem/",
+  "signals": [
+   "S3b",
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The meeting is at 3 p.m.'",
+   "与 'pm' 的 ipa 相同: /piː ˈem/"
+  ]
+ },
+ {
+  "spelling": "packed",
+  "entry_type": "word",
+  "ipa": "/pækt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'pact' 的 ipa 相同: /pækt/"
+  ]
+ },
+ {
+  "spelling": "pact",
+  "entry_type": "word",
+  "ipa": "/pækt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'packed' 的 ipa 相同: /pækt/"
+  ]
+ },
+ {
+  "spelling": "pah",
+  "entry_type": "word",
+  "ipa": "/pɑː/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'pasha' 的 ipa 相同: /pɑː/"
+  ]
+ },
+ {
+  "spelling": "par",
+  "entry_type": "word",
+  "ipa": "/pɑː/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'pasha' 的 ipa 相同: /pɑː/"
+  ]
+ },
+ {
+  "spelling": "pasha",
+  "entry_type": "word",
+  "ipa": "/pɑː/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'pah' 的 ipa 相同: /pɑː/",
+   "与 'par' 的 ipa 相同: /pɑː/"
+  ]
+ },
+ {
+  "spelling": "past",
+  "entry_type": "word",
+  "ipa": "/pɑːst/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'I'"
+  ]
+ },
+ {
+  "spelling": "penniless",
+  "entry_type": "word",
+  "ipa": "/ˈ",
+  "signals": [
+   "S1"
+  ],
+  "reasons": [
+   "ipa 无完整 /…/ 段: '/ˈ'"
+  ]
+ },
+ {
+  "spelling": "petrify",
+  "entry_type": "word",
+  "ipa": "/ˈpetrɪfaɪ/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The wood had petrified over centuries.'"
+  ]
+ },
+ {
+  "spelling": "phil",
+  "entry_type": "word",
+  "ipa": "/fɪl/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'fill' 的 ipa 相同: /fɪl/"
+  ]
+ },
+ {
+  "spelling": "pm",
+  "entry_type": "abbreviation",
+  "ipa": "/piː ˈem/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'p.m.' 的 ipa 相同: /piː ˈem/"
+  ]
+ },
+ {
+  "spelling": "police officer",
+  "entry_type": "phrase",
+  "ipa": "/pəˈliːs ˌsteɪʃən/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'police station' 的 ipa 相同: /pəˈliːs ˌsteɪʃən/"
+  ]
+ },
+ {
+  "spelling": "police station",
+  "entry_type": "phrase",
+  "ipa": "/pəˈliːs ˌsteɪʃən/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'police officer' 的 ipa 相同: /pəˈliːs ˌsteɪʃən/"
+  ]
+ },
+ {
+  "spelling": "profit",
+  "entry_type": "word",
+  "ipa": "/ˈprɒfɪt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'prophet' 的 ipa 相同: /ˈprɒfɪt/"
+  ]
+ },
+ {
+  "spelling": "prophet",
+  "entry_type": "word",
+  "ipa": "/ˈprɒfɪt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'profit' 的 ipa 相同: /ˈprɒfɪt/"
+  ]
+ },
+ {
+  "spelling": "psyllium",
+  "entry_type": "word",
+  "ipa": "/ˈsɪliəm/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'cilium' 的 ipa 相同: /ˈsɪliəm/"
+  ]
+ },
+ {
+  "spelling": "queue",
+  "entry_type": "word",
+  "ipa": "/kjuː/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'cue' 的 ipa 相同: /kjuː/"
+  ]
+ },
+ {
+  "spelling": "ramify",
+  "entry_type": "word",
+  "ipa": "/ˈræmɪfaɪ/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The river ramifies into several smaller streams.'"
+  ]
+ },
+ {
+  "spelling": "ratify",
+  "entry_type": "word",
+  "ipa": "/ˈrætɪfaɪ/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The Senate ratified the treaty by a wide margin.'"
+  ]
+ },
+ {
+  "spelling": "reader",
+  "entry_type": "word",
+  "ipa": "/ˈriːdər/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The book has attracted a wide readership.'"
+  ]
+ },
+ {
+  "spelling": "redundancy",
+  "entry_type": "word",
+  "ipa": "/rɪˈdʌndənsi/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The company announced 200 redundancies last week.'"
+  ]
+ },
+ {
+  "spelling": "retell",
+  "entry_type": "word",
+  "ipa": "/riːˈtel/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'He retold the ancient legend with modern twists.'"
+  ]
+ },
+ {
+  "spelling": "reunify",
+  "entry_type": "word",
+  "ipa": "/riːˈjuːnɪfaɪ/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The two states were reunified after decades of separation.'"
+  ]
+ },
+ {
+  "spelling": "rewrite",
+  "entry_type": "word",
+  "ipa": "/ˌriːˈraɪt/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'She rewrote the first chapter to make it more engaging.'"
+  ]
+ },
+ {
+  "spelling": "rigged",
+  "entry_type": "word",
+  "ipa": "/rɪɡ/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'rigorous' 的 ipa 相同: /rɪɡ/"
+  ]
+ },
+ {
+  "spelling": "right",
+  "entry_type": "word",
+  "ipa": "/raɪt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'write' 的 ipa 相同: /raɪt/",
+   "与 'rite' 的 ipa 相同: /raɪt/"
+  ]
+ },
+ {
+  "spelling": "rigorous",
+  "entry_type": "word",
+  "ipa": "/rɪɡ/",
+  "signals": [
+   "S2",
+   "S3b"
+  ],
+  "reasons": [
+   "ipa 疑截断 '/rɪɡ/'（实质 3 / 字母 8 = 0.38）",
+   "与 'rigged' 的 ipa 相同: /rɪɡ/"
+  ]
+ },
+ {
+  "spelling": "rite",
+  "entry_type": "word",
+  "ipa": "/raɪt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'right' 的 ipa 相同: /raɪt/",
+   "与 'wright' 的 ipa 相同: /raɪt/"
+  ]
+ },
+ {
+  "spelling": "sanctify",
+  "entry_type": "word",
+  "ipa": "/ˈsæŋktɪfaɪ/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The priest sanctified the water before the ceremony.'"
+  ]
+ },
+ {
+  "spelling": "saw",
+  "entry_type": "word",
+  "ipa": "/sɔː/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'sore' 的 ipa 相同: /sɔː/"
+  ]
+ },
+ {
+  "spelling": "schoolchild",
+  "entry_type": "word",
+  "ipa": "/ˈskuːltʃaɪld/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The bus was full of schoolchildren.'"
+  ]
+ },
+ {
+  "spelling": "second person",
+  "entry_type": "phrase",
+  "ipa": "/ˈsɛkənd ˈpɜːrsən/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'secondary school' 的 ipa 相同: /ˈsɛkənd ˈpɜːrsən/"
+  ]
+ },
+ {
+  "spelling": "secondary school",
+  "entry_type": "phrase",
+  "ipa": "/ˈsɛkənd ˈpɜːrsən/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'second person' 的 ipa 相同: /ˈsɛkənd ˈpɜːrsən/"
+  ]
+ },
+ {
+  "spelling": "seventy",
+  "entry_type": "word",
+  "ipa": "/ˈsevnti/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'She celebrated her seventieth birthday.'"
+  ]
+ },
+ {
+  "spelling": "shrink",
+  "entry_type": "word",
+  "ipa": "/ʃrɪŋk/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The sweater shrank in the wash.'"
+  ]
+ },
+ {
+  "spelling": "sight",
+  "entry_type": "word",
+  "ipa": "/saɪt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'site' 的 ipa 相同: /saɪt/",
+   "与 'cite' 的 ipa 相同: /saɪt/"
+  ]
+ },
+ {
+  "spelling": "simulated",
+  "entry_type": "word",
+  "ipa": "/",
+  "signals": [
+   "S1"
+  ],
+  "reasons": [
+   "ipa 无完整 /…/ 段: '/'"
+  ]
+ },
+ {
+  "spelling": "sioux",
+  "entry_type": "proper",
+  "ipa": "/suː/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'sue' 的 ipa 相同: /suː/"
+  ]
+ },
+ {
+  "spelling": "site",
+  "entry_type": "word",
+  "ipa": "/saɪt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'sight' 的 ipa 相同: /saɪt/"
+  ]
+ },
+ {
+  "spelling": "sore",
+  "entry_type": "word",
+  "ipa": "/sɔː/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'saw' 的 ipa 相同: /sɔː/"
+  ]
+ },
+ {
+  "spelling": "steering wheel",
+  "entry_type": "phrase",
+  "ipa": "/stɪə/",
+  "signals": [
+   "S2",
+   "S4"
+  ],
+  "reasons": [
+   "ipa 疑截断 '/stɪə/'（实质 4 / 字母 13 = 0.31）",
+   "例句不含该词: 'She steered the car carefully around the icy bend.'"
+  ]
+ },
+ {
+  "spelling": "straight",
+  "entry_type": "word",
+  "ipa": "/streɪt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'strait' 的 ipa 相同: /streɪt/"
+  ]
+ },
+ {
+  "spelling": "strait",
+  "entry_type": "word",
+  "ipa": "/streɪt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'straight' 的 ipa 相同: /streɪt/"
+  ]
+ },
+ {
+  "spelling": "subsection",
+  "entry_type": "word",
+  "ipa": "/sʌb/",
+  "signals": [
+   "S2"
+  ],
+  "reasons": [
+   "ipa 疑截断 '/sʌb/'（实质 3 / 字母 10 = 0.30）"
+  ]
+ },
+ {
+  "spelling": "sue",
+  "entry_type": "word",
+  "ipa": "/suː/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'sioux' 的 ipa 相同: /suː/"
+  ]
+ },
+ {
+  "spelling": "suite",
+  "entry_type": "word",
+  "ipa": "/swiːt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'sweet' 的 ipa 相同: /swiːt/"
+  ]
+ },
+ {
+  "spelling": "sweet",
+  "entry_type": "word",
+  "ipa": "/swiːt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'suite' 的 ipa 相同: /swiːt/"
+  ]
+ },
+ {
+  "spelling": "swimming costume",
+  "entry_type": "phrase",
+  "ipa": "/ˈswɪmɪŋ puːl/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'swimming pool' 的 ipa 相同: /ˈswɪmɪŋ puːl/"
+  ]
+ },
+ {
+  "spelling": "swimming pool",
+  "entry_type": "phrase",
+  "ipa": "/ˈswɪmɪŋ puːl/",
+  "signals": [
+   "S3a"
+  ],
+  "reasons": [
+   "与短语 'swimming costume' 的 ipa 相同: /ˈswɪmɪŋ puːl/"
+  ]
+ },
+ {
+  "spelling": "t-shirt",
+  "entry_type": "word",
+  "ipa": "/ˈtiː ʃɜːt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'tee-shirt' 的 ipa 相同: /ˈtiː ʃɜːt/"
+  ]
+ },
+ {
+  "spelling": "talk",
+  "entry_type": "word",
+  "ipa": "/tɔːk/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'torque' 的 ipa 相同: /tɔːk/"
+  ]
+ },
+ {
+  "spelling": "teamwork",
+  "entry_type": "word",
+  "ipa": "/ˈtiːmwɜːk/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The project succeeded thanks to'"
+  ]
+ },
+ {
+  "spelling": "tee-shirt",
+  "entry_type": "word",
+  "ipa": "/ˈtiː ʃɜːt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 't-shirt' 的 ipa 相同: /ˈtiː ʃɜːt/"
+  ]
+ },
+ {
+  "spelling": "tethered",
+  "entry_type": "word",
+  "ipa": "/ˈ",
+  "signals": [
+   "S1"
+  ],
+  "reasons": [
+   "ipa 无完整 /…/ 段: '/ˈ'"
+  ]
+ },
+ {
+  "spelling": "therapy",
+  "entry_type": "word",
+  "ipa": "/ˈθɛrəpi/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'He is undergoing chemotherapy for cancer.'"
+  ]
+ },
+ {
+  "spelling": "through",
+  "entry_type": "word",
+  "ipa": "/θruː/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'thru' 的 ipa 相同: /θruː/"
+  ]
+ },
+ {
+  "spelling": "thru",
+  "entry_type": "word",
+  "ipa": "/θruː/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'through' 的 ipa 相同: /θruː/"
+  ]
+ },
+ {
+  "spelling": "torque",
+  "entry_type": "word",
+  "ipa": "/tɔːk/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'talk' 的 ipa 相同: /tɔːk/"
+  ]
+ },
+ {
+  "spelling": "transfuse",
+  "entry_type": "word",
+  "ipa": "/trænsˈfjuːz/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The patient needed a transfusion after the accident.'"
+  ]
+ },
+ {
+  "spelling": "turpentine",
+  "entry_type": "word",
+  "ipa": "/ˈtɜːrpəntaɪn/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The artist cleaned his brushes with turpent'"
+  ]
+ },
+ {
+  "spelling": "undergo",
+  "entry_type": "word",
+  "ipa": "/ˌʌndərˈɡoʊ/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'She underwent surgery last month.'"
+  ]
+ },
+ {
+  "spelling": "undo",
+  "entry_type": "word",
+  "ipa": "/ʌnˈduː/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'He undid his tie.'"
+  ]
+ },
+ {
+  "spelling": "unification",
+  "entry_type": "word",
+  "ipa": "/ˌ",
+  "signals": [
+   "S1"
+  ],
+  "reasons": [
+   "ipa 无完整 /…/ 段: '/ˌ'"
+  ]
+ },
+ {
+  "spelling": "vale",
+  "entry_type": "word",
+  "ipa": "/veɪl/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'veil' 的 ipa 相同: /veɪl/"
+  ]
+ },
+ {
+  "spelling": "veil",
+  "entry_type": "word",
+  "ipa": "/veɪl/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'vale' 的 ipa 相同: /veɪl/"
+  ]
+ },
+ {
+  "spelling": "vertebra",
+  "entry_type": "word",
+  "ipa": "/ˈvɜːrtɪbrə/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The human spine consists of 33 vertebrae.'"
+  ]
+ },
+ {
+  "spelling": "wail",
+  "entry_type": "word",
+  "ipa": "/weɪl/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'whale' 的 ipa 相同: /weɪl/"
+  ]
+ },
+ {
+  "spelling": "wait",
+  "entry_type": "word",
+  "ipa": "/weɪt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'weight' 的 ipa 相同: /weɪt/"
+  ]
+ },
+ {
+  "spelling": "wax",
+  "entry_type": "word",
+  "ipa": "/wæks/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The candle was made of beeswax.'"
+  ]
+ },
+ {
+  "spelling": "way",
+  "entry_type": "word",
+  "ipa": "/weɪ/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'weigh' 的 ipa 相同: /weɪ/"
+  ]
+ },
+ {
+  "spelling": "weigh",
+  "entry_type": "word",
+  "ipa": "/weɪ/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'way' 的 ipa 相同: /weɪ/"
+  ]
+ },
+ {
+  "spelling": "weight",
+  "entry_type": "word",
+  "ipa": "/weɪt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'wait' 的 ipa 相同: /weɪt/"
+  ]
+ },
+ {
+  "spelling": "whale",
+  "entry_type": "word",
+  "ipa": "/weɪl/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'wail' 的 ipa 相同: /weɪl/"
+  ]
+ },
+ {
+  "spelling": "white",
+  "entry_type": "word",
+  "ipa": "/aɪ/",
+  "signals": [
+   "S2",
+   "S3b"
+  ],
+  "reasons": [
+   "ipa 疑截断 '/aɪ/'（实质 2 / 字母 5 = 0.40）",
+   "与 'i' 的 ipa 相同: /aɪ/",
+   "与 'eye' 的 ipa 相同: /aɪ/"
+  ]
+ },
+ {
+  "spelling": "with",
+  "entry_type": "word",
+  "ipa": "/ɪt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'it' 的 ipa 相同: /ɪt/"
+  ]
+ },
+ {
+  "spelling": "withdraw",
+  "entry_type": "word",
+  "ipa": "/wɪðˈdrɔː/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'She withdrew £200 from her account.'"
+  ]
+ },
+ {
+  "spelling": "withhold",
+  "entry_type": "word",
+  "ipa": "/wɪðˈhoʊld/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'The company withheld his salary for two months.'"
+  ]
+ },
+ {
+  "spelling": "work out",
+  "entry_type": "phrase",
+  "ipa": "/wɜːrk aʊt/",
+  "signals": [
+   "S4"
+  ],
+  "reasons": [
+   "例句不含该词: 'She works out at the gym every morning.'"
+  ]
+ },
+ {
+  "spelling": "wright",
+  "entry_type": "word",
+  "ipa": "/raɪt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'write' 的 ipa 相同: /raɪt/",
+   "与 'rite' 的 ipa 相同: /raɪt/"
+  ]
+ },
+ {
+  "spelling": "write",
+  "entry_type": "word",
+  "ipa": "/raɪt/",
+  "signals": [
+   "S3b"
+  ],
+  "reasons": [
+   "与 'right' 的 ipa 相同: /raɪt/",
+   "与 'wright' 的 ipa 相同: /raɪt/"
+  ]
+ }
+]
