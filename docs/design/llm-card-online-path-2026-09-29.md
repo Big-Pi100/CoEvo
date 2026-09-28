@@ -742,3 +742,152 @@ v6 结果  →  现网释义（若库仍在）  →  缺失
 
 
 *本文为调查产出，**未改动任何代码/数据**。跑法：本报告的每条数字均可由 `grep`/`sqlite3` 在本机复现。*
+
+---
+
+## 十五、✅ 修卡片字段（2026-09-29 03:0x）—— 白哥三条指令的执行 + 一次**判据修正**
+
+> 白哥：「1、136 条写库；2、55 条疑似（同 ipa 但可能是真同音词）一起修；3、先修 17 条硬错、再评估其余」
+
+### 15.1 🔴 先说结论：**「136」经不起复核，实际写 68**
+
+动手前我把「该写哪些字段」逐条复核了一遍，发现**判据本身有两处系统性误差**，
+而且 `word_form` 表的作用被高估了。修正后：
+
+| | 原口径 | 复核后 |
+|---|---:|---:|
+| 建议写入 | 136 条 | **68 条卡 / 79 个字段** |
+| — `ipa` | 108 | **60** |
+| — `context`（例句） | 64（含硬证据） | **18** |
+| — `definition`（释义） | 不写（开放式） | **1**（唯一整卡污染） |
+
+> 🔑 **56 条的差不是「少做」，是「原先判错了」** —— 它们的现状**本来就是对的**。
+
+### 15.2 复核发现的三处问题（都带证据）
+
+**① `word_form` 表只收「规则变形」 —— 拿它判「例句是否含该词」会大面积误报**
+
+| base | 表里有的 | **表里没有的**（实测） |
+|---|---|---|
+| `bury` | burial / buries / burying | 🔴 **buried** |
+| `leaf` | leafed / leafing / leafs | 🔴 **leaves** |
+| `shrink` | shrinked / shrinking / shrinks | 🔴 **shrank** |
+
+→ 「64 条例句不含该词」里，**55 条其实是合法的**（`buried`(bury) · `leaves`(leaf) ·
+`shrank`(shrink) · `leapt`(leap) · `freshmen` · `grandchildren` · `civilisation` ·
+`crystallized` · `outgrew` · `underwent` · `withdrew` · `handloom`(loom) ·
+`watchmaker`(maker) · `chemotherapy`(therapy) …）。
+最刺眼的一条：`dissatisfy` 现状与 v6 给的是**同一句** —— 原判据说它「不含该词」。
+
+**② `definition` 是开放式字段 —— 「与 v6 不同」绝大多数是措辞差异，不是错**
+
+实测 `bulletin`：
+- 现状 `A short official notice or report giving news or information to many people.`
+- v6 　`a short official notice or news report`
+→ **现状更详细**。按「不同就写」会**净损失信息**（原口径有 92 条属此类）。
+
+**③ v6 也会错 —— 不能无脑照抄**
+
+`ms.`（Ms.，女士）现状 `/mɪz/` **是对的**，v6 给了 `/ˌem ˈes/`（那是 **M.S.** 理学硕士）。
+→ 已进 `IPA_V6_WRONG` 例外表。同类的还有 `lied`（现状 `(noun) /liːd/; (verb) /laɪd/`
+比 v6 的 `'/liːd/'` **更全**）。
+
+### 15.3 修正后的写库判据（已固化在 `gen_card_field_fixes.py`）
+
+| 字段 | 性质 | 允许覆盖的前提 |
+|---|---|---|
+| `ipa` | **封闭** | ① 格式硬证据（残缺 / 未覆盖全词组 / 疑截断 S2）② **归一化后读法确实不同**（截断 / 是别的词的音标） |
+| `context` | 开放式 | 例句**不含该词**（自造变形 + 不规则/变体补充 + 复合词判定） |
+| `definition` | 开放式 | **仅**：现状为空，或已证实**整卡污染** |
+
+🔑 **`ipa` 为什么要「归一化后比读法」**：`/ˈmeɪkər/` vs `/ˈmeɪkə/ (UK) or /ˈmeɪkər/ (US)`
+只是**标注差异**；34 条「现状完整、无撞车」的差异里绝大多数属此类，写了纯属churn。
+
+### 15.4 整卡污染：只有 1 条，但它最严重
+
+| 词 | 内容来自 | 现状 ipa | 现状例句 |
+|---|---|---|---|
+| `a` | **`happy`** | `/ˈhæpi/` | `I am happy to see you.` |
+
+🔑 **怎么机械判出来**的：**例句不含本词，却含它的撞车对端词**。
+（`a` 的 ipa 撞上 `happy` → 查它的例句含 `happy` 而不含 `a` → 内容来自 happy）
+→ `a` 的 ipa / 释义 / 例句**三段一起换**（否则会留下别人的释义）。
+
+### 15.5 三批执行与验证
+
+| 批次 | 内容 | 结果 |
+|---|---|---|
+| 第 1 批 | **26 条 ipa 硬错**（残缺 7 + 未覆盖 10 + 疑截断 9） | ✅ 写库 + 读回断言通过 |
+| 第 2 批 | **68 条**（含上批，幂等） | ✅ 写库 + 读回断言通过 |
+| 收尾 | **刷新受影响聚合页 1 张**（页 733 的 `a` 释义） | ✅ 刷新 + `read_back` 通过 |
+
+**复跑验证（全部可复现）**：
+
+| 校验 | 修复前 | 修复后 |
+|---|---|---|
+| `verify_card_field_consistency` S1 / S2 | 7 / 18 | **0 / 0** |
+| 同上 S3a（短语撞车） | 42 | **0** |
+| 同上命中合计 | 175（1.5%） | **111（1.0%）** |
+| `verify_card_structure` | 13/13 | **13/13** |
+| `verify_aggregate_page_parity` | 12/12 | **12/12**（1777/1777 可读） |
+| `PRAGMA integrity_check` / 卡数 | ok / 11,523 | **ok / 11,523**（未增未减） |
+
+🔑 **`S3a → 0` 是关键证据**：它说明「撞车」的对端词（`white` `with` `meet` `diffusion`
+`police officer` `swimming costume` …）**正是被修的那一方**，修完撞车自然消失。
+
+### 15.6 ✅ 55 条 S3b 的结论：**不需要改**（白哥问的就是这个）
+
+55 条 = 信号 `S3b`、且**不在**建议修并集里的那些。逐条看下来：
+
+| 类型 | 例 | 处理 |
+|---|---|---|
+| **真同音词**（两边都対） | `right`/`write`/`rite`/`wright` · `check`/`cheque` · `gene`/`jean` · `sail`/`sale` · `wait`/`weight` | **不改**（v6 给的 ipa 与现状**完全一致**） |
+| **假撞车**（对端词是坏的） | `i`/`eye` ←`white` · `it` ←`with` · `mi` ←`meet` · `die`/`dye` ←`diffusion` · `heel` ←`health care` · `pah` ←`pasha` | **随第 2 批自动解决**（坏的是对端，已在写入清单里） |
+
+📌 所以「55 条一起修」的执行结果是：**该修的对端已修完；它们本身一个字都不用动**。
+证据：复跑后 S3a = 0，剩余同-ipa 组（266 组）全是**真同音词 / 英美拼写对 / 缩写对**
+（`organise`-`organize` · `mr`-`mr.` · `police`-…见下）。
+
+### 15.7 🔴🔴 新发现：信号有一处**结构性盲区** —— 「基词拿到了自己词组的音标」
+
+复核时发现 **20 对**这一类，**全部没进 196 候选**：
+
+| 基词 | 拿到的 ipa 其实是 | | 基词 | 拿到的 ipa 其实是 |
+|---|---|---|---|---|
+| `police` | `police station` 的 | | `stock` | `stock market` 的 |
+| `bus` | `bus stop` 的 | | `swimming` | `swimming pool` 的 |
+| `credit` | `credit card` 的 | | `chat` | `chat show` 的 |
+| `primary` | `primary school` 的 | | `web` | `web page` 的 |
+| `exchange` | `exchange rate` 的 | | `text` | `text message` 的 |
+| `identity` | `identity card` 的 | | `traffic` | `traffic light` 的 |
+| `definite` | `definite article` 的 | | `navy` | `navy blue` 的 |
+| `modal` | `modal verb` 的 | | `prime` | `prime minister` 的 |
+| `rush` | `rush hour` 的 | | `vice` | `vice president` 的 |
+| `owing` | `owing to` 的 | | `virtual` | `virtual reality` 的 |
+
+**为什么漏了**：`S3a/S3b` 有一道「字形相似就放过」的守卫（为 `en`/`ellen` 加的），
+而「基词 ⊂ 词组」正好整类踩在守卫上。**这是盲区，不是信号错。**
+同类盲区另有约 6 条（`bullet` `tape` `logo` `tart` `tropical` `consideration` …）。
+
+> 🔑 **反直觉之处**：这一类的**危害比 S3a 更大** —— 它把**词组的长音标**挂在**基词**上，
+> 用户查 `police` 会看到 `/pəˈliːs ˌsteɪʃən/`。**且当前信号完全看不见它。**
+
+### 15.8 交付
+
+| 文件 | 说明 |
+|---|---|
+| 🆕 `scripts/apply_card_field_fixes.py` | 写库脚本：`--tier/--fields/--only` · **默认 dry-run** · 自动备份 · 事务 · **读回断言** · 断言「非目标字段逐字节未变」 |
+| 🆕 `scripts/refresh_aggregate_pages.py` | 刷新受影响聚合页的 `items[].gloss`；断言「差异只在 gloss」 |
+| 📝 `scripts/gen_card_field_fixes.py` | 判据修正：自造变形 + 不规则/变体补充 + 复合词判定 · `ipa_core` 归一化 · `write_fields` · `IPA_V6_WRONG` · 整卡污染识别 |
+| 📝 `data/reports/card_field_fixes-2026-09-29.md` | 重出（§四 变「建议写入 68 条」+ 新增判据误差与污染章节） |
+| 📝 `data/word.db` | 68 条卡 · 79 个字段 · 1 张聚合页（体积**未变**，33,083,392 B） |
+| 备份 | `data/backups/word.db.bak-cardfix-20260929-024818`（第 1 批）· `…-024832`（第 2 批） |
+
+### 15.9 下一批（建议，未做）
+
+| # | 事项 | 量 |
+|---|---|---|
+| 1 | **「基词拿到词组音标」盲区扫描**（§15.7）—— 需新信号：*ipa 与该词的某个词组条目完全相同* | 20 + ~6 |
+| 2 | `S4` 剩余 55 条：逐条看是否还有真错（判据已升级，需要人眼/LLM 复核一次） | 55 |
+| 3 | 把 `word_form` 表补齐不规则变形（**它同时影响端侧划词查词**） | 待估 |
+| 4 | 剩余的 `pos` 差异（近似封闭，需人眼定谁错） | 待估 |
