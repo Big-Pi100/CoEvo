@@ -451,38 +451,53 @@ class WordCardView extends StatelessWidget {
       case 'collocation':
         final items = s.collocations;
         if (items.isEmpty) return const SizedBox.shrink();
+        // 🔴 **词组与中文各占一行**（2026-09-28 20:5x 白哥定：
+        //    「搭配整记的搭配词组应该**保证显示在一行**，可以**中文一行、搭配词组一行**
+        //      这样，现在的排列方式**把词组分成了两行**」）。
+        //
+        // # 为什么原来会把词组折行
+        // 原实现是 `Row` + 两个 `Flexible`（词组 ｜ 中文**同行**）——
+        // 🔑 `Flexible` 的默认 `fit: loose` 允许子项**被压窄**，
+        //    而 `Text` 被压窄时**软换行**（不自量力地硬塞）：
+        //    实测 `a cocky attitude` + `自大的态度` 挤在一行放不下 →
+        //    **词组自己折成 `a cocky` / `attitude`**，中文再跟在后面。
+        //
+        // 改成分行后，词组独占整行宽（卡片内容宽 ≈ 300pt）——
+        //   实测 31,334 条搭配：词组 p99 = 29 字符（≈ 220pt）→ **99.7% 一行放得下**；
+        //   ⚠️ 仍有 103 条（0.3%）> 32 字符（最长 44，如
+        //   `Fountain of the Four Rivers in Piazza Navona`）会自然折行 ——
+        //   这是**有意保留**的：截断（`ellipsis`）会让用户看不到完整搭配，比折行更糟。
+        //
+        // 🔑 为什么中文放**下面**而不是上面：词组是「要记的东西」（答案），
+        //    中文是它的解释（线索）；与卡片其余部分一致 —— **答案在前、解释在后**。
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             for (var i = 0; i < items.length; i++) ...[
-              if (i > 0) const SizedBox(height: 7),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Flexible(
-                    child: Text(
-                      items[i].phrase,
-                      style: TextStyle(
-                        fontFamily: CoFonts.latinSerif,
-                        fontSize: t.type.mnemMain,
-                        color: Color(t.ink.argb32),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      items[i].zh,
-                      style: TextStyle(
-                        fontFamily: CoFonts.uiSans,
-                        fontSize: t.type.mnemNote,
-                        color: Color(t.ink2.argb32),
-                      ),
-                    ),
-                  ),
-                ],
+              // 条与条之间 10px（原为 7）—— 🔑 每条从 1 行变 2 行后，
+              // 「词组 ↔ 中文」（2px）与「条 ↔ 条」（10px）必须**拉开差距**，
+              // 否则读者分不清「哪两行是同一条搭配」。
+              if (i > 0) const SizedBox(height: 10),
+              Text(
+                items[i].phrase,
+                style: TextStyle(
+                  fontFamily: CoFonts.latinSerif,
+                  fontSize: t.type.mnemMain,
+                  color: Color(t.ink.argb32),
+                ),
               ),
+              // zh 实测 31,334 条**全非空**（0%）→ 这个守卫只为防未来数据回潮
+              if ((items[i].zh ?? '').trim().isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  items[i].zh,
+                  style: TextStyle(
+                    fontFamily: CoFonts.uiSans,
+                    fontSize: t.type.mnemNote,
+                    color: Color(t.ink2.argb32),
+                  ),
+                ),
+              ],
             ],
           ],
         );

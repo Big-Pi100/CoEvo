@@ -1835,6 +1835,38 @@ void _s17ReviewList() {
   check('词卡有释义段与语境段',
       cardW.contains("label: '释义'") && cardW.contains("label: '语境原句'"));
 
+  // ⑤-a 🔴 **搭配段：词组与中文分行**（2026-09-28 20:5x 白哥定）
+  //     「搭配整记的搭配词组应该**保证显示在一行**，可以**中文一行、搭配词组一行**
+  //       这样，现在的排列方式**把词组分成了两行**」。
+  //
+  //     🔑 根因是**布局容器**不是文案：原用 `Row` + 两个 `Flexible`（词组 ｜ 中文同行），
+  //        而 `Flexible` 默认 `fit: loose` 允许子项被压窄 → `Text` 被压窄时**软换行**
+  //        → 词组自己折成两行。
+  //     🔑 这类「**同一份数据，换个容器就散**」的问题，编译器和 analyzer 都看不见 ——
+  //        只能靠断言锁住「树形结构」。
+  {
+    // 切出 collocation 分支（`case 'collocation':` → 下一个 `default:`）
+    // ⚠️ 不能对 `_sectionBody` 全体断言 `!contains('Row(')` ——
+    //    root 分支（`_morphPart`）与 ④ 语境也各有一个 `Row`，那样会误红。
+    final body = _braceBody(cardW, '_sectionBody');
+    final ci0 = body.indexOf("case 'collocation':");
+    final ci1 = body.indexOf('default:', ci0);
+    final collBody =
+        (ci0 >= 0 && ci1 > ci0) ? body.substring(ci0, ci1) : '';
+    // 🔑 先断言切片非空 —— 否则下面的**反向断言会因空串假绿**
+    check('🔴 搭配段断言切片非空（collocation 分支）', collBody.isNotEmpty);
+
+    check('🔴 搭配的**词组与中文分行**（不用同行 `Row` —— 同行时词组会被挤到折行）',
+        !collBody.contains('Row('),
+        'Row 在不在: ${collBody.contains('Row(')}');
+    check('🔴 搭配不再用 `Flexible` 压窄词组（那是折行的直接原因）',
+        !collBody.contains('Flexible('));
+    // 🔑 两档间距必须**拉开差距**：词组↔中文 2px ／ 条↔条 10px。
+    //    否则每条从 1 行变 2 行后，读者分不清「哪两行是同一条搭配」。
+    check('🔴 词组↔中文 2px、条↔条 10px（两档须有差距）',
+        collBody.contains('height: 2') && collBody.contains('height: 10'));
+  }
+
   // ⑤-b 🔴 **建立层级的三件套**（2026-09-28 排版整理 · 白哥「排版有点乱」）
   //
   // 🔴 为什么这一组必须存在（本轮教训）：

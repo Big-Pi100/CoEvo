@@ -108,6 +108,17 @@ code{font-family:var(--mono);font-size:12.5px;background:var(--sunken);padding:1
 .mnem-tag .dot{width:6px;height:6px;border-radius:50%;background:var(--accent)}
 .pill{font-size:10.5px;color:var(--ink3);border:1px solid var(--line);padding:1px 7px;border-radius:99px}
 .mnem-head .open{margin-left:auto;font-size:11px;color:var(--accent);display:flex;align-items:center;gap:2px}
+/* 🔴 搭配段（collocation / 「搭配整记」）的**每一对**：词组一行、中文一行 ——
+   🔄 2026-09-28 20:5x 白哥定：「搭配整记的搭配词组应该**保证显示在一行**，
+      可以**中文一行、搭配词组一行**这样，现在的排列方式**把词组分成了两行**」。
+   🔑 根因是**布局容器**而非文案：词组与中文**同行**时（`Row` + `Flexible`），
+      宽度不足 → `Flexible` 允许子项被压窄 → `Text` **软换行** → 词组自己折成两行。
+      → 改**分行**（`<br>` / Flutter `Column`）：词组独占整行宽（≈300pt），
+        实测 31,334 条搭配中 p99 = 29 字符 → **99.7% 一行放得下**。
+   ⚠️ 仍有 0.3%（103 条，> 32 字符，最长 44）会自然折行 —— **有意保留**：
+      截断会让用户看不到完整搭配，比折行更糟。
+   🔑 两档间距须拉开：**词组 ↔ 中文 2px** ／ **条 ↔ 条 10px** ——
+      否则每条占两行后，读者分不清「哪两行是同一条搭配」。 */
 .mnem-main{font-family:var(--serif);font-size:15.5px;line-height:1.6}
 .mnem-main .aff{color:var(--accent)}
 .mnem-main .gl{color:var(--ink3);font-size:13.5px}

@@ -211,7 +211,7 @@
               <span class="mnem-tag">搭配整记</span>
               <span class="mnem-entry">2 条搭配</span>
             </div>
-            <div class="mnem-main">a cocky attitude <span class="gl">自大的态度</span></div>
+            <div class="mnem-main">a cocky attitude<br><span class="gl">自大的态度</span></div>
           </div>
           <div class="mnem">
             <div class="mnem-head">
@@ -570,7 +570,7 @@
   </div>
 
   <!-- ═════════════════════════════════════════════════ -->
-  <h2>五、20:1x–20:2x 四条修正（看过真机后提的） <span class="mk g">已实施</span></h2>
+  <h2>五、20:1x–20:5x 五条修正（看过真机后提的） <span class="mk g">已实施</span></h2>
 
   <table>
     <tr><th>#</th><th>白哥原话</th><th>改动</th></tr>
@@ -595,6 +595,20 @@
       <td>「右上角有个小的单词这个用来干什么的，<b>应该取消吧</b>」</td>
       <td>取消<b>顶栏族名</b> —— 锚点 <code>.pbar</code> 里本来有它，
         但它与页头 <code>.agg-src</code> 的 <code>cept</code> 大字 + meta <b>重复显示同一信息</b></td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>「搭配整记的搭配词组应该<b>保证显示在一行</b>，可以<b>中文一行、搭配词组一行</b>这样，
+        现在的排列方式<b>把词组分成了两行</b>」<br>
+        <span class="muted">（词卡 —— 不属聚合页，但同批改）</span></td>
+      <td>搭配段：<code>Row</code>（词组 ｜ 中文<b>同行</b>）→ <b><code>Column</code></b>（词组一行、中文一行）<br>
+        🔑 根因是<b>布局容器</b>不是文案：<code>Flexible</code> 默认 <code>fit: loose</code>
+        允许子项被压窄，而 <code>Text</code> 被压窄时会<b>软换行</b> → 词组自己折成两行。<br>
+        · 词组不再被 <code>Flexible</code> 包 → 独占整行宽（≈300pt）<br>
+        · 词组 ↔ 中文 <b>2px</b>；条 ↔ 条 7 → <b>10px</b>
+        （每条从 1 行变 2 行 → 两档必须拉开差距，否则分不清「哪两行是一条」）<br>
+        <span class="muted">📊 实测 31,334 条搭配：词组 p99 = 29 字符 → <b>99.7% 一行放得下</b>；
+        余 0.3%（103 条 &gt; 32 字符，最长 44）仍会折行 —— <b>有意保留</b>（截断会看不到完整搭配，更糟）</span></td>
     </tr>
     <tr>
       <td>3</td>
