@@ -7,27 +7,38 @@
 /// 根因：原先翻卡是 `review_screen` 里用 `bool _inCard` 切换的**页内状态** →
 /// 它继承了「复习 tab 那一屏」的全部布局约束，其中包含
 /// `_ShellScaffold` 的 `extendBody: true` + 底部 tabbar（约 100px）。
-/// 而四键**固定在页面最底部、不参与滚动** → 被 tabbar 盖住且拉不出来。
+/// 而底部操作区**固定在页面最底部、不参与滚动** → 被盖住且拉不出来。
 ///
 /// 🔴 更根本的是：**设计稿的翻卡根本没有 tabbar** ——
 /// `visual-word-card-target` 的 `.phone` 容器里只有 `pbar` + `pbody` + `card`
 /// （`tabbar` / `nav` / `bottom` **0 命中**）→ 翻卡是**全屏沉浸态**。
 ///
 /// 🔑 所以修法是结构性的：**提升为顶层路由** → 天然全屏。
-///    这与项目既有模式一致（`app.dart` 的阅读器 `/article/:id` 同理：
-///    「覆盖全屏的沉浸态 → 顶层路由」）。
+///    与项目既有模式一致（`app.dart` 的阅读器 `/article/:id` 同理）。
 ///
 /// ## 🔑 教训：**「页内状态」会静默继承所在页面的布局约束**
 /// 用它表示「另一个界面」时，那些约束（这里是 tabbar）会跟着来，而**编译器不报错**。
 /// 判断依据就是项目已定的那条：**它是不是 tab 的内容**
 /// （是 → 页内状态；否 → 顶层路由）。
 ///
-/// # 四键位置：**固定在页面底部**（不随内容滚动）
-/// 这是设计意图，不是实现偶然：
-/// · 设计稿：「四个按钮各标出『下次什么时候再见』」→ 它们是**决策动作**，
-///   必须**始终可达**；
-/// · 若跟着内容滚，用户滚到词源链中段时四键就跑出视野 → **没法评分**。
-/// → 内容区（①~④）自己滚，四键固定。
+/// # 🔴 考核取代了自评（白哥 2026-09-28）
+/// 白哥原话：「这四个按钮没有用，还是要用**考试**（**单纯的拼写考核**即可）」
+///
+/// 于是评分不再由用户点四档给出，而是由**拼写判定器**给出：
+/// 拼对 → `good`｜拼错 → `again`（见 `spelling_grader.dart`）。
+/// 🔑 FSRS 本身不变（官方 `fsrs 2.0.1`，FSRS-6）——
+///    变的是**喂给它的信号**：从「主观自评」变成「客观答题结果」。
+///
+/// # 三种阶段（**全部从状态推出，没有额外 setState 同步**）
+/// | 阶段 | 条件 | 显示 |
+/// |---|---|---|
+/// | **考核** | 词**已到期** 且 未作答 | 只有释义 + 音标（**不给单词、不给记忆法、不给语境句**）+ 输入框 |
+/// | **结果** | 已作答 | 对/错 + 你写的 vs 正确 + 下次复习时间 + **完整四段卡**（学一下） |
+/// | **浏览** | 词**未到期** | 完整四段卡（不考核、**不写 FSRS** —— 白哥定「未到期的不考」） |
+///
+/// 🔑 阶段不存成字段，而是**由 `(isDue, answered)` 两个已有状态推出** ——
+///    存字段就要在换卡时手动重置，而「忘了重置」会让下一张直接显示上一张的结果
+///    （看起来「像是有内容」→ 不易察觉）。
 library;
 
 import 'package:flutter/material.dart';
@@ -39,7 +50,9 @@ import '../providers/review_session_provider.dart';
 import '../providers/user_db_provider.dart';
 import '../services/fsrs_service.dart';
 import '../services/review_list_query.dart';
+import '../services/spelling_grader.dart';
 import '../services/tts_service.dart';
+import '../theme/clay.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
 import '../widgets/word_card.dart';
@@ -53,13 +66,15 @@ class ReviewSessionScreen extends ConsumerStatefulWidget {
 }
 
 class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
-  /// 正在提交 → 四键禁用（防连点造成重复写库 / 重复计数）
-  bool _submitting = false;
-
+  final _input = TextEditingController();
   final _scroll = ScrollController();
+
+  /// 提交/写库进行中 → 禁用输入与按钮（防连点造成重复写库 + 重复计数）
+  bool _busy = false;
 
   @override
   void dispose() {
+    _input.dispose();
     _scroll.dispose();
     // 🔴 退出翻卡时**刷新列表** —— 本次会话可能已改了若干词的到期时间，
     //    不刷新的话返回列表看到的还是旧顺序（用户会以为「评了没用」）。
@@ -75,17 +90,20 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
     super.dispose();
   }
 
-  /// 提交一次评级：算新状态 → **写两张表** → 自动下一张。
-  Future<void> _submit(ReviewRating rating) async {
-    if (_submitting) return;
-    final row = ref.read(reviewSessionProvider).current;
-    if (row == null) return;
+  /// 提交一次作答：判定 → 算新状态 → **写两张表** → 进结果态。
+  ///
+  /// 🔴 只在**考核态**调用（未到期的词走浏览态，不写 FSRS —— 白哥定）。
+  Future<void> _submit(ReviewRow row) async {
+    if (_busy) return;
 
-    setState(() => _submitting = true);
+    final typed = _input.text;
+    final correct = gradeSpelling(typed, row.item.spelling);
+    final rating = ratingForSpelling(correct: correct);
+
+    setState(() => _busy = true);
     try {
       final svc = ref.read(fsrsServiceProvider);
       final now = svc.nowUtc();
-      // `review()` = apply + 产出同步事件（与四键预览**同一套确定性抖动**）
       final r = svc.review(rating, row.item.toReviewState(), now);
 
       final db = await ref.read(userDbProvider.future);
@@ -108,71 +126,227 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
         nextReviewAt: r.state.nextReviewAt,
       );
       await q.logReview(r.event);
+
+      if (!mounted) return;
+      ref.read(reviewSessionProvider.notifier).markAnswered(
+            correct: correct,
+            submitted: typed,
+            nextReviewAt: r.state.nextReviewAt,
+          );
+      // 回顶部 —— 结果态的内容从「对/错」开始看
+      if (_scroll.hasClients) _scroll.jumpTo(0);
     } catch (e, st) {
       // 🔴 失败**不静默、不前进** —— 用户再点一次就是重试
-      debugPrint('[review_session] 提交评级失败：$e\n$st');
+      debugPrint('[review_session] 提交失败：$e\n$st');
       if (mounted) {
-        setState(() => _submitting = false);
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(const SnackBar(
-            content: Text('这一张没记上，再点一次试试。'),
+            content: Text('这次没记上，再点一次试试。'),
             duration: Duration(seconds: 2),
           ));
       }
-      return;
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
+  }
 
-    if (!mounted) return;
-
-    // 自动下一张；已到队尾 → 退出（`dispose` 会刷新列表）
+  /// 下一张；已到队尾 → 退出（`dispose` 会刷新列表）。
+  void _next() {
+    _input.clear();
     final hasNext = ref.read(reviewSessionProvider.notifier).next();
     if (hasNext) {
-      setState(() => _submitting = false);
-      // 新卡从顶部开始看（否则会停在上一张滚到的位置）
       if (_scroll.hasClients) _scroll.jumpTo(0);
     } else {
-      setState(() => _submitting = false);
       context.pop();
     }
+  }
+
+  /// 朗读单词 —— **词卡朗读属免费层能力**（MEMORY 变现段）。
+  ///
+  /// 🔴 **只在判定之后可用**（考核态不显示喇叭：它会念出答案）。
+  void _speak(String word) {
+    if (!ref.read(ttsEnabledProvider)) return;
+    ref.read(ttsServiceProvider).speak(word).catchError((Object e) {
+      debugPrint('[review_session] 朗读失败 "$word"：$e');
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final t = CoEvoTokensExt.of(context);
-    final session = ref.watch(reviewSessionProvider);
+    final s = ref.watch(reviewSessionProvider);
     final bundle = ref.watch(cardBundleProvider);
+    final row = s.current;
+
+    // 队列空（正常流程不会出现 —— `_openSession` 已挡掉越界）
+    if (row == null) {
+      return Scaffold(
+        backgroundColor: Color(t.page.argb32),
+        body: const SafeArea(child: _CardUnavailable()),
+      );
+    }
+
+    final isDue = row.item.isDue(DateTime.now());
 
     return Scaffold(
       backgroundColor: Color(t.page.argb32),
+      // 🔑 键盘弹出时自动避让 —— 否则输入框会被键盘盖住（考核态直接失效）
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
         // 🔑 全屏路由 → **要**避让底部系统安全区（home indicator）。
         //    ⚠️ 页内状态那版写的是 `bottom: false`（因为 tabbar 会挡），
-        //    现在没有 tabbar 了 → 必须避让，否则四键压在 home indicator 上。
+        //    现在没有 tabbar 了 → 必须避让。
         child: Column(
           children: [
-            _topBar(t, session),
+            _topBar(t, s),
             Expanded(
               child: bundle.when(
                 loading: () => const _CardLoading(),
-                // provider 内部已 catch 并返回 null → 这里不会收到 error
                 error: (e, st) => const _CardUnavailable(),
                 data: (b) => b == null
                     ? const _CardUnavailable()
-                    : WordCardView(
-                        card: b.card,
-                        profile: b.profile,
-                        previews: b.previews,
-                        mnemonicNames: b.names,
-                        ratingEnabled: !_submitting,
-                        onRate: _submit,
-                        onSpeak: () => _speak(b.card.spelling),
-                        scrollController: _scroll,
-                      ),
+                    : _body(t, s, b, row, isDue: isDue),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _body(
+    CoEvoTokens t,
+    ReviewSessionState s,
+    CardBundle b,
+    ReviewRow row, {
+    required bool isDue,
+  }) {
+    // ── 结果态（已作答）──
+    if (s.answered) {
+      return Column(
+        children: [
+          _ResultBanner(
+            t: t,
+            correct: s.correct ?? false,
+            submitted: s.submitted,
+            expected: row.item.spelling,
+            nextReviewAt: s.nextReviewAt,
+          ),
+          Expanded(
+            child: WordCardView(
+              card: b.card,
+              profile: b.profile,
+              mnemonicNames: b.names,
+              scrollController: _scroll,
+              // 判定后**可以**听发音了（已经答完，不构成泄露）
+              onSpeak: () => _speak(b.card.spelling),
+              footer: _NextBar(label: '下一个', onTap: _next),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // ── 浏览态（词未到期 → 只看不考，不写 FSRS）──
+    if (!isDue) {
+      return WordCardView(
+        card: b.card,
+        profile: b.profile,
+        mnemonicNames: b.names,
+        scrollController: _scroll,
+        onSpeak: () => _speak(b.card.spelling),
+        footer: _NextBar(
+          label: '下一个',
+          hint: '还没到期 · ${_dueLabel(row.item.nextReviewAt, DateTime.now())}',
+          onTap: _next,
+        ),
+      );
+    }
+
+    // ── 考核态（已到期 且 未作答）──
+    return Column(
+      children: [
+        Expanded(
+          child: WordPromptView(card: b.card, scrollController: _scroll),
+        ),
+        _answerBar(t, row),
+      ],
+    );
+  }
+
+  /// 作答区（固定在底部；键盘弹出时随 `resizeToAvoidBottomInset` 上移）。
+  Widget _answerBar(CoEvoTokens t, ReviewRow row) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(22, 8, 22, 14),
+      child: Row(
+        children: [
+          Expanded(
+            child: Clay(
+              state: ClayState.pressed,
+              fill: t.sunken,
+              borderRadius: BorderRadius.circular(13),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              child: TextField(
+                controller: _input,
+                autofocus: true,
+                enabled: !_busy,
+                // 🔴 三个「防作弊」开关 —— 都必须在**关闭**状态：
+                //    · `autocorrect`       自动纠错 → 会把拼错的**改成对的**（考核失效）
+                //    · `enableSuggestions` 联想条 → 会**提示正确拼写**（等于给答案）
+                //    · `textCapitalization` 首字母自动大写 → 干扰输入
+                //      （本判定大小写不敏感，所以不构成误判，但仍不该替用户改输入）
+                autocorrect: false,
+                enableSuggestions: false,
+                textCapitalization: TextCapitalization.none,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _submit(row),
+                style: TextStyle(
+                  fontFamily: CoFonts.latinSerif,
+                  fontSize: 18,
+                  color: Color(t.ink.argb32),
+                ),
+                decoration: InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                  hintText: '拼出这个单词',
+                  hintStyle: TextStyle(
+                    fontFamily: CoFonts.uiSans,
+                    fontSize: 14,
+                    color: Color(t.ink3.argb32),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Clay(
+            state: ClayState.selected,
+            borderRadius: BorderRadius.circular(13),
+            onTap: _busy ? null : () => _submit(row),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+            child: _busy
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      // 🔑 走 token（`accentInk` = 强调色上的前景色）——
+                      //    不写 `Colors.white`：本项目页面层**零硬编码色**
+                      color: Color(t.accentInk.argb32),
+                    ),
+                  )
+                : Text(
+                    '确认',
+                    style: TextStyle(
+                      fontFamily: CoFonts.uiSans,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Color(t.accentInk.argb32),
+                    ),
+                  ),
+          ),
+        ],
       ),
     );
   }
@@ -219,15 +393,177 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
     );
   }
 
-  /// 朗读单词 —— **词卡朗读属免费层能力**（见 MEMORY 变现段：
-  /// 「免费层：生词本 200 词 + **词卡朗读** + 电子书导入」）→ 这里不做订阅判断。
-  ///
-  /// ⚠️ 失败只记日志：朗读失败不该打断复习。
-  void _speak(String word) {
-    if (!ref.read(ttsEnabledProvider)) return;
-    ref.read(ttsServiceProvider).speak(word).catchError((Object e) {
-      debugPrint('[review_session] 朗读失败 "$word"：$e');
-    });
+  /// 到期文案（与复习列表同一套说法）。
+  static String _dueLabel(DateTime nextAt, DateTime now) {
+    final d = nextAt.difference(now.toUtc());
+    if (d.inMinutes <= 0) return '现在';
+    if (d.inMinutes < 60) return '${d.inMinutes} 分钟后';
+    if (d.inHours < 24) return '${d.inHours} 小时后';
+    if (d.inDays < 30) return '${d.inDays} 天后';
+    final months = (d.inDays / 30).round();
+    if (months < 12) return '$months 个月后';
+    return '${(d.inDays / 365).round()} 年后';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// 子组件
+// ════════════════════════════════════════════════════════════════
+
+/// 结果横幅：对/错 + 你写的 vs 正确 + **本次评级后的真实下次时间**。
+///
+/// 🔑 三样都是「用户此刻最需要知道的事」：
+/// · **对/错** —— 唯一的结果
+/// · **正确拼写** —— 错了却不显示正确答案，这个错误就**毫无价值**
+/// · **下次复习时间** —— 让用户看到「这一答的后果」
+///    （原先四键上那层「看到后果」的意思没丢：只是从「选项的预览」变成「已发生的事实」）
+class _ResultBanner extends StatelessWidget {
+  const _ResultBanner({
+    required this.t,
+    required this.correct,
+    required this.submitted,
+    required this.expected,
+    required this.nextReviewAt,
+  });
+
+  final CoEvoTokens t;
+  final bool correct;
+
+  /// 用户输入（**原文** —— 不做归一化展示，让用户看到自己到底打了什么）
+  final String submitted;
+
+  final String expected;
+  final DateTime? nextReviewAt;
+
+  @override
+  Widget build(BuildContext context) {
+    final next = nextReviewAt;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(22, 4, 22, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                correct ? Icons.check_circle_outline : Icons.cancel_outlined,
+                size: 20,
+                color: Color((correct ? t.accent : t.ink2).argb32),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                correct ? '拼对了' : '拼错了',
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: Color(t.ink.argb32),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // 对了的话「你写的」与正确答案一样，展示是重复 → 只在错时显示
+          if (!correct) ...[
+            Text(
+              '你写的：$submitted',
+              style: TextStyle(
+                fontFamily: CoFonts.latinSerif,
+                fontSize: 15,
+                color: Color(t.ink2.argb32),
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              if (!correct)
+                Text(
+                  '正确：',
+                  style: TextStyle(
+                    fontFamily: CoFonts.uiSans,
+                    fontSize: 13,
+                    color: Color(t.ink2.argb32),
+                  ),
+                ),
+              Text(
+                expected,
+                style: TextStyle(
+                  fontFamily: CoFonts.latinSerif,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Color(t.accent.argb32),
+                ),
+              ),
+            ],
+          ),
+          if (next != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              // 🔑 这是 `FsrsService.apply` 的**真实产出**（不是预览）——
+              //    屏幕上写的就是数据库里存的那个值
+              '下次复习：${formatInterval(next.difference(DateTime.now().toUtc()))}',
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: 12,
+                color: Color(t.ink3.argb32),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 底部固定条：「下一个」+ 可选提示（如「还没到期 · 4 天后」）。
+class _NextBar extends StatelessWidget {
+  const _NextBar({required this.label, required this.onTap, this.hint});
+
+  final String label;
+  final VoidCallback onTap;
+  final String? hint;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(22, 8, 22, 14),
+      child: Row(
+        children: [
+          if (hint != null)
+            Expanded(
+              child: Text(
+                hint!,
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 12,
+                  color: Color(t.ink3.argb32),
+                ),
+              ),
+            )
+          else
+            const Spacer(),
+          Clay(
+            state: ClayState.selected,
+            borderRadius: BorderRadius.circular(13),
+            onTap: onTap,
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Color(t.accentInk.argb32),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -252,10 +588,6 @@ class _CardLoading extends StatelessWidget {
 }
 
 /// 卡片取不出来 —— **给准确的话**，不空白、不假装正常。
-///
-/// 两种真实成因：
-/// · 词库还没就绪 / 落盘失败
-/// · 词库里没有这个词（数据不一致：词库升级时删过词）
 class _CardUnavailable extends StatelessWidget {
   const _CardUnavailable();
 

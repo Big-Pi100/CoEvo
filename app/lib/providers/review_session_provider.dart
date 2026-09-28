@@ -27,9 +27,23 @@ import '../services/word_query_service.dart';
 import 'review_list_provider.dart';
 import 'word_db_provider.dart';
 
-/// 一次复习会话：**队列快照 + 当前位置**。
+/// 一次复习会话：**队列快照 + 当前位置 + 当前卡的作答结果**。
+///
+/// # 🔑 为什么「作答结果」也放在这里（而不是页面自己 `setState`）
+/// 因为它与「第几张」**必须同步重置**。
+/// 若页面各管一份（`_index` 在 provider、`_answered` 在页面），
+/// 换卡时忘了重置 `_answered` → 下一张会**直接显示上一张的结果**
+/// （而且看起来「像是有内容」→ 不易察觉）。
+/// 放一起 → `next()` 一次把两者都重置，**结构上不可能不同步**。
 class ReviewSessionState {
-  const ReviewSessionState({this.queue = const [], this.index = 0});
+  const ReviewSessionState({
+    this.queue = const [],
+    this.index = 0,
+    this.answered = false,
+    this.correct,
+    this.submitted = '',
+    this.nextReviewAt,
+  });
 
   /// 🔴 **进入时的冻结快照**，不是活的列表。
   ///
@@ -41,10 +55,24 @@ class ReviewSessionState {
 
   final int index;
 
-  bool get isEmpty => queue.isEmpty;
+  // ── 当前卡的作答状态（`next()` 时全部重置）──
 
-  /// 是否已到队尾（评完这张就该退出）
-  bool get isLast => index >= queue.length - 1;
+  /// 是否已提交（`true` = 显示结果态）
+  final bool answered;
+
+  /// 判定结果（`null` = 未提交）
+  final bool? correct;
+
+  /// 用户实际输入的原文（结果态要展示「你写的 vs 正确的」）
+  final String submitted;
+
+  /// 本次评级后的**新到期时间**（结果态展示「下次复习：X」）
+  ///
+  /// 🔑 这是**真实结果**（`FsrsService.apply` 的产出），不是预览 ——
+  ///    所以屏幕上写的「下次 10 分钟」就是数据库里存的那个值。
+  final DateTime? nextReviewAt;
+
+  bool get isEmpty => queue.isEmpty;
 
   /// 当前这张（越界 → `null`）
   ReviewRow? get current =>
@@ -63,7 +91,25 @@ class ReviewSessionNotifier extends Notifier<ReviewSessionState> {
     state = ReviewSessionState(queue: List.of(rows), index: index);
   }
 
+  /// 记录当前卡的作答结果（进结果态）。
+  void markAnswered({
+    required bool correct,
+    required String submitted,
+    required DateTime nextReviewAt,
+  }) {
+    state = ReviewSessionState(
+      queue: state.queue,
+      index: state.index,
+      answered: true,
+      correct: correct,
+      submitted: submitted,
+      nextReviewAt: nextReviewAt,
+    );
+  }
+
   /// 前进一张。返回 `true` = 还有下一张；`false` = 已到队尾（调用方该退出页面）。
+  ///
+  /// 🔑 **一次把 `index` 与作答状态一起重置** —— 见 [ReviewSessionState] 的说明。
   ///
   /// ⚠️ 越界一律返回 `false` **并把 index 收敛到队尾** ——
   ///    让「越界」与「正常结束」走同一条退出路径，不留下一个越界的 index
@@ -72,9 +118,11 @@ class ReviewSessionNotifier extends Notifier<ReviewSessionState> {
     if (state.isEmpty) return false;
     final n = state.index + 1;
     if (n >= state.queue.length) {
-      state = ReviewSessionState(queue: state.queue, index: state.queue.length - 1);
+      state = ReviewSessionState(
+          queue: state.queue, index: state.queue.length - 1);
       return false;
     }
+    // 作答状态**不带过去**（默认值即「未作答」）
     state = ReviewSessionState(queue: state.queue, index: n);
     return true;
   }
@@ -93,14 +141,13 @@ final reviewSessionProvider =
 
 /// 一张卡渲染所需的全部数据 —— **一次取齐**。
 ///
-/// 🔑 合成一个 bundle 而不是让页面查三次：三者**总是一起需要**
-///   （没有 profile 就不知道该把哪两段放 ①②；没有 previews 四键就没数字）。
-///   分开取只会让「忘了取某一个」变成一个静默的半成品界面。
+/// ⚠️ **不再含四档预览**（2026-09-28 改）：评分方式从「自评四档」改为
+/// **拼写判定**（对/错）→ 不需要预先算四个分支的间隔。
+/// 结果态显示的是 `FsrsService.apply` 产出的**真实**新到期时间（不是预测）。
 class CardBundle {
   const CardBundle({
     required this.card,
     required this.profile,
-    required this.previews,
     required this.names,
   });
 
@@ -108,9 +155,6 @@ class CardBundle {
 
   /// `null` = 该词无槽位分配记录（罕见）→ ①② 都不渲染，只剩 ③④
   final WordMnemonicProfile? profile;
-
-  /// 四档的「下次间隔」—— 直接喂给四键按钮
-  final Map<ReviewRating, Duration> previews;
 
   /// `mnemonic_type.code → 显示名`（从库读，不在 UI 硬编码）
   final Map<String, String> names;
@@ -146,11 +190,9 @@ final cardBundleProvider = FutureProvider.autoDispose<CardBundle?>((ref) async {
     if (data == null) return null; // 词库里没有这个词（数据不一致）
     final names = await load.service.mnemonicTypeNames();
 
-    final svc = ref.read(fsrsServiceProvider);
     return CardBundle(
       card: data.card,
       profile: data.profile,
-      previews: svc.previewAll(row.item.toReviewState(), svc.nowUtc()),
       names: names,
     );
   } catch (e, st) {
@@ -161,12 +203,13 @@ final cardBundleProvider = FutureProvider.autoDispose<CardBundle?>((ref) async {
 
 /// 全应用共用的 **FSRS 服务实例**。
 ///
-/// # 🔑 共用是为了「明确表达」，而不是「正确性必需」
-/// `FsrsService` 的「预览与提交一致」靠的是 `_deterministicFuzz`
-/// —— 它**按 `cardId` 哈希**算抖动，是**纯函数**（不依赖实例状态）。
-/// 所以即使两个实例，只要参数相同，结果也一样。
+/// # 🔑 为什么用 provider 而不是各自 `FsrsService()`
+/// `FsrsService` 的构造会建一个 `Scheduler`（含解析参数）。
+/// 共用一个实例让「提交用的参数」**只有一个来源** ——
+/// 而不是「碰巧两处都写了默认值」。
 ///
-/// ⚠️ 但**共用仍然更好**：它把「预览和提交用的是同一套参数」
-///    变成**结构上的事实**，而不是「碰巧两边都写了默认值」。
-///    🔑 用一个 provider 表达这一点，比在两处各写 `FsrsService()` 更难出错。
+/// ⚠️ 注意：即使两个实例，结果也一样 —— 因为 `_deterministicFuzz`
+///    按 `cardId` 哈希算，是**纯函数**（不依赖实例状态）。
+///    共用是为了**表达「只有一个来源」**，不是正确性必需。
+///    （这一点如实写明，免得后人以为「换两个实例会出错」。）
 final fsrsServiceProvider = Provider<FsrsService>((ref) => FsrsService());

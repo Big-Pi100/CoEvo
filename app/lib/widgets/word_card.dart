@@ -46,12 +46,10 @@ class WordCardView extends StatelessWidget {
     super.key,
     required this.card,
     required this.profile,
-    required this.previews,
     required this.mnemonicNames,
-    required this.onRate,
     this.onSpeak,
     this.scrollController,
-    this.ratingEnabled = true,
+    this.footer,
   });
 
   final WordCard card;
@@ -59,13 +57,8 @@ class WordCardView extends StatelessWidget {
   /// 槽位分配（`null` = 该词无 profile，罕见 → ① ② 都不渲染，只剩释义 + 语境）
   final WordMnemonicProfile? profile;
 
-  /// 四档预览的**间隔**（`FsrsService.previewAll` 的产出）—— 按钮上的「下次 X 天」。
-  final Map<ReviewRating, Duration> previews;
-
   /// `mnemonic_type.code → 显示名`（从库读，见 `WordQueryService.mnemonicTypeNames`）
   final Map<String, String> mnemonicNames;
-
-  final ValueChanged<ReviewRating> onRate;
 
   /// 朗读单词（点音标旁的喇叭）。
   ///
@@ -74,13 +67,25 @@ class WordCardView extends StatelessWidget {
   /// ⚠️ 我 2026-09-28 上一轮误判为「设计稿卡片上无喇叭」并据此没做，已纠正。
   ///
   /// 传 `null` = 不显示喇叭（如未来某处复用本组件但不提供朗读）。
+  /// ⚠️ 考核态**不传**（喇叭会念出答案）。
   final VoidCallback? onSpeak;
 
   /// 内容区的滚动控制器（由页面持有 —— 换卡时要 `jumpTo(0)` 回顶部）。
   final ScrollController? scrollController;
 
-  /// 提交中 → 四键禁用（防连点造成重复写库）
-  final bool ratingEnabled;
+  /// 底部**固定区**（不随内容滚动）—— 由页面注入。
+  ///
+  /// # 🔑 为什么是注入而不是内置（2026-09-28 改）
+  /// 这一区**原先**硬编码为「FSRS 四键自评」。但白哥把评分方式改成了
+  /// **拼写考核**（对/错由判定器给，不需要用户点四档）→ 底部该放什么
+  /// **取决于页面的阶段**：
+  /// · 考核前 → 没有底部区（操作在输入框那里）
+  /// · 判定后 → 「下一个 →」
+  /// · 浏览未到期的词 → 「下一个 →」
+  ///
+  /// → 组件**不该知道**底部是什么，只负责把它固定在底部。
+  ///   （同 `FeedCard` 不认识收藏逻辑的做法：「是否已收藏 / 点击做什么」由父层注入。）
+  final Widget? footer;
 
   @override
   Widget build(BuildContext context) {
@@ -88,7 +93,7 @@ class WordCardView extends StatelessWidget {
 
     return Column(
       children: [
-        // 内容区可滚（词源链可能很长），四键固定在底部（见类文档）
+        // 内容区可滚（词源链可能很长），底部操作区**固定**（不随内容滚）
         Expanded(
           child: SingleChildScrollView(
             controller: scrollController,
@@ -104,7 +109,8 @@ class WordCardView extends StatelessWidget {
             ),
           ),
         ),
-        _ratingBar(t),
+        // 底部固定区（由页面注入；见 `footer` 的说明）
+        if (footer != null) footer!,
       ],
     );
   }
@@ -525,27 +531,91 @@ class WordCardView extends StatelessWidget {
     if (code.isEmpty) return null;
     return card.sectionOfType(code);
   }
+}
 
-  // ── 四键自评 ──────────────────────────────────────────────
-  //
-  // 🔴 **每键各标「下次什么时候再见」**（设计稿原文）：
-  //    「四个按钮各标出『下次什么时候再见』（数字来自端侧 FSRS 实时预览，
-  //      不是写死的文案）—— 用户能看到选择的后果，而不是凭感觉点。」
-  //
-  // 数字由调用方用 `FsrsService.previewAll(state, now)` 算好传进来；
-  // 本组件**不自己算**（它不该知道怎么调 FSRS）。
-  Widget _ratingBar(CoEvoTokens t) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
-      child: Row(
+// ════════════════════════════════════════════════════════════════
+// 考核提示（拼写考核的「题面」）
+// ════════════════════════════════════════════════════════════════
+
+/// 考核提示 —— **只给足以回忆的线索，绝不给答案**。
+///
+/// # 🔴 与 [WordCardView] 的关键差别：这个组件**必须不能泄露答案**
+/// 白哥 2026-09-28 定：「**看释义拼词**」。
+/// 于是考核时**只说释义**（+ 音标作辅助），以下三样**一律不显示**：
+///
+/// | 不能显示 | 为什么 |
+/// |---|---|
+/// | **单词本身** | 它就是答案 |
+/// | **① ② 记忆法** | 词根词缀/词源故事**就是为记这个词服务的** → 给了等于给答案（`dis-` + `organ` + `-ized` 等于把拼写拆给你看） |
+/// | **④ 语境原句** | 🔴 **最隐蔽的一处**：语境句里**通常含这个词本身**（"The office was completely **disorganized** after the move."）→ 等于把答案印在题面上 |
+///
+/// 🔑 这三条各有断言守着（§17「考核态不得泄露答案」）——
+///    因为**多加一段内容在代码上毫无阻力**，而泄露答案会让整个考核失效，
+///    且**看不出来**（用户会「答对」，但那不代表他记得）。
+///
+/// # 🔴 也不提供朗读
+/// 喇叭会**把单词念出来** = 直接给答案。
+/// （`WordCardView` 的喇叭在**判定之后**才出现 —— 那时已经答完了。）
+class WordPromptView extends StatelessWidget {
+  const WordPromptView({
+    super.key,
+    required this.card,
+    this.scrollController,
+  });
+
+  final WordCard card;
+
+  final ScrollController? scrollController;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+    final defs = card.sectionsOfType('definition');
+    final ipa = (card.ipa ?? '').trim();
+
+    return SingleChildScrollView(
+      controller: scrollController,
+      padding: const EdgeInsets.fromLTRB(22, 10, 22, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (final r in ReviewRating.values) ...[
-            if (r != ReviewRating.values.first) const SizedBox(width: 7),
-            Expanded(
-              child: _RatingKey(
-                rating: r,
-                interval: previews[r],
-                onTap: ratingEnabled ? () => onRate(r) : null,
+          Text(
+            '看释义，拼出这个单词',
+            style: TextStyle(
+              fontFamily: CoFonts.uiSans,
+              fontSize: t.type.label,
+              letterSpacing: t.type.label * 0.06,
+              color: Color(t.ink3.argb32),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // ── 释义（主线索）──
+          if (defs.isEmpty)
+            Text(
+              // 无释义段（罕见）→ 不能空着，否则用户无从下手
+              '（这个词没有释义数据，直接凭记忆拼）',
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: t.type.defText,
+                color: Color(t.ink3.argb32),
+              ),
+            )
+          else
+            for (var i = 0; i < defs.length; i++) ...[
+              if (i > 0) const SizedBox(height: 12),
+              _promptDefinition(t, defs[i]),
+            ],
+
+          // ── 音标（辅助线索）──
+          if (ipa.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text(
+              ipa,
+              style: TextStyle(
+                fontFamily: CoFonts.ipaSerif,
+                fontSize: t.type.ipa,
+                color: Color(t.ink2.argb32),
               ),
             ),
           ],
@@ -553,75 +623,41 @@ class WordCardView extends StatelessWidget {
       ),
     );
   }
-}
 
-/// 一个评分键：中文（大） / 英文（小） / **下次间隔**（数字来自 FSRS 预览）。
-class _RatingKey extends StatelessWidget {
-  const _RatingKey({
-    required this.rating,
-    required this.interval,
-    required this.onTap,
-  });
-
-  final ReviewRating rating;
-
-  /// `null` = 还没算出来（加载中）→ 不显示数字，但**键仍可见**
-  final Duration? interval;
-
-  /// `null` = 禁用（提交中）
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = CoEvoTokensExt.of(context);
-    final disabled = onTap == null;
-
-    return Opacity(
-      // 🔴 禁用要**看得出来**（本项目教训：「不够显眼的禁用 → 用户仍读成坏了」）
-      opacity: disabled ? 0.45 : 1,
-      child: Clay(
-        // 凹陷 —— 粘土的「可按下」形态（③④ 是辅证、四键是动作，形态要分开）
-        state: ClayState.pressed,
-        fill: t.sunken,
-        borderRadius: BorderRadius.circular(13),
-        onTap: onTap,
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 9),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              rating.label,
+  Widget _promptDefinition(CoEvoTokens t, WordSection s) {
+    final zh = (s.zh ?? '').trim();
+    final pos = (s.pos ?? '').trim();
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        if (pos.isNotEmpty) ...[
+          Text(
+            pos,
+            style: TextStyle(
+              fontFamily: CoFonts.uiSans,
+              fontSize: t.type.label,
+              letterSpacing: t.type.label * 0.05,
+              color: Color(t.accent.argb32),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+        if (zh.isNotEmpty)
+          Flexible(
+            child: Text(
+              zh,
               style: TextStyle(
                 fontFamily: CoFonts.uiSans,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
+                // 释义是题面主体 → 用内容层最大字号（与卡片上的释义同级）
+                fontSize: t.type.defText,
+                fontWeight: FontWeight.w500,
+                height: 1.45,
                 color: Color(t.ink.argb32),
               ),
             ),
-            const SizedBox(height: 3),
-            Text(
-              rating.code,
-              style: TextStyle(
-                fontFamily: CoFonts.uiSans,
-                fontSize: 9.5,
-                color: Color(t.ink3.argb32),
-              ),
-            ),
-            const SizedBox(height: 5),
-            // 🔑 间隔是「选择之后会怎样」的信息 → 用强调色突出
-            Text(
-              interval == null ? '—' : formatInterval(interval!),
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontFamily: CoFonts.uiSans,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Color(t.accent.argb32),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+      ],
     );
   }
 }

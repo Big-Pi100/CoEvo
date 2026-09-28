@@ -602,7 +602,23 @@ String _codeOnly(String src) => src
 /// 的字符串（如 `'${a ? "}" : "{"}'`）会数错。本项目的方法体无此写法；
 /// 真需要时再补「带引号状态的扫描器」（同 `splitSqlStatements` 的处理原则）。
 String _braceBody(String src, String name) {
-  final i = src.indexOf('$name(');
+  // 🔴 **优先按类匹配**（`class name`），再退回方法（`name(`）。
+  //
+  // 为什么顺序重要（2026-09-28 实测踩到）：
+  //   类名会**同时出现在类声明与构造函数**里 ——
+  //     `class WordPromptView extends StatelessWidget {`
+  //     `  const WordPromptView({ ... });`
+  //   若先找 `name(`，命中的是**构造函数** → 切出来的是构造函数体（只到 `});`）
+  //   → 范围**严重偏小**。
+  //
+  // ⚠️ 而这个错误**不会让所有断言都报红**：
+  //   切到构造函数体（几乎什么都不含）时——
+  //     · 正向断言（「应含 X」）→ 报红 ✅ 能被发现
+  //     · **反向断言（「不得含 X」）→ 全部假绿** ❌ 静默失效
+  //   🔑 所以调用方**必须**同时断言「切片是类体」（见下面的 `@override` 检查），
+  //      否则一个范围切错的切片会让「考核不得泄露答案」这类守护**完全失效**。
+  var i = src.indexOf('class $name');
+  if (i < 0) i = src.indexOf('$name(');
   if (i < 0) return '';
   final start = src.indexOf('{', i);
   if (start < 0) return '';
@@ -1678,10 +1694,49 @@ void _s17ReviewList() {
   check('🔴 评级写 review_log（同步 + 统计的唯一来源）',
       sess.contains('logReview('));
 
-  // ④ 四键的「下次 X 天」必须来自 FSRS 预览（与提交同一套抖动）
-  check('四键预览走 previewAll（不自己算间隔）', sessProv.contains('previewAll('));
-  check('预览与提交共用同一个 FsrsService（fsrsServiceProvider）',
-      sess.contains('fsrsServiceProvider') && sessProv.contains('fsrsServiceProvider'));
+  // ④ 🔴 评分来源：**拼写判定**（白哥 2026-09-28 用考核取代了自评四键）
+  check('🔴 评分来自拼写判定（gradeSpelling + ratingForSpelling）',
+      sess.contains('gradeSpelling(') && sess.contains('ratingForSpelling('));
+  check('🔴 已无自评四键（_RatingKey 已删）',
+      !sess.contains('_RatingKey') && !cardW.contains('_RatingKey'));
+  check('评分与提交共用同一个 FsrsService（fsrsServiceProvider）',
+      sess.contains('fsrsServiceProvider'));
+  //    ⚠️ 「四键预览走 previewAll」这条已随四键一起删除 ——
+  //       考核只需「对/错」两个分支，不需要预先算四个间隔；
+  //       结果态显示的是 `apply` 的**真实产出**，不是预测。
+
+  // ④b 🔴 考核**不能泄露答案**（否则整个考核失效，且看不出来 ——
+  //     用户会「答对」，但那不代表他记得）
+  final promptBody = _braceBody(cardW, 'WordPromptView');
+  // 🔴 这条**不只是**防空串 —— 它防「切片切到构造函数体」这种**范围偏小**的失败。
+  //    没有它，下面所有「不得含 X」都会假绿（一个空壳切片不含任何东西）。
+  check('能切出 WordPromptView **类体**（含 @override，而非构造函数体）',
+      promptBody.isNotEmpty && promptBody.contains('@override'));
+  check('🔴 题面不含**单词本身**（它就是答案）',
+      !promptBody.contains('card.spelling'));
+  check('🔴 题面不含**记忆法**（①②是为记这个词服务的，给了等于给答案）',
+      !promptBody.contains('_mnemonicSlots') &&
+          !promptBody.contains('profile'));
+  check('🔴 题面不含**语境原句**（语境句里通常就含这个词）',
+      !promptBody.contains("'context'"));
+  check('🔴 题面不含**朗读**（喇叭会把答案念出来）',
+      !promptBody.contains('onSpeak'));
+  check('题面含释义（考核的主线索）', promptBody.contains("'definition'"));
+
+  // ④c 🔴 输入框的三个「防作弊」开关都必须是关闭的
+  check('🔴 关闭自动纠错（否则拼错会被系统改成对的）',
+      sess.contains('autocorrect: false'));
+  check('🔴 关闭联想条（否则会提示正确拼写 = 给答案）',
+      sess.contains('enableSuggestions: false'));
+  check('🔴 不做首字母自动大写（不替用户改输入）',
+      sess.contains('textCapitalization: TextCapitalization.none'));
+
+  // ④d 🔴 只有**到期**的词才写 FSRS（白哥定「未到期的不考」）
+  //     未到期的词走浏览态 → 不打乱已算好的调度
+  check('🔴 未到期的词只浏览、不写 FSRS',
+      sess.contains('if (!isDue)') && sess.contains('answered'));
+  check('结果态显示**正确拼写**（错了却不给正确答案 = 这个错误毫无价值）',
+      sess.contains('expected'));
 
   // ⑤ 词卡四段 + 段落分派
   check('词卡组件存在', cardW.isNotEmpty);
@@ -1713,8 +1768,11 @@ void _s17ReviewList() {
   check('🔴 卡片词头有可点的发音图标（设计稿 `spk`，紧跟音标）',
       headBody.contains('volume_up') && headBody.contains('onSpeak'));
 
-  // ⑧ 四键禁用要**看得出来**（本项目教训：不显眼的禁用被读成「坏了」）
-  check('四键禁用用 Opacity 表达', cardW.contains('Opacity'));
+  // ⑧ 提交中**要看得出来**（本项目教训：不显眼的禁用被读成「坏了」）
+  //    ⚠️ 原先这条是「四键禁用用 Opacity」—— 四键已删；
+  //       现在考核态的忙碌反馈是「确认按钮换成转圈」（同样要看得出来）。
+  check('提交中有可见反馈（确认按钮转圈）',
+      sess.contains('CircularProgressIndicator'));
 
   // ⑨ 释义缺失**不阻塞列表**（跨库依赖不得成为渲染前置条件）
   check('🔑 释义取不到只记日志、不影响列表渲染',
