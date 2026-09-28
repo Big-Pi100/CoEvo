@@ -1,47 +1,57 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""按 v1 §4.1 重判定 primary_code / secondary_codes + 摘除 cognate（白哥 2026-09-28 18:1x 定案 Ⅱ-乙 / 0-A）。
+"""按 `mnemonic_type.priority` 重判定 primary_code / secondary_codes + 摘除 cognate。
+
+白哥 2026-09-28 定案：Ⅱ-乙（重判）· 0-A（摘除 cognate）· Ⅲ-甲（rationale 失配置空）
 
 # 🔴 为什么需要这一步
-现状 `word_mnemonic_profile` 的 primary/secondary **不是按 priority 算出来的** ——
+重判前 `word_mnemonic_profile` 的 primary/secondary **不是按 priority 算出来的** ——
 `word_query_service.dart` 的注释自己写着「**不经过优先级排序**」。
 而 v1（L0）§4.1 原文要求：「**制卡时按 `mnemonic_type.priority` 选主记忆法和次记忆法**」。
 
-# 口径（白哥定案 · 2026-09-28）
-| 项 | 值 | 依据 |
+# 口径（**以库表 `mnemonic_type.priority` 为准** —— 见 [order_from_db]）
+| 项 | 值 |
+|---|---|
+| 顺序 | **`root`(1) > `etymology`(3) > `collocation`(4) > `image`(5)** ← 白哥 2026-09-28 19:3x 定「**词源优先**」 |
+| 排除 | `cognate`（**聚合页，不是记忆法**）· `context`（卡片 ④ 固定段） |
+| `image` | 保留在池里，但 ⚠️ **全库没有 `image` 段** → 它<u>永远不可能是 primary</u> |
+| `rationale` | **失配置空 + 保留匹配的**（白哥选甲） |
+
+# 📜 3/4 级的往复（两次改口，如实记录）
+| 时间 | 决定 | 后果 |
 |---|---|---|
-| 顺序 | **root(1) > collocation(3) > etymology(4) > image(5)** | **以 v1 §4.1 为准**（白哥 18:2x **在知悉后果后**仍选此路） |
-| 排除 | `cognate` · `context` | `cognate` = **聚合页**（白哥 17:4x / 18:1x：「词元族是聚合页」）· `context` = 卡片 ④ 固定段 |
-| `image` | 保留在池里 | ⚠️ **全库没有 `image` 段** → 它<u>永远不可能是 primary</u>（957 个 `primary=image` 的词会因此改判） |
-| `rationale` | **失配置空 + 保留匹配的**（白哥 18:2x 选甲） | 见下 |
+| 09-27 14:08 | **交换**（etymology 3 / collocation 4） | etymology 上卡 51.4%，collocation 0.5% |
+| 09-28 18:2x | **改回 v1**（collocation 3 / etymology 4） | collocation 上卡 99.3%，**词源故事只剩 51.4%** |
+| **09-28 19:3x** | 🆕 **再改回「词源优先」**（etymology 3 / collocation 4） | 见下 |
 
-# 🔴🔴 本脚本会**撤销** 2026-09-27 的一次定案（必须知情）
-那次（白哥 09-27 14:08 批准）把 `etymology` 3 ↔ `collocation` 4 **交换**，理由有完整论证 + 实测：
-· `collocation` 的条件「有 ≥1 条高频固定搭配」**99.3% 的词都满足（几乎恒真）**
-· 排在 `etymology` 前 → **必然吃掉所有「不可拆词」的槽①** → `etymology` 只剩 **0.5%**（形同虚设）
-· 交换后 `etymology` 51.4%（与「不可拆词」52.4% 吻合）；且与 LLM 判定的 `collocation 0.9%` 交叉吻合
-📄 `docs/review/mnemonic-slot-priority-conflict-2026-09-27.md`
-
-**白哥 2026-09-28 18:2x 在知悉上述后果（collocation 会回到 51.7% / etymology 回到 0.5%）后，
-仍定「以 v1 为准」** → 本脚本按 v1 顺序重判。
-⚠️ 也就是说：**这次会精确重现那天修掉的问题**。若将来又要改回，跑 `--order=db`。
+🔑 **两次改口的判据变化（值得记住）**：
+· 09-27 的理由是「`collocation` 条件**恒真**（99.3%）→ 排前会吃掉槽①」。
+· ⚠️ 但 09-28 实测 **`etymology` 同样恒真（11,407 / 11,523 = 99.0%）**
+  → 那条理由**对两者等效，不能用来裁决**（谁排 3 谁就吃 ①）。
+· → 所以 3/4 级**只能靠产品判断**：卡片第二段给「**怎么用它**」（搭配）还是「**它从哪来**」（词源）。
+  白哥 19:3x 定：**词源优先**。
+· 📄 详见 `docs/design/card-aggregate-plan-2026-09-28.html` §四
 
 # rationale 处理（白哥选甲）
-`rationale` 是**为旧 `primary` 写下的理由**。重判后 primary 变了它就文不对题（实测 ≈4,444 条）。
-判据：用关键词粗判 rationale 讲的是哪种法 → **等于新 primary 才保留，否则置空**。
+`rationale` 是**为旧 `primary` 写下的理由**。重判后 primary 变了它就文不对题。
+判据：关键词粗判 rationale 讲的是哪种法 → **等于新 primary 才保留，否则置空**。
 🔑 保守方向正确：**宁可不显示，不显示错的**。
+⚠️ 本脚本**每次重跑都会重算它**（所以反复重判会逐次收窄保留量）。
 
 # 摘除 cognate（白哥选 A · 四处）
 ① `mnemonic_type` 删行 ② `profile` 的 secondary 清掉 / primary 按补位落定
 ③ `card.sections` 删 2,988 个冗余段（**零信息损失** —— 实测 100% 与同词 `root` 段同一 `page_id`）
 ④ 代码（另改，见 `word_query_service.dart` / `word_card.dart`）
+⚠️ ①②③ 现均**幂等**（cognate 已摘除 → 再跑是空操作）。
 
 # 用法
 ```bash
 python scripts/priority_redo.py                 # dry-run（默认）：只报告，不写入
 python scripts/priority_redo.py --apply         # 写入（先备份；两份词库同步）
-python scripts/priority_redo.py --order=db      # 若改回「以库表为准」（etymology 3）
+python scripts/priority_redo.py --order=v1      # dry-run 另一种口径（仅用于对比）
 ```
+🔴 **`--apply` 之后库表即成为权威** —— 制卡脚本 `load_llm_results.py` 调
+`apply_order(con)` 不传顺序，**从库表读**（见 [order_from_db]），所以不会漂移。
 """
 import argparse
 import json
@@ -57,9 +67,17 @@ DB = os.path.join(ROOT_DIR, 'data', 'word.db')
 ASSET_DB = os.path.join(ROOT_DIR, 'app', 'assets', 'word.db')
 
 # ── 两种口径 ─────────────────────────────────────────────────────
-ORDER_V1 = ['root', 'collocation', 'etymology', 'image']   # v1 §4.1（白哥 09-28 定）
-ORDER_DB = ['root', 'etymology', 'collocation', 'image']   # 库表原值（09-27 交换后）
+# 🔑 **当前生效的是 `db` 口径**（白哥 2026-09-28 19:3x 定「词源优先」）。
+#    但**判定顺序的真正权威是 `mnemonic_type.priority`**（见 [order_from_db]）——
+#    下面两个常量只用于 dry-run 对比两种口径，以及 `--apply` 时把库表改成对应值。
+ORDER_DB = ['root', 'etymology', 'collocation', 'image']   # ✅ 当前（词源优先）
+ORDER_V1 = ['root', 'collocation', 'etymology', 'image']   # 曾短暂生效（09-28 18:2x–19:3x）
 ORDERS = {'v1': ORDER_V1, 'db': ORDER_DB}
+DEFAULT_ORDER_KEY = 'db'   # `--apply` 未指定时的口径
+# 所有可上卡的记忆法类型 —— **集合（与顺序无关）**，用于判断「这段是不是候选」。
+# 🔑 与顺序解耦：`ORDER_V1` 与 `ORDER_DB` 的元素相同、只差顺序，
+#    所以「是不是候选」用集合，「排在谁前」才用列表。
+ALL_CODES = set(ORDER_V1)
 
 EXCLUDED = {'cognate', 'context'}          # 聚合页 · ④ 固定段
 MAX_SLOTS = 2
@@ -104,7 +122,7 @@ def read_cards(con):
             t = sec.get('type')
             if t in EXCLUDED:
                 continue
-            if t in ORDER_V1 and section_has_content(sec):
+            if t in ALL_CODES and section_has_content(sec):
                 avail.add(t)
         out[wid] = avail
     return out
@@ -176,7 +194,31 @@ def strip_cognate_sections(con):
     return changed, removed
 
 
-def apply_order(con, order=ORDER_V1, fallback=FALLBACK):
+def order_from_db(con):
+    """从 `mnemonic_type.priority` 读顺序 —— **库表是唯一权威**。
+
+    🔴 为什么要这个（2026-09-28 19:4x 加的，防一次真实回退）：
+
+    原先 `apply_order()` 的 `order` 参数默认值写死 `ORDER_V1`。
+    而 `load_llm_results.py`（制卡脚本）调用时**不传 order**：
+    ```python
+    n, ch_p, ch_s, no_cand = apply_order(con)   # ← 用默认值
+    ```
+    一旦库表改成**另一口径**（09-28 19:3x 白哥定「词源优先」＝ `etymology 3 / collocation 4`），
+    制卡脚本仍会按写死的 `ORDER_V1`（搭配优先）重排
+    → 🔴 **下次重建词库会静默回退到已被否决的口径**，而且**不报错**。
+
+    🔑 判据：**同一件事的「约定」只能有一处权威。**
+    把顺序放在函数默认值里 = 与库表构成**两份拷贝** → 必然漂移。
+    改为**从库表读** → 制卡脚本、存量修复、`CardSlots.order` 三者
+    都对同一个源头（`mnemonic_type.priority`）负责。
+    """
+    rows = con.execute('SELECT code FROM mnemonic_type ORDER BY priority').fetchall()
+    out = [r[0] for r in rows if r[0] not in EXCLUDED]
+    return out or ORDER_V1
+
+
+def apply_order(con, order=None, fallback=FALLBACK):
     """把 `word_mnemonic_profile` 的 primary/secondary **按 `order` 重算**（不碰 rationale）。
 
     🔑 **这是「单一出处」的那个函数** —— 两边共用：
@@ -188,8 +230,13 @@ def apply_order(con, order=ORDER_V1, fallback=FALLBACK):
     完全没经过 `priority` → 这就是「卡片排序不经过优先级排序」的病根。
     只在存量数据上修一次是**治不了根**的：下次重建词库会**静默回退**。
 
+    ⚠️ `order=None` → 从库表 `mnemonic_type.priority` 读（见 [order_from_db]）。
+       调用方**不要传写死的顺序**，否则又变成两份拷贝。
+
     返回 (行数, primary 变化数, secondary 变化数, 无候选数)。
     """
+    if order is None:
+        order = order_from_db(con)
     cards = read_cards(con)
     rows = list(con.execute(
         'SELECT word_id, primary_code, secondary_codes FROM word_mnemonic_profile'))
@@ -205,7 +252,9 @@ def apply_order(con, order=ORDER_V1, fallback=FALLBACK):
             old_sec = json.loads(old_s) if old_s else []
         except (TypeError, ValueError):
             old_sec = []
-        old_clean = [c for c in old_sec if c not in EXCLUDED and c in ORDER_V1]
+        # ⚠️ 归一化基准用 `order`（不是写死的 ORDER_V1）——
+        #    否则「旧值的清洗口径」与「新值的生成口径」不一致 → 变化数虚高。
+        old_clean = [c for c in old_sec if c not in EXCLUDED and c in order]
         if new_p != old_p:
             ch_p += 1
         if new_s != old_clean:
@@ -221,8 +270,8 @@ def apply_order(con, order=ORDER_V1, fallback=FALLBACK):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--apply', action='store_true', help='写入（默认只 dry-run）')
-    ap.add_argument('--order', choices=['v1', 'db'], default='v1',
-                    help='v1=按 v1 §4.1（默认·白哥 09-28 定）｜db=按库表原值（09-27 交换后）')
+    ap.add_argument('--order', choices=['v1', 'db'], default=DEFAULT_ORDER_KEY,
+                    help='db=词源优先（当前生效）｜v1=搭配优先（09-28 18:2x–19:3x 曾用）')
     ap.add_argument('--db', default=DB)
     args = ap.parse_args()
 
@@ -252,7 +301,7 @@ def main():
             old_sec = json.loads(old_s) if old_s else []
         except (TypeError, ValueError):
             old_sec = []
-        old_sec_clean = [c for c in old_sec if c not in EXCLUDED and c in ORDER_V1]
+        old_sec_clean = [c for c in old_sec if c not in EXCLUDED and c in order]
         if new_p != old_p:
             ch_primary += 1
             pri_changes['%s → %s' % (old_p or '空', new_p or '空')] += 1
@@ -335,13 +384,21 @@ def main():
     con.execute('UPDATE mnemonic_type SET priority=? WHERE code=?', (col, 'collocation'))
     con.execute('UPDATE mnemonic_type SET priority=? WHERE code=?', (eth, 'etymology'))
     before = con.execute('SELECT count(*) FROM mnemonic_type').fetchone()[0]
-    con.execute("DELETE FROM mnemonic_type WHERE code='cognate'")
+    # 🔴 幂等（2026-09-28 19:4x 修）：`cognate` 行**可能已经不在了**（09-28 已摘除）。
+    #    原实现假设「本次一定会删掉一行」→ `assert after == before - 1`
+    #    在**第二次执行时必然失败**（实测：重跑会崩在这条断言上）。
+    #    → 改为「先看在不在」+ 断言「删后不存在」（真正的目标）。
+    had_cognate = con.execute(
+        "SELECT count(*) FROM mnemonic_type WHERE code='cognate'").fetchone()[0]
+    if had_cognate:
+        con.execute("DELETE FROM mnemonic_type WHERE code='cognate'")
     after = con.execute('SELECT count(*) FROM mnemonic_type').fetchone()[0]
     con.commit()
 
     # ── 断言（写入后必须成立）──────────────────────────────
     assert con.execute('SELECT count(*) FROM word_mnemonic_profile').fetchone()[0] == total
-    assert after == before - 1, 'mnemonic_type 行数应减 1：%d → %d' % (before, after)
+    assert after == before - had_cognate, \
+        'mnemonic_type 行数应减 %d：%d → %d' % (had_cognate, before, after)
     assert con.execute("SELECT count(*) FROM mnemonic_type WHERE code='cognate'").fetchone()[0] == 0
     assert con.execute(
         "SELECT count(*) FROM word_mnemonic_profile WHERE primary_code='cognate'").fetchone()[0] == 0
@@ -351,9 +408,18 @@ def main():
         got = con.execute('SELECT priority FROM mnemonic_type WHERE code=?', (code,)).fetchone()[0]
         assert got == want, '%s priority 应为 %d，实为 %d' % (code, want, got)
 
+    # 🔴 交叉校验（2026-09-28 19:4x 加）：**库表顺序必须与本次写入用的 `order` 一致**。
+    #    🔑 为什么必须单独断言：`--order=db` 时若忘了改 `mnemonic_type`，
+    #        profile 按 db 排、库表还是 v1 → 制卡脚本（读库表）会按 v1 重排
+    #        → **下次重建静默回退**。这条断言正是为了钉住「两者同源」。
+    assert order_from_db(con) == order, \
+        '库表顺序 %s 与本次口径 %s 不一致 —— 会导致制卡时静默回退' % (
+            order_from_db(con), order)
+
     print()
     print('✅ 已写入：profile %d 行 · card 改 %d 张（删 %d 段）· mnemonic_type %d → %d 行'
           % (len(plan), ch_cards, rm_secs, before, after))
+    print('✅ 口径 → 库表顺序已交叉校验：%s' % ' > '.join(order_from_db(con)))
     print('✅ 断言全过（含外键检查）')
 
     # ── 同步打包词库 ──────────────────────────────────────

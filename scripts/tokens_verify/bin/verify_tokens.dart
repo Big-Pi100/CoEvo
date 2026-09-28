@@ -659,8 +659,16 @@ String _braceBody(String src, String name) {
   //   🔴 坑 4：方法体的 `{` 必须在「**参数列表结束**」之后 ——
   //      签名里的命名参数也用花括号：`Widget f(a, {required X x}) {`
   //      → `indexOf('{', i)` 会命中**参数列表**（实测 `_mnemonicBlock` 只切到 24 字符）。
-  //   ✅ 找「`)` + 可选空白 + `{`」—— 那才是方法体开始。
-  final bodyOpen = RegExp(r'\)\s*\{').firstMatch(src.substring(i));
+  //   ✅ 找「`)` + 可选 `async` + 可选空白 + `{`」—— 那才是方法体开始。
+  //
+  //   🔴 坑 5（2026-09-28 撞到，本坑真实漏判过一次）：
+  //      **`async` 关键字**！`Future<void> _openMember(...) async {`
+  //      → 只认 `\)\s*\{` 会**跳过真正的函数体**，继续往后匹配到方法体**内部**的
+  //        `if (...) {` → 切出一个**与该方法无关的区间**（既不空、也不对 → 危险）。
+  //      症状：`_openMember` 里明明有 `LookupSheet.show(`，断言却报红。
+  //      ⚠️ 更坏的情形是**反向断言** —— 切错区间后 `contains` 为 false → 假绿。
+  //      🔑 教训：**切片函数本身也会漏**；切片错时先怀疑切片，别急着怀疑实现。
+  final bodyOpen = RegExp(r'\)\s*(?:async\s*)?\{').firstMatch(src.substring(i));
   final start = bodyOpen != null ? i + bodyOpen.end - 1 : src.indexOf('{', i);
   return start < 0 ? '' : _braces(src, start);
 }
@@ -1989,6 +1997,73 @@ void _s17ReviewList() {
   check('聚合页是**顶层路由**（在 shell 之外 —— 全屏沉浸态）',
       app.indexOf("path: '/aggregate/:pageId'") >
           app.indexOf('StatefulShellRoute'));
+
+  // ⑧ 聚合页结构（2026-09-28 19:3x 白哥定：成员行**平坦 + 可点** · 顶栏/页头/词列一起改）
+  //
+  // 🔑 这一组守的是**编译器看不见的东西** —— 容器形状（平坦 vs 粘土）与
+  //    「看起来能不能点」都不出现在类型里，任何 analyzer 规则都抓不到。
+  //    而它们正是**已定禁忌**的直接体现：「凸起但不可点」= 静默无效。
+  {
+    final agg = src('screens/aggregate_page_screen.dart');
+    final rowBody = _braceBody(agg, '_MemberRow');
+    final topBody = _braceBody(agg, '_TopBar');
+    final openBody = _braceBody(agg, '_openMember');
+    final bodyBody = _braceBody(agg, '_body');
+
+    // ⚠️ 先断言**切片非空** —— 否则下面所有 `contains` 都不可信：
+    //    正项会因空串报红（噪音），**反项会因空串「假绿」**（危险）。
+    //    🔑 这是本项目「切片四坑」的固定搭配动作（见 skill `verifiable-core-logic`）。
+    check('聚合页断言切片非空（_MemberRow / _TopBar / _openMember / _body）',
+        rowBody.isNotEmpty &&
+            topBody.isNotEmpty &&
+            openBody.isNotEmpty &&
+            bodyBody.isNotEmpty,
+        'row=${rowBody.length} top=${topBody.length} '
+            'open=${openBody.length} body=${bodyBody.length}');
+
+    // ── 成员行：平坦 ──
+    check('🔴 成员行**平坦**（不用 Clay —— 20+ 行粘土卡又重又噪）',
+        !rowBody.contains('Clay('));
+
+    // ── 成员行：可点 ──
+    check('🔴 成员行**可点**（InkWell + onTap，与「平坦」配套）',
+        rowBody.contains('InkWell(') && rowBody.contains('onTap'));
+    check('  有可点指示 `›`（与实际可点性**一致**）', rowBody.contains('›'));
+
+    // ── 两列对齐 ──
+    check('🔴 词列最小宽 96（锚点 .agg-w{min-width:96px}）—— 让 20+ 行能竖着扫',
+        rowBody.contains('_wordMinWidth = 96'),
+        'wordMinWidth 在不在: ${rowBody.contains('_wordMinWidth')}');
+    check('  释义**右对齐**（锚点 .agg-z）', rowBody.contains('TextAlign.right'));
+
+    // ── 顶栏：族名 ──
+    check('🔴 顶栏有**族名**（列表可滚很长 → 下滑后不丢页面身份）',
+        topBody.contains('front') && topBody.contains('Spacer'));
+
+    // ── 页头：居中 + 下边线 + 词根不再抢主角 ──
+    check('🔴 页头**居中**（锚点 .agg-src{text-align:center}）',
+        bodyBody.contains('TextAlign.center'));
+    check('🔴 页头有**下边线**（让「头」成为头，不与列表黏在一起）',
+        bodyBody.contains('bottom: BorderSide'));
+    check('🔴 词根本体回到 **23px**（原 30px 朱砂与族名抢主角）',
+        bodyBody.contains('fontSize: 23') && !bodyBody.contains('fontSize: 30'));
+    check('🔴 页头**不再渲染族名**（修掉「cept / Latin 各出现两次」）',
+        !bodyBody.contains('p.front'));
+
+    // ── 点成员 → 查词浮层 ──
+    check('🔴 点成员打开**查词浮层**（`LookupSheet.show(`）',
+        openBody.contains('LookupSheet.show('));
+
+    // ── 🔴🔴 语义：**不写生词本** ──
+    //    判据：`lookup()` 是纯查询；写库是阅读器**显式调用**的。
+    //    聚合页点成员 = 「看看这个词」≠「我要学它」。
+    //    🔑 断言**调用处的特有形态**（带括号）—— 注释里写符号名（不带括号）
+    //       不会命中，所以「靠注释说明」与「靠断言守住」不冲突。
+    //    ⚠️ 反向断言的假绿风险由上面「切片非空」那条兜住。
+    check('🔴 点成员**不写生词本**（不出现 `_writeBackLookup(` 调用）',
+        !openBody.contains('_writeBackLookup('));
+    check('  词库未就绪时给**准确的话**（不留静默失败）', openBody.contains('_hint'));
+  }
 
   // ⑦ 🔴 卡片**有发音入口**（设计稿 mockup 的 `spk`）
   //    ⚠️ 我上一轮曾误判「设计稿卡片上无喇叭」并据此没做 → 这条防它再被删掉。

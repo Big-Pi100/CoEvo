@@ -146,12 +146,12 @@
       <span>四段结构 + 槽位规则已实施，见 §一（只作速览，不需要你决定）</span>
     </div>
     <div>
-      <b>② 聚合页 <span class="mk y">待做</span></b>
-      <span>成员行形态有 4 处问题，且条目应可点进词库，见 §二 §三</span>
+      <b>② 聚合页 <span class="mk g">已实施</span></b>
+      <span>成员行改平坦 + 可点，页头/顶栏/词列一并改 —— 见 §二 §三（待真机验证）</span>
     </div>
     <div>
-      <b>③ 要你定 <span class="mk">4 项</span></b>
-      <span>聚合页 3 项 + 记忆法 3/4 级顺序，集中在 §四</span>
+      <b>③ 已定案 <span class="mk g">4 项</span></b>
+      <span>聚合页 3 项 + 记忆法顺序（<b>词源优先</b>），见 §四</span>
     </div>
   </div>
 
@@ -220,13 +220,16 @@
         <b>排除</b> <code>{context, cognate}</code>（语境是 ④ 的固定位置；cognate 是聚合页不是卡片段）<br>
         <b>上限</b> 2 个
       </div>
-      <p class="callout">当前实际渲染出的组合（跑全库）：</p>
+      <p class="callout">当前实际渲染出的组合（跑全库 · 2026-09-28 19:4x）：</p>
       <table>
         <tr><th>卡上 ①②</th><th>占比</th></tr>
-        <tr><td><code>collocation</code> + <code>etymology</code></td><td><b>50.9%</b></td></tr>
-        <tr><td><code>root</code> + <code>collocation</code></td><td><b>47.6%</b></td></tr>
-        <tr><td>只有一个 / 空</td><td>1.5%</td></tr>
+        <tr><td><code>etymology</code> + <code>collocation</code></td><td><b>50.9%</b></td></tr>
+        <tr><td><code>root</code> + <code>etymology</code></td><td><b>47.6%</b></td></tr>
+        <tr><td>只有一个 / 空</td><td>1.4%</td></tr>
       </table>
+      <p class="callout">🔑 记忆法顺序（`mnemonic_type.priority`）：
+        <b>root(1) &gt; etymology(3) &gt; collocation(4) &gt; image(5)</b>
+        —— 白哥 2026-09-28 19:3x 定「<b>词源优先</b>」（当天 3/4 级改了两回，理由见 §四）。</p>
 
       <h3>2 · 顺序与字号</h3>
       <ul>
@@ -252,7 +255,7 @@
   </div>
 
   <!-- ═════════════════════════════════════════════════ -->
-  <h2>二、聚合页：现状 → 目标形态 <span class="mk y">待做</span></h2>
+  <h2>二、聚合页：现状 → 目标形态 <span class="mk g">已实施</span></h2>
 
   <p>聚合页是「点开 ① / ② 看到的族页」（词根族 596 页 · 词源族 1,181 页，共 1,777 页）。
      当前实现有 4 处与设计不一致。</p>
@@ -398,7 +401,7 @@
   </div>
 
   <!-- ═════════════════════════════════════════════════ -->
-  <h2>三、聚合页条目「点进词库」 <span class="mk y">待做</span></h2>
+  <h2>三、聚合页条目「点进词库」 <span class="mk g">已实施</span></h2>
 
   <h3>3.1 通路已具备，而且是干净的</h3>
   <div class="box g">
@@ -439,51 +442,51 @@
   </table>
 
   <!-- ═════════════════════════════════════════════════ -->
-  <h2>四、要你定的（4 项）</h2>
+  <h2>四、已定案的（4 项） <span class="mk g">已定 · 已实施</span></h2>
 
   <table>
-    <tr><th>#</th><th>决定</th><th>选项</th><th>影响</th></tr>
-    <tr>
+    <tr><th>#</th><th>决定</th><th>✅ 白哥定（2026-09-28 19:3x）</th><th>影响</th></tr>
+    <tr class="ok">
       <td>1</td>
       <td><b>聚合页成员行形态</b><br><span class="muted">§3.2</span></td>
-      <td>② 平坦 + <code>›</code> <span class="muted">（推荐）</span> / ① 粘土行 + <code>onTap</code></td>
+      <td><b>平坦</b>（无底色 + 细下分隔线），词列最小宽 96、释义右对齐</td>
       <td>1,777 个页面</td>
     </tr>
-    <tr>
+    <tr class="ok">
       <td>2</td>
       <td><b>点开后去哪</b></td>
-      <td>a 查词浮层 <span class="muted">（推荐 · 不污染生词本）</span> / b 复习卡 / c 新页面</td>
-      <td>复用现有浮层 → 工作量最小</td>
+      <td><b>查词浮层</b>（<code>LookupSheet.show</code>）—— <b>不写生词本</b></td>
+      <td>复用现有浮层 · 语义正确（「看一眼」≠「我要学它」）</td>
     </tr>
-    <tr>
+    <tr class="ok">
       <td>3</td>
       <td><b>其余 3 处是否一起改</b><br><span class="muted">顶栏族名 / 页头居中 / 词列对齐</span></td>
-      <td>一起改 <span class="muted">（推荐 · 都是 §二 已列的 4 处之 3）</span> / 只改可点</td>
-      <td>都属同一页的排版，分两次改要改两遍</td>
+      <td><b>一起改</b>（另顺带：词根 30px 朱砂 → 23px ink，修掉与族名抢主角 + 重复显示）</td>
+      <td>同一页排版，一次改到位</td>
     </tr>
-    <tr>
+    <tr class="ok">
       <td>4</td>
       <td><b>记忆法 3/4 级顺序</b><br><span class="muted">与聚合页无关，但同批定更省事</span></td>
-      <td>见下方对比</td>
-      <td>改顺序影响 <b>98.5%</b> 的卡（11,349 / 11,523）</td>
+      <td><b>词源优先</b>（<code>etymology</code> 3 / <code>collocation</code> 4）</td>
+      <td>影响 <b>98.5%</b> 的卡（11,349 / 11,523）· 已重跑重判</td>
     </tr>
   </table>
 
   <h3>4.1 第 4 项的实质：一句话</h3>
-  <p><code>mnemonic_type.priority</code> 现在的前四级是
-     <code>root(1) → collocation(3) → etymology(4) → image(5)</code>。
-     其中 <code>collocation</code>（搭配）与 <code>etymology</code>（词源）谁在前，只影响一件事：</p>
+  <p><code>mnemonic_type.priority</code> 的前四级是
+     <code>root(1) → etymology(3) → collocation(4) → image(5)</code>。
+     <code>etymology</code>（词源）与 <code>collocation</code>（搭配）谁在前，只影响一件事：</p>
 
   <table>
-    <tr><th>词型</th><th>词数</th><th>当前（搭配优先）</th><th>改为词源优先</th></tr>
+    <tr><th>词型</th><th>词数</th><th>搭配优先（曾用）</th><th>✅ 词源优先（生效）</th></tr>
     <tr>
       <td><b>有词根可拆</b></td><td>5,484（47.6%）</td>
-      <td><code>root</code> + <b>搭配</b></td>
+      <td><code>root</code> + 搭配</td>
       <td><code>root</code> + <b>词源</b></td>
     </tr>
     <tr>
       <td><b>无词根可拆</b></td><td>6,039（52.4%）</td>
-      <td><b>搭配</b> + 词源</td>
+      <td>搭配 + 词源</td>
       <td><b>词源</b> + 搭配</td>
     </tr>
   </table>
@@ -514,18 +517,36 @@
   </div>
 
   <div class="box" style="margin-top:26px">
-    <b>下一步</b>：你定完上表 4 项，我按定稿改
-    <code>aggregate_page_screen.dart</code>（成员行 / 页头 / 顶栏 / 可点）与
-    （若第 4 项改顺序）<code>word_query_service.dart</code> 的 <code>CardSlots.order</code> +
-    <code>mnemonic_type</code> + 两份词库 + 断言方向。<br>
-    <br>
-    <b>要补的断言</b>（编译器看不见，只能靠断言锁住）：
-    <ul style="margin-bottom:0">
-      <li>聚合页：成员行<b>平坦</b>且<b>可点</b>（「凸起但不可点」是已定禁忌）</li>
-      <li>聚合页：页头<b>居中</b>且有下边线；顶栏有族名；词列定宽 96px</li>
-      <li>（若第 4 项）<code>CardSlots.order</code> 与 <code>mnemonic_type.priority</code> 逐项一致</li>
+    <b>✅ 已实施</b>（白哥 19:3x 定案后立即执行）：
+    <ul>
+      <li><code>aggregate_page_screen.dart</code>：成员行 → <b>平坦 + 可点</b>（`InkWell` → 查词浮层）；
+        页头居中 + 下边线 + 词根 23px；顶栏加族名；词列最小宽 96 + 释义右对齐</li>
+      <li><code>word_query_service.dart</code>：<code>CardSlots.order</code> →
+        <b><code>root &gt; etymology &gt; collocation &gt; image</code></b></li>
+      <li>词库（两份）：<code>priority_redo.py --apply</code> 重判 —— primary 变 5,870 ·
+        secondary 变 11,349 · rationale 再置空 671</li>
+      <li>🔴 <b>防回退加固</b>：<code>apply_order()</code> 的默认顺序改为<b>从库表读</b>
+        （<code>order_from_db</code>）—— 原先默认值写死 v1 顺序，库表改了它不改 →
+        制卡时会<b>静默回退</b>。另修 <code>--apply</code> 的 cognate 断言（改为幂等）</li>
     </ul>
-    ⚠️ 本页只产出方案，<b>未动生产代码</b>。
+    <b>新补的断言</b>（编译器看不见，只能靠断言锁住）：
+    <ul>
+      <li>聚合页：成员行<b>平坦</b>（不含 <code>Clay</code>）且<b>可点</b>（<code>InkWell</code> + <code>onTap</code> + <code>›</code>）</li>
+      <li>聚合页：页头居中 + 下边线；词根 <b>23px</b>（不再 30）；<b>页头不再渲染族名</b>；顶栏有族名；词列 96</li>
+      <li>聚合页：点成员<b>不写生词本</b>（反向断言 —— 不出现 <code>_writeBackLookup(</code>）</li>
+      <li>槽位：<code>CardSlots.order</code> 与 <code>mnemonic_type.priority</code> <b>逐项一致</b>（防两处漂移）</li>
+    </ul>
+    <b>验收</b>：<code>query_verify</code> 340 项 · <code>tokens</code> <b>536 项</b> ·
+    <code>fsrs</code> 19 项 · 卡片结构 13 项 · <code>static_check</code> <b>error = 0</b> —— 全绿。<br>
+    ⚠️ <b>待真机验证</b>（我这边 <code>flutter</code> 命令必崩，构建须白哥跑）：
+    平坦行的可点手感 / 按下反馈 / 页头居中后的观感 / 96px 词列在长词上的表现。
+
+    <p style="margin-top:14px;margin-bottom:0" class="muted">
+      🔴 实施中修掉一个<b>工具缺陷</b>：<code>tokens_verify</code> 的 <code>_braceBody</code>
+      只认方法体的 <code>) {</code>，遇到 <code>) async {</code> 会<b>跳过真正的函数体</b>、
+      切到内部某个 <code>if (...) {</code> —— 导致新断言误报红。
+      ⚠️ 相比报红，更危险的是<b>反向断言会因切错而假绿</b>。已修（正则含可选 <code>async</code>）。
+    </p>
   </div>
 
 </div>

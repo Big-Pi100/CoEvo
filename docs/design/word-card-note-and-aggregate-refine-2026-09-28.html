@@ -1600,23 +1600,24 @@
     <span class="muted">（这已是同一个点被说过第 3+ 次 —— 根因见 §1.10）</span>
   </div>
 
-  <div class="box" style="border-left-color:#A3322D;background:#FCEBEB">
-    <b>🔄 待复议 · 3/4 级（白哥 2026-09-28 18:5x 提出）</b><br>
-    上面 <b>Ⅰ</b> 选的是「以 v1 为准」，实施后的<b>实际后果</b>如下 —— 白哥看到后要求重新讨论。<br>
+  <div class="box g">
+    <b>✅ 已定案 · 词源优先（白哥 2026-09-28 19:3x）</b><br>
+    上面 <b>Ⅰ</b> 曾选「以 v1 为准」（搭配优先），实施后白哥看到实际后果，
+    当晚 <b>19:3x 改定为「词源优先」</b> → 已重跑重判 + 改回库表/代码/断言（见下「实施结果」）。<br>
     <br>
     <b>🔑 把「51.7% / 0.5%」这层抽象数字剥掉，3/4 级其实只决定一句话：</b>
     <table style="margin-top:9px">
-      <tr><th>词型</th><th>词数</th><th>v1 口径（现状）</th><th>DB 口径（09-27 定）</th></tr>
+      <tr><th>词型</th><th>词数</th><th>搭配优先（曾用）</th><th>词源优先（✅ 生效）</th></tr>
       <tr><td><b>有 <code>root</code> 段</b>（可拆）</td><td>5,484（47.6%）</td>
-        <td><code>root</code> + <b>搭配</b></td><td><code>root</code> + <b>词源</b></td></tr>
+        <td><code>root</code> + 搭配</td><td><code>root</code> + <b>词源</b></td></tr>
       <tr><td><b>无 <code>root</code> 段</b>（不可拆）</td><td>6,039（52.4%）</td>
         <td><b>搭配</b> + 词源</td><td><b>词源</b> + 搭配</td></tr>
     </table>
-    → 说白了：<b>v1 ＝ 搭配优先；DB ＝ 词源优先</b>。而被牺牲的那一段是<b>镜像对称的</b>（各 5,479 词）：<br>
-    &nbsp;&nbsp;· <b>v1（现状）</b>：有 <code>root</code> 的卡上<b>看不到词源故事</b>
-      → <code>etymology</code> 上卡率 <b>51.4%</b> · <code>collocation</code> <b>99.3%</b><br>
-    &nbsp;&nbsp;· <b>DB（09-27）</b>：有 <code>root</code> 的卡上<b>看不到搭配</b>
-      → <code>etymology</code> <b>99.0%</b> · <code>collocation</code> 51.7%<br>
+    → 说白了：<b>搭配优先 ＝ 搭配在前；词源优先 ＝ 词源在前</b>。而被牺牲的那一段是<b>镜像对称的</b>（各约 5,479 词）：<br>
+    &nbsp;&nbsp;· <b>搭配优先（曾用）</b>：有 <code>root</code> 的卡上<b>看不到词源故事</b>
+      → <code>collocation</code> 上卡率 <b>99.3%</b> · <code>etymology</code> <b>51.4%</b><br>
+    &nbsp;&nbsp;· <b>✅ 词源优先（生效）</b>：有 <code>root</code> 的卡上<b>看不到搭配</b>
+      → <code>etymology</code> <b>99.0%</b> · <code>collocation</code> <b>51.7%</b><br>
     <br>
     <b>🔴 09-27 那次论证有一条隐含前提，本轮才检查出来</b>：<br>
     它的论据是「<code>collocation</code> 条件几乎<b>恒真</b>（99.3%）→ 排第 3 必然吃掉槽位①，使
@@ -1627,9 +1628,9 @@
     <b>不是被它抢来的</b> → 原先担心的「恒真挤掉别人」在重判后<b>已不成立</b>。<br>
     <br>
     <b>→ 所以 3/4 级只能靠产品判断定</b>：一张卡的第二段（或首段）该给「<b>怎么用它</b>」还是「<b>它的来历</b>」。<br>
-    <span class="muted">⚠️ 若改回 DB 口径：跑 <code>priority_redo.py --order=db</code>（脚本<b>已留该参数</b>）
-      ＋ 改 <code>mnemonic_type</code> ＋ 改 <code>CardSlots.order</code> ＋ <b>翻转断言</b> ＋ 同步 v1 表
-      —— 影响 <b>98.5%</b> 的卡（11,349 / 11,523）。</span>
+    <span class="muted">✅ 白哥 19:3x 定 <b>词源优先</b> → 已执行：<code>priority_redo.py --apply</code>
+      （默认口径现为 <code>db</code>）＋ <code>mnemonic_type</code> ＋ <code>CardSlots.order</code>
+      ＋ 断言第二次反转 ＋ v1/锚点/09-27 文档同步 —— 影响 <b>98.5%</b> 的卡（11,349 / 11,523）。</span>
   </div>
 
   <h3>实施结果（已跑完 · 可复核）</h3>
@@ -1638,9 +1639,9 @@
     <tr><th>层</th><th>改动</th><th>结果</th></tr>
     <tr>
       <td><b>数据</b><br><span class="muted">两份词库同步</span></td>
-      <td>· <code>mnemonic_type</code>：3/4 级按 v1 · <b>删 <code>cognate</code> 行</b>（6 → 5 类）<br>
-        · <code>profile</code>：按 v1 重判 primary/secondary（<b>primary 变 6,035</b>）·
-        rationale 置空 5,422<br>
+      <td>· <code>mnemonic_type</code>：<b>3/4 级 = 词源优先（etymology 3 / collocation 4）</b> ·
+        <b>删 <code>cognate</code> 行</b>（6 → 5 类）<br>
+        · <code>profile</code>：按 priority 重判 primary/secondary<br>
         · <code>card.sections</code>：删 <b>2,988 个冗余 <code>cognate</code> 段</b>（零信息损失）</td>
       <td class="ok">✅ <code>data/word.db</code> 与 <code>app/assets/word.db</code> <b>md5 一致</b><br>
         ✅ 外键检查无违反<br>
@@ -1684,24 +1685,27 @@
     </tr>
   </table>
 
-  <h3>📌 当前真实形态（2026-09-28 18:5x 实测 · 复刻 <code>CardSlots.resolve</code> 跑全库）</h3>
+  <h3>📌 当前真实形态（2026-09-28 19:4x 实测 · 复刻 <code>CardSlots.resolve</code> 跑全库）</h3>
 
-  <p class="muted">上面的样张（§1.3 / §1.9）画的是重判<b>之前</b>的数据。本节是<b>现在真机实际渲染</b>的样子。</p>
+  <p class="muted">上面的样张（§1.3 / §1.9）画的是重判<b>之前</b>的数据。本节是<b>现在真机实际渲染</b>的样子。<br>
+     ⚠️ 本节数字在 18:5x 之后<b>又被重算过一次</b> —— 19:3x 白哥把 3/4 级改为「词源优先」，
+     卡上 ①② 的组合随之对调。</p>
 
   <table>
     <tr><th>卡上 ①②</th><th>词数</th><th>占比</th></tr>
-    <tr><td><code>collocation</code> + <code>etymology</code></td><td>5,870</td><td><b>50.9%</b></td></tr>
-    <tr><td><code>root</code> + <code>collocation</code></td><td>5,480</td><td><b>47.6%</b></td></tr>
+    <tr><td><code>etymology</code> + <code>collocation</code></td><td>5,870</td><td><b>50.9%</b></td></tr>
+    <tr><td><code>root</code> + <code>etymology</code></td><td>5,483</td><td><b>47.6%</b></td></tr>
     <tr><td>只有 <code>collocation</code></td><td>87</td><td>0.8%</td></tr>
     <tr><td>只有 <code>etymology</code></td><td>53</td><td>0.5%</td></tr>
     <tr class="bad"><td><b>空</b>（无候选 —— 实测多为噪声词，如 <code>iocsixf</code> / <code>pornsen</code>）</td><td>29</td><td>0.3%</td></tr>
-    <tr><td><code>root</code> + <code>etymology</code></td><td>4</td><td>0.03%</td></tr>
+    <tr><td><code>root</code> + <code>collocation</code></td><td>1</td><td>0.01%</td></tr>
   </table>
 
-  <p><b>→ 三个段的实际上卡率</b>：<code>collocation</code> <b>99.3%</b> ·
-     <code>etymology</code> <b>51.4%</b> · <code>root</code> 47.6%</p>
-  <p>🔑 即：<b><code>collocation</code> 几乎每张卡都有</b>（它是「搭配整记」，
-     而 11,437 个词都有搭配段）；<code>etymology</code> 只在<b>没有 <code>root</code> 段</b>的那一半词上进卡。</p>
+  <p><b>→ 三个段的实际上卡率</b>：<code>etymology</code> <b>99.0%</b> ·
+     <code>collocation</code> <b>51.7%</b> · <code>root</code> 47.6%</p>
+  <p>🔑 即：<b><code>etymology</code> 几乎每张卡都有</b>（11,407 / 11,523 个词有词源段）；
+     <code>collocation</code> 只在<b>没有 <code>root</code> 段</b>的那一半词上进卡
+     —— 与 18:5x 那次<b>正好相反</b>（那是 3/4 级短暂改成「搭配优先」的结果）。</p>
 
   <div class="box" style="border-left-color:#A33220;background:#FDF3F0">
     <b>实施中我自己犯的两个错（都已修，记下来）</b><br>

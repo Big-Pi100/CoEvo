@@ -45,7 +45,7 @@ V1_TYPES = {'root', 'definition', 'context', 'cognate', 'collocation',
 # 🔴 `card.sections` 的**历史存储顺序**（生成时按**当时**的 mnemonic priority 写入）。
 #
 # ⚠️ **它现在不等于 `mnemonic_type.priority`** —— 历史上 priority 改过两次
-#    （09-27 交换 etymology↔collocation；**09-28 改回 v1 顺序** 且 `cognate` 摘除），
+#    （09-27 交换 etymology↔collocation → 09-28 18:2x 改回 v1 → **09-28 19:3x 又改回词源优先**），
 #    但每次都**没有重排已落库的卡**的段顺序（重排要改写 11,523 份 JSON，而**段顺序不承载语义**）。
 #
 # 🔑 **渲染层按 `mnemonic_type.priority` 取槽位①，不依赖本顺序** ——

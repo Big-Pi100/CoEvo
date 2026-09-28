@@ -313,9 +313,10 @@ Future<void> main(List<String> args) async {
 
     // ③ 补位顺序 + 上限
     //
-    // 🔄 **2026-09-28 反转型改动**：白哥定「以 v1 为准」→ `collocation` 3 / `etymology` 4
-    //    （09-27 曾交换为 etymology 3，现已撤回）→ 断言期望值**必须同步反转**。
+    // 🔄 **2026-09-28 19:3x 再次反转**：白哥定「**词源优先**」→ `etymology` 3 / `collocation` 4
+    //    （09-28 18:2x 曾改为 collocation 3，现已改回）→ 断言期望值**必须同步反转**。
     //    🔑 不反转的代价是双向的：它会一直报红；更糟的是有人为了让绿**把 order 改回去**。
+    //    📌 这是 3/4 级当天第二次反转 —— 反转型断言**每次改口都要翻一次**。
     {
       final s = CardSlots.resolve(
         card: cardOf(['collocation', 'etymology', 'definition', 'context']),
@@ -323,8 +324,8 @@ Future<void> main(List<String> args) async {
       );
       check('  最多两个槽位（设计稿「卡片只显示四样」）',
           s.length <= CardSlots.maxSlots, '${s.length}');
-      check('  补位按 mnemonic_type.priority（**collocation 先于 etymology** —— v1 §4.1）',
-          s.map((x) => x.code).join(',') == 'collocation,etymology',
+      check('  补位按 mnemonic_type.priority（**etymology 先于 collocation** —— 词源优先）',
+          s.map((x) => x.code).join(',') == 'etymology,collocation',
           s.map((x) => x.code).join(','));
     }
 

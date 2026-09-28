@@ -751,13 +751,26 @@ class CardSlots {
   /// 补位顺序 —— **必须与库表 `mnemonic_type.priority` 一致**
   /// （已排除 [offCard] 两类）。由 `scripts/query_verify` 的断言守护一致性。
   ///
-  /// 🔄 **2026-09-28：`collocation` 与 `etymology` 对调**（白哥定「以 v1 为准」）——
-  /// 原为 `etymology` → `collocation`（那是 09-27 交换后的顺序）。
-  /// 现与 `mnemonic_type.priority`（v1 §4.1）逐项一致：1 root · 3 collocation · 4 etymology · 5 image。
+  /// 🔄 **2026-09-28 19:3x：回到「词源优先」**（白哥定）——
+  /// `etymology`(3) 排在 `collocation`(4) **之前**，与 `mnemonic_type.priority` 逐项一致：
+  /// 1 root · 3 etymology · 4 collocation · 5 image。
+  ///
+  /// 📜 **3/4 级当天改了两次**（如实记录，别再绕回来）：
+  /// | 时间 | 顺序 | 结果 |
+  /// |---|---|---|
+  /// | 09-27 14:08 | etymology 3 / collocation 4 | 词源上卡 51.4% |
+  /// | 09-28 18:2x | 改回 v1（collocation 3） | 搭配上卡 99.3%，**词源只剩 51.4%** |
+  /// | 09-28 19:3x | **再改回词源优先**（本行） | 见下 |
+  ///
+  /// 🔑 **判据（两次改口的真正依据）**：当初说「`collocation` 条件恒真（99.3%）所以不该排前」——
+  /// 但实测 **`etymology` 同样恒真（11,407 / 11,523 = 99.0%）** → 那条理由
+  /// **对两者等效、不能裁决**。3/4 级只能靠产品判断：
+  /// 卡片第二段给「**怎么用它**」（搭配）还是「**它从哪来**」（词源）。
+  /// 📄 `docs/design/card-aggregate-plan-2026-09-28.html` §四
   static const List<String> order = [
     'root', // 1 词根词缀
-    'collocation', // 3 搭配整记
-    'etymology', // 4 词源故事
+    'etymology', // 3 词源故事
+    'collocation', // 4 搭配整记
     'image', // 5 联想图像
   ];
 
