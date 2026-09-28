@@ -147,8 +147,16 @@ code{font-family:var(--mono);font-size:12.5px;background:var(--sunken);padding:1
 .litem .dots span.on{background:var(--accent)}
 .litem .dots span.half{background:var(--cl-shade)}
 
-/* 聚合页：分拆法 + 释义 */
-.agg-item{display:flex;align-items:baseline;gap:9px;padding:9px 0;border-bottom:1px solid var(--line)}
+/* 聚合页：分拆法 + 释义
+   🔄 2026-09-28 20:1x 白哥定：成员行**加左侧竖线**（原只有 border-bottom）。
+      理由：「每个词条应该有左侧的竖线区分，**不然很难阅读**」——
+      一个词条占两行（词+释义 / 分拆法），只靠底边线会串行；
+      左竖线把两行**括成一个视觉单元**（底边线只能分隔、不能归组）。
+      🔑 用 `accentBright` 而不是 `line`：项目已定判据「左侧色条用 line
+      （#EFE9DE）在浅纸上几乎看不见 = 白设」；且语境段 `.ctx` 用的就是
+      `2px accentBright` → 同手段同色。 */
+.agg-item{display:flex;align-items:baseline;gap:9px;padding:11px 8px 11px 12px;
+  border-left:2px solid var(--accentBright);border-bottom:1px solid var(--line)}
 .agg-item:last-child{border-bottom:0}
 .agg-w{font-family:var(--serif);font-size:14.5px;flex:0 0 auto;min-width:96px}
 .agg-w.me{color:var(--accent);font-weight:500}

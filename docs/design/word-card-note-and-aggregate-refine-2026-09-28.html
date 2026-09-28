@@ -128,7 +128,11 @@
   .agg-src .f{font-family:var(--serif);font-size:23px;color:var(--ink)}
   .agg-src .m{font-size:12.5px;color:var(--ink2);margin-top:4px}
   .agg-src .n{font-size:11.5px;color:var(--ink3);margin-top:3px}
-  .agg-item{display:flex;align-items:baseline;gap:9px;padding:9px 0;
+  /* 🔄 2026-09-28 20:1x 白哥定：成员行加**左侧竖线**（原只有 border-bottom）。
+     一个词条占两行（词+释义 / 分拆法），只靠底边线会串行；竖线把两行括成一个单元。
+     🔑 用 accentBright 而非 line —— 项目判据「左侧色条用 line 浅到看不见 = 白设」。 */
+  .agg-item{display:flex;align-items:baseline;gap:9px;padding:11px 8px 11px 12px;
+            border-left:2px solid var(--accentBright);
             border-bottom:1px solid var(--line);flex-wrap:wrap}
   .agg-item:last-child{border-bottom:0}
   .agg-w{font-family:var(--serif);font-size:14.5px;flex:0 0 auto;min-width:96px;color:var(--ink)}
@@ -1185,7 +1189,7 @@
       <td>1</td>
       <td><b>成员行的形态</b></td>
       <td><code>.agg-item{display:flex;padding:9px 0;border-bottom:1px solid line}</code><br>
-        → <b>平坦列表 + 细下分隔线</b></td>
+        → <b>平坦列表 + 细下分隔线</b>（🔄 20:1x 再补：<b>左侧竖线</b>）</td>
       <td class="bad">每行一个 <code>Clay</code>（白底 + radius 26 + 三层阴影）<br>
         → <b>N 张凸起的粘土卡</b></td>
       <td class="bad">🔴 <b>最要紧的一处</b>：22 行就是 22 张浮起的卡，
@@ -1268,13 +1272,11 @@
     <!-- ── 右：照锚点 + 可点 ── -->
     <div class="col">
       <p class="col-hd">提案（照锚点 §04 + 可点） <span class="mk g">§3 的选项 ②</span></p>
-      <p class="col-note">平坦列表 + 细下分隔线；<b>词列定宽 96px</b>、释义右对齐；
-        顶栏带族名；页头居中 + 下边线；共享词根 <code>cept</code> 强调色</p>
+      <p class="col-note">平坦列表 + <b>左侧竖线</b> + 细下分隔线；<b>词列定宽 96px</b>、释义右对齐；
+        顶栏<b>只有返回</b>（族名已取消）；页头居中 + 下边线；共享词根 <code>cept</code> 强调色</p>
       <div class="phone">
-        <div class="agg-bar">
-          <span>‹ 返回</span>
-          <span style="margin-left:auto;text-align:right"><b>cept 词根族</b></span>
-        </div>
+        <!-- 🔄 20:1x：族名已取消（与页头 `cept` 大字 + meta 重复） -->
+        <div class="agg-bar"><span>‹ 返回</span></div>
         <div class="agg-src">
           <div class="f">cept</div>
           <div class="m">Latin · 拿取 · 22 个同族词</div>

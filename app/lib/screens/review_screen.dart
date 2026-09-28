@@ -71,6 +71,19 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   ///    它和排序一样是「查询参数」，两份状态会出现「界面显示已筛、查询没筛」的错位。
   ReviewListArgs _args = const ReviewListArgs();
 
+  /// 「全部 / 已到期」筛选药丸的**固定宽度**（2026-09-28 20:1x 白哥定「两态大小统一」）。
+  ///
+  /// 🔴 **为什么必须固定**：label 在「全部」(2 字) / 「已到期」(3 字) 间切换，
+  ///    不固定则宽度跳变约 **11.5px**（一个字的宽）→ 整条标题栏跟着抖。
+  ///
+  /// 取值 **84** ＝ 信息流「收藏 N」药丸的宽度（按设计稿尺寸推算）：
+  /// `padding 12×2 + icon 13 + gap 6 + 「收藏」2 字×11.5 + gap 6 + 两位计数≈11.6 ≈ 83.6`
+  /// → 两处药丸**视觉等宽**（白哥：「最好和阅读页面的收藏大小一致」）。
+  ///
+  /// ⚠️ **84 是推算值，不是实测值** —— 我这边跑不了 `flutter`，量不到真实渲染宽度。
+  ///    真机若觉得偏差，**只调这一个常量**即可（两处都会跟着走）。
+  static const double _filterChipWidth = 84;
+
   final _searchController = TextEditingController();
 
   /// 搜索输入框的焦点 —— 展开时自动聚焦（否则用户还要再点一下输入框）。
@@ -259,11 +272,24 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               //    🔑 状态靠**文字 + 图标实心/描边**表达，不靠填充色：
               //       原先「选中 → 强调色填充」会与 `_SortChip` 的选中态撞脸
               //       （两者都变成实心药丸 → 用户会以为它们是同一组单选）。
+              //
+              // 🔄 2026-09-28 20:1x 白哥三条修正：
+              //    ① **宽度固定**（`minWidth`）：label 在「全部」(2 字) / 「已到期」(3 字)
+              //       间切换时，药丸宽度会跳变约 11.5px → 整条标题栏跟着抖。
+              //       取 84 ≈ 信息流「收藏 N」药丸的宽度（padding 24 + icon 13 + gap 6
+              //       + 「收藏」23 + gap 6 + 两位计数 ≈ 11.6）→ 两处视觉等宽。
+              //       ⚠️ 84 是**按设计稿尺寸推算的**（我这边跑不了 flutter，量不了真实渲染宽度）
+              //          → 真机若觉得偏差，微调这一个常量即可。
+              //    ② **两态一凹一凸**（`active`）：`dueOnly` 为真 = 筛选生效 → 浮起；
+              //       为假 = 无筛选 → 凹陷。同 `BookmarkButton`「已收藏 = 凸起」的语汇。
+              //    ③ 图标与文案仍随状态变（实心/描边 + 全部/已到期）—— 三重信号。
               HeaderChip(
                 icon: _args.dueOnly
                     ? Icons.filter_alt
                     : Icons.filter_alt_outlined,
                 label: _args.dueOnly ? '已到期' : '全部',
+                active: _args.dueOnly,
+                minWidth: _filterChipWidth,
                 onTap: () => setState(
                     () => _args = _args.copyWith(dueOnly: !_args.dueOnly)),
               ),

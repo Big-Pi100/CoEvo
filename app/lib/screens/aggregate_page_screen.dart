@@ -87,10 +87,13 @@ class AggregatePageScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 🔄 顶栏带族名（2026-09-28 白哥定「3 处一起改」）——
-            //    锚点：`‹ 返回` 左、族名右对齐。下滑后仍知道这是哪一族。
-            //    ⚠️ 加载中 `front` 为 null → 只有返回（不伪装成「没有族名」）。
-            _TopBar(front: page.valueOrNull?.front),
+            // 🔴 顶栏**不再放族名**（白哥 2026-09-28 20:1x 定：「右上角有个小的单词……应该取消吧」）。
+            //    理由：它与页头的 `cept`（23px 大字）+ meta **重复显示同一个信息**，
+            //    而顶栏的职责只是「返回 + 页面身份」—— 身份由**页头**承担就够（那是这页的主角）。
+            //    ⚠️ 如实记一笔：取消后「列表下滑时页头滚走、看不到族名」这件事**仍然存在**
+            //       （这正是我原先加它的理由）。白哥判断**不值得用顶栏空间换**。
+            //       若以后确需，正确做法是**页头吸顶**，而不是往顶栏塞字（那样会重复）。
+            const _TopBar(),
             Expanded(
               child: page.when(
                 // 首次加载 → 什么都不画（画空态会先闪一下「打不开」，是谎报）
@@ -248,12 +251,11 @@ class AggregatePageScreen extends ConsumerWidget {
   }
 }
 
-/// 顶栏：`‹ 返回` + **族名**（右对齐）。
+/// 顶栏：`‹ 返回`。
 ///
-/// 🔄 2026-09-28：加族名（白哥定「3 处一起改」）—— 锚点 `.agg-bar` 右侧就是族名。
-/// 🔑 为什么需要它：成员列表可以滚很长（最多 63 个成员），**下滑后页头滚走了**，
-///    顶栏若没有族名，用户就**失去页面身份**（不知道自己在哪一族）。
-///    ⚠️ 页头里的族名已随之**删掉** → 顺带修掉「cept 出现两次」「Latin 出现两次」。
+/// ⚠️ 2026-09-28 20:1x 曾加过「族名」（右对齐），**已被白哥取消** ——
+///    它与页头的 `cept` 大字 + meta 重复显示同一信息，属视觉噪音。
+///    顶栏职责收敛为「返回」这一件事。
 ///
 /// ⚠️ **做成独立 widget 而不是页面的实例方法**（2026-09-28 编译错误后改）：
 ///    实例方法 `Widget _topBar(CoEvoTokens t)` **拿不到 `context`** ——
@@ -265,22 +267,11 @@ class AggregatePageScreen extends ConsumerWidget {
 /// 📌 **教训**：这类「未定义符号」错误 `dart format`（纯语法解析）**抓不到** ——
 ///    只有语义分析能发现。已补 `scripts/static_check`（见该目录 README）。
 class _TopBar extends StatelessWidget {
-  const _TopBar({this.front});
-
-  /// 族名（来自 `AggregatePage.front`，如「cept 词根族（Latin）」）。
-  /// 只取括号前的部分（「cept 词根族」）—— 括号里的语源已在页头 meta 显示。
-  /// `null`（加载中）→ 只有返回按钮。
-  final String? front;
+  const _TopBar();
 
   @override
   Widget build(BuildContext context) {
     final t = CoEvoTokensExt.of(context);
-    final name = (front ?? '').trim();
-    // 「cept 词根族（Latin）」→「cept 词根族」（全角/半角括号都处理）
-    final short = name.isEmpty
-        ? ''
-        : name.split('（').first.split('(').first.trim();
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 2, 18, 8),
       child: Row(
@@ -317,23 +308,6 @@ class _TopBar extends StatelessWidget {
               ),
             ),
           ),
-          if (short.isNotEmpty) ...[
-            const Spacer(),
-            Flexible(
-              child: Text(
-                short,
-                textAlign: TextAlign.right,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontFamily: CoFonts.uiSans,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Color(t.ink.argb32),
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -363,6 +337,23 @@ class _TopBar extends StatelessWidget {
 /// 20+ 行每行一张浮起的卡 = 20+ 个独立物件，视觉噪声大，
 /// 而且这一页要读的是**横向规律**（同一词根 × 不同前缀）——
 /// **一张表**比**一堆卡**更贴合这件事。
+/// ## 🆕 左侧竖线（2026-09-28 20:1x 白哥定 · 锚点里没有）
+/// > 「每个词条应该有左侧的竖线区分，**不然很难阅读**」
+///
+/// 🔑 **为什么平坦行需要它**：一个词条占**两行**（词+释义 / 分拆法），
+///    只靠底边线分隔时，「分拆法」那行与**下一个词**贴得很近 → 读起来会串行。
+///    左侧竖线把两行**括成一个视觉单元** —— 这是底边线做不到的（它只能"分隔"，不能"归组"）。
+///
+/// 🔑 **颜色用 `accentBright` 而不是 `line`** —— 项目已定的判据：
+///    「左侧色条用 `line`（#EFE9DE）在浅纸上**几乎看不见** = 白设了这条竖线」。
+///    且项目里**这个手段本就有先例**：语境段 `.ctx{border-left:2px solid var(--accent-bright)}`
+///    → 同手段同色（2px `accentBright`）。
+///    ⚠️ 与「共享词根」的 `accent`（更深）**同色系不同深浅** → 有层次，不抢。
+///
+/// ⚠️ **保留底边线**：两者职能不同 —— 竖线做**词条边界**（归组），
+///    底边线做**行分隔**（切分）。合起来是「表格」的读法，
+///    而这一页要读的正是**横向规律**（同一词根 × 不同前缀）。
+///    （若真机上觉得双重分隔太密，去掉 `bottom` 那半即可 —— 竖线单独也成立。）
 class _MemberRow extends StatelessWidget {
   const _MemberRow({
     required this.member,
@@ -397,6 +388,12 @@ class _MemberRow extends StatelessWidget {
   /// 释义最大宽 —— 锚点 `.agg-z{max-width:118px}`，防止长释义挤掉词列。
   static const double _glossMaxWidth = 118;
 
+  /// 左竖线粗细 —— 2px（与语境段 `.ctx` 同一规格）。
+  static const double _barWidth = 2;
+
+  /// 左侧内容缩进 —— 竖线之后 12px（同 `.ctx{padding-left:12px}`）。
+  static const double _barInset = 12;
+
   @override
   Widget build(BuildContext context) {
     final t = CoEvoTokensExt.of(context);
@@ -410,14 +407,21 @@ class _MemberRow extends StatelessWidget {
       highlightColor: Color(t.sunken.argb32),
       borderRadius: BorderRadius.circular(9),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(8, 11, 8, 11),
-        decoration: showDivider
-            ? BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: Color(t.line.argb32), width: 1),
-                ),
-              )
-            : null,
+        padding: const EdgeInsets.fromLTRB(
+          _barInset, 11, 8, 11), // 左内边距从竖线算起
+        decoration: BoxDecoration(
+          border: Border(
+            // 🆕 左竖线 —— 把「词 + 释义 + 分拆法」括成一个视觉单元（见类文档）
+            left: BorderSide(
+              color: Color(t.accentBright.argb32),
+              width: _barWidth,
+            ),
+            // 行分隔线（末行不给 —— 「下面还有一行」才需要）
+            bottom: showDivider
+                ? BorderSide(color: Color(t.line.argb32), width: 1)
+                : BorderSide.none,
+          ),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

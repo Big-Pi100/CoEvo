@@ -2036,9 +2036,22 @@ void _s17ReviewList() {
         'wordMinWidth 在不在: ${rowBody.contains('_wordMinWidth')}');
     check('  释义**右对齐**（锚点 .agg-z）', rowBody.contains('TextAlign.right'));
 
-    // ── 顶栏：族名 ──
-    check('🔴 顶栏有**族名**（列表可滚很长 → 下滑后不丢页面身份）',
-        topBody.contains('front') && topBody.contains('Spacer'));
+    // ── 左竖线（2026-09-28 20:1x 白哥定 —— 锚点里没有，是新增）──
+    //    🔑 一个词条占两行（词+释义 / 分拆法），只靠底边线会串行；
+    //       左竖线把两行**括成一个视觉单元**（底边线只能分隔、不能归组）。
+    //    🔴 **必须用 `accentBright` 而不是 `line`** —— 项目已定判据：
+    //       「左侧色条用 `line`（#EFE9DE）在浅纸上几乎看不见 = 白设了这条竖线」。
+    check('🔴 成员行有**左竖线**（把「词+释义+分拆法」括成一个视觉单元）',
+        rowBody.contains('left: BorderSide'));
+    check('🔴 竖线用 accentBright（不是 line —— 浅到看不见 = 白设）',
+        rowBody.contains('t.accentBright.argb32'));
+
+    // ── 顶栏：**不带族名**（2026-09-28 20:1x 白哥取消）──
+    //    🔴 反向断言：它与页头的 `cept` 大字 + meta 重复显示同一信息。
+    //    ⚠️ 这条**曾经是正向断言**（「顶栏有族名」），同一天内被推翻 →
+    //       正是「反转型断言必须同步翻转方向」的场景（不翻会反向驱动实现）。
+    check('🔴 顶栏**不带族名**（与页头重复 = 视觉噪音）',
+        !topBody.contains('front') && !topBody.contains('Spacer'));
 
     // ── 页头：居中 + 下边线 + 词根不再抢主角 ──
     check('🔴 页头**居中**（锚点 .agg-src{text-align:center}）',
@@ -2063,6 +2076,51 @@ void _s17ReviewList() {
     check('🔴 点成员**不写生词本**（不出现 `_writeBackLookup(` 调用）',
         !openBody.contains('_writeBackLookup('));
     check('  词库未就绪时给**准确的话**（不留静默失败）', openBody.contains('_hint'));
+  }
+
+  // ⑨ `HeaderChip` 两态与固定宽（2026-09-28 20:1x 白哥定）
+  //
+  // 🔑 这三条守的是**同一天内被推翻又重定的东西**，最容易被改回去：
+  //    ① 两态**一凹一凸**（原先恒 `pressed` → 两个状态看起来一样）
+  //    ② 宽度**固定**（否则「全部」↔「已到期」切换时药丸跳变 ~11.5px）
+  //    ③ 只改**凸凹**、**不改填充色**（否则与 `_SortChip` 的选中态撞脸 —— 已定禁忌）
+  {
+    final chip = src('widgets/header_chip.dart');
+    final chipBody = _braceBody(chip, 'HeaderChip');
+    final review = src('screens/review_screen.dart');
+
+    check('HeaderChip 断言切片非空', chipBody.isNotEmpty && review.isNotEmpty,
+        'chip=${chipBody.length} review=${review.length}');
+
+    check('🔴 HeaderChip 有 `active` 两态（`raised` 浮起 / `pressed` 凹陷）',
+        chipBody.contains('ClayState.raised') && chipBody.contains('ClayState.pressed'),
+        'raised=${chipBody.contains("ClayState.raised")} '
+            'pressed=${chipBody.contains("ClayState.pressed")}');
+
+    // ⑤ 排他：不能让 `active` 用 `selected`（那是「凸起 + 强调色填充」→ 与 _SortChip 撞脸）
+    check('🔴 `active` **不用 `selected`**（强调填充会与 _SortChip 的选中态撞脸）',
+        !chipBody.contains('ClayState.selected'));
+
+    check('  浮起时**不显式给 sunken**（让 Clay 用默认 clayFill —— 亮底 vs 暗底也区分）',
+        chipBody.contains('active ? null : t.sunken'));
+
+    check('🔴 有 `minWidth`（防「全部」↔「已到期」切换时药丸宽度跳变）',
+        chipBody.contains('minWidth') && chipBody.contains('BoxConstraints(minWidth:'),
+        'minWidth 在不在: ${chipBody.contains("minWidth")}');
+
+    check('  有 minWidth 时内容**居中**（否则两态的文案位置不一致）',
+        chipBody.contains('MainAxisAlignment.center'));
+
+    // 调用处：复习页必须**真的传了**这两项（只加参数不接线 = 白加）
+    // 🔑 断调用处的**特有形态**（带实参），不是方法名 —— 否则「删掉传参」照样为绿
+    check('🔴 复习页传了 `active:`（筛选生效时浮起）',
+        review.contains('active: _args.dueOnly'));
+    check('🔴 复习页传了宽度常量 `minWidth: _filterChipWidth`（与「收藏 N」药丸等宽）',
+        review.contains('minWidth: _filterChipWidth'));
+    check('  宽度常量为 84（≈ 信息流「收藏 N」药丸宽：24+13+6+23+6+11.6）',
+        review.contains('_filterChipWidth = 84'));
+    check('  信息流「收藏」入口**不传** active（它是入口，不是开关 → 保持凹陷）',
+        !src('screens/home_screen.dart').contains('active:'));
   }
 
   // ⑦ 🔴 卡片**有发音入口**（设计稿 mockup 的 `spk`）
