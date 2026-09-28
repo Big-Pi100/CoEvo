@@ -82,7 +82,20 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   ///
   /// ⚠️ **84 是推算值，不是实测值** —— 我这边跑不了 `flutter`，量不到真实渲染宽度。
   ///    真机若觉得偏差，**只调这一个常量**即可（两处都会跟着走）。
-  static const double _filterChipWidth = 84;
+  /// 「全部 / 已到期」药丸的**文字区**宽度（不是药丸整宽）。
+  ///
+  /// 🔑 取值须容纳**最长的那个 label**：「已到期」3 字 × 11.5px = **34.5** → 取 **36**。
+  ///
+  /// 📐 药丸实际整宽 = `2 ×(8 + 13 + 6) + 36` = **90**
+  ///    （`_iconLead 8` + 图标 13 + 间距 6 + 文字区 36 + 右内边距 27，
+  ///     右内边距 = 左内边距 + 图标 + 间距 —— 见 `HeaderChip` 的居中推导）。
+  ///
+  /// 🔄 2026-09-28 21:0x 白哥真机反馈「药丸太宽」「内容看起来不居中」→ 两处都修：
+  ///    ① 上一版把「整宽 84」传给了作用在 padding **内部**的 `minWidth`
+  ///       → 药丸实际 **108**（比目标宽 24，内容只占 39% → 看着空）。
+  ///    ② 整块内容居中时，**文字**会被前置图标推右 `(13+6)/2 = 9.5px`。
+  ///    → 现改为「文字区定宽 + 右内边距反推」，文字**精确落在药丸正中**。
+  static const double _filterChipLabelWidth = 36;
 
   final _searchController = TextEditingController();
 
@@ -273,23 +286,22 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               //       原先「选中 → 强调色填充」会与 `_SortChip` 的选中态撞脸
               //       （两者都变成实心药丸 → 用户会以为它们是同一组单选）。
               //
-              // 🔄 2026-09-28 20:1x 白哥三条修正：
-              //    ① **宽度固定**（`minWidth`）：label 在「全部」(2 字) / 「已到期」(3 字)
-              //       间切换时，药丸宽度会跳变约 11.5px → 整条标题栏跟着抖。
-              //       取 84 ≈ 信息流「收藏 N」药丸的宽度（padding 24 + icon 13 + gap 6
-              //       + 「收藏」23 + gap 6 + 两位计数 ≈ 11.6）→ 两处视觉等宽。
-              //       ⚠️ 84 是**按设计稿尺寸推算的**（我这边跑不了 flutter，量不了真实渲染宽度）
-              //          → 真机若觉得偏差，微调这一个常量即可。
-              //    ② **两态一凹一凸**（`active`）：`dueOnly` 为真 = 筛选生效 → 浮起；
+              // 🔄 2026-09-28 20:1x / 21:0x 白哥两次修正：
+              //    ① **两态一凹一凸**（`active`）：`dueOnly` 为真 = 筛选生效 → 浮起；
               //       为假 = 无筛选 → 凹陷。同 `BookmarkButton`「已收藏 = 凸起」的语汇。
-              //    ③ 图标与文案仍随状态变（实心/描边 + 全部/已到期）—— 三重信号。
+              //    ② **文字区定宽**（`labelMinWidth`）：label 在「全部」(2 字) /
+              //       「已到期」(3 字) 间切换时，① 药丸宽度不跳变、② 文字位置不横移。
+              //       🔑 它还让**文字精确落在药丸正中**（组件内反推右内边距）。
+              //       ⚠️ 上一版用 `minWidth: 84` 是**两处都错**：口径错（84 是整宽却
+              //          当成了内容区宽 → 实际 108）+ 文字被图标推右 9.5px。
+              //    ③ 图标与文案仍随状态变（实心/描边 + 全部/已到期）。
               HeaderChip(
                 icon: _args.dueOnly
                     ? Icons.filter_alt
                     : Icons.filter_alt_outlined,
                 label: _args.dueOnly ? '已到期' : '全部',
                 active: _args.dueOnly,
-                minWidth: _filterChipWidth,
+                labelMinWidth: _filterChipLabelWidth,
                 onTap: () => setState(
                     () => _args = _args.copyWith(dueOnly: !_args.dueOnly)),
               ),

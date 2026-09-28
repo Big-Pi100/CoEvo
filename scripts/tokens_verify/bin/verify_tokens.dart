@@ -2172,21 +2172,45 @@ void _s17ReviewList() {
     check('  浮起时**不显式给 sunken**（让 Clay 用默认 clayFill —— 亮底 vs 暗底也区分）',
         chipBody.contains('active ? null : t.sunken'));
 
-    check('🔴 有 `minWidth`（防「全部」↔「已到期」切换时药丸宽度跳变）',
-        chipBody.contains('minWidth') && chipBody.contains('BoxConstraints(minWidth:'),
-        'minWidth 在不在: ${chipBody.contains("minWidth")}');
+    // 🔄 2026-09-28 21:0x：`minWidth`（整块内容区最小宽）**已删**，改为 `labelMinWidth`
+    //    （文字区定宽）。原因（白哥真机：「药丸太宽」「内容看起来不居中」）：
+    //    · 上一版把「整宽 84」传进了作用在 padding **内部**的 `minWidth`
+    //      → 药丸实际 84+24 = **108**（比目标宽 24，内容只占 39% → 看着空）
+    //    · 且「图标+文字整块居中」时**文字必然偏右** (13+6)/2 = 9.5px
+    final hasLabelMinWidth = chipBody.contains('labelMinWidth');
+    final hasCenterFormula =
+        chipBody.contains('_iconLead + _iconSize + _iconGap');
+    check('🔴 有 `labelMinWidth`（文字区定宽 → 两态同宽 + 文字位置不横移）',
+        hasLabelMinWidth, 'labelMinWidth 在不在: $hasLabelMinWidth');
 
-    check('  有 minWidth 时内容**居中**（否则两态的文案位置不一致）',
-        chipBody.contains('MainAxisAlignment.center'));
+    // 🔴 **「文字真居中」的代码级保证**：右内边距 = 左内边距 + 图标 + 间距。
+    //    推导：药丸宽 = L + labelW + R；文字区中心 = L + labelW/2；
+    //          药丸中心 = (L+labelW+R)/2；令相等 → **L == R**。
+    //    ⚠️ 这条一改，「文字居中」就静默失效（且**看不出** —— 仍然是个好看的药丸）。
+    check('🔴 右内边距 = 左内边距 + 图标 + 间距（「文字居中」的推导结论 L == R）',
+        hasCenterFormula, '公式在不在: $hasCenterFormula');
+    check('  文字区**定宽** + 文案居中（两态文字中心同位）',
+        chipBody.contains('width: lw') && chipBody.contains('TextAlign.center'));
+
+    // 🔴 反向：不得再回到「把最小宽加在整块内容区」（那就是上一版的口径错误）
+    check('🔴 不再用 `BoxConstraints(minWidth:` 撑整块内容（口径错 → 药丸宽出 padding）',
+        !chipBody.contains('BoxConstraints(minWidth:'));
+
+    // 🔑 `labelMinWidth` 与 `count` 互斥（居中的推导假设文字区右侧没有其它元素）
+    check('🔴 `labelMinWidth` 与 `count` 互斥（构造函数有 assert）',
+        chipBody.contains('assert(') &&
+            chipBody.contains('labelMinWidth == null || count == null'));
 
     // 调用处：复习页必须**真的传了**这两项（只加参数不接线 = 白加）
     // 🔑 断调用处的**特有形态**（带实参），不是方法名 —— 否则「删掉传参」照样为绿
     check('🔴 复习页传了 `active:`（筛选生效时浮起）',
         review.contains('active: _args.dueOnly'));
-    check('🔴 复习页传了宽度常量 `minWidth: _filterChipWidth`（与「收藏 N」药丸等宽）',
-        review.contains('minWidth: _filterChipWidth'));
-    check('  宽度常量为 84（≈ 信息流「收藏 N」药丸宽：24+13+6+23+6+11.6）',
-        review.contains('_filterChipWidth = 84'));
+    check('🔴 复习页传了 `labelMinWidth: _filterChipLabelWidth`',
+        review.contains('labelMinWidth: _filterChipLabelWidth'));
+    check('  文字区常量 = 36（须容纳「已到期」3 字 × 11.5px = 34.5）',
+        review.contains('_filterChipLabelWidth = 36'));
+    check('🔴 复习页不再用旧的 `_filterChipWidth`（整宽口径 —— 已废弃）',
+        !review.contains('minWidth: _filterChipWidth'));
     check('  信息流「收藏」入口**不传** active（它是入口，不是开关 → 保持凹陷）',
         !src('screens/home_screen.dart').contains('active:'));
   }
