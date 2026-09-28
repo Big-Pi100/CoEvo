@@ -1,22 +1,54 @@
-import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'dart:convert';
 import 'dart:async';
-import 'package:http/http.dart' as http;
-import '../api/chat_client.dart';
-import '../api/api_config.dart';
-import '../providers/auth_provider.dart';
-import '../config/k12_subjects.dart';
-import 'chat_screen.dart';
-import '../theme/co_spacing.dart';
-import '../pages/user/distribution/notification_panel.dart';
-import '../widgets/claim_dialog.dart';
+import 'dart:convert';
 
-/// 首页 — 科目直选 + 模式自动路由
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
+
+import '../api/api_config.dart';
+import '../data/mock_feed.dart';
+import '../providers/auth_provider.dart';
+import '../providers/bookmark_provider.dart';
+import '../providers/user_word_provider.dart';
+import '../theme/co_spacing.dart';
+import '../theme/clay.dart';
+import '../theme/coevo_tokens.dart';
+import '../theme/tokens_ext.dart';
+import '../widgets/bookmark_toggle.dart';
+import '../widgets/claim_dialog.dart';
+import '../widgets/feed_card.dart';
+
+/// 首页 —— **信息流**（导航第一个 tab「阅读」）。
 ///
-/// 数据源改为 API 驱动，从 /api/k12/subjects 获取科目元数据。
-/// 颜色和图标从本地 fallback 字典获取。
+/// 目标态见 `docs/design/visual-feed-bookmark-2026-09-25.html`：
+/// 标题栏「今日精选」+ 一列信息流卡片。
+///
+/// # 与旧首页（K12 时代）的关系
+/// 旧首页是「科目直选」网格，调 `/api/k12/subjects` 与 `/api/k12/init` ——
+/// 两个端点都已随后端 K12 清退（Step 3.0）**不复存在**，所以旧首页不是「风格过时」，
+/// 而是**点击即报错**。本次重写同时修掉这一点。
+///
+/// 🔴🔴 **本页不验证登录态**（产品原则 · 白哥 2026-09-27）
+/// > 「**除了生词表限制以外，不验证用户登录状态**」
+///
+/// 读文章是**免费能力**，判定用户身份只发生在「生词本是否超 200 词上限」那一刻。
+/// 所以信息流**无条件渲染**，登录态、后端可达性都**不是**它的前置条件。
+///
+/// # 🔑 本页保留的是「启动引导」，不是「首页内容」
+/// [_initAuth] 那一整块（试用账户创建 / 推广码与活动 / 注册弹窗）是**产品必需**的
+/// 进入路径 —— 换 UI 时**必须原样保留**，否则新用户无法完成注册。
+/// 但它现在是 [initState] 里 `addPostFrameCallback` 触发的**后台副作用**：
+/// - 成功 → 照旧创建试用 / 弹注册引导
+/// - 失败 → **静默**，阅读不受任何影响
+///
+/// ⚠️ 它**曾经**是一道首屏门（`if (!_authReady) return <转圈>`）——
+/// 后果是「任何网络抖动 → 首页永久转圈 + 零提示 + 无重试」。
+/// 详见 [build] 里的完整记录。
+///
+/// # 数据
+/// 🔴 当前用 [mockFeedItems]（**临时**，设计稿原文三篇）。
+/// 后端 RSS 抓取属 Phase 3，落地后改为从 feed 接口取数并删除 mock 文件。
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -25,23 +57,31 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  bool _loading = true;
-  bool _authReady = false;
   String? _pendingRefCode;
   String? _pendingCampaignId;
-  List<Map<String, dynamic>> _subjects = [];
-  int _unreadCount = 0;
+  bool _authInitBusy = false;
+
+  /// `_initAuth` 等待 auth 恢复的重试计数。
+  ///
+  /// 🔑 **必须有上限**：原实现是「没恢复就 300ms 后再调自己」的**无界递归** ——
+  /// 一旦 `isRestored` 迟迟不置位，它会每 300ms 无限重试。
+  /// （改为后台副作用后它不再阻塞 UI，但仍会一直空转 → 仍要封顶。）
+  /// 20 次 ≈ 6 秒，超过则放弃本次启动引导（下次有用户交互时另有机会）。
+  int _authRestoreTries = 0;
+  static const int _kMaxAuthRestoreTries = 20;
 
   @override
   void initState() {
     super.initState();
+    // 🔑 启动引导跑在 `addPostFrameCallback` 里（**不阻塞 build**）——
+    //    这样首屏立刻渲染信息流，引导成功与否都不影响「能不能读」。
     WidgetsBinding.instance.addPostFrameCallback((_) => _initAuth());
-    _loadSubjects();
-    _loadUnreadCount();
   }
 
-  bool _authInitBusy = false;
-
+  /// 启动引导 —— **后台副作用，不阻塞首屏**（见类文档「不验证登录态」）。
+  ///
+  /// 🔒 **失败不是错误**：它只决定「试用账户是否已创建 / 是否弹注册引导」，
+  /// 与「能不能读文章」无关 → 因此**不向用户报错，也不无限重试**。
   Future<void> _initAuth() async {
     // 防止并发调用
     if (_authInitBusy) return;
@@ -76,22 +116,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
       final auth = ref.read(authProvider);
       if (!auth.isRestored) {
+        if (_authRestoreTries >= _kMaxAuthRestoreTries) {
+          debugPrint(
+              '_initAuth: auth 恢复超时（已试 $_kMaxAuthRestoreTries 次 ≈6s），放弃本次启动引导');
+          return;
+        }
+        _authRestoreTries++;
         await Future.delayed(const Duration(milliseconds: 300));
-        if (mounted) { _authInitBusy = false; _initAuth(); }
+        if (mounted) {
+          _authInitBusy = false;
+          _initAuth();
+        }
         return;
       }
       if (auth.isAuthenticated) {
         // 已登录用户：有 campaign_id 则加入活动（拼团/砍价）
-        if (_pendingRefCode != null && _pendingCampaignId != null && _pendingCampaignId!.isNotEmpty && mounted) {
+        if (_pendingRefCode != null &&
+            _pendingCampaignId != null &&
+            _pendingCampaignId!.isNotEmpty &&
+            mounted) {
           _joinCampaign(auth.userId!, auth.token!, _pendingCampaignId!);
         }
         // 登录时触发活动推送检查（写 campaign_push 通知）
         _checkLoginCampaignPush(auth.userId!, auth.token!);
+        // 已登录但还没完善资料 → 引导注册（**只是弹窗，不挡内容**）
         if (auth.realName == null || auth.realName!.trim().isEmpty) {
           if (mounted) _showAuthDialog();
-          return;
         }
-        if (mounted) setState(() => _authReady = true);
         return;
       }
       if (await AuthNotifier.hasUsedTrial()) {
@@ -99,15 +150,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         return;
       }
       debugPrint('_initAuth trialStart refCode=${_pendingRefCode} campaignId=${_pendingCampaignId}');
-      await ref.read(authProvider.notifier).trialStart(refCode: _pendingRefCode, campaignId: _pendingCampaignId);
+      await ref
+          .read(authProvider.notifier)
+          .trialStart(refCode: _pendingRefCode, campaignId: _pendingCampaignId);
       // trial 完成后重新读取 auth 状态，继续流程
       final auth2 = ref.read(authProvider);
       if (auth2.isAuthenticated && mounted) {
         if (auth2.realName == null || auth2.realName!.trim().isEmpty) {
           _showAuthDialog();
-          return;
         }
-        setState(() => _authReady = true);
       }
     } finally {
       _authInitBusy = false;
@@ -121,11 +172,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       barrierDismissible: true,
       builder: (_) {
         debugPrint('_showAuthDialog: dialog builder 被调用');
-        return ClaimDialog(pendingRefCode: _pendingRefCode, pendingCampaignId: _pendingCampaignId);
+        return ClaimDialog(
+            pendingRefCode: _pendingRefCode, pendingCampaignId: _pendingCampaignId);
       },
     ).then((result) {
       debugPrint('_showAuthDialog: 对话框关闭 result=$result');
-      if (mounted) setState(() => _authReady = true);
     }).catchError((e) {
       debugPrint('_showAuthDialog: 异常 $e');
     });
@@ -159,7 +210,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (fromRouter != null && fromRouter.isNotEmpty) return fromRouter;
     } catch (_) {}
     try {
-      // ignore: undefined_prefixed_name
       final href = Uri.base.toString();
       final parsed = Uri.parse(href);
       final fromUrl = parsed.queryParameters['ref'];
@@ -176,299 +226,230 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return null;
   }
 
-  Future<void> _loadUnreadCount() async {
-    try {
-      final auth = ref.read(authProvider);
-      if (auth.userId == null || auth.token == null) return;
-      final uri = Uri.parse(
-          '${ApiConfig.baseUrl}/api/notifications?user_id=${auth.userId}');
-      final resp = await http
-          .get(uri, headers: {'Authorization': 'Bearer ${auth.token}'})
-          .timeout(const Duration(seconds: 10));
-      if (resp.statusCode == 200 && mounted) {
-        final data = jsonDecode(resp.body) as Map<String, dynamic>;
-        final count = (data['unread_count'] as num?)?.toInt() ?? 0;
-        setState(() => _unreadCount = count);
-      }
-    } catch (_) {
-      // 网络异常时不阻塞页面加载
-    }
-  }
-
-  Future<void> _loadSubjects() async {
-    try {
-      final auth = ref.read(authProvider);
-      final client = ChatClient(
-        userId: auth.userId ?? 'default_user',
-        token: auth.token,
-      );
-      final subjects = await client.getK12Subjects();
-      if (mounted) {
-        setState(() { _subjects = subjects; _loading = false; });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() { _loading = false; });
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final t = CoEvoTokensExt.of(context);
 
-    // 认证初始化中 → 显示 loading
-    if (!_authReady) {
-      return Scaffold(
-        backgroundColor: Colors.white,
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(
-                width: 32, height: 32,
-                child: CircularProgressIndicator(strokeWidth: 3),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'CoEvo 刻意进化',
-                style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurfaceVariant.withAlpha(150)),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '正在为你创建学习空间...',
-                style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant.withAlpha(100)),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
+    // 🔑 只取 `idsOrEmpty` / `isReady`，**不用 `when`**：
+    //    数据库没打开好时，信息流照常渲染、书签按钮禁用 ——
+    //    绝不把「收藏能不能用」变成「内容能不能看」的前置条件（3.22 的教训）。
+    final bookmarkState = ref.watch(bookmarkProvider);
+    final bookmarkIds = bookmarkState.idsOrEmpty;
+    final bookmarkReady = bookmarkState.isReady;
 
+    // 生词数（标题栏「生词 N」入口）。
+    // 🔑 未就绪时 `?? 0`，与收藏入口同一处理；且 `userWordCountProvider`
+    //    读失败时**自己吞掉并返回 0**（见其定义）→ 首页**不会**因为库打不开而报错。
+    final wordCount = ref.watch(userWordCountProvider).valueOrNull ?? 0;
+
+    // 🔴🔴 信息流**无条件渲染** —— 登录态不是它的前置条件。
+    //
+    // 产品原则（白哥 2026-09-27）：
+    //   「**除了生词表限制以外，不验证用户登录状态**」
+    // 读文章是免费能力，判定用户身份只发生在「生词本是否超 200 词上限」那一刻。
+    //
+    // ⚠️ 这里**曾经**是一道 `if (!_authReady) return <转圈>;` 的门（K12 时代的写法）：
+    //   一旦 `_initAuth()` 的 `trialStart` 请求失败（如早前 `flutter run` 默认连
+    //   `localhost:8080`，本地没有后端），`isAuthenticated` 就一直是 false
+    //   → `_authReady` 永远不置位 → **首页永久转圈，且无提示、无重试入口**。
+    //   而 tabbar 在外层 `_ShellScaffold`、loading 在内层 Scaffold → 表现为
+    //   「按钮正常，但首页没有卡片」。
+    //
+    //   → 教训：**把「网络/身份」这类易失败的外部依赖，放在「内容渲染」的前置条件上**
+    //     ＝ 让内容可用性绑定在一个与内容无关的开关上。
+    //     现在 `_initAuth` 降级为 `addPostFrameCallback` 里的后台副作用：
+    //     成功 → 照旧创建试用 / 弹注册引导；失败 → 静默，阅读不受影响。
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('刻意进化'),
-        automaticallyImplyLeading: false,
-        actions: [
-          // 通知铃铛（手机上确保可见）
-          const SizedBox(width: 4),
-          Badge(
-            isLabelVisible: _unreadCount > 0,
-            label: Text('$_unreadCount', style: const TextStyle(fontSize: 10)),
-            child: IconButton(
-              icon: const Icon(Icons.notifications_outlined),
-              tooltip: '通知',
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationPanel())),
+      backgroundColor: Color(t.page.argb32),
+      body: SafeArea(
+        // 底部交给自绘粘土 tabbar（`app.dart` 的 `_ClayTabBar`）处理，这里只避让状态栏
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── 标题栏（设计稿 `.feed-hd`：23 / w600 / 字距 -.015em）──
+            //    右侧「收藏 N」入口 = 3.5（设计稿 `.bm-entry`）。
+            //    🔑 现在放得下手了 —— 收藏清单页已存在（`/home/bookmarks`），
+            //       不会出现「点了没反应的死入口」（这正是之前不放的理由）。
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 2, 18, 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '今日精选',
+                      style: TextStyle(
+                        fontFamily: CoFonts.uiSans,
+                        fontSize: 23,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 23 * -0.015,
+                        color: Color(t.ink.argb32),
+                      ),
+                    ),
+                  ),
+                  // 设计稿 `.feed-hd{gap:12px}`
+                  const SizedBox(width: 12),
+                  // 🔴 生词本入口（3.4d）—— 设计稿**没有**定义它（`.bm-entry` 只定义了收藏）
+                  //    → 沿用**同一形态**（同一个 `_HeaderChip`），理由见该类的文档。
+                  //
+                  //    ⚠️ 位置在「收藏」**左侧**：生词才是本产品的**核心资产**
+                  //      （v1 §1.2：阅读 → 查词 → **生词本** → 复习），收藏文章是辅助。
+                  _HeaderChip(
+                    icon: Icons.style_outlined,
+                    label: '生词',
+                    count: wordCount,
+                    onTap: () => context.push('/home/words'),
+                  ),
+                  const SizedBox(width: 8),
+                  _HeaderChip(
+                    icon: Icons.bookmark_border,
+                    label: '收藏',
+                    count: bookmarkIds.length,
+                    onTap: () => context.push('/home/bookmarks'),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 4),
-          IconButton(
-            icon: const Icon(Icons.person),
-            onPressed: () async {
-              // hasUsedTrial 已改为 async（原为同步读 localStorage）
-              final usedTrial = await AuthNotifier.hasUsedTrial();
-              if (!mounted) return;
-              if (usedTrial && !ref.read(authProvider).isAuthenticated) {
-                _showAuthDialog();
-              } else {
-                context.push('/profile');
-              }
-            },
-          ),
-        ],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(CoSpacing.lg),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-            // Header
-            Text('今天想学什么？', style: theme.textTheme.headlineMedium),
-            const SizedBox(height: CoSpacing.xs),
-            Text('选择科目开始结构化学习',
-                style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-            const SizedBox(height: CoSpacing.lg),
 
-            // 自由对话入口
-            Card(
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: theme.colorScheme.primary.withAlpha(30),
-                  child: Icon(Icons.chat, color: theme.colorScheme.primary),
-                ),
-                title: Text('开始对话', style: theme.textTheme.titleMedium),
-                subtitle: const Text('和 AI 自由对话学习新知识'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  ref.read(currentConversationIdProvider.notifier).state = null;
-                  context.push('/chat');
+            // ── 信息流（设计稿 `.feed` padding 0 16px · `.fcards` gap 13px）──
+            Expanded(
+              child: ListView.separated(
+                // 🔴 底部 padding 必须**留出 tabbar 的高度**（2026-09-27）。
+                //    `_ShellScaffold` 加了 `extendBody: true` → 正文延伸到 tabbar **之后**，
+                //    若仍用原来的 24，最后一张卡片会被按钮压住。
+                //    数值与依据见 `CoSpacing.tabBarClearance`（≈83–93 取 100）。
+                padding: const EdgeInsets.fromLTRB(
+                    16, 0, 16, CoSpacing.tabBarClearance),
+                itemCount: mockFeedItems.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 13),
+                itemBuilder: (_, i) {
+                  final item = mockFeedItems[i];
+                  return FeedCard(
+                    item: item,
+                    bookmarked: bookmarkIds.contains(item.id),
+                    // 🔴 库未就绪 → 传 `null` → 按钮**禁用**。
+                    //    不传一个「点了没反应」的回调 —— 那会让用户以为 App 坏了
+                    //    （3.22 的教训：「静默无效的操作」比「禁用」更糟）。
+                    onToggleBookmark: bookmarkReady
+                        ? () => _toggleBookmark(item.id)
+                        : null,
+                    // 点卡片 → 阅读器（3.4a）。
+                    // 🔑 正文未就绪的文章**照样可点** —— 与书签的「禁用」不同：
+                    //    书签禁用是因为「数据库没开」这种**异常状态**；
+                    //    而「正文未抓取」是**正常状态**（Phase 3 未做），
+                    //    进阅读器会看到一句明确的解释 —— 比「点了没反应」好，
+                    //    也比「卡片不可点」好（后者要用户猜原因）。
+                    onTap: () => context.push('/article/${item.id}'),
+                  );
                 },
               ),
             ),
-            const SizedBox(height: CoSpacing.lg),
-
-            // 历史对话入口
-            Card(
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: theme.colorScheme.tertiaryContainer,
-                  child: Icon(Icons.history, color: theme.colorScheme.tertiary),
-                ),
-                title: Text('历史对话', style: theme.textTheme.titleMedium),
-                subtitle: const Text('继续之前的对话，或恢复已学习内容'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () async {
-                  final convId = await context.push<String>('/conversations');
-                  if (convId != null && context.mounted) {
-                    ref.read(currentConversationIdProvider.notifier).state = null;
-                    context.push('/chat', extra: convId);
-                  }
-                },
-              ),
-            ),
-            const SizedBox(height: CoSpacing.lg),
-
-            // 科目网格
-            Text('科目', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: CoSpacing.sm),
-            _loading
-                ? const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
-                : _subjects.isEmpty
-                    ? Padding(padding: const EdgeInsets.all(32),
-                        child: Center(child: Text('暂无可用的学习计划', style: TextStyle(color: theme.colorScheme.onSurfaceVariant))))
-                    : GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
-                            mainAxisSpacing: 8,
-                            crossAxisSpacing: 8,
-                            childAspectRatio: 0.9,
-                          ),
-                          itemCount: _subjects.length,
-                          itemBuilder: (ctx, i) {
-                            final s = _subjects[i];
-                            final code = (s['subject'] as String?) ?? '';
-                            final displayName = (s['display_name'] as String?) ?? code;
-                            final fallback = k12SubjectFallbacks[code];
-                            final color = fallback?.color ?? theme.colorScheme.primary;
-                            final icon = fallback?.icon ?? Icons.school;
-
-                            return _SubjectCard(
-                              name: displayName,
-                              color: color,
-                              icon: icon,
-                              onTap: () => _startSubject(context, s, fallback),
-                            );
-                          },
-                        ),
           ],
         ),
       ),
-    ),
-  );
-}
-
-  Future<void> _startSubject(
-    BuildContext context,
-    Map<String, dynamic> subjectData,
-    K12SubjectConfig? fallback,
-  ) async {
-    final code = (subjectData['subject'] as String?) ?? '';
-    final displayName = (subjectData['display_name'] as String?) ?? code;
-
-    // 从 fallback 或默认值获取年级列表
-    List<String> homeGrades = fallback?.homeGrades ?? ['g1-2', 'g5-6', 'g7-9', 'g10', 'g11-12'];
-
-    // 合并高中选项（g10 + g11-12 → g10-12），前端统一显示为"高中"
-    List<String> grades = List.from(homeGrades);
-    final hasG10 = grades.contains('g10');
-    final hasG1112 = grades.contains('g11-12');
-    if (hasG10 || hasG1112) {
-      grades = grades
-          .where((g) => g != 'g10' && g != 'g11-12')
-          .toList()
-        ..add('g10-12');
-    }
-
-    // 选择年级
-    final gradeBand = await showDialog<String>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: Text('选择 $displayName 年级'),
-        children: grades.map((g) => SimpleDialogOption(
-          onPressed: () => Navigator.of(ctx).pop(g),
-          child: Text(k12GradeNames[g] ?? g),
-        )).toList(),
-      ),
     );
-    if (gradeBand == null || !context.mounted) return;
-
-    try {
-      final auth = ref.read(authProvider);
-      final client = ChatClient(
-        userId: auth.userId ?? 'default_user',
-        token: auth.token,
-      );
-
-      final result = await client.k12Init(subject: code, gradeBand: gradeBand);
-
-      final convId = result['conversation_id'] as String?;
-      if (convId != null && context.mounted) {
-        context.replace('/chat', extra: convId);
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('初始化失败: $e')),
-        );
-      }
-    }
   }
+
+  /// 切换收藏并给出轻提示。
+  ///
+  /// 🔑 实现已抽到 `widgets/bookmark_toggle.dart` —— 收藏清单页要做**同一件事**
+  /// （设计稿 §03 ②：「同一套卡片组件，只是筛选过」），而 toast 的**文案与时长**
+  /// 由设计稿 §1.6 规定 → **只该定义一次**。
+  /// （同 `BookmarkButton` 被抽出来的理由：设计稿里是同一个东西，实现里就该是一处。）
+  Future<void> _toggleBookmark(int contentId) =>
+      toggleBookmarkWithToast(context, ref, contentId);
 }
 
-/// 科目卡片
-class _SubjectCard extends StatelessWidget {
-  final String name;
-  final Color color;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  const _SubjectCard({
-    required this.name,
-    required this.color,
+/// 信息流标题栏上的**药丸入口** —— 「生词 N」与「收藏 N」**共用**。
+///
+/// # 形态来源：设计稿 `.bm-entry`（原本只定义了「收藏」入口）
+/// ```
+/// .bm-entry{display:flex;align-items:center;gap:6px;
+///   font-size:11.5px;font-weight:600;color:var(--accent);
+///   background:var(--sunken);border-radius:13px;padding:7px 12px;
+///   box-shadow:inset 2px 2px 6px var(--cl-shade), inset -2px -2px 5px var(--cl-light)}
+/// ```
+///
+/// 🔑 **它是「凹陷」的** —— `background:var(--sunken)` + **两个 inset**（没有外阴影）=
+/// 粘土语汇里的 `pressed`（凹）。与 `BookmarkButton` 的未收藏态**同一种物理形态**：
+/// 凹陷 = 「可以按下去」。这不是巧合，设计稿把「未激活的入口」统一做成凹陷。
+///
+/// # 🔴 为什么把「生词」入口也做成**同一个组件**（2026-09-28 · 3.4d）
+/// 设计稿**没有**定义生词入口（`.bm-entry` 是收藏专用的）。但两者是**同类东西**
+/// （「我在阅读中攒下的东西」）→ 沿用同一形态，不另造一种药丸。
+/// 🔑 **判据：设计稿里是同一个东西，实现里就该是一处**
+/// （同 `toggleBookmarkWithToast` 被抽出来的理由）——
+/// 否则「改一个、忘一个」，两个入口会慢慢长歪。
+///
+/// ⚠️ **圆角显式传 13、不走 token 档位**（同 `_ClayTabBar` 的 17、`BookmarkButton` 的 10）：
+/// 设计稿写死 `13px` 且不在主题变量里 → 三档共用。这是项目已定的处理方式。
+///
+/// ⚠️ **字体用 `CoFonts.uiSans` 而非设计稿的 `--round`**：`--round` 是 Quicksand，
+/// 项目未打包该字体 → 与 `FeedCard` / `_ClayTabBar` 同一取舍。
+class _HeaderChip extends StatelessWidget {
+  const _HeaderChip({
     required this.icon,
+    required this.label,
+    required this.count,
     required this.onTap,
   });
 
+  /// 图标（由调用方注入 —— 「生词」用卡片叠图标，与收藏的书签区分开）。
+  final IconData icon;
+
+  /// 入口文案（「生词」/「收藏」）。
+  final String label;
+
+  /// 计数（设计稿 `.bm-entry .n`）。
+  final int count;
+
+  final VoidCallback onTap;
+
+  /// 设计稿 `.bm-entry{border-radius:13px}` —— 写死，不走 token。
+  static final BorderRadius _radius = BorderRadius.circular(13);
+
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: color.withAlpha(20),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: color.withAlpha(60), width: 0.5),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 6),
-            Text(name,
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis),
-          ],
-        ),
+    final t = CoEvoTokensExt.of(context);
+    final fg = Color(t.accent.argb32);
+
+    return Clay(
+      state: ClayState.pressed,
+      // ⚠️ 必须显式给 `sunken`：`Clay` 默认填充是 `clayFill`（= `card`），
+      //    而设计稿这里的底是 `--sunken`（比 `page` 更暗）。同 `BookmarkButton`。
+      fill: t.sunken,
+      borderRadius: _radius,
+      onTap: onTap,
+      // 设计稿 `.bm-entry{padding:7px 12px}`
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 设计稿 `<svg width="13" height="13">`（书签轮廓，2px 描边）
+          Icon(icon, size: 13, color: fg),
+          // 设计稿 `.bm-entry{gap:6px}`
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontFamily: CoFonts.uiSans,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: fg,
+            ),
+          ),
+          const SizedBox(width: 6),
+          // 设计稿 `.bm-entry .n{font-size:10.5px;opacity:.7}`
+          // ⚠️ 用 `Opacity` 而不是改 alpha：与设计稿的 `opacity` 语义一致
+          //    （整段变淡，而不是换一个更浅的颜色）。
+          Opacity(
+            opacity: 0.7,
+            child: Text(
+              '$count',
+              style: TextStyle(fontFamily: CoFonts.uiSans, fontSize: 10.5, color: fg),
+            ),
+          ),
+        ],
       ),
     );
   }

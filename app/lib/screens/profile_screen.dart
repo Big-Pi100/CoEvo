@@ -415,7 +415,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget _buildContent(BuildContext context, AuthState auth) {
 
     return ListView(
-      padding: const EdgeInsets.all(CoSpacing.xxl),
+      // 底部留出 tabbar 高度 —— `_ShellScaffold` 开了 `extendBody: true`，
+      // 正文会延伸到 tabbar 之后，不留距离的话最后一项会被按钮压住。
+      // 依据见 `CoSpacing.tabBarClearance`。
+      padding: const EdgeInsets.fromLTRB(CoSpacing.xxl, CoSpacing.xxl,
+          CoSpacing.xxl, CoSpacing.tabBarClearance),
       children: [
         // ── 推广二维码 ──
         if (_referralCode != null)

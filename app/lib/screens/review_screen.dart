@@ -790,10 +790,6 @@ Row(
               tooltip: '通知',
               onPressed: () => context.push('/notifications'),
             ),
-            IconButton(
-              icon: const Icon(Icons.person),
-              onPressed: () => context.push('/profile'),
-            ),
           ],
         ),
         body: Center(
@@ -828,10 +824,6 @@ Row(
             icon: const Icon(Icons.notifications_outlined),
             tooltip: '通知',
             onPressed: () => context.push('/notifications'),
-          ),
-          IconButton(
-            icon: const Icon(Icons.person),
-            onPressed: () => context.push('/profile'),
           ),
         ],
         bottom: TabBar(
@@ -1050,7 +1042,11 @@ Row(
     return ListView.builder(
       controller: _scrollController,
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(CoSpacing.lg),
+      // 底部留出 tabbar 高度 —— `_ShellScaffold` 开了 `extendBody: true`，
+      // 正文会延伸到 tabbar 之后，不留距离的话最后一张卡会被按钮压住。
+      // 依据见 `CoSpacing.tabBarClearance`。
+      padding: const EdgeInsets.fromLTRB(
+          CoSpacing.lg, CoSpacing.lg, CoSpacing.lg, CoSpacing.tabBarClearance),
       itemCount: displayCards.length,
       itemBuilder: (_, i) {
         final card = displayCards[i];

@@ -197,6 +197,16 @@ enum TraceSyntax {
 class TraceBorder {
   final double width;
   final CoRgba color;
+
+  /// 虚线。
+  ///
+  /// 🔴 **当前无实测值使用它** —— 唯一使用者曾是「格」档的「已掌握」态
+  /// （`1px dashed`），而该态已于 2026-09-27 改为**不标识**（见 [TraceTokens]）。
+  ///
+  /// ⚠️ **字段保留而非删除**：它是「边框的虚实」这一**通用属性**，
+  /// 不是为某个态定制的能力；渲染侧的映射（`TextDecorationStyle.dashed`）也已接通。
+  /// 删掉的话将来要加回来得同时改三处（字段 / 映射 / token）。
+  /// **成本是一个 bool，收益是能力完整** —— 故保留，但如实标注「无使用者」。
   final bool dashed;
 
   const TraceBorder({required this.width, required this.color, this.dashed = false});
@@ -264,10 +274,6 @@ class TraceStyle {
     required this.radius,
   });
 
-  /// 是否完全不改变文本外观（三档「已掌握」态在浅色下就接近这个）。
-  bool get isInvisible =>
-      bg.isTransparent && border == null && fg == null && padding.verticalTotal == 0;
-
   @override
   bool operator ==(Object other) =>
       other is TraceStyle &&
@@ -299,36 +305,61 @@ class TraceStyle {
       );
 }
 
-/// 痕迹三态（刚查过 / 复习中 / 已掌握）。
+/// 痕迹**两态**（刚查过 / 复习中）。
+///
+/// # 🔴🔴 为什么只有两态 —— 「已掌握 = 不标识」（白哥 2026-09-27 定）
+///
+/// > 白哥：「**已掌握就应该不标识了吧**」
+///
+/// 这修掉了 spec 的**一处内部矛盾**：
+/// - spec 第 21 行（原则）：「**学习的终点是痕迹的消失**」
+/// - spec 原 §1.1（值表）：「已掌握 = 几乎不可见（**比周围文字暖一点点**）」
+///
+/// 一个说「消失」，一个说「还留一点点」→ **按原则改值表**：
+/// 已掌握的字**回到普通文字**，与「从没查过」在视觉上完全一致。
+///
+/// ## 为什么不是「把颜色调到全透明」
+/// 「不标识」若用「透明的样式」表达，会**漏掉 padding** ——
+/// 透明色不显示，但 `padding` 仍会撑开字距 → 被标记过的字与普通字**间距不同**，
+/// 用户看得出来「这里有东西」。**那仍然是标识，只是更难解释。**
+///
+/// → 所以「不标识」用 **`null`** 表达：**没有痕迹**，而不是「一个看不见的痕迹」。
+/// 与 `forReps` 返回可空配套，调用方在**编译期**就必须处理这个分支。
+///
+/// ## 顺带收益：痕迹不再退化成「掌握度仪表盘」
+/// 若已掌握仍留一点暖色，痕迹就同时承担了两个表达（「这里我查过」+「这个我掌握了」）——
+/// 而设计稿明确要求「**一个概念，一个表达**」
+/// （原文：「去掉数字之后，痕迹成了唯一的进度表达」）。
+/// 掌握度要看就去复习页看；**痕迹只表达「我和这篇文章的关系」**。
 class TraceTokens {
   final TraceSyntax syntax;
   final TraceStyle fresh; // reps = 0
   final TraceStyle reviewing; // reps 1–2
-  final TraceStyle mastered; // reps ≥ 3 且 lapses = 0
 
   const TraceTokens({
     required this.syntax,
     required this.fresh,
     required this.reviewing,
-    required this.mastered,
   });
 
   /// 按熟练度取样式。
-  TraceStyle forReps(int reps, {int lapses = 0}) {
+  ///
+  /// 返回 `null` = **不标识**（已掌握，痕迹已消失）。调用方应据此**不产生标记**，
+  /// 而不是去构造一个「不可见样式」。
+  TraceStyle? forReps(int reps, {int lapses = 0}) {
     if (reps <= 0) return fresh;
-    if (reps >= 3 && lapses == 0) return mastered;
+    if (reps >= 3 && lapses == 0) return null; // 已掌握 → 痕迹消失
     return reviewing;
   }
 
   /// 插值（主题切换过渡用）。
   ///
-  /// 🔑 `syntax` 取一侧（枚举，无法插值），但**三态样式照插** ——
+  /// 🔑 `syntax` 取一侧（枚举，无法插值），但**两态样式照插** ——
   /// 于是「已被标记的词」在切主题时会平滑变色，而不是整块闪一下。
   static TraceTokens lerp(TraceTokens a, TraceTokens b, double t) => TraceTokens(
         syntax: _pick(a.syntax, b.syntax, t),
         fresh: TraceStyle.lerp(a.fresh, b.fresh, t),
         reviewing: TraceStyle.lerp(a.reviewing, b.reviewing, t),
-        mastered: TraceStyle.lerp(a.mastered, b.mastered, t),
       );
 }
 
@@ -664,8 +695,32 @@ abstract final class CoFonts {
   /// IPA 音标。**逐字符 30/30 全覆盖**（含 4 个组合符号）。
   static const String ipaSerif = 'CharisSIL';
 
-  /// 中文 UI。全量 24.2 MB，**不做子集化**（阿里普惠体条款禁止拆分/转换）。
-  static const String cjk = 'AlibabaPuHuiTi';
+  /// 中文 UI。
+  ///
+  /// ## 🔴 2026-09-27 由阿里普惠体更换为 **Noto Sans SC**
+  ///
+  /// **原因**：阿里普惠体条款**禁止子集化**（官方法律声明禁止事项 ② 含「**转换**」
+  /// 「**拆分**」）→ 3 字重 **24.16 MB 永远减不掉**。
+  /// Noto Sans SC 是 **OFL 1.1**，明确允许 subset / modify。
+  ///
+  /// | | 阿里普惠体（原） | **Noto Sans SC（现）** |
+  /// |---|---|---|
+  /// | 许可 | 🔴 禁子集化 | ✅ **OFL 1.1** |
+  /// | 字形数 | 29,296 | 31,036 |
+  /// | 打包体积 | 24.16 MB | **4.83 MB**（4 字重，已子集化） |
+  ///
+  /// 🔑 **子集字符集 = 4,014 码位**（ASCII 95 + 中英标点 + **3,873 汉字**），
+  /// 从 `word.db` ∪ `app/lib/**.dart` **真实提取** —— 不是猜的常用字表。
+  ///
+  /// ⚠️ **子集化带来的新约束**：字体只含这些码位 → 若 `word.db` 将来加词引入
+  /// **新汉字**，那个字会**回退系统字体**且**没有任何报错**
+  /// （本项目已知教训：「**有 fallback ≠ 视觉一致**」）。
+  /// → 已加断言「**`word.db` 全部汉字 ⊆ 字体 cmap**」把它锁住，
+  ///   词库升级时断言会红，届时重跑 `scripts/build_fonts.py --candidate noto-sc`。
+  ///
+  /// 📄 完整评估（含许可取证、字形对照图、技术风险）：
+  ///    `docs/review/cjk-font-switch-evaluation-2026-09-27.md`
+  static const String cjk = 'NotoSansSC';
 
   /// 界面 / 数字（未接入，可随 Flutter 默认）。
   static const String uiSans = 'Inter';
@@ -732,6 +787,36 @@ class CoEvoTokens {
   ///
   /// 🔑 **定义为 getter 而非字段** → 它**不可能**与 `card` 不一致。
   CoRgba get clayFill => card;
+
+  /// 底部导航「栏底」—— `page` 的高不透明度版本（2026-09-28 · 毛玻璃栏底）。
+  ///
+  /// # 为什么需要它
+  /// `_ShellScaffold` 开了 `extendBody: true` → 正文会滚到 tabbar **之后**。
+  /// 若栏底完全透明，正文会**直接压在**未选中 tab 的文字上（白哥实测「看不清」）。
+  ///
+  /// 设计稿**未定义**这一层（`.tabbar` 无背景，是**静态稿**，没考虑穿透）——
+  /// 所以这是**补空**，与 `pageTransitionsTheme` 同类（见 `theme_builder`）。
+  ///
+  /// # 为什么是「`page` + 不透明度」而不是新色值
+  /// 栏底必须是**当前档的页面色**，否则三档会出现色相断层（夜档尤其明显）。
+  /// 用 getter 从 `page` 派生 → **三档自动适配，只此一处定义**。
+  ///
+  /// # 为什么是 `0.82`（实测数据）
+  /// 栏后的内容不同，合成出的实际底色也不同 → 按**最坏情形**（该档卡片色）验：
+  ///
+  /// | 档 | 栏后有卡片 | 栏后是空白 | 判定 |
+  /// |---|---|---|---|
+  /// | 墨 | 4.99 | 4.85 | ✅（`ink2` vs 合成底，11px 小字要求 4.5） |
+  /// | 格 | 6.11 | 5.94 | ✅ |
+  /// | 夜 | 7.25 | 7.42 | ✅ |
+  ///
+  /// 🔑 剩余 `1 - α = 18%` 的透出正是「**内容在栏下继续**」的观感来源，
+  ///    配合 `BackdropFilter` 的模糊 → 内容淡出而非被硬截断。
+  CoRgba get tabBarSurface =>
+      CoRgba(page.r, page.g, page.b, _tabBarSurfaceAlpha);
+
+  /// 栏底不透明度 —— 见 [tabBarSurface] 的实测表（0.82 是三档全达标的下界附近）。
+  static const double _tabBarSurfaceAlpha = 0.82;
 
   const CoEvoTokens({
     required this.theme,
@@ -849,11 +934,6 @@ const CoEvoTokens inkTokens = CoEvoTokens(
       padding: TracePadding.sym(1, 3),
       radius: 3,
     ),
-    mastered: TraceStyle(
-      bg: CoRgba(180, 67, 44, 0.026),
-      padding: TracePadding.sym(1, 3),
-      radius: 3,
-    ),
   ),
 );
 
@@ -911,12 +991,6 @@ const CoEvoTokens gridTokens = CoEvoTokens(
       padding: TracePadding(0, 0, 1, 0),
       radius: 0,
     ),
-    mastered: TraceStyle(
-      bg: CoRgba.transparent,
-      border: TraceBorder(width: 1.0, color: CoRgba(10, 10, 10, 0.16), dashed: true),
-      padding: TracePadding(0, 0, 1, 0),
-      radius: 0,
-    ),
   ),
 );
 
@@ -959,12 +1033,6 @@ const CoEvoTokens nightTokens = CoEvoTokens(
     reviewing: TraceStyle(
       bg: CoRgba.transparent,
       fg: CoRgba.hex(0xDEDCD7),
-      padding: TracePadding.sym(1, 3),
-      radius: 3,
-    ),
-    mastered: TraceStyle(
-      bg: CoRgba.transparent,
-      fg: CoRgba.hex(0x8E939F),
       padding: TracePadding.sym(1, 3),
       radius: 3,
     ),

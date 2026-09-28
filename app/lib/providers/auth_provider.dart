@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../api/api_config.dart';
 import '../api/auth_client.dart';
 
 const _tokenKey = 'coevo_auth_token';
@@ -141,11 +142,39 @@ class AuthNotifier extends StateNotifier<AuthState> {
     });
   }
 
-  /// 将原始错误消息转为用户友好的中文
+  /// 将原始异常文本转为用户能读懂的话。
+  ///
+  /// 🔴 它是**错误文案的唯一出口** —— 映射不到就**原样透传**，
+  /// 于是用户看到的是 `TimeoutException after 0:00:10.000000: Future not completed`、
+  /// `SocketConnection refused (OS Error: errno = 111)` 这类机器话。
+  /// 而「超时」和「连不上」恰恰是网络故障里**最常发生的两种** ——
+  /// 最该给人话的两处，之前恰好都没映射。
+  ///
+  /// ⚠️ 入参传 `e.toString()` **原文**，不要在外面预先剥前缀（原因见下）。
   static String _friendlyError(String raw) {
-    if (raw == 'rate_limited') return '操作太频繁，请稍后再试';
-    if (raw.contains('Rate limit')) return '操作太频繁，请稍后再试';
-    return raw;
+    // 🔴 只剥「**恰好**以 `Exception: ` 开头」的前缀 —— **不能用 `replaceFirst`**：
+    //    `SocketException: Connection refused` 中间也含 `Exception: `，
+    //    replaceFirst 会把它啃成 `SocketConnection refused`（前缀被损坏），
+    //    且下面所有 `contains('SocketException')` 判断**将永远匹配不到**。
+    //    —— 这不是假想：2026-09-27 改这里时实测复现过。
+    final msg = raw.startsWith('Exception: ')
+        ? raw.substring('Exception: '.length)
+        : raw;
+
+    if (msg == 'rate_limited' || msg.contains('Rate limit')) {
+      return '操作太频繁，请稍后再试';
+    }
+    // 「连上了但没人应」—— 2026-09-27 给 auth 全部请求补 `.timeout()` 后才可能出现
+    if (msg.contains('TimeoutException')) {
+      return '网络超时，请检查网络后重试';
+    }
+    // 「连不上」—— 端口无监听 / DNS 失败 / 无网络
+    if (msg.contains('SocketException') ||
+        msg.contains('Connection refused') ||
+        msg.contains('Failed host lookup')) {
+      return '连不上服务器，请检查网络后重试';
+    }
+    return msg;
   }
 
   Future<void> register(String username, String password, {String? realName, String? phone, String? referralCode}) async {
@@ -169,9 +198,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('coevo_show_login');
     } catch (e) {
+      // 错误会显示在 UI，但日志仍要打（含端点）——排查时不必让用户复述弹窗文字
+      debugPrint('register 失败 endpoint=${ApiConfig.baseUrl} '
+          'username=$username error=$e');
       state = state.copyWith(
         isLoading: false,
-        error: _friendlyError(e.toString().replaceFirst('Exception: ', '')),
+        error: _friendlyError(e.toString()),
       );
     }
   }
@@ -197,9 +229,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('coevo_show_login');
     } catch (e) {
+      debugPrint('login 失败 endpoint=${ApiConfig.baseUrl} '
+          'username=$username error=$e');
       state = state.copyWith(
         isLoading: false,
-        error: _friendlyError(e.toString().replaceFirst('Exception: ', '')),
+        error: _friendlyError(e.toString()),
       );
       rethrow;
     }
@@ -211,7 +245,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('display_name');
-    } catch (_) {}
+    } catch (e) {
+      // 清缓存失败不影响登出结果（凭证已清）→ 不向用户报错，但留一行日志
+      debugPrint('logout: 清除本地缓存失败: $e');
+    }
     state = const AuthState(isRestored: true);
   }
 
@@ -236,9 +273,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
         isRestored: true,
       );
     } catch (e) {
+      // 🔑 日志**必须带端点** —— 「连错地址」是本项目踩过的真坑：
+      //    `flutter run` 默认 `localhost:8080`，而后端在 VPS，
+      //    失败信息里若没有端点，就要靠猜。
+      debugPrint('trialStart 失败 endpoint=${ApiConfig.baseUrl} '
+          'refCode=$refCode campaignId=$campaignId error=$e');
       state = state.copyWith(
         isLoading: false,
-        error: _friendlyError(e.toString().replaceFirst('Exception: ', '')),
+        error: _friendlyError(e.toString()),
       );
     }
   }
@@ -295,9 +337,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
         isRestored: true,
       );
     } catch (e) {
+      debugPrint('trialClaim 失败 endpoint=${ApiConfig.baseUrl} '
+          'userId=${state.userId} username=$username error=$e');
       state = state.copyWith(
         isLoading: false,
-        error: _friendlyError(e.toString().replaceFirst('Exception: ', '')),
+        error: _friendlyError(e.toString()),
       );
       rethrow;
     }

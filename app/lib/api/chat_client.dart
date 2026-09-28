@@ -448,54 +448,12 @@ class ChatClient {
     }
   }
 
-  // ── K12 API ──
-
-  /// 获取所有 K12 科目的 display_name/title/goal/author 等元数据
-  Future<List<Map<String, dynamic>>> getK12Subjects() async {
-    final resp = await http.get(
-      Uri.parse('$baseUrl/api/k12/subjects'),
-      headers: _authHeaders,
-    ).timeout(ApiConfig.requestTimeout);
-    if (resp.statusCode != 200) return [];
-    final data = jsonDecode(resp.body) as Map<String, dynamic>;
-    return (data['subjects'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-  }
-
-  /// 初始化 K12 结构化学习会话
-  Future<Map<String, dynamic>> k12Init({
-    required String subject,
-    required String gradeBand,
-  }) async {
-    final resp = await http.post(
-      Uri.parse('$baseUrl/api/k12/init'),
-      headers: _authHeaders,
-      body: jsonEncode({
-        'user_id': userId,
-        'subject': subject,
-        'grade_band': gradeBand,
-      }),
-    ).timeout(ApiConfig.requestTimeout);
-
-    if (resp.statusCode != 200) {
-      throw Exception('K12 init error: ${resp.statusCode} ${resp.body}');
-    }
-    return jsonDecode(resp.body) as Map<String, dynamic>;
-  }
-
-  /// 获取 K12 学习进度
-
-  /// 获取 K12 学习进度
-  Future<Map<String, dynamic>> getK12Progress() async {
-    final uri = Uri.parse('$baseUrl/api/k12/progress').replace(queryParameters: {
-      'user_id': userId,
-    });
-    final resp = await http.get(uri, headers: _authHeaders)
-        .timeout(ApiConfig.requestTimeout);
-    if (resp.statusCode != 200) throw Exception('K12 progress: ${resp.statusCode}');
-    return jsonDecode(resp.body) as Map<String, dynamic>;
-  }
-
   /// 获取当前 task 的课文卡片（阅读模式）
+  ///
+  /// ⚠️ **端点是 `/api/k12/reading/...` —— 该路由已随 K12 清退（Step 3.0）删除**，
+  /// 所以本方法当前调用必然失败。调用方 `screens/chat/chat_reading_passage.dart`
+  /// 属 chat 流程，其去留见 `docs/review/step3-core-ui-plan-2026-09-27.md` §九。
+  /// 本次（3.1）**只标注、不改动** —— 不擅自判死 chat 流程。
   Future<Map<String, dynamic>?> getCurrentReadingCard(String convId) async {
     try {
       final uri = Uri.parse('$baseUrl/api/k12/reading/$convId/current-card').replace(queryParameters: {
@@ -690,37 +648,6 @@ extension PlanApi on ChatClient {
       debugPrint('savePreferences error: $e');
       return false;
     }
-  }
-
-  /// 获取所有成就定义 + 进度（Phase 3 成就页面改版）
-  Future<Map<String, dynamic>?> getAchievementsAll() async {
-    try {
-      final resp = await http.get(
-        Uri.parse('$baseUrl/api/user/$userId/achievements-all'),
-        headers: _authHeaders,
-      );
-      if (resp.statusCode == 200) {
-        return jsonDecode(resp.body) as Map<String, dynamic>;
-      }
-    } catch (e) {
-      debugPrint('getAchievementsAll error: $e');
-    }
-    return null;
-  }
-
-  Future<Map<String, dynamic>?> getPlanAchievements() async {
-    try {
-      final resp = await http.get(
-        Uri.parse('$baseUrl/api/user/$userId/plan-achievements'),
-        headers: _authHeaders,
-      );
-      if (resp.statusCode == 200) {
-        return jsonDecode(resp.body) as Map<String, dynamic>;
-      }
-    } catch (e) {
-      debugPrint('getPlanAchievements error: $e');
-    }
-    return null;
   }
 }
 

@@ -1,11 +1,7 @@
-import 'dart:async';
 import 'dart:convert';
-import 'dart:html' as html;
-import 'dart:js' as js;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 import '../models/coevo_models.dart';
 import '../api/chat_client.dart';
 import '../api/api_config.dart';
@@ -53,8 +49,7 @@ class ReviewCardWidget extends ConsumerStatefulWidget {
   ConsumerState<ReviewCardWidget> createState() => _ReviewCardWidgetState();
 }
 
-class _ReviewCardWidgetState extends ConsumerState<ReviewCardWidget>
-    with TickerProviderStateMixin {
+class _ReviewCardWidgetState extends ConsumerState<ReviewCardWidget> {
   ColorScheme get _cs => Theme.of(context).colorScheme;
   TextTheme get _tt => Theme.of(context).textTheme;
 
@@ -63,14 +58,6 @@ class _ReviewCardWidgetState extends ConsumerState<ReviewCardWidget>
   bool _isFlipped = false;
   bool _isVerifying = false;
   bool _isVerified = false;
-
-  // 语音输入（与 chat_input 一致）
-  bool _voiceMode = false;
-  bool _isRecording = false;
-  bool _isTranscribing = false;
-  int _recordSeconds = 0;
-  Timer? _recordTimer;
-  static const int _maxRecordSeconds = 60;
 
   String _verificationResult = '';
 
@@ -127,87 +114,7 @@ class _ReviewCardWidgetState extends ConsumerState<ReviewCardWidget>
       _aiAnswers = [];
       _aiResults = [];
       _answerController.clear();
-      _voiceMode = false;
-      _isRecording = false;
-      _isTranscribing = false;
     });
-  }
-
-  // ── 语音输入（复用 chat_input 的 JS 引擎） ──
-
-  void _enterVoiceMode() => setState(() => _voiceMode = true);
-
-  void _exitVoiceMode() {
-    _recordTimer?.cancel();
-    try { js.context.callMethod('__coeStop', [_nullFunc]); } catch (_) {}
-    setState(() {
-      _voiceMode = false;
-      _isRecording = false;
-      _isTranscribing = false;
-      _recordSeconds = 0;
-    });
-  }
-
-  void _nullFunc() {}
-
-  Future<void> _startRecording() async {
-    try {
-      js.context.callMethod('__coeStart');
-      setState(() {
-        _isRecording = true;
-        _recordSeconds = 0;
-      });
-      _recordTimer?.cancel();
-      _recordTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (!mounted) { _recordTimer?.cancel(); return; }
-        final next = _recordSeconds + 1;
-        if (next >= _maxRecordSeconds) {
-          _recordTimer?.cancel();
-          _stopRecording();
-        } else {
-          setState(() => _recordSeconds = next);
-        }
-      });
-    } catch (e) {
-      debugPrint('ReviewCard voice start error: $e');
-      _exitVoiceMode();
-    }
-  }
-
-  void _stopRecording() {
-    _recordTimer?.cancel();
-    setState(() => _isRecording = false);
-    setState(() => _isTranscribing = true);
-    final callback = js.JsFunction.withThis((self, b64) {
-      if (mounted) _sendVoiceBase64(b64 as String);
-    });
-    try { js.context.callMethod('__coeStop', [callback]); } catch (e) {
-      debugPrint('ReviewCard voice stop error: $e');
-      _exitVoiceMode();
-    }
-  }
-
-  Future<void> _sendVoiceBase64(String b64) async {
-    if (b64.isEmpty) { _exitVoiceMode(); return; }
-    try {
-      final resp = await http.post(
-        Uri.parse('${ApiConfig.baseUrl}/api/stt/transcribe'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'audio': b64, 'format': 'wav', 'engine': '16k_zh'}),
-      ).timeout(const Duration(seconds: 15));
-      if (resp.statusCode == 200 && mounted) {
-        final d = jsonDecode(resp.body) as Map<String, dynamic>;
-        final text = d['text'] as String? ?? '';
-        if (text.isNotEmpty) {
-          _answerController.text = text;
-          _answerController.selection = TextSelection.fromPosition(
-            TextPosition(offset: text.length),
-          );
-        }
-      }
-    } catch (_) {}
-    setState(() => _isTranscribing = false);
-    _exitVoiceMode();
   }
 
   Future<void> _preloadAiQuestions() async {
@@ -675,90 +582,28 @@ class _ReviewCardWidgetState extends ConsumerState<ReviewCardWidget>
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: CoSpacing.sm),
-          // ── AI 问答输入（语音模式切换） ──
-          if (_voiceMode)
-            // 语音模式：按住说话（与 chat_input 一致）
-            Row(
-              children: [
-                IconButton(
-                  icon: _isTranscribing
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.keyboard, size: 22),
-                  onPressed: _isRecording ? null : _exitVoiceMode,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: GestureDetector(
-                    onLongPressStart: _isTranscribing ? null : (_) => _startRecording(),
-                    onLongPressEnd: _isTranscribing ? null : (_) => _stopRecording(),
-                    onLongPressCancel: _stopRecording,
-                    child: Container(
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: _isRecording ? Colors.red.withAlpha(20) : _cs.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                          color: _isRecording ? Colors.red.withAlpha(100) : _cs.outline.withAlpha(60),
-                        ),
-                      ),
-                      child: Center(
-                        child: _isTranscribing
-                            ? const Row(mainAxisSize: MainAxisSize.min, children: [
-                                SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 3, color: Colors.grey)),
-                                SizedBox(width: 8), Text('识别中...', style: TextStyle(fontSize: 15)),
-                              ])
-                            : _isRecording
-                                ? Row(mainAxisSize: MainAxisSize.min, children: [
-                                    SizedBox(
-                                      width: 20, height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 3, color: Colors.red,
-                                        value: _recordSeconds / _maxRecordSeconds,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text('${_maxRecordSeconds - _recordSeconds}s 松手结束',
-                                        style: const TextStyle(color: Colors.red, fontSize: 15)),
-                                  ])
-                                : const Text('按住 说话', style: TextStyle(fontSize: 15)),
-                      ),
-                    ),
+          // ── AI 问答输入（纯文字；语音输入已于 2026-09-27 移除）──
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _answerController,
+                  decoration: const InputDecoration(
+                    hintText: '你的回答...',
+                    isDense: true,
+                    border: OutlineInputBorder(),
                   ),
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _submitAiAnswer(),
                 ),
-              ],
-            )
-          else
-            // 文字输入模式（与 chat_input 一致：mic 在左）
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.mic, size: 22),
-                  onPressed: _enterVoiceMode,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-                ),
-                const SizedBox(width: CoSpacing.sm),
-                Expanded(
-                  child: TextField(
-                    controller: _answerController,
-                    decoration: const InputDecoration(
-                      hintText: '你的回答...',
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                    ),
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _submitAiAnswer(),
-                  ),
-                ),
-                const SizedBox(width: CoSpacing.xs),
-                IconButton.filled(
-                  onPressed: _submitAiAnswer,
-                  icon: const Icon(Icons.arrow_forward, size: 18),
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(width: CoSpacing.xs),
+              IconButton.filled(
+                onPressed: _submitAiAnswer,
+                icon: const Icon(Icons.arrow_forward, size: 18),
+              ),
+            ],
+          ),
         ],
 
         // ── 评判中 ──

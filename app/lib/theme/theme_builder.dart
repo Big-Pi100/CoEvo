@@ -36,6 +36,38 @@ ThemeData buildTheme(CoEvoTokens t) {
     textTheme: _textTheme(scheme),
     iconTheme: IconThemeData(color: _c(t.ink2)),
 
+    // ── 页面转场：**全部平台统一用 iOS 的 Cupertino 转场** ─────────────────
+    //
+    // # 为什么（2026-09-28 白哥：「每个页面应该加上左滑退出」）
+    //
+    // 🔑 关键机制：**侧滑返回手势是「转场 builder」自带的，不是路由本身带的**。
+    //    `CupertinoPageTransitionsBuilder.buildTransitions` 委托给
+    //    `CupertinoRouteTransitionMixin.buildPageTransitions`，该方法内部包了
+    //    `_CupertinoBackGestureDetector`（`flutter/lib/src/cupertino/route.dart:253`）
+    //    → 换成这个 builder，页面**同时**获得「右滑入场 + 边缘右滑返回」。
+    //
+    // 🔴 而 Flutter 默认是**按平台分派**的（`page_transitions_theme.dart:806`）：
+    //      android → `PredictiveBackPageTransitionsBuilder`（**无 iOS 风格侧滑**）
+    //      iOS/macOS → `CupertinoPageTransitionsBuilder`
+    //    → 所以在 Android 上**天然测不到**这个手势。本产品只做 iOS，
+    //      Android 是开发期的验证载体 → **必须统一**，否则「在 Android 上验 iOS 行为」
+    //      这件事根本做不到（本项目已多次栽在「在错平台上验证」）。
+    //
+    // ⚠️ 代价（如实记录）：Android 用户会失去系统的预测性返回动画。
+    //    Android 不是出货平台 → 可接受。若将来真出 Android 版，应改回
+    //    `PredictiveBackPageTransitionsBuilder` 并单独验一遍手势。
+    //
+    // 🔴 **配套约束**：任何页面**不许**用 `CustomTransitionPage` 自定义转场 ——
+    //    它不走本表，等于**把侧滑手势关掉**（`/article/:id` 与 `/chat` 原先就是
+    //    这么写的，已改回 `builder:`）。这条有断言守着（`tokens_verify` §15）。
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+      },
+    ),
+
     // ── 顶栏 ──
     appBarTheme: AppBarTheme(
       centerTitle: true,
@@ -126,7 +158,13 @@ ThemeData buildTheme(CoEvoTokens t) {
       highlightElevation: 0,
     ),
 
-    // ── 底部导航（3 tab）──
+    // ── 底部导航 ──
+    // ⚠️ 主 tabbar（`app.dart` 的 `_ClayTabBar`）已于 2026-09-27 **改为自绘粘土药丸** ——
+    //    设计稿要求选中态是「强调色填充 + 实体投影」，M3 `NavigationBar` 表达不出来
+    //    （`indicatorColor` 只能换颜色，改不了形状与材质）→ 当前**没有组件在用这份主题**。
+    // 🔑 **仍然保留**：任何页面若引入 M3 `NavigationBar`（如二级 tab），
+    //    颜色不会静默回落成 Material 默认紫 ——「写了但没接上」与「静默降级」
+    //    都是本项目反复踩的坑，留一份正确的兜底比删掉更安全。
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: _c(t.card),
       elevation: 0,
