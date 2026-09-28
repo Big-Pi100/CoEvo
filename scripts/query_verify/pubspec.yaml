@@ -8,3 +8,14 @@ environment:
 
 dependencies:
   sqflite_common_ffi: ^2.3.4
+  # 🔴 2026-09-28 加：`ReviewListItem.toReviewState()` 引入了 `fsrs_service`
+  #    → 本子项目需能解析它（fsrs_service 内部用 `package:fsrs` 的 `Card`）。
+  #
+  # 为什么不把转换挪出数据层以避开这个依赖：
+  #   `toReviewState()` 是「DB 行 → FSRS 状态」的**字段映射**，属数据层职责；
+  #   挪到 UI 层只是把依赖藏起来，并让页面去关心 `step`/`stability` 这些内部单位。
+  #   🔑 依赖**如实反映**了数据层现在确实包含这层映射 —— 比隐藏它更诚实。
+  #
+  # ⚠️ 版本必须与 `app/pubspec.yaml` 一致（同 `fsrs_verify`）——
+  #    否则「验收用的行为」与「App 里的行为」可能不是同一个包。
+  fsrs: ^2.0.1

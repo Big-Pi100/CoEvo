@@ -16,10 +16,12 @@
 //    · 排序要 `next_review_at`（FSRS 调度），只有 `card_review_state` 有
 //    · `user_word` 只提供「暂停」状态（`deleted`）→ 由 `ReviewListQuery` 内部 JOIN
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/review_list_query.dart';
 import 'user_db_provider.dart';
+import 'word_db_provider.dart';
 
 /// 复习列表的**排序档** —— `ui-ux` §6.2 规定的三档。
 ///
@@ -102,15 +104,74 @@ class ReviewListArgs {
 /// # 刷新
 /// 「暂停」一个词后，调用方需 `ref.invalidate(reviewListProvider)` 与
 /// `ref.invalidate(reviewDueCountProvider)`（见 `review_screen._pause`）。
+/// 复习列表的一项 = **复习状态 + 释义**。
+///
+/// 🔑 为什么把释义并进来而不是让页面各查各的：
+/// · 设计稿 `visual-word-card-target` §02 定「**列表项 = 单词 + 释义 +
+///   熟练度三点 + 下次到期时间**」→ 释义是列表项的一部分，不是额外装饰；
+/// · 释义在 `word.db`（跨库），逐项异步查会让每个 item 各自维护加载态
+///   → 一个列表里出现 N 个独立的「转圈」。
+/// → 在 provider 里**一次批量取齐**（一次 `IN (...)` SQL）。
+class ReviewRow {
+  const ReviewRow({required this.item, this.definition});
+
+  final ReviewListItem item;
+
+  /// 首义中文；`null` = 取不到（词条缺失 / 无 `definition` 段 / 词库未就绪）
+  /// → 列表项**不显示释义行**，而不是显示空行或占位符。
+  final String? definition;
+}
+
+/// 复习列表 —— 单一列表（全部生词，含未到期的）。
+///
+/// # 🔑 为什么 `watch(userDbProvider)` 而不是 `read`
+/// 同 `bookmarkListProvider`：`watch` 让「库就绪」本身成为依赖 →
+/// 库打开完成时列表**自动重查**；只 `read` 会拿到「还没就绪」的空态。
+///
+/// # ⚠️ 读失败**会抛**（不吞成空列表）
+/// 复习列表是**用户自己攒下的词**，读不出来必须**明确告知**（页面渲染错误态），
+/// 不能显示成「还没有生词」—— 那是**谎报**
+/// （同 `bookmark_list_screen._Unavailable` 的既定原则）。
+///
+/// # 🔴 但**释义**取不到**不抛**（两者严格区分）
+/// 状态库（`user.db`）坏了 = 列表本身没了 → 必须报错。
+/// 而词库（`word.db`）未就绪 / 查不到某个词 = 只是**少一行释义** →
+/// 列表照常显示。
+/// 🔑 这是「**不要把易失败的依赖放在内容渲染的前置条件上**」的直接落实：
+///   词库要 31.4 MB 首次落盘（0.5–2 s），拿它当列表的前置条件
+///   会让复习页在启动后一段时间内**整页空着**。
+///
+/// # 刷新
+/// 「暂停」或提交评级后，调用方需 `ref.invalidate(reviewListProvider)` 与
+/// `ref.invalidate(reviewDueCountProvider)`。
 final reviewListProvider =
-    FutureProvider.autoDispose.family<List<ReviewListItem>, ReviewListArgs>(
+    FutureProvider.autoDispose.family<List<ReviewRow>, ReviewListArgs>(
   (ref, args) async {
     final db = await ref.watch(userDbProvider.future);
-    return ReviewListQuery(db).list(
+    final items = await ReviewListQuery(db).list(
       search: args.search,
       order: args.sort.order,
       dueOnly: args.dueOnly,
     );
+    if (items.isEmpty) return const [];
+
+    // ── 释义（尽力而为，失败不影响列表）──
+    var defs = const <String, String>{};
+    final load = ref.watch(wordQueryProvider).valueOrNull;
+    if (load is WordDbReady) {
+      try {
+        defs = await load.service
+            .firstDefinitionsOf(items.map((e) => e.wordId).toList());
+      } catch (e) {
+        // 🔑 只记日志 —— 见类文档：少一行释义 ≠ 列表不可用
+        debugPrint('[review] 取释义失败（列表照常显示）：$e');
+      }
+    }
+
+    return [
+      for (final it in items)
+        ReviewRow(item: it, definition: defs[it.wordId]),
+    ];
   },
 );
 

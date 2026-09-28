@@ -46,12 +46,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/review_list_provider.dart';
+import '../providers/user_db_provider.dart';
 import '../providers/user_word_provider.dart';
+import '../providers/word_db_provider.dart';
+import '../services/fsrs_service.dart';
 import '../services/review_list_query.dart';
+import '../services/word_query_service.dart';
 import '../theme/clay.dart';
 import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
+import '../widgets/word_card.dart';
 
 class ReviewScreen extends ConsumerStatefulWidget {
   const ReviewScreen({super.key});
@@ -149,9 +154,185 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     }
   }
 
+  // ════════════════════════════════════════════════════════════
+  // 翻卡态（Step 3.6 第二步 · 白哥 2026-09-28 定「做成可点，连带做词卡」）
+  // ════════════════════════════════════════════════════════════
+  //
+  // 规格：设计稿 `visual-word-card-target` §02
+  //   > 「点任意一项 → 进入翻卡（翻卡 → 自评四档 → **自动下一张**）」
+
+  /// 全页共用一个 FSRS 服务实例（它有内部 `Scheduler`，不该每次求值都 new）
+  final _fsrs = FsrsService();
+
+  bool _inCard = false;
+
+  /// 翻卡队列 —— **进入时冻结的快照**。
+  ///
+  /// 🔴 为什么必须是快照（不能每帧从 provider 取活的列表）：
+  /// 提交评级后该词的 `next_review_at` 变成未来 → 它会**离开「今天该复习」分组**。
+  /// 若队列是活的，`_cardIndex` 指向的项每评一次就整体前移一位
+  /// → 出现「评完一张，下一张跳过了一个」这类错位（而且很难察觉）。
+  /// 冻结后「第几张」才有稳定含义。
+  List<ReviewRow> _queue = const [];
+
+  int _cardIndex = 0;
+
+  /// 当前卡的词条数据（含槽位分配）—— 异步加载
+  ({WordCard card, WordMnemonicProfile? profile})? _cardData;
+
+  /// `mnemonic_type.code → 显示名`（库里读，懒加载一次）
+  Map<String, String> _typeNames = const {};
+
+  /// 四档预览的间隔 —— **提交前**就要算出来（按钮上「下次 X 天」）
+  Map<ReviewRating, Duration>? _previews;
+
+  /// 正在提交 → 四键禁用（防连点造成重复写库 / 重复计数）
+  bool _submitting = false;
+
+  /// 卡片数据加载失败（词库未就绪 / 词条缺失）→ 给准确的话，**不静默**
+  bool _cardLoadFailed = false;
+
+  /// 进入翻卡：以**当前列表**为队列，从第 [index] 项开始。
+  void _startReview(List<ReviewRow> rows, int index) {
+    setState(() {
+      _queue = rows;
+      _cardIndex = index;
+      _inCard = true;
+      _cardData = null;
+      _previews = null;
+      _cardLoadFailed = false;
+    });
+    unawaited(_loadCard());
+  }
+
+  /// 退出翻卡回列表（刷新 —— 刚评过的词到期时间已经变了）。
+  void _exitReview() {
+    setState(() {
+      _inCard = false;
+      _queue = const [];
+      _cardIndex = 0;
+      _cardData = null;
+      _previews = null;
+      _cardLoadFailed = false;
+    });
+    ref.invalidate(reviewListProvider);
+    ref.invalidate(reviewDueCountProvider);
+  }
+
+  /// 加载当前卡的**词条 + 槽位分配**，并算好四档预览。
+  Future<void> _loadCard() async {
+    if (!_inCard || _cardIndex >= _queue.length) return;
+    final item = _queue[_cardIndex].item;
+
+    // ⚠️ 这里**必须**词库就绪 —— 与列表项释义不同：
+    //    列表少一行释义仍可用，而「翻卡」的全部内容（四段）都来自 word.db
+    //    → 没词库就没有卡片可翻。给一句**准确**的话而不是空白。
+    final load = ref.read(wordQueryProvider).valueOrNull;
+    if (load is! WordDbReady) {
+      if (mounted) setState(() => _cardLoadFailed = true);
+      return;
+    }
+
+    try {
+      final data = await load.service.reviewCardOf(item.wordId);
+      final names = await load.service.mnemonicTypeNames();
+      if (!mounted || !_inCard) return;
+      if (data == null) {
+        // 词库里没有这个词（数据不一致的真实可能：词库升级删过词）
+        setState(() => _cardLoadFailed = true);
+        return;
+      }
+
+      // 🔑 四键的「下次 X 天」= `previewAll`（**同一个 scheduler + 同一套确定性抖动**）
+      //    → 预览显示多久，提交后就真的是多久（见 `FsrsService.previewAll` 的文档）。
+      final previews = _fsrs.previewAll(item.toReviewState(), _fsrs.nowUtc());
+
+      setState(() {
+        _cardData = data;
+        _typeNames = names;
+        _previews = previews;
+        _cardLoadFailed = false;
+      });
+    } catch (e, st) {
+      debugPrint('[review] 加载卡片失败 wordId=${item.wordId}：$e\n$st');
+      if (mounted) setState(() => _cardLoadFailed = true);
+    }
+  }
+
+  /// 提交一次评级：算新状态 → **写两张表** → 自动下一张。
+  Future<void> _submitRating(ReviewRating rating) async {
+    if (_submitting) return;
+    if (_cardIndex >= _queue.length) return;
+    final item = _queue[_cardIndex].item;
+
+    setState(() => _submitting = true);
+    try {
+      final now = _fsrs.nowUtc();
+      // `review()` = apply + 产出同步事件（与 `previewAll` **同一套抖动**）
+      final r = _fsrs.review(rating, item.toReviewState(), now);
+
+      final db = await ref.read(userDbProvider.future);
+      final q = ReviewListQuery(db);
+
+      // 🔴 两张表都要写，缺一不可：
+      //    · `card_review_state` = 当前状态（复习页排序的唯一依据）
+      //    · `review_log`       = 评级流水（多端同步的最小单位 + 「今天复习了几个」）
+      //    只写前者 → 历史永久丢失（重放需要每一次评级的时间与档位）。
+      await q.upsertState(
+        wordId: item.wordId,
+        spelling: item.spelling,
+        state: r.state.state,
+        step: r.state.step,
+        stability: r.state.stability,
+        difficulty: r.state.difficulty,
+        reps: r.state.reps,
+        lapses: r.state.lapses,
+        lastReviewAt: r.state.lastReviewAt,
+        nextReviewAt: r.state.nextReviewAt,
+      );
+      await q.logReview(r.event);
+    } catch (e, st) {
+      // 🔴 失败**不静默**：既不改队列也不前进 —— 用户再点一次就是重试
+      debugPrint('[review] 提交评级失败 wordId=${item.wordId}：$e\n$st');
+      if (mounted) {
+        setState(() => _submitting = false);
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(
+            content: Text('这一张没记上，再点一次试试。'),
+            duration: Duration(seconds: 2),
+          ));
+      }
+      return;
+    }
+
+    if (!mounted) return;
+
+    // 自动下一张；已到队尾 → 回列表
+    if (_cardIndex + 1 >= _queue.length) {
+      setState(() => _submitting = false);
+      _exitReview();
+    } else {
+      setState(() {
+        _submitting = false;
+        _cardIndex++;
+        _cardData = null;
+        _previews = null;
+        _cardLoadFailed = false;
+      });
+      unawaited(_loadCard());
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = CoEvoTokensExt.of(context);
+
+    // 🔴 翻卡态：**整页**换成卡片。
+    //    刻意**不** watch 列表 provider —— 队列是进入时冻结的快照
+    //    （见 `_queue` 的说明：活列表会让「第几张」错位）。
+    if (_inCard) return _cardPage(t);
+
     final list = ref.watch(reviewListProvider(_args));
     final dueCount = ref.watch(reviewDueCountProvider).valueOrNull;
 
@@ -173,9 +354,9 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                 loading: () => const SizedBox.shrink(),
                 // 读失败 → 给**准确**的话，不冒充「还没有生词」
                 error: (e, st) => const _Unavailable(),
-                data: (items) => items.isEmpty
+                data: (rows) => rows.isEmpty
                     ? _EmptyState(filtered: _isFiltering)
-                    : _list(items),
+                    : _list(rows),
               ),
             ),
           ],
@@ -358,37 +539,126 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   // ────────────────────────────────────────────────────────────
   // 列表
   // ────────────────────────────────────────────────────────────
-  Widget _list(List<ReviewListItem> items) {
+  Widget _list(List<ReviewRow> rows) {
     final now = DateTime.now();
-    // 🔑 分组用**数据层**的静态方法（与 `dueCount` 同一判据）——
-    //    在 UI 里重写一遍「是否到期」会让「顶部计数」与「分组标题」打架。
-    final g = ReviewListQuery.group(items, now);
 
-    final rows = <Widget>[];
-    if (g.due.isNotEmpty) {
-      rows.add(_GroupHeader(
+    // 🔑 分组仍走**数据层**的静态方法（与 `dueCount` 同一判据）——
+    //    在 UI 里重写一遍「是否到期」会让「顶部计数」与「分组标题」打架。
+    //
+    // ⚠️ 但 `group()` 处理的是 `ReviewListItem`，而列表项现在携带**释义**
+    //    （`ReviewRow`）→ 用 `wordId` 把它映射回来，**不重新构造**。
+    //    这样「分组判据」只有一处定义，释义也不丢。
+    final g = ReviewListQuery.group(rows.map((e) => e.item).toList(), now);
+    final byId = {for (final r in rows) r.item.wordId: r};
+    final dueRows = [for (final i in g.due) byId[i.wordId]!];
+    final laterRows = [for (final i in g.later) byId[i.wordId]!];
+
+    final out = <Widget>[];
+    if (dueRows.isNotEmpty) {
+      out.add(_GroupHeader(
         label: '今天该复习',
-        count: g.due.length,
+        count: dueRows.length,
         accent: true,
       ));
-      for (final it in g.due) {
-        rows.add(_WordRow(item: it, now: now, onPause: () => _pause(it)));
+      for (final r in dueRows) {
+        out.add(_WordRow(
+          row: r,
+          now: now,
+          onPause: () => _pause(r.item),
+          onOpen: () => _startReview(rows, rows.indexOf(r)),
+        ));
       }
     }
-    if (g.later.isNotEmpty) {
-      rows.add(
-          _GroupHeader(label: '之后', count: g.later.length, accent: false));
-      for (final it in g.later) {
-        rows.add(_WordRow(item: it, now: now, onPause: () => _pause(it)));
+    if (laterRows.isNotEmpty) {
+      out.add(_GroupHeader(
+          label: '之后', count: laterRows.length, accent: false));
+      for (final r in laterRows) {
+        out.add(_WordRow(
+          row: r,
+          now: now,
+          onPause: () => _pause(r.item),
+          onOpen: () => _startReview(rows, rows.indexOf(r)),
+        ));
       }
     }
 
     return ListView.separated(
       // 底部留出 tabbar 高度 —— `_ShellScaffold` 开了 `extendBody: true`
       padding: const EdgeInsets.fromLTRB(18, 0, 18, CoSpacing.tabBarClearance),
-      itemCount: rows.length,
+      itemCount: out.length,
       separatorBuilder: (_, __) => const SizedBox(height: 10),
-      itemBuilder: (_, i) => rows[i],
+      itemBuilder: (_, i) => out[i],
+    );
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // 翻卡态
+  // ────────────────────────────────────────────────────────────
+  Widget _cardPage(CoEvoTokens t) {
+    final data = _cardData;
+    final previews = _previews;
+
+    return Scaffold(
+      backgroundColor: Color(t.page.argb32),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // ── 顶部：退出 + 进度「复习 · 7 / 23」──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 2, 18, 8),
+              child: Row(
+                children: [
+                  InkWell(
+                    onTap: _exitReview,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 6),
+                      child: Text(
+                        '返回',
+                        style: TextStyle(
+                          fontFamily: CoFonts.uiSans,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(t.accent.argb32),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      // 队列是快照 → 分母稳定，不会因提交而变
+                      '复习 · ${_cardIndex + 1} / ${_queue.length}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: CoFonts.uiSans,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(t.ink2.argb32),
+                      ),
+                    ),
+                  ),
+                  // 与左侧「返回」等宽的占位，让进度真正居中
+                  const SizedBox(width: 44),
+                ],
+              ),
+            ),
+            Expanded(
+              child: (data == null || previews == null)
+                  ? (_cardLoadFailed ? const _CardUnavailable() : _CardLoading())
+                  : WordCardView(
+                      card: data.card,
+                      profile: data.profile,
+                      previews: previews,
+                      mnemonicNames: _typeNames,
+                      ratingEnabled: !_submitting,
+                      onRate: _submitRating,
+                    ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -577,21 +847,31 @@ class _GroupHeader extends StatelessWidget {
 ///    也不给一个点了没反应的入口。
 class _WordRow extends StatelessWidget {
   const _WordRow({
-    required this.item,
+    required this.row,
     required this.now,
     required this.onPause,
+    required this.onOpen,
   });
 
-  final ReviewListItem item;
+  final ReviewRow row;
   final DateTime now;
   final VoidCallback onPause;
+
+  /// 点行 → 进入翻卡（设计稿：「**点任意一项 → 进入翻卡**」）
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
     final t = CoEvoTokensExt.of(context);
+    final item = row.item;
     final due = item.isDue(now);
 
+    // 🔑 整行 `Clay(onTap:)` = **可点**（与 `FeedCard` 同一语汇）。
+    //    ⚠️ 这正是 2026-09-28 修正的那处：先前同行是「Clay 凸起（看起来能点）
+    //       但无 onTap（点了没反应）」——「静默无效的操作」是本项目明令避免的。
+    //    现在行有 `onTap`，「暂停」是**行内的独立按钮**（点它不会触发行）。
     return Clay(
+      onTap: onOpen,
       padding: const EdgeInsets.fromLTRB(16, 13, 10, 13),
       child: Row(
         children: [
@@ -610,6 +890,24 @@ class _WordRow extends StatelessWidget {
                     color: Color(t.ink.argb32),
                   ),
                 ),
+                // 🆕 释义 —— 设计稿 §02：「列表项 = 单词 + **释义** +
+                //     熟练度三点 + 下次到期时间」。
+                // ⚠️ 取不到释义时**整行不渲染**（不是空行、不是占位符）——
+                //     空行会读成「加载失败」，占位符会读成「这个词没释义」。
+                if ((row.definition ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    row.definition!.trim(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: CoFonts.uiSans,
+                      fontSize: t.type.mnemNote, // 12.5
+                      height: 1.4,
+                      color: Color(t.ink2.argb32),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 6),
                 Row(
                   children: [
@@ -799,6 +1097,59 @@ class _EmptyState extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 卡片加载中 —— 词库首次落盘要 0.5–2 s（31.4 MB），这段时间必须**有反馈**。
+///
+/// 🔑 与列表的「加载中什么都不画」**有意不同**：
+/// 列表是「刷新」语境（旧内容还在，画转圈反而闪）；
+/// 翻卡是「打开新东西」语境 —— 屏幕本来就是空的，**不画就是一片空白**。
+class _CardLoading extends StatelessWidget {
+  const _CardLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+    return Center(
+      child: SizedBox(
+        width: 22,
+        height: 22,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: Color(t.accent.argb32),
+        ),
+      ),
+    );
+  }
+}
+
+/// 卡片取不出来 —— **给准确的话**，不空白、不冒充「这个词没问题」。
+///
+/// 两种真实成因（都要引导用户重试，而不是让他干等）：
+/// · 词库还没就绪 / 落盘失败
+/// · 词库里没有这个词（数据不一致：词库升级时删过词）
+class _CardUnavailable extends StatelessWidget {
+  const _CardUnavailable();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          '这张卡暂时打不开，返回列表重试。\n若一直这样，可能是词库还在准备。',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: CoFonts.uiSans,
+            fontSize: 13,
+            height: 1.7,
+            color: Color(t.ink3.argb32),
+          ),
+        ),
       ),
     );
   }

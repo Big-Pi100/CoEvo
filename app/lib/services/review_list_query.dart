@@ -1,5 +1,7 @@
 import 'package:sqflite_common/sqlite_api.dart';
 
+import 'fsrs_service.dart' show ReviewEvent, ReviewState;
+
 /// 复习列表查询 —— `user.db` 侧，**纯 Dart，不 import Flutter**。
 ///
 /// ## 为什么需要它
@@ -76,7 +78,7 @@ class ReviewListQuery {
     final q = search?.trim() ?? '';
 
     final sql = StringBuffer(
-      'SELECT crs.word_id, crs.spelling, crs.state, crs.reps, crs.lapses, '
+      'SELECT crs.word_id, crs.spelling, crs.state, crs.step, crs.reps, crs.lapses, '
       '       crs.stability, crs.difficulty, crs.last_review_at, '
       '       crs.next_review_at, crs.pending_push '
       'FROM card_review_state crs '
@@ -226,12 +228,32 @@ class ReviewListQuery {
   /// 取某一词的复习状态（查词后决定「已在生词本」还是「新增」）
   Future<ReviewListItem?> stateOf(String wordId) async {
     final rows = await _db.rawQuery(
-      'SELECT word_id, spelling, state, reps, lapses, stability, difficulty, '
+      'SELECT word_id, spelling, state, step, reps, lapses, stability, difficulty, '
       '       last_review_at, next_review_at, pending_push '
       'FROM card_review_state WHERE word_id = ?',
       [wordId],
     );
     return rows.isEmpty ? null : ReviewListItem.fromRow(rows.first);
+  }
+
+  /// 记一条复习日志（`review_log`）—— 卡片的四键提交时调用。
+  ///
+  /// # 🔑 为什么必须写这张表（不能只更新 `card_review_state`）
+  /// 两者分工不同（见 `v1` §3.2）：
+  /// · `card_review_state` = **当前状态**（下次什么时候到期）→ 复习页排序用
+  /// · `review_log` = **每次评级的流水** → ① 多端同步的**最小单位**
+  ///   ② 「今天复习了多少个」这类统计的唯一来源
+  ///
+  /// 只写前者 → **历史丢失且不可恢复**（重放需要每一次评级的时间和档位）。
+  ///
+  /// ⚠️ 幂等由表自身的 `UNIQUE (word_id, reviewed_at, device_id)` 保证 →
+  ///    用 `INSERT OR IGNORE`（多端拉取重复事件时天然去重）。
+  Future<void> logReview(ReviewEvent event) async {
+    await _db.insert(
+      'review_log',
+      event.toRow(),
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
   }
 
   // ── 内部 ────────────────────────────────────────────────────
@@ -250,6 +272,7 @@ class ReviewListItem {
     required this.wordId,
     required this.spelling,
     required this.state,
+    this.step,
     this.reps = 0,
     this.lapses = 0,
     this.stability,
@@ -267,6 +290,16 @@ class ReviewListItem {
   /// 0 未学 / 1 learning / 2 review / 3 relearning
   final int state;
 
+  /// 🆕 学习/重学态的**当前步**（`review` 态为 NULL）。
+  ///
+  /// 🔴 为什么必须补这一列（2026-09-28 加）：
+  /// 词卡上的四键要显示「下次 X 天」，那要用 `FsrsService.previewAll` 算 ——
+  /// 而它接受的是完整的 `ReviewState`，**`step` 是其中一环**
+  /// （`learning` / `relearning` 态的间隔由「第几步」决定）。
+  /// 少了它，预览会**当成 step=null 去算**，于是新词四键显示的数字全是错的
+  /// —— 而错得**看不出来**（数字看起来照样合理）。
+  final int? step;
+
   final int reps;
   final int lapses;
   final double? stability;
@@ -280,10 +313,31 @@ class ReviewListItem {
   /// 距到期时长（负数 = 已过期）—— 界面显示「已到期 / 2 小时 / 4 天」
   Duration untilDue(DateTime nowUtc) => nextReviewAt.difference(nowUtc.toUtc());
 
+  /// 转成 FSRS 层的 [ReviewState] —— 供 `FsrsService.previewAll` / `apply` 使用。
+  ///
+  /// 🔑 转换放在**数据层**而不是页面：这是「本库的行 ↔ FSRS 的状态」的字段映射，
+  ///    属数据职责；页面不该知道 `step` / `stability` 这些内部单位。
+  ///
+  /// ⚠️ 字段必须**逐个写全** —— 漏一个（如 `step`）不会报错，
+  ///    但会让预览算错（见 [step] 的说明）。断言锁住这个映射。
+  ReviewState toReviewState() => ReviewState(
+        wordId: wordId,
+        state: state,
+        step: step,
+        stability: stability,
+        difficulty: difficulty,
+        reps: reps,
+        lapses: lapses,
+        lastReviewAt: lastReviewAt,
+        nextReviewAt: nextReviewAt,
+        pendingPush: pendingPush,
+      );
+
   static ReviewListItem fromRow(Map<String, Object?> r) => ReviewListItem(
         wordId: r['word_id']! as String,
         spelling: (r['spelling'] as String?) ?? '',
         state: (r['state'] as int?) ?? 0,
+        step: r['step'] as int?,
         reps: (r['reps'] as int?) ?? 0,
         lapses: (r['lapses'] as int?) ?? 0,
         stability: (r['stability'] as num?)?.toDouble(),

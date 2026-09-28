@@ -184,7 +184,97 @@ class WordQueryService {
     );
     if (rows.isEmpty) return null;
 
-    final r = rows.first;
+    final id = rows.first['id']! as String;
+    return _cardFromRow(rows.first, links: await aggregateLinks(id));
+  }
+
+  static List<WordSection> _parseSections(Map<String, Object?> content) {
+    final raw = content['sections'];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((m) => WordSection(m.cast<String, Object?>()))
+        .toList(growable: false);
+  }
+
+  /// 按 `word.id` 取词条卡片 —— **复习页用**（那里只有 `word_id`，没有拼写）。
+  ///
+  /// 与 [_cardBySpelling] 的差别只在 `WHERE` 列；解析逻辑共用 [_cardFromRow]。
+  Future<WordCard?> cardById(String wordId) async {
+    final rows = await _db.rawQuery(
+      'SELECT w.id, w.spelling, w.cefr_level, w.entry_type, w.etymology_text, w.sort_seq, '
+      '       c.content, c.content_hash, c.template_code '
+      'FROM word w LEFT JOIN card c ON c.word_id = w.id '
+      'WHERE w.id = ? LIMIT 1',
+      [wordId],
+    );
+    if (rows.isEmpty) return null;
+    return _cardFromRow(rows.first);
+  }
+
+  /// 取某词的**记忆法槽位分配**（`word_mnemonic_profile`，11,523 词全有）。
+  ///
+  /// # 🔴 为什么不自己按 `mnemonic_type.priority` 排一遍（2026-09-28 核实）
+  /// 那张表是**制卡时**的配置，而**每个词的分配结果早已算好并存下来**：
+  /// · `primary_code`   → 卡片 **①**
+  /// · `secondary_codes` → 卡片 **②**（JSON 数组；可能为空）
+  /// · `confidence` / `rationale` → 为什么这么分配
+  ///
+  /// → 运行时按 priority 重排 = **把已经算好的结果再猜一遍**，
+  ///   而且会与制卡结果**不一致**（`secondary_codes` 是有抑制规则的：
+  ///   设计稿 §06「② 对可拆词 78.3% 与 ① 重复」→ 那些词的 ② 被刻意留空）。
+  ///
+  /// ⚠️ 且**设计稿 HTML 与库表优先级不一致**：
+  ///   HTML 写 `root→cognate→collocation(3)→etymology(4)`，
+  ///   库表 `mnemonic_type` 权威值是 `root(1) cognate(2) etymology(3) collocation(4)`。
+  ///   🔑 **以库为准**（数据 > 手绘稿）；用它就等于绕开了这个矛盾。
+  Future<WordMnemonicProfile?> profileOf(String wordId) async {
+    final rows = await _db.rawQuery(
+      'SELECT word_id, primary_code, secondary_codes, confidence, rationale '
+      'FROM word_mnemonic_profile WHERE word_id = ? LIMIT 1',
+      [wordId],
+    );
+    return rows.isEmpty ? null : WordMnemonicProfile.fromRow(rows.first);
+  }
+
+  /// 复习一张卡所需的**全部数据**（词条 + 槽位分配）—— 一次调用取齐。
+  ///
+  /// 🔑 合成一个方法而不是让调用方查两次：两者**总是同时需要**
+  ///   （卡片没有 profile 就不知道该把哪两段放 ①②），
+  ///   分两次调用只会让「忘了查 profile」变成一个静默的半成品状态。
+  Future<({WordCard card, WordMnemonicProfile? profile})?> reviewCardOf(
+      String wordId) async {
+    final card = await cardById(wordId);
+    if (card == null) return null;
+    return (card: card, profile: await profileOf(wordId));
+  }
+
+  /// 记忆法类型的**显示名**（`mnemonic_type.name`：`root` → 「词根词缀」…）。
+  ///
+  /// # 🔴 为什么从库里读而不在 UI 层硬编码
+  /// 这 6 个名字**词库里就有权威定义**（`mnemonic_type.name`）。
+  /// 硬编码一份 = 两处定义 → 改了一处忘另一处（本项目已多次踩过）。
+  ///
+  /// ⚠️ **懒加载 + 缓存**：表只有 6 行、且进程内不变 → 读一次即可。
+  ///    缓存字段挂在 service 实例上（service 本身是长生命周期单例）。
+  Future<Map<String, String>> mnemonicTypeNames() async {
+    final cached = _typeNames;
+    if (cached != null) return cached;
+    final rows =
+        await _db.rawQuery('SELECT code, name FROM mnemonic_type');
+    final m = <String, String>{
+      for (final r in rows) (r['code']! as String): (r['name']! as String),
+    };
+    _typeNames = m;
+    return m;
+  }
+
+  Map<String, String>? _typeNames;
+
+  WordCard _cardFromRow(
+    Map<String, Object?> r, {
+    List<AggregateLink> links = const [],
+  }) {
     final id = r['id']! as String;
     final contentRaw = r['content'] as String?;
     final content = contentRaw == null
@@ -202,17 +292,77 @@ class WordQueryService {
       templateCode: r['template_code'] as String?,
       contentHash: (r['content_hash'] as String?) ?? '',
       sections: _parseSections(content),
-      aggregateLinks: await aggregateLinks(id),
+      aggregateLinks: links,
     );
   }
 
-  static List<WordSection> _parseSections(Map<String, Object?> content) {
-    final raw = content['sections'];
-    if (raw is! List) return const [];
-    return raw
-        .whereType<Map>()
-        .map((m) => WordSection(m.cast<String, Object?>()))
-        .toList(growable: false);
+  /// 批量取**首义的中文释义** —— 复习列表项要显示释义。
+  ///
+  /// 依据 `docs/design/visual-word-card-target-2026-09-26.html` §02：
+  /// 「**列表项 = 单词 + 释义 + 熟练度三点 + 下次到期时间**」。
+  ///
+  /// # 🔑 为什么是「批量」而不是逐条查
+  /// 列表 200 条逐条查 = 200 次 SQL 往返；一次 `IN (...)` 就够。
+  /// （单词条查询 ~43 µs 是**单次**成本，乘上条数与往返开销就不再是小事。）
+  ///
+  /// # 🔑 为什么只取**首义**（`order` 最小）
+  /// 列表一行放不下多个义项；且「**按首义判定**」是本项目既定判据
+  /// （同 `data-noise-classification` skill 的铁律）。
+  /// **词卡上才显示全部义项** —— 那是「记这个词」的场合。
+  ///
+  /// # 返回值语义（调用方要注意）
+  /// `wordId → 中文释义`。**没有释义的词不出现在 Map 里** ——
+  /// 故意**不用空串占位**：空串会让「有词条但无释义」与「词条不存在」
+  /// 在调用方混成一种情况，而两者该有不同处理。
+  Future<Map<String, String>> firstDefinitionsOf(List<String> wordIds) async {
+    if (wordIds.isEmpty) return const {};
+    // ⚠️ 占位符个数 = 列表长度（本方法只服务分页后的列表，≤200，远低于
+    //    SQLite 的变量上限；若将来要传几千个，须分批）
+    final ph = List.filled(wordIds.length, '?').join(',');
+    final rows = await _db.rawQuery(
+      'SELECT word_id, content FROM card WHERE word_id IN ($ph)',
+      wordIds,
+    );
+    final out = <String, String>{};
+    for (final r in rows) {
+      final raw = r['content'] as String?;
+      if (raw == null) continue;
+      final zh = _firstDefinitionZh(raw);
+      if (zh != null && zh.isNotEmpty) {
+        out[r['word_id']! as String] = zh;
+      }
+    }
+    return out;
+  }
+
+  /// 从 `card.content` 的 JSON 里取出**首义**（`order` 最小的 `definition.zh`）。
+  ///
+  /// ⚠️ 坏 JSON / 缺段 / 缺字段一律返回 `null` **而不是抛**：
+  ///    列表里一条坏数据不该炸掉整页（同「库级只回答可不可以」的容错取向）。
+  ///    🔑 代价是「静默跳过」—— 所以返回值用 `null` 而非空串，
+  ///      让调用方**能区分**「没释义」与「取到了空」。
+  static String? _firstDefinitionZh(String contentJson) {
+    Object? decoded;
+    try {
+      decoded = jsonDecode(contentJson);
+    } catch (_) {
+      return null;
+    }
+    if (decoded is! Map) return null;
+    final secs = decoded['sections'];
+    if (secs is! List) return null;
+
+    Map<String, Object?>? best;
+    var bestOrder = 1 << 30;
+    for (final s in secs.whereType<Map>()) {
+      if (s['type'] != 'definition') continue;
+      final o = (s['order'] as int?) ?? 0;
+      if (o < bestOrder) {
+        bestOrder = o;
+        best = s.cast<String, Object?>();
+      }
+    }
+    return (best?['zh'] as String?)?.trim();
   }
 
   Future<List<MorphPart>> _morphologyOf(String wordId) async {
@@ -307,8 +457,7 @@ class WordCard {
 }
 
 /// 卡片段。`raw` 保留原始 JSON —— 不同类型形状不同，用下面的访问器取值。
-class WordSection {
-  WordSection(this.raw);
+class WordSection {  WordSection(this.raw);
 
   final Map<String, Object?> raw;
 
@@ -369,8 +518,108 @@ class WordSection {
   String? get zh => raw['zh'] as String?;
   String? get pos => raw['pos'] as String?;
 
+  /// `cognate` 段的**词群标签**（如「organ 词根族（Greek）」）。
+  ///
+  /// 🔴 为什么要专门加这个访问器（2026-09-28）：
+  /// `cognate` 段**没有故事文本** —— 它只有 `payload{group_id,label,size,origin}`
+  /// （同源族的成员与「分拆法 + 释义」都在**聚合页**，设计稿明确「不铺在卡上」）。
+  /// 而卡片要显示 ② 就必须有东西可显示 → 标签是它唯一的文本内容。
+  ///
+  /// ⚠️ **不要把 `etymology.text` 拿来填 `cognate`** —— 那是**另一类**的内容
+  /// （词源故事 ≠ 同源串记），混用会让卡片显示与槽位标注不符的信息。
+  ///
+  /// 返回 `null` = 无标签（调用方走兜底文案）。
+  String? get cognateLabel {
+    final payload = _asMap(raw['payload']);
+    final label = (payload?['label'] as String?)?.trim();
+    if (label == null || label.isEmpty) return null;
+    final origin = (payload?['origin'] as String?)?.trim();
+    final size = payload?['size'];
+    final buf = StringBuffer(label);
+    if (origin != null && origin.isNotEmpty) buf.write('（$origin）');
+    if (size is int && size > 0) buf.write(' · $size 词');
+    return buf.toString();
+  }
+
   static Map<String, Object?>? _asMap(Object? v) =>
       v is Map ? v.cast<String, Object?>() : null;
+}
+
+/// 记忆法**槽位分配**（`word_mnemonic_profile`，11,523 词全有）。
+///
+/// 这是**制卡时算好的结果**，运行时不重算 —— 见 `WordQueryService.profileOf`。
+///
+/// ## 权威优先级（以库表 `mnemonic_type` 为准）
+/// | code | priority | 显示名 |
+/// |---|---|---|
+/// | `root` | 1 | 词根词缀 |
+/// | `cognate` | 2 | 同源串记 |
+/// | `etymology` | 3 | 词源故事 |
+/// | `collocation` | 4 | 搭配整记 |
+/// | `image` | 5 | 联想图像 |
+/// | `context` | 6 | 语境原句（默认附加） |
+///
+/// ⚠️ 设计稿 HTML 写的是 `…collocation(3) → etymology(4)`，**与库表相反**。
+///    本实现以库为准（数据 > 手绘稿），且因为直接用本表的分配结果，
+///    **不经过优先级排序** → 绕开了这处矛盾。
+class WordMnemonicProfile {
+  WordMnemonicProfile({
+    required this.wordId,
+    required this.primaryCode,
+    this.secondaryCodes = const [],
+    this.confidence = 0,
+    this.rationale,
+  });
+
+  final String wordId;
+
+  /// 卡片 **①** 用哪一类记忆法
+  final String primaryCode;
+
+  /// 卡片 **②** 用哪一类（**可能为空** —— 设计稿 §06：
+  /// 「② 对可拆词 78.3% 与 ① 重复」→ 那些词的 ② 被刻意留空）
+  final List<String> secondaryCodes;
+
+  final double confidence;
+
+  /// 为什么这么分配（制卡时的理由，可用于排查）
+  final String? rationale;
+
+  /// ② 的首选 code（`null` = 不该显示 ②）。
+  ///
+  /// ⚠️ **必须过滤掉 `context`** —— 它在表里也会出现在 `secondary_codes` 里
+  /// （如 `primary_code='etymology', secondary_codes=['context']`），
+  /// 但 `context` 是卡片 **④** 的固定位置（`mnemonic_type.applicable_when`
+  /// 写着「默认附加」）→ 不能又在 ② 显示一次。
+  String? get secondaryCode {
+    for (final c in secondaryCodes) {
+      if (c != 'context') return c;
+    }
+    return null;
+  }
+
+  static WordMnemonicProfile fromRow(Map<String, Object?> r) =>
+      WordMnemonicProfile(
+        wordId: r['word_id']! as String,
+        primaryCode: (r['primary_code'] as String?) ?? '',
+        secondaryCodes: _parseCodes(r['secondary_codes']),
+        confidence: (r['confidence'] as num?)?.toDouble() ?? 0,
+        rationale: r['rationale'] as String?,
+      );
+
+  /// `secondary_codes` 在库里是 **JSON 数组字符串**（如 `["context"]`）。
+  ///
+  /// ⚠️ 坏 JSON / 非数组一律当空 —— 一条坏数据不该让卡片整张渲染不出来。
+  static List<String> _parseCodes(Object? raw) {
+    if (raw is! String || raw.isEmpty) return const [];
+    try {
+      final d = jsonDecode(raw);
+      if (d is! List) return const [];
+      return d.whereType<String>().toList(growable: false);
+    } catch (_) {
+      return const [];
+    }
+  }
 }
 
 /// 聚合页入口（内嵌在卡片段里）

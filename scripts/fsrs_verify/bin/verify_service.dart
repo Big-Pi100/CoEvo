@@ -244,9 +244,13 @@ void main() {
 
   final stRow = svc.apply(ReviewRating.good, st, fakeNow);
   check('ReviewState.nextReviewAt 是 UTC', stRow.nextReviewAt.isUtc);
+  // 🔴 `toRow()` 需要 `spelling`（跨库方案 A 的冗余列，2026-09-26 起）——
+  //    本脚本当时**没有跟着改** → 编译不过 → 整套 fsrs 验收**静默失效**
+  //    （没人跑它，所以没人发现）。2026-09-28 修复。
+  final rowMap = stRow.toRow(spelling: 'test');
   check('ReviewState.toRow 时间为 ISO8601 UTC',
-      (stRow.toRow()['next_review_at']! as String).endsWith('Z'),
-      stRow.toRow()['next_review_at']! as String);
+      (rowMap['next_review_at']! as String).endsWith('Z'),
+      rowMap['next_review_at']! as String);
 
   // ── 12. 四档译名（白哥定案） ───────────────────────────────
   print('\n【12】四档译名与英文副标题（白哥 2026-09-26 定）');

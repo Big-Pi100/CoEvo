@@ -209,7 +209,22 @@ class ReviewEvent {
         'rating': rating.value,
         'duration_ms': durationMs,
         'reviewed_at': reviewedAt.toUtc().toIso8601String(),
-        'device_id': deviceId,
+        // 🔴🔴 `utc_day` 是 `NOT NULL` 且**无 DEFAULT**（见 `user_db_schema.sql` 的
+        //   `review_log` 定义）→ **必须显式给**，否则 INSERT 直接失败：
+        //       NOT NULL constraint failed: review_log.utc_day
+        //
+        //   ⚠️ 这个 bug 从 2026-09-26 建表起就存在，**直到 2026-09-28 才被发现** ——
+        //      因为在此之前**没有任何代码写过 `review_log`**（本方法是它唯一的出口，
+        //      而它从无调用方）。典型「**从未被执行 ⇒ 缺陷不可见**」。
+        //      🔑 本方法签名（`Map`）也帮不上忙：漏列在编译期毫无提示。
+        //      → 断言只能靠「真写一次并读回」，见 `verify_review_log.dart`【3】。
+        'utc_day': utcDay,
+        // 🔴 `device_id` 同样是 `NOT NULL`（`DEFAULT ''`），所以**不能传 `null`**：
+        //   ① DEFAULT 只对「不给这一列」生效；显式传 NULL 仍违反 NOT NULL
+        //   ② 更要命的是 `UNIQUE (word_id, reviewed_at, device_id)` ——
+        //      SQLite 里 **NULL 互不相等**，于是同一条日志能被重复插入，
+        //      幂等键**静默失效**（schema 注释里已写明这一点）
+        'device_id': deviceId ?? '',
       };
 
   static ReviewEvent fromRow(Map<String, Object?> r) => ReviewEvent(

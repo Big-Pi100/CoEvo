@@ -19,6 +19,7 @@ import 'dart:io';
 
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import '../../../app/lib/services/fsrs_service.dart';
 import '../../../app/lib/services/review_list_query.dart';
 import '../../../app/lib/services/user_db.dart';
 
@@ -370,6 +371,107 @@ Future<void> main(List<String> args) async {
     check('列表查询 p50 < 10ms', bList['p50']! < 10000, fmt(bList['p50']!.toInt()));
     check('搜索 p50 < 10ms', bSearch['p50']! < 10000, fmt(bSearch['p50']!.toInt()));
     check('A–Z 排序 p50 < 15ms', bAZ['p50']! < 15000, fmt(bAZ['p50']!.toInt()));
+
+    // ── 12. step 字段 + toReviewState 映射（FSRS 预览的前提）──
+    //
+    // 🔴 为什么必须有这一节（2026-09-28 · 做词卡时加）：
+    //    词卡四键要显示「下次 X 天」，那是 `FsrsService.previewAll(state, now)` 算的，
+    //    而它吃的是**完整的 `ReviewState`**。
+    //    ⚠️ 列表项若漏了 `step`（learning / relearning 态的「第几步」），
+    //       预览会**当 step=null 去算** → 新词四键的数字**全是错的**，
+    //       而且**错得看不出来**（数字看起来照样合理）。
+    //    → 字段映射必须逐字段锁住。
+    print('\n【12】step 字段与 toReviewState 映射（词卡预览的前提）');
+
+    await q.upsertState(
+      wordId: 'wStepTest',
+      spelling: 'stepTest',
+      state: 1, // learning
+      step: 3,
+      stability: 1.5,
+      difficulty: 6.0,
+      reps: 2,
+      lapses: 1,
+      lastReviewAt: now.subtract(const Duration(hours: 1)),
+      nextReviewAt: now.add(const Duration(minutes: 10)),
+    );
+
+    final stItem = await q.stateOf('wStepTest');
+    check('列表能读回 step（不只是 state）', stItem?.step == 3, '${stItem?.step}');
+
+    final rs = stItem!.toReviewState();
+    check(
+      '🔴 toReviewState 字段映射完整（漏一个会让四键预览算错）',
+      rs.wordId == stItem.wordId &&
+          rs.state == stItem.state &&
+          rs.step == stItem.step &&
+          rs.stability == stItem.stability &&
+          rs.difficulty == stItem.difficulty &&
+          rs.reps == stItem.reps &&
+          rs.lapses == stItem.lapses &&
+          rs.lastReviewAt == stItem.lastReviewAt &&
+          rs.nextReviewAt == stItem.nextReviewAt,
+      'state=${rs.state} step=${rs.step} S=${rs.stability} D=${rs.difficulty}',
+    );
+
+    // ── 13. review_log 落库（修掉一个「从未暴露」的 NOT NULL bug）──
+    //
+    // 🔴 背景（2026-09-28 发现）：`ReviewEvent.toRow()` **漏了 `utc_day`**，
+    //    而 `review_log.utc_day` 是 `NOT NULL` 且**无 DEFAULT**
+    //    → INSERT 必然 `NOT NULL constraint failed`。
+    //    它从 2026-09-26 建表起就存在，**直到本次才被发现** ——
+    //    因为在此之前**没有任何代码写过 `review_log`**（本方法从无调用方）。
+    //    🔑 「从未被执行 ⇒ 缺陷不可见」。所以本节就是那个**第一次执行**。
+    print('\n【13】review_log 落库（utc_day / device_id 的 NOT NULL 坑）');
+
+    final ev = ReviewEvent(
+      wordId: 'wStepTest',
+      rating: ReviewRating.good,
+      reviewedAt: now,
+    );
+
+    var logOk = true;
+    String? logErr;
+    try {
+      await q.logReview(ev);
+    } catch (e) {
+      logOk = false;
+      logErr = '$e';
+    }
+    check('🔴 logReview 落库成功（曾是 NOT NULL constraint failed）', logOk,
+        logErr ?? '');
+
+    // ⚠️ 断言**不能假设表是空的** —— 前面的【8】段已经写过一行 `review_log`
+    //    （`device_id='devA'`）。改成「按本词取行」，与全局状态解耦。
+    //    🔑 这是「断言范围」问题的又一形态：**前提假设**也是范围的一部分。
+    Future<int> myLogCount() async {
+      final r = await db.rawQuery(
+          'SELECT count(*) AS n FROM review_log WHERE word_id = ?',
+          ['wStepTest']);
+      return (r.first['n'] as int?) ?? 0;
+    }
+
+    check('review_log 写入该词 1 行', await myLogCount() == 1,
+        '${await myLogCount()} 行');
+
+    // 🔑 幂等：同一条日志再写一次必须被忽略
+    //    （幂等键是 `UNIQUE (word_id, reviewed_at, device_id)`）
+    await q.logReview(ev);
+    check('🔑 同一条日志重复写入被忽略（幂等）', await myLogCount() == 1,
+        '${await myLogCount()} 行');
+
+    final logRow = await db.rawQuery(
+        'SELECT * FROM review_log WHERE word_id = ? LIMIT 1', ['wStepTest']);
+    check('device_id 不为 NULL（NULL 会破坏 UNIQUE 幂等键）',
+        logRow.first['device_id'] != null, '${logRow.first['device_id']}');
+    check('utc_day 已写入（NOT NULL 列不可漏）',
+        ((logRow.first['utc_day'] as String?) ?? '').isNotEmpty,
+        '${logRow.first['utc_day']}');
+    check('rating 落库为数值 1–4',
+        (logRow.first['rating'] as int) >= 1 &&
+            (logRow.first['rating'] as int) <= 4);
+    check('reviewed_at 以 Z 结尾（UTC ISO8601）',
+        ((logRow.first['reviewed_at'] as String?) ?? '').endsWith('Z'));
   } finally {
     await db.close();
     try {

@@ -1645,4 +1645,57 @@ void _s17ReviewList() {
       !RegExp(r'Color\(0x').hasMatch(page) && !page.contains('Colors.'));
   check('底部留白用 CoSpacing.tabBarClearance（extendBody 配套）',
       page.contains('CoSpacing.tabBarClearance'));
+
+  // ⑫ 翻卡态（第二步 · 白哥 2026-09-28「做成可点，连带做词卡」）──
+  //
+  // 🔴 本节锁的仍是「编译器看不出来」的接线：
+  //   · 行看起来能点但**没有 onTap** → 静默无效（本项上一轮的真实缺陷）
+  //   · 评级只写 `card_review_state` 忘了 `review_log` → **历史永久丢失**
+  //   · 四键的「下次 X 天」自己算 → 与提交结果**不一致**（用户看到的后果是假的）
+  //   · 翻卡队列用活列表 → 每评一张索引就错位
+  final cardW = src('widgets/word_card.dart');
+  final prov2 = src('providers/review_list_provider.dart');
+
+  // ① 列表项：显示释义 + **真的可点**
+  check('列表项显示释义（设计稿 §02 的四要素之一）',
+      page.contains('row.definition'));
+  check('🔴 列表项真的可点（Clay 有 onTap → 不是「看起来能点」）',
+      RegExp(r'Clay\(\s*onTap: onOpen').hasMatch(page) ||
+          page.contains('onTap: onOpen'));
+
+  // ② 翻卡队列必须是**快照**
+  //    否则提交后该词离开「今天该复习」分组 → 索引错位（评完一张跳过一张）
+  check('翻卡队列是冻结快照（不是每帧读 provider）',
+      page.contains('_queue = rows') && page.contains('List<ReviewRow> _queue'));
+
+  // ③ 🔴 评级写**两张表**（缺一不可）
+  check('🔴 评级写 card_review_state（排序依据）',
+      page.contains('upsertState('));
+  check('🔴 评级写 review_log（同步 + 统计的唯一来源）',
+      page.contains('logReview('));
+
+  // ④ 四键的「下次 X 天」必须来自 FSRS 预览（与提交同一套抖动）
+  check('四键预览走 previewAll（不自己算间隔）',
+      page.contains('previewAll('));
+  check('预览与提交共用同一个 FsrsService 实例（同一 scheduler）',
+      page.contains('final _fsrs = FsrsService()'));
+
+  // ⑤ 词卡四段 + 段落分派
+  check('词卡组件存在', cardW.isNotEmpty);
+  for (final seg in ['root', 'etymology', 'cognate', 'collocation']) {
+    check('词卡能渲染 $seg 段', cardW.contains("case '$seg'"));
+  }
+  check('词卡有释义段与语境段',
+      cardW.contains("label: '释义'") && cardW.contains("label: '语境原句'"));
+
+  // ⑥ 🔴 词卡**不显示 `›`**（聚合页属 3.7 —— 显示箭头却点不动 = 静默无效）
+  check('🔴 词卡不给未实现的聚合页入口加 ›（避免「看起来能点」）',
+      !cardW.contains('›'));
+
+  // ⑦ 四键禁用要**看得出来**（本项目教训：不显眼的禁用被读成「坏了」）
+  check('四键禁用用 Opacity 表达', cardW.contains('Opacity'));
+
+  // ⑧ 释义缺失**不阻塞列表**（跨库依赖不得成为渲染前置条件）
+  check('🔑 释义取不到只记日志、不影响列表渲染',
+      prov2.contains('firstDefinitionsOf') && prov2.contains('debugPrint'));
 }
