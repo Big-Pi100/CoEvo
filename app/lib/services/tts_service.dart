@@ -164,6 +164,27 @@ class TtsService extends ChangeNotifier {
   // ── Getters / Setters ──
   bool get isPlaying => state == TtsState.playing && _currentPlayingText != null;
   bool get enabled => _enabled;
+
+  /// 当前正在朗读的文本（`null` = 没有）。
+  String? get currentText => _currentPlayingText;
+
+  /// **这一段**是否正在朗读（含 `loading` 态）。
+  ///
+  /// 🔴 为什么需要它（2026-09-28 21:4x）：
+  /// 一张词卡上现在有**多个喇叭**（词头 + ④ 语境 + 每条搭配），
+  /// 若各按钮都用全局 [isPlaying] 判断，**所有喇叭会一起变成「播放中」** ——
+  /// 用户点了语境，词头那个也跟着亮，看不出到底在读哪段。
+  ///
+  /// ⚠️ `loading` 也算「这一段在忙」：首次朗读有准备时间，
+  ///    这段时间按钮要显示转圈，而不是退回「未播放」再跳「播放中」（会闪）。
+  ///
+  /// 🔑 只读判定，**不改 [togglePlay] 的既有语义**（它的停止判定用
+  ///    `state == playing`，与这里刻意保留差异 —— 动它会改变点击行为）。
+  bool isSpeaking(String text) =>
+      text.isNotEmpty &&
+      _currentPlayingText == text &&
+      (state == TtsState.playing || state == TtsState.loading);
+
   set enabled(bool v) {
     _enabled = v;
     SharedPreferences.getInstance().then((prefs) => prefs.setBool('tts_enabled', v));

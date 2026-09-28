@@ -4,6 +4,7 @@ import '../services/pos_display.dart';
 import '../services/word_query_service.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
+import 'speak_button.dart';
 
 /// 划词查词浮层 —— **基础信息四要素：音标 / 词性 / 释义 / 例句**。
 ///
@@ -24,6 +25,16 @@ import '../theme/tokens_ext.dart';
 /// # 🔴 零粘土（spec §八：「阅读区容器内不得出现粘土类」）
 /// 浮层是**阅读场景的一部分** —— 用 `card` 底 + 轻阴影表达层级，
 /// 不用粘土（粘土是「交互」语汇：卡片、按钮、tabbar）。
+///
+/// # 🔴 朗读：**单词 + 例句**（2026-09-28 21:4x 接通）
+/// 依据 **v1 §6.2（L0）**：`front`（单词）· `context`（英文例句）✅ 朗读；
+/// `definition`（中文）❌ —— **原则：只朗读纯英文文本**。
+/// > ⚠️ 这两处此前**都漏做**：锚点 §07 的浮层 mockup 里画着单词行的喇叭
+/// > （`.spk{margin-left:auto}`，在行最右），实现里没有。
+///
+/// 实现走 `widgets/speak_button.dart`（全库唯一一处定义）：
+/// · 单词行 —— `26` 圆形凸起，用 `Spacer()` 顶到行右（对应 `margin-left:auto`）
+/// · 例句 —— `22` inline，`Text.rich + WidgetSpan` 跟着文字流（同词卡 ④）
 ///
 /// # 字号依据
 /// | 元素 | 值 | 依据 |
@@ -118,6 +129,13 @@ class LookupSheet extends StatelessWidget {
                   ),
                 ),
               ],
+              // 🔴 单词行的喇叭 —— 锚点 §07 浮层的 `.spk{margin-left:auto}`
+              //    （**推到行最右**，不是紧跟音标）。
+              //    ⚠️ 此前漏做：锚点 §07 里画着它，实现里没有。
+              // 🔑 用 `Spacer()` 顶到最右（对应 CSS `margin-left:auto`）——
+              //    浮层的音标长度差异大，紧跟会让喇叭位置飘。
+              const Spacer(),
+              SpeakButton(text: card.spelling),
             ],
           ),
 
@@ -171,11 +189,30 @@ class LookupSheet extends StatelessWidget {
               padding: const EdgeInsets.only(left: 11),
               decoration: BoxDecoration(
                 border: Border(
-                  left: BorderSide(color: Color(t.line.argb32), width: 2),
+                  // 🔴 改用 `accentBright`（原为 `line`）—— 与**词卡 ④ 语境段同一规格**。
+                  //    项目已定判据：「左侧色条用 `line`（#EFE9DE）在浅纸上
+                  //    **几乎看不见** = 白设」。⚠️ 同一元素两处实现不一致，本轮顺带发现。
+                  left: BorderSide(color: Color(t.accentBright.argb32), width: 2),
                 ),
               ),
-              child: Text(
-                example,
+              // 🔴 例句**要有喇叭** —— v1 §6.2（L0）明确 `context` ✅ 朗读。
+              //    与词卡 ④ 同一手法（`Text.rich` + `WidgetSpan`）：让喇叭
+              //    **跟着文字流**（例句换行时自然跟到末尾），而不是用 `Row` 顶到行右
+              //    （那样会脱离文字，看着像另一个按钮）。
+              child: Text.rich(
+                TextSpan(
+                  text: example,
+                  children: [
+                    WidgetSpan(
+                      alignment: PlaceholderAlignment.middle,
+                      child: SpeakButton(
+                        text: example,
+                        size: SpeakSize.inline,
+                        gapBefore: SpeakSize.inlineGap,
+                      ),
+                    ),
+                  ],
+                ),
                 style: TextStyle(
                   fontFamily: CoFonts.latinSerif,
                   fontSize: compact.ctxText,

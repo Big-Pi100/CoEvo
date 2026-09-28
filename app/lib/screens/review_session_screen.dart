@@ -51,7 +51,6 @@ import '../providers/user_db_provider.dart';
 import '../services/fsrs_service.dart';
 import '../services/review_list_query.dart';
 import '../services/spelling_grader.dart';
-import '../services/tts_service.dart';
 import '../theme/clay.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
@@ -175,15 +174,21 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
     }
   }
 
-  /// 朗读单词 —— **词卡朗读属免费层能力**（MEMORY 变现段）。
-  ///
-  /// 🔴 **只在判定之后可用**（考核态不显示喇叭：它会念出答案）。
-  void _speak(String word) {
-    if (!ref.read(ttsEnabledProvider)) return;
-    ref.read(ttsServiceProvider).speak(word).catchError((Object e) {
-      debugPrint('[review_session] 朗读失败 "$word"：$e');
-    });
-  }
+  // 🔄 2026-09-28 21:4x：**删除 `_speak` 与两处 `onSpeak` 传参**。
+  //
+  // 🔑 朗读（词卡朗读属**免费层**能力，见 MEMORY 变现段）现在由
+  //    `SpeakButton` 自包含实现 —— 词头 / ④ 语境 / 搭配每条各自一个。
+  //
+  // ⚠️ 关于「考核态不显示喇叭（会念出答案）」：`WordPromptView` 本身
+  //    不含词头与语境，天然没有喇叭，**不需要再靠传参控制**。
+  //
+  // 🔑 朗读从「页面注入回调」改为**自包含组件** `SpeakButton`
+  //    （`widgets/speak_button.dart`，全库唯一一处定义）。
+  //    原因：喇叭从 1 处扩到 5 处，且白哥定为**播放/停止切换** ——
+  //    那要求每个喇叭知道「**当前在播的是不是自己**」（否则 5 个会一起亮），
+  //    而 `VoidCallback` 不带状态、做不到。
+  // ⚠️ `SpeakButton` 内部已做 `ttsEnabledProvider` 检查（关朗读就不渲染喇叭），
+  //    所以这里原来的 `if (!ref.read(ttsEnabledProvider)) return;` 不再需要。
 
   /// 打开**聚合页**（词根族 / 词源族）—— 点卡片的 ① / ②。
   ///
@@ -266,8 +271,6 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
               profile: b.profile,
               mnemonicNames: b.names,
               scrollController: _scroll,
-              // 判定后**可以**听发音了（已经答完，不构成泄露）
-              onSpeak: () => _speak(b.card.spelling),
               // 判定后**可以**点 ① / ② 展开聚合页 —— 同上，答案已经揭晓
               onOpenAggregate: (pageId, slotLabel) =>
                   _openAggregate(pageId, slotLabel, b.card.spelling),
@@ -285,7 +288,6 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
         profile: b.profile,
         mnemonicNames: b.names,
         scrollController: _scroll,
-        onSpeak: () => _speak(b.card.spelling),
         onOpenAggregate: (pageId, slotLabel) =>
             _openAggregate(pageId, slotLabel, b.card.spelling),
         footer: _NextBar(

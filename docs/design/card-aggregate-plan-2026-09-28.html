@@ -703,6 +703,98 @@
     → 真机若觉得偏差，只调 <code>_filterChipWidth</code> 一个常量。
   </div>
 
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <h2>六、20:4x 朗读喇叭全量接通 <span class="mk g">已实施</span></h2>
+
+  <div class="box">
+    <b>白哥提的问题</b>：「查词底部弹窗没有小喇叭；语境原句（不仅底部弹窗没有，词卡页也没有）也没有小喇叭」
+    <br>
+    <b>核实结论：这两处都是既有规格已定、但没实施的</b> —— 不是新需求。
+  </div>
+
+  <table>
+    <tr><th>依据</th><th>原文</th><th>当时的实现</th></tr>
+    <tr>
+      <td><b>v1 §6.2</b>（L0）</td>
+      <td><code>front</code> ✅ · <code>context</code> ✅ · <code>collocation</code> ✅ 朗读；<br>
+        <code>definition</code>/<code>root</code>/<code>etymology</code> ❌（含中文）<br>
+        🔑 <b>原则：只朗读纯英文文本</b></td>
+      <td>只接了词头 <b>1 处</b></td>
+    </tr>
+    <tr>
+      <td><b>锚点 <code>.ctx .spk</code></b></td>
+      <td>CSS 已写：<code>22×22</code> · <code>margin-left:6px</code> · <code>vertical-align:-8px</code></td>
+      <td class="bad">词卡 ④ 语境<b>漏做</b></td>
+    </tr>
+    <tr>
+      <td><b>锚点 §07 浮层</b></td>
+      <td>单词行右侧有喇叭（<code>.spk{margin-left:auto}</code>）</td>
+      <td class="bad">浮层<b>漏做</b></td>
+    </tr>
+    <tr>
+      <td><code>ARCHIVE.md</code> §2.5</td>
+      <td>「朗读入口<b>早有设计</b>（L1 <b>每卡 2 个</b>喇叭，与 v1 §6.2 一致）→ 只需接通（Step 3）」</td>
+      <td class="bad">只接了 1 个</td>
+    </tr>
+  </table>
+
+  <h3>缺口全貌（🔴 = 漏做，非新增）</h3>
+  <table>
+    <tr><th>位置</th><th>单词</th><th>语境 / 例句</th><th>搭配</th></tr>
+    <tr><td>词卡</td><td class="ok">✅ 有（26）</td><td class="bad">🔴 缺</td><td class="bad">🔴 缺</td></tr>
+    <tr><td>查词浮层</td><td class="bad">🔴 缺</td><td class="bad">🔴 缺</td><td>—</td></tr>
+  </table>
+  <p class="muted">技术侧零阻力：<code>TtsService</code>（端侧 <code>flutter_tts</code>）
+    早已完整可用，<code>review_session_screen._speak()</code> 就是这么调的 → 直接复用，无新依赖。</p>
+
+  <h3>实施（白哥 21:4x 两条定案：搭配每条一个 · 播放/停止切换）</h3>
+  <ul>
+    <li><b>新建 <code>widgets/speak_button.dart</code></b> —— <b>全库唯一</b>喇叭实现（5 处共用）<br>
+      两个尺寸档 = 锚点值：<code>main 26</code>（词头 / 浮层单词行）· <code>inline 22</code>
+      （语境 / 例句 / 搭配，<code>gapBefore: 6</code>）</li>
+    <li><b>播放态按「哪一段」判断</b>：<code>TtsService</code> 新增
+      <code>currentText</code> + <code>isSpeaking(text)</code><br>
+      🔑 用全局 <code>isPlaying</code> 会让 <b>5 个喇叭一起亮</b> —— 看不出在读哪段。
+      （<code>chat</code> 的旧实现就是这个毛病，K12 遗留）</li>
+    <li><b>三态图标</b>：本段 <code>loading</code> → 转圈 ／ <code>playing</code> →
+      <code>stop_rounded</code>（提示「再点即停」）／ 其它 → <code>volume_up_rounded</code></li>
+    <li><b>设置里关了朗读 → 不渲染</b>（<code>SizedBox.shrink()</code>）——
+      判据：「静默失败 + 无出口」比报错更糟</li>
+    <li><b>5 处接线</b>：词头 · ④ 语境 · 搭配每条（词卡 3）｜ 单词行 · 例句（浮层 2）</li>
+    <li><b>顺带修一处不一致</b>：浮层例句竖线原用 <code>line</code>，词卡 ④ 用
+      <code>accentBright</code> → 统一为 <code>accentBright</code>
+      （判据：<code>line</code> 在浅纸上几乎看不见 = 白设）</li>
+    <li><b>删 <code>onSpeak</code> 链路</b>：朗读改为自包含组件 —— 回调不带状态，
+      做不到「按段判断播放态」</li>
+  </ul>
+
+  <div class="box g">
+    <b>为什么喇叭必须自包含（不能靠页面传回调）</b><br>
+    「播放/停止切换」要求每个喇叭知道「<b>当前在播的是不是自己</b>」——
+    而 <code>VoidCallback</code> 不带状态。若各页面各自传 <code>isPlaying</code> + 回调，
+    <b>5 处各写一份</b> → 改一处就静默走偏，而这类不一致<b>编译器与 analyzer 都抓不到</b>。<br>
+    → 自包含的 <code>SpeakButton</code>（内部 <code>watch</code> TTS 服务）是唯一能保证一致的做法。
+  </div>
+
+  <div class="box">
+    <b>断言 573 → 597（+24）</b>，其中三条是「结构性」的：<br>
+    🔴 <b>播放态按文本判断</b>（不是全局 <code>isPlaying</code>）<br>
+    🔴 <b>只给英文段</b>：<code>root</code>/<code>etymology</code>/<code>cognate</code>/释义段
+    <b>逐段切片</b>断言「不得有 <code>SpeakButton</code>」<br>
+    🔴 <b>业务代码不自己画喇叭</b>（唯一实现）<br>
+    <br>
+    ✅ <b>证伪测试（真跑 · 三处）</b>：① 改回全局 <code>isPlaying</code> → 报红 1 项
+    ② 删浮层例句喇叭 → 报红 <b>2 项</b>（含计数哨兵）③ 在 <code>root</code> 段加喇叭 → 报红 <b>2 项</b><br>
+    <br>
+    ⚠️ <b>证伪逼出一条断言修正</b>：最初我写的期望值是
+    <code>contains('text: example')</code> 这种<b>只取实参</b>的形态 →
+    <b>假绿</b>（删掉喇叭后 <code>TextSpan(text: example)</code> 里仍有它）。
+    → 改为<b>必须带 <code>SpeakButton(</code> 前缀</b>（正则，参数跨行），并加 <b>计数哨兵</b>。
+  </div>
+
+  <p class="muted">📄 同一实现在 <code>anchor</code> §07 与 <code>ARCHIVE</code> §2.7.14 有对应记录。</p>
+
 </div>
 </body>
 </html>

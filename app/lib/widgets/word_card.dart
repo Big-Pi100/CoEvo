@@ -27,6 +27,20 @@
 ///
 /// > 「① 无内容 → ③④ 直接渲染，**不留空段**」（设计稿 §03）
 ///
+/// ## 🔴 朗读喇叭：**每张卡 3 类、最多 5 个**（2026-09-28 21:4x 接通）
+/// 依据 **v1 §6.2（L0）**：`front`（单词）· `context`（英文例句）·
+/// `collocation`（英文搭配）✅ 朗读；`definition`/`root`/`etymology` ❌（**含中文**）。
+/// > 🔑 **原则：只朗读纯英文文本** —— 所以中文释义、词根词缀、词源故事**都不给喇叭**。
+///
+/// | 位置 | 尺寸 | 锚点依据 |
+/// |---|---|---|
+/// | 词头（跟在音标后） | 26 圆形凸起 | `.spk` |
+/// | ④ 语境原句（跟在例句后） | 22 inline | `.ctx .spk` |
+/// | 搭配**每条**词组后 | 22 inline | 同 `.ctx .spk`（锚点未画搭配，沿用同规格） |
+///
+/// 实现统一走 `widgets/speak_button.dart`（**全库唯一一处定义**）——
+/// 5 处各写一份会「一处改了、另一处没改」而**编译器与断言都抓不到**。
+///
 /// ## 🔴 字号铁律：**线索不压过答案**
 /// 记忆法（①②）是**线索**，释义（③）是**答案** → 释义字号**最大**
 /// （`defText` 16.5 > `mnemMain` 15.5）。权重靠**强调色 + 凹陷底色 + 拆分结构**，
@@ -39,6 +53,7 @@ import '../services/word_query_service.dart';
 import '../theme/clay.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
+import 'speak_button.dart';
 
 class WordCardView extends StatelessWidget {
   const WordCardView({
@@ -46,7 +61,6 @@ class WordCardView extends StatelessWidget {
     required this.card,
     required this.profile,
     required this.mnemonicNames,
-    this.onSpeak,
     this.onOpenAggregate,
     this.scrollController,
     this.footer,
@@ -60,15 +74,18 @@ class WordCardView extends StatelessWidget {
   /// `mnemonic_type.code → 显示名`（从库读，见 `WordQueryService.mnemonicTypeNames`）
   final Map<String, String> mnemonicNames;
 
-  /// 朗读单词（点音标旁的喇叭）。
-  ///
-  /// 🔑 **设计稿里就有它**：`visual-word-card-target` 的词头结构是
-  /// `w-word` / `w-meta`(`w-ipa` + **`spk`**)——`spk` 是一个内联 SVG 喇叭。
-  /// ⚠️ 我 2026-09-28 上一轮误判为「设计稿卡片上无喇叭」并据此没做，已纠正。
-  ///
-  /// 传 `null` = 不显示喇叭（如未来某处复用本组件但不提供朗读）。
-  /// ⚠️ 考核态**不传**（喇叭会念出答案）。
-  final VoidCallback? onSpeak;
+  // 🔄 2026-09-28 21:4x：**删掉 `onSpeak` 参数**。
+  //
+  // 🔑 原因：朗读从「1 处（词头）」扩到「**5 处**」（词头 + ④ 语境 + 搭配 3 条
+  //    + 浮层 2 处），且白哥定为**播放/停止切换** —— 那需要每个喇叭
+  //    **知道「当前在播的是不是自己」**（否则 5 个喇叭会一起亮）。
+  //    用「页面传 `VoidCallback`」做不到这点（回调不带状态），
+  //    只有让 `SpeakButton` 自己 `watch` TTS 服务才行。
+  // → 于是喇叭变成**自包含组件**（`widgets/speak_button.dart`，全库唯一一处定义），
+  //    本组件不再需要外部注入。这也顺带满足「同一个东西实现里就该是一处」。
+  //
+  // ⚠️ 关于「考核态不能念出答案」：`WordPromptView` 本来就不含词头/语境，
+  //    天然没有喇叭 —— 不需要再用「传不传参数」来控制。
 
   /// 点 ① / ② 展开**聚合页**（词根族 / 词源族）。
   ///
@@ -79,7 +96,7 @@ class WordCardView extends StatelessWidget {
   /// 即：**族成员列表不进卡片，而是点开看** —— 卡片只留「这一段讲了什么」
   /// + 一个带族规模的入口。
   ///
-  /// ⚠️ 与 `footer` / `onSpeak` 同一取舍：**组件不认识路由**，
+  /// ⚠️ 与 `footer` 同一取舍：**组件不认识路由**，
   ///    由页面注入「点开哪一页」。这样卡片在考核态（不该有聚合入口）也能复用。
   /// ⚠️ 传 `null` = 不可点（也**不显示箭头** —— 见 `_mnemonicBlock`）。
   ///
@@ -111,15 +128,6 @@ class WordCardView extends StatelessWidget {
   // 🔑 为什么不走 token 档位：锚点里它们是写死的 px，不是主题变量 ——
   //    这与项目既有处理一致（`HeaderChip` 的 13 / `_ClayTabBar` 的 17 /
   //    `BookmarkButton` 的 10）：**设计稿写死 = 三档共用**。
-
-  /// 喇叭圆直径 —— 锚点 `.spk{width:26px;height:26px}`。
-  static const double _spkSize = 26;
-
-  /// 喇叭半径 —— 锚点 `.spk{border-radius:50%}`。
-  ///
-  /// 🔴 **必须显式给**：各档 `clay.radius` 不同（墨 26 / 格 14 / 夜 24），
-  ///    走档位会在「格」档得到 14px ≠ 正圆（它要的是 13）。
-  static final BorderRadius _spkRadius = BorderRadius.circular(_spkSize / 2);
 
   /// ①② 凹陷块圆角 —— 锚点 `.mnem{border-radius:16px}`。
   static final BorderRadius _mnemRadius = BorderRadius.circular(16);
@@ -205,58 +213,34 @@ class WordCardView extends StatelessWidget {
               color: Color(t.ink.argb32),
             ),
           ),
-          if (ipa.isNotEmpty || onSpeak != null) ...[
+          // 🔑 `ipa` 实测 **100% 覆盖**（11,523/11,523，2026-09-28 查）→
+          //    这一行恒存在，喇叭总是有位置。
+          //    ⚠️ 若将来真出现无音标的词：该行不渲染，此时仍可从 ④ 语境 / 搭配朗读。
+          if (ipa.isNotEmpty) ...[
             // 锚点 `.w-meta{margin-top:6px}`（原 7）
             const SizedBox(height: 6),
-            Row(
+              Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                if (ipa.isNotEmpty)
-                  Flexible(
-                    child: Text(
-                      ipa,
-                      style: TextStyle(
-                        // 🔴 音标整条用 CharisSIL（元素级指定，不挂 fallback —
-                        //    挂链会让一条音标出现两种字体，见 spec §4.1.1）
-                        fontFamily: CoFonts.ipaSerif,
-                        fontSize: t.type.ipa,
-                        color: Color(t.ink2.argb32),
-                      ),
+                Flexible(
+                  child: Text(
+                    ipa,
+                    style: TextStyle(
+                      // 🔴 音标整条用 CharisSIL（元素级指定，不挂 fallback —
+                      //    挂链会让一条音标出现两种字体，见 spec §4.1.1）
+                      fontFamily: CoFonts.ipaSerif,
+                      fontSize: t.type.ipa,
+                      color: Color(t.ink2.argb32),
                     ),
                   ),
-                if (onSpeak != null) ...[
-                  // 锚点 `.w-meta{gap:9px}`（原 10）
-                  const SizedBox(width: 9),
-                  // 🔴 喇叭 = 锚点 `.spk`：**26×26 圆形 + 凸起**。
-                  //    ⚠️ 原先是「飘着」的裸图标 18px —— 没有任何可点的物理暗示。
-                  //    🔑 用 `Clay(raised)` 而非自绘阴影：这是全库唯一的粘土产出点，
-                  //       尺寸档 / 主题强度上限 / 三档圆角都跟着它走（spec §3.5）。
-                  Clay(
-                    state: ClayState.raised,
-                    // ⚠️ 显式给 `card`：锚点 `background:var(--card)`。
-                    //    （`Clay` 默认填充正好是 `clayFill` → `card`，但显式写出来
-                    //      才不会在将来改 `clayFill` 时被静默改掉。）
-                    fill: t.card,
-                    // 🔴 必须**显式**给半径：锚点是 `border-radius:50%`（正圆），
-                    //    而各档 `clay.radius` 不同（墨 26 / 格 14 / 夜 24）→
-                    //    走 token 档位会在「格」档得到 14px ≠ 正圆。
-                    borderRadius: _spkRadius,
-                    onTap: onSpeak,
-                    child: SizedBox(
-                      width: _spkSize,
-                      height: _spkSize,
-                      child: Center(
-                        child: Icon(
-                          Icons.volume_up_rounded,
-                          // 锚点 `.spk svg{width:12px}` / 设计稿样张 13px → 取 13
-                          //（也正好是 26px 正圆的半径 = Material 图标按钮的标准比例）
-                          size: 13,
-                          color: Color(t.accent.argb32),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
+                // 🔴 喇叭（锚点 `.w-meta` 里的 `spk`）= **26×26 圆形凸起**。
+                //    🔄 21:4x 起改用共用组件 `SpeakButton`（5 处喇叭**唯一**实现）——
+                //       它自己知道「当前在播的是不是这段话」，并能切换播放/停止。
+                //    🔑 **间距交给 `gapBefore`**（而不是在外面垫 `SizedBox`）：
+                //       设置里关了朗读时 `SpeakButton` 返回 0 宽，**间距会一起消失**
+                //       → 音标仍精确居中，行内不留一段空洞。
+                SpeakButton(text: card.spelling, gapBefore: 9),
               ],
             ),
           ],
@@ -335,8 +319,31 @@ class WordCardView extends StatelessWidget {
         leftBar: Color(t.accentBright.argb32),
         leftBarWidth: 2,
         leftBarInset: 12,
-        child: Text(
-          ctxText,
+        // 🔴 语境原句**要有喇叭** —— 锚点 `.ctx .spk{width:22px;height:22px;
+        //    margin-left:6px;vertical-align:-8px}`，且 v1 §6.2（L0）明确
+        //    `context` ✅ 朗读（「只朗读纯英文文本」）。
+        //    ⚠️ 此前漏做（ARCHIVE §2.5 记的「每卡 2 个喇叭」只接了词头那个）。
+        //
+        // 🔑 用 `Text.rich` + `WidgetSpan` 而不是 `Row`：
+        //    `Row` 会让喇叭**独占一行右侧**（脱离文字流）；WidgetSpan 则让喇叭
+        //    **跟着文字的最后一格走**（例句换行时自然跟到末尾）—— 这正是锚点
+        //    `display:inline-flex; vertical-align:-8px` 的语义。
+        //    对应用 `PlaceholderAlignment.middle`（22px 圆在 14.5px 行内垂直居中，
+        //    近似锚点的 `-8px`；用 `middle` 更稳，不随行高变化而偏）。
+        child: Text.rich(
+          TextSpan(
+            text: ctxText,
+            children: [
+              WidgetSpan(
+                alignment: PlaceholderAlignment.middle,
+                child: SpeakButton(
+                  text: ctxText,
+                  size: SpeakSize.inline,
+                  gapBefore: SpeakSize.inlineGap,
+                ),
+              ),
+            ],
+          ),
           style: TextStyle(
             fontFamily: CoFonts.latinSerif,
             fontSize: t.type.ctxText,
@@ -478,8 +485,28 @@ class WordCardView extends StatelessWidget {
               // 「词组 ↔ 中文」（2px）与「条 ↔ 条」（10px）必须**拉开差距**，
               // 否则读者分不清「哪两行是同一条搭配」。
               if (i > 0) const SizedBox(height: 10),
-              Text(
-                items[i].phrase,
+              // 🔴 **每条搭配各带一个喇叭**（白哥 2026-09-28 21:4x 定）——
+              //    v1 §6.2（L0）明确 `collocation` ✅ 朗读（英文搭配）；
+              //    每条一个 = 「想听哪条点哪条」，与语境段同一手法。
+              // 🔑 仍用 `Text.rich` + `WidgetSpan`（**不引入 `Row`**）——
+              //    20:5x 定的「词组必须显示在一行」靠的是「词组独占整行宽」，
+              //    一旦包成 `Row` 又会与喇叭抢宽度（＝折行的老问题）。
+              //    WidgetSpan 跟着文字流走，长词组折行时喇叭自然跟到末尾。
+              // ⚠️ 中文那行**不给喇叭** —— v1 §6.2：只朗读纯英文文本。
+              Text.rich(
+                TextSpan(
+                  text: items[i].phrase,
+                  children: [
+                    WidgetSpan(
+                      alignment: PlaceholderAlignment.middle,
+                      child: SpeakButton(
+                        text: items[i].phrase,
+                        size: SpeakSize.inline,
+                        gapBefore: SpeakSize.inlineGap,
+                      ),
+                    ),
+                  ],
+                ),
                 style: TextStyle(
                   fontFamily: CoFonts.latinSerif,
                   fontSize: t.type.mnemMain,

@@ -1808,8 +1808,15 @@ void _s17ReviewList() {
           !promptBody.contains('profile'));
   check('🔴 题面不含**语境原句**（语境句里通常就含这个词）',
       !promptBody.contains("'context'"));
+  // 🔄 2026-09-28 21:4x：断言对象从 `onSpeak` 改为 **`SpeakButton`**。
+  //    🔑 为什么必须改（而不是留着）：`onSpeak` 参数已**删除** →
+  //       继续断言它只会「永远为真」= **假绿**（这正是本项目判据
+  //       「反转型断言必须同步翻转对象」的场景）。
+  //    🔴 而且这条**现在更重要**：`SpeakButton` 是**自包含**的（不需要外部传参）——
+  //       谁在 `WordPromptView` 里放一个，就**真的会把答案念出来**，
+  //       而「传参控制」时代那种约束**已经不存在了**。
   check('🔴 题面不含**朗读**（喇叭会把答案念出来）',
-      !promptBody.contains('onSpeak'));
+      !promptBody.contains('SpeakButton'));
   check('题面含释义（考核的主线索）', promptBody.contains("'definition'"));
 
   // ④c 🔴 输入框的三个「防作弊」开关都必须是关闭的
@@ -1960,20 +1967,23 @@ void _s17ReviewList() {
       !mnemSlotsBody.contains('SizedBox(height: 18)'));
 
   // ⑨ 段内间距回到锚点：标签下 4 / 音标行上 6 · gap 9 / 英文释义上 3
+  //    🔄 21:4x：喇叭改用 `SpeakButton` 后，音标↔喇叭的 **gap 由组件自带**
+  //       （`gapBefore: 9`）而不是外层 `SizedBox(width: 9)`。
+  //       🔑 这不只是换写法：`gapBefore` 在「设置里关了朗读、喇叭不渲染」时
+  //          **连间距一起消失** → 音标仍精确居中，行内不留空洞。
+  //          外层 `SizedBox` 做不到（它不知道喇叭有没有渲染）。
+  final hasMetaTop = headBody2.contains('SizedBox(height: 6)');
+  final hasMetaGap = headBody2.contains('gapBefore: 9');
   check('🔴 音标行上距 6、gap 9（锚点 `.w-meta`；原为 7 / 10）',
-      headBody2.contains('SizedBox(height: 6)') &&
-          headBody2.contains('SizedBox(width: 9)'));
+      hasMetaTop && hasMetaGap,
+      '上距=$hasMetaTop gap=$hasMetaGap');
   check('🔴 英文释义上距 3（锚点 `.def-en`；原为 6）',
       cardW.contains('SizedBox(height: 3)'));
 
-  // ⑩ 喇叭 = 锚点 `.spk`：**26×26 圆形 + 凸起**（原为「飘着」的裸图标 18px）
-  check('🔴 喇叭是 26px 圆形凸起（`Clay` raised + `_spkSize` / `_spkRadius`）',
-      headBody2.contains('ClayState.raised') &&
-          headBody2.contains('_spkSize') &&
-          headBody2.contains('_spkRadius'),
-      'clay=${headBody2.contains('ClayState.raised')}');
-  check('🔴 喇叭不再是裸图标（无凸起 = 没有可点的物理暗示）',
-      !headBody2.contains('Icons.volume_up_outlined'));
+  // ⑩ 词头用共用喇叭组件（规格本体在 `speak_button.dart`，见下面「喇叭总组」）
+  check('🔴 词头有喇叭（走共用组件 `SpeakButton`，不再自己画）',
+      headBody2.contains('SpeakButton(text: card.spelling'),
+      'SpeakButton 在不在: ${headBody2.contains("SpeakButton")}');
 
   // ⑥ 🔴 **顺序**（白哥 2026-09-28）：「释义 + 语境原句在上，记忆法在下」
   //
@@ -2247,18 +2257,146 @@ void _s17ReviewList() {
   //
   //    🔑 取 `_head` 的**方法体切片**再断言（而不是全文件 contains）：
   //       发音块被挪出词头、或整个删掉，都应报红。
-  //       ⚠️ 全文件 contains 不够 —— `onSpeak` 还出现在别处（如页面传参）。
   //
-  //    🔴 **本断言的已知边界（如实标注，别指望它抓这个）**：
-  //       把条件改成「恒假」（`if (onSpeak != null)` → `if (false)`）
-  //       **不会被捕获** —— 因为**文本没变**，而正则/contains 只看文本。
-  //       实测确认过（453 项全绿）。
-  //       🔑 这是**文本断言的固有边界**：「逻辑改动」需要 widget test 或人工审查，
-  //          靠堆正则抓不到 —— 承认边界，比假装断言完美更有用。
+  //    🔄 21:4x：`onSpeak` 已删（改为自包含的 `SpeakButton`）→ 断言对象同步改。
+  //    🔑 **本断言的已知边界（如实标注）**：`if (ipa.isNotEmpty)` 改成恒假
+  //       **抓不到**（文本没变）。但本轮之后这一行的「有无」已由
+  //       `SpeakButton(text: card.spelling` 这个**带实参的调用形态**代表 ——
+  //       删掉调用就会报红。真正抓不到的是「外层 if 恒假」这类逻辑改动。
   final headBody = _braceBody(cardW, '_head');
   check('能切出词头方法体（断言范围正确的前提）', headBody.isNotEmpty);
-  check('🔴 卡片词头有可点的发音图标（设计稿 `spk`，紧跟音标）',
-      headBody.contains('volume_up') && headBody.contains('onSpeak'));
+  check('🔴 卡片词头有喇叭（设计稿 `spk`，紧跟音标）',
+      headBody.contains('SpeakButton(text: card.spelling'),
+      'SpeakButton 在不在: ${headBody.contains("SpeakButton")}');
+
+  // ⑦b 🔴🔴 **朗读喇叭总组**（2026-09-28 21:4x 接通 · 5 处）
+  //
+  // 依据 **v1 §6.2（L0）**：`front`（单词）· `context`（英文例句）·
+  // `collocation`（英文搭配）✅ 朗读；`definition`/`root`/`etymology` ❌（**含中文**）。
+  // > 🔑 **原则：只朗读纯英文文本。**
+  //
+  // 🔴 这一组守的是「**一处定义 + 按段判断播放态**」——
+  //    5 处各写一份，改一处就会静默走偏（用户看到两个喇叭同时亮），
+  //    而这类不一致**编译器和 analyzer 都抓不到**。
+  {
+    final spk = src('widgets/speak_button.dart');
+    final spkBody = _braceBody(spk, 'SpeakButton');
+    check('喇叭断言切片非空（speak_button.dart）', spkBody.isNotEmpty);
+
+    // ── ① 规格：26 / 22 两档（都是锚点给定值，不是自定）──
+    check('🔴 两个尺寸档 = 锚点值（main 26 · inline 22）',
+        spk.contains('static const double main = 26') &&
+            spk.contains('static const double inline = 22'));
+    check('  inline 前间距 = 锚点 `.ctx .spk{margin-left:6px}`（不走 CoSpacing）',
+        spk.contains('static const double inlineGap = 6'));
+    check('🔴 `Clay` 凸起 + 显式给 `card` 底（锚点 `background:var(--card)`）',
+        spkBody.contains('ClayState.raised') && spkBody.contains('fill: t.card'));
+    check('🔴 正圆半径**显式**给 `size / 2`（走 token 档位会在「格」档 ≠ 正圆）',
+        spkBody.contains('BorderRadius.circular(size / 2)'));
+
+    // ── ② 播放态必须按「**哪一段**」判断 ──
+    //    🔑 用全局 `isPlaying` 会让 5 个喇叭一起亮 → 看不出在读哪段。
+    check('🔴 播放态按**文本**判断（`isSpeaking(text)`，不是全局 `isPlaying`）',
+        spkBody.contains('tts.isSpeaking(text)'));
+    check('  三态图标：loading 转圈 / playing 变 stop / 其它喇叭',
+        spkBody.contains('CircularProgressIndicator') &&
+            spkBody.contains('Icons.stop_rounded') &&
+            spkBody.contains('Icons.volume_up_rounded'));
+    check('🔴 `TtsService.isSpeaking` 存在（含 loading 态）',
+        src('services/tts_service.dart').contains('bool isSpeaking(String text)'));
+
+    // ── ③ 行为：白哥定的「播放/停止切换」──
+    check('🔴 点按走 `togglePlay`（白哥 21:4x：播放/停止切换）',
+        spkBody.contains('tts.togglePlay(text)'));
+    check('  `loading` 时**不给 onTap**（防重复触发 —— 转圈本身就是反馈）',
+        spkBody.contains('loading ? null :()') ||
+            spkBody.contains('loading ? null : ()'));
+
+    // ── ④ 关朗读 → 不渲染（不留「点了没反应」的喇叭）──
+    //    判据：「静默失败 + 无出口」比「报错」更糟。
+    check('🔴 设置里关了朗读 → 返回 `SizedBox.shrink()`（不留静默失效的喇叭）',
+        spkBody.contains('ttsEnabledProvider') &&
+            spkBody.contains('SizedBox.shrink()'));
+
+    // ── ⑤ **5 处接线**（只加组件不接线 = 白加）──
+    //
+    // 🔴🔴 **期望值必须带 `SpeakButton(` 前缀 —— 这是证伪测试逼出来的修正**：
+    //    我最初的写法是 `contains('text: example')` 这类**只取实参**的形态，
+    //    结果**假绿**：删掉例句的 `SpeakButton` 后，`TextSpan(text: example)`
+    //    里**仍有** `text: example` → 断言照样通过。
+    //    实测确认：注入「删掉例句喇叭」→ **该项不报红**（继续全绿）。
+    //    🔑 判据复用：「**期望值的形态必须等于被测对象**」——
+    //       被测对象是「SpeakButton 这个调用」，所以期望值必须**从 `SpeakButton(` 起算**。
+    //    这里用正则（参数跨行，`contains` 不够）：
+    //    新增一个喇叭 = `SpeakButton(` + 任意实参（不含 `)`）。
+    bool hasSpeak(String file, String argPattern) => RegExp(
+            'SpeakButton\\([^)]*?' + argPattern)
+        .hasMatch(src(file));
+
+    final wire = <String, List<String>>{
+      '词头（单词）': ['widgets/word_card.dart', r'card\.spelling'],
+      '④ 语境原句':   ['widgets/word_card.dart', 'ctxText'],
+      '搭配每条':     ['widgets/word_card.dart', r'items\[i\]\.phrase'],
+      '浮层·单词行': ['widgets/lookup_sheet.dart', r'card\.spelling'],
+      '浮层·例句':   ['widgets/lookup_sheet.dart', 'example'],
+    };
+    for (final e in wire.entries) {
+      check('🔴 ${e.key} 有喇叭（`SpeakButton(` + 该实参）',
+          hasSpeak(e.value[0], e.value[1]), '在 ${e.value[0]}');
+    }
+
+    // 反向哨兵：上面 5 条若因「切片/形态」写错而集体假绿，用**计数**兜底。
+    // 🔑 两处调用点各自应有几个 `SpeakButton(`：
+    //    词卡 = 词头 + ④ 语境 + 搭配 = **3**；浮层 = 单词行 + 例句 = **2**。
+    final cardCnt = 'SpeakButton('.allMatches(cardW).length;
+    final sheetCnt = 'SpeakButton('.allMatches(src('widgets/lookup_sheet.dart')).length;
+    check('🔴 词卡有 3 处喇叭调用（词头 / 语境 / 搭配）', cardCnt == 3, '实得 $cardCnt');
+    check('🔴 浮层有 2 处喇叭调用（单词行 / 例句）', sheetCnt == 2, '实得 $sheetCnt');
+
+    // ── ⑥ 🔴 **只给英文段**（v1 §6.2 原则）──
+    //    词卡的 `_sectionBody` 里：只有 `collocation` 分支可含 SpeakButton；
+    //    `root` / `etymology` / `definition` / `cognate` 分支**都不得有**。
+    //    ⚠️ 断言要**切片到各分支**（不能对整个 `_sectionBody` 查 —— 那里确实有一个）。
+    final secBody = _braceBody(cardW, '_sectionBody');
+    final ci0 = secBody.indexOf("case 'collocation':");
+    final ci1 = secBody.indexOf('default:', ci0);
+    final collBody = (ci0 >= 0 && ci1 > ci0) ? secBody.substring(ci0, ci1) : '';
+    check('  搭配分支切片非空', collBody.isNotEmpty);
+    check('🔴 搭配段有喇叭（v1 §6.2：collocation ✅ 朗读）',
+        collBody.contains('SpeakButton('));
+    for (final seg in ['root', 'etymology', 'cognate']) {
+      final i0 = secBody.indexOf("case '$seg':");
+      if (i0 < 0) continue;
+      var i1 = secBody.indexOf('case ', i0 + 1);
+      if (i1 < 0) i1 = secBody.length;
+      final body = secBody.substring(i0, i1);
+      check('🔴 `$seg` 段**不得**有喇叭（v1 §6.2：含中文 → 只朗读纯英文文本）',
+          !body.contains('SpeakButton'), '段长 ${body.length}');
+    }
+    // 释义段（③）在 build 里而不在 `_sectionBody` —— 单独查它的切片
+    final defBody = _braceBody(cardW, '_definition');
+    if (defBody.isNotEmpty) {
+      check('🔴 释义段不得有喇叭（中文释义）', !defBody.contains('SpeakButton'));
+    }
+
+    // ── ⑦ 唯一实现：业务代码不得自己画喇叭图标 ──
+    //    ⚠️ 排除 `chat/*`（K12 遗留，整体待清退，见 MEMORY「主线」段）。
+    const ownDrawAllowed = {'widgets/speak_button.dart'};
+    final scanned = <String>[
+      'screens/review_screen.dart', 'screens/review_session_screen.dart',
+      'screens/reader_screen.dart', 'screens/home_screen.dart',
+      'screens/aggregate_page_screen.dart',
+      'widgets/word_card.dart', 'widgets/lookup_sheet.dart',
+      'widgets/header_chip.dart', 'widgets/bookmark_button.dart',
+    ];
+    final offenders = <String>[];
+    for (final f in scanned) {
+      if (ownDrawAllowed.contains(f)) continue;
+      if (src(f).contains('Icons.volume_up')) offenders.add(f);
+    }
+    check('🔴 业务代码**不自己画喇叭图标**（应走 `SpeakButton` —— 全库唯一实现）',
+        offenders.isEmpty, '违规: ${offenders.join(", ")}');
+  }
 
   // ⑧ 提交中**要看得出来**（本项目教训：不显眼的禁用被读成「坏了」）
   //    ⚠️ 原先这条是「四键禁用用 Opacity」—— 四键已删；
