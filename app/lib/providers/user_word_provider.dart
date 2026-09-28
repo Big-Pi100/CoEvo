@@ -14,7 +14,6 @@
 // （而 `bookmarkProvider` 需要它，是因为书签按钮**在信息流每张卡上都在渲染**）。
 // → 保持最小：`FutureProvider<UserWordRepository>`，用到时 `await` 一次。
 
-import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/user_word_repository.dart';
@@ -37,30 +36,28 @@ final userWordProvider = FutureProvider<UserWordRepository>((ref) async {
   return UserWordRepository(db);
 });
 
-/// 生词数（用于「生词本 N/200」与上限判定）。
-///
-/// ⚠️ 与 `bookmarkListProvider` 同理：这个值**会变**（每次查词可能 +1），
-/// 所以用 `FutureProvider` + 需要时 `ref.invalidate` 刷新，
-/// 而不是自己维护一个可能过期的副本。
-final userWordCountProvider = FutureProvider<int>((ref) async {
-  final repo = await ref.watch(userWordProvider.future);
-  try {
-    return await repo.count();
-  } catch (e, st) {
-    // 🔑 读失败**不抛**：调用方要的是「显示个数」，不该因为库坏了把界面炸掉。
-    //    （同 `userDbProvider` 的消费约定：不要把库当作内容渲染的前置条件。）
-    debugPrint('[user_word] 取生词数失败：$e\n$st');
-    return 0;
-  }
-});
-
-// 🔴 这里**曾经**有 `userWordListProvider`（生词本列表）—— 已于 2026-09-28 删除。
+// 🔴 本文件**曾经**有两个 provider，都已在 2026-09-28 删除 —— 记下来是为了
+//    防止后来者把它们「接回去」（那会让已解决的问题复现）。
 //
-// 原因：它只服务 `/home/words`（3.4d 的独立生词本页），而那个页面已删 ——
-// **生词本就是复习页本身**（`ui-ux` §6.2，白哥原话）。
-// 复习列表的数据源是 `card_review_state`（排序要 FSRS 的 `next_review_at`），
-// 见 `providers/review_list_provider.dart` 的 `reviewListProvider`。
+// ## ① `userWordListProvider`（生词本列表）—— 随 `/home/words` 独立页一起删
+// 原因：**生词本就是复习页本身**（`ui-ux` §6.2，白哥原话：
+// 「生词本就是复习管理……就不要移入移出了」）。复习列表的数据源是
+// `card_review_state`（排序需要 FSRS 的 `next_review_at`）→ 见
+// `providers/review_list_provider.dart` 的 `reviewListProvider`。
 //
-// 🔑 删除而不是「留着以后可能用」：留着会让下一个读代码的人以为
-//     「生词本有一个列表入口」→ 又把它接回去 → 两个入口并存的老问题复现。
-//     （同「删掉一个功能后要清理它的语义残留」的既定原则。）
+// ## ② `userWordCountProvider`（生词数，2026-09-28 下午）
+// 它原本只服务首页标题栏的「生词 N」入口 —— 该入口**已取消**
+// （复习本身就是底部 tab，再放按钮是把导航做第二遍）→ 零消费者。
+// 🔑 删除判据：**零消费者 = 死代码**，即便它「看起来以后可能有用」。
+//    留着会让下一个人以为「生词数在界面上某处显示着」，从而把它接回界面 ——
+//    而那个数字**该不该显示、显示在哪**是个**产品问题**，不该由一个
+//    遗留 provider 悄悄决定。
+//
+// ⚠️ 附带现状（**产品待定项，不是本文件的事**）：
+//    `UserWordRepository.count()` **仍在用** —— `add()` 内部拿它判 200 词上限
+//    （`kUserWordLimitFree`）。但该上限**目前在界面上完全不可见**：
+//    超出时只有 `reader_screen` 里一行 `debugPrint`，用户毫无感知。
+//    → 属于「静默失败 + 无出口」那一类，提示时机待产品定。
+//
+// 🔑 「删掉一个功能后要清理它的语义残留」的既定原则：注释里的旧概念
+//    （如表名、字段名、这里的 provider 名）留着，后续开发会不断把它加回来。
