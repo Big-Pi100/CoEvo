@@ -434,17 +434,17 @@ class WordCardView extends StatelessWidget {
         );
 
       case 'cognate':
-        // ⚠️ `cognate` 段**没有故事文本**（只有族标签）——
-        //    同源族的成员与分拆法在**聚合页**（设计稿：「不铺在卡上」）。
-        //    所以这里只陈述「它属于哪个词群」，不硬凑文本。
-        final label = (s.cognateLabel ?? '').trim();
+        // 🔴 2026-09-28 起**不可达**：`cognate` 已从数据层整层摘除
+        //    （`mnemonic_type` 行删除 · `profile` 清空 · 2,988 个卡片段删除）——
+        //    而且即使有人把它塞回数据，`CardSlots.offCard` 仍会拦住它。
+        // ⚠️ 本分支**保留为空壳**只为「万一数据回潮时不静默吞掉」——
+        //    它渲染一个明确的提示，而不是让卡片少一段却毫无线索。
         return Text(
-          label.isEmpty ? '这个词有同源词群' : label,
+          '（该词的记忆法数据异常：出现了已废弃的 cognate 段）',
           style: TextStyle(
-            fontFamily: CoFonts.latinSerif,
-            fontSize: t.type.mnemMain,
-            height: 1.5,
-            color: Color(t.ink.argb32),
+            fontFamily: CoFonts.uiSans,
+            fontSize: t.type.mnemNote,
+            color: Color(t.ink3.argb32),
           ),
         );
 

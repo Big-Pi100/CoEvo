@@ -589,28 +589,10 @@ class WordSection {  WordSection(this.raw);
   String? get zh => raw['zh'] as String?;
   String? get pos => raw['pos'] as String?;
 
-  /// `cognate` 段的**词群标签**（如「organ 词根族（Greek）」）。
-  ///
-  /// 🔴 为什么要专门加这个访问器（2026-09-28）：
-  /// `cognate` 段**没有故事文本** —— 它只有 `payload{group_id,label,size,origin}`
-  /// （同源族的成员与「分拆法 + 释义」都在**聚合页**，设计稿明确「不铺在卡上」）。
-  /// 而卡片要显示 ② 就必须有东西可显示 → 标签是它唯一的文本内容。
-  ///
-  /// ⚠️ **不要把 `etymology.text` 拿来填 `cognate`** —— 那是**另一类**的内容
-  /// （词源故事 ≠ 同源串记），混用会让卡片显示与槽位标注不符的信息。
-  ///
-  /// 返回 `null` = 无标签（调用方走兜底文案）。
-  String? get cognateLabel {
-    final payload = _asMap(raw['payload']);
-    final label = (payload?['label'] as String?)?.trim();
-    if (label == null || label.isEmpty) return null;
-    final origin = (payload?['origin'] as String?)?.trim();
-    final size = payload?['size'];
-    final buf = StringBuffer(label);
-    if (origin != null && origin.isNotEmpty) buf.write('（$origin）');
-    if (size is int && size > 0) buf.write(' · $size 词');
-    return buf.toString();
-  }
+  /// ⚠️ `cognate` 段的访问器（`cognateLabel`）已于 2026-09-28 **删除** ——
+  /// 它唯一的消费者是 `word_card.dart` 里那个**不可达**的 `case 'cognate'`
+  /// （`CardSlots.offCard` 永远拦住该类型）→ 一对自封闭的死代码，一并清掉。
+  /// 且 `cognate` 已从数据层整层摘除（`mnemonic_type` / `profile` / `card.sections` 全部清零）。
 
   static Map<String, Object?>? _asMap(Object? v) =>
       v is Map ? v.cast<String, Object?>() : null;
@@ -624,15 +606,27 @@ class WordSection {  WordSection(this.raw);
 /// | code | priority | 显示名 |
 /// |---|---|---|
 /// | `root` | 1 | 词根词缀 |
-/// | `cognate` | 2 | 同源串记 |
-/// | `etymology` | 3 | 词源故事 |
-/// | `collocation` | 4 | 搭配整记 |
+/// | `collocation` | 3 | 搭配整记 |
+/// | `etymology` | 4 | 词源故事 |
 /// | `image` | 5 | 联想图像 |
 /// | `context` | 6 | 语境原句（默认附加） |
 ///
-/// ⚠️ 设计稿 HTML 写的是 `…collocation(3) → etymology(4)`，**与库表相反**。
-///    本实现以库为准（数据 > 手绘稿），且因为直接用本表的分配结果，
-///    **不经过优先级排序** → 绕开了这处矛盾。
+/// 🔴 **2026-09-28：`cognate` 已从记忆法层整层摘除**（白哥：「**同源串记是聚合页，
+///    现在还总是把这个放在记忆法里**」）。它原本是 priority 2，但**它不是卡上记忆法** ——
+///    它的 `card.sections` 段 100% 无文本（只有族标签）、且与同词 `root` 段**指向同一个
+///    `aggregate_page`**（实测 2,988 段全部如此）→ 它是**聚合页入口的冗余副本**。
+///    现已：删 `mnemonic_type` 行 · `profile` 清空 · 删 2,988 个段 · 删本文件与
+///    `word_card.dart` 的渲染分支。**不要再把它加回来**。
+///
+/// ⚠️ 3/4 级的往复（**别再来回改**）：
+/// · v1 §4.1（L0 原文）= `collocation` 3 / `etymology` 4
+/// · 2026-09-27 白哥批准**交换**为 `etymology` 3 / `collocation` 4 ——
+///   理由：`collocation` 的条件「有 ≥1 条搭配」实测 **99.3% 的词都满足（几乎恒真）**，
+///   排在前会把「不可拆词」全吃掉 → `etymology` 只剩 0.5%（形同虚设）。
+///   📄 `docs/review/mnemonic-slot-priority-conflict-2026-09-27.md`
+/// · 🔄 **2026-09-28 白哥改回 v1 顺序**（「以 v1 为准」）—— **在知悉后果后**仍定：
+///   实测会回到 `collocation` 51.7% / `etymology` 0.5%（见 `scripts/priority_redo.py` 文件头）。
+/// → 所以现在库里就是 `collocation` 3 / `etymology` 4，**与 v1 §4.1 一致**。
 ///
 /// # 🔴 但「分配结果」≠「能上卡的类型」 —— 见 `resolveCardSlots`
 /// 上表把 `cognate` / `context` 也列为**合法记忆法类型**，于是
@@ -705,20 +699,20 @@ class WordMnemonicProfile {
   }
 }
 
-/// 聚合页入口（内嵌在卡片段里）
 /// 卡片上的**一个记忆法槽位**（渲染用）—— 已经过「哪些类型能上卡」的过滤。
 ///
 /// 🔑 与 `WordMnemonicProfile` 的分工必须分清（这是本组 bug 的根子）：
 /// | | 表达什么 | 谁决定 |
 /// |---|---|---|
-/// | `WordMnemonicProfile` | 制卡时**判定的记忆法优先级**（数据） | LLM/脚本，存库 |
+/// | `WordMnemonicProfile` | 制卡时**判定的记忆法优先级**（数据） | **按 `mnemonic_type.priority` 算**（2026-09-28 起），存库 |
 /// | `CardSlot` | **这张卡上实际显示哪两段**（展示） | 产品规则，运行时 |
 ///
-/// 把两者混为一谈，就会出现「库说 `primary=cognate` → 卡片真的铺出同源串记」。
+/// 把两者混为一谈，就会出现「库说 `primary=cognate` → 卡片真的铺出同源串记」
+/// （那个 bug 的两半现都已消除：`cognate` 整层摘除 · `profile` 改为按 priority 计算）。
 class CardSlot {
   const CardSlot({required this.code, required this.section});
 
-  /// `root` / `etymology` / `collocation` / `image`（**不会是** `context` / `cognate`）
+  /// `root` / `collocation` / `etymology` / `image`（**不会是** `context` / `cognate`）
   final String code;
 
   final WordSection section;
@@ -729,20 +723,20 @@ class CardSlot {
 
 /// 卡片槽位解析 —— 从「profile 判定」得到「实际能铺在卡上的两段」。
 ///
-/// # 🔴 排除两类（白哥 2026-09-28 报的两个 bug）
+/// # 🔴 排除两类
 /// ```dart
 /// const kMnemonicOffCard = {'context', 'cognate'};
 /// ```
 /// | code | 为什么不能上卡 |
 /// |---|---|
-/// | `context` | 它是 **④ 的固定位置**（`applicable_when`=「默认附加」）→ 上 ① 就与 ④ **重复显示**。实测 **1,410 词**的 `primary_code` 是它（如 `achieve` / `begin` / `close`） |
-/// | `cognate` | 它是**聚合页**（白哥原话见 `WordMnemonicProfile` 的文档）；数据侧它**只有族标签、没有故事文本** → 铺在卡上只是一个孤零零的族名。实测 **195 词**的 `primary_code` 是它 |
+/// | `context` | 它是 **④ 的固定位置**（`applicable_when`=「默认附加」）→ 上 ① 就与 ④ **重复显示**。实测 **1,410 词**的 `primary_code` 曾是它（如 `achieve` / `begin` / `close`） |
+/// | `cognate` | 它是**聚合页**，不是卡上记忆法。🔴 **2026-09-28 已整层摘除** —— `mnemonic_type` 行删除、`profile` 清空、2,988 个卡片段删除、渲染分支删除。**保留本条只为「防御纵深」**（万一哪天有人又把 `cognate` 塞回数据里，这里仍会挡住它） |
 ///
 /// # 🔑 为什么要「补位」而不是「过滤后留空」
-/// 排除上述两类后，那 1,605 个词的 ① 会空掉 → 卡片少一段记忆法。
+/// 排除上述类型后，那些词的 ① 会空掉 → 卡片少一段记忆法。
 /// 而白哥的原话是「**从记忆法排序抓取中去掉**」——
 /// 「抓取」本身就是**按优先级依次取**的过程，去掉某类自然抓到下一个。
-/// → 过滤后若不足两个，按 [kMnemonicSlotOrder] 从**该词实际有的段**里补位。
+/// → 过滤后若不足两个，按 [order] 从**该词实际有的段**里补位。
 ///
 /// # ⚠️ 补位只看「段是否存在」，不看「质量好不好」
 /// 这是有意的：判断「这个词源故事值不值得显示」需要看内容，
@@ -756,10 +750,14 @@ class CardSlots {
 
   /// 补位顺序 —— **必须与库表 `mnemonic_type.priority` 一致**
   /// （已排除 [offCard] 两类）。由 `scripts/query_verify` 的断言守护一致性。
+  ///
+  /// 🔄 **2026-09-28：`collocation` 与 `etymology` 对调**（白哥定「以 v1 为准」）——
+  /// 原为 `etymology` → `collocation`（那是 09-27 交换后的顺序）。
+  /// 现与 `mnemonic_type.priority`（v1 §4.1）逐项一致：1 root · 3 collocation · 4 etymology · 5 image。
   static const List<String> order = [
     'root', // 1 词根词缀
-    'etymology', // 3 词源故事
-    'collocation', // 4 搭配整记
+    'collocation', // 3 搭配整记
+    'etymology', // 4 词源故事
     'image', // 5 联想图像
   ];
 
@@ -769,9 +767,14 @@ class CardSlots {
   /// 解析出卡片上要渲染的记忆法槽位（**顺序即渲染顺序**）。
   ///
   /// 两轮：
-  /// 1. **按 profile 给的顺序取**（`primary` → `secondary_codes`）——
-  ///    尊重制卡时的判定（它知道哪个词根/词源更适合这个词）
+  /// 1. 按 `profile` 给的顺序取（`primary` → `secondary_codes`）
   /// 2. 不足 [maxSlots] 时，按 [order] 从卡片实际段里**补位**
+  ///
+  /// 🔑 **2026-09-28 之后两轮等价**：`profile` 已改为**按 `priority` 算出**的
+  /// （见 `scripts/priority_redo.py`），所以第一轮拿到的顺序就是 [order] 的顺序 ——
+  /// 这正是 v1 §4.1 要求的「按 priority 选主/次」。
+  /// ⚠️ 但**两轮都保留**：第一轮是「该词的判定结果」（可被重新判定覆盖），
+  /// 第二轮是「无论判定如何，都按 priority 兜住」→ 双保险。
   static List<CardSlot> resolve({
     required WordCard card,
     required WordMnemonicProfile? profile,

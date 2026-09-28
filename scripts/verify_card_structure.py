@@ -37,17 +37,21 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB = os.path.join(ROOT, 'data', 'word.db')
 
 # v1 §4.2 定义的 8 种 section 类型
+# ⚠️ 2026-09-28：`cognate` 已从数据层整层摘除；`imagery` / `aggregate_link` 从未落库
+#   （实测段类型只有 definition / context / collocation / etymology / root）。
+#   本集合保留完整原样 —— 它描述的是 **v1 定义的类型域**，不是「库里实际有什么」。
 V1_TYPES = {'root', 'definition', 'context', 'cognate', 'collocation',
             'etymology', 'imagery', 'aggregate_link'}
 # 🔴 `card.sections` 的**历史存储顺序**（生成时按**当时**的 mnemonic priority 写入）。
 #
-# ⚠️ **它现在不等于 `mnemonic_type.priority`** —— 2026-09-27 白哥定「交换 etymology 3 ↔ collocation 4」，
-#    但**没有重排已落库的 11,523 张卡**的段顺序（重排要改写 11,523 份 JSON，而**段顺序不承载语义**）。
+# ⚠️ **它现在不等于 `mnemonic_type.priority`** —— 历史上 priority 改过两次
+#    （09-27 交换 etymology↔collocation；**09-28 改回 v1 顺序** 且 `cognate` 摘除），
+#    但每次都**没有重排已落库的卡**的段顺序（重排要改写 11,523 份 JSON，而**段顺序不承载语义**）。
 #
 # 🔑 **渲染层按 `mnemonic_type.priority` 取槽位①，不依赖本顺序** ——
 #    `card.sections` 是**素材池**（「存全部素材、裁剪留渲染层」），顺序不是契约。
 #    本常量只用于校验「生成时写入顺序没乱」，**不是**槽位选择的依据。
-#    📄 论证：`docs/review/mnemonic-slot-priority-conflict-2026-09-27.md`
+#    📄 论证：`docs/review/mnemonic-slot-priority-conflict-2026-09-27.md`（含 09-28 的反转）
 SECTION_STORAGE_ORDER = ['root', 'cognate', 'collocation', 'etymology', 'imagery']
 
 _p = _f = 0

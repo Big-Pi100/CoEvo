@@ -98,6 +98,13 @@ venv/
 #    由 `data/curriculum/prebuilt/*.json` + 脚本产出，重建成本高（含 LLM 费用）。
 /data/coevo.db
 
+# ── 词库备份（2026-09-28 补）──
+# 🔴 备份**保留在本地**但不入库：一次 32 MB，几次就上百 MB
+#    （`.git` 已经历过一轮 946 → 86 MB 的瘦身，不重蹈覆辙）。
+# 命名来源：`scripts/priority_redo.py --apply` 与手工 `cp`（见 `data/backup/`）。
+/data/backup/
+*.bak-priority-redo-*
+
 # ── 营销素材（白哥 2026-09-27 定：全部不进）──
 # 原已入库 1,075 个含 325 张 PNG；新增的也不再进。
 # 需要用素材时从网盘/对象存储取。

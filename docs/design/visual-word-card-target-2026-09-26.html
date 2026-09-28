@@ -533,11 +533,16 @@ code{font-family:var(--mono);font-size:12.5px;background:var(--sunken);padding:1
 </div>
 
 <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-info);border-radius:12px;padding:14px 16px;margin-top:14px">
-  <div style="font-size:12.5px;font-weight:500;margin-bottom:9px">🔴 段的<b>显示名</b> vs <b>内部 code</b> —— 消除一处文档矛盾</div>
+  <div style="font-size:12.5px;font-weight:500;margin-bottom:9px">🔴 段的<b>显示名</b> vs <b>内部 code</b></div>
   <div style="font-size:11.5px;color:var(--color-text-secondary);line-height:1.7;margin-bottom:11px">
-    界面稿 ② 标的是「<b>词源故事</b>」，数据侧叫 <code style="font-family:var(--font-mono)">cognate</code> ——
-    <b>不是两件事</b>，是同一段的「显示名」与「内部 code」。
-    <br>「同源串记」<b>本身不铺在卡片上</b>（它是聚合页）；卡片 ② 显示<b>当前词的词源故事文本</b>，<b>点击才展开</b>同源串记聚合页。
+    🔄 <b>本节 2026-09-28 已修正</b>（原来写的「② 的内部 code 是 <code style="font-family:var(--font-mono)">cognate</code>」
+    <b>与数据不符</b>）—— 原因：<b><code>cognate</code> 不是卡上记忆法，是聚合页</b>，
+    而且它的段与同词 <code>root</code> 段<b>指向同一个聚合页</b>（实测 2,988 段全部如此）。
+    白哥 2026-09-28：「<b>同源串记是聚合页，现在还总是把这个放在记忆法里</b>」→ 已<b>整层摘除</b>。
+    <br>→ 卡片 ② 的 code 就是 <code style="font-family:var(--font-mono)">etymology</code>（或补位来的别的类），
+    <b>显示当前词的词源故事文本</b>，点击才展开<b>词源族</b>聚合页。
+    <br>📌 「<b>同源串记</b>」这个概念在数据上<b>没有独立载体</b>（它原来说的就是「换前缀看同族词」这个动作，
+    而那个动作 = 展开 <code>root</code> / <code>etymon</code> 型聚合页）。
   </div>
   <div style="display:grid;grid-template-columns:56px 1fr 96px 1.4fr;gap:0;font-size:11px">
     <div style="padding:6px 8px;font-weight:500;border-bottom:0.5px solid var(--color-border-tertiary);color:var(--color-text-tertiary)">槽位</div>
@@ -557,13 +562,13 @@ code{font-family:var(--mono);font-size:12.5px;background:var(--sunken);padding:1
 
     <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)">②</div>
     <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)"><b>词源故事</b></div>
-    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);font-family:var(--font-mono)">cognate (2)</div>
-    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)"><b>同源串记</b>聚合页（展示名「XX 词源族」）</div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);font-family:var(--font-mono)"><b>etymology (4)</b></div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)"><b>词源族</b>聚合页（有族时）</div>
 
-    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)">② 备选</div>
-    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)"><b>词源故事</b></div>
-    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);font-family:var(--font-mono)">etymology (4)</div>
-    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)">有族则展开（见下）</div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);color:var(--color-text-tertiary)">（原 ②）</div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);color:var(--color-text-tertiary)"><s>词源故事</s></div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);font-family:var(--font-mono);color:var(--color-text-tertiary)"><s>cognate (2)</s></div>
+    <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);color:var(--color-text-tertiary)">🔴 已摘除（它是聚合页，不是记忆法）</div>
 
     <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)">③</div>
     <div style="padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary)">释义</div>

@@ -7,6 +7,23 @@
 
 ---
 
+> # 🔴 2026-09-28 18:2x —— 本次交换**已被白哥撤销**
+>
+> 白哥定「**以 v1 §4.1 为准**」（`collocation` 3 / `etymology` 4），**在知悉下述后果后**仍定：
+> 实测会回到 `collocation` **51.7%** / `etymology` **0.5%**（本文 §3.4 的「交换前」那一列）。
+>
+> **本文的论证没有被推翻** —— 它仍然准确地描述了这个顺序的代价。
+> 撤销是**产品层面的取舍**（v1 是 L0 权威），不是「论证错了」。
+>
+> 执行与影响：
+> · 数据：`scripts/priority_redo.py --apply`（`--order=v1`）—— 同轮还做了
+>   「按 priority 重判定 `profile`」（本文 §十二.2 那个「三处出处」问题的治本：
+>   写端 `load_llm_results.py` 原先**直接用 LLM 的 primary**，现已改为调用共享函数 `apply_order`）
+> · `cognate`（priority 2）**整层摘除**（白哥：「同源串记是聚合页，现在还总是把这个放在记忆法里」）
+> · 📄 决策记录：`docs/design/word-card-note-and-aggregate-refine-2026-09-28.html` §二 / §五 / §六
+
+---
+
 ## 一、一句话
 
 **这不是「搭配质量」问题，是 `mnemonic_type` 表的 `priority` 顺序自相矛盾** ——

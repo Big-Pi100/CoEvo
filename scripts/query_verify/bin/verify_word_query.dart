@@ -295,14 +295,16 @@ Future<void> main(List<String> args) async {
           s.map((x) => x.code).join(','));
     }
 
-    // ② ``cognate`` 不能上卡 —— 它是聚合页（白哥原话），且段里**只有族标签**
-    //    实测：**195 词**的 `primary_code` 是它（receive …）
+    // ② ``cognate`` 不能上卡 —— 它是聚合页（白哥原话）
+    //    ⚠️ 2026-09-28：它已**整层摘除**（`mnemonic_type` 行 / `profile` / 2,988 个卡片段 /
+    //    渲染分支全清）。`offCard` 里**保留**它纯属**防御纵深** ——
+    //    万一哪天有人把 `cognate` 塞回数据，这里仍会挡住它。
     {
       final s = CardSlots.resolve(
         card: cardOf(['root', 'cognate', 'etymology', 'definition', 'context']),
         profile: profOf('cognate', ['root', 'etymology']),
       );
-      check('🔴 排除 cognate（它是聚合页，不铺在卡上）',
+      check('🔴 排除 cognate（它是聚合页，不铺在卡上；已摘除，保留为防御纵深）',
           !s.any((x) => x.code == 'cognate'), s.map((x) => x.code).join(','));
       check('  profile 给的候选**顺序仍被尊重**（root 在前）',
           s.isNotEmpty && s.first.code == 'root',
@@ -310,6 +312,10 @@ Future<void> main(List<String> args) async {
     }
 
     // ③ 补位顺序 + 上限
+    //
+    // 🔄 **2026-09-28 反转型改动**：白哥定「以 v1 为准」→ `collocation` 3 / `etymology` 4
+    //    （09-27 曾交换为 etymology 3，现已撤回）→ 断言期望值**必须同步反转**。
+    //    🔑 不反转的代价是双向的：它会一直报红；更糟的是有人为了让绿**把 order 改回去**。
     {
       final s = CardSlots.resolve(
         card: cardOf(['collocation', 'etymology', 'definition', 'context']),
@@ -317,9 +323,66 @@ Future<void> main(List<String> args) async {
       );
       check('  最多两个槽位（设计稿「卡片只显示四样」）',
           s.length <= CardSlots.maxSlots, '${s.length}');
-      check('  补位按 mnemonic_type.priority（etymology 先于 collocation）',
-          s.map((x) => x.code).join(',') == 'etymology,collocation',
+      check('  补位按 mnemonic_type.priority（**collocation 先于 etymology** —— v1 §4.1）',
+          s.map((x) => x.code).join(',') == 'collocation,etymology',
           s.map((x) => x.code).join(','));
+    }
+
+    // ③b 🔑 `order` 必须与库表 `mnemonic_type.priority` **逐项一致**
+    //     🔴 这是本轮最重要的新断言：修复前实测 **859 词的 ① 放错**（`order` 是 09-27 的旧序）。
+    //     判据：**两边都是从「同一个概念」推出的两份拷贝 → 必须断言相等**，否则必然漂移。
+    //
+    // ⚠️ 用**自己的只读连接**查库（而不是给 `WordQueryService` 加公开 `db` getter）——
+    //    那会鼓励调用方绕过服务层。断言脚本自己开库是既有做法。
+    {
+      final raw = await factory.openDatabase(dbPath,
+          options: OpenDatabaseOptions(readOnly: true));
+      try {
+        final dbRows = await raw.rawQuery(
+            "SELECT code FROM mnemonic_type WHERE code NOT IN ('context','cognate') "
+            'ORDER BY priority');
+        final dbOrder = dbRows.map((r) => r['code'] as String).toList();
+        check('🔴 CardSlots.order 与 mnemonic_type.priority 一致（防两处漂移）',
+            dbOrder.join(',') == CardSlots.order.join(','),
+            'db=${dbOrder.join(",")} code=${CardSlots.order.join(",")}');
+
+        final cog = (await raw.rawQuery(
+                "SELECT count(*) AS n FROM mnemonic_type WHERE code='cognate'"))
+            .first['n'] as int;
+        check('🔴 库表里已无 cognate（记忆法层共 5 类）', cog == 0);
+
+        // ③c 🔴 `profile` 必须与 `priority` 一致（v1 §4.1：「制卡时按 priority 选主/次」）
+        //     🔑 修复前这里是**不成立**的（`load_llm_results` 直接用 LLM 的 primary，
+        //        `CardSlots.resolve` 也不排序）。2026-09-28 已治本
+        //        （存量数据重判 + 写端调用 `priority_redo.apply_order`）。
+        //
+        // ⚠️ **判据必须用 `word_morpheme`，不能用 `card.content LIKE '%"root"%'`** ——
+        //    首版就是后者，报了 **2,731 条假阳性**：`"root"` 还出现在
+        //    `etymology` 段的 `etyma[].role` 里（`{"form":"gratum",…,"role":"root"}`）
+        //    → 文本匹配**被同名字段骗了**。实测两者口径：`word_morpheme` 词数 =
+        //    「root 段且 `parts` 非空」词数 = **5,484**（差集 0）。
+        //    🔑 判据：**在 JSON 里做文本匹配，必须确认该串只可能出现在你要找的位置**。
+        final bad = (await raw.rawQuery('''
+          SELECT count(*) AS n FROM word_mnemonic_profile p
+          WHERE p.primary_code NOT IN ('root','context')
+            AND p.word_id IN (SELECT DISTINCT word_id FROM word_morpheme)'''))
+            .first['n'] as int;
+        check('🔴 有词素的词，primary 必须是 root（违反 priority 的 = 0）',
+            bad == 0, '违反 $bad 条');
+
+        final cogProf = (await raw.rawQuery(
+                "SELECT count(*) AS n FROM word_mnemonic_profile "
+                "WHERE primary_code='cognate' OR secondary_codes LIKE '%cognate%'"))
+            .first['n'] as int;
+        check('🔴 profile 里已无 cognate（primary 与 secondary）', cogProf == 0);
+
+        final cogCard = (await raw.rawQuery(
+                "SELECT count(*) AS n FROM card WHERE content LIKE '%\"cognate\"%'"))
+            .first['n'] as int;
+        check('🔴 card 段里已无 cognate（2,988 个冗余段已删）', cogCard == 0);
+      } finally {
+        await raw.close();
+      }
     }
 
     // ④ 段不存在 → **不留空槽位**（设计稿 §03）
@@ -342,13 +405,17 @@ Future<void> main(List<String> args) async {
           s.length == 2, s.map((x) => x.code).join(','));
     }
 
-    // ⑥ 上限是**排除法的正确性**而非巧合：offCard 恰为 context/cognate
+    // ⑥ `offCard` 是**排除法的正确性**而非巧合
+    //
+    // 🔄 2026-09-28：`cognate` 已从数据层整层摘除，但 `offCard` **保留**它 ——
+    //    🔑 这是**有意的防御纵深**：万一有人把 `cognate` 塞回数据里，这里仍会挡住它。
+    //    → 断言从「恰好 2 个」改为「**必须含这两类**」（不再锁死数量，
+    //      将来若要新增 offCard 类型不必改断言）。
     {
-      check('  offCard 恰好是 {context, cognate}（多一个都会让卡片少内容）',
-          CardSlots.offCard.length == 2 &&
-              CardSlots.offCard.contains('context') &&
-              CardSlots.offCard.contains('cognate'),
-          CardSlots.offCard.join(','));
+      check('  offCard 含 context（④ 固定段，必须挡）',
+          CardSlots.offCard.contains('context'), CardSlots.offCard.join(','));
+      check('  offCard **保留** cognate（已摘除，但留作防御纵深）',
+          CardSlots.offCard.contains('cognate'), CardSlots.offCard.join(','));
       check('  order 不含被排除的两类（否则补位又会把它们加回来）',
           !CardSlots.order.any((c) => CardSlots.offCard.contains(c)),
           CardSlots.order.join(','));

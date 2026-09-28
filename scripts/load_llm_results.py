@@ -153,28 +153,29 @@ DDL = [
 
 # 记忆法优先级 —— 🔴 **这些 priority 是「渲染层选槽位①的规则」，不是数据组织方式**
 #
-# 2026-09-27 白哥定：**交换 `etymology` 3 ↔ `collocation` 4**（原为 collocation 3 / etymology 4）
+# ============================================================================
+# 🔄 3/4 级的往复（2026-09-28 最终版 · **别再来回改**）
+# ============================================================================
+# · **v1 §4.1（L0 原文）**：`collocation` 3 / `etymology` 4   ← 当前生效
+# · 2026-09-27 白哥批准**交换**为 `etymology` 3 / `collocation` 4，理由是实测：
+#     `collocation` 的条件「有 ≥1 条高频固定搭配」**99.3% 的词都满足（几乎恒真）**
+#     → 它排在第 3 位会**必然吃掉所有「不可拆词」的槽位①** → `etymology` 只剩 0.5%（形同虚设）
+#     交换后实测：`etymology` 51.4% · `root` 47.6% · `collocation` 0.7%（与「不可拆词」52.4% 吻合）
+#     交叉验证：`word_mnemonic_profile.primary_code`（LLM 当年判定）里 collocation 仅 0.9% —— 吻合
+#     📄 完整论证：`docs/review/mnemonic-slot-priority-conflict-2026-09-27.md`
+# · 🔄 **2026-09-28 白哥改回 v1 顺序**（「以 v1 为准」）—— **在知悉上述后果后**仍定：
+#     实测会回到 `collocation` 51.7% / `etymology` 0.5%（见 `scripts/priority_redo.py` 文件头）
+# ============================================================================
 #
-# # 为什么交换
-# `applicable_when` 语义上，`root`（**可拆**）与 `etymology`（**不可拆**）是**互补**的两条路，
-# 而 `collocation` 的条件「有 ≥1 条高频固定搭配」实测 **99.3% 的词都满足（几乎恒真）**。
-# 它排在第 3 位 → **必然吃掉所有「不可拆词」的槽位①**，使 `etymology` 出场率仅 0.5%（形同虚设）。
-#
-# 实测（11,523 张卡）：
-#   交换前 → collocation **51.7%** · root 47.6% · etymology **0.5%**
-#   交换后 → etymology **51.4%** · root 47.6% · collocation **0.7%**   ← 与「不可拆词」占 52.4% 吻合
-#
-# 交叉验证：`word_mnemonic_profile.primary_code`（LLM 当年判定的「该用哪个」）
-#   里 collocation 仅 **0.9%** —— 与交换后渲染层得到的 0.7% **高度吻合**，
-#   说明「搭配只在少数词上该当槽位①」是语言学习的判断，不是我们的发明。
-#
-# ⚠️ 交换后 `collocation` 仍是**有效兜底**（86 词：词组 `traffic jam` / 语气词 `eh` / 专名 `waco`）。
-# 📄 完整论证：`docs/review/mnemonic-slot-priority-conflict-2026-09-27.md`
+# 🔴 `cognate` 已于 2026-09-28 **整层摘除**（白哥：「同源串记是聚合页，现在还总是把这个
+#    放在记忆法里」）。它不是卡上记忆法 —— 它的卡片段 100% 无文本、且与同词 `root` 段
+#    指向同一个 `aggregate_page`（实测 2,988 段全部如此）→ 只是聚合页入口的冗余副本。
+#    **不要再加回来**（表里另 5 个才是真的卡上记忆法）。
+# ============================================================================
 MNEMONIC_TYPES = [
     ('root', 1, '词根词缀', '可拆成现代英语仍透明的词根/词缀（incredible = in+cred+ible）'),
-    ('cognate', 2, '同源串记', '与另一个英语词共享同一词根或词源（receive/perceive/conceive）；谐音不算'),
-    ('etymology', 3, '词源故事', '整体借词、不可拆（café ← French café）'),
-    ('collocation', 4, '搭配整记', '有 ≥1 条高频固定搭配'),
+    ('collocation', 3, '搭配整记', '有 ≥1 条高频固定搭配'),
+    ('etymology', 4, '词源故事', '整体借词、不可拆（café ← French café）'),
     ('image', 5, '联想图像', '抽象词，靠意象或谐音联想'),
     ('context', 6, '语境原句', '默认附加'),
 ]
@@ -848,16 +849,37 @@ def main():
         stats['card'] += 1
 
     # word_mnemonic_profile
+    #
+    # 🔴🔴 2026-09-28 治本改动：**不再直接用 LLM 判定的 `mn['primary']`**
+    #   原实现是 `VALUES (mn['primary'], ...)` —— 完全没经过 `priority`。
+    #   这就是「卡片排序**不经过优先级排序**」的病根（v1 §4.1 明文要求按 priority 选主/次）。
+    #   只在存量数据上修一次治不了根：**下次重建词库会静默回退**。
+    # → 现在先按 LLM 结果落库（保留 rationale / confidence），
+    #   再由 `priority_redo.apply_order()` **按 priority 重算 primary/secondary** ——
+    #   🔑 **与存量修复共用同一个函数**（单一出处，不会两套口径）。
     for wl, wid in wid_of.items():
         d = rec_by_word[wl]['data']
         mn = d.get('mnemonic') or {}
-        if not mn.get('primary'):
+        raw_primary = mn.get('primary')
+        if not raw_primary:
             continue
+        if raw_primary in ('cognate',):
+            # cognate 已整层摘除 → 不落库（其余 5 类是合法记忆法）
+            raw_primary = 'context'
         con.execute('INSERT OR REPLACE INTO word_mnemonic_profile '
                     '(word_id,primary_code,secondary_codes,confidence,rationale) VALUES (?,?,?,?,?)',
-                    (wid, mn['primary'], json.dumps(mn.get('secondary') or [], ensure_ascii=False),
+                    (wid, raw_primary,
+                     json.dumps([c for c in (mn.get('secondary') or []) if c != 'cognate'],
+                                ensure_ascii=False),
                      d.get('confidence'), mn.get('rationale')))
         stats['word_mnemonic_profile'] += 1
+
+    # 🔑 按 priority 重算 —— 单一出处：`scripts/priority_redo.py` 的 apply_order()
+    from priority_redo import apply_order  # noqa: E402  （同目录脚本）
+    n, ch_p, ch_s, no_cand = apply_order(con)
+    stats['profile_reordered'] = n
+    print('   ↳ 按 priority 重算 profile：%d 行（primary 改 %d · secondary 改 %d · 无候选 %d）'
+          % (n, ch_p, ch_s, no_cand))
 
     if not args.dry_run:
         con.commit()

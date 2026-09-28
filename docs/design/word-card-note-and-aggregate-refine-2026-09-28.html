@@ -1357,7 +1357,159 @@
   </div>
 
   <!-- ═══════════════════════════════════════════════════ -->
-  <h2>五、待你定的事（汇总）</h2>
+  <h2>五、📋 实施影响报告（dry-run 实跑，未写入）</h2>
+
+  <p class="sub">依据白哥 18:1x 定案：<b>Ⅰ甲</b>（以 v1 为准）· <b>Ⅱ乙</b>（重判定 <code>primary_code</code>）·
+     <b>0A</b>（cognate 四处摘除）。脚本 <code>scripts/priority_redo.py</code>（<b>默认 dry-run</b>）。</p>
+
+  <div class="box g">
+    <b>口径</b>：<code>root(1) &gt; collocation(3) &gt; etymology(4) &gt; image(5)</code>
+    <span class="muted">（v1 §4.1 原文 —— 与库表原值的 3/4 级相反，白哥定「以 v1 为准」）</span><br>
+    <b>排除</b>：<code>cognate</code>（聚合页）· <code>context</code>（④ 固定段）<br>
+    <b>候选判据</b>：该词<b>实际有可读内容</b>的段（<code>root</code>=有 parts · <code>collocation</code>=有 items · <code>etymology</code>=有 text）
+  </div>
+
+  <table>
+    <tr><th>指标</th><th>实测</th><th>说明</th></tr>
+    <tr><td><code>profile</code> 行数</td><td>11,523</td><td>—</td></tr>
+    <tr class="bad"><td><b><code>primary_code</code> 变化</b></td><td class="bad"><b>6,060（52.6%）</b></td>
+      <td>一半以上的词「主记忆法」会改判</td></tr>
+    <tr class="bad"><td><b><code>secondary_codes</code> 变化</b></td><td class="bad"><b>10,924（94.8%）</b></td>
+      <td>几乎全部（旧的 secondary 里含被排除的类型，也算变化）</td></tr>
+    <tr class="bad"><td><b>卡片 ①② 的实际变化</b></td><td class="bad"><b>10,588（91.9%）</b></td>
+      <td class="bad">🔴 <b>用户可感知</b>：几乎每张卡的记忆法顺序都会变</td></tr>
+    <tr><td>重判后<b>无候选</b></td><td>29</td><td class="warn">见下「顺带发现」</td></tr>
+  </table>
+
+  <h4>primary 变化形态（top 6）</h4>
+  <table>
+    <tr><th>变化</th><th>词数</th><th>原因</th></tr>
+    <tr><td><code>etymology → collocation</code></td><td><b>3,395</b></td><td>v1 把 <code>collocation</code>(3) 排在 <code>etymology</code>(4) 前</td></tr>
+    <tr><td><code>context → collocation</code></td><td><b>1,344</b></td><td><code>context</code> 被排除 → 落到下一个</td></tr>
+    <tr><td><code>image → collocation</code></td><td><b>929</b></td><td><code>image</code> 无对应段 → 落位</td></tr>
+    <tr><td><code>cognate → collocation</code></td><td>182</td><td>cognate 被排除</td></tr>
+    <tr><td><code>etymology → root</code></td><td>84</td><td>本该如此（<code>root</code> 是 1 级）</td></tr>
+    <tr><td><code>context → 空</code></td><td>25</td><td>见「顺带发现」</td></tr>
+  </table>
+
+  <div class="box" style="border-left-color:#A33220;background:#FDF3F0">
+    <b>🔴 必须你定的一件事：<code>rationale</code> 与新 <code>primary</code> 失配</b><br>
+    <code>rationale</code> 是制卡时<b>为旧 <code>primary</code> 写下的理由</b>。重判后 <code>primary</code> 变了，
+    它就<b>文不对题</b> —— 实测（按关键词粗判，仅估量级）：<br>
+    <table>
+      <tr><th>情况</th><th>约数</th></tr>
+      <tr class="bad"><td><b>失配</b>（rationale 讲的是旧类型，卡片标签会换成新类型）</td>
+        <td class="bad"><b>≈ 4,444</b><br><span class="muted">讲 etymology→新主 collocation 2,817 · 讲 image→新主 collocation 1,221 · 讲 root→collocation 330 · 其余 76</span></td></tr>
+      <tr><td>无法判定 / 空</td><td>950</td></tr>
+      <tr class="ok"><td>恰好讲的就是新类型（可留）</td><td><b>653</b></td></tr>
+    </table>
+    ⚠️ 举例：<code>agree</code> 旧 <code>primary=etymology</code>、rationale 讲词源；
+    重判后 <code>primary=collocation</code> → 卡片标「搭配整记」，而说明在讲词源 → <b>直接矛盾</b>。<br>
+    → <b>这正是上一版「段内说明」方案的地基</b>：地基不稳，那个方案也不能先做。
+  </div>
+
+  <h4>处理选项（需你定）</h4>
+  <table>
+    <tr><th>选项</th><th>做法</th><th>代价</th></tr>
+    <tr class="ok"><td><b>甲（推荐）</b></td>
+      <td>失配的<b>置空</b>（<code>NULL</code>）；<b>653 条恰好匹配的保留</b></td>
+      <td>零成本、零谎报；丢掉 4,444 条旧理由（但那本来就已文不对题）</td></tr>
+    <tr><td><b>乙</b></td>
+      <td><b>LLM 批量重写</b>（按新 <code>primary</code> 重新生成 rationale）</td>
+      <td>成本（11,523 条量级）+ 需另一轮验证；但保住了「为什么用这种法」这层价值</td></tr>
+    <tr><td><b>丙</b></td>
+      <td>全部置空，之后按需重生成</td>
+      <td>最简单，但 653 条已正确的也一起丢</td></tr>
+  </table>
+
+  <div class="box" style="border-left-color:#8A6A22">
+    <b>顺带发现（与本次无关，但建议另开任务）：29 个「重判后无候选」的词疑似噪声</b><br>
+    它们除了 <code>definition</code> + <code>context</code> <b>一无所有</b>（无词根/搭配/词源）—— 抽查成色：
+    <table>
+      <tr><th>词</th><th>释义</th><th>问题</th></tr>
+      <tr><td><code>iocsixf</code> / <code>iocsixg</code></td><td>「未知标识符」「类似标识符的代码」</td><td class="bad">🔴 <b>LLM 造词</b>（不是英语词）</td></tr>
+      <tr><td><code>pornsen</code></td><td>色情作品制作者</td><td class="bad">🔴 疑似造词 + 内容不适</td></tr>
+      <tr><td><code>chen</code> / <code>ku</code> / <code>mosk</code></td><td>「陈（姓氏）」「顾，中国姓氏」「莫斯克，姓氏」</td><td class="bad">🔴 <b>中文姓氏混入英语词库</b>，且 <code>cefr=A1</code>（明显错标）</td></tr>
+      <tr><td><code>faget</code></td><td>「捆柴」（<code>faggot</code> 的变体拼写）</td><td class="bad">🔴 词本身有攻击性含义</td></tr>
+      <tr><td><code>onleh</code> / <code>glimco</code> / <code>reama</code> / <code>tultul</code>…</td><td>均为「罕见姓氏 / 罕用词」</td><td class="warn">不属于学习词库</td></tr>
+    </table>
+    → 属 <code>data-noise-classification</code> skill 的场景（<b>29 个只是「无候选」筛出来的那部分，实际噪声可能更多</b>）。<br>
+    🔑 <b>本次不处理</b>：它们的 <code>primary</code> 置空即可，清理另开任务（需你批）。
+  </div>
+
+  <h4>🔴🔴 实施前拦下的一件事：Ⅰ甲 会<b>撤销你 9-27 的定案</b>（我的选项描述不完整）</h4>
+
+  <div class="box" style="border-left-color:#A33220;background:#FDF3F0">
+    <b>我在 §二 给你选 Ⅰ 时只写了「v1 与库表相反」—— 漏了最关键的一半：</b><br>
+    🔴 <b>库表现在的 3/4 级（<code>etymology 3</code> / <code>collocation 4</code>）是你
+    2026-09-27 14:08 亲自批准交换的</b>，有 <b>15.8 KB 完整论证 + 备份 + 验证</b>：
+    <span class="spec">docs/review/mnemonic-slot-priority-conflict-2026-09-27.md</span><br>
+    <span class="muted">（我没查「库表为什么是这样」，只看到「与 v1 不一致」就把它当成「数据错了」—— <b>这是我的漏查</b>）</span>
+  </div>
+
+  <h5 style="font-size:13px;margin:16px 0 6px;color:#A33220">那天的论证（原文数据，逐条可复核）</h5>
+  <table>
+    <tr><th>项</th><th>值</th></tr>
+    <tr><td><b>`collocation` 的适用条件</b>（<code>applicable_when</code> 原文）</td>
+      <td>「有 ≥1 条高频固定搭配」→ 实测 <b>11,437 / 11,523 = 99.3% 的词都满足</b>
+        —— <b>几乎恒真</b></td></tr>
+    <tr><td>`root` 与 `etymology` 的条件</td>
+      <td><b>互补</b>：<code>root</code>=「可拆」· <code>etymology</code>=「不可拆」→ 合计覆盖 99%+</td></tr>
+    <tr class="bad"><td><b>把恒真条件排在具体条件之前</b></td>
+      <td class="bad">每个「不可拆词」都先命中 <code>collocation</code> → <code>etymology</code> 被彻底挡住</td></tr>
+    <tr><td>「不可拆词」占比</td><td>6,039 / 11,523 = <b>52.4%</b></td></tr>
+    <tr class="bad"><td><b>交换前（= v1 口径）槽① 分布</b></td>
+      <td class="bad"><code>collocation</code> <b>51.7%</b> · <code>root</code> 47.6% · <code>etymology</code> <b>0.5%</b>（形同虚设）</td></tr>
+    <tr class="ok"><td><b>交换后（= 库表现状）</b></td>
+      <td class="ok"><code>etymology</code> <b>51.4%</b> · <code>root</code> 47.6% · <code>collocation</code> 0.8%<br>
+        ← 与「不可拆词 52.4%」<b>吻合</b></td></tr>
+    <tr class="ok"><td><b>交叉验证（关键）</b></td>
+      <td><code>word_mnemonic_profile.primary_code</code>（<b>LLM 当年判定的「该用哪个」</b>）里
+        <code>collocation</code> 仅 <b>0.9%</b> —— 与「交换后」高度吻合<br>
+        🔑 说明「搭配只在少数词上该当 ①」是<b>语言学习的判断</b>，不是当时的发明</td></tr>
+  </table>
+
+  <h5 style="font-size:13px;margin:16px 0 6px;color:#A33220">我今天复算的结果 —— 与那天<b>逐位吻合</b></h5>
+  <table>
+    <tr><th>槽位① 落到</th><th>① 以 v1 为准（今天选的）</th><th>② 库表现状（9-27 定）</th></tr>
+    <tr><td><code>root</code></td><td>5,484（47.6%）</td><td>5,484（47.6%）</td></tr>
+    <tr class="bad"><td><code>collocation</code></td><td class="bad">5,957（<b>51.7%</b>）</td><td class="ok">87（0.8%）</td></tr>
+    <tr class="bad"><td><code>etymology</code></td><td class="bad">53（<b>0.5%</b>）</td><td class="ok">5,923（51.4%）</td></tr>
+    <tr><td>（无候选）</td><td>29</td><td>29</td></tr>
+  </table>
+  <p>🔴 <b>同一个问题会精确重现</b>：<code>etymology</code> 又回到 0.5%、形同虚设。</p>
+
+  <div class="box g">
+    <b>🔑 而且这件事与我们今天定的判据是<b>同一条</b></b><br>
+    我们今天定：「按<b>有效性</b>排，不按覆盖率」。<br>
+    而 9-27 的交换<b>正是按有效性排的</b> ——
+    <code>collocation</code> 的条件「有 ≥1 条搭配」<b>几乎恒真</b>，它不是「判别条件」而是「兜底」；
+    而 <code>etymology</code> 对「不可拆词」是<b>唯一的路</b>。<br>
+    → <b>「互补条件优先于恒真条件」= 有效性的体现</b>。<br>
+    → 换句话说：<b>v1 §4.1 那一行的顺序是设计失误</b>（把恒真条件排在了具体条件前），
+    而<b>库表那一行才是修好的版本</b>。
+  </div>
+
+  <div class="q">
+    <b>所以 Ⅰ 需要你重新确认（二选一）</b><br>
+    <b>① 仍以 v1 为准</b>：则要<b>撤销 9-27 的定案</b>，
+    接受 <code>collocation</code> 回到 51.7% / <code>etymology</code> 回到 0.5%（须同时改论证文档与备份说明）<br>
+    <b>② 改以库表为准（我现在的建议）</b>：<b>数据不动</b>，
+    改 <b>v1 §4.1 那一行</b>（collocation 3 → 4、etymology 4 → 3）+ 锚点 §03 表 ——
+    <span class="muted">这样 v1 与库表一致，且保留了按有效性排的结果</span>
+  </div>
+
+  <h4>其余实施要点</h4>
+  <ul>
+    <li><b>两份词库要同步</b>：<code>data/word.db</code>（源）与 <code>app/assets/word.db</code>（<b>打包进 App 的那份</b>）——
+      实测 <b>md5 完全相同</b>（<code>d76c3d22…</code>），改一份必须同步另一份，否则真机跑的是旧数据。</li>
+    <li><b>已备份</b>：<code>data/backup/word.db.before-priority-redo-20260928-1813</code>
+      （32,960,512 字节，与源一致）；脚本另会写 <code>*.bak-priority-redo</code>。</li>
+    <li><b>回滚</b>：直接拷回备份即可（纯数据变更，无 schema 改动）。</li>
+    <li><b>不动的</b>：<code>offCard</code> 保留（防御纵深）；<code>card</code> 里其余段不动（<b>只删 2,988 个冗余 <code>cognate</code> 段</b>）。</li>
+  </ul>
+
+  <h2>六、待你定的事（汇总）</h2>
 
   <table>
     <tr><th>#</th><th>决定</th><th>选项</th><th>我的建议</th></tr>
@@ -1386,42 +1538,108 @@
       <td class="ok"><b>A</b> —— <b>涉及词库数据，须你单独批</b><br>
         <span class="muted">实测界面零变化；且全为删除、可回滚</span></td></tr>
     <tr><td><b>Ⅲ</b></td>
-      <td><b>段内说明（<code>rationale</code>）最后再定</b><br>
-        <span class="muted">它是附注，落点取决于 Ⅱ 的结果（§1.8）—— <b>顺序上应排在 Ⅱ 之后</b></span></td>
+      <td><b>段内说明（<code>rationale</code>）</b><br>
+        <span class="muted">§五 报告：失配 ≈4,444 条 → <b>要先定 rationale 怎么处理</b>，再谈它的落点</span></td>
       <td>· 段上了卡 → 贴它下面（段内说明）<br>
-        · 段没上卡（<code>image</code> 957 / <code>context</code> 1,410）→ 不显示 ／ 另设计承载</td>
-      <td class="warn">先做 Ⅰ + Ⅱ，再做这个<br>
+        · 段没上卡 → 不显示 ／ 另设计承载</td>
+      <td class="warn">排在 Ⅱ 之后<br>
         <span class="muted">（上一版的 P0/P1/P2 排序已作废）</span></td></tr>
-    <tr><td>1b</td><td><code>context</code> 类（1,410）rationale 怎么处置</td>
-      <td>① 先搁置（推荐）／ ② 按 rationale 内容捞（≈790）／ ③ 重跑 LLM 分类</td>
-      <td class="ok"><b>①</b> —— 分类不准，规则会变成「猜」</td></tr>
-    <tr><td>3</td><td>聚合页成员行形态</td><td>② 平坦行 + <code>›</code> / ① 粘土行 + onTap</td><td class="ok"><b>②</b></td></tr>
-    <tr><td>4</td><td>点开之后去哪</td><td>a 查词浮层 / b 复习卡 / c 新页</td><td class="ok"><b>a</b></td></tr>
-    <tr><td>5</td><td>聚合页其余 3 处（顶栏族名 / 页头居中 / 词列对齐）</td><td>一起改 / 只改可点</td><td>一起改（都在锚点里写着）</td></tr>
+    <tr><td>聚合 1</td><td>聚合页成员行形态</td><td>② 平坦行 + <code>›</code> / ① 粘土行 + onTap</td><td class="ok"><b>②</b></td></tr>
+    <tr><td>聚合 2</td><td>点开之后去哪</td><td>a 查词浮层 / b 复习卡 / c 新页</td><td class="ok"><b>a</b></td></tr>
+    <tr><td>聚合 3</td><td>聚合页其余 3 处（顶栏族名 / 页头居中 / 词列对齐）</td><td>一起改 / 只改可点</td><td>一起改（都在锚点里写着）</td></tr>
   </table>
 
-  <div class="box">
-    <b>顺序建议</b>：<b>Ⅰ</b>（定 3/4 级）→ <b>Ⅱ</b>（改排序逻辑）→ <b>Ⅲ</b>（rationale 落点，依赖 Ⅱ）<br>
-    + 并行的 <b>0</b>（cognate 摘除，独立）与聚合页三项（与词库无关，随时可做）。<br>
-    🔑 <b>Ⅲ 不要先做</b> —— Ⅱ 会改变「哪条法上卡」，先做会白做一遍（这正是上一版的问题）。
+  <div class="box g">
+    <b>✅ 已定案并实施（白哥 2026-09-28 18:1x–18:2x）</b><br>
+    <b>Ⅰ</b> → <b>① 以 v1 为准</b>（<code>collocation</code> 3 · <code>etymology</code> 4；<b>撤销 09-27 的交换</b>）<br>
+    <b>Ⅱ</b> → <b>乙：按 v1 §4.1 重判定 <code>primary_code</code></b>（数据层治本）<br>
+    <b>0</b> → <b>A：cognate 从注册表 / 分配 / 卡片段 / 代码四处摘干净</b><br>
+    <b>Ⅲ</b> → rationale <b>甲：失配置空 + 保留匹配的</b>（置空 5,422 / 保留 6,101）<br>
+    <b>限定语</b>（白哥原话：「我说了好几次，<b>词元族是聚合页，这个要排除</b>」）→ 经确认：
+    <b>「词元族」= <code>cognate</code>「同源串记」</b> → <b>排除池 = <code>{cognate, context}</code></b>
+    <span class="muted">（这已是同一个点被说过第 3+ 次 —— 根因见 §1.10）</span>
   </div>
 
-  <div class="box" style="margin-top:26px">
-    <b>下一步</b>：先定 <b>Ⅰ</b>（3/4 级）与 <b>Ⅱ</b>（排序修不修），我再动代码。<br>
-    <b>Ⅱ 若走甲</b>：改 <code>services/word_query_service.dart</code> 的 <code>CardSlots.resolve</code>
-    （<b>被 <code>query_verify</code> 断言守护</b>，须同步补断言）；<br>
-    聚合页三项（成员行 / 页头 / 顶栏）与该文件无关，可随时先做 → 改 <code>aggregate_page_screen.dart</code>。<br>
-    <br>
-    <b>要补的断言</b>（编译器都看不见，只能靠断言）：
-    <ul>
-      <li>🔴 <b><code>CardSlots.resolve</code> 的结果必须与 priority 一致</b>
-        （新：这是本轮最重要的断言 —— 现状 859 词不符）</li>
-      <li>聚合页：成员行<b>平坦</b>且<b>可点</b>（「凸起但不可点」是已定禁忌）</li>
-      <li>聚合页：页头<b>居中</b>且有下边线；顶栏有族名</li>
-      <li><code>CardSlots</code>：<code>offCard</code> / <code>order</code> 仍与 <code>mnemonic_type.priority</code> 一致</li>
-      <li>（若做 Ⅲ）合成段<b>不带 <code>›</code></b>（无 <code>entry</code> → 不许「有箭头点不动」）</li>
-    </ul>
-    ⚠️ 本轮<b>未动生产代码</b>（设计类任务只产出文件）。本轮也<b>未改词库数据</b>。
+  <h3>实施结果（已跑完 · 可复核）</h3>
+
+  <table>
+    <tr><th>层</th><th>改动</th><th>结果</th></tr>
+    <tr>
+      <td><b>数据</b><br><span class="muted">两份词库同步</span></td>
+      <td>· <code>mnemonic_type</code>：3/4 级按 v1 · <b>删 <code>cognate</code> 行</b>（6 → 5 类）<br>
+        · <code>profile</code>：按 v1 重判 primary/secondary（<b>primary 变 6,035</b>）·
+        rationale 置空 5,422<br>
+        · <code>card.sections</code>：删 <b>2,988 个冗余 <code>cognate</code> 段</b>（零信息损失）</td>
+      <td class="ok">✅ <code>data/word.db</code> 与 <code>app/assets/word.db</code> <b>md5 一致</b><br>
+        ✅ 外键检查无违反<br>
+        ✅ 备份在 <code>data/backup/</code> + <code>*.bak-priority-redo-20260928-182159</code></td>
+    </tr>
+    <tr>
+      <td><b>写端</b><br><span class="muted">防回退（关键）</span></td>
+      <td>🔴 <code>load_llm_results.py</code> 原先是
+        <span class="spec">VALUES (mn['primary'], …)</span> —— <b>直接用 LLM 的判定，完全没按 priority</b>
+        ← <b>这才是「不经过优先级排序」的病根</b><br>
+        → 现改为写完 profile 后调用 <b>共享函数</b> <code>priority_redo.apply_order()</code>
+        （与存量修复<b>同一份逻辑</b>，不会两套口径）</td>
+      <td class="ok">✅ 幂等性验证：在已修好的库上再跑 → <b>0 变化</b><br>
+        <span class="muted">（只修存量数据治不了根 —— 下次重建会静默回退）</span></td>
+    </tr>
+    <tr>
+      <td><b>代码</b></td>
+      <td>· <code>CardSlots.order</code> → <b>v1 顺序</b>（root · collocation · etymology · image）<br>
+        · 删 <code>WordSection.cognateLabel</code>（唯一消费者是那个不可达分支 → 一对死代码）<br>
+        · <code>_sectionBody</code> 的 <code>case 'cognate'</code> 改为「异常提示」（防数据回潮时静默吞掉）<br>
+        · <code>offCard</code> <b>保留</b> <code>cognate</code>（<b>防御纵深</b>）</td>
+      <td class="ok">✅ <code>static_check</code> <b>error = 0</b></td>
+    </tr>
+    <tr>
+      <td><b>文档</b></td>
+      <td>· v1 §4.1（两处表）：标注 cognate 定性 + 3/4 级往复<br>
+        · 锚点 §03 槽位表：<b>cognate 行划掉</b>，② 的 code 改为 <code>etymology (4)</code><br>
+        · 09-27 论证文档：加「<b>已被白哥撤销</b>」标注（论证本身仍有效）<br>
+        · <code>verify_card_structure.py</code> 的存储顺序注释</td>
+      <td class="ok">✅ HTML 标签平衡 · 已复核</td>
+    </tr>
+    <tr>
+      <td><b>断言</b></td>
+      <td>· 🆕 <b><code>CardSlots.order</code> 与 <code>mnemonic_type.priority</code> 逐项一致</b><br>
+        · 🆕 <b>有词素的词 primary 必须是 root</b>（违反 = 0）<br>
+        · 🆕 库表 / profile / card <b>三处都不得再有 cognate</b><br>
+        · 🔄 补位期望值反转（<b>collocation 先于 etymology</b>）<br>
+        · 🔄 <code>offCard</code> 断言从「恰好 2 个」改为「必须含这两类」</td>
+      <td class="ok">✅ <code>query_verify</code> <b>342 项</b> · <code>tokens</code> <b>522 项</b> ·
+        <code>fsrs</code> <b>19 项</b> · 卡片结构 <b>13 项</b> · <b>全绿</b></td>
+    </tr>
+  </table>
+
+  <div class="box" style="border-left-color:#A33220;background:#FDF3F0">
+    <b>实施中我自己犯的两个错（都已修，记下来）</b><br>
+    <b>① <code>mnemonic_type</code> 的 3/4 级赋值写反了</b> ——
+    首版写 <span class="spec">(col, eth) = (3, 4) if order=='v1'</span>，而 v1 是 collocation 3 →
+    <b>把 etymology 赋成了 3</b>。🔴 <b>断言当时没抓到</b>：因为期望值也来自同一句推导
+    → 「期望 = 实际 = 错的」照样为绿。<br>
+    🔑 <b>判据：断言的期望值必须独立于被测逻辑</b>（不能从同一处推导）→
+    已改为独立常量表 <code>EXPECTED_PRIORITY</code>。<br>
+    <b>② 断言用了 <code>card.content LIKE '%"root"%'</code> 判「有 root 段」→ 报 2,731 条假阳性</b>：
+    <code>"root"</code> 还出现在 <code>etymology</code> 段的 <code>etyma[].role</code> 里
+    （<span class="spec">{"form":"gratum",…,"role":"root"}</span>）→
+    <b>文本匹配被同名字段骗了</b>。
+    🔑 改用 <code>word_morpheme</code> 口径（实测与「root 段 parts 非空」<b>完全等价</b>：5,484 = 5,484）→ 真违反 <b>0</b>。
+  </div>
+
+  <h3>⏳ 仍未做</h3>
+  <ul>
+    <li><b>Ⅲ · rationale 的落点</b>（段内说明贴哪 / 段没上卡时怎么显示）—— 现在数据已定，
+      <b>这一步才轮到做</b>（原计划也是排在 Ⅱ 之后）。</li>
+    <li><b>聚合页三项</b>（成员行形态 / 点开去哪 / 页头顶栏）—— 与词库无关，随时可做。</li>
+    <li><b>29 个噪声词</b>（<code>iocsixf</code> / <code>pornsen</code> / <code>chen</code> …）——
+      建议开一轮 <code>data-noise-classification</code> 清理（需另批）。</li>
+    <li><b>真机验证</b> —— 我这边 <code>flutter</code> 命令必崩，构建须白哥跑。</li>
+  </ul>
+
+  <div class="box">
+    <b>实施顺序（已完成）</b>：<b>0</b>（cognate 摘除）→ <b>Ⅰ+Ⅱ</b>（库表对调 + 重判定，一步做）→
+    断言 + 文档。<b>Ⅲ 与聚合页见上「仍未做」</b>。
   </div>
 
 </div>
