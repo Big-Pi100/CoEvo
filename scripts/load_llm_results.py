@@ -282,20 +282,19 @@ def main():
     _has_wordcards = con_src.execute(
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='prebuilt_cards'"
     ).fetchone()[0]
-    if not _has_wordcards:
-        con_src.close()
-        sys.exit(
-            f'🔴 {SRC_DB} 里已没有 `prebuilt_cards` 表 —— 本脚本的「现网 IPA/释义来源」已失效。\n'
-            f'   这是**有意的**：词卡库已于 2026-09-28 清除（见 docs/design/coevo-db-wordcard-removal-2026-09-28.md）。\n'
-            f'   重建前请先决定 **IPA 与释义的新来源**（推荐：改由 LLM 生成，与「调整 LLM 制卡」的方向一致）。\n'
-            f'   ⚠️ 不要为了让它跑通而静默跳过 —— 那会产出 11,523 张无音标的卡且不报错。'
-        )
-    for w, pron, d in con_src.execute("""
-        SELECT c.front, l.pronunciation, l.definitions FROM prebuilt_cards c
-        JOIN prebuilt_language_cards l ON l.id=c.id
-        WHERE c.subject='english' AND c.card_type='vocabulary'"""):
-        src_pron[w.lower()] = pron
-        src_defs[w.lower()] = parse_json_field(d) or []
+    if _has_wordcards:
+        for w, pron, d in con_src.execute("""
+            SELECT c.front, l.pronunciation, l.definitions FROM prebuilt_cards c
+            JOIN prebuilt_language_cards l ON l.id=c.id
+            WHERE c.subject='english' AND c.card_type='vocabulary'"""):
+            src_pron[w.lower()] = pron
+            src_defs[w.lower()] = parse_json_field(d) or []
+    else:
+        # 🔴 2026-09-29：不再 `sys.exit` —— 因为**三字段已改由契约 v6 自产**（见下方 card 段）。
+        #   保留这条分支只为「历史结果重放」时能回退；库不在也能正常重建。
+        #   ⚠️ 但仍然**打印**（不静默）：漏了它会让人以为回退链还在。
+        print(f'  🟠 {os.path.basename(SRC_DB)} 无 `prebuilt_cards`（词卡库已于 09-28 退役）')
+        print('     → ipa / definition / context 走 **契约 v6 自产**（缺失项会在结尾「来源统计」里报）')
     con_src.close()
 
     # 🆕 补录词的释义/IPA/等级（现网没有 → 由 gen_senses_new_words.py 生成）
@@ -815,8 +814,14 @@ def main():
             "WHERE m.word_id=? AND g.size>=3 ORDER BY g.size DESC LIMIT 1", (wid,)).fetchone()
         return {'group_id': r[0], 'label': r[1], 'size': r[2], 'origin': r[3] or ''} if r else None
 
+    # 🔑 三字段（ipa / definition / context）的**来源统计** —— 结尾打印。
+    #    为什么要它：这三项有「LLM 自产 / 现网回退 / 缺失」三种结局，
+    #    不统计就只能看到「卡建好了」，看不出**有多少张是降级的**（＝静默失败）。
+    src_stats = Counter()
+
     for wl, wid in wid_of.items():
         d = rec_by_word[wl]['data']
+        # ⚠️ `senses` 仅供**回退**（历史结果没有 v6 三字段时）——不再作为首选来源
         senses = src_defs.get(wl) or []
         mo = d.get('morphology') or {}
 
@@ -852,13 +857,39 @@ def main():
             sections.append(sec)
 
         # ③ 释义（只 1 条首义）+ ④ 语境原句（只 1 条）
-        if senses:
+        #
+        # 🔴🔴 2026-09-29 改：**优先用契约 v6 自产**（`d['definition']` / `d['context']`）
+        #
+        #   原实现从 `coevo.db` 的 `prebuilt_language_cards.definitions` 取 —— 而那里
+        #   正是 **P0「字段级串位」的唯一来源**（`a` 的 ipa/释义/例句三段都是 happy 的）。
+        #   该表已于 2026-09-28 退役 → 契约 v6 自产这三字段。
+        #   🔑 **这让 P0 的根因消失**：不再存在那条「不洁搬运链」。
+        #
+        #   回退链（按可靠性）：v6 结果 → 现网释义（若库仍在）→ 缺失
+        #   ⚠️ 三种结局都**记进 `src_stats`**（结尾打印）—— 不静默降级。
+        dfn = d.get('definition') or {}
+        if dfn.get('en') or dfn.get('zh'):
+            sections.append({'type': 'definition', 'order': 1, 'pos': dfn.get('pos'),
+                             'en': dfn.get('en'), 'zh': dfn.get('zh')})
+            src_stats['definition ← 契约 v6'] += 1
+        elif senses:
             s0 = senses[0]
             sections.append({'type': 'definition', 'order': 1, 'pos': s0.get('pos'),
                              'en': s0.get('meaning'), 'zh': s0.get('chinese')})
-            ex = (s0.get('example') or '').strip()
-            if ex:
-                sections.append({'type': 'context', 'text': ex})
+            src_stats['🟠 definition ← 现网回退'] += 1
+        else:
+            src_stats['🔴 definition 缺失'] += 1
+
+        ctx = (d.get('context') or '').strip()
+        if ctx:
+            src_stats['context ← 契约 v6'] += 1
+        elif senses and (senses[0].get('example') or '').strip():
+            ctx = senses[0]['example'].strip()
+            src_stats['🟠 context ← 现网回退'] += 1
+        else:
+            src_stats['🔴 context 缺失'] += 1
+        if ctx:
+            sections.append({'type': 'context', 'text': ctx})
 
         # ④ 其余义项 → card_extra
         extra = [{'type': 'sense', 'order': i + 2, 'pos': s.get('pos'),
@@ -866,7 +897,16 @@ def main():
                   'example': s.get('example')}
                  for i, s in enumerate(senses[1:])]
 
-        content = {'front': wl, 'ipa': src_pron.get(wl), 'entry_type': d.get('entry_type'),
+        # 🔑 ipa 同理：契约 v6 优先（原自 `coevo.db` 的 pronunciation —— 那是
+        #    「大面积串位」的字段：`with` 得到 `/ɪt/`、`frying pan` 得到 `/fraɪ/`）。
+        ipa = d.get('ipa') or src_pron.get(wl)
+        if d.get('ipa'):
+            src_stats['ipa ← 契约 v6'] += 1
+        elif src_pron.get(wl):
+            src_stats['🟠 ipa ← 现网回退'] += 1
+        else:
+            src_stats['🔴 ipa 缺失'] += 1
+        content = {'front': wl, 'ipa': ipa, 'entry_type': d.get('entry_type'),
                    'sections': sections}
         cj = json.dumps(content, ensure_ascii=False)
         h = hashlib.sha256((cj + ''.join(json.dumps(e, ensure_ascii=False) for e in extra)).encode()).hexdigest()[:32]
@@ -930,6 +970,15 @@ def main():
         json.dump({'count': len(legacy_only_log), 'items': legacy_only_log},
                   open(out, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         print(f'     清单已写 {out}（供质检）')
+
+    # ── 三字段来源统计（🔑 让「降级」可见 —— 否则只看到「卡建好了」）──
+    if src_stats:
+        print('\n  ── ipa / definition / context 的来源 ──')
+        for k in sorted(src_stats):
+            print(f'     {k:<28} {src_stats[k]:>7,}')
+        _bad = sum(v for k, v in src_stats.items() if k.startswith('🔴'))
+        if _bad:
+            print(f'     🔴 有 {_bad} 项完全缺失 —— 检查 LLM 结果是否含这三字段（契约需 ≥ v6）')
 
     # 一致性校验
     q = [
