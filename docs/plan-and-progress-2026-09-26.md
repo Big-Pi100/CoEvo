@@ -9,7 +9,14 @@
 
 ---
 
-## 🔍 实测核对快照（2026-09-**27 03:40** · 全部为本机实测输出）
+## 🔍 实测核对快照（2026-09-**28 01:13** · 全部为本机实测输出）
+
+> ⚠️ **本轮（09-28）又发现快照 5 行已过时**（均已修正，都是「状态比记录更靠前」）：
+> `app/lib` 行数 +159 · **`视觉 token 层` 验收 307 → 382 项** · **`痕迹` 「仍零实现」→ 已建**
+> · **`字体资产` 「阿里普惠体」→ 已换 Noto Sans SC** · 🔴 **`前端静态分析` 「error=3」→ `error=0`**（后者是历史教训的残留）
+>
+> 🆕 **09-28 稍后又补两行**：`user.db` 接入（**表尚未建** → **v1.3 五表全建 + 查词链路已通**）· 新增 `user.db 迁移` 行
+> 🔑 **教训复现：快照会持续漂移** —— 每次核对**必须重跑命令**，别信上一版快照。
 
 > 🔑 **本节的意义**：文档里的数字会随开发漂移。**核对时以本节为准，或重新跑一遍下表命令。**
 > ⚠️ **教训（本轮踩过）**：核对数字时**判据要可靠** —— 我用 `grep "dart:html"` 查出「5 个 web-only 文件」，
@@ -17,25 +24,29 @@
 
 | 项 | 实测值 | 核对命令 |
 |---|---|---|
+| **中文字体** | ✅ **Noto Sans SC（OFL）· 4 字重 · 4.83 MB** —— 2026-09-27 由阿里普惠体（24.16 MB，**条款禁子集化**）更换，**省 19.33 MB** | `ls -la app/assets/fonts/NotoSansSC-*.ttf` |
+| **字体覆盖校验** | ✅ 4 字重均覆盖 `word.db` 全部 **3,873 汉字** | `python3 scripts/build_fonts.py --verify-coverage` |
 | **`data/word.db`** | **19 张表**（业务表 **18** + SQLite 内部 `sqlite_sequence`）· 32.9 MB · mtime **`09-26 23:40`**（P0 合规修复 + hash 回填后）· md5 `e7495c54…` | `sqlite3 data/word.db ".tables"` |
 | `word` / `card` | **11,523** / **11,523**（唯一分母） | `SELECT COUNT(*) FROM word` |
 | `card_audio` | **0**（暂不写入 · 预留收费扩展） | 同上 |
 | `word_morpheme` / `card_extra` / `word_form` | 13,489 / 13,812 / **22,829** | 同上 |
 | `aggregate_page` / `etymon` / `word_etymon` / `affix` | 1,777 / 8,384 / 16,790 / 841 | 同上 |
 | **`card.content_hash`** | ✅ **100% 与 `content` 一致**（11,523/11,523）—— 2026-09-26 回填 **8,255 条**（原仅 28.4%）· ⚠️ 前端**只存不用** | `sha256(content)[:32] == content_hash` |
-| `app/lib` | **65 文件 / 23,333 行**（§3.19 插值 **+158**：`coevo_tokens` 819→977 · `tokens_ext` 47→55） | `find app/lib -name '*.dart' \| wc -l` |
-| **web-only 文件** | ✅ **2 个**（`chat_input.dart` · `review_card_widget.dart`） | 🔴 **必须用 `^import 'dart:(html\|js\|ui_web)` 精确匹配** —— 搜文本会把注释算进去 |
-| 划词查词 | 🔴 **仍 0 命中**（无 `SelectableText`/`SelectionArea`/`contextMenuBuilder`） | `rg "SelectableText\|SelectionArea"` |
-| 信息流/阅读器 | 🔴 **仍无文件**（`app/lib` 无 feed/reader） | `find app/lib -iname '*feed*' -o -iname '*reader*'` |
-| `user.db` 接入 | 🟠 **表结构已定义、查询层已建**（`word_query_service` / `review_list_query` import `sqflite_common`）｜🔴 **UI 未接入** | `rg "sqflite" app/lib` |
-| **视觉 token 层** | ✅ **已建且已接入**（`coevo_tokens.dart` **811 行** · 零 Flutter 依赖）· ✅ `buildTheme` 已接 `app.dart` → **三档主题生效**（旧 4 套主题已删）· 验收 **307 项全过 / 0 规格冲突**（【9】接线 26 · 【10】粘土+动效 28 · 【11】插值 12） | `cd scripts/tokens_verify && dart run bin/verify_tokens.dart` |
-| 🆕 **粘土 / 痕迹** | 🟠 **粘土已实现**（`theme/clay.dart` · **四态 + 真 inset** · §3.17）｜🔴 **痕迹仍零实现** | `rg "ClayPainter\|TraceText" app/lib` |
-| **字体资产** | ✅ **A′ 已落地**：`app/assets/fonts/` = 阿里普惠体 + **Literata(3) + CharisSIL(2)**（**+296 KB**）· pubspec 已声明 3 个 family | `ls app/assets/fonts/` |
+| `app/lib` | **78 文件 / 22,906 行**（…3.33 删 web 录音 −417 · 3.5 收藏清单 +743 · **09-28 导航四轮+侧滑+返回 ±159**） | `find app/lib -name '*.dart' \| wc -l` |
+| **web-only 文件** | ✅ **0 个** —— 3.33 删 web 录音后**已清零**（本行曾记 2 个：`chat_input` / `review_card_widget`，**已过时**） | 🔴 **必须用 `^import 'dart:(html\|js\|ui_web)'` 精确匹配** —— 搜文本会把注释算进去 |
+| 划词查词 | ✅ **已建**（`reader_screen.dart`：`SelectionArea` + `contextMenuBuilder`）—— 本行曾记「仍 0 命中」，**已过时** | `rg "SelectableText\|SelectionArea"` |
+| 信息流 / 阅读器 | ✅ **两者均已建**：信息流 `home_screen` + `widgets/feed_card.dart`（⚠️ 数据仍是 **mock**，真 feed 在 Phase 3）｜阅读器 `screens/reader_screen.dart`（3.4a，含划词长按查词） | `find app/lib -iname '*feed*' -o -iname '*reader*'` |
+| 收藏清单 | ✅ **已建**（3.5）：`screens/bookmark_list_screen.dart` + `widgets/bookmark_toggle.dart`（共用交互）· 路由 `/home/bookmarks`（**shell 子路由，保留 tabbar**） | `ls app/lib/screens/bookmark_list_screen.dart` |
+| `user.db` 接入 | ✅ **v1.3（Step 3.4c）** —— 5 张表全建：`card_review_state` · `review_log` · `bookmark` · 🆕 **`user_word`（生词本）** · 🆕 **`lookup_event`（查词记录）**｜✅ **查词链路已接通**（长按 → 浮层 → 异步写入，不阻塞渲染）｜✅ **连接所有权统一**（`userDbProvider` 唯一 open/close）｜⏳ **待真机验「老库升级」** | `rg "openUserDb" app/lib`（应只有 1 处调用） |
+| **视觉 token 层** | ✅ **已建且已接入**（`coevo_tokens.dart` **811 行** · 零 Flutter 依赖）· ✅ `buildTheme` 已接 `app.dart` → **三档主题生效**（旧 4 套主题已删）· 验收 **382 项全过 / 0 规格冲突**（【9】接线 · 【10】粘土+动效 · 【11】插值 · **【13】底部栏配套 · 【15】导航侧滑**） | `cd scripts/tokens_verify && dart run bin/verify_tokens.dart` |
+| 🆕 **粘土 / 痕迹** | ✅ **两者均已实现并接入**：粘土 `theme/clay.dart`（**四态 + 真 inset**）→ 已用于底部导航 · 痕迹 `widgets/trace_text.dart` + `trace_segmenter.dart`（**本行曾记「痕迹仍零实现」，已过时**） | `rg "ClayPainter\|TraceText" app/lib` |
+| **字体资产** | ✅ **9 个 .ttf · 5.11 MB** = 中文见上行 + **Literata(3) + CharisSIL(2)**（拉丁/音标，均已子集化）· pubspec 已声明 | `ls -la app/assets/fonts/` |
 | 🆕 **IPA 真实字符集** | ✅ **30 个**（含 **4 个组合符号**）—— 从 11,523 张卡的 `card.content.ipa` 提取 | `python scripts/build_fonts.py --list` |
 | **`scripts/` 入库** | **111 文件**（git 跟踪）· **+3 待入库**（本轮新增 `fetch_fonts` / `build_fonts` / `build_font_compare`）· 工作区 129（已排除 `__pycache__`） | `git ls-files scripts/ \| wc -l` |
 | **`data/coevo.db`（生产库）** | **45 表 · 30 空** · `users` 2 · `tokens` 2 · `user_cards`/`card_memory`/`review_log` **全 0** · mtime **`09-25 22:48`（未被本轮触碰 ✅）** | `SELECT COUNT(*) FROM ...` |
-| 前端静态分析 | **error=3**（全是既有 web-only）· warning=13 · info=7 | `scripts/analyze_inproc/` |
-| ✅ **Flutter 真编译** | ✅✅ **通过** —— `flutter run -d chrome` 成功启动应用（**2026-09-27 03:36**）｜⚠️ 启动后界面仍是 **K12 遗留页面**（属 **Step 3 范围**，非本项遗留） | `D:\flutter\bin\flutter.bat run -d chrome` |
+| 前端静态分析 | ✅ **error=0** · warning=13 · info=4（**本行曾记「error=3」，那正是「把故障当基线」的历史残留** —— web-only 清零后已归零） | `scripts/analyze_inproc/` |
+| 🆕 **`user.db` 迁移** | **schema v1.3**（`version` 1→2）｜🆕 **`verify_userdb_migration`（20 项）专测「老库升级」** —— 🔑 现有验收全跑在**新建临时库**上、**天然覆盖不到升级路径**，故必须显式造 v1 老库 | `dart run bin/verify_userdb_migration.dart` |
+| ✅ **真机运行** | ✅✅ **已真机验证多轮**（Android APK）—— **Step 3 界面已上线**（本行曾记「仍是 K12 遗留页面」，属 09-26 时点，**已过时**）｜⚠️ 构建只能由白哥执行（我的环境无法跑 `flutter`，见 §3.3x） | `D:\flutter\bin\flutter.bat build apk --release` |
 | 🆕 **SDK** | 官方 **`D:\flutter`（3.41.1 / Dart 3.11.0）不在 PATH**；PATH 里是**鸿蒙定制版** `D:\flutter_flutter`（3.27.5-ohos）→ **必须写全路径** | `D:\flutter\bin\flutter.bat --version` |
 | 后端编译 | ✅ `cargo check` **EXIT=0** | `cd backend && cargo check` |
 
@@ -208,7 +219,7 @@ Phase 6 激励与增长
 | Step | 内容 | 状态 | 证据 |
 |---|---|---|---|
 | **1** | **清障** | ✅ **已推进（2026-09-26）** | ✅ **admin 已全删**（app 内 0 行 + `app_admin` 项目已删）· `app/lib` **76 → 60 文件 / 29,799 → 21,818 行**（清障当刻）· 累计删除 **17,205 行**（app 内 7,981 + app_admin 9,224）· **web-only 13 → 2 文件**（详见 §3.5）<br>⚠️ **当前值**：**61 文件 / 22,065 行**（清障后新增 6 个文件共 1,658 行：`fsrs_service` / `open_with_handler` / `review_list_query` / `word_query_service` / `image_export` / `math_expr`）—— 见顶部实测快照 |
-| **2** | **设计系统** | ✅ **五批全落 · Step 2 完成（§3.12–§3.18）** | ✅ token 层（811 行）· ✅ A′ 字体（+296 KB）· ✅ **旧主题整体删除** + `buildTheme` 接线 + 设置页三档切换 · ✅ **粘土渲染层**（`clay.dart` · 四态 + 真 inset · 已接入设置页预览）· ✅ **280ms 主题切换动效** · ✅ **token 插值**（§3.19，让粘土也「同过渡」）—— 验收 **307 项全过**｜⏳ 剩：真机目视（闪烁 / 三档观感） |
+| **2** | **设计系统** | ✅ **五批全落 · Step 2 完成（§3.12–§3.19）** | ✅ token 层（811 行）· ✅ **中文换 OFL 字体（Noto Sans SC，省 19.33 MB）**· ✅ **旧主题整体删除** + `buildTheme` 接线 + 设置页三档切换 · ✅ **粘土渲染层**（`clay.dart` · 四态 + 真 inset · 已接入设置页预览 + **底部导航**）· ✅ **280ms 主题切换动效** · ✅ **token 插值** —— 验收 **382 项全过**（含【13】底部栏配套 · 【15】导航侧滑）｜⏳ 剩：真机目视（三档观感） |
 | 3 | 核心界面（信息流/阅读器/划词/复习列表） | ⏳ | 🔴 **全部未开始** |
 | 3.5 | 内容扩展（文章朗读 + 电子书导入） | 🟠 | 「用 CoEvo 打开」✅；其余未做 |
 | 4 | 复习与个人页 | 🟠 | FSRS 服务层 ✅（本轮）；翻卡 UI + 我的页未做 |
@@ -2013,6 +2024,779 @@ spec §7.1：**Flutter 的 `BoxShadow` 不支持 `inset`** —— 而粘土的�
 
 ---
 
+### 3.21 ✅ Step 3.1：导航骨架 + 首页信息流骨架（2026-09-27 12:00 · 白哥「是的」）
+
+> 📄 完整记录见 `docs/review/step3-core-ui-plan-2026-09-27.md` **§十**
+
+**改动清单**（净 **≈−1,020 行**）
+
+| 文件 | 动作 | 规模 |
+|---|---|---|
+| `app/lib/app.dart` | 3 tab → **「阅读 / 复习 / 我的」** · 第 3 分支 `/achievements` → **`/mine`**（挂 `ProfileScreen`）· **删顶层 `/profile` 路由** · 🆕 **底部导航自绘 `_ClayTabBar`**（按设计稿） | +180 |
+| `app/lib/screens/home_screen.dart` | **重写**：K12 科目直选 → 信息流 | 475 → **271** |
+| `app/lib/widgets/feed_card.dart` | 🆕 卡片组件（信息流 + 收藏清单**共用**） | **88** |
+| `app/lib/models/feed_item.dart` | 🆕 `FeedItem`（**刻意无** `newWordCount`/`isRead`） | **63** |
+| `app/lib/data/mock_feed.dart` | 🆕 设计稿原文三篇（**临时**，Phase 3 后整体删） | **42** |
+| `app/lib/screens/achievements_screen.dart` | **删除**（新导航无「成就」） | **−999** |
+| `app/lib/api/chat_client.dart` | 删 5 个失联方法（`getK12Subjects`/`k12Init`/`getK12Progress`/`getAchievementsAll`/`getPlanAchievements`） | ≈−95 |
+| `app/lib/screens/review_screen.dart` | 删 2 处 `push('/profile')` | −6 |
+| `app/lib/frontend-api-alignment-review.md` | 归档 → `docs/_archive/k12-era/…-2025-06-05.md` | 移动 |
+
+#### 🔴 三个「不是风格问题，是功能已断」的发现（**均非本次引入**）
+
+| # | 位置 | 事实 | 处置 |
+|---|---|---|---|
+| 1 | 旧首页「科目直选」 | 调 `/api/k12/subjects` + `/api/k12/init` —— **端点已随 3.0 删除**（`grep k12 routes.rs` = **0 命中**）→ **点击即报错** | ✅ 随重写移除 |
+| 2 | 旧首页「历史对话」 | `push('/conversations')`，而 `app.dart` **从未注册**该路由 → 命中兜底 `/:unknown` → **静默跳回首页** | ✅ 随重写移除 |
+| 3 | `screens/chat/chat_reading_passage.dart` | 调 `/api/k12/reading/…` —— **该路由也已删除** → chat 阅读链路**当前必失败** | ⚠️ **只标注、不改**（属 chat 流程） |
+
+> 🔑 **判断升级**：「主题层已生效，页面层是 K12 遗留」还**不够准** ——
+> 真相是 **`页面层调用的后端接口已经不存在了`**。
+> 「界面还是旧的」不是审美问题，是**功能已断** ——
+> 也正因此，**3.0 清退必须在 Step 3 之前**：先断接口，残留页面才会自己暴露。
+
+#### ⚠️ 有意留白（不是遗漏）
+
+「收藏 N」入口 + 卡片书签 → **3.3/3.5**（需 `bookmark` 表，先做只能是死入口）。
+
+#### ✅ 3.1 补：底部导航自绘粘土药丸（白哥定「按设计稿」）
+
+设计稿选中态是「**强调色填充药丸 + 实体投影**」，M3 `NavigationBar` 表达不出来
+（`indicatorColor` 只能改颜色）→ `_ShellScaffold` 的 `NavigationBar` 改为自绘 **`_ClayTabBar`**。
+
+🔑 **这是 Step 2 之后第一处真正用上 `Clay` 的界面**（此前只接在设置页的档位预览）。
+
+| 判断 | 依据 |
+|---|---|
+| **未选中项不能用 `Clay`** | 粘土「抬起」态**必然**画填充 + 外阴影；而设计稿未选中项是**完全平的**（`.tb` 只有 `color`）→ 硬套会凭空多出三个灰底药丸 |
+| **圆角显式取 17，不走 token** | 设计稿 `.tb` 的 `border-radius:17px` **写死在组件上、不在主题变量里**（三档共用）→ 🔑 **三档里唯一「圆角不随主题变」的元素**。几何仍成立：md 偏移 3×3=9 ≤ 17 ✅ |
+| **选中态 inset 取 token** | 设计稿 `.tb.on` 硬编码 `rgba(0,0,0,.15)`/`rgba(255,255,255,.26)`，而 **spec §3.3.1 明文「两者共用」** → 按 spec |
+| **`navigationBarTheme` 保留不删** | 当前无组件在用，但任何页面若引入 M3 `NavigationBar`，颜色不会**静默回落成默认紫** —— 留正确兜底比删掉安全 |
+
+⚠️ **待实机确认**：设计稿**未定义**未选中项的按下反馈 → 本实现**也不自行添加**
+（「无背景 = 无物理形态 = 无回弹」自洽）。实机若觉得点击「没反应」，**再讨论**，不默默加。
+
+#### 🔴 待办新增：**成就体系重新规划**
+
+白哥：「后端成就系统留着吧，**不过成就要重新规划**」
+
+- **现状**：前端入口**已全部移除**（999 行页面 + 2 个客户端方法）｜后端**完整保留**（`achievements` 表 · 2 个 handler · **chat 内嵌 `engine.check_and_persist`**）→ **两边已断开**
+- **重新规划时要一并决定**：① 成就挂什么行为（旧挂 K12 进度，已不存在）② 放哪（设计稿是 3 tab，最可能进「我的」页，**不是一级 tab**）③ 是否沿用现有 `achievements` 表结构 ④ `plan_achievements` 与「**不做 plan**」的关系
+- ✅ **不阻塞任何批次**（后端不动、前端无入口 → 现状是「静默休眠」）
+
+#### ✅ 白哥另两项决策（2026-09-27）
+
+| 事项 | 决策 |
+|---|---|
+| **AI 对话（chat）去留** | 🔵 **保留 —— 是 v1「AI 考核」的预留** → `chat_screen` + `ws.rs` **不动**；3.7 词卡页给它重新开入口 |
+| **后端成就系统** | 🔵 **保留**（见上「重新规划」） |
+
+#### ✅ 验证
+
+| 项 | 结果 |
+|---|---|
+| `analyze_inproc`（`app/lib`） | ✅ **error=3 / warning=13 / info=7** —— 与基线**逐项一致** |
+| `tokens_verify` | ✅ **309 项全过** |
+| 残留引用扫查 | ✅ `grep achievements_screen\|AchievementsScreen app/lib` → **0 命中** |
+| 真编译 | ⏳ **未跑**（本机沙箱跑不了 `flutter`）→ 请白哥 `flutter run` 目视 |
+
+---
+
+### 3.22 🔴🔴 修「首页没有卡片」+ 固化产品原则「**除生词表上限外不验证登录态**」（2026-09-27 12:20）
+
+> 完整记录见 `docs/review/step3-core-ui-plan-2026-09-27.md` **§十一**
+
+#### 🔴 原则（白哥定 · 架构约束）
+
+> 「**首先我们的功能除了生词表限制以外不验证用户登录状态，所以你的方案不对**」
+
+| 能力 | 要不要登录 |
+|---|---|
+| 读信息流 / 打开文章 / 划词查词 / 词卡朗读 / 复习 | ❌ **不需要** |
+| 生词本**新增**（超 200 词上限时） | ✅ **只有这里** |
+
+→ 🔑 **登录态是「能力限制开关」，不是「内容可见性开关」**。任何内容渲染都不得被登录态阻塞。
+
+#### 缺陷与修复
+
+白哥报「**首页没有卡片，按钮正常**」。全库核实后，**只有 `home_screen` 一处**把登录态当成内容前置条件
+（`app.dart` 订阅 · `profile_screen` 个人页 · `chat_screen` 均属**正当**需要登录）。
+
+**缺陷链**：干净浏览器 → `hasUsedTrial()=false` → `POST http://localhost:8080/api/trial/start`
+（⚠️ `flutter run` 默认连 localhost，**后端在 VPS**）→ 请求失败 → `trialStart` 内部 catch（**只写 state，不打日志**）
+→ `isAuthenticated` 仍 false → `_authReady` 永远 false → **首页永久转圈，无提示无重试**。
+🔑 **表现为「按钮正常、没卡片」**：loading 在**内层 Scaffold**，tabbar 在**外层 `_ShellScaffold`**。
+
+**修法（只删不加）**：删 `_authReady` + 整个 loading 分支（约 34 行）→ 信息流**无条件渲染**；
+`_initAuth` 保留原逻辑但降级为 `addPostFrameCallback` 的**后台副作用**（失败静默）；
+🔒 另补 `_authRestoreTries` 上限 20 次 ≈ 6s（原「等 auth 恢复」是**无界递归**，每 300ms 调自己）。
+
+#### 🔑 三条教训（可复用）
+
+1. **别把「易失败的外部依赖」（网络 / 身份）放在「内容渲染」的前置条件上** ——
+   等于让内容可用性绑定在一个与内容无关的开关上；开关失败 → 内容整体消失。
+2. **「静默失败 + 无出口」比「报错」更糟** —— 用户连一个可报告的线索都没有。
+3. **方案要建立在产品原则上，不是技术自洽上** —— 我第一版方案（加三态 + 重试）技术上没错，
+   但它**默认了「未登录」是合法状态**，而正确前提是「**未登录根本不该影响读**」。
+
+#### ✅ 验证
+
+`analyze_inproc` ✅ **error=3 / warning=13 / info=7** 与基线一致｜`_authReady` 代码中 **0 处**｜`home_screen` 302 → **265 行**
+
+🔴 **遗留（未改，仅标注）**：`AuthNotifier.trialStart` 的 catch **不打日志** → 「试用创建失败」在生产**完全不可观测**，建议补一行（不在本轮范围）。
+
+---
+
+### 3.23 ✅ 补静默失败日志（白哥批准）+ 🔴 新发现待批（2026-09-27 12:25）
+
+> 完整记录见 `docs/review/step3-core-ui-plan-2026-09-27.md` **§十二**
+
+#### ✅ 已实施：认证模块 **5 处**静默失败补日志
+
+批准范围是「`trialStart` 补一行」→ 实际扫查发现**同性质静默失败共 5 处**，按同一原则一并补齐：
+
+| 方法 | 原状态 |
+|---|---|
+| `trialStart` | 🔴 **完全静默**（且正是「首页转圈」的源头） |
+| `register` / `login` / `trialClaim` | 🔴 只写 `state.error`（UI 可见，控制台无线索） |
+| `logout`（清 display_name） | 🔴 `catch (_) {}` **空吞** |
+
+🔑 **日志必须带端点**（`endpoint=${ApiConfig.baseUrl}`）—— 本次故障根因就是「连错地址」
+（`flutter run` 默认 `localhost:8080`，后端在 VPS）；只有 `Connection refused` 的话**必须靠猜**。
+
+#### 🔴 新发现（**未改，待批**）：`auth_client` 4 个方法缺 `.timeout()`
+
+| 文件 | 请求处 | 带 timeout |
+|---|---:|---:|
+| `chat_client.dart` | ≈30 | **24** → ✅ **「加 timeout」是惯例** |
+| `auth_client.dart` | 5 | **1**（仅 `verifyToken`） |
+
+缺失：`register` · `login` · `trialStart` · `trialClaim`（`ApiConfig.requestTimeout` 早已定义，只是没用）。
+
+⚠️ **准确表述**：本次「转圈」**不是**它造成的（连无监听端口 → 立即 `ECONNREFUSED`）。
+它影响的是**「IP 可达但无响应」**（防火墙 DROP / 网络黑洞 / 服务假死）——
+Flutter Web 的 `http` 走浏览器 XHR，**默认超时极长**（Chrome ≈300s）→ 用户点登录后**数分钟无反馈**。
+
+**方案 A（建议）**：4 处统一加 `.timeout(ApiConfig.requestTimeout)`（10s），与惯例一致｜**方案 B**：A + 按错误类型分文案
+
+#### ⚠️ 顺带记录（**有意设计，非缺陷**）
+
+`verifyToken` 网络错误时 `return {'valid': true}`（`Be lenient on network errors`）
+—— **断网时把无效 token 当有效**。为「避免一断网就登出」的有意宽容，**不建议改**，记录备查。
+
+#### ✅ 验证
+
+`analyze_inproc` ✅ **error=3 / warning=13 / info=7** 与基线一致｜✅ 逐方法核对结构完整
+（编辑时一度误删 `_setTrialUsedFlag` 的文档注释，已复原文并复核）
+
+---
+
+### 3.24 ✅ 方案 A：`auth_client` 全部请求补 `.timeout()`（白哥批准 · 2026-09-27 12:30）
+
+> 完整记录见 `docs/review/step3-core-ui-plan-2026-09-27.md` **§十三**
+
+#### ✅ A 本体：4 处补超时 → **5/5 全覆盖**
+
+`app/lib/api/auth_client.dart`：`register` · `login` · `trialStart` · `trialClaim`
+统一加 `.timeout(ApiConfig.requestTimeout)`（10s），与 `chat_client` 惯例一致。
+🔑 类文档补了一句判定标准：**「连不上」和「连上了但没人应」是两回事** ——
+端口无监听 → 立即 `ECONNREFUSED`（不需超时）；IP 可达但被丢弃 → **没超时就无限等**。
+→ **超时不是「防连不上」，而是「防等不到头」。**
+
+#### 🔴 A 的必要配套：`_friendlyError` 补两个映射（否则 A 让文案更糟）
+
+加 `.timeout()` 后抛的是 `TimeoutException`，而 `_friendlyError` 是**错误文案唯一出口**、
+映射不到就原样透传 → 用户会看到 `TimeoutException after 0:00:10.000000: Future not completed`。
+→ 补：`TimeoutException` → 「网络超时，请检查网络后重试」；
+`SocketException`/`Connection refused`/`Failed host lookup` → 「连不上服务器，请检查网络后重试」。
+
+#### 🔴🔴 顺带挖出真 bug：`replaceFirst` 把 `SocketException:` 啃掉
+
+原 `_friendlyError(e.toString().replaceFirst('Exception: ', ''))` ——
+而 `SocketException: Connection refused` **中间也含 `Exception: `** → 命中被替换：
+
+```
+'SocketException: Connection refused'.replaceFirst('Exception: ', '') → 'SocketConnection refused'
+  → contains('SocketException') == false   ← 此后 Socket 匹配永远失效
+```
+
+**「埋雷」型缺陷**：字符串已损坏 + 匹配静默失效（后人加了判断会永远不生效且查不出原因）。
+→ **修法**：只在**恰好**以 `Exception: ` 开头时才剥（`startsWith`），入参改传 `e.toString()` **原文**（4 处同步改）。
+
+#### ⚠️ `verifyToken` 的 5s 是**有意例外**（非漏改）
+
+在**启动路径**（会话恢复）上，用户正等首屏；超时后果轻（catch 后按「已认证」继续）→ 宁可早放行。
+已在注释写明「**全库唯一的有意例外，不是漏改**」，防后人「顺手统一」。
+
+#### ✅ 验证
+
+| 项 | 结果 |
+|---|---|
+| 超时覆盖 | ✅ **5/5** 逐行 grep 确认 |
+| `analyze_inproc` | ✅ **error=3 / warning=13 / info=7** 与基线一致 |
+| **错误映射逻辑** | ✅ **8/8** —— 用**真实异常文本**复刻验证（超时 / 两种 Socket / rate_limited / 后端业务错误 / 未知原样透传） |
+| 旧实现对照 | ✅ 实证旧实现下 `contains('SocketException')` = **false**（bug 复现） |
+
+⚠️ **验证局限**：映射验证是**复刻逻辑**跑的（该函数嵌在 import Flutter 的文件里，无法独立 import）
+→ 证明**逻辑正确**，不证明**源码可编译**（后者仍需真编译）。
+
+---
+
+### 3.25 ✅ Step 3.2：痕迹渲染层（2026-09-27 12:40）
+
+> 完整记录见 `docs/review/step3-core-ui-plan-2026-09-27.md` **§十四**｜依据 spec **§一 / §1.1 / §八**
+
+#### 产出
+
+| 文件 | 性质 | 规模 |
+|---|---|---|
+| `app/lib/widgets/trace_segmenter.dart` | 🆕 **区间切分 · 零 Flutter 依赖** | ~250 行 |
+| `app/lib/widgets/trace_text.dart` | 🆕 渲染层（`TraceText` + `applyTraceStyle`） | ~200 行 |
+| `scripts/trace_verify/` | 🆕 验收（**82 项断言**） | ~330 行 |
+| `docs/design/trace-render-compare-2026-09-27.html` | 🆕 三档 × 三态 × 三字号对照页 | — |
+
+#### 🔑 核心设计：切分与渲染拆开
+
+| 类 | 例子 | 能否自动抓 |
+|---|---|---|
+| ① **切分错** | 丢字 / 重叠 / 越界 / 同起点结果不稳定 | ✅ **能**（纯逻辑） |
+| ② **样子不对** | 三态不可辨、已掌握态干扰阅读 | ❌ **不能**（只能肉眼） |
+
+→ ①抽成零 Flutter 依赖的 `trace_segmenter.dart`（仿 `fsrs_service`），②留在渲染层。
+🔑 **可验证性反过来促成了更好的分层** —— 为了让切分可被脚本断言，它必须不碰 Flutter。
+
+#### 🔴🔴 三处「设计稿能做、Flutter 文本做不到」（已核实 SDK 源码）
+
+| 设计稿（spec §1.1） | Flutter `TextStyle` |
+|---|---|
+| `border-radius: 3px` | ❌ **无圆角** —— `background` 是 `Paint`，只能矩形 |
+| `padding: 1px 3px` | ❌ **无 padding 字段** |
+| `border-bottom: 2.5px` | ⚠️ `decorationThickness` 是**笔画倍数**，**不是像素** |
+| border 贴盒底 | ⚠️ `underline` 在**基线下方**，无偏移可调 |
+
+**按档看**：**夜 ✅ 完美还原**（就是 `color`）· **格 ✅ 语义完全对**（本来就是线，仅线宽需真机标定）·
+**墨 ⚠️ 语义对但无圆角/无 padding**。
+
+📄 **对照页**（真实 token 值 · 同一 CSS 引擎并排画）：`docs/design/trace-render-compare-2026-09-27.html` §②
+🔑 **要判断的就一件事**：墨档差异是「可接受」还是「一眼觉得糙」→ 决定要不要为墨档单独上自绘。
+⚠️ **不擅自决定** —— 3px 圆角在 16.5px 正文里的实际差异，**只有看的人能判断**。
+
+#### 线的粗细需**真机标定**
+
+`decorationThickness` = 笔画宽度倍数，而真实笔画宽度在字体元数据里、**Flutter 未暴露**
+→ 用估算系数 `_kFontStrokeRatio = 0.07`（常见字体 5%–8%）。
+🔑 **「目标像素」保留在 token 的 `border.width`**（2.5/1.5/1.0）—— 真机判据是「屏幕上是不是 2.5px」；
+若把倍数硬编码进 token 就丢了这个判据。**改一个系数即可同时修正三态。**
+
+#### ✅ 验证
+
+| 项 | 结果 |
+|---|---|
+| **`trace_verify`** | ✅ **82 项全过** —— 含 **2,000 组随机输入**（越界/空/反向）的「覆盖全文 + 首尾相接」不变量（1,292 组确实落了痕迹，非空输出蒙过） |
+| `tokens_verify` | ✅ **309 项全过** |
+| `analyze_inproc` | ✅ **error=3 / warning=13 / info=7** 与基线一致（文件 62 → **64**） |
+| 真机视觉 | ⏳ 未做 —— 三态**可辨性**只有肉眼能验（spec §八） |
+
+🔑 **过程中一次「断言错 vs 实现错」的判别**：首跑 8 项失败，实际 `[_0-10]` vs 我写的 `[_-0-10]`。
+按判据「先看数据是否自相矛盾」→ 区间连续、分布正确 → **实现对、断言错**（期望多打一个 `-`）。
+→ **见红不要先改实现。**
+
+---
+
+### 3.26 🔴🔴 白哥定「已掌握 = 不标识」→ 痕迹三态改两态（2026-09-27 12:52）
+
+> 完整记录见 `docs/review/step3-core-ui-plan-2026-09-27.md` **§十五**
+
+#### 这条修掉了 spec 的**一处内部矛盾**
+
+| 位置 | 原文 |
+|---|---|
+| spec 第 21 行（**原则**） | 「**学习的终点是痕迹的消失**」 |
+| spec 原 §1.1（**值表**） | 已掌握 = 「几乎不可见（**比周围文字暖一点点**）」 |
+
+→ **按原则改值表**：已掌握的字**回到普通文字**，与「从没查过」视觉上**完全一致**。
+
+#### 🔑 关键判断：「不标识」**不能**用「透明样式」表达 —— 因为 `padding`
+
+透明确实看不见**颜色**，但 `padding: 1px 3px` **仍然生效** → 撑开字距 →
+被标记过的字与普通字**间距不同** → 用户看得出来「这里有东西」。
+**那仍然是标识，只是更难解释（一种更糟的标识）。**
+
+→ 用 **`null`**（**没有痕迹**）表达：`forReps` 返回 `TraceStyle?`，已掌握返回 `null`
+→ 调用方**编译期强制**处理该分支。
+
+#### 顺带收益：痕迹不再退化成「掌握度仪表盘」
+
+若已掌握还留暖色，痕迹就同时背**两个表达**（「这里我查过」+「这个我掌握了」）
+→ 违反设计稿「**一个概念，一个表达**」。掌握度去复习页看，**痕迹只表达「我和这篇文章的关系」**。
+
+#### 改动
+
+`TraceTokens.mastered` 删除（三态 → **两态**）· `forReps` → `TraceStyle?` · 删 `TraceStyle.isInvisible` ·
+三档实例 · spec §一/§1.1/§八 · **设计稿只加注释标注失效、原样保留**（L1 锚点不擅改）·
+两个 verify 脚本 · 对照页（改为两态 + 新增「已掌握 vs 无标记」并排）
+
+🔑 **顺带修正 spec 一处失效表述**：夜档原写「**亮度递减**」——三态下靠已掌握把亮度拉到 `.291` 才成立；
+**两态下实测仅 `.743 → .716`（几乎无差），实际区分靠「暖度」**（r−b：71 vs 7）
+→ 改为「暖度递减」，并标注「**若真机难辨，这里是首要怀疑点**」。
+⚠️ 这是白哥决策**顺带揭示**的 —— 不做两态简化，这个「表述与实测不符」会一直藏着。
+
+#### ✅ 验证
+
+| 项 | 结果 |
+|---|---|
+| `trace_verify` | ✅ **76 项全过**（含「三档 `forReps(3)` 都返回 `null`」） |
+| `tokens_verify` | ✅ **295 项全过** |
+| `analyze_inproc` | ✅ **error=3 / warning=13 / info=7** 与基线一致 |
+
+---
+
+### 3.27 ✅ Step 3.3：卡片书签 + `bookmark` 表（2026-09-27 13:10）
+
+> 完整记录见 `docs/review/step3-core-ui-plan-2026-09-27.md` **§十六**
+
+#### 🔴 调查结果：真实缺口比规划里写的更多
+
+规划把 3.3 写成「只差接口 + UI」→ **核实后发现「连打开 `user.db` 这一步都不存在」**：
+
+| 环节 | 核实前以为 | 实际 |
+|---|---|---|
+| `sqflite` 依赖 / schema 文件 / 查询层 | ✅ 都有 | ✅ 都有 —— 但查询层**只接受注入的 `Database`** |
+| 🔴 **谁创建 `user.db`** | ❌ 不存在 | ❌ **确实不存在** —— 从无代码创建过它 |
+
+→ 3.3 真实范围 = **连接层 + 表 + 仓储 + 状态 + UI**，其中**连接层是从来没做过的一环**
+（此前所有端侧数据层验证都靠脚本自建临时库）。
+
+#### 产出
+
+`services/user_db.dart`（🆕 连接层 · 纯 Dart · 含 SQL 脚本拆分器）·
+`services/bookmark_repository.dart`（🆕 仓储）· `providers/bookmark_provider.dart`（🆕 状态）·
+schema **v1.2**（`bookmark` + 2 索引）· `FeedCard` +`BookmarkButton` · `home_screen` +toast ·
+`pubspec` 显式声明 `path` · 🆕 `verify_bookmark.dart`（**49 项真库断言**）
+
+#### 🔑 三处关键设计
+
+1. **DDL 由调用方注入** → 连接层保持纯 Dart（`rootBundle` 是 Flutter API）
+   → App 用 `rootBundle.loadString`、脚本用 `File(...).readAsStringSync`，**同一个函数、同一份 DDL**
+2. **书签禁用不用 `ClayState.disabled`** —— 该态是「从凸起变瘪」，而书签未收藏本来就是**凹陷**
+   → 套上去**语义反转**；只用 `Opacity(0.45)`
+   （🔑 与 3.2「不标识」同源：**别用相近但语义不同的表达去代理**）
+3. **UI 只用 `idsOrEmpty` / `isReady`，禁止 `when(error:)`** ——
+   `when(error:)` 会把「数据库打不开」渲染成**错误界面**，而收藏坏了不该让内容页变报错页（3.22 教训）
+
+#### 与设计稿的偏离（2 处 · 已记录在 schema 注释）
+
+| # | 设计稿 | 本实现 | 理由 |
+|---|---|---|---|
+| 1 | `DEFAULT (datetime('now'))` | `DEFAULT (strftime(...'Z'))` | 🔴 `datetime('now')` **无 `Z`** → `DateTime.parse` **静默按本地时区解释** → 跨时区错位且**不报错** |
+| 2 | `pending_push INTEGER DEFAULT 1` | + `NOT NULL` + `CHECK` | 与 `card_review_state` 同规格（设计稿是**草图级** DDL） |
+
+➕ **补充**（非偏离）：另加 `idx_bm_pending` —— 设计稿自己说「跟着已有同步机制走」，
+而增量 push 的查询就是 `WHERE pending_push = 1`。
+
+#### ✅ 验证
+
+| 项 | 结果 |
+|---|---|
+| **`verify_bookmark`** | ✅ **49 项全过** —— **真库**：SQL 拆分器 9 项边界 · **重开模拟应用重启** · CRUD · **幂等** · **重复点击不刷新时间戳** · 取消后可再收藏 · 待同步 · 倒序 · **时间列带 `Z`** |
+| `verify_review_list` | ✅ **37 项全过**（改用连接层拆分器后**无回归**） |
+| `verify_word_query` | ✅ **42 项全过** |
+| `analyze_inproc` | ✅ **error=3 / warning=13 / info=7**（文件 64 → **67**） |
+
+#### 🔑 本轮三条可复用教训
+
+1. **`List`/`Set` 的 `==` 是引用比较** —— `eq(actual, [1,2])` 即使值相同也判失败，
+   表现为「实得 `[1,2]` · 期望 `[1,2]`」→ **看起来像实现错、其实是断言错**（首跑 8 项红全是这个）
+2. **同一份文件不能有两套解析** —— `verify_review_list` 原有一套**较弱的**内联 SQL 拆分
+   （不处理行内注释/块注释），与新的强拆分器并存 → 迟早分叉 → **改为复用**
+3. ⚠️ **`old_string` 的坑又多一种形态**：这次不是「漏含子行」，而是**截断在语句块中间**
+   → 留下语法残骸 → **立刻读文件核实并修复**（该坑第 **6** 次）
+
+#### ⚠️ 有意留白
+
+「收藏 N」标题栏入口 + 收藏清单 → **3.5**（现在做是死入口）；
+多端同步 → Phase 3（表/索引/`pending()`/`markSynced()` 已就位，**不是从零写**）；
+`word.db` 落盘 → **3.4**（32.9 MB 预制库需首次启动从 assets 复制）
+
+---
+
+### 3.28 ✅ Step 3.4a：阅读器骨架（白哥批准 · 2026-09-27 13:40）
+
+> 完整规划与执行记录：📄 `docs/review/step3-reader-plan-2026-09-27.md`（§一~§九）
+
+#### 🔴 调查结论：真实范围远超原规划
+
+原规划只有一行「3.4 阅读器 + 划词（最大未知）」。实测后**缺口大头在数据层**：
+
+| 层 | 实测 |
+|---|---|
+| 数据层 | 🔴 **4 张表不存在**（`user_word` / `lookup_event` / `article` / `external_word_cache`）+ **32.9 MB `word.db` 从未落盘**（`app/assets` 零 `.db`） |
+| UI | 阅读器页 · 划词触发 · 查词浮层 · 查词写入 —— 4 块 |
+| 依据 | **3 份文档各管一段**（v1 §九 流程 / L1 §07 浮层 / spec §5.1 排版），**且三处正文字号互不相同** |
+
+→ 白哥定 **只做 3.4a**（零新表 · 不需 `word.db` · 风险最低）· 正文 **17px**（L1 锚点）· 划词用**长按选择**。
+
+#### 交付物
+
+| 文件 | 动作 | 行数 |
+|---|---|---|
+| `models/article.dart` | 🆕 | 73 |
+| `data/mock_articles.dart` | 🆕 | 83 |
+| `widgets/trace_locator.dart` | 🆕 | 68 |
+| `widgets/bookmark_button.dart` | 🆕（从 `feed_card` 抽出） | 100 |
+| `screens/reader_screen.dart` | 🆕 | 346 |
+| `widgets/feed_card.dart` | 改 | 208→118 |
+| `app.dart` / `home_screen.dart` | 改 | +28 |
+
+#### 🔑 四处设计判断
+
+1. **「阅读界面零粘土」取 spec §八 的口径** —— spec §〇 说「阅读界面零粘土」（宽），§八 验收项说「**阅读区容器内**不得出现粘土类」（窄、有明确范围），而设计稿的 `.bm`（书签）**本就是卡片与阅读栏共用的粘土类** → **正文区严格零粘土，顶部栏那一个动作按钮保留**（否则同一动作在两个界面长得不一样）
+2. **正文字号不进主题 token** —— 行高是**主题相关**（三档不同），字号是**用户偏好**（可调 15–24）→ 一个是「主题」一个是「设置」，混层则将来分不清谁覆盖谁
+3. **`BookmarkButton` 抽成独立组件** —— 3.3 与 `FeedCard` 同文件；阅读器要用它 → 不抽就得 `import 'feed_card.dart'` 只为拿按钮，依赖方向莫名
+4. **「找不到文章」与「正文未就绪」两种状态各有文案** —— 🔴 **不共用白屏**；且正文未就绪的卡片**照样可点**（进阅读器看解释），而不是做成不可点（那要用户猜原因）
+
+#### `trace_locator` —— 词级痕迹定位（本批唯一的算法）
+
+`正文 + 已查词(reps/lapses) → 区间 → splitTraceSpans → TraceText`
+
+🔴 **唯一的难点是词边界**：用朴素 `indexOf` 则查过 `art` 会把 `start`/`part`/`artist` 全标上 ——
+**不报错、只是多画几处底色**，肉眼极难发现 → 用 `\b` 并由 **6 条断言**锁死。
+
+#### ✅ 验证
+
+| 项 | 结果 |
+|---|---|
+| `trace_verify` | ✅ **97 项**（76 → 97 · **+21** 定位断言：6 条词边界 · 大小写 · 标点相邻 · 同词多次 · 已掌握不标 · 与 `splitTraceSpans` 集成） |
+| `tokens_verify` | ✅ **300 项**（295 → 300 · 新增 §12「阅读界面零粘土」5 项 **自动检查**） |
+| `verify_bookmark` / `review_list` / `word_query` | ✅ **49 / 37 / 42 项**（抽出书签组件后**无回归**） |
+| `analyze_inproc` | ✅ **error=3 / warning=13 / info=7**（文件 67 → **72** / 行 20,907 → **21,517**） |
+
+#### ⏳ 只能真机看
+
+三档下正文的对比度舒适度 · 17px + 行高的实际观感 · 痕迹在 17px 正文里是否可辨 ·
+顶部栏书签与卡片的粘土观感是否一致。
+
+**请 `flutter run`**：点第一张卡（有正文）看顶部栏 / 标题区 / 三段正文 / **三处痕迹**
+（`vertical` 刚查过 · `Instead`+`liquid` 复习中 · `produces`/`traditional`/`kilometres` **应无标记**）；
+点第二张卡 → 「正文还没准备好」。
+
+#### ⚠️ 有意留白
+
+顶部栏「下滑隐藏」（spec 只给了四个字，无阈值/回弹规则，自行定数等于替设计做决定）·
+单击中央唤出设置面板（面板本身是独立一批）· 划词/浮层/生词本 → **3.4b/c** ·
+收藏清单 → **3.5**。
+
+---
+
+### 3.29 ✅ 记忆法槽位① 规则修正：交换 `etymology` 3 ↔ `collocation` 4（白哥批准 · 2026-09-27 14:08）
+
+> 完整决策材料与执行记录：📄 `docs/review/mnemonic-slot-priority-conflict-2026-09-27.md`
+
+**触因**：3.4b 实施「查词浮层」时，槽位①（记忆法）取哪一段无法定论 ——
+设计稿 L1 §07 画 `vertical` 的槽位① = **词源故事**，而按 `mnemonic_type.priority` 会得到**搭配整记**。
+
+#### 🔴 根因（实测推翻了「搭配不够强」这个原诊断）
+
+`priority` 表**自相矛盾** —— `collocation` 的适用条件「有 ≥1 条高频固定搭配」实测 **99.3% 的词都满足（几乎恒真）**，
+却排在 `etymology`（条件「**不可拆**」）之前 → **必然吃掉所有「不可拆词」的槽位①**。
+
+| 实测 | 值 |
+|---|---|
+| **不可拆词**（`sections` 无 `root`） | **6,039 / 11,523 = 52.4%**（其中 **98.1%** 有 `etymology` 段） |
+| `root`（**可拆**）与 `etymology`（**不可拆**） | 语义上**互补**的两条路（表自己的设计意图） |
+
+**槽位① 分布对比**：
+
+| 槽位① | 改前 | 改后 |
+|---|---:|---:|
+| `etymology` | **53（0.5%）** | **5,924（51.4%）** ✅ |
+| `root` | 5,484（47.6%） | 5,484（47.6%） |
+| `collocation` | **5,957（51.7%）** | **86（0.7%）** ✅ |
+
+🔑 **改后 51.4% 与「不可拆词」52.4% 吻合** → 说明新顺序符合语言事实。
+🔑 **交叉验证**：`word_mnemonic_profile.primary_code`（LLM 当年判定）里 `collocation` 仅 **0.9%** ——
+与改后渲染层得到的 0.7% **高度吻合**，说明「搭配只在少数词上该当槽位①」是语言学习判断，不是我们的发明。
+🔴 **「聚合页入口」的独立论据**：入口只在 `root`/`cognate`/`etymology` 段里（`collocation` 段 **0%**）
+→ 槽位① 若是搭配，**浮层没地方挂聚合页入口**。
+
+#### 🔴 执行中发现：`priority` 有**三处出处**（只改 DB 会静默回退）
+
+| 出处 | 性质 | 处理 |
+|---|---|---|
+| `data/word.db` 的 `mnemonic_type` 表 | 运行时数据 | ✅ 改（一次 UPDATE 完成交换，影响 **2 行**） |
+| `scripts/load_llm_results.py` 的 `MNEMONIC_TYPES` | 🔑 **真源**（重建词库时由它写入） | ✅ 改 —— **不改则下次重建回退** |
+| `scripts/verify_card_structure.py` 的 `MNEMONIC_ORDER` | 副本（验收用） | ✅ 改名 `SECTION_STORAGE_ORDER` + 澄清注释 |
+
+#### ⚠️ 有意**未做**：不重排 `card.sections` 的段顺序
+
+段顺序是生成时按**当时**的 priority 写入的，现在与 priority 不再一致（存储仍是 `…collocation, etymology…`）。
+
+**理由**：① `card.sections` 是**素材池**（「存全部素材、裁剪留渲染层」）
+② 白哥 2026-09-26「**优先级是渲染层面的事**」→ **存储顺序不承载语义**
+③ 重排要改写 **11,523 份 JSON**（含重序列化副作用风险）→ **为无意义的约束付大代价**
+
+→ 渲染层按 `mnemonic_type.priority` 取，**不依赖段顺序**；验收脚本的存储顺序断言保留（仍 0 错误）但已改名澄清。
+
+#### 🆕 新增：`scripts/query_verify/bin/verify_worddb_sync.dart`
+
+**两份 `word.db` 的一致性断言**（`data/word.db` 源 ↔ `app/assets/word.db` 交付物）—— **防漂移**。
+
+🔑 为什么允许两份：`git` 按**内容哈希**存 blob → 两份相同**复用同一 blob**（实测 `git add` 后对象数 **113 → 113**，`.git` 仍 87 MB）
+→ 换来「clone 即完整、CI 无需前置复制步骤」。⚠️ 代价是漂移风险，**分叉后 App 用旧词库且无任何运行时症状** → 本断言是唯一守卫。
+
+✅ 并**故意篡改 1 字节验证过它真会红**（精确报出偏移 1000）—— 断言必须能回答「改坏了会不会红」。
+
+#### ✅ 验证（全过）
+
+| 项 | 结果 |
+|---|---|
+| `PRAGMA integrity_check` | ✅ **ok**｜`word`/`card` 仍各 11,523 |
+| 文件指纹 | ✅ `e7495c54…` → **`d76c3d22…`**（证明**真落盘**） |
+| **`verify_worddb_sync`**（🆕） | ✅ **6 项** |
+| `verify_card_structure.py` | ✅ **13 项**（改名后无回归） |
+| `verify_word_query` / `review_list` / `bookmark` | ✅ **42 / 37 / 49 项** |
+| `tokens_verify` / `trace_verify` / `fsrs_verify` | ✅ **300 / 97 / 19 项** |
+| `analyze_inproc` | ✅ **error=3 / warning=13 / info=7**（前端本轮未改） |
+| 目视核对 | ✅ `intercept`→词根词缀 · **`vertical`→词源故事**（= 设计稿 L1）· `traffic jam`→搭配整记 |
+
+#### ⚠️ 仍未处理（仅记录）
+
+① `AggregateLink.pageType` 恒空（`entry` 实际无 `page_type` 字段）｜② 验证脚本硬编码 `E:\CoEvo\data\word.db`
+（换机器/CI 失败）｜③ `verify_card_structure.py` 用 `imagery` 而 DB 用 `image`（**永远匹配不到**，现无实害）
+｜④ **「存储顺序」断言是否该保留**（待白哥定 —— 它约束的是素材池顺序，与「把渲染决策固化成库字段」同型）
+｜⑤ `pubspec.yaml` 尚未声明 `assets/word.db`（属 3.4b 落盘机制，待确认）
+
+---
+
+---
+
+### 3.30 ✅ Step 3.4b：`word.db` 落盘 + 查词浮层 + 词性归一化（白哥选 A · 2026-09-27 14:46）
+
+> 完整执行记录：📄 `docs/review/step3-reader-plan-2026-09-27.md` **§十一**
+
+#### 🔑 两项决定（白哥 14:36 / 14:40）
+
+| 决定 | 内容 |
+|---|---|
+| **浮层定位** | 🔴 **浮层 = 查词（基础信息四要素）；词卡 = 学词（记忆法）** —— 修正 L1 §07（它把浮层画成「词卡的紧凑版」）｜**v1 未规定显示什么** → 不违反 L0 |
+| **三层递进** | 浮层 →（点进）复习卡片 →（**唯一聚合页入口**）聚合页 → ∴ **浮层不放导航入口** · **聚合页顺延 3.7** |
+
+#### 交付物（+768 行）
+
+| 文件 | 动作 | 行数 |
+|---|---|---|
+| `services/word_db_bootstrap.dart` | 🆕 **落盘决策 · 纯 Dart** | 172 |
+| `services/pos_display.dart` | 🆕 **词性归一化 · 纯 Dart** | 174 |
+| `providers/word_db_provider.dart` | 🆕 | 98 |
+| `widgets/lookup_sheet.dart` | 🆕 浮层（四要素） | 192 |
+| `screens/reader_screen.dart` | 改（+`SelectionArea`） | 346 → 478 |
+| `pubspec.yaml` | 改（🔴 **声明 `assets/word.db`**） | +6 |
+| 🆕 `verify_worddb_bootstrap.dart` / `verify_pos_display.dart` | 🆕 | 149 / 185 |
+
+#### 🔑 五处关键设计
+
+1. **落盘决策与 IO 分离** → 判断可独立断言（22 项）。最有价值的一条：
+   🔴 **资产异常（0 字节）+ 目标存在 → 不复制** —— 防「**用空文件盖掉好库**」（不可逆）。
+   直觉会写成「不同就复制」，但那样一旦打包事故，用户的库就被毁了。
+2. **`pos` 归一化 47 种 → 19 类**：同义（`[n]`/`n`/`noun`）· **可数性标记**（`[c,u]`/`[n pl]` → `n.`，
+   **它们不是词性**）· 复合（`[adj/adv]`）· 全角括号注释 · 多词键**整串优先**（`modal verb`）· 未知**原样保留**（不猜）
+3. 🔴 **而「原样保留」这条兜底差点骗过我**：首跑报 `[det./pron.]` 未识别，**但我手写样例断言过它且通过了** ——
+   根因是清洗只剥「整串」尾点、没剥**每段**的 → `det.` 查不到表 → 走兜底 → **输出恰好等于期望** → **假通过**
+   > 🔑 **凡有「兜底原样返回」的地方，必须另有一条断言独立判「是否命中」**
+4. **长按选择三处处理**：① `onSelectionChanged` **只暂存**（拖动会反复触发 → 否则一次拖动打十几次库）
+   ② 自定义工具栏**只有一个「查词」**（默认的「复制」在阅读场景没用）③ 遮罩用 **12%**（默认 54% 像「跳到另一个界面」）
+5. **`ByteData` 的 offset 陷阱**：必须 `asUint8List(offsetInBytes, lengthInBytes)` ——
+   否则写出文件头不对 → `file is not a database`，**只在真机/真打包下暴露**
+
+#### ✅ 验证
+
+| 脚本 | 结果 |
+|---|---|
+| 🆕 `verify_worddb_bootstrap` | ✅ **22 项**（含「资产异常不写盘」的编排验证） |
+| 🆕 `verify_pos_display` | ✅ **31 项** · **真库全量 47 种全识别** → 19 类 |
+| `verify_worddb_sync` | ✅ **6 项** |
+| `query_verify` 三脚本 | ✅ **42 / 37 / 49 项** |
+| `tokens_verify` | ✅ **304 项**（+5 条浮层零粘土断言） |
+| `trace_verify` | ✅ **97 项** |
+| `analyze_inproc` | ✅ **error=3 / warning=13 / info=7**（76 文件 / 22,285 行） |
+
+⚠️ 过程中修了 **2 个我引入的 error**（一度 5）：`library_directive_not_first` · `undefined_getter`（token 字段名是 `type`）。
+
+#### ⏳ 只能真机看
+
+首次落盘耗时 · **`assets/word.db` 是否真被 `rootBundle` 找到**（本地脚本不过打包链路）·
+长按手感 · 浮层遮挡 · 三档可读性 · `ByteData` 的 offset 假设。
+
+**请 `flutter run`**：进阅读器 → 长按 `vertical` → 点「查词」→ 应弹含 **音标 / 词性（`n.` 非 `[n]`）/ 释义 / 例句** 的浮层。
+
+#### ⚠️ 仍未做（各有归属）
+
+浮层→复习卡片入口 & 聚合页 → **3.7**｜「＋ 加入生词本」→ **3.4c**｜浮层 🔊 朗读（四要素未提，且属 `flutter_tts` 另一端）→ 未放｜
+`external_word_cache` → Phase 3｜阅读设置面板 → 独立批次｜`word.db` 排除 iCloud 备份 → 需平台通道，未做
+
+---
+
+---
+
+### 3.31 ✅ 交互收敛：长按即弹浮层（白哥 2026-09-27 15:37）
+
+> 完整记录：📄 `docs/review/step3-reader-plan-2026-09-27.md` **§十三 · §十四**
+
+| 白哥反馈 | 处置 |
+|---|---|
+| `Ctrl+Shift+M` 弹出的是 Chrome 账号登录 | ✅ 查清＝**Chrome 浏览器级快捷键被抢**（DevTools 无焦点）→ 改「点手机图标」或 `Ctrl+Shift+P`；**并实测确认 Chrome 设备模拟能绕过「长按不认鼠标」**（引擎按 `pointerType` 映射） |
+| 长按没有弹出 | ✅ 白哥换路径后**确认弹出正常** —— 前一版的代码本身是对的 |
+| 「中间的『查词』是多余的」 | ✅ **删掉 `_LookupToolbar`**，长按即弹浮层（3 步 → 1 步）｜`reader_screen` 521 → **501 行** |
+
+#### 🔑 三条本轮新增的认知
+
+1. **防抖不是优化，是正确性** —— 查 SDK 源码确认 `_handleTouchLongPressMoveUpdate` 里**每次都调**
+   `_updateSelectedContentIfNeeded()`（→ 触发 `onSelectionChanged`）→ 不防抖的话，
+   一次「长按 + 拖动微调」会打**十几次 SQLite** + 弹**十几个浮层** → 加 **300ms 防抖**
+2. 🔴 **「剥首尾标点」被实测否掉** —— 我第一版加了剥离首尾非字母数字的清洗，**然后去查了词库**：
+   **`a.m.` / `dr.` 本就以句点结尾**（剥了反而查不到）· **`café` 会被 `[^A-Za-z0-9]` 毁成 `caf`**
+   → 🔑 **分层结论：UI 层只做「去空白」；标点/宽松匹配属查询层**（它才知道词库里有什么）
+3. **两个「关工具栏」的层次不能混** —— `main.dart` 关的是**浏览器原生菜单**，
+   `contextMenuBuilder: (_, __) => SizedBox.shrink()` 关的是**Flutter 自己的工具栏**
+
+#### ⚠️ 已知边界（未修 · 已记录）
+
+拖动手柄会把标点带进来（`vertical,`）→ 会提示「词库里没有『vertical,』」。
+修法＝查询层加「精确 → 剥标点」两段查（要同步 `verify_word_query`）→ **独立一批**。
+📌 主路径不受影响（长按默认选中就是一个词）。
+
+#### ✅ 验证
+
+`analyze_inproc` **error=3/warning=13/info=7** ｜ `query_verify` **6/22/31/42/37/49** ｜
+`tokens_verify` **304** ｜ `trace_verify` **97** ｜ 残留引用 `_LookupToolbar`/`ValueNotifier`/`_picked` **均 0**
+
+🆕 **另备好更可靠的真机验证路径**：Android 环境实测齐备（WHPX 可用 · image `android-36.1` ·
+licenses · JBR 21）→ **已创建 AVD `coeo_phone`** → `flutter run -d android`
+（⚠️ 首次 Gradle 10–30 min，之后秒级；这是 **Windows 上唯一能产生真触摸事件的路径**）
+
+---
+
+---
+
+### 3.32 ✅ 修「词库不可用」：预热的真 bug + 文案分层（白哥 2026-09-27 15:58）
+
+> 完整报告：📄 `docs/review/word-db-readiness-gap-2026-09-27.md`
+
+#### 🔴 白哥反馈「弹窗显示词库正在整备」→ 查出**三个独立成因**
+
+| # | 成因 | 性质 |
+|---|---|---|
+| **A** | **web 上永久不可用** —— `sqflite 2.4.1` 只声明 `android/ios/macos` · `path_provider` 无 web · `dart:io` 在 web 是 stub | ⚠️ 平台限制（**非 bug**） |
+| **B** | 🔴 **provider 从未预热** —— 全项目仅 `ref.read`，**无任何 `ref.watch`**（而两处注释**都声称**是 watch；`bookmarkProvider` 用的是 watch） | 🔴 **真 bug（我的）** |
+| **C** | 「正在准备」把 A/B **混成一句** | 文案缺陷 |
+
+🔑 **B 被 A 掩盖了** —— web 上 provider 本就必然失败，所以「第一次查词拿不到」在 web 上看不出来。
+**这是「在错误的平台验证」的又一类形态：错误平台的错误，会掩盖真平台的错误。**
+
+**B 的后果（真机同样发生）**：进阅读器**不启动**落盘 → 第一次长按那一刻 future 刚启动
+→ `valueOrNull` 必然 null → **第一次查词 100% 失败**，而文案说「请稍候」，用户以为是自己点太快。
+
+#### 修复（白哥选「修 B + C」）
+
+- **B**：`reader_screen.build` 加 **`ref.watch(wordQueryProvider)`** → 进阅读器即开始落盘
+- **C**：`WordDbLoad` 改 **sealed class**（`Ready` / `Unsupported` / `Failed`）→
+  **类型层面消除「有结果但没 service」的非法状态**，且 `switch` **编译器强制穷尽**；
+  **web 上提前返回 `Unsupported`**（不做注定失败的尝试）
+- 四种「拿不到词卡」文案各自准确（含**能不能等**）：平台不支持 / 打开失败 / 正在准备 / 词库里没有
+
+#### 🔒 新增 4 条断言（`tokens_verify` §12 · 304 → **308**）
+
+含一条**防回归锁**：「阅读器 watch 了 wordQueryProvider（**不能只 read**）」——
+🔑 **它极易回归**（有人为了省一次 rebuild 改回 `read`），而后果「第一次查词 100% 失败」
+**在 web 上看不出来** → **凡「改坏了在开发环境看不出来」的约束，都该用断言锁住**。
+✅ 并**故意把 watch 改回 read 验证过它真会红**（报「实现类失败 1 项」），恢复后全过。
+
+#### ✅ 验证
+
+`analyze_inproc` **error=3/warning=13/info=7** ｜ `tokens_verify` **308** ｜
+`query_verify` **6/22/31/42/37/49** ｜ `trace_verify` **97** ｜ 旧 API（`serviceOrNull`）残留 **0**
+
+#### 📌 Web 端限制的完整清单（都不是 bug，都是「产品不做 web」的后果）
+
+| 层 | 限制 | 处置 |
+|---|---|---|
+| 手势 | 长按不认鼠标 | ✅ Chrome 设备模拟绕开 |
+| 系统菜单 | web 显示浏览器原生菜单 | ✅ debug-only `disableContextMenu()` |
+| **数据层** | **无本地 SQLite** | ✅ **本轮给准确提示**（不再谎称「请稍候」） |
+
+→ **web 只能验证「UI 与手势链路」，验证不了「数据层」**。真实查词须用 **Android 模拟器**（AVD 已建）或 iPhone。
+
+#### ⏳ 待真机验证
+「进阅读器 → 立刻长按 → 应弹**词卡**（而非「正在准备」）」· 首次落盘耗时是否被预热吸收
+（读正文的几秒是否够写 31.4 MB）· `assets/word.db` 是否真被 `rootBundle` 找到
+
+---
+
+---
+
+### 3.33 🔴 Step 3 解阻：删掉阻断原生构建的 web 录音代码（白哥 2026-09-27 19:55）
+
+> 完整报告：📄 `docs/review/android-build-blocker-web-only-2026-09-27.md`
+
+#### 触发
+白哥「`flutter build apk --debug` 运行超过 1 个小时，正常吗」→ **不正常，而且它不是慢，是已失败**：
+
+```
+lib/screens/chat/chat_input.dart:221:10: Error: Undefined name 'context'.
+lib/widgets/review_card_widget.dart:181:25: Error: Undefined name 'JsFunction'.
+FileSystemException(uri=org-dartlang-untranslatable-uri:dart%3Ajs ...)
+Execution failed for task ':app:compileFlutterBuildDebug'.
+BUILD FAILED in 1h 26m 4s
+```
+
+#### 根因：`dart:js` / `dart:html` 在非 web 平台**编译期**不可用
+浏览器端**录音**代码（`MediaRecorder` + `ScriptProcessor` → WAV base64 → `/api/stt/transcribe`）。
+
+#### 🔴🔴 最重要的教训：把 `error` 当「基线」= 把故障当正常
+`analyze_inproc` **过去 5 轮都在报**这三条，规则文本里**就写着「→ iOS/Android 编不过」**，
+而我每轮都写「error=3 —— **与基线逐项一致**」。
+
+> 🔑 **「与基线一致」只是「和上次一样」。基线里装着 error 时，它等价于「故障依旧」。**
+> → **基线必须分层**：`error` = 已知故障（❌ 不可接受）· `warning`/`info` = 噪音（✅ 可作基线）
+
+**已按白哥批准改为：`error` 必须为 0，不为 0 就当场排查。**
+
+#### 修复（净减 **−417 行**）
+
+| 文件 | 改动 | 行数 |
+|---|---|---|
+| `lib/screens/chat/chat_input.dart` | **重写**：删 `dart:js` + 7 处调用 + 语音字段/方法/UI；→ **`StatelessWidget`**（删后无状态） | 348 → **85** |
+| `lib/widgets/review_card_widget.dart` | 删 `dart:html`（**0 使用**）+ `dart:js` + `dart:async` + `http`（均仅语音用）+ 6 字段 + 4 方法 + build 语音 UI + `TickerProviderStateMixin`（**0 个 AnimationController**） | 846 → **692** |
+
+🔑 **为什么这不是「删功能」而是「卸包袱」**：① 它在 **iOS 上原理上不可能工作**（依赖浏览器 MediaRecorder）
+② 当前**用户不可达**（chat 入口已在 3.1 移除）③ 与已定案的 **`flutter_tts` 全量端侧**冲突 ④ 产品**只做 iOS**
+→ ∴ 删除**不损失任何现有能力**，它在目标平台上**从未生效过**。
+⚠️ 将来 AI 考核若需语音输入 → 用 **iOS 原生录音插件**实现，**不是恢复这段代码**。
+
+#### 🔑 一条技术判据（本轮最容易走错的一步）
+
+**`kIsWeb` 守卫解决不了这个问题** —— `import 'dart:js'` 是**编译期**错误：
+```dart
+if (kIsWeb) { js.context.callMethod('__coeStart'); }   // ❌ 一样编不过
+```
+> 🔑 **判据：「这个错误是编译期还是运行期？」**
+> 编译期（缺符号 / 平台不支持的库）→ `if` 守卫**无效**，必须改**结构**（删 / 条件导入 / 换实现）
+
+#### ✅ 验证
+
+| 项 | 改前 | 改后 |
+|---|---|---|
+| **`analyze_inproc`** | error=**3** / info=7 | ✅ **error=0** / info=4 |
+| 残留扫描 | — | `js.`·`html.`·`_voiceMode`·`Timer`·`http.` **全 0** |
+| `tokens_verify` / `trace_verify` | 308 / 97 | ✅ **308 / 97** |
+| `query_verify` 六脚本 | 6/22/31/42/37/49 | ✅ **6/22/31/42/37/49** |
+
+#### ⏳ 下一步
+重新 `flutter build apk --debug`（Gradle 缓存已就绪 → 预期**快得多**）→
+**先 `unzip -l` 查 `word.db` 是否进包**（不需设备）→ 再装模拟器验证查词。
+
+---
+
 ## 四、下一步建议（按依赖排序 · 已按白哥 2026-09-26「按计划进行」开始执行）
 
 > **修订说明**：初版把 P0 写成「建 `codemagic.yaml`」——**已改为「扩展已有的 GitHub Actions」**
@@ -2024,7 +2808,7 @@ spec §7.1：**Flutter 的 `BoxShadow` 不支持 `inset`** —— 而粘土的�
 | ~~✅~~ | ~~**Step 2 设计系统落地**（token → 代码）~~ | — | — | ✅✅ **完成（§3.12–§3.19）**：token 层 · A′ 字体 · **旧主题删除 + `buildTheme` 接线** · **粘土渲染层**（四态 + 真 inset + 接入设置页）· **280ms 动效 + token 插值** → **验收 307 项全过** ＋ ✅ **`flutter run -d chrome` 真编译通过**｜⏳ 仅剩真机目视（非代码工作） |
 | **P1** | **Phase 4 #1 `user.db` 接入** | 表结构 + 查询层已就绪（79 项断言过），差**落库接线** | — | ⏳ |
 | **P2** | **Phase 3 内容抓取**（服务端 RSS） | 无内容 = 端侧没东西可读；可与 P1 并行 | — | ⏳ |
-| **P2** | **Step 3 核心界面**（信息流/阅读器/**划词**） | 🔴 **最大工作量项**（划词仍 0 命中、无 feed/reader 文件） | Step 2 | 🟠 **3.0 清退已完成（§3.20）** → 下一步 3.1 导航骨架 —— 🔑 **重写对象已实测确认**（这就是「跑起来看还是旧界面」的真身）：`home_screen` 475 行（**K12 科目直选**，调 `/api/k12/subjects`）· `review_screen` 1,533 行（含**汉语 tab**）· `achievements_screen` 999 行（**`_k12Progress`**）· 个人页 · 卡片组件。**主题层已就位**（朱砂 `#B4432C` + 三档底色），页面层仍是 K12 遗留 |
+| **P2** | **Step 3 核心界面**（信息流/阅读器/**划词**） | 🔴 **最大工作量项** | Step 2 | 🟠 **已完成：3.0 清退 · 3.1 导航/首页/tabbar · 3.2 痕迹 · 3.3 收藏 · 3.4a 阅读器骨架**（§3.20·§3.21·§3.25·§3.27·§3.28）→ 下一步 **3.4b `word.db` 落盘 + 划词查词**（**最大未知**）｜🔑 **「跑起来看还是旧界面」已定位**：不是审美问题，是**页面调的后端接口已随 3.0 删除**｜🔴 **3.4 的缺口在数据层**：4 张表不存在 + 32.9 MB 预制库从未落盘 |
 | **P3** | 🟠 **清理待办**：`fsrs5.rs` 删除 · 轮换泄漏 key · `data/` git 状态 · `marketing` key | 见 §五 风险 5/9/10 | — | ⏳ |
 | **最后** | **Phase 0 Apple 账号**（$99/年） | 🟠 **白哥 2026-09-26 决定置末** —— 不阻塞当前开发；但**上架前必须办**（且 810 号令填报依赖它） | — | ⏳ **按白哥指示放最后** |
 | ~~✅~~ | ~~打通验证链路~~ | — | — | ✅ **已完成**（CI 5 job + 进程内 analyzer + 纯 Dart 验收三层） |
@@ -2127,17 +2911,21 @@ spec §7.1：**Flutter 的 `BoxShadow` 不支持 `inset`** —— 而粘土的�
 
 ## 七、一句话总结
 
-> **词库（Phase 1）收口** ✅（11/11 · 合规扫描器已建，但 🔴 **`taiwan`/`tibet` 两处 P0 未修**）·
+> **词库（Phase 1）收口** ✅（11/11 · 合规扫描器已建 · ✅ **`taiwan`/`tibet` 两处 P0 已修并验证** ——
+> 本段曾记「未修」，属旧时点，**已过时**；现措辞为「台湾海峡 / 台湾人；台湾的 / 西藏自治区 / 青藏高原」）·
 > **TTS 链路收口** ✅（全量端侧 `flutter_tts`，Phase 2 取消）· **端侧 MVP 只完成内核**（14 项完成 2 项）🟠 ·
 > **~~语音包~~（已取消）/ 内容抓取 / 变现 / 资质都还没开始** ⏳
 >
-> **Step 1 清障主体已完成（§3.5）**，当前堵点在 **Step 2/3（设计系统 + 核心界面）**：
-> `app/lib` 已只余 **2 个 web-only 文件**（且**本身就在「待重写」范围内** → 并入 Step 3/4），
-> 所以**真正的堵点已不是清障，而是「界面要从零写」** —— 划词查词仍 **0 命中**、信息流/阅读器**无文件**。
+> **Step 1 清障主体已完成（§3.5）**，**Step 2（设计系统）与 Step 3 主体（核心界面）均已完成** ✅
+> （本段曾写「堵点在 Step 2/3」「界面要从零写」「划词查词仍 0 命中」「界面层尚未开始」——
+> 那些都是 **09-26 时点**的描述，**现已全部过时**：web-only 已归零 · 划词/信息流/阅读器/收藏清单均已建并**真机验证**）
+>
+> **Step 3 剩余**：`3.4c`（`user_word`/`lookup_event` 查词写入，**表尚未建**）→ `3.6 复习页` → `3.7 复习卡片 + 聚合页`
+> → 之后是 **Phase 3 内容抓取** · **Phase 5 变现** · **Phase 0 Apple 账号**（放最后）
 >
 > （验证链路已在 §3.3 更正并补强：本地结构检查 + 纯 Dart 验收 + CI 三层，**不需要 Codemagic**。）
 >
-> **已做的是内核**（FSRS 服务层 · 查询层 · 端侧 TTS · 词库），**界面层尚未开始**。
+> **已做**：内核（FSRS 服务层 · 查询层 · 端侧 TTS · 词库）+ **界面层（Step 3 主体，已真机跑通）**。
 
 ---
 

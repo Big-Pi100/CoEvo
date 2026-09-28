@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>底部导航 · 方案对比（CoEvo）</title>
+<style>
+  :root{
+    --mono: ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;padding:28px 20px 60px;
+    background:#F5F3EF;color:#29251F;
+    font-family:-apple-system,"Noto Sans SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1{font-size:19px;margin:0 0 6px;font-weight:600}
+  .lead{font-size:13px;color:#6E6659;line-height:1.75;margin:0 0 26px;max-width:900px}
+  .lead b{color:#B4432C}
+  .lead code{font-family:var(--mono);font-size:12px;background:#EDE6DA;padding:1px 4px;border-radius:3px}
+
+  .grid{display:flex;flex-wrap:wrap;gap:22px;align-items:flex-start}
+  .col{width:296px}
+  .col > h2{
+    font-size:12.5px;margin:0 0 2px;font-weight:600;letter-spacing:.01em;
+  }
+  .col > .tag{
+    font-family:var(--mono);font-size:10px;color:#988F7C;
+    display:block;margin-bottom:9px;
+  }
+  .col.rec > h2{color:#B4432C}
+  .col.rec > h2::after{content:"  推荐";font-size:10px;font-weight:400}
+
+  /* ── 手机底部片段 ── */
+  .phone{
+    position:relative;height:274px;border-radius:15px;overflow:hidden;
+    box-shadow:0 1px 3px rgba(0,0,0,.10), 0 0 0 1px rgba(0,0,0,.05);
+  }
+  .scroll{position:absolute;inset:0;padding:13px 14px 0}
+  .c{
+    border-radius:11px;padding:11px 12px;margin-bottom:10px;
+    font-size:11px;line-height:1.5;
+  }
+  .c .t{font-size:12.5px;font-weight:600;display:block;margin-bottom:3px}
+  .c .m{font-size:9.5px;opacity:.62}
+  .tabwrap{position:absolute;left:0;right:0;bottom:0}
+  .tb-row{display:flex;padding:12px 20px 24px;gap:9px}
+  .tb{
+    flex:1;text-align:center;font-size:11px;font-weight:600;
+    border-radius:17px;padding:8px 0 7px;
+  }
+  .tb .ic{
+    width:15px;height:15px;border-radius:5px;
+    border:2px solid currentColor;margin:0 auto 4px;opacity:.75;
+  }
+  .tb.on .ic{opacity:1}
+
+  /* ═══════ 各档配色 ═══════ */
+  .ink  {--page:#F1EDE4;--card:#FFFFFF;--sunken:#EDE6DA;--ink:#29251F;--ink2:#6E6659;--ink3:#988F7C;
+         --accent:#B4432C;--accentInk:#FFFFFF;--accentOut:rgba(180,67,44,.40);
+         --out:rgba(150,125,95,.24);--shade:rgba(186,166,138,.55);--line:rgba(41,37,31,.07)}
+  .grid-t{--page:#EDEEF0;--card:#FFFFFF;--sunken:#F0F0F0;--ink:#29251F;--ink2:#5A5A5A;--ink3:#8A8A8A;
+         --accent:#B4432C;--accentInk:#FFFFFF;--accentOut:rgba(180,67,44,.40);
+         --out:rgba(110,115,125,.22);--shade:rgba(158,158,158,.46);--line:rgba(41,37,31,.08)}
+  .night{--page:#0B0D12;--card:#1C1F27;--sunken:#0B0D12;--ink:#F2F0EC;--ink2:#9AA0AE;--ink3:#6E7484;
+         --accent:#DB7E6B;--accentInk:#2A1405;--accentOut:rgba(219,126,107,.40);
+         --out:rgba(0,0,0,.55);--shade:rgba(0,0,0,.55);--line:rgba(255,255,255,.08)}
+
+  .phone{background:var(--page);color:var(--ink)}
+  .c{background:var(--card)}
+
+  /* ── 栏底处理：③ 种 ── */
+  /* (1) 透明（现状 / 设计稿原意） */
+  .bg-none{background:transparent}
+  /* (2) 毛玻璃 —— iOS 原生观感 */
+  .bg-blur{
+    background:color-mix(in srgb, var(--page) 82%, transparent);
+    -webkit-backdrop-filter:blur(20px) saturate(1.4);
+    backdrop-filter:blur(20px) saturate(1.4);
+    border-top:1px solid var(--line);
+  }
+  /* (3) 实心 —— 传统 iOS TabBar */
+  .bg-solid{
+    background:var(--card);
+    border-top:1px solid var(--line);
+  }
+  /* 夜档实心用 card（#1C1F27），比 page 亮一档 */
+
+  /* ── item 表达：2 种 ── */
+  /* (a) 平坦（设计稿 .tb） */
+  .it-flat{color:var(--ink2)}
+  .it-flat.on{
+    background:var(--accent);color:var(--accentInk);
+    box-shadow:4px 5px 10px var(--accentOut),
+               inset -3px -3px 8px rgba(0,0,0,.15),
+               inset 3px 3px 7px rgba(255,255,255,.26);
+  }
+  /* (b) 三个凸起药丸（现状） */
+  .it-raise{color:var(--ink2);background:var(--card);
+    box-shadow:4px 5px 10px var(--out),
+               inset -3px -3px 8px var(--shade),
+               inset 3px 3px 7px rgba(255,255,255,.8)}
+  .night .it-raise{box-shadow:4px 5px 10px var(--out),
+               inset -3px -3px 8px var(--shade),
+               inset 3px 3px 7px rgba(255,255,255,.06)}
+  .it-raise.on{
+    background:var(--accent);color:var(--accentInk);
+    box-shadow:4px 5px 10px var(--accentOut),
+               inset -3px -3px 8px rgba(0,0,0,.15),
+               inset 3px 3px 7px rgba(255,255,255,.26);
+  }
+
+  .note{
+    font-size:11px;line-height:1.62;color:#6E6659;margin:11px 0 0;
+  }
+  .note b{color:#29251F}
+  .note .bad{color:#B4432C}
+  .note .good{color:#3F6B3F}
+  .swatch{
+    display:inline-block;width:9px;height:9px;border-radius:2px;
+    border:1px solid rgba(0,0,0,.18);vertical-align:-1px;margin-right:3px;
+  }
+  .sect{margin-top:34px;border-top:1px solid #E2DCD1;padding-top:20px}
+  .sect h3{font-size:13px;margin:0 0 14px;font-weight:600}
+</style>
+
+<h1>底部导航 · 五个方案对照</h1>
+<p class="lead">
+  同一个「阅读 / 复习 / 我的」，三档主题各渲染一遍。上方卡片**故意压在栏底之下**（复现 <code>extendBody</code> 后的穿透），
+  所以能看出「栏底怎么处理」的真实效果。<br>
+  关键区别只有两处：<b>栏底</b>（透明 / 毛玻璃 / 实心）与 <b>item 表达</b>（平坦 / 三个凸起药丸）。
+</p>
+
+<!-- ══════════════════ 第一行：墨 ══════════════════ -->
+<div class="grid ink">
+
+  <div class="col">
+    <h2>① 设计稿原意</h2>
+    <span class="tag">栏底 transparent · item 平坦</span>
+    <div class="phone">
+      <div class="scroll">
+        <div class="c"><span class="t">How the Fed Moves Markets</span><span class="m">VOA · 5 分钟</span></div>
+        <div class="c"><span class="t">A Short History of Coffee</span><span class="m">BBC · 8 分钟</span></div>
+        <div class="c"><span class="t">Why Cities Are Getting Quieter</span><span class="m">VOA · 6 分钟</span></div>
+      </div>
+      <div class="tabwrap bg-none">
+        <div class="tb-row">
+          <div class="tb it-flat on"><div class="ic"></div>阅读</div>
+          <div class="tb it-flat"><div class="ic"></div>复习</div>
+          <div class="tb it-flat"><div class="ic"></div>我的</div>
+        </div>
+      </div>
+    </div>
+    <p class="note">
+      唯一实体是选中项。栏本身无底 —— <span class="bad">但正文会直接与「复习 / 我的」两个字重叠</span>，
+      这正是当初说「看不清」的原因。<b>不是设计稿错，是它没定义穿透时的表现。</b>
+    </p>
+  </div>
+
+  <div class="col">
+    <h2>② 现状（凸起药丸）</h2>
+    <span class="tag">栏底 transparent · item 三个凸起</span>
+    <div class="phone">
+      <div class="scroll">
+        <div class="c"><span class="t">How the Fed Moves Markets</span><span class="m">VOA · 5 分钟</span></div>
+        <div class="c"><span class="t">A Short History of Coffee</span><span class="m">BBC · 8 分钟</span></div>
+        <div class="c"><span class="t">Why Cities Are Getting Quieter</span><span class="m">VOA · 6 分钟</span></div>
+      </div>
+      <div class="tabwrap bg-none">
+        <div class="tb-row">
+          <div class="tb it-raise on"><div class="ic"></div>阅读</div>
+          <div class="tb it-raise"><div class="ic"></div>复习</div>
+          <div class="tb it-raise"><div class="ic"></div>我的</div>
+        </div>
+      </div>
+    </div>
+    <p class="note">
+      可读性解决了（药丸不透明）。<span class="bad">代价是底部变成「三个各自独立的白色物件」</span>
+      —— 每条都有自己的填充和外阴影，看上去像三个悬浮按钮，<b>而不是一条导航栏</b>。
+    </p>
+  </div>
+
+  <div class="col rec">
+    <h2>③ 毛玻璃栏底 + 平坦 item</h2>
+    <span class="tag">栏底 blur · item 平坦</span>
+    <div class="phone">
+      <div class="scroll">
+        <div class="c"><span class="t">How the Fed Moves Markets</span><span class="m">VOA · 5 分钟</span></div>
+        <div class="c"><span class="t">A Short History of Coffee</span><span class="m">BBC · 8 分钟</span></div>
+        <div class="c"><span class="t">Why Cities Are Getting Quieter</span><span class="m">VOA · 6 分钟</span></div>
+      </div>
+      <div class="tabwrap bg-blur">
+        <div class="tb-row">
+          <div class="tb it-flat on"><div class="ic"></div>阅读</div>
+          <div class="tb it-flat"><div class="ic"></div>复习</div>
+          <div class="tb it-flat"><div class="ic"></div>我的</div>
+        </div>
+      </div>
+    </div>
+    <p class="note">
+      栏底是「一条」—— 内容在它下面被<b>模糊</b>而不是被切掉，所以既<b>读得清</b>又<b>不断层</b>；
+      item 回到设计稿的平坦，视觉重心只落在选中项。<span class="good">iOS 原生的观感，且与设计稿最一致。</span>
+    </p>
+  </div>
+
+  <div class="col">
+    <h2>④ 实心栏底 + 平坦 item</h2>
+    <span class="tag">栏底 card · item 平坦</span>
+    <div class="phone">
+      <div class="scroll">
+        <div class="c"><span class="t">How the Fed Moves Markets</span><span class="m">VOA · 5 分钟</span></div>
+        <div class="c"><span class="t">A Short History of Coffee</span><span class="m">BBC · 8 分钟</span></div>
+        <div class="c"><span class="t">Why Cities Are Getting Quieter</span><span class="m">VOA · 6 分钟</span></div>
+      </div>
+      <div class="tabwrap bg-solid">
+        <div class="tb-row">
+          <div class="tb it-flat on"><div class="ic"></div>阅读</div>
+          <div class="tb it-flat"><div class="ic"></div>复习</div>
+          <div class="tb it-flat"><div class="ic"></div>我的</div>
+        </div>
+      </div>
+    </div>
+    <p class="note">
+      同 ③ 的结构，但栏底是<b>不透明</b>的 <code>card</code>。边界最清晰、最「稳」，
+      <span class="bad">但内容在栏口被硬生生截断</span>—— 就是当初说「底部栏破坏视觉」的那种感觉。
+    </p>
+  </div>
+
+  <div class="col">
+    <h2>⑤ 毛玻璃栏底 + 凸起药丸</h2>
+    <span class="tag">栏底 blur · item 三个凸起</span>
+    <div class="phone">
+      <div class="scroll">
+        <div class="c"><span class="t">How the Fed Moves Markets</span><span class="m">VOA · 5 分钟</span></div>
+        <div class="c"><span class="t">A Short History of Coffee</span><span class="m">BBC · 8 分钟</span></div>
+        <div class="c"><span class="t">Why Cities Are Getting Quieter</span><span class="m">VOA · 6 分钟</span></div>
+      </div>
+      <div class="tabwrap bg-blur">
+        <div class="tb-row">
+          <div class="tb it-raise on"><div class="ic"></div>阅读</div>
+          <div class="tb it-raise"><div class="ic"></div>复习</div>
+          <div class="tb it-raise"><div class="ic"></div>我的</div>
+        </div>
+      </div>
+    </div>
+    <p class="note">
+      只把栏底补上、药丸不动。比现状「整」一些，但<span class="bad">三个白药丸仍在</span>——
+      「栏」与「三个物件」叠在一起，多了一层。
+    </p>
+  </div>
+</div>
+
+<!-- ══════════════════ 第二行：格 ══════════════════ -->
+<div class="sect">
+  <h3>「格」档（冷灰 · 粘土强度中等）</h3>
+  <div class="grid grid-t">
+
+    <div class="col">
+      <h2>① 设计稿原意</h2><span class="tag">transparent · 平坦</span>
+      <div class="phone">
+        <div class="scroll">
+          <div class="c"><span class="t">How the Fed Moves Markets</span><span class="m">VOA · 5 分钟</span></div>
+          <div class="c"><span class="t">A Short History of Coffee</span><span class="m">BBC · 8 分钟</span></div>
+          <div class="c"><span class="t">Why Cities Are Getting Quieter</span><span class="m">VOA · 6 分钟</span></div>
+        </div>
+        <div class="tabwrap bg-none"><div class="tb-row">
+          <div class="tb it-flat on"><div class="ic"></div>阅读</div>
+          <div class="tb it-flat"><div class="ic"></div>复习</div>
+          <div class="tb it-flat"><div class="ic"></div>我的</div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <h2>② 现状</h2><span class="tag">transparent · 三个凸起</span>
+      <div class="phone">
+        <div class="scroll">
+          <div class="c"><span class="t">How the Fed Moves Markets</span><span class="m">VOA · 5 分钟</span></div>
+          <div class="c"><span class="t">A Short History of Coffee</span><span class="m">BBC · 8 分钟</span></div>
+          <div class="c"><span class="t">Why Cities Are Getting Quieter</span><span class="m">VOA · 6 分钟</span></div>
+        </div>
+        <div class="tabwrap bg-none"><div class="tb-row">
+          <div class="tb it-raise on"><div class="ic"></div>阅读</div>
+          <div class="tb it-raise"><div class="ic"></div>复习</div>
+          <div class="tb it-raise"><div class="ic"></div>我的</div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="col rec">
+      <h2>③ 毛玻璃 + 平坦</h2><span class="tag">blur · 平坦</span>
+      <div class="phone">
+        <div class="scroll">
+          <div class="c"><span class="t">How the Fed Moves Markets</span><span class="m">VOA · 5 分钟</span></div>
+          <div class="c"><span class="t">A Short History of Coffee</span><span class="m">BBC · 8 分钟</span></div>
+          <div class="c"><span class="t">Why Cities Are Getting Quieter</span><span class="m">VOA · 6 分钟</span></div>
+        </div>
+        <div class="tabwrap bg-blur"><div class="tb-row">
+          <div class="tb it-flat on"><div class="ic"></div>阅读</div>
+          <div class="tb it-flat"><div class="ic"></div>复习</div>
+          <div class="tb it-flat"><div class="ic"></div>我的</div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <h2>④ 实心 + 平坦</h2><span class="tag">card · 平坦</span>
+      <div class="phone">
+        <div class="scroll">
+          <div class="c"><span class="t">How the Fed Moves Markets</span><span class="m">VOA · 5 分钟</span></div>
+          <div class="c"><span class="t">A Short History of Coffee</span><span class="m">BBC · 8 分钟</span></div>
+          <div class="c"><span class="t">Why Cities Are Getting Quieter</span><span class="m">VOA · 6 分钟</span></div>
+        </div>
+        <div class="tabwrap bg-solid"><div class="tb-row">
+          <div class="tb it-flat on"><div class="ic"></div>阅读</div>
+          <div class="tb it-flat"><div class="ic"></div>复习</div>
+          <div class="tb it-flat"><div class="ic"></div>我的</div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <h2>⑤ 毛玻璃 + 凸起</h2><span class="tag">blur · 三个凸起</span>
+      <div class="phone">
+        <div class="scroll">
+          <div class="c"><span class="t">How the Fed Moves Markets</span><span class="m">VOA · 5 分钟</span></div>
+          <div class="c"><span class="t">A Short History of Coffee</span><span class="m">BBC · 8 分钟</span></div>
+          <div class="c"><span class="t">Why Cities Are Getting Quieter</span><span class="m">VOA · 6 分钟</span></div>
+        </div>
+        <div class="tabwrap bg-blur"><div class="tb-row">
+          <div class="tb it-raise on"><div class="ic"></div>阅读</div>
+          <div class="tb it-raise"><div class="ic"></div>复习</div>
+          <div class="tb it-raise"><div class="ic"></div>我的</div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 第三行：夜 ══════════════════ -->
+<div class="sect">
+  <h3>「夜」档（深底 · 药丸改用亮朱砂）</h3>
+  <div class="grid night">
+
+    <div class="col">
+      <h2>① 设计稿原意</h2><span class="tag">transparent · 平坦</span>
+      <div class="phone">
+        <div class="scroll">
+          <div class="c"><span class="t">How the Fed Moves Markets</span><span class="m">VOA · 5 分钟</span></div>
+          <div class="c"><span class="t">A Short History of Coffee</span><span class="m">BBC · 8 分钟</span></div>
+          <div class="c"><span class="t">Why Cities Are Getting Quieter</span><span class="m">VOA · 6 分钟</span></div>
+        </div>
+        <div class="tabwrap bg-none"><div class="tb-row">
+          <div class="tb it-flat on"><div class="ic"></div>阅读</div>
+          <div class="tb it-flat"><div class="ic"></div>复习</div>
+          <div class="tb it-flat"><div class="ic"></div>我的</div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <h2>② 现状</h2><span class="tag">transparent · 三个凸起</span>
+      <div class="phone">
+        <div class="scroll">
+          <div class="c"><span class="t">How the Fed Moves Markets</span><span class="m">VOA · 5 分钟</span></div>
+          <div class="c"><span class="t">A Short History of Coffee</span><span class="m">BBC · 8 分钟</span></div>
+          <div class="c"><span class="t">Why Cities Are Getting Quieter</span><span class="m">VOA · 6 分钟</span></div>
+        </div>
+        <div class="tabwrap bg-none"><div class="tb-row">
+          <div class="tb it-raise on"><div class="ic"></div>阅读</div>
+          <div class="tb it-raise"><div class="ic"></div>复习</div>
+          <div class="tb it-raise"><div class="ic"></div>我的</div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="col rec">
+      <h2>③ 毛玻璃 + 平坦</h2><span class="tag">blur · 平坦</span>
+      <div class="phone">
+        <div class="scroll">
+          <div class="c"><span class="t">How the Fed Moves Markets</span><span class="m">VOA · 5 分钟</span></div>
+          <div class="c"><span class="t">A Short History of Coffee</span><span class="m">BBC · 8 分钟</span></div>
+          <div class="c"><span class="t">Why Cities Are Getting Quieter</span><span class="m">VOA · 6 分钟</span></div>
+        </div>
+        <div class="tabwrap bg-blur"><div class="tb-row">
+          <div class="tb it-flat on"><div class="ic"></div>阅读</div>
+          <div class="tb it-flat"><div class="ic"></div>复习</div>
+          <div class="tb it-flat"><div class="ic"></div>我的</div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <h2>④ 实心 + 平坦</h2><span class="tag">card · 平坦</span>
+      <div class="phone">
+        <div class="scroll">
+          <div class="c"><span class="t">How the Fed Moves Markets</span><span class="m">VOA · 5 分钟</span></div>
+          <div class="c"><span class="t">A Short History of Coffee</span><span class="m">BBC · 8 分钟</span></div>
+          <div class="c"><span class="t">Why Cities Are Getting Quieter</span><span class="m">VOA · 6 分钟</span></div>
+        </div>
+        <div class="tabwrap bg-solid"><div class="tb-row">
+          <div class="tb it-flat on"><div class="ic"></div>阅读</div>
+          <div class="tb it-flat"><div class="ic"></div>复习</div>
+          <div class="tb it-flat"><div class="ic"></div>我的</div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <h2>⑤ 毛玻璃 + 凸起</h2><span class="tag">blur · 三个凸起</span>
+      <div class="phone">
+        <div class="scroll">
+          <div class="c"><span class="t">How the Fed Moves Markets</span><span class="m">VOA · 5 分钟</span></div>
+          <div class="c"><span class="t">A Short History of Coffee</span><span class="m">BBC · 8 分钟</span></div>
+          <div class="c"><span class="t">Why Cities Are Getting Quieter</span><span class="m">VOA · 6 分钟</span></div>
+        </div>
+        <div class="tabwrap bg-blur"><div class="tb-row">
+          <div class="tb it-raise on"><div class="ic"></div>阅读</div>
+          <div class="tb it-raise"><div class="ic"></div>复习</div>
+          <div class="tb it-raise"><div class="ic"></div>我的</div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sect">
+  <h3>为什么②（现状）会「割裂」—— 一句话</h3>
+  <p class="lead" style="margin-bottom:0">
+    设计稿的意图是「<b>一条栏 + 只有选中项是实体</b>」（<code>.tb</code> 无底无影，<code>.tb.on</code> 才有背景+投影）。
+    现状把它做成了「<b>没有栏 + 三个各自有实体的 item</b>」——
+    栏的底被平分到了每个 item 上，于是底部变成三个独立物件，<b>「一条栏」的整体感消失</b>。<br><br>
+    当初加底色是为了解决「正文穿过导致看不清」，这个目标没错；
+    但<b>正确的落点在「栏」这一层，而不是「每个 item」</b>——这就是③想说的。
+  </p>
+</div>

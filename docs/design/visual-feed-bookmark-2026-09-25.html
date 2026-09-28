@@ -9,6 +9,22 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5/500.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5/600.css">
 <style>
+/* ═══════════════════════════════════════════════════════════════════
+   ⚠️ 2026-09-27 起失效的部分：`--tk-d-*`（已掌握态）
+
+   白哥定：「**已掌握就应该不标识**」—— 痕迹随熟练度淡去的**终点是消失**，
+   所以「已掌握」不再有任何视觉表达（本文件里的 `--tk-d-*` 与 `.tk-d` 已作废）。
+
+   实现侧对应改动：
+     · `TraceTokens.mastered` 字段已删除（痕迹只剩两态）
+     · `TraceTokens.forReps(reps ≥ 3, lapses: 0)` 返回 **`null`** → 调用方跳过该标记
+     · ⚠️ 不是「把颜色调到全透明」—— 透明仍留 padding，会改变字距，那还是标识
+
+   📌 本文件**保留原样**（它是当时的界面锚点，改动会丢失历史意图）；
+      当前有效规格见 `design-system-spec-2026-09-25.md` §一 / §1.1，
+      两态对照见 `trace-render-compare-2026-09-27.html`。
+   ═══════════════════════════════════════════════════════════════════ */
+
 /* ── 本地 IPA 子集字体（含完整 32 个音标字符，含 ˈ 重音 · ː 长音 · θ）──
    为什么不直接用 @fontsource：它的 latin / latin-ext 分包不含全套 IPA
    （Charis SIL 仅 22/32），用它会让音标静默回退到系统字体，
@@ -180,6 +196,7 @@ h1{font-family:var(--round);font-size:36px;font-weight:600;letter-spacing:-.015e
 .tk{background:var(--tk-bg,transparent);border-bottom:var(--tk-bd,none);color:var(--tk-fg,inherit);border-radius:var(--tk-r,3px);padding:var(--tk-p,1px 3px);margin:0 -1px;transition:all .28s}
 .tk-n{--tk-bg:var(--tk-n-bg);--tk-bd:var(--tk-n-bd);--tk-fg:var(--tk-n-fg);--tk-r:var(--tk-n-r);--tk-p:var(--tk-n-p)}
 .tk-m{--tk-bg:var(--tk-m-bg);--tk-bd:var(--tk-m-bd);--tk-fg:var(--tk-m-fg);--tk-r:var(--tk-m-r);--tk-p:var(--tk-m-p)}
+/* ⚠️ 已作废（2026-09-27）：已掌握 = 不标识，实现里不再产生此标记 */
 .tk-d{--tk-bg:var(--tk-d-bg);--tk-bd:var(--tk-d-bd);--tk-fg:var(--tk-d-fg);--tk-r:var(--tk-d-r);--tk-p:var(--tk-d-p)}
 
 /* 收藏 toast */

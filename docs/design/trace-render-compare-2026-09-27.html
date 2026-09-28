@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CoEvo 痕迹渲染对照</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/literata@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5/index.css">
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   对照工具，**不是 Flutter 渲染截图**。
+
+   回答两个问题：
+   ① 两态（刚查过 / 复习中）在三档主题 × 三字号下是否分得清？
+   ② 墨档「圆角 + padding」值不值得为它上自绘？
+      （Flutter 的 TextStyle 做不到这两项 —— 见 trace_text.dart 的能力边界表）
+
+   数值来源：app/lib/theme/coevo_tokens.dart（与 spec §1.1 逐项一致）
+     · 「设计稿写法」= CSS 内联元素（有 border-radius + padding）
+     · 「Flutter 可实现」= 用 CSS 模拟 Flutter 能力（矩形背景、无 padding）
+   ⚠️ 都用同一个 CSS 引擎画 —— 差异才只反映「圆角/padding」这一件事。
+
+   🔴 2026-09-27 更新：白哥定「**已掌握 = 不标识**」→ 本页从「三态」改为「两态」。
+   ═══════════════════════════════════════════════════════════════ */
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#E4E0D8;color:#29251F;font-family:'Inter',-apple-system,'PingFang SC',sans-serif;padding:0 0 80px;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 32px}
+
+header{padding:48px 0 0}
+h1{font-size:30px;font-weight:600;letter-spacing:-.015em;margin-bottom:14px;line-height:1.25}
+.lede{font-size:14.5px;line-height:1.75;color:#5C5648;max-width:880px}
+.lede strong{color:#29251F;font-weight:600}
+.lede code{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:#DCD6C9;padding:1px 5px;border-radius:3px}
+
+.sect{margin-top:52px}
+.sect-head{padding-bottom:16px;border-bottom:1px solid #CFC8BA;margin-bottom:24px}
+.sect-title{font-size:20px;font-weight:600;letter-spacing:-.01em}
+.sect-sub{font-size:13px;color:#7A7263;margin-top:6px;line-height:1.65;max-width:900px}
+.sect-sub code{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#DCD6C9;padding:1px 5px;border-radius:3px}
+.sect-sub b{color:#29251F;font-weight:600}
+
+.theme-block{border-radius:20px;overflow:hidden;margin-bottom:24px;box-shadow:0 2px 4px rgba(120,100,75,.1),0 12px 30px -12px rgba(120,100,75,.25)}
+.theme-hd{padding:13px 24px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.theme-hd .dot{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+.theme-hd .syn{font-weight:500;opacity:.75;font-size:12px}
+.theme-body{padding:26px 24px}
+
+.ink   {background:#F1EDE4;color:#24211C}
+.ink .theme-hd{background:#EDE6DA;color:#6E6659}
+.grid  {background:#EDEEF0;color:#0A0A0A}
+.grid .theme-hd{background:#E4E5E8;color:#5A5A5A}
+.night {background:#0B0D12;color:#EDEBE6}
+.night .theme-hd{background:#14161C;color:#9AA0AE}
+
+/* 两态（数值 = token，与 coevo_tokens.dart 逐项一致） */
+.ink .tk-n{background:rgba(180,67,44,.15);border-radius:3px;padding:1px 3px}
+.ink .tk-m{background:rgba(180,67,44,.075);border-radius:3px;padding:1px 3px}
+.grid .tk-n{border-bottom:2.5px solid #C4533A;padding:0 0 1px}
+.grid .tk-m{border-bottom:1.5px solid rgba(196,83,58,.42);padding:0 0 1px}
+.night .tk-n{color:#FFD9B8;border-radius:3px;padding:1px 3px}
+.night .tk-m{color:#DEDCD7;border-radius:3px;padding:1px 3px}
+
+.no-round .tk-n,.no-round .tk-m{border-radius:0!important;padding:0!important}
+
+.fs-row{display:flex;align-items:baseline;gap:20px;padding:11px 0;border-bottom:1px dashed rgba(128,128,128,.22)}
+.fs-row:last-child{border-bottom:none}
+.fs-tag{flex-shrink:0;width:54px;font-size:11px;font-weight:600;opacity:.5;font-family:ui-monospace,Menlo,monospace}
+.fs-body{font-family:'Literata',Georgia,serif;line-height:1.8;flex:1}
+.f15 .fs-body{font-size:15px}
+.f18 .fs-body{font-size:18px}
+.f24 .fs-body{font-size:24px}
+
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:0;border-radius:16px;overflow:hidden;border:1px solid #CFC8BA}
+.cmp-col{padding:22px 24px}
+.cmp-col:first-child{border-right:1px solid #CFC8BA}
+.cmp-cap{font-size:12px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tag{font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:6px;letter-spacing:.02em}
+.tag.ok{background:#DDE8D8;color:#4A6B33}
+.tag.diff{background:#EFDCDC;color:#8C3A2E}
+.tag.new{background:#DDE3EF;color:#33507A}
+.cmp-text{font-family:'Literata',Georgia,serif;font-size:17px;line-height:1.9}
+.cmp-text .tk{background:rgba(180,67,44,.15)}
+.design .tk{border-radius:3px;padding:1px 3px;margin:0 -1px}
+.flutter .tk{border-radius:0;padding:0}
+
+.note{margin-top:18px;background:#F7F4EC;border-left:3px solid #B4432C;border-radius:0 12px 12px 0;padding:15px 19px;font-size:13px;line-height:1.75;color:#5C5648}
+.note b{color:#29251F;font-weight:600}
+.note code{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#E3DDD0;padding:1px 5px;border-radius:3px}
+.note.ok{border-left-color:#6B7A4A}
+.note.blue{border-left-color:#33507A}
+.note ul{margin:10px 0 0 20px;line-height:1.9}
+
+table.vals{width:100%;border-collapse:collapse;font-size:12.5px;font-family:ui-monospace,Menlo,monospace;margin-top:6px}
+table.vals th,table.vals td{text-align:left;padding:7px 10px;border-bottom:1px solid rgba(128,128,128,.2)}
+table.vals th{font-family:'Inter',sans-serif;font-size:11.5px;font-weight:600;opacity:.6}
+table.vals td:first-child{font-family:'Inter',sans-serif}
+
+/* 已掌握：真的看不出差别 —— 用一个「标记前/后」并排来证明 */
+.same{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:baseline}
+.same-cap{font-size:11px;font-weight:600;opacity:.55;margin-bottom:6px;font-family:ui-monospace,Menlo,monospace}
+
+.foot{margin-top:56px;padding-top:26px;border-top:1px solid #CFC8BA;font-size:13px;line-height:1.8;color:#5C5648}
+.foot b{color:#29251F;font-weight:600}
+.foot code{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#DCD6C9;padding:1px 5px;border-radius:3px}
+.foot ul{margin:12px 0 0 20px;line-height:1.9}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>痕迹渲染对照：三档 × 两态 × 三字号</h1>
+  <p class="lede">
+    🔴 <strong>2026-09-27 更新</strong>：白哥定「<strong>已掌握就应该不标识</strong>」——
+    本页已从「三态」改为「<strong>两态 + 已掌握不标识</strong>」。<br><br>
+    这条修正了 spec 的<strong>一处内部矛盾</strong>：原则写「<strong>学习的终点是痕迹的消失</strong>」，
+    值表却写「已掌握 = 几乎不可见（比周围文字暖一点点）」—— 一个说消失、一个说还留一点点。
+    现在按原则统一：<strong>已掌握的字回到普通文字，与「从没查过」在视觉上完全一致</strong>。<br><br>
+    往下第 ① 节看两态是否分得清，<strong>第 ③ 节回答「墨档的圆角值不值得上自绘」</strong>。
+  </p>
+</header>
+
+<!-- ═══════════ 1. 三档 × 两态 × 三字号 ═══════════ -->
+<section class="sect">
+  <div class="sect-head">
+    <div class="sect-title">① 三档 × 两态 × 三字号（spec §八 的验收项）</div>
+    <div class="sect-sub">
+      spec 原文：「<b>痕迹两态</b>在 15px / 18px / 24px 三档字号下都可辨」。<br>
+      每行两个痕迹词：<code>刚查过</code>（reps=0）· <code>复习中</code>（reps 1–2）。
+      <b>其余词都是「已掌握或从没查过」—— 它们应该与普通文字毫无差别。</b>
+    </div>
+  </div>
+
+  <div class="theme-block ink">
+    <div class="theme-hd"><span class="dot" style="background:#B4432C"></span>墨 · 暖纸 <span class="syn">底色浸染（bg alpha .15 → .075）</span></div>
+    <div class="theme-body">
+      <div class="fs-row f15"><div class="fs-tag">15px</div><div class="fs-body">The city grows <span class="tk tk-n">vegetables</span> indoors, using <span class="tk tk-m">liquid</span> instead of soil, and traditional farms cannot match it.</div></div>
+      <div class="fs-row f18"><div class="fs-tag">18px</div><div class="fs-body">The city grows <span class="tk tk-n">vegetables</span> indoors, using <span class="tk tk-m">liquid</span> instead of soil, and traditional farms cannot match it.</div></div>
+      <div class="fs-row f24"><div class="fs-tag">24px</div><div class="fs-body">The city grows <span class="tk tk-n">vegetables</span> indoors, using <span class="tk tk-m">liquid</span> instead of soil, and traditional farms cannot match it.</div></div>
+    </div>
+  </div>
+
+  <div class="theme-block grid">
+    <div class="theme-hd"><span class="dot" style="background:#C4533A"></span>格 · 纯白 <span class="syn">下划线（线宽 2.5 → 1.5px）</span></div>
+    <div class="theme-body">
+      <div class="fs-row f15"><div class="fs-tag">15px</div><div class="fs-body">The city grows <span class="tk tk-n">vegetables</span> indoors, using <span class="tk tk-m">liquid</span> instead of soil, and traditional farms cannot match it.</div></div>
+      <div class="fs-row f18"><div class="fs-tag">18px</div><div class="fs-body">The city grows <span class="tk tk-n">vegetables</span> indoors, using <span class="tk tk-m">liquid</span> instead of soil, and traditional farms cannot match it.</div></div>
+      <div class="fs-row f24"><div class="fs-tag">24px</div><div class="fs-body">The city grows <span class="tk tk-n">vegetables</span> indoors, using <span class="tk tk-m">liquid</span> instead of soil, and traditional farms cannot match it.</div></div>
+    </div>
+  </div>
+
+  <div class="theme-block night">
+    <div class="theme-hd"><span class="dot" style="background:#DB7E6B"></span>夜 · 深墨 <span class="syn">光（#FFD9B8 暖奶油 → #DEDCD7 中性）</span></div>
+    <div class="theme-body">
+      <div class="fs-row f15"><div class="fs-tag">15px</div><div class="fs-body">The city grows <span class="tk tk-n">vegetables</span> indoors, using <span class="tk tk-m">liquid</span> instead of soil, and traditional farms cannot match it.</div></div>
+      <div class="fs-row f18"><div class="fs-tag">18px</div><div class="fs-body">The city grows <span class="tk tk-n">vegetables</span> indoors, using <span class="tk tk-m">liquid</span> instead of soil, and traditional farms cannot match it.</div></div>
+      <div class="fs-row f24"><div class="fs-tag">24px</div><div class="fs-body">The city grows <span class="tk tk-n">vegetables</span> indoors, using <span class="tk tk-m">liquid</span> instead of soil, and traditional farms cannot match it.</div></div>
+    </div>
+  </div>
+
+  <div class="note blue">
+    <b>请重点看三件事</b>：
+    <ul>
+      <li><b>两态在 15px 下还分得清吗？</b>（这是最小字号，也是最先失守的一档）</li>
+      <li><b>夜档两态分得清吗？</b> —— ⚠️ 实测两态<b>亮度几乎相同</b>（.743 vs .716），
+          区分完全靠「暖度」（暖奶油 vs 中性灰）。<b>这是三档里最可能出问题的一处。</b></li>
+      <li><b>「traditional」这个词看着像没标记过吗？</b> 它就该是普通文字 ——
+          已掌握的词与从没查过的词，在视觉上<b>完全一致</b>。</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═══════════ 2. 已掌握 = 不标识 ═══════════ -->
+<section class="sect">
+  <div class="sect-head">
+    <div class="sect-title">② 「已掌握 = 不标识」的验证</div>
+    <div class="sect-sub">
+      同一句话，左边标了「已掌握」、右边没标 —— <b>两行应该一模一样</b>。
+      如果看得出差别，就说明「不标识」没做到。
+    </div>
+  </div>
+
+  <div class="theme-block ink">
+    <div class="theme-body">
+      <div class="same">
+        <div>
+          <div class="same-cap">标记为「已掌握」</div>
+          <div style="font-family:'Literata',Georgia,serif;font-size:17px;line-height:1.9">The city grows vegetables indoors.</div>
+        </div>
+        <div>
+          <div class="same-cap">从没查过（无标记）</div>
+          <div style="font-family:'Literata',Georgia,serif;font-size:17px;line-height:1.9">The city grows vegetables indoors.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note ok">
+    <b>为什么不能「把颜色调到全透明」？</b><br>
+    透明确实看不见颜色，但 <code>padding: 1px 3px</code> <b>还在</b> ——
+    它会撑开字距，于是被标记过的字与普通字<b>间距不同</b>，用户看得出来「这里有东西」。
+    <b>那仍然是标识，只是更难解释。</b><br><br>
+    所以实现上用 <code>null</code>（<b>没有痕迹</b>）而不是「一个看不见的痕迹」：
+    <code>TraceTokens.forReps()</code> 对已掌握返回 <code>null</code>，调用方<b>跳过该标记</b>。<br><br>
+    <b>顺带的收益</b>：若已掌握还留一点暖色，痕迹就同时背了两个表达
+    （「这里我查过」+「这个我掌握了」），违反设计稿的「<b>一个概念，一个表达</b>」。
+    掌握度要看就去复习页 —— <b>痕迹只表达「我和这篇文章的关系」</b>。
+  </div>
+</section>
+
+<!-- ═══════════ 3. 对照：墨档的圆角与 padding ═══════════ -->
+<section class="sect">
+  <div class="sect-head">
+    <div class="sect-title">③ 对照：墨档「设计稿写法」vs「Flutter 可实现」</div>
+    <div class="sect-sub">
+      同一个句子、同一个背景色。<b>唯一差别是圆角与 padding</b> —— 刻意只用同一个 CSS 引擎画，
+      这样差异只反映这一件事，不会被别的因素干扰。
+    </div>
+  </div>
+
+  <div class="cmp">
+    <div class="cmp-col design" style="background:#F1EDE4;color:#24211C">
+      <div class="cmp-cap"><span class="tag ok">设计稿写法</span>圆角 3px + padding 1px 3px</div>
+      <div class="cmp-text">The city grows <span class="tk tk-n">vegetables</span> indoors, using <span class="tk tk-m">liquid</span> instead of soil.</div>
+    </div>
+    <div class="cmp-col flutter no-round" style="background:#F1EDE4;color:#24211C">
+      <div class="cmp-cap"><span class="tag diff">Flutter 可实现</span>矩形 + 无 padding</div>
+      <div class="cmp-text">The city grows <span class="tk tk-n">vegetables</span> indoors, using <span class="tk tk-m">liquid</span> instead of soil.</div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>怎么读这组对照</b>：左边是有圆角的（设计稿），右边是 Flutter 能画出来的（矩形、背景紧贴字形）。<br>
+    <b>要判断的就一件事</b>：这个差异，在你眼里是「可以接受」还是「一眼就觉得糙」？
+    <ul>
+      <li>能接受 → 保持现实现（<code>TextStyle.background</code>），偏差按已知问题记录</li>
+      <li>不能接受 → 为墨档单独上<b>自绘</b>（<code>TextPainter.getBoxesForSelection()</code> 拿矩形 → 自己画 <code>RRect</code>），代价是要自己处理断行/对齐</li>
+    </ul>
+    ⚠️ 右边能看出「没有 padding」—— 背景紧贴字形，比左边「闷」一些。
+  </div>
+</section>
+
+<!-- ═══════════ 4. 数值速查 ═══════════ -->
+<section class="sect">
+  <div class="sect-head">
+    <div class="sect-title">④ 数值速查（与 <code>coevo_tokens.dart</code> 逐项一致）</div>
+    <div class="sect-sub">本页所有颜色/线宽都取自 token 实例，不是手写的 —— 免得对照页与实现各说各话。</div>
+  </div>
+
+  <div class="theme-block ink">
+    <div class="theme-hd"><span class="dot" style="background:#B4432C"></span>墨 · wash</div>
+    <div class="theme-body">
+      <table class="vals">
+        <tr><th>态</th><th>bg</th><th>border</th><th>fg</th><th>padding</th><th>radius</th></tr>
+        <tr><td>刚查过</td><td>rgba(180,67,44,.15)</td><td>none</td><td>inherit</td><td>1px 3px</td><td>3px</td></tr>
+        <tr><td>复习中</td><td>rgba(180,67,44,.075)</td><td>none</td><td>inherit</td><td>1px 3px</td><td>3px</td></tr>
+        <tr><td>已掌握</td><td colspan="5" style="color:#8C3A2E;font-weight:600">— 不标识（无 token）—</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="theme-block grid">
+    <div class="theme-hd"><span class="dot" style="background:#C4533A"></span>格 · underline</div>
+    <div class="theme-body">
+      <table class="vals">
+        <tr><th>态</th><th>bg</th><th>border</th><th>fg</th><th>padding</th><th>radius</th></tr>
+        <tr><td>刚查过</td><td>transparent</td><td>2.5px solid #C4533A</td><td>inherit</td><td>0 0 1px 0</td><td>0</td></tr>
+        <tr><td>复习中</td><td>transparent</td><td>1.5px solid rgba(196,83,58,.42)</td><td>inherit</td><td>0 0 1px 0</td><td>0</td></tr>
+        <tr><td>已掌握</td><td colspan="5" style="color:#8C3A2E;font-weight:600">— 不标识（无 token）—</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="theme-block night">
+    <div class="theme-hd"><span class="dot" style="background:#DB7E6B"></span>夜 · glow</div>
+    <div class="theme-body">
+      <table class="vals">
+        <tr><th>态</th><th>bg</th><th>border</th><th>fg</th><th>padding</th><th>radius</th></tr>
+        <tr><td>刚查过</td><td>transparent</td><td>none</td><td>#FFD9B8</td><td>1px 3px</td><td>3px</td></tr>
+        <tr><td>复习中</td><td>transparent</td><td>none</td><td>#DEDCD7</td><td>1px 3px</td><td>3px</td></tr>
+        <tr><td>已掌握</td><td colspan="5" style="color:#8C3A2E;font-weight:600">— 不标识（无 token）—</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="note ok">
+    <b>三档的「读法」各有一条递减规则</b>（这是三档最重要的差异，不是配色）：
+    墨 = <b>背景透明度递减</b>（.15 → .075）·
+    格 = <b>线宽递减</b>（2.5 → 1.5px）·
+    夜 = <b>暖度递减</b>（暖奶油 → 中性灰）。<br><br>
+    ⚠️ <b>夜档原本写的是「亮度递减」——已修正</b>。那个说法在三态下成立（靠「已掌握」把亮度拉到 <code>.291</code>）；
+    只剩两态时，实测亮度仅 <code>.743 → .716</code>（几乎无差），
+    <b>实际区分靠的是暖度/彩度</b>。→ 若真机觉得夜档两态难辨，<b>这里就是首要怀疑点</b>。
+  </div>
+</section>
+
+<!-- ═══════════ 5. 已知偏差 ═══════════ -->
+<section class="sect">
+  <div class="sect-head">
+    <div class="sect-title">⑤ 已知偏差（实现里已写进注释，此处集中列出）</div>
+    <div class="sect-sub">
+      Flutter 的 <code>TextStyle</code> 与 HTML 内联元素能力不同。以下四项<b>不是「还没做」，是 API 不存在</b>（已核实 SDK 源码）。
+    </div>
+  </div>
+
+  <div class="theme-block" style="background:#F7F4EC">
+    <div class="theme-body">
+      <table class="vals">
+        <tr><th>设计稿</th><th>Flutter TextStyle</th><th>影响</th></tr>
+        <tr><td><code>border-radius: 3px</code></td><td>❌ 无圆角（<code>background</code> 是 <code>Paint</code>）</td><td>墨档（直角）</td></tr>
+        <tr><td><code>padding: 1px 3px</code></td><td>❌ 无 padding 字段</td><td>墨档（背景紧贴字形）</td></tr>
+        <tr><td><code>border-bottom: 2.5px</code></td><td>⚠️ <code>decorationThickness</code> 是<b>笔画倍数</b>，不是像素</td><td>格档（线宽需真机标定）</td></tr>
+        <tr><td>border 贴在盒底</td><td>⚠️ <code>underline</code> 在<b>基线下方</b>，无偏移可调</td><td>格档（线离文字更近）</td></tr>
+      </table>
+      <div class="note" style="margin-top:16px">
+        <b>按档看影响程度</b>：<br>
+        · <b>夜（前景色）</b> —— ✅ <b>完美还原</b>，<code>color</code> 一一对应，零偏差<br>
+        · <b>格（下划线）</b> —— ✅ 语义完全对（本来就是线），只是线宽/位置要真机目视标定<br>
+        · <b>墨（底色浸染）</b> —— ⚠️ 语义对，但<b>无圆角、无 padding</b>（就是第 ③ 节那组对照）
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="foot">
+  <b>相关文件</b>
+  <ul>
+    <li><code>app/lib/widgets/trace_segmenter.dart</code> —— 区间切分（<b>零 Flutter 依赖</b>，可独立验证）</li>
+    <li><code>app/lib/widgets/trace_text.dart</code> —— 渲染层（本文档第 ⑤ 节的偏差都写在它的类注释里）</li>
+    <li><code>scripts/trace_verify/</code> —— 76 项断言（<code>dart run bin/verify_trace.dart</code>）</li>
+    <li><code>docs/design/design-system-spec-2026-09-25.md</code> §一 / §1.1 / §八 —— 痕迹的规格来源</li>
+  </ul>
+  <p style="margin-top:16px">
+    ⚠️ <b>本页是 CSS 画的对照工具，不是 Flutter 的渲染结果</b> ——
+    真机效果要等痕迹接进阅读界面（Step 3.4）后目视确认。
+    本页的作用只是让你在<b>不用编译</b>的情况下先判断两件事：
+    「两态分得清吗」与「墨档的圆角值不值得上自绘」。
+  </p>
+</div>
+
+</div>
+</body>
+</html>
