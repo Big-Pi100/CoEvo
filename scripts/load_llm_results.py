@@ -44,6 +44,9 @@ _spec = importlib.util.spec_from_file_location(
     'cwc', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'coevo_wordlib_contract.py'))
 cwc = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(cwc)
+# 🔑 聚合页 content 的**唯一产出点** —— 与 `incremental_clustering` 共用，
+#    避免两条路各写一份格式（那正是 2026-09-29 查出「新页端侧读不出来」的根因）。
+import aggregate_page_content as apc  # noqa: E402
 sys.stdout.reconfigure(encoding='utf-8')
 
 ROOT = cwc.ROOT
@@ -698,13 +701,14 @@ def main():
         items = []
         for w, root_gloss in members:
             sp = wid_to_word[w]
-            items.append({'word': sp, 'word_id': w, 'gloss': word_zh(sp)})
-        items.sort(key=lambda x: x['word'])
-        content = json.dumps({'front': label, 'sections': [
-            {'type': 'cognate_list',
-             'source': {'form': key, 'type': 'root', 'origin': origin or '',
-                        'meaning': next((g for _, g in members if g), '')},
-             'items': items}]}, ensure_ascii=False)
+            items.append(apc.make_item(sp, w, word_zh(sp)))
+        # 🔑 排序 + 序列化交给 `aggregate_page_content`（唯一产出点）——
+        #    与增量路径共用：两条路产出的库必须逐字节一致。
+        content = apc.dump_content(
+            label,
+            apc.root_source(key, origin, next((g for _, g in members if g), '')),
+            items,
+        )
         cur = con.execute('INSERT INTO aggregate_page (page_type,group_id,front,content,member_count) '
                           'VALUES (?,?,?,?,?)', ('root', gid, label, content, len(items)))
         pid = cur.lastrowid
@@ -739,14 +743,11 @@ def main():
         for (w,) in members:
             sp = spelling_of(w)
             if sp:
-                items.append({'word': sp, 'word_id': w, 'gloss': word_zh(sp.lower())})
+                items.append(apc.make_item(sp, w, word_zh(sp.lower())))
         if len(items) < 3:
             continue
-        items.sort(key=lambda x: x['word'])
-        content = json.dumps({'front': label, 'sections': [
-            {'type': 'cognate_list',
-             'source': {'form': af, 'aliases': aliases, 'language': alang, 'meaning': amean},
-             'items': items}]}, ensure_ascii=False)
+        content = apc.dump_content(
+            label, apc.etymon_source(af, aliases, alang, amean), items)
         cur = con.execute('INSERT INTO aggregate_page (page_type,etymon_id,front,content,member_count) '
                           'VALUES (?,?,?,?,?)', ('etymon', aid, label, content, len(items)))
         pid = cur.lastrowid

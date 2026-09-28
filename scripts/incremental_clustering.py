@@ -36,6 +36,13 @@
 
 from collections import defaultdict
 
+# 🔑 聚合页 content / label 的**唯一产出点**（与 `load_llm_results` 共用）
+#    · 本文件原先自己拼 `{'members': [...]}`，与现网格式**完全不同**
+#      → 用本引擎新建的聚合页，端侧读 `d['sections'][0]` 读不到 →
+#        `source=null` + 成员无释义，**且不报错**（端侧 try/catch 故意静默）
+#    · 修法是**消灭分叉**（两边都调这里），不是把格式改成另一边的样子
+import aggregate_page_content as apc  # noqa: E402
+
 PAGE_THRESHOLD = 3   # v1 §8.5「成员数 ≥ N（如 3）」
 
 
@@ -225,7 +232,7 @@ def _sync_root_group(con, rid):
         if not r:
             return None, 0
         form, origin = r[0], r[1]
-        label = f'{form} 词根族' + (f'（{origin}）' if origin else '')
+        label = apc.root_label(form, origin)
         cur = con.execute('INSERT INTO cognate_group (group_key, root_id, label, origin, size) '
                           'VALUES (?,?,?,?,0)', (form, rid, label, origin))
         gid = cur.lastrowid
@@ -282,65 +289,155 @@ def _sync_etymon_page(con, eid, size, bucket):
         bucket['pages_updated'].append((eid, size, page[0]))
 
 
-def _rebuild_page_members(con, page_id, group_or_etymon_id, kind):
-    """重建某聚合页的成员列表（含 `ord`）。
+def _source_of(con, kind, group_or_etymon_id):
+    """从数据源**重算** `section.source`（仅在现有 content 读不出时兜底）。"""
+    if kind == 'root':
+        row = con.execute('SELECT group_key, origin FROM cognate_group WHERE id=?',
+                          (group_or_etymon_id,)).fetchone()
+        if not row:
+            return None
+        key, origin = row[0], row[1]
+        meaning = con.execute(
+            'SELECT gloss FROM cognate_group_member WHERE group_id=? AND gloss IS NOT NULL '
+            'AND gloss <> '' LIMIT 1', (group_or_etymon_id,)).fetchone()
+        return apc.root_source(key, origin, meaning[0] if meaning else '')
+    e = con.execute('SELECT form, language, meaning_zh, note FROM etymon WHERE id=?',
+                    (group_or_etymon_id,)).fetchone()
+    if not e:
+        return None
+    return apc.etymon_source(e[0], apc.etymon_aliases(e[3]), e[1] or '', e[2] or '')
 
-    root 型：成员 = 该词根族的词，按 `sort_seq` 排序
-    etymon 型：成员 = 该词源的词
+
+def _rebuild_page_members(con, page_id, group_or_etymon_id, kind):
+    """重建某聚合页的**成员列表（含 `ord`）+ content**。
+
+    root 型：成员 = 该词根族的词 · etymon 型：成员 = 该词源的词
+
+    # 🔴 2026-09-29 修：原实现**只改 `aggregate_page_word`，不重建 `content`**
+    后果：成员**能出现在列表里**（端侧按 `JOIN aggregate_page_word` 取），
+    但 `items[].gloss`（成员行的**释义**）**永远不更新**——它存在
+    `content.sections[0].items[]` 里，而 content 没被重算 → 端侧成员行无释义。
+    ⚠️ 而且**不报错**（端侧那层 `try/catch` 故意静默）→ 静默失效。
+
+    # 页头信息从现有 content **保留**
+    `front` / `source` 描述的是「**族**」（词根义、语种），不随成员增减变化 →
+    保留可避免「因源数据漂移而改动页头」。读不出时（旧格式/坏数据）才重算。
+
+    # `ord` 用**字母序**
+    现网 1,777 个聚合页实测 **100% 是字母序**（`load_llm_results` 用排序后的 items 枚举）
+    → 原实现在这里用 `sort_seq`，会产出与现网不同的库（分叉点之一）。
     """
-    con.execute('DELETE FROM aggregate_page_word WHERE page_id=?', (page_id,))
     if kind == 'root':
         rows = con.execute("""
-            SELECT m.word_id FROM cognate_group_member m
+            SELECT m.word_id, w.spelling, c.content FROM cognate_group_member m
             JOIN word w ON w.id = m.word_id
-            WHERE m.group_id=? ORDER BY w.sort_seq""", (group_or_etymon_id,)).fetchall()
+            LEFT JOIN card c ON c.word_id = m.word_id
+            WHERE m.group_id=?""", (group_or_etymon_id,)).fetchall()
     else:
         rows = con.execute("""
-            SELECT we.word_id FROM word_etymon we
+            SELECT we.word_id, w.spelling, c.content FROM word_etymon we
             JOIN word w ON w.id = we.word_id
-            WHERE we.etymon_id=? ORDER BY we.ord, w.sort_seq""",
-            (group_or_etymon_id,)).fetchall()
-    for ord_, (wid,) in enumerate(rows):
+            LEFT JOIN card c ON c.word_id = we.word_id
+            WHERE we.etymon_id=?""", (group_or_etymon_id,)).fetchall()
+
+    items = apc.sort_items([
+        apc.make_item(sp, wid, apc.zh_from_card_content(cc))
+        for wid, sp, cc in rows
+    ])
+
+    # ① 关联表（`ord` 用与 content.items **相同**的顺序）
+    con.execute('DELETE FROM aggregate_page_word WHERE page_id=?', (page_id,))
+    for ord_, it in enumerate(items):
         con.execute('INSERT OR IGNORE INTO aggregate_page_word (page_id, word_id, ord) '
-                    'VALUES (?,?,?)', (page_id, wid, ord_))
+                    'VALUES (?,?,?)', (page_id, it['word_id'], ord_))
+
+    # ② content（页头保留 · 成员重算）
+    page = con.execute('SELECT front, content FROM aggregate_page WHERE id=?',
+                       (page_id,)).fetchone()
+    if not page:
+        return
+    front = page[0]
+    _, source, _ = apc.read_back(page[1])
+    if source is None:                      # 旧格式/坏数据 → 从数据源兜底重算
+        source = _source_of(con, kind, group_or_etymon_id)
+    if source is None:
+        return                              # 数据源也查不到 → 保持原样（不动）
+    con.execute('UPDATE aggregate_page SET content=? WHERE id=?',
+                (apc.dump_content(front, source, items), page_id))
 
 
 def _build_root_page(con, gid, rid):
-    import json
-    label = con.execute('SELECT label FROM cognate_group WHERE id=?', (gid,)).fetchone()[0]
+    """建 root 型（词根族）聚合页。
+
+    🔑 结构（content/label/排序）全部由 `aggregate_page_content` 产出 ——
+       与 `load_llm_results` 共用同一份定义，两条路产出的库**逐字节一致**。
+
+    ⚠️ 两处与原实现不同（都是**对齐现网口径**，不是新设计）：
+      · `items[].gloss` 改为**该词自身的中文释义**（原为词根义，会重复 N 遍）；
+        词根义移到 `section.source.meaning` —— 这正是 `load_llm_results` 2026-09-26 的修法。
+      · `ord` 用**字母序**（现网 1,777 页实测 100% 是字母序），原实现用 `sort_seq`。
+    """
+    row = con.execute('SELECT group_key, origin FROM cognate_group WHERE id=?', (gid,)).fetchone()
+    key, origin = row[0], row[1]
+    label = apc.root_label(key, origin)
+
     rows = con.execute("""
-        SELECT w.spelling, m.gloss, w.id FROM cognate_group_member m
+        SELECT m.word_id, w.spelling, m.gloss, c.content
+        FROM cognate_group_member m
         JOIN word w ON w.id = m.word_id
-        WHERE m.group_id=? ORDER BY w.sort_seq""", (gid,)).fetchall()
-    members = [{'word': sp, 'gloss': gl, 'word_id': wid} for sp, gl, wid in rows]
-    content = json.dumps({'members': members}, ensure_ascii=False)
+        LEFT JOIN card c ON c.word_id = m.word_id
+        WHERE m.group_id=?""", (gid,)).fetchall()
+    # 词根义 → source.meaning（取第一个非空，与 load_llm_results 同口径）
+    meaning = next((mg for _, _, mg, _ in rows if mg), '')
+    items = apc.sort_items([
+        apc.make_item(sp, wid, apc.zh_from_card_content(cc))
+        for wid, sp, _mg, cc in rows
+    ])
+
+    content = apc.dump_content(label, apc.root_source(key, origin, meaning), items)
     cur = con.execute(
         'INSERT INTO aggregate_page (page_type, group_id, front, content, member_count) '
-        'VALUES (?,?,?,?,?)', ('root', gid, label, content, len(members)))
+        'VALUES (?,?,?,?,?)', ('root', gid, label, content, len(items)))
     pid = cur.lastrowid
-    for ord_, m in enumerate(members):
+    for ord_, it in enumerate(items):
         con.execute('INSERT OR IGNORE INTO aggregate_page_word (page_id,word_id,ord) '
-                    'VALUES (?,?,?)', (pid, m['word_id'], ord_))
+                    'VALUES (?,?,?)', (pid, it['word_id'], ord_))
     return pid
 
 
 def _build_etymon_page(con, eid):
-    import json
-    e = con.execute('SELECT form, language FROM etymon WHERE id=?', (eid,)).fetchone()
-    label = f'{e[0]} 词源族' + (f'（{e[1]}）' if e[1] else '')
+    """建 etymon 型（词源族）聚合页。
+
+    🔑 标题带**别名**（`etymon.note`，`/` 分隔）—— 归一化后的 canonical 常是
+       不好认的古拼法（`weorc`），标题要显示成 `weorc / work（Old English·工作）词源族`。
+       与 `load_llm_results` 同口径（见 `aggregate_page_content.etymon_label`）。
+    """
+    e = con.execute('SELECT form, language, meaning_zh, note FROM etymon WHERE id=?',
+                    (eid,)).fetchone()
+    if not e:
+        return None
+    form, lang, mean, note = e[0], e[1] or '', e[2] or '', e[3]
+    aliases = apc.etymon_aliases(note)
+    label = apc.etymon_label(form, aliases, lang, mean)
+
     rows = con.execute("""
-        SELECT w.spelling, w.id FROM word_etymon we
+        SELECT we.word_id, w.spelling, c.content FROM word_etymon we
         JOIN word w ON w.id = we.word_id
-        WHERE we.etymon_id=? ORDER BY we.ord, w.sort_seq""", (eid,)).fetchall()
-    members = [{'word': sp, 'word_id': wid} for sp, wid in rows]
-    content = json.dumps({'members': members}, ensure_ascii=False)
+        LEFT JOIN card c ON c.word_id = we.word_id
+        WHERE we.etymon_id=?""", (eid,)).fetchall()
+    items = apc.sort_items([
+        apc.make_item(sp, wid, apc.zh_from_card_content(cc))
+        for wid, sp, cc in rows
+    ])
+
+    content = apc.dump_content(label, apc.etymon_source(form, aliases, lang, mean), items)
     cur = con.execute(
         'INSERT INTO aggregate_page (page_type, etymon_id, front, content, member_count) '
-        'VALUES (?,?,?,?,?)', ('etymon', eid, label, content, len(members)))
+        'VALUES (?,?,?,?,?)', ('etymon', eid, label, content, len(items)))
     pid = cur.lastrowid
-    for ord_, m in enumerate(members):
+    for ord_, it in enumerate(items):
         con.execute('INSERT OR IGNORE INTO aggregate_page_word (page_id,word_id,ord) '
-                    'VALUES (?,?,?)', (pid, m['word_id'], ord_))
+                    'VALUES (?,?,?)', (pid, it['word_id'], ord_))
     return pid
 
 
