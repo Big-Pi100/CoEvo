@@ -35,7 +35,19 @@ dependencies:
   #    （sherpa_tts.dart 已删，实测零引用；详见 docs/design/tts-unified-client-side-2026-09-26.md）
   #    保留 audioplayers —— 后端 TTS（腾讯云）保留，音频仍需端侧播放
   audioplayers: ^6.1.0
-  intl: ^0.19.0
+  # 🔴 `intl` 已于 2026-09-28 移除 —— **源码 0 处使用**。
+  #
+  # 唯一使用者是 `screens/card_list_screen.dart`（K12 遗留的旧生词本页，用 `DateFormat`）
+  # —— 该文件同日删除后，本依赖**失去全部用途**。
+  #
+  # 🔑 两条已核实的前提：
+  #   ① 项目**未使用** `flutter_localizations`（全库搜 `localizationsDelegates` /
+  #      `GlobalMaterialLocalizations` 均 0 命中）→ 移除不影响 Material 本地化
+  #   ② 日期/时间格式化现**由各页面自写**（如 `review_screen._dueLabel` 的
+  #      「3 天后」相对时间），需求简单 → 不值得为它保留一个依赖
+  #
+  # ⚠️ 判据：**依赖也是死代码**。删掉一个功能后要连它的依赖一起清，
+  #    否则依赖树会只增不减（同「删功能要清语义残留」的既定原则）。
   record: ^6.2.1
   web: ^1.1.1
   qr_flutter: ^4.1.0
