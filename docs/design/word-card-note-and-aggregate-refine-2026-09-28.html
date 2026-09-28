@@ -162,33 +162,32 @@
      本稿只做<b>调查 + 提案</b>，未动生产代码。所有数据取自真库 <code>data/word.db</code>（11,523 张卡）。</p>
 
   <div class="box g">
-    <b>三句话结论</b><br>
-    <b>①「段内说明」= 库里已有的 <code>word_mnemonic_profile.rationale</code></b> ——
-    <b>11,523 词 100% 有值</b>。<br>
-    <b>② 该不该显示，按「这个词最有效的那种记忆法有没有被给到」判，不按覆盖率</b>
-    （白哥 17:3x）+ <b>「cognate 是聚合页，不是记忆法」</b>（白哥 17:4x）
-    → <b>真正该显示的只有 957 词（8.3%）</b>：<br>
-    &nbsp;&nbsp;&nbsp;&nbsp;🔴 <code>image</code> 957 词 —— 库判「最有效」＝联想图像，而<b>卡上 94% 显示的是词源（补位来的）</b>，
-      这条线索从未出现 → <b>做法乙：把它升格为 ①</b>（§1.8 / 样张 §1.9）<br>
-    &nbsp;&nbsp;&nbsp;&nbsp;🚫 <code>cognate</code> <b>撤回</b> —— 它<b>不是记忆法，是聚合页</b>；
-      它在<b>四个层面被误注册成了记忆法</b>（这是「老是」的根因）→ <b>§1.10</b><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;⚠️ <code>context</code> 1,410 词 <b>不能按类型决定</b> —— 它是「默认附加」的<b>兜底类别</b>，
-      rationale 里 31% 讲搭配、25% 讲联想、37% 杂项（见 §1.7）<br>
-    <b>③ 聚合页「不好看」能指到 4 处 CSS</b>，最要紧的一处是：
-    <b>成员行被做成了 N 张粘土卡</b>，而锚点里是<b>平坦列表 + 细下分隔线</b>（见 §2）。<br>
-    <b>④ 条目可点「技术上零阻力」</b>（查词通路与浮层都已存在），
-    但形态与落点<b>需要你定</b>（见 §3）。
+    <b>四句话结论</b><br>
+    <b>①🔴 真正的「优先级」问题我前面搞错了</b> —— 白哥 18:0x 质疑成立：
+    <b>有效性排序是 <code>mnemonic_type.priority</code>（root 1 最高 … image 5），
+    而我拿「缺口」当成了有效性</b>，于是把 <code>image</code>（倒数第二）排成了 P0。
+    → <b>§二</b>。而真正的缺陷在那边：<b>卡片排序「不经过优先级排序」→ 859 词的 ① 放错</b>。<br>
+    <b>②「段内说明」= 库里已有的 <code>rationale</code></b>（11,523 词 100% 有值），
+    但它是<b>附注</b>（「为什么这个词用那种法」），<b>归属 = 那条法对应的段</b> ——
+    <b>不是「优先级」问题</b>，量小（<code>image</code> 957 + <code>context</code> 1,410）→ 可最后再定。<br>
+    <b>③ <code>cognate</code> 不是记忆法，是聚合页</b>（白哥 17:4x）——
+    它在<b>四处被误注册</b>成记忆法，这是「老是跑回来」的根因 → <b>§1.10</b>。<br>
+    <b>④ 聚合页「不好看」能指到 4 处 CSS</b>，最要紧的一处是：
+    <b>成员行被做成了 N 张粘土卡</b>，而锚点里是<b>平坦列表 + 细下分隔线</b>（见 §三）。<br>
+    <b>⑤ 条目可点「技术上零阻力」</b>（查词通路与浮层都已存在）→ 形态与落点待你定（见 §四）。
   </div>
 
   <div class="q" style="border-left-color:#A33220">
-    <b>🔴 本稿已撤回两处提案（2026-09-28 17:4x）</b><br>
-    <b>① 撤回 <code>cognate</code> 的整条提议</b>（上一版列为 P1 + 给了「做法甲：贴 ② 之下」）——
-    白哥：「<b>cognate 同源串记 —— 是聚合页，现在还总是把这个放在记忆法里</b>」。
-    <br>→ 新增 <b>§1.10</b>：查到它在<b>四处</b>（<code>mnemonic_type</code> 注册表 /
-    <code>word_mnemonic_profile</code> 分配表 / <code>card.sections</code> / 代码）都被当成记忆法注册，
-    这才是「老是」的根因。<br>
-    <b>② 撤回一条查错的结论</b>：上一版写「<code>root</code> 段 entry 全部为空」——
-    真值是 <b>2,988 有 / 2,496 无</b>（入口藏在 <code>payload</code> 里，我按顶层键数错了）→ 见 §1.6。
+    <b>🔴 本稿已撤回 / 作废的内容（三批）</b><br>
+    <b>批次三（2026-09-28 18:0x，白哥：「你为什么判定 image 和 collocation 是最高优先级…
+    原来的排序中是 root 和 etymology 最高」）</b><br>
+    → <b>§1.4 的整张排序表作废</b>（依据错了：用「缺口」冒充「有效性」）·
+    <b>§1.8 的「做法乙：升格为 ①」撤回</b>（把最低优先级的法提到 ①，正是反 priority）·
+    新增 <b>§二 / §1.11</b>（真正的优先级问题 + 一处新发现的规格冲突）。<br>
+    <b>批次二（17:4x）</b>：撤回 <code>cognate</code> 的整条提议（它根本不是记忆法）·
+    撤回一条查错的结论（<code>root</code> 段 entry 真值是 2,988 有 / 2,496 无）。<br>
+    <b>批次一（17:3x）</b>：判据从「重合率」改为「最有效的线索有没有给到」
+    <span class="muted">—— 这一改<b>方向对了一半</b>：换掉了错指标，但没回到「有效性」本身（批次三补上）。</span>
   </div>
 
   <div class="q">
@@ -517,11 +516,43 @@
 
   </div>
 
-  <h3>1.4 建议口径 —— 按「最有效的那条线索有没有给到」排序</h3>
+  <h3>1.4 建议口径 —— 🔴 上一版这张表<b>整体作废</b>（依据错了）</h3>
 
-  <p class="muted">判据换了（§1.0），口径表也跟着换了。旧版按重合率排的
-    「A = context + image / B = 再加两类」<b>已作废</b> —— 原因见 §1.2 与 §1.7。</p>
+  <div class="box" style="border-left-color:#A33220;background:#FDF3F0">
+    <b>上一版这里是</b>「P0 = <code>image</code> ／ P2 = <code>collocation</code> ／ ⚪ 不显示 = <code>root</code> + <code>etymology</code>」<br>
+    → 与库里的 priority <b>几乎完全相反</b>：把 <code>image</code>（5，倒数第二）放最前、
+    把 <code>root</code>（1，最高）放最后。<br>
+    🔴 <b>错因</b>：这张表排的是「<b>哪里缺</b>」，却被我标成了「<b>哪种法更有效</b>」。
+    <b>「缺」与「有效」是两件事</b> —— 见 <b>§二</b>（白哥 18:0x 的质疑）。
+  </div>
 
+  <p>正确要<b>分成两问</b>：</p>
+
+  <table>
+    <tr><th>问题</th><th>该怎么排</th><th>现在怎么办</th></tr>
+    <tr>
+      <td><b>卡片 ①② 该显示哪两条？</b><br><span class="muted">（这才是「优先显示最有效的记忆法」）</span></td>
+      <td><b>按 <code>mnemonic_type.priority</code></b><br>
+        root(1) → 同源(2·非记忆法) → 词源/搭配(3–4) → 联想(5)</td>
+      <td class="bad">🔴 现状不按它排 → <b>859 词的 ① 放错</b>
+        → <b>走 §二 的修复（甲 / 乙）</b></td>
+    </tr>
+    <tr>
+      <td><b><code>rationale</code>（段内说明）该不该显示？</b></td>
+      <td>它是「<b>为什么这个词用 <code>primary_code</code> 那种法</b>」的<b>附注</b> ——
+        <b>归属 = 那条法对应的段</b>：<br>
+        · 该段<b>上了卡</b> → 贴它下面<br>
+        · 该段<b>没上卡</b>（无段 / 被更高优先级挤掉）→ <b>无出口</b></td>
+      <td>仍是<b>真问题</b>，但属「<b>附注缺承载</b>」，<b>与优先级排序无关</b>；
+        量小（<code>image</code> 957 + <code>context</code> 1,410）→ <b>可最后再定</b></td>
+    </tr>
+  </table>
+
+  <p class="muted">⚠️ 本稿以下各处出现的「P0 / P1 / P2」都属<b>上一版的错误排序</b> ——
+     保留原文只为记录「错在哪」，<b>不要照它实现</b>。</p>
+
+  <details style="margin:12px 0;font-size:13px">
+    <summary style="cursor:pointer;color:#8A6A22;font-weight:600">展开看已被作废的原表（留档）</summary>
   <table>
     <tr><th>优先级</th><th>primary</th><th>词数</th><th>落点（§1.8）</th><th>为什么在这个位置</th></tr>
     <tr class="ok">
@@ -556,7 +587,7 @@
   </table>
 
   <p><b>→ 建议：先做 P0（957 词，做法乙）。</b>
-     <span class="muted">（上一版的「P0+P1 = 1,152 词」已作废 —— P1 撤回。）</span></p>
+     <span class="muted">（「P0+P1 = 1,152 词」已作废 —— P1 撤回。）</span></p>
 
   <div class="box">
     🔑 <b>为什么 P0 是「有效性最低」的 <code>image</code>，而不是 priority 最高的 <code>root</code></b>？<br>
@@ -565,7 +596,13 @@
     · <code>image</code> 的法<b>只在抽象词上可用</b>（适用面窄，所以 priority 低），
       但<b>对那些词它是唯一可行的法</b>，而卡上<b>一点没给</b> →
       <b>「有效」是相对于这个词的</b>，而 <code>primary_code</code> 记的正是「对那个词最有效的法」。
+    <br><br>
+    🔴 <b>上面这段推理现在看是错的</b>（白哥 18:0x 质疑）：<br>
+    它把「<b>对这个词的相对适用性</b>」与「<b>记忆法本身的有效性排序</b>」混成了一句，
+    于是得出了「<code>image</code> 排 P0」这个与 priority <b>相反</b>的结论。
+    <b>正确的分法见 §二</b>。
   </div>
+  </details>
 
   <div class="q">
     <b>Q-scope · 是否要把 <code>context</code> 类里「内容其实是联想/搭配」的那些捞回来？</b><br>
@@ -630,7 +667,7 @@
         <code>entry = null</code> 但 <code>payload.entry = {"page_id":4,"label":"cept 词根族（Latin）","size":22}</code>
         → 按访问器取值<b>是能点的</b>。<br>
         🔑 <b>这又是同一个坑：按「我想当然的字段位置」数，而不是按「代码实际取值的位置」数。</b>
-        与 §2.7.2 记的「看不见但决定界面的字段」是同一条判据 —— <b>这次连字段本身都看错了位置</b>。</td>
+        与 `ARCHIVE.md` §2.7.2 记的「看不见但决定界面的字段」是同一条判据 —— <b>这次连字段本身都看错了位置</b>。</td>
     </tr>
   </table>
 
@@ -666,7 +703,40 @@
      问题只是<b>被贴上了错的类型标签</b>。所以这不是「数据没用」，是「分类不准」。
      → 见 §1.4 的 <b>Q-scope</b>。</p>
 
-  <h3>1.8 🔑 两种落点 —— 「升格为 ①」还是「补一行小字」</h3>
+  <h3>1.8 🔑 两种落点 —— 🔴 其中「做法乙」已<b>撤回</b>（它违反 priority）</h3>
+
+  <div class="box" style="border-left-color:#A33220;background:#FDF3F0">
+    <b>为什么撤回「升格为 ①」</b><br>
+    上一版的想法是：<code>image</code> 的词卡上 ① 被补位成 <code>etymology</code>，
+    那就把 rationale（联想）<b>升格成 ①</b>，让「最有效的那条」占据最显眼的位置。<br>
+    🔴 <b>但按 <code>priority</code>，<code>image</code>(5) 是<u>最低</u>的记忆法</b> ——
+    把它提到 ①，<b>正是「不按有效性排序」</b>，与白哥 18:0x 的质疑直接冲突。<br>
+    <span class="muted">（上一版之所以觉得它对，是因为用了「缺口」当判据 —— 见 §二。）</span>
+  </div>
+
+  <p>那么 rationale 该落在哪？按 §1.4 的分法，它是<b>附注</b>，归属 = <b><code>primary_code</code> 那条法对应的段</b>：</p>
+
+  <table>
+    <tr><th>情况</th><th>做法</th><th>量</th></tr>
+    <tr>
+      <td>该段<b>上了卡</b>（① 或 ②）</td>
+      <td>贴它下面当说明（<b>唯一的「段内说明」用法</b>，与锚点 <code>.mnem-note</code> 一致）</td>
+      <td>取决于排序修复后的结果</td>
+    </tr>
+    <tr class="bad">
+      <td>该段<b>没上卡</b><br><span class="muted">（无段 / 被更高优先级挤掉 / 是 offCard）</span></td>
+      <td class="bad">🔴 <b>它没有位置</b> —— 硬塞会产生「这行字在讲哪一段？」的错位。<br>
+        可选：① 不显示 ② 补一条「未上卡的那类」的小字（<b>要新设计，不在本稿</b>）</td>
+      <td><code>image</code> 957 · <code>context</code> 1,410</td>
+    </tr>
+  </table>
+
+  <p>🔑 <b>关键</b>：排序修复（§二 甲/乙）会<b>改变</b>「该段上没上卡」的分布 ——
+     所以 rationale 的落点<b>要等排序定案后再排</b>，否则会白做一遍。</p>
+
+  <p class="muted">以下为上一版的原文（含已撤回的「做法乙」），保留供对照：</p>
+
+  <h3 style="color:#8A6A22">（原文留档）两种落点 —— 「升格为 ①」还是「补一行小字」</h3>
 
   <p>白哥那句「<b>优先显示的应该是那种记忆法最有效</b>」还指向一层我没写到的做法：
      <b>与其在别处补一行小字，不如把那条最有效的记忆法本身放到它该在的位置。</b>
@@ -946,7 +1016,126 @@
   </ul>
 
   <!-- ═══════════════════════════════════════════════════ -->
-  <h2>二、聚合页为什么「不太好看」—— 4 处能指到 CSS</h2>
+  <h2>二、🔴🔴 真正的「优先级」问题 —— 我前面把它整个搞错了</h2>
+
+  <p>白哥 2026-09-28 18:0x：「<b>你为什么判定 image 和 collocation 是最高优先级的记忆法，
+     在原来的排序中是 root 和 etymology 是最高优先级的记忆法</b>」<br>
+     <b>—— 质疑成立。我把两件不同的事混成了一件：</b></p>
+
+  <table>
+    <tr><th></th><th>那是什么</th><th>权威来源</th><th>我上一版用了哪个</th></tr>
+    <tr>
+      <td><b>L1</b></td>
+      <td><b>哪种记忆法本身更有效</b>（跨所有词的绝对排序）</td>
+      <td class="ok"><code>mnemonic_type.priority</code>：<br>
+        <b>root(1) &gt; 同源(2) &gt; 词源/搭配(3–4) &gt; 联想(5) &gt; 语境(6·附加)</b></td>
+      <td class="bad">❌ 完全没查</td>
+    </tr>
+    <tr>
+      <td><b>L2</b></td>
+      <td><b>这张卡上缺了哪条线索</b>（单词的承载诊断）</td>
+      <td>我自己算的「缺口」</td>
+      <td class="bad">❌ <b>拿它冒充了 L1</b></td>
+    </tr>
+  </table>
+
+  <div class="box" style="border-left-color:#A33220;background:#FDF3F0">
+    <b>🔴 我错在哪（一句话）</b><br>
+    「缺口大」只说明<b>那里漏得厉害</b>，与「那条法是否有效」<b>完全无关</b>。<br>
+    于是我把 <b><code>image</code>（priority <u>5</u>，倒数第二）排成了 P0「最该显示」</b>，
+    把 <b><code>root</code>(1) / <code>etymology</code>(3) 排成了「不显示」</b> ——
+    <b>与库里的有效性排序几乎完全相反</b>。<br>
+    <span class="muted">这与上一轮我犯的错是<b>同一个病</b>：拿一个代理指标（上轮是「重合率」，这轮是「缺口」）当作目的。
+      上一轮的教训我只改对了一半 —— <b>换了指标，但没回到「有效性」本身</b>。</span>
+  </div>
+
+  <h3>1.11 而真正的 L1 问题，现状是「<b>不经过优先级排序</b>」</h3>
+
+  <div class="box">
+    <b>v1（L0）§4.1 原文 —— 明文规定了该按 priority 选</b><br>
+    <span class="spec">「制卡时按 <code>mnemonic_type.priority</code> 选主记忆法和次记忆法，组合成一页。」</span><br>
+    <span class="muted">（v1 §四「记忆法」一行也写：「制卡时按优先级组合，内容固化」）</span>
+  </div>
+
+  <p>而实现的注释自己写着（<code>word_query_service.dart</code> §620 附近）：</p>
+  <div class="box" style="border-left-color:#A33220">
+    <span class="spec" style="color:#A33220">「因为<b>直接用本表的分配结果，不经过优先级排序</b> → 绕开了这处矛盾」</span>
+  </div>
+
+  <p>→ 于是 <code>primary_code</code>（L2）<b>覆盖</b>了 <code>priority</code>（L1）。
+     实测偏离（候选只取 mnemonic_type 里注册、且非 <code>context</code>/<code>cognate</code> 的类型）：</p>
+
+  <table>
+    <tr><th>口径</th><th>①② 与 priority 不符</th><th>其中 <b>① 位置放错</b><br><span class="muted">（最显眼处不是最有效的法）</span></th><th>典型</th></tr>
+    <tr>
+      <td><b>按库表</b><br><span class="muted">etymology 3 · collocation 4</span></td>
+      <td class="bad"><b>881 / 11,523（7.6%）</b></td>
+      <td class="bad"><b>859（7.5%）</b></td>
+      <td><code>collocation+etymology</code> 应为 <code>etymology+collocation</code> ——<b>741 词</b><br>
+        <code>etymology+root</code> 应为 <code>root+etymology</code> —— 95 词<br>
+        <span class="muted">（词源排在了「最高优先级」的词根词缀前面）</span></td>
+    </tr>
+    <tr>
+      <td><b>按 v1</b><br><span class="muted">collocation 3 · etymology 4</span></td>
+      <td class="bad"><b>10,589 / 11,523（91.9%）</b></td>
+      <td class="bad"><b>5,248（45.5%）</b></td>
+      <td><code>root+etymology</code> 应为 <code>root+collocation</code> —— <b>5,341 词</b><br>
+        <code>etymology+collocation</code> 应为 <code>collocation+etymology</code> —— <b>5,130 词</b></td>
+    </tr>
+  </table>
+
+  <div class="box">
+    <b>还有一个逻辑矛盾（84 词）</b><br>
+    <code>etymology</code> 的 <code>applicable_when</code> 写的是「整体借词、<b>不可拆</b>」，
+    而实测 <b>84 个 <code>primary=etymology</code> 的词，卡上却有 <code>root</code> 段（可拆）</b>
+    → 判定与自己的条件互相打架（同 <code>cognate</code> 的老毛病：<b>判定没按规则执行</b>）。
+  </div>
+
+  <h4>🔴 又一处规格冲突 —— 需要你裁决（我无法替你定）</h4>
+
+  <table>
+    <tr><th>来源</th><th>3 级</th><th>4 级</th></tr>
+    <tr><td><b>v1 §4.1（L0 · 白哥原文）</b> —— 两处表都这样写</td><td class="ok"><b>搭配整记</b></td><td><b>词源故事</b></td></tr>
+    <tr><td><b>L1 锚点</b> <code>visual-word-card-target</code> §03</td><td class="ok"><b>搭配整记</b> <code>collocation(3)</code></td><td><b>词源故事</b> <code>etymology(4)</code></td></tr>
+    <tr><td><b>库表</b> <code>mnemonic_type</code></td><td class="bad"><b>词源故事</b></td><td><b>搭配整记</b></td></tr>
+  </table>
+
+  <p>→ <b>库表与 L0 正好相反</b>（3/4 互换）。代码的处理是「<b>以库为准（数据 &gt; 手绘稿）</b>」（注释原文）——<br>
+     🔴 <b>但这把「库表」摆在了 L0 之上，与项目分层规则（L0 最高权威）冲突</b> →
+     <b>这一条必须你定</b>（它决定下面要动多少张卡）。</p>
+
+  <h4>修复选项</h4>
+  <table>
+    <tr><th>方案</th><th>做什么</th><th>影响面</th></tr>
+    <tr class="ok">
+      <td><b>甲（推荐先做）</b><br><b>排序层统一</b></td>
+      <td><code>CardSlots.resolve</code>：不再让 <code>profile</code> 的数组顺序覆盖 priority，
+        改为「<b>该词所有可用段按 priority 排序取前 2</b>」</td>
+      <td>按库表：<b>881 词卡片顺序变化</b>（全部变成符合 priority 的那一种）<br>
+        按 v1：10,589 词变化（<b>大改，须先定 3/4 级</b>）</td>
+    </tr>
+    <tr>
+      <td><b>乙</b><br>数据层重判定</td>
+      <td>按 v1 §4.1 重算 <code>primary_code</code> =「该词<b>适用类型里 priority 最高的</b>」</td>
+      <td>治本（profile 与 priority 永久一致）；成本 = 重跑一遍判定</td>
+    </tr>
+    <tr>
+      <td><b>丙</b><br>不动</td>
+      <td>保留「profile 判定优先于 priority」的现状</td>
+      <td class="bad">🔴 那就要承认 <b>v1 §4.1 的「按 priority 选」没被执行</b> ——
+        得有明文结论，否则每次有人读 v1 都会发现这个矛盾</td>
+    </tr>
+  </table>
+
+  <div class="box g">
+    <b>顺带说明：这解释了「为什么词卡看起来不错但总觉得哪里不对」</b><br>
+    · 卡片本身排版（上一轮做完的方案 A）没问题；
+    · 但 <b>7.5% 的卡，① 放的不是最有效的那条法</b> ——
+    用户看不出「错」，只是<b>那几张卡的记忆法没有按有效性排序</b>。
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <h2>三、聚合页为什么「不太好看」—— 4 处能指到 CSS</h2>
 
   <p>对照 L1 锚点 <code>visual-word-card-target</code> §04（点击 ① 展开的那两屏），
      逐条比对实现 <code>aggregate_page_screen.dart</code>：</p>
@@ -991,7 +1180,7 @@
   </table>
 
   <h3>2.1 并排对比（真实 <code>cept</code> 族前 6 条）</h3>
-  <p class="muted">左侧＝当前实现（按代码还原）；右侧＝照锚点 + <b>加可点</b>（见 §3）。
+  <p class="muted">左侧＝当前实现（按代码还原）；右侧＝照锚点 + <b>加可点</b>（见 §四）。
      成员与分拆法都是真库数据（该族 22/22 有分拆法）。</p>
 
   <div class="stage">
@@ -1094,7 +1283,7 @@
   </div>
 
   <!-- ═══════════════════════════════════════════════════ -->
-  <h2>三、聚合页条目「点进词库」—— 通路已具备，形态要你定</h2>
+  <h2>四、聚合页条目「点进词库」—— 通路已具备，形态要你定</h2>
 
   <h3>3.1 现状：不可点，而且是「看起来能点但点不动」</h3>
 
@@ -1168,48 +1357,71 @@
   </div>
 
   <!-- ═══════════════════════════════════════════════════ -->
-  <h2>四、待你定的事（汇总）</h2>
+  <h2>五、待你定的事（汇总）</h2>
 
   <table>
     <tr><th>#</th><th>决定</th><th>选项</th><th>我的建议</th></tr>
-    <tr><td>1</td><td><b>段内说明显示范围</b><br><span class="muted">（判据 = 「最有效的线索有没有给到」）</span></td>
-      <td><b>P0</b> 仅 <code>image</code>（957）／ 再加 <code>collocation</code>（1,059）／ 先不做<br>
-        <span class="muted">（<code>cognate</code> 已撤回，不再是选项）</span></td>
-      <td class="ok"><b>P0</b></td></tr>
-    <tr><td>2</td><td><b>落点做法</b>（§1.8）</td>
-      <td><b>乙</b> <code>image</code> 升格为 ①（推荐）／ 走甲（纯小字、<b>不动</b> <code>CardSlots.resolve</code>）</td>
-      <td class="ok"><b>乙</b> —— 只有乙才真的「优先显示」</td></tr>
-    <tr><td>1b</td><td><code>context</code> 类（1,410）怎么处置</td>
-      <td>① 先搁置（推荐）／ ② 按 rationale 内容捞（≈790）／ ③ 重跑 LLM 分类</td>
-      <td class="ok"><b>①</b> —— 分类不准，规则会变成「猜」</td></tr>
+    <tr class="bad" style="background:#FDF3F0">
+      <td><b>🔴 Ⅰ</b></td>
+      <td><b><code>priority</code> 3/4 级谁对？</b>（§1.11）<br>
+        <span class="muted">v1 §4.1（L0）说「搭配整记 3 &gt; 词源故事 4」，库表 <code>mnemonic_type</code> 正好相反</span></td>
+      <td><b>甲</b> 以 v1 为准（改库表）→ 要动 <b>91.9% 的卡</b> ／
+        <b>乙</b> 以库表为准（改 v1 与锚点）→ 只动 881 词 ／
+        <b>丙</b> 维持「数据优先」现状但明文写清</td>
+      <td class="warn"><b>乙</b>（改动面最小、且现状已按库表跑了一年）<br>
+        <span class="muted">但这是 <b>L0 与数据的冲突</b>，只能你定 —— 我不替你选</span></td></tr>
+    <tr class="bad" style="background:#FDF3F0">
+      <td><b>🔴 Ⅱ</b></td>
+      <td><b>卡片排序修不修</b>（§二）<br>
+        <span class="muted">现状「不经过优先级排序」→ 859 词的 ① 放错（按库表口径）</span></td>
+      <td><b>甲</b> <code>CardSlots.resolve</code> 改为按 priority 排序取前 2（<b>一处代码，可断言</b>）／
+        <b>乙</b> 按 v1 §4.1 重判定 <code>primary_code</code>（治本，成本高）／
+        <b>丙</b> 不动（须明文承认 v1 §4.1 未被执行）</td>
+      <td class="ok"><b>甲</b>（先止血）→ 再评估乙</td></tr>
     <tr class="bad" style="background:#FDF3F0">
       <td><b>🆕 0</b></td>
       <td><b><code>cognate</code> 从记忆法层摘掉</b>（§1.10）<br>
         <span class="muted">白哥 17:4x：「是聚合页，现在还总是把这个放在记忆法里」</span></td>
       <td><b>A</b> 从注册表/分配/卡片段/代码四处摘干净（推荐）／ B 只改显示名 ／ C 只改文档</td>
-      <td class="ok"><b>A</b> —— 但<b>涉及词库数据，须你单独批</b><br>
-        <span class="muted">实测界面零变化（那 195 词现在已是补位结果）；且全为删除、可回滚</span></td></tr>
+      <td class="ok"><b>A</b> —— <b>涉及词库数据，须你单独批</b><br>
+        <span class="muted">实测界面零变化；且全为删除、可回滚</span></td></tr>
+    <tr><td><b>Ⅲ</b></td>
+      <td><b>段内说明（<code>rationale</code>）最后再定</b><br>
+        <span class="muted">它是附注，落点取决于 Ⅱ 的结果（§1.8）—— <b>顺序上应排在 Ⅱ 之后</b></span></td>
+      <td>· 段上了卡 → 贴它下面（段内说明）<br>
+        · 段没上卡（<code>image</code> 957 / <code>context</code> 1,410）→ 不显示 ／ 另设计承载</td>
+      <td class="warn">先做 Ⅰ + Ⅱ，再做这个<br>
+        <span class="muted">（上一版的 P0/P1/P2 排序已作废）</span></td></tr>
+    <tr><td>1b</td><td><code>context</code> 类（1,410）rationale 怎么处置</td>
+      <td>① 先搁置（推荐）／ ② 按 rationale 内容捞（≈790）／ ③ 重跑 LLM 分类</td>
+      <td class="ok"><b>①</b> —— 分类不准，规则会变成「猜」</td></tr>
     <tr><td>3</td><td>聚合页成员行形态</td><td>② 平坦行 + <code>›</code> / ① 粘土行 + onTap</td><td class="ok"><b>②</b></td></tr>
     <tr><td>4</td><td>点开之后去哪</td><td>a 查词浮层 / b 复习卡 / c 新页</td><td class="ok"><b>a</b></td></tr>
     <tr><td>5</td><td>聚合页其余 3 处（顶栏族名 / 页头居中 / 词列对齐）</td><td>一起改 / 只改可点</td><td>一起改（都在锚点里写着）</td></tr>
-    <tr><td>6</td><td>做法甲要不要小标签前缀<br><span class="muted">（若走甲而非乙）</span></td><td>加 / 不加（锚点原文不加）</td><td>不加（更贴锚点）</td></tr>
   </table>
 
+  <div class="box">
+    <b>顺序建议</b>：<b>Ⅰ</b>（定 3/4 级）→ <b>Ⅱ</b>（改排序逻辑）→ <b>Ⅲ</b>（rationale 落点，依赖 Ⅱ）<br>
+    + 并行的 <b>0</b>（cognate 摘除，独立）与聚合页三项（与词库无关，随时可做）。<br>
+    🔑 <b>Ⅲ 不要先做</b> —— Ⅱ 会改变「哪条法上卡」，先做会白做一遍（这正是上一版的问题）。
+  </div>
+
   <div class="box" style="margin-top:26px">
-    <b>下一步</b>：你定完上表，我按定稿改
-    <code>aggregate_page_screen.dart</code>（成员行 / 页头 / 顶栏）+
-    <code>widgets/word_card.dart</code>（段内说明 / 升格）、
-    若采做法乙还要动 <code>services/word_query_service.dart</code> 的 <code>CardSlots.resolve</code>。
+    <b>下一步</b>：先定 <b>Ⅰ</b>（3/4 级）与 <b>Ⅱ</b>（排序修不修），我再动代码。<br>
+    <b>Ⅱ 若走甲</b>：改 <code>services/word_query_service.dart</code> 的 <code>CardSlots.resolve</code>
+    （<b>被 <code>query_verify</code> 断言守护</b>，须同步补断言）；<br>
+    聚合页三项（成员行 / 页头 / 顶栏）与该文件无关，可随时先做 → 改 <code>aggregate_page_screen.dart</code>。<br>
     <br>
     <b>要补的断言</b>（编译器都看不见，只能靠断言）：
     <ul>
+      <li>🔴 <b><code>CardSlots.resolve</code> 的结果必须与 priority 一致</b>
+        （新：这是本轮最重要的断言 —— 现状 859 词不符）</li>
       <li>聚合页：成员行<b>平坦</b>且<b>可点</b>（「凸起但不可点」是已定禁忌）</li>
       <li>聚合页：页头<b>居中</b>且有下边线；顶栏有族名</li>
-      <li>卡片：<b>只有 <code>image</code> 类</b>的词才用合成段（不许外溢到别的类型）</li>
-      <li>卡片：合成段<b>不带 <code>›</code></b>（无 <code>entry</code> → 不许出现「有箭头点不动」）</li>
       <li><code>CardSlots</code>：<code>offCard</code> / <code>order</code> 仍与 <code>mnemonic_type.priority</code> 一致</li>
+      <li>（若做 Ⅲ）合成段<b>不带 <code>›</code></b>（无 <code>entry</code> → 不许「有箭头点不动」）</li>
     </ul>
-    ⚠️ 本轮<b>未动生产代码</b>（设计类任务只产出文件）。
+    ⚠️ 本轮<b>未动生产代码</b>（设计类任务只产出文件）。本轮也<b>未改词库数据</b>。
   </div>
 
 </div>
