@@ -126,6 +126,16 @@ Future<void> main(List<String> args) async {
       nextReviewAt: now.add(const Duration(days: 14)),
     );
 
+    // 🔴 **前置守卫**：列表查询必须能读出刚写入的 4 条。
+    //
+    // 为什么单列一条：若这里就空了（JOIN 写错 / 表名错 / 过滤条件反了），
+    // 后面**所有**依赖 `.first` 的断言都会**崩在异常上** ——
+    // 而崩溃会被误读成「环境问题」（本项目已踩过：3.4c 的迁移脚本当时就是崩着退出的）。
+    // → 先给一条**根因明确**的红，再让后续断言各自报红（而不是一起崩掉）。
+    final baseline = await q.list();
+    check('🔴 前置守卫：写入后可读出 4 条（否则后续断言会崩而非报红）',
+        baseline.length == 4, '实得 ${baseline.length} 条');
+
     final st = await q.stateOf('w001720');
     check('stateOf 读回成功', st != null);
     check('  spelling 正确', st?.spelling == 'receive', '${st?.spelling}');
@@ -168,8 +178,8 @@ Future<void> main(List<String> args) async {
             'Reception,capture,receive,agent',
         byRecent.map((e) => e.spelling).toList().join(','));
     check('🔑 刚更新但上次复习很早的词排第一（COALESCE 会排错）',
-        byRecent.first.spelling == 'Reception',
-        'Reception.lastReviewAt=30天前, updated_at=now → 实测排第 ${byRecent.indexOf(byRecent.first) + 1}');
+        byRecent.isNotEmpty && byRecent.first.spelling == 'Reception',
+        'Reception.lastReviewAt=30天前, updated_at=now → 实测 ${byRecent.length} 行');
 
     // ── 4. 排序白名单（防注入）────────────────────────────────
     print('\n【4】排序字段白名单（不接受任意 SQL）');
@@ -251,8 +261,65 @@ Future<void> main(List<String> args) async {
     check('两页无重复',
         page1.map((e) => e.wordId).toSet().intersection(page2.map((e) => e.wordId).toSet()).isEmpty);
 
-    // ── 10. 性能 ──────────────────────────────────────────────
-    print('\n【10】性能');
+    // ── 10. 暂停过滤（LEFT JOIN user_word）+ dueOnly 筛选 ──────
+    //
+    // 🔴 这一段锁「**单一列表**」的数据基础（`ui-ux` §6.2.1）：
+    //    一个词「离开视野」不是被移出，而是 `user_word.deleted = 1`（暂停）。
+    //    而排序依据 `next_review_at` 只在 `card_review_state` → 必须 JOIN 两张表。
+    //
+    // 🔑 三条查询（`list` / `count` / `dueCount`）**必须用同一套过滤** ——
+    //    少一条就会出现「顶部说 N 个该看、列表只数得出 M 个」的自相矛盾。
+    print('\n【10】暂停过滤（JOIN user_word）与 dueOnly 筛选');
+
+    // 基线（上面的 4 个词：receive 到期 · capture/agent/Reception 未到期）
+    check('基线：列表 4 条', (await q.list()).length == 4, '${(await q.list()).length}');
+    check('基线：dueCount == 1', await q.dueCount(now) == 1);
+
+    // capture 进生词本（未暂停）→ 不该影响列表
+    await db.insert('user_word', {
+      'word_id': 'w005359',
+      'spelling': 'capture',
+      'source_article_id': null,
+      'source_sentence': null,
+    });
+    check('生词本有 capture（deleted=0）→ 列表仍 4 条',
+        (await q.list()).length == 4);
+
+    // 🔴 暂停它 → 三条查询都要跟着变
+    await db.rawUpdate(
+        "UPDATE user_word SET deleted = 1 WHERE word_id = 'w005359'");
+    final afterPause = await q.list();
+    check('🔴 暂停后列表少一条（3）', afterPause.length == 3, '${afterPause.length}');
+    check('🔴 暂停的词不在列表里',
+        !afterPause.any((e) => e.wordId == 'w005359'));
+    check('🔴 count() 同步排除暂停（3）', await q.count() == 3, '${await q.count()}');
+    check('🔴 搜索也排除暂停的词',
+        (await q.list(search: 'cap')).isEmpty);
+    check('🔴 dueCount 也排除暂停（口径一致）',
+        await q.dueCount(now) == 1);
+
+    // dueOnly 筛选（白哥 2026-09-28 新增的「显示全部 / 显示已到期」）
+    final dueList = await q.list(dueOnly: true, nowUtc: now);
+    check('dueOnly=true 只返回到期的（1 条）', dueList.length == 1,
+        '${dueList.length}');
+    check('dueOnly 的结果与 dueCount 一致',
+        dueList.length == await q.dueCount(now));
+    check('dueOnly 返回的确实是已到期那个',
+        dueList.isNotEmpty && dueList.first.wordId == 'w001720');
+
+    // 🔑 LEFT JOIN 的关键语义：`crs` 里有记录、但 `user_word` 里**没有行** → **仍然显示**
+    //    （若写成 INNER JOIN，这个词会**静默消失** —— 用户的词无声不见）
+    check('🔑 不在 user_word 里的词仍显示（LEFT 而非 INNER）',
+        afterPause.any((e) => e.wordId == 'w000001'));
+
+    // 复活（`deleted` 1→0）→ 回到列表
+    await db.rawUpdate(
+        "UPDATE user_word SET deleted = 0 WHERE word_id = 'w005359'");
+    check('复活后列表恢复 4 条', (await q.list()).length == 4,
+        '${(await q.list()).length}');
+
+    // ── 11. 性能 ──────────────────────────────────────────────
+    print('\n【11】性能');
     // 灌 5000 条模拟真实规模（用 `bulk_` 前缀避开上面已用的 w000001/w001720 等真 id）
     await db.transaction((txn) async {
       for (var i = 0; i < 5000; i++) {

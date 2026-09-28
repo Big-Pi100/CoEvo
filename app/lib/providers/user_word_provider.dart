@@ -54,23 +54,13 @@ final userWordCountProvider = FutureProvider<int>((ref) async {
   }
 });
 
-/// 生词本列表（按加入时间倒序）—— 供**生词本页**使用。
-///
-/// # 🔑 为什么要有它（不能在页面里直接 `repo.list()`）
-/// `FutureProvider` 会把自己注册进 Riverpod 的依赖图 → **`ref.invalidate` 能驱动页面重建**。
-/// 若把 `repo.list()` 写在页面的 `initState` 里，就**没有**这个能力，
-/// 于是「移出一个词后列表不刷新」得手写 `setState`（多一处会漏的状态）。
-/// （同 `bookmarkListProvider` 存在的理由。）
-///
-/// # ⚠️ 排序由**仓储层**保证，UI 层不得再排一次
-/// `UserWordRepository.list()` 已 `ORDER BY added_at DESC`（走 `idx_uw_time`）。
-/// 两处排序定义 = 漂移源 → 页面**直接按返回顺序渲染**。
-///
-/// # ⚠️ 读失败**会抛**（与 `bookmarkListProvider` 的「返回空表」**有意相反**）
-/// 生词本是**用户自己攒下的东西**，读不出来必须**明确告知**（页面渲染 `_Unavailable`），
-/// 而不是显示「还没有生词」—— 后者是对用户的**谎报**
-/// （同 `bookmark_list_screen._Unavailable` / `userDbProvider` 的既定原则）。
-final userWordListProvider = FutureProvider<List<UserWord>>((ref) async {
-  final repo = await ref.watch(userWordProvider.future);
-  return repo.list();
-});
+// 🔴 这里**曾经**有 `userWordListProvider`（生词本列表）—— 已于 2026-09-28 删除。
+//
+// 原因：它只服务 `/home/words`（3.4d 的独立生词本页），而那个页面已删 ——
+// **生词本就是复习页本身**（`ui-ux` §6.2，白哥原话）。
+// 复习列表的数据源是 `card_review_state`（排序要 FSRS 的 `next_review_at`），
+// 见 `providers/review_list_provider.dart` 的 `reviewListProvider`。
+//
+// 🔑 删除而不是「留着以后可能用」：留着会让下一个读代码的人以为
+//     「生词本有一个列表入口」→ 又把它接回去 → 两个入口并存的老问题复现。
+//     （同「删掉一个功能后要清理它的语义残留」的既定原则。）

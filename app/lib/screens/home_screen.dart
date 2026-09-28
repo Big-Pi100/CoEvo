@@ -289,16 +289,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
                   // 设计稿 `.feed-hd{gap:12px}`
                   const SizedBox(width: 12),
-                  // 🔴 生词本入口（3.4d）—— 设计稿**没有**定义它（`.bm-entry` 只定义了收藏）
-                  //    → 沿用**同一形态**（同一个 `_HeaderChip`），理由见该类的文档。
+                  // 🔴 生词入口 —— 点击**切到「复习」tab**，不是 push 新页面。
                   //
-                  //    ⚠️ 位置在「收藏」**左侧**：生词才是本产品的**核心资产**
-                  //      （v1 §1.2：阅读 → 查词 → **生词本** → 复习），收藏文章是辅助。
+                  // 依据（2026-09-28 白哥澄清）：**生词本就是复习页本身**
+                  // （`ui-ux` §6.2）。原先 3.4d 做成了 `/home/words` 独立子页 →
+                  // 同一份数据两个入口、两种形态 → 已删，统一到复习 tab。
+                  // 🔑 `go('/review')` 会切换 shell 分支（StatefulShellRoute 行为），
+                  //    与点底部 tab 等价；用 `push` 会**叠一层**页面在 tab 之上。
                   _HeaderChip(
                     icon: Icons.style_outlined,
                     label: '生词',
                     count: wordCount,
-                    onTap: () => context.push('/home/words'),
+                    onTap: () => context.go('/review'),
                   ),
                   const SizedBox(width: 8),
                   _HeaderChip(

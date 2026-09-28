@@ -297,6 +297,24 @@ class UserWordRepository {
     return n > 0;
   }
 
+  /// **暂停** —— 复习页（单一列表）里那一行的动作。
+  ///
+  /// # 🔑 为什么是别名而不是新方法/新字段
+  /// 复习页规格（`ui-ux` §6.2，白哥原话）：
+  /// > 「一个词**离开视野**，不是『移出生词本』，而是它的 **FSRS 状态变了**
+  /// >   （已掌握 / 暂停）」
+  ///
+  /// 而 `deleted` 这一列的**原始语义本来就是**「用户先不学这个词了，数据仍在」
+  /// （见 `user_db_schema.sql` 的 `deleted` 注释）→ 它就是「暂停」，
+  /// **只是 UI 上的说法不同**。
+  ///
+  /// 🔑 所以**不新增字段、不做迁移**：曾考虑给 `card_review_state` 加 `paused` 列
+  /// （要 version 3 迁移），但那是**同一个语义的第二个出处** ——
+  /// 而复习列表本来就要 JOIN `user_word`（拿暂停状态），复用它零成本。
+  ///
+  /// 撤销 = 再次查该词（[add] 的「复活」分支，`deleted` 1→0）。
+  Future<bool> pause(String wordId) => remove(wordId);
+
   /// 待同步的生词（`pending_push = 1`）—— 供将来的增量 push 用。
   /// ⚠️ 当前**无调用方**（同步属 Phase 3）；放着是为了「表 + 索引 + 查询」齐备。
   Future<List<UserWord>> pending() async {

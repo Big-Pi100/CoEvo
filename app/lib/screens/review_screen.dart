@@ -1,25 +1,58 @@
-﻿import 'dart:convert';
-import 'dart:ui' as ui;
+﻿/// 复习 —— **单一列表页**（导航第二个 tab）。
+///
+/// # 🔴 这一页是什么：**生词本 ≡ 复习页**
+///
+/// 白哥原话（`ui-ux-refactor-assessment-2026-09-25.md` §6.2）：
+/// > 「我认为**生词本就是复习管理**，其实**复习页面只要一个就行了**，
+/// >   卡片按 FSRS 管理状态和排序，同时支持搜索和按时序、字母排序，
+/// >   默认是 FSRS 排序，这样如何，**就不要移入移出了**」
+///
+/// → 所以**没有**「生词本列表」与「复习队列」两个视图，也**没有**在两者之间搬运的动作。
+///   「到期 / 未到期」只是**同一列表里的一项属性**（决定排序位置与分组）。
+///
+/// # ⚠️ 与旧实现的关系：整体替换
+/// 旧 `review_screen.dart`（1,529 行）是 **K12 遗留**：读**后端 `plans` 接口**
+/// （`planProvider` / `DueCard` / `ChatClient`），做的是「AI 出题 → 判分」，
+/// 与本地生词表**毫无关系** —— 这正是「查词后进复习 tab 什么也看不到」的原因
+/// （2026-09-28 白哥实机发现）。
+///
+/// 本页替代它：数据源全部来自**端侧 `user.db`**（`card_review_state` + `user_word`），
+/// **不依赖登录态、不联网** —— 符合产品原则「除生词表上限外不验证登录状态」。
+///
+/// # 规格依据（逐项）
+/// | 项 | 出处 |
+/// |---|---|
+/// | 单一列表 · 无移入移出 | §6.2 |
+/// | 三档排序（记忆曲线默认 / 最近 / A–Z） | §6.2 |
+/// | 按单词搜索 | §6.2 |
+/// | 分组「今天该复习 / 之后」+ 顶部「N 个今天该看」 | `review_list_query.dart` 类注释 |
+/// | 点击 → 翻卡复习 | §293 |
+/// | 「暂停」= 离开视野（不是移出） | §6.2.1 |
+///
+/// # 🔴 本页**第一步只做列表**（白哥 2026-09-28 定「分两步，先列表后卡片」）
+/// 所以：
+/// · 列表行**不给点击暗示**（无 `onTap`、无 `›`）—— 卡片（四段结构 + 四键评分）
+///   属第二步。**刻意不做「点了没反应的死入口」**（3.22 的教训：
+///   「静默无效的操作」比「禁用 / 尚未提供」更糟）。
+/// · 等第二步接上卡片后，行才获得 `onTap` + `›`。
+///
+/// ⚠️ 卡片形态的权威锚点是 `docs/design/visual-word-card-target-2026-09-26.html`
+///   （四段：① 词根词缀 ② 词源故事 ③ 释义 ④ 语境原句；四键各标**下次时间**）。
+library;
+
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import 'package:http/http.dart' as http;
-import '../api/api_config.dart';
-import '../api/chat_client.dart';
-import '../models/coevo_models.dart';
-import '../utils/image_export.dart';
-import '../providers/auth_provider.dart';
-import '../providers/achievement_notifier.dart';
-import '../providers/plan_provider.dart' hide cardRefreshProvider;
-import '../services/tts_service.dart';
-import '../pipelines/verification_strategy.dart';
-import '../widgets/markdown_span_nodes.dart';
-import '../widgets/subscribe_panel.dart';
-import 'card_list_screen.dart';
-import '../theme/co_spacing.dart';
-import '../widgets/twemoji.dart';
 
-/// 复习: 内联复习队列
+import '../providers/review_list_provider.dart';
+import '../providers/user_word_provider.dart';
+import '../services/review_list_query.dart';
+import '../theme/clay.dart';
+import '../theme/co_spacing.dart';
+import '../theme/coevo_tokens.dart';
+import '../theme/tokens_ext.dart';
+
 class ReviewScreen extends ConsumerStatefulWidget {
   const ReviewScreen({super.key});
 
@@ -27,1502 +60,676 @@ class ReviewScreen extends ConsumerStatefulWidget {
   ConsumerState<ReviewScreen> createState() => _ReviewScreenState();
 }
 
-class _ReviewScreenState extends ConsumerState<ReviewScreen> with TickerProviderStateMixin {
-  // ── Theme access ──
-  ColorScheme get _cs => Theme.of(context).colorScheme;
-  TextTheme get _tt => Theme.of(context).textTheme;
+class _ReviewScreenState extends ConsumerState<ReviewScreen> {
+  /// 列表的排序 / 搜索 / 筛选 —— **单一状态源**。
+  ///
+  /// 🔑 筛选（`dueOnly`）放在这里而不是单独的 `bool` 字段：
+  ///    它和排序一样是「查询参数」，两份状态会出现「界面显示已筛、查询没筛」的错位。
+  ReviewListArgs _args = const ReviewListArgs();
 
-  final _answerController = TextEditingController();
-  ChatClient? _client;
-  List<DueCard> _cards = [];
+  final _searchController = TextEditingController();
 
-  int _activeCardIndex = -1;
-  bool _isFlipped = false;
-  bool _isLoading = true;
-  bool _hasLoadedOnce = false;
-  String? _loadError;
-  String _verificationResult = '';
-  bool _isVerified = false;
-  bool _isVerifying = false;
-  bool _isAiQuiz = false;
-  List<VerifyQuestion> _aiQuestions = [];
-  int _aiQuestionIndex = 0;
-  List<String> _aiAnswers = [];
-  List<JudgeResult> _aiResults = [];
-  int _reviewedCount = 0;
-  final _scrollController = ScrollController();
-  final Map<int, GlobalKey> _cardKeys = {};
-  List<VerifyQuestion> _preloadedQuestions = [];
-  bool _preloadingQuiz = false;
-  bool _isJudging = false;
-  bool _hasMore = false;
-
-  // 后台评判状态（按 card.id 索引）
-  final Set<String> _judgingCardIds = {};          // 正在评判中
-  final Map<String, String> _judgedResults = {};    // card.id → 'pass' | 'fail'
-  final Map<String, List<JudgeResult>> _judgeDetails = {};  // card.id → 详细每题结果
-
-  /// 清除所有已缓存的评判状态
-  void _clearJudgedStates() {
-    _judgingCardIds.clear();
-    _judgedResults.clear();
-    _judgeDetails.clear();
-  }
-
-  // 订阅状态
-  bool _subscriptionRequired = false;
-  bool _subscriptionExpired = false;
-  bool _subscriptionChecked = false;
-
-  // Riverpod 订阅（必须在 dispose 中关闭）
-  ProviderSubscription? _cardRefreshSub;
-  ProviderSubscription? _authListenerSub;
-
-  // 计划标签 & domain 过滤
-  late TabController _tabController;
-  // 当前显示的最大 tab 数（plans.length + 1 + languageTabs），防止 TabController index 越界
-  int _effectiveTabCount = 2;
-  // 当前选中的语言（英语 tab 选中时='english'，否则为 null）
-  String? _selectedLanguage;
-  static const int _languageTabCount = 2;  // 英语 + 汉语常驻 tab
-
-  @override
-  void initState() {
-    super.initState();
-    // 初始长度：英语tab + 汉语tab + 全部卡片（计划加载后再调整）
-    _tabController = TabController(length: 3, vsync: this);
-    _tabController.addListener(_onTabChanged);
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadCards();
-      _loadPlans();
-      _checkSubscription();
-    });
-    // 监听卡片刷新
-    _cardRefreshSub = ref.listenManual(cardRefreshProvider, (prev, next) {
-      if (prev != next && mounted) {
-        _loadCards();
-        _loadPlans();
-      }
-    });
-    // 监听卡片刷新
-    _cardRefreshSub = ref.listenManual(cardRefreshProvider, (prev, next) {
-      if (prev != next && mounted) {
-        _loadCards();
-        _loadPlans();
-      }
-    });
-    // 监听 auth 恢复：当 auth 从不可用变为可用时自动重新加载
-    _authListenerSub = ref.listenManual(authProvider, (prev, next) {
-      if (!_hasLoadedOnce && next.userId != null) {
-        _loadCards();
-        _loadPlans();
-      }
-    });
-  }
-
-  void _onTabChanged() {
-    if (!_tabController.indexIsChanging) {
-      _onTabSelected(_tabController.index);
-    }
-  }
-
-  void _onTabSelected(int index) {
-    final plans = ref.read(planProvider).plans;
-    if (index < _languageTabCount) {
-      // 语言 tab — 清除 conversation 选择，走 language 过滤
-      final lang = _languageTabCount > 1 && index == 1 ? 'chinese' : 'english';
-      debugPrint('[CP1] _onTabSelected: language tab index=$index, lang=$lang');
-      ref.read(planProvider.notifier).selectConversation(null);
-      setState(() {
-        _selectedLanguage = lang;
-        _activeCardIndex = -1;
-        _resetInlineReview();
-        _isLoading = true;
-      });
-      _loadCards(language: lang);
-    } else if (index < _languageTabCount + plans.length) {
-      // plan tab
-      final planIndex = index - _languageTabCount;
-      final convId = plans[planIndex].conversationId ?? '';
-      debugPrint('[CP1] _onTabSelected: plan tab index=$index, convId=$convId, goal=${plans[planIndex].goal}');
-      ref.read(planProvider.notifier).selectConversation(convId);
-      setState(() {
-        _selectedLanguage = null;
-        _activeCardIndex = -1;
-        _resetInlineReview();
-        _isLoading = true;
-      });
-      _loadCards(convId: convId);
-    } else {
-      // 全部卡片 tab
-      ref.read(planProvider.notifier).selectConversation(null);
-      setState(() {
-        _selectedLanguage = null;
-        _activeCardIndex = -1;
-        _resetInlineReview();
-        _isLoading = true;
-      });
-      _loadCards(convId: null);
-    }
-  }
+  /// 搜索防抖 —— 本地查库虽快，但连续按键会连打多次查询。
+  Timer? _debounce;
 
   @override
   void dispose() {
-    _cardRefreshSub?.close();
-    _authListenerSub?.close();
-    _tabController.dispose();
-    _answerController.dispose();
-    _scrollController.dispose();
+    _debounce?.cancel();
+    _searchController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadPlans() async {
-    final auth = ref.read(authProvider);
-    if (auth.userId == null) return;
-    final client = ChatClient(userId: auth.userId!, token: auth.token);
-    await ref.read(planProvider.notifier).loadPlans(client);
-    if (!mounted) return;
-    final plans = ref.read(planProvider).plans;
-    final newTabCount = _languageTabCount + plans.length + 1;  // 语言tab + plan tabs + 全部卡片
-    setState(() => _effectiveTabCount = newTabCount);
-    // 如果实际 tab 数变化，销毁旧 controller 重建新的正确长度
-    if (_tabController.length != newTabCount) {
-      final oldIndex = _tabController.index.clamp(0, newTabCount - 1);
-      _tabController.removeListener(_onTabChanged);
-      _tabController.dispose();
-      _tabController = TabController(length: newTabCount, vsync: this);
-      _tabController.addListener(_onTabChanged);
-      _tabController.index = oldIndex;
-    } else if (_tabController.index >= _effectiveTabCount) {
-      _tabController.index = _effectiveTabCount - 1;
-    }
-    // 自动选中第一个 plan
-    if (plans.isNotEmpty && ref.read(planProvider).selectedConversationId == null) {
-      ref.read(planProvider.notifier).selectConversation(plans.first.conversationId);
-      _loadCards();
-    }
-  }
-
-  Future<void> _checkSubscription() async {
-    if (_client == null) return;
-    try {
-      final prefs = await _client!.getPreferences();
-      final expiresStr = prefs['subscription_expires'];
-      if (expiresStr == null || expiresStr.isEmpty) {
-        if (mounted) setState(() {
-          _subscriptionRequired = true;
-          _subscriptionExpired = false;
-          _subscriptionChecked = true;
-        });
-        return;
-      }
-      final expires = expiresStr.contains('T')
-          ? DateTime.tryParse(expiresStr)
-          : DateTime.tryParse('${expiresStr}T00:00:00Z');
-      if (expires == null) {
-        if (mounted) setState(() {
-          _subscriptionRequired = true;
-          _subscriptionExpired = false;
-          _subscriptionChecked = true;
-        });
-        return;
-      }
-      final now = DateTime.now();
-      if (mounted) setState(() {
-        _subscriptionExpired = now.isAfter(expires);
-        _subscriptionRequired = false;
-        _subscriptionChecked = true;
-      });
-    } catch (e) {
-      debugPrint('ReviewScreen._checkSubscription: $e');
-      if (mounted) setState(() => _subscriptionChecked = true);
-    }
-  }
-
-  void _initClient() {
-    final auth = ref.read(authProvider);
-    _client = ChatClient(
-      userId: auth.userId ?? 'default_user',
-      token: auth.token,
-    );
-  }
-
-  Future<void> _loadCards({String? convId, String? language}) async {
-    final auth = ref.read(authProvider);
-    if (auth.userId == null) {
-      if (mounted) setState(() => _isLoading = false);
-      return;
-    }
-    _initClient();
-    if (_client == null) {
-      if (mounted) setState(() => _isLoading = false);
-      return;
-    }
-    try {
-      final lang = language ?? _selectedLanguage;
-      // 语言 tab 时强制清除 conversation_id，不走 plan-based 查询
-      final cid = (lang != null) ? null : (convId ?? ref.read(planProvider).selectedConversationId);
-      debugPrint('[CP1] _loadCards: convId=$cid, language=$lang, selectedLanguage=$_selectedLanguage');
-      final resp = await _client!.getDueCards(conversationId: cid, language: lang, limit: 20, offset: 0);
-      final cardsCount = (resp['cards'] as List?)?.length ?? 0;
-      debugPrint('[CP1] _loadCards result: ${cardsCount} cards, total_due=${resp["total_due"]}');
-      setState(() {
-        _cards = (resp['cards'] as List<dynamic>?)
-            ?.map((e) => DueCard.fromJson(e as Map<String, dynamic>))
-            .toList() ?? [];
-        _hasMore = resp['has_more'] as bool? ?? false;
-        _isLoading = false;
-        _hasLoadedOnce = true;
-        _activeCardIndex = _cards.isNotEmpty ? 0 : -1;
-        // 清除旧评判状态（卡片 ID 变化）
-        _clearJudgedStates();
-        // 预加载首张卡片的 AI 评测题
-        if (_cards.isNotEmpty) {
-          _preloadAiQuestions(_cards[0]);
-        }
-      });
-    } catch (e) {
-      if (mounted) setState(() { _isLoading = false; _loadError = '加载失败，请检查网络连接'; });
-    }
-  }
-
-  /// 补货：队列 ≤ 10 时加载下 10 张
-  Future<void> _replenishQueue() async {
-    if (_client == null || _cards.isEmpty) return;
-    try {
-      final offset = _cards.length;
-      final cid = ref.read(planProvider).selectedConversationId;
-      final resp = await _client!.getDueCards(conversationId: cid, language: _selectedLanguage, limit: 10, offset: offset);
-      final newCards = (resp['cards'] as List<dynamic>?)
-          ?.map((e) => DueCard.fromJson(e as Map<String, dynamic>))
-          .toList() ?? [];
-      setState(() {
-        _cards.addAll(newCards);
-        _hasMore = resp['has_more'] as bool? ?? false;
-      });
-    } catch (e) {
-      debugPrint('ReviewScreen._replenishQueue: $e');
-    }
-  }
-
-  void _resetInlineReview() {
-    // 清除当前卡片的缓存评判结果
-    if (_activeCardIndex >= 0 && _activeCardIndex < _cards.length) {
-      final activeId = _cards[_activeCardIndex].id;
-      _judgedResults.remove(activeId);
-      _judgeDetails.remove(activeId);
-    }
-    setState(() {
-      _isFlipped = false;
-      _isVerified = false;
-      _isVerifying = false;
-      _verificationResult = '';
-      _isAiQuiz = false;
-      _aiQuestions = [];
-      _preloadedQuestions = [];
-      _preloadingQuiz = false;
-      _isJudging = false;
-      _aiQuestionIndex = 0;
-      _aiAnswers = [];
-      _aiResults = [];
-      _answerController.clear();
-    });
-  }
-
-void _showCompletionStats() {
-    if (!mounted) return;
-    
-    // 查是否有复习完成后的营销活动
-    _checkAndShowCampaign(context);
-    
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Tw('今日复习完成'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.check_circle, color: _cs.primary, size: 48),
-              ],
-            ),
-            const SizedBox(height: CoSpacing.lg),
-            Text('本次复习了 $_reviewedCount 张卡片',
-                style: _tt.bodyLarge!),
-            const SizedBox(height: CoSpacing.sm),
-            Text('保持节奏，每天进步一点点！',
-                style: TextStyle(color: _cs.onSurfaceVariant)),
-          ],
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Tw('继续'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 查活动 → 自动生成海报 → 直接展示海报
-  void _checkAndShowCampaign(BuildContext context) async {
-    try {
-      if (_client == null) return;
-      final result = await _client!.checkReviewCampaign();
-      if (result['has_active'] == true && mounted) {
-        final campaignId = result['campaign_id'] as String?;
-        // 延迟 0.5 秒，让复习完成弹窗先展示
-        await Future.delayed(const Duration(milliseconds: 500));
-        if (!mounted) return;
-
-        // 调 API 生成海报
-        final auth = ref.read(authProvider);
-        String? posterPng;
-        try {
-          final http.Response resp = await http.post(
-            Uri.parse('${ApiConfig.baseUrl}/api/referral/generate-poster'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'user_id': auth.userId,
-              if (campaignId != null) 'campaign_id': campaignId,
-            }),
-          ).timeout(const Duration(seconds: 60));
-          if (resp.statusCode == 200) {
-            final data = jsonDecode(resp.body) as Map<String, dynamic>;
-            posterPng = data['poster_png'] as String?;
-          }
-        } catch (_) {}
-
-        if (!mounted || !context.mounted) return;
-
-        // 直接弹出海报展示
-        showDialog(
-          context: context,
-          barrierColor: Colors.black,
-          builder: (ctx) => Dialog(
-            backgroundColor: Colors.black,
-            surfaceTintColor: Colors.black,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Tw('今日学习报告',
-                      style: TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 12),
-                  if (posterPng != null) ...[
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.memory(
-                        base64Decode(posterPng.split(',').last),
-                        fit: BoxFit.contain,
-                        height: 400,
-                        errorBuilder: (_, __, ___) => Tw('海报加载失败'),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        icon: const Icon(Icons.download, size: 18),
-                        onPressed: () async {
-                          final bytes =
-                              base64Decode(posterPng!.split(',').last);
-                          // 原实现为 web-only（Blob + AnchorElement 下载）
-                          // → 见 utils/image_export.dart
-                          final err = await exportPngBytes(
-                            bytes,
-                            fileName: 'coevo_poster.png',
-                          );
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(err == null
-                                  ? '海报已导出'
-                                  : '导出失败: $err'),
-                            ),
-                          );
-                        },
-                        label: Tw('保存海报'),
-                      ),
-                    ),
-                  ] else ...[
-                    const Icon(Icons.photo_library,
-                        size: 64, color: Colors.grey),
-                    const SizedBox(height: 8),
-                    Tw('正在生成专属海报...'),
-                    const SizedBox(height: 8),
-                    const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child:
-                          CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: Tw('关闭'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      }
-    } catch (_) {
-      // 静默失败
-    }
-  }
-
-  Future<void> _skipCard(DueCard card) async {
-    if (_client == null) return;
-    try {
-      await _client!.updateCardStatus(card.id, 'skipped');
-      if (mounted) {
-        setState(() {
-          _cards.removeWhere((c) => c.id == card.id);
-          _activeCardIndex = -1;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已跳过「${card.front}」')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('跳过失败: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _preloadAiQuestions(DueCard card) async {
-    if (_client == null) return;
-    if (_subscriptionRequired || _subscriptionExpired) return;
-    setState(() => _preloadingQuiz = true);
-    try {
-      final resp = await _client!.verifyQuestions(card.id, card.front, card.back);
-      final questions = (resp['questions'] as List<dynamic>?)
-          ?.map((e) => VerifyQuestion.fromJson(e as Map<String, dynamic>))
-          .toList() ?? [];
-      if (mounted && _activeCardIndex >= 0 && _cards[_activeCardIndex].id == card.id) {
-        setState(() {
-          _preloadedQuestions = questions;
-          _preloadingQuiz = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _preloadingQuiz = false);
-    }
-  }
-
-  // ── 内联复习方法 ──
-
-  Future<void> _startInlineAiQuiz(DueCard card) async {
-    // 优先用预加载的问题（零延迟）
-    if (_preloadedQuestions.isNotEmpty) {
-      setState(() {
-        _isAiQuiz = true;
-        _aiQuestions = List.from(_preloadedQuestions);
-        _aiQuestionIndex = 0;
-        _aiAnswers = List.filled(_preloadedQuestions.length, '');
-      });
-      return;
-    }
-    // 降级: 实时生成
-    if (_client == null) return;
-    if (_subscriptionRequired || _subscriptionExpired) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('需要有效订阅才能使用 AI 问答功能')),
-        );
-      }
-      return;
-    }
-    try {
-      final resp = await _client!.verifyQuestions(card.id, card.front, card.back);
-      final questions = (resp['questions'] as List<dynamic>?)
-          ?.map((e) => VerifyQuestion.fromJson(e as Map<String, dynamic>))
-          .toList() ?? [];
-      setState(() {
-        _isAiQuiz = true;
-        _aiQuestions = questions;
-        _aiQuestionIndex = 0;
-        _aiAnswers = List.filled(questions.length, '');
-      });
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isVerifying = false;
-          _isFlipped = true;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('AI 问答启动失败: $e')),
-        );
-      }
-    }
-  }
-
-  void _submitInlineAiAnswer() {
-    if (_aiQuestionIndex >= _aiQuestions.length) return;
-    _aiAnswers[_aiQuestionIndex] = _answerController.text.trim();
-    _answerController.clear();
-    setState(() => _aiQuestionIndex++);
-    if (_aiQuestionIndex >= _aiQuestions.length) {
-      _judgeInlineAnswers();
-    }
-  }
-
-  Future<void> _judgeInlineAnswers() async {
-    if (_client == null || _cards.isEmpty || _activeCardIndex < 0) return;
-    if (_subscriptionRequired || _subscriptionExpired) return;
-    final card = _cards[_activeCardIndex];
-    final cardId = card.id;
-    // 快照当前问题和答案（后续卡片切换不影响）
-    final snapshotQuestions = List<Map<String, String>>.generate(_aiQuestions.length, (i) => {
-      'question': _aiQuestions[i].question,
-      'expected_answer': _aiQuestions[i].expectedAnswer,
-      'user_answer': i < _aiAnswers.length ? _aiAnswers[i] : '',
-    });
-    setState(() {
-      _isJudging = true;
-      _judgingCardIds.add(cardId);
-    });
-    try {
-      final resp = await _client!.judgeAnswers(cardId: cardId, questions: snapshotQuestions);
-      final results = (resp['results'] as List<dynamic>?)
-          ?.map((e) => JudgeResult.fromJson(e as Map<String, dynamic>))
-          .toList() ?? [];
-      final correct = resp['total_correct'] as int? ?? 0;
-      final result = correct >= 3 ? 'pass' : 'fail';  // 三题全对才通过
+  void _onSearchChanged(String v) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 250), () {
       if (!mounted) return;
-      // 存储结果
-      _judgingCardIds.remove(cardId);
-      _judgedResults[cardId] = result;
-      _judgeDetails[cardId] = results;
-      // 如果当前展示的仍是这张卡片，同步到活动变量
-      if (_activeCardIndex >= 0 && _activeCardIndex < _cards.length && _cards[_activeCardIndex].id == cardId) {
-        _aiResults = results;
-        _verificationResult = result;
-        _isVerified = true;
-        _isVerifying = false;
-        _isJudging = false;
-      } else {
-        // 卡片已关闭，只清除判定状态
-        _isJudging = false;
-        _isVerifying = false;
-      }
-      setState(() {});
-      // 后台提交
-      _submitInlineReviewByCardId(cardId, result: result, judgeResults: results);
-    } catch (e) {
-      if (mounted) {
-        _judgingCardIds.remove(cardId);
-        _isJudging = false;
-        _isVerifying = false;
-        setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('评判失败: $e')),
-        );
-      }
-    }
+      setState(() => _args = _args.copyWith(search: v.trim()));
+    });
   }
 
-  /// 通过 card.id 后台提交 + 从本地列表移除（不全局刷新）
-  Future<void> _submitInlineReviewByCardId(String cardId, {String? result, List<JudgeResult>? judgeResults}) async {
-    if (_client == null) return;
-    final finalResult = result ?? _judgedResults[cardId] ?? 'pass';
-    final finalJudgeResults = judgeResults ?? <JudgeResult>[];
-    final rating = finalResult == 'pass' ? 3 : 1;
-    String? detailsJson;
-    if (finalJudgeResults.isNotEmpty && _aiQuestions.isNotEmpty) {
-      detailsJson = jsonEncode(List.generate(finalJudgeResults.length, (i) {
-        return {
-          'question': i < _aiQuestions.length ? _aiQuestions[i].question : '',
-          'expected': i < _aiQuestions.length ? _aiQuestions[i].expectedAnswer : '',
-          'actual': i < _aiAnswers.length ? _aiAnswers[i] : '',
-          'correct': finalJudgeResults[i].correct,
-          'feedback': finalJudgeResults[i].feedback,
-        };
-      }));
-    }
+  /// 暂停一个词（**不是「移出」** —— 见 `UserWordRepository.pause` 的说明）。
+  ///
+  /// 🔴 失败时**不改界面状态**：不能因为写库失败就把这一行从列表里抹掉 ——
+  /// 那会让用户以为「暂停成功了」，下次打开它又回来。
+  Future<void> _pause(ReviewListItem item) async {
+    final messenger = ScaffoldMessenger.of(context);
     try {
-      await _client!.submitReview(
-        cardId: cardId,
-        rating: rating,
-        verificationType: 'ai_dialogue',
-        verificationResult: finalResult,
-        detailsJson: detailsJson,
-      );
-      // 通知成就页刷新
-      ref.read(cardRefreshProvider.notifier).state++;
-      if (!mounted) return;
-      if (finalResult == 'pass') {
-        setState(() {
-          _reviewedCount++;
-          _cards.removeWhere((c) => c.id == cardId);
-          if (_activeCardIndex >= _cards.length) _activeCardIndex = _cards.length - 1;
-        });
-      } else {
-        // 未通过：卡片留在列表中不计数
-        if (mounted) setState(() {});
-      }
-    } catch (e) {
-      debugPrint('submitReview error: $e');
-    }
-  }
+      final repo = await ref.read(userWordProvider.future);
+      final changed = await repo.pause(item.wordId);
 
-  Future<void> _submitInlineReview(int index) async {
-    if (_client == null) return;
-    if (index >= _cards.length) return;
-    final card = _cards[index];
-    final strategy = resolveStrategy(card);
-    final vtype = strategy.isSpellingBased ? 'spelling' : 'ai_dialogue';
-    // 序列化每道题细节
-    String? detailsJson;
-    if (_aiResults.isNotEmpty) {
-      detailsJson = jsonEncode(List.generate(_aiResults.length, (i) {
-        final aiQ = i < _aiQuestions.length ? _aiQuestions[i] : null;
-        return {
-          'question': aiQ?.question ?? '',
-          'correct': _aiResults[i].correct,
-          'feedback': _aiResults[i].feedback,
-        };
-      }));
-    }
-    try {
-      final resp = await _client!.submitReview(
-        cardId: card.id,
-        rating: _verificationResult == 'pass' ? 3 : 1,
-        verificationType: vtype,
-        verificationResult: _verificationResult,
-        detailsJson: detailsJson,
-      );
-      // 通知成就页刷新
-      ref.read(cardRefreshProvider.notifier).state++;
-      setState(() {
-        _reviewedCount++;
-        _cards.removeWhere((c) => c.id == card.id);
-        _activeCardIndex = -1;
-      });
-      final achievements = resp['achievements'] as List<dynamic>?;
-      if (achievements != null && achievements.isNotEmpty) {
-        final notifier = ref.read(achievementNotifierProvider.notifier);
-        for (final a in achievements.cast<Map<String, dynamic>>()) {
-          notifier.push(AchievementNotification.fromJson(a));
-        }
-      }
-      if (_cards.isEmpty) {
-        // 等待一小段时间确保后端落库完成
-        await Future.delayed(const Duration(milliseconds: 300));
-        if (!mounted) return;
-        try {
-          final cid = ref.read(planProvider).selectedConversationId;
-          final resp = await _client!.getDueCards(conversationId: cid, limit: 10, offset: 0);
-          final more = (resp['cards'] as List<dynamic>?)?.length ?? 0;
-          if (more == 0 && mounted) _showCompletionStats();
-        } catch (_) { if (mounted) _showCompletionStats(); }
-      }
-      // 队列 ≤ 10 且有更多卡片时自动补货
-      if (_cards.length <= 10 && _hasMore && mounted) {
-        _replenishQueue();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('提交失败: $e')),
-        );
-      }
-    }
-  }
+      // `false` = 本来就已经是暂停状态（本次无动作）→ 不刷界面、不提示
+      if (!changed) return;
 
-  // ── Build ──
+      // 🔑 列表与计数**都要失效**：两者共用一套暂停过滤，
+      //    只刷一个会出现「列表少了一条但『N 个今天该看』没变」。
+      ref.invalidate(reviewListProvider);
+      ref.invalidate(reviewDueCountProvider);
 
-  /// 按 conversation_id 匹配的待复习卡片数
-  /// 优先从 PlanState 中缓存的 dueCards 取值，兜底降级到 _cards 过滤
-  int _planDueCount(PlanData plan) {
-    final convId = plan.conversationId ?? '';
-    if (convId.isEmpty) return 0;
-    return _cards.where((c) => c.conversationId == convId).length;
-  }
-
-  /// 从 plan goal + grade_band 提取简短标签
-  String _planLabel(PlanData plan) {
-    final goal = plan.goal;
-    final gb = (plan.gradeBand ?? '').replaceAll('g', '').replaceAll('-', '～');
-    final label = goal.replaceAll(RegExp(r'^K12:\s*'), '');
-    if (gb.isNotEmpty && !label.endsWith('）')) {
-      return '$label（$gb）';
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text('已暂停「${item.spelling}」，再次查词就会恢复。'),
+          duration: const Duration(seconds: 2),
+        ));
+    } catch (e, st) {
+      debugPrint('[review] 暂停失败 wordId=${item.wordId}：$e\n$st');
     }
-    return label;
   }
 
   @override
   Widget build(BuildContext context) {
-    final plans = ref.watch(planProvider.select((s) => s.plans));
-    final hasActivePlans = plans.isNotEmpty;
-
-    // 初始化时应用首 tab 的 conversation_id
-    if (hasActivePlans && ref.read(planProvider).selectedConversationId == null) {
-      // 在 postFrameCallback 中设置，避免 build 中修改 state
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && ref.read(planProvider).selectedConversationId == null) {
-          ref.read(planProvider.notifier).selectConversation(plans.first.conversationId);
-        }
-      });
-    }
-
-    // 无活跃计划时显示引导
-    if (!hasActivePlans && plans.isEmpty) {
-      return Scaffold(
-        appBar: AppBar(
-          title: Tw('复习'),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.notifications_outlined),
-              tooltip: '通知',
-              onPressed: () => context.push('/notifications'),
-            ),
-          ],
-        ),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.school_outlined, size: 64, color: Theme.of(context).colorScheme.primaryFixed),
-                const SizedBox(height: 16),
-                Text('还没有学习计划', style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 8),
-                Text('去聊天开始学习，系统会自动创建学习计划',
-                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                const SizedBox(height: 24),
-                FilledButton(
-                  onPressed: () => context.go('/chat'),
-                  child: Tw('去学习'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
+    final t = CoEvoTokensExt.of(context);
+    final list = ref.watch(reviewListProvider(_args));
+    final dueCount = ref.watch(reviewDueCountProvider).valueOrNull;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Tw('复习'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            tooltip: '通知',
-            onPressed: () => context.push('/notifications'),
-          ),
-        ],
-        bottom: TabBar(
-          isScrollable: true,
-          tabAlignment: TabAlignment.start,
-          controller: _tabController,
-          labelColor: Theme.of(context).colorScheme.onSurface,
-          tabs: [
-            // 常驻语言 tab（前置于所有 plan tab）
-            const Tab(child: SizedBox(width: 90, child: Tw('英语', overflow: TextOverflow.ellipsis, maxLines: 1))),
-            const Tab(child: SizedBox(width: 90, child: Tw('汉语', overflow: TextOverflow.ellipsis, maxLines: 1))),
-            ...plans.map((p) {
-              final count = _planDueCount(p);
-              final label = _planLabel(p);
-              // 截取前5个字符（中文字符每个占1个UTF-16单元）
-              final shortLabel = label.length > 8 ? label.substring(0, 8) : label;
-              return Tab(
-                child: SizedBox(
-                  width: 120,
-                  child: Tw('$shortLabel（$count）',
-                      overflow: TextOverflow.ellipsis, maxLines: 1),
-                ),
-              );
-            }),
-            const Tab(child: SizedBox(width: 90, child: Tw('全部卡片', overflow: TextOverflow.ellipsis, maxLines: 1))),
-          ],
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          // 英语 tab（复用复习视图，card 已由 _loadCards 加载）
-          _buildReviewTab(null),
-          // 汉语 tab
-          _buildReviewTab(null),
-          ...plans.map((p) => _buildReviewTab(p.conversationId)),
-          const CardListScreen(embedded: true),  // 全部卡片
-        ],
-      ),
-    );
-  }
-
-  /// 按 conversation_id 过滤的待复习列表
-  /// - 选中 plan tab: 匹配卡片 conversationId == 该 plan 的 conversation_id
-  /// 构建单个 plan 的复习 tab
-  /// [convId] 当前 plan 的 conversation_id，null 表示"全部卡片"
-  Widget _buildReviewTab(String? convId) {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    // 加载失败状态
-    if (_loadError != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(CoSpacing.xxxl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.cloud_off_rounded, size: 48, color: _cs.outline),
-              const SizedBox(height: CoSpacing.lg),
-              Text('加载失败', style: _tt.titleLarge?.copyWith(color: _cs.onSurface)),
-              const SizedBox(height: CoSpacing.sm),
-              Text(_loadError!, style: _tt.bodyMedium?.copyWith(color: _cs.onSurfaceVariant), textAlign: TextAlign.center),
-              const SizedBox(height: CoSpacing.xl),
-              FilledButton.icon(
-                onPressed: () {
-                  setState(() { _isLoading = true; _loadError = null; });
-                  _loadCards();
-                },
-                icon: const Icon(Icons.refresh),
-                label: Tw('重新加载'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // _cards 已由后端按 conversation_id 过滤
-    final displayCards = _cards;
-
-    // 订阅检查横幅
-    if (_subscriptionChecked && (_subscriptionRequired || _subscriptionExpired)) {
-      final isExpired = _subscriptionExpired;
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(CoSpacing.xxl),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(isExpired ? Icons.subscriptions_outlined : Icons.info_outline,
-                  size: 48, color: isExpired ? _cs.errorContainer : _cs.tertiaryFixedDim),
-              const SizedBox(height: CoSpacing.lg),
-              Text(
-                isExpired ? '订阅已过期' : '需要订阅',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: CoSpacing.sm),
-              Text(
-                isExpired
-                    ? '你的订阅已过期，续费后可继续使用 AI 复习功能'
-                    : '请先购买订阅，解锁 AI 辅助复习功能',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: _cs.onSurfaceVariant),
-              ),
-              const SizedBox(height: CoSpacing.lg),
-              FilledButton.icon(
-                onPressed: () => _showSubscribePanel(context, isExpired),
-                icon: const Icon(Icons.payment, size: 18),
-                label: Tw('立即订阅'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (displayCards.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: _loadCards,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
+      backgroundColor: Color(t.page.argb32),
+      body: SafeArea(
+        // 底部交给自绘粘土 tabbar（`app.dart` 的 `_ClayTabBar`）处理
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              height: MediaQuery.of(context).size.height * 0.6,
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.check_circle_outline, size: 64, color: _cs.primaryFixed),
-                    const SizedBox(height: CoSpacing.lg),
-                    Text('今日复习完成！', style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(height: CoSpacing.sm),
-                    Text('共复习 $_reviewedCount 张卡片',
-                        style: TextStyle(color: _cs.onSurfaceVariant)),
-                    const SizedBox(height: CoSpacing.xxl),
-                    FilledButton(
-                      onPressed: () => context.go('/chat'),
-                      child: Tw('返回'),
-                    ),
-                  ],
-                ),
+            _header(t, dueCount),
+            _searchBar(t),
+            const SizedBox(height: 12),
+            _sortBar(t),
+            const SizedBox(height: 14),
+            Expanded(
+              child: list.when(
+                // 首次加载 → **什么都不画**（画空状态会在有词时先闪一下「还没有生词」，是谎报）
+                loading: () => const SizedBox.shrink(),
+                // 读失败 → 给**准确**的话，不冒充「还没有生词」
+                error: (e, st) => const _Unavailable(),
+                data: (items) => items.isEmpty
+                    ? _EmptyState(filtered: _isFiltering)
+                    : _list(items),
               ),
             ),
-          ],
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: _loadCards,
-      child: _buildQueue(convId),
-    );
-  }
-
-  String _cardBackPreview(String back) {
-    final t = back.trim();
-    if (t.startsWith('{') && t.endsWith('}')) {
-      try {
-        final parsed = jsonDecode(t) as Map<String, dynamic>;
-        // 中文词典格式
-        if (parsed.containsKey('character') && parsed.containsKey('pinyin')) {
-          final defs = parsed['definitions'] as List<dynamic>? ?? [];
-          if (defs.isNotEmpty) {
-            final first = defs[0] as Map<String, dynamic>;
-            return first['meaning'] as String? ?? parsed['character'] as String;
-          }
-          return parsed['character'] as String? ?? back;
-        }
-        // 英语词典格式
-        if (parsed.containsKey('word') && parsed.containsKey('definitions')) {
-          final ch = parsed['chinese'] as String? ?? '';
-          if (ch.isNotEmpty) return ch;
-          final defs = parsed['definitions'] as List<dynamic>? ?? [];
-          if (defs.isNotEmpty) {
-            final first = defs[0] as Map<String, dynamic>;
-            final meaning = first['meaning'] as String? ?? '';
-            final dChinese = first['chinese'] as String? ?? '';
-            return dChinese.isNotEmpty ? dChinese : meaning;
-          }
-          return parsed['word'] as String? ?? back;
-        }
-        return (parsed['full_text'] as String?)?.replaceAll('\n', ' ') ?? back;
-      } catch (_) {}
-    }
-    return back;
-  }
-
-  /// 蒙版宽度因子：0.0 = 无蒙版（全进度），1.0 = 全蒙版（无进度）
-  double _progressOverlay(int state, int reps) {
-    switch (state) {
-      case 0: // 新卡片 — 无蒙版，全彩色
-        return 0.0;
-      case 1: // 学习中 — 0 或 50%
-        return reps >= 1 ? 0.5 : 1.0;
-      case 2: // 复习中 — 0 / 50 / 100%
-        if (reps >= 6) return 0.0;
-        if (reps >= 3) return 0.5;
-        return 1.0;
-      case 3: // 重学中 — 0 / 50 / 100%
-        if (reps >= 6) return 0.0;
-        if (reps >= 3) return 0.5;
-        return 1.0;
-      default:
-        return 0.0;
-    }
-  }
-
-  Widget _buildQueue(String? convId) {
-    final stateLabels = ['新卡片', '学习中', '复习中', '重学中'];
-    final stateColors = [_cs.secondary, _cs.tertiary, _cs.primary, _cs.tertiaryFixed];
-    // _cards 已由后端过滤
-    final displayCards = _cards;
-
-    return ListView.builder(
-      controller: _scrollController,
-      physics: const AlwaysScrollableScrollPhysics(),
-      // 底部留出 tabbar 高度 —— `_ShellScaffold` 开了 `extendBody: true`，
-      // 正文会延伸到 tabbar 之后，不留距离的话最后一张卡会被按钮压住。
-      // 依据见 `CoSpacing.tabBarClearance`。
-      padding: const EdgeInsets.fromLTRB(
-          CoSpacing.lg, CoSpacing.lg, CoSpacing.lg, CoSpacing.tabBarClearance),
-      itemCount: displayCards.length,
-      itemBuilder: (_, i) {
-        final card = displayCards[i];
-        final state = card.state.clamp(0, 3);
-        final isActive = _activeCardIndex == i;
-
-        return Dismissible(
-          key: ValueKey('review_${card.id}'),
-          direction: DismissDirection.endToStart,
-          background: Container(
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: CoSpacing.xxl),
-            decoration: BoxDecoration(
-              color: _cs.errorContainer,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Icon(Icons.skip_next, color: _cs.onPrimary),
-                SizedBox(width: CoSpacing.sm),
-                Text('跳过', style: TextStyle(color: _cs.onPrimary, fontWeight: FontWeight.w600)),
-              ],
-            ),
-          ),
-          confirmDismiss: (_) async {
-            final confirmed = await showDialog<bool>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: Tw('跳过这张卡片？'),
-                content: Text('跳过「${card.front}」后将不再作为候选概念推荐。'),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: Tw('取消')),
-                  TextButton(onPressed: () => Navigator.pop(ctx, true), child: Tw('跳过', style: TextStyle(color: _cs.error))),
-                ],
-              ),
-            );
-            if (confirmed != true) return false;
-            await _skipCard(card);
-            return true;
-          },
-          child: Card(
-            color: stateColors[state],
-            elevation: 0,
-            key: _cardKeys.putIfAbsent(i, () => GlobalKey()),
-            clipBehavior: Clip.antiAlias,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-              side: BorderSide(color: _cs.surfaceContainerLow),
-            ),
-            child: Stack(
-              children: [
-                // 进度蒙版：用渐变替代白色 alpha
-                Positioned.fill(
-                  child: FractionallySizedBox(
-                    widthFactor: _progressOverlay(card.state, card.reps),
-                    alignment: Alignment.centerLeft,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            stateColors[state].withAlpha(60),
-                            stateColors[state].withAlpha(20),
-                          ],
-                          stops: const [0.0, 0.8],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                // 卡片内容
-                Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: stateColors[state].withAlpha(50),
-                      child: Tw('${i + 1}', style: TextStyle(fontWeight: FontWeight.bold, color: _cs.onPrimary)),
-                    ),
-                    title: Text(card.front, style: TextStyle(fontWeight: FontWeight.w600, color: _cs.onPrimary)),
-                    subtitle: isActive ? null : Text('${_cardBackPreview(card.back)}\n复习 ${card.reps} 次', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: _cs.onPrimary.withAlpha(200))),
-                trailing: SizedBox(
-                  width: MediaQuery.of(context).size.width > 480 ? 200 : null,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // 评判中标签
-                    if (_judgingCardIds.contains(card.id))
-                      Padding(
-                        padding: const EdgeInsets.only(right: 4),
-                        child: Chip(
-                          label: Text('评判中', style: _tt.labelSmall!.copyWith(color: Colors.orange.shade800)),
-                          backgroundColor: Colors.orange.withAlpha(40),
-                          side: BorderSide(color: Colors.orange.shade300),
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ),
-                    // 评判结果标签（同色同字重，与旧版一致）
-                    if (_judgedResults.containsKey(card.id))
-                      Padding(
-                        padding: const EdgeInsets.only(right: 4),
-                        child: Chip(
-                          label: Text(
-                            _judgedResults[card.id] == 'pass' ? '✓ 通过' : '✗ 未通过',
-                            style: _tt.labelSmall!.copyWith(
-                              color: _judgedResults[card.id] == 'pass' ? _cs.primary : _cs.error,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          backgroundColor: _judgedResults[card.id] == 'pass'
-                              ? _cs.primaryContainer : _cs.errorContainer,
-                          side: BorderSide(
-                            color: _judgedResults[card.id] == 'pass'
-                                ? _cs.primaryFixed : _cs.errorContainer,
-                          ),
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ),
-                    Chip(
-                      label: Text(stateLabels[state], style: _tt.labelSmall!),
-                      backgroundColor: stateColors[state].withAlpha(20),
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    if (!isActive) ...[
-                      const SizedBox(width: CoSpacing.xs),
-                      Icon(Icons.expand_more, size: 20, color: _cs.outlineVariant),
-                    ],
-                  ],
-                ),
-                  ),
-                ),
-                onTap: () {
-                  if (isActive) {
-                    setState(() => _activeCardIndex = -1);
-                  } else {
-                    setState(() => _activeCardIndex = i);
-                    // 预加载选中卡片的 AI 评测题
-                    if (i < _cards.length) {
-                      _preloadAiQuestions(_cards[i]);
-                    }
-                    _resetInlineReview();
-                    // 展开后只滚动到刚好可视
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      final key = _cardKeys[i];
-                      if (key?.currentContext != null) {
-                        Scrollable.ensureVisible(
-                          key!.currentContext!,
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
-                          alignment: 0.1, // 顶部留 10% 边距
-                        );
-                      }
-                    });
-                  }
-                },
-              ),
-
-              // 展开内联复习
-              if (isActive) ...[
-                Divider(height: 1, color: _cs.onPrimary.withAlpha(38)),
-                Padding(
-                  padding: const EdgeInsets.all(CoSpacing.lg),
-                  child: DefaultTextStyle(
-                    style: TextStyle(color: _cs.onPrimary),
-                    child: _buildInlineReview(card),
-                  ),
-                ),
-              ],
-            ],
-          ),
           ],
         ),
       ),
     );
-  },
-    );
   }
 
-  Widget _buildInlineReview(DueCard card) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // 翻牌区域（验证中锁定为正面，闭卷）
-        GestureDetector(
-          onTap: _isVerifying ? null : () => setState(() => _isFlipped = !_isFlipped),
-          child: Container(
-            padding: const EdgeInsets.all(CoSpacing.xl),
-            decoration: BoxDecoration(
-              color: _isVerifying ? const Color(0xFFF5F5FF) :
-                     _isFlipped ? _cs.surface : _cs.primary,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _cs.surfaceContainerLow),
-            ),
-            child: Column(
-              children: [
-                // 卡片内容（考试模式降低不透明度，增加滚动兜底防溢出）
-                Padding(
-                  padding: const EdgeInsets.all(CoSpacing.sm),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 240),
-                    child: SingleChildScrollView(
-                      child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      transitionBuilder: (child, animation) {
-                        return FadeTransition(
-                          opacity: animation,
-                          child: ScaleTransition(scale: animation, child: child),
-                        );
-                      },
-                      child: ImageFiltered(
-                      imageFilter: ui.ImageFilter.blur(
-                        sigmaX: _isVerifying ? 5.0 : 0.0,
-                        sigmaY: _isVerifying ? 5.0 : 0.0,
-                      ),
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 200),
-                        child: _isVerifying || !_isFlipped
-                          ? Text(
-                              card.front,
-                              key: const ValueKey('front'),
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                color: _isVerifying ? const Color(0x051A1A2E) : const Color(0xFF1A1A2E),
-                                height: 1.4,
-                              ),
-                              textAlign: TextAlign.center,
-                            )
-                          : Container(
-                              key: const ValueKey('back'),
-                              padding: const EdgeInsets.symmetric(horizontal: CoSpacing.lg),
-                              child: RichContentBuilder(textColor: _cs.onSurface).build(card.back),
-                            ),
-                      ),
-                    ),
-                  ),
-                  ),
-                ),
-                ),
-                if (!_isVerifying && _isFlipped && card.sourceSentence != null) ...[
-                  const SizedBox(height: CoSpacing.sm),
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 200),
-                    child: Tw('来源: ${card.sourceSentence}',
-                        key: ValueKey(card.sourceSentence),
-                        style: _tt.bodySmall?.copyWith(color: _cs.onSurfaceVariant, fontStyle: FontStyle.italic)),
-                  ),
-                ],
-                const SizedBox(height: CoSpacing.sm),
-                Text(
-                  _isVerifying ? '闭卷考试中' :
-                  _isFlipped ? '点击收回' : '点击翻转查看释义',
-                  style: _tt.bodySmall?.copyWith(color: _isVerifying ? _cs.secondaryFixed : _cs.onSurfaceVariant)),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: CoSpacing.md),
+  /// 当前是否处于「筛选 / 搜索」状态 —— 决定空状态该说什么。
+  ///
+  /// 🔑 两种空状态**必须分开**：
+  /// · 真的没有词 → 教用户「词从哪来」
+  /// · 有词但被筛掉了 → 告诉用户「换个条件」
+  /// 混用会让一个搜不到词的用户以为自己的生词没了。
+  bool get _isFiltering => _args.search.isNotEmpty || _args.dueOnly;
 
-        // TTS
-        Consumer(
-          builder: (_, ref, __) {
-            final tts = ref.watch(ttsServiceProvider);
-            final enabled = ref.watch(ttsEnabledProvider);
-            if (!enabled) return const SizedBox.shrink();
-            final isPlaying = tts.isPlaying;
-            final isLoading = tts.state == TtsState.loading;
-            return Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                icon: isLoading
-                    ? const SizedBox(
-                        width: 18, height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Icon(
-                        isPlaying ? Icons.stop_circle_outlined : Icons.volume_up,
-                        size: 18,
-                      ),
-                label: Text(isPlaying ? '停止' : (_isFlipped ? '朗读释义' : '朗读概念')),
-                onPressed: isLoading
-                    ? null
-                    : () {
-                        String ttsText;
-                        if (_isFlipped) {
-                          final back = card.back;
-                          final trimmed = back.trim();
-                          if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-                            try {
-                              final parsed = jsonDecode(trimmed) as Map<String, dynamic>;
-                              if (parsed.containsKey('word')) {
-                                final w = parsed['word'] as String? ?? '';
-                                final c = parsed['chinese'] as String? ?? '';
-                                ttsText = '$w. $c';
-                              } else if (parsed.containsKey('character')) {
-                                final ch = parsed['character'] as String? ?? '';
-                                final py = parsed['pinyin'] as String? ?? '';
-                                ttsText = '$ch $py';
-                              } else {
-                                ttsText = back.replaceAll('**', '');
-                              }
-                            } catch (_) {
-                              ttsText = back.replaceAll('**', '');
-                            }
-                          } else {
-                            ttsText = back.replaceAll('**', '');
-                          }
-                        } else {
-                          ttsText = card.front;
-                        }
-                        tts.togglePlay(ttsText);
-                      },
-              ),
-            );
-          },
-        ),
-
-        // 记忆验证（正面背面均显示）
-        if (!_isVerified && !_isVerifying) ...[
-          const SizedBox(height: CoSpacing.sm),
-          resolveStrategy(card).buildButton(
-            context,
-            () {
-              setState(() { _isFlipped = false; _isVerifying = true; });
-              if (!resolveStrategy(card).isSpellingBased) {
-                _startInlineAiQuiz(card);
-              }
-            },
-            isReady: _preloadedQuestions.isNotEmpty,
-            isLoading: _preloadingQuiz,
-          ),
-        ],
-
-        // 验证输入（管线策略路由，仅在验证中显示）
-        if (_isVerifying && !_isVerified && resolveStrategy(card).isSpellingBased)
-          resolveStrategy(card).buildInput(
-            context: context,
-            card: card,
-            controller: _answerController,
-            isVerifying: _isVerifying,
-            isVerified: _isVerified,
-            verificationResult: _verificationResult,
-            onSubmit: (_) async {
-              if (resolveStrategy(card).isSpellingBased) {
-                final strategy = resolveStrategy(card);
-                _verificationResult = await strategy.submitVerification(
-                  card: card,
-                  client: _client!,
-                  userInput: _answerController.text,
-                );
-                _isVerified = true;
-                _isVerifying = false;
-                setState(() {});
-                Future.delayed(const Duration(milliseconds: 5000), () {
-                  if (mounted) _submitInlineReview(_cards.indexOf(card));
-                });
-              }
-            },
-          ),
-
-        // AI 问答（闭卷中）
-        if (_isVerifying && !_isJudging && _isAiQuiz && _aiQuestions.isNotEmpty && _aiResults.isEmpty && _aiQuestionIndex < _aiQuestions.length) ...[
-          const SizedBox(height: CoSpacing.sm),
-          Text('问题 ${_aiQuestionIndex + 1}/${_aiQuestions.length}',
-              style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: CoSpacing.xs),
-          Text(_aiQuestions[_aiQuestionIndex].question,
-              style: Theme.of(context).textTheme.bodyMedium,
-              textAlign: TextAlign.center),
-          const SizedBox(height: CoSpacing.sm),
+  // ────────────────────────────────────────────────────────────
+  // 标题栏
+  // ────────────────────────────────────────────────────────────
+  Widget _header(CoEvoTokens t, int? dueCount) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 2, 18, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Row(
             children: [
               Expanded(
-                child: TextField(
-                  controller: _answerController,
-                  decoration: const InputDecoration(hintText: '你的回答...', isDense: true, border: OutlineInputBorder()),
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) => _submitInlineAiAnswer(),
+                child: Text(
+                  '复习',
+                  style: TextStyle(
+                    fontFamily: CoFonts.uiSans,
+                    fontSize: 23,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 23 * -0.015,
+                    color: Color(t.ink.argb32),
+                  ),
                 ),
               ),
-              const SizedBox(width: CoSpacing.sm),
-              IconButton.filled(
-                onPressed: _submitInlineAiAnswer,
-                icon: const Icon(Icons.arrow_forward, size: 18),
+              // 🆕 筛选：显示全部 / 显示已到期（白哥 2026-09-28 定）
+              _FilterChip(
+                dueOnly: _args.dueOnly,
+                onTap: () => setState(
+                    () => _args = _args.copyWith(dueOnly: !_args.dueOnly)),
               ),
             ],
           ),
-        ],
-
-        // 判断中...
-        if (_isJudging) ...[
-          const SizedBox(height: CoSpacing.md),
-Center(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(width: CoSpacing.lg, height: CoSpacing.lg, child: CircularProgressIndicator(strokeWidth: 2)),
-                SizedBox(width: CoSpacing.sm),
-                Text('正在判断答案...', style: TextStyle(color: _cs.outline)),
-              ],
+          const SizedBox(height: 6),
+          Text(
+            // 计数未就绪时**不显示 0** —— 那可能是谎报（库还没读出来）
+            dueCount == null
+                ? '你的生词会按记忆曲线安排在这里。'
+                : dueCount == 0
+                    ? '今天没有要复习的，随便翻翻吧。'
+                    : '今天有 $dueCount 个该看',
+            style: TextStyle(
+              fontFamily: CoFonts.uiSans,
+              fontSize: 12,
+              height: 1.6,
+              color: Color(dueCount != null && dueCount > 0
+                  ? t.accent.argb32
+                  : t.ink3.argb32),
             ),
           ),
         ],
-
-        // AI 结果（或从缓存中读取已评判结果）
-        if (!_isJudging && (_aiResults.isNotEmpty || (_judgeDetails[card.id]?.isNotEmpty ?? false))) ...[
-          const SizedBox(height: CoSpacing.sm),
-          ...(_aiResults.isNotEmpty ? _aiResults : _judgeDetails[card.id]!).map((r) => Padding(
-            padding: const EdgeInsets.only(bottom: CoSpacing.xs),
-            child: Row(
-              children: [
-                Icon(r.correct ? Icons.check_circle : Icons.cancel,
-                    color: r.correct ? _cs.primary : _cs.error, size: 18),
-                const SizedBox(width: 6),
-                Expanded(child: Text(r.feedback, style: _tt.bodySmall!)),
-              ],
-            ),
-          )),
-        ],
-        // 验证结果
-        if (!_isJudging && (_isVerified || _judgedResults.containsKey(card.id)))
-          Padding(
-            padding: const EdgeInsets.only(top: CoSpacing.md),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              decoration: BoxDecoration(
-                color: (_isVerified ? _verificationResult : _judgedResults[card.id]) == 'pass'
-                    ? _cs.primaryContainer : _cs.errorContainer,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: (_isVerified ? _verificationResult : _judgedResults[card.id]) == 'pass'
-                      ? _cs.primaryFixed : _cs.errorContainer,
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    (_isVerified ? _verificationResult : _judgedResults[card.id]) == 'pass' ? Icons.check_circle : Icons.cancel,
-                    color: (_isVerified ? _verificationResult : _judgedResults[card.id]) == 'pass' ? _cs.primary : _cs.error,
-                    size: 22,
-                  ),
-                  const SizedBox(width: CoSpacing.sm),
-                  Text(
-                    (_isVerified ? _verificationResult : _judgedResults[card.id]) == 'pass' ? '验证通过' : '未通过',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: (_isVerified ? _verificationResult : _judgedResults[card.id]) == 'pass' ? _cs.primary : _cs.error,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-      ],
+      ),
     );
   }
 
-  void _showSubscribePanel(BuildContext context, bool isExpired) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(isExpired ? '订阅已到期' : '需要订阅'),
-        content: const SubscribePanel(),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Tw('取消'),
+  // ────────────────────────────────────────────────────────────
+  // 搜索
+  // ────────────────────────────────────────────────────────────
+  Widget _searchBar(CoEvoTokens t) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 18),
+      child: Clay(
+        // 凹陷 = 「可以输入的地方」（粘土语汇里 `pressed` 就是「可交互的容器」）
+        state: ClayState.pressed,
+        fill: t.sunken,
+        borderRadius: BorderRadius.circular(12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+        child: Row(
+          children: [
+            Icon(Icons.search, size: 16, color: Color(t.ink3.argb32)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: _searchController,
+                onChanged: _onSearchChanged,
+                textInputAction: TextInputAction.search,
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 14,
+                  color: Color(t.ink.argb32),
+                ),
+                decoration: InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                  hintText: '搜索单词',
+                  hintStyle: TextStyle(
+                    fontFamily: CoFonts.uiSans,
+                    fontSize: 14,
+                    color: Color(t.ink3.argb32),
+                  ),
+                ),
+              ),
+            ),
+            if (_searchController.text.isNotEmpty)
+              GestureDetector(
+                onTap: () {
+                  _searchController.clear();
+                  _debounce?.cancel();
+                  setState(() => _args = _args.copyWith(search: ''));
+                },
+                child: Icon(Icons.close, size: 16, color: Color(t.ink3.argb32)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // 三档排序
+  // ────────────────────────────────────────────────────────────
+  Widget _sortBar(CoEvoTokens t) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 18),
+      child: Row(
+        children: [
+          for (final s in ReviewSort.values) ...[
+            if (s != ReviewSort.values.first) const SizedBox(width: 8),
+            _SortChip(
+              label: s.label,
+              selected: _args.sort == s,
+              onTap: () => setState(() => _args = _args.copyWith(sort: s)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // 列表
+  // ────────────────────────────────────────────────────────────
+  Widget _list(List<ReviewListItem> items) {
+    final now = DateTime.now();
+    // 🔑 分组用**数据层**的静态方法（与 `dueCount` 同一判据）——
+    //    在 UI 里重写一遍「是否到期」会让「顶部计数」与「分组标题」打架。
+    final g = ReviewListQuery.group(items, now);
+
+    final rows = <Widget>[];
+    if (g.due.isNotEmpty) {
+      rows.add(_GroupHeader(
+        label: '今天该复习',
+        count: g.due.length,
+        accent: true,
+      ));
+      for (final it in g.due) {
+        rows.add(_WordRow(item: it, now: now, onPause: () => _pause(it)));
+      }
+    }
+    if (g.later.isNotEmpty) {
+      rows.add(
+          _GroupHeader(label: '之后', count: g.later.length, accent: false));
+      for (final it in g.later) {
+        rows.add(_WordRow(item: it, now: now, onPause: () => _pause(it)));
+      }
+    }
+
+    return ListView.separated(
+      // 底部留出 tabbar 高度 —— `_ShellScaffold` 开了 `extendBody: true`
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, CoSpacing.tabBarClearance),
+      itemCount: rows.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (_, i) => rows[i],
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// 子组件
+// ════════════════════════════════════════════════════════════════
+
+/// 筛选按钮 —— 「全部 / 已到期」二态切换。
+///
+/// 🔑 它是**筛选**不是**排序** —— 与三档排序正交，用**不同形态**表达：
+///    排序是「平坦文字 + 选中变药丸」（`_SortChip`），筛选是「一个会翻面的小药丸」。
+///    ⚠️ 若两者长得一样，用户会以为它们是一组单选。
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({required this.dueOnly, required this.onTap});
+
+  final bool dueOnly;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+    // 选中（只看已到期）→ 强调色填充；未选中 → 凹陷
+    final bg = dueOnly ? t.accent : t.sunken;
+    final fg = dueOnly ? t.accentInk : t.ink2;
+
+    return Clay(
+      state: dueOnly ? ClayState.selected : ClayState.pressed,
+      fill: bg,
+      borderRadius: BorderRadius.circular(13),
+      onTap: onTap,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.filter_alt_outlined, size: 13, color: Color(fg.argb32)),
+          const SizedBox(width: 5),
+          Text(
+            dueOnly ? '已到期' : '全部',
+            style: TextStyle(
+              fontFamily: CoFonts.uiSans,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: Color(fg.argb32),
+            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 三档排序的一个档位。
+class _SortChip extends StatelessWidget {
+  const _SortChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+
+    if (!selected) {
+      // 未选中 = 平坦（同 `_ClayTabBar` 的定案：不给未激活项加实体，
+      // 否则一排 chip 会变成各自独立的「物件」）
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontFamily: CoFonts.uiSans,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Color(t.ink2.argb32),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Clay(
+      state: ClayState.selected,
+      borderRadius: BorderRadius.circular(13),
+      onTap: onTap,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontFamily: CoFonts.uiSans,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: Color(t.accentInk.argb32),
+        ),
+      ),
+    );
+  }
+}
+
+/// 分组标题（「今天该复习 / 之后」）。
+class _GroupHeader extends StatelessWidget {
+  const _GroupHeader({
+    required this.label,
+    required this.count,
+    required this.accent,
+  });
+
+  final String label;
+  final int count;
+
+  /// 「今天该复习」用强调色 —— 它是**行动号召**；「之后」用次要色。
+  final bool accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 6, 2, 2),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontFamily: CoFonts.uiSans,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 12 * 0.04,
+              color: Color((accent ? t.accent : t.ink3).argb32),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '$count',
+            style: TextStyle(
+              fontFamily: CoFonts.uiSans,
+              fontSize: 11,
+              color: Color(t.ink3.argb32),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 一条生词。
+///
+/// 显示：**单词 · 熟度三点 · 到期状态 · 暂停**。
+///
+/// 🔑 **刻意没有 `onTap`**（第一步的范围）—— 点进翻卡属第二步。
+///    按 3.22 的教训，宁可不给暗示（无 `›`、无点击反馈），
+///    也不给一个点了没反应的入口。
+class _WordRow extends StatelessWidget {
+  const _WordRow({
+    required this.item,
+    required this.now,
+    required this.onPause,
+  });
+
+  final ReviewListItem item;
+  final DateTime now;
+  final VoidCallback onPause;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+    final due = item.isDue(now);
+
+    return Clay(
+      padding: const EdgeInsets.fromLTRB(16, 13, 10, 13),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.spelling,
+                  style: TextStyle(
+                    fontFamily: CoFonts.latinSerif,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                    height: 1.3,
+                    letterSpacing: 18 * -0.011,
+                    color: Color(t.ink.argb32),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    _Dots(count: _dotsOf(item), t: t),
+                    const SizedBox(width: 9),
+                    Text(
+                      _dueLabel(item, now),
+                      style: TextStyle(
+                        fontFamily: CoFonts.uiSans,
+                        fontSize: 11.5,
+                        fontWeight: due ? FontWeight.w600 : FontWeight.w400,
+                        color: Color((due ? t.accent : t.ink3).argb32),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          _PauseButton(onTap: onPause),
+        ],
+      ),
+    );
+  }
+
+  /// 熟度 → **0..3 个点**。
+  ///
+  /// ## 🔴 这是**渲染层判定**，不是数据层字段
+  /// `ReviewListQuery` 的类注释明确：「库级只回答可不可以，渲染层决定展示」
+  /// （见 `mnemonic-layer-separation`）→ 数据层只给原始 `state` / `reps`，
+  /// **不输出 `dots: 2`**。所以映射规则写在这里，改它不动数据层。
+  ///
+  /// ## ⚠️ 阈值是**暂定**的（待真机看观感后调）
+  /// 依据是 `reps`（复习次数）而非 `stability`：后者是 FSRS 的内部单位（天），
+  /// 直接拿来分档会让用户看到「1.7 天 = 两点」这种无法解释的边界。
+  /// `reps` 的语义直白（复习过几次），分档也稳定。
+  static int _dotsOf(ReviewListItem it) {
+    if (it.state == 0 || it.reps <= 0) return 0;
+    if (it.reps <= 2) return 1;
+    if (it.reps <= 5) return 2;
+    return 3;
+  }
+
+  /// 到期文案：`现在复习 / 25 分钟后 / 3 小时后 / 4 天后 / 2 个月后`。
+  static String _dueLabel(ReviewListItem it, DateTime now) {
+    final d = it.untilDue(now);
+    if (d.inMinutes <= 0) return '现在复习';
+    if (d.inMinutes < 60) return '${d.inMinutes} 分钟后';
+    if (d.inHours < 24) return '${d.inHours} 小时后';
+    if (d.inDays < 30) return '${d.inDays} 天后';
+    final months = (d.inDays / 30).round();
+    if (months < 12) return '$months 个月后';
+    return '${(d.inDays / 365).round()} 年后';
+  }
+}
+
+/// 熟度三点 —— 实心 = 已点亮。
+class _Dots extends StatelessWidget {
+  const _Dots({required this.count, required this.t});
+
+  final int count;
+  final CoEvoTokens t;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        for (var i = 0; i < 3; i++) ...[
+          if (i > 0) const SizedBox(width: 3),
+          Container(
+            width: 5,
+            height: 5,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              // 点亮 → accent；未点亮 → `line`（与背景同族的浅色，不抢眼）
+              color: Color((i < count ? t.accent : t.line).argb32),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// 「暂停」—— 12 / accent / w600 文字链接（同收藏清单的「返回」版式）。
+class _PauseButton extends StatelessWidget {
+  const _PauseButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Text(
+          '暂停',
+          style: TextStyle(
+            fontFamily: CoFonts.uiSans,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Color(t.accent.argb32),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 空状态 —— **两种**（见 `_isFiltering` 的说明）。
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({required this.filtered});
+
+  /// `true` = 有词但被筛掉 / 搜不到；`false` = 真的一个词都没有。
+  final bool filtered;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+
+    if (filtered) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            '没有符合条件的词。\n换个排序、或关掉「已到期」筛选看看。',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: CoFonts.uiSans,
+              fontSize: 13,
+              height: 1.7,
+              color: Color(t.ink2.argb32),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(22, 52, 22, 52),
+      child: Column(
+        children: [
+          // 粘土凹陷圆环（与收藏清单同一版式语言，两页解决的是同一个问题）
+          SizedBox(
+            width: 74,
+            height: 74,
+            child: Clay(
+              state: ClayState.pressed,
+              fill: t.sunken,
+              borderRadius: BorderRadius.circular(37),
+              child: Center(
+                child: Icon(
+                  Icons.style_outlined,
+                  size: 26,
+                  color: Color(t.ink3.argb32),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            '还没有要复习的词',
+            style: TextStyle(
+              fontFamily: CoFonts.uiSans,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Color(t.ink.argb32),
+            ),
+          ),
+          const SizedBox(height: 9),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 250),
+            child: Text(
+              '读文章时遇到不认识的词，长按选中就能查看释义，'
+              '查过的词会自动收进来，按记忆曲线安排复习。',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: 13,
+                height: 1.7,
+                color: Color(t.ink2.argb32),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 库不可用 —— 取最小诚实表达（**不冒充「还没有生词」**）。
+class _Unavailable extends StatelessWidget {
+  const _Unavailable();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          '生词暂时读不出来，重启应用可再试。',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: CoFonts.uiSans,
+            fontSize: 13,
+            height: 1.7,
+            color: Color(t.ink3.argb32),
+          ),
+        ),
       ),
     );
   }

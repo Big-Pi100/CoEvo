@@ -29,7 +29,11 @@ class ReviewListQuery {
   final Database _db;
 
   /// 记忆曲线（默认）：按到期时间升序 —— 最该看的排最前
-  static const String orderMemoryCurve = 'next_review_at ASC';
+  ///
+  /// ⚠️ 三个排序串**都带 `crs.` 前缀** —— 因为 [list] 会 `LEFT JOIN user_word`，
+  /// 而 `spelling` / `updated_at` **两表同名列**（都是冗余出来的）→
+  /// 不加限定 SQLite 会报 `ambiguous column name`。
+  static const String orderMemoryCurve = 'crs.next_review_at ASC';
 
   /// 最近：最近**加入或复习**的排最前（`ui-ux` §6.2 的「最近」档）。
   ///
@@ -39,10 +43,10 @@ class ReviewListQuery {
   /// `COALESCE` 取到那个较早的时间 → 它会被排到很后面，
   /// 与「最近加入」的语义**相反**。
   /// `updated_at` 在插入与更新时都会刷新，正好同时覆盖「加入」与「复习」两种事件。
-  static const String orderRecent = 'updated_at DESC';
+  static const String orderRecent = 'crs.updated_at DESC';
 
   /// A–Z：按拼写（大小写不敏感，与 `idx_crs_spelling` 的 COLLATE 一致）
-  static const String orderAlphabetical = 'spelling COLLATE NOCASE ASC';
+  static const String orderAlphabetical = 'crs.spelling COLLATE NOCASE ASC';
 
   /// 三档排序的允许值（防注入：**不接受调用方传任意 SQL**）
   static const Set<String> allowedOrders = {
@@ -57,9 +61,14 @@ class ReviewListQuery {
   ///   这样能走 `idx_crs_spelling`；模糊包含（`%x%`）会全表扫，故不提供。
   /// - [order]：必须是 [allowedOrders] 之一（否则回退到记忆曲线）——
   ///   🔑 **白名单而非拼接**，避免「排序字段」成为注入面。
+  /// - [dueOnly]：🆕 只取**已到期**的（`next_review_at <= nowUtc`）。
+  ///   对应复习页顶部的筛选「显示全部 / 显示已到期」（白哥 2026-09-28 定）。
+  ///   ⚠️ 传 `true` 时 [nowUtc] 应一并给出；省略则取当前时刻。
   Future<List<ReviewListItem>> list({
     String? search,
     String order = orderMemoryCurve,
+    bool dueOnly = false,
+    DateTime? nowUtc,
     int limit = 200,
     int offset = 0,
   }) async {
@@ -67,17 +76,45 @@ class ReviewListQuery {
     final q = search?.trim() ?? '';
 
     final sql = StringBuffer(
-      'SELECT word_id, spelling, state, reps, lapses, stability, difficulty, '
-      '       last_review_at, next_review_at, pending_push '
-      'FROM card_review_state ',
+      'SELECT crs.word_id, crs.spelling, crs.state, crs.reps, crs.lapses, '
+      '       crs.stability, crs.difficulty, crs.last_review_at, '
+      '       crs.next_review_at, crs.pending_push '
+      'FROM card_review_state crs '
+      // 🔴 `LEFT JOIN user_word` —— 只为了拿「暂停」状态（`deleted`）
+      //
+      // ## 为什么需要这个 JOIN（2026-09-28 · 白哥定「移出 → 改为暂停」）
+      // 复习页是**单一列表**（`ui-ux` §6.2），一个词「离开视野」不是被移出，
+      // 而是它的状态变了 —— 数据层就是 `user_word.deleted = 1`（先不学了）。
+      // 而**排序依据 `next_review_at` 只在 `card_review_state`** → 两个信息在两张表里。
+      //
+      // 🔑 两表**同在 `user.db`** → 直接 JOIN 即可，**不需要改 schema**
+      //    （曾考虑给 `card_review_state` 加 `paused` 列并做 version 3 迁移，
+      //     但 `user_word.deleted` 的原始语义**本来就是**「用户先不学了」——
+      //     见 `user_db_schema.sql` 该列的注释 → 复用它才是对的）。
+      //
+      // ## 为什么是 `LEFT` 而不是 `INNER`（有意的）
+      // 以 `card_review_state` 为**主表**（FSRS 状态是复习页的核心）。
+      // 若某词在 `crs` 却不在 `uw`（异常数据），`INNER` 会让它**静默消失**；
+      // `LEFT` + `COALESCE(uw.deleted, 0) = 0` 则**照常显示** ——
+      // 🔑 「宁可显示一个状态可疑的词，也不让用户的词无声消失」。
+      'LEFT JOIN user_word uw ON uw.word_id = crs.word_id ',
     );
     final args = <Object?>[];
+    // 🔑 暂停的词**不进列表** —— 这是 `COALESCE` 而非 `uw.deleted = 0`：
+    //    后者对「uw 里没有这一行」会判 NULL → 被过滤掉（那是 INNER 的效果）
+    final wheres = <String>['COALESCE(uw.deleted, 0) = 0'];
 
     if (q.isNotEmpty) {
       // 🔑 ESCAPE 处理通配符：用户搜 `%` 或 `_` 时按字面匹配，而不是当通配符
-      sql.write("WHERE spelling LIKE ? ESCAPE '\\' ");
+      wheres.add("crs.spelling LIKE ? ESCAPE '\\'");
       args.add('${_escapeLike(q)}%');
     }
+    if (dueOnly) {
+      wheres.add('crs.next_review_at <= ?');
+      args.add(_iso(nowUtc ?? DateTime.now()));
+    }
+
+    sql.write('WHERE ${wheres.join(' AND ')} ');
     sql.write('ORDER BY $safeOrder LIMIT ? OFFSET ?');
     args..add(limit)..add(offset);
 
@@ -85,16 +122,33 @@ class ReviewListQuery {
     return rows.map(ReviewListItem.fromRow).toList(growable: false);
   }
 
-  /// 命中搜索的总数（分页用；与 [list] 用同一筛选条件）
-  Future<int> count({String? search}) async {
+  /// 命中筛选条件的总数（分页用；与 [list] 用**同一条件**）
+  ///
+  /// ⚠️ 三条（`list` / `count` / `dueCount`）必须共用同一套筛选，
+  /// 否则会出现「列表 3 条但顶部写 5 个」这类自相矛盾（本文件的设计原则）。
+  Future<int> count({
+    String? search,
+    bool dueOnly = false,
+    DateTime? nowUtc,
+  }) async {
     final q = search?.trim() ?? '';
-    if (q.isEmpty) {
-      final r = await _db.rawQuery('SELECT count(*) AS n FROM card_review_state');
-      return (r.first['n'] as int?) ?? 0;
+    final wheres = <String>['COALESCE(uw.deleted, 0) = 0'];
+    final args = <Object?>[];
+
+    if (q.isNotEmpty) {
+      wheres.add("crs.spelling LIKE ? ESCAPE '\\'");
+      args.add('${_escapeLike(q)}%');
     }
+    if (dueOnly) {
+      wheres.add('crs.next_review_at <= ?');
+      args.add(_iso(nowUtc ?? DateTime.now()));
+    }
+
     final r = await _db.rawQuery(
-      "SELECT count(*) AS n FROM card_review_state WHERE spelling LIKE ? ESCAPE '\\'",
-      ['${_escapeLike(q)}%'],
+      'SELECT count(*) AS n FROM card_review_state crs '
+      'LEFT JOIN user_word uw ON uw.word_id = crs.word_id '
+      'WHERE ${wheres.join(' AND ')}',
+      args,
     );
     return (r.first['n'] as int?) ?? 0;
   }
@@ -102,9 +156,14 @@ class ReviewListQuery {
   /// 「N 个今天该看」—— `next_review_at <= nowUtc` 的条目数。
   ///
   /// 走 `idx_crs_due`（范围扫描）。
+  ///
+  /// ⚠️ 必须与 [list] / [count] 同样排除**暂停**的词 ——
+  /// 否则会出现「顶部说 5 个该看，列表里只数得出 3 个」。
   Future<int> dueCount(DateTime nowUtc) async {
     final r = await _db.rawQuery(
-      'SELECT count(*) AS n FROM card_review_state WHERE next_review_at <= ?',
+      'SELECT count(*) AS n FROM card_review_state crs '
+      'LEFT JOIN user_word uw ON uw.word_id = crs.word_id '
+      'WHERE COALESCE(uw.deleted, 0) = 0 AND crs.next_review_at <= ?',
       [_iso(nowUtc)],
     );
     return (r.first['n'] as int?) ?? 0;

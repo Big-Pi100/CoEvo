@@ -118,7 +118,7 @@ void main() {
   _s14BookmarkList();
   _s15Navigation();
   _s16WordWriteback();
-  _s17WordList();
+  _s17ReviewList();
 
   print('\n' + '═' * 72);
   print('通过 $_pass 项，实现类失败 $_fail 项，规格内部冲突 ${_conflicts.length} 项');
@@ -1462,21 +1462,28 @@ void _s16WordWriteback() {
           reader.contains('[lookup] 写入失败'));
 }
 
-// ── ⑰ 生词本的「可见性」接线（Step 3.4d）────────────────────────
+// ── ⑰ 复习页（单一列表）的接线 ──────────────────────────────────
 //
-// 🔴 为什么需要这一节（2026-09-28 · 白哥实测「查词没进复习 tab」之后补）：
+// 🔴 本节的历史（**两次都由白哥实测暴露**，两次都是「编译器看不出来」的失效）
 //
-// 3.4c 把数据**写进**了 `user_word`，但**没有任何界面读它** ——
-// 「功能明明做了，用户却看不到」。这类失效**编译器完全看不出来**：
-//   · 页面读错表（读 `bookmark` 而不是 `user_word`）→ 列表**永远是空的**
-//   · 过滤条件重复定义（页面自己拼 `deleted = 0`）→ 列表与计数**不一致**
-//   · 入口没接 → 页面存在但进不去（收藏清单当初就是这么漏的）
-//   · 移出后不刷新 → 点了「移出」那一行还在
+// ① 2026-09-28 上午 · 白哥：「查词没有进入复习 tab」
+//    → 查清 3.4c 只做了**写入端**，**没有任何界面读 `user_word`**
+//    → 当时补了 `/home/words`（§17 的最初版本）
 //
-// 🔑 与 §16 的分工：§16 锁「**写进去**」，本节锁「**看得见**」。
-//    两者缺一，用户都会认为「这个功能没做」。
-void _s17WordList() {
-  print('\n【17】生词本页（3.4d）的可见性接线');
+// ② 2026-09-28 中午 · 白哥：「**生词本不是一个单独的页面，
+//    生词本和复习 tab 是一个东西**」
+//    → 独立页**方向错了** → 改为**重写复习页**（本节的当前版本）
+//    → 依据 `ui-ux-refactor-assessment-2026-09-25.md` §6.2
+//      （🔑 这条规格 **2026-09-25 就已定稿**，白哥原话：
+//       「生词本就是复习管理，其实复习页面只要一个就行了……就不要移入移出了」）
+//
+// 🔑 教训：**「写了页面」≠「接对了数据源」**。本节锁的都是这类风险：
+//   · 复习页读错源（读 `bookmark` 或**后端 `plans`**）→ 列表永远空 / 显示别的东西
+//   · K12 残留没清干净（`DueCard` / `ChatClient`）→ 页面**偷偷依赖登录态**
+//   · 暂停过滤漏了 → 暂停过的词还在列表里
+//   · 三条查询（list / count / dueCount）筛选不一致 →「顶部说 5 个该看，列表只数出 3 个」
+void _s17ReviewList() {
+  print('\n【17】复习页（单一列表）的接线');
 
   final root = _repoRoot();
   String src(String p) {
@@ -1484,53 +1491,75 @@ void _s17WordList() {
     return f.existsSync() ? _codeOnly(f.readAsStringSync()) : '';
   }
 
-  final page = src('screens/word_list_screen.dart');
-  final prov = src('providers/user_word_provider.dart');
+  final page = src('screens/review_screen.dart');
+  final prov = src('providers/review_list_provider.dart');
+  final q = src('services/review_list_query.dart');
   final home = src('screens/home_screen.dart');
   final app = src('app.dart');
 
-  // ① 页面读的是**生词本**的数据源
-  check('生词本页用 userWordListProvider', page.contains('userWordListProvider'));
-  //    🔴 反向：读错表（`bookmark`）会让列表**永远是空的**，而编译期毫无提示
-  check('🔴 生词本页不读 bookmark（读错表 = 列表永远为空）',
-      !page.contains('bookmark'));
-  check('列表 provider 走仓储的 list()',
-      prov.contains('userWordListProvider') && prov.contains('repo.list()'));
+  // ① 数据源正确：**端侧** `card_review_state`（经 `reviewListProvider`）
+  check('复习页用 reviewListProvider', page.contains('reviewListProvider'));
+  check('provider 走 ReviewListQuery', prov.contains('ReviewListQuery'));
+  check('查询主表是 card_review_state', q.contains('FROM card_review_state'));
 
-  // ② 软删口径只定义**一次**（在仓储层）
-  //    🔑 页面若自己再拼一遍 `deleted = 0`，两处条件就是**漂移源** ——
-  //       改了一处，列表与计数会不一致。
-  check('过滤 deleted 的职责在仓储层（页面不重复定义条件）',
-      !page.contains('deleted'));
+  // ② 🔴 K12 残留必须清干净 —— 这些都是「编译能过、运行才发现」的
+  check('复习页不再读后端 plans（K12 遗留）', !page.contains('planProvider'));
+  check('复习页不再用 DueCard / ChatClient（K12 遗留）',
+      !page.contains('DueCard') && !page.contains('ChatClient'));
+  check('复习页不再含 AI 出题测验（_isAiQuiz / VerifyQuestion）',
+      !page.contains('_isAiQuiz') && !page.contains('VerifyQuestion'));
+  //    产品原则：除生词表上限外不验证登录态
+  check('复习页不依赖登录态（无 authProvider）', !page.contains('authProvider'));
 
-  // ③ 200 上限**可见**（免费层的核心约束，必须让用户看到，而不是只在日志里）
-  check('页面显示 200 上限（kUserWordLimitFree）',
-      page.contains('kUserWordLimitFree'));
+  // ③ 🔴 暂停过滤：**三条查询都必须** JOIN + 过滤
+  //    这是「单一列表」的数据基础（§6.2.1：「一个词离开视野，是它的状态变了」）
+  //    🔑 少一条就会出现「列表与计数对不上」
+  final joins = RegExp(r'LEFT JOIN user_word uw').allMatches(q).length;
+  check('list / count / dueCount 三条都 LEFT JOIN user_word（应 ≥3）',
+      joins >= 3, '实得 $joins');
+  final paused = RegExp(r'COALESCE\(uw\.deleted, 0\) = 0').allMatches(q).length;
+  check('三条都过滤「已暂停」（应 ≥3）', paused >= 3, '实得 $paused');
 
-  // ④ 移出 = **软删**（走仓储的 remove，不是 DELETE）+ 之后刷新
-  check('移出走仓储的 remove（软删）', page.contains('repo.remove('));
-  check('🔴 移出后 invalidate 列表（否则那一行还在）',
-      page.contains('invalidate(userWordListProvider)'));
-  check('移出后也 invalidate 计数（列表与计数须同源刷新）',
-      page.contains('invalidate(userWordCountProvider)'));
+  // ④ 三档排序齐全，且**都带 `crs.` 前缀**
+  //    🔴 不加限定：JOIN 后 `spelling` / `updated_at` 两表同名 →
+  //       SQLite 直接报 `ambiguous column name`（运行期炸，编译期无声）
+  for (final k in ['orderMemoryCurve', 'orderRecent', 'orderAlphabetical']) {
+    check('排序档 $k 存在', q.contains(k));
+  }
+  check('🔴 排序串都带 crs. 前缀（JOIN 后避免 ambiguous column）',
+      q.contains('crs.next_review_at ASC') &&
+          q.contains('crs.updated_at DESC') &&
+          q.contains('crs.spelling COLLATE NOCASE ASC'));
 
-  // ⑤ 入口 + 路由（与收藏清单**同一判据**：挂子路由 → 保留 tabbar + 右滑返回）
+  // ⑤ 筛选（白哥 2026-09-28 新增「显示全部 / 显示已到期」）
+  check('数据层支持 dueOnly 筛选', q.contains('dueOnly'));
+  check('界面有筛选切换', page.contains('dueOnly'));
+
+  // ⑥ 分组走**数据层**静态方法（不在 UI 里重算「是否到期」）
+  check('分组走 ReviewListQuery.group（不在 UI 重算到期）',
+      page.contains('ReviewListQuery.group'));
+
+  // ⑦ 暂停 = 软删（`pause` → `deleted = 1`）+ 刷新，**不是 DELETE**
+  check('暂停走仓储的 pause（软删）', page.contains('repo.pause('));
+  check('🔴 暂停后 invalidate 列表（否则那一行还在）',
+      page.contains('invalidate(reviewListProvider)'));
+  check('暂停后也 invalidate 计数（列表与计数须同源刷新）',
+      page.contains('invalidate(reviewDueCountProvider)'));
+
+  // ⑧ 入口：**切 tab**，不是 push 新页
   check('首页标题栏有生词入口（文案为「生词」）', home.contains("label: '生词'"));
-  check('入口指向 /home/words', home.contains('/home/words'));
-  check('路由挂在 /home 下（子路由 → 保留 tabbar + 右滑返回）',
-      app.contains("path: 'words'"));
+  check('🔴 入口切到复习 tab（go，不是 push）',
+      home.contains("context.go('/review')"));
+  check('🔴 已无 /home/words 独立页（路由与页面都已删）',
+      !home.contains('/home/words') && !app.contains("path: 'words'"));
 
-  // ⑥ 库不可用**不冒充空状态**（同收藏清单的原则：误导性提示比报错更糟）
+  // ⑨ 两种空状态 + 库不可用态都要分开（不撒谎）
   check('库不可用有独立处理（不冒充「还没有生词」）', page.contains('_Unavailable'));
-  check('空状态存在', page.contains('_EmptyState'));
+  check('空状态区分「真的没有」与「被筛掉」', page.contains('_EmptyState'));
 
-  // ⑦ 零硬编码色 + 底部避让（与三个 tab 页 / 收藏清单同一处理）
+  // ⑩ 零硬编码色 + 底部避让（与三个 tab 页 / 收藏清单同一处理）
   check('页面不留裸色值（颜色全部走 token）',
       !RegExp(r'Color\(0x').hasMatch(page) && !page.contains('Colors.'));
   check('底部留白用 CoSpacing.tabBarClearance（extendBody 配套）',
       page.contains('CoSpacing.tabBarClearance'));
-
-  // ⑧ 时间显示须转本地时区 —— 库中的时间列**全带 `Z`**（现库硬约束 1），
-  //    直接显示 UTC 会让「昨晚查的词」错到相邻日期
-  check('时间显示做了 toLocal()（库中为 UTC）', page.contains('toLocal()'));
 }

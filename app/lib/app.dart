@@ -12,7 +12,6 @@ import 'theme/tokens_ext.dart';
 import 'theme/theme_builder.dart';
 import 'screens/home_screen.dart';
 import 'screens/bookmark_list_screen.dart';
-import 'screens/word_list_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/review_screen.dart';
 import 'screens/pay_screen.dart';
@@ -77,19 +76,17 @@ final goRouter = GoRouter(
                   path: 'bookmarks',
                   builder: (context, state) => const BookmarkListScreen(),
                 ),
-                // 🔴 生词本（3.4d）—— 与收藏清单**同一判据**（「它是不是 tab 的内容」）：
-                //    是 → 挂子路由，保留 tabbar + 右滑返回。
+                // 🔴 这里**曾经**有 `/home/words`（3.4d 的独立生词本页）—— 已删除。
                 //
-                // 🔑 为什么也挂在「阅读」tab 下（而不是「我的」）：
-                //    · 查词发生在**阅读流程**里 → 回到「阅读」tab 找回来最自然
-                //    · 「阅读」tab 是唯一**无条件渲染**（不依赖登录）的 tab →
-                //      符合产品原则「除生词表上限外不验证登录态」；
-                //      而「我的」tab（`profile_screen`）整体依赖登录态，
-                //      挂那里等于给一个**本地免费能力**套上登录门槛
-                GoRoute(
-                  path: 'words',
-                  builder: (context, state) => const WordListScreen(),
-                ),
+                // 原因（2026-09-28 白哥澄清）：**生词本就是复习页本身**，不是另一个页面。
+                // 依据 `docs/design/ui-ux-refactor-assessment-2026-09-25.md` §6.2
+                // （白哥原话：「生词本就是复习管理，其实复习页面只要一个就行了……
+                //   就不要移入移出了」）。
+                //
+                // 🔑 我原先把它做成了「阅读 tab 下的子页」，方向错了 —— 于是存在
+                //    **两个入口指向同一份数据**（这个子页 + 复习 tab），
+                //    而两者形态不同（一个只有列表、一个当时还是 K12 遗留）。
+                //    → 现在统一到**复习 tab**（`/review`，见上面的 StatefulShellBranch）。
               ],
             ),
           ],
