@@ -2177,18 +2177,31 @@ void _s17ReviewList() {
     //    · 上一版把「整宽 84」传进了作用在 padding **内部**的 `minWidth`
     //      → 药丸实际 84+24 = **108**（比目标宽 24，内容只占 39% → 看着空）
     //    · 且「图标+文字整块居中」时**文字必然偏右** (13+6)/2 = 9.5px
+    // 🔄 2026-09-28 21:3x：上面那条「反推右内边距让文字居中」的修法**也被推翻**
+    //    （白哥看完实际观感：「**右上角按钮更不对了，还不如原来的**」）→ **去掉图标**。
+    //    🔑 一条**数学结论**决定了可选范围：内容 = `[图标 13][间距 6][文字]`，
+    //       图标只占左边 → 整块居中时文字**必然**偏右 (13+6)/2 = 9.5px（无法通过调参消除）。
+    //       要消掉它只有两条路：① 右侧留等量空白（＝21:0x 的做法 → 右侧 27px 全空，观感更差）
+    //       ② **不要图标**（→ 文字天然居中 + 左右对称）。
     final hasLabelMinWidth = chipBody.contains('labelMinWidth');
-    final hasCenterFormula =
-        chipBody.contains('_iconLead + _iconSize + _iconGap');
     check('🔴 有 `labelMinWidth`（文字区定宽 → 两态同宽 + 文字位置不横移）',
         hasLabelMinWidth, 'labelMinWidth 在不在: $hasLabelMinWidth');
 
-    // 🔴 **「文字真居中」的代码级保证**：右内边距 = 左内边距 + 图标 + 间距。
+    // 🔴 **「文字真居中」的代码级保证**：右内边距 = 左内边距 + **图标块宽**。
     //    推导：药丸宽 = L + labelW + R；文字区中心 = L + labelW/2；
     //          药丸中心 = (L+labelW+R)/2；令相等 → **L == R**。
     //    ⚠️ 这条一改，「文字居中」就静默失效（且**看不出** —— 仍然是个好看的药丸）。
-    check('🔴 右内边距 = 左内边距 + 图标 + 间距（「文字居中」的推导结论 L == R）',
+    final hasCenterFormula = chipBody.contains('leftPad + iconBlock');
+    check('🔴 右内边距 = 左内边距 + 图标块宽（「文字居中」的推导结论 L == R）',
         hasCenterFormula, '公式在不在: $hasCenterFormula');
+
+    // 🔴 **无图标 → 公式自动退化为对称内边距**（不需要特判 —— 这正是选它的好处）。
+    final hasSymmetricBranch =
+        chipBody.contains('hasIcon ? _iconLead : _padH');
+    check('🔴 无图标时左内边距用 `_padH`（→ 右也 = `_padH` → 对称）',
+        hasSymmetricBranch, '分支在不在: $hasSymmetricBranch');
+    check('  图标块宽：有图标 19（13+6）／ 无图标 0',
+        chipBody.contains('hasIcon ? (_iconSize + _iconGap) : 0.0'));
     check('  文字区**定宽** + 文案居中（两态文字中心同位）',
         chipBody.contains('width: lw') && chipBody.contains('TextAlign.center'));
 
@@ -2201,6 +2214,12 @@ void _s17ReviewList() {
         chipBody.contains('assert(') &&
             chipBody.contains('labelMinWidth == null || count == null'));
 
+    // 🆕 **图标改为可选**（`IconData?`）—— 这使「纯文字药丸」成为合法形态。
+    check('🔴 `icon` 可空（`IconData?`）—— 纯文字药丸是允许的',
+        chipBody.contains('final IconData? icon'));
+    check('  渲染处用 `if (icon != null)`（**不要** `if (hasIcon)`：那样 `icon` 不类型提升）',
+        chipBody.contains('if (icon != null)') && !chipBody.contains('Icon(icon!'));
+
     // 调用处：复习页必须**真的传了**这两项（只加参数不接线 = 白加）
     // 🔑 断调用处的**特有形态**（带实参），不是方法名 —— 否则「删掉传参」照样为绿
     check('🔴 复习页传了 `active:`（筛选生效时浮起）',
@@ -2211,6 +2230,14 @@ void _s17ReviewList() {
         review.contains('_filterChipLabelWidth = 36'));
     check('🔴 复习页不再用旧的 `_filterChipWidth`（整宽口径 —— 已废弃）',
         !review.contains('minWidth: _filterChipWidth'));
+
+    // 🆕 🔴 **复习页不传 `icon`** —— 这是「文字居中」的唯一解（见上面的数学结论）。
+    //    ⚠️ 反向断言：有人「顺手把图标加回来」时会报红。
+    check('🔴 复习页**不传 icon**（去掉图标 = 文字既不偏、又左右对称的唯一解）',
+        !review.contains('Icons.filter_alt'),
+        'filter_alt 残留: ${review.contains("Icons.filter_alt")}');
+    check('  信息流「收藏」**仍传 icon**（那边是入口 + 计数，图标有意义）',
+        src('screens/home_screen.dart').contains('icon: Icons.bookmark_border'));
     check('  信息流「收藏」入口**不传** active（它是入口，不是开关 → 保持凹陷）',
         !src('screens/home_screen.dart').contains('active:'));
   }
