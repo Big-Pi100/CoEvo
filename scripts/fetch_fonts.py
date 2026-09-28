@@ -124,6 +124,46 @@ MANIFEST = [
                                  'bfb7bb691513f12e'),
         },
     },
+    # ── 🆕 中文字体候选（2026-09-27）——「替代阿里普惠体」用 ────────
+    #
+    # ## 为什么要换
+    # 现用的**阿里普惠体**（3 字重 24.16 MB）**条款禁止子集化**：
+    #   官方法律声明禁止事项 ②「对阿里巴巴字体进行修改、仿制、**转换**……**拆分**……」
+    #   → 子集化 = 拆分/转换 → ❌ 不能做（详见
+    #   `docs/review/release-build-audit-and-size-2026-09-27.md` §5.1）
+    #
+    # ## 为什么是这两个
+    # · **OFL 1.1** —— 明确允许 **modify / subset / 格式转换 / 商用**
+    #   （Google Fonts 官方许可页原文："use, study, copy, merge, embed, modify, redistribute"）
+    # · 中文覆盖：**30,900 字形**（阿里普惠体 29,296）→ 覆盖面**更宽**
+    # · 本项目实际只需 **3,873 个汉字**（`word.db` ∪ `lib/**.dart`）
+    #   → 子集化后每字重 ≈1 MB，三字重 ≈3 MB，**省约 21 MB**
+    #
+    # ⚠️ **子集化后的名称问题**：OFL 规定「Modified Version 不得使用 **Reserved Font Name**」。
+    #    查官方 `OFL.txt` 原文：`Copyright 2014-2021 Adobe, with Reserved Font Name 'Source'`
+    #    → 保留名是 **`Source`**（继承自 Source Han Sans），**`Noto` / `Noto Sans SC` 不是保留名**
+    #    → **保留 'Noto Sans SC' 作为 family 名是允许的**；
+    #      但**不得**把子集命名为 `Source Han Sans` 之类。
+    #
+    # ⚠️ **可变字体**：这两个是 `[wght]` 可变字体（fvar 轴），
+    #    子集化前需先用 `fontTools.varLib.instancer` **实例化成静态字重**
+    #    （Flutter 的 `fontWeight` 不会去驱动 VF 轴；要用 VF 得改代码上 `FontVariation`）。
+    #    `build_fonts.py` 的 `CANDIDATES` 已支持 `axes` 字段（Literata 就是这么处理的）。
+    # ## 为什么「只要 Sans，不要 Serif」
+    # 中文在本项目里**只用于 UI 文案** —— 英文阅读正文用 `Literata`、音标用 `CharisSIL`，
+    # 中文出现在按钮/标签/标题/提示/空状态（`theme_builder._textTheme` +
+    # `reader_screen` 的提示文案）→ **全部是无衬线场景**。
+    # → **Noto Serif SC（宋体）不适用**，故不列。
+    # （另：jsdelivr 上 `ofl/notoserifsc/` 返回 403，也没必要再去解决。）
+    {
+        'key': 'noto-sc',
+        'name': 'Noto Sans SC（思源黑体·简体）',
+        'note': 'OFL 1.1 —— 允许子集化；中文字形 30,900（比阿里普惠体更全）；仅可变字体',
+        'files': {
+            'NotoSansSC-var.ttf': ('ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf',
+                                   'a3041811a78c361b'),
+        },
+    },
 ]
 
 

@@ -1,7 +1,11 @@
 name: coevo_app
 description: "刻意进化学习 - CoEvo"
 publish_to: 'none'
-version: 1.0.0+1
+# 🔴 `+N` 是 Android 的 **versionCode**（每次构建必须递增）——
+#    2026-09-28 之前它一直是 `+1`，导致「装了没装上新包」无法判断：
+#    版本号恒定 → 新旧包在系统「应用信息」里完全一样。
+#    ⚠️ **每次要出包验证的改动，都要把 `+N` 加一。**
+version: 1.0.0+2
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
@@ -50,6 +54,10 @@ dependencies:
   # 服务层只 import `package:sqflite_common/sqlite_api.dart`（纯 Dart 接口）
   # → 可在无 Flutter 环境下用 sqflite_common_ffi 跑真库断言
   sqflite: ^2.4.1
+  # 路径拼接（`user.db` / `word.db` 的落盘位置）
+  # 本是 Flutter SDK 的传递依赖，这里**显式声明**才符合 pub 规范
+  # （隐式依赖会在上游改依赖树时突然断掉，且 `depend_on_referenced_packages` 会告警）
+  path: ^1.9.0
 
 dev_dependencies:
   flutter_test:
@@ -78,17 +86,60 @@ flutter:
   # 🔴 assets 必须显式声明 —— 未声明的文件**不会被打包**，
   # 且编译不报错、只在运行时炸（2026-09-26 实测踩到：
   # `assets/sql/user_db_schema.sql` 曾因此不会进包）。
+  #
+  # ⚠️ `assets/word.db` 是**逐文件**声明（不是目录）—— 它 31.4 MB，
+  #    与 `assets/fonts/` 同属「交付物」，进 git 由 `.gitignore` 放行。
+  #    🔴 声明它之前，它**从未落盘**（3.4a 实测：`find app/assets -name '*.db'` = 0）
   assets:
     - assets/sql/
+    - assets/word.db
+    # 🔴 字体的**许可文本必须随包分发**（OFL 条件 2：每份副本都要含版权声明与许可）
+    #    ⚠️ 只放进 `assets/fonts/` **不够** —— 未在此声明的文件**不会被打包**
+    #    （本项目已踩过：`assets/sql/user_db_schema.sql` 曾因此不进包，编译不报错、只在运行时炸）
+    - assets/fonts/NotoSansSC-OFL.txt
 
   fonts:
-    - family: AlibabaPuHuiTi
+    # ── 中文 UI（2026-09-27 由阿里普惠体更换）────────────────────
+    #
+    # ## 为什么换
+    # 阿里普惠体条款**禁止子集化**（官方法律声明禁止事项 ②：「对阿里巴巴字体进行
+    # 修改、仿制、**转换**……**拆分**……」）→ 3 字重 **24.16 MB 永远减不掉**。
+    # **Noto Sans SC** 是 **OFL 1.1**，明确允许 subset / modify / 商用。
+    #
+    # ## 子集化结果
+    # 字符集 = **4,014 码位**（ASCII 95 + 中英标点 + **3,873 汉字**，
+    # 从 `word.db` ∪ `app/lib/**.dart` 真实提取）→ **每字重 ≈1.24 MB**
+    # → 4 字重 **4.83 MB**（原 24.16 MB）→ **省 19.33 MB**
+    #
+    # ## 🔑 为什么是 4 个字重（原先是 3 个）
+    # 实测代码里 `FontWeight.w600` 用了 **69 处**（用得最多），
+    # 而阿里普惠体**只声明了 400/500/700** → 那 69 处一直是 Flutter「**就近取**」。
+    # → 本次**补齐真 600**（`SemiBold`），这 69 处的观感才准确。
+    #
+    # ## 源码与构建
+    # · 源文件：`scripts/fetch_fonts.py --only noto-sc`（jsdelivr，含 sha256 校验）
+    # · 子集：`scripts/build_fonts.py --candidate noto-sc --ttf`
+    # · 评估报告：`docs/review/cjk-font-switch-evaluation-2026-09-27.md`
+    #
+    # ## ⚠️ 子集化后必须维护的一条断言
+    # 字体只含 **4,014 码位**。将来 `word.db` 加词可能引入**新汉字** →
+    # **缺字 → 回退系统字体**，且**没有任何报错**（本项目已知教训「有 fallback ≠ 视觉一致」）。
+    # → `scripts/tokens_verify` 有一条断言「**`word.db` 全部汉字 ⊆ 字体 cmap**」，
+    #   词库一升级它就会红，届时重跑 `build_fonts.py` 重新子集即可。
+    #
+    # ## ⚠️ OFL 合规（条件 2/3）
+    # · 许可文本随包分发 → 见上方 `assets:` 的 `NotoSansSC-OFL.txt`
+    # · **Modified Version 不得用 Reserved Font Name** —— 本字体的保留名是
+    #   **`Source`**（查官方 OFL.txt 原文），`NotoSansSC` **不是**保留名 → 合规。
+    - family: NotoSansSC
       fonts:
-        - asset: assets/fonts/AlibabaPuHuiTi-3-55-Regular.ttf
+        - asset: assets/fonts/NotoSansSC-Regular.ttf
           weight: 400
-        - asset: assets/fonts/AlibabaPuHuiTi-3-65-Medium.ttf
+        - asset: assets/fonts/NotoSansSC-Medium.ttf
           weight: 500
-        - asset: assets/fonts/AlibabaPuHuiTi-3-85-Bold.ttf
+        - asset: assets/fonts/NotoSansSC-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/NotoSansSC-Bold.ttf
           weight: 700
 
     # ── 英文阅读正文（design-system-spec §4.1 · A′ 方案）──
