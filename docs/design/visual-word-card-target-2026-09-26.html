@@ -152,11 +152,22 @@ code{font-family:var(--mono);font-size:12.5px;background:var(--sunken);padding:1
       理由：「每个词条应该有左侧的竖线区分，**不然很难阅读**」——
       一个词条占两行（词+释义 / 分拆法），只靠底边线会串行；
       左竖线把两行**括成一个视觉单元**（底边线只能分隔、不能归组）。
+      🔄 20:2x 补：竖线须**一段一段**（不是贯穿全列表的一条）—— 见下方注释。
       🔑 用 `accentBright` 而不是 `line`：项目已定判据「左侧色条用 line
       （#EFE9DE）在浅纸上几乎看不见 = 白设」；且语境段 `.ctx` 用的就是
       `2px accentBright` → 同手段同色。 */
-.agg-item{display:flex;align-items:baseline;gap:9px;padding:11px 8px 11px 12px;
-  border-left:2px solid var(--accentBright);border-bottom:1px solid var(--line)}
+.agg-item{position:relative;display:flex;align-items:baseline;gap:9px;padding:11px 8px 11px 12px;
+  border-bottom:1px solid var(--line)}
+/* 🔴 **竖线用 `::before`，不用 `border-left`**（2026-09-28 20:2x 白哥：
+    「左侧的竖线是用来**分割词条**的，我看你在草稿中都连起来了」）——
+    `border-left` 必然贯穿整行高度，而行与行是紧挨的 →
+    上一行的尾接下一行的头 = **一条贯穿全列表的长线**，
+    看着像「列表的左边框」，而不是「词条之间的分隔」。
+    → 上下各缩进 6px，相邻两行之间自然形成 12px 间隙 = 一段一段。
+    ⚠️ `::before` 在 `display:flex` 容器里会成为 flex item →
+       必须 `position:absolute` 让它脱离 flex 流（否则它自己占一列）。 */
+.agg-item::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:2px;
+  background:var(--accentBright);border-radius:1px}
 .agg-item:last-child{border-bottom:0}
 .agg-w{font-family:var(--serif);font-size:14.5px;flex:0 0 auto;min-width:96px}
 .agg-w.me{color:var(--accent);font-weight:500}

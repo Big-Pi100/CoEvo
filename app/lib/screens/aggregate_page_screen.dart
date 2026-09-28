@@ -394,6 +394,16 @@ class _MemberRow extends StatelessWidget {
   /// 左侧内容缩进 —— 竖线之后 12px（同 `.ctx{padding-left:12px}`）。
   static const double _barInset = 12;
 
+  /// 🔴 竖线的**上下缩进** —— 让竖线「一段一段」，而不是贯穿整行。
+  ///
+  /// 白哥 2026-09-28 20:2x：「左侧的竖线是用来**分割聚合页中的词条**的，
+  /// 我看你在草稿中都连起来了」。
+  /// · 用 `Border(left: …)` 时竖线**必然**从行顶贯穿到行底；而行与行紧挨（无间距）
+  ///   → 上一行的尾接下一行的头 = **一条贯穿全列表的长线** ——
+  ///   看着像「列表的左边框」，而不是「每个词条的分隔符」。
+  /// · 缩进本值后：相邻两行各缩 6px → 两段竖线之间自然有 12px 的间隙。
+  static const double _barGap = 6;
+
   @override
   Widget build(BuildContext context) {
     final t = CoEvoTokensExt.of(context);
@@ -407,81 +417,106 @@ class _MemberRow extends StatelessWidget {
       highlightColor: Color(t.sunken.argb32),
       borderRadius: BorderRadius.circular(9),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(
-          _barInset, 11, 8, 11), // 左内边距从竖线算起
+        // 行分隔线（末行不给 —— 「下面还有一行」才需要）
         decoration: BoxDecoration(
           border: Border(
-            // 🆕 左竖线 —— 把「词 + 释义 + 分拆法」括成一个视觉单元（见类文档）
-            left: BorderSide(
-              color: Color(t.accentBright.argb32),
-              width: _barWidth,
-            ),
-            // 行分隔线（末行不给 —— 「下面还有一行」才需要）
             bottom: showDivider
                 ? BorderSide(color: Color(t.line.argb32), width: 1)
                 : BorderSide.none,
           ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        // 🔴 竖线用 `Stack + Positioned`，**不用 `Border(left: …)`**
+        //    （白哥 2026-09-28 20:2x：「左侧的竖线是用来分割聚合页中的词条的，
+        //      我看你在草稿中都连起来了」）。
+        //    `border-left` **必然贯穿整行高度** —— 而行与行是紧挨的（无间距），
+        //    于是上一行的竖线尾接下一行的竖线头 → 连成一条贯穿全列表的长线，
+        //    看着像「列表的左边框」而不是「词条之间的分隔」。
+        //    → 上下各缩进 [_barGap]，相邻两行之间自然形成 2×[_barGap] 的间隙。
+        child: Stack(
+          // passthrough：Stack 尺寸由非定位子项（内容）决定，竖线按 top/bottom 拉伸。
+          // ⚠️ 不能用 `StackFit.expand` —— 那会让 Stack 去取「无界高度约束」→ 崩。
+          fit: StackFit.passthrough,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                // 词列 —— 最小宽 96（锚点 `.agg-w`），字号 14.5（锚点）
-                ConstrainedBox(
-                  constraints: const BoxConstraints(minWidth: _wordMinWidth),
-                  child: Text(
-                    member.spelling,
-                    style: TextStyle(
-                      fontFamily: CoFonts.latinSerif,
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w500,
-                      height: 1.25,
-                      color: Color(t.ink.argb32),
-                    ),
-                  ),
+            Positioned(
+              left: 0,
+              top: _barGap,
+              bottom: _barGap,
+              width: _barWidth,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Color(t.accentBright.argb32),
+                  // 2px 宽的短线加 1px 圆角，否则两端看着像「被切断」
+                  borderRadius: BorderRadius.circular(1),
                 ),
-                // 释义 —— 右对齐、占满剩余（限宽 118）
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: ConstrainedBox(
-                      constraints:
-                          const BoxConstraints(maxWidth: _glossMaxWidth),
-                      child: Text(
-                        g,
-                        textAlign: TextAlign.right,
-                        style: TextStyle(
-                          fontFamily: CoFonts.uiSans,
-                          fontSize: 12.5,
-                          height: 1.4,
-                          color: Color(t.ink2.argb32),
+              ),
+            ),
+            Padding(
+              // 左内边距从竖线算起
+              padding: const EdgeInsets.fromLTRB(_barInset, 11, 8, 11),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      // 词列 —— 最小宽 96（锚点 `.agg-w`），字号 14.5（锚点）
+                      ConstrainedBox(
+                        constraints:
+                            const BoxConstraints(minWidth: _wordMinWidth),
+                        child: Text(
+                          member.spelling,
+                          style: TextStyle(
+                            fontFamily: CoFonts.latinSerif,
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w500,
+                            height: 1.25,
+                            color: Color(t.ink.argb32),
+                          ),
                         ),
                       ),
-                    ),
+                      // 释义 —— 右对齐、占满剩余（限宽 118）
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: ConstrainedBox(
+                            constraints:
+                                const BoxConstraints(maxWidth: _glossMaxWidth),
+                            child: Text(
+                              g,
+                              textAlign: TextAlign.right,
+                              style: TextStyle(
+                                fontFamily: CoFonts.uiSans,
+                                fontSize: 12.5,
+                                height: 1.4,
+                                color: Color(t.ink2.argb32),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // 可点指示 —— 锚点 `.agg-go`。
+                      // 🔑 与 `InkWell.onTap` **必然同时存在**（本 widget 两者都必填/必有），
+                      //    所以不存在「有箭头点不动」的组合。
+                      const SizedBox(width: 6),
+                      Text(
+                        '›',
+                        style: TextStyle(
+                          fontFamily: CoFonts.uiSans,
+                          fontSize: 13,
+                          height: 1,
+                          color: Color(t.ink3.argb32),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                // 可点指示 —— 锚点 `.agg-go`。
-                // 🔑 与 `InkWell.onTap` **必然同时存在**（本 widget 两者都必填/必有），
-                //    所以不存在「有箭头点不动」的组合。
-                const SizedBox(width: 6),
-                Text(
-                  '›',
-                  style: TextStyle(
-                    fontFamily: CoFonts.uiSans,
-                    fontSize: 13,
-                    height: 1,
-                    color: Color(t.ink3.argb32),
-                  ),
-                ),
-              ],
+                  if (member.morphology.isNotEmpty) ...[
+                    const SizedBox(height: 5),
+                    _Split(t: t, member: member, sharedRoot: sharedRoot),
+                  ],
+                ],
+              ),
             ),
-            if (member.morphology.isNotEmpty) ...[
-              const SizedBox(height: 5),
-              _Split(t: t, member: member, sharedRoot: sharedRoot),
-            ],
           ],
         ),
       ),

@@ -118,8 +118,18 @@
   .agg-src .f{font-family:var(--serif);font-size:23px;color:var(--ink)}
   .agg-src .m{font-size:12.5px;color:var(--ink2);margin-top:4px}
   .agg-src .n{font-size:11.5px;color:var(--ink3);margin-top:3px}
-  .agg-item{display:flex;align-items:baseline;gap:9px;padding:11px 8px 11px 12px;border-radius:0 9px 9px 0;
-            border-left:2px solid var(--accentBright);border-bottom:1px solid var(--line)}
+  /* 🔴 左竖线用 `::before`，**不用 `border-left`**（2026-09-28 20:2x 白哥：
+     「左侧的竖线是用来分割聚合页中的词条的，我看你在草稿中都连起来了」）。
+     `border-left` 必然贯穿整行高度；行与行紧挨（无间距）→ 上一行的尾接下一行的头
+     = 一条贯穿全列表的长线，看着像「列表的左边框」而不是「词条之间的分隔」。
+     → 上下各缩进 6px，相邻两行之间自然形成 12px 间隙 = 一段一段。
+     ⚠️ `::before` 在 `display:flex` 容器里会成为 flex item ——
+        必须 `position:absolute` 让它脱离 flex 流（否则它自己占一列）。 */
+  .agg-item{position:relative;display:flex;align-items:baseline;gap:9px;
+            padding:11px 8px 11px 12px;border-radius:0 9px 9px 0;
+            border-bottom:1px solid var(--line)}
+  .agg-item::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:2px;
+                    background:var(--accentBright);border-radius:1px}
   .agg-item:last-child{border-bottom:0}
   .agg-item.tapable:active{background:var(--sunken)}
   .agg-w{font-family:var(--serif);font-size:14.5px;flex:0 0 auto;min-width:96px;color:var(--ink)}
@@ -560,7 +570,7 @@
   </div>
 
   <!-- ═════════════════════════════════════════════════ -->
-  <h2>五、20:1x 三条修正（看过真机后提的） <span class="mk g">已实施</span></h2>
+  <h2>五、20:1x–20:2x 四条修正（看过真机后提的） <span class="mk g">已实施</span></h2>
 
   <table>
     <tr><th>#</th><th>白哥原话</th><th>改动</th></tr>
@@ -569,7 +579,16 @@
       <td>「每个词条应该有左侧的竖线区分，<b>不然很难阅读</b>」</td>
       <td>成员行加 <b>2px <code>accentBright</code> 左竖线</b>（保留底边线 —— 前者归组、后者分隔）<br>
         <span class="muted">🔑 为什么用 <code>accentBright</code> 而不是 <code>line</code>：
-        项目已定判据「左侧色条用 <code>line</code>（#EFE9DE）在浅纸上<b>几乎看不见</b> = 白设」</span></td>
+        项目已定判据「左侧色条用 <code>line</code>（#EFE9DE）在浅纸上<b>几乎看不见</b> = 白设」</span><br>
+        <b>🔄 20:2x 修正：竖线必须「分段」</b>（白哥：「左侧的竖线是用来<b>分割</b>聚合页中的词条的，
+        我看你在草稿中都<b>连起来了</b>」）<br>
+        <span class="muted">原做法是 <code>border-left</code> —— 它<b>必然从行顶贯穿到行底</b>，
+        而行与行紧挨（无间距）→ 上一行的尾接下一行的头 = <b>一条贯穿全列表的长线</b>，
+        看着像「列表的左边框」而不是「词条之间的分隔」。<br>
+        → 改用 <code>::before</code> 并在<b>上下各缩进 6px</b>：相邻两行之间自然形成 12px 间隙 = 一段一段。
+        （实现同口径：<code>Stack + Positioned(top/bottom: _barGap)</code>；
+        ⚠️ CSS 里 <code>::before</code> 在 <code>display:flex</code> 容器内会成为 flex item，
+        必须 <code>position:absolute</code> 才能脱离 flex 流。）</span></td>
     </tr>
     <tr>
       <td>2</td>

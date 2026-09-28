@@ -131,9 +131,14 @@
   /* 🔄 2026-09-28 20:1x 白哥定：成员行加**左侧竖线**（原只有 border-bottom）。
      一个词条占两行（词+释义 / 分拆法），只靠底边线会串行；竖线把两行括成一个单元。
      🔑 用 accentBright 而非 line —— 项目判据「左侧色条用 line 浅到看不见 = 白设」。 */
-  .agg-item{display:flex;align-items:baseline;gap:9px;padding:11px 8px 11px 12px;
-            border-left:2px solid var(--accentBright);
+  .agg-item{position:relative;display:flex;align-items:baseline;gap:9px;padding:11px 8px 11px 12px;
             border-bottom:1px solid var(--line);flex-wrap:wrap}
+  /* 🔴 左竖线用 ::before（不用 border-left）—— border-left 必然贯穿整行，
+     行与行紧挨会连成一条长线 = 看着像「列表的左边框」而非「词条分隔」（白哥 20:2x）。
+     上下各缩进 6px → 相邻两行之间自然形成 12px 间隙 = 一段一段。
+     ⚠️ `::before` 在 display:flex 里是 flex item → 必须 absolute 脱离流。 */
+  .agg-item::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:2px;
+                    background:var(--accentBright);border-radius:1px}
   .agg-item:last-child{border-bottom:0}
   .agg-w{font-family:var(--serif);font-size:14.5px;flex:0 0 auto;min-width:96px;color:var(--ink)}
   .agg-w.me{color:var(--accent);font-weight:500}
@@ -143,7 +148,8 @@
   .agg-bd .r{color:var(--accent)}
   .agg-bd .c{color:var(--ink3)}
   /* 提案：可点的行 —— 只在「比锚点多出来的东西」上做标记 */
-  .agg-item.tapable{padding:11px 8px;border-radius:9px}
+  /* 可点版：padding 与基础版一致（竖线已不在流内，不用为它让位） */
+  .agg-item.tapable{border-radius:9px}
   .agg-item.tapable:active{background:var(--sunken)}
   .agg-go{font-size:12px;color:var(--ink3);flex:0 0 auto;margin-left:2px}
   .agg-tag{font-size:10px;color:var(--ink3);border:1px solid var(--line);
@@ -1189,7 +1195,9 @@
       <td>1</td>
       <td><b>成员行的形态</b></td>
       <td><code>.agg-item{display:flex;padding:9px 0;border-bottom:1px solid line}</code><br>
-        → <b>平坦列表 + 细下分隔线</b>（🔄 20:1x 再补：<b>左侧竖线</b>）</td>
+        → <b>平坦列表 + 细下分隔线</b>（🔄 20:1x 再补：<b>左侧竖线</b>；<br>
+        🔄 20:2x 再补：竖线须<b>分段</b> —— 用 <code>::before</code> 上下缩进 6px，
+        而非 <code>border-left</code>（后者贯穿整行，行紧挨会连成一条长线））</td>
       <td class="bad">每行一个 <code>Clay</code>（白底 + radius 26 + 三层阴影）<br>
         → <b>N 张凸起的粘土卡</b></td>
       <td class="bad">🔴 <b>最要紧的一处</b>：22 行就是 22 张浮起的卡，

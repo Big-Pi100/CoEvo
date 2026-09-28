@@ -2036,15 +2036,51 @@ void _s17ReviewList() {
         'wordMinWidth 在不在: ${rowBody.contains('_wordMinWidth')}');
     check('  释义**右对齐**（锚点 .agg-z）', rowBody.contains('TextAlign.right'));
 
-    // ── 左竖线（2026-09-28 20:1x 白哥定 —— 锚点里没有，是新增）──
+    // ── 左竖线（2026-09-28 20:1x 白哥定；20:2x 改「分段式」）──
     //    🔑 一个词条占两行（词+释义 / 分拆法），只靠底边线会串行；
     //       左竖线把两行**括成一个视觉单元**（底边线只能分隔、不能归组）。
     //    🔴 **必须用 `accentBright` 而不是 `line`** —— 项目已定判据：
     //       「左侧色条用 `line`（#EFE9DE）在浅纸上几乎看不见 = 白设了这条竖线」。
     check('🔴 成员行有**左竖线**（把「词+释义+分拆法」括成一个视觉单元）',
-        rowBody.contains('left: BorderSide'));
+        rowBody.contains('Positioned(') && rowBody.contains('_barWidth'));
     check('🔴 竖线用 accentBright（不是 line —— 浅到看不见 = 白设）',
         rowBody.contains('t.accentBright.argb32'));
+
+    // 🔴 竖线必须**分段**（白哥 2026-09-28 20:2x：「左侧的竖线是用来**分割**
+    //    聚合页中的词条的，我看你在草稿中都连起来了」）。
+    //    `Border(left: …)` 时竖线**必然**从行顶贯穿到行底，而行与行紧挨 →
+    //    上一行的尾接下一行的头 = **一条贯穿全列表的长线** ——
+    //    看着像「列表的左边框」，而不是「词条之间的分隔」。
+    check('🔴 竖线**分段**（上下缩进 `_barGap` → 相邻两行之间留 12px 间隙）',
+        rowBody.contains('top: _barGap') && rowBody.contains('bottom: _barGap'),
+        '_barGap 在不在: ${rowBody.contains('_barGap')}');
+    // 🔴 反向断言：不许回到贯穿式 `Border(left:)`。
+    //    ⚠️ 不设这条的代价是双向的 —— 有人「为了让某条断言变绿」把它改回去时，
+    //       正/反向断言若不同步，改坏的那一版照样全绿（本项目已踩过）。
+    check('🔴 竖线**不再用 `Border(left:)`**（贯穿式 —— 行紧挨会连成一条长线）',
+        !rowBody.contains('left: BorderSide'));
+
+    // ── 🔴 跨文件一致：竖线「分段」这件事在 实现 + 三份文档 里必须是同一套 ──
+    //    🔑 把判据「**改动一个已定案的决定 = 一组动作**」（实现 · 锚点 · spec ·
+    //       断言 · 设计稿，漏一处就漂移回去）**变成断言**，而不是靠人记。
+    {
+      final docs = <String, String>{
+        '锚点(L1)': 'docs/design/visual-word-card-target-2026-09-26.html',
+        '方案页': 'docs/design/card-aggregate-plan-2026-09-28.html',
+        '设计稿': 'docs/design/word-card-note-and-aggregate-refine-2026-09-28.html',
+      };
+      for (final e in docs.entries) {
+        final file = File('${_repoRoot()}/${e.value}');
+        check('  ${e.key} 文档存在', file.existsSync(), e.value);
+        if (!file.existsSync()) continue;
+        final css = file.readAsStringSync();
+        check('🔴 ${e.key}：成员行竖线用 `::before` + 上下缩进（与实现同口径）',
+            css.contains('.agg-item::before') &&
+                css.contains('top:6px;bottom:6px'));
+        check('🔴 ${e.key}：成员行**不再有**贯穿式 `border-left`',
+            !css.contains('border-left:2px solid var(--accentBright);border-bottom'));
+      }
+    }
 
     // ── 顶栏：**不带族名**（2026-09-28 20:1x 白哥取消）──
     //    🔴 反向断言：它与页头的 `cept` 大字 + meta 重复显示同一信息。
