@@ -1646,39 +1646,42 @@ void _s17ReviewList() {
   check('底部留白用 CoSpacing.tabBarClearance（extendBody 配套）',
       page.contains('CoSpacing.tabBarClearance'));
 
-  // ⑫ 翻卡态（第二步 · 白哥 2026-09-28「做成可点，连带做词卡」）──
+  // ⑫ 翻卡（第二步 · 白哥 2026-09-28「做成可点，连带做词卡」）
   //
   // 🔴 本节锁的仍是「编译器看不出来」的接线：
   //   · 行看起来能点但**没有 onTap** → 静默无效（本项上一轮的真实缺陷）
   //   · 评级只写 `card_review_state` 忘了 `review_log` → **历史永久丢失**
   //   · 四键的「下次 X 天」自己算 → 与提交结果**不一致**（用户看到的后果是假的）
   //   · 翻卡队列用活列表 → 每评一张索引就错位
+  //
+  // ⚠️ 2026-09-28 改：翻卡**已提升为顶层路由**（见 ⑬），实现分散到
+  //    `review_session_screen.dart` + `review_session_provider.dart` →
+  //    本节断言随之改读那两个文件（否则会一直报红）。
   final cardW = src('widgets/word_card.dart');
   final prov2 = src('providers/review_list_provider.dart');
+  final sess = src('screens/review_session_screen.dart');
+  final sessProv = src('providers/review_session_provider.dart');
 
   // ① 列表项：显示释义 + **真的可点**
   check('列表项显示释义（设计稿 §02 的四要素之一）',
       page.contains('row.definition'));
   check('🔴 列表项真的可点（Clay 有 onTap → 不是「看起来能点」）',
-      RegExp(r'Clay\(\s*onTap: onOpen').hasMatch(page) ||
-          page.contains('onTap: onOpen'));
+      page.contains('onTap: onOpen'));
 
-  // ② 翻卡队列必须是**快照**
+  // ② 翻卡队列必须是**快照**（在会话 provider 里）
   //    否则提交后该词离开「今天该复习」分组 → 索引错位（评完一张跳过一张）
   check('翻卡队列是冻结快照（不是每帧读 provider）',
-      page.contains('_queue = rows') && page.contains('List<ReviewRow> _queue'));
+      sessProv.contains('List.of(rows)') && sessProv.contains('final List<ReviewRow> queue'));
 
   // ③ 🔴 评级写**两张表**（缺一不可）
-  check('🔴 评级写 card_review_state（排序依据）',
-      page.contains('upsertState('));
+  check('🔴 评级写 card_review_state（排序依据）', sess.contains('upsertState('));
   check('🔴 评级写 review_log（同步 + 统计的唯一来源）',
-      page.contains('logReview('));
+      sess.contains('logReview('));
 
   // ④ 四键的「下次 X 天」必须来自 FSRS 预览（与提交同一套抖动）
-  check('四键预览走 previewAll（不自己算间隔）',
-      page.contains('previewAll('));
-  check('预览与提交共用同一个 FsrsService 实例（同一 scheduler）',
-      page.contains('final _fsrs = FsrsService()'));
+  check('四键预览走 previewAll（不自己算间隔）', sessProv.contains('previewAll('));
+  check('预览与提交共用同一个 FsrsService（fsrsServiceProvider）',
+      sess.contains('fsrsServiceProvider') && sessProv.contains('fsrsServiceProvider'));
 
   // ⑤ 词卡四段 + 段落分派
   check('词卡组件存在', cardW.isNotEmpty);
@@ -1692,10 +1695,60 @@ void _s17ReviewList() {
   check('🔴 词卡不给未实现的聚合页入口加 ›（避免「看起来能点」）',
       !cardW.contains('›'));
 
-  // ⑦ 四键禁用要**看得出来**（本项目教训：不显眼的禁用被读成「坏了」）
+  // ⑦ 🔴 卡片**有发音入口**（设计稿 mockup 的 `spk`）
+  //    ⚠️ 我上一轮曾误判「设计稿卡片上无喇叭」并据此没做 → 这条防它再被删掉。
+  //
+  //    🔑 取 `_head` 的**方法体切片**再断言（而不是全文件 contains）：
+  //       发音块被挪出词头、或整个删掉，都应报红。
+  //       ⚠️ 全文件 contains 不够 —— `onSpeak` 还出现在别处（如页面传参）。
+  //
+  //    🔴 **本断言的已知边界（如实标注，别指望它抓这个）**：
+  //       把条件改成「恒假」（`if (onSpeak != null)` → `if (false)`）
+  //       **不会被捕获** —— 因为**文本没变**，而正则/contains 只看文本。
+  //       实测确认过（453 项全绿）。
+  //       🔑 这是**文本断言的固有边界**：「逻辑改动」需要 widget test 或人工审查，
+  //          靠堆正则抓不到 —— 承认边界，比假装断言完美更有用。
+  final headBody = _braceBody(cardW, '_head');
+  check('能切出词头方法体（断言范围正确的前提）', headBody.isNotEmpty);
+  check('🔴 卡片词头有可点的发音图标（设计稿 `spk`，紧跟音标）',
+      headBody.contains('volume_up') && headBody.contains('onSpeak'));
+
+  // ⑧ 四键禁用要**看得出来**（本项目教训：不显眼的禁用被读成「坏了」）
   check('四键禁用用 Opacity 表达', cardW.contains('Opacity'));
 
-  // ⑧ 释义缺失**不阻塞列表**（跨库依赖不得成为渲染前置条件）
+  // ⑨ 释义缺失**不阻塞列表**（跨库依赖不得成为渲染前置条件）
   check('🔑 释义取不到只记日志、不影响列表渲染',
       prov2.contains('firstDefinitionsOf') && prov2.contains('debugPrint'));
+
+  // ═══ ⑬ 翻卡 = 顶层路由（全屏）—— 四键不再被 tabbar 遮挡 ═══
+  //
+  // 🔴 白哥 2026-09-28 真机：「四键被底部栏遮住，**拉动也出不来**」。
+  //
+  // 根因不是「忘了留白」，而是**结构**：翻卡原先做成 `review_screen` 内的
+  // 一个状态（`_inCard`）→ 继承「复习 tab 那一屏」的布局约束，其中包含
+  // `_ShellScaffold` 的 `extendBody: true` + tabbar ≈100px →
+  // 四键（固定在底部、不参与滚动）被盖住。
+  //
+  // 🔴 而设计稿的翻卡 mockup **根本没有 tabbar**
+  //    （`.phone` 里只有 `pbar` + `pbody` + `card`）→ 它是**全屏沉浸态**。
+  //
+  // 🔑 判据（项目已定）：**它是不是 tab 的内容**（是 → 页内；否 → 顶层路由）。
+  print('\n【17b】翻卡 = 顶层路由（全屏）');
+  check('翻卡路由已注册（/review/session）',
+      app.contains("path: '/review/session'"));
+  //    🔴 关键：必须在 `StatefulShellRoute` **之外** ——
+  //       在 shell 内 → tabbar 仍在 → 遮挡回来
+  final shellStart = app.indexOf('StatefulShellRoute');
+  final routePos = app.indexOf("path: '/review/session'");
+  check(
+      '🔴 翻卡路由在 shell **之外**（在 shell 内 → tabbar 仍在 → 遮挡复现）',
+      shellStart >= 0 && routePos > shellStart);
+  check('🔴 翻卡不再是复习页的页内状态（无 _inCard 残留）',
+      !page.contains('_inCard'));
+  check('🔴 全屏页避让底部安全区（SafeArea 不再传 bottom: false）',
+      !sess.contains('bottom: false'));
+  check('列表项点击 → push 翻卡路由（不是切状态）',
+      page.contains("context.push('/review/session')"));
+  check('退出翻卡时刷新列表（否则回到列表还是旧顺序）',
+      sess.contains('ref.invalidate(reviewListProvider)'));
 }

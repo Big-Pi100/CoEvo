@@ -14,6 +14,7 @@ import 'screens/home_screen.dart';
 import 'screens/bookmark_list_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/review_screen.dart';
+import 'screens/review_session_screen.dart';
 import 'screens/pay_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/reader_screen.dart';
@@ -134,6 +135,25 @@ final goRouter = GoRouter(
         // 解析失败 → -1 → 阅读器走「找不到这篇文章」分支（不抛异常、不白屏）
         articleId: int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
       ),
+    ),
+    // 🔴 复习翻卡会话（3.6 第二步）—— **全屏**，与阅读器同理（顶层路由）。
+    //
+    // 🔑 为什么必须是顶层路由（2026-09-28 白哥真机报「四键被底部栏遮住，
+    //    拉动也出不来」）：
+    //    翻卡原先做成 `review_screen` 内的一个状态（`bool _inCard`）→
+    //    它继承了「复习 tab 那一屏」的布局约束，其中包含 `_ShellScaffold` 的
+    //    `extendBody: true` + 底部 tabbar ≈100px → 四键（固定在页面最底部、
+    //    不参与滚动）**被盖住且拉不出来**。
+    //    🔴 而设计稿的翻卡 mockup **根本没有 tabbar**
+    //    （`visual-word-card-target` 的 `.phone`：`pbar` + `pbody` + `card`，
+    //     `tabbar`/`nav`/`bottom` 0 命中）→ 它是**全屏沉浸态**。
+    //
+    //    🔑 判据（项目已定）：**它是不是 tab 的内容** ——
+    //      是 → 页内/子路由（保留 tabbar）；否（覆盖全屏的沉浸态）→ 顶层路由。
+    //    阅读器 `/article/:id` 就是这么处理的。
+    GoRoute(
+      path: '/review/session',
+      builder: (context, state) => const ReviewSessionScreen(),
     ),
     GoRoute(
       path: '/chat',

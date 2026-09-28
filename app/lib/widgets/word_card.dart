@@ -49,6 +49,8 @@ class WordCardView extends StatelessWidget {
     required this.previews,
     required this.mnemonicNames,
     required this.onRate,
+    this.onSpeak,
+    this.scrollController,
     this.ratingEnabled = true,
   });
 
@@ -65,6 +67,18 @@ class WordCardView extends StatelessWidget {
 
   final ValueChanged<ReviewRating> onRate;
 
+  /// 朗读单词（点音标旁的喇叭）。
+  ///
+  /// 🔑 **设计稿里就有它**：`visual-word-card-target` 的词头结构是
+  /// `w-word` / `w-meta`(`w-ipa` + **`spk`**)——`spk` 是一个内联 SVG 喇叭。
+  /// ⚠️ 我 2026-09-28 上一轮误判为「设计稿卡片上无喇叭」并据此没做，已纠正。
+  ///
+  /// 传 `null` = 不显示喇叭（如未来某处复用本组件但不提供朗读）。
+  final VoidCallback? onSpeak;
+
+  /// 内容区的滚动控制器（由页面持有 —— 换卡时要 `jumpTo(0)` 回顶部）。
+  final ScrollController? scrollController;
+
   /// 提交中 → 四键禁用（防连点造成重复写库）
   final bool ratingEnabled;
 
@@ -74,9 +88,10 @@ class WordCardView extends StatelessWidget {
 
     return Column(
       children: [
-        // 内容区可滚（词源链可能很长），四键固定在底部
+        // 内容区可滚（词源链可能很长），四键固定在底部（见类文档）
         Expanded(
           child: SingleChildScrollView(
+            controller: scrollController,
             padding: const EdgeInsets.fromLTRB(22, 4, 22, 18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -94,8 +109,9 @@ class WordCardView extends StatelessWidget {
     );
   }
 
-  // ── 词头：单词 + 音标 ──────────────────────────────────────
+  // ── 词头：单词 + 音标 + 喇叭 ───────────────────────────────
   Widget _head(CoEvoTokens t) {
+    final ipa = (card.ipa ?? '').trim();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -109,17 +125,40 @@ class WordCardView extends StatelessWidget {
             color: Color(t.ink.argb32),
           ),
         ),
-        if ((card.ipa ?? '').isNotEmpty) ...[
+        if (ipa.isNotEmpty || onSpeak != null) ...[
           const SizedBox(height: 7),
-          Text(
-            card.ipa!,
-            style: TextStyle(
-              // 🔴 音标整条用 CharisSIL（元素级指定，不挂 fallback —
-              //    挂链会让一条音标出现两种字体，见 spec §4.1.1）
-              fontFamily: CoFonts.ipaSerif,
-              fontSize: t.type.ipa,
-              color: Color(t.ink2.argb32),
-            ),
+          Row(
+            children: [
+              if (ipa.isNotEmpty)
+                Flexible(
+                  child: Text(
+                    ipa,
+                    style: TextStyle(
+                      // 🔴 音标整条用 CharisSIL（元素级指定，不挂 fallback —
+                      //    挂链会让一条音标出现两种字体，见 spec §4.1.1）
+                      fontFamily: CoFonts.ipaSerif,
+                      fontSize: t.type.ipa,
+                      color: Color(t.ink2.argb32),
+                    ),
+                  ),
+                ),
+              if (onSpeak != null) ...[
+                const SizedBox(width: 10),
+                // 喇叭 —— 设计稿 `spk`（紧跟音标）。可点元素用 ink2（对比度）
+                GestureDetector(
+                  onTap: onSpeak,
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.volume_up_outlined,
+                      size: 18,
+                      color: Color(t.accent.argb32),
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ],
       ],
