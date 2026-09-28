@@ -102,8 +102,9 @@ class ReviewListArgs {
 /// （同 `userWordListProvider` / `bookmark_list_screen._Unavailable` 的既定原则）。
 ///
 /// # 刷新
-/// 「暂停」一个词后，调用方需 `ref.invalidate(reviewListProvider)` 与
-/// `ref.invalidate(reviewDueCountProvider)`（见 `review_screen._pause`）。
+/// **写端不必点名本 provider** —— 只要在写库成功后 `bump()` 一次
+/// `userDbRevisionProvider`，本 provider（及 `reviewDueCountProvider`）
+/// 会自动重算。判据与根因见 `user_db_provider.dart` 的 `UserDbRevision`。
 /// 复习列表的一项 = **复习状态 + 释义**。
 ///
 /// 🔑 为什么把释义并进来而不是让页面各查各的：
@@ -142,11 +143,18 @@ class ReviewRow {
 ///   会让复习页在启动后一段时间内**整页空着**。
 ///
 /// # 刷新
-/// 「暂停」或提交评级后，调用方需 `ref.invalidate(reviewListProvider)` 与
-/// `ref.invalidate(reviewDueCountProvider)`。
+/// 「暂停」或提交评级后，**写端 `bump()` 修订号**即可 —— 本 provider 与
+/// [reviewDueCountProvider] 都 watch 了它，会一起重算（见 `UserDbRevision`）。
 final reviewListProvider =
     FutureProvider.autoDispose.family<List<ReviewRow>, ReviewListArgs>(
   (ref, args) async {
+    // 🔑 **先接修订号**：库里任何写入（划词新增 / 评级 / 暂停）都会 `bump()`，
+    //    这里一 watch 就自动重算 —— 不再依赖每个写端记得来 invalidate 本 provider。
+    //    （根因与判据见 `user_db_provider.dart` 的 `UserDbRevision`。）
+    //    ⚠️ 放在 `await` **之前** —— async body 里 `await` 之后再 watch 可能
+    //       撞上 provider 已被销毁（Riverpod 的 ref 在 async gap 后不再安全）。
+    ref.watch(userDbRevisionProvider);
+
     final db = await ref.watch(userDbProvider.future);
     final items = await ReviewListQuery(db).list(
       search: args.search,
@@ -182,6 +190,11 @@ final reviewListProvider =
 /// 两者共用 `ReviewListQuery` 里**同一套暂停过滤** → 不会出现
 /// 「顶部说 5 个该看，列表里只数得出 3 个」。
 final reviewDueCountProvider = FutureProvider.autoDispose<int>((ref) async {
+  // 🔑 同 `reviewListProvider`：靠修订号自动跟随库的变化
+  //    （这也是「列表与计数同源刷新」的可靠保证 —— 以前要手工同时点名两个 provider，
+  //     少点一个就出现「列表少了一条但顶部计数没变」）。
+  ref.watch(userDbRevisionProvider);
+
   final db = await ref.watch(userDbProvider.future);
   return ReviewListQuery(db).dueCount(DateTime.now());
 });

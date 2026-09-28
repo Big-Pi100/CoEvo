@@ -76,17 +76,12 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
   void dispose() {
     _input.dispose();
     _scroll.dispose();
-    // 🔴 退出翻卡时**刷新列表** —— 本次会话可能已改了若干词的到期时间，
-    //    不刷新的话返回列表看到的还是旧顺序（用户会以为「评了没用」）。
-    //    ⚠️ 放在 `dispose` 而不是各退出路径：退出路径有**三条**
-    //      （返回按钮 / 系统返回手势 / 评完最后一张自动退出），
-    //      分散在三处写 = 迟早漏一处。
-    try {
-      ref.invalidate(reviewListProvider);
-      ref.invalidate(reviewDueCountProvider);
-    } catch (_) {
-      // provider 容器已销毁（如整棵树被替换）→ 无需刷新
-    }
+    // ⚠️ 这里**不再**刷新复习列表 —— 刷新已改为「提交成功即 bump 修订号」
+    //    （见 `_submit`）。原先放在 `dispose` 是怕退出路径有三条会漏一处，
+    //    但那个理由换来的是**更脆的时机**：`dispose` 时 `ref` 临近失效，
+    //    通知能否送达依赖 widget 生命周期细节 —— 表现为「评完返回列表还是旧的」。
+    //    🔑 现在退出路径一条也不需要管：数据一变，读端自己就跟上了。
+    //    （两套机制并存的坏处见 `user_db_provider.dart` 的 `UserDbRevision`。）
     super.dispose();
   }
 
@@ -99,6 +94,12 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
     final typed = _input.text;
     final correct = gradeSpelling(typed, row.item.spelling);
     final rating = ratingForSpelling(correct: correct);
+
+    // 🔑 **在任何 `await` 之前**取到 notifier 引用（同 `reader_screen._writeBackLookup`）：
+    //    下面有两次 `await` 写库，期间用户可能按返回退出 → `ref` 失效。
+    //    拿着 notifier **实例**引用则不受影响（`userDbRevisionProvider`
+    //    是非 autoDispose，生命周期与 app 一致）。
+    final revision = ref.read(userDbRevisionProvider.notifier);
 
     setState(() => _busy = true);
     try {
@@ -126,6 +127,18 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
         nextReviewAt: r.state.nextReviewAt,
       );
       await q.logReview(r.event);
+
+      // 🔴 **写库成功之后**再 bump（顺序不可颠倒：先 bump 会让列表在写入
+      //    完成前重查一次，查到的还是旧值，而修订号已经变过 → 不会再重算一次
+      //    → 表现为「这一次没刷新」）。
+      //
+      // 🔑 在这里 bump，而不是等页面 `dispose`（此前是那样）：数据在**提交成功
+      //    那一刻**就变了，把「让界面知道」押在「页面被销毁」上是错配的时机 ——
+      //    `dispose` 时 `ref` 临近失效，能否可靠送达依赖 widget 生命周期细节。
+      //    这也是白哥报的「考试后状态要切一下才变」的根因之一。
+      // ⚠️ 用**提前取好的** notifier 引用（见方法开头）—— 不用 `ref`，
+      //    因为这两次 `await` 期间页面可能已被销毁。
+      revision.bump();
 
       if (!mounted) return;
       ref.read(reviewSessionProvider.notifier).markAnswered(

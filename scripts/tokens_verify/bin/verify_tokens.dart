@@ -119,6 +119,7 @@ void main() {
   _s15Navigation();
   _s16WordWriteback();
   _s17ReviewList();
+  _s18DbRevision();
 
   print('\n' + '═' * 72);
   print('通过 $_pass 项，实现类失败 $_fail 项，规格内部冲突 ${_conflicts.length} 项');
@@ -1639,10 +1640,19 @@ void _s17ReviewList() {
 
   // ⑦ 暂停 = 软删（`pause` → `deleted = 1`）+ 刷新，**不是 DELETE**
   check('暂停走仓储的 pause（软删）', page.contains('repo.pause('));
-  check('🔴 暂停后 invalidate 列表（否则那一行还在）',
-      page.contains('invalidate(reviewListProvider)'));
-  check('暂停后也 invalidate 计数（列表与计数须同源刷新）',
-      page.contains('invalidate(reviewDueCountProvider)'));
+  //    🔴 **2026-09-28 机制反转**：刷新不再靠「写端点名 invalidate 每个读端」，
+  //       改为「**写端 bump 修订号，读端自己 watch**」——
+  //       见「【18】库修订号」一节（那里锁全貌）。
+  //
+  //       ⚠️ 本两条断言**必须跟着反转**，否则它会一直报红；
+  //          更糟的是：有人为了让它变绿，会把 `invalidate` 加回来
+  //          → **断言反向驱动实现**，两套机制并存（本项目明令禁止）。
+  //       🔑 「反转型断言」：决策反转时，断言方向必须同步反转。
+  check('🔴 暂停后 bump 修订号（写端不必点名读端）',
+      page.contains('revision.bump()'));
+  check('🔴 暂停处不再点名 invalidate（防两套机制并存）',
+      !page.contains('invalidate(reviewListProvider)') &&
+          !page.contains('invalidate(reviewDueCountProvider)'));
 
   // ⑧ 入口：**底部 tab 就是入口**，标题栏不再放按钮
   //
@@ -1867,6 +1877,154 @@ void _s17ReviewList() {
       !sess.contains('bottom: false'));
   check('列表项点击 → push 翻卡路由（不是切状态）',
       page.contains("context.push('/review/session')"));
-  check('退出翻卡时刷新列表（否则回到列表还是旧顺序）',
-      sess.contains('ref.invalidate(reviewListProvider)'));
+  check('🔴 翻卡退出路径不再依赖 `dispose` 刷新（改由提交后 bump）',
+      !sess.contains('ref.invalidate(reviewListProvider)') &&
+          sess.contains('revision.bump()'));
+}
+
+// ── ⑱ 库修订号：**写端 bump · 读端 watch** ─────────────────────────
+//
+// 🔴 为什么需要这一节（2026-09-28 白哥真机报的**两个**现象）：
+//
+// > 「划词后进入复习页面第一时间看不到新单词，要切换一下内部 tab 才能看到；
+// >   考试后单词状态也不能第一时间改变，同样也要切换一下」
+//
+// 根因**不是写入失败**（库是对的，所以「切一下」就能看到），而是：
+// 读端是**带缓存的** `FutureProvider`，只有 `invalidate` 或失去监听者才重算；
+// 而写端有三处，**「通知」这一步靠人记** ——
+//   · 划词写回 —— 🔴 **一处都没有**
+//   · 评级提交 —— ⚠️ 只在 `dispose()` 里（把「数据变了」押在「页面被销毁」上）
+//   · 暂停     —— ✅ 有（唯一一处正确范例）
+//
+// 🔑 本节的守护目标**不是**「某个 provider 被 invalidate 了」，
+//    而是**结构本身**：写端只 bump、读端自己 watch ——
+//    这样「新增读端」不必改写端、「新增写端」不必知道有哪些读端。
+//
+// ⚠️ 这类失效**编译器完全看不出来**：数据写对了，只是没人告诉界面。
+//    用户看到的是「查词没生效」/「评了没用」。
+void _s18DbRevision() {
+  print('\n【18】库修订号（写端 bump · 读端 watch）');
+
+  final root = _repoRoot();
+  String src(String p) {
+    final f = File('$root/app/lib/$p');
+    return f.existsSync() ? _codeOnly(f.readAsStringSync()) : '';
+  }
+
+  final dbProv = src('providers/user_db_provider.dart');
+  final listProv = src('providers/review_list_provider.dart');
+  final page = src('screens/review_screen.dart');
+  final sess = src('screens/review_session_screen.dart');
+  final reader = src('screens/reader_screen.dart');
+  final sessProv = src('providers/review_session_provider.dart');
+
+  // ① 信号源存在，且**与库同一处定义**（「库有变化」只有一个出处）
+  check('userDbRevisionProvider 定义在 user_db_provider.dart（与库同一处）',
+      dbProv.contains('userDbRevisionProvider') &&
+          dbProv.contains('class UserDbRevision'));
+  check('它是 Notifier（写端能 bump），不是只读的 Provider',
+      dbProv.contains('extends Notifier<int>'));
+
+  // ② 读端**自己** watch 它（而不是等写端来点名）
+  //    🔴 两条都要有：少一条就出现「列表刷新了但顶部计数没变」
+  // ② 读端**自己** watch 它（而不是等写端来点名）
+  //
+  //    🔴 **必须按 provider 的定义处切段**，不能查全文件 ——
+  //       本文件里 `ref.watch(userDbRevisionProvider)` 会出现**两次**
+  //       （两个 provider 各一次），全文件 `contains` 会让「删掉其中一个」
+  //       **照样为绿**（实测：证伪时删掉 `reviewListProvider` 的那行，断言 0 红）。
+  //       🔑 「同一行在别处也出现」的又一次实例 —— 而且这次是**同一个文件内**。
+  //          同类定义越多，`contains` 越不可信：**默认就应该切段**。
+  final listAt = listProv.indexOf('final reviewListProvider');
+  final dueAt = listProv.indexOf('final reviewDueCountProvider');
+  final listSeg = (listAt < 0)
+      ? ''
+      : listProv.substring(listAt, dueAt > listAt ? dueAt : listProv.length);
+  final dueSeg = dueAt < 0 ? '' : listProv.substring(dueAt);
+  check('能切出两个 provider 各自的段（读端断言的前提）',
+      listSeg.isNotEmpty && dueSeg.isNotEmpty,
+      'listAt=$listAt dueAt=$dueAt');
+  check('🔴 reviewListProvider 的段内 watch 了修订号',
+      listSeg.contains('ref.watch(userDbRevisionProvider)'));
+  check('🔴 reviewDueCountProvider 的段内也 watch 了（列表与计数同源刷新）',
+      dueSeg.contains('ref.watch(userDbRevisionProvider)'));
+
+  // ③ 三个写端**都**要 bump（少一个就是一次「界面不更新」）
+  for (final e in [
+    ('划词写回', reader),
+    ('评级提交', sess),
+    ('暂停', page),
+  ]) {
+    check('🔴 ${e.$1}写库后 bump 修订号', e.$2.contains('revision.bump()'));
+  }
+
+  // ④ 🔴 **bump 必须在写库之后**（顺序类断言 —— 位置可验，不必肉眼）
+  //
+  //    反了会怎样：读端在写入完成前重查一次（拿到旧值），
+  //    而修订号**已经变过**、不会再有第二次通知 → 表现为「这一次没刷新」。
+  //    🔑 这是「刷新信号必须晚于写入」的一般要求。
+  final readerAdd = reader.indexOf('await repo.add(');
+  final readerBump = reader.indexOf('revision.bump()');
+  check('🔑 划词：bump 在 `repo.add` 之后（先写库、后通知）',
+      readerAdd >= 0 && readerBump > readerAdd,
+      'add@$readerAdd bump@$readerBump');
+  final sessWrite = sess.indexOf('await q.logReview(');
+  final sessBump = sess.indexOf('revision.bump()');
+  check('🔑 评级：bump 在写两张表之后',
+      sessWrite >= 0 && sessBump > sessWrite,
+      'logReview@$sessWrite bump@$sessBump');
+  final pauseWrite = page.indexOf('await repo.pause(');
+  final pauseBump = page.indexOf('revision.bump()');
+  check('🔑 暂停：bump 在 `repo.pause` 之后',
+      pauseWrite >= 0 && pauseBump > pauseWrite,
+      'pause@$pauseWrite bump@$pauseBump');
+
+  // ⑤ 🔴 **只在真的写库后**才刷（白哥 2026-09-28 定）
+  //
+  //    `add()` 的三个分支里有两个**不写库**：
+  //      · `alreadyExists` → 直接 return（连 `user_word` 都没动）
+  //      · `limitReached`  → 不入库（返回前已 return）
+  //    未命中（`wordId == null`）只写 `lookup_event`，而复习页**不读**该表 → 也不必刷。
+  //    🔑 「刷新」的判据是**数据变了**，不是「用户做了个操作」。
+  //
+  //    ⚠️ 这里用**位置**证明「不写库的路径都提前 return 了」，
+  //       而不是去匹配注释文本 —— 注释可以改，而「return 在 bump 之前」
+  //       是结构事实。（用注释当断言 = 断言跟着注释漂移。）
+  final missReturn = reader.indexOf('if (wordId == null) return;');
+  final alreadyReturn = reader.indexOf('AddWordResult.alreadyExists) return');
+  check('🔴 划词：未命中（只写 lookup_event）时提前 return，走不到 bump',
+      missReturn >= 0 && missReturn < readerBump,
+      'return@$missReturn bump@$readerBump');
+  check('🔴 划词：`alreadyExists`（库没动）时提前 return，走不到 bump',
+      alreadyReturn >= 0 && alreadyReturn < readerBump,
+      'return@$alreadyReturn bump@$readerBump');
+  //    200 上限同理：不入库，也不该刷新
+  final limitReturn = reader.indexOf('AddWordResult.limitReached)');
+  check('🔴 划词：`limitReached`（未入库）时也不 bump',
+      limitReturn >= 0 && limitReturn < readerBump,
+      'limitReached@$limitReturn bump@$readerBump');
+
+  // ⑥ 🔑 **提前取 notifier 引用** —— 避开「`await` 期间 ref 失效」
+  //
+  //    三处写端都有 `await`：期间用户可能退出页面 → `ref` 失效 →
+  //    `await` 之后再 `ref.read` 会抛错（写库已成功，只是通知失败）。
+  //    拿 `Notifier` **实例**引用则不受 widget 生命周期影响。
+  for (final e in [('划词', reader), ('评级', sess), ('暂停', page)]) {
+    check('${e.$1}：在 `await` 之前取 notifier 引用',
+        e.$2.contains('ref.read(userDbRevisionProvider.notifier)'));
+  }
+
+  // ⑦ 🔴 **不许两套机制并存**（本项目明令：同一个目的只能有一处定义）
+  //    针对复习数据的 `invalidate` 必须全部消失 ——
+  //    否则改了一处、另一处仍按老路子走，下次排查无从下手。
+  final stale = RegExp(r'invalidate\(review(List|DueCount)Provider\)');
+  for (final e in [('复习页', page), ('翻卡页', sess), ('列表 provider', listProv)]) {
+    check('🔴 ${e.$1}不再点名 invalidate 复习数据（防两套机制）',
+        !stale.hasMatch(e.$2));
+  }
+
+  // ⑧ 🔑 翻卡**快照不受修订号影响**（否则每评一张队列就会重算 → 索引错乱）
+  //    判据：`cardBundleProvider` 依赖的是**会话状态**与词库，**不是**列表 provider。
+  check('🔑 翻卡数据源不依赖 reviewListProvider（快照不会被刷新打乱）',
+      !sessProv.contains('reviewListProvider'));
 }

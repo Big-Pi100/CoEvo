@@ -345,11 +345,21 @@ Future<void> _writeBackLookup(
   String? wordId,
   required String spelling,
 }) async {
+  // 🔑 **在任何 `await` 之前**先取到 notifier 引用。
+  //
+  // 原因是本函数是 `unawaited(...)` 调用的（fire-and-forget，不阻塞释义浮层），
+  // 期间用户可能已经退出阅读页 → `ref` 失效 → `await` 之后再 `ref.read` 会抛错。
+  // 而 `Notifier` **实例**的存活与 widget 无关（`userDbRevisionProvider`
+  // 是非 autoDispose，只要 app 在就一直在）→ 拿着引用调 `bump()` 永远安全。
+  final revision = ref.read(userDbRevisionProvider.notifier);
+
   try {
     final repo = await ref.read(userWordProvider.future);
     await repo.recordLookup(wordId: wordId, spelling: spelling);
 
     if (wordId == null) return; // 未命中：没有词库 id，到此为止
+    // ⚠️ 未命中时**不 bump**：只写了 `lookup_event`，而复习页读的是
+    //    `user_word` + `card_review_state` → 刷了也是白刷一次库。
 
     final added = await repo.add(wordId, spelling);
 
@@ -361,6 +371,12 @@ Future<void> _writeBackLookup(
       debugPrint('[user_word] 已达上限 $kUserWordLimitFree，未加入：$spelling');
       return;
     }
+
+    // `alreadyExists` → `add()` 直接 return，**一行都没写** → 库没变，不 bump。
+    // 🔑 「只在**真的写库后**才刷新」的落实点：刷新不是「操作发生了」，
+    //    而是「数据变了」。两者在这里正好分道（`alreadyExists` 也有操作，
+    //    但库没动）。
+    if (added == AddWordResult.alreadyExists) return;
 
     // 新词 → 立刻进复习队列（`next_review_at` = 现在 → 立即到期）
     // 🔑 只在**真的新增**时插：`alreadyExists` / `revived` 时状态已存在，
@@ -374,6 +390,14 @@ Future<void> _writeBackLookup(
         nextReviewAt: DateTime.now().toUtc(),
       );
     }
+
+    // 🔴 **写库完成之后**才签「库变了」—— 顺序不可颠倒（先 bump 会让读端
+    //    在写入完成前重查一次旧值，而修订号已经变过 → 不会再重算 → 表现为没刷新）。
+    //
+    // 到这里的两种情形都真的改了库：
+    //   · `added`   → 新增 `user_word` + `card_review_state` → 复习页会多一个词
+    //   · `revived` → `user_word.deleted = 0` + `updated_at` 刷新 → 复习页重新看到它
+    revision.bump();
   } catch (e, st) {
     // 🔑 **只记日志**（见调用处说明）：查词写入失败不影响「看到词义」。
     debugPrint('[lookup] 写入失败 spelling=$spelling：$e\n$st');

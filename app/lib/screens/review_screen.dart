@@ -48,6 +48,7 @@ import 'package:go_router/go_router.dart';
 
 import '../providers/review_list_provider.dart';
 import '../providers/review_session_provider.dart';
+import '../providers/user_db_provider.dart';
 import '../providers/user_word_provider.dart';
 import '../services/review_list_query.dart';
 import '../theme/clay.dart';
@@ -134,6 +135,9 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   /// 那会让用户以为「暂停成功了」，下次打开它又回来。
   Future<void> _pause(ReviewListItem item) async {
     final messenger = ScaffoldMessenger.of(context);
+    // 🔑 **在任何 `await` 之前**取到 notifier 引用（同另外两处写入端）：
+    //    `await repo.pause(...)` 期间页面可能被销毁 → `ref` 失效。
+    final revision = ref.read(userDbRevisionProvider.notifier);
     try {
       final repo = await ref.read(userWordProvider.future);
       final changed = await repo.pause(item.wordId);
@@ -141,10 +145,12 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       // `false` = 本来就已经是暂停状态（本次无动作）→ 不刷界面、不提示
       if (!changed) return;
 
-      // 🔑 列表与计数**都要失效**：两者共用一套暂停过滤，
-      //    只刷一个会出现「列表少了一条但『N 个今天该看』没变」。
-      ref.invalidate(reviewListProvider);
-      ref.invalidate(reviewDueCountProvider);
+      // 🔑 只为**真的改了库**才 bump（`changed == false` 时已提前 return）。
+      //    以前这里要手工点名两个 provider（`reviewListProvider` +
+      //    `reviewDueCountProvider`），少点一个就会出现「列表少了一条但
+      //    顶部计数没变」；现在写端不必知道有哪些读端 ——
+      //    读端自己 watch 修订号（见 `user_db_provider.dart` 的 `UserDbRevision`）。
+      revision.bump();
 
       messenger
         ..hideCurrentSnackBar()
