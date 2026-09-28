@@ -203,7 +203,25 @@
   </div>
 
   <!-- ═══════════════════════════════════════════════════ -->
-  <h2>一、「段内说明」是什么 —— 锚点里的两种用法</h2>
+  <h2>一、「段内说明」是什么 —— 锚点里的两种用法 <span class="mk" style="background:#F7C1C1;color:#791F1F">整章已作废</span></h2>
+
+  <div class="box" style="border-left-color:#A3322D;background:#FCEBEB">
+    <b>🔴 本章整章已作废 —— 白哥 2026-09-28 18:5x 定：<u>不做</u>「段内说明」</b><br>
+    <b>原因是结构性的，不是数据变了</b>：§1 的全部推理建立在一句话上 ——
+    「<b>该词最有效的记忆法，卡上没给到</b>」
+    （当时量出 <b>1,152 词</b> = <code>image</code> 957 ＋ <code>cognate</code> 195）。<br>
+    但同日 <code>primary_code</code> 按 v1 <b>重判</b>后，它的定义变了：<br>
+    &nbsp;&nbsp;· <b>重判前</b>：<code>primary</code> 来自 LLM 独立判定 → 可以是 <code>image</code>
+      （<b>全库无此段</b>）或 <code>cognate</code> → 所以「最有效的法」<b>看不到</b>（正是本节要解决的）<br>
+    &nbsp;&nbsp;· <b>重判后</b>：<code>primary</code> ＝ <code>order ∩ 该词<b>有内容</b>的段</code> 里的第一个
+      → <b>必然有段、必然上卡</b><br>
+    → 🔑 「最有效的法有没有给到」的答案<b>现在恒为「给到了」</b>，那 1,152 词的缺口
+    <b>归零（by construction）</b> → 「段内说明」<b>没有被补的对象</b>。<br>
+    而保留的 6,101 条 <code>rationale</code> 只够做「附注」（解释「为什么用这种法记」），
+    其中 <b>5,383 条是 <code>root</code> 类</b>（实测与词根词缀段重合 <b>83%</b> ＝ 复述）。<br>
+    <span class="muted">📌 <b>本章保留不删</b> —— 「为什么不做」本身有价值，避免下次有人重新捡起来。
+    以下为作废前的原始分析（决策史）。</span>
+  </div>
 
   <p>锚点 <code>visual-word-card-target</code> 里有一个类 <code>.mnem-note</code>，
      它在两处被用到，<b>但用法不同</b>：</p>
@@ -368,7 +386,19 @@
     <b>结论：重合率只能当「排除法」（高 → 确定不显示），不能当排序依据。</b>
   </div>
 
-  <h3>1.3 样张（四个真实词，含正面与反面）</h3>
+  <h3>1.3 样张（四个真实词，含正面与反面） <span class="mk" style="background:#F7C1C1;color:#791F1F">数据已过时</span></h3>
+
+  <div class="box" style="border-left-color:#A3322D;background:#FCEBEB">
+    <b>🔴 本节样张的数据已过时</b>（同日 <code>primary_code</code> 重判 + <code>rationale</code> 置空所致）：<br>
+    · <code>alsop</code>：<code>primary</code> <code>context → collocation</code> ·
+      <code>rationale</code> <b>已置空</b><br>
+    · <code>cocky</code>：<code>primary</code> <code>image → collocation</code> ·
+      <code>rationale</code> <b>已置空</b>（它已不再是「①② 都没有承载」的那个例子）<br>
+    · <code>agree</code>：<code>primary</code> <code>etymology → collocation</code> ·
+      <code>rationale</code> <b>已置空</b><br>
+    · 且卡上 ①② 顺序也反了：现在是 <b>① 搭配整记 → ② 词源故事</b>（本节画的是 ① 词源 → ② 搭配）<br>
+    <span class="muted">保留原样作为「当时的真实数据」；<b>当前真实形态</b>见 §六 实施结果。</span>
+  </div>
 
   <p class="muted">全部取自真库。左＝不显示段内说明（当前），右＝显示（提案）。
      两侧内容与排版<b>只有「多了一行小字」这一处差异</b>。</p>
@@ -1509,7 +1539,7 @@
     <li><b>不动的</b>：<code>offCard</code> 保留（防御纵深）；<code>card</code> 里其余段不动（<b>只删 2,988 个冗余 <code>cognate</code> 段</b>）。</li>
   </ul>
 
-  <h2>六、待你定的事（汇总）</h2>
+  <h2>六、决策与实施（汇总）</h2>
 
   <table>
     <tr><th>#</th><th>决定</th><th>选项</th><th>我的建议</th></tr>
@@ -1537,13 +1567,13 @@
       <td><b>A</b> 从注册表/分配/卡片段/代码四处摘干净（推荐）／ B 只改显示名 ／ C 只改文档</td>
       <td class="ok"><b>A</b> —— <b>涉及词库数据，须你单独批</b><br>
         <span class="muted">实测界面零变化；且全为删除、可回滚</span></td></tr>
-    <tr><td><b>Ⅲ</b></td>
+    <tr class="ok"><td><b>Ⅲ</b></td>
       <td><b>段内说明（<code>rationale</code>）</b><br>
-        <span class="muted">§五 报告：失配 ≈4,444 条 → <b>要先定 rationale 怎么处理</b>，再谈它的落点</span></td>
-      <td>· 段上了卡 → 贴它下面（段内说明）<br>
-        · 段没上卡 → 不显示 ／ 另设计承载</td>
-      <td class="warn">排在 Ⅱ 之后<br>
-        <span class="muted">（上一版的 P0/P1/P2 排序已作废）</span></td></tr>
+        <span class="muted">✅ <b>已定（2026-09-28 18:5x）：不做</b> —— 见 §一 开头的作废说明</span></td>
+      <td>~~贴上卡段 / 段没上卡另承载~~<br>
+        <b>理由：重判后 <code>primary</code> 必然是该词有段的类型 → 「缺口」归零，无事可补</b></td>
+      <td class="ok"><b>不做</b><br>
+        <span class="muted">保留的 6,101 条 rationale 仅够做附注，且 5,383 条是 <code>root</code> 类（与段重合 83%）</span></td></tr>
     <tr><td>聚合 1</td><td>聚合页成员行形态</td><td>② 平坦行 + <code>›</code> / ① 粘土行 + onTap</td><td class="ok"><b>②</b></td></tr>
     <tr><td>聚合 2</td><td>点开之后去哪</td><td>a 查词浮层 / b 复习卡 / c 新页</td><td class="ok"><b>a</b></td></tr>
     <tr><td>聚合 3</td><td>聚合页其余 3 处（顶栏族名 / 页头居中 / 词列对齐）</td><td>一起改 / 只改可点</td><td>一起改（都在锚点里写着）</td></tr>
@@ -1551,13 +1581,46 @@
 
   <div class="box g">
     <b>✅ 已定案并实施（白哥 2026-09-28 18:1x–18:2x）</b><br>
-    <b>Ⅰ</b> → <b>① 以 v1 为准</b>（<code>collocation</code> 3 · <code>etymology</code> 4；<b>撤销 09-27 的交换</b>）<br>
+    <b>Ⅰ</b> → <b>① 以 v1 为准</b>（<code>collocation</code> 3 · <code>etymology</code> 4；<b>撤销 09-27 的交换</b>）
+      <span class="mk y">🔄 白哥 18:5x 要求重新讨论</span><br>
     <b>Ⅱ</b> → <b>乙：按 v1 §4.1 重判定 <code>primary_code</code></b>（数据层治本）<br>
     <b>0</b> → <b>A：cognate 从注册表 / 分配 / 卡片段 / 代码四处摘干净</b><br>
     <b>Ⅲ</b> → rationale <b>甲：失配置空 + 保留匹配的</b>（置空 5,422 / 保留 6,101）<br>
     <b>限定语</b>（白哥原话：「我说了好几次，<b>词元族是聚合页，这个要排除</b>」）→ 经确认：
     <b>「词元族」= <code>cognate</code>「同源串记」</b> → <b>排除池 = <code>{cognate, context}</code></b>
     <span class="muted">（这已是同一个点被说过第 3+ 次 —— 根因见 §1.10）</span>
+  </div>
+
+  <div class="box" style="border-left-color:#A3322D;background:#FCEBEB">
+    <b>🔄 待复议 · 3/4 级（白哥 2026-09-28 18:5x 提出）</b><br>
+    上面 <b>Ⅰ</b> 选的是「以 v1 为准」，实施后的<b>实际后果</b>如下 —— 白哥看到后要求重新讨论。<br>
+    <br>
+    <b>🔑 把「51.7% / 0.5%」这层抽象数字剥掉，3/4 级其实只决定一句话：</b>
+    <table style="margin-top:9px">
+      <tr><th>词型</th><th>词数</th><th>v1 口径（现状）</th><th>DB 口径（09-27 定）</th></tr>
+      <tr><td><b>有 <code>root</code> 段</b>（可拆）</td><td>5,484（47.6%）</td>
+        <td><code>root</code> + <b>搭配</b></td><td><code>root</code> + <b>词源</b></td></tr>
+      <tr><td><b>无 <code>root</code> 段</b>（不可拆）</td><td>6,039（52.4%）</td>
+        <td><b>搭配</b> + 词源</td><td><b>词源</b> + 搭配</td></tr>
+    </table>
+    → 说白了：<b>v1 ＝ 搭配优先；DB ＝ 词源优先</b>。而被牺牲的那一段是<b>镜像对称的</b>（各 5,479 词）：<br>
+    &nbsp;&nbsp;· <b>v1（现状）</b>：有 <code>root</code> 的卡上<b>看不到词源故事</b>
+      → <code>etymology</code> 上卡率 <b>51.4%</b> · <code>collocation</code> <b>99.3%</b><br>
+    &nbsp;&nbsp;· <b>DB（09-27）</b>：有 <code>root</code> 的卡上<b>看不到搭配</b>
+      → <code>etymology</code> <b>99.0%</b> · <code>collocation</code> 51.7%<br>
+    <br>
+    <b>🔴 09-27 那次论证有一条隐含前提，本轮才检查出来</b>：<br>
+    它的论据是「<code>collocation</code> 条件几乎<b>恒真</b>（99.3%）→ 排第 3 必然吃掉槽位①，使
+    <code>etymology</code> 只剩 0.5%」。<br>
+    但实测 <b><code>etymology</code> 同样几乎恒真 —— 11,407 / 11,523 ＝ 99.0%</b>。<br>
+    → 这条论据<b>对两者等效</b>（谁排 3 谁就吃掉 ①），<b>不能</b>用来裁决谁该在前。<br>
+    且重判后 <code>collocation</code> 占 ① 的 51.7% <b>恰好就是「没有 <code>root</code> 段的词」</b>，
+    <b>不是被它抢来的</b> → 原先担心的「恒真挤掉别人」在重判后<b>已不成立</b>。<br>
+    <br>
+    <b>→ 所以 3/4 级只能靠产品判断定</b>：一张卡的第二段（或首段）该给「<b>怎么用它</b>」还是「<b>它的来历</b>」。<br>
+    <span class="muted">⚠️ 若改回 DB 口径：跑 <code>priority_redo.py --order=db</code>（脚本<b>已留该参数</b>）
+      ＋ 改 <code>mnemonic_type</code> ＋ 改 <code>CardSlots.order</code> ＋ <b>翻转断言</b> ＋ 同步 v1 表
+      —— 影响 <b>98.5%</b> 的卡（11,349 / 11,523）。</span>
   </div>
 
   <h3>实施结果（已跑完 · 可复核）</h3>
@@ -1612,6 +1675,25 @@
     </tr>
   </table>
 
+  <h3>📌 当前真实形态（2026-09-28 18:5x 实测 · 复刻 <code>CardSlots.resolve</code> 跑全库）</h3>
+
+  <p class="muted">上面的样张（§1.3 / §1.9）画的是重判<b>之前</b>的数据。本节是<b>现在真机实际渲染</b>的样子。</p>
+
+  <table>
+    <tr><th>卡上 ①②</th><th>词数</th><th>占比</th></tr>
+    <tr><td><code>collocation</code> + <code>etymology</code></td><td>5,870</td><td><b>50.9%</b></td></tr>
+    <tr><td><code>root</code> + <code>collocation</code></td><td>5,480</td><td><b>47.6%</b></td></tr>
+    <tr><td>只有 <code>collocation</code></td><td>87</td><td>0.8%</td></tr>
+    <tr><td>只有 <code>etymology</code></td><td>53</td><td>0.5%</td></tr>
+    <tr class="bad"><td><b>空</b>（无候选 —— 实测多为噪声词，如 <code>iocsixf</code> / <code>pornsen</code>）</td><td>29</td><td>0.3%</td></tr>
+    <tr><td><code>root</code> + <code>etymology</code></td><td>4</td><td>0.03%</td></tr>
+  </table>
+
+  <p><b>→ 三个段的实际上卡率</b>：<code>collocation</code> <b>99.3%</b> ·
+     <code>etymology</code> <b>51.4%</b> · <code>root</code> 47.6%</p>
+  <p>🔑 即：<b><code>collocation</code> 几乎每张卡都有</b>（它是「搭配整记」，
+     而 11,437 个词都有搭配段）；<code>etymology</code> 只在<b>没有 <code>root</code> 段</b>的那一半词上进卡。</p>
+
   <div class="box" style="border-left-color:#A33220;background:#FDF3F0">
     <b>实施中我自己犯的两个错（都已修，记下来）</b><br>
     <b>① <code>mnemonic_type</code> 的 3/4 级赋值写反了</b> ——
@@ -1629,8 +1711,11 @@
 
   <h3>⏳ 仍未做</h3>
   <ul>
-    <li><b>Ⅲ · rationale 的落点</b>（段内说明贴哪 / 段没上卡时怎么显示）—— 现在数据已定，
-      <b>这一步才轮到做</b>（原计划也是排在 Ⅱ 之后）。</li>
+    <li><s><b>Ⅲ · rationale 的落点</b></s> —— 🔴 <b>已定：不做</b>（白哥 18:5x）。
+      原因：重判后 <code>primary</code> 必然是该词<b>有段</b>的类型 → 「缺口」归零
+      → <b>没有被补的对象</b>（详见 §一 开头的作废说明）。</li>
+    <li><b>🔄 3/4 级复议</b>（白哥 18:5x 提出）—— <b>待你定</b>：<code>v1</code>（搭配优先）
+      / <code>db</code>（词源优先）。实质与影响见上方红框。</li>
     <li><b>聚合页三项</b>（成员行形态 / 点开去哪 / 页头顶栏）—— 与词库无关，随时可做。</li>
     <li><b>29 个噪声词</b>（<code>iocsixf</code> / <code>pornsen</code> / <code>chen</code> …）——
       建议开一轮 <code>data-noise-classification</code> 清理（需另批）。</li>
@@ -1639,7 +1724,7 @@
 
   <div class="box">
     <b>实施顺序（已完成）</b>：<b>0</b>（cognate 摘除）→ <b>Ⅰ+Ⅱ</b>（库表对调 + 重判定，一步做）→
-    断言 + 文档。<b>Ⅲ 与聚合页见上「仍未做」</b>。
+    断言 + 文档。<b>Ⅲ 已定「不做」；聚合页与 3/4 级复议见上「仍未做」</b>。
   </div>
 
 </div>
