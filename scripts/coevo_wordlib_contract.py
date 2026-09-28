@@ -71,8 +71,11 @@ P_IN, P_OUT = 1.5, 4.5
 #   v2 → v3  删 base_form（可推导）+ 扁平化 entry + 改名 derived_from
 #   v3 → v4  etymology 结构化（{text, etyma[]}）
 #   v4 → v5  新增 entry_type + etyma[].parent + 「信任自身词汇知识」反制规则
+#   v5 → v6  新增 ipa / definition / context —— 🔴 三个字段原本由**外部词典源**提供
+#            （`coevo.db` 的 `prebuilt_language_cards`），该库于 2026-09-29 退役 → 契约须自产。
+#            ⚠️ 这条改动同时**绕开了 P0 污染源**（`a`/`with`/`health care` 的错字段都来自那里）。
 # ══════════════════════════════════════════════════════════════════════
-CONTRACT_VERSION = 'v5'
+CONTRACT_VERSION = 'v6'
 
 PROMPT = """You are an expert English lexicographer building flashcard content for Chinese learners of English.
 
@@ -101,6 +104,9 @@ Return STRICT JSON with EXACTLY this shape (keys must all be present):
         "meaning": "相信", "role": "root", "parent": ""}}
     ]
   }},
+  "ipa": "/ɪnˈkredəbl/",
+  "definition": {{"pos": "[adj]", "en": "impossible or very hard to believe", "zh": "难以置信的"}},
+  "context": "It seems incredible that no one noticed the mistake.",
   "collocations": [{{"phrase": "an incredible story", "zh": "一个难以置信的故事"}}],
   "mnemonic": {{"primary": "root", "secondary": ["cognate"], "rationale": "in(不)+cred(相信)+ible(可…的)"}},
   "confidence": 0.9
@@ -176,6 +182,33 @@ FIELD RULES:
    * 🔴 HARD RULE: if primary="root", then morphology.analyzable MUST be true.
      Otherwise choose "etymology" or "context".
 9) confidence — 0.0-1.0 for your overall judgement.
+10) ipa — BRITISH (or American) phonetic transcription, wrapped in slashes.
+    * MUST be COMPLETE: a well-formed `/.../`, never a fragment. 🔴 Never output just "/ˈ" or "/".
+    * 🔴 Never truncate to a prefix. If you are unsure of the whole word, give your best full
+      transcription — a partial one is WORSE than a slightly imprecise one.
+    * UK/US differ → give both, in this exact style:
+        "/ɡlɑːs/ (UK) or /ɡlæs/ (US)"
+      Other legitimate variants: "/ˈdɛvi/ (or /ˈdiːvi/ unclear)" · "/ʃɑ̃ːbr/ (French) or /ˈʃɒmbər/ (anglicized)".
+    * For entry_type="phrase": transcribe the WHOLE phrase, not just its first word.
+      (Real bug this prevents: "frying pan" once got /fraɪ/ — the ipa of "fry".)
+11) definition — an object with EXACTLY THREE keys:
+      "pos" = part of speech in square brackets: "[n]", "[v]", "[adj]", "[adv]", "[prep]", "[conj]",
+              "[pron]", "[det]", "[num]", "[int]" ... (a phrase/idiom → "[phr]")
+      "en"  = a concise English definition of THIS word (one clause, ≤ 12 words, no full stop needed)
+      "zh"  = Chinese meaning, ≤ 12 chars, comma-separated for multiple senses
+    * 🔴 HARD RULE: "en" and "zh" MUST describe the given WORD. Do NOT describe a different word.
+      (Real bug this prevents: the card for "a" once carried the definition of "happy".)
+    * 🔴 If the supplied dictionary gloss (shown to you after the word) describes something
+      UNRELATED to "{word}", IGNORE it entirely and write the correct definition yourself.
+    * Give the word's OWN meaning, not the meaning of its base form:
+      "building" → "[n] a structure with a roof and walls", NOT "to build".
+12) context — ONE natural example sentence (English), using the word as a learner would meet it.
+    * 🔴 HARD RULE: the sentence MUST contain "{word}" itself, or a regular inflection of it
+      (plural / past / -ing / comparative). Never output a sentence that does not contain the word
+      — otherwise the learner cannot see the word in context.
+      (Real bug this prevents: "a"'s card once showed "I am happy to see you." — no "a" in it.)
+    * Prefer a sentence from general/neutral prose (news-like). Avoid quotes, avoid proper names
+      unless the word IS a proper noun. Length: 6–16 words. Plain text, no markdown, no wrapping quotes.
 
 Output JSON only. No prose, no markdown fences."""
 
