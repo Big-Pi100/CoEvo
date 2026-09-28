@@ -151,11 +151,30 @@ DDL = [
   UNIQUE (word_id, audio_type, scope, section_index))""",
 ]
 
+# 记忆法优先级 —— 🔴 **这些 priority 是「渲染层选槽位①的规则」，不是数据组织方式**
+#
+# 2026-09-27 白哥定：**交换 `etymology` 3 ↔ `collocation` 4**（原为 collocation 3 / etymology 4）
+#
+# # 为什么交换
+# `applicable_when` 语义上，`root`（**可拆**）与 `etymology`（**不可拆**）是**互补**的两条路，
+# 而 `collocation` 的条件「有 ≥1 条高频固定搭配」实测 **99.3% 的词都满足（几乎恒真）**。
+# 它排在第 3 位 → **必然吃掉所有「不可拆词」的槽位①**，使 `etymology` 出场率仅 0.5%（形同虚设）。
+#
+# 实测（11,523 张卡）：
+#   交换前 → collocation **51.7%** · root 47.6% · etymology **0.5%**
+#   交换后 → etymology **51.4%** · root 47.6% · collocation **0.7%**   ← 与「不可拆词」占 52.4% 吻合
+#
+# 交叉验证：`word_mnemonic_profile.primary_code`（LLM 当年判定的「该用哪个」）
+#   里 collocation 仅 **0.9%** —— 与交换后渲染层得到的 0.7% **高度吻合**，
+#   说明「搭配只在少数词上该当槽位①」是语言学习的判断，不是我们的发明。
+#
+# ⚠️ 交换后 `collocation` 仍是**有效兜底**（86 词：词组 `traffic jam` / 语气词 `eh` / 专名 `waco`）。
+# 📄 完整论证：`docs/review/mnemonic-slot-priority-conflict-2026-09-27.md`
 MNEMONIC_TYPES = [
     ('root', 1, '词根词缀', '可拆成现代英语仍透明的词根/词缀（incredible = in+cred+ible）'),
     ('cognate', 2, '同源串记', '与另一个英语词共享同一词根或词源（receive/perceive/conceive）；谐音不算'),
-    ('collocation', 3, '搭配整记', '有 ≥1 条高频固定搭配'),
-    ('etymology', 4, '词源故事', '整体借词、不可拆（café ← French café）'),
+    ('etymology', 3, '词源故事', '整体借词、不可拆（café ← French café）'),
+    ('collocation', 4, '搭配整记', '有 ≥1 条高频固定搭配'),
     ('image', 5, '联想图像', '抽象词，靠意象或谐音联想'),
     ('context', 6, '语境原句', '默认附加'),
 ]

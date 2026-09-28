@@ -113,6 +113,12 @@ void main() {
   _s9Wiring();
   _s10ClayRender();
   _s11Lerp();
+  _s12Reader();
+  _s13TabBarShell();
+  _s14BookmarkList();
+  _s15Navigation();
+  _s16WordWriteback();
+  _s17WordList();
 
   print('\n' + '═' * 72);
   print('通过 $_pass 项，实现类失败 $_fail 项，规格内部冲突 ${_conflicts.length} 项');
@@ -323,12 +329,12 @@ void _s4Trace() {
     eq('$label.trace.syntax', t.trace.syntax, syntaxExpected[label]);
   }
 
-  // 墨：背景透明度递减 .15 → .075 → .026，无边框，无前景覆盖
+  // 墨：背景透明度递减 .15 → .075，无边框，无前景覆盖
+  // 🔴 2026-09-27 白哥定「已掌握 = 不标识」→ **只有两态**（trace 里已无 mastered 字段）
   final ink = inkTokens.trace;
   color('墨.n.bg', ink.fresh.bg, const CoRgba(180, 67, 44, 0.15));
   color('墨.m.bg', ink.reviewing.bg, const CoRgba(180, 67, 44, 0.075));
-  color('墨.d.bg', ink.mastered.bg, const CoRgba(180, 67, 44, 0.026));
-  for (final (tag, s) in [('n', ink.fresh), ('m', ink.reviewing), ('d', ink.mastered)]) {
+  for (final (tag, s) in [('n', ink.fresh), ('m', ink.reviewing)]) {
     check('墨.$tag.bd = none', s.border == null);
     check('墨.$tag.fg = inherit', s.fg == null);
     near('墨.$tag.p.top', s.padding.top, 1, tol: 0.001);
@@ -336,9 +342,9 @@ void _s4Trace() {
     near('墨.$tag.r', s.radius, 3, tol: 0.001);
   }
 
-  // 格：线宽递减 2.5px 实线 → 1.5px 半透明 → 1px 虚线，背景始终透明
+  // 格：线宽递减 2.5px 实线 → 1.5px 半透明，背景始终透明
   final grid = gridTokens.trace;
-  for (final (tag, s) in [('n', grid.fresh), ('m', grid.reviewing), ('d', grid.mastered)]) {
+  for (final (tag, s) in [('n', grid.fresh), ('m', grid.reviewing)]) {
     check('格.$tag.bg = transparent', s.bg.isTransparent);
     near('格.$tag.p.top', s.padding.top, 0, tol: 0.001);
     near('格.$tag.p.bottom', s.padding.bottom, 1, tol: 0.001);
@@ -365,25 +371,31 @@ void _s4Trace() {
     check('两态只差 alpha（实色 1.0 vs .42）',
         n.a == 1.0 && m.a == 0.42, 'a=${n.a} / ${m.a}');
   }
-  near('格.d.bd.width', grid.mastered.border!.width, 1.0, tol: 0.001);
-  color('格.d.bd.color', grid.mastered.border!.color, const CoRgba(10, 10, 10, 0.16));
-  check('格.d.bd 虚线', grid.mastered.border!.dashed);
 
-  // 夜：亮度递减，用**不同灰阶**（暖 → 冷）而非单降亮度
+  // 夜：两态用**不同灰阶**（暖奶油 → 中性），而非同一色降透明度
+  //   ⚠️ 原表述「亮度递减」在三态下成立（靠已掌握把亮度拉到 .291）；
+  //      两态下亮度仅 .743 → .716，**实际区分靠暖度/彩度** → 断言改为验「暖度递减」。
   final night = nightTokens.trace;
   color('夜.n.fg', night.fresh.fg!, const CoRgba.hex(0xFFD9B8));
   color('夜.m.fg', night.reviewing.fg!, const CoRgba.hex(0xDEDCD7));
-  color('夜.d.fg', night.mastered.fg!, const CoRgba.hex(0x8E939F));
-  for (final (tag, s) in [('n', night.fresh), ('m', night.reviewing), ('d', night.mastered)]) {
+  for (final (tag, s) in [('n', night.fresh), ('m', night.reviewing)]) {
     check('夜.$tag.bg = transparent', s.bg.isTransparent);
     check('夜.$tag.bd = none', s.border == null);
   }
+  //    「暖度」用 (r − b) 表达：fresh 暖奶油 r−b = 71，reviewing 中性 r−b = 7
+  {
+    final nWarm = night.fresh.fg!.r - night.fresh.fg!.b;
+    final mWarm = night.reviewing.fg!.r - night.reviewing.fg!.b;
+    check('夜档暖度递减（fresh 更暖 → reviewing 近中性）', nWarm > mWarm,
+        'fresh r−b=$nWarm / reviewing r−b=$mWarm');
+  }
 
-  // 三态取用逻辑
+  // 两态取用逻辑 + 🔴 **已掌握必须返回 null**（不标识）
   check('forReps(0) → fresh', ink.forReps(0) == ink.fresh);
   check('forReps(1) → reviewing', ink.forReps(1) == ink.reviewing);
   check('forReps(2) → reviewing', ink.forReps(2) == ink.reviewing);
-  check('forReps(3) → mastered', ink.forReps(3) == ink.mastered);
+  check('forReps(3) → null（已掌握 = 不标识）', ink.forReps(3) == null);
+  check('forReps(9) → null（已掌握 = 不标识）', ink.forReps(9) == null);
   check('forReps(3, lapses:1) → reviewing（有遗忘则不算掌握）',
       ink.forReps(3, lapses: 1) == ink.reviewing);
 }
@@ -473,7 +485,8 @@ void _s7Fonts() {
 
   eq('正文 family', CoFonts.latinSerif, 'Literata');
   eq('IPA family', CoFonts.ipaSerif, 'CharisSIL');
-  eq('中文 family', CoFonts.cjk, 'AlibabaPuHuiTi');
+  // 2026-09-27 由 AlibabaPuHuiTi 更换（条款禁止子集化 → 换 OFL 的 Noto Sans SC）
+  eq('中文 family', CoFonts.cjk, 'NotoSansSC');
   listEq('latinFallback == [ipaSerif]', CoFonts.latinFallback, [CoFonts.ipaSerif]);
 
   // 🔴 A′ 的核心不变量：音标字体**不得**出现在正文的「主 family」位置
@@ -504,7 +517,6 @@ void _s7Fonts() {
 
   // 字体文件真的存在（声明了但文件不在 → 打包时才报错）
   for (final f in CoFonts.shippedFamilies) {
-    if (f == CoFonts.cjk) continue; // 阿里普惠体不按此命名，单独跳
     final hit = RegExp('assets/fonts/$f[-\\w]*\\.ttf').allMatches(yaml);
     check('`$f` 的 asset 路径已声明', hit.isNotEmpty);
     for (final m in hit) {
@@ -513,6 +525,41 @@ void _s7Fonts() {
           p.existsSync() ? '${p.lengthSync()} B' : '缺文件');
     }
   }
+  // 🔑 上面那个「`CoFonts.cjk` 单独跳过」的特例已删除（2026-09-27）——
+  //    原先跳是因为**阿里普惠体的文件名与 family 名不同**（`AlibabaPuHuiTi-3-55-Regular`）。
+  //    换成 `NotoSansSC-*` 后命名一致，`shippedFamilies` 的通用检查**已能覆盖它**
+  //    → 特例没有存在理由了。（「**功能取消，其子功能一并失去理由**」的又一处应用。）
+
+  // ── 🆕 中文字体（2026-09-27 更换为 Noto Sans SC · OFL）──────────
+  //
+  // 本节只做**接线性**断言（名字 / 声明 / 字重 / 许可文本是否随包）。
+  // 🔴 **真正的「cmap 覆盖」不在这里** —— 那需要解析 TTF 的 cmap 表，
+  //    而 Dart 侧无此能力；放在 `scripts/build_fonts.py --verify-coverage`
+  //    （Python 有 `fontTools`，且它本来就是**字体构建的单一出处**）。
+  //    ⚠️ 两者是**互补**的，缺一不可：这里防「写了但没接上」，那边防「字体被换/词库增长后缺字」。
+  final nsc = 'assets/fonts/NotoSansSC-';
+  for (final w in [400, 500, 600, 700]) {
+    final hit = RegExp('$nsc\\w+\\.ttf[\\s\\S]{0,40}?weight:\\s*$w')
+        .hasMatch(yaml) ||
+        RegExp('weight:\\s*$w[\\s\\S]{0,80}?$nsc\\w+\\.ttf').hasMatch(yaml);
+    check('中文字体声明了字重 $w', hit);
+  }
+  // 🔑 600 是本次刻意补的：代码里 `w600` 用 69 处（最多），
+  //    而旧字体只声明 400/500/700 → 那 69 处一直在「就近取」。
+  check('中文字体**没有**多声明不需要的字重（4 个字重即可）',
+      RegExp('$nsc\\w+\\.ttf').allMatches(yaml).length == 4,
+      '实得 ${RegExp('$nsc\\w+\\.ttf').allMatches(yaml).length} 个');
+  // 🔴 OFL 条件 2：许可文本必须**随包分发**。
+  //    ⚠️ 只把文件放进 `assets/fonts/` 不够 —— **未在 `assets:` 声明的文件不会被打包**
+  //    （本项目已踩过：`user_db_schema.sql` 曾因此不进包，编译不报错、运行时才炸）
+  check('OFL 许可文本已声明为 asset（否则不进包 = 等于没附）',
+      RegExp(r'^\s*-\s*assets/fonts/NotoSansSC-OFL\.txt\s*$', multiLine: true)
+          .hasMatch(yaml));
+  check('OFL 许可文本文件存在',
+      File('${_repoRoot()}/app/assets/fonts/NotoSansSC-OFL.txt').existsSync());
+  // 🔴 OFL 条件 3：Modified Version 不得用 Reserved Font Name。
+  //    本字体的保留名是 `Source`（查官方 OFL.txt 原文）→ 断言我们的 family 名不含它。
+  check('family 名未使用保留名 `Source`', !CoFonts.cjk.contains('Source'));
 }
 
 /// 仓库根目录（从 cwd 向上找到含 app/ 的目录）。
@@ -880,16 +927,14 @@ void _s11Lerp() {
   }
   check('过渡期间「线索不压过答案」始终成立（字号保序）', hierOk);
 
-  // ⑥ 三态痕迹都参与插值（不能只插 fresh）
+  // ⑥ 两态痕迹都参与插值（不能只插 fresh）
   final midTrace = TraceTokens.lerp(a.trace, b.trace, 0.5);
   final changed = <String>[];
   if (midTrace.fresh.bg != a.trace.fresh.bg &&
       midTrace.fresh.bg != b.trace.fresh.bg) changed.add('fresh');
   if (midTrace.reviewing.bg != a.trace.reviewing.bg &&
       midTrace.reviewing.bg != b.trace.reviewing.bg) changed.add('reviewing');
-  if (midTrace.mastered.bg != a.trace.mastered.bg &&
-      midTrace.mastered.bg != b.trace.mastered.bg) changed.add('mastered');
-  check('三态痕迹的 bg 都被插值', changed.length == 3, '实得 ${changed.join(" / ")}');
+  check('两态痕迹的 bg 都被插值', changed.length == 2, '实得 ${changed.join(" / ")}');
 
   // ⑦ 接线：`ThemeExtension.lerp` 必须真的调 `CoEvoTokens.lerp`
   final ext = _codeOnly(
@@ -897,4 +942,595 @@ void _s11Lerp() {
   check('CoEvoTokensExt.lerp 调用 CoEvoTokens.lerp', ext.contains('CoEvoTokens.lerp('));
   check('tokens_ext 里已无阶跃实现（t<0.5 ? this : other）',
       !RegExp(r't\s*<\s*0\.5\s*\?\s*this').hasMatch(ext));
+}
+
+// ─────────────────────────────────────────────────────────────
+// 【12】阅读界面零粘土（spec §八 的自动检查）
+// ─────────────────────────────────────────────────────────────
+void _s12Reader() {
+  print('\n【12】阅读界面零粘土（spec §八）');
+  final f = File('${_repoRoot()}/app/lib/screens/reader_screen.dart');
+  if (!f.existsSync()) {
+    check('reader_screen.dart 存在', false, '3.4a 的阅读器未见');
+    return;
+  }
+  // 🔑 统一经 `_codeOnly` —— 否则注释里写的「零粘土」会冒充「代码里做到了」
+  final code = _codeOnly(f.readAsStringSync());
+
+  // spec §八：「阅读界面零粘土 · 可用自动检查：**阅读区容器内**不得出现粘土类」
+  // 🔑 判据取「**不直接**出现 `Clay(`」：
+  //    顶部栏的书签按钮是**唯一**的粘土，但它封装在 `BookmarkButton` 里 ——
+  //    设计稿的 `.bm` 本就是粘土类、且卡片与阅读界面**共用同一个类**，
+  //    所以那个粘土属于「书签组件」，不属于「阅读区」。
+  check('正文区零粘土：阅读器不**直接**使用 Clay', !code.contains('Clay('));
+  check('顶部栏书签走 BookmarkButton（粘土的单一出口）',
+      code.contains('BookmarkButton('));
+  check('阅读器不自绘阴影（无 BoxShadow）', !code.contains('BoxShadow('));
+  check('正文痕迹走 TraceText + locateTraceMarks（不手写背景色）',
+      code.contains('TraceText(') && code.contains('locateTraceMarks('));
+  // 正文底色必须取主题 token，不能写死
+  check('阅读底色取 token（t.read）', code.contains('t.read'));
+
+  // ── 3.4b 追加：查词浮层与选词工具栏也必须零粘土 ──
+  // 🔑 理由：浮层是**阅读场景的一部分**（spec §八「阅读区容器内不得出现粘土类」）。
+  //    粘土是「交互」语汇（卡片 / 按钮 / tabbar），浮层是「内容」→ 用层级色表达。
+  final sheet = File('${_repoRoot()}/app/lib/widgets/lookup_sheet.dart');
+  if (sheet.existsSync()) {
+    final sc = _codeOnly(sheet.readAsStringSync());
+    check('查词浮层零粘土（不直接用 Clay）', !sc.contains('Clay('));
+    check('浮层底色取 token（t.card）', sc.contains('t.card'));
+    // 🔴 音标必须**元素级**指定 CharisSIL —— 挂 fallback 链会让 93.9% 的音标
+    //    「一条音标两种字体」（spec §4.1.1）。浮层是新加的第三个音标落点（卡片、聚合页之外）。
+    check('浮层音标元素级指定 CoFonts.ipaSerif',
+        sc.contains('CoFonts.ipaSerif'));
+    // 词性必须走归一化（47 种写法 → 词典惯例缩写），不得直接显示原始值
+    check('浮层词性走 normalizePos 归一化', sc.contains('normalizePos('));
+  } else {
+    check('lookup_sheet.dart 存在', false, '3.4b 的浮层未见');
+  }
+
+  // ── 3.4b 修（2026-09-27）：词库预热必须是 watch ──
+  //
+  // 🔑 为什么这条值得用断言锁住：它**极易回归**。
+  //    只 `ref.read` 的话，31.4 MB 的落盘要等到「用户第一次长按查词」
+  //    那一刻才开始 → 那一刻 future 刚启动、`valueOrNull` 必然是 null
+  //    → **第一次查词 100% 失败**，而文案是「正在准备，请稍候」，
+  //    用户只会以为是自己点太快。
+  //    ⚠️ 有人可能为了「省一次 rebuild」把它改回 `read` —— 这条断言拦的就是那个。
+  check('阅读器 watch 了 wordQueryProvider（预热，不能只 read）',
+      code.contains('ref.watch(wordQueryProvider)'));
+
+  final wp = File('${_repoRoot()}/app/lib/providers/word_db_provider.dart');
+  if (wp.existsSync()) {
+    final wc = _codeOnly(wp.readAsStringSync());
+    // 🔑 「不可用」必须是**带原因**的类型，不能是裸 `null` ——
+    //    否则「平台不支持（永久）」与「还在加载（可等）」会共用一句
+    //    「请稍候」，让 web 用户重试一个永远不会成功的操作。
+    check('词库「不可用」带原因（sealed class，非裸 null）',
+        wc.contains('sealed class WordDbLoad'));
+    check('web 上提前返回「不支持」（不做注定失败的尝试）',
+        wc.contains('kIsWeb') && wc.contains('WordDbUnsupported'));
+    check('失败转成结果类型（不产生 AsyncError，防 when(error:) 把整页变报错）',
+        wc.contains('WordDbFailed'));
+  } else {
+    check('word_db_provider.dart 存在', false, '3.4b 的词库 provider 未见');
+  }
+}
+
+// ── ⑬ 底部栏「透明」的两处配套（防「只改一半」）─────────────────
+//
+// 🔑 为什么需要这一节（2026-09-27）：
+//   用户反馈「底部栏很破坏视觉」。核实后发现**根因不是颜色** ——
+//   `scaffoldBackgroundColor` / tabbar 背景 / 设计稿 `.phone` 三处**本来就是同一个 `page` 色**
+//   （所以「把背景改成透明」不会有任何视觉变化）。真正的来源是**结构**：
+//   `Scaffold(bottomNavigationBar:)` 让 tabbar 占一条**独立地带**，`body` 不含它 →
+//   滚动到底时正文与按钮之间有一道**静止空白**，观感是「内容被切掉一块、下面飘着三个按钮」。
+//
+//   修法是**三处配套**：
+//     ① `_ShellScaffold` 开 `extendBody: true`（正文延伸到底栏之后）
+//     ② `_ClayTabBar` 的**毛玻璃栏底**（让正文在栏下**模糊淡出**而非硬截断）
+//     ③ 各 tab 页滚动容器的底部 padding 留出 tabbar 高度（否则最后一项被按钮压住）
+//
+//   🔴 演进史（**四轮** · 详见 `_ClayTabBar` 类文档）：
+//     ① `ColoredBox(page)` → ②「透明→page」渐隐（白哥「**渐变不好看**」）
+//     → ③ 全透明 + **未选中项加凸起药丸**（白哥「**还是有割裂感**」—— 底加错了层）
+//     → ④ **毛玻璃栏底 + item 回平坦** ✅
+//
+//   🔴 **只改一处会有问题**，而**编译器不会报错**：
+//      · 只开 `extendBody` 忘了 padding → 最后一张卡片被永久遮住半截
+//      · 只加 padding 不开 `extendBody` → 底部永远空一截，白改
+//      · 删掉栏底却留着 `extendBody` → 正文直接压在未选中 tab 文字上（「看不清」回来了）
+//   → 所以把「三处必须同时存在」写成断言。
+void _s13TabBarShell() {
+  print('\n【13】底部栏「毛玻璃」的三处配套（防只改一半）');
+
+  final root = _repoRoot();
+  // 🔑 统一经 `_codeOnly` —— 否则「注释里提到」会冒充「代码里写了」
+  //    （本次尤其关键：`app.dart` 的文档注释里**故意**提到了 `ColoredBox` /
+  //     `LinearGradient` / `Color(t.page…)`，用来记录演进史与备选方案。
+  //     若不滤注释，下面「不得有背景层」这条会**假红**。）
+  String src(String p) {
+    final f = File('$root/app/lib/$p');
+    return f.existsSync() ? _codeOnly(f.readAsStringSync()) : '';
+  }
+
+  const tabs = ['screens/home_screen.dart', 'screens/review_screen.dart',
+      'screens/profile_screen.dart'];
+  final app = src('app.dart');
+
+  // ① body 必须延伸到 tabbar 之后
+  check('_ShellScaffold 开了 extendBody: true',
+      RegExp(r'extendBody:\s*true').hasMatch(app));
+
+  // ② tabbar **必须是毛玻璃栏底** —— 这是白哥选定方案 ③ 的代码判据。
+  //
+  //    🔴 **必须先切出 `_ClayTabBar` 类体**再断言，不能拿全文件当范围。
+  //       首版就是拿全文件跑的 → 被 `app.dart` 的**订阅弹窗遮罩**
+  //       `Container(color: Colors.black54)` 撞红 —— 那处**完全合法**（modal barrier），
+  //       与 tabbar 毫无关系。**断言的范围必须等于被测对象的范围**，
+  //       否则「真红」与「假红」混在一起，久了就没人信断言了。
+  //
+  //    🔑 **本轮断言的「极性」反转了**（重要）：
+  //       上一轮锁「**不得有任何背景层**」（全透明）；本轮锁「**必须有毛玻璃**」。
+  //       这是设计决策变更的结果 —— 🔑 **这正是断言该有的摩擦**：
+  //       改设计必须留下痕迹（改这段时会被迫重读演进史）。
+  //
+  //    🔴 四条各自对应一个**曾验证过的失败**：
+  //      · 无 `ClipRect` → **会把整个屏幕拖进滤镜**（`BackdropFilter` 的已知陷阱）
+  //      · 无 `BackdropFilter` → 退化成「实心色带」（= 第 ① 轮被否的观感）
+  //      · 用渐变 → 第 ② 轮被否（卡片被雾化成**雾带**）
+  //      · 背景色写裸值 → 三档色相断层（必须走 `t.tabBarSurface`）
+  final clsStart = app.indexOf('class _ClayTabBar');
+  final clsEnd = clsStart < 0 ? -1 : app.indexOf('\nclass ', clsStart + 1);
+  final tabBar = clsStart < 0
+      ? ''
+      : app.substring(clsStart, clsEnd < 0 ? app.length : clsEnd);
+  check('能切出 _ClayTabBar 类体（断言范围正确的前提）', tabBar.isNotEmpty);
+  check('栏底用 BackdropFilter 毛玻璃（方案 ③）',
+      tabBar.contains('BackdropFilter'));
+  check('毛玻璃被 ClipRect 包住（否则模糊会溢出到整个屏幕）',
+      tabBar.contains('ClipRect'));
+
+  // ②-b 🔴 **性能两条**（2026-09-28 白哥实测「掉帧有点严重」后补 · 两处都是真根因）
+  //
+  //  ① **缺 `RepaintBoundary` → 模糊区导致「全屏重绘」**
+  //     公开实测数据（Pixel 4a · 100×100 模糊区）：
+  //       不加 → **全屏重绘 → 45fps**；加上 → 只重绘模糊区 → **稳定 60fps**
+  //     🔑 且必须在 `ClipRect` **外面** —— 让「裁剪 + 模糊」整体成为一个独立图层。
+  //  ② **`sigma` 有性能阈值** —— 资料共识：「超过 **15** 时性能消耗显著增加」，
+  //     且旗舰机推荐 5–10。首版取了 **20**（超标）→ 已降到 10。
+  //
+  //  🔑 这两条**必须都锁**：一条管「重绘的**范围**」，一条管「单次的**成本**」——
+  //     只修一个都不够（这正是本次掉帧的同时存在两个原因）。
+  check('毛玻璃被 RepaintBoundary 包住（否则模糊区导致全屏重绘 · 实测 45fps）',
+      tabBar.contains('RepaintBoundary'));
+  check('RepaintBoundary 在 ClipRect 外层（裁剪+模糊整体成一个图层）',
+      RegExp(r'RepaintBoundary\(\s*child:\s*ClipRect\(').hasMatch(tabBar));
+  final sigmaM = RegExp(r'_blurSigma\s*=\s*([\d.]+)').firstMatch(tabBar);
+  check('能读到 _blurSigma 常量（下面那条断言的前提）', sigmaM != null);
+  if (sigmaM != null) {
+    final v = double.parse(sigmaM.group(1)!);
+    check('_blurSigma ≤ 15（超过 15 性能消耗显著增加；推荐区间 5–10）', v <= 15);
+  }
+  check('栏底色走 token 派生 t.tabBarSurface（不写裸色值 → 三档自动适配）',
+      RegExp(r't\.tabBarSurface').hasMatch(tabBar));
+  check('栏底不是纯色带 ColoredBox（那是第 ① 轮被否的观感）',
+      !tabBar.contains('ColoredBox'));
+  check('未用渐变（第 ② 轮被否：卡片被雾化成雾带）',
+      !tabBar.contains('LinearGradient'));
+
+  // ④ 🆕 未选中项 = **平坦**（2026-09-28 · 方案 ③ · 四轮演进后的定案）
+  //
+  //    演进：① 无底平坦（照设计稿）→ 白哥「看不清」（`extendBody` 后正文穿过）
+  //          ② `pressed` + `sunken`（凹陷）→ 白哥「**凹陷的，不好看**」
+  //          ③ `raised`（凸起药丸）→ 白哥「**还是有割裂感**」（**底加错了层**）
+  //          ④ **平坦** ← 定案：穿透问题改由「**栏底毛玻璃**」在**栏**这一层解决
+  //
+  //    🔑 断言锁住「**平坦**」：不能再是 `Clay` 的**任何**形态 ——
+  //       它们都会给单个 item 加实体 → 底部变三个独立物件 → 割裂感回来。
+  check('未选中项**不是** Clay（平坦 = 照设计稿 `.tb`，无底无影）',
+      !RegExp(r'state:\s*ClayState\.(raised|pressed)').hasMatch(tabBar));
+  check('未选中项走裸 GestureDetector + Padding（平坦的实现形态）',
+      tabBar.contains('GestureDetector') &&
+          tabBar.contains('Padding(padding: _tabPadding'));
+  check('未选中项不显式给 fill（平坦项无填充）',
+      !RegExp(r'fill:\s*t\.').hasMatch(tabBar));
+  //    🔴 字色必须 `ink2`：`ink3` 在**任何**候选底色上都不足 WCAG 小字 4.5
+  //       （page 2.74 / sunken 2.58 / card 3.20）→ 换底色救不了，必须换字色。
+  check('未选中项字色用 ink2（ink3 任何底色上都不达标）',
+      tabBar.contains('t.accentInk : t.ink2'));
+  //    ⚠️ 不加 detail 参数 —— `check` 的第三个参数是**无条件打印**的，
+  //       通过时也显示会让报告误导（首版写了「tabBar 里仍有 t.ink3」，
+  //       明明是 ✅ 却像在陈述问题）。
+  check('未选中项不再用 ink3', !tabBar.contains('t.ink3'));
+
+  // ⑤ 对比度硬校验 —— 用**实测值**验「未选中 tab 文字真的看得清」
+  //
+  //    ⚠️ 上面那条只验了「源码里写的是 ink2」，验不到「ink2 够不够」。
+  //       若将来有人改了 `ink2` 或 `card` 的值，源码断言照样绿 ——
+  //       所以必须**算一遍真实对比度**。（同 §2 用 spec 数值反验实现的思路。）
+  //    🔑 底色 = **栏底基线 `page`**（`tabBarSurface` = `page` 82%）。
+  //       ⚠️ 实际合成色取决于「栏后是什么内容」→ 这里取 82% 的**主导色** `page` 为基线；
+  //          最坏情形（栏后是该档卡面色）已在 `CoEvoTokens.tabBarSurface` 的
+  //          文档注释里**逐档算过**：墨 4.85 / 格 5.94 / 夜 7.25（均 ≥4.5）。
+  print('\n  ── 未选中 tab 的文字对比度（11px 小字 → 要求 4.5）──');
+  for (final (label, t) in _themes) {
+    final cr = t.ink2.contrastWith(t.page);
+    check('$label · 未选中 tab 文字 ink2 ↔ 栏底基线 page ≥ 4.5',
+        cr >= 4.5, cr.toStringAsFixed(2));
+  }
+  // 🔑 反向断言：记录「为什么不能用 ink3」—— 它在**三种**候选底色上都必须不达标。
+  //    若哪天 ink3 达标了，说明 token 被改过，这些断言会一起提示复核。
+  for (final (label, t) in _themes) {
+    for (final (name, bg) in [
+      ('page', t.page),
+      ('sunken', t.sunken),
+      ('clayFill(card)', t.clayFill),
+    ]) {
+      final cr = t.ink3.contrastWith(bg);
+      check('$label · （对照）ink3 ↔ $name 确实 < 4.5，故不能用',
+          cr < 4.5, cr.toStringAsFixed(2));
+    }
+  }
+
+  // ③ 三个 tab 页的滚动容器都要留出 tabbar 高度
+  for (final p in tabs) {
+    final s = src(p);
+    check('$p 底部留白用 CoSpacing.tabBarClearance',
+        s.contains('CoSpacing.tabBarClearance'));
+    // ⚠️ **反向检查**：常量已定义 ≠ 调用处不会重写裸值。
+    //    （本项目已踩过：token 层有定义，调用处又写 `90/320/0.97`。）
+    check('$p 未用裸值当底部留白（不许绕过常量）',
+        !RegExp(r'fromLTRB\([^)]*\b100\b').hasMatch(s));
+  }
+
+  // ④ 常量本身：值必须与 `_ClayTabBar` 的实际高度匹配
+  final spacing = src('theme/co_spacing.dart');
+  check('CoSpacing.tabBarClearance = 100（与 _ClayTabBar 内边距耦合，改一边要改两边）',
+      RegExp(r'tabBarClearance\s*=\s*100;').hasMatch(spacing));
+}
+
+// ── ⑭ 收藏清单（3.5）────────────────────────────────────────
+//
+// 🔑 为什么需要这一节：收藏清单是最容易「做歪」的一屏 ——
+//   它看起来像「新页面」，但设计稿明说**没有新界面**：
+//   > 「同一套卡片组件，只是筛选过 —— **没有新界面要设计**。」
+//
+//   所以三类断言，每类对应一个**已定义的具体失效方式**：
+//     ① **路由形态** —— 挂成子路由（保留 tabbar）。挂成顶层路由就变成全屏，
+//        与设计稿 mockup 不符，且「收藏是视图非 tab」的产品原则被破坏。
+//     ② **复用 `FeedCard`** —— 重写一套卡片会让「同一套组件」退化成两份实现
+//        （本项目已确立：「设计稿里是同一个类 → 实现里就该是一个东西」）。
+//     ③ **空状态的教学性** —— 设计稿要求「**教会用户书签在哪**」，
+//        而不是只说「没有内容」→ 断言那行引导**真的在**。
+void _s14BookmarkList() {
+  print('\n【14】收藏清单（3.5 — 设计稿：「没有新界面要设计」）');
+
+  final root = _repoRoot();
+  String src(String p) {
+    final f = File('$root/app/lib/$p');
+    return f.existsSync() ? _codeOnly(f.readAsStringSync()) : '';
+  }
+
+  bool has(String p) => File('$root/app/lib/$p').existsSync();
+
+  // ① 文件到位
+  check('bookmark_list_screen.dart 存在', has('screens/bookmark_list_screen.dart'));
+  check('bookmark_toggle.dart 存在（信息流与清单**共用**同一交互）',
+      has('widgets/bookmark_toggle.dart'));
+  if (!has('screens/bookmark_list_screen.dart')) return;
+
+  final screen = src('screens/bookmark_list_screen.dart');
+  final app = src('app.dart');
+  final home = src('screens/home_screen.dart');
+
+  // ② **路由形态**：必须是 `/home` 的**子路由**（相对路径 = 无前导 `/`）
+  //
+  //    🔑 判据用「相对路径」而不是去解析嵌套结构：
+  //       go_router 里**带前导 `/` 是绝对路径（顶层，脱离 shell）**，
+  //       不带则是子路由（留在 shell 分支的 Navigator 内 → **tabbar 保留**）。
+  //       所以「有相对路径」+「没有同名绝对路径」= 形态正确，且不依赖文件结构。
+  check('收藏清单编在 shell 分支内（`path: \'bookmarks\'` 无前导斜杠）',
+      RegExp(r"path:\s*'bookmarks'").hasMatch(app));
+  check('未把它做成顶层路由（`/bookmarks` 会脱离 shell → 失去 tabbar）',
+      !RegExp(r"path:\s*'/bookmarks'").hasMatch(app));
+
+  // ③ **复用 `FeedCard`**，不许自造卡片
+  check('清单复用 FeedCard（设计稿：「同一套卡片组件，只是筛选过」）',
+      screen.contains('FeedCard('));
+  //    ⚠️ 反向检查：不许自己拼一个「看起来像卡片」的容器
+  //    （判据：清单页里**不应**出现卡片专属的元信息行拼装 ——
+  //      `FeedItem.meta` 注释已声明「卡片和收藏清单共用……格式必须只定义一次」）
+  check('清单未自行拼卡片元信息（不许绕过 FeedItem.meta）',
+      !screen.contains('item.category') && !screen.contains('\' · \''));
+
+  // ④ **空状态的教学性**（设计稿：「教会用户书签在哪」）
+  check('空状态存在', screen.contains('_EmptyState'));
+  check('空状态用粘土凹陷圆环（ClayState.pressed）',
+      screen.contains('ClayState.pressed'));
+  check('空状态有「书签在哪」的引导行（不是只说「没有内容」）',
+      screen.contains('在卡片上找这个'));
+  check('空状态引导用真实书签图标（设计稿：「用真实图标做引导」）',
+      screen.contains('Icons.bookmark_border'));
+
+  // ⑤ **共用交互**：两处都调同一个函数，不许各写一份 toast
+  check('信息流用共用 toggleBookmarkWithToast',
+      home.contains('toggleBookmarkWithToast('));
+  check('收藏清单也用同一个 toggleBookmarkWithToast',
+      screen.contains('toggleBookmarkWithToast('));
+  //    🔴 反向：不许再有「自己写 SnackBar + 设计稿文案」的第二份实现
+  //    （判据：设计稿规定的那句 toast 文案只应出现在**共用函数**里）
+  final toggleFile = src('widgets/bookmark_toggle.dart');
+  check('toast 文案只在共用函数里定义一次（不许第二份）',
+      toggleFile.contains('可在「收藏」里重读') &&
+          !home.contains('可在「收藏」里重读') &&
+          !screen.contains('可在「收藏」里重读'));
+
+  // ⑥ **入口**：首页标题栏右侧必须有「收藏 N」（否则清单页根本进不去）
+  //
+  //    ⚠️ 2026-09-28（3.4d）**断言对象改了**：`_BookmarkEntry` → `_HeaderChip`
+  //       （生词入口与它共用同一个组件）。判据从「类名」改为**文案** ——
+  //       类名是实现细节，**文案才是设计稿规定的东西**。
+  //       🔑 断言越贴近「被保护的对象」越不易碎（改实现不该报红，改语义才该报红）。
+  check('首页标题栏有收藏入口（文案为「收藏」）', home.contains("label: '收藏'"));
+  check('入口指向 /home/bookmarks（与 ② 的路由一致）',
+      home.contains('/home/bookmarks'));
+  //    🔑 入口显示计数（设计稿 `.bm-entry .n`）
+  check('入口显示计数（设计稿 `.bm-entry .n`）', home.contains(r'$count'));
+  //    🆕 两个入口**共用同一个组件** —— 防「改一个忘一个」（见 `_HeaderChip` 的文档）
+  check('生词 / 收藏两个入口共用 _HeaderChip（不各写一份）',
+      RegExp(r'_HeaderChip\(').allMatches(home).length >= 2);
+
+  // ⑦ **extendBody 配套**：清单页也要留出 tabbar 高度，否则最后一张卡被压住
+  //    （同三个 tab 页的处理 —— 少一处就出现「最后一条看不到」）
+  check('清单页底部留白用 CoSpacing.tabBarClearance',
+      screen.contains('CoSpacing.tabBarClearance'));
+
+  // ⑧ **不许用 `when(error:)` 之外的方式撒谎**：
+  //    库不可用时要给**准确**提示，不能显示成「还没有收藏」
+  //    （用户明明收藏过 → 谎报是比报错更糟的失效）
+  check('库不可用态有独立处理（不冒充「没有收藏」）',
+      screen.contains('_Unavailable'));
+}
+
+// ── ⑮ 导航：侧滑返回 + 返回入口 ─────────────────────────────────────
+//
+// 🔑 为什么需要这一节（2026-09-28 白哥：「每个页面应该加上左滑退出，
+//    尤其收藏列表根本没有返回按钮」）：
+//
+// **侧滑返回不是「路由」自带的能力，它由「转场 builder」提供。**
+//   `CupertinoPageTransitionsBuilder.buildTransitions` 委托
+//   `CupertinoRouteTransitionMixin.buildPageTransitions`，后者内部包了
+//   `_CupertinoBackGestureDetector`（`flutter/lib/src/cupertino/route.dart:253`）。
+//
+// → 于是有两种**静默**关掉侧滑的方式，**编译器都不会报错**：
+//   ① 不配 `pageTransitionsTheme` → Android 默认走 `PredictiveBack`（无 iOS 风格侧滑）
+//      ⚠️ 本项目「产品只做 iOS、Android 是开发期验证载体」→ 不统一就**根本验不了**
+//   ② 用 `CustomTransitionPage` 自定义转场 → **绕过 theme** → 手势消失
+//      （`/article/:id` 与 `/chat` 原先就是这样，实测无侧滑）
+//   → 两条都写成断言。
+void _s15Navigation() {
+  print('\n【15】导航：侧滑返回 + 返回入口');
+
+  final root = _repoRoot();
+  String src(String p) {
+    final f = File('$root/app/lib/$p');
+    return f.existsSync() ? _codeOnly(f.readAsStringSync()) : '';
+  }
+
+  final theme = src('theme/theme_builder.dart');
+  final bm = src('screens/bookmark_list_screen.dart');
+
+  // ① 转场统一 —— 侧滑手势的唯一来源
+  check('theme_builder 配置了 pageTransitionsTheme',
+      theme.contains('pageTransitionsTheme'));
+  for (final p in ['android', 'iOS', 'macOS']) {
+    check('$p 用 CupertinoPageTransitionsBuilder（内置边缘手势检测器）',
+        RegExp('TargetPlatform\\.$p:\\s*CupertinoPageTransitionsBuilder')
+            .hasMatch(theme));
+  }
+
+  // ② **全库**不得出现自定义转场 —— 任何一处都会静默关掉那一页的侧滑
+  //
+  //    🔑 必须全库扫描而不是只看 `app.dart`：将来在别的文件里加一个
+  //       `CustomTransitionPage`，同样会关掉那一页的手势，而编译器不报错。
+  //    ⚠️ 经 `_codeOnly` 过滤 —— 否则「注释里解释为什么不用它」会造成**假红**
+  //       （`app.dart` 的注释里**故意**提到了它）。
+  final offenders = <String>[];
+  for (final e in Directory('$root/app/lib').listSync(recursive: true)) {
+    if (e is! File || !e.path.endsWith('.dart')) continue;
+    final code = _codeOnly(e.readAsStringSync());
+    if (code.contains('CustomTransitionPage') || code.contains('pageBuilder:')) {
+      offenders.add(e.path.split(RegExp(r'[\\/]')).last);
+    }
+  }
+  check('全库无 CustomTransitionPage / pageBuilder（两者都绕过 theme 转场）',
+      offenders.isEmpty, offenders.join(', '));
+
+  // ③ 收藏清单的**可见**返回入口（设计稿 `.bm-hd .back`）
+  check('收藏清单有返回按钮（context.pop）', bm.contains('context.pop()'));
+  check('返回按钮文案为「返回」', bm.contains("'返回'"));
+  check('返回按钮用 accent 色（设计稿 .back{color:var(--accent)}）',
+      bm.contains('t.accent'));
+}
+
+// ── ⑯ 查词写入（Step 3.4c）的接线 ────────────────────────────────
+//
+// 🔑 为什么需要这一节：本节锁的全是「**写了但没接通**」型的风险 ——
+//    它们在**编译期完全看不出来**，而症状要真机操作才暴露：
+//      · 查词写了 `lookup_event` 但**忘了** `user_word` → 生词本永远是空的
+//      · 写入**没被调用**（只定义了函数）→ 同上
+//      · 写入**阻塞了浮层** → 用户要等落库才看到释义
+//      · 连接被**打开两次** → `singleInstance` 下互相 close（`database_closed`）
+//    → 逐条写成断言。
+void _s16WordWriteback() {
+  print('\n【16】查词写入（3.4c）的接线');
+
+  final root = _repoRoot();
+  String src(String p) {
+    final f = File('$root/app/lib/$p');
+    return f.existsSync() ? _codeOnly(f.readAsStringSync()) : '';
+  }
+
+  final reader = src('screens/reader_screen.dart');
+  final dbProv = src('providers/user_db_provider.dart');
+  final bmProv = src('providers/bookmark_provider.dart');
+  final uwRepo = src('services/user_word_repository.dart');
+
+  // ① 写入**被真的调用**（不是「只定义了函数」）
+  check('阅读器调用了查词写入（_writeBackLookup）',
+      RegExp(r'_writeBackLookup\(').allMatches(reader).length >= 2,
+      '应至少 1 处定义 + 2 处调用');
+
+  // ② 🔴 **不阻塞渲染** —— 写入必须 `unawaited`（浮层先弹、写入随后）
+  //    若写成 `await _writeBackLookup(...)`，用户要等落库完才看到释义。
+  final unawaitedCalls =
+      RegExp(r'unawaited\(_writeBackLookup').allMatches(reader).length;
+  check('查词写入用 unawaited（不阻塞浮层展示）', unawaitedCalls == 2,
+      '实得 $unawaitedCalls 处（应 2：命中 1 + 未命中 1）');
+
+  // ③ 命中与未**都**要写入（白哥定 Q2：未命中也要记 lookup_event）
+  check('未命中分支也写入（记 lookup_event）',
+      reader.contains('spelling: text'));
+
+  // ④ 三张表都写：lookup_event + user_word + 复习状态
+  check('写 lookup_event', uwRepo.contains('recordLookup'));
+  check('写 user_word', uwRepo.contains("'user_word'"));
+  check('新词同时进复习队列（ReviewListQuery.upsertState）',
+      reader.contains('upsertState'));
+
+  // ⑤ 200 上限：达到时**不入库但不中断**
+  check('上限判定存在（kUserWordLimitFree）',
+      uwRepo.contains('kUserWordLimitFree'));
+  check('上限命中时不代表失败（返回 limitReached 枚举）',
+      uwRepo.contains('AddWordResult.limitReached'));
+  //  🔴 上限时**只记日志**，不弹用户可见提示 —— 在阅读中弹订阅提示会打断阅读。
+  //
+  //  ⚠️ **断言写法要注意**：不能写「reader 里含『已达上限』就判失败」——
+  //     那样会把**日志文案**也算进去（实现里正是用 `debugPrint` 打了这行字）。
+  //     → 正确做法：**取出含「已达上限」的那一行**，断言它是个 `debugPrint`
+  //       （而不是 `_hint(` / `showSnackBar` —— 那两个才是用户可见的）。
+  final limitLine = reader
+      .split('\n')
+      .firstWhere((l) => l.contains('已达上限'), orElse: () => '');
+  check('上限时用 debugPrint 记日志（不是用户可见提示）',
+      limitLine.trimLeft().startsWith('debugPrint'), limitLine.trim());
+
+  // ⑥ 🔴🔴 **连接只有一处打开**（防 `singleInstance` 下互相 close）
+  //
+  //    `sqflite` 默认 `singleInstance: true` → 第二次 open 拿到**同一个对象**，
+  //    两个 provider 各自 `onDispose(close)` 会互相踩（`database_closed`）。
+  //    ⚠️ **扫描时必须排除 `services/user_db.dart`** —— 它是 `openUserDb` 的
+  //       **定义处**（函数签名里就有 `openUserDb(`），不排除会把它算成「打开者」。
+  //       🔑 这是「扫源码文本的断言语境」问题：**定义**与**调用**同名，
+  //          必须靠「文件是不是定义处」来区分，而不是只看字符串。
+  //    ⚠️ 且**不能写 `path.endsWith('services/user_db.dart')`** ——
+  //       Windows 的分隔符是 `\`，那个判断恒为 false（排除不掉）。
+  //       → 用**文件名**判断（跨平台安全）。
+  const defFile = 'user_db.dart';
+  final allLib = Directory('$root/app/lib')
+      .listSync(recursive: true)
+      .whereType<File>()
+      .where((f) => f.path.endsWith('.dart'))
+      .map((f) => (
+            f.path.split(RegExp(r'[\\/]')).last,
+            _codeOnly(f.readAsStringSync())
+          ))
+      .where((e) => e.$1 != defFile) // ← `openUserDb` 的定义处，排除
+      .toList();
+  final openers = allLib
+      .where((e) => e.$2.contains('openUserDb('))
+      .map((e) => e.$1)
+      .toList();
+  check('🔴 全库只有 user_db_provider 打开 user.db（连接所有权唯一）',
+      openers.length == 1 && openers.first == 'user_db_provider.dart',
+      openers.join(', '));
+  check('user_db_provider 是唯一 close 点（ref.onDispose）',
+      dbProv.contains('ref.onDispose'));
+  check('🔴 bookmark_provider **不再**自己 open / close（改用共享连接）',
+      !bmProv.contains('openUserDb(') && !bmProv.contains('ref.onDispose'));
+  check('bookmark_provider 依赖 userDbProvider',
+      bmProv.contains('userDbProvider'));
+
+  // ⑦ DDL 只从 asset 读一次（不是各处硬编码）
+  check('DDL 走 kUserDbSchemaAsset（单一出处）',
+      dbProv.contains('kUserDbSchemaAsset'));
+
+  // ⑧ 写入失败**只记日志**（不得因写库失败让用户看不到释义）
+  check('写入失败被 catch 且只 debugPrint',
+      RegExp(r'catch \(e, st\)').hasMatch(reader) &&
+          reader.contains('[lookup] 写入失败'));
+}
+
+// ── ⑰ 生词本的「可见性」接线（Step 3.4d）────────────────────────
+//
+// 🔴 为什么需要这一节（2026-09-28 · 白哥实测「查词没进复习 tab」之后补）：
+//
+// 3.4c 把数据**写进**了 `user_word`，但**没有任何界面读它** ——
+// 「功能明明做了，用户却看不到」。这类失效**编译器完全看不出来**：
+//   · 页面读错表（读 `bookmark` 而不是 `user_word`）→ 列表**永远是空的**
+//   · 过滤条件重复定义（页面自己拼 `deleted = 0`）→ 列表与计数**不一致**
+//   · 入口没接 → 页面存在但进不去（收藏清单当初就是这么漏的）
+//   · 移出后不刷新 → 点了「移出」那一行还在
+//
+// 🔑 与 §16 的分工：§16 锁「**写进去**」，本节锁「**看得见**」。
+//    两者缺一，用户都会认为「这个功能没做」。
+void _s17WordList() {
+  print('\n【17】生词本页（3.4d）的可见性接线');
+
+  final root = _repoRoot();
+  String src(String p) {
+    final f = File('$root/app/lib/$p');
+    return f.existsSync() ? _codeOnly(f.readAsStringSync()) : '';
+  }
+
+  final page = src('screens/word_list_screen.dart');
+  final prov = src('providers/user_word_provider.dart');
+  final home = src('screens/home_screen.dart');
+  final app = src('app.dart');
+
+  // ① 页面读的是**生词本**的数据源
+  check('生词本页用 userWordListProvider', page.contains('userWordListProvider'));
+  //    🔴 反向：读错表（`bookmark`）会让列表**永远是空的**，而编译期毫无提示
+  check('🔴 生词本页不读 bookmark（读错表 = 列表永远为空）',
+      !page.contains('bookmark'));
+  check('列表 provider 走仓储的 list()',
+      prov.contains('userWordListProvider') && prov.contains('repo.list()'));
+
+  // ② 软删口径只定义**一次**（在仓储层）
+  //    🔑 页面若自己再拼一遍 `deleted = 0`，两处条件就是**漂移源** ——
+  //       改了一处，列表与计数会不一致。
+  check('过滤 deleted 的职责在仓储层（页面不重复定义条件）',
+      !page.contains('deleted'));
+
+  // ③ 200 上限**可见**（免费层的核心约束，必须让用户看到，而不是只在日志里）
+  check('页面显示 200 上限（kUserWordLimitFree）',
+      page.contains('kUserWordLimitFree'));
+
+  // ④ 移出 = **软删**（走仓储的 remove，不是 DELETE）+ 之后刷新
+  check('移出走仓储的 remove（软删）', page.contains('repo.remove('));
+  check('🔴 移出后 invalidate 列表（否则那一行还在）',
+      page.contains('invalidate(userWordListProvider)'));
+  check('移出后也 invalidate 计数（列表与计数须同源刷新）',
+      page.contains('invalidate(userWordCountProvider)'));
+
+  // ⑤ 入口 + 路由（与收藏清单**同一判据**：挂子路由 → 保留 tabbar + 右滑返回）
+  check('首页标题栏有生词入口（文案为「生词」）', home.contains("label: '生词'"));
+  check('入口指向 /home/words', home.contains('/home/words'));
+  check('路由挂在 /home 下（子路由 → 保留 tabbar + 右滑返回）',
+      app.contains("path: 'words'"));
+
+  // ⑥ 库不可用**不冒充空状态**（同收藏清单的原则：误导性提示比报错更糟）
+  check('库不可用有独立处理（不冒充「还没有生词」）', page.contains('_Unavailable'));
+  check('空状态存在', page.contains('_EmptyState'));
+
+  // ⑦ 零硬编码色 + 底部避让（与三个 tab 页 / 收藏清单同一处理）
+  check('页面不留裸色值（颜色全部走 token）',
+      !RegExp(r'Color\(0x').hasMatch(page) && !page.contains('Colors.'));
+  check('底部留白用 CoSpacing.tabBarClearance（extendBody 配套）',
+      page.contains('CoSpacing.tabBarClearance'));
+
+  // ⑧ 时间显示须转本地时区 —— 库中的时间列**全带 `Z`**（现库硬约束 1），
+  //    直接显示 UTC 会让「昨晚查的词」错到相邻日期
+  check('时间显示做了 toLocal()（库中为 UTC）', page.contains('toLocal()'));
 }

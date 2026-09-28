@@ -1,0 +1,12 @@
+name: trace_verify
+description: CoEvo 痕迹验收 —— 区间切分逻辑 + 三档 × 三态 token 完整性
+publish_to: 'none'
+version: 1.0.0
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+
+# 🔑 零依赖 —— `trace_segmenter.dart` 与 `coevo_tokens.dart` 都是纯 Dart
+#    （不 import Flutter），所以本脚本不拉任何包。
+#    理由同 tokens_verify / fsrs_verify：本地 Flutter 是鸿蒙定制版、analyze 会崩，
+#    纯 Dart 才能本地独立验证。

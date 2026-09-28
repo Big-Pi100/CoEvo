@@ -14,7 +14,7 @@
   ① 段类型合法性 —— 只允许 v1 定义的 8 种，`sense` 只能出现在 card_extra
   ② **例句独立成 `context`** —— 🔑 语音包前置（旧的 `sense` 会让朗读清单命中不了）
   ③ 首义进 `definition`，且**每卡只 1 条**
-  ④ 记忆法段按 priority 1→6 排序（root → cognate → collocation → etymology）
+  ④ 记忆法段在 content 里按**生成时的存储顺序**排列（见下方 SECTION_STORAGE_ORDER 的注释）
   ⑤ `root` 若存在**必须排第一**（v1 §4.2 示例即如此；旧实现里 root 从不排第一）
   ⑥ 入口内嵌（`root`/`cognate`/`etymology` 段带 `entry.page_id`），**不单列 `aggregate_link` 段**
   ⑦ 渲染后段数 ≤ 4（v1 §5.1）；content 段数可更多（素材池）
@@ -39,8 +39,16 @@ DB = os.path.join(ROOT, 'data', 'word.db')
 # v1 §4.2 定义的 8 种 section 类型
 V1_TYPES = {'root', 'definition', 'context', 'cognate', 'collocation',
             'etymology', 'imagery', 'aggregate_link'}
-# 记忆法的 priority 顺序（mnemonic_type.priority）
-MNEMONIC_ORDER = ['root', 'cognate', 'collocation', 'etymology', 'imagery']
+# 🔴 `card.sections` 的**历史存储顺序**（生成时按**当时**的 mnemonic priority 写入）。
+#
+# ⚠️ **它现在不等于 `mnemonic_type.priority`** —— 2026-09-27 白哥定「交换 etymology 3 ↔ collocation 4」，
+#    但**没有重排已落库的 11,523 张卡**的段顺序（重排要改写 11,523 份 JSON，而**段顺序不承载语义**）。
+#
+# 🔑 **渲染层按 `mnemonic_type.priority` 取槽位①，不依赖本顺序** ——
+#    `card.sections` 是**素材池**（「存全部素材、裁剪留渲染层」），顺序不是契约。
+#    本常量只用于校验「生成时写入顺序没乱」，**不是**槽位选择的依据。
+#    📄 论证：`docs/review/mnemonic-slot-priority-conflict-2026-09-27.md`
+SECTION_STORAGE_ORDER = ['root', 'cognate', 'collocation', 'etymology', 'imagery']
 
 _p = _f = 0
 _fails = []
@@ -126,10 +134,10 @@ def main() -> int:
         if 'aggregate_link' in types:
             agg_link_as_section += 1
 
-        # ⑥ 记忆法顺序
-        mnem = [t for t in types if t in MNEMONIC_ORDER]
-        if mnem != sorted(mnem, key=lambda x: MNEMONIC_ORDER.index(x)):
-            bad_order.append((wid, f'记忆法顺序错 {mnem}'))
+        # ⑥ 记忆法段在 content 里的存储顺序（⚠️ 非 priority —— 见 SECTION_STORAGE_ORDER 注释）
+        mnem = [t for t in types if t in SECTION_STORAGE_ORDER]
+        if mnem != sorted(mnem, key=lambda x: SECTION_STORAGE_ORDER.index(x)):
+            bad_order.append((wid, f'记忆法存储顺序错 {mnem}'))
 
         # ⑦ 入口内嵌
         for s in secs:
@@ -166,7 +174,8 @@ def main() -> int:
     d0 = sum(1 for v in n_def.values() if v == 0)
     check('每卡恰好 1 条 definition', d1 == total, f'1 条 {d1:,} · 0 条 {d0:,}')
 
-    print('\n【④⑤】记忆法按 priority 排序，且 `root` 排第一')
+    print('\n【④⑤】记忆法段存储顺序正常，且 `root` 排第一'
+          '（⚠️ 存储顺序 ≠ mnemonic priority，见 SECTION_STORAGE_ORDER）')
     check('无顺序错误', not bad_order, str(bad_order[:3]) or 'OK')
     check('root 存在时排第一', root_first == root_present,
           f'{root_first:,} / {root_present:,} = {100*root_first/max(root_present,1):.1f}%')

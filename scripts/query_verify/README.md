@@ -18,17 +18,28 @@ DART=/d/flutter/bin/cache/dart-sdk/bin/dart.exe
 $DART pub get --offline              # 必须 --offline（联网版会卡到超时）
 
 $DART run bin/verify_word_query.dart    # word.db 侧（42 项）
-$DART run bin/verify_review_list.dart   # user.db 侧（37 项）
+$DART run bin/verify_review_list.dart   # user.db 侧 · 复习列表（37 项）
+$DART run bin/verify_bookmark.dart      # user.db 侧 · 收藏 + 连接层（49 项）
+$DART run bin/verify_worddb_sync.dart   # 两份 word.db 一致性（6 项 · 防漂移）
+$DART run bin/verify_worddb_bootstrap.dart  # 落盘决策（22 项 · 纯逻辑）
+$DART run bin/verify_pos_display.dart   # 词性归一化（31 项 · 读真库 47 种写法）
 $DART run bin/query_probe.dart          # 可行性探针（最小验证，便于排查）
 $DART run bin/bench.dart                # 稳态性能基线
 ```
 
 - **退出码 0 = 全通过；1 = 有失败** → 可挂 CI
-- **`verify_review_list.dart` 会直接执行 `app/assets/sql/user_db_schema.sql`** ——
+- **`verify_review_list.dart` / `verify_bookmark.dart` 会直接执行 `app/assets/sql/user_db_schema.sql`** ——
   所以「schema 文件写错了」会在这里暴露，而不是等到真机运行时
-- 两个 `verify_*` 都**相对导入 app 的真实源码**：
+- 所有 `verify_*` 都**相对导入 app 的真实源码**：
   `import '../../../app/lib/services/word_query_service.dart';`
   → 验证的是**实际要发布的实现**，不是副本
+
+### ⚠️ 一句提醒：断言里的集合比较
+
+Dart 的 `List` / `Set` **没有值等价语义**（`==` 是引用比较）→
+`expect(actual, [1,2])` 这种写法**即使值相同也会判失败**，表现为
+「实得 `[1,2]` · 期望 `[1,2]`」——**看起来像实现错，其实是断言错**。
+`verify_bookmark.dart` 已内置 `deepEquals`；新写断言时请复用它，不要用裸 `==`。
 
 ## 🔑 为什么能在本地跑（这是设计的核心收益）
 

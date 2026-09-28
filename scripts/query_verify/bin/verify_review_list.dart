@@ -20,6 +20,7 @@ import 'dart:io';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../../app/lib/services/review_list_query.dart';
+import '../../../app/lib/services/user_db.dart';
 
 var _pass = 0;
 final _failures = <String>[];
@@ -59,19 +60,19 @@ Future<void> main(List<String> args) async {
     // ── 1. schema 可执行 ───────────────────────────────────────
     print('【1】schema 可执行 + v1.1 冗余列存在');
     final schema = schemaFile.readAsStringSync();
-    // 逐语句执行（executescript 语义），遇到失败即暴露
+    // 逐语句执行，遇到失败即暴露
+    //
+    // 🔑 2026-09-27 起改用 `user_db.dart` 的 `executeSqlScript` —— 此前这里是
+    //    **一套内联的弱拆分器**（`split(';')` + 过滤以 `--` 开头的行），问题是：
+    //      · 不处理**行内注释**（`SELECT 1 -- 说明` 会把注释文本留下来）
+    //      · 不处理**块注释** `/* ... */`
+    //    而同一份 schema 在 `verify_bookmark.dart` 里走的是强拆分器
+    //    → 「同一份文件、两套解析」迟早分叉（一个通一个不通，且症状诡异）。
+    //    → 复用同一个实现，是「同一套逻辑不要写两遍」的直接落实。
     var schemaOk = true;
     String? schemaErr;
     try {
-      for (final stmt in schema.split(';')) {
-        final s = stmt
-            .split('\n')
-            .where((l) => !l.trimLeft().startsWith('--'))
-            .join('\n')
-            .trim();
-        if (s.isEmpty) continue;
-        await db.execute(s);
-      }
+      await executeSqlScript(db, schema);
     } catch (e) {
       schemaOk = false;
       schemaErr = '$e';
