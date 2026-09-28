@@ -164,12 +164,31 @@
   <div class="box g">
     <b>三句话结论</b><br>
     <b>①「段内说明」= 库里已有的 <code>word_mnemonic_profile.rationale</code></b> ——
-    <b>11,523 词 100% 有值</b>，但🔴 <b>不能全量显示</b>：与卡上两段的<b>中位重合率 64%</b>，
-    近半数词会「同一句话说两遍」→ 建议<b>按主槽位类型选择性显示</b>（见 §1.4）。<br>
-    <b>② 聚合页「不好看」能指到 4 处 CSS</b>，最要紧的一处是：
+    <b>11,523 词 100% 有值</b>。<br>
+    <b>② 该不该显示，按「这个词最有效的那种记忆法有没有被给到」判，不按覆盖率</b>
+    （白哥 2026-09-28 17:3x 定）→ <b>真正该显示的只有 1,152 词（10.0%）</b>：<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;🔴 <code>image</code> 957 词 —— 库判「最有效」＝联想图像，而<b>卡上 94% 显示的是词源（补位来的）</b>，
+      这条线索从未出现 → <b>做法乙：把它升格为 ①</b>（§1.8 / 样张 §1.9）<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;🟠 <code>cognate</code> 195 词 —— 卡上<b>只有族标签、无内容</b> →
+      <b>做法甲：把「与谁同源」这句摘要贴 ② 之下</b><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;⚠️ <code>context</code> 1,410 词 <b>不能按类型决定</b> —— 它是「默认附加」的<b>兜底类别</b>，
+      rationale 里 31% 讲搭配、25% 讲联想、37% 杂项（见 §1.7）<br>
+    <b>③ 聚合页「不好看」能指到 4 处 CSS</b>，最要紧的一处是：
     <b>成员行被做成了 N 张粘土卡</b>，而锚点里是<b>平坦列表 + 细下分隔线</b>（见 §2）。<br>
-    <b>③ 条目可点「技术上零阻力」</b>（查词通路与浮层都已存在），
+    <b>④ 条目可点「技术上零阻力」</b>（查词通路与浮层都已存在），
     但形态与落点<b>需要你定</b>（见 §3）。
+  </div>
+
+  <div class="q">
+    <b>🔴 本稿修订了一段判据（2026-09-28 17:3x）</b><br>
+    白哥：「<b>优先显示的应该是那种记忆法最有效，而不是单纯的覆盖率</b>」——<b>说得对，我第一版判据是错的</b>。<br>
+    第一版我按「rationale 与卡上段落的<b>重合率</b>」排序（低重合 → 显示），于是把
+    <code>context</code>（重合 33%，次低）排进了推荐、把 <code>cognate</code>（44%）排除。<br>
+    🔑 <b>错在哪</b>：重合率低有两种完全相反的解释 ——
+    <b>①「是卡上没有的新信息」</b>（有价值）与 <b>②「它讲的根本不是这张卡的事」</b>（离题）。
+    <b>数字分不出这两种</b>，必须看内容。<br>
+    → 于是 <code>context</code> 与 <code>cognate</code> 两个类上，<b>重合率与「承载缺口」给出了相反结论</b>。
+    这一节（§1.0）与 §1.4 已按新判据重排。
   </div>
 
   <!-- ═══════════════════════════════════════════════════ -->
@@ -197,6 +216,92 @@
   <p>🔑 所以「段内说明」= <b>一个记忆法段里、主体之外的那一层补充</b>：
      它解释「<b>为什么这词要这么记</b>」，而不是再讲一遍词源。</p>
 
+  <h3>1.0 判据：哪种记忆法「最有效」—— 库里<b>已经记着了</b></h3>
+
+  <p>先说一个必须先讲的边界：<b>「真实记忆效果」在本机测不出来</b> ——
+     <code>word.db</code> 里<b>没有任何复习表</b>（只有词库 19 张表），
+     而复习数据在设备上的 <code>user.db</code>；
+     本项目也还没有用户。<br>
+     → 所以「哪种记忆法效果更好」<b>无法用本项目数据回答</b>，只能靠两层可得证据。
+     🔑 <b>如实标注，不假装有数据能证明它。</b></p>
+
+  <h4>第一层 · 本项目自己的判定规则（<code>mnemonic_type</code> 表）</h4>
+  <p>这张表就是「<b>遇到什么词该用哪种法</b>」的定义，<code>priority</code> 是判定顺序：</p>
+  <table>
+    <tr><th>pri</th><th>类型</th><th>适用条件（<code>applicable_when</code>）</th><th>线索的性质</th></tr>
+    <tr><td>1</td><td><code>root</code> 词根词缀</td><td>可拆成现代英语仍透明的词根/词缀（incredible = in+cred+ible）</td><td class="ok"><b>结构性</b> · 可迁移（一词根带一串词）</td></tr>
+    <tr><td>2</td><td><code>cognate</code> 同源串记</td><td>与另一个英语词共享同一词根或词源；谐音不算</td><td class="ok"><b>结构性</b></td></tr>
+    <tr><td>3</td><td><code>etymology</code> 词源故事</td><td>整体借词、不可拆（café ← French café）</td><td class="ok">结构性，且<b>对不可拆词是唯一手段</b></td></tr>
+    <tr><td>4</td><td><code>collocation</code> 搭配整记</td><td>有 ≥1 条高频固定搭配</td><td>半结构（用法层）</td></tr>
+    <tr><td>5</td><td><code>image</code> 联想图像</td><td>抽象词，靠意象或谐音联想</td><td class="warn"><b>人为</b> —— 依赖个人经验，不可迁移</td></tr>
+    <tr><td>6</td><td><code>context</code> 语境原句</td><td class="bad"><b>默认附加</b> ← 兜底类别</td><td class="bad">—（不是一种「法」，是没别的法时的落点）</td></tr>
+  </table>
+
+  <div class="box">
+    🔑 <b>这张表隐含的「有效性阶梯」是合理的</b>：<b>越结构化的线索越有效</b> ——
+    可拆解 &gt; 同源 &gt; 词源 &gt; 搭配 &gt; 人为联想；而 <code>context</code> <b>根本不在这条阶梯上</b>，
+    它是「以上都不适用」的兜底。<br>
+    <span class="muted">这与记忆心理学的两条稳共识同向（不引用具体数字，只借方向）：
+      <b>加工深度</b>（讲得通的结构 &gt; 死记）与 <b>生成效应</b>（要自己动手拆 &gt; 只读一遍）。</span>
+  </div>
+
+  <h4>第二层 · 那条「最有效的线索」，卡上到底给没给到</h4>
+
+  <p>🔴 关键一步：<b>每个词最有效的记忆法，库里已经记着了 —— 就是 <code>profile.primary_code</code></b>
+     （制卡时按上表判定），<b>而 <code>rationale</code> 正是「为什么这种法对这个词有效」</b>。</p>
+
+  <p>于是「该不该显示」就不再是覆盖率问题，而是：</p>
+
+  <div class="box g">
+    <b>显示优先级 ＝ 那条被判为「最有效」的记忆法，在卡上有没有被给到</b><br>
+    · 已经给了（段里就是它）→ rationale 只是<b>复述</b> → <b>不显示</b><br>
+    · 没给到 → rationale 是这条线索的<b>唯一出口</b> → <b>必须显示</b>
+  </div>
+
+  <p>实测「有没有给到」（<b>结构性判据</b>：该类型有没有对应段、段里有没有内容）：</p>
+
+  <table>
+    <tr><th>primary</th><th>词数</th><th>卡上有对应段吗</th><th>该段有内容吗</th><th>结论</th></tr>
+    <tr>
+      <td><code>image</code> 联想图像</td><td>957</td>
+      <td class="bad">❌ <b>全库没有 <code>image</code> 段</b>（段类型只有 definition / context / collocation / etymology / root / cognate）</td>
+      <td class="bad">—</td>
+      <td class="bad"><b>P0</b></td>
+    </tr>
+    <tr>
+      <td><code>cognate</code> 同源串记</td><td>195</td><td class="warn">有，但</td>
+      <td class="bad"><b>98% 只有族标签</b>（长度 0）、成员在<b>聚合页</b></td>
+      <td class="warn"><b>P1</b></td>
+    </tr>
+    <tr>
+      <td><code>collocation</code> 搭配整记</td><td>102</td><td class="ok">有</td>
+      <td class="ok">3 条搭配</td>
+      <td>P2（部分给到）</td>
+    </tr>
+    <tr>
+      <td><code>root</code> 词根词缀</td><td>5,334</td><td class="ok">有</td>
+      <td class="ok">2 个词素（拆分 + 释义）</td>
+      <td>不显示（<b>就是它</b>）</td>
+    </tr>
+    <tr>
+      <td><code>etymology</code> 词源故事</td><td>3,525</td><td class="ok">有</td>
+      <td class="ok">26 字（词源链）</td>
+      <td>不显示（<b>就是它</b>）</td>
+    </tr>
+    <tr>
+      <td><code>context</code> 语境原句</td><td>1,410</td><td>④ 段有</td>
+      <td class="ok">38 字</td>
+      <td class="bad">⚠️ <b>不能按类型判</b> —— 见 §1.7</td>
+    </tr>
+  </table>
+
+  <p>🔑 <b>被 <code>image</code> 类的情况最能说明问题</b>：这 957 个词，库判定「最有效的记忆法是联想图像」，
+     而<b>卡上 ① 有 94% 显示的是 <code>etymology</code></b>（补位来的）——
+     也就是说，<b>用户拿到的是一条次要线索，而被判定为最有效的那条从未出现</b>。</p>
+
+  <p class="muted">⚠️ 另如实记一条：<code>confidence</code> 字段<b>不能</b>当有效性代理 ——
+     6 个类的均值全在 0.92~0.94、中位全部 0.95、≥0.9 占比 90~100%，<b>没有区分度</b>。</p>
+
   <h3>1.1 库里有没有对应的数据 —— 有，而且 100% 有值</h3>
 
   <p><code>word_mnemonic_profile.rationale</code>：<b>制卡/分类时写下的「为什么给这个词选这类记忆法」</b>。
@@ -210,7 +315,11 @@
     <tr><td>语义</td><td>解释「<b>为什么用这种记忆法</b>」—— 与你给的例子（laser 那条）<b>完全同一件事</b></td></tr>
   </table>
 
-  <h3>1.2 🔴 但不能直接显示 —— 它会和卡上已有的段「说两遍」</h3>
+  <h3>1.2 重合率：一条<b>约束</b>，不是排序依据 <span class="mk y">判据已降级</span></h3>
+
+  <p>🔴 <b>本稿第一版把这一节当成了判据 —— 那是错的</b>（白哥纠正）。
+     它现在的地位是<b>「排除法」的辅助</b>：<b>高重合 → 确定不必显示</b>；
+     但<b>低重合不能推出「该显示」</b>，因为低重合有两种相反的含义（§1.0 开头那条）。</p>
 
   <p>我把 <code>rationale</code> 与「该词卡上<b>实际显示的那两段</b>（按 <code>CardSlots.resolve</code> 补位后的 ① ②）
      + <code>etymology_text</code>」做了内容重合度比对（词集合，中英文都算）：</p>
@@ -220,25 +329,28 @@
     <tr><td><code>root</code> 词根词缀</td><td>5,334</td><td class="bad">83%</td><td class="bad">3,061（57%）</td><td class="bad">🔴 不该显示</td></tr>
     <tr><td><code>etymology</code> 词源故事</td><td>3,525</td><td class="bad">59%</td><td class="warn">607（17%）</td><td class="warn">🔴 多数字重复</td></tr>
     <tr><td><code>collocation</code> 搭配整记</td><td>102</td><td class="warn">45%</td><td>13（13%）</td><td class="warn">🟡 可讨论</td></tr>
-    <tr><td><code>cognate</code> 同源串记</td><td>195</td><td class="warn">44%</td><td>10（5%）</td><td class="warn">🟡 可讨论</td></tr>
-    <tr><td><code>context</code> 语境原句</td><td>1,410</td><td class="ok">33%</td><td class="ok">51（4%）</td><td class="ok">✅ 值得显示</td></tr>
+    <tr><td><code>cognate</code> 同源串记</td><td>195</td><td class="warn">44%</td><td>10（5%）</td><td class="warn">⚠️ 这个数字<b>误导</b> —— 见下</td></tr>
+    <tr><td><code>context</code> 语境原句</td><td>1,410</td><td class="ok">33%</td><td class="ok">51（4%）</td><td class="bad">⚠️ 低重合是<b>离题</b>，不是增量</td></tr>
     <tr><td><code>image</code> 联想图像</td><td>957</td><td class="ok">32%</td><td class="ok">5（1%）</td><td class="ok">✅ 值得显示</td></tr>
   </table>
 
   <div class="box">
-    <b>为什么 <code>root</code> 类会重复到 83%</b><br>
+    <b>为什么 <code>root</code> 类会重复到 83%</b>（这类数字<b>可信</b>，与结构性判据同向）<br>
     <code>root</code> 的 rationale 写的就是「怎么拆」——
     <span class="spec">apostol(使徒)+ic(…的) → 使徒的</span>，
-    而 ① 词根词缀段显示的<b>正是这个拆分</b>。
-    <br><br>
-    <b>为什么 <code>image</code> 类最值得显示</b><br>
-    <code>image</code> 的结果是：<b>它没有对应的段</b>（全库段类型只有
-    <code>definition / context / collocation / etymology / root / cognate</code>，
-    <b>没有 <code>image</code></b>）→ 这 957 个词卡上 ① 是<b>补位</b>来的（多半是 <code>etymology</code>），
-    而「联想图像」这一层<b>完全没有承载</b>。
-    而 rationale 恰好写着 —— <span class="spec">cocky：「想象一只公鸡昂首挺胸、骄傲自大的样子」</span>
-    （<code>confidence 0.9</code>，是制卡时认真的判定）<br>
-    → 🔑 <b>「段内说明」在这 957 个词上不是「锦上添花」，而是补上一个缺口。</b>
+    而 ① 词根词缀段显示的<b>正是这个拆分</b> → 复述。
+  </div>
+
+  <div class="box" style="border-left-color:#C9A227">
+    <b>⚠️ 但同一个数字在另外两类上会骗人</b><br>
+    <b>· <code>cognate</code> 重合 44% 看似「一半重复」</b>——实际是<b>巧合</b>：
+    它的 rationale 讲「与 <i>blood</i> / <i>I, me, my</i> 同源」，
+    而卡上 <code>cognate</code> 段<b>只有族标签、内容为 0</b>（98%）。
+    重合来自「词形相似」，不是「内容重复」→ <b>低重合 / 中重合都推不出结论</b>。<br>
+    <b>· <code>context</code> 重合 33%（次低）</b>——<b>不是因为它藏着新线索</b>，
+    而是因为它讲的东西<b>根本不属于这张卡</b>（31% 是搭配策略、25% 是联想、37% 杂项）。
+    → 🔑 <b>「重合率低」有两种相反解释，数字分不出来</b>（§1.7 给出实证）。<br><br>
+    <b>结论：重合率只能当「排除法」（高 → 确定不显示），不能当排序依据。</b>
   </div>
 
   <h3>1.3 样张（四个真实词，含正面与反面）</h3>
@@ -248,11 +360,13 @@
 
   <div class="stage">
 
-    <!-- ── alsop：primary=context（值得显示）── -->
+    <!-- ── alsop：primary=context（兜底，内容却是联想）── -->
     <div class="col">
-      <p class="col-hd">例 ① <code>alsop</code> · 主槽位 = 语境 <span class="mk g">值得显示</span></p>
-      <p class="col-note">rationale 说明的是「<b>为什么这词要靠人名关联记</b>」——
-        补充 ④ 那句例句的意义，不复述词源。</p>
+      <p class="col-hd">例 ① <code>alsop</code> · 主槽位 = <code>context</code>（兜底） <span class="mk y">内容有效 · 标签不可靠</span></p>
+      <p class="col-note">rationale 讲的是<b>人名联想</b>（本该归 <code>image</code>）——
+        <b>内容本身有效</b>，但它被贴上了 <code>context</code> 这个兜底标签。<br>
+        🔑 所以 <code>context</code> 类<b>不能按类型判</b>（§1.7）；
+        这一条若显示，理由是<b>「内容含联想」</b>，不是「因为它属于 context」。</p>
       <div class="phone">
         <div class="screenbar"><span>复习 · 9 / 23</span><span>已到期</span></div>
         <div class="card">
@@ -280,7 +394,7 @@
           <div class="mnem gap20">
             <div class="mnem-head">
               <span class="mnem-tag">词源故事</span>
-              <!-- 🔴 此段 entry = null（真库实测）→ 按实现**不给 trailing、不给 ›** -->
+              <!-- 🔴 此段 entry = null（真库实测）→ 按实现不给 trailing、不给 › -->
             </div>
             <div class="mnem-main">英语姓氏，源自地名，意为“阿尔萨的谷地”</div>
           </div>
@@ -387,55 +501,85 @@
 
   </div>
 
-  <h3>1.4 建议口径 —— 按主槽位类型选择性显示</h3>
+  <h3>1.4 建议口径 —— 按「最有效的那条线索有没有给到」排序</h3>
+
+  <p class="muted">判据换了（§1.0），口径表也跟着换了。旧版按重合率排的
+    「A = context + image / B = 再加两类」<b>已作废</b> —— 原因见 §1.2 与 §1.7。</p>
 
   <table>
-    <tr><th>选项</th><th>显示范围</th><th>词数</th><th>说明</th></tr>
+    <tr><th>优先级</th><th>primary</th><th>词数</th><th>落点（§1.8）</th><th>为什么在这个位置</th></tr>
     <tr class="ok">
-      <td><b>A（推荐）</b></td>
-      <td><code>context</code> + <code>image</code></td>
-      <td><b>2,367</b>（20.5%）</td>
-      <td>重合率最低的两类（33% / 32%）；且<b>规则可解释</b>：
-        「这两类记忆法本身没有卡片段承载，rationale 就是它的内容」</td>
+      <td><b>🔴 P0</b></td><td><code>image</code> 联想图像</td><td><b>957</b></td>
+      <td><b>做法乙</b><br>升格为 ①</td>
+      <td>库里判定「对这个词最有效的是联想图像」，<b>而卡上 94% 显示的是词源（补位）</b> ——
+        最有效的那条线索<b>从未出现</b>；它<b>没有段</b>，正好用 rationale 合成 ①</td>
     </tr>
     <tr>
-      <td>B</td>
-      <td>再加 <code>collocation</code> + <code>cognate</code></td>
-      <td>2,664（23.1%）</td>
-      <td>多 297 词；这两类重合 45% / 44%，<b>一半左右会重复</b></td>
+      <td><b>🟠 P1</b></td><td><code>cognate</code> 同源串记</td><td><b>195</b></td>
+      <td><b>做法甲</b><br>贴 ② 之下</td>
+      <td>卡上 <code>cognate</code> 段<b>只有族标签、内容为 0</b>（98%）；
+        但该段<b>不能上卡</b>（白哥定）→ 只放「与谁同源」这句摘要</td>
+    </tr>
+    <tr>
+      <td><b>🟡 P2</b></td><td><code>collocation</code> 搭配整记</td><td>102</td>
+      <td>做法甲</td>
+      <td>段里有 3 条搭配（<b>部分给到</b>）；rationale 多讲「怎么用它们记」→ 增量中等、量又小</td>
     </tr>
     <tr class="bad">
-      <td>C</td>
-      <td>全量</td>
-      <td>11,523（100%）</td>
-      <td class="bad">🔴 中位重合 64%、57% 的 <code>root</code> 类几乎逐字重复 →
-        <b>近半数词会「说两遍」，不建议</b></td>
+      <td><b>⚪ 不显示</b></td><td><code>root</code> + <code>etymology</code></td><td>8,859</td>
+      <td>—</td>
+      <td>段里<b>就是</b>这条线索（拆分 / 词源链）→ rationale 是复述（重合 83% / 59%）</td>
     </tr>
     <tr>
-      <td>D</td>
-      <td>先不显示</td>
-      <td>0</td>
-      <td>你也可以只把这次当「问个明白」，不改卡片</td>
+      <td><b>⚠️ 另判</b></td><td><code>context</code></td><td>1,410</td>
+      <td>—</td>
+      <td class="bad"><b>不能按类型决定</b> —— 它是兜底类别，rationale 内容性质不统一（§1.7）。
+        若要做，得按<b>单条内容</b>判，不是按类型</td>
     </tr>
   </table>
 
-  <h3>1.5 两个待定的细节</h3>
+  <p><b>→ 建议：先做 P0（957 词，做法乙）+ P1（195 词，做法甲）= 1,152 词（10.0%）。</b></p>
 
-  <div class="q">
-    <b>Q-note-1 · 贴在哪里？</b><br>
-    ① <b>贴主槽位对应的那段</b>（<code>context</code>→贴 ④；<code>image</code>→贴 ①）——
-    语义最准，但位置<b>随词而变</b>（用户不知道去哪看）<br>
-    ② <b>统一贴记忆法组末尾</b>（①② 之后、组的最下方）—— 位置固定，但 <code>context</code> 类
-    的解释与上面两段记忆法<b>离得有点远</b><br>
-    <span class="muted">样张里用的是 ①（alsop 贴 ④、cocky 贴 ①）。</span>
+  <div class="box">
+    🔑 <b>为什么 P0 是「有效性最低」的 <code>image</code>，而不是 priority 最高的 <code>root</code></b>？<br>
+    因为要看的是「<b>这条线索有没有给到</b>」，不是「这条法在绝对意义上强不强」：<br>
+    · <code>root</code> 的法<b>最强</b>，但它<b>已经在 ① 段里给了</b> → 再显示一遍是复述<br>
+    · <code>image</code> 的法<b>只在抽象词上可用</b>（适用面窄，所以 priority 低），
+      但<b>对那些词它是唯一可行的法</b>，而卡上<b>一点没给</b> →
+      <b>「有效」是相对于这个词的</b>，而 <code>primary_code</code> 记的正是「对那个词最有效的法」。
   </div>
 
   <div class="q">
-    <b>Q-note-2 · 加不加标签？</b><br>
-    样张里加了 <span class="spec">记忆法</span> / <span class="spec">联想图像</span> 的小字前缀。
+    <b>Q-scope · 是否要把 <code>context</code> 类里「内容其实是联想/搭配」的那些捞回来？</b><br>
+    实测 <code>context</code> 的 1,410 条 rationale：<b>31% 讲搭配、25% 讲联想</b>、3% 同源、3% 形近、
+    4% 专名背景、<b>37% 以上都不像</b>。<br>
+    · <b>选 ①（推荐）先不碰</b>：context 类整体搁置，等分类修好再说 —— 规则简单、不会误伤<br>
+    · <b>选 ② 按内容捞</b>：rationale 含「联想/想象」或「搭配/连用」的显示（≈790 词）——
+      能多覆盖有效内容，但<b>规则变成「猜」</b>，且会显示 37% 那批性质不明的东西的风险<br>
+    · <b>选 ③ 修数据</b>：给 rationale 补一个「内容类型」字段（要重跑一遍 LLM 分类，有成本）
+  </div>
+
+  <h3>1.5 两个待定的细节（<b>只对做法甲适用</b>）</h3>
+
+  <p class="muted">若采纳 §1.8 的做法乙，<b>Q-note-1 就不存在</b>（rationale 直接占据槽位，无所谓「贴哪」）。
+     下面两条只影响走做法甲的那一类（即 <code>cognate</code>）。</p>
+
+  <div class="q">
+    <b>Q-note-1 · 贴在哪里？</b><br>
+    ① <b>贴最上面那条记忆法段之下</b>（样张里的做法）—— 语义最近（「为什么用这条线索」）；
+    但若 ② 词源段在它上面，说明词源的联想会贴在词源下面，略有错位<br>
+    ② <b>统一贴记忆法组末尾</b>（①② 之后）—— 位置固定，但与上面两段<b>离得有点远</b><br>
+    <span class="muted">对 <code>cognate</code> 类：它的归属段是 <code>cognate</code>（不上卡）→
+      只能贴到现有 ① 或 ② 之下，建议<b>贴 ②</b>（同属「词的来龙去脉」）。</span>
+  </div>
+
+  <div class="q">
+    <b>Q-note-2 · 加不加标签前缀？</b><br>
+    做法甲的样张里加了 <span class="spec">联想图像</span> / <span class="spec">记忆法</span> 的小字前缀。
     锚点原文<b>没有这个前缀</b>（就是一句小字 + 虚线）。<br>
-    · 加 → 明确「这行是什么」，但重复了段头标签的信息<br>
-    · 不加 → 更像锚点、更轻
+    · 加 → 明确「这行讲的是哪种记忆法」—— <b>对 <code>cognate</code> 类有用</b>（否则看不出那句是在讲同源）<br>
+    · 不加 → 更像锚点、更轻<br>
+    <span class="muted">做法乙不需要这个决定（槽位标签本身就是类型名）。</span>
   </div>
 
   <p>🔑 所有样张里的字段（音标 / 释义 / 例句 / 词源链 / 分拆法 / 段入口 / <code>rationale</code>）
@@ -468,6 +612,218 @@
         但<b>从卡片几乎没有入口</b>。这解释了「入口感觉时有时无」</td>
     </tr>
   </table>
+
+  <h3>1.7 🔴 <code>context</code> 类为什么「不能按类型判」—— 实证</h3>
+
+  <p><code>context</code> 在 <code>mnemonic_type</code> 里的 <code>applicable_when</code> 写的是
+     <b>「默认附加」</b>→ 它是<b>兜底类别</b>：没有别的类型适用时，落到这里。
+     所以它的 rationale <b>内容性质不统一</b>。按关键词分类实测（<b>可复核</b>）：</p>
+
+  <table>
+    <tr><th>rationale 在讲什么</th><th>条数</th><th>占比</th><th>本该属于</th></tr>
+    <tr><td>搭配策略（「常与 open/check 搭配」「常用搭配 bear/hold a grudge」）</td><td>433</td><td><b>31%</b></td><td><code>collocation</code></td></tr>
+    <tr><td>联想 / 想象（「想象美国著名国家公园」「联想弯曲手臂时突出的肘部」）</td><td>354</td><td><b>25%</b></td><td><code>image</code></td></tr>
+    <tr><td>以上都不像（如 <code>smelt</code>→「是 smell 的过去式，也指熔炼金属」＝词形说明）</td><td>527</td><td class="bad"><b>37%</b></td><td>—（性质不明）</td></tr>
+    <tr><td>专名 / 地名背景（「凯尔是德法边境莱茵河畔城镇…」）</td><td>50</td><td>4%</td><td>—</td></tr>
+    <tr><td>同源 / 词源</td><td>36</td><td>3%</td><td><code>etymology</code> / <code>cognate</code></td></tr>
+    <tr><td>形近 / 变体</td><td>44</td><td>3%</td><td><code>root</code></td></tr>
+  </table>
+
+  <div class="box" style="border-left-color:#A33220">
+    🔴 <b>这就是我第一版判据翻车的地方</b><br>
+    我按「重合率 33%（次低）」把 <code>context</code> 排进了推荐，理由写成「its rationale 是新增量」。<br>
+    <b>真实原因完全不同</b>：它重合率低，是因为它讲的东西
+    <b>有 56% 属于别的类型、37% 性质不明</b> —— 卡上自然「找不到」。
+    <br><br>
+    🔑 <b>判据（新）：指标低 ≠ 有价值</b>。
+    <b>「低」必须先解释成「新的」还是「离题的」，才能当依据</b> ——
+    而这只能<b>看内容</b>，数字分不出来。
+  </div>
+
+  <p>⚠️ 但也要如实说另一半：这些 rationale <b>本身不差</b> ——
+     「想象肘部」「与 <i>bear a grudge</i> 搭配」都是<b>正经有用的记忆法</b>，
+     问题只是<b>被贴上了错的类型标签</b>。所以这不是「数据没用」，是「分类不准」。
+     → 见 §1.4 的 <b>Q-scope</b>。</p>
+
+  <h3>1.8 🔑 两种落点 —— 「升格为 ①」还是「补一行小字」</h3>
+
+  <p>白哥那句「<b>优先显示的应该是那种记忆法最有效</b>」还指向一层我没写到的做法：
+     <b>与其在别处补一行小字，不如把那条最有效的记忆法本身放到它该在的位置。</b>
+     两条路，适用的词不同：</p>
+
+  <table>
+    <tr><th></th><th>做法甲 · 段内说明（小字）</th><th>做法乙 · <b>升格为段</b></th></tr>
+    <tr>
+      <td><b>怎么做</b></td>
+      <td>在已有段下面加一行 12.5px 小字（虚线上方），复用锚点 <code>.mnem-note</code></td>
+      <td>把 <code>rationale</code> 当作<b>那一段的内容</b>渲染 —— 占 ① / ② 槽位</td>
+    </tr>
+    <tr>
+      <td><b>实现成本</b></td>
+      <td class="ok">低（纯 widget 改动）</td>
+      <td class="warn">中 —— 要动 <code>CardSlots.resolve</code>（<b>被断言守护的核心逻辑</b>）</td>
+    </tr>
+    <tr>
+      <td><b>视觉</b></td>
+      <td>主次分明（主体 + 说明），但「最有效的那条」仍是<b>副</b>的</td>
+      <td class="ok">它就是 ① —— <b>名副其实的「优先显示」</b></td>
+    </tr>
+    <tr>
+      <td><b>技术可行性</b></td>
+      <td class="ok">✅ 已具备</td>
+      <td class="ok">✅ <b>已核实零阻力</b>（见下）</td>
+    </tr>
+  </table>
+
+  <div class="box g">
+    <b>做法乙为什么技术上可行（三条都已核过）</b><br>
+    ① <code>CardSlot = {code, section}</code>，而 <code>WordSection</code> 只是一个包裹 <code>Map</code> 的壳 →
+    <b>可以合成</b> <span class="spec">WordSection({'type':'image','text': rationale})</span><br>
+    ② <code>_sectionBody</code> 的 <code>default:</code> 分支<b>本来就会渲染 <code>s.text</code></b> ——
+    它的注释原文就是「<b>未知类型（如未来的新 code）：显示原文而不静默吞掉</b>」→ 这条路本来就在<br>
+    ③ <code>CardSlot.entry =&gt; section.entry</code> → 合成段没有 <code>entry</code> → 返回 <code>null</code> →
+    <b>自动不给 <code>›</code></b>，不会出现「显示箭头却点不动」
+  </div>
+
+  <h4>两类各该走哪条路</h4>
+
+  <table>
+    <tr><th>primary</th><th>词数</th><th>走哪条</th><th>为什么</th></tr>
+    <tr class="ok">
+      <td><code>image</code> 联想图像</td><td>957</td>
+      <td><b>做法乙（升格为 ①）</b></td>
+      <td>库判定它是这个词<b>最有效</b>的法，而它<b>本来就没有段</b>（全库无 <code>image</code> 段）——
+        合成一个段正好补上「① 缺失」；原补位的词源退到 ②（判断更有依据：它是库选的，不是凑数的）</td>
+    </tr>
+    <tr class="ok">
+      <td><code>cognate</code> 同源串记</td><td>195</td>
+      <td><b>做法甲（补在 ② 下）</b></td>
+      <td>🔑 <code>cognate</code> 段本身<b>不能上卡</b>（白哥定：「同源串记是聚合页，不铺在卡上」），
+        但「与 <i>blood</i> 同源」这样的<b>一句话摘要</b>不是成员列表 → 可以贴着 ② 显示</td>
+    </tr>
+  </table>
+
+  <div class="box">
+    🔴 <b>一个顺带被解开的老结</b><br>
+    <code>CardSlots.offCard</code> 里排除 <code>cognate</code> 的<b>理由原文</b>是：<br>
+    <span class="spec">「数据侧它<b>只有族标签、没有故事文本</b> → 铺在卡上只是一个孤零零的族名」</span><br>
+    —— 而 <code>rationale</code> <b>恰好就是那段缺失的文本</b>
+    （<code>bleed</code>→「与 blood 同源，可联想"血(blood)流出来就是 bleed"」）。<br>
+    → 🔑 <b>排除它的理由，正好是 rationale 能补上的那个缺口</b>。
+    <span class="muted">（这不是推翻白哥的定：「不铺成员列表」与「给一条同源线索」是两件事。）</span>
+  </div>
+
+  <h4>实现要点（若采纳）</h4>
+  <ul>
+    <li><code>CardSlots.resolve</code>：现在遇到「段不存在」是<b>跳过</b>（注释：「不留空段」）。
+      需要加一条：<b>若 <code>primary</code> 的段不存在、但该词有 <code>rationale</code>，则用它合成一个段</b>。</li>
+    <li>⚠️ 它<b>被 <code>scripts/query_verify</code> 断言守护</b>（含「offCard 与 <code>mnemonic_type.priority</code> 一致」），
+      改动必须同步补断言。</li>
+    <li>合成段要能区分出来（如加一个 <code>synthetic: true</code> 标记）—— 便于断言「它只用于 image 类」。</li>
+    <li>文本长度：rationale 中位 27 字、最长 78 字 → 按 <code>mnemMain</code>（15.5px）渲染<b>最长约 3 行</b>，可接受。</li>
+  </ul>
+
+  <h3>1.9 样张：同一个词（<code>cocky</code>）在两种做法下的样子</h3>
+
+  <p class="muted">都用真库数据。左＝做法甲（补一行小字）；右＝做法乙（把 rationale 升格为 ①）。
+     注意<b>「①」这一格的内容换了</b> —— 这正是「优先显示最有效的记忆法」的落点。</p>
+
+  <div class="stage">
+
+    <!-- ── 做法甲 ── -->
+    <div class="col">
+      <p class="col-hd">做法甲 · 段内说明 <span class="mk">小字贴在上方段下</span></p>
+      <p class="col-note">① 仍是补位来的<b>词源故事</b>；联想以 12.5px 小字贴在它下面 ——
+        <b>最有效的那条是「副」的</b>。</p>
+      <div class="phone">
+        <div class="screenbar"><span>复习 · 10 / 23</span><span>已到期</span></div>
+        <div class="card">
+          <div class="w-head">
+            <div class="w-word">cocky</div>
+            <div class="w-meta">
+              <span class="w-ipa">/ˈkɒki/</span>
+              <span class="spk"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg></span>
+            </div>
+          </div>
+          <div class="def">
+            <div class="lab">释义</div>
+            <div class="def-txt"><span class="def-pos">[adj]</span>自以为是，骄傲自大的</div>
+            <div class="def-en">conceitedly self-assured; arrogant in a brash way.</div>
+          </div>
+          <div class="ctx">
+            <div class="lab">语境原句</div>
+            <div class="ctx-txt">He was a cocky young man who thought he knew everything.</div>
+          </div>
+
+          <div class="mnem gap20">
+            <div class="mnem-head">
+              <span class="mnem-tag">词源故事</span>
+              <span class="mnem-entry">cocc / cok（Old English·公鸡）词源族 · 4 词</span>
+              <span class="arrow">›</span>
+            </div>
+            <div class="mnem-main">可能来自 cock（公鸡）→ 像公鸡一样骄傲</div>
+            <!-- 做法甲：小字 -->
+            <div class="note"><span class="note-tag">联想图像</span>
+              <span class="lead">想象一只公鸡</span>昂首挺胸、骄傲自大的样子</div>
+          </div>
+          <div class="mnem">
+            <div class="mnem-head">
+              <span class="mnem-tag">搭配整记</span>
+            </div>
+            <div class="mnem-main">a cocky attitude <span class="gl">自大的态度</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 做法乙 ── -->
+    <div class="col">
+      <p class="col-hd">做法乙 · 升格为 ① <span class="mk g">推荐</span></p>
+      <p class="col-note">rationale 就是 ① <b>「联想图像」</b>（库判定的最有效法）；
+        <b>词源退为 ②</b>。① 用 <code>mnemMain</code>（15.5px）正常渲染，
+        没有 <code>›</code>（联想没有聚合页 → 也不该有）。</p>
+      <div class="phone">
+        <div class="screenbar"><span>复习 · 10 / 23</span><span>已到期</span></div>
+        <div class="card">
+          <div class="w-head">
+            <div class="w-word">cocky</div>
+            <div class="w-meta">
+              <span class="w-ipa">/ˈkɒki/</span>
+              <span class="spk"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg></span>
+            </div>
+          </div>
+          <div class="def">
+            <div class="lab">释义</div>
+            <div class="def-txt"><span class="def-pos">[adj]</span>自以为是，骄傲自大的</div>
+            <div class="def-en">conceitedly self-assured; arrogant in a brash way.</div>
+          </div>
+          <div class="ctx">
+            <div class="lab">语境原句</div>
+            <div class="ctx-txt">He was a cocky young man who thought he knew everything.</div>
+          </div>
+
+          <div class="mnem gap20">
+            <div class="mnem-head">
+              <span class="mnem-tag">联想图像</span>
+              <!-- 合成段无 entry → 无 trailing、无 ›（与实现一致） -->
+            </div>
+            <div class="mnem-main">想象一只公鸡昂首挺胸、骄傲自大的样子</div>
+          </div>
+          <div class="mnem">
+            <div class="mnem-head">
+              <span class="mnem-tag">词源故事</span>
+              <span class="mnem-entry">cocc / cok（Old English·公鸡）词源族 · 4 词</span>
+              <span class="arrow">›</span>
+            </div>
+            <div class="mnem-main">可能来自 cock（公鸡）→ 像公鸡一样骄傲</div>
+          </div>
+        </div>
+      </div>
+      <p class="callout">🔑 两张卡的<b>内容一模一样</b>，只是「哪条当 ①」不同 ——
+        而 ① 是用户先看到、字号最大的那格。</p>
+    </div>
+
+  </div>
 
   <!-- ═══════════════════════════════════════════════════ -->
   <h2>二、聚合页为什么「不太好看」—— 4 处能指到 CSS</h2>
@@ -696,21 +1052,39 @@
 
   <table>
     <tr><th>#</th><th>决定</th><th>选项</th><th>我的建议</th></tr>
-    <tr><td>1</td><td>段内说明显示范围</td><td>A 仅 context+image / B 再加 collocation+cognate / C 全量 / D 先不做</td><td class="ok"><b>A</b></td></tr>
-    <tr><td>2</td><td>段内说明的位置</td><td>贴主槽位段 / 统一贴记忆法组末尾</td><td>贴主槽位段（语义最准）</td></tr>
-    <tr><td>3</td><td>段内说明要不要小标签前缀</td><td>加 / 不加（锚点原文不加）</td><td>不加（更贴锚点）</td></tr>
-    <tr><td>4</td><td>聚合页成员行形态</td><td>② 平坦行 + <code>›</code> / ① 粘土行 + onTap</td><td class="ok"><b>②</b></td></tr>
-    <tr><td>5</td><td>点开之后去哪</td><td>a 查词浮层 / b 复习卡 / c 新页</td><td class="ok"><b>a</b></td></tr>
-    <tr><td>6</td><td>聚合页其余 3 处（顶栏族名 / 页头居中 / 词列对齐）</td><td>一起改 / 只改可点</td><td>一起改（都在锚点里写着）</td></tr>
+    <tr><td>1</td><td><b>段内说明显示范围</b><br><span class="muted">（判据 = 「最有效的线索有没有给到」）</span></td>
+      <td><b>P0</b> 仅 <code>image</code>（957）／ <b>P0+P1</b> 加 <code>cognate</code>（1,152）／
+        再加 <code>collocation</code>（1,254）／ 先不做</td>
+      <td class="ok"><b>P0+P1</b></td></tr>
+    <tr><td>2</td><td><b>落点做法</b>（§1.8）</td>
+      <td><b>乙</b> <code>image</code> 升格为 ① + <b>甲</b> <code>cognate</code> 贴 ② 下（推荐）／
+        两类都走甲（纯小字、不动 <code>CardSlots</code>）</td>
+      <td class="ok"><b>乙+甲</b> —— 只有乙才真的「优先显示」</td></tr>
+    <tr><td>1b</td><td><code>context</code> 类（1,410）怎么处置</td>
+      <td>① 先搁置（推荐）／ ② 按 rationale 内容捞（≈790）／ ③ 重跑 LLM 分类</td>
+      <td class="ok"><b>①</b> —— 分类不准，规则会变成「猜」</td></tr>
+    <tr><td>3</td><td>做法甲的贴法（仅 <code>cognate</code>）</td><td>贴 ① 之下 / 贴 ② 之下 / 组末尾</td><td>贴 ② 之下（同属「来龙去脉」）</td></tr>
+    <tr><td>4</td><td>做法甲要不要小标签前缀</td><td>加 / 不加（锚点原文不加）</td><td class="warn">加 —— 否则看不出那句在讲同源</td></tr>
+    <tr><td>5</td><td>聚合页成员行形态</td><td>② 平坦行 + <code>›</code> / ① 粘土行 + onTap</td><td class="ok"><b>②</b></td></tr>
+    <tr><td>6</td><td>点开之后去哪</td><td>a 查词浮层 / b 复习卡 / c 新页</td><td class="ok"><b>a</b></td></tr>
+    <tr><td>7</td><td>聚合页其余 3 处（顶栏族名 / 页头居中 / 词列对齐）</td><td>一起改 / 只改可点</td><td>一起改（都在锚点里写着）</td></tr>
   </table>
 
   <div class="box" style="margin-top:26px">
     <b>下一步</b>：你定完上表，我按定稿改
-    <code>aggregate_page_screen.dart</code>（成员行 / 页头 / 顶栏）与
-    <code>widgets/word_card.dart</code>（段内说明），并补断言锁住
-    「成员行平坦且可点」「页头居中且有下边线」「rationale 只在该显示的词上显示」——
-    这些<b>编译器都看不见</b>，只能靠断言。
-    <br>⚠️ 本轮<b>未动生产代码</b>（设计类任务只产出文件）。
+    <code>aggregate_page_screen.dart</code>（成员行 / 页头 / 顶栏）+
+    <code>widgets/word_card.dart</code>（段内说明 / 升格）、
+    若采做法乙还要动 <code>services/word_query_service.dart</code> 的 <code>CardSlots.resolve</code>。
+    <br>
+    <b>要补的断言</b>（编译器都看不见，只能靠断言）：
+    <ul>
+      <li>聚合页：成员行<b>平坦</b>且<b>可点</b>（「凸起但不可点」是已定禁忌）</li>
+      <li>聚合页：页头<b>居中</b>且有下边线；顶栏有族名</li>
+      <li>卡片：<b>只有 <code>image</code> 类</b>的词才用合成段（不许外溢到别的类型）</li>
+      <li>卡片：合成段<b>不带 <code>›</code></b>（无 <code>entry</code> → 不许出现「有箭头点不动」）</li>
+      <li><code>CardSlots</code>：<code>offCard</code> / <code>order</code> 仍与 <code>mnemonic_type.priority</code> 一致</li>
+    </ul>
+    ⚠️ 本轮<b>未动生产代码</b>（设计类任务只产出文件）。
   </div>
 
 </div>
