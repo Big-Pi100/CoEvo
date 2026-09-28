@@ -36,6 +36,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../services/word_query_service.dart';
+import '../theme/clay.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
 
@@ -105,6 +106,24 @@ class WordCardView extends StatelessWidget {
   ///   （同 `FeedCard` 不认识收藏逻辑的做法：「是否已收藏 / 点击做什么」由父层注入。）
   final Widget? footer;
 
+  // ── 锚点里**写死的两个几何量**（2026-09-28 · 方案 A）──────────────
+  //
+  // 🔑 为什么不走 token 档位：锚点里它们是写死的 px，不是主题变量 ——
+  //    这与项目既有处理一致（`HeaderChip` 的 13 / `_ClayTabBar` 的 17 /
+  //    `BookmarkButton` 的 10）：**设计稿写死 = 三档共用**。
+
+  /// 喇叭圆直径 —— 锚点 `.spk{width:26px;height:26px}`。
+  static const double _spkSize = 26;
+
+  /// 喇叭半径 —— 锚点 `.spk{border-radius:50%}`。
+  ///
+  /// 🔴 **必须显式给**：各档 `clay.radius` 不同（墨 26 / 格 14 / 夜 24），
+  ///    走档位会在「格」档得到 14px ≠ 正圆（它要的是 13）。
+  static final BorderRadius _spkRadius = BorderRadius.circular(_spkSize / 2);
+
+  /// ①② 凹陷块圆角 —— 锚点 `.mnem{border-radius:16px}`。
+  static final BorderRadius _mnemRadius = BorderRadius.circular(16);
+
   @override
   Widget build(BuildContext context) {
     final t = CoEvoTokensExt.of(context);
@@ -115,7 +134,10 @@ class WordCardView extends StatelessWidget {
         Expanded(
           child: SingleChildScrollView(
             controller: scrollController,
-            padding: const EdgeInsets.fromLTRB(22, 4, 22, 18),
+            // 🔴 卡片内边距 = 锚点 `.card{padding:20px 19px}`（2026-09-28 16:5x 回到方案 A）。
+            //    ⚠️ 中途曾是 `22, 4, 22, 18`（上 4 下 18 + 末尾留白 18 → 实际下 36）——
+            //       上下呼吸不对称，锚点是均匀的 20/19。
+            padding: const EdgeInsets.fromLTRB(19, 20, 19, 20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -150,8 +172,15 @@ class WordCardView extends StatelessWidget {
   //
   // 🔑 它是「让词头成为头」的关键：没有它，词头就是「下面第一段的一个大字号行」，
   //    与内容黏在一起（这正是白哥说的「乱」的来源之一）。
-  //    ⚠️ 白哥在 Q1 选了**保持左对齐**（不居中）→ 分隔线**保留** ——
-  //       两者是独立的：居中与否是排布，分隔线是分层。
+  //
+  // 🔴 **居中**（2026-09-28 16:5x 白哥定「还是方案 A 比较好」→ 回到锚点原文）。
+  //    ⚠️ 中途曾按 Q1 改成左对齐（当时的理由：长词居中会左右参差）—— **已撤回**：
+  //       锚点 `.w-head{text-align:center}`、音标行 `.w-meta{justify-content:center}`。
+  //       🔑 词头是这张卡的主题 → 居中才有「词条」的仪式感。
+  //    📄 逐项差异见 `docs/design/word-card-layout-refine-2026-09-28.html` §3.6。
+  //
+  // 🔑 分隔线（分层）与居中（排布）是**两件独立的事** —— 中途只撤回居中、保留分隔线，
+  //    也印证了这一点。
   Widget _head(CoEvoTokens t) {
     final ipa = (card.ipa ?? '').trim();
     return Container(
@@ -163,54 +192,74 @@ class WordCardView extends StatelessWidget {
         ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        // 锚点 `text-align:center`
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-        Text(
-          card.spelling,
-          style: TextStyle(
-            fontFamily: CoFonts.latinSerif,
-            fontSize: t.type.word, // 32
-            fontWeight: FontWeight.w500,
-            height: 1.15,
-            color: Color(t.ink.argb32),
+          Text(
+            card.spelling,
+            style: TextStyle(
+              fontFamily: CoFonts.latinSerif,
+              fontSize: t.type.word, // 32
+              fontWeight: FontWeight.w500,
+              height: 1.15,
+              color: Color(t.ink.argb32),
+            ),
           ),
-        ),
-        if (ipa.isNotEmpty || onSpeak != null) ...[
-          const SizedBox(height: 7),
-          Row(
-            children: [
-              if (ipa.isNotEmpty)
-                Flexible(
-                  child: Text(
-                    ipa,
-                    style: TextStyle(
-                      // 🔴 音标整条用 CharisSIL（元素级指定，不挂 fallback —
-                      //    挂链会让一条音标出现两种字体，见 spec §4.1.1）
-                      fontFamily: CoFonts.ipaSerif,
-                      fontSize: t.type.ipa,
-                      color: Color(t.ink2.argb32),
+          if (ipa.isNotEmpty || onSpeak != null) ...[
+            // 锚点 `.w-meta{margin-top:6px}`（原 7）
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (ipa.isNotEmpty)
+                  Flexible(
+                    child: Text(
+                      ipa,
+                      style: TextStyle(
+                        // 🔴 音标整条用 CharisSIL（元素级指定，不挂 fallback —
+                        //    挂链会让一条音标出现两种字体，见 spec §4.1.1）
+                        fontFamily: CoFonts.ipaSerif,
+                        fontSize: t.type.ipa,
+                        color: Color(t.ink2.argb32),
+                      ),
                     ),
                   ),
-                ),
-              if (onSpeak != null) ...[
-                const SizedBox(width: 10),
-                // 喇叭 —— 设计稿 `spk`（紧跟音标）。可点元素用 ink2（对比度）
-                GestureDetector(
-                  onTap: onSpeak,
-                  behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Icon(
-                      Icons.volume_up_outlined,
-                      size: 18,
-                      color: Color(t.accent.argb32),
+                if (onSpeak != null) ...[
+                  // 锚点 `.w-meta{gap:9px}`（原 10）
+                  const SizedBox(width: 9),
+                  // 🔴 喇叭 = 锚点 `.spk`：**26×26 圆形 + 凸起**。
+                  //    ⚠️ 原先是「飘着」的裸图标 18px —— 没有任何可点的物理暗示。
+                  //    🔑 用 `Clay(raised)` 而非自绘阴影：这是全库唯一的粘土产出点，
+                  //       尺寸档 / 主题强度上限 / 三档圆角都跟着它走（spec §3.5）。
+                  Clay(
+                    state: ClayState.raised,
+                    // ⚠️ 显式给 `card`：锚点 `background:var(--card)`。
+                    //    （`Clay` 默认填充正好是 `clayFill` → `card`，但显式写出来
+                    //      才不会在将来改 `clayFill` 时被静默改掉。）
+                    fill: t.card,
+                    // 🔴 必须**显式**给半径：锚点是 `border-radius:50%`（正圆），
+                    //    而各档 `clay.radius` 不同（墨 26 / 格 14 / 夜 24）→
+                    //    走 token 档位会在「格」档得到 14px ≠ 正圆。
+                    borderRadius: _spkRadius,
+                    onTap: onSpeak,
+                    child: SizedBox(
+                      width: _spkSize,
+                      height: _spkSize,
+                      child: Center(
+                        child: Icon(
+                          Icons.volume_up_rounded,
+                          // 锚点 `.spk svg{width:12px}` / 设计稿样张 13px → 取 13
+                          //（也正好是 26px 正圆的半径 = Material 图标按钮的标准比例）
+                          size: 13,
+                          color: Color(t.accent.argb32),
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                ],
               ],
-            ],
-          ),
-        ],
+            ),
+          ],
         ],
       ),
     );
@@ -240,11 +289,11 @@ class WordCardView extends StatelessWidget {
       if (i > 0) out.add(const SizedBox(height: 14)); // 锚点 `.mnem{margin-top:14px}`
       out.add(_mnemonicBlock(t, slot: slots[i]));
     }
-    // ⚠️ 末尾留白 18 **保持原值** —— 它不在本次诊断的 4 条内（未与白哥讨论过），
-    //    不擅自改。⚠️ 但要如实记一笔：卡片 padding 是 `22,4,22,18`，
-    //    再加这 18 → **下边距 36 vs 上边距 4**，上下呼吸不对称（锚点是均匀 20）。
-    //    → 待白哥看真机后定（见报告「未做」）。
-    out.add(const SizedBox(height: 18));
+    // 🔴 2026-09-28 16:5x：**删掉**了这里原先的「末尾留白 18」。
+    //    ⚠️ 它曾被保留的理由是「不在定案 4 处内，不擅自改」——
+    //       但它与卡片内边距**叠加**：padding 下 18 + 18 = 36，而上是 4。
+    //       既然内边距已回到锚点的 20/19（上下均匀），这 18 就没有存在理由了
+    //       （锚点末尾只有 `.card` 的 padding，没有额外留白）。
     return out;
   }
 
@@ -281,8 +330,8 @@ class WordCardView extends StatelessWidget {
         accentLabel: false,
         // 🔴 色条改用 `accentBright`（2026-09-28 白哥定 Q4）。
         //    原用 `line`（#EFE9DE）在浅纸上**几乎看不见** —— 等于白设了这条竖线。
-        //    ⚠️ 与 ①② 的色条靠五处差异区分（粗细 2 vs 3 · 色相亮 vs 深 ·
-        //       左内边距 12 vs 14 · 标签色 ink3 vs accent · 有没有 `›`）。
+        // 🔑 与 ①② 的关系（16:5x 后）：**不再需要「五处差异」** ——
+        //    ①② 是**凹陷底块**（另一种形状），④ 是**左侧竖线**，形状本身就分开了。
         leftBar: Color(t.accentBright.argb32),
         leftBarWidth: 2,
         leftBarInset: 12,
@@ -327,12 +376,21 @@ class WordCardView extends StatelessWidget {
       accentLabel: true,
       trailing: trailing,
       onTap: onTap,
-      // 🔴 ①② 左侧色条（2026-09-28 白哥定：**用色条，不用凹陷底块**）。
-      //    ⚠️ 规格冲突已记录：spec §5.2 原写「①② 独占 sunken，全卡唯一有底色」
-      //       → 改色条后卡片上**没有任何段有底色**，那条描述已失效，需同步改 spec。
-      leftBar: Color(t.accent.argb32),
-      leftBarWidth: 3,
-      leftBarInset: 14,
+      // 🔴 ①② **凹陷底块**（2026-09-28 16:5x 白哥定「还是方案 A 比较好」→ 回到锚点原文）。
+      //
+      // 锚点 `.mnem{background:var(--sunken); border-radius:16px; padding:14px 14px 13px;
+      //             box-shadow: inset 3px 3px 9px shade, inset -3px -3px 8px light}`
+      //
+      // 🔑 它的作用**不是装饰，而是分类**：③④ 留白（答案）、①② 有底（线索）——
+      //    spec §5.2：「① ② 独占 `--sunken`，**全卡唯一有底色的段**」。
+      //
+      // ⚠️ 中途曾改成「左侧色条」，问题随之而来：④ 语境**本来就有**左侧竖线 →
+      //    两者都是「左侧一条竖线」，只能靠「粗细 / 色相 / 内边距 / 标签色 / 有无箭头」
+      //    五个参数硬分（设计稿 §3.5）。**凹陷块是另一种形状 —— 不用比参数。**
+      // 📄 逐项差异见 `docs/design/word-card-layout-refine-2026-09-28.html` §3.6。
+      sunken: true,
+      // 锚点 `.mnem-head{margin-bottom:8px}`（③④ 用的 `.lab` 是 **4px** —— 两者不同）
+      labelGap: 8,
       child: _sectionBody(t, slot.section),
     );
   }
@@ -513,7 +571,9 @@ class WordCardView extends StatelessWidget {
           ],
         ),
         if (en.isNotEmpty) ...[
-          const SizedBox(height: 6),
+          // 锚点 `.def-en{margin-top:3px}`（原 6）—— 英文释义是**同一段内**的补充，
+          // 上距要明显小于段间（14/15），否则它读起来像一个新段落。
+          const SizedBox(height: 3),
           Text(
             en,
             style: TextStyle(
@@ -530,17 +590,26 @@ class WordCardView extends StatelessWidget {
 
   /// 段块 = 标签行（+ 可选右侧入口） + 内容。
   ///
-  /// # 🆕 段落色条（2026-09-28 排版整理）
-  /// [leftBar] 非空时，给**整节**（标签行 + 内容）加一条左侧竖线 ——
-  /// 这是「建立层级」的手段之一：**不靠排得松一点，靠容器与分隔**。
+  /// # 三种「容器」形态（2026-09-28 · 方案 A）
+  /// | 形态 | 用在哪 | 手段 |
+  /// |---|---|---|
+  /// | [sunken] **凹陷底块** | ①② 记忆法（**线索**） | `Clay(pressed)` + `--sunken` 底 + radius 16 |
+  /// | [leftBar] 左侧竖线 | ④ 语境原句（引文） | `Border.left` |
+  /// | 无 | ③ 释义（答案正文） | 留白 |
   ///
-  /// 🔑 为什么色条包**整节**（而不是只包内容）：
+  /// 🔑 为什么都包**整节**（标签行 + 内容）而不是只包内容：
   /// · 语义上「这一节是记忆法 / 这一节是引文」—— 节 = 标签 + 内容
   /// · 代码上**只有一处实现**（若 ①② 包整节、④ 只包内容，就是两套逻辑要各自维护）
   ///
-  /// ⚠️ ①②（`accent` 3px）与 ④（`accentBright` 2px）**都是色条** ——
-  ///    形态会撞，靠**五处差异**分开：粗细 / 色相 / 左内边距 / 标签色 / 有没有 `›`。
-  ///    详见 `docs/design/word-card-layout-refine-2026-09-28.html` §3.5。
+  /// 🔴 **①② 与 ④ 靠「形状」区分，不靠参数**：
+  ///    中途 ①② 改用过色条（与 ④ 同形）→ 只能靠「粗细 / 色相 / 左内边距 / 标签色 /
+  ///    有无 `›`」五处硬分（那正是设计稿 §3.5 在救的场）。
+  ///    回到凹陷块后，**形状本身**就分开了 —— ③④ 留白、①② 有底。
+  ///
+  /// [labelGap] = 标签行与内容之间的距离。锚点里这两处**本来就不同**：
+  ///   · ①② → `.mnem-head{margin-bottom:8px}`
+  ///   · ③④ → `.lab{margin-bottom:4px}`
+  ///   🔑 所以它不是一个「可以统一起来」的值。
   Widget _block(
     CoEvoTokens t, {
     required String label,
@@ -549,8 +618,13 @@ class WordCardView extends StatelessWidget {
     String? trailing,
     VoidCallback? onTap,
     Color? leftBar,
-    double leftBarWidth = 3,
-    double leftBarInset = 14,
+    /// 默认值 = **④ 语境**那一组（2026-09-28 后 [leftBar] 的唯一消费者）。
+    /// ⚠️ 原默认是 3 / 14（那是 ①② 色条版的值）—— ①② 改回凹陷块后，
+    ///    留着旧默认值是**残留**：它会让下一个用 [leftBar] 的人拿到一组没人用过的数字。
+    double leftBarWidth = 2,
+    double leftBarInset = 12,
+    bool sunken = false,
+    double labelGap = 4,
   }) {
     // ⚠️ 必须显式声明 `Widget`（不能用 `var`）—— 否则类型被推断为 `Column`，
     //    下面赋 `Container`（加色条时）会报
@@ -601,14 +675,34 @@ class WordCardView extends StatelessWidget {
               ),
           ],
         ),
-        // 🔑 4px（锚点 `.lab{margin-bottom:4px}`）—— 原为 8px。
-        //    「标签下距」这一档要**明显小于**段内其他间距（8），
-        //    否则标签读起来像独立一段，而不是「它下面那段的名字」。
-        const SizedBox(height: 4),
+        // 🔑 标签下距要**明显小于**段间（14/15），否则标签读起来像独立一段，
+        //    而不是「它下面那段的名字」。⚠️ 但 ①②（8）与 ③④（4）**不同**
+        //    —— 见 [labelGap] 的说明。
+        SizedBox(height: labelGap),
         child,
       ],
     );
 
+    // ① 凹陷底块（①② 记忆法）—— 见 `_mnemonicBlock`
+    if (sunken) {
+      return Clay(
+        state: ClayState.pressed,
+        // ⚠️ 必须显式给 `sunken`：`Clay` 默认填充是 `clayFill`（= `card`），
+        //    而锚点这里的底是 `--sunken`。同 `HeaderChip` / `BookmarkButton`。
+        fill: t.sunken,
+        // 锚点 `.mnem{border-radius:16px}` —— 写死，不走 token 档位
+        borderRadius: _mnemRadius,
+        // 🔑 点击交给 `Clay`（而不是外面再包一层 `GestureDetector`）——
+        //    这样才有按下回弹（spec §3.8：「缺了动效，粘土只是个圆角卡片」）。
+        //    传 `null` = 不可点（该词无族页）→ 它自动退化成**静态**底块。
+        onTap: onTap,
+        // 锚点 `.mnem{padding:14px 14px 13px}`
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 13),
+        child: content,
+      );
+    }
+
+    // ② 左侧竖线（④ 语境原句）
     if (leftBar != null) {
       content = Container(
         padding: EdgeInsets.only(left: leftBarInset),

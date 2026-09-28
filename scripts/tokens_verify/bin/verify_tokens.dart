@@ -1830,15 +1830,17 @@ void _s17ReviewList() {
   // ⑤-b 🔴 **建立层级的三件套**（2026-09-28 排版整理 · 白哥「排版有点乱」）
   //
   // 🔴 为什么这一组必须存在（本轮教训）：
-  //    这三条**上轮全漏了**，而它们**编译器、analyzer、任何逻辑断言都看不到** ——
-  //    它们不是符号、不是行为，只是「有没有那条边线 / 那个色条」。
+  //    这些**上轮全漏了**，而它们**编译器、analyzer、任何逻辑断言都看不到** ——
+  //    它们不是符号、不是行为，只是「有没有那条边线 / 那个底块 / 那根色条」。
   //    → 只能靠**对照锚点 CSS**逐条写成断言，否则下次改动又会悄悄改回扁平。
   //
   // 🔑 判据（新）：**视觉「乱」先查「容器与分隔」，最后才查字号。**
-  //    「排得松一点」≠「有层级」；层级靠 `border` / 色条 / 虚线。
+  //    「排得松一点」≠「有层级」；层级靠 `border` / 凹陷底块 / 色条 / 虚线。
+  //
+  // 📄 逐项差异（方案 A ↔ 中途的色条版）：`docs/design/word-card-layout-refine-2026-09-28.html` §3.6
   //
   // ⚠️ 全部用**方法体切片**（`_braceBody`）—— 这些符号在卡片里出现多次
-  //    （`leftBar` 在 ①② 与 ④ 各一处），全文件 `contains` 会互相顶替。
+  //    （`leftBar` 在 ④、`ClayState.pressed` 在 ①②），全文件 `contains` 会互相顶替。
   final mnemBody = _braceBody(cardW, '_mnemonicBlock');
   final ansBody = _braceBody(cardW, '_answerSlots');
   final headBody2 = _braceBody(cardW, '_head');
@@ -1855,35 +1857,83 @@ void _s17ReviewList() {
   check('🔴 词头有下分隔线（`border` + `bottom:`）',
       headBody2.contains('border:') && headBody2.contains('bottom:'));
 
-  // ② ①② 左侧色条 = **3px `accent`**（白哥 2026-09-28 定：用色条不用凹陷块）
-  check('🔴 ①② 有左侧色条（leftBar = accent，3px）',
-      mnemBody.contains('leftBar: Color(t.accent.argb32)') &&
-          mnemBody.contains('leftBarWidth: 3'),
-      'leftBar 在不在: ${mnemBody.contains('leftBar')}');
+  // ② 词头**居中**（2026-09-28 16:5x 白哥「还是方案 A 比较好」→ 回到锚点 `text-align:center`）
+  //    🔄 **反转型断言**：中途断言的是「左对齐」→ 必须反转。
+  //       🔑 不反转的代价是双向的：它会一直报红；更糟的是有人为了让绿
+  //          **把居中删掉** —— 那是「断言反向驱动实现」。
+  check('🔴 词头**居中**（锚点 `text-align:center` —— 词头是这张卡的主题）',
+      headBody2.contains('CrossAxisAlignment.center') &&
+          headBody2.contains('MainAxisAlignment.center'));
+  check('🔴 词头不再左对齐（左对齐是中途 Q1 的选择，已撤回）',
+      !headBody2.contains('CrossAxisAlignment.start'));
 
-  // ③ ④ 语境左侧色条 = **2px `accentBright`**（原用 `line`，浅到看不见）
+  // ③ ①② = **凹陷底块**（锚点 `.mnem{background:var(--sunken)}`）
+  //    🔄 **反转型断言**：中途断言的是「色条 3px accent」→ 必须反转。
+  //    🔑 为什么回到凹陷块而不是色条：**形状**区分（有底 / 留白）不需要比参数，
+  //       而两者同为竖线时只能靠 5 个参数硬分（设计稿 §3.5）。
+  check('🔴 ①② 有**凹陷底块**（Clay pressed + `sunken` 底 + radius 16）',
+      mnemBody.contains('sunken: true') &&
+          blockBody.contains('ClayState.pressed') &&
+          blockBody.contains('fill: t.sunken') &&
+          blockBody.contains('_mnemRadius'),
+      'mnem.sunken=${mnemBody.contains('sunken: true')} '
+          'block.clay=${blockBody.contains('ClayState.pressed')}');
+  check('🔴 ①② **不再**用左侧色条（与 ④ 同形 → 会被读成同类）',
+      !mnemBody.contains('leftBar'));
+
+  // ④ ④ 语境的左侧色条 = **2px `accentBright`**（原用 `line`，浅到看不见）
   check('🔴 ④ 语境色条用 accentBright（2px，不是 line）',
       ansBody.contains('leftBar: Color(t.accentBright.argb32)') &&
           ansBody.contains('leftBarWidth: 2'));
   check('🔴 语境不再用 `line` 做边框（浅到几乎看不见 = 白设）',
       !ansBody.contains('t.line.argb32'));
 
-  // ④ 两者**靠粗细 + 色相区分**（形态会撞 → 必须查）
-  //    🔑 若哪天两处都用同一个色/同一个粗细，这条会红 —— 那正是「读成同类」的时刻
-  check('🔑 ①② 与 ④ 的色条**粗细不同**（3 vs 2，否则读成同类）',
-      mnemBody.contains('leftBarWidth: 3') &&
-          ansBody.contains('leftBarWidth: 2'));
+  // ⑤ 🔑 ①② 与 ④ **形态不同**（凹陷底块 vs 左侧竖线）
+  //    ⚠️ 中途那条「粗细不同 3 vs 2」现在**没有意义了** ——
+  //       它是「同形时靠参数硬分」的补丁；形态分开后，这条改成断言**形态**本身。
+  check('🔑 ①② 与 ④ 的**形态**不同（①② 凹陷底块 / ④ 竖线）',
+      mnemBody.contains('sunken: true') && ansBody.contains('leftBar:'));
 
-  // ⑤ 段标签下距 **4px**（锚点 `.lab{margin-bottom:4px}`，原为 8）
-  //    🔑 它要**明显小于**段内其他间距，否则标签读起来像独立一段
-  check('🔴 标签下距 4px（不是 8 —— 否则标签像独立一段）',
-      blockBody.contains('SizedBox(height: 4)'));
+  // ⑥ 段标签下距：③④ = **4px**（锚点 `.lab`）；①② = **8px**（锚点 `.mnem-head`）
+  //    🔑 锚点里这两处**本来就不同** —— 中途统一成 4 是错的（我当时按 `.lab` 一刀切）。
+  check('🔴 标签下距走 `labelGap`（不是硬编码 4），且默认值是 4',
+      // ⚠️ 默认值在**签名**里，而 `_braceBody` 切的是**方法体** ——
+      //    参数列表不在切片内（这正是 `_braceBody` 的边界）→ 必须分开断言，
+      //    否则会像本条第一版那样：实现是对的，断言却报红。
+      cardW.contains('double labelGap = 4') &&
+          blockBody.contains('SizedBox(height: labelGap)'),
+      'labelGap 在不在: ${blockBody.contains('labelGap')}');
+  check('🔴 ①② 的标签下距是 **8px**（锚点 `.mnem-head`，与 ③④ 的 4px 不同）',
+      mnemBody.contains('labelGap: 8'));
 
-  // ⑥ 记忆法组与答案区之间 **20px**（类别切换，比段间 14/15 更大）
+  // ⑦ 记忆法组与答案区之间 **20px**（类别切换，比段间 14/15 更大）
   //    ⚠️ 锚点的 14 是「记忆法在上」时的段间值；顺序换过 → 这个值要重定
   final mnemSlotsBody = _braceBody(cardW, '_mnemonicSlots');
   check('🔴 记忆法组上距 20px（类别切换 > 段间 14/15）',
       mnemSlotsBody.contains('SizedBox(height: 20)'));
+
+  // ⑧ 卡片内边距 = 锚点 `.card{padding:20px 19px}`（上下**对称**）
+  //    ⚠️ 中途是 `22, 4, 22, 18`，再叠一个末尾留白 18 → 实际「上 4 / 下 36」
+  check('🔴 卡片内边距 19/20（锚点，上下对称）',
+      cardW.contains('EdgeInsets.fromLTRB(19, 20, 19, 20)'));
+  check('🔴 末尾**不再**垫额外留白（会与内边距叠加成「下 38 vs 上 20」）',
+      !mnemSlotsBody.contains('SizedBox(height: 18)'));
+
+  // ⑨ 段内间距回到锚点：标签下 4 / 音标行上 6 · gap 9 / 英文释义上 3
+  check('🔴 音标行上距 6、gap 9（锚点 `.w-meta`；原为 7 / 10）',
+      headBody2.contains('SizedBox(height: 6)') &&
+          headBody2.contains('SizedBox(width: 9)'));
+  check('🔴 英文释义上距 3（锚点 `.def-en`；原为 6）',
+      cardW.contains('SizedBox(height: 3)'));
+
+  // ⑩ 喇叭 = 锚点 `.spk`：**26×26 圆形 + 凸起**（原为「飘着」的裸图标 18px）
+  check('🔴 喇叭是 26px 圆形凸起（`Clay` raised + `_spkSize` / `_spkRadius`）',
+      headBody2.contains('ClayState.raised') &&
+          headBody2.contains('_spkSize') &&
+          headBody2.contains('_spkRadius'),
+      'clay=${headBody2.contains('ClayState.raised')}');
+  check('🔴 喇叭不再是裸图标（无凸起 = 没有可点的物理暗示）',
+      !headBody2.contains('Icons.volume_up_outlined'));
 
   // ⑥ 🔴 **顺序**（白哥 2026-09-28）：「释义 + 语境原句在上，记忆法在下」
   //

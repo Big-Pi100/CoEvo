@@ -72,15 +72,16 @@ code{font-family:var(--mono);font-size:12.5px;background:var(--sunken);padding:1
   background:var(--card);
   box-shadow:6px 8px 18px var(--cl-out), inset -5px -5px 12px var(--cl-shade), inset 4px 4px 10px var(--cl-light)}
 
-/* ⚠️ 修正标注（白哥 2026-09-28 · 排版整理）：`text-align:center` → **改为左对齐**。
-   理由：长词居中会左右参差；且左对齐与下面段落一条线到底，更「文档感」。
-   🔑 但 `padding-bottom:15px` 与 `border-bottom` **保留** ——
-      排布（居中与否）与分层（有没有分隔线）是两件事，后者是「让词头成为头」的关键。
-   📄 见 docs/design/word-card-layout-refine-2026-09-28.html §3.1 */
-.w-head{text-align:left;padding-bottom:15px;border-bottom:1px solid var(--line)}
+/* ⚠️ 修正标注（白哥 2026-09-28 **16:5x · 撤回**）：中途曾按 Q1 把 `text-align:center`
+   改成左对齐（当时的理由：长词居中会左右参差、左对齐更「文档感」）。
+   白哥当天改主意：「**还是方案 A 比较好**」→ **恢复锚点原值：居中**。
+   🔑 连带印证了当时那句判断：「排布（居中与否）」与「分层（有没有分隔线）」
+      是**两件独立的事** —— 中途只撤了居中、保留了 `border-bottom`，两者互不影响。
+   📄 见 docs/design/word-card-layout-refine-2026-09-28.html §3.6 */
+.w-head{text-align:center;padding-bottom:15px;border-bottom:1px solid var(--line)}
 .w-word{font-family:var(--serif);font-size:32px;font-weight:400;letter-spacing:-.015em;line-height:1.15}
-/* ⚠️ 修正标注（2026-09-28）：随词头改左对齐 → `justify-content:center` 改为 `flex-start`。 */
-.w-meta{display:flex;align-items:center;justify-content:flex-start;gap:9px;margin-top:6px}
+/* 音标行随词头居中 —— 它是 `.w-head{text-align:center}` 的连带项（撤回同上）。 */
+.w-meta{display:flex;align-items:center;justify-content:center;gap:9px;margin-top:6px}
 .w-ipa{font-family:var(--ipa);font-size:15px;color:var(--ink2)}
 .spk{width:26px;height:26px;border-radius:50%;background:var(--card);display:inline-flex;align-items:center;justify-content:center;
   box-shadow:2px 3px 7px var(--cl-out), inset -2px -2px 5px var(--cl-shade), inset 2px 2px 4px var(--cl-light);flex:0 0 auto}
@@ -89,16 +90,17 @@ code{font-family:var(--mono);font-size:12.5px;background:var(--sunken);padding:1
 /* 记忆法块（可点击展开聚合页）
    🔑 权重靠「强调色 + 凹陷底色 + 拆分结构」，不靠字号 ——
       记忆法是线索、释义是答案，字号上线索不应压过答案。 */
-/* ⚠️ 修正标注（白哥 2026-09-28 · Q2）：**凹陷底块 → 改为左侧色条**。
-   原：`background:var(--sunken)` + `border-radius:16px` + 两个 inset（「全卡唯一有底色」）。
-   现：`border-left:3px solid var(--accent)` + `padding-left:14px`（整节，含标签行）。
-   理由：色条更轻，整卡仍像一篇文章。
-   🔴 连带：spec §5.2「① ② 独占 sunken · 全卡唯一有底色」已同步改为「左侧色条」——
-      否则下次做卡片的人会照旧规格**又把凹陷块加回来**。
-   ⚠️ 新问题：④ 语境本来就有左侧竖线 → 两者形态会撞，
-      已用五处差异区分（粗细 3/2 · accent/accentBright · 内边距 14/12 ·
-      标签色 accent/ink3 · 有无 `›`）→ 见设计稿 §3.5 */
-.mnem{margin-top:14px;border-left:3px solid var(--accent);padding-left:14px;cursor:pointer;position:relative;transition:transform .12s} /* 2026-09-28 生效版：色条替代凹陷块 */
+/* ⚠️ 修正标注（白哥 2026-09-28 **16:5x · 撤回**）：中途按 Q2 把「凹陷底块」
+   改成了「左侧色条」（理由：色条更轻、整卡仍像一篇文章）。
+   白哥当天改主意：「**还是方案 A 比较好**」→ **恢复锚点原值：凹陷底块**。
+   🔑 这一来一回解决了一个真问题：色条版下 ①② 与 ④ 语境**同为左侧竖线**，
+      只能靠 5 个参数硬分（粗细 / 色相 / 内边距 / 标签色 / 有无 `›`，见设计稿 §3.5）；
+      凹陷块是**另一种形状** —— 有底 vs 留白，不必比参数。
+   🔴 连带：spec §5.2 已同步回「① ② 独占 `--sunken` · 全卡唯一有底色」。
+   📄 见设计稿 §3.6 */
+.mnem{margin-top:14px;border-radius:16px;padding:14px 14px 13px;background:var(--sunken);
+  box-shadow:inset 3px 3px 9px var(--cl-shade), inset -3px -3px 8px var(--cl-light);
+  cursor:pointer;position:relative;transition:transform .12s}
 .mnem:hover{transform:translateY(-1px)}
 .mnem-head{display:flex;align-items:center;gap:7px;margin-bottom:8px}
 .mnem-tag{display:inline-flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.05em;

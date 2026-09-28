@@ -50,9 +50,8 @@
         box-shadow:6px 8px 18px var(--cl-out), inset -5px -5px 12px var(--cl-shade),
                    inset 4px 4px 10px var(--cl-light)}
 
-  /* 词头（设计稿 .w-head）*/
-  .w-head{text-align:left;padding-bottom:15px;border-bottom:1px solid var(--line)}
-  .w-meta{justify-content:flex-start}
+  /* 词头（设计稿 .w-head）—— 🔵 方案 A 基准 = **居中**（锚点原文 text-align:center）*/
+  .w-head{text-align:center;padding-bottom:15px;border-bottom:1px solid var(--line)}
   .w-word{font-family:var(--serif);font-size:32px;font-weight:500;letter-spacing:-.015em;line-height:1.15}
   .w-meta{display:flex;align-items:center;justify-content:center;gap:9px;margin-top:6px}
   .w-ipa{font-family:var(--ipa);font-size:15px;color:var(--ink2)}
@@ -62,9 +61,9 @@
                   inset 1px 1px 3px var(--cl-light)}
   .spk svg{width:13px;height:13px;stroke:var(--accent);fill:none;stroke-width:1.9}
 
-  /* 记忆法块 —— 定案：**左侧色条**（不用凹陷块）
-     🔑 与 ④ 语境色条的区分靠 5 处（见文档 §3.5）*/
-  .mnem{margin-top:14px;padding-left:14px;border-left:3px solid var(--accent)}
+  /* 记忆法块 —— 🔵 方案 A 基准 = **凹陷底块**（锚点原文：全卡唯一有底色的段）*/
+  .mnem{margin-top:14px;border-radius:16px;padding:14px 14px 13px;background:var(--sunken);
+        box-shadow:inset 3px 3px 9px var(--cl-shade), inset -3px -3px 8px var(--cl-light)}
   /* 记忆法与上方答案区之间 —— 类别切换，比段间更大 */
   .def + .ctx + .mnem{margin-top:20px}
   .mnem-head{display:flex;align-items:center;gap:7px;margin-bottom:8px}
@@ -95,20 +94,19 @@
         box-shadow:4px 5px 12px var(--cl-out), inset -3px -3px 8px var(--cl-shade),
                    inset 2px 2px 6px var(--cl-light)}
 
-  /* ── 「现状」还原框（刻意不做词头居中/分隔线/凹陷块）──
-        ⚠️ 两侧的差异必须**只有我声称的那 4 处** —— 所以凡实现与锚点不同的值，
-           都要在这里显式覆盖回来，否则对比会失真（把「本来就不对」当成「改动效果」）。*/
-  .cur .w-head-l{text-align:left;padding-bottom:0;border-bottom:none}
-  .cur .w-meta-l{justify-content:flex-start;gap:10px;margin-top:7px}
-  .cur .spk-l{width:auto;height:auto;border-radius:0;background:none;box-shadow:none}
-  .cur .blk-noBG{margin-top:18px;border-radius:0;padding:0;background:none;box-shadow:none}
-  .cur .blk-noBG + .blk-noBG{margin-top:18px}
-  .cur .mnem-head{margin-bottom:8px}
-  .cur .def{margin-top:18px}
-  .cur .ctx{margin-top:18px;padding-left:11px;border-left:2px solid var(--line)}
-  .cur .lab{margin-bottom:8px}          /* 实现 8px（锚点 4px）*/
-  .cur .def-en{margin-top:6px}          /* 实现 6px（锚点 3px）*/
-  .cur .card{padding:22px 22px 18px}    /* 实现 22/4/22/18（锚点 20/19）*/
+  /* ── 「当前实现」还原框 = commit `60f3e8b` 之后的真机状态 ──
+        左对齐词头 + 分隔线 · ①② 左侧色条 · 内边距 22/4/22/18 · 喇叭裸图标
+        ⚠️ 这里只放「与方案 A 不同的值」，且**逐项对照过实现代码**
+           `app/lib/widgets/word_card.dart`（否则会把「本来就不对」当成「方案 A 的效果」）。*/
+  .cur .w-head-l{text-align:left}                    /* 实现左对齐；方案 A 居中 */
+  .cur .w-meta-l{justify-content:flex-start;gap:10px;margin-top:7px}   /* gap 10（锚点 9）· 上距 7（锚点 6）*/
+  .cur .spk-l{width:auto;height:auto;border-radius:0;background:none;box-shadow:none}  /* 裸图标 18px（锚点 26px 圆形）*/
+  .cur .blk-noBG{margin-top:20px;border-radius:0;padding:0 0 0 14px;background:none;box-shadow:none;
+                 border-left:3px solid var(--accent)}   /* 实现：①② 也是色条（与 ④ 撞形态）*/
+  .cur .blk-noBG + .blk-noBG{margin-top:14px}
+  .cur .mnem-head{margin-bottom:4px}      /* 实现 4px（锚点 8px）*/
+  .cur .def-en{margin-top:6px}            /* 实现 6px（锚点 3px）*/
+  .cur .card{padding:22px 4px 18px}       /* 实现 22/4/22/18（锚点 20/19，上下呼吸不对称）*/
 
   /* ── 标注（页面用，不影响卡片）── */
   .marker{position:relative}
@@ -134,11 +132,20 @@
      本稿只做<b>排版与视觉层级</b>，不改内容、不改数据、不改交互。</p>
 
   <div class="box" style="margin-top:14px">
-    <b>✅ 已定案（2026-09-28）</b>　白哥对四处取舍的决定，右侧「建议」栏即定案形态：<br>
-    <b>Q1 词头</b> → <b>保持左对齐</b>（不加居中；但<b>保留</b>词头下分隔线 —— 见 §3.1）<br>
-    <b>Q2 ①②</b> → <b>只加左侧色条</b>（不用凹陷底块）—— 与 ④ 语境的区分见 §3.5<br>
-    <b>Q3 词性</b> → <b>显示</b>（<span style="color:#A33220">实为「保持现状」—— 实现早已渲染，是本稿初版写错了</span>）<br>
-    <b>Q4 语境竖线</b> → <b>accentBright</b>（朱砂亮调）
+    <b>✅ 已定案（2026-09-28 16:5x）</b>　白哥：「<b>还是你上一版的方案 A 比较好</b>」
+    → <b>全按锚点</b>（词头居中 + ①② 凹陷块 + 内边距 20/19 + 喇叭 26px 圆形 + 间距归位）。<br>
+    <b>右栏即定案形态</b>；左栏是 <code>60f3e8b</code> 之后的真机态，留作对照。
+    ⚠️ 此前右栏 CSS 被我中途就地改成了生效版，所以它当时显示的是当前实现而非方案 A（详见 §3.6）。<br>
+    ✅ <b>已实施</b>：<code>word_card.dart</code> · L1 锚点 · <code>spec §5.2</code> · 断言
+    （<code>tokens_verify</code> 522 项全过）。
+  </div>
+
+  <div class="box" style="border-left-color:#9A8A6A">
+    <b>先前定案（已被 16:5x 的反悔覆盖，留作记录）</b>　白哥 Q1–Q4 的原选择：<br>
+    <b>Q1 词头</b> → 保持左对齐（保留词头下分隔线）　·　
+    <b>Q2 ①②</b> → 只加左侧色条（与 ④ 的区分见 §3.5）<br>
+    <b>Q3 词性</b> → 显示（<span style="color:#A33220">实为「保持现状」—— 实现早已渲染，是本稿初版写错了</span>）　·　
+    <b>Q4 语境竖线</b> → accentBright（朱砂亮调）
   </div>
 
   <!-- ═══════════════════════════════ -->
@@ -201,12 +208,12 @@
 
     <!-- ── 现状 ── -->
     <div class="col cur">
-      <p class="col-hd">现状 <span class="mk">按实现还原</span></p>
-      <p class="col-note">左对齐词头、无分隔线、四段并排、间距 18/16 混用</p>
+      <p class="col-hd">当前实现 <span class="mk">60f3e8b · 按代码还原</span></p>
+      <p class="col-note">左对齐词头（有下边线）；①② 是<b>左侧色条</b> —— 而 ④ 语境本来也是竖线 → 两者形态撞；内边距 22/4/22/18；喇叭是裸图标 18px</p>
       <div class="phone">
         <div class="screenbar"><span>复习 · 3 / 12</span><span>已到期</span></div>
         <div class="card">
-          <div class="w-head-l">
+          <div class="w-head w-head-l">
             <div class="w-word">disorganized</div>
             <div class="w-meta w-meta-l">
               <span class="w-ipa">/dɪsˈɔːrɡənaɪzd/</span>
@@ -253,8 +260,8 @@
 
     <!-- ── 建议 ── -->
     <div class="col">
-      <p class="col-hd">建议（方案 A） <span class="mk g">按 L1 锚点补齐</span></p>
-      <p class="col-note">词头居中 + 下边线；①② 用凹陷底块；段内虚线；间距 14/15/16 · 8 · 4 · 3</p>
+      <p class="col-hd">方案 A <span class="mk g">照 L1 锚点 · 白哥偏好此版</span></p>
+      <p class="col-note">词头<b>居中</b>（音标行同）+ 下边线；①② <b>凹陷底块</b>（全卡唯一有底色 → 与 ④ 靠<b>形状</b>区分，不靠参数）；内边距 20/19；喇叭 26px 圆形凸起；音标行 6px · 英文释义 3px</p>
       <div class="phone">
         <div class="screenbar"><span>复习 · 3 / 12</span><span>已到期</span></div>
         <div class="card">
@@ -307,25 +314,28 @@
 
   </div>
 
-  <p class="lead"><b>对照能看到的三点变化</b></p>
+  <p class="lead"><b>对照能看到的差异（「当前实现」→「方案 A」）</b></p>
   <ul>
-    <li><b>词头成了「头」</b>：居中 + 下边线 → 它是这张卡的主题，不再与内容混在一起</li>
-    <li><b>两类内容分开了</b>：①② 有凹陷底（<b>线索</b>），③④ 留白（<b>答案</b>）——
-        spec §5.2 说「① ② 独占 sunken —— 全卡唯一有底色的段」，正是这个作用</li>
-    <li><b>节奏出来了</b>：段间 14/15 明显大于段内 8 与标签下 4 → 眼睛能数出「这是三段」</li>
+    <li><b>词头回到居中</b>：词头是这张卡的主题 → 居中 + 下边线，仪式感回到锚点原样
+        （<span class="muted">左对齐那条是定案时选的，白哥 16:5x 改回方案 A</span>）</li>
+    <li><b>两类内容靠「形状」分开</b>：①② 变回<b>凹陷底块</b>（线索）、③④ 留白（答案）——
+        当前实现里 ①② 与 ④ <b>都是左侧竖线</b>，只能靠粗细/色相/内边距 5 个参数勉强区分；
+        凹陷块是<b>另一种形状</b>，一眼就分开（spec §5.2「① ② 独占 sunken —— 全卡唯一有底色的段」）</li>
+    <li><b>呼吸对称</b>：卡片内边距回到 <code>20/19</code>（当前 <code>22/4/22/18</code> —— 上 4 下 36）</li>
+    <li><b>喇叭有物理暗示</b>：<code>.spk</code> 26px 圆形凸起（当前是「飘着」的裸图标 18px）</li>
   </ul>
 
   <!-- ═══════════════════════════════ -->
-  <h2>三、四处取舍的决定记录</h2>
+  <h2>三、四处取舍的决定记录（含 16:5x 的反悔）</h2>
 
-  <h3>3.1 Q1 · 词头 → 保持左对齐 <span class="mk g">已定</span></h3>
+  <h3>3.1 Q1 · 词头 —— <span class="mk">原定「保持左对齐」</span> <span class="mk g">16:5x 改回「居中」</span></h3>
   <p>不居中（居中会让长词左右参差；左对齐与下面段落一条线到底，更「文档感」）。</p>
   <p>🔑 <b>但词头下的分隔线保留了</b> —— 它是让「词头成为头」的另一半，
      而 Q1 的问题只是「居中与否」。诊断 #1 的两半：<b>居中（否）+ 分隔线（要）</b>。
      <span class="muted">（如你也不要分隔线，说一声即可 —— 但那样词头与内容会重新黏在一起。）</span></p>
   <p class="muted">音标行（音标 + 喇叭）跟着左对齐，不再居中。</p>
 
-  <h3>3.2 Q2 · ①② 记忆法 → 只加左侧色条 <span class="mk g">已定</span></h3>
+  <h3>3.2 Q2 · ①② 记忆法 —— <span class="mk">原定「只加左侧色条」</span> <span class="mk g">16:5x 改回「凹陷底块」</span></h3>
   <p>不用凹陷底块（更轻，整卡仍像一篇文章）。</p>
   <p>⚠️ <b>这与 spec §5.2 有冲突，需要同步改规格</b>：
      §5.2 写「① ② 独占 <code>--sunken</code> 凹陷块 —— <b>全卡唯一有底色的段</b>」。
@@ -357,6 +367,62 @@
 
   <h3>3.4 Q4 · 语境竖线 → accentBright <span class="mk g">已定</span></h3>
   <p>照锚点。原先用 <code>line</code>（#EFE9DE）在浅纸上几乎看不见 —— 等于白设。</p>
+
+  <!-- ═══════════════════════════════ -->
+  <h3>3.6 🔴 白哥 2026-09-28 16:5x：「还是你上一版的方案 A 比较好」</h3>
+
+  <div class="q">
+    <b>⚠️ 先说一个必须先说的发现（否则你会对着错的东西选）</b><br>
+    本稿右栏的 CSS，在定案（commit <code>60f3e8b</code>）时被我**就地改成了生效版** ——
+    <code>.w-head</code> 改左对齐、<code>.mnem</code> 改色条。
+    <b>于是「建议（方案 A）」这一栏渲染出来的其实是当前实现，不是方案 A。</b>
+    → 上一版（<code>8d203d9</code>）画着「居中 + 凹陷块」的那一栏，才是真正的方案 A。<br>
+    ✅ <b>本稿已恢复</b>：右栏 = 真·方案 A（照 L1 锚点），左栏 = <code>60f3e8b</code> 的真机态。
+  </div>
+
+  <p><b>方案 A 的定义</b>（原文见上一版右栏标题）：<b>按 L1 锚点 <code>visual-word-card-target</code> 补齐</b> ——
+     不是另造一套样式，而是把锚点里写了、实现里漏了（或被定案改掉）的值恢复过来。</p>
+
+  <h3>逐项差异（方案 A vs 当前实现）</h3>
+  <table>
+    <tr><th>#</th><th>项</th><th>方案 A（L1 锚点原文）</th><th>当前实现 <code>60f3e8b</code></th><th>曾有定案？</th></tr>
+    <tr><td>1</td><td>词头排布</td><td><code>text-align:center</code></td><td class="bad">左对齐</td><td class="warn">✅ Q1 定「左对齐」→ <b>拟反转</b></td></tr>
+    <tr><td>2</td><td>词头分隔线</td><td><code>padding-bottom:15px</code> + <code>border-bottom:1px line</code></td><td class="ok">✅ 已有</td><td>未单独讨论（Q1 里保留）</td></tr>
+    <tr><td>3</td><td>①② 容器</td><td><code>background:sunken</code> + <code>radius:16</code> + <code>padding:14 14 13</code> + 两个 inset</td><td class="bad">左侧色条 <code>3px accent</code> + 左内边距 14</td><td class="warn">✅ Q2 定「色条」→ <b>拟反转</b></td></tr>
+    <tr><td>4</td><td>④ 语境竖线</td><td><code>2px accentBright</code></td><td class="ok">✅ 已有</td><td class="ok">✅ Q4</td></tr>
+    <tr><td>5</td><td>段内虚线</td><td><code>.mnem-note</code>：上距 8 + 虚线 <code>1px dashed</code></td><td class="bad">无</td><td>❌ 未讨论 · ⚠️ <b>适用性待核</b>（我们 ①② 目前没有「段内说明」这一层数据）</td></tr>
+    <tr><td>6</td><td>卡片内边距</td><td><code>20px 19px</code>（上下对称）</td><td class="bad">22 / <b>4</b> / 22 / <b>18</b>（上 4 下 36）</td><td>❌ 未讨论</td></tr>
+    <tr><td>7</td><td>喇叭 <code>.spk</code></td><td>26×26 圆形 + 凸起 + 朱砂描边</td><td class="bad">裸图标 18px</td><td>❌ 未讨论（诊断 #4 已列）</td></tr>
+    <tr><td>8</td><td>音标行 上距 / gap</td><td><code>6px</code> / <code>gap 9</code></td><td class="warn">7px / gap 10</td><td>❌ 未讨论</td></tr>
+    <tr><td>9</td><td>英文释义上距</td><td><code>3px</code></td><td class="warn">6px</td><td>❌ 未讨论</td></tr>
+    <tr><td>10</td><td>段间距 / 标签下距</td><td><code>mnem 14</code> · <code>def 15</code> · <code>ctx 14</code> · <code>lab 4</code></td><td class="ok">✅ 已归位（+ 组上距 20 —— 因顺序改为「答案在上」）</td><td class="ok">✅ 60f3e8b</td></tr>
+  </table>
+
+  <p>🔑 <b>方案 A 里最值钱的一条是 #3</b>：当前 ①② 与 ④ <b>都是左侧竖线</b>，
+     只能靠「粗细 / 色相 / 内边距 / 标签色 / 有无箭头」五个参数硬分（§3.5）；
+     凹陷块是<b>另一种形状</b> —— 不用比参数，一眼就分开。
+     #1 居中则是把「词头是卡的主题」这层意思找回来。</p>
+
+  <h3>落地要动的文件（改了代码就瞒不过这 4 处）</h3>
+  <table>
+    <tr><th>文件</th><th>改什么</th></tr>
+    <tr><td><code>app/lib/widgets/word_card.dart</code></td><td>词头居中 · <code>_block</code> 的「色条」→「凹陷块」· 内边距 · 喇叭 26px 圆形 · 音标行与英文释义间距</td></tr>
+    <tr><td><code>visual-word-card-target-2026-09-26.html</code>（<b>L1 锚点</b>）</td><td>撤 3 处「修正标注」，恢复 <code>center</code> / <code>.w-meta</code> 居中 / <code>.mnem</code> 凹陷块 —— 🔑 锚点必须反映当前目标，否则它失效</td></tr>
+    <tr><td><code>design-system-spec-2026-09-25.md</code> §5.2</td><td>「左侧色条」→ 回「① ② 独占 <code>--sunken</code>（全卡唯一有底色）」</td></tr>
+    <tr><td><code>scripts/tokens_verify/bin/verify_tokens.dart</code></td><td>§1834–1875 那组断言现在断言的是「①② 有 leftBar」→ 改为「①② 有凹陷底色 / 词头居中」</td></tr>
+  </table>
+
+  <div class="box">
+    <b>✅ 范围已定：全按锚点</b>　白哥在 ① 全按锚点 / ② 只回退 ①② / ③ 只回退「居中 + 凹陷块」
+    三选一中选了 <b>①</b>。<br>
+    → 上表 <b>#1 #3 #6 #7 #8 #9</b> 全部按锚点恢复；<b>#5 段内虚线</b>仍待核
+    （我们 ①② 目前没有「段内说明」这一层数据，锚点的 <code>.mnem-note</code> 暂时无处落）。<br>
+    · 另有一条**表外**改动：<b>末尾留白 18 被删除</b> —— 它与卡片内边距叠加
+      （下 18+18=36 vs 上 4）；内边距回到 20/19 后它就没有存在理由了。<br>
+    · 还有一条**锚点写了、而我一直写错**的：<b>标签下距</b> ——
+      ③④ 是 <code>.lab</code> 的 <b>4px</b>，①② 是 <code>.mnem-head</code> 的 <b>8px</b>；
+      中途我按 <code>.lab</code> 一刀切成 4px，现已按段分开（<code>_block(labelGap:)</code>）。
+  </div>
 
   <!-- ═══════════════════════════════ -->
   <h2>四、附：完整规格（实施时逐条对照）</h2>
@@ -408,9 +474,13 @@
   </ul>
 
   <div class="box" style="margin-top:26px">
-    <b>下一步</b>：你回四处选择（Q1–Q4）后，我按定稿改 <code>widgets/word_card.dart</code> 与
-    <code>_block</code>/<code>_sectionBody</code>，并补断言锁住「①② 有底块、③④ 无底块」
-    「词头有分隔线」这类**结构性**规格 —— 这些正是上一轮漏掉、且编译器看不出来的东西。
+    <b>✅ 已实施</b>：<code>word_card.dart</code>（词头居中 · <code>_block</code> 凹陷块 ·
+    内边距 19/20 · 喇叭 26px 圆形 · 音标行/英文释义间距）· L1 锚点 CSS 撤回 3 处修正标注 ·
+    <code>design-system-spec</code> §5.2 回「凹陷底块」· 断言由「①② 有 leftBar」
+    反转为「①② 有凹陷底色 / 词头居中 / ④ 仍为竖线」。<br>
+    🔑 这些正是<b>编译器看不见</b>、只能靠断言锁住的结构性规格（<code>tokens_verify</code> 522 项全过）。<br>
+    ⏳ <b>仍需真机确认</b>（我这边 <code>flutter</code> 命令必崩，构建只能白哥跑）：
+    凹陷块的粘土厚度是否合适 · 喇叭 26px 圆形的大小手感 · 词头居中的观感。
   </div>
 
 </div>
