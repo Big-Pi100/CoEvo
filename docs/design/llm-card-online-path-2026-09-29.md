@@ -491,4 +491,125 @@ content = {'front': wl, 'ipa': src_pron.get(wl), ...}                           
 | 🆕 `scripts/smoke_contract.py` | **契约回归测试** —— 每次改 prompt 都该跑（10 条 · ¥0.07） |
 
 
+---
+
+## 十三、🆕 回答白哥两问：`hit_count` 的边界 + 聚合页能否更新（2026-09-29 02:1x）
+
+> 白哥问：「`hit_count` 能负担去重机制吗？聚合页能更新吗？」
+> 🔑 查证时**又搜到一份完整规格**（我此前漏了）：
+> **`docs/design/on-demand-generation-server-side-2026-09-26.md`** —— 含 §4.1 **完整九步数据流**、
+> §4.3 **竞态处理**、§4.4 版本分发。**这是「LLM 制卡」的正牌规格**，本报告 §十一/§十二 与它高度一致。
+
+### 13.1 Q1：`hit_count` **不管去重**，它管的是「需求信号」
+
+先分层 —— **「去重」其实是四件不同的事**，各有各的承担者：
+
+| 去重场景 | 谁承担 | `hit_count` 的角色 |
+|---|---|---|
+| ① 不产生重复行（同一词多行） | 🔑 **PK = `spelling`**（L0 §480） | ❌ 不管 |
+| ② **并发去重**（10 人同时查同一新词） | 🔑 **词级互斥锁 / in-flight 去重**（规格 §4.3） | ❌ 不管 |
+| ③ 跨时间复用 | 🔑 **缓存存在即命中**（`generated_card_cache`） | ❌ 不管 |
+| ④ **回流门槛**（该不该进 `word.db`） | ✅ **`hit_count`** | ✅ **这才是它的职责** |
+
+> 📌 规格 §4.3 原文已写：「🔑 这也是「服务端生成」相对「端侧生成」的一个额外收益：
+> **去重天然可行**」—— 但它靠的是**互斥锁**，不是 `hit_count`。
+> **别把两件事混在一个字段上**（本项目判据：「同一件事的『口径』只能有一处权威」）。
+
+#### 🔴 但 `hit_count` 单独当门槛有**三个缺陷**
+
+| # | 缺陷 | 后果 | 修法 |
+|---|---|---|---|
+| **1** | 🔴 **没有 user 维度**（L0 §479 只有 `spelling` + `hit_count`） | 同一用户查 100 次 → `hit_count=100` → **被当成「真需求」** | 加 **`distinct_user_count`**（或 `(spelling, user_id)` 去重表）· 门槛用**它**而非 `hit_count` |
+| **2** | 🔴 **不区分 `is_own_entry`** | `things` / `thing` 是**两个 spelling** → 各自累加；但 `things` 应作**变形**进 `word_form`，**不是**独立词条 | 用 **v6 的 `is_own_entry` + `derived_from`** 分流（这正是 v6 已有的字段） |
+| **3** | 🟠 **不区分「谁贡献的」** | 同一用户的 100 次掩盖了「只有 1 个人需要它」 | 同 ① |
+
+**结论**：`hit_count` **能负担门槛**（它确实反映热度），但**不能负担「去重」**；
+且**单独用它做门槛会误判**（缺 user 维度）→ **建议补 `distinct_user_count`**，两个数一起看。
+
+> 🔑 **「去重」的第 5 层（词形归一）也已经有了** ——
+> 就是 v6 新增的 `is_own_entry` / `derived_from`。
+> 例：用户查 `things` → LLM 输出 `is_own_entry=false, derived_from='thing'`
+> → 回流时**只把 `thing` 当词条**，`things` 进 `word_form` 映射。
+
+### 13.2 Q2：聚合页**能更新** —— 机制已实现，但有 **3 个缺口**
+
+#### ✅ 已经有的（`scripts/incremental_clustering.py` · 34 项验收全过）
+
+| 能力 | 位置 | 说明 |
+|---|---|---|
+| **门槛跨越三情形** | `_sync_root_page:253-266` | `size≥3 且无页` → **新建** · `size<3 且有页` → **删除** · 否则 → **更新成员+计数** |
+| 词根按**三元组**匹配 | `match_or_create_root` | `(form,type,origin)` —— 🔴 实测 **116 个同形异源词根**（`man` = 「人」OE 与「停留」Latin 是两条）；只用 `form` 会污染 110 个族（批量版踩过） |
+| 成员重建 | `_rebuild_page_members` | `DELETE` + 按序重新 `INSERT` |
+| 备份/恢复 | `remove_word` + `_prune_empty_groups` | 含 10 张引用表的级联清理 |
+
+#### 🟢 而且端侧的**成员列表是动态的**（好消息）
+
+实测 `word_query_service.dart`：
+
+| 端侧读什么 | 来源 | 新词回流后 |
+|---|---|---|
+| **成员列表**（谁在这个族） | `JOIN aggregate_page_word`（:147） | ✅ **自动出现** |
+| **卡片入口 / 计数** | `JOIN aggregate_page`（:126） | ✅ **自动更新**（运行时查，不是快照） |
+
+→ 🔑 **老词的卡片不需要改** —— 入口是**运行时 JOIN**，新页/新计数**自动可见**。
+（这与 v1 §八「卡片内容固化」并不冲突：固化的是**卡面内容**，入口是**索引**。）
+
+#### 🔴 缺口 A：**content 格式不兼容**（最严重，静默失效）
+
+| 写入方 | content 结构 |
+|---|---|
+| **`load_llm_results.py:703`**（现网库） | `{'front': label, 'sections': [{'type':'cognate_list', 'source': {...}, 'items': [{word, word_id, gloss}]}]}` |
+| **`incremental_clustering.py:316`** | `{'members': [{word, gloss, word_id}]}` 🔴 **完全不同** |
+
+端侧读的是前者（`d['sections'][0]['source']` + `items[].gloss`，:286-299）→
+**用增量聚类建的新页，端侧读出来是：`source=null`（大字/语种/含义全空）+ 所有成员无释义**。
+⚠️ 而且**不报错** —— 端侧那段有 `try/catch`，坏 JSON **故意静默**（注释：「一条坏数据不该让整个界面渲染不出来」）→ **典型的静默失效**。
+
+#### 🔴 缺口 B：只更新关联表，**不更新 content**
+
+`_rebuild_page_members` 只改 `aggregate_page_word`。
+→ 成员**能出现**（JOIN ✅），但 **gloss（成员释义）不会** —— 它存在 `content.sections[0].items[].gloss` 里，而 content **没被重建**。
+
+#### 🟡 缺口 C：**排序口径不同** → 两条路产出不同的库
+
+| 来源 | 排序 |
+|---|---|
+| `load_llm_results.py:702` | `items.sort(key=lambda x: x['word'])` ← **字母序** |
+| `incremental_clustering._rebuild_page_members` | `ORDER BY w.sort_seq` ← **词库序** |
+
+→ 即使格式修好，**成员顺序也不一致** → 产出**不同的库**。
+🔑 而这**正是该脚本头部自己担心的事**：「聚类逻辑必须与批量版完全一致，否则**两条路会产出不同的库**」——
+**担心对了，但只在「聚类逻辑」上对齐了，没对齐「content 格式与排序」。**
+
+#### 🟡 缺口 D：**只写没接线**
+
+```
+grep -rn "incremental_clustering" → 只有：它自己 + 它的验收脚本 + 记忆/文档
+```
+→ **零生产调用方**。而 `on-demand-generation-server-side` §4.1 步骤 ⑧ 写「已就绪 34 项验收」，
+**把「自测通过」当成了「可以直接接」**。
+
+🔑 **新判据（本轮最有价值的一条）**：
+> **「组件自测通过」≠「与下游能对接」。**
+> 34 项验收验的是**它自己的逻辑**（在真库副本上跑、源库指纹未变）；
+> **没有一项验「它写出的内容，下游（端侧）能不能读出来」** ——
+> 而这次的两个缺口（格式 / 排序）**全都在这个交界面上**。
+> → **验收清单里必须有「下游读取」这一项**（跨端契约）· 与既有判据「**只写不读 = 功能等于没做**」同族。
+
+### 13.3 修订建议（累加到执行计划）
+
+| # | 动作 | 优先级 |
+|---|---|---|
+| 1 | 🔴 `incremental_clustering` 的 content 生成**改为与 `load_llm_results` 同构**（抽成共享函数，避免第三次分叉） | **高**（不改则新页对端侧不可用） |
+| 2 | 🔴 `_rebuild_page_members` 之后**同步重建 content.items**（含 gloss） | **高** |
+| 3 | 🟠 成员排序统一（建议**跟随 `load_llm_results` 的定义**，它就是现网口径） | 中 |
+| 4 | 🔴 `generated_card_cache` 加 **`distinct_user_count`**（门槛用它，`hit_count` 只作参考） | 中 |
+| 5 | 回流时用 **`is_own_entry` / `derived_from`** 做词形归一（own_entry=false → 进 `word_form`） | 中 |
+| 6 | ✅ **复用既有的两个验收过的组件**：`scan_compliance.py`（合规 · 29 项）+ `incremental_clustering.py`（聚类 · 34 项） | — |
+
+> ⚠️ **第 1 项的做法**：把「content 结构生成」抽成一个**共享函数**（放 `coevo_wordlib_contract.py` 或新模块），
+> **两个脚本都调它** —— 而不是「把 incremental 的格式改成 load 的样子」（那只是把分叉挪了个位置，下次还会分）。
+> 🔑 这与「**同一件事的口径只能有一处权威**」是同一条判据。
+
+
 *本文为调查产出，**未改动任何代码/数据**。跑法：本报告的每条数字均可由 `grep`/`sqlite3` 在本机复现。*
