@@ -2193,9 +2193,23 @@ void _s17ReviewList() {
     //       图标只占左边 → 整块居中时文字**必然**偏右 (13+6)/2 = 9.5px（无法通过调参消除）。
     //       要消掉它只有两条路：① 右侧留等量空白（＝21:0x 的做法 → 右侧 27px 全空，观感更差）
     //       ② **不要图标**（→ 文字天然居中 + 左右对称）。
-    final hasLabelMinWidth = chipBody.contains('labelMinWidth');
-    check('🔴 有 `labelMinWidth`（文字区定宽 → 两态同宽 + 文字位置不横移）',
-        hasLabelMinWidth, 'labelMinWidth 在不在: $hasLabelMinWidth');
+    //
+    // 🔄🆕 2026-09-28 22:2x **第四次修正**：定宽**不再用像素**。
+    //    白哥：「**宽度应该按「已到期」三字，现在显示「已到期」时变成两行了**」。
+    //    🔴 根因：上面 21:0x 那版取的 `labelMinWidth = 36` 是「3 字 × 11.5px」的
+    //       **估算**，而中文字形的 advance **并非恰好 1em**（字体 fallback、
+    //       `w600` 的合成加粗、系统「文字大小」缩放都会让它更宽）
+    //       → 真机上「已到期」被 36 挤成**两行**。
+    //    🔑 修法：改传**参照文案** `labelReserve`（复习页传 `'已到期'`），
+    //       组件用**隐形占位**把它量出来 → 宽度由**引擎实测**，
+    //       与字体 / 系统缩放无关地**永不折行**，且两态同宽、文字仍居中。
+    //    🔑🔑 通用判据：**凡由「字号 × 字数」反推出来的可用宽度，
+    //       迟早会在真机上不够。能用「让引擎实测另一个字符串」解决的，不要写死像素。**
+    final hasLabelReserve = chipBody.contains('labelReserve');
+    check('🔴 有 `labelReserve`（宽度参照**文案** → 两态同宽 + 文字位置不横移）',
+        hasLabelReserve, 'labelReserve 在不在: $hasLabelReserve');
+    check('🔴 参照是**文案**而不是像素（`final String? labelReserve`）',
+        chipBody.contains('final String? labelReserve'));
 
     // 🔴 **「文字真居中」的代码级保证**：右内边距 = 左内边距 + **图标块宽**。
     //    推导：药丸宽 = L + labelW + R；文字区中心 = L + labelW/2；
@@ -2212,17 +2226,26 @@ void _s17ReviewList() {
         hasSymmetricBranch, '分支在不在: $hasSymmetricBranch');
     check('  图标块宽：有图标 19（13+6）／ 无图标 0',
         chipBody.contains('hasIcon ? (_iconSize + _iconGap) : 0.0'));
-    check('  文字区**定宽** + 文案居中（两态文字中心同位）',
-        chipBody.contains('width: lw') && chipBody.contains('TextAlign.center'));
+    // 🔑 新的实现形态：**隐形占位 + `Stack`**（宽度实测 —— 不再有 `SizedBox(width: lw)`）
+    check('🔴 宽度由**隐形占位**实测（`Stack` + 占位 + 居中叠放）',
+        chipBody.contains('Stack(') &&
+            chipBody.contains('opacity: 0') &&
+            chipBody.contains('alignment: Alignment.center'));
+    check('🔴 占位**不进语义树**（`ExcludeSemantics` → 读屏不重复念参照文案）',
+        chipBody.contains('ExcludeSemantics'));
+    check('🔴 `maxLines: 1` + `softWrap: false`（「永不折行」的兜底）',
+        chipBody.contains('maxLines: 1') && chipBody.contains('softWrap: false'));
+    // 🔴 反向：不得回到「写死像素的定宽」—— 那正是「已到期」折行的根因
+    check('🔴 不再出现写死的定宽（`width: lw`）', !chipBody.contains('width: lw'));
 
     // 🔴 反向：不得再回到「把最小宽加在整块内容区」（那就是上一版的口径错误）
     check('🔴 不再用 `BoxConstraints(minWidth:` 撑整块内容（口径错 → 药丸宽出 padding）',
         !chipBody.contains('BoxConstraints(minWidth:'));
 
-    // 🔑 `labelMinWidth` 与 `count` 互斥（居中的推导假设文字区右侧没有其它元素）
-    check('🔴 `labelMinWidth` 与 `count` 互斥（构造函数有 assert）',
+    // 🔑 `labelReserve` 与 `count` 互斥（居中的推导假设文字区右侧没有其它元素）
+    check('🔴 `labelReserve` 与 `count` 互斥（构造函数有 assert）',
         chipBody.contains('assert(') &&
-            chipBody.contains('labelMinWidth == null || count == null'));
+            chipBody.contains('labelReserve == null || count == null'));
 
     // 🆕 **图标改为可选**（`IconData?`）—— 这使「纯文字药丸」成为合法形态。
     check('🔴 `icon` 可空（`IconData?`）—— 纯文字药丸是允许的',
@@ -2234,10 +2257,14 @@ void _s17ReviewList() {
     // 🔑 断调用处的**特有形态**（带实参），不是方法名 —— 否则「删掉传参」照样为绿
     check('🔴 复习页传了 `active:`（筛选生效时浮起）',
         review.contains('active: _args.dueOnly'));
-    check('🔴 复习页传了 `labelMinWidth: _filterChipLabelWidth`',
-        review.contains('labelMinWidth: _filterChipLabelWidth'));
-    check('  文字区常量 = 36（须容纳「已到期」3 字 × 11.5px = 34.5）',
-        review.contains('_filterChipLabelWidth = 36'));
+    check('🔴 复习页传了 `labelReserve: _filterChipReserveLabel`',
+        review.contains('labelReserve: _filterChipReserveLabel'));
+    check('🔴 参照文案 = `已到期`（**必须是「最长的那个」** —— 传短了会溢出）',
+        review.contains("_filterChipReserveLabel = '已到期'"));
+    check('🔴 复习页不再传像素口径的 `labelMinWidth`',
+        !review.contains('labelMinWidth:'));
+    check('🔴 像素常量 `_filterChipLabelWidth` 已彻底移除（口径没回退）',
+        !review.contains('_filterChipLabelWidth'));
     check('🔴 复习页不再用旧的 `_filterChipWidth`（整宽口径 —— 已废弃）',
         !review.contains('minWidth: _filterChipWidth'));
 
@@ -2250,6 +2277,51 @@ void _s17ReviewList() {
         src('screens/home_screen.dart').contains('icon: Icons.bookmark_border'));
     check('  信息流「收藏」入口**不传** active（它是入口，不是开关 → 保持凹陷）',
         !src('screens/home_screen.dart').contains('active:'));
+  }
+
+  // ⑩ 🔴🔴 **Clay 凹陷容器里的输入框必须「完全无边框」**（2026-09-28 22:2x 真机 Bug）
+  //
+  // 白哥：「**搜索栏有个红色的线框，这个线框取消掉**」。
+  // 🔴 根因：`theme_builder.dart` 的 `inputDecorationTheme` 给**全局**输入框定了
+  //    `focusedBorder = accent(#B4432C) 1.6px`；而 `InputDecoration` 的 border 类字段
+  //    是**各自独立**从 theme 继承的 ——
+  //    ```dart
+  //    InputDecoration(border: InputBorder.none)   // ❌ 只覆盖了 border
+  //    ```
+  //    聚焦时 `InputDecorator` 取的是主题的 `focusedBorder` → 冒出朱砂色线框。
+  //    两处输入框（复习页搜索框「展开即自动聚焦」· 测验框 `autofocus: true`）
+  //    都**一下就到聚焦态** → **必现**，不是偶发。
+  //
+  // 🔑 判据：**要「完全无边框」，必须把 border 类字段*全部*设为 `none`。**
+  //    留一个为 `null`，那个状态就会把主题的边框放回来。
+  //    （同 `HeaderChip` 那条教训：「**主题里有**」≠「**调用处已覆盖**」。）
+  //
+  // 🔑 为什么这两个输入框「不该有框」：它们都嵌在 `Clay(state: pressed)` 里 ——
+  //    凹陷本身就是「这里可以输入」的视觉语言，再叠一圈描边是**两套语汇打架**。
+  {
+    final tb = src('theme/theme_builder.dart');
+    check('🔴 有全库唯一的 `borderlessInputDecoration`（无框输入的唯一定义处）',
+        tb.contains('InputDecoration borderlessInputDecoration('));
+    check('🔴 六个 border 类字段**全部** none（少一个，那个状态就会漏出主题边框）',
+        tb.contains('border: InputBorder.none') &&
+            tb.contains('enabledBorder: InputBorder.none') &&
+            tb.contains('disabledBorder: InputBorder.none') &&
+            tb.contains('focusedBorder: InputBorder.none') &&
+            tb.contains('errorBorder: InputBorder.none') &&
+            tb.contains('focusedErrorBorder: InputBorder.none'));
+
+    for (final f in [
+      'screens/review_screen.dart',
+      'screens/review_session_screen.dart',
+    ]) {
+      final code = src(f);
+      check('🔴 $f 的输入框走 `borderlessInputDecoration(`',
+          code.contains('borderlessInputDecoration('));
+      // 🔴 反向：**不得**再裸写 `border: InputBorder.none`
+      //    —— 那正是「只覆盖 border、漏掉 focusedBorder」的原始写法。
+      check('🔴 $f 不再裸写 `border: InputBorder.none`（会漏掉 focusedBorder）',
+          !code.contains('border: InputBorder.none'));
+    }
   }
 
   // ⑦ 🔴 卡片**有发音入口**（设计稿 mockup 的 `spk`）

@@ -54,6 +54,7 @@ import '../services/review_list_query.dart';
 import '../theme/clay.dart';
 import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
+import '../theme/theme_builder.dart';
 import '../theme/tokens_ext.dart';
 import '../widgets/header_chip.dart';
 
@@ -71,31 +72,27 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   ///    它和排序一样是「查询参数」，两份状态会出现「界面显示已筛、查询没筛」的错位。
   ReviewListArgs _args = const ReviewListArgs();
 
-  /// 「全部 / 已到期」筛选药丸的**固定宽度**（2026-09-28 20:1x 白哥定「两态大小统一」）。
+  /// 「全部 / 已到期」筛选药丸的**宽度参照文案**（2026-09-28 22:2x 修正）。
   ///
-  /// 🔴 **为什么必须固定**：label 在「全部」(2 字) / 「已到期」(3 字) 间切换，
-  ///    不固定则宽度跳变约 **11.5px**（一个字的宽）→ 整条标题栏跟着抖。
+  /// 🔴 **为什么需要参照**：label 在「全部」(2 字) / 「已到期」(3 字) 间切换，
+  ///    不定宽则 ① 宽度跳变 ~11.5px（一个字的宽）→ 整条标题栏跟着抖、
+  ///    ② 文字中心横移 ~5.75px。
   ///
-  /// 取值 **84** ＝ 信息流「收藏 N」药丸的宽度（按设计稿尺寸推算）：
-  /// `padding 12×2 + icon 13 + gap 6 + 「收藏」2 字×11.5 + gap 6 + 两位计数≈11.6 ≈ 83.6`
-  /// → 两处药丸**视觉等宽**（白哥：「最好和阅读页面的收藏大小一致」）。
+  /// 🔑 **传「最长的那个 label」本身**（而不是一个像素值）——
+  ///    `HeaderChip` 会用一个**隐形占位**把它量出来，宽度于是**由引擎实测**：
+  ///    · 两态同宽（占位文案不变）
+  ///    · 文字落在药丸正中（`L == R`，推导见 `HeaderChip` 类文档）
+  ///    · 🔴 **永不折行** —— 这正是上一版的失败点。
   ///
-  /// ⚠️ **84 是推算值，不是实测值** —— 我这边跑不了 `flutter`，量不到真实渲染宽度。
-  ///    真机若觉得偏差，**只调这一个常量**即可（两处都会跟着走）。
-  /// 「全部 / 已到期」药丸的**文字区**宽度（不是药丸整宽）。
+  /// ## 上一版为什么错（教训）
+  /// 上一版传 `labelMinWidth: 36`，取值来自「3 字 × 11.5px = 34.5，取 36」的**估算**
+  /// （当时的推理链：药丸整宽 = 左内边距 8 + 图标 13 + 间距 6 + 文字 36 + 右 27 = 90）。
+  /// 真机上「已到期」**折成了两行** —— 因为中文字形的 advance **并非恰好 1em**：
+  /// 字体 fallback、`w600` 的合成加粗、系统「文字大小」缩放，都会让它更宽。
   ///
-  /// 🔑 取值须容纳**最长的那个 label**：「已到期」3 字 × 11.5px = **34.5** → 取 **36**。
-  ///
-  /// 📐 药丸实际整宽 = `2 ×(8 + 13 + 6) + 36` = **90**
-  ///    （`_iconLead 8` + 图标 13 + 间距 6 + 文字区 36 + 右内边距 27，
-  ///     右内边距 = 左内边距 + 图标 + 间距 —— 见 `HeaderChip` 的居中推导）。
-  ///
-  /// 🔄 2026-09-28 21:0x 白哥真机反馈「药丸太宽」「内容看起来不居中」→ 两处都修：
-  ///    ① 上一版把「整宽 84」传给了作用在 padding **内部**的 `minWidth`
-  ///       → 药丸实际 **108**（比目标宽 24，内容只占 39% → 看着空）。
-  ///    ② 整块内容居中时，**文字**会被前置图标推右 `(13+6)/2 = 9.5px`。
-  ///    → 现改为「文字区定宽 + 右内边距反推」，文字**精确落在药丸正中**。
-  static const double _filterChipLabelWidth = 36;
+  /// 🔑 **判据：凡由「字号 × 字数」反推出来的可用宽度，迟早会在真机上不够。**
+  ///    能用「让引擎实测另一个字符串」解决的，就不要写死像素。
+  static const String _filterChipReserveLabel = '已到期';
 
   final _searchController = TextEditingController();
 
@@ -286,11 +283,11 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               //       原先「选中 → 强调色填充」会与 `_SortChip` 的选中态撞脸
               //       （两者都变成实心药丸 → 用户会以为它们是同一组单选）。
               //
-              // 🔄 2026-09-28 20:1x / 21:0x / 21:3x 白哥三次修正：
+              // 🔄 2026-09-28 20:1x / 21:0x / 21:3x / 22:2x 白哥真机**四次**修正：
               //    ① **两态一凹一凸**（`active`）：`dueOnly` 为真 = 筛选生效 → 浮起；
               //       为假 = 无筛选 → 凹陷。同 `BookmarkButton`「已收藏 = 凸起」的语汇。
-              //    ② **文字区定宽**（`labelMinWidth`）：label 在「全部」(2 字) /
-              //       「已到期」(3 字) 间切换时，① 药丸宽度不跳变、② 文字位置不横移。
+              //    ② **定宽**：label 在「全部」(2 字) / 「已到期」(3 字) 间切换时，
+              //       ① 药丸宽度不跳变、② 文字位置不横移。
               //    ③ **去掉图标** —— 白哥看过 ② 的实际观感后：
               //       「右上角按钮更不对了，还不如原来的」。
               //       🔑 原因是**数学必然**：药丸内容 = [图标 13][间距 6][文字]，
@@ -298,12 +295,17 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               //          要消掉它只能「右侧留等量空白」（＝② 的做法）→ **右侧 27px 全空**，
               //          观感比偏移更糟。
               //       → 去掉图标是**唯一**能让文字既不偏、又左右对称的办法。
-              //       实测：宽 90 → **60**；文字中心 30 = 药丸中心 30（精确）；两侧留白各 18.5。
               //       📊 五方案对比（带中心线标注）→ `docs/design/filter-chip-options-2026-09-28.html`
+              //    ④ 🔴 **「定宽」不再用像素** —— 白哥 22:2x：
+              //       「**宽度应该按「已到期」三字，现在显示「已到期」时变成两行了**」。
+              //       ② 那版传的是 `labelMinWidth = 36`（「3 字 × 11.5px」的**估算**），
+              //       真机上「已到期」**折成两行**（中文 advance 并非恰好 1em）。
+              //       → 改传**参照文案** `labelReserve`，宽度**由引擎实测**
+              //         → 两态同宽、文字居中、且**与字体/缩放无关地永不折行**。
               HeaderChip(
                 label: _args.dueOnly ? '已到期' : '全部',
                 active: _args.dueOnly,
-                labelMinWidth: _filterChipLabelWidth,
+                labelReserve: _filterChipReserveLabel,
                 onTap: () => setState(
                     () => _args = _args.copyWith(dueOnly: !_args.dueOnly)),
               ),
@@ -358,9 +360,12 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                 fontSize: 14,
                 color: Color(t.ink.argb32),
               ),
-              decoration: InputDecoration(
-                isDense: true,
-                border: InputBorder.none,
+              // 🔴 必须走 `borderlessInputDecoration` —— **不能**只写
+              //    `border: InputBorder.none`：theme 全局设了 `focusedBorder`
+              //    （朱砂 1.6px），只覆盖 `border` 时聚焦仍会冒出红色线框。
+              //    本页展开搜索会**自动聚焦**（见 `_searchExpanded` 的注释）→ 必现。
+              //    根因与判据 → `theme_builder.dart` 的 `borderlessInputDecoration`
+              decoration: borderlessInputDecoration(
                 hintText: '搜索单词',
                 hintStyle: TextStyle(
                   fontFamily: CoFonts.uiSans,

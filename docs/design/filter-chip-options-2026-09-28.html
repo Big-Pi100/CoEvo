@@ -39,6 +39,8 @@
   .box b{color:var(--accent)}
   .box.g{border-left-color:#3E6B4A}
   .box.g b{color:#3E6B4A}
+  .box.r{border-left-color:#A33220}
+  .box.r b{color:#A33220}
 
   /* ── 药丸（精确复刻实现）──
      11.5px / w600 / 朱砂；凹陷 = sunken 底 + 两个 inset；凸起 = card 底 + 外阴影。
@@ -105,6 +107,21 @@
     （<b>无需特判</b> —— 公式「右 = 左 + 图标块宽」本身就把两种情况统一了）。
     <br><span class="muted">📌 本页保留五个方案的<b>原始形态</b>（含被否决的 ①②③④）——
       决策史本身有价值，且它记录了「为什么保留图标就一定不正」这条数学结论。</span>
+  </div>
+
+  <div class="box r">
+    <b>🔴 第四次修正（2026-09-28 22:2x · 真机）→ 宽度<b>不再写死像素</b>，已实施</b><br>
+    白哥：「<b>宽度应该按「已到期」三字，现在显示「已到期」时变成两行了</b>」<br>
+    <b>根因</b>：上面 ⑤ 的定宽取的是 <code>labelMinWidth = 36</code> ——
+    那是「<b>3 字 × 11.5px = 34.5</b>」的<b>估算</b>；而中文字形的 advance
+    <b>并非恰好 1em</b>（字体 fallback / <code>w600</code> 的合成加粗 /
+    系统「文字大小」缩放都会让它更宽）→ 真机上被 36 <b>挤成两行</b>。<br>
+    <b>修法</b>：改传<b>参照文案</b> <code>labelReserve: '已到期'</code>，
+    组件用<b>隐形占位</b>（<code>Stack</code> + <code>Opacity(0)</code>）把它量出来
+    → 宽度由<b>引擎实测</b>：两态同宽 + 文字仍居中 + <b>永不折行</b>。<br>
+    <span class="muted">🔑 通用判据：<b>凡由「字号 × 字数」反推出来的可用宽度，
+      迟早会在真机上不够。</b> —— 本页 ①②③④⑤ 都是「写死像素」时代的产物，
+      <b>宽度口径以代码（<code>header_chip.dart</code>）为准</b>。</span>
   </div>
 
   <div class="box">

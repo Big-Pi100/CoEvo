@@ -53,6 +53,7 @@ import '../services/review_list_query.dart';
 import '../services/spelling_grader.dart';
 import '../theme/clay.dart';
 import '../theme/coevo_tokens.dart';
+import '../theme/theme_builder.dart';
 import '../theme/tokens_ext.dart';
 import '../widgets/word_card.dart';
 
@@ -340,9 +341,11 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
                   fontSize: 18,
                   color: Color(t.ink.argb32),
                 ),
-                decoration: InputDecoration(
-                  isDense: true,
-                  border: InputBorder.none,
+                // 🔴 同上（`review_screen.dart` 搜索框）：本输入框 `autofocus: true`
+                //    → 进页面即处于聚焦态，只写 `border: InputBorder.none`
+                //    会让 theme 的 `focusedBorder`（朱砂 1.6px）直接显形。
+                //    根因与判据 → `theme_builder.dart` 的 `borderlessInputDecoration`
+                decoration: borderlessInputDecoration(
                   hintText: '拼出这个单词',
                   hintStyle: TextStyle(
                     fontFamily: CoFonts.uiSans,

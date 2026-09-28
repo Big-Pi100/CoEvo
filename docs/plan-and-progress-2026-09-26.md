@@ -16,6 +16,9 @@
 > · **`字体资产` 「阿里普惠体」→ 已换 Noto Sans SC** · 🔴 **`前端静态分析` 「error=3」→ `error=0`**（后者是历史教训的残留）
 >
 > 🆕 **09-28 稍后又补两行**：`user.db` 接入（**表尚未建** → **v1.3 五表全建 + 查词链路已通**）· 新增 `user.db 迁移` 行
+> 🆕 **09-28 22:2x（两处真机 Bug 修复）**：token 验收 **382 → 609 项**（途中 597）——
+>    新增【16】「Clay 容器里的输入框必须**完全无框**」组（六个 border 字段全 none）
+>    ＋ `HeaderChip` 宽度口径由**写死像素**改为**引擎实测**（见下表「视觉 token 层」行）。
 > 🔑 **教训复现：快照会持续漂移** —— 每次核对**必须重跑命令**，别信上一版快照。
 
 > 🔑 **本节的意义**：文档里的数字会随开发漂移。**核对时以本节为准，或重新跑一遍下表命令。**
@@ -38,7 +41,7 @@
 | 信息流 / 阅读器 | ✅ **两者均已建**：信息流 `home_screen` + `widgets/feed_card.dart`（⚠️ 数据仍是 **mock**，真 feed 在 Phase 3）｜阅读器 `screens/reader_screen.dart`（3.4a，含划词长按查词） | `find app/lib -iname '*feed*' -o -iname '*reader*'` |
 | 收藏清单 | ✅ **已建**（3.5）：`screens/bookmark_list_screen.dart` + `widgets/bookmark_toggle.dart`（共用交互）· 路由 `/home/bookmarks`（**shell 子路由，保留 tabbar**） | `ls app/lib/screens/bookmark_list_screen.dart` |
 | `user.db` 接入 | ✅ **v1.3（Step 3.4c）** —— 5 张表全建：`card_review_state` · `review_log` · `bookmark` · 🆕 **`user_word`（生词本）** · 🆕 **`lookup_event`（查词记录）**｜✅ **查词链路已接通**（长按 → 浮层 → 异步写入，不阻塞渲染）｜✅ **连接所有权统一**（`userDbProvider` 唯一 open/close）｜⏳ **待真机验「老库升级」** | `rg "openUserDb" app/lib`（应只有 1 处调用） |
-| **视觉 token 层** | ✅ **已建且已接入**（`coevo_tokens.dart` **811 行** · 零 Flutter 依赖）· ✅ `buildTheme` 已接 `app.dart` → **三档主题生效**（旧 4 套主题已删）· 验收 **382 项全过 / 0 规格冲突**（【9】接线 · 【10】粘土+动效 · 【11】插值 · **【13】底部栏配套 · 【15】导航侧滑**） | `cd scripts/tokens_verify && dart run bin/verify_tokens.dart` |
+| **视觉 token 层** | ✅ **已建且已接入**（`coevo_tokens.dart` **811 行** · 零 Flutter 依赖）· ✅ `buildTheme` 已接 `app.dart` → **三档主题生效**（旧 4 套主题已删）· 验收 **609 项全过 / 0 规格冲突**（【9】接线 · 【10】粘土+动效 · 【11】插值 · 【13】底部栏配套 · 【15】导航侧滑 · **【16】Clay 容器内的输入框完全无框**） | `cd scripts/tokens_verify && dart run bin/verify_tokens.dart` |
 | 🆕 **粘土 / 痕迹** | ✅ **两者均已实现并接入**：粘土 `theme/clay.dart`（**四态 + 真 inset**）→ 已用于底部导航 · 痕迹 `widgets/trace_text.dart` + `trace_segmenter.dart`（**本行曾记「痕迹仍零实现」，已过时**） | `rg "ClayPainter\|TraceText" app/lib` |
 | **字体资产** | ✅ **9 个 .ttf · 5.11 MB** = 中文见上行 + **Literata(3) + CharisSIL(2)**（拉丁/音标，均已子集化）· pubspec 已声明 | `ls -la app/assets/fonts/` |
 | 🆕 **IPA 真实字符集** | ✅ **30 个**（含 **4 个组合符号**）—— 从 11,523 张卡的 `card.content.ipa` 提取 | `python scripts/build_fonts.py --list` |

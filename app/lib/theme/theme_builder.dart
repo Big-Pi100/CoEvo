@@ -101,6 +101,11 @@ ThemeData buildTheme(CoEvoTokens t) {
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       border: _inputBorder(t, t.line),
       enabledBorder: _inputBorder(t, t.line),
+      // 🔴 这一行让**每个**输入框在聚焦时都描一圈朱砂。
+      //    若某处输入框不想要它（Clay 凹陷容器里的输入框），
+      //    必须在**调用处**把 border 类字段**全部**设为 none ——
+      //    只写 `border: InputBorder.none` 是**不够**的（focusedBorder 会继承下来）。
+      //    ✅ 用 `borderlessInputDecoration()`（本文件下方，全库唯一一处）。
       focusedBorder: _inputBorder(t, t.accent, width: 1.6),
       errorBorder: _inputBorder(t, t.accent),
       focusedErrorBorder: _inputBorder(t, t.accent, width: 1.6),
@@ -275,6 +280,54 @@ OutlineInputBorder _inputBorder(CoEvoTokens t, CoRgba color, {double width = 1})
     OutlineInputBorder(
       borderRadius: BorderRadius.circular(16),
       borderSide: BorderSide(color: _c(color), width: width),
+    );
+
+/// **「Clay 凹陷容器里的无框输入框」专用的 `InputDecoration`** —— 全库唯一一处。
+///
+/// # 🔴 为什么必须有它（2026-09-28 真机 Bug）
+/// 上面的 `inputDecorationTheme` 给**全局**输入框定了
+/// `focusedBorder = accent(#B4432C) 1.6px`（聚焦时描一圈朱砂）。
+/// 而 `InputDecoration` 的 border 类字段是**各自独立**从 theme 继承的 ——
+/// ```dart
+/// InputDecoration(border: InputBorder.none)   // ❌ 只覆盖了 border
+/// ```
+/// 聚焦时 `InputDecorator` 取的是主题的 `focusedBorder` → **冒出朱砂色线框**。
+/// 复习页搜索框（展开即自动聚焦）与复习测验输入框（`autofocus: true`）
+/// 都**一下就到聚焦态** → 这个 Bug 是**必现**的，不是偶发。
+///
+/// 🔑 **判据：要「完全无边框」，必须把 border 类字段*全部*设为 `none`。**
+///    留一个为 `null`，那个状态就会把主题的边框放回来。
+///    （同 `HeaderChip` 那条教训：「**主题里有**」≠「**调用处已覆盖**」——
+///      凡是主题级默认值，调用处都必须显式覆盖掉不想继承的那几项。）
+///
+/// # 为什么这两个输入框「不该有框」
+/// 它们都嵌在 `Clay(state: pressed)` 里 —— 凹陷本身就是「这里可以输入」
+/// 的视觉语言（粘土语汇：`pressed` = 可交互的容器）。
+/// 再叠一圈描边 = **两套语汇打架**，也就是白哥报的「红色的线框」。
+///
+/// # 用法
+/// ```dart
+/// decoration: borderlessInputDecoration(
+///   hintText: '搜索单词',
+///   hintStyle: TextStyle(
+///     fontFamily: CoFonts.uiSans, fontSize: 14, color: Color(t.ink3.argb32)),
+/// )
+/// ```
+InputDecoration borderlessInputDecoration({
+  required String hintText,
+  TextStyle? hintStyle,
+}) =>
+    InputDecoration(
+      isDense: true,
+      // 🔴 六个都要写 —— 少任何一个，那个状态下就会继承主题的边框
+      border: InputBorder.none,
+      enabledBorder: InputBorder.none,
+      disabledBorder: InputBorder.none,
+      focusedBorder: InputBorder.none,
+      errorBorder: InputBorder.none,
+      focusedErrorBorder: InputBorder.none,
+      hintText: hintText,
+      hintStyle: hintStyle,
     );
 
 /// token → M3 `ColorScheme` 的映射表（**集中在一处，便于逐条核对**）。
