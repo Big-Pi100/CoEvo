@@ -86,127 +86,26 @@ CREATE INDEX IF NOT EXISTS idx_card_memory_due ON card_memory(due);
 CREATE INDEX IF NOT EXISTS idx_card_memory_user_card ON card_memory(user_card_id);
 CREATE INDEX IF NOT EXISTS idx_review_log_user_card ON review_log(user_card_id, reviewed_at);
 CREATE INDEX IF NOT EXISTS idx_conversation_turns_conv ON conversation_turns(conversation_id);
-CREATE TABLE IF NOT EXISTS user_plan_progress (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    plan_id TEXT NOT NULL,
-    task_key TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending'
-        CHECK(status IN ('pending', 'in_progress', 'done', 'skipped')),
-    score REAL,
-    attempt_count INTEGER DEFAULT 0,
-    started_at INTEGER,
-    completed_at INTEGER,
-    updated_at INTEGER NOT NULL,
-    UNIQUE(plan_id, task_key),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_upp_user_plan ON user_plan_progress(user_id, plan_id);
-CREATE INDEX IF NOT EXISTS idx_upp_status ON user_plan_progress(plan_id, status);
+-- ── 已移除：K12 课程体系（2026-09-28 白哥决定 · 整体清退）──
+-- 🔴 `user_plan_progress` / `prebuilt_plans` / `prebuilt_stages` / `prebuilt_tasks` / `plan_runs`
+--    的建表语句**必须一并移除** —— 否则全新库初始化时会把**空表建回来**。
+--    （`init_database` 由 `main.rs:101` 的 `table_count < 3` 守卫触发：
+--      现有库因 `users`/`user_cards`/`card_memory` 已存在而**不会**重建；
+--      但全新部署时 `table_count = 0` → 会执行 → 空表就回来了。）
+-- 🔑 判据：**「删掉数据」与「让它不再产生」是两件事** —— 只 DROP TABLE 是治标。
+-- 📄 决策与执行记录 → `docs/design/coevo-db-wordcard-removal-2026-09-28.md`
 
--- ── V4 Prebuilt Schema ──
-CREATE TABLE IF NOT EXISTS prebuilt_plans (
-    id TEXT PRIMARY KEY,
-    subject TEXT NOT NULL DEFAULT '',
-    domain TEXT NOT NULL DEFAULT '',
-    grade_band TEXT NOT NULL DEFAULT '',
-    goal TEXT NOT NULL DEFAULT '',
-    plan_content TEXT,
-    title TEXT NOT NULL DEFAULT '',
-    author TEXT NOT NULL DEFAULT '',
-    display_name TEXT NOT NULL DEFAULT '',
-    visible INTEGER NOT NULL DEFAULT 1,
-    theme_color TEXT NOT NULL DEFAULT '',
-    theme_icon TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE TABLE IF NOT EXISTS prebuilt_stages (
-    id TEXT PRIMARY KEY,
-    plan_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    sort_order TEXT NOT NULL DEFAULT '',
-    grade_band TEXT NOT NULL DEFAULT '',
-    FOREIGN KEY (plan_id) REFERENCES prebuilt_plans(id) ON DELETE CASCADE
-);
-CREATE TABLE IF NOT EXISTS prebuilt_tasks (
-    id TEXT PRIMARY KEY,
-    stage_id TEXT NOT NULL,
-    plan_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    task_key TEXT NOT NULL DEFAULT '',
-    prompt_mode TEXT NOT NULL DEFAULT '',
-    card_ids TEXT NOT NULL DEFAULT '[]',
-    dependencies TEXT NOT NULL DEFAULT '[]',
-    origin TEXT NOT NULL DEFAULT '',
-    sort_order TEXT NOT NULL DEFAULT '',
-    FOREIGN KEY (stage_id) REFERENCES prebuilt_stages(id) ON DELETE CASCADE,
-    FOREIGN KEY (plan_id) REFERENCES prebuilt_plans(id) ON DELETE CASCADE
-);
-CREATE TABLE IF NOT EXISTS prebuilt_cards (
-    id TEXT PRIMARY KEY,
-    card_type TEXT NOT NULL,
-    domain TEXT NOT NULL,
-    subject TEXT NOT NULL DEFAULT '',
-    grade_band TEXT NOT NULL DEFAULT '',
-    front TEXT NOT NULL DEFAULT '',
-    difficulty REAL DEFAULT 0.5,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE TABLE IF NOT EXISTS prebuilt_science_cards (
-    id TEXT PRIMARY KEY,
-    definition TEXT NOT NULL DEFAULT '',
-    key_elements TEXT NOT NULL DEFAULT '',
-    applications TEXT NOT NULL DEFAULT '',
-    related_concepts TEXT NOT NULL DEFAULT '',
-    formula TEXT NOT NULL DEFAULT '',
-    graph TEXT NOT NULL DEFAULT '',
-    source TEXT NOT NULL DEFAULT '',
-    FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE
-);
-CREATE TABLE IF NOT EXISTS prebuilt_language_cards (
-    id TEXT PRIMARY KEY,
-    pronunciation TEXT NOT NULL DEFAULT '',
-    pos TEXT NOT NULL DEFAULT '',
-    definitions TEXT NOT NULL DEFAULT '[]',
-    related_phrases TEXT NOT NULL DEFAULT '',
-    structure_meta TEXT NOT NULL DEFAULT '',
-    level TEXT NOT NULL DEFAULT '',
-    FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE
-);
-CREATE TABLE IF NOT EXISTS prebuilt_literature_cards (
-    id TEXT PRIMARY KEY,
-    full_text TEXT NOT NULL DEFAULT '',
-    translation TEXT NOT NULL DEFAULT '',
-    author TEXT NOT NULL DEFAULT '',
-    genre TEXT NOT NULL DEFAULT '',
-    FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE
-);
-CREATE TABLE IF NOT EXISTS prebuilt_humanities_cards (
-    id TEXT PRIMARY KEY,
-    node_type TEXT NOT NULL DEFAULT '',
-    body TEXT NOT NULL DEFAULT '',
-    period TEXT NOT NULL DEFAULT '',
-    region TEXT NOT NULL DEFAULT '',
-    tags TEXT NOT NULL DEFAULT '[]',
-    FOREIGN KEY (id) REFERENCES prebuilt_cards(id) ON DELETE CASCADE
-);
-CREATE TABLE IF NOT EXISTS plan_runs (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    conversation_id TEXT NOT NULL,
-    prebuilt_plan_id TEXT,
-    subject TEXT NOT NULL DEFAULT '',
-    domain TEXT NOT NULL,
-    grade_band TEXT NOT NULL DEFAULT '',
-    goal TEXT NOT NULL DEFAULT '',
-    plan_content TEXT,
-    status TEXT NOT NULL DEFAULT 'active',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id),
-    FOREIGN KEY (prebuilt_plan_id) REFERENCES prebuilt_plans(id)
-);
+-- ── 已移除：词卡内容表（`prebuilt_cards` + 4 张域子表）──
+-- 🔴 理由（2026-09-28 白哥决定）：**维护两份词库既无意义又易互相污染**。
+--    端侧词库已完全独立（app 只读 `assets/word.db`），后端的词卡接口
+--    （`/api/cards/*`）**已无现役消费者**（只被死代码 `chat_client` → `pipelines`(K12) 调）。
+-- 🔴 **必须与 `user_cards` 的外键一并去掉** —— 实测：`user_cards` 有 4,998 行引用
+--    `prebuilt_cards`，直接 `DROP TABLE prebuilt_cards` 会报 `FOREIGN KEY constraint failed`
+--    （后端启用 `PRAGMA foreign_keys = ON`，见 `db_pool.rs:29`）。
+--    数据层已通过重建 `user_cards` 去掉该外键（见 `scripts/purge_coevo_wordcards.py`）。
+-- ⚠️ `user_cards.prebuilt_card_id` / `plan_run_id` **列保留**（只是不再有外键约束）。
+-- 📄 → `docs/design/coevo-db-wordcard-removal-2026-09-28.md`
+
 CREATE TABLE IF NOT EXISTS user_cards (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -219,8 +118,12 @@ CREATE TABLE IF NOT EXISTS user_cards (
     language TEXT,
     level TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    FOREIGN KEY (prebuilt_card_id) REFERENCES prebuilt_cards(id)
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    -- ⚠️ 原 `FOREIGN KEY (prebuilt_card_id) REFERENCES prebuilt_cards(id)` **已移除**
+    --    （2026-09-28 随 `prebuilt_cards` 一并清退）。
+    --    🔑 `prebuilt_card_id` **列保留** —— 它是历史 ID，去掉列会破坏既有数据；
+    --       去掉的只是**外键约束**（这正是 `DROP TABLE prebuilt_cards` 的前提）。
+    --    📄 → `docs/design/coevo-db-wordcard-removal-2026-09-28.md`
 );
 CREATE TABLE IF NOT EXISTS user_science_cards (
     id TEXT PRIMARY KEY,
@@ -489,20 +392,12 @@ CREATE TABLE IF NOT EXISTS admin_audit_log (
     detail TEXT,
     created_at TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS guardian_assignments (
-    id TEXT PRIMARY KEY,
-    guardian_admin_id TEXT NOT NULL,
-    student_user_id TEXT NOT NULL,
-    bind_key TEXT NOT NULL,
-    assigned_by TEXT,
-    assigned_at TEXT NOT NULL,
-    is_active INTEGER DEFAULT 1,
-    UNIQUE(guardian_admin_id, student_user_id)
-);
+-- ── 已移除：`guardian_assignments`（家长-学生绑定 · K12 遗留）──
+-- 随 K12 体系一并清退（2026-09-28）。索引 `idx_guardian_assignments_*` 同删。
+-- 📄 → `docs/design/coevo-db-wordcard-removal-2026-09-28.md`
+
 CREATE INDEX IF NOT EXISTS idx_admin_users_role_status ON admin_users(role, status);
 CREATE INDEX IF NOT EXISTS idx_subscription_requests_status ON subscription_requests(status);
-CREATE INDEX IF NOT EXISTS idx_guardian_assignments_guardian ON guardian_assignments(guardian_admin_id);
-CREATE INDEX IF NOT EXISTS idx_guardian_assignments_student ON guardian_assignments(student_user_id);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_log_admin ON admin_audit_log(admin_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_log_action ON admin_audit_log(action, created_at);
 ALTER TABLE admin_users ADD COLUMN permissions TEXT DEFAULT '{}';

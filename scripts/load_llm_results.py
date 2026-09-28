@@ -262,8 +262,31 @@ def main():
     print(f'  LLM 记录: {len(recs)} 条（来源 {"抽样" if args.from_sample else "全量"}）')
 
     # 现网释义（卡片内容来源）
+    #
+    # 🔴🔴 2026-09-28 变更：`SRC_DB`（`data/coevo.db`）里的**词卡表已被清除**
+    #    （白哥决定「只保留 VPS 在用的表」，词卡库一并清退 —— 理由：维护两份词库
+    #    既无意义又易互相污染）。被删的是 `prebuilt_cards` 与 4 张域子表。
+    #
+    #    → 本段「从现网取 pronunciation」的路径**已失效**。
+    #    🔑 **这里选择「明确报错」而非「静默跳过」**：
+    #       若静默跳过，重建出来的 `card.content.ipa` 会全是 `None`
+    #       → **产出 11,523 张没有音标的卡，且没有任何报错**（＝最危险的一类失败）。
+    #    📄 决策与替代方案 → `docs/design/coevo-db-wordcard-removal-2026-09-28.md`
+    #    💡 新方向：发音也应由 **LLM 生成**（白哥「不再补库，改调整 LLM 制卡」），
+    #       而不是从一份已知不洁的旧库搬运（该库的 pronunciation 曾大面积串位）。
     con_src = sqlite3.connect(SRC_DB)
     src_defs, src_pron, supp_level = {}, {}, {}
+    _has_wordcards = con_src.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='prebuilt_cards'"
+    ).fetchone()[0]
+    if not _has_wordcards:
+        con_src.close()
+        sys.exit(
+            f'🔴 {SRC_DB} 里已没有 `prebuilt_cards` 表 —— 本脚本的「现网 IPA/释义来源」已失效。\n'
+            f'   这是**有意的**：词卡库已于 2026-09-28 清除（见 docs/design/coevo-db-wordcard-removal-2026-09-28.md）。\n'
+            f'   重建前请先决定 **IPA 与释义的新来源**（推荐：改由 LLM 生成，与「调整 LLM 制卡」的方向一致）。\n'
+            f'   ⚠️ 不要为了让它跑通而静默跳过 —— 那会产出 11,523 张无音标的卡且不报错。'
+        )
     for w, pron, d in con_src.execute("""
         SELECT c.front, l.pronunciation, l.definitions FROM prebuilt_cards c
         JOIN prebuilt_language_cards l ON l.id=c.id
