@@ -891,3 +891,110 @@ v6 结果  →  现网释义（若库仍在）  →  缺失
 | 2 | `S4` 剩余 55 条：逐条看是否还有真错（判据已升级，需要人眼/LLM 复核一次） | 55 |
 | 3 | 把 `word_form` 表补齐不规则变形（**它同时影响端侧划词查词**） | 待估 |
 | 4 | 剩余的 `pos` 差异（近似封闭，需人眼定谁错） | 待估 |
+
+---
+
+## 十六、🔴 信号盲区扫描：`similar_word` 的守卫整类放过了什么（2026-09-29 03:4x）
+
+> 白哥：「扫描」—— 即 §15.7 留的第 1 项。**本轮只扫不改**。
+
+### 16.1 根因：守卫用「前缀/后缀」当「字形相似」，而真错正好全踩在这两个分支上
+
+```python
+# scripts/verify_card_field_consistency.py · similar_word()
+if x.startswith(y) or y.startswith(x):  return True   # ← 整类放过「基词 ⊂ 词组」
+if x.endswith(y)   or y.endswith(x):    return True   # ← 整类放过「派生词 ⊂ 词干」
+```
+
+这两个分支本意是放过 `be`/`bee` 这类**真同音近形词**（`it`/`with` 那次的教训）——
+但它们同时**整类放过**了两种**真错**。实测：**103 对，全部没进 196 候选**。
+
+### 16.2 三种形态与规模
+
+| 档 | 判据 | 对数 | 条数 | 强度 |
+|---|---|---:|---:|---|
+| **S5a** | 一 word 一 phrase · word ⊂ phrase 的**词段** · 读音相同 | 25 | **25** | 🔴 **硬证据** |
+| **S5b** | 两 word · 互为前缀/后缀 · 长度差 ≥ 2 · 读音相同 | 14 | 27 | 🟠 需复核 |
+| **S5c** | 两 word · 互为前缀/后缀 · 长度差 = 1 · 读音相同 | 64 | 124 | 🟡 需复核 |
+
+### 16.3 🔴 S5a 25 条：**不依赖 LLM，逻辑上必然错**
+
+| 基词（**错**） | 现状 ipa = 哪个词组的 | | 基词（**错**） | 现状 ipa = 哪个词组的 |
+|---|---|---|---|---|
+| `bus` | `bus stop` | | `primary` | `primary school` |
+| `capital` 🆕 | `capital letter` | | `prime` | `prime minister` |
+| `chat` | `chat show` | | `rush` | `rush hour` |
+| `credit` | `credit card` | | `secondary` 🆕 | `secondary school` |
+| `debit` 🆕 | `debit card` | | `stock` | `stock market` |
+| `definite` | `definite article` | | `swimming` | `swimming pool` |
+| `exchange` | `exchange rate` | | `text` | `text message` |
+| `identity` | `identity card` | | `traffic` | `traffic light` |
+| `modal` | `modal verb` | | `vice` | `vice president` |
+| `navy` | `navy blue` | | `virtual` | `virtual reality` |
+| `owing` | `owing to` | | `web` | `web page` |
+| `police` | `police station` | | `cd` | `cd player` |
+| `id` | `id card` | | | |
+
+（🆕 = 本次新发现，上一轮没进 196 —— 因为它们的词组**已被修好**，导致不再「撞车」：
+`capital` 还挂着 `capital letter` 的**旧**音标，而 `capital letter` 自己已被修成 `/ˌkæpɪtl ˈletə/ (UK)...`，
+**读音相同但字符串不同** → 用原始字符串分组就配不上对。）
+
+🔑 **为什么是硬证据而非启发式**：设 `w ⊂ p`（`bus` ⊂ `bus stop`），则 `p` 的完整音标
+**必然包含** `w` 的音标（`/ˈbʌs ˌstɒp/` ⊃ `/bʌs/`）。所以「`w` 的 ipa 与 `p` 的 ipa
+**完全相同**」在数学上不可能同时成立 → **必有 `w` 错**。
+→ 25 条**不需要跑 LLM**，只需让 v6 给一次正确 ipa（≈ ¥0.16）。
+
+**交叉验证**：另用一条**独立**判据（*单词却有多段音标 + 音标外无解释文字*）扫得 145 条，
+剥掉合法形态（连字符词 28 · 缩写/专名 43 · 多读法 48）后剩 26 条 ——
+与 S5a 的 25 条**只差 3 条**，且这 3 条（`armchair` `/ˈɑːm tʃɛər/` · `sonofabitch` ·
+`ne`）都是**合法**的复合词/逐字母读 → **S5a 无漏报**。
+
+### 16.4 🟠🟡 S5b/S5c：88 对，需 LLM（≈ ¥0.73）
+
+| 信号 | 需复核 | 已知正确（已标「大概率本就正确」） |
+|---|---:|---:|
+| S5b | 24 条 | 3 条（`gram`/`gramme` 等英美变体） |
+| S5c | 92 条 | 32 条（`nazi`/`nazis` 屈折 · `dr`/`dr.` 缩写点 · `enrol`/`enroll` 变体） |
+| **合计** | **113 条** | 35 条 |
+
+**S5b 里的真错样本**（人工核过）：
+- `bullet` `/bʊl/` ← `bull` 的（应 `/ˈbʊlɪt/`）
+- `consider` `/kənˌsɪdəˈreɪʃən/` ← `consideration` 的（应 `/kənˈsɪdə(r)/`）
+- `tropical` `/ˈtrɒpɪk/` ← `tropic` 的（应 `/ˈtrɒpɪkl/`）
+- `marvel` `/mɑː/` ← `ma` 的 · `tartuffe` `/tɑːr/` ← `tar` 的 · `yugoslavia` `/ˈjuːɡəʊslɑːv/` ← `yugoslav` 的
+
+**S5c 里的真错样本**：`eat` `/æt/` ← `at` 的（应 `/iːt/`）· `tape` `/tap/` ← `tap` 的（应 `/teɪp/`）
+· `logo` `/lɒɡ/` ← `log` 的 · `israeli` `/ˈɪzreɪl/` ← `israel` 的
+
+🔴 **S5b 不能预设「长词错」**（实测反例）：`bullet` 错（长词错），但
+`consider` **也错**（**短词**拿到了长词的音标）—— 方向相反。所以 S5b/S5c 只报「这一对可疑」，方向留给人眼/LLM。
+
+### 16.5 🔴 本轮连踩四个判据坑（每个都导致一次错数）
+
+| # | 坑 | 后果 | 正解 |
+|---|---|---|---|
+| 1 | `len(ipa_segments(...))` 当「覆盖了几个词」 | `/pəˈliːs ˌsteɪʃən/` 只是**一段**（一对斜杠）→ 判「只覆盖 1 词」→ **S5a 全漏，报 0**（应 25） | 新增 `ipa_spoken_segments()`：**按空白分词** |
+| 2 | 把 `+'e'` 当 benign（「词尾差异」） | 词尾 `e` 是 **magic e** —— `tap` `/tæp/` → `tape` `/teɪp/`（元音**变了**）→ `tap`/`tape` 被误标「大概率本就正确」，**正好放过真错** | 移除该规则；`blond`/`blonde` 与 `tape` 机械分不开 → **统一归「需复核」**，宁可多花几毛 |
+| 3 | 分组键用**原始字符串** | `capital` 的 `/ˈkæpɪtl ˈlɛtər/` 与已修的 `capital letter` `/ˌkæpɪtl ˈletə/ (UK)...` **读音同、字符串不同** → 配不上对 → **漏 3 条** | S5a 改用 `ipa_core_set()` 归一化分组 |
+| 4 | 同一套归一化也用在 word-word 上 | 过度配对 → S5b/S5c **28/128 → 312/338**（`ipa_core_set` 删弱读 `ə`、去词尾 `r`，把本该不同的读音并到一起） | **各取所需**：跨「已修/未修」的写法差异用归一化；同类型词之间用原始串 |
+
+🔑 四个坑的共同模式：**判据「看起来对」但口径差一层** ——
+段数 vs 词数 · 拼写 vs 读音 · 原始串 vs 归一化 · 一个信号 vs 两种用途。
+**都是靠「与实际数据对不上」才暴露的**（`S5a=0` 是第一个信号，与人工探测的 22 条矛盾）。
+
+### 16.6 交付与下一批
+
+| 项 | 内容 |
+|---|---|
+| 📝 `scripts/verify_card_field_consistency.py` | 🆕 信号 **S5a/S5b/S5c** + `ipa_core_set` / `ipa_spoken_segments` / `_s5_tier` / `_benign_pair`；头部信号表更新为 8 类；**如实标注 S5b/S5c 是已知边界** |
+| 🆕 `data/curriculum/prebuilt/card_field_candidates_s5.json` | 275 条候选（含 S5 + 其余信号） |
+| 规模 | S5 共 **103 对 / 176 条**（S5a 25 · S5b 27 · S5c 124） |
+
+| # | 下一批 | 量 | 成本 |
+|---|---|---|---|
+| 1 | **S5a 25 条直接修**（硬证据，无需 LLM 判定，只需 v6 出正确 ipa） | 25 | ≈ ¥0.16 |
+| 2 | **S5b/S5c 跑 LLM 复核**（113 条） | 113 | ≈ ¥0.73 |
+| 3 | `S3b` 剩余 62 条 + `S4` 剩余 55 条复核 | 117 | ≈ ¥0.76 |
+| 4 | `word_form` 补不规则变形（**同时影响端侧划词查词**） | 待估 | — |
+
+*本轮**只扫描、未改任何数据**。`word.db` 未触碰。*
