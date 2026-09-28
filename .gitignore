@@ -22,7 +22,13 @@ backend/.env.local
 #   只排除缓存（见末尾「Python」段与「Flutter / Dart」段）。
 .rtk
 CLAUDE.md
-/.workbuddy
+# 🔴 `.workbuddy/` 自 2026-09-28 起**放开 `memory/` 子目录**（原为整目录忽略）
+#   原因：记忆是**长期资产**（判据库 / 进度 / 架构决策），但原为本地文件 → **无 git 历史、无法回滚**，
+#         改错一次就不可恢复（2026-09-28 分层时撞到：改完才发现整个目录没入库）。
+#   只放开 `memory/`：其余子目录（`artifacts/` 运行产物 · `automations/` 运行时状态 · `skills/`）仍忽略。
+#   ⚠️ 入库前已扫描密钥（0 命中硬凭证；IP 本就在 `api_config.dart` 等已跟踪文件里）。
+/.workbuddy/*
+!/.workbuddy/memory/
 /.codebuddy
 /old
 /frontend/assets
