@@ -69,6 +69,20 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
 
   final _searchController = TextEditingController();
 
+  /// 搜索输入框的焦点 —— 展开时自动聚焦（否则用户还要再点一下输入框）。
+  final _searchFocus = FocusNode();
+
+  /// 搜索是否**已展开**（默认收起为左上角一个放大镜图标）。
+  ///
+  /// 🔑 白哥 2026-09-28：「复习页的搜索单词**缩小成左上角图标，点击才展开**」。
+  ///    理由：搜索是**低频**动作，不该常驻占一行 —— 常驻会把「今天该复习什么」
+  ///    这个主要信息挤下去。
+  ///
+  /// 🔴 **收起时一并清空搜索词**（见 [_collapseSearch]）——
+  ///    若保留搜索词，界面收起后看不出「列表正被筛着」→ 用户会以为**词丢了**。
+  ///    这是「界面状态与数据状态必须一致」的直接要求。
+  bool _searchExpanded = false;
+
   /// 搜索防抖 —— 本地查库虽快，但连续按键会连打多次查询。
   Timer? _debounce;
 
@@ -76,6 +90,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   void dispose() {
     _debounce?.cancel();
     _searchController.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -84,6 +99,24 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     _debounce = Timer(const Duration(milliseconds: 250), () {
       if (!mounted) return;
       setState(() => _args = _args.copyWith(search: v.trim()));
+    });
+  }
+
+  void _expandSearch() {
+    setState(() => _searchExpanded = true);
+    // 输入框在**这一帧之后**才挂上去 → 必须等下一帧再请求焦点
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _searchFocus.requestFocus());
+  }
+
+  void _collapseSearch() {
+    _debounce?.cancel();
+    _searchController.clear();
+    _searchFocus.unfocus();
+    setState(() {
+      _searchExpanded = false;
+      // 🔴 与收起同步清空筛选条件（见 `_searchExpanded` 的说明：不能只收界面不收数据）
+      _args = _args.copyWith(search: '');
     });
   }
 
@@ -131,7 +164,6 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _header(t, dueCount),
-            _searchBar(t),
             const SizedBox(height: 12),
             _sortBar(t),
             const SizedBox(height: 14),
@@ -161,7 +193,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   bool get _isFiltering => _args.search.isNotEmpty || _args.dueOnly;
 
   // ────────────────────────────────────────────────────────────
-  // 标题栏
+  // 标题栏（含搜索的两种状态）
   // ────────────────────────────────────────────────────────────
   Widget _header(CoEvoTokens t, int? dueCount) {
     return Padding(
@@ -169,99 +201,135 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '复习',
-                  style: TextStyle(
-                    fontFamily: CoFonts.uiSans,
-                    fontSize: 23,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 23 * -0.015,
-                    color: Color(t.ink.argb32),
+          // ── 收起态：🔍 + 「复习」+ 筛选 ──────────────────────
+          // ── 展开态：搜索框 + 「取消」 ────────────────────────
+          //
+          // 🔑 两态**共用同一行**（而不是「搜索框另起一行」）——
+          //    这样展开/收起时下方内容**不会跳动**
+          //    （另起一行会让列表整体下移，是廉价但明显的抖）。
+          if (!_searchExpanded)
+            Row(
+              children: [
+                _SearchIconButton(onTap: _expandSearch),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '复习',
+                    style: TextStyle(
+                      fontFamily: CoFonts.uiSans,
+                      fontSize: 23,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 23 * -0.015,
+                      color: Color(t.ink.argb32),
+                    ),
                   ),
                 ),
-              ),
-              // 🆕 筛选：显示全部 / 显示已到期（白哥 2026-09-28 定）
-              _FilterChip(
-                dueOnly: _args.dueOnly,
-                onTap: () => setState(
-                    () => _args = _args.copyWith(dueOnly: !_args.dueOnly)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            // 计数未就绪时**不显示 0** —— 那可能是谎报（库还没读出来）
-            dueCount == null
-                ? '你的生词会按记忆曲线安排在这里。'
-                : dueCount == 0
-                    ? '今天没有要复习的，随便翻翻吧。'
-                    : '今天有 $dueCount 个该看',
-            style: TextStyle(
-              fontFamily: CoFonts.uiSans,
-              fontSize: 12,
-              height: 1.6,
-              color: Color(dueCount != null && dueCount > 0
-                  ? t.accent.argb32
-                  : t.ink3.argb32),
+                // 🆕 筛选：显示全部 / 显示已到期（白哥 2026-09-28 定）
+                _FilterChip(
+                  dueOnly: _args.dueOnly,
+                  onTap: () => setState(
+                      () => _args = _args.copyWith(dueOnly: !_args.dueOnly)),
+                ),
+              ],
+            )
+          else
+            Row(
+              children: [
+                Expanded(child: _searchField(t)),
+                const SizedBox(width: 6),
+                // 「取消」而**不是**一个 ✕ 图标：清空输入与退出搜索是**两件事**，
+                // 两个都要有出口 —— ✕ 语义含糊（用户不知道是清空还是退出）。
+                InkWell(
+                  onTap: _collapseSearch,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 6),
+                    child: Text(
+                      '取消',
+                      style: TextStyle(
+                        fontFamily: CoFonts.uiSans,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(t.accent.argb32),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
+
+          // 副标题只在**收起态**显示 —— 展开搜索时它让位于输入框（那才是当下焦点）
+          if (!_searchExpanded) ...[
+            const SizedBox(height: 6),
+            Text(
+              // 计数未就绪时**不显示 0** —— 那可能是谎报（库还没读出来）
+              dueCount == null
+                  ? '你的生词会按记忆曲线安排在这里。'
+                  : dueCount == 0
+                      ? '今天没有要复习的，随便翻翻吧。'
+                      : '今天有 $dueCount 个该看',
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: 12,
+                height: 1.6,
+                color: Color(dueCount != null && dueCount > 0
+                    ? t.accent.argb32
+                    : t.ink3.argb32),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  // ────────────────────────────────────────────────────────────
-  // 搜索
-  // ────────────────────────────────────────────────────────────
-  Widget _searchBar(CoEvoTokens t) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 18),
-      child: Clay(
-        // 凹陷 = 「可以输入的地方」（粘土语汇里 `pressed` 就是「可交互的容器」）
-        state: ClayState.pressed,
-        fill: t.sunken,
-        borderRadius: BorderRadius.circular(12),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-        child: Row(
-          children: [
-            Icon(Icons.search, size: 16, color: Color(t.ink3.argb32)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                controller: _searchController,
-                onChanged: _onSearchChanged,
-                textInputAction: TextInputAction.search,
-                style: TextStyle(
+  /// 搜索输入框（仅展开态使用）。
+  Widget _searchField(CoEvoTokens t) {
+    return Clay(
+      // 凹陷 = 「可以输入的地方」（粘土语汇里 `pressed` 就是「可交互的容器」）
+      state: ClayState.pressed,
+      fill: t.sunken,
+      borderRadius: BorderRadius.circular(12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      child: Row(
+        children: [
+          Icon(Icons.search, size: 16, color: Color(t.ink3.argb32)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              focusNode: _searchFocus,
+              onChanged: _onSearchChanged,
+              textInputAction: TextInputAction.search,
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: 14,
+                color: Color(t.ink.argb32),
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                hintText: '搜索单词',
+                hintStyle: TextStyle(
                   fontFamily: CoFonts.uiSans,
                   fontSize: 14,
-                  color: Color(t.ink.argb32),
-                ),
-                decoration: InputDecoration(
-                  isDense: true,
-                  border: InputBorder.none,
-                  hintText: '搜索单词',
-                  hintStyle: TextStyle(
-                    fontFamily: CoFonts.uiSans,
-                    fontSize: 14,
-                    color: Color(t.ink3.argb32),
-                  ),
+                  color: Color(t.ink3.argb32),
                 ),
               ),
             ),
-            if (_searchController.text.isNotEmpty)
-              GestureDetector(
-                onTap: () {
-                  _searchController.clear();
-                  _debounce?.cancel();
-                  setState(() => _args = _args.copyWith(search: ''));
-                },
-                child: Icon(Icons.close, size: 16, color: Color(t.ink3.argb32)),
-              ),
-          ],
-        ),
+          ),
+          // ✕ = **只清空输入**（退出搜索走右侧「取消」）—— 两个出口语义分明
+          if (_searchController.text.isNotEmpty)
+            GestureDetector(
+              onTap: () {
+                _searchController.clear();
+                _debounce?.cancel();
+                setState(() => _args = _args.copyWith(search: ''));
+              },
+              child: Icon(Icons.close, size: 16, color: Color(t.ink3.argb32)),
+            ),
+        ],
       ),
     );
   }
@@ -328,6 +396,32 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
 // ════════════════════════════════════════════════════════════════
 // 子组件
 // ════════════════════════════════════════════════════════════════
+
+/// 左上角的搜索图标 —— 搜索的**唯一入口**（默认收起态）。
+///
+/// 🔑 形态与 `_FilterChip` 同族：**粘土凹陷**（`Clay(pressed)` + `sunken` 底）。
+///    凹陷 = 「可以按下去」，与筛选药丸、收藏入口是同一种物理语汇。
+///
+/// 🔑 字色用 `ink2` 而非 `ink3`：它是**可点元素**，必须可辨认。
+///    （`ink3` 在三种底色上对比度都 < 4.5 —— 见 `_ClayTabBar` 的实测表。）
+class _SearchIconButton extends StatelessWidget {
+  const _SearchIconButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+    return Clay(
+      state: ClayState.pressed,
+      fill: t.sunken,
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      padding: const EdgeInsets.all(7),
+      child: Icon(Icons.search, size: 16, color: Color(t.ink2.argb32)),
+    );
+  }
+}
 
 /// 筛选按钮 —— 「全部 / 已到期」二态切换。
 ///

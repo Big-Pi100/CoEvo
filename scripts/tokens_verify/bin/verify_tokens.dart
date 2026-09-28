@@ -581,6 +581,44 @@ String _codeOnly(String src) => src
     .where((l) => !l.trimLeft().startsWith('//'))
     .join('\n');
 
+/// 取出某个**方法/函数**的 `{ ... }` 体（按花括号配对，含嵌套）。
+///
+/// # 🔑 为什么需要它（2026-09-28 实测踩到的假绿）
+/// 「全文件 `contains`」在很多场景**范围大于被测对象**——
+/// 只要同一行代码在**别处**也出现，断言就永远为绿，改坏被测处也不会报红。
+///
+/// 实例：`_collapseSearch` 里应有 `copyWith(search: '')`（收起时清空筛选），
+/// 但输入框的 ✕ 按钮**也有**同一行（只清空输入、不退出搜索）→
+/// 全文件 `contains` 在「`_collapseSearch` 已经不清空」时**照样通过**。
+/// 证伪①实测确认：改成 `_args = _args` 后 428 项**全绿**（本该报红）。
+///
+/// 🔑 做法：先**切片**，再对切片断言 ——
+/// 即「文本断言的范围必须等于被测对象」（同 `verifiable-core-logic` 的范围纪律）。
+///
+/// ⚠️ 调用方**必须**同时断言返回非空：方法改名/删除会让切片变空串 →
+/// **空串通关** = 另一种假绿。
+///
+/// ⚠️ 已知边界：按**花括号**配对，不理解字符串字面量 —— 若方法体里有含 `{`/`}`
+/// 的字符串（如 `'${a ? "}" : "{"}'`）会数错。本项目的方法体无此写法；
+/// 真需要时再补「带引号状态的扫描器」（同 `splitSqlStatements` 的处理原则）。
+String _braceBody(String src, String name) {
+  final i = src.indexOf('$name(');
+  if (i < 0) return '';
+  final start = src.indexOf('{', i);
+  if (start < 0) return '';
+  var depth = 0;
+  for (var j = start; j < src.length; j++) {
+    final c = src[j];
+    if (c == '{') {
+      depth++;
+    } else if (c == '}') {
+      depth--;
+      if (depth == 0) return src.substring(start, j + 1);
+    }
+  }
+  return '';
+}
+
 String _repoRoot() {
   var d = Directory.current;
   for (var i = 0; i < 6; i++) {
@@ -1277,9 +1315,16 @@ void _s14BookmarkList() {
       home.contains('/home/bookmarks'));
   //    🔑 入口显示计数（设计稿 `.bm-entry .n`）
   check('入口显示计数（设计稿 `.bm-entry .n`）', home.contains(r'$count'));
-  //    🆕 两个入口**共用同一个组件** —— 防「改一个忘一个」（见 `_HeaderChip` 的文档）
-  check('生词 / 收藏两个入口共用 _HeaderChip（不各写一份）',
-      RegExp(r'_HeaderChip\(').allMatches(home).length >= 2);
+  //    🆕 入口走**统一实现** —— 防「再有一个入口时另写一份」
+  //
+  //    ⚠️ 2026-09-28 修正：原断言是 `RegExp(r'_HeaderChip\(')` **计数 ≥ 2**，
+  //       名义上「两个入口共用」，实际**把构造函数定义也数进去了**
+  //       （`const _HeaderChip({` 同样匹配 `_HeaderChip(`）→ 即使只剩一个调用
+  //       也照样 ≥2 → **假绿**。
+  //       🔑 这是「文本断言的范围纪律」问题：**计数类断言必须排除定义处**。
+  //    生词入口已于当天下线 → `_HeaderChip` 只有收藏一个消费者，不再计数。
+  check('首页标题栏入口用 _HeaderChip（统一实现，不另写一份）',
+      home.contains('_HeaderChip('));
 
   // ⑦ **extendBody 配套**：清单页也要留出 tabbar 高度，否则最后一张卡被压住
   //    （同三个 tab 页的处理 —— 少一处就出现「最后一条看不到」）
@@ -1546,18 +1591,56 @@ void _s17ReviewList() {
   check('暂停后也 invalidate 计数（列表与计数须同源刷新）',
       page.contains('invalidate(reviewDueCountProvider)'));
 
-  // ⑧ 入口：**切 tab**，不是 push 新页
-  check('首页标题栏有生词入口（文案为「生词」）', home.contains("label: '生词'"));
-  check('🔴 入口切到复习 tab（go，不是 push）',
-      home.contains("context.go('/review')"));
+  // ⑧ 入口：**底部 tab 就是入口**，标题栏不再放按钮
+  //
+  // 🔴 2026-09-28 白哥：「阅读页面的『生词』按钮要取消」。
+  //    🔑 顺着规格读就通了：**生词本 ≡ 复习页**（`ui-ux` §6.2），
+  //       而复习**本身就是底部的一个 tab** —— 标题栏那个按钮
+  //       只是「再切一次 tab」，等于把导航按钮做了第二遍。
+  //
+  //    ⚠️ 原断言写的是「首页标题栏**有**生词入口」→ 现已**反转为「不应有」**。
+  //       断言跟着决策反转时，**必须同步改方向**，否则它会一直报红
+  //       （或更糟：有人为了让它变绿而把入口加回来）。
+  check('🔴 首页标题栏**不再有**生词入口（白哥 2026-09-28 取消）',
+      !home.contains("label: '生词'") && !home.contains('/review'));
   check('🔴 已无 /home/words 独立页（路由与页面都已删）',
       !home.contains('/home/words') && !app.contains("path: 'words'"));
+  //    🔴 K12 旧生词本页（904 行，`plan`/概念卡/时间线）—— 2026-09-28 删除
+  check('🔴 K12 旧生词本 card_list_screen 已删',
+      !File('$root/app/lib/screens/card_list_screen.dart').existsSync());
 
-  // ⑨ 两种空状态 + 库不可用态都要分开（不撒谎）
+  // ⑨ 搜索：**默认收起为左上角图标，点击才展开**（白哥 2026-09-28）
+  //
+  // 🔑 理由：搜索是**低频**动作，常驻一行会把「今天该复习什么」挤下去。
+  // 🔴 关键约束：**收起时必须一并清空搜索词** ——
+  //    否则界面收起后看不出「列表正被筛着」→ 用户会以为**词丢了**。
+  //    （「界面状态必须与数据状态一致」的实例。）
+  //
+  //    ⚠️🔴 这条**必须取方法体切片再断言**，不能用全文件 `contains`：
+  //       输入框里的 ✕ 按钮**也有** `copyWith(search: '')`（只清空输入、不退出搜索）→
+  //       全文件 contains 在「_collapseSearch 已不清空」时**仍然为绿** = 假绿。
+  //       （实测：证伪时把 _collapseSearch 改成 `_args = _args` 后，全文件断言照样通过。）
+  //       🔑 「文本断言的**范围**必须等于被测对象」—— 先切片，再断言。
+  check('搜索默认收起（_searchExpanded 状态）', page.contains('_searchExpanded'));
+  check('左上角有搜索图标入口', page.contains('_SearchIconButton'));
+  check('展开时请求焦点（不必再点一次输入框）',
+      page.contains('requestFocus()'));
+
+  final collapse = _braceBody(page, '_collapseSearch');
+  // 🔑 切片必须非空 —— 否则「方法改名/删除」会让断言**空串通关**（另一种假绿）
+  check('能切出 _collapseSearch 方法体（断言范围正确的前提）',
+      collapse.isNotEmpty,
+      collapse.isEmpty ? '切不出方法体，确认方法是否改名' : '');
+  check('🔴 收起搜索时同步清空搜索词（界面与数据不许不一致）',
+      collapse.contains("copyWith(search: '')"));
+  check('🔴 收起搜索时同时复位展开态',
+      collapse.contains('_searchExpanded = false'));
+
+  // ⑩ 两种空状态 + 库不可用态都要分开（不撒谎）
   check('库不可用有独立处理（不冒充「还没有生词」）', page.contains('_Unavailable'));
   check('空状态区分「真的没有」与「被筛掉」', page.contains('_EmptyState'));
 
-  // ⑩ 零硬编码色 + 底部避让（与三个 tab 页 / 收藏清单同一处理）
+  // ⑪ 零硬编码色 + 底部避让（与三个 tab 页 / 收藏清单同一处理）
   check('页面不留裸色值（颜色全部走 token）',
       !RegExp(r'Color\(0x').hasMatch(page) && !page.contains('Colors.'));
   check('底部留白用 CoSpacing.tabBarClearance（extendBody 配套）',

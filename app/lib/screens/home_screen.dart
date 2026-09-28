@@ -10,7 +10,6 @@ import '../api/api_config.dart';
 import '../data/mock_feed.dart';
 import '../providers/auth_provider.dart';
 import '../providers/bookmark_provider.dart';
-import '../providers/user_word_provider.dart';
 import '../theme/co_spacing.dart';
 import '../theme/clay.dart';
 import '../theme/coevo_tokens.dart';
@@ -237,11 +236,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final bookmarkIds = bookmarkState.idsOrEmpty;
     final bookmarkReady = bookmarkState.isReady;
 
-    // 生词数（标题栏「生词 N」入口）。
-    // 🔑 未就绪时 `?? 0`，与收藏入口同一处理；且 `userWordCountProvider`
-    //    读失败时**自己吞掉并返回 0**（见其定义）→ 首页**不会**因为库打不开而报错。
-    final wordCount = ref.watch(userWordCountProvider).valueOrNull ?? 0;
-
     // 🔴🔴 信息流**无条件渲染** —— 登录态不是它的前置条件。
     //
     // 产品原则（白哥 2026-09-27）：
@@ -289,20 +283,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
                   // 设计稿 `.feed-hd{gap:12px}`
                   const SizedBox(width: 12),
-                  // 🔴 生词入口 —— 点击**切到「复习」tab**，不是 push 新页面。
+                  // 🔴 这里**曾经**有一个「生词 N」入口（3.4d）—— 已于 2026-09-28 删除。
                   //
-                  // 依据（2026-09-28 白哥澄清）：**生词本就是复习页本身**
-                  // （`ui-ux` §6.2）。原先 3.4d 做成了 `/home/words` 独立子页 →
-                  // 同一份数据两个入口、两种形态 → 已删，统一到复习 tab。
-                  // 🔑 `go('/review')` 会切换 shell 分支（StatefulShellRoute 行为），
-                  //    与点底部 tab 等价；用 `push` 会**叠一层**页面在 tab 之上。
-                  _HeaderChip(
-                    icon: Icons.style_outlined,
-                    label: '生词',
-                    count: wordCount,
-                    onTap: () => context.go('/review'),
-                  ),
-                  const SizedBox(width: 8),
+                  // 白哥：「**阅读页面的『生词』按钮要取消**」。
+                  // 🔑 理由（顺着规格读下来就通了）：**生词本 ≡ 复习页**（`ui-ux` §6.2），
+                  //    而复习**本身就是一个 tab** —— 底部导航已经有它了。
+                  //    再放一个标题栏按钮，是**同一目的的第二个入口**；
+                  //    而且它指过去只是「切 tab」，等于把导航按钮做了第二遍。
                   _HeaderChip(
                     icon: Icons.bookmark_border,
                     label: '收藏',
@@ -362,9 +349,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       toggleBookmarkWithToast(context, ref, contentId);
 }
 
-/// 信息流标题栏上的**药丸入口** —— 「生词 N」与「收藏 N」**共用**。
+/// 信息流标题栏上的**药丸入口** —— 目前只有「收藏 N」一个消费者。
 ///
-/// # 形态来源：设计稿 `.bm-entry`（原本只定义了「收藏」入口）
+/// # 形态来源：设计稿 `.bm-entry`
 /// ```
 /// .bm-entry{display:flex;align-items:center;gap:6px;
 ///   font-size:11.5px;font-weight:600;color:var(--accent);
@@ -376,12 +363,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 /// 粘土语汇里的 `pressed`（凹）。与 `BookmarkButton` 的未收藏态**同一种物理形态**：
 /// 凹陷 = 「可以按下去」。这不是巧合，设计稿把「未激活的入口」统一做成凹陷。
 ///
-/// # 🔴 为什么把「生词」入口也做成**同一个组件**（2026-09-28 · 3.4d）
-/// 设计稿**没有**定义生词入口（`.bm-entry` 是收藏专用的）。但两者是**同类东西**
-/// （「我在阅读中攒下的东西」）→ 沿用同一形态，不另造一种药丸。
-/// 🔑 **判据：设计稿里是同一个东西，实现里就该是一处**
-/// （同 `toggleBookmarkWithToast` 被抽出来的理由）——
-/// 否则「改一个、忘一个」，两个入口会慢慢长歪。
+/// # ⚠️ 为什么还叫 `_HeaderChip` 而不改回 `_BookmarkEntry`
+/// 这个名字描述的是**形态**（标题栏上的药丸）而不是用途。
+/// 它**曾经**同时承载「生词 N」与「收藏 N」两个入口（2026-09-28 上午）；
+/// 当天中午白哥要求取消「生词」入口（底部 tab 已经是它了）→ 只剩一个消费者。
+/// 保留通用名与通用形参（`icon` / `label` / `count` / `onTap`）是**有意的**：
+/// 再有第二个入口时不必重抽一次 —— 而**重抽正是让两处走偏的起点**
+/// （同 `toggleBookmarkWithToast` 被抽出来的理由）。
 ///
 /// ⚠️ **圆角显式传 13、不走 token 档位**（同 `_ClayTabBar` 的 17、`BookmarkButton` 的 10）：
 /// 设计稿写死 `13px` 且不在主题变量里 → 三档共用。这是项目已定的处理方式。
