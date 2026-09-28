@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>词卡排版整理 —— 设计方案（2026-09-28）</title>
+<style>
+  /* ── 本页样式（与产品无关，仅用于展示设计稿）── */
+  :root{
+    --page:#F1EDE4; --read:#FAF8F4; --card:#FFFFFF;
+    --ink:#24211C; --ink2:#6E6659; --ink3:#988F7C;
+    --accent:#B4432C; --accentBright:#C4533A;
+    --line:#EFE9DE; --sunken:#EDE6DA;
+    --cl-out:rgba(150,125,95,.24); --cl-shade:rgba(186,166,138,.55); --cl-light:#fff;
+    --serif:"Literata",Georgia,"Songti SC",serif;
+    --sans:"Inter",-apple-system,"PingFang SC",sans-serif;
+    --ipa:"Charis SIL",Georgia,serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:34px 26px 90px;background:var(--page);color:var(--ink);
+       font-family:var(--sans);line-height:1.7;-webkit-font-smoothing:antialiased}
+  .doc{max-width:1180px;margin:0 auto}
+  h1{font-size:25px;font-weight:600;letter-spacing:-.015em;margin:0 0 6px}
+  .sub{color:var(--ink2);font-size:13.5px;margin:0 0 30px}
+  h2{font-size:17px;font-weight:600;margin:44px 0 4px;padding-top:20px;border-top:1px solid var(--line)}
+  h3{font-size:14.5px;font-weight:600;margin:26px 0 8px}
+  p{margin:9px 0;font-size:13.5px;color:var(--ink)}
+  .muted{color:var(--ink2)}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;
+       background:var(--sunken);padding:1.5px 5px;border-radius:5px;color:var(--ink)}
+  table{border-collapse:collapse;width:100%;margin:13px 0;font-size:13px}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--ink2);font-weight:600;font-size:12.5px;white-space:nowrap}
+  .bad{color:#A33220;font-weight:600}
+  .ok{color:#3E6B4A;font-weight:600}
+  .warn{color:#8A6A22;font-weight:600}
+
+  /* ── 手机框 ── */
+  .stage{display:flex;gap:34px;flex-wrap:wrap;align-items:flex-start;margin-top:18px}
+  .col{flex:0 0 auto}
+  .col-hd{font-size:13px;font-weight:600;margin:0 0 4px}
+  .col-note{font-size:12px;color:var(--ink2);margin:0 0 12px;max-width:378px}
+  .phone{width:378px;background:var(--page);border-radius:20px;padding:13px 12px 15px;
+         box-shadow:0 10px 30px rgba(60,45,25,.10), inset 1px 1px 4px rgba(255,255,255,.9)}
+  .screenbar{font-size:10.5px;color:var(--ink3);letter-spacing:.06em;margin:0 4px 9px;
+             display:flex;justify-content:space-between}
+
+  /* ── 卡片（严格照设计稿 CSS）── */
+  .card{border-radius:26px;padding:20px 19px;background:var(--card);
+        box-shadow:6px 8px 18px var(--cl-out), inset -5px -5px 12px var(--cl-shade),
+                   inset 4px 4px 10px var(--cl-light)}
+
+  /* 词头（设计稿 .w-head）*/
+  .w-head{text-align:center;padding-bottom:15px;border-bottom:1px solid var(--line)}
+  .w-word{font-family:var(--serif);font-size:32px;font-weight:500;letter-spacing:-.015em;line-height:1.15}
+  .w-meta{display:flex;align-items:center;justify-content:center;gap:9px;margin-top:6px}
+  .w-ipa{font-family:var(--ipa);font-size:15px;color:var(--ink2)}
+  .spk{width:26px;height:26px;border-radius:50%;background:var(--card);
+       display:inline-flex;align-items:center;justify-content:center;
+       box-shadow:2px 3px 7px var(--cl-out), inset -2px -2px 5px var(--cl-shade),
+                  inset 1px 1px 3px var(--cl-light)}
+  .spk svg{width:13px;height:13px;stroke:var(--accent);fill:none;stroke-width:1.9}
+
+  /* 记忆法块（设计稿 .mnem —— 唯一有底色的段）*/
+  .mnem{margin-top:14px;border-radius:16px;padding:14px 14px 13px;background:var(--sunken);
+        box-shadow:inset 3px 3px 9px var(--cl-shade), inset -3px -3px 8px var(--cl-light)}
+  .mnem-head{display:flex;align-items:center;gap:7px;margin-bottom:8px}
+  .mnem-tag{display:inline-flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.05em;
+            color:var(--accent);font-weight:500}
+  .mnem-entry{font-size:11px;color:var(--ink3);margin-left:auto}
+  .mnem-main{font-family:var(--serif);font-size:15.5px;line-height:1.6}
+  .gl{color:var(--ink3);font-size:13.5px}
+  .mnem-note{font-size:12.5px;color:var(--ink2);margin-top:8px;line-height:1.62;
+             padding-top:8px;border-top:1px dashed var(--line)}
+  .arrow{font-size:13px;color:var(--ink3);line-height:1}
+
+  /* 释义 · 语境（无底色）*/
+  .def{margin-top:15px}
+  .lab{font-size:11px;letter-spacing:.05em;color:var(--ink3);margin-bottom:4px}
+  .def-txt{font-size:16.5px;font-weight:500;line-height:1.5}
+  .def-en{font-family:var(--serif);font-size:13px;color:var(--ink2);line-height:1.6;margin-top:3px}
+  .def-pos{font-size:11px;color:var(--ink3);letter-spacing:.05em}
+  .ctx{margin-top:14px;padding-left:12px;border-left:2px solid var(--accentBright)}
+  .ctx-txt{font-family:var(--serif);font-size:14.5px;line-height:1.7}
+
+  /* 底部操作区（注入）*/
+  .footer{margin-top:16px;padding:13px 19px;text-align:center}
+  .next{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:600;
+        color:var(--accent);background:var(--card);border-radius:15px;padding:10px 26px;
+        box-shadow:4px 5px 12px var(--cl-out), inset -3px -3px 8px var(--cl-shade),
+                   inset 2px 2px 6px var(--cl-light)}
+
+  /* ── 「现状」还原框（刻意不做词头居中/分隔线/凹陷块）──
+        ⚠️ 两侧的差异必须**只有我声称的那 4 处** —— 所以凡实现与锚点不同的值，
+           都要在这里显式覆盖回来，否则对比会失真（把「本来就不对」当成「改动效果」）。*/
+  .cur .w-head-l{text-align:left;padding-bottom:0;border-bottom:none}
+  .cur .w-meta-l{justify-content:flex-start;gap:10px;margin-top:7px}
+  .cur .spk-l{width:auto;height:auto;border-radius:0;background:none;box-shadow:none}
+  .cur .blk-noBG{margin-top:18px;border-radius:0;padding:0;background:none;box-shadow:none}
+  .cur .blk-noBG + .blk-noBG{margin-top:18px}
+  .cur .mnem-head{margin-bottom:8px}
+  .cur .def{margin-top:18px}
+  .cur .ctx{margin-top:18px;padding-left:11px;border-left:2px solid var(--line)}
+  .cur .lab{margin-bottom:8px}          /* 实现 8px（锚点 4px）*/
+  .cur .def-en{margin-top:6px}          /* 实现 6px（锚点 3px）*/
+  .cur .card{padding:22px 22px 18px}    /* 实现 22/4/22/18（锚点 20/19）*/
+
+  /* ── 标注（页面用，不影响卡片）── */
+  .marker{position:relative}
+  .mk{display:inline-block;font-size:10.5px;font-weight:700;color:#fff;background:#A33220;
+      border-radius:9px;padding:1px 7px;margin-left:6px;vertical-align:2px}
+  .mk.g{background:#3E6B4A}
+  .lead{font-size:13.5px;margin:14px 0 4px}
+  ul{margin:9px 0;padding-left:22px;font-size:13.5px}
+  li{margin:5px 0}
+  .box{background:var(--read);border-left:3px solid var(--accent);border-radius:0 9px 9px 0;
+       padding:12px 16px;margin:16px 0;font-size:13.5px}
+  .box b{color:var(--accent)}
+  .q{background:#FFF9EC;border-left:3px solid #C9A227;border-radius:0 9px 9px 0;
+     padding:12px 16px;margin:16px 0;font-size:13.5px}
+  .spec{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--ink2)}
+</style>
+</head>
+<body>
+<div class="doc">
+
+  <h1>词卡排版整理 —— 设计方案</h1>
+  <p class="sub">2026-09-28 · 白哥：「词卡页面排版有点乱，要整理一下」<br>
+     本稿只做<b>排版与视觉层级</b>，不改内容、不改数据、不改交互。请对照选择。</p>
+
+  <!-- ═══════════════════════════════ -->
+  <h2>一、先说「乱」在哪 —— 三处，都能指到具体 CSS</h2>
+
+  <p>对照 L1 锚点 <code>visual-word-card-target-2026-09-26.html</code> 的卡片 CSS，
+     发现实现里<b>漏掉了三条「建立层级」的规则</b>，只靠间距硬撑。
+     间距又都是逐个手写的魔数，没有体系 —— 两者叠加就是「糊在一起、又说不清哪不对」。</p>
+
+  <table>
+    <tr><th>#</th><th>设计稿规格（L1 锚点原文）</th><th>当前实现</th><th>后果</th></tr>
+    <tr>
+      <td>1</td>
+      <td><code>.w-head</code> 有 <code>text-align:center</code> +
+          <code>padding-bottom:15px</code> +
+          <code>border-bottom:1px solid var(--line)</code></td>
+      <td class="bad">左对齐、无分隔线</td>
+      <td>词头没成为「头」—— 和下面的段落黏在一起</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td><code>.mnem</code> 有 <code>background:var(--sunken)</code> +
+          <code>border-radius:16px</code> + <code>padding:14px</code> + 两个 inset</td>
+      <td class="bad">纯文字，无底块</td>
+      <td>🔴 <b>① ② 是全卡唯一「有底色的段」</b>（spec §5.2 明文）——
+          少了它，记忆法与释义的<b>类别差异</b>消失，四段变成四条并排文字</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>段间 <code>14 / 15 / 16</code>；段内 <code>8</code>；标签下 <code>4</code>；紧凑 <code>3</code></td>
+      <td class="bad">18 / 16 / 12 / 8 / 7 / 6 / 11（逐处手写）</td>
+      <td><b>段间 18 与段内 16 只差 2px</b> → 层级读不出来（层级要靠<b>倍数差</b>，不是 2px）</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td><code>.spk</code> = <span class="spec">26×26 圆形、<code>background:card</code>、外阴影（凸起）</span></td>
+      <td class="warn">裸图标 18px</td>
+      <td>音标旁一个「飘着的」图标，没有可点的物理暗示</td>
+    </tr>
+  </table>
+
+  <div class="box">
+    <b>关键认识</b>：设计稿建立层级靠的是「<b>容器 + 分隔</b>」，不是靠「排得松一点」。
+    <code>.w-head</code> 的下边线把「词头」独立出来；<code>.mnem</code> 的凹陷底块把「记忆法（线索）」
+    与「释义/语境（答案）」分成两类；<code>.mnem-note</code> 的虚线再把段内主次分开。
+    <br>——这样即使字号只差 1px，用户也一眼看得出这是什么、那是什么。
+  </div>
+
+  <h3>为什么不是「字号没排对」</h3>
+  <p>字号层级是<b>对的</b>（spec §5.2 那条铁律已经落地）：单词 32 &gt; 释义 16.5 &gt; 记忆法 15.5 &gt;
+     语境 14.5 &gt; 注释 13.5 &gt; 标签 11 —— 实测代码与规格逐项一致（tokens 验收有断言）。
+     <b>问题不在字号，在容器与间距。</b></p>
+
+  <!-- ═══════════════════════════════ -->
+  <h2>二、并排对比（同一份真实数据）</h2>
+  <p class="muted">用 <code>disorganized</code> 的真实词库数据：词根 <span class="spec">dis- + organ + -ized</span>、
+     语境句、词源链、3 条搭配。两侧内容完全一样，<b>只有排版不同</b>。</p>
+
+  <div class="stage">
+
+    <!-- ── 现状 ── -->
+    <div class="col cur">
+      <p class="col-hd">现状 <span class="mk">按实现还原</span></p>
+      <p class="col-note">左对齐词头、无分隔线、四段并排、间距 18/16 混用</p>
+      <div class="phone">
+        <div class="screenbar"><span>复习 · 3 / 12</span><span>已到期</span></div>
+        <div class="card">
+          <div class="w-head-l">
+            <div class="w-word">disorganized</div>
+            <div class="w-meta w-meta-l">
+              <span class="w-ipa">/dɪsˈɔːrɡənaɪzd/</span>
+              <span class="spk spk-l"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg></span>
+            </div>
+          </div>
+
+          <!-- ③ 释义 -->
+          <div class="def">
+            <div class="lab">释义</div>
+            <div class="def-txt">杂乱无章的，缺乏条理的</div>
+            <div class="def-en">not properly planned or controlled; lacking order or efficiency.</div>
+          </div>
+
+          <!-- ④ 语境 -->
+          <div class="ctx">
+            <div class="lab">语境原句</div>
+            <div class="ctx-txt">The office was completely disorganized after the move.</div>
+          </div>
+
+          <!-- ① 词根词缀（无底块）-->
+          <div class="blk-noBG">
+            <div class="mnem-head">
+              <span class="mnem-tag">词根词缀</span>
+              <span class="mnem-entry">organ 词根族（Greek）· 15 词</span>
+              <span class="arrow">›</span>
+            </div>
+            <div class="mnem-main">dis-<span class="gl">（不，相反）</span>&nbsp;+&nbsp;organ<span class="gl">（器官，组织）</span>&nbsp;+&nbsp;-ized<span class="gl">（使…化）</span></div>
+          </div>
+
+          <!-- ② 词源故事（无底块）-->
+          <div class="blk-noBG">
+            <div class="mnem-head">
+              <span class="mnem-tag">词源故事</span>
+              <span class="mnem-entry">organon（Greek·工具；器官）词源族 · 18 词</span>
+              <span class="arrow">›</span>
+            </div>
+            <div class="mnem-main" style="height:1.6">希腊 organon（工具/器官）→ 拉丁 organizare → 古法语 organiser → 英语 organize → disorganized</div>
+          </div>
+        </div>
+        <div class="footer"><span class="next">下一个 →</span></div>
+      </div>
+    </div>
+
+    <!-- ── 建议 ── -->
+    <div class="col">
+      <p class="col-hd">建议（方案 A） <span class="mk g">按 L1 锚点补齐</span></p>
+      <p class="col-note">词头居中 + 下边线；①② 用凹陷底块；段内虚线；间距 14/15/16 · 8 · 4 · 3</p>
+      <div class="phone">
+        <div class="screenbar"><span>复习 · 3 / 12</span><span>已到期</span></div>
+        <div class="card">
+
+          <div class="w-head">
+            <div class="w-word">disorganized</div>
+            <div class="w-meta">
+              <span class="w-ipa">/dɪsˈɔːrɡənaɪzd/</span>
+              <span class="spk"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg></span>
+            </div>
+          </div>
+
+          <!-- ③ 释义 -->
+          <div class="def">
+            <div class="lab">释义</div>
+            <div class="def-txt">杂乱无章的，缺乏条理的 <span class="def-pos">adj</span></div>
+            <div class="def-en">not properly planned or controlled; lacking order or efficiency.</div>
+          </div>
+
+          <!-- ④ 语境 -->
+          <div class="ctx">
+            <div class="lab">语境原句</div>
+            <div class="ctx-txt">The office was completely disorganized after the move.</div>
+          </div>
+
+          <!-- ① 词根词缀（凹陷块 + 虚线分隔入口）-->
+          <div class="mnem">
+            <div class="mnem-head">
+              <span class="mnem-tag">词根词缀</span>
+              <span class="mnem-entry">organ 词根族（Greek）· 15 词</span>
+              <span class="arrow">›</span>
+            </div>
+            <div class="mnem-main">dis-<span class="gl">（不，相反）</span>&nbsp;+&nbsp;organ<span class="gl">（器官，组织）</span>&nbsp;+&nbsp;-ized<span class="gl">（使…化）</span></div>
+          </div>
+
+          <!-- ② 词源故事（凹陷块）-->
+          <div class="mnem">
+            <div class="mnem-head">
+              <span class="mnem-tag">词源故事</span>
+              <span class="mnem-entry">organon（Greek·工具；器官）词源族 · 18 词</span>
+              <span class="arrow">›</span>
+            </div>
+            <div class="mnem-main">希腊 organon（工具/器官）→ 拉丁 organizare → 古法语 organiser → 英语 organize → disorganized</div>
+          </div>
+
+        </div>
+        <div class="footer"><span class="next">下一个 →</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <p class="lead"><b>对照能看到的三点变化</b></p>
+  <ul>
+    <li><b>词头成了「头」</b>：居中 + 下边线 → 它是这张卡的主题，不再与内容混在一起</li>
+    <li><b>两类内容分开了</b>：①② 有凹陷底（<b>线索</b>），③④ 留白（<b>答案</b>）——
+        spec §5.2 说「① ② 独占 sunken —— 全卡唯一有底色的段」，正是这个作用</li>
+    <li><b>节奏出来了</b>：段间 14/15 明显大于段内 8 与标签下 4 → 眼睛能数出「这是三段」</li>
+  </ul>
+
+  <!-- ═══════════════════════════════ -->
+  <h2>三、要请你定的四处</h2>
+
+  <div class="q">
+    <b>Q1 · 词头要不要居中？</b><br>
+    设计稿 CSS 是 <code>text-align:center</code>（当时按「卡片像词条」的思路）。<br>
+    · <b>居中</b>：更像词典词条，词头独立、仪式感强；但单词很长时（如 <span class="spec">disorganized</span> 之上还有更长的）居中会让左右参差<br>
+    · <b>保持左对齐</b>：与下面段落左边缘一条线到底，更「文档」；但词头就不会显得是「头」<br>
+    <span class="muted">我倾向居中（照锚点），除非你觉得长词会难看。</span>
+  </div>
+
+  <div class="q">
+    <b>Q2 · ①② 的凹陷底块要不要？（这是变化最大的一处）</b><br>
+    · <b>要</b>：spec §5.2 明文规定，且「线索 vs 答案」的分类立刻可见<br>
+    · <b>不要</b>：整卡更「平」，像一篇文章 —— 但四段就真的只能靠字号/颜色区分了<br>
+    <span class="muted">我倾向要。若你觉得凹块「太重」，可以改成只有左侧色条（更轻，但锚点没这么写）。</span>
+  </div>
+
+  <div class="q">
+    <b>Q3 · ③ 释义这一段的「词性」要不要显示？</b><br>
+    数据里有 <code>pos: [adj]</code>，当前实现没渲染。<br>
+    · <b>显示</b>（如建议稿里释义后面的小字 <span class="spec">adj</span>）：多一条判别信息，中文释义歧义时有用<br>
+    · <b>不显示</b>：更干净<br>
+    <span class="muted">数据已有，只是没用。你定要不要。</span>
+  </div>
+
+  <div class="q">
+    <b>Q4 · 语境原句的左边框颜色？</b><br>
+    设计稿 <code>.ctx</code> 用 <code>--accent-bright</code>（<span style="color:#C4533A">■ #C4533A</span>），
+    实现里用的是 <code>--line</code>（<span style="color:#EFE9DE;text-shadow:0 0 1px #999">■ #EFE9DE</span>，
+    浅到几乎看不见）。<br>
+    <span class="muted">我倾向照锚点改成 accentBright —— 现在那条竖线基本看不到，等于白设。</span>
+  </div>
+
+  <!-- ═══════════════════════════════ -->
+  <h2>四、附：完整规格（实施时逐条对照）</h2>
+
+  <h3>间距体系（全部取自 L1 锚点 CSS）</h3>
+  <table>
+    <tr><th>位置</th><th>值</th><th>当前实现</th></tr>
+    <tr><td>卡片内边距 <code>.card</code></td><td>20px 19px</td><td class="warn">22 / 4 / 22 / 18</td></tr>
+    <tr><td>词头下内距 + 边线 <code>.w-head</code></td><td>15px + 1px line</td><td class="bad">无</td></tr>
+    <tr><td>音标行上距 <code>.w-meta</code></td><td>6px</td><td class="warn">7px</td></tr>
+    <tr><td>记忆法块上距 <code>.mnem</code></td><td>14px</td><td class="warn">18px</td></tr>
+    <tr><td>记忆法块内边距</td><td>14 14 13</td><td class="bad">0（无块）</td></tr>
+    <tr><td>块内标题下距 <code>.mnem-head</code></td><td>8px</td><td>8px <span class="ok">✓</span></td></tr>
+    <tr><td>段内说明上距 <code>.mnem-note</code></td><td>8px + 虚线</td><td class="bad">16px，无虚线</td></tr>
+    <tr><td>释义段上距 <code>.def</code></td><td>15px</td><td class="warn">18px</td></tr>
+    <tr><td>标签下距 <code>.lab</code></td><td>4px</td><td class="warn">8px</td></tr>
+    <tr><td>英文释义上距 <code>.def-en</code></td><td>3px</td><td class="warn">6px</td></tr>
+    <tr><td>语境段上距 <code>.ctx</code></td><td>14px + 左 12px + 2px 边线</td><td class="warn">18px + 左 11px</td></tr>
+  </table>
+
+  <h3>字号 / 字体（已一致，不改）</h3>
+  <table>
+    <tr><th>元素</th><th>字号</th><th>字体</th></tr>
+    <tr><td>单词 <code>w-word</code></td><td>32</td><td>Literata 500</td></tr>
+    <tr><td>释义 <code>def-txt</code></td><td><b>16.5</b></td><td>Inter 500 ← 内容层最大</td></tr>
+    <tr><td>记忆法主体 <code>mnem-main</code></td><td><b>15.5</b></td><td>Literata ← 必须 ≤ 释义</td></tr>
+    <tr><td>语境 <code>ctx-txt</code></td><td>14.5</td><td>Literata</td></tr>
+    <tr><td>括号注释 <code>gl</code></td><td>13.5</td><td>Literata</td></tr>
+    <tr><td>英文释义 <code>def-en</code></td><td>13</td><td>Literata</td></tr>
+    <tr><td>词源说明 <code>mnem-note</code></td><td>12.5</td><td>Inter</td></tr>
+    <tr><td>IPA</td><td>15</td><td>Charis SIL</td></tr>
+    <tr><td>段标签 <code>lab</code></td><td>11（字距 .05em）</td><td>Inter</td></tr>
+  </table>
+
+  <h3>色值（墨档 · 默认，取自 <code>coevo_tokens.dart</code>）</h3>
+  <p class="spec">
+    page #F1EDE4 · card #FFFFFF · sunken #EDE6DA · line #EFE9DE<br>
+    ink #24211C · ink2 #6E6659 · ink3 #988F7C<br>
+    accent #B4432C · accentBright #C4533A<br>
+    clay: out rgba(150,125,95,.24) · shade rgba(186,166,138,.55) · light #FFFFFF · radius 26
+  </p>
+
+  <h3>不受影响的部分（本稿不动）</h3>
+  <ul>
+    <li><b>四段的顺序</b>：维持白哥定的「③ 释义 → ④ 语境 → ① ② 记忆法」（与锚点原稿相反，已在上轮加过修正标注）</li>
+    <li><b>内容取舍逻辑</b>：槽位排除 <code>context</code>/<code>cognate</code> + 补位（<code>CardSlots.resolve</code>）</li>
+    <li><b>①② 可点 → 聚合页</b>、箭头由 <code>onTap</code> 推导</li>
+    <li><b>卡片外部</b>：全屏翻卡、底部「下一个」、考核态/结果态/浏览态</li>
+  </ul>
+
+  <div class="box" style="margin-top:26px">
+    <b>下一步</b>：你回四处选择（Q1–Q4）后，我按定稿改 <code>widgets/word_card.dart</code> 与
+    <code>_block</code>/<code>_sectionBody</code>，并补断言锁住「①② 有底块、③④ 无底块」
+    「词头有分隔线」这类**结构性**规格 —— 这些正是上一轮漏掉、且编译器看不出来的东西。
+  </div>
+
+</div>
+</body>
+</html>
