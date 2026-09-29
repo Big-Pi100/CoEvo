@@ -21,6 +21,7 @@ import '../providers/achievement_notifier.dart';
 import '../providers/achievement_provider.dart';
 import '../widgets/stats_card.dart';
 import '../widgets/header_chip.dart';
+import '../widgets/clay_button.dart';
 import '../widgets/order_history.dart';
 import '../widgets/subscribe_panel.dart';
 import '../theme/clay.dart';
@@ -1074,9 +1075,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ],
               ),
             ),
-            FilledButton.tonal(
-              onPressed: () => _showSubscribeDialog(),
-              child: Tw('续费'),
+            // 🔑 用**粘土按钮**而非 Material `FilledButton.tonal` ——
+            //    规格 §6.1 把「主/次按钮」列在**粘土**元素里。
+            //    两者不是「换个皮肤」：Material 那套没有 `accentOut` 外阴影、
+            //    没有内暗/内亮，按下反馈也不同源（水波纹 vs `scale(.97)`）。
+            //    见 `widgets/clay_button.dart` 的类文档。
+            // ⚠️ 与本行的整行 `onTap` **同一个动作**（都开订阅弹层）——
+            //    这是有意的：按钮是**可见的 CTA 提示**，整行点击是便利区。
+            ClayButton(
+              label: '续费',
+              onTap: _showSubscribeDialog,
             ),
           ],
         ),

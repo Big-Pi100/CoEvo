@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import '../../api/api_config.dart';
 import '../../providers/auth_provider.dart' show authProvider;
+import 'clay_button.dart';
 
 /// 订单历史 — 可折叠下拉，展示支付记录 + 未完成订单可继续支付
 class OrderHistory extends ConsumerStatefulWidget {
@@ -171,13 +172,15 @@ class _OrderHistoryState extends ConsumerState<OrderHistory> {
           Text(statusLabel, style: TextStyle(fontSize: 12, color: statusColor)),
           const SizedBox(width: 8),
           if (status == 'NOTPAY' && !expired)
-            SizedBox(
-              height: 26,
-              child: FilledButton.tonal(
-                style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10)),
-                onPressed: () => _continuePay(order),
-                child: const Text('支付', style: TextStyle(fontSize: 11)),
-              ),
+            // 🔑 与订阅卡的「续费」**同一个组件** —— 两者同屏（订阅卡正下方
+            //    就是订单历史），若一个粘土一个 Material，会读作「两套体系」。
+            // 🔴 原先外面套了 `SizedBox(height: 26)` 把它压到 26px ——
+            //    那是为了迁就 Material 按钮的最小高度；粘土按钮需要
+            //    `inset` 表现体积（§3.5 硬规则：< 24px 就得去掉 inset），
+            //    压缩高度等于砍掉它的语言，故去掉该约束让它取自然高度。
+            ClayButton(
+              label: '支付',
+              onTap: () => _continuePay(order),
             ),
         ],
       ),
