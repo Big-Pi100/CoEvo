@@ -805,7 +805,7 @@ HeaderChip(
 | ② | `order_history.dart` | 「支付」 | ✅ **已改**（同屏一致性） |
 | ③ | `subscribe_panel.dart:371` | 套餐卡「订阅/开通」（**弹层主按钮**） | 🟠 弹层是**另一屏**，且它是订阅流程的**主 CTA** —— 形态若变，是订阅页观感的事，该由白哥定 |
 | ④ | `pay_screen.dart` | **3 处** `FilledButton` | 🟠 独立页面（支付流程），本次范围外 |
-| ⑤ | `claim_dialog.dart` | 注册引导弹窗按钮 | 🟠 按 `ui-ux` §4.2 该弹窗**要删**（「删 trial 引导弹窗」）→ 改了会白做 |
+| ⑤ | `claim_dialog.dart` | 登录/注册弹窗（原「注册引导」） | ✅ **已整窗粘土化**（2026-09-29 · 详见 **§15**）。<br>🔴 **本条原写「该弹窗要删」—— 那是错的**：它同时是「用已有账号登录」的**唯一入口**，删掉 = 登录能力整条消失（已实际发生一次） |
 | ⑥ | `profile_screen.dart:225` | **「修改昵称」弹窗的「保存」** `FilledButton` | 🟠 弹层内按钮；与 ③ 同属「弹层要不要粘土」这个**统一决策** |
 | ⑦ | `profile_screen.dart:285` | **「加载失败」的重试按钮** `FilledButton.icon` | 🟠 **本轮复核时数出来的**（此前漏了）。它在**错误分支**里 → 正常永远看不到，最易漏 |
 | ⑧ | 各弹层 | 「取消 / 关闭 / 确认」等 `TextButton`（`_editName` · `_showThemeDialog` · `_confirmSignOut` · `_showContactDialog` · `subscribe_panel`） | 🟠 `TextButton` 无明显底色，观感上更接近中性链接 → **优先级低于实心按钮**，但严格讲也不属粘土元素 |
@@ -952,6 +952,112 @@ return Card(clipBehavior: Clip.antiAlias, child: Column(children: [InkWell(...)]
 
 用 `appAccountToken` 把交易关联到我们的 `user_id` —— 能**减少**需要恢复的场景，
 但**不能替代按钮**：① Apple 要求它存在；② 匿名用户仍无账号可关联。
+
+---
+
+## 十五、✅ 登录入口修复 + 弹窗粘土化（2026-09-29 · 白哥验收「未登录 OK」时发现）
+
+### 15.1 白哥报的问题
+
+> 「OK，现在**没法登录**，不过未登录的页面 OK 了」
+
+未登录态**通过真机验收** ✅；但**登录走不通**。
+
+### 15.2 🔴 根因：**我上一轮把唯一登录入口删了**（回归，不是既有问题）
+
+| 时点 | `ClaimDialog` 的入口 |
+|---|---|
+| 重排前 | 「我的」页**首进自动弹**（`_checkTrialClaim()`，条件 `realName` 为空） |
+| 重排后（`59d85f0`） | ❌ 删掉，位置换成「登录 / 注册」→ `_comingSoon('登录')`（点开提示「即将开放」） |
+
+🔴 而 `ClaimDialog` 是**双职责**的：既是「trial 认领（注册）」，
+**也是「用已有账号登录」的全库唯一入口**（弹窗内 `_isLogin` 默认 `true`，可登录/注册切换）。
+我按「删 trial 认领弹窗」处置，**连带消灭了登录能力**。
+
+**证据**：全库 `login()` 调用点当时只剩 `claim_dialog.dart` 一处；而它只被
+`home_screen._showAuthDialog()` 调用（触发条件极窄）；注释里提到的 `auth_screen.dart`
+**根本不存在**（历史遗留引用）；后端 `/api/auth/login` 等 4 个接口**全部健在**
+→ 端侧缺入口，**不是后端问题**。
+
+🔴 **本文档 §13.1 第 ⑤ 条当时就写着「该弹窗要删」** —— 那是误判的源头：
+把 `ui-ux` §4.2 的「删 trial 引导弹窗」理解成了「删这个控件」，
+而正确理解是「删**它的认领用途**，保留它的**登录用途**」。
+
+### 15.3 影响：登录态分支**零执行**
+
+本次改动的 5 处登录态分流（副标题昵称 · 通知入口 · 历史订单 · 退出账号 · 订阅卡文案）
+＋ `listenManual` 的**退出复位**（清 `_referralCode`）—— **一次都没跑过**。
+修好入口后，它们才**具备被验证的条件**。
+
+### 15.4 修复内容
+
+| 文件 | 动作 |
+|---|---|
+| `widgets/clay_field.dart` | 🆕 **粘土输入框**（凹陷档）。此前全库**没有**输入类粘土组件，4 处 `TextField` 全是 Material |
+| `widgets/clay_button.dart` | +`enabled`（走 `ClayState.disabled`，提交中防重复）· +`expanded`（弹窗主 CTA 通栏） |
+| `widgets/claim_dialog.dart` | **整窗粘土化** —— 外壳改「平面卡」（**不是**粘土，见 15.6）· 输入改 `ClayField` · 按钮改 `ClayButton` · +静态 `show()`（弹出方式一处定义） |
+| `screens/profile_screen.dart` | **接回 3 处入口**（账号行 / 订阅卡整块 / 订阅卡「查看」）→ `_showLoginDialog` |
+| `screens/home_screen.dart` | 改走 `ClaimDialog.show()`（原来自已写 `showDialog`） |
+| `scripts/query_verify/bin/verify_auth_entry.dart` | 🆕 **18 项接线断言**（防这次回归再发生） |
+
+### 15.5 与原型第 ⑤ 屏的差异（**有意**，且有据）
+
+原型第 ⑤ 屏画的是**独立页面**（自绘顶栏「‹ 登录」+ **Apple 登录** + **邮箱/密码** +
+并列的登录/注册按钮），但它**依赖尚未就绪的后端**，原型里自己标着「本批不做」：
+
+- 全库无 `sign_in_with_apple` 依赖
+- `users` 表**无 `email` 列**（后端 0 命中）→ 是**新增**不是复用
+- `auth_client` 只有 `username + password`
+
+→ 本批用**弹窗**把**已有的账号体系**接通，视觉照原型第 ⑤ 屏的版式。差异 4 处：
+
+| # | 原型 | 本批 | 为什么 |
+|---|---|---|---|
+| 1 | 整页（顶栏 + 返回） | 弹窗 | 弹窗最小可用；整页要新增路由，且依赖 Apple/邮箱 |
+| 2 | 字段 = 邮箱 | **用户名** | 后端只有 `username`（`users` 无 `email` 列） |
+| 3 | Apple 按钮 + 「或」分隔 | 无 | 无 `sign_in_with_apple` 依赖 |
+| 4 | 两个并列按钮 | 主按钮 + 文字切换 | 弹窗横向空间不足；切换式才能容纳注册所需的额外字段 |
+
+### 15.6 🔴 两处裁决：弹窗外壳用**平面**，输入框**按 spec 不按原型**
+
+**① 外壳 = 平面（不是粘土）** —— 依据 spec §〇 规则 1「**有体积的只可能是可点的东西**」：
+弹窗本身不可点 → 它是「浮起来的平面」（`card` 底 + 外阴影）。
+🔑 与已有两个浮层先例一致：`_UnlockCard`（成就解锁）、`LookupSheet`（划词浮层）。
+里面**输入框是凹陷、按钮是粘土** —— 三类元素各就各位。
+
+**② 输入框 = 凹陷** —— 原型 `.inp` 画的是**平面 + 细边框**：
+```css
+.inp{background:var(--card);border:1px solid var(--line);border-radius:12px}
+```
+而 spec **§3.6**（「凹陷（搜索框、**可输入字段**）」）与 §6.2 都把「可输入字段」列为凹陷类。
+→ 按已定裁决顺序（**设计稿与 spec 冲突按 spec**）→ 实现走凹陷。
+
+⚠️ 这是**原型与 spec 的第一处实质冲突**（此前几处都是「原型阙漏」，不是冲突）。
+📌 **建议：原型 `.inp` 那两行应修正为凹陷** —— 否则下次照原型实现又会走偏。
+
+### 15.7 验证
+
+| 项 | 结果 |
+|---|---|
+| Dart resolution（84 文件） | 🔴 1 error · 🟠 1 warning —— **均为既有**（`bookmark_provider.dart:124` / `word_card.dart:517`）→ **我的改动 0** |
+| `verify_auth_entry.dart` | ✅ **18 / 18** |
+| 证伪测试 | ✅ 用 git 历史版本作靶子：上一版 `profile_screen` 含 **3 处**占位入口、`HEAD` 版 `claim_dialog` 含 **2 处** Material 控件 → **断言确会变红**（有区分度，不是假防线） |
+| 真机「登录 → 退出」全流程 | ⏳ **待白哥** |
+
+### 15.8 ⚠️ 本次**新引入**的一处「半统一」（需白哥定范围）
+
+登录弹窗现在是「平面 + 凹陷 + 粘土」，而**同一页**另外 4 个弹层**仍是 Material**：
+
+| 弹层 | 位置 | 残留 |
+|---|---|---|
+| 「修改昵称」 | `profile_screen.dart:235` | `AlertDialog` + `TextField` + `TextButton` + `FilledButton` |
+| 「退出账号」二次确认 | `profile_screen.dart:~760` | `AlertDialog` + 2 `TextButton` |
+| 「订阅套餐」 | `profile_screen.dart:~1230` | `AlertDialog` + `TextButton`（+ `SubscribePanel`） |
+| 「联系工作人员」 | `profile_screen.dart:~1260` | `AlertDialog` + `TextButton` |
+
+🔑 这正是 §13.3 说的「**半统一比不统一更乱**」——现在**同一屏**上点两行，
+会分别弹出「一个粘土弹窗」和「一个 Material 弹窗」。
+→ 组件已就绪（`ClayField` / `ClayButton` / 平面卡外壳），**统一改造成本已降下来**，等白哥定范围。
 
 ---
 

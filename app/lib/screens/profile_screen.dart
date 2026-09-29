@@ -21,6 +21,7 @@ import '../providers/achievement_notifier.dart';
 import '../providers/achievement_provider.dart';
 import '../widgets/stats_card.dart';
 import '../widgets/header_chip.dart';
+import '../widgets/claim_dialog.dart';
 import '../widgets/clay_button.dart';
 import '../widgets/order_history.dart';
 import '../widgets/subscribe_panel.dart';
@@ -584,7 +585,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           icon: Icons.person_outline,
           title: '登录 / 注册',
           subtitle: '跨设备同步 · 找回已购订阅',
-          onTap: () => _comingSoon('登录'),
+          onTap: _showLoginDialog,
           bare: true,
         ),
       );
@@ -779,6 +780,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   /// 🔑 占位入口**点了必须有反馈** —— 判据：
   ///    「**静默失败 + 无出口**」比报错更糟。一个点了没反应的入口，
   ///    用户只会以为 App 坏了。
+  /// 打开**登录 / 注册弹窗** —— 全应用唯一的账号入口。
+  ///
+  /// 🔴 2026-09-29 接回：此前三处（账号行 / 订阅卡整块 / 订阅卡「查看」按钮）
+  ///    都指向 `_comingSoon('登录')`（点开提示「即将开放」）。根因是重排那批
+  ///    把「trial 认领弹窗」当作旧功能删掉了 —— 而**它同时也是登录的唯一入口**。
+  ///    📄 详见 [ClaimDialog] 的类文档 · 判据：「删一个元素前先查它还承担什么职责」。
+  ///
+  /// 🔑 登录成功后**不必**在这里刷数据：`initState` 的 `listenManual` 已监听
+  ///    「未登录 → 已登录」并调用 `_load()`（一处权威，别写两遍）。
+  void _showLoginDialog() {
+    ClaimDialog.show(context);
+  }
+
   void _comingSoon(String what) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Tw('$what即将开放')),
@@ -1082,7 +1096,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return Clay(
         borderRadius: BorderRadius.circular(16),
         padding: EdgeInsets.zero,
-        onTap: () => _comingSoon('登录'),
+        onTap: _showLoginDialog,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
           child: Row(
@@ -1114,7 +1128,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ],
                 ),
               ),
-              ClayButton(label: '查看', onTap: () => _comingSoon('登录')),
+              ClayButton(label: '查看', onTap: _showLoginDialog),
             ],
           ),
         ),

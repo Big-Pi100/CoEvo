@@ -53,6 +53,8 @@ class ClayButton extends StatelessWidget {
     super.key,
     required this.label,
     required this.onTap,
+    this.enabled = true,
+    this.expanded = false,
   });
 
   /// 按钮文案。
@@ -66,6 +68,29 @@ class ClayButton extends StatelessWidget {
   /// 而不是传 `null` 让它静默变成一块不能点的粘土。
   final VoidCallback onTap;
 
+  /// **可用性**（2026-09-29 新增）。`false` = 提交中 / 条件未满足。
+  ///
+  /// 走 `ClayState.disabled`（§3.7：**抽掉内亮** + 外阴影减半 + `opacity .5`）
+  /// 而**不是**把 `onTap` 置空 —— `Clay` 内部 `_interactive` 已经是
+  /// `onTap != null && !_disabled`，所以传 `disabled` 时点击**自动无效**。
+  ///
+  /// ⚠️ 这与上一条注释里说的「将来要 disabled 时显式加参数」是同一次动作：
+  ///    因为「条件未满足」已经出现（登录弹窗里提交中要防重复提交），
+  ///    所以现在补，而不是等到有调用方去 hack。
+  final bool enabled;
+
+  /// **撑满可用宽度**（2026-09-29 新增）。弹窗里的主 CTA 需要通栏。
+  ///
+  /// 实现上包一层 `SizedBox(width: double.infinity)` + 内部 `Row(max)` 居中 ——
+  /// 🔑 只给 `Clay` 一个 `width: infinity` 的外层约束**不够**：
+  ///    `Clay` 的 `CustomPaint` 尺寸取自 **child**，
+  ///    而 child（`Tw`）是自然宽 → 整块按钮仍然只有文字那么宽。
+  ///    必须让**最内层**也撑开（`Row(mainAxisSize: max)`），居中由它负责。
+  ///
+  /// ⚠️ 只能在**有确定宽度**的父里用（`Column` / `ListView` ✅）；
+  ///    放进 `Row` 这类**宽度无界**的父会因 `double.infinity` 布局报错。
+  final bool expanded;
+
   /// 横向 14 给文字留出呼吸，纵向 7 使高度落在 sm 档中段。
   static const EdgeInsets _padding =
       EdgeInsets.symmetric(horizontal: 14, vertical: 7);
@@ -76,21 +101,38 @@ class ClayButton extends StatelessWidget {
     // 否则「格」档下会拿「墨」的 accentInk 去压「格」的 accent。
     final t = CoEvoTokensExt.of(context);
 
-    return Clay(
-      state: ClayState.selected,
-      onTap: onTap,
-      padding: _padding,
-      child: Tw(
-        label,
-        style: TextStyle(
-          fontFamily: CoFonts.uiSans,
-          fontSize: 12.5,
-          fontWeight: FontWeight.w600,
-          // `accentInk` = 「压在 accent 上的字色」（token 表原文），
-          // 不是把 accent 调亮 —— 对比度由 token 保证。
-          color: Color(t.accentInk.argb32),
-        ),
+    final text = Tw(
+      label,
+      style: TextStyle(
+        fontFamily: CoFonts.uiSans,
+        fontSize: 12.5,
+        fontWeight: FontWeight.w600,
+        // `accentInk` = 「压在 accent 上的字色」（token 表原文），
+        // 不是把 accent 调亮 —— 对比度由 token 保证。
+        color: Color(t.accentInk.argb32),
       ),
     );
+
+    final button = Clay(
+      // 🔴 先判 `enabled`：禁用与选中**互斥**（`ClayPainter` 里 `disabled`
+      //    是独立分支）。写反了按钮会「看着能点、点不动」—— 正是 §🆕 那条
+      //    「视觉元素的形态须与语义一致」要避免的。
+      state: enabled ? ClayState.selected : ClayState.disabled,
+      // ⚠️ 禁用时**照样把 onTap 传下去**（不是置 null）：
+      //    `Clay` 内部 `_interactive = onTap != null && !_disabled` 已经挡掉了，
+      //    而置 null 会让「为什么点不动」变得需要读两层代码才能解释。
+      onTap: onTap,
+      padding: _padding,
+      // 撑宽时居中的责任在**最内层**（见 [expanded] 的说明）
+      child: expanded
+          ? Row(
+              mainAxisSize: MainAxisSize.max,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [text],
+            )
+          : text,
+    );
+
+    return expanded ? SizedBox(width: double.infinity, child: button) : button;
   }
 }

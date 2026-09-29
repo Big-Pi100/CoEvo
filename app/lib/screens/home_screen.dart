@@ -165,15 +165,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _showAuthDialog() {
-    debugPrint('_showAuthDialog: 开始显示注册对话框');
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (_) {
-        debugPrint('_showAuthDialog: dialog builder 被调用');
-        return ClaimDialog(
-            pendingRefCode: _pendingRefCode, pendingCampaignId: _pendingCampaignId);
-      },
+    debugPrint('_showAuthDialog: 开始显示登录 / 注册对话框');
+    // 🔑 走 `ClaimDialog.show()` 而不是在这里自己写 `showDialog` ——
+    //    弹窗的**弹出方式**（遮罩浓度 · insetPadding…）只该有一处定义；
+    //    两个调用方各写一遍，迟早在某个参数上走偏
+    //    （同 `HeaderChip` 被抽成公共组件的理由）。
+    ClaimDialog.show(
+      context,
+      pendingRefCode: _pendingRefCode,
+      pendingCampaignId: _pendingCampaignId,
     ).then((result) {
       debugPrint('_showAuthDialog: 对话框关闭 result=$result');
     }).catchError((e) {
