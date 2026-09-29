@@ -435,10 +435,12 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
 
 <!-- ── 对比 ─────────────────────────────────────────── -->
 <section class="sec">
-  <h2>并排对比 · 左＝现状，右＝改后（共 4 屏，横向可滚）</h2>
+  <h2>并排对比 · 左＝现状，右＝改后（共 5 屏，横向可滚）</h2>
   <p class="lead">
-    四屏：① 现状 → ② 改后（含账号区块）→ ③ 改后 · 夜档（验证三档都成立）→ ④ 登录页（🆕 新页面）。
+    五屏：① 现状 → ② 改后 · <b>已登录</b> → ③ 改后 · <b>未登录</b>（🆕 新用户第一屏）→
+    ④ 改后 · 夜档（验证三档都成立）→ ⑤ 登录页（🆕 新页面）。<br>
     左侧忠实复现现在的实现（含它的外壳与容器写法），其余是按 §4.2 / §6.1 / §10.1 定稿重做后的样子。
+    🔑 <b>②③ 是同一页的两种状态，不是两个设计</b> —— 请对照着看差异是否都必要。
   </p>
 
   <div class="rail" id="rail">
@@ -636,6 +638,21 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
               <div class="grplab">其他</div>
               <div class="clay">
                 <div class="item">
+                  <span class="ico">🎨</span>
+                  <span class="tx"><b>主题</b><span>墨 · 格 · 夜</span></span>
+                  <span class="go">›</span>
+                </div>
+                <div class="item">
+                  <span class="ico">🔊</span>
+                  <span class="tx"><b>朗读设置</b><span>语速 · 音色</span></span>
+                  <span class="go">›</span>
+                </div>
+                <div class="item">
+                  <span class="ico">🏆</span>
+                  <span class="tx"><b>我的成就</b><span>查看全部成就与进度</span></span>
+                  <span class="go">›</span>
+                </div>
+                <div class="item">
                   <span class="ico">💬</span>
                   <span class="tx"><b>联系工作人员</b></span>
                   <span class="go">›</span>
@@ -664,9 +681,168 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
       </div>
     </div>
 
+    <!-- ══ C 改后（未登录态 · 🆕 2026-09-29 白哥复核后补画）══
+         🔴 这一屏此前**从未设计过**。原型 4 屏全是「已登录态」，
+            却在文字里声称「未登录 / 已登录两态」—— 声明两态、只画一态。
+            而「未登录」恰恰是**新用户打开「我的」看到的第一屏**。
+         设计判据（规格原文，不是我自拟）：
+           · §10.1.1「匿名可用 → 需要**同步或购买**时引导注册」
+           · §10.1.1「账号只在两类时刻出现：**要同步**、**要付费**」
+           · §4.4.4「未订阅 → 「我的」页**显示「订阅完整版」入口**」
+           · §4.4 判据 6「朗读按钮在免费层**可见但点击时提示订阅 —— 不要藏起来**。
+                          让用户知道有这个能力，才能成为订阅动机」
+         → 🔑 所以**订阅区不隐藏**，改成「订阅完整版」入口（点了引导登录）。
+           我一度打算直接隐藏它 —— 那会切断订阅动机，与判据 6 相悖。 -->
+    <div class="mock">
+      <div class="mockcap"><b>③ 改后 · 未登录态</b><span class="tag good">新用户第一屏</span></div>
+      <div class="phone">
+        <div class="screen">
+          <div class="hbar">
+            <div class="hrow">
+              <div class="hmain">
+                <div class="t">我的</div>
+                <!-- 副标题只留「免费版」：名字来自登录账号，未登录时无名字可显示。
+                     套餐状态是真的（不依赖登录）→ 保留。 -->
+                <div class="s">免费版</div>
+              </div>
+              <!-- 🔴 **无通知入口** —— 未读数来自 `/api/notifications?user_id=`，
+                   未登录时面板里 `_userId.isEmpty` 直接 return（点开是空白）。 -->
+            </div>
+          </div>
+          <div class="mbody" style="padding:0 16px 100px">
+
+            <!-- 统计卡：**未登录也全是真的** —— 连续天数 / 掌握词数 / 阅读篇数
+                 全部由端侧 `user.db` 算出，不经后端。 -->
+            <div class="clay hero">
+              <div class="stats">
+                <div class="stat">
+                  <div class="k">连续天数</div>
+                  <div class="n">12<span class="u">天</span></div>
+                </div>
+                <div class="stat">
+                  <div class="k">掌握词数</div>
+                  <div class="n">248</div>
+                </div>
+                <div class="stat">
+                  <div class="k">阅读篇数</div>
+                  <div class="n">37<span class="u">篇</span></div>
+                </div>
+              </div>
+              <div class="dots">
+                <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                <i></i><i></i>
+              </div>
+              <!-- ⚠️ 未登录时**不带推荐码**（码来自登录账号）→ 只分享统计数字，不编造链接。 -->
+              <span class="sharebtn">↗ 分享我的学习记录</span>
+            </div>
+
+            <div class="grp">
+              <div class="grplab">账号</div>
+              <div class="clay">
+                <!-- 🔑 未登录时这一行是**入口**，不是「状态」——
+                     旧写法是「未登录 / 登录后可…」，读作「你缺了个账号」；
+                     改成「登录 / 注册」+ 说**价值**（同步 · 找回订阅），
+                     正好对应 §10.1.1 的那两类时刻。 -->
+                <div class="item">
+                  <span class="ico">👤</span>
+                  <span class="tx"><b>登录 / 注册</b><span>跨设备同步 · 找回已购订阅</span></span>
+                  <span class="go">›</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="grp">
+              <div class="grplab">内容偏好</div>
+              <div class="clay">
+                <div class="item" style="align-items:flex-start">
+                  <span class="ico">🎯</span>
+                  <span class="tx">
+                    <b>兴趣筛选</b>
+                    <span>决定信息流的内容权重</span>
+                  </span>
+                </div>
+                <div class="pills">
+                  <span class="pill on">科技</span>
+                  <span class="pill on">环境</span>
+                  <span class="pill">商业</span>
+                  <span class="pill">文化</span>
+                  <span class="pill">体育</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="grp">
+              <div class="grplab">订阅</div>
+              <div class="clay">
+                <!-- 🔴 **不隐藏**（§4.4 判据 6：让用户知道有订阅，才有动机）。
+                     未登录 + 未订阅 → 显示「订阅完整版」入口，点击**先引导登录**
+                     （§10.1.1「需要购买时引导注册」）。 -->
+                <div class="item">
+                  <span class="ico">✦</span>
+                  <span class="tx"><b>订阅完整版</b><span>无限生词本 · 文章朗读</span></span>
+                  <span class="claybtn">查看</span>
+                </div>
+                <!-- 恢复购买：⚠️ **是否在未登录时显示，待白哥定**。
+                     它只依赖 Apple ID（不依赖我们的账号），但恢复后要关联账号。
+                     规格 §4.4.3 只写了「订阅页 + 我的页两处都要」，未区分登录态。 -->
+                <div class="item">
+                  <span class="ico">⟳</span>
+                  <span class="tx"><b>恢复购买</b><span>换设备后找回已购订阅</span></span>
+                  <span class="go">›</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 其他组：与已登录态**完全一致**（全不依赖登录） -->
+            <div class="grp">
+              <div class="grplab">其他</div>
+              <div class="clay">
+                <div class="item">
+                  <span class="ico">🎨</span>
+                  <span class="tx"><b>主题</b><span>墨 · 格 · 夜</span></span>
+                  <span class="go">›</span>
+                </div>
+                <div class="item">
+                  <span class="ico">🔊</span>
+                  <span class="tx"><b>朗读设置</b><span>语速 · 音色</span></span>
+                  <span class="go">›</span>
+                </div>
+                <div class="item">
+                  <span class="ico">🏆</span>
+                  <span class="tx"><b>我的成就</b><span>查看全部成就与进度</span></span>
+                  <span class="go">›</span>
+                </div>
+                <div class="item">
+                  <span class="ico">💬</span>
+                  <span class="tx"><b>联系工作人员</b></span>
+                  <span class="go">›</span>
+                </div>
+                <div class="item">
+                  <span class="ico">ℹ︎</span>
+                  <span class="tx"><b>关于</b><span>版本 1.0.0</span></span>
+                  <span class="go">›</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 🔴 **无「退出账号」** —— 未登录无账号可退。
+                 现状是**无条件渲染**（`_buildSignOutTile()` 直接调），属逻辑矛盾。 -->
+
+          </div>
+          <div class="tbar">
+            <div class="tab"><span class="ti">📖</span>阅读</div>
+            <div class="tab"><span class="ti">🃏</span>复习</div>
+            <div class="tab on"><span class="ti">👤</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ══ C 改后（夜档，验证三档都成立）══ -->
     <div class="mock theme-night">
-      <div class="mockcap"><b>③ 改后 · 夜档</b><span class="tag good">同一份布局</span></div>
+      <div class="mockcap"><b>④ 改后 · 夜档</b><span class="tag good">同一份布局</span></div>
       <div class="phone">
         <div class="screen">
           <div class="hbar">
@@ -728,6 +904,18 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
             <div class="grp">
               <div class="grplab">其他</div>
               <div class="clay">
+                <div class="item"><span class="ico">🎨</span>
+                  <span class="tx"><b>主题</b><span>墨 · 格 · 夜</span></span>
+                  <span class="go">›</span></div>
+                <div class="item"><span class="ico">🔊</span>
+                  <span class="tx"><b>朗读设置</b><span>语速 · 音色</span></span>
+                  <span class="go">›</span></div>
+                <div class="item"><span class="ico">🏆</span>
+                  <span class="tx"><b>我的成就</b><span>查看全部成就与进度</span></span>
+                  <span class="go">›</span></div>
+                <div class="item"><span class="ico">💬</span>
+                  <span class="tx"><b>联系工作人员</b></span>
+                  <span class="go">›</span></div>
                 <div class="item"><span class="ico">ℹ︎</span>
                   <span class="tx"><b>关于</b><span>版本 1.0.0</span></span>
                   <span class="go">›</span></div>
@@ -750,7 +938,7 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
 
     <!-- ══ D 登录页（🆕 新页面）══ -->
     <div class="mock">
-      <div class="mockcap"><b>④ 登录页</b><span class="tag good">新增页面</span></div>
+      <div class="mockcap"><b>⑤ 登录页</b><span class="tag good">新增页面</span></div>
       <div class="phone">
         <div class="screen">
           <div class="hbar" style="padding-bottom:8px">
@@ -846,8 +1034,14 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
     <tr>
       <td><b>账号区块</b><br><span class="sev p1">新增</span></td>
       <td>只有「改昵称」一项 + 顶栏 logout <b>图标</b></td>
-      <td><b>未登录 / 已登录两态</b> + 绑定邮箱 + 页尾「退出账号」（<b>带文字</b>）</td>
+      <td><b>未登录 / 已登录两态</b>（各一屏，见 ②③）+ 绑定邮箱 + 页尾「退出账号」（<b>带文字</b>）</td>
       <td>决策 4；Apple 审核要求账号通道<b>可见</b>，藏在图标里不合格</td>
+    </tr>
+    <tr>
+      <td><b>登录态差异</b><br><span class="sev p1">🆕 补画</span></td>
+      <td>——（原设计<b>只画了已登录态</b>）</td>
+      <td>②③ 两屏并排：<b>必要差异只有 5 处</b>，其余完全一致</td>
+      <td>🔴 原原型声称「两态」却只画一态，而<b>未登录是新用户第一屏</b> → 见下方「登录态差异说明」</td>
     </tr>
   </table>
   <div class="note">
@@ -910,6 +1104,74 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
   </div>
 </section>
 
+<!-- ── 🆕 登录态差异 ─────────────────────────────────── -->
+<section class="sec">
+  <h2>🆕 登录态差异说明（② ③ 两屏对照）</h2>
+  <p class="lead">
+    白哥复核真机后问：「<b>未登录状态和登录状态能看到的东西有哪些是必要不同的？</b>
+    除了绑定邮箱，好像没有什么其他不同了吧」。<br>
+    这个判断是<b>对的</b> —— 我把每一项的<b>数据源</b>查了一遍，判据只有一条：
+  </p>
+  <div class="note">
+    <b>判据</b>：<b>数据在后端 → 必须登录；数据在端侧 <code>user.db</code> / 本地 <code>prefs</code> → 不需要登录。</b><br>
+    按此，全页 13 项里<b>只有 7 项真正依赖登录</b>（绑定邮箱 · 头像上传 · 订阅状态 ·
+    历史订单 · 通知未读 · 分享链接的推荐码 · 退出账号），其余 6 项（统计卡 · 我的成就 ·
+    主题 · 朗读设置 · 昵称 · 关于/联系）<b>全都是端侧数据</b>。
+  </div>
+  <table>
+    <tr><th style="width:190px">项</th><th style="width:270px">② 已登录</th><th style="width:270px">③ 未登录</th><th>为什么</th></tr>
+    <tr>
+      <td><b>顶栏副标题</b></td>
+      <td>「白哥 · 免费版」</td>
+      <td>「免费版」</td>
+      <td>名字来自登录账号（未登录无名可显示）；<b>套餐状态是真的</b>（不依赖登录）→ 保留</td>
+    </tr>
+    <tr>
+      <td><b>顶栏通知入口</b></td>
+      <td>✅「🔔 通知 3」</td>
+      <td>🔴 <b>无</b></td>
+      <td>未读数来自 <code>/api/notifications?user_id=</code>；未登录时面板里 <code>_userId.isEmpty</code> 直接 return → <b>点开是空白</b></td>
+    </tr>
+    <tr>
+      <td><b>账号组</b></td>
+      <td>昵称（可改 · 点头像换头像）+ <b>绑定邮箱</b></td>
+      <td><b>「登录 / 注册」入口</b> + 价值说明</td>
+      <td>🔑 未登录时这行是<b>入口</b>不是「状态」—— 旧写法「未登录 / 登录后可…」读作「你缺了个账号」；<br>改成说<b>价值</b>（跨设备同步 · 找回已购订阅），正好对应 §10.1.1 的那两类时刻</td>
+    </tr>
+    <tr>
+      <td><b>订阅区</b></td>
+      <td>「免费版」+ 升级按钮 · 恢复购买 · <b>历史订单</b></td>
+      <td>「<b>订阅完整版</b>」+ 查看按钮 · 恢复购买（<b>无历史订单</b>）</td>
+      <td>🔑 <b>不隐藏</b>（§4.4 判据 6：让用户知道有订阅，才有动机）；<br>历史订单按 <code>user_id</code> 查 → 未登录必然是「暂无订单」→ 隐藏</td>
+    </tr>
+    <tr>
+      <td><b>退出账号</b></td>
+      <td>✅ 页尾</td>
+      <td>🔴 <b>无</b></td>
+      <td>未登录无账号可退（现状是<b>无条件渲染</b> → 逻辑矛盾）</td>
+    </tr>
+    <tr>
+      <td colspan="4" style="color:var(--ink3)">
+        <b>其余全部一致</b>：统计卡（三列都是端侧算的真数据）· 兴趣筛选 · 恢复购买 · 主题 · 朗读设置 · 我的成就 · 联系工作人员 · 关于
+      </td>
+    </tr>
+  </table>
+  <div class="note warn">
+    <b>🔴 顺带纠正我自己的一个判断</b>：我一度打算「未登录时<b>隐藏</b>订阅组」——
+    查规格发现<b>与判据 6 相悖</b>：<br>
+    <code>ui-ux</code> §4.4 判据 6 原文：「朗读按钮在免费层<b>可见但点击时提示订阅</b> ——
+    <b>不要藏起来</b>。让用户知道有这个能力，才能成为订阅动机」；
+    §4.4.4：「未订阅 → 「我的」页显示「<b>订阅完整版</b>」入口」。<br>
+    → 所以未登录（必然未订阅）应显示<b>入口</b>，不是隐藏。<b>「藏起来」会切断订阅动机。</b>
+  </div>
+  <div class="note">
+    <b>⚠️ 一处待白哥定</b>：<b>「恢复购买」在未登录时是否显示？</b>
+    它只依赖 Apple ID（不依赖我们的账号），但恢复后需要一个账号来关联。
+    规格 §4.4.3 只写了「<b>订阅页 + 「我的」页两处都要</b>」，<b>未区分登录态</b> →
+    ③ 屏暂按<b>显示</b>处理（Apple 审核角度看，入口越多越安全）。
+  </div>
+</section>
+
 <!-- ── 阅读面板待办 ─────────────────────────────────── -->
 <section class="sec">
   <h2>📖 阅读面板还有什么要做的（回答白哥提问）</h2>
@@ -952,10 +1214,13 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
 
 <footer>
   <b>判断建议</b>：① 先切到<b>夜档</b>看一遍 —— 粘土在深底上的「内亮」会被压到 <code>.062</code>，三档里最容易显脏；
-  ② 看「改后」的<b>分组标题</b>（现在是 4 组）够不够；③ 看<b>第 4 屏登录页</b>的首版形态。<br>
-  <b>落地成本</b>：只动 <code>profile_screen.dart</code> 一个文件（实测 <b>1,120 行</b> → 预计 <b>~520 行</b>），
-  删 5 个旧版分区 + 换外壳与容器写法；新增「账号区块」「兴趣筛选」「关于」「登录页」需新做。
-  <b>不改</b>任何 provider、后端接口、路由注册（账号区块的后端能力属<b>独立一批</b>，见 §6.4）。
+  ② <b>对照 ②③ 两屏</b>，确认「登录态差异」<b>5 处是否都必要</b>（其余应当一致）；
+  ③ 看<b>第 5 屏登录页</b>的首版形态。<br>
+  <b>落地成本</b>：只动 <code>profile_screen.dart</code> 一个文件（实测 <b>1,142 行</b>），
+  删 5 个旧版分区 + 换外壳与容器写法；新增「账号区块」「关于」需新做。
+  <b>不改</b>任何 provider、后端接口、路由注册（账号区块的后端能力属<b>独立一批</b>，见 §6.4）。<br>
+  ⚠️ <b>「兴趣筛选」与「登录页」本批<b>不做</b></b> —— 前者依赖「它怎么影响信息流排序」这块尚未设计的设计；
+  后者依赖 Apple SDK + 后端 <code>email</code> 列（6 项全未就绪）。
 </footer>
 
 </div>
