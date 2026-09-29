@@ -141,18 +141,64 @@ impl LlmCaller {
     pub async fn generate(&mut self, system_prompt: &str, user_content: &str) -> Result<String, LlmError> {
         let url = format!("{}/chat/completions", self.config.base_url);
         let body = build_request_body(&self.config, system_prompt, user_content);
+        self.post_with_retry(http_client(), &url, &body, "generate").await
+    }
+
+    /// 🆕 与 [`generate`] 相同，但可**附加额外的请求体字段**。
+    ///
+    /// # 🔑 为什么需要它（2026-09-29 · A1 在线制卡）
+    ///
+    /// 白哥要求「在线生成与预制**同一套 prompt / 契约 / 校验**」。
+    /// 光有同一份 prompt **不够** —— 请求参数也必须一致。预制脚本
+    /// （`scripts/coevo_wordlib_contract.py`）除了 prompt 还传了：
+    ///
+    /// | 参数 | 预制 | 缺了会怎样 |
+    /// |---|---|---|
+    /// | `response_format: {"type":"json_object"}` | ✅ 传 | 🔴 可能返回非 JSON（prompt 只说 "Output JSON only"，无强制） |
+    /// | `thinking: {"type":"disabled"}` | ✅ 传 | 🔴 **成本可能差数倍**（见 skill `llm-batch-content-fill`：显式关推理） |
+    ///
+    /// 所以在线路径用默认的 `generate` 会**产出与预制不同**。
+    /// ⚠️ 注意 `LlmConfig` 里的 `max_tokens` / `temperature` / `model` **也要一并对齐**
+    /// （本函数只负责 merge 额外字段，不覆盖 config）。
+    pub async fn generate_with_extra(
+        &mut self,
+        system_prompt: &str,
+        user_content: &str,
+        extra: &serde_json::Value,
+    ) -> Result<String, LlmError> {
+        let url = format!("{}/chat/completions", self.config.base_url);
+        let mut body = build_request_body(&self.config, system_prompt, user_content);
+        if let (Some(base), Some(ext)) = (body.as_object_mut(), extra.as_object()) {
+            for (k, v) in ext {
+                base.insert(k.clone(), v.clone());
+            }
+        }
+        self.post_with_retry(http_client(), &url, &body, "generate_with_extra").await
+    }
+
+    /// 私有：带重试的 POST（`generate` / `generate_with_extra` 共用）。
+    ///
+    /// 重试策略：**2 次尝试 + 指数退避**（250ms → 2s），失败累加 `consecutive_failures`。
+    async fn post_with_retry(
+        &mut self,
+        client: &'static Client,
+        url: &str,
+        body: &serde_json::Value,
+        label: &str,
+    ) -> Result<String, LlmError> {
+        let api_key = self.config.api_key.clone();   // 先 clone，避免下面 &mut self 借用冲突
         let consecutive = &mut self.consecutive_failures;
 
         let mut last_error = LlmError::EmptyResponse;
         for attempt in 0..2 {
-            match post_one(http_client(), &url, &self.config.api_key, &body).await {
+            match post_one(client, url, &api_key, body).await {
                 Ok(reply) => {
                     *consecutive = 0;
                     return Ok(reply);
                 }
                 Err(e) => {
                     if attempt == 0 {
-                        tracing::warn!("LLM generate attempt 1 failed: {:?}", e);
+                        tracing::warn!("LLM {} attempt 1 failed: {:?}", label, e);
                         // Exponential backoff: base 250ms, cap 2s
                         let delay = std::cmp::min(250 * 2u64.pow(attempt as u32), 2000);
                         tokio::time::sleep(Duration::from_millis(delay)).await;

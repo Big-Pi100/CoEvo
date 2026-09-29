@@ -358,7 +358,65 @@ CREATE TABLE IF NOT EXISTS user_preferences (
 );
 "#;
 
-/// 初始化完整数据库 schema（核心表 + 管理表 + 偏好表 + 额外索引）
+/// 词库在线制卡缓存 —— LLM 兜底的「服务端全局缓存」
+///
+/// # 为什么是「服务端全局」层
+///
+/// 三层缓存里的**主力层**（`docs/design/llm-card-online-path-2026-09-29.md` §十一）：
+/// · 端侧缓存 → 只管**本机**重复查
+/// · **本层**   → **跨用户**复用 ⇒ 成本 **∝ 唯一词数**（**不 ∝ 用户数**）← 「趋近于 0」的关键
+/// · `word.db` → 离线可用，靠**版本发布**固化
+///
+/// # 出处（L0 原文，非新设计）
+///
+/// · `v1-final-design-authoritative-2026-09-25.md` **第 479 行**：`generated_card_cache`（`spelling` PK · `hit_count`）
+/// · `on-demand-generation-server-side-2026-09-26.md` §4.2 / §4.3（竞态）
+///
+/// # 字段说明
+///
+/// | 字段 | 为什么 |
+/// |---|---|
+/// | `spelling` | **PK + `COLLATE NOCASE`** → 🔑 **去重靠 PK**（不靠 `hit_count`）· 大小写归一 |
+/// | `card_content` | 卡片 JSON —— **与 `word.db` 的 `card.content` 同构** → 回流时可复用同一套落库链 |
+/// | `contract_version` | 🔴 生成时的契约版本 → **契约升级后可识别/失效陈旧缓存**（否则旧 prompt 产物永远留着） |
+/// | `source` | L0 已有 → 区分来源，**回流进 `word.db` 后仍能追溯** |
+/// | `hit_count` | L0 设计 → 只管**回流门槛**（不代表去重） |
+/// | `distinct_user_count` | 🆕 更真实的**需求信号**（避免同一人反复查把门槛刷过去） |
+/// | `created_at` / `updated_at` | 审计 |
+///
+/// ⚠️ `distinct_user_count` 的**前提**：请求要带一个**匿名设备标识**（端侧生成、不涉及登录）——
+///    因为产品原则是「**除生词表上限外不验证登录态**」。没有该标识时**不减分**：只不加。
+pub const WORDLIB_SCHEMA_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS generated_card_cache (
+    spelling            TEXT PRIMARY KEY COLLATE NOCASE,
+    card_content        TEXT NOT NULL,
+    contract_version    TEXT NOT NULL,
+    source              TEXT NOT NULL DEFAULT 'llm-online',
+    hit_count           INTEGER NOT NULL DEFAULT 0,
+    distinct_user_count INTEGER NOT NULL DEFAULT 0,
+    created_at          TEXT NOT NULL,
+    updated_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gcc_hits ON generated_card_cache (hit_count DESC);
+
+-- 「谁查过这个词」—— 只为算 `distinct_user_count`（回流门槛的真信号）
+--
+-- 🔑 为什么单独一张表：`hit_count` 会被同一人反复查刷高，
+--    而回流门槛要的是「**有多少个不同的人**真的需要它」。
+--    PK(spelling, device_id) → **天然去重**（同一设备反复查只算一次）。
+--
+-- ⚠️ `device_id` 是**匿名设备标识**（端侧生成，不涉及登录）——
+--    产品原则是「除生词表上限外不验证登录态」。请求没带时不写本表（只 +hit_count）。
+CREATE TABLE IF NOT EXISTS generated_card_hit (
+    spelling    TEXT NOT NULL COLLATE NOCASE,
+    device_id   TEXT NOT NULL,
+    first_hit_at TEXT NOT NULL,
+    hit_count   INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (spelling, device_id)
+);
+"#;
+
+/// 初始化完整数据库 schema（核心表 + 管理表 + 偏好表 + 词库缓存表 + 额外索引）
 pub fn init_database(conn: &rusqlite::Connection) -> Result<(), String> {
     conn.execute_batch(SCHEMA_SQL)
         .map_err(|e| format!("core schema: {}", e))?;
@@ -377,6 +435,9 @@ pub fn init_database(conn: &rusqlite::Connection) -> Result<(), String> {
         .map_err(|e| format!("distribution schema: {}", e))?;
     conn.execute_batch(USER_PREFERENCES_SQL)
         .map_err(|e| format!("preferences table: {}", e))?;
+    // 🆕 词库在线制卡缓存（LLM 兜底 · 服务端全局缓存）
+    conn.execute_batch(WORDLIB_SCHEMA_SQL)
+        .map_err(|e| format!("wordlib schema: {}", e))?;
     // 额外索引（部分核心索引已在 SCHEMA_SQL 中创建，这里补充交叉表索引）
     conn.execute_batch(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_hash ON users(phone_hash) WHERE phone_hash IS NOT NULL;"

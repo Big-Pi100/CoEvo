@@ -125,6 +125,10 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/user/{user_id}/preferences", get(preferences_get_handler).put(preferences_put_handler))
         .route("/api/user/{user_id}/subscription", get(user_subscription_handler))
         .route("/api/stt/transcribe", post(stt_transcribe_handler))
+        // ── 词库外生词兜底（LLM 在线制卡）──
+        // 🔴 **不需登录** —— 产品原则「除生词表上限外不验证登录态」：
+        //    读内容/划词/生成卡片都不得被登录态阻塞。
+        .route("/api/generate-card", post(generate_card_handler))
         .route("/api/user/bind-lookup", post(bind_lookup_handler))
         // ── Learning Plans ──
         // 🔴 2026-09-29 已退役：/api/plans（依赖 plan_runs / user_plan_progress，表已删）
@@ -842,3 +846,78 @@ async fn avatar_get_handler(
 
 // 🔴 2026-09-29 已退役：activate_first_task（依赖已删除的表 / 已退役模块，路由已同步移除）
 
+// ══════════════════════════════════════════════════════════════════════
+// 词库外生词兜底 —— LLM 在线制卡
+// ══════════════════════════════════════════════════════════════════════
+
+/// `POST /api/generate-card` —— 用户划到词库外的词时的出口。
+///
+/// # 请求
+/// ```json
+/// { "spelling": "brainstorm", "device_id": "匿名设备标识（可选）" }
+/// ```
+///
+/// # 响应
+/// ```json
+/// { "ok": true, "spelling": "brainstorm", "from_cache": false,
+///   "hit_count": 0, "contract_version": "v6", "card": { ... } }
+/// ```
+/// 失败：`{"ok": false, "error": "..."}` + 对应状态码
+/// （400 参数 · 422 闸门 · 502 上游 · 503 正在生成 · 500 内部）。
+///
+/// # 🔴 不需要登录
+/// 产品原则：「除生词表上限外**不验证登录态**」—— 内容渲染不得被登录态阻塞。
+/// `device_id` 只是**匿名设备标识**（端侧生成），用于统计 `distinct_user_count`
+/// （回流门槛的真信号）；**缺省时不影响生成**，只是不计 distinct。
+async fn generate_card_handler(
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    use axum::http::StatusCode;
+
+    let spelling = match payload.get("spelling").and_then(|v| v.as_str()) {
+        Some(s) if !s.trim().is_empty() => s,
+        _ => {
+            tracing::warn!("generate_card: spelling 缺失或为空");
+            return (
+                StatusCode::BAD_REQUEST,
+                serde_json::json!({"ok": false, "error": "spelling 不能为空"}).to_string(),
+            )
+                .into_response();
+        }
+    };
+    let device_id = payload.get("device_id").and_then(|v| v.as_str());
+
+    match crate::llm_card::get_or_generate(spelling, device_id).await {
+        Ok(r) => {
+            tracing::info!(
+                "generate_card OK spelling={} from_cache={} hits={}",
+                spelling, r.from_cache, r.hit_count
+            );
+            (
+                StatusCode::OK,
+                serde_json::json!({
+                    "ok": true,
+                    "spelling": spelling.trim().to_lowercase(),
+                    "from_cache": r.from_cache,
+                    "hit_count": r.hit_count,
+                    "contract_version": crate::llm_card::CONTRACT_VERSION,
+                    "card": r.card,
+                })
+                .to_string(),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            let st = e.status();
+            tracing::warn!(
+                "generate_card FAIL spelling={} status={} msg={}",
+                spelling, st.as_u16(), e.message()
+            );
+            (
+                st,
+                serde_json::json!({"ok": false, "error": e.message()}).to_string(),
+            )
+                .into_response()
+        }
+    }
+}
