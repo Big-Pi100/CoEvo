@@ -7,16 +7,17 @@
      ① 源码级 —— skill `design-prototype-page` / `scripts/check-prototype.js`
      ② 渲染级 —— 🔴 **必跑**。源码级看不见布局错（本页曾因此交付了两个 bug：
         统计卡溢出 63px、页尾「退出账号」竖排 —— 都是语法完全正确的 CSS）
+
+        **最简用法**：双击 `scripts/measure-render.html` → 「选择 HTML 文件…」→ 选本文件。
+        命令行（可挂 CI）：
         ```
         chrome --headless=new --disable-gpu --no-sandbox \
           --allow-file-access-from-files --user-data-dir=<临时目录> \
           --dump-dom --virtual-time-budget=4500 \
           "file:///<skill>/scripts/measure-render.html?target=E:/CoEvo/docs/design/profile-redesign-2026-09-29.html&nowrap=.item%20b,.pill,.danger-tx,.hero%20.n,.hero%20.k&sameRow=.hero%20.n&key=.screen,.hero,.dots"
         ```
-
-     ⚠️ **已知且有意**的横向溢出（渲染级校验里出现这两条属正常，不需修）：
-        · `.mbar .icwrap` +5px —— 未读角标（`.badge`）**有意**压在图标右上角外侧
-        · `.rail`          —— 四屏并排对比区，**有意**横向滚动
+        当前结果：**无布局错误 ✅**（排除项均带结构性理由：
+        `.rail` = 横向滚动容器 · `.mbar .icwrap` = 未读角标，绝对定位有意越界）
 
      ⚠️ 注释**不能放在 `<!DOCTYPE html>` 之前** —— 那会让浏览器进入怪异模式（quirks mode）。
      ══════════════════════════════════════════════════════════════════════ -->
