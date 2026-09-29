@@ -1,6 +1,25 @@
 <!DOCTYPE html>
 <html lang="zh-CN" data-theme="ink">
 <head>
+<!-- ══════════════════════════════════════════════════════════════════════
+     本页的校验（两层，改完必跑 —— 别只看源码级）
+
+     ① 源码级 —— skill `design-prototype-page` / `scripts/check-prototype.js`
+     ② 渲染级 —— 🔴 **必跑**。源码级看不见布局错（本页曾因此交付了两个 bug：
+        统计卡溢出 63px、页尾「退出账号」竖排 —— 都是语法完全正确的 CSS）
+        ```
+        chrome --headless=new --disable-gpu --no-sandbox \
+          --allow-file-access-from-files --user-data-dir=<临时目录> \
+          --dump-dom --virtual-time-budget=4500 \
+          "file:///<skill>/scripts/measure-render.html?target=E:/CoEvo/docs/design/profile-redesign-2026-09-29.html&nowrap=.item%20b,.pill,.danger-tx,.hero%20.n,.hero%20.k&sameRow=.hero%20.n&key=.screen,.hero,.dots"
+        ```
+
+     ⚠️ **已知且有意**的横向溢出（渲染级校验里出现这两条属正常，不需修）：
+        · `.mbar .icwrap` +5px —— 未读角标（`.badge`）**有意**压在图标右上角外侧
+        · `.rail`          —— 四屏并排对比区，**有意**横向滚动
+
+     ⚠️ 注释**不能放在 `<!DOCTYPE html>` 之前** —— 那会让浏览器进入怪异模式（quirks mode）。
+     ══════════════════════════════════════════════════════════════════════ -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>「我的」页重设计 · 前后对比 — CoEvo</title>
@@ -177,11 +196,21 @@ code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em
         padding:0 4px 8px}
 .item{display:flex;align-items:center;gap:11px;padding:13px 15px}
 .item + .item{border-top:1px solid var(--line)}
-.item .ico{width:19px;text-align:center;font-size:15px;flex:0 0 19px}
+/* 🔴 宽度给 **21px**（不是 19）—— emoji 字形（👤🎯✉️⟳🧾💬ℹ︎）实际渲染约 21px，
+   给 19 会溢出 2px。改为 21 后归零（否则渲染级校验里会一直有一条待声明的溢出）。 */
+.item .ico{width:21px;text-align:center;font-size:15px;flex:0 0 21px}
+/* 🔴 `.tx` 是 flex 子项，**必须 flex:1** —— 写成 `flex:0` 会得到
+   `flex:0 1 0%`（flex-basis 0）→ 宽度坍缩 → 文字一个字一行（竖排）。
+   ⚠️ 反过来，**不要往 `.tx` 里塞 flex 容器（如胶囊组）**：
+   本规则 `display:block` 的优先级 (0,2,1) 高于 `.pills` (0,1,0)，
+   会把胶囊逐层 block 化 → 同样表现成竖排。胶囊组请放 `.tx` 之外。
+   另外**不要用内联 flex 覆盖 `.tx`**（内联优先级最高，会绕过这里的设定）。 */
 .item .tx{flex:1;min-width:0}
 .item .tx b{display:block;font-size:14px;font-weight:500;color:var(--ink)}
 .item .tx span{display:block;font-size:11.5px;color:var(--ink3);margin-top:2px;line-height:1.5}
 .item .go{color:var(--ink3);font-size:13px}
+/* 危险操作（退出账号）—— 独立类，不用 `.tx`（它有 flex:1，会把它拉满整行宽） */
+.danger-tx{color:var(--accent);font-size:14px;font-weight:600;white-space:nowrap}
 
 /* 顶部统计区（Clay 大卡）*/
 .hero{padding:18px 18px 16px;margin-bottom:16px}
@@ -189,8 +218,13 @@ code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em
 .hero .n{font-size:31px;font-weight:600;color:var(--ink);line-height:1.15;
          font-family:Literata,Georgia,serif;margin-top:3px}
 .hero .u{font-size:12px;color:var(--ink3);margin-left:3px}
-.hero .row2{display:flex;gap:26px;align-items:flex-end}
+/* 🔴 两个数字各占一半（flex:1 1 0 + min-width:0 防内容撑破）——
+   不能把 dots 放进其中一列：14 点 = 220px，会把它挤出容器（实测踩过）。 */
+.hero .stats{display:flex;gap:14px}
+.hero .stat{flex:1 1 0;min-width:0}
 .dots{display:flex;gap:4px;margin-top:11px}
+/* 🔴 14 点 × 12px + 13 × 4px = 220px，须 < 卡片内容宽（344−24−32−36 = 252）。
+   改点数或点径前先算一遍，否则会溢出。 */
 .dots i{width:12px;height:12px;border-radius:50%;background:var(--sunken);
         display:block;transition:background .28s}
 .dots i.on{background:var(--accent)}
@@ -203,7 +237,9 @@ code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em
 .pill{font-size:11px;padding:3px 9px;border-radius:9px;background:var(--sunken);
       color:var(--ink2);font-weight:500;transition:background .28s}
 .pill.on{background:var(--accent);color:var(--accent-ink)}
-.pills{display:flex;flex-wrap:wrap;gap:7px;padding:13px 15px}
+/* 胶囊组 —— 🔑 与 `.item` 平级（不放进 `.tx`，否则被 `.item .tx span` 的
+   `display:block` 盖掉 → 每个胶囊独占一行）。左缩进 = item padding 15 + 图标 21 + 间距 11 */
+.pills{display:flex;flex-wrap:wrap;gap:7px;padding:0 15px 15px 47px}
 .pills .pill{cursor:default}
 
 /* ── 登录页（🆕 新页面）────────────────────────────── */
@@ -445,20 +481,21 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
           <div class="mbody" style="padding:0 16px 100px">
 
             <div class="clay hero">
-              <div class="k">连续天数</div>
-              <div class="row2">
-                <div>
+              <div class="stats">
+                <div class="stat">
+                  <div class="k">连续天数</div>
                   <div class="n">12<span class="u">天</span></div>
-                  <div class="dots">
-                    <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
-                    <i class="on"></i><i class="on"></i><i class="on"></i><i></i>
-                    <i></i><i></i><i></i><i></i><i></i><i></i>
-                  </div>
                 </div>
-                <div style="flex:1;text-align:right">
+                <div class="stat" style="text-align:right">
                   <div class="k">掌握词数</div>
                   <div class="n">248</div>
                 </div>
+              </div>
+              <div class="dots">
+                <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                <i></i><i></i>
               </div>
               <span class="sharebtn">↗ 分享我的学习记录</span>
             </div>
@@ -487,14 +524,14 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
                   <span class="tx">
                     <b>兴趣筛选</b>
                     <span>决定信息流的内容权重</span>
-                    <span class="pills" style="padding:9px 0 3px">
-                      <span class="pill on">科技</span>
-                      <span class="pill on">环境</span>
-                      <span class="pill">商业</span>
-                      <span class="pill">文化</span>
-                      <span class="pill">体育</span>
-                    </span>
                   </span>
+                </div>
+                <div class="pills">
+                  <span class="pill on">科技</span>
+                  <span class="pill on">环境</span>
+                  <span class="pill">商业</span>
+                  <span class="pill">文化</span>
+                  <span class="pill">体育</span>
                 </div>
               </div>
             </div>
@@ -538,9 +575,7 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
 
             <div class="clay danger" style="margin-bottom:16px">
               <div class="item" style="justify-content:center">
-                <span class="tx" style="flex:0">
-                  <b style="color:var(--accent);font-weight:600">退出账号</b>
-                </span>
+                <b class="danger-tx">退出账号</b>
               </div>
             </div>
 
@@ -565,20 +600,21 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
           </div>
           <div class="mbody" style="padding:0 16px 100px">
             <div class="clay hero">
-              <div class="k">连续天数</div>
-              <div class="row2">
-                <div>
+              <div class="stats">
+                <div class="stat">
+                  <div class="k">连续天数</div>
                   <div class="n">12<span class="u">天</span></div>
-                  <div class="dots">
-                    <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
-                    <i class="on"></i><i class="on"></i><i class="on"></i><i></i>
-                    <i></i><i></i><i></i><i></i><i></i><i></i>
-                  </div>
                 </div>
-                <div style="flex:1;text-align:right">
+                <div class="stat" style="text-align:right">
                   <div class="k">掌握词数</div>
                   <div class="n">248</div>
                 </div>
+              </div>
+              <div class="dots">
+                <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                <i></i><i></i>
               </div>
               <span class="sharebtn">↗ 分享我的学习记录</span>
             </div>
@@ -613,9 +649,7 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
             </div>
             <div class="clay danger" style="margin-bottom:16px">
               <div class="item" style="justify-content:center">
-                <span class="tx" style="flex:0">
-                  <b style="color:var(--accent);font-weight:600">退出账号</b>
-                </span>
+                <b class="danger-tx">退出账号</b>
               </div>
             </div>
           </div>
