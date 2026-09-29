@@ -130,6 +130,10 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         // 🔴 **不需登录** —— 产品原则「除生词表上限外不验证登录态」：
         //    读内容/划词/生成卡片都不得被登录态阻塞。
         .route("/api/generate-card", post(generate_card_handler))
+        // 🆕 信息流（内容源 · 2026-09-29）—— 🔴 **不验证登录态**：
+        //    读信息流/打开文章属「内容渲染」，不得被登录态阻塞（产品原则）
+        .route("/api/feed", get(crate::content_handler::feed_list_handler))
+        .route("/api/feed/{id}", get(crate::content_handler::feed_detail_handler))
         // 🔴 2026-09-29 已退役：`POST /api/user/bind-lookup`（凭姓名 + 手机号查用户）——
         //    依赖已删的 `real_name` / `phone` / `bind_hash`。
         // ── Learning Plans ──

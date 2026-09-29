@@ -421,6 +421,104 @@ CREATE TABLE IF NOT EXISTS generated_card_hit (
 );
 "#;
 
+/// 内容源 + 内容池（**服务端共享**）—— 信息流的数据源
+///
+/// 依据：`docs/design/content-source-strategy-evaluation-2026-09-25.md` §四
+///      （架构 = **共享内容池**，不是按用户抓取）
+///
+/// # 🔴 为什么必须是「服务端共享池」
+/// 若按「每用户按兴趣单独抓取」：成本 ∝ **用户数 × 抓取频率** → 边际成本线性增长。
+/// 共享池则是「每日固定次数抓取 → 全用户共用」→ 成本 ∝ **源数量**（与用户数无关）。
+/// 方案实测核算：100 个源 · 每 6 小时 → **¥0.18/月**。
+///
+/// # 🔴 只建这两张表（**方案 §4.3 的另外两张有意不建**）
+/// | 方案里的表 | 处置 | 理由 |
+/// |---|---|---|
+/// | `content_source` | ✅ 建 | 源配置 |
+/// | `content_pool` | ✅ 建 | 内容池本体 |
+/// | `user_read` | 🔴 **不建** | 与端侧 `user.db.article_read` **重复**。「**学习状态已整体迁端侧**」（2026-09-29 定）→ 再建一张服务端阅读表就是**同一个口径两个出处**，必然漂移。端侧的 `article_read(article_id PK)` 已是权威。 |
+/// | `user_interest` | 🔴 **不建** | ① 兴趣偏好属**端侧 prefs**（同「主题」的处置）② 且「兴趣怎么影响信息流排序」**尚未设计**（方案自己标注）→ 现在建表是**没有依据的结构**。 |
+/// → 🔑 判据：**「方案里写了」≠「现在就该建」** —— 方案是 09-25 写的，
+///    而「学习状态迁端侧」是 09-29 定的后手决策，**新决策覆盖旧方案**。
+///
+/// # 🔴 时间列一律 **UTC ISO8601 带 `Z`**（不用 `datetime('now')`）
+/// 本库其它表用过 `datetime('now')`（它产出「空格分隔、无 `Z`」）。
+/// 但本表的时间**要下发给 App**，而 Dart 的 `DateTime.parse` 对无时区标记的串
+/// **静默按本地时区解释** → 跨时区错位（端侧 `user.db` 正是为此刻了同一条硬约束）。
+/// → 本表统一 `strftime('%Y-%m-%dT%H:%M:%SZ', 'now')`，与端侧对齐。
+///
+/// # 🔑 `content_pool.id` 用 `AUTOINCREMENT`（**不是**普通 `INTEGER PRIMARY KEY`）
+/// 端侧 `article_read.article_id` 是 **INTEGER**，指向的正是本表的 `id`。
+/// 普通 `INTEGER PRIMARY KEY` 在**删除后会复用** id（取 max+1）——
+/// 若内容池做保留期清理，被清理文章的 id 会被新文章占用
+/// → 端侧那条「已读」记录会**静默指向另一篇文章**。
+/// `AUTOINCREMENT` 保证 id 单调不复用 → 断掉这条静默错配。
+pub const CONTENT_SCHEMA_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS content_source (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    name               TEXT    NOT NULL,
+    url                TEXT    NOT NULL,
+    kind               TEXT    NOT NULL DEFAULT 'rss',   -- rss | hn
+    category           TEXT,                             -- news | tech | science | culture | business | life
+    cefr_hint          TEXT,                             -- A2 | B1 | B2 | C1（难度提示）
+    license            TEXT,                             -- public_domain | cc | news | esl
+    -- 1 = 允许**全文**入库并展示；0 = 只存摘要 + 链接（Flipboard 模式）
+    -- ⚠️ 新闻类取 1 是白哥 2026-09-29 的选择（方案原建议 0）→ 风险等级见方案文档
+    redistributable    INTEGER NOT NULL DEFAULT 0 CHECK (redistributable IN (0, 1)),
+    -- 🔴 **源的时间戳不带时区时，按哪个偏移解释**（分钟；东八区 = 480）
+    --
+    -- 为什么必须有这一列（2026-09-29 冒烟实测）：
+    --   实测 4 个 RSS 源里 **3 个是 RFC 2822**（`Tue, 29 Sep 2026 07:36:24 -0400`，自带时区）；
+    --   而 **ECNS 是 `2026-09-29 21:34:24`** —— 非标准格式**且没有时区标记**。
+    --   🔴 此时**不能猜 UTC**：按 UTC 解释那条会变成 `21:34Z`，
+    --      比抓取时刻（`15:58Z`）**还晚** → 未来时间。它实际是**北京时间**。
+    --   → 时区是**每个源的属性**（源站的本地惯例），所以做成**配置**而不是写死在解析器里。
+    --   ⚠️ 带时区的格式（RFC 2822）**不受本列影响** —— 它自带偏移，以它为准。
+    tz_offset_min      INTEGER NOT NULL DEFAULT 0,
+    fetch_interval_min INTEGER NOT NULL DEFAULT 360,
+    enabled            INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    last_fetch_at      TEXT,
+    fail_count         INTEGER NOT NULL DEFAULT 0,
+    created_at         TEXT    NOT NULL,
+    updated_at         TEXT    NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_csrc_url ON content_source (url);
+CREATE INDEX IF NOT EXISTS idx_csrc_due ON content_source (enabled, last_fetch_at);
+
+CREATE TABLE IF NOT EXISTS content_pool (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,   -- = 端侧的 article_id（见上方说明）
+    source_id    INTEGER REFERENCES content_source(id),
+    title        TEXT    NOT NULL,
+    summary      TEXT,                                -- 摘要（RSS description）
+    body         TEXT,                                -- 全文（仅 redistributable=1 的源）
+    url          TEXT    NOT NULL,
+    author       TEXT,                                -- dc:creator（⚠️ 不放 service 层做展示决策）
+    category     TEXT,
+    published_at TEXT,                                -- UTC ISO8601 带 Z（源给的 RFC822 要归一）
+    fetched_at   TEXT    NOT NULL,                    -- UTC ISO8601 带 Z
+    word_count   INTEGER,                             -- 生词密度参考
+    score        INTEGER,                             -- 热帖分数（HN · 供「热帖」排序）
+    comments     INTEGER,                             -- 热帖评论数（HN）
+    UNIQUE (url)                                      -- 🔑 幂等键：同一 URL 只入库一次
+);
+CREATE INDEX IF NOT EXISTS idx_cpool_cat_time ON content_pool (category, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cpool_pub      ON content_pool (published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cpool_score    ON content_pool (score DESC);
+
+-- 种子源（实测**可达**才进这份清单 —— 2026-09-29 本机 + VPS 双实测）
+-- 🔴 曾经推荐的 VOA / BBC Learning English / Wikipedia **国内不可达**（HTTP 000）
+--    → 不在种子清单里（详见方案文档「实测修订」）
+INSERT OR IGNORE INTO content_source
+    (id, name, url, kind, category, cefr_hint, license, redistributable, tz_offset_min, created_at, updated_at)
+VALUES
+    (1, 'NPR News',      'https://feeds.npr.org/1001/rss.xml',                        'rss', 'news', 'B2', 'news',          1,    0, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    -- ⚠️ ECNS 是**唯一**时间不带时区的源（`2026-09-29 21:34:24`）→ 按北京时间解释
+    (2, 'ECNS 中国新闻网英文', 'https://www.ecns.cn/rss/rss.xml',                        'rss', 'news', 'B2', 'news',          1,  480, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (3, 'Ars Technica',  'https://arstechnica.com/feed/',                             'rss', 'tech', 'C1', 'news',          1,    0, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (4, 'Dev.to',        'https://dev.to/feed',                                       'rss', 'tech', 'B2', 'cc',            1,    0, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (5, 'Hacker News',   'https://hacker-news.firebaseio.com/v0',                     'hn',  'tech', 'C1', 'public_domain', 1,    0, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now'));
+"#;
+
 /// 初始化完整数据库 schema（核心表 + 管理表 + 偏好表 + 词库缓存表 + 额外索引）
 pub fn init_database(conn: &rusqlite::Connection) -> Result<(), String> {
     conn.execute_batch(SCHEMA_SQL)
@@ -443,6 +541,13 @@ pub fn init_database(conn: &rusqlite::Connection) -> Result<(), String> {
     // 🆕 词库在线制卡缓存（LLM 兜底 · 服务端全局缓存）
     conn.execute_batch(WORDLIB_SCHEMA_SQL)
         .map_err(|e| format!("wordlib schema: {}", e))?;
+    // 🆕 内容源 + 内容池（服务端共享内容池 · 2026-09-29 · 白哥定「先做后端」）
+    //
+    // 🔑 新表**不需要专门迁移**：`init_database` 每次启动**无条件**执行，
+    //    而 `CREATE TABLE IF NOT EXISTS` 对「老库缺这张表」是**有效**的（会建出来）。
+    //    ⚠️ 与「加列」不同 —— 加列的 `ALTER TABLE` 才是要写迁移的（见上方 §迁移）。
+    conn.execute_batch(CONTENT_SCHEMA_SQL)
+        .map_err(|e| format!("content schema: {}", e))?;
     // 🔴 2026-09-29 删除：`CREATE UNIQUE INDEX idx_users_phone_hash ON users(phone_hash)`
     //
     // 为什么**必须删**（两条独立理由，任一条都足以致命）：
@@ -635,6 +740,11 @@ mod tests {
         "app_config", "user_preferences",
         // 🆕 词库在线制卡（A1）
         "generated_card_cache", "generated_card_hit",
+        // 🆕 内容源 + 内容池（2026-09-29 · 服务端共享内容池）
+        // ⚠️ 方案 §4.3 还列了 `user_read` / `user_interest` —— **有意不建**：
+        //    前者与端侧 `article_read` 是同一个口径的第二个出处；
+        //    后者设计未定（「兴趣怎么影响排序」还没做）。见 `CONTENT_SCHEMA_SQL`。
+        "content_source", "content_pool",
     ];
 
     /// 已**彻底退役**的表 —— 出现在库里即说明「退役没做干净」。
@@ -754,6 +864,59 @@ mod tests {
         let cols = table_columns(&conn, "generated_card_hit");
         for c in ["spelling", "device_id", "first_hit_at", "hit_count"] {
             assert!(cols.contains(&c.to_string()), "generated_card_hit 缺 {}", c);
+        }
+
+        // 🆕 内容源 + 内容池（2026-09-29 · 服务端共享内容池）
+        let cols = table_columns(&conn, "content_source");
+        for c in [
+            "id", "name", "url", "kind", "category", "cefr_hint", "license",
+            "redistributable", "fetch_interval_min", "enabled",
+            "last_fetch_at", "fail_count", "created_at", "updated_at",
+        ] {
+            assert!(cols.contains(&c.to_string()), "content_source 缺 {}", c);
+        }
+        let cols = table_columns(&conn, "content_pool");
+        for c in [
+            "id", "source_id", "title", "summary", "body", "url", "author",
+            "category", "published_at", "fetched_at", "word_count", "score", "comments",
+        ] {
+            assert!(cols.contains(&c.to_string()), "content_pool 缺 {}", c);
+        }
+
+        // 🔴 **反向断言**：方案 §4.3 里的这两张表**有意不建** ——
+        //    锁住「学习状态迁端侧」这条后手决策，防止有人照 09-25 的方案把表加回来
+        //    （那会造成「同一个口径两个出处」：端侧 `article_read` vs 服务端 `user_read`）。
+        for t in ["user_read", "user_interest"] {
+            let exists: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                    rusqlite::params![t],
+                    |r| r.get(0),
+                )
+                .unwrap_or(0);
+            assert_eq!(
+                exists, 0,
+                "🔴 `{}` 不该存在 —— 见 CONTENT_SCHEMA_SQL 的说明（学习状态已迁端侧）",
+                t
+            );
+        }
+
+        // 种子源：实测**可达**的 5 个（VOA/BBC/Wikipedia 因国内不可达**不在内**）
+        let seeded: i64 = conn
+            .query_row("SELECT COUNT(*) FROM content_source", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(seeded, 5, "种子源应为 5 个（实测可达清单）");
+
+        // 🔴 种子源里**不得**出现不可达的源（防止照旧方案加回 VOA/BBC）
+        for bad in ["voanews", "bbc.co", "wikipedia"] {
+            let n: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM content_source WHERE lower(url) LIKE ?1",
+                    rusqlite::params![format!("%{}%", bad)],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(n, 0, "🔴 种子源不该含 `{}`（2026-09-29 实测国内不可达）", bad);
         }
     }
 

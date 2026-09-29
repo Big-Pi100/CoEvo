@@ -39,6 +39,16 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 qrcode = "0.14"
 encoding_rs = "0.8"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+# ── 内容源抓取（2026-09-29 · 白哥定「先做后端」）──────────────────
+# `roxmltree`：只读 XML 树解析 —— 解析 RSS 2.0 足够。
+# 🔴 为什么不用 `feed-rs` / `scraper`（实测约束，非偏好）：
+#   ① 本机 `cargo check` **卡在「Updating crates.io index」超时**（代理拉全量索引很慢）；
+#   ② `roxmltree 0.20.0` **已在 Cargo.lock + 本地 crate 缓存里** → `--offline` 可构建；
+#   ③ 实测 4 个可达源（NPR / ECNS / Ars Technica / Dev.to）**全是 RSS 2.0**
+#      （root 都是 `<rss>`，无 Atom）→ 不需要 feed-rs 的多格式能力。
+#   📌 若将来要接 Atom / JSON Feed，再引 `feed-rs`（构建环境允许时）。
+# HTML→纯文本用已依赖的 `regex`（本项目的 `compliance.rs` 已是这个路子）。
+roxmltree = "0.20"
 
 [dev-dependencies]
 dotenvy = "0.15"

@@ -66,6 +66,12 @@ async fn main() {
     api_server::campaign_scheduler::start_scheduler(&db_path);
     tracing::info!("Campaign scheduler started (interval: 5 min)");
 
+    // 🆕 内容抓取（信息流数据源 · 2026-09-29 白哥定「先做后端」）
+    // 🔑 自带 runtime 的独立线程（见 `content_fetch::start_fetch_scheduler` 的说明）——
+    //    不依赖「调用方恰好处于 tokio runtime 上下文」这个隐含前提。
+    // 关掉：`COEVO_FETCH_INTERVAL_SECS=0`
+    api_server::content_fetch::start_fetch_scheduler();
+
     // 成就引擎已于 2026-09-29 退役（成就方向定为「端侧计算」→ 后端这份不再使用）
 
     // Load prompts from files (general + pipelines)

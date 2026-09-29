@@ -102,6 +102,7 @@ dependencies = [
  "regex",
  "reqwest",
  "resvg",
+ "roxmltree",
  "rsa",
  "rusqlite",
  "serde",

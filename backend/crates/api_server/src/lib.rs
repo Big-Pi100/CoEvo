@@ -36,6 +36,10 @@ pub mod campaign_scheduler;
 /// 内容合规闸门（在线制卡的**前置**检查 · 涉主权/涉政/涉黄暴/涉歧视）
 pub mod compliance;
 pub mod config_admin;
+pub mod content_fetch;
+pub mod content_handler;
+pub mod content_hn;
+pub mod content_rss;
 pub mod db_pool;
 pub mod distribution_handler;
 pub mod encryption;
