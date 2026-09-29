@@ -38,7 +38,7 @@ import '../services/achievement_service.dart';
 import '../shared/achievement_icons.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
-import '../widgets/achievement_section.dart' show AchievementBadge;
+import '../widgets/achievement_badge.dart' show AchievementBadge;
 
 class AchievementsScreen extends ConsumerWidget {
   const AchievementsScreen({super.key});

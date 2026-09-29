@@ -12,6 +12,7 @@ import 'theme/tokens_ext.dart';
 import 'theme/theme_builder.dart';
 import 'screens/home_screen.dart';
 import 'screens/achievements_screen.dart';
+import 'screens/about_screen.dart';
 import 'screens/aggregate_page_screen.dart';
 import 'screens/bookmark_list_screen.dart';
 import 'screens/review_screen.dart';
@@ -179,10 +180,17 @@ final goRouter = GoRouter(
         fromSlotLabel: state.uri.queryParameters['slot'],
       ),
     ),
-    // 成就墙（二级页 · 顶层路由）—— 从「我的」页顶部成就区进入
+    // 成就墙（二级页 · 顶层路由）—— 从「我的」页「其他」组进入
     GoRoute(
       path: '/achievements',
       builder: (context, state) => const AchievementsScreen(),
+    ),
+    // 关于（二级页）—— 从「我的」页「其他」组进入
+    // 🔑 与 `/achievements` 同级：两者都是「我的」页的**二级信息页**，
+    //    不是 tab 的内容（所以走顶层路由，不带 tabbar）。
+    GoRoute(
+      path: '/about',
+      builder: (context, state) => const AboutScreen(),
     ),
     // 🗑 2026-09-29 已删除：`/chat` 路由（+ `screens/chat_screen.dart` import）
     //    —— 产品已定**不做 chat/UGC**；且该路由**全库无任何 push/go/named 跳转**

@@ -1,34 +1,33 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'dart:ui' as ui;
+// ⚠️ `flutter/rendering.dart` 与 `shade.dart` 的 `ImageFilter`/`BlurStyle` 同名冲突，
+//    这里用 `as ui` 前缀限定 `dart:ui`（原先直接 import 两者会歧义）。
 import 'package:flutter/rendering.dart';
 import '../api/user_api_client.dart';
 import '../api/api_config.dart';
-import '../widgets/referral_qr_code.dart';
+import '../constants/app_info.dart';
 import '../providers/auth_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/tts_service.dart';
 import '../providers/achievement_notifier.dart';
 import '../providers/achievement_provider.dart';
-import '../widgets/achievement_section.dart';
+import '../widgets/stats_card.dart';
+import '../widgets/header_chip.dart';
 import '../widgets/order_history.dart';
 import '../widgets/subscribe_panel.dart';
-import '../widgets/claim_dialog.dart';
 import '../theme/clay.dart';
 import '../theme/co_spacing.dart';
+import '../theme/tokens_ext.dart';
 import '../theme/coevo_tokens.dart';
-import '../utils/image_export.dart';
 import '../pages/user/distribution/notification_panel.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 import '../widgets/twemoji.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -45,20 +44,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   bool _isLoading = true;
   String? _error;
-  bool _hasShownClaimDialog = false;
   String? _avatarUrl;
   String _displayName = '';
-  String? _realName;
-  String? _phone;
   bool _isUploading = false;
   ProviderSubscription? _authSub;
   int _unreadCount = 0;
 
-  // 推广码
+  // ── 🗑 2026-09-29 删除的状态（「我的」页重设计 · 白哥定）──
+  // · `_hasShownClaimDialog` / `_realName` / `_phone` —— trial 认领与实名（已定不做）
+  // · `_referralCode` / `_qrKey` / `_referralStats` / `_statsLoading` —— 分销（`ui-ux` §4.2 定「删分销」）
+  // 🔑 只删「显示层」是不够的：名字/字段留着会被后来的人当成「还需要的功能」加回来
+  //    （判据：「删掉一个功能后，要清理它的语义残留」）。
+  //
+  // ⚠️ 但**分享入口**保留 → `StatsCard` 仍需要推荐码来拼分享链接
+  //    → `_referralCode` **保留**，且 `_loadReferralCode` 也保留（只取码，不取推广统计）。
+  //    🔑 区分：**推荐码 = 分享链接的身份**（要留）；**推广统计/收益/提现 = 分销账本**（已删）。
   String? _referralCode;
-  final GlobalKey _qrKey = GlobalKey();
-  Map<String, dynamic>? _referralStats;
-  bool _statsLoading = false;
 
   // TTS：2026-09-26 起只剩端侧 flutter_tts（腾讯云分支与引擎选择已取消）
   // 语速/音色由 `TtsService` 自持（`speechRate` / `selectedVoice`），本页不再另存状态
@@ -147,11 +148,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         await prefs.setString('display_name', backendName);
         setState(() => _displayName = backendName);
       }
-      // 真实姓名 + 手机号
-      setState(() {
-        _realName = data['real_name'] as String?;
-        _phone = data['phone'] as String?;
-      });
+      // 🗑 2026-09-29：「真实姓名 / 手机号」已随旧版分区删除（`ui-ux` §4.2 定「删实名」）
+      //    → 这里不再保存它们。后端仍可能返回这两个字段，但**本页不再消费**。
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -164,22 +162,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       _loadReferralCode();
     } catch (e) {
       if (mounted) setState(() { _isLoading = false; _error = '加载失败，请检查网络连接'; });
-    }
-  }
-
-  Future<void> _checkTrialClaim() async {
-    final auth = ref.read(authProvider);
-    // 已有真实姓名 → 已认领，跳过
-    if (auth.realName != null && auth.realName!.trim().isNotEmpty) return;
-
-    if (!mounted) return;
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      builder: (_) => const ClaimDialog(),
-    );
-    if (result == true && mounted) {
-      _load();
     }
   }
 
@@ -268,57 +250,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
-  Future<void> _editInfoField(String label, String? current, String? Function(String?) validator, Future<void> Function(String) onSave) async {
-    final controller = TextEditingController(text: current ?? '');
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('修改$label'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(hintText: '输入$label'),
-          textInputAction: TextInputAction.done,
-          onSubmitted: (v) {
-            if (validator(v.trim()) == null) Navigator.pop(ctx, v.trim());
-          },
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Tw('取消')),
-          FilledButton(onPressed: () {
-            final v = controller.text.trim();
-            if (validator(v) == null) { Navigator.pop(ctx, v); }
-            else { ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(validator(v)!))); }
-          }, child: Tw('保存')),
-        ],
-      ),
-    );
-    if (result != null && result.isNotEmpty) {
-      await onSave(result);
-    }
-  }
-
-  Future<void> _updateProfile(Map<String, String> fields) async {
-    final auth = ref.read(authProvider);
-    if (auth.userId == null || auth.token == null) return;
-    try {
-      final resp = await http.put(
-        Uri.parse('${ApiConfig.baseUrl}/api/user/${auth.userId}/profile'),
-        headers: {'Authorization': 'Bearer ${auth.token}', 'Content-Type': 'application/json'},
-        body: jsonEncode(fields),
-      );
-      if (resp.statusCode == 200) {
-        setState(() {
-          if (fields.containsKey('real_name')) _realName = fields['real_name'];
-          if (fields.containsKey('phone')) _phone = fields['phone'];
-        });
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已保存')));
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败: $e')));
-    }
-  }
-
   /// 试听本地原生 TTS —— 用**当前选中的音色 + 当前语速**
   ///
   /// 设计要点（2026-09-26 修正）：
@@ -367,391 +298,539 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   /// 简单内联行，用于个人信息卡片内的每一行（无 Card 嵌套）
   /// [onTap] 为 null 时只读显示（无 InkWell 和箭头）
   /// 图标宽度固定为 32px，与昵称行的头像宽度对齐
-  Widget _buildProfileRow({required IconData icon, required String label, required String value, VoidCallback? onTap}) {
-    final row = Padding(
-      padding: const EdgeInsets.symmetric(vertical: CoSpacing.sm),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 32,
-            child: Center(child: Icon(icon, size: 20, color: _cs.outline)),
-          ),
-          const SizedBox(width: 8),
-          Text(label, style: _tt.bodyMedium?.copyWith(color: _cs.outline)),
-          const Spacer(),
-          Flexible(
-            child: Text(value, style: _tt.bodyLarge, overflow: TextOverflow.ellipsis, maxLines: 1),
-          ),
-          ],
-      ),
-    );
-    return onTap != null ? InkWell(onTap: onTap, child: row) : row;
-  }
-
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
 
-    // 检测并弹出注册弹窗（首次进入个人页时）
-    if (!_hasShownClaimDialog && !_isLoading) {
-      _hasShownClaimDialog = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _checkTrialClaim());
-    }
-
     return Scaffold(
-      appBar: AppBar(
-        title: Tw('个人'),
-        actions: [
-          Badge(
-            isLabelVisible: _unreadCount > 0,
-            label: Text('$_unreadCount', style: const TextStyle(fontSize: 10)),
-            child: IconButton(
-              icon: const Icon(Icons.notifications_outlined),
-              tooltip: '通知',
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationPanel())),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await ref.read(authProvider.notifier).logout();
-              if (context.mounted) context.go('/');
-            },
-          ),
-        ],
-      ),
+      // 🔴 **自绘顶栏**（不用 `AppBar`）—— 与其他 tab 页（信息流 / 复习）**逐字一致**：
+      //    23px / w600 / 字距 −0.015em / `t.ink`、外层 `padding LTRB(18, 2, 18, 14)`。
+      //
+      //    ⚠️ 这是本页此前**最显眼的「风格不符」**：用着 Material `AppBar`
+      //      （19px / w500 + 默认阴影），而另外两个 tab 早就换成了自绘顶栏。
+      //    🔑 「统一」不是抽象要求 —— 它意味着**同一组数值**（字号/字重/字距/内边距）。
+      backgroundColor: Color(CoEvoTokensExt.of(context).page.argb32),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? _buildErrorView()
-              : RefreshIndicator(
-                  onRefresh: () async {
-                    setState(() { _isLoading = true; _error = null; });
-                    await _load();
-                  },
-                  child: _buildContent(context, auth),
+              : SafeArea(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTopBar(auth),
+                      Expanded(
+                        child: RefreshIndicator(
+                          onRefresh: () async {
+                            setState(() {
+                              _isLoading = true;
+                              _error = null;
+                            });
+                            await _load();
+                          },
+                          child: _buildContent(context, auth),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
     );
   }
 
-  Widget _buildContent(BuildContext context, AuthState auth) {
+  /// 顶栏：标题 + 副标题（左）· 通知入口（右上）。
+  ///
+  /// 副标题的用途是**让订阅状态在首屏可见**（与收藏页副标题同规格）。
+  Widget _buildTopBar(AuthState auth) {
+    final t = CoEvoTokensExt.of(context);
+    final sub = ref.watch(subscriptionProvider);
 
+    // 「白哥 · 免费版」—— 昵称 + 版本
+    final version = sub.isActive ? '订阅版' : '免费版';
+    final subtitle = '${_displayName.isEmpty ? '用户' : _displayName} · $version';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 2, 18, 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '我的',
+                  style: TextStyle(
+                    fontFamily: CoFonts.uiSans,
+                    fontSize: 23,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 23 * -0.015,
+                    color: Color(t.ink.argb32),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontFamily: CoFonts.uiSans,
+                    fontSize: 12,
+                    color: Color(t.ink3.argb32),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          // ── 通知入口（**保留** · 白哥 2026-09-29：「右上角的通知按钮保留」）──
+          //
+          // 🔑 用的是**现役公共组件 `HeaderChip`**（信息流右上角「收藏 N」、
+          //    复习页「全部/已到期」**同一个**）—— 不是自创一个新样式。
+          // ⚠️ 此前是 `AppBar.actions` 里的 `Badge + IconButton`；
+          //    顶栏改成自绘后那里无处可放，本组件正好补位。
+          // 🔑 `count: null`（未读为 0）= **不显示计数**（而不是显示「0」）。
+          HeaderChip(
+            icon: Icons.notifications_none,
+            label: '通知',
+            count: _unreadCount > 0 ? _unreadCount : null,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const NotificationPanel()),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 页面内容（2026-09-29 重设计 · 白哥定）
+  // 📄 `docs/design/profile-redesign-plan-2026-09-29.md`
+  //
+  // 🔴 删掉的 5 个旧版分区（依据 `ui-ux-refactor-assessment-2026-09-25` §4.2 / §6.1）：
+  //    推广二维码 · 推广统计 + 收益明细/我的团队/提现 · 真实姓名/手机号 ·
+  //    「跳过的概念」 · trial 认领弹窗
+  //    🔑 其中 **4 个按钮指向未注册路由**（`/earnings` `/team` `/withdraw` `/skipped`）
+  //      → 点了落到 `/:unknown`。这正是「很乱」的一个**可复现来源**：
+  //        删掉它们，那个 bug 就不存在了 —— **修 bug 不需要额外工作**。
+  // ══════════════════════════════════════════════════════════════════════
+
+  Widget _buildContent(BuildContext context, AuthState auth) {
     return ListView(
       // 底部留出 tabbar 高度 —— `_ShellScaffold` 开了 `extendBody: true`，
       // 正文会延伸到 tabbar 之后，不留距离的话最后一项会被按钮压住。
       // 依据见 `CoSpacing.tabBarClearance`。
-      padding: const EdgeInsets.fromLTRB(CoSpacing.xxl, CoSpacing.xxl,
-          CoSpacing.xxl, CoSpacing.tabBarClearance),
+      padding: const EdgeInsets.fromLTRB(
+          CoSpacing.xxl, CoSpacing.sm, CoSpacing.xxl, CoSpacing.tabBarClearance),
       children: [
-        // ── 成就区（**顶部** · 规格 §4.2/§6.1：「顶部成就区（连续天数 / 掌握词数 + 分享入口）」）──
-        //    🔑 放在最前：它是「我的」页的信息主体，账号/订阅是配置项。
-        //    ⚠️ 它自己处理 loading/error（**不阻塞**本页其它内容）—— 见该 widget 的文件头。
-        AchievementSection(referralCode: _referralCode),
+        // ── ① 顶部统计卡（三列：连续天数 / 掌握词数 / 阅读篇数 + 分享）──
+        //    🔑 规格：「顶部：统计区 + 分享入口」。
+        //    ⚠️ 「成就列表」（徽章行 / 进度条）按白哥 2026-09-29 决策**移出**本页
+        //       → 它们在 `/achievements` 完整存在（本页只留一个入口，见 ④）。
+        StatsCard(referralCode: _referralCode),
+        const SizedBox(height: CoSpacing.xl),
+
+        // ── ② 账号（未登录 / 已登录两态）──
+        _groupLabel('账号'),
+        _buildAccountGroup(auth),
         const SizedBox(height: CoSpacing.lg),
 
-        // ── 推广二维码 ──
-        if (_referralCode != null)
-          Container(
-            padding: const EdgeInsets.all(CoSpacing.lg),
-            decoration: BoxDecoration(
-              color: _cs.surfaceContainerHighest.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              children: [
-                // 二维码
-                InkWell(
-                  onTap: () => _saveQrCode(),
-                  child: RepaintBoundary(
-                    key: _qrKey,
-                    child: Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: _cs.outlineVariant),
-                      ),
-                      padding: const EdgeInsets.all(8),
-                      child: ReferralQrCode(
-                        referralCode: _referralCode ?? '',
-                        camp: 'profile',
-                        size: 104,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: CoSpacing.md),
-              ],
-            ),
-          )
-        else if (_referralCode == null)
-          const SizedBox.shrink(),
-        const SizedBox(height: CoSpacing.lg),
-
-        // ── 个人信息（头像嵌入昵称行｜姓名｜手机号） ──
-        Container(
-          padding: const EdgeInsets.all(CoSpacing.md),
-          decoration: BoxDecoration(
-            color: _cs.surfaceContainerHighest.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            children: [
-              // Row 1：头像 + 昵称
-              InkWell(
-                onTap: _editName,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: CoSpacing.sm),
-                  child: Row(
-                    children: [
-                      // 左栏固定宽度，与 _buildProfileRow 的图标栏对齐
-                      SizedBox(
-                        width: 32,
-                        child: GestureDetector(
-                          onTap: _uploadAvatar,
-                          child: CircleAvatar(
-                            radius: 16,
-                            backgroundColor: Theme.of(context).colorScheme.primary.withAlpha(30),
-                            backgroundImage: _avatarUrl != null ? NetworkImage(_avatarUrl!) : null,
-                            child: _isUploading
-                                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                                : (_avatarUrl == null
-                                    ? Icon(Icons.person, size: 18, color: Theme.of(context).colorScheme.primary)
-                                    : null),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text('昵称', style: _tt.bodyMedium?.copyWith(color: _cs.outline)),
-                      const Spacer(),
-                      Text(_displayName, style: _tt.bodyLarge),
-                      const SizedBox(width: 4),
-                      Icon(Icons.chevron_right, size: 18, color: _cs.outline),
-                    ],
-                  ),
-                ),
-              ),
-              const Divider(height: 1),
-              // Row 2：真实姓名（已认领后不可修改）
-              _buildProfileRow(
-                icon: Icons.badge_outlined,
-                label: '真实姓名',
-                value: _realName ?? '未填写',
-                onTap: (_realName != null && _realName!.isNotEmpty)
-                    ? null
-                    : () => _editInfoField(
-                      '真实姓名', _realName,
-                      (v) => (v == null || v.isEmpty) ? '请输入真实姓名' : null,
-                      (v) => _updateProfile({'real_name': v}),
-                    ),
-              ),
-              const Divider(height: 1),
-              // Row 3：手机号（已认领后不可修改）
-              _buildProfileRow(
-                icon: Icons.phone_outlined,
-                label: '手机号',
-                value: _phone ?? '未填写',
-                onTap: (_realName != null && _realName!.isNotEmpty)
-                    ? null
-                    : () => _editInfoField(
-                      '手机号', _phone,
-                      (v) {
-                        if (v == null || v.isEmpty) return '请输入手机号';
-                        final digitsOnly = v.replaceAll(RegExp(r'\D'), '');
-                        if (digitsOnly.length != 11) return '手机号格式不正确';
-                        return null;
-                      },
-                      (v) => _updateProfile({'phone': v}),
-                    ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: CoSpacing.lg),
-
-        // 推广统计 + 导航
-        if (_referralCode != null) ...[
-          // 统计卡片
-          if (_statsLoading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: CoSpacing.md),
-              child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
-            )
-          else
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: CoSpacing.md),
-              decoration: BoxDecoration(
-                color: _cs.surfaceContainerHighest.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Expanded(child: _statItem(Icons.people, '邀请人数', '${_referralStats?['total_registrations'] ?? 0}')),
-                  Container(width: 1, height: 32, color: _cs.outlineVariant),
-                  Expanded(child: _statItem(Icons.monetization_on, '累计收益', '¥${((_referralStats?['total_earned'] as num?)?.toDouble() ?? 0) / 100}')),
-                  Container(width: 1, height: 32, color: _cs.outlineVariant),
-                  Expanded(child: _statItem(Icons.timeline, '分享次数', '${_referralStats?['total_clicks'] ?? 0}')),
-                ],
-              ),
-            ),
-          const SizedBox(height: CoSpacing.md),
-          // 导航按钮
-          Row(
-            children: [
-              Expanded(child: OutlinedButton.icon(
-                icon: const Icon(Icons.account_tree, size: 16),
-                onPressed: () => context.push('/earnings'),
-                label: Tw('收益明细', style: TextStyle(fontSize: 12)),
-              )),
-              const SizedBox(width: CoSpacing.sm),
-              Expanded(child: OutlinedButton.icon(
-                icon: const Icon(Icons.group, size: 16),
-                onPressed: () => context.push('/team'),
-                label: Tw('我的团队', style: TextStyle(fontSize: 12)),
-              )),
-              const SizedBox(width: CoSpacing.sm),
-              Expanded(child: OutlinedButton.icon(
-                icon: const Icon(Icons.payments, size: 16),
-                onPressed: () => context.push('/withdraw'),
-                label: Tw('提现', style: TextStyle(fontSize: 12)),
-              )),
-            ],
-          ),
-          const SizedBox(height: CoSpacing.lg),
-        ],
-
-        // 订阅状态
+        // ── ③ 订阅 ──
+        _groupLabel('订阅'),
         _buildSubscriptionCard(),
         const SizedBox(height: CoSpacing.sm),
-
-        // 联系工作人员
-        _buildContactCard(),
-        const SizedBox(height: CoSpacing.md),
-
-        // 历史订单
         const OrderHistory(),
         const SizedBox(height: CoSpacing.lg),
 
-        // 跳过的概念
-        Card(
-          child: ListTile(
-            leading: Icon(Icons.skip_next, color: _cs.tertiary),
-            title: Tw('跳过的概念'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/skipped'),
+        // ── ④ 其他 ──
+        //    🔑 「我的成就」是**到成就墙的入口**（不是成就列表本身）。
+        //      本页不再展示徽章/进度 —— 那两样都在 `/achievements`。
+        _groupLabel('其他'),
+        _buildThemeTile(),
+        const SizedBox(height: CoSpacing.sm),
+        _buildSpeechCard(),
+        const SizedBox(height: CoSpacing.sm),
+        _navTile(
+          icon: Icons.emoji_events_outlined,
+          title: '我的成就',
+          subtitle: '查看全部成就与进度',
+          onTap: () => context.push('/achievements'),
+        ),
+        const SizedBox(height: CoSpacing.sm),
+        _buildContactCard(),
+        const SizedBox(height: CoSpacing.sm),
+        _navTile(
+          icon: Icons.info_outline,
+          title: '关于',
+          subtitle: '版本 $kCoEvoVersion',
+          onTap: () => context.push('/about'),
+        ),
+        const SizedBox(height: CoSpacing.xl),
+
+        // ── ⑤ 退出账号 ──
+        _buildSignOutTile(),
+      ],
+    );
+  }
+
+  /// 分组标题（11px / w600 / 字距 .06em / `ink3`）。
+  ///
+  /// 🔑 分组是「乱」的解药之一 —— 判据：
+  ///    **视觉「乱」先查「容器与分隔」，最后才查字号**。
+  Widget _groupLabel(String label) {
+    final t = CoEvoTokensExt.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 0, 2, CoSpacing.sm),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontFamily: CoFonts.uiSans,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 11 * 0.06,
+          color: Color(t.ink3.argb32),
+        ),
+      ),
+    );
+  }
+
+  /// 账号组 —— **两态**（未登录 / 已登录）。
+  ///
+  /// # 🔴 本次只做 **UI 骨架**（白哥 2026-09-29 定）
+  /// | 项 | 本次 | 说明 |
+  /// |---|---|---|
+  /// | 已登录：昵称（可改） | ✅ | 复用既有 `_editName` |
+  /// | **绑定邮箱** | 🟠 **占位** | 点了提示「即将开放」—— 🔴 后端 `users` 表**连 `email` 列都没有** |
+  /// | 未登录：引导行 | ✅ | 点了同样提示（登录页尚未做） |
+  /// | Apple 登录 / 邮箱验证 / **注销** | ❌ | 后端 + SDK 全未做 → **独立一批**（方案 §6.4） |
+  ///
+  /// 🔑 为什么拆开：账号 UI 是**纯前端**（现有 `authProvider` 就够），
+  ///    而 Apple/邮箱要**改后端 + 加 SDK + iOS Capability**。
+  ///    混在一批会让「一个页面重排」膨胀成「认证系统改造」。
+  Widget _buildAccountGroup(AuthState auth) {
+    final t = CoEvoTokensExt.of(context);
+    final radius = BorderRadius.circular(16);
+
+    if (!auth.isAuthenticated) {
+      return Clay(
+        borderRadius: radius,
+        padding: EdgeInsets.zero,
+        child: _navTile(
+          icon: Icons.person_outline,
+          title: '未登录',
+          subtitle: '登录后可跨设备同步 · 找回订阅',
+          onTap: () => _comingSoon('登录'),
+          bare: true,
+        ),
+      );
+    }
+
+    final trial = isTrialAccount(auth.username);
+    return Clay(
+      borderRadius: radius,
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          _navTile(
+            icon: Icons.person_outline,
+            title: _displayName.isEmpty ? '用户' : _displayName,
+            subtitle: trial ? '已登录 · 试用账号' : '已登录',
+            showAvatar: true,
+            onTap: _editName,
+            bare: true,
+          ),
+          Divider(height: 1, thickness: 1, color: Color(t.line.argb32)),
+          _navTile(
+            icon: Icons.mail_outline,
+            title: '绑定邮箱',
+            subtitle: '用于找回账号 · 跨设备同步',
+            onTap: () => _comingSoon('绑定邮箱'),
+            bare: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 通用行：图标（或头像）+ 标题 + 副标题 + 右箭头。
+  ///
+  /// [bare]：`true` = **自身不带外壳**（父层已是 `Clay` 分组容器）；
+  /// `false` = 自己套一个 `Clay`（用于单行成卡的场景）。
+  /// 🔑 这个参数存在的理由：分组内外两种用法都要同一套内部版式 ——
+  ///    若各写一份，两处的字号/间距迟早会漂。
+  Widget _navTile({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    bool showAvatar = false,
+    VoidCallback? onTap,
+    bool bare = false,
+    Widget? trailing,
+  }) {
+    final t = CoEvoTokensExt.of(context);
+
+    final row = Padding(
+      padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
+      child: Row(
+        children: [
+          if (showAvatar)
+            // 🔑 头像**单独可点**（= 换头像），与整行点击（= 改昵称）**分开**。
+            //    ⚠️ 改造时差点漏掉：只把整行 `onTap` 设成 `_editName`，
+            //      头像的 `_uploadAvatar` 就**没有调用点**了
+            //      （功能静默消失 —— 编译器不会报，因为「没人用」不是错误）。
+            GestureDetector(
+              onTap: _uploadAvatar,
+              child: CircleAvatar(
+                radius: 16,
+                backgroundColor: Color(t.accent.argb32).withValues(alpha: 0.12),
+                backgroundImage:
+                    _avatarUrl != null ? NetworkImage(_avatarUrl!) : null,
+                child: _isUploading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : (_avatarUrl == null
+                        ? Icon(Icons.person,
+                            size: 18, color: Color(t.accent.argb32))
+                        : null),
+              ),
+            )
+          else
+            SizedBox(
+              width: 21,
+              child: Icon(icon, size: 17, color: Color(t.ink3.argb32)),
+            ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontFamily: CoFonts.uiSans,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Color(t.ink.argb32),
+                  ),
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontFamily: CoFonts.uiSans,
+                      fontSize: 11.5,
+                      color: Color(t.ink3.argb32),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          // 🔑 [trailing] 用于「行尾不是箭头」的场景（如订阅行的「续费」按钮）；
+          //    不传时给默认的 `chevron_right`（导航行语义）。
+          if (trailing != null)
+            trailing
+          else
+            Icon(Icons.chevron_right, size: 18, color: Color(t.ink3.argb32)),
+        ],
+      ),
+    );
+
+    if (bare) {
+      return InkWell(onTap: onTap, child: row);
+    }
+    return Clay(
+      borderRadius: BorderRadius.circular(16),
+      padding: EdgeInsets.zero,
+      onTap: onTap,
+      child: row,
+    );
+  }
+
+  /// 退出账号（页尾独立项 · **带文字** + 二次确认）。
+  ///
+  /// 🔑 **为什么不放顶栏图标**：
+  ///    ① 顶栏改用 `HeaderChip` 放通知后，原来的 `IconButton` 槽位没有了；
+  ///    ② 更重要的是 —— **Apple 审核要求账号操作可见**（应用内需有账号通道）。
+  ///       一个没有文字的图标不合格。
+  /// ⚠️ **「退出」≠「注销」**：退出只清本地凭证（学习记录在端侧 `user.db`，不受影响）；
+  ///    **注销要删服务端账号**（Apple 指南 5.1.1(v)）→ 需后端接口，属独立一批。
+  Widget _buildSignOutTile() {
+    final t = CoEvoTokensExt.of(context);
+    return Clay(
+      borderRadius: BorderRadius.circular(16),
+      padding: EdgeInsets.zero,
+      onTap: _confirmSignOut,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 15),
+        child: Center(
+          child: Text(
+            '退出账号',
+            style: TextStyle(
+              fontFamily: CoFonts.uiSans,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Color(t.accent.argb32),
+            ),
           ),
         ),
-        const SizedBox(height: CoSpacing.lg),
+      ),
+    );
+  }
 
-        // 主题风格
-        _buildThemeTile(),
-        const SizedBox(height: CoSpacing.lg),
+  /// 退出前二次确认。
+  ///
+  /// 🔑 必须确认：退出会清掉本地凭证（下次要重新登录）——
+  ///    不可逆且用户可能误触，属于「该拦一下」的操作。
+  Future<void> _confirmSignOut() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Tw('退出账号'),
+        content: Tw('退出后将清除本机登录状态。'
+            '你的学习记录（生词本 / 复习进度）保存在本机，不会丢失。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Tw('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Tw('退出'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await ref.read(authProvider.notifier).logout();
+    if (mounted) context.go('/');
+  }
 
-        // 朗读设置
-        Consumer(
-          builder: (_, ref, __) {
-            final tts = ref.watch(ttsServiceProvider);
-            final voices = tts.availableVoices;
-            return Card(
-              child: Padding(
-                padding: const EdgeInsets.all(CoSpacing.xl),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('朗读设置', style: Theme.of(context).textTheme.titleMedium),
-                    const Divider(height: 24),
+  /// 「即将开放」提示。
+  ///
+  /// 🔑 占位入口**点了必须有反馈** —— 判据：
+  ///    「**静默失败 + 无出口**」比报错更糟。一个点了没反应的入口，
+  ///    用户只会以为 App 坏了。
+  void _comingSoon(String what) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Tw('$what即将开放')),
+    );
+  }
 
-                    // ── 朗读设置：端侧 flutter_tts（2026-09-26 起唯一引擎，腾讯云分支已取消）──
-                    // ── 本地原生 TTS 设置 ──
-                    // 语速
-                    Row(
-                      children: [
-                        const Icon(Icons.speed, size: 18),
-                        const SizedBox(width: CoSpacing.sm),
-                        Text('语速', style: Theme.of(context).textTheme.bodyMedium),
-                        const Spacer(),
-                        Text(tts.speechRate.toStringAsFixed(1),
-                            style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
-                      ],
-                    ),
-                    Slider(
-                      value: tts.speechRate,
-                      min: 0.1,
-                      max: 2.0,
-                      divisions: 19,
-                      label: tts.speechRate.toStringAsFixed(1),
-                      onChanged: (v) => tts.speechRate = v,
-                    ),
-                    const SizedBox(height: CoSpacing.sm),
+  /// 朗读设置（外壳 `Clay`；**内容与改造前一致** · 决策 1：本次**不搬家**）。
+  ///
+  /// 🔑 「搬去阅读面板」的前提是**面板先存在** —— 而它尚未实现
+  ///    （`reader_screen.dart` 明载「面板是独立一批」）。
+  ///    所以现在这里仍是**唯一**入口 → 搬走 = 用户没地方调。
+  Widget _buildSpeechCard() {
+    final t = CoEvoTokensExt.of(context);
+    return Consumer(
+      builder: (_, ref, __) {
+        final tts = ref.watch(ttsServiceProvider);
+        final voices = tts.availableVoices;
+        return Clay(
+          borderRadius: BorderRadius.circular(16),
+          padding: const EdgeInsets.all(CoSpacing.xl),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('朗读设置',
+                  style: TextStyle(
+                    fontFamily: CoFonts.uiSans,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Color(t.ink.argb32),
+                  )),
+              const Divider(height: 24),
 
-                    // 音色
-                    Row(
-                      children: [
-                        const Icon(Icons.record_voice_over, size: 18),
-                        const SizedBox(width: CoSpacing.sm),
-                        Text('音色', style: Theme.of(context).textTheme.bodyMedium),
-                        const Spacer(),
-                        // 🆕 显式试听按钮（2026-09-26 修正）——
-                        // 原先只有「切换音色时自动读一句」，用户想重听必须来回切音色，不直观
-                        SizedBox(
-                          height: 32,
-                          child: TextButton.icon(
-                            icon: const Icon(Icons.play_arrow, size: 16),
-                            label: Tw('试听', style: TextStyle(fontSize: 12)),
-                            onPressed: () => _previewNativeTts(),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: CoSpacing.sm),
-                    DropdownButtonFormField<String>(
-                      value: tts.selectedVoice?['name'] as String?,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(horizontal: CoSpacing.md, vertical: 10),
-                        border: OutlineInputBorder(),
-                      ),
-                      // 🔴 原为「系统默认 (zh-CN)」—— 语义错误：本产品朗读英文，
-                      // 未指定音色时 `_pickBestVoice` 会按**文本语言**自动匹配（英文 → en-US）
-                      hint: Tw('系统默认（自动匹配语言）'),
-                      items: [
-                        const DropdownMenuItem(value: '', child: Tw('系统默认（自动匹配语言）')),
-                        if (voices.isNotEmpty)
-                          ...voices.map<DropdownMenuItem<String>>((v) {
-                            final name = v['name'] ?? '';
-                            final locale = v['locale'] ?? '';
-                            return DropdownMenuItem(
-                              value: name as String,
-                              child: Tw('$name ($locale)',
-                                  overflow: TextOverflow.ellipsis),
-                            );
-                          }),
-                      ],
-                      onChanged: (voiceName) {
-                        if (voiceName == null || voiceName.isEmpty) {
-                          tts.selectVoice(null);
-                          return;
-                        }
-                        final match = voices.cast<Map<String, dynamic>?>().firstWhere(
-                          (v) => v?['name'] == voiceName,
-                          orElse: () => null,
-                        );
-                        if (match != null) {
-                          tts.selectVoice(match);
-                          // 切换音色后自动试听（英文），方便立即对比
-                          tts.speak(_nativePreviewText, language: 'en-US');
-                        }
-                      },
-                    ),
-                  ],
-                ),
+              // ── 语速 ──
+              Row(
+                children: [
+                  const Icon(Icons.speed, size: 18),
+                  const SizedBox(width: CoSpacing.sm),
+                  Text('语速', style: Theme.of(context).textTheme.bodyMedium),
+                  const Spacer(),
+                  Text(tts.speechRate.toStringAsFixed(1),
+                      style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
+                ],
               ),
-            );
-          },
-        ),
-      ],
+              Slider(
+                value: tts.speechRate,
+                min: 0.1,
+                max: 2.0,
+                divisions: 19,
+                label: tts.speechRate.toStringAsFixed(1),
+                onChanged: (v) => tts.speechRate = v,
+              ),
+              const SizedBox(height: CoSpacing.sm),
+
+              // ── 音色 ──
+              Row(
+                children: [
+                  const Icon(Icons.record_voice_over, size: 18),
+                  const SizedBox(width: CoSpacing.sm),
+                  Text('音色', style: Theme.of(context).textTheme.bodyMedium),
+                  const Spacer(),
+                  // 🆕 显式试听按钮（2026-09-26 修正）——
+                  // 原先只有「切换音色时自动读一句」，用户想重听必须来回切音色，不直观
+                  SizedBox(
+                    height: 32,
+                    child: TextButton.icon(
+                      icon: const Icon(Icons.play_arrow, size: 16),
+                      label: Tw('试听', style: TextStyle(fontSize: 12)),
+                      onPressed: () => _previewNativeTts(),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: CoSpacing.sm),
+              DropdownButtonFormField<String>(
+                value: tts.selectedVoice?['name'] as String?,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: CoSpacing.md, vertical: 10),
+                  border: OutlineInputBorder(),
+                ),
+                // 🔴 原为「系统默认 (zh-CN)」—— 语义错误：本产品朗读英文，
+                // 未指定音色时 `_pickBestVoice` 会按**文本语言**自动匹配（英文 → en-US）
+                hint: Tw('系统默认（自动匹配语言）'),
+                items: [
+                  const DropdownMenuItem(
+                      value: '', child: Tw('系统默认（自动匹配语言）')),
+                  if (voices.isNotEmpty)
+                    ...voices.map<DropdownMenuItem<String>>((v) {
+                      final name = v['name'] ?? '';
+                      final locale = v['locale'] ?? '';
+                      return DropdownMenuItem(
+                        value: name as String,
+                        child: Tw('$name ($locale)',
+                            overflow: TextOverflow.ellipsis),
+                      );
+                    }),
+                ],
+                onChanged: (voiceName) {
+                  if (voiceName == null || voiceName.isEmpty) {
+                    tts.selectVoice(null);
+                    return;
+                  }
+                  final match = voices
+                      .cast<Map<String, dynamic>?>()
+                      .firstWhere((v) => v?['name'] == voiceName,
+                          orElse: () => null);
+                  if (match != null) {
+                    tts.selectVoice(match);
+                    // 切换音色后自动试听（英文），方便立即对比
+                    tts.speak(_nativePreviewText, language: 'en-US');
+                  }
+                },
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -771,16 +850,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ? '${tokens.label} · 跟随系统'
         : '${tokens.label} · ${tokens.character}';
 
-    return Card(
-      child: ListTile(
-        leading: Icon(_themeIcon(settings.theme),
-            color: Theme.of(context).colorScheme.primary),
-        title: Tw('主题'),
-        subtitle: Text(label,
-            style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => _showThemeDialog(),
-      ),
+    // 🔑 用统一的 `_navTile`（而不是各写一个 `Card + ListTile`）——
+    //    原来主题/订阅/联系三张卡是**三份独立实现**，图标大小（默认 24 / 22）、
+    //    标题字号（默认 16 / 14）、间距各不相同 → 这正是「**看起来乱**」的来源之一。
+    //    ⚠️ 判据：**同类元素共享版式**，别让每个都自己长一副样子。
+    return _navTile(
+      icon: _themeIcon(settings.theme),
+      title: '主题',
+      subtitle: label,
+      onTap: _showThemeDialog,
     );
   }
 
@@ -892,7 +970,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  // ── 推广码 ──
+  // ── 推荐码（**不是分销账本** —— 见 `_loadReferralCode` 内的说明）──
   Future<void> _loadReferralCode() async {
     final auth = ref.read(authProvider);
     if (auth.userId == null || auth.token == null) return;
@@ -903,102 +981,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ).timeout(const Duration(seconds: 10));
       if (resp.statusCode == 200 && mounted) {
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
+        // 🔑 **只取推荐码，不取推广统计** ——
+        //    推荐码是「**分享链接的身份**」（`StatsCard` 的分享文案要用），
+        //    而推广统计（邀请数 / 收益 / 提现）是**分销账本**，按 `ui-ux` §4.2 已删。
+        //    🔑 这两件事以前写在同一个方法里，删的时候容易一起删掉 ——
+        //       但「分享」还在（规格明确要），所以码必须留。
         _referralCode = data['referral_code'] as String?;
-        _loadReferralStats();
       }
     } catch (_) {}
-  }
-
-  Future<void> _loadReferralStats() async {
-    final auth = ref.read(authProvider);
-    final uid = auth.userId;
-    if (uid == null) return;
-    setState(() => _statsLoading = true);
-    try {
-      final token = auth.token;
-      final headers = token != null ? {'Authorization': 'Bearer $token'} : <String, String>{};
-      final resp = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}/api/referral/my-stats?user_id=$uid'),
-        headers: headers,
-      ).timeout(const Duration(seconds: 10));
-      if (resp.statusCode == 200 && mounted) {
-        _referralStats = jsonDecode(resp.body) as Map<String, dynamic>?;
-      }
-    } catch (_) {}
-    if (mounted) setState(() => _statsLoading = false);
   }
 
   /// 保存二维码图片到本地
-  void _saveQrCode() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Tw('保存推广二维码'),
-        content: Tw('将二维码保存到本地，可分享给好友扫码注册。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Tw('取消'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              _doSaveQrCode();
-            },
-            child: Tw('保存'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _doSaveQrCode() async {
-    try {
-      final boundary = _qrKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-      if (boundary == null) return;
-      final image = await boundary.toImage(pixelRatio: 3.0);
-      final data = await image.toByteData(format: ui.ImageByteFormat.png);
-      if (data == null) return;
-      // 原实现为 web-only（Blob + AnchorElement 下载）→ 见 utils/image_export.dart
-      final err = await exportPngBytes(
-        data.buffer.asUint8List(),
-        fileName: 'coevo_qr.png',
-        shareText: 'https://keyievolution.fun/?ref=$_referralCode',
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(err == null ? '二维码已导出' : '导出失败，已复制链接')),
-      );
-      if (err != null) {
-        await Clipboard.setData(ClipboardData(
-          text: 'https://keyievolution.fun/?ref=$_referralCode',
-        ));
-      }
-    } catch (_) {
-      await Clipboard.setData(ClipboardData(
-        text: 'https://keyievolution.fun/?ref=$_referralCode',
-      ));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('注册链接已复制')),
-        );
-      }
-    }
-  }
-
-  Widget _statItem(IconData icon, String label, String value) {
-    return Column(
-      children: [
-        Icon(icon, size: 18, color: _cs.primary),
-        const SizedBox(height: 4),
-        Text(value,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        Text(label,
-            style: TextStyle(fontSize: 11, color: _cs.onSurfaceVariant)),
-      ],
-    );
-  }
-
   // ── 订阅状态卡片
   Widget _buildSubscriptionCard() {
     final sub = ref.watch(subscriptionProvider);
@@ -1046,14 +1039,46 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       }
     }
 
-    return Card(
-      child: ListTile(
-        leading: Icon(statusIcon, color: statusColor, size: 24),
-        title: Text('订阅状态', style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(statusText, style: TextStyle(color: statusColor, fontSize: 13)),
-        trailing: FilledButton.tonal(
-          onPressed: () => _showSubscribeDialog(),
-          child: Tw('续费'),
+    // 🔑 只换**外壳**（`Card` → `Clay`），内部保持原样 ——
+    //    本行有**状态色**（即将到期用 tertiary）和尾部按钮，与标准导航行不同构，
+    //    硬套 `_navTile` 反而要为它加两个只为它存在的参数。
+    //    ⚠️ 判据：**统一的是外壳与层级，不是把每个都压成同一个组件。**
+    return Clay(
+      borderRadius: BorderRadius.circular(16),
+      padding: EdgeInsets.zero,
+      onTap: _showSubscribeDialog,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
+        child: Row(
+          children: [
+            Icon(statusIcon, color: statusColor, size: 19),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('订阅状态',
+                      style: TextStyle(
+                        fontFamily: CoFonts.uiSans,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: Color(CoEvoTokensExt.of(context).ink.argb32),
+                      )),
+                  const SizedBox(height: 2),
+                  Text(statusText,
+                      style: TextStyle(
+                        fontFamily: CoFonts.uiSans,
+                        fontSize: 11.5,
+                        color: statusColor,
+                      )),
+                ],
+              ),
+            ),
+            FilledButton.tonal(
+              onPressed: () => _showSubscribeDialog(),
+              child: Tw('续费'),
+            ),
+          ],
         ),
       ),
     );
@@ -1077,13 +1102,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   /// 联系工作人员
   Widget _buildContactCard() {
-    return Card(
-      child: ListTile(
-        leading: Icon(Icons.headset_mic, color: _cs.primary, size: 22),
-        title: Tw('联系工作人员', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-        trailing: Icon(Icons.chevron_right, color: _cs.onSurfaceVariant, size: 20),
-        onTap: _showContactDialog,
-      ),
+    return _navTile(
+      icon: Icons.headset_mic_outlined,
+      title: '联系工作人员',
+      onTap: _showContactDialog,
     );
   }
 
