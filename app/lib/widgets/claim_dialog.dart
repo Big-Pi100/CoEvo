@@ -33,13 +33,11 @@
 /// 📄 原型第 ⑤ 屏（含上表依据）→ `docs/design/profile-redesign-2026-09-29.html` §D
 /// 📄 落地依赖清单 → `docs/design/profile-redesign-plan-2026-09-29.md` §6.4
 ///
-/// # 🔴 外壳是**平面**，不是粘土（spec §〇 规则 1）
+/// # 外壳：走公共 [CoDialog]（平面卡）
 ///
-/// 「有体积的只可能是**可点**的东西」—— 弹窗本身不可点，
-/// 所以它是「浮起来的平面」（`card` 底 + 外阴影），
-/// 而不是一块凸起的粘土。里面的**输入框是凹陷**、**按钮是粘土**，
-/// 三类元素各就各位。
-/// 🔑 这与已有的两个浮层先例一致：`_UnlockCard`（成就解锁）、`LookupSheet`（划词浮层）。
+/// 不在这里自己画 `Dialog` + `Container` —— 「弹窗长什么样」全库只有一处定义。
+/// 依据 spec §〇 规则 1「有体积的只可能是**可点**的东西」：弹窗不可点 → 是**平面**；
+/// 里面的**输入框是凹陷**（`ClayField`）、**按钮是粘土**（`ClayButton`）。
 library;
 
 import 'package:flutter/material.dart';
@@ -52,6 +50,7 @@ import '../theme/tokens_ext.dart';
 import '../utils/validators.dart';
 import 'clay_button.dart';
 import 'clay_field.dart';
+import 'co_dialog.dart';
 import 'twemoji.dart';
 
 class ClaimDialog extends ConsumerStatefulWidget {
@@ -61,15 +60,15 @@ class ClaimDialog extends ConsumerStatefulWidget {
   final String? pendingCampaignId;
 
   /// 弹出本弹窗（「我的」页账号区与 `home_screen` 都走这里）。
+  ///
+  /// 🔑 弹出方式统一走 [CoDialog.show] —— 遮罩浓度 / `insetPadding` 只该有一处定义。
   static Future<bool?> show(
     BuildContext context, {
     String? pendingRefCode,
     String? pendingCampaignId,
   }) {
-    return showDialog<bool>(
-      context: context,
-      // 遮罩保持 Material 默认（54% 黑）：本弹窗是**抢焦点**的
-      // （用户主动点了「登录 / 注册」），不该像 `LookupSheet` 那样把遮罩压到 12%。
+    return CoDialog.show<bool>(
+      context,
       builder: (_) => ClaimDialog(
         pendingRefCode: pendingRefCode,
         pendingCampaignId: pendingCampaignId,
@@ -171,159 +170,116 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
     final authState = ref.watch(authProvider);
     final busy = _isSubmitting || authState.isLoading;
 
-    return Dialog(
-      // 🔴 外壳自己画（见类文档）：Material 的 `Dialog` 默认自带
-      //    `surfaceTint` 底色 + elevation 阴影，那套观感与粘土/平面不同源
-      //    → 背景透明 + elevation 0，只留它免费的**路由能力**
-      //    （遮罩、返回键关闭、键盘避让、居中 + insetPadding）。
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
-      child: ConstrainedBox(
-        // 平板 / 横屏下不让弹窗拉得过宽（手机上 insetPadding 已经先限住了）
-        constraints: const BoxConstraints(maxWidth: 360),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Color(t.card.argb32),
-            borderRadius: BorderRadius.circular(20),
-            // 外阴影写法同 `_UnlockCard`（项目里浮层的既有做法）
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.18),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // ── ① 标题 ──
-                // 原型第 ⑤ 屏是固定文案「登录 / 注册」（那页两个按钮并列可见）。
-                // 本弹窗是**切换式**（同一时刻只有一种动作）→ 标题必须跟着变，
-                // 否则点了「注册」还显示「登录」会让人以为没生效。
-                Tw(
-                  _isLogin ? '登录' : '注册',
-                  style: TextStyle(
-                    fontFamily: CoFonts.uiSans,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.02 * 20,
-                    color: Color(t.ink.argb32),
-                  ),
-                ),
-                const SizedBox(height: 8),
-
-                // ── ② 价值说明 ──
-                // 照原型第 ⑤ 屏原文。第二句是有意保留的：它是产品原则的体现 ——
-                // 「除生词表上限外不验证登录态」，用户需要先知道「不登录也能用」，
-                // 才不会被这个弹窗吓退（否则登录会被读成「门槛」而不是「选项」）。
-                Tw(
-                  '登录后可跨设备同步生词本与学习记录，并找回已购订阅。'
-                  '不登录也能用 —— 只有「生词本超过 200 词」等少数能力需要账号。',
-                  style: TextStyle(
-                    fontFamily: CoFonts.uiSans,
-                    fontSize: 12.5,
-                    height: 1.7,
-                    color: Color(t.ink3.argb32),
-                  ),
-                ),
-                const SizedBox(height: CoSpacing.lg),
-
-                // ── ③ 输入区（凹陷）──
-                ClayField(
-                  controller: _usernameController,
-                  hintText: '用户名',
-                  enabled: !busy,
-                  autofocus: true,
-                ),
-                const SizedBox(height: 10),
-                ClayField(
-                  controller: _passwordController,
-                  hintText: '密码（6位以上英文+数字）',
-                  obscureText: true,
-                  enabled: !busy,
-                  textInputAction:
-                      _isLogin ? TextInputAction.done : TextInputAction.next,
-                  onSubmitted: _isLogin ? (_) => _submit() : null,
-                ),
-
-                // 注册态才有的两个字段
-                if (!_isLogin) ...[
-                  const SizedBox(height: 10),
-                  ClayField(
-                    controller: _nameController,
-                    hintText: '真实姓名（中文，4字以内）',
-                    enabled: !busy,
-                  ),
-                  const SizedBox(height: 10),
-                  ClayField(
-                    controller: _phoneController,
-                    hintText: '手机号',
-                    keyboardType: TextInputType.phone,
-                    enabled: !busy,
-                  ),
-                ],
-
-                // ── ④ 错误提示 ──
-                // 🔑 两类错误**同一个位置、同一种样式**：
-                //    客户端校验（`_validationError`）与服务端返回（`authState.error`）。
-                //    分两处显示时，用户会以为是两个不同的问题。
-                //    ⚠️ `authState.error` 会**一直留着**直到下次请求 ——
-                //       所以只要它非空就显示（`copyWith` 里 `error` 是显式覆盖的）。
-                if (_validationError != null || authState.error != null) ...[
-                  const SizedBox(height: CoSpacing.md),
-                  Tw(
-                    _validationError ?? authState.error!,
-                    style: TextStyle(
-                      fontFamily: CoFonts.uiSans,
-                      fontSize: 12,
-                      height: 1.6,
-                      color: Color(t.accent.argb32),
-                    ),
-                  ),
-                ],
-
-                // ── ⑤ 主按钮（粘土）──
-                const SizedBox(height: CoSpacing.lg),
-                ClayButton(
-                  label: busy
-                      ? (_isLogin ? '登录中…' : '注册中…')
-                      : (_isLogin ? '登录' : '注册'),
-                  expanded: true,
-                  enabled: !busy,
-                  onTap: _submit,
-                ),
-
-                // ── ⑥ 模式切换 ──
-                const SizedBox(height: CoSpacing.sm),
-                // 用裸 `GestureDetector` + `Text` 而不是 Material 的 `TextButton`：
-                // 后者的水波纹 + 最小点击区（48px）会在一张「平面 + 凹陷」的弹窗里
-                // 混进第三套交互观感。
-                GestureDetector(
-                  onTap: busy ? null : _toggleMode,
-                  behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    child: Tw(
-                      _isLogin ? '没有账号？注册' : '已有账号？登录',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontFamily: CoFonts.uiSans,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w500,
-                        color: Color(t.accent.argb32),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+    return CoDialog(
+      // 原型第 ⑤ 屏是固定文案「登录 / 注册」（那页两个按钮并列可见）。
+      // 本弹窗是**切换式**（同一时刻只有一种动作）→ 标题必须跟着变，
+      // 否则点了「注册」还显示「登录」会让人以为没生效。
+      title: _isLogin ? '登录' : '注册',
+      actions: [
+        ClayButton(
+          label: busy
+              ? (_isLogin ? '登录中…' : '注册中…')
+              : (_isLogin ? '登录' : '注册'),
+          expanded: true,
+          enabled: !busy,
+          onTap: _submit,
+        ),
+      ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ── ① 价值说明 ──
+          // 照原型第 ⑤ 屏原文。第二句是有意保留的：它是产品原则的体现 ——
+          // 「除生词表上限外不验证登录态」，用户需要先知道「不登录也能用」，
+          // 才不会被这个弹窗吓退（否则登录会被读成「门槛」而不是「选项」）。
+          Tw(
+            '登录后可跨设备同步生词本与学习记录，并找回已购订阅。'
+            '不登录也能用 —— 只有「生词本超过 200 词」等少数能力需要账号。',
+            style: TextStyle(
+              fontFamily: CoFonts.uiSans,
+              fontSize: 12.5,
+              height: 1.7,
+              color: Color(t.ink3.argb32),
             ),
           ),
-        ),
+          const SizedBox(height: CoSpacing.lg),
+
+          // ── ② 输入区（凹陷）──
+          ClayField(
+            controller: _usernameController,
+            hintText: '用户名',
+            enabled: !busy,
+            autofocus: true,
+          ),
+          const SizedBox(height: 10),
+          ClayField(
+            controller: _passwordController,
+            hintText: '密码（6位以上英文+数字）',
+            obscureText: true,
+            enabled: !busy,
+            textInputAction:
+                _isLogin ? TextInputAction.done : TextInputAction.next,
+            onSubmitted: _isLogin ? (_) => _submit() : null,
+          ),
+
+          // 注册态才有的两个字段
+          if (!_isLogin) ...[
+            const SizedBox(height: 10),
+            ClayField(
+              controller: _nameController,
+              hintText: '真实姓名（中文，4字以内）',
+              enabled: !busy,
+            ),
+            const SizedBox(height: 10),
+            ClayField(
+              controller: _phoneController,
+              hintText: '手机号',
+              keyboardType: TextInputType.phone,
+              enabled: !busy,
+            ),
+          ],
+
+          // ── ③ 错误提示 ──
+          // 🔑 两类错误**同一个位置、同一种样式**：
+          //    客户端校验（`_validationError`）与服务端返回（`authState.error`）。
+          //    分两处显示时，用户会以为是两个不同的问题。
+          if (_validationError != null || authState.error != null) ...[
+            const SizedBox(height: CoSpacing.md),
+            Tw(
+              _validationError ?? authState.error!,
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: 12,
+                height: 1.6,
+                color: Color(t.accent.argb32),
+              ),
+            ),
+          ],
+
+          // ── ④ 模式切换 ──
+          // 用裸 `GestureDetector` + `Text` 而不是 Material 的 `TextButton`：
+          // 后者的水波纹 + 最小点击区（48px）会在一张「平面 + 凹陷」的弹窗里
+          // 混进第三套交互观感。
+          const SizedBox(height: CoSpacing.sm),
+          GestureDetector(
+            onTap: busy ? null : _toggleMode,
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Tw(
+                _isLogin ? '没有账号？注册' : '已有账号？登录',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                  color: Color(t.accent.argb32),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

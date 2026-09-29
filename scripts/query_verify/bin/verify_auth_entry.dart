@@ -1,4 +1,6 @@
-// CoEvo · 登录入口接线验收
+// CoEvo · 「我的」页 UI 接线验收
+//   ① **登录入口接线** —— 防「有实现、无入口」（analyzer 与后端测试都发现不了）
+//   ② **弹层形态统一** —— 防「半统一」复发（新加一个 Material 弹窗即变红）
 //
 // 跑法：cd scripts/query_verify && dart run bin/verify_auth_entry.dart
 //
@@ -41,8 +43,20 @@ void check(String label, bool ok, [String detail = '']) {
 
 /// 剥掉行注释。
 ///
-/// 🔑 **必须剥** —— 否则「注释里提到 `TextButton`」会被当成「用了 `TextButton`」
-/// （本项目已踩过两次同族坑：`token`↔`tokens`、`<b>` 漏 `<b class=>`）。
+/// 🔑 **必须剥** —— 否则「注释里提到 `TextButton`」会被当成「用了 `TextButton`」。
+///
+/// # 🔴 本脚本已踩的「口径差一层」（同族第 3 次 · 记下来免得再犯）
+///
+/// | 写法 | 漏掉的合法形式 | 后果 |
+/// |---|---|---|
+/// | `token` | `tokens`（另一个东西） | **假红**（误报） |
+/// | `<b>` | `<b class="…">` | 假红 |
+/// | `CoDialog.show(` | `CoDialog.show<String>(`（**泛型插在名字与括号之间**） | **假红** |
+///
+/// 🔑 **判据**：断言一个「函数被调用」时，**不要**把紧邻的左括号写进模式 ——
+///    泛型实参（`show<T>(`）与可选泛型会插在那里。
+///    正解：匹配 `名字` + `可选空白` + `[<(]`，或干脆只匹配名字。
+///    同理，**开 / 闭标签的正则本就不该对称**（开可能带属性）。
 String stripComments(String src) => src
     .split('\n')
     .map((l) {
@@ -70,6 +84,10 @@ void main() {
       stripComments(File('../../app/lib/widgets/clay_field.dart').readAsStringSync());
   final button = stripComments(
       File('../../app/lib/widgets/clay_button.dart').readAsStringSync());
+  final coDialog = stripComments(
+      File('../../app/lib/widgets/co_dialog.dart').readAsStringSync());
+  final subscribePanel = stripComments(
+      File('../../app/lib/widgets/subscribe_panel.dart').readAsStringSync());
 
   // ── ① 入口函数存在 ──
   check('「我的」页有 `_showLoginDialog` 定义',
@@ -125,6 +143,35 @@ void main() {
       RegExp(r'\bthis\.enabled\b').hasMatch(button));
   check('🔴 `ClayButton` 禁用时用 `ClayState.disabled`（不是 `selected`）',
       button.contains('ClayState.disabled'));
+
+  // ── ⑨ 🔴 弹层形态统一：「我的」页不再有**另一套**弹层体系 ──
+  // 🔑 断言「某个弹层改成了粘土」只能证明改过那一处；
+  //    断言「**这一页已经没有 Material 弹层**」才能防住「新加一个 Material 弹窗」
+  //    —— 后者才是「半统一」的复发路径。
+  for (final cls in ['AlertDialog', 'SimpleDialog', 'SwitchListTile']) {
+    check('🔴 「我的」页无 Material `$cls`', !profile.contains('$cls('));
+  }
+  check('🔴 「我的」页不直接调 `showDialog(`（弹出方式统一走 `CoDialog.show`）',
+      !profile.contains('showDialog('));
+  check('🔴 「我的」页调用了 `CoDialog.show(...)`（弹出方式统一）',
+      RegExp(r'CoDialog\.show\s*[<(]').hasMatch(profile));
+
+  // ── ⑩ 外壳是**平面**而非粘土（spec §〇 规则 1：有体积的只可能是**可点**的东西）──
+  check('🔴 `CoDialog` 外壳不用 `Clay(`（弹窗不可点 → 应是平面卡）',
+      !coDialog.contains('Clay('));
+  check('`CoDialog` 外壳用卡面色 + 外阴影（平面卡）',
+      coDialog.contains('card.argb32') && coDialog.contains('BoxShadow'));
+
+  // ── ⑪ 按钮主 / 次变体：主 = 选中(accent) · 次 = 凸起(sunken) ──
+  check('`ClayButton` 有 `secondary` 变体', button.contains('secondary'));
+  check('🔴 次按钮用 `raised`（凸起）+ `sunken` 填充，不与主按钮撞脸',
+      button.contains('ClayState.raised') && button.contains('sunken'));
+
+  // ── ⑫ 订阅弹层的**内容**也统一了（外壳改了、内容没改 = 还是半统一）──
+  check('🔴 `SubscribePanel` 不再有 Material `FilledButton`',
+      !subscribePanel.contains('FilledButton('));
+  check('`SubscribePanel` 用了 `ClayButton`',
+      subscribePanel.contains('ClayButton('));
 
   _report();
 }

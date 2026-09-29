@@ -1044,20 +1044,77 @@ return Card(clipBehavior: Clip.antiAlias, child: Column(children: [InkWell(...)]
 | 证伪测试 | ✅ 用 git 历史版本作靶子：上一版 `profile_screen` 含 **3 处**占位入口、`HEAD` 版 `claim_dialog` 含 **2 处** Material 控件 → **断言确会变红**（有区分度，不是假防线） |
 | 真机「登录 → 退出」全流程 | ⏳ **待白哥** |
 
-### 15.8 ⚠️ 本次**新引入**的一处「半统一」（需白哥定范围）
+### 15.8 ✅ 已统一（同日 · 白哥「一起统一」）
 
-登录弹窗现在是「平面 + 凹陷 + 粘土」，而**同一页**另外 4 个弹层**仍是 Material**：
+登录弹窗改完后，**同一页**另有 4 个弹层仍是 Material —— 我把它列出来请示，白哥选了「一起统一」。
 
-| 弹层 | 位置 | 残留 |
+| # | 弹层 | 改造前 | 改造后 |
+|---|---|---|---|
+| 1 | 「修改昵称」（`_editName`） | `AlertDialog` + `TextField` + `TextButton` + `FilledButton` | `CoDialog` + `ClayField` + 次/主 `ClayButton` |
+| 2 | 「退出账号」二次确认（`_confirmSignOut`） | `AlertDialog` + 2 `TextButton` | `CoDialog` + 次/主 `ClayButton` |
+| 3 | **「选择主题」**（`_showThemeDialog`） | `SimpleDialog` + `SwitchListTile` | `CoDialog` + 自绘行 + `Switch` |
+| 4 | 「订阅套餐」（`_showSubscribeDialog`） | `AlertDialog` + `TextButton` | `CoDialog` + `ClayButton` |
+| 5 | 「联系工作人员」（`_showContactDialog`） | `AlertDialog` + `TextButton` | `CoDialog` + `ClayButton` |
+| 6 | **`SubscribePanel` 的内容按钮** | `FilledButton`（套餐卡「订阅/开通」） | `ClayButton` |
+
+🔴 **第 3 与第 6 项是我第一次列清单时漏掉的**，如实说明：
+
+- **第 3 项（「选择主题」）**：我按「白哥点过的那几处」列清单，漏了同页这个弹层。
+  🔑 教训：**盘「同一类问题」时要扫描整页，不能只列「用户提过的 + 我记得的」**。
+  （同 §13.2 那条：「统一视觉语言时，要按『这一屏涉及哪些文件』扫一遍，不能按『哪个文件我有印象』」。）
+- **第 6 项（`SubscribePanel` 内容）**：只改了弹层**外壳**、没改**内容** = 依然是半统一。
+  🔑 教训：**「弹层统一」要连它的内容组件一起查**（外壳与内容常在不同文件里）。
+  ⚠️ 这个组件还被 `app.dart` 的「订阅已到期」面板复用 → 改一处、两处同时统一 ✅
+
+### 15.9 🆕 两个新组件（本轮抽出的公共件）
+
+| 组件 | 作用 |
+|---|---|
+| `widgets/co_dialog.dart` | **弹层外壳** —— 全库唯一一处定义「弹窗长什么样」（透明 `Dialog` + 平面卡 + 标题 + 按钮行）。`ClaimDialog.show()` 也改为经它弹出 |
+| `widgets/clay_field.dart` | **粘土输入框**（凹陷档 · 见 15.6②） |
+| `ClayButton` 扩展 | **`variant`（primary / secondary）** —— 照原型 `.lgbtn` / `.lgbtn.pri`：主 = `accent` 填充 + `accentOut` 阴影；次 = `sunken` 暗底凸起 + `out` 中性阴影 |
+
+🔑 **抽 `CoDialog` 的理由**：5 个弹层各写一遍「透明 `Dialog` + `Container` + 圆角 + 阴影 + 内边距」，
+就是 5 份迟早走偏的重复 —— 同 `HeaderChip` 被抽出来的理由（「外观一致 = 只有一处定义」）。
+
+### 15.10 ⚠️ 本轮**未改**的残留（明确边界）
+
+| 处 | 残留 | 为什么未改 |
 |---|---|---|
-| 「修改昵称」 | `profile_screen.dart:235` | `AlertDialog` + `TextField` + `TextButton` + `FilledButton` |
-| 「退出账号」二次确认 | `profile_screen.dart:~760` | `AlertDialog` + 2 `TextButton` |
-| 「订阅套餐」 | `profile_screen.dart:~1230` | `AlertDialog` + `TextButton`（+ `SubscribePanel`） |
-| 「联系工作人员」 | `profile_screen.dart:~1260` | `AlertDialog` + `TextButton` |
+| `widgets/order_history.dart:71` | Material `Card` + `InkWell`（**订单历史卡**） | §13.2 已列：「同一屏两张卡不同源」——属**容器层面**，是「要不要把卡片统一成粘土」这个更大的决策 |
+| `profile_screen.dart:322` | `FilledButton.icon`（**「加载失败」重试**） | 在**错误分支**里（正常流程看不到）→ 与下面的「试听」同属「页面级按钮」，本批只处理**弹层** |
+| `profile_screen.dart:885` | `TextButton.icon`（朗读设置的**「试听」**） | 同上。🔴 且 `ClayButton` **不支持图标** —— 转换会丢图标，需要先决定「粘土按钮要不要带 icon」 |
+| `pay_screen.dart:406` | `SwitchListTile` + 3 处 `FilledButton` | **独立页面**（支付流程），§13.1 ④ 已列，属支付批次 |
 
-🔑 这正是 §13.3 说的「**半统一比不统一更乱**」——现在**同一屏**上点两行，
-会分别弹出「一个粘土弹窗」和「一个 Material 弹窗」。
-→ 组件已就绪（`ClayField` / `ClayButton` / 平面卡外壳），**统一改造成本已降下来**，等白哥定范围。
+### 15.11 🔑 本轮附带查清的一件事：`../../api/...` 这种 import 写法**没错**
+
+排查过程中一度以为 `lib/widgets/subscribe_panel.dart` 里
+`import '../../api/api_config.dart';` 是**坏 import**（指向不存在的 `app/api/`），
+因为用 **`file://` URI** 做 `resolve` 算出来的就是那个不存在的路径。
+
+**实测推翻了**（`package:` 基准）：
+
+```
+Uri.parse('package:coevo_app/widgets/x.dart').resolve('../../api/api_config.dart')
+  → package:coevo_app/api/api_config.dart   ✅（= lib/api/，存在）
+Uri.parse('package:coevo_app/widgets/x.dart').resolve('../api/api_config.dart')
+  → package:coevo_app/api/api_config.dart   ✅（同一个结果）
+```
+
+🔑 **根因**：`package:` URI 的解析会把**超出包根的 `..` 直接丢弃**
+（RFC 3986 的 remove-dot-segments 对上溯超根的部分做丢弃），
+而 `file://` URI 会**真的往上走**。两者对「上溯超出根」的处理不同。
+
+→ 所以 `lib/` 下的文件写 `../../api/` 与 `../api/` **等价**：
+  多出来的那个 `..` 在包根处被吃掉。
+  ⚠️ **不是 bug，但是坏味道**：读代码的人（包括我）会以为它往上走了两级。
+
+🔑 **判据（通用）**：**判断相对 import 指向哪个文件时，基准必须是 `package:` URI，不是 `file://` 路径。**
+   文件在 `lib/` 下时，编译器/分析器用的就是 `package:` 语义 —— 用 `file://` 去推会得出**假结论**
+   （本次差点据此「修」一个没有坏的文件）。
+
+📌 顺带：那 3 个 import（`api` / `providers` / `theme`）**功能正常**，
+   本轮**不动**（改了是纯噪音，且它们是 `04e468f` 以来一直如此、真机验证过能跑）。
 
 ---
 

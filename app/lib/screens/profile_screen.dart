@@ -23,6 +23,8 @@ import '../widgets/stats_card.dart';
 import '../widgets/header_chip.dart';
 import '../widgets/claim_dialog.dart';
 import '../widgets/clay_button.dart';
+import '../widgets/clay_field.dart';
+import '../widgets/co_dialog.dart';
 import '../widgets/order_history.dart';
 import '../widgets/subscribe_panel.dart';
 import '../theme/clay.dart';
@@ -233,27 +235,35 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _editName() async {
     final controller = TextEditingController(text: _displayName);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Tw('修改昵称'),
-        content: TextField(
+    // ⚠️ 既有的 `TextEditingController` **未释放**（2026-09-29 复核时发现，已列入报告）。
+    //    不能在这里补一行 `controller.dispose()` —— `Navigator.pop` 之后弹窗还有
+    //    约 200ms 的关闭动画，期间 `TextField` 仍在渲染 → 立刻 dispose 会抛
+    //    「used after being disposed」。正解是把弹窗本体做成 `StatefulWidget`，
+    //    在它的 `dispose()` 里释放（`ClaimDialog` 就是这个形态，它没有这个问题）。
+    final result = await CoDialog.show<String>(
+      context,
+      builder: (ctx) => CoDialog(
+        title: '修改昵称',
+        actions: [
+          ClayButton(
+            label: '取消',
+            variant: ClayButtonVariant.secondary,
+            expanded: true,
+            onTap: () => Navigator.pop(ctx),
+          ),
+          ClayButton(
+            label: '保存',
+            expanded: true,
+            onTap: () => Navigator.pop(ctx, controller.text),
+          ),
+        ],
+        child: ClayField(
           controller: controller,
+          hintText: '输入昵称',
           autofocus: true,
-          decoration: const InputDecoration(hintText: '输入昵称'),
           textInputAction: TextInputAction.done,
           onSubmitted: (v) => Navigator.pop(ctx, v),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Tw('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: Tw('保存'),
-          ),
-        ],
       ),
     );
     if (result != null && result.trim().isNotEmpty && result != _displayName) {
@@ -752,22 +762,37 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   /// 🔑 必须确认：退出会清掉本地凭证（下次要重新登录）——
   ///    不可逆且用户可能误触，属于「该拦一下」的操作。
   Future<void> _confirmSignOut() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Tw('退出账号'),
-        content: Tw('退出后将清除本机登录状态。'
-            '你的学习记录（生词本 / 复习进度）保存在本机，不会丢失。'),
+    final t = CoEvoTokensExt.of(context);
+    final ok = await CoDialog.show<bool>(
+      context,
+      builder: (ctx) => CoDialog(
+        title: '退出账号',
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Tw('取消'),
+          // 🔑 「取消」= 次按钮（`sunken` 暗底，不抢视线）·「退出」= 主按钮。
+          //    破坏性动作给**唯一的强调色按钮** —— 让「点错」的可能性降到最低
+          //    （两个按钮同权重时，误触概率取决于手指落点）。
+          ClayButton(
+            label: '取消',
+            variant: ClayButtonVariant.secondary,
+            expanded: true,
+            onTap: () => Navigator.of(ctx).pop(false),
           ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Tw('退出'),
+          ClayButton(
+            label: '退出',
+            expanded: true,
+            onTap: () => Navigator.of(ctx).pop(true),
           ),
         ],
+        child: Tw(
+          '退出后将清除本机登录状态。'
+          '你的学习记录（生词本 / 复习进度）保存在本机，不会丢失。',
+          style: TextStyle(
+            fontFamily: CoFonts.uiSans,
+            fontSize: 12.5,
+            height: 1.7,
+            color: Color(t.ink3.argb32),
+          ),
+        ),
       ),
     );
     if (ok != true || !mounted) return;
@@ -775,11 +800,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (mounted) context.go('/');
   }
 
-  /// 「即将开放」提示。
-  ///
-  /// 🔑 占位入口**点了必须有反馈** —— 判据：
-  ///    「**静默失败 + 无出口**」比报错更糟。一个点了没反应的入口，
-  ///    用户只会以为 App 坏了。
   /// 打开**登录 / 注册弹窗** —— 全应用唯一的账号入口。
   ///
   /// 🔴 2026-09-29 接回：此前三处（账号行 / 订阅卡整块 / 订阅卡「查看」按钮）
@@ -793,6 +813,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     ClaimDialog.show(context);
   }
 
+  /// 「即将开放」提示。
+  ///
+  /// 🔑 占位入口**点了必须有反馈** —— 判据：
+  ///    「**静默失败 + 无出口**」比报错更糟。一个点了没反应的入口，
+  ///    用户只会以为 App 坏了。
   void _comingSoon(String what) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Tw('$what即将开放')),
@@ -952,38 +977,90 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Future<void> _showThemeDialog() async {
     final notifier = ref.read(themeProvider.notifier);
 
-    await showDialog<void>(
-      context: context,
+    await CoDialog.show<void>(
+      context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
           // 每次重建都重新读 —— 切档要即时看到选中态
           final settings = ref.read(themeProvider);
-          return SimpleDialog(
-            title: Tw('选择主题'),
-            children: [
-              for (final theme in ReadingTheme.values)
-                _themeOption(
-                  theme,
-                  selected: settings.theme == theme,
-                  onTap: () async {
-                    await notifier.setTheme(theme);
-                    if (ctx.mounted) setDialogState(() {});
-                  },
-                ),
-              const Divider(height: 1),
-              SwitchListTile(
-                value: settings.followSystem,
-                secondary: Icon(Icons.brightness_auto,
-                    color: Theme.of(context).colorScheme.primary),
-                title: const Text('跟随系统',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: Text('深色时自动切到「夜」', style: _tt.bodySmall!),
-                onChanged: (v) async {
-                  await notifier.setFollowSystem(v);
-                  if (ctx.mounted) setDialogState(() {});
-                },
+          final t = CoEvoTokensExt.of(ctx);
+          return CoDialog(
+            title: '选择主题',
+            actions: [
+              ClayButton(
+                label: '关闭',
+                variant: ClayButtonVariant.secondary,
+                expanded: true,
+                onTap: () => Navigator.of(ctx).pop(),
               ),
             ],
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final theme in ReadingTheme.values)
+                  _themeOption(
+                    theme,
+                    selected: settings.theme == theme,
+                    onTap: () async {
+                      await notifier.setTheme(theme);
+                      if (ctx.mounted) setDialogState(() {});
+                    },
+                  ),
+                // 分隔线属 spec §6.3 的「平面」类（不是粘土元素）→ 用 Material
+                // `Divider` 是**对的**，只是颜色必须走 token：
+                // 裸 `Divider` 的默认色来自 Material 色板，会在「格」档下与页面其它线不同源。
+                Divider(height: 1, thickness: 1, color: Color(t.line.argb32)),
+                Padding(
+                  padding: const EdgeInsets.only(top: CoSpacing.sm),
+                  child: Row(
+                    children: [
+                      Icon(Icons.brightness_auto,
+                          size: 20, color: Color(t.accent.argb32)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Tw(
+                              '跟随系统',
+                              style: TextStyle(
+                                fontFamily: CoFonts.uiSans,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Color(t.ink.argb32),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Tw(
+                              '深色时自动切到「夜」',
+                              style: TextStyle(
+                                fontFamily: CoFonts.uiSans,
+                                fontSize: 11.5,
+                                color: Color(t.ink3.argb32),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // 🔑 **保留** Material `Switch` 本体：规格未定义「开关」的粘土形态，
+                      //    这里不发明新控件（否则又多一种「本项目特有的开关」）。
+                      //    去掉的是 `SwitchListTile` 那层 **Material 外壳** ——
+                      //    它自带 ListTile 的内边距 / 点击水波纹 / 高度约束，
+                      //    与这一列「粘土选项行」不是一套语汇。
+                      Switch(
+                        value: settings.followSystem,
+                        onChanged: (v) async {
+                          await notifier.setFollowSystem(v);
+                          if (ctx.mounted) setDialogState(() {});
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           );
         },
       ),
@@ -1238,17 +1315,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   void _showSubscribeDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Tw('订阅套餐'),
-        content: const SubscribePanel(),
+    CoDialog.show<void>(
+      context,
+      builder: (ctx) => CoDialog(
+        title: '订阅套餐',
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Tw('关闭'),
+          ClayButton(
+            label: '关闭',
+            variant: ClayButtonVariant.secondary,
+            expanded: true,
+            onTap: () => Navigator.of(ctx).pop(),
           ),
         ],
+        child: const SubscribePanel(),
       ),
     );
   }
@@ -1263,14 +1342,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   void _showContactDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Tw('联系工作人员'),
-        content: Column(
+    final t = CoEvoTokensExt.of(context);
+    CoDialog.show<void>(
+      context,
+      builder: (ctx) => CoDialog(
+        title: '联系工作人员',
+        actions: [
+          ClayButton(
+            label: '关闭',
+            variant: ClayButtonVariant.secondary,
+            expanded: true,
+            onTap: () => Navigator.of(ctx).pop(),
+          ),
+        ],
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Tw('扫码添加工作人员微信', style: TextStyle(fontSize: 13)),
+            Tw(
+              '扫码添加工作人员微信',
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: 13,
+                color: Color(t.ink2.argb32),
+              ),
+            ),
             const SizedBox(height: CoSpacing.lg),
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
@@ -1279,15 +1374,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 width: 200,
                 height: 200,
                 fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) =>
-                    Icon(Icons.image_not_supported, size: 64, color: _cs.onSurfaceVariant),
+                errorBuilder: (_, __, ___) => Icon(
+                  Icons.image_not_supported,
+                  size: 64,
+                  color: Color(t.ink3.argb32),
+                ),
               ),
             ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Tw('关闭')),
-        ],
       ),
     );
   }

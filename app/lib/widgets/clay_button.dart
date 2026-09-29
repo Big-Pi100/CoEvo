@@ -48,6 +48,15 @@ import 'twemoji.dart';
 /// 规格 §6.1 对「图标按钮」注明「最小点击区 44×44」，
 /// 本组件（与复习页的排序药丸、底部 tab 一样）**点击区 = 视觉区 ≈ 31.5px**。
 /// 这是**现状的共性缺口**，不是本组件特有；若要补，应三处一起补（否则又不一致）。
+/// 按钮的主 / 次变体（见 [ClayButton.variant]）。
+enum ClayButtonVariant {
+  /// 主动作 —— 强调色填充 + 染自身色相的外阴影。
+  primary,
+
+  /// 次动作（取消 / 关闭 / 次选）—— 暗底凸起 + 中性外阴影。
+  secondary,
+}
+
 class ClayButton extends StatelessWidget {
   const ClayButton({
     super.key,
@@ -55,6 +64,7 @@ class ClayButton extends StatelessWidget {
     required this.onTap,
     this.enabled = true,
     this.expanded = false,
+    this.variant = ClayButtonVariant.primary,
   });
 
   /// 按钮文案。
@@ -91,6 +101,22 @@ class ClayButton extends StatelessWidget {
   ///    放进 `Row` 这类**宽度无界**的父会因 `double.infinity` 布局报错。
   final bool expanded;
 
+  /// **主 / 次**（2026-09-29 新增）。照原型 `.lgbtn` 与 `.lgbtn.pri`：
+  ///
+  /// | 变体 | 填充 | 外阴影 | 字色 | 语义 |
+  /// |---|---|---|---|---|
+  /// | `primary` | `accent`（选中态） | `accentOut` | `accentInk` | 这一屏的**主动作** |
+  /// | `secondary` | `sunken`（**凸起**） | `out`（中性灰） | `ink2` | 取消 / 关闭 / 次选 |
+  ///
+  /// 🔑 **两者不是「同一个按钮换个色」** —— 连**外阴影的来源**都不同：
+  ///    主按钮是彩色元素 → 阴影必须染自身色相（`accentOut`）；
+  ///    次按钮是中性色 → 用 `out`。这正是 §3.2 规则 1
+  ///    （若彩色元素沿用 `out`，「格」档会出现冷灰阴影配暖朱砂 → **发脏**，§3.3.1）。
+  ///
+  /// ⚠️ 次按钮是**凸起**而不是凹陷：§〇 规则 1「有体积的只可能是**可点**的东西」——
+  ///    它可点，所以有体积；用暗底（`sunken`）与主按钮的强调色填充区分开。
+  final ClayButtonVariant variant;
+
   /// 横向 14 给文字留出呼吸，纵向 7 使高度落在 sm 档中段。
   static const EdgeInsets _padding =
       EdgeInsets.symmetric(horizontal: 14, vertical: 7);
@@ -100,6 +126,7 @@ class ClayButton extends StatelessWidget {
     // 从当前主题档取 token：字色必须与 `Clay` 用的填充**同档**，
     // 否则「格」档下会拿「墨」的 accentInk 去压「格」的 accent。
     final t = CoEvoTokensExt.of(context);
+    final isSecondary = variant == ClayButtonVariant.secondary;
 
     final text = Tw(
       label,
@@ -107,17 +134,26 @@ class ClayButton extends StatelessWidget {
         fontFamily: CoFonts.uiSans,
         fontSize: 12.5,
         fontWeight: FontWeight.w600,
-        // `accentInk` = 「压在 accent 上的字色」（token 表原文），
-        // 不是把 accent 调亮 —— 对比度由 token 保证。
-        color: Color(t.accentInk.argb32),
+        // · 主按钮 `accentInk` = 「压在 accent 上的字色」（token 表原文），
+        //   不是把 accent 调亮 —— 对比度由 token 保证。
+        // · 次按钮 `ink2`（原型 `.lgbtn{color:var(--ink2)}`）。
+        color: Color((isSecondary ? t.ink2 : t.accentInk).argb32),
       ),
     );
 
     final button = Clay(
-      // 🔴 先判 `enabled`：禁用与选中**互斥**（`ClayPainter` 里 `disabled`
-      //    是独立分支）。写反了按钮会「看着能点、点不动」—— 正是 §🆕 那条
-      //    「视觉元素的形态须与语义一致」要避免的。
-      state: enabled ? ClayState.selected : ClayState.disabled,
+      // 🔴 三个态**互斥**，必须先判 `enabled`（`ClayPainter` 里 `disabled` 是独立分支）。
+      //    写反了按钮会「看着能点、点不动」—— 正是「视觉元素的形态须与语义一致」要避免的。
+      state: !enabled
+          ? ClayState.disabled
+          : (isSecondary ? ClayState.raised : ClayState.selected),
+      // 填充色：
+      // · 次按钮 → `sunken`（暗底）
+      // · 主按钮 → 可用时**不传**（`Clay` 在 `selected` 态自动取 `accent`）；
+      //   ⚠️ **禁用时必须显式传 `accent`** —— `ClayPainter` 的 `disabled` 分支
+      //      不在 `isSelected` 里，不传就会掉回 `clayFill`，
+      //      按钮会从朱砂色**变成卡面色**（那不是「禁用」，是「换了种按钮」）。
+      fill: isSecondary ? t.sunken : (enabled ? null : t.accent),
       // ⚠️ 禁用时**照样把 onTap 传下去**（不是置 null）：
       //    `Clay` 内部 `_interactive = onTap != null && !_disabled` 已经挡掉了，
       //    而置 null 会让「为什么点不动」变得需要读两层代码才能解释。

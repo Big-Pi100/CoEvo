@@ -7,6 +7,7 @@ import '../../api/api_config.dart';
 import '../../providers/auth_provider.dart' show authProvider;
 import '../../theme/co_spacing.dart';
 import '../widgets/twemoji.dart';
+import 'clay_button.dart';
 
 /// 订阅套餐面板 — 卡片式套餐展示，支持下单跳转支付
 class SubscribePanel extends ConsumerStatefulWidget {
@@ -366,23 +367,19 @@ class _PlanCard extends StatelessWidget {
                 ),
                 const SizedBox(width: CoSpacing.sm),
                 // 右侧：订阅按钮
-                SizedBox(
-                  height: 34,
-                  child: FilledButton(
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                    ),
-                    onPressed: loading ? null : onPay,
-                    child: loading
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
-                          )
-                        : Text(price == 0 ? '开通' : '订阅'),
-                  ),
+                //
+                // 🔴 2026-09-29 改粘土：它是「订阅套餐」弹层里**与「关闭」按钮同屏**的
+                //    主按钮 —— 留着 Material `FilledButton` 会让同一个弹层里
+                //    出现两套按钮观感（外壳已是 `CoDialog` 平面卡 + `ClayButton`）。
+                // ⚠️ 原实现在 loading 时于按钮内显示 `CircularProgressIndicator`；
+                //    `ClayButton` 目前只有 `enabled`（没有 loading 指示）→
+                //    改成「文案 + 禁用态」，与登录弹窗的处理一致。
+                // ⚠️ 这里**不再包 `SizedBox(height: 34)`**：`Clay` 的尺寸由 child 决定，
+                //    外层强行拉高只会让 `Padding` 里的文字**顶部对齐**（偏上 2~3px）。
+                ClayButton(
+                  label: loading ? '处理中…' : (price == 0 ? '开通' : '订阅'),
+                  enabled: !loading,
+                  onTap: onPay,
                 ),
               ],
             ),
