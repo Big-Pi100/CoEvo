@@ -18,7 +18,6 @@ default-run = "coevo_backend"
 api_server = { path = "crates/api_server" }
 chat_engine = { path = "crates/chat_engine" }
 chrono.workspace = true
-shared_types = { path = "crates/shared_types" }
 serde_json.workspace = true
 tokio.workspace = true
 tracing.workspace = true
@@ -28,7 +27,6 @@ dotenvy.workspace = true
 axum.workspace = true
 tower-http = { version = "0.6", features = ["cors", "fs", "trace"] }
 rusqlite = { workspace = true, features = ["bundled"] }
-toml = "0.8"
 serde.workspace = true
 uuid.workspace = true
 

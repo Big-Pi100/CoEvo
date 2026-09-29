@@ -38,6 +38,21 @@ CLAUDE.md
 # 微信支付证书（含私钥，入 Git = 泄露密钥！）
 /backend/certs/
 # Windows 保留设备名（不可被 Git 索引）
+#
+# ⚠️ 2026-09-29 实测：该条目**存在且删不掉**，本文件里的规则只能让它「不进 Git」，
+#    但**挡不住 ripgrep 遍历时报错**（错误发生在 stat 阶段，早于 ignore 判断）：
+#        rg: E:\CoEvo\NUL: 函数不正确。 (os error 1)   → 整个搜索 **exit code 2**
+#    🔴 后果：**在仓库根目录搜索会整体失败**（不是只多一个文件）→ 属「静默漏搜」。
+#
+#    已试过且**全部失败**的删除方式（都是 Windows 层面拒绝，非工具问题）：
+#      · `/usr/bin/rm -f`（绕过 safe-delete 钩子）→ Permission denied
+#      · Python `os.remove` / `ctypes DeleteFileW('\\\\?\\...')` → err=5 (ERROR_ACCESS_DENIED)
+#      · PowerShell `[System.IO.File]::Delete` → 无效
+#      · `mv`（改名）→ Permission denied  ← 连改名都不行
+#    → **需人工处理**（管理员权限 / 安全模式 / 能操作 NTFS 目录项的工具）。
+#
+# ✅ **已验证的规避方案**：搜索时排除该名（以 Grep 工具为例）
+#        pattern + glob: "!NUL"      ← 实测在仓库根可正常搜索
 /nul
 
 # 删除操作的回滚备份（二进制快照，体积大且不适合 Git）

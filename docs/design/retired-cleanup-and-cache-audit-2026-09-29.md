@@ -211,14 +211,21 @@ python scripts/audit_generated_card_cache.py  自检通过 + 边界正确
 
 ---
 
-## 六、本轮新发现的遗留（**未处理** · 给你决定）
+## 六、本轮新发现的遗留 → ✅ **已全部处理**（白哥「清理遗留」）
 
-| # | 发现 | 影响 | 建议 |
-|---|---|---|---|
-| 1 | `main.rs` 的 `if table_count < 3` 守卫是**死逻辑** | 🟡 无害，但**会误导读者以为它是建表入口**（我本人就被误导了一轮） | 可删（含那条永不打印的 `info!`）—— 但属启动逻辑，故未擅自删 |
-| 2 | `api_server` / 根 bin 的 `Cargo.toml` 声明了 `shared_types` 依赖却**未使用** | 🟡 多编一个 crate | 可删声明（改 workspace 构建图，故未动） |
-| 3 | `backend/achievements.toml` 在 `growth.rs` 删除后成**孤儿**（0 引用） | 🟠 同「存量吸引新依赖」 | 可删；也可留作「成就定义的历史记录」—— 需你定 |
-| 4 | 仓库根目录有 0 字节 **`NUL`** 文件（**未入 git**，Windows 保留名） | 🟠 会让 `ripgrep` 报错（本次已两次干扰搜索）→ **静默漏搜** | 建议删除（本机垃圾，非仓库内容） |
+> 📄 **处理结果 + 一项我判断错误的纠正 + 端侧 chat 链评估 →
+> `legacy-cleanup-round2-2026-09-29.md`**
+
+| # | 发现 | 处理 |
+|---|---|---|
+| 1 | `main.rs` 的 `if table_count < 3` 守卫是**死逻辑** | ✅ **已删**（+ 那条永不打印的 `info!`）· 注明「唯一建表入口是 `db_pool::init`」 |
+| 2 | `api_server` / 根 bin 的 `shared_types` 依赖**未使用** | ✅ **已删声明**（`chat_engine` 保留 —— 它真在用）· 依赖图实测只剩一个消费者 |
+| 3 | `backend/achievements.toml` 成**孤儿** | ✅ **已删**（内容已固化进 `achievement-redesign` 文档 §二）· 🆕 连带删掉 **0 使用**的 `toml` 依赖 |
+| 4 | 仓库根 0 字节 **`NUL`**（Windows 保留名） | 🔴 **确认删不掉**（6 种方式全被 Windows 拒绝）→ ✅ **已验证规避方案**（`glob: "!NUL"`）· 全部写进 `.gitignore` 注释 · **需人工删** |
+
+⚠️ 另撤销一条**我上一轮的错误结论**：我说「端侧 `chat_*`/`pipelines` 是遗留死代码」——
+核实后发现 **`chat_client.dart` 正被 `profile_screen` 使用**，且 `/chat` 是「有路由、无入口」的孤儿页。
+详见 `legacy-cleanup-round2-2026-09-29.md` §六。
 
 ---
 

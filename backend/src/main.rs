@@ -86,31 +86,25 @@ async fn main() {
     chat_engine::config::ensure_db_connection(&db_path);
 
     // --- Auto-schema ---
+    //
+    // 🔴 **建表入口只有一处**：上面的 `api_server::db_pool::init(&db_path)`
+    //     （`db_pool.rs` 里 `init()` **无条件**调用 `schema::init_database()`）。
+    //
+    // 🗑 2026-09-29 已删除此处的 `if table_count < 3 { init_database() }` 守卫 ——
+    //     它**恒不成立**（`db_pool::init()` 先跑过，`users`/`tokens`/`payment_orders`
+    //     必然都已存在 → `table_count` 恒 = 3），是**死逻辑**：
+    //       · 实测：空库启动 → 20 张表全建好，但那条 `info!("Schema initialized")` **从不打印**
+    //       · 危害：读者（含我本人）会以为**这里**是建表入口 → 改错地方、
+    //         甚至据此报出「新表永远建不出来」这种**不存在的问题**
+    //
+    // 🔑 判据：**「两处实现、其中一处永不执行」是危险结构** → 删掉死的那处，只留一处权威。
+    //    ⚠️ 改 schema 请去 `crates/api_server/src/schema.rs`，**不要**在这里加 CREATE/ALTER。
     {
         let conn = api_server::db_pool::get_conn();
-        // 🔴🔴 **这里不是建表入口** —— 真正的入口是上面的 `api_server::db_pool::init(&db_path)`
-        //     （`db_pool.rs` 里 `init()` 无条件调用 `schema::init_database()`）。
-        //
-        //     🔑 本守卫**恒不成立**：`db_pool::init()` 已经跑过 `init_database`，
-        //        `users` / `tokens` / `payment_orders` 必然都已存在 → `table_count` 恒 = 3。
-        //        （实测：空库启动 → 20 张表全建好，但本条 `tracing::info!` 从不打印。）
-        //
-        //    ⚠️ 保留（未删）只为「万一 db_pool 的建表被摘掉」时兜底；**改 schema 请去
-        //        `crates/api_server/src/schema.rs`**，不要在这里加 CREATE。
-        //    📌 建议：后续清理时直接删除本守卫（含那条 info!），只留 `schema.rs` 一处权威。
-        let table_count: i32 = conn.query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('users','tokens','payment_orders')",
-            [], |row| row.get(0),
-        ).unwrap_or(0);
-        if table_count < 3 {
-            api_server::schema::init_database(&conn)
-                .unwrap_or_else(|e| {
-                    tracing::error!("Schema init failed critically: {}", e);
-                    panic!("Schema init failed: {}", e);
-                });
-            tracing::info!("Schema initialized (production schema)");
-        }
 
+        // 老库补列 / 建表（幂等）。⚠️ 只放**本库升级**用；新表定义一律写在 `schema.rs`。
+        // 🔴 容错**只放行 `duplicate column` / `already exists`**（真的已应用过）——
+        //    不再吞 `no such table` / `no such index`（那会**掩盖真错**：表名/列名/顺序写错都不报）。
         let migrations: &[&str] = &[
             "ALTER TABLE users ADD COLUMN streak_days INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN last_active_date TEXT",
