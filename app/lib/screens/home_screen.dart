@@ -7,9 +7,10 @@ import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 
 import '../api/api_config.dart';
-import '../data/mock_feed.dart';
+import '../api/content_client.dart';
 import '../providers/auth_provider.dart';
 import '../providers/bookmark_provider.dart';
+import '../providers/feed_provider.dart';
 import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
@@ -32,7 +33,27 @@ import '../widgets/header_chip.dart';
 /// > 「**除了生词表限制以外，不验证用户登录状态**」
 ///
 /// 读文章是**免费能力**，判定用户身份只发生在「生词本是否超 200 词上限」那一刻。
-/// 所以信息流**无条件渲染**，登录态、后端可达性都**不是**它的前置条件。
+/// 所以信息流**无条件渲染**，**登录态不是它的前置条件**（这条现在依然成立，
+/// 且新客户端 `content_client.dart` 刻意不带 token —— 见那里的说明）。
+///
+/// # 🆕 2026-09-29：数据改从后端来 → 「后端可达性」**变成了**前提
+///
+/// ⚠️ 本段**修正了一句已经过时的话**。原文写的是：
+/// > 「登录态、**后端可达性**都**不是**它的前置条件」
+///
+/// 那句话在「信息流是 mock（`mockFeedItems` 硬编码在端侧）」时是对的 ——
+/// 数据不出本机，后端挂了照样能显示。
+/// 但数据源已改为 `GET /api/feed`（服务端共享内容池）→
+/// 🔴 **后端可达性现在是前提**，且**不能假装它不是**：
+/// 网络失败时信息流就是空的。
+///
+/// 🔑 所以「不验证登录态」这条原则要**精确表述**：
+///    · ✅ 不因「未登录」而拒绝渲染（登录是**能力**开关，不是**可见性**开关）
+///    · ❌ 不等于「渲染与数据源无关」—— 数据源在网络上，失败是**常态**
+/// → 于是 [feedProvider] 的**错误态必须存在且有出口**（见 `build` 里的 `_FeedError`）：
+///   显示「拿不到」+ 一个重试按钮。
+///   这仍然符合原意：原则要防的是「**静默失败 + 无出口**」，
+///   而不是「假装数据不需要网络」。
 ///
 /// # 🔑 本页保留的是「启动引导」，不是「首页内容」
 /// [_initAuth] 那一整块（试用账户创建 / 推广码与活动 / 注册弹窗）是**产品必需**的
@@ -46,8 +67,9 @@ import '../widgets/header_chip.dart';
 /// 详见 [build] 里的完整记录。
 ///
 /// # 数据
-/// 🔴 当前用 [mockFeedItems]（**临时**，设计稿原文三篇）。
-/// 后端 RSS 抓取属 Phase 3，落地后改为从 feed 接口取数并删除 mock 文件。
+/// ✅ **已接服务端内容池**（2026-09-29）：`GET /api/feed` → [feedProvider]。
+/// 🔑 三态（加载 / 失败可重试 / 空）各有明确表达 —— 见 `build` 里信息流那一段。
+/// 📄 端侧不再有 `mock_feed.dart`（已删除）；内容由服务端抓取入库（RSS + HN）。
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -306,36 +328,62 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
             // ── 信息流（设计稿 `.feed` padding 0 16px · `.fcards` gap 13px）──
             Expanded(
-              child: ListView.separated(
-                // 🔴 底部 padding 必须**留出 tabbar 的高度**（2026-09-27）。
-                //    `_ShellScaffold` 加了 `extendBody: true` → 正文延伸到 tabbar **之后**，
-                //    若仍用原来的 24，最后一张卡片会被按钮压住。
-                //    数值与依据见 `CoSpacing.tabBarClearance`（≈83–93 取 100）。
-                padding: const EdgeInsets.fromLTRB(
-                    16, 0, 16, CoSpacing.tabBarClearance),
-                itemCount: mockFeedItems.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 13),
-                itemBuilder: (_, i) {
-                  final item = mockFeedItems[i];
-                  return FeedCard(
-                    item: item,
-                    bookmarked: bookmarkIds.contains(item.id),
-                    // 🔴 库未就绪 → 传 `null` → 按钮**禁用**。
-                    //    不传一个「点了没反应」的回调 —— 那会让用户以为 App 坏了
-                    //    （3.22 的教训：「静默无效的操作」比「禁用」更糟）。
-                    onToggleBookmark: bookmarkReady
-                        ? () => _toggleBookmark(item.id)
-                        : null,
-                    // 点卡片 → 阅读器（3.4a）。
-                    // 🔑 正文未就绪的文章**照样可点** —— 与书签的「禁用」不同：
-                    //    书签禁用是因为「数据库没开」这种**异常状态**；
-                    //    而「正文未抓取」是**正常状态**（Phase 3 未做），
-                    //    进阅读器会看到一句明确的解释 —— 比「点了没反应」好，
-                    //    也比「卡片不可点」好（后者要用户猜原因）。
-                    onTap: () => context.push('/article/${item.id}'),
-                  );
-                },
-              ),
+              child: ref.watch(feedProvider('')).when(
+                    // ① 加载中：**给一个可见的转圈**（不是一个空白区）。
+                    //    🔑 首次进 App 要等一次网络往返 → 没有占位的话
+                    //       用户看到的是「今日精选」下面一片空白 = 像坏了。
+                    loading: () => const Center(
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                    // ② 失败：**明确说出「拿不到」+ 可重试**。
+                    //    🔴 这是本页最重要的一态：内容源依赖网络，
+                    //       而网络失败是**常态**（不是异常）。
+                    //       判据：「静默失败 + 无出口」比报错更糟 ——
+                    //       一个永远空着的信息流，用户只会以为 App 坏了。
+                    error: (e, _) => _FeedError(
+                      error: e,
+                      onRetry: () => ref.invalidate(feedProvider('')),
+                    ),
+                    // ③ 空：**区分「服务通了但没有内容」与「拿不到」**。
+                    //    两者的处理完全不同（前者不该劝重试 —— 重试也没用）。
+                    data: (page) {
+                      if (page.items.isEmpty) return const _FeedEmpty();
+                      return ListView.separated(
+                        // 🔴 底部 padding 必须**留出 tabbar 的高度**（2026-09-27）。
+                        //    `_ShellScaffold` 加了 `extendBody: true` → 正文延伸到 tabbar **之后**，
+                        //    若仍用原来的 24，最后一张卡片会被按钮压住。
+                        //    数值与依据见 `CoSpacing.tabBarClearance`（≈83–93 取 100）。
+                        padding: const EdgeInsets.fromLTRB(
+                            16, 0, 16, CoSpacing.tabBarClearance),
+                        itemCount: page.items.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 13),
+                        itemBuilder: (_, i) {
+                          final item = page.items[i];
+                          return FeedCard(
+                            item: item,
+                            bookmarked: bookmarkIds.contains(item.id),
+                            // 🔴 库未就绪 → 传 `null` → 按钮**禁用**。
+                            //    不传一个「点了没反应」的回调 —— 那会让用户以为 App 坏了
+                            //    （3.22 的教训：「静默无效的操作」比「禁用」更糟）。
+                            onToggleBookmark: bookmarkReady
+                                ? () => _toggleBookmark(item.id)
+                                : null,
+                            // 点卡片 → 阅读器（3.4a）。
+                            // 🔑 **正文未就绪的卡片照样可点** —— 与书签的「禁用」不同：
+                            //    书签禁用是因为「数据库没开」这种**异常状态**；
+                            //    而「正文未抓取」是**正常状态**（该源的 feed 只给摘要），
+                            //    进阅读器会看到一句明确的解释 —— 比「点了没反应」好，
+                            //    也比「卡片不可点」好（后者要用户猜原因）。
+                            onTap: () => context.push('/article/${item.id}'),
+                          );
+                        },
+                      );
+                    },
+                  ),
             ),
           ],
         ),
@@ -351,6 +399,158 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// （同 `BookmarkButton` 被抽出来的理由：设计稿里是同一个东西，实现里就该是一处。）
   Future<void> _toggleBookmark(int contentId) =>
       toggleBookmarkWithToast(context, ref, contentId);
+}
+
+/// 信息流**拿不到内容**时的表达（错误态）。
+///
+/// # 🔴 为什么必须有这一态（而不是留空）
+/// 数据源在网络另一头（`GET /api/feed`），**失败是常态而非异常**。
+/// 若失败时只显示空列表，用户看到的是「今日精选」下面一片空白 ——
+/// 与「今天确实没有新内容」**完全无法区分**。
+/// 📌 判据（本项目反复出现）：「**静默失败 + 无出口**」比报错更糟。
+///    所以这里既**说出发生了什么**，也给**一个出口**（重试）。
+///
+/// # 🔑 文案分层：标题给「结论」，副标题给「原因」
+/// [error] 是 `ContentApiException` —— 它的 `toString` 里有状态码与原因，
+/// 但**不把异常原文当标题**（用户读不懂 `Exception: SocketException...`）。
+/// 区分两种情况：
+/// · 网络层失败（`statusCode == 0`）→ 「检查网络」
+/// · 服务返回错误（如 500）→ 「服务暂时不可用」
+/// 两者的用户动作不同（前者查自己，后者只能等）—— 分开说才有用。
+class _FeedError extends StatelessWidget {
+  final Object error;
+  final VoidCallback onRetry;
+
+  const _FeedError({required this.error, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+    final isNetwork = error is ContentApiException &&
+        (error as ContentApiException).statusCode == 0;
+    final title = isNetwork ? '网络好像不通' : '内容暂时取不到';
+    final detail = isNetwork
+        ? '检查一下网络连接，然后再试一次。'
+        : '服务可能正在忙。稍后再试，或者下拉重试。';
+
+    return _FeedNotice(
+      icon: isNetwork ? Icons.wifi_off : Icons.cloud_off,
+      title: title,
+      detail: detail,
+      // 🔑 重试是**唯一的出口** —— 没有它，用户只能杀掉 App 重开
+      actionLabel: '重试',
+      onAction: onRetry,
+      tokens: t,
+    );
+  }
+}
+
+/// 信息流**确实为空**（服务通了，但内容池里没有可展示的条目）。
+///
+/// # 🔑 与 [_FeedError] 分开是**必须的**，不是啰嗦
+/// 「拿不到」与「没有」对用户是**两件事**：
+/// · 拿不到 → 会好，**重试有意义**
+/// · 没有 → 重试也没用（内容就是空的）
+/// → 所以本态**不给重试按钮**，而是说明原因（首次部署时内容池还没抓完）。
+/// 若两者共用一个「重试」态，用户会对一个不会变的状态反复点重试。
+class _FeedEmpty extends StatelessWidget {
+  const _FeedEmpty();
+
+  @override
+  Widget build(BuildContext context) {
+    return _FeedNotice(
+      icon: Icons.inbox_outlined,
+      title: '还没有内容',
+      detail: '内容还在准备中。过一会儿回来看，或者稍后重试。',
+      // ⚠️ **有意不给按钮** —— 见类文档：这里重试没有意义。
+      //    ⚠️ 但也不给「下拉刷新」的暗示，那会诱导用户做无效操作。
+      actionLabel: null,
+      onAction: null,
+      tokens: CoEvoTokensExt.of(context),
+    );
+  }
+}
+
+/// [_FeedError] / [_FeedEmpty] 共用的版式（**只有一份外观定义**）。
+///
+/// 🔑 抽出来的理由同 `bookmark_toggle`：两者是**同一位置的同一种东西**
+/// （信息流区域的占位），只是文案与有无按钮不同。
+/// 各写一遍必然视觉漂移 —— 而它们**永远相邻出现**，漂移一眼可见。
+class _FeedNotice extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String detail;
+  /// `null` = 不给按钮（见 [_FeedEmpty] 的说明）。
+  final String? actionLabel;
+  final VoidCallback? onAction;
+  final CoEvoTokens tokens;
+
+  const _FeedNotice({
+    required this.icon,
+    required this.title,
+    required this.detail,
+    required this.actionLabel,
+    required this.onAction,
+    required this.tokens,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = tokens;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 30, color: Color(t.ink3.argb32)),
+            const SizedBox(height: CoSpacing.md),
+            // 标题：层级高于说明（字号 15 > 13，字重 w600 > 常规）
+            // 🔑 与「线索不压过答案」同一条原则：结论要能一眼看到
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: Color(t.ink.argb32),
+              ),
+            ),
+            const SizedBox(height: CoSpacing.sm),
+            Text(
+              detail,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: 13,
+                height: 1.6,
+                color: Color(t.ink3.argb32),
+              ),
+            ),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: CoSpacing.lg),
+              // ⚠️ 用 `TextButton` 而**不是**粘土按钮：本页（阅读区）是**零粘土**区
+              //    （spec §八「阅读区容器内不得出现粘土类」）。
+              //    重试是页面内的一次动作，不是需要「体积」强调的主操作。
+              TextButton(
+                onPressed: onAction,
+                child: Text(
+                  actionLabel!,
+                  style: TextStyle(
+                    fontFamily: CoFonts.uiSans,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(t.accent.argb32),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 

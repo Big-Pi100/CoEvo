@@ -8,7 +8,10 @@ import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../data/mock_articles.dart';
+import '../api/content_client.dart';
+import '../models/feed_item.dart';
+import '../providers/feed_provider.dart';
+import '../services/article_text.dart';
 import '../models/article.dart';
 import '../providers/achievement_notifier.dart';
 import '../providers/achievement_provider.dart';
@@ -264,30 +267,85 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   @override
   Widget build(BuildContext context) {
     final t = CoEvoTokensExt.of(context);
-    final article = mockArticleById(widget.articleId);
 
-    // 🔑 三种状态各有明确表达，**不共用白屏** ——
+    // 🆕 2026-09-29：正文改从 `GET /api/feed/{id}` 取（此前是 `mockArticleById`）。
+    // 🔴 **两个 `watch` 都在顶层**（不放进 `when` 回调）—— Riverpod 要求
+    //    `watch` 无条件执行，放进条件分支会造成「上次订阅了、这次没订阅」的漂移，
+    //    表现为「有时不刷新」且**不报错**。
+    final detailAsync = ref.watch(articleDetailProvider(widget.articleId));
+    // 痕迹：数据源是端侧 `lookup_event`（不是内容源）→ 独立 provider，独立成败
+    final lookupsAsync = ref.watch(articleLookupsProvider(widget.articleId));
+
+    // 🔑 四种状态各有明确表达，**不共用白屏** ——
     //    白屏用户只会以为 App 坏了（与「静默失败」同类）。
-    if (article == null) {
-      return _Notice(
-        tokens: t,
-        icon: Icons.search_off,
-        title: '找不到这篇文章',
-        message: '它可能已被移除。返回上一页看看别的。',
-      );
-    }
-    if (!article.hasBody) {
-      return _Notice(
-        tokens: t,
-        icon: Icons.hourglass_empty,
-        title: '正文还没准备好',
-        message: '这篇文章的全文尚未抓取。\n内容抓取上线后，这里就能读了。',
-      );
-    }
+    //    新增的第 4 种（网络失败 + 重试）是**这次接服务端才出现的** ——
+    //    数据源从本机 mock 变成网络，失败就成了需要表达的常态。
+    return detailAsync.when(
+      // ① 加载中：转圈（详情比列表慢，必须给反馈）
+      loading: () => Scaffold(
+        backgroundColor: Color(t.page.argb32),
+        body: const Center(
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      ),
+      // ② 失败：**分清 404 与「拿不到」**（前者劝重试没意义）
+      error: (error, _) {
+        final notFound = error is ContentApiException && error.isNotFound;
+        // ⚠️ `_Notice` **自带 Scaffold + 返回按钮 + 阅读底色** → 调用处不要再包一层
+        return _Notice(
+          tokens: t,
+          icon: notFound ? Icons.search_off : Icons.cloud_off,
+          title: notFound ? '找不到这篇文章' : '这篇文章暂时打不开',
+          message: notFound
+              ? '它可能已被移除。返回上一页看看别的。'
+              : '内容需要联网读取，现在读不到。\n稍后再试。',
+          // 只在「可能好起来」时给重试（404 不会好）
+          onRetry: notFound
+              ? null
+              : () => ref.invalidate(articleDetailProvider(widget.articleId)),
+        );
+      },
+      // ③ 拿到详情 —— 再分「有正文」与「没正文」
+      data: (value) {
+        final item = value.item;
+        // 🔑 正文分段用**纯函数**（`article_text.splitParagraphs`）——
+        //    后端已按 `\n\n` 分好段，本层只切不猜（见那里的说明）。
+        final paragraphs = splitParagraphs(value.readableText);
 
+        // 正文真的为空 → 「没有正文」。
+        // ⚠️ 与「找不到」是**两种不同的**表达（一个还有机会，一个没有）。
+        if (!hasReadableBody(paragraphs)) {
+          return _Notice(
+            tokens: t,
+            icon: Icons.hourglass_empty,
+            title: '这一篇还没有正文',
+            message: '这个来源目前只提供标题。\n换一篇读，或者稍后再来看看。',
+          );
+        }
+
+        // 痕迹取不到 → 空列表（正文照常显示，只是没有底色）。
+        // 🔑 「增强」不该有能力阻断「主体」—— 见 `articleLookupsProvider` 的说明。
+        final lookups = lookupsAsync.valueOrNull ?? const <ArticleLookup>[];
+        return _buildReader(context, t, item, paragraphs, lookups);
+      },
+    );
+  }
+
+  /// 正文可读时的阅读界面（从原 `build` 抽出 —— 让上面的四态分派保持扁平）。
+  Widget _buildReader(
+    BuildContext context,
+    CoEvoTokens t,
+    FeedItem item,
+    List<String> paragraphs,
+    List<ArticleLookup> lookups,
+  ) {
     // 书签状态 —— 与信息流卡片**同一个 provider**，两处永远一致。
     final bookmarkState = ref.watch(bookmarkProvider);
-    final bookmarked = bookmarkState.idsOrEmpty.contains(article.id);
+    final bookmarked = bookmarkState.idsOrEmpty.contains(item.id);
     final bookmarkReady = bookmarkState.isReady;
 
     // 🔴🔴 **词库预热 —— 这一行不能删**（2026-09-27 修）
@@ -315,13 +373,13 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           children: [
             _ReaderBar(
               tokens: t,
-              category: article.category,
+              category: item.category,
               bookmarked: bookmarked,
               // 库未就绪 → 传 null → 按钮禁用（不传「点了没反应」的回调）
               onToggleBookmark: bookmarkReady
                   ? () => ref
                       .read(bookmarkProvider.notifier)
-                      .toggle(article.id)
+                      .toggle(item.id)
                   : null,
             ),
             Expanded(
@@ -355,15 +413,15 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                    _ReaderHead(tokens: t, article: article),
-                    for (var i = 0; i < article.paragraphs.length; i++) ...[
+                    _ReaderHead(tokens: t, item: item),
+                    for (var i = 0; i < paragraphs.length; i++) ...[
                       if (i > 0) const SizedBox(height: _paragraphGap),
                       TraceText(
-                        text: article.paragraphs[i],
+                        text: paragraphs[i],
                         // 痕迹：已查词在正文里的位置（已掌握的词不产生标记）
                         marks: locateTraceMarks(
-                          text: article.paragraphs[i],
-                          lookups: article.lookups,
+                          text: paragraphs[i],
+                          lookups: lookups,
                           tokens: t.trace,
                         ),
                         style: TextStyle(
@@ -661,10 +719,10 @@ class _ReaderBar extends StatelessWidget {
 
 /// 标题区 —— 设计稿 `.rd-hd`：来源行 + 标题。
 class _ReaderHead extends StatelessWidget {
-  const _ReaderHead({required this.tokens, required this.article});
+  const _ReaderHead({required this.tokens, required this.item});
 
   final CoEvoTokens tokens;
-  final Article article;
+  final FeedItem item;
 
   @override
   Widget build(BuildContext context) {
@@ -675,7 +733,7 @@ class _ReaderHead extends StatelessWidget {
         children: [
           Text(
             // 设计稿 `.src` 的文本是「分类 · 来源」，且 `text-transform: uppercase`
-            '${article.category} · ${article.source}'.toUpperCase(),
+            '${item.categoryLabel} · ${item.source}'.toUpperCase(),
             style: TextStyle(
               fontFamily: CoFonts.uiSans,
               fontSize: 10.5,
@@ -686,7 +744,7 @@ class _ReaderHead extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            article.title,
+            item.title,
             style: TextStyle(
               fontFamily: CoFonts.latinSerif,
               fontSize: 21,
@@ -712,12 +770,23 @@ class _Notice extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.message,
+    this.onRetry,
   });
 
   final CoEvoTokens tokens;
   final IconData icon;
   final String title;
   final String message;
+
+  /// 重试回调。`null` = **不给重试按钮**（见下）。
+  ///
+  /// # 🔑 为什么区分「给不给」
+  /// 本页有两种「看不到内容」：
+  /// · **拿不到**（网络/服务失败）→ 会好起来，**重试有意义** ✅
+  /// · **找不到**（404）/ **没有正文** → 重试一万次也一样
+  /// → 后者不给按钮。给一个**按了没用**的按钮，比不给更糟：
+  ///   用户会反复按，然后判定「App 坏了」。
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -776,6 +845,24 @@ class _Notice extends StatelessWidget {
                           color: Color(tokens.ink2.argb32),
                         ),
                       ),
+                      // 🔑 重试**只在「可能好起来」时出现**（见 [onRetry] 的说明）
+                      if (onRetry != null) ...[
+                        const SizedBox(height: 20),
+                        // ⚠️ 阅读区**零粘土**（spec §八）→ 用纯文字按钮，
+                        //    与信息流/收藏页的重试保持**同一形制**（加粗 + 强调色）
+                        TextButton(
+                          onPressed: onRetry,
+                          child: Text(
+                            '重试',
+                            style: TextStyle(
+                              fontFamily: CoFonts.uiSans,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Color(tokens.accent.argb32),
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

@@ -21,6 +21,7 @@
 
 import 'package:sqflite_common/sqlite_api.dart';
 
+import '../models/article.dart' show ArticleLookup;
 import 'bookmark_repository.dart' show parseUserDbUtc;
 
 /// `updated_at` 用的 SQL 表达式 —— 与 DDL 的 `DEFAULT` **同一个表达式**。
@@ -385,6 +386,56 @@ class UserWordRepository {
     final rows =
         await _db.rawQuery('SELECT count(*) AS n FROM lookup_event');
     return (rows.first['n'] as num).toInt();
+  }
+
+  /// **这篇文章里我查过哪些词**（+ 各自的 FSRS 状态）—— **痕迹的数据源**。
+  ///
+  /// # 🔴 为什么必须是「按文章」而不是「整个生词本」
+  ///
+  /// 设计稿把痕迹的语义定得很明确（`coevo_tokens.dart` 的原文）：
+  /// > 「痕迹只表达『**我和这篇文章的关系**』」
+  ///
+  /// 若用全部生词（`user_word`），**打开任何一篇文章都会显示同一批底色** ——
+  /// 那表达的就不是「我和这篇的关系」，而是「我有个生词本」。
+  /// 而 `lookup_event.article_id` 正是为这个语义记的（「哪篇文章查的」）。
+  ///
+  /// # 🔑 未命中的词**也要留痕**（有意如此）
+  /// `lookup_event.word_id` 可空 = 「查了但词库里没有」（白哥定 Q2：「都记」）。
+  /// 这类词不在生词本里，但用户**确实查过它** → 应显示为「刚查过」（`reps = 0`）。
+  /// → SQL 用 `LEFT JOIN`：JOIN 不到 → `reps = 0` → `forReps(0)` 给「刚查过」样式 ✅
+  ///   **恰好好处**：不需要为「未命中」单独写一条分支。
+  ///
+  /// # 🔑 `MAX(...)` 的作用（不是随手写的）
+  /// 同一个 spelling 可能在 `lookup_event` 里有多行（查了多次），
+  /// 且其中可能有「先未命中（`word_id` 为 NULL，后来词库补上了）」与
+  /// 「已命中（有 `word_id`）」两种。
+  /// 按 `spelling` 分组后取 `MAX(crs.reps)` → 拿到**有状态的那一条**的值
+  /// （未命中的那行 JOIN 不到，`reps` 为 NULL，`MAX` 会忽略 NULL）。
+  ///
+  /// # ⚠️ 不含「已掌握」的词 —— 不是筛掉，而是**留给渲染层**
+  /// `reps >= 3 && lapses == 0` 的词仍会出现在结果里（它是**事实**），
+  /// 由 `TraceTokens.forReps()` 返回 `null` → 不产生标记（白哥 2026-09-27 决策）。
+  /// 🔑 **本层不筛**：筛选是表现层的判断，写在数据层会让「已掌握」这个词
+  ///    在别处（如将来的「本文新词」统计）也用不到。
+  Future<List<ArticleLookup>> lookupsForArticle(int articleId) async {
+    final rows = await _db.rawQuery(
+      'SELECT le.spelling AS spelling, '
+      '       COALESCE(MAX(crs.reps), 0) AS reps, '
+      '       COALESCE(MAX(crs.lapses), 0) AS lapses '
+      'FROM lookup_event le '
+      'LEFT JOIN card_review_state crs ON crs.word_id = le.word_id '
+      'WHERE le.article_id = ?1 '
+      'GROUP BY le.spelling',
+      [articleId],
+    );
+    return rows
+        .map((r) => ArticleLookup(
+              (r['spelling'] as String?) ?? '',
+              reps: (r['reps'] as num?)?.toInt() ?? 0,
+              lapses: (r['lapses'] as num?)?.toInt() ?? 0,
+            ))
+        .where((l) => l.word.isNotEmpty)
+        .toList();
   }
 
   // ───────────────────────────────────────────────────────────

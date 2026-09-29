@@ -37,6 +37,44 @@ pub struct FeedQuery {
     pub offset: Option<i64>,
     /// `time`（默认）| `score`（热帖）
     pub sort: Option<String>,
+    /// 🔑 **按 id 批量取**（逗号分隔）—— 供「收藏清单」用。
+    ///
+    /// # 为什么需要它（而不是让端侧逐条调 `/api/feed/{id}`）
+    /// 收藏清单只知道一串 `content_id`（来自端侧 `bookmark` 表），需要反查卡片内容。
+    /// 逐条调 = N 次请求 → N 次握手 + N 次 DB 往返（收藏 50 条就是 50 次）。
+    /// 而「按 id 批量」是一次查询解决 —— 且**复用同一个 handler**，不新增接口面。
+    ///
+    /// ⚠️ 与 `category` / `limit` 的关系：给了 `ids` 时**忽略分页与排序**
+    ///    （用户要的就是「这几个 id」，多给或漏给都是错的）。
+    pub ids: Option<String>,
+}
+
+/// 解析 `ids=1,2,3` → `Vec<i64>`。
+///
+/// # 🔴 解析成整数再用参数绑定（**不是**把字符串拼进 SQL）
+/// `ids` 是**用户输入**。若拼进 SQL 就是注入面。
+/// 这里先解析成 `i64` 集合 —— 非法片段（非数字）**直接丢弃**，
+/// 之后用**动态生成的占位符**（`?,?,?`）绑定参数。
+/// 🔑 占位符的个数来自**解析后的整数个数**，与用户输入的原始字符串无关 → 无注入面。
+///
+/// 去重（同一个 id 传两次只查一次）+ 上限（防止 `ids=` 塞几千个）。
+fn parse_ids(raw: &str) -> Vec<i64> {
+    /// 一次最多按 id 取多少条 —— 与 `MAX_LIMIT` 同量级。
+    const MAX_IDS: usize = 100;
+    let mut out: Vec<i64> = Vec::new();
+    for part in raw.split(',') {
+        if let Ok(v) = part.trim().parse::<i64>() {
+            if v > 0 && !out.contains(&v) {
+                out.push(v);
+                if out.len() >= MAX_IDS {
+                    break;
+                }
+            }
+        }
+        // 非法片段静默丢弃：调用方拿到的条目数会少于请求数，
+        // 由端侧按「响应里没有的 id 就是不存在的」处理（不是错误）
+    }
+    out
 }
 
 /// 把 query 归一成安全的 (limit, offset, order_sql)。
@@ -59,6 +97,11 @@ fn normalize(q: &FeedQuery) -> (i64, i64, &'static str) {
 /// 🔑 列表**不返回 `body`**（全文可能几 KB，一页 20 条就是几十 KB）。
 ///    用 `has_body` 告诉端侧「这一条有没有全文可看」，端侧按需再去 `/api/feed/{id}` 取。
 pub async fn feed_list_handler(Query(q): Query<FeedQuery>) -> Response {
+    // 🔑 `ids` 优先：给了它就是要「这几个」，分页/排序无意义（见 `FeedQuery::ids`）
+    if let Some(raw) = q.ids.as_deref() {
+        return feed_by_ids(raw);
+    }
+
     let (limit, offset, order) = normalize(&q);
     let conn = crate::db_pool::get_conn();
 
@@ -69,7 +112,7 @@ pub async fn feed_list_handler(Query(q): Query<FeedQuery>) -> Response {
         "SELECT p.id, p.title, p.summary, p.url, p.author, p.category, \
                 p.published_at, p.score, p.comments, \
                 CASE WHEN p.body IS NOT NULL AND p.body <> '' THEN 1 ELSE 0 END AS has_body, \
-                s.name AS source_name \
+                s.name AS source_name, p.word_count \
          FROM content_pool p \
          LEFT JOIN content_source s ON s.id = p.source_id \
          WHERE (?1 IS NULL OR p.category = ?1) \
@@ -98,6 +141,10 @@ pub async fn feed_list_handler(Query(q): Query<FeedQuery>) -> Response {
             "comments":    r.get::<_, Option<i64>>(8)?,
             "has_body":    r.get::<_, i64>(9)? == 1,
             "source":      r.get::<_, Option<String>>(10)?,
+            // 🔑 `word_count` 是**事实**（让端侧自己算「N min」这个展示口径）——
+            //    与 `Article.lookups` 存 `reps` 不存样式同一条原则：
+            //    「数据层存事实，渲染层算表现」。列表与详情都返回它。
+            "word_count":  r.get::<_, Option<i64>>(11)?,
         }))
     });
 
@@ -120,6 +167,90 @@ pub async fn feed_list_handler(Query(q): Query<FeedQuery>) -> Response {
     (
         StatusCode::OK,
         Json(serde_json::json!({"ok": true, "items": items, "total": total, "limit": limit, "offset": offset})),
+    )
+        .into_response()
+}
+
+/// `GET /api/feed?ids=1,2,3` —— 按 id 批量取（收藏清单用）。
+///
+/// # 与列表接口的**形状一致**（`{ok, items, total, limit, offset}`）
+/// 🔑 端侧因此只需**一套**解析代码。`limit`/`offset` 填实际值（`items.len()` / 0）。
+///
+/// # 🔴 返回顺序**不保证**等于请求顺序 —— 端侧要按自己的顺序重排
+/// 调用方（收藏清单）的顺序是「收藏时间倒序」，那是**端侧 `bookmark` 表的顺序**。
+/// 这里按 `published_at DESC` 返回（SQL 的 `IN` 本就不保证顺序）。
+/// → 端侧用 `{for (final it in items) it.id: it}` 建映射再按自己的顺序取，
+///   **不要**依赖响应顺序。
+///
+/// # 找不到的 id **静默跳过**（不是错误）
+/// 收藏的内容可能已从内容池清理掉（保留期策略）→ 端侧按「响应里没有 = 不可渲染」处理。
+/// 若这里报错，一条失效收藏会让**整个收藏清单打不开**。
+fn feed_by_ids(raw: &str) -> Response {
+    let ids = parse_ids(raw);
+    if ids.is_empty() {
+        // 非法/空 ids → 返回空列表而不是 400：调用方拿不到内容，与「这些 id 都不存在」同类
+        return (
+            StatusCode::OK,
+            Json(serde_json::json!({"ok": true, "items": [], "total": 0, "limit": 0, "offset": 0})),
+        )
+            .into_response();
+    }
+
+    let conn = crate::db_pool::get_conn();
+    // 占位符个数来自**解析后的整数个数**（与用户输入的原始字符串无关）→ 无注入面
+    let placeholders = vec!["?"; ids.len()].join(",");
+    let sql = format!(
+        "SELECT p.id, p.title, p.summary, p.url, p.author, p.category, \
+                p.published_at, p.score, p.comments, \
+                CASE WHEN p.body IS NOT NULL AND p.body <> '' THEN 1 ELSE 0 END AS has_body, \
+                s.name AS source_name, p.word_count \
+         FROM content_pool p \
+         LEFT JOIN content_source s ON s.id = p.source_id \
+         WHERE p.id IN ({}) \
+         ORDER BY COALESCE(p.published_at, p.fetched_at) DESC",
+        placeholders
+    );
+
+    let mut stmt = match conn.prepare(&sql) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!("feed_by_ids prepare 失败: {}", e);
+            return err(StatusCode::INTERNAL_SERVER_ERROR, "db_error");
+        }
+    };
+
+    let params: Vec<&dyn rusqlite::ToSql> =
+        ids.iter().map(|i| i as &dyn rusqlite::ToSql).collect();
+    let items: Vec<serde_json::Value> = match stmt.query_map(params.as_slice(), |r| {
+        Ok(serde_json::json!({
+            "id":          r.get::<_, i64>(0)?,
+            "title":       r.get::<_, String>(1)?,
+            "summary":     r.get::<_, Option<String>>(2)?,
+            "url":         r.get::<_, String>(3)?,
+            "author":      r.get::<_, Option<String>>(4)?,
+            "category":    r.get::<_, Option<String>>(5)?,
+            "published_at": r.get::<_, Option<String>>(6)?,
+            "score":       r.get::<_, Option<i64>>(7)?,
+            "comments":    r.get::<_, Option<i64>>(8)?,
+            "has_body":    r.get::<_, i64>(9)? == 1,
+            "source":      r.get::<_, Option<String>>(10)?,
+            // 🔑 `word_count` 是**事实**（让端侧自己算「N min」这个展示口径）——
+            //    与 `Article.lookups` 存 `reps` 不存样式同一条原则：
+            //    「数据层存事实，渲染层算表现」。列表与详情都返回它。
+            "word_count":  r.get::<_, Option<i64>>(11)?,
+        }))
+    }) {
+        Ok(it) => it.filter_map(|x| x.ok()).collect(),
+        Err(e) => {
+            tracing::error!("feed_by_ids query 失败: {}", e);
+            return err(StatusCode::INTERNAL_SERVER_ERROR, "db_error");
+        }
+    };
+
+    let total = items.len() as i64;
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({"ok": true, "items": items, "total": total, "limit": total, "offset": 0})),
     )
         .into_response()
 }
@@ -178,7 +309,7 @@ mod tests {
 
     #[test]
     fn test_normalize_clamps_limit() {
-        let q = |l: Option<i64>| FeedQuery { category: None, limit: l, offset: None, sort: None };
+        let q = |l: Option<i64>| FeedQuery { category: None, limit: l, offset: None, sort: None, ids: None };
         assert_eq!(normalize(&q(None)).0, DEFAULT_LIMIT);
         assert_eq!(normalize(&q(Some(0))).0, 1, "0 → 抬到 1");
         assert_eq!(normalize(&q(Some(-5))).0, 1, "负数 → 抬到 1");
@@ -188,7 +319,7 @@ mod tests {
 
     #[test]
     fn test_normalize_offset_non_negative() {
-        let q = FeedQuery { category: None, limit: None, offset: Some(-3), sort: None };
+        let q = FeedQuery { category: None, limit: None, offset: Some(-3), sort: None, ids: None };
         assert_eq!(normalize(&q).1, 0);
     }
 
@@ -199,6 +330,7 @@ mod tests {
             limit: None,
             offset: None,
             sort: s.map(|x| x.to_string()),
+            ids: None,
         };
         assert!(normalize(&mk(Some("score"))).2.contains("score DESC"));
         assert!(normalize(&mk(Some("time"))).2.contains("published_at"));
@@ -206,5 +338,47 @@ mod tests {
         let injected = normalize(&mk(Some("id; DROP TABLE content_pool"))).2;
         assert!(injected.contains("published_at"), "非法排序应回退: {}", injected);
         assert!(!injected.contains("DROP"), "不得把用户输入拼进 SQL: {}", injected);
+    }
+
+    #[test]
+    fn test_parse_ids_happy_path() {
+        assert_eq!(parse_ids("1,2,3"), vec![1, 2, 3]);
+        assert_eq!(parse_ids(" 7 , 8 "), vec![7, 8], "容忍空白");
+    }
+
+    #[test]
+    fn test_parse_ids_drops_garbage() {
+        // 🔴 非法片段**丢弃**而不是报错：一条坏 id 不该让整个收藏清单打不开
+        assert_eq!(parse_ids("1,abc,2"), vec![1, 2]);
+        assert_eq!(parse_ids(""), Vec::<i64>::new());
+        assert_eq!(parse_ids("abc"), Vec::<i64>::new());
+        // 负数与 0 不是合法 id（AUTOINCREMENT 从 1 开始）
+        assert_eq!(parse_ids("0,-1,5"), vec![5]);
+
+        // ⚠️ **只有逗号是分隔符** —— `1;;2` 是**一个**（非法的）片段 → 整体丢弃，
+        //    不是 `[1,2]`。我第一版把这个期望写错了（以为分号也分隔）。
+        // 🔑 这个行为是对的：`parse::<i64>()` 要求整段都是数字，
+        //    任何夹带（分号/空格/字母）都会被拒 → **宁可少取，不猜**。
+        assert_eq!(parse_ids("1;;2"), Vec::<i64>::new());
+    }
+
+    #[test]
+    fn test_parse_ids_dedup_and_cap() {
+        // 去重：同一个 id 传两次只查一次
+        assert_eq!(parse_ids("5,5,5"), vec![5]);
+        // 上限：防止 `ids=` 塞几千个
+        let many: String = (1..=500).map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+        assert_eq!(parse_ids(&many).len(), 100, "应压到 MAX_IDS");
+        // 🔴 上限截断后仍是**前 100 个**（不是随机/倒序）
+        assert_eq!(parse_ids(&many)[0], 1);
+        assert_eq!(parse_ids(&many)[99], 100);
+    }
+
+    #[test]
+    fn test_parse_ids_sql_injection_attempt_is_just_a_non_number() {
+        // 注入尝试 → 整段不是合法整数 → 丢弃（占位符个数只由解析后的整数决定）
+        assert_eq!(parse_ids("1; DROP TABLE content_pool--"), Vec::<i64>::new());
+        // 而**逗号分隔**时，只有干净的那个整数会留下
+        assert_eq!(parse_ids("1,2;DROP TABLE content_pool--"), vec![1]);
     }
 }

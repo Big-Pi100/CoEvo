@@ -42,9 +42,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../data/mock_feed.dart';
+import '../api/content_client.dart';
 import '../models/feed_item.dart';
 import '../providers/bookmark_provider.dart';
+// `Bookmark` 是仓储层的记录类型（本页要按收藏顺序重排内容）
+import '../services/bookmark_repository.dart' show Bookmark;
+import '../providers/feed_provider.dart';
 import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/clay.dart';
@@ -65,6 +68,24 @@ class BookmarkListScreen extends ConsumerWidget {
     final bookmarkState = ref.watch(bookmarkProvider);
     final ready = bookmarkState.isReady;
     final list = ref.watch(bookmarkListProvider);
+
+    // ── 🆕 收藏的内容**从服务端取**（2026-09-29 改）──
+    //
+    // 本页此前用 `mockFeedItems` 反查卡片 —— 它自己就写着
+    // 「Phase 3 接真内容后，这里要改成『按 id 查内容』」。现在正是那一步。
+    //
+    // 🔴 **两个 `watch` 都在 build 顶层**（不放进 `when` 的回调里）。
+    //    Riverpod 要求 `watch` 无条件执行 —— 放进条件分支会让
+    //    「上一次 build 订阅了、这一次没订阅」这种状态漂移，
+    //    表现为「有时候不刷新」且**不报错**。
+    //    → 先取出 ids（可能为空），再算 key，再 watch。三者都是无条件的。
+    final wantIds = <int>[];
+    for (final b in list.valueOrNull ?? const <Bookmark>[]) {
+      wantIds.add(b.contentId);
+    }
+    // 🔑 排序后 join → key 值稳定（同一批 id 任何顺序都命中同一缓存）
+    wantIds.sort();
+    final contentsAsync = ref.watch(feedByIdsProvider(wantIds.join(',')));
 
     return Scaffold(
       backgroundColor: Color(t.page.argb32),
@@ -152,30 +173,53 @@ class BookmarkListScreen extends ConsumerWidget {
                 //    禁用态加透明度时的处理原则：不引入新语义，但也不撒谎）。
                 error: (e, st) => const _Unavailable(),
                 data: (bookmarks) {
-                  // 把「收藏记录」映射成「可渲染的卡片」。
-                  //
-                  // 🔴 当前内容源是 **mock**（真 feed 属 Phase 3）→ 收藏里可能出现
-                  //    **本端没有内容的 id**（内容下架 / mock 数据换过）→ 静默跳过并留日志。
-                  //    ⚠️ Phase 3 接真内容后，这里要改成「**按 id 查内容**」，
-                  //       而不是「在 mock 里找」。
-                  final byId = {for (final e in mockFeedItems) e.id: e};
-                  final items = <FeedItem>[];
-                  final missing = <int>[];
-                  for (final b in bookmarks) {
-                    final e = byId[b.contentId];
-                    if (e == null) {
-                      missing.add(b.contentId);
-                    } else {
-                      items.add(e);
-                    }
-                  }
-                  if (missing.isNotEmpty) {
-                    debugPrint('[bookmark_list] ${missing.length} 条收藏在本端无对应内容'
-                        '（Phase 3 接真内容前无法渲染）→ 跳过：$missing');
-                  }
+                  // 没有收藏 → 空状态（与服务不可用**分开**表达）
+                  if (bookmarks.isEmpty) return const _EmptyState();
 
-                  if (items.isEmpty) return const _EmptyState();
-                  return _list(context, ref, items, ready);
+                  // 🔑 收藏有，但要等**内容**从服务端回来。
+                  //    这一层是**新加的**（数据源从 mock 改成 `/api/feed`）——
+                  //    它可能失败，且失败**不是**「没有收藏」。
+                  return contentsAsync.when(
+                    loading: () => const Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                    // 🔴 内容取不到 → 明确说出来 + 可重试。
+                    //    不要说成「没有收藏」—— 用户的收藏**还在**（端侧库里有），
+                    //    只是**内容显示不出来**。这两件事对他完全不同。
+                    error: (e, _) => _ContentUnavailable(
+                      error: e,
+                      onRetry: () => ref.invalidate(feedByIdsProvider(wantIds.join(','))),
+                    ),
+                    data: (byId) {
+                      // 🔴 **按收藏顺序重排**，不依赖响应顺序 ——
+                      //    后端按 `published_at DESC` 返回，而本页要的是
+                      //    「收藏时间倒序」（那是端侧 `bookmark` 表的顺序）。
+                      final items = <FeedItem>[];
+                      final missing = <int>[];
+                      for (final b in bookmarks) {
+                        final it = byId[b.contentId];
+                        if (it == null) {
+                          missing.add(b.contentId);
+                        } else {
+                          items.add(it);
+                        }
+                      }
+                      if (missing.isNotEmpty) {
+                        // ⚠️ 「跳过」不等于「静默」：留日志便于排查
+                        //    （内容池有保留期清理，旧收藏可能已无对应内容）
+                        debugPrint('[bookmark_list] ${missing.length} 条收藏在服务端'
+                            '无对应内容（可能已清理）→ 跳过：$missing');
+                      }
+
+                      // 全部取不到 → 说清楚是「内容没了」而不是「没有收藏」
+                      if (items.isEmpty) return _AllMissing(count: bookmarks.length);
+                      return _list(context, ref, items, ready);
+                    },
+                  );
                 },
               ),
             ),
@@ -373,6 +417,115 @@ class _Unavailable extends StatelessWidget {
         padding: const EdgeInsets.all(24),
         child: Text(
           '收藏暂时读不出来，重启应用可再试。',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: CoFonts.uiSans,
+            fontSize: 13,
+            height: 1.7,
+            color: Color(t.ink3.argb32),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// **收藏还在，但内容取不到**（`/api/feed?ids=` 失败）。
+///
+/// # 🔴 与 [_Unavailable] 的区别（不能合并成一个）
+/// | | 加载的是什么 | 用户的收藏还在吗 |
+/// |---|---|---|
+/// | [_Unavailable] | **端侧库**打不开 | 不确定（库都读不到） |
+/// | **本组件** | **服务端内容**取不到 | ✅ **在**（就在本机 `bookmark` 表里） |
+///
+/// 对用户而言「我的收藏丢了」和「收藏在、但内容显示不出来」是两件事：
+/// 前者恐慌，后者只是等一下。所以文案要说清**收藏没丢**。
+class _ContentUnavailable extends StatelessWidget {
+  final Object error;
+  final VoidCallback onRetry;
+
+  const _ContentUnavailable({required this.error, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+    final isNetwork = error is ContentApiException &&
+        (error as ContentApiException).statusCode == 0;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isNetwork ? Icons.wifi_off : Icons.cloud_off,
+              size: 28,
+              color: Color(t.ink3.argb32),
+            ),
+            const SizedBox(height: CoSpacing.md),
+            Text(
+              // 🔑 第一句就先安抚 —— 用户最怕的是「收藏没了」
+              '你的收藏还在',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: Color(t.ink.argb32),
+              ),
+            ),
+            const SizedBox(height: CoSpacing.sm),
+            Text(
+              isNetwork ? '内容需要联网读取，现在连不上。\n检查网络后再试。' : '内容服务暂时不可用。\n稍后再试。',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: 13,
+                height: 1.6,
+                color: Color(t.ink3.argb32),
+              ),
+            ),
+            const SizedBox(height: CoSpacing.lg),
+            // ⚠️ 本页（阅读区）用**纯文字按钮**，不用粘土 ——
+            //    spec §八「阅读区容器内不得出现粘土类」。
+            TextButton(
+              onPressed: onRetry,
+              child: Text(
+                '重试',
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(t.accent.argb32),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// **收藏的内容全都不在了**（服务通了，但这些 id 在内容池里都查不到）。
+///
+/// 典型成因：内容池有保留期清理 → 很久以前收藏的文章被清掉了。
+/// 🔑 与 [_EmptyState]（「还没有收藏」）分开：这里**有收藏**，只是内容没了。
+///    文案要给出「为什么」——否则用户会以为收藏功能坏了。
+class _AllMissing extends StatelessWidget {
+  final int count;
+
+  const _AllMissing({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Text(
+          '你收藏的 $count 篇文章已不在内容库里。\n'
+          '（旧文章会定期清理）',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontFamily: CoFonts.uiSans,

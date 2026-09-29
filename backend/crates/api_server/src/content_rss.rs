@@ -99,7 +99,6 @@ pub fn parse_rss(xml: &str, tz_offset_min: i32) -> Result<Vec<ParsedItem>, Strin
             .filter(|s| !s.is_empty());
 
         let body = extract_body(item, summary.as_deref());
-
         out.push(ParsedItem {
             title: strip_html(&title),
             summary,
@@ -189,7 +188,8 @@ const BODY_LONGER_THRESHOLD: usize = 100;
 ///    → 用「明显更长」作判据，**拿不到全文时老实给 `None`**。
 fn extract_body(item: roxmltree::Node, summary: Option<&str>) -> Option<String> {
     let raw = child_text(item, "encoded")?;
-    let text = strip_html(&raw);
+    // 🔑 **正文用「保留段落」的版本** —— 否则整篇挤成一整行（见 `strip_html_block`）
+    let text = strip_html_block(&raw);
     let text = text.trim();
     if text.is_empty() {
         return None;
@@ -255,7 +255,10 @@ pub fn unix_to_utc_iso(secs: i64) -> Option<String> {
         .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
 }
 
-/// HTML → 纯文本。
+/// HTML → 纯文本（**行内语义：空白全折叠**）—— 用于 `title` / `summary` / `author`。
+///
+/// 🔑 这些字段是**单行展示**的（卡片标题、摘要一行），换行没有意义 →
+///    全部折叠成空格。若要**保留段落**（正文），用 [`strip_html_block`]。
 ///
 /// 步骤：去 `script`/`style` 整块 → 块级标签换行 → 去其余标签 → 解实体 → 折叠空白。
 ///
@@ -272,8 +275,47 @@ pub fn unix_to_utc_iso(secs: i64) -> Option<String> {
 /// → 改为每个模式一个独立 `static`，让「一个 cell 一个模式」成为类型层面的事实。
 /// 📌 同族判据：**共享的缓存槽位 = 第二件事静默失效的地方**。
 pub fn strip_html(s: &str) -> String {
+    collapse_ws(&decode_entities(&strip_tags(s)))
+}
+
+/// HTML → 纯文本（**块级语义：保留段落**）—— 用于文章 `body` 全文。
+///
+/// # 🔴 为什么正文不能用 [`strip_html`]
+///
+/// 实测：`strip_html` 把「块级标签」换成 `\n` 之后**又把 `\n` 折叠成空格**
+/// （它的语义是「单行」）→ **整篇文章挤成一整行**。
+/// 后果不是「不好看」而是**读不下去**：阅读界面的正文没有段落边界，
+/// 用户面对一堵字墙。而这是本产品的**核心场景**。
+///
+/// → 本函数把块级边界保留为**空行**（`\n\n`），行内空白仍折叠成单空格。
+///
+/// 🔑 两个函数**并存**而不是加个 `bool` 参数：
+///    它们服务两类**语义不同**的消费方（列表的单行摘要 vs 阅读器的多段正文）。
+///    一个参数化的函数会让调用点写 `strip_html(s, true)` —— 读代码时
+///    无法一眼看出那个 `true` 是什么意思。
+pub fn strip_html_block(s: &str) -> String {
+    // 先把块级边界变成换行（顺序与 `strip_tags` 一致），再按「段」归一化
+    let with_breaks = strip_tags(s);
+    let text = decode_entities(&with_breaks);
+    normalize_paragraphs(&text)
+}
+
+/// 去标签并**把块级边界换成 `\n`**（不做空白折叠）—— [`strip_html`] 与
+/// [`strip_html_block`] 共用的前半段。
+fn strip_tags(s: &str) -> String {
     static SCRIPT: OnceLock<Regex> = OnceLock::new();
     static STYLE: OnceLock<Regex> = OnceLock::new();
+    // 🔴 `BR` 与 `BLOCK` **必须各占一个 cell**。
+    //
+    // 2026-09-29 实测踩到：我写完本文件顶部那条「一个 cell 一个模式」的说明后，
+    // **下一次重构就把这两个模式塞回了同一个 `BLOCK` cell** ——
+    // `get_or_init` 只初始化一次 → 第二个模式（`</p>` 等块级闭合）被
+    // **静默忽略**，实际又跑了一遍 `<br>` 模式（它匹配不到任何东西）。
+    // 症状：段落边界全丢 → 正文变成一整行，而**测试立刻抓到**
+    // （`test_strip_html_block_keeps_paragraphs`：期望 `第一段\n\n第二段`，实得 `第一段第二段`）。
+    // 🔑 这就是那条判据说的：**共享的缓存槽位 = 第二件事静默失效的地方** ——
+    //    它不报错，只让结果悄悄不对。
+    static BR: OnceLock<Regex> = OnceLock::new();
     static BLOCK: OnceLock<Regex> = OnceLock::new();
     static TAG: OnceLock<Regex> = OnceLock::new();
 
@@ -284,12 +326,65 @@ pub fn strip_html(s: &str) -> String {
     // 整块删除：脚本/样式（保留内容会污染正文）
     let s = get(&SCRIPT, r"(?is)<script\b[^>]*>.*?</script>").replace_all(s, " ");
     let s = get(&STYLE, r"(?is)<style\b[^>]*>.*?</style>").replace_all(&s, " ");
-    // 块级标签 → 换行（避免 `<p>a</p><p>b</p>` 粘成 `ab`；换行最后会被折叠成空格）
-    let s = get(&BLOCK, r"(?is)<(br|/p|/div|/li|/h[1-6])\s*/?>").replace_all(&s, "\n");
+    // `<br>` → 单个换行（段内软折行）
+    let s = get(&BR, r"(?is)<br\s*/?>").replace_all(&s, "\n");
+    // 块级闭合标签 → **两个**换行（= 段落边界）。
+    // 🔑 用两个而不是一个：`<p>a</p><p>b</p>` 是**两段**，
+    //    一个换行会被 `normalize_paragraphs` 当成「同一段里的折行」而合并。
+    let s = get(
+        &BLOCK,
+        r"(?is)</(p|div|li|h[1-6]|blockquote|section|article|tr)\s*>",
+    )
+    .replace_all(&s, "\n\n");
     // 其余标签（含 `<img .../>` 自闭合）
     let s = get(&TAG, r"(?s)<[^>]*>").replace_all(&s, "");
 
-    collapse_ws(&decode_entities(&s))
+    s.into_owned()
+}
+
+/// 段落归一化：**行内空白折叠成单空格**，**块间保留一个空行**。
+///
+/// 具体规则：
+/// 1. 逐行处理：行首尾去空白，行内连续空白 → 单空格
+/// 2. 连续空行 → 压缩成**一个空行**（`\n\n` = 一个段落分隔）
+/// 3. 首尾空白去掉
+///
+/// 🔑 为什么要压缩空行：源里 `<p>a</p>\n\n\n<p>b</p>` 这种三连换行很常见
+///    （排版缩进），不压缩会在正文里出现**成片空行**。
+fn normalize_paragraphs(s: &str) -> String {
+    let mut paras: Vec<String> = Vec::new();
+    for line in s.split('\n') {
+        let collapsed = collapse_ws(line);
+        if collapsed.is_empty() {
+            // 空行 = 段边界；用空串占位，最后再合并
+            if !paras.is_empty() {
+                paras.push(String::new());
+            }
+        } else {
+            paras.push(collapsed);
+        }
+    }
+    // 压缩连续空元素 → 单个空元素
+    let mut out = String::with_capacity(s.len());
+    let mut prev_blank = true; // 开头视为「已有空行」→ 避免前导换行
+    for p in paras {
+        if p.is_empty() {
+            if prev_blank {
+                continue;
+            }
+            prev_blank = true;
+            out.push('\n');
+            out.push('\n');
+        } else {
+            if !prev_blank {
+                // 同一段里的折行（源里的软换行）→ 空格接上，不当作新段
+                out.push(' ');
+            }
+            out.push_str(&p);
+            prev_blank = false;
+        }
+    }
+    out.trim().to_string()
 }
 
 /// 解常见 HTML 实体 + 数字实体。
@@ -508,6 +603,53 @@ mod tests {
         // script/style 整块删除
         assert_eq!(strip_html("<script>bad()</script>ok"), "ok");
         assert_eq!(strip_html("<style>x{}</style>ok"), "ok");
+    }
+
+    #[test]
+    fn test_strip_html_block_keeps_paragraphs() {
+        // 🔴 这是「正文不挤成一整行」的守门断言
+        assert_eq!(
+            strip_html_block("<p>第一段</p><p>第二段</p>"),
+            "第一段\n\n第二段"
+        );
+        // `<br>` → 单换行，但两段之间的软换行会被合并（同一段内的折行）
+        assert_eq!(strip_html_block("a<br>b"), "a b");
+        // 同一段内的多行 → 单空格（不是新段）
+        assert_eq!(strip_html_block("<p>a\nb</p>"), "a b");
+        // 🔑 连续空行压缩成一个空行（源里常见三连换行）
+        assert_eq!(
+            strip_html_block("<p>a</p>\n\n\n\n<p>b</p>"),
+            "a\n\nb"
+        );
+        // 首尾不留空行
+        assert_eq!(strip_html_block("\n\n<p>a</p>\n\n"), "a");
+        // 标签仍要被剥（含 img 追踪像素）
+        let s = strip_html_block("<img src='x.png'/><p>正文</p>");
+        assert!(!s.contains('<'), "不该残留标签: {}", s);
+    }
+
+    #[test]
+    fn test_two_strip_variants_differ_on_multiline() {
+        // 🔑 固定住「两个函数的差异」本身 —— 若有人把它们合并（或把 block
+        //    改成 inline），这条会红，提醒「正文会挤成一整行」这个回归。
+        let html = "<p>第一段</p><p>第二段</p>";
+        assert_eq!(strip_html(html), "第一段 第二段", "inline 版：单行");
+        assert_eq!(strip_html_block(html), "第一段\n\n第二段", "block 版：保留段落");
+        assert_ne!(strip_html(html), strip_html_block(html));
+    }
+
+    #[test]
+    fn test_real_source_bodies_have_paragraphs() {
+        // Ars Technica 的 feed 自带全文（实测 20/20）→ 正文应有段落边界
+        let items = parse_rss(ARS, 0).unwrap();
+        let with_body: Vec<_> = items.iter().filter(|i| i.body.is_some()).collect();
+        assert!(!with_body.is_empty(), "Ars 应有带全文的条目（实测如此）");
+        let body = with_body[0].body.as_deref().unwrap();
+        assert!(
+            body.contains('\n'),
+            "真实全文应当有段落边界（否则阅读界面是一堵字墙）: {:?}",
+            &body.chars().take(120).collect::<String>()
+        );
     }
 
     #[test]

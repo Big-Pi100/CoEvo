@@ -16,6 +16,7 @@
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/article.dart' show ArticleLookup;
 import '../services/user_word_repository.dart';
 import 'user_db_provider.dart';
 
@@ -61,3 +62,26 @@ final userWordProvider = FutureProvider<UserWordRepository>((ref) async {
 //
 // 🔑 「删掉一个功能后要清理它的语义残留」的既定原则：注释里的旧概念
 //    （如表名、字段名、这里的 provider 名）留着，后续开发会不断把它加回来。
+
+/// **这篇文章里我查过的词**（+ 各自 FSRS 状态）—— **阅读页痕迹的数据源**。
+///
+/// # 🔑 为什么参数是 `articleId`
+/// 痕迹的语义是「**我和这篇文章的关系**」（`coevo_tokens.dart` 原文）——
+/// 若用全部生词，打开任何一篇文章都会显示同一批底色。
+/// 详见 `UserWordRepository.lookupsForArticle` 的说明。
+///
+/// # ⚠️ `autoDispose` 是有意的
+/// 读者翻过几十篇文章，每篇的痕迹表都留在内存里没有意义
+/// （退出阅读页就该释放）。而它不是「切 tab 会回来」的那类状态 ——
+/// 阅读页是**压栈进去**的（`context.push('/article/:id')`），出栈即销毁。
+///
+/// # 🔑 失败时**不抛**（`valueOrNull` → 空列表）
+/// 痕迹是**增强**而不是内容本身：库读不到时，正文照常显示，只是没有底色。
+/// 📌 判据：**「增强」不该有能力阻断「主体」** ——
+///    若这里抛错，用户会因为「生词本读不出来」而**看不到文章**，
+///    那是把次要功能放在了主路径上（同「登录态不该成为内容渲染的前置条件」）。
+final articleLookupsProvider =
+    FutureProvider.autoDispose.family<List<ArticleLookup>, int>((ref, articleId) async {
+  final repo = await ref.watch(userWordProvider.future);
+  return repo.lookupsForArticle(articleId);
+});
