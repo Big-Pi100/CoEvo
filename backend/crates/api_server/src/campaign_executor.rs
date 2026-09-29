@@ -151,14 +151,24 @@ pub fn execute_campaign_trigger(
             };
 
             for target_user_id in &target_users {
-                // ── 未提供真实身份信息（姓名+手机号）的用户不能获得奖励 ──
-                let has_real_info: bool = conn.query_row(
-                    "SELECT COUNT(*) FROM users WHERE id = ?1 AND real_name IS NOT NULL AND phone_hash IS NOT NULL",
+                // ── 奖励只发给**已注册**的账号（排除 trial 匿名账号）──
+                //
+                // 🔴 判据换了（2026-09-29）：原为
+                //    `real_name IS NOT NULL AND phone_hash IS NOT NULL`
+                //    （注释原文：「未提供真实身份信息（姓名+手机号）的用户不能获得奖励」）
+                //    —— 那两列已随「实名 + 手机号」删除。
+                //
+                // 🔑 换成 `email IS NOT NULL` 是**更直接**的表达，而非放宽：
+                //    原判据是在用「填了实名 + 手机号」**代理**「这人是不是真实用户」，
+                //    而唯一可靠的标志就是**注册完成**（`trial/claim` 会给账号写入 email）。
+                //    trial 匿名账号的 email 为 NULL → **依然被挡在奖励之外**，原意图不变。
+                let registered: bool = conn.query_row(
+                    "SELECT COUNT(*) FROM users WHERE id = ?1 AND email IS NOT NULL",
                     rusqlite::params![target_user_id],
                     |row| row.get::<_, i64>(0),
                 ).unwrap_or(0) > 0;
-                if !has_real_info {
-                    tracing::info!("  reward skip: user {} has no real_name/phone", target_user_id);
+                if !registered {
+                    tracing::info!("  reward skip: user {} 尚未注册（email 为空）", target_user_id);
                     continue;
                 }
 
@@ -987,14 +997,19 @@ mod tests {
         id
     }
 
-    /// 插入一个带 real_name 和 phone_hash 的测试用户
-    fn insert_test_user_with_real_info(conn: &Connection) -> String {
+    /// 插入一个**已注册**（有 email）的测试用户
+    ///
+    /// 🔴 原名 `insert_test_user_with_real_info`（插 `real_name` + `phone_hash`）——
+    ///    那两列已于 2026-09-29 删除，「已注册」的标志改为 **`email` 非空**。
+    fn insert_test_user_with_email(conn: &Connection) -> String {
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        let unique_hash = format!("sha256_phone_{}", &id[..8]);
         conn.execute(
-            "INSERT INTO users (id, username, real_name, phone_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![id, format!("test_user_{}", &id[..8]), "encrypted_name", unique_hash, now],
+            "INSERT INTO users (id, username, email, created_at) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![
+                id, format!("test_user_{}", &id[..8]),
+                format!("{}@example.com", &id[..8]), now
+            ],
         )
         .unwrap();
         id
@@ -1036,26 +1051,28 @@ mod tests {
     }
 
     #[test]
-    fn test_executor_has_real_info_check() {
+    fn test_reward_requires_registered_account() {
         let conn = setup_db();
         let campaign_id = insert_test_campaign(&conn, "registration",
             r#"[{"type":"subscription_days","party":"self","value":3,"trigger":"registration","freq":"once"}]"#,
             "active");
-        // 无 real_name 的用户
-        let user_no_info = insert_test_user(&conn);
+        // 未注册 —— trial 匿名账号（email 为 NULL）
+        let user_anonymous = insert_test_user(&conn);
 
-        // 有 real_name 的用户
-        let user_with_info = insert_test_user_with_real_info(&conn);
+        // 已注册 —— 有 email
+        let user_registered = insert_test_user_with_email(&conn);
 
-        // 调用 execute_campaign_trigger 处理无认证信息的用户
-        let result_no = execute_campaign_trigger(&conn, "registration", &user_no_info,
+        let result_anon = execute_campaign_trigger(&conn, "registration", &user_anonymous,
             None, None, None).unwrap();
-        assert_eq!(result_no.len(), 0, "无 real_name/phone 的用户不应获得奖励");
+        assert_eq!(result_anon.len(), 0, "未注册（email 为空）的账号不应获得奖励");
 
-        // 处理有认证信息的用户
-        let result_yes = execute_campaign_trigger(&conn, "registration", &user_with_info,
+        let result_reg = execute_campaign_trigger(&conn, "registration", &user_registered,
             None, None, None).unwrap();
-        assert_eq!(result_yes.len(), 1, "有 real_name/phone 的用户应获得奖励");
+        assert_eq!(result_reg.len(), 1, "已注册（有 email）的账号应获得奖励");
+
+        // ⚠️ `campaign_id` 用完即弃：本测试只关心「奖励是否发放」，
+        //    活动 id 由 `insert_test_campaign` 建好并被 trigger 按 trigger 类型匹配到。
+        let _ = campaign_id;
     }
 
     #[test]
@@ -1069,8 +1086,9 @@ mod tests {
             r#"[{"type":"subscription_days","party":"inviter","value":7,"trigger":"registration","freq":"once"}]"#,
             "active");
 
-        let inviter_id = insert_test_user_with_real_info(&conn);
-        let invitee_id = insert_test_user_with_real_info(&conn);
+        // ⚠️ 必须是**已注册**（有 email）的用户 —— 奖励发放要求 `email IS NOT NULL`（2026-09-29 起的判据）
+        let inviter_id = insert_test_user_with_email(&conn);
+        let invitee_id = insert_test_user_with_email(&conn);
 
         // 设置 invitee 的 referred_by 和 referred_campaign_id
         conn.execute(

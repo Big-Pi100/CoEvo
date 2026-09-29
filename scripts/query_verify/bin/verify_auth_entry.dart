@@ -128,6 +128,43 @@ void main() {
   check('弹窗用了 `ClayButton`', dialog.contains('ClayButton('));
   check('弹窗用了 `ClayField`（输入框）', dialog.contains('ClayField('));
 
+  // ── ⑥b 🆕 注册标识 = 邮箱（2026-09-29 白哥：「用邮箱注册+密码注册」）──
+  check('🔴 弹窗用 `Validators.email`（标识 = 邮箱）',
+      dialog.contains('Validators.email'));
+  for (final gone in ['Validators.realName', 'Validators.phone', 'Validators.username']) {
+    check('🔴 弹窗不再用已删校验器 `$gone`', !dialog.contains(gone));
+  }
+  check('邮箱输入框的 hint 是「邮箱」', dialog.contains("hintText: '邮箱'"));
+
+  // ── ⑥c 🔴 「未登录点注册」必须走 `register`，不能走 `trialClaim` ──
+  //
+  // 这是**本轮修掉的一个真崩溃**：`trialClaim` 内部用 `state.userId!` /
+  // `state.token!`，未登录时是 null → 抛
+  // `Null check operator used on a null value`，而 `_friendlyError` 映射不到
+  // 这种字符串 → **用户看到一句英文机器话**（不是闪退，但完全看不懂）。
+  //
+  // 判据：弹窗里**两条路都要在** —— 已登录 → 认领；未登录 → 直接注册。
+  check('🔴 弹窗未登录分支走 `notifier.register(`（防「英文机器话」崩溃回归）',
+      dialog.contains('notifier.register('));
+  check('弹窗已登录分支仍走 `trialClaim(`（匿名账号认领能力保留）',
+      dialog.contains('notifier.trialClaim('));
+
+  // ── ⑥d 🔴 `trialClaim` 自身也必须有前置检查 ──
+  // 双保险：调用方分流是「主防线」，provider 层的显式检查是「兜底」——
+  // 万一将来有人从别处再调它，也不会再抛那句英文。
+  final provider = stripComments(
+      File('../../app/lib/providers/auth_provider.dart').readAsStringSync());
+  check('🔴 `authProvider.trialClaim` 有「未登录」前置检查（兜底防英文报错）',
+      provider.contains('trialClaim 需要已登录'));
+
+  // ── ⑥e 「是否已注册」的判据 = 邮箱非空（不是靠 username 前缀猜）──
+  check('🔴 `AuthState.isRegistered` 以邮箱为判据',
+      provider.contains('bool get isRegistered') && provider.contains('email != null'));
+  check('🔴 已删 `isTrialAccount`（靠 `trial_` 前缀猜，改用户名即失效）',
+      !provider.contains('bool isTrialAccount('));
+  check('「我的」页用 `isRegistered` 判断试用账号',
+      profile.contains('!auth.isRegistered'));
+
   // ── ⑦ 输入框是**凹陷**（spec §3.6 / §6.2）──
   // 防「日后有人把它改成凸起」——凸起在语义上是「可点的粘土物件」，
   // 输入框不是（点击由内层 TextField 处理）。

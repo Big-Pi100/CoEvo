@@ -11,11 +11,16 @@ CREATE TABLE IF NOT EXISTS users (
     streak_days INTEGER DEFAULT 0,
     last_active_date TEXT,
     display_name TEXT DEFAULT NULL,
-    real_name TEXT DEFAULT NULL,
-    phone TEXT DEFAULT NULL,
-    phone_hash TEXT DEFAULT NULL,
-    id_number TEXT DEFAULT NULL,
-    bind_hash TEXT DEFAULT NULL,
+    -- 🆕 2026-09-29：注册标识改为**邮箱**（白哥定）。
+    --
+    -- 🔴 删掉的 5 列：`real_name` / `phone` / `phone_hash` / `id_number` / `bind_hash`
+    --    —— 它们是微信时代的「实名 + 手机号」遗留。产品已定**不做 K12**、
+    --    且 `ui-ux-refactor-assessment-2026-09-25` §4.2 原文就写着「删实名 / K12 / 分销」。
+    --
+    -- ⚠️ **这里改了对「已存在的库」无效** —— `CREATE TABLE IF NOT EXISTS` 见到表就跳过，
+    --    不会改结构。老库（含生产库）必须靠 `run_migrations_inner` 的删列迁移。
+    --    📄 那个函数里记了「为什么用条件删列而不是吞 `no such column`」。
+    email TEXT DEFAULT NULL,
     deleted_at TEXT DEFAULT NULL,
     subscription_expires TEXT DEFAULT NULL,
     referral_code TEXT UNIQUE,
@@ -438,10 +443,16 @@ pub fn init_database(conn: &rusqlite::Connection) -> Result<(), String> {
     // 🆕 词库在线制卡缓存（LLM 兜底 · 服务端全局缓存）
     conn.execute_batch(WORDLIB_SCHEMA_SQL)
         .map_err(|e| format!("wordlib schema: {}", e))?;
-    // 额外索引（部分核心索引已在 SCHEMA_SQL 中创建，这里补充交叉表索引）
-    conn.execute_batch(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_hash ON users(phone_hash) WHERE phone_hash IS NOT NULL;"
-    ).map_err(|e| format!("extra indexes: {}", e))?;
+    // 🔴 2026-09-29 删除：`CREATE UNIQUE INDEX idx_users_phone_hash ON users(phone_hash)`
+    //
+    // 为什么**必须删**（两条独立理由，任一条都足以致命）：
+    //   ① 新库：`SCHEMA_SQL` 已不再建 `phone_hash` 列 → 这里建索引会报
+    //      `no such column: phone_hash` → `init_database` **整体失败**。
+    //   ② 老库：该索引会让 `DROP COLUMN phone_hash` 失败
+    //      （SQLite 规定：列被索引引用时不可删）→ 迁移卡住。
+    //
+    // 🔑 邮箱的唯一索引改到 `run_migrations_inner` 里 —— 它**必须**排在
+    //    `ADD COLUMN email` 之后（索引引用列，列得先存在）。
 
     // ── 渐进式迁移 ──
     run_migrations_inner(conn)?;
@@ -472,8 +483,43 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
     //     ① 建表语句（否则新库把表建回来）② **迁移列表**（否则每库都白跑一遍）③ **测试断言**
     //    （否则断言退役表存在 → 必失败，且会把人往「把表加回来」的方向带）。
     //    本次清的是 ②③（① 已在 09-28/29 的前两轮清完）。
+    // ══════════════════════════════════════════════════════════════════
+    // 🔴 2026-09-29：users 表去掉「实名 + 手机号」5 列（白哥定：改用邮箱注册）
+    // ══════════════════════════════════════════════════════════════════
+    //
+    // 删：`real_name` · `phone` · `phone_hash` · `id_number` · `bind_hash`
+    // 加：`email`（唯一索引见下面 migrations 的末两条）
+    //
+    // # 🔴 为什么必须写在这里（而不是只改建表语句）
+    //
+    // `SCHEMA_SQL` 的 `CREATE TABLE IF NOT EXISTS` 对**已存在的库完全无效** ——
+    // 见到表就跳过，不会比对结构。所以：
+    // | 库 | 谁生效 |
+    // |---|---|
+    // | **全新库** | `SCHEMA_SQL`（已不含那 5 列）✅ |
+    // | **已存在的库**（本地 + 生产 91 行） | **只有本节这段迁移** ✅ |
+    //
+    // # 🔴 顺序：**先删索引，再删列**
+    //
+    // SQLite 规定「**列被索引引用时不可 DROP**」，而 `idx_users_phone_hash`
+    // 正引用 `phone_hash` → 不先删索引，删列会直接报错。
+    // （该索引的**创建点**已从 `init_database` 移除，见那里的注释。）
+    conn.execute("DROP INDEX IF EXISTS idx_users_phone_hash", [])
+        .map_err(|e| format!("drop idx_users_phone_hash: {}", e))?;
+
+    // # 🔑 为什么用 `drop_column_if_exists` 而不是「ALTER + 容错吞错」
+    //
+    // 若写成 `ALTER TABLE users DROP COLUMN x` 并把 `no such column` 加进容错白名单，
+    // 那它会**连「列名拼错」一起吞掉** —— 写错一个字母 → 静默跳过 → 以为删成功了，
+    // 而实际上那个列还在表里。**容错必须在「真的已经改过」时才放行。**
+    // 这里改成「先查 `PRAGMA table_info` 确认列存在，再删」→ 幂等，且拼错会炸。
+    for col in ["real_name", "phone", "phone_hash", "id_number", "bind_hash"] {
+        drop_column_if_exists(conn, "users", col)?;
+    }
+
     let migrations: &[&str] = &[
-        "ALTER TABLE users ADD COLUMN phone_hash TEXT DEFAULT NULL",
+        // 🔴 2026-09-29 已删：`ALTER TABLE users ADD COLUMN phone_hash TEXT DEFAULT NULL`
+        //    —— 该列已随「实名 + 手机号」一并移除（见上面的删列段）。
         // 分销模块新字段（已有数据库升级）
         "ALTER TABLE users ADD COLUMN subscription_expires TEXT DEFAULT NULL",
         "ALTER TABLE users ADD COLUMN referral_code TEXT",
@@ -492,6 +538,18 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
         // 活动最小成团人数
         "ALTER TABLE marketing_campaigns ADD COLUMN min_member_count INTEGER DEFAULT 1",
         // 🔴 2026-09-29 已退役：defer_queue（V5/V6）—— 复习推迟调度改在端侧
+        // ── 🆕 2026-09-29 邮箱注册 ──
+        // ① 先加列（新库走 `SCHEMA_SQL` 已含此列 → 这里报 `duplicate column` → 容错放行）
+        "ALTER TABLE users ADD COLUMN email TEXT DEFAULT NULL",
+        // ② 再加索引 —— 🔑 **必须排在 ① 之后**：索引引用列，列得先存在，
+        //    否则报 `no such column: email`（该错误**不在容错白名单**里 → 会炸，
+        //    这正是想要的：漏了 ① 就该炸，而不是静默少一个唯一约束）。
+        //
+        // 🔑 用**部分索引**（`WHERE email IS NOT NULL`）而不是列上的 `UNIQUE` 约束：
+        //    · trial 匿名账号的 email 为 NULL —— 而 SQLite 的 UNIQUE 允许**多行 NULL**，
+        //      所以严格说列级 UNIQUE 也能用；但部分索引把「唯一性只约束真实邮箱」
+        //      这个意图**写在定义里**，读代码的人不必去查 NULL 语义。
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL",
     ];
     for sql in migrations {
         match conn.execute(sql, []) {
@@ -508,6 +566,46 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
             }
         }
     }
+    Ok(())
+}
+
+/// 条件删列 —— **列存在才删**（幂等：跑多次安全）。
+///
+/// # 为什么需要它（而不是 `ALTER TABLE ... DROP COLUMN` + 容错吞错）
+///
+/// `ALTER TABLE x DROP COLUMN y` 在列**不存在**时会报 `no such column: y`。
+/// 若把这条错误加进 `run_migrations_inner` 的容错白名单，就会**连带吞掉
+/// 「列名拼错」**——写错一个字母 → 静默跳过 → 看起来「迁移成功了」，
+/// 而那个列**还在表里**（下一轮有人再引它，就会以「列还在」为前提写代码）。
+///
+/// 🔑 判据：**容错必须在「真的已经改过」时才放行** ——
+///    「我要删的列不存在」有两种原因：① 已删过（该放行）② 名字写错（该炸）。
+///    吞错版本无法区分这两者；查 `PRAGMA table_info` 可以。
+///
+/// # ⚠️ 调用前置条件
+/// 若该列被**索引**引用，SQLite 会**拒绝 DROP**（报错而非静默）。
+/// 所以调用方必须先 `DROP INDEX`（见 `run_migrations_inner` 里删 `idx_users_phone_hash`）。
+fn drop_column_if_exists(
+    conn: &rusqlite::Connection,
+    table: &str,
+    column: &str,
+) -> Result<(), String> {
+    let exists = {
+        let mut stmt = conn
+            .prepare(&format!("PRAGMA table_info({})", table))
+            .map_err(|e| format!("pragma table_info({}): {}", table, e))?;
+        let mut rows = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| format!("query table_info({}): {}", table, e))?;
+        rows.any(|r| r.map(|name| name == column).unwrap_or(false))
+    };
+
+    if !exists {
+        return Ok(());
+    }
+
+    conn.execute(&format!("ALTER TABLE {} DROP COLUMN {}", table, column), [])
+        .map_err(|e| format!("drop column {}.{}: {}", table, column, e))?;
     Ok(())
 }
 
@@ -601,13 +699,28 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         init_database(&conn).unwrap();
 
-        // users：PII / 分销 / 软删除
+        // users：注册标识（邮箱）/ 分销 / 软删除
         let cols = table_columns(&conn, "users");
         for c in [
-            "id", "username", "phone_hash", "id_number", "bind_hash", "deleted_at",
+            "id", "username", "email", "deleted_at",
             "subscription_expires", "referral_code", "referred_by", "referred_campaign_id",
         ] {
             assert!(cols.contains(&c.to_string()), "users 缺 {}", c);
+        }
+
+        // 🔴 反向断言：微信时代的「实名 + 手机号」5 列**必须不存在**（2026-09-29 删除）。
+        //
+        // 🔑 为什么必须断言「不存在」，而不是只断言 `email` 存在：
+        //    后者只能证明**新列加上了**，证明不了**旧列删掉了**。
+        //    而旧列残留正是「语义残留」的来源 —— 列还在，后续开发就会
+        //    误以为「实名还能用」，不断把相关 SELECT / 展示加回来。
+        //    **断言的倾向性决定它能防住什么**：这里要防的是「列被加回来」。
+        for c in ["real_name", "phone", "phone_hash", "id_number", "bind_hash"] {
+            assert!(
+                !cols.contains(&c.to_string()),
+                "users 仍有已删列 `{}` —— 实名/手机号是微信时代遗留，2026-09-29 已改邮箱注册",
+                c
+            );
         }
 
         // admin_users：迁移新增的 permissions
@@ -642,6 +755,98 @@ mod tests {
         for c in ["spelling", "device_id", "first_hit_at", "hit_count"] {
             assert!(cols.contains(&c.to_string()), "generated_card_hit 缺 {}", c);
         }
+    }
+
+    /// 🔴 迁移演练：**旧结构的库**（含实名/手机号 5 列 + 旧索引）跑 `init_database` 后
+    /// 必须变成新结构，且**数据不丢**、**可重复执行**。
+    ///
+    /// # 为什么必须有这个测试（而不是「改完建表语句就完事」）
+    ///
+    /// `CREATE TABLE IF NOT EXISTS` 对**已存在的库完全无效**（见到表就跳过，不比对结构）。
+    /// 于是「改 schema」这件事存在**两条互不相干**的路径：
+    ///
+    /// | 库 | 谁生效 | 谁验证 |
+    /// |---|---|---|
+    /// | **全新库** | `SCHEMA_SQL` 建表 | `test_core_table_columns` ✅ |
+    /// | **已存在的库**（本地 + 生产 91 行） | **`run_migrations_inner` 的删列段** | **本测试** ✅ |
+    ///
+    /// 🔑 不测这条就会出现最坏情况：**新库测试全绿、生产库起不来**
+    ///    （2026-09-29 词形表那次就是「注释写对、生产行为没验」的反面教材）。
+    ///
+    /// ⚠️ 本测试**故意用旧结构建表** —— 不能用 `init_database` 建（那已经不是旧结构了，
+    ///    测的会是「新库跑两遍」，恰好绕开真正要验的那条路径）。
+    #[test]
+    fn test_migrate_from_legacy_users_table() {
+        let conn = Connection::open_in_memory().unwrap();
+
+        // ① 造「旧结构」：含那 5 列 + 引用 phone_hash 的旧索引
+        //
+        // ⚠️ `referred_campaign_id` **不写 `REFERENCES marketing_campaigns(id)`** ——
+        //    该表此刻还不存在，而本连接的 `foreign_keys` 是 ON →
+        //    建表会报 `no such table: main.marketing_campaigns`。
+        //    FK 声明与本次迁移无关（删列不碰它），去掉即可，不影响真实性。
+        conn.execute_batch(
+            r#"
+            CREATE TABLE users (
+                id TEXT PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT,
+                streak_days INTEGER DEFAULT 0,
+                last_active_date TEXT,
+                display_name TEXT DEFAULT NULL,
+                real_name TEXT DEFAULT NULL,
+                phone TEXT DEFAULT NULL,
+                phone_hash TEXT DEFAULT NULL,
+                id_number TEXT DEFAULT NULL,
+                bind_hash TEXT DEFAULT NULL,
+                deleted_at TEXT DEFAULT NULL,
+                subscription_expires TEXT DEFAULT NULL,
+                referral_code TEXT UNIQUE,
+                referred_by TEXT REFERENCES users(id),
+                referred_campaign_id TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE UNIQUE INDEX idx_users_phone_hash ON users(phone_hash) WHERE phone_hash IS NOT NULL;
+            INSERT INTO users (id, username, real_name, phone, phone_hash, bind_hash, created_at)
+                VALUES ('u1', 'test1', '张三', '13800000000', 'hash1', 'bh1', '2026-01-01');
+            "#,
+        )
+        .unwrap();
+
+        // ② 跑初始化 → 应完成迁移（含「先删索引、再删列」）
+        init_database(&conn).expect("旧库迁移失败");
+
+        // ③ 结构：email 已加，5 列已删
+        let cols = table_columns(&conn, "users");
+        assert!(cols.contains(&"email".to_string()), "迁移后 users 应新增 email 列");
+        for c in ["real_name", "phone", "phone_hash", "id_number", "bind_hash"] {
+            assert!(!cols.contains(&c.to_string()), "迁移后 users 不应还有列 `{}`", c);
+        }
+
+        // ④ 旧索引也必须消失 —— 否则新库上会「索引引用不存在的列」
+        let idx_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_users_phone_hash'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(idx_count, 0, "旧索引 idx_users_phone_hash 应已删除");
+
+        // ⑤ **数据不丢** —— 这条区分「迁移」与「删表重建」
+        let (username, created): (String, String) = conn
+            .query_row(
+                "SELECT username, created_at FROM users WHERE id = 'u1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(username, "test1");
+        assert_eq!(created, "2026-01-01");
+
+        // ⑥ **幂等**：服务每次启动都会跑迁移 → 必须能重复执行不报错
+        //    （删列靠 `drop_column_if_exists` 保证；新库路径靠 `duplicate column` 容错）
+        init_database(&conn).expect("重复执行迁移应无错（幂等）");
     }
 
     fn table_columns(conn: &Connection, table: &str) -> Vec<String> {

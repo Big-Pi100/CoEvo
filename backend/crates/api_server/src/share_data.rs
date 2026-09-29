@@ -25,7 +25,11 @@ pub fn public_base_url() -> String {
 #[derive(Debug, Serialize)]
 pub struct UserShareData {
     pub display_name: String,
-    pub real_name: String,
+    // 🔴 2026-09-29 已删 `real_name` —— 「实名」随 `users.real_name` 列一并取消。
+    //    分享海报上**不该出现真实姓名**（它会被转发给陌生人），
+    //    用昵称 `display_name` 才是对的展示口径。
+    //    ⚠️ 但模板里的 `{real_name}` 占位符**仍会被替换**（值 = 昵称）——
+    //       原因见 `poster_template::replace_template_variables` 的注释（不留裸占位符）。
     pub streak_days: i64,
     pub total_cards: i64,
     pub today_reviews: i64,
@@ -80,20 +84,9 @@ pub fn build_user_share_data(
         rusqlite::params![user_id], |row| row.get(0),
     ).map_err(|e| format!("user query: {}", e))?;
 
-    // ⚠️ real_name 在 DB 中为 AES-256-GCM 加密，必须解密
-    let real_name_raw: Option<String> = conn.query_row(
-        "SELECT real_name FROM users WHERE id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).ok();
-    let real_name = real_name_raw.as_ref()
-        .map(|v| {
-            if crate::encryption::is_encrypted(v) {
-                crate::encryption::decrypt(v)
-            } else {
-                v.clone()
-            }
-        })
-        .unwrap_or_default();
+    // 🔴 2026-09-29 已删：这里原有一段「读 real_name 并 AES 解密」。
+    //    实名已随 `users.real_name` 列取消；分享数据现在只用 `display_name`（上面已取）。
+    //    （顺带解决一个隐私问题：原设计会把**真实姓名**渲染进对外分享的海报/H5。）
 
     let streak_days: i64 = conn.query_row(
         "SELECT streak_days FROM users WHERE id = ?1",
@@ -124,7 +117,6 @@ pub fn build_user_share_data(
 
     Ok(UserShareData {
         display_name,
-        real_name,
         streak_days,
         total_cards,
         today_reviews,

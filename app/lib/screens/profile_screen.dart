@@ -601,7 +601,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       );
     }
 
-    final trial = isTrialAccount(auth.username);
+    // 🔴 2026-09-29：由 `isTrialAccount(auth.username)`（靠 `trial_` 前缀猜）改为
+    //    `!auth.isRegistered`（= 邮箱为空）。判据从「用户名长什么样」换成
+    //    「有没有完成注册」—— 后者才是真正要表达的东西，且不会被改名影响。
+    final trial = !auth.isRegistered;
     return Clay(
       borderRadius: radius,
       padding: EdgeInsets.zero,
@@ -616,11 +619,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             bare: true,
           ),
           Divider(height: 1, thickness: 1, color: Color(t.line.argb32)),
+          // ── 邮箱：**显示已绑定的账号**，不再是「绑定」入口 ──
+          //
+          // 🔴 2026-09-29 语义变更：注册时就要求填邮箱 → 登录后**必然已有邮箱**，
+          //    所以这一行不再是「去绑定」的动作，而是「显示你用的是哪个邮箱」。
+          //    旧文案「绑定邮箱 / 用于找回账号 · 跨设备同步」在注册即绑邮箱之后
+          //    会让人以为「还没绑、要去绑一次」—— 那是错的。
+          //
+          // ⚠️ 邮箱目前**不可修改**（后端无改邮箱端点）→ 点了给明确说明，
+          //    而不是留一个点了没反应的行。
           _navTile(
             icon: Icons.mail_outline,
-            title: '绑定邮箱',
-            subtitle: '用于找回账号 · 跨设备同步',
-            onTap: () => _comingSoon('绑定邮箱'),
+            title: auth.email ?? '未绑定邮箱',
+            subtitle: '登录账号 · 找回账号靠它',
+            onTap: () => _comingSoon('修改邮箱'),
             bare: true,
           ),
         ],

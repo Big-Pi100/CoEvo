@@ -81,43 +81,30 @@ class ClaimDialog extends ConsumerStatefulWidget {
 }
 
 class _ClaimDialogState extends ConsumerState<ClaimDialog> {
-  final _usernameController = TextEditingController();
+  /// 🔴 2026-09-29：字段由「用户名 + 密码 + 真实姓名 + 手机号」收敛为**邮箱 + 密码**。
+  ///    白哥：「注册不要真实姓名和手机号，用邮箱注册+密码注册」。
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _nameController = TextEditingController();
-  final _phoneController = TextEditingController();
 
-  /// `true` = 登录态（默认）· `false` = 注册态（多两个字段）。
+  /// `true` = 登录态（默认）· `false` = 注册态。
   bool _isLogin = true;
   bool _isSubmitting = false;
   String? _validationError;
 
   @override
   void dispose() {
-    _usernameController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
-    _nameController.dispose();
-    _phoneController.dispose();
     super.dispose();
   }
 
-  String? _validateInputs() {
-    final u = _usernameController.text.trim();
-    final p = _passwordController.text.trim();
-    final err = Validators.username(u) ?? Validators.password(p);
-    if (err != null) return err;
-    if (!_isLogin) {
-      final ne = Validators.realName(_nameController.text.trim());
-      if (ne != null) return ne;
-      final pe = Validators.phone(_phoneController.text.trim());
-      if (pe != null) return pe;
-    }
-    return null;
-  }
+  String? _validateInputs() =>
+      Validators.email(_emailController.text) ??
+      Validators.password(_passwordController.text);
 
   Future<void> _submit() async {
     setState(() => _validationError = null);
 
-    // 客户端校验
     final validationError = _validateInputs();
     if (validationError != null) {
       setState(() => _validationError = validationError);
@@ -126,20 +113,31 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
 
     setState(() => _isSubmitting = true);
     try {
+      final email = _emailController.text.trim();
+      final notifier = ref.read(authProvider.notifier);
+
       if (_isLogin) {
-        await ref.read(authProvider.notifier).login(
-              _usernameController.text.trim(),
-              _passwordController.text,
-            );
+        await notifier.login(email, _passwordController.text);
+      } else if (ref.read(authProvider).isAuthenticated) {
+        // ── 已登录（匿名试用账号）→ **认领**：保留这个账号已有的学习记录 ──
+        await notifier.trialClaim(
+          email,
+          _passwordController.text,
+          referralCode: widget.pendingRefCode,
+          campaignId: widget.pendingCampaignId,
+        );
       } else {
-        await ref.read(authProvider.notifier).trialClaim(
-              _usernameController.text.trim(),
-              _passwordController.text,
-              realName: _nameController.text.trim(),
-              phone: _phoneController.text.trim(),
-              referralCode: widget.pendingRefCode,
-              campaignId: widget.pendingCampaignId,
-            );
+        // ── 未登录 → **直接注册** ──
+        //
+        // 🔴 这条分支是 2026-09-29 补的，修掉一个真错误：
+        //    此前无论是否已登录都调 `trialClaim`，而它内部用 `state.userId!` ——
+        //    未登录时是 `null` → 抛 `Null check operator used on a null value`，
+        //    而 `_friendlyError` 映射不到这种字符串 → **用户看到一句英文机器话**。
+        //
+        // 🔑 两者的语义本就不同：认领 = 「升级**这个**匿名账号」，
+        //    直接注册 = 「新建一个账号」。混用是接口选错了，不是参数写错了。
+        await notifier.register(email, _passwordController.text,
+            referralCode: widget.pendingRefCode);
       }
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
@@ -206,9 +204,14 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
           const SizedBox(height: CoSpacing.lg),
 
           // ── ② 输入区（凹陷）──
+          //
+          // 🔴 只剩两个字段（2026-09-29）：注册与登录**共用同一套** ——
+          //    标识是邮箱，没有「只有注册才填」的额外字段了
+          //    （原先是真实姓名 + 手机号，属微信时代的实名制遗留）。
           ClayField(
-            controller: _usernameController,
-            hintText: '用户名',
+            controller: _emailController,
+            hintText: '邮箱',
+            keyboardType: TextInputType.emailAddress,
             enabled: !busy,
             autofocus: true,
           ),
@@ -218,27 +221,9 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
             hintText: '密码（6位以上英文+数字）',
             obscureText: true,
             enabled: !busy,
-            textInputAction:
-                _isLogin ? TextInputAction.done : TextInputAction.next,
-            onSubmitted: _isLogin ? (_) => _submit() : null,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _submit(),
           ),
-
-          // 注册态才有的两个字段
-          if (!_isLogin) ...[
-            const SizedBox(height: 10),
-            ClayField(
-              controller: _nameController,
-              hintText: '真实姓名（中文，4字以内）',
-              enabled: !busy,
-            ),
-            const SizedBox(height: 10),
-            ClayField(
-              controller: _phoneController,
-              hintText: '手机号',
-              keyboardType: TextInputType.phone,
-              enabled: !busy,
-            ),
-          ],
 
           // ── ③ 错误提示 ──
           // 🔑 两类错误**同一个位置、同一种样式**：

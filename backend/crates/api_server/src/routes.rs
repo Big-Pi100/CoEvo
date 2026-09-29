@@ -118,7 +118,8 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         //     → 相关表已从 `coevo.db` 删除；模块 `card_engine` / `review_handler` / `ws` 一并退役。
         // ── User Profile ──
         .route("/api/user/{user_id}/profile", get(profile_handler))
-        .route("/api/user/{user_id}/profile", put(update_user_profile_handler))
+        // 🔴 2026-09-29 已退役：`PUT /api/user/{id}/profile`（更新 real_name / phone）——
+        //    两列已删，handler `update_user_profile_handler` 同步移除。
         .route("/api/user/{user_id}/display-name", post(update_display_name_handler))
         .route("/api/user/{user_id}/avatar", post(avatar_upload_handler).get(avatar_get_handler))
         // 🔴 2026-09-29 已退役：/api/user/*/achievements-all · plan-achievements（表 achievements 已删；成就改为「端侧计算」）
@@ -129,7 +130,8 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         // 🔴 **不需登录** —— 产品原则「除生词表上限外不验证登录态」：
         //    读内容/划词/生成卡片都不得被登录态阻塞。
         .route("/api/generate-card", post(generate_card_handler))
-        .route("/api/user/bind-lookup", post(bind_lookup_handler))
+        // 🔴 2026-09-29 已退役：`POST /api/user/bind-lookup`（凭姓名 + 手机号查用户）——
+        //    依赖已删的 `real_name` / `phone` / `bind_hash`。
         // ── Learning Plans ──
         // 🔴 2026-09-29 已退役：/api/plans（依赖 plan_runs / user_plan_progress，表已删）
         // 🔴 2026-09-29 已退役：学习报表（learning-report / activity / weekly-report）
@@ -148,7 +150,8 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/admin/users/{user_id}", get(admin_user_detail).delete(admin_delete_user))
         .route("/api/admin/users/{user_id}/hard-delete", delete(admin_hard_delete_user))
         .route("/api/admin/users/{user_id}/restore", post(admin_restore_user))
-        .route("/api/admin/users/{user_id}/reveal-phone", post(admin_reveal_phone))
+        // 🔴 2026-09-29 已退役：`POST /api/admin/users/{id}/reveal-phone`（两步揭看手机号）
+        //    —— `users.phone` 列已删。handler `admin_reveal_phone` 同步移除。
         .route("/api/admin/users/{user_id}/subscription", put(admin_set_subscription))
         .route("/api/admin/users/{user_id}/quick-extend", post(admin_quick_extend))
         .route("/api/admin/subscription-requests", get(admin_list_subscription_requests).post(admin_create_subscription_request))
@@ -261,22 +264,36 @@ async fn health_check() -> &'static str {
 
 #[derive(Deserialize)]
 pub struct AuthInput {
-    pub username: String,
+    /// 注册 / 登录标识 = **邮箱**（2026-09-29 起）。
+    ///
+    /// 🔴 此前是 `username` + `real_name?` + `phone?`（微信时代的实名 + 手机号）。
+    ///    三个字段一起收敛为 `email` —— 白哥 2026-09-29：
+    ///    「注册不要真实姓名和手机号，用邮箱注册+密码注册」。
+    pub email: String,
     pub password: String,
-    pub real_name: Option<String>,
-    pub phone: Option<String>,
     pub referral: Option<crate::auth::ReferralInfo>,
 }
 
 /// POST /api/auth/register — 注册新用户
-/// 请求: {"username": "str", "password": "str", "real_name?": "str", "phone?": "str"}
-/// 响应: {"user_id": "uuid", "token": "str"} 或 {"error": "str"}
-/// 限流: 5 次/分钟/IP
+/// 请求: {"email": "str", "password": "str", "referral?": {"code": "str"}}
+/// 响应: {"user_id": "uuid", "token": "str", "email": "str"} 或 {"error": "str"}
+/// 限流: 20 次/分钟/IP
+///
+/// # 两个注册入口的分工（2026-09-29 明确）
+///
+/// | 场景 | 走哪 | 为什么 |
+/// |---|---|---|
+/// | **未登录**（用户退出过登录 / 新设备） | **本接口** | 没有可认领的账号，直接新建 |
+/// | **已登录的匿名试用账号**（想同步 / 付费） | `/api/trial/claim` | **认领**：保留该账号已有的学习记录 |
+///
+/// 🔑 这两条路**语义不同**，不能混用 —— 原先 `ClaimDialog` 不论是否已登录都调
+///    `trial/claim`，于是未登录时会因 `userId` 为 null 而报一句英文机器话。
+///    📄 详见 `docs/design/email-registration-2026-09-29.md` §4。
 async fn auth_register(
     headers: HeaderMap,
     Json(input): Json<AuthInput>,
 ) -> impl axum::response::IntoResponse {
-    tracing::info!("auth_register: user_id={}, referral={:?}", input.username, input.referral);
+    tracing::info!("auth_register: email={}, referral={:?}", input.email, input.referral);
 
     // Rate limit: 20 reg/min per IP
     if let Err(resp) = crate::rate_limiter::check_rate_limit(&headers, 20, 60) { return resp; }
@@ -284,10 +301,8 @@ async fn auth_register(
     let result = {
         let conn = crate::db_pool::get_conn();
         crate::auth::register(&conn, &crate::auth::RegisterRequest {
-            username: input.username,
+            email: input.email,
             password: input.password,
-            real_name: input.real_name,
-            phone: input.phone,
             referral: input.referral,
         })
     };
@@ -298,15 +313,14 @@ async fn auth_register(
 }
 
 /// POST /api/auth/login — 用户登录
-/// 请求: {"username": "str", "password": "str"}
-/// 响应: {"user_id": "uuid", "token": "str"} 或 {"error": "str"}
-/// 注意: 登录后会踢掉同一用户的其他 WebSocket 连接（单设备登录）
+/// 请求: {"email": "str", "password": "str"}
+/// 响应: {"user_id": "uuid", "token": "str", "email": "str"} 或 {"error": "str"}
 /// 限流: 10 次/分钟/IP
 async fn auth_login(
     headers: HeaderMap,
     Json(input): Json<AuthInput>,
 ) -> impl axum::response::IntoResponse {
-    tracing::info!("auth_login: user_id={}", input.username);
+    tracing::info!("auth_login: email={}", input.email);
 
     // Rate limit: 10 login/min per IP
     if let Err(resp) = crate::rate_limiter::check_rate_limit(&headers, 10, 60) { return resp; }
@@ -314,7 +328,7 @@ async fn auth_login(
     let result = {
         let conn = crate::db_pool::get_conn();
         crate::auth::login(&conn, &crate::auth::LoginRequest {
-            username: input.username,
+            email: input.email,
             password: input.password,
         })
     };
@@ -341,16 +355,20 @@ async fn auth_verify(Json(input): Json<TokenVerifyInput>) -> Json<serde_json::Va
 
     let conn = crate::db_pool::get_conn();
     let valid = crate::auth::verify_token(&conn, &input.user_id, &input.token);
-    let real_name: Option<String> = if valid {
+    // 🔑 返回 `email` 而非 `real_name`（2026-09-29）。
+    //    前端的用途从来不是「显示姓名」，而是「判断该账号**是否已完成注册**」——
+    //    `None` = 仍是 trial 匿名账号 → `home_screen` 据此弹注册引导。
+    //    改邮箱后这个语义**不变**（trial 账号的 email 为 NULL）。
+    let email: Option<String> = if valid {
         conn.query_row(
-            "SELECT real_name FROM users WHERE id = ?1",
+            "SELECT email FROM users WHERE id = ?1",
             rusqlite::params![input.user_id],
             |row| row.get(0),
         ).ok().flatten()
     } else {
         None
     };
-    Json(serde_json::json!({"valid": valid, "real_name": real_name}))
+    Json(serde_json::json!({"valid": valid, "email": email}))
 }
 
 // ── Review Handlers ──
@@ -572,21 +590,17 @@ async fn profile_handler(
         "SELECT subscription_expires FROM users WHERE id = ?1",
         rusqlite::params![user_id], |row| row.get(0),
     ).ok().flatten();
-    let real_name_raw: Option<String> = conn.query_row(
-        "SELECT real_name FROM users WHERE id = ?1",
+    // 🔴 2026-09-29：`real_name` / `phone` 两列已删（改邮箱注册）→
+    //    连同这里原来的「AES 解密 PII」一并移除。
+    //
+    // 🔑 邮箱**不需要**那套加密：实名/手机号是**身份信息**（泄露后果严重、且平台需保护），
+    //    而邮箱是**用户主动提供、且本来就要回显**的登录标识
+    //    （「我的」页要显示它、找回密码要用它）。
+    //    **给一个必须明文回显的字段做加密，只会制造「存的是密文、用时要解密」的绕路。**
+    let email: Option<String> = conn.query_row(
+        "SELECT email FROM users WHERE id = ?1",
         rusqlite::params![user_id], |row| row.get(0),
     ).ok().flatten();
-    let phone_raw: Option<String> = conn.query_row(
-        "SELECT phone FROM users WHERE id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).ok().flatten();
-    // Decrypt PII fields — now stored as AES-256-GCM
-    let real_name = real_name_raw.as_ref().map(|v| {
-        if crate::encryption::is_encrypted(v) { crate::encryption::decrypt(v) } else { v.clone() }
-    });
-    let phone = phone_raw.as_ref().map(|v| {
-        if crate::encryption::is_encrypted(v) { crate::encryption::decrypt(v) } else { v.clone() }
-    });
     let streak_days: i64 = conn.query_row(
         "SELECT streak_days FROM users WHERE id = ?1",
         rusqlite::params![user_id], |row| row.get(0),
@@ -595,8 +609,7 @@ async fn profile_handler(
     (axum::http::StatusCode::OK, axum::Json(serde_json::json!({
         "user_id": user_id,
         "display_name": display_name,
-        "real_name": real_name,
-        "phone": phone,
+        "email": email,
         "subscription_expires": subscription_expires,
         "streak_days": streak_days,
     }))).into_response()

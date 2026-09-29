@@ -7,8 +7,7 @@ use serde::Deserialize;
 use serde_json::json;
 use axum::response::IntoResponse;
 
-use crate::admin_handlers::{verify_admin, ok, err};
-use crate::encryption;
+use crate::admin_handlers::{verify_admin, ok, err, mask_email};
 use encoding_rs::GBK;
 
 // ── 公共余额计算函数 ──
@@ -477,7 +476,7 @@ pub async fn get_batch(
     let mut stmt = match conn.prepare(
         "SELECT de.id, de.earner_id, \
                 COALESCE(u.display_name, u.username, u.id) AS earner_name, \
-                u.username, u.real_name, u.phone, \
+                u.username, u.email, \
                 de.amount, de.expense_type, de.status, de.created_at, \
                 de.fee, de.actual_amount \
          FROM distribution_expenses de \
@@ -490,28 +489,21 @@ pub async fn get_batch(
     };
 
     let items: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![batch_no], |row| {
-        let real_name_enc: Option<String> = row.get(4)?;
-        let phone_enc: Option<String> = row.get(5)?;
-        let real_name_dec = real_name_enc.as_ref().map(|v| encryption::decrypt(v));
-        let real_name_masked = real_name_dec.as_ref()
-            .map(|n| n.chars().next().map(|c| format!("{}*", c)).unwrap_or("*".into()));
-        let phone_masked = phone_enc.as_ref()
-            .map(|v| encryption::decrypt(v))
-            .map(|p| if p.len() >= 7 { format!("{}****{}", &p[..3], &p[p.len()-4..]) } else { "***".into() });
         Ok(json!({
             "id": row.get::<_, String>(0)?,
             "earner_id": row.get::<_, String>(1)?,
             "earner_name": row.get::<_, String>(2)?,
             "username": row.get::<_, Option<String>>(3)?.unwrap_or_default(),
-            "real_name": real_name_masked,
-            "real_name_full": real_name_dec,
-            "phone": phone_masked,
-            "amount": row.get::<_, i64>(6)?,
-            "expense_type": row.get::<_, String>(7)?,
-            "status": row.get::<_, String>(8)?,
-            "created_at": row.get::<_, String>(9)?,
-            "fee": row.get::<_, i64>(10)?,
-            "actual_amount": row.get::<_, i64>(11)?,
+            // 🔴 2026-09-29：原为 `real_name`（脱敏）+ `real_name_full`（**明文**）+ `phone`。
+            //    那两列已删 → 改展示 `email`（脱敏）。
+            //    ⚠️ 顺带去掉 `*_full`：脱敏字段与明文字段同时下发，等于脱敏没做。
+            "email": row.get::<_, Option<String>>(4)?.map(|e| mask_email(&e)),
+            "amount": row.get::<_, i64>(5)?,
+            "expense_type": row.get::<_, String>(6)?,
+            "status": row.get::<_, String>(7)?,
+            "created_at": row.get::<_, String>(8)?,
+            "fee": row.get::<_, i64>(9)?,
+            "actual_amount": row.get::<_, i64>(10)?,
         }))
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
@@ -532,21 +524,22 @@ pub async fn export_batch(
 
     let conn = crate::db_pool::get_conn();
     let mut stmt = match conn.prepare(
-        "SELECT de.id, u.username, COALESCE(u.display_name, u.username) AS earner_name,                 u.real_name, u.phone,                 de.amount, de.expense_type, de.status, de.fee, de.actual_amount, de.created_at, de.note          FROM distribution_expenses de          JOIN users u ON u.id = de.earner_id          WHERE de.batch_no = ?1          ORDER BY de.created_at ASC"
+        "SELECT de.id, u.username, COALESCE(u.display_name, u.username) AS earner_name,                 u.email,                 de.amount, de.expense_type, de.status, de.fee, de.actual_amount, de.created_at, de.note          FROM distribution_expenses de          JOIN users u ON u.id = de.earner_id          WHERE de.batch_no = ?1          ORDER BY de.created_at ASC"
     ) {
         Ok(s) => s,
         Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)),
     };
 
-    let mut csv = String::from("ID,用户名,推广名,真实姓名,手机号,金额(分),类型,状态,手续费(分),到账金额(分),创建时间,备注,凭证路径\n");
+    // 🔴 2026-09-29：「真实姓名 / 手机号」两列 → 合并为「邮箱」（实名与手机号已取消）。
+    //    ⚠️ 导出的 CSV 是**明文**，所以这里也一并去掉了原 `real_name`/`phone` 的 AES 解密 ——
+    //       邮箱直接导出即可（它是用户主动提供的登录标识，非身份信息）。
+    let mut csv = String::from("ID,用户名,推广名,邮箱,金额(分),类型,状态,手续费(分),到账金额(分),创建时间,备注,凭证路径\n");
     let mut proof_files: Vec<(String, Vec<u8>)> = Vec::new();
 
     if let Ok(rows) = stmt.query_map(rusqlite::params![batch_no], |row| {
-        let real_name_enc: Option<String> = row.get(3)?;
-        let phone_enc: Option<String> = row.get(4)?;
-        let note: Option<String> = row.get(11)?;
-        let real_name = real_name_enc.as_ref().map(|v| encryption::decrypt(v)).unwrap_or_default();
-        let phone = phone_enc.as_ref().map(|v| encryption::decrypt(v)).unwrap_or_default();
+        let email: Option<String> = row.get(3)?;
+        let note: Option<String> = row.get(10)?;
+        let email = email.unwrap_or_default();
         let proof = note.as_ref().and_then(|n| {
             let s = n.as_str();
             let pos = s.find("凭证: ");
@@ -570,21 +563,22 @@ pub async fn export_batch(
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
             row.get::<_, String>(2)?,
-            real_name,
-            phone,
-            row.get::<_, i64>(5)?,
+            email,
+            row.get::<_, i64>(4)?,
+            row.get::<_, String>(5)?,
             row.get::<_, String>(6)?,
-            row.get::<_, String>(7)?,
+            row.get::<_, i64>(7)?,
             row.get::<_, i64>(8)?,
-            row.get::<_, i64>(9)?,
-            row.get::<_, String>(10)?,
+            row.get::<_, String>(9)?,
             note_text,
             proof,
         ))
     }) {
         for r in rows.flatten() {
-            csv.push_str(&format!("{},{},{},{},{},{},{},{},{},{},{},\"{}\",{},\n",
-                r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7, r.8, r.9, r.10, r.11, r.12));
+            // 🔴 2026-09-29：列数 13 → 12（`real_name` + `phone` 合并为 `email`）。
+            //    ⚠️ 占位符个数必须与元组字段数**同时**改 —— 只改一边会编译通过、运行时 panic。
+            csv.push_str(&format!("{},{},{},{},{},{},{},{},{},{},\"{}\",{},\n",
+                r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7, r.8, r.9, r.10, r.11));
         }
     }
 
@@ -652,23 +646,22 @@ pub async fn export_all_batches(
     }
 
     // 单 CSV + 图片
-    let mut csv = String::from("批次号,ID,用户名,推广名,真实姓名,手机号,金额(分),类型,状态,手续费(分),到账金额(分),创建时间,备注,凭证路径
+    let mut csv = String::from("批次号,ID,用户名,推广名,邮箱,金额(分),类型,状态,手续费(分),到账金额(分),创建时间,备注,凭证路径
 ");
     let mut zip_buf = std::io::Cursor::new(Vec::new());
     let mut zip = zip::ZipWriter::new(&mut zip_buf);
 
     for batch_no in &batch_nos {
         let inner_stmt = conn.prepare(
-            "SELECT de.id, u.username, COALESCE(u.display_name, u.username) AS earner_name,                     u.real_name, u.phone,                     de.amount, de.expense_type, de.status, de.fee, de.actual_amount, de.created_at, de.note              FROM distribution_expenses de              JOIN users u ON u.id = de.earner_id              WHERE de.batch_no = ?1              ORDER BY de.created_at ASC"
+            "SELECT de.id, u.username, COALESCE(u.display_name, u.username) AS earner_name,                     u.email,                     de.amount, de.expense_type, de.status, de.fee, de.actual_amount, de.created_at, de.note              FROM distribution_expenses de              JOIN users u ON u.id = de.earner_id              WHERE de.batch_no = ?1              ORDER BY de.created_at ASC"
         );
         let Ok(mut stmt) = inner_stmt else { continue; };
 
         if let Ok(rows) = stmt.query_map(rusqlite::params![batch_no], |row| {
-            let real_name_enc: Option<String> = row.get(3)?;
-            let phone_enc: Option<String> = row.get(4)?;
-            let note: Option<String> = row.get(11)?;
-            let real_name = real_name_enc.as_ref().map(|v| encryption::decrypt(v)).unwrap_or_default();
-            let phone = phone_enc.as_ref().map(|v| encryption::decrypt(v)).unwrap_or_default();
+            // 🔴 2026-09-29：`u.real_name, u.phone` → `u.email`（索引随列数变化整体前移）。
+            let email: Option<String> = row.get(3)?;
+            let note: Option<String> = row.get(10)?;
+            let email = email.unwrap_or_default();
             let proof = note.as_ref().and_then(|n| {
                 let s = n.as_str();
                 let pos = s.find("凭证: ");
@@ -684,9 +677,9 @@ pub async fn export_all_batches(
             Ok((
                 batch_no.clone(),
                 row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
-                real_name, phone,
-                row.get::<_, i64>(5)?, row.get::<_, String>(6)?, row.get::<_, String>(7)?,
-                row.get::<_, i64>(8)?, row.get::<_, i64>(9)?, row.get::<_, String>(10)?,
+                email,
+                row.get::<_, i64>(4)?, row.get::<_, String>(5)?, row.get::<_, String>(6)?,
+                row.get::<_, i64>(7)?, row.get::<_, i64>(8)?, row.get::<_, String>(9)?,
                 note_text, proof,
             ))
         }) {
@@ -699,8 +692,9 @@ pub async fn export_all_batches(
                         let _ = std::io::Write::write_all(&mut zip, &img_data);
                     }
                 }
-                csv.push_str(&format!("{},{},{},{},{},{},{},{},{},{},{},{},\"{}\",{}\n",
-                    r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7, r.8, r.9, r.10, r.11, r.12, r.13));
+                // 🔴 2026-09-29：列数 14 → 13（`real_name` + `phone` → `email`）。
+                csv.push_str(&format!("{},{},{},{},{},{},{},{},{},{},{},\"{}\",{}\n",
+                    r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7, r.8, r.9, r.10, r.11, r.12));
             }
         };
     }
@@ -865,7 +859,7 @@ pub async fn export_pending_csv(
     if let Err(e) = verify_admin(&headers) { return e; }
 
     let conn = crate::db_pool::get_conn();
-    let mut csv = String::from("ID,用户名,推广名,真实姓名,手机号,金额(分),手续费(分),到账金额(分),创建时间\n");
+    let mut csv = String::from("ID,用户名,推广名,邮箱,金额(分),手续费(分),到账金额(分),创建时间\n");
 
     if let Some(ref ids_str) = query.expense_ids {
         // 导出选中的
@@ -877,7 +871,7 @@ pub async fn export_pending_csv(
             .map(|(i, _)| format!("?{}", i + 1)).collect();
         let sql = format!(
             "SELECT de.id, u.username, COALESCE(u.display_name, u.username) AS earner_name, \
-                    u.real_name, u.phone, \
+                    u.email, \
                     de.amount, de.fee, de.actual_amount, de.created_at \
              FROM distribution_expenses de \
              JOIN users u ON u.id = de.earner_id \
@@ -887,22 +881,25 @@ pub async fn export_pending_csv(
         if let Ok(mut stmt) = conn.prepare(&sql) {
             let params: Vec<&dyn rusqlite::types::ToSql> = ids.iter().map(|s| s as &dyn rusqlite::types::ToSql).collect();
             if let Ok(rows) = stmt.query_map(params.as_slice(), |row| {
-                let real_name_enc: Option<String> = row.get(3)?;
-                let phone_enc: Option<String> = row.get(4)?;
-                let real_name = real_name_enc.as_ref().map(|v| encryption::decrypt(v)).unwrap_or_default();
-                let phone = phone_enc.as_ref().map(|v| encryption::decrypt(v)).unwrap_or_default();
+                // 🔴 2026-09-29：`real_name` + `phone` → `email`（索引整体前移 2→1 列）
+                let email: Option<String> = row.get(3)?;
+                let email = email.unwrap_or_default();
                 Ok((
                     row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
-                    real_name, phone,
-                    row.get::<_, i64>(5)?,
+                    email,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, Option<i64>>(5)?.unwrap_or(0),
                     row.get::<_, Option<i64>>(6)?.unwrap_or(0),
-                    row.get::<_, Option<i64>>(7)?.unwrap_or(0),
-                    row.get::<_, String>(8)?,
+                    row.get::<_, String>(7)?,
                 ))
             }) {
                 for r in rows.flatten() {
-                    csv.push_str(&format!("{},{},{},{},{},{},{},{},{}\n",
-                        r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7, r.8));
+                    // 🔴 2026-09-29：列数 9 → 8（`real_name` + `phone` 两列合并为 `email` 一列）。
+                    //    ⚠️ 这里**极易漏**：`format!` 占位符个数与元组字段数必须同时改 ——
+                    //    只改元组不改 format（或反之）会编译通过、**运行时 panic**
+                    //    （"N positional arguments but M were given"）。
+                    csv.push_str(&format!("{},{},{},{},{},{},{},{}\n",
+                        r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7));
                 }
             }
         }
@@ -910,7 +907,7 @@ pub async fn export_pending_csv(
         // 导出全部待结算
         if let Ok(mut stmt) = conn.prepare(
             "SELECT de.id, u.username, COALESCE(u.display_name, u.username) AS earner_name, \
-                    u.real_name, u.phone, \
+                    u.email, \
                     de.amount, de.fee, de.actual_amount, de.created_at \
              FROM distribution_expenses de \
              JOIN users u ON u.id = de.earner_id \
@@ -919,22 +916,25 @@ pub async fn export_pending_csv(
              ORDER BY de.created_at ASC"
         ) {
             if let Ok(rows) = stmt.query_map([], |row| {
-                let real_name_enc: Option<String> = row.get(3)?;
-                let phone_enc: Option<String> = row.get(4)?;
-                let real_name = real_name_enc.as_ref().map(|v| encryption::decrypt(v)).unwrap_or_default();
-                let phone = phone_enc.as_ref().map(|v| encryption::decrypt(v)).unwrap_or_default();
+                // 🔴 2026-09-29：同上（`real_name` + `phone` → `email`）
+                let email: Option<String> = row.get(3)?;
+                let email = email.unwrap_or_default();
                 Ok((
                     row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
-                    real_name, phone,
-                    row.get::<_, i64>(5)?,
+                    email,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, Option<i64>>(5)?.unwrap_or(0),
                     row.get::<_, Option<i64>>(6)?.unwrap_or(0),
-                    row.get::<_, Option<i64>>(7)?.unwrap_or(0),
-                    row.get::<_, String>(8)?,
+                    row.get::<_, String>(7)?,
                 ))
             }) {
                 for r in rows.flatten() {
-                    csv.push_str(&format!("{},{},{},{},{},{},{},{},{}\n",
-                        r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7, r.8));
+                    // 🔴 2026-09-29：列数 9 → 8（`real_name` + `phone` 两列合并为 `email` 一列）。
+                    //    ⚠️ 这里**极易漏**：`format!` 占位符个数与元组字段数必须同时改 ——
+                    //    只改元组不改 format（或反之）会编译通过、**运行时 panic**
+                    //    （"N positional arguments but M were given"）。
+                    csv.push_str(&format!("{},{},{},{},{},{},{},{}\n",
+                        r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7));
                 }
             }
         }
@@ -1064,7 +1064,7 @@ pub async fn list_withdrawals(
     let mut stmt = match conn.prepare(
         "SELECT de.id, de.earner_id, \
                 COALESCE(u.display_name, u.username) AS earner_name, \
-                u.username, u.real_name, u.phone, \
+                u.username, u.email, \
                 de.amount AS apply_amount, de.status, de.note, \
                 de.handled_by, de.handled_at, de.created_at, de.fee, de.actual_amount, \
                 COALESCE((SELECT SUM(amount) FROM distribution_commissions WHERE earner_id = u.id AND status = 'locked'), 0) AS locked_amount, \
@@ -1079,32 +1079,23 @@ pub async fn list_withdrawals(
     };
 
     let items: Vec<serde_json::Value> = match stmt.query_map([], |row| {
-        let real_name_enc: Option<String> = row.get(4)?;
-        let phone_enc: Option<String> = row.get(5)?;
-        let real_name_dec = real_name_enc.as_ref().map(|v| encryption::decrypt(v));
-        let real_name_masked = real_name_dec.as_ref()
-            .map(|n| n.chars().next().map(|c| format!("{}*", c)).unwrap_or("*".into()));
-        let phone_masked = phone_enc.as_ref()
-            .map(|v| encryption::decrypt(v))
-            .map(|p| if p.len() >= 7 { format!("{}****{}", &p[..3], &p[p.len()-4..]) } else { "***".into() });
         Ok(json!({
             "id": row.get::<_, String>(0)?,
             "earner_id": row.get::<_, String>(1)?,
             "earner_name": row.get::<_, String>(2)?,
             "username": row.get::<_, Option<String>>(3)?.unwrap_or_default(),
-            "real_name": real_name_masked,
-            "real_name_full": real_name_dec,
-            "phone": phone_masked,
-            "apply_amount": row.get::<_, i64>(6)?,
-            "status": row.get::<_, String>(7)?,
-            "note": row.get::<_, Option<String>>(8)?,
-            "handled_by": row.get::<_, Option<String>>(9)?,
-            "handled_at": row.get::<_, Option<String>>(10)?,
-            "created_at": row.get::<_, String>(11)?,
-            "fee": row.get::<_, i64>(12)?,
-            "actual_amount": row.get::<_, i64>(13)?,
-            "locked_amount": row.get::<_, i64>(14)?,
-            "available_amount": row.get::<_, i64>(15)?,
+            // 🔴 2026-09-29：原 `real_name`（脱敏）+ `real_name_full`（明文）+ `phone` → `email`（脱敏）
+            "email": row.get::<_, Option<String>>(4)?.map(|e| mask_email(&e)),
+            "apply_amount": row.get::<_, i64>(5)?,
+            "status": row.get::<_, String>(6)?,
+            "note": row.get::<_, Option<String>>(7)?,
+            "handled_by": row.get::<_, Option<String>>(8)?,
+            "handled_at": row.get::<_, Option<String>>(9)?,
+            "created_at": row.get::<_, String>(10)?,
+            "fee": row.get::<_, i64>(11)?,
+            "actual_amount": row.get::<_, i64>(12)?,
+            "locked_amount": row.get::<_, i64>(13)?,
+            "available_amount": row.get::<_, i64>(14)?,
         }))
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),

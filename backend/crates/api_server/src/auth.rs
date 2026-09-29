@@ -4,7 +4,6 @@
 //! Tokens are stored in the `tokens` table for server-side verification.
 
 use serde::{Deserialize, Serialize};
-use crate::encryption;
 
 #[derive(Debug, Deserialize)]
 pub struct ReferralInfo {
@@ -14,16 +13,24 @@ pub struct ReferralInfo {
 
 #[derive(Deserialize)]
 pub struct RegisterRequest {
-    pub username: String,
+    /// 注册标识 = **邮箱**（2026-09-29 起）。
+    ///
+    /// 🔴 此前是 `username` + `real_name` + `phone` 三件套，其中后两者来自
+    /// 微信时代的「实名 + 手机号」，产品已定不做 K12 → 一并移除
+    /// （白哥 2026-09-29：「注册不要真实姓名和手机号，用邮箱注册+密码注册」）。
+    pub email: String,
     pub password: String,
-    pub real_name: Option<String>,
-    pub phone: Option<String>,
     pub referral: Option<ReferralInfo>,
 }
 
 #[derive(Deserialize)]
 pub struct LoginRequest {
-    pub username: String,
+    /// 登录标识 = **邮箱**（2026-09-29 起）。
+    ///
+    /// 🔴 此前支持「用户名 或 手机号」二选一（按 11 位数字猜）。
+    ///    手机号分支已随 `phone_hash` 列一并移除 —— 那个分支前端从未接过
+    ///    （`auth_client.login` 一直只传 username/password），是**死分支**。
+    pub email: String,
     pub password: String,
 }
 
@@ -32,7 +39,60 @@ pub struct AuthResponse {
     pub user_id: String,
     pub token: String,
     pub message: String,
-    pub real_name: Option<String>,
+    /// 已注册的邮箱；**未注册的 trial 匿名账号为 `None`**。
+    ///
+    /// 🔑 它取代了原来的 `real_name` —— 而原来的用途不是「显示姓名」，
+    ///    是让前端判断「**这个账号是否已完成注册**」（`home_screen` 用它决定
+    ///    要不要弹注册引导）。改邮箱后这个判断同样成立：`None` = 未注册。
+    pub email: Option<String>,
+}
+
+/// 邮箱格式校验（**与前端 `Validators.email` 保持同一判据**）。
+///
+/// 🔑 `pub(crate)` —— `trial_handler::claim`（认领式注册）也用它。
+///    **注册与认领必须同一套判据**：两处各写一份，规则会静默漂移，
+///    而用户在界面上看不出差别（两个入口都叫「注册」）。
+///
+/// # ⚠️ 刻意宽松
+///
+/// 只要求：有且只有一个 `@` · `@` 两侧非空 · 域名含 `.` · 无空白 · 总长 ≤254。
+///
+/// 🔑 **为什么不写「严格」的正则**：过严的正则会拒掉**合法**邮箱 ——
+///    `a+tag@x.co.uk`（子地址）· `用户@例子.中国`（国际化域名，punycode 前形态）…
+///    而被拒的用户**没有任何办法绕过**，只能放弃注册。
+///
+/// 🔑 **真正的邮箱验证手段是「发验证邮件」，不是正则** —— 那是「登录页」批次的事
+///    （`sign_in_with_apple` + 邮箱验证属同一批）。这里的正则只挡明显的手误。
+pub(crate) fn is_valid_email(s: &str) -> bool {
+    let s = s.trim();
+    if s.is_empty() || s.len() > 254 || s.chars().any(|c| c.is_whitespace()) {
+        return false;
+    }
+    let mut it = s.split('@');
+    let local = it.next().unwrap_or("");
+    let domain = it.next().unwrap_or("");
+    // 超过一个 `@` → 拒绝
+    if it.next().is_some() {
+        return false;
+    }
+    !local.is_empty()
+        && !domain.is_empty()
+        && domain.contains('.')
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+}
+
+/// 从邮箱取默认昵称（`zhang@x.com` → `zhang`）。
+///
+/// 🔑 为什么要有这个：去掉 `username` 输入后，新账号的 `display_name` 会为空，
+///    「我的」页副标题就会只剩「· 免费版」（`_displayName.isEmpty` 的兜底是「用户」）。
+///    用邮箱前缀当默认昵称，比「用户」更有辨识度，且**不含 `@` 之后的域名**
+///    （域名不必要地暴露在界面上）。
+///
+/// 🔑 `pub(crate)` —— `trial_handler::claim` 在**不改用户已设昵称**的前提下
+///    用它补齐空昵称（`CASE WHEN display_name IS NULL OR '' THEN ? ELSE display_name END`）。
+pub(crate) fn default_display_name(email: &str) -> String {
+    email.split('@').next().unwrap_or("").trim().to_string()
 }
 
 /// Hash a password using bcrypt (with salt).
@@ -51,35 +111,27 @@ fn verify_password(password: &str, hash: &str) -> bool {
 
 /// Register a new user
 pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<AuthResponse, String> {
-    // Check if username already exists
-    let exists: bool = conn.query_row(
-        "SELECT COUNT(*) FROM users WHERE username = ?1",
-        rusqlite::params![req.username],
+    // 校验（先格式后唯一性 —— 格式错的输入不必查库）
+    if !is_valid_email(&req.email) {
+        return Err("邮箱格式不正确".into());
+    }
+    if req.password.len() < 6 || !req.password.chars().any(|c| c.is_ascii_alphabetic()) || !req.password.chars().any(|c| c.is_ascii_digit()) {
+        return Err("密码至少6位含英文+数字".into());
+    }
+
+    // 邮箱唯一性（大小写不敏感：邮箱的 local-part 技术上区分大小写，
+    // 但**所有主流服务商**都按不敏感处理，而用户自己也记不清当时怎么打的
+    // → 若按敏感处理，`A@x.com` 与 `a@x.com` 会变成两个账号，用户永远登不进前一个。
+    // ⚠️ 唯一索引（`idx_users_email`）本身是**大小写敏感**的 —— 它挡的是完全相同的串；
+    //    这里的 COLLATE NOCASE 查询是**业务层的更严要求**。两者不冲突：
+    //    索引保证「不重复」，本查询保证「同义不重复」。）
+    let email_exists: bool = conn.query_row(
+        "SELECT COUNT(*) FROM users WHERE email = ?1 COLLATE NOCASE",
+        rusqlite::params![req.email.trim()],
         |row| row.get::<_, i32>(0),
     ).map(|c| c > 0).unwrap_or(false);
-
-    if exists {
-        return Err("Username already taken".into());
-    }
-
-    // 校验
-    if req.username.len() < 5 || !req.username.chars().all(|c| c.is_ascii_alphanumeric()) { return Err("用户名至少5位英文或数字".into()); }
-    if req.password.len() < 6 || !req.password.chars().any(|c| c.is_ascii_alphabetic()) || !req.password.chars().any(|c| c.is_ascii_digit()) { return Err("密码至少6位含英文+数字".into()); }
-    if let Some(ref n) = req.real_name {
-        if n.is_empty() || n.chars().count() > 4 || !n.chars().all(|c| ('\u{4e00}'..='\u{9fff}').contains(&c) || c == '·') { return Err("姓名须为中文4字以内".into()); }
-    }
-    if let Some(ref p) = req.phone {
-        if p.len() != 11 || !p.starts_with('1') || !p.chars().all(|c| c.is_ascii_digit()) { return Err("手机号格式不正确".into()); }
-        // 检查手机号是否已被注册（通过 phone_hash 确定性匹配）
-        let hash = encryption::sha256_hash(p);
-        let phone_exists: bool = conn.query_row(
-            "SELECT COUNT(*) FROM users WHERE phone_hash = ?1",
-            rusqlite::params![hash],
-            |row| row.get::<_, i32>(0),
-        ).map(|c| c > 0).unwrap_or(false);
-        if phone_exists {
-            return Err("该手机号已被注册".into());
-        }
+    if email_exists {
+        return Err("该邮箱已被注册".into());
     }
 
     let user_id = uuid::Uuid::new_v4().to_string();
@@ -91,16 +143,16 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
         return Err("Password hashing failed".into());
     }
 
-    // Encrypt PII fields
-    let enc_real_name = req.real_name.as_ref().map(|n| encryption::encrypt(n));
-    let enc_phone = req.phone.as_ref().map(|p| encryption::encrypt(p));
-    // Compute phone_hash for login via phone (SHA-256 plain phone, deterministic lookups)
-    let phone_hash = req.phone.as_ref().map(|p| encryption::sha256_hash(p));
-    // Compute bind_hash (for deterministic lookup)
-    let bind_hash_val = match (&req.real_name, &req.phone) {
-        (Some(n), Some(p)) => Some(encryption::bind_hash(n, p)),
-        _ => None,
-    };
+    let email = req.email.trim().to_string();
+    let display_name = default_display_name(&email);
+
+    // 🔴 `username` 列现在**不由用户提供** —— 它是内部标识。
+    //
+    // 为什么不能删掉这一列：① 它是 `NOT NULL UNIQUE`（存量 91 行都有值）；
+    // ② 它被 `isTrialAccount` 之类的判断用过（`trial_` 前缀）。
+    // 注册标识已改为 `email` → 这里自动生成一个不对外的内部 id。
+    // （trial 认领路径**不改** username，沿用它的 `trial_*` 值 → 见 `trial_handler`。）
+    let username = format!("u_{}", user_id.replace('-', "").chars().take(12).collect::<String>());
 
     // 查推广码对应的推广员（如果有）
     let referred_by: Option<String> = if let Some(ref ref_info) = req.referral {
@@ -147,8 +199,8 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
     }
 
     conn.execute(
-        "INSERT INTO users (id, username, display_name, password_hash, real_name, phone, phone_hash, bind_hash, referral_code, referred_by, referred_campaign_id, created_at) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-        rusqlite::params![user_id, req.username, pwhash, enc_real_name, enc_phone, phone_hash, bind_hash_val, referral_code, referred_by, referred_campaign_id, now],
+        "INSERT INTO users (id, username, display_name, password_hash, email, referral_code, referred_by, referred_campaign_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        rusqlite::params![user_id, username, display_name, pwhash, email, referral_code, referred_by, referred_campaign_id, now],
     ).map_err(|e| format!("Insert error: {}", e))?;
 
     // Store token in tokens table
@@ -171,7 +223,7 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
         user_id,
         token,
         message: "Registration successful".into(),
-        real_name: req.real_name.clone(),
+        email: Some(email),
     })
 }
 
@@ -185,34 +237,35 @@ fn cleanup_old_tokens(conn: &rusqlite::Connection, user_id: &str) {
     }
 }
 
-/// Login with username or phone (rejects soft-deleted users)
+/// Login with **email** (rejects soft-deleted users)
+///
+/// 🔴 2026-09-29：此前的「用户名 **或** 手机号」二选一收敛为**邮箱**。
+///    手机号分支随 `phone_hash` 列一并移除 —— 它**前端从未接过**
+///    （`auth_client.login` 一直只传 username/password），是死分支。
+///
+/// ⚠️ 存量 91 行账号（`username` 为 `test1` / `trial_*`）**没有 email** →
+///    它们无法经本接口登录。这是**有意**的：那批是内测/测试账号，
+///    生产环境在 2026-09-29 核实为**零真实用户**。
 pub fn login(conn: &rusqlite::Connection, req: &LoginRequest) -> Result<AuthResponse, String> {
-    let input = &req.username;
+    // 🔑 统一错误信息，**不区分**「邮箱不存在」与「密码错误」——
+    //    否则这个接口可以被用来**枚举哪些邮箱注册过**（撞库的第一步）。
+    //    （这也是原实现的意图，原注释：「不泄露是用户名/手机号错了还是密码错了」。）
+    const ERR: &str = "邮箱或密码错误";
 
-    // 判断输入是用户名还是手机号
-    let is_phone = input.len() == 11 && input.starts_with('1') && input.chars().all(|c| c.is_ascii_digit());
+    // ⚠️ `password_hash` 可空（trial 匿名账号未设密码）→ 取 `Option<String>`。
+    //    直接 `row.get::<_, String>` 遇到 NULL 会报错；这里让它走到 bcrypt 验证，
+    //    空 hash 必然验证失败 —— 语义正确且不 panic。
+    let (user_id, stored_hash, email): (String, Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT id, password_hash, email FROM users \
+             WHERE email = ?1 COLLATE NOCASE AND deleted_at IS NULL",
+            rusqlite::params![req.email.trim()],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(|_| ERR.to_string())?;
 
-    let (user_id, stored_hash): (String, String) = if is_phone {
-        // 手机号登录：SHA-256 哈希匹配
-        let phone_hash = encryption::sha256_hash(input);
-        conn.query_row(
-            "SELECT id, password_hash FROM users WHERE phone_hash = ?1 AND deleted_at IS NULL",
-            rusqlite::params![phone_hash],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        ).map_err(|_| "Invalid phone or password".to_string())?
-    } else {
-        // 用户名登录
-        conn.query_row(
-            "SELECT id, password_hash FROM users WHERE username = ?1 AND deleted_at IS NULL",
-            rusqlite::params![input],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        ).map_err(|_| "Invalid username or password".to_string())?
-    };
-
-    if !verify_password(&req.password, &stored_hash) {
-        // 统一错误信息，不泄露是用户名/手机号错了还是密码错了
-        let err_msg = if is_phone { "Invalid phone or password" } else { "Invalid username or password" };
-        return Err(err_msg.to_string());
+    if !verify_password(&req.password, stored_hash.as_deref().unwrap_or("")) {
+        return Err(ERR.to_string());
     }
 
     // Clean up old tokens for this user before creating a new one
@@ -227,17 +280,11 @@ pub fn login(conn: &rusqlite::Connection, req: &LoginRequest) -> Result<AuthResp
         rusqlite::params![token_id, user_id, token, now],
     ).map_err(|e| format!("Token insert error: {}", e))?;
 
-    let real_name: Option<String> = conn.query_row(
-        "SELECT real_name FROM users WHERE id = ?1",
-        rusqlite::params![user_id],
-        |row| row.get(0),
-    ).ok().flatten();
-
     Ok(AuthResponse {
         user_id,
         token,
         message: "Login successful".into(),
-        real_name,
+        email,
     })
 }
 
@@ -285,22 +332,38 @@ mod tests {
 
         // Register
         let resp = register(&conn, &RegisterRequest {
-            username: "alice".into(),
+            email: "alice@example.com".into(),
             password: "secret1".into(),
-            real_name: None,
-            phone: None,
             referral: None,
         }).unwrap();
         assert_eq!(resp.user_id.len(), 36, "user_id should be a UUID v4");
         assert!(!resp.token.is_empty());
+        assert_eq!(resp.email.as_deref(), Some("alice@example.com"));
 
-        // Login
+        // Login —— 🔴 用**邮箱**（原来是 username）
         let resp2 = login(&conn, &LoginRequest {
-            username: "alice".into(),
+            email: "alice@example.com".into(),
             password: "secret1".into(),
         }).unwrap();
         assert_eq!(resp2.user_id, resp.user_id);
         assert!(!resp2.token.is_empty());
+    }
+
+    /// 🔑 注册后 `display_name` 自动取邮箱前缀（否则「我的」页副标题只剩「· 免费版」）。
+    #[test]
+    fn test_register_sets_display_name_from_email_prefix() {
+        let conn = setup_db();
+        register(&conn, &RegisterRequest {
+            email: "zhangsan@example.com".into(),
+            password: "secret1".into(),
+            referral: None,
+        }).unwrap();
+
+        let dn: String = conn.query_row(
+            "SELECT display_name FROM users WHERE email = 'zhangsan@example.com'",
+            [], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(dn, "zhangsan", "display_name 应为邮箱前缀，且不含域名");
     }
 
     #[test]
@@ -308,42 +371,114 @@ mod tests {
         let conn = setup_db();
 
         register(&conn, &RegisterRequest {
-            username: "bobby".into(),
+            email: "bobby@example.com".into(),
             password: "correct1".into(),
-            real_name: None,
-            phone: None,
             referral: None,
         }).unwrap();
 
         let result = login(&conn, &LoginRequest {
-            username: "bobby".into(),
+            email: "bobby@example.com".into(),
             password: "wrong1".into(),
         });
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Invalid"));
+        // 错误文案**不区分**「邮箱不存在」与「密码错」—— 否则可用来枚举已注册邮箱
+        assert_eq!(result.unwrap_err(), "邮箱或密码错误");
     }
 
     #[test]
-    fn test_register_duplicate_username() {
+    fn test_register_duplicate_email() {
         let conn = setup_db();
 
         register(&conn, &RegisterRequest {
-            username: "charlie".into(),
+            email: "charlie@example.com".into(),
             password: "pw1pass".into(),
-            real_name: None,
-            phone: None,
             referral: None,
         }).unwrap();
 
         let result = register(&conn, &RegisterRequest {
-            username: "charlie".into(),
+            email: "charlie@example.com".into(),
             password: "pw2pass".into(),
-            real_name: None,
-            phone: None,
             referral: None,
         });
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("taken"));
+        assert!(result.unwrap_err().contains("已被注册"));
+    }
+
+    /// 🔴 邮箱唯一性**大小写不敏感**。
+    ///
+    /// 为什么必须这样：邮箱的 local-part 技术上区分大小写，但**所有主流服务商**
+    /// 都按不敏感处理，而用户自己也记不清注册时怎么打的。
+    /// 若按敏感处理，`Alice@x.com` 与 `alice@x.com` 会变成两个账号 ——
+    /// 用户用另一种大小写登录时永远进不去那个已有学习记录的账号。
+    #[test]
+    fn test_register_email_is_case_insensitive() {
+        let conn = setup_db();
+
+        register(&conn, &RegisterRequest {
+            email: "alice@example.com".into(),
+            password: "pw1pass".into(),
+            referral: None,
+        }).unwrap();
+
+        // 全大写形式应被判为重复
+        let dup = register(&conn, &RegisterRequest {
+            email: "ALICE@EXAMPLE.COM".into(),
+            password: "pw2pass".into(),
+            referral: None,
+        });
+        assert!(dup.is_err(), "大小写不同的同一邮箱应判为重复");
+
+        // 用全大写形式**登录**应成功（命中同一账号）
+        let ok = login(&conn, &LoginRequest {
+            email: "ALICE@EXAMPLE.COM".into(),
+            password: "pw1pass".into(),
+        });
+        assert!(ok.is_ok(), "大小写不同的同一邮箱应能登进同一账号");
+    }
+
+    #[test]
+    fn test_register_rejects_invalid_email() {
+        let conn = setup_db();
+        let result = register(&conn, &RegisterRequest {
+            email: "not-an-email".into(),
+            password: "pw1pass".into(),
+            referral: None,
+        });
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("邮箱格式不正确"));
+    }
+
+    /// 🔑 邮箱格式校验的**边界**（正反双向）。
+    ///
+    /// ⚠️ 这个测试的价值在于**防止正则被写得太严** ——
+    ///    过严会拒掉合法邮箱（`a+tag@x.co.uk` 这类子地址），
+    ///    而被拒的用户**没有任何办法绕过**，只能放弃注册。
+    #[test]
+    fn test_is_valid_email_boundaries() {
+        // ✅ 合法
+        assert!(is_valid_email("a@b.co"));
+        assert!(is_valid_email("a+tag@x.co.uk"), "子地址（+tag）必须合法");
+        assert!(is_valid_email("first.last@sub.domain.org"));
+        assert!(is_valid_email("  a@b.co  "), "两端空白应被 trim 后判为合法");
+
+        // ❌ 非法
+        assert!(!is_valid_email(""));
+        assert!(!is_valid_email("no-at-sign"));
+        assert!(!is_valid_email("a@b"), "域名必须含点");
+        assert!(!is_valid_email("a@.b"), "域名不能以点开头");
+        assert!(!is_valid_email("a@b."), "域名不能以点结尾");
+        assert!(!is_valid_email("a b@c.co"), "不能含空白");
+        assert!(!is_valid_email("a@@b.co"), "只能有一个 @");
+        assert!(!is_valid_email("@b.co"), "local 部分不能为空");
+        assert!(!is_valid_email("a@"), "域名不能为空");
+    }
+
+    /// 默认昵称 = 邮箱前缀，且**不含 `@` 之后的域名**。
+    #[test]
+    fn test_default_display_name() {
+        assert_eq!(default_display_name("zhangsan@example.com"), "zhangsan");
+        assert_eq!(default_display_name("a@b.co"), "a");
+        assert_eq!(default_display_name("  padded@x.co  "), "padded");
     }
 
     #[test]
@@ -351,10 +486,8 @@ mod tests {
         let conn = setup_db();
 
         let resp = register(&conn, &RegisterRequest {
-            username: "davey".into(),
+            email: "davey@example.com".into(),
             password: "pass12".into(),
-            real_name: None,
-            phone: None,
             referral: None,
         }).unwrap();
 
@@ -368,41 +501,24 @@ mod tests {
         assert!(!verify_token(&conn, "wrong-user", &resp.token));
     }
 
+    /// 🔴 手机号登录分支**已移除**（2026-09-29）。
+    ///
+    /// 原实现会按「11 位、以 1 开头、全数字」猜出输入是手机号，再查 `phone_hash`。
+    /// 该分支**前端从未接过**（`auth_client.login` 一直只传 username/password），
+    /// 且两列已删 → 现在同一串数字会被当成一个**格式非法的邮箱** → 查不到 → 报错。
     #[test]
-    fn test_login_by_phone() {
+    fn test_login_by_phone_no_longer_works() {
         let conn = setup_db();
-        let phone = "13800138000";
-
-        // Register with phone
-        let resp = register(&conn, &RegisterRequest {
-            username: "phoneuser".into(),
+        register(&conn, &RegisterRequest {
+            email: "phoneuser@example.com".into(),
             password: "pass123".into(),
-            real_name: Some("测试".into()),
-            phone: Some(phone.into()),
             referral: None,
         }).unwrap();
-        assert_eq!(resp.user_id.len(), 36);
 
-        // Login by phone (use the `username` field to pass the phone number)
-        let resp2 = login(&conn, &LoginRequest {
-            username: phone.into(),
-            password: "pass123".into(),
-        }).unwrap();
-        assert_eq!(resp2.user_id, resp.user_id);
-        assert!(!resp2.token.is_empty());
-
-        // Wrong phone should fail
         let result = login(&conn, &LoginRequest {
-            username: "13800138001".into(),
+            email: "13800138000".into(),
             password: "pass123".into(),
         });
-        assert!(result.is_err());
-
-        // Wrong password should fail
-        let result = login(&conn, &LoginRequest {
-            username: phone.into(),
-            password: "wrongpass".into(),
-        });
-        assert!(result.is_err());
+        assert!(result.is_err(), "手机号不再能登录 —— 已改用注册邮箱");
     }
 }

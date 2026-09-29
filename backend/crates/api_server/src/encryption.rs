@@ -12,7 +12,10 @@
 //! ## Search
 //! AES-GCM is non-deterministic (random nonce per encryption),
 //! so direct SQL WHERE matching is impossible.
-//! For bind-lookup, we use `bind_hash = SHA-256(real_name + phone)` (hex).
+//!
+//! 🔴 `bind_hash = SHA-256(real_name + phone)` **已于 2026-09-29 删除** ——
+//! 实名与手机号两列不再存在（改用邮箱注册）。邮箱本身就是明文登录标识，
+//! 直接 `WHERE email = ?` 即可，不需要「确定性哈希」这层间接。
 
 use aes_gcm::{
     aead::{Aead, KeyInit},
@@ -97,13 +100,13 @@ pub fn decrypt(encoded: &str) -> String {
     }
 }
 
-/// Compute a deterministic search hash: SHA-256(real_name + phone) → hex
-pub fn bind_hash(real_name: &str, phone: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(real_name.as_bytes());
-    hasher.update(phone.as_bytes());
-    hex::encode(hasher.finalize())
-}
+// 🔴 2026-09-29 已删 `bind_hash(real_name, phone)` —— 原本用于「凭真实姓名 + 手机号
+//    确定性查找用户」（管理端客服找回账号）。那两列已随「改用邮箱注册」删除，
+//    `bind_hash` 遂成死代码（全库零调用），一并移除。
+//
+// 🔑 它顺带承担的隐私设计也随之取消：原来特意用**哈希**而不是明文存
+//    「姓名 + 手机号」，正是为了让拿不到密钥的人无法反查用户身份。
+//    改邮箱后不再需要这层 —— 邮箱本身就是用户主动提供的登录标识。
 
 /// Compute SHA-256 hex digest of a single input (e.g., phone number for login lookup)
 pub fn sha256_hash(input: &str) -> String {
@@ -143,20 +146,8 @@ mod tests {
         assert_eq!(decrypt(&e2), original);
     }
 
-    #[test]
-    fn test_bind_hash_consistent() {
-        let h1 = bind_hash("张三", "13800138000");
-        let h2 = bind_hash("张三", "13800138000");
-        assert_eq!(h1, h2);
-        assert_eq!(h1.len(), 64); // SHA-256 hex = 64 chars
-    }
-
-    #[test]
-    fn test_bind_hash_different() {
-        let h1 = bind_hash("张三", "13800138000");
-        let h2 = bind_hash("李四", "13900139000");
-        assert_ne!(h1, h2);
-    }
+    // 🔴 2026-09-29 已删两个测试：`test_bind_hash_consistent` / `test_bind_hash_different`
+    //    —— 被测函数 `bind_hash` 已移除。
 
     #[test]
     fn test_decrypt_empty_on_garbage() {

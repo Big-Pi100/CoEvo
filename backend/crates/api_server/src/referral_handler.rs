@@ -249,7 +249,6 @@ fn extract_user_for_png_fallback(svg: &str) -> crate::poster_template::UserPoste
         .unwrap_or_default();
     crate::poster_template::UserPosterData {
         display_name: "用户".to_string(),
-        real_name: String::new(),
         streak_days: 7,
         total_cards: 20,
         today_reviews: 3,
@@ -998,7 +997,6 @@ mod tests {
     fn test_poster_placeholder_replaced() {
         let data = crate::poster_template::UserPosterData {
             display_name: "测试".to_string(),
-            real_name: "User".to_string(),
             streak_days: 10,
             total_cards: 50,
             today_reviews: 5,

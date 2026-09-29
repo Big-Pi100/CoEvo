@@ -17,10 +17,13 @@ pub struct StartRequest {
 #[derive(Deserialize)]
 pub struct ClaimRequest {
     pub user_id: String,
-    pub username: String,
+    /// 注册标识 = **邮箱**（2026-09-29 起）。
+    ///
+    /// 🔴 取代了原来的 `username` + `real_name` + `phone` 三件套。
+    ///    注意 **`username` 不再由用户提供** —— 它退化为内部标识
+    ///    （trial 账号保持 `trial_*` 不变，见下面 UPDATE 的注释）。
+    pub email: String,
     pub password: String,
-    pub real_name: Option<String>,
-    pub phone: Option<String>,
     pub referral_code: Option<String>,
     pub campaign_id: Option<String>,
 }
@@ -172,38 +175,35 @@ pub async fn claim(
     }
 
     // 2. 校验输入
-    if body.password.len() < 6 {
-        return (StatusCode::BAD_REQUEST, Json(json!({"error": "密码至少6位"}))).into_response();
+    //
+    // 🔑 与 `auth::register` **同一套判据**（邮箱格式 · 密码强度）——
+    //    两处各写一份的话，「注册」与「认领」的规则会静默漂移，
+    //    而用户看不出差别（都是「注册」这个动作）。
+    if !crate::auth::is_valid_email(&body.email) {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "邮箱格式不正确"}))).into_response();
     }
-    if body.username.len() < 2 {
-        return (StatusCode::BAD_REQUEST, Json(json!({"error": "用户名至少2位"}))).into_response();
+    if body.password.len() < 6
+        || !body.password.chars().any(|c| c.is_ascii_alphabetic())
+        || !body.password.chars().any(|c| c.is_ascii_digit())
+    {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "密码至少6位含英文+数字"}))).into_response();
     }
 
-    // 3. 校验用户名唯一
+    // 3. 校验邮箱唯一（**排除自己** —— 重复提交认领应幂等放行，而不是报「已被注册」）
+    //
+    // ⚠️ `COLLATE NOCASE` 必须与 `auth::register` 一致，
+    //    否则 `A@x.com` 在这里通过、在那边被判重复。
     let existing: bool = conn.query_row(
-        "SELECT COUNT(*) FROM users WHERE username = ?1 AND id != ?2",
-        rusqlite::params![body.username, body.user_id],
+        "SELECT COUNT(*) FROM users WHERE email = ?1 COLLATE NOCASE AND id != ?2",
+        rusqlite::params![body.email.trim(), body.user_id],
         |row| row.get::<_, i64>(0),
     ).map(|c| c > 0).unwrap_or(false);
 
     if existing {
-        return (StatusCode::CONFLICT, Json(json!({"error": "用户名已存在"}))).into_response();
+        return (StatusCode::CONFLICT, Json(json!({"error": "该邮箱已被注册"}))).into_response();
     }
-
-    // 4. 校验手机号唯一（有 phone_hash 时）
-    if let Some(ref p) = body.phone {
-        if !p.is_empty() {
-            let phone_hash = crate::encryption::sha256_hash(p);
-            let phone_exists: bool = conn.query_row(
-                "SELECT COUNT(*) FROM users WHERE phone_hash = ?1 AND id != ?2",
-                rusqlite::params![phone_hash, body.user_id],
-                |row| row.get::<_, i64>(0),
-            ).map(|c| c > 0).unwrap_or(false);
-            if phone_exists {
-                return (StatusCode::CONFLICT, Json(json!({"error": "手机号已被注册"}))).into_response();
-            }
-        }
-    }
+    // 🔴 2026-09-29 已删：第 4 步「校验手机号唯一」—— `phone_hash` 列已移除。
+    //    用户名唯一校验也一并删除：`username` 不再是用户输入（认领不改它）。
 
     // 5. 密码加密
     let password_hash = match bcrypt::hash(&body.password, 4) {
@@ -216,8 +216,21 @@ pub async fn claim(
 
     // 5. 处理推广码 — 仅当用户提供了真实姓名和手机号时，才记录推荐关系
     //    防止临时试用账户成为有效「下线」
-    let has_real_info = body.real_name.is_some() && body.phone.is_some();
-    let referred_by: Option<String> = if has_real_info {
+    // 5. 推广关系
+    //
+    // 🔴 **判据换了**（2026-09-29）：
+    //    · 原：`has_real_info = real_name.is_some() && phone.is_some()`
+    //      —— 「防止临时试用账号成为有效下线」
+    //    · 现：**无条件记录**
+    //
+    // 🔑 为什么可以无条件：那两个字段已随「实名 + 手机号」一并删除，而且
+    //    **能走到这一步的本来就是真实用户** —— `claim` 本身就是「把匿名账号
+    //    注册成正式账号」，注册成功即转化完成。原判据其实是在**用一个代理指标
+    //    （填了实名 + 手机号）去判断用户真实性**，而真正的标志就是「注册」这个动作。
+    //
+    // ⚠️ 不改这里的后果：条件恒为 `false` → **推荐关系永远不记录** ——
+    //    静默失效，不报错，只是分销数据从此全是空的。
+    let referred_by: Option<String> = {
         // 优先使用请求体中的推广码
         let from_body: Option<String> = if let Some(ref code) = body.referral_code {
             if !code.is_empty() {
@@ -228,7 +241,7 @@ pub async fn claim(
                 ).ok()
             } else { None }
         } else { None };
-        // 请求体没有推广码，从 DB 读已有的推荐关系（仅当用户之前已通过 trial/start 绑定）
+        // 请求体没有推广码，从 DB 读已有的推荐关系（用户之前已通过 trial/start 绑定）
         from_body.or_else(|| {
             conn.query_row(
                 "SELECT referred_by FROM users WHERE id = ?1",
@@ -236,31 +249,29 @@ pub async fn claim(
                 |row| row.get(0),
             ).ok().flatten()
         })
-    } else {
-        None // 未提供真实信息 → 不建立推荐关系
     };
 
-    // 6. 加密 PII 字段
-    let enc_real_name = body.real_name.as_ref().map(|n| crate::encryption::encrypt(n));
-    let enc_phone = body.phone.as_ref().map(|p| crate::encryption::encrypt(p));
-    let phone_hash = body.phone.as_ref().map(|p| crate::encryption::sha256_hash(p));
-    let bind_hash = match (&body.real_name, &body.phone) {
-        (Some(n), Some(p)) => Some(crate::encryption::bind_hash(n, p)),
-        _ => None,
-    };
+    let email = body.email.trim().to_string();
 
-    // 7. 更新用户 — real_name/phone/phone_hash 一旦设置不可修改
+    // 6. 更新用户
+    //
+    // 🔴 `username` **不再修改** —— 它退化为内部标识，trial 账号保持 `trial_*`。
+    //    判断「是否已注册」改看 `email` 是否为空。这比原来的 `isTrialAccount`
+    //    （靠 `trial_` 前缀猜）更准：那个判据一旦 username 被改就失效。
+    //
+    // 🔴 `display_name` 只在**为空**时才填邮箱前缀 —— 用户可能早就改过昵称，
+    //    认领时不能把它覆盖掉。
+    //
+    // 🔴 原来的「real_name / phone 一旦设置不可修改」（CASE WHEN ... IS NULL）
+    //    随那两列一并删除；这里对 `display_name` 保留了同样的「只填不改」语义。
     if let Err(e) = conn.execute(
-        "UPDATE users SET username = ?1, password_hash = ?2, \
-         real_name = CASE WHEN real_name IS NULL THEN ?3 ELSE real_name END, \
-         phone = CASE WHEN phone IS NULL THEN ?4 ELSE phone END, \
-         phone_hash = CASE WHEN phone_hash IS NULL THEN ?5 ELSE phone_hash END, \
-         bind_hash = COALESCE(?6, bind_hash), \
-         referred_by = COALESCE(?7, referred_by) \
-         WHERE id = ?8",
+        "UPDATE users SET password_hash = ?1, email = ?2, \
+         display_name = CASE WHEN display_name IS NULL OR display_name = '' THEN ?3 ELSE display_name END, \
+         referred_by = COALESCE(?4, referred_by) \
+         WHERE id = ?5",
         rusqlite::params![
-            body.username, password_hash,
-            enc_real_name, enc_phone, phone_hash, bind_hash,
+            password_hash, email,
+            crate::auth::default_display_name(&email),
             referred_by, body.user_id,
         ],
     ) {
@@ -280,22 +291,22 @@ pub async fn claim(
     }
 
     // 如果有 campaign_id，加入活动成员（仅用户提供了真实信息时才记入）
-    if has_real_info {
-        if let Some(ref cid) = body.campaign_id {
-            if !cid.is_empty() {
-                // 新用户以 member 身份加入
-                let now_str = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    // 加入活动成员 —— 🔴 条件已去掉（原来包在 `if has_real_info` 里）。
+    // 理由同上面「推广关系」那段：能走到这里的都是已完成注册的真实用户。
+    if let Some(ref cid) = body.campaign_id {
+        if !cid.is_empty() {
+            // 新用户以 member 身份加入
+            let now_str = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            let _ = conn.execute(
+                "INSERT OR IGNORE INTO campaign_members (campaign_id, user_id, role, created_at) VALUES (?1, ?2, 'member', ?3)",
+                rusqlite::params![cid, body.user_id, now_str],
+            );
+            // 如果有推荐人，也以 inviter 身份加入
+            if let Some(ref rid) = referred_by {
                 let _ = conn.execute(
-                    "INSERT OR IGNORE INTO campaign_members (campaign_id, user_id, role, created_at) VALUES (?1, ?2, 'member', ?3)",
-                    rusqlite::params![cid, body.user_id, now_str],
+                    "INSERT OR IGNORE INTO campaign_members (campaign_id, user_id, role, created_at) VALUES (?1, ?2, 'inviter', ?3)",
+                    rusqlite::params![cid, rid, now_str],
                 );
-                // 如果有推荐人，也以 inviter 身份加入
-                if let Some(ref rid) = referred_by {
-                    let _ = conn.execute(
-                        "INSERT OR IGNORE INTO campaign_members (campaign_id, user_id, role, created_at) VALUES (?1, ?2, 'inviter', ?3)",
-                        rusqlite::params![cid, rid, now_str],
-                    );
-                }
             }
         }
     }
@@ -326,11 +337,13 @@ pub async fn claim(
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "create_token_failed"}))).into_response();
     }
 
-    tracing::info!("trial/claim: user_id={}, new_username={}, referred_by={:?}, campaign_id={:?}",
-        body.user_id, body.username, referred_by, body.campaign_id);
+    tracing::info!("trial/claim: user_id={}, email={}, referred_by={:?}, campaign_id={:?}",
+        body.user_id, body.email, referred_by, body.campaign_id);
 
+    // 🔑 响应里**不再回 `username`**（它已不是用户输入的东西，回给前端只会让人以为它可改）。
+    //    回 `email` —— 前端拿它可以立即更新「我的」页显示。
     (StatusCode::OK, Json(json!({
         "token": new_token,
-        "username": body.username,
+        "email": body.email.trim(),
     }))).into_response()
 }

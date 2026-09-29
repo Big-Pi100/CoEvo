@@ -9,7 +9,7 @@ use serde::Serialize;
 #[derive(Debug, Serialize)]
 pub struct UserH5Data {
     pub display_name: String,
-    pub real_name: String,
+    // 🔴 2026-09-29 已删 `real_name`（实名列已取消；分享页不该印真实姓名）。
     pub streak_days: i64,
     pub total_cards: i64,
     pub today_reviews: i64,
@@ -27,7 +27,10 @@ pub struct UserH5Data {
 pub fn replace_h5_variables(template: &str, data: &UserH5Data) -> String {
     let mut result = template.to_string();
     result = result.replace("{display_name}", &data.display_name);
-    result = result.replace("{real_name}", &data.real_name);
+    // 🔑 保留 `{real_name}` 的替换，值降级为昵称 —— 理由同
+    //    `poster_template::replace_template_variables` 的注释
+    //    （不替换会在页面上留下裸的 `{real_name}` 文本）。
+    result = result.replace("{real_name}", &data.display_name);
     result = result.replace("{streak_days}", &data.streak_days.to_string());
     result = result.replace("{total_cards}", &data.total_cards.to_string());
     result = result.replace("{today_reviews}", &data.today_reviews.to_string());
@@ -105,7 +108,6 @@ pub fn build_user_h5_data(
         register_url: shared.register_url.clone(),
         avatar_url: shared.avatar_url.clone(),
         display_name: shared.display_name,
-        real_name: shared.real_name,
         streak_days: shared.streak_days,
         total_cards: shared.total_cards,
         today_reviews: shared.today_reviews,
@@ -276,7 +278,6 @@ mod tests {
     fn test_replace_h5_variables() {
         let data = UserH5Data {
             display_name: "测试用户".into(),
-            real_name: "张三".into(),
             streak_days: 5,
             total_cards: 42,
             today_reviews: 12,
@@ -301,7 +302,6 @@ mod tests {
         // 集成测试依赖于 DB 连接，这里只验证结构
         let data = UserH5Data {
             display_name: "Alice".into(),
-            real_name: "Test".into(),
             streak_days: 3,
             total_cards: 10,
             today_reviews: 2,

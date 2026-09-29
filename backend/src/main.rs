@@ -124,12 +124,16 @@ async fn main() {
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )",
-            // 管理后台重构 — PII 字段
-            "ALTER TABLE users ADD COLUMN real_name TEXT DEFAULT NULL",
-            "ALTER TABLE users ADD COLUMN phone TEXT DEFAULT NULL",
-            "ALTER TABLE users ADD COLUMN id_number TEXT DEFAULT NULL",
-            // AES-256-GCM 加密迁移 — bind_hash 用于确定性查找
-            "ALTER TABLE users ADD COLUMN bind_hash TEXT DEFAULT NULL",
+            // 🔴 2026-09-29 已删 4 条：`real_name` · `phone` · `id_number` · `bind_hash`
+            //
+            // 🔑 **为什么必须删**（否则本轮所有后端改动都会被静默撤销）：
+            //    这段代码跑在 `init_database`（含 `schema.rs` 的删列迁移）**之后** ——
+            //    留着它 = 前脚刚删掉 5 列，后脚又把其中 4 列**加回来**。
+            //    而代码已不再写这 4 列 → 它们会变成「表里有、永远为 NULL」的幽灵列：
+            //    既违背「改用邮箱注册」这个决策，又会在后续开发中被误认为「还能用」。
+            //
+            //    📄 同族判据：「删数据」**≠**「让它不再产生」—— 建表语句与**迁移列表**
+            //       都要一起清（这正是本轮踩到的第二处「还有别的地方在产生它」）。
             // 软删除支持
             "ALTER TABLE users ADD COLUMN deleted_at TEXT DEFAULT NULL",
             // 管理员表
@@ -238,9 +242,10 @@ async fn main() {
             "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('30d', '月度会员', 30, 12000, 0, 1, datetime('now'))",
             "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('90d', '季度会员', 90, 35000, 1, 1, datetime('now'))",
             "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('365d', '年度会员', 365, 128000, 2, 1, datetime('now'))",
-            // 手机号唯一性约束（先清理重复值再建索引）
-            "UPDATE users SET phone_hash = NULL WHERE id NOT IN (SELECT MIN(id) FROM users WHERE phone_hash IS NOT NULL AND phone_hash != '' GROUP BY phone_hash)",
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_hash ON users(phone_hash) WHERE phone_hash IS NOT NULL",
+            // 🔴 2026-09-29 已删两条（`UPDATE ... phone_hash` 去重 + `idx_users_phone_hash`）：
+            //    `phone_hash` 列已移除。留着它们会在**启动时直接报 `no such column: phone_hash`**
+            //    → 服务起不来。（这段的容错只放行 `duplicate column` / `already exists`，
+            //    所以它会**炸出来**而不是被吞 —— 这比静默更好。）
 
         ];
 

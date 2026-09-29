@@ -22,8 +22,20 @@ class AuthState {
   final bool isAuthenticated;
   final String? userId;
   final String? token;
+
+  /// **内部标识**，不是用户输入的东西。
+  ///
+  /// ⚠️ 2026-09-29 起用户不再填用户名（注册标识改为 [email]）——
+  ///    trial 匿名账号是 `trial_*`，`/api/auth/register` 生成的是 `u_*`。
+  /// 🔴 **不要用它判断「是否已注册」**（旧代码靠 `trial_` 前缀猜，username 一改就失效）
+  ///    → 用 [isRegistered]。
   final String? username;
-  final String? realName;
+
+  /// 注册邮箱；**匿名试用账号为 `null`**。
+  ///
+  /// 🔴 它取代了原来的 `realName`（实名是微信时代遗留，已随「改用邮箱注册」移除）。
+  final String? email;
+
   final String? error;
   final bool isLoading;
   final bool isRestored;
@@ -33,18 +45,28 @@ class AuthState {
     this.userId,
     this.token,
     this.username,
-    this.realName,
+    this.email,
     this.error,
     this.isLoading = false,
     this.isRestored = false,
   });
+
+  /// 是否**已完成注册**。
+  ///
+  /// 🔑 注意它与 `isAuthenticated` 不是一回事：**匿名试用账号也是「已登录」**，
+  ///    但没有邮箱 → `isRegistered == false`。
+  ///
+  /// 🔑 判据是「有没有邮箱」—— 注册的唯一标志。
+  ///    比旧实现「`username` 是否以 `trial_` 开头」可靠：
+  ///    那个判据一旦 username 被改（trial 认领原先就会改它）就失效。
+  bool get isRegistered => email != null && email!.trim().isNotEmpty;
 
   AuthState copyWith({
     bool? isAuthenticated,
     String? userId,
     String? token,
     String? username,
-    String? realName,
+    String? email,
     String? error,
     bool? isLoading,
     bool? isRestored,
@@ -54,7 +76,7 @@ class AuthState {
       userId: userId ?? this.userId,
       token: token ?? this.token,
       username: username ?? this.username,
-      realName: realName ?? this.realName,
+      email: email ?? this.email,
       error: error,
       isLoading: isLoading ?? this.isLoading,
       isRestored: isRestored ?? this.isRestored,
@@ -80,15 +102,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
       if (token != null && userId != null) {
         final result = await _client.verifyToken(userId, token);
         final isValid = result['valid'] == true;
-        final realName = result['real_name'] as String?;
-        debugPrint('tryRestore: verifyToken=$isValid realName=$realName');
+        final email = result['email'] as String?;
+        debugPrint('tryRestore: verifyToken=$isValid email=$email');
         if (isValid) {
           state = AuthState(
             isAuthenticated: true,
             userId: userId,
             token: token,
             username: username,
-            realName: realName,
+            email: email,
             isRestored: true,
           );
           debugPrint('tryRestore: 认证恢复成功');
@@ -108,12 +130,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
     debugPrint('tryRestore: 完成 (isRestored=true)');
   }
 
-  Future<void> _saveCredentials(String userId, String token, String? username) async {
+  /// 把凭证写入 secure storage。
+  ///
+  /// [loginId] 是「登录标识」—— 2026-09-29 起**通常是邮箱**；
+  /// 匿名试用账号则是它的 `trial_*` 内部 id（此时还没有邮箱）。
+  /// ⚠️ 参数名刻意不叫 `username`：那个词会让人以为它一定是个用户名。
+  Future<void> _saveCredentials(String userId, String token, String? loginId) async {
     try {
       await _storage.write(key: _tokenKey, value: token);
       await _storage.write(key: _userIdKey, value: userId);
-      if (username != null) {
-        await _storage.write(key: _usernameKey, value: username);
+      if (loginId != null) {
+        await _storage.write(key: _usernameKey, value: loginId);
       }
     } catch (e) {
       debugPrint('_saveCredentials: failed to write secure storage: $e');
@@ -177,52 +204,68 @@ class AuthNotifier extends StateNotifier<AuthState> {
     return msg;
   }
 
-  Future<void> register(String username, String password, {String? realName, String? phone, String? referralCode}) async {
+  /// **直接注册**（不需要既有账号）—— 🆕 2026-09-29 起这是「未登录时注册」的正路。
+  ///
+  /// # 🔴 为什么它取代了 `trialClaim` 成为未登录注册的入口
+  ///
+  /// `trialClaim`（认领）内部用 `state.userId!` / `state.token!` ——
+  /// **未登录时它们是 `null`** → 抛 `Null check operator used on a null value`，
+  /// 而 `_friendlyError` 映射不到这种错误 → **用户看到一句英文机器话**。
+  ///
+  /// 那条路径在 2026-09-29「把登录入口接回『我的』页」之后**首次变得可达**
+  /// （此前弹窗只从「已登录但无姓名」的分支打开，userId 必然有值）。
+  ///
+  /// ✅ 正解就是这里：**未登录 → 直接注册；已登录的匿名账号 → 认领**
+  ///    （见 `ClaimDialog._submit`）。两者语义本就不同，不该走同一条路。
+  Future<void> register(String email, String password, {String? referralCode}) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final result = await _client.register(username, password, realName: realName, phone: phone, referralCode: referralCode);
+      final result = await _client.register(email, password, referralCode: referralCode);
       final uid = result['user_id'] as String?;
       final token = result['token'] as String?;
+      final returnedEmail = result['email'] as String? ?? email;
       if (uid != null && token != null) {
-        await _saveCredentials(uid, token, username);
+        await _saveCredentials(uid, token, returnedEmail);
       }
       state = AuthState(
         isAuthenticated: true,
         userId: uid,
         token: token,
-        username: username,
-        realName: realName,
+        // ⚠️ 没有 username 了（用户不再填）——用邮箱前缀当显示名，与后端 `default_display_name` 一致
+        username: returnedEmail.split('@').first,
+        email: returnedEmail,
         isRestored: true,
       );
       // 清除退出登录标记
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('coevo_show_login');
     } catch (e) {
-      // 错误会显示在 UI，但日志仍要打（含端点）——排查时不必让用户复述弹窗文字
       debugPrint('register 失败 endpoint=${ApiConfig.baseUrl} '
-          'username=$username error=$e');
+          'email=$email error=$e');
       state = state.copyWith(
         isLoading: false,
         error: _friendlyError(e.toString()),
       );
+      rethrow;
     }
   }
 
-  Future<void> login(String username, String password) async {
+  Future<void> login(String email, String password) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final result = await _client.login(username, password);
+      final result = await _client.login(email, password);
       final uid = result['user_id'] as String?;
       final token = result['token'] as String?;
+      final returnedEmail = result['email'] as String? ?? email;
       if (uid != null && token != null) {
-        await _saveCredentials(uid, token, username);
+        await _saveCredentials(uid, token, returnedEmail);
       }
       state = AuthState(
         isAuthenticated: true,
         userId: uid,
         token: token,
-        username: username,
-        realName: result['real_name'] as String?,
+        username: returnedEmail.split('@').first,
+        email: returnedEmail,
         isRestored: true,
       );
       // 登录成功后清除退出登录标记
@@ -230,7 +273,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       await prefs.remove('coevo_show_login');
     } catch (e) {
       debugPrint('login 失败 endpoint=${ApiConfig.baseUrl} '
-          'username=$username error=$e');
+          'email=$email error=$e');
       state = state.copyWith(
         isLoading: false,
         error: _friendlyError(e.toString()),
@@ -310,35 +353,56 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   /// 认领临时账户（注册）
-  Future<void> trialClaim(String username, String password, {String? realName, String? phone, String? referralCode, String? campaignId}) async {
+  /// 认领试用账号（把**匿名账号**升级为正式账号）。
+  ///
+  /// # 🔴 它要求「已登录」—— 未登录时请走 [register]
+  ///
+  /// 认领的对象是**当前这个匿名账号**（`state.userId`），所以必须先有账号。
+  /// 未登录时（例如用户退出过登录、又直接点「注册」）调用它，
+  /// 原先会由 `state.userId!` 抛 `Null check operator used on a null value` ——
+  /// 而 `_friendlyError` 映射不到这种字符串 → **用户看到一句英文机器话**。
+  ///
+  /// ✅ 现在改为**显式前置检查 + 人话提示**。调用方（`ClaimDialog`）则为
+  ///    「未登录」走 [register]，两个入口各司其职。
+  Future<void> trialClaim(String email, String password, {String? referralCode, String? campaignId}) async {
+    final userId = state.userId;
+    final token = state.token;
+    if (userId == null || token == null) {
+      state = state.copyWith(
+        isLoading: false,
+        error: '登录状态异常，请重新打开 App 后再试',
+      );
+      throw StateError('trialClaim 需要已登录（匿名试用账号）');
+    }
+
     state = state.copyWith(isLoading: true, error: null);
     try {
       final result = await _client.trialClaim(
-        state.userId!,
-        state.token!,
-        username,
+        userId,
+        token,
+        email,
         password,
-        realName: realName,
-        phone: phone,
         referralCode: referralCode,
         campaignId: campaignId,
       );
-      final newToken = result['token'] as String? ?? state.token;
-      await _saveCredentials(state.userId!, newToken!, username);
+      final newToken = result['token'] as String? ?? token;
+      final returnedEmail = result['email'] as String? ?? email;
+      await _saveCredentials(userId, newToken, returnedEmail);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('coevo_trial_claimed', true);
       await prefs.remove('coevo_show_login');
       state = AuthState(
         isAuthenticated: true,
-        userId: state.userId,
+        userId: userId,
         token: newToken,
-        username: username,
-        realName: realName,
+        // ⚠️ `username` **保持原值**（`trial_*`）—— 认领不再改它（它已退化为内部标识）
+        username: state.username,
+        email: returnedEmail,
         isRestored: true,
       );
     } catch (e) {
       debugPrint('trialClaim 失败 endpoint=${ApiConfig.baseUrl} '
-          'userId=${state.userId} username=$username error=$e');
+          'userId=$userId email=$email error=$e');
       state = state.copyWith(
         isLoading: false,
         error: _friendlyError(e.toString()),
@@ -348,13 +412,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 }
 
-/// 检查用户是否为临时试用账户（username 以 trial_ 开头）
-/// userId 是 UUID 格式，不能用于判断
-bool isTrialAccount(String? username) {
-  return username != null && username.startsWith('trial_');
-}
+/// 🔴 2026-09-29 已删 `isTrialAccount(username)` —— 它靠 `trial_` 前缀猜「是否试用账号」。
+///
+/// 两个问题：
+/// ① **脆弱**：trial 认领原先会改写 `username` → 一改就失效（前缀没了）。
+/// ② **口径错**：真正要判断的是「**是否已完成注册**」，而那与用户名长什么样无关。
+///
+/// ✅ 改用 `AuthState.isRegistered`（判据 = 邮箱是否为空）—— 见那边的注释。
 
-/// 检查是否已完成认领注册
+/// 检查是否已完成认领注册（本地标记）。
 Future<bool> isClaimed() async {
   final prefs = await SharedPreferences.getInstance();
   return prefs.getBool('coevo_trial_claimed') ?? false;

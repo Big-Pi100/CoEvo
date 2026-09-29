@@ -142,7 +142,7 @@ pub fn reflow_svg_zones(svg: &str) -> String {
 #[derive(Debug, Serialize)]
 pub struct UserPosterData {
     pub display_name: String,
-    pub real_name: String,
+    // 🔴 2026-09-29 已删 `real_name`（实名列已取消；海报不该印真实姓名）。
     pub streak_days: i64,
     pub total_cards: i64,
     pub today_reviews: i64,
@@ -160,7 +160,16 @@ pub struct UserPosterData {
 pub fn replace_template_variables(template: &str, data: &UserPosterData) -> String {
     let mut result = template.to_string();
     result = result.replace("{display_name}", &data.display_name);
-    result = result.replace("{real_name}", &data.real_name);
+    // 🔑 **保留 `{real_name}` 的替换**，值降级为**昵称**（2026-09-29）。
+    //
+    // 为什么保留一个「数据上已不存在的占位符」的替换：
+    //   模板（含 LLM 生成的历史模板）里可能写着 `{real_name}`。若不替换，
+    //   页面上会**原样显示这串花括号文本** —— 既难看，又把模板机制暴露给用户。
+    //   用昵称填充是唯一合理的降级（实名数据已经不存在了）。
+    //
+    // 🔴 这**不是**「静默降级」：此处有明确注释说明它为什么存在、值是什么。
+    //    若将来要彻底清理，应先确认库里/历史模板中已无 `{real_name}`。
+    result = result.replace("{real_name}", &data.display_name);
     result = result.replace("{streak_days}", &data.streak_days.to_string());
     result = result.replace("{total_cards}", &data.total_cards.to_string());
     result = result.replace("{today_reviews}", &data.today_reviews.to_string());
@@ -221,7 +230,6 @@ pub fn build_user_poster_data(
         qr_code_url: shared.register_url.clone(),
         avatar_url: shared.avatar_url.clone(),
         display_name: shared.display_name,
-        real_name: shared.real_name,
         streak_days: shared.streak_days,
         total_cards: shared.total_cards,
         today_reviews: shared.today_reviews,

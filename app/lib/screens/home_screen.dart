@@ -139,7 +139,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         // 登录时触发活动推送检查（写 campaign_push 通知）
         _checkLoginCampaignPush(auth.userId!, auth.token!);
         // 已登录但还没完善资料 → 引导注册（**只是弹窗，不挡内容**）
-        if (auth.realName == null || auth.realName!.trim().isEmpty) {
+        // 🔴 判据换成 `auth.isRegistered`（= 邮箱非空）—— 它取代了原来的 `realName`。
+        //    语义完全相同：「这个账号还没完成注册 → 引导注册」。
+        //    匿名试用账号的 `email` 为 null（而 `isAuthenticated` 仍为 true）→ 会走到这里 ✅
+        if (!auth.isRegistered) {
           if (mounted) _showAuthDialog();
         }
         return;
@@ -155,7 +158,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // trial 完成后重新读取 auth 状态，继续流程
       final auth2 = ref.read(authProvider);
       if (auth2.isAuthenticated && mounted) {
-        if (auth2.realName == null || auth2.realName!.trim().isEmpty) {
+        // 同上：用 `isRegistered`（邮箱）判断是否还需引导注册
+        if (!auth2.isRegistered) {
           _showAuthDialog();
         }
       }

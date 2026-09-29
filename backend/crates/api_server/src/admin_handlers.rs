@@ -89,6 +89,24 @@ macro_rules! guard {                                 // admin_users 专用
 fn mask_phone(p: &str) -> String { if p.len()>=7 { format!("{}****{}", &p[..3], &p[p.len()-4..]) } else { "***".into() } }
 fn mask_name(n: &str) -> String { n.chars().next().map(|c| format!("{}*",c)).unwrap_or("*".into()) }
 
+/// 邮箱脱敏（`zhangsan@example.com` → `z***@example.com`）。
+///
+/// 🔑 **与 `mask_phone` / `mask_name` 同族**（管理端的 PII 脱敏），所以放在一起。
+///    2026-09-29「改用邮箱注册」后，它取代了原来对 `real_name` / `phone` 的脱敏。
+///
+/// 🔑 `pub(crate)` —— `distribution_handler` 的分销列表也用它
+///    （**一处权威**：两处各写一份脱敏规则，迟早会出现「同一个人在两页脱敏方式不同」）。
+pub(crate) fn mask_email(email: &str) -> String {
+    match email.split_once('@') {
+        Some((local, domain)) => {
+            let first = local.chars().next().unwrap_or('*');
+            format!("{}***@{}", first, domain)
+        }
+        // 不像邮箱（存量/异常数据）→ 只留首字符
+        None => email.chars().next().map(|c| format!("{}***", c)).unwrap_or_else(|| "***".into()),
+    }
+}
+
 /// Decrypt a PII field if it looks encrypted; return as-is if already plaintext.
 fn decrypt_maybe(enc: &str) -> String {
     if encryption::is_encrypted(enc) {
@@ -173,7 +191,7 @@ pub async fn admin_users_handler(headers: HeaderMap, Query(query): Query<AdminUs
         (String::new(), "ORDER BY u.subscription_expires IS NULL, u.subscription_expires ASC".to_string())
     } else { (String::new(), "ORDER BY u.created_at DESC".to_string()) };
 
-    let sql = format!("SELECT u.id,u.username,u.display_name,u.real_name,u.phone,u.created_at,u.streak_days,u.deleted_at FROM users u {} {} {} LIMIT ?1 OFFSET ?2", join_clause, where_clause, order_clause);
+    let sql = format!("SELECT u.id,u.username,u.display_name,u.email,u.created_at,u.streak_days,u.deleted_at FROM users u {} {} {} LIMIT ?1 OFFSET ?2", join_clause, where_clause, order_clause);
     tracing::debug!("admin_users SQL: {}", sql);
     let mut stmt = match c.prepare(&sql) {
         Ok(s) => s,
@@ -189,21 +207,19 @@ pub async fn admin_users_handler(headers: HeaderMap, Query(query): Query<AdminUs
         let reviews: i64 = 0;
         let expires: Option<String> = c.query_row("SELECT subscription_expires FROM users WHERE id=?1", rusqlite::params![&uid], |r| r.get(0)).ok();
         let is_super = role == "super";
-        let rname_raw: Option<String> = row.get(3)?;
-        let phone_raw: Option<String> = row.get(4)?;
-        let rname_dec = rname_raw.as_ref().map(|v| decrypt_maybe(v));
-        let phone_dec = phone_raw.as_ref().map(|v| decrypt_maybe(v));
+        // 🔴 2026-09-29：原 `real_name` + `phone` 两列 → `email` 一列。
+        //    「super 看完整 / 其他角色看脱敏」这层**分级可见性语义保持不变**，
+        //    只是对象从实名+手机号换成了邮箱。
+        let email: Option<String> = row.get(3)?;
         // 🔴 2026-09-29 已退役：guardian / tutor 绑定查询（依赖已删除的 `guardian_assignments` 表）
         //     JSON 字段保留（值为 null），兼容 admin 前端。
         let (g_id, t_id): (Option<String>, Option<String>) = (None, None);
         let (g_name_dec, g_phone_dec, t_name_dec, t_phone_dec): (Option<String>, Option<String>, Option<String>, Option<String>) = (None, None, None, None);
         Ok(serde_json::json!({
             "user_id":uid, "username": row.get::<_,String>(1)?, "display_name": row.get::<_,Option<String>>(2)?,
-            "real_name": if is_super { rname_dec.clone() } else { rname_dec.as_ref().map(|n| mask_name(n)) },
-            "real_name_masked": rname_dec.as_ref().map(|n| mask_name(n)),
-            "phone": if is_super { phone_dec.clone() } else { phone_dec.as_ref().map(|p| mask_phone(p)) },
-            "phone_masked": phone_dec.as_ref().map(|p| mask_phone(p)),
-            "created_at": row.get::<_,String>(5)?, "streak_days": row.get::<_,i32>(6)?, "deleted_at": row.get::<_,Option<String>>(7)?,
+            "email": if is_super { email.clone() } else { email.as_ref().map(|e| mask_email(e)) },
+            "email_masked": email.as_ref().map(|e| mask_email(e)),
+            "created_at": row.get::<_,String>(4)?, "streak_days": row.get::<_,i32>(5)?, "deleted_at": row.get::<_,Option<String>>(6)?,
             "card_count": cards, "review_count": reviews, "subscription_expires": expires,
             "guardian_id": g_id, "guardian_name": g_name_dec, "guardian_phone_masked": g_phone_dec.as_ref().map(|p| mask_phone(p)),
             "tutor_id": t_id, "tutor_name": t_name_dec, "tutor_phone_masked": t_phone_dec.as_ref().map(|p| mask_phone(p)),
@@ -218,17 +234,17 @@ pub async fn admin_user_detail(headers: HeaderMap, Path(uid): Path<String>) -> i
     tracing::info!("admin_user_detail: user_id={}", uid);
     let _ = verify_admin(&headers);
     let c = conn();
-    let u: Option<serde_json::Value> = c.query_row("SELECT id,username,display_name,real_name,phone,created_at,streak_days,last_active_date FROM users WHERE id=?1", rusqlite::params![&uid], |row| {
+    let u: Option<serde_json::Value> = c.query_row("SELECT id,username,display_name,email,created_at,streak_days,last_active_date FROM users WHERE id=?1", rusqlite::params![&uid], |row| {
         let uid2: String = row.get(0)?;
         // 🔴 2026-09-29：学习状态已迁端侧 → 统计恒为 0
         let cards: i64 = 0;
         let reviews: i64 = 0;
-        let rn_raw: Option<String> = row.get(3)?;
-        let ph_raw: Option<String> = row.get(4)?;
+        // 🔴 2026-09-29：`real_name` + `phone` → `email`（详情页是超管视角，不做脱敏）
+        let email: Option<String> = row.get(3)?;
         let expires: Option<String> = c.query_row("SELECT subscription_expires FROM users WHERE id=?1", rusqlite::params![&uid2], |r| r.get(0)).ok();
         Ok(serde_json::json!({"user_id":uid2,"username":row.get::<_,String>(1)?,"display_name":row.get::<_,Option<String>>(2)?,
-            "real_name":rn_raw.as_ref().map(|v|decrypt_maybe(v)),"phone":ph_raw.as_ref().map(|v|decrypt_maybe(v)),
-            "created_at":row.get::<_,String>(5)?,"streak_days":row.get::<_,i32>(6)?,"last_active_date":row.get::<_,Option<String>>(7)?,"card_count":cards,"review_count":reviews,"subscription_expires":expires}))
+            "email":email,
+            "created_at":row.get::<_,String>(4)?,"streak_days":row.get::<_,i32>(5)?,"last_active_date":row.get::<_,Option<String>>(6)?,"card_count":cards,"review_count":reviews,"subscription_expires":expires}))
     }).ok();
     match u { Some(v) => ok(v), None => err(StatusCode::NOT_FOUND, "not_found") }
 }
@@ -271,8 +287,14 @@ pub async fn admin_hard_delete_user(headers: HeaderMap, Path(uid): Path<String>)
     let now_rfc = chrono::Utc::now().to_rfc3339();
 
     // 1. 读取用户归档信息（在删除之前）
+    //
+    // 🔴 2026-09-29：`u.phone_hash` → `u.email`（硬删除归档时留个可辨识的登录标识）。
+    //    ⚠️ 原来存的是 **phone_hash（哈希）**，现在直接存 email（明文）——
+    //       这是有意放宽，不是疏漏：归档文件 `deleted_users.ndjson` 是**运维私有的本地文件**，
+    //       而 phone_hash 那种「存哈希只为让运维自己也认不出是谁」的做法，
+    //       在改邮箱后会让归档条目**完全没有辨识度**（只剩 username，而它只是 `u_xxx` 内部 id）。
     let user_info: Result<(String, Option<String>, Option<String>, Option<String>, Option<String>), _> = c.query_row(
-        "SELECT u.username, u.display_name, u.phone_hash, u.subscription_expires, up_act.value
+        "SELECT u.username, u.display_name, u.email, u.subscription_expires, up_act.value
          FROM users u
          LEFT JOIN user_preferences up_act ON u.id=up_act.user_id AND up_act.key='subscription_activated_at'
          WHERE u.id=?1",
@@ -286,7 +308,7 @@ pub async fn admin_hard_delete_user(headers: HeaderMap, Path(uid): Path<String>)
         )),
     );
 
-    let (username, display_name, phone_hash, sub_expires, sub_activated) = match user_info {
+    let (username, display_name, email, sub_expires, sub_activated) = match user_info {
         Ok(info) => info,
         Err(_) => return err(StatusCode::NOT_FOUND, "user_not_found"),
     };
@@ -298,7 +320,7 @@ pub async fn admin_hard_delete_user(headers: HeaderMap, Path(uid): Path<String>)
         "original_user_id": uid,
         "username": username,
         "display_name": display_name,
-        "phone_hash": phone_hash,
+        "email": email,
         "subscription_expires": sub_expires,
         "subscription_activated_at": sub_activated,
         "deleted_by": "super",
@@ -332,36 +354,13 @@ pub async fn admin_hard_delete_user(headers: HeaderMap, Path(uid): Path<String>)
     ok(serde_json::json!({"status":"hard_deleted", "archive_id": archive_id}))
 }
 
-// ── Reveal Phone (两步揭看) ──
-#[derive(Deserialize)] pub struct RevealPhoneQuery { pub full: Option<bool> }
-pub async fn admin_reveal_phone(headers: HeaderMap, Path(uid): Path<String>, Query(query): Query<RevealPhoneQuery>) -> impl IntoResponse {
-    tracing::info!("admin_reveal_phone: user_id={}, full={:?}", uid, query.full);
-    // Rate limit: 20 requests per minute
-    if let Err(e) = crate::rate_limiter::check_rate_limit(&headers, 20, 60) { return e; }
-    let (admin_id, _) = match require_role(&headers, &["service"]) { Ok(r) => r, Err(e) => { return e; } };
-    let c = conn();
-    let phone: Option<String> = c.query_row("SELECT phone FROM users WHERE id=?1", rusqlite::params![&uid], |row| row.get(0)).ok().flatten();
-    match phone {
-        Some(p) => {
-            let decrypted = decrypt_maybe(&p);
-            let masked = mask_phone(&decrypted);
-            // Fetch target username for audit detail
-            let target_info: String = c.query_row("SELECT COALESCE(display_name,username,'') FROM users WHERE id=?1", rusqlite::params![&uid], |row| row.get(0)).unwrap_or_default();
-            if query.full.unwrap_or(false) {
-                // Step 2: return full phone with audit log
-                let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'reveal_phone_full',?3,?4,?5)",
-                    rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"target":target_info,"masked":masked}).to_string(), chrono::Utc::now().timestamp()]);
-                ok(serde_json::json!({"phone":decrypted, "full":true}))
-            } else {
-                // Step 1: return masked phone with audit log
-                let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'reveal_phone_masked',?3,?4,?5)",
-                    rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"target":target_info,"masked":masked}).to_string(), chrono::Utc::now().timestamp()]);
-                ok(serde_json::json!({"phone":mask_phone(&decrypted), "full":false}))
-            }
-        }
-        None => err(StatusCode::NOT_FOUND, "no_phone"),
-    }
-}
+// 🔴 2026-09-29 已退役：`admin_reveal_phone`（两步揭看手机号）+ `RevealPhoneQuery`
+//
+// 它唯一的用途是「管理端看清用户的手机号」（先脱敏、再二次揭看明文并写审计日志）。
+// `users.phone` 列已删 → 无数据可揭看 → 整块退役，路由同步移除。
+//
+// 🔑 这顺带消掉了一处**最敏感的隐私能力**（把用户手机号明文展示给运营），
+//    与「改用邮箱注册」的方向一致。
 
 /// 天数增量延期：读取当前到期日，从原值或今天累加天数，写入 DB
 fn apply_days_extension(c: &rusqlite::Connection, uid: &str, days: i64) -> Result<String, String> {
@@ -757,65 +756,21 @@ pub async fn admin_audit_log(headers: HeaderMap, Query(query): Query<AuditLogQue
 //     `card_stats_from_row` / `parse_plan_progress`）。
 //     依赖已删除的表：`guardian_assignments` / `user_cards` / `conversations` /
 //     `plan_runs`；K12 体系已整体清退，路由亦已移除。
-// ── Bind Lookup ──
-#[derive(Deserialize)] pub struct BindLookupInput { pub real_name: String, pub phone: String }
-pub async fn bind_lookup_handler(headers: HeaderMap, Json(input): Json<BindLookupInput>) -> impl IntoResponse {
-    tracing::info!("bind_lookup_handler: real_name={}", input.real_name);
-    // Rate limit: 5 requests per minute per IP (no auth endpoint)
-    if let Err(e) = crate::rate_limiter::check_rate_limit(&headers, 5, 60) { return e; }
-    let c = conn();
-    // Use bind_hash (SHA-256 of real_name + phone) for deterministic lookup
-    let hash = encryption::bind_hash(&input.real_name, &input.phone);
-    let r: Option<(String,Option<String>)> = c.query_row("SELECT id,display_name FROM users WHERE bind_hash=?1", rusqlite::params![hash], |row| Ok((row.get(0)?,row.get(1)?))).ok();
-    match r { Some((uid,dn)) => ok(serde_json::json!({"found":true,"user_id":uid,"display_name":dn})), None => ok(serde_json::json!({"found":false})) }
-}
-
-// ── User Profile Update ──
-#[derive(Deserialize)] pub struct UpdateProfileInput { pub real_name: Option<String>, pub phone: Option<String> }
-pub async fn update_user_profile_handler(headers: HeaderMap, Path(uid): Path<String>, Json(input): Json<UpdateProfileInput>) -> impl IntoResponse {
-    tracing::info!("update_user_profile_handler: user_id={}", uid);
-    // Verify auth: caller must be the user themselves or admin
-    let is_admin = verify_admin(&headers).is_ok();
-    if !is_admin && crate::auth_middleware::verify_auth(&uid, &headers).is_err() {
-        return err(StatusCode::UNAUTHORIZED, "unauthorized");
-    }
-    let c = conn();
-    if let Some(n) = &input.real_name {
-        let enc = encryption::encrypt(n);
-        let _ = c.execute("UPDATE users SET real_name=?1 WHERE id=?2", rusqlite::params![enc,uid]);
-    }
-    if let Some(p) = &input.phone {
-        // 检查手机号是否已被其他用户注册
-        let hash = encryption::sha256_hash(p);
-        let phone_exists: bool = match c.query_row(
-            "SELECT COUNT(*) FROM users WHERE phone_hash = ?1 AND id != ?2",
-            rusqlite::params![hash, uid],
-            |row| row.get::<_, i32>(0),
-        ) {
-            Ok(c) => c > 0,
-            Err(_) => false,
-        };
-        if phone_exists {
-            return err(StatusCode::CONFLICT, "该手机号已被其他用户占用");
-        }
-        let enc = encryption::encrypt(p);
-        let _ = c.execute("UPDATE users SET phone=?1, phone_hash=?2 WHERE id=?3",
-            rusqlite::params![enc, hash, uid]);
-    }
-    // Update bind_hash if both real_name and phone were provided
-    if input.real_name.is_some() || input.phone.is_some() {
-        let current: (Option<String>, Option<String>) = c.query_row(
-            "SELECT real_name, phone FROM users WHERE id=?1", rusqlite::params![uid],
-            |row| Ok((row.get(0)?, row.get(1)?))
-        ).unwrap_or((None, None));
-        // Both fields might be encrypted, decrypt for bind_hash
-        let rn = current.0.as_ref().map(|v| decrypt_maybe(v)).unwrap_or_default();
-        let ph = current.1.as_ref().map(|v| decrypt_maybe(v)).unwrap_or_default();
-        let bhash = encryption::bind_hash(&rn, &ph);
-        let _ = c.execute("UPDATE users SET bind_hash=?1 WHERE id=?2", rusqlite::params![bhash, uid]);
-    }
-    ok(serde_json::json!({"status":"ok"}))
-}
+// 🔴 2026-09-29 已退役：`bind_lookup_handler` + `update_user_profile_handler`
+//
+// | 原函数 | 用途 | 为什么删 |
+// |---|---|---|
+// | `bind_lookup_handler` | 凭「真实姓名 + 手机号」查用户（`bind_hash`） | 客服找回账号场景 |
+// | `update_user_profile_handler` | 更新用户的实名 / 手机号 | 依赖已删列 |
+//
+// 两者依赖的 `users.real_name` · `phone` · `phone_hash` · `bind_hash` 四列
+// 已随「改用邮箱注册」一并删除（白哥 2026-09-29）→ **整块退役，路由同步移除**。
+//
+// 🔑 顺带说明「客服凭姓名+手机号找回账号」这个能力的消失是**有意的**、不是遗漏：
+//    它建立在实名制之上（用户忘了账号 → 报姓名 + 手机号 → 后台查到）。
+//    而本产品是**个人主体、没有客服团队**（记忆：产品主体 = 个人、无公司），
+//    注册也已改为邮箱 → 找回路径变成「**用注册邮箱登录**」，
+//    将来的「邮箱验证 / 找回密码」属登录页批次。
 
 // 🔴 2026-09-29 已退役：Guardian Assignment 管理（超管）—— 依赖已删除的 `guardian_assignments` 表
 
@@ -899,24 +854,22 @@ pub async fn admin_users_export(headers: HeaderMap, Query(query): Query<AdminUse
     let c = conn();
     let pattern = if query.q.is_empty() { "%".to_string() } else { format!("%{}%", query.q) };
     let mut stmt = c.prepare(
-        "SELECT u.id,u.username,u.display_name,u.real_name,u.phone,u.created_at,u.streak_days FROM users u WHERE u.id LIKE ?1 OR u.username LIKE ?1 OR u.display_name LIKE ?1 LIMIT 200"
+        "SELECT u.id,u.username,u.display_name,u.email,u.created_at,u.streak_days FROM users u WHERE u.id LIKE ?1 OR u.username LIKE ?1 OR u.display_name LIKE ?1 LIMIT 200"
     ).unwrap();
-    let mut csv = String::from("user_id,username,display_name,real_name,phone,created_at,streak_days,card_count,review_count,subscription_expires\n");
+    let mut csv = String::from("user_id,username,display_name,email,created_at,streak_days,card_count,review_count,subscription_expires\n");
     if let Ok(rows) = stmt.query_map(rusqlite::params![pattern], |row| {
         let uid: String = row.get(0)?;
         // 🔴 2026-09-29：学习状态已迁端侧 → 统计恒为 0（CSV 列保留，兼容前端）
         let cards: i64 = 0;
         let reviews: i64 = 0;
         let expires: String = c.query_row("SELECT COALESCE(subscription_expires,'') FROM users WHERE id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or_default();
-        let rn_opt: Option<String> = row.get(3).ok().flatten();
-        let ph_opt: Option<String> = row.get(4).ok().flatten();
-        let rn = rn_opt.as_ref().map(|v| if encryption::is_encrypted(v) { encryption::decrypt(v) } else { v.clone() }).unwrap_or_default();
-        let ph = ph_opt.as_ref().map(|v| if encryption::is_encrypted(v) { encryption::decrypt(v) } else { v.clone() }).unwrap_or_default();
+        // 🔴 2026-09-29：`real_name` + `phone` → `email`（索引与列数同步收敛）
+        let email: String = row.get::<_, Option<String>>(3).ok().flatten().unwrap_or_default();
         let dn: String = row.get::<_,Option<String>>(2).ok().flatten().unwrap_or_default();
         let un: String = row.get::<_,String>(1).unwrap_or_default();
-        let dt: String = row.get::<_,String>(5).unwrap_or_default();
-        let sd: i32 = row.get::<_,i32>(6).unwrap_or(0);
-        csv.push_str(&format!("{},{},{},{},{},{},{},{},{},{}\n", uid, un, dn, rn, ph, dt, sd, cards, reviews, expires));
+        let dt: String = row.get::<_,String>(4).unwrap_or_default();
+        let sd: i32 = row.get::<_,i32>(5).unwrap_or(0);
+        csv.push_str(&format!("{},{},{},{},{},{},{},{},{}\n", uid, un, dn, email, dt, sd, cards, reviews, expires));
         Ok::<_, rusqlite::Error>(())
     }) {
         for _ in rows {}
