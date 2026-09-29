@@ -32,9 +32,33 @@ use crate::content_rss::{self, ParsedItem};
 
 /// 抓取用的 UA。
 ///
-/// 🔴 **必须带** —— 实测 `apnews.com` 对无 UA 的请求直接 `403`。
-/// 同时带上项目标识（不伪装成浏览器，便于对方在日志里识别与联系我们）。
-const USER_AGENT: &str = "CoEvo/1.0 (+https://keyievolution.fun; English learning app)";
+/// # 🔴 本值**不能**包含 `://`（2026-09-29 实测定位）
+///
+/// 原先写的是业界惯例形式：`CoEvo/1.0 (+https://keyievolution.fun; English learning app)`
+/// —— RFC 9110 建议 UA 里带联系人 URL。**但实测它会静默失败**：
+///
+/// | UA | NPR 文章页 3 次结果 |
+/// |---|---|
+/// | `CoEvo/1.0` | ✅ 200 200 200 |
+/// | `CoEvo/1.0 (keyievolution.fun)` | ✅ 200 200 |
+/// | `CoEvo/1.0 English learning app` | ✅ 200 200 |
+/// | `CoEvo/1.0 (+https://example.com)` | 🔴 **000 000**（换域名也失败）|
+/// | `CoEvo/1.0 (+https://keyievolution.fun)` | 🔴 **000 000** |
+/// | `CoEvo/1.0 +https://keyievolution.fun` | 🔴 **000**（无括号也失败）|
+///
+/// → 变量隔离后**唯一触发条件就是 UA 里出现 `https://`**（不是域名、不是括号、不是长度）。
+///   表现是**连接被静默断开**（curl 报 `000` 超时，**不是** 403）——
+///   这正是最难排查的那种：看起来像「网络问题」。
+///
+/// ⚠️ 影响面：只有 NPR 出现（它的 CDN/WAF 这么处理）；ECNS / Dev.to / HN 同 UA 正常。
+///    所以别把它当成「全站通用规律」，但也**别把 `://` 加回来**。
+///
+/// # 为什么用 `Mozilla/5.0 (compatible; …)` 而不是裸 `CoEvo/1.0`
+/// `compatible` 是 RFC 里为**非浏览器客户端**准备的关键字 ——
+/// 既让站点知道「这不是浏览器」，又不至于因为「UA 不以 Mozilla 开头」被一部分站点拦。
+/// 实测两者都能过 NPR；取兼容性更好的这个。
+/// 🔑 **没有伪装**：`CoEvo/1.0` 明确标识了身份，只是不带 URL。
+const USER_AGENT: &str = "Mozilla/5.0 (compatible; CoEvo/1.0)";
 
 /// 单次 HTTP 超时（秒）。
 const HTTP_TIMEOUT_SECS: u64 = 20;
@@ -281,6 +305,253 @@ pub async fn fetch_all(now_utc: &str) -> Vec<FetchOutcome> {
     out
 }
 
+/// 一次抓取里最多补抓多少篇正文。
+///
+/// # 🔴 这个数必须 > 「每轮新增条数」，否则存量永远补不完
+///
+/// 实测（2026-09-29）：一轮 feed 抓取新增 **~200 条**（ECNS 100 + HN 60 + Ars 20 + …），
+/// 而抓正文是**每轮限量**的。若限量 = 25、间隔 6h（一天 4 轮）→ 一天只补 **100 篇**
+/// ⇒ **每天欠 100 篇** → 可读率会**持续下降**，且永远追不上。
+///
+/// → 取 **100**：一天 4 轮可补 400 篇 > 新增 200 篇 ✅ 存量会**逐步**被吃掉。
+///
+/// # 为什么是 100 而不是更大
+/// · 对源站的礼貌：100 篇分散在 5 个源 ≈ 每源 20 个请求/轮
+///   （正常用户翻几页也会产生这个量级）
+/// · 耗时：实测约 **1–2 秒/篇**（串行）→ 100 篇 ≈ 2–3 分钟，
+///   远小于 6 小时间隔 ✅
+///
+/// 🔑 判据：**任何「按缺失挑候选」的批处理，限量必须 ≥ 每轮新增** ——
+///    否则它不是「分摊到多轮」，而是**永远落后**。
+pub const MAX_BODY_FETCH_PER_ROUND: usize = 100;
+
+/// 补抓正文：挑「有 url、允许全文、还没 body、也没试过」的条目。
+///
+/// # 🔴 查询条件的三重含义
+/// ```sql
+/// WHERE redistributable = 1 AND body_attempted_at IS NULL AND url <> ''
+/// ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT ?
+/// ```
+/// · `redistributable = 1` —— 按源控制（`redistributable = 0` 的源**有意只存摘要**）
+/// · `body_attempted_at IS NULL` —— **只试一次**（见 `content_pool.body_attempted_at` 的说明）
+/// · **按时间倒序** —— 先抓最新的（用户最可能读到的那批）
+///
+/// ⚠️ **不筛 `body IS NULL`**：`body` 为空的条目本身就满足（NULL 或空串）——
+///    但更重要的是：**`body` 为空且已试过**的不该再抓，这由 `body_attempted_at` 保证。
+///    两个条件叠加就够，不必再写 `body IS NULL`（写了也不影响，只是多余）。
+pub fn pick_body_candidates(conn: &Connection, limit: usize) -> Result<Vec<(i64, String)>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT p.id, p.url FROM content_pool p \
+             LEFT JOIN content_source s ON s.id = p.source_id \
+             WHERE COALESCE(s.redistributable, 0) = 1 \
+               AND p.body_attempted_at IS NULL \
+               AND p.url <> '' \
+               AND (p.body IS NULL OR p.body = '') \
+             ORDER BY COALESCE(p.published_at, p.fetched_at) DESC \
+             LIMIT ?1",
+        )
+        .map_err(|e| format!("prepare body candidates: {}", e))?;
+    let rows = stmt
+        .query_map(rusqlite::params![limit as i64], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+        })
+        .map_err(|e| format!("query body candidates: {}", e))?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("collect body candidates: {}", e))
+}
+
+/// 写入抓到的正文 + **无论成败都记下尝试时间**。
+///
+/// [body] 为 `None` = 这次没拿到正文（页面拿不到 / 结构不匹配 / 正文太短）——
+/// 仍然写 `body_attempted_at`，避免下轮重复尝试。
+///
+/// 🔑 写 `body_attempted_at` 与写 `body` **在同一个 `execute` 里**：
+///    分成两条语句的话，中间失败会出现「记了尝试但没写正文」或反之 ——
+///    两者都会让「只试一次」的语义**静默变形**。
+pub fn save_body(
+    conn: &Connection,
+    id: i64,
+    body: Option<&str>,
+    now_utc: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE content_pool SET body = COALESCE(?1, body), body_attempted_at = ?2, \
+         word_count = CASE WHEN ?1 IS NOT NULL THEN ?3 ELSE word_count END \
+         WHERE id = ?4",
+        rusqlite::params![
+            body,
+            now_utc,
+            // 拿到正文后重算词数（正文比摘要长得多 → 卡片上的「N min」才准）
+            body.map(|b| count_words(b)),
+            id
+        ],
+    )
+    .map_err(|e| format!("save body id={}: {}", id, e))?;
+    Ok(())
+}
+
+/// 抓一篇正文的**结果**（带失败原因）。
+///
+/// # 🔴 为什么不是 `Option<String>`
+/// 失败有三种，**修法完全不同**：
+/// | 原因 | 修法 |
+/// |---|---|
+/// | HTTP 没通 | 网络/UA/超时/对方防爬 |
+/// | 提取到 0 段 | 选择器不匹配 / 负面标记误伤 |
+/// | 提取到了但太短 | 阈值问题 或 页面确实没有正文 |
+/// → 只返回 `None` 的话，日志里只有「失败」，**排查要靠猜**。
+///   （实测踩到：NPR 10 次全失败，但看不出卡在哪一步 —— 于是写了
+///    `examples/body_diag.rs`，它需要这个枚举才能给出结论。）
+/// 🔑 判据：**失败信息要能直接指向下一步动作**，否则等于没报。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BodyOutcome {
+    /// 拿到了可用正文。
+    Got(String),
+    /// HTTP 层失败（网络 / 非 2xx / 超时）。
+    HttpFailed(String),
+    /// HTTP 通了，但**一段正文都没提取到**。
+    NoParagraphs,
+    /// 提取到了，但总长不够（附实际长度）。
+    TooShort(usize),
+}
+
+impl BodyOutcome {
+    pub fn text(&self) -> Option<&str> {
+        match self {
+            BodyOutcome::Got(t) => Some(t),
+            _ => None,
+        }
+    }
+
+    /// 失败原因（供日志/诊断工具用）。
+    ///
+    /// 🔑 返回 `String` 而不是 `&str` —— 日志聚合要把 reason 当 map 的 key，
+    ///    而 `&str` 借用 `self` 会让 map 的生命周期绑死在循环变量上
+    ///    （实测报 E0597: `outcome` does not live long enough）。
+    ///    这里返回值极短、调用频率低，多一次分配**无所谓**。
+    pub fn reason(&self) -> String {
+        match self {
+            BodyOutcome::Got(_) => "ok",
+            BodyOutcome::HttpFailed(_) => "http_failed",
+            BodyOutcome::NoParagraphs => "no_paragraphs",
+            BodyOutcome::TooShort(_) => "too_short",
+        }
+        .to_string()
+    }
+}
+
+/// 抓一篇的正文（**只做 HTTP + 提取**，不碰 DB）。
+///
+/// 判据有两条（都要满足才采纳）：
+/// 1. 提到了段落
+/// 2. **总长度够**（见下面的 `MIN_EXTRACTED_CHARS`）
+pub async fn fetch_article_body(client: &reqwest::Client, url: &str) -> BodyOutcome {
+    /// 提取结果至少这么长才算「抓到了正文」。
+    ///
+    /// 实测参考：NPR 正文 6800+ 字符 · ECNS 4700+ · Dev.to 3000+。
+    /// 取 300 是个**很松**的下限 —— 只用来挡「明显不是正文」的情况
+    /// （cookie 横幅 / 一句导航）。宁松不严：严了会把短讯判死。
+    const MIN_EXTRACTED_CHARS: usize = 300;
+
+    let html = match http_get_text(client, url).await {
+        Ok(h) => h,
+        Err(e) => return BodyOutcome::HttpFailed(e),
+    };
+    let paras = crate::content_extract::extract_article_paragraphs(&html);
+    if paras.is_empty() {
+        return BodyOutcome::NoParagraphs;
+    }
+    let text = paras.join("\n\n");
+    let len = text.chars().count();
+    if len < MIN_EXTRACTED_CHARS {
+        return BodyOutcome::TooShort(len);
+    }
+    BodyOutcome::Got(text)
+}
+
+/// 诊断用：抓一篇并返回结果（供 `examples/body_diag.rs`）。
+///
+/// 🔑 与 [`fetch_bodies_round`] **走同一条代码路径** —— 诊断的必须是真的那条，
+///    否则结论不适用（自己建一份 client / 复刻一遍逻辑都会引入偏差）。
+pub async fn fetch_article_body_diagnostic(url: &str) -> BodyOutcome {
+    match reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .timeout(std::time::Duration::from_secs(HTTP_TIMEOUT_SECS))
+        .build()
+    {
+        Ok(c) => fetch_article_body(&c, url).await,
+        Err(e) => BodyOutcome::HttpFailed(format!("建客户端失败: {}", e)),
+    }
+}
+
+/// 补抓一轮正文（**限量**）。返回 (尝试数, 成功数)。
+///
+/// 🔴 结构与 [`fetch_all`] 一致：**先异步抓（不碰 DB）→ 再同步写**。
+///    不能把 `get_conn()` 的 guard 带进 `await`（见模块头 ①）。
+pub async fn fetch_bodies_round() -> (usize, usize) {
+    let candidates = {
+        let conn = crate::db_pool::get_conn();
+        match pick_body_candidates(&conn, MAX_BODY_FETCH_PER_ROUND) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::error!("content_fetch: 挑正文候选失败: {}", e);
+                return (0, 0);
+            }
+        }
+    };
+    if candidates.is_empty() {
+        return (0, 0);
+    }
+
+    let client = match reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .timeout(std::time::Duration::from_secs(HTTP_TIMEOUT_SECS))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("content_fetch: 建 HTTP 客户端失败: {}", e);
+            return (0, 0);
+        }
+    };
+
+    let mut ok = 0usize;
+    let total = candidates.len();
+    // 🔑 按失败原因分类计数 —— 让日志直接指向「下一步查什么」
+    let mut reasons: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    for (id, url) in candidates {
+        let outcome = fetch_article_body(&client, &url).await;
+        if let Some(text) = outcome.text() {
+            ok += 1;
+            // 🔑 到这里才碰 DB
+            let conn = crate::db_pool::get_conn();
+            if let Err(e) = save_body(&conn, id, Some(text), &now_utc_iso()) {
+                tracing::warn!("content_fetch: 写正文失败 id={}: {}", id, e);
+            }
+        } else {
+            *reasons.entry(outcome.reason()).or_insert(0) += 1;
+            if let BodyOutcome::HttpFailed(e) = &outcome {
+                tracing::debug!("content_fetch: 正文 HTTP 失败 {}: {}", url, e);
+            }
+            // 🔑 失败也要记尝试 —— 否则下轮又挑到它（`body_attempted_at` 的意义）
+            let conn = crate::db_pool::get_conn();
+            if let Err(e) = save_body(&conn, id, None, &now_utc_iso()) {
+                tracing::warn!("content_fetch: 记尝试失败 id={}: {}", id, e);
+            }
+        }
+    }
+    let detail: Vec<String> = reasons.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
+    tracing::info!(
+        "content_fetch: 补抓正文 {}/{} 篇成功{}",
+        ok,
+        total,
+        if detail.is_empty() { String::new() } else { format!(" · 失败分类: {}", detail.join(" ")) }
+    );
+    (total, ok)
+}
+
 /// 当前时刻（**UTC ISO8601 带 `Z`**）—— 与表的时间列口径一致。
 pub fn now_utc_iso() -> String {
     chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
@@ -345,6 +616,12 @@ pub fn start_fetch_scheduler() {
                 outcomes.len(),
                 added
             );
+            // 🆕 抓完 feed 后补抓正文（RSS 通常只给摘要 —— 全文要抓原网页）
+            // 🔑 每轮限量，未抓到的 `body_attempted_at` 仍为空 → 下轮继续
+            let (tried, got) = rt.block_on(fetch_bodies_round());
+            if tried > 0 {
+                tracing::info!("content_fetch: 正文补抓 {}/{}", got, tried);
+            }
             std::thread::sleep(std::time::Duration::from_secs(interval));
         }
     });

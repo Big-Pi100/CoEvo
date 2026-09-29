@@ -28,7 +28,11 @@
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let path = match args.get(1) {
+    // 🆕 诊断模式：每个源各挑 1 条**实际去抓正文**并打印结果
+    //   —— 用来定位「某源的页面为什么抓不到正文」
+    //   跑法：cargo run --example content_probe -- --diag
+    let diag = args.iter().any(|a| a == "--diag");
+    let path = match args.iter().find(|a| !a.starts_with("--") && *a != &args[0]) {
         Some(p) => p.clone(),
         None => {
             let dir = std::env::temp_dir();
@@ -75,6 +79,44 @@ fn main() {
 
     // 落库统计（直接查库核对，不只看抓取器的自述）
     println!();
+    println!("── 补抓正文（RSS 通常只给摘要 → 抓原网页）──");
+    if diag {
+        println!("🔍 诊断模式：每个源各取 1 条，实际抓取并打印提取结果");
+    }
+    println!("开始补抓（真实网络 · 每轮最多 {} 篇）…", api_server::content_fetch::MAX_BODY_FETCH_PER_ROUND);
+    let (tried, got) = rt.block_on(api_server::content_fetch::fetch_bodies_round());
+    println!("  尝试 {} 篇 · 成功 {} 篇", tried, got);
+
+    if diag {
+        println!();
+        println!("── 🔍 逐源诊断（每源 1 条）──");
+        let conn = api_server::db_pool::get_conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT s.name, p.url, \
+                        CASE WHEN p.body IS NOT NULL AND p.body <> '' THEN 1 ELSE 0 END, \
+                        COALESCE(LENGTH(p.body), 0) \
+                 FROM content_source s \
+                 JOIN content_pool p ON p.source_id = s.id \
+                 WHERE p.body_attempted_at IS NOT NULL \
+                 GROUP BY s.id ORDER BY s.id",
+            )
+            .expect("诊断 SQL 失败");
+        let rows: Vec<(String, String, i64, i64)> = stmt
+            .query_map([], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })
+            .expect("诊断查询失败")
+            .flatten()
+            .collect();
+        for (name, url, ok, len) in rows {
+            let mark = if ok == 1 { "✅" } else { "🔴" };
+            println!("  {} {:<22} {} 字符", mark, name, len);
+            println!("       {}", url);
+        }
+    }
+
+    println!();
     println!("── 库内统计 ──");
     let conn = api_server::db_pool::get_conn();
     let total: i64 = conn
@@ -85,7 +127,8 @@ fn main() {
     let mut stmt = conn
         .prepare(
             "SELECT s.name, COUNT(p.id), \
-                    SUM(CASE WHEN p.body IS NOT NULL AND p.body <> '' THEN 1 ELSE 0 END) \
+                    SUM(CASE WHEN p.body IS NOT NULL AND p.body <> '' THEN 1 ELSE 0 END), \
+                    SUM(CASE WHEN p.body_attempted_at IS NOT NULL THEN 1 ELSE 0 END) \
              FROM content_source s LEFT JOIN content_pool p ON p.source_id = s.id \
              GROUP BY s.id ORDER BY s.id",
         )
@@ -96,12 +139,32 @@ fn main() {
                 r.get::<_, String>(0)?,
                 r.get::<_, i64>(1)?,
                 r.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                r.get::<_, Option<i64>>(3)?.unwrap_or(0),
             ))
         })
         .expect("统计查询失败");
-    println!("  {:<24} {:>6} {:>10}", "源", "条数", "其中有全文");
+    println!("  {:<24} {:>6} {:>10} {:>10}", "源", "条数", "有全文", "已尝试抓");
     for row in rows.flatten() {
-        println!("  {:<24} {:>6} {:>10}", row.0, row.1, row.2);
+        println!("  {:<24} {:>6} {:>10} {:>10}", row.0, row.1, row.2, row.3);
+    }
+
+    // 🔑 可读率 —— 白哥关心的那个数字（本轮改动的目标）
+    let with_body: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM content_pool WHERE body IS NOT NULL AND body <> ''",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    println!();
+    if total > 0 {
+        println!(
+            "  🔑 可读率: {}/{} = {:.0}%",
+            with_body,
+            total,
+            100.0 * with_body as f64 / total as f64
+        );
+        println!("     （改动前实测是 16% —— 只有 feed 自带全文的 Ars 与少数 Ask HN）");
     }
 
     // 抽样打印一条，肉眼核对内容质量（标题/时间/摘要是不是真的）

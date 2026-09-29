@@ -499,6 +499,18 @@ CREATE TABLE IF NOT EXISTS content_pool (
     word_count   INTEGER,                             -- 生词密度参考
     score        INTEGER,                             -- 热帖分数（HN · 供「热帖」排序）
     comments     INTEGER,                             -- 热帖评论数（HN）
+    -- 🆕 抓正文的**尝试记录**（UTC ISO8601 带 `Z`）
+    --
+    -- # 🔴 为什么需要这一列（不是「以后可能有用」）
+    -- 补抓正文的查询是「挑缺 body 的去抓」。若**不记录尝试**：
+    -- · 抓失败（网络/页面结构变了/对方防爬）的条目**每轮都被重新挑中**
+    -- · 每轮都白发一次请求，且**永远占着配额** → 真正需要抓的被挤掉
+    -- → 记录「试过了」= 天然只试一次。
+    --
+    -- ⚠️ **成功也要写**（不只是失败）：不然「成功但正文为空」的条目同样会被反复挑中。
+    -- 🔑 判据：**任何「按缺失挑候选」的批处理，都要有「试过」的记录** ——
+    --    否则失败项会变成永久噪音。同族：`content_source.fail_count` 也是这个道理。
+    body_attempted_at TEXT,
     UNIQUE (url)                                      -- 🔑 幂等键：同一 URL 只入库一次
 );
 CREATE INDEX IF NOT EXISTS idx_cpool_cat_time ON content_pool (category, published_at DESC);
@@ -655,6 +667,12 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
         //      所以严格说列级 UNIQUE 也能用；但部分索引把「唯一性只约束真实邮箱」
         //      这个意图**写在定义里**，读代码的人不必去查 NULL 语义。
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL",
+        // ── 🆕 2026-09-29 内容池：抓正文的尝试记录 ──
+        // 新库走 `CONTENT_SCHEMA_SQL` 已含此列 → 这里对它们报 `duplicate column` → 容错放行。
+        // 🔴 对**已存在的库**（本地开发库 / 将来的生产库）这是**唯一**的补列途径 ——
+        //    `CREATE TABLE IF NOT EXISTS` 见到表就跳过，**不会**比对结构。
+        //    这正是本文件反复强调的「加列必须写迁移」。
+        "ALTER TABLE content_pool ADD COLUMN body_attempted_at TEXT",
     ];
     for sql in migrations {
         match conn.execute(sql, []) {
@@ -879,6 +897,8 @@ mod tests {
         for c in [
             "id", "source_id", "title", "summary", "body", "url", "author",
             "category", "published_at", "fetched_at", "word_count", "score", "comments",
+            // 🆕 抓正文的尝试记录 —— 缺了它「只试一次」的语义会静默失效
+            "body_attempted_at",
         ] {
             assert!(cols.contains(&c.to_string()), "content_pool 缺 {}", c);
         }

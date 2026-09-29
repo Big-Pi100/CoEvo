@@ -49,6 +49,8 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 #   📌 若将来要接 Atom / JSON Feed，再引 `feed-rs`（构建环境允许时）。
 # HTML→纯文本用已依赖的 `regex`（本项目的 `compliance.rs` 已是这个路子）。
 roxmltree = "0.20"
+# HTML 解析（抓文章正文用）—— RSS 通常只给摘要，全文要抓原网页
+scraper = "0.20"
 
 [dev-dependencies]
 dotenvy = "0.15"
