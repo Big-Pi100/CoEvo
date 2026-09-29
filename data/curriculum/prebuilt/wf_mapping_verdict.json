@@ -1,0 +1,725 @@
+[
+ {
+  "_note": "✅ 人工 + LLM 复核后的判定表：48 条里只有 7 条确认真错（其余 38 条为机械判据误报）。这 7 条已由 scripts/fix_word_form_mapping.py 写入 word.db。"
+ },
+ {
+  "form": "amped",
+  "current": "amp",
+  "cur_lv": 3,
+  "mine": [
+   "am"
+  ],
+  "llm": "amp",
+  "llm_in_lib": true,
+  "llm_lv": "B1",
+  "conf": 0.9,
+  "is_own": true,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "amping",
+  "current": "amp",
+  "cur_lv": 3,
+  "mine": [
+   "am"
+  ],
+  "llm": "amp",
+  "llm_in_lib": true,
+  "llm_lv": "B1",
+  "conf": 0.9,
+  "is_own": false,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "bearded",
+  "current": "beard",
+  "cur_lv": 3,
+  "mine": [
+   "bear"
+  ],
+  "llm": "beard",
+  "llm_in_lib": true,
+  "llm_lv": "B1",
+  "conf": 0.95,
+  "is_own": true,
+  "corpus": true,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "bearding",
+  "current": "beard",
+  "cur_lv": 3,
+  "mine": [
+   "bear"
+  ],
+  "llm": "beard",
+  "llm_in_lib": true,
+  "llm_lv": "B1",
+  "conf": 0.85,
+  "is_own": false,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "beded",
+  "current": "bede",
+  "cur_lv": 5,
+  "mine": [
+   "be"
+  ],
+  "llm": "bede",
+  "llm_in_lib": true,
+  "llm_lv": "C1",
+  "conf": 0.6,
+  "is_own": false,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "beding",
+  "current": "bede",
+  "cur_lv": 5,
+  "mine": [
+   "be"
+  ],
+  "llm": "bede",
+  "llm_in_lib": true,
+  "llm_lv": "C1",
+  "conf": 0.6,
+  "is_own": false,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "breathed",
+  "current": "breath",
+  "cur_lv": 3,
+  "mine": [
+   "breathe"
+  ],
+  "llm": "breathe",
+  "llm_in_lib": true,
+  "llm_lv": "A1",
+  "conf": 0.95,
+  "is_own": false,
+  "corpus": true,
+  "verdict": "LLM 认同我的候选"
+ },
+ {
+  "form": "breathing",
+  "current": "breath",
+  "cur_lv": 3,
+  "mine": [
+   "breathe"
+  ],
+  "llm": "breathe",
+  "llm_in_lib": true,
+  "llm_lv": "A1",
+  "conf": 0.95,
+  "is_own": true,
+  "corpus": true,
+  "verdict": "LLM 认同我的候选"
+ },
+ {
+  "form": "buried",
+  "current": "buri",
+  "cur_lv": 4,
+  "mine": [
+   "bury"
+  ],
+  "llm": "bury",
+  "llm_in_lib": true,
+  "llm_lv": "A2",
+  "conf": 0.95,
+  "is_own": false,
+  "corpus": true,
+  "verdict": "LLM 认同我的候选"
+ },
+ {
+  "form": "caned",
+  "current": "cane",
+  "cur_lv": 4,
+  "mine": [
+   "can"
+  ],
+  "llm": "cane",
+  "llm_in_lib": true,
+  "llm_lv": "B2",
+  "conf": 0.95,
+  "is_own": false,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "caning",
+  "current": "cane",
+  "cur_lv": 4,
+  "mine": [
+   "can"
+  ],
+  "llm": "cane",
+  "llm_in_lib": true,
+  "llm_lv": "B2",
+  "conf": 0.95,
+  "is_own": true,
+  "corpus": true,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "cometed",
+  "current": "comet",
+  "cur_lv": 3,
+  "mine": [
+   "come"
+  ],
+  "llm": "comet",
+  "llm_in_lib": true,
+  "llm_lv": "B1",
+  "conf": 0.85,
+  "is_own": false,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "cometing",
+  "current": "comet",
+  "cur_lv": 3,
+  "mine": [
+   "come"
+  ],
+  "llm": "comet",
+  "llm_in_lib": true,
+  "llm_lv": "B1",
+  "conf": 0.85,
+  "is_own": false,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "domed",
+  "current": "dome",
+  "cur_lv": 3,
+  "mine": [
+   "do"
+  ],
+  "llm": "dome",
+  "llm_in_lib": true,
+  "llm_lv": "B1",
+  "conf": 0.95,
+  "is_own": true,
+  "corpus": true,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "doming",
+  "current": "dome",
+  "cur_lv": 3,
+  "mine": [
+   "do"
+  ],
+  "llm": "dome",
+  "llm_in_lib": true,
+  "llm_lv": "B1",
+  "conf": 0.85,
+  "is_own": false,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "dosed",
+  "current": "dose",
+  "cur_lv": 4,
+  "mine": [
+   "do"
+  ],
+  "llm": "dose",
+  "llm_in_lib": true,
+  "llm_lv": "B2",
+  "conf": 0.95,
+  "is_own": false,
+  "corpus": true,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "dosing",
+  "current": "dose",
+  "cur_lv": 4,
+  "mine": [
+   "do"
+  ],
+  "llm": "dose",
+  "llm_in_lib": true,
+  "llm_lv": "B2",
+  "conf": 0.9,
+  "is_own": false,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "doved",
+  "current": "dove",
+  "cur_lv": 4,
+  "mine": [
+   "do"
+  ],
+  "llm": "dove",
+  "llm_in_lib": true,
+  "llm_lv": "B2",
+  "conf": 0.85,
+  "is_own": false,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "doving",
+  "current": "dove",
+  "cur_lv": 4,
+  "mine": [
+   "do"
+  ],
+  "llm": "dove",
+  "llm_in_lib": true,
+  "llm_lv": "B2",
+  "conf": 0.6,
+  "is_own": false,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "fines",
+  "current": "fine",
+  "cur_lv": 4,
+  "mine": [
+   "fin"
+  ],
+  "llm": "fine",
+  "llm_in_lib": true,
+  "llm_lv": "B2",
+  "conf": 0.95,
+  "is_own": true,
+  "corpus": true,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "havened",
+  "current": "haven",
+  "cur_lv": 3,
+  "mine": [
+   "have"
+  ],
+  "llm": "haven",
+  "llm_in_lib": true,
+  "llm_lv": "B1",
+  "conf": 0.85,
+  "is_own": true,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "havening",
+  "current": "haven",
+  "cur_lv": 3,
+  "mine": [
+   "have"
+  ],
+  "llm": "haven",
+  "llm_in_lib": true,
+  "llm_lv": "B1",
+  "conf": 0.9,
+  "is_own": true,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "jointed",
+  "current": "joint",
+  "cur_lv": 4,
+  "mine": [
+   "join"
+  ],
+  "llm": "joint",
+  "llm_in_lib": true,
+  "llm_lv": "B2",
+  "conf": 0.95,
+  "is_own": true,
+  "corpus": true,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "lieued",
+  "current": "lieu",
+  "cur_lv": 4,
+  "mine": [
+   "lie"
+  ],
+  "llm": null,
+  "llm_in_lib": null,
+  "llm_lv": null,
+  "conf": 0.3,
+  "is_own": true,
+  "corpus": false,
+  "verdict": "LLM 说无来源"
+ },
+ {
+  "form": "lieuing",
+  "current": "lieu",
+  "cur_lv": 4,
+  "mine": [
+   "lie"
+  ],
+  "llm": null,
+  "llm_in_lib": null,
+  "llm_lv": null,
+  "conf": 0.3,
+  "is_own": true,
+  "corpus": false,
+  "verdict": "LLM 说无来源"
+ },
+ {
+  "form": "marines",
+  "current": "marine",
+  "cur_lv": 3,
+  "mine": [
+   "marin"
+  ],
+  "llm": "marine",
+  "llm_in_lib": true,
+  "llm_lv": "B1",
+  "conf": 0.95,
+  "is_own": true,
+  "corpus": true,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "mines",
+  "current": "mine",
+  "cur_lv": 4,
+  "mine": [
+   "min"
+  ],
+  "llm": "mine",
+  "llm_in_lib": true,
+  "llm_lv": "B2",
+  "conf": 0.95,
+  "is_own": true,
+  "corpus": true,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "pales",
+  "current": "pale",
+  "cur_lv": 3,
+  "mine": [
+   "pal"
+  ],
+  "llm": "pale",
+  "llm_in_lib": true,
+  "llm_lv": "B1",
+  "conf": 0.95,
+  "is_own": false,
+  "corpus": true,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "passed",
+  "current": "pas",
+  "cur_lv": 3,
+  "mine": [
+   "pass"
+  ],
+  "llm": "pass",
+  "llm_in_lib": true,
+  "llm_lv": "A2",
+  "conf": 0.95,
+  "is_own": false,
+  "corpus": true,
+  "verdict": "LLM 认同我的候选"
+ },
+ {
+  "form": "passing",
+  "current": "pas",
+  "cur_lv": 3,
+  "mine": [
+   "pass"
+  ],
+  "llm": "pass",
+  "llm_in_lib": true,
+  "llm_lv": "A2",
+  "conf": 0.9,
+  "is_own": true,
+  "corpus": true,
+  "verdict": "LLM 认同我的候选"
+ },
+ {
+  "form": "pasted",
+  "current": "past",
+  "cur_lv": 3,
+  "mine": [
+   "paste"
+  ],
+  "llm": "paste",
+  "llm_in_lib": true,
+  "llm_lv": "A2",
+  "conf": 0.95,
+  "is_own": false,
+  "corpus": true,
+  "verdict": "LLM 认同我的候选"
+ },
+ {
+  "form": "pasting",
+  "current": "past",
+  "cur_lv": 3,
+  "mine": [
+   "paste"
+  ],
+  "llm": "paste",
+  "llm_in_lib": true,
+  "llm_lv": "A2",
+  "conf": 0.9,
+  "is_own": false,
+  "corpus": true,
+  "verdict": "LLM 认同我的候选"
+ },
+ {
+  "form": "pickled",
+  "current": "pickle",
+  "cur_lv": 4,
+  "mine": [
+   "pick"
+  ],
+  "llm": "pickle",
+  "llm_in_lib": true,
+  "llm_lv": "B2",
+  "conf": 0.95,
+  "is_own": true,
+  "corpus": true,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "pickling",
+  "current": "pickle",
+  "cur_lv": 4,
+  "mine": [
+   "pick"
+  ],
+  "llm": "pickle",
+  "llm_in_lib": true,
+  "llm_lv": "B2",
+  "conf": 0.9,
+  "is_own": true,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "putted",
+  "current": "putt",
+  "cur_lv": 4,
+  "mine": [
+   "put"
+  ],
+  "llm": "putt",
+  "llm_in_lib": true,
+  "llm_lv": "B2",
+  "conf": 0.95,
+  "is_own": false,
+  "corpus": true,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "ridged",
+  "current": "ridge",
+  "cur_lv": 4,
+  "mine": [
+   "rid"
+  ],
+  "llm": "ridge",
+  "llm_in_lib": true,
+  "llm_lv": "B2",
+  "conf": 0.95,
+  "is_own": false,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "ridging",
+  "current": "ridge",
+  "cur_lv": 4,
+  "mine": [
+   "rid"
+  ],
+  "llm": "ridge",
+  "llm_in_lib": true,
+  "llm_lv": "B2",
+  "conf": 0.9,
+  "is_own": false,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "sanes",
+  "current": "sane",
+  "cur_lv": 4,
+  "mine": [
+   "san"
+  ],
+  "llm": "sane",
+  "llm_in_lib": true,
+  "llm_lv": "B2",
+  "conf": 0.85,
+  "is_own": false,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "seeded",
+  "current": "seed",
+  "cur_lv": 2,
+  "mine": [
+   "see"
+  ],
+  "llm": "seed",
+  "llm_in_lib": true,
+  "llm_lv": "A2",
+  "conf": 0.9,
+  "is_own": true,
+  "corpus": true,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "seeding",
+  "current": "seed",
+  "cur_lv": 2,
+  "mine": [
+   "see"
+  ],
+  "llm": "seed",
+  "llm_in_lib": true,
+  "llm_lv": "A2",
+  "conf": 0.9,
+  "is_own": true,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "singled",
+  "current": "single",
+  "cur_lv": 3,
+  "mine": [
+   "sing"
+  ],
+  "llm": "single",
+  "llm_in_lib": true,
+  "llm_lv": "B1",
+  "conf": 0.95,
+  "is_own": false,
+  "corpus": true,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "singling",
+  "current": "single",
+  "cur_lv": 3,
+  "mine": [
+   "sing"
+  ],
+  "llm": "single",
+  "llm_in_lib": true,
+  "llm_lv": "B1",
+  "conf": 0.95,
+  "is_own": false,
+  "corpus": true,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "spited",
+  "current": "spite",
+  "cur_lv": 4,
+  "mine": [
+   "spit"
+  ],
+  "llm": "spite",
+  "llm_in_lib": true,
+  "llm_lv": "B2",
+  "conf": 0.85,
+  "is_own": false,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "spiting",
+  "current": "spite",
+  "cur_lv": 4,
+  "mine": [
+   "spit"
+  ],
+  "llm": "spite",
+  "llm_in_lib": true,
+  "llm_lv": "B2",
+  "conf": 0.9,
+  "is_own": false,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "stingied",
+  "current": "stingy",
+  "cur_lv": 4,
+  "mine": [
+   "sting"
+  ],
+  "llm": "stingy",
+  "llm_in_lib": true,
+  "llm_lv": "B2",
+  "conf": 0.6,
+  "is_own": true,
+  "corpus": false,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "stingying",
+  "current": "stingy",
+  "cur_lv": 4,
+  "mine": [
+   "sting"
+  ],
+  "llm": null,
+  "llm_in_lib": null,
+  "llm_lv": null,
+  "conf": 0.3,
+  "is_own": true,
+  "corpus": false,
+  "verdict": "LLM 说无来源"
+ },
+ {
+  "form": "wearied",
+  "current": "weary",
+  "cur_lv": 4,
+  "mine": [
+   "wear"
+  ],
+  "llm": "weary",
+  "llm_in_lib": true,
+  "llm_lv": "B2",
+  "conf": 0.95,
+  "is_own": false,
+  "corpus": true,
+  "verdict": "LLM 不认同(我误报)"
+ },
+ {
+  "form": "wearying",
+  "current": "weary",
+  "cur_lv": 4,
+  "mine": [
+   "wear"
+  ],
+  "llm": "weary",
+  "llm_in_lib": true,
+  "llm_lv": "B2",
+  "conf": 0.9,
+  "is_own": true,
+  "corpus": true,
+  "verdict": "LLM 不认同(我误报)"
+ }
+]

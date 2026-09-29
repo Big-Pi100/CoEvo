@@ -1,0 +1,533 @@
+[
+ {
+  "_note": "⚠️ 输入清单：48 条「映射可疑」候选（由 audit_word_form_mappings.py 产出）。仅用于让契约 v6 返回 derived_from；不是卡片字段候选。"
+ },
+ {
+  "spelling": "amped",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=amp（词性 n L3），候选 am"
+  ]
+ },
+ {
+  "spelling": "amping",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=amp（词性 n L3），候选 am"
+  ]
+ },
+ {
+  "spelling": "bearded",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=beard（词性 n L3），候选 bear·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "bearding",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=beard（词性 n L3），候选 bear"
+  ]
+ },
+ {
+  "spelling": "beded",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=bede（词性 n L5），候选 be"
+  ]
+ },
+ {
+  "spelling": "beding",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=bede（词性 n L5），候选 be"
+  ]
+ },
+ {
+  "spelling": "breathed",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=breath（词性 n L3），候选 breathe·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "breathing",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=breath（词性 n L3），候选 breathe·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "buried",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=buri（词性 n L4），候选 bury·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "caned",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=cane（词性 n L4），候选 can"
+  ]
+ },
+ {
+  "spelling": "caning",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=cane（词性 n L4），候选 can·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "cometed",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=comet（词性 n L3），候选 come"
+  ]
+ },
+ {
+  "spelling": "cometing",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=comet（词性 n L3），候选 come"
+  ]
+ },
+ {
+  "spelling": "domed",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=dome（词性 n L3），候选 do·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "doming",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=dome（词性 n L3），候选 do"
+  ]
+ },
+ {
+  "spelling": "dosed",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=dose（词性 n L4），候选 do·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "dosing",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=dose（词性 n L4），候选 do"
+  ]
+ },
+ {
+  "spelling": "doved",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=dove（词性 n L4），候选 do"
+  ]
+ },
+ {
+  "spelling": "doving",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=dove（词性 n L4），候选 do"
+  ]
+ },
+ {
+  "spelling": "fines",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=fine（词性 adj L4），候选 fin·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "havened",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=haven（词性 n L3），候选 have"
+  ]
+ },
+ {
+  "spelling": "havening",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=haven（词性 n L3），候选 have"
+  ]
+ },
+ {
+  "spelling": "lieued",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=lieu（词性 n L4），候选 lie"
+  ]
+ },
+ {
+  "spelling": "lieuing",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=lieu（词性 n L4），候选 lie"
+  ]
+ },
+ {
+  "spelling": "marines",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=marine（词性 adj L3），候选 marin·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "mines",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=mine（词性 pron L4），候选 min·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "pales",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=pale（词性 adj L3），候选 pal·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "passed",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=pas（词性 n L3），候选 pass·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "passing",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=pas（词性 n L3），候选 pass·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "pasted",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=past（词性 adj L3），候选 paste·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "pasting",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=past（词性 adj L3），候选 paste·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "pickled",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=pickle（词性 n L4），候选 pick·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "pickling",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=pickle（词性 n L4），候选 pick"
+  ]
+ },
+ {
+  "spelling": "putted",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=putt（词性 n L4），候选 put·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "ridged",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=ridge（词性 n L4），候选 rid"
+  ]
+ },
+ {
+  "spelling": "ridging",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=ridge（词性 n L4），候选 rid"
+  ]
+ },
+ {
+  "spelling": "sanes",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=sane（词性 adj L4），候选 san"
+  ]
+ },
+ {
+  "spelling": "seeded",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=seed（词性 n L2），候选 see·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "seeding",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=seed（词性 n L2），候选 see"
+  ]
+ },
+ {
+  "spelling": "singled",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=single（词性 adj L3），候选 sing·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "singling",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=single（词性 adj L3），候选 sing·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "spited",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=spite（词性 n L4），候选 spit"
+  ]
+ },
+ {
+  "spelling": "spiting",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=spite（词性 n L4），候选 spit"
+  ]
+ },
+ {
+  "spelling": "stingied",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=stingy（词性 adj L4），候选 sting"
+  ]
+ },
+ {
+  "spelling": "stingying",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=stingy（词性 adj L4），候选 sting"
+  ]
+ },
+ {
+  "spelling": "wearied",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=weary（词性 adj L4），候选 wear·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "wearying",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=weary（词性 adj L4），候选 wear·form 在真实语料"
+  ]
+ },
+ {
+  "spelling": "jointed",
+  "entry_type": null,
+  "ipa": null,
+  "signals": [
+   "M1"
+  ],
+  "reasons": [
+   "当前映射 base=joint（词性 adj L4），候选 join·form 在真实语料"
+  ]
+ }
+]

@@ -43,8 +43,31 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, 'data', 'word.db')
 DST = os.path.join(ROOT, 'app', 'assets', 'word.db')
 
-#: 需要逐内容比对的表（比 `content_hash` 列 —— 行数相同也可能内容不同）
-HASH_TABLES = ('card', 'aggregate_page')
+#: 逐内容比对的表 —— 🆕 **已改为「所有表」**
+#
+# 🔴 **踩坑（2026-09-29 · 就在本脚本上）**：第一版只对 `card` / `aggregate_page` 比内容哈希，
+#    其余表只比 `COUNT(*)`。于是修完 `word_form` 的 7 行映射后（**行数不变、内容变了**），
+#    本脚本报「✅ 两份库一致」—— **漏判**，`app/assets/word.db` 实际还是旧的。
+#
+#    → 🔑 这正是「**比行数不够**」那条判据，**我只在 `card` 上修了，其余表照旧有同一个洞**。
+#      正解不是「再补一张表」，而是**对所有表都按内容比**（泛化，而非补丁）。
+HASH_ALL_TABLES = True
+
+
+def table_digest(con, t):
+    """一张表的**全内容摘要**（**与行序无关**）。
+
+    做法：逐行哈希 → **排序后**再串起来哈希。
+    🔑 排序是为了与行序无关 —— 否则「同一份数据的两种物理顺序」会被误判为不同
+       （无 `ORDER BY` 时 SQLite 不保证行的顺序）。
+    """
+    h = hashlib.md5()
+    parts = []
+    for row in con.execute(f'SELECT * FROM "{t}"'):
+        parts.append(hashlib.md5(repr(row).encode()).hexdigest())
+    parts.sort()
+    h.update(''.join(parts).encode())
+    return h.hexdigest(), len(parts)
 
 
 def connect_ro(p):
@@ -52,27 +75,20 @@ def connect_ro(p):
 
 
 def snapshot(path):
-    """取一份可比对快照：表集合 · 行数 · 内容 hash 集合 · integrity。"""
+    """取一份可比对快照：表集合 · 行数 · **每张表的全内容摘要** · integrity。"""
     if not os.path.exists(path):
         return None
     con = connect_ro(path)
     tables = sorted(r[0] for r in con.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
-    counts = {}
+    counts, digests = {}, {}
     for t in tables:
-        counts[t] = con.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0]
-    hashes = {}
-    for t in HASH_TABLES:
-        if t in tables:
-            col = 'content_hash' if t == 'card' else 'content'
-            try:
-                hashes[t] = {(r[0], hashlib.md5((r[1] or '').encode()).hexdigest())
-                             for r in con.execute(f'SELECT rowid, {col} FROM "{t}"')}
-            except sqlite3.OperationalError:
-                pass
+        d, n = table_digest(con, t)
+        digests[t] = d
+        counts[t] = n
     integrity = con.execute('PRAGMA integrity_check').fetchone()[0]
     con.close()
-    return {'tables': tables, 'counts': counts, 'hashes': hashes, 'integrity': integrity}
+    return {'tables': tables, 'counts': counts, 'digests': digests, 'integrity': integrity}
 
 
 def diff(a, b):
@@ -81,15 +97,14 @@ def diff(a, b):
     if set(a['tables']) != set(b['tables']):
         problems.append(f'表集合不同: 源独有 {set(a["tables"]) - set(b["tables"])} · '
                         f'副本独有 {set(b["tables"]) - set(a["tables"])}')
+    detail = {}
     for t in sorted(set(a['counts']) & set(b['counts'])):
         if a['counts'][t] != b['counts'][t]:
             problems.append(f'{t}: 行数 {a["counts"][t]} → {b["counts"][t]}')
-    detail = {}
-    for t in sorted(set(a['hashes']) & set(b['hashes'])):
-        d = a['hashes'][t] ^ b['hashes'][t]
-        if d:
-            problems.append(f'{t}: **{len(d)} 行的内容不同**（行数相同也查得出）')
-            detail[t] = len(d)
+        elif HASH_ALL_TABLES and a['digests'].get(t) != b['digests'].get(t):
+            # 🔑 行数相同、内容不同 —— 只有比内容摘要才发现得到
+            problems.append(f'{t}: **内容不同（行数都是 {a["counts"][t]}）**')
+            detail[t] = a['counts'][t]
     for name, s in (('源', a), ('副本', b)):
         if s['integrity'] != 'ok':
             problems.append(f'{name} integrity_check = {s["integrity"]}')
@@ -144,7 +159,7 @@ def main():
     for p in problems:
         print(f'   · {p}')
     if detail:
-        print('   提示：`--check` 只报数；具体是哪几条可对比 `card.content_hash` 集合。')
+        print('   提示：`--check` 只报表级差异；要定位到「哪几条」，可直接比两库的同一张表。')
     return 1
 
 

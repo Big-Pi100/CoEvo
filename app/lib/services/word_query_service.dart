@@ -92,13 +92,25 @@ class WordQueryService {
   /// 词形还原：任意变形 → 词元。
   ///
   /// 返回 `null` 表示该拼写不在 `word_form` 里（可能是词库外的新词）。
+  ///
+  /// 🔑 **`ORDER BY base` 不是多余的**（2026-09-29 加）：
+  /// `word_form` 的主键是 **`(form, base)`** —— 设计上允许**一个词形映射到多个词元**
+  /// （`leaves` 既是 `leaf`「树叶」的复数，也是 `leave`「离开」的第三人称单数）。
+  /// 没有 `ORDER BY` 时，`LIMIT 1` 取哪一行**由查询计划决定**，SQL 层面**无任何保证**
+  /// （实测：走 PK 索引时恰好返回 `base` 字母序最小的，但索引一变顺序就变）。
+  ///
+  /// 加上 `ORDER BY base` 后行为**确定**：多映射时稳定取**字母序最小**的 base。
+  ///
+  /// ⚠️ 注意这只是**确定化**，不是**消歧** —— 「多映射时该取哪个」仍需语义判断，
+  ///    属未决问题（见 `docs/design/llm-card-online-path-2026-09-29.md` §18.1）。
+  ///    当前词库实测 **0 个 form 有多映射**，所以这条只作**健壮性保障**。
   Future<LemmaResult?> analyzeForm(String rawText) async {
     final form = _normalize(rawText);
     if (form.isEmpty) return null;
 
     final rows = await _db.rawQuery(
       'SELECT form, base, rule, kind, anchor, depth, in_vocab, action '
-      'FROM word_form WHERE form = ? LIMIT 1',
+      'FROM word_form WHERE form = ? ORDER BY base LIMIT 1',
       [form],
     );
     if (rows.isEmpty) return null;

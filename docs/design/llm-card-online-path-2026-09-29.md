@@ -1388,3 +1388,127 @@ CEFR 等级是**真实测量数据**，不是标注产物。
 `/tmp` **不是** Git Bash 的 `/tmp` → **静默建了个空库** → 报错变成「**no such table: word**」。
 **正是 `MEMORY.md` 里那条「`sqlite3.connect()` 静默建空库 → 路径写错伪装成表不存在」**。
 ✅ 修正：用项目内路径 + **连上前断言文件存在且非空** + **连上后断言 `word` 表在**。
+
+---
+
+## 二十、✅ 执行已批两项（2026-09-29 08:5x）
+
+> 白哥：「同意」→ 批了 ① A 档 48 条 LLM 复核后修 base + ②(a) 端侧加 ORDER BY
+
+### 20.1 ① 复核结果：48 → **7**（机械判据误报 **79%**）
+
+**用的工具就是契约 v6 的 `derived_from` 字段**（规则 2 明文：`used→use` · `ran→run` · `taught→teach`）
+—— 正是「这个词形从哪个词来」，**不另造 prompt**。48 条 → **¥0.3115** · 8s · 0 失败。
+
+| 判定 | 条数 | 说明 |
+|---|---:|---|
+| 🔴 **LLM 认同我的候选** → 确认真错 | **7** | 见下表 |
+| ✅ **LLM 不认同**（现状是对的） | **38** | 我的 A 档**误报** |
+| ⚫ LLM 说「无来源」（信 0.3） | 3 | `lieued`/`lieuing`/`stingying` —— 本身是垃圾形，两边都不可信 → **不动** |
+
+**误报率 38/48 = 79%** —— 与我上一条预告的「~85%」基本吻合。
+误报样本：`amped→amp`（`amp` 能作动词）· `bearded→beard` · `seeded→seed` · `singled→single`
+· `jointed→joint` · `mines→mine` · `pales→pale` —— **这些 base 本身就能作动词**，只是卡片只标了主要词性。
+
+**7 条真错（全部已写库）**：
+
+| form | 现状（错） | 应为 | LLM 信度 | 病根 |
+|---|---|---|---:|---|
+| `buried` | `buri` 「贝叶棕」B2 n | **`bury`「埋葬」A2 v** | 0.95 | 同形近亲 |
+| `breathed` | `breath`「呼吸」n | **`breathe` v A1** | 0.95 | 同形近亲 |
+| `breathing` | `breath` n | **`breathe` v A1** | 0.95 | 同上 |
+| `passed` | `pas` n C1 | **`pass` v A2** | 0.95 | 同形近亲 |
+| `passing` | `pas` n | **`pass` v A2** | 0.90 | 同上 |
+| `pasted` | `past`「过去的」adj | **`paste`「粘贴」v A2** | 0.95 | 同形近亲 |
+| `pasting` | `past` adj | **`paste` v A2** | 0.90 | 同上 |
+
+🔑 **7/7 是同一个病根**：**`form` 被配到了「同形的另一个词」**（不是「配错了原形」）——
+`breathe` vs `breath` · `pass` vs `pas` · `paste` vs `past`，全是 **A1/A2 高频动词被配成更冷僻的同形词**。
+与 §17 的卡片字段污染、`S3a/S3b` 的音标污染是**同一类病**。
+
+**端侧视角验证**（模拟 `analyzeForm` 的 `LIMIT 1`）：
+```
+breathed → breathe「呼吸」· buried → bury「埋葬」· passed → pass「经过」· pasted → paste「粘贴」
+```
+
+### 20.2 写库：7 行（三列一起改）
+
+🆕 `scripts/fix_word_form_mapping.py` —— **固化修正表在脚本里**（只有 7 行，逐行带 LLM 信度）。
+
+🔑 **必须改三列**：`base` + `anchor` + `anchor_id`
+—— `anchor == base` 是常态（23,525/24,140），`anchor_id → anchor 所指词条`。
+只改 `base` 会让三者互相矛盾，且 `incremental_clustering.remove_word()` 靠 `anchor_id` 联动删行
+→ **指错会误删别的词的映射**。
+
+**脚本带的守卫**（缺一不可）：三断言连库 · 逐行验「现状与记录相符」· 验「目标在 word 表」
+· 验「无 PK 冲突」· 事务 · 读回断言 · **断言其它列逐字段未变** · 幂等（重跑 0 行）· 备份。
+
+**演练 → 真库**：先在副本上跑通（发现并修了我自己写错的终检断言，见 §20.4），再写 7 行。
+
+| 验证 | 结果 |
+|---|---|
+| 映射审计 A 档 | 48 → **41（−7）** |
+| 自洽 | 10,714 → **10,721（+7）** |
+| C 档歧义 | 330 → **337（+7）** —— `buried` 仍有 2 个拼写候选，只是现在**取对了**那个 |
+| 字段自洽 S4 | 43 → **42** |
+| 结构 / 聚合页 / 两份库 | 13/13 · 12/12 · **一致** |
+
+（A −7、自洽 +7、C +7 三个数字**精确对上** —— 同一行可同时计入「自洽」与「歧义」，与脚本逻辑一致）
+
+### 20.3 ②(a) 端侧加 `ORDER BY base`
+
+`app/lib/services/word_query_service.dart` —— **1 行 SQL + 注释**：
+
+```dart
+- 'FROM word_form WHERE form = ? LIMIT 1',
++ 'FROM word_form WHERE form = ? ORDER BY base LIMIT 1',
+```
+
+🔑 **这是「确定化」，不是「消歧」** —— 多映射时稳定取**字母序最小**的 base；
+「该取哪个」仍需语义判断（未决）。当前实测 **0 个 form 有多映射** → 本条纯**健壮性保障**。
+
+⚠️ **改完需白哥编译验证** —— 我这边 `flutter`/`dart analyze` 都起不来
+（`dart analyze` 报 `CreateFile failed 231` 管道错误）。
+我做了能做的静态自查：括号平衡（89/89 · 236/236 · 110/110）· 单引号成对（292，偶数）
+· `?` 占位符 1 个对 1 个参数；并用真 SQLite 验证了新 SQL 语法有效。
+
+### 20.4 🔴🔴 顺带抓到我自己的工具一个 bug（同一判据没泛化）
+
+**症状**：同步脚本报「✅ 两份库一致」，但 `git status` 只显示 `data/word.db` 变了。
+
+**根因**：`sync_word_db_asset.py` 第二版只对 `card`/`aggregate_page` 比**内容哈希**，
+**其余表只比 `COUNT(*)`**。修完 `word_form` 的 7 行后**行数不变、内容变了** → **漏判**。
+
+> 🔑 **教训的形态是「我只在被发现的那张表上修，没泛化」** ——
+> 第一次发现「`card` 行数相同、内容不同」（§17.3）时，我只把 `card` 加进哈希比对，
+> **没有把同一条判据推广到所有表**。**补丁 ≠ 修法。**
+
+✅ 修法：**每张表都比「全内容摘要」**（逐行哈希 → **排序** → 串起来哈希，与行序无关）。
+· 重新检测 → 抓到 `word_form: 内容不同（行数都是 24140）` ✓
+· 同步后两份库逐条对齐 ✓
+· 证伪测试（用改前备份当副本）→ 准确报出 ✓ · 退出码 1 ✓（可进 CI）
+
+### 20.5 交付
+
+| 文件 | 说明 |
+|---|---|
+| 🆕 `scripts/fix_word_form_mapping.py` | 7 行修正表 · 六重守卫 · 幂等 · 备份 |
+| 📝 `scripts/sync_word_db_asset.py` | 🔴 **改为所有表都比全内容摘要**（修掉 §20.4 的漏判） |
+| 🆕 `data/curriculum/prebuilt/wf_mapping_{candidates,fixes,verdict}.json` | 候选 / LLM 原始输出 / 判定表（**均带 `_note` 防误用**） |
+| 🆕 `data/reports/wf_mapping_fixes-2026-09-29.md` | LLM 复核报告 |
+| 📝 `app/lib/services/word_query_service.dart` | `ORDER BY base`（**待白哥编译**） |
+| 📝 `data/word.db` + `app/assets/word.db` | 7 行 · **两份已同步** |
+| 备份 | `data/backups/word.db.bak-wfmapping-20260929-085752` |
+
+🔴 **一个陷阱值得记下**：`wf_mapping_fixes.json` 里 `建议写入 48 条` 是**假的** ——
+这些 spelling 是**词形**（不是词条），`word` 表里没有 → `load_current` 全返回空
+→ 判据把「现状为空」当硬证据。**绝不能把它喂给 `apply_card_field_fixes.py`**（已在 JSON 里加 `_note` 自证）。
+
+### 20.6 未做 / 待办
+
+| # | 事项 | 状态 |
+|---|---|---|
+| 1 | C 档歧义消解（`leaves` 类） | ⚠️ 产品决策，未做 |
+| 2 | 3 条「LLM 说无来源」（`lieued` 等垃圾形） | ⏸️ 两边都不可信，不动 |
+| 3 | B 档 12,796 行 | ❌ 建议不做（§19） |
+| 4 | **白哥编译** `word_query_service.dart` | ⏳ 待办 |

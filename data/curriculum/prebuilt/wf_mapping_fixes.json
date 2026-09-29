@@ -1,0 +1,4487 @@
+{
+ "_note": "⚠️ 仅供提取 data.derived_from（词形 → 词原形）。本文的「建议写入 / classify / write_fields」结果**是误判，不可用**：这些 spelling 是**词形**（buried/passed/…），不是词条，word 表里没有它们 → load_current 全返回空 → 判据把「现状为空」当成硬证据。🔴 **绝不可把本文件喂给 apply_card_field_fixes.py**。",
+ "generated_at": "2026-09-29 08:56:09",
+ "contract": "v6",
+ "model": "deepseek-flash",
+ "total": 48,
+ "ok": 48,
+ "failed": 0,
+ "cost_cny": 0.3115,
+ "stats": {
+  "calls": 48,
+  "retried_calls": 0,
+  "retries": 0,
+  "http_429": 0,
+  "http_5xx": 0,
+  "conn_err": 0,
+  "timeout": 0
+ },
+ "items": [
+  {
+   "spelling": "amped",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=amp（词性 n L3），候选 am"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "amped",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": "amp",
+    "reason": "非规则派生，意为兴奋的",
+    "morphology": {
+     "analyzable": true,
+     "relation": "derivation",
+     "parts": [
+      {
+       "form": "amp",
+       "type": "root",
+       "meaning": "使兴奋",
+       "origin": "Latin"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "形容词后缀",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "源自 amplify（放大）的缩写，引申为情绪高涨",
+     "etyma": [
+      {
+       "form": "amplificare",
+       "form_ascii": "amplificare",
+       "language": "Latin",
+       "meaning": "放大",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/æmpt/",
+    "definition": {
+     "pos": "[adj]",
+     "en": "very excited or eager",
+     "zh": "兴奋的，跃跃欲试的"
+    },
+    "context": "The fans were amped for the concert to start.",
+    "collocations": [
+     {
+      "phrase": "amped up",
+      "zh": "兴奋起来"
+     },
+     {
+      "phrase": "amped for",
+      "zh": "对…感到兴奋"
+     }
+    ],
+    "mnemonic": {
+     "primary": "etymology",
+     "secondary": [
+      "context"
+     ],
+     "rationale": "amp（放大）→ 情绪被放大 → 兴奋的"
+    },
+    "confidence": 0.9
+   },
+   "in_tok": 3210,
+   "out_tok": 358,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "amping",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=amp（词性 n L3），候选 am"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "amping",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "amp",
+    "reason": "amp的现在分词，意为“使兴奋”",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "amp",
+       "type": "root",
+       "meaning": "使兴奋",
+       "origin": "English"
+      },
+      {
+       "form": "-ing",
+       "type": "suffix",
+       "meaning": "正在…",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "来自 amp（使兴奋），源自 amplifier（放大器）",
+     "etyma": [
+      {
+       "form": "amp",
+       "form_ascii": "amp",
+       "language": "English",
+       "meaning": "使兴奋",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈæmpɪŋ/",
+    "definition": {
+     "pos": "[v]",
+     "en": "making someone excited or full of energy",
+     "zh": "使兴奋，使充满活力"
+    },
+    "context": "The crowd was amping up the players with loud cheers.",
+    "collocations": [
+     {
+      "phrase": "amping up",
+      "zh": "使兴奋起来"
+     },
+     {
+      "phrase": "amping someone up",
+      "zh": "使某人兴奋"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "cognate"
+     ],
+     "rationale": "amp（使兴奋）+ -ing（正在…）"
+    },
+    "confidence": 0.9
+   },
+   "in_tok": 3210,
+   "out_tok": 360,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "bearded",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=beard（词性 n L3），候选 bear·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "bearded",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": "beard",
+    "reason": "有胡须的，形容词用法需单独学",
+    "morphology": {
+     "analyzable": true,
+     "relation": "derivation",
+     "parts": [
+      {
+       "form": "beard",
+       "type": "root",
+       "meaning": "胡须",
+       "origin": "Old English"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "有…的",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "古英语 beard（胡须）→ 有胡须的",
+     "etyma": [
+      {
+       "form": "beard",
+       "form_ascii": "beard",
+       "language": "Old English",
+       "meaning": "胡须",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈbɪədɪd/ (UK) or /ˈbɪrdɪd/ (US)",
+    "definition": {
+     "pos": "[adj]",
+     "en": "having a beard",
+     "zh": "有胡须的"
+    },
+    "context": "The bearded man sat quietly in the corner of the café.",
+    "collocations": [
+     {
+      "phrase": "bearded man",
+      "zh": "有胡须的男人"
+     },
+     {
+      "phrase": "heavily bearded",
+      "zh": "胡须浓密的"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "image"
+     ],
+     "rationale": "beard(胡须)+ed(有…的) → 有胡须的"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3212,
+   "out_tok": 388,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "bearding",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=beard（词性 n L3），候选 bear"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "bearding",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "beard",
+    "reason": "beard的规则-ing形式，意义可预测",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "beard",
+       "type": "root",
+       "meaning": "胡须",
+       "origin": "Old English"
+      },
+      {
+       "form": "-ing",
+       "type": "suffix",
+       "meaning": "正在…",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "古英语 beard（胡须）→ 长胡须；引申为公然对抗",
+     "etyma": [
+      {
+       "form": "beard",
+       "form_ascii": "beard",
+       "language": "Old English",
+       "meaning": "胡须",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈbɪədɪŋ/ (UK) or /ˈbɪrdɪŋ/ (US)",
+    "definition": {
+     "pos": "[v]",
+     "en": "growing a beard; boldly confronting someone",
+     "zh": "长胡须；公然对抗"
+    },
+    "context": "He is bearding the lion in its den by criticizing the boss openly.",
+    "collocations": [
+     {
+      "phrase": "bearding the lion in his den",
+      "zh": "太岁头上动土"
+     },
+     {
+      "phrase": "bearding the boss",
+      "zh": "公然对抗老板"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "context"
+     ],
+     "rationale": "beard(胡须)+ing(正在) → 长胡须；引申为捋虎须般公然对抗"
+    },
+    "confidence": 0.85
+   },
+   "in_tok": 3213,
+   "out_tok": 411,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "beded",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=bede（词性 n L5），候选 be"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "beded",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "bede",
+    "reason": "bede的规则过去式，意义可预测",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "bede",
+       "type": "root",
+       "meaning": "祈祷",
+       "origin": "Old English"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "过去式",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "古英语 gebed（祈祷）→ bede（祈祷）→ beded（祈祷了）",
+     "etyma": [
+      {
+       "form": "gebed",
+       "form_ascii": "gebed",
+       "language": "Old English",
+       "meaning": "祈祷",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈbiːdɪd/",
+    "definition": {
+     "pos": "[v]",
+     "en": "prayed or asked earnestly (archaic)",
+     "zh": "祈祷了；恳求了"
+    },
+    "context": "In the old poem, the hermit beded for the sailors' safe return.",
+    "collocations": [],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "etymology"
+     ],
+     "rationale": "bede(祈祷)+ed(过去式)"
+    },
+    "confidence": 0.6
+   },
+   "in_tok": 3213,
+   "out_tok": 346,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "beding",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=bede（词性 n L5），候选 be"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "beding",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "bede",
+    "reason": "bede的现在分词，意义可预测",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "bede",
+       "type": "root",
+       "meaning": "祈祷",
+       "origin": "Old English"
+      },
+      {
+       "form": "-ing",
+       "type": "suffix",
+       "meaning": "正在…",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "古英语 bed（祈祷）+ -ing（进行）→ 正在祈祷",
+     "etyma": [
+      {
+       "form": "gebed",
+       "form_ascii": "gebed",
+       "language": "Old English",
+       "meaning": "祈祷",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/bɪˈdiːɪŋ/",
+    "definition": {
+     "pos": "[v]",
+     "en": "praying; asking earnestly",
+     "zh": "祈祷，恳求"
+    },
+    "context": "She was beding for forgiveness when the storm finally passed.",
+    "collocations": [
+     {
+      "phrase": "beding for mercy",
+      "zh": "恳求怜悯"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "etymology"
+     ],
+     "rationale": "bede(祈祷)+ing(正在)"
+    },
+    "confidence": 0.6
+   },
+   "in_tok": 3213,
+   "out_tok": 349,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "breathed",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=breath（词性 n L3），候选 breathe·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "breathed",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "breathe",
+    "reason": "breathe的规则过去式，意义可预测",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "breathe",
+       "type": "root",
+       "meaning": "呼吸",
+       "origin": "Old English"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "过去式/过去分词",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "古英语 brǣð（气息）→ breathe（呼吸）→ breathed",
+     "etyma": [
+      {
+       "form": "brǣð",
+       "form_ascii": "braeth",
+       "language": "Old English",
+       "meaning": "气息、呼吸",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/briːðd/",
+    "definition": {
+     "pos": "[v]",
+     "en": "took air into and out of the lungs",
+     "zh": "呼吸了（breathe的过去式）"
+    },
+    "context": "She breathed deeply and then began her speech.",
+    "collocations": [
+     {
+      "phrase": "breathed a sigh of relief",
+      "zh": "松了一口气"
+     },
+     {
+      "phrase": "breathed deeply",
+      "zh": "深呼吸"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "context"
+     ],
+     "rationale": "breathe(呼吸)+ed(过去式)"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3215,
+   "out_tok": 384,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "breathing",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=breath（词性 n L3），候选 breathe·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "breathing",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": "breathe",
+    "reason": "名词：呼吸；非单纯动词-ing",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "breath",
+       "type": "root",
+       "meaning": "呼吸",
+       "origin": "Old English"
+      },
+      {
+       "form": "-ing",
+       "type": "suffix",
+       "meaning": "动作/结果",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "古英语 brǣþ（呼吸）→ 呼吸的动作",
+     "etyma": [
+      {
+       "form": "brǣþ",
+       "form_ascii": "braeth",
+       "language": "Old English",
+       "meaning": "呼吸",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈbriːðɪŋ/",
+    "definition": {
+     "pos": "[n]",
+     "en": "the act or process of taking air into and expelling it from the lungs",
+     "zh": "呼吸"
+    },
+    "context": "Deep breathing can help reduce stress and anxiety.",
+    "collocations": [
+     {
+      "phrase": "deep breathing",
+      "zh": "深呼吸"
+     },
+     {
+      "phrase": "breathing exercise",
+      "zh": "呼吸练习"
+     },
+     {
+      "phrase": "breathing space",
+      "zh": "喘息的机会"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "cognate"
+     ],
+     "rationale": "breath(呼吸)+ing(动作) → 呼吸"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3212,
+   "out_tok": 385,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "buried",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=buri（词性 n L4），候选 bury·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "buried",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "bury",
+    "reason": "bury的过去式和过去分词，含义可预测",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "bury",
+       "type": "root",
+       "meaning": "埋葬",
+       "origin": "Old English"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "过去式/过去分词",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "古英语 byrgan（埋葬）→ 过去式 buried",
+     "etyma": [
+      {
+       "form": "byrgan",
+       "form_ascii": "byrgan",
+       "language": "Old English",
+       "meaning": "埋葬",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈberid/",
+    "definition": {
+     "pos": "[v]",
+     "en": "placed a dead body in the ground, or hidden deeply",
+     "zh": "埋葬的；隐藏的"
+    },
+    "context": "The treasure was buried deep under the old oak tree.",
+    "collocations": [
+     {
+      "phrase": "buried treasure",
+      "zh": "埋藏的宝藏"
+     },
+     {
+      "phrase": "buried alive",
+      "zh": "被活埋"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "context"
+     ],
+     "rationale": "bury（埋葬）+ -ed（过去式）"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3212,
+   "out_tok": 368,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "caned",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=cane（词性 n L4），候选 can"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "caned",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "cane",
+    "reason": "cane的规则过去式/过去分词",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "cane",
+       "type": "root",
+       "meaning": "藤条，用藤条打",
+       "origin": "Old English"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "过去式/过去分词",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "拉丁 canna（芦苇）→ 古英语 cane（藤条）→ 用藤条打",
+     "etyma": [
+      {
+       "form": "canna",
+       "form_ascii": "canna",
+       "language": "Latin",
+       "meaning": "芦苇",
+       "role": "root",
+       "parent": ""
+      },
+      {
+       "form": "cane",
+       "form_ascii": "cane",
+       "language": "Old English",
+       "meaning": "藤条",
+       "role": "derived",
+       "parent": "canna"
+      }
+     ]
+    },
+    "ipa": "/keɪnd/",
+    "definition": {
+     "pos": "[v]",
+     "en": "hit someone with a cane as punishment",
+     "zh": "用藤条抽打"
+    },
+    "context": "In some countries, students were caned for breaking school rules.",
+    "collocations": [
+     {
+      "phrase": "be caned for",
+      "zh": "因…被藤条抽打"
+     },
+     {
+      "phrase": "caned on the hand",
+      "zh": "手被藤条抽打"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "context"
+     ],
+     "rationale": "cane（藤条）+ed（过去式）→ 用藤条打了"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3213,
+   "out_tok": 441,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "caning",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=cane（词性 n L4），候选 can·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "caning",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": "cane",
+    "reason": "指鞭刑或藤条编物，需独立学习",
+    "morphology": {
+     "analyzable": true,
+     "relation": "derivation",
+     "parts": [
+      {
+       "form": "cane",
+       "type": "root",
+       "meaning": "藤条",
+       "origin": "French"
+      },
+      {
+       "form": "-ing",
+       "type": "suffix",
+       "meaning": "行为或结果",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "拉丁 canna（芦苇）→ 藤条 → 鞭打",
+     "etyma": [
+      {
+       "form": "canna",
+       "form_ascii": "canna",
+       "language": "Latin",
+       "meaning": "芦苇",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈkeɪnɪŋ/",
+    "definition": {
+     "pos": "[n]",
+     "en": "punishment of being hit with a cane",
+     "zh": "鞭刑；藤条编物"
+    },
+    "context": "The school abolished caning as a form of punishment.",
+    "collocations": [
+     {
+      "phrase": "judicial caning",
+      "zh": "司法鞭刑"
+     },
+     {
+      "phrase": "caning punishment",
+      "zh": "鞭打惩罚"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "etymology"
+     ],
+     "rationale": "cane（藤条）+ -ing（行为）→ 用藤条打"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3213,
+   "out_tok": 380,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "cometed",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=comet（词性 n L3），候选 come"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "cometed",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "comet",
+    "reason": "comet的规则过去式/过去分词",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "comet",
+       "type": "root",
+       "meaning": "彗星",
+       "origin": "Greek"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "过去式/过去分词",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "希腊 komētēs（长发）→ 彗星 → 像彗星般飞驰",
+     "etyma": [
+      {
+       "form": "komētēs",
+       "form_ascii": "kometes",
+       "language": "Greek",
+       "meaning": "长发",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈkɒmɪtɪd/ (UK) or /ˈkɑːmɪtɪd/ (US)",
+    "definition": {
+     "pos": "[v]",
+     "en": "moved swiftly like a comet",
+     "zh": "像彗星般飞驰"
+    },
+    "context": "The racing car cometed down the straight and disappeared from view.",
+    "collocations": [],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "etymology"
+     ],
+     "rationale": "comet(彗星)+ed(过去式)：像彗星一样飞驰"
+    },
+    "confidence": 0.85
+   },
+   "in_tok": 3213,
+   "out_tok": 377,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "cometing",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=comet（词性 n L3），候选 come"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "cometing",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "comet",
+    "reason": "comet的现在分词/动名词，意义可预测",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "comet",
+       "type": "root",
+       "meaning": "彗星",
+       "origin": "Greek"
+      },
+      {
+       "form": "-ing",
+       "type": "suffix",
+       "meaning": "正在…的",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "希腊 komētēs（长发的）→ 彗星 → 像彗星般飞驰",
+     "etyma": [
+      {
+       "form": "komētēs",
+       "form_ascii": "kometes",
+       "language": "Greek",
+       "meaning": "长发的",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈkɒmɪtɪŋ/ (UK) or /ˈkɑːmɪtɪŋ/ (US)",
+    "definition": {
+     "pos": "[v]",
+     "en": "moving swiftly like a comet",
+     "zh": "像彗星般飞驰"
+    },
+    "context": "The racing car came cometing down the straight at incredible speed.",
+    "collocations": [
+     {
+      "phrase": "come cometing",
+      "zh": "像彗星般飞驰而来"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "etymology"
+     ],
+     "rationale": "comet(彗星)+ing(正在) → 像彗星一样飞驰"
+    },
+    "confidence": 0.85
+   },
+   "in_tok": 3213,
+   "out_tok": 404,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "domed",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=dome（词性 n L3），候选 do·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "domed",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": "dome",
+    "reason": "圆顶状的，需单独学习",
+    "morphology": {
+     "analyzable": true,
+     "relation": "derivation",
+     "parts": [
+      {
+       "form": "dome",
+       "type": "root",
+       "meaning": "圆顶",
+       "origin": "Latin"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "有…的",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "拉丁 domus（房屋）→ 意大利 duomo（大教堂）→ dome（圆顶）→ domed",
+     "etyma": [
+      {
+       "form": "domus",
+       "form_ascii": "domus",
+       "language": "Latin",
+       "meaning": "房屋",
+       "role": "root",
+       "parent": ""
+      },
+      {
+       "form": "duomo",
+       "form_ascii": "duomo",
+       "language": "Italian",
+       "meaning": "大教堂",
+       "role": "derived",
+       "parent": "domus"
+      }
+     ]
+    },
+    "ipa": "/dəʊmd/ (UK) or /doʊmd/ (US)",
+    "definition": {
+     "pos": "[adj]",
+     "en": "having a rounded roof or shape like a dome",
+     "zh": "圆顶的，穹顶状的"
+    },
+    "context": "The domed roof of the cathedral gleamed in the morning sun.",
+    "collocations": [
+     {
+      "phrase": "domed roof",
+      "zh": "圆顶屋顶"
+     },
+     {
+      "phrase": "domed ceiling",
+      "zh": "穹顶天花板"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "etymology"
+     ],
+     "rationale": "dome（圆顶）+ -ed（有…的）→ 有圆顶的"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3213,
+   "out_tok": 444,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "doming",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=dome（词性 n L3），候选 do"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "doming",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "dome",
+    "reason": "dome的规则现在分词/动名词",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "dome",
+       "type": "root",
+       "meaning": "圆顶",
+       "origin": "Latin"
+      },
+      {
+       "form": "-ing",
+       "type": "suffix",
+       "meaning": "正在…",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "拉丁 domus（房屋）→ 意大利 duomo（大教堂）→ dome（圆顶）",
+     "etyma": [
+      {
+       "form": "domus",
+       "form_ascii": "domus",
+       "language": "Latin",
+       "meaning": "房屋",
+       "role": "root",
+       "parent": ""
+      },
+      {
+       "form": "duomo",
+       "form_ascii": "duomo",
+       "language": "Italian",
+       "meaning": "大教堂",
+       "role": "derived",
+       "parent": "domus"
+      }
+     ]
+    },
+    "ipa": "/ˈdəʊmɪŋ/ (UK) or /ˈdoʊmɪŋ/ (US)",
+    "definition": {
+     "pos": "[v]",
+     "en": "forming or rising into a rounded shape like a dome",
+     "zh": "成圆顶状，隆起"
+    },
+    "context": "The hot air balloon was doming above the field as it filled.",
+    "collocations": [
+     {
+      "phrase": "doming up",
+      "zh": "隆起成圆顶状"
+     },
+     {
+      "phrase": "doming the sky",
+      "zh": "笼罩天空成穹顶状"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "image"
+     ],
+     "rationale": "dome（圆顶）+ -ing（正在…）→ 正在形成圆顶"
+    },
+    "confidence": 0.85
+   },
+   "in_tok": 3213,
+   "out_tok": 451,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "dosed",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=dose（词性 n L4），候选 do·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "dosed",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "dose",
+    "reason": "dose的过去式/过去分词，意义可预测",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "dose",
+       "type": "root",
+       "meaning": "剂量",
+       "origin": "Greek"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "过去式/过去分词",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "希腊 dosis（给予）→ 给予一定量 → 服药",
+     "etyma": [
+      {
+       "form": "dosis",
+       "form_ascii": "dosis",
+       "language": "Greek",
+       "meaning": "给予",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/dəʊst/",
+    "definition": {
+     "pos": "[v]",
+     "en": "gave a measured amount of medicine to",
+     "zh": "给…服药；给…一定剂量"
+    },
+    "context": "The nurse dosed the patient with antibiotics every eight hours.",
+    "collocations": [
+     {
+      "phrase": "dosed with",
+      "zh": "被给予…剂量"
+     },
+     {
+      "phrase": "heavily dosed",
+      "zh": "大剂量用药的"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "etymology"
+     ],
+     "rationale": "dose(剂量)+ed(过去式)：按剂量给药"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3213,
+   "out_tok": 379,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "dosing",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=dose（词性 n L4），候选 do"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "dosing",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "dose",
+    "reason": "dose的规则-ing形式，给药剂量",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "dose",
+       "type": "root",
+       "meaning": "剂量",
+       "origin": "Greek"
+      },
+      {
+       "form": "-ing",
+       "type": "suffix",
+       "meaning": "正在…的",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "希腊 dosis（给予）→ 一次给的药量",
+     "etyma": [
+      {
+       "form": "dosis",
+       "form_ascii": "dosis",
+       "language": "Greek",
+       "meaning": "给予",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈdəʊsɪŋ/ (UK) or /ˈdoʊsɪŋ/ (US)",
+    "definition": {
+     "pos": "[n]",
+     "en": "the act of giving a measured amount of medicine",
+     "zh": "给药；剂量调整"
+    },
+    "context": "The nurse is dosing the patient carefully according to the chart.",
+    "collocations": [
+     {
+      "phrase": "dosing schedule",
+      "zh": "给药时间表"
+     },
+     {
+      "phrase": "dosing error",
+      "zh": "剂量错误"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "cognate"
+     ],
+     "rationale": "dose(剂量)+ing，与 dose 同根，指按剂量给药"
+    },
+    "confidence": 0.9
+   },
+   "in_tok": 3212,
+   "out_tok": 386,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "doved",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=dove（词性 n L4），候选 do"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "doved",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "dove",
+    "reason": "dove的规则过去式，无需单独记忆",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "dove",
+       "type": "root",
+       "meaning": "鸽；潜水",
+       "origin": "Old English"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "过去式",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "古英语 dufan（潜水）→ dove（潜水）→ doved（潜了水）",
+     "etyma": [
+      {
+       "form": "dufan",
+       "form_ascii": "dufan",
+       "language": "Old English",
+       "meaning": "潜水",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/dʌvd/",
+    "definition": {
+     "pos": "[v]",
+     "en": "dived; plunged headfirst into water",
+     "zh": "潜水了，跳水了"
+    },
+    "context": "The swimmer doved into the pool and surfaced near the far end.",
+    "collocations": [
+     {
+      "phrase": "doved into the water",
+      "zh": "跳入水中"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "etymology"
+     ],
+     "rationale": "dove(潜水)+ed(过去式)，表示潜了水"
+    },
+    "confidence": 0.85
+   },
+   "in_tok": 3213,
+   "out_tok": 366,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "doving",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=dove（词性 n L4），候选 do"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "doving",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "dove",
+    "reason": "dove的现在分词，含义可预测",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "dove",
+       "type": "root",
+       "meaning": "鸽子",
+       "origin": "Old English"
+      },
+      {
+       "form": "-ing",
+       "type": "suffix",
+       "meaning": "正在…的",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "古英语 dufe（鸽子）→ 像鸽子一样",
+     "etyma": [
+      {
+       "form": "dūfe",
+       "form_ascii": "dufe",
+       "language": "Old English",
+       "meaning": "鸽子",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈdʌvɪŋ/",
+    "definition": {
+     "pos": "[adj]",
+     "en": "resembling or characteristic of a dove; gentle and innocent",
+     "zh": "鸽子般的，温和纯洁的"
+    },
+    "context": "Her doving manner made everyone feel instantly at ease.",
+    "collocations": [
+     {
+      "phrase": "a doving voice",
+      "zh": "鸽子般轻柔的声音"
+     },
+     {
+      "phrase": "doving eyes",
+      "zh": "温柔纯洁的眼睛"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "image"
+     ],
+     "rationale": "dove(鸽子)+ing(…的)→像鸽子一样温和纯洁的"
+    },
+    "confidence": 0.6
+   },
+   "in_tok": 3213,
+   "out_tok": 378,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "fines",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=fine（词性 adj L4），候选 fin·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "fines",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": "fine",
+    "reason": "罚款；名词复数，意义独立需单记",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "fine",
+       "type": "root",
+       "meaning": "罚款",
+       "origin": "French"
+      },
+      {
+       "form": "-s",
+       "type": "suffix",
+       "meaning": "复数",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "拉丁 finis（结束）→ 法语 fin（罚款）→ 英语 fine",
+     "etyma": [
+      {
+       "form": "finis",
+       "form_ascii": "finis",
+       "language": "Latin",
+       "meaning": "结束",
+       "role": "root",
+       "parent": ""
+      },
+      {
+       "form": "fin",
+       "form_ascii": "fin",
+       "language": "French",
+       "meaning": "罚款",
+       "role": "derived",
+       "parent": "finis"
+      }
+     ]
+    },
+    "ipa": "/faɪnz/",
+    "definition": {
+     "pos": "[n]",
+     "en": "sums of money paid as penalties",
+     "zh": "罚款"
+    },
+    "context": "The company had to pay heavy fines for breaking environmental laws.",
+    "collocations": [
+     {
+      "phrase": "pay a fine",
+      "zh": "支付罚款"
+     },
+     {
+      "phrase": "heavy fines",
+      "zh": "巨额罚款"
+     },
+     {
+      "phrase": "impose fines",
+      "zh": "处以罚款"
+     }
+    ],
+    "mnemonic": {
+     "primary": "context",
+     "secondary": [
+      "collocation"
+     ],
+     "rationale": "通过“pay fines”等搭配记忆"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3212,
+   "out_tok": 412,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "havened",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=haven（词性 n L3），候选 have"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "havened",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": "haven",
+    "reason": "作形容词，意为“有避风港的/安全的”",
+    "morphology": {
+     "analyzable": true,
+     "relation": "derivation",
+     "parts": [
+      {
+       "form": "haven",
+       "type": "root",
+       "meaning": "避风港",
+       "origin": "Old English"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "有…的",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "古英语 hæfen（避风港）→ 有避风港的、安全的",
+     "etyma": [
+      {
+       "form": "hæfen",
+       "form_ascii": "haefen",
+       "language": "Old English",
+       "meaning": "避风港",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈheɪvənd/",
+    "definition": {
+     "pos": "[adj]",
+     "en": "sheltered or provided with a haven; safe",
+     "zh": "有避风港的，安全的"
+    },
+    "context": "The small fishing village, havened by the cliffs, survived the storm.",
+    "collocations": [
+     {
+      "phrase": "havened harbor",
+      "zh": "避风港"
+     },
+     {
+      "phrase": "havened coast",
+      "zh": "有避风港的海岸"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "etymology"
+     ],
+     "rationale": "haven(避风港)+ed(有…的) → 有避风港的、安全的"
+    },
+    "confidence": 0.85
+   },
+   "in_tok": 3213,
+   "out_tok": 403,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "havening",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=haven（词性 n L3），候选 have"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "havening",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": "haven",
+    "reason": "心理疗法专有名词，需独立学习",
+    "morphology": {
+     "analyzable": true,
+     "relation": "derivation",
+     "parts": [
+      {
+       "form": "haven",
+       "type": "root",
+       "meaning": "避难所",
+       "origin": "Old English"
+      },
+      {
+       "form": "-ing",
+       "type": "suffix",
+       "meaning": "名词后缀",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "古英语 hæfen（港口、避难所）→ 提供安全感 → 心理疗法",
+     "etyma": [
+      {
+       "form": "hæfen",
+       "form_ascii": "haefen",
+       "language": "Old English",
+       "meaning": "港口，避难所",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈheɪvənɪŋ/",
+    "definition": {
+     "pos": "[n]",
+     "en": "a psychotherapeutic technique using touch to reduce stress",
+     "zh": "哈文疗法"
+    },
+    "context": "The therapist used havening to help the patient calm down.",
+    "collocations": [
+     {
+      "phrase": "havening technique",
+      "zh": "哈文疗法技术"
+     }
+    ],
+    "mnemonic": {
+     "primary": "etymology",
+     "secondary": [
+      "root"
+     ],
+     "rationale": "haven（避难所）+ -ing → 提供安全感的疗法"
+    },
+    "confidence": 0.9
+   },
+   "in_tok": 3213,
+   "out_tok": 362,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "jointed",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=joint（词性 adj L4），候选 join·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "jointed",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": "joint",
+    "reason": "有接缝的，需单独学习",
+    "morphology": {
+     "analyzable": true,
+     "relation": "derivation",
+     "parts": [
+      {
+       "form": "joint",
+       "type": "root",
+       "meaning": "接合处",
+       "origin": "French"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "有…的",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "古法语 joint（接合处）→ 有接缝的",
+     "etyma": [
+      {
+       "form": "joint",
+       "form_ascii": "joint",
+       "language": "French",
+       "meaning": "接合处",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈdʒɔɪntɪd/",
+    "definition": {
+     "pos": "[adj]",
+     "en": "having joints or connected by joints",
+     "zh": "有接缝的，有关节的"
+    },
+    "context": "The doll has jointed arms and legs that can bend.",
+    "collocations": [
+     {
+      "phrase": "jointed doll",
+      "zh": "关节娃娃"
+     },
+     {
+      "phrase": "jointed limbs",
+      "zh": "有关节的四肢"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "etymology"
+     ],
+     "rationale": "joint(接合处)+ed(有…的) → 有接缝的"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3213,
+   "out_tok": 375,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "lieued",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=lieu（词性 n L4），候选 lie"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "lieued",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": null,
+    "reason": "非标准拼写，可能是lieu的变体或拼写错误",
+    "morphology": {
+     "analyzable": false,
+     "relation": null,
+     "parts": []
+    },
+    "etymology": {
+     "text": "",
+     "etyma": []
+    },
+    "ipa": "/ljuːd/",
+    "definition": {
+     "pos": "[adj]",
+     "en": "having a lieu or position; placed",
+     "zh": "有位置的，放置的"
+    },
+    "context": "The document was lieued in the archive for future reference.",
+    "collocations": [],
+    "mnemonic": {
+     "primary": "context",
+     "secondary": [],
+     "rationale": "该词罕见，建议通过例句记忆"
+    },
+    "confidence": 0.3
+   },
+   "in_tok": 3213,
+   "out_tok": 222,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "lieuing",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=lieu（词性 n L4），候选 lie"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "lieuing",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": null,
+    "reason": "非标准拼写，需独立学习",
+    "morphology": {
+     "analyzable": false,
+     "relation": null,
+     "parts": []
+    },
+    "etymology": {
+     "text": "",
+     "etyma": []
+    },
+    "ipa": "/ˈlaɪuɪŋ/",
+    "definition": {
+     "pos": "[n]",
+     "en": "a nonstandard spelling variant, possibly of lying or lieu",
+     "zh": "非标准拼写，可能指lying或lieu"
+    },
+    "context": "The word lieuing appears in some old manuscripts as a variant spelling.",
+    "collocations": [],
+    "mnemonic": {
+     "primary": "context",
+     "secondary": [],
+     "rationale": "该词罕见，需通过上下文记忆"
+    },
+    "confidence": 0.3
+   },
+   "in_tok": 3213,
+   "out_tok": 229,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "marines",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=marine（词性 adj L3），候选 marin·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "marines",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": "marine",
+    "reason": "海军陆战队士兵，需单独记忆",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "marin",
+       "type": "root",
+       "meaning": "海",
+       "origin": "Latin"
+      },
+      {
+       "form": "-es",
+       "type": "suffix",
+       "meaning": "复数",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "拉丁 marinus（海的）→ 海上作战的士兵",
+     "etyma": [
+      {
+       "form": "marinus",
+       "form_ascii": "marinus",
+       "language": "Latin",
+       "meaning": "海的",
+       "role": "derived",
+       "parent": "mare"
+      },
+      {
+       "form": "mare",
+       "form_ascii": "mare",
+       "language": "Latin",
+       "meaning": "海",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/məˈriːnz/",
+    "definition": {
+     "pos": "[n]",
+     "en": "soldiers trained to serve at sea and on land",
+     "zh": "海军陆战队士兵"
+    },
+    "context": "The marines landed on the beach before dawn.",
+    "collocations": [
+     {
+      "phrase": "the US Marines",
+      "zh": "美国海军陆战队"
+     },
+     {
+      "phrase": "join the marines",
+      "zh": "加入海军陆战队"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "etymology"
+     ],
+     "rationale": "marin(海)+es(复数)：在海上作战的士兵"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3213,
+   "out_tok": 409,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "mines",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=mine（词性 pron L4），候选 min·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "mines",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": "mine",
+    "reason": "名词复数/动词第三人称，但也可指地雷、矿藏等独立义项",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "mine",
+       "type": "root",
+       "meaning": "矿；地雷",
+       "origin": "French"
+      },
+      {
+       "form": "-s",
+       "type": "suffix",
+       "meaning": "复数/第三人称单数",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "法语 mine（矿）→ 英语 mine → mines",
+     "etyma": [
+      {
+       "form": "mine",
+       "form_ascii": "mine",
+       "language": "French",
+       "meaning": "矿",
+       "role": "whole",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/maɪnz/",
+    "definition": {
+     "pos": "[n]",
+     "en": "excavations for minerals; explosive devices",
+     "zh": "矿；地雷"
+    },
+    "context": "The soldiers carefully cleared the mines from the field.",
+    "collocations": [
+     {
+      "phrase": "coal mines",
+      "zh": "煤矿"
+     },
+     {
+      "phrase": "land mines",
+      "zh": "地雷"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "cognate"
+     ],
+     "rationale": "mine（矿）+ -s（复数）"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3212,
+   "out_tok": 365,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "pales",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=pale（词性 adj L3），候选 pal·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "pales",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "pale",
+    "reason": "pale的第三人称单数/复数形式",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "pale",
+       "type": "root",
+       "meaning": "苍白",
+       "origin": "Old English"
+      },
+      {
+       "form": "-s",
+       "type": "suffix",
+       "meaning": "第三人称单数/复数",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "古英语 pal（苍白）→ pales",
+     "etyma": [
+      {
+       "form": "pal",
+       "form_ascii": "pal",
+       "language": "Old English",
+       "meaning": "苍白",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/peɪlz/",
+    "definition": {
+     "pos": "[v]",
+     "en": "becomes less important or impressive compared to something else",
+     "zh": "相形见绌；变得苍白"
+    },
+    "context": "Her achievements pale in comparison to his.",
+    "collocations": [
+     {
+      "phrase": "pales in comparison",
+      "zh": "相形见绌"
+     },
+     {
+      "phrase": "pales into insignificance",
+      "zh": "变得无足轻重"
+     }
+    ],
+    "mnemonic": {
+     "primary": "collocation",
+     "secondary": [
+      "context"
+     ],
+     "rationale": "常与 in comparison 搭配，表示相形见绌"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3213,
+   "out_tok": 373,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "passed",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=pas（词性 n L3），候选 pass·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "passed",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "pass",
+    "reason": "pass的过去式和过去分词",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "pass",
+       "type": "root",
+       "meaning": "通过",
+       "origin": "Latin"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "过去式/过去分词",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "拉丁 passus（步）→ 通过",
+     "etyma": [
+      {
+       "form": "passus",
+       "form_ascii": "passus",
+       "language": "Latin",
+       "meaning": "步",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/pɑːst/ (UK) or /pæst/ (US)",
+    "definition": {
+     "pos": "[v]",
+     "en": "went past; succeeded in a test; handed over",
+     "zh": "通过；经过；传递"
+    },
+    "context": "She passed the exam with the highest score in her class.",
+    "collocations": [
+     {
+      "phrase": "passed away",
+      "zh": "去世"
+     },
+     {
+      "phrase": "passed the exam",
+      "zh": "通过考试"
+     },
+     {
+      "phrase": "passed by",
+      "zh": "经过"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "context"
+     ],
+     "rationale": "pass(通过)+ed(过去式)"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3209,
+   "out_tok": 376,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "passing",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=pas（词性 n L3），候选 pass·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "passing",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": "pass",
+    "reason": "可作形容词/名词，有独立义项",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "pass",
+       "type": "root",
+       "meaning": "经过",
+       "origin": "French"
+      },
+      {
+       "form": "-ing",
+       "type": "suffix",
+       "meaning": "…的/…着",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "来自 pass（经过）+-ing，表示经过的、短暂的",
+     "etyma": [
+      {
+       "form": "passer",
+       "form_ascii": "passer",
+       "language": "French",
+       "meaning": "经过",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈpɑːsɪŋ/ (UK) or /ˈpæsɪŋ/ (US)",
+    "definition": {
+     "pos": "[adj]",
+     "en": "lasting only a short time; casual or brief",
+     "zh": "短暂的；一时的"
+    },
+    "context": "She made only a passing reference to the incident.",
+    "collocations": [
+     {
+      "phrase": "a passing remark",
+      "zh": "随口一说的话"
+     },
+     {
+      "phrase": "in passing",
+      "zh": "顺便地"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "context"
+     ],
+     "rationale": "pass（经过）+-ing，经过的→短暂的"
+    },
+    "confidence": 0.9
+   },
+   "in_tok": 3212,
+   "out_tok": 376,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "pasted",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=past（词性 adj L3），候选 paste·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "pasted",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "paste",
+    "reason": "paste的规则过去式/过去分词",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "paste",
+       "type": "root",
+       "meaning": "粘贴",
+       "origin": "Greek"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "过去式/过去分词",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "希腊 pastē（糊状物）→ 粘贴",
+     "etyma": [
+      {
+       "form": "pastē",
+       "form_ascii": "paste",
+       "language": "Greek",
+       "meaning": "糊状物",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈpeɪstɪd/",
+    "definition": {
+     "pos": "[v]",
+     "en": "stuck or attached with paste; copied and inserted into a document",
+     "zh": "粘贴的"
+    },
+    "context": "She pasted the photo into her scrapbook.",
+    "collocations": [
+     {
+      "phrase": "pasted on",
+      "zh": "粘贴在…上"
+     },
+     {
+      "phrase": "copy and pasted",
+      "zh": "复制粘贴的"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "context"
+     ],
+     "rationale": "paste(粘贴)+ed(过去式)"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3213,
+   "out_tok": 363,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "pasting",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=past（词性 adj L3），候选 paste·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "pasting",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "paste",
+    "reason": "paste的规则-ing形式，粘贴/痛打",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "paste",
+       "type": "root",
+       "meaning": "粘贴",
+       "origin": "Greek"
+      },
+      {
+       "form": "-ing",
+       "type": "suffix",
+       "meaning": "正在…",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "希腊 pastē（糨糊）→ 拉丁 pasta → 古法语 paste → 粘贴",
+     "etyma": [
+      {
+       "form": "pastē",
+       "form_ascii": "paste",
+       "language": "Greek",
+       "meaning": "糨糊",
+       "role": "root",
+       "parent": ""
+      },
+      {
+       "form": "pasta",
+       "form_ascii": "pasta",
+       "language": "Latin",
+       "meaning": "面团",
+       "role": "derived",
+       "parent": "pastē"
+      }
+     ]
+    },
+    "ipa": "/ˈpeɪstɪŋ/",
+    "definition": {
+     "pos": "[n]",
+     "en": "the act of sticking something with paste; a severe beating",
+     "zh": "粘贴；痛打"
+    },
+    "context": "She was pasting photos into her scrapbook all afternoon.",
+    "collocations": [
+     {
+      "phrase": "pasting photos",
+      "zh": "粘贴照片"
+     },
+     {
+      "phrase": "give someone a pasting",
+      "zh": "痛打某人"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "context"
+     ],
+     "rationale": "paste(粘贴)+ing(进行) → 粘贴的动作"
+    },
+    "confidence": 0.9
+   },
+   "in_tok": 3213,
+   "out_tok": 419,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "pickled",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=pickle（词性 n L4），候选 pick·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "pickled",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": "pickle",
+    "reason": "腌制的，独立形容词义",
+    "morphology": {
+     "analyzable": true,
+     "relation": "derivation",
+     "parts": [
+      {
+       "form": "pickle",
+       "type": "root",
+       "meaning": "腌制",
+       "origin": "other"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "已…的",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "中古英语 pikle（盐水）→ 用盐水腌制的",
+     "etyma": [
+      {
+       "form": "pikel",
+       "form_ascii": "pikel",
+       "language": "other",
+       "meaning": "盐水，腌汁",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈpɪkld/",
+    "definition": {
+     "pos": "[adj]",
+     "en": "preserved in vinegar or salt water",
+     "zh": "腌制的，腌渍的"
+    },
+    "context": "She added pickled onions to the salad for extra flavor.",
+    "collocations": [
+     {
+      "phrase": "pickled onions",
+      "zh": "腌洋葱"
+     },
+     {
+      "phrase": "pickled cucumbers",
+      "zh": "腌黄瓜"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "image"
+     ],
+     "rationale": "pickle(腌制)+ed(已…的) → 腌制的"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3213,
+   "out_tok": 367,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "pickling",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=pickle（词性 n L4），候选 pick"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "pickling",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": "pickle",
+    "reason": "指腌制工艺，非单纯进行时",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "pickle",
+       "type": "root",
+       "meaning": "腌制",
+       "origin": "other"
+      },
+      {
+       "form": "-ing",
+       "type": "suffix",
+       "meaning": "动作/过程",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "中古荷兰语 pekel（盐水）→ 腌渍",
+     "etyma": [
+      {
+       "form": "pekel",
+       "form_ascii": "pekel",
+       "language": "other",
+       "meaning": "盐水",
+       "role": "whole",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈpɪklɪŋ/",
+    "definition": {
+     "pos": "[n]",
+     "en": "the process of preserving food in vinegar or brine",
+     "zh": "腌制，腌渍"
+    },
+    "context": "Pickling cucumbers is a traditional way to preserve them for winter.",
+    "collocations": [
+     {
+      "phrase": "pickling process",
+      "zh": "腌制过程"
+     },
+     {
+      "phrase": "pickling jar",
+      "zh": "腌菜罐"
+     }
+    ],
+    "mnemonic": {
+     "primary": "context",
+     "secondary": [
+      "root"
+     ],
+     "rationale": "pickle（腌制）+ -ing（过程）"
+    },
+    "confidence": 0.9
+   },
+   "in_tok": 3213,
+   "out_tok": 363,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "putted",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=putt（词性 n L4），候选 put·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "putted",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "putt",
+    "reason": "putt的过去式，高尔夫轻击入洞",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "putt",
+       "type": "root",
+       "meaning": "轻击高尔夫球",
+       "origin": "other"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "过去式",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "源自 putt（轻击球），与 put 同源，17世纪苏格兰高尔夫用语",
+     "etyma": [
+      {
+       "form": "putt",
+       "form_ascii": "putt",
+       "language": "other",
+       "meaning": "轻击高尔夫球",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈpʌtɪd/",
+    "definition": {
+     "pos": "[v]",
+     "en": "hit a golf ball gently into the hole",
+     "zh": "轻击高尔夫球入洞"
+    },
+    "context": "She putted the ball gently and it rolled into the hole.",
+    "collocations": [
+     {
+      "phrase": "putted the ball",
+      "zh": "轻击球"
+     },
+     {
+      "phrase": "putted for birdie",
+      "zh": "推杆抓小鸟球"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "context"
+     ],
+     "rationale": "putt(轻击)+ed(过去式)，高尔夫轻击入洞"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3213,
+   "out_tok": 390,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "ridged",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=ridge（词性 n L4），候选 rid"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "ridged",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "ridge",
+    "reason": "ridge的规则形容词形式，意为有脊的",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "ridge",
+       "type": "root",
+       "meaning": "脊",
+       "origin": "Old English"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "有…的",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "古英语 hyrc（脊）→ ridge → ridged",
+     "etyma": [
+      {
+       "form": "hyrc",
+       "form_ascii": "hyrc",
+       "language": "Old English",
+       "meaning": "脊",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/rɪdʒd/",
+    "definition": {
+     "pos": "[adj]",
+     "en": "having raised lines or ridges",
+     "zh": "有脊的，有隆起的"
+    },
+    "context": "The ridged surface of the tire provides better grip on wet roads.",
+    "collocations": [
+     {
+      "phrase": "ridged surface",
+      "zh": "有脊的表面"
+     },
+     {
+      "phrase": "ridged roof",
+      "zh": "有脊的屋顶"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "image"
+     ],
+     "rationale": "ridge（脊）+ -ed（有…的）→ 有脊的"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3210,
+   "out_tok": 368,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "ridging",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=ridge（词性 n L4），候选 rid"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "ridging",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "ridge",
+    "reason": "ridge的规则派生，指形成脊状",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "ridge",
+       "type": "root",
+       "meaning": "脊，隆起",
+       "origin": "Old English"
+      },
+      {
+       "form": "-ing",
+       "type": "suffix",
+       "meaning": "正在…的",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "古英语 hyrc 意为脊背，后指隆起物",
+     "etyma": [
+      {
+       "form": "hyrc",
+       "form_ascii": "hyrc",
+       "language": "Old English",
+       "meaning": "脊背",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈrɪdʒɪŋ/",
+    "definition": {
+     "pos": "[n]",
+     "en": "the formation of raised narrow crests or ridges",
+     "zh": "起脊，脊状隆起"
+    },
+    "context": "The ridging on the metal roof helps channel rainwater away.",
+    "collocations": [
+     {
+      "phrase": "ridging pattern",
+      "zh": "脊状纹路"
+     },
+     {
+      "phrase": "soil ridging",
+      "zh": "土壤起垄"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "image"
+     ],
+     "rationale": "ridge(脊)+ing(正在形成) → 正在形成脊状隆起"
+    },
+    "confidence": 0.9
+   },
+   "in_tok": 3213,
+   "out_tok": 377,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "sanes",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=sane（词性 adj L4），候选 san"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "sanes",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "sane",
+    "reason": "sane的规则复数，意义可预测",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "sane",
+       "type": "root",
+       "meaning": "神志正常的",
+       "origin": "Latin"
+      },
+      {
+       "form": "-s",
+       "type": "suffix",
+       "meaning": "复数",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "拉丁 sanus（健康的）→ 神志正常的",
+     "etyma": [
+      {
+       "form": "sanus",
+       "form_ascii": "sanus",
+       "language": "Latin",
+       "meaning": "健康的",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/seɪnz/",
+    "definition": {
+     "pos": "[adj]",
+     "en": "having a healthy mind; reasonable and sensible",
+     "zh": "神志正常的；明智的"
+    },
+    "context": "Despite the pressure, she remained sanes and made a sensible decision.",
+    "collocations": [
+     {
+      "phrase": "sane and sound",
+      "zh": "神志健全的"
+     },
+     {
+      "phrase": "a sane decision",
+      "zh": "明智的决定"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "cognate"
+     ],
+     "rationale": "sane(神志正常的)+-s(复数)"
+    },
+    "confidence": 0.85
+   },
+   "in_tok": 3213,
+   "out_tok": 368,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "seeded",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=seed（词性 n L2），候选 see·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "seeded",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": "seed",
+    "reason": "种子选手/去籽的，独立义项",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "seed",
+       "type": "root",
+       "meaning": "种子",
+       "origin": "Old English"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "过去分词/形容词后缀",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "古英语 sǣd（种子）→ 播种的；引申为种子选手",
+     "etyma": [
+      {
+       "form": "sǣd",
+       "form_ascii": "saed",
+       "language": "Old English",
+       "meaning": "种子",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈsiːdɪd/",
+    "definition": {
+     "pos": "[adj]",
+     "en": "having seeds removed, or ranked as a seed player",
+     "zh": "去籽的；种子选手的"
+    },
+    "context": "The top-seeded player won the tournament easily.",
+    "collocations": [
+     {
+      "phrase": "top-seeded",
+      "zh": "头号种子的"
+     },
+     {
+      "phrase": "seeded bread",
+      "zh": "带籽面包"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "context"
+     ],
+     "rationale": "seed(种子)+ed → 去籽的/种子选手"
+    },
+    "confidence": 0.9
+   },
+   "in_tok": 3212,
+   "out_tok": 380,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "seeding",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=seed（词性 n L2），候选 see"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "seeding",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": "seed",
+    "reason": "播种/种子选手，独立名词义",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "seed",
+       "type": "root",
+       "meaning": "种子",
+       "origin": "Old English"
+      },
+      {
+       "form": "-ing",
+       "type": "suffix",
+       "meaning": "动作/结果",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "古英语 sǣd（种子）→ seed + -ing",
+     "etyma": [
+      {
+       "form": "sǣd",
+       "form_ascii": "saed",
+       "language": "Old English",
+       "meaning": "种子",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈsiːdɪŋ/",
+    "definition": {
+     "pos": "[n]",
+     "en": "the act of planting seeds; also a seeded player in a tournament",
+     "zh": "播种；种子选手安排"
+    },
+    "context": "The seeding of the fields begins in early spring.",
+    "collocations": [
+     {
+      "phrase": "seeding time",
+      "zh": "播种期"
+     },
+     {
+      "phrase": "top seeding",
+      "zh": "头号种子"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "context"
+     ],
+     "rationale": "seed(种子)+ing(动作)→播种"
+    },
+    "confidence": 0.9
+   },
+   "in_tok": 3212,
+   "out_tok": 366,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "singled",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=single（词性 adj L3），候选 sing·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "singled",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "single",
+    "reason": "single的规则过去式/过去分词",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "single",
+       "type": "root",
+       "meaning": "单个的",
+       "origin": "Latin"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "过去式/过去分词",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "拉丁 singulus（单个）→ single → singled",
+     "etyma": [
+      {
+       "form": "singulus",
+       "form_ascii": "singulus",
+       "language": "Latin",
+       "meaning": "单个的",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈsɪŋɡld/",
+    "definition": {
+     "pos": "[v]",
+     "en": "picked out or chose one person or thing",
+     "zh": "挑出，选出"
+    },
+    "context": "The teacher singled out one student for special praise.",
+    "collocations": [
+     {
+      "phrase": "singled out",
+      "zh": "挑出，选出"
+     },
+     {
+      "phrase": "singled out for",
+      "zh": "因…被挑出"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "context"
+     ],
+     "rationale": "single（单个）+ -ed → 挑出单个"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3212,
+   "out_tok": 365,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "singling",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=single（词性 adj L3），候选 sing·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "singling",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "single",
+    "reason": "single的规则-ing形式，意义可预测",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "single",
+       "type": "root",
+       "meaning": "单个的",
+       "origin": "Latin"
+      },
+      {
+       "form": "-ing",
+       "type": "suffix",
+       "meaning": "动词现在分词后缀",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "拉丁 singulus（单个的）→ single → singling",
+     "etyma": [
+      {
+       "form": "singulus",
+       "form_ascii": "singulus",
+       "language": "Latin",
+       "meaning": "单个的",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈsɪŋɡlɪŋ/",
+    "definition": {
+     "pos": "[v]",
+     "en": "selecting or picking out one person or thing",
+     "zh": "挑出，选出"
+    },
+    "context": "The teacher is singling out the best students for praise.",
+    "collocations": [
+     {
+      "phrase": "single out",
+      "zh": "挑出，选出"
+     },
+     {
+      "phrase": "singling out",
+      "zh": "挑出（某人/某物）"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "context"
+     ],
+     "rationale": "single（单个）+ -ing → 挑出单个的"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3213,
+   "out_tok": 373,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "spited",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=spite（词性 n L4），候选 spit"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "spited",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "spite",
+    "reason": "spite的规则过去式/过去分词",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "spite",
+       "type": "root",
+       "meaning": "恶意，怨恨",
+       "origin": "French"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "过去式/过去分词",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "源自古法语 despit（蔑视），与 despite 同源",
+     "etyma": [
+      {
+       "form": "despit",
+       "form_ascii": "despit",
+       "language": "French",
+       "meaning": "蔑视，轻视",
+       "role": "whole",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈspaɪtɪd/",
+    "definition": {
+     "pos": "[v]",
+     "en": "acted with malice or annoyance toward someone",
+     "zh": "刁难，恶意对待"
+    },
+    "context": "She spited her rival by spreading rumors about the promotion.",
+    "collocations": [
+     {
+      "phrase": "spited by fate",
+      "zh": "被命运捉弄"
+     },
+     {
+      "phrase": "spited out of revenge",
+      "zh": "出于报复而刁难"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "etymology"
+     ],
+     "rationale": "spite(恶意)+ed(过去式)：带着恶意去对待"
+    },
+    "confidence": 0.85
+   },
+   "in_tok": 3213,
+   "out_tok": 384,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "spiting",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=spite（词性 n L4），候选 spit"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "spiting",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "spite",
+    "reason": "spite的现在分词/动名词，意义可预测",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "spite",
+       "type": "root",
+       "meaning": "恶意，怨恨",
+       "origin": "French"
+      },
+      {
+       "form": "-ing",
+       "type": "suffix",
+       "meaning": "正在…",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "古法语 despit（蔑视）→ 中古英语 spite（恶意）",
+     "etyma": [
+      {
+       "form": "despit",
+       "form_ascii": "despit",
+       "language": "French",
+       "meaning": "蔑视",
+       "role": "whole",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈspaɪtɪŋ/",
+    "definition": {
+     "pos": "[v]",
+     "en": "annoying or hurting someone out of resentment",
+     "zh": "刁难，泄愤"
+    },
+    "context": "She kept spiting her brother by hiding his keys.",
+    "collocations": [
+     {
+      "phrase": "in spite of",
+      "zh": "尽管"
+     },
+     {
+      "phrase": "spite oneself",
+      "zh": "跟自己过不去"
+     }
+    ],
+    "mnemonic": {
+     "primary": "context",
+     "secondary": [
+      "root"
+     ],
+     "rationale": "spite(恶意)+ing(正在) → 出于恶意地刁难"
+    },
+    "confidence": 0.9
+   },
+   "in_tok": 3213,
+   "out_tok": 378,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "stingied",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=stingy（词性 adj L4），候选 sting"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "stingied",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": "stingy",
+    "reason": "stingy的变体拼写，意为吝啬的",
+    "morphology": {
+     "analyzable": false,
+     "relation": null,
+     "parts": []
+    },
+    "etymology": {
+     "text": "",
+     "etyma": []
+    },
+    "ipa": "/ˈstɪndʒid/",
+    "definition": {
+     "pos": "[adj]",
+     "en": "very unwilling to spend or give money",
+     "zh": "吝啬的，小气的"
+    },
+    "context": "He was too stingied to buy a round of drinks for his friends.",
+    "collocations": [
+     {
+      "phrase": "stingied with money",
+      "zh": "对钱吝啬"
+     }
+    ],
+    "mnemonic": {
+     "primary": "context",
+     "secondary": [],
+     "rationale": "联想 stingy（吝啬的）的变体，通过例句记忆"
+    },
+    "confidence": 0.6
+   },
+   "in_tok": 3216,
+   "out_tok": 264,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "stingying",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=stingy（词性 adj L4），候选 sting"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "stingying",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": null,
+    "reason": "非标准拼写，需独立学习",
+    "morphology": {
+     "analyzable": false,
+     "relation": null,
+     "parts": []
+    },
+    "etymology": {
+     "text": "",
+     "etyma": []
+    },
+    "ipa": "/ˈstɪŋjiɪŋ/",
+    "definition": {
+     "pos": "[adj]",
+     "en": "having a sharp, tingling, or stinging quality",
+     "zh": "刺痛的，扎人的"
+    },
+    "context": "The stingying sensation in her fingers warned her of the cold.",
+    "collocations": [
+     {
+      "phrase": "a stingying pain",
+      "zh": "刺痛感"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "image"
+     ],
+     "rationale": "sting(刺)+ying(形容词后缀)，像被刺一样痛"
+    },
+    "confidence": 0.3
+   },
+   "in_tok": 3216,
+   "out_tok": 257,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "wearied",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=weary（词性 adj L4），候选 wear·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "wearied",
+    "entry_type": "word",
+    "is_own_entry": false,
+    "derived_from": "weary",
+    "reason": "weary的过去式/过去分词，含义可预测",
+    "morphology": {
+     "analyzable": true,
+     "relation": "inflection",
+     "parts": [
+      {
+       "form": "weary",
+       "type": "root",
+       "meaning": "疲倦的",
+       "origin": "Old English"
+      },
+      {
+       "form": "-ed",
+       "type": "suffix",
+       "meaning": "过去式/过去分词",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "古英语 wērig（疲倦的）→ wearied",
+     "etyma": [
+      {
+       "form": "wērig",
+       "form_ascii": "werig",
+       "language": "Old English",
+       "meaning": "疲倦的",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈwɪərid/ (UK) or /ˈwɪrid/ (US)",
+    "definition": {
+     "pos": "[v]",
+     "en": "made or became very tired",
+     "zh": "使疲倦；疲倦的"
+    },
+    "context": "The long journey wearied the travelers before they reached the city.",
+    "collocations": [
+     {
+      "phrase": "wearied by",
+      "zh": "因…而疲倦"
+     },
+     {
+      "phrase": "wearied of",
+      "zh": "对…感到厌倦"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "context"
+     ],
+     "rationale": "weary(疲倦的)+ed(过去式/过去分词)"
+    },
+    "confidence": 0.95
+   },
+   "in_tok": 3213,
+   "out_tok": 388,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  },
+  {
+   "spelling": "wearying",
+   "entry_type": null,
+   "ipa": null,
+   "signals": [
+    "M1"
+   ],
+   "reasons": [
+    "当前映射 base=weary（词性 adj L4），候选 wear·form 在真实语料"
+   ],
+   "ok": true,
+   "current": {
+    "ipa": null,
+    "def_pos": null,
+    "def_en": null,
+    "def_zh": null,
+    "context": null
+   },
+   "data": {
+    "word": "wearying",
+    "entry_type": "word",
+    "is_own_entry": true,
+    "derived_from": "weary",
+    "reason": "令人疲倦的，独立形容词",
+    "morphology": {
+     "analyzable": true,
+     "relation": "derivation",
+     "parts": [
+      {
+       "form": "weary",
+       "type": "root",
+       "meaning": "疲倦的",
+       "origin": "Old English"
+      },
+      {
+       "form": "-ing",
+       "type": "suffix",
+       "meaning": "令人…的",
+       "origin": "Old English"
+      }
+     ]
+    },
+    "etymology": {
+     "text": "古英语 wērig（疲倦的）→ wearying 令人疲倦的",
+     "etyma": [
+      {
+       "form": "wērig",
+       "form_ascii": "werig",
+       "language": "Old English",
+       "meaning": "疲倦的",
+       "role": "root",
+       "parent": ""
+      }
+     ]
+    },
+    "ipa": "/ˈwɪəriɪŋ/ (UK) or /ˈwɪriɪŋ/ (US)",
+    "definition": {
+     "pos": "[adj]",
+     "en": "making you feel tired and bored",
+     "zh": "令人疲倦的，令人厌烦的"
+    },
+    "context": "The endless meetings were wearying for everyone involved.",
+    "collocations": [
+     {
+      "phrase": "a wearying journey",
+      "zh": "令人疲惫的旅程"
+     },
+     {
+      "phrase": "wearying work",
+      "zh": "累人的工作"
+     }
+    ],
+    "mnemonic": {
+     "primary": "root",
+     "secondary": [
+      "etymology"
+     ],
+     "rationale": "weary(疲倦的)+ing(令人…的) → 令人疲倦的"
+    },
+    "confidence": 0.9
+   },
+   "in_tok": 3213,
+   "out_tok": 394,
+   "level": "🔴 确定要修",
+   "hard": [
+    "ipa 残缺",
+    "释义为空",
+    "例句不含该词"
+   ],
+   "closed": [
+    "ipa",
+    "pos",
+    "def_zh"
+   ]
+  }
+ ]
+}
