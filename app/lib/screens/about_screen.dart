@@ -30,6 +30,28 @@
 // 「有体积的只可能是**可点**的东西」—— 可点 ≠ 必须有体积，形状要与所在页面成套）。
 // ✅ 改用与 `_InfoRow` 同族的 [_LinkRow]：同一条基线、同样的行距，
 //    只是右侧换成**强调色 + 箭头**来表达「这里能点进去」。
+//
+// # 🔴 排版规则（2026-09-29 白哥：「字号不统一、缩进不一致，大大小小前前后后，乱七八糟」后定）
+//
+// | 规则 | 值 | 为什么 |
+// |---|---|---|
+// | **正文字号** | **只有一档** [_kBodyFontSize]（=14，与「我的」页列表行同号） | 层级别靠字号差表达（12.5 vs 12 那种 0.5px 差**看不出层级、只显得不齐**） |
+// | **左列颜色** | `ink`（深）—— 信息行与入口行**同色** | 同位置只该有一种颜色，否则相邻两组「一浅一深」 |
+// | **右列颜色** | `ink3`（浅）· 入口处是 `accent` 箭头 | iOS 设置惯例「左黑右灰」 |
+// | **行距** | 全部 `vertical: 9` | 三条信息行 + 入口行**同节奏** |
+// | **分隔线留白** | 统一「上 20 / 下 16」（[_divider]） | 原两条线一个 `xl+lg` 一个 `xl+sm` |
+//
+// 🔴 **不重复呈现同一信息**：原先顶部有一个「App 名 22px + 版本 12.5px」的居中大块，
+//    与下面的「应用名称 / 版本」两行**完全重复** —— 那是「前前后后」的真因，已删。
+//    现在 App 名只在「应用名称」这一行出现**一次**。
+//
+// 🔴 **不放产品简介**（白哥 2026-09-29：「在关于里不用产品简介」）：
+//    用户**已经在用**这个 App，再告诉他「这是英语学习应用…」是把营销文案放进产品内部 ——
+//    那是 App Store 描述该干的事。「关于」页只回答「我装的是什么版本、谁做的、去哪找人」。
+//
+// 🔑 **判据（泛化）**：一个「关于/信息」页的乱，通常不是「某个字号不对」，
+//    而是**①同一信息重复出现 ②层级用 0.5px 的字号差表达 ③同一位置混了两种颜色**。
+//    修法是**减少变量**（少一档字号、少一处重复），不是逐处微调。
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -42,6 +64,38 @@ import '../theme/coevo_tokens.dart';
 import '../widgets/clay_button.dart';
 import '../widgets/co_dialog.dart';
 import '../widgets/twemoji.dart';
+
+/// 关于页**正文的唯一字号**（信息行 / 说明 / 入口行 全用它）。
+///
+/// # 🔴 为什么把它提成常量（而不是各处写 14）
+///
+/// 2026-09-29 白哥：「字号不统一…大大小小…乱七八糟」。
+/// 原实现一页里混了 **4 档**：22（App 名）/ 13（信息行）/ 12.5（版本·简介）/ 12（待补项）——
+/// 其中 **12.5 与 12 只差 0.5px**，那种差**看不出层级、只显得不齐**。
+///
+/// 🔑 提到常量是为了让「**这一页只有一档正文字号**」成为**可断言的事实**（不是约定）：
+///    将来有人想加一行文字，写 `fontSize: _kBodyFontSize` 时就会看到这段说明；
+///    若他要写别的数，得先解释「为什么这一行该与其它行不同」。
+///
+/// 🔑 数值取 14 的依据：与 `profile_screen._navTile.title` 的「我的」页列表行
+///    **同字号** —— 两个列表页的字号必须一致，否则来回切换会「跳」。
+///
+/// ⚠️ **不受它管**的只有两处：顶栏标题（23px，属页面级）与
+///    「联系工作人员」弹窗（`CoDialog` 内部，属另一个视觉上下文）。
+const double _kBodyFontSize = 14;
+
+/// 段间分隔线 —— **上下留白统一**（上 `xl`=20 / 下 `lg`=16）。
+///
+/// 🔑 为什么做成 helper：原实现两条线分别写了 `xl+lg` 与 `xl+sm` ——
+///    **同样的线、不同的留白**，这也是「不齐」的一部分。
+///    抽成一处后，「两条线长得一样」就不再依赖我每次记得写对。
+Widget _divider(CoEvoTokens t) => Column(
+      children: [
+        const SizedBox(height: CoSpacing.xl),
+        Divider(height: 1, color: Color(t.line.argb32)),
+        const SizedBox(height: CoSpacing.lg),
+      ],
+    );
 
 /// 关于页（版本 · 备案号 · 待补项）。
 class AboutScreen extends StatelessWidget {
@@ -102,72 +156,59 @@ class AboutScreen extends StatelessWidget {
                     CoSpacing.xxl, 0, CoSpacing.xxl, CoSpacing.tabBarClearance),
                 children: [
                   const SizedBox(height: CoSpacing.xl),
-                  // ── App 名 + 版本 ──
-                  Center(
-                    child: Column(
-                      children: [
-                        Text(
-                          kCoEvoName,
-                          style: TextStyle(
-                            fontFamily: CoFonts.uiSans,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w600,
-                            color: Color(t.ink.argb32),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          '版本 $kCoEvoVersion',
-                          style: TextStyle(
-                            fontFamily: CoFonts.uiSans,
-                            fontSize: 12.5,
-                            color: Color(t.ink3.argb32),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: CoSpacing.xl),
 
+                  // ── ① 产品信息（三行，**完全同格式**）──
+                  //
+                  // 🔴 2026-09-29 白哥：「应用名、版本号、备案号字号不统一、缩进不一致，
+                  //    大大小小前前后后，乱七八糟」。诊断出**两个真因**：
+                  //
+                  // ① **同一信息出现两次**（「前前后后」）：这里原本上面还有一个
+                  //    「App 名 22px + 版本 12.5px」的居中大块，与下面这两行**完全重复**
+                  //    → 已删。App 名只在「应用名称」这一行出现一次。
+                  // ② **一页 4 档字号**（「大大小小」）：22 / 13 / 12.5 / 12。
+                  //    其中 12.5 与 12 只差 0.5px —— **看不出层级，只显得不齐**。
+                  //    → 全页正文统一 **14px**（= `profile_screen._navTile.title` 的
+                  //      「我的」页列表行字号，**跨页也一致**）。
+                  //
+                  // 🔑 层级改由**颜色**承担（而不是 0.5px 的字号差）：
+                  //    · 左列（字段名）`ink` 深色 + w500 —— 与 `_LinkRow` 的左列**同色**，
+                  //      于是「字段行」与「动作行」的左列在视觉上**是一条线**
+                  //      （原实现这里是 `ink3` 浅色，与下面的 `ink` 深色对不齐）
+                  //    · 右列（值）`ink3` 浅色 —— 与 iOS 设置「左黑右灰」的惯例一致
+                  //
+                  // ⚠️ 之前 `_InfoRow` 是「标签浅 / 值深」，而原型 `.row` 是「标签深 / 值浅」
+                  //    —— 两处相反。现统一到后者（设置列表的通行做法）。
                   _InfoRow(label: '应用名称', value: kCoEvoName),
                   _InfoRow(label: '版本', value: kCoEvoVersion),
                   // 🔑 备案号是**中国区上架的常规要求**，且已真实持有 → 直接放（不是占位）
                   _InfoRow(label: '备案号', value: '粤ICP备2026061557号-1'),
 
-                  const SizedBox(height: CoSpacing.xl),
-                  Divider(height: 1, color: Color(t.line.argb32)),
-                  const SizedBox(height: CoSpacing.lg),
+                  // ── ② 分隔线（留白统一：上 20 / 下 16）──
+                  //    ⚠️ 原实现两条线分别是 `xl+lg` 与 `xl+sm` —— 同样的线、不同的留白，
+                  //       也是「不齐」的一部分。现在两条**完全一致**。
+                  _divider(t),
 
-                  // ── 说明 ──
-                  Text(
-                    'CoEvo 是一款英语学习应用：读英文新闻、划词查词、'
-                    '把生词收进生词本，再按记忆曲线复习。',
-                    style: TextStyle(
-                      fontFamily: CoFonts.uiSans,
-                      fontSize: 12.5,
-                      height: 1.8,
-                      color: Color(t.ink2.argb32),
-                    ),
-                  ),
-                  const SizedBox(height: CoSpacing.lg),
-
-                  // ── 🔴 待补项（**可见地标注，而不是留死链**）──
+                  // ── ③ 🔴 待补项（**可见地标注，而不是留死链**）──
                   //    Apple 上架需要「隐私政策」入口；URL 未定 → 先如实说明，
                   //    而不是放一个点了没反应的链接。
+                  //
+                  // 🔴 2026-09-29：**产品简介已删**（白哥：「在关于里不用产品简介」）。
+                  //    原文案是「CoEvo 是一款英语学习应用：读英文新闻、划词查词…」。
+                  //    🔑 删它的道理：用户**已经在用**这个 App 了，再告诉他「这是英语学习应用」
+                  //       是把营销文案放进了产品内部 —— 那是 App Store 描述该干的事。
+                  //       「关于」页只该回答「我装的是什么版本、谁做的、去哪找人」。
                   Text(
                     '隐私政策与用户协议即将上线。',
                     style: TextStyle(
                       fontFamily: CoFonts.uiSans,
-                      fontSize: 12,
+                      fontSize: _kBodyFontSize,
                       color: Color(t.ink3.argb32),
                     ),
                   ),
 
-                  const SizedBox(height: CoSpacing.xl),
-                  Divider(height: 1, color: Color(t.line.argb32)),
-                  const SizedBox(height: CoSpacing.sm),
+                  _divider(t),
 
-                  // ── 🆕 联系工作人员（2026-09-29 由「我的」页移入）──
+                  // ── ④ 🆕 联系工作人员（2026-09-29 由「我的」页移入）──
                   _LinkRow(
                     label: '联系工作人员',
                     onTap: () => _showContactDialog(context),
@@ -243,12 +284,18 @@ class AboutScreen extends StatelessWidget {
 ///
 /// # 与 [_InfoRow] 的关系
 ///
-/// 两者**同族**（同一条左右基线、同样的 `vertical: 9` 行距），差别只有一处：
+/// 两者**同族**：同一字号（[_kBodyFontSize]）、同一条左右基线、同样的 `vertical: 9` 行距，
+/// **左列文字用同一个颜色**（`ink`）。差别只有右侧：
 ///
 /// | | 读法 | 右侧 |
 /// |---|---|---|
-/// | `_InfoRow` | 「这个字段的**值**是…」（只读信息） | `ink` 文字（如「0.1.0」） |
+/// | `_InfoRow` | 「这个字段的**值**是…」（只读信息） | `ink3` 文字（如「0.1.0」） |
 /// | `_LinkRow` | 「点这里**进去**」（入口） | 强调色 + **箭头** |
+///
+/// 🔑 **左列必须同色**，否则相邻两组会「一浅一深、对不齐」——
+///    原实现正是这样（`_InfoRow` 的标签是 `ink3`，本类是 `ink`），
+///    白哥 2026-09-29 的「乱七八糟」里就有这一条。
+///    判据：**同一个位置（左列）只该有一种颜色**；层级差异放在**右侧**表达。
 ///
 /// 🔑 为什么用一个新类而不是给 `_InfoRow` 加 `onTap` 参数：
 ///    两者的**视觉契约不同**（值 vs 入口），混在一个类里要靠
@@ -256,7 +303,7 @@ class AboutScreen extends StatelessWidget {
 ///    分成两个小类，各自的意图是**单一**的。
 ///
 /// 🔑 右侧用**箭头图标**而不是文字「查看」：箭头是「可进入」的通用符号，
-///    且不占横向空间（本页的字号都偏小，多一个词会把行挤得紧）。
+///    且不占横向空间（本页信息行的右侧已经可能出现长值，如备案号）。
 class _LinkRow extends StatelessWidget {
   const _LinkRow({required this.label, required this.onTap});
 
@@ -280,7 +327,7 @@ class _LinkRow extends StatelessWidget {
               label,
               style: TextStyle(
                 fontFamily: CoFonts.uiSans,
-                fontSize: 13,
+                fontSize: _kBodyFontSize,
                 color: Color(t.ink.argb32),
               ),
             ),
@@ -294,7 +341,15 @@ class _LinkRow extends StatelessWidget {
   }
 }
 
-/// 「标签 — 值」一行（只读信息）。
+/// 「字段名 — 值」一行（只读信息）。
+///
+/// # 颜色分工：左 `ink`（深）/ 右 `ink3`（浅）
+///
+/// 即 iOS 设置的通行做法（左黑右灰）。
+///
+/// 🔴 2026-09-29 **反过来过**：原实现是「左 `ink3` 浅 / 右 `ink` 深」（表单回显的写法）。
+///    改过来的理由不是审美偏好，而是**与 [_LinkRow] 对齐** ——
+///    两类的**左列在视觉上必须是同一条线**，否则相邻两组一浅一深地看着乱。
 ///
 /// ⚠️ 与 [_LinkRow] 是**两个类**，别合并 —— 理由见 [_LinkRow] 的文档。
 class _InfoRow extends StatelessWidget {
@@ -315,8 +370,10 @@ class _InfoRow extends StatelessWidget {
             label,
             style: TextStyle(
               fontFamily: CoFonts.uiSans,
-              fontSize: 13,
-              color: Color(t.ink3.argb32),
+              fontSize: _kBodyFontSize,
+              // w500 与 `_navTile.title` 一致（列表行的左列都是这个字重）
+              fontWeight: FontWeight.w500,
+              color: Color(t.ink.argb32),
             ),
           ),
           const Spacer(),
@@ -326,8 +383,8 @@ class _InfoRow extends StatelessWidget {
               textAlign: TextAlign.right,
               style: TextStyle(
                 fontFamily: CoFonts.uiSans,
-                fontSize: 13,
-                color: Color(t.ink.argb32),
+                fontSize: _kBodyFontSize,
+                color: Color(t.ink3.argb32),
               ),
             ),
           ),

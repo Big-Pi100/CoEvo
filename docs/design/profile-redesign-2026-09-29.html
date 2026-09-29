@@ -329,25 +329,31 @@ code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em
 /* ── 关于页（🆕 新页面 · 2026-09-29 补画 · 忠实复刻 `about_screen.dart`）──
    🔑 本页**全平面**：一个 `.clay` 都没有 —— 它自身不可点，
       按 spec §〇 规则 1「有体积的只可能是**可点**的东西」→ 平面。
-      页面里唯一的入口（`.aglnk`）用**强调色 + 箭头**表达「能点」，不靠体积。 */
+      页面里唯一的入口（`.aglnk`）用**强调色 + 箭头**表达「能点」，不靠体积。
+
+   🔴 2026-09-29 排版统一（白哥：「字号不统一…大大小小前前后后，乱七八糟」）——
+      三条规则，改前先读：
+      · **正文只有一档字号 `14px`**（与「我的」页列表行同号）——
+        层级别靠字号差表达；原 12.5 vs 12 那种 0.5px 差看不出层级、只显得不齐。
+        已删的两处：`.agapp`（App 名 22px 品牌头，与下面「应用名称/版本」**重复**）、
+        `.agtx`（产品简介 —— 白哥：「在关于里不用产品简介」）。
+      · **左列一律 `--ink`（深）**：字段行与入口行的左列必须同色，
+        否则相邻两组「一浅一深」（原 `.agkv .k` 是 `--ink3`，是错的）。
+      · **右列 `--ink3`（浅）**，入口处是 `--accent` 箭头 —— iOS 设置惯例「左黑右灰」。 */
 .ag{padding:2px 20px 0;flex:1;overflow-y:auto}
 .ag .back{font-size:12px;font-weight:600;color:var(--accent);
           padding:6px 10px;flex:0 0 auto}
-.agapp{text-align:center;margin:18px 0 20px}
-.agapp .n{font-size:22px;font-weight:600;color:var(--ink)}
-.agapp .v{font-size:12.5px;color:var(--ink3);margin-top:6px}
-/* 「标签 — 值」：标签 `ink3`（浅）/ 值 `ink`（深）。
-   ⚠️ 与上面 `.row` 的分工**相反** —— **别复用 `.row`**：那是「现状」屏的信息行
-      （标签深、值浅）。原型要忠实于**实现**，而实现的 `_InfoRow` 是「标签浅、值深」。 */
+/* 「字段名 — 值」：左 `ink` 深 + w500 / 右 `ink3` 浅（iOS 设置惯例） */
 .agkv{display:flex;align-items:flex-start;gap:12px;padding:9px 0}
-.agkv .k{font-size:13px;color:var(--ink3);flex:0 0 auto}
+.agkv .k{font-size:14px;font-weight:500;color:var(--ink);flex:0 0 auto}
 /* 🔴 `flex:1` + `min-width:0` 必须成对 —— 只写 `flex:0` 会让宽度坍缩到 0
    （4 字逐字换行 = 竖排）。这正是源码级校验看不见、渲染级才抓得到的那类错。 */
-.agkv .v{font-size:13px;color:var(--ink);text-align:right;flex:1;min-width:0}
-.agdiv{height:1px;background:var(--line);margin:16px 0}
-.agtx{font-size:12.5px;color:var(--ink2);line-height:1.8}
-.agtx3{font-size:12px;color:var(--ink3);line-height:1.7}
-.aglnk{display:flex;align-items:center;padding:9px 0;font-size:13px;color:var(--ink)}
+.agkv .v{font-size:14px;color:var(--ink3);text-align:right;flex:1;min-width:0}
+/* 上 20 / 下 16 —— 与实现的 `_divider()` 逐字一致（原为上下各 16） */
+.agdiv{height:1px;background:var(--line);margin:20px 0 16px}
+/* 段级说明（隐私政策待补）—— 字号同样是 14，靠颜色与两侧分隔线区分层级 */
+.agtx3{font-size:14px;color:var(--ink3);line-height:1.7}
+.aglnk{display:flex;align-items:center;padding:9px 0;font-size:14px;color:var(--ink)}
 /* 单类名（不用 `.aglnk .go` 这样的后代选择器）→ 与全文件「一处样式一处定义」的写法一致 */
 .aggo{margin-left:auto;color:var(--accent);font-size:16px;line-height:1}
 
@@ -1002,18 +1008,17 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
             </div>
           </div>
           <div class="ag">
-            <div class="agapp">
-              <div class="n">CoEvo</div>
-              <div class="v">版本 1.0.0</div>
-            </div>
-
+            <!-- 🔴 2026-09-29 已删「App 名 22px + 版本」居中大块 ——
+                 它与下面「应用名称 / 版本」两行**完全重复**，是「前前后后」的真因。
+                 现在 App 名只在「应用名称」这一行出现一次。 -->
             <div class="agkv"><span class="k">应用名称</span><span class="v">CoEvo</span></div>
             <div class="agkv"><span class="k">版本</span><span class="v">1.0.0</span></div>
             <div class="agkv"><span class="k">备案号</span><span class="v">粤ICP备2026061557号-1</span></div>
 
             <div class="agdiv"></div>
-            <div class="agtx">CoEvo 是一款英语学习应用：读英文新闻、划词查词、把生词收进生词本，再按记忆曲线复习。</div>
-            <div style="height:16px"></div>
+            <!-- 🔴 2026-09-29 已删产品简介（白哥：「在关于里不用产品简介」）——
+                 用户已经在用这个 App，再告诉他「这是英语学习应用」是把营销文案
+                 放进产品内部；那是 App Store 描述该干的事。 -->
             <div class="agtx3">隐私政策与用户协议即将上线。</div>
 
             <div class="agdiv"></div>

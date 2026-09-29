@@ -29,6 +29,27 @@ const path = require('path');
 let fail = 0;
 const ok = (c, m) => { if (!c) { console.log('FAIL  ' + m); fail++; } else console.log('PASS  ' + m); };
 
+/**
+ * 剥掉**两种**注释 —— 做「这一块渲染出来有没有 X」类检查前必须调用。
+ *
+ * 🔴 **两种都要剥，缺一不可**（都是 2026-09-29 实测踩到的）：
+ * · **HTML 注释**（小于号 叹号 双减号 形式）—— 搬迁说明里写「『X』已移入 Y 页」，
+ *   `forbidden: ['X']` 就命中了 X；
+ * · **CSS 块注释**（斜杠星号开头的那种）—— 同一份搬迁说明也写在 CSS 段里，又命中一次。
+ *
+ * 🔑 判据：注释**不渲染**，而这类检查问的是「渲染结果」⇒ 必须剥。
+ * ⚠️ 但「文件里还有没有 X 的**痕迹**」类断言（`mustNotHave`）**不该剥** ——
+ *    注释里提到也算语义残留。
+ *
+ * ⚠️ 本注释**刻意不写出那两种定界符的字面形式** —— 写了会让这个块注释**提前结束**
+ *    （2026-09-29 真踩过：块注释里写字面结束符 → 后面全变代码 → SyntaxError）。
+ *    同族：HTML 注释结尾少写一个字符 → 浏览器把后面一大段吞掉。
+ *    📌 一般判据：**注释里别写字面定界符**。
+ */
+const stripComments = (s) => s
+  .replace(/<!--[\s\S]*?-->/g, '')
+  .replace(/\/\*[\s\S]*?\*\//g, '');
+
 function checkPage(file, opts = {}) {
   console.log('\n=== ' + path.basename(file) + ' ===');
 
@@ -131,11 +152,42 @@ function checkPage(file, opts = {}) {
   ok(!src.includes('<script src="http') || src.includes('cdn.jsdelivr.net') || src.includes('cdnjs.cloudflare.com'),
      '外部脚本来自允许的 CDN');
 
-  // 8. 自定义断言
+  // 8. 字号白名单（🆕 2026-09-29）
+  //
+  // 🔴 **为什么必须是「白名单」而不是「禁止某些值」**：
+  //    黑名单（`forbidden: ['font-size:13px']`）只能挡住**已知的坏值** ——
+  //    将来有人写 `15px` 就漏了。白名单要求「区间内每一个 font-size 都在允许清单里」。
+  //
+  // 🔴 **为什么单独一个选项（而不是塞进 containerChecks）**：
+  //    字号定义在 `<style>` 里，而 `<style>` 与用它的 `<div>` **不在同一段文本** ——
+  //    用 `id="about"` 那种 HTML 锚点切出来的区间**根本扫不到 CSS**。
+  //    2026-09-29 实测：我第一版正是这么写的，**永远通过 = 假绿**。
+  //    → 所以字号检查**必须单独给一个 CSS 段的锚点**。
+  //
+  // 🔑 锚点惯例：CSS 段以 `/* ── <页面名>（` 开头（本项目各段都有这种标题注释）。
+  (opts.fontSizeWhitelists || []).forEach(({ label, from, to, allowed }) => {
+    const a = src.indexOf(from);
+    const b = to ? src.indexOf(to, a) : src.length;
+    if (a < 0 || b < a) { ok(false, label + ': 找不到区块'); return; }
+    const block = stripComments(src.slice(a, b));
+    const found = [...block.matchAll(/font-size:\s*([\d.]+)px/g)].map(m => m[1]);
+    const uniq = [...new Set(found)];
+
+    // 🔴 自检：区间里**确实有**字号声明 —— 否则「没有违规」只是「什么都没扫到」
+    ok(found.length > 0,
+       label + ': 区间内扫到字号声明 (' + found.length + ' 处 · 档位 ' + uniq.join('/') + ')');
+
+    const bad = uniq.filter(v => !allowed.includes(v));
+    ok(bad.length === 0,
+       label + ' —— 允许 [' + allowed.join(', ') + ']' +
+       (bad.length ? ' · 🔴 违规档位: ' + bad.join(', ') : ''));
+  });
+
+  // 9. 自定义断言
   (opts.mustHave || []).forEach(t => ok(src.includes(t), '含「' + t + '」'));
   (opts.mustNotHave || []).forEach(t => ok(!src.includes(t), '不含「' + t + '」'));
 
-  // 9. 专项：某区块内不应出现某类名
+  // 10. 专项：某区块内不应出现某类名
   //
   // # 🔴 `from` / `to` 必须用「**只在该区块出现**」的锚点
   //
@@ -164,7 +216,7 @@ function checkPage(file, opts = {}) {
     const b = to ? src.indexOf(to, a) : src.length;
     if (a < 0 || b < a) { ok(false, label + ': 找不到区块'); return; }
     const block = src.slice(a, b);
-    const rendered = block.replace(/<!--[\s\S]*?-->/g, '');
+    const rendered = stripComments(block);
     const hit = forbidden.filter(f => rendered.includes(f));
     ok(hit.length === 0, label + (hit.length ? ' — 违规: ' + hit.join(', ') : ''));
 
@@ -262,6 +314,38 @@ checkPage(D + 'profile-redesign-2026-09-29.html', {
       from: 'id="mine-logged"',
       to: 'id="login-page"',
       forbidden: ['联系工作人员'],
+    },
+    {
+      // 🔴 同轮：**同一信息不得重复呈现** + **不放产品简介**。
+      //    「App 名 22px 品牌头」与「应用名称 / 版本」两行完全重复 —— 「前前后后」的真因。
+      //    白哥：「在关于里不用产品简介」。
+      //    🔑 锚点用 **HTML** 段（`id="about"`）—— 这两样都是**元素**，不是样式。
+      label: '关于页无重复品牌头（agapp）· 无产品简介',
+      from: 'id="about"',
+      to: '<div class="note warn">',
+      forbidden: ['agapp', '英语学习应用'],
+    },
+    {
+      // 同一件事的 **CSS 侧**：`.agapp` 的样式定义也必须是死的（删块不等于删样式）
+      label: '关于页 CSS 段无已删块（.agapp / .agtx）',
+      from: '/* ── 关于页（',
+      to: '.aggo{',
+      forbidden: ['agapp', '.agtx{'],
+    },
+  ],
+
+  // ── 字号白名单 ──
+  //
+  // 🔴 锚点必须是 **CSS 段**（`/* ── 关于页（` → `.aggo{`）——
+  //    字号定义在 `<style>` 里，用 HTML 锚点切出来的区间**扫不到**。
+  fontSizeWhitelists: [
+    {
+      label: '关于页 CSS 段：正文字号只允许 12 / 14',
+      from: '/* ── 关于页（',
+      // 停在 `.aggo{` 之前 —— 那一行是**箭头图标**（16px），不是文字
+      to: '.aggo{',
+      // 12 = 顶栏「返回」（页面级）· 14 = 正文唯一档
+      allowed: ['12', '14'],
     },
   ],
 });
