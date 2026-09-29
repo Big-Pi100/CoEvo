@@ -179,9 +179,24 @@ code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em
 
 /* ── B：改后（自绘顶栏 + Clay 凸起，与其他 tab 页一致）── */
 .hbar{padding:8px 18px 14px;background:var(--page);transition:background .28s}
+.hbar .hrow{display:flex;align-items:flex-start;gap:12px}
+.hbar .hrow>.hmain{flex:1;min-width:0}
 .hbar .t{font-size:23px;font-weight:600;letter-spacing:-.345px;color:var(--ink);
          line-height:1.25}
 .hbar .s{font-size:12px;color:var(--ink3);line-height:1.6;margin-top:3px}
+
+/* HeaderChip —— 照 `app/lib/widgets/header_chip.dart` 实测值逐项复刻：
+   圆角 13 · padding 7/12 · 图标 13 且 gap 6 · label 11.5/w600 · count 10.5/opacity .7
+   · 前景一律 accent · 凹陷态底色 `sunken` + 内阴影
+   🔑 **不是自创**：信息流「收藏 N」与复习页筛选用的就是这个公共组件。 */
+.chip{display:inline-flex;align-items:center;flex:0 0 auto;
+      border-radius:13px;padding:7px 12px;background:var(--sunken);
+      box-shadow:var(--clay-i1) var(--clay-shade),
+                 var(--clay-i2) var(--clay-light);
+      transition:background .28s,box-shadow .28s}
+.chip .ci{font-size:13px;line-height:1;color:var(--accent)}
+.chip .cl{font-size:11.5px;font-weight:600;color:var(--accent);margin-left:6px}
+.chip .cn{font-size:10.5px;color:var(--accent);opacity:.7;margin-left:6px}
 
 .clay{background:var(--card);border-radius:var(--clay-radius);
       box-shadow:var(--clay-o1) var(--clay-out),
@@ -354,11 +369,14 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
     </ul>
   </div>
   <div class="scard fixed">
-    <h3>✅ 已定（原 3 件待决）</h3>
+    <h3>✅ 已定（白哥 2026-09-29 · 全部决策）</h3>
     <ul>
       <li><b>朗读设置</b>：留「我的」，<b>等阅读面板做好再搬</b>（面板本体尚未实现）</li>
       <li><b>主题风格</b>：留「我的」（它是<b>全局</b>主题，不只阅读）</li>
-      <li><b>成就 / 统计</b>：顶部只放<b>统计 + 分享</b>，成就列表留 <code>/achievements</code></li>
+      <li><b>成就 / 统计</b>：顶部只放统计 + 分享（三列），成就列表留 <code>/achievements</code></li>
+      <li><b>阅读篇数</b>：口径 = <b>乙「读完的文章数」</b>（滚到底 + 最短停留）· <code>article_id</code> 去重</li>
+      <li><b>账号区块</b>：<b>本次只做 UI 骨架</b>（Apple / 邮箱拆独立一批）</li>
+      <li><b>通知入口保留</b>（右上角）—— 后端 3 个接口齐全，仅「外壳」改用 <code>HeaderChip</code></li>
     </ul>
   </div>
 </div>
@@ -480,8 +498,15 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
       <div class="phone">
         <div class="screen">
           <div class="hbar">
-            <div class="t">我的</div>
-            <div class="s">白哥 · 免费版</div>
+            <div class="hrow">
+              <div class="hmain">
+                <div class="t">我的</div>
+                <div class="s">白哥 · 免费版</div>
+              </div>
+              <!-- 通知入口：保留（白哥 2026-09-29 定）·
+                   用 HeaderChip 而非 AppBar 的 Badge+IconButton —— 与现役顶栏一致 -->
+              <span class="chip"><span class="ci">🔔</span><span class="cl">通知</span><span class="cn">3</span></span>
+            </div>
           </div>
           <div class="mbody" style="padding:0 16px 100px">
 
@@ -604,8 +629,15 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
       <div class="phone">
         <div class="screen">
           <div class="hbar">
-            <div class="t">我的</div>
-            <div class="s">白哥 · 免费版</div>
+            <div class="hrow">
+              <div class="hmain">
+                <div class="t">我的</div>
+                <div class="s">白哥 · 免费版</div>
+              </div>
+              <!-- 通知入口：保留（白哥 2026-09-29 定）·
+                   用 HeaderChip 而非 AppBar 的 Badge+IconButton —— 与现役顶栏一致 -->
+              <span class="chip"><span class="ci">🔔</span><span class="cl">通知</span><span class="cn">3</span></span>
+            </div>
           </div>
           <div class="mbody" style="padding:0 16px 100px">
             <div class="clay hero">
@@ -760,9 +792,15 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
     </tr>
     <tr>
       <td><b>顶部区块</b><br><span class="sev p1">口径变更</span></td>
-      <td><code>AchievementSection</code>（含<b>成就列表</b>）</td>
-      <td><b>纯统计卡</b>：连续天数 + 掌握词数 + 分享按钮（无列表）</td>
+      <td><code>AchievementSection</code>（含<b>成就列表</b>）· 两个数字</td>
+      <td><b>纯统计卡 · 三列</b>：连续天数 + 掌握词数 + <b>阅读篇数</b> + 分享按钮</td>
       <td>决策 3；成就列表移出到 <code>/achievements</code>，首屏更短</td>
+    </tr>
+    <tr>
+      <td><b>通知入口</b><br><span class="sev p2">保留</span></td>
+      <td><code>AppBar.actions</code> 里 <b>Badge + 图标</b>（无文字）</td>
+      <td>自绘顶栏右侧 <b><code>HeaderChip</code>「🔔 通知 N」</b>（带文字 + 计数）</td>
+      <td>🔑 <b>不是自创</b>：信息流「收藏 N」/ 复习页筛选用的<b>同一个公共组件</b>；🆕 顶栏已无 <code>AppBar</code></td>
     </tr>
     <tr>
       <td><b>账号区块</b><br><span class="sev p1">新增</span></td>
