@@ -79,6 +79,8 @@ code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em
 .scard h3{margin:0 0 10px;font-size:14px;font-weight:600;letter-spacing:.02em}
 .scard.del h3{color:#E89B8C}
 .scard.add h3{color:#8FC7A8}
+.scard.new h3{color:#8FB6E8}
+.scard.fixed h3{color:#8FC7A8}
 .scard.ask h3{color:#E0C070}
 .scard ul{margin:0;padding-left:17px;color:#C6C0B4;font-size:13px;line-height:1.85}
 .scard li code{background:#3E3A32}
@@ -204,6 +206,31 @@ code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em
 .pills{display:flex;flex-wrap:wrap;gap:7px;padding:13px 15px}
 .pills .pill{cursor:default}
 
+/* ── 登录页（🆕 新页面）────────────────────────────── */
+.lg{padding:2px 20px 0;flex:1;overflow-y:auto}
+.lg h2{font-size:20px;font-weight:600;color:var(--ink);margin:14px 0 4px;
+       letter-spacing:-.02em}
+.lg .desc{font-size:12.5px;color:var(--ink3);line-height:1.7;margin:0 0 18px}
+.applebtn{display:flex;align-items:center;justify-content:center;gap:8px;
+          background:var(--ink);color:var(--page);border-radius:13px;
+          padding:14px 0;font-size:14.5px;font-weight:500;
+          box-shadow:var(--clay-o1) rgba(0,0,0,.28);transition:background .28s,color .28s}
+.orline{display:flex;align-items:center;gap:11px;margin:16px 0;color:var(--ink3);font-size:11.5px}
+.orline::before,.orline::after{content:'';flex:1;height:1px;background:var(--line)}
+.inp{background:var(--card);border:1px solid var(--line);border-radius:12px;
+     padding:13px 14px;font-size:13.5px;color:var(--ink3);margin-bottom:10px;
+     transition:background .28s,border-color .28s}
+.inp.ph{color:var(--ink3)}
+.lgbtns{display:flex;gap:9px;margin-top:6px}
+.lgbtn{flex:1;text-align:center;font-size:13.5px;font-weight:500;padding:13px 0;
+       border-radius:12px;background:var(--sunken);color:var(--ink2);
+       transition:background .28s,color .28s}
+.lgbtn.pri{background:var(--accent);color:var(--accent-ink);
+           box-shadow:0 4px 5px var(--accent-out)}
+.lgtip{font-size:11px;color:var(--ink3);line-height:1.7;margin-top:16px;
+       padding:12px 13px;border-radius:11px;background:var(--sunken);
+       transition:background .28s}
+
 /* tab bar（复用 app.dart 的 _ClayTabBar 观感）*/
 .tbar{position:absolute;left:0;right:0;bottom:0;height:74px;
       background:color-mix(in srgb,var(--page) 82%,transparent);
@@ -248,7 +275,9 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
     <b>依据（不是我发明的，是 09-25 已定稿的规格）</b>：<code>docs/design/ui-ux-refactor-assessment-2026-09-25.md</code><br>
     §4.2「『我的』→ 大幅精简：<b>顶部统计区 + 账号 + 兴趣筛选 + 订阅状态 / 管理订阅 / 恢复购买</b>；<b>删实名 / K12 / 分销 / 学习设置 / 数据导出</b>」<br>
     §6.1 信息架构定稿（「我的」子项 = 账号 · 兴趣筛选 · 订阅 · 顶部统计+分享 · 关于）<br>
-    §6.3（字号 / 主题 / 发音设置 → 移到阅读界面内）
+    §6.3（字号 / 主题 / 发音设置 → 移到阅读界面内）<br>
+    登录方式 → <code>english-app-implementation-plan-v2-2026-09-25.md</code> §10.1.1
+    （<b>匿名可用 → 需要时注册</b>；iOS = <b>Sign in with Apple</b> + 邮箱密码）
   </p>
 </header>
 
@@ -274,12 +303,21 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
       <li>底部：补齐 <code>tabBarClearance</code> 让最后一项不被 tab bar 压住</li>
     </ul>
   </div>
-  <div class="scard ask">
-    <h3>？ 待你定的 3 件</h3>
+  <div class="scard new">
+    <h3>＋ 新增（白哥 2026-09-29）</h3>
     <ul>
-      <li><b>朗读设置</b>：§6.3 定「移到阅读界面内」，但<b>阅读设置面板尚未实现</b> → 现在移还是等？</li>
-      <li><b>主题风格</b>：同理（§6.3）。它是全局主题，不只阅读</li>
-      <li><b>成就区 / 统计区</b>：定稿说「顶部统计区」，现用的是 <code>AchievementSection</code> 组件 → 保留还是改版？</li>
+      <li><b>账号区块</b>：未登录 / 已登录两态 + <b>登录页</b>（Apple 登录 + 邮箱密码）</li>
+      <li><b>绑定邮箱</b>：用于找回账号 · 跨设备同步</li>
+      <li><b>退出账号</b>：从顶栏图标 → 页尾<b>带文字</b>独立项（Apple 审核要求可见）</li>
+      <li>顶部改为<b>纯统计卡</b>；成就列表移出，留在 <code>/achievements</code></li>
+    </ul>
+  </div>
+  <div class="scard fixed">
+    <h3>✅ 已定（原 3 件待决）</h3>
+    <ul>
+      <li><b>朗读设置</b>：留「我的」，<b>等阅读面板做好再搬</b>（面板本体尚未实现）</li>
+      <li><b>主题风格</b>：留「我的」（它是<b>全局</b>主题，不只阅读）</li>
+      <li><b>成就 / 统计</b>：顶部只放<b>统计 + 分享</b>，成就列表留 <code>/achievements</code></li>
     </ul>
   </div>
 </div>
@@ -297,10 +335,10 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
 
 <!-- ── 对比 ─────────────────────────────────────────── -->
 <section class="sec">
-  <h2>并排对比 · 左＝现状，右＝改后</h2>
+  <h2>并排对比 · 左＝现状，右＝改后（共 4 屏，横向可滚）</h2>
   <p class="lead">
-    两侧是同一台手机上、同一份数据的两种呈现。左侧忠实复现现在的实现（含它的外壳与容器写法），
-    右侧是按 §4.2 / §6.1 定稿重做后的样子。<b>横向可滚动</b>查看第三屏。
+    四屏：① 现状 → ② 改后（含账号区块）→ ③ 改后 · 夜档（验证三档都成立）→ ④ 登录页（🆕 新页面）。
+    左侧忠实复现现在的实现（含它的外壳与容器写法），其余是按 §4.2 / §6.1 / §10.1 定稿重做后的样子。
   </p>
 
   <div class="rail" id="rail">
@@ -430,7 +468,12 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
               <div class="clay">
                 <div class="item">
                   <span class="ico">👤</span>
-                  <span class="tx"><b>白哥</b><span>点击修改昵称</span></span>
+                  <span class="tx"><b>白哥</b><span>已登录 · 试用账号</span></span>
+                  <span class="go">›</span>
+                </div>
+                <div class="item">
+                  <span class="ico">✉️</span>
+                  <span class="tx"><b>绑定邮箱</b><span>用于找回账号 · 跨设备同步</span></span>
                   <span class="go">›</span>
                 </div>
               </div>
@@ -493,6 +536,14 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
               </div>
             </div>
 
+            <div class="clay danger" style="margin-bottom:16px">
+              <div class="item" style="justify-content:center">
+                <span class="tx" style="flex:0">
+                  <b style="color:var(--accent);font-weight:600">退出账号</b>
+                </span>
+              </div>
+            </div>
+
           </div>
           <div class="tbar">
             <div class="tab"><span class="ti">📖</span>阅读</div>
@@ -535,7 +586,10 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
               <div class="grplab">账号</div>
               <div class="clay">
                 <div class="item"><span class="ico">👤</span>
-                  <span class="tx"><b>白哥</b><span>点击修改昵称</span></span>
+                  <span class="tx"><b>白哥</b><span>已登录 · 试用账号</span></span>
+                  <span class="go">›</span></div>
+                <div class="item"><span class="ico">✉️</span>
+                  <span class="tx"><b>绑定邮箱</b><span>用于找回账号 · 跨设备同步</span></span>
                   <span class="go">›</span></div>
               </div>
             </div>
@@ -557,11 +611,51 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
                   <span class="go">›</span></div>
               </div>
             </div>
+            <div class="clay danger" style="margin-bottom:16px">
+              <div class="item" style="justify-content:center">
+                <span class="tx" style="flex:0">
+                  <b style="color:var(--accent);font-weight:600">退出账号</b>
+                </span>
+              </div>
+            </div>
           </div>
           <div class="tbar">
             <div class="tab"><span class="ti">📖</span>阅读</div>
             <div class="tab"><span class="ti">🃏</span>复习</div>
             <div class="tab on"><span class="ti">👤</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ D 登录页（🆕 新页面）══ -->
+    <div class="mock">
+      <div class="mockcap"><b>④ 登录页</b><span class="tag good">新增页面</span></div>
+      <div class="phone">
+        <div class="screen">
+          <div class="hbar" style="padding-bottom:8px">
+            <div class="t" style="font-size:19px">‹ 登录</div>
+          </div>
+          <div class="lg">
+            <h2>登录 / 注册</h2>
+            <p class="desc">登录后可跨设备同步生词本与学习记录，并找回已购订阅。<br>
+              不登录也能用 —— 只有「生词本超过 200 词」等少数能力需要账号。</p>
+
+            <div class="applebtn"> 用 Apple 继续</div>
+            <div class="orline">或</div>
+            <div class="inp ph">邮箱</div>
+            <div class="inp ph">密码</div>
+            <div class="lgbtns">
+              <span class="lgbtn pri">登录</span>
+              <span class="lgbtn">注册</span>
+            </div>
+
+            <div class="lgtip">
+              🔴 <b>本页后端依赖尚未就绪</b>：全库无 <code>sign_in_with_apple</code> 依赖；
+              <code>users</code> 表<b>无 email 列</b>（后端 0 命中）→ 这是<b>新增</b>，不是复用。
+              现只有 username + password（<code>auth_client</code> 5 方法）。<br>
+              详见方案 §6.4「落地依赖」。
+            </div>
           </div>
         </div>
       </div>
@@ -617,6 +711,18 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
       <td>「白哥 · 免费版」12px <code>t.ink3</code></td>
       <td>与收藏页副标题同规格；顺带让订阅状态在首屏可见</td>
     </tr>
+    <tr>
+      <td><b>顶部区块</b><br><span class="sev p1">口径变更</span></td>
+      <td><code>AchievementSection</code>（含<b>成就列表</b>）</td>
+      <td><b>纯统计卡</b>：连续天数 + 掌握词数 + 分享按钮（无列表）</td>
+      <td>决策 3；成就列表移出到 <code>/achievements</code>，首屏更短</td>
+    </tr>
+    <tr>
+      <td><b>账号区块</b><br><span class="sev p1">新增</span></td>
+      <td>只有「改昵称」一项 + 顶栏 logout <b>图标</b></td>
+      <td><b>未登录 / 已登录两态</b> + 绑定邮箱 + 页尾「退出账号」（<b>带文字</b>）</td>
+      <td>决策 4；Apple 审核要求账号通道<b>可见</b>，藏在图标里不合格</td>
+    </tr>
   </table>
   <div class="note">
     <b>不变的部分</b>：三条 tab、配色（朱砂 <code>#B4432C</code>）、三档主题语义、成就/统计的数据来源
@@ -624,39 +730,94 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
   </div>
 </section>
 
-<!-- ── 待决策 ───────────────────────────────────────── -->
+<!-- ── 已定（原 3 件待决）────────────────────────────── -->
 <section class="sec">
-  <h2>待你决策的 3 件</h2>
-  <p class="lead">这 3 件<b>不是设计偏好问题</b>，而是「依赖尚未就绪」—— 我需要你的判断才能定方案范围。</p>
+  <h2>✅ 已定（白哥 2026-09-29）</h2>
+  <p class="lead">原来这 3 件是待决策项（「依赖尚未就绪」）；白哥已给出口径，方案据此定稿。</p>
   <table>
-    <tr><th style="width:130px">事项</th><th>冲突点</th><th style="width:290px">两个选项</th></tr>
+    <tr><th style="width:130px">事项</th><th>原冲突点</th><th style="width:300px">✅ 决定</th></tr>
     <tr>
-      <td><b>朗读设置</b><br><span class="sev p1">依赖未就绪</span></td>
-      <td>§6.3 定「<b>移到阅读界面内</b>」（查词浮层长按发音按钮 + 阅读设置面板）。
-          但 <code>reader_screen.dart:59</code> 注释明说「面板本身（字号/行高/主题/痕迹开关/<b>语速</b>）
-          <b>是独立一批，不在骨架内</b>」→ <b>面板还没做</b>。</td>
-      <td><b>甲</b>：先留在「我的」页（现状位置），等阅读面板做好再搬 —— 本次只清理不搬家<br>
-          <b>乙</b>：本次一并做阅读面板（范围变大，含划词浮层改动）</td>
+      <td><b>朗读设置</b></td>
+      <td>§6.3 定「移到阅读界面内」，但<b>阅读设置面板尚未实现</b>（<code>reader_screen.dart:59</code> 注释明说「独立一批，不在骨架内」）</td>
+      <td><b>留在「我的」页</b> —— <b>等阅读面板做好再搬</b>。本次只清理，不搬家。<br>
+          <span style="font-size:11.5px;color:var(--ink3)">🔑 面板没做之前，这里是<b>唯一</b>入口 —— 搬走 = 用户没地方调</span></td>
     </tr>
     <tr>
-      <td><b>主题风格</b><br><span class="sev p1">依赖未就绪</span></td>
-      <td>同上（§6.3 把「阅读主题」也划进阅读面板）。⚠️ 但产品的三档 <b>是全局主题</b>（影响所有页面），
-          不只是阅读底色 —— 搬进阅读面板后，用户不读书时想改主题就找不到入口。</td>
-      <td><b>甲</b>：留在「我的」（它是全局设置，放这里语义更对）<br>
-          <b>乙</b>：按 §6.3 搬进阅读面板（两处入口也可）</td>
+      <td><b>主题风格</b></td>
+      <td>§6.3 把它也划进阅读面板。⚠️ 但三档是<b>全局主题</b>（影响所有页面），不只是阅读底色</td>
+      <td><b>留在「我的」</b>（它是全局设置，放这语义更对）</td>
     </tr>
     <tr>
-      <td><b>成就区 / 统计区</b><br><span class="sev p1">口径待统一</span></td>
-      <td>§4.2 说「连续天数 / 里程碑 <b>并入「我的」页顶部</b>」+「统计不设独立页」；
-          但 §6.1 写的是「顶部：<b>统计区 + 分享入口</b>」，而代码里放的是
-          <code>AchievementSection</code> 组件（含成就列表）。两者不是一回事。</td>
-      <td><b>甲</b>：顶部只放<b>统计 + 分享</b>（连续天数/掌握词数），成就列表留在 <code>/achievements</code><br>
-          <b>乙</b>：按现组件保留成就列表在顶部（页面更长）</td>
+      <td><b>成就区 / 统计区</b></td>
+      <td>§4.2 / §6.1 说「顶部<b>统计区</b> + 分享入口」，但代码放的是 <code>AchievementSection</code>（含<b>成就列表</b>）→ 两者不是一回事</td>
+      <td>顶部<b>只放统计 + 分享</b>（连续天数 / 掌握词数）；<br>
+          <b>成就列表移出「我的」页，留在 <code>/achievements</code></b></td>
     </tr>
   </table>
+</section>
+
+<!-- ── 🆕 新增：账号区块 ─────────────────────────────── -->
+<section class="sec">
+  <h2>🆕 新增：账号区块（登录 / 退出 + 绑定邮箱）</h2>
+  <p class="lead">
+    白哥指出「界面缺少登录/退出账号（之前设计的是登录苹果账号）和绑定邮箱」。查证结果：<b>规格早定了，实现全缺</b>。
+  </p>
   <div class="note">
-    <b>另外发现（不是设计问题，是 bug）</b>：个人页有 <b>4 处</b> <code>context.push</code> 指向
-    <b>未注册的路由</b> —— <code>/skipped</code> · <code>/earnings</code> · <code>/team</code> · <code>/withdraw</code>，
+    <b>规格依据</b>：<code>english-app-implementation-plan-v2-2026-09-25.md</code> §10.1.1 原文 ——
+    「模式：<b>匿名可用 → 需要同步或购买时引导注册</b>」；「iOS：<b>Sign in with Apple</b>（主）+ <b>邮箱 + 密码</b>（兜底）」；
+    「<b>不做手机号</b>（短信有真实成本 + 模板审核 + 报备；英语学习不是实名强制场景）」。
+  </div>
+  <table>
+    <tr><th style="width:180px">项</th><th>实测现状</th><th style="width:110px">结论</th></tr>
+    <tr><td><b>端侧登录 UI</b></td><td>无 <code>/login</code> 路由 · 无 <code>LoginScreen</code> 文件</td><td><span class="sev p0">完全缺</span></td></tr>
+    <tr><td><b>端侧登录方式</b></td><td><code>auth_client</code> 5 方法 = register / login / verifyToken / trialStart / trialClaim → <b>username + password</b></td><td><span class="sev p1">与规格不符</span></td></tr>
+    <tr><td><b>Apple 登录</b></td><td>全库无 <code>sign_in_with_apple</code> 依赖，0 命中</td><td><span class="sev p0">缺</span></td></tr>
+    <tr><td><b>邮箱</b></td><td>端侧无；后端 <code>users</code> 表<b>无 email 列</b>；全后端 <code>email</code> <b>0 命中</b></td><td><span class="sev p0">缺（新增）</span></td></tr>
+    <tr><td><b>匿名试用</b></td><td><code>home_screen</code> 启动时自动 <code>trialStart</code> 建 <code>trial_*</code> 账号</td><td><span class="sev p2">已有</span></td></tr>
+    <tr><td><b>退出登录</b></td><td>有，但只是 <code>AppBar</code> 里一个图标（<code>profile_screen.dart:416</code>，无文字/无确认/无账号信息）</td><td><span class="sev p1">需重做</span></td></tr>
+  </table>
+  <div class="note warn">
+    <b>🔴 账号区块不是纯 UI</b> —— 它依赖 6 项后端 / SDK 能力，<b>全部未就绪</b>：
+    <code>sign_in_with_apple</code> 依赖 · 后端 Apple <code>identityToken</code> 校验 · <code>users.email</code> 列 ·
+    邮箱验证（需邮件服务）· 账号注销端点（Apple 5.1.1(v)）· 登录页 UI。<br>
+    → <b>建议：本次先落 UI 骨架</b>（未登录态 + 绑定邮箱占位 + 退出账号），Apple / 邮箱做成<b>独立一批</b>。
+  </div>
+</section>
+
+<!-- ── 阅读面板待办 ─────────────────────────────────── -->
+<section class="sec">
+  <h2>📖 阅读面板还有什么要做的（回答白哥提问）</h2>
+  <p class="lead">
+    <code>reader_screen.dart</code> 实测 <b>663 行</b>。结论：<b>面板本体还没做</b> —— 所以现在把朗读设置搬过去会「没地方可搬」。
+  </p>
+  <table>
+    <tr><th style="width:40px">#</th><th style="width:210px">项</th><th>现状</th></tr>
+    <tr><td colspan="3" style="background:rgba(80,150,115,.12);color:#8FC7A8;font-weight:600">✅ 已实现</td></tr>
+    <tr><td>—</td><td>沉浸排版 + 长按划词查词 + 痕迹 + 书签 + 三态表达 + 词库预热</td><td>3.4a / 3.4b 已完成（Literature + 防抖 300ms + <code>lookup_sheet</code>）</td></tr>
+    <tr><td colspan="3" style="background:rgba(180,67,44,.12);color:#E89B8C;font-weight:600">🔴 未实现（面板本体）</td></tr>
+    <tr><td>1</td><td><b>设置面板本体</b>（单击中央唤出底部面板）</td><td>不存在</td></tr>
+    <tr><td>2</td><td><b>字号可调 + 持久化</b></td><td>🔴 <b>硬编码常量</b> <code>_bodyFontSize = 17</code>（<code>:99</code>）；规格要默认 18 / 可调 15–24</td></tr>
+    <tr><td>3</td><td><b>行高可调 + 持久化</b></td><td>取 token，不可调；规格默认 1.7 / 可调 1.4–2.0</td></tr>
+    <tr><td>4</td><td><b>主题三档切换</b></td><td><code>theme_provider</code> 已有能力，面板<b>无入口</b></td></tr>
+    <tr><td>5</td><td><b>发音语速 / 音色</b></td><td><code>tts_service.selectVoice</code> 已有，<b>无 UI 入口</b></td></tr>
+    <tr><td>6</td><td><b>顶部栏下滑隐藏</b></td><td>未做（spec 只给 4 个字，<b>无触发阈值</b> → 待定）</td></tr>
+    <tr><td>7</td><td><b>痕迹开关</b>（藏面板内）</td><td>未做（痕迹默认开启已实现）</td></tr>
+    <tr><td colspan="3" style="background:rgba(110,116,132,.18);color:#AEB4C0;font-weight:600">🟠 相邻但独立（不属面板本身）</td></tr>
+    <tr><td>—</td><td><b>文章朗读</b>（flutter_tts + 语速 + 断句）</td><td>🔴 <b>完全没做</b>（全库 0 命中）· 归属 <b>Step 3.5</b></td></tr>
+    <tr><td>—</td><td>下滑到底自动加载下一篇</td><td>未做（依赖内容源）</td></tr>
+    <tr><td>—</td><td><b>正文内容源</b></td><td>仍是 <code>data/mock_articles.dart</code>（<b>假数据</b>）</td></tr>
+  </table>
+  <div class="note">
+    <b>🔑 建议顺序</b>：<b>面板本体</b>（1–5、7 —— 全在端侧，token 与 <code>theme_provider</code> 都已就绪，可独立做一批）
+    → <b>文章朗读</b>（Step 3.5）→ <b>再把「我的」的朗读设置搬进面板</b>。
+  </div>
+</section>
+
+<section class="sec">
+  <h2>另外发现（不是设计问题，是 bug）</h2>
+  <div class="note">
+    个人页有 <b>4 处</b> <code>context.push</code> 指向<b>未注册的路由</b> ——
+    <code>/skipped</code> · <code>/earnings</code> · <code>/team</code> · <code>/withdraw</code>，
     会落到路由表的 <code>/:unknown</code>。这是「点了没反应 / 跳到奇怪页面」的直接原因。
     其中 <code>/skipped</code>（旧产品功能）与 3 个分销路由<b>随本次清理一并消失</b>，
     所以<b>修这个 bug 不需要额外工作</b>。
@@ -664,11 +825,11 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
 </section>
 
 <footer>
-  <b>判断建议</b>：先切到<b>夜档</b>看一遍 —— 粘土在深底上的「内亮」会被压到 <code>.062</code>，
-  三档里最容易显脏。/ 再看「改后」的<b>分组标题</b>是否够/太多（现在是 4 组）。<br>
-  <b>落地成本</b>：只动 <code>profile_screen.dart</code> 一个文件（实测 <b>1,120 行</b> → 预计 500 行左右），
-  删 5 个旧版分区 + 换外壳与容器写法；新增「兴趣筛选」「关于」两项需要新做（各约 1 个页面/组件）。
-  <b>不改</b>任何 provider、后端接口、路由注册。
+  <b>判断建议</b>：① 先切到<b>夜档</b>看一遍 —— 粘土在深底上的「内亮」会被压到 <code>.062</code>，三档里最容易显脏；
+  ② 看「改后」的<b>分组标题</b>（现在是 4 组）够不够；③ 看<b>第 4 屏登录页</b>的首版形态。<br>
+  <b>落地成本</b>：只动 <code>profile_screen.dart</code> 一个文件（实测 <b>1,120 行</b> → 预计 <b>~520 行</b>），
+  删 5 个旧版分区 + 换外壳与容器写法；新增「账号区块」「兴趣筛选」「关于」「登录页」需新做。
+  <b>不改</b>任何 provider、后端接口、路由注册（账号区块的后端能力属<b>独立一批</b>，见 §6.4）。
 </footer>
 
 </div>
