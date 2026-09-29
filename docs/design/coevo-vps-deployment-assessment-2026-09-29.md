@@ -158,10 +158,99 @@ vibedollar-pay mailproxy  coevo
 | 1 | **确认 §一 的「绝不碰」清单**（这是你要求的核心） | ⭐ 请确认 —— 特别是「**唯一需要 reload nginx**」这一条 |
 | 2 | **部署包构建走 GitHub Actions（甲）？** | ⭐ **是**（加一个 build job，产出 artifact） |
 | 3 | **先做步骤 1（不碰 nginx）？** | ⭐ **是** —— 零风险验证「能不能跑」 |
-| 4 | **DNS**：`api.keyievolution.fun` → `<VPS_IP>` | ⭐ 你操作（步骤 2 前给我即可） |
+| 4 | **DNS**：`api` **A** → `<VPS_IP>` · 🔴 **Proxy = DNS only（灰云）** | ⭐ 你操作（步骤 2 前给我即可）· 详见 **§九**（含「为什么不能开橙云」） |
 | 5 | 内存护栏 `MemoryMax=256M` | ⭐ **必须**（超限只杀 CoEvo，保支付/邮件） |
 
 ---
 
 *本轮**未改动服务器上任何东西**（无 sudo 写操作 · 无 nginx 改动 · 无服务重启 · 无文件上传）。
 改动前会逐步报告并请示。*
+---
+
+## 九、DNS 现状核实（2026-09-29 12:1x）—— Cloudflare 托管
+
+> 白哥：「当前设置的 DNS 服务器 `aitana.ns.cloudflare.com` / `weston.ns.cloudflare.com`」
+
+### 9.1 实测：`pay` 已经是一条**可照搬的模板**
+
+| 项 | 实测 | 含义 |
+|---|---|---|
+| NS | `aitana` / `weston`.ns.cloudflare.com | ✅ Cloudflare 托管 |
+| `pay.keyievolution.fun` | **`<VPS_IP>`**（用 8.8.8.8 公共 DNS 复核一致） | 🔑 **灰云「仅 DNS」**（解析直出源站 IP） |
+| 响应头 `Server:` | **`nginx/1.24.0 (Ubuntu)`** | 🔑 **源站直接回应** —— 再次证明没走 CF 代理（走代理会显示 `cloudflare`） |
+| 证书 issuer | **`Let's Encrypt CN=YE2`** · subject `pay.keyievolution.fun` · 2026-08-10 → **11-08** | ✅ 源站 certbot 签发（**不是** CF 边缘证书） |
+| `http://pay.../healthz` | **HTTP 301** → https | ✅ **80 端口对外可达** → **certbot HTTP-01 可行** |
+| `https://pay.../healthz` | **HTTP 200** | ✅ |
+| `api.keyievolution.fun` | **NXDOMAIN（不存在）** | 还没加 ✅ |
+| `keyievolution.fun` / `www` | `<DOMAIN_OLD_IP>`（探测超时） | ⚠️ 另一处目标，**与本次无关，不动** |
+
+🔑 **一句话**：`pay` 的形态 = **灰云 + 源站 certbot 签的 LE 证书 + 80 端口通** ——
+**这正是 CoEvo 要复制的模板**，且它已在生产验证过。
+
+### 9.2 🔴 加 `api` 记录：**必须选「仅 DNS」（灰云）**
+
+| 项 | 值 |
+|---|---|
+| Type | **A** |
+| Name | `api`（即 `api.keyievolution.fun`） |
+| IPv4 | **`<VPS_IP>`** |
+| **Proxy status** | 🔴 **DNS only（灰云）** —— 与 `pay` 一致 |
+| TTL | Auto |
+
+**为什么不能开橙云（Proxied）**：
+
+| # | 后果 |
+|---|---|
+| 1 | DNS 会解析到 **CF 的 anycast IP**，而不是 `<VPS_IP>` → 与 `pay` 不一致 |
+| 2 | Let's Encrypt 的 HTTP-01 验证会先到 CF 边缘，需 CF 回源才能拿到 token → **引入不确定性** |
+| 3 | 源站看到的客户端 IP 会变成 **CF 的 IP** → 现有 nginx 的 `X-Real-IP $remote_addr` 语义被改变 |
+| 4 | 证书会变成 **CF 边缘证书**（issuer 变 Cloudflare），与 `pay` 的 LE 证书不一致 |
+
+*（橙云 + HTTP-01 实践中常能过，但**没有任何理由在这引入不确定性** —— `pay` 已验证的路径就是灰云。）*
+
+### 9.3 ✅ 顺带核实：现有 certbot 自动续期**健康**
+
+| 项 | 实测 |
+|---|---|
+| `certbot.timer` | **enabled** · 上次 6h 前 · 下次 **20:46** |
+| `pay` 证书 | **VALID: 40 days**（到 2026-11-08） |
+
+→ ✅ 自动续期在工作，**不需要我干预**（这也说明源站 80 端口的 acme-challenge 路径长期可用）。
+
+### 9.4 🔴🔴 一个必须注意的 nginx 细节（新发现，会写进步骤 2）
+
+现有 80 端口配置（`vibedollar-pay`，**唯一** server block）：
+
+```nginx
+server {
+    listen 80;  listen [::]:80;
+    server_name pay.keyievolution.fun;
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }   # ← certbot 用
+    location / { return 301 https://$host$request_uri; }
+}
+```
+
+**实测：`grep default_server` → 无命中** → nginx **用「第一个** server block」当默认 server，
+而 `include /etc/nginx/sites-enabled/*` 按 **字典序**加载。
+
+🔴 **风险**：若把新文件命名为 `coevo`，它**排在 `vibedollar-pay` 之前** → **抢走默认 server**
+→ 「未匹配 Host」的请求（含 IP 直连 80）行为被改变 —— **这违反「不碰」承诺 6**。
+
+✅ **两条应对**（都会做）：
+1. **命名 `zz-coevo`**（字典序在 `vibedollar-pay` 之后）→ **默认 server 不变**
+2. 🔑 **先申请证书、再改 nginx**：certbot 走 HTTP-01 时 `Host=api.keyievolution.fun` 无匹配 block
+   → fallback 到默认 server（**pay 的 block**）→ 它**已有** `/.well-known/acme-challenge/` →
+   **证书可以在「完全不改 nginx」的情况下拿到** ✅
+
+### 9.5 ✅ 修正后的步骤 2（比 §六 更精确）
+
+| 顺序 | 动作 | 改 nginx? |
+|---|---|---|
+| 2.1 | **白哥加 DNS**：`api` A → `<VPS_IP>` · **仅 DNS** | ❌ |
+| 2.2 | `certbot certonly --webroot -w /var/www/certbot -d api.keyievolution.fun` | ❌ **不改**（靠默认 server 的 acme-challenge） |
+| 2.3 | 写 `/etc/nginx/sites-available/zz-coevo`（80 跳转 + 443 反代 → 8300）+ 软链 | ✅ 新增文件 |
+| 2.4 | **`nginx -t` 先验** → `nginx -s reload` | ⚠️ reload |
+| 2.5 | 备份原配置（可秒回滚）+ 复验 `pay` 仍 200 | — |
+
+> 2.2 与 2.3 的顺序**不可颠倒** —— 颠倒了就要依赖「新 block 也配 acme-challenge」，
+> 且若新 block 排在前还会抢默认 server。
