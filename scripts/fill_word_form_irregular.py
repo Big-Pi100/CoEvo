@@ -463,6 +463,10 @@ def main():
     tot = con.execute('SELECT COUNT(*) FROM word_form').fetchone()[0]
     con.close()
     print(f'✅ 补入 {n} 条 · word_form {before:,} → {tot:,} 行 · 读回断言全过')
+    # 🔴 **改了源库，别忘了副本**：`app/assets/word.db` 是**打包进 App 的那份**，
+    #    漏同步 = 用户看不到本次修改（2026-09-29 踩过）。
+    print('   ⚠️ 交付物同步：跑 `python scripts/sync_word_db_asset.py`'
+          '（校验/同步 app/assets/word.db）')
     return 0
 
 

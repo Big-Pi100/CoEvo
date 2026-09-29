@@ -306,6 +306,10 @@ def main():
 
     print(f'\n✅ {len(plan)} 条卡已写入并通过读回断言')
     print('   提示：`data/word.db` 体积会变大，可 `VACUUM` 回收（不影响正确性）')
+    # 🔴 **改了源库，别忘了副本**：`app/assets/word.db` 是**打包进 App 的那份**，
+    #    漏同步 = 用户看不到本次修改（2026-09-29 踩过）。
+    print('   ⚠️ 交付物同步：跑 `python scripts/sync_word_db_asset.py`'
+          '（校验/同步 app/assets/word.db）')
     return 0
 
 
