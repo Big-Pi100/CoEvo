@@ -259,3 +259,104 @@ powershell -ExecutionPolicy Bypass -File E:\CoEvo\scripts\fix-flutter-path.ps1 -
 
 ⚠️ **注意**：改 PATH 后**必须新开终端**才生效（已开着的窗口仍是旧 PATH）。
 ⚠️ 若以后做鸿蒙 Flutter 开发，需要显式用 `D:\flutter_flutter\bin\flutter.bat`（或把两条顺序调回）。
+
+---
+
+## 十、✅ 修复完成（2026-09-29 10:04 · 白哥执行）
+
+### 10.1 方案 B 执行成功
+
+```
+PS> powershell -ExecutionPolicy Bypass -File E:\CoEvo\scripts\fix-flutter-path.ps1
+MACHINE PATH length : 1442
+index of D:\flutter\bin  = -1
+index of D:\flutter_flutter\bin = 0
+Administrator : True
+[ OK ] Backup written: C:\Users\Lenovo\PATH-machine-backup-20260929-100437.txt   (1442 chars)
+[ OK ] Applied. MACHINE PATH length 1442 -> 1456
+flutter entries in MACHINE PATH (new order):
+[0] D:\flutter\bin
+[1] D:\flutter_flutter\bin
+
+PS> Get-Command flutter
+Application     flutter.bat     D:\flutter\bin\flutter.bat        <-- ✅ 指向正确的 SDK
+```
+
+**PATH 完整性核验**（脚本之外的独立复核）：
+
+| 项 | 值 |
+|---|---|
+| 条目数 | 41 → **42（+1）** |
+| 🔴 **丢失条目** | **0** ✅ |
+| 唯一新增 | `D:\flutter\bin` |
+| 新顺序 | `[0] D:\flutter\bin` · `[1] D:\flutter_flutter\bin`（**`flutter_flutter` 原位保留**） |
+| 长度 | 1442 → 1456 chars（+14 = `D:\flutter\bin;` 的长度，**精确吻合**） |
+| 备份 | `C:\Users\Lenovo\PATH-machine-backup-20260929-100437.txt` ✅ |
+
+### 10.2 ✅ 构建成功 —— **43.67 MiB**（预测 43.72，误差 0.05）
+
+```
+Running Gradle task 'assembleRelease'...   312.4s
+√ Built build\app\outputs\flutter-apk\app-release.apk (43.7MB)
+```
+
+| | 上次（universal） | 本次（arm64 单包） | 变化 |
+|---|---:|---:|---|
+| APK 磁盘 | 82.60 MiB | **43.67 MiB** | 🔻 **−38.93 MiB（−47.1%）** |
+
+**三类症状全部消失** ✅（证实「一个根因」的判断）：
+- ❌→✅ 无 `TargetPlatform.ohos` 未穷尽匹配错误
+- ❌→✅ 无 `SelectedContentRange` / `RenderObjectWithLayoutCallbackMixin` 找不到
+- ❌→✅ **SDK 36 / NDK 27 警告完全消失**（因为换回 3.41.1，`flutter.compileSdkVersion` = 36、`ndkVersion` = 28.2）
+
+> 🔑 这**反证**了 §五 的结论：警告确实是「用错 SDK」引起的，**不需要**改 `build.gradle.kts`。
+
+### 10.3 🔴 副作用核验：`pubspec.lock` **未被触碰** ✅
+
+`git status` 对 `app/pubspec.lock` **无输出** → 正确 SDK **不会**改写它。
+（对照：用错 SDK 那次降级了 21 个包 —— 因为老 SDK 的依赖约束更松。
+本次 `Got dependencies!` 后 lock 一字未动。）
+
+**整个项目 `git status` 干净** —— 构建过程没弄脏任何受版本控制的文件。
+
+### 10.4 新 APK 构成（按压缩后真实占用）
+
+| 类别 | 占用 | 占比 |
+|---|---:|---:|
+| `lib/arm64-v8a` | **19.67 MiB** | 45.1% |
+| `word.db` | 10.17 MiB | 23.3% |
+| `flutter_twemoji`（emoji SVG） | 7.21 MiB | 16.5% |
+| 字体 `assets/fonts` | 3.26 MiB | 7.5% |
+| `classes.dex` | 0.65 MiB | 1.5% |
+| KaTeX 字体 | 0.35 MiB | 0.8% |
+| **（条目合计）** | **41.87 MiB** | |
+
+#### ⚠️ 一个会误导人的细节：**ABI 目录还在，但只剩空壳**
+
+`--target-platform android-arm64` **不会删除**其他 ABI 的目录 —— 目录名仍在，
+但里面的大文件没了。**只看目录名会误判「没生效」**：
+
+| ABI 目录 | 真实内容 |
+|---|---|
+| `arm64-v8a` | ✅ **3 个真 .so**：`libapp.so` 8.88 MiB · `libflutter.so` 10.79 MiB · `libdatastore_shared_counter.so` |
+| `x86_64` | ▫️ **仅** `libdatastore_shared_counter.so`（**0.01 MiB**） |
+| `armeabi-v7a` | ▫️ **仅** `libdatastore_shared_counter.so`（**0.00 MiB**） |
+
+🔑 那两个小库是 **AndroidX DataStore 的传递原生依赖** —— 它自带上架的全部 ABI，
+不受 `--target-platform` 影响。**0.01 MiB，可忽略**，但如果有人事后跑验证脚本
+看到「x86_64 在? True」会吓一跳 → 判据：**别按目录名判，要按体积判**。
+
+### 10.5 后续可选优化（未做）
+
+| # | 事项 | 预计省 | 备注 |
+|---|---|---:|---|
+| 1 | `flutter_twemoji` 7.21 MiB | 7.21 MiB | **确实在用**（`widgets/twemoji.dart` 封装，6 处引用）→ 只换渲染格式**不会**省，因为依赖自带的 SVG 资产照样打包；要省须**换实现或换包** |
+| 2 | `word.db` 10.17 MiB | — | 词库本体，属核心资产，不动 |
+| 3 | 上架用 **AAB** | — | `flutter build appbundle` → 商店按设备只下发 arm64，**等效且更标准** |
+| 4 | 清 `app/assets/` 两个 32 MiB `.bak` | 0（与 APK 无关） | 纯本地磁盘 |
+
+### 10.6 结论
+
+**根因 = 环境（PATH 解析到鸿蒙 SDK），修法 = 环境（PATH 顺序），代价 0 行代码。**
+所有报错与警告均由这一个原因派生，换回正确 SDK 后**全部自动消失** ——
+不构成需要改代码的 bug。
