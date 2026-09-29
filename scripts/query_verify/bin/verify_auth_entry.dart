@@ -210,6 +210,25 @@ void main() {
   check('`SubscribePanel` 用了 `ClayButton`',
       subscribePanel.contains('ClayButton('));
 
+  // ── ⑨b 🆕 「联系工作人员」在**关于页**，不在「我的」页（2026-09-29 白哥定）──
+  //
+  // 🔴 **为什么必须剥注释后再断言**：搬迁后「我的」页留了一条
+  //    「已移到关于页」的分组注释，里面**含「联系工作人员」四个字** ——
+  //    不剥注释就会把这条注释当成「入口还在」，得出**假红**。
+  //    （这是本项目第 4 次踩「口径差一层」，见 stripComments 的说明。）
+  final about = stripComments(
+      File('../../app/lib/screens/about_screen.dart').readAsStringSync());
+
+  check('🔴 「关于」页有「联系工作人员」入口',
+      about.contains("'联系工作人员'"));
+  check('🔴 「关于」页承载二维码弹窗（`_showContactDialog` + `public/qrcode`）',
+      about.contains('_showContactDialog') && about.contains('public/qrcode'));
+
+  check('🔴 「我的」页**不再**有联系入口（搬迁要搬净，不是复制一份）',
+      !profile.contains('联系工作人员'));
+  check('🔴 「我的」页已删 `_buildContactCard` / `_showContactDialog`',
+      !profile.contains('_buildContactCard') && !profile.contains('_showContactDialog'));
+
   _report();
 }
 

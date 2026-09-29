@@ -510,6 +510,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         // ── ④ 其他 ──
         //    🔑 「我的成就」是**到成就墙的入口**（不是成就列表本身）。
         //      本页不再展示徽章/进度 —— 那两样都在 `/achievements`。
+        //
+        //    🔴 2026-09-29：「联系工作人员」**已移到「关于」页**（白哥定）。
+        //      它属「关于本 App」那一族（与隐私政策/用户协议/版本/备案号同类），
+        //      不是「高频操作」—— 放在这里会把「偶尔点」和「经常点」混在一起。
+        //      📄 现由 `about_screen` 承载（含二维码弹窗）。
         _groupLabel('其他'),
         _buildThemeTile(),
         const SizedBox(height: CoSpacing.sm),
@@ -521,8 +526,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           subtitle: '查看全部成就与进度',
           onTap: () => context.push('/achievements'),
         ),
-        const SizedBox(height: CoSpacing.sm),
-        _buildContactCard(),
         const SizedBox(height: CoSpacing.sm),
         _navTile(
           icon: Icons.info_outline,
@@ -1340,61 +1343,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         ],
         child: const SubscribePanel(),
-      ),
-    );
-  }
-
-  /// 联系工作人员
-  Widget _buildContactCard() {
-    return _navTile(
-      icon: Icons.headset_mic_outlined,
-      title: '联系工作人员',
-      onTap: _showContactDialog,
-    );
-  }
-
-  void _showContactDialog() {
-    final t = CoEvoTokensExt.of(context);
-    CoDialog.show<void>(
-      context,
-      builder: (ctx) => CoDialog(
-        title: '联系工作人员',
-        actions: [
-          ClayButton(
-            label: '关闭',
-            variant: ClayButtonVariant.secondary,
-            expanded: true,
-            onTap: () => Navigator.of(ctx).pop(),
-          ),
-        ],
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Tw(
-              '扫码添加工作人员微信',
-              style: TextStyle(
-                fontFamily: CoFonts.uiSans,
-                fontSize: 13,
-                color: Color(t.ink2.argb32),
-              ),
-            ),
-            const SizedBox(height: CoSpacing.lg),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image(
-                image: NetworkImage('${ApiConfig.baseUrl}/api/public/qrcode'),
-                width: 200,
-                height: 200,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => Icon(
-                  Icons.image_not_supported,
-                  size: 64,
-                  color: Color(t.ink3.argb32),
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

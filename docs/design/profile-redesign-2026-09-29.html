@@ -326,6 +326,31 @@ code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em
        padding:12px 13px;border-radius:11px;background:var(--sunken);
        transition:background .28s}
 
+/* ── 关于页（🆕 新页面 · 2026-09-29 补画 · 忠实复刻 `about_screen.dart`）──
+   🔑 本页**全平面**：一个 `.clay` 都没有 —— 它自身不可点，
+      按 spec §〇 规则 1「有体积的只可能是**可点**的东西」→ 平面。
+      页面里唯一的入口（`.aglnk`）用**强调色 + 箭头**表达「能点」，不靠体积。 */
+.ag{padding:2px 20px 0;flex:1;overflow-y:auto}
+.ag .back{font-size:12px;font-weight:600;color:var(--accent);
+          padding:6px 10px;flex:0 0 auto}
+.agapp{text-align:center;margin:18px 0 20px}
+.agapp .n{font-size:22px;font-weight:600;color:var(--ink)}
+.agapp .v{font-size:12.5px;color:var(--ink3);margin-top:6px}
+/* 「标签 — 值」：标签 `ink3`（浅）/ 值 `ink`（深）。
+   ⚠️ 与上面 `.row` 的分工**相反** —— **别复用 `.row`**：那是「现状」屏的信息行
+      （标签深、值浅）。原型要忠实于**实现**，而实现的 `_InfoRow` 是「标签浅、值深」。 */
+.agkv{display:flex;align-items:flex-start;gap:12px;padding:9px 0}
+.agkv .k{font-size:13px;color:var(--ink3);flex:0 0 auto}
+/* 🔴 `flex:1` + `min-width:0` 必须成对 —— 只写 `flex:0` 会让宽度坍缩到 0
+   （4 字逐字换行 = 竖排）。这正是源码级校验看不见、渲染级才抓得到的那类错。 */
+.agkv .v{font-size:13px;color:var(--ink);text-align:right;flex:1;min-width:0}
+.agdiv{height:1px;background:var(--line);margin:16px 0}
+.agtx{font-size:12.5px;color:var(--ink2);line-height:1.8}
+.agtx3{font-size:12px;color:var(--ink3);line-height:1.7}
+.aglnk{display:flex;align-items:center;padding:9px 0;font-size:13px;color:var(--ink)}
+/* 单类名（不用 `.aglnk .go` 这样的后代选择器）→ 与全文件「一处样式一处定义」的写法一致 */
+.aggo{margin-left:auto;color:var(--accent);font-size:16px;line-height:1}
+
 /* tab bar（复用 app.dart 的 _ClayTabBar 观感）*/
 .tbar{position:absolute;left:0;right:0;bottom:0;height:74px;
       background:color-mix(in srgb,var(--page) 82%,transparent);
@@ -435,12 +460,14 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
 
 <!-- ── 对比 ─────────────────────────────────────────── -->
 <section class="sec">
-  <h2>并排对比 · 左＝现状，右＝改后（共 5 屏，横向可滚）</h2>
+  <h2>并排对比 · 左＝现状，右＝改后（共 6 屏，横向可滚）</h2>
   <p class="lead">
-    五屏：① 现状 → ② 改后 · <b>已登录</b> → ③ 改后 · <b>未登录</b>（🆕 新用户第一屏）→
-    ④ 改后 · 夜档（验证三档都成立）→ ⑤ 登录页（🆕 新页面）。<br>
+    六屏：① 现状 → ② 改后 · <b>已登录</b> → ③ 改后 · <b>未登录</b>（🆕 新用户第一屏）→
+    ④ 改后 · 夜档（验证三档都成立）→ ⑤ 登录页（🆕）→ ⑥ 关于页（🆕）。<br>
     左侧忠实复现现在的实现（含它的外壳与容器写法），其余是按 §4.2 / §6.1 / §10.1 定稿重做后的样子。
-    🔑 <b>②③ 是同一页的两种状态，不是两个设计</b> —— 请对照着看差异是否都必要。
+    🔑 <b>②③ 是同一页的两种状态，不是两个设计</b> —— 请对照着看差异是否都必要。<br>
+    🆕 <b>2026-09-29 补画 ⑥</b>：「联系工作人员」由「我的」页移入「关于」页（白哥定），
+    原 5 屏里<b>没有关于页</b> —— 改了一页却没有稿可对照，补上。
   </p>
 
   <div class="rail" id="rail">
@@ -536,7 +563,7 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
     </div>
 
     <!-- ══ B 改后 ══ -->
-    <div class="mock">
+    <div class="mock" id="mine-logged">
       <div class="mockcap"><b>② 改后</b><span class="tag good">统一视觉语言</span></div>
       <div class="phone">
         <div class="screen">
@@ -652,11 +679,9 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
                   <span class="tx"><b>我的成就</b><span>查看全部成就与进度</span></span>
                   <span class="go">›</span>
                 </div>
-                <div class="item">
-                  <span class="ico">💬</span>
-                  <span class="tx"><b>联系工作人员</b></span>
-                  <span class="go">›</span>
-                </div>
+                <!-- 🆕 2026-09-29：「联系工作人员」**已移入「关于」页**（白哥定）——
+                     它属「关于本 App」那一族（版本 / 备案号 / 隐私政策），不是「高频操作」。
+                     🔑 本页原型据此删去该项，改由关于页承载（含二维码弹窗）。 -->
                 <div class="item">
                   <span class="ico">ℹ︎</span>
                   <span class="tx"><b>关于</b><span>版本 1.0.0</span></span>
@@ -693,7 +718,7 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
                           让用户知道有这个能力，才能成为订阅动机」
          → 🔑 所以**订阅区不隐藏**，改成「订阅完整版」入口（点了引导登录）。
            我一度打算直接隐藏它 —— 那会切断订阅动机，与判据 6 相悖。 -->
-    <div class="mock">
+    <div class="mock" id="mine-guest">
       <div class="mockcap"><b>③ 改后 · 未登录态</b><span class="tag good">新用户第一屏</span></div>
       <div class="phone">
         <div class="screen">
@@ -814,11 +839,9 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
                   <span class="tx"><b>我的成就</b><span>查看全部成就与进度</span></span>
                   <span class="go">›</span>
                 </div>
-                <div class="item">
-                  <span class="ico">💬</span>
-                  <span class="tx"><b>联系工作人员</b></span>
-                  <span class="go">›</span>
-                </div>
+                <!-- 🆕 2026-09-29：「联系工作人员」**已移入「关于」页**（白哥定）——
+                     它属「关于本 App」那一族（版本 / 备案号 / 隐私政策），不是「高频操作」。
+                     🔑 本页原型据此删去该项，改由关于页承载（含二维码弹窗）。 -->
                 <div class="item">
                   <span class="ico">ℹ︎</span>
                   <span class="tx"><b>关于</b><span>版本 1.0.0</span></span>
@@ -841,7 +864,7 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
     </div>
 
     <!-- ══ C 改后（夜档，验证三档都成立）══ -->
-    <div class="mock theme-night">
+    <div class="mock theme-night" id="theme-night">
       <div class="mockcap"><b>④ 改后 · 夜档</b><span class="tag good">同一份布局</span></div>
       <div class="phone">
         <div class="screen">
@@ -913,9 +936,7 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
                 <div class="item"><span class="ico">🏆</span>
                   <span class="tx"><b>我的成就</b><span>查看全部成就与进度</span></span>
                   <span class="go">›</span></div>
-                <div class="item"><span class="ico">💬</span>
-                  <span class="tx"><b>联系工作人员</b></span>
-                  <span class="go">›</span></div>
+                <!-- 🆕 2026-09-29：「联系工作人员」已移入「关于」页（同 ② 屏说明） -->
                 <div class="item"><span class="ico">ℹ︎</span>
                   <span class="tx"><b>关于</b><span>版本 1.0.0</span></span>
                   <span class="go">›</span></div>
@@ -937,7 +958,7 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
     </div>
 
     <!-- ══ D 登录页（🆕 新页面）══ -->
-    <div class="mock">
+    <div class="mock" id="login-page">
       <div class="mockcap"><b>⑤ 登录页</b><span class="tag good">新增页面</span></div>
       <div class="phone">
         <div class="screen">
@@ -959,11 +980,47 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
             </div>
 
             <div class="lgtip">
-              🔴 <b>本页后端依赖尚未就绪</b>：全库无 <code>sign_in_with_apple</code> 依赖；
-              <code>users</code> 表<b>无 email 列</b>（后端 0 命中）→ 这是<b>新增</b>，不是复用。
-              现只有 username + password（<code>auth_client</code> 5 方法）。<br>
-              详见方案 §6.4「落地依赖」。
+              <b>✅ 2026-09-29 更新</b>：本屏依赖的<b>账号体系已部分落地</b> ——
+              <code>users</code> 表<b>已加 email 列</b>（删去实名/手机号 5 列），
+              邮箱 + 密码的<b>注册 / 登录已实现</b>（形态是<b>弹窗</b>，不是本屏的整页）。<br>
+              ⏳ <b>仍未做</b>：Apple 登录 · 邮箱验证 · 找回密码 —— 同属登录页批次。
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ E 关于页（🆕 新页面 · 2026-09-29 补画）══ -->
+    <div class="mock" id="about">
+      <div class="mockcap"><b>⑥ 关于页</b><span class="tag good">新增页面</span></div>
+      <div class="phone">
+        <div class="screen">
+          <div class="hbar" style="padding-bottom:14px">
+            <div class="hrow">
+              <div class="hmain"><div class="t">关于</div></div>
+              <span class="back">返回</span>
+            </div>
+          </div>
+          <div class="ag">
+            <div class="agapp">
+              <div class="n">CoEvo</div>
+              <div class="v">版本 1.0.0</div>
+            </div>
+
+            <div class="agkv"><span class="k">应用名称</span><span class="v">CoEvo</span></div>
+            <div class="agkv"><span class="k">版本</span><span class="v">1.0.0</span></div>
+            <div class="agkv"><span class="k">备案号</span><span class="v">粤ICP备2026061557号-1</span></div>
+
+            <div class="agdiv"></div>
+            <div class="agtx">CoEvo 是一款英语学习应用：读英文新闻、划词查词、把生词收进生词本，再按记忆曲线复习。</div>
+            <div style="height:16px"></div>
+            <div class="agtx3">隐私政策与用户协议即将上线。</div>
+
+            <div class="agdiv"></div>
+            <!-- 🆕 2026-09-29：由「我的」页**移入**本页（白哥定）——
+                 它属「关于本 App」那一族（版本/备案号/隐私政策），不是「高频操作」。
+                 🔑 可点性靠「强调色 + 箭头」表达（本页全平面，不做粘土体积）。 -->
+            <div class="aglnk"><span>联系工作人员</span><span class="aggo">›</span></div>
           </div>
         </div>
       </div>
@@ -1152,7 +1209,9 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
     </tr>
     <tr>
       <td colspan="4" style="color:var(--ink3)">
-        <b>其余全部一致</b>：统计卡（三列都是端侧算的真数据）· 兴趣筛选 · 恢复购买 · 主题 · 朗读设置 · 我的成就 · 联系工作人员 · 关于
+        <b>其余全部一致</b>：统计卡（三列都是端侧算的真数据）· 兴趣筛选 · 恢复购买 · 主题 · 朗读设置 · 我的成就 · 关于
+        <br><span class="sev p2">2026-09-29</span> 「联系工作人员」三类态原本一致 ——
+        现已**移入「关于」页**（白哥定），本页三屏 mockup 同步删去。
       </td>
     </tr>
   </table>
@@ -1223,12 +1282,14 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
 <footer>
   <b>判断建议</b>：① 先切到<b>夜档</b>看一遍 —— 粘土在深底上的「内亮」会被压到 <code>.062</code>，三档里最容易显脏；
   ② <b>对照 ②③ 两屏</b>，确认「登录态差异」<b>5 处是否都必要</b>（其余应当一致）；
-  ③ 看<b>第 5 屏登录页</b>的首版形态。<br>
-  <b>落地成本</b>：只动 <code>profile_screen.dart</code> 一个文件（实测 <b>1,142 行</b>），
-  删 5 个旧版分区 + 换外壳与容器写法；新增「账号区块」「关于」需新做。
-  <b>不改</b>任何 provider、后端接口、路由注册（账号区块的后端能力属<b>独立一批</b>，见 §6.4）。<br>
-  ⚠️ <b>「兴趣筛选」与「登录页」本批<b>不做</b></b> —— 前者依赖「它怎么影响信息流排序」这块尚未设计的设计；
-  后者依赖 Apple SDK + 后端 <code>email</code> 列（6 项全未就绪）。
+  ③ 看<b>第 5 屏登录页</b>与<b>第 6 屏关于页</b>的首版形态。<br>
+  <b>落地成本</b>：<code>profile_screen.dart</code> 实测 <b>1,350 行</b>（改动前 1,142 行）；
+  删 5 个旧版分区 + 换外壳与容器写法；「账号区块」与「关于」页均已新做（<code>about_screen.dart</code> 338 行）。<br>
+  ✅ <b>2026-09-29 更新</b>：<b>邮箱 + 密码的注册 / 登录已实现</b> ——
+  <code>users</code> 表<b>已加 <code>email</code> 列</b>（并删去实名 / 手机号共 5 列）。
+  ⚠️ 但形态是<b>弹窗</b>，<b>不是</b>第 5 屏画的整页（整页需 Apple SDK + 邮箱验证，属登录页批次）。<br>
+  ⚠️ <b>「兴趣筛选」本批不做</b> —— 它依赖「怎么影响信息流排序」这块尚未设计的设计。
+  ⏳ <b>登录页仍缺</b>：Apple 登录 · 邮箱验证 · 找回密码。
 </footer>
 
 </div>
