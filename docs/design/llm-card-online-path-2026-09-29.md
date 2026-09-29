@@ -54,7 +54,7 @@
 | 服务端 `generated_card_cache` | 🔴 **不存在** | `coevo.db` 45 表清理后无此表 |
 | `POST /generate-card` | 🔴 **不存在** | `routes.rs` 107 个路由中无此路径 |
 | 客户端未命中分支 | 🔴 **不存在** | `word_query_service.dart:89` `return null` → 调用方只弹「词库里没有「X」」→ **结束** |
-| 后端调 LLM 的能力 | 🔴 **无** | `grep -i llm backend/**/*.rs` → 0 命中 |
+| 后端调 LLM 的能力 | 🔴 ~~**无**~~ → ✅ **有！**（**2026-09-29 12:3x 纠正**，见 §二b） | ~~`grep -i llm backend/**/*.rs` → 0 命中~~ ← 🔴 **这个 grep 写错了** |
 
 ⚠️ **顺带纠正一个我此前的错误**：我曾在报告里把「LLM 兜底」写成**已存在的成本项**，
 实际它是**要新建的路径**（依据只有 `word_query_service.dart:65` 的一行注释）。
@@ -62,7 +62,70 @@
 
 ---
 
-## 三、可复用的地基（四块，这是好消息）
+## 二b、🔴🔴 纠正：「后端没有 LLM 能力」是**错的**（2026-09-29 12:3x）
+
+> 起因：为 A1 出方案时核实「后端怎么复用契约 prompt」，顺手重查了一遍「后端有没有 LLM」。
+> **结果推翻了我自己在 §二 写的结论。**
+
+### 🔴 错在哪
+
+| | |
+|---|---|
+| §二 原文 | 「后端调 LLM 的能力：🔴 **无** —— `grep -i llm backend/**/*.rs` → 0 命中」 |
+| **实测** | ✅ **有** —— 12 个文件命中 `llm`（含 `llm.rs` · `llm_poster.rs` · `campaign_*` · `h5_template.rs` …） |
+| **错因** | 🔴 **grep 写错**：`backend/**/*.rs` 在 **Git Bash 未开 `globstar` 时 `**` 不递归** → 只匹配一层 → **漏掉 `crates/` 下全部** |
+
+🔑 **教训**：**「grep 写错」会静默给出「不存在」的结论** ——
+它和「没查」的结果**长得一样**（都是空输出），但**危害更大**（因为看起来「查过了」）。
+→ 我据此把「后端无 LLM」写进了报告，并作为方案前提（以为要从零写 HTTP 调用）。
+
+⚠️ **这是同一类错误的第 2 次**（第 1 次：`app_admin` 存在但文档 0 提及，我报「只有 app 一个前端」）。
+→ 补判据：**报「不存在」之前，用第二种写法交叉验证**（`grep -rn --include=*.rs` + `find | xargs grep`）。
+
+### ✅ 实际有什么：`chat_engine::llm_caller`（688 行）
+
+| 项 | 内容 |
+|---|---|
+| 文件 | `backend/crates/chat_engine/src/llm_caller.rs`（**688 行**） |
+| **通用调用** | 🔑 **`LlmCaller::generate(system_prompt: &str, user_content: &str) -> Result<String, LlmError>`** |
+| 长输出版 | `generate_long(...)`（**300s** 超时，适合长 JSON） |
+| **自带重试** | ✅ **2 次尝试 + 指数退避**（250ms → 2s）· `consecutive_failures()` 计数器 |
+| DeepSeek 配置 | ✅ **`LlmConfig::deepseek_v4_flash(api_key)`**（正是我们要的模型） |
+| 初始化 | `api_server/src/llm.rs`：`init(config)` / `get_config()`（`OnceLock`）· 环境变量兜底 |
+| 在编译吗 | ✅ `chat_engine` 在 workspace 里（`Cargo.toml:6`）· `cargo check` **13.8s 通过** |
+
+### 🔴 这改变了 A1 的工作量（显著变简单）
+
+| | 原以为 | **实际** |
+|---|---|---|
+| HTTP 调 DeepSeek | 要**从零写** | ✅ **复用 `LlmCaller`** |
+| 重试 / 退避 / 超时 | 要写 | ✅ **已有** |
+| 错误分类 | 要设计 | ✅ `LlmError` 已类型化 |
+| A1 的性质 | 「造」 | 🆕 **「接线」** —— 把契约 prompt + 合规扫描 + 闸门 + 缓存串起来 |
+
+### 🆕 由此得出 A1 的**第一个必要前置**：契约 prompt 抽成**单一文件**
+
+白哥要求「与预制**同一套 prompt**」。但现状：
+- 预制（批量）= `scripts/coevo_wordlib_contract.py` 里**Python 硬编码**的 `PROMPT = """…"""`（437 行文件）
+- 在线（A1）= Rust 后端
+
+🔴 **若在 Rust 里重写一份 → 必然分叉**（正是白哥要避免的）。
+✅ **正解：抽成单一文件**（如 `backend/prompts/wordlib/contract_v6.md`），**Python 与 Rust 都读它**。
+
+🔑 而且后端**已有 prompt 加载机制**（`prompt_loader`，`backend/prompts/` 现 **107 个文件**，
+支持 `signal/` + `format/` 组合与 `{include:...}` 引用）→ 可复用。
+
+⚠️ 抽 prompt 会**改动 Python 契约** → 必须跑 **`scripts/smoke_contract.py`**（冒烟 10/10）验证不变。
+
+### ✅ 修正后的「可复用地基」= **五块**
+
+1. 契约 v6（`coevo_wordlib_contract.py`）
+2. `tencent_asr.rs`（后端代理模式 · 参考用）
+3. `.env` 已有 `DEEPSEEK_API_KEY`
+4. 校验器 `verify_card_field_consistency.py`
+5. 🆕 **`chat_engine::llm_caller`（通用 LLM 调用 + 重试）** ← 本次发现
+
+## 三、可复用的地基（~~四块~~ → **五块**，这是好消息；🆕 第 5 块见 §二b）
 
 ### 3.1 契约 v5 —— `scripts/coevo_wordlib_contract.py`（404 行）
 
@@ -1617,7 +1680,7 @@ breathed → breathe「呼吸」· buried → bury「埋葬」· passed → pass
 
 | 步 | 内容 | 谁能验 | 依赖 |
 |---|---|---|---|
-| **A1** | 服务端：`generated_card_cache` 表（改 `schema.rs`）+ `POST /api/generate-card`（照 `tencent_asr.rs` 模式：key 在服务端 · 超时明确 · 错误分 400/500 · `tracing` 日志）+ **全链路**（契约 v6 → 合规扫描 → 闸门 → 写缓存 → 读回） | ✅ **我**（本机 `cargo run` + curl） | **无** |
+| **A1** | 服务端：`generated_card_cache` 表（改 `schema.rs`）+ `POST /api/generate-card` + 🔑 **复用 `chat_engine::llm_caller`（已自带重试/退避/超时/错误类型 → 不从零写 HTTP）** + 全链路（契约 prompt → LLM → 合规扫描 → 闸门 → 写缓存 → 读回）· 🔴 **前置：契约 prompt 抽成单一文件**（否则 Rust/Python 两份必分叉 → §二b） | ✅ **我**（本机 `cargo run` + curl） | **无** |
 | **A2** | 端侧：`external_word_cache` 表（`user.db` v3→v4 迁移）+ 未命中分支（**转圈** → 调接口 → 写缓存）+ **失败路径**（报错 + 重试）+ 会话内缓存 | 🟠 **白哥编译**（我这边 flutter 必崩） | A1（要有可调接口） |
 | **A3** | 回流脚本（`hit_count ≥ K` 快照 → 过闸门 → 合并进 `word.db`） | ✅ 我（本地跑） | A1（要有 cache 数据）· ⏳ **§11.7 已标「第 2 步之后」** |
 
@@ -1628,6 +1691,7 @@ breathed → breathe「呼吸」· buried → bury「埋葬」· passed → pass
 | 1 | **并发竞态**（多用户同时查同一新词） | 词级互斥锁（in-flight 去重）· 等待超时 8s · 超时返「正在生成，请稍后重试」（§4.3 已设计） |
 | 2 | **`hit_count` 的语义** | 只管**回流门槛**（去重靠 PK / 并发靠互斥锁）· 🔴 **缺 user 维度** → 补 `distinct_user_count`（§13 已定） |
 | 3 | **闸门失败怎么办** | 合规 P0 → **拒绝返回 + 告警**；客观闸门失败 → **不写缓存**（避免把错固化）+ 返回错误 |
+| 4 | 🆕 **prompt 单一来源** | 抽成**一个文件**，Python（预制/回流）与 Rust（在线）**都读它** —— 这是「同一套 prompt」的**唯一可靠落法** |
 
 ### 21.6 🔴 一件必须白哥定的事：**服务端什么时候部署**
 
