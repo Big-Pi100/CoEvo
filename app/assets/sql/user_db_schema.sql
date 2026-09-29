@@ -163,6 +163,21 @@ CREATE INDEX IF NOT EXISTS idx_bm_pending ON bookmark (pending_push)
 --
 -- 🔑 **200 词上限 = `COUNT(*) WHERE deleted = 0`** —— 已软删的**不占额度**
 --   （与「200 词上限 = 唯一 lemma 数」一致：删掉的词不再是生词）。
+--
+-- 🔴 **`deleted = 1` 对各统计的影响**不一致** —— 这是**有意的（白哥 2026-09-29 定）
+--   | 统计项 | 过滤暂停？ | 理由 |
+--   |---|---|---|
+--   | 生词本词数 / 200 上限 | ✅ 过滤 | 暂停 = 它不在生词本里了 |
+--   | 复习页列表 / 「今天该看」 | ✅ 过滤 | 暂停的词不该催着复习 |
+--   | **「已掌握」**（`stability >= 21`） | ❌ **不过滤** | **掌握是「历史成就」—— 暂停 ≠ 忘记** |
+--   同族先例：「连续学习天数」也不会因为今天没学就清零（它记的同样是**曾经达成**）。
+--
+--   ⚠️ 后果（**已知且接受**）：暂停一个已掌握的词后，生词本 −1 而「已掌握」不变
+--     → 两个数字**可以对不上**（极端情况：「已掌握 50」而复习页只剩 5 个词可见）。
+--   🔴 **别顺手给「已掌握」补 `AND deleted = 0`** —— 那会**静默改变**用户看到的语义
+--     （数字随暂停掉、且不报错）。守护断言见
+--     `scripts/query_verify/bin/verify_achievement_service.dart`【3】。
+--     📄 判据展开：`app/lib/services/achievement_rules.dart` 文件头 ④
 CREATE TABLE IF NOT EXISTS user_word (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   -- 🔴 指向**词库**的 `word.id`（TEXT）。⚠️ 词库外的词没有 word_id

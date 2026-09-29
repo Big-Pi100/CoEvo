@@ -92,9 +92,17 @@ class AchievementService {
     metrics[AchievementMetrics.totalWords] =
         await _count('user_word', where: 'deleted = 0');
     metrics[AchievementMetrics.totalReviews] = await _count('review_log');
-    // `stability >= 21` 天 = FSRS 的 mature 门槛（见 achievement_rules.dart 文件头 ③）
-    metrics[AchievementMetrics.matureCards] =
-        await _count('card_review_state', where: 'stability >= 21');
+    // `stability >= kMatureStabilityDays` 天 = FSRS 的 mature 门槛
+    // （门槛数值的唯一出处见 `achievement_rules.dart` 的 `kMatureStabilityDays`）
+    //
+    // 🔴 **有意不 JOIN `user_word`** —— 即**不过滤「暂停」的词**（白哥 2026-09-29 定）：
+    //    「掌握」是**历史成就**，暂停（先不学了）≠ 忘记了。
+    //    对照：生词本（`deleted = 0`）与复习页（`COALESCE(uw.deleted, 0) = 0`）**都**过滤。
+    //    ⚠️ 两者口径不同是**有意的**，不要当遗漏去「修」——
+    //    守护断言见 `scripts/query_verify/bin/verify_achievement_service.dart`【3】。
+    metrics[AchievementMetrics.matureCards] = await _count(
+        'card_review_state',
+        where: 'stability >= $kMatureStabilityDays');
     // 🆕 「阅读篇数」—— 不驱动成就，只供「我的」页顶部展示（同源采集，避免两处口径）
     metrics[AchievementMetrics.articlesRead] = await _count('article_read');
 

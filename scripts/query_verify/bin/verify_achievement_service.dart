@@ -139,6 +139,11 @@ Future<void> main() async {
   // ══════════════════════════════════════════════════════════
   section('【3】mature 口径（stability >= 21）');
   // ══════════════════════════════════════════════════════════
+  // 🔑 下面这些 `21.0` / `25.0` / `20.9` / `21` 是**硬编码的独立期望值** ——
+  //    **故意不引用** `kMatureStabilityDays`。判据：**期望值须独立于被测逻辑**。
+  //    若改成一引用同一常量，则常量被改成 30 时断言会**跟着一起变**、
+  //    永远看不出「门槛被改了」⇒ 断言失去区分度（本项目「假绿」家族的常见形状）。
+  //    ✅ 正确行为：改 `kMatureStabilityDays` → 这里的断言**必须变红**，逼人同步改测试。
   Future<void> addState(String id, double? stability, int state) =>
       db.insert('card_review_state', {
         'word_id': id,
@@ -159,6 +164,35 @@ Future<void> main() async {
       '${m[AchievementMetrics.matureCards]}');
   check('🔴 边界：stability 恰好 21 → 算 mature（>= 而非 >）',
       m[AchievementMetrics.matureCards] == 2);
+
+  // ── 🆕 「暂停的词**仍计入**已掌握」（白哥 2026-09-29 定 · 见规则层文件头 ④）──
+  //
+  // 🔑 为什么必须**断言**它：实现里 mature 的 SQL **有意不 JOIN `user_word`**，
+  //    而「生词本 / 复习页都过滤了暂停，唯独这里没有」看着就像是遗漏 ——
+  //    后人很可能顺手补 `AND deleted = 0` → **静默改变语义**
+  //    （用户的「已掌握」会随暂停掉数字，且不报错）。
+  //    决策只写在注释里挡不住这个，断言能。
+  await addState('m6', 25.0, 2); // stability 25 >= 21 → 本应计入
+  await db.insert(
+      'user_word', {'word_id': 'm6', 'spelling': 'm6', 'deleted': 1}); // 且已暂停
+  m = await svc.collectMetrics(now: now);
+  check('🔴 暂停（`user_word.deleted = 1`）的已掌握词**仍计入**（掌握 = 历史成就）',
+      m[AchievementMetrics.matureCards] == 3,
+      '${m[AchievementMetrics.matureCards]}');
+
+  // 对照：把 m6 改回「未暂停」→ 计数**不变**
+  // 🔑 这条对照不可省：只断言「=3」的话，仅证明了「多了一行 crs」，
+  //    证明不了「与 user_word 无关」。改回 0 之后**仍是 3** ⇒ 该指标确实不读 user_word。
+  await db.update('user_word', {'deleted': 0},
+      where: 'word_id = ?', whereArgs: ['m6']);
+  m = await svc.collectMetrics(now: now);
+  check('对照：改回未暂停后计数**仍为 3**（证明该指标完全不读 `user_word`）',
+      m[AchievementMetrics.matureCards] == 3,
+      '${m[AchievementMetrics.matureCards]}');
+
+  // 🔑 清理：不给后续段留痕迹 ——【4】段要断言 `total_words` 的**精确值**。
+  //    造完不删的话，m6 会悄悄把它变成 11，而失败信息只显示「11 != 10」（难定位）。
+  await db.delete('user_word', where: 'word_id = ?', whereArgs: ['m6']);
 
   // ══════════════════════════════════════════════════════════
   section('【3b】🆕 阅读篇数（`articles_read` —— 供「我的」页展示，**不驱动成就**）');

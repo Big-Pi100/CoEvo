@@ -28,11 +28,25 @@
 // · 做法：读 `reviewed_at`（UTC ISO8601 带 `Z`）→ `toLocal()` → 取本地日。
 // · `utc_day` **保持原用途不动**（同步幂等键）。
 //
-// ## ③ mature（掌握）判定 = `stability >= 21` 天
-// FSRS 社区惯例：`stability`（稳定度，单位天）= 记忆保持 90% 的时长；
-// 21 天是 SRS 界通用的「mature」门槛（Anki 同口径）。
+// ## ③ mature（掌握）判定 = `stability >= 21` 天（数值见 `kMatureStabilityDays`）
+// FSRS 惯例：`stability`（稳定度，单位天）= 记忆保持 90% 的时长。
+// 21 这个数沿用 SRS 界的「mature」门槛。
+// ⚠️ **不声称与 Anki 等价**：Anki 的 mature 判据是 `interval >= 21` 天（**下次复习间隔**），
+//    而 interval 由 stability **换算**而来、还受 desired retention 影响 ——
+//    两者**相关但不等价**。这里取的是同量级的 stability 门槛。
 // · 备选 `state == 2`（进入 review 阶段）**更宽松** —— 刚进 review 的卡也算「掌握」，
 //   会虚高。已选 `stability`。
+//
+// ## ④ 🆕 「已掌握」**有意不过滤「暂停」的词**（白哥 2026-09-29 定）
+// 用户「暂停」一个词 = `user_word.deleted = 1`（先不学了）。
+// · 生词本词数、复习页列表/到期数 **都过滤**它；
+// · **「已掌握」不过滤** —— 因为「掌握」是**历史成就**：暂停 ≠ 忘记。
+//   同族先例：「连续学习天数」也不会因为今天没学就清零（它记的是**曾经达成**）。
+// 🔴 后果（**已知且接受**）：暂停一个已掌握的词后，生词本会 −1 而「已掌握」不变
+//   → 两个数字可以对不上（极端情况：「已掌握 50」而复习页只剩 5 个词可见）。
+//   🔑 这是**有意的口径差异**，不是遗漏 —— 别顺手给它补 `AND deleted = 0`
+//   （那会**静默改变**用户看到的语义）。守护断言见
+//   `scripts/query_verify/bin/verify_achievement_service.dart`【3】。
 
 /// **图标名常量**（Material Icons 的名称）。
 ///
@@ -174,6 +188,23 @@ class AchievementDef {
   });
 }
 
+/// **「已掌握」（mature）的门槛：`stability >= 21` 天**。
+///
+/// `stability` 是 FSRS 的「稳定度」（单位天）= 记忆保持 90% 的时长。
+/// 21 这个数沿用 SRS 界的 mature 门槛，理由与备选方案见文件头 ③。
+///
+/// # 🔑 为什么要提成常量（2026-09-29）
+/// 此前 `21` 以**字面量**形式只出现在 `achievement_service.dart` 的 SQL 字符串里，
+/// 而「21」这个说法还在**三处注释**各写了一遍（本文件头 ③、下方 `matureCards` 的 doc、
+/// `user_db_schema.sql`）。
+/// → 改门槛要同时改多处，漏一处就是「**注释说 21、SQL 用的是别的值**」这种静默不一致
+///   （正是本项目判据「同一件事的口径只能有一处权威」要避免的）。
+/// 收成一个符号后：采集端（SQL）与文档引用的是**同一处**。
+///
+/// 🔴 **改动本值属「需请示」**：它会改变用户已看到的数字，且
+///    历史解锁记录**不会**随之回退（`AchievementSnapshot.unlocked` 取并集语义）。
+const int kMatureStabilityDays = 21;
+
 /// 指标键常量。
 ///
 /// 🔑 用常量而不是字符串字面量：**采集端（SQL）与判定端（规则）必须同名**，
@@ -197,7 +228,9 @@ abstract final class AchievementMetrics {
   /// 累计复习次数（`review_log` 行数）。
   static const String totalReviews = 'total_reviews';
 
-  /// 已掌握词数（`card_review_state.stability >= 21`）。
+  /// 已掌握词数（`card_review_state.stability >= kMatureStabilityDays`）。
+  ///
+  /// 🔴 **有意不 JOIN `user_word`** —— 即不过滤「暂停」的词。理由见文件头 ④。
   static const String matureCards = 'mature_cards';
 
   /// 🆕 读过的文章数（`article_read` 行数 —— 「阅读篇数」的数据源）。
