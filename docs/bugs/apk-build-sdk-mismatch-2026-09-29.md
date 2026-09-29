@@ -176,3 +176,86 @@ Add the following to E:\CoEvo\app\android\app\build.gradle.kts:
 | 已产出的 APK | ✅ 上次那个 82.6 MiB 的**仍可用**（用它跑的 3.41.1） |
 | 鸿蒙开发 | ✅ **无影响**（`D:\flutter_flutter` 一字未动） |
 | `app/pubspec.lock` | 🔴 **已降级 21 包** → 待回滚 |
+
+---
+
+## 九、修复进展（2026-09-29 09:5x · 白哥批「方案 B」）
+
+### 9.1 ✅ ① 已执行：`pubspec.lock` 已回滚
+
+`git checkout -- app/pubspec.lock` → 逐包比对 **差异 0**，21 个包全部恢复：
+`characters 1.4.1` · `collection 1.19.1` · `meta 1.17.0` · `path 1.9.1` ·
+`vector_math 2.2.0` · `test_api 0.7.9` · `leak_tracker 11.0.2` ✅
+
+### 9.2 🔴 方案 B 的两个硬事实（动手前取证）
+
+| 核实项 | 结果 |
+|---|---|
+| `D:\flutter_flutter\bin` 在哪 | **机器级 PATH，而且 index = 0（第 1 条）** |
+| 用户级 PATH 有 flutter 吗 | ❌ 没有 |
+| 当前进程有管理员权限吗 | 🔴 **False**（写机器级注册表被拒：`不允许所请求的注册表访问权`） |
+
+🔑 **技术要点：Windows 生效 PATH = `机器级` + `用户级`，机器级永远在前。**
+→ 光往**用户级**加 `D:\flutter\bin` **完全无效**（会被机器级的 `flutter_flutter` 压住）。
+→ **方案 B 必须改机器级 PATH → 需要管理员。这一步只能白哥来做。**
+
+### 9.3 ✅ 风险实测：比原先估的**低**
+
+我上一条把 B 标为「可能影响鸿蒙/DevEco」，实测下来风险确实小：
+
+| 检查 | 结果 |
+|---|---|
+| 有鸿蒙 Flutter 项目在用 `flutter_flutter` 吗 | ✅ **没有** —— `D:/Huawei` 下只有 `DevEco Studio` 与 `Emulator` · `D:/HarmonyProgram` **空** · 全盘找 `ohos/` 子目录 **0 结果** |
+| DevEco 配置引用 `flutter` 吗 | ✅ **没有任何引用**（搜遍 `DevEcoStudio6.1/` 配置目录） |
+| DevEco 依赖 PATH 里的什么 | 它自己的 `jbr` / `openharmony toolchains` / `tools/node` / `hvigor` / `ohpm`（**都与 flutter 无关**） |
+
+→ **把 `D:\flutter\bin` 插到 `flutter_flutter\bin` 前面，`flutter_flutter` 那条留在原地不动**
+（需要时用全路径调用），**对现有环境无实际影响**。
+
+### 9.4 🆕 交付：`scripts/fix-flutter-path.ps1`
+
+**为什么不是「你自己改一下 PATH」** —— 因为用错工具会**毁掉 PATH**：
+
+```
+🔴 setx 会在 1024 字符处截断 → 机器级 PATH 是 1442 字符 → 用 setx 会砍掉后面 400+ 字符
+✅ 脚本用的是 .NET API：[Environment]::SetEnvironmentVariable(..., 'Machine')
+```
+
+**脚本自带的安全设计**（都已验证）：
+
+| 机制 | 说明 |
+|---|---|
+| 管理员检查 | 无权限时**明确报错并退出**（exit 1），不会静默失败 |
+| **`-Check` 免提权** | 只读模式，随时可查现状（exit 0=已正确 / 2=未修） |
+| 幂等 | 已正确则直接退出，不重复写 |
+| **自动备份** | 改动前把原 PATH 写到 `%USERPROFILE%\PATH-machine-backup-<时间戳>.txt` |
+| 长度护栏 | 新 PATH 若比旧的短 >10% → **拒绝执行**（防截断灾难） |
+| 读回断言 | 写完立刻读回比对，不一致即报错 |
+| **`-Rollback`** | 一键从最新备份还原 |
+| 不碰 `flutter_flutter` | 只**插入**，不删除、不移动那条 |
+
+**实测验证**（我在无管理员环境下跑过）：
+
+```
+PARSE = OK
+-Check    → index of D:\flutter\bin = -1 · index of flutter_flutter = 0 · exit 2  ✅
+（无参数） → [FAIL] Must run as Administrator · exit 1  ✅
+```
+
+### 9.5 白哥要执行的两步
+
+```powershell
+# ① 全路径重跑构建（会走 3.41.1，SDK/NDK 警告也会一起消失）
+cd E:\CoEvo\app
+D:\flutter\bin\flutter.bat build apk --release --target-platform android-arm64
+
+# ② 实施方案 B：以【管理员】身份打开 PowerShell 终端，运行：
+powershell -ExecutionPolicy Bypass -File E:\CoEvo\scripts\fix-flutter-path.ps1
+#    然后【新开一个终端】验证：
+#    Get-Command flutter     → 应显示 D:\flutter\bin\flutter.bat
+#    撤销（如需）：
+powershell -ExecutionPolicy Bypass -File E:\CoEvo\scripts\fix-flutter-path.ps1 -Rollback
+```
+
+⚠️ **注意**：改 PATH 后**必须新开终端**才生效（已开着的窗口仍是旧 PATH）。
+⚠️ 若以后做鸿蒙 Flutter 开发，需要显式用 `D:\flutter_flutter\bin\flutter.bat`（或把两条顺序调回）。
