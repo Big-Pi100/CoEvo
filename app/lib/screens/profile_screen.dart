@@ -10,7 +10,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
-import '../api/chat_client.dart';
+import '../api/user_api_client.dart';
 import '../api/api_config.dart';
 import '../widgets/referral_qr_code.dart';
 import '../providers/auth_provider.dart';
@@ -132,16 +132,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       // 网络错误则保持 _avatarUrl 为 null
     }
 
-    final client = ChatClient(userId: auth.userId!, token: auth.token);
+    final client = UserApiClient(userId: auth.userId!, token: auth.token);
     try {
-      final results = await Future.wait([
-        client.getProfile(),
-        client.getPreferences(),
-      ]);
-      final data = results[0];
-      // ⚠️ `results[1]`（用户偏好）自 2026-09-26 起本页不再消费：
-      // TTS 偏好已改为 `TtsService` 自持（引擎只剩端侧，无偏好需同步）。
-      // 请求暂留（通用接口，`review_screen` 仍在用；且本页后续可能展示其他偏好）。
+      // 🗑 2026-09-29：原先这里用 `Future.wait` 同时发 `getProfile()` + `getPreferences()`，
+      //    但偏好结果**从未被消费**（下面只用了 `results[0]`）。
+      //    原注释称「请求暂留（`review_screen` 仍在用）」—— 🔴 该理由**已失效**：
+      //    `review_screen` 已于 09-28 整体重写（数据源全走端侧 `user.db`、**不联网**、
+      //    不依赖登录态），**不再使用 chat_client**（注释写于 09-26，所指版本已不存在）。
+      //    → 该请求纯属多余（每次进本页多一次后端调用），已删除。
+      final data = await client.getProfile();
       // 如果后端有 display_name，覆盖本地缓存
       final backendName = data['display_name'] as String?;
       if (backendName != null && backendName != _displayName && mounted) {
@@ -254,7 +253,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       await prefs.setString('display_name', trimmed);
       // 同步到后端
       if (auth.userId != null && auth.token != null) {
-        final client = ChatClient(userId: auth.userId!, token: auth.token);
+        final client = UserApiClient(userId: auth.userId!, token: auth.token);
         try {
           await client.updateDisplayName(trimmed);
         } catch (e) {

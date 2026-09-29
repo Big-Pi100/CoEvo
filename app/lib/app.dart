@@ -14,7 +14,6 @@ import 'screens/home_screen.dart';
 import 'screens/achievements_screen.dart';
 import 'screens/aggregate_page_screen.dart';
 import 'screens/bookmark_list_screen.dart';
-import 'screens/chat_screen.dart';
 import 'screens/review_screen.dart';
 import 'screens/review_session_screen.dart';
 import 'screens/pay_screen.dart';
@@ -185,11 +184,15 @@ final goRouter = GoRouter(
       path: '/achievements',
       builder: (context, state) => const AchievementsScreen(),
     ),
-    GoRoute(
-      path: '/chat',
-      builder: (context, state) =>
-          ChatScreen(conversationId: state.extra as String?),
-    ),
+    // 🗑 2026-09-29 已删除：`/chat` 路由（+ `screens/chat_screen.dart` import）
+    //    —— 产品已定**不做 chat/UGC**；且该路由**全库无任何 push/go/named 跳转**
+    //       （即「有路由、无入口」的孤儿页）→ 用户根本到不了。
+    //    同时删除其整条依赖链（均为闭包，已用 import 反向图验证）：
+    //      chat_screen · screens/chat/{5} · review_dialog · review_card_widget
+    //      · pipelines/{4 子策略 + 主策略 + registry} · providers/plan_provider
+    //    ⚠️ 注意：`widgets/review_dialog.dart` / `review_card_widget.dart` **不是复习页组件** ——
+    //       名字像，但属**旧架构（走后端）**的 chat 专用件；现役 `review_screen.dart`
+    //       已自建复习页（数据源全走端侧 `user.db`），**不复用它们**。
     GoRoute(
       path: '/pay',
       builder: (context, state) => const PayScreen(),
