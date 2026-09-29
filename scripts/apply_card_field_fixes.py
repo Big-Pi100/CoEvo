@@ -54,32 +54,61 @@ def content_hash(content_json, extras):
 
 
 def load_plan(args):
-    """算出「该写哪些词的哪些字段」。"""
-    payload = json.load(open(FIXES, encoding='utf-8'))
+    """算出「该写哪些词的哪些字段」。
+
+    🔑 **两条关键设计**（2026-09-29 加）：
+
+    ① **支持多个结果文件**（`--fixes a.json b.json`）——
+       不同批次的候选（原 196 / S5 盲区 161）各有一份结果，合并后统一判定。
+       同词冲突时保留 `generated_at` 更新的那份。
+
+    ② 🔴 **用「库里的当前值」重算，不用文件里的 `current` 快照** ——
+       文件里的 `current` 是**调用 LLM 那一刻**的现状；如果中间已经写过库，
+       它就过时了。用过时快照判定会反复算出「要写」（虽然幂等无害），
+       但**报出的「本次实际改动」会虚高**，且无法回答「现在到底还差几条」。
+       改为现读库 → 判定天然幂等，且数字就是真实待办量。
+    """
+    con = sqlite3.connect(WORD_DB)
     forms_map = G.load_surface_forms(WORD_DB)
+    best = {}                                 # spelling(lower) -> (generated_at, rec)
+    for path in args.fixes:
+        if not os.path.exists(path):
+            con.close()
+            sys.exit(f'🔴 找不到结果文件 {path}')
+        payload = json.load(open(path, encoding='utf-8'))
+        ga = payload.get('generated_at') or ''
+        for r in payload['items']:
+            if not r.get('ok'):
+                continue
+            k = r['spelling'].lower()
+            if k in best and best[k][0] >= ga:
+                continue
+            # 🔴 现读库 → 覆盖文件里的过时快照
+            r['current'] = G.load_current(con, r['spelling'])
+            best[k] = (ga, r)
+    con.close()
+
     plan = []
-    for r in payload['items']:
-        if not r.get('ok'):
-            continue
-        lvl, hard, closed = G.classify(r, r['current'], forms_map)
+    for _ga, r in best.values():
+        cur = r['current']
+        lvl, hard, closed = G.classify(r, cur, forms_map)
         r['level'], r['hard'], r['closed'] = lvl, hard, closed
-        fields = G.write_fields(r, r['current'], forms_map)
+        fields = G.write_fields(r, cur, forms_map)
         if args.tier == 'ipa-hard':                       # 只取「ipa 格式硬证据」那一批
             if not any(h in IPA_HARD for h in hard):
                 continue
             fields &= {'ipa'}
         if args.fields:                                   # 显式限定字段
             fields &= set(args.fields)
-        if args.only:
-            if r['spelling'].lower() not in args.only:
-                continue
+        if args.only and r['spelling'].lower() not in args.only:
+            continue
         if not fields:
             continue
         plan.append((r, sorted(fields)))
     if args.only:
         missing = args.only - {r['spelling'].lower() for r, _ in plan}
         if missing:
-            sys.exit(f'🔴 `--only` 里有没进计划的词（写不了/不在候选）: {sorted(missing)}')
+            sys.exit(f'🔴 `--only` 里有没进计划的词（已无需修 / 不在候选）: {sorted(missing)}')
     return plan, forms_map
 
 
@@ -202,6 +231,8 @@ def verify(con, rec, fields):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--tier', choices=['all', 'ipa-hard'], default='all')
+    ap.add_argument('--fixes', nargs='+', default=[FIXES],
+                    help=f'结果 json（可多个，合并去重）；默认 {os.path.basename(FIXES)}')
     ap.add_argument('--fields', default='',
                     help='限定字段，逗号分隔（ipa,context,definition）；默认用判据算出来的')
     ap.add_argument('--only', default='', help='只处理这些词（逗号分隔）')
@@ -211,8 +242,9 @@ def main():
     args.fields = [x.strip() for x in args.fields.split(',') if x.strip()]
     args.only = {x.strip().lower() for x in args.only.split(',') if x.strip()} or None
 
-    if not os.path.exists(FIXES):
-        sys.exit(f'🔴 找不到 {FIXES}')
+    missing = [f for f in args.fixes if not os.path.exists(f)]
+    if missing:
+        sys.exit(f'🔴 找不到结果文件: {missing}')
 
     plan, _ = load_plan(args)
 

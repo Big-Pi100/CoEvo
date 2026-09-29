@@ -105,6 +105,15 @@ def load_current(con, spelling):
 #    → 只靠它判「例句是否含该词」，会把 buried/leaves/shrank/… **全部误判为「不含」**。
 # 🔑 所以本文件**自己生成规则变形 + 补不规则/变体**，不假设该表完整。
 #
+# 📌 **与 `word_form` 表的关系**（🔑 别误以为这是「要同步维护的两份表」）：
+#    2026-09-29 已用 `scripts/fill_word_form_irregular.py` 把下图这些不规则变形
+#    **补进了 `word.db` 的 `word_form` 表**（+78 行）。但**本表仍然保留**，因为它是
+#    **自造兜底** —— 设计意图就是「不依赖外部表的完整性」：
+#      · 表被回滚 / 换库 / 未同步时，判据依然能工作
+#      · 它还覆盖 `word_form` **不该收**的东西：拼写变体（`civilisation`）、
+#        派生词族（`readership`）、复合词（`handloom`）
+#    → 因此**不是分叉，是「判据自带兜底」**。两边都改才是分叉；这里只改下表即可。
+#
 # 出处：2026-09-29 对 64 条「例句不含该词」逐条复核 —— 其中 **47 条是判据误差**，
 #       只有 17 条是真空。详见 `data/reports/card_field_fixes-*.md` §五。
 _IRREGULAR = {
@@ -447,20 +456,28 @@ def main():
     ap.add_argument('--workers', type=int, default=WORKERS)
     ap.add_argument('--report-only', action='store_true',
                     help='从已有 card_field_fixes.json 重出报告（不重跑 LLM）')
+    # 🆕 让**任意候选清单**走同一条链（同一 prompt / 契约 / 判据 / 校验）——
+    #    白哥的要求是「与预制同一套」，所以不另写脚本，只换输入输出路径。
+    ap.add_argument('--candidates', default=CANDS,
+                    help=f'候选清单 json（默认 {os.path.basename(CANDS)}）')
+    ap.add_argument('--out', default=OUT_JSON,
+                    help='结果 json 输出路径（默认 card_field_fixes.json）')
+    ap.add_argument('--out-report', default=OUT_REPORT,
+                    help='报告输出路径（默认按日期命名）')
     args = ap.parse_args()
 
-    if not os.path.exists(CANDS):
-        sys.exit(f'🔴 找不到 {CANDS}（先跑 verify_card_field_consistency.py --json）')
-    cands = json.load(open(CANDS, encoding='utf-8'))
+    if not os.path.exists(args.candidates):
+        sys.exit(f'🔴 找不到 {args.candidates}（先跑 verify_card_field_consistency.py --json）')
+    cands = json.load(open(args.candidates, encoding='utf-8'))
     if args.limit:
         cands = cands[:args.limit]
     print(f'候选 {len(cands)} 条 · 并发 {args.workers}')
 
     # ── `--report-only`：从已有 JSON 重出报告（🔑 不重跑 LLM，不花钱）──
     if args.report_only:
-        if not os.path.exists(OUT_JSON):
-            sys.exit(f'🔴 找不到 {OUT_JSON} —— 先跑一次完整生成')
-        payload = json.load(open(OUT_JSON, encoding='utf-8'))
+        if not os.path.exists(args.out):
+            sys.exit(f'🔴 找不到 {args.out} —— 先跑一次完整生成')
+        payload = json.load(open(args.out, encoding='utf-8'))
         forms_map = load_surface_forms(WORD_DB)
         results = [r for r in payload['items'] if r.get('ok')]
         failed = [r for r in payload['items'] if not r.get('ok')]
@@ -532,8 +549,9 @@ def main():
             'stats': st,
             'items': sorted(results + failed, key=lambda r: (not r.get('ok'), r['spelling'])),
         }
-        json.dump(payload, open(OUT_JSON, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-        print(f'\n✅ 结果已写 {OUT_JSON}')
+        os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+        json.dump(payload, open(args.out, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        print(f'\n✅ 结果已写 {args.out}')
 
 
     # ── 生成报告 ──
@@ -559,7 +577,7 @@ def main():
     A(f'# 卡片字段修正候选 —— LLM（契约 {cwc.CONTRACT_VERSION}）复核结果')
     A('')
     A(f'> 生成：{payload["generated_at"]} ｜ 模型 `{cwc.MODEL}` ｜ **只生成，未写库**')
-    A(f'> 输入：`card_field_candidates.json`（{len(cands)} 条可疑项，由 5 个信号筛出）')
+    A(f'> 输入：`{os.path.basename(args.candidates)}`（{len(cands)} 条可疑项）')
     A(f'> 成本 **¥{cost:.4f}**（in {tin:,} / out {tout:,} token）· 耗时 {secs:.0f}s · 并发 {args.workers}')
     A('')
     A('## 一、结论：三档 + 建议写入')
@@ -708,9 +726,9 @@ def main():
     A('')
     A('*本报告**只生成候选，未写 `word.db`**。写库由 `scripts/apply_card_field_fixes.py` 执行（需单独批准）。*')
 
-    os.makedirs(os.path.dirname(OUT_REPORT), exist_ok=True)
-    open(OUT_REPORT, 'w', encoding='utf-8').write('\n'.join(L) + '\n')
-    print(f'✅ 报告已写 {OUT_REPORT}')
+    os.makedirs(os.path.dirname(os.path.abspath(args.out_report)), exist_ok=True)
+    open(args.out_report, 'w', encoding='utf-8').write('\n'.join(L) + '\n')
+    print(f'✅ 报告已写 {args.out_report}')
 
     print(f'\n汇总: 成功 {len(results)}/{len(cands)} · '
           + ' · '.join(f'{k}={v}' for k, v in by_level.most_common())

@@ -998,3 +998,144 @@ if x.endswith(y)   or y.endswith(x):    return True   # ← 整类放过「派�
 | 4 | `word_form` 补不规则变形（**同时影响端侧划词查词**） | 待估 | — |
 
 *本轮**只扫描、未改任何数据**。`word.db` 未触碰。*
+
+---
+
+## 十七、✅ 执行 §十六 的四项（2026-09-29 08:0x）
+
+> 白哥：「执行」
+
+### 17.1 实际执行方式（与预案的一处不同）
+
+| # | 原计划 | 实际做法 | 成本 |
+|---|---|---|---|
+| ① | S5a 25 条「直接修」（硬证据，不需 LLM 判定） | ❌ 但仍**需要 v6 出正确 ipa** → 与 ② **合并成一次调用**（161 条） | — |
+| ② | S5b/S5c 113 条跑 LLM | ✅ 同上 | **¥1.0412**（161 条 · 34s · 0 失败） |
+| ③ | `S3b` 62 + `S4` 55 复核 | ✅ **已在 196 条那批里**（无需重跑）→ 只做「用升级后的判据重判」 | ¥0 |
+| ④ | `word_form` 补不规则变形 | ✅ 新增 `fill_word_form_irregular.py` | ¥0 |
+
+🔑 **去重先行**：S5 候选 172 条里 **11 条已在 196 内**（`dr.` `il` `mr.` `mrs.` `ms.` `pah` `par` `right` `rite` `wright` `write`）
+→ 实跑 **161 条**。**但不采用**「跳过已标『大概率本就正确』的 29 条」——
+`_benign_pair` 用了较激进的归一化折叠，多花 **¥0.19** 把启发式依赖换掉。
+
+### 17.2 结果：S5a **25/25 全部命中**，写库 47 条
+
+| 档 | 条数 | 写入 |
+|---|---:|---:|
+| S5a（基词 ⊂ 词组） | 25 | **25**（100%） |
+| S5b/S5c（需复核） | 136 | 21 |
+| **合计** | **161** | **47**（ipa 46 + context 1） |
+
+**未写的 115 条全部是「v6 与现状读音一致」**（真同音词/英美变体）→ **0 条需要解释的例外** ✓
+
+**S5a 逐条（现状 → 写入）**：
+
+| 词 | 现状（错的） | 改为 | | 词 | 现状 | 改为 |
+|---|---|---|---|---|---|---|
+| `bus` | `/ˈbʌs ˌstɒp/` | `/bʌs/` | | `primary` | `/ˈpraɪməri skuːl/` | `/ˈpraɪməri/ (UK)...` |
+| `capital` | `/ˈkæpɪtl ˈlɛtər/` | `/ˈkæpɪtl/` | | `prime` | `/ˌpraɪm ˈmɪnɪstə(r)/` | `/praɪm/` |
+| `cd` | `/siː ˈdiː ˌpleɪər/` | `/ˌsiː ˈdiː/` | | `rush` | `/ˈrʌʃ ˌaʊə/` | `/rʌʃ/` |
+| `chat` | `/ˈtʃæt ʃəʊ/` | `/tʃæt/` | | `secondary` | `/ˈsɛkəndɛri skuːl/` | `/ˈsekəndri/ (UK)...` |
+| `credit` | `/ˈkred.ɪt ˌkɑːrd/` | `/ˈkredɪt/` | | `stock` | `/ˈstɒk ˌmɑːkɪt/` | `/stɒk/ (UK)...` |
+| `debit` | `/ˈdebɪt kɑːrd/` | `/ˈdebɪt/` | | `swimming` | `/ˈswɪmɪŋ puːl/` | `/ˈswɪmɪŋ/` |
+| `definite` | `/ˈdɛfɪnɪt ˈɑːrtɪkl/` | `/ˈdefɪnət/` | | `text` | `/ˈtekst ˌmesɪdʒ/` | `/tekst/` |
+| `exchange` | `/ɪksˈtʃeɪndʒ reɪt/` | `/ɪksˈtʃeɪndʒ/` | | `traffic` | `/ˈtræfɪk ˌlaɪt/` | `/ˈtræfɪk/` |
+| `id` | `/ˌaɪ ˈdiː ˌkɑːd/` | `/ˌaɪ ˈdiː/` | | `vice` | `/ˌvaɪs ˈprezɪdənt/` | `/vaɪs/` |
+| `identity` | `/aɪˈdentəti kɑːd/` | `/aɪˈdentəti/` | | `virtual` | `/ˌvɜːtʃuəl riˈæləti/` | `/ˈvɜːtʃuəl/` |
+| `modal` | `/ˈməʊdəl vɜːb/` | `/ˈməʊdl/ (UK)...` | | `web` | `/ˈwɛb peɪdʒ/` | `/web/` |
+| `navy` | `/ˌneɪvi ˈbluː/` | `/ˈneɪvi/` | | `owing` | `/ˈəʊɪŋ tuː/` | `/ˈəʊɪŋ/ (UK)...` |
+
+**S5b/S5c 抓到的真错**（人工核过）：`bullet`←`bull` · `consider`←`consideration`（**短词**错，方向与 `bullet` 相反）
+· `tropical`←`tropic` · `eat`←`at` · `tape`←`tap` · `logo`←`log` · `israeli`←`israel`
+· `marvel`←`ma` · `tartuffe`←`tar` · `yugoslavia`←`yugoslav` · `shall`←`hall` · `th`←`path`
+· `nazis`/`bristles`/`whigs`（复数拿了单数音标）· `paso`←`pa` · `tart`←`tar` · `en`←`ellen`
+
+### 17.3 🔴🔴 本轮最重要的发现：**交付物同步遗漏**（上一轮的漏做）
+
+排查时发现 **`app/assets/word.db` 是打包进 App 的独立副本**，
+而**历史上每次改 `data/word.db` 都会同步它**（`d419fce` · `ccefb6a` · `b495718` · `7e88b84` 均如此）
+—— **但我上一轮（`93e2016`）漏了**。
+
+**实测证据**：两份库 `card.content_hash` 差异 **恰好 115 条** = 68（上轮）+ 47（本轮）✓
+
+→ 后果：**上一轮修的 68 条卡片，用户在 App 里看不到**（只有开发库是好的）。
+→ 已同步，两份库 `PRAGMA integrity_check` = ok · `content_hash` 集合完全相同 ✓
+
+🔑 **判据**：**「改了源数据」≠「交付物已更新」** ——
+   一份数据若存在「源 + 打包副本」两处，改完源必须问一句 **「现在还有谁拿着它的旧拷贝」**。
+   （同 `MEMORY.md` 的「『写了 A 端』≠『B 端会显示』」，但这次是**文件级**的副本。）
+
+### 17.4 `word_form` 补不规则变形：+78 行
+
+🆕 `scripts/fill_word_form_irregular.py` —— 自建**人工核对的不规则表**（235 词）。
+
+**为什么不能用现成的**：
+- `build_word_form.py` 的 `IRREGULAR` 只有 **130 词**，且 **`bury`/`leaf`/`shrink` 都不在**
+- 旧 `word_form.json`（36,856 条）是**纯规则穷举** → ① **不含任何不规则变形**（`shrank`/`underwent`/`withdrew` 都不在，正是要补的那批）② 大量规则误加（`abandoneded` · `abilitying`）
+
+**四条判据**：`base` 在 word 表 · `form` 不在 word 表（否则端侧第一步就命中，是死数据）
+· `form` 不在 word_form 表 · `form != base`
+
+🔴 **去掉了「form 在 cefr_catalog 里」这层过滤**（第一版用了，是错的）：
+CEFR-J 是**学习词表**，既不收英式变体（`learnt` `spelt` `spilt` `labelling`）也不收常见变形（`overthrew` `woken` `shrunk`）
+—— **而我们的内容源含 BBC（英式拼写）**。按它过滤会**挡掉真变形**（实测挡 46 条）。
+（`fill_word_form_gap.py` 当年需要它，是因为那个源是规则穷举会造垃圾；本脚本的源是人工表，无此风险。）
+
+**结果**：24,062 → **24,140 行**（+78）· 幂等（重跑 0 条）· `integrity_check` ok
+
+**实测收益**（33 个样本）：**0/33 → 12/33** 命中。
+另有 **S4 从 55 → 43** —— 补了不规则变形后，12 条「例句不含该词」的**误判自动消失**（交叉验证 ✓）。
+
+### 17.5 🔴 两个如实报告的遗留（未动）
+
+**① `word_form` 里已有可疑映射**（本轮范围外，`form` 已在表中故被跳过）：
+
+| form | 现有映射 | 问题 |
+|---|---|---|
+| `buried` | → **`buri`**（rule=past） | `buri` 是独立词条；`buried` 更常是 `bury` 的过去式 |
+| `leaves` | → **`leave`**（rule=plural） | 口径不一致：`leave` 是**动词**，其复数不该叫 plural；`leaf` 的复数无人映射 |
+
+⚠️ 且端侧 `LIMIT 1` 无序 → 一个 form 有多个 base 时**取哪个不确定**（架构限制）。
+
+**② 规则变形缺口 199 条 —— 建议不做**：
+按词性生成规则屈折 + 语料实证后仍有 199 条缺口，但含 **`bester`**（`best` 的比较级 —— 错）、
+**`acoustics`**（`acoustic` 的复数 —— 错，它是独立名词「声学」）等**误判** →
+要补就得再写一套规则 + 门控 + 人工核验，而收益只是「199 个词形少走一次 LLM 兜底」。
+**性价比低，建议不补**（不规则变形才是用户真的猜不出来的那批，已补完）。
+
+### 17.6 全量验证（全部可复跑）
+
+| 校验 | 修复前 | 修复后 |
+|---|---|---|
+| S1 / S2 / S3a | 0 / 0 / 0 | **0 / 0 / 0** |
+| **S5a**（基词 ⊂ 词组） | **22** | **0** ✅ |
+| S5b / S5c | 28 / 128 | **6 / 106**（余者全为真同音词） |
+| S4 | 55 | **43** |
+| 命中合计 | 275（2.4%） | **200（1.7%）** |
+| 结构 13 项 / 聚合页 12 项 | 13/13 · 12/12 | **13/13 · 12/12** |
+| 聚合页连带刷新 | — | **0 页**（本次未改 `definition`，符合预期） |
+| `word.db` / `app/assets/word.db` | 不一致（差 115 条） | **完全一致** ✓ |
+| integrity / fk / 卡数 | ok / [] / 11,523 | **ok / [] / 11,523** |
+
+### 17.7 交付
+
+| 文件 | 说明 |
+|---|---|
+| 📝 `scripts/gen_card_field_fixes.py` | 🆕 `--candidates` / `--out` / `--out-report`（让**任意候选清单**走同一条链）；标注 `_IRREGULAR` 与 `word_form` 表的关系（**是兜底不是分叉**） |
+| 📝 `scripts/apply_card_field_fixes.py` | 🆕 `--fixes`（多结果文件合并去重）；🔴 **改用「库里的当前值」重算**（而非文件里的过时快照）→ 天然幂等，且报出的数字就是真实待办量 |
+| 🆕 `scripts/fill_word_form_irregular.py` | 不规则表 235 词 · 四判据 · 备份 · 事务 · 读回断言 |
+| 🆕 `data/curriculum/prebuilt/card_field_candidates_s5_todo.json` | 去重后的待跑清单（161 条） |
+| 🆕 `data/curriculum/prebuilt/card_field_fixes_s5.json` | S5 批的 v6 结果（161 条） |
+| 🆕 `data/reports/card_field_fixes_s5-2026-09-29.md` | S5 批报告 |
+| 📝 `data/word.db` · `app/assets/word.db` | 47 条卡 · 78 条 word_form · **两份已同步** |
+| 备份 | `data/backups/word.db.bak-cardfix-20260929-080255` · `word.db.bak-wordform-20260929-080639` |
+
+### 17.8 下一批（建议）
+
+| # | 事项 | 判断 |
+|---|---|---|
+| 1 | `S3b` 62 条 + `S5c` 106 条「真同音词」的最终确认 | 已有 v6 结果，可用升级判据重判（¥0）—— 预期全为「两边都对」 |
+| 2 | `buried→buri` · `leaves→leave` 等**已有可疑映射**的排查 | 🟠 建议做（属「静默给错 base」，比查不到更糟） |
+| 3 | 端侧 `LIMIT 1` 无序取映射的架构限制 | 🟠 需产品决策（多映射时按优先级取，还是结合上下文） |
+| 4 | 规则变形缺口 199 条 | ❌ 建议不做（§17.5②） |
+| 5 | 🆕 **把「同步 app/assets」写进流程**（或做成脚本） | 🟠 本轮踩到，建议固化 |
