@@ -97,54 +97,6 @@
    "in_corpus": false
   },
   {
-   "form": "breathed",
-   "current": "breath",
-   "rule": "past",
-   "cur_pos": [
-    "n"
-   ],
-   "cur_level": 3,
-   "should": [
-    "breathe"
-   ],
-   "should_levels": [
-    1
-   ],
-   "in_corpus": true
-  },
-  {
-   "form": "breathing",
-   "current": "breath",
-   "rule": "ing",
-   "cur_pos": [
-    "n"
-   ],
-   "cur_level": 3,
-   "should": [
-    "breathe"
-   ],
-   "should_levels": [
-    1
-   ],
-   "in_corpus": true
-  },
-  {
-   "form": "buried",
-   "current": "buri",
-   "rule": "past",
-   "cur_pos": [
-    "n"
-   ],
-   "cur_level": 4,
-   "should": [
-    "bury"
-   ],
-   "should_levels": [
-    2
-   ],
-   "in_corpus": true
-  },
-  {
    "form": "caned",
    "current": "cane",
    "rule": "past",
@@ -426,70 +378,6 @@
    "cur_level": 3,
    "should": [
     "pal"
-   ],
-   "should_levels": [
-    2
-   ],
-   "in_corpus": true
-  },
-  {
-   "form": "passed",
-   "current": "pas",
-   "rule": "past",
-   "cur_pos": [
-    "n"
-   ],
-   "cur_level": 3,
-   "should": [
-    "pass"
-   ],
-   "should_levels": [
-    2
-   ],
-   "in_corpus": true
-  },
-  {
-   "form": "passing",
-   "current": "pas",
-   "rule": "ing",
-   "cur_pos": [
-    "n"
-   ],
-   "cur_level": 3,
-   "should": [
-    "pass"
-   ],
-   "should_levels": [
-    2
-   ],
-   "in_corpus": true
-  },
-  {
-   "form": "pasted",
-   "current": "past",
-   "rule": "past",
-   "cur_pos": [
-    "adj"
-   ],
-   "cur_level": 3,
-   "should": [
-    "paste"
-   ],
-   "should_levels": [
-    2
-   ],
-   "in_corpus": true
-  },
-  {
-   "form": "pasting",
-   "current": "past",
-   "rule": "ing",
-   "cur_pos": [
-    "adj"
-   ],
-   "cur_level": 3,
-   "should": [
-    "paste"
    ],
    "should_levels": [
     2
@@ -167963,6 +167851,33 @@
    ]
   },
   {
+   "form": "breathed",
+   "current": "breathe",
+   "rule": "past",
+   "cands": [
+    "breath",
+    "breathe"
+   ]
+  },
+  {
+   "form": "breathing",
+   "current": "breathe",
+   "rule": "ing",
+   "cands": [
+    "breath",
+    "breathe"
+   ]
+  },
+  {
+   "form": "buried",
+   "current": "bury",
+   "rule": "past",
+   "cands": [
+    "buri",
+    "bury"
+   ]
+  },
+  {
    "form": "buries",
    "current": "bury",
    "rule": "plural",
@@ -168894,7 +168809,7 @@
   },
   {
    "form": "loses",
-   "current": "los",
+   "current": "lose",
    "rule": "plural",
    "cands": [
     "los",
@@ -169161,6 +169076,44 @@
    "cands": [
     "pan",
     "pane"
+   ]
+  },
+  {
+   "form": "passed",
+   "current": "pass",
+   "rule": "past",
+   "cands": [
+    "pas",
+    "pass"
+   ]
+  },
+  {
+   "form": "passing",
+   "current": "pass",
+   "rule": "ing",
+   "cands": [
+    "pas",
+    "pass"
+   ]
+  },
+  {
+   "form": "pasted",
+   "current": "paste",
+   "rule": "past",
+   "cands": [
+    "pas",
+    "past",
+    "paste"
+   ]
+  },
+  {
+   "form": "pasting",
+   "current": "paste",
+   "rule": "ing",
+   "cands": [
+    "pas",
+    "past",
+    "paste"
    ]
   },
   {

@@ -9,6 +9,7 @@
 **两类来源**：
 1. 机器审计（`audit_word_form_mappings.py`）筛出 48 条候选
 2. **LLM 复核**（契约 v6 的 `derived_from` 字段）→ 只有 **7 条**确认
+3. 🆕 **C 档「歧义」分析另抓 1 条**（`loses → los`，2026-09-29）→ 合计 **8 条**
 
 🔑 **48 → 7 说明机械判据误报 79%**（38 条 LLM 判定「现状是对的」：
 `amped→amp` · `bearded→beard` · `seeded→seed` · `singled→single` · `jointed→joint` …
@@ -22,8 +23,9 @@
 | `buried` | `buri` n B2 | **`bury` v A2** | 「贝叶棕」vs「埋葬」 |
 | `passed`/`passing` | `pas` n C1 | **`pass` v A2** | — |
 | `pasted`/`pasting` | `past` adj B1 | **`paste` v A2** | — |
+| 🆕 `loses` | `los` n A2 | **`lose` v A2** | 「（西班牙语」vs「失去」 |
 
-7/7 都是「**A1/A2 的高频动词，被配成了更冷僻的同形词**」——
+8/8 都是「**A1/A2 的高频动词/词形，被配成了同形的冷僻词**」——
 同 `S3a/S3b` 的音标污染、以及 §17 的卡片字段污染是**同一类病**。
 
 # 为什么必须改三列
@@ -53,13 +55,21 @@ WORD_DB = os.path.join(ROOT, 'data', 'word.db')
 BACKUP_DIR = os.path.join(ROOT, 'data', 'backups')
 
 # ══════════════════════════════════════════════════════════════════════
-# 人工核对 + LLM 复核确认的修正表（**只有这 7 行**，不做批量推断）
+# 人工核对 + LLM 复核确认的修正表（**只有这 8 行**，不做批量推断）
 #
-# 每行的证据：LLM 契约 v6 的 `derived_from` 字段（信度见 conf）
+# 前 7 行的证据：LLM 契约 v6 的 `derived_from` 字段（信度见 conf）
 #   —— `derived_from` 正是「这个词形从哪个词来」，规则 2 明文举例 `ran → run`
 #
+# 🆕 第 8 行 `loses → lose`（2026-09-29 10:5x · 白哥批准）来源不同，说明如下：
+#   · 发现路径：**C 档「歧义」分析**（不是 A 档）—— 因为它被 `los` 的**词性通过了**
+#     （`los`=[n]，`plural` 接受 {n,v}）→ 落到 C 档，而 C 档只报「多候选」不报「谁对」
+#   · `los` = 西班牙语定冠词，词条 A2 [n]，zh=「（西班牙语」，ipa=`/lɔːs/ (Spanish)…`
+#   · `lose` = A2 [v]，zh=「失去，丢失」→ 用户查 `loses` 原本会看到「（西班牙语」
+#   · ✅ **已补 LLM 复核**（同前 7 条标准）：`derived_from='lose'` · confidence **0.95**
+#   · ✅ `loses` **在真实语料**（用户真会划到）· `loses` 本身**不是词条**（映射真生效）
+#
 # 🔴 **为什么不写「批量规则」**：48 条里 38 条是误报（base 本身就能作动词）。
-#    能可靠分开这 7 条的，只有**语义判断**（LLM），不是机械规则。
+#    能可靠分开这 8 条的，只有**语义判断**（LLM），不是机械规则。
 # ══════════════════════════════════════════════════════════════════════
 FIXES = [
     # (form, 现状 base, 应为 base, rule, LLM 信度)
@@ -70,6 +80,7 @@ FIXES = [
     ('passing',   'pas',    'pass',    'ing',  0.90),
     ('pasted',    'past',   'paste',   'past', 0.95),
     ('pasting',   'past',   'paste',   'ing',  0.90),
+    ('loses',     'los',    'lose',    'plural', 0.95),
 ]
 
 #: 改 `base` 时必须一起改的列（保持 `anchor == base` · `anchor_id → base 的 word.id` 不变式）
