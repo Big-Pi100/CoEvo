@@ -200,6 +200,23 @@ abstract final class AchievementMetrics {
   /// 已掌握词数（`card_review_state.stability >= 21`）。
   static const String matureCards = 'mature_cards';
 
+  /// 🆕 读过的文章数（`article_read` 行数 —— 「阅读篇数」的数据源）。
+  ///
+  /// # 🔑 它**不驱动任何成就**（有意如此）
+  ///
+  /// 加进本类是因为：本类实际是「**用户统计指标**」的集合 ——
+  /// 成就只是它的**一个**消费者（`AchievementSection` 与分享文案也读它）。
+  /// 「我的」页顶部三个数字（连续天数 / 掌握词数 / 阅读篇数）**同源**于此，
+  /// 从一次 `collectMetrics()` 拿 → 避免「两次查询、两个数据源」的分叉。
+  ///
+  /// ⚠️ 若将来真要给它挂成就（如「读完 50 篇」），直接加条目即可 ——
+  /// `verify_achievement_rules.dart` 的断言是**单向**的（成就 → `all`），
+  /// 所以「`all` 里有未被引用的指标」**不会**让断言失败。
+  ///
+  /// 口径：**读完**（滚到底 **且** 停留 ≥3s）· `article_id` 去重
+  /// → 判定在阅读页（纯函数），记录在 `ArticleReadRepository`。
+  static const String articlesRead = 'articles_read';
+
   /// 最近 50 次复习的准确率（百分数 · `rating >= 2` 占比 · 见文件头 ①）。
   ///
   /// ⚠️ 复习不足 50 次时 = 按**已有次数**算占比（不是 0）——
@@ -215,7 +232,8 @@ abstract final class AchievementMetrics {
   /// 全部指标键（供断言「采集端与规则端同名」用）。
   static const List<String> all = [
     streakDays, maxGapDays, lookupCount, lookupsIn1h, totalWords,
-    totalReviews, matureCards, recentAccuracy50, nightSessions, earlySessions,
+    totalReviews, matureCards, articlesRead, recentAccuracy50,
+    nightSessions, earlySessions,
   ];
 }
 

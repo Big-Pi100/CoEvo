@@ -16,6 +16,8 @@ import '../providers/bookmark_provider.dart';
 import '../providers/user_db_provider.dart';
 import '../providers/user_word_provider.dart';
 import '../providers/word_db_provider.dart';
+import '../services/article_read_repository.dart';
+import '../services/reading_completion.dart';
 import '../services/review_list_query.dart';
 import '../services/user_word_repository.dart';
 import '../theme/coevo_tokens.dart';
@@ -107,12 +109,132 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   ///    直接查库会打出十几次请求、弹出十几个浮层。见类文档。
   Timer? _lookupDebounce;
 
+  // ─────────────────────────────────────────────────────────────
+  // 「读完」判定（「阅读篇数」的唯一写入点）
+  // ─────────────────────────────────────────────────────────────
+  // 口径：**滚到底 且 停留 ≥3s**（白哥 2026-09-29 定 · 见 `reading_completion.dart`）。
+
+  /// 滚动控制器 —— 🔑 **本次新加**（此前 `SingleChildScrollView` 不需要它）。
+  ///
+  /// 用途单一：读 `position.extentAfter` 判断「到底了没」。
+  /// ⚠️ 因为它是新加的，判定逻辑**必须容忍「还没 attach」**（首帧前 `hasClients == false`）。
+  final ScrollController _scroll = ScrollController();
+
+  /// 从进页到此刻的停留时长。
+  ///
+  /// 🔑 用 `Stopwatch` 而**不是** `DateTime.now()` 相减：
+  ///    `Stopwatch` 是**单调时钟** —— 用户改系统时间 / NTP 校时都不会让它跳变。
+  ///    用墙上时钟算「停了多久」是经典 bug（改一次时间就能算出负数或巨值）。
+  final Stopwatch _dwell = Stopwatch();
+
+  /// 周期检查「读完」的定时器。
+  ///
+  /// 🔴 **不能只在滚动回调里判** —— 内容**短于一屏**时不产生任何滚动事件
+  ///    → 只靠滚动监听会**永远不检查**。详见 `reading_completion.dart` 文件头。
+  ///    同样地，**也不能只在定时器里判**（长文滚到底的那一刻就该记上，
+  ///    不必再等最多 1s）→ 两者都调同一个 `_checkCompletion()`。
+  Timer? _completionTimer;
+
+  /// 已写过「读完」→ 停止检查（每次进页最多写一次）。
+  bool _readMarked = false;
+
+  /// 每 1s 检查一次「读完」。
+  ///
+  /// ⚠️ 1s 的粒度够用：这是**展示型统计**，晚 1 秒记上没有用户可感差异；
+  ///    而更高频（如每帧）只会在滚动时白跑。
+  static const Duration _completionCheckInterval = Duration(seconds: 1);
+
+  @override
+  void initState() {
+    super.initState();
+    _dwell.start();
+
+    // 🔑 滚动时**也**检查 —— 长文滚到底的那一刻就能记上，不必再等最多 1s。
+    //    ⚠️ 与定时器**共用同一个 `_checkCompletion`**（不是各写一份判据）：
+    //       两处各写一份迟早会漂（本项目已踩过「同一件事两处口径」的坑）。
+    _scroll.addListener(_checkCompletion);
+
+    // 🔑 **首帧之后**才开始检查 —— 首帧前 `ScrollPosition` 还没 attach，
+    //    此时 `extentAfter` 读不到，而「读不到」与「内容不足一屏」**结论相反**
+    //    （后者是真到底，前者是未知）→ 不能在这里判。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _checkCompletion();
+      _completionTimer = Timer.periodic(
+        _completionCheckInterval,
+        (_) => _checkCompletion(),
+      );
+    });
+  }
+
   @override
   void dispose() {
     // 🔴 必须取消：定时器回调里会 `_lookupWord`（用 context）——
     //    页面已销毁时触发会用到失效的 context。
     _lookupDebounce?.cancel();
+
+    // 🔴 「读完」的两样也要收尾：
+    //    · 定时器不停会在页面销毁后继续跑（`_checkCompletion` 里有 `mounted` 守卫，
+    //      但白跑定时器本身是泄漏）
+    //    · `ScrollController` 必须 dispose（Flutter 的资源约定）
+    _completionTimer?.cancel();
+    _scroll.dispose();
+    _dwell.stop();
+
     super.dispose();
+  }
+
+  /// 检查是否已「读完」；满足则**记一次**并停止检查。
+  ///
+  /// 🔑 判定本身在 `reading_completion.dart`（**纯函数 · 已单测 13 项**）。
+  ///    本方法只做三件杂事：**取数 → 调用判定 → 落库**。
+  void _checkCompletion() {
+    if (_readMarked || !mounted) return;
+
+    // ⚠️ **布局未完成时不判** —— 见 `initState` 的说明。
+    //    这也顺带覆盖了「页面已 push 但还未 layout」的窗口期。
+    if (!_scroll.hasClients) return;
+
+    final done = isArticleCompleted(
+      extentAfter: _scroll.position.extentAfter,
+      dwell: _dwell.elapsed,
+    );
+    if (!done) return;
+
+    _readMarked = true;
+    _completionTimer?.cancel();
+    unawaited(_markArticleRead());
+  }
+
+  /// 写入「读完了这篇」。
+  ///
+  /// 🔑 **`ref.read` 必须在任何 `await` 之前**（同 `_writeBackLookup` 的教训）：
+  ///    本方法是 fire-and-forget，期间用户可能已退出阅读页 → `ref` 失效 →
+  ///    `await` 之后再 `ref.read` 会抛错。先取到 **Future / notifier 实例**的引用，
+  ///    它们与 widget 的存活无关。
+  Future<void> _markArticleRead() async {
+    // 两样都先取引用（顺序在 await 之前，理由同上）
+    final dbFuture = ref.read(userDbProvider.future);
+    final revision = ref.read(userDbRevisionProvider.notifier);
+
+    try {
+      final db = await dbFuture;
+      final added = await ArticleReadRepository(db).markRead(widget.articleId);
+
+      // 🔑 只在**真的新增**时 bump —— 与查词写入同一条原则：
+      //    刷新不是因为「操作发生了」，而是因为「**数据变了**」。
+      //    （重读同一篇 → `markRead` 返回 false → 库没动 → 不该让读端白重算一遍。）
+      if (added) {
+        revision.bump();
+        debugPrint('[article_read] 已记录读完 articleId=${widget.articleId}');
+      }
+    } catch (e, st) {
+      // 🔑 **只记日志**（同查词写入）：这是旁路统计，
+      //    写失败**不该**影响阅读本身 —— 更不该弹窗打断。
+      debugPrint(
+        '[article_read] 写入失败 articleId=${widget.articleId}：$e\n$st',
+      );
+    }
   }
 
   /// 选中文本变化 → **防抖后直接查词**（不再有中间的「查词」按钮）。
@@ -204,6 +326,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             ),
             Expanded(
               child: SingleChildScrollView(
+                // 「读完」判定要读 `position.extentAfter` → 必须挂 controller。
+                // 🔑 滚动监听**只做触发**，不做判定（判定在 `_checkCompletion` 里，
+                //    与定时器共用同一条路径 —— 两处各写一份判据迟早会漂）。
+                controller: _scroll,
                 padding: const EdgeInsets.fromLTRB(26, 0, 26, 48),
                 // ── 长按选择（3.4b）──
                 // 🔑 白哥定的手势是**长按选择**，不是单击查词 ——

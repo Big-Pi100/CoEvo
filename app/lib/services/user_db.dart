@@ -36,6 +36,7 @@ import 'package:sqflite_common/sqlite_api.dart';
 /// | **1** | 初版：`card_review_state` · `review_log` · `bookmark` |
 /// | **2** | Step 3.4c：+ `user_word`（生词本）· `lookup_event`（查词记录） |
 /// | **3** | Step 3.8：+ `achievement_unlock`（成就解锁记录 —— 成就改为端侧计算） |
+/// | **4** | 「我的」页统计：+ `article_read`（读过的文章 —— 「阅读篇数」的数据源） |
 ///
 /// ## 🔴🔴 为什么必须递增（2026-09-28 发现）
 /// 此前本文件写着「**本库从未在任何端创建**」→ 所以 version 停在 1、`onUpgrade` 直接抛错。
@@ -54,7 +55,11 @@ import 'package:sqflite_common/sqlite_api.dart';
 ///
 /// 🆕 v3（2026-09-29）同理：真机上现存的库是 **v2**（或更早的 v1）
 /// → 必须靠 `onUpgrade` 建出 `achievement_unlock`。
-const int kUserDbVersion = 3;
+///
+/// 🆕 v4（2026-09-29 同日）：+ `article_read`。**同理**——
+/// 真机上的库此刻是 **v3**（若白哥跑过带成就的版本）或更早 →
+/// 必须靠 `onUpgrade` 建出 `article_read`，否则「阅读篇数」永远读不到表。
+const int kUserDbVersion = 4;
 
 /// `user.db` 的文件名（调用方拼路径用）。
 const String kUserDbFileName = 'user.db';

@@ -26,6 +26,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../../app/lib/services/achievement_rules.dart';
 import '../../../app/lib/services/achievement_service.dart';
+import '../../../app/lib/services/article_read_repository.dart';
 import '../../../app/lib/services/user_db.dart';
 
 var _pass = 0;
@@ -70,9 +71,15 @@ Future<void> main() async {
   section('【1】空库 → 全部指标为 0，无解锁');
   // ══════════════════════════════════════════════════════════
   var m = await svc.collectMetrics(now: now);
-  check('空库时 10 个指标键齐全（缺键 = 静默按 0，难以发现）',
-      AchievementMetrics.all.every(m.containsKey),
-      '实际 ${m.length} 个');
+  // 🔑 **不写死数量**（原写「10 个」→ 加第 11 个指标时文案就过时了），
+  //    并且从「包含」升级为**集合相等** —— `.every(containsKey)` 只能发现「缺」，
+  //    发现不了「多」（采集端多采一个键 = 潜在的口径分叉，也是问题）。
+  final gotKeys = m.keys.toSet();
+  final wantKeys = AchievementMetrics.all.toSet();
+  check('🔴 采集的指标键与 `AchievementMetrics.all` **集合相等**（缺/多都能发现）',
+      gotKeys.length == wantKeys.length && gotKeys.containsAll(wantKeys),
+      '实际 ${gotKeys.length} / 期望 ${wantKeys.length}'
+      '${gotKeys.length == wantKeys.length ? '' : '（差: ${gotKeys.difference(wantKeys)} / ${wantKeys.difference(gotKeys)}）'}');
   check('空库时全部指标为 0', m.values.every((v) => v == 0));
   check('空库时无解锁', (await svc.snapshot(now: now)).satisfied.isEmpty);
 
@@ -152,6 +159,33 @@ Future<void> main() async {
       '${m[AchievementMetrics.matureCards]}');
   check('🔴 边界：stability 恰好 21 → 算 mature（>= 而非 >）',
       m[AchievementMetrics.matureCards] == 2);
+
+  // ══════════════════════════════════════════════════════════
+  section('【3b】🆕 阅读篇数（`articles_read` —— 供「我的」页展示，**不驱动成就**）');
+  // ══════════════════════════════════════════════════════════
+  check('空表时 articles_read = 0',
+      (await svc.collectMetrics(now: now))[AchievementMetrics.articlesRead] == 0);
+
+  final artRepo = ArticleReadRepository(db);
+  await artRepo.markRead(1);
+  await artRepo.markRead(2);
+  await artRepo.markRead(2); // 🔑 重复 —— 必须**仍算 1 篇**（口径乙的核心前提）
+  final readMetric =
+      (await svc.collectMetrics(now: now))[AchievementMetrics.articlesRead];
+  check('🔴 标记 2 篇（其中 1 篇重复）后 = 2（去重生效）', readMetric == 2,
+      '$readMetric');
+  // 🔑 与 repository 直接算的**同源**（两处口径必须一致）
+  check('🔴 指标值与 `ArticleReadRepository.countRead()` 一致（一处口径）',
+      readMetric == await artRepo.countRead(), '$readMetric');
+
+  // 🔴 锁住「它不驱动任何成就」这个**有意**状态：
+  //    将来若有人给它挂成就，这条会变红 → 提醒「阈值/文案要一并设计」，
+  //    而不是静默多出一个成就。
+  final users = kAchievements
+      .where((a) => a.metric == AchievementMetrics.articlesRead)
+      .toList();
+  check('🆕 `articles_read` 目前不驱动任何成就（有意如此）', users.isEmpty,
+      '${users.length} 个引用');
 
   // ══════════════════════════════════════════════════════════
   section('【4】生词 + 查词 + 1 小时峰值');

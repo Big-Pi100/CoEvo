@@ -87,7 +87,7 @@ class AchievementService {
   Future<Map<String, num>> collectMetrics({required DateTime now}) async {
     final metrics = <String, num>{};
 
-    // ── 直接可由 SQL 计数的（4 个）──────────────────────────
+    // ── 直接可由 SQL 计数的（5 个）──────────────────────────
     metrics[AchievementMetrics.lookupCount] = await _count('lookup_event');
     metrics[AchievementMetrics.totalWords] =
         await _count('user_word', where: 'deleted = 0');
@@ -95,6 +95,8 @@ class AchievementService {
     // `stability >= 21` 天 = FSRS 的 mature 门槛（见 achievement_rules.dart 文件头 ③）
     metrics[AchievementMetrics.matureCards] =
         await _count('card_review_state', where: 'stability >= 21');
+    // 🆕 「阅读篇数」—— 不驱动成就，只供「我的」页顶部展示（同源采集，避免两处口径）
+    metrics[AchievementMetrics.articlesRead] = await _count('article_read');
 
     // ── 最近 50 次准确率（1 个）────────────────────────────
     metrics[AchievementMetrics.recentAccuracy50] = await _recentAccuracy50();

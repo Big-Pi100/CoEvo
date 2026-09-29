@@ -262,6 +262,72 @@ CREATE TABLE IF NOT EXISTS achievement_unlock (
 );
 
 -- ─────────────────────────────────────────────────────────────
+-- 读过的文章（v1.5 · 「我的」页统计「阅读篇数」）
+-- ─────────────────────────────────────────────────────────────
+-- 依据：`docs/design/profile-redesign-plan-2026-09-29.md` §七（白哥 2026-09-29 定口径**乙**）
+--
+-- # 🔑 为什么需要这张表（此前**完全没有数据源**）
+-- 「阅读篇数」是白哥要加的统计，但实测：**6 张表里没有任何一张记录「读过哪篇文章」**
+-- —— `reader_screen.dart` 只在**划词查词**时写 `lookup_event`，
+--    **打开/读完文章不产生任何记录**。
+-- → 这不是「加个数字」，而是**新建数据源**。
+--
+-- # 🔴 口径（白哥选定「乙」）：**读完的文章数**
+-- | 项 | 规则 |
+-- |---|---|
+-- | 判定 | **滚到底**（`extentAfter <= 阈值`）**且**停留 >= 3s（见下「双条件」） |
+-- | 去重 | 🔴 `article_id` **去重**（同一篇读两次算 1 篇）→ 主键天然去重 |
+-- | 不选「打开过」（甲） | 点进去看一眼也算 → **数字易注水**，激励性弱 |
+-- | 不选「有查词记录」（丙） | 读完不划词的不算 → **会低估** |
+--
+-- ## 🔑 双重条件（滚到底 + 最短停留）是**必须的**，不是保险
+-- 只判「滚到底」会**误判**：**短文章一屏就到底** → 打开即「读完」。
+-- → 所以再加「停留 >= 3s」，把「点开就退」排除掉。
+-- ⚠️ 这条理由写在表注释里，是因为**它决定了写入时机**（见 `reader_screen` 的判据）。
+--
+-- # 🔑 与 `bookmark` **完全同构**（有意为之，不是巧合）
+-- 两者都是「**用户对某个内容对象的意图状态**」+ 单列主键去重：
+-- | | `bookmark` | `article_read` |
+-- |---|---|---|
+-- | 主键 | `content_id` | `article_id` |
+-- | 时间 | `bookmarked_at` | `read_at` |
+-- | 同步 | `pending_push` | `pending_push` |
+-- → 沿用同一模式，**消费端（repository / 同步）可以照抄**。
+--
+-- # ⚠️ 与 `lookup_event` 的区别（为什么那个**不带** `pending_push`，这个带）
+-- `lookup_event` 是**纯日志**（可丢，只用于展示「当时那句」）；
+-- `article_read` 是**状态**（丢了就**无法重算** —— 换设备后篇数会归零）。
+-- 🔑 对照 `achievement_unlock`：它也同步不了，但**指标能重算**（所以第一版有意不参与同步）；
+--    本表**不能重算** → 保留 `pending_push` 是为将来同步留的正确形态。
+--
+-- # ⚠️ 当前无消费者（只加列与方法，暂无人调用）—— 如实标注
+-- 后端**没有任何 sync/push/pull 接口**（2026-09-29 实测 grep 0 命中）→
+-- 同步机制**尚未实现**，故 `pending_push` 现在与 `bookmark` 一样，
+-- **只有 repository 的读写方法、没有调用方**。这是该库的既有形态（不是本表引入的问题）。
+--
+-- # ⚠️ 有意**不加**的列（记下「为什么没有」，防后人以为是遗漏）
+-- · **`read_count`（读了几遍）** —— 现在没有消费者，属 YAGNI。
+--   将来若要（如「重读」成就），`ALTER TABLE ADD COLUMN` 成本低
+--   （⚠️ 前提是**该列有 DEFAULT** —— SQLite 的 `NOT NULL` 加列必须能给默认值/回填，
+--    见 `user_db.dart` 的 `onUpgrade` 能力边界说明）。
+-- · **「按时间排序」索引** —— 现在没有「阅读历史」列表这个功能，加了没有查询会用到。
+CREATE TABLE IF NOT EXISTS article_read (
+  article_id   INTEGER PRIMARY KEY,                 -- 一篇文章只算一次（去重即主键）
+  -- 🔑 语义 = **首次读完的时刻**：幂等写入（第二次读完不覆盖，`INSERT OR IGNORE`）
+  -- ⚠️ `strftime(...'Z')` 而非 `datetime('now')` ——
+  --    后者是「空格分隔、无 Z」→ Dart 侧 `DateTime.parse` 会**静默按本地时区**解释
+  --    （本库硬约束 1，同 `bookmark` / `user_word`）
+  read_at      TEXT    NOT NULL
+               DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  pending_push INTEGER NOT NULL DEFAULT 1
+               CHECK (pending_push IN (0, 1))
+);
+
+-- 待上传（与 `idx_bm_pending` 同模式，供将来的增量 push 用）
+CREATE INDEX IF NOT EXISTS idx_ar_pending ON article_read (pending_push)
+  WHERE pending_push = 1;
+
+-- ─────────────────────────────────────────────────────────────
 -- 说明（不在本次范围）
 -- ─────────────────────────────────────────────────────────────
 -- · **词库外生词**（`external_word_cache` + LLM 制卡）—— 属 **Phase 3**。
@@ -294,6 +360,12 @@ CREATE TABLE IF NOT EXISTS achievement_unlock (
 --   · 成就改为**端侧计算**（后端成就引擎已退役，见 `backend-legacy-chain-retirement-2026-09-29.md`）
 --   · 只加**一张表**（不参与同步）· 清单与判定见 `app/lib/services/achievement_rules.dart`
 --   · 📄 决策依据：`docs/design/achievement-redesign-2026-09-29.md`
+-- v1.5 (2026-09-29) 「我的」页统计：新增 `article_read`（读过的文章）
+--   · 🔑 **新建数据源** —— 此前 6 张表**都没有**「读过哪篇文章」的记录
+--   · 口径（白哥定「乙」）：**读完**（滚到底 **且** 停留 ≥3s）· `article_id` 去重
+--   · 与 `bookmark` **完全同构**（PK 去重 + 时间列 + `pending_push`）→ 消费端可照抄
+--   · ⚠️ `pending_push` 现无调用方（后端无 sync 接口）—— 与 `bookmark` 同样的既有形态
+--   · 📄 决策依据：`docs/design/profile-redesign-plan-2026-09-29.md` §七
 --
 -- 🔴🔴 **升级注意（本次起「已有用户库」必须走迁移）**
 --    v1.2 时本库尚无任何端创建，故 version 停在 1。

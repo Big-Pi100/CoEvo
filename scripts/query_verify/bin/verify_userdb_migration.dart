@@ -19,12 +19,13 @@
 //    这里的差异不是平台，而是**初始状态**（新库 vs 老库）—— 更隐蔽，
 //    因为跑在同一台机器、同一个命令上，只差前置数据。
 //
-// # 本脚本的两个升级路径（2026-09-29 起）
+// # 本脚本的升级路径（2026-09-29 起）
 // | 起始 | 快照 | 场景 |
 // |---|---|---|
 // | **v1** | `_v1Schema` | 最早装机的用户（只有 3 表） |
 // | **v2** | `_v2Schema` | 验过生词本的用户（5 表） |
-// → 两条都要能升到当前版本，且**旧数据完好**。
+// | **v3** | `_v3Schema` | 验过成就的用户（6 表） |
+// → 三条都要能升到当前版本，且**旧数据完好**。
 //
 // # 🔑 自动覆盖「将来新增的表」
 // §【4】从 `user_db_schema.sql` **直接提取全部建表语句**，断言升级后**全都在**
@@ -34,6 +35,7 @@
 // 把 `user_db.dart` 的 `kUserDbVersion` 改回 **2** → 本脚本**必须变红**
 // （version 不变 → 不触发 `onUpgrade` → `achievement_unlock` 不会建 → §【3】失败）。
 // 已实测过一次（见方案 §七 实施记录）。
+// 🆕 加 `article_read` 后同理：把 `kUserDbVersion` 改回 **3** → §【6b】必须变红。
 
 import 'dart:io';
 
@@ -134,6 +136,19 @@ CREATE TABLE IF NOT EXISTS lookup_event (
 CREATE INDEX IF NOT EXISTS idx_le_word ON lookup_event (word_id, looked_up_at);
 ''';
 
+/// **v3 的 schema**（2026-09-29 时点的样子）= v2 + `achievement_unlock`。
+///
+/// 🔑 同样是**历史快照**，只增不改（理由见 `_v1Schema`）。
+/// 🆕 它对应「白哥已验过成就」的设备状态 —— 那时 `user.db` 的 `user_version = 3`。
+const String _v3Schema = '''
+$_v2Schema
+CREATE TABLE IF NOT EXISTS achievement_unlock (
+  key         TEXT PRIMARY KEY,
+  unlocked_at TEXT NOT NULL
+              DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+''';
+
 /// 从 schema 文件里提取**全部建表语句的表名**。
 ///
 /// 🔑 这样本脚本**不需要**维护一份「应该有哪张表」的清单 ——
@@ -202,12 +217,18 @@ Future<void> runUpgradeCase({
   if (fromVersion >= 2) {
     await old.insert('user_word', {'word_id': 'w000002', 'spelling': 'benefit'});
   }
+  if (fromVersion >= 3) {
+    // ⚠️ 🔴 **key 必须与 §【6】插入的那个不同** —— 否则 §【6】会撞唯一约束而**崩溃**
+    //    （崩溃比「干净报红」糟：后面的断言一条都不跑、汇总也不打印，容易被误读成环境问题）。
+    //    用 `streak_3` 而不是 `first_review`：既避开冲突，又能顺带验「成就记录升级后完好」。
+    await old.insert('achievement_unlock', {'key': 'streak_3'});
+  }
 
   final oldVer = firstInt(await old.rawQuery('PRAGMA user_version'));
   final oldTables = await tableNames(old);
   check('老库已建立且 user_version = $fromVersion', oldVer == fromVersion, '$oldVer');
-  check('🔴 前提成立：老库**不含** achievement_unlock',
-      !oldTables.contains('achievement_unlock'));
+  check('🔴 前提成立：老库**不含** article_read',
+      !oldTables.contains('article_read'));
   check('老库已有 bookmark 数据（2 条）',
       firstInt(await old.rawQuery('SELECT count(*) AS n FROM bookmark')) == 2);
   await old.close();
@@ -223,6 +244,7 @@ Future<void> runUpgradeCase({
       kUserDbVersion > fromVersion, '当前 $kUserDbVersion');
   check('🔴 achievement_unlock 已创建（老库升级拿到了新表）',
       tables.contains('achievement_unlock'));
+  check('🔴 article_read 已创建（v1.5 新表）', tables.contains('article_read'));
   check('user_version 已升到 $kUserDbVersion', ver == kUserDbVersion, '$ver');
 
   section('【4】🔑 全量表清单（从 schema 自动提取 → 将来加表自动覆盖）');
@@ -252,6 +274,16 @@ Future<void> runUpgradeCase({
     check('user_word 旧数据仍是 1 条（v2 库特有）',
         firstInt(await db.rawQuery('SELECT count(*) AS n FROM user_word')) == 1);
   }
+  if (fromVersion >= 3) {
+    check('achievement_unlock 旧数据仍是 1 条（v3 库特有）',
+        firstInt(await db
+                .rawQuery('SELECT count(*) AS n FROM achievement_unlock')) ==
+            1);
+    check('🔴 成就解锁记录未被改动（key 仍是 streak_3）',
+        (await db.query('achievement_unlock', columns: ['key']))
+                .first['key'] ==
+            'streak_3');
+  }
 
   section('【6】新表**可正常使用**（不只是「存在」）');
   // 🔴 前置守卫：若 §3 判定「新表没建出来」，继续 INSERT 会**直接抛异常** →
@@ -263,8 +295,14 @@ Future<void> runUpgradeCase({
     print('      （**这是预期行为** —— §3 的报红已定位到根因，不必再往下跑）');
   } else {
     await db.insert('achievement_unlock', {'key': 'first_review'});
+    // 🔴 **不要断言 `count(*) == 1`** —— 那依赖「表原本是空的」这个**未声明前提**，
+    //    而它随 `fromVersion` 变化（v3 老库已带 `streak_3` → 会是 2 条）。
+    //    实测踩过：v1/v2 绿、v3 红，报的是「可写入、可读回」失败 —— 假红。
+    //    → 断言要锁定**本次插入的那一行**，而不是表的总量。
     check('可写入、可读回',
-        firstInt(await db.rawQuery('SELECT count(*) AS n FROM achievement_unlock')) ==
+        (await db.query('achievement_unlock',
+                where: 'key = ?', whereArgs: ['first_review']))
+            .length ==
             1);
     // 🔑 DEFAULT 生效（插入时不提供 unlocked_at）
     final row = (await db.query('achievement_unlock')).first;
@@ -283,6 +321,55 @@ Future<void> runUpgradeCase({
       dupRejected = true;
     }
     check('🔴 PRIMARY KEY(key) 生效（同一成就不会重复解锁）', dupRejected);
+  }
+
+  // 🆕 v1.5 新表：`article_read`（「阅读篇数」的数据源）
+  section('【6b】新表 `article_read` **可正常使用**（v1.5）');
+  if (!tables.contains('article_read')) {
+    print('  ⏭  跳过：article_read 未创建（§3 已报红，根因在那里）');
+  } else {
+    await db.insert('article_read', {'article_id': 7});
+    await db.insert('article_read', {'article_id': 8});
+    // 同样**不**断言绝对总数（理由见 §【6】）—— 锁定本次插入的那两行。
+    check('可写入、可读回',
+        (await db.query('article_read', where: 'article_id IN (7, 8)'))
+                .length ==
+            2);
+
+    final row = (await db.query('article_read', where: 'article_id = ?', whereArgs: [7])).first;
+    check('🔴 read_at 有 DEFAULT（未显式提供也写入）',
+        (row['read_at'] as String?)?.isNotEmpty == true, '${row['read_at']}');
+    check('🔴 read_at 是 UTC ISO8601 带 Z（本库硬约束 1）',
+        (row['read_at'] as String).endsWith('Z'), '${row['read_at']}');
+    check('🔴 pending_push 默认 1（与 bookmark 同模式）',
+        (row['pending_push'] as num).toInt() == 1);
+
+    section('【7b】`article_read` 约束真的生效');
+    // 🔴 PRIMARY KEY = 去重（同一篇读两次算 1 篇 —— 口径「乙」的核心前提）
+    var dupReadRejected = false;
+    try {
+      await db.insert('article_read', {'article_id': 7});
+    } catch (_) {
+      dupReadRejected = true;
+    }
+    check('🔴 PRIMARY KEY(article_id) 生效（同一篇不会重复计数）', dupReadRejected);
+
+    // 🔑 `INSERT OR IGNORE` 是**幂等写入路径**（repository 会这么写）——
+    //    不抛异常、也不破坏已有行（`read_at` 保持**首次**时刻）
+    final before = (await db.query('article_read', where: 'article_id = ?', whereArgs: [7])).first;
+    final nBefore = firstInt(await db.rawQuery('SELECT count(*) AS n FROM article_read'));
+    await db.insert('article_read', {'article_id': 7},
+        conflictAlgorithm: ConflictAlgorithm.ignore);
+    final after = (await db.query('article_read', where: 'article_id = ?', whereArgs: [7])).first;
+    final nAfter = firstInt(await db.rawQuery('SELECT count(*) AS n FROM article_read'));
+    // 用「前后差」而不是绝对数 —— 同样为了不依赖表的初始状态
+    check('🔴 INSERT OR IGNORE 幂等：行数未增', nAfter == nBefore, '$nBefore → $nAfter');
+    check('🔴 INSERT OR IGNORE 幂等：read_at 未被覆盖（保持首次时刻）',
+        after['read_at'] == before['read_at'], '${after['read_at']}');
+
+    // 统计口径（「阅读篇数」的查询就是这一句）
+    check('统计查询可用（COUNT(*) = 2）',
+        firstInt(await db.rawQuery('SELECT count(*) AS n FROM article_read')) == 2);
   }
 
   section('【8】幂等：再次打开不应报错、不应重复建表（App 每次启动都会走）');
@@ -313,7 +400,7 @@ Future<void> main() async {
 
   print('');
   print('#' * 74);
-  print('# user.db 迁移验收 —— 起止版本 v1/v2 → v$kUserDbVersion');
+  print('# user.db 迁移验收 —— 起止版本 v1/v2/v3 → v$kUserDbVersion');
   print('# schema 声明的表：${expectedTables.join(", ")}');
   print('#' * 74);
 
@@ -331,18 +418,25 @@ Future<void> main() async {
     oldSchema: _v2Schema,
     expectedTables: expectedTables,
   );
+  await runUpgradeCase(
+    factory: factory,
+    schemaSql: schemaSql,
+    fromVersion: 3,
+    oldSchema: _v3Schema,
+    expectedTables: expectedTables,
+  );
 
   print('');
   print('═' * 74);
   if (_failures.isEmpty) {
-    print('✅ 全部通过：$_pass 项（v1→v$kUserDbVersion 与 v2→v$kUserDbVersion 两条路径）');
+    print('✅ 全部通过：$_pass 项（v1/v2/v3 → v$kUserDbVersion 三条路径）');
   } else {
     print('🔴 失败 ${_failures.length} 项 / 通过 $_pass 项：');
     for (final f in _failures) {
       print('    · $f');
     }
     print('');
-    print('🔑 若「achievement_unlock 已创建」失败 → 检查 `user_db.dart` 的');
+    print('🔑 若「achievement_unlock / article_read 已创建」失败 → 检查 `user_db.dart` 的');
     print('    `kUserDbVersion` 是否 > 起始版本、`onUpgrade` 是否真的重跑了 schema。');
   }
   print('═' * 74);
