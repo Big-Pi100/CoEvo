@@ -1,0 +1,127 @@
+{
+  "_comment": [
+    "内容合规 · 共用词表与规则（🔴 单一来源 · Python 与 Rust 都读这一份）",
+    "",
+    "为什么放在 prompts/ 而不是 backend/data/：",
+    "  · `backend/data/` 被 .gitignore 忽略 → 不进仓库、部署会漏；",
+    "  · `backend/prompts/` 已是「Python 与 Rust 共用的单一来源文件」目录（契约 prompt 就在这儿）。",
+    "  · 本文件不在任何 prompts/{category}/{subject}/ 下 → prompt_loader 不会误加载它。",
+    "",
+    "维护约定：",
+    "  🔴 只在本文件改词表；`scripts/scan_compliance.py`（离线全库）与",
+    "     `backend/crates/api_server/src/compliance.rs`（在线制卡闸门）都从这里读。",
+    "  🔴 加词前先问：**这个词出现在「正确表述」里，会不会触发？** 会，就不能加。",
+    "     实例：`autonomous region` 是 Tibet/Xinjiang/Inner Mongolia 的**官方英文名**，",
+    "     说「西藏是中国的一个自治区」恰恰是正确表述 → 不得进 sovereign_claim_words。",
+    "",
+    "改动后必跑：",
+    "  1) `python scripts/scan_compliance.py`            ← 离线全库（P0 必须为 0）",
+    "  2) `python scripts/verify_compliance_parity.py`   ← 跨语言一致（与 Rust 同一份用例）",
+    "  3) `cargo test -p api_server compliance`           ← Rust 侧单测 + 同一份用例"
+  ],
+  "version": "2026-09-29",
+
+  "sovereign_subjects": [
+    "taiwan", "taiwanese", "tibet", "tibetan", "xinjiang", "uyghur", "uighur",
+    "hong kong", "hongkong", "macau", "macao", "inner mongolia",
+    "south china sea", "diaoyu", "diaoyu islands", "senkaku",
+    "aksai chin", "arunachal", "south tibet", "paracel", "spratly"
+  ],
+
+  "sovereign_claim_words": [
+    "self-governing", "self governing", "independent", "independence",
+    "sovereign", "de facto", "de-facto", "separatist", "secession",
+    "kingdom", "nation-state", "nation state", "country",
+    "occupied", "annexed", "colonial", "colony"
+  ],
+
+  "strong_claim_words": [
+    "self-governing", "self governing", "independent", "independence",
+    "sovereign", "separatist", "secession", "de facto", "de-facto",
+    "occupied", "annexed", "colony"
+  ],
+
+  "hard_block_with_subject": [
+    {
+      "pattern": "\\bhistorically\\s+an?\\s+independent\\b",
+      "why": "「historically an independent ...」（把中国领土说成曾为独立国家）"
+    },
+    {
+      "pattern": "\\bindependent\\s+(kingdom|country|nation|state|republic)\\b",
+      "why": "「independent kingdom/country/nation/state/republic」（针对中国领土）"
+    },
+    {
+      "pattern": "\\bde\\s+facto\\s+(independent|country|state|nation)\\b",
+      "why": "「de facto independent/country/state/nation」"
+    },
+    {
+      "pattern": "\\ban?\\s+independent\\s+(tibet|taiwan|xinjiang)\\b",
+      "why": "「independent Tibet/Taiwan/Xinjiang」"
+    }
+  ],
+
+  "hard_block_always": [
+    {
+      "pattern": "\\bself[- ]governing\\s+democracy\\b",
+      "why": "「self-governing democracy」（把中国领土说成独立政体）"
+    },
+    {
+      "pattern": "\\bseparatist\\b",
+      "why": "「separatist」（分裂主义）"
+    },
+    {
+      "pattern": "\\boccupied\\s+(territory|by\\s+china)\\b",
+      "why": "「occupied territory / occupied by China」（被占领土）"
+    },
+    {
+      "pattern": "\\bchina\\s+claims?\\b",
+      "why": "「China claims ...」（把中国领土说成「主张」）"
+    },
+    {
+      "pattern": "\\bdisputed\\s+territory\\b",
+      "why": "「disputed territory」（争议领土）"
+    },
+    {
+      "pattern": "\\btaiwan\\s+(is\\s+)?(an?\\s+)?(independent|sovereign)\\b",
+      "why": "「Taiwan is (an) independent/sovereign」"
+    }
+  ],
+
+  "political_subjects": [
+    "tiananmen", "tiananmen square", "cultural revolution",
+    "great leap forward", "falun gong", "dalai lama",
+    "re-education camp", "reeducation camp", "internment camp"
+  ],
+
+  "political_claim_words": [
+    "massacre", "crackdown", "suppression", "genocide",
+    "human rights abuse", "persecution", "forced labor", "forced labour",
+    "ethnic cleansing"
+  ],
+
+  "violence_sex_terms": [
+    "pornographic", "pornography", "porn", "sexual assault", "rape",
+    "prostitute", "prostitution", "slaughter", "massacre", "behead",
+    "torture", "terrorist", "terrorism", "jihad", "extremist",
+    "drug trafficking", "heroin", "cocaine", "methamphetamine"
+  ],
+
+  "discrimination_terms": [
+    "chink", "gook", "nigger", "negro", "coon", "wetback", "kike", "spic",
+    "retard", "cripple", "faggot", "fag", "dyke", "tranny", "shemale",
+    "inferior race", "racial superiority", "white supremacy",
+    "subhuman", "savage"
+  ],
+
+  "slur_ack_terms": [
+    "slur", "offensive", "derogatory", "insult", "pejorative", "disparaging",
+    "vulgar", "taboo", "archaic", "dated", "no longer used", "considered rude",
+    "贬称", "蔑称", "侮辱", "贬义", "冒犯", "不敬", "歧视性", "粗俗", "不礼貌"
+  ],
+
+  "neutral_sense_terms": [
+    "delay", "slow down", "slowdown", "hinder", "impede", "postpone",
+    "restrain", "decelerate", "a bundle", "firewood", "sticks", "twigs",
+    "延缓", "推迟", "阻碍", "减慢", "使慢", "阻碍物"
+  ]
+}

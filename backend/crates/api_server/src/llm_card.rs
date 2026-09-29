@@ -89,8 +89,13 @@ pub enum CardError {
     InProgress,
     /// 502：LLM 上游失败
     Upstream(String),
-    /// 422：生成结果没过闸门（**不写缓存** —— 避免把错固化）
+    /// 422：生成结果没过**客观格式**闸门（**不写缓存** —— 避免把错固化）
     Gate(String),
+    /// 422：生成内容没过**合规**闸门（涉主权 / 涉政 / 涉黄暴 / 涉歧视）
+    ///
+    /// ⚠️ 与 [`CardError::Gate`] 分开：Gate 是「格式不对，可指望重试或换 prompt」；
+    ///    Compliance 是「内容不能给用户」—— **不可重试**，要人工介入改词表/内容。
+    Compliance(String),
     /// 500：本地错误（DB / 文件 / 解析）
     Internal(String),
 }
@@ -103,6 +108,7 @@ impl CardError {
             CardError::InProgress => StatusCode::SERVICE_UNAVAILABLE,
             CardError::Upstream(_) => StatusCode::BAD_GATEWAY,
             CardError::Gate(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            CardError::Compliance(_) => StatusCode::UNPROCESSABLE_ENTITY,
             CardError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -113,6 +119,9 @@ impl CardError {
             CardError::InProgress => "该词正在生成中，请稍后重试".to_string(),
             CardError::Upstream(m) => format!("内容生成失败，请稍后重试（{}）", m),
             CardError::Gate(m) => format!("生成内容未通过校验: {}", m),
+            // 🔑 合规拒绝对**客户端只说结论**，细节只进服务端日志 ——
+            //    客户端不需要知道是哪条规则命中（也避免把「涉主权」这类词抛到界面上）
+            CardError::Compliance(_) => "该词暂不支持生成（内容未通过合规检查）".to_string(),
             CardError::Internal(m) => format!("服务内部错误: {}", m),
         }
     }
@@ -262,8 +271,8 @@ fn context_contains_word(text: &str, word: &str) -> bool {
 ///   3. `context` 非空且**含该词**（或规则变形）
 ///   4. `entry_type` 非空
 ///
-/// ⚠️ **不做**：语义正确性 / 合规扫描 / 词源真实性 —— 那些要么需 LLM 判断，
-///    要么属于 `scan_compliance.py` 的职责（**合规扫描是上线的硬前提**，见模块注释）。
+/// ⚠️ **不做**：语义正确性 / 词源真实性 / **合规** —— 语义与词源要靠 LLM 判断（本闸门只挡机械可判的）；
+///    **合规由 [`crate::compliance`] 单独把关，且在 `gate()` 之前先跑**（见 [`get_or_generate`] ④⑤）。
 pub fn gate(card: &serde_json::Value, spelling: &str) -> Result<(), String> {
     let ipa = card.get("ipa").and_then(|v| v.as_str()).unwrap_or("");
     if ipa.trim().is_empty() {
@@ -400,9 +409,10 @@ fn try_cache(word: &str, device_id: Option<&str>) -> Result<Option<GenResult>, C
 /// ```text
 /// ① 查全局缓存 → 命中 → hit_count++ → 返回（0 次 LLM）
 /// ② 未命中 → 抢 in-flight 标记
-///      · 抢到 → 读 prompt → LLM → 解析 → 闸门 → 写缓存 → 返回
+///      · 抢到 → 读 prompt → LLM → 解析 → ④合规闸门 → ⑤格式闸门 → 写缓存 → 返回
 ///      · 没抢到 → 轮询等缓存（≤8s）→ 拿到返回；超时 → 503
 /// ```
+/// 🔴 ④ 合规在 ⑤ 格式**之前**：合规不过的内容根本不该走到「格式对不对」那一步。
 pub async fn get_or_generate(
     spelling: &str,
     device_id: Option<&str>,
@@ -459,13 +469,39 @@ pub async fn get_or_generate(
     let card: serde_json::Value = serde_json::from_str(reply.trim())
         .map_err(|e| CardError::Upstream(format!("返回不是合法 JSON: {} ({})", e, preview(&reply))))?;
 
-    // ④ 闸门（不过 → 不写缓存）
+    // ④ 🔴 合规闸门（**上线硬前提**：动态生成无人工环节，违规内容会直出用户）
+    //
+    //    顺序：放在**客观格式闸门之前** —— 合规不过的内容连格式都不必校验。
+    //    不过 → **不写缓存**（否则会把违规内容固化下来，后续所有用户都命中它）+ 告警。
+    //
+    //    🔴 两种失败**必须分开**（见 `compliance::check_card` 注释）：
+    //       · `Violation` → 内容违规 → 422（**不可重试**）
+    //       · `Err`       → **词表加载失败** → 500（**服务故障**，不是内容问题）
+    //       若把后者也当 422，一次「部署漏了词表」会让每个词都报「暂不支持生成」，
+    //       把配置故障伪装成内容问题 —— 排查时看不出真相。
+    match crate::compliance::check_card(&card, &word) {
+        Ok(crate::compliance::Verdict::Pass) => {}
+        Ok(crate::compliance::Verdict::Violation(why)) => {
+            tracing::warn!(
+                "generate_card: COMPLIANCE REJECT spelling={} detail={}",
+                word,
+                why
+            );
+            return Err(CardError::Compliance(why));
+        }
+        Err(e) => {
+            tracing::error!("generate_card: 合规词表不可用（服务配置问题）: {}", e);
+            return Err(CardError::Internal(e));
+        }
+    }
+
+    // ⑤ 客观格式闸门（不过 → 不写缓存）
     if let Err(why) = gate(&card, &word) {
         tracing::warn!("generate_card: GATE REJECT spelling={} reason={}", word, why);
         return Err(CardError::Gate(why));
     }
 
-    // ⑤ 写缓存
+    // ⑥ 写缓存
     let card_json = serde_json::to_string(&card)
         .map_err(|e| CardError::Internal(format!("serialize: {}", e)))?;
     {
@@ -569,5 +605,24 @@ mod tests {
     #[test]
     fn prompt_placeholder_replace() {
         assert_eq!(build_prompt("word is {word}!", "cat"), "word is cat!");
+    }
+
+    /// 🔴 合规拒绝 → 422，且**细节不外泄**给客户端（只进服务端日志）。
+    #[test]
+    fn compliance_error_is_422_with_generic_message() {
+        let e = CardError::Compliance("涉主权｜把中国领土说成独立国家 (definition.en)".to_string());
+        assert_eq!(e.status(), axum::http::StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(e.message(), "该词暂不支持生成（内容未通过合规检查）");
+        assert!(!e.message().contains("涉主权"), "合规细节不应出现在客户端消息里");
+    }
+
+    /// 合规（内容问题）与内部错误（服务故障）**必须分成不同状态码** ——
+    /// 否则「部署漏了词表」会被前端当成「这个词不给生成」。
+    #[test]
+    fn compliance_and_internal_are_distinguishable() {
+        assert_ne!(
+            CardError::Compliance("x".into()).status(),
+            CardError::Internal("词表读不到".into()).status()
+        );
     }
 }

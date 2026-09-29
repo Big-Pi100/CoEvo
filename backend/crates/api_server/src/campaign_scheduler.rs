@@ -70,19 +70,25 @@ pub fn hard_delete_expired_trials(conn: &rusqlite::Connection) -> Result<usize, 
     if count == 0 { return Ok(0); }
 
     // 级联清理关联表（按依赖顺序）
+    //
+    // 🔴 2026-09-29 清掉 7 个**已退役 / 从未存在**的表名：
+    //    `card_memory` · `user_cards` · `user_plan_progress` · `cp1_plans` ·
+    //    `plan_runs` · `conversation_turns` · `conversations`
+    //    —— 它们必然报 `no such table`，而下面的 `let _ =` 把错误**静默吞掉**：
+    //       列表看着很周全，实际一半是空转。
+    //    （`cp1_plans` 尤其可疑：全库仅此一处出现，不是任何 CREATE TABLE 的产物。）
+    //
+    // ⚠️ 另有 2 个**遗留问题**（本次只移出列表 + 记录，**不改语义**，因为属产品决策，未批）：
+    //    `distribution_commissions` 的列是 `earner_id` / `buyer_id`，`trial_ip_log` **只有 ip**，
+    //    两者都**没有 `user_id` 列** → 原来那句 `DELETE ... WHERE user_id = ?1` 对它们**必然报错**、
+    //    被 `let _ =` 吞掉 ⇒ **一行也没删过**。故移出列表是**行为等价**的。
+    //    · `distribution_commissions` = **财务记录**：按用户删是产品决策（需批）；
+    //    · `trial_ip_log` = **反试用滥用日志**（按 IP 计）：删掉等于让同 IP 再次白嫖 → 建议保持不删。
+    //    → 见交付文档「遗留发现」。
     let tables = [
-        "card_memory",
-        "user_cards",
-        "user_plan_progress",
-        "cp1_plans",
-        "plan_runs",
-        "conversation_turns",
-        "conversations",
         "tokens",
-        "distribution_commissions",
         "payment_orders",
         "user_notifications",
-        "trial_ip_log",
     ];
     for uid in &ids {
         for table in &tables {
@@ -563,14 +569,12 @@ mod tests {
         ).unwrap();
 
         // 插入关联数据（测试级联清理）
+        // 🔴 原实现还插了一条 `conversations`（对话链）—— 该表 2026-09-29 已退役，
+        //    插入会报 `no such table: conversations`（就是本测试失败的原因）。
+        //    级联清理的验证由现役表 `tokens` 承担即可。
         conn.execute(
             "INSERT INTO tokens (id, user_id, token, created_at) \
              VALUES (?1, ?2, 'tok', '2023-12-01')",
-            rusqlite::params![uuid::Uuid::new_v4().to_string(), "purge-user"],
-        ).unwrap();
-        conn.execute(
-            "INSERT INTO conversations (id, user_id, started_at) \
-             VALUES (?1, ?2, '2023-12-01')",
             rusqlite::params![uuid::Uuid::new_v4().to_string(), "purge-user"],
         ).unwrap();
 

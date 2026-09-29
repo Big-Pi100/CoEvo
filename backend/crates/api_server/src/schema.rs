@@ -464,17 +464,16 @@ pub fn run_migrations(conn: &rusqlite::Connection) -> Result<(), String> {
 }
 
 fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
+    // 🔴 2026-09-29 清掉 **9 条对退役表的 ALTER**（`card_memory` ×1 · `user_cards` ×2 ·
+    //    `prebuilt_plans` ×6）。它们被下面的容错**静默跳过**（报 `no such table` 被吞掉）——
+    //    看着无害，实则**掩盖真错**：表名写错、字段写错都不会有任何反馈。
+    //
+    // 🔑 判据：「删数据」**≠**「让它不再产生」—— 一共三个面，都要一起清：
+    //     ① 建表语句（否则新库把表建回来）② **迁移列表**（否则每库都白跑一遍）③ **测试断言**
+    //    （否则断言退役表存在 → 必失败，且会把人往「把表加回来」的方向带）。
+    //    本次清的是 ②③（① 已在 09-28/29 的前两轮清完）。
     let migrations: &[&str] = &[
         "ALTER TABLE users ADD COLUMN phone_hash TEXT DEFAULT NULL",
-        "ALTER TABLE card_memory ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
-        "ALTER TABLE user_cards ADD COLUMN language TEXT DEFAULT NULL",
-        "ALTER TABLE user_cards ADD COLUMN level TEXT DEFAULT NULL",
-        "ALTER TABLE prebuilt_plans ADD COLUMN title TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE prebuilt_plans ADD COLUMN author TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE prebuilt_plans ADD COLUMN display_name TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE prebuilt_plans ADD COLUMN visible INTEGER NOT NULL DEFAULT 1",
-        "ALTER TABLE prebuilt_plans ADD COLUMN theme_color TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE prebuilt_plans ADD COLUMN theme_icon TEXT NOT NULL DEFAULT ''",
         // 分销模块新字段（已有数据库升级）
         "ALTER TABLE users ADD COLUMN subscription_expires TEXT DEFAULT NULL",
         "ALTER TABLE users ADD COLUMN referral_code TEXT",
@@ -499,7 +498,11 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
             Ok(_) => {}
             Err(e) => {
                 let err_msg = e.to_string();
-                if !err_msg.contains("duplicate column") && !err_msg.contains("already exists") && !err_msg.contains("no such table") {
+                // ⚠️ 容错只在**真的已经改过**时放行：`duplicate column` / `already exists`。
+                //    🔴 **不再吞 `no such table`** —— 上面已清掉退役表的 ALTER，
+                //       现在每条 ALTER 的目标表都由本函数的调用方 `init_database` 先行建好，
+                //       所以 `no such table` = **真 bug**，必须炸出来（这正是「掩盖真错」的修法）。
+                if !err_msg.contains("duplicate column") && !err_msg.contains("already exists") {
                     return Err(format!("migration failed: {} — SQL: {}", err_msg, sql));
                 }
             }
@@ -513,91 +516,132 @@ mod tests {
     use super::*;
     use rusqlite::Connection;
 
-    const EXPECTED_NEW_TABLES: &[&str] = &[
-        "achievements", "admin_audit_log", "admin_users",
+    /// 期望的**全部**表 —— 与 `sqlite_master`（排除 `sqlite_*` 内部表）**集合相等**。
+    ///
+    /// 🔑 为什么用「集合相等」而不是「包含断言 + 数量下限」：
+    ///    后者**只能发现缺表，发现不了多表** —— 退役表留在常量里会一直「通过」，
+    ///    直到有人误以为它还在用。集合相等两头都卡。
+    ///    （09-29 之前这里列着 `achievements` / `user_cards` / `prebuilt_*` … 共 38 项，
+    ///     实际只建 20 张 → 3 个测试失败，全指向已退役的表。）
+    const EXPECTED_TABLES: &[&str] = &[
+        // 核心
+        "users", "tokens", "trial_ip_log",
+        // 管理端
+        "admin_users", "admin_audit_log", "subscription_requests",
         "subscription_plans", "payment_orders", "subscription_audit_log",
-        "card_memory", "card_relations",
-        "conversation_turns", "conversations",
-        "distribution_commissions", "distribution_expenses",
-        "guardian_assignments",
-        "marketing_campaigns",
-        "plan_runs",
-        "prebuilt_cards", "prebuilt_humanities_cards", "prebuilt_language_cards",
-        "prebuilt_literature_cards", "prebuilt_plans", "prebuilt_science_cards",
-        "prebuilt_stages", "prebuilt_tasks",
-        "referral_clicks", "reward_fulfillments", "review_log",
-        "subscription_requests", "tokens",
-        "trial_ip_log",
-        "user_cards", "user_humanities_cards", "user_language_cards",
-        "user_literature_cards", "user_notifications", "user_plan_progress", "user_preferences",
-        "user_science_cards", "users",
-        "defer_queue",
+        // 分销营销
+        "marketing_campaigns", "referral_clicks", "distribution_commissions",
+        "distribution_expenses", "reward_fulfillments", "campaign_members",
+        "user_notifications",
+        // 配置 / 偏好
+        "app_config", "user_preferences",
+        // 🆕 词库在线制卡（A1）
+        "generated_card_cache", "generated_card_hit",
     ];
 
+    /// 已**彻底退役**的表 —— 出现在库里即说明「退役没做干净」。
+    const RETIRED_TABLES: &[&str] = &[
+        // 对话链
+        "conversations", "conversation_turns",
+        // 后端 FSRS 复习状态（已迁端侧 user.db）
+        "card_memory", "review_log", "user_cards",
+        "user_science_cards", "user_language_cards", "user_literature_cards",
+        "user_humanities_cards", "card_relations", "defer_queue",
+        // K12 计划体系（整体清退）
+        "user_plan_progress", "prebuilt_plans", "prebuilt_stages", "prebuilt_tasks",
+        "prebuilt_cards", "prebuilt_science_cards", "prebuilt_language_cards",
+        "prebuilt_literature_cards", "prebuilt_humanities_cards", "plan_runs",
+        "guardian_assignments", "k12_quiz_bank", "k12_quiz_attempts",
+        // 成就（改为端侧计算）
+        "achievements",
+        // admin 调试面板
+        "debug_trackers", "debug_logs",
+    ];
+
+    /// 更早期迁移遗留的旧表名
     const FORBIDDEN_OLD_TABLES: &[&str] = &["cards", "conversation_plans", "learning_plans"];
 
-    /// 验证完整 init_database() 后所有新表存在、旧表已清除
+    fn actual_tables(conn: &Connection) -> Vec<String> {
+        let mut stmt = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+            .unwrap();
+        stmt.query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .filter(|n| !n.starts_with("sqlite_")) // sqlite_sequence 等内部表
+            .collect()
+    }
+
+    /// 验证完整 `init_database()` 后的表集合：**恰好等于**期望，且退役表一张不剩
     #[test]
     fn test_full_schema_all_tables_present() {
         let conn = Connection::open_in_memory().unwrap();
         init_database(&conn).unwrap();
 
-        let mut stmt = conn.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").unwrap();
-        let actual: Vec<String> = stmt.query_map([], |row| row.get(0)).unwrap()
-            .filter_map(|r| r.ok())
-            .collect();
+        let actual = actual_tables(&conn);
+        let mut expect: Vec<String> = EXPECTED_TABLES.iter().map(|s| s.to_string()).collect();
+        expect.sort();
 
-        for tbl in EXPECTED_NEW_TABLES {
-            assert!(actual.contains(&tbl.to_string()), "新表 {} 不存在", tbl);
+        let missing: Vec<&String> = expect.iter().filter(|t| !actual.contains(t)).collect();
+        let extra: Vec<&String> = actual.iter().filter(|t| !expect.contains(t)).collect();
+        assert!(missing.is_empty(), "缺表: {:?}", missing);
+        assert!(extra.is_empty(), "多出未登记的表: {:?}", extra);
+
+        for tbl in RETIRED_TABLES {
+            assert!(!actual.contains(&tbl.to_string()), "退役表 {} 又被建回来了", tbl);
         }
-
         for tbl in FORBIDDEN_OLD_TABLES {
             assert!(!actual.contains(&tbl.to_string()), "旧表 {} 仍然存在", tbl);
         }
-
-        assert!(actual.len() >= 30, "表数量不足: {} < 30", actual.len());
     }
 
-    /// 验证核心新表的关键列结构
+    /// 验证现役表的关键列 —— 含**迁移新增**的列（全新库靠 `SCHEMA_SQL`，老库靠 `run_migrations_inner`）
     #[test]
     fn test_core_table_columns() {
         let conn = Connection::open_in_memory().unwrap();
         init_database(&conn).unwrap();
 
-        // user_cards: 必须无 back / source_sentence
-        let cols = table_columns(&conn, "user_cards");
-        assert!(cols.contains(&"plan_run_id".to_string()), "user_cards 缺 plan_run_id");
-        assert!(cols.contains(&"prebuilt_card_id".to_string()), "user_cards 缺 prebuilt_card_id");
-        assert!(cols.contains(&"front".to_string()), "user_cards 缺 front");
-        assert!(!cols.contains(&"back".to_string()), "user_cards 不应有 back");
-        assert!(!cols.contains(&"source_sentence".to_string()), "user_cards 不应有 source_sentence");
+        // users：PII / 分销 / 软删除
+        let cols = table_columns(&conn, "users");
+        for c in [
+            "id", "username", "phone_hash", "id_number", "bind_hash", "deleted_at",
+            "subscription_expires", "referral_code", "referred_by", "referred_campaign_id",
+        ] {
+            assert!(cols.contains(&c.to_string()), "users 缺 {}", c);
+        }
 
-        // plan_runs: 必须有 domain
-        let cols = table_columns(&conn, "plan_runs");
-        assert!(cols.contains(&"domain".to_string()), "plan_runs 缺 domain");
+        // admin_users：迁移新增的 permissions
+        let cols = table_columns(&conn, "admin_users");
+        assert!(cols.contains(&"permissions".to_string()), "admin_users 缺 permissions");
 
-        // card_memory: 必须含 user_card_id
-        let cols = table_columns(&conn, "card_memory");
-        assert!(cols.contains(&"user_card_id".to_string()), "card_memory 缺 user_card_id");
+        // payment_orders：退款字段来自迁移
+        let cols = table_columns(&conn, "payment_orders");
+        for c in ["status", "prepay_id", "transaction_id", "refund_reason", "refund_id"] {
+            assert!(cols.contains(&c.to_string()), "payment_orders 缺 {}", c);
+        }
 
-        // card_relations: 必须含 from_type / to_type / user_id
-        let cols = table_columns(&conn, "card_relations");
-        assert!(cols.contains(&"from_type".to_string()), "card_relations 缺 from_type");
-        assert!(cols.contains(&"to_type".to_string()), "card_relations 缺 to_type");
-        assert!(cols.contains(&"user_id".to_string()), "card_relations 缺 user_id");
+        // marketing_campaigns：迁移新增列
+        let cols = table_columns(&conn, "marketing_campaigns");
+        for c in ["poster_prompt", "min_member_count", "created_by"] {
+            assert!(cols.contains(&c.to_string()), "marketing_campaigns 缺 {}", c);
+        }
 
-        // prebuilt_plans: 必须含新增字段
-        let cols = table_columns(&conn, "prebuilt_plans");
-        assert!(cols.contains(&"title".to_string()), "prebuilt_plans 缺 title");
-        assert!(cols.contains(&"author".to_string()), "prebuilt_plans 缺 author");
-        assert!(cols.contains(&"display_name".to_string()), "prebuilt_plans 缺 display_name");
-        assert!(cols.contains(&"visible".to_string()), "prebuilt_plans 缺 visible");
-        assert!(cols.contains(&"theme_color".to_string()), "prebuilt_plans 缺 theme_color");
-        assert!(cols.contains(&"theme_icon".to_string()), "prebuilt_plans 缺 theme_icon");
+        // reward_fulfillments：唯一索引重构依赖 order_id
+        let cols = table_columns(&conn, "reward_fulfillments");
+        assert!(cols.contains(&"order_id".to_string()), "reward_fulfillments 缺 order_id");
 
-        // review_log: 必须含 user_card_id
-        let cols = table_columns(&conn, "review_log");
-        assert!(cols.contains(&"user_card_id".to_string()), "review_log 缺 user_card_id");
+        // 🆕 词库在线制卡缓存（A1）
+        let cols = table_columns(&conn, "generated_card_cache");
+        for c in [
+            "spelling", "card_content", "contract_version", "source",
+            "hit_count", "distinct_user_count", "created_at", "updated_at",
+        ] {
+            assert!(cols.contains(&c.to_string()), "generated_card_cache 缺 {}", c);
+        }
+        let cols = table_columns(&conn, "generated_card_hit");
+        for c in ["spelling", "device_id", "first_hit_at", "hit_count"] {
+            assert!(cols.contains(&c.to_string()), "generated_card_hit 缺 {}", c);
+        }
     }
 
     fn table_columns(conn: &Connection, table: &str) -> Vec<String> {

@@ -1,0 +1,212 @@
+{
+  "_comment": [
+    "合规判据 · **跨语言共享用例**（Python 与 Rust 跑同一份 → 一致性由构造保证）",
+    "",
+    "跑法：",
+    "  · Python: `python scripts/verify_compliance_parity.py`",
+    "  · Rust  : `cargo test -p api_server compliance_cases_parity`",
+    "",
+    "结构：",
+    "  spelling — 词条（规则 ④ 的「词条本身即敏感词则跳过」、规则 ⑤ 的 same_word 都靠它）",
+    "  parts    — [字段名, 文本] 列表（与 scan_parts 的入参同形）",
+    "  expect   — **排序后**的 [级别, 类别, 字段] 三元组集合；[] 表示「一条都不报」",
+    "",
+    "为什么用「级别+类别+字段」而不是只比级别：",
+    "  🔑 只比级别会**掩盖字段级差异**（「该报的字段没报、不该报的字段报了」两边相消）。",
+    "     —— 「判据口径差一层」的典型：不会报错，只给错数。",
+    "",
+    "分级（同 scan_compliance.py）：P0=必须修不可上线 / P1=需复核 / P2=提示（可能误报）"
+  ],
+  "cases": [
+    {
+      "id": "R1-boundary-grape",
+      "note": "铁律 1：「grape」含裸子串 rape → 必须**不报**",
+      "spelling": "grape",
+      "parts": [["definition.en", "a small round fruit that grows in bunches"]],
+      "expect": []
+    },
+    {
+      "id": "R1-boundary-scraped",
+      "note": "铁律 1：「scraped」含 s+**crape**d → 不报",
+      "spelling": "scrape",
+      "parts": [["context.en", "He scraped the old paint off the wall."]],
+      "expect": []
+    },
+    {
+      "id": "R1-boundary-schooner",
+      "note": "铁律 1：「schooner」含 s+**coon**er → 不报",
+      "spelling": "schooner",
+      "parts": [["definition.en", "a sailing ship with two or more masts"]],
+      "expect": []
+    },
+    {
+      "id": "R1-boundary-drapery",
+      "note": "铁律 1：「drapery」含 d+**rape**ry → 不报",
+      "spelling": "drapery",
+      "parts": [["definition.en", "cloth arranged in folds as a decoration"]],
+      "expect": []
+    },
+
+    {
+      "id": "R2a-slur-word-with-ack",
+      "note": "铁律 2a：词条即敏感词 + **明确标注冒犯性** → 正确的词典行为，不报",
+      "spelling": "nigger",
+      "parts": [
+        ["spelling", "nigger"],
+        ["definition.en", "The word nigger is a racial slur against Black people."]
+      ],
+      "expect": []
+    },
+    {
+      "id": "R2d-slur-word-without-ack",
+      "note": "铁律 2d：词条即该敏感词但**未标注** → P1（收录正当，缺标注是缺陷）",
+      "spelling": "nigger",
+      "parts": [
+        ["spelling", "nigger"],
+        ["definition.en", "a Black person"]
+      ],
+      "expect": [["P1", "涉歧视", "spelling"]]
+    },
+    {
+      "id": "R2b-neutral-sense",
+      "note": "铁律 2b：`retard` 另有正常义（delay/slow）→ 降为 P2，不升级 P0",
+      "spelling": "retard",
+      "parts": [
+        ["spelling", "retard"],
+        ["definition.en", "to delay or slow down the progress of something"]
+      ],
+      "expect": [["P2", "涉歧视", "spelling"]]
+    },
+    {
+      "id": "R2d-cripple-unmarked",
+      "note": "铁律 2d 实例：`cripple` 释义无标注 → P1 建议补标注",
+      "spelling": "cripple",
+      "parts": [
+        ["spelling", "cripple"],
+        ["definition.en", "to make someone unable to walk properly"]
+      ],
+      "expect": [["P1", "涉歧视", "spelling"]]
+    },
+    {
+      "id": "R5-slur-in-other-word",
+      "note": "铁律 2 边界：敏感词出现在**别的词**的内容里 → P0（标注了冒犯性也不能免，因为不是介绍该词本身）",
+      "spelling": "migrant",
+      "parts": [["definition.en", "a person who moves to another country to find work"]],
+      "expect": []
+    },
+    {
+      "id": "R5-slur-in-other-word-hit",
+      "note": "同上但真的含歧视词 → P0",
+      "spelling": "laborer",
+      "parts": [["definition.en", "an offensive word for such a worker is wetback"]],
+      "expect": [["P0", "涉歧视", "definition.en"]]
+    },
+
+    {
+      "id": "R3-independent-alone",
+      "note": "铁律 3：`independent` 单见完全正常（无中国领土主体）→ 不报",
+      "spelling": "independent",
+      "parts": [["definition.en", "not controlled or supported by other people"]],
+      "expect": []
+    },
+    {
+      "id": "R3-and-R4-india-independent-nation",
+      "note": "铁律 4：「India became an independent nation」是史实 → 不报（同字段无中国领土主体）",
+      "spelling": "india",
+      "parts": [["context.en", "India became an independent nation in 1947."]],
+      "expect": []
+    },
+    {
+      "id": "R4-hanover-independent-kingdom",
+      "note": "铁律 4：「Hanover was once an independent kingdom」是史实 → 不报",
+      "spelling": "hanover",
+      "parts": [["context.en", "Hanover was once an independent kingdom."]],
+      "expect": []
+    },
+    {
+      "id": "R5-autonomous-region-is-correct",
+      "note": "铁律 5：「西藏是中国的一个自治区」恰是**正确表述** → 不报（自治区是官方行政区划名）",
+      "spelling": "tibet",
+      "parts": [["definition.en", "An autonomous region in southwestern China"]],
+      "expect": []
+    },
+    {
+      "id": "R3-tibet-independent-kingdom",
+      "note": "铁律 3+4：中国领土 + 「historically an independent kingdom」→ P0",
+      "spelling": "tibet",
+      "parts": [["definition.en", "Tibet was historically an independent kingdom."]],
+      "expect": [["P0", "涉主权", "definition.en"]]
+    },
+    {
+      "id": "R3-taiwan-independent-country",
+      "note": "铁律 3：多个模式同时命中同一字段 → **合并为 1 条**（字段级去重）",
+      "spelling": "taiwan",
+      "parts": [["context.en", "Taiwan is an independent country."]],
+      "expect": [["P0", "涉主权", "context.en"]]
+    },
+    {
+      "id": "R3-hongkong-independent",
+      "note": "铁律 3：多词主体「hong kong」+ strong claim → P0",
+      "spelling": "hongkong",
+      "parts": [["context.en", "Hong Kong is an independent country."]],
+      "expect": [["P0", "涉主权", "context.en"]]
+    },
+    {
+      "id": "R3-field-level-dedup",
+      "note": "同一词两个字段各自命中 → 保留 2 条（去重只在**同字段同类别**内）",
+      "spelling": "tibet",
+      "parts": [
+        ["definition.en", "Tibet was historically an independent kingdom."],
+        ["context.en", "It is a self-governing democracy."]
+      ],
+      "expect": [["P0", "涉主权", "context.en"], ["P0", "涉主权", "definition.en"]]
+    },
+    {
+      "id": "R3-weak-claim-is-p1",
+      "note": "弱主权措辞（country）与主体同现 → P1，不是 P0",
+      "spelling": "macau",
+      "parts": [["context.en", "Macau is a country in Asia."]],
+      "expect": [["P1", "涉主权", "context.en"]]
+    },
+
+    {
+      "id": "R3-political-subject-alone",
+      "note": "涉政：主体单独出现、无定性词 → P1 需人工复核（🔑 主体必须与文本**同字段**才触发）",
+      "spelling": "tiananmen",
+      "parts": [["definition.en", "Tiananmen Square is a large public square in Beijing."]],
+      "expect": [["P1", "涉政", "definition.en"]]
+    },
+    {
+      "id": "R3-political-subject-plus-claim",
+      "note": "涉政：主体 + 定性词（crackdown）→ P0。刻意避开 `massacre`（它同时是涉黄暴词，会多出一条 P1，搅浑用例）",
+      "spelling": "tiananmen",
+      "parts": [["definition.en", "Tiananmen Square saw a crackdown in 1989."]],
+      "expect": [["P0", "涉政", "definition.en"]]
+    },
+
+    {
+      "id": "R4b-violence-term-is-the-word",
+      "note": "铁律 2c：词条本身就是该敏感词 → 跳过（例句正是在解释这个词）",
+      "spelling": "heroin",
+      "parts": [
+        ["spelling", "heroin"],
+        ["context.en", "Heroin is a highly addictive drug."]
+      ],
+      "expect": []
+    },
+    {
+      "id": "R4-violence-term-in-other-word",
+      "note": "铁律 2c 反面：敏感词与词条无关 → P1",
+      "spelling": "appall",
+      "parts": [["context.en", "The news of the massacre appalled the world."]],
+      "expect": [["P1", "涉黄暴/涉恐", "context.en"]]
+    },
+    {
+      "id": "R4-spelling-field-not-scanned",
+      "note": "规则 ④ 只扫 `.en/.zh/.text` 结尾的字段 —— 纯 `spelling` 字段不参与涉黄暴判定",
+      "spelling": "heroin",
+      "parts": [["spelling", "heroin"]],
+      "expect": []
+    }
+  ]
+}

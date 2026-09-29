@@ -179,7 +179,7 @@ test llm_card::tests::prompt_placeholder_replace ... ok
 
 | 位置 | 内容 | 风险 |
 |---|---|---|
-| `schema.rs` 的 `run_migrations_inner` | **42 处**对退役表的 `ALTER`（`card_memory` / `user_cards` / `prebuilt_*` …） | 🟠 被容错**静默跳过**（忽略 `no such table`）→ 现在无害，但**掩盖真错**（表名写错也不报） |
+| `schema.rs` 的 `run_migrations_inner` | **9 处**对退役表的 `ALTER`（`card_memory`×1 / `user_cards`×2 / `prebuilt_plans`×6）<br>⚠️ 原文写的「42 处」是数错了 —— 已于 A1b 更正为实测的 9 处 | 🟠 被容错**静默跳过**（忽略 `no such table`）→ 现在无害，但**掩盖真错**（表名写错也不报） |
 | `schema.rs` 的 `EXPECTED_NEW_TABLES`（测试常量） | 列了 `card_memory` / `conversations` / `prebuilt_*` / `user_cards` … | 🔴 **就是上表 3 个失败的根因** |
 
 🔑 **判据命中**：**「删数据」≠「让它不再产生」**（建表语句要一并改）——

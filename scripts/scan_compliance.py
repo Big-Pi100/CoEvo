@@ -76,6 +76,14 @@ Guangxi / Ningxia **Autonomous Region**）。说「西藏是中国的一个自�
     python3 scripts/scan_compliance.py --level P0          # 只看 P0
 
 退出码：**有 P0 → 1**（可挂 CI 阻断）；否则 0。
+
+## 词表在哪 / 怎么共用
+
+🔑 词表**不在本文件**，在 `backend/prompts/compliance_terms.json` ——
+**离线扫描（本文件）与在线制卡闸门（`api_server/src/compliance.rs`）读同一份**。
+本文件的规则引擎是 `scan_parts(parts, spelling)`；Rust 侧同义函数在 `compliance.rs`。
+两边一致性由 **共享用例** 保证：`backend/prompts/compliance_cases.json`
++ `scripts/verify_compliance_parity.py`（Python 端跑）+ `cargo test`（Rust 端跑同一份）。
 """
 
 import argparse
@@ -90,111 +98,58 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_DB = os.path.join(ROOT, 'data', 'word.db')
 
 
-# ─────────────────────────────────────────────────────────────
-# ① 敏感主体（领土/主权相关）
-# ─────────────────────────────────────────────────────────────
-#: 中国领土与主权相关主体 —— 出现时需特别审查其**描述方式**
-SOVEREIGN_SUBJECTS = [
-    'taiwan', 'taiwanese', 'tibet', 'tibetan', 'xinjiang', 'uyghur', 'uighur',
-    'hong kong', 'hongkong', 'macau', 'macao', 'inner mongolia',
-    'south china sea', 'diaoyu', 'diaoyu islands', 'senkaku',
-    'aksai chin', 'arunachal', 'south tibet', 'paracel', 'spratly',
-]
+#: 🔴 词表/规则的**单一来源** —— Python 与 Rust（`api_server/src/compliance.rs`）都读它。
+#:    内联两份 → 迟早分叉（改了一边忘另一边）。
+TERMS_PATH = os.path.join(ROOT, 'backend', 'prompts', 'compliance_terms.json')
 
-#: 主权类措辞 —— 单独出现正常，与主体组合则高危
-#:
-#: 🔴 **铁律 5：官方行政区划名 ≠ 主权主张**（2026-09-26 真实误报后固化）
-#:
-#: 本表原含 `autonomous region` → 把 `tibet` **修正后的正确表述**
-#: 「An autonomous region in southwestern China」判为 P1 误报。
-#:
-#: 🔴 但「**自治区**」正是中国的**正式行政区划名称** ——
-#: Tibet / Inner Mongolia / Xinjiang / Guangxi / Ningxia **Autonomous Region**
-#: 是这五个省级行政区的官方英文名。说「西藏是中国的一个自治区」
-#: **恰恰是正确表述** —— 判据方向完全反了。
-#:
-#: → **判据：凡是中国官方英文名的一部分，一律不得进本表。**
-#:   加词前先问：这个词**出现在正确的表述里会不会触发**？会，就不能加。
-SOVEREIGN_CLAIM_WORDS = [
-    'self-governing', 'self governing', 'independent', 'independence',
-    'sovereign', 'de facto', 'de-facto', 'separatist', 'secession',
-    'kingdom', 'nation-state', 'nation state', 'country',
-    'occupied', 'annexed', 'colonial', 'colony',
-]
 
-#: 强词（与主体同现即 P0；弱词为 P1）
-_STRONG_CLAIM = {
-    'self-governing', 'self governing', 'independent', 'independence',
-    'sovereign', 'separatist', 'secession', 'de facto', 'de-facto',
-    'occupied', 'annexed', 'colony',
-}
+def load_terms(path=TERMS_PATH):
+    """读共用词表。
 
-#: 整句硬阻断模式。**分两类** —— 这是第二轮精修的核心：
-#:
-#: 🔴 铁律 4：**「独立王国」这类表述本身不是错的** —— 只有涉及中国领土时才是。
-#: 首版把 `\bindependent (kingdom|country|nation)\b` 无条件阻断 → 误报：
-#:   · `independent` 的例句 "India became an independent nation in 1947."（印度独立，史实）
-#:   · `hanover` 的例句 "Hanover was once an independent kingdom."（汉诺威，史实）
-#: → 所以这类模式**必须同时出现中国领土主体**才升级。
-HARD_BLOCK_WITH_SUBJECT = [
-    (re.compile(r'\bhistorically\s+an?\s+independent\b', re.I),
-     '「historically an independent ...」（把中国领土说成曾为独立国家）'),
-    (re.compile(r'\bindependent\s+(kingdom|country|nation|state|republic)\b', re.I),
-     '「independent kingdom/country/nation/state/republic」（针对中国领土）'),
-    (re.compile(r'\bde\s+facto\s+(independent|country|state|nation)\b', re.I),
-     '「de facto independent/country/state/nation」'),
-    (re.compile(r'\ban?\s+independent\s+(tibet|taiwan|xinjiang)\b', re.I),
-     '「independent Tibet/Taiwan/Xinjiang」'),
-]
+    🔴 文件缺失 / 键缺失 / 正则编译失败 → **直接抛错**。
+       合规闸门**不允许静默降级**成「没有词表 → 全部放行」——
+       那正是「静默失效 = 主要敌人」的教科书案例。
+    """
+    with open(path, encoding='utf-8') as f:
+        raw = json.load(f)
 
-#: 任何语境都违规（这些表述本身即错误，无需主体触发）
-HARD_BLOCK_ALWAYS = [
-    (re.compile(r'\bself[- ]governing\s+democracy\b', re.I),
-     '「self-governing democracy」（把中国领土说成独立政体）'),
-    (re.compile(r'\bseparatist\b', re.I), '「separatist」（分裂主义）'),
-    (re.compile(r'\boccupied\s+(territory|by\s+china)\b', re.I),
-     '「occupied territory / occupied by China」（被占领土）'),
-    (re.compile(r'\bchina\s+claims?\b', re.I),
-     '「China claims ...」（把中国领土说成「主张」）'),
-    (re.compile(r'\bdisputed\s+territory\b', re.I), '「disputed territory」（争议领土）'),
-    (re.compile(r'\btaiwan\s+(is\s+)?(an?\s+)?(independent|sovereign)\b', re.I),
-     '「Taiwan is (an) independent/sovereign」'),
-]
+    def _need(key):
+        if key not in raw:
+            raise KeyError('compliance_terms.json 缺键: {}'.format(key))
+        return raw[key]
 
-# ─────────────────────────────────────────────────────────────
-# ② 涉政
-# ─────────────────────────────────────────────────────────────
-POLITICAL_SUBJECTS = [
-    'tiananmen', 'tiananmen square', 'cultural revolution',
-    'great leap forward', 'falun gong', 'dalai lama',
-    're-education camp', 'reeducation camp', 'internment camp',
-]
+    return {
+        'sovereign_subjects': _need('sovereign_subjects'),
+        'sovereign_claim_words': _need('sovereign_claim_words'),
+        'strong_claim_words': set(_need('strong_claim_words')),
+        'hard_block_with_subject': [(re.compile(d['pattern'], re.I), d['why'])
+                                    for d in _need('hard_block_with_subject')],
+        'hard_block_always': [(re.compile(d['pattern'], re.I), d['why'])
+                              for d in _need('hard_block_always')],
+        'political_subjects': _need('political_subjects'),
+        'political_claim_words': _need('political_claim_words'),
+        'violence_sex_terms': _need('violence_sex_terms'),
+        'discrimination_terms': _need('discrimination_terms'),
+        'slur_ack_terms': _need('slur_ack_terms'),
+        'neutral_sense_terms': _need('neutral_sense_terms'),
+    }
 
-POLITICAL_CLAIM_WORDS = [
-    'massacre', 'crackdown', 'suppression', 'genocide',
-    'human rights abuse', 'persecution', 'forced labor', 'forced labour',
-    'ethnic cleansing',
-]
 
-# ─────────────────────────────────────────────────────────────
-# ③ 涉黄暴 / 涉恐
-# ─────────────────────────────────────────────────────────────
-VIOLENCE_SEX_TERMS = [
-    'pornographic', 'pornography', 'porn', 'sexual assault', 'rape',
-    'prostitute', 'prostitution', 'slaughter', 'massacre', 'behead',
-    'torture', 'terrorist', 'terrorism', 'jihad', 'extremist',
-    'drug trafficking', 'heroin', 'cocaine', 'methamphetamine',
-]
+_T = load_terms()
 
-# ─────────────────────────────────────────────────────────────
-# ④ 涉歧视（种族 / 民族 / 性别 / 宗教 / 残障）
-# ─────────────────────────────────────────────────────────────
-DISCRIMINATION_TERMS = [
-    'chink', 'gook', 'nigger', 'negro', 'coon', 'wetback', 'kike', 'spic',
-    'retard', 'cripple', 'faggot', 'fag', 'dyke', 'tranny', 'shemale',
-    'inferior race', 'racial superiority', 'white supremacy',
-    'subhuman', 'savage',
-]
+
+# ── 以下 11 个名字是「规则引擎」直接引用的接口（Rust 侧同义）──
+SOVEREIGN_SUBJECTS = _T['sovereign_subjects']
+SOVEREIGN_CLAIM_WORDS = _T['sovereign_claim_words']
+_STRONG_CLAIM = _T['strong_claim_words']
+HARD_BLOCK_WITH_SUBJECT = _T['hard_block_with_subject']
+HARD_BLOCK_ALWAYS = _T['hard_block_always']
+POLITICAL_SUBJECTS = _T['political_subjects']
+POLITICAL_CLAIM_WORDS = _T['political_claim_words']
+VIOLENCE_SEX_TERMS = _T['violence_sex_terms']
+DISCRIMINATION_TERMS = _T['discrimination_terms']
+_SLUR_ACK_TERMS = _T['slur_ack_terms']
+_NEUTRAL_SENSE_TERMS = _T['neutral_sense_terms']
 
 
 # ─────────────────────────────────────────────────────────────
@@ -236,21 +191,6 @@ def _all_hits(text, terms):
     return out
 
 
-#: 明确标注冒犯性的措辞 —— 出现即说明是**有意的词典处理**
-_SLUR_ACK_TERMS = [
-    'slur', 'offensive', 'derogatory', 'insult', 'pejorative', 'disparaging',
-    'vulgar', 'taboo', 'archaic', 'dated', 'no longer used', 'considered rude',
-    '贬称', '蔑称', '侮辱', '贬义', '冒犯', '不敬', '歧视性', '粗俗', '不礼貌',
-]
-
-#: 该词另有「正常义」的信号 —— 命中则不升级为 P0
-_NEUTRAL_SENSE_TERMS = [
-    'delay', 'slow down', 'slowdown', 'hinder', 'impede', 'postpone',
-    'restrain', 'decelerate', 'a bundle', 'firewood', 'sticks', 'twigs',
-    '延缓', '推迟', '阻碍', '减慢', '使慢', '阻碍物',
-]
-
-
 def _build_scan_text(rec):
     """把一张卡的所有可读文本拆成 (字段名, 文本)。"""
     parts = []
@@ -274,11 +214,18 @@ def _snip(text, pos, width=95):
     return text[a:a + width].replace('\n', ' ').strip()
 
 
-def scan_record(rec):
-    """返回该词的发现列表。每条 = (level, category, field, snippet, reason)。"""
+def scan_parts(parts, spelling):
+    """**规则引擎** —— 对 (字段名, 文本) 列表跑 5 条铁律。
+
+    🔑 与 Rust 侧 `compliance.rs::scan_parts` 是**同一套规则**；
+       两边共用 `backend/prompts/compliance_terms.json` 的词表。
+       跨语言一致性由共享用例保证：
+       `backend/prompts/compliance_cases.json` + `scripts/verify_compliance_parity.py`。
+
+    返回：[ (level, category, field, snippet, reason) ]
+    """
     findings = []
-    parts = _build_scan_text(rec)
-    spelling = (rec.get('spelling') or '').strip().lower()
+    spelling = (spelling or '').strip().lower()
     joined = ' '.join(t for _, t in parts)
     acknowledged = _first_hit(joined, _SLUR_ACK_TERMS) is not None
     neutral = _first_hit(joined, _NEUTRAL_SENSE_TERMS) is not None
@@ -379,6 +326,11 @@ def scan_record(rec):
         if reason not in cur[4]:
             cur[4].append(reason)
     return [(v[0], v[1], v[2], v[3], ' + '.join(v[4])) for v in best.values()]
+
+
+def scan_record(rec):
+    """扫描一条**词库记录**（`word` + `card`）→ 发现列表。"""
+    return scan_parts(_build_scan_text(rec), rec.get('spelling'))
 
 
 def load_records(con):
