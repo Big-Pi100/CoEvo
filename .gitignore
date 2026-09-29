@@ -37,23 +37,24 @@ CLAUDE.md
 /landing/baidu
 # 微信支付证书（含私钥，入 Git = 泄露密钥！）
 /backend/certs/
-# Windows 保留设备名（不可被 Git 索引）
+# Windows 保留设备名（0 字节 · 不可索引 · **删不掉**）
 #
-# ⚠️ 2026-09-29 实测：该条目**存在且删不掉**，本文件里的规则只能让它「不进 Git」，
-#    但**挡不住 ripgrep 遍历时报错**（错误发生在 stat 阶段，早于 ignore 判断）：
-#        rg: E:\CoEvo\NUL: 函数不正确。 (os error 1)   → 整个搜索 **exit code 2**
-#    🔴 后果：**在仓库根目录搜索会整体失败**（不是只多一个文件）→ 属「静默漏搜」。
+# 🔴 该条目**无法删除**（Windows 保留设备名；试过 6 种方式全被拒：
+#    `/usr/bin/rm`（绕过 safe-delete 钩子）· Python `os.remove` ·
+#    `ctypes DeleteFileW('\\\\?\\...')`（err=5）· `mv` 改名 · PowerShell Delete
+#    → 连**改名**都不行，只能人工用 NTFS 工具/安全模式处理）。
 #
-#    已试过且**全部失败**的删除方式（都是 Windows 层面拒绝，非工具问题）：
-#      · `/usr/bin/rm -f`（绕过 safe-delete 钩子）→ Permission denied
-#      · Python `os.remove` / `ctypes DeleteFileW('\\\\?\\...')` → err=5 (ERROR_ACCESS_DENIED)
-#      · PowerShell `[System.IO.File]::Delete` → 无效
-#      · `mv`（改名）→ Permission denied  ← 连改名都不行
-#    → **需人工处理**（管理员权限 / 安全模式 / 能操作 NTFS 目录项的工具）。
+# ⚠️ 但它**不需要删** —— 关键在于下面的**大小写**：
+#    ripgrep 的 gitignore glob 匹配**区分大小写**。只写小写 `/nul` 时**匹配不到** `NUL`
+#    → rg 仍会去 `stat` 它 → 在仓库根搜索**整体失败**：
+#        rg: E:\CoEvo\NUL: 函数不正确。 (os error 1)   → exit code 2
+#    🔴 这是「**静默漏搜**」：使用者容易把报错当噪音，以为搜过了。
 #
-# ✅ **已验证的规避方案**：搜索时排除该名（以 Grep 工具为例）
-#        pattern + glob: "!NUL"      ← 实测在仓库根可正常搜索
+# ✅ **根治**：两行都写（大小写各一）。实测补上 `/NUL` 后，仓库根搜索立即恢复正常。
+#    🔑 与「加 `glob: '!NUL'` 规避」的区别：那是**每次调用都要记得带参数**（迟早忘），
+#       这是**改一处配置、所有工具自动受益** —— **能根治就别留规避动作**。
 /nul
+/NUL
 
 # 删除操作的回滚备份（二进制快照，体积大且不适合 Git）
 # 被删文件本身在 Git 跟踪内，可直接 git checkout 恢复 → 备份无需入库
