@@ -69,8 +69,34 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void initState() {
     super.initState();
     _authSub = ref.listenManual(authProvider, (prev, next) {
-      if (next.isAuthenticated && prev?.isAuthenticated == false && mounted) {
+      if (!mounted) return;
+
+      // ① 未登录 → 已登录：拉取本账号的数据
+      if (next.isAuthenticated && prev?.isAuthenticated == false) {
         _load();
+        return;
+      }
+
+      // ② 已登录 → 未登录（**退出登录**）：清掉所有「属于上一个账号」的状态
+      //
+      // 🔴 为什么必须清（不只是「干净一点」）：
+      //    这几个字段**在未登录时仍会被使用** ——
+      //      · `_referralCode` → `StatsCard` 的分享文案会拼 `?ref=<码>`。
+      //        不清 → 未登录用户分享出去的是**上一个登录用户的推荐码**
+      //        （推荐码是「分享链接的身份」，`_loadReferralCode` 的注释原文）。
+      //      · `_unreadCount` / `_avatarUrl` → 当前已随登录态隐藏，
+      //        但留着会让「下次登录前的瞬间」显示旧值（闪烁）。
+      //
+      // 🔑 判据：**登录态是一组状态的所有者** —— 切换时该**整体复位**，
+      //    而不是逐个等到「用到了才发现不对」。
+      //    同族：`verification-rules` 的「资源所有权唯一」。
+      if (!next.isAuthenticated && prev?.isAuthenticated == true) {
+        setState(() {
+          _unreadCount = 0;
+          _referralCode = null;
+          _avatarUrl = null;
+        });
+        return;
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
@@ -340,14 +366,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   /// 顶栏：标题 + 副标题（左）· 通知入口（右上）。
   ///
-  /// 副标题的用途是**让订阅状态在首屏可见**（与收藏页副标题同规格）。
+  /// # 🔴 两个元素都**依赖登录态**（2026-09-29 白哥复核后定）
+  ///
+  /// | 元素 | 未登录 | 为什么 |
+  /// |---|---|---|
+  /// | 副标题 | 只显示 `免费版`（**不含昵称**） | 昵称来自登录账号 —— 没登录就没有名字可显示。<br>⚠️ 但 `免费版` / `订阅版` 是**真实状态**（不依赖登录）→ **保留** |
+  /// | 通知入口 | **不渲染** | 未读数来自 `/api/notifications?user_id=`；未登录时面板里 `_userId.isEmpty` 直接 return → **点开是空白** |
+  ///
+  /// 🔑 判据：**数据在后端 → 必须登录；数据在端侧 → 不需要。**
+  ///    详见方案 §11.6.1b。
   Widget _buildTopBar(AuthState auth) {
     final t = CoEvoTokensExt.of(context);
     final sub = ref.watch(subscriptionProvider);
 
-    // 「白哥 · 免费版」—— 昵称 + 版本
+    // 「白哥 · 免费版」—— 昵称 + 版本；**未登录时不带昵称**
     final version = sub.isActive ? '订阅版' : '免费版';
-    final subtitle = '${_displayName.isEmpty ? '用户' : _displayName} · $version';
+    final subtitle = auth.isAuthenticated
+        ? '${_displayName.isEmpty ? '用户' : _displayName} · $version'
+        : version;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 2, 18, 14),
@@ -380,23 +416,29 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          // ── 通知入口（**保留** · 白哥 2026-09-29：「右上角的通知按钮保留」）──
+          // ── 通知入口（**已登录才显示** · 白哥 2026-09-29：「右上角的通知按钮保留」）──
           //
           // 🔑 用的是**现役公共组件 `HeaderChip`**（信息流右上角「收藏 N」、
           //    复习页「全部/已到期」**同一个**）—— 不是自创一个新样式。
-          // ⚠️ 此前是 `AppBar.actions` 里的 `Badge + IconButton`；
-          //    顶栏改成自绘后那里无处可放，本组件正好补位。
           // 🔑 `count: null`（未读为 0）= **不显示计数**（而不是显示「0」）。
-          HeaderChip(
-            icon: Icons.notifications_none,
-            label: '通知',
-            count: _unreadCount > 0 ? _unreadCount : null,
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const NotificationPanel()),
+          //
+          // 🔴 **未登录时不渲染**：未读数接口要 `user_id`，
+          //    未登录时 `_loadUnreadCount()` 直接 return → 计数恒为 null（看似正常），
+          //    但点进去 `NotificationPanel` 里 `_userId.isEmpty` 也直接 return
+          //    → **用户看到的是一个空白页**（「静默失败 + 无出口」）。
+          //    隐藏比「显示一个点不开的入口」诚实。
+          if (auth.isAuthenticated) ...[
+            const SizedBox(width: 12),
+            HeaderChip(
+              icon: Icons.notifications_none,
+              label: '通知',
+              count: _unreadCount > 0 ? _unreadCount : null,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const NotificationPanel()),
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -435,10 +477,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         const SizedBox(height: CoSpacing.lg),
 
         // ── ③ 订阅 ──
+        //    🔴 登录态分流的**三处之一**（另两处：顶栏通知入口 · 账号组）。
+        //
+        //    未登录时**不隐藏订阅组**，而是换文案为「订阅完整版」入口 ——
+        //    依据 `ui-ux` §4.4 判据 6 原文：
+        //      「朗读按钮在免费层**可见但点击时提示订阅 —— **不要藏起来**。
+        //        让用户知道有这个能力，才能成为订阅动机」
+        //    + §4.4.4：「未订阅 → 「我的」页显示「**订阅完整版**」入口」。
+        //    → 未登录 = 必然未订阅 ⇒ 应显示**入口**。**藏起来会切断订阅动机。**
         _groupLabel('订阅'),
-        _buildSubscriptionCard(),
-        const SizedBox(height: CoSpacing.sm),
-        const OrderHistory(),
+        _buildSubscriptionCard(auth),
+        //    ⚠️ 历史订单**未登录时不渲染**：它按 `user_id` 查（`_loadOrders`
+        //       里 `userId == null` 直接 return）→ 未登录必然显示「暂无订单」。
+        //       显示一个恒空的列表没有信息量，属「未登录态多出来的东西」。
+        if (auth.isAuthenticated) ...[
+          const SizedBox(height: CoSpacing.sm),
+          const OrderHistory(),
+        ],
         const SizedBox(height: CoSpacing.lg),
 
         // ── ④ 其他 ──
@@ -466,8 +521,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
         const SizedBox(height: CoSpacing.xl),
 
-        // ── ⑤ 退出账号 ──
-        _buildSignOutTile(),
+        // ── ⑤ 退出账号（**仅已登录**）──
+        //    🔴 未登录无账号可退。原先是**无条件渲染** → 逻辑矛盾
+        //       （未登录的用户看到一个「退出账号」，点了会清一个本来就不存在的登录态）。
+        if (auth.isAuthenticated) _buildSignOutTile(),
       ],
     );
   }
@@ -511,13 +568,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final radius = BorderRadius.circular(16);
 
     if (!auth.isAuthenticated) {
+      // 🔑 未登录时这一行是**入口**，不是「状态」（白哥 2026-09-29 定）。
+      //
+      //    旧文案「未登录 / 登录后可跨设备同步 · 找回订阅」的问题在于措辞：
+      //    它把头两个字放在「你缺了个账号」上，而用户此刻关心的是「登录有什么用」。
+      //    → 改成动作（「登录 / 注册」）+ **价值**（跨设备同步 · 找回已购订阅）。
+      //
+      //    这正好对应规格 §10.1.1 说的那两类时刻：
+      //    「**匿名可用 → 需要同步或购买时引导注册**」
+      //    「账号只在两类时刻出现：**要同步**、**要付费**」
       return Clay(
         borderRadius: radius,
         padding: EdgeInsets.zero,
         child: _navTile(
           icon: Icons.person_outline,
-          title: '未登录',
-          subtitle: '登录后可跨设备同步 · 找回订阅',
+          title: '登录 / 注册',
+          subtitle: '跨设备同步 · 找回已购订阅',
           onTap: () => _comingSoon('登录'),
           bare: true,
         ),
@@ -992,9 +1058,70 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     } catch (_) {}
   }
 
-  /// 保存二维码图片到本地
-  // ── 订阅状态卡片
-  Widget _buildSubscriptionCard() {
+  /// 订阅状态卡片。
+  ///
+  /// # 🔴 两态分流（2026-09-29 白哥复核后定）
+  ///
+  /// | 态 | 显示 | 依据 |
+  /// |---|---|---|
+  /// | **未登录** | 「**订阅完整版**」入口 + 「查看」按钮 → 引导登录 | `ui-ux` §4.4 判据 6（**不要藏起来**）· §4.4.4（未订阅显示入口）· §10.1.1（要付费时引导注册） |
+  /// | 已登录 | 状态文案（按到期日分档）+ 「续费」按钮 | 原实现 |
+  ///
+  /// ⚠️ **未登录与「已登录但未订阅」原先不可区分** ——
+  ///    两者都落到 `!isActivated` 分支，统一显示「未激活 — 请联系服务人员开通」。
+  ///    对**未登录**用户这是**误导**（他会去找客服，其实只是没登录）。
+  ///
+  /// 🔴 **遗留（待支付批次改，白哥已认可）**：已登录分支的文案
+  ///    「未激活 — 请联系服务人员**开通**」「已到期 — 请联系服务人员**续费**」
+  ///    是**微信 Native 扫码支付时代**的残留。规格 §4.4 / `ui-ux:153` 定的是
+  ///    「订单 / 订阅状态 = **Apple IAP 自动处理**」→ 这两句届时一并改。
+  ///    （现状端侧无 `in_app_purchase` 依赖，`pay_screen` 仍走微信流程。）
+  Widget _buildSubscriptionCard(AuthState auth) {
+    // ── 未登录：入口（**不显示任何订阅状态**）────────────────────────
+    if (!auth.isAuthenticated) {
+      return Clay(
+        borderRadius: BorderRadius.circular(16),
+        padding: EdgeInsets.zero,
+        onTap: () => _comingSoon('登录'),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
+          child: Row(
+            children: [
+              Icon(Icons.workspace_premium_outlined,
+                  color: Color(CoEvoTokensExt.of(context).accent.argb32),
+                  size: 19),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('订阅完整版',
+                        style: TextStyle(
+                          fontFamily: CoFonts.uiSans,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Color(CoEvoTokensExt.of(context).ink.argb32),
+                        )),
+                    const SizedBox(height: 2),
+                    // 价值主张照规格 §4.4 判据 3「要具体」——
+                    // 不写「解锁全部功能」，写清到底是什么。
+                    Text('无限生词本 · 文章朗读',
+                        style: TextStyle(
+                          fontFamily: CoFonts.uiSans,
+                          fontSize: 11.5,
+                          color: Color(CoEvoTokensExt.of(context).ink3.argb32),
+                        )),
+                  ],
+                ),
+              ),
+              ClayButton(label: '查看', onTap: () => _comingSoon('登录')),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // ── 已登录：状态文案 ──────────────────────────────────────────
     final sub = ref.watch(subscriptionProvider);
     final expiresStr = sub.expiresAt;
     final bool isActivated = expiresStr != null && expiresStr.isNotEmpty;
@@ -1082,8 +1209,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             //    见 `widgets/clay_button.dart` 的类文档。
             // ⚠️ 与本行的整行 `onTap` **同一个动作**（都开订阅弹层）——
             //    这是有意的：按钮是**可见的 CTA 提示**，整行点击是便利区。
+            //
+            // 🔑 **label 按状态切换**（原先硬编码「续费」）：
+            //    未订阅时说「续费」是错的 —— 没订阅过，哪来的「续」？
+            //    原型 ② 屏画的也是「升级」。→ 未激活/已到期 = 升级；有效 = 续费。
             ClayButton(
-              label: '续费',
+              label: isActivated ? '续费' : '升级',
               onTap: _showSubscribeDialog,
             ),
           ],
