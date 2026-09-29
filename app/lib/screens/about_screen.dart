@@ -52,6 +52,36 @@
 // 🔑 **判据（泛化）**：一个「关于/信息」页的乱，通常不是「某个字号不对」，
 //    而是**①同一信息重复出现 ②层级用 0.5px 的字号差表达 ③同一位置混了两种颜色**。
 //    修法是**减少变量**（少一档字号、少一处重复），不是逐处微调。
+//
+// # 🔴 第三轮：三行**必须共用同一个 label 列宽**（白哥第二次指出）
+//
+// 白哥：「应用名、版本号、备案号还是字号不统一、缩进不统一，**你只是取消了顶部的信息，
+// 但是没有统一三行内容**」。
+//
+// 实测（用 Chrome 量原型的渲染几何，不是读代码猜）：
+//
+// | 行 | label | label 宽 | **值左边界** | 值右边界 |
+// |---|---|---|---|---|
+// | 应用名称 | 4 字 | 56 | **2025** | 2235 |
+// | 版本 | 2 字 | 28 | **1997** | 2235 |
+// | 备案号 | 3 字 | 42 | **2011** | 2235 |
+//
+// 🔴 **值的左边界差 28px** —— label 宽度由内容决定（4/2/3 字各不同），
+//    而 `Spacer()` 把值推到右边 ⇒ **右边界齐、起点不齐** ⇒ 看着「参差」。
+//
+// ✅ 修法：label 列**定宽** + 值改**左对齐** ⇒ 两条竖直对齐线。
+//    这是「信息表」的标准做法（同 macOS「关于本机」）。
+//
+// 🔑 **列宽由 `TextPainter` 实测**（[_measureLabelColumn]），**不是**「字号 × 字数」估算 ——
+//    中文字形的 advance 不是恰好 1em，估算在系统「文字大小」缩放后会不够
+//    （`header_chip.dart` 的教训：估算 36px 让「已到期」在真机折成两行）。
+// ⚠️ **量宽度与渲染必须共用同一个 style**（[_labelStyle]）——
+//    各写一份的话，改字体/字重后列宽会**悄悄**不准（不报错）。
+//
+// ⚠️ 关于白哥说的「字号不统一」：实测三行的 `font-size` **都是 14px，一致**。
+//    「大小不一」的观感来自 ① 参差的起点（本轮修掉）② **中英字形差异** ——
+//    中文是满格字面，`CoEvo` / `1.0.0` 是拉丁字母，同样 14px 下视觉高度明显更矮。
+//    后者是字体固有的，**不该靠调字号去补**（补了会让中文行真的偏大）。
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -84,6 +114,45 @@ import '../widgets/twemoji.dart';
 ///    「联系工作人员」弹窗（`CoDialog` 内部，属另一个视觉上下文）。
 const double _kBodyFontSize = 14;
 
+/// 信息行**左列（字段名）的唯一样式** —— [AboutScreen] 量列宽与 [_InfoRow] 渲染**共用**它。
+///
+/// 🔑 存在的唯一理由：**防止「量宽度」与「渲染」两处 style 漂移**。
+///    拆成两份写法看起来无害，但改了 `fontSize` / `fontWeight` 之后，
+///    量出来的列宽就不再是实际渲染宽度 —— 而**这不报错**，
+///    只是三行悄悄又错开几像素（正是白哥这次指出的那类问题）。
+///    判据：「同一件事的『口径』只能有一处权威」。
+TextStyle _labelStyle(CoEvoTokens t) => TextStyle(
+      fontFamily: CoFonts.uiSans,
+      fontSize: _kBodyFontSize,
+      // w500 与 `profile_screen._navTile.title` 一致（列表行左列都是这个字重）
+      fontWeight: FontWeight.w500,
+      color: Color(t.ink.argb32),
+    );
+
+/// 量出**一组 label 里最宽的那个**的实际渲染宽度（供 [_InfoRow.labelWidth] 用）。
+///
+/// # 🔑 为什么用 `TextPainter` 实测，而不是「字号 × 字数」
+///
+/// 中文字形的 advance **并非恰好 1em** —— 字体 fallback、`w500` 的合成加粗、
+/// 系统「文字大小」缩放，都会让它更宽。估算值迟早不够（`header_chip.dart` 的教训：
+/// 那里用 `labelMinWidth = 36` 估算「3 字 × 11.5」，真机上「已到期」折成了两行）。
+///
+/// ✅ 让**引擎**量：同一套 `TextStyle` 喂进去，谁宽用谁。
+/// ⚠️ 调用方应传 [_labelStyle] 的产物 —— **与实际渲染完全同一个 style**，否则白量。
+double _measureLabelColumn(List<String> labels, TextStyle style) {
+  final painter = TextPainter(
+    textDirection: TextDirection.ltr,
+    maxLines: 1,
+  );
+  var widest = 0.0;
+  for (final label in labels) {
+    painter.text = TextSpan(text: label, style: style);
+    painter.layout();
+    if (painter.width > widest) widest = painter.width;
+  }
+  return widest;
+}
+
 /// 段间分隔线 —— **上下留白统一**（上 `xl`=20 / 下 `lg`=16）。
 ///
 /// 🔑 为什么做成 helper：原实现两条线分别写了 `xl+lg` 与 `xl+sm` ——
@@ -104,6 +173,14 @@ class AboutScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = CoEvoTokensExt.of(context);
+
+    // 🔑 产品信息三行的 **label 列宽** —— 引擎实测，三行共用（见文件头「第三轮」）。
+    //    🔴 必须「一处产出、两处消费」：量的 style 与 `_InfoRow` 渲染的 style
+    //       都由 [_labelStyle] 产生；各写一份的话，改了字体/字重后列宽会悄悄不准。
+    final labelColumnWidth = _measureLabelColumn(
+      const ['应用名称', '版本', '备案号'],
+      _labelStyle(t),
+    );
 
     return Scaffold(
       // 🔑 与全站一致：**自绘顶栏**（不用 Material `AppBar`）
@@ -178,10 +255,22 @@ class AboutScreen extends StatelessWidget {
                   //
                   // ⚠️ 之前 `_InfoRow` 是「标签浅 / 值深」，而原型 `.row` 是「标签深 / 值浅」
                   //    —— 两处相反。现统一到后者（设置列表的通行做法）。
-                  _InfoRow(label: '应用名称', value: kCoEvoName),
-                  _InfoRow(label: '版本', value: kCoEvoVersion),
+                  // 🔴 三行**共用同一个 label 列宽**（`labelColumnWidth`）——
+                  //    不传它的话，label 又回到「内容宽」，三行的值起点就会再次错开。
+                  //    📄 实测数据与推导见文件头「第三轮」。
+                  _InfoRow(
+                      labelWidth: labelColumnWidth,
+                      label: '应用名称',
+                      value: kCoEvoName),
+                  _InfoRow(
+                      labelWidth: labelColumnWidth,
+                      label: '版本',
+                      value: kCoEvoVersion),
                   // 🔑 备案号是**中国区上架的常规要求**，且已真实持有 → 直接放（不是占位）
-                  _InfoRow(label: '备案号', value: '粤ICP备2026061557号-1'),
+                  _InfoRow(
+                      labelWidth: labelColumnWidth,
+                      label: '备案号',
+                      value: '粤ICP备2026061557号-1'),
 
                   // ── ② 分隔线（留白统一：上 20 / 下 16）──
                   //    ⚠️ 原实现两条线分别是 `xl+lg` 与 `xl+sm` —— 同样的线、不同的留白，
@@ -351,9 +440,21 @@ class _LinkRow extends StatelessWidget {
 ///    改过来的理由不是审美偏好，而是**与 [_LinkRow] 对齐** ——
 ///    两类的**左列在视觉上必须是同一条线**，否则相邻两组一浅一深地看着乱。
 ///
+/// # 🔴 [labelWidth] **必填** —— 三行必须共用同一个列宽
+///
+/// 不传它（或各行传不同的值）→ label 回到「内容宽」→ 三行的值起点再次错开。
+/// 📄 实测数据（值左边界 2025 / 1997 / 2011）与推导见**文件头「第三轮」**。
+///
 /// ⚠️ 与 [_LinkRow] 是**两个类**，别合并 —— 理由见 [_LinkRow] 的文档。
 class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
+  const _InfoRow({
+    required this.labelWidth,
+    required this.label,
+    required this.value,
+  });
+
+  /// label 列的**共用宽度**（调用方用 [_measureLabelColumn] 实测传入；同组各行必须相同）。
+  final double labelWidth;
 
   final String label;
   final String value;
@@ -366,21 +467,24 @@ class _InfoRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontFamily: CoFonts.uiSans,
-              fontSize: _kBodyFontSize,
-              // w500 与 `_navTile.title` 一致（列表行的左列都是这个字重）
-              fontWeight: FontWeight.w500,
-              color: Color(t.ink.argb32),
+          SizedBox(
+            width: labelWidth,
+            child: Text(
+              label,
+              // 🔑 与量列宽用的是**同一个** style（[_labelStyle]）——
+              //    两处各写一份的话，改了字体/字重后列宽会悄悄不准（不报错）。
+              style: _labelStyle(t),
             ),
           ),
-          const Spacer(),
-          Flexible(
+          // label 与值之间的**固定**间距。
+          // 🔴 原来这里是 `Spacer()`（弹性空白）—— 正是它让三行的值起点
+          //    跟着各自 label 的宽度漂。改成固定值才能得到「一条竖线」。
+          const SizedBox(width: 12),
+          // 🔑 值**左对齐**并占满剩余宽度 ⇒ 三行的值从**同一条竖线**开始。
+          //    ⚠️ 不再用 `Flexible` + `TextAlign.right`（那是右对齐：右边界齐、起点不齐）。
+          Expanded(
             child: Tw(
               value,
-              textAlign: TextAlign.right,
               style: TextStyle(
                 fontFamily: CoFonts.uiSans,
                 fontSize: _kBodyFontSize,

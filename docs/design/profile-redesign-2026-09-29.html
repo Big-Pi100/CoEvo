@@ -343,12 +343,19 @@ code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em
 .ag{padding:2px 20px 0;flex:1;overflow-y:auto}
 .ag .back{font-size:12px;font-weight:600;color:var(--accent);
           padding:6px 10px;flex:0 0 auto}
-/* 「字段名 — 值」：左 `ink` 深 + w500 / 右 `ink3` 浅（iOS 设置惯例） */
+/* 「字段名 — 值」：左 `ink` 深 + w500 / 右 `ink3` 浅（iOS 设置惯例）
+   🔴 2026-09-29 第三轮：**label 列定宽 + 值左对齐**（白哥指「没有统一三行内容」）。
+   实测（改前）：三行的**值左边界** 2025 / 1997 / 2011 —— 差 28px。
+   根因：`.k` 原为 `flex:0 0 auto`（内容宽，4/2/3 字各不同）+ `.v` 右对齐
+   ⇒ 值的**右边界齐、起点不齐**。改后两条竖线，值从同一列开始。
+   ⚠️ 这里的 `56px` 是**实现里 `TextPainter` 实测出的宽度**（「应用名称」4 字），
+      **不是**「字号 × 字数」的估算 —— 原型 CSS 无法实测，故写死并注明来源。
+      实现侧永远是实测（见 `about_screen._measureLabelColumn`）。 */
 .agkv{display:flex;align-items:flex-start;gap:12px;padding:9px 0}
-.agkv .k{font-size:14px;font-weight:500;color:var(--ink);flex:0 0 auto}
+.agkv .k{font-size:14px;font-weight:500;color:var(--ink);flex:0 0 56px}
 /* 🔴 `flex:1` + `min-width:0` 必须成对 —— 只写 `flex:0` 会让宽度坍缩到 0
    （4 字逐字换行 = 竖排）。这正是源码级校验看不见、渲染级才抓得到的那类错。 */
-.agkv .v{font-size:14px;color:var(--ink3);text-align:right;flex:1;min-width:0}
+.agkv .v{font-size:14px;color:var(--ink3);flex:1;min-width:0}
 /* 上 20 / 下 16 —— 与实现的 `_divider()` 逐字一致（原为上下各 16） */
 .agdiv{height:1px;background:var(--line);margin:20px 0 16px}
 /* 段级说明（隐私政策待补）—— 字号同样是 14，靠颜色与两侧分隔线区分层级 */

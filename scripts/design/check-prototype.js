@@ -183,6 +183,33 @@ function checkPage(file, opts = {}) {
        (bad.length ? ' · 🔴 违规档位: ' + bad.join(', ') : ''));
   });
 
+  // 11. 选择器级检查（🆕 2026-09-29）
+  //
+  // 🔴 **为什么需要它：区间级 `forbidden` 会「误伤区间里别的合法用法」。**
+  //
+  // 实测：我想断言「`.agkv .k` 不该再用 `flex:0 0 auto`」，
+  // 写成 `containerChecks` + `forbidden:['flex:0 0 auto']` → **假红**。
+  // 因为同一 CSS 区间里 `.ag .back`（顶栏返回按钮）**也**用了 `flex:0 0 auto`，
+  // 而那里是**正确**的（按钮就该是内容宽）。
+  //
+  // 🔑 判据：**「某处不该有 X」的「某处」要精确到「对象」，不能是整个区间** ——
+  //    区间里可能有别的、合法的同样写法。
+  //    ⚠️ 这与 §10 的「区间过大 → 假红」是**同族但不同层**：
+  //       §10 是「区间切错了」，这里是「区间对了，但判断的**粒度**太粗」。
+  (opts.selectorChecks || []).forEach(({ label, selector, forbidden }) => {
+    const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(esc + '\\s*\\{([^}]*)\\}', 'g');
+    const hits = [...src.matchAll(re)];
+    if (hits.length === 0) { ok(false, label + ': 找不到选择器 `' + selector + '`'); return; }
+    hits.forEach((m, idx) => {
+      const body = stripComments(m[1]);
+      const bad = forbidden.filter(f => body.includes(f));
+      ok(bad.length === 0,
+         label + ' —— `' + selector + '`' + (hits.length > 1 ? '#' + (idx + 1) : '') +
+         (bad.length ? ' 🔴 含: ' + bad.join(', ') : ' 规则体干净'));
+    });
+  });
+
   // 9. 自定义断言
   (opts.mustHave || []).forEach(t => ok(src.includes(t), '含「' + t + '」'));
   (opts.mustNotHave || []).forEach(t => ok(!src.includes(t), '不含「' + t + '」'));
@@ -332,6 +359,23 @@ checkPage(D + 'profile-redesign-2026-09-29.html', {
       to: '.aggo{',
       forbidden: ['agapp', '.agtx{'],
     },
+  ],
+
+  // ── 选择器级检查（粒度比区间细，见 §11）──
+  //
+  // 🔴 2026-09-29 **第三轮**：白哥「你只是取消了顶部的信息，但是没有统一三行内容」。
+  //    实测三行的**值左边界**是 2025 / 1997 / 2011（差 **28px**）。两个写法共同造成它：
+  //      · `.agkv .k{flex:0 0 auto}` —— label 取内容宽（4/2/3 字各不同）
+  //      · `.agkv .v{text-align:right}` —— 值右对齐 ⇒ 右边界齐、**起点不齐**
+  //
+  // ⚠️ **必须用 selectorChecks（不是区间 forbidden）**：
+  //    同一 CSS 区间里 `.ag .back`（顶栏返回）**也**用 `flex:0 0 auto`，而那是**正确的**
+  //    → 区间级 forbidden 会**误伤**它（实测假红过一次）。
+  // 🔑 判据：「某处不该有 X」的「某处」要精确到**对象**，不能是整个区间 ——
+  //    区间里可能有别的、合法的同样写法。
+  selectorChecks: [
+    { label: '三行对齐 · label 列定宽（不得退回 auto）', selector: '.agkv .k', forbidden: ['auto'] },
+    { label: '三行对齐 · 值左对齐（不得退回右对齐）', selector: '.agkv .v', forbidden: ['text-align:right'] },
   ],
 
   // ── 字号白名单 ──
