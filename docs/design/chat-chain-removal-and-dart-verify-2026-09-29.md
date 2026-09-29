@@ -102,23 +102,37 @@ D:\flutter\bin\cache\dart-sdk\bin\dart.exe        ← flutter 自带的 dart，�
 ```bash
 cd app
 DART="/d/flutter/bin/cache/dart-sdk/bin/dart.exe"
-"$DART" tool/verify_resolution.dart          # 检查 lib/
-"$DART" tool/verify_resolution.dart lib/api  # 只查子目录
+"$DART" tool/verify_resolution.dart              # 检查 lib/
+"$DART" tool/verify_resolution.dart lib/api      # 只查子目录 / 单个文件
 ```
 退出码：有 error → 1（可挂 CI）。
 
-### ⚠️ 覆盖边界（必须如实标注）
+### ⚠️ 覆盖边界（**结论必须按这个表述**）
 
 | 覆盖 | 不覆盖 |
 |---|---|
 | import 能否解析（URI 存在性）✅ | 完整编译（const 求值 / tree-shaking / 平台通道）❌ |
 | 类型错误 / 未定义符号 ✅ | 运行时行为 ❌ |
 
-→ **结论只能说「resolution 通过」，不能说「构建通过」**。
+→ **只能说「resolution 通过」，不能说「构建通过」。**
+
+### 🔴🔴 且**不能替代 `flutter analyze`** —— 已实测交叉验证
+
+白哥跑了官方 `flutter analyze`（**65 issues · 0 error**），与本工具对比：
+
+| 项 | 本工具（analyzer 5.13） | `flutter analyze` | 差异 |
+|---|---|---|---|
+| error | **1**（`bookmark_provider.dart:124` 类型问题） | **0** | 🔴 本工具**多报** → 用**比项目新**的 SDK，判定**更严** |
+| warning | 2 | 3（多一个 `unused_element`） | 🔴 本工具**少报** → **lint 规则集随 analyzer 版本变化** |
+
+🔑 **两条使用纪律**：
+1. **不要把本工具的 error 直接当结论** —— 对外报告前**用官方工具复核**。
+   （本案我差点据此报「项目编译不过」；白哥一跑 → **0 error** → 证明是**误报**。）
+2. 本工具定位 = **改完立刻自查**；**`flutter analyze` 仍是权威**（尤其 lint）。
 
 ---
 
-## 四、🔴 我犯的错误：**路径解析口径算错，产生 7 处假警报**
+## 四、🔴 我犯的错：**路径解析口径算错，产生 7 处假警报**
 
 ### 现象
 
@@ -181,13 +195,37 @@ $ dart tool/verify_resolution.dart
 
 ---
 
-## 六、🔴 发现的既有问题（**未改** · 需你决定）
+## 六、既有问题与**本轮结论更正**
+
+### ✅ 更正：`bookmark_provider.dart` 的 error 是**我的误报**（白哥已用官方工具证实）
+
+我上轮据本工具报「`bookmark_provider.dart:124` 有 1 个 error，**可能项目当前编译不过**」。
+白哥跑了官方 `flutter analyze` → **0 error**（65 issues 全是 info/warning）。
+
+→ 🔴 **结论：那是本工具（Dart 3.11 SDK）比项目 SDK 新、判定更严造成的误报；项目编译没问题。**
+**「可能构建不过」这条担心可以撤销。**
+
+### 本轮我**自己引入**的问题（已全部修掉）
+
+| # | 问题 | 处理 |
+|---|---|---|
+| 1 | 新文件 `tool/verify_resolution.dart` 给 `flutter analyze` 加了 **7 条** info（`analyzer` 非直接依赖 ×2 + `avoid_print` ×5） | ✅ 加 `// ignore_for_file`（见 §三 末尾「降噪方式的选择」） |
+| 2 | 工具**传带斜杠的子目录会崩**（`lib/api` → 混用分隔符 → analyzer 抛 `Only absolute normalized paths`） | ✅ 归一化分隔符 + 支持文件路径 |
+| 3 | 工具**只报 warning 数量、不报详情** → 自造盲区（我自己新引入的 `unused_local_variable` 一度被漏看） | ✅ 改为打印 warning 详情 |
+| 4 | 修 ②③ 时又引入 `unused_local_variable`（声明 `isDir` 却没用） | ✅ 由 ③ 的改进**当场发现**并修掉 |
+
+### 确认**既有**（不是我造成的）
+
+`profile_screen.dart:31` 的 `unused_import: qr_flutter` —— **git 核实**：本次改动前的版本（`9a44805^`）
+里该 import 就**存在且零使用** → 既有问题。（我只改了同文件的 client 相关代码，未碰 QR。）
+
+### 🔴 发现的既有问题（**未改** · 需你决定）
 
 | # | 问题 | 说明 |
 |---|---|---|
-| 1 | `providers/bookmark_provider.dart:124` 有一个 **error** | `The return type 'Object' isn't a 'Future<List<Bookmark>>'` —— 类型错误，**与本次改动无关**（该文件最后改于 `0e9410f`）。🔴 如果它真是 error，说明**项目当前编译不过** → 需你确认（可能是我用的 Dart 3.11 比项目 SDK 新，判定更严） |
-| 2 | `test/math_streaming_test.dart` · `test/math_e2e_pipeline_test.dart` | 注释写着「模拟 `chat_screen.dart` 的 `_handleWsEvent` / `_buildRichContent`」→ **测的是已删除的 chat 链行为**。它们**不 import** 被删文件（能编译 ✅），但已是**僵尸测试**（测不存在的功能）→ 建议一并删 |
-| 3 | `.dart_tool/version` = 鸿蒙 SDK | 与「全路径用 `D:\flutter` 3.41.1」的约定不一致 → 待确认当前用哪个 SDK 构建 |
+| 1 | `test/math_streaming_test.dart` · `test/math_e2e_pipeline_test.dart` | 注释写着「模拟 `chat_screen.dart` 的 `_handleWsEvent` / `_buildRichContent`」→ **测的是已删除的 chat 链行为**（僵尸测试）。不 import 被删文件（能编译 ✅），但 analyzer 报了 **26 条** info/warning → 建议一并删 |
+| 2 | `sqflite_common` 非直接依赖（**8 处** info） | 直接用传递依赖 → 建议在 `pubspec.yaml` 显式声明 |
+| 3 | `.dart_tool/version` = `3.27.5-ohos-1.0.5`（鸿蒙 SDK） | 与「全路径用 `D:\flutter` 3.41.1」的约定不一致 → 待确认当前用哪个 SDK 构建 |
 
 ---
 
@@ -204,12 +242,13 @@ $ dart tool/verify_resolution.dart
 
 ## 八、下一步
 
-| 步 | 内容 | 阻塞 |
+| 步 | 内容 | 状态 |
 |---|---|---|
-| **你确认** | §六 的 3 项（尤其 `bookmark_provider` 是否真 error） | 需你（我无法跑完整编译） |
-| **你编译一次** | `flutter analyze` + 真机跑一下个人页（改昵称 / 看资料） | 我本机编译不了 |
-| 僵尸测试 | 是否删 `test/math_*_test.dart` | 等你批 |
-| **A2** | 端侧接在线制卡（`external_word_cache` + 转圈 + 重试） | 无（合规闸门已就绪） |
+| ~~确认 `bookmark_provider` 是否真 error~~ | ✅ **已确认：我的误报**（官方工具 **0 error**） | 完成 |
+| **你编译一次** | `flutter analyze`（预期 **65 → 58**，我的 7 条消失）+ 真机点一下**个人页**（看资料 / 改昵称） | 我跑不了 `flutter analyze` |
+| 僵尸测试 | 是否删 `test/math_*_test.dart`（analyzer 报 26 条来自它们） | 等你批 |
+| `sqflite_common` | 是否显式声明为依赖（8 处 info） | 等你批 |
+| **A2** | 端侧接在线制卡（`external_word_cache` + 转圈 + 重试） | 无阻塞（合规闸门已就绪） |
 
 ---
 
