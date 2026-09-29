@@ -254,3 +254,107 @@ server {
 
 > 2.2 与 2.3 的顺序**不可颠倒** —— 颠倒了就要依赖「新 block 也配 acme-challenge」，
 > 且若新 block 排在前还会抢默认 server。
+### 9.6 🔴 12:2x 复核：白哥已改 DNS —— 实测发现两件事
+
+**白哥给的表**：`keyievolution.fun` / `pay` / **`pi`** / `www` → 全部 **A** → `<VPS_IP>` · **仅 DNS** ✅
+
+**实测（用 8.8.8.8 复核，排除本地缓存）**：
+
+| 域名 | 解析 | 备注 |
+|---|---|---|
+| `keyievolution.fun` | `<VPS_IP>` | 🆕 **改过**（原 `<DOMAIN_OLD_IP>`） |
+| `pay.keyievolution.fun` | `<VPS_IP>` | 不变 |
+| **`api.keyievolution.fun`** | ❌ **NXDOMAIN（不存在）** | ⚠️ 我方案里要的是这个 |
+| **`pi.keyievolution.fun`** | `<VPS_IP>` | 🆕 **加的是 `pi`，不是 `api`** |
+| `www.keyievolution.fun` | `<VPS_IP>` | 🆕 **改过**（原 `<DOMAIN_OLD_IP>`） |
+
+#### 🔴 第二件事：主域 / `www` / `pi` 现在 HTTPS 会「**证书不匹配 + 404**」
+
+因为它们指向本机，但本机 nginx **只有 `pay` 的 server block** → 请求 fallback 到**默认 server（`pay` 的）**：
+
+| 探测 | 结果 |
+|---|---|
+| `http://keyievolution.fun/` | **301** → `https://keyievolution.fun/`（80 默认 server 的 `return 301`） |
+| `https://keyievolution.fun/`（**不加 `-k`**） | 🔴 **证书错误**：`SEC_E_WRONG_PRINCIPAL`（目标主要名称不正确） |
+| 同上（**加 `-k`** 跳过验证） | **404**（命中 `pay` 的 `location / { return 404; }`） |
+| 证书 subject | **`CN=pay.keyievolution.fun`** → 与这三个域名**都不匹配** |
+| `pay` 自己 | ✅ **HTTP 200**（正常，未受影响） |
+
+🔑 **状态变化**：主域从「**不通**」（`<DOMAIN_OLD_IP>` 超时）变成「**HTTPS 证书警告 + 404**」——
+**对访客而言比之前更糟**（浏览器会弹安全警告）。
+这是**改 DNS 的连带结果**（本机没有对应 server block，也无对应证书）。
+
+**⏳ 待白哥澄清**（两个歧义，见请示）：
+1. `pi` 是笔误还是有意？（我方案里写的是 `api`）
+2. 主域 / `www` 指向本机的**意图**是什么？
+---
+
+## 十、域名规划（2026-09-29 12:2x · 白哥答复后定稿）
+
+### 10.1 白哥的答复
+
+| 问 | 答 |
+|---|---|
+| `pi` 还是 `api`？ | **「pi 是其他的功能，你如果要用 api 可以加一个」** → 🔴 **`pi` 属别的用途，我不碰**；CoEvo 用 **`api`**（白哥将新增该记录） |
+| 主域 / `www` 做什么？ | **「给 CoEvo 用」** |
+
+### 10.2 域名分工（定稿）
+
+| 域名 | 归属 | 处理 |
+|---|---|---|
+| **`keyievolution.fun`** | ✅ CoEvo 门面 | 配 server block + 证书（**当前是证书错误 + 404**，见 §9.6） |
+| **`www.keyievolution.fun`** | ✅ CoEvo 门面（同上） | 同上（建议 301 到主域，或同站） |
+| **`api.keyievolution.fun`** | ✅ CoEvo 后端 API | 反代 → `127.0.0.1:8300` · ⏳ **等白哥加 DNS** |
+| `pay.keyievolution.fun` | 🔴 vibedollar 支付 | **不碰**（现有） |
+| **`pi.keyievolution.fun`** | 🔴 **别的功能** | **不碰** |
+| `mailproxy`（无独立域名） | 🔴 vibedollar 邮件 | **不碰** |
+
+### 10.3 🔴 主域「当前状态」比改之前更差 —— 建议优先修
+
+实测（§9.6）：主域 + `www` 现在是 **HTTPS 证书错误（`CN=pay...` 不匹配）+ 404**，
+而改 DNS 之前是「不通」。**对访客而言：从"打不开"变成"安全警告"**。
+
+→ **建议优先做**（不依赖 `api` 记录）：给主域 + `www` 配 server block + 证书
+→ 证书可**一次覆盖全部**（将来 `api` 加好后再 `--expand`）：
+```bash
+certbot certonly --webroot -w /var/www/certbot \
+  -d keyievolution.fun -d www.keyievolution.fun -d api.keyievolution.fun
+```
+
+### 10.4 🔴 主域放什么内容？—— 旧设计稿**已过时**，需产品决策
+
+仓库里有 landing 相关素材，但**全部早于当前方向**：
+
+| 文件 | 日期 | 问题 |
+|---|---|---|
+| `docs/features/landing-page-design.md` | **5 月 13 日** | 「单页官网 + **APK 下载**入口」→ 🔴 与现定「**仅 iOS**」**矛盾** |
+| `docs/marketing/landing-redesign-plan.md` | 7 月 11 日 | 同期 |
+| `docs/deliverables/landing-growth-audit.md` | 7 月 11 日 | 同期 |
+| `docs/deploy/web-deploy-guide.md` | 7 月 13 日 | 同期（45 KB） |
+| `marketing/`（**1,655 个文件**） | — | 含 remotion 视频 / discovery / v3-demo，同样陈旧 |
+
+🔑 **记忆里明确**：「**仅 iOS**」+「**不做**：Web · 微信 · 词表分级 · plan · 跟读评测 · UGC」
+（此处「Web」按上下文指 **Web 版应用**；官网/落地页属另一维度，但**旧稿的 APK 定位已不成立**）。
+
+**三个选项（需白哥定）**：
+
+| # | 主域放什么 | 工作量 | 评价 |
+|---|---|---|---|
+| **甲** ⭐ | **最简占位页**（一页静态 HTML：产品名 + 一句介绍 + 备案号） | 极小 | ✅ **先解决「证书错误 + 404」**；内容待上架前再充实 |
+| 乙 | 更新旧落地页设计稿（改为 iOS / App Store 定位）再上线 | 中 | 🟠 但**尚未上架**，下载入口无处可指 |
+| 丙 | 主域也反代到后端（:8300） | 极小 | ❌ 后端无根路由 → 仍 404（只修证书不修内容） |
+
+**我的建议：甲** —— 用最小代价把「证书错误」这个**活跃不良状态**消掉；
+落地页作为**独立任务**（属营销/上架准备，需产品决策，不该阻塞本次部署）。
+
+### 10.5 修正后的执行顺序
+
+| 步 | 内容 | 谁 | 依赖 |
+|---|---|---|---|
+| **0** | 白哥加 `api` 记录（A · `<VPS_IP>` · **仅 DNS**） | 白哥 | — |
+| **1** | 服务端起（`/opt/coevo` + service 8300 + `MemoryMax=256M`）· 本机 `curl` 验 | 我 | A1 代码 |
+| **2** | nginx 三域名 server block（主域/www/api）+ 一张多域名证书 + `reload` | 我（**先报告**） | 步 0 + 步 1 |
+| **3** | 端侧接（A2）+ 真机端到端 | 我 + 白哥编译 | 步 2 |
+
+> 🔑 步 2 也可**拆成 2a（主域+www）+ 2b（api）** —— 2a 不依赖 `api` 记录，
+> 可以先修掉主域的证书问题。**推荐先 2a**（把活跃不良状态尽快消掉）。
