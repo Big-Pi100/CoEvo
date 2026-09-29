@@ -66,6 +66,13 @@ dependencies:
   # 服务层只 import `package:sqflite_common/sqlite_api.dart`（纯 Dart 接口）
   # → 可在无 Flutter 环境下用 sqflite_common_ffi 跑真库断言
   sqflite: ^2.4.1
+  # 服务层直接 import 的是 `package:sqflite_common/sqlite_api.dart`（纯 Dart 接口），
+  # 而 `sqflite_common` 只是 `sqflite` 的传递依赖 → **显式声明**才符合 pub 规范。
+  # 理由与下面的 `path` 相同：**隐式依赖会在上游改依赖树时突然断掉**，
+  # 且 `depend_on_referenced_packages` 会持续告警（实测 8 处）。
+  # ⚠️ 这不是「新引入依赖」—— `.dart_tool/package_config.json` 里本来就有它，
+  #    声明后**版本解析结果不变**（lock 里为 2.5.4+6），只是把它写进契约。
+  sqflite_common: ^2.5.4
   # 路径拼接（`user.db` / `word.db` 的落盘位置）
   # 本是 Flutter SDK 的传递依赖，这里**显式声明**才符合 pub 规范
   # （隐式依赖会在上游改依赖树时突然断掉，且 `depend_on_referenced_packages` 会告警）

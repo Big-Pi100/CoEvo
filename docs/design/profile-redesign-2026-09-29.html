@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="ink">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>「我的」页重设计 · 前后对比 — CoEvo</title>
+<!-- 字体：数字/英文用项目真实字体 Literata（本页只用到它的数字，字符集安全）；
+     中文走系统栈 —— 避开 CJK 字体 CDN 分包缺字（skill `design-prototype-page` 的既有教训）。
+     本页不含音标，故不引入 CharisSIL。 -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/literata@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/literata@5/600.css">
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   主题 token —— 照抄 app/lib/theme/coevo_tokens.dart 实测值
+   三档：墨(默认) / 格 / 夜 · 同时匹配 .theme-x 与 [data-theme="x"]
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 墨 · 暖纸（默认档）· coevo_tokens.dart:897-924 */
+.theme-ink,[data-theme="ink"]{
+  --page:#F1EDE4; --read:#FAF8F4; --card:#FFFFFF;
+  --ink:#24211C; --ink2:#6E6659; --ink3:#988F7C;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF;
+  --accent-out:rgba(180,67,44,.40);
+  --line:#EFE9DE; --sunken:#EDE6DA;
+  --clay-radius:26px;
+  --clay-out:rgba(150,125,95,.24);
+  --clay-shade:rgba(186,166,138,.55);
+  --clay-light:rgba(255,255,255,1);
+  --clay-o1:0 4px 5px; --clay-i1:-3px -3px 8px; --clay-i2:3px 3px 7px;
+}
+/* 格 · 纯白 · :940-971 */
+.theme-grid,[data-theme="grid"]{
+  --page:#EDEEF0; --read:#FFFFFF; --card:#FFFFFF;
+  --ink:#0A0A0A; --ink2:#5A5A5A; --ink3:#8A8A8A;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF;
+  --accent-out:rgba(180,67,44,.40);
+  --line:#E8E8E8; --sunken:#F0F0F0;
+  --clay-radius:14px;
+  --clay-out:rgba(110,115,125,.22);
+  --clay-shade:rgba(158,158,158,.46);
+  --clay-light:rgba(255,255,255,1);
+  --clay-o1:0 4px 5px; --clay-i1:-3px -3px 8px; --clay-i2:3px 3px 7px;
+}
+/* 夜 · 深墨 · :997-1023 */
+.theme-night,[data-theme="night"]{
+  --page:#0B0D12; --read:#14161C; --card:#1C1F27;
+  --ink:#EDEBE6; --ink2:#9AA0AE; --ink3:#6E7484;
+  --accent:#DB7E6B; --accent-bright:#E89B8C; --accent-ink:#2A1405;
+  --accent-out:rgba(219,126,107,.40);
+  --line:#262A34; --sunken:#0B0D12;
+  --clay-radius:24px;
+  --clay-out:rgba(0,0,0,.55);
+  --clay-shade:rgba(0,0,0,.42);
+  --clay-light:rgba(255,255,255,.062);
+  --clay-o1:0 4px 5px; --clay-i1:-3px -3px 8px; --clay-i2:3px 3px 7px;
+}
+
+/* ── 外壳 ─────────────────────────────────────────────── */
+*{box-sizing:border-box}
+body{
+  margin:0;padding:0 0 64px;
+  background:#26241F;color:#EDEBE6;
+  font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+
+header{padding:44px 0 24px;border-bottom:1px solid #3A362E}
+h1{font-size:27px;font-weight:600;margin:0 0 10px;letter-spacing:-.01em}
+.sub{color:#A8A296;font-size:14px;line-height:1.75;margin:0;max-width:760px}
+.src{color:#7E7869;font-size:12.5px;line-height:1.7;margin:14px 0 0;
+     border-left:2px solid #B4432C;padding-left:12px}
+code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em;
+     background:#33302A;padding:1px 5px;border-radius:4px;color:#D9B9A8}
+
+/* ── 改动速览卡（开门见山）──────────────────────────────── */
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin:26px 0 8px}
+.scard{background:#33302A;border:1px solid #4A453B;border-radius:12px;padding:16px 18px}
+.scard h3{margin:0 0 10px;font-size:14px;font-weight:600;letter-spacing:.02em}
+.scard.del h3{color:#E89B8C}
+.scard.add h3{color:#8FC7A8}
+.scard.ask h3{color:#E0C070}
+.scard ul{margin:0;padding-left:17px;color:#C6C0B4;font-size:13px;line-height:1.85}
+.scard li code{background:#3E3A32}
+
+/* ── 切换器 ───────────────────────────────────────────── */
+.switcher{position:sticky;top:0;z-index:20;background:#26241F;
+          border-bottom:1px solid #3A362E;padding:12px 0;margin-top:26px}
+.swrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.swlab{color:#A8A296;font-size:13px;margin-right:2px}
+.tbtn{background:#33302A;color:#C6C0B4;border:1px solid #4A453B;border-radius:8px;
+      padding:7px 15px;font-size:13px;cursor:pointer;font-family:inherit;
+      transition:background .2s,color .2s,border-color .2s}
+.tbtn:hover{background:#3E3A32}
+.tbtn.on{background:#B4432C;border-color:#B4432C;color:#fff}
+
+/* ── 对比区 ───────────────────────────────────────────── */
+.sec{padding:34px 0 6px}
+.sec h2{font-size:19px;font-weight:600;margin:0 0 6px}
+.sec p.lead{color:#A8A296;font-size:13.5px;line-height:1.8;margin:0 0 20px;max-width:820px}
+
+.rail{display:flex;gap:26px;overflow-x:auto;padding:4px 0 20px;
+      scroll-snap-type:x mandatory}
+.rail::-webkit-scrollbar{height:9px}
+.rail::-webkit-scrollbar-thumb{background:#4A453B;border-radius:5px}
+
+.mock{flex:0 0 auto;scroll-snap-align:start;width:344px}
+.mockcap{display:flex;align-items:baseline;gap:9px;margin-bottom:11px}
+.mockcap b{font-size:14.5px;font-weight:600}
+.mockcap span{font-size:12px;color:#8B8578}
+.tag{font-size:10.5px;padding:2px 7px;border-radius:5px;font-weight:600}
+.tag.bad{background:rgba(180,67,44,.22);color:#E89B8C;border:1px solid rgba(180,67,44,.4)}
+.tag.good{background:rgba(80,150,115,.2);color:#8FC7A8;border:1px solid rgba(80,150,115,.38)}
+
+/* 手机外框 */
+.phone{width:344px;border-radius:30px;padding:12px;background:#1A1815;
+       border:1px solid #3A362E;box-shadow:0 12px 30px rgba(0,0,0,.4)}
+.screen{background:var(--page);color:var(--ink);border-radius:20px;overflow:hidden;
+        height:668px;display:flex;flex-direction:column;position:relative;
+        transition:background .28s,color .28s}
+
+/* ── A：现状（Material AppBar + 半透明 Container，与其他页不一致）── */
+.mbar{background:var(--card);padding:13px 16px;display:flex;align-items:center;
+      justify-content:space-between;box-shadow:0 1px 3px rgba(0,0,0,.13);
+      transition:background .28s}
+.mbar .ttl{font-size:19px;font-weight:500;color:var(--ink)}
+.mbar .act{display:flex;gap:14px;align-items:center;font-size:16px;color:var(--ink2)}
+.badge{position:absolute;top:-4px;right:-5px;background:var(--accent);color:#fff;
+       font-size:9px;min-width:15px;height:15px;border-radius:8px;
+       display:flex;align-items:center;justify-content:center;padding:0 3px;font-weight:600}
+.icwrap{position:relative;display:inline-flex}
+
+.mbody{flex:1;overflow-y:auto;padding:12px 12px 100px}
+.blk{background:var(--card);border-radius:14px;padding:13px 14px;margin-bottom:11px;
+     box-shadow:0 1px 2px rgba(0,0,0,.07);transition:background .28s}
+.blk.ghost{background:color-mix(in srgb,var(--card) 22%,transparent);
+           border:1px dashed var(--line)}
+.blk h4{margin:0 0 9px;font-size:13.5px;font-weight:600;color:var(--ink)}
+.blk .hint{font-size:11.5px;color:var(--ink3);line-height:1.6}
+.row{display:flex;justify-content:space-between;align-items:center;
+     padding:8px 0;font-size:13.5px;color:var(--ink)}
+.row + .row{border-top:1px solid var(--line)}
+.row .v{color:var(--ink3);font-size:12.5px}
+.btnrow{display:flex;gap:8px;margin-top:9px}
+.mbtn{flex:1;text-align:center;font-size:12px;padding:8px 0;border-radius:9px;
+      background:var(--sunken);color:var(--ink2);transition:background .28s}
+.mbtn.pri{background:var(--accent);color:var(--accent-ink)}
+.statmini{display:flex;gap:16px;margin-top:4px}
+.statmini div{flex:1}
+.statmini b{display:block;font-size:19px;font-weight:600;color:var(--ink)}
+.statmini span{font-size:11px;color:var(--ink3)}
+.qrbox{width:74px;height:74px;border-radius:9px;background:var(--sunken);
+       display:flex;align-items:center;justify-content:center;
+       font-size:10px;color:var(--ink3);margin:0 auto}
+.avat{width:52px;height:52px;border-radius:26px;background:var(--sunken);
+      display:flex;align-items:center;justify-content:center;font-size:19px;color:var(--ink3)}
+
+/* ── B：改后（自绘顶栏 + Clay 凸起，与其他 tab 页一致）── */
+.hbar{padding:8px 18px 14px;background:var(--page);transition:background .28s}
+.hbar .t{font-size:23px;font-weight:600;letter-spacing:-.345px;color:var(--ink);
+         line-height:1.25}
+.hbar .s{font-size:12px;color:var(--ink3);line-height:1.6;margin-top:3px}
+
+.clay{background:var(--card);border-radius:var(--clay-radius);
+      box-shadow:var(--clay-o1) var(--clay-out),
+                 var(--clay-i1) var(--clay-shade),
+                 var(--clay-i2) var(--clay-light);
+      transition:background .28s,box-shadow .28s}
+.clay.flat{box-shadow:var(--clay-i1) var(--clay-shade),
+                      var(--clay-i2) var(--clay-light)}
+
+
+.grp{margin-bottom:16px}
+.grplab{font-size:11px;font-weight:600;color:var(--ink3);letter-spacing:.06em;
+        padding:0 4px 8px}
+.item{display:flex;align-items:center;gap:11px;padding:13px 15px}
+.item + .item{border-top:1px solid var(--line)}
+.item .ico{width:19px;text-align:center;font-size:15px;flex:0 0 19px}
+.item .tx{flex:1;min-width:0}
+.item .tx b{display:block;font-size:14px;font-weight:500;color:var(--ink)}
+.item .tx span{display:block;font-size:11.5px;color:var(--ink3);margin-top:2px;line-height:1.5}
+.item .go{color:var(--ink3);font-size:13px}
+
+/* 顶部统计区（Clay 大卡）*/
+.hero{padding:18px 18px 16px;margin-bottom:16px}
+.hero .k{font-size:11px;color:var(--ink3);letter-spacing:.05em;font-weight:600}
+.hero .n{font-size:31px;font-weight:600;color:var(--ink);line-height:1.15;
+         font-family:Literata,Georgia,serif;margin-top:3px}
+.hero .u{font-size:12px;color:var(--ink3);margin-left:3px}
+.hero .row2{display:flex;gap:26px;align-items:flex-end}
+.dots{display:flex;gap:4px;margin-top:11px}
+.dots i{width:12px;height:12px;border-radius:50%;background:var(--sunken);
+        display:block;transition:background .28s}
+.dots i.on{background:var(--accent)}
+.sharebtn{display:inline-flex;align-items:center;gap:6px;font-size:12px;
+          padding:8px 14px;border-radius:11px;background:var(--accent);
+          color:var(--accent-ink);font-weight:500;margin-top:13px;
+          box-shadow:0 4px 5px var(--accent-out);
+          transition:background .28s,color .28s}
+
+.pill{font-size:11px;padding:3px 9px;border-radius:9px;background:var(--sunken);
+      color:var(--ink2);font-weight:500;transition:background .28s}
+.pill.on{background:var(--accent);color:var(--accent-ink)}
+.pills{display:flex;flex-wrap:wrap;gap:7px;padding:13px 15px}
+.pills .pill{cursor:default}
+
+/* tab bar（复用 app.dart 的 _ClayTabBar 观感）*/
+.tbar{position:absolute;left:0;right:0;bottom:0;height:74px;
+      background:color-mix(in srgb,var(--page) 82%,transparent);
+      backdrop-filter:blur(14px);border-top:1px solid var(--line);
+      display:flex;align-items:center;justify-content:space-around;
+      padding:0 6px 8px;transition:background .28s}
+.tab{display:flex;flex-direction:column;align-items:center;gap:3px;
+     font-size:10.5px;color:var(--ink3)}
+.tab .ti{font-size:16px}
+.tab.on{color:var(--accent)}
+.tab.on .ti{filter:none}
+
+/* ── 说明 / 清单 ─────────────────────────────────────── */
+.note{background:#33302A;border:1px solid #4A453B;border-radius:12px;
+      padding:15px 18px;margin:16px 0;font-size:13px;color:#C6C0B4;line-height:1.85}
+.note b{color:#EDEBE6}
+.note.warn{border-color:#6B5A2E;background:#3A3428}
+table{width:100%;border-collapse:collapse;font-size:13px;margin:10px 0 4px}
+th,td{text-align:left;padding:9px 11px;border-bottom:1px solid #3A362E;vertical-align:top}
+th{color:#A8A296;font-weight:600;font-size:12px;letter-spacing:.02em}
+td{color:#C6C0B4;line-height:1.7}
+td b{color:#EDEBE6}
+.sev{font-size:11px;padding:2px 7px;border-radius:5px;font-weight:600;white-space:nowrap}
+.sev.p0{background:rgba(180,67,44,.25);color:#E89B8C}
+.sev.p1{background:rgba(200,160,60,.22);color:#E0C070}
+.sev.p2{background:rgba(110,116,132,.3);color:#AEB4C0}
+footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
+       border-top:1px solid #3A362E;margin-top:34px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>「我的」页重设计 —— 前后对比</h1>
+  <p class="sub">
+    现状：<b>旧版信息与新版混杂</b> —— 分销二维码、推广统计、实名信息、已下线的「跳过的概念」与 trial 认领弹窗，
+    和现役的成就 / 订阅 / 主题 / 朗读设置挤在同一页；外壳还用着 Material <code>AppBar</code> 与半透明 <code>Container</code>，
+    而其他 tab 页早已统一为「自绘顶栏 + 粘土凸起」。
+  </p>
+  <p class="src">
+    <b>依据（不是我发明的，是 09-25 已定稿的规格）</b>：<code>docs/design/ui-ux-refactor-assessment-2026-09-25.md</code><br>
+    §4.2「『我的』→ 大幅精简：<b>顶部统计区 + 账号 + 兴趣筛选 + 订阅状态 / 管理订阅 / 恢复购买</b>；<b>删实名 / K12 / 分销 / 学习设置 / 数据导出</b>」<br>
+    §6.1 信息架构定稿（「我的」子项 = 账号 · 兴趣筛选 · 订阅 · 顶部统计+分享 · 关于）<br>
+    §6.3（字号 / 主题 / 发音设置 → 移到阅读界面内）
+  </p>
+</header>
+
+<!-- ── 改动速览 ─────────────────────────────────────── -->
+<div class="summary">
+  <div class="scard del">
+    <h3>🗑 去掉（5 项旧版遗留）</h3>
+    <ul>
+      <li>推广二维码 <code>:452-490</code>（分销）</li>
+      <li>推广统计 + 收益明细 / 我的团队 / 提现 <code>:573-622</code>
+          —— 🔴 三个路由 <b>全库未注册</b></li>
+      <li>真实姓名 / 手机号 <code>:537-567</code>（实名）</li>
+      <li>跳过的概念 <code>:636-644</code> —— 🔴 路由 <code>/skipped</code> <b>未注册</b></li>
+      <li>trial 认领弹窗 <code>:170-184</code>（已定「不做 trial 流程」）</li>
+    </ul>
+  </div>
+  <div class="scard add">
+    <h3>✦ 统一到既有视觉语言</h3>
+    <ul>
+      <li>外壳：Material <code>AppBar</code> → <b>自绘顶栏</b>（23px/w600/-0.345ls，与信息流 / 复习页逐字一致）</li>
+      <li>容器：半透明 <code>Container(radius 16)</code> → <b>粘土凸起</b> <code>Clay</code>（三档圆角 26 / 14 / 24）</li>
+      <li>分区：卡片堆叠 → <b>分组 + 分组标题</b>（照复习页的语汇）</li>
+      <li>底部：补齐 <code>tabBarClearance</code> 让最后一项不被 tab bar 压住</li>
+    </ul>
+  </div>
+  <div class="scard ask">
+    <h3>？ 待你定的 3 件</h3>
+    <ul>
+      <li><b>朗读设置</b>：§6.3 定「移到阅读界面内」，但<b>阅读设置面板尚未实现</b> → 现在移还是等？</li>
+      <li><b>主题风格</b>：同理（§6.3）。它是全局主题，不只阅读</li>
+      <li><b>成就区 / 统计区</b>：定稿说「顶部统计区」，现用的是 <code>AchievementSection</code> 组件 → 保留还是改版？</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ── 切换器 ───────────────────────────────────────── -->
+<div class="switcher">
+  <div class="swrow">
+    <span class="swlab">三档主题（真实 token，照 coevo_tokens.dart）</span>
+    <button class="tbtn on" data-set="ink">墨 · 暖纸</button>
+    <button class="tbtn" data-set="grid">格 · 纯白</button>
+    <button class="tbtn" data-set="night">夜 · 深墨</button>
+    <span class="swlab" style="margin-left:auto;font-size:12px">切换时两侧同时变 —— 三个档位都要成立</span>
+  </div>
+</div>
+
+<!-- ── 对比 ─────────────────────────────────────────── -->
+<section class="sec">
+  <h2>并排对比 · 左＝现状，右＝改后</h2>
+  <p class="lead">
+    两侧是同一台手机上、同一份数据的两种呈现。左侧忠实复现现在的实现（含它的外壳与容器写法），
+    右侧是按 §4.2 / §6.1 定稿重做后的样子。<b>横向可滚动</b>查看第三屏。
+  </p>
+
+  <div class="rail" id="rail">
+
+    <!-- ══ A 现状 ══ -->
+    <div class="mock">
+      <div class="mockcap"><b>① 现状</b><span class="tag bad">风格不符</span></div>
+      <div class="phone">
+        <div class="screen">
+          <div class="mbar">
+            <span class="ttl">个人</span>
+            <span class="act">
+              <span class="icwrap">🔔<span class="badge">3</span></span>
+              <span>⎋</span>
+            </span>
+          </div>
+          <div class="mbody">
+            <div class="blk">
+              <h4>成就</h4>
+              <div class="statmini">
+                <div><b>12</b><span>连续天数</span></div>
+                <div><b>248</b><span>掌握词数</span></div>
+                <div><b>7</b><span>已解锁</span></div>
+              </div>
+            </div>
+
+            <div class="blk ghost">
+              <h4>推广二维码 <span style="font-size:10px;color:var(--accent)">旧版</span></h4>
+              <div class="qrbox">QR</div>
+              <div class="hint" style="text-align:center;margin-top:7px">邀请好友，双方得 7 天会员</div>
+            </div>
+
+            <div class="blk">
+              <h4>个人信息</h4>
+              <div style="display:flex;gap:12px;align-items:center">
+                <div class="avat">👤</div>
+                <div style="flex:1">
+                  <div style="font-size:14px">白哥</div>
+                  <div class="hint">点击修改昵称</div>
+                </div>
+              </div>
+              <div class="row"><span>真实姓名</span><span class="v">白〇〇</span></div>
+              <div class="row"><span>手机号</span><span class="v">138****8888</span></div>
+            </div>
+
+            <div class="blk ghost">
+              <h4>推广统计 <span style="font-size:10px;color:var(--accent)">旧版 · 3 个死路由</span></h4>
+              <div class="statmini">
+                <div><b>5</b><span>邀请</span></div>
+                <div><b>¥38</b><span>收益</span></div>
+              </div>
+              <div class="btnrow">
+                <span class="mbtn">收益明细</span>
+                <span class="mbtn">我的团队</span>
+                <span class="mbtn">提现</span>
+              </div>
+              <div class="hint" style="margin-top:7px;color:var(--accent)">
+                ⚠️ 点了会走 <code>/:unknown</code>
+              </div>
+            </div>
+
+            <div class="blk">
+              <h4>订阅状态</h4>
+              <div class="row"><span>当前</span><span class="v">免费版</span></div>
+              <div class="btnrow"><span class="mbtn pri">升级会员</span></div>
+            </div>
+
+            <div class="blk ghost">
+              <h4>跳过的概念 <span style="font-size:10px;color:var(--accent)">旧版 · 死路由</span></h4>
+              <div class="hint">查看你跳过的概念卡 ⚠️ <code>/skipped</code> 未注册</div>
+            </div>
+
+            <div class="blk">
+              <h4>主题风格</h4>
+              <div class="btnrow">
+                <span class="mbtn pri">墨</span><span class="mbtn">格</span><span class="mbtn">夜</span>
+              </div>
+            </div>
+
+            <div class="blk">
+              <h4>朗读设置</h4>
+              <div class="row"><span>语速</span><span class="v">1.0×</span></div>
+              <div class="row"><span>音色</span><span class="v">默认女声</span></div>
+            </div>
+          </div>
+          <div class="tbar">
+            <div class="tab"><span class="ti">📖</span>阅读</div>
+            <div class="tab"><span class="ti">🃏</span>复习</div>
+            <div class="tab on"><span class="ti">👤</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ B 改后 ══ -->
+    <div class="mock">
+      <div class="mockcap"><b>② 改后</b><span class="tag good">统一视觉语言</span></div>
+      <div class="phone">
+        <div class="screen">
+          <div class="hbar">
+            <div class="t">我的</div>
+            <div class="s">白哥 · 免费版</div>
+          </div>
+          <div class="mbody" style="padding:0 16px 100px">
+
+            <div class="clay hero">
+              <div class="k">连续天数</div>
+              <div class="row2">
+                <div>
+                  <div class="n">12<span class="u">天</span></div>
+                  <div class="dots">
+                    <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                    <i class="on"></i><i class="on"></i><i class="on"></i><i></i>
+                    <i></i><i></i><i></i><i></i><i></i><i></i>
+                  </div>
+                </div>
+                <div style="flex:1;text-align:right">
+                  <div class="k">掌握词数</div>
+                  <div class="n">248</div>
+                </div>
+              </div>
+              <span class="sharebtn">↗ 分享我的学习记录</span>
+            </div>
+
+            <div class="grp">
+              <div class="grplab">账号</div>
+              <div class="clay">
+                <div class="item">
+                  <span class="ico">👤</span>
+                  <span class="tx"><b>白哥</b><span>点击修改昵称</span></span>
+                  <span class="go">›</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="grp">
+              <div class="grplab">内容偏好</div>
+              <div class="clay">
+                <div class="item" style="align-items:flex-start">
+                  <span class="ico">🎯</span>
+                  <span class="tx">
+                    <b>兴趣筛选</b>
+                    <span>决定信息流的内容权重</span>
+                    <span class="pills" style="padding:9px 0 3px">
+                      <span class="pill on">科技</span>
+                      <span class="pill on">环境</span>
+                      <span class="pill">商业</span>
+                      <span class="pill">文化</span>
+                      <span class="pill">体育</span>
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div class="grp">
+              <div class="grplab">订阅</div>
+              <div class="clay">
+                <div class="item">
+                  <span class="ico">✦</span>
+                  <span class="tx"><b>免费版</b><span>生词本 200 词 · 词卡朗读 · 电子书导入</span></span>
+                  <span class="pill">升级</span>
+                </div>
+                <div class="item">
+                  <span class="ico">⟳</span>
+                  <span class="tx"><b>恢复购买</b><span>换设备后找回已购订阅</span></span>
+                  <span class="go">›</span>
+                </div>
+                <div class="item">
+                  <span class="ico">🧾</span>
+                  <span class="tx"><b>历史订单</b><span>查看支付记录</span></span>
+                  <span class="go">›</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="grp">
+              <div class="grplab">其他</div>
+              <div class="clay">
+                <div class="item">
+                  <span class="ico">💬</span>
+                  <span class="tx"><b>联系工作人员</b></span>
+                  <span class="go">›</span>
+                </div>
+                <div class="item">
+                  <span class="ico">ℹ︎</span>
+                  <span class="tx"><b>关于</b><span>版本 1.0.0</span></span>
+                  <span class="go">›</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+          <div class="tbar">
+            <div class="tab"><span class="ti">📖</span>阅读</div>
+            <div class="tab"><span class="ti">🃏</span>复习</div>
+            <div class="tab on"><span class="ti">👤</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ C 改后（夜档，验证三档都成立）══ -->
+    <div class="mock theme-night">
+      <div class="mockcap"><b>③ 改后 · 夜档</b><span class="tag good">同一份布局</span></div>
+      <div class="phone">
+        <div class="screen">
+          <div class="hbar">
+            <div class="t">我的</div>
+            <div class="s">白哥 · 免费版</div>
+          </div>
+          <div class="mbody" style="padding:0 16px 100px">
+            <div class="clay hero">
+              <div class="k">连续天数</div>
+              <div class="row2">
+                <div>
+                  <div class="n">12<span class="u">天</span></div>
+                  <div class="dots">
+                    <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                    <i class="on"></i><i class="on"></i><i class="on"></i><i></i>
+                    <i></i><i></i><i></i><i></i><i></i><i></i>
+                  </div>
+                </div>
+                <div style="flex:1;text-align:right">
+                  <div class="k">掌握词数</div>
+                  <div class="n">248</div>
+                </div>
+              </div>
+              <span class="sharebtn">↗ 分享我的学习记录</span>
+            </div>
+            <div class="grp">
+              <div class="grplab">账号</div>
+              <div class="clay">
+                <div class="item"><span class="ico">👤</span>
+                  <span class="tx"><b>白哥</b><span>点击修改昵称</span></span>
+                  <span class="go">›</span></div>
+              </div>
+            </div>
+            <div class="grp">
+              <div class="grplab">订阅</div>
+              <div class="clay">
+                <div class="item"><span class="ico">✦</span>
+                  <span class="tx"><b>免费版</b><span>生词本 200 词 · 词卡朗读</span></span>
+                  <span class="pill">升级</span></div>
+                <div class="item"><span class="ico">⟳</span>
+                  <span class="tx"><b>恢复购买</b></span><span class="go">›</span></div>
+              </div>
+            </div>
+            <div class="grp">
+              <div class="grplab">其他</div>
+              <div class="clay">
+                <div class="item"><span class="ico">ℹ︎</span>
+                  <span class="tx"><b>关于</b><span>版本 1.0.0</span></span>
+                  <span class="go">›</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="tbar">
+            <div class="tab"><span class="ti">📖</span>阅读</div>
+            <div class="tab"><span class="ti">🃏</span>复习</div>
+            <div class="tab on"><span class="ti">👤</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="note warn">
+    <b>⚠️ 示例数据说明</b>：页面里的 <code>12 天</code> / <code>248 词</code> / <code>3</code> 条未读 /
+    <code>¥38</code> 收益 / 昵称「白哥」都是<b>手写的示例</b>，用于展示版式，<b>不代表真实数据</b>。
+    落地时前者来自端侧 <code>user.db</code> 统计，后者（收益）随分销一并删除。
+  </div>
+</section>
+
+<!-- ── 设计说明 ─────────────────────────────────────── -->
+<section class="sec">
+  <h2>设计说明 · 什么变、什么不变、为什么</h2>
+  <table>
+    <tr><th style="width:150px">项</th><th style="width:230px">现状</th><th>改后</th><th style="width:210px">为什么</th></tr>
+    <tr>
+      <td><b>外壳</b></td>
+      <td>Material <code>AppBar</code>（19px/w500 + 阴影）</td>
+      <td><b>自绘顶栏</b>：23px / w600 / letterSpacing −0.345px / <code>t.ink</code>，<code>padding LTRB(18,2,18,14)</code></td>
+      <td>与信息流 / 复习页 <b>逐字一致</b> —— 这是「风格不符」最直观的一处</td>
+    </tr>
+    <tr>
+      <td><b>容器</b></td>
+      <td>半透明 <code>Container</code>（<code>radius 16</code>）</td>
+      <td><b>粘土凸起</b> <code>Clay</code>（圆角随档位 26 / 14 / 24）</td>
+      <td>其余页面已统一用 Clay；半透明容器在「格」档几乎看不见边界</td>
+    </tr>
+    <tr>
+      <td><b>分区</b></td>
+      <td>卡片直堆，无分组</td>
+      <td><b>分组 + 分组标题</b>（账号 / 内容偏好 / 订阅 / 其他）</td>
+      <td>照复习页语汇；把「偶尔看」与「经常点」分开</td>
+    </tr>
+    <tr>
+      <td><b>间距</b></td>
+      <td>各处手写值混用</td>
+      <td><code>CoSpacing</code>：页边 16 · 组间 16 · 组内 13/15 · 底部 <code>tabBarClearance=100</code></td>
+      <td>现役页全走这套 token</td>
+    </tr>
+    <tr>
+      <td><b>底部</b></td>
+      <td>最后一项易被 tab bar 压住</td>
+      <td>滚动容器 <code>padding-bottom:100</code></td>
+      <td><code>_ShellScaffold</code> 开了 <code>extendBody:true</code></td>
+    </tr>
+    <tr>
+      <td><b>顶栏副标题</b></td>
+      <td>无</td>
+      <td>「白哥 · 免费版」12px <code>t.ink3</code></td>
+      <td>与收藏页副标题同规格；顺带让订阅状态在首屏可见</td>
+    </tr>
+  </table>
+  <div class="note">
+    <b>不变的部分</b>：三条 tab、配色（朱砂 <code>#B4432C</code>）、三档主题语义、成就/统计的数据来源
+    （端侧 <code>user.db</code>）、订阅与支付的既有流程 —— <b>这一版只动「怎么排」，不动「有什么」</b>。
+  </div>
+</section>
+
+<!-- ── 待决策 ───────────────────────────────────────── -->
+<section class="sec">
+  <h2>待你决策的 3 件</h2>
+  <p class="lead">这 3 件<b>不是设计偏好问题</b>，而是「依赖尚未就绪」—— 我需要你的判断才能定方案范围。</p>
+  <table>
+    <tr><th style="width:130px">事项</th><th>冲突点</th><th style="width:290px">两个选项</th></tr>
+    <tr>
+      <td><b>朗读设置</b><br><span class="sev p1">依赖未就绪</span></td>
+      <td>§6.3 定「<b>移到阅读界面内</b>」（查词浮层长按发音按钮 + 阅读设置面板）。
+          但 <code>reader_screen.dart:59</code> 注释明说「面板本身（字号/行高/主题/痕迹开关/<b>语速</b>）
+          <b>是独立一批，不在骨架内</b>」→ <b>面板还没做</b>。</td>
+      <td><b>甲</b>：先留在「我的」页（现状位置），等阅读面板做好再搬 —— 本次只清理不搬家<br>
+          <b>乙</b>：本次一并做阅读面板（范围变大，含划词浮层改动）</td>
+    </tr>
+    <tr>
+      <td><b>主题风格</b><br><span class="sev p1">依赖未就绪</span></td>
+      <td>同上（§6.3 把「阅读主题」也划进阅读面板）。⚠️ 但产品的三档 <b>是全局主题</b>（影响所有页面），
+          不只是阅读底色 —— 搬进阅读面板后，用户不读书时想改主题就找不到入口。</td>
+      <td><b>甲</b>：留在「我的」（它是全局设置，放这里语义更对）<br>
+          <b>乙</b>：按 §6.3 搬进阅读面板（两处入口也可）</td>
+    </tr>
+    <tr>
+      <td><b>成就区 / 统计区</b><br><span class="sev p1">口径待统一</span></td>
+      <td>§4.2 说「连续天数 / 里程碑 <b>并入「我的」页顶部</b>」+「统计不设独立页」；
+          但 §6.1 写的是「顶部：<b>统计区 + 分享入口</b>」，而代码里放的是
+          <code>AchievementSection</code> 组件（含成就列表）。两者不是一回事。</td>
+      <td><b>甲</b>：顶部只放<b>统计 + 分享</b>（连续天数/掌握词数），成就列表留在 <code>/achievements</code><br>
+          <b>乙</b>：按现组件保留成就列表在顶部（页面更长）</td>
+    </tr>
+  </table>
+  <div class="note">
+    <b>另外发现（不是设计问题，是 bug）</b>：个人页有 <b>4 处</b> <code>context.push</code> 指向
+    <b>未注册的路由</b> —— <code>/skipped</code> · <code>/earnings</code> · <code>/team</code> · <code>/withdraw</code>，
+    会落到路由表的 <code>/:unknown</code>。这是「点了没反应 / 跳到奇怪页面」的直接原因。
+    其中 <code>/skipped</code>（旧产品功能）与 3 个分销路由<b>随本次清理一并消失</b>，
+    所以<b>修这个 bug 不需要额外工作</b>。
+  </div>
+</section>
+
+<footer>
+  <b>判断建议</b>：先切到<b>夜档</b>看一遍 —— 粘土在深底上的「内亮」会被压到 <code>.062</code>，
+  三档里最容易显脏。/ 再看「改后」的<b>分组标题</b>是否够/太多（现在是 4 组）。<br>
+  <b>落地成本</b>：只动 <code>profile_screen.dart</code> 一个文件（实测 <b>1,120 行</b> → 预计 500 行左右），
+  删 5 个旧版分区 + 换外壳与容器写法；新增「兴趣筛选」「关于」两项需要新做（各约 1 个页面/组件）。
+  <b>不改</b>任何 provider、后端接口、路由注册。
+</footer>
+
+</div>
+
+<script>
+(function(){
+  var btns = document.querySelectorAll('.tbtn');
+  function setTheme(name){
+    document.documentElement.setAttribute('data-theme', name);
+    for (var i=0;i<btns.length;i++){
+      btns[i].classList.toggle('on', btns[i].getAttribute('data-set') === name);
+    }
+  }
+  for (var i=0;i<btns.length;i++){
+    btns[i].addEventListener('click', function(){
+      setTheme(this.getAttribute('data-set'));
+    });
+  }
+  // 第三屏固定为夜档（并排验证），不随切换器变
+  setTheme('ink');
+})();
+</script>
+</body>
+</html>
