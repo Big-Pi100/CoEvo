@@ -14,10 +14,15 @@
     "     实例：`autonomous region` 是 Tibet/Xinjiang/Inner Mongolia 的**官方英文名**，",
     "     说「西藏是中国的一个自治区」恰恰是正确表述 → 不得进 sovereign_claim_words。",
     "",
-    "改动后必跑：",
-    "  1) `python scripts/scan_compliance.py`            ← 离线全库（P0 必须为 0）",
-    "  2) `python scripts/verify_compliance_parity.py`   ← 跨语言一致（与 Rust 同一份用例）",
-    "  3) `cargo test -p api_server compliance`           ← Rust 侧单测 + 同一份用例"
+    "改动后必跑（4 步 · 缺一不可）：",
+    "  1) `python scripts/scan_compliance.py`             ← 离线全库（P0 必须为 0）",
+    "  2) `python scripts/verify_compliance_parity.py`    ← 跨语言一致（与 Rust 同一份用例）",
+    "  3) `cargo test -p api_server compliance`            ← Rust 侧单测 + 同一份用例（含 card_cases）",
+    "  4) `python scripts/audit_generated_card_cache.py`  ← 🔴 清掉**在新规则下已违规**的在线缓存",
+    "",
+    "🔴 第 4 步为什么不能省：在线制卡**只在「生成时」过闸门，缓存命中路径不复检**。",
+    "   词表改宽后，老缓存可能在**新规则下**违规，却仍会被命中直出给用户。",
+    "   自检不过脚本会拒绝出报告（适配层错了，报告不可信）。"
   ],
   "version": "2026-09-29",
 

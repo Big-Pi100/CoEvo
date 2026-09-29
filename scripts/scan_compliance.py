@@ -83,7 +83,15 @@ Guangxi / Ningxia **Autonomous Region**）。说「西藏是中国的一个自�
 **离线扫描（本文件）与在线制卡闸门（`api_server/src/compliance.rs`）读同一份**。
 本文件的规则引擎是 `scan_parts(parts, spelling)`；Rust 侧同义函数在 `compliance.rs`。
 两边一致性由 **共享用例** 保证：`backend/prompts/compliance_cases.json`
+（`cases` = 文本级；`card_cases` = 卡形状级）
 + `scripts/verify_compliance_parity.py`（Python 端跑）+ `cargo test`（Rust 端跑同一份）。
+
+改词表后必跑 4 步（第 4 步见下）：
+  1) 本脚本（离线全库 · P0 必须为 0）
+  2) `scripts/verify_compliance_parity.py`（跨语言一致）
+  3) `cargo test -p api_server compliance`
+  4) `scripts/audit_generated_card_cache.py` ← 🔴 **清掉在新规则下已违规的在线缓存**
+     （在线制卡只在「生成时」过闸门，**缓存命中不复检** → 词表改宽后老缓存会继续直出）
 """
 
 import argparse

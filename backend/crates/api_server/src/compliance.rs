@@ -567,12 +567,21 @@ mod tests {
     #[derive(Deserialize)]
     struct CasesDoc {
         cases: Vec<Case>,
+        /// 「卡片 JSON → (字段名, 文本)」适配层的用例（第一条是 `_why` 说明，无 `id`）
+        card_cases: Vec<serde_json::Value>,
     }
     #[derive(Deserialize)]
     struct Case {
         id: String,
         spelling: String,
         parts: Vec<(String, String)>,
+        expect: Vec<(String, String, String)>,
+    }
+    #[derive(Deserialize)]
+    struct CardCase {
+        id: String,
+        spelling: String,
+        card: serde_json::Value,
         expect: Vec<(String, String, String)>,
     }
 
@@ -615,6 +624,46 @@ mod tests {
         assert!(
             fails.is_empty(),
             "{} 个合规用例不符：\n{}",
+            fails.len(),
+            fails.join("\n")
+        );
+    }
+
+    /// 🔴 与 Python 跑**同一份** `card_cases`（`scripts/audit_generated_card_cache.py` 的
+    ///    `selfcheck_card_cases`）。验的是「**卡片 JSON → (字段名, 文本)**」这一层适配 ——
+    ///    适配错了 → 后续规则再准也白搭（扫错字段）。
+    #[test]
+    fn compliance_card_cases_parity() {
+        let t = Terms::load_from_str(TERMS_JSON).expect("词表应可加载");
+        let doc: CasesDoc = serde_json::from_str(CASES).expect("用例文件应可解析");
+
+        let cases: Vec<CardCase> = doc
+            .card_cases
+            .iter()
+            .filter(|v| v.get("id").is_some()) // 跳过 `_why` 说明项
+            .map(|v| serde_json::from_value(v.clone()).expect("card_case 结构不对"))
+            .collect();
+        assert!(cases.len() >= 8, "card_cases 太少: {}", cases.len());
+
+        let mut fails = Vec::new();
+        for c in &cases {
+            let got = triples(&scan_card(&t, &c.card, &c.spelling));
+            let mut exp: Vec<String> = c
+                .expect
+                .iter()
+                .map(|(l, cat, f)| format!("{}|{}|{}", l, cat, f))
+                .collect();
+            exp.sort();
+            if got != exp {
+                fails.push(format!(
+                    "  ✗ {}\n      card {:?} / spelling={:?}\n      期望 {:?}\n      实际 {:?}",
+                    c.id, c.card, c.spelling, exp, got
+                ));
+            }
+        }
+        assert!(
+            fails.is_empty(),
+            "{} 个 card_case 不符（卡适配层与 Python 不一致）：\n{}",
             fails.len(),
             fails.join("\n")
         );

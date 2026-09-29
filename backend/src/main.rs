@@ -88,8 +88,16 @@ async fn main() {
     // --- Auto-schema ---
     {
         let conn = api_server::db_pool::get_conn();
-        // 🔑 2026-09-29：旧学习链已退役（user_cards / card_memory 已删）→ 守卫改用**现役业务表**。
-        //    若仍查旧表，守卫会**恒成立** → 每次启动都跑 init_database（把已退役的表建回来）。
+        // 🔴🔴 **这里不是建表入口** —— 真正的入口是上面的 `api_server::db_pool::init(&db_path)`
+        //     （`db_pool.rs` 里 `init()` 无条件调用 `schema::init_database()`）。
+        //
+        //     🔑 本守卫**恒不成立**：`db_pool::init()` 已经跑过 `init_database`，
+        //        `users` / `tokens` / `payment_orders` 必然都已存在 → `table_count` 恒 = 3。
+        //        （实测：空库启动 → 20 张表全建好，但本条 `tracing::info!` 从不打印。）
+        //
+        //    ⚠️ 保留（未删）只为「万一 db_pool 的建表被摘掉」时兜底；**改 schema 请去
+        //        `crates/api_server/src/schema.rs`**，不要在这里加 CREATE。
+        //    📌 建议：后续清理时直接删除本守卫（含那条 info!），只留 `schema.rs` 一处权威。
         let table_count: i32 = conn.query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('users','tokens','payment_orders')",
             [], |row| row.get(0),
@@ -178,8 +186,8 @@ async fn main() {
             "CREATE INDEX IF NOT EXISTS idx_admin_audit_log_admin ON admin_audit_log(admin_id, created_at)",
             "CREATE INDEX IF NOT EXISTS idx_admin_audit_log_action ON admin_audit_log(action, created_at)",
             "ALTER TABLE admin_users ADD COLUMN permissions TEXT DEFAULT '{}'",
-            "ALTER TABLE subscription_plans ADD COLUMN once_per_user INTEGER DEFAULT 0",
             // 订阅套餐
+            // 🔴 **必须先建表** —— 本表之后有 `ALTER`（once_per_user）与 3 条 `INSERT` 依赖它。
             "CREATE TABLE IF NOT EXISTS subscription_plans (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -194,6 +202,13 @@ async fn main() {
                 is_active INTEGER DEFAULT 1,
                 created_at TEXT NOT NULL
             )",
+            // ⚠️ 2026-09-29 修正：这条 `ALTER` **原先排在上面的 `CREATE` 之前** ——
+            //    老库若缺 `subscription_plans`（守卫只保证 users/tokens/payment_orders 存在），
+            //    它会报 `no such table` 并被下面的容错**静默吞掉**，
+            //    靠紧随其后的 `CREATE TABLE IF NOT EXISTS` 兜住。
+            //    🔑 这正是「容错吞掉真错」的实例：**顺序本身就是错的，只是被掩盖了**。
+            //    收紧容错（不再吞 `no such table`）前必须先把顺序改对，否则启动会直接炸。
+            "ALTER TABLE subscription_plans ADD COLUMN once_per_user INTEGER DEFAULT 0",
             // 支付订单
             "CREATE TABLE IF NOT EXISTS payment_orders (
                 id TEXT PRIMARY KEY,
@@ -240,13 +255,21 @@ async fn main() {
                 Ok(_) => {}
                 Err(e) => {
                     let err_msg = e.to_string();
-                    if err_msg.contains("duplicate column") || err_msg.contains("already exists") || err_msg.contains("no such table") || err_msg.contains("no such index") {
-                        tracing::debug!("Migration skipped (already applied): {}", err_msg);
-                    } else {
-                        // Propagate critical migration errors — fail startup
+                    // ⚠️ 容错**只在真的已经改过**时放行：`duplicate column` / `already exists`。
+                    //
+                    // 🔴 2026-09-29 收紧：**不再吞 `no such table` / `no such index`**。
+                    //    原写法看着无害，实则**掩盖真错** —— 表名/列名写错、语句顺序写错，
+                    //    全都会被当成「已应用」静默跳过，只留一行 debug 日志。
+                    //    （实例：`ALTER TABLE subscription_plans` 原排在它的 `CREATE` **之前**，
+                    //      老库缺该表时报 `no such table` 被吞掉 → 顺序错一直被掩盖。）
+                    //    🔑 现在列表里的每条 ALTER 目标表都由**本块之前的 CREATE**（或守卫星的
+                    //       users/tokens/payment_orders）保证存在 → `no such table` = **真 bug**，
+                    //       必须让启动**立刻失败**（fail fast），而不是带着坏 schema 继续服务。
+                    if !err_msg.contains("duplicate column") && !err_msg.contains("already exists") {
                         tracing::error!("Migration failed critically: {} — SQL: {}", err_msg, sql);
                         panic!("Migration failed: {} — SQL: {}", err_msg, sql);
                     }
+                    tracing::debug!("Migration skipped (already applied): {}", err_msg);
                 }
             }
         }
@@ -261,7 +284,9 @@ async fn main() {
                 Ok(_) => {}
                 Err(e) => {
                     let err_msg = e.to_string();
-                    if !err_msg.contains("duplicate column") && !err_msg.contains("already exists") && !err_msg.contains("no such table") && !err_msg.contains("no such index") {
+                    // 🔴 同上：这里只跑 `CREATE TABLE IF NOT EXISTS app_config(...)`（独立表、无外键），
+                    //    不可能报 `no such table` → 一并收紧。
+                    if !err_msg.contains("duplicate column") && !err_msg.contains("already exists") {
                         tracing::error!("Table creation failed: {} — SQL: {}", err_msg, sql);
                         panic!("Table creation failed: {}", err_msg);
                     }

@@ -150,15 +150,23 @@ cargo test -p api_server     78 passed / 0 failed     （原 60 passed / 3 faile
 
 ---
 
-## 四、🔴 遗留发现（**本次只记录，未改** · 需白哥定）
+## 四、遗留发现（当时只记录未改）→ ✅ **已全部处理**（白哥 2026-09-29 批「同意你的建议」）
 
-| # | 发现 | 影响 | 建议 |
-|---|---|---|---|
-| 1 | `hard_delete_expired_trials` 原列表里的 `distribution_commissions` 列名是 `earner_id`/`buyer_id`、`trial_ip_log` **只有 `ip`** —— 两者**都没有 `user_id` 列** ⇒ 原 `DELETE ... WHERE user_id=?1` **必然报错**，被 `let _ =` **静默吞掉**（**一行也没删过**）。本次已把两者移出列表（**行为等价**）+ 写明注释 | 🟠 财务/反滥用日志的清理语义**从未生效** | ① `distribution_commissions`：删不删是**财务决策**；② `trial_ip_log`：**建议保持不删**（删掉等于让同 IP 再次白嫖试用） |
-| 2 | `backend/schema.sql` 是**过时的旧 dump** —— 仍含 `conversations`/`card_memory`/`achievements`/`prebuilt_*` 等全部退役表，且**无任何代码/脚本引用**（已 grep 核实） | 🟠 「存量不清理 → 持续产生新依赖」：后人可能照它建库 | 删除，或加醒目「⚠️ 已过时，schema 权威在 `schema.rs`」抬头 |
-| 3 | `shared_types` 的 `conversation` / `growth` / `review` 三个模块 **0 外部引用**（`card` 仍在用） | 🟡 死代码（随旧学习链退役的残留） | 可删（属独立清障议题） |
-| 4 | `main.rs` 的迁移块仍保留 `no such table` 容错（其列表只含现役表） | 🟠 与 §3.1 同源 —— 会掩盖真错 | 建议按 `schema.rs` 同样收紧 |
-| 5 | 在线制卡的**缓存命中路径不复检合规** | 🟠 词表**大改**后，陈旧 `generated_card_cache` 里可能留违规内容并继续命中 | 词表有实质变更时，跑一次离线重扫 + 清对应缓存（可做成小脚本） |
+> 📄 **处理结果 + 过程中新查出的 2 个真问题（含本文一处判断错误）→
+> `retired-cleanup-and-cache-audit-2026-09-29.md`**
+
+| # | 发现 | 处理 |
+|---|---|---|
+| 1 | `distribution_commissions` / `trial_ip_log` 都没有 `user_id` 列 ⇒ 原删除语句**必然报错且被吞掉**（一行也没删过） | ✅ **保持不删**（财务 / 反滥用）· 决策**固化成 2 条断言** · 列表提为 `CASCADE_TABLES` 常量 |
+| 2 | `backend/schema.sql` 是过时旧 dump（45 表中 16 张已退役），**0 引用** | ✅ **已删除**（git 可回滚）+ 同步更新 2 份活文档 |
+| 3 | `shared_types` 的 `conversation` / `growth` / `review` **0 外部引用** | ✅ **已删除**（含根上 `CardState`）· 保留 `card`（有真实消费者） |
+| 4 | `main.rs` 迁移块仍吞 `no such table` | ✅ **已收紧** —— 🔴 但**先修了一个被吞错掩盖的顺序错**（`ALTER subscription_plans` 原在它的 `CREATE` 之前） |
+| 5 | 缓存命中路径不复检合规 | ✅ 🆕 `scripts/audit_generated_card_cache.py` + 词表变更清单从 3 步 → **4 步** |
+
+⚠️ **本文 §七 的一处判断已被证伪**：我当时担心「A1 的两张表在生产库永远不会被建」——
+实测**错**。真正的建表入口是 `db_pool::init()`（无条件调 `init_database`），
+本文 §七 里引用的 `main.rs` 守卫是**恒不成立的死逻辑**。
+🔑 我只看了一个文件就下结论，没跟调用链。详见处理文档 §三.1。
 
 ---
 

@@ -1637,12 +1637,16 @@ breathed → breathe「呼吸」· buried → bury「埋葬」· passed → pass
    端侧靠 `--dart-define=API_HOST=...` 指向真实服务器。
 → **不能靠「内嵌进 APK」绕开 VPS** —— 要走服务端就得有台服务器（或本机开发时起一个）。
 
-#### 约束 3：**`backend/schema.sql` 是过时死文件**
+#### 约束 3：**`backend/schema.sql` 是过时死文件** —— ✅ 已于 2026-09-29 删除
 
 | 文件 | 表数 | 状态 |
 |---|---|---|
-| `backend/schema.sql` | **45 表**（含 `conversations` / `prebuilt_*` / `plan_*` 等**已退役**的旧学习链） | 🔴 **过时**（0 处代码引用） |
-| `backend/crates/api_server/src/schema.rs` | **18 表**（商业能力：users/tokens/pay/subscription/admin/…） | ✅ **权威**（`main.rs` 启动时 `init`） |
+| ~~`backend/schema.sql`~~ | ~~**45 表**（含 `conversations` / `prebuilt_*` / `plan_*` 等**已退役**的旧学习链）~~ | ✅ **已删除**（09-29 清理；git 历史可回滚） |
+| `backend/crates/api_server/src/schema.rs` | **20 表**（商业能力 18 + 制卡缓存 2） | ✅ **权威** |
+
+**建表的真实入口是 `db_pool::init()` → `schema::init_database()`**（`db_pool.rs:46`，**无条件执行**）。
+⚠️ `main.rs` 里那段 `if table_count < 3 { init_database() }` 是**恒不成立的冗余守卫**
+（`db_pool::init` 已先跑过），**不是**建表入口 —— 别在 `main.rs` 里找建表语句。
 
 → 🔴 **加表必须改 `schema.rs`** —— 这正是我库里那条
    「**「删数据」≠「让它不再产生」**（建表语句要一并改，否则**新库**会重建）」的反向版本：
@@ -1710,4 +1714,4 @@ breathed → breathe「呼吸」· buried → bury「埋葬」· passed → pass
 | 1 | **按甲方案（服务端先行）做 A1？** | ⭐ **是** —— 唯一能 100% 本地验证、且不产生死代码的路径 |
 | 2 | A1 完成后紧接 A2（端侧）？ | ⭐ 是（A2 需白哥编译） |
 | 3 | **服务端部署时机** | ⭐ **甲：推到 iOS 上架前** |
-| 4 | `backend/schema.sql`（过时 45 表）要不要顺手清理 | 🟠 建议**先不动**（本次只改 `schema.rs`）—— 它是死文件，清理属独立议题 |
+| 4 | `backend/schema.sql`（过时 45 表）要不要顺手清理 | ✅ **已于 2026-09-29 执行**（白哥批「同意你的建议」）—— 删除；两份引用它的活文档已同步更新 |

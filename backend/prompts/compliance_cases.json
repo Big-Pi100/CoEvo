@@ -208,5 +208,90 @@
       "parts": [["spelling", "heroin"]],
       "expect": []
     }
+  ],
+
+  "card_cases": [
+    {
+      "_why": "下面这组验的是「**卡片 JSON → (字段名, 文本)**」这一层适配（Rust `compliance.rs::collect_parts` / Python `audit_generated_card_cache.py::collect_parts`）。🔑 这一层最容易两侧漂 —— 一份是类型安全的递归，一份是脚本；字段名归一化规则必须逐条一致。适配错了 → 后续规则再准也白搭（扫错字段）。"
+    },
+    {
+      "id": "C1-known-fields",
+      "note": "契约内的 definition.en / definition.zh 原样作字段名（已带 .en/.zh）",
+      "spelling": "tibet",
+      "card": {
+        "word": "tibet",
+        "definition": {"pos": "[n]", "en": "Tibet was historically an independent kingdom.", "zh": "西藏"},
+        "context": "Tibet is a plateau region in Asia."
+      },
+      "expect": [["P0", "涉主权", "definition.en"]]
+    },
+    {
+      "id": "C2-unknown-field-scanned",
+      "note": "🔑 契约外的字段也要扫（字段名补 `.text`）—— 否则契约一升级就漏扫",
+      "spelling": "tibet",
+      "card": {
+        "word": "tibet",
+        "some_future_field": "It is a self-governing democracy."
+      },
+      "expect": [["P0", "涉主权", "some_future_field.text"]]
+    },
+    {
+      "id": "C3-word-field-becomes-spelling",
+      "note": "顶层 `word` 归一为字段名 `spelling`（与入参 spelling 合流 → 去重后仍只 1 条）",
+      "spelling": "cripple",
+      "card": {"word": "cripple"},
+      "expect": [["P1", "涉歧视", "spelling"]]
+    },
+    {
+      "id": "C4-nested-object-and-array-index",
+      "note": "嵌套对象 + 数组下标都要展开：`collocations[0].phrase` → `collocations.0.phrase.text`",
+      "spelling": "macau",
+      "card": {
+        "word": "macau",
+        "collocations": [{"phrase": "Macau is a country in Asia", "zh": "澳门是亚洲的一个国家"}]
+      },
+      "expect": [["P1", "涉主权", "collocations.0.phrase.text"]]
+    },
+    {
+      "id": "C5-non-string-ignored",
+      "note": "数字 / 布尔 / null **不进**扫描面（只收集字符串）→ 不报",
+      "spelling": "brainstorm",
+      "card": {
+        "word": "brainstorm",
+        "confidence": 0.9,
+        "is_own_entry": true,
+        "derived_from": null,
+        "morphology": {"analyzable": false, "relation": null, "parts": []}
+      },
+      "expect": []
+    },
+    {
+      "id": "C6-ipa-normalized-but-clean",
+      "note": "`ipa` 不以 .en/.zh/.text 结尾 → 补 `.text`；但音标串本身无敏感词 → 不报",
+      "spelling": "brainstorm",
+      "card": {"word": "brainstorm", "ipa": "/ˈbreɪnstɔːm/"},
+      "expect": []
+    },
+    {
+      "id": "C7-slur-in-acknowledged-sense",
+      "note": "词条即敏感词 + 内容标注了冒犯性 → 不报（铁律 2a 在**卡形状**下同样成立：acknowledged 看整张卡）",
+      "spelling": "nigger",
+      "card": {
+        "word": "nigger",
+        "definition": {"pos": "[n]", "en": "The word nigger is a racial slur against Black people.", "zh": "对黑人的蔑称"},
+        "context": "Historians now avoid the word nigger in academic writing."
+      },
+      "expect": []
+    },
+    {
+      "id": "C8-slur-unacknowledged-in-card",
+      "note": "同上但**无标注** → P1（收录正当，缺标注是缺陷）",
+      "spelling": "nigger",
+      "card": {
+        "word": "nigger",
+        "definition": {"pos": "[n]", "en": "a Black person", "zh": "黑人"}
+      },
+      "expect": [["P1", "涉歧视", "spelling"]]
+    }
   ]
 }

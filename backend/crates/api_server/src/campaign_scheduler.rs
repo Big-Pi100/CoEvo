@@ -10,6 +10,27 @@
 use chrono::Timelike;
 use serde_json;
 
+/// trial 硬删除时的**级联清理表**（按依赖顺序：先子表再 users 主表）。
+///
+/// 🔑 只有一处权威 —— 测试 [`tests::cascade_list_matches_real_schema`] 直接读它，
+///    所以「加了幽灵表名」或「加了没有 `user_id` 列的表」都会**当场测试失败**。
+///
+/// 🔴 2026-09-29 清掉 7 个**已退役 / 从未存在**的表名（`card_memory` · `user_cards` ·
+///    `user_plan_progress` · `cp1_plans` · `plan_runs` · `conversation_turns` · `conversations`）：
+///    它们必然报 `no such table`，而调用处的 `let _ =` 把错误**静默吞掉** →
+///    列表看着周全，实际一半空转。（`cp1_plans` 全库仅此一处出现，不是任何 CREATE 的产物。）
+///
+/// ⚠️ **故意不含**（白哥 2026-09-29 批「保持不删」，理由见
+///    [`tests::two_tables_have_no_user_id_column`]）：
+///    · `distribution_commissions` = **财务记录**（列是 `earner_id`/`buyer_id`，按用户删是产品决策）
+///    · `trial_ip_log` = **反试用滥用日志**（只有 `ip`；删掉等于让同 IP 再次白嫖试用）
+///    两者**都没有 `user_id` 列** → 原来的 `DELETE ... WHERE user_id = ?1` 恒失败且被吞掉。
+pub const CASCADE_TABLES: &[&str] = &[
+    "tokens",
+    "payment_orders",
+    "user_notifications",
+];
+
 /// 佣金锁定期到期自动解锁
 ///
 /// 查找所有 status='locked' 且 created_at 超过 30 天的佣金记录，
@@ -69,29 +90,9 @@ pub fn hard_delete_expired_trials(conn: &rusqlite::Connection) -> Result<usize, 
     let count = ids.len();
     if count == 0 { return Ok(0); }
 
-    // 级联清理关联表（按依赖顺序）
-    //
-    // 🔴 2026-09-29 清掉 7 个**已退役 / 从未存在**的表名：
-    //    `card_memory` · `user_cards` · `user_plan_progress` · `cp1_plans` ·
-    //    `plan_runs` · `conversation_turns` · `conversations`
-    //    —— 它们必然报 `no such table`，而下面的 `let _ =` 把错误**静默吞掉**：
-    //       列表看着很周全，实际一半是空转。
-    //    （`cp1_plans` 尤其可疑：全库仅此一处出现，不是任何 CREATE TABLE 的产物。）
-    //
-    // ⚠️ 另有 2 个**遗留问题**（本次只移出列表 + 记录，**不改语义**，因为属产品决策，未批）：
-    //    `distribution_commissions` 的列是 `earner_id` / `buyer_id`，`trial_ip_log` **只有 ip**，
-    //    两者都**没有 `user_id` 列** → 原来那句 `DELETE ... WHERE user_id = ?1` 对它们**必然报错**、
-    //    被 `let _ =` 吞掉 ⇒ **一行也没删过**。故移出列表是**行为等价**的。
-    //    · `distribution_commissions` = **财务记录**：按用户删是产品决策（需批）；
-    //    · `trial_ip_log` = **反试用滥用日志**（按 IP 计）：删掉等于让同 IP 再次白嫖 → 建议保持不删。
-    //    → 见交付文档「遗留发现」。
-    let tables = [
-        "tokens",
-        "payment_orders",
-        "user_notifications",
-    ];
+    // 级联清理关联表 —— 列表与理由见模块级 `CASCADE_TABLES`
     for uid in &ids {
-        for table in &tables {
+        for table in CASCADE_TABLES {
             let sql = format!("DELETE FROM {} WHERE user_id = ?1", table);
             let _ = conn.execute(&sql, rusqlite::params![uid]);
         }
@@ -627,5 +628,66 @@ mod tests {
             |row| row.get(0),
         ).unwrap();
         assert_eq!(claimed_count, 1, "已认领用户应保留");
+    }
+
+    /// 🔴 **把「为什么这两张表不能按 user_id 删」固化成断言**（2026-09-29 · 白哥批「保持不删」）
+    ///
+    /// `hard_delete_expired_trials` 的级联列表里**故意没有** `trial_ip_log` 与
+    /// `distribution_commissions`。原因不是「忘了」，而是**它们根本没有 `user_id` 列** ——
+    /// 原来那句 `DELETE FROM <表> WHERE user_id = ?1` 必然报错、且被 `let _ =` 静默吞掉
+    /// （= 一行也没删过）。移除是**行为等价**的。
+    ///
+    /// 🔑 为什么要断言「没有这一列」而不是「表还在」：
+    ///    · 「表还在」只说明它没被删；
+    ///    · 「**没有 user_id 列**」说明**为什么不能纳入级联** —— 这才是决策的依据。
+    ///    将来若有人给它们加了 `user_id`，本断言会失败 → 提醒「现在可以重新考虑纳入级联了」。
+    #[test]
+    fn two_tables_have_no_user_id_column() {
+        let conn = setup_db();
+        for table in ["trial_ip_log", "distribution_commissions"] {
+            let cols: Vec<String> = {
+                let mut stmt = conn
+                    .prepare(&format!("PRAGMA table_info({})", table))
+                    .unwrap();
+                stmt.query_map([], |r| r.get::<_, String>(1))
+                    .unwrap()
+                    .filter_map(|r| r.ok())
+                    .collect()
+            };
+            assert!(
+                !cols.is_empty(),
+                "{} 表不存在或没有列 —— 级联列表的注释已过时，需重新评估",
+                table
+            );
+            assert!(
+                !cols.contains(&"user_id".to_string()),
+                "{} 现在有 `user_id` 列了 → 可以重新评估是否纳入 trial 级联删除（列: {:?}）",
+                table,
+                cols
+            );
+        }
+    }
+
+    /// 级联列表**只应包含真实存在且带 `user_id` 的表**（防止再次写进幽灵表名）
+    #[test]
+    fn cascade_list_matches_real_schema() {
+        let conn = setup_db();
+        for table in super::CASCADE_TABLES {
+            let cols: Vec<String> = {
+                let mut stmt = conn
+                    .prepare(&format!("PRAGMA table_info({})", table))
+                    .unwrap();
+                stmt.query_map([], |r| r.get::<_, String>(1))
+                    .unwrap()
+                    .filter_map(|r| r.ok())
+                    .collect()
+            };
+            assert!(!cols.is_empty(), "级联表 {} 不存在（幽灵表名）", table);
+            assert!(
+                cols.contains(&"user_id".to_string()),
+                "级联表 {} 没有 user_id 列 → 它的 DELETE 恒失败（被静默吞掉）",
+                table
+            );
+        }
     }
 }
