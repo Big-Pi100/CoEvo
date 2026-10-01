@@ -951,7 +951,7 @@ pub async fn share_landing(
                         data.display_name,
                         campaign_name,
                         backend,
-                        &data.referral_code,
+                        data.referral_code,
                         cid
                     );
                     html = html.replace("</head>", &format!("{}</head>", og));

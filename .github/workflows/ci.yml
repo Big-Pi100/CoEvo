@@ -231,6 +231,13 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # 🔴 **锁死具体版本**（不要只写 `channel: stable`）——
+          #    `stable` 会**随上游漂移**：今天 3.47.5，明天可能 3.48.x，
+          #    而 **lint 规则集随版本变化** → 「本地绿 / CI 红」（或反之）会变成常态。
+          #    实测依据（2026-10-01）：Rust 那边正因为没锁版本，CI 的 clippy 从 1.95 漂到 1.98，
+          #    新增的 `useless_borrows_in_formatting` 直接让门禁变红，而本地完全复现不了。
+          #    📌 与 WSL 本地环境（`scripts/setup/install_flutter_in_wsl.sh`）保持**同一个版本**。
+          flutter-version: 3.47.5
           cache: true
 
       - name: Install dependencies
@@ -314,6 +321,13 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # 🔴 **锁死具体版本**（不要只写 `channel: stable`）——
+          #    `stable` 会**随上游漂移**：今天 3.47.5，明天可能 3.48.x，
+          #    而 **lint 规则集随版本变化** → 「本地绿 / CI 红」（或反之）会变成常态。
+          #    实测依据（2026-10-01）：Rust 那边正因为没锁版本，CI 的 clippy 从 1.95 漂到 1.98，
+          #    新增的 `useless_borrows_in_formatting` 直接让门禁变红，而本地完全复现不了。
+          #    📌 与 WSL 本地环境（`scripts/setup/install_flutter_in_wsl.sh`）保持**同一个版本**。
+          flutter-version: 3.47.5
           cache: true
 
       - name: Install dependencies

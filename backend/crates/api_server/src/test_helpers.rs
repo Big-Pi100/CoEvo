@@ -100,7 +100,7 @@ pub async fn body_json(resp: reqwest::Response) -> Value {
         eprintln!(
             "[body_json] HTTP {} body (first 300): {}",
             status,
-            &text.chars().take(300).collect::<String>()
+            text.chars().take(300).collect::<String>()
         );
     }
 
@@ -122,7 +122,7 @@ pub async fn body_json_or(resp: reqwest::Response, default: Value) -> Value {
                 "[body_json_or] HTTP {} parse failed (using default): {}\nbody: {}",
                 status,
                 e,
-                &text.chars().take(200).collect::<String>()
+                text.chars().take(200).collect::<String>()
             );
             return default;
         }
@@ -132,7 +132,7 @@ pub async fn body_json_or(resp: reqwest::Response, default: Value) -> Value {
         eprintln!(
             "[body_json_or] HTTP {} body (first 200): {}",
             status,
-            &text.chars().take(200).collect::<String>()
+            text.chars().take(200).collect::<String>()
         );
     }
 
