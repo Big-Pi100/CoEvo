@@ -487,7 +487,7 @@ Future<void> _lookupWord(BuildContext context, WidgetRef ref, String rawText) as
   // ── 🔑 Step 3.4c：查词写入（v1 §八 / §九：**查词即自动入生词本，零额外操作**）──
   //
   // 🔴🔴 **必须先弹浮层，写入放后面 —— 且不得阻塞**
-  //    「读到词义」是产品核心动作。写库失败（磁盘满 / 库损坏 / 达上限）
+  //    「读到词义」是产品核心动作。写库失败（磁盘满 / 库损坏）
   //    **绝不能**让用户看不到释义。所以：
   //      · 命中 → 先 `await` 浮层（用户看到释义）→ 再异步写入
   //      · 未命中 → 只记 `lookup_event`（白哥定 Q2：未命中**也记**）
@@ -550,15 +550,6 @@ Future<void> _writeBackLookup(
     //    `user_word` + `card_review_state` → 刷了也是白刷一次库。
 
     final added = await repo.add(wordId, spelling);
-
-    // 200 上限：**不入库**，但也不打断（白哥定 Q1-A）
-    // 🔑 用 `debugPrint` 而不是 toast —— 上限提示应当由**生词本页 / 主动查词处**
-    //    来给（那是用户能理解「200 词是什么」的场合）。在阅读中弹订阅提示
-    //    会打断「读文章」这件事本身。具体提示时机待产品定（报告 §〇 Q1）。
-    if (added == AddWordResult.limitReached) {
-      debugPrint('[user_word] 已达上限 $kUserWordLimitFree，未加入：$spelling');
-      return;
-    }
 
     // `alreadyExists` → `add()` 直接 return，**一行都没写** → 库没变，不 bump。
     // 🔑 「只在**真的写库后**才刷新」的落实点：刷新不是「操作发生了」，

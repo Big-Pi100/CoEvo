@@ -54,11 +54,14 @@ final userWordProvider = FutureProvider<UserWordRepository>((ref) async {
 //    而那个数字**该不该显示、显示在哪**是个**产品问题**，不该由一个
 //    遗留 provider 悄悄决定。
 //
-// ⚠️ 附带现状（**产品待定项，不是本文件的事**）：
-//    `UserWordRepository.count()` **仍在用** —— `add()` 内部拿它判 200 词上限
-//    （`kUserWordLimitFree`）。但该上限**目前在界面上完全不可见**：
-//    超出时只有 `reader_screen` 里一行 `debugPrint`，用户毫无感知。
-//    → 属于「静默失败 + 无出口」那一类，提示时机待产品定。
+// ⚠️ 附带现状（**已了结，留档防误解**）：
+//    `UserWordRepository.count()` **仍在用**，但**已不是额度检查**。
+//    它曾经在 `add()` 内部判 200 词上限（`kUserWordLimitFree`）——
+//    而那道上限**已于 2026-10-01 取消**（免费可全量使用）。
+//    🔑 取消的动因之一，正是当时记在这里的这一条：该上限**在界面上完全不可见** ——
+//    超出时只有 `reader_screen` 一行 `debugPrint`，用户毫无感知，
+//    属「**静默拦截 + 无出口**」（比报错更糟）。
+//    📄 `docs/review/free-tier-limit-removal-assessment-2026-10-01.md`
 //
 // 🔑 「删掉一个功能后要清理它的语义残留」的既定原则：注释里的旧概念
 //    （如表名、字段名、这里的 provider 名）留着，后续开发会不断把它加回来。

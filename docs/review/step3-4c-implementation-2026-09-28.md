@@ -1,5 +1,14 @@
 # Step 3.4c 实施报告：查词写入（`user_word` + `lookup_event`）
 
+> ## ⛔ 局部作废（2026-10-01）：`AddWordResult` 的第 4 个值 `limitReached` 已删除
+>
+> ⛔ 免费层生词本 200 词上限**已取消**（白哥 2026-10-01 定，**已作废**）→
+> 本文中「`add()` 返回 `added` / `alreadyExists` / `revived` / `limitReached`」的枚举清单
+> **只剩前三项**（`limitReached` 与其分支已一并删除）。
+> ⛔ 其余实施结论**仍然有效**。
+>
+> 📄 依据：`docs/review/free-tier-limit-removal-assessment-2026-10-01.md`
+
 > 日期：2026-09-28｜方案依据：`step3-4c-word-writeback-plan-2026-09-28.md`
 > 状态：✅ **已实施**（代码 + 验收全绿）· ⏳ **待白哥真机验证**
 > 权威依据：`v1-final-design-authoritative-2026-09-25.md` §3.2 / §八 / §九（L0）

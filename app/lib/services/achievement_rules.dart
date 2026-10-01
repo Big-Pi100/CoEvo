@@ -385,10 +385,15 @@ const List<AchievementDef> kAchievements = [
     metric: AchievementMetrics.totalWords,
     threshold: 50,
   ),
+  // ⚠️ 本条的 `name` / `description` 于 2026-10-01 改过（原为 name '满额' ·
+  //    description '生词本达到 200 词（免费层上限）'）——
+  //    「免费层 200 词上限」已取消 ⇒ 原文案是**已失效概念的残留**。
+  // 🔑 `key` **不可改**（已发布的解锁记录以它为主键）；`name`/`description`
+  //    不参与匹配 → 可改，且不改动已解锁用户的记录。
   AchievementDef(
     key: 'words_200',
-    name: '满额',
-    description: '生词本达到 200 词（免费层上限）',
+    name: '词库小成',
+    description: '生词本达到 200 词',
     category: AchievementCategory.words,
     tier: AchievementTier.gold,
     icon: AchievementIcons.accountBalance,

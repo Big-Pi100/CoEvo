@@ -5,7 +5,8 @@
 // 验证目标：
 //   · `UserWordRepository` 的三种写入分支（新增 / 已存在 / **复活**）
 //   · 🔴 **软删语义**（与 `bookmark` 的硬删相反）：`deleted=1` 后数据仍在
-//   · 🔴 **200 上限**：口径是 `deleted = 0` 的计数；已移出的不占额度
+//   · 🔴 **没有 200 上限**（2026-10-01 取消）：连加超过 250 个也全部成功
+//     ——历史上这里验的是「第 201 个返回 limitReached」，现已**反向**验证
 //   · 🔑 **`source_sentence` 取首次**，不被后续查词覆盖
 //   · `lookup_event`：命中写 word_id、**未命中留 NULL**（白哥定「都记」）
 //   · 时间列 UTC ISO8601 带 `Z`（复用 `parseUserDbUtc`，无 `Z` 会抛错）
@@ -107,33 +108,36 @@ Future<void> main() async {
   check('🔑 source_sentence **不被新句子覆盖**（仍是最早那句）',
       revived?.sourceSentence == 'He decided to abandon the plan.');
 
-  print('\n【5】🔴 200 上限（口径 = deleted 0 的计数）');
-  // 先清空，再灌满
+  print('\n【5】🔴 **没有 200 上限**（2026-10-01 取消）—— 加多少都进');
+  // 先清空，再灌到**超过历史上限**（250 > 200）
   for (final w in await repo.listAll()) {
     await repo.remove(w.wordId);
   }
   eq('清空后 count = 0', await repo.count(), 0);
-  for (var i = 0; i < kUserWordLimitFree; i++) {
+  var allAdded = true;
+  for (var i = 0; i < 250; i++) {
     final r = await repo.add('w1${i.toString().padLeft(5, '0')}', 'word$i');
     if (r != AddWordResult.added) {
-      check('第 $i 个应能加入', false, '$r');
+      check('第 $i 个应能加入（无上限）', false, '$r');
+      allAdded = false;
       break;
     }
   }
-  eq('恰好加满 $kUserWordLimitFree 个', await repo.count(), kUserWordLimitFree);
-  eq('第 ${kUserWordLimitFree + 1} 个 → limitReached',
-      await repo.add('w199999', 'overflow'), AddWordResult.limitReached);
-  eq('上限后 count 未变', await repo.count(), kUserWordLimitFree);
+  check('🔴 连加 250 个全部 added（历史上第 201 个会 limitReached）', allAdded);
+  eq('生词数 = 250（**不再有 200 这个天花板**）', await repo.count(), 250);
+  eq('第 251 个仍能加入（无上限）',
+      await repo.add('w199999', 'overflow'), AddWordResult.added);
+  eq('生词数 = 251', await repo.count(), 251);
 
-  print('\n【6】🔑 已移出的**不占额度**（删一个 → 让出一个位置）');
+  print('\n【6】🔑 软删仍只影响计数；被移出的词再查 → **复活**（与上限无关）');
+  final beforeRemove = await repo.count();
   final victim = (await repo.list()).first.wordId;
   await repo.remove(victim);
-  eq('移出一个后 count = ${kUserWordLimitFree - 1}', await repo.count(),
-      kUserWordLimitFree - 1);
-  eq('现在第 ${kUserWordLimitFree + 1} 个能加入',
-      await repo.add('w199999', 'overflow'), AddWordResult.added);
-  eq('复活那个「被移出的」也还能（revived 不受上限影响）',
+  eq('移出一个后 count 减 1（未移出的才算）', await repo.count(),
+      beforeRemove - 1);
+  eq('再查被移出的词 → revived（不是新增）',
       await repo.add(victim, 'restored'), AddWordResult.revived);
+  eq('复活后 count 回到原值', await repo.count(), beforeRemove);
 
   print('\n【7】lookup_event：命中与未命中**都记**（白哥定 Q2）');
   await repo.recordLookup(
@@ -155,9 +159,9 @@ Future<void> main() async {
       parseUserDbUtcSafe(missRows.first['looked_up_at'] as String));
 
   print('\n【8】🔑 source_sentence 与 lookup_event 首条**一致**（防两处漂移）');
-  // ⚠️ §5/§6 把表灌到了 200（上限）→ 这里必须先腾出位置，
-  //    否则 `add()` 返回 `limitReached`、**什么都没插入**，
-  //    后面的 `findByWordId` 自然是 null → 看起来像「实现错了」，其实是**前提没满足**。
+  // ⚠️ §5/§6 把表灌到了 251 条 → 这里先腾空，让后续断言从**干净前提**开始。
+  //    （不再有「上限挡路」那类问题 —— 200 上限已于 2026-10-01 取消；
+  //     但**显式腾空**仍是对的：让每小节的前提自明，不依赖上一节的副作用。）
   for (final w in await repo.listAll()) {
     await repo.remove(w.wordId);
   }
@@ -219,7 +223,7 @@ Future<void> main() async {
   print('\n${'═' * 62}');
   if (_failures.isEmpty) {
     print('通过 $_pass 项，失败 0 项');
-    print('\n✅ 生词本三种写入分支 + 软删 + 200 上限 + 查词记录均符合设计');
+    print('\n✅ 生词本三种写入分支 + 软删 + **无 200 上限** + 查词记录均符合设计');
   } else {
     print('通过 $_pass 项，**失败 ${_failures.length} 项**');
     print('\n失败项：');

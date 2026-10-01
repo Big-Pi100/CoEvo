@@ -32,12 +32,23 @@ import 'bookmark_repository.dart' show parseUserDbUtc;
 /// （一个带 `Z` 一个不带 → `parseUserDbUtc` 会对后者抛错，且只在 UPDATE 路径上）。
 const String _nowUtcSql = "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')";
 
-/// 生词本**上限**（免费层）。
+/// 🔴 **本库没有「生词本上限」**（2026-10-01 白哥定：免费可全量使用，收费点另议）。
 ///
-/// 🔑 口径 = **`COUNT(*) WHERE deleted = 0`**（唯一 lemma 数）——
-/// 与「来源 / 查了几次」无关 → **天然防绕过**（这是产品设计，不是限制手段）。
-/// 已软删的**不占额度**（用户明确不要了，不该继续占位）。
-const int kUserWordLimitFree = 200;
+/// 历史上这里有 `const int kUserWordLimitFree = 200`（免费层上限），
+/// 已于 2026-10-01 **取消** —— 连同 `add()` 的 `enforceLimit` 参数与
+/// `AddWordResult.limitReached` 分支一并删除。
+///
+/// ⚠️ **别把它加回来。** 若将来要重新引入门槛，先读这三条：
+///   1. 它是「**需要登录**」的**唯一**依据 —— `plan-and-progress-2026-09-26.md:2128`
+///      原文：「生词本**新增**（超 200 词上限）｜✅ **只有这里**（需要登录）」
+///      → 取消后**没有任何功能需要登录**；
+///   2. 该上限**在界面上本来就完全不可见**（见 `user_word_provider.dart` 的说明）
+///      → 它只是一道**静默拦截**：用户不会被告知「为什么加不进去」；
+///   3. 「按**唯一 lemma 数**计数」这个**口径**本身仍是对的
+///      （`COUNT(*) WHERE deleted = 0`）→ 将来做统计/成就照用，
+///      但**不要**把它变回「限额」。
+///
+/// 📄 决策依据：`docs/review/free-tier-limit-removal-assessment-2026-10-01.md`
 
 /// 一条生词记录。
 class UserWord {
@@ -136,11 +147,14 @@ class LookupEvent {
       '${wordId == null ? ' · 未命中' : ' → $wordId'})';
 }
 
-/// `add()` 的结果 —— 调用方据此决定 UI 提示与是否要引导订阅。
+/// `add()` 的结果 —— 调用方据此决定 UI 提示。
 ///
-/// 🔑 **用枚举而非 `bool`**：`false` 无法区分「已存在」与「已达上限」，
-///    而这两种情况要给**完全不同的**用户反馈（一个是「已在生词本」、
-///    另一个是「要订阅」）。用 bool 会迫使调用方再查一次库。
+/// 🔑 **用枚举而非 `bool`**：`false` 无法区分「已在生词本」与「曾移出被复活」，
+///    而这两种情况给用户的反馈不同（前者「已在生词本」；后者应被当作**真的加进来了** ——
+///    复习页会重新看到它）。用 bool 会迫使调用方再查一次库。
+///
+/// ⚠️ 历史上还有第 4 个值 `limitReached`（免费层 200 词上限）——
+///    2026-10-01 取消上限时**一并删除**。**别加回来**，理由见文件头。
 enum AddWordResult {
   /// 本次真的新增了。
   added,
@@ -150,10 +164,6 @@ enum AddWordResult {
 
   /// 用户之前移出过，**本次复活**了（`deleted` 1→0）。
   revived,
-
-  /// 🔴 **已达免费层上限**（且这是个新词）→ 未写入。
-  /// 调用方应提示 + 引导订阅（白哥定 Q1-A：**不打断阅读**，浮层照常显示）。
-  limitReached,
 }
 
 /// 生词本 + 查词记录仓储。
@@ -166,7 +176,10 @@ class UserWordRepository {
   // 生词本：读
   // ───────────────────────────────────────────────────────────
 
-  /// 生词数（**只算未移出的** —— 就是 200 上限的口径）。
+  /// 生词数（**只算未移出的** —— 「生词本里现在有几个词」）。
+  ///
+  /// ⚠️ 它**不再是「额度检查」**（200 上限已于 2026-10-01 取消，见文件头）；
+  /// 现在只服务统计与断言（`verify_user_word.dart`）。
   ///
   /// 走 `idx_uw_alive` 的部分索引。
   Future<int> count() async {
@@ -224,20 +237,19 @@ class UserWordRepository {
   /// 2. **曾移出**（`deleted = 1`）→ [AddWordResult.revived]，`deleted` 置 0
   ///    🔑 白哥定 Q3-A **复活**：删除是「这个我先不学了」，不是「永远别出现」——
   ///       用户重修时不该被自己的旧决定挡住。`added_at` 同样**不改**（保留最初那次）。
-  /// 3. **全新** → 检查上限 → [AddWordResult.added] 或 [AddWordResult.limitReached]
+  /// 3. **全新** → 写入 → [AddWordResult.added]
   ///
   /// ## `source_sentence` 只在**首次**写入
   /// ⚠️ 分支 2 复活时**不覆盖** `source_sentence` —— 记忆里的明确决策：
   ///    「不用『最后一次查词语境』覆盖例句」→ 取首次。
   ///    （断言锁「与 `lookup_event` 里该词最早一条一致」，见 `verify_user_word.dart`）
   ///
-  /// [enforceLimit] 传 `false` 可绕过上限（仅供测试与将来的付费用户）。
+  /// [enforceLimit] 已于 2026-10-01 **删除**（取消 200 上限，见文件头）。
   Future<AddWordResult> add(
     String wordId,
     String spelling, {
     String? sentence,
     int? articleId,
-    bool enforceLimit = true,
   }) async {
     final existing = await findByWordId(wordId);
 
@@ -263,11 +275,7 @@ class UserWordRepository {
       return AddWordResult.revived;
     }
 
-    // 全新：先判上限（免费层）
-    if (enforceLimit && await count() >= kUserWordLimitFree) {
-      return AddWordResult.limitReached;
-    }
-
+    // 🔴 全新 → **直接写入**。这里**没有上限**（2026-10-01 取消，见文件头）。
     await _db.insert(
       'user_word',
       {
