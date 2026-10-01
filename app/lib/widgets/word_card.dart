@@ -513,8 +513,16 @@ class WordCardView extends StatelessWidget {
                   color: Color(t.ink.argb32),
                 ),
               ),
-              // zh 实测 31,334 条**全非空**（0%）→ 这个守卫只为防未来数据回潮
-              if ((items[i].zh ?? '').trim().isNotEmpty) ...[
+              // 🔴 `CollocationItem.zh` 声明为**非空** `final String`（见
+              //    `services/word_query_service.dart` 的类定义）→ `?? ''` 是**死代码**，
+              //    analyzer 报「left operand can't be null, so the right operand is never executed」。
+              //
+              // 🔑 删掉 `?? ''` **不损失任何防御**：
+              //    · 「防空」这件事由 `.trim().isNotEmpty` **完整承担**（它检查的是空串，不是 null）
+              //    · 若将来有人把该字段改成 `String?`，**编译器会强制他处理**
+              //      —— 比运行时守卫**更早**发现，比这里放一个永不执行的 `?? ''` 更可靠
+              //    · 原注释说「守卫只为防未来数据回潮」：那个意图仍然成立，只是由类型系统担保
+              if (items[i].zh.trim().isNotEmpty) ...[
                 const SizedBox(height: 2),
                 Text(
                   items[i].zh,

@@ -121,5 +121,10 @@ final bookmarkListProvider = FutureProvider<List<Bookmark>>((ref) async {
   // ⚠️ 这里**返回空表而不是抛错**：调用方要区分「没有收藏」与「库不可用」，
   //    靠的是**另一个** [AsyncValue]（`bookmarkProvider.isReady`），
   //    而不是让本 provider 变成 `AsyncError`（那会把整页渲染成报错页）。
-  return repo == null ? const <Bookmark>[] : repo.list();
+  // 🔑 两支都要**同类型**：`repo.list()` 返回 `Future<List<Bookmark>>`，
+  //    而不加 `await` 时三元表达式的两支分别是 `List<Bookmark>` 与 `Future<...>`
+  //    → 最小上界退化成 `Object` → 与 `async` 闭包的返回类型不符（analyzer 报 error）。
+  //    `async` 函数里 `return future` 本来就会隐式 await → 补上 `await`
+  //    **只把意图写明、不改行为**（这也是 analyzer 认可的写法）。
+  return repo == null ? const <Bookmark>[] : await repo.list();
 });

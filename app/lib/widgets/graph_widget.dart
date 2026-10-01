@@ -847,12 +847,6 @@ class GraphWidget extends StatelessWidget {
     return cs.primary;
   }
 
-  /// 截断长文本用于错误显示
-  static String _shorten(String s, int maxLen) {
-    if (s.length <= maxLen) return s;
-    return '${s.substring(0, maxLen)}...';
-  }
-
   static List<dynamic> _safeList(dynamic value) {
     if (value == null) return <dynamic>[];
     if (value is List) return value as List<dynamic>;
