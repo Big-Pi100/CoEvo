@@ -185,10 +185,27 @@ vibedollar-pay mailproxy  coevo
 | `api.keyievolution.fun` | **NXDOMAIN（不存在）** | 还没加 ✅ |
 | `keyievolution.fun` / `www` | `<DOMAIN_OLD_IP>`（探测超时） | ⚠️ 另一处目标，**与本次无关，不动** |
 
+> #### 🔄 2026-10-01 复测：**上表两行的状态已变**（白哥后续操作）
+>
+> | 项 | 09-29（上表） | **10-01 实测** |
+> |---|---|---|
+> | `api.keyievolution.fun` | NXDOMAIN | ✅ **`<VPS_IP>`** —— **A 记录已加**（灰云「仅 DNS」） |
+> | `keyievolution.fun` / `www` | `<DOMAIN_OLD_IP>` | ✅ **`<VPS_IP>`** —— 🔑 **主域已改指向 CoEvo VPS**（原指向的是另一台） |
+> | `http://api.../health` | — | **301**（`Server: nginx/1.24.0`）⇒ **nginx 已能处理该 Host**，**80 端口通**（certbot HTTP-01 前提满足） |
+> | `https://api.../health` | — | 🔴 **000（连不上）** ⇒ **443 尚无证书/server block** → **步骤 2 只差这一项** |
+>
+> 🔑 **结论**：**「白哥加 DNS」这个前置条件已完全满足** —— 步骤 2 的剩余工作**全在当前可控范围内**。
+> ⚠️ 复测方法（可重跑）：`nslookup <域>` + `curl -s -o /dev/null -w '%{http_code}' http(s)://<域>/health`，
+>   **并用已知有证书的 `pay` 域做对照**（它的 `https` 返 **404** 而非 `000` ⇒ 证明本机 443 出网正常，
+>   `api` 的 `000` 是**真实的服务未配**，不是网络限制）。
+
 🔑 **一句话**：`pay` 的形态 = **灰云 + 源站 certbot 签的 LE 证书 + 80 端口通** ——
 **这正是 CoEvo 要复制的模板**，且它已在生产验证过。
 
 ### 9.2 🔴 加 `api` 记录：**必须选「仅 DNS」（灰云）**
+
+> ✅ **白哥已于 2026-10-01 前完成**（实测解析到 `<VPS_IP>`）—— 本节保留为**操作依据与理由存档**，
+> 不再是待办。⚠️ 但理由仍有意义：**若将来有人把 `api` 改成橙云（Proxied）**，下面的论证说明为什么不行。
 
 | 项 | 值 |
 |---|---|
@@ -305,7 +322,7 @@ server {
 |---|---|---|
 | **`keyievolution.fun`** | ✅ CoEvo 门面 | 配 server block + 证书（**当前是证书错误 + 404**，见 §9.6） |
 | **`www.keyievolution.fun`** | ✅ CoEvo 门面（同上） | 同上（建议 301 到主域，或同站） |
-| **`api.keyievolution.fun`** | ✅ CoEvo 后端 API | 反代 → `127.0.0.1:8300` · ⏳ **等白哥加 DNS** |
+| **`api.keyievolution.fun`** | ✅ CoEvo 后端 API | 反代 → `127.0.0.1:8300` · ✅ **DNS 已加**（2026-10-01 实测：解析到 `<VPS_IP>`；`http` 返 **301** 证明 nginx 已能处理该 Host，而 `https` 仍 **000** ⇒ **只差证书 + server block**）· ⏳ **步骤 2 待执行** |
 | `pay.keyievolution.fun` | 🔴 vibedollar 支付 | **不碰**（现有） |
 | **`pi.keyievolution.fun`** | 🔴 **别的功能** | **不碰** |
 | `mailproxy`（无独立域名） | 🔴 vibedollar 邮件 | **不碰** |
@@ -552,7 +569,7 @@ sudo systemctl disable --now coevo && sudo rm -f /etc/systemd/system/coevo.servi
 
 | 项 | 状态 |
 |---|---|
-| **nginx 反代 + `api` 证书**（步骤 2） | ⏳ 未做 —— 需白哥加 `api` A 记录（**仅 DNS · 灰云**） |
+| **nginx 反代 + `api` 证书**（步骤 2） | ⏳ 未做 —— 🔴 **但 DNS 前提已满足**：白哥已于 2026-10-01 前加好 `api` A 记录（**仅 DNS · 灰云**），本文多处「等白哥加 DNS / NXDOMAIN」的表述**以本节为准**（那些是 **09-29 当时**的实测，**已过时**）|
 | 主域 / www 占位页（§11.6 选项甲） | ⏳ 未定 |
 | `prompts/` 的 K12 退役遗留 | ⏳ 建议独立清理（同「删功能要清语义残留」原则） |
 
