@@ -17,6 +17,7 @@ import '../models/article.dart';
 import '../providers/achievement_notifier.dart';
 import '../providers/achievement_provider.dart';
 import '../providers/bookmark_provider.dart';
+import '../providers/device_id_provider.dart';
 import '../providers/generate_card_provider.dart';
 import '../providers/user_db_provider.dart';
 import '../providers/user_word_provider.dart';
@@ -630,7 +631,13 @@ Future<String?> _generateExternalCard(
   String? error;
 
   try {
-    final res = await ref.read(generateCardClientProvider).generate(text);
+    // 🔑 device_id 是**可选**统计信号（服务端算 `distinct_user_count`，A3 回流门槛用）：
+    //    取不到就传 `null` —— **不阻断制卡**（它是统计，不是功能前提）。
+    final deviceId = await deviceIdOrNull(ref);
+    final res = await ref.read(generateCardClientProvider).generate(
+          text,
+          deviceId: deviceId,
+        );
 
     switch (res) {
       case GenerateCardReady():

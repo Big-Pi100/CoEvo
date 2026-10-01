@@ -49,6 +49,7 @@ import 'dart:async';
 
 import '../providers/achievement_notifier.dart';
 import '../providers/achievement_provider.dart';
+import '../providers/device_id_provider.dart';
 import '../providers/review_list_provider.dart';
 import '../providers/review_session_provider.dart';
 import '../providers/user_db_provider.dart';
@@ -111,7 +112,12 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
     try {
       final svc = ref.read(fsrsServiceProvider);
       final now = svc.nowUtc();
-      final r = svc.review(rating, row.item.toReviewState(), now);
+      // 🔑 匿名设备标识 —— 写进 `review_log.device_id`（多端同步的**冲突判定**键，
+      //    也是服务端去重统计的来源）。取不到就传 `null` →
+      //    `ReviewEvent.toRow` 落成 `''`，**与升级前完全一致**（不是新故障）。
+      final deviceId = await deviceIdOrNull(ref);
+      final r = svc.review(rating, row.item.toReviewState(), now,
+          deviceId: deviceId);
 
       final db = await ref.read(userDbProvider.future);
       final q = ReviewListQuery(db);

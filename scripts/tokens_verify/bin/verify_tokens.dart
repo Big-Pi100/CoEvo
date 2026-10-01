@@ -121,6 +121,7 @@ void main() {
   _s17ReviewList();
   _s18DbRevision();
   _s19ExternalCard();
+  _s20DeviceId();
 
   print('\n' + '═' * 72);
   print('通过 $_pass 项，实现类失败 $_fail 项，规格内部冲突 ${_conflicts.length} 项');
@@ -2535,6 +2536,83 @@ void _s17ReviewList() {
 //
 // ⚠️ 这类失效**编译器完全看不出来**：数据写对了，只是没人告诉界面。
 //    用户看到的是「查词没生效」/「评了没用」。
+void _s20DeviceId() {
+  print('\n【20】匿名设备标识（device_id）的接线与边界');
+
+  final root = _repoRoot();
+  String src(String p) {
+    final f = File('$root/app/lib/$p');
+    return f.existsSync() ? _codeOnly(f.readAsStringSync()) : '';
+  }
+
+  final devId = src('services/device_id.dart');
+  final devProv = src('providers/device_id_provider.dart');
+  final client = src('api/generate_card_client.dart');
+  final reader = src('screens/reader_screen.dart');
+  final sess = src('screens/review_session_screen.dart');
+  final auth = src('providers/auth_provider.dart');
+
+  // ① 🔴 分层：纯逻辑层**不许** import Flutter（否则断言脚本 import 不了它）
+  check('🔴 `device_id.dart` 零 Flutter 依赖（IO 走回调注入 → 可纯 Dart 断言）',
+      devId.isNotEmpty && !devId.contains('package:flutter'));
+  check('`device_id.dart` 不依赖 shared_preferences（那是接线层的事）',
+      !devId.contains('shared_preferences'));
+  check('🔑 `device_id.dart` 与登录态**无关**（不出现 token / login / auth）',
+      !RegExp(r'token|login|auth', caseSensitive: false).hasMatch(devId));
+
+  // ② 🔑 格式常量只有**一处**出处 + 前缀带 `dev_`
+  final devIdPrefsKey = RegExp(r"kDeviceIdPrefsKey\s*=\s*'([^']+)'")
+      .firstMatch(devId)?.group(1);
+  check('`kDeviceIdPrefsKey` 有唯一定义（可 grep 的单一出处）',
+      devIdPrefsKey != null && devIdPrefsKey.isNotEmpty, '$devIdPrefsKey');
+  check('🔑 存储键带 `coevo.` 命名空间（与其它键同类）',
+      devIdPrefsKey != null && devIdPrefsKey.startsWith('coevo.'),
+      '$devIdPrefsKey');
+
+  // ③ 制卡：device_id **真的进了请求体**，且空串被剔除
+  check('制卡客户端 `generate` 接受 `deviceId`',
+      RegExp(r'generate\([^)]*deviceId').hasMatch(client));
+  check('🔴 请求体含 `device_id`（**接线**，不是只声明参数）',
+      client.contains("'device_id':"));
+  check('🔑 空串被显式剔除（否则服务端会把空串当一个「用户」计入去重）',
+      client.contains("deviceId != null && deviceId.isNotEmpty"));
+  check('reader 调用制卡时传了 deviceId', reader.contains('deviceId: deviceId'));
+
+  // ④ 复习日志：device_id 真的写进去了（多端同步的冲突判定键）
+  check('🔴 提交评级时把 deviceId 传给 `svc.review`',
+      sess.contains('deviceId: deviceId'));
+  check('🔑 两个调用方都用 `deviceIdOrNull`（**拿不到就降级**的单一实现）',
+      reader.contains('deviceIdOrNull(') && sess.contains('deviceIdOrNull('));
+  check('provider 侧同时暴露 Ref 版本（WidgetRef 与 Ref 无公共父类）',
+      devProv.contains('deviceIdOrNullFrom'));
+
+  // ⑤ 🔴🔴 退出登录**不许** `prefs.clear()` —— 那会把 device_id 一起抹掉，
+  //    表现为「每次退出登录都换一个新身份」（服务端去重被稀释、且用户无感知）
+  check('🔴 `logout` 用精确删键（`remove`），**不是** `clear()`',
+      auth.contains("remove('display_name')") && !auth.contains('prefs.clear()'));
+
+  // ⑥ 🔴 pubspec 必须声明 `assets/word_db.version`
+  //    ⚠️ 漏声明**不报错** —— `word_db_provider` 对该资产做了容错（缺失即退回比大小），
+  //       于是表现为「静默退化成旧行为」，比崩溃更难发现。
+  final pubspecFile = File('$root/app/pubspec.yaml');
+  final pubspec = pubspecFile.existsSync() ? pubspecFile.readAsStringSync() : '';
+  check('🔴 `pubspec.yaml` 声明了 `assets/word_db.version`（漏声明不报错，只静默退化）',
+      RegExp(r'^\s*-\s*assets/word_db\.version\s*$', multiLine: true)
+          .hasMatch(pubspec));
+  check('`assets/word.db` 仍逐文件声明（它是单文件，不会连带同目录其它文件）',
+      RegExp(r'^\s*-\s*assets/word\.db\s*$', multiLine: true)
+          .hasMatch(pubspec));
+
+  // ⑦ 资产文件真的在（声明了但文件缺失 = 运行期才炸）
+  final vAsset = File('$root/app/assets/word_db.version');
+  check('版本号资产文件存在', vAsset.existsSync());
+  if (vAsset.existsSync()) {
+    final v = vAsset.readAsStringSync().trim();
+    check('版本号非空且形如 `<词数>+<8位hex>`',
+        RegExp(r'^\d+\+[0-9a-f]{8}$').hasMatch(v), v);
+  }
+}
+
 void _s18DbRevision() {
   print('\n【18】库修订号（写端 bump · 读端 watch）');
 

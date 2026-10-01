@@ -217,7 +217,11 @@ class ReviewEvent {
         //      因为在此之前**没有任何代码写过 `review_log`**（本方法是它唯一的出口，
         //      而它从无调用方）。典型「**从未被执行 ⇒ 缺陷不可见**」。
         //      🔑 本方法签名（`Map`）也帮不上忙：漏列在编译期毫无提示。
-        //      → 断言只能靠「真写一次并读回」，见 `verify_review_log.dart`【3】。
+        //      → 断言只能靠「真写一次并读回」，
+        //        见 `scripts/query_verify/bin/verify_review_list.dart`【13】。
+        //        ⚠️ 此处原写 `verify_review_log.dart` —— **该文件不存在**
+        //           （2026-10-02 核实：脚本名是 `verify_review_list`，段号是【13】）。
+        //           「注释里的声明必须 grep 才算数」的一个实例。
         'utc_day': utcDay,
         // 🔴 `device_id` 同样是 `NOT NULL`（`DEFAULT ''`），所以**不能传 `null`**：
         //   ① DEFAULT 只对「不给这一列」生效；显式传 NULL 仍违反 NOT NULL

@@ -105,19 +105,25 @@ class GenerateCardClient {
   /// 请求生成（或取缓存）。
   ///
   /// [spelling] 用户查的词（大小写不敏感 —— 服务端会归一化）。
-  /// [deviceId] 🆕 **暂不传**（见下方说明）。
-  Future<GenerateCardResult> generate(String spelling) async {
+  /// [deviceId] 🆕 本机匿名标识（`services/device_id.dart`）。
+  ///
+  /// 🔴 **它是可选参数，且调用方应为「取不到就不传」**（不要在这里兜底生成）：
+  ///    服务端用它写 `generated_card_hit(spelling, device_id)` 以算
+  ///    `distinct_user_count` —— **A3 回流门槛的真信号**
+  ///    （`hit_count` 只管累计，去重不了：「一人刷 100 次」与「100 人各 1 次」同形）。
+  ///
+  ///    传 `null` 的后果是**统计缺口**（服务端 `distinct_user_count` 不增长），
+  ///    而不是功能故障 —— 所以**宁可空着也不瞎传**：
+  ///    每次现生成一个随机值会让该指标被灌成「请求次数」，比空值**更具误导性**
+  ///    （有空值至少知道「未启用」；灌水值是「有值但全错」）。
+  Future<GenerateCardResult> generate(String spelling, {String? deviceId}) async {
     final uri = Uri.parse('$baseUrl/api/generate-card');
 
-    // ⚠️ **暂不传 `device_id`**（如实标注，不是遗漏）：
-    //    服务端用它算 `distinct_user_count` —— 那是 **A3 回流门槛的真信号**
-    //    （`hit_count` 只管累计，去重不了）。
-    //    而端侧**目前没有稳定的设备标识**（`review_log.device_id` 是调用方传的，
-    //    没有生成器）→ 造一个需要「本机 UUID + 持久化」，属独立工作项。
-    //    🔴 后果：现在回流门槛会因 `distinct_user_count` 恒为 0 而**无法生效**，
-    //       即「同一个用户刷 100 次」与「100 个用户各查 1 次」看起来一样。
-    //    → 已记入 A3 的前置缺口，**不要**用「先传个随机数」蒙混（那会让去重失真）。
-    final body = jsonEncode({'spelling': spelling});
+    final body = jsonEncode({
+      'spelling': spelling,
+      // 空串等同未提供 —— 显式剔除，别让服务端把一个空字符串当成一个「用户」
+      if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
+    });
 
     try {
       // 🔴 用 `headers()` 且**不传 token** —— 见文件头（产品原则，不是遗漏）
