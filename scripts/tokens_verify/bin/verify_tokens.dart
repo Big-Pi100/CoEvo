@@ -1507,22 +1507,22 @@ void _s16WordWriteback() {
   check('新词同时进复习队列（ReviewListQuery.upsertState）',
       reader.contains('upsertState'));
 
-  // ⑤ 200 上限：达到时**不入库但不中断**
-  check('上限判定存在（kUserWordLimitFree）',
-      uwRepo.contains('kUserWordLimitFree'));
-  check('上限命中时不代表失败（返回 limitReached 枚举）',
-      uwRepo.contains('AddWordResult.limitReached'));
-  //  🔴 上限时**只记日志**，不弹用户可见提示 —— 在阅读中弹订阅提示会打断阅读。
+  // ⑤ 🔴 2026-10-01：**200 上限已取消** → 旧断言**反转**（防被加回来）
   //
-  //  ⚠️ **断言写法要注意**：不能写「reader 里含『已达上限』就判失败」——
-  //     那样会把**日志文案**也算进去（实现里正是用 `debugPrint` 打了这行字）。
-  //     → 正确做法：**取出含「已达上限」的那一行**，断言它是个 `debugPrint`
-  //       （而不是 `_hint(` / `showSnackBar` —— 那两个才是用户可见的）。
-  final limitLine = reader
-      .split('\n')
-      .firstWhere((l) => l.contains('已达上限'), orElse: () => '');
-  check('上限时用 debugPrint 记日志（不是用户可见提示）',
-      limitLine.trimLeft().startsWith('debugPrint'), limitLine.trim());
+  //    历史：这里原本断言「上限判定存在（`kUserWordLimitFree`）」等三条
+  //    （含「上限时用 debugPrint 记日志」）。取消上限后那些断言若留着，
+  //    **后人会照着它们把上限加回去** —— 断言即规格。
+  //    🔑 判据：**删掉一个功能后，把守它的断言改成「反向断言」**，别只删。
+  //    📄 `docs/review/free-tier-limit-removal-assessment-2026-10-01.md`
+  //
+  //    ⚠️ `src()` 会走 `_codeOnly`（只滤**整行** `//` 注释）→
+  //       源码里解释「为什么删掉」的那些注释**不会**让本组断言误报。
+  check('🔴 `add()` 里已无 200 上限判定（`kUserWordLimitFree` 不在了）',
+      !uwRepo.contains('kUserWordLimitFree'));
+  check('🔴 `AddWordResult` 里已无 `limitReached`',
+      !uwRepo.contains('limitReached'));
+  check('🔴 划词处已无 `limitReached` 分支（不再静默拦截）',
+      !reader.contains('limitReached'));
 
   // ⑥ 🔴🔴 **连接只有一处打开**（防 `singleInstance` 下互相 close）
   //
@@ -2582,8 +2582,23 @@ void _s18DbRevision() {
       dueSeg.contains('ref.watch(userDbRevisionProvider)'));
 
   // ③ 三个写端**都**要 bump（少一个就是一次「界面不更新」）
+  //
+  //    🔑 **函数体切片在这里定义**（③④⑤⑥ 共用）——
+  //       ③ 划词那处若用全文件 `contains` 是**假绿**：`reader_screen.dart`
+  //       里 L231 另有一处 `revision.bump()`（读完文章写 `article_read` 后的）
+  //       → 把 `_writeBackLookup` 里的 bump **删掉也照样为绿**。
+  //       ⚠️ 切函数体**不能取「第一个 `{`」** —— 签名里有命名参数花括号
+  //          （`(WidgetRef ref, { String? wordId, required String spelling, })`）。
+  //          复用 `_braceBody`（已处理「命名参数 `{}`」与「`async` 关键字」两坑）。
+  final writeBody = _braceBody(reader, '_writeBackLookup');
+  // 🔑 **特征哨兵** —— 「切片非空」挡不住切错（`_braceBody` 注释里的坑 2/3/4
+  //    切出来的区间**往往仍非空**）→ 必须断言切片含该结构**独有**的东西，
+  //    否则 ③④⑤⑥ 的守护全是假的。
+  check('能切出 `_writeBackLookup` 的函数体（③④⑤⑥ 位置断言的前提）',
+      writeBody.contains('await repo.add('), 'len=${writeBody.length}');
+  check('🔴 划词写回写库后 bump 修订号（`_writeBackLookup` 内）',
+      writeBody.contains('revision.bump()'));
   for (final e in [
-    ('划词写回', reader),
     ('评级提交', sess),
     ('暂停', page),
   ]) {
@@ -2595,11 +2610,26 @@ void _s18DbRevision() {
   //    反了会怎样：读端在写入完成前重查一次（拿到旧值），
   //    而修订号**已经变过**、不会再有第二次通知 → 表现为「这一次没刷新」。
   //    🔑 这是「刷新信号必须晚于写入」的一般要求。
-  final readerAdd = reader.indexOf('await repo.add(');
-  final readerBump = reader.indexOf('revision.bump()');
+  //
+  //    🔴🔴 **位置断言必须在「被测函数内」比**（2026-10-01 修 · 此前**恒假红**）
+  //    `revision.bump()` 在 `reader_screen.dart` 里有 **2 处**真实代码：
+  //      · L231 —— 「读完文章 → 写 `article_read` → bump」（**与本条无关**）
+  //      · L579 —— `_writeBackLookup` 内（**本条要验的就是这处**）
+  //    而 `indexOf` **只返回首次出现的位置** → 拿到 L231 →
+  //    `bump@231 > add@552` **恒为 false** ⇒ 本组 3 条断言**长期假红**。
+  //    🔑 根因与本节 ② 同源（那里是「同一行在本文件出现两次」），解法也相同：
+  //       **先切段，再断言**。② 的注释已写明「默认就应该切段」，④ 当时漏了。
+  //    ⚠️ 切片不能取「第一个 `{`」——签名有命名参数花括号，会切成参数列表。
+  //       `writeBody` 已在 ③ 切好并加了哨兵断言，这里直接复用。
+  final readerAdd = writeBody.indexOf('await repo.add(');
+  final readerBump = writeBody.indexOf('revision.bump()');
   check('🔑 划词：bump 在 `repo.add` 之后（先写库、后通知）',
       readerAdd >= 0 && readerBump > readerAdd,
       'add@$readerAdd bump@$readerBump');
+  // ⚠️ 下面两处（评级 / 暂停）保持**全文件**定位：实测这两个文件里
+  //    `revision.bump()` 各只 **1 处**（`review_screen` 里 `await repo.pause(`
+  //    看似 2 处，但其中 1 处在注释行、已被 `_codeOnly` 滤掉）→ 无此洞。
+  //    🔑 但**若将来这两处新增第二个 bump，必须同步改成 `_braceBody`**。
   final sessWrite = sess.indexOf('await q.logReview(');
   final sessBump = sess.indexOf('revision.bump()');
   check('🔑 评级：bump 在写两张表之后',
@@ -2613,35 +2643,39 @@ void _s18DbRevision() {
 
   // ⑤ 🔴 **只在真的写库后**才刷（白哥 2026-09-28 定）
   //
-  //    `add()` 的三个分支里有两个**不写库**：
+  //    `add()` 里**不写库**的分支都必须提前 return：
   //      · `alreadyExists` → 直接 return（连 `user_word` 都没动）
-  //      · `limitReached`  → 不入库（返回前已 return）
   //    未命中（`wordId == null`）只写 `lookup_event`，而复习页**不读**该表 → 也不必刷。
+  //    ⚠️ 2026-10-01：原第 3 条 `limitReached`（200 上限 · 不入库）**已随上限取消删除**，
+  //       守着它的那条断言也一并移走（该上限另有一组「反向断言」，见本文件 §⑤）。
   //    🔑 「刷新」的判据是**数据变了**，不是「用户做了个操作」。
   //
   //    ⚠️ 这里用**位置**证明「不写库的路径都提前 return 了」，
   //       而不是去匹配注释文本 —— 注释可以改，而「return 在 bump 之前」
   //       是结构事实。（用注释当断言 = 断言跟着注释漂移。）
-  final missReturn = reader.indexOf('if (wordId == null) return;');
-  final alreadyReturn = reader.indexOf('AddWordResult.alreadyExists) return');
+  //    🔑 2026-10-01：三处锚点统一改用 ④ 切出的 `writeBody` ——
+  //       与 `readerBump` **同一坐标系**才能比较（此前 `readerBump` 取的是
+  //       另一个函数的 bump，位置比较毫无意义，见 ④ 的长注释）。
+  final missReturn = writeBody.indexOf('if (wordId == null) return;');
+  final alreadyReturn = writeBody.indexOf('AddWordResult.alreadyExists) return');
   check('🔴 划词：未命中（只写 lookup_event）时提前 return，走不到 bump',
       missReturn >= 0 && missReturn < readerBump,
       'return@$missReturn bump@$readerBump');
   check('🔴 划词：`alreadyExists`（库没动）时提前 return，走不到 bump',
       alreadyReturn >= 0 && alreadyReturn < readerBump,
       'return@$alreadyReturn bump@$readerBump');
-  //    200 上限同理：不入库，也不该刷新
-  final limitReturn = reader.indexOf('AddWordResult.limitReached)');
-  check('🔴 划词：`limitReached`（未入库）时也不 bump',
-      limitReturn >= 0 && limitReturn < readerBump,
-      'limitReached@$limitReturn bump@$readerBump');
 
   // ⑥ 🔑 **提前取 notifier 引用** —— 避开「`await` 期间 ref 失效」
   //
   //    三处写端都有 `await`：期间用户可能退出页面 → `ref` 失效 →
   //    `await` 之后再 `ref.read` 会抛错（写库已成功，只是通知失败）。
   //    拿 `Notifier` **实例**引用则不受 widget 生命周期影响。
-  for (final e in [('划词', reader), ('评级', sess), ('暂停', page)]) {
+  //    🔑 划词那处**必须用切片**：`ref.read(userDbRevisionProvider.notifier)`
+  //       在 `reader_screen.dart` 有 **2 处**（L221 与 L540）→ 全文件 `contains`
+  //       在「`_writeBackLookup` 内那处被删掉」时**照样为绿**（同 §18 ② 的洞）。
+  check('🔴 划词：在 `await` 之前取 notifier 引用（`_writeBackLookup` 内）',
+      writeBody.contains('ref.read(userDbRevisionProvider.notifier)'));
+  for (final e in [('评级', sess), ('暂停', page)]) {
     check('${e.$1}：在 `await` 之前取 notifier 引用',
         e.$2.contains('ref.read(userDbRevisionProvider.notifier)'));
   }
