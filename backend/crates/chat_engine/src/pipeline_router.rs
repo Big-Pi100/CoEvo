@@ -62,27 +62,15 @@ impl Domain {
         "labor",
     ];
 
-    /// 从中文 subject 映射到 Domain 枚举
-    /// 标记 deprecated：新代码应使用 Domain::from_str（同时支持中英文）
-    #[deprecated(note = "use Domain::from_str instead (supports both Chinese and English)")]
-    pub fn from_chinese(cn: &str) -> Self {
-        match cn {
-            "数学" => Domain::Math,
-            "语文" | "英语" | "日语" | "俄语" => Domain::Language,
-            "化学" => Domain::Chemistry,
-            "生物" | "生物学" => Domain::Biology,
-            "物理" => Domain::Physics,
-            "历史" => Domain::History,
-            "地理" => Domain::Geography,
-            "政治" | "道德与法治" | "道法" => Domain::Politics,
-            "科学" => Domain::Science,
-            "信息技术" | "信息科技" | "it" | "IT" => Domain::It,
-            "体育" | "体育与健康" => Domain::Pe,
-            "美术" | "音乐" | "艺术" => Domain::Art,
-            "劳动" => Domain::Labor,
-            _ => Domain::General,
-        }
-    }
+    // 🔴 2026-10-01 已删除 `from_chinese`（deprecated + 零调用）。
+    //    科目解析**只剩 `Domain::from_str` 一处权威**。
+    //
+    //    为什么必须收敛成一处：两张别名表**曾经不一致** ——
+    //    `日语` / `俄语` / `生物学` / `道德与法治` / `IT`(大写) / `体育与健康`
+    //    只有旧函数认，而 `from_str` 会落到 `General`。
+    //    留两处 = 同一件事两个口径 → 必然继续漂移（同族判据：「口径只能有一处权威」）。
+    //    ⚠️ 若将来真要支持上面那些别名，请**加进 `from_str` 的表**，不要再开第二个入口。
+    //    📌 注：更早（修复 CI 告警时）测试已全部改用 `from_str` 并核对过行为一致。
 
     /// SQL CHECK 表达式字符串，直接嵌入 DDL
     pub fn check_sql() -> &'static str {
