@@ -88,11 +88,16 @@ pub fn parse_rss(xml: &str, tz_offset_min: i32) -> Result<Vec<ParsedItem>, Strin
     }
 
     let mut out = Vec::new();
-    for item in doc.descendants().filter(|n| n.is_element() && n.tag_name().name() == "item") {
+    for item in doc
+        .descendants()
+        .filter(|n| n.is_element() && n.tag_name().name() == "item")
+    {
         let Some(title) = child_text(item, "title").filter(|t| !t.is_empty()) else {
             continue;
         };
-        let Some(url) = extract_link(item) else { continue };
+        let Some(url) = extract_link(item) else {
+            continue;
+        };
 
         let summary = child_text(item, "description")
             .map(|s| strip_html(&s))
@@ -153,7 +158,10 @@ fn extract_link(item: roxmltree::Node) -> Option<String> {
     let guid = item
         .children()
         .find(|c| c.is_element() && c.tag_name().name() == "guid")?;
-    let is_link = guid.attribute("isPermaLink").map(|v| v.eq_ignore_ascii_case("true")).unwrap_or(true);
+    let is_link = guid
+        .attribute("isPermaLink")
+        .map(|v| v.eq_ignore_ascii_case("true"))
+        .unwrap_or(true);
     if !is_link {
         return None;
     }
@@ -212,7 +220,11 @@ fn extract_body(item: roxmltree::Node, summary: Option<&str>) -> Option<String> 
 fn rfc822_to_utc_iso(s: &str) -> Option<String> {
     chrono::DateTime::parse_from_rfc2822(s.trim())
         .ok()
-        .map(|dt| dt.with_timezone(&chrono::Utc).format("%Y-%m-%dT%H:%M:%SZ").to_string())
+        .map(|dt| {
+            dt.with_timezone(&chrono::Utc)
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string()
+        })
 }
 
 /// 解析 `<pubDate>` → **UTC ISO8601 带 `Z`**（两种格式都要支持）。
@@ -244,15 +256,18 @@ fn parse_pub_date(s: &str, tz_offset_min: i32) -> Option<String> {
     let naive = chrono::NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S").ok()?;
     let offset = chrono::FixedOffset::east_opt(tz_offset_min * 60)?;
     let dt = naive.and_local_timezone(offset).single()?;
-    Some(dt.with_timezone(&chrono::Utc).format("%Y-%m-%dT%H:%M:%SZ").to_string())
+    Some(
+        dt.with_timezone(&chrono::Utc)
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string(),
+    )
 }
 
 /// Unix 秒 → **UTC ISO8601 带 `Z`**（Hacker News 的 `time` 字段是这个格式）。
 ///
 /// 同样归一成带 `Z` —— 理由与 [`rfc822_to_utc_iso`] 完全一致（端侧 `DateTime.parse`）。
 pub fn unix_to_utc_iso(secs: i64) -> Option<String> {
-    chrono::DateTime::from_timestamp(secs, 0)
-        .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+    chrono::DateTime::from_timestamp(secs, 0).map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
 }
 
 /// HTML → 纯文本（**行内语义：空白全折叠**）—— 用于 `title` / `summary` / `author`。
@@ -405,7 +420,11 @@ fn decode_entities(s: &str) -> String {
         }
         // 找最近的 `;`（限制在 12 字符内，避免把正文里的 `&` 当实体起点吞掉一大段）
         let rest = &s[i..];
-        let semi = rest[1..].char_indices().take(12).find(|(_, c)| *c == ';').map(|(k, _)| k + 1);
+        let semi = rest[1..]
+            .char_indices()
+            .take(12)
+            .find(|(_, c)| *c == ';')
+            .map(|(k, _)| k + 1);
         let Some(semi_pos) = semi else {
             out.push('&');
             i += 1;
@@ -495,7 +514,12 @@ mod tests {
             // 每条都必须有标题与链接（否则会被跳过 —— 这里断言「留下的都是完整的」）
             for it in &items {
                 assert!(!it.title.is_empty(), "{} 有空标题", name);
-                assert!(it.url.starts_with("http"), "{} 的 url 异常: {}", name, it.url);
+                assert!(
+                    it.url.starts_with("http"),
+                    "{} 的 url 异常: {}",
+                    name,
+                    it.url
+                );
                 // 🔴 **回归断言**：4 个真实源的每条都该解析出时间。
                 //    2026-09-29 冒烟时 ECNS 的时间**全为 NULL** —— 因为它用的是
                 //    非标准格式 `2026-09-29 21:34:24`，而解析器只认 RFC 2822。
@@ -515,12 +539,18 @@ mod tests {
         // ECNS 样本第 1 条：`2026-09-29 21:34:24`（北京时间）→ 13:34:24Z
         // 🔑 期望值独立核算：21:34:24 - 8h = 13:34:24Z
         let items = parse_rss(ECNS, 480).unwrap();
-        assert_eq!(items[0].published_at.as_deref(), Some("2026-09-29T13:34:24Z"));
+        assert_eq!(
+            items[0].published_at.as_deref(),
+            Some("2026-09-29T13:34:24Z")
+        );
 
         // 🔴 反向：**同一份数据**给 0（UTC）会得到 21:34:24Z —— 那是**错的**
         //    （它是源站本地时间，不是 UTC）。这条反向断言说明「时区配置不是装饰」。
         let wrong = parse_rss(ECNS, 0).unwrap();
-        assert_eq!(wrong[0].published_at.as_deref(), Some("2026-09-29T21:34:24Z"));
+        assert_eq!(
+            wrong[0].published_at.as_deref(),
+            Some("2026-09-29T21:34:24Z")
+        );
         assert_ne!(
             items[0].published_at, wrong[0].published_at,
             "时区配置必须真的影响结果，否则那一列是摆设"
@@ -531,7 +561,11 @@ mod tests {
     fn test_published_at_normalized_to_utc_iso8601_z() {
         let items = parse_rss(NPR, 0).unwrap();
         let t = items[0].published_at.as_deref().expect("NPR 应有 pubDate");
-        assert!(t.ends_with('Z'), "必须以 Z 结尾（否则 App 侧按本地时区解释）: {}", t);
+        assert!(
+            t.ends_with('Z'),
+            "必须以 Z 结尾（否则 App 侧按本地时区解释）: {}",
+            t
+        );
         // NPR 样本第 1 条：Tue, 29 Sep 2026 07:36:24 -0400 → 11:36:24Z
         assert_eq!(t, "2026-09-29T11:36:24Z");
     }
@@ -541,7 +575,10 @@ mod tests {
         // 实测：NPR 的 content:encoded 与 description **内容相同**（前者带 img 标签）
         // → 若照抄当正文，上层会把「摘要」当「全文」
         let items = parse_rss(NPR, 0).unwrap();
-        assert_eq!(items[0].body, None, "NPR 的 content:encoded 不比摘要长 → body 应为 None");
+        assert_eq!(
+            items[0].body, None,
+            "NPR 的 content:encoded 不比摘要长 → body 应为 None"
+        );
         assert!(items[0].summary.is_some(), "摘要应有值");
     }
 
@@ -568,7 +605,11 @@ mod tests {
         let items = parse_rss(ECNS, 480).unwrap();
         // CDATA 在 roxmltree 里就是文本节点 → 应能取到，且不残留 <![CDATA[
         assert!(!items[0].title.is_empty());
-        assert!(!items[0].title.contains("CDATA"), "不该残留 CDATA 标记: {}", items[0].title);
+        assert!(
+            !items[0].title.contains("CDATA"),
+            "不该残留 CDATA 标记: {}",
+            items[0].title
+        );
     }
 
     #[test]
@@ -617,10 +658,7 @@ mod tests {
         // 同一段内的多行 → 单空格（不是新段）
         assert_eq!(strip_html_block("<p>a\nb</p>"), "a b");
         // 🔑 连续空行压缩成一个空行（源里常见三连换行）
-        assert_eq!(
-            strip_html_block("<p>a</p>\n\n\n\n<p>b</p>"),
-            "a\n\nb"
-        );
+        assert_eq!(strip_html_block("<p>a</p>\n\n\n\n<p>b</p>"), "a\n\nb");
         // 首尾不留空行
         assert_eq!(strip_html_block("\n\n<p>a</p>\n\n"), "a");
         // 标签仍要被剥（含 img 追踪像素）
@@ -634,7 +672,11 @@ mod tests {
         //    改成 inline），这条会红，提醒「正文会挤成一整行」这个回归。
         let html = "<p>第一段</p><p>第二段</p>";
         assert_eq!(strip_html(html), "第一段 第二段", "inline 版：单行");
-        assert_eq!(strip_html_block(html), "第一段\n\n第二段", "block 版：保留段落");
+        assert_eq!(
+            strip_html_block(html),
+            "第一段\n\n第二段",
+            "block 版：保留段落"
+        );
         assert_ne!(strip_html(html), strip_html_block(html));
     }
 

@@ -1,29 +1,59 @@
 //! Admin API handlers
-use axum::{extract::{Path, Query}, http::{HeaderMap, StatusCode}, Json, response::IntoResponse};
+use axum::{
+    extract::{Path, Query},
+    http::{HeaderMap, StatusCode},
+    response::IntoResponse,
+    Json,
+};
 use serde::Deserialize;
 // 🔴 2026-09-29：`sha2::Digest` / `guard_user!` 随 K12 guardian 退役而不再需要
 use crate::encryption;
 
-pub(crate) fn ok(v: serde_json::Value) -> axum::response::Response { Json(v).into_response() }
-pub(crate) fn err(code: StatusCode, msg: &str) -> axum::response::Response { (code, Json(serde_json::json!({"error": msg}))).into_response() }
+pub(crate) fn ok(v: serde_json::Value) -> axum::response::Response {
+    Json(v).into_response()
+}
+pub(crate) fn err(code: StatusCode, msg: &str) -> axum::response::Response {
+    (code, Json(serde_json::json!({"error": msg}))).into_response()
+}
 
-fn conn() -> crate::db_pool::DbConn { crate::db_pool::get_conn() }
+fn conn() -> crate::db_pool::DbConn {
+    crate::db_pool::get_conn()
+}
 
 /// 验证 admin_users 身份（super/service）。guardian/tutor 已移入 users 表，不走此路径。
 pub fn verify_admin(headers: &HeaderMap) -> Result<(String, String), axum::response::Response> {
     let admin_key = std::env::var("COEVO_ADMIN_KEY").unwrap_or_default();
-    if !admin_key.is_empty() && headers.get("x-admin-key").and_then(|v| v.to_str().ok()).unwrap_or("") == admin_key {
+    if !admin_key.is_empty()
+        && headers
+            .get("x-admin-key")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            == admin_key
+    {
         return Ok(("super".into(), "super".into()));
     }
-    let token = headers.get("authorization").and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer ")).unwrap_or("");
-    if token.is_empty() { return Err(err(StatusCode::UNAUTHORIZED, "unauthorized")); }
-    let result: Option<(String, String, String)> = conn().query_row(
-        "SELECT id, role, status FROM admin_users WHERE password_hash=?1", rusqlite::params![token],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).ok();
+    let token = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .unwrap_or("");
+    if token.is_empty() {
+        return Err(err(StatusCode::UNAUTHORIZED, "unauthorized"));
+    }
+    let result: Option<(String, String, String)> = conn()
+        .query_row(
+            "SELECT id, role, status FROM admin_users WHERE password_hash=?1",
+            rusqlite::params![token],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .ok();
     match result {
         Some((id, role, status)) => {
-            if status == "active" { Ok((id, role)) }
-            else { Err(err(StatusCode::FORBIDDEN, "pending_approval")) }
+            if status == "active" {
+                Ok((id, role))
+            } else {
+                Err(err(StatusCode::FORBIDDEN, "pending_approval"))
+            }
         }
         None => Err(err(StatusCode::UNAUTHORIZED, "unauthorized")),
     }
@@ -32,22 +62,42 @@ pub fn verify_admin(headers: &HeaderMap) -> Result<(String, String), axum::respo
 /// 验证 guardian/tutor 用户身份（从 users 表和 tokens 表认证）。
 /// guardian/tutor 通过 /api/auth/login 登录，使用 tokens 表中的 token。
 /// 同时兼容 admin_users（super/service）的旧认证路径。
-pub fn verify_guardian_or_admin(headers: &HeaderMap) -> Result<(String, String), axum::response::Response> {
+pub fn verify_guardian_or_admin(
+    headers: &HeaderMap,
+) -> Result<(String, String), axum::response::Response> {
     // 先尝试 admin_users 认证（super/service）
     let admin_key = std::env::var("COEVO_ADMIN_KEY").unwrap_or_default();
-    if !admin_key.is_empty() && headers.get("x-admin-key").and_then(|v| v.to_str().ok()).unwrap_or("") == admin_key {
+    if !admin_key.is_empty()
+        && headers
+            .get("x-admin-key")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            == admin_key
+    {
         return Ok(("super".into(), "super".into()));
     }
-    let token = headers.get("authorization").and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer ")).unwrap_or("");
-    if token.is_empty() { return Err(err(StatusCode::UNAUTHORIZED, "unauthorized")); }
+    let token = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .unwrap_or("");
+    if token.is_empty() {
+        return Err(err(StatusCode::UNAUTHORIZED, "unauthorized"));
+    }
 
     // 1. 检查 admin_users（super/service）
-    if let Some(result) = conn().query_row::<(String, String, String), _, _>(
-        "SELECT id, role, status FROM admin_users WHERE password_hash=?1", rusqlite::params![token],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).ok()
+    if let Some(result) = conn()
+        .query_row::<(String, String, String), _, _>(
+            "SELECT id, role, status FROM admin_users WHERE password_hash=?1",
+            rusqlite::params![token],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .ok()
     {
         let (id, role, status) = result;
-        if status == "active" { return Ok((id, role)); }
+        if status == "active" {
+            return Ok((id, role));
+        }
         return Err(err(StatusCode::FORBIDDEN, "pending_approval"));
     }
 
@@ -55,13 +105,13 @@ pub fn verify_guardian_or_admin(headers: &HeaderMap) -> Result<(String, String),
     if let Ok(token_row) = conn().query_row::<String, _, _>(
         "SELECT t.user_id FROM tokens t WHERE t.token = ?1",
         rusqlite::params![token],
-        |row| Ok(row.get(0)?)
+        |row| Ok(row.get(0)?),
     ) {
         // token 有效，查 users 表的 role
         if let Ok(role) = conn().query_row(
             "SELECT role FROM users WHERE id = ?1 AND (role = 'guardian' OR role = 'tutor')",
             rusqlite::params![token_row],
-            |row| row.get::<_, String>(0)
+            |row| row.get::<_, String>(0),
         ) {
             return Ok((token_row, role));
         }
@@ -71,23 +121,47 @@ pub fn verify_guardian_or_admin(headers: &HeaderMap) -> Result<(String, String),
     Err(err(StatusCode::UNAUTHORIZED, "unauthorized"))
 }
 
-fn require_role(headers: &HeaderMap, allowed: &[&str]) -> Result<(String, String), axum::response::Response> {
+fn require_role(
+    headers: &HeaderMap,
+    allowed: &[&str],
+) -> Result<(String, String), axum::response::Response> {
     let (id, role) = verify_admin(headers)?;
-    if allowed.contains(&role.as_str()) || role == "super" { Ok((id, role)) }
-    else { Err(err(StatusCode::FORBIDDEN, "forbidden")) }
+    if allowed.contains(&role.as_str()) || role == "super" {
+        Ok((id, role))
+    } else {
+        Err(err(StatusCode::FORBIDDEN, "forbidden"))
+    }
 }
 
-macro_rules! guard {                                 // admin_users 专用
+macro_rules! guard {
+    // admin_users 专用
     ($headers:expr, $allowed:expr) => {
-        match require_role($headers, $allowed) { Ok(r) => r, Err(e) => return e }
+        match require_role($headers, $allowed) {
+            Ok(r) => r,
+            Err(e) => return e,
+        }
     };
     ($headers:expr) => {
-        match verify_admin($headers) { Ok(r) => r, Err(e) => return e }
+        match verify_admin($headers) {
+            Ok(r) => r,
+            Err(e) => return e,
+        }
     };
 }
 
-fn mask_phone(p: &str) -> String { if p.len()>=7 { format!("{}****{}", &p[..3], &p[p.len()-4..]) } else { "***".into() } }
-fn mask_name(n: &str) -> String { n.chars().next().map(|c| format!("{}*",c)).unwrap_or("*".into()) }
+fn mask_phone(p: &str) -> String {
+    if p.len() >= 7 {
+        format!("{}****{}", &p[..3], &p[p.len() - 4..])
+    } else {
+        "***".into()
+    }
+}
+fn mask_name(n: &str) -> String {
+    n.chars()
+        .next()
+        .map(|c| format!("{}*", c))
+        .unwrap_or("*".into())
+}
 
 /// 邮箱脱敏（`zhangsan@example.com` → `z***@example.com`）。
 ///
@@ -103,7 +177,11 @@ pub(crate) fn mask_email(email: &str) -> String {
             format!("{}***@{}", first, domain)
         }
         // 不像邮箱（存量/异常数据）→ 只留首字符
-        None => email.chars().next().map(|c| format!("{}***", c)).unwrap_or_else(|| "***".into()),
+        None => email
+            .chars()
+            .next()
+            .map(|c| format!("{}***", c))
+            .unwrap_or_else(|| "***".into()),
     }
 }
 
@@ -123,15 +201,31 @@ fn decrypt_maybe(enc: &str) -> String {
 }
 
 // ── Login ──
-#[derive(Deserialize)] pub struct AdminLoginInput { pub username: String, pub password: String }
+#[derive(Deserialize)]
+pub struct AdminLoginInput {
+    pub username: String,
+    pub password: String,
+}
 pub async fn admin_login(Json(input): Json<AdminLoginInput>) -> impl IntoResponse {
     tracing::info!("admin_login: username={}", input.username);
     let c = conn();
-    let r: Option<(String,String,String,String)> = c.query_row("SELECT id,role,status,password_hash FROM admin_users WHERE username=?1", rusqlite::params![input.username], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).ok();
+    let r: Option<(String, String, String, String)> = c
+        .query_row(
+            "SELECT id,role,status,password_hash FROM admin_users WHERE username=?1",
+            rusqlite::params![input.username],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .ok();
     match r {
-        Some((id,role,status,hash)) => {
+        Some((id, role, status, hash)) => {
             let hash_prefix = if hash.len() > 12 { &hash[..12] } else { &hash };
-            tracing::info!("admin_login: id={}, role={}, status={}, hash_prefix={}", id, role, status, hash_prefix);
+            tracing::info!(
+                "admin_login: id={}, role={}, status={}, hash_prefix={}",
+                id,
+                role,
+                status,
+                hash_prefix
+            );
             if status == "active" && bcrypt::verify(&input.password, &hash).unwrap_or(false) {
                 ok(serde_json::json!({"token":hash,"role":role,"admin_id":id}))
             } else if status == "active" {
@@ -151,20 +245,52 @@ pub async fn admin_login(Json(input): Json<AdminLoginInput>) -> impl IntoRespons
 // ── Register ──
 // 注意: self-register endpoint。guardian/tutor 已移入 users 表，
 // admin_users 只保留 super/service，均由超管创建。
-#[derive(Deserialize)] pub struct AdminRegisterInput { pub username: String, pub password: String, pub role: String, pub real_name: String, pub phone: String, pub id_number: Option<String>, pub apply_reason: Option<String>, pub registered_from: Option<String>, pub guardian_declaration: Option<String> }
+#[derive(Deserialize)]
+pub struct AdminRegisterInput {
+    pub username: String,
+    pub password: String,
+    pub role: String,
+    pub real_name: String,
+    pub phone: String,
+    pub id_number: Option<String>,
+    pub apply_reason: Option<String>,
+    pub registered_from: Option<String>,
+    pub guardian_declaration: Option<String>,
+}
 pub async fn admin_register(Json(input): Json<AdminRegisterInput>) -> impl IntoResponse {
     tracing::info!("admin_register: username={}", input.username);
     // admin_users 只允许 super/service，guardian/tutor 已移入 users 表
-    return err(StatusCode::BAD_REQUEST, "self_register_disabled_contact_admin");
+    return err(
+        StatusCode::BAD_REQUEST,
+        "self_register_disabled_contact_admin",
+    );
 }
 // ── User Search ──
-#[derive(Deserialize)] pub struct AdminUsersQuery { pub q: String, pub page: Option<i64>, pub sort: Option<String>, pub include_deleted: Option<bool> }
-pub async fn admin_users_handler(headers: HeaderMap, Query(query): Query<AdminUsersQuery>) -> impl IntoResponse {
+#[derive(Deserialize)]
+pub struct AdminUsersQuery {
+    pub q: String,
+    pub page: Option<i64>,
+    pub sort: Option<String>,
+    pub include_deleted: Option<bool>,
+}
+pub async fn admin_users_handler(
+    headers: HeaderMap,
+    Query(query): Query<AdminUsersQuery>,
+) -> impl IntoResponse {
     tracing::info!("admin_users_handler: q={}, page={:?}", query.q, query.page);
     // Rate limit: 30 requests per minute per admin
-    if let Err(e) = crate::rate_limiter::check_rate_limit(&headers, 30, 60) { return e; }
-    let (_, role) = match verify_admin(&headers) { Ok(r) => r, Err(e) => { return e; } };
-    if role == "guardian" { return err(StatusCode::FORBIDDEN, "forbidden"); }
+    if let Err(e) = crate::rate_limiter::check_rate_limit(&headers, 30, 60) {
+        return e;
+    }
+    let (_, role) = match verify_admin(&headers) {
+        Ok(r) => r,
+        Err(e) => {
+            return e;
+        }
+    };
+    if role == "guardian" {
+        return err(StatusCode::FORBIDDEN, "forbidden");
+    }
     let c = conn();
     let page = query.page.unwrap_or(1).max(1);
     let sort = query.sort.unwrap_or_default();
@@ -178,18 +304,36 @@ pub async fn admin_users_handler(headers: HeaderMap, Query(query): Query<AdminUs
     }
     if !query.q.is_empty() {
         let p = query.q.replace('\'', "''");
-        where_parts.push(format!("(u.id LIKE '%{}%' OR u.username LIKE '%{}%' OR u.display_name LIKE '%{}%')", p, p, p));
+        where_parts.push(format!(
+            "(u.id LIKE '%{}%' OR u.username LIKE '%{}%' OR u.display_name LIKE '%{}%')",
+            p, p, p
+        ));
     }
-    let where_clause = if where_parts.is_empty() { String::new() } else { format!("WHERE {}", where_parts.join(" AND ")) };
+    let where_clause = if where_parts.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", where_parts.join(" AND "))
+    };
 
     // Count total
-    let total: i64 = c.query_row(&format!("SELECT COUNT(*) FROM users u {}", where_clause), [], |r| r.get(0)).unwrap_or(0);
+    let total: i64 = c
+        .query_row(
+            &format!("SELECT COUNT(*) FROM users u {}", where_clause),
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
 
     // Sort: expiring soon first. ORDER BY 1) null expires last, 2) expires ASC
     let no_search = query.q.is_empty();
     let (join_clause, order_clause) = if sort == "expiring" || no_search {
-        (String::new(), "ORDER BY u.subscription_expires IS NULL, u.subscription_expires ASC".to_string())
-    } else { (String::new(), "ORDER BY u.created_at DESC".to_string()) };
+        (
+            String::new(),
+            "ORDER BY u.subscription_expires IS NULL, u.subscription_expires ASC".to_string(),
+        )
+    } else {
+        (String::new(), "ORDER BY u.created_at DESC".to_string())
+    };
 
     let sql = format!("SELECT u.id,u.username,u.display_name,u.email,u.created_at,u.streak_days,u.deleted_at FROM users u {} {} {} LIMIT ?1 OFFSET ?2", join_clause, where_clause, order_clause);
     tracing::debug!("admin_users SQL: {}", sql);
@@ -197,7 +341,10 @@ pub async fn admin_users_handler(headers: HeaderMap, Query(query): Query<AdminUs
         Ok(s) => s,
         Err(e) => {
             tracing::error!("admin_users prepare failed: {} — SQL: {}", e, sql);
-            return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("SQL error: {}", e));
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("SQL error: {}", e),
+            );
         }
     };
     let users: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![limit, offset], |row| {
@@ -246,42 +393,84 @@ pub async fn admin_user_detail(headers: HeaderMap, Path(uid): Path<String>) -> i
             "email":email,
             "created_at":row.get::<_,String>(4)?,"streak_days":row.get::<_,i32>(5)?,"last_active_date":row.get::<_,Option<String>>(6)?,"card_count":cards,"review_count":reviews,"subscription_expires":expires}))
     }).ok();
-    match u { Some(v) => ok(v), None => err(StatusCode::NOT_FOUND, "not_found") }
+    match u {
+        Some(v) => ok(v),
+        None => err(StatusCode::NOT_FOUND, "not_found"),
+    }
 }
 
 pub async fn admin_delete_user(headers: HeaderMap, Path(uid): Path<String>) -> impl IntoResponse {
     tracing::info!("admin_delete_user: user_id={}", uid);
-    let (_, role) = match verify_admin(&headers) { Ok(r) => r, Err(e) => { return e; } };
-    if role != "super" { return err(StatusCode::FORBIDDEN, "forbidden"); }
+    let (_, role) = match verify_admin(&headers) {
+        Ok(r) => r,
+        Err(e) => {
+            return e;
+        }
+    };
+    if role != "super" {
+        return err(StatusCode::FORBIDDEN, "forbidden");
+    }
     let c = conn();
     let now = chrono::Utc::now().timestamp().to_string();
-    let rows = c.execute("UPDATE users SET deleted_at=?1 WHERE id=?2 AND deleted_at IS NULL", rusqlite::params![now, &uid]).unwrap_or(0);
+    let rows = c
+        .execute(
+            "UPDATE users SET deleted_at=?1 WHERE id=?2 AND deleted_at IS NULL",
+            rusqlite::params![now, &uid],
+        )
+        .unwrap_or(0);
     let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'soft_delete_user',?3,?4,?5)",
         rusqlite::params![uuid::Uuid::new_v4().to_string(), "super", &uid, serde_json::json!({"deleted_at":now}).to_string(), now]);
-    if rows > 0 { ok(serde_json::json!({"status":"deleted","deleted_at":now})) }
-    else { err(StatusCode::NOT_FOUND, "already_deleted_or_not_found") }
+    if rows > 0 {
+        ok(serde_json::json!({"status":"deleted","deleted_at":now}))
+    } else {
+        err(StatusCode::NOT_FOUND, "already_deleted_or_not_found")
+    }
 }
 
 pub async fn admin_restore_user(headers: HeaderMap, Path(uid): Path<String>) -> impl IntoResponse {
     tracing::info!("admin_restore_user: user_id={}", uid);
-    let (_, role) = match verify_admin(&headers) { Ok(r) => r, Err(e) => { return e; } };
-    if role != "super" { return err(StatusCode::FORBIDDEN, "forbidden"); }
+    let (_, role) = match verify_admin(&headers) {
+        Ok(r) => r,
+        Err(e) => {
+            return e;
+        }
+    };
+    if role != "super" {
+        return err(StatusCode::FORBIDDEN, "forbidden");
+    }
     let c = conn();
-    let rows = c.execute("UPDATE users SET deleted_at=NULL WHERE id=?1 AND deleted_at IS NOT NULL", rusqlite::params![&uid]).unwrap_or(0);
+    let rows = c
+        .execute(
+            "UPDATE users SET deleted_at=NULL WHERE id=?1 AND deleted_at IS NOT NULL",
+            rusqlite::params![&uid],
+        )
+        .unwrap_or(0);
     if rows > 0 {
         let now = chrono::Utc::now().timestamp().to_string();
         let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'restore_user',?3,?4,?5)",
             rusqlite::params![uuid::Uuid::new_v4().to_string(), "super", &uid, serde_json::json!({"restored_at":now}).to_string(), now]);
         ok(serde_json::json!({"status":"restored"}))
-    } else { err(StatusCode::NOT_FOUND, "not_found_or_not_deleted") }
+    } else {
+        err(StatusCode::NOT_FOUND, "not_found_or_not_deleted")
+    }
 }
 
 /// POST /api/admin/users/{user_id}/hard-delete — 超管永久删除用户（清库+归档）
 /// 归档记录写入 data/deleted_users.ndjson 文件，不留在数据库内
-pub async fn admin_hard_delete_user(headers: HeaderMap, Path(uid): Path<String>) -> impl IntoResponse {
+pub async fn admin_hard_delete_user(
+    headers: HeaderMap,
+    Path(uid): Path<String>,
+) -> impl IntoResponse {
     tracing::info!("admin_hard_delete_user: user_id={}", uid);
-    let (_, role) = match verify_admin(&headers) { Ok(r) => r, Err(e) => { return e; } };
-    if role != "super" { return err(StatusCode::FORBIDDEN, "forbidden"); }
+    let (_, role) = match verify_admin(&headers) {
+        Ok(r) => r,
+        Err(e) => {
+            return e;
+        }
+    };
+    if role != "super" {
+        return err(StatusCode::FORBIDDEN, "forbidden");
+    }
     let c = conn();
     let now = chrono::Utc::now().timestamp().to_string();
     let now_rfc = chrono::Utc::now().to_rfc3339();
@@ -329,7 +518,10 @@ pub async fn admin_hard_delete_user(headers: HeaderMap, Path(uid): Path<String>)
     });
     let _ = std::fs::write(
         std::path::Path::new("data").join("deleted_users.ndjson"),
-        format!("{}\n", serde_json::to_string(&archive_entry).unwrap_or_default()),
+        format!(
+            "{}\n",
+            serde_json::to_string(&archive_entry).unwrap_or_default()
+        ),
     );
 
     // 3. 删除关联数据（按外键顺序防止约束冲突）
@@ -364,10 +556,13 @@ pub async fn admin_hard_delete_user(headers: HeaderMap, Path(uid): Path<String>)
 
 /// 天数增量延期：读取当前到期日，从原值或今天累加天数，写入 DB
 fn apply_days_extension(c: &rusqlite::Connection, uid: &str, days: i64) -> Result<String, String> {
-    let current: String = c.query_row(
-        "SELECT COALESCE(subscription_expires,'') FROM users WHERE id=?1",
-        rusqlite::params![uid], |row| row.get(0)
-    ).unwrap_or_default();
+    let current: String = c
+        .query_row(
+            "SELECT COALESCE(subscription_expires,'') FROM users WHERE id=?1",
+            rusqlite::params![uid],
+            |row| row.get(0),
+        )
+        .unwrap_or_default();
 
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let base = if current.is_empty() || current.as_str() < today.as_str() {
@@ -380,15 +575,21 @@ fn apply_days_extension(c: &rusqlite::Connection, uid: &str, days: i64) -> Resul
     let new_date = base_date + chrono::Duration::days(days);
     let new_expires = new_date.format("%Y-%m-%d").to_string();
 
-    c.execute("UPDATE users SET subscription_expires=?1 WHERE id=?2",
-        rusqlite::params![new_expires, uid])
-        .map_err(|e| format!("db_update: {e}"))?;
+    c.execute(
+        "UPDATE users SET subscription_expires=?1 WHERE id=?2",
+        rusqlite::params![new_expires, uid],
+    )
+    .map_err(|e| format!("db_update: {e}"))?;
     Ok(new_expires)
 }
 
 // ── Set Subscription ──
 // Super: direct apply. Service: creates pending request.
-#[derive(Deserialize)] pub struct SetSubInput { pub subscription_expires: String, pub days: Option<i64> }
+#[derive(Deserialize)]
+pub struct SetSubInput {
+    pub subscription_expires: String,
+    pub days: Option<i64>,
+}
 
 /// 验证并规范化到期日期字符串，返回 %Y-%m-%d 格式或 None
 fn normalize_expires(input: &str) -> Option<String> {
@@ -404,20 +605,43 @@ fn normalize_expires(input: &str) -> Option<String> {
 }
 
 fn has_permission(admin_id: &str, perm_key: &str) -> bool {
-    let perms_str: Option<String> = conn().query_row("SELECT permissions FROM admin_users WHERE id=?1", rusqlite::params![admin_id], |row| row.get(0)).ok().flatten();
-    let perms: serde_json::Value = perms_str.as_ref().map(|s| serde_json::from_str(s).unwrap_or_default()).unwrap_or(serde_json::Value::Object(Default::default()));
-    perms.get(perm_key).and_then(|v| v.as_bool()).unwrap_or(false)
+    let perms_str: Option<String> = conn()
+        .query_row(
+            "SELECT permissions FROM admin_users WHERE id=?1",
+            rusqlite::params![admin_id],
+            |row| row.get(0),
+        )
+        .ok()
+        .flatten();
+    let perms: serde_json::Value = perms_str
+        .as_ref()
+        .map(|s| serde_json::from_str(s).unwrap_or_default())
+        .unwrap_or(serde_json::Value::Object(Default::default()));
+    perms
+        .get(perm_key)
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
 }
 
-pub async fn admin_set_subscription(headers: HeaderMap, Path(uid): Path<String>, Json(input): Json<SetSubInput>) -> impl IntoResponse {
+pub async fn admin_set_subscription(
+    headers: HeaderMap,
+    Path(uid): Path<String>,
+    Json(input): Json<SetSubInput>,
+) -> impl IntoResponse {
     tracing::info!("admin_set_subscription: user_id={}", uid);
     let (admin_id, role) = guard!(&headers);
-    if role != "super" && role != "service" { return err(StatusCode::FORBIDDEN, "forbidden"); }
+    if role != "super" && role != "service" {
+        return err(StatusCode::FORBIDDEN, "forbidden");
+    }
     // service with permission applies directly like super
-    let can_direct = role == "super" || (role == "service" && has_permission(&admin_id, "set_expiry"));
-    if role == "service" && !has_permission(&admin_id, "set_expiry") { return err(StatusCode::FORBIDDEN, "no_permission"); }
+    let can_direct =
+        role == "super" || (role == "service" && has_permission(&admin_id, "set_expiry"));
+    if role == "service" && !has_permission(&admin_id, "set_expiry") {
+        return err(StatusCode::FORBIDDEN, "no_permission");
+    }
 
-    let c = conn(); let now = chrono::Utc::now().timestamp();
+    let c = conn();
+    let now = chrono::Utc::now().timestamp();
 
     if can_direct {
         // 有 days 参数 → 走增量累加（安全路径）
@@ -429,7 +653,12 @@ pub async fn admin_set_subscription(headers: HeaderMap, Path(uid): Path<String>,
                             rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"days":days,"expires":new_expires}).to_string(), now]);
                         return ok(serde_json::json!({"status":"ok","expires":new_expires}));
                     }
-                    Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("extend_failed: {e}")),
+                    Err(e) => {
+                        return err(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            &format!("extend_failed: {e}"),
+                        )
+                    }
                 }
             }
         }
@@ -440,7 +669,10 @@ pub async fn admin_set_subscription(headers: HeaderMap, Path(uid): Path<String>,
             Some(d) => d,
             None => return err(StatusCode::BAD_REQUEST, "invalid_date_format"),
         };
-        let _ = c.execute("UPDATE users SET subscription_expires=?1 WHERE id=?2", rusqlite::params![normalized, uid]);
+        let _ = c.execute(
+            "UPDATE users SET subscription_expires=?1 WHERE id=?2",
+            rusqlite::params![normalized, uid],
+        );
         let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'set_subscription',?3,?4,?5)",
             rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"expires":normalized}).to_string(), now]);
         ok(serde_json::json!({"status":"ok"}))
@@ -455,16 +687,25 @@ pub async fn admin_set_subscription(headers: HeaderMap, Path(uid): Path<String>,
 }
 
 // ── Quick extend (creates request for non-super) ──
-pub async fn admin_quick_extend(headers: HeaderMap, Path(uid): Path<String>, Json(input): Json<SetSubInput>) -> impl IntoResponse {
+pub async fn admin_quick_extend(
+    headers: HeaderMap,
+    Path(uid): Path<String>,
+    Json(input): Json<SetSubInput>,
+) -> impl IntoResponse {
     tracing::info!("admin_quick_extend: user_id={}, days={:?}", uid, input.days);
     let (admin_id, role) = guard!(&headers);
-    if role != "super" && role != "service" { return err(StatusCode::FORBIDDEN, "forbidden"); }
+    if role != "super" && role != "service" {
+        return err(StatusCode::FORBIDDEN, "forbidden");
+    }
 
-    let c = conn(); let now = chrono::Utc::now().timestamp();
+    let c = conn();
+    let now = chrono::Utc::now().timestamp();
 
     // 有 days 参数 → 后端算到期日（增量累加，避免前端计算错误）
     if let Some(days) = input.days {
-        if days <= 0 { return err(StatusCode::BAD_REQUEST, "days_must_be_positive"); }
+        if days <= 0 {
+            return err(StatusCode::BAD_REQUEST, "days_must_be_positive");
+        }
 
         if role == "super" {
             match apply_days_extension(&c, &uid, days) {
@@ -473,12 +714,21 @@ pub async fn admin_quick_extend(headers: HeaderMap, Path(uid): Path<String>, Jso
                         rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"days":days,"expires":new_expires}).to_string(), now]);
                     return ok(serde_json::json!({"status":"ok","expires":new_expires}));
                 }
-                Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("extend_failed: {e}")),
+                Err(e) => {
+                    return err(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        &format!("extend_failed: {e}"),
+                    )
+                }
             }
         }
 
         // service: check permission by day range
-        let perm_key = match days { 1..=7 => "extend_7d", 8..=30 => "extend_30d", _ => "extend_365d" };
+        let perm_key = match days {
+            1..=7 => "extend_7d",
+            8..=30 => "extend_30d",
+            _ => "extend_365d",
+        };
         if has_permission(&admin_id, perm_key) {
             match apply_days_extension(&c, &uid, days) {
                 Ok(new_expires) => {
@@ -486,7 +736,12 @@ pub async fn admin_quick_extend(headers: HeaderMap, Path(uid): Path<String>, Jso
                         rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, uid, serde_json::json!({"days":days,"expires":new_expires}).to_string(), now]);
                     return ok(serde_json::json!({"status":"ok","expires":new_expires}));
                 }
-                Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("extend_failed: {e}")),
+                Err(e) => {
+                    return err(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        &format!("extend_failed: {e}"),
+                    )
+                }
             }
         }
 
@@ -509,41 +764,97 @@ pub async fn admin_quick_extend(headers: HeaderMap, Path(uid): Path<String>, Jso
     ok(serde_json::json!({"request_id":req_id,"status":"pending"}))
 }
 
-#[derive(Deserialize)] pub struct CreateSubReqInput { pub target_user_id: String, pub package: String, pub channel: Option<String>, pub note: Option<String> }
-pub async fn admin_create_subscription_request(headers: HeaderMap, Json(input): Json<CreateSubReqInput>) -> impl IntoResponse {
-    tracing::info!("admin_create_subscription_request: target_user_id={}, pkg={}", input.target_user_id, input.package);
+#[derive(Deserialize)]
+pub struct CreateSubReqInput {
+    pub target_user_id: String,
+    pub package: String,
+    pub channel: Option<String>,
+    pub note: Option<String>,
+}
+pub async fn admin_create_subscription_request(
+    headers: HeaderMap,
+    Json(input): Json<CreateSubReqInput>,
+) -> impl IntoResponse {
+    tracing::info!(
+        "admin_create_subscription_request: target_user_id={}, pkg={}",
+        input.target_user_id,
+        input.package
+    );
     let (admin_id, role) = guard!(&headers);
-    if role != "super" && role != "service" { return err(StatusCode::FORBIDDEN, "forbidden"); }
-    let c = conn(); let id = uuid::Uuid::new_v4().to_string(); let now = chrono::Utc::now().timestamp();
+    if role != "super" && role != "service" {
+        return err(StatusCode::FORBIDDEN, "forbidden");
+    }
+    let c = conn();
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp();
     let _ = c.execute("INSERT INTO subscription_requests (id,target_user_id,requested_by,package,channel,note,status,requested_at) VALUES (?1,?2,?3,?4,?5,?6,'pending',?7)",
         rusqlite::params![id, input.target_user_id, admin_id, input.package, input.channel, input.note, now]);
     ok(serde_json::json!({"request_id":id,"status":"pending"}))
 }
 
 // ── Batch extend ──
-#[derive(Deserialize)] pub struct BatchSubInput { pub user_ids: Vec<String>, pub days: i64 }
-pub async fn admin_batch_subscription(headers: HeaderMap, Json(input): Json<BatchSubInput>) -> impl IntoResponse {
-    tracing::info!("admin_batch_subscription: user_count={}, days={}", input.user_ids.len(), input.days);
+#[derive(Deserialize)]
+pub struct BatchSubInput {
+    pub user_ids: Vec<String>,
+    pub days: i64,
+}
+pub async fn admin_batch_subscription(
+    headers: HeaderMap,
+    Json(input): Json<BatchSubInput>,
+) -> impl IntoResponse {
+    tracing::info!(
+        "admin_batch_subscription: user_count={}, days={}",
+        input.user_ids.len(),
+        input.days
+    );
     let (admin_id, role) = guard!(&headers, &[]);
-    if role != "super" { return err(StatusCode::FORBIDDEN, "forbidden"); }
-    let c = conn(); let now = chrono::Utc::now().timestamp();
+    if role != "super" {
+        return err(StatusCode::FORBIDDEN, "forbidden");
+    }
+    let c = conn();
+    let now = chrono::Utc::now().timestamp();
     for uid in &input.user_ids {
-        let current: String = c.query_row("SELECT COALESCE(subscription_expires,'') FROM users WHERE id=?1", rusqlite::params![uid], |row| row.get(0)).unwrap_or_default();
-        let new_exp = if current.is_empty() { (chrono::Utc::now()+chrono::Duration::days(input.days)).format("%Y-%m-%d").to_string() }
-            else { (chrono::NaiveDate::parse_from_str(&current, "%Y-%m-%d").unwrap_or_else(|_| chrono::Utc::now().date_naive())+chrono::Duration::days(input.days)).format("%Y-%m-%d").to_string() };
-        let _ = c.execute("UPDATE users SET subscription_expires=?1 WHERE id=?2", rusqlite::params![new_exp, uid]);
+        let current: String = c
+            .query_row(
+                "SELECT COALESCE(subscription_expires,'') FROM users WHERE id=?1",
+                rusqlite::params![uid],
+                |row| row.get(0),
+            )
+            .unwrap_or_default();
+        let new_exp = if current.is_empty() {
+            (chrono::Utc::now() + chrono::Duration::days(input.days))
+                .format("%Y-%m-%d")
+                .to_string()
+        } else {
+            (chrono::NaiveDate::parse_from_str(&current, "%Y-%m-%d")
+                .unwrap_or_else(|_| chrono::Utc::now().date_naive())
+                + chrono::Duration::days(input.days))
+            .format("%Y-%m-%d")
+            .to_string()
+        };
+        let _ = c.execute(
+            "UPDATE users SET subscription_expires=?1 WHERE id=?2",
+            rusqlite::params![new_exp, uid],
+        );
     }
     let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'batch_set_subscription',?3,?4,?5)",
         rusqlite::params![uuid::Uuid::new_v4().to_string(), admin_id, format!("{} users",input.user_ids.len()), serde_json::json!({"ids":input.user_ids,"days":input.days}).to_string(), now]);
     ok(serde_json::json!({"status":"ok","count":input.user_ids.len()}))
 }
 
-#[derive(Deserialize)] pub struct ListReqsQuery { pub status: Option<String> }
-pub async fn admin_list_subscription_requests(headers: HeaderMap, Query(q): Query<ListReqsQuery>) -> impl IntoResponse {
+#[derive(Deserialize)]
+pub struct ListReqsQuery {
+    pub status: Option<String>,
+}
+pub async fn admin_list_subscription_requests(
+    headers: HeaderMap,
+    Query(q): Query<ListReqsQuery>,
+) -> impl IntoResponse {
     tracing::info!("admin_list_subscription_requests: status={:?}", q.status);
     let _ = verify_admin(&headers);
     let filter = q.status.unwrap_or_else(|| "%".into());
-    let c2 = conn(); let mut stmt = c2.prepare("SELECT sr.id,sr.target_user_id,sr.requested_by,sr.package,sr.channel,sr.note,sr.status,sr.reject_reason,sr.requested_at,sr.reviewed_at,u.username,au.real_name FROM subscription_requests sr JOIN users u ON sr.target_user_id=u.id JOIN admin_users au ON sr.requested_by=au.id WHERE CASE WHEN ?1='%' THEN 1 ELSE sr.status=?1 END ORDER BY sr.requested_at DESC LIMIT 50").unwrap();
+    let c2 = conn();
+    let mut stmt = c2.prepare("SELECT sr.id,sr.target_user_id,sr.requested_by,sr.package,sr.channel,sr.note,sr.status,sr.reject_reason,sr.requested_at,sr.reviewed_at,u.username,au.real_name FROM subscription_requests sr JOIN users u ON sr.target_user_id=u.id JOIN admin_users au ON sr.requested_by=au.id WHERE CASE WHEN ?1='%' THEN 1 ELSE sr.status=?1 END ORDER BY sr.requested_at DESC LIMIT 50").unwrap();
     let reqs: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![filter], |row| {
         let rname_raw: Option<String> = row.get(11)?;
         Ok(serde_json::json!({
@@ -553,42 +864,95 @@ pub async fn admin_list_subscription_requests(headers: HeaderMap, Query(q): Quer
 }
 
 // ── Approve/Reject ──
-#[derive(Deserialize)] pub struct ReviewInput { pub reject_reason: Option<String> }
-pub async fn admin_approve_request(headers: HeaderMap, Path(req_id): Path<String>) -> impl IntoResponse { review_subscription(&headers, &req_id, "approved", None).await }
-pub async fn admin_reject_request(headers: HeaderMap, Path(req_id): Path<String>, Json(input): Json<ReviewInput>) -> impl IntoResponse { review_subscription(&headers, &req_id, "rejected", input.reject_reason).await }
+#[derive(Deserialize)]
+pub struct ReviewInput {
+    pub reject_reason: Option<String>,
+}
+pub async fn admin_approve_request(
+    headers: HeaderMap,
+    Path(req_id): Path<String>,
+) -> impl IntoResponse {
+    review_subscription(&headers, &req_id, "approved", None).await
+}
+pub async fn admin_reject_request(
+    headers: HeaderMap,
+    Path(req_id): Path<String>,
+    Json(input): Json<ReviewInput>,
+) -> impl IntoResponse {
+    review_subscription(&headers, &req_id, "rejected", input.reject_reason).await
+}
 
-async fn review_subscription(headers: &HeaderMap, req_id: &str, status: &str, reason: Option<String>) -> axum::response::Response {
+async fn review_subscription(
+    headers: &HeaderMap,
+    req_id: &str,
+    status: &str,
+    reason: Option<String>,
+) -> axum::response::Response {
     tracing::info!("review_subscription: req_id={}, status={}", req_id, status);
     let (admin_id, role) = guard!(headers);
     // Check permission: super always ok, service needs can_approve
     if role != "super" {
-        let perms_str: Option<String> = conn().query_row("SELECT permissions FROM admin_users WHERE id=?1", rusqlite::params![admin_id], |row| row.get(0)).ok().flatten();
-        let perms: serde_json::Value = perms_str.as_ref().map(|s| serde_json::from_str(s).unwrap_or_default()).unwrap_or(serde_json::Value::Object(Default::default()));
-        let can_approve = perms.get("can_approve").and_then(|v| v.as_bool()).unwrap_or(false);
-        if !can_approve { return err(StatusCode::FORBIDDEN, "forbidden"); }
+        let perms_str: Option<String> = conn()
+            .query_row(
+                "SELECT permissions FROM admin_users WHERE id=?1",
+                rusqlite::params![admin_id],
+                |row| row.get(0),
+            )
+            .ok()
+            .flatten();
+        let perms: serde_json::Value = perms_str
+            .as_ref()
+            .map(|s| serde_json::from_str(s).unwrap_or_default())
+            .unwrap_or(serde_json::Value::Object(Default::default()));
+        let can_approve = perms
+            .get("can_approve")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if !can_approve {
+            return err(StatusCode::FORBIDDEN, "forbidden");
+        }
     }
-    let c = conn(); let now = chrono::Utc::now().timestamp();
+    let c = conn();
+    let now = chrono::Utc::now().timestamp();
     let info: Option<(String,String)> = c.query_row("SELECT target_user_id,package FROM subscription_requests WHERE id=?1 AND status='pending'", rusqlite::params![req_id], |row| Ok((row.get(0)?,row.get(1)?))).ok();
     match info {
         Some((uid, pkg)) => {
             let _ = c.execute("UPDATE subscription_requests SET status=?1,reviewed_by=?2,reject_reason=?3,reviewed_at=?4 WHERE id=?5", rusqlite::params![status,admin_id,reason,now,req_id]);
             if status == "approved" {
-                let days: i64 = match pkg.as_str() { "30d"=>30,"90d"=>90,"365d"=>365,_ => {
-                    // Try parsing "Xd" format (7d, 14d, etc.), fallback to 30
-                    let trimmed = pkg.trim_end_matches('d');
-                    trimmed.parse::<i64>().unwrap_or(30)
-                }};
+                let days: i64 = match pkg.as_str() {
+                    "30d" => 30,
+                    "90d" => 90,
+                    "365d" => 365,
+                    _ => {
+                        // Try parsing "Xd" format (7d, 14d, etc.), fallback to 30
+                        let trimmed = pkg.trim_end_matches('d');
+                        trimmed.parse::<i64>().unwrap_or(30)
+                    }
+                };
                 // Calculate from current expiry, not from today
-                let current: String = c.query_row("SELECT COALESCE(subscription_expires,'') FROM users WHERE id=?1", rusqlite::params![&uid], |row| row.get(0)).unwrap_or_default();
+                let current: String = c
+                    .query_row(
+                        "SELECT COALESCE(subscription_expires,'') FROM users WHERE id=?1",
+                        rusqlite::params![&uid],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or_default();
                 let exp = if current.is_empty() {
-                    (chrono::Utc::now()+chrono::Duration::days(days)).format("%Y-%m-%d").to_string()
+                    (chrono::Utc::now() + chrono::Duration::days(days))
+                        .format("%Y-%m-%d")
+                        .to_string()
                 } else {
                     // Parse current expiry, add days
                     let parsed = chrono::NaiveDate::parse_from_str(&current, "%Y-%m-%d")
                         .unwrap_or_else(|_| chrono::Utc::now().date_naive());
-                    (parsed + chrono::Duration::days(days)).format("%Y-%m-%d").to_string()
+                    (parsed + chrono::Duration::days(days))
+                        .format("%Y-%m-%d")
+                        .to_string()
                 };
-                let _ = c.execute("UPDATE users SET subscription_expires=?1 WHERE id=?2", rusqlite::params![&exp, &uid]);
+                let _ = c.execute(
+                    "UPDATE users SET subscription_expires=?1 WHERE id=?2",
+                    rusqlite::params![&exp, &uid],
+                );
             }
             let _ = c.execute("INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,request_id,detail,created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
                 rusqlite::params![uuid::Uuid::new_v4().to_string(),admin_id,format!("{status}_subscription"),uid,req_id,serde_json::json!({"reason":reason}).to_string(),now]);
@@ -624,9 +988,17 @@ pub async fn admin_list_admins(headers: HeaderMap) -> impl IntoResponse {
 pub async fn admin_approve_admin(headers: HeaderMap, Path(aid): Path<String>) -> impl IntoResponse {
     tracing::info!("admin_approve_admin: admin_id={}", aid);
     let (reviewer, role) = guard!(&headers);
-    if role == "observer" { return err(StatusCode::FORBIDDEN, "observer_readonly"); }
+    if role == "observer" {
+        return err(StatusCode::FORBIDDEN, "observer_readonly");
+    }
     // 家长/辅导申请：服务人员+超管可审批；管理员申请：仅超管
-    let target_role: Option<String> = conn().query_row("SELECT role FROM admin_users WHERE id=?1 AND status='pending'", rusqlite::params![&aid], |row| row.get(0)).ok();
+    let target_role: Option<String> = conn()
+        .query_row(
+            "SELECT role FROM admin_users WHERE id=?1 AND status='pending'",
+            rusqlite::params![&aid],
+            |row| row.get(0),
+        )
+        .ok();
     match target_role {
         Some(ref r) if r == "guardian" || r == "tutor" || role == "super" => {
             let now = chrono::Utc::now().timestamp();
@@ -640,11 +1012,23 @@ pub async fn admin_approve_admin(headers: HeaderMap, Path(aid): Path<String>) ->
         None => err(StatusCode::NOT_FOUND, "not_found"),
     }
 }
-pub async fn admin_reject_admin(headers: HeaderMap, Path(aid): Path<String>, Json(input): Json<ReviewInput>) -> impl IntoResponse {
+pub async fn admin_reject_admin(
+    headers: HeaderMap,
+    Path(aid): Path<String>,
+    Json(input): Json<ReviewInput>,
+) -> impl IntoResponse {
     tracing::info!("admin_reject_admin: admin_id={}", aid);
     let (reviewer, role) = guard!(&headers);
-    if role == "observer" { return err(StatusCode::FORBIDDEN, "observer_readonly"); }
-    let target_role: Option<String> = conn().query_row("SELECT role FROM admin_users WHERE id=?1 AND status='pending'", rusqlite::params![&aid], |row| row.get(0)).ok();
+    if role == "observer" {
+        return err(StatusCode::FORBIDDEN, "observer_readonly");
+    }
+    let target_role: Option<String> = conn()
+        .query_row(
+            "SELECT role FROM admin_users WHERE id=?1 AND status='pending'",
+            rusqlite::params![&aid],
+            |row| row.get(0),
+        )
+        .ok();
     match target_role {
         Some(ref r) if r == "guardian" || r == "tutor" || role == "super" => {
             let c = conn();
@@ -658,25 +1042,49 @@ pub async fn admin_reject_admin(headers: HeaderMap, Path(aid): Path<String>, Jso
 pub async fn admin_disable_admin(headers: HeaderMap, Path(aid): Path<String>) -> impl IntoResponse {
     tracing::info!("admin_disable_admin: admin_id={}", aid);
     guard!(&headers, &[]);
-    let _ = conn().execute("UPDATE admin_users SET status='disabled' WHERE id=?1", rusqlite::params![aid]);
+    let _ = conn().execute(
+        "UPDATE admin_users SET status='disabled' WHERE id=?1",
+        rusqlite::params![aid],
+    );
     ok(serde_json::json!({"status":"disabled"}))
 }
 
 pub async fn admin_enable_admin(headers: HeaderMap, Path(aid): Path<String>) -> impl IntoResponse {
     tracing::info!("admin_enable_admin: admin_id={}", aid);
     guard!(&headers, &[]);
-    let _ = conn().execute("UPDATE admin_users SET status='active' WHERE id=?1", rusqlite::params![aid]);
+    let _ = conn().execute(
+        "UPDATE admin_users SET status='active' WHERE id=?1",
+        rusqlite::params![aid],
+    );
     ok(serde_json::json!({"status":"active"}))
 }
 
-#[derive(Deserialize)] pub struct CreateAdminInput { pub username: String, pub password: String, pub real_name: String, pub phone: String, pub role: String }
-pub async fn admin_create_admin(headers: HeaderMap, Json(input): Json<CreateAdminInput>) -> impl IntoResponse {
+#[derive(Deserialize)]
+pub struct CreateAdminInput {
+    pub username: String,
+    pub password: String,
+    pub real_name: String,
+    pub phone: String,
+    pub role: String,
+}
+pub async fn admin_create_admin(
+    headers: HeaderMap,
+    Json(input): Json<CreateAdminInput>,
+) -> impl IntoResponse {
     tracing::info!("admin_create_admin: username={}", input.username);
     let (_admin_id, role) = guard!(&headers);
-    if role != "super" { return err(StatusCode::FORBIDDEN, "forbidden"); }
-    if !["service","super"].contains(&input.role.as_str()) { return err(StatusCode::BAD_REQUEST, "role_must_be_service_or_super"); }
-    if input.username.len() < 5 { return err(StatusCode::BAD_REQUEST, "username_5"); }
-    if input.password.len() < 6 { return err(StatusCode::BAD_REQUEST, "password_6"); }
+    if role != "super" {
+        return err(StatusCode::FORBIDDEN, "forbidden");
+    }
+    if !["service", "super"].contains(&input.role.as_str()) {
+        return err(StatusCode::BAD_REQUEST, "role_must_be_service_or_super");
+    }
+    if input.username.len() < 5 {
+        return err(StatusCode::BAD_REQUEST, "username_5");
+    }
+    if input.password.len() < 6 {
+        return err(StatusCode::BAD_REQUEST, "password_6");
+    }
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp();
     let hash = bcrypt::hash(&input.password, 12).unwrap_or_default();
@@ -692,50 +1100,114 @@ pub async fn admin_create_admin(headers: HeaderMap, Json(input): Json<CreateAdmi
     }
 }
 
-#[derive(Deserialize)] pub struct ResetPasswordInput { pub password: String }
-pub async fn admin_reset_password(headers: HeaderMap, Path(aid): Path<String>, Json(input): Json<ResetPasswordInput>) -> impl IntoResponse {
+#[derive(Deserialize)]
+pub struct ResetPasswordInput {
+    pub password: String,
+}
+pub async fn admin_reset_password(
+    headers: HeaderMap,
+    Path(aid): Path<String>,
+    Json(input): Json<ResetPasswordInput>,
+) -> impl IntoResponse {
     tracing::info!("admin_reset_password: admin_id={}", aid);
     let (_, role) = guard!(&headers);
-    if role != "super" { return err(StatusCode::FORBIDDEN, "forbidden"); }
-    if input.password.len() < 6 { return err(StatusCode::BAD_REQUEST, "password_6"); }
+    if role != "super" {
+        return err(StatusCode::FORBIDDEN, "forbidden");
+    }
+    if input.password.len() < 6 {
+        return err(StatusCode::BAD_REQUEST, "password_6");
+    }
     let hash = bcrypt::hash(&input.password, 12).unwrap_or_default();
-    let _ = conn().execute("UPDATE admin_users SET password_hash=?1 WHERE id=?2", rusqlite::params![hash, aid]);
+    let _ = conn().execute(
+        "UPDATE admin_users SET password_hash=?1 WHERE id=?2",
+        rusqlite::params![hash, aid],
+    );
     ok(serde_json::json!({"status":"updated"}))
 }
 
-#[derive(Deserialize)] pub struct SetPermissionsInput { pub permissions: serde_json::Value }
-pub async fn admin_set_permissions(headers: HeaderMap, Path(aid): Path<String>, Json(input): Json<SetPermissionsInput>) -> impl IntoResponse {
+#[derive(Deserialize)]
+pub struct SetPermissionsInput {
+    pub permissions: serde_json::Value,
+}
+pub async fn admin_set_permissions(
+    headers: HeaderMap,
+    Path(aid): Path<String>,
+    Json(input): Json<SetPermissionsInput>,
+) -> impl IntoResponse {
     tracing::info!("admin_set_permissions: admin_id={}", aid);
     let (_, role) = guard!(&headers);
-    if role != "super" { return err(StatusCode::FORBIDDEN, "forbidden"); }
+    if role != "super" {
+        return err(StatusCode::FORBIDDEN, "forbidden");
+    }
     let perms_str = input.permissions.to_string();
-    let _ = conn().execute("UPDATE admin_users SET permissions=?1 WHERE id=?2", rusqlite::params![perms_str, aid]);
+    let _ = conn().execute(
+        "UPDATE admin_users SET permissions=?1 WHERE id=?2",
+        rusqlite::params![perms_str, aid],
+    );
     ok(serde_json::json!({"status":"updated"}))
 }
 
 // ── Audit Log ──
-#[derive(Deserialize)] pub struct AuditLogQuery {
-    #[serde(default)] pub user_id: Option<String>, #[serde(default)] pub admin_id: Option<String>, #[serde(default)] pub action: Option<String>,
-    #[serde(default)] pub date_from: Option<String>, #[serde(default)] pub date_to: Option<String>, #[serde(default)] pub q: Option<String>,
+#[derive(Deserialize)]
+pub struct AuditLogQuery {
+    #[serde(default)]
+    pub user_id: Option<String>,
+    #[serde(default)]
+    pub admin_id: Option<String>,
+    #[serde(default)]
+    pub action: Option<String>,
+    #[serde(default)]
+    pub date_from: Option<String>,
+    #[serde(default)]
+    pub date_to: Option<String>,
+    #[serde(default)]
+    pub q: Option<String>,
 }
-pub async fn admin_audit_log(headers: HeaderMap, Query(query): Query<AuditLogQuery>) -> impl IntoResponse {
+pub async fn admin_audit_log(
+    headers: HeaderMap,
+    Query(query): Query<AuditLogQuery>,
+) -> impl IntoResponse {
     tracing::info!("admin_audit_log");
     let (_, role) = guard!(&headers);
-    if role!="super" && role!="service" && role!="observer" { return err(StatusCode::FORBIDDEN, "forbidden"); }
+    if role != "super" && role != "service" && role != "observer" {
+        return err(StatusCode::FORBIDDEN, "forbidden");
+    }
     let c2 = conn();
     let mut conditions = Vec::new();
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-    if let Some(ref uid) = query.user_id { conditions.push(format!("al.target_user_id LIKE ?{}", params.len()+1)); params.push(Box::new(format!("%{}%", uid))); }
-    if let Some(ref aid) = query.admin_id { conditions.push(format!("al.admin_id LIKE ?{}", params.len()+1)); params.push(Box::new(format!("%{}%", aid))); }
-    if let Some(ref a) = query.action { conditions.push(format!("al.action LIKE ?{}", params.len()+1)); params.push(Box::new(format!("%{}%", a))); }
-    if let Some(ref d) = query.date_from { conditions.push(format!("al.created_at >= ?{}", params.len()+1)); params.push(Box::new(d.clone())); }
-    if let Some(ref d) = query.date_to { conditions.push(format!("al.created_at <= ?{}", params.len()+1)); params.push(Box::new(format!("{}T23:59:59Z", d))); }
-    if let Some(ref q) = query.q { 
+    if let Some(ref uid) = query.user_id {
+        conditions.push(format!("al.target_user_id LIKE ?{}", params.len() + 1));
+        params.push(Box::new(format!("%{}%", uid)));
+    }
+    if let Some(ref aid) = query.admin_id {
+        conditions.push(format!("al.admin_id LIKE ?{}", params.len() + 1));
+        params.push(Box::new(format!("%{}%", aid)));
+    }
+    if let Some(ref a) = query.action {
+        conditions.push(format!("al.action LIKE ?{}", params.len() + 1));
+        params.push(Box::new(format!("%{}%", a)));
+    }
+    if let Some(ref d) = query.date_from {
+        conditions.push(format!("al.created_at >= ?{}", params.len() + 1));
+        params.push(Box::new(d.clone()));
+    }
+    if let Some(ref d) = query.date_to {
+        conditions.push(format!("al.created_at <= ?{}", params.len() + 1));
+        params.push(Box::new(format!("{}T23:59:59Z", d)));
+    }
+    if let Some(ref q) = query.q {
         conditions.push(format!("(al.action LIKE ?{} OR al.target_user_id LIKE ?{} OR al.detail LIKE ?{} OR au.real_name LIKE ?{})", params.len()+1, params.len()+2, params.len()+3, params.len()+4));
         let pq: String = format!("%{}%", q);
-        params.push(Box::new(pq.clone())); params.push(Box::new(pq.clone())); params.push(Box::new(pq.clone())); params.push(Box::new(pq));
+        params.push(Box::new(pq.clone()));
+        params.push(Box::new(pq.clone()));
+        params.push(Box::new(pq.clone()));
+        params.push(Box::new(pq));
     }
-    let where_clause = if conditions.is_empty() { String::new() } else { format!(" WHERE {}", conditions.join(" AND ")) };
+    let where_clause = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!(" WHERE {}", conditions.join(" AND "))
+    };
     let sql = format!("SELECT al.id,al.admin_id,al.action,al.target_user_id,al.detail,al.created_at,au.real_name FROM admin_audit_log al LEFT JOIN admin_users au ON al.admin_id=au.id{} ORDER BY al.created_at DESC LIMIT 100", where_clause);
     let mut stmt = c2.prepare(&sql).unwrap();
     let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
@@ -782,13 +1254,23 @@ pub async fn admin_dashboard(headers: HeaderMap) -> impl IntoResponse {
     let now = chrono::Utc::now();
     let today_start = now.format("%Y-%m-%dT00:00:00Z").to_string();
     let _today_end = now.format("%Y-%m-%dT23:59:59Z").to_string();
-    let week_end = (now + chrono::Duration::days(7)).format("%Y-%m-%d").to_string();
+    let week_end = (now + chrono::Duration::days(7))
+        .format("%Y-%m-%d")
+        .to_string();
 
-    let total_users: i64 = c.query_row("SELECT COUNT(*) FROM users", [], |r| r.get(0)).unwrap_or(0);
+    let total_users: i64 = c
+        .query_row("SELECT COUNT(*) FROM users", [], |r| r.get(0))
+        .unwrap_or(0);
     // 🔴 2026-09-29：旧学习链已退役（user_cards / review_log）→ 卡片/活跃/复习统计恒为 0；
     //     `users` 表相关的统计照常。
     let total_cards: i64 = 0;
-    let today_users: i64 = c.query_row("SELECT COUNT(*) FROM users WHERE created_at >= ?1", rusqlite::params![today_start], |r| r.get(0)).unwrap_or(0);
+    let today_users: i64 = c
+        .query_row(
+            "SELECT COUNT(*) FROM users WHERE created_at >= ?1",
+            rusqlite::params![today_start],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
     let today_active: i64 = 0;
     let today_reviews: i64 = 0;
     let expiring: Vec<serde_json::Value> = {
@@ -797,15 +1279,22 @@ pub async fn admin_dashboard(headers: HeaderMap) -> impl IntoResponse {
             Ok(s) => s,
             Err(e) => {
                 tracing::error!("dashboard expiring_soon prepare failed: {}", e);
-                return ok(serde_json::json!({"total_users": total_users, "total_cards": total_cards, "today_new_users": today_users, "today_active_users": today_active, "today_reviews": today_reviews, "expiring_soon": []}));
+                return ok(
+                    serde_json::json!({"total_users": total_users, "total_cards": total_cards, "today_new_users": today_users, "today_active_users": today_active, "today_reviews": today_reviews, "expiring_soon": []}),
+                );
             }
         };
-        stmt.query_map(rusqlite::params![week_end], |row| Ok(serde_json::json!({
-            "user_id": row.get::<_,String>(0)?,
-            "username": row.get::<_,String>(1)?,
-            "display_name": row.get::<_,Option<String>>(2)?,
-            "expires": row.get::<_,String>(3)?,
-        }))).unwrap().filter_map(|r|r.ok()).collect()
+        stmt.query_map(rusqlite::params![week_end], |row| {
+            Ok(serde_json::json!({
+                "user_id": row.get::<_,String>(0)?,
+                "username": row.get::<_,String>(1)?,
+                "display_name": row.get::<_,Option<String>>(2)?,
+                "expires": row.get::<_,String>(3)?,
+            }))
+        })
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect()
     };
 
     ok(serde_json::json!({
@@ -819,12 +1308,21 @@ pub async fn admin_dashboard(headers: HeaderMap) -> impl IntoResponse {
 }
 
 // ── Expiring Users ──
-#[derive(Deserialize)] pub struct ExpiringQuery { pub range: Option<String> }
-pub async fn admin_expiring_users(headers: HeaderMap, Query(query): Query<ExpiringQuery>) -> impl IntoResponse {
+#[derive(Deserialize)]
+pub struct ExpiringQuery {
+    pub range: Option<String>,
+}
+pub async fn admin_expiring_users(
+    headers: HeaderMap,
+    Query(query): Query<ExpiringQuery>,
+) -> impl IntoResponse {
     tracing::info!("admin_expiring_users: range={:?}", query.range);
     let _ = verify_admin(&headers);
     let range_days: i64 = match query.range.as_deref() {
-        Some("today") => 0, Some("week") => 7, Some("month") => 30, _ => 7,
+        Some("today") => 0,
+        Some("week") => 7,
+        Some("month") => 30,
+        _ => 7,
     };
     let c = conn();
     let end_offset = format!("+{} days", range_days);
@@ -833,26 +1331,42 @@ pub async fn admin_expiring_users(headers: HeaderMap, Query(query): Query<Expiri
          WHERE u.subscription_expires IS NOT NULL AND u.subscription_expires >= date('now') AND u.subscription_expires <= date('now', ?1) \
          ORDER BY u.subscription_expires LIMIT 50"
     ).unwrap();
-    let users: Vec<serde_json::Value> = stmt.query_map(rusqlite::params![end_offset], |row| {
-        Ok(serde_json::json!({
-            "user_id": row.get::<_,String>(0)?,
-            "username": row.get::<_,String>(1)?,
-            "display_name": row.get::<_,Option<String>>(2)?,
-            "expires": row.get::<_,String>(3)?,
-        }))
-    }).unwrap().filter_map(|r|r.ok()).collect();
+    let users: Vec<serde_json::Value> = stmt
+        .query_map(rusqlite::params![end_offset], |row| {
+            Ok(serde_json::json!({
+                "user_id": row.get::<_,String>(0)?,
+                "username": row.get::<_,String>(1)?,
+                "display_name": row.get::<_,Option<String>>(2)?,
+                "expires": row.get::<_,String>(3)?,
+            }))
+        })
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect();
     ok(serde_json::json!({"users": users}))
 }
 
-
-
 // ── CSV Export ──
-pub async fn admin_users_export(headers: HeaderMap, Query(query): Query<AdminUsersQuery>) -> axum::response::Response {
+pub async fn admin_users_export(
+    headers: HeaderMap,
+    Query(query): Query<AdminUsersQuery>,
+) -> axum::response::Response {
     tracing::info!("admin_users_export: q={}", query.q);
-    let (_, role) = match verify_admin(&headers) { Ok(r) => r, Err(e) => { return e; } };
-    if role == "guardian" { return err(StatusCode::FORBIDDEN, "forbidden"); }
+    let (_, role) = match verify_admin(&headers) {
+        Ok(r) => r,
+        Err(e) => {
+            return e;
+        }
+    };
+    if role == "guardian" {
+        return err(StatusCode::FORBIDDEN, "forbidden");
+    }
     let c = conn();
-    let pattern = if query.q.is_empty() { "%".to_string() } else { format!("%{}%", query.q) };
+    let pattern = if query.q.is_empty() {
+        "%".to_string()
+    } else {
+        format!("%{}%", query.q)
+    };
     let mut stmt = c.prepare(
         "SELECT u.id,u.username,u.display_name,u.email,u.created_at,u.streak_days FROM users u WHERE u.id LIKE ?1 OR u.username LIKE ?1 OR u.display_name LIKE ?1 LIMIT 200"
     ).unwrap();
@@ -862,25 +1376,50 @@ pub async fn admin_users_export(headers: HeaderMap, Query(query): Query<AdminUse
         // 🔴 2026-09-29：学习状态已迁端侧 → 统计恒为 0（CSV 列保留，兼容前端）
         let cards: i64 = 0;
         let reviews: i64 = 0;
-        let expires: String = c.query_row("SELECT COALESCE(subscription_expires,'') FROM users WHERE id=?1", rusqlite::params![&uid], |r| r.get(0)).unwrap_or_default();
+        let expires: String = c
+            .query_row(
+                "SELECT COALESCE(subscription_expires,'') FROM users WHERE id=?1",
+                rusqlite::params![&uid],
+                |r| r.get(0),
+            )
+            .unwrap_or_default();
         // 🔴 2026-09-29：`real_name` + `phone` → `email`（索引与列数同步收敛）
-        let email: String = row.get::<_, Option<String>>(3).ok().flatten().unwrap_or_default();
-        let dn: String = row.get::<_,Option<String>>(2).ok().flatten().unwrap_or_default();
-        let un: String = row.get::<_,String>(1).unwrap_or_default();
-        let dt: String = row.get::<_,String>(4).unwrap_or_default();
-        let sd: i32 = row.get::<_,i32>(5).unwrap_or(0);
-        csv.push_str(&format!("{},{},{},{},{},{},{},{},{}\n", uid, un, dn, email, dt, sd, cards, reviews, expires));
+        let email: String = row
+            .get::<_, Option<String>>(3)
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        let dn: String = row
+            .get::<_, Option<String>>(2)
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        let un: String = row.get::<_, String>(1).unwrap_or_default();
+        let dt: String = row.get::<_, String>(4).unwrap_or_default();
+        let sd: i32 = row.get::<_, i32>(5).unwrap_or(0);
+        csv.push_str(&format!(
+            "{},{},{},{},{},{},{},{},{}\n",
+            uid, un, dn, email, dt, sd, cards, reviews, expires
+        ));
         Ok::<_, rusqlite::Error>(())
     }) {
         for _ in rows {}
     }
-    ([(axum::http::header::CONTENT_TYPE, "text/csv; charset=utf-8"), (axum::http::header::CONTENT_DISPOSITION, "attachment; filename=\"coevo-users.csv\"")], csv).into_response()
+    (
+        [
+            (axum::http::header::CONTENT_TYPE, "text/csv; charset=utf-8"),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                "attachment; filename=\"coevo-users.csv\"",
+            ),
+        ],
+        csv,
+    )
+        .into_response()
 }
 
 /// GET /api/admin/users/{user_id}/audit-log — 用户订阅操作日志
-pub async fn admin_audit_log_handler(
-    Path(user_id): Path<String>,
-) -> impl IntoResponse {
+pub async fn admin_audit_log_handler(Path(user_id): Path<String>) -> impl IntoResponse {
     use axum::http::StatusCode;
     let conn = crate::db_pool::get_conn();
     let mut stmt = match conn.prepare(
@@ -888,10 +1427,16 @@ pub async fn admin_audit_log_handler(
          FROM subscription_audit_log
          WHERE target_user_id = ?1
          ORDER BY created_at DESC
-         LIMIT 50"
+         LIMIT 50",
     ) {
         Ok(s) => s,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("查询失败: {}", e)).into_response(),
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("查询失败: {}", e),
+            )
+                .into_response()
+        }
     };
 
     let rows: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![user_id], |row| {
@@ -907,8 +1452,18 @@ pub async fn admin_audit_log_handler(
         }))
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("查询失败: {}", e)).into_response(),
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("查询失败: {}", e),
+            )
+                .into_response()
+        }
     };
 
-    (StatusCode::OK, serde_json::json!({"logs": rows}).to_string()).into_response()
+    (
+        StatusCode::OK,
+        serde_json::json!({"logs": rows}).to_string(),
+    )
+        .into_response()
 }

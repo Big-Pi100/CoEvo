@@ -1,3 +1,7 @@
+use reqwest::Client;
+use serde_json::{json, Value};
+use std::sync::OnceLock;
+use std::time::Duration;
 /// N4: LLM Caller
 ///
 /// Testing: DeepSeek V4 Flash (OpenAI-compatible API)
@@ -14,12 +18,7 @@
 ///
 /// Cold start:
 ///   - `warmup()` called at server startup to pre-warm DeepSeek model
-
 use tokio::sync::mpsc;
-use reqwest::Client;
-use serde_json::{json, Value};
-use std::sync::OnceLock;
-use std::time::Duration;
 
 /// Global HTTP client (shared across all LlmCaller instances).
 ///
@@ -138,10 +137,15 @@ impl LlmCaller {
     ///
     /// Single request with one retry on failure. Uses the default 30s
     /// http_client — suitable for quick queries.
-    pub async fn generate(&mut self, system_prompt: &str, user_content: &str) -> Result<String, LlmError> {
+    pub async fn generate(
+        &mut self,
+        system_prompt: &str,
+        user_content: &str,
+    ) -> Result<String, LlmError> {
         let url = format!("{}/chat/completions", self.config.base_url);
         let body = build_request_body(&self.config, system_prompt, user_content);
-        self.post_with_retry(http_client(), &url, &body, "generate").await
+        self.post_with_retry(http_client(), &url, &body, "generate")
+            .await
     }
 
     /// 🆕 与 [`generate`] 相同，但可**附加额外的请求体字段**。
@@ -173,7 +177,8 @@ impl LlmCaller {
                 base.insert(k.clone(), v.clone());
             }
         }
-        self.post_with_retry(http_client(), &url, &body, "generate_with_extra").await
+        self.post_with_retry(http_client(), &url, &body, "generate_with_extra")
+            .await
     }
 
     /// 私有：带重试的 POST（`generate` / `generate_with_extra` 共用）。
@@ -186,7 +191,7 @@ impl LlmCaller {
         body: &serde_json::Value,
         label: &str,
     ) -> Result<String, LlmError> {
-        let api_key = self.config.api_key.clone();   // 先 clone，避免下面 &mut self 借用冲突
+        let api_key = self.config.api_key.clone(); // 先 clone，避免下面 &mut self 借用冲突
         let consecutive = &mut self.consecutive_failures;
 
         let mut last_error = LlmError::EmptyResponse;
@@ -218,13 +223,21 @@ impl LlmCaller {
     /// needs significant time to generate long JSON output. Non-streaming
     /// is faster than streaming for large outputs because the LLM
     /// generates everything at once instead of token by token.
-    pub async fn generate_long(&mut self, system_prompt: &str, user_content: &str) -> Result<String, LlmError> {
+    pub async fn generate_long(
+        &mut self,
+        system_prompt: &str,
+        user_content: &str,
+    ) -> Result<String, LlmError> {
         let url = format!("{}/chat/completions", self.config.base_url);
         let body = build_request_body(&self.config, system_prompt, user_content);
         let consecutive = &mut self.consecutive_failures;
 
         let start = std::time::Instant::now();
-        tracing::info!("generate_long ENTER: user_chars={}, max_tokens={}", user_content.len(), self.config.max_tokens);
+        tracing::info!(
+            "generate_long ENTER: user_chars={}, max_tokens={}",
+            user_content.len(),
+            self.config.max_tokens
+        );
 
         let mut last_error = LlmError::EmptyResponse;
         for attempt in 0..2 {
@@ -232,13 +245,21 @@ impl LlmCaller {
                 Ok(reply) => {
                     *consecutive = 0;
                     let elapsed = start.elapsed();
-                    tracing::info!("generate_long OK: elapsed={:?}, reply_chars={}, preview={}",
-                        elapsed, reply.len(), &reply.chars().take(200).collect::<String>());
+                    tracing::info!(
+                        "generate_long OK: elapsed={:?}, reply_chars={}, preview={}",
+                        elapsed,
+                        reply.len(),
+                        &reply.chars().take(200).collect::<String>()
+                    );
                     return Ok(reply);
                 }
                 Err(e) => {
                     if attempt == 0 {
-                        tracing::warn!("LLM generate_long attempt 1 failed after {:?}: {:?}", start.elapsed(), e);
+                        tracing::warn!(
+                            "LLM generate_long attempt 1 failed after {:?}: {:?}",
+                            start.elapsed(),
+                            e
+                        );
                         let delay = std::cmp::min(250 * 2u64.pow(attempt as u32), 2000);
                         tokio::time::sleep(Duration::from_millis(delay)).await;
                     }
@@ -248,7 +269,11 @@ impl LlmCaller {
         }
 
         *consecutive += 1;
-        tracing::error!("generate_long FAILED after {:?}: {:?}", start.elapsed(), last_error);
+        tracing::error!(
+            "generate_long FAILED after {:?}: {:?}",
+            start.elapsed(),
+            last_error
+        );
         Err(last_error)
     }
 
@@ -259,16 +284,27 @@ impl LlmCaller {
     /// Uses the streaming API internally (`stream: true`) but collects all
     /// tokens and returns the complete text — works around API endpoints
     /// that reject large `max_tokens` on non-streaming requests.
-    pub async fn generate_streamed(&mut self, system_prompt: &str, user_content: &str) -> Result<String, LlmError> {
+    pub async fn generate_streamed(
+        &mut self,
+        system_prompt: &str,
+        user_content: &str,
+    ) -> Result<String, LlmError> {
         let start = std::time::Instant::now();
-        tracing::info!("generate_streamed ENTER: user_chars={}, max_tokens={}", user_content.len(), self.config.max_tokens);
+        tracing::info!(
+            "generate_streamed ENTER: user_chars={}, max_tokens={}",
+            user_content.len(),
+            self.config.max_tokens
+        );
 
         let (mut tx, mut rx) = mpsc::channel::<LlmEvent>(64);
         let mut full_text = String::new();
 
         let mut last_error = LlmError::EmptyResponse;
         for attempt in 0..2 {
-            match self.stream_generate_inner(system_prompt, user_content, &tx).await {
+            match self
+                .stream_generate_inner(system_prompt, user_content, &tx)
+                .await
+            {
                 Ok(()) => {
                     // Drain remaining events
                     while let Some(event) = rx.recv().await {
@@ -284,14 +320,22 @@ impl LlmCaller {
                     self.consecutive_failures = 0;
                     let elapsed = start.elapsed();
                     let preview: String = full_text.chars().take(200).collect();
-                    tracing::info!("generate_streamed OK: elapsed={:?}, output_chars={}, preview={}{}",
-                        elapsed, full_text.len(), preview,
-                        if full_text.len() > 200 { "..." } else { "" });
+                    tracing::info!(
+                        "generate_streamed OK: elapsed={:?}, output_chars={}, preview={}{}",
+                        elapsed,
+                        full_text.len(),
+                        preview,
+                        if full_text.len() > 200 { "..." } else { "" }
+                    );
                     return Ok(full_text);
                 }
                 Err(e) => {
                     if attempt == 0 {
-                        tracing::warn!("LLM generate_streamed attempt 1 failed after {:?}: {:?}", start.elapsed(), e);
+                        tracing::warn!(
+                            "LLM generate_streamed attempt 1 failed after {:?}: {:?}",
+                            start.elapsed(),
+                            e
+                        );
                         let delay = std::cmp::min(250 * 2u64.pow(attempt as u32), 2000);
                         tokio::time::sleep(Duration::from_millis(delay)).await;
                         // Re-create channel for retry
@@ -305,7 +349,11 @@ impl LlmCaller {
             }
         }
         self.consecutive_failures += 1;
-        tracing::error!("generate_streamed FAILED after {:?}: {:?}", start.elapsed(), last_error);
+        tracing::error!(
+            "generate_streamed FAILED after {:?}: {:?}",
+            start.elapsed(),
+            last_error
+        );
         Err(last_error)
     }
 
@@ -318,7 +366,10 @@ impl LlmCaller {
         // Retry once on failure (streaming connection can be flaky)
         let mut last_error = LlmError::EmptyResponse;
         for attempt in 0..2 {
-            match self.stream_generate_inner(system_prompt, user_content, &tx).await {
+            match self
+                .stream_generate_inner(system_prompt, user_content, &tx)
+                .await
+            {
                 Ok(()) => return Ok(()),
                 Err(e) => {
                     tracing::warn!("LLM stream attempt {} failed: {:?}", attempt + 1, e);
@@ -351,11 +402,19 @@ impl LlmCaller {
             "max_tokens": self.config.max_tokens,
             "temperature": self.config.temperature,
         });
-        tracing::info!("LLM request (non-history): model={}, max_tokens={}, system_chars={}, user_chars={}",
-            self.config.model, self.config.max_tokens, system_prompt.len(), user_content.len());
+        tracing::info!(
+            "LLM request (non-history): model={}, max_tokens={}, system_chars={}, user_chars={}",
+            self.config.model,
+            self.config.max_tokens,
+            system_prompt.len(),
+            user_content.len()
+        );
         let preview: String = user_content.chars().take(120).collect();
-        tracing::info!("  user_content_preview: {}{}", preview,
-            if user_content.len() > 120 { "..." } else { "" });
+        tracing::info!(
+            "  user_content_preview: {}{}",
+            preview,
+            if user_content.len() > 120 { "..." } else { "" }
+        );
 
         let response = long_http_client()
             .post(&url)
@@ -392,7 +451,10 @@ impl LlmCaller {
                 Ok(c) => c,
                 Err(e) => {
                     self.consecutive_failures += 1;
-                    let status_str = e.status().map(|s| s.to_string()).unwrap_or_else(|| "unknown".into());
+                    let status_str = e
+                        .status()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| "unknown".into());
                     tracing::error!("LLM SSE stream chunk error at chunk={}, buffer={}B, full_text={}chars: HTTP {}: {}",
                         chunk_count, buffer.len(), full_text.len(), status_str, e);
                     return Err(LlmError::ApiError(format!(
@@ -411,7 +473,9 @@ impl LlmCaller {
 
                 for ln in line.lines() {
                     if let Some(data) = ln.strip_prefix("data: ") {
-                        if data.trim() == "[DONE]" { break; }
+                        if data.trim() == "[DONE]" {
+                            break;
+                        }
                         if let Ok(parsed) = serde_json::from_str::<Value>(data) {
                             if let Some(c) = parsed["choices"][0]["delta"]["content"].as_str() {
                                 full_text.push_str(c);
@@ -428,7 +492,9 @@ impl LlmCaller {
             let line = String::from_utf8_lossy(&buffer);
             for ln in line.lines() {
                 if let Some(data) = ln.strip_prefix("data: ") {
-                    if data.trim() == "[DONE]" { break; }
+                    if data.trim() == "[DONE]" {
+                        break;
+                    }
                     if let Ok(parsed) = serde_json::from_str::<Value>(data) {
                         if let Some(c) = parsed["choices"][0]["delta"]["content"].as_str() {
                             full_text.push_str(c);
@@ -457,15 +523,21 @@ impl LlmCaller {
     pub async fn stream_generate_with_history(
         &mut self,
         system_prompt: &str,
-        history: &[(String, String)],  // (role, content) — "user" or "assistant"
+        history: &[(String, String)], // (role, content) — "user" or "assistant"
         current_message: &str,
         plan_context: &str,
         tx: mpsc::Sender<LlmEvent>,
     ) -> Result<(), LlmError> {
         let mut last_error = LlmError::EmptyResponse;
         for attempt in 0..2 {
-            match self.stream_history_inner(system_prompt, history, current_message, plan_context, &tx).await {
-                Ok(()) => { self.consecutive_failures = 0; return Ok(()); }
+            match self
+                .stream_history_inner(system_prompt, history, current_message, plan_context, &tx)
+                .await
+            {
+                Ok(()) => {
+                    self.consecutive_failures = 0;
+                    return Ok(());
+                }
                 Err(e) => {
                     if attempt == 0 {
                         tracing::warn!("LLM stream_history attempt 1 failed: {:?}", e);
@@ -509,16 +581,29 @@ impl LlmCaller {
             "temperature": self.config.temperature,
         });
         // DEBUG: 打印 messages 概览
-        tracing::info!("LLM request: model={}, max_tokens={}, system_chars={}, total_msgs={}",
-            self.config.model, self.config.max_tokens,
+        tracing::info!(
+            "LLM request: model={}, max_tokens={}, system_chars={}, total_msgs={}",
+            self.config.model,
+            self.config.max_tokens,
             system_prompt.len(),
-            body["messages"].as_array().map(|a| a.len()).unwrap_or(0));
-        for (i, msg) in body["messages"].as_array().unwrap_or(&vec![]).iter().enumerate() {
+            body["messages"].as_array().map(|a| a.len()).unwrap_or(0)
+        );
+        for (i, msg) in body["messages"]
+            .as_array()
+            .unwrap_or(&vec![])
+            .iter()
+            .enumerate()
+        {
             let role = msg["role"].as_str().unwrap_or("?");
             let content = msg["content"].as_str().unwrap_or("");
             let preview: String = content.chars().take(80).collect();
-            tracing::info!("  msg[{}] role={}, chars={}, preview={}",
-                i, role, content.len(), preview);
+            tracing::info!(
+                "  msg[{}] role={}, chars={}, preview={}",
+                i,
+                role,
+                content.len(),
+                preview
+            );
         }
 
         let response = http_client()
@@ -526,8 +611,12 @@ impl LlmCaller {
             .header("Authorization", format!("Bearer {}", self.config.api_key))
             .header("Content-Type", "application/json")
             .json(&body)
-            .send().await
-            .map_err(|e| { self.consecutive_failures += 1; LlmError::ApiError(format!("Connection: {}", e)) })?;
+            .send()
+            .await
+            .map_err(|e| {
+                self.consecutive_failures += 1;
+                LlmError::ApiError(format!("Connection: {}", e))
+            })?;
 
         if !response.status().is_success() {
             self.consecutive_failures += 1;
@@ -546,10 +635,15 @@ impl LlmCaller {
                 Ok(c) => c,
                 Err(e) => {
                     self.consecutive_failures += 1;
-                    let status_str = e.status().map(|s| s.to_string()).unwrap_or_else(|| "unknown".into());
+                    let status_str = e
+                        .status()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| "unknown".into());
                     return Err(LlmError::ApiError(format!(
                         "Stream decode failed (HTTP {}): {}. Raw buffer: {} bytes",
-                        status_str, e, buffer.len(),
+                        status_str,
+                        e,
+                        buffer.len(),
                     )));
                 }
             };
@@ -563,7 +657,9 @@ impl LlmCaller {
 
                 for ln in line.lines() {
                     if let Some(data) = ln.strip_prefix("data: ") {
-                        if data.trim() == "[DONE]" { break; }
+                        if data.trim() == "[DONE]" {
+                            break;
+                        }
                         if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
                             if let Some(c) = parsed["choices"][0]["delta"]["content"].as_str() {
                                 if !c.is_empty() {
@@ -581,14 +677,22 @@ impl LlmCaller {
         Ok(())
     }
 
-    pub fn consecutive_failures(&self) -> u32 { self.consecutive_failures }
-    pub fn reset_failures(&mut self) { self.consecutive_failures = 0; }
+    pub fn consecutive_failures(&self) -> u32 {
+        self.consecutive_failures
+    }
+    pub fn reset_failures(&mut self) {
+        self.consecutive_failures = 0;
+    }
 }
 
 // ── Helper functions ──
 
 /// Build the request body from config, system prompt, and user content
-fn build_request_body(config: &LlmConfig, system_prompt: &str, user_content: &str) -> serde_json::Value {
+fn build_request_body(
+    config: &LlmConfig,
+    system_prompt: &str,
+    user_content: &str,
+) -> serde_json::Value {
     let mut messages: Vec<serde_json::Value> = Vec::new();
     if !system_prompt.is_empty() {
         messages.push(json!({"role": "system", "content": system_prompt}));
@@ -604,7 +708,12 @@ fn build_request_body(config: &LlmConfig, system_prompt: &str, user_content: &st
 }
 
 /// Send one POST request and parse the response
-async fn post_one(client: &'static Client, url: &str, api_key: &str, body: &serde_json::Value) -> Result<String, LlmError> {
+async fn post_one(
+    client: &'static Client,
+    url: &str,
+    api_key: &str,
+    body: &serde_json::Value,
+) -> Result<String, LlmError> {
     let response = client
         .post(url)
         .header("Authorization", format!("Bearer {}", api_key))
@@ -620,7 +729,9 @@ async fn post_one(client: &'static Client, url: &str, api_key: &str, body: &serd
         return Err(LlmError::ApiError(format!("HTTP {}: {}", status, text)));
     }
 
-    let result: Value = response.json().await
+    let result: Value = response
+        .json()
+        .await
         .map_err(|e| LlmError::ApiError(format!("JSON parse: {}", e)))?;
 
     result["choices"][0]["message"]["content"]
@@ -692,8 +803,8 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_generate_with_deepseek() {
-        let api_key = std::env::var("DEEPSEEK_API_KEY")
-            .expect("Set DEEPSEEK_API_KEY to run this test");
+        let api_key =
+            std::env::var("DEEPSEEK_API_KEY").expect("Set DEEPSEEK_API_KEY to run this test");
         let cfg = LlmConfig::deepseek_v4_flash(&api_key);
         let mut caller = LlmCaller::new(cfg);
 
@@ -708,23 +819,25 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_stream_with_deepseek() {
-        let api_key = std::env::var("DEEPSEEK_API_KEY")
-            .expect("Set DEEPSEEK_API_KEY");
+        let api_key = std::env::var("DEEPSEEK_API_KEY").expect("Set DEEPSEEK_API_KEY");
         let cfg = LlmConfig::deepseek_v4_flash(&api_key);
         let mut caller = LlmCaller::new(cfg);
         let (tx, mut rx) = mpsc::channel(100);
 
-        let handle = tokio::spawn(async move {
-            caller.stream_generate("", "Count to 3.", tx).await
-        });
+        let handle =
+            tokio::spawn(async move { caller.stream_generate("", "Count to 3.", tx).await });
 
         let mut got_done = false;
         let mut tokens = Vec::new();
         while let Some(event) = rx.recv().await {
             match event {
-                LlmEvent::Thinking => {},
+                LlmEvent::Thinking => {}
                 LlmEvent::Token(t) => tokens.push(t),
-                LlmEvent::Done(t) => { got_done = true; assert!(!t.is_empty()); break; },
+                LlmEvent::Done(t) => {
+                    got_done = true;
+                    assert!(!t.is_empty());
+                    break;
+                }
             }
         }
         assert!(got_done, "Should receive Done event");

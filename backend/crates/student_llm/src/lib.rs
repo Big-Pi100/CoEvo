@@ -28,7 +28,11 @@ pub async fn student_speak(
                 eprintln!("student_speak: empty response on attempt {}", attempt + 1);
             }
             Err(e) => {
-                eprintln!("student_speak: LLM error on attempt {}: {:?}", attempt + 1, e);
+                eprintln!(
+                    "student_speak: LLM error on attempt {}: {:?}",
+                    attempt + 1,
+                    e
+                );
             }
         }
         if attempt < max_retries - 1 {
@@ -36,6 +40,9 @@ pub async fn student_speak(
             std::thread::sleep(std::time::Duration::from_secs(1 << attempt));
         }
     }
-    eprintln!("student_speak: all {} attempts failed, returning empty", max_retries);
+    eprintln!(
+        "student_speak: all {} attempts failed, returning empty",
+        max_retries
+    );
     String::new()
 }

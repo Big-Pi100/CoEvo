@@ -7,10 +7,10 @@
 //! time via `with_init()`, avoiding redundant PRAGMA calls on every
 //! checkout.
 
-use std::sync::OnceLock;
-use std::time::Duration;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
+use std::sync::OnceLock;
+use std::time::Duration;
 
 /// Re-export the pooled connection type so callers see the same interface.
 pub type DbConn = r2d2::PooledConnection<SqliteConnectionManager>;
@@ -24,10 +24,9 @@ pub fn init(db_path: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    let manager = SqliteConnectionManager::file(db_path)
-        .with_init(|conn| {
-            conn.execute_batch("PRAGMA busy_timeout=5000; PRAGMA foreign_keys = ON;")
-        });
+    let manager = SqliteConnectionManager::file(db_path).with_init(|conn| {
+        conn.execute_batch("PRAGMA busy_timeout=5000; PRAGMA foreign_keys = ON;")
+    });
     let pool = Pool::builder()
         .max_size(30)
         .build(manager)
@@ -42,12 +41,14 @@ pub fn init(db_path: &str) -> Result<(), String> {
 
     // Initialize schema + run migrations on first connection
     {
-        let conn = pool.get().map_err(|e| format!("Pool get for schema: {}", e))?;
-        crate::schema::init_database(&conn)
-            .map_err(|e| format!("Schema init: {}", e))?;
+        let conn = pool
+            .get()
+            .map_err(|e| format!("Pool get for schema: {}", e))?;
+        crate::schema::init_database(&conn).map_err(|e| format!("Schema init: {}", e))?;
     }
 
-    DB_POOL.set(pool)
+    DB_POOL
+        .set(pool)
         .map_err(|_| "DB pool already initialized".to_string())
 }
 

@@ -105,12 +105,14 @@ fn resolve_includes(text: &str, base_dir: &str) -> String {
     loop {
         let before = result.clone();
         let re = regex::Regex::new(r"\{include:([^}]+)\}").unwrap();
-        result = re.replace_all(&result, |caps: &regex::Captures| {
-            let include_path = caps.get(1).unwrap().as_str();
-            let full_path = std::path::Path::new(base_dir).join(include_path);
-            let full_str = full_path.to_string_lossy().to_string();
-            read_file(&full_str)
-        }).to_string();
+        result = re
+            .replace_all(&result, |caps: &regex::Captures| {
+                let include_path = caps.get(1).unwrap().as_str();
+                let full_path = std::path::Path::new(base_dir).join(include_path);
+                let full_str = full_path.to_string_lossy().to_string();
+                read_file(&full_str)
+            })
+            .to_string();
         if result == before {
             break;
         }
@@ -132,13 +134,25 @@ fn read_signal_or_flat(dir: &str, type_name: &str, base_dir: &str, _fallback: &s
 
     // 1. 主模板（{type}.md）— 需要解析 {include:...} 引用
     let main_raw = read_file(&flat_path.to_string_lossy());
-    let main = if !main_raw.is_empty() { resolve_includes(&main_raw, base_dir) } else { String::new() };
+    let main = if !main_raw.is_empty() {
+        resolve_includes(&main_raw, base_dir)
+    } else {
+        String::new()
+    };
     // 2. subject 级 signal
     let signal_raw = read_file(&signal_path.to_string_lossy());
-    let subject_signal = if !signal_raw.is_empty() { resolve_includes(&signal_raw, base_dir) } else { String::new() };
+    let subject_signal = if !signal_raw.is_empty() {
+        resolve_includes(&signal_raw, base_dir)
+    } else {
+        String::new()
+    };
     // 3. subject 级 format
     let format_raw = read_file(&format_path.to_string_lossy());
-    let subject_format = if !format_raw.is_empty() { resolve_includes(&format_raw, base_dir) } else { String::new() };
+    let subject_format = if !format_raw.is_empty() {
+        resolve_includes(&format_raw, base_dir)
+    } else {
+        String::new()
+    };
     // 4. 类别级 signal.md（仅用于手动 {include:...} 引用，不自动追加）
     // 如需启用，取消下方注释并从对应主 prompt 移除 {include:...} 引用
     // let cat_signal = resolve_includes(&read_file(&cat_dir.join("signal.md").to_string_lossy()), base_dir);
@@ -146,11 +160,19 @@ fn read_signal_or_flat(dir: &str, type_name: &str, base_dir: &str, _fallback: &s
 
     // 合并：主 + subject_signal + subject_format
     let mut parts: Vec<String> = Vec::new();
-    if !main.is_empty() { parts.push(main); }
-    if !subject_signal.is_empty() { parts.push(subject_signal); }
-    if !subject_format.is_empty() { parts.push(subject_format); }
+    if !main.is_empty() {
+        parts.push(main);
+    }
+    if !subject_signal.is_empty() {
+        parts.push(subject_signal);
+    }
+    if !subject_format.is_empty() {
+        parts.push(subject_format);
+    }
 
-    if parts.is_empty() { return String::new(); }
+    if parts.is_empty() {
+        return String::new();
+    }
     parts.join("\n\n")
 }
 
@@ -162,7 +184,11 @@ fn read_signal_or_flat_with_fallback(
     fallback: &str,
 ) -> String {
     let val = read_signal_or_flat(dir, type_name, base_dir, fallback);
-    if val.is_empty() { fallback.to_string() } else { val }
+    if val.is_empty() {
+        fallback.to_string()
+    } else {
+        val
+    }
 }
 
 // ── 加载函数 ──
@@ -178,14 +204,38 @@ fn load_chat_dir(dir: &str, base_dir: &str) -> ChatTemplates {
     }
 }
 
-fn load_chat_dir_with_fallback(dir: &str, fallback: &ChatTemplates, base_dir: &str) -> ChatTemplates {
+fn load_chat_dir_with_fallback(
+    dir: &str,
+    fallback: &ChatTemplates,
+    base_dir: &str,
+) -> ChatTemplates {
     ChatTemplates {
         free: read_signal_or_flat_with_fallback(dir, "free", base_dir, &fallback.free),
-        structured: read_signal_or_flat_with_fallback(dir, "structured", base_dir, &fallback.structured),
+        structured: read_signal_or_flat_with_fallback(
+            dir,
+            "structured",
+            base_dir,
+            &fallback.structured,
+        ),
         reading: read_signal_or_flat_with_fallback(dir, "reading", base_dir, &fallback.reading),
-        reading_nursery: read_signal_or_flat_with_fallback(dir, "reading-nursery", base_dir, &fallback.reading_nursery),
-        reading_primary: read_signal_or_flat_with_fallback(dir, "reading-primary", base_dir, &fallback.reading_primary),
-        reading_secondary: read_signal_or_flat_with_fallback(dir, "reading-secondary", base_dir, &fallback.reading_secondary),
+        reading_nursery: read_signal_or_flat_with_fallback(
+            dir,
+            "reading-nursery",
+            base_dir,
+            &fallback.reading_nursery,
+        ),
+        reading_primary: read_signal_or_flat_with_fallback(
+            dir,
+            "reading-primary",
+            base_dir,
+            &fallback.reading_primary,
+        ),
+        reading_secondary: read_signal_or_flat_with_fallback(
+            dir,
+            "reading-secondary",
+            base_dir,
+            &fallback.reading_secondary,
+        ),
     }
 }
 
@@ -196,7 +246,11 @@ fn load_concept_dir(dir: &str, base_dir: &str) -> ConceptTemplates {
     }
 }
 
-fn load_concept_dir_with_fallback(dir: &str, fallback: &ConceptTemplates, base_dir: &str) -> ConceptTemplates {
+fn load_concept_dir_with_fallback(
+    dir: &str,
+    fallback: &ConceptTemplates,
+    base_dir: &str,
+) -> ConceptTemplates {
     ConceptTemplates {
         extract: read_signal_or_flat_with_fallback(dir, "extract", base_dir, &fallback.extract),
         direct: read_signal_or_flat_with_fallback(dir, "direct", base_dir, &fallback.direct),
@@ -211,7 +265,11 @@ fn load_plan_dir(dir: &str, base_dir: &str) -> PlanTemplates {
     }
 }
 
-fn load_plan_dir_with_fallback(dir: &str, fallback: &PlanTemplates, base_dir: &str) -> PlanTemplates {
+fn load_plan_dir_with_fallback(
+    dir: &str,
+    fallback: &PlanTemplates,
+    base_dir: &str,
+) -> PlanTemplates {
     PlanTemplates {
         creation: read_signal_or_flat_with_fallback(dir, "creation", base_dir, &fallback.creation),
         analysis: read_signal_or_flat_with_fallback(dir, "analysis", base_dir, &fallback.analysis),
@@ -227,7 +285,11 @@ fn load_quiz_dir(dir: &str, base_dir: &str) -> QuizTemplates {
     }
 }
 
-fn load_quiz_dir_with_fallback(dir: &str, fallback: &QuizTemplates, base_dir: &str) -> QuizTemplates {
+fn load_quiz_dir_with_fallback(
+    dir: &str,
+    fallback: &QuizTemplates,
+    base_dir: &str,
+) -> QuizTemplates {
     QuizTemplates {
         generate: read_signal_or_flat_with_fallback(dir, "generate", base_dir, &fallback.generate),
         judge: read_signal_or_flat_with_fallback(dir, "judge", base_dir, &fallback.judge),
@@ -244,11 +306,20 @@ fn load_verify_dir(dir: &str, base_dir: &str) -> VerifyTemplates {
     }
 }
 
-fn load_verify_dir_with_fallback(dir: &str, fallback: &VerifyTemplates, base_dir: &str) -> VerifyTemplates {
+fn load_verify_dir_with_fallback(
+    dir: &str,
+    fallback: &VerifyTemplates,
+    base_dir: &str,
+) -> VerifyTemplates {
     VerifyTemplates {
         spelling: read_signal_or_flat_with_fallback(dir, "spelling", base_dir, &fallback.spelling),
         dialogue: read_signal_or_flat_with_fallback(dir, "dialogue", base_dir, &fallback.dialogue),
-        translation: read_signal_or_flat_with_fallback(dir, "translation", base_dir, &fallback.translation),
+        translation: read_signal_or_flat_with_fallback(
+            dir,
+            "translation",
+            base_dir,
+            &fallback.translation,
+        ),
         usage: read_signal_or_flat_with_fallback(dir, "usage", base_dir, &fallback.usage),
     }
 }
@@ -259,14 +330,23 @@ fn load_routing_dir(dir: &str, base_dir: &str) -> RoutingTemplates {
     }
 }
 
-fn load_routing_dir_with_fallback(dir: &str, fallback: &RoutingTemplates, base_dir: &str) -> RoutingTemplates {
+fn load_routing_dir_with_fallback(
+    dir: &str,
+    fallback: &RoutingTemplates,
+    base_dir: &str,
+) -> RoutingTemplates {
     RoutingTemplates {
         subject: read_signal_or_flat_with_fallback(dir, "subject", base_dir, &fallback.subject),
     }
 }
 
 /// 扫描某类别下所有科目子目录并注册
-fn scan_subject_dirs<T, F1, F2>(base_dir: &str, category: &str, load_dir: F1, load_with_fb: F2) -> (HashMap<String, T>, T)
+fn scan_subject_dirs<T, F1, F2>(
+    base_dir: &str,
+    category: &str,
+    load_dir: F1,
+    load_with_fb: F2,
+) -> (HashMap<String, T>, T)
 where
     T: Clone + Default,
     F1: Fn(&str, &str) -> T,
@@ -286,7 +366,9 @@ where
     if let Ok(entries) = std::fs::read_dir(&cat_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if !path.is_dir() { continue; }
+            if !path.is_dir() {
+                continue;
+            }
             let name = match path.file_name().and_then(|n| n.to_str()) {
                 Some(n) if !n.is_empty() && n != "general" => n.to_string(),
                 _ => continue,
@@ -317,43 +399,55 @@ pub fn init(base_dir: &str) {
     };
 
     let (chat, chat_general) = scan_subject_dirs(
-        &abs_base, "chat",
+        &abs_base,
+        "chat",
         load_chat_dir,
         load_chat_dir_with_fallback,
     );
     let (concept, concept_general) = scan_subject_dirs(
-        &abs_base, "concept",
+        &abs_base,
+        "concept",
         load_concept_dir,
         load_concept_dir_with_fallback,
     );
     let (plan, plan_general) = scan_subject_dirs(
-        &abs_base, "plan",
+        &abs_base,
+        "plan",
         load_plan_dir,
         load_plan_dir_with_fallback,
     );
     let (quiz, quiz_general) = scan_subject_dirs(
-        &abs_base, "quiz",
+        &abs_base,
+        "quiz",
         load_quiz_dir,
         load_quiz_dir_with_fallback,
     );
     let (verify, verify_general) = scan_subject_dirs(
-        &abs_base, "verify",
+        &abs_base,
+        "verify",
         load_verify_dir,
         load_verify_dir_with_fallback,
     );
     let (routing, routing_general) = scan_subject_dirs(
-        &abs_base, "routing",
+        &abs_base,
+        "routing",
         load_routing_dir,
         load_routing_dir_with_fallback,
     );
 
     let registry = PromptRegistry {
-        chat: chat.clone(), chat_general: chat_general.clone(),
-        concept: concept.clone(), concept_general: concept_general.clone(),
-        plan: plan.clone(), plan_general: plan_general.clone(),
-        quiz: quiz.clone(), quiz_general: quiz_general.clone(),
-        verify: verify.clone(), verify_general: verify_general.clone(),
-        routing: routing.clone(), routing_general: routing_general.clone(),
+        chat: chat.clone(),
+        chat_general: chat_general.clone(),
+        concept: concept.clone(),
+        concept_general: concept_general.clone(),
+        plan: plan.clone(),
+        plan_general: plan_general.clone(),
+        quiz: quiz.clone(),
+        quiz_general: quiz_general.clone(),
+        verify: verify.clone(),
+        verify_general: verify_general.clone(),
+        routing: routing.clone(),
+        routing_general: routing_general.clone(),
         base_dir: abs_base,
     };
     let _ = REGISTRY.set(registry);
@@ -413,7 +507,10 @@ pub fn get_verify(subject: &str) -> &'static VerifyTemplates {
 
 /// 获取路由 prompt
 pub fn get_routing() -> &'static RoutingTemplates {
-    &REGISTRY.get().expect("Prompts not initialized").routing_general
+    &REGISTRY
+        .get()
+        .expect("Prompts not initialized")
+        .routing_general
 }
 
 // ── 辅助函数（供 concept_extractor 等调用） ──
@@ -474,7 +571,8 @@ pub fn build_concept_extract_for_domain_with_plan(
             concepts_str, text
         )
     } else {
-        tpl.extract.replace("{text}", text)
+        tpl.extract
+            .replace("{text}", text)
             .replace("{existing_concepts_list}", &concepts_str)
             .replace("{conversation_history}", &history_str)
             .replace("{plan_context}", plan_context)
@@ -485,10 +583,14 @@ pub fn build_concept_extract_for_domain_with_plan(
 pub fn build_card_direct(user_message: &str, ai_reply: &str) -> String {
     let tpl = get_concept("general");
     if tpl.direct.is_empty() {
-        format!("Generate a flashcard from this conversation.\nUser: {}\nAI: {}", user_message, ai_reply)
+        format!(
+            "Generate a flashcard from this conversation.\nUser: {}\nAI: {}",
+            user_message, ai_reply
+        )
     } else {
-        tpl.direct.replace("{user_message}", user_message)
-           .replace("{ai_reply}", ai_reply)
+        tpl.direct
+            .replace("{user_message}", user_message)
+            .replace("{ai_reply}", ai_reply)
     }
 }
 
@@ -515,9 +617,7 @@ mod tests {
 
     /// 获取测试用 tmp 路径
     fn test_tmp() -> String {
-        unsafe {
-            TMP_DIR.clone().unwrap_or_default()
-        }
+        unsafe { TMP_DIR.clone().unwrap_or_default() }
     }
 
     fn test_init() -> String {
@@ -529,13 +629,21 @@ mod tests {
             std::fs::create_dir_all(tmp.join("chat/general/format")).ok();
             std::fs::write(tmp.join("chat/general/free.md"), "通用聊天指令").ok();
             std::fs::write(tmp.join("chat/general/signal/free.md"), "正则信号").ok();
-            std::fs::write(tmp.join("chat/general/format/free.md"), "{include:format/shared/json-only.md}").ok();
+            std::fs::write(
+                tmp.join("chat/general/format/free.md"),
+                "{include:format/shared/json-only.md}",
+            )
+            .ok();
             // chat/math/ — 三份
             std::fs::create_dir_all(tmp.join("chat/math/signal")).ok();
             std::fs::create_dir_all(tmp.join("chat/math/format")).ok();
             std::fs::write(tmp.join("chat/math/free.md"), "数学聊天指令").ok();
             std::fs::write(tmp.join("chat/math/signal/free.md"), "数学正则信号").ok();
-            std::fs::write(tmp.join("chat/math/format/free.md"), "{include:format/shared/json-only.md}").ok();
+            std::fs::write(
+                tmp.join("chat/math/format/free.md"),
+                "{include:format/shared/json-only.md}",
+            )
+            .ok();
             // shared format pool
             std::fs::create_dir_all(tmp.join("format/shared")).ok();
             std::fs::write(tmp.join("format/shared/json-only.md"), "只返回JSON").ok();
@@ -543,7 +651,11 @@ mod tests {
             std::fs::create_dir_all(tmp.join("concept/general/signal")).ok();
             std::fs::create_dir_all(tmp.join("concept/general/format")).ok();
             std::fs::write(tmp.join("concept/general/extract.md"), "通用提取指令").ok();
-            std::fs::write(tmp.join("concept/general/format/extract.md"), "通用输出格式").ok();
+            std::fs::write(
+                tmp.join("concept/general/format/extract.md"),
+                "通用输出格式",
+            )
+            .ok();
             // quiz/ — 三份
             std::fs::create_dir_all(tmp.join("quiz/general/signal")).ok();
             std::fs::create_dir_all(tmp.join("quiz/general/format")).ok();
@@ -565,7 +677,9 @@ mod tests {
 
             let path = tmp.to_str().unwrap().to_string();
             init(&path);
-            unsafe { TMP_DIR = Some(path); }
+            unsafe {
+                TMP_DIR = Some(path);
+            }
         });
         test_tmp()
     }
@@ -577,7 +691,10 @@ mod tests {
         // main + signal + format 三份合并
         assert!(tpl.free.contains("通用聊天指令"), "应包含 main 内容");
         assert!(tpl.free.contains("正则信号"), "应包含 signal 内容");
-        assert!(tpl.free.contains("只返回JSON"), "应包含解析后的 format include");
+        assert!(
+            tpl.free.contains("只返回JSON"),
+            "应包含解析后的 format include"
+        );
         assert!(tpl.structured.is_empty());
     }
 

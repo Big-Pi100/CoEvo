@@ -9,8 +9,8 @@ use axum::{
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::subscription;
 use crate::distribution_handler::net_available_commission;
+use crate::subscription;
 
 #[derive(Deserialize)]
 pub struct UserOrdersQuery {
@@ -18,9 +18,7 @@ pub struct UserOrdersQuery {
 }
 
 /// POST /api/pay/native — Native 支付下单
-pub async fn native_pay_handler(
-    Json(payload): Json<serde_json::Value>,
-) -> impl IntoResponse {
+pub async fn native_pay_handler(Json(payload): Json<serde_json::Value>) -> impl IntoResponse {
     let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
         Some(id) if !id.is_empty() => id.to_string(),
         _ => return (StatusCode::BAD_REQUEST, "user_id 不能为空").into_response(),
@@ -34,14 +32,21 @@ pub async fn native_pay_handler(
     let actual_price: Option<i64> = payload.get("actual_price").and_then(|v| v.as_i64());
 
     // 佣金抵扣金额（分），0 或 None 表示不使用佣金抵扣
-    let commission_discount: Option<i64> = payload.get("commission_discount").and_then(|v| v.as_i64());
+    let commission_discount: Option<i64> =
+        payload.get("commission_discount").and_then(|v| v.as_i64());
 
     // 查套餐
     let mut conn = crate::db_pool::get_conn();
     let plan = match subscription::get_plan_by_id(&conn, &plan_id) {
         Ok(Some(p)) => p,
         Ok(None) => return (StatusCode::NOT_FOUND, "套餐不存在").into_response(),
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("查询套餐失败: {}", e)).into_response(),
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("查询套餐失败: {}", e),
+            )
+                .into_response()
+        }
     };
 
     if !plan.is_active {
@@ -65,7 +70,8 @@ pub async fn native_pay_handler(
     let mut commission_used: i64 = 0;
     let mut commission_ids: Vec<String> = Vec::new();
     let mut full_deduct_ids: Vec<String> = Vec::new();
-    let mut full_deduct_amounts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    let mut full_deduct_amounts: std::collections::HashMap<String, i64> =
+        std::collections::HashMap::new();
     let mut partial_deduct_id: Option<(String, i64)> = None;
     if let Some(discount) = commission_discount.filter(|&d| d > 0) {
         if discount >= base_price {
@@ -92,7 +98,13 @@ pub async fn native_pay_handler(
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             }) {
                 Ok(rows) => rows,
-                Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("遍历佣金记录失败: {}", e)).into_response(),
+                Err(e) => {
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("遍历佣金记录失败: {}", e),
+                    )
+                        .into_response()
+                }
             };
             mapped.filter_map(|r| r.ok()).collect()
         };
@@ -130,7 +142,9 @@ pub async fn native_pay_handler(
     let order_id = format!("OE{}", &uuid::Uuid::new_v4().to_string()[..20]);
 
     // 到期时间（下单后 10 分钟未支付自动关闭）
-    let expire = (now + chrono::Duration::minutes(10)).format("%Y-%m-%dT%H:%M:%S+08:00").to_string();
+    let expire = (now + chrono::Duration::minutes(10))
+        .format("%Y-%m-%dT%H:%M:%S+08:00")
+        .to_string();
 
     // 免费（price=0 或折扣后为 0）跳过微信支付，直接激活
     if final_price <= 0 {
@@ -140,7 +154,13 @@ pub async fn native_pay_handler(
         // 事务内：扣佣金 + 写订单 + 激活订阅，任一失败整体回滚
         let tx = match conn.transaction() {
             Ok(t) => t,
-            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("事务启动失败: {}", e)).into_response(),
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("事务启动失败: {}", e),
+                )
+                    .into_response()
+            }
         };
 
         // 扣佣金：INSERT expense 记录（佣金记录本身不可变，只靠 expense 表追溯可用余额）
@@ -172,16 +192,29 @@ pub async fn native_pay_handler(
              VALUES (?1, ?2, ?3, ?4, 'SUCCESS', ?5, ?5)",
             rusqlite::params![order_id, user_id, plan_id, order_amount, created_at],
         ) {
-            return (StatusCode::INTERNAL_SERVER_ERROR, format!("写入订单失败: {}", e)).into_response();
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("写入订单失败: {}", e),
+            )
+                .into_response();
         }
 
         // 激活订阅
         match subscription::extend_subscription(
-            &tx, &user_id, &plan_id, None, Some(&order_id), None,
+            &tx,
+            &user_id,
+            &plan_id,
+            None,
+            Some(&order_id),
+            None,
         ) {
             Ok(new_expires) => {
                 if let Err(e) = tx.commit() {
-                    return (StatusCode::INTERNAL_SERVER_ERROR, format!("事务提交失败: {}", e)).into_response();
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("事务提交失败: {}", e),
+                    )
+                        .into_response();
                 }
                 return (
                     StatusCode::OK,
@@ -193,10 +226,18 @@ pub async fn native_pay_handler(
                         "new_expires": new_expires,
                         "commission_used": commission_used,
                         "commission_ids": commission_ids,
-                    }).to_string(),
-                ).into_response();
+                    })
+                    .to_string(),
+                )
+                    .into_response();
             }
-            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("激活订阅失败: {}", e)).into_response(),
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("激活订阅失败: {}", e),
+                )
+                    .into_response()
+            }
         }
     }
 
@@ -223,7 +264,13 @@ pub async fn native_pay_handler(
             // 事务内：扣佣金 + 写 NOTPAY 订单，微信已返回成功才扣佣金
             let tx = match conn.transaction() {
                 Ok(t) => t,
-                Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("事务启动失败: {}", e)).into_response(),
+                Err(e) => {
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("事务启动失败: {}", e),
+                    )
+                        .into_response()
+                }
             };
 
             for cid in &full_deduct_ids {
@@ -256,7 +303,11 @@ pub async fn native_pay_handler(
             }
 
             if let Err(e) = tx.commit() {
-                return (StatusCode::INTERNAL_SERVER_ERROR, format!("事务提交失败: {}", e)).into_response();
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("事务提交失败: {}", e),
+                )
+                    .into_response();
             }
 
             (
@@ -273,15 +324,16 @@ pub async fn native_pay_handler(
             )
                 .into_response()
         }
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("微信下单失败: {}", e)).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("微信下单失败: {}", e),
+        )
+            .into_response(),
     }
 }
 
 /// POST /api/pay/notify — 微信支付回调
-pub async fn pay_notify_handler(
-    headers: axum::http::HeaderMap,
-    body: String,
-) -> impl IntoResponse {
+pub async fn pay_notify_handler(headers: axum::http::HeaderMap, body: String) -> impl IntoResponse {
     let wechat_config = match crate::wechat_pay::WechatPayConfig::from_env() {
         Some(c) => c,
         None => {
@@ -291,11 +343,17 @@ pub async fn pay_notify_handler(
     };
 
     // 获取微信签名相关 header
-    let signature = match headers.get("Wechatpay-Signature").and_then(|v| v.to_str().ok()) {
+    let signature = match headers
+        .get("Wechatpay-Signature")
+        .and_then(|v| v.to_str().ok())
+    {
         Some(s) => s,
         None => return (StatusCode::BAD_REQUEST, "缺少 Wechatpay-Signature").into_response(),
     };
-    let timestamp = match headers.get("Wechatpay-Timestamp").and_then(|v| v.to_str().ok()) {
+    let timestamp = match headers
+        .get("Wechatpay-Timestamp")
+        .and_then(|v| v.to_str().ok())
+    {
         Some(s) => s,
         None => return (StatusCode::BAD_REQUEST, "缺少 Wechatpay-Timestamp").into_response(),
     };
@@ -321,7 +379,9 @@ pub async fn pay_notify_handler(
     // 解析回调 body
     let json_body: serde_json::Value = match serde_json::from_str(&body) {
         Ok(v) => v,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("JSON 解析失败: {}", e)).into_response(),
+        Err(e) => {
+            return (StatusCode::BAD_REQUEST, format!("JSON 解析失败: {}", e)).into_response()
+        }
     };
 
     let resource = match json_body["resource"].as_object() {
@@ -334,17 +394,27 @@ pub async fn pay_notify_handler(
         Some(c) => c,
         None => return (StatusCode::BAD_REQUEST, "缺少 ciphertext").into_response(),
     };
-    let associated_data = resource.get("associated_data").and_then(|v| v.as_str()).unwrap_or("");
+    let associated_data = resource
+        .get("associated_data")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let nonce_resource = resource.get("nonce").and_then(|v| v.as_str()).unwrap_or("");
 
-    let decrypted = match decrypt_aes_256_gcm(&wechat_config.api_v3_key, ciphertext, nonce_resource, associated_data) {
+    let decrypted = match decrypt_aes_256_gcm(
+        &wechat_config.api_v3_key,
+        ciphertext,
+        nonce_resource,
+        associated_data,
+    ) {
         Ok(d) => d,
         Err(e) => return (StatusCode::BAD_REQUEST, format!("解密失败: {}", e)).into_response(),
     };
 
     let pay_data: serde_json::Value = match serde_json::from_str(&decrypted) {
         Ok(v) => v,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("解密数据解析失败: {}", e)).into_response(),
+        Err(e) => {
+            return (StatusCode::BAD_REQUEST, format!("解密数据解析失败: {}", e)).into_response()
+        }
     };
 
     let out_trade_no = match pay_data["out_trade_no"].as_str() {
@@ -362,12 +432,14 @@ pub async fn pay_notify_handler(
     let order: Result<(String, String, String, String), _> = conn.query_row(
         "SELECT user_id, plan_id, amount, status FROM payment_orders WHERE id = ?1",
         rusqlite::params![out_trade_no],
-        |row| Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, String>(3)?,
-        )),
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        },
     );
 
     let (user_id, plan_id, _amount, status) = match order {
@@ -395,7 +467,7 @@ pub async fn pay_notify_handler(
         &conn,
         &user_id,
         &plan_id,
-        None,      // operator_id = NULL（系统）
+        None, // operator_id = NULL（系统）
         Some(&out_trade_no),
         Some("微信支付"),
     ) {
@@ -409,7 +481,11 @@ pub async fn pay_notify_handler(
         }
         Err(e) => {
             tracing::error!("pay_notify: 延期失败: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, format!("延期失败: {}", e)).into_response()
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("延期失败: {}", e),
+            )
+                .into_response()
         }
     }
 }
@@ -430,25 +506,33 @@ pub fn distribute_commission_on_payment(
 
     // 触发支付活动（commission 分发 + subscription_days 等）
     let _ = crate::campaign_executor::execute_campaign_trigger(
-        conn, "payment", &buyer_id, referrer_id.as_deref(), Some(order_id), None,
+        conn,
+        "payment",
+        &buyer_id,
+        referrer_id.as_deref(),
+        Some(order_id),
+        None,
     );
 
     // 核销折扣：用户支付后，将 status=granted 的折扣标记为 fulfilled（已使用）
     let discount_campaign: Option<(String, String)> = {
-        let cid: Option<String> = conn.query_row(
-            "SELECT referred_campaign_id FROM users WHERE id = ?1",
-            rusqlite::params![buyer_id],
-            |row| row.get(0),
-        ).ok().flatten();
+        let cid: Option<String> = conn
+            .query_row(
+                "SELECT referred_campaign_id FROM users WHERE id = ?1",
+                rusqlite::params![buyer_id],
+                |row| row.get(0),
+            )
+            .ok()
+            .flatten();
         match cid {
-            Some(ref c) if !c.is_empty() => {
-                conn.query_row(
+            Some(ref c) if !c.is_empty() => conn
+                .query_row(
                     "SELECT id, name FROM marketing_campaigns \
                      WHERE id = ?1 AND status='active' AND rewards LIKE '%discount_pct%'",
                     rusqlite::params![c],
                     |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-                ).ok()
-            }
+                )
+                .ok(),
             _ => None,
         }
     };
@@ -463,12 +547,18 @@ pub fn distribute_commission_on_payment(
         ).unwrap_or(0);
         if redeemed > 0 {
             let _ = crate::campaign_executor::write_notification(
-                conn, &buyer_id, "reward_redeem",
+                conn,
+                &buyer_id,
+                "reward_redeem",
                 &format!("📉 折扣已使用"),
                 &format!("你在本次支付中使用了「{}」推荐折扣优惠！", campaign_name),
                 None,
             );
-            tracing::info!("distribute_commission_on_payment: redeemed invitee discount for {}, order={}", buyer_id, order_id);
+            tracing::info!(
+                "distribute_commission_on_payment: redeemed invitee discount for {}, order={}",
+                buyer_id,
+                order_id
+            );
         }
     }
 
@@ -489,23 +579,38 @@ pub fn distribute_commission_on_payment(
             rusqlite::params![buyer_id, order_id],
             |row| row.get(0),
         ).unwrap_or_default();
-        let display_name = if camp_name.is_empty() { "推荐活动" } else { &camp_name };
+        let display_name = if camp_name.is_empty() {
+            "推荐活动"
+        } else {
+            &camp_name
+        };
         let _ = crate::campaign_executor::write_notification(
-            conn, &buyer_id, "reward_redeem",
+            conn,
+            &buyer_id,
+            "reward_redeem",
             &format!("📉 折扣已使用"),
-            &format!("你在本次支付中使用了邀请「{}」获得的折扣优惠！", display_name),
+            &format!(
+                "你在本次支付中使用了邀请「{}」获得的折扣优惠！",
+                display_name
+            ),
             None,
         );
-        tracing::info!("distribute_commission_on_payment: redeemed inviter discount for {}, order={}", buyer_id, order_id);
+        tracing::info!(
+            "distribute_commission_on_payment: redeemed inviter discount for {}, order={}",
+            buyer_id,
+            order_id
+        );
     }
 
     // 核销 party=all 折扣（拼团/组队活动成员支付时）
-    let all_redeemed = conn.execute(
-        "UPDATE reward_fulfillments SET status = 'fulfilled', order_id = ?1 \
+    let all_redeemed = conn
+        .execute(
+            "UPDATE reward_fulfillments SET status = 'fulfilled', order_id = ?1 \
          WHERE user_id = ?2 AND party = 'all' AND reward_type IN ('discount_pct', 'discount_fix') \
          AND status = 'granted' AND order_id IS NULL",
-        rusqlite::params![order_id, buyer_id],
-    ).unwrap_or(0);
+            rusqlite::params![order_id, buyer_id],
+        )
+        .unwrap_or(0);
     if all_redeemed > 0 {
         let camp_name: String = conn.query_row(
             "SELECT COALESCE(mc.name, '') FROM reward_fulfillments rf \
@@ -515,14 +620,24 @@ pub fn distribute_commission_on_payment(
             rusqlite::params![buyer_id, order_id],
             |row| row.get(0),
         ).unwrap_or_default();
-        let display_name = if camp_name.is_empty() { "拼团活动" } else { &camp_name };
+        let display_name = if camp_name.is_empty() {
+            "拼团活动"
+        } else {
+            &camp_name
+        };
         let _ = crate::campaign_executor::write_notification(
-            conn, &buyer_id, "reward_redeem",
+            conn,
+            &buyer_id,
+            "reward_redeem",
             &format!("📉 折扣已使用"),
             &format!("你在本次支付中使用了「{}」拼团折扣优惠！", display_name),
             None,
         );
-        tracing::info!("distribute_commission_on_payment: redeemed all-party discount for {}, order={}", buyer_id, order_id);
+        tracing::info!(
+            "distribute_commission_on_payment: redeemed all-party discount for {}, order={}",
+            buyer_id,
+            order_id
+        );
     }
 
     Ok(())
@@ -535,8 +650,8 @@ fn decrypt_aes_256_gcm(
     nonce: &str,
     associated_data: &str,
 ) -> Result<String, String> {
-    use aes_gcm::{Aes256Gcm, Key, Nonce};
     use aes_gcm::aead::{Aead, KeyInit, Payload};
+    use aes_gcm::{Aes256Gcm, Key, Nonce};
 
     let key = Key::<Aes256Gcm>::from_slice(api_v3_key.as_bytes());
     let cipher = Aes256Gcm::new(key);
@@ -545,11 +660,9 @@ fn decrypt_aes_256_gcm(
     let nonce_arr: &[u8; 12] = &nonce_bytes[..12].try_into().map_err(|_| "nonce 长度错误")?;
     let nonce = Nonce::from_slice(nonce_arr);
 
-    let cipher_bytes = base64::Engine::decode(
-        &base64::engine::general_purpose::STANDARD,
-        ciphertext,
-    )
-    .map_err(|e| format!("base64 解码失败: {}", e))?;
+    let cipher_bytes =
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, ciphertext)
+            .map_err(|e| format!("base64 解码失败: {}", e))?;
 
     let payload = Payload {
         msg: &cipher_bytes,
@@ -564,9 +677,7 @@ fn decrypt_aes_256_gcm(
 }
 
 /// GET /api/pay/orders?user_id=xxx — 查询用户订单
-pub async fn user_orders_handler(
-    Query(query): Query<UserOrdersQuery>,
-) -> impl IntoResponse {
+pub async fn user_orders_handler(Query(query): Query<UserOrdersQuery>) -> impl IntoResponse {
     let user_id = match &query.user_id {
         Some(id) if !id.is_empty() => id.as_str(),
         _ => return (StatusCode::BAD_REQUEST, "user_id 不能为空").into_response(),
@@ -597,7 +708,13 @@ pub async fn user_orders_handler(
         }))
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("查询失败: {}", e)).into_response(),
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("查询失败: {}", e),
+            )
+                .into_response()
+        }
     };
 
     (StatusCode::OK, json!({"orders": rows}).to_string()).into_response()
@@ -630,7 +747,13 @@ pub async fn admin_orders_handler() -> impl IntoResponse {
         }))
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("查询失败: {}", e)).into_response(),
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("查询失败: {}", e),
+            )
+                .into_response()
+        }
     };
 
     (StatusCode::OK, json!({"orders": rows}).to_string()).into_response()
@@ -639,9 +762,7 @@ pub async fn admin_orders_handler() -> impl IntoResponse {
 /// GET /api/pay/orders/{id} — 查询单笔订单状态
 ///
 /// 如本地状态为 NOTPAY，会向微信查询实际支付状态并同步
-pub async fn order_status_handler(
-    Path(order_id): Path<String>,
-) -> impl IntoResponse {
+pub async fn order_status_handler(Path(order_id): Path<String>) -> impl IntoResponse {
     let conn = crate::db_pool::get_conn();
     let order = conn.query_row(
         "SELECT id, user_id, plan_id, amount, status, transaction_id, paid_at, created_at
@@ -710,8 +831,12 @@ pub async fn order_status_handler(
                             let plan_id = order_json["plan_id"].as_str().unwrap_or("");
                             if !user_id.is_empty() && !plan_id.is_empty() {
                                 let _ = subscription::extend_subscription(
-                                    &conn, user_id, plan_id,
-                                    None, Some(&order_id), Some("微信支付"),
+                                    &conn,
+                                    user_id,
+                                    plan_id,
+                                    None,
+                                    Some(&order_id),
+                                    Some("微信支付"),
                                 );
                                 // 分销归因：此分支为 order_status_handler 同步微信状态，
                                 // 不会触发 pay_notify_handler，需手动分发佣金

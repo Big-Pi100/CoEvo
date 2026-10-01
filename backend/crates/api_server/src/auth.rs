@@ -110,12 +110,18 @@ fn verify_password(password: &str, hash: &str) -> bool {
 }
 
 /// Register a new user
-pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<AuthResponse, String> {
+pub fn register(
+    conn: &rusqlite::Connection,
+    req: &RegisterRequest,
+) -> Result<AuthResponse, String> {
     // 校验（先格式后唯一性 —— 格式错的输入不必查库）
     if !is_valid_email(&req.email) {
         return Err("邮箱格式不正确".into());
     }
-    if req.password.len() < 6 || !req.password.chars().any(|c| c.is_ascii_alphabetic()) || !req.password.chars().any(|c| c.is_ascii_digit()) {
+    if req.password.len() < 6
+        || !req.password.chars().any(|c| c.is_ascii_alphabetic())
+        || !req.password.chars().any(|c| c.is_ascii_digit())
+    {
         return Err("密码至少6位含英文+数字".into());
     }
 
@@ -125,11 +131,14 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
     // ⚠️ 唯一索引（`idx_users_email`）本身是**大小写敏感**的 —— 它挡的是完全相同的串；
     //    这里的 COLLATE NOCASE 查询是**业务层的更严要求**。两者不冲突：
     //    索引保证「不重复」，本查询保证「同义不重复」。）
-    let email_exists: bool = conn.query_row(
-        "SELECT COUNT(*) FROM users WHERE email = ?1 COLLATE NOCASE",
-        rusqlite::params![req.email.trim()],
-        |row| row.get::<_, i32>(0),
-    ).map(|c| c > 0).unwrap_or(false);
+    let email_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM users WHERE email = ?1 COLLATE NOCASE",
+            rusqlite::params![req.email.trim()],
+            |row| row.get::<_, i32>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
     if email_exists {
         return Err("该邮箱已被注册".into());
     }
@@ -152,17 +161,26 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
     // ② 它被 `isTrialAccount` 之类的判断用过（`trial_` 前缀）。
     // 注册标识已改为 `email` → 这里自动生成一个不对外的内部 id。
     // （trial 认领路径**不改** username，沿用它的 `trial_*` 值 → 见 `trial_handler`。）
-    let username = format!("u_{}", user_id.replace('-', "").chars().take(12).collect::<String>());
+    let username = format!(
+        "u_{}",
+        user_id
+            .replace('-', "")
+            .chars()
+            .take(12)
+            .collect::<String>()
+    );
 
     // 查推广码对应的推广员（如果有）
     let referred_by: Option<String> = if let Some(ref ref_info) = req.referral {
         if let Some(ref code) = ref_info.code {
             // 查推广码对应的用户，且未被删除
-            let referrer: Option<String> = conn.query_row(
-                "SELECT id FROM users WHERE referral_code = ?1 AND deleted_at IS NULL",
-                rusqlite::params![code],
-                |row| row.get(0),
-            ).ok();
+            let referrer: Option<String> = conn
+                .query_row(
+                    "SELECT id FROM users WHERE referral_code = ?1 AND deleted_at IS NULL",
+                    rusqlite::params![code],
+                    |row| row.get(0),
+                )
+                .ok();
             referrer
         } else {
             None
@@ -171,10 +189,12 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
         None
     };
     // 保存推广活动 ID（只有合法的 UUID 才写入，防止 camp=share 等非活动参数污染）
-    let referred_campaign_id: Option<String> = req.referral.as_ref()
-        .and_then(|r| r.campaign_id.as_ref()
+    let referred_campaign_id: Option<String> = req.referral.as_ref().and_then(|r| {
+        r.campaign_id
+            .as_ref()
             .filter(|c| c.len() == 36 && c.chars().filter(|&c| c == '-').count() == 4)
-            .cloned());
+            .cloned()
+    });
 
     // 生成用户自己的推广码（CoEvo_ + 4位大写字母数字，重试最多3次）
     let mut referral_code = String::new();
@@ -187,11 +207,14 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
             .collect::<String>()
             .to_uppercase();
         let candidate = format!("CoEvo_{}", suffix);
-        let exists: bool = conn.query_row(
-            "SELECT COUNT(*) FROM users WHERE referral_code = ?1",
-            rusqlite::params![candidate],
-            |row| row.get::<_, i32>(0),
-        ).map(|c| c > 0).unwrap_or(false);
+        let exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM users WHERE referral_code = ?1",
+                rusqlite::params![candidate],
+                |row| row.get::<_, i32>(0),
+            )
+            .map(|c| c > 0)
+            .unwrap_or(false);
         if !exists {
             referral_code = candidate;
             break;
@@ -208,11 +231,17 @@ pub fn register(conn: &rusqlite::Connection, req: &RegisterRequest) -> Result<Au
     conn.execute(
         "INSERT INTO tokens (id, user_id, token, created_at) VALUES (?1, ?2, ?3, ?4)",
         rusqlite::params![token_id, user_id, token, now],
-    ).map_err(|e| format!("Token insert error: {}", e))?;
+    )
+    .map_err(|e| format!("Token insert error: {}", e))?;
 
     // 触发注册活动（不阻塞注册）
     if let Err(e) = crate::campaign_executor::execute_campaign_trigger(
-        &conn, "registration", &user_id, referred_by.as_deref(), None, None,
+        &conn,
+        "registration",
+        &user_id,
+        referred_by.as_deref(),
+        None,
+        None,
     ) {
         tracing::warn!("registration campaign trigger failed: {}", e);
     }
@@ -278,7 +307,8 @@ pub fn login(conn: &rusqlite::Connection, req: &LoginRequest) -> Result<AuthResp
     conn.execute(
         "INSERT INTO tokens (id, user_id, token, created_at) VALUES (?1, ?2, ?3, ?4)",
         rusqlite::params![token_id, user_id, token, now],
-    ).map_err(|e| format!("Token insert error: {}", e))?;
+    )
+    .map_err(|e| format!("Token insert error: {}", e))?;
 
     Ok(AuthResponse {
         user_id,
@@ -316,7 +346,10 @@ mod tests {
         assert!(!h1.is_empty());
         assert!(!h2.is_empty());
         // Bcrypt generates different hashes for the same password due to salting
-        assert_ne!(h1, h2, "bcrypt should produce different hashes for same password");
+        assert_ne!(
+            h1, h2,
+            "bcrypt should produce different hashes for same password"
+        );
     }
 
     #[test]
@@ -331,20 +364,28 @@ mod tests {
         let conn = setup_db();
 
         // Register
-        let resp = register(&conn, &RegisterRequest {
-            email: "alice@example.com".into(),
-            password: "secret1".into(),
-            referral: None,
-        }).unwrap();
+        let resp = register(
+            &conn,
+            &RegisterRequest {
+                email: "alice@example.com".into(),
+                password: "secret1".into(),
+                referral: None,
+            },
+        )
+        .unwrap();
         assert_eq!(resp.user_id.len(), 36, "user_id should be a UUID v4");
         assert!(!resp.token.is_empty());
         assert_eq!(resp.email.as_deref(), Some("alice@example.com"));
 
         // Login —— 🔴 用**邮箱**（原来是 username）
-        let resp2 = login(&conn, &LoginRequest {
-            email: "alice@example.com".into(),
-            password: "secret1".into(),
-        }).unwrap();
+        let resp2 = login(
+            &conn,
+            &LoginRequest {
+                email: "alice@example.com".into(),
+                password: "secret1".into(),
+            },
+        )
+        .unwrap();
         assert_eq!(resp2.user_id, resp.user_id);
         assert!(!resp2.token.is_empty());
     }
@@ -353,16 +394,23 @@ mod tests {
     #[test]
     fn test_register_sets_display_name_from_email_prefix() {
         let conn = setup_db();
-        register(&conn, &RegisterRequest {
-            email: "zhangsan@example.com".into(),
-            password: "secret1".into(),
-            referral: None,
-        }).unwrap();
+        register(
+            &conn,
+            &RegisterRequest {
+                email: "zhangsan@example.com".into(),
+                password: "secret1".into(),
+                referral: None,
+            },
+        )
+        .unwrap();
 
-        let dn: String = conn.query_row(
-            "SELECT display_name FROM users WHERE email = 'zhangsan@example.com'",
-            [], |r| r.get(0),
-        ).unwrap();
+        let dn: String = conn
+            .query_row(
+                "SELECT display_name FROM users WHERE email = 'zhangsan@example.com'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(dn, "zhangsan", "display_name 应为邮箱前缀，且不含域名");
     }
 
@@ -370,16 +418,23 @@ mod tests {
     fn test_login_wrong_password() {
         let conn = setup_db();
 
-        register(&conn, &RegisterRequest {
-            email: "bobby@example.com".into(),
-            password: "correct1".into(),
-            referral: None,
-        }).unwrap();
+        register(
+            &conn,
+            &RegisterRequest {
+                email: "bobby@example.com".into(),
+                password: "correct1".into(),
+                referral: None,
+            },
+        )
+        .unwrap();
 
-        let result = login(&conn, &LoginRequest {
-            email: "bobby@example.com".into(),
-            password: "wrong1".into(),
-        });
+        let result = login(
+            &conn,
+            &LoginRequest {
+                email: "bobby@example.com".into(),
+                password: "wrong1".into(),
+            },
+        );
         assert!(result.is_err());
         // 错误文案**不区分**「邮箱不存在」与「密码错」—— 否则可用来枚举已注册邮箱
         assert_eq!(result.unwrap_err(), "邮箱或密码错误");
@@ -389,17 +444,24 @@ mod tests {
     fn test_register_duplicate_email() {
         let conn = setup_db();
 
-        register(&conn, &RegisterRequest {
-            email: "charlie@example.com".into(),
-            password: "pw1pass".into(),
-            referral: None,
-        }).unwrap();
+        register(
+            &conn,
+            &RegisterRequest {
+                email: "charlie@example.com".into(),
+                password: "pw1pass".into(),
+                referral: None,
+            },
+        )
+        .unwrap();
 
-        let result = register(&conn, &RegisterRequest {
-            email: "charlie@example.com".into(),
-            password: "pw2pass".into(),
-            referral: None,
-        });
+        let result = register(
+            &conn,
+            &RegisterRequest {
+                email: "charlie@example.com".into(),
+                password: "pw2pass".into(),
+                referral: None,
+            },
+        );
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("已被注册"));
     }
@@ -414,36 +476,49 @@ mod tests {
     fn test_register_email_is_case_insensitive() {
         let conn = setup_db();
 
-        register(&conn, &RegisterRequest {
-            email: "alice@example.com".into(),
-            password: "pw1pass".into(),
-            referral: None,
-        }).unwrap();
+        register(
+            &conn,
+            &RegisterRequest {
+                email: "alice@example.com".into(),
+                password: "pw1pass".into(),
+                referral: None,
+            },
+        )
+        .unwrap();
 
         // 全大写形式应被判为重复
-        let dup = register(&conn, &RegisterRequest {
-            email: "ALICE@EXAMPLE.COM".into(),
-            password: "pw2pass".into(),
-            referral: None,
-        });
+        let dup = register(
+            &conn,
+            &RegisterRequest {
+                email: "ALICE@EXAMPLE.COM".into(),
+                password: "pw2pass".into(),
+                referral: None,
+            },
+        );
         assert!(dup.is_err(), "大小写不同的同一邮箱应判为重复");
 
         // 用全大写形式**登录**应成功（命中同一账号）
-        let ok = login(&conn, &LoginRequest {
-            email: "ALICE@EXAMPLE.COM".into(),
-            password: "pw1pass".into(),
-        });
+        let ok = login(
+            &conn,
+            &LoginRequest {
+                email: "ALICE@EXAMPLE.COM".into(),
+                password: "pw1pass".into(),
+            },
+        );
         assert!(ok.is_ok(), "大小写不同的同一邮箱应能登进同一账号");
     }
 
     #[test]
     fn test_register_rejects_invalid_email() {
         let conn = setup_db();
-        let result = register(&conn, &RegisterRequest {
-            email: "not-an-email".into(),
-            password: "pw1pass".into(),
-            referral: None,
-        });
+        let result = register(
+            &conn,
+            &RegisterRequest {
+                email: "not-an-email".into(),
+                password: "pw1pass".into(),
+                referral: None,
+            },
+        );
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("邮箱格式不正确"));
     }
@@ -485,11 +560,15 @@ mod tests {
     fn test_token_verification_with_db() {
         let conn = setup_db();
 
-        let resp = register(&conn, &RegisterRequest {
-            email: "davey@example.com".into(),
-            password: "pass12".into(),
-            referral: None,
-        }).unwrap();
+        let resp = register(
+            &conn,
+            &RegisterRequest {
+                email: "davey@example.com".into(),
+                password: "pass12".into(),
+                referral: None,
+            },
+        )
+        .unwrap();
 
         // Valid token should verify
         assert!(verify_token(&conn, &resp.user_id, &resp.token));
@@ -509,16 +588,23 @@ mod tests {
     #[test]
     fn test_login_by_phone_no_longer_works() {
         let conn = setup_db();
-        register(&conn, &RegisterRequest {
-            email: "phoneuser@example.com".into(),
-            password: "pass123".into(),
-            referral: None,
-        }).unwrap();
+        register(
+            &conn,
+            &RegisterRequest {
+                email: "phoneuser@example.com".into(),
+                password: "pass123".into(),
+                referral: None,
+            },
+        )
+        .unwrap();
 
-        let result = login(&conn, &LoginRequest {
-            email: "13800138000".into(),
-            password: "pass123".into(),
-        });
+        let result = login(
+            &conn,
+            &LoginRequest {
+                email: "13800138000".into(),
+                password: "pass123".into(),
+            },
+        );
         assert!(result.is_err(), "手机号不再能登录 —— 已改用注册邮箱");
     }
 }

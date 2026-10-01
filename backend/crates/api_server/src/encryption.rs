@@ -117,7 +117,9 @@ pub fn sha256_hash(input: &str) -> String {
 
 /// Check if a string looks like encrypted data (base64 of 12+ bytes = 16+ chars base64)
 pub fn is_encrypted(s: &str) -> bool {
-    s.len() >= 16 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=')
+    s.len() >= 16
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=')
 }
 
 #[cfg(test)]

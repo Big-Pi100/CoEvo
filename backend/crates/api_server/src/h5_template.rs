@@ -43,15 +43,30 @@ pub fn replace_h5_variables(template: &str, data: &UserH5Data) -> String {
     result = result.replace("{achievement_count}", &data.achievement_count.to_string());
     result = result.replace("{avatar_url}", &data.avatar_url);
     // 兼容 LLM 生成的 {var || default} 占位符语法
-    result = result.replace("{achievement_count || 0}", &data.achievement_count.to_string());
+    result = result.replace(
+        "{achievement_count || 0}",
+        &data.achievement_count.to_string(),
+    );
     result = result.replace("{current_focus || '提升自我'}", &data.current_focus);
     result = result.replace("{plan_count || 0}", &data.plan_count.to_string());
     // 兜底：未匹配的 {var || default} 用 default 值（仅处理简单情况）
     // 移除 Google Fonts 引用（国内访问慢/被墙）
-    result = result.replace("@import url(\"https://fonts.googleapis.com/", "/* blocked: @import url(\"https://fonts.googleapis.com/");
-    result = result.replace("@import url('https://fonts.googleapis.com/", "/* blocked: @import url('https://fonts.googleapis.com/");
-    result = result.replace("<link href=\"https://fonts.googleapis.com/", "<!-- blocked: <link href=\"https://fonts.googleapis.com/");
-    result = result.replace("<link href='https://fonts.googleapis.com/", "<!-- blocked: <link href='https://fonts.googleapis.com/");
+    result = result.replace(
+        "@import url(\"https://fonts.googleapis.com/",
+        "/* blocked: @import url(\"https://fonts.googleapis.com/",
+    );
+    result = result.replace(
+        "@import url('https://fonts.googleapis.com/",
+        "/* blocked: @import url('https://fonts.googleapis.com/",
+    );
+    result = result.replace(
+        "<link href=\"https://fonts.googleapis.com/",
+        "<!-- blocked: <link href=\"https://fonts.googleapis.com/",
+    );
+    result = result.replace(
+        "<link href='https://fonts.googleapis.com/",
+        "<!-- blocked: <link href='https://fonts.googleapis.com/",
+    );
     // 替换 font-family 为阿里普惠体（LLM 常生成长串英文字体栈）
     result = result.replace("font-family: 'Nunito',", "font-family: 'AlibabaPuHuiTi',");
     result = result.replace("font-family: Nunito,", "font-family: 'AlibabaPuHuiTi',");
@@ -73,7 +88,10 @@ pub fn replace_h5_variables(template: &str, data: &UserH5Data) -> String {
         "-apple-system, 'PingFang SC', 'Helvetica Neue', 'Noto Sans CJK SC', system-ui, sans-serif",
     ];
     for sys_font in &system_fonts {
-        result = result.replace(&format!("font-family: {}", sys_font), "font-family: 'AlibabaPuHuiTi', -apple-system, sans-serif");
+        result = result.replace(
+            &format!("font-family: {}", sys_font),
+            "font-family: 'AlibabaPuHuiTi', -apple-system, sans-serif",
+        );
     }
     // 注入系统字体缩放适配
     // 1. viewport 禁止缩放
@@ -85,7 +103,10 @@ pub fn replace_h5_variables(template: &str, data: &UserH5Data) -> String {
     }
     // 2. -webkit-text-size-adjust 防止字体自动放大
     if !result.contains("-webkit-text-size-adjust") {
-        result = result.replace("</style>", "html { -webkit-text-size-adjust: 100%; }</style>");
+        result = result.replace(
+            "</style>",
+            "html { -webkit-text-size-adjust: 100%; }</style>",
+        );
     }
     // 3. 文本容器防溢出
     if !result.contains("word-break: break-word") {
@@ -166,7 +187,10 @@ pub async fn generate_h5_template_via_llm(
         .as_str()
         .ok_or_else(|| "LLM returned empty response".to_string())?
         .to_string();
-    tracing::warn!("LLM raw reply (first 500c): {}", &reply.chars().take(500).collect::<String>());
+    tracing::warn!(
+        "LLM raw reply (first 500c): {}",
+        &reply.chars().take(500).collect::<String>()
+    );
     extract_html_from_llm_reply(&reply)
 }
 
@@ -196,7 +220,11 @@ fn extract_html_from_llm_reply(reply: &str) -> Result<String, String> {
 }
 
 /// 静态 fallback H5（活动无模板时使用）
-pub fn fallback_h5_html(referral_code: &str, campaign_id: Option<&str>, avatar_url: Option<&str>) -> String {
+pub fn fallback_h5_html(
+    referral_code: &str,
+    campaign_id: Option<&str>,
+    avatar_url: Option<&str>,
+) -> String {
     let app_base = crate::share_data::public_base_url();
     let api_base = crate::share_data::coevo_base_url();
     let ref_param = match campaign_id {
@@ -248,7 +276,8 @@ pub fn fallback_h5_html(referral_code: &str, campaign_id: Option<&str>, avatar_u
 </body>
 </html>"#,
         avatar_html = avatar_html,
-        app_base = app_base, ref_param = ref_param,
+        app_base = app_base,
+        ref_param = ref_param,
         referral_code = referral_code,
     );
     html = html.replace("{api_base}", &api_base);

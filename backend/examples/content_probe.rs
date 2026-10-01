@@ -71,7 +71,10 @@ fn main() {
         match &o.error {
             None => {
                 ok_count += 1;
-                println!("  ✅ {:<22} 拿到 {:>3} 条 · 新增 {:>3} 条", o.source_name, o.items, o.inserted);
+                println!(
+                    "  ✅ {:<22} 拿到 {:>3} 条 · 新增 {:>3} 条",
+                    o.source_name, o.items, o.inserted
+                );
             }
             Some(e) => println!("  🔴 {:<22} {}", o.source_name, e),
         }
@@ -83,7 +86,10 @@ fn main() {
     if diag {
         println!("🔍 诊断模式：每个源各取 1 条，实际抓取并打印提取结果");
     }
-    println!("开始补抓（真实网络 · 每轮最多 {} 篇）…", api_server::content_fetch::MAX_BODY_FETCH_PER_ROUND);
+    println!(
+        "开始补抓（真实网络 · 每轮最多 {} 篇）…",
+        api_server::content_fetch::MAX_BODY_FETCH_PER_ROUND
+    );
     let (tried, got) = rt.block_on(api_server::content_fetch::fetch_bodies_round());
     println!("  尝试 {} 篇 · 成功 {} 篇", tried, got);
 
@@ -103,9 +109,7 @@ fn main() {
             )
             .expect("诊断 SQL 失败");
         let rows: Vec<(String, String, i64, i64)> = stmt
-            .query_map([], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
-            })
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
             .expect("诊断查询失败")
             .flatten()
             .collect();
@@ -143,7 +147,10 @@ fn main() {
             ))
         })
         .expect("统计查询失败");
-    println!("  {:<24} {:>6} {:>10} {:>10}", "源", "条数", "有全文", "已尝试抓");
+    println!(
+        "  {:<24} {:>6} {:>10} {:>10}",
+        "源", "条数", "有全文", "已尝试抓"
+    );
     for row in rows.flatten() {
         println!("  {:<24} {:>6} {:>10} {:>10}", row.0, row.1, row.2, row.3);
     }
@@ -193,7 +200,11 @@ fn main() {
         println!(
             "      时间={} score={} 摘要 {} 字符",
             r.1.as_deref().unwrap_or("-"),
-            if r.3 < 0 { "-".to_string() } else { r.3.to_string() },
+            if r.3 < 0 {
+                "-".to_string()
+            } else {
+                r.3.to_string()
+            },
             r.4
         );
     }
@@ -201,14 +212,19 @@ fn main() {
     // 幂等复跑：再抓一轮，新增应当为 0（这是本工具最值得看的一行）
     println!();
     println!("── 幂等复跑（同一批 URL 再抓一轮）──");
-    let second = rt.block_on(api_server::content_fetch::fetch_all(&api_server::content_fetch::now_utc_iso()));
+    let second = rt.block_on(api_server::content_fetch::fetch_all(
+        &api_server::content_fetch::now_utc_iso(),
+    ));
     let added: usize = second.iter().map(|o| o.inserted).sum();
     let ok2 = second.iter().filter(|o| o.error.is_none()).count();
     println!("  {}/{} 个源成功 · 新增 {} 条", ok2, second.len(), added);
     if added == 0 {
         println!("  ✅ 新增 0 条 = 幂等成立（`UNIQUE(url)` + `INSERT OR IGNORE` 生效）");
     } else {
-        println!("  ⚠️ 新增 {} 条 —— 源的内容在这两次之间真的有更新，或幂等键失效", added);
+        println!(
+            "  ⚠️ 新增 {} 条 —— 源的内容在这两次之间真的有更新，或幂等键失效",
+            added
+        );
         println!("     （判断方法：看上面的 URL 是否重复。间隔仅几秒，正常应为 0）");
     }
 

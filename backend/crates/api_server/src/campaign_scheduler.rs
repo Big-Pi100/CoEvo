@@ -25,11 +25,7 @@ use serde_json;
 ///    · `distribution_commissions` = **财务记录**（列是 `earner_id`/`buyer_id`，按用户删是产品决策）
 ///    · `trial_ip_log` = **反试用滥用日志**（只有 `ip`；删掉等于让同 IP 再次白嫖试用）
 ///    两者**都没有 `user_id` 列** → 原来的 `DELETE ... WHERE user_id = ?1` 恒失败且被吞掉。
-pub const CASCADE_TABLES: &[&str] = &[
-    "tokens",
-    "payment_orders",
-    "user_notifications",
-];
+pub const CASCADE_TABLES: &[&str] = &["tokens", "payment_orders", "user_notifications"];
 
 /// 佣金锁定期到期自动解锁
 ///
@@ -54,12 +50,14 @@ pub fn unlock_available_commissions(conn: &rusqlite::Connection) -> Result<usize
 /// 查找所有 status='NOTPAY' 且创建超过 30 分钟的订单，
 /// 将其状态改为 'NOTPAY_CANCELLED'。
 pub fn cancel_expired_orders(conn: &rusqlite::Connection) -> Result<usize, String> {
-    let count = conn.execute(
-        "UPDATE payment_orders SET status = 'NOTPAY_CANCELLED' \
+    let count = conn
+        .execute(
+            "UPDATE payment_orders SET status = 'NOTPAY_CANCELLED' \
          WHERE status = 'NOTPAY' \
          AND datetime(created_at, '+30 minutes') <= datetime('now')",
-        [],
-    ).map_err(|e| format!("NOTPAY 关单失败: {}", e))?;
+            [],
+        )
+        .map_err(|e| format!("NOTPAY 关单失败: {}", e))?;
 
     if count > 0 {
         tracing::info!("campaign_scheduler: 关停 {} 个超时未支付订单", count);
@@ -74,13 +72,16 @@ pub fn cancel_expired_orders(conn: &rusqlite::Connection) -> Result<usize, Strin
 /// 单用户硬删除失败不影响其他用户。
 pub fn hard_delete_expired_trials(conn: &rusqlite::Connection) -> Result<usize, String> {
     let ids = {
-        let mut stmt = conn.prepare(
-            "SELECT id FROM users \
+        let mut stmt = conn
+            .prepare(
+                "SELECT id FROM users \
              WHERE username LIKE 'trial_%' \
-             AND created_at < datetime('now', '-30 days')"
-        ).map_err(|e| format!("查询待硬删除用户失败: {}", e))?;
+             AND created_at < datetime('now', '-30 days')",
+            )
+            .map_err(|e| format!("查询待硬删除用户失败: {}", e))?;
 
-        let rows: Vec<String> = stmt.query_map([], |row| row.get::<_, String>(0))
+        let rows: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(0))
             .map_err(|e| format!("查询待硬删除用户失败: {}", e))?
             .filter_map(|r| r.ok())
             .collect();
@@ -88,7 +89,9 @@ pub fn hard_delete_expired_trials(conn: &rusqlite::Connection) -> Result<usize, 
     };
 
     let count = ids.len();
-    if count == 0 { return Ok(0); }
+    if count == 0 {
+        return Ok(0);
+    }
 
     // 级联清理关联表 —— 列表与理由见模块级 `CASCADE_TABLES`
     for uid in &ids {
@@ -101,7 +104,10 @@ pub fn hard_delete_expired_trials(conn: &rusqlite::Connection) -> Result<usize, 
             .map_err(|e| format!("硬删除用户 {} 失败: {}", uid, e))?;
     }
 
-    tracing::info!("campaign_scheduler: 硬删除 {} 个超过30天的过期临时账户", count);
+    tracing::info!(
+        "campaign_scheduler: 硬删除 {} 个超过30天的过期临时账户",
+        count
+    );
     Ok(count)
 }
 
@@ -110,8 +116,8 @@ pub fn hard_delete_expired_trials(conn: &rusqlite::Connection) -> Result<usize, 
 /// 打开 DB 连接，依次执行所有调度任务，
 /// 返回执行结果摘要字符串。
 fn run_scheduler_inner(db_path: &str) -> Result<String, String> {
-    let conn = rusqlite::Connection::open(db_path)
-        .map_err(|e| format!("scheduler db open: {}", e))?;
+    let conn =
+        rusqlite::Connection::open(db_path).map_err(|e| format!("scheduler db open: {}", e))?;
     let unlocked = unlock_available_commissions(&conn)?;
     let cancelled = cancel_expired_orders(&conn)?;
     let pushed = execute_cron_pushes(&conn)?;
@@ -135,39 +141,50 @@ fn execute_cron_pushes(conn: &rusqlite::Connection) -> Result<usize, String> {
     let hour = now.format("%H").to_string();
     let day_of_week = now.format("%u").to_string(); // 1=周一, 7=周日
 
-    let mut stmt = conn.prepare(
-        "SELECT id, name, target_roles, description FROM marketing_campaigns \
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, name, target_roles, description FROM marketing_campaigns \
          WHERE status='active' AND push_trigger='cron' \
-         AND push_cron IS NOT NULL"
-    ).map_err(|e| format!("cron query: {}", e))?;
+         AND push_cron IS NOT NULL",
+        )
+        .map_err(|e| format!("cron query: {}", e))?;
 
-    let campaigns: Vec<(String, String, Option<String>, Option<String>)> = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, Option<String>>(2)?,
-            row.get::<_, Option<String>>(3)?,
-        ))
-    }).map_err(|e| format!("cron fetch: {}", e))?
-    .filter_map(|r| r.ok())
-    .collect();
+    let campaigns: Vec<(String, String, Option<String>, Option<String>)> = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        })
+        .map_err(|e| format!("cron fetch: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
 
     let mut pushed = 0;
     for (id, name, target_roles_json, description) in &campaigns {
         let cron = {
-            let tmp = conn.query_row(
-                "SELECT push_cron FROM marketing_campaigns WHERE id=?1",
-                rusqlite::params![id],
-                |row| row.get::<_, String>(0),
-            ).unwrap_or_default();
+            let tmp = conn
+                .query_row(
+                    "SELECT push_cron FROM marketing_campaigns WHERE id=?1",
+                    rusqlite::params![id],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap_or_default();
             tmp
         };
-        if cron.is_empty() { continue; }
+        if cron.is_empty() {
+            continue;
+        }
 
-        let parts: Vec<&str> = cron.split(|c| c == ' ' || c == ',' || c == '\t')
+        let parts: Vec<&str> = cron
+            .split(|c| c == ' ' || c == ',' || c == '\t')
             .filter(|p| !p.is_empty())
             .collect();
-        if parts.len() < 5 { continue; }
+        if parts.len() < 5 {
+            continue;
+        }
 
         let c_minute = parts[0];
         let c_hour = parts[1];
@@ -177,7 +194,9 @@ fn execute_cron_pushes(conn: &rusqlite::Connection) -> Result<usize, String> {
         let hour_match = c_hour == "*" || c_hour == hour;
         let day_match = c_day == "*" || c_day == "0" || c_day == day_of_week;
 
-        if !(minute_match && hour_match && day_match) { continue; }
+        if !(minute_match && hour_match && day_match) {
+            continue;
+        }
 
         // ── 时间匹配 → 查目标用户 → 写通知 ──
         let has_role_col = conn.prepare("SELECT role FROM users WHERE 1=0").is_ok();
@@ -187,17 +206,20 @@ fn execute_cron_pushes(conn: &rusqlite::Connection) -> Result<usize, String> {
                 Some(roles_json) if roles_json != "[]" && roles_json != "null" => {
                     if let Ok(roles) = serde_json::from_str::<Vec<String>>(roles_json) {
                         if !roles.is_empty() {
-                            let placeholders: Vec<String> = (0..roles.len())
-                                .map(|i| format!("?{}", i + 1))
-                                .collect();
+                            let placeholders: Vec<String> =
+                                (0..roles.len()).map(|i| format!("?{}", i + 1)).collect();
                             let sql = format!(
                                 "SELECT id FROM users WHERE role IN ({}) AND deleted_at IS NULL LIMIT 100",
                                 placeholders.join(",")
                             );
                             if let Ok(mut stmt) = conn.prepare(&sql) {
-                                let params: Vec<&dyn rusqlite::types::ToSql> = roles.iter()
-                                    .map(|r| r as &dyn rusqlite::types::ToSql).collect();
-                                if let Ok(rows) = stmt.query_map(params.as_slice(), |row| row.get(0)) {
+                                let params: Vec<&dyn rusqlite::types::ToSql> = roles
+                                    .iter()
+                                    .map(|r| r as &dyn rusqlite::types::ToSql)
+                                    .collect();
+                                if let Ok(rows) =
+                                    stmt.query_map(params.as_slice(), |row| row.get(0))
+                                {
                                     for r in rows.flatten() {
                                         user_list.push(r);
                                     }
@@ -210,19 +232,31 @@ fn execute_cron_pushes(conn: &rusqlite::Connection) -> Result<usize, String> {
             }
             user_list
         } else {
-            conn.query_row("SELECT COUNT(*) FROM users WHERE deleted_at IS NULL", [], |row| row.get::<_, i64>(0))
-                .map(|total| if total > 0 { vec!["all".to_string()] } else { vec![] })
-                .unwrap_or_default()
+            conn.query_row(
+                "SELECT COUNT(*) FROM users WHERE deleted_at IS NULL",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|total| {
+                if total > 0 {
+                    vec!["all".to_string()]
+                } else {
+                    vec![]
+                }
+            })
+            .unwrap_or_default()
         };
 
         for uid in &user_ids {
             let title = format!("新活动: {}", name);
-            let body = description.clone().unwrap_or_else(|| "点击查看活动详情！".to_string());
+            let body = description
+                .clone()
+                .unwrap_or_else(|| "点击查看活动详情！".to_string());
             if uid == "all" {
                 // 全量推送：分批写通知
-                if let Ok(mut all_stmt) = conn.prepare(
-                    "SELECT id FROM users WHERE deleted_at IS NULL LIMIT 100"
-                ) {
+                if let Ok(mut all_stmt) =
+                    conn.prepare("SELECT id FROM users WHERE deleted_at IS NULL LIMIT 100")
+                {
                     if let Ok(rows) = all_stmt.query_map([], |row| row.get::<_, String>(0)) {
                         for rid in rows.filter_map(|r| r.ok()) {
                             // 幂等性检查：同一活动同一用户 60 秒内不重复推送
@@ -233,7 +267,12 @@ fn execute_cron_pushes(conn: &rusqlite::Connection) -> Result<usize, String> {
                             ).unwrap_or(0) > 0;
                             if !recent {
                                 let _ = crate::campaign_executor::write_notification(
-                                    conn, &rid, "campaign", &title, &body, Some(&format!("share?campaign_id={}", id)),
+                                    conn,
+                                    &rid,
+                                    "campaign",
+                                    &title,
+                                    &body,
+                                    Some(&format!("share?campaign_id={}", id)),
                                 );
                             }
                         }
@@ -247,14 +286,25 @@ fn execute_cron_pushes(conn: &rusqlite::Connection) -> Result<usize, String> {
                 ).unwrap_or(0) > 0;
                 if !recent {
                     let _ = crate::campaign_executor::write_notification(
-                        conn, uid, "campaign", &title, &body, Some(&format!("share?campaign_id={}", id)),
+                        conn,
+                        uid,
+                        "campaign",
+                        &title,
+                        &body,
+                        Some(&format!("share?campaign_id={}", id)),
                     );
                 }
             }
             pushed += 1;
         }
 
-        tracing::info!("cron push: campaign={} ({}), cron={}, users_pushed={}", name, id, cron, pushed);
+        tracing::info!(
+            "cron push: campaign={} ({}), cron={}, users_pushed={}",
+            name,
+            id,
+            cron,
+            pushed
+        );
     }
 
     Ok(pushed)
@@ -271,17 +321,20 @@ pub fn refresh_all_active_templates(db_path: &str, base_dir: &str) {
         }
     };
 
-    let campaigns: Vec<(String, String)> = match conn.prepare(
-        "SELECT id, name FROM marketing_campaigns WHERE status = 'active'"
-    ) {
-        Ok(mut stmt) => stmt.query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        }).unwrap().filter_map(|r| r.ok()).collect(),
-        Err(e) => {
-            tracing::error!("refresh templates: query failed: {}", e);
-            return;
-        }
-    };
+    let campaigns: Vec<(String, String)> =
+        match conn.prepare("SELECT id, name FROM marketing_campaigns WHERE status = 'active'") {
+            Ok(mut stmt) => stmt
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
+                .unwrap()
+                .filter_map(|r| r.ok())
+                .collect(),
+            Err(e) => {
+                tracing::error!("refresh templates: query failed: {}", e);
+                return;
+            }
+        };
 
     let rt = match tokio::runtime::Runtime::new() {
         Ok(r) => r,
@@ -294,13 +347,18 @@ pub fn refresh_all_active_templates(db_path: &str, base_dir: &str) {
     let mut h5_success = 0;
     for (id, name) in &campaigns {
         // 查 rewards（此处 conn 同步查询，不跨 await）
-        let rewards: String = conn.query_row(
-            "SELECT COALESCE(rewards, '[]') FROM marketing_campaigns WHERE id = ?1",
-            rusqlite::params![id], |row| row.get(0),
-        ).unwrap_or_else(|_| "[]".to_string());
+        let rewards: String = conn
+            .query_row(
+                "SELECT COALESCE(rewards, '[]') FROM marketing_campaigns WHERE id = ?1",
+                rusqlite::params![id],
+                |row| row.get(0),
+            )
+            .unwrap_or_else(|_| "[]".to_string());
 
         // 海报模板刷新
-        match rt.block_on(crate::poster_template::generate_template_via_llm(base_dir, name, &rewards)) {
+        match rt.block_on(crate::poster_template::generate_template_via_llm(
+            base_dir, name, &rewards,
+        )) {
             Ok(svg) => {
                 let _ = conn.execute(
                     "UPDATE marketing_campaigns SET poster_template = ?1, updated_at = ?2 WHERE id = ?3",
@@ -309,12 +367,19 @@ pub fn refresh_all_active_templates(db_path: &str, base_dir: &str) {
                 poster_success += 1;
             }
             Err(e) => {
-                tracing::warn!("refresh poster template for campaign {} ({}): {}", id, name, e);
+                tracing::warn!(
+                    "refresh poster template for campaign {} ({}): {}",
+                    id,
+                    name,
+                    e
+                );
             }
         }
 
         // H5 模板刷新（单活动失败不影响其他）
-        match rt.block_on(crate::h5_template::generate_h5_template_via_llm(base_dir, name, &rewards)) {
+        match rt.block_on(crate::h5_template::generate_h5_template_via_llm(
+            base_dir, name, &rewards,
+        )) {
             Ok(html) => {
                 let _ = conn.execute(
                     "UPDATE marketing_campaigns SET h5_template = ?1, updated_at = ?2 WHERE id = ?3",
@@ -327,7 +392,13 @@ pub fn refresh_all_active_templates(db_path: &str, base_dir: &str) {
             }
         }
     }
-    tracing::info!("refresh_all_active_templates: poster {}/{} | h5 {}/{} refreshed", poster_success, campaigns.len(), h5_success, campaigns.len());
+    tracing::info!(
+        "refresh_all_active_templates: poster {}/{} | h5 {}/{} refreshed",
+        poster_success,
+        campaigns.len(),
+        h5_success,
+        campaigns.len()
+    );
 }
 
 /// 启动后台定时任务，每 5 分钟运行一次
@@ -335,7 +406,10 @@ pub fn refresh_all_active_templates(db_path: &str, base_dir: &str) {
 /// 在 `db_pool::init()` 之后调用。会在独立线程中循环执行。
 pub fn start_scheduler(db_path: &str) {
     let db_path = db_path.to_string();
-    tracing::info!("campaign_scheduler: 启动后台定时任务（每 5 分钟），db={}", db_path);
+    tracing::info!(
+        "campaign_scheduler: 启动后台定时任务（每 5 分钟），db={}",
+        db_path
+    );
     let db_path_clone_5min = db_path.clone();
     std::thread::spawn(move || {
         loop {
@@ -366,7 +440,10 @@ pub fn start_scheduler(db_path: &str) {
                 .unwrap()
         };
         let initial_delay = (next_run - now).num_seconds().max(0) as u64;
-        tracing::info!("poster template refresh scheduler: first run in {}s", initial_delay);
+        tracing::info!(
+            "poster template refresh scheduler: first run in {}s",
+            initial_delay
+        );
         std::thread::sleep(std::time::Duration::from_secs(initial_delay));
 
         loop {
@@ -381,15 +458,15 @@ pub fn start_scheduler(db_path: &str) {
 /// 打开 DB 连接，依次执行所有调度任务，
 /// 返回 JSON 格式的执行结果摘要。
 pub fn run_scheduler() -> Result<String, String> {
-    let db_path = std::env::var("COEVO_DB_PATH")
-        .unwrap_or_else(|_| "data/coevo.db".to_string());
+    let db_path = std::env::var("COEVO_DB_PATH").unwrap_or_else(|_| "data/coevo.db".to_string());
 
     let result_json = run_scheduler_inner(&db_path)?;
 
     let result = serde_json::json!({
         "summary": result_json,
         "timestamp": chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-    }).to_string();
+    })
+    .to_string();
 
     tracing::info!("campaign_scheduler: run 完成 — {}", result_json);
     Ok(result)
@@ -398,8 +475,8 @@ pub fn run_scheduler() -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rusqlite::Connection;
     use crate::schema::init_database;
+    use rusqlite::Connection;
 
     fn setup_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
@@ -445,12 +522,14 @@ mod tests {
         conn.execute(
             "INSERT INTO users (id, username, created_at) VALUES (?1, ?2, ?3)",
             rusqlite::params!["test-user-1", "buyer", now],
-        ).unwrap();
+        )
+        .unwrap();
         conn.execute(
             "INSERT INTO subscription_plans (id, name, price, created_at) \
              VALUES ('plan_1', '月度会员', 20000, ?1)",
             rusqlite::params![now],
-        ).unwrap();
+        )
+        .unwrap();
 
         // 创建 31 分钟前的 NOTPAY 订单（应被关停）
         let old_order_id = uuid::Uuid::new_v4().to_string();
@@ -458,7 +537,8 @@ mod tests {
             "INSERT INTO payment_orders (id, user_id, plan_id, amount, status, created_at) \
              VALUES (?1, 'test-user-1', 'plan_1', 20000, 'NOTPAY', '2024-01-01 00:00:00')",
             rusqlite::params![old_order_id],
-        ).unwrap();
+        )
+        .unwrap();
 
         // 创建刚发生的 NOTPAY 订单（不应被关停）
         let recent_order_id = uuid::Uuid::new_v4().to_string();
@@ -466,26 +546,31 @@ mod tests {
             "INSERT INTO payment_orders (id, user_id, plan_id, amount, status, created_at) \
              VALUES (?1, 'test-user-1', 'plan_1', 20000, 'NOTPAY', ?2)",
             rusqlite::params![recent_order_id, now],
-        ).unwrap();
+        )
+        .unwrap();
 
         // 执行关停
         let cancelled = cancel_expired_orders(&conn).unwrap();
         assert_eq!(cancelled, 1, "应恰好关停 1 个超时 NOTPAY 订单");
 
         // 验证旧订单已关停
-        let old_status: String = conn.query_row(
-            "SELECT status FROM payment_orders WHERE id = ?1",
-            rusqlite::params![old_order_id],
-            |row| row.get(0),
-        ).unwrap();
+        let old_status: String = conn
+            .query_row(
+                "SELECT status FROM payment_orders WHERE id = ?1",
+                rusqlite::params![old_order_id],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(old_status, "NOTPAY_CANCELLED", "超时订单应被关停");
 
         // 验证新订单未受影响
-        let recent_status: String = conn.query_row(
-            "SELECT status FROM payment_orders WHERE id = ?1",
-            rusqlite::params![recent_order_id],
-            |row| row.get(0),
-        ).unwrap();
+        let recent_status: String = conn
+            .query_row(
+                "SELECT status FROM payment_orders WHERE id = ?1",
+                rusqlite::params![recent_order_id],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(recent_status, "NOTPAY", "新订单应保持 NOTPAY");
     }
 
@@ -499,21 +584,25 @@ mod tests {
         conn.execute(
             "INSERT INTO users (id, username, created_at) VALUES (?1, ?2, ?3)",
             rusqlite::params!["earner-1", "earner", now],
-        ).unwrap();
+        )
+        .unwrap();
         conn.execute(
             "INSERT INTO users (id, username, created_at) VALUES (?1, ?2, ?3)",
             rusqlite::params!["buyer-1", "buyer", now],
-        ).unwrap();
+        )
+        .unwrap();
         conn.execute(
             "INSERT INTO subscription_plans (id, name, price, created_at) \
              VALUES ('plan_1', '月度会员', 20000, ?1)",
             rusqlite::params![now],
-        ).unwrap();
+        )
+        .unwrap();
         conn.execute(
             "INSERT INTO payment_orders (id, user_id, plan_id, amount, status, created_at) \
              VALUES ('order-1', 'buyer-1', 'plan_1', 20000, 'SUCCESS', ?1)",
             rusqlite::params![now],
-        ).unwrap();
+        )
+        .unwrap();
         conn.execute(
             "INSERT INTO marketing_campaigns (id, name, status, rewards, trigger_event, created_by, created_at) \
              VALUES ('campaign-1', '测试活动', 'active', '[]', 'registration', 'admin-1', ?1)",
@@ -567,7 +656,8 @@ mod tests {
             "INSERT INTO users (id, username, password_hash, created_at) \
              VALUES (?1, ?2, ?3, '2024-01-01 00:00:00')",
             rusqlite::params!["purge-user", "trial_purge", "hash"],
-        ).unwrap();
+        )
+        .unwrap();
 
         // 插入关联数据（测试级联清理）
         // 🔴 原实现还插了一条 `conversations`（对话链）—— 该表 2026-09-29 已退役，
@@ -577,7 +667,8 @@ mod tests {
             "INSERT INTO tokens (id, user_id, token, created_at) \
              VALUES (?1, ?2, 'tok', '2023-12-01')",
             rusqlite::params![uuid::Uuid::new_v4().to_string(), "purge-user"],
-        ).unwrap();
+        )
+        .unwrap();
 
         // 创建一个3天前的 trial 账户（不应被硬删除）
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -585,48 +676,58 @@ mod tests {
             "INSERT INTO users (id, username, password_hash, created_at) \
              VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params!["recent-user", "trial_recent", "hash", now],
-        ).unwrap();
+        )
+        .unwrap();
 
         // 创建一个已认领的 trial（username 不再是 trial_ 开头，不应被删除）
         conn.execute(
             "INSERT INTO users (id, username, password_hash, created_at) \
              VALUES (?1, ?2, ?3, '2024-01-01 00:00:00')",
             rusqlite::params!["claimed-user", "normal_user", "hash_claimed"],
-        ).unwrap();
+        )
+        .unwrap();
 
         let purged = hard_delete_expired_trials(&conn).unwrap();
         assert_eq!(purged, 1, "应恰好硬删除 1 个超过30天的过期 trial 账户");
 
         // 验证用户已从 users 表删除
-        let user_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM users WHERE id = ?1",
-            rusqlite::params!["purge-user"],
-            |row| row.get(0),
-        ).unwrap();
+        let user_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM users WHERE id = ?1",
+                rusqlite::params!["purge-user"],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(user_count, 0, "用户应从 users 表彻底删除");
 
         // 验证关联数据已清理
-        let token_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM tokens WHERE user_id = ?1",
-            rusqlite::params!["purge-user"],
-            |row| row.get(0),
-        ).unwrap();
+        let token_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tokens WHERE user_id = ?1",
+                rusqlite::params!["purge-user"],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(token_count, 0, "关联 tokens 应被清理");
 
         // 验证近期 trial 账户未被硬删除
-        let recent_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM users WHERE id = ?1",
-            rusqlite::params!["recent-user"],
-            |row| row.get(0),
-        ).unwrap();
+        let recent_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM users WHERE id = ?1",
+                rusqlite::params!["recent-user"],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(recent_count, 1, "3天前的 trial 账户应保留");
 
         // 验证已认领用户未被删除
-        let claimed_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM users WHERE id = ?1",
-            rusqlite::params!["claimed-user"],
-            |row| row.get(0),
-        ).unwrap();
+        let claimed_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM users WHERE id = ?1",
+                rusqlite::params!["claimed-user"],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(claimed_count, 1, "已认领用户应保留");
     }
 

@@ -5,7 +5,6 @@
 //!   2. LLM 路由: subject="数学", grade="三年级"
 //!   3. 映射: domain="math", grade_band="g3-4"
 
-
 /// 路由结果
 #[derive(Debug, Clone)]
 pub struct RoutingResult {
@@ -41,40 +40,66 @@ fn grade_to_band(text: &str) -> &'static str {
     if text.contains("一") || text.contains("二") {
         // 注意：需要区分"一/二年级" vs "高一/高二"
         if text.contains("高") || text.contains("十") {
-            if text.contains("一") || text.contains("十") { "g10-12" }
-            else if text.contains("二") || text.contains("十一") { "g10-12" }
-            else if text.contains("三") || text.contains("十二") { "g10-12" }
-            else { "g10-12" }
+            if text.contains("一") || text.contains("十") {
+                "g10-12"
+            } else if text.contains("二") || text.contains("十一") {
+                "g10-12"
+            } else if text.contains("三") || text.contains("十二") {
+                "g10-12"
+            } else {
+                "g10-12"
+            }
         } else {
-            if text.contains("初") { "g7-9" }
-            else if text.contains("一") || text.contains("二") { "g1-2" }
-            else if text.contains("三") || text.contains("四") { "g3-4" }
-            else if text.contains("五") || text.contains("六") { "g5-6" }
-            else { "g1-2" }
+            if text.contains("初") {
+                "g7-9"
+            } else if text.contains("一") || text.contains("二") {
+                "g1-2"
+            } else if text.contains("三") || text.contains("四") {
+                "g3-4"
+            } else if text.contains("五") || text.contains("六") {
+                "g5-6"
+            } else {
+                "g1-2"
+            }
         }
     } else if text.contains("三") || text.contains("四") {
-        if text.contains("高") || text.contains("十") { "g10-12" }
-        else { "g3-4" }
+        if text.contains("高") || text.contains("十") {
+            "g10-12"
+        } else {
+            "g3-4"
+        }
     } else if text.contains("五") || text.contains("六") {
-        if text.contains("高") || text.contains("十") { "g10-12" }
-        else { "g5-6" }
-    } else if text.contains("七") || text.contains("八") || text.contains("九") || text.contains("初") {
+        if text.contains("高") || text.contains("十") {
+            "g10-12"
+        } else {
+            "g5-6"
+        }
+    } else if text.contains("七")
+        || text.contains("八")
+        || text.contains("九")
+        || text.contains("初")
+    {
         "g7-9"
     } else if text.contains("高") || text.contains("十") {
         "g10-12"
     } else {
         // 默认：基于学段关键词
-        if text.contains("小") || text.contains("小学") || text.contains("低年级") { "g1-2" }
-        else if text.contains("中") || text.contains("初中") { "g7-9" }
-        else if text.contains("高") || text.contains("高中") { "g10-12" }
-        else { "" }
+        if text.contains("小") || text.contains("小学") || text.contains("低年级") {
+            "g1-2"
+        } else if text.contains("中") || text.contains("初中") {
+            "g7-9"
+        } else if text.contains("高") || text.contains("高中") {
+            "g10-12"
+        } else {
+            ""
+        }
     }
 }
 
-
 /// LLM 路由 prompt
 pub fn build_routing_prompt(user_message: &str) -> String {
-    chat_engine::prompt_loader::get_routing().subject
+    chat_engine::prompt_loader::get_routing()
+        .subject
         .replace("{message}", user_message)
 }
 
@@ -82,8 +107,16 @@ pub fn build_routing_prompt(user_message: &str) -> String {
 pub fn parse_routing_response(response: &str) -> (String, String) {
     // 尝试提取 JSON
     if let Ok(json) = serde_json::from_str::<serde_json::Value>(response) {
-        let subject = json.get("subject").and_then(|v| v.as_str()).unwrap_or("math").to_string();
-        let grade = json.get("grade").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let subject = json
+            .get("subject")
+            .and_then(|v| v.as_str())
+            .unwrap_or("math")
+            .to_string();
+        let grade = json
+            .get("grade")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         return (subject, grade);
     }
     // 降级：关键词匹配
@@ -118,7 +151,11 @@ pub async fn route(
     let curriculum_hint = String::new();
 
     RoutingResult {
-        subject, grade_text, domain, grade_band, curriculum_hint,
+        subject,
+        grade_text,
+        domain,
+        grade_band,
+        curriculum_hint,
     }
 }
 

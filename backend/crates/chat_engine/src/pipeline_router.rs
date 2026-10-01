@@ -46,8 +46,20 @@ pub enum Domain {
 impl Domain {
     /// 所有有效值的静态列表，用于 SQL CHECK 约束和测试
     pub const ALL: &'static [&'static str] = &[
-        "general", "math", "language", "chemistry", "biology", "physics",
-        "history", "geography", "politics", "science", "it", "pe", "art", "labor",
+        "general",
+        "math",
+        "language",
+        "chemistry",
+        "biology",
+        "physics",
+        "history",
+        "geography",
+        "politics",
+        "science",
+        "it",
+        "pe",
+        "art",
+        "labor",
     ];
 
     /// 从中文 subject 映射到 Domain 枚举
@@ -242,8 +254,8 @@ mod tests {
         assert_eq!(resolve_domain(&Domain::Math).domain, "math");
         assert_eq!(resolve_domain(&Domain::Language).domain, "language");
         assert_eq!(resolve_domain(&Domain::General).domain, "general");
-        assert_eq!(resolve_domain(&Domain::Chemistry).domain, "general");  // 无专用管线
-        assert_eq!(resolve_domain(&Domain::History).domain, "general");    // 无专用管线
-        assert_eq!(resolve_domain(&Domain::Art).domain, "general");        // 无专用管线
+        assert_eq!(resolve_domain(&Domain::Chemistry).domain, "general"); // 无专用管线
+        assert_eq!(resolve_domain(&Domain::History).domain, "general"); // 无专用管线
+        assert_eq!(resolve_domain(&Domain::Art).domain, "general"); // 无专用管线
     }
 }

@@ -4,8 +4,8 @@
 //! Used as a helper function in route handlers — not an Axum middleware layer
 //! (to avoid body consumption issues with POST/WS endpoints).
 
-use axum::http::HeaderMap;
 use crate::error::AppError;
+use axum::http::HeaderMap;
 
 /// Verify that the Authorization header contains a valid Bearer token for the given user.
 ///

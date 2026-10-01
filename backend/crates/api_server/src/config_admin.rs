@@ -9,11 +9,18 @@
 //! - GET /api/admin/debug/logs — 搜索日志
 //! - GET /api/admin/debug/logs/{id} — 日志详情
 
-use axum::{extract::Query, http::{HeaderMap, StatusCode}, Json, response::IntoResponse};
+use crate::admin_handlers::{err, ok, verify_admin};
+use axum::{
+    extract::Query,
+    http::{HeaderMap, StatusCode},
+    response::IntoResponse,
+    Json,
+};
 use serde_json::json;
-use crate::admin_handlers::{verify_admin, ok, err};
 
-fn conn() -> crate::db_pool::DbConn { crate::db_pool::get_conn() }
+fn conn() -> crate::db_pool::DbConn {
+    crate::db_pool::get_conn()
+}
 
 // ════════════════════════════════════════════
 // 运行时配置
@@ -27,12 +34,15 @@ pub async fn get_config_handler(headers: HeaderMap) -> impl IntoResponse {
     };
 
     let configs = crate::app_config_cache::list().await;
-    let result: Vec<serde_json::Value> = configs.into_iter()
-        .map(|(key, value, description)| json!({
-            "key": key,
-            "value": value,
-            "description": description,
-        }))
+    let result: Vec<serde_json::Value> = configs
+        .into_iter()
+        .map(|(key, value, description)| {
+            json!({
+                "key": key,
+                "value": value,
+                "description": description,
+            })
+        })
         .collect();
     ok(json!({"configs": result}))
 }
@@ -91,7 +101,10 @@ pub async fn get_template_handler(
             "content": content,
             "char_count": content.chars().count(),
         })),
-        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, &format!("读取模板失败: {}", e)),
+        Err(e) => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("读取模板失败: {}", e),
+        ),
     }
 }
 
@@ -106,9 +119,13 @@ pub async fn list_templates_handler(headers: HeaderMap) -> impl IntoResponse {
     let mut files: Vec<String> = Vec::new();
     if let Ok(base) = std::fs::read_dir(prompts_dir) {
         for cat_entry in base.flatten() {
-            if !cat_entry.file_type().map_or(false, |t| t.is_dir()) { continue; }
+            if !cat_entry.file_type().map_or(false, |t| t.is_dir()) {
+                continue;
+            }
             let cat_name = cat_entry.file_name().to_string_lossy().to_string();
-            if cat_name == "format" { continue; } // 共享格式池不单独显示
+            if cat_name == "format" {
+                continue;
+            } // 共享格式池不单独显示
             scan_md_files(cat_entry.path(), &format!("{}/", cat_name), &mut files);
         }
     }
@@ -172,7 +189,10 @@ pub async fn post_template_handler(
     if let Some(parent) = file_path.parent() {
         if !parent.exists() {
             if let Err(e) = std::fs::create_dir_all(parent) {
-                return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("创建目录失败: {}", e));
+                return err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    &format!("创建目录失败: {}", e),
+                );
             }
         }
     }
@@ -181,12 +201,20 @@ pub async fn post_template_handler(
     let temp_path = file_path.with_extension("md.tmp");
     match std::fs::write(&temp_path, content) {
         Ok(()) => {}
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("写入临时文件失败: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("写入临时文件失败: {}", e),
+            )
+        }
     }
     if let Err(e) = std::fs::rename(&temp_path, &file_path) {
         // 清理临时文件
         let _ = std::fs::remove_file(&temp_path);
-        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("重命名文件失败: {}", e));
+        return err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("重命名文件失败: {}", e),
+        );
     }
 
     ok(json!({
@@ -214,17 +242,16 @@ pub async fn post_template_handler(
 pub async fn qrcode_handler() -> impl IntoResponse {
     let img_path = "data/service_weixin.jpg";
     match tokio::fs::read(img_path).await {
-        Ok(data) => {
-            axum::response::Response::builder()
-                .header(axum::http::header::CONTENT_TYPE, "image/jpeg")
-                .body(axum::body::Body::from(data))
-                .unwrap()
-        }
-        Err(_) => {
-            axum::response::Response::builder()
-                .header(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")
-                .body(axum::body::Body::from("二维码图片未配置，请联系管理员。"))
-                .unwrap()
-        }
+        Ok(data) => axum::response::Response::builder()
+            .header(axum::http::header::CONTENT_TYPE, "image/jpeg")
+            .body(axum::body::Body::from(data))
+            .unwrap(),
+        Err(_) => axum::response::Response::builder()
+            .header(
+                axum::http::header::CONTENT_TYPE,
+                "text/plain; charset=utf-8",
+            )
+            .body(axum::body::Body::from("二维码图片未配置，请联系管理员。"))
+            .unwrap(),
     }
 }

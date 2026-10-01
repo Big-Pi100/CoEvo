@@ -46,12 +46,18 @@ pub const MIN_PARA_CHARS: usize = 40;
 
 /// 候选正文容器（**按优先级排列**；但最终由[得分](block_score)决定，不是顺序）。
 const CANDIDATE_SELECTORS: &[&str] = &[
-    "main", "article", "[role=main]",
+    "main",
+    "article",
+    "[role=main]",
     // 常见的正文类名（实测站点里出现过的）
-    "[class*=storytext]", "[id=storytext]",
-    "[class*=article-body]", "[class*=articleBody]",
-    "[class*=post-content]", "[class*=entry-content]",
-    "[class*=content-body]", "[class*=story-body]",
+    "[class*=storytext]",
+    "[id=storytext]",
+    "[class*=article-body]",
+    "[class*=articleBody]",
+    "[class*=post-content]",
+    "[class*=entry-content]",
+    "[class*=content-body]",
+    "[class*=story-body]",
 ];
 
 /// 负面容器的 `class` / `id` 关键词 —— 命中即**排除**。
@@ -59,10 +65,33 @@ const CANDIDATE_SELECTORS: &[&str] = &[
 /// ⚠️ 用「包含」匹配（`[class*=comment]`）而不是全等：
 ///    同一含义的类名在各站写法不同（`comments` / `comment-list` / `js-comment`）。
 const NEGATIVE_MARKERS: &[&str] = &[
-    "comment", "footer", "nav", "sidebar", "aside", "related", "recommend",
-    "share", "social", "promo", "advert", "ad-", "sponsor", "newsletter",
-    "subscribe", "breadcrumb", "pagination", "menu", "toolbar", "cookie",
-    "banner", "popup", "modal", "caption", "byline", "metadata", "tags",
+    "comment",
+    "footer",
+    "nav",
+    "sidebar",
+    "aside",
+    "related",
+    "recommend",
+    "share",
+    "social",
+    "promo",
+    "advert",
+    "ad-",
+    "sponsor",
+    "newsletter",
+    "subscribe",
+    "breadcrumb",
+    "pagination",
+    "menu",
+    "toolbar",
+    "cookie",
+    "banner",
+    "popup",
+    "modal",
+    "caption",
+    "byline",
+    "metadata",
+    "tags",
 ];
 
 /// 从 HTML 提取正文段落（纯文本，一段一个元素）。
@@ -79,7 +108,9 @@ pub fn extract_article_paragraphs(html: &str) -> Vec<String> {
     //    没有任何候选命中 → 退回「整个文档」（ECNS 实测就是这种：无 article/main）。
     let mut best: Option<(i64, ElementRef)> = None;
     for sel_str in CANDIDATE_SELECTORS {
-        let Ok(sel) = Selector::parse(sel_str) else { continue };
+        let Ok(sel) = Selector::parse(sel_str) else {
+            continue;
+        };
         for el in doc.select(&sel) {
             let score = block_score(el, &p_sel);
             if best.as_ref().map(|(s, _)| score > *s).unwrap_or(true) {
@@ -146,7 +177,9 @@ fn is_inside_negative(el: ElementRef) -> bool {
     let tags = TAG_NEG.get_or_init(|| vec!["nav", "footer", "aside", "form"]);
 
     for node in el.ancestors() {
-        let Some(e) = ElementRef::wrap(node) else { continue };
+        let Some(e) = ElementRef::wrap(node) else {
+            continue;
+        };
         let tag = e.value().name();
         if tags.contains(&tag) {
             return true;
@@ -296,13 +329,18 @@ mod tests {
         let joined = paras.join(" ");
         // 真实正文里出现过的内容（来自样本）
         assert!(
-            joined.contains("fuel-economy") || joined.contains("fuel efficiency")
+            joined.contains("fuel-economy")
+                || joined.contains("fuel efficiency")
                 || joined.contains("fuel-economy standards"),
             "应含真正文片段: {:?}",
             &joined.chars().take(300).collect::<String>()
         );
         // 正文应当有一定体量（不是一两句）
-        assert!(joined.chars().count() > 800, "正文太短: {}", joined.chars().count());
+        assert!(
+            joined.chars().count() > 800,
+            "正文太短: {}",
+            joined.chars().count()
+        );
     }
 
     #[test]
@@ -312,7 +350,11 @@ mod tests {
         let paras = extract_article_paragraphs(ECNS_PAGE);
         assert!(!paras.is_empty(), "ECNS 退回全文后应提取到段落");
         let joined = paras.join(" ");
-        assert!(joined.chars().count() > 300, "ECNS 正文太短: {}", joined.chars().count());
+        assert!(
+            joined.chars().count() > 300,
+            "ECNS 正文太短: {}",
+            joined.chars().count()
+        );
     }
 
     #[test]
@@ -341,11 +383,31 @@ mod tests {
         </main></body></html>"#;
         let paras = extract_article_paragraphs(html);
         let joined = paras.join(" ");
-        assert!(joined.contains("genuine article paragraph"), "应取到正文: {:?}", paras);
-        assert!(joined.contains("Second genuine"), "应取到第二段: {:?}", paras);
-        assert!(!joined.contains("comment"), "🔴 评论不该进正文: {:?}", paras);
-        assert!(!joined.contains("Sidebar"), "🔴 侧栏不该进正文: {:?}", paras);
-        assert!(!joined.contains("Navigation"), "🔴 导航不该进正文: {:?}", paras);
+        assert!(
+            joined.contains("genuine article paragraph"),
+            "应取到正文: {:?}",
+            paras
+        );
+        assert!(
+            joined.contains("Second genuine"),
+            "应取到第二段: {:?}",
+            paras
+        );
+        assert!(
+            !joined.contains("comment"),
+            "🔴 评论不该进正文: {:?}",
+            paras
+        );
+        assert!(
+            !joined.contains("Sidebar"),
+            "🔴 侧栏不该进正文: {:?}",
+            paras
+        );
+        assert!(
+            !joined.contains("Navigation"),
+            "🔴 导航不该进正文: {:?}",
+            paras
+        );
     }
 
     #[test]
@@ -358,7 +420,11 @@ mod tests {
         let paras = extract_article_paragraphs(html);
         let joined = paras.join(" ");
         assert!(!joined.contains("secret"), "脚本内容泄漏: {:?}", paras);
-        assert!(!joined.contains("also not appear"), "样式内容泄漏: {:?}", paras);
+        assert!(
+            !joined.contains("also not appear"),
+            "样式内容泄漏: {:?}",
+            paras
+        );
         assert!(joined.contains("Real paragraph"));
     }
 
@@ -385,7 +451,10 @@ mod tests {
         assert!(extract_article_paragraphs("").is_empty());
         assert!(extract_article_paragraphs("<html><body></body></html>").is_empty());
         // 🔴 无正文时必须返回**空**而不是含噪音的非空 —— 否则 `has_body` 会假真
-        assert!(extract_article_paragraphs("<html><body><nav><p>Only navigation here.</p></nav></body></html>").is_empty());
+        assert!(extract_article_paragraphs(
+            "<html><body><nav><p>Only navigation here.</p></nav></body></html>"
+        )
+        .is_empty());
     }
 
     #[test]

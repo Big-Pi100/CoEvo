@@ -48,9 +48,11 @@ async fn main() {
 
     // --- Paths from environment (with hardcoded defaults for dev) ---
     let db_path = std::env::var("COEVO_DB_PATH").unwrap_or_else(|_| "data/coevo.db".to_string());
-    let avatar_dir = std::env::var("COEVO_AVATAR_DIR").unwrap_or_else(|_| "data/avatars".to_string());
+    let avatar_dir =
+        std::env::var("COEVO_AVATAR_DIR").unwrap_or_else(|_| "data/avatars".to_string());
     let prompts_dir = std::env::var("COEVO_PROMPTS_DIR").unwrap_or_else(|_| "prompts".to_string());
-    let wordbank_path = std::env::var("COEVO_WORDBANK_PATH").unwrap_or_else(|_| "cefr_catalog.json".to_string());
+    let wordbank_path =
+        std::env::var("COEVO_WORDBANK_PATH").unwrap_or_else(|_| "cefr_catalog.json".to_string());
     let host = std::env::var("COEVO_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
     let port: u16 = std::env::var("COEVO_PORT")
         .ok()
@@ -58,8 +60,7 @@ async fn main() {
         .unwrap_or(8080);
 
     // Initialize DB
-    api_server::db_pool::init(&db_path)
-        .expect("Failed to init DB pool");
+    api_server::db_pool::init(&db_path).expect("Failed to init DB pool");
     tracing::info!("DB: {}", db_path);
 
     // 启动后台定时任务（佣金解锁 + NOTPAY 关单，每 5 分钟执行）
@@ -270,7 +271,8 @@ async fn main() {
                     //    🔑 现在列表里的每条 ALTER 目标表都由**本块之前的 CREATE**（或守卫星的
                     //       users/tokens/payment_orders）保证存在 → `no such table` = **真 bug**，
                     //       必须让启动**立刻失败**（fail fast），而不是带着坏 schema 继续服务。
-                    if !err_msg.contains("duplicate column") && !err_msg.contains("already exists") {
+                    if !err_msg.contains("duplicate column") && !err_msg.contains("already exists")
+                    {
                         tracing::error!("Migration failed critically: {} — SQL: {}", err_msg, sql);
                         panic!("Migration failed: {} — SQL: {}", err_msg, sql);
                     }
@@ -280,18 +282,18 @@ async fn main() {
         }
 
         // 运行时配置表（debug_trackers / debug_logs 已于 2026-09-29 随旧学习链退役）
-        for sql in &[
-            "CREATE TABLE IF NOT EXISTS app_config (
+        for sql in &["CREATE TABLE IF NOT EXISTS app_config (
                 key TEXT PRIMARY KEY, value TEXT NOT NULL,
-                description TEXT DEFAULT '', updated_at INTEGER NOT NULL)",
-        ] {
+                description TEXT DEFAULT '', updated_at INTEGER NOT NULL)"]
+        {
             match conn.execute(sql, []) {
                 Ok(_) => {}
                 Err(e) => {
                     let err_msg = e.to_string();
                     // 🔴 同上：这里只跑 `CREATE TABLE IF NOT EXISTS app_config(...)`（独立表、无外键），
                     //    不可能报 `no such table` → 一并收紧。
-                    if !err_msg.contains("duplicate column") && !err_msg.contains("already exists") {
+                    if !err_msg.contains("duplicate column") && !err_msg.contains("already exists")
+                    {
                         tracing::error!("Table creation failed: {} — SQL: {}", err_msg, sql);
                         panic!("Table creation failed: {}", err_msg);
                     }
@@ -307,8 +309,7 @@ async fn main() {
         }
 
         // 调试跟踪器缓存已于 2026-09-29 退役（debug_trackers / debug_logs 表已删）
-
-        }
+    }
 
     // ════════════════════════════════════════════
     // Start server
@@ -327,7 +328,7 @@ async fn main() {
     });
 
     // --- Router ---
-    use tower_http::cors::{CorsLayer, Any};
+    use tower_http::cors::{Any, CorsLayer};
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)

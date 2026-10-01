@@ -127,7 +127,10 @@ pub fn parse_story_item(json: &str) -> Result<Option<ParsedItem>, String> {
         body,
         url,
         author: v.get("by").and_then(|b| b.as_str()).map(|s| s.to_string()),
-        published_at: v.get("time").and_then(|t| t.as_i64()).and_then(unix_to_utc_iso),
+        published_at: v
+            .get("time")
+            .and_then(|t| t.as_i64())
+            .and_then(unix_to_utc_iso),
         score: v.get("score").and_then(|s| s.as_i64()),
         comments: v.get("descendants").and_then(|d| d.as_i64()),
     }))
@@ -164,13 +167,19 @@ mod tests {
 
     #[test]
     fn test_parse_real_story_item() {
-        let it = parse_story_item(STORY_ITEM).unwrap().expect("真实样本应可解析");
+        let it = parse_story_item(STORY_ITEM)
+            .unwrap()
+            .expect("真实样本应可解析");
         assert_eq!(it.title, "Claude partial outage");
         assert_eq!(it.author.as_deref(), Some("sidcool"));
         assert_eq!(it.score, Some(142));
         assert_eq!(it.comments, Some(104));
         // unix time → UTC ISO8601 带 Z
-        assert!(it.published_at.as_deref().unwrap().ends_with('Z'), "{:?}", it.published_at);
+        assert!(
+            it.published_at.as_deref().unwrap().ends_with('Z'),
+            "{:?}",
+            it.published_at
+        );
         // 🔑 期望值**独立核算**（python `datetime.fromtimestamp(1790691941, utc)`），
         //    不是照抄代码输出 —— 我第一版手算成 03:45:41Z，是**错的**
         assert_eq!(it.published_at.as_deref(), Some("2026-09-29T14:25:41Z"));
@@ -189,7 +198,11 @@ mod tests {
                        "text":"我想找<p>材料</p>"}"#;
         let it = parse_story_item(json).unwrap().unwrap();
         assert_eq!(it.url, "https://news.ycombinator.com/item?id=123");
-        assert_eq!(it.body.as_deref(), Some("我想找材料"), "text 要剥 HTML 标签");
+        assert_eq!(
+            it.body.as_deref(),
+            Some("我想找材料"),
+            "text 要剥 HTML 标签"
+        );
     }
 
     #[test]
@@ -197,10 +210,16 @@ mod tests {
         // comment / job / poll 都跳过
         for t in ["comment", "job", "poll"] {
             let json = format!(r#"{{"id":1,"type":"{}","title":"x"}}"#, t);
-            assert!(parse_story_item(&json).unwrap().is_none(), "type={} 应跳过", t);
+            assert!(
+                parse_story_item(&json).unwrap().is_none(),
+                "type={} 应跳过",
+                t
+            );
         }
         // 无 title
-        assert!(parse_story_item(r#"{"id":1,"type":"story"}"#).unwrap().is_none());
+        assert!(parse_story_item(r#"{"id":1,"type":"story"}"#)
+            .unwrap()
+            .is_none());
         // null（HN 对不存在的 id 返回 null）→ 跳过而非报错
         assert!(parse_story_item("null").unwrap().is_none());
         // 🔴 但**语法错**要报错（区分「字段缺失」与「数据坏了」）

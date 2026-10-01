@@ -42,7 +42,9 @@ fn main() {
         Err(e) => {
             eprintln!("🔴 迁移失败: {}", e);
             eprintln!();
-            eprintln!("⚠️ 若是 `no such column` / `no such table`，说明还有 SQL 引用了已不存在的列/表");
+            eprintln!(
+                "⚠️ 若是 `no such column` / `no such table`，说明还有 SQL 引用了已不存在的列/表"
+            );
             eprintln!("   （这类错误**编译期不报**，只会在这里炸出来）");
             std::process::exit(1);
         }

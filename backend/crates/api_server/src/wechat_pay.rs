@@ -5,7 +5,7 @@
 
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
-use rsa::{RsaPrivateKey, RsaPublicKey, Pkcs1v15Sign};
+use rsa::{Pkcs1v15Sign, RsaPrivateKey, RsaPublicKey};
 use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -34,21 +34,28 @@ impl WechatPayConfig {
         if mch_id.is_empty() || api_v3_key.is_empty() || app_id.is_empty() {
             return None;
         }
-        Some(Self { mch_id, api_v3_key, app_id, api_client_cert, cert_serial_no, pub_key_path, pub_key_id, notify_url })
+        Some(Self {
+            mch_id,
+            api_v3_key,
+            app_id,
+            api_client_cert,
+            cert_serial_no,
+            pub_key_path,
+            pub_key_id,
+            notify_url,
+        })
     }
 
     fn load_private_key(&self) -> Result<RsaPrivateKey, String> {
         let pem_str = std::fs::read_to_string(&self.api_client_cert)
             .map_err(|e| format!("读取商户私钥失败: {}", e))?;
-        RsaPrivateKey::from_pkcs8_pem(&pem_str)
-            .map_err(|e| format!("解析私钥失败: {}", e))
+        RsaPrivateKey::from_pkcs8_pem(&pem_str).map_err(|e| format!("解析私钥失败: {}", e))
     }
 
     fn load_public_key(&self) -> Result<RsaPublicKey, String> {
         let content = std::fs::read_to_string(&self.pub_key_path)
             .map_err(|e| format!("读取微信支付公钥失败: {}", e))?;
-        RsaPublicKey::from_public_key_pem(&content)
-            .map_err(|e| format!("解析公钥失败: {}", e))
+        RsaPublicKey::from_public_key_pem(&content).map_err(|e| format!("解析公钥失败: {}", e))
     }
 }
 
@@ -76,7 +83,8 @@ pub async fn native_order(
         "time_expire": time_expire,
         "notify_url": config.notify_url,
         "amount": { "total": total_fee, "currency": "CNY" },
-    }).to_string();
+    })
+    .to_string();
 
     let authorization = sign_request(config, "POST", url, &body)?;
 
@@ -100,12 +108,23 @@ pub async fn native_order(
         .map_err(|e| format!("HTTP 请求失败: {}", e))?;
 
     let status = resp.status();
-    let resp_text = resp.text().await.map_err(|e| format!("读取响应失败: {}", e))?;
+    let resp_text = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取响应失败: {}", e))?;
 
-    tracing::info!("native_order: status={} resp={}", status.as_u16(), resp_text);
+    tracing::info!(
+        "native_order: status={} resp={}",
+        status.as_u16(),
+        resp_text
+    );
 
     if !status.is_success() {
-        return Err(format!("微信支付 API 错误 ({}): {}", status.as_u16(), resp_text));
+        return Err(format!(
+            "微信支付 API 错误 ({}): {}",
+            status.as_u16(),
+            resp_text
+        ));
     }
 
     let resp_json: serde_json::Value =
@@ -120,7 +139,10 @@ pub async fn native_order(
         .map(|s| s.to_string())
         .unwrap_or_default();
 
-    Ok(NativeOrderResponse { prepay_id, code_url })
+    Ok(NativeOrderResponse {
+        prepay_id,
+        code_url,
+    })
 }
 
 /// 查询微信支付订单状态
@@ -165,15 +187,17 @@ pub async fn query_order_status(
 
     let json: serde_json::Value =
         serde_json::from_str(&text).map_err(|e| format!("JSON: {}", e))?;
-    let trade_state = json["trade_state"]
-        .as_str()
-        .unwrap_or("NOTPAY")
-        .to_string();
+    let trade_state = json["trade_state"].as_str().unwrap_or("NOTPAY").to_string();
     Ok(trade_state)
 }
 
 /// 生成 WECHATPAY2-SHA256-RSA2048 签名头
-fn sign_request(config: &WechatPayConfig, method: &str, url: &str, body: &str) -> Result<String, String> {
+fn sign_request(
+    config: &WechatPayConfig,
+    method: &str,
+    url: &str,
+    body: &str,
+) -> Result<String, String> {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| format!("时间错误: {}", e))?
@@ -190,7 +214,11 @@ fn sign_request(config: &WechatPayConfig, method: &str, url: &str, body: &str) -
 
     tracing::info!(
         "sign_request: method={} uri={} timestamp={} nonce={} body_len={}",
-        method, uri, timestamp, nonce, body.len()
+        method,
+        uri,
+        timestamp,
+        nonce,
+        body.len()
     );
 
     let private_key = config.load_private_key()?;
@@ -199,14 +227,12 @@ fn sign_request(config: &WechatPayConfig, method: &str, url: &str, body: &str) -
         .sign_with_rng(
             &mut rand::thread_rng(),
             Pkcs1v15Sign::new::<Sha256>(),
-            &hash,  // Pkcs1v15Sign 要求传入预哈希后的摘要（32 字节）
+            &hash, // Pkcs1v15Sign 要求传入预哈希后的摘要（32 字节）
         )
         .map_err(|e| format!("签名失败: {}", e))?;
 
-    let signature_b64 = base64::Engine::encode(
-        &base64::engine::general_purpose::STANDARD,
-        &signature,
-    );
+    let signature_b64 =
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &signature);
 
     tracing::info!("sign_request: signature_b64_len={} ok", signature_b64.len());
 
@@ -241,7 +267,7 @@ pub fn verify_notify(
     public_key
         .verify(
             Pkcs1v15Sign::new::<Sha256>(),
-            &hash,  // 传入预哈希后的摘要
+            &hash, // 传入预哈希后的摘要
             &sig_bytes,
         )
         .map_err(|_| "签名验证失败".to_string())?;

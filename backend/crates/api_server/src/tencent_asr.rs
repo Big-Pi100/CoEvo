@@ -20,7 +20,10 @@ impl AsrConfig {
         if secret_id.is_empty() || secret_key.is_empty() {
             return None;
         }
-        Some(Self { secret_id, secret_key })
+        Some(Self {
+            secret_id,
+            secret_key,
+        })
     }
 }
 
@@ -126,14 +129,21 @@ pub async fn recognize(
         .map_err(|e| format!("read response: {}", e))?;
 
     if !status.is_success() {
-        return Err(format!("ASR API error ({}): {}", status.as_u16(), resp_text));
+        return Err(format!(
+            "ASR API error ({}): {}",
+            status.as_u16(),
+            resp_text
+        ));
     }
 
     // 解析返回
     let resp_json: serde_json::Value =
         serde_json::from_str(&resp_text).map_err(|e| format!("json parse: {}", e))?;
 
-    tracing::info!("ASR full response: {}", serde_json::to_string(&resp_json).unwrap_or_default());
+    tracing::info!(
+        "ASR full response: {}",
+        serde_json::to_string(&resp_json).unwrap_or_default()
+    );
 
     let result_text = resp_json["Response"]["Result"]
         .as_str()

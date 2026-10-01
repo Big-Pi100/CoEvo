@@ -21,7 +21,8 @@ pub struct ConfigEntry {
 /// 初始化配置缓存（起服时调用）
 pub fn init_cache(conn: &rusqlite::Connection) -> Result<(), String> {
     let cache = Arc::new(RwLock::new(HashMap::new()));
-    APP_CONFIG.set(cache.clone())
+    APP_CONFIG
+        .set(cache.clone())
         .map_err(|_| "APP_CONFIG 已初始化".to_string())?;
 
     // 如果有默认配置，确保它们存在
@@ -51,23 +52,26 @@ fn ensure_defaults(conn: &rusqlite::Connection) -> Result<(), String> {
 
 /// 从 DB 全量加载到缓存
 pub fn reload(conn: &rusqlite::Connection) -> Result<(), String> {
-    let cache = APP_CONFIG.get()
-        .ok_or("APP_CONFIG 未初始化")?;
+    let cache = APP_CONFIG.get().ok_or("APP_CONFIG 未初始化")?;
 
-    let mut stmt = conn.prepare("SELECT key, value, description FROM app_config")
+    let mut stmt = conn
+        .prepare("SELECT key, value, description FROM app_config")
         .map_err(|e| format!("查询 app_config 失败: {}", e))?;
-    let rows = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-        ))
-    }).map_err(|e| format!("遍历 app_config 失败: {}", e))?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .map_err(|e| format!("遍历 app_config 失败: {}", e))?;
 
     let mut map = cache.write().unwrap();
     map.clear();
     for row in rows {
-        let (key, value, description) = row.map_err(|e| format!("读取 app_config 行失败: {}", e))?;
+        let (key, value, description) =
+            row.map_err(|e| format!("读取 app_config 行失败: {}", e))?;
         map.insert(key, ConfigEntry { value, description });
     }
     Ok(())
@@ -86,7 +90,9 @@ pub fn get_sync(conn: &rusqlite::Connection, key: &str) -> Result<Option<String>
         "SELECT value FROM app_config WHERE key = ?1",
         rusqlite::params![key],
         |row| row.get::<_, String>(0),
-    ).map(Some).or_else(|e| {
+    )
+    .map(Some)
+    .or_else(|e| {
         if e == rusqlite::Error::QueryReturnedNoRows {
             Ok(None)
         } else {
@@ -108,10 +114,12 @@ pub async fn set(key: &str, value: &str) -> Result<(), String> {
 
     if let Some(cache) = APP_CONFIG.get() {
         let mut map = cache.write().unwrap();
-        map.entry(key.to_string()).or_insert_with(|| ConfigEntry {
-            value: String::new(),
-            description: String::new(),
-        }).value = value.to_string();
+        map.entry(key.to_string())
+            .or_insert_with(|| ConfigEntry {
+                value: String::new(),
+                description: String::new(),
+            })
+            .value = value.to_string();
     }
     Ok(())
 }
@@ -123,7 +131,8 @@ pub async fn list() -> Vec<(String, String, String)> {
         None => return vec![],
     };
     let map = cache.read().unwrap();
-    let mut result: Vec<_> = map.iter()
+    let mut result: Vec<_> = map
+        .iter()
         .map(|(k, v)| (k.clone(), v.value.clone(), v.description.clone()))
         .collect();
     result.sort_by(|a, b| a.0.cmp(&b.0));
@@ -143,10 +152,13 @@ pub async fn set_with_desc(key: &str, value: &str, description: &str) -> Result<
 
     if let Some(cache) = APP_CONFIG.get() {
         let mut map = cache.write().unwrap();
-        map.insert(key.to_string(), ConfigEntry {
-            value: value.to_string(),
-            description: description.to_string(),
-        });
+        map.insert(
+            key.to_string(),
+            ConfigEntry {
+                value: value.to_string(),
+                description: description.to_string(),
+            },
+        );
     }
     Ok(())
 }
@@ -167,10 +179,12 @@ pub async fn batch_update(updates: Vec<(String, String)>) -> Result<(), String> 
     if let Some(cache) = APP_CONFIG.get() {
         let mut map = cache.write().unwrap();
         for (key, value) in updates {
-            map.entry(key).or_insert_with(|| ConfigEntry {
-                value: String::new(),
-                description: String::new(),
-            }).value = value;
+            map.entry(key)
+                .or_insert_with(|| ConfigEntry {
+                    value: String::new(),
+                    description: String::new(),
+                })
+                .value = value;
         }
     }
     Ok(())

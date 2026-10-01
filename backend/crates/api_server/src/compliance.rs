@@ -132,8 +132,8 @@ pub struct Terms {
 
 impl Terms {
     pub fn load_from_str(s: &str) -> Result<Self, String> {
-        let raw: RawTerms = serde_json::from_str(s)
-            .map_err(|e| format!("解析合规词表失败: {}", e))?;
+        let raw: RawTerms =
+            serde_json::from_str(s).map_err(|e| format!("解析合规词表失败: {}", e))?;
 
         fn terms(v: &[String]) -> Result<Vec<Term>, String> {
             v.iter().map(|t| Term::new(t)).collect()
@@ -170,8 +170,8 @@ impl Terms {
     }
 
     pub fn load_from(path: &str) -> Result<Self, String> {
-        let s = std::fs::read_to_string(path)
-            .map_err(|e| format!("读合规词表失败 {}: {}", path, e))?;
+        let s =
+            std::fs::read_to_string(path).map_err(|e| format!("读合规词表失败 {}: {}", path, e))?;
         Self::load_from_str(&s)
     }
 }
@@ -294,7 +294,10 @@ pub fn scan_parts(t: &Terms, parts: &[(String, String)], spelling: &str) -> Vec<
         .collect::<Vec<_>>()
         .join(" ");
     let acknowledged = t.slur_ack_terms.iter().any(|x| x.find(&joined).is_some());
-    let neutral = t.neutral_sense_terms.iter().any(|x| x.find(&joined).is_some());
+    let neutral = t
+        .neutral_sense_terms
+        .iter()
+        .any(|x| x.find(&joined).is_some());
 
     // (level, category, field, snippet, reason)
     let mut found: Vec<(Level, &'static str, String, String, String)> = Vec::new();
@@ -695,8 +698,11 @@ mod tests {
         assert!(!t.sovereign_subjects.is_empty());
         assert!(!t.discrimination_terms.is_empty());
         // 强主权词必须是主权措辞的子集（否则 `_STRONG_CLAIM` 判定会落空）
-        let claim: HashSet<String> =
-            t.sovereign_claim_words.iter().map(|x| x.raw().to_string()).collect();
+        let claim: HashSet<String> = t
+            .sovereign_claim_words
+            .iter()
+            .map(|x| x.raw().to_string())
+            .collect();
         for s in &t.strong_claim_words {
             assert!(claim.contains(s), "strong_claim_words 含非主权措辞: {}", s);
         }

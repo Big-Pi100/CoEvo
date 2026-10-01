@@ -3,7 +3,11 @@
 //! 提供临时账户创建和认领 API，用户无需注册即可直接试用产品。
 //! 临时账户获得 1 天试用订阅，到期后由现有 is_subscription_active() 自动拦截。
 
-use axum::{Json, http::{HeaderMap, StatusCode}, response::IntoResponse};
+use axum::{
+    http::{HeaderMap, StatusCode},
+    response::IntoResponse,
+    Json,
+};
 use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
@@ -32,10 +36,7 @@ pub struct ClaimRequest {
 ///
 /// 创建临时用户（username = trial_xxxxx），写入 1 天试用订阅，
 /// 返回 user_id + token。
-pub async fn start(
-    headers: HeaderMap,
-    Json(body): Json<StartRequest>,
-) -> impl IntoResponse {
+pub async fn start(headers: HeaderMap, Json(body): Json<StartRequest>) -> impl IntoResponse {
     let conn = crate::db_pool::get_conn();
 
     // ── IP 防滥用检测：同 IP 每日最多创建 3 个临时账户 ──
@@ -43,10 +44,7 @@ pub async fn start(
         .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok())
         .map(|v| v.split(',').next().unwrap_or("").trim())
-        .or_else(|| {
-            headers.get("x-real-ip")
-                .and_then(|v| v.to_str().ok())
-        })
+        .or_else(|| headers.get("x-real-ip").and_then(|v| v.to_str().ok()))
         .unwrap_or("")
         .to_string();
 
@@ -56,13 +54,16 @@ pub async fn start(
     let referral_code = format!("CoEvo_trial_{}", &uid[..4]);
 
     // 不可登录密码（防止 login 入口异常）
-    let password_hash = bcrypt::hash(format!("trial_no_login_{}", uid), 4)
-        .unwrap_or_default();
+    let password_hash = bcrypt::hash(format!("trial_no_login_{}", uid), 4).unwrap_or_default();
 
     // 事务包裹：IP 限频检测 + users + tokens + IP 日志原子写入
     if let Err(e) = conn.execute_batch("BEGIN IMMEDIATE") {
         tracing::error!("trial/start begin tx failed: {}", e);
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "create_failed"}))).into_response();
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "create_failed"})),
+        )
+            .into_response();
     }
 
     // ── IP 防滥用检测（在事务内执行，防止 TOCTOU）──
@@ -74,10 +75,14 @@ pub async fn start(
         ).unwrap_or(0);
         if today_count >= 3 {
             conn.execute_batch("ROLLBACK").ok();
-            return (StatusCode::TOO_MANY_REQUESTS, Json(json!({
-                "error": "daily_limit_reached",
-                "message": "今日创建临时账户次数已达上限"
-            }))).into_response();
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(json!({
+                    "error": "daily_limit_reached",
+                    "message": "今日创建临时账户次数已达上限"
+                })),
+            )
+                .into_response();
         }
     }
 
@@ -104,10 +109,19 @@ pub async fn start(
                 "SELECT id FROM users WHERE referral_code = ?1 AND deleted_at IS NULL",
                 rusqlite::params![code],
                 |row| row.get(0),
-            ).ok()
-        } else { None }
-    } else { None };
-    tracing::info!("trial/start referral: referred_by={:?}, referred_campaign_id={:?}", referred_by, body.campaign_id);
+            )
+            .ok()
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    tracing::info!(
+        "trial/start referral: referred_by={:?}, referred_campaign_id={:?}",
+        referred_by,
+        body.campaign_id
+    );
     // 记录推荐关系（用于 trial/claim 读取和 scope check），但不加入 campaign_members
     // campaign_members 在 trial/claim 中完成，要求用户提供真实姓名和手机号
     // 防止临时试用账户成为有效「下线」
@@ -119,7 +133,8 @@ pub async fn start(
             tracing::warn!("trial/start set referred_by failed: {}", e);
         }
         if let Some(ref cid) = body.campaign_id {
-            if !cid.is_empty() && cid.len() == 36 && cid.chars().filter(|&c| c == '-').count() == 4 {
+            if !cid.is_empty() && cid.len() == 36 && cid.chars().filter(|&c| c == '-').count() == 4
+            {
                 let _ = conn.execute(
                     "UPDATE users SET referred_campaign_id = ?1 WHERE id = ?2",
                     rusqlite::params![cid, uid],
@@ -137,7 +152,11 @@ pub async fn start(
     ) {
         tracing::error!("trial/start insert token failed: {}", e);
         conn.execute_batch("ROLLBACK").ok();
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "create_token_failed"}))).into_response();
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "create_token_failed"})),
+        )
+            .into_response();
     }
 
     // 记录 IP 日志
@@ -153,25 +172,30 @@ pub async fn start(
 
     conn.execute_batch("COMMIT").ok();
 
-    (StatusCode::OK, Json(json!({
-        "user_id": uid,
-        "token": token,
-        "username": trial_username,
-    }))).into_response()
+    (
+        StatusCode::OK,
+        Json(json!({
+            "user_id": uid,
+            "token": token,
+            "username": trial_username,
+        })),
+    )
+        .into_response()
 }
 
 /// PUT /api/trial/claim — 认领临时账户
 ///
 /// 校验 token → 校验 username 唯一 → 更新 password_hash → 生成新 token
-pub async fn claim(
-    headers: HeaderMap,
-    Json(body): Json<ClaimRequest>,
-) -> impl IntoResponse {
+pub async fn claim(headers: HeaderMap, Json(body): Json<ClaimRequest>) -> impl IntoResponse {
     let conn = crate::db_pool::get_conn();
 
     // 1. 校验 token
     if let Err(e) = crate::auth_middleware::verify_auth(&body.user_id, &headers) {
-        return (StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response();
     }
 
     // 2. 校验输入
@@ -180,27 +204,42 @@ pub async fn claim(
     //    两处各写一份的话，「注册」与「认领」的规则会静默漂移，
     //    而用户看不出差别（都是「注册」这个动作）。
     if !crate::auth::is_valid_email(&body.email) {
-        return (StatusCode::BAD_REQUEST, Json(json!({"error": "邮箱格式不正确"}))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "邮箱格式不正确"})),
+        )
+            .into_response();
     }
     if body.password.len() < 6
         || !body.password.chars().any(|c| c.is_ascii_alphabetic())
         || !body.password.chars().any(|c| c.is_ascii_digit())
     {
-        return (StatusCode::BAD_REQUEST, Json(json!({"error": "密码至少6位含英文+数字"}))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "密码至少6位含英文+数字"})),
+        )
+            .into_response();
     }
 
     // 3. 校验邮箱唯一（**排除自己** —— 重复提交认领应幂等放行，而不是报「已被注册」）
     //
     // ⚠️ `COLLATE NOCASE` 必须与 `auth::register` 一致，
     //    否则 `A@x.com` 在这里通过、在那边被判重复。
-    let existing: bool = conn.query_row(
-        "SELECT COUNT(*) FROM users WHERE email = ?1 COLLATE NOCASE AND id != ?2",
-        rusqlite::params![body.email.trim(), body.user_id],
-        |row| row.get::<_, i64>(0),
-    ).map(|c| c > 0).unwrap_or(false);
+    let existing: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM users WHERE email = ?1 COLLATE NOCASE AND id != ?2",
+            rusqlite::params![body.email.trim(), body.user_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
 
     if existing {
-        return (StatusCode::CONFLICT, Json(json!({"error": "该邮箱已被注册"}))).into_response();
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({"error": "该邮箱已被注册"})),
+        )
+            .into_response();
     }
     // 🔴 2026-09-29 已删：第 4 步「校验手机号唯一」—— `phone_hash` 列已移除。
     //    用户名唯一校验也一并删除：`username` 不再是用户输入（认领不改它）。
@@ -210,7 +249,11 @@ pub async fn claim(
         Ok(h) => h,
         Err(e) => {
             tracing::error!("trial/claim bcrypt failed: {}", e);
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "password_hash_failed"}))).into_response();
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "password_hash_failed"})),
+            )
+                .into_response();
         }
     };
 
@@ -238,16 +281,23 @@ pub async fn claim(
                     "SELECT id FROM users WHERE referral_code = ?1 AND deleted_at IS NULL",
                     rusqlite::params![code],
                     |row| row.get(0),
-                ).ok()
-            } else { None }
-        } else { None };
+                )
+                .ok()
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         // 请求体没有推广码，从 DB 读已有的推荐关系（用户之前已通过 trial/start 绑定）
         from_body.or_else(|| {
             conn.query_row(
                 "SELECT referred_by FROM users WHERE id = ?1",
                 rusqlite::params![&body.user_id],
                 |row| row.get(0),
-            ).ok().flatten()
+            )
+            .ok()
+            .flatten()
         })
     };
 
@@ -313,7 +363,12 @@ pub async fn claim(
 
     // 8. 触发注册活动（不传 campaign_filter，scope check 由 executor 内部处理）
     if let Err(e) = crate::campaign_executor::execute_campaign_trigger(
-        &conn, "registration", &body.user_id, referred_by.as_deref(), None, None,
+        &conn,
+        "registration",
+        &body.user_id,
+        referred_by.as_deref(),
+        None,
+        None,
     ) {
         tracing::warn!("trial/claim campaign trigger failed: {}", e);
     }
@@ -334,16 +389,29 @@ pub async fn claim(
         rusqlite::params![token_id, body.user_id, new_token, now],
     ) {
         tracing::error!("trial/claim insert token failed: {}", e);
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "create_token_failed"}))).into_response();
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "create_token_failed"})),
+        )
+            .into_response();
     }
 
-    tracing::info!("trial/claim: user_id={}, email={}, referred_by={:?}, campaign_id={:?}",
-        body.user_id, body.email, referred_by, body.campaign_id);
+    tracing::info!(
+        "trial/claim: user_id={}, email={}, referred_by={:?}, campaign_id={:?}",
+        body.user_id,
+        body.email,
+        referred_by,
+        body.campaign_id
+    );
 
     // 🔑 响应里**不再回 `username`**（它已不是用户输入的东西，回给前端只会让人以为它可改）。
     //    回 `email` —— 前端拿它可以立即更新「我的」页显示。
-    (StatusCode::OK, Json(json!({
-        "token": new_token,
-        "email": body.email.trim(),
-    }))).into_response()
+    (
+        StatusCode::OK,
+        Json(json!({
+            "token": new_token,
+            "email": body.email.trim(),
+        })),
+    )
+        .into_response()
 }

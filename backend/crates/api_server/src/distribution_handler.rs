@@ -2,12 +2,16 @@
 //!
 //! 包括：通知、支付计算、结算批次、提现审核、团队管理、分销统计
 
-use axum::{Json, http::{HeaderMap, StatusCode}, extract::{Path, Query, Multipart}};
+use axum::response::IntoResponse;
+use axum::{
+    extract::{Multipart, Path, Query},
+    http::{HeaderMap, StatusCode},
+    Json,
+};
 use serde::Deserialize;
 use serde_json::json;
-use axum::response::IntoResponse;
 
-use crate::admin_handlers::{verify_admin, ok, err, mask_email};
+use crate::admin_handlers::{err, mask_email, ok, verify_admin};
 use encoding_rs::GBK;
 
 // ── 公共余额计算函数 ──
@@ -19,7 +23,8 @@ pub(crate) fn net_available_commission(conn: &rusqlite::Connection, user_id: &st
         "SELECT COALESCE(available_balance, 0) FROM v_user_available_balance WHERE earner_id = ?1",
         rusqlite::params![user_id],
         |row| row.get(0),
-    ).unwrap_or(0)
+    )
+    .unwrap_or(0)
 }
 
 // ── 公共请求结构 ──
@@ -47,38 +52,56 @@ pub async fn list_notifications(
     tracing::info!("list_notifications: user_id={}", query.user_id);
 
     if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return (StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response();
     }
 
     let conn = crate::db_pool::get_conn();
 
     let mut stmt = match conn.prepare(
         "SELECT id, notification_type, title, body, read, action_url, created_at \
-         FROM user_notifications WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 50"
+         FROM user_notifications WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 50",
     ) {
         Ok(s) => s,
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("db_error: {}", e),
+            )
+        }
     };
 
-    let notifications: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![query.user_id], |row| {
-        Ok(json!({
-            "id": row.get::<_, String>(0)?,
-            "notification_type": row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-            "title": row.get::<_, String>(2)?,
-            "body": row.get::<_, Option<String>>(3)?,
-            "read": row.get::<_, i32>(4)? != 0,
-            "action_url": row.get::<_, Option<String>>(5)?,
-            "created_at": row.get::<_, String>(6)?,
-        }))
-    }) {
-        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("query_error: {}", e)),
-    };
+    let notifications: Vec<serde_json::Value> =
+        match stmt.query_map(rusqlite::params![query.user_id], |row| {
+            Ok(json!({
+                "id": row.get::<_, String>(0)?,
+                "notification_type": row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                "title": row.get::<_, String>(2)?,
+                "body": row.get::<_, Option<String>>(3)?,
+                "read": row.get::<_, i32>(4)? != 0,
+                "action_url": row.get::<_, Option<String>>(5)?,
+                "created_at": row.get::<_, String>(6)?,
+            }))
+        }) {
+            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+            Err(e) => {
+                return err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    &format!("query_error: {}", e),
+                )
+            }
+        };
 
-    let unread_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM user_notifications WHERE user_id = ?1 AND read = 0",
-        rusqlite::params![query.user_id], |row| row.get(0),
-    ).unwrap_or(0);
+    let unread_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM user_notifications WHERE user_id = ?1 AND read = 0",
+            rusqlite::params![query.user_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
     ok(json!({"notifications": notifications, "unread_count": unread_count}))
 }
@@ -92,7 +115,11 @@ pub async fn mark_read(
     tracing::info!("mark_read: id={}, user_id={}", id, body.user_id);
 
     if let Err(e) = crate::auth_middleware::verify_auth(&body.user_id, &headers) {
-        return (StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response();
     }
 
     let conn = crate::db_pool::get_conn();
@@ -101,19 +128,23 @@ pub async fn mark_read(
         rusqlite::params![id, body.user_id],
     ) {
         Ok(_) => ok(json!({"status": "ok"})),
-        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)),
+        Err(e) => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("db_error: {}", e),
+        ),
     }
 }
 
 /// POST /api/notifications/read-all — 全部已读
-pub async fn mark_read_all(
-    headers: HeaderMap,
-    Json(body): Json<UserQuery>,
-) -> impl IntoResponse {
+pub async fn mark_read_all(headers: HeaderMap, Json(body): Json<UserQuery>) -> impl IntoResponse {
     tracing::info!("mark_read_all: user_id={}", body.user_id);
 
     if let Err(e) = crate::auth_middleware::verify_auth(&body.user_id, &headers) {
-        return (StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response();
     }
 
     let conn = crate::db_pool::get_conn();
@@ -122,7 +153,10 @@ pub async fn mark_read_all(
         rusqlite::params![body.user_id],
     ) {
         Ok(updated) => ok(json!({"status": "ok", "updated": updated})),
-        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)),
+        Err(e) => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("db_error: {}", e),
+        ),
     }
 }
 
@@ -146,7 +180,7 @@ pub async fn user_campaign(
          WHERE status = 'active' \
          AND (valid_from IS NULL OR valid_from <= datetime('now')) \
          AND (valid_until IS NULL OR valid_until > datetime('now')) \
-         ORDER BY valid_from DESC"
+         ORDER BY valid_from DESC",
     ) {
         Ok(s) => s,
         Err(_) => return ok(json!({"campaign_id": null})),
@@ -187,7 +221,7 @@ pub struct CalculateRequest {
     pub user_id: String,
     pub plan_id: String,
     #[serde(default)]
-    pub campaign_id: Option<String>,  // 可选：指定活动 ID，不传时自动查有效折扣活动
+    pub campaign_id: Option<String>, // 可选：指定活动 ID，不传时自动查有效折扣活动
 }
 
 /// POST /api/pay/calculate — 计算折后价
@@ -195,10 +229,18 @@ pub async fn calculate(
     headers: HeaderMap,
     Json(body): Json<CalculateRequest>,
 ) -> impl IntoResponse {
-    tracing::info!("calculate: user_id={}, plan_id={}", body.user_id, body.plan_id);
+    tracing::info!(
+        "calculate: user_id={}, plan_id={}",
+        body.user_id,
+        body.plan_id
+    );
 
     if let Err(e) = crate::auth_middleware::verify_auth(&body.user_id, &headers) {
-        return (StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response();
     }
 
     let conn = crate::db_pool::get_conn();
@@ -206,7 +248,8 @@ pub async fn calculate(
     // 1. 查用户的原价套餐
     let original_price: i64 = match conn.query_row(
         "SELECT price FROM subscription_plans WHERE id = ?1",
-        rusqlite::params![body.plan_id], |row| row.get(0),
+        rusqlite::params![body.plan_id],
+        |row| row.get(0),
     ) {
         Ok(p) => p,
         Err(_) => return err(StatusCode::NOT_FOUND, "plan_not_found"),
@@ -214,16 +257,14 @@ pub async fn calculate(
 
     // 2. 查指定活动是否有效
     let campaign: Result<(String, String), rusqlite::Error> = match body.campaign_id.as_ref() {
-        Some(cid) if !cid.is_empty() => {
-            conn.query_row(
-                "SELECT id, rewards FROM marketing_campaigns \
+        Some(cid) if !cid.is_empty() => conn.query_row(
+            "SELECT id, rewards FROM marketing_campaigns \
                  WHERE id = ?1 AND status = 'active' \
                  AND (valid_from IS NULL OR valid_from <= datetime('now')) \
                  AND (valid_until IS NULL OR valid_until > datetime('now'))",
-                rusqlite::params![cid],
-                |row| { Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)) },
-            )
-        }
+            rusqlite::params![cid],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        ),
         _ => {
             // 未指定 campaign_id 时兜底：找第一个含 discount 的有效活动
             let stmt = conn.prepare(
@@ -231,7 +272,7 @@ pub async fn calculate(
                  WHERE status = 'active' \
                  AND (valid_from IS NULL OR valid_from <= datetime('now')) \
                  AND (valid_until IS NULL OR valid_until > datetime('now')) \
-                 LIMIT 5"
+                 LIMIT 5",
             );
             match stmt {
                 Ok(mut s) => {
@@ -240,7 +281,9 @@ pub async fn calculate(
                     }) {
                         Ok(mapped) => mapped
                             .filter_map(|r| r.ok())
-                            .filter(|(_, r)| r.contains("discount_pct") || r.contains("discount_fix"))
+                            .filter(|(_, r)| {
+                                r.contains("discount_pct") || r.contains("discount_fix")
+                            })
                             .collect(),
                         Err(_) => vec![],
                     };
@@ -256,12 +299,14 @@ pub async fn calculate(
 
     let (campaign_id, rewards_str) = match campaign {
         Ok(c) => c,
-        Err(_) => return ok(json!({
-            "original_price": original_price,
-            "discounted_price": original_price,
-            "campaign_id": null,
-            "discount_note": "活动已过期或不存在",
-        })),
+        Err(_) => {
+            return ok(json!({
+                "original_price": original_price,
+                "discounted_price": original_price,
+                "campaign_id": null,
+                "discount_note": "活动已过期或不存在",
+            }))
+        }
     };
 
     // 5. 检查折扣状态
@@ -287,60 +332,60 @@ pub async fn calculate(
     if has_discount && !already_used {
         if let Ok(rewards) = serde_json::from_str::<Vec<serde_json::Value>>(&rewards_str) {
             for reward in &rewards {
-            let rtype = reward["type"].as_str().unwrap_or("");
-            let party = reward["party"].as_str().unwrap_or("");
-            // self=触发者本人, inviter=邀请人, invitee=被邀请人, all=全体
-            if party != "self" && party != "inviter" && party != "invitee" && party != "all" {
-                continue;
-            }
-            // 验证用户资格
-            let eligible = match party {
-                "self" => {
-                    // 触发者自己——只要在支付就符合资格
-                    true
+                let rtype = reward["type"].as_str().unwrap_or("");
+                let party = reward["party"].as_str().unwrap_or("");
+                // self=触发者本人, inviter=邀请人, invitee=被邀请人, all=全体
+                if party != "self" && party != "inviter" && party != "invitee" && party != "all" {
+                    continue;
                 }
-                "inviter" => {
-                    // 邀请人资格：有人通过此用户的推广码 AND 通过此活动注册
-                    conn.query_row(
+                // 验证用户资格
+                let eligible = match party {
+                    "self" => {
+                        // 触发者自己——只要在支付就符合资格
+                        true
+                    }
+                    "inviter" => {
+                        // 邀请人资格：有人通过此用户的推广码 AND 通过此活动注册
+                        conn.query_row(
                         "SELECT COUNT(*) FROM users WHERE referred_by = ?1 AND referred_campaign_id = ?2",
                         rusqlite::params![&body.user_id, &campaign_id],
                         |row| row.get::<_, i64>(0),
                     ).unwrap_or(0) > 0
-                }
-                "invitee" => {
-                    // 被邀请人资格：此用户是通过此活动被邀请的
-                    conn.query_row(
+                    }
+                    "invitee" => {
+                        // 被邀请人资格：此用户是通过此活动被邀请的
+                        conn.query_row(
                         "SELECT COUNT(*) FROM users WHERE id = ?1 AND referred_by IS NOT NULL AND referred_campaign_id = ?2",
                         rusqlite::params![&body.user_id, &campaign_id],
                         |row| row.get::<_, i64>(0),
                     ).unwrap_or(0) > 0
-                }
-                "all" => true,
-                _ => false,
-            };
-            if !eligible {
-                continue;
-            }
-            match rtype {
-                "discount_fix" => {
-                    if let Some(val) = reward["value"].as_i64() {
-                        discounted_price = (original_price - val).max(0);
-                        discount_note = format!("推荐优惠: 减{}元", val);
                     }
+                    "all" => true,
+                    _ => false,
+                };
+                if !eligible {
+                    continue;
                 }
-                "discount_pct" => {
-                    if let Some(val) = reward["value"].as_f64() {
-                        // value 如 0.85 = 85 折 (付85%)
-                        let pct = val.clamp(0.0, 1.0);
-                        discounted_price = (original_price as f64 * pct) as i64;
-                        let zhe = (pct * 100.0) as i64;
-                        discount_note = format!("推荐折扣: {}折", zhe);
+                match rtype {
+                    "discount_fix" => {
+                        if let Some(val) = reward["value"].as_i64() {
+                            discounted_price = (original_price - val).max(0);
+                            discount_note = format!("推荐优惠: 减{}元", val);
+                        }
                     }
+                    "discount_pct" => {
+                        if let Some(val) = reward["value"].as_f64() {
+                            // value 如 0.85 = 85 折 (付85%)
+                            let pct = val.clamp(0.0, 1.0);
+                            discounted_price = (original_price as f64 * pct) as i64;
+                            let zhe = (pct * 100.0) as i64;
+                            discount_note = format!("推荐折扣: {}折", zhe);
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
         }
-    }
     }
 
     ok(json!({
@@ -356,12 +401,12 @@ pub async fn calculate(
 // ════════════════════════════════════════════════════════════════
 
 /// GET /api/admin/settlement/pending-commissions — 待结算佣金列表
-pub async fn pending_commissions(
-    headers: HeaderMap,
-) -> impl IntoResponse {
+pub async fn pending_commissions(headers: HeaderMap) -> impl IntoResponse {
     tracing::info!("pending_commissions");
 
-    if let Err(e) = verify_admin(&headers) { return e; }
+    if let Err(e) = verify_admin(&headers) {
+        return e;
+    }
 
     let conn = crate::db_pool::get_conn();
     let mut stmt = match conn.prepare(
@@ -373,10 +418,15 @@ pub async fn pending_commissions(
          WHERE de.expense_type = 'withdrawal'
            AND de.status = 'confirmed'
            AND (de.batch_no IS NULL OR de.batch_no = '')
-         ORDER BY de.created_at ASC"
+         ORDER BY de.created_at ASC",
     ) {
         Ok(s) => s,
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("db_error: {}", e),
+            )
+        }
     };
 
     let items: Vec<serde_json::Value> = match stmt.query_map([], |row| {
@@ -393,21 +443,24 @@ pub async fn pending_commissions(
         }))
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("query_error: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("query_error: {}", e),
+            )
+        }
     };
 
     ok(json!({"commissions": items}))
 }
 
-
-
 /// GET /api/admin/settlement/batches — 批次列表
-pub async fn list_batches(
-    headers: HeaderMap,
-) -> impl IntoResponse {
+pub async fn list_batches(headers: HeaderMap) -> impl IntoResponse {
     tracing::info!("list_batches");
 
-    if let Err(e) = verify_admin(&headers) { return e; }
+    if let Err(e) = verify_admin(&headers) {
+        return e;
+    }
 
     let conn = crate::db_pool::get_conn();
     let mut stmt = match conn.prepare(
@@ -415,10 +468,15 @@ pub async fn list_batches(
                 status, MAX(batch_paid_at) as paid_at, MAX(created_at) as created_at \
          FROM distribution_expenses \
          WHERE batch_no IS NOT NULL AND batch_no != '' \
-         GROUP BY batch_no ORDER BY created_at DESC"
+         GROUP BY batch_no ORDER BY created_at DESC",
     ) {
         Ok(s) => s,
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("db_error: {}", e),
+            )
+        }
     };
 
     let batches: Vec<serde_json::Value> = match stmt.query_map([], |row| {
@@ -432,20 +490,24 @@ pub async fn list_batches(
         }))
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("query_error: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("query_error: {}", e),
+            )
+        }
     };
 
     ok(json!({"batches": batches}))
 }
 
 /// GET /api/admin/settlement/batches/{batch_no} — 批次详情
-pub async fn get_batch(
-    headers: HeaderMap,
-    Path(batch_no): Path<String>,
-) -> impl IntoResponse {
+pub async fn get_batch(headers: HeaderMap, Path(batch_no): Path<String>) -> impl IntoResponse {
     tracing::info!("get_batch: batch_no={}", batch_no);
 
-    if let Err(e) = verify_admin(&headers) { return e; }
+    if let Err(e) = verify_admin(&headers) {
+        return e;
+    }
 
     let conn = crate::db_pool::get_conn();
 
@@ -482,10 +544,15 @@ pub async fn get_batch(
          FROM distribution_expenses de \
          JOIN users u ON u.id = de.earner_id \
          WHERE de.batch_no = ?1 \
-         ORDER BY de.created_at ASC"
+         ORDER BY de.created_at ASC",
     ) {
         Ok(s) => s,
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("db_error: {}", e),
+            )
+        }
     };
 
     let items: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![batch_no], |row| {
@@ -507,20 +574,24 @@ pub async fn get_batch(
         }))
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("query_error: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("query_error: {}", e),
+            )
+        }
     };
 
     ok(json!({"batch": batch, "items": items}))
 }
 
 /// GET /api/admin/settlement/batches/{batch_no}/export — ZIP 导出（CSV + 付款凭证）
-pub async fn export_batch(
-    headers: HeaderMap,
-    Path(batch_no): Path<String>,
-) -> impl IntoResponse {
+pub async fn export_batch(headers: HeaderMap, Path(batch_no): Path<String>) -> impl IntoResponse {
     tracing::info!("export_batch: batch_no={}", batch_no);
 
-    if let Err(e) = verify_admin(&headers) { return e; }
+    if let Err(e) = verify_admin(&headers) {
+        return e;
+    }
 
     let conn = crate::db_pool::get_conn();
     let mut stmt = match conn.prepare(
@@ -533,24 +604,29 @@ pub async fn export_batch(
     // 🔴 2026-09-29：「真实姓名 / 手机号」两列 → 合并为「邮箱」（实名与手机号已取消）。
     //    ⚠️ 导出的 CSV 是**明文**，所以这里也一并去掉了原 `real_name`/`phone` 的 AES 解密 ——
     //       邮箱直接导出即可（它是用户主动提供的登录标识，非身份信息）。
-    let mut csv = String::from("ID,用户名,推广名,邮箱,金额(分),类型,状态,手续费(分),到账金额(分),创建时间,备注,凭证路径\n");
+    let mut csv = String::from(
+        "ID,用户名,推广名,邮箱,金额(分),类型,状态,手续费(分),到账金额(分),创建时间,备注,凭证路径\n",
+    );
     let mut proof_files: Vec<(String, Vec<u8>)> = Vec::new();
 
     if let Ok(rows) = stmt.query_map(rusqlite::params![batch_no], |row| {
         let email: Option<String> = row.get(3)?;
         let note: Option<String> = row.get(10)?;
         let email = email.unwrap_or_default();
-        let proof = note.as_ref().and_then(|n| {
-            let s = n.as_str();
-            let pos = s.find("凭证: ");
-            pos.and_then(|p| {
-                let after = &s[p + "凭证: ".len()..];
-                let start = after.chars().position(|c| c == '"')?;
-                let from = &after[start+1..];
-                let end = from.chars().position(|c| c == '"')?;
-                Some(from[..end].to_string())
+        let proof = note
+            .as_ref()
+            .and_then(|n| {
+                let s = n.as_str();
+                let pos = s.find("凭证: ");
+                pos.and_then(|p| {
+                    let after = &s[p + "凭证: ".len()..];
+                    let start = after.chars().position(|c| c == '"')?;
+                    let from = &after[start + 1..];
+                    let end = from.chars().position(|c| c == '"')?;
+                    Some(from[..end].to_string())
+                })
             })
-        }).unwrap_or_default();
+            .unwrap_or_default();
         let note_text = note.unwrap_or_default().replace('"', "\"\"");
         // Read proof image if exists
         if !proof.is_empty() {
@@ -577,8 +653,10 @@ pub async fn export_batch(
         for r in rows.flatten() {
             // 🔴 2026-09-29：列数 13 → 12（`real_name` + `phone` 合并为 `email`）。
             //    ⚠️ 占位符个数必须与元组字段数**同时**改 —— 只改一边会编译通过、运行时 panic。
-            csv.push_str(&format!("{},{},{},{},{},{},{},{},{},{},\"{}\",{},\n",
-                r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7, r.8, r.9, r.10, r.11));
+            csv.push_str(&format!(
+                "{},{},{},{},{},{},{},{},{},{},\"{}\",{},\n",
+                r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7, r.8, r.9, r.10, r.11
+            ));
         }
     }
 
@@ -590,7 +668,8 @@ pub async fn export_batch(
     let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
     let (gbk_bytes, _, _) = GBK.encode(&csv);
-    zip.start_file(format!("batch_{}.csv", batch_no), options).unwrap();
+    zip.start_file(format!("batch_{}.csv", batch_no), options)
+        .unwrap();
     std::io::Write::write_all(&mut zip, &gbk_bytes).unwrap();
 
     // Add proof images
@@ -603,10 +682,18 @@ pub async fn export_batch(
     zip.finish().unwrap();
     let zip_data = zip_buf.into_inner();
 
-    (StatusCode::OK, [
-        ("Content-Type", "application/zip"),
-        ("Content-Disposition", &format!("attachment; filename*=UTF-8''batch_{}.zip", batch_no)),
-    ], zip_data).into_response()
+    (
+        StatusCode::OK,
+        [
+            ("Content-Type", "application/zip"),
+            (
+                "Content-Disposition",
+                &format!("attachment; filename*=UTF-8''batch_{}.zip", batch_no),
+            ),
+        ],
+        zip_data,
+    )
+        .into_response()
 }
 
 /// GET /api/admin/settlement/batches/export-all — 导出所有批次为 ZIP
@@ -617,7 +704,9 @@ pub async fn export_all_batches(
 ) -> impl IntoResponse {
     tracing::info!("export_all_batches: batch_no={:?}", query.batch_no);
 
-    if let Err(e) = verify_admin(&headers) { return e; }
+    if let Err(e) = verify_admin(&headers) {
+        return e;
+    }
 
     let conn = crate::db_pool::get_conn();
     let options = zip::write::SimpleFileOptions::default()
@@ -625,19 +714,31 @@ pub async fn export_all_batches(
 
     // 收集需要导出的 batch_no
     let batch_nos: Vec<String> = if let Some(ref selected) = query.batch_no {
-        selected.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+        selected
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
     } else {
         let list_stmt = conn.prepare(
             "SELECT batch_no FROM distribution_expenses WHERE batch_no IS NOT NULL AND batch_no != '' GROUP BY batch_no ORDER BY batch_no DESC"
         );
         match list_stmt {
-            Ok(mut stmt) => {
-                match stmt.query_map([], |row| row.get::<_, String>(0)) {
-                    Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-                    Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("query_error: {}", e)),
+            Ok(mut stmt) => match stmt.query_map([], |row| row.get::<_, String>(0)) {
+                Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+                Err(e) => {
+                    return err(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        &format!("query_error: {}", e),
+                    )
                 }
             },
-            Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)),
+            Err(e) => {
+                return err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    &format!("db_error: {}", e),
+                )
+            }
         }
     };
 
@@ -655,46 +756,61 @@ pub async fn export_all_batches(
         let inner_stmt = conn.prepare(
             "SELECT de.id, u.username, COALESCE(u.display_name, u.username) AS earner_name,                     u.email,                     de.amount, de.expense_type, de.status, de.fee, de.actual_amount, de.created_at, de.note              FROM distribution_expenses de              JOIN users u ON u.id = de.earner_id              WHERE de.batch_no = ?1              ORDER BY de.created_at ASC"
         );
-        let Ok(mut stmt) = inner_stmt else { continue; };
+        let Ok(mut stmt) = inner_stmt else {
+            continue;
+        };
 
         if let Ok(rows) = stmt.query_map(rusqlite::params![batch_no], |row| {
             // 🔴 2026-09-29：`u.real_name, u.phone` → `u.email`（索引随列数变化整体前移）。
             let email: Option<String> = row.get(3)?;
             let note: Option<String> = row.get(10)?;
             let email = email.unwrap_or_default();
-            let proof = note.as_ref().and_then(|n| {
-                let s = n.as_str();
-                let pos = s.find("凭证: ");
-                pos.and_then(|p| {
-                    let after = &s[p + "凭证: ".len()..];
-                    let start = after.chars().position(|c| c == '"')?;
-                    let from = &after[start+1..];
-                    let end = from.chars().position(|c| c == '"')?;
-                    Some(from[..end].to_string())
+            let proof = note
+                .as_ref()
+                .and_then(|n| {
+                    let s = n.as_str();
+                    let pos = s.find("凭证: ");
+                    pos.and_then(|p| {
+                        let after = &s[p + "凭证: ".len()..];
+                        let start = after.chars().position(|c| c == '"')?;
+                        let from = &after[start + 1..];
+                        let end = from.chars().position(|c| c == '"')?;
+                        Some(from[..end].to_string())
+                    })
                 })
-            }).unwrap_or_default();
+                .unwrap_or_default();
             let note_text = note.unwrap_or_default().replace('"', "\"\"");
             Ok((
                 batch_no.clone(),
-                row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
                 email,
-                row.get::<_, i64>(4)?, row.get::<_, String>(5)?, row.get::<_, String>(6)?,
-                row.get::<_, i64>(7)?, row.get::<_, i64>(8)?, row.get::<_, String>(9)?,
-                note_text, proof,
+                row.get::<_, i64>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
+                row.get::<_, i64>(7)?,
+                row.get::<_, i64>(8)?,
+                row.get::<_, String>(9)?,
+                note_text,
+                proof,
             ))
         }) {
             let all: Vec<_> = rows.filter_map(|r| r.ok()).collect();
             for r in &all {
                 if !r.12.is_empty() {
                     if let Ok(img_data) = std::fs::read(&r.12) {
-                        let img_name = format!("{}/{}", r.0, r.12.rsplit('/').next().unwrap_or("proof.png"));
+                        let img_name =
+                            format!("{}/{}", r.0, r.12.rsplit('/').next().unwrap_or("proof.png"));
                         let _ = zip.start_file(&img_name, options);
                         let _ = std::io::Write::write_all(&mut zip, &img_data);
                     }
                 }
                 // 🔴 2026-09-29：列数 14 → 13（`real_name` + `phone` → `email`）。
-                csv.push_str(&format!("{},{},{},{},{},{},{},{},{},{},{},\"{}\",{}\n",
-                    r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7, r.8, r.9, r.10, r.11, r.12));
+                csv.push_str(&format!(
+                    "{},{},{},{},{},{},{},{},{},{},{},\"{}\",{}\n",
+                    r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7, r.8, r.9, r.10, r.11, r.12
+                ));
             }
         };
     }
@@ -707,10 +823,18 @@ pub async fn export_all_batches(
     zip.finish().unwrap();
     let zip_data = zip_buf.into_inner();
 
-    (StatusCode::OK, [
-        ("Content-Type", "application/zip"),
-        ("Content-Disposition", "attachment; filename*=UTF-8''settlement_export.zip"),
-    ], zip_data).into_response()
+    (
+        StatusCode::OK,
+        [
+            ("Content-Type", "application/zip"),
+            (
+                "Content-Disposition",
+                "attachment; filename*=UTF-8''settlement_export.zip",
+            ),
+        ],
+        zip_data,
+    )
+        .into_response()
 }
 
 #[derive(Deserialize)]
@@ -719,10 +843,7 @@ pub struct MarkPaidRequest {
 }
 
 /// POST /api/admin/settlement/complete-payment — 上传凭证完成结算（生成批次号 + 标记已打款）
-pub async fn mark_paid(
-    headers: HeaderMap,
-    mut multipart: Multipart,
-) -> impl IntoResponse {
+pub async fn mark_paid(headers: HeaderMap, mut multipart: Multipart) -> impl IntoResponse {
     let (admin_id, _role) = match verify_admin(&headers) {
         Ok(r) => r,
         Err(e) => return e,
@@ -739,12 +860,13 @@ pub async fn mark_paid(
         match name.as_str() {
             "expense_ids" => {
                 if let Ok(text) = field.text().await {
-                    expense_ids = text.split(',')
+                    expense_ids = text
+                        .split(',')
                         .map(|s| s.trim().to_string())
                         .filter(|s| !s.is_empty())
                         .collect();
                 }
-            },
+            }
             "image" => {
                 let data = match field.bytes().await {
                     Ok(d) => d,
@@ -756,7 +878,8 @@ pub async fn mark_paid(
                 if data.len() < 4 {
                     return err(StatusCode::BAD_REQUEST, "无效的图片文件");
                 }
-                let is_png = data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47;
+                let is_png =
+                    data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47;
                 let is_jpeg = data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF;
                 if !is_png && !is_jpeg {
                     return err(StatusCode::BAD_REQUEST, "仅支持 PNG/JPEG 格式的图片");
@@ -767,17 +890,20 @@ pub async fn mark_paid(
                 let batch_tag = &format!("ST{}", chrono::Utc::now().format("%Y%m%d"));
                 let filename = format!("{}/{}_{}.{}", dir, batch_tag, admin_id, ext);
                 if let Err(e) = tokio::fs::write(&filename, &data).await {
-                    return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("保存图片失败: {}", e));
+                    return err(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        &format!("保存图片失败: {}", e),
+                    );
                 }
                 proof_path = Some(filename);
-            },
+            }
             "note" => {
                 if let Ok(text) = field.text().await {
                     if !text.trim().is_empty() {
                         note = format!("{} (备注: {})", note, text.trim());
                     }
                 }
-            },
+            }
             _ => {}
         }
     }
@@ -791,19 +917,24 @@ pub async fn mark_paid(
 
     // 生成 batch_no
     let today = chrono::Utc::now().format("%Y%m%d").to_string();
-    let batch_seq: i64 = conn.query_row(
-        "SELECT COUNT(DISTINCT batch_no) FROM distribution_expenses WHERE batch_no LIKE ?1",
-        rusqlite::params![format!("ST{}%", today)],
-        |row| row.get(0),
-    ).unwrap_or(0);
+    let batch_seq: i64 = conn
+        .query_row(
+            "SELECT COUNT(DISTINCT batch_no) FROM distribution_expenses WHERE batch_no LIKE ?1",
+            rusqlite::params![format!("ST{}%", today)],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
     let batch_no = format!("ST{}-{:04}", today, batch_seq + 1);
 
     let full_note = format!("{} | 凭证: {:?}", note, proof_path);
 
     // 构建 IN 占位符，从 ?5 开始（?1-?4 是 SET 字段）
     let set_count = 4;
-    let placeholders: Vec<String> = expense_ids.iter().enumerate()
-        .map(|(i, _)| format!("?{}", i + 1 + set_count)).collect();
+    let placeholders: Vec<String> = expense_ids
+        .iter()
+        .enumerate()
+        .map(|(i, _)| format!("?{}", i + 1 + set_count))
+        .collect();
     let sql = format!(
         "UPDATE distribution_expenses SET status = 'paid', batch_no = ?1, batch_paid_at = ?2, handled_by = ?3, note = ?4 \
          WHERE id IN ({}) AND status = 'confirmed'",
@@ -812,7 +943,12 @@ pub async fn mark_paid(
 
     match conn.execute("BEGIN TRANSACTION", []) {
         Ok(_) => {}
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("tx_error: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("tx_error: {}", e),
+            )
+        }
     }
 
     // 动态参数：batch_no + now + admin_id + full_note + 所有 expense_ids
@@ -829,14 +965,20 @@ pub async fn mark_paid(
 
     if let Err(e) = conn.execute(&sql, params_refs.as_slice()) {
         let _ = conn.execute("ROLLBACK", []);
-        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("update_expenses_error: {}", e));
+        return err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("update_expenses_error: {}", e),
+        );
     }
 
     match conn.execute("COMMIT", []) {
         Ok(_) => ok(json!({"status": "paid", "batch_no": batch_no, "paid_at": now})),
         Err(e) => {
             let _ = conn.execute("ROLLBACK", []);
-            err(StatusCode::INTERNAL_SERVER_ERROR, &format!("commit_error: {}", e))
+            err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("commit_error: {}", e),
+            )
         }
     }
 }
@@ -856,19 +998,28 @@ pub async fn export_pending_csv(
 ) -> impl IntoResponse {
     tracing::info!("export_pending_csv");
 
-    if let Err(e) = verify_admin(&headers) { return e; }
+    if let Err(e) = verify_admin(&headers) {
+        return e;
+    }
 
     let conn = crate::db_pool::get_conn();
     let mut csv = String::from("ID,用户名,推广名,邮箱,金额(分),手续费(分),到账金额(分),创建时间\n");
 
     if let Some(ref ids_str) = query.expense_ids {
         // 导出选中的
-        let ids: Vec<&str> = ids_str.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        let ids: Vec<&str> = ids_str
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
         if ids.is_empty() {
             return err(StatusCode::BAD_REQUEST, "expense_ids_empty");
         }
-        let placeholders: Vec<String> = ids.iter().enumerate()
-            .map(|(i, _)| format!("?{}", i + 1)).collect();
+        let placeholders: Vec<String> = ids
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect();
         let sql = format!(
             "SELECT de.id, u.username, COALESCE(u.display_name, u.username) AS earner_name, \
                     u.email, \
@@ -879,13 +1030,18 @@ pub async fn export_pending_csv(
             placeholders.join(",")
         );
         if let Ok(mut stmt) = conn.prepare(&sql) {
-            let params: Vec<&dyn rusqlite::types::ToSql> = ids.iter().map(|s| s as &dyn rusqlite::types::ToSql).collect();
+            let params: Vec<&dyn rusqlite::types::ToSql> = ids
+                .iter()
+                .map(|s| s as &dyn rusqlite::types::ToSql)
+                .collect();
             if let Ok(rows) = stmt.query_map(params.as_slice(), |row| {
                 // 🔴 2026-09-29：`real_name` + `phone` → `email`（索引整体前移 2→1 列）
                 let email: Option<String> = row.get(3)?;
                 let email = email.unwrap_or_default();
                 Ok((
-                    row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
                     email,
                     row.get::<_, i64>(4)?,
                     row.get::<_, Option<i64>>(5)?.unwrap_or(0),
@@ -898,8 +1054,10 @@ pub async fn export_pending_csv(
                     //    ⚠️ 这里**极易漏**：`format!` 占位符个数与元组字段数必须同时改 ——
                     //    只改元组不改 format（或反之）会编译通过、**运行时 panic**
                     //    （"N positional arguments but M were given"）。
-                    csv.push_str(&format!("{},{},{},{},{},{},{},{}\n",
-                        r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7));
+                    csv.push_str(&format!(
+                        "{},{},{},{},{},{},{},{}\n",
+                        r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7
+                    ));
                 }
             }
         }
@@ -913,14 +1071,16 @@ pub async fn export_pending_csv(
              JOIN users u ON u.id = de.earner_id \
              WHERE de.expense_type = 'withdrawal' AND de.status = 'confirmed' \
                AND (de.batch_no IS NULL OR de.batch_no = '') \
-             ORDER BY de.created_at ASC"
+             ORDER BY de.created_at ASC",
         ) {
             if let Ok(rows) = stmt.query_map([], |row| {
                 // 🔴 2026-09-29：同上（`real_name` + `phone` → `email`）
                 let email: Option<String> = row.get(3)?;
                 let email = email.unwrap_or_default();
                 Ok((
-                    row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
                     email,
                     row.get::<_, i64>(4)?,
                     row.get::<_, Option<i64>>(5)?.unwrap_or(0),
@@ -933,8 +1093,10 @@ pub async fn export_pending_csv(
                     //    ⚠️ 这里**极易漏**：`format!` 占位符个数与元组字段数必须同时改 ——
                     //    只改元组不改 format（或反之）会编译通过、**运行时 panic**
                     //    （"N positional arguments but M were given"）。
-                    csv.push_str(&format!("{},{},{},{},{},{},{},{}\n",
-                        r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7));
+                    csv.push_str(&format!(
+                        "{},{},{},{},{},{},{},{}\n",
+                        r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7
+                    ));
                 }
             }
         }
@@ -942,10 +1104,18 @@ pub async fn export_pending_csv(
 
     let (gbk_bytes, _, _) = GBK.encode(&csv);
     let body: Vec<u8> = gbk_bytes.into();
-    (StatusCode::OK, [
-        ("Content-Type", "text/csv; charset=gbk"),
-        ("Content-Disposition", "attachment; filename*=UTF-8''pending_withdrawals.csv"),
-    ], body).into_response()
+    (
+        StatusCode::OK,
+        [
+            ("Content-Type", "text/csv; charset=gbk"),
+            (
+                "Content-Disposition",
+                "attachment; filename*=UTF-8''pending_withdrawals.csv",
+            ),
+        ],
+        body,
+    )
+        .into_response()
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -963,10 +1133,18 @@ pub async fn user_withdraw(
     headers: HeaderMap,
     Json(body): Json<WithdrawRequest>,
 ) -> impl IntoResponse {
-    tracing::info!("user_withdraw: user_id={}, amount={}", body.user_id, body.amount);
+    tracing::info!(
+        "user_withdraw: user_id={}, amount={}",
+        body.user_id,
+        body.amount
+    );
 
     if let Err(e) = crate::auth_middleware::verify_auth(&body.user_id, &headers) {
-        return (StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response();
     }
 
     if body.amount <= 0 {
@@ -1015,7 +1193,11 @@ pub async fn user_withdrawals(
     tracing::info!("user_withdrawals: user_id={}", query.user_id);
 
     if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return (StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response();
     }
 
     let conn = crate::db_pool::get_conn();
@@ -1023,27 +1205,38 @@ pub async fn user_withdrawals(
     let mut stmt = match conn.prepare(
         "SELECT id, amount, fee, actual_amount, status, note, created_at, handled_at \
          FROM distribution_expenses WHERE earner_id = ?1 AND expense_type = 'withdrawal' \
-         ORDER BY created_at DESC LIMIT 20"
+         ORDER BY created_at DESC LIMIT 20",
     ) {
         Ok(s) => s,
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("db_error: {}", e),
+            )
+        }
     };
 
-    let withdrawals: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![query.user_id], |row| {
-        Ok(json!({
-            "id": row.get::<_, String>(0)?,
-            "amount": row.get::<_, i64>(1)?,
-            "fee": row.get::<_, i64>(2)?,
-            "actual_amount": row.get::<_, i64>(3)?,
-            "status": row.get::<_, String>(4)?,
-            "note": row.get::<_, Option<String>>(5)?,
-            "created_at": row.get::<_, String>(6)?,
-            "handled_at": row.get::<_, Option<String>>(7)?,
-        }))
-    }) {
-        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("query_error: {}", e)),
-    };
+    let withdrawals: Vec<serde_json::Value> =
+        match stmt.query_map(rusqlite::params![query.user_id], |row| {
+            Ok(json!({
+                "id": row.get::<_, String>(0)?,
+                "amount": row.get::<_, i64>(1)?,
+                "fee": row.get::<_, i64>(2)?,
+                "actual_amount": row.get::<_, i64>(3)?,
+                "status": row.get::<_, String>(4)?,
+                "note": row.get::<_, Option<String>>(5)?,
+                "created_at": row.get::<_, String>(6)?,
+                "handled_at": row.get::<_, Option<String>>(7)?,
+            }))
+        }) {
+            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+            Err(e) => {
+                return err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    &format!("query_error: {}", e),
+                )
+            }
+        };
 
     ok(json!({"withdrawals": withdrawals}))
 }
@@ -1053,12 +1246,12 @@ pub async fn user_withdrawals(
 // ════════════════════════════════════════════════════════════════
 
 /// GET /api/admin/withdrawals — 待审核提现列表
-pub async fn list_withdrawals(
-    headers: HeaderMap,
-) -> impl IntoResponse {
+pub async fn list_withdrawals(headers: HeaderMap) -> impl IntoResponse {
     tracing::info!("list_withdrawals");
 
-    if let Err(e) = verify_admin(&headers) { return e; }
+    if let Err(e) = verify_admin(&headers) {
+        return e;
+    }
 
     let conn = crate::db_pool::get_conn();
     let mut stmt = match conn.prepare(
@@ -1099,7 +1292,12 @@ pub async fn list_withdrawals(
         }))
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("query_error: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("query_error: {}", e),
+            )
+        }
     };
 
     ok(json!({"withdrawals": items}))
@@ -1111,10 +1309,7 @@ pub struct RejectWithdrawalRequest {
 }
 
 /// POST /api/admin/withdrawals/{id}/approve — 审核通过（同时分配结算批次号）
-pub async fn approve_withdrawal(
-    headers: HeaderMap,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
+pub async fn approve_withdrawal(headers: HeaderMap, Path(id): Path<String>) -> impl IntoResponse {
     tracing::info!("approve_withdrawal: id={}", id);
 
     let (admin_id, _role) = match verify_admin(&headers) {
@@ -1141,7 +1336,12 @@ pub async fn approve_withdrawal(
 
     match conn.execute("BEGIN TRANSACTION", []) {
         Ok(_) => {}
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("tx_error: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("tx_error: {}", e),
+            )
+        }
     }
 
     // 1. UPDATE expense status → confirmed（不分配 batch_no，等管理员统一结算时再分配）
@@ -1170,7 +1370,10 @@ pub async fn approve_withdrawal(
         })),
         Err(e) => {
             let _ = conn.execute("ROLLBACK", []);
-            err(StatusCode::INTERNAL_SERVER_ERROR, &format!("commit_error: {}", e))
+            err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("commit_error: {}", e),
+            )
         }
     }
 }
@@ -1196,7 +1399,8 @@ pub async fn reject_withdrawal(
     // 查 earner_id 用于发通知
     let earner_id: String = match conn.query_row(
         "SELECT earner_id FROM distribution_expenses WHERE id = ?1 AND expense_type = 'withdrawal'",
-        rusqlite::params![id], |row| row.get(0),
+        rusqlite::params![id],
+        |row| row.get(0),
     ) {
         Ok(eid) => eid,
         Err(_) => return err(StatusCode::NOT_FOUND, "withdrawal_not_found"),
@@ -1204,7 +1408,12 @@ pub async fn reject_withdrawal(
 
     match conn.execute("BEGIN TRANSACTION", []) {
         Ok(_) => {}
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("tx_error: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("tx_error: {}", e),
+            )
+        }
     }
 
     // UPDATE expense status → cancelled
@@ -1229,7 +1438,10 @@ pub async fn reject_withdrawal(
         Ok(_) => ok(json!({"status": "rejected", "id": id})),
         Err(e) => {
             let _ = conn.execute("ROLLBACK", []);
-            err(StatusCode::INTERNAL_SERVER_ERROR, &format!("commit_error: {}", e))
+            err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("commit_error: {}", e),
+            )
         }
     }
 }
@@ -1244,13 +1456,12 @@ pub struct TeamQuery {
 }
 
 /// GET /api/admin/team — 团队搜索
-pub async fn admin_team(
-    headers: HeaderMap,
-    Query(query): Query<TeamQuery>,
-) -> impl IntoResponse {
+pub async fn admin_team(headers: HeaderMap, Query(query): Query<TeamQuery>) -> impl IntoResponse {
     tracing::info!("admin_team: search={:?}", query.search);
 
-    if let Err(e) = verify_admin(&headers) { return e; }
+    if let Err(e) = verify_admin(&headers) {
+        return e;
+    }
 
     let conn = crate::db_pool::get_conn();
 
@@ -1262,19 +1473,30 @@ pub async fn admin_team(
                    ORDER BY created_at DESC LIMIT 50";
         let mut stmt = match conn.prepare(sql) {
             Ok(s) => s,
-            Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)),
+            Err(e) => {
+                return err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    &format!("db_error: {}", e),
+                )
+            }
         };
-        let result: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![pattern], |row| {
-            Ok(json!({
-                "id": row.get::<_, String>(0)?,
-                "display_name": row.get::<_, Option<String>>(1)?,
-                "referral_code": row.get::<_, String>(2)?,
-                "created_at": row.get::<_, String>(3)?,
-            }))
-        }) {
-            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-            Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("query_error: {}", e)),
-        };
+        let result: Vec<serde_json::Value> =
+            match stmt.query_map(rusqlite::params![pattern], |row| {
+                Ok(json!({
+                    "id": row.get::<_, String>(0)?,
+                    "display_name": row.get::<_, Option<String>>(1)?,
+                    "referral_code": row.get::<_, String>(2)?,
+                    "created_at": row.get::<_, String>(3)?,
+                }))
+            }) {
+                Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+                Err(e) => {
+                    return err(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        &format!("query_error: {}", e),
+                    )
+                }
+            };
         result
     } else {
         let sql = "SELECT id, display_name, referral_code, created_at \
@@ -1282,7 +1504,12 @@ pub async fn admin_team(
                    ORDER BY created_at DESC LIMIT 50";
         let mut stmt = match conn.prepare(sql) {
             Ok(s) => s,
-            Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)),
+            Err(e) => {
+                return err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    &format!("db_error: {}", e),
+                )
+            }
         };
         let result: Vec<serde_json::Value> = match stmt.query_map([], |row| {
             Ok(json!({
@@ -1293,7 +1520,12 @@ pub async fn admin_team(
             }))
         }) {
             Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-            Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("query_error: {}", e)),
+            Err(e) => {
+                return err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    &format!("query_error: {}", e),
+                )
+            }
         };
         result
     };
@@ -1302,13 +1534,12 @@ pub async fn admin_team(
 }
 
 /// GET /api/admin/team/{user_id} — 用户详情 + 推广统计
-pub async fn admin_team_user(
-    headers: HeaderMap,
-    Path(user_id): Path<String>,
-) -> impl IntoResponse {
+pub async fn admin_team_user(headers: HeaderMap, Path(user_id): Path<String>) -> impl IntoResponse {
     tracing::info!("admin_team_user: user_id={}", user_id);
 
-    if let Err(e) = verify_admin(&headers) { return e; }
+    if let Err(e) = verify_admin(&headers) {
+        return e;
+    }
 
     let conn = crate::db_pool::get_conn();
 
@@ -1333,15 +1564,21 @@ pub async fn admin_team_user(
     };
 
     // 推广统计
-    let total_clicks: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM referral_clicks WHERE referrer_id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
+    let total_clicks: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM referral_clicks WHERE referrer_id = ?1",
+            rusqlite::params![user_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
-    let total_referrals: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM users WHERE referred_by = ?1 AND deleted_at IS NULL",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
+    let total_referrals: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM users WHERE referred_by = ?1 AND deleted_at IS NULL",
+            rusqlite::params![user_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
     let total_commission: i64 = conn.query_row(
         "SELECT COALESCE(SUM(amount), 0) FROM distribution_commissions WHERE earner_id = ?1 AND status NOT IN ('cancelled')",
@@ -1352,25 +1589,36 @@ pub async fn admin_team_user(
     let mut stmt = match conn.prepare(
         "SELECT id, campaign_id, clicker_anonymous_id, share_channel, landed_page, created_at \
          FROM referral_clicks WHERE referrer_id = ?1 \
-         ORDER BY created_at DESC LIMIT 10"
+         ORDER BY created_at DESC LIMIT 10",
     ) {
         Ok(s) => s,
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("db_error: {}", e),
+            )
+        }
     };
 
-    let recent_clicks: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![user_id], |row| {
-        Ok(json!({
-            "id": row.get::<_, String>(0)?,
-            "campaign_id": row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-            "clicker_anonymous_id": row.get::<_, Option<String>>(2)?,
-            "share_channel": row.get::<_, Option<String>>(3)?,
-            "landed_page": row.get::<_, Option<String>>(4)?,
-            "created_at": row.get::<_, String>(5)?,
-        }))
-    }) {
-        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("query_error: {}", e)),
-    };
+    let recent_clicks: Vec<serde_json::Value> =
+        match stmt.query_map(rusqlite::params![user_id], |row| {
+            Ok(json!({
+                "id": row.get::<_, String>(0)?,
+                "campaign_id": row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                "clicker_anonymous_id": row.get::<_, Option<String>>(2)?,
+                "share_channel": row.get::<_, Option<String>>(3)?,
+                "landed_page": row.get::<_, Option<String>>(4)?,
+                "created_at": row.get::<_, String>(5)?,
+            }))
+        }) {
+            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+            Err(e) => {
+                return err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    &format!("query_error: {}", e),
+                )
+            }
+        };
 
     ok(json!({
         "user": user_info,
@@ -1388,36 +1636,48 @@ pub async fn admin_team_user(
 // ════════════════════════════════════════════════════════════════
 
 /// GET /api/admin/distribution/stats — 总览指标
-pub async fn admin_stats(
-    headers: HeaderMap,
-) -> impl IntoResponse {
+pub async fn admin_stats(headers: HeaderMap) -> impl IntoResponse {
     tracing::info!("admin_stats");
 
-    if let Err(e) = verify_admin(&headers) { return e; }
+    if let Err(e) = verify_admin(&headers) {
+        return e;
+    }
 
     let conn = crate::db_pool::get_conn();
 
-    let total_campaigns: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM marketing_campaigns", [], |row| row.get(0),
-    ).unwrap_or(0);
+    let total_campaigns: i64 = conn
+        .query_row("SELECT COUNT(*) FROM marketing_campaigns", [], |row| {
+            row.get(0)
+        })
+        .unwrap_or(0);
 
-    let active_campaigns: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM marketing_campaigns WHERE status = 'active'", [], |row| row.get(0),
-    ).unwrap_or(0);
+    let active_campaigns: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM marketing_campaigns WHERE status = 'active'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
-    let total_clicks: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM referral_clicks", [], |row| row.get(0),
-    ).unwrap_or(0);
+    let total_clicks: i64 = conn
+        .query_row("SELECT COUNT(*) FROM referral_clicks", [], |row| row.get(0))
+        .unwrap_or(0);
 
-    let total_registrations: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM users WHERE referred_by IS NOT NULL AND deleted_at IS NULL",
-        [], |row| row.get(0),
-    ).unwrap_or(0);
+    let total_registrations: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM users WHERE referred_by IS NOT NULL AND deleted_at IS NULL",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
-    let pending_commissions_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM distribution_commissions WHERE status = 'available'",
-        [], |row| row.get(0),
-    ).unwrap_or(0);
+    let pending_commissions_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM distribution_commissions WHERE status = 'available'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
     let pending_commissions_amount: i64 = conn.query_row(
         "SELECT COALESCE(SUM(amount), 0) FROM distribution_commissions WHERE status = 'available'",
@@ -1434,10 +1694,13 @@ pub async fn admin_stats(
         [], |row| row.get(0),
     ).unwrap_or(0);
 
-    let total_paid: i64 = conn.query_row(
-        "SELECT COALESCE(SUM(amount), 0) FROM distribution_commissions WHERE status = 'paid'",
-        [], |row| row.get(0),
-    ).unwrap_or(0);
+    let total_paid: i64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(amount), 0) FROM distribution_commissions WHERE status = 'paid'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
     ok(json!({
         "total_campaigns": total_campaigns,
@@ -1464,10 +1727,16 @@ pub async fn admin_funnel(
     headers: HeaderMap,
     Query(query): Query<FunnelQuery>,
 ) -> impl IntoResponse {
-    tracing::info!("admin_funnel: campaign={:?}, from={:?}, to={:?}",
-        query.campaign_id, query.date_from, query.date_to);
+    tracing::info!(
+        "admin_funnel: campaign={:?}, from={:?}, to={:?}",
+        query.campaign_id,
+        query.date_from,
+        query.date_to
+    );
 
-    if let Err(e) = verify_admin(&headers) { return e; }
+    if let Err(e) = verify_admin(&headers) {
+        return e;
+    }
 
     let conn = crate::db_pool::get_conn();
 
@@ -1482,44 +1751,60 @@ pub async fn admin_funnel(
     if let Some(ref dt_to) = query.date_to {
         filters.push(format!("created_at <= '{}'", dt_to.replace('\'', "''")));
     }
-    let where_clause = if filters.is_empty() { String::new() } else { format!("WHERE {}", filters.join(" AND ")) };
+    let where_clause = if filters.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", filters.join(" AND "))
+    };
 
     // 点击数
-    let clicks: i64 = conn.query_row(
-        &format!("SELECT COUNT(*) FROM referral_clicks {}", where_clause),
-        [], |row| row.get(0),
-    ).unwrap_or(0);
+    let clicks: i64 = conn
+        .query_row(
+            &format!("SELECT COUNT(*) FROM referral_clicks {}", where_clause),
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
     // 注册数（通过 referred_by 关联到点击）
-    let registrations: i64 = conn.query_row(
-        &format!(
-            "SELECT COUNT(DISTINCT u.id) FROM users u \
+    let registrations: i64 = conn
+        .query_row(
+            &format!(
+                "SELECT COUNT(DISTINCT u.id) FROM users u \
              JOIN referral_clicks rc ON u.referred_by = rc.referrer_id \
              {} AND u.deleted_at IS NULL",
-            where_clause
-        ),
-        [], |row| row.get(0),
-    ).unwrap_or(0);
+                where_clause
+            ),
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
     // 支付数
-    let payments: i64 = conn.query_row(
-        &format!(
-            "SELECT COUNT(DISTINCT po.id) FROM payment_orders po \
+    let payments: i64 = conn
+        .query_row(
+            &format!(
+                "SELECT COUNT(DISTINCT po.id) FROM payment_orders po \
              JOIN users u ON po.user_id = u.id \
              WHERE po.status = 'SUCCESS' AND u.referred_by IS NOT NULL \
              AND u.referred_by != '' AND u.deleted_at IS NULL"
-        ),
-        [], |row| row.get(0),
-    ).unwrap_or(0);
+            ),
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
     // 佣金总额
-    let commission_amount: i64 = conn.query_row(
-        &format!(
-            "SELECT COALESCE(SUM(dc.amount), 0) FROM distribution_commissions dc \
+    let commission_amount: i64 = conn
+        .query_row(
+            &format!(
+                "SELECT COALESCE(SUM(dc.amount), 0) FROM distribution_commissions dc \
              WHERE dc.status NOT IN ('cancelled')"
-        ),
-        [], |row| row.get(0),
-    ).unwrap_or(0);
+            ),
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
     ok(json!({
         "clicks": clicks,
@@ -1544,19 +1829,27 @@ pub async fn admin_refund(
     Path(order_id): Path<String>,
     Json(body): Json<AdminRefundRequest>,
 ) -> impl IntoResponse {
-    tracing::info!("admin_refund: order_id={}, reason={:?}", order_id, body.reason);
+    tracing::info!(
+        "admin_refund: order_id={}, reason={:?}",
+        order_id,
+        body.reason
+    );
 
-    if let Err(e) = verify_admin(&headers) { return e; }
+    if let Err(e) = verify_admin(&headers) {
+        return e;
+    }
 
     let conn = crate::db_pool::get_conn();
     let reason = body.reason.unwrap_or_else(|| "管理员退款".to_string());
 
     // 1. 查 payment_orders WHERE id = ?1 AND status = 'SUCCESS'
-    let exists: bool = conn.query_row(
-        "SELECT COUNT(*) > 0 FROM payment_orders WHERE id = ?1 AND status = 'SUCCESS'",
-        rusqlite::params![order_id],
-        |row| row.get(0),
-    ).unwrap_or(false);
+    let exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM payment_orders WHERE id = ?1 AND status = 'SUCCESS'",
+            rusqlite::params![order_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
 
     if !exists {
         return err(StatusCode::NOT_FOUND, "order_not_found_or_not_paid");
@@ -1564,7 +1857,10 @@ pub async fn admin_refund(
 
     // 2. BEGIN TRANSACTION
     if let Err(e) = conn.execute("BEGIN TRANSACTION", []) {
-        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("tx_error: {}", e));
+        return err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("tx_error: {}", e),
+        );
     }
 
     // a. UPDATE payment_orders SET status = 'REFUND', refund_reason = ?1 WHERE id = ?2
@@ -1588,7 +1884,11 @@ pub async fn admin_refund(
         }
     };
 
-    tracing::info!("admin_refund: cancelled {} commissions for order_id={}", cancelled_commissions, order_id);
+    tracing::info!(
+        "admin_refund: cancelled {} commissions for order_id={}",
+        cancelled_commissions,
+        order_id
+    );
 
     // c. UPDATE reward_fulfillments SET status = 'cancelled' WHERE order_id = ?1 AND status = 'fulfilled'
     let cancelled_rewards = match conn.execute(
@@ -1602,12 +1902,19 @@ pub async fn admin_refund(
         }
     };
 
-    tracing::info!("admin_refund: cancelled {} rewards for order_id={}", cancelled_rewards, order_id);
+    tracing::info!(
+        "admin_refund: cancelled {} rewards for order_id={}",
+        cancelled_rewards,
+        order_id
+    );
 
     // 3. COMMIT
     if let Err(e) = conn.execute("COMMIT", []) {
         let _ = conn.execute("ROLLBACK", []);
-        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("commit_error: {}", e));
+        return err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("commit_error: {}", e),
+        );
     }
 
     // 4. 返回
@@ -1628,30 +1935,42 @@ pub struct WebhookRefundRequest {
 /// POST /api/webhook/refund — 微信退款回调
 ///
 /// 注意：微信回调不论处理结果如何都必须返回 HTTP 200，否则微信会持续重试。
-pub async fn webhook_refund(
-    Json(body): Json<WebhookRefundRequest>,
-) -> impl IntoResponse {
-    tracing::info!("webhook_refund: order_id={}, refund_id={:?}, status={:?}",
-        body.order_id, body.refund_id, body.status);
+pub async fn webhook_refund(Json(body): Json<WebhookRefundRequest>) -> impl IntoResponse {
+    tracing::info!(
+        "webhook_refund: order_id={}, refund_id={:?}, status={:?}",
+        body.order_id,
+        body.refund_id,
+        body.status
+    );
 
     let conn = crate::db_pool::get_conn();
 
     // 1. 查 payment_orders WHERE id = ?1
-    let exists: bool = conn.query_row(
-        "SELECT COUNT(*) > 0 FROM payment_orders WHERE id = ?1",
-        rusqlite::params![body.order_id],
-        |row| row.get(0),
-    ).unwrap_or(false);
+    let exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM payment_orders WHERE id = ?1",
+            rusqlite::params![body.order_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
 
     if !exists {
         // 未找到 → 返回 200（微信要求回调必须返回 200）
-        return (StatusCode::OK, Json(json!({"code": "SUCCESS", "message": "ok"}))).into_response();
+        return (
+            StatusCode::OK,
+            Json(json!({"code": "SUCCESS", "message": "ok"})),
+        )
+            .into_response();
     }
 
     // 2. BEGIN TRANSACTION
     if let Err(e) = conn.execute("BEGIN TRANSACTION", []) {
         tracing::error!("webhook_refund: tx_error: {}", e);
-        return (StatusCode::OK, Json(json!({"code": "SUCCESS", "message": "ok"}))).into_response();
+        return (
+            StatusCode::OK,
+            Json(json!({"code": "SUCCESS", "message": "ok"})),
+        )
+            .into_response();
     }
 
     // a. UPDATE payment_orders SET status = 'REFUND', refund_id = ?1 WHERE id = ?2
@@ -1688,11 +2007,19 @@ pub async fn webhook_refund(
     if let Err(e) = conn.execute("COMMIT", []) {
         let _ = conn.execute("ROLLBACK", []);
         tracing::error!("webhook_refund: commit_error: {}", e);
-        return (StatusCode::OK, Json(json!({"code": "SUCCESS", "message": "ok"}))).into_response();
+        return (
+            StatusCode::OK,
+            Json(json!({"code": "SUCCESS", "message": "ok"})),
+        )
+            .into_response();
     }
 
     // 4. 返回 200
-    (StatusCode::OK, Json(json!({"code": "SUCCESS", "message": "ok"}))).into_response()
+    (
+        StatusCode::OK,
+        Json(json!({"code": "SUCCESS", "message": "ok"})),
+    )
+        .into_response()
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1718,10 +2045,10 @@ pub struct ExportQuery {
 }
 
 /// GET /api/admin/distribution/summary — 数据总览
-pub async fn admin_summary(
-    headers: HeaderMap,
-) -> impl IntoResponse {
-    if let Err(e) = verify_admin(&headers) { return e; }
+pub async fn admin_summary(headers: HeaderMap) -> impl IntoResponse {
+    if let Err(e) = verify_admin(&headers) {
+        return e;
+    }
 
     let conn = crate::db_pool::get_conn();
 
@@ -1750,22 +2077,27 @@ pub async fn admin_summary(
     ).unwrap_or((0, 0));
 
     // active campaigns
-    let active_campaigns: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM marketing_campaigns WHERE status='active'",
-        [], |row| row.get(0),
-    ).unwrap_or(0);
+    let active_campaigns: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM marketing_campaigns WHERE status='active'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
     // total clicks
-    let total_clicks: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM referral_clicks",
-        [], |row| row.get(0),
-    ).unwrap_or(0);
+    let total_clicks: i64 = conn
+        .query_row("SELECT COUNT(*) FROM referral_clicks", [], |row| row.get(0))
+        .unwrap_or(0);
 
     // total referrals
-    let total_referrals: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM users WHERE referred_by IS NOT NULL",
-        [], |row| row.get(0),
-    ).unwrap_or(0);
+    let total_referrals: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM users WHERE referred_by IS NOT NULL",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
     ok(json!({
         "locked_commissions": {
@@ -1795,11 +2127,13 @@ pub async fn admin_monthly_stats(
     headers: HeaderMap,
     Query(query): Query<MonthlyStatsQuery>,
 ) -> impl IntoResponse {
-    if let Err(e) = verify_admin(&headers) { return e; }
+    if let Err(e) = verify_admin(&headers) {
+        return e;
+    }
 
-    let year = query.year.unwrap_or_else(|| {
-        chrono::Utc::now().format("%Y").to_string()
-    });
+    let year = query
+        .year
+        .unwrap_or_else(|| chrono::Utc::now().format("%Y").to_string());
 
     let conn = crate::db_pool::get_conn();
 
@@ -1809,10 +2143,15 @@ pub async fn admin_monthly_stats(
                 COALESCE(SUM(amount), 0) as commission_amount \
          FROM distribution_commissions \
          WHERE strftime('%Y', created_at) = ?1 \
-         GROUP BY month ORDER BY month"
+         GROUP BY month ORDER BY month",
     ) {
         Ok(s) => s,
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_prepare: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("db_prepare: {}", e),
+            )
+        }
     };
 
     let mut months: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![year], |row| {
@@ -1825,7 +2164,12 @@ pub async fn admin_monthly_stats(
         }))
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_query: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("db_query: {}", e),
+            )
+        }
     };
 
     // 补充已打款数据（从 distribution_expenses）
@@ -1835,10 +2179,14 @@ pub async fn admin_monthly_stats(
                 COALESCE(SUM(amount), 0) as paid_amount \
          FROM distribution_expenses \
          WHERE status='paid' AND batch_paid_at IS NOT NULL AND strftime('%Y', batch_paid_at) = ?1 \
-         GROUP BY month ORDER BY month"
+         GROUP BY month ORDER BY month",
     ) {
         if let Ok(rows) = stmt2.query_map(rusqlite::params![year], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?))
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
         }) {
             for r in rows.flatten() {
                 if let Some(m) = months.iter_mut().find(|m| m["month"] == r.0) {
@@ -1866,7 +2214,9 @@ pub async fn admin_ranking(
     headers: HeaderMap,
     Query(query): Query<RankingQuery>,
 ) -> impl IntoResponse {
-    if let Err(e) = verify_admin(&headers) { return e; }
+    if let Err(e) = verify_admin(&headers) {
+        return e;
+    }
 
     let limit = query.limit.unwrap_or(20);
 
@@ -1899,7 +2249,12 @@ pub async fn admin_ranking(
         }))
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_query: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("db_query: {}", e),
+            )
+        }
     };
 
     ok(json!({ "ranking": ranking }))
@@ -1910,7 +2265,9 @@ pub async fn admin_export(
     headers: HeaderMap,
     Query(query): Query<ExportQuery>,
 ) -> impl IntoResponse {
-    if let Err(e) = verify_admin(&headers) { return e; }
+    if let Err(e) = verify_admin(&headers) {
+        return e;
+    }
 
     let conn = crate::db_pool::get_conn();
 
@@ -1921,7 +2278,7 @@ pub async fn admin_export(
          FROM distribution_commissions dc \
          JOIN users u ON u.id = dc.earner_id \
          JOIN payment_orders po ON po.id = dc.order_id \
-         WHERE 1=1"
+         WHERE 1=1",
     );
 
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
@@ -1949,47 +2306,88 @@ pub async fn admin_export(
 
     let mut stmt = match conn.prepare(&sql) {
         Ok(s) => s,
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_prepare: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("db_prepare: {}", e),
+            )
+        }
     };
 
     let rows = match stmt.query_map(param_refs.as_slice(), |row| {
         Ok((
-            row.get::<_, String>(0)?,       // id
-            row.get::<_, Option<String>>(1)?.unwrap_or_default(),       // earner_id
-            row.get::<_, String>(2)?,       // display_name
-            row.get::<_, String>(3)?,       // referral_code
-            row.get::<_, i64>(4)?,           // amount
-            row.get::<_, String>(5)?,       // status
-            row.get::<_, String>(6)?,       // created_at
-            row.get::<_, String>(7)?,       // paid_at
-            row.get::<_, String>(8)?,       // plan_id
-            row.get::<_, i64>(9)?,           // order_amount
+            row.get::<_, String>(0)?,                             // id
+            row.get::<_, Option<String>>(1)?.unwrap_or_default(), // earner_id
+            row.get::<_, String>(2)?,                             // display_name
+            row.get::<_, String>(3)?,                             // referral_code
+            row.get::<_, i64>(4)?,                                // amount
+            row.get::<_, String>(5)?,                             // status
+            row.get::<_, String>(6)?,                             // created_at
+            row.get::<_, String>(7)?,                             // paid_at
+            row.get::<_, String>(8)?,                             // plan_id
+            row.get::<_, i64>(9)?,                                // order_amount
         ))
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect::<Vec<_>>(),
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_query: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("db_query: {}", e),
+            )
+        }
     };
 
     // 构建 CSV 字符串
-    let mut csv = String::from("ID,收益人ID,收益人姓名,推广码,佣金金额(分),状态,创建时间,支付时间,套餐ID,订单金额(分)\n");
-    for (id, earner_id, display_name, referral_code, amount, status, created_at, paid_at, plan_id, order_amount) in rows {
+    let mut csv = String::from(
+        "ID,收益人ID,收益人姓名,推广码,佣金金额(分),状态,创建时间,支付时间,套餐ID,订单金额(分)\n",
+    );
+    for (
+        id,
+        earner_id,
+        display_name,
+        referral_code,
+        amount,
+        status,
+        created_at,
+        paid_at,
+        plan_id,
+        order_amount,
+    ) in rows
+    {
         csv.push_str(&format!(
             "{},{},{},{},{},{},{},{},{},{}\n",
-            id, earner_id, display_name, referral_code, amount, status, created_at, paid_at, plan_id, order_amount
+            id,
+            earner_id,
+            display_name,
+            referral_code,
+            amount,
+            status,
+            created_at,
+            paid_at,
+            plan_id,
+            order_amount
         ));
     }
 
-    (StatusCode::OK, [
-        ("Content-Type", "text/csv; charset=utf-8"),
-        ("Content-Disposition", "attachment; filename=\"commission_export.csv\""),
-    ], csv).into_response()
+    (
+        StatusCode::OK,
+        [
+            ("Content-Type", "text/csv; charset=utf-8"),
+            (
+                "Content-Disposition",
+                "attachment; filename=\"commission_export.csv\"",
+            ),
+        ],
+        csv,
+    )
+        .into_response()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rusqlite::Connection;
     use crate::schema::init_database;
+    use rusqlite::Connection;
 
     fn setup_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
@@ -2083,7 +2481,10 @@ mod tests {
                 rusqlite::params![now, batch_no],
             )
             .unwrap();
-        assert_eq!(updated2, 1, "幂等：已 paid 的记录也符合 IN ('confirmed','paid')，只更新行数不变但不会出错");
+        assert_eq!(
+            updated2, 1,
+            "幂等：已 paid 的记录也符合 IN ('confirmed','paid')，只更新行数不变但不会出错"
+        );
     }
 
     /// 退款测试：管理员退款后订单状态变为 REFUND，佣金被取消
@@ -2097,14 +2498,16 @@ mod tests {
         conn.execute(
             "INSERT INTO users (id, username, display_name, created_at) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![user_id, "refund_user", "退款测试用户", now],
-        ).unwrap();
+        )
+        .unwrap();
 
         // 插入测试管理员
         conn.execute(
             "INSERT INTO admin_users (id, username, password_hash, role, status, created_at) \
              VALUES ('admin-refund', 'admin', 'hash', 'super_admin', 'approved', ?1)",
             rusqlite::params![now],
-        ).unwrap();
+        )
+        .unwrap();
 
         // 插入测试套餐
         conn.execute(
@@ -2126,7 +2529,8 @@ mod tests {
             "INSERT INTO payment_orders (id, user_id, plan_id, amount, status, created_at) \
              VALUES (?1, ?2, 'plan-refund', 10000, 'SUCCESS', ?3)",
             rusqlite::params![order_id, user_id, now],
-        ).unwrap();
+        )
+        .unwrap();
 
         // 插入 locked 佣金
         let commission_id = uuid::Uuid::new_v4().to_string();
@@ -2168,24 +2572,33 @@ mod tests {
         conn.execute("COMMIT", []).unwrap();
 
         // 验证订单状态
-        let order_status: String = conn.query_row(
-            "SELECT status FROM payment_orders WHERE id = ?1",
-            rusqlite::params![order_id], |row| row.get(0),
-        ).unwrap();
+        let order_status: String = conn
+            .query_row(
+                "SELECT status FROM payment_orders WHERE id = ?1",
+                rusqlite::params![order_id],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(order_status, "REFUND", "退款后订单状态应为 REFUND");
 
         // 验证佣金被取消
-        let commission_status: String = conn.query_row(
-            "SELECT status FROM distribution_commissions WHERE id = ?1",
-            rusqlite::params![commission_id], |row| row.get(0),
-        ).unwrap();
+        let commission_status: String = conn
+            .query_row(
+                "SELECT status FROM distribution_commissions WHERE id = ?1",
+                rusqlite::params![commission_id],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(commission_status, "cancelled", "佣金应被取消");
 
         // 验证奖励被取消
-        let reward_status: String = conn.query_row(
-            "SELECT status FROM reward_fulfillments WHERE id = ?1",
-            rusqlite::params![reward_id], |row| row.get(0),
-        ).unwrap();
+        let reward_status: String = conn
+            .query_row(
+                "SELECT status FROM reward_fulfillments WHERE id = ?1",
+                rusqlite::params![reward_id],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(reward_status, "cancelled", "奖励应被取消");
 
         assert_eq!(cancelled_commissions, 1, "应取消 1 条佣金");
@@ -2217,7 +2630,8 @@ mod tests {
             "INSERT INTO payment_orders (id, user_id, plan_id, amount, status, created_at) \
              VALUES (?1, 'user-nr', 'plan-nr', 10000, 'NOTPAY', ?2)",
             rusqlite::params![order_id, now],
-        ).unwrap();
+        )
+        .unwrap();
 
         // 尝试对非 SUCCESS 订单退款（应不生效）
         let updated = conn.execute(
@@ -2227,10 +2641,13 @@ mod tests {
         assert_eq!(updated, 0, "非 SUCCESS 订单不应被退款影响");
 
         // 验证状态未变
-        let status: String = conn.query_row(
-            "SELECT status FROM payment_orders WHERE id = ?1",
-            rusqlite::params![order_id], |row| row.get(0),
-        ).unwrap();
+        let status: String = conn
+            .query_row(
+                "SELECT status FROM payment_orders WHERE id = ?1",
+                rusqlite::params![order_id],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(status, "NOTPAY", "非 SUCCESS 订单状态应保持不变");
     }
 
@@ -2241,10 +2658,13 @@ mod tests {
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
         // 不存在的订单 — webhook 必须返回成功
-        let exists: bool = conn.query_row(
-            "SELECT COUNT(*) > 0 FROM payment_orders WHERE id = 'non-existent-order'",
-            [], |row| row.get(0),
-        ).unwrap_or(false);
+        let exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM payment_orders WHERE id = 'non-existent-order'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
         assert!(!exists, "订单不应存在");
 
         // 验证：不存在的订单，webhook 逻辑中会返回 200

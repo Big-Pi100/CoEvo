@@ -176,7 +176,9 @@ async fn http_get_text(client: &reqwest::Client, url: &str) -> Result<String, St
     if !status.is_success() {
         return Err(format!("HTTP {} @ {}", status.as_u16(), url));
     }
-    resp.text().await.map_err(|e| format!("读响应失败 {}: {}", url, e))
+    resp.text()
+        .await
+        .map_err(|e| format!("读响应失败 {}: {}", url, e))
 }
 
 /// 词数（用于生词密度参考）。
@@ -199,7 +201,11 @@ pub fn write_items(
     for it in items {
         // 🔴 `redistributable = 0` 的源**不存全文** —— 列的含义就是「能不能存全文」，
         //    不能因为「刚好抓到了」就存（那会让这一列失去意义）。
-        let body = if src.redistributable == 1 { it.body.as_deref() } else { None };
+        let body = if src.redistributable == 1 {
+            it.body.as_deref()
+        } else {
+            None
+        };
 
         let wc = count_words(&format!(
             "{} {} {}",
@@ -237,7 +243,12 @@ pub fn write_items(
 }
 
 /// 更新源的抓取状态（成功/失败都要更新 —— 否则失败的源会被反复重试却不留痕）。
-pub fn touch_source(conn: &Connection, source_id: i64, ok: bool, now_utc: &str) -> Result<(), String> {
+pub fn touch_source(
+    conn: &Connection,
+    source_id: i64,
+    ok: bool,
+    now_utc: &str,
+) -> Result<(), String> {
     let sql = if ok {
         "UPDATE content_source SET last_fetch_at = ?1, fail_count = 0, updated_at = ?1 WHERE id = ?2"
     } else {
@@ -290,7 +301,9 @@ pub async fn fetch_all(now_utc: &str) -> Vec<FetchOutcome> {
         match &error {
             None => tracing::info!(
                 "content_fetch: {} 拿到 {} 条 · 新增 {} 条",
-                src.name, items, inserted
+                src.name,
+                items,
+                inserted
             ),
             Some(e) => tracing::warn!("content_fetch: {} 失败: {}", src.name, e),
         }
@@ -519,8 +532,7 @@ pub async fn fetch_bodies_round() -> (usize, usize) {
     let mut ok = 0usize;
     let total = candidates.len();
     // 🔑 按失败原因分类计数 —— 让日志直接指向「下一步查什么」
-    let mut reasons: std::collections::BTreeMap<String, usize> =
-        std::collections::BTreeMap::new();
+    let mut reasons: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
     for (id, url) in candidates {
         let outcome = fetch_article_body(&client, &url).await;
         if let Some(text) = outcome.text() {
@@ -542,12 +554,19 @@ pub async fn fetch_bodies_round() -> (usize, usize) {
             }
         }
     }
-    let detail: Vec<String> = reasons.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
+    let detail: Vec<String> = reasons
+        .iter()
+        .map(|(k, v)| format!("{}={}", k, v))
+        .collect();
     tracing::info!(
         "content_fetch: 补抓正文 {}/{} 篇成功{}",
         ok,
         total,
-        if detail.is_empty() { String::new() } else { format!(" · 失败分类: {}", detail.join(" ")) }
+        if detail.is_empty() {
+            String::new()
+        } else {
+            format!(" · 失败分类: {}", detail.join(" "))
+        }
     );
     (total, ok)
 }
@@ -593,7 +612,10 @@ pub fn start_fetch_scheduler() {
     }
 
     std::thread::spawn(move || {
-        let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+        let rt = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
             Ok(rt) => rt,
             Err(e) => {
                 tracing::error!("content_fetch: 建 runtime 失败，抓取不会启动: {}", e);
@@ -699,15 +721,29 @@ mod tests {
         let conn = mem();
         let mut s = src(1, "rss");
         s.redistributable = 0;
-        write_items(&conn, &s, &[item("https://a.test/1")], "2026-09-29T00:00:00Z").unwrap();
+        write_items(
+            &conn,
+            &s,
+            &[item("https://a.test/1")],
+            "2026-09-29T00:00:00Z",
+        )
+        .unwrap();
 
         let body: Option<String> = conn
-            .query_row("SELECT body FROM content_pool WHERE url = ?1", ["https://a.test/1"], |r| r.get(0))
+            .query_row(
+                "SELECT body FROM content_pool WHERE url = ?1",
+                ["https://a.test/1"],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(body, None, "redistributable=0 → 不存全文");
         // 摘要仍要存（否则这条就没内容了）
         let summary: Option<String> = conn
-            .query_row("SELECT summary FROM content_pool WHERE url = ?1", ["https://a.test/1"], |r| r.get(0))
+            .query_row(
+                "SELECT summary FROM content_pool WHERE url = ?1",
+                ["https://a.test/1"],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(summary.as_deref(), Some("S"));
     }
@@ -717,9 +753,19 @@ mod tests {
         let conn = mem();
         let mut s = src(1, "rss");
         s.category = Some("news".into());
-        write_items(&conn, &s, &[item("https://a.test/1")], "2026-09-29T00:00:00Z").unwrap();
+        write_items(
+            &conn,
+            &s,
+            &[item("https://a.test/1")],
+            "2026-09-29T00:00:00Z",
+        )
+        .unwrap();
         let cat: Option<String> = conn
-            .query_row("SELECT category FROM content_pool WHERE url = ?1", ["https://a.test/1"], |r| r.get(0))
+            .query_row(
+                "SELECT category FROM content_pool WHERE url = ?1",
+                ["https://a.test/1"],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(cat.as_deref(), Some("news"), "分类取源配置（受控词表）");
     }
@@ -736,9 +782,11 @@ mod tests {
         let conn = mem();
         touch_source(&conn, 1, true, "2026-09-29T00:00:00Z").unwrap();
         let (fail, last): (i64, Option<String>) = conn
-            .query_row("SELECT fail_count, last_fetch_at FROM content_source WHERE id=1", [], |r| {
-                Ok((r.get(0)?, r.get(1)?))
-            })
+            .query_row(
+                "SELECT fail_count, last_fetch_at FROM content_source WHERE id=1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
             .unwrap();
         assert_eq!(fail, 0);
         assert_eq!(last.as_deref(), Some("2026-09-29T00:00:00Z"));
@@ -747,9 +795,11 @@ mod tests {
         touch_source(&conn, 1, false, "2026-09-29T01:00:00Z").unwrap();
         touch_source(&conn, 1, false, "2026-09-29T02:00:00Z").unwrap();
         let (fail2, last2): (i64, Option<String>) = conn
-            .query_row("SELECT fail_count, last_fetch_at FROM content_source WHERE id=1", [], |r| {
-                Ok((r.get(0)?, r.get(1)?))
-            })
+            .query_row(
+                "SELECT fail_count, last_fetch_at FROM content_source WHERE id=1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
             .unwrap();
         assert_eq!(fail2, 2, "失败要累加");
         assert_eq!(last2.as_deref(), Some("2026-09-29T02:00:00Z"));
@@ -757,7 +807,11 @@ mod tests {
         // 成功一次 → 归零
         touch_source(&conn, 1, true, "2026-09-29T03:00:00Z").unwrap();
         let fail3: i64 = conn
-            .query_row("SELECT fail_count FROM content_source WHERE id=1", [], |r| r.get(0))
+            .query_row(
+                "SELECT fail_count FROM content_source WHERE id=1",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(fail3, 0, "成功要归零");
     }

@@ -41,8 +41,7 @@ pub fn resolve_db_path() -> std::path::PathBuf {
         return std::path::PathBuf::from(dir);
     }
     // 开发模式：从 CARGO_MANIFEST_DIR 定位到 backend/data/
-    let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../data/coevo.db");
+    let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/coevo.db");
     if dev_path.parent().map(|p| p.exists()).unwrap_or(false) {
         return dev_path;
     }

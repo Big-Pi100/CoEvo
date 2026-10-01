@@ -183,7 +183,10 @@ pub fn prompt() -> Result<&'static str, CardError> {
     let s = std::fs::read_to_string(&path)
         .map_err(|e| CardError::Internal(format!("读契约 prompt 失败 {}: {}", path, e)))?;
     if s.trim().is_empty() {
-        return Err(CardError::Internal(format!("契约 prompt 文件为空: {}", path)));
+        return Err(CardError::Internal(format!(
+            "契约 prompt 文件为空: {}",
+            path
+        )));
     }
     let _ = P.set(s);
     Ok(P.get().map(|s| s.as_str()).unwrap_or(""))
@@ -282,7 +285,9 @@ pub fn gate(card: &serde_json::Value, spelling: &str) -> Result<(), String> {
         return Err(format!("ipa 格式不完整（无完整 /.../）: {}", ipa));
     }
 
-    let def = card.get("definition").ok_or_else(|| "缺 definition".to_string())?;
+    let def = card
+        .get("definition")
+        .ok_or_else(|| "缺 definition".to_string())?;
     let en = def.get("en").and_then(|v| v.as_str()).unwrap_or("");
     let zh = def.get("zh").and_then(|v| v.as_str()).unwrap_or("");
     if en.trim().is_empty() {
@@ -300,7 +305,10 @@ pub fn gate(card: &serde_json::Value, spelling: &str) -> Result<(), String> {
         return Err(format!("例句不含该词: {}", ctx));
     }
 
-    let et = card.get("entry_type").and_then(|v| v.as_str()).unwrap_or("");
+    let et = card
+        .get("entry_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     if et.trim().is_empty() {
         return Err("entry_type 为空".to_string());
     }
@@ -323,7 +331,7 @@ fn read_cache(conn: &Connection, spelling: &str) -> Result<Option<(String, i64)>
             let c: String = r.get(0).map_err(|e| CardError::Internal(e.to_string()))?;
             let h: i64 = r.get(1).map_err(|e| CardError::Internal(e.to_string()))?;
             if c.trim().is_empty() {
-                return Ok(None);   // 🔴 空内容当作未命中（避免把空卡片发给用户）
+                return Ok(None); // 🔴 空内容当作未命中（避免把空卡片发给用户）
             }
             Ok(Some((c, h)))
         }
@@ -398,7 +406,11 @@ fn try_cache(word: &str, device_id: Option<&str>) -> Result<Option<GenResult>, C
         let card: serde_json::Value = serde_json::from_str(&content)
             .map_err(|e| CardError::Internal(format!("缓存内容不是合法 JSON: {}", e)))?;
         let hits = bump_hit(&conn, word, device_id)?;
-        return Ok(Some(GenResult { card, from_cache: true, hit_count: hits }));
+        return Ok(Some(GenResult {
+            card,
+            from_cache: true,
+            hit_count: hits,
+        }));
     }
     Ok(None)
 }
@@ -422,7 +434,11 @@ pub async fn get_or_generate(
 
     // ① 缓存
     if let Some(r) = try_cache(&word, device_id)? {
-        tracing::info!("generate_card: cache HIT spelling={} hits={}", word, r.hit_count);
+        tracing::info!(
+            "generate_card: cache HIT spelling={} hits={}",
+            word,
+            r.hit_count
+        );
         return Ok(r);
     }
 
@@ -446,7 +462,11 @@ pub async fn get_or_generate(
     // ③ 生成（**此处不持有任何 DB 连接**）
     let tpl = prompt()?;
     let content = build_prompt(tpl, &word);
-    tracing::info!("generate_card: MISS → LLM spelling={} prompt_chars={}", word, content.len());
+    tracing::info!(
+        "generate_card: MISS → LLM spelling={} prompt_chars={}",
+        word,
+        content.len()
+    );
 
     let api_key = std::env::var("DEEPSEEK_API_KEY")
         .map_err(|_| CardError::Internal("DEEPSEEK_API_KEY 未配置".to_string()))?;
@@ -466,8 +486,9 @@ pub async fn get_or_generate(
         .await
         .map_err(|e| CardError::Upstream(format!("{:?}", e)))?;
 
-    let card: serde_json::Value = serde_json::from_str(reply.trim())
-        .map_err(|e| CardError::Upstream(format!("返回不是合法 JSON: {} ({})", e, preview(&reply))))?;
+    let card: serde_json::Value = serde_json::from_str(reply.trim()).map_err(|e| {
+        CardError::Upstream(format!("返回不是合法 JSON: {} ({})", e, preview(&reply)))
+    })?;
 
     // ④ 🔴 合规闸门（**上线硬前提**：动态生成无人工环节，违规内容会直出用户）
     //
@@ -497,7 +518,11 @@ pub async fn get_or_generate(
 
     // ⑤ 客观格式闸门（不过 → 不写缓存）
     if let Err(why) = gate(&card, &word) {
-        tracing::warn!("generate_card: GATE REJECT spelling={} reason={}", word, why);
+        tracing::warn!(
+            "generate_card: GATE REJECT spelling={} reason={}",
+            word,
+            why
+        );
         return Err(CardError::Gate(why));
     }
 
@@ -508,9 +533,17 @@ pub async fn get_or_generate(
         let conn = crate::db_pool::get_conn();
         write_cache(&conn, &word, &card_json)?;
     }
-    tracing::info!("generate_card: stored spelling={} bytes={}", word, card_json.len());
+    tracing::info!(
+        "generate_card: stored spelling={} bytes={}",
+        word,
+        card_json.len()
+    );
 
-    Ok(GenResult { card, from_cache: false, hit_count: 0 })
+    Ok(GenResult {
+        card,
+        from_cache: false,
+        hit_count: 0,
+    })
 }
 
 /// 归一化：去空白 + 小写（与表上的 `COLLATE NOCASE` 呼应）。
@@ -555,7 +588,7 @@ mod tests {
     fn ipa_full_detection() {
         assert!(has_full_ipa("/ˈhæpi/"));
         assert!(has_full_ipa("/ˈbʌs ˌstɒp/"));
-        assert!(!has_full_ipa("/ˈ"));          // S1 残缺
+        assert!(!has_full_ipa("/ˈ")); // S1 残缺
         assert!(!has_full_ipa("/"));
         assert!(!has_full_ipa(""));
         assert!(!has_full_ipa("hæpi"));
@@ -564,8 +597,8 @@ mod tests {
     #[test]
     fn context_word_check() {
         assert!(context_contains_word("I am happy to see you.", "happy"));
-        assert!(context_contains_word("She runs fast.", "run"));        // 规则变形
-        assert!(context_contains_word("They are making it.", "make"));  // e→ing
+        assert!(context_contains_word("She runs fast.", "run")); // 规则变形
+        assert!(context_contains_word("They are making it.", "make")); // e→ing
         assert!(!context_contains_word("I am happy to see you.", "sad"));
         assert!(!context_contains_word("", "any"));
     }
@@ -613,7 +646,10 @@ mod tests {
         let e = CardError::Compliance("涉主权｜把中国领土说成独立国家 (definition.en)".to_string());
         assert_eq!(e.status(), axum::http::StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(e.message(), "该词暂不支持生成（内容未通过合规检查）");
-        assert!(!e.message().contains("涉主权"), "合规细节不应出现在客户端消息里");
+        assert!(
+            !e.message().contains("涉主权"),
+            "合规细节不应出现在客户端消息里"
+        );
     }
 
     /// 合规（内容问题）与内部错误（服务故障）**必须分成不同状态码** ——

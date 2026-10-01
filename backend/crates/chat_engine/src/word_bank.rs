@@ -28,9 +28,9 @@
 //! 的 `cefr_stats`**（用户已掌握的词按等级统计）。该接口将来若改走端侧数据，
 //! 本模块可整体删除。
 
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::OnceLock;
-use serde::Deserialize;
 
 static WORD_BANK: OnceLock<HashMap<String, CefrEntry>> = OnceLock::new();
 /// CEFR 等级统计 —— 启动时算一次（结果完全静态）
@@ -88,7 +88,11 @@ fn compute_stats(catalog: &HashMap<String, CefrEntry>) -> Vec<CefrCatalogStat> {
 /// 初始化: 从 cefr_catalog.json 加载词库，并预计算 CEFR 统计
 pub fn init(path: &str) {
     let content = std::fs::read_to_string(path).unwrap_or_else(|e| {
-        tracing::warn!("Cannot read word bank {}: {} (vocab matching disabled)", path, e);
+        tracing::warn!(
+            "Cannot read word bank {}: {} (vocab matching disabled)",
+            path,
+            e
+        );
         String::new()
     });
 
@@ -101,7 +105,10 @@ pub fn init(path: &str) {
     let raw: HashMap<String, serde_json::Value> = match serde_json::from_str(&content) {
         Ok(m) => m,
         Err(e) => {
-            tracing::warn!("Word bank JSON parse error: {} (vocab matching disabled)", e);
+            tracing::warn!(
+                "Word bank JSON parse error: {} (vocab matching disabled)",
+                e
+            );
             let _ = WORD_BANK.set(HashMap::new());
             let _ = CEFR_STATS.set(Vec::new());
             return;
@@ -113,9 +120,18 @@ pub fn init(path: &str) {
         let entry = CefrEntry {
             pos: val.get("pos").and_then(|v| v.as_str()).map(String::from),
             domain: val.get("domain").and_then(|v| v.as_str()).map(String::from),
-            difficulty_level: val.get("difficulty_level").and_then(|v| v.as_u64()).map(|v| v as u32),
-            definition: val.get("definition").and_then(|v| v.as_str()).map(String::from),
-            cefr_level: val.get("cefr_level").and_then(|v| v.as_str()).map(String::from),
+            difficulty_level: val
+                .get("difficulty_level")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as u32),
+            definition: val
+                .get("definition")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            cefr_level: val
+                .get("cefr_level")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             ipa: val.get("ipa").and_then(|v| v.as_str()).map(String::from),
         };
         catalog.insert(word, entry);
@@ -134,7 +150,10 @@ pub fn init(path: &str) {
 
 /// 查询单个词的 CEFR 等级
 pub fn lookup_cefr(word: &str) -> Option<String> {
-    WORD_BANK.get()?.get(word).and_then(|e| e.cefr_level.clone())
+    WORD_BANK
+        .get()?
+        .get(word)
+        .and_then(|e| e.cefr_level.clone())
 }
 
 /// 词库中各 CEFR 等级的词数（启动时已算好，O(1) 取用）

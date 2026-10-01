@@ -33,7 +33,7 @@ pub fn get_available_plans(conn: &Connection, user_id: Option<&str>) -> Result<V
          WHERE sp.is_active = 1
            AND (sp.max_uses IS NULL OR sp.used_count < sp.max_uses)
            AND (sp.available_from IS NULL OR sp.available_from <= datetime('now'))
-           AND (sp.available_until IS NULL OR sp.available_until > datetime('now'))"
+           AND (sp.available_until IS NULL OR sp.available_until > datetime('now'))",
     );
     if let Some(_) = user_id {
         sql.push_str(
@@ -41,7 +41,7 @@ pub fn get_available_plans(conn: &Connection, user_id: Option<&str>) -> Result<V
                    OR NOT EXISTS (
                      SELECT 1 FROM payment_orders
                      WHERE user_id = ?1 AND plan_id = sp.id AND status = 'SUCCESS'
-                   ))"
+                   ))",
         );
     }
     sql.push_str(" ORDER BY sp.sort_order ASC");
@@ -64,7 +64,10 @@ pub fn get_available_plans(conn: &Connection, user_id: Option<&str>) -> Result<V
     };
     let rows;
     if let Some(uid) = user_id {
-        rows = stmt.query_map(params![uid], mapper)?.filter_map(|r| r.ok()).collect();
+        rows = stmt
+            .query_map(params![uid], mapper)?
+            .filter_map(|r| r.ok())
+            .collect();
     } else {
         rows = stmt.query_map([], mapper)?.filter_map(|r| r.ok()).collect();
     }
@@ -76,7 +79,7 @@ pub fn get_plan_by_id(conn: &Connection, plan_id: &str) -> Result<Option<PlanRow
     let mut stmt = conn.prepare(
         "SELECT id, name, duration_days, price, max_uses, used_count,
                 once_per_user, available_from, available_until, sort_order, is_active
-         FROM subscription_plans WHERE id = ?1"
+         FROM subscription_plans WHERE id = ?1",
     )?;
     let mut rows = stmt.query_map(params![plan_id], |row| {
         Ok(PlanRow {
@@ -194,18 +197,23 @@ pub fn extend_subscription(
 ) -> Result<String> {
     // 幂等性检查：同一 order_id 只处理一次
     if let Some(oid) = order_id {
-        let already_done: bool = conn.query_row(
-            "SELECT COUNT(*) FROM subscription_audit_log WHERE action='pay' AND order_id=?1",
-            params![oid],
-            |row| row.get::<_, i64>(0),
-        ).unwrap_or(0) > 0;
+        let already_done: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM subscription_audit_log WHERE action='pay' AND order_id=?1",
+                params![oid],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap_or(0)
+            > 0;
         if already_done {
             // 查询已写入的到期日
-            let expires = conn.query_row(
-                "SELECT subscription_expires FROM users WHERE id=?1",
-                params![user_id],
-                |row| row.get::<_, String>(0),
-            ).unwrap_or_default();
+            let expires = conn
+                .query_row(
+                    "SELECT subscription_expires FROM users WHERE id=?1",
+                    params![user_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap_or_default();
             return Ok(expires);
         }
     }

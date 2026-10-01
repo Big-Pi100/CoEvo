@@ -4,26 +4,33 @@
 //! Good enough for preventing casual enumeration on low-traffic admin APIs.
 
 use axum::http::{HeaderMap, StatusCode};
-use axum::Json;
 use axum::response::IntoResponse;
+use axum::Json;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Thread-safe global rate limiter state
 struct LimiterState {
-    buckets: HashMap<String, Vec<i64>>,  // key → sorted timestamps (seconds)
+    buckets: HashMap<String, Vec<i64>>, // key → sorted timestamps (seconds)
 }
 
 fn limiter() -> &'static Mutex<LimiterState> {
     static LIMITER: OnceLock<Mutex<LimiterState>> = OnceLock::new();
-    LIMITER.get_or_init(|| Mutex::new(LimiterState { buckets: HashMap::new() }))
+    LIMITER.get_or_init(|| {
+        Mutex::new(LimiterState {
+            buckets: HashMap::new(),
+        })
+    })
 }
 
 impl LimiterState {
     /// Check and record a hit. Returns true if allowed, false if rate exceeded.
     fn check(&mut self, key: &str, max_hits: usize, window_secs: i64) -> bool {
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         let cutoff = now - window_secs;
 
         let hits = self.buckets.entry(key.to_string()).or_default();
@@ -32,7 +39,7 @@ impl LimiterState {
         hits.retain(|&t| t > cutoff);
 
         if hits.len() >= max_hits {
-            false  // rate limited
+            false // rate limited
         } else {
             hits.push(now);
             true
@@ -53,7 +60,11 @@ fn client_ip(headers: &HeaderMap) -> String {
 
 /// Check if this request is within rate limits.
 /// Returns `Ok(())` if allowed, `Err(response)` if rate limited.
-pub fn check_rate_limit(headers: &HeaderMap, max_hits: usize, window_secs: i64) -> Result<(), axum::response::Response> {
+pub fn check_rate_limit(
+    headers: &HeaderMap,
+    max_hits: usize,
+    window_secs: i64,
+) -> Result<(), axum::response::Response> {
     let ip = client_ip(headers);
     let mut state = limiter().lock().unwrap();
     if state.check(&ip, max_hits, window_secs) {
@@ -62,7 +73,8 @@ pub fn check_rate_limit(headers: &HeaderMap, max_hits: usize, window_secs: i64) 
         Err((
             StatusCode::TOO_MANY_REQUESTS,
             Json(serde_json::json!({"error": "rate_limited", "retry_after_secs": window_secs})),
-        ).into_response())
+        )
+            .into_response())
     }
 }
 
@@ -72,7 +84,9 @@ mod tests {
 
     #[test]
     fn test_rate_limiter_allows_within_limit() {
-        let mut state = LimiterState { buckets: HashMap::new() };
+        let mut state = LimiterState {
+            buckets: HashMap::new(),
+        };
         assert!(state.check("127.0.0.1", 5, 60));
         assert!(state.check("127.0.0.1", 5, 60));
         assert!(state.check("127.0.0.1", 5, 60));
@@ -80,16 +94,20 @@ mod tests {
 
     #[test]
     fn test_rate_limiter_blocks_excess() {
-        let mut state = LimiterState { buckets: HashMap::new() };
+        let mut state = LimiterState {
+            buckets: HashMap::new(),
+        };
         for _ in 0..5 {
             assert!(state.check("192.168.1.1", 5, 60));
         }
-        assert!(!state.check("192.168.1.1", 5, 60));  // 6th hit blocked
+        assert!(!state.check("192.168.1.1", 5, 60)); // 6th hit blocked
     }
 
     #[test]
     fn test_rate_limiter_per_ip_independent() {
-        let mut state = LimiterState { buckets: HashMap::new() };
+        let mut state = LimiterState {
+            buckets: HashMap::new(),
+        };
         for _ in 0..5 {
             assert!(state.check("10.0.0.1", 5, 60));
         }

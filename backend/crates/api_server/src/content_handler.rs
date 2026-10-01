@@ -219,8 +219,7 @@ fn feed_by_ids(raw: &str) -> Response {
         }
     };
 
-    let params: Vec<&dyn rusqlite::ToSql> =
-        ids.iter().map(|i| i as &dyn rusqlite::ToSql).collect();
+    let params: Vec<&dyn rusqlite::ToSql> = ids.iter().map(|i| i as &dyn rusqlite::ToSql).collect();
     let items: Vec<serde_json::Value> = match stmt.query_map(params.as_slice(), |r| {
         Ok(serde_json::json!({
             "id":          r.get::<_, i64>(0)?,
@@ -288,10 +287,12 @@ pub async fn feed_detail_handler(Path(id): Path<i64>) -> Response {
     );
 
     match row {
-        Ok(v) => (StatusCode::OK, Json(serde_json::json!({"ok": true, "item": v}))).into_response(),
-        Err(rusqlite::Error::QueryReturnedNoRows) => {
-            err(StatusCode::NOT_FOUND, "not_found")
-        }
+        Ok(v) => (
+            StatusCode::OK,
+            Json(serde_json::json!({"ok": true, "item": v})),
+        )
+            .into_response(),
+        Err(rusqlite::Error::QueryReturnedNoRows) => err(StatusCode::NOT_FOUND, "not_found"),
         Err(e) => {
             tracing::error!("feed_detail 失败 id={}: {}", id, e);
             err(StatusCode::INTERNAL_SERVER_ERROR, "db_error")
@@ -309,7 +310,13 @@ mod tests {
 
     #[test]
     fn test_normalize_clamps_limit() {
-        let q = |l: Option<i64>| FeedQuery { category: None, limit: l, offset: None, sort: None, ids: None };
+        let q = |l: Option<i64>| FeedQuery {
+            category: None,
+            limit: l,
+            offset: None,
+            sort: None,
+            ids: None,
+        };
         assert_eq!(normalize(&q(None)).0, DEFAULT_LIMIT);
         assert_eq!(normalize(&q(Some(0))).0, 1, "0 → 抬到 1");
         assert_eq!(normalize(&q(Some(-5))).0, 1, "负数 → 抬到 1");
@@ -319,7 +326,13 @@ mod tests {
 
     #[test]
     fn test_normalize_offset_non_negative() {
-        let q = FeedQuery { category: None, limit: None, offset: Some(-3), sort: None, ids: None };
+        let q = FeedQuery {
+            category: None,
+            limit: None,
+            offset: Some(-3),
+            sort: None,
+            ids: None,
+        };
         assert_eq!(normalize(&q).1, 0);
     }
 
@@ -336,8 +349,16 @@ mod tests {
         assert!(normalize(&mk(Some("time"))).2.contains("published_at"));
         // 🔴 非法值 → 回退到时间，而不是拼进 SQL（注入面）
         let injected = normalize(&mk(Some("id; DROP TABLE content_pool"))).2;
-        assert!(injected.contains("published_at"), "非法排序应回退: {}", injected);
-        assert!(!injected.contains("DROP"), "不得把用户输入拼进 SQL: {}", injected);
+        assert!(
+            injected.contains("published_at"),
+            "非法排序应回退: {}",
+            injected
+        );
+        assert!(
+            !injected.contains("DROP"),
+            "不得把用户输入拼进 SQL: {}",
+            injected
+        );
     }
 
     #[test]
@@ -367,7 +388,10 @@ mod tests {
         // 去重：同一个 id 传两次只查一次
         assert_eq!(parse_ids("5,5,5"), vec![5]);
         // 上限：防止 `ids=` 塞几千个
-        let many: String = (1..=500).map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+        let many: String = (1..=500)
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
         assert_eq!(parse_ids(&many).len(), 100, "应压到 MAX_IDS");
         // 🔴 上限截断后仍是**前 100 个**（不是随机/倒序）
         assert_eq!(parse_ids(&many)[0], 1);

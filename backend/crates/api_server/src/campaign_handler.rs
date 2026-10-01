@@ -2,12 +2,16 @@
 //!
 //! 包括：活动列表/创建/详情/更新/删除/启停/推送/统计
 
-use axum::{Json, http::{HeaderMap, StatusCode}, extract::{Path, Query}};
+use axum::response::IntoResponse;
+use axum::{
+    extract::{Path, Query},
+    http::{HeaderMap, StatusCode},
+    Json,
+};
 use serde::Deserialize;
 use serde_json::json;
-use axum::response::IntoResponse;
 
-use crate::admin_handlers::{verify_admin, ok, err};
+use crate::admin_handlers::{err, ok, verify_admin};
 
 #[derive(Deserialize)]
 pub struct CheckPushTriggerQuery {
@@ -28,10 +32,7 @@ pub struct StatusUpdate {
 }
 
 /// GET /api/admin/campaigns — 活动列表
-pub async fn list(
-    headers: HeaderMap,
-    Query(filter): Query<CampaignFilter>,
-) -> impl IntoResponse {
+pub async fn list(headers: HeaderMap, Query(filter): Query<CampaignFilter>) -> impl IntoResponse {
     tracing::info!("campaign_list: status={:?}", filter.status);
 
     let (_admin_id, _role) = match verify_admin(&headers) {
@@ -49,7 +50,12 @@ pub async fn list(
 
     let mut stmt = match conn.prepare(&sql) {
         Ok(s) => s,
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("db_error: {}", e),
+            )
+        }
     };
 
     let rows = if let Some(ref status) = filter.status {
@@ -60,7 +66,12 @@ pub async fn list(
 
     let campaigns: Vec<serde_json::Value> = match rows {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("query_error: {}", e)),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("query_error: {}", e),
+            )
+        }
     };
 
     ok(json!({"campaigns": campaigns}))
@@ -82,9 +93,15 @@ pub async fn create(
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
     let name = payload.get("name").and_then(|v| v.as_str()).unwrap_or("");
-    let campaign_type = payload.get("campaign_type").and_then(|v| v.as_str()).unwrap_or("standard");
+    let campaign_type = payload
+        .get("campaign_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("standard");
     let description = payload.get("description").and_then(|v| v.as_str());
-    let status = payload.get("status").and_then(|v| v.as_str()).unwrap_or("draft");
+    let status = payload
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("draft");
     let rewards = {
         let raw = payload.get("rewards");
         match raw {
@@ -101,11 +118,20 @@ pub async fn create(
             None => "[]".to_string(),
         }
     };
-    let trigger_event = payload.get("trigger_event").and_then(|v| v.as_str()).unwrap_or("registration");
-    let push_trigger = payload.get("push_trigger").and_then(|v| v.as_str()).unwrap_or("manual");
+    let trigger_event = payload
+        .get("trigger_event")
+        .and_then(|v| v.as_str())
+        .unwrap_or("registration");
+    let push_trigger = payload
+        .get("push_trigger")
+        .and_then(|v| v.as_str())
+        .unwrap_or("manual");
     let push_cron = payload.get("push_cron").and_then(|v| v.as_str());
     let poster_prompt = payload.get("poster_prompt").and_then(|v| v.as_str());
-    let attribution_window = payload.get("attribution_window").and_then(|v| v.as_i64()).unwrap_or(30);
+    let attribution_window = payload
+        .get("attribution_window")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(30);
     let valid_from = payload.get("valid_from").and_then(|v| v.as_str());
     let valid_until = payload.get("valid_until").and_then(|v| v.as_str());
     let participant_limit = payload.get("participant_limit").and_then(|v| v.as_i64());
@@ -131,10 +157,7 @@ pub async fn create(
 }
 
 /// GET /api/admin/campaigns/{id} — 活动详情
-pub async fn get(
-    headers: HeaderMap,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
+pub async fn get(headers: HeaderMap, Path(id): Path<String>) -> impl IntoResponse {
     tracing::info!("campaign_get: id={}", id);
 
     let (_admin_id, _role) = match verify_admin(&headers) {
@@ -173,10 +196,24 @@ pub async fn update(
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
     let updatable = [
-        "name", "campaign_type", "description", "status", "rewards",
-        "trigger_event", "target_roles", "push_trigger", "push_cron",
-        "poster_prompt", "h5_prompt", "attribution_window", "valid_from", "valid_until",
-        "participant_limit", "per_user_limit", "qr_code_url", "display_positions",
+        "name",
+        "campaign_type",
+        "description",
+        "status",
+        "rewards",
+        "trigger_event",
+        "target_roles",
+        "push_trigger",
+        "push_cron",
+        "poster_prompt",
+        "h5_prompt",
+        "attribution_window",
+        "valid_from",
+        "valid_until",
+        "participant_limit",
+        "per_user_limit",
+        "qr_code_url",
+        "display_positions",
         "min_member_count",
     ];
 
@@ -184,7 +221,9 @@ pub async fn update(
         if let Some(val) = payload.get(*field) {
             fields.push(format!("{} = ?{}", field, params.len() + 1));
             params.push(match val {
-                serde_json::Value::String(s) => Box::new(s.clone()) as Box<dyn rusqlite::types::ToSql>,
+                serde_json::Value::String(s) => {
+                    Box::new(s.clone()) as Box<dyn rusqlite::types::ToSql>
+                }
                 serde_json::Value::Number(n) => {
                     if let Some(i) = n.as_i64() {
                         Box::new(i)
@@ -223,15 +262,15 @@ pub async fn update(
     match conn.execute(&sql, param_refs.as_slice()) {
         Ok(rows) if rows > 0 => ok(json!({"status": "updated", "id": id})),
         Ok(_) => err(StatusCode::NOT_FOUND, "campaign_not_found"),
-        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, &format!("update_error: {}", e)),
+        Err(e) => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("update_error: {}", e),
+        ),
     }
 }
 
 /// DELETE /api/admin/campaigns/{id} — 删除活动（仅 draft 状态可删除）
-pub async fn delete(
-    headers: HeaderMap,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
+pub async fn delete(headers: HeaderMap, Path(id): Path<String>) -> impl IntoResponse {
     tracing::info!("campaign_delete: id={}", id);
 
     let (_admin_id, _role) = match verify_admin(&headers) {
@@ -242,11 +281,13 @@ pub async fn delete(
     let conn = crate::db_pool::get_conn();
 
     // 先检查状态，非 active 才可删
-    let status: Option<String> = conn.query_row(
-        "SELECT status FROM marketing_campaigns WHERE id = ?1",
-        rusqlite::params![id],
-        |row| row.get(0),
-    ).ok();
+    let status: Option<String> = conn
+        .query_row(
+            "SELECT status FROM marketing_campaigns WHERE id = ?1",
+            rusqlite::params![id],
+            |row| row.get(0),
+        )
+        .ok();
     match status.as_deref() {
         Some("active") => return err(StatusCode::BAD_REQUEST, "active_campaign_cannot_be_deleted"),
         None => return err(StatusCode::NOT_FOUND, "campaign_not_found"),
@@ -254,17 +295,41 @@ pub async fn delete(
     }
 
     // 删除关联子表数据（FK 约束要求先删子表）
-    if let Err(e) = conn.execute("DELETE FROM reward_fulfillments WHERE campaign_id = ?1", rusqlite::params![id]) {
-        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("delete_child_failed: {}", e));
+    if let Err(e) = conn.execute(
+        "DELETE FROM reward_fulfillments WHERE campaign_id = ?1",
+        rusqlite::params![id],
+    ) {
+        return err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("delete_child_failed: {}", e),
+        );
     }
-    if let Err(e) = conn.execute("DELETE FROM referral_clicks WHERE campaign_id = ?1", rusqlite::params![id]) {
-        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("delete_child_failed: {}", e));
+    if let Err(e) = conn.execute(
+        "DELETE FROM referral_clicks WHERE campaign_id = ?1",
+        rusqlite::params![id],
+    ) {
+        return err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("delete_child_failed: {}", e),
+        );
     }
-    if let Err(e) = conn.execute("DELETE FROM distribution_commissions WHERE campaign_id = ?1", rusqlite::params![id]) {
-        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("delete_child_failed: {}", e));
+    if let Err(e) = conn.execute(
+        "DELETE FROM distribution_commissions WHERE campaign_id = ?1",
+        rusqlite::params![id],
+    ) {
+        return err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("delete_child_failed: {}", e),
+        );
     }
-    if let Err(e) = conn.execute("DELETE FROM campaign_members WHERE campaign_id = ?1", rusqlite::params![id]) {
-        return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("delete_child_failed: {}", e));
+    if let Err(e) = conn.execute(
+        "DELETE FROM campaign_members WHERE campaign_id = ?1",
+        rusqlite::params![id],
+    ) {
+        return err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("delete_child_failed: {}", e),
+        );
     }
 
     match conn.execute(
@@ -273,7 +338,10 @@ pub async fn delete(
     ) {
         Ok(rows) if rows > 0 => ok(json!({"status": "deleted"})),
         Ok(_) => err(StatusCode::INTERNAL_SERVER_ERROR, "delete_failed"),
-        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, &format!("delete_error: {}", e)),
+        Err(e) => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("delete_error: {}", e),
+        ),
     }
 }
 
@@ -293,7 +361,12 @@ pub async fn toggle_status(
     // 校验合法状态
     match body.status.as_str() {
         "active" | "paused" | "ended" => {}
-        _ => return err(StatusCode::BAD_REQUEST, "invalid_status_must_be_active_paused_or_ended"),
+        _ => {
+            return err(
+                StatusCode::BAD_REQUEST,
+                "invalid_status_must_be_active_paused_or_ended",
+            )
+        }
     }
 
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -313,10 +386,7 @@ pub async fn toggle_status(
 ///
 /// 按 target_roles 匹配目标用户，为每个用户创建营销通知。
 /// 上限 100 条以防止过量推送。
-pub async fn push(
-    headers: HeaderMap,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
+pub async fn push(headers: HeaderMap, Path(id): Path<String>) -> impl IntoResponse {
     tracing::info!("campaign_push: id={}", id);
 
     let (_admin_id, _role) = match verify_admin(&headers) {
@@ -347,9 +417,7 @@ pub async fn push(
 
     // 2. 按 target_roles 匹配用户
     // 先检查 role 列是否存在，不存在则回退到全量用户
-    let has_role_col: bool = conn
-        .prepare("SELECT role FROM users WHERE 1=0")
-        .is_ok();
+    let has_role_col: bool = conn.prepare("SELECT role FROM users WHERE 1=0").is_ok();
 
     // 构建目标用户 SQL 和参数
     let (sql, params): (String, Vec<String>) = if has_role_col {
@@ -357,9 +425,8 @@ pub async fn push(
             Some(ref roles_json) if roles_json != "[]" && roles_json != "null" => {
                 if let Ok(roles) = serde_json::from_str::<Vec<String>>(roles_json) {
                     if !roles.is_empty() {
-                        let placeholders: Vec<String> = (0..roles.len())
-                            .map(|i| format!("?{}", i + 1))
-                            .collect();
+                        let placeholders: Vec<String> =
+                            (0..roles.len()).map(|i| format!("?{}", i + 1)).collect();
                         (
                             format!(
                                 "SELECT id FROM users WHERE role IN ({}) AND deleted_at IS NULL LIMIT 100",
@@ -368,16 +435,28 @@ pub async fn push(
                             roles,
                         )
                     } else {
-                        ("SELECT id FROM users WHERE deleted_at IS NULL LIMIT 100".to_string(), vec![])
+                        (
+                            "SELECT id FROM users WHERE deleted_at IS NULL LIMIT 100".to_string(),
+                            vec![],
+                        )
                     }
                 } else {
-                    ("SELECT id FROM users WHERE deleted_at IS NULL LIMIT 100".to_string(), vec![])
+                    (
+                        "SELECT id FROM users WHERE deleted_at IS NULL LIMIT 100".to_string(),
+                        vec![],
+                    )
                 }
             }
-            _ => ("SELECT id FROM users WHERE deleted_at IS NULL LIMIT 100".to_string(), vec![]),
+            _ => (
+                "SELECT id FROM users WHERE deleted_at IS NULL LIMIT 100".to_string(),
+                vec![],
+            ),
         }
     } else {
-        ("SELECT id FROM users WHERE deleted_at IS NULL LIMIT 100".to_string(), vec![])
+        (
+            "SELECT id FROM users WHERE deleted_at IS NULL LIMIT 100".to_string(),
+            vec![],
+        )
     };
 
     // 3. 查询目标用户
@@ -391,14 +470,19 @@ pub async fn push(
         // 带角色参数，尝试角色匹配查询
         match conn.prepare(&sql) {
             Ok(mut stmt) => {
-                let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter()
+                let param_refs: Vec<&dyn rusqlite::types::ToSql> = params
+                    .iter()
                     .map(|r| r as &dyn rusqlite::types::ToSql)
                     .collect();
                 match stmt.query_map(param_refs.as_slice(), |row| row.get::<_, String>(0)) {
                     Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
                     Err(_) => {
                         // role 查询失败，查全部用户
-                        match query_user_ids(&conn, "SELECT id FROM users WHERE deleted_at IS NULL LIMIT 100", &[]) {
+                        match query_user_ids(
+                            &conn,
+                            "SELECT id FROM users WHERE deleted_at IS NULL LIMIT 100",
+                            &[],
+                        ) {
                             Ok(ids) => ids,
                             Err(e) => return e,
                         }
@@ -407,7 +491,11 @@ pub async fn push(
             }
             Err(_) => {
                 // role 列不存在，查全部用户
-                match query_user_ids(&conn, "SELECT id FROM users WHERE deleted_at IS NULL LIMIT 100", &[]) {
+                match query_user_ids(
+                    &conn,
+                    "SELECT id FROM users WHERE deleted_at IS NULL LIMIT 100",
+                    &[],
+                ) {
                     Ok(ids) => ids,
                     Err(e) => return e,
                 }
@@ -457,7 +545,8 @@ pub async fn generate_poster_template(
     // 查活动名称和奖励
     let (campaign_name, rewards): (String, String) = match conn.query_row(
         "SELECT name, COALESCE(rewards, '[]') FROM marketing_campaigns WHERE id = ?1",
-        rusqlite::params![&id], |row| Ok((row.get(0)?, row.get(1)?)),
+        rusqlite::params![&id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
     ) {
         Ok(r) => r,
         Err(_) => return err(StatusCode::NOT_FOUND, "campaign_not_found"),
@@ -466,7 +555,9 @@ pub async fn generate_poster_template(
 
     let base_dir = std::env::var("COEVO_PROMPTS_DIR").unwrap_or_else(|_| "prompts".to_string());
 
-    match crate::poster_template::generate_template_via_llm(&base_dir, &campaign_name, &rewards).await {
+    match crate::poster_template::generate_template_via_llm(&base_dir, &campaign_name, &rewards)
+        .await
+    {
         Ok(svg) => {
             let _ = conn.execute(
                 "UPDATE marketing_campaigns SET poster_template = ?1, updated_at = ?2 WHERE id = ?3",
@@ -474,15 +565,15 @@ pub async fn generate_poster_template(
             );
             ok(json!({"status": "ok"}))
         }
-        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, &format!("template_generation_failed: {}", e)),
+        Err(e) => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("template_generation_failed: {}", e),
+        ),
     }
 }
 
 /// POST /api/admin/campaigns/{id}/generate-h5-template — 生成 H5 模板
-pub async fn generate_h5_template(
-    headers: HeaderMap,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
+pub async fn generate_h5_template(headers: HeaderMap, Path(id): Path<String>) -> impl IntoResponse {
     let (_admin_id, _role) = match verify_admin(&headers) {
         Ok(r) => r,
         Err(e) => return e,
@@ -493,27 +584,40 @@ pub async fn generate_h5_template(
     // 查活动名称和 rewards（同步查询，不跨 await）
     let campaign_name: String = match conn.query_row(
         "SELECT name FROM marketing_campaigns WHERE id = ?1",
-        rusqlite::params![&id], |row| row.get(0),
+        rusqlite::params![&id],
+        |row| row.get(0),
     ) {
         Ok(n) => n,
         Err(_) => return err(StatusCode::NOT_FOUND, "campaign_not_found"),
     };
-    let rewards: String = conn.query_row(
-        "SELECT COALESCE(rewards, '[]') FROM marketing_campaigns WHERE id = ?1",
-        rusqlite::params![&id], |row| row.get(0),
-    ).unwrap_or_else(|_| "[]".to_string());
+    let rewards: String = conn
+        .query_row(
+            "SELECT COALESCE(rewards, '[]') FROM marketing_campaigns WHERE id = ?1",
+            rusqlite::params![&id],
+            |row| row.get(0),
+        )
+        .unwrap_or_else(|_| "[]".to_string());
 
     let base_dir = std::env::var("COEVO_PROMPTS_DIR").unwrap_or_else(|_| "prompts".to_string());
 
-    match crate::h5_template::generate_h5_template_via_llm(&base_dir, &campaign_name, &rewards).await {
+    match crate::h5_template::generate_h5_template_via_llm(&base_dir, &campaign_name, &rewards)
+        .await
+    {
         Ok(html) => {
             let _ = conn.execute(
                 "UPDATE marketing_campaigns SET h5_template = ?1, updated_at = ?2 WHERE id = ?3",
-                rusqlite::params![html, chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(), &id],
+                rusqlite::params![
+                    html,
+                    chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                    &id
+                ],
             );
             ok(json!({"status": "ok"}))
         }
-        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, &format!("h5_template_generation_failed: {}", e)),
+        Err(e) => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("h5_template_generation_failed: {}", e),
+        ),
     }
 }
 
@@ -523,20 +627,27 @@ fn query_user_ids(
     sql: &str,
     params: &[&dyn rusqlite::types::ToSql],
 ) -> Result<Vec<String>, axum::response::Response> {
-    let mut stmt = conn.prepare(sql)
-        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &format!("db_error: {}", e)))?;
-    let ids: Vec<String> = stmt.query_map(params, |row| row.get::<_, String>(0))
-        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &format!("query_error: {}", e)))?
+    let mut stmt = conn.prepare(sql).map_err(|e| {
+        err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("db_error: {}", e),
+        )
+    })?;
+    let ids: Vec<String> = stmt
+        .query_map(params, |row| row.get::<_, String>(0))
+        .map_err(|e| {
+            err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("query_error: {}", e),
+            )
+        })?
         .filter_map(|r| r.ok())
         .collect();
     Ok(ids)
 }
 
 /// GET /api/admin/campaigns/{id}/stats — 活动统计
-pub async fn stats(
-    headers: HeaderMap,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
+pub async fn stats(headers: HeaderMap, Path(id): Path<String>) -> impl IntoResponse {
     tracing::info!("campaign_stats: id={}", id);
 
     let (_admin_id, _role) = match verify_admin(&headers) {
@@ -546,28 +657,37 @@ pub async fn stats(
 
     let conn = crate::db_pool::get_conn();
 
-    let clicks: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM referral_clicks WHERE campaign_id = ?1",
-        rusqlite::params![id], |row| row.get(0),
-    ).unwrap_or(0);
+    let clicks: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM referral_clicks WHERE campaign_id = ?1",
+            rusqlite::params![id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
     // 活动带来的注册数：通过 referral_clicks 找到点击者中后来注册的用户
-    let registrations: i64 = conn.query_row(
-        r#"SELECT COUNT(DISTINCT u.id) FROM users u
+    let registrations: i64 = conn
+        .query_row(
+            r#"SELECT COUNT(DISTINCT u.id) FROM users u
            JOIN referral_clicks rc ON u.referred_by = rc.referrer_id
            WHERE rc.campaign_id = ?1 AND u.deleted_at IS NULL"#,
-        rusqlite::params![id], |row| row.get(0),
-    ).unwrap_or(0);
+            rusqlite::params![id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
     let commission_total: i64 = conn.query_row(
         "SELECT COALESCE(SUM(amount), 0) FROM distribution_commissions WHERE campaign_id = ?1 AND status NOT IN ('cancelled')",
         rusqlite::params![id], |row| row.get(0),
     ).unwrap_or(0);
 
-    let member_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM campaign_members WHERE campaign_id = ?1",
-        rusqlite::params![id], |row| row.get(0),
-    ).unwrap_or(0);
+    let member_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM campaign_members WHERE campaign_id = ?1",
+            rusqlite::params![id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
     let paid_count: i64 = conn.query_row(
         "SELECT COUNT(DISTINCT buyer_id) FROM distribution_commissions WHERE campaign_id = ?1 AND status NOT IN ('cancelled')",
@@ -584,20 +704,20 @@ pub async fn stats(
 }
 
 /// GET /api/campaigns/check-push-trigger — 检查是否有匹配的推送活动（仅返回弹窗可用活动）
-pub async fn check_push_trigger(
-    Query(query): Query<CheckPushTriggerQuery>,
-) -> impl IntoResponse {
+pub async fn check_push_trigger(Query(query): Query<CheckPushTriggerQuery>) -> impl IntoResponse {
     let conn = crate::db_pool::get_conn();
-    let result: Option<(String, String)> = conn.query_row(
-        "SELECT id, name FROM marketing_campaigns \
+    let result: Option<(String, String)> = conn
+        .query_row(
+            "SELECT id, name FROM marketing_campaigns \
          WHERE status='active' AND push_trigger=?1 \
          AND (display_positions IS NULL OR display_positions NOT IN ('notification')) \
          AND (valid_from IS NULL OR valid_from <= datetime('now')) \
          AND (valid_until IS NULL OR valid_until > datetime('now')) \
          LIMIT 1",
-        rusqlite::params![query.push_trigger],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    ).ok();
+            rusqlite::params![query.push_trigger],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .ok();
 
     match result {
         Some((id, name)) => ok(json!({
@@ -624,10 +744,7 @@ pub async fn default_poster_prompt() -> impl IntoResponse {
 }
 
 /// POST /api/admin/campaigns/{id}/preview-poster — 生成预览海报（admin 专用）
-pub async fn preview_poster(
-    headers: HeaderMap,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
+pub async fn preview_poster(headers: HeaderMap, Path(id): Path<String>) -> impl IntoResponse {
     let (_admin_id, _role) = match verify_admin(&headers) {
         Ok(r) => r,
         Err(e) => return e,
@@ -641,38 +758,65 @@ pub async fn preview_poster(
 
     let uid = match demo_user_id {
         Some(u) => u,
-        None => return (StatusCode::NOT_FOUND, Json(json!({"error": "no_demo_user"}))).into_response(),
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "no_demo_user"})),
+            )
+                .into_response()
+        }
     };
 
     // 查询模板并生成海报（内联实现，避免跨函数类型推断问题）
-    let template: Option<String> = conn.query_row(
-        "SELECT poster_template FROM marketing_campaigns WHERE id = ?1",
-        rusqlite::params![&id],
-        |row| row.get(0),
-    ).ok().flatten();
+    let template: Option<String> = conn
+        .query_row(
+            "SELECT poster_template FROM marketing_campaigns WHERE id = ?1",
+            rusqlite::params![&id],
+            |row| row.get(0),
+        )
+        .ok()
+        .flatten();
 
     let (svg, copy) = if let Some(ref tpl) = template {
         let data = match crate::poster_template::build_user_poster_data(&conn, &uid, &id) {
             Ok(d) => d,
-            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("build_user_data_failed: {}", e)}))).into_response(),
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": format!("build_user_data_failed: {}", e)})),
+                )
+                    .into_response()
+            }
         };
-        (crate::poster_template::replace_template_variables(tpl, &data), crate::poster_template::fallback_copy())
+        (
+            crate::poster_template::replace_template_variables(tpl, &data),
+            crate::poster_template::fallback_copy(),
+        )
     } else {
         let data = match crate::poster_template::build_user_poster_data(&conn, &uid, "") {
             Ok(d) => d,
-            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("build_user_data_failed: {}", e)}))).into_response(),
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": format!("build_user_data_failed: {}", e)})),
+                )
+                    .into_response()
+            }
         };
-        (crate::poster_template::replace_template_variables(&crate::poster_template::fallback_poster_svg(&data), &data), crate::poster_template::fallback_copy())
+        (
+            crate::poster_template::replace_template_variables(
+                &crate::poster_template::fallback_poster_svg(&data),
+                &data,
+            ),
+            crate::poster_template::fallback_copy(),
+        )
     };
 
     crate::referral_handler::poster_json_response_inline(&svg, &copy)
 }
 
 /// POST /api/admin/campaigns/{id}/preview-h5 — 生成预览 H5（admin 专用，变量已替换）
-pub async fn preview_h5(
-    headers: HeaderMap,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
+pub async fn preview_h5(headers: HeaderMap, Path(id): Path<String>) -> impl IntoResponse {
     let (_admin_id, _role) = match verify_admin(&headers) {
         Ok(r) => r,
         Err(e) => return e,
@@ -686,11 +830,14 @@ pub async fn preview_h5(
 
     match demo_user_id {
         Some(uid) => {
-            let template: Option<String> = conn.query_row(
-                "SELECT h5_template FROM marketing_campaigns WHERE id = ?1",
-                rusqlite::params![&id],
-                |row| row.get(0),
-            ).ok().flatten();
+            let template: Option<String> = conn
+                .query_row(
+                    "SELECT h5_template FROM marketing_campaigns WHERE id = ?1",
+                    rusqlite::params![&id],
+                    |row| row.get(0),
+                )
+                .ok()
+                .flatten();
 
             let html = match template {
                 Some(tpl) => {
@@ -704,9 +851,17 @@ pub async fn preview_h5(
                     "<!DOCTYPE html><html><body style='display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:sans-serif;'><h2>暂无 H5 模板</h2></body></html>".to_string()
                 }
             };
-            (StatusCode::OK, Json(json!({"html": html, "url": format!("/share/{}/", uid)}))).into_response()
+            (
+                StatusCode::OK,
+                Json(json!({"html": html, "url": format!("/share/{}/", uid)})),
+            )
+                .into_response()
         }
-        None => (StatusCode::NOT_FOUND, Json(json!({"error": "no_demo_user"}))).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "no_demo_user"})),
+        )
+            .into_response(),
     }
 }
 
@@ -746,8 +901,8 @@ fn map_campaign_row(row: &rusqlite::Row) -> rusqlite::Result<serde_json::Value> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rusqlite::Connection;
     use crate::schema::init_database;
+    use rusqlite::Connection;
 
     fn setup_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
@@ -775,9 +930,18 @@ mod tests {
               target_roles, push_trigger, attribution_window, created_by, created_at) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             rusqlite::params![
-                id, "双11大促", "standard", "双11限时折扣活动", "draft",
+                id,
+                "双11大促",
+                "standard",
+                "双11限时折扣活动",
+                "draft",
                 r#"[{"type":"discount_pct","party":"buyer","value":0.80}]"#,
-                "registration", r#"["student"]"#, "manual", 30, "admin-1", now,
+                "registration",
+                r#"["student"]"#,
+                "manual",
+                30,
+                "admin-1",
+                now,
             ],
         )
         .unwrap();

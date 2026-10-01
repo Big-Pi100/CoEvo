@@ -3,14 +3,18 @@
 //! 包括：点击追踪、推广码查看、分享统计、团队树、佣金列表、海报/H5 生成、用户画像
 //! 海报/H5 使用 LLM 管线 (chat_engine::llm_caller) 生成个性化推广内容。
 
-use std::collections::HashMap;
-use axum::{Json, http::HeaderMap, extract::{Query, Path}};
+use crate::distribution_handler::net_available_commission;
+use crate::h5_template::fallback_h5_html;
 use axum::response::IntoResponse;
+use axum::{
+    extract::{Path, Query},
+    http::HeaderMap,
+    Json,
+};
+use base64::Engine;
 use serde::Deserialize;
 use serde_json::json;
-use base64::Engine;
-use crate::h5_template::fallback_h5_html;
-use crate::distribution_handler::net_available_commission;
+use std::collections::HashMap;
 // StatusCode 通过 axum::http::StatusCode 全路径使用
 
 // ── 请求/响应结构 ──
@@ -65,9 +69,15 @@ pub(crate) fn load_combined_prompt(base_dir: &str, prompt_type: &str) -> Result<
     let format = std::fs::read_to_string(&format_path).unwrap_or_default();
 
     let mut parts: Vec<&str> = Vec::new();
-    if !main.is_empty() { parts.push(&main); }
-    if !signal.is_empty() { parts.push(&signal); }
-    if !format.is_empty() { parts.push(&format); }
+    if !main.is_empty() {
+        parts.push(&main);
+    }
+    if !signal.is_empty() {
+        parts.push(&signal);
+    }
+    if !format.is_empty() {
+        parts.push(&format);
+    }
 
     if parts.is_empty() {
         return Err(format!("未找到 prompt: share/{}.md", prompt_type));
@@ -80,7 +90,11 @@ pub(crate) fn load_combined_prompt(base_dir: &str, prompt_type: &str) -> Result<
 /// 如果提供了 campaign_id 且该活动有自定义 prompt，则使用自定义的
 /// 否则使用默认的 share/poster.md 文件
 /// 自定义 prompt 会自动合并 signal + format 部分
-fn load_poster_prompt(base_dir: &str, campaign_id: Option<&str>, conn: Option<&rusqlite::Connection>) -> Result<String, String> {
+fn load_poster_prompt(
+    base_dir: &str,
+    campaign_id: Option<&str>,
+    conn: Option<&rusqlite::Connection>,
+) -> Result<String, String> {
     if let (Some(cid), Some(c)) = (campaign_id, conn) {
         let custom: String = c.query_row(
             "SELECT poster_prompt FROM marketing_campaigns WHERE id = ?1 AND poster_prompt IS NOT NULL AND poster_prompt != ''",
@@ -97,8 +111,12 @@ fn load_poster_prompt(base_dir: &str, campaign_id: Option<&str>, conn: Option<&r
                 Err(_) => String::new(),
             };
             let mut parts = vec![custom];
-            if !signal.is_empty() { parts.push(signal); }
-            if !format.is_empty() { parts.push(format); }
+            if !signal.is_empty() {
+                parts.push(signal);
+            }
+            if !format.is_empty() {
+                parts.push(format);
+            }
             return Ok(parts.join("\n\n"));
         }
     }
@@ -123,15 +141,21 @@ fn load_poster_prompt(base_dir: &str, campaign_id: Option<&str>, conn: Option<&r
 ///     → 战绩类字段一律返回 0 / 空。⚠️ 战绩展示 UI 已同步移除（待「成就体系重新规划」重做）。
 /// 仅保留 `users` 表内可得的字段（`streak_days` / `referral_code`）。
 fn get_user_portrait_data(conn: &rusqlite::Connection, user_id: &str) -> Result<String, String> {
-    let streak_days: i64 = conn.query_row(
-        "SELECT COALESCE(streak_days, 0) FROM users WHERE id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or(0);
+    let streak_days: i64 = conn
+        .query_row(
+            "SELECT COALESCE(streak_days, 0) FROM users WHERE id = ?1",
+            rusqlite::params![user_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
-    let referral_code: String = conn.query_row(
-        "SELECT referral_code FROM users WHERE id = ?1",
-        rusqlite::params![user_id], |row| row.get(0),
-    ).unwrap_or_default();
+    let referral_code: String = conn
+        .query_row(
+            "SELECT referral_code FROM users WHERE id = ?1",
+            rusqlite::params![user_id],
+            |row| row.get(0),
+        )
+        .unwrap_or_default();
 
     let result = json!({
         "learning_today": {
@@ -188,8 +212,8 @@ fn fallback_poster_svg(referral_code: &str) -> String {
 
 /// 生成二维码 SVG
 pub(crate) fn generate_qr_svg(content: &str, fg_color: &str, bg_color: &str) -> String {
-    use qrcode::{QrCode, EcLevel};
     use qrcode::render::svg;
+    use qrcode::{EcLevel, QrCode};
 
     let code = QrCode::with_error_correction_level(content, EcLevel::M).unwrap();
     code.render()
@@ -208,12 +232,14 @@ pub(crate) fn svg_to_png(svg: &str) -> Result<Vec<u8>, String> {
         .replace("font-family=\"'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', system-ui, sans-serif\"", "font-family=\"sans-serif\"");
     let mut opts = resvg::usvg::Options::default();
     opts.fontdb_mut().load_system_fonts();
-    let tree = resvg::usvg::Tree::from_data(cleaned.as_bytes(), &opts)
-        .map_err(|e| {
-            let preview: String = cleaned.chars().take(500).collect();
-            tracing::warn!("SVG→PNG failed, first 500 chars of SVG:\n---\n{}\n---", preview);
-            format!("SVG parse error: {}", e)
-        })?;
+    let tree = resvg::usvg::Tree::from_data(cleaned.as_bytes(), &opts).map_err(|e| {
+        let preview: String = cleaned.chars().take(500).collect();
+        tracing::warn!(
+            "SVG→PNG failed, first 500 chars of SVG:\n---\n{}\n---",
+            preview
+        );
+        format!("SVG parse error: {}", e)
+    })?;
 
     let size = tree.size();
     let width = size.width() as u32;
@@ -222,7 +248,11 @@ pub(crate) fn svg_to_png(svg: &str) -> Result<Vec<u8>, String> {
     let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height)
         .ok_or_else(|| format!("Failed to create {}x{} pixmap", width, height))?;
 
-    resvg::render(&tree, resvg::tiny_skia::Transform::default(), &mut pixmap.as_mut());
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::default(),
+        &mut pixmap.as_mut(),
+    );
 
     pixmap
         .encode_png()
@@ -234,12 +264,14 @@ pub(crate) fn svg_to_png(svg: &str) -> Result<Vec<u8>, String> {
 fn extract_user_for_png_fallback(svg: &str) -> crate::poster_template::UserPosterData {
     let base = crate::share_data::coevo_base_url();
     // 尝试从 SVG 中提取推广码（<text ...>推广码: XXXX</text> 或 {referral_code} 被替换后的值）
-    let referral_code = svg.lines()
+    let referral_code = svg
+        .lines()
         .find_map(|line| {
             let trimmed = line.trim();
             if let Some(start) = trimmed.find("推广码: ") {
-                let after = &trimmed[start + 5..];  // skip "推广码: "
-                let code = after.trim_end_matches(|c: char| c == '<' || c == '/' || c == ' ' || c == '>');
+                let after = &trimmed[start + 5..]; // skip "推广码: "
+                let code =
+                    after.trim_end_matches(|c: char| c == '<' || c == '/' || c == ' ' || c == '>');
                 Some(code.to_string())
             } else {
                 None
@@ -265,15 +297,21 @@ fn extract_user_for_png_fallback(svg: &str) -> crate::poster_template::UserPoste
 
 /// 生成包含 SVG 和 PNG 的 JSON 响应（PNG 转换失败时降级为纯 SVG）
 /// 内部：SVG → JSON(PNG) 响应（公开供 admin preview 等场景用）
-pub fn poster_json_response_inline(svg: &str, copy: &str) -> axum::http::Response<axum::body::Body> {
+pub fn poster_json_response_inline(
+    svg: &str,
+    copy: &str,
+) -> axum::http::Response<axum::body::Body> {
     poster_json_response(svg, copy, None)
 }
 
-fn poster_json_response(svg: &str, copy: &str, poster_data: Option<&crate::poster_template::UserPosterData>) -> axum::http::Response<axum::body::Body> {
+fn poster_json_response(
+    svg: &str,
+    copy: &str,
+    poster_data: Option<&crate::poster_template::UserPosterData>,
+) -> axum::http::Response<axum::body::Body> {
     let png_data_url = match svg_to_png(svg) {
         Ok(png_bytes) => {
-            let png_base64 =
-                base64::engine::general_purpose::STANDARD.encode(&png_bytes);
+            let png_base64 = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
             Some(format!("data:image/png;base64,{}", png_base64))
         }
         Err(_e) => {
@@ -290,8 +328,7 @@ fn poster_json_response(svg: &str, copy: &str, poster_data: Option<&crate::poste
             };
             match svg_to_png(&fallback_svg) {
                 Ok(png_bytes) => {
-                    let png_base64 =
-                        base64::engine::general_purpose::STANDARD.encode(&png_bytes);
+                    let png_base64 = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
                     Some(format!("data:image/png;base64,{}", png_base64))
                 }
                 Err(e2) => {
@@ -317,11 +354,21 @@ pub async fn get_qrcode(
 ) -> impl IntoResponse {
     let user_id = match params.get("user_id") {
         Some(uid) if !uid.is_empty() => uid,
-        _ => return (axum::http::StatusCode::BAD_REQUEST, "Missing user_id".to_string()).into_response(),
+        _ => {
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                "Missing user_id".to_string(),
+            )
+                .into_response()
+        }
     };
 
     if let Err(e) = crate::auth_middleware::verify_auth(user_id, &headers) {
-        return (axum::http::StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+        return (
+            axum::http::StatusCode::UNAUTHORIZED,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response();
     }
 
     let conn = crate::db_pool::get_conn();
@@ -331,41 +378,58 @@ pub async fn get_qrcode(
         |row| row.get(0),
     ) {
         Ok(code) => code,
-        Err(_) => return (axum::http::StatusCode::NOT_FOUND, "User not found".to_string()).into_response(),
+        Err(_) => {
+            return (
+                axum::http::StatusCode::NOT_FOUND,
+                "User not found".to_string(),
+            )
+                .into_response()
+        }
     };
 
     // 构建二维码内容
     let campaign_id = params.get("camp").map(|s| s.as_str()).unwrap_or("share");
     let base = crate::share_data::public_base_url();
-    let qr_content = format!(
-        "{}/home?ref={}&camp={}",
-        base, referral_code, campaign_id
-    );
+    let qr_content = format!("{}/home?ref={}&camp={}", base, referral_code, campaign_id);
 
     let qr_svg = generate_qr_svg(&qr_content, "#1A237E", "#FFFFFF");
 
-    ([(axum::http::header::CONTENT_TYPE, "image/svg+xml")], qr_svg).into_response()
+    (
+        [(axum::http::header::CONTENT_TYPE, "image/svg+xml")],
+        qr_svg,
+    )
+        .into_response()
 }
 
 // ── Handler 实现 ──
 
 /// POST /api/referral/click — 点击追踪（公开接口，无需认证）
-pub async fn click(
-    Json(payload): Json<ClickRequest>,
-) -> impl IntoResponse {
-    tracing::info!("referral_click: campaign={}, code={}", payload.campaign_id, payload.referrer_code);
+pub async fn click(Json(payload): Json<ClickRequest>) -> impl IntoResponse {
+    tracing::info!(
+        "referral_click: campaign={}, code={}",
+        payload.campaign_id,
+        payload.referrer_code
+    );
 
     // 用 referrer_code 查对应的用户
     let conn = crate::db_pool::get_conn();
-    let referrer_id: Option<String> = conn.query_row(
-        "SELECT id FROM users WHERE referral_code = ?1 AND deleted_at IS NULL",
-        rusqlite::params![payload.referrer_code],
-        |row| row.get(0),
-    ).ok();
+    let referrer_id: Option<String> = conn
+        .query_row(
+            "SELECT id FROM users WHERE referral_code = ?1 AND deleted_at IS NULL",
+            rusqlite::params![payload.referrer_code],
+            |row| row.get(0),
+        )
+        .ok();
 
     let referrer_id = match referrer_id {
         Some(id) => id,
-        None => return (axum::http::StatusCode::NOT_FOUND, Json(json!({"error": "referrer_not_found"}))).into_response(),
+        None => {
+            return (
+                axum::http::StatusCode::NOT_FOUND,
+                Json(json!({"error": "referrer_not_found"})),
+            )
+                .into_response()
+        }
     };
 
     // 自链接防护：如果有 clicker_anonymous_id 且该匿名用户就是推广员自己，记录但不阻止
@@ -382,14 +446,15 @@ pub async fn click(
 }
 
 /// GET /api/referral/my-code — 查看推广码
-pub async fn my_code(
-    headers: HeaderMap,
-    Query(query): Query<UserQuery>,
-) -> impl IntoResponse {
+pub async fn my_code(headers: HeaderMap, Query(query): Query<UserQuery>) -> impl IntoResponse {
     tracing::info!("my_code: user_id={}", query.user_id);
 
     if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return (axum::http::StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+        return (
+            axum::http::StatusCode::UNAUTHORIZED,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response();
     }
 
     let conn = crate::db_pool::get_conn();
@@ -402,32 +467,45 @@ pub async fn my_code(
             Ok((code, created))
         },
     ) {
-        Ok((code, created_at)) => Json(json!({"referral_code": code, "created_at": created_at})).into_response(),
-        Err(_) => (axum::http::StatusCode::NOT_FOUND, Json(json!({"error": "user_not_found"}))).into_response(),
+        Ok((code, created_at)) => {
+            Json(json!({"referral_code": code, "created_at": created_at})).into_response()
+        }
+        Err(_) => (
+            axum::http::StatusCode::NOT_FOUND,
+            Json(json!({"error": "user_not_found"})),
+        )
+            .into_response(),
     }
 }
 
 /// GET /api/referral/my-stats — 分享统计
-pub async fn my_stats(
-    headers: HeaderMap,
-    Query(query): Query<UserQuery>,
-) -> impl IntoResponse {
+pub async fn my_stats(headers: HeaderMap, Query(query): Query<UserQuery>) -> impl IntoResponse {
     tracing::info!("my_stats: user_id={}", query.user_id);
 
     if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return (axum::http::StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+        return (
+            axum::http::StatusCode::UNAUTHORIZED,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response();
     }
 
     let conn = crate::db_pool::get_conn();
-    let total_clicks: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM referral_clicks WHERE referrer_id = ?1",
-        rusqlite::params![query.user_id], |row| row.get(0),
-    ).unwrap_or(0);
+    let total_clicks: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM referral_clicks WHERE referrer_id = ?1",
+            rusqlite::params![query.user_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
-    let total_registrations: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM users WHERE referred_by = ?1 AND deleted_at IS NULL",
-        rusqlite::params![query.user_id], |row| row.get(0),
-    ).unwrap_or(0);
+    let total_registrations: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM users WHERE referred_by = ?1 AND deleted_at IS NULL",
+            rusqlite::params![query.user_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
     let total_earned: i64 = {
         // 净收益 = 所有佣金 - 所有支出
@@ -449,18 +527,20 @@ pub async fn my_stats(
         "total_registrations": total_registrations,
         "total_earned": total_earned,
         "available_commission": available_commission,
-    })).into_response()
+    }))
+    .into_response()
 }
 
 /// GET /api/referral/my-team — 团队树（递归 CTE，最多 2 级）
-pub async fn my_team(
-    headers: HeaderMap,
-    Query(query): Query<UserQuery>,
-) -> impl IntoResponse {
+pub async fn my_team(headers: HeaderMap, Query(query): Query<UserQuery>) -> impl IntoResponse {
     tracing::info!("my_team: user_id={}", query.user_id);
 
     if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return (axum::http::StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+        return (
+            axum::http::StatusCode::UNAUTHORIZED,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response();
     }
 
     let conn = crate::db_pool::get_conn();
@@ -483,31 +563,41 @@ pub async fn my_team(
 
     let mut stmt = match conn.prepare(sql) {
         Ok(s) => s,
-        Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("db_error: {}", e)}))).into_response(),
+        Err(e) => {
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("db_error: {}", e)})),
+            )
+                .into_response()
+        }
     };
 
-    let members: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![query.user_id], |row| {
-        let member_id: String = row.get(0)?;
-        let display_name: String = row.get::<_, Option<String>>(1)?.unwrap_or_default();
-        let referred_by: String = row.get::<_, Option<String>>(2)?.unwrap_or_default();
-        let level: i32 = row.get(3)?;
-        Ok((member_id, display_name, referred_by, level))
-    }) {
-        Ok(rows) => rows.filter_map(|r| r.ok()).map(|(member_id, display_name, referred_by, level)| {
-            let referral_count: i64 = conn.query_row(
+    let members: Vec<serde_json::Value> =
+        match stmt.query_map(rusqlite::params![query.user_id], |row| {
+            let member_id: String = row.get(0)?;
+            let display_name: String = row.get::<_, Option<String>>(1)?.unwrap_or_default();
+            let referred_by: String = row.get::<_, Option<String>>(2)?.unwrap_or_default();
+            let level: i32 = row.get(3)?;
+            Ok((member_id, display_name, referred_by, level))
+        }) {
+            Ok(rows) => rows
+                .filter_map(|r| r.ok())
+                .map(|(member_id, display_name, referred_by, level)| {
+                    let referral_count: i64 = conn.query_row(
                 "SELECT COUNT(*) FROM users WHERE referred_by = ?1 AND deleted_at IS NULL",
                 rusqlite::params![&member_id], |row| row.get(0),
             ).unwrap_or(0);
-            json!({
-                "id": member_id,
-                "display_name": display_name,
-                "referred_by": referred_by,
-                "level": level,
-                "referral_count": referral_count,
-            })
-        }).collect(),
-        Err(_) => vec![],
-    };
+                    json!({
+                        "id": member_id,
+                        "display_name": display_name,
+                        "referred_by": referred_by,
+                        "level": level,
+                        "referral_count": referral_count,
+                    })
+                })
+                .collect(),
+            Err(_) => vec![],
+        };
 
     Json(json!({"team": members})).into_response()
 }
@@ -520,7 +610,11 @@ pub async fn my_commissions(
     tracing::info!("my_commissions: user_id={}", query.user_id);
 
     if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return (axum::http::StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+        return (
+            axum::http::StatusCode::UNAUTHORIZED,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response();
     }
 
     let conn = crate::db_pool::get_conn();
@@ -537,28 +631,35 @@ pub async fn my_commissions(
 
     let mut stmt = match conn.prepare(sql) {
         Ok(s) => s,
-        Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("db_error: {}", e)}))).into_response(),
+        Err(e) => {
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("db_error: {}", e)})),
+            )
+                .into_response()
+        }
     };
 
-    let items: Vec<serde_json::Value> = match stmt.query_map(rusqlite::params![query.user_id], |row| {
-        Ok(json!({
-            "id": row.get::<_, String>(0)?,
-            "campaign_id": row.get::<_, String>(1)?,
-            "buyer_id": row.get::<_, String>(2)?,
-            "order_id": row.get::<_, String>(3)?,
-            "order_amount": row.get::<_, i64>(4)?,
-            "rate_applied": row.get::<_, f64>(5)?,
-            "amount": row.get::<_, i64>(6)?,
-            "level": row.get::<_, i32>(7)?,
-            "status": row.get::<_, String>(8)?,
-            "created_at": row.get::<_, String>(9)?,
-            "plan_id": row.get::<_, String>(10)?,
-            "paid_at": row.get::<_, Option<String>>(11)?,
-        }))
-    }) {
-        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(_) => vec![],
-    };
+    let items: Vec<serde_json::Value> =
+        match stmt.query_map(rusqlite::params![query.user_id], |row| {
+            Ok(json!({
+                "id": row.get::<_, String>(0)?,
+                "campaign_id": row.get::<_, String>(1)?,
+                "buyer_id": row.get::<_, String>(2)?,
+                "order_id": row.get::<_, String>(3)?,
+                "order_amount": row.get::<_, i64>(4)?,
+                "rate_applied": row.get::<_, f64>(5)?,
+                "amount": row.get::<_, i64>(6)?,
+                "level": row.get::<_, i32>(7)?,
+                "status": row.get::<_, String>(8)?,
+                "created_at": row.get::<_, String>(9)?,
+                "plan_id": row.get::<_, String>(10)?,
+                "paid_at": row.get::<_, Option<String>>(11)?,
+            }))
+        }) {
+            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+            Err(_) => vec![],
+        };
 
     Json(json!({"commissions": items})).into_response()
 }
@@ -574,17 +675,24 @@ pub async fn generate_poster_internal(
             "SELECT poster_template FROM marketing_campaigns WHERE id = ?1",
             rusqlite::params![campaign_id],
             |row| row.get(0),
-        ).ok().flatten()
+        )
+        .ok()
+        .flatten()
     } else {
         None
     };
 
     let (svg, copy, poster_data) = if let Some(ref tpl) = template {
-        let data = match crate::poster_template::build_user_poster_data(conn, user_id, campaign_id) {
+        let data = match crate::poster_template::build_user_poster_data(conn, user_id, campaign_id)
+        {
             Ok(d) => d,
             Err(e) => {
                 tracing::error!("build_user_poster_data failed: {}", e);
-                return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("build_user_data_failed: {}", e)}))).into_response();
+                return (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": format!("build_user_data_failed: {}", e)})),
+                )
+                    .into_response();
             }
         };
         let svg = crate::poster_template::replace_template_variables(tpl, &data);
@@ -594,7 +702,11 @@ pub async fn generate_poster_internal(
             Ok(d) => d,
             Err(e) => {
                 tracing::error!("build_user_poster_data failed: {}", e);
-                return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("build_user_data_failed: {}", e)}))).into_response();
+                return (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": format!("build_user_data_failed: {}", e)})),
+                )
+                    .into_response();
             }
         };
         let svg = crate::poster_template::replace_template_variables(
@@ -613,27 +725,34 @@ pub async fn generate_poster_internal(
 ///   2. 如有模板 → build_user_poster_data() + replace_template_variables()
 ///   3. 如无模板 → fallback 静态海报
 ///   零 LLM 调用，快速响应。
-pub async fn generate_poster(
-    headers: HeaderMap,
-    Json(body): Json<UserBody>,
-) -> impl IntoResponse {
+pub async fn generate_poster(headers: HeaderMap, Json(body): Json<UserBody>) -> impl IntoResponse {
     tracing::info!("generate_poster: user_id={}", body.user_id);
 
     if let Err(e) = crate::auth_middleware::verify_auth(&body.user_id, &headers) {
-        return (axum::http::StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+        return (
+            axum::http::StatusCode::UNAUTHORIZED,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response();
     }
 
     let conn = crate::db_pool::get_conn();
 
     // 如果传了 campaign_id 但活动不存在（已删除），返回已结束标记
     if let Some(ref cid) = body.campaign_id {
-        let exists: bool = conn.query_row(
-            "SELECT 1 FROM marketing_campaigns WHERE id = ?1",
-            rusqlite::params![cid],
-            |_| Ok(true),
-        ).unwrap_or(false);
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM marketing_campaigns WHERE id = ?1",
+                rusqlite::params![cid],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
         if !exists {
-            return (axum::http::StatusCode::OK, Json(json!({"status": "campaign_ended"}))).into_response();
+            return (
+                axum::http::StatusCode::OK,
+                Json(json!({"status": "campaign_ended"})),
+            )
+                .into_response();
         }
     }
 
@@ -643,7 +762,9 @@ pub async fn generate_poster(
             "SELECT poster_template FROM marketing_campaigns WHERE id = ?1",
             rusqlite::params![cid],
             |row| row.get(0),
-        ).ok().flatten()
+        )
+        .ok()
+        .flatten()
     } else {
         None
     };
@@ -651,13 +772,19 @@ pub async fn generate_poster(
     let (svg, copy, poster_data) = if let Some(tpl) = template {
         // 使用模板替换流程（零 LLM）
         let campaign_id = body.campaign_id.as_deref().unwrap_or("");
-        let data = match crate::poster_template::build_user_poster_data(&conn, &body.user_id, campaign_id) {
-            Ok(d) => d,
-            Err(e) => {
-                tracing::error!("build_user_poster_data failed: {}", e);
-                return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("build_user_data_failed: {}", e)}))).into_response();
-            }
-        };
+        let data =
+            match crate::poster_template::build_user_poster_data(&conn, &body.user_id, campaign_id)
+            {
+                Ok(d) => d,
+                Err(e) => {
+                    tracing::error!("build_user_poster_data failed: {}", e);
+                    return (
+                        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"error": format!("build_user_data_failed: {}", e)})),
+                    )
+                        .into_response();
+                }
+            };
         let svg = crate::poster_template::replace_template_variables(&tpl, &data);
         let copy = crate::poster_template::fallback_copy();
         (svg, copy, Some(data))
@@ -667,7 +794,11 @@ pub async fn generate_poster(
             Ok(d) => d,
             Err(e) => {
                 tracing::error!("build_user_poster_data failed: {}", e);
-                return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("build_user_data_failed: {}", e)}))).into_response();
+                return (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": format!("build_user_data_failed: {}", e)})),
+                )
+                    .into_response();
             }
         };
         let svg = crate::poster_template::replace_template_variables(
@@ -687,32 +818,49 @@ pub async fn generate_poster(
 /// 使用活动 h5_template（如果存在）做模板替换，否则返回 fallback。
 /// 返回 JSON 包含 HTML 文本，前端在 WebView 中渲染。
 /// 不再调用 LLM，不再写入磁盘。
-pub async fn generate_h5(
-    headers: HeaderMap,
-    Json(body): Json<UserBody>,
-) -> impl IntoResponse {
+pub async fn generate_h5(headers: HeaderMap, Json(body): Json<UserBody>) -> impl IntoResponse {
     tracing::info!("generate_h5: user_id={}", body.user_id);
 
     if let Err(e) = crate::auth_middleware::verify_auth(&body.user_id, &headers) {
-        return (axum::http::StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+        return (
+            axum::http::StatusCode::UNAUTHORIZED,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response();
     }
 
     let conn = crate::db_pool::get_conn();
-    let referral_code: String = conn.query_row(
-        "SELECT referral_code FROM users WHERE id = ?1",
-        rusqlite::params![body.user_id], |row| row.get(0),
-    ).unwrap_or_else(|_| "UNKNOWN".to_string());
+    let referral_code: String = conn
+        .query_row(
+            "SELECT referral_code FROM users WHERE id = ?1",
+            rusqlite::params![body.user_id],
+            |row| row.get(0),
+        )
+        .unwrap_or_else(|_| "UNKNOWN".to_string());
 
-    let avatar_url = format!("{}/api/user/{}/avatar", crate::share_data::coevo_base_url(), body.user_id);
+    let avatar_url = format!(
+        "{}/api/user/{}/avatar",
+        crate::share_data::coevo_base_url(),
+        body.user_id
+    );
 
     // 查活动 H5 模板（如果有 campaign_id）
     let html = if let Some(ref cid) = body.campaign_id {
-        match conn.query_row(
-            "SELECT h5_template FROM marketing_campaigns WHERE id = ?1",
-            rusqlite::params![cid], |row| row.get::<_, Option<String>>(0),
-        ).ok().flatten() {
+        match conn
+            .query_row(
+                "SELECT h5_template FROM marketing_campaigns WHERE id = ?1",
+                rusqlite::params![cid],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .ok()
+            .flatten()
+        {
             Some(template) => {
-                tracing::info!("generate_h5: using custom template for campaign={}, template_len={}", cid, template.len());
+                tracing::info!(
+                    "generate_h5: using custom template for campaign={}, template_len={}",
+                    cid,
+                    template.len()
+                );
                 // 使用模板替换流程（零 LLM）
                 match crate::h5_template::build_user_h5_data(&conn, &body.user_id, cid) {
                     Ok(data) => crate::h5_template::replace_h5_variables(&template, &data),
@@ -723,21 +871,37 @@ pub async fn generate_h5(
                 }
             }
             None => {
-                tracing::info!("generate_h5: no h5_template for campaign={}, using fallback", cid);
+                tracing::info!(
+                    "generate_h5: no h5_template for campaign={}, using fallback",
+                    cid
+                );
                 fallback_h5_html(&referral_code, Some(cid), Some(&avatar_url))
             }
         }
     } else {
         tracing::info!("generate_h5: no campaign_id, using fallback");
-        fallback_h5_html(&referral_code, body.campaign_id.as_deref(), Some(&avatar_url))
+        fallback_h5_html(
+            &referral_code,
+            body.campaign_id.as_deref(),
+            Some(&avatar_url),
+        )
     };
 
     // 🔴 2026-09-29 已退役：分享生成成就事件（成就改为「端侧计算」）
 
     // 返回 JSON，包含 HTML 文本 + 分享 URL（转发给好友的链接）
     let share_url = match &body.campaign_id {
-        Some(cid) => format!("{}/share/{}?campaign_id={}", crate::share_data::coevo_base_url(), referral_code, cid),
-        None => format!("{}/share/{}", crate::share_data::coevo_base_url(), referral_code),
+        Some(cid) => format!(
+            "{}/share/{}?campaign_id={}",
+            crate::share_data::coevo_base_url(),
+            referral_code,
+            cid
+        ),
+        None => format!(
+            "{}/share/{}",
+            crate::share_data::coevo_base_url(),
+            referral_code
+        ),
     };
     Json(json!({"html": html, "url": share_url})).into_response()
 }
@@ -753,23 +917,34 @@ pub async fn share_landing(
 
     // 如果有 campaign_id，尝试用活动 H5 模板渲染
     if let Some(cid) = params.get("campaign_id") {
-        let user_id: Option<String> = conn.query_row(
-            "SELECT id FROM users WHERE referral_code = ?1 LIMIT 1",
-            rusqlite::params![&code], |row| row.get(0),
-        ).ok();
+        let user_id: Option<String> = conn
+            .query_row(
+                "SELECT id FROM users WHERE referral_code = ?1 LIMIT 1",
+                rusqlite::params![&code],
+                |row| row.get(0),
+            )
+            .ok();
 
         if let Some(uid) = user_id {
-            if let Some(template) = conn.query_row(
-                "SELECT h5_template FROM marketing_campaigns WHERE id = ?1",
-                rusqlite::params![cid], |row| row.get::<_, Option<String>>(0),
-            ).ok().flatten() {
+            if let Some(template) = conn
+                .query_row(
+                    "SELECT h5_template FROM marketing_campaigns WHERE id = ?1",
+                    rusqlite::params![cid],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+                .ok()
+                .flatten()
+            {
                 if let Ok(data) = crate::h5_template::build_user_h5_data(&conn, &uid, cid) {
                     let mut html = crate::h5_template::replace_h5_variables(&template, &data);
                     // 注入 OG meta 标签
-                    let campaign_name: String = conn.query_row(
-                        "SELECT name FROM marketing_campaigns WHERE id = ?1",
-                        rusqlite::params![cid], |row| row.get(0),
-                    ).unwrap_or_default();
+                    let campaign_name: String = conn
+                        .query_row(
+                            "SELECT name FROM marketing_campaigns WHERE id = ?1",
+                            rusqlite::params![cid],
+                            |row| row.get(0),
+                        )
+                        .unwrap_or_default();
                     let frontend = crate::share_data::public_base_url();
                     let backend = crate::share_data::coevo_base_url();
                     let og = format!(
@@ -777,10 +952,18 @@ pub async fn share_landing(
 <meta property="og:title" content="{} 邀请你一起学习">
 <meta property="og:description" content="在 CoEvo 一起学习，{}活动等你参加！">
 <meta property="og:url" content="{}/go/{}?campaign_id={}">"#,
-                        frontend, data.display_name, campaign_name, backend, &data.referral_code, cid
+                        frontend,
+                        data.display_name,
+                        campaign_name,
+                        backend,
+                        &data.referral_code,
+                        cid
                     );
                     html = html.replace("</head>", &format!("{}</head>", og));
-                    return ([(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")], html);
+                    return (
+                        [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                        html,
+                    );
                 }
             }
         }
@@ -800,12 +983,18 @@ pub async fn share_landing(
             frontend, backend, code
         );
         let html_with_og = html.replace("</head>", &format!("{}</head>", og));
-        return ([(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")], html_with_og);
+        return (
+            [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+            html_with_og,
+        );
     }
 
     // fallback: 内联模板
     let html = fallback_h5_html(&code, None, None);
-    ([(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")], html)
+    (
+        [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        html,
+    )
 }
 
 /// GET /api/referral/user-portrait — 用户学习画像
@@ -819,17 +1008,24 @@ pub async fn user_portrait(
     tracing::info!("user_portrait: user_id={}", query.user_id);
 
     if let Err(e) = crate::auth_middleware::verify_auth(&query.user_id, &headers) {
-        return (axum::http::StatusCode::UNAUTHORIZED, Json(json!({"error": e.to_string()}))).into_response();
+        return (
+            axum::http::StatusCode::UNAUTHORIZED,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response();
     }
 
     let conn = crate::db_pool::get_conn();
     let uid = &query.user_id;
 
     // 连续学习天数（`users` 表）
-    let streak_days: i64 = conn.query_row(
-        "SELECT streak_days FROM users WHERE id = ?1",
-        rusqlite::params![uid], |row| row.get(0),
-    ).unwrap_or(0);
+    let streak_days: i64 = conn
+        .query_row(
+            "SELECT streak_days FROM users WHERE id = ?1",
+            rusqlite::params![uid],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
     Json(json!({
         "portrait": {
@@ -839,7 +1035,8 @@ pub async fn user_portrait(
             "total_cards": 0,
             "achievements": [],
         }
-    })).into_response()
+    }))
+    .into_response()
 }
 
 /// GET /share/ 或 /go/ — 无 referral code 时的通用落地页
@@ -881,7 +1078,10 @@ p{font-size:1.1em;line-height:1.6;max-width:500px;margin:0.5em auto}
 <div class="url">www.keyievolution.fun</div>
 </body>
 </html>"#;
-    ([(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")], html)
+    (
+        [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        html,
+    )
 }
 
 #[cfg(test)]
@@ -926,7 +1126,11 @@ mod tests {
 
         for code in &codes {
             // 格式: CoEvo_ + 4 位大写字母数字
-            assert!(code.starts_with("CoEvo_"), "推广码应以 CoEvo_ 开头: {}", code);
+            assert!(
+                code.starts_with("CoEvo_"),
+                "推广码应以 CoEvo_ 开头: {}",
+                code
+            );
             let suffix = code.trim_start_matches("CoEvo_");
             assert_eq!(suffix.len(), 4, "推广码后缀应为 4 位: {}", code);
             assert!(
@@ -934,7 +1138,12 @@ mod tests {
                 "推广码后缀应为大写字母数字: {}",
                 code
             );
-            assert_eq!(suffix.to_uppercase(), suffix, "推广码后缀应全大写: {}", code);
+            assert_eq!(
+                suffix.to_uppercase(),
+                suffix,
+                "推广码后缀应全大写: {}",
+                code
+            );
         }
     }
 
@@ -953,11 +1162,7 @@ mod tests {
                 .collect::<String>()
                 .to_uppercase();
             let code = format!("CoEvo_{}", suffix);
-            assert!(
-                seen.insert(code.clone()),
-                "推广码重复: {}",
-                code
-            );
+            assert!(seen.insert(code.clone()), "推广码重复: {}", code);
         }
     }
 
@@ -990,7 +1195,12 @@ mod tests {
         eprintln!("QR SVG: {}", qr);
         let has_close = qr.contains("\"/>");
         let has_space = qr.contains("\" />");
-        assert!(has_close || has_space, "QR SVG should have self-closing path: close={}, space={}", has_close, has_space);
+        assert!(
+            has_close || has_space,
+            "QR SVG should have self-closing path: close={}, space={}",
+            has_close,
+            has_space
+        );
     }
 
     #[test]
@@ -1010,9 +1220,15 @@ mod tests {
             achievement_count: 1,
         };
         let fallback = crate::poster_template::fallback_poster_svg(&data);
-        assert!(fallback.contains("QR_PLACEHOLDER"), "fallback should have QR_PLACEHOLDER");
+        assert!(
+            fallback.contains("QR_PLACEHOLDER"),
+            "fallback should have QR_PLACEHOLDER"
+        );
         let result = crate::poster_template::replace_template_variables(&fallback, &data);
-        assert!(!result.contains("QR_PLACEHOLDER"), "QR_PLACEHOLDER should be replaced");
+        assert!(
+            !result.contains("QR_PLACEHOLDER"),
+            "QR_PLACEHOLDER should be replaced"
+        );
         assert!(result.contains("<svg"), "QR SVG should be in the result");
     }
 }

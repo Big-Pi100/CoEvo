@@ -49,7 +49,11 @@ impl TtsConfig {
         if app_id.is_empty() || secret_id.is_empty() || secret_key.is_empty() {
             return None;
         }
-        Some(Self { app_id, secret_id, secret_key })
+        Some(Self {
+            app_id,
+            secret_id,
+            secret_key,
+        })
     }
 
     /// 是否已配置
@@ -102,7 +106,12 @@ pub fn split_text(text: &str, max_chars: usize) -> Vec<String> {
 }
 
 /// 生成腾讯云 TTS WebSocket 签名 URL
-fn build_ws_url(config: &TtsConfig, text: &str, voice_type: Option<i32>, speed: Option<f32>) -> Result<String, String> {
+fn build_ws_url(
+    config: &TtsConfig,
+    text: &str,
+    voice_type: Option<i32>,
+    speed: Option<f32>,
+) -> Result<String, String> {
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| format!("time error: {}", e))?
@@ -176,7 +185,10 @@ fn build_ws_url(config: &TtsConfig, text: &str, voice_type: Option<i32>, speed: 
         url_param_str, encoded_sig
     );
 
-    tracing::debug!("TTS WS URL (param_str): {}", &param_str.chars().take(200).collect::<String>());
+    tracing::debug!(
+        "TTS WS URL (param_str): {}",
+        &param_str.chars().take(200).collect::<String>()
+    );
     tracing::debug!("TTS signature: {}", signature);
 
     Ok(url)
@@ -205,7 +217,11 @@ fn urlencode(s: &str) -> String {
 /// - `voice_type`: 腾讯云音色 ID（None = 使用默认音色）
 /// - `speed`: 语速 [-2, 6]（None = 正常语速）
 /// 如果 TTS 未配置，返回 Ok(None)。
-pub async fn synthesize(text: &str, voice_type: Option<i32>, speed: Option<f32>) -> Result<Option<Vec<u8>>, String> {
+pub async fn synthesize(
+    text: &str,
+    voice_type: Option<i32>,
+    speed: Option<f32>,
+) -> Result<Option<Vec<u8>>, String> {
     let config = match TtsConfig::from_env() {
         Some(c) => c,
         None => {
@@ -215,7 +231,11 @@ pub async fn synthesize(text: &str, voice_type: Option<i32>, speed: Option<f32>)
     };
 
     let chunks = split_text(text, 300);
-    tracing::info!("TTS: splitting {} chars into {} chunks", text.chars().count(), chunks.len());
+    tracing::info!(
+        "TTS: splitting {} chars into {} chunks",
+        text.chars().count(),
+        chunks.len()
+    );
 
     let mut all_audio = Vec::new();
 
@@ -223,7 +243,12 @@ pub async fn synthesize(text: &str, voice_type: Option<i32>, speed: Option<f32>)
         if chunk.trim().is_empty() {
             continue;
         }
-        tracing::debug!("TTS chunk {}/{}: {} chars", i + 1, chunks.len(), chunk.chars().count());
+        tracing::debug!(
+            "TTS chunk {}/{}: {} chars",
+            i + 1,
+            chunks.len(),
+            chunk.chars().count()
+        );
         match synthesize_chunk(&config, chunk, voice_type, speed).await {
             Ok(audio) => all_audio.extend(audio),
             Err(e) => {
@@ -240,7 +265,12 @@ pub async fn synthesize(text: &str, voice_type: Option<i32>, speed: Option<f32>)
 }
 
 /// 合成单个文本片段（≤600 汉字）
-pub async fn synthesize_chunk(config: &TtsConfig, text: &str, voice_type: Option<i32>, speed: Option<f32>) -> Result<Vec<u8>, String> {
+pub async fn synthesize_chunk(
+    config: &TtsConfig,
+    text: &str,
+    voice_type: Option<i32>,
+    speed: Option<f32>,
+) -> Result<Vec<u8>, String> {
     use futures_util::StreamExt;
 
     let url = build_ws_url(config, text, voice_type, speed)?;
@@ -266,12 +296,19 @@ pub async fn synthesize_chunk(config: &TtsConfig, text: &str, voice_type: Option
                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
                         let code = json.get("code").and_then(|c| c.as_i64()).unwrap_or(-1);
                         if code != 0 {
-                            let msg = json.get("message").and_then(|m| m.as_str()).unwrap_or("unknown");
+                            let msg = json
+                                .get("message")
+                                .and_then(|m| m.as_str())
+                                .unwrap_or("unknown");
                             // 非致命错误：最后一次可能已经收了部分音频，返回已有的
                             if audio_data.is_empty() {
                                 return Err(format!("TTS error (code={}): {}", code, msg));
                             }
-                            tracing::warn!("TTS non-zero code {}: {} (returning partial audio)", code, msg);
+                            tracing::warn!(
+                                "TTS non-zero code {}: {} (returning partial audio)",
+                                code,
+                                msg
+                            );
                             has_final = true;
                             break;
                         }
@@ -283,7 +320,9 @@ pub async fn synthesize_chunk(config: &TtsConfig, text: &str, voice_type: Option
                 }
                 tokio_tungstenite::tungstenite::Message::Ping(data) => {
                     use futures_util::SinkExt;
-                    let _ = ws_stream.send(tokio_tungstenite::tungstenite::Message::Pong(data)).await;
+                    let _ = ws_stream
+                        .send(tokio_tungstenite::tungstenite::Message::Pong(data))
+                        .await;
                 }
                 tokio_tungstenite::tungstenite::Message::Pong(_) => {}
                 tokio_tungstenite::tungstenite::Message::Close(_) => break,

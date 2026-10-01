@@ -28,11 +28,10 @@ pub fn load_llm_config() -> LlmConfig {
             String::new()
         });
 
-    let base_url = std::env::var("LLM_BASE_URL")
-        .unwrap_or_else(|_| "https://api.deepseek.com".to_string());
+    let base_url =
+        std::env::var("LLM_BASE_URL").unwrap_or_else(|_| "https://api.deepseek.com".to_string());
 
-    let model = std::env::var("LLM_MODEL")
-        .unwrap_or_else(|_| "deepseek-v4-flash".to_string());
+    let model = std::env::var("LLM_MODEL").unwrap_or_else(|_| "deepseek-v4-flash".to_string());
 
     LlmConfig {
         api_key,

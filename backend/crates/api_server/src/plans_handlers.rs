@@ -1,11 +1,6 @@
 //! 套餐管理 Handler — 用户端 + 管理端
 
-use axum::{
-    extract::Query,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::Query, http::StatusCode, response::IntoResponse, Json};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -21,7 +16,11 @@ pub async fn plans_list_handler(Query(query): Query<PlansQuery>) -> impl IntoRes
     let conn = crate::db_pool::get_conn();
     match subscription::get_available_plans(&conn, query.user_id.as_deref()) {
         Ok(plans) => (StatusCode::OK, json!({"plans": plans}).to_string()).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("查询套餐失败: {}", e)).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("查询套餐失败: {}", e),
+        )
+            .into_response(),
     }
 }
 
@@ -31,10 +30,16 @@ pub async fn admin_plans_list_handler() -> impl IntoResponse {
     let mut stmt = match conn.prepare(
         "SELECT id, name, duration_days, price, max_uses, used_count,
                 once_per_user, available_from, available_until, sort_order, is_active, created_at
-         FROM subscription_plans ORDER BY sort_order ASC"
+         FROM subscription_plans ORDER BY sort_order ASC",
     ) {
         Ok(s) => s,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("查询失败: {}", e)).into_response(),
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("查询失败: {}", e),
+            )
+                .into_response()
+        }
     };
 
     let rows: Vec<serde_json::Value> = match stmt.query_map([], |row| {
@@ -54,7 +59,13 @@ pub async fn admin_plans_list_handler() -> impl IntoResponse {
         }))
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("查询失败: {}", e)).into_response(),
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("查询失败: {}", e),
+            )
+                .into_response()
+        }
     };
 
     (StatusCode::OK, json!({"plans": rows}).to_string()).into_response()
@@ -75,10 +86,22 @@ pub async fn admin_plan_create_handler(
     let duration_days = payload.get("duration_days").and_then(|v| v.as_i64());
     let price = payload.get("price").and_then(|v| v.as_i64()).unwrap_or(0);
     let max_uses = payload.get("max_uses").and_then(|v| v.as_i64());
-    let once_per_user = payload.get("once_per_user").and_then(|v| v.as_i64()).unwrap_or(0);
-    let sort_order = payload.get("sort_order").and_then(|v| v.as_i64()).unwrap_or(0);
-    let available_from = payload.get("available_from").and_then(|v| v.as_str()).map(|s| s.to_string());
-    let available_until = payload.get("available_until").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let once_per_user = payload
+        .get("once_per_user")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    let sort_order = payload
+        .get("sort_order")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    let available_from = payload
+        .get("available_from")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let available_until = payload
+        .get("available_until")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     let conn = crate::db_pool::get_conn();
     let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
@@ -135,11 +158,15 @@ pub async fn admin_plan_update_handler(
     }
     if payload.get("available_from").is_some() {
         sets.push("available_from = ?");
-        params.push(Box::new(payload["available_from"].as_str().map(|s| s.to_string())));
+        params.push(Box::new(
+            payload["available_from"].as_str().map(|s| s.to_string()),
+        ));
     }
     if payload.get("available_until").is_some() {
         sets.push("available_until = ?");
-        params.push(Box::new(payload["available_until"].as_str().map(|s| s.to_string())));
+        params.push(Box::new(
+            payload["available_until"].as_str().map(|s| s.to_string()),
+        ));
     }
 
     if sets.is_empty() {
@@ -155,7 +182,11 @@ pub async fn admin_plan_update_handler(
     let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
     if let Err(e) = conn.execute(&sql, param_refs.as_slice()) {
-        return (StatusCode::INTERNAL_SERVER_ERROR, format!("更新失败: {}", e)).into_response();
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("更新失败: {}", e),
+        )
+            .into_response();
     }
 
     (StatusCode::OK, json!({"status": "ok"}).to_string()).into_response()

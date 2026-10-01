@@ -746,42 +746,72 @@ mod tests {
     ///     实际只建 20 张 → 3 个测试失败，全指向已退役的表。）
     const EXPECTED_TABLES: &[&str] = &[
         // 核心
-        "users", "tokens", "trial_ip_log",
+        "users",
+        "tokens",
+        "trial_ip_log",
         // 管理端
-        "admin_users", "admin_audit_log", "subscription_requests",
-        "subscription_plans", "payment_orders", "subscription_audit_log",
+        "admin_users",
+        "admin_audit_log",
+        "subscription_requests",
+        "subscription_plans",
+        "payment_orders",
+        "subscription_audit_log",
         // 分销营销
-        "marketing_campaigns", "referral_clicks", "distribution_commissions",
-        "distribution_expenses", "reward_fulfillments", "campaign_members",
+        "marketing_campaigns",
+        "referral_clicks",
+        "distribution_commissions",
+        "distribution_expenses",
+        "reward_fulfillments",
+        "campaign_members",
         "user_notifications",
         // 配置 / 偏好
-        "app_config", "user_preferences",
+        "app_config",
+        "user_preferences",
         // 🆕 词库在线制卡（A1）
-        "generated_card_cache", "generated_card_hit",
+        "generated_card_cache",
+        "generated_card_hit",
         // 🆕 内容源 + 内容池（2026-09-29 · 服务端共享内容池）
         // ⚠️ 方案 §4.3 还列了 `user_read` / `user_interest` —— **有意不建**：
         //    前者与端侧 `article_read` 是同一个口径的第二个出处；
         //    后者设计未定（「兴趣怎么影响排序」还没做）。见 `CONTENT_SCHEMA_SQL`。
-        "content_source", "content_pool",
+        "content_source",
+        "content_pool",
     ];
 
     /// 已**彻底退役**的表 —— 出现在库里即说明「退役没做干净」。
     const RETIRED_TABLES: &[&str] = &[
         // 对话链
-        "conversations", "conversation_turns",
+        "conversations",
+        "conversation_turns",
         // 后端 FSRS 复习状态（已迁端侧 user.db）
-        "card_memory", "review_log", "user_cards",
-        "user_science_cards", "user_language_cards", "user_literature_cards",
-        "user_humanities_cards", "card_relations", "defer_queue",
+        "card_memory",
+        "review_log",
+        "user_cards",
+        "user_science_cards",
+        "user_language_cards",
+        "user_literature_cards",
+        "user_humanities_cards",
+        "card_relations",
+        "defer_queue",
         // K12 计划体系（整体清退）
-        "user_plan_progress", "prebuilt_plans", "prebuilt_stages", "prebuilt_tasks",
-        "prebuilt_cards", "prebuilt_science_cards", "prebuilt_language_cards",
-        "prebuilt_literature_cards", "prebuilt_humanities_cards", "plan_runs",
-        "guardian_assignments", "k12_quiz_bank", "k12_quiz_attempts",
+        "user_plan_progress",
+        "prebuilt_plans",
+        "prebuilt_stages",
+        "prebuilt_tasks",
+        "prebuilt_cards",
+        "prebuilt_science_cards",
+        "prebuilt_language_cards",
+        "prebuilt_literature_cards",
+        "prebuilt_humanities_cards",
+        "plan_runs",
+        "guardian_assignments",
+        "k12_quiz_bank",
+        "k12_quiz_attempts",
         // 成就（改为端侧计算）
         "achievements",
         // admin 调试面板
-        "debug_trackers", "debug_logs",
+        "debug_trackers",
+        "debug_logs",
     ];
 
     /// 更早期迁移遗留的旧表名
@@ -814,7 +844,11 @@ mod tests {
         assert!(extra.is_empty(), "多出未登记的表: {:?}", extra);
 
         for tbl in RETIRED_TABLES {
-            assert!(!actual.contains(&tbl.to_string()), "退役表 {} 又被建回来了", tbl);
+            assert!(
+                !actual.contains(&tbl.to_string()),
+                "退役表 {} 又被建回来了",
+                tbl
+            );
         }
         for tbl in FORBIDDEN_OLD_TABLES {
             assert!(!actual.contains(&tbl.to_string()), "旧表 {} 仍然存在", tbl);
@@ -830,8 +864,14 @@ mod tests {
         // users：注册标识（邮箱）/ 分销 / 软删除
         let cols = table_columns(&conn, "users");
         for c in [
-            "id", "username", "email", "deleted_at",
-            "subscription_expires", "referral_code", "referred_by", "referred_campaign_id",
+            "id",
+            "username",
+            "email",
+            "deleted_at",
+            "subscription_expires",
+            "referral_code",
+            "referred_by",
+            "referred_campaign_id",
         ] {
             assert!(cols.contains(&c.to_string()), "users 缺 {}", c);
         }
@@ -853,31 +893,57 @@ mod tests {
 
         // admin_users：迁移新增的 permissions
         let cols = table_columns(&conn, "admin_users");
-        assert!(cols.contains(&"permissions".to_string()), "admin_users 缺 permissions");
+        assert!(
+            cols.contains(&"permissions".to_string()),
+            "admin_users 缺 permissions"
+        );
 
         // payment_orders：退款字段来自迁移
         let cols = table_columns(&conn, "payment_orders");
-        for c in ["status", "prepay_id", "transaction_id", "refund_reason", "refund_id"] {
+        for c in [
+            "status",
+            "prepay_id",
+            "transaction_id",
+            "refund_reason",
+            "refund_id",
+        ] {
             assert!(cols.contains(&c.to_string()), "payment_orders 缺 {}", c);
         }
 
         // marketing_campaigns：迁移新增列
         let cols = table_columns(&conn, "marketing_campaigns");
         for c in ["poster_prompt", "min_member_count", "created_by"] {
-            assert!(cols.contains(&c.to_string()), "marketing_campaigns 缺 {}", c);
+            assert!(
+                cols.contains(&c.to_string()),
+                "marketing_campaigns 缺 {}",
+                c
+            );
         }
 
         // reward_fulfillments：唯一索引重构依赖 order_id
         let cols = table_columns(&conn, "reward_fulfillments");
-        assert!(cols.contains(&"order_id".to_string()), "reward_fulfillments 缺 order_id");
+        assert!(
+            cols.contains(&"order_id".to_string()),
+            "reward_fulfillments 缺 order_id"
+        );
 
         // 🆕 词库在线制卡缓存（A1）
         let cols = table_columns(&conn, "generated_card_cache");
         for c in [
-            "spelling", "card_content", "contract_version", "source",
-            "hit_count", "distinct_user_count", "created_at", "updated_at",
+            "spelling",
+            "card_content",
+            "contract_version",
+            "source",
+            "hit_count",
+            "distinct_user_count",
+            "created_at",
+            "updated_at",
         ] {
-            assert!(cols.contains(&c.to_string()), "generated_card_cache 缺 {}", c);
+            assert!(
+                cols.contains(&c.to_string()),
+                "generated_card_cache 缺 {}",
+                c
+            );
         }
         let cols = table_columns(&conn, "generated_card_hit");
         for c in ["spelling", "device_id", "first_hit_at", "hit_count"] {
@@ -887,16 +953,38 @@ mod tests {
         // 🆕 内容源 + 内容池（2026-09-29 · 服务端共享内容池）
         let cols = table_columns(&conn, "content_source");
         for c in [
-            "id", "name", "url", "kind", "category", "cefr_hint", "license",
-            "redistributable", "fetch_interval_min", "enabled",
-            "last_fetch_at", "fail_count", "created_at", "updated_at",
+            "id",
+            "name",
+            "url",
+            "kind",
+            "category",
+            "cefr_hint",
+            "license",
+            "redistributable",
+            "fetch_interval_min",
+            "enabled",
+            "last_fetch_at",
+            "fail_count",
+            "created_at",
+            "updated_at",
         ] {
             assert!(cols.contains(&c.to_string()), "content_source 缺 {}", c);
         }
         let cols = table_columns(&conn, "content_pool");
         for c in [
-            "id", "source_id", "title", "summary", "body", "url", "author",
-            "category", "published_at", "fetched_at", "word_count", "score", "comments",
+            "id",
+            "source_id",
+            "title",
+            "summary",
+            "body",
+            "url",
+            "author",
+            "category",
+            "published_at",
+            "fetched_at",
+            "word_count",
+            "score",
+            "comments",
             // 🆕 抓正文的尝试记录 —— 缺了它「只试一次」的语义会静默失效
             "body_attempted_at",
         ] {
@@ -936,7 +1024,11 @@ mod tests {
                     |r| r.get(0),
                 )
                 .unwrap();
-            assert_eq!(n, 0, "🔴 种子源不该含 `{}`（2026-09-29 实测国内不可达）", bad);
+            assert_eq!(
+                n, 0,
+                "🔴 种子源不该含 `{}`（2026-09-29 实测国内不可达）",
+                bad
+            );
         }
     }
 
@@ -1001,9 +1093,16 @@ mod tests {
 
         // ③ 结构：email 已加，5 列已删
         let cols = table_columns(&conn, "users");
-        assert!(cols.contains(&"email".to_string()), "迁移后 users 应新增 email 列");
+        assert!(
+            cols.contains(&"email".to_string()),
+            "迁移后 users 应新增 email 列"
+        );
         for c in ["real_name", "phone", "phone_hash", "id_number", "bind_hash"] {
-            assert!(!cols.contains(&c.to_string()), "迁移后 users 不应还有列 `{}`", c);
+            assert!(
+                !cols.contains(&c.to_string()),
+                "迁移后 users 不应还有列 `{}`",
+                c
+            );
         }
 
         // ④ 旧索引也必须消失 —— 否则新库上会「索引引用不存在的列」
@@ -1033,8 +1132,11 @@ mod tests {
     }
 
     fn table_columns(conn: &Connection, table: &str) -> Vec<String> {
-        let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", table)).unwrap();
-        stmt.query_map([], |row| row.get::<_, String>(1)).unwrap()
+        let mut stmt = conn
+            .prepare(&format!("PRAGMA table_info({})", table))
+            .unwrap();
+        stmt.query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
             .filter_map(|r| r.ok())
             .collect()
     }

@@ -5,9 +5,9 @@
 #![allow(clippy::empty_line_after_doc_comments)]
 #![allow(clippy::doc_overindented_list_items)]
 
-pub mod llm_caller;
 pub mod concept_extractor;
 pub mod config;
+pub mod llm_caller;
 pub mod pipeline_router;
 pub mod prompt_loader;
 pub mod word_bank;

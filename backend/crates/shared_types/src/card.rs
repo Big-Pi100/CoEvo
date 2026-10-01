@@ -20,10 +20,10 @@ pub struct Card {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CardMemory {
     pub card_id: String,
-    pub state: i32,                  // 0:New, 1:Learning, 2:Review, 3:Relearning
+    pub state: i32, // 0:New, 1:Learning, 2:Review, 3:Relearning
     pub difficulty: f64,
     pub stability: f64,
-    pub due: i64,                    // Unix timestamp
+    pub due: i64, // Unix timestamp
     pub last_review: Option<i64>,
     pub reps: i32,
     pub lapses: i32,
@@ -42,5 +42,5 @@ pub struct ConceptCandidate {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ExtractionResult {
     pub candidates: Vec<ConceptCandidate>,
-    pub direct_card: bool,           // true = Path B2 (直接制卡)
+    pub direct_card: bool, // true = Path B2 (直接制卡)
 }

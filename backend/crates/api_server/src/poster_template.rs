@@ -9,11 +9,11 @@ const ZONE_MIN_GAP: i32 = 20; // zone 之间最小间距
 /// 根据 zone 类型返回合理的内容高度估算
 fn zone_estimated_height(name: &str, _zone_y: i32) -> i32 {
     match name {
-        "qr" => 250,     // 180px QR + 装饰框 + padding
+        "qr" => 250, // 180px QR + 装饰框 + padding
         "footer" => 50,
-        "title" => 200,  // 标题 + 副标题 + 装饰线
-        "code" => 130,   // 推广码 + 文本框
-        _ => 260,        // stats 等数据卡片区
+        "title" => 200, // 标题 + 副标题 + 装饰线
+        "code" => 130,  // 推广码 + 文本框
+        _ => 260,       // stats 等数据卡片区
     }
 }
 
@@ -29,9 +29,9 @@ pub fn reflow_svg_zones(svg: &str) -> String {
         name: String,
         orig_y: i32,
         orig_x: String,
-        abs_start: usize,   // "translate(" 的起始位置
-        paren_end: usize,   // ")" 的结束位置
-        tag_end: usize,     // 标签 > 的位置
+        abs_start: usize, // "translate(" 的起始位置
+        paren_end: usize, // ")" 的结束位置
+        tag_end: usize,   // 标签 > 的位置
     }
     let mut zones: Vec<ZoneInfo> = Vec::new();
     let mut search_from: usize = 0;
@@ -52,33 +52,36 @@ pub fn reflow_svg_zones(svg: &str) -> String {
 
         let g_start = match result[..zone_start].rfind("<g") {
             Some(pos) => pos,
-            None => { search_from = val_end; continue; }
+            None => {
+                search_from = val_end;
+                continue;
+            }
         };
         let tag_end = match result[g_start..].find('>') {
             Some(pos) => g_start + pos,
             None => break,
         };
 
-    let tag_slice = &result[g_start..=tag_end].to_string();
-    if let Some(trans_start_rel) = tag_slice.find("translate(") {
-        let abs_start = g_start + trans_start_rel;
-        let after_trans = abs_start + "translate(".len();
-        if let Some(paren_end_rel) = result[after_trans..].find(')') {
-            let paren_end = after_trans + paren_end_rel;
-            let coord = result[after_trans..paren_end].to_string();
-            let parts: Vec<&str> = coord.split(',').collect();
-            if parts.len() == 2 {
-                let x_str = parts[0].trim().to_string();
-                let y_str = parts[1].trim();
-                if let Ok(y) = y_str.parse::<i32>() {
-                    zones.push(ZoneInfo {
-                        name: zone_name,
-                        orig_y: y,
-                        orig_x: x_str,
-                        abs_start,
-                        paren_end,
-                        tag_end,
-                    });
+        let tag_slice = &result[g_start..=tag_end].to_string();
+        if let Some(trans_start_rel) = tag_slice.find("translate(") {
+            let abs_start = g_start + trans_start_rel;
+            let after_trans = abs_start + "translate(".len();
+            if let Some(paren_end_rel) = result[after_trans..].find(')') {
+                let paren_end = after_trans + paren_end_rel;
+                let coord = result[after_trans..paren_end].to_string();
+                let parts: Vec<&str> = coord.split(',').collect();
+                if parts.len() == 2 {
+                    let x_str = parts[0].trim().to_string();
+                    let y_str = parts[1].trim();
+                    if let Ok(y) = y_str.parse::<i32>() {
+                        zones.push(ZoneInfo {
+                            name: zone_name,
+                            orig_y: y,
+                            orig_x: x_str,
+                            abs_start,
+                            paren_end,
+                            tag_end,
+                        });
                     }
                 }
             }
@@ -181,9 +184,18 @@ pub fn replace_template_variables(template: &str, data: &UserPosterData) -> Stri
     result = result.replace("{achievement_count}", &data.achievement_count.to_string());
     result = result.replace("{avatar_url}", &data.avatar_url);
     // 替换 font-family 为通用 sans-serif（避免 resvg 找不到字体）
-    result = result.replace("font-family=\"system-ui, -apple-system, sans-serif\"", "font-family=\"sans-serif\"");
-    result = result.replace("font-family=\"'PingFang SC', 'Microsoft YaHei', sans-serif\"", "font-family=\"sans-serif\"");
-    result = result.replace("font-family=\"'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', system-ui, sans-serif\"", "font-family=\"sans-serif\"");
+    result = result.replace(
+        "font-family=\"system-ui, -apple-system, sans-serif\"",
+        "font-family=\"sans-serif\"",
+    );
+    result = result.replace(
+        "font-family=\"'PingFang SC', 'Microsoft YaHei', sans-serif\"",
+        "font-family=\"sans-serif\"",
+    );
+    result = result.replace(
+        "font-family=\"'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', system-ui, sans-serif\"",
+        "font-family=\"sans-serif\"",
+    );
     // 生成二维码图片（先渲染为 PNG base64，再嵌入为 <image> 元素）
     let qr_raw = crate::referral_handler::generate_qr_svg(&data.qr_code_url, "#1A237E", "#FFFFFF");
     let qr_png_b64 = crate::referral_handler::svg_to_png(&qr_raw)
@@ -199,14 +211,22 @@ pub fn replace_template_variables(template: &str, data: &UserPosterData) -> Stri
     let qr_block = if !qr_png_b64.is_empty() {
         format!(
             r#"<g transform="translate(-90, -90)"><clipPath id="qr-clip-{uid}"><rect width="180" height="180"/></clipPath><g clip-path="url(#qr-clip-{uid})"><image href="data:image/png;base64,{b64}" width="180" height="180" preserveAspectRatio="xMidYMid meet"/></g></g>"#,
-            uid = data.referral_code.replace(|c: char| !c.is_alphanumeric(), "_"),
+            uid = data
+                .referral_code
+                .replace(|c: char| !c.is_alphanumeric(), "_"),
             b64 = qr_png_b64,
         )
     } else {
-        let bare_svg = if let Some(pos) = qr_raw.find("<svg") { &qr_raw[pos..] } else { "<svg/>" };
+        let bare_svg = if let Some(pos) = qr_raw.find("<svg") {
+            &qr_raw[pos..]
+        } else {
+            "<svg/>"
+        };
         format!(
             r#"<g transform="translate(-90, -90)"><clipPath id="qr-clip-{uid}"><rect width="180" height="180"/></clipPath><g clip-path="url(#qr-clip-{uid})">{svg}</g></g>"#,
-            uid = data.referral_code.replace(|c: char| !c.is_alphanumeric(), "_"),
+            uid = data
+                .referral_code
+                .replace(|c: char| !c.is_alphanumeric(), "_"),
             svg = bare_svg,
         )
     };
@@ -288,9 +308,19 @@ pub async fn generate_template_via_llm(
         .as_str()
         .ok_or_else(|| "LLM returned empty response".to_string())?
         .to_string();
-    tracing::warn!("LLM raw reply (first 500c): {}", &reply.chars().take(500).collect::<String>());
+    tracing::warn!(
+        "LLM raw reply (first 500c): {}",
+        &reply.chars().take(500).collect::<String>()
+    );
     let mut svg = reply.trim().to_string();
-    for prefix in &["```svg\n", "```html\n", "```svg\r\n", "```html\r\n", "```\n", "```\r\n"] {
+    for prefix in &[
+        "```svg\n",
+        "```html\n",
+        "```svg\r\n",
+        "```html\r\n",
+        "```\n",
+        "```\r\n",
+    ] {
         if svg.starts_with(prefix) {
             svg = svg[prefix.len()..].to_string();
             break;
@@ -350,12 +380,7 @@ pub fn fallback_poster_svg(data: &UserPosterData) -> String {
     <text x="300" y="20" text-anchor="middle" fill="#9DA0F0" font-size="12">⟐ CoEvo 刻意进化</text>
   </g>
 </svg>"##,
-        data.display_name,
-        avatar_html,
-        data.streak_days,
-        data.today_reviews,
-        data.total_cards,
-        85,
+        data.display_name, avatar_html, data.streak_days, data.today_reviews, data.total_cards, 85,
     )
 }
 

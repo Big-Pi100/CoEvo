@@ -13,10 +13,7 @@ pub async fn generate_poster_svg(
 }
 
 /// 生成推广 H5 页面
-pub async fn generate_h5_page(
-    _user_id: &str,
-    _referral_code: &str,
-) -> Result<String, String> {
+pub async fn generate_h5_page(_user_id: &str, _referral_code: &str) -> Result<String, String> {
     // TODO: 生成 H5 页面并保存到 /share/{code}/index.html
     Ok("/share/".to_string())
 }

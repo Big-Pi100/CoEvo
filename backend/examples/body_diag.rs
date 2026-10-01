@@ -37,14 +37,25 @@ fn main() {
     //    诊断的和我实际跑的路径不同 → 诊断结论**不适用**。
     //    （同 `migrate_probe` 复用 `db_pool::init` 的理由。）
     println!("【1】HTTP + 提取（走**生产同一条**代码路径）");
-    let outcome = rt.block_on(api_server::content_fetch::fetch_article_body_diagnostic(url));
+    let outcome = rt.block_on(api_server::content_fetch::fetch_article_body_diagnostic(
+        url,
+    ));
     match &outcome {
         api_server::content_fetch::BodyOutcome::Got(text) => {
             let paras: Vec<&str> = text.split("\n\n").collect();
             println!("  ✅ 采纳为正文");
-            println!("  段数 {} · 总长 {} 字符", paras.len(), text.chars().count());
+            println!(
+                "  段数 {} · 总长 {} 字符",
+                paras.len(),
+                text.chars().count()
+            );
             for (i, p) in paras.iter().take(5).enumerate() {
-                println!("    [{}] ({:>5}) {}", i, p.chars().count(), p.chars().take(110).collect::<String>());
+                println!(
+                    "    [{}] ({:>5}) {}",
+                    i,
+                    p.chars().count(),
+                    p.chars().take(110).collect::<String>()
+                );
             }
             if paras.len() > 5 {
                 println!("    … 还有 {} 段", paras.len() - 5);
@@ -72,4 +83,3 @@ fn main() {
         }
     }
 }
-
