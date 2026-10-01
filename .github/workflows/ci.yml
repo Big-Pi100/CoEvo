@@ -82,22 +82,23 @@ jobs:
       - name: Build release
         run: cargo build --release --bin coevo_backend
 
-      # 打包「运行时真正需要」的三样：
-      #   ① 二进制（入口 `coevo_backend`，workspace 根的 package）
-      #   ② `cefr_catalog.json` —— 启动时 `word_bank::init` 要读（12 MB）
+      # 打包「运行时真正需要」的三样，**目录结构与服务器 `/opt/coevo/` 完全一致** ——
+      # 这样部署那步就是一句 `rsync dist/ → /opt/coevo/`，不需要额外搬运。
+      #   ① `bin/coevo_backend`（入口；服务器上 ExecStart=/opt/coevo/bin/coevo_backend）
+      #   ② `cefr_catalog.json` —— 启动时 `word_bank::init` 要读（12 MB，服务器工作目录下）
       #   ③ `prompts/` —— `llm_card` / `compliance` 运行时读
-      # 🔴 **不含 `.env`**（含密钥）—— 它由本地单独 scp、权限 600（见部署方案 §四）
+      # 🔴 **不含 `.env`**（含密钥）—— 它只在服务器上，权限 600，**每次部署都不碰**
       - name: Strip & assemble bundle
         run: |
           strip target/release/coevo_backend || true
-          mkdir -p dist
-          cp target/release/coevo_backend dist/
+          mkdir -p dist/bin
+          cp target/release/coevo_backend dist/bin/
           cp cefr_catalog.json dist/
           cp -r prompts dist/
-          echo "── 打包内容 ──"
-          ls -la dist/
+          echo "── 打包内容（结构须与 /opt/coevo/ 一致）──"
+          ls -la dist/ dist/bin/
           du -sh dist/
-          file dist/coevo_backend
+          file dist/bin/coevo_backend
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -105,6 +106,116 @@ jobs:
           name: coevo-backend-linux-x86_64
           path: backend/dist/
           retention-days: 30
+
+  # ── 部署到 VPS（CI 直接 SSH · 见下「为什么不下载 artifact」）──
+  #
+  # 🔑 这里能绕开「artifact 下载需要认证」的原因：
+  #    `actions/download-artifact` 在**同一次 workflow 运行内**用的是 GitHub
+  #    **自动注入**的 `GITHUB_TOKEN`（无需本机任何凭据）。
+  #    需要 PAT 的是「在本地/外部下载 artifact」，那是另一回事。
+  #
+  # 🔴 用**专用部署 key**（`coevo-ci-deploy-20261001`），**不复用**日常的 `coevo_key`：
+  #    后者权限大、日常在用，将来撤销会连累日常运维。
+  #    ⚠️ 服务器 `passwordauthentication no` → **key 是唯一入口**，这把 key 即全权访问。
+  #    撤销 = 从 `~/.ssh/authorized_keys` 删掉那一行（备份在 `authorized_keys.bak-*`）。
+  #
+  # 🔴 **rsync 不带 `--delete`** —— `/opt/coevo/data/`（运行时 DB 与 WAL）与 `.env`（密钥）
+  #    只存在于服务器；带 --delete 会被清掉。
+  #    📌 同类事故先例：vibedollar 2026-08-31（首页被覆盖）/ 09-11（CF 缓存）——
+  #      都是「部署把服务器侧独有的东西弄没了」。
+  backend-deploy:
+    name: Deploy backend to VPS
+    runs-on: ubuntu-latest
+    needs: backend-release
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
+    env:
+      VPS_HOST: <VPS_IP>
+      VPS_USER: ubuntu
+      VPS_PATH: /opt/coevo/
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: coevo-backend-linux-x86_64
+          path: dist
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.COEVO_VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          echo "bundle:"; find dist -type f | head -20
+
+      # ⚠️ 单独一步先探连通性：runner 在**海外**，目标是**国内 IP** ——
+      #    这条链是否可达此前**未实测**（依据：80 端口被 Let's Encrypt 海外节点验证过，
+      #    说明无整体阻断，但 22 端口未验证）。
+      #    失败时给出**明确结论**，而不是让后面的 rsync 报一堆难懂的错。
+      - name: Preflight — reachability
+        run: |
+          if ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o ConnectTimeout=15 \
+               -o BatchMode=yes "$VPS_USER@$VPS_HOST" 'echo reachable'; then
+            echo "✅ runner 可 SSH 到目标机"
+          else
+            echo "🔴 无法从 runner SSH 到 $VPS_HOST:22"
+            echo "   → 本 workflow 的部署路径在当前网络下不可用。"
+            echo "   → 降级方案：本地 WSL 构建 + scp（scripts/deploy/build_linux_in_wsl.sh）"
+            exit 1
+          fi
+
+      # 🔴 部署前**留回滚点** —— 否则新二进制若有问题，服务就一直挂着没人救。
+      - name: Backup current binary (rollback point)
+        run: |
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" '
+            cp -a /opt/coevo/bin/coevo_backend /opt/coevo/bin/coevo_backend.prev 2>/dev/null \
+              && echo "✅ 已留存上一版二进制（coevo_backend.prev）" \
+              || echo "（首次部署 · 无上一版可备份）"
+          '
+
+      - name: Deploy via rsync (⚠️ 不带 --delete)
+        run: |
+          rsync -avz --exclude='data/' --exclude='.env' \
+            -e "ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes" \
+            dist/ "$VPS_USER@$VPS_HOST:$VPS_PATH"
+
+      - name: Restart service & verify health (含失败回滚)
+        run: |
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" '
+            set -e
+            sudo systemctl restart coevo
+            for i in 1 2 3 4 5 6 7 8 9 10; do
+              code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:8300/health || echo 000)
+              echo "  health 第 $i 次: HTTP $code"
+              if [ "$code" = "200" ]; then echo "✅ coevo 已就绪"; exit 0; fi
+              sleep 2
+            done
+            echo "🔴 health 未就绪 —— 最近日志："
+            sudo journalctl -u coevo -n 40 --no-pager
+            if [ -f /opt/coevo/bin/coevo_backend.prev ]; then
+              echo "⏪ 回滚到上一版二进制…"
+              cp -a /opt/coevo/bin/coevo_backend.prev /opt/coevo/bin/coevo_backend
+              sudo systemctl restart coevo
+              sleep 5
+              rc=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:8300/health || echo 000)
+              echo "回滚后 health: HTTP $rc"
+            else
+              echo "（无上一版可回滚）"
+            fi
+            exit 1
+          '
+
+      # 🔴 部署后确认**同机邻居服务**未受影响（与手工部署同样的纪律）
+      - name: Verify neighbours still healthy
+        run: |
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" '
+            for s in coevo vibedollar-pay mailproxy nginx; do
+              printf "  %-18s %s\n" "$s" "$(systemctl is-active $s 2>/dev/null)"
+            done
+          '
+
+      - name: Cleanup key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
 
   # ── Frontend: Flutter ──
   frontend:

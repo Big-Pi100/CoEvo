@@ -559,3 +559,133 @@ sudo systemctl disable --now coevo && sudo rm -f /etc/systemd/system/coevo.servi
 ---
 
 *§十二 为步骤 1 的实施记录。步骤 1 **完全不碰 nginx**，故对现网零影响。*
+
+---
+
+## 十三、🟢 路径 B：CI 自动部署（2026-10-01 · 已配置，待首次触发验证）
+
+> 白哥问「gh CLI 需要登录吗 / GH_TOKEN 那些是什么」→ 核实后发现**我上轮的结论片面了**，
+> 于是补上这条**更省事**的部署路径。
+
+### 13.1 🔴 先更正一个我自己的错误结论
+
+上轮我写「CI 出二进制**这条路走不通**」—— **片面的**。
+
+走不通的只是「**下载 artifact**」这一个**环节**。**部署**本身完全能通，而且**不需要下载任何东西**：
+
+```yaml
+# E:\vibedollar\.github\workflows\deploy.yml（本机已在跑，验证过的模式）
+- name: Deploy to VPS (rsync)
+  uses: easingthemes/ssh-deploy@v5.1.0
+  with:
+    SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_KEY }}
+    REMOTE_HOST: <OTHER_PROJECT_IP>
+    ...
+```
+→ CI 跑完**直接 rsync 到 VPS**，全程不需要 token。
+
+🔑 **判据**：下「这条路走不通」前先问 —— 我说的是**目标**还是**手段**？
+还有别的实现方式吗？**本仓库/本机有没有人已经这么干过**？
+（这次正是靠 `~/.ssh/vibedollar_ci_deploy` 这个名字发现的。）
+
+### 13.2 🔑 为什么 artifact 在 workflow 内部流转**不需要任何凭据**
+
+| 场景 | 用什么认证 | 本机需要 token 吗 |
+|---|---|---|
+| **同一次 workflow 内** upload → download artifact | GitHub **自动注入**的 `GITHUB_TOKEN` | ❌ **不需要** |
+| 在**本地/外部**下载 artifact | 必须带 PAT（`repo` 或 `Actions: read`） | ✅ 需要 |
+
+📄 官方文档逐节不同（实测核对）：
+- `List/Get an artifact` → 明写「can be used **without authentication** … if only public resources are requested」
+- **`Download an artifact`** → ⚠️ **没有这句豁免** → 一律要认证
+- 私有仓库 → 以上全部需要认证
+
+→ 所以 B 的设计是「**release job 产出 → 同 workflow 内 deploy job 消费**」，**完全绕开凭据问题**。
+
+### 13.3 🔴 密钥：专用 CI key（**没有**复用 `coevo_key`）
+
+| 项 | 值 |
+|---|---|
+| 指纹 | `SHA256:cVihJXzdDMLe6pYu/zSjEPy+VGjqisYpTm/YJITghiY` |
+| 注释 | `coevo-ci-deploy-20261001` |
+| 类型 | ed25519（无 passphrase —— CI 无法交互输入） |
+| 私钥（本地） | `~/.ssh/coevo_ci_deploy`（600） |
+| 公钥（服务器） | `~/.ssh/authorized_keys` 第 3 行 |
+
+**为什么不复用 `coevo_key`**：那把权限大、日常运维在用 → 一旦泄漏或需撤销，会连累日常。
+专用 key 可**单独撤销**（删 authorized_keys 里那一行即可）。
+
+🔴 **必须知道的事实**：服务器 `passwordauthentication no` → **SSH 只有 key 一条入口**，
+所以这把 CI key 就是**全权访问**（能登录 + 能 `sudo`）。
+`authorized_keys` 备份：`~/.ssh/authorized_keys.bak-20261001180600`。
+
+**撤销步骤**：
+```bash
+ssh -i ~/.ssh/coevo_key ubuntu@<VPS_IP> \
+  "grep -v 'coevo-ci-deploy-20261001' ~/.ssh/authorized_keys > /tmp/ak && mv /tmp/ak ~/.ssh/authorized_keys"
+# 然后去 GitHub 删掉 secret COEVO_VPS_SSH_KEY，并停用 workflow
+```
+
+### 13.4 顺带修正的**属主问题**（否则 CI 的 rsync 覆盖不了）
+
+首次部署用的是 `sudo install` / `sudo cp` → 这 3 个变成 `root:root`：
+`bin/coevo_backend` · `cefr_catalog.json` · `prompts/`
+
+→ CI 以 `ubuntu` 身份 rsync → **无法覆盖 root 的文件**。
+→ 已 `chown ubuntu:ubuntu` 这 3 处（与 `/opt/coevo` 目录一致）。
+🔴 **`.env` 保持 `root:root 600` 不动** —— systemd 以 root 读 `EnvironmentFile` 再注入给进程，
+`ubuntu` 用户**不需要**直接读它。别顺手改成 ubuntu。
+
+### 13.5 workflow 设计（`.github/workflows/ci.yml`）
+
+```
+backend-release  ──(artifact: coevo-backend-linux-x86_64)──▶  backend-deploy
+   构建 + strip + 打包(dist/bin/…)                             下载 → rsync → 重启 → 验健康
+```
+
+| 步骤 | 关键点 |
+|---|---|
+| 打包结构 | **`dist/` 内部结构与 `/opt/coevo/` 一一对应**（`bin/` + `cefr_catalog.json` + `prompts/`）→ 部署就是一句 rsync，无需搬运 |
+| 🔴 rsync | **不带 `--delete`**，且 `--exclude=data/ --exclude=.env` |
+| 回滚点 | 部署前 `cp -a … coevo_backend.prev`；健康检查失败 → **自动回滚 + 重启 + 复验** |
+| 可达性预检 | 单独一步先探 runner→VPS:22，失败时**给出明确结论与降级方案**，而不是让 rsync 报天书 |
+| 邻居复验 | 部署后确认 `vibedollar-pay` / `mailproxy` / `nginx` 仍 active |
+
+**为什么必须不带 `--delete`**：`/opt/coevo/data/`（运行时 DB + WAL）与 `.env`（密钥）
+**只存在于服务器** —— 带 `--delete` 会把它们清掉。
+📌 同类事故先例：vibedollar 2026-08-31（首页被覆盖）/ 09-11（CF 缓存）——
+都是「部署把服务器侧独有的东西弄没了」。
+
+**触发方式**：`workflow_dispatch`（手动）或 `v*` tag。**日常 push 不触发**（省额度 · 不误发布）。
+
+### 13.6 白哥需要做的（一次）
+
+1. 私钥已复制到剪贴板（或从 `C:\Users\Lenovo\.ssh\coevo_ci_deploy` 取）
+2. 打开 `https://github.com/Big-Pi100/CoEvo/settings/secrets/actions`
+3. **New repository secret** → Name = **`COEVO_VPS_SSH_KEY`** → Secret = 粘贴私钥全文（含首尾 `-----BEGIN/END-----` 行）
+4. Actions → **CI** → **Run workflow**（选 main）
+
+### 13.7 ⚠️ 一条未实测的风险（首次触发才能回答）
+
+**GitHub runner 在海外，目标是国内 IP（`<VPS_IP>`）** —— 这条 SSH 链**此前未验证**。
+
+| 证据 | 方向 |
+|---|---|
+| ✅ 80/443 端口被 **Let's Encrypt 海外节点**做过 HTTP-01 验证并成功签发证书 | 说明**无整体阻断**，海外能到这台机器 |
+| ❓ **22 端口** | **未实测** |
+
+→ 所以 workflow 里加了 **Preflight** 步：第一次触发就会明确告诉我们「能不能通」。
+**若不通**：降级走本地 —— `scripts/deploy/build_linux_in_wsl.sh`（本次已用过，实测可行）。
+
+### 13.8 三条路对比（定稿）
+
+| | 路径 | 前置 | 适合 |
+|---|---|---|---|
+| **A** | 本地 WSL 构建 + `scp` | 无 | 手动控制、首次部署 |
+| **B** ⭐ | **CI 直接 SSH 部署** | 1 个 secret（网页配） | 改完点一下就上 |
+| C | artifact 下载到本地再传 | 需 PAT | 想本地先验产物 |
+
+---
+
+*§十三 为 CI 自动部署的配置记录。**密钥与 workflow 已就位，尚未首次触发** ——
+首次触发的结果（尤其 13.7 的可达性）需另行记录。*
