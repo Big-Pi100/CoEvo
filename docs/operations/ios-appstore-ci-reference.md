@@ -30,7 +30,7 @@ pod install → flutter build ios → xcodebuild archive → xcodebuild -exportA
 | 1 | **`xcrun altool --upload-app` 已被 Apple 弃用** | 2023-11 起停用，2024 年后完全不可用 → **必须改用 App Store Connect API**（`xcrun altool` 的替代是 `xcodebuild -exportArchive` + `altool` 已删，推荐 **fastlane** / **`xcrun notarytool`（那是 macOS）** / **App Store Connect API key + `xcrun altool` 的继任者**） |
 | 2 | **`teamID: YOUR_TEAM_ID` 是占位符** | `export-options.plist` 里未填真实值 |
 | 3 | **依赖 `match`（fastlane）的 provisioning profile 命名** | 原配置写 `PROVISIONING_PROFILE_SPECIFIER="match AppStore ${{ secrets.APPLE_APP_ID }}"` —— 这要求已用 fastlane match 管理证书；**若不用 match，要改成手动证书或 App Store Connect API 自动签名** |
-| 4 | **Flutter 版本固定 `3.27.x`** | 与 `app/` 的 `sdk: ">=3.6.0 <4.0.0"` 匹配，但当前本地已用 **3.41.1** → 需重新评估 |
+| 4 | ~~**Flutter 版本固定 `3.27.x`**~~ ✅ **已定案：3.41.1** | 2026-10-01 白哥定 —— 与项目 SDK（`D:\flutter` = 3.41.1 stable / Dart 3.11.0）**一致**。兼容性已核验：`pubspec.lock` 综合约束为 `dart >=3.10.0` + `flutter >=3.38.0` → 满足。CI 已同步钉死（`.github/workflows/ci.yml` 两处）。 |
 | 5 | **`--dart-define=API_HOST=keyievolution.fun`** | 这是旧项目的注入方式，`app/` 需确认是否沿用 |
 | 6 | **`uploadBitcode: false` + `compileBitcode: true`** | Bitcode 自 Xcode 14 起已废弃 → 这两项**可以删除** |
 
@@ -92,7 +92,8 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-          # 🔴 版本待定：原为 3.27.x，本地已用 3.41.1
+          # ✅ 固定 3.41.1（2026-10-01 定）—— 与项目 SDK 一致；
+          #    理由与兼容性核验见本文件 §二 第 4 条
           flutter-version: 3.41.1
           cache: true
 

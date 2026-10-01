@@ -404,7 +404,7 @@ iOS 归档→导出→上传参考实现**，故先抢救到文档再删：
 | 1 | `xcrun altool --upload-app -u -p` | 🔴 **Apple 已弃用**（2023-11 起）→ 改 **App Store Connect API Key** |
 | 2 | `teamID: YOUR_TEAM_ID` | 占位符未填 |
 | 3 | `PROVISIONING_PROFILE_SPECIFIER="match AppStore …"` | 依赖 fastlane match 证书管理 → 改**自动签名** |
-| 4 | `flutter-version: 3.27.x` | 本地已用 **3.41.1**，待重新评估 |
+| 4 | ~~`flutter-version: 3.27.x`~~ | ✅ **已定 3.41.1**（2026-10-01 · CI 已钉 · 与项目 SDK 一致） |
 | 5 | `--dart-define=API_HOST=keyievolution.fun` | 旧项目注入方式，`app/` 待确认 |
 | 6 | `uploadBitcode` / `compileBitcode` | Bitcode 自 Xcode 14 起**已废弃** → 删除 |
 

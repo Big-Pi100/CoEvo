@@ -3,8 +3,11 @@
 //      · Flutter **3.41**：定义在 **material** 库（`src/material/page_transitions_theme.dart`）
 //      · Flutter **3.47**：已迁到 **cupertino** 库（`src/cupertino/route.dart`）
 //        （**迁移发生在哪一版未核实**，只确认了这两个端点的归属）
-//    ⇒ 只 import material → CI（3.47.5）报 `isn't defined`（本轮 CI 红的原因）
-//      只 import cupertino → 本机（3.41.1）报同样的错
+//    ⇒ 当时（CI 还是 3.47.5、本机 3.41.1）：
+//        只 import material → CI 报 `isn't defined`（那次 CI 红的原因）
+//        只 import cupertino → 本机报同样的错
+//      ⚠️ 这是**历史成因**；CI 已于 2026-10-01 钉到 3.41.1（两边一致），
+//        但**双 import 保留** —— 让代码对两个版本都成立。
 //      **两个都 import → 两个版本都能解析** ✅（本机实测 0 error / 0 warning）
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -85,7 +88,11 @@ ThemeData buildTheme(CoEvoTokens t) {
     //       两边都编译。已核实不会产生同名冲突（该文件用到的 36 个 material 名字，
     //       逐个查过 cupertino 文档，**零同名**）。
     //    ⚠️ 这是「**本机 SDK ≠ CI SDK**」的典型症状：本地绿、CI 红。
-    //       根治办法是让两边版本一致（或本地升到 3.47.5）——已记入待办，不在本次改动内。
+    //    ✅ **已根治（2026-10-01）**：CI 钉死到 **3.41.1**（= 项目 SDK 的版本），
+    //       见 `.github/workflows/ci.yml` 的 `Setup Flutter`。此后两边同版本，
+    //       上面那个「本地永远绿灯」的盲区不再存在。
+    //       （本行的双 import 仍**保留** —— 它让代码对两个版本都成立，
+    //        将来升级 SDK 时不会因为这个类再次编译不过。）
     pageTransitionsTheme: const PageTransitionsTheme(
       builders: {
         TargetPlatform.android: CupertinoPageTransitionsBuilder(),

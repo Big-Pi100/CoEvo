@@ -2,24 +2,29 @@
 # 在 WSL(Ubuntu 22.04) 安装 Flutter SDK —— 供本地跑**权威**的 flutter analyze / flutter test
 #
 # 🔴 为什么需要
-#   本机 Flutter 是**鸿蒙定制版**（3.27.5-ohos），`flutter analyze` 会崩：
-#       CreateFile failed 231（无法创建子进程）
+#   本机 PATH 里的 `flutter` 指向**鸿蒙定制版**（`D:\flutter_flutter` = 3.27.5-ohos），
+#   而**项目用的是官方 3.41.1**（`D:\flutter` 在 PATH 里，但被机器级 PATH 压在后面）。
+#   ⚠️ 归因要准：不是「本机 Flutter 就是鸿蒙版」，而是「**裸调 `flutter` 会落到鸿蒙版**」
+#      —— 两处 SDK 并存（详见 `references/verification-rules.md` §一）。
+#   症状：`flutter analyze` 崩，CreateFile failed 231（无法创建子进程）
 #   → 前端改动在本机**无法权威验证**，只能靠自建 analyzer
 #     （它的注释自注「多报/少报」，口径与官方不一致 —— 已踩多次）。
 #
 # 🔴 为什么必须**锁版本**
-#   CI 用的是 `subosito/flutter-action@v2` + `channel: stable`
-#   → 版本**随上游漂移**（今天 3.47.5，明天可能 3.48.x）→ lint 规则集跟着变
-#   →「本地绿 / CI 红」（或反之）会变成常态。
-#   装上具体版本后，应把 CI 也锁到**同一版本**，口径才稳定。
+#   `subosito/flutter-action@v2` 只写 `channel: stable` 时版本**随上游漂移**
+#   → lint 规则集 / API 位置跟着变 →「本地绿 / CI 红」（或反之）会变成常态。
+#   ✅ CI 已钉 **3.41.1**（2026-10-01 白哥定），本脚本的默认号与它**保持一致**。
+#   📌 为什么是 3.41.1：项目的 SDK 就是 `D:\flutter` 的 3.41.1 stable
+#      （见 `app/android/local.properties`），且项目文档早已认定
+#      「只能在官方 3.41.1 上编译」（`docs/review/android-build-failed-wrong-flutter-sdk-2026-09-27.md`）。
 #
 # 用法（Windows 侧）：
 #   LANG=C wsl.exe -d Ubuntu-22.04 -- bash -lc "tr -d '\r' < /mnt/e/CoEvo/scripts/setup/install_flutter_in_wsl.sh | bash"
 #
-# 换版本：FLUTTER_VERSION=3.48.0 bash install_flutter_in_wsl.sh
+# 换版本：FLUTTER_VERSION=3.47.5 bash install_flutter_in_wsl.sh
 set -euo pipefail
 
-FLUTTER_VERSION="${FLUTTER_VERSION:-3.47.5}"
+FLUTTER_VERSION="${FLUTTER_VERSION:-3.41.1}"
 DEST="$HOME/flutter"
 TARBALL="$HOME/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
 URL="https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
