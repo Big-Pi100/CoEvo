@@ -192,10 +192,61 @@ jobs:
             -e "ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes" \
             dist/ "$VPS_USER@$VPS_HOST:$VPS_PATH"
 
+      # 🔴 为什么必须有这一步（2026-10-01 实际踩到的坑）
+      #
+      #   现象：deploy 后 systemd 报 `Main process exited, code=exited, status=203/EXEC`，
+      #         health 十次探测全是 000。
+      #   根因（**官方文档明写**，不是我推断的）——
+      #     `actions/upload-artifact` 文档 §Limitations → **Permission Loss** 原文：
+      #       "File permissions are **not maintained** during zipped artifact upload.
+      #        All directories will have `755` and all files will have `644`."
+      #       "if you make a file executable using `chmod` and then upload that file with
+      #        `archive: true`, post-download the file is **no longer guaranteed to be
+      #        set as an executable**."
+      #     ⇒ 二进制变成 **644** → `rsync -a` 的 `-p` **忠实传播**这个权限 → 目标机无 x 位
+      #       → `execve()` 返回 **EACCES** → systemd 记作 **203/EXEC**。
+      #     📌 文档还给了另一个方案：先用 `tar` 打包、再以 `archive: false` 上传（tar 保留权限）。
+      #        本 workflow 选「**落地后显式 chmod**」——更简单，且下面有 `test -x` 兜底。
+      #   ⚠️ 为什么难查：回滚用 `cp -a` 从 `.prev` 恢复，而 `.prev` 是**有 x 位**的
+      #      → 现场被覆盖，事后 `ls -la` 看到的权限是正常的（已修：回滚会留失败副本）。
+      #   ✅ 修法：上传后**显式补执行位**，并在重启前用 `test -x` + `ldd` 拦一道。
+      #      📌 判据：**跨工具传文件（artifact / zip / scp）不要假设权限被保留** ——
+      #         凡是「可执行文件」，落地后都要显式 chmod 一次。
+      - name: Verify & fix binary permissions
+        run: |
+          echo "── ① 下载回来的 bundle 权限（验证「artifact 丢执行位」这一假设）──"
+          ls -la dist/ dist/bin/
+
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" '
+            set -e
+            BIN=/opt/coevo/bin/coevo_backend
+            echo "── ② 服务器上的二进制 ──"
+            ls -la "$BIN"
+            file "$BIN"
+
+            if [ ! -x "$BIN" ]; then
+              echo "⚠️ 无执行位（正是 203/EXEC 的原因）→ 补上"
+              chmod 755 "$BIN"
+            fi
+
+            test -x "$BIN" || { echo "🔴 仍不可执行，**中止部署**（不重启，避免打断线上）"; exit 1; }
+
+            echo "── ③ 动态依赖（缺库也会表现为起不来）──"
+            # 只拦**明确**的缺库（`not found`），不当成通用校验 —— 避免误判静态链接等情况
+            if ldd "$BIN" 2>&1 | grep -q "not found"; then
+              echo "🔴 缺少动态库 ⇒ 二进制起不来（中止部署，**不重启**，线上不受影响）："
+              ldd "$BIN" 2>&1 | grep "not found"
+              exit 1
+            fi
+            ldd "$BIN" 2>&1 | head -8
+            echo "✅ 预检通过：可执行 + 依赖可解析"
+          '
+
       - name: Restart service & verify health (含失败回滚)
         run: |
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" '
             set -e
+            BIN=/opt/coevo/bin/coevo_backend
             sudo systemctl restart coevo
             for i in 1 2 3 4 5 6 7 8 9 10; do
               code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:8300/health || echo 000)
@@ -203,22 +254,37 @@ jobs:
               if [ "$code" = "200" ]; then echo "✅ coevo 已就绪"; exit 0; fi
               sleep 2
             done
+
             echo "🔴 health 未就绪 —— 最近日志："
             sudo journalctl -u coevo -n 40 --no-pager
-            if [ -f /opt/coevo/bin/coevo_backend.prev ]; then
+
+            # 🔴 回滚：**先把失败的那份改名保留**，再恢复上一版。
+            #    上一版实现是 `cp -a .prev BIN` 直接覆盖 —— 把失败证据销毁了，
+            #    事后无法诊断（2026-10-01 实际踩到：203/EXEC 想查 file/ldd 时，
+            #    文件已经被覆盖，只能靠推断）。留档成本近乎为零，价值很大。
+            if [ -f "$BIN.prev" ]; then
+              FAILED="$BIN.failed-$(date +%Y%m%d%H%M%S)"
+              echo "📦 保留失败副本 → $FAILED"
+              cp -a "$BIN" "$FAILED"
+              echo "   失败副本诊断信息（部署成功后请人工看一眼）："
+              ls -la "$FAILED"
+              file "$FAILED" 2>/dev/null || true
+              ldd "$FAILED" 2>&1 | head -8 || true
+
               echo "⏪ 回滚到上一版二进制…"
-              cp -a /opt/coevo/bin/coevo_backend.prev /opt/coevo/bin/coevo_backend
+              cp -a "$BIN.prev" "$BIN"
+              chmod 755 "$BIN"
               sudo systemctl restart coevo
               sleep 5
               rc=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:8300/health || echo 000)
               echo "回滚后 health: HTTP $rc"
+              [ "$rc" = "200" ] && echo "✅ 已回滚到可用版本（线上恢复）" || echo "🔴 回滚后仍不可用，需人工介入"
             else
               echo "（无上一版可回滚）"
             fi
             exit 1
           '
 
-      # 🔴 部署后确认**同机邻居服务**未受影响（与手工部署同样的纪律）
       - name: Verify neighbours still healthy
         run: |
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" '
@@ -339,6 +405,19 @@ jobs:
     name: iOS Build (no codesign)
     runs-on: macos-latest
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
+    # 🔴 `continue-on-error: true` —— 它是「**就绪度探测**」，不是代码质量门禁。
+    #
+    #    现在**必然失败**，且原因与代码无关：
+    #      「Building a deployable iOS app requires a selected Development Team with a
+    #        Provisioning Profile」
+    #    —— Apple 开发者账号 / Team ID 尚未办（Phase 0 未做，见
+    #       `docs/operations/ios-appstore-ci-reference.md` §二 的启用前提）。
+    #    ⇒ 不设它会**每次都红**，把真问题淹在噪音里（「红灯常态化 = 门禁失效」）。
+    #
+    #    ✅ Phase 0 完成后（有 Apple 账号 + Team ID + Secret 配好）**请删掉这一行**，
+    #       让它变回真正的门禁。判据：**临时的 continue-on-error 必须写明「何时移除」**，
+    #       否则会永久留在那里、变成新的静默失效。
+    continue-on-error: true
     defaults:
       run:
         working-directory: app
