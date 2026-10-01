@@ -1,3 +1,8 @@
+> ⛔ **本文已过时** —— 它是 **K12 时代**的运维追踪文档（其前置 `maintenance-spec.md` 同批已标废）。
+> 文中 `plan domain` / `card domain` / `conversation` 等概念属**已作废的 K12 模块**；
+> SSH 命令里的 VPS IP / 密钥路径亦为旧值（已脱敏）。
+> **不要照本文操作。** 当前形态以**代码**为准。
+
 # UI 设计意图追踪 — 体系架构与契约整编
 
 > 版本: v2.0 · 2026-05-31
@@ -1015,7 +1020,7 @@ Step 1: 确定断裂层 ← 如果是前后端交互问题，按"三层追溯法
 
 ```bash
 # 1. 查看该 conversation 的 plan 是否存在
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "
   sudo sqlite3 /opt/coevo/data/coevo.db \"
   SELECT id, conversation_id, goal, mode, updated_at
   FROM learning_plans
@@ -1023,7 +1028,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
 "
 
 # 2. 查看 plan 状态
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "
   sudo sqlite3 /opt/coevo/data/coevo.db \"
   SELECT goal, length(plan_json), substr(plan_json,1,200)
   FROM learning_plans WHERE conversation_id = 'uuid';\"
@@ -1045,7 +1050,7 @@ curl -s 'https://keyievolution.fun/api/plans?conversation_id=uuid' \
 
 ```bash
 # 1. 检查 plan domain vs card domain 是否对齐
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "
   echo '=== Plan domains ==='
   sudo sqlite3 /opt/coevo/data/coevo.db \
     \"SELECT DISTINCT domain FROM learning_plans ORDER BY domain;\"
@@ -1066,7 +1071,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
 
 ```bash
 # 检查 CP1/CP2 是否正常触发
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "
   grep -i 'cp2.*complete\|Plan mutation\|candidates' \
     /opt/coevo/data/logs/coevo.log.$(date +%Y-%m-%d) 2>/dev/null | tail -10
 "

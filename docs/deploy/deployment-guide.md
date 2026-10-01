@@ -1,3 +1,8 @@
+> ⛔ **本文已过时** —— 文中 **VPS IP / SSH 配置为旧值**，且部署方式已变更
+> （现为 WSL 原生构建 ELF + systemd + nginx 反代 + certbot）。
+> 当前部署方式见 `docs/design/coevo-vps-deployment-assessment-2026-09-29.md`（`coevo-vps-*`）。
+> **保留原文作历史记录；实际部署不要照本文操作。**
+
 # CoEvo 后端部署指南
 
 > ⚠️ 本文件包含 VPS 连接配置信息，**不要提交到 Git 仓库**。
@@ -9,28 +14,28 @@
 
 | 项目 | 值 |
 |:--|:--|
-| IP 地址 | `<OLD_VPS_IP>` |
+| IP 地址 | `<VPS_IP>` |
 | SSH 用户 | `ubuntu` |
-| SSH 密钥文件 | `~/.ssh/coevo_key`（RSA 2048 位） |
+| SSH 密钥文件 | `<SSH_KEY_PATH>`（RSA 2048 位） |
 | SSH 密钥口令 | `<SSH_KEY_PASSPHRASE>` |
 | 操作系统 | Ubuntu（OpenSSH_8.9p1） |
 | 工作目录 | `/opt/coevo` |
 | 服务管理器 | systemd |
 | 服务名 | `coevo` |
 | API 端口 | 8080 |
-| 健康检查 | `http://<OLD_VPS_IP>:8080/health` |
+| 健康检查 | `http://<VPS_IP>:8080/health` |
 
 ## 2. SSH 连接
 
 ### 2.1 前置条件
 
-- 密钥文件 `~/.ssh/coevo_key`（PEM 格式 RSA 私钥）
+- 密钥文件 `<SSH_KEY_PATH>`（PEM 格式 RSA 私钥）
 - 密钥口令（部署时手动输入或通过 ssh-agent 缓存）
 
 ### 2.2 手动登录
 
 ```bash
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP>
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP>
 # 提示输入密钥口令，输入 <SSH_KEY_PASSPHRASE>
 ```
 
@@ -40,11 +45,11 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP>
 
 ```bash
 # 1. 创建临时无口令密钥副本
-cp ~/.ssh/coevo_key /tmp/coevo_key_temp
+cp <SSH_KEY_PATH> /tmp/coevo_key_temp
 ssh-keygen -p -P "<SSH_KEY_PASSPHRASE>" -N "" -f /tmp/coevo_key_temp
 
 # 2. 使用临时密钥连接
-ssh -i /tmp/coevo_key_temp ubuntu@<OLD_VPS_IP> "命令"
+ssh -i /tmp/coevo_key_temp ubuntu@<VPS_IP> "命令"
 
 # 3. 用完删除
 rm -f /tmp/coevo_key_temp
@@ -74,10 +79,10 @@ tar czf /tmp/coevo-deploy.tar.gz \
   data/curriculum/v4/         # ⚠️ 课程数据文件必须包含
 
 # 上传到 VPS
-scp -i ~/.ssh/coevo_key /tmp/coevo-deploy.tar.gz ubuntu@<OLD_VPS_IP>:~/
+scp -i <SSH_KEY_PATH> /tmp/coevo-deploy.tar.gz ubuntu@<VPS_IP>:~/
 
 # VPS 上编译 + 部署
-ssh -i ~/.ssh/coevo_key -o ServerAliveInterval=30 ubuntu@<OLD_VPS_IP> "
+ssh -i <SSH_KEY_PATH> -o ServerAliveInterval=30 ubuntu@<VPS_IP> "
   cd ~ &&
   rm -rf backend &&
   tar xzf coevo-deploy.tar.gz &&
@@ -102,8 +107,8 @@ ssh -i ~/.ssh/coevo_key -o ServerAliveInterval=30 ubuntu@<OLD_VPS_IP> "
 如果本地已有编译好的 Linux 二进制文件：
 
 ```bash
-scp -i ~/.ssh/coevo_key ./coevo_backend ubuntu@<OLD_VPS_IP>:/tmp/
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
+scp -i <SSH_KEY_PATH> ./coevo_backend ubuntu@<VPS_IP>:/tmp/
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "
   sudo systemctl stop coevo &&
   sudo cp /tmp/coevo_backend /opt/coevo/coevo_server &&
   sudo chmod +x /opt/coevo/coevo_server &&
@@ -226,13 +231,13 @@ IFLYTEK_API_SECRET=<IFLYTEK_API_SECRET>
 
 ```bash
 # 实时日志
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "sudo journalctl -u coevo -f"
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "sudo journalctl -u coevo -f"
 
 # 最近 N 条
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "sudo journalctl -u coevo --since '30 min ago' --no-pager"
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "sudo journalctl -u coevo --since '30 min ago' --no-pager"
 
 # 搜索 STT 相关
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "sudo journalctl -u coevo --since '1 hour ago' --no-pager | grep -i 'stt\|iflytek\|ffmpeg\|audio'"
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "sudo journalctl -u coevo --since '1 hour ago' --no-pager | grep -i 'stt\|iflytek\|ffmpeg\|audio'"
 ```
 
 ### 8.2 服务启动失败
@@ -249,7 +254,7 @@ sudo systemctl status coevo --no-pager
 ### 8.3 健康检查
 
 ```bash
-curl http://<OLD_VPS_IP>:8080/health
+curl http://<VPS_IP>:8080/health
 # 期望: "CoEvo API — OK"
 ```
 

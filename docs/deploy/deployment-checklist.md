@@ -1,10 +1,15 @@
+> ⛔ **本文已过时** —— 文中 **VPS IP / SSH 配置为旧值**，且部署方式已变更
+> （现为 WSL 原生构建 ELF + systemd + nginx 反代 + certbot）。
+> 当前部署方式见 `docs/design/coevo-vps-deployment-assessment-2026-09-29.md`（`coevo-vps-*`）。
+> **保留原文作历史记录；实际部署不要照本文操作。**
+
 # CoEvo 部署检查清单
 
 ## 服务器信息
 
 | 项目 | 值 |
 |:--|:--|
-| VPS IP | `<OLD_VPS_IP>` |
+| VPS IP | `<VPS_IP>` |
 | 配置 | 2C1G / 40GB SSD / 200Mbps |
 | OS | Ubuntu 22.04 LTS |
 | 主机名 | CoEvo_1 |
@@ -25,7 +30,7 @@ VPS 运行完整 Rust 后端，Flutter APK 后期待嵌入。
 ```bash
 # 本地开发机运行部署脚本
 cd backend
-bash deploy.sh <OLD_VPS_IP>
+bash deploy.sh <VPS_IP>
 ```
 
 ## SEO 文件（2026-06-15 新增）

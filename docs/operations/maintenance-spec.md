@@ -1,3 +1,8 @@
+> ⛔ **本文已过时** —— 文中 **VPS IP / SSH 配置为旧值**，且部署方式已变更
+> （现为 WSL 原生构建 ELF + systemd + nginx 反代 + certbot）。
+> 当前部署方式见 `docs/design/coevo-vps-deployment-assessment-2026-09-29.md`（`coevo-vps-*`）。
+> **保留原文作历史记录；实际部署不要照本文操作。**
+
 # CoEvo 生产环境维护规范
 
 > 版本: v1.0 · 生效日期: 2026-05-31
@@ -41,7 +46,7 @@
 | 项目 | 值 |
 |:----|:----|
 | 域名 | `https://keyievolution.fun` |
-| VPS IP | `<OLD_VPS_IP>` |
+| VPS IP | `<VPS_IP>` |
 | 操作系统 | Ubuntu 22.04 LTS (x86_64) |
 | 规格 | 2C / 1GB RAM / 2GB swap / 40GB SSD |
 | 磁盘使用 | 14G / 40G (35%) — 监控阈值 80% |
@@ -94,7 +99,7 @@ cd /e/CoEvo/app
   --dart-define=API_HOST=keyievolution.fun
 
 # Step 2: 备份旧版本
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "
   sudo rm -rf /opt/coevo/admin-web.bak.$(date +%Y%m%d-%H%M%S).old &&
   sudo cp -r /opt/coevo/admin-web /opt/coevo/admin-web.bak.$(date +%Y%m%d-%H%M%S)
 "
@@ -102,7 +107,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
 # Step 3: 打包上传
 cd /e/CoEvo/app/build/web
 tar czf /tmp/coevo-web.tar.gz .
-cat /tmp/coevo-web.tar.gz | ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
+cat /tmp/coevo-web.tar.gz | ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> '
   sudo tar xzf - -C /opt/coevo/admin-web/ &&
   sudo chown -R www-data:www-data /opt/coevo/admin-web/ &&
   sudo nginx -s reload
@@ -135,25 +140,25 @@ cargo check --package api_server --package chat_engine --package card_engine 2>&
 
 # Step 2: 推送源码到 VPS 编译
 cat "E:\CoEvo\backend\crates\api_server\src\routes.rs" | \
-  ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> 'cat > /tmp/backend/crates/api_server/src/routes.rs'
+  ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> 'cat > /tmp/backend/crates/api_server/src/routes.rs'
 
 # （或者整体推送）
 cd /e/CoEvo/backend
 tar cz --exclude=target --exclude='.git' . | \
-  ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
+  ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> '
     mkdir -p /tmp/build_tmp && tar xzf - -C /tmp/build_tmp &&
     cp -r /tmp/build_tmp/* /tmp/backend/
   '
 
 # Step 3: VPS 编译（限制单线程，防 OOM）
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> '
   export PATH=$HOME/.cargo/bin:$PATH &&
   cd /tmp/backend &&
   cargo build --release --bin coevo_backend -j 1
 '
 
 # Step 4: 备份 + 替换 + 重启
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "
   sudo systemctl stop coevo &&
   cp /opt/coevo/coevo_server /opt/coevo/coevo_server.bak.$(date +%Y%m%d-%H%M%S) &&
   cp /tmp/backend/target/release/coevo_backend /opt/coevo/coevo_server &&
@@ -174,14 +179,14 @@ sudo journalctl -u coevo -n 10 --no-pager | grep -E "K12|READING|ERROR|panic"
 ```bash
 # 上传单个 prompt
 cat "E:\CoEvo\backend\prompts\chat_system_reading_primary.md" | \
-  ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
+  ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> '
     sudo tee /opt/coevo/prompts/chat_system_reading_primary.md > /dev/null
   '
 
 # 批量上传所有 prompt
 cd /e/CoEvo/backend
 tar cz prompts/ | \
-  ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
+  ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> '
     sudo tar xzf - -C /opt/coevo/ && sudo systemctl restart coevo
   '
 ```
@@ -409,9 +414,9 @@ find "$BACKUP_DIR" -name "coevo.*.db.gz" -mtime +$RETENTION -delete
 
 ```bash
 # 将以下配置备份到本地安全位置（不要提交到公开仓库）
-scp -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP>:/opt/coevo/.env ./
-scp -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP>:/etc/nginx/sites-available/coevo ./
-scp -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP>:/etc/systemd/system/coevo.service ./
+scp -i <SSH_KEY_PATH> ubuntu@<VPS_IP>:/opt/coevo/.env ./
+scp -i <SSH_KEY_PATH> ubuntu@<VPS_IP>:/etc/nginx/sites-available/coevo ./
+scp -i <SSH_KEY_PATH> ubuntu@<VPS_IP>:/etc/systemd/system/coevo.service ./
 ```
 
 ---
@@ -422,12 +427,12 @@ scp -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP>:/etc/systemd/system/coevo.service ./
 
 ```bash
 # 查看可用备份
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "
   ls -d /opt/coevo/admin-web.bak.* 2>/dev/null | sort
 "
 
 # 回滚到指定版本
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "
   sudo rm -rf /opt/coevo/admin-web.bak.current &&
   sudo mv /opt/coevo/admin-web /opt/coevo/admin-web.bak.current &&
   sudo cp -r /opt/coevo/admin-web.bak.20260531-120000 /opt/coevo/admin-web &&
@@ -439,13 +444,13 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
 
 ```bash
 # 查看可用备份
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "
   ls -la /opt/coevo/coevo_server.bak.* | sort -k9,9
 "
 
 # 注意：回滚时也要同时回滚 prompts/ 目录（prompt 变更也需匹配旧版本）
 # 回滚到指定版本
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "
   # 停服
   sudo systemctl stop coevo
 
@@ -856,7 +861,7 @@ git rev-parse HEAD > /tmp/backend/commit.txt
 |:----|:-----|
 | 级别 | P1（安全） |
 | 根因 | Rust 后端默认绑定 `0.0.0.0:8080`，API 直接在公网可访问 |
-| 影响 | 任何人可通过 `http://<OLD_VPS_IP>:8080/` 直连 API，绕过 Nginx 的鉴权和限流 |
+| 影响 | 任何人可通过 `http://<VPS_IP>:8080/` 直连 API，绕过 Nginx 的鉴权和限流 |
 | 修复 | 设置 `COEVO_HOST=127.0.0.1` 环境变量，后端只监听本地回环地址 |
 | 经验 | 生产环境任何服务都应默认绑定 127.0.0.1，只有 Nginx 等反向代理绑定 0.0.0.0。部署检视清单应包含端口监听地址检查 |
 

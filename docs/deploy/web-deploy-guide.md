@@ -1,3 +1,7 @@
+> ⛔ **本文已作废** —— 它属于**旧产品形态**（Web 部署（项目已定「仅 iOS」，不做 Web）），与当前项目（**仅 iOS 的英语学习 App**）无关。
+> **保留原文仅作历史记录，不要照本文操作。**
+> 当前形态以 `docs/design/v1-final-design-authoritative-2026-09-25.md` 与**代码**为准。
+
 # CoEvo 部署指南
 
 > Flutter Web 前端 + Rust 后端完整部署流程，涵盖构建、上传、替换、验证与回滚。
@@ -8,9 +12,9 @@
 
 | 项目 | 值 |
 |:--|:--|
-| IP 地址 | `<OLD_VPS_IP>` |
+| IP 地址 | `<VPS_IP>` |
 | SSH 用户 | `ubuntu` |
-| SSH 密钥 | `~/.ssh/coevo_key` |
+| SSH 密钥 | `<SSH_KEY_PATH>` |
 | 域名 | `keyievolution.fun`（已备案：粤ICP备2026061557号-1） |
 | SSL | Let's Encrypt（certbot），自动续期 |
 | **前端** | |
@@ -34,7 +38,7 @@
 
 ```
 用户浏览器
-    │  http://<OLD_VPS_IP>/app/
+    │  http://<VPS_IP>/app/
     ▼
 ┌─ Nginx :80 (coevo-landing) ─────────────────────────┐
 │                                                      │
@@ -154,7 +158,7 @@ static String get baseUrl {
 > ⚠️ 部署到 VPS 时必须显式传入 `API_HOST`，否则前端会尝试连接 `localhost:8080` 导致 API 请求失败。
 >
 > ⚠️ **2026-07-13 踩坑：Mixed Content**
-> - ❌ `API_HOST=<OLD_VPS_IP>` → 构造 `http://IP:8080/...` → HTTPS 页面调用 HTTP API 被浏览器拦截（所有 API 静默失败）
+> - ❌ `API_HOST=<VPS_IP>` → 构造 `http://IP:8080/...` → HTTPS 页面调用 HTTP API 被浏览器拦截（所有 API 静默失败）
 > - ✅ `API_HOST=keyievolution.fun` → 构造 `https://keyievolution.fun/api/...` → 同源 HTTPS 正常
 > - **线上部署必须用域名，不得用 IP。** Nginx 已有 `location /api/` 代理到后端 8080。
 
@@ -205,16 +209,16 @@ cd E:\CoEvo\app\build\web
 tar czf /tmp/coevo-web.tar.gz .
 
 # 2. 上传到 VPS
-scp -i ~/.ssh/coevo_key -o StrictHostKeyChecking=no \
+scp -i <SSH_KEY_PATH> -o StrictHostKeyChecking=no \
   /tmp/coevo-web.tar.gz \
-  ubuntu@<OLD_VPS_IP>:/tmp/
+  ubuntu@<VPS_IP>:/tmp/
 ```
 
 ### 4.2 VPS 端部署
 
 ```bash
 # 3. 替换文件
-ssh -i ~/.ssh/coevo_key -o StrictHostKeyChecking=no ubuntu@<OLD_VPS_IP> "
+ssh -i <SSH_KEY_PATH> -o StrictHostKeyChecking=no ubuntu@<VPS_IP> "
   sudo rm -rf /opt/coevo/admin-web/* &&
   sudo tar xzf /tmp/coevo-web.tar.gz -C /opt/coevo/admin-web/ &&
   sudo chown -R ubuntu:ubuntu /opt/coevo/admin-web/ &&
@@ -256,7 +260,7 @@ ssh -i ~/.ssh/coevo_key -o StrictHostKeyChecking=no ubuntu@<OLD_VPS_IP> "
 ```bash
 # 本地和 VPS 临时文件
 rm -f /tmp/coevo-web.tar.gz
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "rm -f /tmp/coevo-web.tar.gz"
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "rm -f /tmp/coevo-web.tar.gz"
 ```
 
 ---
@@ -291,30 +295,30 @@ tar czf /tmp/coevo-backend-src.tar.gz \
   src/ Cargo.toml Cargo.lock crates/ prompts/
 
 # 2. 上传到 VPS
-scp -i ~/.ssh/coevo_key -o StrictHostKeyChecking=no \
+scp -i <SSH_KEY_PATH> -o StrictHostKeyChecking=no \
   /tmp/coevo-backend-src.tar.gz \
-  ubuntu@<OLD_VPS_IP>:/tmp/
+  ubuntu@<VPS_IP>:/tmp/
 
 # 3. 课程数据打包上传（必需，编译时路径与运行时路径不同）
 # ⚠️ 注意：数据在 data/curriculum/v4/ 目录，不是 data/curriculum/prebuilt/
 cd E:\CoEvo
 tar czf /tmp/curriculum-v4.tar.gz -C data/curriculum/v4 .
-scp -i ~/.ssh/coevo_key /tmp/curriculum-v4.tar.gz \
-  ubuntu@<OLD_VPS_IP>:/tmp/
+scp -i <SSH_KEY_PATH> /tmp/curriculum-v4.tar.gz \
+  ubuntu@<VPS_IP>:/tmp/
 
 # 4. 上传数据库（本地覆盖 VPS）
-scp -i ~/.ssh/coevo_key backend/data/coevo.db \
-  ubuntu@<OLD_VPS_IP>:/tmp/coevo.db
+scp -i <SSH_KEY_PATH> backend/data/coevo.db \
+  ubuntu@<VPS_IP>:/tmp/coevo.db
 
 # 5. 上传落地页
 cd E:\CoEvo\landing
 tar czf /tmp/coevo-landing.tar.gz .
-scp -i ~/.ssh/coevo_key /tmp/coevo-landing.tar.gz \
-  ubuntu@<OLD_VPS_IP>:/tmp/
+scp -i <SSH_KEY_PATH> /tmp/coevo-landing.tar.gz \
+  ubuntu@<VPS_IP>:/tmp/
 
 # 6. 上传管理员二维码（到期弹窗用）
-scp -i ~/.ssh/coevo_key backend/data/super_weixin.jpg \
-  ubuntu@<OLD_VPS_IP>:/tmp/super_weixin.jpg
+scp -i <SSH_KEY_PATH> backend/data/super_weixin.jpg \
+  ubuntu@<VPS_IP>:/tmp/super_weixin.jpg
 ```
 
 > **注意**：课程数据必须单独上传，不能依赖编译时路径（CARGO_MANIFEST_DIR）。见 5.4 节。
@@ -322,7 +326,7 @@ scp -i ~/.ssh/coevo_key backend/data/super_weixin.jpg \
 ### 5.3 VPS 端编译
 
 ```bash
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> '
   # 解压源码
   sudo rm -rf /tmp/coevo-build
   mkdir -p /tmp/coevo-build/backend
@@ -364,7 +368,7 @@ sudo systemctl edit coevo  # 添加 Environment=COEVO_PII_KEY=...
 ### 5.4 替换二进制并重启（全量部署）
 
 ```bash
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> '
   set -e
 
   # 0. 停止服务
@@ -456,7 +460,7 @@ ENVEOF
 
 ```bash
 # VPS 端
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> \
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> \
   "rm -rf /tmp/coevo-build /tmp/coevo-backend-src.tar.gz /tmp/curriculum-v4.tar.gz /tmp/build.log"
 
 # 本地
@@ -489,8 +493,8 @@ CoEvo 百度SEO优化涉及两个文件，位于落地页根目录（`/var/www/c
 #   </url>
 
 # 2. 部署到 VPS
-scp -i ~/.ssh/coevo_key E:\CoEvo\landing\sitemap.xml ubuntu@<OLD_VPS_IP>:/tmp/
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
+scp -i <SSH_KEY_PATH> E:\CoEvo\landing\sitemap.xml ubuntu@<VPS_IP>:/tmp/
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "
   sudo cp /tmp/sitemap.xml /var/www/coevo-landing/sitemap.xml &&
   sudo chown www-data:www-data /var/www/coevo-landing/sitemap.xml
 "
@@ -574,17 +578,17 @@ sudo journalctl -u coevo -f     # 实时日志
 
 ```bash
 # App 入口
-curl -s -o /dev/null -w "HTTP %{http_code}" http://<OLD_VPS_IP>/app/
+curl -s -o /dev/null -w "HTTP %{http_code}" http://<VPS_IP>/app/
 
 # 主 JS 文件
 curl -s -o /dev/null -w "HTTP %{http_code} | %{size_download} bytes" \
-  http://<OLD_VPS_IP>/app/main.dart.js
+  http://<VPS_IP>/app/main.dart.js
 
 # 落地页
-curl -s -o /dev/null -w "HTTP %{http_code}" http://<OLD_VPS_IP>/
+curl -s -o /dev/null -w "HTTP %{http_code}" http://<VPS_IP>/
 
 # API 健康检查
-curl -s http://<OLD_VPS_IP>:8080/health
+curl -s http://<VPS_IP>:8080/health
 ```
 
 期望输出：
@@ -599,7 +603,7 @@ curl -s http://<OLD_VPS_IP>:8080/health
 ### 6.2 服务状态
 
 ```bash
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "
   echo 'nginx:' \$(sudo systemctl is-active nginx) &&
   echo 'coevo:' \$(sudo systemctl is-active coevo)
 "
@@ -608,7 +612,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
 ### 6.3 课程数据加载验证（2026-05-30 新增）
 
 ```bash
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "
   echo 'K12 plans:' \$(ls /opt/coevo/data/curriculum/v4/plans/ | wc -l)
   echo 'K12 cards:' \$(ls /opt/coevo/data/curriculum/v4/cards/*.json | wc -l)
   sudo journalctl -u coevo -n 5 --no-pager --no-hostname | grep -E 'K12|READING'
@@ -633,11 +637,11 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
 
 ```bash
 # 确认 index.html 中 base href 为 /app/
-curl -s http://<OLD_VPS_IP>/app/ | grep "base href"
+curl -s http://<VPS_IP>/app/ | grep "base href"
 # 期望: <base href="/app/">
 
 # 确认 main.dart.js 可访问
-curl -s -o /dev/null -w "%{http_code}" http://<OLD_VPS_IP>/app/main.dart.js
+curl -s -o /dev/null -w "%{http_code}" http://<VPS_IP>/app/main.dart.js
 # 期望: 200
 ```
 
@@ -661,16 +665,16 @@ curl -s -o /dev/null -w "%{http_code}" http://<OLD_VPS_IP>/app/main.dart.js
 
 ```bash
 # 直连后端
-curl http://<OLD_VPS_IP>:8080/health
+curl http://<VPS_IP>:8080/health
 
 # 通过 Nginx 代理
-curl http://<OLD_VPS_IP>/api/health
+curl http://<VPS_IP>/api/health
 ```
 
 如果直连正常但代理失败，检查 Nginx 配置：
 
 ```bash
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "
   sudo nginx -t &&          # 检查配置语法
   sudo systemctl restart nginx
 "
@@ -680,11 +684,11 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
 
 ```bash
 # 查看日志
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> \
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> \
   "sudo journalctl -u coevo --since '10 min ago' --no-pager"
 
 # 重启
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> \
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> \
   "sudo systemctl restart coevo"
 ```
 
@@ -769,7 +773,7 @@ cargo build --release -j 1
 
 ### 7.8 直连 Port 3000 白屏 / 管理员后台打不开
 
-**症状**：`http://<OLD_VPS_IP>:3000/` 或 `:3000/admin` 页面白屏，浏览器 Console 报 JS 语法错误（`Unexpected token '<'`）
+**症状**：`http://<VPS_IP>:3000/` 或 `:3000/admin` 页面白屏，浏览器 Console 报 JS 语法错误（`Unexpected token '<'`）
 
 **原因**：Flutter 构建时使用 `--base-href /app/`，`index.html` 中 `<base href="/app/">` 导致所有资源请求带 `/app/` 前缀。Port 3000 Nginx 若缺少 `/app/` location，`try_files` 会将不存在的文件回退到 `index.html`，使 JS/CSS 请求返回 HTML 内容。
 
@@ -777,7 +781,7 @@ cargo build --release -j 1
 
 ```bash
 # 验证 — 正确应返回 application/javascript，而非 text/html
-curl -sI http://<OLD_VPS_IP>:3000/app/main.dart.js | grep Content-Type
+curl -sI http://<VPS_IP>:3000/app/main.dart.js | grep Content-Type
 # 期望: Content-Type: application/javascript
 ```
 
@@ -793,7 +797,7 @@ location /app/ {
 应用修复后重载：
 
 ```bash
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> '
   sudo nginx -t && sudo nginx -s reload
 '
 ```
@@ -809,7 +813,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
 
 1. **Nginx 层**：同时设置 `proxy_read_timeout` 和 `proxy_send_timeout` 到 86400s（24 小时）：
 ```bash
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> '
   # port 80 入口
   sudo sed -i "/location \/ws {/,/}/ {
     /proxy_pass.*8080\/ws/ a\
@@ -841,7 +845,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
 **诊断**：
 ```bash
 # 检查环境变量是否已设置
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "
   sudo systemctl show coevo --property=Environment | grep COEVO_PII_KEY
   grep COEVO_PII_KEY /opt/coevo/.env 2>/dev/null || echo '未在 .env 中找到'
 "
@@ -876,7 +880,7 @@ sudo nginx -t && sudo nginx -s reload
 
 ### 7.12 Certbot 导致 Port 80 返回 404（2026-06-08 新增）
 
-**症状**：访问 `http://<OLD_VPS_IP>/` 返回 404，但 `http://<OLD_VPS_IP>:3000/` 正常。
+**症状**：访问 `http://<VPS_IP>/` 返回 404，但 `http://<VPS_IP>:3000/` 正常。
 
 **根因**：Certbot 在配置 port 80 的 HTTP→HTTPS 重定向时，添加了 `return 404; # managed by Certbot` 作为兜底。这个返回适用于任何没有匹配 `server_name` 的请求——包括直接通过 IP 访问。
 
@@ -887,7 +891,7 @@ sudo nginx -t && sudo nginx -s reload
 server {
     listen 80;
     listen [::]:80;
-    server_name <OLD_VPS_IP>;
+    server_name <VPS_IP>;
 
     root /var/www/coevo-landing;
     index index.html;
@@ -917,8 +921,8 @@ ls -la /opt/coevo/cefr_catalog.json /opt/coevo/achievements.toml
 **解决**：从本地上传：
 ```bash
 scp backend/cefr_catalog.json backend/achievements.toml \
-  ubuntu@<OLD_VPS_IP>:/tmp/
-ssh ubuntu@<OLD_VPS_IP> "sudo cp /tmp/cefr_catalog.json /opt/coevo/ && \
+  ubuntu@<VPS_IP>:/tmp/
+ssh ubuntu@<VPS_IP> "sudo cp /tmp/cefr_catalog.json /opt/coevo/ && \
   sudo cp /tmp/achievements.toml /opt/coevo/ && \
   sudo systemctl restart coevo"
 ```
@@ -968,7 +972,7 @@ ssh ubuntu@<OLD_VPS_IP> "sudo cp /tmp/cefr_catalog.json /opt/coevo/ && \
 如遇严重问题，可恢复上一版本：
 
 ```bash
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> "
   # 查看备份
   ls -d /opt/coevo/admin-web.bak.* 2>/dev/null &&
   # 回滚到指定备份（替换日期时间）
@@ -981,7 +985,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> "
 ### 9.2 后端回滚
 
 ```bash
-ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
+ssh -i <SSH_KEY_PATH> ubuntu@<VPS_IP> '
   # 列出可用备份
   ls -la /opt/coevo/coevo_server.bak.*
 
@@ -1003,12 +1007,12 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
 
 | # | 检查项 | 命令 | 期望 |
 |:--|:--|:--|:--|
-| 1 | 后端健康 | `curl -s http://<OLD_VPS_IP>:8080/health` | `CoEvo API — OK` |
-| 2 | 落地页 | `curl -sI http://<OLD_VPS_IP>/` | HTTP 200 |
-| 3 | App 入口 (port 80) | `curl -sI http://<OLD_VPS_IP>/app/` | HTTP 200 |
-| 4 | App 入口 (port 3000) | `curl -sI http://<OLD_VPS_IP>:3000/` | HTTP 200 |
-| 5 | 管理后台 (SPA 路由) | `curl -sI http://<OLD_VPS_IP>:3000/admin` | HTTP 200 |
-| 6 | JS 资源 MIME 类型 | `curl -sI http://<OLD_VPS_IP>:3000/app/main.dart.js \| grep Content-Type` | `application/javascript` |
+| 1 | 后端健康 | `curl -s http://<VPS_IP>:8080/health` | `CoEvo API — OK` |
+| 2 | 落地页 | `curl -sI http://<VPS_IP>/` | HTTP 200 |
+| 3 | App 入口 (port 80) | `curl -sI http://<VPS_IP>/app/` | HTTP 200 |
+| 4 | App 入口 (port 3000) | `curl -sI http://<VPS_IP>:3000/` | HTTP 200 |
+| 5 | 管理后台 (SPA 路由) | `curl -sI http://<VPS_IP>:3000/admin` | HTTP 200 |
+| 6 | JS 资源 MIME 类型 | `curl -sI http://<VPS_IP>:3000/app/main.dart.js \| grep Content-Type` | `application/javascript` |
 | 7 | coevo 服务 | `ssh ... "systemctl is-active coevo"` | `active` |
 | 8 | Nginx 服务 | `ssh ... "systemctl is-active nginx"` | `active` |
 | 9 | 服务日志无异常 | `ssh ... "journalctl -u coevo --since '1 min ago'"` | 无 ERROR |
@@ -1033,22 +1037,22 @@ ssh -i ~/.ssh/coevo_key ubuntu@<OLD_VPS_IP> '
 #!/bin/bash
 # coevo-deploy-check.sh — 部署后一键验证
 
-VPS="ubuntu@<OLD_VPS_IP>"
-KEY="~/.ssh/coevo_key"
+VPS="ubuntu@<VPS_IP>"
+KEY="<SSH_KEY_PATH>"
 
 echo "=== CoEvo 部署验证 ==="
 
 # 1. 后端健康
 echo -n "1. Backend health: "
-curl -s http://<OLD_VPS_IP>:8080/health
+curl -s http://<VPS_IP>:8080/health
 echo ""
 
 # 2-6. 前端页面
 for url in \
-  "http://<OLD_VPS_IP>/|Landing" \
-  "http://<OLD_VPS_IP>/app/|App (p80)" \
-  "http://<OLD_VPS_IP>:3000/|App (p3000)" \
-  "http://<OLD_VPS_IP>:3000/admin|Admin"
+  "http://<VPS_IP>/|Landing" \
+  "http://<VPS_IP>/app/|App (p80)" \
+  "http://<VPS_IP>:3000/|App (p3000)" \
+  "http://<VPS_IP>:3000/admin|Admin"
 do
   u="${url%%|*}"; label="${url##*|}"
   code=$(curl -s -o /dev/null -w "%{http_code}" "$u")
@@ -1056,7 +1060,7 @@ do
 done
 
 # 7. JS MIME
-mime=$(curl -sI http://<OLD_VPS_IP>:3000/app/main.dart.js | grep Content-Type | tr -d '\r')
+mime=$(curl -sI http://<VPS_IP>:3000/app/main.dart.js | grep Content-Type | tr -d '\r')
 echo "main.dart.js: $mime"
 
 # 8-9. 服务状态
