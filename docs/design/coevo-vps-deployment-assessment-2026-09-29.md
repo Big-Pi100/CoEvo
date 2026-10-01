@@ -438,3 +438,124 @@ certbot certonly --webroot -w /var/www/certbot \
 | **乙** | **主域先不动** —— 只配 `api`；主域保持现状（证书错误 + 404），等上架前一起做 |
 
 **我建议甲** —— 边际成本几乎为 0，且能消掉一个**活跃的**不良状态。
+
+---
+
+## 十二、🟢 步骤 1 实施记录（2026-10-01 17:13 · 已完成）
+
+> 白哥「1→2」的第 2 步。**本轮只新增 `/opt/coevo` 与 `coevo.service`** —— 未碰 nginx / 证书 / DNS / 任何现役服务。
+
+### 12.1 🔴 方案调整：二进制不走 GitHub Actions（原计划「甲」被实测否决）
+
+原计划（§四 方案甲）：加 CI build job → 产出 artifact → 本地下载 → `scp`。
+
+**实测卡点**：
+
+| 项 | 实测 |
+|---|---|
+| 仓库 `Big-Pi100/CoEvo` | 🔴 **私有**（`api.github.com` 返回 404） |
+| `gh` CLI | 已装 2.65.0，但 **未登录** |
+| `GH_TOKEN` / `GITHUB_TOKEN` / `GH_ENTERPRISE_TOKEN` / `GITHUB_PAT` | 🔴 **全部未设置** |
+
+→ **私有仓库的 artifact 必须带 token 才能下载**，而本机没有任何可用凭据 →
+这条路**当前走不通**（不是配置问题，是缺凭据）。
+
+**改用方案乙（本地构建）的变体 —— WSL 原生构建**：
+
+| 探项 | 实测 |
+|---|---|
+| 本机有 WSL | ✅ `Ubuntu-22.04`（7.8 GB 内存 · 898 GB 可用） |
+| rust | ✅ 已有 cargo/rustc **1.94.0**（在 `~/.cargo/env`；**非登录 shell 需先 source** —— 这是我第一次探测误判「无 rust」的原因） |
+| C 工具链 | ✅ `gcc` / `cc` / `make` 齐全（`rusqlite bundled` 要编 SQLite C 源码） |
+| crates 镜像 | ✅ `rsproxy.cn` 200（已配 `~/.cargo/config.toml`） |
+| glibc | 22.04 = **2.35** → 部署机 24.04（2.39）**可运行**（向后兼容） |
+
+🔑 **为什么它比 CI 更合适**：不依赖任何外部凭据 · 不占 CI 额度 · 构建机与部署机同为 x86_64 Linux。
+⚠️ **CI job 仍然加了**（`.github/workflows/ci.yml` 的 `backend-release`，手动 / tag 触发）——
+   它是**长期正确**的路子，将来有 token 或换公开仓库即可直接用；本轮只是**没拿它当交付通道**。
+
+**构建结果**：
+```
+ELF 64-bit LSB pie executable, x86-64   ·   strip 后 16.7 MB（原 20.6 MB）
+依赖：libssl.so.3 / libcrypto.so.3 / libgcc_s / libm / libc   ← 24.04 均有（实测确认）
+部署包合计 28 MB = 二进制 + cefr_catalog.json(12.1 MB) + prompts/(393 KB)
+```
+
+📄 构建脚本已入仓库：`scripts/deploy/build_linux_in_wsl.sh`（可复用）
+
+### 12.2 🔴 实测修正：§四「部署包内容」有三处与现状不符
+
+| # | §四 原说法 | 实测 | 影响 |
+|---|---|---|---|
+| 1 | 要传 `data/coevo.db`（空骨架 0.59 MB） | ❌ **不需要** —— `main.rs` → `db_pool::init()` **自动建库建表**（20 表）；实测首启即生成 `coevo.db` + WAL | 少传一个文件、少一处漂移源 |
+| 2 | `prompts/`（10 文件 361 KB）·「`prompt_loader::init` 要读」 | 🟠 实际 **110 文件 393 KB**；且 `prompt_loader::init` **完全容错**（读不到 → 空注册表，**不 panic**） | 该模块**不是**硬依赖 |
+| 3 | （未提） | 🔴 `prompts/` 里 **212 KB 是 K12 退役遗留**（`chat/` 16 科目 + `concept/` `plan/` `quiz/` `verify/` `routing/`） | ⏳ 建议后续清理（§12.5） |
+
+**② 的核实方法**（不读注释，读代码）：`prompt_loader::read_file` 用 `unwrap_or_default()`；
+`scan_subject_dirs` 用 `if let Ok(entries) = read_dir` → **目录整个缺失也只是空注册表**。
+
+**真正「运行时必读」的只有 2 个**：
+
+| 文件 | 谁读 | 读不到会怎样 |
+|---|---|---|
+| `wordlib_contract.md` | `llm_card.rs`（LLM 制卡契约） | 制卡 prompt 为空 → 制卡坏 |
+| `compliance_terms.json` | `compliance.rs`（合规闸门） | 🔴 **返回 Err，不降级** → 制卡被拦 |
+
+（`compliance_cases.json` 是 `include_str!` **编译期嵌入**，运行时不需要 —— 但仍一并传，保持目录完整。）
+
+→ **最终仍传整个 `prompts/`**（393 KB 很小）：避免漏，也让 `config_admin` 的目录列举完整。
+
+### 12.3 `.env`：只传「启动 + 现役」所需
+
+**实测依据**：`WECHAT_*`（9 个）与 `TENCENT_*`（3 个）在代码里**全是 `.ok()?` 惰性读取**
+（`wechat_pay.rs` / `tencent_asr.rs` / `tencent_tts.rs`）→ **不在启动路径上** →
+不传只是「该功能不可用」，**服务照常起**。
+
+| 传入 | 用途 |
+|---|---|
+| `COEVO_HOST=127.0.0.1` | 🔴 **必须显式设** —— 默认 `0.0.0.0` 会**对外暴露** |
+| `COEVO_PORT=8300` | 新端口，不与现役冲突 |
+| `DEEPSEEK_API_KEY` | LLM 制卡（实测 warmup OK） |
+| `COEVO_ADMIN_KEY` · `COEVO_PII_KEY` | 管理后台 · PII 加密 |
+
+**未传**：微信支付 9 项 + 腾讯云 3 项（**惰性**，待支付批再补）· `COEVO_K12_DATA_DIR`（退役）
+· `COEVO_BASE_URL` / `PUBLIC_BASE_URL`（步骤 1 无对外地址）。
+
+权限 `600`（照 `/opt/mailproxy/.env` 惯例）。🔴 上传用的 `/tmp/coevo_stage` **已删除**（含明文 `.env`）。
+
+### 12.4 ✅ 实测结果
+
+| 项 | 结果 |
+|---|---|
+| `coevo.service` | ✅ **active (running)** · **enabled**（开机自启） |
+| `curl 127.0.0.1:8300/health` | ✅ `CoEvo API — OK`（**首次尝试即 200**） |
+| 监听 | ✅ **仅 `127.0.0.1:8300`** —— `ss -ltn` 确认**未新增任何对外监听** |
+| 启动链 | ✅ DB 建表 · 词库 **41,574 词 / 4 档** · `LLM warmup: OK` · `ready on 127.0.0.1:8300` |
+| 🔴 内容抓取 | ✅ **首轮 5/5 源成功 · 新增 201 条**（NPR 10 · ECNS 100 · Ars 20 · Dev.to 12 · HN 59） |
+| `/api/feed` | ✅ 返回真实条目（字段齐：`source` / `published_at` / `score` / `comments` / `has_body` / `word_count`…） |
+| 内存 | ✅ **82 MB / 256 MB**（护栏未触发） |
+| 🔴 vibedollar | ✅ `vibedollar-pay` · `mailproxy` · `nginx` **全部 active**（未受影响） |
+
+**新增物（仅新增，未改任何现有文件）**：
+```
+/opt/coevo/{bin/coevo_backend, cefr_catalog.json, prompts/, .env(600), data/}
+/etc/systemd/system/coevo.service
+```
+
+**回滚（一条命令）**：
+```bash
+sudo systemctl disable --now coevo && sudo rm -f /etc/systemd/system/coevo.service \
+  && sudo systemctl daemon-reload && sudo rm -rf /opt/coevo
+```
+
+### 12.5 ⏳ 仍未做（边界）
+
+| 项 | 状态 |
+|---|---|
+| **nginx 反代 + `api` 证书**（步骤 2） | ⏳ 未做 —— 需白哥加 `api` A 记录（**仅 DNS · 灰云**） |
+| 主域 / www 占位页（§11.6 选项甲） | ⏳ 未定 |
+| `prompts/` 的 K12 退役遗留 | ⏳ 建议独立清理（同「删功能要清语义残留」原则） |
+
+---
+
+*§十二 为步骤 1 的实施记录。步骤 1 **完全不碰 nginx**，故对现网零影响。*

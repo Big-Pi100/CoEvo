@@ -46,6 +46,66 @@ jobs:
       - name: Test
         run: cargo test --workspace -- -Z unstable-options --format json 2>/dev/null || cargo test --workspace
 
+  # ── Backend release 构建（产出 Linux 二进制 · 供 VPS 部署）──
+  #
+  # 🔴 为什么必须在这里构建：部署机（Ubuntu 24.04 · 961 MiB 内存）**没有 rust**，
+  #    且内存不足以跑 `cargo build --release`（易 OOM）；装 rust 又属「动系统」。
+  # 📄 依据：docs/design/coevo-vps-deployment-assessment-2026-09-29.md §四（方案甲）
+  # 🔑 只在**手动 / tag** 触发 —— 日常 push 不需要产物（省额度 · artifact 30 天过期）。
+  backend-release:
+    name: Backend Release (linux x86_64)
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      # ⚠️ 覆盖全局 `-D warnings`：本 job 是「出包」不是「门禁」——
+      #    warning 把关由上面的 `backend` job（clippy）负责，
+      #    否则一个 warning 就会让部署包发不出来。
+      RUSTFLAGS: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend/target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('backend/Cargo.lock') }}
+
+      - name: Build release
+        run: cargo build --release --bin coevo_backend
+
+      # 打包「运行时真正需要」的三样：
+      #   ① 二进制（入口 `coevo_backend`，workspace 根的 package）
+      #   ② `cefr_catalog.json` —— 启动时 `word_bank::init` 要读（12 MB）
+      #   ③ `prompts/` —— `llm_card` / `compliance` 运行时读
+      # 🔴 **不含 `.env`**（含密钥）—— 它由本地单独 scp、权限 600（见部署方案 §四）
+      - name: Strip & assemble bundle
+        run: |
+          strip target/release/coevo_backend || true
+          mkdir -p dist
+          cp target/release/coevo_backend dist/
+          cp cefr_catalog.json dist/
+          cp -r prompts dist/
+          echo "── 打包内容 ──"
+          ls -la dist/
+          du -sh dist/
+          file dist/coevo_backend
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coevo-backend-linux-x86_64
+          path: backend/dist/
+          retention-days: 30
+
   # ── Frontend: Flutter ──
   frontend:
     name: Frontend (Flutter)
