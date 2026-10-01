@@ -8,8 +8,10 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart' as sqflite;
 
+import '../services/external_word_cache_repository.dart';
 import '../services/word_db_bootstrap.dart';
 import '../services/word_query_service.dart';
+import 'user_db_provider.dart';
 
 /// `word.db` 的 assets 键。
 const String kWordDbAsset = 'assets/word.db';
@@ -136,7 +138,12 @@ final wordQueryProvider = FutureProvider<WordDbLoad>((ref) async {
     debugPrint(result.describe(targetPath));
 
     // ── ② 打开（只读）──
-    final service = await WordQueryService.open(sqflite.databaseFactory, targetPath);
+    final service = await WordQueryService.open(
+      sqflite.databaseFactory,
+      targetPath,
+      // 🆕 词库外词的卡片来源（`ext:` 回落到 `user.db` 的 `external_word_cache`）
+      externalCardLoader: _externalCardLoader(ref),
+    );
     ref.onDispose(service.close);
     return WordDbReady(service);
   } catch (e, st) {
@@ -178,4 +185,33 @@ Future<String?> _readWordDbVersionAsset() async {
     debugPrint('[word_db] 读不到版本号资产（$e）→ 退回按文件大小判定');
     return null;
   }
+}
+
+/// 🆕 造一个「词库外词卡片」的读取器 —— 复习页/查词时 `ext:` 前缀的回落。
+///
+/// # 🔴 两条设计要点（都不是随手写的）
+///
+/// ## ① **容错**：`user.db` 打不开**不能**影响词库
+/// 本回调内部把一切异常吞成 `null`。理由：
+/// 词库（`word.db`）是**主体**，`user.db` 是**增强** ——
+/// 若让它的失败冒泡到 `wordQueryProvider`，就会变成 `WordDbFailed`
+/// → 🔴 **整个 App 查不了词**（连词库内的词也查不了），只因用户库读不出来。
+/// 📌 同产品原则：「**增强不该有能力阻断主体**」。
+///
+/// ## ② **惰性**：用 `read` 且在**被调用时**才取库
+/// 回调体只在真正遇到 `ext:` 词时才执行 → **打开词库不依赖 user.db 就绪**
+/// （若在这里 `await`，词库打开就会被用户库的初始化时间拖住）。
+/// 用 `read`（不订阅）是对的 —— 本 provider 不该因 user.db 变化而重建。
+ExternalCardLoader _externalCardLoader(Ref ref) {
+  return (String spelling) async {
+    try {
+      final db = await ref.read(userDbProvider.future);
+      return await ExternalWordCacheRepository(db).contentOf(spelling);
+    } catch (e) {
+      // 词库外的词取不到卡 → 复习页表现为「该词取不到卡」（`cardById` 返回 null），
+      // 而不是词库整体不可用。**只记日志、不抛出**。
+      debugPrint('[word_db] 读词库外缓存失败（spelling=$spelling）：$e');
+      return null;
+    }
+  };
 }

@@ -149,6 +149,27 @@ CREATE TABLE IF NOT EXISTS achievement_unlock (
 );
 ''';
 
+/// 🆕 **v4 的 schema**（2026-09-29 晚时点的样子）= v3 + `article_read`。
+///
+/// 🔑 **历史快照**，只增不改（理由见 `_v1Schema`）。
+/// 它对应「白哥已验过『我的』页统计」的设备状态 —— 那时 `user_version = 4`。
+///
+/// ⚠️ `article_read` 的 DDL 抄自 v1.5 时点的 `user_db_schema.sql`
+/// （**当时的样子**，不是现在的 —— 现在文件里还有 `external_word_cache`，
+///  那是 **v5** 才加的，**不能**出现在 v4 快照里，否则就不是「老库」了）。
+const String _v4Schema = '''
+$_v3Schema
+CREATE TABLE IF NOT EXISTS article_read (
+  article_id   INTEGER PRIMARY KEY,
+  read_at      TEXT    NOT NULL
+               DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  pending_push INTEGER NOT NULL DEFAULT 1
+               CHECK (pending_push IN (0, 1))
+);
+CREATE INDEX IF NOT EXISTS idx_ar_pending ON article_read (pending_push)
+  WHERE pending_push = 1;
+''';
+
 /// 从 schema 文件里提取**全部建表语句的表名**。
 ///
 /// 🔑 这样本脚本**不需要**维护一份「应该有哪张表」的清单 ——
@@ -223,12 +244,31 @@ Future<void> runUpgradeCase({
     //    用 `streak_3` 而不是 `first_review`：既避开冲突，又能顺带验「成就记录升级后完好」。
     await old.insert('achievement_unlock', {'key': 'streak_3'});
   }
+  if (fromVersion >= 4) {
+    // ⚠️ `article_id` 用 **77**（§【6c】那组用的是 7 / 8）—— 避开冲突。
+    await old.insert('article_read', {'article_id': 77});
+  }
 
   final oldVer = firstInt(await old.rawQuery('PRAGMA user_version'));
   final oldTables = await tableNames(old);
   check('老库已建立且 user_version = $fromVersion', oldVer == fromVersion, '$oldVer');
-  check('🔴 前提成立：老库**不含** article_read',
-      !oldTables.contains('article_read'));
+  // 🔴 前提：**该老库还不该有「本次要新建的表」** —— 否则「升级后它存在」
+  //    这条断言就失去了意义（它本来就存在）。
+  //    ⚠️ 这个前提**随 fromVersion 变**（和上面的写入分支同一个道理）：
+  //       · v1/v2/v3 老库：都**不含** article_read（v4 才加）
+  //       · **v4 老库：含 article_read**（那正是 v4 的内容）→ 必须排除，否则**假红**
+  //    📌 判据：**「前提类断言」也要随输入维度变化** —— 写死一个会被自己的路径否掉。
+  if (fromVersion < 4) {
+    check('🔴 前提成立：v$fromVersion 老库**不含** article_read',
+        !oldTables.contains('article_read'));
+  } else {
+    check('🔴 前提成立：v$fromVersion 老库**含** article_read（v4 的内容）',
+        oldTables.contains('article_read'));
+  }
+  if (fromVersion < 5) {
+    check('🔴 前提成立：v$fromVersion 老库**不含** external_word_cache（v5 才加）',
+        !oldTables.contains('external_word_cache'));
+  }
   check('老库已有 bookmark 数据（2 条）',
       firstInt(await old.rawQuery('SELECT count(*) AS n FROM bookmark')) == 2);
   await old.close();
@@ -283,6 +323,14 @@ Future<void> runUpgradeCase({
         (await db.query('achievement_unlock', columns: ['key']))
                 .first['key'] ==
             'streak_3');
+  }
+  if (fromVersion >= 4) {
+    check('🆕 article_read 旧数据仍是 1 条（v4 库特有）',
+        firstInt(await db.rawQuery('SELECT count(*) AS n FROM article_read')) == 1);
+    check('🔴 阅读记录未被改动（article_id 仍是 77）',
+        (await db.query('article_read', columns: ['article_id']))
+                .first['article_id'] ==
+            77);
   }
 
   section('【6】新表**可正常使用**（不只是「存在」）');
@@ -368,8 +416,74 @@ Future<void> runUpgradeCase({
         after['read_at'] == before['read_at'], '${after['read_at']}');
 
     // 统计口径（「阅读篇数」的查询就是这一句）
-    check('统计查询可用（COUNT(*) = 2）',
-        firstInt(await db.rawQuery('SELECT count(*) AS n FROM article_read')) == 2);
+    // ⚠️ **不能用绝对数**（本脚本 §【6】开头已立此判据）——
+    //    v4 老库自带一条 `article_id=77` → 绝对数会随 `fromVersion` 变
+    //    （实测踩过：v1/v2/v3 绿、**v4 红**）。改为「锁定本次插入的那批」。
+    check('统计查询可用（包含本次插入的 7 / 8）',
+        firstInt(await db.rawQuery(
+                'SELECT count(*) AS n FROM article_read WHERE article_id IN (7, 8)')) ==
+            2);
+  }
+
+  // ── 【6c】🆕 `external_word_cache` 可正常使用（v5 · A2）──
+  section('【6c】🆕 新表 `external_word_cache` **可正常使用**（v5 · A2）');
+  if (!expectedTables.contains('external_word_cache')) {
+    print('  ⏭  跳过：external_word_cache 未创建（§3 已报红，根因在那里）');
+  } else if (!(await tableNames(db)).contains('external_word_cache')) {
+    print('  ⏭  跳过：本路径的老库升级后没有该表（§3 已报红）');
+  } else {
+    // 🔑 这一组验的是「**词库外的词**能不能被存住」——
+    //    它是 A2 的核心：缓存写不进 = 那个词查完就丢（复习页「看得见、点不开」）。
+    await db.insert('external_word_cache', {
+      'spelling': 'brainstorm',
+      'card_content': '{"front":"brainstorm","entry_type":"word","sections":[]}',
+    });
+    final r = (await db.query('external_word_cache', where: 'spelling = ?',
+            whereArgs: ['brainstorm']))
+        .first;
+    check('可写入、可读回', (r['card_content'] as String).isNotEmpty);
+
+    check('🔴 fetched_at 有 DEFAULT（未显式提供也写入）',
+        (r['fetched_at'] as String?)?.isNotEmpty == true, '${r['fetched_at']}');
+    check('🔴 fetched_at 是 UTC ISO8601 带 Z（本库硬约束 1）',
+        (r['fetched_at'] as String).endsWith('Z'), '${r['fetched_at']}');
+    check('🔴 pending_push 默认 1（与 bookmark 同模式）',
+        (r['pending_push'] as num).toInt() == 1);
+
+    section('【7c】`external_word_cache` 约束真的生效');
+    // 🔴 UNIQUE(spelling) 是「一词一行」的保证 —— 缓存覆盖靠它
+    var dupRejected = false;
+    try {
+      await db.insert('external_word_cache', {
+        'spelling': 'brainstorm',
+        'card_content': '{}',
+      });
+    } catch (_) {
+      dupRejected = true;
+    }
+    check('🔴 UNIQUE(spelling) 生效（同一个词不会有两份缓存）', dupRejected);
+
+    // 🔑 `COLLATE NOCASE` —— 存 `brainstorm` 用 `BRAINSTORM` 也要能查到。
+    //    ⚠️ 这条若失效，表现为「缓存明明写了却读不到」→ **每次查都重新联网**（静默浪费）。
+    check('🔴 COLLATE NOCASE 生效（大写也能查到同一行）',
+        (await db.query('external_word_cache',
+                where: 'spelling = ?', whereArgs: ['BRAINSTORM']))
+            .isNotEmpty);
+
+    // 🔑 `INSERT OR REPLACE`（repository 的 `put` 用它）→ 内容被**刷新**
+    await db.insert(
+        'external_word_cache',
+        {'spelling': 'brainstorm', 'card_content': '{"front":"v2"}'},
+        conflictAlgorithm: ConflictAlgorithm.replace);
+    check('🔴 `put` 是**覆盖**语义（与 user_word 的幂等相反）',
+        (await db.query('external_word_cache',
+                where: 'spelling = ?', whereArgs: ['brainstorm']))
+            .first['card_content'] ==
+            '{"front":"v2"}');
+    check('🔴 覆盖后**仍只有一行**（UNIQUE 没被绕过）',
+        firstInt(await db.rawQuery(
+                "SELECT count(*) AS n FROM external_word_cache WHERE spelling='brainstorm'")) ==
+            1);
   }
 
   section('【8】幂等：再次打开不应报错、不应重复建表（App 每次启动都会走）');
@@ -425,18 +539,29 @@ Future<void> main() async {
     oldSchema: _v3Schema,
     expectedTables: expectedTables,
   );
+  // 🆕 v5（2026-10-01 · A2）：真机上的库此刻可能是 v4
+  //    （白哥跑过带「阅读篇数」的版本）→ 必须靠 onUpgrade 建出 `external_word_cache`。
+  //    🔴 它缺失时比前几次更严重：**词库外的词查完就丢**
+  //      （缓存写不进去 → 复习页取卡回落失败 → 那个词「看得见、点不开」）。
+  await runUpgradeCase(
+    factory: factory,
+    schemaSql: schemaSql,
+    fromVersion: 4,
+    oldSchema: _v4Schema,
+    expectedTables: expectedTables,
+  );
 
   print('');
   print('═' * 74);
   if (_failures.isEmpty) {
-    print('✅ 全部通过：$_pass 项（v1/v2/v3 → v$kUserDbVersion 三条路径）');
+    print('✅ 全部通过：$_pass 项（v1/v2/v3/v4 → v$kUserDbVersion 四条路径）');
   } else {
     print('🔴 失败 ${_failures.length} 项 / 通过 $_pass 项：');
     for (final f in _failures) {
       print('    · $f');
     }
     print('');
-    print('🔑 若「achievement_unlock / article_read 已创建」失败 → 检查 `user_db.dart` 的');
+    print('🔑 若「新表已创建」失败 → 检查 `user_db.dart` 的');
     print('    `kUserDbVersion` 是否 > 起始版本、`onUpgrade` 是否真的重跑了 schema。');
   }
   print('═' * 74);

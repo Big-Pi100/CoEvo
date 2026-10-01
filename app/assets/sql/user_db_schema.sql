@@ -180,8 +180,19 @@ CREATE INDEX IF NOT EXISTS idx_bm_pending ON bookmark (pending_push)
 --     📄 判据展开：`app/lib/services/achievement_rules.dart` 文件头 ④
 CREATE TABLE IF NOT EXISTS user_word (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
-  -- 🔴 指向**词库**的 `word.id`（TEXT）。⚠️ 词库外的词没有 word_id
-  --    → 现阶段**不会**写入本表（见文件末「不在本次范围」）
+  -- 🔴 指向词库的 `word.id`（TEXT），——**或**词库外词的**合成 id** `ext:<拼写>`。
+  --
+  -- 🆕 **2026-10-01（A2）：词库外的词现在能进本表了**。此前这里是
+  --    「词库外的词没有 word_id → 写不进来」，那是**路径 A 落地前**的状态。
+  --    现在写法见 `app/lib/services/external_word_id.dart`：
+  --      · 词库内的词 → `w0xxxxx`（真 id）
+  --      · **词库外的词** → **`ext:brainstorm`**（合成 —— 前缀自带语义、一眼可辨）
+  --    🔑 `ext:` 的价值：让「词库外的词」先**占住一个唯一 key**，
+  --      于是 200 上限口径、复习队列、JOIN 全部照常工作，**无需改任何表结构**。
+  --    🔑 且它**天然是回流的钩子**：词被回流进 `word.db` 后，发版时把
+  --      `ext:brainstorm` 收敛成 `w011524` 即可（见清单 §二）。
+  --    ⚠️ 它**不再**是「永远是 `w…` 形状」——任何**按 id 形态做判断**的代码
+  --      都必须先看前缀（`kExternalWordIdPrefix`），不要假设 `startsWith('w')`。
   word_id           TEXT    NOT NULL,
   -- ── 冗余字段（跨库方案 A · 与 `card_review_state.spelling` 同一理由）──
   -- 生词本列表要显示单词并支持**按词搜索**，而本库只有 word_id。
@@ -343,15 +354,65 @@ CREATE INDEX IF NOT EXISTS idx_ar_pending ON article_read (pending_push)
   WHERE pending_push = 1;
 
 -- ─────────────────────────────────────────────────────────────
+-- 词库外生词的词卡缓存（`external_word_cache`）—— 每词一行
+-- ─────────────────────────────────────────────────────────────
+-- 依据：L0 `v1-final-design-authoritative-2026-09-25.md` §3.2（该表原文定义）
+--       + `docs/design/llm-card-online-path-2026-09-29.md` §21.3（五条已定裁决）
+--       + `docs/review/a2-and-worddb-convergence-checklist-2026-10-01.md` §4.1（三处适配）
+--
+-- # 🔑 它解决什么
+-- 用户划到**词库里没有的词**时，服务端 LLM 实时制卡 → 本表存一份本机副本。
+-- 作用①：**本机重复查同一词不再走网络**（离线也能看）。
+-- 作用②：**让「词库外的词」能进生词本与复习队列** ——
+--   `user_word.word_id` 写合成 id `ext:<拼写>`（见 `services/external_word_id.dart`），
+--   复习页取卡时 `WordQueryService.cardById` 发现 `ext:` 前缀 → 回落到本表。
+--   🔴 **没有这张表，「词库外的词」就无法被复习**（在 `word.db` 里查不到）。
+--
+-- # 🔴🔴 本表存的是**转换后**的形状，与服务端不同（有意，别「顺手统一」）
+-- | | 存什么 | 为什么 |
+-- |---|---|---|
+-- | 服务端 `generated_card_cache` | LLM 的**原始输出** | 那是**回流原料** —— `load_llm_results.py` 吃的就是这个形状 |
+-- | **本表** | **转换后的 `card.content` 形状**（`{front, ipa, entry_type, sections:[…]}`）| 端侧渲染要的是 `sections`（`WordSection` 的访问器按它取值）|
+-- 🔑 **而且形状与 `word.db.card.content` 一致** —— 这正是不该「统一」的理由：
+--   词被回流后（`ext:` → `w…`），端侧只是**换了取卡来源**，**内容形状不变** ⇒
+--   收敛能做到**真正无缝**（见清单 §二）。若本表存 LLM 原始形状，收敛就必须
+--   在切换时重新转换一次，多一个能出错的环节。
+--
+-- # ⚠️ 三处对 L0 原文的适配（同 `bookmark` / `user_word` 的处理，理由各不同）
+--   ① `spelling` 补 `NOT NULL` + `COLLATE NOCASE`
+--      大写折叠是必须的：用户查 `Brainstorm` 与 `brainstorm` 必须命中同一行
+--      （L0 原文只写 `UNIQUE`，未声明 NOT NULL / COLLATE）
+--   ② `fetched_at` 用 `strftime('%Y-%m-%dT%H:%M:%SZ','now')`
+--      现库**硬约束 1**：所有时间列 UTC ISO8601 带 `Z`
+--      （`datetime('now')` 是「空格分隔、无 Z」→ Dart 侧会**静默按本地时区解释**）
+--   ③ `pending_push` 补 `NOT NULL` + `CHECK (IN (0,1))`
+--      与 `card_review_state` / `bookmark` / `user_word` 同规格
+--
+-- # ⚠️ `pending_push` 目前**没有消费者**（如实标注，同 `bookmark` 的既有形态）
+--   服务端有它自己的**全局**缓存（跨用户复用），端侧推上去没有意义 ——
+--   所以本列是「为将来的同步留的正确形态」，**不是**当前功能所需
+--   （与本库 `article_read` 的处理一致）。
+CREATE TABLE IF NOT EXISTS external_word_cache (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  -- 🔑 用户实际查的词（**小写归一后**；与 `ext:<spelling>` 里的拼写同源）
+  spelling     TEXT    NOT NULL COLLATE NOCASE,
+  -- 🔴 **转换后的 `card.content` 形状** —— 理由见上（与服务端存的**不同**，别统一）
+  card_content TEXT    NOT NULL,
+  fetched_at   TEXT    NOT NULL
+               DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  pending_push INTEGER NOT NULL DEFAULT 1
+               CHECK (pending_push IN (0, 1)),
+  -- 🔑 一词一行：同一个词被查多次只有一份缓存（`ON CONFLICT REPLACE` 覆盖）
+  UNIQUE (spelling)
+);
+
+-- 待上传（与 `idx_bm_pending` / `idx_uw_pending` 同模式）
+CREATE INDEX IF NOT EXISTS idx_ewc_pending ON external_word_cache (pending_push)
+  WHERE pending_push = 1;
+
+-- ─────────────────────────────────────────────────────────────
 -- 说明（不在本次范围）
 -- ─────────────────────────────────────────────────────────────
--- · **词库外生词**（`external_word_cache` + LLM 制卡）—— 属 **Phase 3**。
---   v1 §3.2 有定义，但**本次不建**：它需要联网 + 后端接口（当前无实现）。
---   🔴 **且有一条结构性障碍待解**（2026-09-25 评审已记录）：
---     `user_word.word_id` 是 `NOT NULL` 且指向词库，而**词库外的词没有 word_id**
---     → 「词库外生词」进不了生词本、也进不了复习队列。
---     评审建议：复用现网 `user_cards` 模式（有 `prebuilt_card_id` FK + 域子表）。
---   📄 方案见 `docs/review/step3-4c-word-writeback-plan-2026-09-28.md` §六
 -- · **`article`** —— v2 已改名为 `content_cache` 并修正语义，属 Phase 3
 -- · 词条内容（拼写/释义/词根等）来自只读预制库 `word.db`，**不在本库**
 --   （唯一例外：`user_word.spelling` / `card_review_state.spelling` 冗余，见各自注释）
@@ -381,6 +442,13 @@ CREATE INDEX IF NOT EXISTS idx_ar_pending ON article_read (pending_push)
 --   · 与 `bookmark` **完全同构**（PK 去重 + 时间列 + `pending_push`）→ 消费端可照抄
 --   · ⚠️ `pending_push` 现无调用方（后端无 sync 接口）—— 与 `bookmark` 同样的既有形态
 --   · 📄 决策依据：`docs/design/profile-redesign-plan-2026-09-29.md` §七
+--
+-- v1.6 (2026-10-01) A2：新增 `external_word_cache`（词库外生词的词卡缓存）
+--   · 🔑 让「词库外的词」能进生词本 / 复习队列：`user_word.word_id` 写合成 id `ext:<拼写>`
+--   · 🔴 **本表存「转换后的 `card.content` 形状」**（与服务端存的 LLM 原始格式**不同**，
+--     理由见该表注释：收敛切换时要形状不变 → 真正无缝）
+--   · ⚠️ `pending_push` 现无消费者（同 `bookmark` 的既有形态，如实标注）
+--   · 📄 依据：`docs/review/a2-and-worddb-convergence-checklist-2026-10-01.md` §四 阶段 2
 --
 -- 🔴🔴 **升级注意（本次起「已有用户库」必须走迁移）**
 --    v1.2 时本库尚无任何端创建，故 version 停在 1。

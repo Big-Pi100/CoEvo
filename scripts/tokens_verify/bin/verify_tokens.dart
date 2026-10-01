@@ -120,6 +120,7 @@ void main() {
   _s16WordWriteback();
   _s17ReviewList();
   _s18DbRevision();
+  _s19ExternalCard();
 
   print('\n' + '═' * 72);
   print('通过 $_pass 项，实现类失败 $_fail 项，规格内部冲突 ${_conflicts.length} 项');
@@ -2693,4 +2694,111 @@ void _s18DbRevision() {
   //    判据：`cardBundleProvider` 依赖的是**会话状态**与词库，**不是**列表 provider。
   check('🔑 翻卡数据源不依赖 reviewListProvider（快照不会被刷新打乱）',
       !sessProv.contains('reviewListProvider'));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 【19】🆕 在线制卡（A2 · 2026-10-01）
+// ═══════════════════════════════════════════════════════════════════
+//
+// 🔴 本组防的是「**功能静默消失**」这类失效：
+//    · 适配器写好了但**没人调用** → 编译通过、功能不存在
+//    · `cardById` 少了 `ext:` 回落 → 词库外的词在复习页**看得见、点不开**
+//    · 客户端不小心带上了 token → 违反产品原则（登录服务抖一下，划词就查不了）
+// 这些**都不会报错**，只能靠断言行。
+
+void _s19ExternalCard() {
+  print('\n【19】在线制卡（A2）的接线');
+
+  final root = _repoRoot();
+  String src(String p) {
+    final f = File('$root/app/lib/$p');
+    return f.existsSync() ? _codeOnly(f.readAsStringSync()) : '';
+  }
+
+  final reader = src('screens/reader_screen.dart');
+  final wqs = src('services/word_query_service.dart');
+  final client = src('api/generate_card_client.dart');
+  final adapter = src('services/generated_card_adapter.dart');
+  final extId = src('services/external_word_id.dart');
+  final genProv = src('providers/generate_card_provider.dart');
+  final wordProv = src('providers/word_db_provider.dart');
+
+  // ① 未命中分支必须**真的**走制卡（不是只提示一句就结束）
+  check('🔴 未命中分支调用了 `_lookupExternalWord`（**接线**，不只是定义）',
+      RegExp(r'_lookupExternalWord\(').allMatches(reader).length >= 2,
+      '应 1 处定义 + 1 处调用');
+
+  // ② 🔴 「只说一句话就结束」那套**必须消失** —— 留着就是「静默失败 + 无出口」
+  //    ⚠️ `_codeOnly` 只滤**整行** `//` 注释 → 解释性注释不会误伤这两条（已实测）
+  check('🔴 不再有「词库里没有」的用户可见提示（旧行为已废除）',
+      !reader.contains("'词库里没有"));
+  check('🔴 未命中不再直接写 `spelling: text`（那条路径已改为带合成 id）',
+      !reader.contains('unawaited(_writeBackLookup(ref, spelling: text))'));
+
+  // ③ 🔑 合成 id 的构造只有**一处出处**（防两处漂移）
+  check('ext: 合成 id 由 `externalWordId()` 产出（不在调用处手拼字符串）',
+      reader.contains('externalWordId(') &&
+          !RegExp(r"'ext:[\s]*\$").hasMatch(reader));
+  check('🔑 前缀常量定义在 `external_word_id.dart`（单一出处）',
+      extId.contains("kExternalWordIdPrefix = 'ext:'"));
+
+  // ④ 🔴 客户端**不带 token**（产品原则 · 不是遗漏）
+  check('🔴 制卡客户端不带 token（产品原则：划词是内容渲染，不该被登录态阻塞）',
+      client.contains('ApiConfig.headers()') &&
+          !client.contains('headers(token:') &&
+          !client.contains('userToken'));
+
+  // ⑤ 三块协作组件都**被引用**（否则是死代码）
+  check('适配器被 reader 调用（契约 v6 → card.content）',
+      reader.contains('toCardContent('));
+  check('解析器被 reader 调用（card.content → 渲染形状）',
+      reader.contains('parseCardContent('));
+  check('生成客户端 provider 被 reader 引用（走 provider 复用 http.Client）',
+      reader.contains('generateCardClientProvider'));
+  check('provider 在 dispose 时关闭客户端（不泄漏连接）',
+      genProv.contains('onDispose') && genProv.contains('dispose'));
+
+  // ⑥ 🔴 `cardById` 的 `ext:` 回落（**复习页能显示词库外的词**全靠它）
+  //
+  //    🔴🔴 **这里踩过一次「假绿」，记下来**（2026-10-01）：
+  //    第一版只断言「切片里含 `externalSpellingOf` / `_externalCardLoader`」——
+  //    证伪时我在它们**前面**插了一句 `return null;`（把回落变成死代码），
+  //    断言**照样全绿**。原因：**文本断言只能证明「写了」，不能证明「会执行到」**。
+  //
+  //    ✅ 修法分两层（**缺一不可**）：
+  //      ① **位置断言**（本文件）—— 「无条件的提前 return 不得出现在回落逻辑之前」
+  //      ② **行为断言**（`verify_generated_card_adapter.dart` §5）——
+  //         真开 word.db、真调 `cardById('ext:xxx')`、断言**真的取到了卡**。
+  //         那一条能抓到「路径被短路」，因为它**真跑**。
+  //    📌 一般化：**「接线」类断言若只扫源码，必须配一条真跑的行为断言** ——
+  //       否则它守护的是「文本还在」，不是「功能还在」。
+  final biAt = wqs.indexOf('Future<WordCard?> cardById(');
+  final biSeg = biAt < 0 ? '' : wqs.substring(biAt, (biAt + 2600).clamp(0, wqs.length));
+  check('能切出 `cardById` 的源码段（下面断言的前提）',
+      biSeg.contains('externalSpellingOf'), 'len=${biSeg.length}');
+  check('🔴 `cardById` 在词库查不到时回落到端侧缓存',
+      biSeg.contains('externalSpellingOf') && biSeg.contains('_externalCardLoader'));
+  check('🔑 回落是**惰性注入**（回调而非直接依赖 user.db → 本层仍可纯 Dart 断言）',
+      wqs.contains('typedef ExternalCardLoader'));
+  // 🔴 位置断言 —— 见上面「假绿」说明
+  final segFallbackAt = biSeg.indexOf('externalSpellingOf');
+  final segNullReturnAt = biSeg.indexOf('return null;');
+  check('🔴 回落逻辑之前**没有**无条件的 `return null;`（否则整段是死代码）',
+      segFallbackAt >= 0 && (segNullReturnAt < 0 || segNullReturnAt > segFallbackAt),
+      'fallback@$segFallbackAt 首个 return null;@$segNullReturnAt');
+
+  // ⑦ 🔴 `user.db` 打不开**不能**让词库不可用（增强不该阻断主体）
+  check('🔴 词库外卡片的读取器**吞异常**（返回 null，不冒泡）',
+      wordProv.contains('_externalCardLoader') &&
+          wordProv.contains('return null;'));
+
+  // ⑧ 表与迁移都在（结构性前提）
+  final schemaFile = File('$root/app/assets/sql/user_db_schema.sql');
+  final schema = schemaFile.existsSync() ? _codeOnly(schemaFile.readAsStringSync()) : '';
+  check('schema 里有 `external_word_cache` 表',
+      schema.contains('CREATE TABLE IF NOT EXISTS external_word_cache'));
+  check('🔑 表注释写明「存的是转换后的形状，与服务端不同」'
+      '（防后人「顺手统一」）',
+      schemaFile.existsSync() &&
+          schemaFile.readAsStringSync().contains('转换后'));
 }

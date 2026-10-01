@@ -37,6 +37,7 @@ import 'package:sqflite_common/sqlite_api.dart';
 /// | **2** | Step 3.4c：+ `user_word`（生词本）· `lookup_event`（查词记录） |
 /// | **3** | Step 3.8：+ `achievement_unlock`（成就解锁记录 —— 成就改为端侧计算） |
 /// | **4** | 「我的」页统计：+ `article_read`（读过的文章 —— 「阅读篇数」的数据源） |
+/// | **5** | A2：+ `external_word_cache`（词库外生词的词卡缓存 —— 让词库外的词能进生词本/复习） |
 ///
 /// ## 🔴🔴 为什么必须递增（2026-09-28 发现）
 /// 此前本文件写着「**本库从未在任何端创建**」→ 所以 version 停在 1、`onUpgrade` 直接抛错。
@@ -59,7 +60,13 @@ import 'package:sqflite_common/sqlite_api.dart';
 /// 🆕 v4（2026-09-29 同日）：+ `article_read`。**同理**——
 /// 真机上的库此刻是 **v3**（若白哥跑过带成就的版本）或更早 →
 /// 必须靠 `onUpgrade` 建出 `article_read`，否则「阅读篇数」永远读不到表。
-const int kUserDbVersion = 4;
+///
+/// 🆕 v5（2026-10-01）：+ `external_word_cache`。**同理** ——
+/// 真机上的库此刻是 **v4** 或更早 → 必须靠 `onUpgrade` 建出。
+/// ⚠️ 但它比前几次**更严重**：这张表缺失时，**词库外的词查完就丢**
+///   （缓存写不进去 → 复习页取卡回落失败 → 那个词从生词本里「看得见、点不开」）。
+///   ✅ 幸好本库的 `onUpgrade` 是「重跑全量幂等脚本」，纯新增表**自动覆盖**。
+const int kUserDbVersion = 5;
 
 /// `user.db` 的文件名（调用方拼路径用）。
 const String kUserDbFileName = 'user.db';

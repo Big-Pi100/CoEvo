@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../api/content_client.dart';
+import '../api/generate_card_client.dart';
 import '../models/feed_item.dart';
 import '../providers/feed_provider.dart';
 import '../services/article_text.dart';
@@ -16,13 +17,18 @@ import '../models/article.dart';
 import '../providers/achievement_notifier.dart';
 import '../providers/achievement_provider.dart';
 import '../providers/bookmark_provider.dart';
+import '../providers/generate_card_provider.dart';
 import '../providers/user_db_provider.dart';
 import '../providers/user_word_provider.dart';
 import '../providers/word_db_provider.dart';
 import '../services/article_read_repository.dart';
+import '../services/external_word_cache_repository.dart';
+import '../services/external_word_id.dart';
+import '../services/generated_card_adapter.dart';
 import '../services/reading_completion.dart';
 import '../services/review_list_query.dart';
 import '../services/user_word_repository.dart';
+import '../services/word_query_service.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
 import '../widgets/bookmark_button.dart';
@@ -448,17 +454,22 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
 
 /// 查词 —— 长按选中后（经 300 ms 防抖）的落点。
 ///
-/// # 🔴 四种「拿不到词卡」必须各有明确表达（不能静默无效，也不能笼统）
+/// # 🔴 五种「拿不到词卡」必须各有明确表达（不能静默无效，也不能笼统）
 ///
 /// | 情况 | 表达 | 能不能等 |
 /// |---|---|---|
 /// | **当前平台没有本地 SQLite**（web） | 「查词需在手机上使用」 | ❌ **永久** |
 /// | **真机上落盘/打开失败** | 「词库打开失败，请重启 App 后再试」 | ❌ 需重启 |
 /// | **还在首次落盘**（`valueOrNull == null`） | 「词库正在准备，请稍候再试」 | ✅ 约 0.5–2 s |
-/// | 词库外（未命中 + 词形还原也没命中） | 「词库里没有「X」」 | —（属 Phase 3 的 `external_word_cache`） |
+/// | 🆕 **词库外**（未命中 + 词形还原也没命中） | **转圈 → 在线制卡**（见 `_lookupExternalWord`）| ✅ 约 5–10 s |
+/// | 🆕 词库外**且制卡失败** | 服务端的**准确文案**（网络 / 正在生成中 / 合规拒绝各有措辞）| ⚠️ 看情形 |
 ///
 /// 🔑 **前两者与第三者必须分开** —— 笼统说「请稍候再试」会让 web 用户
 /// 一直重试一个**永远不会成功**的操作（见 `word_db_provider` 的 [WordDbLoad] 文档）。
+///
+/// 🆕 **2026-10-01（A2）**：第四行**原来是**「只说一句『词库里没有「X」』就结束」——
+///    那是 A2 落地前的状态（`reader_screen` 的旧注释自己就写着「为 Phase 3 留了输入」）。
+///    现在**词库外的词也能查**（在线制卡），所以那不再是一个终点，而是一个**分支**。
 ///
 /// 🔑 提成顶层函数（而非 State 方法）：它不依赖任何 State 字段
 /// （只用到 `context` 与 `ref`，两者都由调用处传入）→ 挂在 State 上没有理由。
@@ -493,10 +504,11 @@ Future<void> _lookupWord(BuildContext context, WidgetRef ref, String rawText) as
   //      · 未命中 → 只记 `lookup_event`（白哥定 Q2：未命中**也记**）
   //    ⚠️ 写入的失败**只记日志**，不打扰用户（见 `_writeBackLookup`）。
   if (result == null) {
-    _hint(context, '词库里没有「$text」');
-    // 未命中：仍然留痕（`word_id` 留 NULL）—— 这让「查过哪些词」完整，
-    // 也为 Phase 3 的「未命中 → LLM 制卡」留了输入。
-    unawaited(_writeBackLookup(ref, spelling: text));
+    // 🆕 A2：词库外的词 → **在线制卡**（2026-10-01）
+    //
+    // 产品原则：**仍不验证登录态**、**仍不打断阅读** ——
+    // 失败时给准确提示，成功时弹与词库内词**同一个**浮层。
+    await _lookupExternalWord(context, ref, text);
     return;
   }
 
@@ -513,13 +525,269 @@ Future<void> _lookupWord(BuildContext context, WidgetRef ref, String rawText) as
   ));
 }
 
+// ─────────────────────────────────────────────────────────────
+// 🆕 词库外查词 → 在线制卡（A2 · 2026-10-01）
+// ─────────────────────────────────────────────────────────────
+
+/// **词库外查词** —— 查端侧缓存，没有才联网制卡。
+///
+/// # 流程（照 L0 §九「用户查词流程」的未命中分支）
+/// ```
+/// word.db 未命中
+///   → ① 查端侧缓存 `external_word_cache` ──命中──► 直接展示（0 次网络）
+///   → ② 未命中 → 转圈 → POST /api/generate-card → 写缓存 → 展示
+/// ```
+///
+/// # 🔴 五条**已定裁决**（白哥 2026-09-29 · `llm-card-online-path` §21.3 · 本次照做，不再问）
+/// | # | 事项 | 定案 |
+/// |---|---|---|
+/// | 1 | 写入目标 | **`external_word_cache`**（端侧独立缓存表，不动 `word.db`）|
+/// | 2 | 失败路径 | **直接报错 + 稍后重试**（**不**做 L0 原文的「降级卡」）|
+/// | 3 | 等待 UI | **转圈** |
+/// | 4 | 一致性 | 与预制**同一套** prompt / 契约 / 校验（服务端已如此）|
+/// | 5 | 登录态 | **不验证** —— 划词是内容渲染的一部分（产品原则）|
+///
+/// # ⚠️ 不做「会话内内存缓存」（如实标注，**不是漏了**）
+/// 我曾在实施方案里列过这一项，复核 L0 后**删掉**：L0 §九 只要求
+/// 「查 `external_word_cache`」，**没有**内存缓存这一层。
+/// 而端侧 SQLite 命中是**本地查询**（~40 µs 量级，见 `word_query_service` 的实测注释）
+/// → 加一层内存只多出「生命周期 / 失效 / 上限」三个要维护的东西，收益极小。
+/// 📌 判据：**别为「看起来会更快」加一层，除非能指出它挡掉了什么**。
+Future<void> _lookupExternalWord(
+  BuildContext context,
+  WidgetRef ref,
+  String text,
+) async {
+  // ── ① 端侧缓存（离线也能看 + 免一次网络往返）──
+  String? raw;
+  try {
+    final db = await ref.read(userDbProvider.future);
+    raw = await ExternalWordCacheRepository(db).contentOf(text);
+  } catch (e) {
+    // 读缓存失败 → **降级为「当作没有缓存」**（继续走联网），不是终止。
+    // 🔑 缓存是**优化**：它坏了只该让这条路变慢，不该让它走不通。
+    debugPrint('[lookup] 读词库外缓存失败（$text）：$e');
+  }
+
+  // ── ② 没有缓存 → 联网制卡（转圈）──
+  if (raw == null) {
+    raw = await _generateExternalCard(context, ref, text);
+  }
+
+  // ── ③ 展示 ──
+  if (raw == null) return; // 失败路径已在 `_generateExternalCard` 里给过提示
+  if (!context.mounted) return;
+
+  final c = parseCardContent(raw);
+  if (c.sections.isEmpty) {
+    // 缓存里存了个空壳（理论上不该发生 —— 适配器写入前已校验 section 非空）；
+    // 宁可说「不完整」也不要弹一张**没有任何内容**的卡。
+    _hint(context, '「$text」的词卡不完整，请稍后重试');
+    return;
+  }
+
+  // 🔑 与词库内词**共用同一个浮层**（`LookupSheet` 只读 spelling / ipa /
+  //    definition / context 四样）→ 用户体验完全一致，没有「另一种卡」。
+  await LookupSheet.show(
+    context,
+    WordLookupResult(
+      card: WordCard(
+        wordId: externalWordId(text),
+        spelling: c.front.isEmpty ? text : c.front,
+        ipa: c.ipa.isEmpty ? null : c.ipa,
+        entryType: c.entryType.isEmpty ? null : c.entryType,
+        sections: c.sections.map(WordSection.new).toList(growable: false),
+      ),
+      query: text,
+    ),
+  );
+
+  // ── ④ 写入生词本（🔑 用**合成 id**，于是它立刻进复习队列）──
+  //    与词库内词走**同一条**写回链（`_writeBackLookup`）——
+  //    区别只有 `wordId` 的形态（`ext:brainstorm` vs `w005333`）。
+  unawaited(_writeBackLookup(
+    ref,
+    wordId: externalWordId(text),
+    spelling: text,
+  ));
+}
+
+/// 联网制卡（含「转圈 → 关闭 → 提示」的时序）。
+///
+/// 返回**已转换的 `card.content` JSON**（`null` = 失败，且已提示过用户）。
+///
+/// # 🔴 时序要点：**先关转圈，再提示**
+/// 若在浮层还开着时 `_hint`，SnackBar 会被 modal 遮住 —— 用户看到的是
+/// 「转圈转完了，什么都没发生」。**静默失败**正是本项目一直在消灭的东西。
+Future<String?> _generateExternalCard(
+  BuildContext context,
+  WidgetRef ref,
+  String text,
+) async {
+  final closeLoading = _showGenerating(context, text);
+
+  String? raw;
+  String? error;
+
+  try {
+    final res = await ref.read(generateCardClientProvider).generate(text);
+
+    switch (res) {
+      case GenerateCardReady():
+        try {
+          raw = toCardContent(
+            res.card,
+            spelling: text,
+            contractVersion: res.contractVersion,
+          );
+          // 写缓存 —— ⚠️ 失败**不**影响本次展示（只在下次查同一个词时要重新联网）
+          try {
+            final db = await ref.read(userDbProvider.future);
+            await ExternalWordCacheRepository(db).put(text, raw);
+          } catch (e) {
+            debugPrint('[lookup] 写词库外缓存失败（$text）：$e');
+          }
+        } on GeneratedCardException catch (e) {
+          // 🔴 契约对不上 / 缺 definition → **显式失败**，不要静默弹一张空卡
+          debugPrint('[lookup] 契约转换失败（$text）：$e');
+          error = '「$text」的词卡格式异常，请稍后重试';
+        }
+
+      case GenerateCardInProgress():
+        // 白哥裁决的「报错 + 稍后重试」—— 这不是故障，是「有人正在生成同一个词」
+        error = '「$text」正在生成中，请稍后重试';
+
+      case GenerateCardFailed(:final message):
+        // 🔑 **不改写服务端的文案** —— 它已按情形给了**准确**的话
+        //    （参数错 / 上游失败 / 合规拒绝各有措辞，见 `CardError::message()`）。
+        //    端侧若自己拼一句笼统的「生成失败」，就把这些区别抹掉了。
+        error = message;
+    }
+  } finally {
+    await closeLoading();
+  }
+
+  if (error != null && context.mounted) {
+    _hint(context, error);
+  }
+  return raw;
+}
+
+/// 弹一个「正在生成」的等待浮层，返回**关闭它的函数**。
+///
+/// # 为什么是「转圈」而不是骨架屏 / 进度条
+/// 白哥 2026-09-29 已裁决（`llm-card-online-path` §21.3）。理由（我们的推断）：
+/// 生成耗时**不可预估**（依赖上游 LLM），进度条会给出**假承诺**；
+/// 而「转圈 + 一句话说明」是诚实的 —— 用户知道在等，也知道大概等多久。
+///
+/// # ⚠️ 关闭时要等一帧
+/// `showDialog` 是异步的：`builder` 可能在**很久之后**（或很快）才被调用。
+/// 若请求极快返回，关闭时 `dialogCtx` 还可能是 `null` → 浮层**关不掉**（留在屏幕上）。
+/// → 关闭前让出一次事件循环，再检查。
+///
+/// ⚠️ 本函数**是同步的**（返回「关闭函数」而不是「Future<关闭函数>」）——
+///    写成 `async` 会让调用处拿到 `Future` 却当函数调，类型不符（我初稿正是这么写的）。
+Future<void> Function() _showGenerating(BuildContext context, String word) {
+  BuildContext? dialogCtx;
+  unawaited(showDialog<void>(
+    context: context,
+    // 🔴 不可点外部关闭：生成期间用户不该能「点掉等待」——
+    //    那会留下「有个请求还在飞，但界面已回到阅读」的模糊状态。
+    barrierDismissible: false,
+    // 🔑 与 `LookupSheet` 同一轻遮罩（12% 黑）：等待**不该像跳到了另一个界面**
+    barrierColor: const Color(0x1F000000),
+    builder: (c) {
+      dialogCtx = c;
+      return _GeneratingDialog(word: word);
+    },
+  ));
+
+  return () async {
+    // 让出一帧，给 `builder` 机会运行（见函数文档）
+    await Future<void>.delayed(Duration.zero);
+    final c = dialogCtx;
+    if (c != null && c.mounted) Navigator.of(c).pop();
+  };
+}
+
+/// 「正在生成」等待浮层（详见 `_showGenerating` 的说明）。
+class _GeneratingDialog extends StatelessWidget {
+  const _GeneratingDialog({required this.word});
+
+  final String word;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 40),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
+          decoration: BoxDecoration(
+            color: Color(t.card.argb32),
+            borderRadius: BorderRadius.circular(t.clay.radius),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 26,
+                height: 26,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: Color(t.accent.argb32),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '正在制作「$word」',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w500,
+                  color: Color(t.ink.argb32),
+                ),
+              ),
+              const SizedBox(height: 7),
+              Text(
+                // 🔑 **给一个时间预期**（不是精确承诺）—— 否则用户会在第 3 秒就放弃。
+                '第一次遇到这个词需要现场生成，约 5–10 秒',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 12,
+                  height: 1.5,
+                  color: Color(t.ink3.argb32),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// 查词写入 —— **失败只记日志，绝不打扰用户**（见调用处的说明）。
 ///
-/// 分工（照 v1 §九 的命中分支）：
+/// 分工（照 v1 §九 的分支）：
 ///   ① `lookup_event` —— **每次都记**（命中/未命中都记 · 白哥定 Q2）
-///   ② `user_word` —— **只在命中且有词库 id 时**（未命中的词没有 word_id）
+///   ② `user_word` —— **只在有 `wordId` 时**写
 ///   ③ `card_review_state` —— 让新词**立刻进复习队列**（v1 §八 的
 ///      「INSERT user_word + card_review_state」是同一动作的两半）
+///
+/// # 🆕 `wordId` 的三种来源（2026-10-01 · A2）
+/// | 情形 | `wordId` | 说明 |
+/// |---|---|---|
+/// | 命中词库 | `w0xxxxx` | 真主键 |
+/// | **词库外**（在线制卡成功） | **`ext:<拼写>`** | 合成 id，见 `external_word_id.dart` |
+/// | 彻底取不到卡 | `null` | 只写 `lookup_event`（`word_id` 留 NULL），到此为止 |
+///
+/// ⚠️ **`lookup_event.word_id` 的含义随之变化**：原来是「命中才写、未命中留 NULL」，
+///    现在多了一种「**词库外但有卡**」→ 写 `ext:` 合成 id。
+///    三种都仍能回答它原本要回答的问题（「查过哪些词」「当时那句是什么」）。
 ///
 /// ⚠️ 三者**不是事务**：任一步失败，前面的已经写入 ——
 ///    这是**有意**的（可接受的降级）。理由：
@@ -636,9 +904,13 @@ void _hint(BuildContext context, String message) {
 /// 🔑 **结论：UI 层只做「去空白」这一件无争议的事**；标点/大小写等**宽松匹配属查询层**
 ///    （它才知道精确命中是否失败、该不该再试一次）。
 ///
-/// ⚠️ **已知边界（待办）**：长按后**拖动手柄**会把相邻标点带进来（`vertical,`），
-///    当前会提示「词库里没有『vertical,』」。修法是查询层加**「精确 → 剥标点」两段查**，
-///    但那是查询层的改动（要同步 `verify_word_query`），**不在本轮**。
+/// ⚠️ **已知边界（待办 · 现状已随 A2 变化）**：长按后**拖动手柄**会把相邻标点带进来
+///    （`vertical,`）——
+///    · 🆕 2026-10-01 前：会提示「词库里没有『vertical,』」
+///    · 🆕 2026-10-01 后（A2）：会**送去在线制卡** —— 服务端的 `validate_spelling`
+///      会以 400 拒掉带标点的输入（`bad!word` 之类），用户看到的是**参数错误**。
+///    ⇒ 体验上仍是「不理想但不出错」，正解没变：查询层加**「精确 → 剥标点」两段查**。
+///      那要同步 `verify_word_query`，**不在本轮**。
 ///    📌 主路径不受影响：长按**默认选中的就是一个词**（不含标点）。
 String _cleanPicked(String? raw) => raw?.trim() ?? '';
 

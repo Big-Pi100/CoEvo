@@ -2,6 +2,16 @@ import 'dart:convert';
 
 import 'package:sqflite_common/sqlite_api.dart';
 
+import 'external_word_id.dart';
+import 'generated_card_adapter.dart';
+
+/// 🆕 **词库外词的卡片来源** —— 给定拼写，返回已转换的 `card.content` JSON
+/// （`null` = 该词没有缓存）。
+///
+/// 🔑 抽成 typedef 而不是依赖 `Database`：本层要保持「纯 Dart + 单一数据源」，
+///    见 `WordQueryService._externalCardLoader` 的说明。
+typedef ExternalCardLoader = Future<String?> Function(String spelling);
+
 /// 词库只读查询层 —— **纯 Dart，不 import Flutter**。
 ///
 /// ## 为什么单独成层
@@ -26,9 +36,24 @@ import 'package:sqflite_common/sqlite_api.dart';
 ///
 /// 用户数据（复习状态 / 生词本）在 `user.db`，见 `ReviewListQuery`。
 class WordQueryService {
-  WordQueryService._(this._db, this.path);
+  WordQueryService._(this._db, this.path, {ExternalCardLoader? externalCardLoader})
+      : _externalCardLoader = externalCardLoader;
 
   final Database _db;
+
+  /// 🆕 词库外词的卡片来源（`ext:` 前缀的回落）—— **可选**。
+  ///
+  /// 🔑 为什么是**回调**而不是「传一个 `user.db` 的 `Database`」：
+  ///   本层是「`word.db` 只读查询」，一旦直接依赖 `user.db`，
+  ///   就变成**跨库耦合**，且**无法再脱离真实环境断言**（要造两个库）。
+  ///   注入一个 `Future<String?> Function(String)` 则：
+  ///   · App 侧传「读 `external_word_cache` 的实现」（一行闭包）
+  ///   · 断言脚本传假值 → 本层仍可在**纯 Dart** 下验证
+  ///   （同 `word_db_bootstrap` 把 IO 抽成注入接口的惯例。）
+  ///
+  /// ⚠️ `null`（默认）表示「本环境不支持词库外生词」→ `cardById` 对 `ext:` 返回 `null`，
+  ///    语义与「词库外的词查不到」一致，调用方不需要额外分支。
+  final ExternalCardLoader? _externalCardLoader;
 
   /// 打开的库路径（诊断用）
   final String path;
@@ -38,12 +63,16 @@ class WordQueryService {
   /// ⚠️ 工厂由调用方注入，这是本层「可在纯 Dart 下验证」的关键：
   /// - App：`WordQueryService.open(databaseFactory, path)`
   /// - 验证脚本：`WordQueryService.open(databaseFactoryFfi, r'...\data\word.db')`
-  static Future<WordQueryService> open(DatabaseFactory factory, String path) async {
+  static Future<WordQueryService> open(
+    DatabaseFactory factory,
+    String path, {
+    ExternalCardLoader? externalCardLoader,
+  }) async {
     final db = await factory.openDatabase(
       path,
       options: OpenDatabaseOptions(readOnly: true),
     );
-    return WordQueryService._(db, path);
+    return WordQueryService._(db, path, externalCardLoader: externalCardLoader);
   }
 
   Future<void> close() => _db.close();
@@ -212,6 +241,17 @@ class WordQueryService {
   /// 按 `word.id` 取词条卡片 —— **复习页用**（那里只有 `word_id`，没有拼写）。
   ///
   /// 与 [_cardBySpelling] 的差别只在 `WHERE` 列；解析逻辑共用 [_cardFromRow]。
+  ///
+  /// # 🆕 `ext:` 回落（2026-10-01 · A2）
+  /// `word.db` 查不到 **且** id 是合成 id（`ext:<拼写>`，词库外的词）时，
+  /// 回落读端侧缓存（`external_word_cache`）。
+  ///
+  /// 🔴 **没有这一层会怎样**：词库外的词在生词本里**看得见**（`user_word` 有行），
+  ///    点开却**取不到卡** → 复习页出现「点不开的空条目」——
+  ///    正是本产品一直避免的「**静默失败 + 无出口**」。
+  ///
+  /// ⚠️ 回落只在**真查不到**时发生（`rows.isEmpty`）——
+  ///    若将来某个真 id 恰好以 `ext:` 开头（不会发生：真 id 是 `w…`），这里仍然安全。
   Future<WordCard?> cardById(String wordId) async {
     final rows = await _db.rawQuery(
       'SELECT w.id, w.spelling, w.cefr_level, w.entry_type, w.etymology_text, w.sort_seq, '
@@ -220,8 +260,34 @@ class WordQueryService {
       'WHERE w.id = ? LIMIT 1',
       [wordId],
     );
-    if (rows.isEmpty) return null;
-    return _cardFromRow(rows.first);
+    if (rows.isNotEmpty) return _cardFromRow(rows.first);
+
+    // ── 词库外（合成 id）→ 端侧缓存 ──
+    final spelling = externalSpellingOf(wordId);
+    final loader = _externalCardLoader;
+    if (spelling == null || loader == null) return null;
+
+    final raw = await loader(spelling);
+    if (raw == null || raw.isEmpty) return null;
+
+    // 🔑 复用**同一个**解析器（`parseCardContent`）—— 别在这里另写一份 JSON 解析：
+    //    缓存里的形状与 `word.db.card.content` **刻意一致**（见适配器文件头），
+    //    所以这里只是「换了个数据源」，字段口径完全一样。
+    final c = parseCardContent(raw);
+    if (c.sections.isEmpty) return null;   // 空卡 = 取不到卡（比返回半张卡诚实）
+
+    return WordCard(
+      wordId: wordId,
+      // ⚠️ `front` 理论上不会空（适配器写入时已归一化）；真空了退回合成 id 的拼写，
+      //    至少让界面能显示「查的是哪个词」，而不是一个空白标题。
+      spelling: c.front.isEmpty ? spelling : c.front,
+      ipa: c.ipa.isEmpty ? null : c.ipa,
+      entryType: c.entryType.isEmpty ? null : c.entryType,
+      sections: c.sections.map(WordSection.new).toList(growable: false),
+      // `cefrLevel` / `sortSeq` / `contentHash` / `templateCode` / `aggregateLinks`
+      // 一律不填 —— 它们是**词库侧**的元数据，词库外的词本来就没有。
+      // 🔑 尤其 `aggregateLinks` 为空是**正确**状态：聚合页按全库算族，词库外的词没有族页。
+    );
   }
 
   /// 取某词的**记忆法槽位分配**（`word_mnemonic_profile`，11,523 词全有）。
