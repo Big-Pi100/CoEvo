@@ -565,12 +565,48 @@ sudo systemctl disable --now coevo && sudo rm -f /etc/systemd/system/coevo.servi
   && sudo systemctl daemon-reload && sudo rm -rf /opt/coevo
 ```
 
-### 12.5 ⏳ 仍未做（边界）
+### 12.5 ✅ 已完成（2026-10-02）：步骤 2 —— nginx 反代 + `api` 证书
+
+**✅ 端到端已通**：`https://api.keyievolution.fun/health` → **200** · TLS 证书校验通过 ·
+`/api/feed` 返回**真实数据**。
+
+#### 实施记录（照 §9.5 的顺序，**未改任何现有站点文件**）
+
+| 步骤 | 动作 | 结果 |
+|---|---|---|
+| 1 | 备份 nginx 配置 | `/home/ubuntu/nginx-backup-20261002-002519/`（sites-available + sites-enabled + nginx.conf）|
+| 2 | `certbot certonly --webroot -w /var/www/certbot -d api.keyievolution.fun` | ✅ 签发成功（**此时未改 nginx** —— 靠 `pay` 的默认 server block 兜 acme-challenge）· `CN=api.keyievolution.fun` · 到期 **2026-12-30** · 自动续期已挂 |
+| 3 | 写 `/etc/nginx/sites-available/zz-coevo` + 软链 | ✅ **命名 `zz-`** ⇒ 字典序在 `vibedollar-pay` 之后 |
+| 4 | `nginx -t`（**通过才 reload**）| ✅ `SYNTAX_OK` |
+| 5 | `systemctl reload nginx` | ✅ `RELOAD_OK` |
+
+#### 🔬 三条「未影响邻居」的**证据**（这是本步最重要的验收）
+
+| 证据 | 实测 |
+|---|---|
+| **默认 server 未变** | `nginx -T` 里 `vibedollar-pay`(L189) **仍在** `zz-coevo`(L262) 之前；且 **443 IP 直连（不匹配 Host）拿到的证书仍是 `CN=pay.keyievolution.fun`** ✅ |
+| **邻居服务仍 200** | `https://pay.keyievolution.fun/healthz` → **200**（内外网各验一次）|
+| **进程未被重启** | `coevo.service` 的 `ActiveEnterTimestamp` 仍是 **2026-10-01 20:46:37**（早于本次部署）⇒ **只 reload 了 nginx，没动任何后端进程** |
+
+#### 🔴 新增发现：后端带着一组 `/api/admin/*` 端点 → **已在 nginx 层挡住**
+
+后端（沿用 vibedollar 商业代码）路由里有完整的 `/api/admin/*`：
+`users/export`（**导出用户**）· `users/{id}/hard-delete`（**硬删除用户**）· `dashboard` · `audit-log` …
+
+- ✅ **App 侧对它们零调用**（2026-10-02 穷尽 grep：App 用的是 feed / generate-card / auth /
+  user / notifications / referral / campaign / pay / public-qrcode —— **不含 admin**）
+- ⇒ 配置里 `location /api/admin/ { return 404; }`（**最小暴露面**，不指望后端鉴权）
+- ⚠️ **需要 admin 后台时**：删掉那一行即可，其余不动（已在配置文件里写明）
+- 📌 顺带的事实：这个后端**不只是 CoEvo 内容源** —— 它含支付/分销/营销/通知端点，
+  说明它复用了 vibedollar 的完整商业后端。**是否要精简**属独立决策（见「仍未做」）。
+
+### 12.6 ⏳ 仍未做（边界）
 
 | 项 | 状态 |
 |---|---|
-| **nginx 反代 + `api` 证书**（步骤 2） | ⏳ 未做 —— 🔴 **但 DNS 前提已满足**：白哥已于 2026-10-01 前加好 `api` A 记录（**仅 DNS · 灰云**），本文多处「等白哥加 DNS / NXDOMAIN」的表述**以本节为准**（那些是 **09-29 当时**的实测，**已过时**）|
-| 主域 / www 占位页（§11.6 选项甲） | ⏳ 未定 |
+| ~~**nginx 反代 + `api` 证书**（步骤 2）~~ | ✅ **已完成 2026-10-02**（见 §12.5）|
+| **主域 / www 占位页** | ⏳ 未定 —— 🔴 但**现状是「证书不匹配 + 404」**（DNS 已指向本机，nginx 无对应 block → fallback 到 `pay` 的默认 server）⇒ 访客看到**安全警告**。修法：加一个 `zz-` 前缀的占位 block（与 `api` 同做法）。**待白哥定放什么内容** |
+| 🔴 **后端是否精简**（去掉 `/api/admin/*` 等商业端点）| ⏳ **新发现，待决策** —— 这些端点在代码里仍存在，目前只在 nginx 层挡住。是否要从**代码层**删掉（CoEvo 是个人项目、零用户，用不到支付/分销/营销/后台）属独立评估 |
 | `prompts/` 的 K12 退役遗留 | ⏳ 建议独立清理（同「删功能要清语义残留」原则） |
 
 ---
