@@ -311,7 +311,7 @@ mod tests {
         assert!(
             !joined.contains("LISTEN & FOLLOW"),
             "🔴 不该把 `<article>` 里的导航当正文：{:?}",
-            &joined.chars().take(200).collect::<String>()
+            joined.chars().take(200).collect::<String>()
         );
         assert!(
             !joined.contains("Apple Podcasts"),
@@ -329,7 +329,7 @@ mod tests {
                 || joined.contains("fuel efficiency")
                 || joined.contains("fuel-economy standards"),
             "应含真正文片段: {:?}",
-            &joined.chars().take(300).collect::<String>()
+            joined.chars().take(300).collect::<String>()
         );
         // 正文应当有一定体量（不是一两句）
         assert!(

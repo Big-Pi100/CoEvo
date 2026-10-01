@@ -690,7 +690,7 @@ mod tests {
         assert!(
             body.contains('\n'),
             "真实全文应当有段落边界（否则阅读界面是一堵字墙）: {:?}",
-            &body.chars().take(120).collect::<String>()
+            body.chars().take(120).collect::<String>()
         );
     }
 
