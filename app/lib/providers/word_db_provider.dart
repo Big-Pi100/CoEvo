@@ -7,9 +7,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart' as sqflite;
+// `Database` 类型来自 `sqflite_common`（与 `user_db_provider.dart` 同一处理）
+import 'package:sqflite_common/sqlite_api.dart' show Database;
 
 import '../services/external_word_cache_repository.dart';
 import '../services/word_db_bootstrap.dart';
+import '../services/word_id_convergence.dart';
 import '../services/word_query_service.dart';
 import 'user_db_provider.dart';
 
@@ -145,6 +148,13 @@ final wordQueryProvider = FutureProvider<WordDbLoad>((ref) async {
       externalCardLoader: _externalCardLoader(ref),
     );
     ref.onDispose(service.close);
+
+    // ── ③ 🆕 发版收敛（词库**变了**才做）──
+    //    把端侧的 `ext:<拼写>` 收敛为正式 `word.id`（见 `word_id_convergence.dart`）
+    if (result.didWrite) {
+      await _convergeExternalWordIds(ref, service);
+    }
+
     return WordDbReady(service);
   } catch (e, st) {
     // ⚠️ 这里**吞掉异常并转成 [WordDbFailed]**（而不是让它成为 `AsyncError`）——
@@ -184,6 +194,62 @@ Future<String?> _readWordDbVersionAsset() async {
   } catch (e) {
     debugPrint('[word_db] 读不到版本号资产（$e）→ 退回按文件大小判定');
     return null;
+  }
+}
+
+/// 🆕 发版收敛 —— 把 `ext:<拼写>` 收敛为正式 `word.id`（2026-10-01 · A2 阶段 ①）。
+///
+/// # 何时触发
+/// **只在词库被真的写入时**（`result.didWrite` = `created` 或 `replaced`）——
+/// 因为只有那时「词库里可能多了些词」。每次启动都扫是白扫
+/// （绝大多数启动是 `skipped`）。
+///
+/// # 🔴 容错：`user.db` 打不开**不能**影响词库
+/// 与 `_externalCardLoader` 同一条理由：词库是**主体**、收敛是**维护动作**。
+/// 收敛失败最坏的结果是「同一个词暂时有两个身份」（下次启动会再试），
+/// 而**不该**让整个 App 查不了词。
+/// 📌 同产品原则：**增强不该有能力阻断主体**。
+///
+/// # ⚠️ 它会不会拖慢进阅读器？
+/// 会在**首次装/升级的那一次**多花一点时间，量级：
+/// · 候选查询：三张小表 `LIKE 'ext:%'`（单用户几百行）
+/// · 候选通常为 **0**（词库外生词本来就少）→ `planConvergence` 立即返回空计划
+/// → 有 `pairs.isEmpty` 早退**且不开始事务**。
+/// 🔑 而且它**只在词库变化时**跑 —— 不是每次进阅读器。
+Future<void> _convergeExternalWordIds(Ref ref, WordQueryService wordDb) async {
+  // 🔑 `final` + 在 catch 里 `return` → Dart 的**确定赋值**保证下面拿到的是非空值
+  //    （比「声明成 `Database?` 再到处 `!`」更安全：漏一个 `!` 就是运行时崩溃）
+  final Database userDb;
+  try {
+    // ⚠️ 用 `read`（不订阅）—— 本 provider 不该因 user.db 变化而重建
+    userDb = await ref.read(userDbProvider.future);
+  } catch (e) {
+    debugPrint('[word_db] 收敛跳过（user.db 不可用）：$e');
+    return;
+  }
+
+  try {
+    final candidates = await externalWordIdsIn(userDb);
+    if (candidates.isEmpty) return;   // 🔑 绝大多数情况走这里（连事务都不开）
+
+    final pairs = await planConvergence(
+      externalWordIds: candidates,
+      // 🔑 拼写当桥：查新词库有没有这个词（有 = 已回流 = 可以收敛）
+      resolve: wordDb.idOfSpelling,
+    );
+    if (pairs.isEmpty) {
+      debugPrint('[word_db] 收敛：${candidates.length} 个词库外生词，'
+          '但都还没回流 → 全部保留');
+      return;
+    }
+
+    final r = await convergeExternalWordIds(userDb: userDb, pairs: pairs);
+    debugPrint('[word_db] ${r.describe()}');
+    // 🔑 收敛改了 `user.db` → 必须让读端重算（否则复习页还显示旧 id）
+    ref.read(userDbRevisionProvider.notifier).bump();
+  } catch (e, st) {
+    // 收敛失败**只记日志** —— 下次词库变化时会重来（幂等，见 `planConvergence`）
+    debugPrint('[word_db] 收敛失败（不影响词库使用）：$e\n$st');
   }
 }
 

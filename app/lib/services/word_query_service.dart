@@ -238,6 +238,28 @@ class WordQueryService {
         .toList(growable: false);
   }
 
+  /// 🆕 **按拼写取 `word.id`**（只查 id，不读卡片内容）—— **发版收敛用**。
+  ///
+  /// # 为什么单独一个方法（而不是复用 `_cardBySpelling`）
+  /// 收敛要为**每个候选词**问一次「这个词进词库了吗」——
+  /// 而 `_cardBySpelling` 会连带读 `card.content`（~1.2 KB/词）**并算聚合页入口**
+  /// （另一次 JOIN）。收敛只要一个 id → 多读的东西纯属浪费。
+  ///
+  /// 🔑 这也正是收敛「**不需要 mapping 文件**」的落点：
+  ///    `ext:<拼写>` 里的拼写**就是桥** —— 拿它来查这张表，
+  ///    查得到就说明该词已回流（见清单 §2.2）。
+  ///
+  /// ⚠️ 用 `COLLATE NOCASE` 显式指定 —— 与表上的索引口径一致
+  ///    （虽然 `word.spelling` 实测全小写，但收敛的输入来自 `ext:` 归一化值，
+  ///      显式声明可以避免将来有人改归一化规则时**静默查不到**）。
+  Future<String?> idOfSpelling(String spelling) async {
+    final rows = await _db.rawQuery(
+      'SELECT id FROM word WHERE spelling = ? COLLATE NOCASE LIMIT 1',
+      [spelling],
+    );
+    return rows.isEmpty ? null : rows.first['id'] as String?;
+  }
+
   /// 按 `word.id` 取词条卡片 —— **复习页用**（那里只有 `word_id`，没有拼写）。
   ///
   /// 与 [_cardBySpelling] 的差别只在 `WHERE` 列；解析逻辑共用 [_cardFromRow]。
