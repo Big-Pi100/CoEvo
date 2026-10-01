@@ -1,0 +1,32 @@
+# Rust 工具链版本锁定
+#
+# 🔴 为什么必须有这个文件（2026-10-01 实测代价）
+#   CI 用 `actions-rust-lang/setup-rust-toolchain` 且**没写 toolchain 输入** →
+#   官方文档：没有 toolchain 文件、也没给 toolchain 值时，**default 到 `stable`**
+#   → **每次 CI 都可能换版本**。
+#
+#   代价实例：CI 的 clippy 漂到 **1.98.0**，新增的 `useless_borrows_in_formatting`
+#   直接让 `backend` job 变红 4 个 error；而本机是 **1.95.0**，
+#   **同一个 `stable` 的不同时刻** → 本地**永远复现不了** → 白排查一轮。
+#
+# 📌 判据：门禁的三要素要一起锁 —— **在不在位** · **跑没跑到** · **用的是哪个版本**。
+#    前两条以前锁过（不能 continue-on-error、注意第一步失败会跳过后续），
+#    这条是第三条：**门禁的尺子不能自己漂**。
+#
+# 🔑 放**仓库根**（不是 backend/）：
+#   · action 只在 repository root 找 toolchain 文件（放在子目录要额外配 `rust-src-dir`）
+#   · `rustup` 自己是从当前目录**往上**找 → 在 `backend/` 里跑 cargo 也能命中本文件
+#   → 两边都能发现，本地与 CI 共用**同一份**版本定义（单一真相源）。
+#
+# 🔑 本机也会生效：进这个仓库跑 `cargo`，rustup 会自动切到 1.98.0
+#    （首次会提示安装；`rustup toolchain install 1.98.0` 手动装也行）。
+#
+# ⚠️ 升级节奏：改这个值 = 一次**有意的**升级动作（要顺手跑一遍 fmt/clippy/test），
+#    而不是某天 CI 自己换了把尺子。
+
+[toolchain]
+channel = "1.98.0"
+# 必须在文件里也声明：`cargo fmt --check` / `cargo clippy` 是 CI 的门禁步骤，
+# 缺组件会让它们直接报「no such command」。CI 的 action 另有 components 输入，
+# 但那是「额外安装」；写在文件里保证**任何**用这个 toolchain 的场景都齐备。
+components = ["rustfmt", "clippy"]

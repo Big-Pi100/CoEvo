@@ -26,6 +26,17 @@ jobs:
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          # 🔴 **锁死 Rust 版本** —— 别只靠 default。
+          #    官方文档（actions-rust-lang/setup-rust-toolchain）：
+          #      没有 toolchain 文件、也没给 toolchain 值时，**default 到 `stable`**
+          #      → **每次 CI 都可能换版本**。
+          #    实测代价（2026-10-01）：clippy 漂到 **1.98.0**，新增的
+          #      `useless_borrows_in_formatting` 让本 job 变红 4 个 error；
+          #      而本机是 1.95.0（**同一个 stable 的不同时刻**）→ 本地复现不了 → 白排查一轮。
+          #    📌 判据：门禁三要素要一起锁 —— **在不在位** · **跑没跑到** · **用的是哪个版本**。
+          #    ⚠️ 升级请当作**一次性有意的动作**（顺手跑 fmt/clippy/test），
+          #      而不是某天 CI 自己换了把尺子。
+          toolchain: 1.98.0
           components: rustfmt, clippy
 
       - name: Cache cargo
@@ -69,6 +80,9 @@ jobs:
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          # 同上：锁版本（理由见 backend job 处的长注释）
+          toolchain: 1.98.0
 
       - name: Cache cargo
         uses: actions/cache@v4
