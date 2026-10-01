@@ -1,3 +1,12 @@
+// 🔴 **这一行是必需的**（理由见下方 `pageTransitionsTheme` 处的长注释）——
+//    `CupertinoPageTransitionsBuilder` 这个类**换过家**：
+//      · Flutter **3.41**：定义在 **material** 库（`src/material/page_transitions_theme.dart`）
+//      · Flutter **3.47**：已迁到 **cupertino** 库（`src/cupertino/route.dart`）
+//        （**迁移发生在哪一版未核实**，只确认了这两个端点的归属）
+//    ⇒ 只 import material → CI（3.47.5）报 `isn't defined`（本轮 CI 红的原因）
+//      只 import cupertino → 本机（3.41.1）报同样的错
+//      **两个都 import → 两个版本都能解析** ✅（本机实测 0 error / 0 warning）
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import 'coevo_tokens.dart';
@@ -46,7 +55,8 @@ ThemeData buildTheme(CoEvoTokens t) {
     //    `_CupertinoBackGestureDetector`（`flutter/lib/src/cupertino/route.dart:253`）
     //    → 换成这个 builder，页面**同时**获得「右滑入场 + 边缘右滑返回」。
     //
-    // 🔴 而 Flutter 默认是**按平台分派**的（`page_transitions_theme.dart:806`）：
+    // 🔴 而 Flutter 默认是**按平台分派**的（`material/page_transitions_theme.dart`
+    //    的 `PageTransitionsTheme._defaultBuilders`；具体行号随版本变，别记死）：
     //      android → `PredictiveBackPageTransitionsBuilder`（**无 iOS 风格侧滑**）
     //      iOS/macOS → `CupertinoPageTransitionsBuilder`
     //    → 所以在 Android 上**天然测不到**这个手势。本产品只做 iOS，
@@ -60,6 +70,22 @@ ThemeData buildTheme(CoEvoTokens t) {
     // 🔴 **配套约束**：任何页面**不许**用 `CustomTransitionPage` 自定义转场 ——
     //    它不走本表，等于**把侧滑手势关掉**（`/article/:id` 与 `/chat` 原先就是
     //    这么写的，已改回 `builder:`）。这条有断言守着（`tokens_verify` §15）。
+    //
+    // 🔴 **为什么文件顶部要额外 import cupertino（2026-10-01 踩的坑）**
+    //
+    //    下表的 `CupertinoPageTransitionsBuilder` **换过家**：
+    //      · Flutter 3.41（本机 SDK）：属 **material** 库
+    //      · Flutter 3.47（CI 的 SDK）：已迁到 **cupertino** 库
+    //    ⇒ 只 import material 时，CI 报
+    //        `The function 'CupertinoPageTransitionsBuilder' isn't defined`
+    //      + 连带 2 条（`Invalid constant value` / `non_constant_map_value`）——
+    //      共 7 条 error，整条 frontend job 就卡在 analyze 这一步。
+    //      （本机 3.41.1 **看不到**这个错：同一个名字本机由 material 提供 → 本地永远绿灯。）
+    //    ✅ 修法：**两个库都 import** → 3.41 由 material 解析、3.47 由 cupertino 解析，
+    //       两边都编译。已核实不会产生同名冲突（该文件用到的 36 个 material 名字，
+    //       逐个查过 cupertino 文档，**零同名**）。
+    //    ⚠️ 这是「**本机 SDK ≠ CI SDK**」的典型症状：本地绿、CI 红。
+    //       根治办法是让两边版本一致（或本地升到 3.47.5）——已记入待办，不在本次改动内。
     pageTransitionsTheme: const PageTransitionsTheme(
       builders: {
         TargetPlatform.android: CupertinoPageTransitionsBuilder(),
