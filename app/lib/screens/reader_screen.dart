@@ -687,15 +687,46 @@ Future<String?> _generateExternalCard(
 /// 生成耗时**不可预估**（依赖上游 LLM），进度条会给出**假承诺**；
 /// 而「转圈 + 一句话说明」是诚实的 —— 用户知道在等，也知道大概等多久。
 ///
-/// # ⚠️ 关闭时要等一帧
-/// `showDialog` 是异步的：`builder` 可能在**很久之后**（或很快）才被调用。
-/// 若请求极快返回，关闭时 `dialogCtx` 还可能是 `null` → 浮层**关不掉**（留在屏幕上）。
-/// → 关闭前让出一次事件循环，再检查。
+/// # 🔴🔴 关闭时必须**等「对话框真的挂载」这个条件**，不能等一个猜的时长
+///
+/// `showDialog` 是异步的：它内部走 `Navigator.push`，而对话框要**下一次渲染**
+/// 才会执行 `builder`。所以「请求返回」与「对话框出现」是两个独立的时序。
+///
+/// ⚠️ **曾经的写法是错的**（2026-10-02 修）：
+/// ```dart
+/// await Future<void>.delayed(Duration.zero);   // ❌ 只让出**事件循环**（Timer(0)，≈0 ms）
+/// final c = dialogCtx;
+/// if (c != null && c.mounted) Navigator.of(c).pop();   // c 为 null 时**静默什么都不做**
+/// ```
+/// `Duration.zero` **不保证渲染帧已经跑过**（帧间隔 ~16 ms）。于是：
+/// **请求比一帧还快返回时**（断网 / 连接被拒 / DNS 失败，HTTP 可能几毫秒就失败）
+/// → 关闭函数执行时 `builder` 还没跑、`dialogCtx` 仍是 `null` → **不 pop** →
+/// 对话框**随后**才出现 → **永久留在屏幕上**。
+///
+/// 🔴 后果被两个设置放大到「必须杀 App」：
+/// · `barrierDismissible: false`（生成期间不许点掉等待）
+/// · 本项目**仅 iOS** —— 没有 Android 的系统返回键可退
+///
+/// ✅ **修法**：等 `builder` **真正执行过**这个事实（`Completer`），
+///    并加**有界超时**兜底（万一 builder 因故永不运行，也不能把调用方挂死）。
+///    🔑 一般化：`等一个猜的时长` ＜ `等一个条件成立`。
+///    （这与 flaky test 的经典修法同一条：**永远不要 sleep，要等状态**。）
+///
+/// 📌 **这一类缺陷文本断言验不到** —— 代码「看起来」是对的（有 null 检查、有延迟），
+///    只有**构造极端路径真跑**才暴露。所以它的最终防线是
+///    `docs/review/a2-device-verification-checklist-2026-10-02.md` §2b
+///    （**断网**下划一个没查过的词库外词 → 转圈必须消失）。
 ///
 /// ⚠️ 本函数**是同步的**（返回「关闭函数」而不是「Future<关闭函数>」）——
 ///    写成 `async` 会让调用处拿到 `Future` 却当函数调，类型不符（我初稿正是这么写的）。
 Future<void> Function() _showGenerating(BuildContext context, String word) {
   BuildContext? dialogCtx;
+  // 「builder 已执行」的信号 —— 关闭函数等的就是它
+  final dialogReady = Completer<void>();
+  void markReady() {
+    if (!dialogReady.isCompleted) dialogReady.complete();
+  }
+
   unawaited(showDialog<void>(
     context: context,
     // 🔴 不可点外部关闭：生成期间用户不该能「点掉等待」——
@@ -705,13 +736,20 @@ Future<void> Function() _showGenerating(BuildContext context, String word) {
     barrierColor: const Color(0x1F000000),
     builder: (c) {
       dialogCtx = c;
+      markReady(); // ← 到这一刻，「关闭它」才是安全的
       return _GeneratingDialog(word: word);
     },
-  ));
+  ).whenComplete(() {
+    // 兜底：对话框因别的原因结束（页面已 pop / 被系统关掉）→ 也要解除等待，
+    // 否则关闭函数会一直挂着，调用方那一步就卡住了。
+    markReady();
+  }));
 
   return () async {
-    // 让出一帧，给 `builder` 机会运行（见函数文档）
-    await Future<void>.delayed(Duration.zero);
+    // 🔴 等**条件**（builder 跑过），不是等时长。
+    // ⚠️ 超时是**兜底而非正常路径**：3 秒内 builder 都没跑，
+    //    说明对话框根本没弹出来（如页面已 pop）→ 此时不该再等、也不该 pop 别的东西。
+    await dialogReady.future.timeout(const Duration(seconds: 3), onTimeout: () {});
     final c = dialogCtx;
     if (c != null && c.mounted) Navigator.of(c).pop();
   };

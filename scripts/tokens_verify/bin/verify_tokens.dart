@@ -122,6 +122,7 @@ void main() {
   _s18DbRevision();
   _s19ExternalCard();
   _s20DeviceId();
+  _s21TimingWait();
 
   print('\n' + '═' * 72);
   print('通过 $_pass 项，实现类失败 $_fail 项，规格内部冲突 ${_conflicts.length} 项');
@@ -650,9 +651,19 @@ String _braceBody(String src, String name) {
   //      调用处可能先于定义处出现（本项目的 `build()` 在文件前段调
   //      `_header(t, dueCount)` / `_sortBar(t)`，而它们的定义在文件后段）
   //      → 从调用处配对会切出一段**与该方法无关**的区间。
+  //
+  //   🔴 坑 6（2026-10-02 撞到）：**返回「函数类型」的声明** ——
+  //      `Future<void> Function() _showGenerating(...) {`
+  //      返回类型与函数名之间还有个 ` Function()`，而坑 3 的正则要求
+  //      「返回类型 + 空白 + name(」→ **匹配不上** → 退回 `indexOf(name+'(')` →
+  //      命中**调用处**（`_showGenerating(context, text);` 出现在定义之前）
+  //      → 切出一段与该函数无关的区间（**既不空也不对** → 极其危险：
+  //      正向断言报红、**反向断言假绿**）。
+  //      🔑 又一次印证：**切片函数本身也会漏 —— 切不出东西时先怀疑切片。**
   final def = RegExp(
     r'(?:Widget|void|Future<[^>]*>|List<Widget>|bool|String|int|double|'
     r'Iterable<[^>]*>|Map<[^>]*>)\s+'
+    r'(?:Function\s*\(\s*\)\s+)?' // 🆕 坑 6：返回函数类型
     + RegExp.escape(name) + r'\(',
   ).firstMatch(src);
   final i = def?.start ?? src.indexOf(name + '(');
@@ -2536,6 +2547,63 @@ void _s17ReviewList() {
 //
 // ⚠️ 这类失效**编译器完全看不出来**：数据写对了，只是没人告诉界面。
 //    用户看到的是「查词没生效」/「评了没用」。
+void _s21TimingWait() {
+  print('\n【21】🔴 时序：「等条件」而不是「等一个猜的时长」');
+
+  final root = _repoRoot();
+  String src(String p) {
+    final f = File('$root/app/lib/$p');
+    return f.existsSync() ? _codeOnly(f.readAsStringSync()) : '';
+  }
+
+  final reader = src('screens/reader_screen.dart');
+
+  // ① 🔴 全文件（**已剥注释**）不许再用 `Duration.zero` 等待
+  //    ⚠️ 曾经的写法：`await Future<void>.delayed(Duration.zero)` 想「让出一帧」，
+  //       但 Timer(0) 只让出**事件循环**、**不保证渲染帧跑过**（帧间隔 ~16ms）→
+  //       `showDialog` 的 `builder` 还没跑、`dialogCtx` 仍为 null → 不 pop →
+  //       对话框随后才出现 → **永久留在屏幕上**（`barrierDismissible: false` + 仅 iOS）。
+  //    🔑 这条是**一般禁令**：任何「等一会儿再对异步产生的东西做操作」都该等**条件**。
+  check('🔴 源码里不再有 `Duration.zero`（剥注释后）—— 它是 0ms 定时器，不等于过了一帧',
+      !reader.contains('Duration.zero'));
+
+  // ② 切出 `_showGenerating` 函数体（位置/内容断言的前提）
+  final body = _braceBody(reader, '_showGenerating');
+  check('能切出 `_showGenerating` 的函数体', body.contains('_GeneratingDialog'),
+      'len=${body.length}');
+  check('🔴 函数体内也没有 `Duration.zero`', !body.contains('Duration.zero'));
+
+  // ③ 🔑 必须**等条件**（builder 真的跑过）
+  check('🔑 用 `Completer` 等「builder 已执行」这个条件', body.contains('Completer'),
+      '');
+  //  ⚠️ 判断「在 builder 里 complete」**不能用 `indexOf('markReady()')`** ——
+  //     函数顶部有个 `void markReady() {`（**定义处**）会先被命中，
+  //     于是位置比较变成拿「定义」比「builder」→ 恒为假。
+  //     （这就是今天已修过一次的「`indexOf` 只取首次出现」—— 我在写断言时又踩了一次。）
+  //   ✅ 改为匹配**语义本身**：「拿到 context 就宣布就绪」这个相邻关系。
+  check('🔑 在 `builder` 里 complete（紧跟在记录 context 之后）',
+      RegExp(r'dialogCtx = c;\s*\n\s*markReady\(\);').hasMatch(body),
+      body.contains('markReady()') ? '' : '连 markReady 都没有');
+
+  // ④ 🔴 必须有**有界超时**兜底 —— 否则 builder 永不运行时会把调用方挂死
+  //    （`等条件` 的代价：条件永不成立就永不返回 → 必须给上限）
+  check('🔴 等待有**有界超时**兜底（`.future.timeout(`）', body.contains('.future.timeout('));
+
+  // ⑤ 兜底路径：对话框因故结束时也要解除等待（否则关闭函数一直挂着）
+  check('🔑 `showDialog` 的 future 完成时也解除等待（`whenComplete`）',
+      body.contains('.whenComplete('));
+
+  // ⚠️ 诚实标注：**这一类的真正防线是「构造极端路径真跑」，不是断言** ——
+  //    代码「看起来」是对的（有 null 检查、有延迟），文本断言只能证明
+  //    「不再用猜的时长、且用了条件等待」。触发条件（请求比一帧快返回）
+  //    只有**断网真跑**才能验：见
+  //    `docs/review/a2-device-verification-checklist-2026-10-02.md` §2b。
+  check('📌 清单里保留了「断网划词 → 转圈必须消失」这条真机验证点', () {
+    final f = File('$root/docs/review/a2-device-verification-checklist-2026-10-02.md');
+    return f.existsSync() && f.readAsStringSync().contains('转圈必须消失');
+  }());
+}
+
 void _s20DeviceId() {
   print('\n【20】匿名设备标识（device_id）的接线与边界');
 
