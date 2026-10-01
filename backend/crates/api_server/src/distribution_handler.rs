@@ -1928,9 +1928,95 @@ pub struct WebhookRefundRequest {
     pub status: Option<String>,
 }
 
+/// 退款处理的**结果**（供测试断言用）。
+///
+/// 🔑 HTTP 层**不用**它 —— 微信要求回调**恒返 200**（见 [`webhook_refund`]）。
+///    返回 `Result` 的唯一目的是让**测试**能区分「做成了」「无事可做」「出错了」。
+#[derive(Debug, PartialEq, Eq)]
+pub enum RefundOutcome {
+    /// 订单不存在 → 无事可做。
+    /// ⚠️ 这**不是错误**：微信会重复投递，也可能投递已被清理的订单。
+    OrderNotFound,
+    /// 事务已提交，三张表都已更新。
+    Applied,
+}
+
+/// 退款回调的**核心副作用**（纯 DB 操作 · **不碰全局连接池** → 可独立测试）。
+///
+/// # 🔑 为什么把它从 handler 里抽出来
+/// `webhook_refund` 用的是 `db_pool::get_conn()`（**全局池**），
+/// 而本文件其余测试都用各自的 `setup_db()` 连接（**刻意避开全局池**，防测试间互相干扰）
+/// → 那条路径**此前测不了**，只能放一个 `assert!(true, ...)` 充数（假绿）。
+/// 抽成接受 `&Connection` 的纯函数后，测试就能用 `setup_db()` 对它下真断言。
+/// 📌 同族：「**核心业务逻辑要可独立验证**」。
+///
+/// # 行为（与抽取前 `webhook_refund` 内的代码**逐字对应**）
+/// 1. 订单不存在 → `Ok(OrderNotFound)`，**不改任何表**
+/// 2. 存在 → `BEGIN` → 三步 UPDATE → `COMMIT`；任一步失败 → `ROLLBACK` + `Err`
+/// 3. 🔴 三步 UPDATE 都带 `AND status = '<期望值>'` —— 非 SUCCESS 的订单**不会**被改成 REFUND
+pub fn apply_refund(
+    conn: &rusqlite::Connection,
+    order_id: &str,
+    refund_id: Option<&str>,
+) -> Result<RefundOutcome, String> {
+    // 1. 查 payment_orders WHERE id = ?1
+    let exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM payment_orders WHERE id = ?1",
+            rusqlite::params![order_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
+
+    if !exists {
+        return Ok(RefundOutcome::OrderNotFound);
+    }
+
+    // 2. BEGIN TRANSACTION
+    conn.execute("BEGIN TRANSACTION", [])
+        .map_err(|e| format!("tx_error: {}", e))?;
+
+    // a. 订单 → REFUND（**仅当当前是 SUCCESS**）
+    if let Err(e) = conn.execute(
+        "UPDATE payment_orders SET status = 'REFUND', refund_id = ?1 WHERE id = ?2 AND status = 'SUCCESS'",
+        rusqlite::params![refund_id, order_id],
+    ) {
+        let _ = conn.execute("ROLLBACK", []);
+        return Err(format!("update_order_error: {}", e));
+    }
+
+    // b. 佣金 locked → cancelled
+    if let Err(e) = conn.execute(
+        "UPDATE distribution_commissions SET status = 'cancelled' WHERE order_id = ?1 AND status = 'locked'",
+        rusqlite::params![order_id],
+    ) {
+        let _ = conn.execute("ROLLBACK", []);
+        return Err(format!("update_commissions_error: {}", e));
+    }
+
+    // c. 奖励 fulfilled → cancelled
+    if let Err(e) = conn.execute(
+        "UPDATE reward_fulfillments SET status = 'cancelled' WHERE order_id = ?1 AND status = 'fulfilled'",
+        rusqlite::params![order_id],
+    ) {
+        let _ = conn.execute("ROLLBACK", []);
+        return Err(format!("update_rewards_error: {}", e));
+    }
+
+    // 3. COMMIT
+    if let Err(e) = conn.execute("COMMIT", []) {
+        let _ = conn.execute("ROLLBACK", []);
+        return Err(format!("commit_error: {}", e));
+    }
+
+    Ok(RefundOutcome::Applied)
+}
+
 /// POST /api/webhook/refund — 微信退款回调
 ///
-/// 注意：微信回调不论处理结果如何都必须返回 HTTP 200，否则微信会持续重试。
+/// 🔴 **无论处理结果如何都必须返回 HTTP 200** —— 否则微信会持续重试。
+///    所以本 handler **刻意不把错误映射成 HTTP 错误码**，只记日志。
+///    真正的逻辑在 [`apply_refund`]（抽出去才测得了，见那里的说明）。
 pub async fn webhook_refund(Json(body): Json<WebhookRefundRequest>) -> impl IntoResponse {
     tracing::info!(
         "webhook_refund: order_id={}, refund_id={:?}, status={:?}",
@@ -1940,77 +2026,19 @@ pub async fn webhook_refund(Json(body): Json<WebhookRefundRequest>) -> impl Into
     );
 
     let conn = crate::db_pool::get_conn();
-
-    // 1. 查 payment_orders WHERE id = ?1
-    let exists: bool = conn
-        .query_row(
-            "SELECT COUNT(*) > 0 FROM payment_orders WHERE id = ?1",
-            rusqlite::params![body.order_id],
-            |row| row.get(0),
-        )
-        .unwrap_or(false);
-
-    if !exists {
-        // 未找到 → 返回 200（微信要求回调必须返回 200）
-        return (
-            StatusCode::OK,
-            Json(json!({"code": "SUCCESS", "message": "ok"})),
-        )
-            .into_response();
+    match apply_refund(&conn, &body.order_id, body.refund_id.as_deref()) {
+        Ok(RefundOutcome::OrderNotFound) => {
+            tracing::info!("webhook_refund: 订单不存在，无事可做: {}", body.order_id);
+        }
+        Ok(RefundOutcome::Applied) => {
+            tracing::info!("webhook_refund: 退款处理完成: {}", body.order_id);
+        }
+        Err(e) => {
+            tracing::error!("webhook_refund: {}", e);
+        }
     }
 
-    // 2. BEGIN TRANSACTION
-    if let Err(e) = conn.execute("BEGIN TRANSACTION", []) {
-        tracing::error!("webhook_refund: tx_error: {}", e);
-        return (
-            StatusCode::OK,
-            Json(json!({"code": "SUCCESS", "message": "ok"})),
-        )
-            .into_response();
-    }
-
-    // a. UPDATE payment_orders SET status = 'REFUND', refund_id = ?1 WHERE id = ?2
-    if let Err(e) = conn.execute(
-        "UPDATE payment_orders SET status = 'REFUND', refund_id = ?1 WHERE id = ?2 AND status = 'SUCCESS'",
-        rusqlite::params![body.refund_id, body.order_id],
-    ) {
-        let _ = conn.execute("ROLLBACK", []);
-        tracing::error!("webhook_refund: update_order_error: {}", e);
-        return (StatusCode::OK, Json(json!({"code": "SUCCESS", "message": "ok"}))).into_response();
-    }
-
-    // b. UPDATE distribution_commissions SET status = 'cancelled' WHERE order_id = ?1 AND status = 'locked'
-    if let Err(e) = conn.execute(
-        "UPDATE distribution_commissions SET status = 'cancelled' WHERE order_id = ?1 AND status = 'locked'",
-        rusqlite::params![body.order_id],
-    ) {
-        let _ = conn.execute("ROLLBACK", []);
-        tracing::error!("webhook_refund: update_commissions_error: {}", e);
-        return (StatusCode::OK, Json(json!({"code": "SUCCESS", "message": "ok"}))).into_response();
-    }
-
-    // c. UPDATE reward_fulfillments SET status = 'cancelled' WHERE order_id = ?1 AND status = 'fulfilled'
-    if let Err(e) = conn.execute(
-        "UPDATE reward_fulfillments SET status = 'cancelled' WHERE order_id = ?1 AND status = 'fulfilled'",
-        rusqlite::params![body.order_id],
-    ) {
-        let _ = conn.execute("ROLLBACK", []);
-        tracing::error!("webhook_refund: update_rewards_error: {}", e);
-        return (StatusCode::OK, Json(json!({"code": "SUCCESS", "message": "ok"}))).into_response();
-    }
-
-    // 3. COMMIT
-    if let Err(e) = conn.execute("COMMIT", []) {
-        let _ = conn.execute("ROLLBACK", []);
-        tracing::error!("webhook_refund: commit_error: {}", e);
-        return (
-            StatusCode::OK,
-            Json(json!({"code": "SUCCESS", "message": "ok"})),
-        )
-            .into_response();
-    }
-
-    // 4. 返回 200
+    // 🔴 恒返 200（微信要求，见函数文档）
     (
         StatusCode::OK,
         Json(json!({"code": "SUCCESS", "message": "ok"})),
@@ -2381,6 +2409,10 @@ pub async fn admin_export(
 
 #[cfg(test)]
 mod tests {
+    // 🔑 **显式列出**需要的符号（而不是 `use super::*`）——
+    //    通配导入会把「本模块到底依赖父模块的什么」藏起来，
+    //    也让 `unused_imports` 这类检查失去作用（它只能整包判断）。
+    use super::{apply_refund, RefundOutcome};
     use crate::schema::init_database;
     use rusqlite::Connection;
 
@@ -2646,37 +2678,152 @@ mod tests {
         assert_eq!(status, "NOTPAY", "非 SUCCESS 订单状态应保持不变");
     }
 
-    /// 前置条件检查：库中不存在该订单。
-    ///
-    /// 🔴🔴 **本测试没有覆盖 `webhook_refund` handler 本身** —— 这是**有意如实标注**的。
-    ///
-    /// 原因：`webhook_refund` 走**全局连接池** `db_pool::get_conn()`，
-    /// 而本文件其余测试都用各自的 `setup_db()` 连接（**刻意避开全局池**，防止测试间互相干扰）。
-    /// 要真正覆盖 handler 的「未找到订单也必须返回 200」这条行为，需要二选一：
-    ///   ① 初始化全局池（会与其它测试竞争同一份全局状态）
-    ///   ② **把「查订单 → 分支」抽成纯函数**，再对纯函数断言（推荐，符合「核心逻辑可独立验证」）
-    ///
-    /// 🔑 为什么删掉了原来的 `assert!(true, "...")`：
-    ///    恒真断言**不消耗任何信息**，却让覆盖率看起来 +1 —— 属**假绿**。
-    ///    （clippy `assertions_on_constants` 同样要求删除。）
-    ///    📌 判据：「**能证明什么的断言**」才有价值；写不出真断言时，
-    ///       **如实标注未覆盖**，而不是放一个恒真断言充数。
-    ///
-    /// TODO（可选 · 独立任务）：按 ② 抽纯函数后补真断言。
-    #[test]
-    fn test_webhook_refund_nonexistent_order_precondition() {
-        let conn = setup_db();
+    // ════════════════════════════════════════════════════════════
+    // 退款回调（`apply_refund`）—— **真断言**
+    //
+    // 🔑 这三个测试之所以能存在，是因为把逻辑从 handler 里抽成了纯函数：
+    //    `webhook_refund` 走全局池 `db_pool::get_conn()`，而测试用的是 `setup_db()`
+    //    的独立连接（刻意避开全局池）。
+    //    ⚠️ 此前这里只有一个 `assert!(true, "...")` —— 恒真断言 = **假绿**
+    //       （它不消耗任何信息，却让覆盖率看起来 +1）。
+    //    📌 判据：**写不出真断言时如实标注未覆盖，而不是放个恒真断言充数**；
+    //       而「抽成纯函数」才是让真断言写得出来的办法。
+    // ════════════════════════════════════════════════════════════
 
-        // 不存在的订单 — 前置条件：库里确实没有它
-        // （这条断言验的是 **setup**，不是被测对象 —— 如实说明）
-        let exists: bool = conn
+    /// 造一套「已支付订单 + locked 佣金 + fulfilled 奖励」的最小数据。
+    /// 照 `test_admin_refund_cancels_commissions` 的既有模式（FK 依赖要逐个建齐）。
+    fn seed_refundable_order(conn: &Connection, order_id: &str, order_status: &str) {
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let uid = format!("u-{}", order_id);
+        let plan = format!("p-{}", order_id);
+        let camp = format!("c-{}", order_id);
+
+        conn.execute(
+            "INSERT INTO users (id, username, display_name, created_at) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![uid, uid, "退款测试用户", now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO subscription_plans (id, name, price, duration_days, is_active, created_at) \
+             VALUES (?1, '测试套餐', 10000, 30, 1, ?2)",
+            rusqlite::params![plan, now],
+        )
+        .unwrap();
+        // 🔴 `marketing_campaigns.created_by` → `admin_users(id)` 有外键。
+        //    ⚠️ 第一版我在这里填了字面量 `'admin'` 却没建对应的管理员行 →
+        //       `FOREIGN KEY constraint failed`，而且**炸在 setup 而不是被测代码上**
+        //       —— 这种失败很容易被误读成「被测逻辑坏了」。先把依赖建齐再插。
+        conn.execute(
+            "INSERT INTO admin_users (id, username, password_hash, role, status, created_at) \
+             VALUES ('admin-seed', 'admin_seed', 'hash', 'super_admin', 'approved', ?1)",
+            rusqlite::params![now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO marketing_campaigns (id, name, status, rewards, trigger_event, created_by, created_at) \
+             VALUES (?1, '退款测试活动', 'active', '[]', 'payment', 'admin-seed', ?2)",
+            rusqlite::params![camp, now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO payment_orders (id, user_id, plan_id, amount, status, created_at) \
+             VALUES (?1, ?2, ?3, 10000, ?4, ?5)",
+            rusqlite::params![order_id, uid, plan, order_status, now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO distribution_commissions (id, campaign_id, earner_id, buyer_id, order_id, \
+             order_amount, rate_applied, amount, level, status, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, 10000, 0.1, 1000, 1, 'locked', ?6)",
+            rusqlite::params![format!("cm-{}", order_id), camp, uid, uid, order_id, now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO reward_fulfillments (id, campaign_id, order_id, user_id, party, reward_type, \
+             reward_value, trigger_event, status, fulfilled_at, created_at) \
+             VALUES (?1, ?2, ?3, ?4, 'inviter', 'commission_pct', '0.1', 'payment', 'fulfilled', ?5, ?5)",
+            rusqlite::params![format!("rw-{}", order_id), camp, order_id, uid, now],
+        )
+        .unwrap();
+    }
+
+    /// 🔑 读某个状态列。**仅测试用** —— `table` / `id_col` 都是调用处写死的字面量，
+    /// 没有外部输入，所以这里的 `format!` 拼 SQL 不构成注入面。
+    fn status_of(conn: &Connection, table: &str, id_col: &str, id: &str) -> String {
+        conn.query_row(
+            &format!("SELECT status FROM {} WHERE {} = ?1", table, id_col),
+            rusqlite::params![id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    /// 🔴 订单**不存在** → `OrderNotFound`（**不是 `Err`**）。
+    ///    微信会重复投递，也可能投递已被清理的订单 ——
+    ///    把这种情况当错误、让回调永远重试，才是 bug。
+    ///    （替代了此前那个「只验 setup、不验被测对象」的 `..._precondition`。）
+    #[test]
+    fn test_apply_refund_order_not_found() {
+        let conn = setup_db();
+        let r = apply_refund(&conn, "non-existent-order", Some("wx-refund-001"));
+        assert_eq!(
+            r,
+            Ok(RefundOutcome::OrderNotFound),
+            "订单不存在应返回 OrderNotFound，而不是 Err"
+        );
+    }
+
+    /// 🔴 **真实路径**：订单存在且为 SUCCESS → **三张表都要被更新**。
+    ///    只验一处不够 —— 三步 UPDATE 任意一步漏了/写错都该被抓出来。
+    #[test]
+    fn test_apply_refund_updates_three_tables() {
+        let conn = setup_db();
+        let order_id = "order-refund-ok";
+        seed_refundable_order(&conn, order_id, "SUCCESS");
+
+        let r = apply_refund(&conn, order_id, Some("wx-refund-002"));
+        assert_eq!(r, Ok(RefundOutcome::Applied));
+
+        assert_eq!(status_of(&conn, "payment_orders", "id", order_id), "REFUND");
+        assert_eq!(
+            status_of(&conn, "distribution_commissions", "order_id", order_id),
+            "cancelled",
+            "locked 佣金应被取消"
+        );
+        assert_eq!(
+            status_of(&conn, "reward_fulfillments", "order_id", order_id),
+            "cancelled",
+            "fulfilled 奖励应被取消"
+        );
+
+        // `refund_id` 要落库（对账用）—— 顺带守住「参数确实传到了 UPDATE 里」
+        let rid: Option<String> = conn
             .query_row(
-                "SELECT COUNT(*) > 0 FROM payment_orders WHERE id = 'non-existent-order'",
-                [],
-                |row| row.get(0),
+                "SELECT refund_id FROM payment_orders WHERE id = ?1",
+                rusqlite::params![order_id],
+                |r| r.get(0),
             )
-            .unwrap_or(false);
-        assert!(!exists, "订单不应存在");
+            .unwrap();
+        assert_eq!(rid.as_deref(), Some("wx-refund-002"));
+    }
+
+    /// 🔴 **非 SUCCESS 订单不被改动** —— 三步 UPDATE 都带 `AND status = '<期望值>'` 守卫。
+    ///    事务本身算成功（`Applied`），但订单状态必须**原样**。
+    ///    这条守住的是「幂等 / 防误改」这个真正重要的性质，不是形式。
+    #[test]
+    fn test_apply_refund_ignores_non_success_order() {
+        let conn = setup_db();
+        let order_id = "order-refund-notpay";
+        seed_refundable_order(&conn, order_id, "NOTPAY");
+
+        let r = apply_refund(&conn, order_id, Some("wx-refund-003"));
+        assert_eq!(r, Ok(RefundOutcome::Applied));
+
+        assert_eq!(
+            status_of(&conn, "payment_orders", "id", order_id),
+            "NOTPAY",
+            "非 SUCCESS 订单不该被改成 REFUND"
+        );
     }
 }
 // FORCE_REBUILD_1782825921
