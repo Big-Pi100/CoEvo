@@ -27,7 +27,7 @@ flutter run -d <你的设备 id> \
 > 若首页空 + 有报错 → API 地址没注入对，**先解决这个**。
 
 📌 `api_config.dart` 的头注释里还写着 `flutter build web` 与旧 IP `<OLD_VPS_IP>`
-—— 与「仅 iOS」「api 子域」矛盾，属**语义残留**（清单 §5 已列，待你定是否本轮清）。
+—— 与「仅 iOS」「api 子域」矛盾，属**语义残留**。✅ **本轮已清**（见 §5-C）。
 
 ---
 
@@ -87,7 +87,9 @@ PY
 | 2b | 🔴 **断网**（开飞行模式）：划一个**没查过**的词库外词 | 转圈 → 提示「连不上服务…」；🔴 **转圈必须消失** |
 | 2c | 同一词再划一次（走端侧缓存） | **不出现转圈**，直接弹词卡 |
 
-🔴 **2b 是重点**：见 §5-A —— 我判定这里有**真 bug**，很可能就是这个场景触发。
+🔴 **2b 是重点**（这一项**曾经会失败**，现已修）：见 §5-A ——
+它触发过**转圈浮层永久卡住**的真 bug（**本轮已修**，见 §5-A）。
+✅ 所以 2b 现在是一条**回归验证点**：**它必须过**；不过就是把 bug 改回来了。
 
 ### 边界 ③ 真实联网往返
 
@@ -141,11 +143,11 @@ PY
 
 ---
 
-## 五、我能当场判定的（附实测依据）
+## 五、曾当场判定的三项（**均已处理** · 2026-10-02）
 
-### A. 🔴 **转圈浮层可能永久卡住**（我判定是真 bug，建议先修再验 2b）
+### A. ✅ **已修**：转圈浮层的关闭时序 bug
 
-**根因**（`reader_screen.dart:697` 的 `_showGenerating`）：
+**根因**（`reader_screen.dart` 的 `_showGenerating`）—— 原写法：
 
 ```dart
 unawaited(showDialog(... builder: (c) { dialogCtx = c; ... }));   // builder 在**下一帧**才跑
@@ -157,43 +159,45 @@ return () async {
 ```
 
 **链条**：`showDialog` → `Navigator.push` → dialog 要**下一帧**才 build →
-而 `Future.delayed(Duration.zero)` 只让出事件循环（≈ 0 ms），**不等渲染帧**（~16 ms）→
-若「请求耗时 < 一帧」，关闭函数跑时 `dialogCtx` 仍是 `null` → **不 pop** →
-随后 dialog 才 build 出来 → **永久留在屏幕上**。
+而 `Future.delayed(Duration.zero)` 是 `Timer(0)`（≈ 0 ms），**不保证渲染帧已跑**（~16 ms）→
+若「请求比一帧还快返回」（断网/连接被拒/DNS 失败，HTTP 可能几毫秒就失败）
+→ 关闭函数执行时 `dialogCtx` 仍是 `null` → **不 pop** → dialog 随后才出现 →
+**永久留在屏幕上**。
 
-**触发条件**：`barrierDismissible: false`（配置里就是这么设的）+ **iOS**
-（无系统返回键可退）→ 用户**只能杀 App**
-⇒ 项目**仅 iOS**，所以这个后果是实打实的。
+**后果被两个设置放大到「必须杀 App」**：`barrierDismissible: false` + **仅 iOS**（无系统返回键）。
 
-**最可能的触发场景**：**断网/连接被拒/DNS 失败**（HTTP 可能几毫秒就失败）→ 正好是 §2b。
+**✅ 修法**（已实施）：等「builder **真的执行过**」这个**条件**（`Completer`），
+并用**有界超时**（3 s）兜底；`showDialog` 的 future 完成时也解除等待。
+🔑 一般化：**`等一个猜的时长` ＜ `等一个条件成立`**（与 flaky test 的经典修法同一条：
+**永远不要 sleep，要等状态**）。
 
-**修法**（我建议的，最小改动）：把「等零延时」换成**等 dialog 真的挂载**
-（`Completer` + 有界超时），而不是「等一个事件循环」：
+**断言**：`tokens_verify` §21（7 项）—— 禁止 `Duration.zero` · 必须有 `Completer` ·
+`complete` 必须在 `builder` 里（**紧跟记录 context 之后**）· 必须有有界超时 · 必须有兜底解除。
+**证伪**：退回 `Duration.zero` → 红 3 项；把 `complete` 挪出 builder → 红 1 项（其余 650 项仍绿）。
 
-```dart
-final mounted = Completer<void>();
-... builder: (c) { dialogCtx = c; if (!mounted.isCompleted) mounted.complete(); return ...; }
-... showDialog(...).whenComplete(() { if (!mounted.isCompleted) mounted.complete(); });
-return () async {
-  await mounted.future.timeout(const Duration(seconds: 3), onTimeout: () {});
-  final c = dialogCtx;
-  if (c != null && c.mounted) Navigator.of(c).pop();
-};
-```
+📌 **但这一类的最终防线是 §2b（真机断网真跑）** —— 文本断言只能证明
+「不再用猜的时长、且用了条件等待」，证不了「那条路径真的不会卡」。
+**§2b 请务必跑**。
 
-📌 **状态**：**未改**（按规矩先报后动）。**建议先修再跑 §2b** ——
-否则验证会卡在那个场景上。除此外它不影响其它项。
+### B. ✅ **已删**：`assets/` 下两个 32 MB 冗余备份
 
-### B. `assets/` 下有两个 32 MB 的本地垃圾
+删前核实（删之前三问）：
+| 问 | 答 |
+|---|---|
+| 会不会被当作交付物？ | ❌ 未在 `pubspec.yaml` 声明 → 从不进包 |
+| 有没有脚本引用？ | ❌ 穷尽 grep：无任何代码/配置引用 |
+| 删了能不能恢复？ | ✅ **能** —— `data/` 下有**同名且 md5 完全相同**的副本（`d76c3d22…` / `81f5da72…`）|
+| 有没有「只在此备份里」的内容？ | ❌ 词集合与当前库**完全一致**（各 11,523），**无独有词** |
 
-`word.db.bak-priority-redo-20260928-182159` 与 `-194116`（各 ~32 MB）。
-**未在 `pubspec.yaml` 声明** → **不会进包**（所以不影响交付物体积），
-但白占 ~64 MB 磁盘。**要不要删**（属你的决定，我不动）。
+⇒ 确认是**纯冗余副本**后删除。`app/assets/` 现在正好只剩 pubspec 声明的 4 项。
 
-### C. `api_config.dart` 的头注释已过时
+### C. ✅ **已清**：`api_config.dart` 的过时注释
 
-写着 `flutter build web`（项目**仅 iOS**）+ 旧 VPS IP `<OLD_VPS_IP>`
-+ 主域 `keyievolution.fun`（现在是 `api.` 子域）。同「文档与代码漂移」那一类。
+原写着 `flutter build web`（项目**仅 iOS**）+ 旧 VPS IP `<OLD_VPS_IP>`
++ 主域（现在 API 走 `api.` 子域）。已改写为当前实况（含真机连生产后端的命令），
+并把旧写法标为**已作废**（保留一小段说明，防后人照抄）。
+⚠️ `docs/` 下仍有 **108 处**旧 IP（多数在 Web 时代的部署文档里）——
+那是**历史文档**，未擅自改，见 §八。
 
 ---
 
@@ -203,6 +207,7 @@ return () async {
 |---|---|
 | 首页空 / 划词提示「连不上服务」 | `--dart-define=API_HOST` 有没有生效（§〇）|
 | 划词后**什么都不发生** | 日志有无 `[user_word]` / `[generate_card]`；`_hint` 是否被浮层遮住 |
+| 🔴 **转圈一直转、退不掉** | 若已含本次修复仍复现 → 把现象/机型/网络状态报回来（这是 §5-A 的兜底验证失败）|
 | 提示「该词暂不支持生成」 | 服务端**合规闸门**拒了 —— 换一个常见词再试（这不是 bug）|
 | 提示「正在生成中，请稍后重试」 | 正常（别人正在生成同一个词）→ **过几秒重试应成功** |
 | 词卡显示但生词本没有 | 查 `[lookup]` 日志；`_writeBackLookup` 是 `unawaited`（**有意**：不阻塞展示）|
@@ -215,11 +220,29 @@ return () async {
 | 项 | 内容 |
 |---|---|
 | 🆕 `device_id` | `services/device_id.dart`（纯逻辑 + 单飞）+ `providers/device_id_provider.dart`；接入**制卡请求**与**复习日志** |
-| 断言 | `verify_device_id.dart`（**47 项**）+ `tokens_verify` §20（**17 项**接线与边界，含「logout 不许 `clear()`」）|
+| 🔴 修时序 bug | `reader_screen.dart` 的 `_showGenerating`：「等零时长」→「等条件（`Completer`）+ 有界超时」（§5-A）|
+| 断言 | `verify_device_id.dart`（**47 项**）· `tokens_verify` §20（**17 项**接线与边界，含「logout 不许 `clear()`」）· §21（**7 项**时序）|
 | 修过时引用 | `fsrs_service.dart:220` 原指 `verify_review_log.dart`（**该文件不存在**）→ 改为 `verify_review_list.dart`【13】|
+| 🔧 修断言工具 | `_braceBody` 的返回类型正则不认 `Future<void> Function()` → 切错区间（**切片函数本身漏了**，它注释里警告过的同类坑）→ 补「返回函数类型」形态 |
 
 **证伪记录**（证明断言不是假的）：
 - 把 `isDeviceId` 当「已存值是否可用」的门槛 → 红 2 项（会**换掉用户身份**）
 - 破坏单飞 → 红 3 项（同机留下多个 id）
 - 读失败时静默生成新的 → 红 2 项（偶发故障即换身份）
 - 去掉 `deviceId: deviceId` 实参 + `logout` 改用 `prefs.clear()` → 恰好 2 项红、其余 641 项仍绿
+- 时序退回 `Future.delayed(Duration.zero)` → 红 3 项；把 `complete` 挪出 `builder` → 红 1 项
+
+---
+
+## 八、顺带发现、**未处理**（等你的决定）
+
+| # | 发现 | 说明 |
+|---|---|---|
+| 1 | 🔴 **`data/backups/` 已堆积 ~498 MB** | 其中 20+ 个 word.db 历史快照（09-25 ~ 09-29 的各阶段中间态，单个 17–33 MB）。多数已**被当前库覆盖**（当前库含全部 11,523 词）。**要不要清理**？我建议保留最近 2–3 个 + 删掉更早的，但**不擅自动** |
+| 2 | `docs/` 下 **108 处**旧 IP `<OLD_VPS_IP>` | 集中在 `docs/deploy/`（`web-deploy-guide.md` 53 处 · `maintenance-spec.md` 17 处 · `deployment-guide.md` 12 处）。⚠️ **「web-deploy-guide」整篇都已过时**（项目不做 Web）→ 建议整篇标作废而不是逐行改 IP |
+| 3 | `tts_service.dart:111` 的 100 ms 延时 | `stop()` 后等 100 ms 再 `speak()` —— 绕第三方库竞态，是**同类判据**（用猜的时长）的另一个实例。**不同之处**：`flutter_tts` 没给就绪回调，且有 `myGen` 代检查兜底 → 属**不得已**。改它需要真机测 TTS，**未动** |
+| 4 | `app/build/` 下有构建产物 | 正常（构建输出），但 `flutter clean` 可回收。未动 |
+
+**§八-1 与 §八-2 都是「存量不清理」的同族** —— 旧东西留着会持续吸引新用途
+（部署文档的旧 IP 会被人照抄、旧备份会被误当权威）。建议排一次专门的清理，
+但**不在本轮**。
