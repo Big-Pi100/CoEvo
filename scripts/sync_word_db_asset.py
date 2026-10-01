@@ -43,6 +43,22 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, 'data', 'word.db')
 DST = os.path.join(ROOT, 'app', 'assets', 'word.db')
 
+# ─────────────────────────────────────────────────────────────
+# 🆕 与 word.db **成对**的版本文件（2026-10-01）
+# ─────────────────────────────────────────────────────────────
+#
+# 🔴 **为什么必须一起同步**：端侧用「版本号」判要不要重新落盘
+#    （见 `app/lib/services/word_db_bootstrap.dart`）。
+#    若 **word.db 是新的、版本文件是旧的**（或反之），就出现
+#    **端侧以为库没变、实际 asset 已换** → 词库**停在旧版且不报错**。
+#    这比「忘了同步 word.db」**更隐蔽** —— 后者至少大小会变、能被发现。
+#
+# 🔑 判据沿用本脚本的老原则：**有「源 + 副本」的东西，改完源必须问
+#    「还有谁拿着它的旧拷贝」** —— 版本文件是新增的第二个这样的东西。
+VERSION_NAME = 'word_db.version'
+VERSION_SRC = os.path.join(ROOT, 'data', VERSION_NAME)
+VERSION_DST = os.path.join(ROOT, 'app', 'assets', VERSION_NAME)
+
 #: 逐内容比对的表 —— 🆕 **已改为「所有表」**
 #
 # 🔴 **踩坑（2026-09-29 · 就在本脚本上）**：第一版只对 `card` / `aggregate_page` 比内容哈希，
@@ -72,6 +88,32 @@ def table_digest(con, t):
 
 def connect_ro(p):
     return sqlite3.connect(f'file:{p}?mode=ro', uri=True)
+
+
+def read_version(path):
+    """读版本文件（不存在返回 `None`）。🔑 **比对字符串本身**，不解析 —— 版本号对端侧是不透明值。"""
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding='utf-8') as f:
+        return f.read().strip()
+
+
+def version_problem():
+    """版本文件是否「源与副本配对」。返回问题描述或 `None`。
+
+    ⚠️ 三种情形都要报（**缺一**和**不同**一样糟）：
+      · 源没有 → 跑 `gen_word_db_version.py` 生成
+      · 副本没有 → 需同步（漏了它 asset 里就没有版本号，端侧退回比大小）
+      · 两者不同 → 端侧会基于**错的版本**判「要不要落盘」
+    """
+    s, d = read_version(VERSION_SRC), read_version(VERSION_DST)
+    if s is None:
+        return f'{VERSION_NAME}: 源不存在（先跑 gen_word_db_version.py）'
+    if d is None:
+        return f'{VERSION_NAME}: 副本不存在（需同步）'
+    if s != d:
+        return f'{VERSION_NAME}: 源 {s} ≠ 副本 {d}'
+    return None
 
 
 def snapshot(path):
@@ -132,10 +174,17 @@ def main():
     else:
         problems, detail = diff(a, b)
 
+    # 🆕 版本文件走**同一套**「差异 → 同步 → 读回校验」流程
+    #    🔑 不做成独立分支 —— 否则「--check 能查库、查不出版本」这种半吊子状态迟早出现。
+    vp = version_problem()
+    if vp:
+        problems.append(vp)
+
     if not problems:
         if not args.quiet:
             print(f'✅ 两份库一致（{len(a["counts"])} 表 · card '
                   f'{a["counts"].get("card", 0):,} · word_form {a["counts"].get("word_form", 0):,}）')
+            print(f'   {VERSION_NAME}: {read_version(VERSION_SRC)}')
         return 0
 
     if not args.check:
@@ -144,9 +193,20 @@ def main():
             for p in problems:
                 print(f'   · {p}')
         shutil.copy2(args.src, args.dst)
-        # 同步后必须**读回校验**
+        # 🆕 🔴 **顺序不可颠倒：先 word.db，后版本文件。**
+        #     · 先库后版本 → 半途失败 = 「新库 + 旧版本」→ 端侧虽判「版本没变」，
+        #       但**大小变了**（两信号取并集）→ 仍会复制 ✅ 自愈
+        #     · 先版本后库 → 半途失败 = 「旧库 + 新版本」→ 端侧判「版本已变」→
+        #       复制到的却是**旧库**、还把它标记为最新 → 🔴 **永不自愈**
+        #    🔑 一般化：**标记类文件要写在数据之后**（同「先改数据、后删缓存」）。
+        if read_version(VERSION_SRC) is not None:
+            shutil.copy2(VERSION_SRC, VERSION_DST)
+        # 同步后必须**读回校验**（库里也含版本文件 —— 它同样会脱节）
         b2 = snapshot(args.dst)
         probs2, _ = diff(a, b2)
+        vp2 = version_problem()
+        if vp2:
+            probs2.append(vp2)
         if probs2:
             print('🔴 同步后仍不一致:')
             for p in probs2:

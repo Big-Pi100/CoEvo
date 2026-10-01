@@ -17,6 +17,17 @@ const String kWordDbAsset = 'assets/word.db';
 /// 词库落盘后的文件名。
 const String kWordDbFileName = 'word.db';
 
+/// 🆕 词库**版本号**的 assets 键（由 `scripts/gen_word_db_version.py` 生成）。
+///
+/// 🔴 **必须在 `pubspec.yaml` 的 `assets:` 里声明** —— 漏声明**不会编译报错**，
+///    只在运行时 `loadString` 抛异常（本项目已因此踩过一次）。
+///    ⚠️ 本代码对该异常**做了容错**（缺失 → 退回比大小），所以漏声明表现为
+///    「静默退化为旧行为」而非崩溃 —— **更难发现**，故此处特别标注。
+const String kWordDbVersionAsset = 'assets/word_db.version';
+
+/// 🆕 落盘后，版本号在可写目录里的文件名（与 `word.db` 同级）。
+const String kWordDbVersionFileName = 'word_db.version';
+
 /// 词库加载的**终态**。
 ///
 /// # 🔑 为什么不是一个 `WordQueryService?`
@@ -96,6 +107,7 @@ final wordQueryProvider = FutureProvider<WordDbLoad>((ref) async {
   try {
     final dir = await getApplicationSupportDirectory();
     final targetPath = p.join(dir.path, kWordDbFileName);
+    final versionPath = p.join(dir.path, kWordDbVersionFileName);
 
     // ── ① 落盘（只在首次 / 词库变更时真写）──
     final result = await ensureWordDb(
@@ -103,13 +115,22 @@ final wordQueryProvider = FutureProvider<WordDbLoad>((ref) async {
       readAsset: _readWordDbAsset,
       probe: () {
         final f = File(targetPath);
-        return f.existsSync()
-            ? TargetState(exists: true, size: f.lengthSync())
-            : const TargetState.missing();
+        if (!f.existsSync()) return const TargetState.missing();
+        // 🆕 一并读上次记录的版本（缺失 → null → 判定里算「变了」，复制一次对齐）
+        final vf = File(versionPath);
+        return TargetState(
+          exists: true,
+          size: f.lengthSync(),
+          version: vf.existsSync() ? vf.readAsStringSync().trim() : null,
+        );
       },
       // 🔴 `flush: true` —— 「写完了」与「真落盘」是两件事，
       //    而这里没有第二次机会（下次启动只比大小、不校验内容）。
       write: (bytes) => File(targetPath).writeAsBytes(bytes, flush: true),
+      // 🆕 版本信号：让「大小恰好相同但内容不同」也能被检出（见 bootstrap 文件头）
+      readAssetVersion: _readWordDbVersionAsset,
+      // ⚠️ 顺序由 `ensureWordDb` 保证：先写 `word.db`，后写它（理由见那里）
+      writeVersion: (v) => File(versionPath).writeAsString('$v\n', flush: true),
     );
     // 🔑 日志带路径与大小 —— 出问题时一眼看出判断依据
     debugPrint(result.describe(targetPath));
@@ -138,4 +159,23 @@ final wordQueryProvider = FutureProvider<WordDbLoad>((ref) async {
 Future<Uint8List> _readWordDbAsset() async {
   final data = await rootBundle.load(kWordDbAsset);
   return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+}
+
+/// 🆕 读 `assets/word_db.version` 的版本号。
+///
+/// 🔴 **缺失不是错误**（返回 `null`）—— 三种情形都可能：
+///   ① 旧版本的构建产物里还没有这个 asset（灰度/回滚期间）
+///   ② `pubspec.yaml` 漏声明
+///   ③ 生成脚本还没跑
+/// → 一律退回「比大小」这个既有能力。**绝不让它成为词库不可用的原因** ——
+///   同「增强不该阻断主体」的产品原则：版本号是**判据的增强**，不是功能本身。
+Future<String?> _readWordDbVersionAsset() async {
+  try {
+    final raw = await rootBundle.loadString(kWordDbVersionAsset);
+    final v = raw.trim();
+    return v.isEmpty ? null : v;
+  } catch (e) {
+    debugPrint('[word_db] 读不到版本号资产（$e）→ 退回按文件大小判定');
+    return null;
+  }
 }

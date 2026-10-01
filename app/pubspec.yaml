@@ -112,6 +112,12 @@ flutter:
   assets:
     - assets/sql/
     - assets/word.db
+    # 🆕 词库版本号（2026-10-01）—— 让端侧能判出「大小相同但内容不同」的词库更新。
+    #    🔴 **必须单独声明**：上面那行是**单个文件**（不是目录），不会连带打包同目录其它文件。
+    #    漏声明的后果**不报错**：`word_db_provider` 对该资产做了容错（缺失即退回比大小）
+    #    → 表现为「静默退化成旧行为」，比崩溃更难发现。
+    #    由 `scripts/gen_word_db_version.py` 生成，`scripts/sync_word_db_asset.py` 保证源与副本一致。
+    - assets/word_db.version
     # 🔴 字体的**许可文本必须随包分发**（OFL 条件 2：每份副本都要含版权声明与许可）
     #    ⚠️ 只放进 `assets/fonts/` **不够** —— 未在此声明的文件**不会被打包**
     #    （本项目已踩过：`assets/sql/user_db_schema.sql` 曾因此不进包，编译不报错、只在运行时炸）
