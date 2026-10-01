@@ -1411,7 +1411,7 @@ mod tests {
     fn test_executor_campaign_filter_scope() {
         let conn = setup_db();
         // 创建两个活动：一个 self 奖励，一个 inviter 奖励
-        let cid_self = insert_test_campaign(
+        let _cid_self = insert_test_campaign(
             &conn,
             "registration",
             r#"[{"type":"subscription_days","party":"self","value":3,"trigger":"registration","freq":"once"}]"#,

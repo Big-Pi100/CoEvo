@@ -550,7 +550,7 @@ pub fn distribute_commission_on_payment(
                 conn,
                 &buyer_id,
                 "reward_redeem",
-                &format!("📉 折扣已使用"),
+                "📉 折扣已使用",
                 &format!("你在本次支付中使用了「{}」推荐折扣优惠！", campaign_name),
                 None,
             );
@@ -588,7 +588,7 @@ pub fn distribute_commission_on_payment(
             conn,
             &buyer_id,
             "reward_redeem",
-            &format!("📉 折扣已使用"),
+            "📉 折扣已使用",
             &format!(
                 "你在本次支付中使用了邀请「{}」获得的折扣优惠！",
                 display_name
@@ -629,7 +629,7 @@ pub fn distribute_commission_on_payment(
             conn,
             &buyer_id,
             "reward_redeem",
-            &format!("📉 折扣已使用"),
+            "📉 折扣已使用",
             &format!("你在本次支付中使用了「{}」拼团折扣优惠！", display_name),
             None,
         );

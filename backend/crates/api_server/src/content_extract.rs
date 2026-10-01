@@ -224,15 +224,11 @@ fn normalized_text(el: ElementRef) -> String {
     let mut skip_depth: usize = 0;
     for node in el.descendants() {
         match node.value() {
-            scraper::node::Node::Element(e) => {
-                if skip.contains(&e.name()) {
-                    skip_depth += 1;
-                }
+            scraper::node::Node::Element(e) if skip.contains(&e.name()) => {
+                skip_depth += 1;
             }
-            scraper::node::Node::Text(t) => {
-                if skip_depth == 0 {
-                    buf.push_str(&t.text);
-                }
+            scraper::node::Node::Text(t) if skip_depth == 0 => {
+                buf.push_str(&t.text);
             }
             _ => {}
         }

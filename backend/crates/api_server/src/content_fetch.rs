@@ -396,7 +396,7 @@ pub fn save_body(
             body,
             now_utc,
             // 拿到正文后重算词数（正文比摘要长得多 → 卡片上的「N min」才准）
-            body.map(|b| count_words(b)),
+            body.map(count_words),
             id
         ],
     )

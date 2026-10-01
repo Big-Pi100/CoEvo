@@ -1783,12 +1783,10 @@ pub async fn admin_funnel(
     // 支付数
     let payments: i64 = conn
         .query_row(
-            &format!(
-                "SELECT COUNT(DISTINCT po.id) FROM payment_orders po \
+            "SELECT COUNT(DISTINCT po.id) FROM payment_orders po \
              JOIN users u ON po.user_id = u.id \
              WHERE po.status = 'SUCCESS' AND u.referred_by IS NOT NULL \
-             AND u.referred_by != '' AND u.deleted_at IS NULL"
-            ),
+             AND u.referred_by != '' AND u.deleted_at IS NULL",
             [],
             |row| row.get(0),
         )
@@ -1797,10 +1795,8 @@ pub async fn admin_funnel(
     // 佣金总额
     let commission_amount: i64 = conn
         .query_row(
-            &format!(
-                "SELECT COALESCE(SUM(dc.amount), 0) FROM distribution_commissions dc \
-             WHERE dc.status NOT IN ('cancelled')"
-            ),
+            "SELECT COALESCE(SUM(dc.amount), 0) FROM distribution_commissions dc \
+             WHERE dc.status NOT IN ('cancelled')",
             [],
             |row| row.get(0),
         )
@@ -2385,7 +2381,6 @@ pub async fn admin_export(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::schema::init_database;
     use rusqlite::Connection;
 
@@ -2651,13 +2646,29 @@ mod tests {
         assert_eq!(status, "NOTPAY", "非 SUCCESS 订单状态应保持不变");
     }
 
-    /// Webhook 退款测试：未找到订单时仍返回 200
+    /// 前置条件检查：库中不存在该订单。
+    ///
+    /// 🔴🔴 **本测试没有覆盖 `webhook_refund` handler 本身** —— 这是**有意如实标注**的。
+    ///
+    /// 原因：`webhook_refund` 走**全局连接池** `db_pool::get_conn()`，
+    /// 而本文件其余测试都用各自的 `setup_db()` 连接（**刻意避开全局池**，防止测试间互相干扰）。
+    /// 要真正覆盖 handler 的「未找到订单也必须返回 200」这条行为，需要二选一：
+    ///   ① 初始化全局池（会与其它测试竞争同一份全局状态）
+    ///   ② **把「查订单 → 分支」抽成纯函数**，再对纯函数断言（推荐，符合「核心逻辑可独立验证」）
+    ///
+    /// 🔑 为什么删掉了原来的 `assert!(true, "...")`：
+    ///    恒真断言**不消耗任何信息**，却让覆盖率看起来 +1 —— 属**假绿**。
+    ///    （clippy `assertions_on_constants` 同样要求删除。）
+    ///    📌 判据：「**能证明什么的断言**」才有价值；写不出真断言时，
+    ///       **如实标注未覆盖**，而不是放一个恒真断言充数。
+    ///
+    /// TODO（可选 · 独立任务）：按 ② 抽纯函数后补真断言。
     #[test]
-    fn test_webhook_refund_returns_200_always() {
+    fn test_webhook_refund_nonexistent_order_precondition() {
         let conn = setup_db();
-        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
-        // 不存在的订单 — webhook 必须返回成功
+        // 不存在的订单 — 前置条件：库里确实没有它
+        // （这条断言验的是 **setup**，不是被测对象 —— 如实说明）
         let exists: bool = conn
             .query_row(
                 "SELECT COUNT(*) > 0 FROM payment_orders WHERE id = 'non-existent-order'",
@@ -2666,10 +2677,6 @@ mod tests {
             )
             .unwrap_or(false);
         assert!(!exists, "订单不应存在");
-
-        // 验证：不存在的订单，webhook 逻辑中会返回 200
-        // 这里模拟 webhook 的条件分支
-        assert!(true, "webhook 对不存在的订单返回 200（在 handler 层面）");
     }
 }
 // FORCE_REBUILD_1782825921

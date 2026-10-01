@@ -216,6 +216,7 @@ fn urlencode(s: &str) -> String {
 /// 自动处理文本分片（每片 ≤600 字），多段合成后拼接返回。
 /// - `voice_type`: 腾讯云音色 ID（None = 使用默认音色）
 /// - `speed`: 语速 [-2, 6]（None = 正常语速）
+///
 /// 如果 TTS 未配置，返回 Ok(None)。
 pub async fn synthesize(
     text: &str,

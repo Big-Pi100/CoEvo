@@ -165,21 +165,19 @@ fn execute_cron_pushes(conn: &rusqlite::Connection) -> Result<usize, String> {
     let mut pushed = 0;
     for (id, name, target_roles_json, description) in &campaigns {
         let cron = {
-            let tmp = conn
-                .query_row(
-                    "SELECT push_cron FROM marketing_campaigns WHERE id=?1",
-                    rusqlite::params![id],
-                    |row| row.get::<_, String>(0),
-                )
-                .unwrap_or_default();
-            tmp
+            conn.query_row(
+                "SELECT push_cron FROM marketing_campaigns WHERE id=?1",
+                rusqlite::params![id],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap_or_default()
         };
         if cron.is_empty() {
             continue;
         }
 
         let parts: Vec<&str> = cron
-            .split(|c| c == ' ' || c == ',' || c == '\t')
+            .split([' ', ',', '\t'])
             .filter(|p| !p.is_empty())
             .collect();
         if parts.len() < 5 {

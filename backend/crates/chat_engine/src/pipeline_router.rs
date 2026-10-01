@@ -220,25 +220,25 @@ mod tests {
     }
 
     #[test]
-    fn test_domain_from_chinese() {
-        assert_eq!(Domain::from_chinese("数学"), Domain::Math);
-        assert_eq!(Domain::from_chinese("语文"), Domain::Language);
-        assert_eq!(Domain::from_chinese("英语"), Domain::Language);
-        assert_eq!(Domain::from_chinese("化学"), Domain::Chemistry);
-        assert_eq!(Domain::from_chinese("生物"), Domain::Biology);
-        assert_eq!(Domain::from_chinese("物理"), Domain::Physics);
-        assert_eq!(Domain::from_chinese("历史"), Domain::History);
-        assert_eq!(Domain::from_chinese("地理"), Domain::Geography);
-        assert_eq!(Domain::from_chinese("政治"), Domain::Politics);
-        assert_eq!(Domain::from_chinese("道法"), Domain::Politics);
-        assert_eq!(Domain::from_chinese("科学"), Domain::Science);
-        assert_eq!(Domain::from_chinese("信息技术"), Domain::It);
-        assert_eq!(Domain::from_chinese("体育"), Domain::Pe);
-        assert_eq!(Domain::from_chinese("艺术"), Domain::Art);
-        assert_eq!(Domain::from_chinese("音乐"), Domain::Art);
-        assert_eq!(Domain::from_chinese("劳动"), Domain::Labor);
+    fn test_domain_from_str_chinese() {
+        assert_eq!(Domain::from_str("数学").unwrap(), Domain::Math);
+        assert_eq!(Domain::from_str("语文").unwrap(), Domain::Language);
+        assert_eq!(Domain::from_str("英语").unwrap(), Domain::Language);
+        assert_eq!(Domain::from_str("化学").unwrap(), Domain::Chemistry);
+        assert_eq!(Domain::from_str("生物").unwrap(), Domain::Biology);
+        assert_eq!(Domain::from_str("物理").unwrap(), Domain::Physics);
+        assert_eq!(Domain::from_str("历史").unwrap(), Domain::History);
+        assert_eq!(Domain::from_str("地理").unwrap(), Domain::Geography);
+        assert_eq!(Domain::from_str("政治").unwrap(), Domain::Politics);
+        assert_eq!(Domain::from_str("道法").unwrap(), Domain::Politics);
+        assert_eq!(Domain::from_str("科学").unwrap(), Domain::Science);
+        assert_eq!(Domain::from_str("信息技术").unwrap(), Domain::It);
+        assert_eq!(Domain::from_str("体育").unwrap(), Domain::Pe);
+        assert_eq!(Domain::from_str("艺术").unwrap(), Domain::Art);
+        assert_eq!(Domain::from_str("音乐").unwrap(), Domain::Art);
+        assert_eq!(Domain::from_str("劳动").unwrap(), Domain::Labor);
         // 无对应 → General
-        assert_eq!(Domain::from_chinese("社会学"), Domain::General);
+        assert_eq!(Domain::from_str("社会学").unwrap(), Domain::General);
     }
 
     #[test]

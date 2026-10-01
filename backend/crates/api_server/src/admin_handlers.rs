@@ -86,14 +86,11 @@ pub fn verify_guardian_or_admin(
     }
 
     // 1. 检查 admin_users（super/service）
-    if let Some(result) = conn()
-        .query_row::<(String, String, String), _, _>(
-            "SELECT id, role, status FROM admin_users WHERE password_hash=?1",
-            rusqlite::params![token],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .ok()
-    {
+    if let Ok(result) = conn().query_row::<(String, String, String), _, _>(
+        "SELECT id, role, status FROM admin_users WHERE password_hash=?1",
+        rusqlite::params![token],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    ) {
         let (id, role, status) = result;
         if status == "active" {
             return Ok((id, role));
@@ -105,7 +102,7 @@ pub fn verify_guardian_or_admin(
     if let Ok(token_row) = conn().query_row::<String, _, _>(
         "SELECT t.user_id FROM tokens t WHERE t.token = ?1",
         rusqlite::params![token],
-        |row| Ok(row.get(0)?),
+        |row| row.get(0),
     ) {
         // token 有效，查 users 表的 role
         if let Ok(role) = conn().query_row(
@@ -260,10 +257,10 @@ pub struct AdminRegisterInput {
 pub async fn admin_register(Json(input): Json<AdminRegisterInput>) -> impl IntoResponse {
     tracing::info!("admin_register: username={}", input.username);
     // admin_users 只允许 super/service，guardian/tutor 已移入 users 表
-    return err(
+    err(
         StatusCode::BAD_REQUEST,
         "self_register_disabled_contact_admin",
-    );
+    )
 }
 // ── User Search ──
 #[derive(Deserialize)]

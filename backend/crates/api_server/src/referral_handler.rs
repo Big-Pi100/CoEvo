@@ -102,14 +102,8 @@ fn load_poster_prompt(
             |row| row.get(0),
         ).unwrap_or_default();
         if !custom.is_empty() {
-            let signal = match load_share_prompt(base_dir, "poster", "signal") {
-                Ok(s) => s,
-                Err(_) => String::new(),
-            };
-            let format = match load_share_prompt(base_dir, "poster", "format") {
-                Ok(f) => f,
-                Err(_) => String::new(),
-            };
+            let signal = load_share_prompt(base_dir, "poster", "signal").unwrap_or_default();
+            let format = load_share_prompt(base_dir, "poster", "format").unwrap_or_default();
             let mut parts = vec![custom];
             if !signal.is_empty() {
                 parts.push(signal);
@@ -133,6 +127,7 @@ fn load_poster_prompt(
 /// - vocabulary：词汇学习数据
 /// - achievements：已解锁成就
 /// - referral_code：推广码
+///
 /// 生成用户画像数据（供 LLM 生成分享海报文案）
 ///
 /// 🔴 2026-09-29 已退役：原实现从 `user_cards` / `card_memory` / `review_log` /
@@ -270,8 +265,7 @@ fn extract_user_for_png_fallback(svg: &str) -> crate::poster_template::UserPoste
             let trimmed = line.trim();
             if let Some(start) = trimmed.find("推广码: ") {
                 let after = &trimmed[start + 5..]; // skip "推广码: "
-                let code =
-                    after.trim_end_matches(|c: char| c == '<' || c == '/' || c == ' ' || c == '>');
+                let code = after.trim_end_matches(['<', '/', ' ', '>']);
                 Some(code.to_string())
             } else {
                 None
@@ -724,6 +718,7 @@ pub async fn generate_poster_internal(
 ///   1. 查 marketing_campaigns.poster_template
 ///   2. 如有模板 → build_user_poster_data() + replace_template_variables()
 ///   3. 如无模板 → fallback 静态海报
+///
 ///   零 LLM 调用，快速响应。
 pub async fn generate_poster(headers: HeaderMap, Json(body): Json<UserBody>) -> impl IntoResponse {
     tracing::info!("generate_poster: user_id={}", body.user_id);

@@ -119,7 +119,7 @@ pub async fn list_templates_handler(headers: HeaderMap) -> impl IntoResponse {
     let mut files: Vec<String> = Vec::new();
     if let Ok(base) = std::fs::read_dir(prompts_dir) {
         for cat_entry in base.flatten() {
-            if !cat_entry.file_type().map_or(false, |t| t.is_dir()) {
+            if !cat_entry.file_type().is_ok_and(|t| t.is_dir()) {
                 continue;
             }
             let cat_name = cat_entry.file_name().to_string_lossy().to_string();

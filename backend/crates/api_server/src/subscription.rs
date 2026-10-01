@@ -35,7 +35,7 @@ pub fn get_available_plans(conn: &Connection, user_id: Option<&str>) -> Result<V
            AND (sp.available_from IS NULL OR sp.available_from <= datetime('now'))
            AND (sp.available_until IS NULL OR sp.available_until > datetime('now'))",
     );
-    if let Some(_) = user_id {
+    if user_id.is_some() {
         sql.push_str(
             " AND (sp.once_per_user = 0 OR sp.once_per_user IS NULL
                    OR NOT EXISTS (

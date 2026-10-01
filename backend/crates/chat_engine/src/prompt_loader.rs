@@ -101,10 +101,22 @@ fn read_file(path: &str) -> String {
 /// path 基准格式: format/{subcategory}/{name}.md
 /// 从 {base_dir}/format/{subcategory}/{name}.md 读取
 fn resolve_includes(text: &str, base_dir: &str) -> String {
+    /// `{include:...}` 匹配器。
+    ///
+    /// 🔑 **进程内只编译一次**（`OnceLock`），而不是每次进函数/每轮迭代都 `Regex::new`。
+    ///     原实现在 **loop 内部**构造正则 —— 而 `resolve_includes` 对每个 prompt 文件
+    ///     都要调用，且它自身还要**递归展开到稳定**（`loop`）→
+    ///     编译次数 = O(文件数 × 迭代轮数)。正则编译要分配、是 O(模式) 成本，白白浪费。
+    ///
+    /// 🔴 注意：同一函数内若还要第二个模式，**必须另开一个 `OnceLock`** ——
+    ///     共用一个 cell 会让第二个 `get_or_init` **静默失效**（返回上一个正则）。
+    ///     同族判据：「共享的缓存槽位 = 第二件事静默失效的地方」。
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| regex::Regex::new(r"\{include:([^}]+)\}").expect("正则字面量写错"));
+
     let mut result = text.to_string();
     loop {
         let before = result.clone();
-        let re = regex::Regex::new(r"\{include:([^}]+)\}").unwrap();
         result = re
             .replace_all(&result, |caps: &regex::Captures| {
                 let include_path = caps.get(1).unwrap().as_str();
@@ -613,11 +625,14 @@ mod tests {
     use std::sync::Once;
 
     static INIT: Once = Once::new();
-    static mut TMP_DIR: Option<String> = None;
+    /// 🔑 用 `OnceLock` 而不是 `static mut` —— 后者在 Rust 2024 里
+    ///    「对可变 static 取共享引用」是**未定义行为**（`static_mut_refs`）。
+    ///    `call_once` 内的写入语义与 `OnceLock::set` 完全一致（只成功一次）。
+    static TMP_DIR: OnceLock<String> = OnceLock::new();
 
     /// 获取测试用 tmp 路径
     fn test_tmp() -> String {
-        unsafe { TMP_DIR.clone().unwrap_or_default() }
+        TMP_DIR.get().cloned().unwrap_or_default()
     }
 
     fn test_init() -> String {
@@ -677,9 +692,7 @@ mod tests {
 
             let path = tmp.to_str().unwrap().to_string();
             init(&path);
-            unsafe {
-                TMP_DIR = Some(path);
-            }
+            let _ = TMP_DIR.set(path);
         });
         test_tmp()
     }

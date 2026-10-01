@@ -200,9 +200,9 @@ pub fn replace_template_variables(template: &str, data: &UserPosterData) -> Stri
     let qr_raw = crate::referral_handler::generate_qr_svg(&data.qr_code_url, "#1A237E", "#FFFFFF");
     let qr_png_b64 = crate::referral_handler::svg_to_png(&qr_raw)
         .ok()
-        .and_then(|bytes| {
+        .map(|bytes| {
             use base64::Engine;
-            Some(base64::engine::general_purpose::STANDARD.encode(&bytes))
+            base64::engine::general_purpose::STANDARD.encode(&bytes)
         })
         .unwrap_or_default();
     // 二维码块

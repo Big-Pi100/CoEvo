@@ -236,7 +236,7 @@ pub fn register(
 
     // 触发注册活动（不阻塞注册）
     if let Err(e) = crate::campaign_executor::execute_campaign_trigger(
-        &conn,
+        conn,
         "registration",
         &user_id,
         referred_by.as_deref(),
