@@ -545,7 +545,80 @@ VALUES
     -- 📌 「禁用」≠「删除」—— 前者可逆、保留追溯性（同「已作废 ≠ 已删除」）。
     (3, 'Ars Technica',  'https://arstechnica.com/feed/',                             'rss', 'tech', 'C1', 'news',          1,    0, 0, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     (4, 'Dev.to',        'https://dev.to/feed',                                       'rss', 'tech', 'B2', 'cc',            1,    0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
-    (5, 'Hacker News',   'https://hacker-news.firebaseio.com/v0',                     'hn',  'tech', 'C1', 'public_domain', 1,    0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now'));
+    (5, 'Hacker News',   'https://hacker-news.firebaseio.com/v0',                     'hn',  'tech', 'C1', 'public_domain', 1,    0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+
+    -- ═══════════════════════════════════════════════════════════════════════
+    -- 🆕 2026-10-02 扩充（白哥「其他类型的信息不太够」+「这样tech就差不多」）
+    --
+    -- 每条都经**真实 `fetch_source_items`**（生产同款代码）实测才写入 ——
+    -- 见 `docs/review/source-expansion-2026-10-02.md` 与
+    -- `examples/eval_candidate_sources.rs`（可复用的评估工具）。
+    -- 📌 判据：**接入前必须用真实实现验一遍**（自己复刻一遍 = 引入新的偏差源）。
+    -- ═══════════════════════════════════════════════════════════════════════
+
+    -- ── NPR 6 个分频道：一个源覆盖 6 个兴趣领域 ─────────────────────────
+    --
+    -- 🔑 **为什么优先它**：
+    --   ① NPR 是本轮实测**质量最好**的源（正文 4/4 达标 · 全文 1000–3300 词）
+    --   ② 分频道是**同一个媒体** ⇒ `license` / `redistributable` 条款与现有
+    --      `NPR News`(id=1) **完全相同** ⇒ 零新增合规风险
+    --   ③ 把兴趣领域从 **2 类（news/tech）扩到 7 类** —— 补掉「其他类型不够」
+    --   ④ 纯配置：无代码、无解析器、无新 `kind`
+    -- 实测（2026-10-02）：6 个频道全部 HTTP 200 · 各 10 条 · 摘要中位 28–30 词
+    -- · 网页提取 3/4–4/4 达标 · **营销内容 0**
+    (6,  'NPR World 国际',    'https://feeds.npr.org/1004/rss.xml', 'rss', 'news',     'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (7,  'NPR Business 商业', 'https://feeds.npr.org/1006/rss.xml', 'rss', 'business', 'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (8,  'NPR Science 科学',  'https://feeds.npr.org/1007/rss.xml', 'rss', 'science',  'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (9,  'NPR Culture 文化',  'https://feeds.npr.org/1008/rss.xml', 'rss', 'culture',  'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (10, 'NPR Technology',    'https://feeds.npr.org/1019/rss.xml', 'rss', 'tech',     'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    -- ⚠️ `health` 是**已定稿规格里的值**（`implementation-plan-v2` §10.3.1 的 7 类），
+    --    不是临时发明。端侧 `feed_item.dart` 的 `_categoryLabels` 同步加了它。
+    (11, 'NPR Health 健康',   'https://feeds.npr.org/1128/rss.xml', 'rss', 'health',   'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+
+    -- ── arXiv（白哥指定）：学术语料，量大且「句末完整率 100%」 ────────────
+    --
+    -- 🔑 实测：269 条/天（cs.CL）· abstract 中位 **202 词** · **句末完整 100%**
+    --    （对照：HackerNoon 70% · 已废弃的 Ars **0%**）。
+    --    还有 `/html/` 全文版（覆盖 14/15=93% · 提取 9992 词），但**本行不启用**
+    --    —— 见下面的 `redistributable = 0`。
+    --
+    -- 🔴 **`redistributable = 0` 的依据（实测许可原文，2026-10-02）**：
+    --    arXiv 的许可是**逐篇由作者选择**的，可选
+    --    `CC BY / CC BY-SA / CC BY-NC-SA / CC BY-NC-ND / arXiv 永久非独占许可`。
+    --    其中 arXiv 默认许可的原话是：
+    --      「**limited rights to arXiv to distribute the article, and also
+    --        limits re-use of any type from other entities or individuals**」
+    --    ⇒ **明确限制其他实体的再使用** ⇒ 我们不抓 `/html/` 全文，
+    --      只入库 RSS 提供的 abstract（进 `summary`）+ 原文链接。
+    --    📌 `write_items` 会因 `redistributable = 0` 丢弃 `body`（实测确认）。
+    --    ⚠️ 若将来要展示全文，**必须先逐篇核对许可**（`license='mixed'` 就是这个意思）。
+    --
+    -- ⚠️ **语域是学术英语（C1+）**：术语密集、句法复杂。
+    --    是否适合目标用户是**产品决定**（白哥），不是技术问题。
+    -- ⚠️ `cs.AI + cs.LG + cs.CL` 每天合计 1400+ 条，远超需求
+    --    ⇒ 本行**只接 cs.CL**（与「语言」最贴，269 条/天）。
+    -- `tz_offset_min = 0`：arXiv 用 RFC 2822 时间戳（自带时区），本列不生效。
+    (12, 'arXiv cs.CL',  'https://export.arxiv.org/rss/cs.CL', 'rss', 'science', 'C1', 'mixed', 0, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+
+    -- ── HackerNoon（白哥指定）：RSS 直接给全文 ───────────────────────────
+    --
+    -- 🔑 实测：**RSS 自带 1612 词全文**（20/20 条）⇒ 技术上「零抓取」最优。
+    --
+    -- 🔴 **但 `redistributable = 0`，依据同样是实测条款（2026-10-02）**：
+    --    HackerNoon 是 **UGC 平台**，其 terms 原文：
+    --      「AS BETWEEN YOU AND COMPANY, **YOU ARE THE SOLE OWNER OF YOUR CONTENT**」
+    --    并且**全文无 `CC BY` / `Creative Commons` / `attribution` 字样**
+    --    （对照：同族的 Dev.to 也查了，其 terms 是
+    --      「personal, **non-commercial** transitory viewing only」—— 同样不是 CC）。
+    --    terms 还禁止 `Record, process, or mine information about other Users`。
+    --    ⇒ 原作者保留版权 ⇒ **不展示全文**，只入库 RSS 的 `description`（14–28 词）+ 链接。
+    --
+    -- ⚠️ **这条的代价要说清楚**：设 0 之后，本源的「RSS 全文」优势**用不上**
+    --    （`write_items` 会丢弃 `content:encoded` 的 1612 词）。
+    --    只留 14–28 词摘要 ⇒ **价值接近 ECNS**（也是只存摘要）。
+    --    ⇒ 白哥若要它，是在「合规」与「内容量」之间做一次选择 —— 已在报告里列出。
+    -- `license = 'author'`（作者保留）—— 与 `mixed` 区分，便于合规审查时一眼看出。
+    (13, 'HackerNoon', 'https://hackernoon.com/feed', 'rss', 'tech', 'B2', 'author', 0, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now'));
 "#;
 
 /// 初始化完整数据库 schema（核心表 + 管理表 + 偏好表 + 词库缓存表 + 额外索引）
@@ -1026,11 +1099,22 @@ mod tests {
             );
         }
 
-        // 种子源：实测**可达**的 5 个（VOA/BBC/Wikipedia 因国内不可达**不在内**）
+        // 种子源：实测**可达**的 13 个（VOA/BBC/Wikipedia 因国内不可达**不在内**）
+        //
+        // 🔑 **与 `content_fetch::tests::test_seed_sources_are_loaded` 的分工**：
+        //    那条数的是 `load_enabled_sources()` 的结果（**启用数** = 12，Ars 被禁用）；
+        //    本条数的是**表里的总行数**（**13**，含被禁用的 Ars）。
+        //    ⇒ 两者**必须成对更新**（改一处不改另一处，会有一条红）。
+        //    📌 这正落实「**同一件事的口径只能有一处权威**」的反面教训：
+        //       数字被两处锁着时，要把「两处各是什么口径」写清楚，
+        //       否则下一个人只改一处，就会以为是「另一个 bug」。
         let seeded: i64 = conn
             .query_row("SELECT COUNT(*) FROM content_source", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(seeded, 5, "种子源应为 5 个（实测可达清单）");
+        assert_eq!(
+            seeded, 13,
+            "种子源应为 13 行（5 原有 + 8 新增；含被禁用的 Ars —— 禁用≠删除）"
+        );
 
         // 🔴 种子源里**不得**出现不可达的源（防止照旧方案加回 VOA/BBC）
         for bad in ["voanews", "bbc.co", "wikipedia"] {

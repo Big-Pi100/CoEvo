@@ -124,13 +124,25 @@ class FeedItem {
   /// 分类显示表（后端 key → 界面文字）。
   ///
   /// ⚠️ **key 必须与 `content_source.category` 的取值一致** ——
-  ///    后端种子源用的就是这几个（`news` / `tech`）。
+  ///    后端种子源用的就是这几个。
+  ///
+  /// 🆕 **`health` 是 2026-10-02 为接 NPR Health 频道加的**（`feeds.npr.org/1128`）。
+  ///    依据是**已定稿的规格** —— `implementation-plan-v2` §10.3.1「扩到 7 个 category」：
+  ///    `tech | business | science | sports | culture | entertainment | health`
+  ///    （**删掉 `life`**）。所以 `health` 是规格里的值，不是临时发明的。
+  ///
+  /// 🔴 **但当前 map 与那份定稿仍有差异**（未在本轮处理，已另行报告）：
+  ///    · map 里有 `news` / `life` —— 定稿里**没有**（定稿删 `life`，且未定义 `news`）
+  ///    · map 里缺 `sports` / `entertainment` —— 定稿有
+  ///    ⚠️ 收敛词表要连带处理**存量 `content_pool.category`**（生产库现有 `news` 127 条、
+  ///       `tech` 288 条）+ 后端 CHECK + 断言，是一组动作 ⇒ 单独一批做。
   static const Map<String, String> _categoryLabels = {
     'news': 'News',
     'tech': 'Tech',
     'science': 'Science',
     'culture': 'Culture',
     'business': 'Business',
+    'health': 'Health',
     'life': 'Life',
   };
 

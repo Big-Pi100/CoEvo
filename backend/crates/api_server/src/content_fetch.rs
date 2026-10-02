@@ -829,11 +829,13 @@ mod tests {
     fn test_seed_sources_are_loaded() {
         let conn = mem();
         let s = load_enabled_sources(&conn).unwrap();
-        // 🔴 2026-10-02：Ars Technica 被禁用（`enabled = 0`）→ **5 → 4**。
-        //    禁用的理由与实测数据见 `schema.rs` 里那一行的注释。
+        // 🔴 2026-10-02 两处变更，都在这一条里体现：
+        //    ① `Ars Technica` 被禁用（`enabled = 0`）→ 不再计入
+        //    ② **新增 8 个源**（NPR 6 分频道 + arXiv + HackerNoon）→ 4 + 8 = **12**
+        //    理由与实测数据见 `schema.rs` 里那几行的注释。
         //    📌 这条断言同时是「`enabled` 真的被过滤」的守门人 ——
         //       它数的是 `load_enabled_sources` 的结果，不是表里的行数。
-        assert_eq!(s.len(), 4, "种子应有 4 个**启用**源（Ars 已禁用）");
+        assert_eq!(s.len(), 12, "种子应有 12 个**启用**源（Ars 已禁用）");
         assert!(s.iter().any(|x| x.kind == "hn"), "应有 HN 源");
         assert!(
             s.iter().all(|x| x.url.starts_with("http")),
@@ -849,7 +851,63 @@ mod tests {
         let total: i64 = conn
             .query_row("SELECT COUNT(*) FROM content_source", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(total, 5, "表里仍应有 5 行（Ars 是禁用，不是删除）");
+        assert_eq!(
+            total, 13,
+            "表里仍应有 13 行（5 原有 + 8 新增；Ars 是禁用，不是删除）"
+        );
+
+        // ═══ 2026-10-02 新增源的守门断言 ═══════════════════════════════════
+        //
+        // 🔑 这些断言的共同理由：**新源的「配置值」直接决定合规与内容形态**，
+        //    改错了不会报错，只会静默地把不该存的内容存进来（或该存的存不进来）。
+        //    判据：**「决定」要固化成断言**，不能只写在注释里。
+
+        // ① 分类覆盖：扩源的目的是「补其他类型」→ 断言确实扩到了
+        let cats: std::collections::BTreeSet<&str> =
+            s.iter().filter_map(|x| x.category.as_deref()).collect();
+        for need in ["news", "tech", "business", "science", "culture", "health"] {
+            assert!(
+                cats.contains(need),
+                "分类 `{}` 应有源覆盖（扩源的目的就是补齐类型），实得: {:?}",
+                need,
+                cats
+            );
+        }
+
+        // ② 🔴 许可受限的源**必须** `redistributable = 0`
+        //    （实测依据：arXiv 默认许可「limits re-use of any type」；
+        //      HackerNoon terms「YOU ARE THE SOLE OWNER OF YOUR CONTENT」）
+        for name in ["arXiv", "HackerNoon"] {
+            let src = s
+                .iter()
+                .find(|x| x.name.contains(name))
+                .unwrap_or_else(|| panic!("应有 {} 源", name));
+            assert_eq!(
+                src.redistributable, 0,
+                "{} 的许可不允许再分发全文 ⇒ redistributable 必须为 0（否则全文会入库）",
+                name
+            );
+        }
+
+        // ③ NPR 分频道与现有 NPR **同条款**（同一个媒体）⇒ 必须一致
+        let npr: Vec<_> = s.iter().filter(|x| x.name.starts_with("NPR")).collect();
+        assert_eq!(npr.len(), 7, "应有 7 个 NPR 源（主频道 + 6 分频道）");
+        assert!(
+            npr.iter().all(|x| x.redistributable == 1),
+            "NPR 各频道应与现有 NPR 同条款（redistributable = 1）"
+        );
+
+        // ④ 时间格式：这 3 家都用 RFC 2822（自带时区）⇒ tz_offset 不生效，须为 0
+        //    （⚠️ ECNS 是唯一的例外，它用不带时区的格式 ⇒ 480）
+        for name in ["arXiv", "HackerNoon", "NPR"] {
+            for src in s.iter().filter(|x| x.name.contains(name)) {
+                assert_eq!(
+                    src.tz_offset_min, 0,
+                    "{} 用 RFC 2822 时间戳（自带时区）⇒ tz_offset_min 应为 0",
+                    src.name
+                );
+            }
+        }
     }
 
     #[test]

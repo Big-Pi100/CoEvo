@@ -33,7 +33,7 @@ use api_server::content_fetch::{
 use api_server::content_rss::ParsedItem;
 
 /// 每个源测几篇网页提取（控制总耗时：每篇 1–10 s）。
-const SAMPLE_PER_SOURCE: usize = 8;
+const SAMPLE_PER_SOURCE: usize = 4;
 
 /// 正文至少这么多词才算「可读的长文」。与后端 `MIN_FULL_BODY_WORDS` 同口径。
 const READABLE_WORDS: usize = 300;
@@ -47,63 +47,62 @@ struct Candidate {
 }
 
 const CANDIDATES: &[Candidate] = &[
-    // ── 白哥 2026-10-02 指定的三项 ──
+    // ── 待接入：NPR 6 个分频道（补「其他类型不够」）──
     Candidate {
-        name: "arXiv cs.AI",
-        url: "https://export.arxiv.org/rss/cs.AI",
+        name: "NPR World",
+        url: "https://feeds.npr.org/1004/rss.xml",
         atom: false,
-        role: "白哥指定",
+        role: "拟接入",
+    },
+    Candidate {
+        name: "NPR Business",
+        url: "https://feeds.npr.org/1006/rss.xml",
+        atom: false,
+        role: "拟接入",
+    },
+    Candidate {
+        name: "NPR Science",
+        url: "https://feeds.npr.org/1007/rss.xml",
+        atom: false,
+        role: "拟接入",
+    },
+    Candidate {
+        name: "NPR Culture",
+        url: "https://feeds.npr.org/1008/rss.xml",
+        atom: false,
+        role: "拟接入",
+    },
+    Candidate {
+        name: "NPR Technology",
+        url: "https://feeds.npr.org/1019/rss.xml",
+        atom: false,
+        role: "拟接入",
+    },
+    Candidate {
+        name: "NPR Health",
+        url: "https://feeds.npr.org/1128/rss.xml",
+        atom: false,
+        role: "拟接入",
     },
     Candidate {
         name: "arXiv cs.CL",
         url: "https://export.arxiv.org/rss/cs.CL",
         atom: false,
-        role: "白哥指定",
+        role: "拟接入",
     },
     Candidate {
         name: "HackerNoon",
         url: "https://hackernoon.com/feed",
         atom: false,
-        role: "上轮推荐",
+        role: "拟接入",
     },
-    // ── 对照组：给「好」一个参照系 ──
+    // ── 对照组：现有源，确认「新源与老源同构」──
     Candidate {
-        name: "NPR News",
+        name: "NPR News(现有)",
         url: "https://feeds.npr.org/1001/rss.xml",
         atom: false,
         role: "对照",
     },
-];
-
-/// 直接测「文章页提取」——不走 RSS。
-///
-/// 🔑 **给「没有 RSS 的源」用**（Failory 实测 `/feed` `/rss` 全 404、只有 sitemap）。
-///   若要接入这类源，CoEvo 得新增一种 `kind`（现在是 `rss` | `hn`）。
-///   先用真实 `dom_smoothie` 确认**内容到底值不值得**为它加一种 kind。
-///
-/// ⚠️ arXiv 的 `abs` 页只有摘要；**全文要去 `/html/` 版**（arXiv 近年提供）——
-///   两条都测，看差多少。
-const DIRECT_PAGES: &[(&str, &str, &str)] = &[
-    (
-        "Failory 访谈页",
-        "https://www.failory.com/interview/basetemplates",
-        "无 RSS（只有 sitemap）",
-    ),
-    (
-        "Starter Story 页",
-        "https://www.starterstory.com/businesses/accelevents",
-        "vibedollar 的抓取目标",
-    ),
-    (
-        "arXiv abs 页",
-        "https://arxiv.org/abs/2610.00010",
-        "arXiv 摘要页",
-    ),
-    (
-        "arXiv HTML 全文",
-        "https://arxiv.org/html/2610.00010v1",
-        "arXiv 全文版（若存在）",
-    ),
 ];
 
 /// 营销页标题的特征词（优惠码 / 促销）。
@@ -362,43 +361,6 @@ async fn main() {
                 per_day
             ),
         ));
-    }
-
-    // ── ③ 直接测文章页（给「没有 RSS」的源用）──────────────────────
-    println!("\n{}", "═".repeat(100));
-    println!("【直接文章页提取】不走 RSS —— 给「只有 HTML」的源用");
-    println!("{}", "═".repeat(100));
-    println!(
-        "  🔑 为什么单独测：Failory 实测 `/feed` `/rss` 全 404、只有 sitemap\n     ⇒ 要接入得新增一种 `kind`（现在只有 `rss` | `hn`）。先确认**值不值得**。"
-    );
-    for (label, url, note) in DIRECT_PAGES {
-        println!("\n  ── {} · {} ──", label, note);
-        println!("     {}", url);
-        match fetch_article_body_diagnostic(url).await {
-            BodyOutcome::Got(md) => {
-                let w = words(&md);
-                let ok = ends_sentence(&md);
-                println!(
-                    "     ✅ {:>5} 词 · 句末{} · {}（阈值 {}）",
-                    w,
-                    if ok { "完整" } else { "🔴截断" },
-                    if w >= READABLE_WORDS {
-                        "达标"
-                    } else {
-                        "🟡偏短"
-                    },
-                    READABLE_WORDS
-                );
-                println!(
-                    "     开头: {}…",
-                    md.chars().take(150).collect::<String>().replace('\n', "⏎")
-                );
-                println!("     尾部: …{}", tail(&md, 110).replace('\n', "⏎"));
-            }
-            BodyOutcome::HttpFailed(e) => println!("     🔴 HTTP 失败: {}", e),
-            BodyOutcome::NoParagraphs => println!("     🔴 提取为空（无正文段落）"),
-            BodyOutcome::TooShort(n) => println!("     🟡 太短: {} 字符", n),
-        }
     }
 
     println!("\n{}", "═".repeat(100));
