@@ -499,6 +499,9 @@ CREATE TABLE IF NOT EXISTS generated_card_hit (
 /// 「NPR 编辑逝世」(`news`)；`Race` 一轮里同时有学校选择 (`education`)、
 /// Kaepernick (`sports`)、Dolly Parton (`culture`)。
 /// ⇒ 给它们建类会让**分类自相矛盾**（一条内容两个类）⇒ **不接**。
+///    🔴 **这是白哥 2026-10-02 明确决定，不是遗漏** —— 将来若要接，
+///       **不要**直接建 category，应作为**另一个维度**（如「深度 / 观点」标签），
+///       与 category 正交。详见 `docs/review/category-expansion-and-source-onboarding-2026-10-02.md`。
 /// 📌 判据：**「这个 feed 切的是话题，还是视角？」**
 ///
 /// 🔑 能归入现有类的就**不新增**（避免用户可见的兴趣标签膨胀）：
@@ -778,7 +781,8 @@ VALUES
     --    所以新类必须同步进上面的 `CHECK (...)`，否则**新库**会静默丢源
     --    （`INSERT OR IGNORE` 吞 CHECK 违规）。已由断言兜住。
     --
-    -- ❌ **实测后不接「跨类编辑栏目」**（`Opinion` 1057 · `Analysis` 1059 ·
+    -- ❌ **不接「跨类编辑栏目」**（🔴 白哥 2026-10-02 **明确决定**，不是遗漏，
+    --    别看到「少一个源」就顺手补上）：`Opinion` 1057 · `Analysis` 1059 ·
     --    `Perspective` 1166 · `Obituaries` 1062 · `Race` 1015 · `On Disabilities` 1133）——
     --    它们的内容分属各类（详见 `CONTENT_CATEGORIES` 的说明），建类会自相矛盾。
     --    ⚠️ 它们**质量并不差**（实测 4/4 达标）—— 不接是**归类口径**的决定，不是质量问题。
