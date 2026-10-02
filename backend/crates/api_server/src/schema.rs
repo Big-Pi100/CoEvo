@@ -1551,7 +1551,6 @@ mod tests {
                 bad
             );
         }
-
     }
 
     /// 🆕 2026-10-02：**受控词表 ≡ `content_source` 的 CHECK**（**集合相等**）。
@@ -1587,10 +1586,8 @@ mod tests {
         let in_check = content_source_check_categories(&conn)
             .expect("读 content_source 的 DDL 失败")
             .expect("content_source 表应存在");
-        let want: std::collections::BTreeSet<String> = CONTENT_CATEGORIES
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let want: std::collections::BTreeSet<String> =
+            CONTENT_CATEGORIES.iter().map(|s| s.to_string()).collect();
 
         assert_eq!(
             in_check, want,
@@ -1679,10 +1676,8 @@ mod tests {
         init_database(&conn).unwrap();
 
         // ── ④ 拿到最新 CHECK（集合相等）──
-        let want: std::collections::BTreeSet<String> = CONTENT_CATEGORIES
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let want: std::collections::BTreeSet<String> =
+            CONTENT_CATEGORIES.iter().map(|s| s.to_string()).collect();
         assert_eq!(
             content_source_check_categories(&conn).unwrap().unwrap(),
             want,
