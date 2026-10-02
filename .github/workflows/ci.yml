@@ -3,6 +3,25 @@ name: CI
 on:
   push:
     branches: [main, master]
+    # 🔴 2026-10-02 修复：**必须显式声明 `tags`** —— 否则推 tag **不触发 workflow**。
+    #
+    # GitHub 官方规则（Events that trigger workflows → `push`）：
+    #   「If you define **only `tags` or only `branches`**, the workflow **won't run**
+    #     for events affecting the undefined Git ref.」
+    #   ⇒ 只写 `branches` 时，**push tag 完全不会触发**（不是「触发了但 job 被 if 跳过」）。
+    #
+    # 🔴 这是一个「**配置与意图矛盾**」的 bug：
+    #   下面 `backend-release` / `backend-deploy` / `ios-build` 三个 job 都写着
+    #     `if: ... || startsWith(github.ref, 'refs/tags/v')`
+    #   —— 意图明显是「推 v* tag 即构建 + 部署」，但 `on` 段从未声明 tags，
+    #      于是那三处 `if` **永远不会为真**（死条件）。
+    #
+    # 实测代价（2026-10-02）：推了 `v0.1.0` tag → **零 CI 运行**，
+    #   生产仍是上一版（`content_source` 只有 5 行、无 CHECK），
+    #   而排查方向一度被引到「构建失败 / runner 连不上国内 IP」上（都是错的方向）。
+    #   📌 判据：**「没反应」时先查「触发条件成立吗」，再查「执行成功吗」** ——
+    #      两者是完全不同的失败，而后者更容易被怀疑。
+    tags: ["v*"]
   pull_request:
     branches: [main, master]
   # 手动触发（用于 iOS 构建等重量级 job）
