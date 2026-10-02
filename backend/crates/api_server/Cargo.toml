@@ -51,6 +51,18 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 roxmltree = "0.20"
 # HTML 解析（抓文章正文用）—— RSS 通常只给摘要，全文要抓原网页
 scraper = "0.20"
+# ── 正文提取升级（2026-10-02 · 白哥「用成熟包，不自建」）────────────
+# `dom_smoothie` = **readability.js 的 Rust 移植**（Firefox 阅读模式同源算法）。
+# 🔴 为什么换掉自建的 `content_extract` 启发式（不是偏好，是实测）：
+#   ① 自建版**只取 `<p>` 的纯文本** → 丢掉「哪里是代码/图/表格」的结构：
+#      · `<pre>` 里的 ASCII 树被 `collapse_ws` 压成一行（用户看到的是乱码）
+#      · 讨论 HTML 标签的文章里，`<code>` 内容裸奔（看着像源码泄漏）
+#   ② 内建 `TextMode::Markdown` → **一步到位产出 Markdown**（围栏代码块保留换行缩进）
+#   ③ 实测两个症状都治好，见 `docs/review/content-pipeline-rebuild-plan-2026-10-02.md` §十一
+# 🔑 选它的硬理由：**与项目现有 `scraper 0.20` 共享同一个 `html5ever 0.27.0`**
+#    → 零重复编译、二进制不膨胀（对照：`htmd` 用 html5ever 0.39 → 会引入第二份解析器）。
+#    📌 判据：选包不只看「能不能做」，还要看「**与现有栈叠不叠**」。
+dom_smoothie = "0.18"
 
 [dev-dependencies]
 dotenvy = "0.15"

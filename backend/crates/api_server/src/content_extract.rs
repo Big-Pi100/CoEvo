@@ -34,6 +34,8 @@ use std::sync::OnceLock;
 use regex::Regex;
 use scraper::{ElementRef, Html, Selector};
 
+use dom_smoothie::{Config, Readability, TextMode};
+
 /// 一个 `<p>` 至少多少字符才算「正文段」（用于评分；提取时不丢弃短段）。
 ///
 /// # 为什么是 40
@@ -292,6 +294,110 @@ fn decode_basic_entities(s: &str) -> String {
     .into_owned()
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// 🆕 2026-10-02 · 成熟包路线：`dom_smoothie`（readability.js 的 Rust 移植）
+// ─────────────────────────────────────────────────────────────────────
+//
+// 上面那套启发式（`extract_article_paragraphs`）**保留**，但**不再是主路径** ——
+// 它降级为「**回归对照**」：S2 的断言会拿同一批页面比较新旧输出。
+// 保留的另一个作用是**回滚**（见 `content-pipeline-rebuild-plan` §七）。
+//
+// # 🔴 为什么要换（不是「包更成熟」这种空话，是三个可复现的症状）
+// | 症状 | 自建版的行为 | 根因 |
+// |---|---|---|
+// | `<pre>` 里的 ASCII 树变成一行乱码 | `collapse_ws` 把换行与缩进一视同仁 | 只取 `<p>`、且折叠一切空白 |
+// | 讨论 HTML 标签的文章里 `<img>` 裸奔 | `<code>` 的语义（等宽带底色）丢失 | 不是纯文本能表达的东西 |
+// | 图片/表格/列表一律消失 | 只取 `<p>` 的文本节点 | 结构信息在提取时就没了 |
+//
+// # 🔑 「不自建」不是审美，是本项目自己的历史
+// · 自建提取器：**640 行**，本报告三个症状中 2 个源于它
+// · 自建渲染器 `markdown_span_nodes.dart`：**870 行**，**零消费者（死代码）**
+// ⇒ 自建的隐性成本不只是「写」，还有「接线、维护、被弃置」。
+//
+// # 🔑 选它的硬理由：与现有栈**共享同一个 `html5ever 0.27.0`**
+// 项目已有 `scraper 0.20`（→ html5ever 0.27.0），而 `dom_smoothie 0.18` 也是 0.27.0
+// → **零重复编译、二进制不膨胀**。（对照：`htmd` → html5ever 0.39，会引入第二份解析器。）
+
+/// 用 `dom_smoothie` 把网页正文提取成 **Markdown**（纯函数 · 零 IO）。
+///
+/// # 返回值语义
+/// · 提到正文 → 返回 Markdown（**可能含 ``` 围栏、`##` 标题、反引号内联代码**）
+/// · **返回空串** = 判定为「这篇没有可提取的正文」 → 调用方据此**不写 body**
+///   （与旧版一致：**不要写空串进库**，那会让 `has_body` 为真、界面以为可读）
+///
+/// # 参数
+/// · [html] 原网页 HTML
+/// · [base_url] 页面**绝对 URL** —— 用来把 Markdown 里的**相对链接绝对化**
+///   （`[t](/a/b)` 在 App 里点不开）。传 `None` 或不合法 URL 时**降级**：
+///   链接保持相对，但**正文照常提取**（见下）。
+///
+/// # 🔴 两个「宁可降级也不要整篇失败」的处理
+/// ① `document_url` 必须是**绝对 URL**，否则 `Readability::new` 直接返回
+///    `BadDocumentURL`。→ 带 url 建失败时**退回不带 url 重试**，而不是放弃。
+///    📌 判据：**增强项（绝对链接）失败，不该让主体（正文提取）失败**
+///    —— 同族：端侧 `word_db.version` 读不到时退回「比文件大小」。
+/// ② `parse()` 失败 → 返回空串（调用方记 `NoParagraphs`），不 panic。
+///
+/// # 🔴 图片：**有意丢弃**（产品决定 2026-10-02）
+/// 白哥定「正文图片**先不显示**」—— 理由是**图片的版权风险比文字更直接**
+/// （本项目的内容源策略就是绕开版权风险），且图床的国内可达性不可控。
+/// 实测 `dom_smoothie` 的 Markdown 模式**本来就不输出 `![...](...)`**，
+/// 但这里仍**做一次显式剥离** —— 「不显示图片」是**产品决定**，
+/// **不该依赖第三方库的默认行为**（库升级可能改）。
+/// 📌 判据：**决定要靠自己的代码兑现，不能靠依赖的副作用**。
+pub fn extract_to_markdown(html: &str, base_url: Option<&str>) -> String {
+    let cfg = || Config {
+        text_mode: TextMode::Markdown,
+        ..Default::default()
+    };
+
+    // ① 带 base_url（相对链接绝对化）；失败退回不带
+    let mut rd = match Readability::new(html, base_url, Some(cfg())) {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::debug!(
+                "content_extract: 带 url 构造失败（{:?}）→ 退回不带 url 重试",
+                e
+            );
+            match Readability::new(html, None, Some(cfg())) {
+                Ok(r) => r,
+                Err(e2) => {
+                    tracing::warn!("content_extract: 构造 Readability 失败: {:?}", e2);
+                    return String::new();
+                }
+            }
+        }
+    };
+
+    // ② 解析
+    let article = match rd.parse() {
+        Ok(a) => a,
+        Err(e) => {
+            tracing::warn!("content_extract: parse 失败: {:?}", e);
+            return String::new();
+        }
+    };
+
+    // ③ `text_content` 在 `TextMode::Markdown` 下**就是 Markdown**
+    let md = article.text_content.to_string();
+
+    // ④ 显式剥离图片语法（见函数文档「图片」一节）
+    strip_markdown_images(&md)
+}
+
+/// 删掉 Markdown 图片语法 `![alt](url)` —— 见 [extract_to_markdown] 的「图片」说明。
+///
+/// ⚠️ 只删**图片**（`![`），**不碰链接**（`[`）—— 链接是正文的一部分，
+/// 且实测正文里确有有用链接（`[my first post here](https://…)`）。
+fn strip_markdown_images(md: &str) -> String {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    // 📌 正则说明（**不是嵌套括号解析器**，够用即可）：
+    //    `![` alt `]` `(` url `)` —— url 里出现 `)` 的极端情况会截断，
+    //    但那只会让**图片残留一小段文字**，不会影响正文（且实测输出里根本没有图片）。
+    let re = RE.get_or_init(|| Regex::new(r"!\[[^\]]*\]\([^)]*\)").unwrap());
+    re.replace_all(md, "").into_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -300,6 +406,15 @@ mod tests {
     const NPR_PAGE: &str = include_str!("../tests/fixtures/npr_page.html");
     const ECNS_PAGE: &str = include_str!("../tests/fixtures/ecns_page.html");
     const DEVTO_PAGE: &str = include_str!("../tests/fixtures/devto_page.html");
+
+    /// 🆕 2026-10-02 · 成熟包路线的 fixture —— **真实页面**，
+    /// 且这两篇正是白哥真机反馈里的两个案例（`docs/review/content-parsing-rendering-issues-*`）：
+    /// · 案例 3「正文里有 HTML 代码」→ 原文用 **32 个 `<code>`** 讨论标签（`` `<img>` `` / `alt`）
+    /// · 案例 1「图表渲染错误」同类 → 原文 `<pre>` 里是**多行 + 缩进**的内容
+    const DEVTO_INLINE_CODE_PAGE: &str =
+        include_str!("../tests/fixtures/devto_inline_code_page.html");
+    const DEVTO_CODE_BLOCK_PAGE: &str =
+        include_str!("../tests/fixtures/devto_code_block_page.html");
 
     #[test]
     fn test_npr_article_tag_is_navigation_noise_but_we_avoid_it() {
@@ -461,5 +576,173 @@ mod tests {
         </main></body></html>"#;
         let paras = extract_article_paragraphs(html);
         assert_eq!(paras.len(), 1, "重复段落应去重: {:?}", paras);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // 🆕 2026-10-02 · 新提取器 `extract_to_markdown`（dom_smoothie）
+    //
+    // 🔑 这一组断言的**存在理由**：自建版把「结构」丢了 ——
+    //    `<pre>` 被压成一行、`<code>` 的等宽语义消失。
+    //    用户看到的是乱码/裸源码。文本断言**验不到「好看」**，
+    //    但**能验「结构信息没丢」** —— 这正是本组要守的东西。
+    //    ⚠️ 诚实边界：观感（代码块底色、内联代码样式）只能真机看。
+    // ═══════════════════════════════════════════════════════════════
+
+    /// 🔴 内联代码必须是**反引号**，而不是裸 `<img>` 这样的「HTML 源码」。
+    #[test]
+    fn test_md_inline_code_becomes_backticks() {
+        let src_code = DEVTO_INLINE_CODE_PAGE.matches("<code").count();
+        assert!(
+            src_code >= 20,
+            "fixture 应含大量内联代码，实际 {src_code} 个 <code>"
+        );
+
+        let md = extract_to_markdown(DEVTO_INLINE_CODE_PAGE, None);
+        assert!(!md.is_empty(), "应提取到正文");
+
+        // 判据 = **成对反引号的数量**（不是「有没有反引号」—— 那个太松，随便一段代码块也能满足）
+        let ticks = md.matches('`').count();
+        assert!(
+            ticks >= src_code,
+            "🔴 内联代码应被转成反引号：原 {src_code} 个 <code>，输出仅 {ticks} 个反引号\n前 300 字：{}",
+            md.chars().take(300).collect::<String>()
+        );
+        // 更强的形态断言：原文讨论的就是这些标签 → 应出现**被反引号包裹的标签**
+        //
+        // ⚠️ 这里我第一版写错过（**期望值自己写错了**，不是实现错）：
+        //    我断言 `` `> ``（反引号 + `>`），但 `` `<img>` `` 的形态是
+        //    「反引号 + `<`」与「`>` + 反引号」—— **反引号后面永远不会跟 `>`**
+        //    （`>` 后面跟的才是收尾反引号）→ 该断言恒为假。
+        //    📌 同族旧例就在本文件（`and&nbsp;nbsp` 那条）：写断言时**要照着真实形态写**，
+        //       不能凭「看起来对」—— 这类错会表现为「实现没问题但断言红」。
+        assert!(
+            md.contains("`<") && md.contains(">`"),
+            "应出现被反引号包裹的标签（`` `<tag>` ``），实际含 ` <` = {} / `> ` = {}",
+            md.contains("`<"),
+            md.contains(">`")
+        );
+    }
+
+    /// 🔴🔴 **本组最关键的一条**：代码块必须**保留换行与缩进**。
+    ///
+    /// 这正是案例 1 的命门 —— 自建版 `collapse_ws` 把 `<pre>` 里的 ASCII 树/终端输出
+    /// **压成一行**，用户看到的是一串乱码。只断言「有 ``` 围栏」**不够**：
+    /// 围栏里如果还是一行，症状**照旧**。
+    #[test]
+    fn test_md_code_block_keeps_newlines_and_indent() {
+        let fence = "```";
+        let md = extract_to_markdown(DEVTO_CODE_BLOCK_PAGE, None);
+        assert!(md.contains(fence), "应产出 ``` 围栏代码块");
+
+        // 切出**第一个**围栏块的内容
+        let start = md.find(fence).expect("刚断言过有围栏");
+        let after = &md[start + fence.len()..];
+        let end = after.find(fence).expect("围栏应成对");
+        let block = &after[..end];
+
+        let lines = block.matches('\n').count();
+        assert!(
+            lines >= 5,
+            "🔴 代码块内应保留换行（自建版会压成一行），实际仅 {lines} 个换行：{block:?}"
+        );
+        // 缩进：终端/树形图靠缩进表意，丢了就不可读
+        assert!(
+            block.contains("\n    ") || block.contains("\n\t"),
+            "🔴 代码块内应保留缩进：{block:?}"
+        );
+    }
+
+    /// 🔴 图片**有意丢弃**（产品决定 2026-10-02）——
+    /// 且这条**不依赖第三方库的默认行为**（见 `strip_markdown_images` 的说明）。
+    #[test]
+    fn test_md_images_are_stripped() {
+        // ① 真实页面（含分享图/头像等 `<img>`）
+        let real = extract_to_markdown(DEVTO_INLINE_CODE_PAGE, None);
+        assert!(
+            !real.contains("!["),
+            "🔴 产品决定「正文不显示图片」→ 真实页面输出不该有图片语法"
+        );
+
+        // ② 构造：正文里嵌一张图 —— 断言 `alt` 文字与 URL **都不残留**
+        let html = r#"<html><body><article>
+            <p>A genuinely long paragraph of body text that gives the extractor enough material to score it as the article content.</p>
+            <figure>
+              <img src="https://example.com/pic.png" alt="UNIQUE_ALT_MARKER">
+              <figcaption>Some caption text.</figcaption>
+            </figure>
+            <p>Another long paragraph continuing the article so the scoring has enough material to work with reliably.</p>
+        </article></body></html>"#;
+        let md = extract_to_markdown(html, None);
+        assert!(!md.contains("!["), "不该有图片语法：{md}");
+        assert!(
+            !md.contains("example.com/pic.png"),
+            "图片 URL 不该出现在正文里：{md}"
+        );
+    }
+
+    /// 🔑 **回归对照**：同一页面，旧版产出里**根本没有围栏**，新版有 ——
+    /// 这条把「换包的收益」变成可检验的差异，而不是口头结论。
+    #[test]
+    fn test_old_vs_new_structural_regression() {
+        let old = extract_article_paragraphs(DEVTO_CODE_BLOCK_PAGE).join("\n\n");
+        let new = extract_to_markdown(DEVTO_CODE_BLOCK_PAGE, None);
+
+        assert!(!old.is_empty() && !new.is_empty(), "两个版本都应提到内容");
+        assert!(
+            !old.contains("```"),
+            "旧版是纯文本拼接，不该有围栏（若有，说明对照前提不成立）"
+        );
+        assert!(new.contains("```"), "新版应有围栏 —— 这就是换包的收益");
+        // 🔑 旧版**没有任何换行缩进**的表意（都折成单行段落）
+        //    新版有 —— 用「新版缩进行数 > 0」表达（旧版那侧不可能有，因为它 join 的每段内无换行）
+        assert!(
+            !old.contains("\n    "),
+            "旧版段落内不该有缩进（它按段落折叠空白）→ 对照前提成立"
+        );
+    }
+
+    /// 增强项失败**不该拖垮主体**：`base_url` 非法时降级重试，正文照常提取。
+    #[test]
+    fn test_md_bad_base_url_still_extracts() {
+        let md = extract_to_markdown(DEVTO_INLINE_CODE_PAGE, Some("not a url"));
+        assert!(
+            !md.is_empty(),
+            "🔴 非法 base_url 应降级成「不带 url 重试」，而不是返回空（那等于整篇丢正文）"
+        );
+    }
+
+    /// 相对链接应被绝对化（否则 App 里点不开）。
+    #[test]
+    fn test_md_relative_links_absolutized() {
+        let html = r#"<html><body><article>
+            <p>A sufficiently long paragraph of article body text so the extractor treats this as readable content.</p>
+            <p>See <a href="/relative/path">this link</a> for a longer explanation of the same topic that follows here.</p>
+            <p>A third paragraph to give the scoring algorithm enough material to work with reliably here.</p>
+        </article></body></html>"#;
+        let md = extract_to_markdown(html, Some("https://example.com/post"));
+        assert!(
+            md.contains("https://example.com/relative/path"),
+            "相对链接应绝对化：{md}"
+        );
+    }
+
+    /// 空/垃圾输入 → **空串**（调用方据此记 `NoParagraphs`，不写 body）。
+    #[test]
+    fn test_md_empty_input_returns_empty() {
+        assert!(extract_to_markdown("", None).is_empty());
+        assert!(extract_to_markdown("<html><body></body></html>", None).is_empty());
+    }
+
+    /// `strip_markdown_images` 的直接单测 —— 它只该删**图片**，**不能碰链接**。
+    #[test]
+    fn test_strip_markdown_images_only_touches_images() {
+        let src = "text ![alt](http://a/b.png) and [a link](http://a/c) end";
+        let out = strip_markdown_images(src);
+        assert!(!out.contains("![alt]"), "图片应被删：{out}");
+        assert!(!out.contains("a/b.png"), "图片 URL 应被删：{out}");
+        assert!(
+            out.contains("[a link](http://a/c)"),
+            "🔴 普通链接不该被删：{out}"
+        );
     }
 }

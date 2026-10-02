@@ -207,10 +207,13 @@ pub fn write_items(
             None
         };
 
+        // 🆕 2026-10-02：源站的**报错信息**不该被当摘要存（见 `is_source_error_summary`）
+        let summary = sanitize_summary(it.summary.as_deref());
+
         let wc = count_words(&format!(
             "{} {} {}",
             it.title,
-            it.summary.as_deref().unwrap_or(""),
+            summary.unwrap_or(""),
             body.unwrap_or("")
         ));
 
@@ -223,7 +226,7 @@ pub fn write_items(
                 rusqlite::params![
                     src.id,
                     it.title,
-                    it.summary,
+                    summary,
                     body,
                     it.url,
                     it.author,
@@ -240,6 +243,83 @@ pub fn write_items(
         inserted += n;
     }
     Ok(inserted)
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 🆕 2026-10-02 · 过滤「源站渲染失败」的摘要
+// ─────────────────────────────────────────────────────────────────────
+
+/// 明显是**源站自己渲染失败**的摘要 —— 命中则视为「没有摘要」。
+///
+/// # 🔴 为什么需要它（真实案例，不是防患于未然）
+/// 白哥真机反馈里有一篇「只有半句话」，实测其 `content_pool.summary` 是：
+/// ```text
+/// Liquid syntax error: 'raw' tag was never closed
+/// ```
+/// 那**不是文章摘要，是源站自己的模板报错** —— Dev.to 渲染那篇失败，
+/// RSS 的 `<description>` 里给的就是这句。而**端侧在 `body` 为空时会兜底显示摘要**
+/// → 用户看到的「半句话」就是它。
+///
+/// # 🔴 判据为什么是「指纹 + 长度」**两条一起**
+/// · 只用指纹 → 正常文章里也可能出现 `syntax error`（讲编译错误的教程）→ **误杀**
+/// · 只用长度 → 短摘要本身合法（一句话新闻）→ **误杀**
+/// · **同时成立**才算：**又短、又长得像框架报错**
+/// 📌 判据形状同族：**单信号判据易整类误判，要加互补信号**（见 memory「判据库」）
+///    —— 这里的互补信号是**长度**，它把「讨论报错的文章」排除在外（那类文章长）。
+///
+/// # 诚实边界
+/// 这是**黑名单**（已知指纹），不是「能检测一切源站错误」。
+/// 遇到新形态要**加指纹** —— [SOURCE_ERROR_FINGERPRINTS] 是唯一改动点。
+pub fn is_source_error_summary(s: &str) -> bool {
+    /// 「摘要」短过这个长度才可能是报错信息。
+    ///
+    /// 依据：真正文摘要通常 ≥ 60 字符（一句话摘要）；而报错信息是**一句短话**。
+    /// 取 200 很松 —— 它只用来把「长文章里出现 error 字样」排除掉。
+    const MAX_ERROR_SUMMARY_CHARS: usize = 200;
+
+    let t = s.trim();
+    if t.is_empty() {
+        return false;
+    }
+    if t.chars().count() > MAX_ERROR_SUMMARY_CHARS {
+        return false;
+    }
+    let lower = t.to_lowercase();
+    SOURCE_ERROR_FINGERPRINTS.iter().any(|p| lower.contains(p))
+}
+
+/// 已知的「源站模板/框架报错」指纹（**全部小写**，用 `contains` 匹配）。
+///
+/// ⚠️ 只放**明确无歧义**的：宁可漏拦，也不误杀正常摘要。
+/// （实测案例是第一条；其余几条是同族形态，一并挡掉。）
+/// 🔴 新增指纹时**放宽要谨慎**：泛化的词（如 `"error"` / `"undefined"`）会误杀。
+const SOURCE_ERROR_FINGERPRINTS: &[&str] = &[
+    // Dev.to / Jekyll 的 Liquid 模板引擎（**实测命中**）
+    "liquid syntax error",
+    "was never closed",
+    // 通用模板渲染失败
+    "template render error",
+    "an error occurred while rendering",
+    // JS 渲染失败（SPA 类站点把报错吐在 description 里）
+    "cannot read propert", // 覆盖 properties / property
+];
+
+/// 摘要入库前的清洗：命中的**当成没有摘要**。
+///
+/// 🔑 返回 `None`（而不是空串）—— 端侧据此**不会**把它当内容显示，
+///    而是走「这一篇还没有正文」那条正常分支。
+pub fn sanitize_summary(summary: Option<&str>) -> Option<&str> {
+    match summary {
+        Some(s) if s.trim().is_empty() => None,
+        Some(s) if is_source_error_summary(s) => {
+            tracing::debug!(
+                "content_fetch: 丢弃源站报错摘要: {:?}",
+                &s.chars().take(80).collect::<String>()
+            );
+            None
+        }
+        other => other,
+    }
 }
 
 /// 更新源的抓取状态（成功/失败都要更新 —— 否则失败的源会被反复重试却不留痕）。
@@ -457,8 +537,14 @@ impl BodyOutcome {
 /// 抓一篇的正文（**只做 HTTP + 提取**，不碰 DB）。
 ///
 /// 判据有两条（都要满足才采纳）：
-/// 1. 提到了段落
+/// 1. 提到了正文
 /// 2. **总长度够**（见下面的 `MIN_EXTRACTED_CHARS`）
+///
+/// # 🆕 2026-10-02：提取器换成 `dom_smoothie`，产出 **Markdown**（不是纯文本）
+/// `content_pool.body` 的语义随之变化：**「纯文本（`\n\n` 分段）」→「Markdown」**。
+/// 🔴 这引出一条顺序硬约束：**必须先重抓完存量、再切端侧渲染器**
+/// （否则老数据的纯文本会被当 Markdown 解析 → 含 `*` `_` `#` 的正文显示成乱码）。
+/// 📄 见 `docs/review/content-pipeline-rebuild-plan-2026-10-02.md` §五。
 pub async fn fetch_article_body(client: &reqwest::Client, url: &str) -> BodyOutcome {
     /// 提取结果至少这么长才算「抓到了正文」。
     ///
@@ -471,16 +557,17 @@ pub async fn fetch_article_body(client: &reqwest::Client, url: &str) -> BodyOutc
         Ok(h) => h,
         Err(e) => return BodyOutcome::HttpFailed(e),
     };
-    let paras = crate::content_extract::extract_article_paragraphs(&html);
-    if paras.is_empty() {
+    // `Some(url)` 让 Markdown 里的**相对链接绝对化**（App 里点得开）；
+    // url 不合法时内部会**降级重试**，不会因此丢掉正文（见该函数文档）。
+    let md = crate::content_extract::extract_to_markdown(&html, Some(url));
+    if md.trim().is_empty() {
         return BodyOutcome::NoParagraphs;
     }
-    let text = paras.join("\n\n");
-    let len = text.chars().count();
+    let len = md.chars().count();
     if len < MIN_EXTRACTED_CHARS {
         return BodyOutcome::TooShort(len);
     }
-    BodyOutcome::Got(text)
+    BodyOutcome::Got(md)
 }
 
 /// 诊断用：抓一篇并返回结果（供 `examples/body_diag.rs`）。
@@ -748,6 +835,52 @@ mod tests {
         assert_eq!(summary.as_deref(), Some("S"));
     }
 
+    /// 🔴 **行为断言**（不只是「那个纯函数判得对」）：[write_items] 真的调用了
+    /// [sanitize_summary]。
+    ///
+    /// 📌 为什么必须有它：纯函数测试只能证明「这个函数判得对」，
+    /// 证明不了「入库路径真的用了它」——
+    /// 文本/单元断言的上限是「写了」，「**会执行到**」只能真跑一遍
+    /// （同族教训见 memory 判据库）。
+    #[test]
+    fn test_write_items_drops_source_error_summary() {
+        let conn = mem();
+        let s = src(1, "rss");
+
+        // 白哥真机反馈那篇的真实 summary
+        let mut bad = item("https://a.test/bad");
+        bad.summary = Some("Liquid syntax error: 'raw' tag was never closed".into());
+        // 对照组：正常摘要必须原样保留（防「顺手全清」）
+        let good = item("https://a.test/good");
+
+        let n = write_items(&conn, &s, &[bad, good], "2026-09-29T00:00:00Z").unwrap();
+        // 🔑 过滤的是 **summary 这一列**，不是整条 → 两条都该入库
+        //    （标题/URL 仍有价值：列表页还要显示它）
+        assert_eq!(n, 2, "两条都该入库（只是其中一条的摘要被清掉）");
+
+        let bad_summary: Option<String> = conn
+            .query_row(
+                "SELECT summary FROM content_pool WHERE url = ?1",
+                ["https://a.test/bad"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(bad_summary, None, "🔴 源站报错不该作为摘要入库");
+
+        let good_summary: Option<String> = conn
+            .query_row(
+                "SELECT summary FROM content_pool WHERE url = ?1",
+                ["https://a.test/good"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            good_summary.as_deref(),
+            Some("S"),
+            "🔴 正常摘要必须原样保留（别顺手全清）"
+        );
+    }
+
     #[test]
     fn test_category_comes_from_source_not_rss_tag() {
         let conn = mem();
@@ -821,5 +954,82 @@ mod tests {
         let s = now_utc_iso();
         assert!(s.ends_with('Z'), "{}", s);
         assert_eq!(s.len(), 20, "ISO8601 秒级长度应为 20: {}", s);
+    }
+
+    // ── 🆕 2026-10-02 · 源站报错摘要过滤 ─────────────────────────
+
+    /// 🔴 **实测案例**（白哥真机反馈「只有半句话」那篇的真实 summary）。
+    #[test]
+    fn test_source_error_summary_real_case_is_detected() {
+        // 这是 Dev.to 渲染失败时吐在 RSS description 里的原文
+        assert!(is_source_error_summary(
+            "Liquid syntax error: 'raw' tag was never closed"
+        ));
+    }
+
+    /// 🆕 其他已知指纹（同族形态）。
+    #[test]
+    fn test_source_error_summary_other_fingerprints() {
+        for s in [
+            "Template render error: undefined method",
+            "An error occurred while rendering this page",
+            "Cannot read properties of undefined (reading 'map')",
+            "Cannot read property 'x' of null",
+        ] {
+            assert!(is_source_error_summary(s), "应识别: {s}");
+        }
+    }
+
+    /// 🔴 **互补信号（长度）的意义**：正常短文不该被误杀。
+    #[test]
+    fn test_normal_short_summary_not_killed() {
+        for s in [
+            "A short news brief about the economy and jobs.",
+            "这里是中文摘要，讲的是同一天发生的两件事。",
+            "Weekly roundup of everything that shipped this week.",
+        ] {
+            assert!(!is_source_error_summary(s), "🔴 误杀了正常摘要: {s}");
+        }
+    }
+
+    /// 🔴🔴 **本组最关键的一条**：长文章里出现报错字样**不该**被误杀。
+    /// 这正是「指纹 + 长度」两条一起用的理由 —— 只按指纹判会整类误伤技术文章。
+    #[test]
+    fn test_long_text_mentioning_error_not_killed() {
+        // 一篇讲调试的长摘要（> 200 字符），里面出现 syntax error 字样
+        let long = format!(
+            "{} In this post we walk through how we hit a {} while building our parser, \
+             why it took three days to find, and what we changed afterwards to make the \
+             failure loud instead of silent.",
+            "A long-form engineering write-up.", "syntax error"
+        );
+        assert!(
+            long.chars().count() > 200,
+            "构造的样本要够长才有意义: {}",
+            long.chars().count()
+        );
+        assert!(
+            !is_source_error_summary(&long),
+            "🔴 长文里出现报错字样不该被误杀（互补信号失效）"
+        );
+    }
+
+    /// `sanitize_summary` 的三种出口 + 空串归一。
+    #[test]
+    fn test_sanitize_summary_exits() {
+        // ① 命中报错 → None（端侧据此走「还没有正文」的正常分支）
+        assert_eq!(
+            sanitize_summary(Some("Liquid syntax error: 'raw' tag was never closed")),
+            None
+        );
+        // ② 本来就没有 → None
+        assert_eq!(sanitize_summary(None), None);
+        // ③ 空白串 → None（不该存一个「看起来有摘要」的空值）
+        assert_eq!(sanitize_summary(Some("   ")), None);
+        // ④ 正常摘要 → **原样保留**（不能顺手改内容）
+        assert_eq!(
+            sanitize_summary(Some("A normal summary sentence.")),
+            Some("A normal summary sentence.")
+        );
     }
 }
