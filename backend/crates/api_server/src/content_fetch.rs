@@ -927,18 +927,20 @@ mod tests {
     fn test_seed_sources_are_loaded() {
         let conn = mem();
         let s = load_enabled_sources(&conn).unwrap();
-        // 🔴 2026-10-02 三处变更，都在这一条里体现：
+        // 🔴 2026-10-02 四处变更，都在这一条里体现：
         //    ① `Ars Technica` 被禁用（`enabled = 0`）→ 不再计入
         //    ② **新增 7 个源**（NPR 6 分频道 + arXiv）→ 4 + 7 = **11**
         //    ③ 🆕 **二轮再加 2 个**（`NPR Sports` / `NPR Movies`，补 `sports` /
         //       `entertainment` 两个一直无源的类）→ 11 + 2 = **13**
+        //    ④ 🆕 **三轮再加 10 个**（「8 类之外」的独立话题频道，含 4 个新类
+        //       `education`/`history`/`law`/`family`）→ 13 + 10 = **23**
         //    理由与实测数据见 `schema.rs` 里那几行的注释。
         //    📌 这条断言同时是「`enabled` 真的被过滤」的守门人 ——
         //       它数的是 `load_enabled_sources` 的结果，不是表里的行数。
         assert_eq!(
             s.len(),
-            13,
-            "种子应有 13 个**启用**源（Ars 已禁用 · HackerNoon 未接）"
+            23,
+            "种子应有 23 个**启用**源（Ars 已禁用 · HackerNoon 未接）"
         );
         assert!(s.iter().any(|x| x.kind == "hn"), "应有 HN 源");
         assert!(
@@ -956,8 +958,8 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM content_source", [], |r| r.get(0))
             .unwrap();
         assert_eq!(
-            total, 14,
-            "表里仍应有 14 行（5 原有 + 7 首轮 + 2 二轮；Ars 是禁用，不是删除）"
+            total, 24,
+            "表里仍应有 24 行（5 原有 + 7 首轮 + 2 二轮 + 10 三轮；Ars 是禁用，不是删除）"
         );
 
         // ═══ 2026-10-02 新增源的守门断言 ═══════════════════════════════════
@@ -1034,10 +1036,13 @@ mod tests {
 
         // ③ NPR 分频道与现有 NPR **同条款**（同一个媒体）⇒ 必须一致
         let npr: Vec<_> = s.iter().filter(|x| x.name.starts_with("NPR")).collect();
+        // ⚠️ 这条数的是 `name.starts_with("NPR")` ⇒ **只统计 NPR 源**。
+        //    三轮后 NPR 共 19 个（主 1 + 首轮 6 + 二轮 2 + 三轮 10）。
+        //    🔑 它与「启用源总数 23」的差 = 4（ECNS · Dev.to · HN · arXiv）。
         assert_eq!(
             npr.len(),
-            9,
-            "应有 9 个 NPR 源（主频道 1 + 首轮 6 分频道 + 二轮 体育/影视 2）"
+            19,
+            "应有 19 个 NPR 源（主 1 + 首轮 6 + 二轮 体育/影视 2 + 三轮 10）"
         );
         assert!(
             npr.iter().all(|x| x.redistributable == 1),

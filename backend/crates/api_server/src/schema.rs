@@ -478,14 +478,38 @@ CREATE TABLE IF NOT EXISTS generated_card_hit (
 ///
 /// ✅ **`sports` / `entertainment` 已于 2026-10-02 补源**（seed id 13 / 14）——
 ///    `NPR Sports`(`feeds.npr.org/1055`) · `NPR Movies`(`feeds.npr.org/1045`)。
-///    ⇒ 定稿 §10.3 担心的「用户勾了标签却拉不到内容」**8 类现已全部有源**。
-///
 ///    🔴 **两个 feed ID 是逐个抓 `<title>` 确认的，不是从记忆里抄的** ——
 ///       第一轮据「NPR 有 Movies 频道」直接请求 1045，返回**空 body**，
-///       差点误判成「该频道不存在」；并发重扫 ID 段才确认
-///       （1045=Movies · 1048=Pop Culture · 1055=Sports）。
-///       📌 判据：**ID → 频道名必须由 `<title>` 确认**（同「注释里的声明须 grep 才算数」）。
-///    实测数据与排除项 → `docs/review/sports-entertainment-source-2026-10-02.md`
+///       差点误判成「该频道不存在」；并发重扫 ID 段才确认。
+///       📌 判据：**ID → 频道名必须由 `<title>` 确认**。
+///    实测 → `docs/review/sports-entertainment-source-2026-10-02.md`
+///
+/// # 🆕 2026-10-02 三轮：扩到 **12** 类
+///
+/// 白哥：「『8 类之外』但存在的高价值频道 —— 这些要接入，而且**如果不能归类
+/// 的话可以增加新的分类**」。⇒ 新增 4 类：`education` / `history` / `law` / `family`。
+///
+/// 🔑 **本轮最值钱的判据：区分「独立话题」与「跨类编辑栏目」**
+///
+/// NPR 扫出的 71 个活跃频道里，有一批**不是话题，而是「同一批内容的另一种呈现」**：
+///   `Opinion` · `Analysis` · `Perspective` · `Obituaries` · `Race` · `On Disabilities`
+///
+/// 它们的内容**分属各类** —— 实测 `Obituaries` 一轮里同时有
+/// 「纪念爵士 John Coltrane」(`culture`)、「画家 Sliman Mansour」(`culture`)、
+/// 「NPR 编辑逝世」(`news`)；`Race` 一轮里同时有学校选择 (`education`)、
+/// Kaepernick (`sports`)、Dolly Parton (`culture`)。
+/// ⇒ 给它们建类会让**分类自相矛盾**（一条内容两个类）⇒ **不接**。
+/// 📌 判据：**「这个 feed 切的是话题，还是视角？」**
+///
+/// 🔑 能归入现有类的就**不新增**（避免用户可见的兴趣标签膨胀）：
+///      `Religion` / `Architecture` → `culture`（建筑与信仰是文化）
+///      `Weather` → `science`（气象是地球科学）· `Strange News` / `Media` → `news`
+///      `On Aging` → `health`
+///
+/// ⚠️ **兴趣标签是用户可见的**（定稿 §10.3.1）⇒ **12 个已是上限**；
+///    再加就该先合并（例如把 `law` 并入 `news`、`family` 并入 `health`）。
+///    ✅ 兴趣选择界面**尚未实现**（端侧只有 `feed_item.dart` 的显示映射）
+///    ⇒ 新增类的成本只是「本词表 + 端侧 map」两处。
 pub const CONTENT_CATEGORIES: &[&str] = &[
     "news",
     "tech",
@@ -495,6 +519,11 @@ pub const CONTENT_CATEGORIES: &[&str] = &[
     "culture",
     "entertainment",
     "health",
+    // ── 🆕 2026-10-02 三轮新增（白哥批准「不能归类可以增加新分类」）──
+    "education",
+    "history",
+    "law",
+    "family",
 ];
 
 pub const CONTENT_SCHEMA_SQL: &str = r#"
@@ -504,12 +533,21 @@ CREATE TABLE IF NOT EXISTS content_source (
     url                TEXT    NOT NULL,
     kind               TEXT    NOT NULL DEFAULT 'rss',   -- rss | hn
     -- 🔑 受控词表 —— 见 `CONTENT_CATEGORIES`（单一定义处）
-    -- ⚠️ CHECK 在这里是**有意义的**：种子/admin 改错类会**立刻报错**。
-    --    本表用 `INSERT OR IGNORE`，而它**会静默忽略 CHECK 违规** ——
-    --    所以「源少了一个」不会报错；靠 `test_seed_sources_are_loaded` 的数量断言兜住。
+    --
+    -- ⚠️ CHECK 在这里**是**有意义的（改错类会立刻报错），但有三条**必须知道**：
+    --   ① 本表用 `INSERT OR IGNORE`，而它**会静默忽略 CHECK 违规** ⇒
+    --      「源少了一个」不会报错；靠 `test_seed_sources_are_loaded` 的数量断言兜住。
+    --   ② 🔴 **`CREATE TABLE IF NOT EXISTS` 不重建已存在的表** ⇒
+    --      本 CHECK **只对新库生效**。生产库的 `content_source` 建于 CHECK 引入之前
+    --      （2026-09-29 的 `6c7d60d`，那时**没有** CHECK）⇒ **它实际没有 CHECK**。
+    --      📌 「改了 CHECK」≠「旧库会校验」—— 而 SQLite **不支持 ALTER 改 CHECK**，
+    --         要让旧库也拿到它，只能**重建表**（本项目暂未做）。
+    --   ③ 🔴 正因为 ②，**词表与 CHECK 可能不同步且不报错** ——
+    --      由 `test_content_source_check_matches_categories`（读 DDL 逐值比对）兜住。
     category           TEXT
         CHECK (category IN ('news','tech','business','science','sports',
-                            'culture','entertainment','health')),
+                            'culture','entertainment','health',
+                            'education','history','law','family')),
     cefr_hint          TEXT,                             -- A2 | B1 | B2 | C1（难度提示）
     license            TEXT,                             -- public_domain | cc | news | esl
     -- 1 = 允许**全文**入库并展示；0 = 只存摘要 + 链接（Flipboard 模式）
@@ -683,7 +721,45 @@ VALUES
     --      · Bleacher Report / EW / AP / Yahoo Sports（403）· SI / Vulture / IGN（404）
     -- ═══════════════════════════════════════════════════════════════════════
     (13, 'NPR Sports 体育',  'https://feeds.npr.org/1055/rss.xml', 'rss', 'sports',        'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
-    (14, 'NPR Movies 影视',  'https://feeds.npr.org/1045/rss.xml', 'rss', 'entertainment', 'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now'));
+    (14, 'NPR Movies 影视',  'https://feeds.npr.org/1045/rss.xml', 'rss', 'entertainment', 'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+
+    -- ═══════════════════════════════════════════════════════════════════════
+    -- 🆕 2026-10-02 三轮：「8 类之外」的独立话题频道（白哥「这些要接入」）
+    --
+    -- 🔑 **选择标准 = 「切话题」而不是「切视角」**（见 `CONTENT_CATEGORIES` 的说明）。
+    --    下列 10 个都经真实 `fetch_source_items` + `fetch_article_body_diagnostic` 实测：
+    --    **营销 0 · 摘要中位 27–31 词 · 网页提取 3/4 或 4/4 达标**（与对照 NPR News 同档）。
+    --
+    -- 🔑 **重叠实测**：与最可能重复的已接频道比 `<link>` 集合 —— **0–17%**
+    --    （Education↔Culture 17% · Law↔News 17% · 其余 0%）
+    --    ⇒ **都是独立内容池**，接它们不会造成内容重复。
+    --
+    -- 🔑 **4 个新类的归属理由**（`education`/`history`/`law`/`family` 各只有一个源）：
+    --    · `education` —— 无法归入任何现有类（`culture` 是艺术、`news` 太泛）
+    --    · `history`   —— 独立学科（`culture` 装不下「人口普查史 / 考古」）
+    --    · `law`       —— 独立领域（`business` 是经济，装不下「死刑 / 最高法院」）
+    --    · `family`    —— 定稿删掉的是 `life`（理由「太糊」），而 `family`
+    --                    很具体（育儿假 / 托儿成本 / 照护父母）⇒ 不是同一个东西
+    --
+    -- ⚠️ **不加 `CHECK` 就不用管**（pool 那侧）—— 但本表**有** CHECK，
+    --    所以新类必须同步进上面的 `CHECK (...)`，否则**新库**会静默丢源
+    --    （`INSERT OR IGNORE` 吞 CHECK 违规）。已由断言兜住。
+    --
+    -- ❌ **实测后不接「跨类编辑栏目」**（`Opinion` 1057 · `Analysis` 1059 ·
+    --    `Perspective` 1166 · `Obituaries` 1062 · `Race` 1015 · `On Disabilities` 1133）——
+    --    它们的内容分属各类（详见 `CONTENT_CATEGORIES` 的说明），建类会自相矛盾。
+    --    ⚠️ 它们**质量并不差**（实测 4/4 达标）—— 不接是**归类口径**的决定，不是质量问题。
+    -- ═══════════════════════════════════════════════════════════════════════
+    (15, 'NPR Education 教育',   'https://feeds.npr.org/1013/rss.xml', 'rss', 'education', 'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (16, 'NPR History 历史',     'https://feeds.npr.org/1136/rss.xml', 'rss', 'history',   'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (17, 'NPR Law 法律',         'https://feeds.npr.org/1070/rss.xml', 'rss', 'law',       'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (18, 'NPR Family 家庭',      'https://feeds.npr.org/1164/rss.xml', 'rss', 'family',    'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (19, 'NPR Religion 宗教',    'https://feeds.npr.org/1016/rss.xml', 'rss', 'culture',   'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (20, 'NPR Architecture 建筑','https://feeds.npr.org/1142/rss.xml', 'rss', 'culture',   'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (21, 'NPR Weather 天气',     'https://feeds.npr.org/1165/rss.xml', 'rss', 'science',   'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (22, 'NPR Strange News 趣闻','https://feeds.npr.org/1146/rss.xml', 'rss', 'news',      'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (23, 'NPR On Aging 老龄',    'https://feeds.npr.org/1028/rss.xml', 'rss', 'health',    'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (24, 'NPR Media 媒体',       'https://feeds.npr.org/1020/rss.xml', 'rss', 'news',      'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now'));
 
 "#;
 
@@ -1165,11 +1241,11 @@ mod tests {
             );
         }
 
-        // 种子源：实测**可达**的 13 个（VOA/BBC/Wikipedia 因国内不可达**不在内**）
+        // 种子源：实测**可达**的 23 个（VOA/BBC/Wikipedia 因国内不可达**不在内**）
         //
         // 🔑 **与 `content_fetch::tests::test_seed_sources_are_loaded` 的分工**：
-        //    那条数的是 `load_enabled_sources()` 的结果（**启用数** = 13，Ars 被禁用）；
-        //    本条数的是**表里的总行数**（**14**，含被禁用的 Ars）。
+        //    那条数的是 `load_enabled_sources()` 的结果（**启用数** = 23，Ars 被禁用）；
+        //    本条数的是**表里的总行数**（**24**，含被禁用的 Ars）。
         //    ⇒ 两者**必须成对更新**（改一处不改另一处，会有一条红）。
         //    📌 这正落实「**同一件事的口径只能有一处权威**」的反面教训：
         //       数字被两处锁着时，要把「两处各是什么口径」写清楚，
@@ -1178,12 +1254,16 @@ mod tests {
         //       而 `content_fetch` 的断言当时是 **11 / 12** —— **基数差了 1**。
         //       （「总行 = 启用 + 1（禁用 的 Ars）」这层关系是对的，起点写错。）
         //       ⇒ 教训：**加源时必须两边同时核**，只改一边会留下一份错的说明。
+        //
+        // 🔴 **本断言是「`INSERT OR IGNORE` 吞掉 CHECK 违规」的唯一哨兵** ——
+        //    若新源的 category 没同步进 `CHECK (...)`，插入会被**静默**忽略，
+        //    表里就会少行 ⇒ 只有这一条会红。（`ensure_schema` 不报错。）
         let seeded: i64 = conn
             .query_row("SELECT COUNT(*) FROM content_source", [], |r| r.get(0))
             .unwrap();
         assert_eq!(
-            seeded, 14,
-            "种子源应为 14 行（5 原有 + 7 首轮 + 2 二轮；含被禁用的 Ars —— 禁用≠删除）"
+            seeded, 24,
+            "种子源应为 24 行（5 原有 + 7 首轮 + 2 二轮 + 10 三轮；含被禁用的 Ars —— 禁用≠删除）"
         );
 
         // 🔴 种子源里**不得**出现不可达的源（防止照旧方案加回 VOA/BBC）
@@ -1201,6 +1281,83 @@ mod tests {
                 bad
             );
         }
+
+    }
+
+    /// 🆕 2026-10-02 三轮：**受控词表 ≡ `content_source` 的 CHECK DDL**（逐值比对）。
+    ///
+    /// # 🔴 为什么必须有这条（而不是「改 CHECK 时记得同步」）
+    ///
+    /// 三者构成一条**全程无报错的失效链**：
+    ///   ① `CREATE TABLE IF NOT EXISTS` **不重建已存在的表** ⇒ CHECK 改动对旧库无效
+    ///   ② `INSERT OR IGNORE` 会**静默吞掉** CHECK 违规
+    ///   ③ 于是「词表加了类、CHECK 没加」⇒ **新库静默丢源**
+    ///      —— 数量断言（`种子源应为 N 行`）虽然会红，但它报的是「少了一行」，
+    ///      **不告诉你为什么少**，排查要从「是网络？是 SQL？还是约束？」开始。
+    ///
+    /// 本条把**原因**直接指出来（缺哪个类），且**读的是 DDL 而不是源文件** ——
+    /// 即使有人把 CHECK 写成别的换行/大小写形式，只要**生效**就通过；
+    /// 反之，若 DDL 里没有它，说明**约束根本没建出来**（这正是 ② 的根因）。
+    ///
+    /// 📌 判据：**断言要读「生效的东西」，而不是读「源文件里的声明」**
+    ///    （同族：「注释里的声明须 grep 才算数」）。
+    ///
+    /// ⚠️ **独立成 test 而不是塞进 `test_core_table_columns`** ——
+    ///    因为后者的数量断言会先 panic，**本条根本没机会跑**
+    ///    （实测：删掉 CHECK 里的 `education` 后，只看到「少了一行」）。
+    #[test]
+    fn test_content_source_check_matches_categories() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_database(&conn).unwrap();
+        let ddl: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='content_source'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("content_source 表应存在");
+
+        // 正向：词表里每一类都必须在 CHECK 中
+        for c in CONTENT_CATEGORIES {
+            assert!(
+                ddl.contains(&format!("'{}'", c)),
+                "🔴 `content_source` 的 CHECK 里缺分类 `{}` —— \
+                 改了 `CONTENT_CATEGORIES` 就必须同步改 CHECK，\
+                 否则**新库**会因 `INSERT OR IGNORE` 吞掉违规而**静默丢源**。",
+                c
+            );
+        }
+
+        // 反向：CHECK 里不该有词表之外的类（防「删了类但 CHECK 没删」）
+        let in_check: Vec<&str> = ddl
+            .split("CHECK (category IN (")
+            .nth(1)
+            .and_then(|s| s.split(')').next())
+            .map(|s| {
+                s.split(',')
+                    .map(|x| x.trim().trim_matches('\''))
+                    .collect()
+            })
+            .unwrap_or_default();
+        assert!(
+            !in_check.is_empty(),
+            "🔴 没能从 DDL 解析出 CHECK 的分类列表 —— 解析方式可能过时了。DDL: {}",
+            ddl
+        );
+        for c in &in_check {
+            assert!(
+                CONTENT_CATEGORIES.contains(c),
+                "🔴 CHECK 里有词表外的分类 `{}` —— 已删的类必须同时从 CHECK 删掉",
+                c
+            );
+        }
+        assert_eq!(
+            in_check.len(),
+            CONTENT_CATEGORIES.len(),
+            "CHECK 的分类数（{}）应与 CONTENT_CATEGORIES（{}）一致",
+            in_check.len(),
+            CONTENT_CATEGORIES.len()
+        );
     }
 
     /// 🔴 迁移演练：**旧结构的库**（含实名/手机号 5 列 + 旧索引）跑 `init_database` 后

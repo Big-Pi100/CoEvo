@@ -139,10 +139,17 @@ class FeedItem {
   /// 它是**实现期**为 NPR / ECNS 临时加的，而「综合 / 国际新闻」
   /// 确实不属于任何兴趣类 ⇒ 保留，卡片显示 `News`。
   ///
-  /// ✅ **8 类现已全部有源**（2026-10-02 二轮补齐最后两个）：
-  ///    `sports` ← `NPR Sports`(`feeds.npr.org/1055`) ·
-  ///    `entertainment` ← `NPR Movies`(`feeds.npr.org/1045`)。
-  ///    ⇒ 用户勾**任一**兴趣标签都能拉到内容（定稿 §10.3 的担忧已消除）。
+  /// 🆕 **2026-10-02 三轮扩到 12 类**（白哥「不能归类可以增加新分类」）：
+  ///    新增 `education` / `history` / `law` / `family` 四类。
+  ///    ⇒ 每个类**都有源覆盖**（后端断言：分类集合 ≡ `CONTENT_CATEGORIES`）。
+  ///
+  ///    ⚠️ 后端新增「跨类编辑栏目」**不接**（`Opinion`/`Analysis`/`Perspective`/
+  ///       `Obituaries`/`Race`/`On Disabilities`）—— 它们的内容分属各类，
+  ///       建类会让分类自相矛盾。详见 `schema.rs` 的 `CONTENT_CATEGORIES` 注释。
+  ///
+  ///    ⚠️ **12 个已是上限**（兴趣标签用户可见，定稿 §10.3.1）——
+  ///       再加就该先合并（`law`→`news`、`family`→`health`）。
+  ///
   ///    后端锁定处：`content_fetch::tests::test_seed_sources_are_loaded` ①b
   ///    （断言 `content_source` 的分类集合 **≡** `CONTENT_CATEGORIES`）。
   static const Map<String, String> _categoryLabels = {
@@ -154,6 +161,11 @@ class FeedItem {
     'culture': 'Culture',
     'entertainment': 'Entertainment',
     'health': 'Health',
+    // ── 🆕 2026-10-02 三轮新增 ──
+    'education': 'Education',
+    'history': 'History',
+    'law': 'Law',
+    'family': 'Family',
   };
 
   /// 阅读速度（词/分钟）—— 用于把 `word_count` 换算成「N min」。

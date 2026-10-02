@@ -47,7 +47,96 @@ struct Candidate {
 }
 
 const CANDIDATES: &[Candidate] = &[
-    // ══ 本轮（2026-10-02 二轮）：`sports` / `entertainment` 补源 ══
+    // ══ 本轮（2026-10-02 三轮）：**「8 类之外」的独立话题频道** ══
+    //
+    // 白哥：「『8 类之外』但存在的高价值频道——这些要接入，而且如果不能归类
+    //        的话可以增加新的分类」。
+    //
+    // 🔑 先按**内容形态**分两类（这一步比测质量更重要）：
+    //   ① **独立话题** —— 有自己明确主题，能独立成一个兴趣标签
+    //   ② **跨类编辑栏目** —— 内容是「同一个话题的另一种呈现」，跨所有类
+    //      例：`Opinion` / `Analysis` / `Perspective` / `Obituaries` /
+    //          `Race` / `On Disabilities`
+    //      ⚠️ 它们**不该有自己的 category** —— 一条「纪念 Coltrane」的讣告
+    //         既是 `culture` 又是 `music`；强行建类会让分类口径**自相矛盾**。
+    //      ⇒ 本轮**只接 ①**，② 不接（理由见报告）。
+    //
+    // 🔑 重叠实测（与最可能重复的已接频道比 `<link>` 集合）：**0–17%**
+    //    ⇒ 都是独立内容池，接它们不会造成内容重复。
+    Candidate {
+        name: "NPR Education",
+        url: "https://feeds.npr.org/1013/rss.xml",
+        atom: false,
+        role: "独立话题",
+    },
+    Candidate {
+        name: "NPR History",
+        url: "https://feeds.npr.org/1136/rss.xml",
+        atom: false,
+        role: "独立话题",
+    },
+    Candidate {
+        name: "NPR Law",
+        url: "https://feeds.npr.org/1070/rss.xml",
+        atom: false,
+        role: "独立话题",
+    },
+    Candidate {
+        name: "NPR Family",
+        url: "https://feeds.npr.org/1164/rss.xml",
+        atom: false,
+        role: "独立话题",
+    },
+    Candidate {
+        name: "NPR Religion",
+        url: "https://feeds.npr.org/1016/rss.xml",
+        atom: false,
+        role: "独立话题",
+    },
+    Candidate {
+        name: "NPR Architecture",
+        url: "https://feeds.npr.org/1142/rss.xml",
+        atom: false,
+        role: "独立话题",
+    },
+    Candidate {
+        name: "NPR Weather",
+        url: "https://feeds.npr.org/1165/rss.xml",
+        atom: false,
+        role: "独立话题",
+    },
+    Candidate {
+        name: "NPR Strange News",
+        url: "https://feeds.npr.org/1146/rss.xml",
+        atom: false,
+        role: "独立话题",
+    },
+    Candidate {
+        name: "NPR On Aging",
+        url: "https://feeds.npr.org/1028/rss.xml",
+        atom: false,
+        role: "独立话题",
+    },
+    Candidate {
+        name: "NPR Media",
+        url: "https://feeds.npr.org/1020/rss.xml",
+        atom: false,
+        role: "独立话题",
+    },
+    // ── 对照：跨类编辑栏目（**预期不接**，但仍测一下，看数据是否支持）──
+    Candidate {
+        name: "NPR Opinion(跨类)",
+        url: "https://feeds.npr.org/1057/rss.xml",
+        atom: false,
+        role: "跨类栏目",
+    },
+    Candidate {
+        name: "NPR Obituaries(跨类)",
+        url: "https://feeds.npr.org/1062/rss.xml",
+        atom: false,
+        role: "跨类栏目",
+    },
+    // ══ 上一轮（2026-10-02 二轮）：`sports` / `entertainment` 补源 ══
     //
     // 白哥：「sports / entertainment 要补源」（现有的 8 类里这两个仍无源）。
     //
