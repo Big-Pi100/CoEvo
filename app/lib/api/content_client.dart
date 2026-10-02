@@ -46,6 +46,28 @@ class FeedPage {
   static const FeedPage empty = FeedPage(items: [], total: 0, limit: 0, offset: 0);
 }
 
+/// 可渲染文本的**来源** —— 🔑 让「全文 vs 摘要」在**类型上**就分得开。
+///
+/// # 🔴 为什么要有这个枚举（真实事故 · 2026-10-02）
+/// 原实现只提供一个 `String? readableText`：`body` 为空时**兜底到 `summary`**，
+/// 但返回值把「全文」与「摘要」**压成了同一个东西** —— 调用方无从分辨。
+///
+/// 而它当时的注释**恰好写着**「退到 `summary` 时不要当成有正文」：
+/// 🔴 **注释表达了要求，但返回类型没能力兑现它** → 调用方（阅读器）只能按
+/// 「非空 = 有正文」处理 → 某篇的 `summary` 是**源站自己的报错**
+/// （`Liquid syntax error: 'raw' tag was never closed`）时，
+/// **那句报错被当正文渲染** → 用户看到的就是「只有半句话」。
+///
+/// 📌 判据：**当注释在叮嘱调用方「注意区分 A 和 B」，而返回类型里没有 A/B 的区别时，
+///    那不是文档问题，是类型问题** —— 要靠类型兑现，不能靠注释。
+enum ArticleTextSource {
+  /// 真全文（后端抓到的 `body`）。
+  body,
+
+  /// **兜底**用的摘要（`summary`）—— ⚠️ **不是全文**。
+  summary,
+}
+
 /// 文章详情（比列表多 `body` 全文）。
 class ArticleDetail {
   final FeedItem item;
@@ -54,18 +76,22 @@ class ArticleDetail {
 
   const ArticleDetail({required this.item, this.body});
 
-  /// 可用于渲染的正文。
+  /// 可渲染文本 + **它是哪来的**（见 [ArticleTextSource]）。
   ///
   /// 🔴 **兜底顺序不能反**：优先 `body`（真全文），没有才退到 `summary`。
   ///    反过来的话，明明有全文却只显示摘要（用户会以为抓取失败）。
   ///
-  /// ⚠️ 退到 `summary` 时语义是「**只有摘要**」而不是「全文」——
-  ///    调用方（阅读器）要按 [FeedItem.hasBody] 决定是否提示「正文未就绪」，
-  ///    **不要**把这里的兜底当成「有正文」。
-  String? get readableText {
-    if (body != null && body!.trim().isNotEmpty) return body;
+  /// 🔑 返回 `null` = **真的什么都没有** → 调用方走「这一篇还没有正文」那条正常分支。
+  /// 🔑 返回 `source: summary` = **有内容，但不是全文** → 调用方必须**区别对待**
+  ///    （不能当全文渲染：那正是「半句话」事故的成因）。
+  ({String text, ArticleTextSource source})? get renderable {
+    final b = body;
+    if (b != null && b.trim().isNotEmpty) {
+      return (text: b, source: ArticleTextSource.body);
+    }
     final s = item.excerpt.trim();
-    return s.isEmpty ? null : s;
+    if (s.isEmpty) return null;
+    return (text: s, source: ArticleTextSource.summary);
   }
 }
 

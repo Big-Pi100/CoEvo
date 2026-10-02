@@ -123,6 +123,7 @@ void main() {
   _s19ExternalCard();
   _s20DeviceId();
   _s21TimingWait();
+  _s22ArticleTextSource();
 
   print('\n' + '═' * 72);
   print('通过 $_pass 项，实现类失败 $_fail 项，规格内部冲突 ${_conflicts.length} 项');
@@ -2948,3 +2949,77 @@ void _s19ExternalCard() {
       schemaFile.existsSync() &&
           schemaFile.readAsStringSync().contains('转换后'));
 }
+
+/// 【22】🆕 2026-10-02 · 正文来源：**全文 vs 兜底摘要**
+///
+/// # 🔴 守的是什么（真实事故）
+/// 原实现只有一个 `String? readableText`：`body` 为空时兜底到 `summary`，
+/// 返回值把「全文」与「摘要」**压成同一个东西**。它的注释**恰好写着**
+/// 「退到 summary 时不要当成有正文」—— 但**类型没能力兑现那句话**，
+/// 调用方只能按「非空 = 有正文」处理 → 某篇的 `summary` 是源站报错
+/// （`Liquid syntax error`）时，**那句报错被当正文渲染** → 用户看到「只有半句话」。
+///
+/// 🔑 本组断言的两层：
+/// ① **类型层**：来源必须由枚举区分（而不靠注释叮嘱）
+/// ② **展示层**：是摘要时必须**显式说明**，且**在正文之前**说
+///    （放在末尾 = 用户读完才知道，那时已经误解了）
+void _s22ArticleTextSource() {
+  print('\n【22】🔴 正文来源：全文 vs 兜底摘要（类型区分 · 降级必须可见）');
+
+  final root = _repoRoot();
+  String src(String p) {
+    final f = File('$root/app/lib/$p');
+    return f.existsSync() ? _codeOnly(f.readAsStringSync()) : '';
+  }
+
+  final client = src('api/content_client.dart');
+  final reader = src('screens/reader_screen.dart');
+
+  // ① 🔴 旧的 `readableText` 必须**消失** —— 它正是「压成一个值」的载体。
+  //    📌 断言「已无」而不是「注释里提醒过」：注释拦不住回退。
+  check('🔴 已无 `get readableText`（它把全文与摘要压成同一个 String = 事故成因）',
+      !client.contains('get readableText'));
+
+  // ② 来源枚举：存在 + 两个值齐全（缺一都不算区分）
+  check('有 `enum ArticleTextSource`（让来源在类型上分得开）',
+      client.contains('enum ArticleTextSource'));
+  final enumAt = client.indexOf('enum ArticleTextSource');
+  final enumSeg = enumAt < 0
+      ? ''
+      : client.substring(enumAt, (enumAt + 400).clamp(0, client.length));
+  check('枚举含 `body`（真全文）', enumSeg.contains('body,'));
+  check('枚举含 `summary`（兜底摘要，⚠️ 不是全文）', enumSeg.contains('summary,'));
+
+  // ③ `renderable` 必须**同时**给出文本与来源
+  //    ⚠️ 只给文本 = 又回到老问题（调用方无从分辨）
+  final rAt = client.indexOf('get renderable');
+  final rSeg = rAt < 0
+      ? ''
+      : client.substring(rAt, (rAt + 500).clamp(0, client.length));
+  check('有 `get renderable`', rAt >= 0);
+  check('🔑 `renderable` 返回**文本 + 来源**（缺来源就等于没修）',
+      rSeg.contains('text:') && rSeg.contains('source: ArticleTextSource.'));
+
+  // ④ 调用方真的用了新的（而不是还在用旧的）
+  check('🔑 阅读器用 `value.renderable`（不是 readableText）',
+      reader.contains('value.renderable'));
+  check('阅读器据来源分出 `summaryOnly` 分支',
+      reader.contains('ArticleTextSource.summary'));
+
+  // ⑤ 🔴 **展示层**：是摘要时必须显式说明 —— 静默降级比报错更糟
+  check('🔴 summaryOnly 时渲染说明条（降级必须可见）',
+      reader.contains('_SummaryOnlyBanner(tokens:'));
+  check('说明条有实际文案（不是空壳）',
+      reader.contains('以下是摘要'));
+
+  // ⑥ 🔑 **位置**：说明必须排在**正文段落之前**
+  //    放在后面 = 用户读完了才知道（那时已经误解成「文章就这么短」）。
+  //    ⚠️ 用**调用形态**定位（`_SummaryOnlyBanner(tokens:`），不用类名 ——
+  //       类名会先命中**类定义**，位置比较就变成「定义 vs 段落」= 无意义。
+  final bannerCall = reader.indexOf('_SummaryOnlyBanner(tokens:');
+  final firstPara = reader.indexOf('for (var i = 0; i < paragraphs.length; i++)');
+  check('🔑 说明条在正文段落**之前**（不是读完了才说）',
+      bannerCall >= 0 && firstPara > bannerCall,
+      'banner@$bannerCall 段落@$firstPara');
+}
+

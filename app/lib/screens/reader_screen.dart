@@ -316,12 +316,19 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               : () => ref.invalidate(articleDetailProvider(widget.articleId)),
         );
       },
-      // ③ 拿到详情 —— 再分「有正文」与「没正文」
+      // ③ 拿到详情 —— 再分「有正文」「只有摘要」「什么都没有」
       data: (value) {
         final item = value.item;
         // 🔑 正文分段用**纯函数**（`article_text.splitParagraphs`）——
         //    后端已按 `\n\n` 分好段，本层只切不猜（见那里的说明）。
-        final paragraphs = splitParagraphs(value.readableText);
+        //
+        // 🆕 2026-10-02：取的是 `renderable`（**带来源**），不再是 `readableText`。
+        // 🔴 原来那个 `String?` 把「全文」与「兜底摘要」压成同一个东西 →
+        //    某篇的 summary 是源站报错时，**那句报错被当正文渲染**
+        //    （用户看到「只有半句话」）。见 `ArticleTextSource` 的说明。
+        final renderable = value.renderable;
+        final paragraphs = splitParagraphs(renderable?.text);
+        final summaryOnly = renderable?.source == ArticleTextSource.summary;
 
         // 正文真的为空 → 「没有正文」。
         // ⚠️ 与「找不到」是**两种不同的**表达（一个还有机会，一个没有）。
@@ -337,19 +344,31 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         // 痕迹取不到 → 空列表（正文照常显示，只是没有底色）。
         // 🔑 「增强」不该有能力阻断「主体」—— 见 `articleLookupsProvider` 的说明。
         final lookups = lookupsAsync.valueOrNull ?? const <ArticleLookup>[];
-        return _buildReader(context, t, item, paragraphs, lookups);
+        return _buildReader(
+          context,
+          t,
+          item,
+          paragraphs,
+          lookups,
+          summaryOnly: summaryOnly,
+        );
       },
     );
   }
 
   /// 正文可读时的阅读界面（从原 `build` 抽出 —— 让上面的四态分派保持扁平）。
+  ///
+  /// [summaryOnly] = 现在渲染的不是全文，而是**兜底摘要**（见 [ArticleTextSource]）。
+  /// 此时顶部加一条明确说明 —— 🔴 **不许让摘要冒充正文**：
+  /// 用户读到一段就结束、却以为「文章就这么短」，比看到一句实话更糟。
   Widget _buildReader(
     BuildContext context,
     CoEvoTokens t,
     FeedItem item,
     List<String> paragraphs,
-    List<ArticleLookup> lookups,
-  ) {
+    List<ArticleLookup> lookups, {
+    bool summaryOnly = false,
+  }) {
     // 书签状态 —— 与信息流卡片**同一个 provider**，两处永远一致。
     final bookmarkState = ref.watch(bookmarkProvider);
     final bookmarked = bookmarkState.idsOrEmpty.contains(item.id);
@@ -421,6 +440,12 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                     _ReaderHead(tokens: t, item: item),
+                    // 🆕 「这不是全文」必须**在正文之前**说 ——
+                    //    放在末尾等于用户读完了才知道（那时已经误解了）。
+                    if (summaryOnly) ...[
+                      const SizedBox(height: 16),
+                      _SummaryOnlyBanner(tokens: t),
+                    ],
                     for (var i = 0; i < paragraphs.length; i++) ...[
                       if (i > 0) const SizedBox(height: _paragraphGap),
                       TraceText(
@@ -1072,6 +1097,45 @@ class _ReaderHead extends StatelessWidget {
 /// 但文案不同（用户需要知道是「没了」还是「还没到」）。
 ///
 /// 版式同样遵守「阅读界面零粘土」：一个图标 + 两行字，没有任何粘土类。
+/// 「以下是摘要，不是全文」的说明条。
+///
+/// # 🔑 为什么必须显式说明（而不是「有内容就显示」）
+/// 后端抓正文是**只试一次**的（`content_pool.body_attempted_at` 的语义），
+/// 所以「只有摘要」这个状态**不会自愈** —— 用户下次打开还是它。
+/// 不说明的话，用户会把「摘要戛然而止」理解成「文章写完了/App 内容不全」。
+///
+/// 🔴 这与「半句话」事故是**同一类问题的两面**：
+/// · 事故：把**源站报错**当正文渲染（后端已过滤该脏数据 + 本层不再兜底当正文）
+/// · 本件：把**摘要**当正文渲染 → 会误导，所以要么明说、要么不显示
+/// 📌 判据：**降级可以，但降级必须可见**（静默降级 = 用户以为拿到了完整内容）。
+class _SummaryOnlyBanner extends StatelessWidget {
+  const _SummaryOnlyBanner({required this.tokens});
+
+  final CoEvoTokens tokens;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Color(tokens.card.argb32),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Color(tokens.line.argb32)),
+      ),
+      child: Text(
+        '正文还没取到，以下是摘要。',
+        style: TextStyle(
+          fontFamily: CoFonts.latinSerif,
+          fontSize: 12.5,
+          height: 1.45,
+          color: Color(tokens.ink3.argb32),
+        ),
+      ),
+    );
+  }
+}
+
 class _Notice extends StatelessWidget {
   const _Notice({
     required this.tokens,
