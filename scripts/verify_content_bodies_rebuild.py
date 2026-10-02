@@ -48,56 +48,84 @@ def section(title: str) -> None:
     print(f"\n【{title}】")
 
 
-def extract_content_pool_ddl() -> str:
-    """从 schema.rs 提取 content_pool 的建表语句 + 它的索引（**同源**，不手抄）。"""
+def extract_ddl(table: str) -> str:
+    """从 schema.rs 提取某张表的建表语句 + 它自己的索引（**同源**，不手抄）。
+
+    🔴 **为什么必须连 `content_source` 一起建**（2026-10-02 踩到）：
+    本脚本第一版只建了 `content_pool`，而真实查询里有
+    `LEFT JOIN content_source s ON s.id = p.source_id`（用来判 `redistributable`）
+    → 构造库缺表 → SQL 直接 `no such table` → **脚本崩**（12 项失败）。
+    📌 这正是「**演练环境必须与真实结构同源**」的实例：
+       只建「我要改的那张表」不够 —— **查询里 JOIN 到的表也是「真实结构」的一部分**。
+    """
     src = open(SCHEMA_RS, encoding="utf-8").read()
     m = re.search(
-        r"CREATE TABLE IF NOT EXISTS content_pool\s*\(.*?\n\);", src, re.S
+        rf"CREATE TABLE IF NOT EXISTS {table}\s*\(.*?\n\);", src, re.S
     )
     if not m:
-        raise SystemExit("🔴 无法从 schema.rs 提取 content_pool DDL")
+        raise SystemExit(f"🔴 无法从 schema.rs 提取 {table} 的 DDL")
     ddl = m.group(0)
-    # 它的索引（同一份文件里，紧跟其后）
-    for m2 in re.finditer(
-        r"CREATE (?:UNIQUE )?INDEX IF NOT EXISTS idx_cpool_\w+[^;]*;", src
-    ):
-        ddl += "\n" + m2.group(0)
+    # 该表的索引（同文件里，命名前缀区分：idx_cpool_ / idx_csrc_）
+    prefix = {"content_pool": "idx_cpool_", "content_source": "idx_csrc_"}.get(table)
+    if prefix:
+        for m2 in re.finditer(
+            rf"CREATE (?:UNIQUE )?INDEX IF NOT EXISTS {prefix}\w+[^;]*;", src
+        ):
+            ddl += "\n" + m2.group(0)
     return ddl
 
 
 def build_db(path: str) -> None:
-    """建库 + 灌入覆盖各边界的构造数据。"""
+    """建库 + 灌入覆盖各边界的构造数据。
+
+    ⚠️ 建**两张**表（`content_source` + `content_pool`）——
+    真实查询 JOIN 了前者，缺它脚本会崩（见 [extract_ddl] 的说明）。
+    """
     conn = sqlite3.connect(path)
-    conn.executescript(extract_content_pool_ddl())
+    conn.executescript(extract_ddl("content_source"))
+    conn.executescript(extract_ddl("content_pool"))
 
     T = "2026-10-01T00:00:00Z"
+    # 两个源：src 1 = 可再分发（参与抓取）；src 2 = **不可**再分发（永不被挑中）
+    conn.execute(
+        "INSERT INTO content_source (id, name, url, kind, redistributable, "
+        "tz_offset_min, created_at, updated_at) VALUES "
+        "(1, '可再分发源', 'https://a.test/feed', 'rss', 1, 0, ?, ?), "
+        "(2, '只存摘要源', 'https://b.test/feed', 'rss', 0, 0, ?, ?)",
+        (T, T, T, T),
+    )
+
     rows = [
-        # (url, title, summary, body, attempted)
+        # (source_id, url, title, summary, body, attempted)
         # ① 实测真实案例：summary 是源站报错 → **该被清**
-        ("https://dev.to/a", "OpenRive 那篇",
+        (1, "https://dev.to/a", "OpenRive 那篇",
          "Liquid syntax error: 'raw' tag was never closed", None, T),
         # ② 同族指纹 → **该被清**
-        ("https://dev.to/b", "模板报错",
+        (1, "https://dev.to/b", "模板报错",
          "Template render error: undefined method", None, T),
         # ③ 正常短摘要 → **不该动**
-        ("https://npr.org/c", "正常新闻",
+        (1, "https://npr.org/c", "正常新闻",
          "A short news brief about the economy and jobs.", "正文内容" * 40, T),
         # ④ 🔴 长文里出现报错字样 → **不该动**（互补信号：长度）
-        ("https://dev.to/d", "讲调试的教程",
+        (1, "https://dev.to/d", "讲调试的教程",
          "A long-form engineering write-up. In this post we walk through how we hit a "
          "syntax error while building our parser, why it took three days to find, and "
          "what we changed afterwards to make the failure loud instead of silent.",
          "正文" * 60, T),
         # ⑤ summary 本来就为 NULL → 不该被当成"脏的"
-        ("https://hn.item/e", "HN 帖", None, "讨论内容" * 30, T),
+        (1, "https://hn.item/e", "HN 帖", None, "讨论内容" * 30, T),
         # ⑥ 没抓过正文的（attempted 为 NULL）→ reset **不该**碰它
-        ("https://npr.org/f", "没抓过", "Some summary here.", None, None),
+        (1, "https://npr.org/f", "没抓过", "Some summary here.", None, None),
+        # ⑦ 🔴 **不可再分发但试过** → reset **不该**碰它（它永远不会进候选池，
+        #    重置标记只是一次无意义的状态变更）—— 这条守卫「重置条件与挑候选条件同源」
+        (2, "https://b.test/1", "只存摘要的源",
+         "Summary only for this source.", None, T),
     ]
-    for url, title, summ, body, att in rows:
+    for sid, url, title, summ, body, att in rows:
         conn.execute(
             "INSERT INTO content_pool (source_id, title, summary, body, url, "
-            "fetched_at, body_attempted_at) VALUES (1, ?, ?, ?, ?, ?, ?)",
-            (title, summ, body, url, T, att),
+            "fetched_at, body_attempted_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (sid, title, summ, body, url, T, att),
         )
     conn.commit()
     conn.close()
@@ -115,6 +143,15 @@ def run(*args) -> subprocess.CompletedProcess:
 
 def q1(conn: sqlite3.Connection, sql: str, args=()) -> object:
     return conn.execute(sql, args).fetchone()[0]
+
+
+#: 「重置口径」的计数 SQL —— ⚠️ 与脚本 `action_reset_attempted` 的 WHERE **完全一致**。
+#: 不写成字面量重复，而是提出来复用，避免「断言用的口径」与「实现用的口径」漂移。
+_ATTEMPTED = (
+    "SELECT COUNT(*) FROM content_pool p "
+    "LEFT JOIN content_source s ON s.id = p.source_id "
+    "WHERE COALESCE(s.redistributable, 0) = 1 AND p.body_attempted_at IS NOT NULL"
+)
 
 
 def main() -> None:
@@ -137,14 +174,14 @@ def main() -> None:
     section("2 · plan 只读（不写任何东西）")
     before = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     n_sum_before = q1(before, "SELECT COUNT(*) FROM content_pool WHERE summary IS NOT NULL")
-    n_att_before = q1(before, "SELECT COUNT(*) FROM content_pool WHERE body_attempted_at IS NOT NULL")
+    n_att_before = q1(before, _ATTEMPTED)
     before.close()
     check("plan 报出正确的待清理数（2 篇：真案例 + 同族指纹）",
           "待清理的「源站报错」摘要 : 2 篇" in r.stdout, r.stdout[-400:])
 
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     check("plan 后 summary 非空数未变", q1(conn, "SELECT COUNT(*) FROM content_pool WHERE summary IS NOT NULL") == n_sum_before)
-    check("plan 后 attempted 数未变", q1(conn, "SELECT COUNT(*) FROM content_pool WHERE body_attempted_at IS NOT NULL") == n_att_before)
+    check("plan 后 attempted 数未变", q1(conn, _ATTEMPTED) == n_att_before)
     conn.close()
 
     # ── 【3】clean-summary dry-run 必须"什么都没写" ────────────────
@@ -181,26 +218,26 @@ def main() -> None:
     # ── 【6】reset-attempted 分批 + dry-run ──────────────────────
     section("6 · reset-attempted（分批 + dry-run + 可续跑）")
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-    att_total = q1(conn, "SELECT COUNT(*) FROM content_pool WHERE body_attempted_at IS NOT NULL")
+    att_total = q1(conn, _ATTEMPTED)
     conn.close()
-    check("构造数据里 5 篇已尝试过", att_total == 5, f"实得 {att_total}")
+    check("构造数据里 5 篇「可抓取且试过」", att_total == 5, f"实得 {att_total}")
 
     r = run("--db", db, "--reset-attempted", "--batch", "2")
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     check("dry-run 后 attempted 数**未变**",
-          q1(conn, "SELECT COUNT(*) FROM content_pool WHERE body_attempted_at IS NOT NULL") == att_total)
+          q1(conn, _ATTEMPTED) == att_total)
     conn.close()
 
     r = run("--db", db, "--reset-attempted", "--batch", "2", "--apply")
     conn = sqlite3.connect(db)
-    left = q1(conn, "SELECT COUNT(*) FROM content_pool WHERE body_attempted_at IS NOT NULL")
+    left = q1(conn, _ATTEMPTED)
     conn.close()
     check("🔑 只清了 2 篇（**分批**生效）", left == att_total - 2, f"剩余 {left}")
     check("提示还有剩余（可续跑）", "剩余" in r.stdout)
 
     r = run("--db", db, "--reset-attempted", "--batch", "2", "--apply")
     conn = sqlite3.connect(db)
-    left2 = q1(conn, "SELECT COUNT(*) FROM content_pool WHERE body_attempted_at IS NOT NULL")
+    left2 = q1(conn, _ATTEMPTED)
     conn.close()
     check("续跑再清 2 篇", left2 == left - 2, f"剩余 {left2}")
 
@@ -209,7 +246,7 @@ def main() -> None:
     # ⚠️ 到这一步还剩 1 篇（5 - 2 - 2），batch=10 正好把它清完
     r = run("--db", db, "--reset-attempted", "--batch", "10", "--apply")
     conn = sqlite3.connect(db)
-    att_left = q1(conn, "SELECT COUNT(*) FROM content_pool WHERE body_attempted_at IS NOT NULL")
+    att_left = q1(conn, _ATTEMPTED)
     untouched = q1(
         conn,
         "SELECT COUNT(*) FROM content_pool WHERE url='https://npr.org/f' AND body_attempted_at IS NULL",
@@ -222,6 +259,22 @@ def main() -> None:
     #    batch=10 那轮其实清掉了最后 1 篇，输出是「已重置 1 篇」）
     r = run("--db", db, "--reset-attempted", "--batch", "10", "--apply")
     check("全部清完后**再跑**报「无需重置」", "无需重置" in r.stdout, r.stdout[-200:])
+
+    # ── 【7b】🔴 不可再分发的源：重置它没有意义，**不该动** ────────
+    section("7b · 不越界：`redistributable = 0` 的条目标记不该被清")
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    r0_still_tried = q1(
+        conn,
+        "SELECT COUNT(*) FROM content_pool p "
+        "LEFT JOIN content_source s ON s.id = p.source_id "
+        "WHERE COALESCE(s.redistributable, 0) = 0 AND p.body_attempted_at IS NOT NULL",
+    )
+    conn.close()
+    # 它**永远**进不了 `pick_body_candidates` 的候选池（SQL 按 redistributable 过滤）
+    # → 清掉它的标记只会制造「待重置列表里有一条永远清不掉的项」这种假象
+    # 📌 判据：**重置「候选资格」时，条件要与「挑候选」的条件同源**
+    check("🔴 不可再分发的条目仍保持「已尝试」（没被无意义地清掉）",
+          r0_still_tried == 1, f"实得 {r0_still_tried}")
 
     # ── 【8】库不存在时应干净报错（不要静默建空库）──────────────
     section("8 · 边界：库不存在")

@@ -144,8 +144,18 @@ def action_plan(conn: sqlite3.Connection) -> None:
     dirty = [(r[0], r[1], r[2]) for r in rows if r[2] and is_source_error_summary(r[2])]
     with_body = [r for r in rows if r[3] and r[3].strip()]
     no_body = [r for r in rows if not (r[3] and r[3].strip())]
+    # ⚠️ 口径必须与 `action_reset_attempted` **完全一致**（含 redistributable 过滤），
+    #    否则 plan 报的「重置对象 N 篇」与实际会重置的不是同一批 —— 那正是
+    #    「同一件事两处口径」的经典表现（数字看着对，成员对不上）。
     attempted = conn.execute(
-        "SELECT COUNT(*) FROM content_pool WHERE body_attempted_at IS NOT NULL"
+        "SELECT COUNT(*) FROM content_pool p "
+        "LEFT JOIN content_source s ON s.id = p.source_id "
+        "WHERE COALESCE(s.redistributable, 0) = 1 AND p.body_attempted_at IS NOT NULL"
+    ).fetchone()[0]
+    not_fetchable = conn.execute(
+        "SELECT COUNT(*) FROM content_pool p "
+        "LEFT JOIN content_source s ON s.id = p.source_id "
+        "WHERE COALESCE(s.redistributable, 0) = 0 AND p.body_attempted_at IS NOT NULL"
     ).fetchone()[0]
 
     print("=" * 70)
@@ -153,8 +163,12 @@ def action_plan(conn: sqlite3.Connection) -> None:
     print("=" * 70)
     print(f"  全表                    : {total} 篇")
     print(f"  有正文                   : {len(with_body)} 篇  ← 重抓的主要对象（换 Markdown）")
-    print(f"  无正文                   : {len(no_body)} 篇")
-    print(f"  已尝试过抓取（attempted） : {attempted} 篇  ← reset 会清掉这些标记")
+    print(f"  无正文                   : {len(no_body)} 篇  ← ⚠️ 也值得重抓（新提取器可能救回来）")
+    print(f"  重置对象（可抓取且试过）   : {attempted} 篇  ← reset 会清这些标记")
+    if not_fetchable:
+        print(f"  ⚠️ 不可抓取但试过的        : {not_fetchable} 篇（跳过 —— 它们永远不会进候选池）")
+    rounds = -(-attempted // 100) if attempted else 0
+    print(f"     预估耗时              : {rounds} 轮 × 6h ≈ {rounds * 6} 小时（每轮上限 100 篇）")
     print()
     print(f"🔴 待清理的「源站报错」摘要 : {len(dirty)} 篇")
     for i, (rid, title, summ) in enumerate(dirty[:20]):
@@ -205,17 +219,28 @@ def action_clean_summary(conn: sqlite3.Connection, apply: bool) -> None:
 
 def action_reset_attempted(conn: sqlite3.Connection, batch: int, apply: bool) -> None:
     """分批清 `body_attempted_at`，让存量重新进候选队列。"""
-    # 🔑 只挑**已尝试过**的，且**按发布时间倒序**（先重抓用户最可能读到的新文章）
-    #    —— 与 `pick_body_candidates` 的排序口径一致，避免两处口径不同。
+    # 🔑 两个条件都必须与 `pick_body_candidates` 的 WHERE **对齐**：
+    #    · `redistributable = 1` —— 否则会重置「永远不会被挑中」的条目：
+    #      标记被清掉，但下一轮 SQL 又按 `redistributable` 把它过滤掉
+    #      → 一次**无意义的状态变更**（而且是静默的）。
+    #      📌 判据：**重置「候选资格」时，条件要与「挑候选」的条件同源**。
+    #      ⚠️ 实测（2026-10-02）当前生产库 269 篇**全是** r=1 —— 所以这条现在不改变结果；
+    #         加它是为了让「将来出现 r=0 的源」时行为仍正确。
+    #    · `body_attempted_at IS NOT NULL` —— 只重置**试过的**（没试过的本来就在队列里）
+    #    排序：**按发布时间倒序**（先重抓用户最可能读到的新文章）—— 与 `pick_body_candidates` 一致，
+    #    避免两处口径不同（否则「先重置的」与「先被挑中的」不是同一批，分批节奏会乱）。
     rows = conn.execute(
-        "SELECT id, title FROM content_pool "
-        "WHERE body_attempted_at IS NOT NULL "
-        "ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT ?",
+        "SELECT p.id, p.title FROM content_pool p "
+        "LEFT JOIN content_source s ON s.id = p.source_id "
+        "WHERE COALESCE(s.redistributable, 0) = 1 AND p.body_attempted_at IS NOT NULL "
+        "ORDER BY COALESCE(p.published_at, p.fetched_at) DESC LIMIT ?",
         (batch,),
     ).fetchall()
 
     total_pending = conn.execute(
-        "SELECT COUNT(*) FROM content_pool WHERE body_attempted_at IS NOT NULL"
+        "SELECT COUNT(*) FROM content_pool p "
+        "LEFT JOIN content_source s ON s.id = p.source_id "
+        "WHERE COALESCE(s.redistributable, 0) = 1 AND p.body_attempted_at IS NOT NULL"
     ).fetchone()[0]
 
     print(f"本轮将重置：{len(rows)} 篇（当前待重置总数 {total_pending} 篇）")
