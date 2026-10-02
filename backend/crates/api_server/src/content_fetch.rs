@@ -418,21 +418,51 @@ pub async fn fetch_all(now_utc: &str) -> Vec<FetchOutcome> {
 ///    否则它不是「分摊到多轮」，而是**永远落后**。
 pub const MAX_BODY_FETCH_PER_ROUND: usize = 100;
 
-/// 补抓正文：挑「有 url、允许全文、还没 body、也没试过」的条目。
+/// 补抓正文：挑「有 url、允许全文、还没试过」的条目。
 ///
-/// # 🔴 查询条件的三重含义
+/// # 查询条件的含义
 /// ```sql
 /// WHERE redistributable = 1 AND body_attempted_at IS NULL AND url <> ''
+///   AND (?2 = 1 OR body IS NULL OR body = '')      ← ?2 = 重抓模式
 /// ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT ?
 /// ```
 /// · `redistributable = 1` —— 按源控制（`redistributable = 0` 的源**有意只存摘要**）
 /// · `body_attempted_at IS NULL` —— **只试一次**（见 `content_pool.body_attempted_at` 的说明）
 /// · **按时间倒序** —— 先抓最新的（用户最可能读到的那批）
 ///
-/// ⚠️ **不筛 `body IS NULL`**：`body` 为空的条目本身就满足（NULL 或空串）——
-///    但更重要的是：**`body` 为空且已试过**的不该再抓，这由 `body_attempted_at` 保证。
-///    两个条件叠加就够，不必再写 `body IS NULL`（写了也不影响，只是多余）。
-pub fn pick_body_candidates(conn: &Connection, limit: usize) -> Result<Vec<(i64, String)>, String> {
+/// # 🔴🔴 `(body IS NULL OR body = '')` 与「重抓模式」
+///
+/// ## 这条注释曾经写错（2026-10-02 实测定案）
+///
+/// 原文写的是「**不筛 `body IS NULL`**……两个条件叠加就够，不必再写 `body IS NULL`
+/// （**写了也不影响，只是多余**）」。**「写了也不影响」这句是错的**：
+///
+/// | 场景 | `body` 为空？ | 加了这条有影响吗 |
+/// |---|---|---|
+/// | **常规补抓**（第一次抓某条没有正文的）| 是 | ❌ 无影响（本来就该抓）|
+/// | **存量重抓**（想让已有正文的换格式/重取）| **否** | 🔴 **致命 —— 永远抓不到** |
+///
+/// 写这段注释时只想了场景 1。实测代价：清掉 328 条的 `body_attempted_at` 之后，
+/// 「待重抓」看着是 148 条，而**真正会被挑中的只有 11–12 条** ——
+/// 其余 136 条因为「**已有正文**」被永久排除，**且全程零报错**。
+///
+/// ## 所以加 `refetch_existing` 开关（而不是删掉那个条件）
+///
+/// · **默认 `false`** ⇒ SQL 里 `(?2 = 1 OR …)` 的第一项为假 ⇒ **行为与改动前逐字相同**
+///   （现有调用方零风险）
+/// · `true` ⇒ 不再要求 `body` 为空 ⇒ 重置过标记的存量**真的会被挑中**
+///   （`body_attempted_at IS NULL` 仍然生效 ⇒ 依然「每条只试一次」，不会反复抓）
+///
+/// 由 [`refetch_existing_enabled`]（环境变量 `COEVO_REFETCH_BODIES=1`）驱动，
+/// 只在「存量迁移窗口」临时打开、跑完立刻关。
+///
+/// 📌 判据：**改「下游怎么筛输入」时，要让旧行为成为默认值** ——
+///    同一个函数同时服务两种语义时，用**参数**把差异显式化，别靠调用方记着改。
+pub fn pick_body_candidates(
+    conn: &Connection,
+    limit: usize,
+    refetch_existing: bool,
+) -> Result<Vec<(i64, String)>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT p.id, p.url FROM content_pool p \
@@ -440,18 +470,33 @@ pub fn pick_body_candidates(conn: &Connection, limit: usize) -> Result<Vec<(i64,
              WHERE COALESCE(s.redistributable, 0) = 1 \
                AND p.body_attempted_at IS NULL \
                AND p.url <> '' \
-               AND (p.body IS NULL OR p.body = '') \
+               AND (?2 = 1 OR p.body IS NULL OR p.body = '') \
              ORDER BY COALESCE(p.published_at, p.fetched_at) DESC \
              LIMIT ?1",
         )
         .map_err(|e| format!("prepare body candidates: {}", e))?;
     let rows = stmt
-        .query_map(rusqlite::params![limit as i64], |r| {
-            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
-        })
+        .query_map(
+            rusqlite::params![limit as i64, refetch_existing as i64],
+            |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
+        )
         .map_err(|e| format!("query body candidates: {}", e))?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("collect body candidates: {}", e))
+}
+
+/// 「重抓模式」开关 —— `COEVO_REFETCH_BODIES=1` 时为真（**默认关**）。
+///
+/// 见 [`pick_body_candidates`] 的「重抓模式」一节。用途只有一个：
+/// **把已重置抓取标记的存量重新抓一遍**（换提取器 / 换格式 / 补漏）。
+///
+/// ⚠️ 用完**必须关掉**（删掉环境变量并重启）—— 否则每轮都会去抓
+///    「已经有正文但还没试过」的条目（正常运行时那批应该是空的，代价不大，
+///    但语义上「重抓」不该是常态）。
+pub fn refetch_existing_enabled() -> bool {
+    std::env::var("COEVO_REFETCH_BODIES")
+        .map(|v| v.trim() == "1")
+        .unwrap_or(false)
 }
 
 /// 写入抓到的正文 + **无论成败都记下尝试时间**。
@@ -592,7 +637,7 @@ pub async fn fetch_article_body_diagnostic(url: &str) -> BodyOutcome {
 pub async fn fetch_bodies_round() -> (usize, usize) {
     let candidates = {
         let conn = crate::db_pool::get_conn();
-        match pick_body_candidates(&conn, MAX_BODY_FETCH_PER_ROUND) {
+        match pick_body_candidates(&conn, MAX_BODY_FETCH_PER_ROUND, refetch_existing_enabled()) {
             Ok(c) => c,
             Err(e) => {
                 tracing::error!("content_fetch: 挑正文候选失败: {}", e);
@@ -714,6 +759,15 @@ pub fn start_fetch_scheduler() {
             FIRST_FETCH_DELAY_SECS,
             interval
         );
+        // 🔴 重抓模式**必须显式可见** —— 它是给「存量迁移」用的临时开关。
+        //    忘了关的后果：每轮都去抓「已有正文但未试过」的条目（正常运行时那批应为空），
+        //    虽不致命，但语义上「重抓」不该是常态 ⇒ 用 WARN 级别，让人一眼看到。
+        if refetch_existing_enabled() {
+            tracing::warn!(
+                "content_fetch: 🔴 **重抓模式已开启**（COEVO_REFETCH_BODIES=1）—— \
+                 本轮起会重抓「已有正文」的条目（存量迁移用）。**迁移完成后请立刻关掉并重启**"
+            );
+        }
         std::thread::sleep(std::time::Duration::from_secs(FIRST_FETCH_DELAY_SECS));
         loop {
             let outcomes = rt.block_on(fetch_all(&now_utc_iso()));
@@ -758,8 +812,7 @@ mod tests {
         }
     }
 
-    fn item(url: &str) -> ParsedItem {
-        ParsedItem {
+    fn item(url: &str) -> ParsedItem {        ParsedItem {
             title: "T".into(),
             summary: Some("S".into()),
             body: Some("B".into()),
@@ -1031,5 +1084,86 @@ mod tests {
             sanitize_summary(Some("A normal summary sentence.")),
             Some("A normal summary sentence.")
         );
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // 重抓模式（2026-10-02 · 「存量重抓被阻塞」的根因）
+    // ════════════════════════════════════════════════════════════════
+
+    /// 造一条 `content_pool`（只填挑候选用到的列）。
+    fn pool_row(
+        conn: &Connection,
+        id: i64,
+        source_id: i64,
+        url: &str,
+        body: Option<&str>,
+        attempted: Option<&str>,
+    ) {
+        conn.execute(
+            "INSERT INTO content_pool \
+             (id, source_id, title, url, body, body_attempted_at, fetched_at) \
+             VALUES (?1, ?2, 'T', ?3, ?4, ?5, '2026-10-01T00:00:00Z')",
+            rusqlite::params![id, source_id, url, body, attempted],
+        )
+        .unwrap();
+    }
+
+    fn picked_ids(conn: &Connection, refetch: bool) -> Vec<i64> {
+        pick_body_candidates(conn, 1000, refetch)
+            .unwrap()
+            .into_iter()
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// 🔴 默认模式：**有正文 ⇒ 不挑** —— 这是改动前就有的行为，必须逐字保持。
+    #[test]
+    fn test_pick_candidates_default_skips_existing_body() {
+        let c = mem();
+        pool_row(&c, 900, 1, "https://x.test/a", Some("已有正文"), None);
+        pool_row(&c, 901, 1, "https://x.test/b", None, None);
+        pool_row(&c, 902, 1, "https://x.test/c", Some("x"), Some("2026-10-01T00:00:00Z"));
+
+        let ids = picked_ids(&c, false);
+        assert!(ids.contains(&901), "无正文 + 未试过 ⇒ 应被挑中");
+        assert!(
+            !ids.contains(&900),
+            "🔴 默认模式：有正文 ⇒ **不挑**（与改动前一致）"
+        );
+        assert!(!ids.contains(&902), "已试过 ⇒ 不挑（「只试一次」）");
+    }
+
+    /// 🔴 重抓模式：**清过标记的存量（含已有正文的）必须被挑中** ——
+    ///    这正是「清 `body_attempted_at` 却不重抓」那个缺陷的守门人。
+    #[test]
+    fn test_pick_candidates_refetch_mode_includes_existing_body() {
+        let c = mem();
+        pool_row(&c, 910, 1, "https://x.test/d", Some("已有正文"), None);
+        pool_row(&c, 911, 1, "https://x.test/e", None, None);
+        pool_row(&c, 912, 1, "https://x.test/f", Some("x"), Some("2026-10-01T00:00:00Z"));
+
+        let ids = picked_ids(&c, true);
+        assert!(
+            ids.contains(&910),
+            "🔴 重抓模式：有正文 + 未试过（= 刚被重置过标记）⇒ **必须挑中**。\
+             不挑 = 清标记白做 = 线上那个「136 篇永远不被重抓」的缺陷"
+        );
+        assert!(ids.contains(&911), "无正文的当然也要");
+        assert!(
+            !ids.contains(&912),
+            "⚠️ 重抓模式**不取消**「只试一次」—— 已试过的仍不挑（否则会反复抓）"
+        );
+    }
+
+    /// ⚠️ 两种模式的**唯一**差异就是「body 是否可为空」，其余条件必须一致。
+    #[test]
+    fn test_refetch_mode_differs_only_by_body_condition() {
+        let c = mem();
+        pool_row(&c, 920, 1, "https://x.test/g", Some("正文"), None);
+        let d = picked_ids(&c, false);
+        let r = picked_ids(&c, true);
+        // 差集应当**恰好**是那条「有正文」的
+        assert_eq!(d.len() + 1, r.len(), "只应多挑 1 条：{:?} vs {:?}", d, r);
+        assert!(r.contains(&920) && !d.contains(&920));
     }
 }

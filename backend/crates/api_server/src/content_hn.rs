@@ -111,7 +111,7 @@ pub fn parse_story_item(json: &str) -> Result<Option<ParsedItem>, String> {
         .unwrap_or_else(|| discussion_url(id));
 
     // `text` 是 HTML（Ask HN 有）→ 剥成纯文本当正文；story 通常没有
-    // 🔑 **正文用「保留段落」版本**（同 RSS 的 `extract_body`）—— 否则贴多段的
+    // 🔑 **正文用「保留段落」版本**（同 RSS 的 `classify_encoded`）—— 否则贴多段的
     //    Ask HN 会挤成一整行（HN 的 `<p>` 用得很多）
     let body = v
         .get("text")

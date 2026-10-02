@@ -51,6 +51,7 @@
 
 import argparse
 import os
+import re
 import sqlite3
 import sys
 
@@ -128,6 +129,127 @@ def self_check() -> None:
         print("      → 两份实现必须一致，否则会「新数据干净、老数据脏」。")
         sys.exit(2)
 
+    # 判据 ②（「正文其实是片段」）也自检 —— 同样要求与 Rust 侧一致
+    bad2 = []
+    for text, want in _SELF_CHECK_CASES_EXCERPT:
+        got = is_excerpt_marker_body(text)
+        if got != want:
+            bad2.append((text[:60], want, got))
+    if bad2:
+        print("🔴 自检失败：「片段」判据与预期不一致 —— **不要继续**。")
+        for t, want, got in bad2:
+            print(f"   · {t[:60]!r} 期望 {want} 实际 {got}")
+        print()
+        print("   📌 判据在**两处**各有一份实现，必须一致：")
+        print("      · Rust：`content_rss.rs` 的 `EXCERPT_MARKERS` / `classify_encoded`")
+        print("      · 本脚本：`EXCERPT_MARKERS` / `is_excerpt_marker_body`")
+        sys.exit(2)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 判据 ②：「这段 body 其实是**片段**」（**必须与 Rust 侧一致**）
+#
+# 🔴 为什么需要它（2026-10-02 · 内容源报告发现）
+#
+# Ars Technica 的 `content:encoded` 是 **161 词片段**（尾部 `Read full article`），
+# 而它的 `description` **是空的** ⇒ Rust 侧原来的相对判据
+# `summary=None => 更长的` **恒真** ⇒ 片段被当全文存进 `body`。
+#
+# 后果（两个都严重）：
+#   ① 用户看到的正文尾部直接是 `Read full article` / `Comments`
+#   ② `pick_body_candidates` 要求 `body` 为空才补抓 ⇒ **永远不去抓网页全文**
+#
+# ⇒ Rust 侧已修（`classify_encoded`）；本脚本负责把**已经存进库的**片段迁出来。
+#
+# ⚠️ 与 Rust 侧判据的**一处有意差异**（别顺手「修」成一样）：
+#    Rust 的 `classify_encoded` 有**两道闸**（片段标记 + 长度下限），
+#    本脚本**只用片段标记**这一道 —— 因为存量 `body` 可能来自**网页提取**，
+#    而**短的正文是合法的**（不是片段）。长度闸只适用于
+#    「RSS 的 `content:encoded` 够不够格算全文」这个场景。
+#    📌 判据的适用场景不同 ⇒ 不能把闸门照搬。
+# ─────────────────────────────────────────────────────────────────────
+
+#: **强标记**：短语级、无歧义 ⇒ **子串**匹配（与 Rust `EXCERPT_MARKERS_STRONG` 一致）
+#:
+#: 🔴 必须按**子串**匹配 —— 实测 Ars 的形态是标记**紧跟在正文最后一句后面**：
+#:    `…they found.Read full article\nComments`
+#:    ⇒ 我最初写成「整行匹配」，在真实 fixture 上**一条都认不出来**。
+EXCERPT_MARKERS_STRONG: tuple[str, ...] = (
+    "read full article",
+    "read the full article",
+    "read the full story",
+    "read the rest of this article",
+    "read the complete article",
+    "view the full article",
+    "continue reading",
+)
+
+#: **弱标记**：日常措辞 ⇒ 只在**整行就是它**时才算（与 Rust 侧一致）
+EXCERPT_MARKERS_WEAK: tuple[str, ...] = ("read more", "read on", "full story")
+
+#: 片段尾部的噪音行 —— 与 Rust `content_rss::EXCERPT_NOISE_LINES` 一致
+EXCERPT_NOISE_LINES: tuple[str, ...] = ("comments", "comment", "share this story")
+
+#: 自检用例（**含真实形态**，见上）
+_SELF_CHECK_CASES_EXCERPT: list[tuple[str, bool]] = [
+    # ① 🔴 Ars 的**真实**形态：标记紧跟正文（不独立成行）
+    (
+        "Attempts to see what was in the packets failed.\n"
+        "But the traces showed something else.Read full article\nComments",
+        True,
+    ),
+    # ② 标记独立成行
+    ("Some teaser text about robots.\n\nRead full article\n\nComments", True),
+    # ③ 变体措辞
+    ("Teaser one.\nContinue reading", True),
+    ("Teaser two.\nRead the full story", True),
+    # ④ 🔴 正文里**提到** read more（弱标记，非独立行）⇒ 不是片段
+    ("You can read more about this in the appendix. It is a long article.", False),
+    # ⑤ 正常全文（无任何标记）⇒ 不是片段
+    ("A normal full article body.\n\nWith a second paragraph.", False),
+    # ⑥ 空 / 纯空白 ⇒ 不是片段（那是「没有正文」，另一回事）
+    ("", False),
+    ("   \n  ", False),
+]
+
+
+def has_excerpt_marker(text: str) -> bool:
+    """文本里有没有「点这里看全文」标记（强标记按子串、弱标记按整行）。"""
+    if not text:
+        return False
+    low = text.lower()
+    if any(m in low for m in EXCERPT_MARKERS_STRONG):
+        return True
+    return any(l.strip().lower() in EXCERPT_MARKERS_WEAK for l in text.splitlines())
+
+
+def strip_excerpt_markers(text: str) -> str:
+    """剥掉标记与噪音行（**保留正文** —— 标记可能紧跟在正文后面）。"""
+    s = text
+    for m in EXCERPT_MARKERS_STRONG:
+        # 大小写不敏感替换（Python 没有直接的，用 re）
+        s = re.sub(re.escape(m), "", s, flags=re.IGNORECASE)
+    kept = [
+        line.strip()
+        for line in s.splitlines()
+        if line.strip()
+        and line.strip().lower() not in EXCERPT_NOISE_LINES
+        and line.strip().lower() not in EXCERPT_MARKERS_WEAK
+    ]
+    return "\n".join(kept).strip()
+
+
+def is_excerpt_marker_body(text: str) -> bool:
+    """这段 `body` 里有片段标记 ⇒ 它其实是片段，不是全文。
+
+    ⚠️ **只按标记判**（有明确证据），**不加长度闸** —— 存量 `body` 可能来自
+       **网页提取**，而**短的正文是合法的**（不是片段）。
+       长度闸只适用于「RSS 的 `content:encoded` 够不够格算全文」那个场景。
+    """
+    if not text or not text.strip():
+        return False
+    return has_excerpt_marker(text)
+
 
 # ─────────────────────────────────────────────────────────────────────
 # 动作
@@ -144,6 +266,8 @@ def action_plan(conn: sqlite3.Connection) -> None:
     dirty = [(r[0], r[1], r[2]) for r in rows if r[2] and is_source_error_summary(r[2])]
     with_body = [r for r in rows if r[3] and r[3].strip()]
     no_body = [r for r in rows if not (r[3] and r[3].strip())]
+    # 🆕 「body 其实是片段」——这些**不该算有正文**（见 `action_demote_excerpt_bodies`）
+    excerpt_bodies = [r for r in with_body if is_excerpt_marker_body(r[3])]
     # ⚠️ 口径必须与 `action_reset_attempted` **完全一致**（含 redistributable 过滤），
     #    否则 plan 报的「重置对象 N 篇」与实际会重置的不是同一批 —— 那正是
     #    「同一件事两处口径」的经典表现（数字看着对，成员对不上）。
@@ -164,6 +288,11 @@ def action_plan(conn: sqlite3.Connection) -> None:
     print(f"  全表                    : {total} 篇")
     print(f"  有正文                   : {len(with_body)} 篇  ← 重抓的主要对象（换 Markdown）")
     print(f"  无正文                   : {len(no_body)} 篇  ← ⚠️ 也值得重抓（新提取器可能救回来）")
+    if excerpt_bodies:
+        print(
+            f"  🔴 其中**其实是片段**         : {len(excerpt_bodies)} 篇  "
+            f"← 用 `--demote-excerpt-bodies` 迁走（它们不算真正文）"
+        )
     print(f"  重置对象（可抓取且试过）   : {attempted} 篇  ← reset 会清这些标记")
     if not_fetchable:
         print(f"  ⚠️ 不可抓取但试过的        : {not_fetchable} 篇（跳过 —— 它们永远不会进候选池）")
@@ -179,8 +308,11 @@ def action_plan(conn: sqlite3.Connection) -> None:
     if not dirty:
         print("    （无 —— 要么源站没给过这类脏数据，要么已经清过了）")
     print()
-    print("📌 下一步：确认影响面无误后，加 `--clean-summary --apply` /")
-    print("          `--reset-attempted --batch 100 --apply` 真正执行。")
+    print("📌 下一步（按这个顺序 —— 顺序反了会白跑）：")
+    print("   ① `--demote-excerpt-bodies --apply`  把「其实是片段」的 body 迁到摘要（幂等）")
+    print("   ② 服务开重抓模式：COEVO_REFETCH_BODIES=1（systemd drop-in）+ 重启")
+    print("   ③ `--reset-attempted --batch N --apply` 分批清标记（现在能被挑中了）")
+    print("   ④ 跑完关掉重抓模式（删 drop-in + 重启）")
 
 
 def action_clean_summary(conn: sqlite3.Connection, apply: bool) -> None:
@@ -215,6 +347,79 @@ def action_clean_summary(conn: sqlite3.Connection, apply: bool) -> None:
         "SELECT COUNT(*) FROM content_pool WHERE summary IS NOT NULL"
     ).fetchone()[0]
     print(f"✅ 已清理 {len(victims)} 篇（剩余非空 summary {left} 篇）")
+
+
+def action_demote_excerpt_bodies(conn: sqlite3.Connection, apply: bool) -> None:
+    """把「其实是片段」的 `body` 迁到 `summary`，并把 `body` 置空（幂等）。
+
+    # 为什么要迁（而不是留在 `body`）
+
+    `body` 的语义是**全文**。它被填上一个片段会造成两件事：
+    · 上层无法区分「拿到全文」与「只拿到片段」
+    · `pick_body_candidates` 要求 `body` 为空才补抓 ⇒ **永远不去抓网页全文**
+
+    # 迁成什么样
+
+    | 列 | 迁移前 | 迁移后 |
+    |---|---|---|
+    | `body` | 片段（含 `Read full article`）| **NULL** |
+    | `summary` | 14 词导读 | **片段**（已剥标记）—— 取更有用的那个 |
+    | `body_attempted_at` | 已设 | **NULL**（重新进候选队列）|
+
+    ⚠️ **`body_attempted_at` 也清** —— 否则 `body` 空了但「已试过」还在 ⇒ 仍然不会被抓。
+       📌 判据：**改「内容列」时要连带检查「控制流列」** —— 两者是一件事的两半。
+
+    ⚠️ 与 [`better_summary`]（Rust 侧）同口径：**明显更长才替换源摘要** ——
+       否则 NPR 那种「两者本来就一样」的情况会无谓地换掉源摘要。
+    """
+    rows = conn.execute(
+        "SELECT id, title, summary, body FROM content_pool "
+        "WHERE body IS NOT NULL AND body <> ''"
+    ).fetchall()
+    victims = [r for r in rows if is_excerpt_marker_body(r[3])]
+
+    print(f"待迁移（body 里有片段标记）：{len(victims)} 篇  /  有正文总数 {len(rows)} 篇")
+    for rid, title, summ, body in victims[:15]:
+        print(f"    id={rid:<6} body={len(body):>6}B → 摘要={len(summ or '')}B  {str(title)[:44]}")
+    if len(victims) > 15:
+        print(f"    …（还有 {len(victims) - 15} 篇）")
+
+    if not victims:
+        print("✅ 无需迁移（已干净）")
+        return
+
+    if not apply:
+        print()
+        print("⚠️ DRY-RUN：什么都没写。要真写请加 `--apply`。")
+        return
+
+    moved_summary = 0
+    for rid, _title, summ, body in victims:
+        cleaned = strip_excerpt_markers(body)
+        # 与 Rust `better_summary` 同口径：片段**明显更长**才替换源摘要
+        use_excerpt = bool(cleaned)
+        if summ and summ.strip() and cleaned:
+            dw = len(summ.split())
+            ew = len(cleaned.split())
+            if not (ew >= dw * 2 and ew - dw >= 50):
+                use_excerpt = False
+        new_summary = cleaned if use_excerpt else (summ if summ and summ.strip() else cleaned)
+        if not (summ and summ.strip()):
+            moved_summary += 1
+        conn.execute(
+            "UPDATE content_pool SET body = NULL, summary = ?1, body_attempted_at = NULL "
+            "WHERE id = ?2",
+            (new_summary, rid),
+        )
+    conn.commit()
+
+    left = conn.execute(
+        "SELECT COUNT(*) FROM content_pool WHERE body IS NOT NULL AND body <> ''"
+    ).fetchone()[0]
+    print(f"✅ 已迁移 {len(victims)} 篇（其中 {moved_summary} 篇的摘要由片段兜底）")
+    print(f"   剩余有正文 {left} 篇 · 它们的 `body_attempted_at` 已清 → 会重新进候选队列")
+    print()
+    print("📌 下一步：确认服务开了重抓模式（COEVO_REFETCH_BODIES=1），否则它们仍不会被挑中")
 
 
 def action_reset_attempted(conn: sqlite3.Connection, batch: int, apply: bool) -> None:
@@ -281,12 +486,22 @@ def main() -> None:
     ap.add_argument("--db", required=True, help="coevo.db 路径")
     ap.add_argument("--plan", action="store_true", help="只读：报告影响面")
     ap.add_argument("--clean-summary", action="store_true", help="清「源站报错」摘要")
+    ap.add_argument(
+        "--demote-excerpt-bodies",
+        action="store_true",
+        help="把「其实是片段」的 body 迁到 summary 并置空 body（见该函数的说明）",
+    )
     ap.add_argument("--reset-attempted", action="store_true", help="分批清抓取标记")
     ap.add_argument("--batch", type=int, default=100, help="--reset-attempted 每批篇数")
     ap.add_argument("--apply", action="store_true", help="真写库（默认 dry-run）")
     args = ap.parse_args()
 
-    if not (args.plan or args.clean_summary or args.reset_attempted):
+    if not (
+        args.plan
+        or args.clean_summary
+        or args.demote_excerpt_bodies
+        or args.reset_attempted
+    ):
         ap.print_help()
         sys.exit(1)
 
@@ -300,7 +515,9 @@ def main() -> None:
     # ⚠️ 用**只读**连接做 plan；写操作用读写连接。
     #    （只读 URI 拼错会「静默建一个空库」—— 见 memory 判据库，
     #     所以这里对「文件存在」先显式检查了一次。）
-    if args.plan and not (args.clean_summary or args.reset_attempted):
+    if args.plan and not (
+        args.clean_summary or args.demote_excerpt_bodies or args.reset_attempted
+    ):
         conn = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
         try:
             action_plan(conn)
@@ -317,6 +534,10 @@ def main() -> None:
             print("─" * 70)
             print("【动作】清理「源站报错」摘要")
             action_clean_summary(conn, args.apply)
+        if args.demote_excerpt_bodies:
+            print("─" * 70)
+            print("【动作】把「其实是片段」的正文迁到摘要")
+            action_demote_excerpt_bodies(conn, args.apply)
         if args.reset_attempted:
             print("─" * 70)
             print("【动作】分批重置抓取标记")

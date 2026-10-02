@@ -49,9 +49,14 @@ pub struct ParsedItem {
     pub summary: Option<String>,
     /// 正文（纯文本）。
     ///
-    /// 🔴 **只在「源确实给了比摘要更长的正文」时才有值** —— 见 [`extract_body`]。
-    ///    典型情况：NPR 的 `content:encoded` 与 `description` **内容相同**，
+    /// 🔴 **只在「源确实给了全文」时才有值** —— 见 [`classify_encoded`]。
+    ///    源给的是**片段**（teaser）时**不填这里**（片段会归到 `summary`，见下）。
+    ///
+    ///    典型情况一：NPR 的 `content:encoded` 与 `description` **内容相同**，
     ///    此时 `body = None`（body 若照抄 summary，调用方会误以为拿到了全文）。
+    ///    典型情况二：Ars Technica 的 `content:encoded` 是**161 词片段**
+    ///    （尾部带 `Read full article`），而它的 `description` **是空的** ——
+    ///    此时片段归到 `summary`，`body` 留空 ⇒ 上层会去抓网页全文。
     pub body: Option<String>,
     /// 原文链接。**幂等键**（`content_pool` 的 `UNIQUE(url)`）→ 无链接的条目会被跳过。
     pub url: String,
@@ -99,11 +104,27 @@ pub fn parse_rss(xml: &str, tz_offset_min: i32) -> Result<Vec<ParsedItem>, Strin
             continue;
         };
 
-        let summary = child_text(item, "description")
+        let description = child_text(item, "description")
             .map(|s| strip_html(&s))
             .filter(|s| !s.is_empty());
 
-        let body = extract_body(item, summary.as_deref());
+        // 🔴 「片段」**不进 `body`**（`body` 的语义是「全文」），但**内容不丢**：
+        //    归档进 `summary`（并且**取更有用的那个**，见 [`better_summary`]）。
+        //
+        //    这样两个后果都是我们要的：
+        //    ① 该条 `body` 为空 ⇒ 满足 `pick_body_candidates` 的条件 ⇒ **会去抓网页全文**
+        //       （原实现把片段填进 `body` ⇒ 那条永远不去抓 ⇒ 片段就是用户看到的全部）
+        //    ② 用户在「摘要」位置仍读得到内容（端侧对摘要会如实显示「只有摘要」提示）
+        //
+        //    ⚠️ 不这么做的话（片段直接丢、只留源摘要），**抓不到网页全文的源会大幅缩水** ——
+        //       实测 Ars Technica 文章页对两种 UA 都返回 **405**，我们拿不到它的全文，
+        //       而它的 `description` 只有 **14 词导读**、片段却有 **161 词正文开头**。
+        let (summary, body) = match classify_encoded(item, description.as_deref()) {
+            EncodedKind::Full(t) => (description, Some(t)),
+            // 片段 → 进摘要（与源摘要比，取更有用的那个）
+            EncodedKind::Excerpt(t) => (better_summary(description, t), None),
+            EncodedKind::Absent => (description, None),
+        };
         out.push(ParsedItem {
             title: strip_html(&title),
             summary,
@@ -172,7 +193,7 @@ fn extract_link(item: roxmltree::Node) -> Option<String> {
     Some(t.to_string())
 }
 
-/// 「`content:encoded` 确实比摘要长」的判据阈值（**字符**）。
+/// 「`content:encoded` 与摘要**量级相近**」的判据阈值（**字符**）。
 ///
 /// # 🔑 为什么是 100
 /// `content:encoded` 与 `description` **同源**时（NPR 就是），多出来的部分基本是
@@ -180,36 +201,233 @@ fn extract_link(item: roxmltree::Node) -> Option<String> {
 /// 实测 NPR 那条只多 **~32 字符**。而**真全文**会多出几百到几千字符。
 /// → 取 100 把「样板级差异」与「量级差异」分开。
 ///
-/// ⚠️ 代价（**已知且接受**）：一篇很短的报道（全文只比摘要多几十字符）会被判成
-///    「没拿到全文」→ `body = None` → 上层退回用摘要展示。
-///    那种情况下两者本来就差不多，**不影响可读性**；
-///    而反过来（把摘要当全文存进 `body`）会**污染语义** —— 之后无法区分
-///    「我们没抓到全文」与「全文就这么长」。
+/// ⚠️ **这条是「相对判据」，本身不足以定案** —— 它依赖「摘要有意义」这个前提，
+///    而摘要**可能是空的**（Ars Technica 就是：`description` 为空）。
+///    ⇒ 必须配 [`MIN_FULL_BODY_WORDS`] 这道**绝对闸**，见 [`classify_encoded`]。
 const BODY_LONGER_THRESHOLD: usize = 100;
 
-/// 取正文（`content:encoded`），**仅当它确实比摘要更长**时返回。
+/// 算「全文」的**绝对下限**（词）。
 ///
-/// 🔑 为什么要比长度：实测 NPR 的 `content:encoded` 与 `description` **内容相同**
-///    （都是那段两句话的摘要，只是前者带 `<img>`/署名标签）。
-///    若无条件取 `content:encoded` 当正文，上层会把「摘要」当「全文」存进 `body`
-///    → 之后就无法区分「我们没抓到全文」和「全文就这么长」。
-///    → 用「明显更长」作判据，**拿不到全文时老实给 `None`**。
-fn extract_body(item: roxmltree::Node, summary: Option<&str>) -> Option<String> {
-    let raw = child_text(item, "encoded")?;
+/// # 🔴 为什么要这道闸（2026-10-02 实测暴露）
+///
+/// 原判据只有「比摘要长」这一条相对判据，写法是：
+/// ```ignore
+/// match summary { Some(s) => text.len() > s.len() + 100, None => true }
+/// ```
+/// ⇒ **摘要缺失时恒为 `true`**（`None => true`）。
+/// 而 Ars Technica 的 `description` **正是空的** ⇒ 它那段 **161 词的片段**
+/// （`content:encoded`，尾部带 `Read full article`）被当成了全文：
+/// · `body` 被填上片段 ⇒ 上层无法区分「拿到全文」与「只拿到片段」
+/// · 更糟：`pick_body_candidates` 要求 `body` 为空才补抓 ⇒ **永远不去抓网页全文**
+/// · 用户看到的正文尾部直接是 `Read full article` / `Comments`
+///
+/// # 取值依据（实测）
+/// | 源 | `content:encoded` 词数 |
+/// |---|---|
+/// | Ars Technica（**片段**）| 101 ~ 277 |
+/// | NPR（**片段**，与摘要同源）| 15 ~ 56 |
+/// | 真全文（Dev.to / NPR 网页提取）| 中位 768 ~ 923 |
+///
+/// → 取 **300**：高于实测片段的上界（277），低于真全文的量级。
+///
+/// ⚠️ **代价（已知且接受）**：一篇**真正的短文**（全文 < 300 词）会被归为「片段」⇒
+///    不进 `body`，但仍**归档为摘要**（[`EncodedKind::Excerpt`] 的处理）⇒
+///    · 用户仍读得到内容（端侧对摘要会显示「只有摘要」提示，是**如实**的）
+///    · 该条满足补抓条件 ⇒ 会去抓网页（拿到全文更好）
+///    ⇒ 这个方向上的误判是**可恢复、且不丢内容**的；
+///      反过来（把片段当全文）会**污染语义且挡住补抓**，不可恢复。
+const MIN_FULL_BODY_WORDS: usize = 300;
+
+/// **强标记**：短语级、**无歧义** ⇒ 按**子串**匹配。
+///
+/// # 🔴 为什么必须按子串（2026-10-02 实测推翻了「整行匹配」）
+///
+/// 我最初写成「整行匹配」，理由是「这类标记永远独立成行」。
+/// 用**真实 fixture** 一跑就红了 —— Ars 的实际形态是标记**紧跟在正文最后一句后面**：
+/// ```text
+/// …differences in behavior across experimental scenarios,” they found.Read full article
+/// Comments
+/// ```
+/// ⇒ 标记在**行尾**，不独立成行 ⇒ 整行匹配**一条都认不出来**（20 条全漏）。
+///
+/// 📌 判据：**「理想化样本」上成立的匹配方式，在真实数据上可能一条都命不中** ——
+///    写完判据要拿**真数据**跑一遍（同「按实际非可能」）。
+///
+/// 这些短语本身足够长、足够专有 ⇒ 按子串匹配的误伤面很小。
+const EXCERPT_MARKERS_STRONG: &[&str] = &[
+    "read full article",
+    "read the full article",
+    "read the full story",
+    "read the rest of this article",
+    "read the complete article",
+    "view the full article",
+    "continue reading",
+];
+
+/// **弱标记**：日常措辞，**只在一行只剩它时**才算。
+///
+/// ⚠️ 按子串匹配会误伤正文（`You can read more about this in the appendix.`）
+///    ⇒ 只有**独立成行**才认定。
+const EXCERPT_MARKERS_WEAK: &[&str] = &["read more", "read on", "full story"];
+
+/// 片段尾部的**噪音行**（导航链接，不是正文内容）—— 归档为摘要时一并剥掉。
+const EXCERPT_NOISE_LINES: &[&str] = &["comments", "comment", "share this story"];
+
+/// 强标记的正则（大小写不敏感）。
+fn excerpt_strong_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        // ⚠️ 用 `|` 拼接时**长的放前面** —— 否则 `read full article` 会先匹配掉
+        //    `read the full article` 的一部分（本项目已记过「长度降序」这条）
+        let alts = EXCERPT_MARKERS_STRONG
+            .iter()
+            .map(|m| regex::escape(m))
+            .collect::<Vec<_>>()
+            .join("|");
+        Regex::new(&format!("(?i){}", alts)).expect("片段标记正则不该编译失败")
+    })
+}
+
+/// 这段文本里有没有「点这里看全文」标记（见两个标记表的说明）。
+fn has_excerpt_marker(text: &str) -> bool {
+    if excerpt_strong_re().is_match(text) {
+        return true;
+    }
+    // 弱标记：只有「整行就是它」才算
+    text.lines().any(|l| {
+        let t = l.trim().to_ascii_lowercase();
+        EXCERPT_MARKERS_WEAK.contains(&t.as_str())
+    })
+}
+
+/// 剥掉片段里的标记与噪音行。
+///
+/// 两件事都要做：
+/// · **标记**可能紧跟在正文后面（`…they found.Read full article`）⇒ 只砍标记本身，
+///   **保留正文**（包括它前面的句号）
+/// · **噪音行**（`Comments`）整行丢
+fn strip_excerpt_markers(text: &str) -> String {
+    // ① 砍掉强标记（大小写不敏感）—— 只删标记，不动上下文
+    let cut = excerpt_strong_re().replace_all(text, "");
+    // ② 逐行处理：丢「弱标记行 / 噪音行 / 砍完变空的行」
+    let kept: Vec<&str> = cut
+        .lines()
+        .map(|l| l.trim())
+        .filter(|t| {
+            if t.is_empty() {
+                return false;
+            }
+            let lower = t.to_ascii_lowercase();
+            if EXCERPT_NOISE_LINES.contains(&lower.as_str()) {
+                return false;
+            }
+            !EXCERPT_MARKERS_WEAK.contains(&lower.as_str())
+        })
+        .collect();
+    kept.join("\n").trim().to_string()
+}
+
+/// 片段归档进 `summary` 时，**在「源摘要」与「片段」之间取更有用的那个**。
+///
+/// # 🔴 为什么不是「有 description 就用它」
+///
+/// 实测 Ars Technica：`description` 只有 **14 词导读**
+/// （`Between the cars and their companions apps, you're exposed to a lot of trackers.`），
+/// 而 `content:encoded` 的片段有 **161 词的正文开头**。
+/// ⇒ 若一律优先 `description`，用户会从「161 词正文 + 怪异标记」掉到「14 词导读」——
+///   **修掉一个问题的同时制造一个更大的问题**。
+///
+/// 两者**都只是片段**（都不是全文）⇒ 放 `summary` 语义不变，那就该取信息量大的。
+///
+/// # 为什么要「明显更长」才替换
+///
+/// NPR 的 `description`（32 词）与它的 `content:encoded`（37 词）**本来就差不多**，
+/// 那是「同一段摘要的两种包装」—— 此时**保留源摘要更稳**（它不含图片说明等包装噪音）。
+/// ⇒ 要求片段的词数 **≥ description 的 2 倍 且 至少多 50 词** 才替换。
+///
+/// 📌 判据：**两个候选都合法时，选信息量大的，但要设「显著差异」门槛** ——
+///    门槛太低会在「两者等价」时无谓地换掉（引入无意义变动）。
+fn better_summary(description: Option<String>, excerpt: String) -> Option<String> {
+    let ew = excerpt.split_whitespace().count();
+    if ew == 0 {
+        return description;
+    }
+    match description {
+        None => Some(excerpt),
+        Some(d) => {
+            let dw = d.split_whitespace().count();
+            if ew >= dw * 2 && ew - dw >= 50 {
+                Some(excerpt)
+            } else {
+                Some(d)
+            }
+        }
+    }
+}
+
+/// `content:encoded` 的分类结果 —— 见 [`classify_encoded`]。#[derive(Debug, Clone, PartialEq, Eq)]
+enum EncodedKind {
+    /// 确信是**全文** → 进 `body`。
+    Full(String),
+    /// 是**片段**（teaser）→ **不进 `body`**（`body` 的语义是全文），
+    /// 但**内容不丢**：由调用方在「源没给摘要」时把它当摘要用（已剥掉标记行）。
+    Excerpt(String),
+    /// 没有可用的 `content:encoded`。
+    Absent,
+}
+
+/// 判定 `content:encoded` 是**全文**还是**片段**。
+///
+/// # 🔴 三重判据（任一命中即判为「片段」）
+///
+/// | # | 判据 | 为什么 |
+/// |---|---|---|
+/// | ① | **片段标记行** | 源**自己声明**不是全文 —— 最可靠（Ars 20/20）|
+/// | ② | **词数 < [`MIN_FULL_BODY_WORDS`]** | 绝对闸；**摘要缺失时唯一的防线** |
+/// | ③ | 与原摘要**量级相近**（[`BODY_LONGER_THRESHOLD`]）| 同源时为摘要 + 样板差异 |
+///
+/// ## 🔴 ③ 的写法最关键：`None` 分支**不能是 `true`**
+///
+/// 原实现是 `None => true`（「没有摘要 ⇒ 一定更长」）——
+/// 这在摘要缺失时让整条判据**恒真**，而 Ars 的摘要**正是空的**。
+/// ⇒ 改成 `None => false`（相对判据在缺基准时**弃权**），
+///    由 ①② 这两道**不依赖基准**的闸兜住。
+///
+/// ⚠️ 摘要为**空串**（`Some("")`）同样会让 ③ 恒真（任何非空文本都「长于 0 + 100」），
+///    所以 ③ 里显式排除空摘要。
+///
+/// 📌 判据的一般形式：**「比基准长/大」这类相对判据，其有效性依赖「基准有意义」** ——
+///    基准可能为空、可能与待判物同源、可能被上游改掉。**相对判据必须配绝对闸。**
+fn classify_encoded(item: roxmltree::Node, summary: Option<&str>) -> EncodedKind {
+    let Some(raw) = child_text(item, "encoded") else {
+        return EncodedKind::Absent;
+    };
     // 🔑 **正文用「保留段落」的版本** —— 否则整篇挤成一整行（见 `strip_html_block`）
     let text = strip_html_block(&raw);
     let text = text.trim();
     if text.is_empty() {
-        return None;
+        return EncodedKind::Absent;
     }
-    let longer = match summary {
-        Some(s) => text.chars().count() > s.chars().count() + BODY_LONGER_THRESHOLD,
-        None => true,
+
+    // ① 源自己说的（最可靠）
+    let marked = has_excerpt_marker(text);
+
+    // ② 绝对闸（不依赖摘要 —— 摘要缺失时唯一的防线）
+    let words = text.split_whitespace().filter(|w| !w.is_empty()).count();
+    let too_short = words < MIN_FULL_BODY_WORDS;
+
+    // ③ 相对闸 —— ⚠️ 空/缺失的摘要一律「弃权」（改成 false，而**不是**恒真）
+    let same_scale = match summary {
+        Some(s) if !s.trim().is_empty() => {
+            text.chars().count() <= s.chars().count() + BODY_LONGER_THRESHOLD
+        }
+        _ => false,
     };
-    if longer {
-        Some(text.to_string())
+
+    if marked || too_short || same_scale {
+        EncodedKind::Excerpt(strip_excerpt_markers(text))
     } else {
-        None
+        EncodedKind::Full(text.to_string())
     }
 }
 
@@ -621,7 +839,7 @@ mod tests {
 
     #[test]
     fn test_items_without_url_or_title_skipped() {
-        let xml = r#"<?xml version="1.0"?><rss version="2.0"><channel>
+        let xml = r#"<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel>
             <item><title>有标题有链接</title><link>https://a.test/1</link></item>
             <item><title>缺链接</title></item>
             <item><link>https://a.test/3</link></item>
@@ -680,13 +898,173 @@ mod tests {
         assert_ne!(strip_html(html), strip_html_block(html));
     }
 
+    // ════════════════════════════════════════════════════════════════
+    // 片段 vs 全文（2026-10-02 · 真机暴露的缺陷）
+    // ════════════════════════════════════════════════════════════════
+
+    /// 🔴🔴 **这条断言替换了原来那个「把 bug 锁死」的版本。**
+    ///
+    /// 原断言是 `test_real_source_bodies_have_paragraphs`，其注释写着
+    /// 「Ars Technica 的 feed **自带全文**（实测 20/20）」并断言 `body.is_some()` ——
+    /// **那个前提是错的**：Ars 的 `content:encoded` 是 **161 词片段**，
+    /// 尾部带 `Read full article`，而它的 `description` 是**空的**。
+    /// ⇒ 「比摘要长」这条相对判据在**摘要缺失时恒真** ⇒ 片段被当全文。
+    /// ⇒ 那条断言因此**保护了错误行为**：修好它反而会让断言报红。
+    ///
+    /// 📌 判据：**断言里的「实测如此」也要能失败** ——
+    ///    一句「实测 20/20」写进注释后，就没人再回头看它到底是不是全文了。
+    #[test]
+    fn test_ars_encoded_is_excerpt_not_body() {
+        let items = parse_rss(ARS, 0).unwrap();
+        assert!(!items.is_empty(), "Ars fixture 应能解析出条目");
+
+        // ① 片段**不得**进 body
+        let with_body = items.iter().filter(|i| i.body.is_some()).count();
+        assert_eq!(
+            with_body, 0,
+            "Ars 的 encoded 是片段（带 `Read full article`）→ 不该进 body。\
+             进了 body 会同时造成：① 语义污染 ② 该条永远不去抓网页全文"
+        );
+
+        // ② 内容**不能丢** —— 片段要归到 summary（否则用户只剩标题）
+        let with_summary = items.iter().filter(|i| i.summary.is_some()).count();
+        assert_eq!(
+            with_summary,
+            items.len(),
+            "Ars 的 description 为空 → 片段应兜底成 summary（**不能丢内容**）"
+        );
+
+        // ③ 🔴 用户可见：`Read full article` / `Comments` **一个字都不许留**
+        for it in &items {
+            let s = it.summary.as_deref().unwrap();
+            assert!(
+                !s.contains("Read full article"),
+                "片段标记没剥干净（会显示在 App 正文里）: {:?}",
+                s.chars().take(80).collect::<String>()
+            );
+            assert!(
+                !s.trim_end().ends_with("Comments"),
+                "尾部的 `Comments` 导航行没剥掉: {:?}",
+                s.chars().rev().take(80).collect::<String>()
+            );
+            // 剥完标记后必须**还有实质内容**（别把整段剥没了）
+            let words = s.split_whitespace().count();
+            assert!(
+                words > 50,
+                "剥标记后内容太少（剥过头了？）\n      标题: {}\n      {} 词\n      内容: {:?}",
+                it.title,
+                words,
+                s.chars().take(200).collect::<String>()
+            );
+        }
+    }
+
+    #[test]
+    fn test_npr_encoded_is_excerpt_keeps_source_summary() {
+        // NPR：encoded ≈ description（同源）⇒ 也是片段。
+        // 🔑 与 Ars 的区别：**它有自己的 description** ⇒ summary 用它、不被片段覆盖。
+        let items = parse_rss(NPR, 0).unwrap();
+        for it in &items {
+            assert!(it.body.is_none(), "NPR 的 encoded 与摘要同源 → 不是全文");
+            assert!(it.summary.is_some(), "NPR 应有源的 description");
+        }
+    }
+
+    #[test]
+    fn test_relative_criterion_must_not_be_vacuous_without_summary() {
+        // 🔴 回归断言：这正是 Ars 中招的形态 —— **无 description + 短 encoded**。
+        //    原实现 `None => true` 在这里恒真 ⇒ 片段被当全文。
+        let xml = r#"<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel>
+            <item><title>t</title><link>https://a.test/1</link>
+              <pubDate>Tue, 29 Sep 2026 07:36:24 -0400</pubDate>
+              <content:encoded><![CDATA[
+                <p>Short teaser paragraph one.</p>
+                <p>Short teaser paragraph two.</p>
+                <p>Read full article</p>
+              ]]></content:encoded>
+            </item></channel></rss>"#;
+        let items = parse_rss(xml, 0).unwrap();
+        assert!(
+            items[0].body.is_none(),
+            "无摘要 + 短 encoded（含片段标记）⇒ 绝不能当全文"
+        );
+    }
+
+    #[test]
+    fn test_short_encoded_without_summary_is_excerpt_by_length_gate() {
+        // 🔴 只靠「短」判（**不带**片段标记）—— 验绝对闸独立生效。
+        //    ⚠️ 这条与上一条是**两个不同判据**，都要有：标记可能变措辞，长度不会。
+        let body_text = "word ".repeat(120); // 120 词 < MIN_FULL_BODY_WORDS(300)
+        let xml = format!(
+            r#"<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel>
+            <item><title>t</title><link>https://a.test/2</link>
+              <pubDate>Tue, 29 Sep 2026 07:36:24 -0400</pubDate>
+              <content:encoded><![CDATA[<p>{}</p>]]></content:encoded>
+            </item></channel></rss>"#,
+            body_text
+        );
+        let items = parse_rss(&xml, 0).unwrap();
+        assert!(items[0].body.is_none(), "120 词 < 300 ⇒ 不算全文");
+        assert!(items[0].summary.is_some(), "但它应兜底成摘要（内容别丢）");
+    }
+
+    #[test]
+    fn test_long_encoded_without_summary_is_full() {
+        // ✅ 反向：**够长 + 无标记** ⇒ 必须是全文（否则「修好 Ars」会误伤真全文）
+        let body_text = "word ".repeat(400); // 400 词 > 300
+        let xml = format!(
+            r#"<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel>
+            <item><title>t</title><link>https://a.test/3</link>
+              <pubDate>Tue, 29 Sep 2026 07:36:24 -0400</pubDate>
+              <content:encoded><![CDATA[<p>{}</p><p>{}</p>]]></content:encoded>
+            </item></channel></rss>"#,
+            body_text, body_text
+        );
+        let items = parse_rss(&xml, 0).unwrap();
+        let b = items[0].body.as_deref().expect("400 词无标记 ⇒ 应进 body");
+        assert!(b.contains('\n'), "多段全文应保留段落边界: {:?}", b);
+        assert!(
+            items[0].summary.is_none(),
+            "无 description ⇒ summary 保持 None（别把全文抄成摘要）"
+        );
+    }
+
+    #[test]
+    fn test_excerpt_marker_must_be_whole_line_not_substring() {
+        // 🔑 标记按**整行**匹配 —— 正文里提到 "read more" 不该被误判
+        let prose = "You can read more about this in the appendix. ".repeat(40); // 长且含子串
+        let xml = format!(
+            r#"<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel>
+            <item><title>t</title><link>https://a.test/4</link>
+              <pubDate>Tue, 29 Sep 2026 07:36:24 -0400</pubDate>
+              <content:encoded><![CDATA[<p>{}</p>]]></content:encoded>
+            </item></channel></rss>"#,
+            prose
+        );
+        let items = parse_rss(&xml, 0).unwrap();
+        assert!(
+            items[0].body.is_some(),
+            "正文里**提到** read more（非独立行）⇒ 不该被当片段"
+        );
+    }
+
     #[test]
     fn test_real_source_bodies_have_paragraphs() {
-        // Ars Technica 的 feed 自带全文（实测 20/20）→ 正文应有段落边界
-        let items = parse_rss(ARS, 0).unwrap();
-        let with_body: Vec<_> = items.iter().filter(|i| i.body.is_some()).collect();
-        assert!(!with_body.is_empty(), "Ars 应有带全文的条目（实测如此）");
-        let body = with_body[0].body.as_deref().unwrap();
+        // ✅ 段落边界这条**内容不变**，但改成在「真全文」的合成样本上验 ——
+        //    因为实测的 4 个 RSS 源**都不给全文**（NPR/Ars 给片段，Dev.to/ECNS 无 encoded）
+        //    ⇒ 用真实 fixture 验不了这个属性，只能合成。
+        //    📌 判据：**属性测不到时，说明「样本不具备该属性」，而不是「实现错了」**。
+        let para = "This is a real paragraph of a full article body. ".repeat(60);
+        let xml = format!(
+            r#"<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel>
+            <item><title>t</title><link>https://a.test/5</link>
+              <pubDate>Tue, 29 Sep 2026 07:36:24 -0400</pubDate>
+              <content:encoded><![CDATA[<p>{p}</p><p>{p}</p>]]></content:encoded>
+            </item></channel></rss>"#,
+            p = para
+        );
+        let items = parse_rss(&xml, 0).unwrap();
+        let body = items[0].body.as_deref().expect("应判为全文");
         assert!(
             body.contains('\n'),
             "真实全文应当有段落边界（否则阅读界面是一堵字墙）: {:?}",
@@ -696,7 +1074,7 @@ mod tests {
 
     #[test]
     fn test_invalid_date_returns_none() {
-        let xml = r#"<?xml version="1.0"?><rss version="2.0"><channel>
+        let xml = r#"<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel>
             <item><title>t</title><link>https://a.test/1</link><pubDate>不是时间</pubDate></item>
         </channel></rss>"#;
         let items = parse_rss(xml, 0).unwrap();
