@@ -47,14 +47,14 @@
 | `word_morpheme` / `card_extra` / `word_form` | 13,489 / 13,812 / **24,062**（🆕 09-28 补漏 **+1,233**，原 22,829） | 同上 |
 | `aggregate_page` / `etymon` / `word_etymon` / `affix` | 1,777 / 8,384 / 16,790 / 841 | 同上 |
 | **`card.content_hash`** | ✅ **100% 与 `content` 一致**（11,523/11,523）—— 2026-09-26 回填 **8,255 条**（原仅 28.4%）· ⚠️ 前端**只存不用** | `sha256(content)[:32] == content_hash` |
-| `app/lib` | **78 文件 / 22,906 行**（…3.33 删 web 录音 −417 · 3.5 收藏清单 +743 · **09-28 导航四轮+侧滑+返回 ±159**） | `find app/lib -name '*.dart' \| wc -l` |
+| `app/lib` | **95 文件 / 27,897 行**（本行 09-28 记 78 / 22,906 —— 此后累计增长：3.33 删 web 录音 −417 · 3.5 收藏清单 +743 · 09-28 导航 ±159 · **10-02 S4 内容管线 + 死代码清理**） | `find app/lib -name '*.dart' \| wc -l` |
 | **web-only 文件** | ✅ **0 个** —— 3.33 删 web 录音后**已清零**（本行曾记 2 个：`chat_input` / `review_card_widget`，**已过时**） | 🔴 **必须用 `^import 'dart:(html\|js\|ui_web)'` 精确匹配** —— 搜文本会把注释算进去 |
 | 划词查词 | ✅ **已建**（`reader_screen.dart`：`SelectionArea` + `contextMenuBuilder`）—— 本行曾记「仍 0 命中」，**已过时** | `rg "SelectableText\|SelectionArea"` |
 | 信息流 / 阅读器 | ✅ **两者均已建**：信息流 `home_screen` + `widgets/feed_card.dart`（⚠️ 数据仍是 **mock**，真 feed 在 Phase 3）｜阅读器 `screens/reader_screen.dart`（3.4a，含划词长按查词） | `find app/lib -iname '*feed*' -o -iname '*reader*'` |
 | 收藏清单 | ✅ **已建**（3.5）：`screens/bookmark_list_screen.dart` + `widgets/bookmark_toggle.dart`（共用交互）· 路由 `/home/bookmarks`（**shell 子路由，保留 tabbar**） | `ls app/lib/screens/bookmark_list_screen.dart` |
 | `user.db` 接入 | ✅ **v1.3（Step 3.4c）** —— 5 张表全建：`card_review_state` · `review_log` · `bookmark` · 🆕 **`user_word`（生词本）** · 🆕 **`lookup_event`（查词记录）**｜✅ **查词链路已接通**（长按 → 浮层 → 异步写入，不阻塞渲染）｜✅ **连接所有权统一**（`userDbProvider` 唯一 open/close）｜⏳ **待真机验「老库升级」** | `rg "openUserDb" app/lib`（应只有 1 处调用） |
-| **视觉 token 层** | ✅ **已建且已接入**（`coevo_tokens.dart` **811 行** · 零 Flutter 依赖）· ✅ `buildTheme` 已接 `app.dart` → **三档主题生效**（旧 4 套主题已删）· 验收 **609 项全过 / 0 规格冲突**（【9】接线 · 【10】粘土+动效 · 【11】插值 · 【13】底部栏配套 · 【15】导航侧滑 · **【16】Clay 容器内的输入框完全无框**） | `cd scripts/tokens_verify && dart run bin/verify_tokens.dart` |
-| 🆕 **粘土 / 痕迹** | ✅ **两者均已实现并接入**：粘土 `theme/clay.dart`（**四态 + 真 inset**）→ 已用于底部导航 · 痕迹 `widgets/trace_text.dart` + `trace_segmenter.dart`（**本行曾记「痕迹仍零实现」，已过时**） | `rg "ClayPainter\|TraceText" app/lib` |
+| **视觉 token 层** | ✅ **已建且已接入**（`coevo_tokens.dart` **811 行** · 零 Flutter 依赖）· ✅ `buildTheme` 已接 `app.dart` → **三档主题生效**（旧 4 套主题已删）· 验收 **663 项全过 / 0 规格冲突**（【9】接线 · 【10】粘土+动效 · 【11】插值 · 【13】底部栏配套 · 【15】导航侧滑 · 【16】Clay 容器内的输入框完全无框 · 🆕 【22】正文来源 body/summary 降级必须可见） | `cd scripts/tokens_verify && dart run bin/verify_tokens.dart` |
+| 🆕 **粘土 / 痕迹** | ✅ **两者均已实现并接入**：粘土 `theme/clay.dart`（**四态 + 真 inset**）→ 已用于底部导航 · **痕迹** 🆕 **2026-10-02（S4）改走 Markdown 渲染**：`services/trace_markdown_source.dart`（往源里注标记）+ `widgets/trace_markdown.dart`（渲染）+ `widgets/trace_style.dart`（样式映射）+ `widgets/trace_locator.dart`（判定）｜🔴 **旧区间路径已删**（`trace_text.dart` / `trace_segmenter.dart` / `locateTraceMarks`）—— 依据 `docs/review/content-pipeline-rebuild-plan-2026-10-02.md` §十四 | `rg "ClayPainter\|TraceMarkdown" app/lib` |
 | **字体资产** | ✅ **9 个 .ttf · 5.11 MB** = 中文见上行 + **Literata(3) + CharisSIL(2)**（拉丁/音标，均已子集化）· pubspec 已声明 | `ls -la app/assets/fonts/` |
 | 🆕 **IPA 真实字符集** | ✅ **30 个**（含 **4 个组合符号**）—— 从 11,523 张卡的 `card.content.ipa` 提取 | `python scripts/build_fonts.py --list` |
 | **`scripts/` 入库** | **111 文件**（git 跟踪）· **+3 待入库**（本轮新增 `fetch_fonts` / `build_fonts` / `build_font_compare`）· 工作区 129（已排除 `__pycache__`） | `git ls-files scripts/ \| wc -l` |
@@ -2487,7 +2487,7 @@ schema **v1.2**（`bookmark` + 2 索引）· `FeedCard` +`BookmarkButton` · `ho
 
 | 项 | 结果 |
 |---|---|
-| `trace_verify` | ✅ **97 项**（76 → 97 · **+21** 定位断言：6 条词边界 · 大小写 · 标点相邻 · 同词多次 · 已掌握不标 · 与 `splitTraceSpans` 集成） |
+| `trace_verify` | ✅ **97 项**（76 → 97 · **+21** 定位断言：6 条词边界 · 大小写 · 标点相邻 · 同词多次 · 已掌握不标 · 与 `splitTraceSpans` 集成）<br>🔴 **2026-10-02（S4）已删** —— 该脚本测的区间切分/定位随死代码作废，token 那 4 组已并入 `tokens_verify`【4】且更严。现目录只剩 `verify_trace_markdown.dart`（10 组 43 项）|
 | `tokens_verify` | ✅ **300 项**（295 → 300 · 新增 §12「阅读界面零粘土」5 项 **自动检查**） |
 | `verify_bookmark` / `review_list` / `word_query` | ✅ **49 / 37 / 42 项**（抽出书签组件后**无回归**） |
 | `analyze_inproc` | ✅ **error=3 / warning=13 / info=7**（文件 67 → **72** / 行 20,907 → **21,517**） |

@@ -1,7 +1,7 @@
 // CoEvo · 端侧用户库 `user.db` 的连接层
 //
 // 🔴 设计约束：**本文件不得 import 任何 Flutter 包**。
-//   理由同 `services/fsrs_service.dart` / `widgets/trace_segmenter.dart`：
+//   理由同 `services/fsrs_service.dart` / `services/trace_markdown_source.dart`：
 //   本地 Flutter 是鸿蒙定制版、`flutter analyze` 会因 Windows 管道耗尽崩溃 ——
 //   纯 Dart 才能本地独立验证（见 `scripts/query_verify/bin/verify_bookmark.dart`）。
 //
@@ -172,7 +172,7 @@ Future<Database> openUserDb({
 /// 或含 `--`（如 `DEFAULT '--x'`），会被错误切开。
 /// - 本项目的 DDL **不需要**这些写法（已逐条检查 `user_db_schema.sql`）
 /// - 真需要时再补一个「带引号状态的扫描器」；现在写它属于**没有依据的复杂度**
-///   （和 `TraceText` 不做缓存同一条原则：问题尚未被观察到）
+///   （同 `widgets/trace_markdown.dart` 那条「不做没依据的优化」：问题尚未被观察到）
 /// - 断言里**显式锁住**这个边界（见 `scripts/query_verify/bin/verify_bookmark.dart` 与
 ///   `verify_userdb_migration.dart`），
 ///   这样将来有人引入这种写法时会当场失败，而不是静默拆错

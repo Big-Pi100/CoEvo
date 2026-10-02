@@ -6,7 +6,7 @@ import '../models/article.dart';
 import '../services/trace_markdown_source.dart';
 import '../theme/coevo_tokens.dart';
 import 'trace_locator.dart';
-import 'trace_text.dart';
+import 'trace_style.dart';
 
 /// 正文渲染（Markdown）—— **痕迹** 与 **Markdown 语法** 同时工作。
 ///
@@ -39,7 +39,7 @@ import 'trace_text.dart';
 /// 阅读页是 `SingleChildScrollView` + `Column`，且 `_scroll` controller 参与
 /// 「读完」判定（读 `position.extentAfter`）—— 改成 sliver 要重排整个页面，
 /// 而收益（长文懒渲染）**目前还没有被观察到需要**。
-/// 📌 与 `TraceText` 里那条「不做没依据的优化」同一条原则。
+/// 📌 与项目既有判据一致：**不做没依据的优化** —— 收益未被观察到就不做。
 /// ⚠️ 若真机实测长文掉帧 → 换 `SliverGptMarkdown` 即可（两个 API 几乎一致），
 ///    届时把 `SingleChildScrollView` 换成 `CustomScrollView`。
 ///

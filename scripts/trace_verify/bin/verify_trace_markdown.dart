@@ -12,7 +12,7 @@
 //
 // ⚠️ 本脚本**查不出**的（如实列出）：
 //   · `gpt_markdown` 是否真的把标记渲染成带样式的 span（需 Flutter 环境）
-//   · 痕迹在两档下的**视觉可辨性**（肉眼，见 `verify_trace.dart` 的同类声明）
+//   · 痕迹在两档下的**视觉可辨性**（肉眼 —— 文本断言验不到「好看」）
 //
 // 跑法：`cd scripts/trace_verify && dart run bin/verify_trace_markdown.dart`
 // 退出码：有失败 → 1
@@ -195,7 +195,7 @@ void main() {
   }
 
   // ══════════════════════════════════════════════════════════════
-  section('【5】词边界与大小写（**与 locateTraceMarks 同判据**）');
+  section('【5】词边界与大小写（`\\b` 判据 · 唯一难点）');
   {
     final out = injectTraceMarkers(
       markdown: 'start and restart and started',
@@ -309,5 +309,6 @@ void main() {
   print('');
   print('⚠️ 本脚本**查不出**的：');
   print('   · gpt_markdown 是否真的把标记渲染成带样式的 span（需 Flutter 环境）');
-  print('   · 痕迹两档的视觉可辨性（肉眼，见 verify_trace.dart 的同类声明）');
+  print('   · 痕迹两档的视觉可辨性（肉眼 —— 文本断言验不到「好看」；');
+  print('     另：token 层三档两态的数值断言在 `tokens_verify`【4】，不在本脚本）');
 }

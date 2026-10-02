@@ -514,6 +514,7 @@ InlinePattern(pattern: RegExp(r'([\u0001\u0002])([^\u0001\u0002]*?)\1'),
 📌 判据：**同一件事的口径只能有一处权威** —— 表达层可以有两份实现，判定必须只有一份。
 
 ✅ **重构等价性已验**：`verify_trace.dart` **97 项全过**（含「reps≥3+lapses=0 不标记」等边界）。
+> ⚠️ **后记（同日清理）**：该脚本**已被删除** —— 理由与逐组去向见 §14.8。
 
 ### 14.5 🔴 证伪实验逼出来的两个发现
 
@@ -529,7 +530,7 @@ InlinePattern(pattern: RegExp(r'([\u0001\u0002])([^\u0001\u0002]*?)\1'),
 | 脚本 | 项数 | 覆盖 |
 |---|---|---|
 | `verify_trace_markdown.dart`（**新增**）| **43** | 核心不变量「剥掉控制字符后 == 原文」· 跳过围栏/行内代码/URL · 词边界 · 幂等 · 与渲染端 pattern 一致性 |
-| `verify_trace.dart`（既有）| **97** | 判定重构的等价性 |
+| `verify_trace.dart`（既有）| **97** | 判定重构的等价性 ｜🔴 **同日已删**（理由见 §14.8）|
 | `tokens_verify`（既有）| **663** | 其中 **3 条随实现更新**（见下）|
 
 🔴 **3 条断言随实现更新（不是删掉）**：
@@ -546,7 +547,7 @@ InlinePattern(pattern: RegExp(r'([\u0001\u0002])([^\u0001\u0002]*?)\1'),
 
 | # | 事项 | 为什么 |
 |---|---|---|
-| 1 | **编译验证** | 本地 pub cache 只有 1.0.8，`gpt_markdown: 1.3.0` 未安装 → 13 个 error 全是「API 不存在」。**需白哥 `pub get`** |
+| 1 | ~~编译验证~~ ✅ **已完成**（2026-10-02 · 白哥 `pub get` 后：**语义静态分析 error = 0**，见 §14.8）| — |
 | 2 | 转义消化（`1\.1\.1` 是否显示成 `1.1.1`）| 需 Flutter 环境 |
 | 3 | 长文滚动性能 | 需真机 |
 | 4 | 代码块/内联代码/标题的**观感** | 肉眼 |
@@ -554,3 +555,70 @@ InlinePattern(pattern: RegExp(r'([\u0001\u0002])([^\u0001\u0002]*?)\1'),
 ⚠️ **API 用法已按 1.3.0 源码逐个核对**（下载 tarball 读的，不是凭文档）：
 `GptMarkdown` 的 `isStreaming` / `inlinePatterns` / `inlineCodeStyle` / `styleSheet` / `onLinkTap`
 · `InlinePattern(pattern:, builder:)` · 12 个样式类（`CodeBlockStyle` / `HeadingStyle` / `LinkStyle` / `BlockQuoteStyle` / `InlineCodeStyle`）· `SliverGptMarkdown`（备用）
+
+---
+
+## 14.8 ✅ 验证通过 + 死代码清理（2026-10-02 下午）
+
+### ① 验证结果（白哥 `pub get` 之后）
+
+| 检查 | 结果 |
+|---|---|
+| `flutter pub get` | ✅ `gpt_markdown` **1.3.0**（was 1.0.9）+ 新增 `highlight 0.7.0` |
+| **语义静态分析**（`scripts/static_check/`）| ✅ **error = 0**（96 文件）|
+| `verify_trace_markdown` | ✅ **43 项** |
+| `tokens_verify` | ✅ **663 项** |
+| resolution 的 13 个 error | ✅ 全部消失（都是「1.3.0 API 不存在」）|
+
+⚠️ `flutter analyze` 本机仍崩（`CreateFile failed 231` → spawn `analysis_server` 失败）——
+用项目自带的**进程内 analyzer** 替代，这是本机能达到的最高强度。
+
+### ② 🔑 追了「接线」而不是只看「编译通过」
+
+判据：**「解析了参数」≠「用上了参数」**。`inlinePatterns` 是 1.3.0 的**新**参数，
+编译通过不代表它真生效 —— 不生效的话**痕迹会静默消失**（不报错、不崩溃，只是少画几处底色）。
+
+| 问 | 追到的答案 |
+|---|---|
+| `inlinePatterns` 在哪被消费？ | `plusparse/incremental.dart:693`（解析前用 `maskInlinePatterns` 把匹配**提升**出来）+ `plusparse/renderer.dart:544`（渲染时 `expandInlinePatterns` 还原成 span）|
+| 我们的调用走哪条管线？ | `animation=none` → `_buildDocument`；`incremental` 默认 `true` 且 `components`/`inlineComponents` 均 null → **`_IncrementalMdView`（plusparse 新管线）** ✅ |
+| `isStreaming: false` 会关掉它吗？ | ❌ **不会** —— 它只喂 reveal 引擎（逐字动画），与 pattern 无关 |
+| 包内部占位符会与我们的控制字符冲突吗？ | ❌ 不冲突 —— 包用 `\u{E012}`/`\u{E013}`（私用区）包 base64；我们用 `\u0001`/`\u0002`（C0 控制码）|
+| 档位口径一致吗？ | ✅ `forReps` 返回**字段引用** ⇒ `identical(style, tokens.fresh)` 成立；`tier=1` 时 `forReps(1)` 必 `reviewing`（不会 null）|
+
+### ③ 死代码清理（白哥指示）
+
+清理对象是**整条「字符区间」路径** —— 它在 Markdown 渲染下没有意义（解析后偏移全变）。
+
+| 删除 | 为什么 |
+|---|---|
+| `widgets/trace_text.dart` 的 **`TraceText` 类** | 零消费者（`reader_screen` 已换 `TraceMarkdown`）|
+| `widgets/trace_segmenter.dart`（整文件） | `TraceMark`/`TraceSpan`/`TraceSplit`/`splitTraceSpans` 只服务上面那条路径 |
+| `widgets/trace_locator.dart` 的 **`locateTraceMarks()`** | 零消费者（唯一调用方是断言脚本）|
+| `scripts/trace_verify/bin/verify_trace.dart`（整文件 · 8 组 97 项）| 逐组去向见下 |
+| 🆕 `widgets/trace_style.dart`（**新增**）| 承接**还活着**的部分：`applyTraceStyle()` / `traceBackgroundPaint()` —— 它们被 `trace_markdown.dart` 的 `InlinePattern` builder 使用 |
+
+🔴 **教训：同一个文件里有的死了、有的还活着** —— `trace_text.dart` **不能整文件删**
+（`applyTraceStyle` 还被用）。⇒ 判据：**删文件之前先逐项确认「每一项的去向」**，
+不要凭文件名判断。
+
+**断言脚本为什么整个删（逐组交代，不是丢弃）**：
+
+| 原组 | 去向 |
+|---|---|
+| 【1】切分边界 ·【2】确定性 ·【3】核心不变量 ·【8】痕迹定位 | 🔴 **随死代码作废**（测的就是被删的区间路径）|
+| 【4】token 完整性 ·【5】读法递减 ·【6】三档语法 ·【7】`forReps` | ✅ **已被 `tokens_verify`【4】组覆盖且更严** —— 那里断言到**具体数值**（墨 `p.right=3`/`r=3`、格线宽 `2.5→1.5`、夜暖度 `r−b` 递减…），而删掉的几组只验「已显式给出」|
+
+🔑 顺带清掉**两条恒真断言**（`check(desc, true, detail)` —— 第二个参数写死 `true`，
+实际只是打印信息）：它们永远绿，是「看起来有覆盖」的**假象**。
+
+**保留不动**：`pickedTraceTiers`（`trace_markdown.dart` 在用）· `TraceTokens` / `TraceStyle`
+（`coevo_tokens.dart`，多处使用）· `verify_trace_markdown.dart`（现目录唯一脚本，10 组 43 项）。
+
+### ④ ⏳ 遗留（**未处理**，需白哥定）
+
+| # | 事项 | 说明 |
+|---|---|---|
+| 1 | **`highlight 0.7.0` 会撑大 IPA** | 1.3.0 的硬依赖，入口即 `registerLanguages(allLanguages)` —— **190 个语言定义 / 2.0 MB 源码**；Dart AOT 对全量 `const` map **tree-shake 不掉**。上架前用 `flutter-package-size-audit` 量一次；缓解手段是 `codeBuilder` 接管代码块（代价：丢语法高亮）|
+| 2 | 真机三项 | 转义消化（`1\.1\.1`）· 长文滚动性能 · 代码块/内联代码观感 |
+| 3 | S3 的 `--reset-attempted` | ⏳ **仍等出包后**再跑（理由见 `s3-production-execution-checklist` §〇）|
