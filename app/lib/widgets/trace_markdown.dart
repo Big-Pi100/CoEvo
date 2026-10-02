@@ -3,6 +3,7 @@ import 'package:gpt_markdown/gpt_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/article.dart';
+import '../services/markdown_unescape.dart';
 import '../services/trace_markdown_source.dart';
 import '../theme/coevo_tokens.dart';
 import 'trace_locator.dart';
@@ -81,8 +82,25 @@ class TraceMarkdown extends StatelessWidget {
     // ① 判定：哪些词该标、哪一档（与纯文本路径**同一份判据**）
     final tiers = pickedTraceTiers(lookups: lookups, tokens: tokens.trace);
 
-    // ② 编码：把词包成控制字符标记（跳过代码块 / 行内代码 / 链接 URL）
-    final marked = injectTraceMarkers(markdown: markdown, tiers: tiers);
+    // ② 🔴 消化**多余的 Markdown 转义**（2026-10-02 · 白哥真机反馈「转义没消化」）
+    //
+    // 产出侧（后端 `dom_smoothie`）按 **CommonMark** 全量转义 —— 且是**过度**转义：
+    // `DELETE\.` · `\"QUERY\"` · `\(66\.4%\)`（句点/引号/圆括号**本来都不需要转**）。
+    // 而消费侧（`gpt_markdown` 1.3.0）**只反转义 `\|`**（源码原话：`Only \| is unescaped`）
+    // ⇒ 其余 `\X` 原样显示 ⇒ 用户看到满屏反斜杠。
+    //
+    // 🔑 消化放在**渲染之前**（而不是渲染后处理字符串）：
+    //    渲染后拿到的是 span，改它要动 `gpt_markdown` 的渲染结果 —— 既不归我们管，也不好测。
+    //    📌 判据：**能改输入的，就别改输出**（同 `injectTraceMarkers` 的思路）。
+    //
+    // ⚠️ 顺序：**先消化转义、再注入痕迹标记**。
+    //    · 消化会**删字符**（缩短文本），而痕迹注入是「按词匹配」不依赖偏移 ⇒ 两者互不干扰
+    //    · 反过来（先注入）也不出错，但「修正源文本」在语义上该先做 ——
+    //      痕迹标记描述的是「最终要渲染的那段文本里的词」
+    final unescaped = unescapeRedundantMarkdown(markdown: markdown);
+
+    // ③ 编码：把词包成控制字符标记（跳过代码块 / 行内代码 / 链接 URL）
+    final marked = injectTraceMarkers(markdown: unescaped, tiers: tiers);
 
     final base = TextStyle(
       fontFamily: CoFonts.latinSerif,
