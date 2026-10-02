@@ -476,10 +476,16 @@ CREATE TABLE IF NOT EXISTS generated_card_hit (
 /// ⚠️ **已删掉 `life`**（定稿理由：「生活」太糊 —— 睡眠算健康还是生活？）。
 ///    生产库现有源**无一个**用 `life` ⇒ 删除零影响。
 ///
-/// ⚠️ **`sports` / `entertainment` 目前没有源**（NPR 有对应频道，实测可达：
-///    Sports=`feeds.npr.org/1055` · Movies=`feeds.npr.org/1045`）——
-///    即定稿 §10.3 担心的「用户勾了这三个标签却拉不到内容」里剩下的两个。
-///    词表先收进来（定稿要求），补源另行决定。
+/// ✅ **`sports` / `entertainment` 已于 2026-10-02 补源**（seed id 13 / 14）——
+///    `NPR Sports`(`feeds.npr.org/1055`) · `NPR Movies`(`feeds.npr.org/1045`)。
+///    ⇒ 定稿 §10.3 担心的「用户勾了标签却拉不到内容」**8 类现已全部有源**。
+///
+///    🔴 **两个 feed ID 是逐个抓 `<title>` 确认的，不是从记忆里抄的** ——
+///       第一轮据「NPR 有 Movies 频道」直接请求 1045，返回**空 body**，
+///       差点误判成「该频道不存在」；并发重扫 ID 段才确认
+///       （1045=Movies · 1048=Pop Culture · 1055=Sports）。
+///       📌 判据：**ID → 频道名必须由 `<title>` 确认**（同「注释里的声明须 grep 才算数」）。
+///    实测数据与排除项 → `docs/review/sports-entertainment-source-2026-10-02.md`
 pub const CONTENT_CATEGORIES: &[&str] = &[
     "news",
     "tech",
@@ -654,7 +660,30 @@ VALUES
     -- ⚠️ `cs.AI + cs.LG + cs.CL` 每天合计 1400+ 条，远超需求
     --    ⇒ 本行**只接 cs.CL**（与「语言」最贴，269 条/天）。
     -- `tz_offset_min = 0`：arXiv 用 RFC 2822 时间戳（自带时区），本列不生效。
-    (12, 'arXiv cs.CL',  'https://export.arxiv.org/rss/cs.CL', 'rss', 'science', 'C1', 'mixed', 0, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now'));
+    (12, 'arXiv cs.CL',  'https://export.arxiv.org/rss/cs.CL', 'rss', 'science', 'C1', 'mixed', 0, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+
+    -- ═══════════════════════════════════════════════════════════════════════
+    -- 🆕 2026-10-02 二轮：`sports` / `entertainment` 补源
+    --    白哥：「sports / entertainment 要补源」——
+    --    这两个值在受控词表里（定稿 §10.3.1 的 7 类），但**一直没有源**。
+    --
+    -- 🔑 **为什么仍选 NPR**：与 id=1 是**同一媒体** ⇒ `license` / `redistributable`
+    --    条款**逐字相同** ⇒ **零新增合规风险**；且纯配置（无代码、无新 `kind`）。
+    --    实测（真实 `fetch_source_items` + `fetch_article_body_diagnostic`）：
+    --    · Sports 3/4 达标 · Movies 4/4 达标 · **营销 0** · 正文 906–2099 词
+    --    · 与对照的 `NPR News` 同构（同样「RSS 只给摘要 → 抓网页」）
+    --
+    -- ❌ **实测后排除的非 NPR 候选**（理由见报告，不接）：
+    --    · ESPN NFL —— 量最大（31 条/轮 ≈ 124/天 · 4/4 达标），但摘要中位仅 **20 词**
+    --      （NPR 32 词），且尾部会粘作者列表；**若要更大量再单独评估**
+    --    · CBS Sports —— 🔴 **curl 200 但 reqwest 请求失败**（同 Ars 405 那类「工具差异」）
+    --    · Variety / Hollywood Reporter —— 质量达标记，但**要抓网页 + 与 NPR 不同媒体**
+    --      ⇒ 引入新的许可判断；在无增量收益时不值得（NPR 已覆盖这两个类）
+    --    · 已实测**不可达**：The Guardian / BBC Sport / Sky Sports / Deadline / NBC News（502）
+    --      · Bleacher Report / EW / AP / Yahoo Sports（403）· SI / Vulture / IGN（404）
+    -- ═══════════════════════════════════════════════════════════════════════
+    (13, 'NPR Sports 体育',  'https://feeds.npr.org/1055/rss.xml', 'rss', 'sports',        'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (14, 'NPR Movies 影视',  'https://feeds.npr.org/1045/rss.xml', 'rss', 'entertainment', 'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now'));
 
 "#;
 
@@ -1136,21 +1165,25 @@ mod tests {
             );
         }
 
-        // 种子源：实测**可达**的 12 个（VOA/BBC/Wikipedia 因国内不可达**不在内**）
+        // 种子源：实测**可达**的 13 个（VOA/BBC/Wikipedia 因国内不可达**不在内**）
         //
         // 🔑 **与 `content_fetch::tests::test_seed_sources_are_loaded` 的分工**：
-        //    那条数的是 `load_enabled_sources()` 的结果（**启用数** = 12，Ars 被禁用）；
-        //    本条数的是**表里的总行数**（**13**，含被禁用的 Ars）。
+        //    那条数的是 `load_enabled_sources()` 的结果（**启用数** = 13，Ars 被禁用）；
+        //    本条数的是**表里的总行数**（**14**，含被禁用的 Ars）。
         //    ⇒ 两者**必须成对更新**（改一处不改另一处，会有一条红）。
         //    📌 这正落实「**同一件事的口径只能有一处权威**」的反面教训：
         //       数字被两处锁着时，要把「两处各是什么口径」写清楚，
         //       否则下一个人只改一处，就会以为是「另一个 bug」。
+        //    ⚠️ **2026-10-02 二轮更正**：本注释原写「启用 12 / 总行 13」，
+        //       而 `content_fetch` 的断言当时是 **11 / 12** —— **基数差了 1**。
+        //       （「总行 = 启用 + 1（禁用 的 Ars）」这层关系是对的，起点写错。）
+        //       ⇒ 教训：**加源时必须两边同时核**，只改一边会留下一份错的说明。
         let seeded: i64 = conn
             .query_row("SELECT COUNT(*) FROM content_source", [], |r| r.get(0))
             .unwrap();
         assert_eq!(
-            seeded, 12,
-            "种子源应为 12 行（5 原有 + 7 新增；含被禁用的 Ars —— 禁用≠删除）"
+            seeded, 14,
+            "种子源应为 14 行（5 原有 + 7 首轮 + 2 二轮；含被禁用的 Ars —— 禁用≠删除）"
         );
 
         // 🔴 种子源里**不得**出现不可达的源（防止照旧方案加回 VOA/BBC）

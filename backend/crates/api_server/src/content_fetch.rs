@@ -927,16 +927,18 @@ mod tests {
     fn test_seed_sources_are_loaded() {
         let conn = mem();
         let s = load_enabled_sources(&conn).unwrap();
-        // 🔴 2026-10-02 两处变更，都在这一条里体现：
+        // 🔴 2026-10-02 三处变更，都在这一条里体现：
         //    ① `Ars Technica` 被禁用（`enabled = 0`）→ 不再计入
-        //    ② **新增 8 个源**（NPR 6 分频道 + arXiv + HackerNoon）→ 4 + 8 = **12**
+        //    ② **新增 7 个源**（NPR 6 分频道 + arXiv）→ 4 + 7 = **11**
+        //    ③ 🆕 **二轮再加 2 个**（`NPR Sports` / `NPR Movies`，补 `sports` /
+        //       `entertainment` 两个一直无源的类）→ 11 + 2 = **13**
         //    理由与实测数据见 `schema.rs` 里那几行的注释。
         //    📌 这条断言同时是「`enabled` 真的被过滤」的守门人 ——
         //       它数的是 `load_enabled_sources` 的结果，不是表里的行数。
         assert_eq!(
             s.len(),
-            11,
-            "种子应有 11 个**启用**源（Ars 已禁用 · HackerNoon 未接）"
+            13,
+            "种子应有 13 个**启用**源（Ars 已禁用 · HackerNoon 未接）"
         );
         assert!(s.iter().any(|x| x.kind == "hn"), "应有 HN 源");
         assert!(
@@ -954,8 +956,8 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM content_source", [], |r| r.get(0))
             .unwrap();
         assert_eq!(
-            total, 12,
-            "表里仍应有 12 行（5 原有 + 7 新增；Ars 是禁用，不是删除）"
+            total, 14,
+            "表里仍应有 14 行（5 原有 + 7 首轮 + 2 二轮；Ars 是禁用，不是删除）"
         );
 
         // ═══ 2026-10-02 新增源的守门断言 ═══════════════════════════════════
@@ -982,20 +984,29 @@ mod tests {
 
         // ①b 分类**覆盖**：扩源的目的是「补其他类型」→ 断言确实扩到了
         //
-        //     ⚠️ `sports` / `entertainment` **故意不在此列** ——
-        //        词表里有这两个值（定稿要求），但**还没有源**。
-        //        NPR 有对应频道且实测可达（Sports=1055 · Movies=1045），
-        //        补不补是产品决定 ⇒ 不写成断言，否则会变成「为过断言而加源」。
+        //     ✅ 2026-10-02 二轮后，**受控词表 8 类全部有源覆盖**：
+        //        首轮补了 business / science / culture / health，
+        //        二轮补了 `sports`（NPR Sports）/ `entertainment`（NPR Movies）。
+        //
+        //     🔑 口径从「逐类 `contains`」改成「**集合相等**」（2026-10-02 二轮）：
+        //        原写法枚举 6 个类 → 若词表**新增第 9 类**而这里忘了加，
+        //        断言**不会红**（正是「包含+枚举 < 集合相等」那个坑）。
+        //        改成与 `CONTENT_CATEGORIES` **逐值比对**后，
+        //        「词表加了类但没源」会**立刻**在这一条暴露。
+        //        📌 这也是「补源」这件事本身的守门人：
+        //           它红了 = 某类又变成「用户勾了却拉不到内容」。
+        //
+        //     ⚠️ 代价（如实标注）：将来若**有意**让某类暂时无源，
+        //        这条会红 —— 那是**要的**（「无源」应当是被显式知道的事，
+        //        而不是靠没人发现）。
         let cats: std::collections::BTreeSet<&str> =
             s.iter().filter_map(|x| x.category.as_deref()).collect();
-        for need in ["news", "tech", "business", "science", "culture", "health"] {
-            assert!(
-                cats.contains(need),
-                "分类 `{}` 应有源覆盖（扩源的目的就是补齐类型），实得: {:?}",
-                need,
-                cats
-            );
-        }
+        let expected_cats: std::collections::BTreeSet<&str> =
+            crate::schema::CONTENT_CATEGORIES.iter().copied().collect();
+        assert_eq!(
+            cats, expected_cats,
+            "受控词表的**每一类**都应有源覆盖（否则用户勾了标签却拉不到内容）"
+        );
 
         // ② 🔴 许可受限的源**必须** `redistributable = 0`
         //    （实测依据：arXiv 默认许可「limits re-use of any type from other
@@ -1023,7 +1034,11 @@ mod tests {
 
         // ③ NPR 分频道与现有 NPR **同条款**（同一个媒体）⇒ 必须一致
         let npr: Vec<_> = s.iter().filter(|x| x.name.starts_with("NPR")).collect();
-        assert_eq!(npr.len(), 7, "应有 7 个 NPR 源（主频道 + 6 分频道）");
+        assert_eq!(
+            npr.len(),
+            9,
+            "应有 9 个 NPR 源（主频道 1 + 首轮 6 分频道 + 二轮 体育/影视 2）"
+        );
         assert!(
             npr.iter().all(|x| x.redistributable == 1),
             "NPR 各频道应与现有 NPR 同条款（redistributable = 1）"

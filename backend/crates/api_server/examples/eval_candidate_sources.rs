@@ -47,54 +47,65 @@ struct Candidate {
 }
 
 const CANDIDATES: &[Candidate] = &[
-    // ── 待接入：NPR 6 个分频道（补「其他类型不够」）──
+    // ══ 本轮（2026-10-02 二轮）：`sports` / `entertainment` 补源 ══
+    //
+    // 白哥：「sports / entertainment 要补源」（现有的 8 类里这两个仍无源）。
+    //
+    // ① 优先 NPR 分频道 —— 零新增合规风险（`license`/`redistributable`
+    //    与已接入的 `NPR News`(id=1) **完全相同**），纯配置、无新 `kind`。
+    //    ⚠️ feed ID 是**实测扫出来的**，不是从记忆里抄的：
+    //       1045 = Movies · 1048 = Pop Culture · 1055 = Sports
+    //       （曾据「NPR 有对应频道」推断 1045=Movies，但首次请求返回空 body
+    //        ⇒ 换并发重探才确认。判据：**ID → 频道名必须抓 `<title>` 确认**）
     Candidate {
-        name: "NPR World",
-        url: "https://feeds.npr.org/1004/rss.xml",
+        name: "NPR Sports",
+        url: "https://feeds.npr.org/1055/rss.xml",
         atom: false,
-        role: "拟接入",
+        role: "候选①",
     },
     Candidate {
-        name: "NPR Business",
-        url: "https://feeds.npr.org/1006/rss.xml",
+        name: "NPR Movies",
+        url: "https://feeds.npr.org/1045/rss.xml",
         atom: false,
-        role: "拟接入",
+        role: "候选①",
     },
     Candidate {
-        name: "NPR Science",
-        url: "https://feeds.npr.org/1007/rss.xml",
+        name: "NPR Pop Culture",
+        url: "https://feeds.npr.org/1048/rss.xml",
         atom: false,
-        role: "拟接入",
+        role: "候选①",
+    },
+    // ② 非 NPR 备选 —— 大媒体、授权政策明确。
+    //    🔴 它们与 NPR 的真实差别：**要抓网页**（RSS 只给摘要）⇒ 有失败率 + 尾部噪音。
+    //    ⚠️ 已实测**不可达/不可用而排除**的：
+    //       The Guardian(502 隧道失败) · BBC Sport(502) · Sky Sports(502) ·
+    //       Deadline(502) · NBC News(502) · Bleacher Report(403) · EW(403) ·
+    //       AP(403) · Yahoo Sports(403) · SI(404) · Vulture(404) · IGN(404) ·
+    //       🔴 `espn.com/espn/rss/news` 已改版为 **HTML**（HTTP 200 但非 RSS）
+    //          ⇒ 只有 `/espn/rss/<league>/news` 子频道还是 XML
+    Candidate {
+        name: "ESPN NFL",
+        url: "https://www.espn.com/espn/rss/nfl/news",
+        atom: false,
+        role: "候选②",
     },
     Candidate {
-        name: "NPR Culture",
-        url: "https://feeds.npr.org/1008/rss.xml",
+        name: "CBS Sports",
+        url: "https://www.cbsnews.com/latest/rss/sports",
         atom: false,
-        role: "拟接入",
+        role: "候选②",
     },
     Candidate {
-        name: "NPR Technology",
-        url: "https://feeds.npr.org/1019/rss.xml",
+        name: "Variety",
+        url: "https://variety.com/feed/",
         atom: false,
-        role: "拟接入",
+        role: "候选②",
     },
     Candidate {
-        name: "NPR Health",
-        url: "https://feeds.npr.org/1128/rss.xml",
+        name: "Hollywood Reporter",
+        url: "https://www.hollywoodreporter.com/feed/",
         atom: false,
-        role: "拟接入",
-    },
-    Candidate {
-        name: "arXiv cs.CL",
-        url: "https://export.arxiv.org/rss/cs.CL",
-        atom: false,
-        role: "拟接入",
-    },
-    Candidate {
-        name: "HackerNoon",
-        url: "https://hackernoon.com/feed",
-        atom: false,
-        role: "拟接入",
+        role: "候选②",
     },
     // ── 对照组：现有源，确认「新源与老源同构」──
     Candidate {

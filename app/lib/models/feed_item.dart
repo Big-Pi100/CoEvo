@@ -139,9 +139,12 @@ class FeedItem {
   /// 它是**实现期**为 NPR / ECNS 临时加的，而「综合 / 国际新闻」
   /// 确实不属于任何兴趣类 ⇒ 保留，卡片显示 `News`。
   ///
-  /// ⚠️ **`sports` / `entertainment` 目前没有源**（词表先收进来）。
-  ///    NPR 有对应频道且实测可达（Sports=`feeds.npr.org/1055` ·
-  ///    Movies=`feeds.npr.org/1045`），补不补是产品决定。
+  /// ✅ **8 类现已全部有源**（2026-10-02 二轮补齐最后两个）：
+  ///    `sports` ← `NPR Sports`(`feeds.npr.org/1055`) ·
+  ///    `entertainment` ← `NPR Movies`(`feeds.npr.org/1045`)。
+  ///    ⇒ 用户勾**任一**兴趣标签都能拉到内容（定稿 §10.3 的担忧已消除）。
+  ///    后端锁定处：`content_fetch::tests::test_seed_sources_are_loaded` ①b
+  ///    （断言 `content_source` 的分类集合 **≡** `CONTENT_CATEGORIES`）。
   static const Map<String, String> _categoryLabels = {
     'news': 'News',
     'tech': 'Tech',
