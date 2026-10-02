@@ -18,7 +18,7 @@
 | **4** | **转义没消化** | 🔴 产出侧按 **CommonMark 转义**，而 `gpt_markdown` **只实现 `\|`** | ✅ **是**（选包时的评估缺口）| §四 |
 | **5** | 代码块 / 内联代码「有的能有的不能」| 🔴 **存量未迁移**：304 篇中仅 21 篇含围栏，263 篇仍是纯文本 | ✅ **是**（执行顺序问题）| §五 |
 | 6 | 想要翻页 + 划词弹窗布局 | 需求，不是 bug | — | §六 |
-| **7** | **TTS 坏了**（单词/例句朗读）| 🟡 **未定位** —— 但**包层面已排除 S4** | ❓ 待定 | §七 |
+| **7** | **TTS 坏了**（单词/例句朗读）| 🟢 **S4 已彻底排除**（R8/包/依赖/代码四层）；🆕 找到**两个候选根因** + **一个免电脑诊断** | ❌ **不是 S4** | §七 |
 
 **一句话**：**症状 1 / 4 / 5 是三种完全不同的病** —— 1 是既有数据缺口（被换渲染器暴露），4 是选包时的能力缺口，5 是执行顺序问题。
 
@@ -267,6 +267,9 @@ The \"QUERY\" method is designed for read-only requests…
 
 ## 七、TTS 坏了（单词 / 例句朗读）🟡 **未定位，但已排除 S4**
 
+> 🆕 **2026-10-02 17:2x 更新（白哥：试听也没声音）** → 已把「S4」**彻底排除**，
+> 并找到**两个库/App 层的候选根因**（见 §7.4 / §7.5）+ **一个免电脑的决定性诊断**（§7.6）。
+
 ### 7.1 已排除的（都有实测证据）
 
 | 检查 | 结果 |
@@ -274,49 +277,142 @@ The \"QUERY\" method is designed for read-only requests…
 | `flutter_tts` 是否被升级 | ❌ **没有** —— `pubspec.lock` 里 **sha256 完全相同**（`ce5eb209…`），S4 只改了 `gpt_markdown` + 新增 `highlight` |
 | 插件是否进包 | ✅ **在** —— 包内 `classes.dex` 里 `flutter_tts` channel 名 + `setSpeechRate` / `awaitSpeakCompletion` / `getVoices` / `setVoice` / `speak` / `stop` **全部存在** |
 | Android 可见性声明 | ✅ `AndroidManifest` 的 `<queries>` 含 `android.intent.action.TTS_SERVICE` —— **新旧包逐字节一致** |
-| 是否被 R8 剥离 | ✅ `build.gradle.kts` **未开 minify/shrink** |
 | 插件注册 | ✅ `GeneratedPluginRegistrant.java` 有 `FlutterTtsPlugin` |
 | TTS 的 Dart 代码 | ✅ **未被任何近期提交碰过**（`tts_service.dart` 最近一次改动是 `0f64e6b`，早于 A2/S4）|
 | 日志串是否完整 | ✅ `[TTS] togglePlay` / `native error` / `TTS speak error` 等**在新包 AOT 产物里都在** |
 
-⇒ **包层面、依赖层面、代码层面都找不到 S4 → TTS 的因果链。**
+### 7.1b 🆕 **R8 混淆已彻底排除**（本轮新增，three-way 验证）
 
-### 7.2 ⚠️ 顺带发现的一个真缺陷（**不一定是本次无声的原因**）
+> 起因：我发现「新包 dex 里搜不到 `com/eyedeadevelopment/fluttertts` 类型描述符，旧包有 27 次」——
+> **但那是假线索**：新包是 release（开了 R8，类名被改成 `h0.f`），旧包是 debug（不混淆）。
 
-代码里有**两套互不相通的「朗读开关」**：
-
-| 开关 | 读取方 | 默认 | 谁能改 |
-|---|---|---|---|
-| `ttsEnabledProvider`（Riverpod）| `SpeakButton`（**决定喇叭渲不渲染**）| `true` | 🔴 **全库没有任何写入点** |
-| `TtsService._enabled`（`SharedPreferences`）| `togglePlay` / `speak`（**决定出声不出声**）| `true` | `set enabled` —— 🔴 **也没有调用点** |
-
-⇒ **如果历史上曾把 `tts_enabled=false` 写进 prefs，现在就是「喇叭照常显示、点了完全没声音，且用户无法恢复」** ——
-**与白哥描述的症状完全一致**（喇叭在 → 说明 provider 那套是 `true`；点了无声 → 说明 prefs 那套可能是 `false`）。
-
-⚠️ 但这只是**假设之一**，**不能当结论** —— 需要运行时证据。
-
-### 7.3 🔴 请你做一件事（二选一，都能定位）
-
-**方式 ①（30 秒，最直接）**：抓一条日志，点一次喇叭
-
-```bat
-C:\Users\Lenovo\AppData\Local\Android\sdk\platform-tools\adb.exe logcat -c
-C:\Users\Lenovo\AppData\Local\Android\sdk\platform-tools\adb.exe logcat | findstr /C:"TTS"
-```
-（然后进 App 点一次喇叭，把输出发我）
-
-`release` 包里 `debugPrint` 仍会输出到 logcat。有这行日志就能一次定位：
-- 看到 `[TTS] togglePlay` 但后面没有 `native error` → 走到了原生，问题在系统 TTS
-- 看到 `[TTS] native error: xxx` → 直接给出原因
-- **什么都没看到** → `togglePlay` 第一行 `if (!_enabled …) return;` 就返回了 ⇒ 确认是 §7.2 的开关问题
-
-**方式 ②（不用电脑，但也有效）**：二分测试
-
-| 测什么 | 结果的含义 |
+| 判据 | 结果 |
 |---|---|
-| 「我的 → 朗读设置 → **试听**」有没有声音 | **有** → `TtsService` 正常，问题在 `SpeakButton` / 词卡<br>**没有** → `TtsService` 本身（音色 / 语言 / 引擎 / 开关）|
-| 把「音色」切回**系统默认（自动匹配语言）**再试听 | 若恢复 → 是 `_selectedVoice` 无效（`setVoice` 抛异常被吞）|
-| 换一篇**别的文章**划词再点喇叭 | 若恢复 → 与文章内容有关 |
+| `build/app/outputs/mapping/release/mapping.txt` | ✅ 存在 → 确认 R8 运行 |
+| `mapping.txt` 里 `fluttertts` 命中 | ✅ **101 条**（`FlutterTtsPlugin -> h0.f`）→ **类在，只是改名** |
+| `usage.txt`（R8「移除了什么」清单）里 flutter_tts 段 | ✅ **只移除 2 个未使用的私有常量**（`SILENCE_PREFIX` / `SYNTHESIZE_TO_FILE_PREFIX`）|
+| **`onMethodCall` / `setSpeechRate` / `setVoice` / `getVoices` 是否被移除** | ✅ **一个都没有**（`usage.txt` 里 0 命中）|
+| 对照：其他插件在 mapping 里 | ✅ pathprovider 185 / sharedpreferences 745 / imagepicker 1938 … → **搜法有效** |
+
+🔑 **教训（值得沉淀）**：**判断 release 包里的类是否被删，不能搜类名** ——
+R8 会把类改名。**必须查 `mapping.txt`（改名映射）+ `usage.txt`（移除清单）**。
+⚠️ 而 debug 包是**不混淆**的 → 同一个搜索在两种包型上结论相反（同「UTF-8 vs UTF-16」那类坑）。
+
+📌 **还有一条：`build.gradle.kts` 里没有 `minifyEnabled`，但 R8 仍然运行了** ——
+Flutter Gradle Plugin 会在 release 下启用它。⇒ **「配置文件里没写」≠「没发生」**。
+
+### 7.4 🆕 候选根因 A：插件在「引擎未就绪」时会**挂起所有调用**（静默、无报错）
+
+`flutter_tts-4.2.5` 的 Android 实现（`FlutterTtsPlugin.kt:276`）：
+
+```kotlin
+override fun onMethodCall(call: MethodCall, result: Result) {
+    synchronized(this@FlutterTtsPlugin) {
+        if (ttsStatus == null) {
+            // Suspend method call until the TTS engine is ready
+            val suspendedCall = Runnable { onMethodCall(call, result) }
+            pendingMethodCalls.add(suspendedCall)
+            return          // 🔴 result 永不返回
+        }
+    }
+    when (call.method) { ... }
+}
+```
+
+⇒ 若 `ttsStatus == null`（**系统 TTS 引擎未初始化成功**），**所有** method call 被挂起、`result` 永不回调。
+   Dart 侧 `await _tts.stop()` **永久挂着** → 后面 `setSpeechRate` / `speak` **一行都到不了**
+   → **完全无声，且不抛任何异常**（`await` 只是挂着，不是错误）。
+
+**这条与「试听也没声音」完全吻合**（试听走同一条 `_speakWithNative`）。
+
+### 7.5 🆕 候选根因 B：**语速契约不符**（我们的默认值超出库的合法范围）
+
+`flutter_tts` 的 Android 实现：
+
+```kotlin
+"setSpeechRate" -> {
+    // To make the FlutterTts API consistent across platforms,
+    // Android 1.0 is mapped to flutter 0.5.
+    setSpeechRate(rate.toFloat() * 2.0f)     // 🔴 Android 侧乘 2
+}
+private fun getSpeechRateValidRange(result: Result) {
+    data["min"] = "0"; data["normal"] = "0.5"; data["max"] = "1.5"   // 🔴 库声明的 flutter 侧上限
+}
+```
+
+⇒ **flutter 侧 1.0 → Android 2.0**（= Android 原生文档的合法上限）；**flutter 侧 1.5 → Android 3.0**（**超出**）。
+
+而我们的代码：
+
+| 位置 | 值 | 与库契约比 |
+|---|---|---|
+| `TtsService._speechRate` 默认 | 🔴 **1.5** | = 库声明的**上限**（→ Android 3.0）|
+| 设置页 `Slider(max:)` | 🔴 **2.0** | **超出上限 33%**（→ Android 4.0）|
+
+**🆕 关键历史**：`_speechRate` 默认值变更过 ——
+
+| 时间 | 默认值 |
+|---|---|
+| 06-26 ~ 07-10 | **1.0** |
+| **07-11 20:35（`c49673c`）起至今** | 🔴 **1.5** |
+
+⚠️ 且 `setSpeechRate` 在插件里**没有 try/catch**（`private fun setSpeechRate(rate) { tts!!.setSpeechRate(rate) }`）
+→ 若引擎抛 `IllegalArgumentException`，**异常冒泡到 `onMethodCall` 之外** → `result` 不返回 → **同样挂起**。
+
+### 7.5b 🔑 「之前一直是好的」的两个可能解释
+
+| 若根因是 | 为什么「之前好、现在坏」 |
+|---|---|
+| **A（引擎未就绪）** | **设备/系统层变了** —— 引擎被停用 / 语音数据丢失 / 系统更新。**与 App 版本无关** |
+| **B（语速超限）** | 🔴 **卸载重装清空了 prefs！** 语速存在 `SharedPreferences('tts_speech_rate')`；<br>而我在验证清单 §0.3 里写了「**装之前先卸载旧包**」→ **prefs 被清 → 回到默认 1.5**。<br>若之前白哥手动调过一个安全值（≤1.0），就一直正常 —— **卸装后回到 1.5 才暴露**。 |
+
+⚠️ **B 这条与我自己的操作指令有关** —— 我要求「先卸载旧的」。**如实写出**，不回避。
+（但**不能断言**：Android 的 `allowBackup` 默认开启，卸载时可能恢复 prefs。**需测试确认**。）
+
+### 7.6 🆕🔑 **免电脑的决定性诊断**：点喇叭后**图标显示什么**
+
+`tts_service.dart` 的 `state` 赋值顺序决定了图标 —— **图标本身就是探针**：
+
+```
+togglePlay:  state = TtsState.loading  →  await _speakWithNative(...)
+_speakWithNative:  await stop() → setVoice/setLanguage → setSpeechRate → setVolume
+                   → state = playing → await speak()
+```
+
+| 点下去后图标 | 含义 | 指向 |
+|---|---|---|
+| **一直转圈** | `state` 卡在 `loading` → 挂在 `stop`/`setVoice`/`setLanguage`/`setSpeechRate`/`setVolume` 某一步 | → **根因 A**（插件挂起）或 **B**（`setSpeechRate` 抛异常→挂起）|
+| **变成停止方块** ■ | `state` 到了 `playing` 且 `speak` 返回 1 | → 引擎**接受了**但物理无声 = **设备音频/引擎层** |
+| **变回喇叭** 🔈 | `speak` 返回非 1 → `state = stopped` | → 引擎**拒绝**（`speaking` 标志卡住 / 引擎不可用）|
+
+🔑 **三种状态对应三种根因**，且**不需要电脑、不需要 logcat** —— 看一眼就知道往哪查。
+
+#### 另两个辅助诊断（同样免电脑）
+
+| 诊断 | 看什么 | 判定 |
+|---|---|---|
+| **「我的 → 朗读设置」的「音色」下拉框** | 是空 / 有选项 | 空 → `getVoices` 也失败 → 指向**根因 A**（引擎未就绪）|
+| **手机系统设置 → 无障碍 → 文字转语音输出 → 试听** | 系统自己出不出声 | 不出声 → **设备 TTS 引擎坏了**（与 App 无关）；出声 → App 层 |
+
+### 7.7 无论根因是 A 还是 B，`TtsService` 都有一个**共同缺陷**（建议一并修）
+
+**所有对插件的调用都没有超时** ——
+
+```dart
+await _tts.stop();                        // ← 插件挂起 → 这里永远不返回
+await _tts.setSpeechRate(_speechRate);
+final result = await _tts.speak(...);     // ← 到不了
+```
+
+⇒ 一旦插件挂起（根因 A/B 都会导致），**UI 永久停在 loading 转圈，无报错、无出口**。
+📌 这正是本项目已定的判据：**「静默失败 + 无出口」比「报错」更糟**。
+
+**修复方向**（需你批准后实施）：
+1. 给每个插件调用加**有界超时**（`.timeout(...)`）→ 超时后给出**可见错误**，而不是永久转圈
+2. 语速默认值按**库声明的范围**校正（`getSpeechRateValidRange` 的最小/正常/最大），
+   Slider 的 `max` 也要跟着改
+3. 开机时用 `isLanguageAvailable` / `getEngines` 做一次**引擎可用性自检**，
+   不可用时给明确提示（而不是让用户点了一直没反应）
 
 ---
 
