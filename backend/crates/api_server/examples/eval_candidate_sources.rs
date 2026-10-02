@@ -47,43 +47,24 @@ struct Candidate {
 }
 
 const CANDIDATES: &[Candidate] = &[
-    // ── 第一轮三候选（白哥要求都测）──
+    // ── 白哥 2026-10-02 指定的三项 ──
     Candidate {
-        name: "Wired",
-        url: "https://www.wired.com/feed/rss",
+        name: "arXiv cs.AI",
+        url: "https://export.arxiv.org/rss/cs.AI",
         atom: false,
-        role: "候选1",
+        role: "白哥指定",
     },
     Candidate {
-        name: "Lobsters",
-        url: "https://lobste.rs/rss",
+        name: "arXiv cs.CL",
+        url: "https://export.arxiv.org/rss/cs.CL",
         atom: false,
-        role: "候选2",
-    },
-    Candidate {
-        name: "Simon Willison",
-        url: "https://simonwillison.net/atom/everything/",
-        atom: true,
-        role: "候选3",
-    },
-    // ── 第二轮补充（第一轮暴露营销污染后加的）──
-    Candidate {
-        name: "TechCrunch",
-        url: "https://techcrunch.com/feed/",
-        atom: false,
-        role: "补充",
+        role: "白哥指定",
     },
     Candidate {
         name: "HackerNoon",
         url: "https://hackernoon.com/feed",
         atom: false,
-        role: "补充",
-    },
-    Candidate {
-        name: "Smashing",
-        url: "https://www.smashingmagazine.com/feed/",
-        atom: false,
-        role: "补充",
+        role: "上轮推荐",
     },
     // ── 对照组：给「好」一个参照系 ──
     Candidate {
@@ -92,6 +73,37 @@ const CANDIDATES: &[Candidate] = &[
         atom: false,
         role: "对照",
     },
+];
+
+/// 直接测「文章页提取」——不走 RSS。
+///
+/// 🔑 **给「没有 RSS 的源」用**（Failory 实测 `/feed` `/rss` 全 404、只有 sitemap）。
+///   若要接入这类源，CoEvo 得新增一种 `kind`（现在是 `rss` | `hn`）。
+///   先用真实 `dom_smoothie` 确认**内容到底值不值得**为它加一种 kind。
+///
+/// ⚠️ arXiv 的 `abs` 页只有摘要；**全文要去 `/html/` 版**（arXiv 近年提供）——
+///   两条都测，看差多少。
+const DIRECT_PAGES: &[(&str, &str, &str)] = &[
+    (
+        "Failory 访谈页",
+        "https://www.failory.com/interview/basetemplates",
+        "无 RSS（只有 sitemap）",
+    ),
+    (
+        "Starter Story 页",
+        "https://www.starterstory.com/businesses/accelevents",
+        "vibedollar 的抓取目标",
+    ),
+    (
+        "arXiv abs 页",
+        "https://arxiv.org/abs/2610.00010",
+        "arXiv 摘要页",
+    ),
+    (
+        "arXiv HTML 全文",
+        "https://arxiv.org/html/2610.00010v1",
+        "arXiv 全文版（若存在）",
+    ),
 ];
 
 /// 营销页标题的特征词（优惠码 / 促销）。
@@ -350,6 +362,43 @@ async fn main() {
                 per_day
             ),
         ));
+    }
+
+    // ── ③ 直接测文章页（给「没有 RSS」的源用）──────────────────────
+    println!("\n{}", "═".repeat(100));
+    println!("【直接文章页提取】不走 RSS —— 给「只有 HTML」的源用");
+    println!("{}", "═".repeat(100));
+    println!(
+        "  🔑 为什么单独测：Failory 实测 `/feed` `/rss` 全 404、只有 sitemap\n     ⇒ 要接入得新增一种 `kind`（现在只有 `rss` | `hn`）。先确认**值不值得**。"
+    );
+    for (label, url, note) in DIRECT_PAGES {
+        println!("\n  ── {} · {} ──", label, note);
+        println!("     {}", url);
+        match fetch_article_body_diagnostic(url).await {
+            BodyOutcome::Got(md) => {
+                let w = words(&md);
+                let ok = ends_sentence(&md);
+                println!(
+                    "     ✅ {:>5} 词 · 句末{} · {}（阈值 {}）",
+                    w,
+                    if ok { "完整" } else { "🔴截断" },
+                    if w >= READABLE_WORDS {
+                        "达标"
+                    } else {
+                        "🟡偏短"
+                    },
+                    READABLE_WORDS
+                );
+                println!(
+                    "     开头: {}…",
+                    md.chars().take(150).collect::<String>().replace('\n', "⏎")
+                );
+                println!("     尾部: …{}", tail(&md, 110).replace('\n', "⏎"));
+            }
+            BodyOutcome::HttpFailed(e) => println!("     🔴 HTTP 失败: {}", e),
+            BodyOutcome::NoParagraphs => println!("     🔴 提取为空（无正文段落）"),
+            BodyOutcome::TooShort(n) => println!("     🟡 太短: {} 字符", n),
+        }
     }
 
     println!("\n{}", "═".repeat(100));
