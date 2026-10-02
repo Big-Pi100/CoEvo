@@ -221,8 +221,11 @@ entertainment 1 · health 2 · education 1 · history 1 · law 1 · family 1
 ## 八、遗留 / 待白哥定
 
 1. 🔴 **部署**（未动）—— 会一次性插入全部新源并开始抓
-2. 🟡 **是否重建 `content_source` 表**以让生产库也获得 CHECK（见 §5.1，需 DDL 迁移）
-3. ⏳ **「跨类编辑栏目」若要接**（`Opinion`/`Analysis`/`Perspective`/`Obituaries`/
-   `Race`/`On Disabilities`）—— 它们**不应是 `category`**，而应是另一个维度
-   （如「视角 / 观点」标签）。**要不要引入这个维度，是产品决定**。
+2. ✅ **重建 `content_source` 表** —— 白哥 2026-10-02 决定**做**。
+   实现与验证 → [`content-source-table-rebuild-2026-10-02.md`](content-source-table-rebuild-2026-10-02.md)
+3. ✅ **「跨类编辑栏目」已定：不引入** —— 白哥 2026-10-02 决定
+   （`Opinion` · `Analysis` · `Perspective` · `Obituaries` · `Race` · `On Disabilities`）。
+   理由（实测）：它们的内容**分属各类** ⇒ 建 category 会自相矛盾（见 §二）。
+   🔴 **这是有意为之，不是遗漏** —— 将来若要加，**不要**直接建 category，
+   应作为**另一个维度**（如「深度 / 观点」标签，与 category 正交）。
 4. ⏳ 上轮遗留：ESPN NFL / NPR Pop Culture 备选 · 存量许可复核（Dev.to / HN）

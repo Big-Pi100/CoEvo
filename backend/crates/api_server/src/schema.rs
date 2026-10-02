@@ -526,7 +526,14 @@ pub const CONTENT_CATEGORIES: &[&str] = &[
     "family",
 ];
 
-pub const CONTENT_SCHEMA_SQL: &str = r#"
+/// 内容源表（**建表**部分）。
+///
+/// # 🔴 为什么这一句要单独成常量（而不是塞在一条大 SQL 里）
+///
+/// 因为**重建表**（`rebuild_content_source_with_check`）必须复用**同一份** DDL ——
+/// 否则「新库的表」与「重建出的表」会变成两份定义，**必然漂移**。
+/// 📌 判据：**同一件事的口径只能有一处权威**（本项目已多次踩过「口径散落」）。
+pub const CONTENT_SOURCE_TABLE_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS content_source (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     name               TEXT    NOT NULL,
@@ -534,16 +541,18 @@ CREATE TABLE IF NOT EXISTS content_source (
     kind               TEXT    NOT NULL DEFAULT 'rss',   -- rss | hn
     -- 🔑 受控词表 —— 见 `CONTENT_CATEGORIES`（单一定义处）
     --
-    -- ⚠️ CHECK 在这里**是**有意义的（改错类会立刻报错），但有三条**必须知道**：
-    --   ① 本表用 `INSERT OR IGNORE`，而它**会静默忽略 CHECK 违规** ⇒
-    --      「源少了一个」不会报错；靠 `test_seed_sources_are_loaded` 的数量断言兜住。
-    --   ② 🔴 **`CREATE TABLE IF NOT EXISTS` 不重建已存在的表** ⇒
-    --      本 CHECK **只对新库生效**。生产库的 `content_source` 建于 CHECK 引入之前
-    --      （2026-09-29 的 `6c7d60d`，那时**没有** CHECK）⇒ **它实际没有 CHECK**。
-    --      📌 「改了 CHECK」≠「旧库会校验」—— 而 SQLite **不支持 ALTER 改 CHECK**，
-    --         要让旧库也拿到它，只能**重建表**（本项目暂未做）。
-    --   ③ 🔴 正因为 ②，**词表与 CHECK 可能不同步且不报错** ——
-    --      由 `test_content_source_check_matches_categories`（读 DDL 逐值比对）兜住。
+    -- ⚠️ CHECK 在这里**是**有意义的（改错类会立刻报错），但有两条**必须知道**：
+    --   ① **新库**靠**这句**建出 CHECK；**旧库**靠
+    --      `rebuild_content_source_with_check()` **重建表**拿到
+    --      （`CREATE TABLE IF NOT EXISTS` 对已存在的表无效，而 SQLite
+    --       **不支持 `ALTER TABLE ADD CONSTRAINT`** ⇒ 重建是唯一途径）。
+    --      ✅ 2026-10-02 起**两条路都有** ⇒ 新库/旧库的约束一致（不再有「只对新库生效」）。
+    --   ② seed 用 `ON CONFLICT DO NOTHING`（**不是** `INSERT OR IGNORE`）——
+    --      前者只忽略**重复**，**CHECK 违规会正常报错** ⇒ 新源写错分类**立刻炸**，
+    --      而不是静默丢一个源。
+    --      🔴 **若有人把它改回 `INSERT OR IGNORE`，「静默丢源」会立刻回来。**
+    --   ③ 词表与 CHECK 的同步由 `test_content_source_check_matches_categories`
+    --      （读 DDL 逐类比对，集合相等）兜住。
     category           TEXT
         CHECK (category IN ('news','tech','business','science','sports',
                             'culture','entertainment','health',
@@ -570,9 +579,22 @@ CREATE TABLE IF NOT EXISTS content_source (
     created_at         TEXT    NOT NULL,
     updated_at         TEXT    NOT NULL
 );
+
+"#;
+
+/// `content_source` 的索引 —— **与建表分开**，因为重建时**顺序有讲究**：
+/// 旧表被 `DROP` 时它的索引（同名）一并消失，**之后**才能建新索引；
+/// 若索引与建表写在同一批 SQL 里、且旧索引还占着名字，
+/// `CREATE INDEX IF NOT EXISTS` 会**静默跳过**（名字冲突）⇒ 新表**没有唯一索引**
+/// ⇒ 之后 seed 的 `ON CONFLICT (url)` 会失败。
+/// 📌 判据：**`IF NOT EXISTS` 遇到「名字被别的表占着」时会假装成功。**
+pub const CONTENT_SOURCE_INDEX_SQL: &str = r#"
 CREATE UNIQUE INDEX IF NOT EXISTS idx_csrc_url ON content_source (url);
 CREATE INDEX IF NOT EXISTS idx_csrc_due ON content_source (enabled, last_fetch_at);
+"#;
 
+/// 内容池表 + 其索引。
+pub const CONTENT_POOL_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS content_pool (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,   -- = 端侧的 article_id（见上方说明）
     source_id    INTEGER REFERENCES content_source(id),
@@ -616,8 +638,19 @@ CREATE INDEX IF NOT EXISTS idx_cpool_score    ON content_pool (score DESC);
 -- 🆕 保留期清理的查询列（`prune_old_content` 按 `fetched_at` 排序 + 过滤）
 -- ⚠️ 没有它：每轮清理都要**全表扫** content_pool（将来几万行时就是每 6 小时一次全扫）
 CREATE INDEX IF NOT EXISTS idx_cpool_fetched  ON content_pool (fetched_at);
+"#;
 
--- 种子源（实测**可达**才进这份清单 —— 2026-09-29 本机 + VPS 双实测）
+/// **种子源**（实测**可达**才进这份清单 —— 2026-09-29 本机 + VPS 双实测）
+///
+/// # 🔴 为什么用 `ON CONFLICT DO NOTHING` 而**不是** `INSERT OR IGNORE`
+///
+/// 两者都幂等，但**差一条关键的**：
+/// · `INSERT OR IGNORE` 忽略**任何**约束冲突 —— **包括 CHECK 违规**
+///   ⇒ 新源的 `category` 写错时**静默丢源**（本项目最忌讳的「静默失败」）
+/// · `ON CONFLICT DO NOTHING` 只忽略**冲突**（唯一约束/主键），
+///   **CHECK 违规会正常报错** ⇒ 写错类**立刻炸**
+/// 📌 判据：**要「忽略重复」就只忽略重复，别用「忽略一切」的语法。**
+pub const CONTENT_SEED_SQL: &str = r#"
 -- 🔴 曾经推荐的 VOA / BBC Learning English / Wikipedia **国内不可达**（HTTP 000）
 --    → 不在种子清单里（详见方案文档「实测修订」）
 --
@@ -625,7 +658,7 @@ CREATE INDEX IF NOT EXISTS idx_cpool_fetched  ON content_pool (fetched_at);
 --    而**只靠默认值就表达不了「这个源要禁用」** —— 新建库会把禁用的源又建回来。
 --    📌 判据：**「默认值」只能表达「没意见」，表达不了「明确不要」** ——
 --       凡是要显式说「不」的列，都必须写出来。
-INSERT OR IGNORE INTO content_source
+INSERT INTO content_source
     (id, name, url, kind, category, cefr_hint, license, redistributable, tz_offset_min, enabled, created_at, updated_at)
 VALUES
     (1, 'NPR News',      'https://feeds.npr.org/1001/rss.xml',                        'rss', 'news', 'B2', 'news',          1,    0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
@@ -759,7 +792,8 @@ VALUES
     (21, 'NPR Weather 天气',     'https://feeds.npr.org/1165/rss.xml', 'rss', 'science',   'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     (22, 'NPR Strange News 趣闻','https://feeds.npr.org/1146/rss.xml', 'rss', 'news',      'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     (23, 'NPR On Aging 老龄',    'https://feeds.npr.org/1028/rss.xml', 'rss', 'health',    'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
-    (24, 'NPR Media 媒体',       'https://feeds.npr.org/1020/rss.xml', 'rss', 'news',      'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now'));
+    (24, 'NPR Media 媒体',       'https://feeds.npr.org/1020/rss.xml', 'rss', 'news',      'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+ON CONFLICT DO NOTHING;
 
 "#;
 
@@ -790,8 +824,16 @@ pub fn init_database(conn: &rusqlite::Connection) -> Result<(), String> {
     // 🔑 新表**不需要专门迁移**：`init_database` 每次启动**无条件**执行，
     //    而 `CREATE TABLE IF NOT EXISTS` 对「老库缺这张表」是**有效**的（会建出来）。
     //    ⚠️ 与「加列」不同 —— 加列的 `ALTER TABLE` 才是要写迁移的（见上方 §迁移）。
-    conn.execute_batch(CONTENT_SCHEMA_SQL)
-        .map_err(|e| format!("content schema: {}", e))?;
+    //
+    // 🔑 **2026-10-02 起拆成 4 段**（原为一条 `CONTENT_SCHEMA_SQL`）——
+    //    因为「重建 `content_source`」必须**复用同一份建表 DDL**，
+    //    而重建对「建表 / 建索引」的**顺序**有硬要求（见 `CONTENT_SOURCE_INDEX_SQL` 的说明）。
+    conn.execute_batch(CONTENT_SOURCE_TABLE_SQL)
+        .map_err(|e| format!("content source table: {}", e))?;
+    conn.execute_batch(CONTENT_SOURCE_INDEX_SQL)
+        .map_err(|e| format!("content source index: {}", e))?;
+    conn.execute_batch(CONTENT_POOL_SQL)
+        .map_err(|e| format!("content pool: {}", e))?;
     // 🔴 2026-09-29 删除：`CREATE UNIQUE INDEX idx_users_phone_hash ON users(phone_hash)`
     //
     // 为什么**必须删**（两条独立理由，任一条都足以致命）：
@@ -805,6 +847,16 @@ pub fn init_database(conn: &rusqlite::Connection) -> Result<(), String> {
 
     // ── 渐进式迁移 ──
     run_migrations_inner(conn)?;
+
+    // ── 🆕 内容源种子（**必须在迁移之后**）──
+    //
+    // 🔴 顺序不能反：`content_source` 的 CHECK 可能在迁移里被**重建更新**
+    //    （如 2026-10-02 从 8 类扩到 12 类）。若 seed 先跑，新分类的行会撞上**旧 CHECK**
+    //    而**报错**（`ON CONFLICT DO NOTHING` **不忽略** CHECK 违规 —— 这正是我们要的语义，
+    //    但也意味着「顺序错了就会炸」）。
+    // 📌 判据：**「先保证结构正确，再灌数据」** —— 迁移属于「结构」，seed 属于「数据」。
+    conn.execute_batch(CONTENT_SEED_SQL)
+        .map_err(|e| format!("content seed: {}", e))?;
 
     // ── 初始化默认数据 ──
     // 管理密钥认证（X-Admin-Key）返回的 admin_id="super" 需要存在于 admin_users 表中
@@ -900,7 +952,7 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
         //      这个意图**写在定义里**，读代码的人不必去查 NULL 语义。
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL",
         // ── 🆕 2026-09-29 内容池：抓正文的尝试记录 ──
-        // 新库走 `CONTENT_SCHEMA_SQL` 已含此列 → 这里对它们报 `duplicate column` → 容错放行。
+        // 新库走 `CONTENT_POOL_SQL` 已含此列 → 这里对它们报 `duplicate column` → 容错放行。
         // 🔴 对**已存在的库**（本地开发库 / 将来的生产库）这是**唯一**的补列途径 ——
         //    `CREATE TABLE IF NOT EXISTS` 见到表就跳过，**不会**比对结构。
         //    这正是本文件反复强调的「加列必须写迁移」。
@@ -921,7 +973,221 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
             }
         }
     }
+
+    // ── 🆕 2026-10-02：让**已存在的**库也拿到 `content_source.category` 的 CHECK ──
+    //    （`CREATE TABLE IF NOT EXISTS` 对旧表无效，而 SQLite 不能 ALTER 加 CHECK
+    //      ⇒ 唯一的办法是**重建表**。详见函数内的说明。）
+    rebuild_content_source_with_check(conn)?;
+
     Ok(())
+}
+
+/// 读出 `content_source` 的 CHECK 里列了哪些分类。
+///
+/// · 表不存在 → `Ok(None)`（例：`run_migrations()` 被单独调用时还没建表）
+/// · 表存在但**没有** CHECK → `Ok(Some(空集))` —— 空集 ≠ 词表 ⇒ 会触发重建
+///
+/// # 🔑 为什么读 DDL 而不是读源文件
+///
+/// 因为要判的是「**库里实际生效的约束**」：`CONTENT_SOURCE_TABLE_SQL` 里的 CHECK
+/// 对已存在的表**不生效**（`IF NOT EXISTS` 跳过）。读源文件会得到**错的答案**。
+/// 📌 判据：**断言/判断要读「生效的东西」**。
+///
+/// ⚠️ 本函数**同时被迁移（判断是否重建）与测试断言使用** —— 刻意复用同一份解析逻辑，
+///    否则「是否要重建」与「重建后是否合格」两处口径会漂移。
+fn content_source_check_categories(
+    conn: &rusqlite::Connection,
+) -> Result<Option<std::collections::BTreeSet<String>>, String> {
+    use rusqlite::OptionalExtension;
+    let ddl: Option<String> = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='content_source'",
+            [],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("读 content_source 的 DDL 失败: {}", e))?;
+
+    let Some(ddl) = ddl else { return Ok(None) };
+
+    let Some(seg) = ddl.split("CHECK (category IN (").nth(1) else {
+        // 表在，但没写 CHECK（这正是生产库当前的状态 —— CHECK 是后来才加的）
+        return Ok(Some(std::collections::BTreeSet::new()));
+    };
+    let Some(list) = seg.split(')').next() else {
+        return Ok(Some(std::collections::BTreeSet::new()));
+    };
+    Ok(Some(
+        list.split(',')
+            .map(|x| x.trim().trim_matches('\'').to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
+    ))
+}
+
+/// 🔴 让**已存在的**旧库也获得 `content_source.category` 的 CHECK 约束。
+///
+/// # 为什么必须「重建表」
+///
+/// `CREATE TABLE IF NOT EXISTS` **见到表就跳过**（不比对结构），而 SQLite
+/// **不支持 `ALTER TABLE ADD CONSTRAINT`** ⇒ 给旧表补 CHECK 的唯一办法是
+/// 「建新表 → 拷数据 → 换名」。
+///
+/// # 收益（配合 seed 的改动才成立）
+///
+/// 本轮同时把 seed 从 `INSERT OR IGNORE` 改成 `ON CONFLICT DO NOTHING` ——
+/// 后者**只忽略重复**，**不忽略 CHECK 违规**。两者合起来才是：
+/// **新源写错分类 → 立刻报错**，而不是「静默少一个源、靠数量断言事后发现」。
+/// ⚠️ 只做重建不改 seed 的话，收益有限（`OR IGNORE` 照样吞 CHECK 违规）。
+///
+/// # 幂等
+///
+/// 判据 = 「DDL 里的类别集合 **≡** `CONTENT_CATEGORIES`」⇒ 相同就跳过。
+/// ⇒ 重复执行安全；且**将来再改词表会自动再重建一次**。
+///
+/// # 🔴 外键（最容易出事的地方）
+///
+/// `content_pool.source_id REFERENCES content_source(id)`，而连接的
+/// `PRAGMA foreign_keys = ON`（`db_pool.rs`）⇒ `DROP TABLE content_source`
+/// 会因为外键检查**直接失败**。所以：
+/// 1. 必须先 `PRAGMA foreign_keys = OFF`
+/// 2. ⚠️ SQLite 规定该 PRAGMA **在事务内是 no-op** ⇒ 必须设在 `BEGIN` **之前**
+/// 3. 🔴 **无论成败都要恢复 ON** —— 否则那条池连接会**永久**不校验外键
+///    （连接池会复用它，故障是静默的）
+fn rebuild_content_source_with_check(conn: &rusqlite::Connection) -> Result<(), String> {
+    let Some(have) = content_source_check_categories(conn)? else {
+        return Ok(()); // 表还不存在（如 run_migrations 单独调用）→ 无事可做
+    };
+    let want: std::collections::BTreeSet<String> =
+        CONTENT_CATEGORIES.iter().map(|s| s.to_string()).collect();
+    if have == want {
+        return Ok(()); // 已经是最新结构 → 跳过（幂等）
+    }
+
+    conn.execute_batch("PRAGMA foreign_keys = OFF")
+        .map_err(|e| format!("重建前关闭外键失败: {}", e))?;
+
+    let outcome = rebuild_content_source_body(conn);
+
+    // 🔴 恢复外键 —— 必须无条件执行
+    let restore = conn
+        .execute_batch("PRAGMA foreign_keys = ON")
+        .map_err(|e| format!("重建后恢复外键失败: {}", e));
+
+    match (outcome, restore) {
+        (Err(e), _) => Err(e),
+        (Ok(()), Err(e)) => Err(format!(
+            "重建成功，但**恢复外键失败** —— 那条连接将不再校验外键（需重启服务）: {}",
+            e
+        )),
+        (Ok(()), Ok(())) => Ok(()),
+    }
+}
+
+/// `rebuild_content_source_with_check` 的实际动作（把「恢复外键」留给调用方，保证必达）。
+fn rebuild_content_source_body(conn: &rusqlite::Connection) -> Result<(), String> {
+    const TABLE: &str = "content_source";
+    const NEW: &str = "content_source_rebuild";
+
+    // 新表 DDL —— **复用** `CONTENT_SOURCE_TABLE_SQL`（唯一权威），只换表名。
+    // ⚠️ 若将来有人改了那句的写法，替换会失败 ⇒ 下面的检查**显式报错**（不静默）。
+    let new_ddl = CONTENT_SOURCE_TABLE_SQL.replace(
+        &format!("CREATE TABLE IF NOT EXISTS {} (", TABLE),
+        &format!("CREATE TABLE {} (", NEW),
+    );
+    if !new_ddl.contains(&format!("CREATE TABLE {} (", NEW)) {
+        return Err(format!(
+            "🔴 重建 DDL 的表名替换失败 —— `CONTENT_SOURCE_TABLE_SQL` 的写法变了？\
+             期望其中含 `CREATE TABLE IF NOT EXISTS {} (`。",
+            TABLE
+        ));
+    }
+
+    // 重建前先记录「悬空引用」的基线 —— 重建后**不得变多**（既有问题不算重建的错）
+    let dangling_before = dangling_pool_refs(conn)?;
+
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|e| format!("重建开启事务失败: {}", e))?;
+
+    let body = (|| -> Result<(), String> {
+        conn.execute_batch(&new_ddl)
+            .map_err(|e| format!("建新表失败: {}", e))?;
+
+        // 逐列显式拷贝（**不用 `SELECT *`**）—— 列名写错会直接报错，不会静默错位
+        const COLS: &str = "id, name, url, kind, category, cefr_hint, license, \
+             redistributable, tz_offset_min, fetch_interval_min, enabled, last_fetch_at, \
+             fail_count, created_at, updated_at";
+        conn.execute_batch(&format!(
+            "INSERT INTO {new} ({cols}) SELECT {cols} FROM {table}",
+            new = NEW,
+            cols = COLS,
+            table = TABLE
+        ))
+        .map_err(|e| format!("拷贝数据失败: {}", e))?;
+
+        // 🔴 拷贝完整性：行数必须一致（「数字对上」是必要条件；内容比对见测试）
+        let old_n = table_row_count(conn, TABLE)?;
+        let new_n = table_row_count(conn, NEW)?;
+        if old_n != new_n {
+            return Err(format!(
+                "🔴 重建拷贝行数不符：`{}` {} 行 → 新表 {} 行（**已回滚**）",
+                TABLE, old_n, new_n
+            ));
+        }
+
+        conn.execute_batch(&format!("DROP TABLE {}", TABLE))
+            .map_err(|e| format!("删旧表失败: {}", e))?;
+        conn.execute_batch(&format!("ALTER TABLE {} RENAME TO {}", NEW, TABLE))
+            .map_err(|e| format!("新表改名失败: {}", e))?;
+
+        // 🔑 索引**必须在这里**建（不能在 `new_ddl` 里）：
+        //    旧表刚被 DROP 时它的同名索引才消失；在那之前 `CREATE INDEX IF NOT EXISTS`
+        //    会因**名字被占**而静默跳过 ⇒ 新表没有唯一索引。
+        conn.execute_batch(CONTENT_SOURCE_INDEX_SQL)
+            .map_err(|e| format!("重建索引失败: {}", e))?;
+
+        // 🔴 外键完整性：重建后悬空引用不得比基线多
+        let dangling_after = dangling_pool_refs(conn)?;
+        if dangling_after > dangling_before {
+            return Err(format!(
+                "🔴 重建后 `content_pool.source_id` 的悬空引用变多（{} → {}），**已回滚**",
+                dangling_before, dangling_after
+            ));
+        }
+
+        Ok(())
+    })();
+
+    match body {
+        Ok(()) => conn
+            .execute_batch("COMMIT")
+            .map_err(|e| format!("重建提交失败: {}", e)),
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(format!("{}（事务已回滚，旧表未受影响）", e))
+        }
+    }
+}
+
+/// 表行数（表名来自本模块常量，无注入风险）。
+fn table_row_count(conn: &rusqlite::Connection, table: &str) -> Result<i64, String> {
+    conn.query_row(&format!("SELECT COUNT(*) FROM {}", table), [], |r| r.get(0))
+        .map_err(|e| format!("统计 {} 行数失败: {}", table, e))
+}
+
+/// `content_pool.source_id` 指向不存在的源的条数（悬空引用）。
+///
+/// 🔑 刻意**只查这一条关系**，而不用 `PRAGMA foreign_key_check`
+/// （后者返回**整个库**的违规，库里若本来就有别的历史问题会误报成本次重建的错）。
+fn dangling_pool_refs(conn: &rusqlite::Connection) -> Result<i64, String> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM content_pool p \
+         LEFT JOIN content_source s ON p.source_id = s.id \
+         WHERE p.source_id IS NOT NULL AND s.id IS NULL",
+        [],
+        |r| r.get(0),
+    )
+    .map_err(|e| format!("检查 content_pool 悬空引用失败: {}", e))
 }
 
 /// 条件删列 —— **列存在才删**（幂等：跑多次安全）。
@@ -1005,7 +1271,7 @@ mod tests {
         // 🆕 内容源 + 内容池（2026-09-29 · 服务端共享内容池）
         // ⚠️ 方案 §4.3 还列了 `user_read` / `user_interest` —— **有意不建**：
         //    前者与端侧 `article_read` 是同一个口径的第二个出处；
-        //    后者设计未定（「兴趣怎么影响排序」还没做）。见 `CONTENT_SCHEMA_SQL`。
+        //    后者设计未定（「兴趣怎么影响排序」还没做）。见 `CONTENT_POOL_SQL`。
         "content_source",
         "content_pool",
     ];
@@ -1236,7 +1502,7 @@ mod tests {
                 .unwrap_or(0);
             assert_eq!(
                 exists, 0,
-                "🔴 `{}` 不该存在 —— 见 CONTENT_SCHEMA_SQL 的说明（学习状态已迁端侧）",
+                "🔴 `{}` 不该存在 —— 见 CONTENT_POOL_SQL 的说明（学习状态已迁端侧）",
                 t
             );
         }
@@ -1284,23 +1550,27 @@ mod tests {
 
     }
 
-    /// 🆕 2026-10-02 三轮：**受控词表 ≡ `content_source` 的 CHECK DDL**（逐值比对）。
+    /// 🆕 2026-10-02：**受控词表 ≡ `content_source` 的 CHECK**（**集合相等**）。
     ///
-    /// # 🔴 为什么必须有这条（而不是「改 CHECK 时记得同步」）
+    /// # 🔴 它守的是什么（曾经是一条全程无报错的失效链）
     ///
-    /// 三者构成一条**全程无报错的失效链**：
     ///   ① `CREATE TABLE IF NOT EXISTS` **不重建已存在的表** ⇒ CHECK 改动对旧库无效
-    ///   ② `INSERT OR IGNORE` 会**静默吞掉** CHECK 违规
-    ///   ③ 于是「词表加了类、CHECK 没加」⇒ **新库静默丢源**
-    ///      —— 数量断言（`种子源应为 N 行`）虽然会红，但它报的是「少了一行」，
-    ///      **不告诉你为什么少**，排查要从「是网络？是 SQL？还是约束？」开始。
+    ///   ② `INSERT OR IGNORE` 会**静默吞掉** CHECK 违规（不只重复冲突）
+    ///   ③ ⇒「词表加了类、CHECK 没加」= **静默丢源**，只有数量断言会红
+    ///      —— 而它只说「少了一行」，**不告诉你是哪个类 / 为什么**。
     ///
-    /// 本条把**原因**直接指出来（缺哪个类），且**读的是 DDL 而不是源文件** ——
-    /// 即使有人把 CHECK 写成别的换行/大小写形式，只要**生效**就通过；
-    /// 反之，若 DDL 里没有它，说明**约束根本没建出来**（这正是 ② 的根因）。
+    /// ✅ **①② 已于 2026-10-02 修复**：
+    ///    · `rebuild_content_source_with_check()` —— 让**已存在的库**也拿到最新 CHECK
+    ///    · seed 改 `ON CONFLICT DO NOTHING` —— 只忽略重复，**CHECK 违规会正常报错**
     ///
-    /// 📌 判据：**断言要读「生效的东西」，而不是读「源文件里的声明」**
-    ///    （同族：「注释里的声明须 grep 才算数」）。
+    /// ⚠️ **但本断言必须保留** —— 它挡的是**新库**这条路径：
+    ///    改了 `CONTENT_CATEGORIES` 却漏改建表语句里的 CHECK 时，
+    ///    新库照旧会拒收该类的源（`CREATE TABLE` 失败或插入违规）。
+    ///    📌 守门人不能因为「另一条路修好了」就撤掉。
+    ///
+    /// 📌 判据：断言要读「**生效的东西**」（`sqlite_master` 里的 DDL），
+    ///    而不是源文件里的声明 —— 并**复用迁移用的同一个解析函数**，
+    ///    避免「判断是否重建」与「断言是否合格」两处解析逻辑漂移。
     ///
     /// ⚠️ **独立成 test 而不是塞进 `test_core_table_columns`** ——
     ///    因为后者的数量断言会先 panic，**本条根本没机会跑**
@@ -1309,55 +1579,199 @@ mod tests {
     fn test_content_source_check_matches_categories() {
         let conn = Connection::open_in_memory().unwrap();
         init_database(&conn).unwrap();
-        let ddl: String = conn
+
+        let in_check = content_source_check_categories(&conn)
+            .expect("读 content_source 的 DDL 失败")
+            .expect("content_source 表应存在");
+        let want: std::collections::BTreeSet<String> = CONTENT_CATEGORIES
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+
+        assert_eq!(
+            in_check, want,
+            "🔴 CHECK 必须与 `CONTENT_CATEGORIES` **集合相等**\
+             （左 = DDL 里实际生效的；右 = 词表）。\
+             缺一个 ⇒ 该类的新源会被 CHECK 拒绝；多一个 ⇒ 是已删类的残留。"
+        );
+    }
+
+    /// 🔴🔴 **重建演练**：**旧结构**（`content_source` 无 CHECK）的库跑 `init_database` 后，
+    /// 必须拿到最新 CHECK，且**数据一行不丢**、`content_pool` 引用完好、外键已恢复、可重跑。
+    ///
+    /// # 为什么必须造「旧库」而不是用 `init_database` 建初始状态
+    ///
+    /// `init_database` 建出来的是**已经是新结构**的库（CHECK 就在建表语句里）⇒
+    /// 重建逻辑**根本不会执行**，等于测了个空。
+    /// 📌 判据：**想验迁移，就必须造出「迁移前」的状态**
+    ///    （同 `test_migrate_from_legacy_users_table` 的做法）。
+    ///
+    /// # 🔴 为什么显式 `PRAGMA foreign_keys = ON`
+    ///
+    /// 生产连接的 `foreign_keys` 是 **ON**（`db_pool.rs` 建连接时设），
+    /// 而 `open_in_memory()` 默认是 **OFF**。
+    /// 若不显式打开，「`DROP TABLE` 被外键挡住」这个**最危险的点**
+    /// 在测试里**根本不会暴露** ⇒ 「测试全绿但生产起不来」。
+    /// 📌 判据：**测试环境必须与生产一致**（同族：按用户怎么打开来验）。
+    ///
+    /// # 用**手工源（id=99）**当「数据没丢」的证据
+    ///
+    /// 它在 seed 里**不存在** ⇒ 若重建把它弄丢，**没有任何 seed 会把它补回来**
+    /// （对照：id=1 丢了也会被 seed 重插，掩盖问题）。
+    /// 那个源还带 `fail_count = 7` / `last_fetch_at = NULL` —— 顺带验运行时状态。
+    #[test]
+    fn test_rebuild_content_source_gains_check_and_keeps_data() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+
+        // ── ① 造「旧结构」：`content_source` **没有** CHECK（= 生产库当前状态）──
+        conn.execute_batch(
+            "CREATE TABLE content_source (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                name               TEXT    NOT NULL,
+                url                TEXT    NOT NULL,
+                kind               TEXT    NOT NULL DEFAULT 'rss',
+                category           TEXT,
+                cefr_hint          TEXT,
+                license            TEXT,
+                redistributable    INTEGER NOT NULL DEFAULT 0 CHECK (redistributable IN (0,1)),
+                tz_offset_min      INTEGER NOT NULL DEFAULT 0,
+                fetch_interval_min INTEGER NOT NULL DEFAULT 360,
+                enabled            INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+                last_fetch_at      TEXT,
+                fail_count         INTEGER NOT NULL DEFAULT 0,
+                created_at         TEXT    NOT NULL,
+                updated_at         TEXT    NOT NULL
+            );
+            CREATE UNIQUE INDEX idx_csrc_url ON content_source (url);",
+        )
+        .unwrap();
+        // `content_pool` 用**真实 DDL** 建 —— 它带 `REFERENCES content_source(id)`，
+        // 正是本次要验的那条外键关系。
+        conn.execute_batch(CONTENT_POOL_SQL).unwrap();
+
+        // ── ② 塞数据（含 seed 里没有的手工源 + 运行时状态）──
+        conn.execute_batch(
+            "INSERT INTO content_source (id,name,url,kind,category,cefr_hint,license,
+                redistributable,tz_offset_min,fetch_interval_min,enabled,last_fetch_at,
+                fail_count,created_at,updated_at) VALUES
+             (1,'NPR News','https://feeds.npr.org/1001/rss.xml','rss','news','B2','news',
+                1,0,360,1,'2026-10-01T00:00:00Z',0,'C1','U1'),
+             (99,'手工加的源','https://example.test/custom.xml','rss','culture','B1','cc',
+                0,0,720,0,NULL,7,'C99','U99');
+             INSERT INTO content_pool (id,source_id,title,url,fetched_at) VALUES
+             (1000,1,'A','https://a.test/1','2026-10-01T00:00:00Z'),
+             (1001,99,'B','https://b.test/2','2026-10-01T00:00:00Z');",
+        )
+        .unwrap();
+
+        assert_eq!(
+            content_source_check_categories(&conn).unwrap(),
+            Some(std::collections::BTreeSet::new()),
+            "前提：旧表应**没有** CHECK（否则测不到重建）"
+        );
+
+        // ── ③ 跑真正的初始化路径（内部会触发重建）──
+        init_database(&conn).unwrap();
+
+        // ── ④ 拿到最新 CHECK（集合相等）──
+        let want: std::collections::BTreeSet<String> = CONTENT_CATEGORIES
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(
+            content_source_check_categories(&conn).unwrap().unwrap(),
+            want,
+            "重建后 CHECK 应等于受控词表"
+        );
+
+        // ── ⑤ 🔴 CHECK **真的生效**（这才是重建的目的）──
+        let bad = conn.execute(
+            "INSERT INTO content_source (name,url,category,created_at,updated_at) \
+             VALUES ('x','https://x.test/','bogus','C','U')",
+            [],
+        );
+        assert!(bad.is_err(), "🔴 重建后仍能插入非法分类 —— CHECK 没生效");
+
+        // ── ⑥ 🔴 数据**逐行**完好（不只比行数：「数字对上」≠「成员对上」）──
+        let rows: Vec<(i64, String, String, String, Option<String>, i64)> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id,name,category,created_at,last_fetch_at,fail_count \
+                     FROM content_source ORDER BY id",
+                )
+                .unwrap();
+            let it = stmt
+                .query_map([], |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                    ))
+                })
+                .unwrap();
+            it.map(|x| x.unwrap()).collect()
+        };
+        let custom = rows
+            .iter()
+            .find(|r| r.0 == 99)
+            .expect("🔴 手工源 id=99 丢了（seed 里没有它，丢了没人补）");
+        assert_eq!(custom.1, "手工加的源");
+        assert_eq!(custom.2, "culture");
+        assert_eq!(custom.3, "C99");
+        assert_eq!(custom.4, None, "`last_fetch_at` 应保持 NULL");
+        assert_eq!(custom.5, 7, "`fail_count` 应保持 7");
+
+        let npr = rows.iter().find(|r| r.0 == 1).expect("NPR 源丢了");
+        assert_eq!(
+            npr.4.as_deref(),
+            Some("2026-10-01T00:00:00Z"),
+            "运行时状态 `last_fetch_at` 丢了"
+        );
+        assert!(
+            rows.iter().any(|r| r.0 == 15),
+            "seed 的新源（id 15-24）应已补插"
+        );
+
+        // ── ⑦ 🔴 唯一索引仍在（否则 seed 的 `ON CONFLICT(url)` 语义会失效）──
+        let dup = conn.execute(
+            "INSERT INTO content_source (name,url,category,created_at,updated_at) \
+             VALUES ('dup','https://feeds.npr.org/1001/rss.xml','news','C','U')",
+            [],
+        );
+        assert!(dup.is_err(), "🔴 重建后 url 唯一索引没了");
+
+        // ── ⑧ 🔴 `content_pool` 引用完好 + 外键已恢复 ON ──
+        assert_eq!(
+            dangling_pool_refs(&conn).unwrap(),
+            0,
+            "重建后 content_pool 出现悬空引用"
+        );
+        let fk: i64 = conn
+            .query_row("PRAGMA foreign_keys", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(fk, 1, "🔴 重建后未恢复外键 ON（该连接将永不校验外键）");
+
+        // ── ⑨ 幂等：再跑一遍不报错，且**不该再重建**（DDL 不变）──
+        let ddl_before: String = conn
             .query_row(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name='content_source'",
                 [],
                 |r| r.get(0),
             )
-            .expect("content_source 表应存在");
-
-        // 正向：词表里每一类都必须在 CHECK 中
-        for c in CONTENT_CATEGORIES {
-            assert!(
-                ddl.contains(&format!("'{}'", c)),
-                "🔴 `content_source` 的 CHECK 里缺分类 `{}` —— \
-                 改了 `CONTENT_CATEGORIES` 就必须同步改 CHECK，\
-                 否则**新库**会因 `INSERT OR IGNORE` 吞掉违规而**静默丢源**。",
-                c
-            );
-        }
-
-        // 反向：CHECK 里不该有词表之外的类（防「删了类但 CHECK 没删」）
-        let in_check: Vec<&str> = ddl
-            .split("CHECK (category IN (")
-            .nth(1)
-            .and_then(|s| s.split(')').next())
-            .map(|s| {
-                s.split(',')
-                    .map(|x| x.trim().trim_matches('\''))
-                    .collect()
-            })
-            .unwrap_or_default();
-        assert!(
-            !in_check.is_empty(),
-            "🔴 没能从 DDL 解析出 CHECK 的分类列表 —— 解析方式可能过时了。DDL: {}",
-            ddl
-        );
-        for c in &in_check {
-            assert!(
-                CONTENT_CATEGORIES.contains(c),
-                "🔴 CHECK 里有词表外的分类 `{}` —— 已删的类必须同时从 CHECK 删掉",
-                c
-            );
-        }
-        assert_eq!(
-            in_check.len(),
-            CONTENT_CATEGORIES.len(),
-            "CHECK 的分类数（{}）应与 CONTENT_CATEGORIES（{}）一致",
-            in_check.len(),
-            CONTENT_CATEGORIES.len()
-        );
+            .unwrap();
+        init_database(&conn).unwrap();
+        let ddl_after: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='content_source'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(ddl_before, ddl_after, "重复执行应幂等（不该再重建）");
     }
 
     /// 🔴 迁移演练：**旧结构的库**（含实名/手机号 5 列 + 旧索引）跑 `init_database` 后

@@ -76,7 +76,7 @@ pub struct ParsedItem {
 /// # 参数 `tz_offset_min`
 /// 源的时间戳**不带时区**时按此偏移解释（分钟；东八区 = 480）。
 /// 由**源配置**（`content_source.tz_offset_min`）传入 —— 见 [`parse_pub_date`] 的说明，
-/// 以及 `CONTENT_SCHEMA_SQL` 里那一列为什么存在。
+/// 以及 `CONTENT_SOURCE_TABLE_SQL` 里那一列为什么存在。
 ///
 /// 跳过规则（都是**无法处理**而非「处理失败」）：
 /// · **无 `<url>`/`<link>`** → 跳过（没有幂等键，入库会重复）
