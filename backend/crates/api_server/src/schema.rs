@@ -520,15 +520,32 @@ CREATE INDEX IF NOT EXISTS idx_cpool_score    ON content_pool (score DESC);
 -- 种子源（实测**可达**才进这份清单 —— 2026-09-29 本机 + VPS 双实测）
 -- 🔴 曾经推荐的 VOA / BBC Learning English / Wikipedia **国内不可达**（HTTP 000）
 --    → 不在种子清单里（详见方案文档「实测修订」）
+--
+-- 🆕 `enabled` 列显式写出（2026-10-02）：以前省略（吃 `DEFAULT 1`），
+--    而**只靠默认值就表达不了「这个源要禁用」** —— 新建库会把禁用的源又建回来。
+--    📌 判据：**「默认值」只能表达「没意见」，表达不了「明确不要」** ——
+--       凡是要显式说「不」的列，都必须写出来。
 INSERT OR IGNORE INTO content_source
-    (id, name, url, kind, category, cefr_hint, license, redistributable, tz_offset_min, created_at, updated_at)
+    (id, name, url, kind, category, cefr_hint, license, redistributable, tz_offset_min, enabled, created_at, updated_at)
 VALUES
-    (1, 'NPR News',      'https://feeds.npr.org/1001/rss.xml',                        'rss', 'news', 'B2', 'news',          1,    0, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (1, 'NPR News',      'https://feeds.npr.org/1001/rss.xml',                        'rss', 'news', 'B2', 'news',          1,    0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     -- ⚠️ ECNS 是**唯一**时间不带时区的源（`2026-09-29 21:34:24`）→ 按北京时间解释
-    (2, 'ECNS 中国新闻网英文', 'https://www.ecns.cn/rss/rss.xml',                        'rss', 'news', 'B2', 'news',          1,  480, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
-    (3, 'Ars Technica',  'https://arstechnica.com/feed/',                             'rss', 'tech', 'C1', 'news',          1,    0, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
-    (4, 'Dev.to',        'https://dev.to/feed',                                       'rss', 'tech', 'B2', 'cc',            1,    0, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
-    (5, 'Hacker News',   'https://hacker-news.firebaseio.com/v0',                     'hn',  'tech', 'C1', 'public_domain', 1,    0, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now'));
+    (2, 'ECNS 中国新闻网英文', 'https://www.ecns.cn/rss/rss.xml',                        'rss', 'news', 'B2', 'news',          1,  480, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    -- 🔴 **已禁用**（`enabled = 0` · 2026-10-02 白哥「如果真的不大用那就废弃」）
+    --
+    -- 实测数据（生产库快照）：
+    --   · 33 条，占全库 **8.0%**；**32/33 条 < 300 词**（自身的可用性阈值）
+    --   · 正文中位 **186 词**（五个源里最低；NPR 923 / Dev.to 768）
+    --   · **33/33 全部含 `Read full article`** —— 即 RSS 给的**全是片段**
+    --   · 🔴 文章页对**两种 UA 都返回 405** ⇒ 我们**拿不到它的全文**
+    -- ⇒ 结论：不是选题不好（它的话题质量高），而是**拿不到可用内容**。
+    --
+    -- 保留本行（不删）的理由：`content_pool` 里已有 33 条历史数据，
+    -- 删源会让它们变成孤儿；保留行 + `enabled = 0` 可随时改回 1。
+    -- 📌 「禁用」≠「删除」—— 前者可逆、保留追溯性（同「已作废 ≠ 已删除」）。
+    (3, 'Ars Technica',  'https://arstechnica.com/feed/',                             'rss', 'tech', 'C1', 'news',          1,    0, 0, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (4, 'Dev.to',        'https://dev.to/feed',                                       'rss', 'tech', 'B2', 'cc',            1,    0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (5, 'Hacker News',   'https://hacker-news.firebaseio.com/v0',                     'hn',  'tech', 'C1', 'public_domain', 1,    0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now'));
 "#;
 
 /// 初始化完整数据库 schema（核心表 + 管理表 + 偏好表 + 词库缓存表 + 额外索引）

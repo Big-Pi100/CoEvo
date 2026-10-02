@@ -828,13 +828,27 @@ mod tests {
     fn test_seed_sources_are_loaded() {
         let conn = mem();
         let s = load_enabled_sources(&conn).unwrap();
-        assert_eq!(s.len(), 5, "种子应有 5 个源");
+        // 🔴 2026-10-02：Ars Technica 被禁用（`enabled = 0`）→ **5 → 4**。
+        //    禁用的理由与实测数据见 `schema.rs` 里那一行的注释。
+        //    📌 这条断言同时是「`enabled` 真的被过滤」的守门人 ——
+        //       它数的是 `load_enabled_sources` 的结果，不是表里的行数。
+        assert_eq!(s.len(), 4, "种子应有 4 个**启用**源（Ars 已禁用）");
         assert!(s.iter().any(|x| x.kind == "hn"), "应有 HN 源");
         assert!(
             s.iter().all(|x| x.url.starts_with("http")),
             "每个源的 url 都应可用: {:?}",
             s.iter().map(|x| &x.url).collect::<Vec<_>>()
         );
+        // 🔑 反向：被禁用的源**不得**出现在结果里（否则「禁用」是装饰）
+        assert!(
+            !s.iter().any(|x| x.name.contains("Ars")),
+            "Ars 已禁用（enabled=0）→ 不该被加载"
+        );
+        // 🔑 但它在**表里**仍存在（禁用 ≠ 删除）
+        let total: i64 = conn
+            .query_row("SELECT COUNT(*) FROM content_source", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(total, 5, "表里仍应有 5 行（Ars 是禁用，不是删除）");
     }
 
     #[test]
