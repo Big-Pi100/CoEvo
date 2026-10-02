@@ -32,18 +32,41 @@ import 'trace_segmenter.dart';
 /// 当前词库 `word.spelling` **100% 是全小写单词**（连专名也是 `india` / `isaac`），
 /// 不存在这两类形态 —— 所以不额外处理。若将来词库引入短语/带连字符的词，
 /// 这里要一并改（**别在这里默默加兜底**）。
-List<TraceMark> locateTraceMarks({
-  required String text,
+/// 挑出「要标痕迹的词」及其**档位** —— 两条渲染路径**共用这一份判据**。
+///
+/// # 🔴 为什么必须抽出来（2026-10-02 · S4）
+/// S4 把正文渲染从「纯文本逐段」换成 **Markdown 渲染**后，痕迹有了**两条路径**：
+///
+/// | 路径 | 怎么表达痕迹 |
+/// |---|---|
+/// | 纯文本（`TraceText`）| 词 → **字符区间** → 逐 span 上色 |
+/// | Markdown（`gpt_markdown`）| 词 → **源里插标记** → `InlinePattern` 渲染成 span |
+///
+/// 两条路**表达方式不同**（区间 vs 标记），但「**哪些词该标、标哪一档**」
+/// 必须**完全一致** —— 否则会出现「同一个词在 A 路径有痕迹、B 路径没有」
+/// 这种最难查的不一致（不报错，只是少画一处底色）。
+///
+/// 📌 判据：**同一件事的口径只能有一处权威** —— 表达层可以有两份实现，
+///    但「判定」必须只有一份。
+///
+/// # 返回
+/// `词（小写）→ 档位`，档位即 [`TraceTokens.forReps`] 的输入：
+/// · `0` → `fresh`（新词）
+/// · `1` → `reviewing`（复习中）
+///
+/// ⚠️ **已掌握的词不会出现在结果里**（`forReps` 返回 `null` 就跳过）——
+///    见下方注释，这是白哥 2026-09-27 的决策。
+///
+/// 🔑 返回**档位**而不是 `TraceStyle`：样式由消费方自己向 `tokens.forReps` 取，
+///    这样「档位 → 样式」的映射也只有一处（token 层），本函数只管「判定」。
+Map<String, int> pickedTraceTiers({
   required List<ArticleLookup> lookups,
   required TraceTokens tokens,
 }) {
-  if (text.isEmpty || lookups.isEmpty) return const [];
+  final out = <String, int>{};
+  if (lookups.isEmpty) return out;
 
-  final marks = <TraceMark>[];
-  // 同一个词在 lookups 里出现两次是数据错误 —— 去重，结果只由第一条决定
-  // （否则会产生重叠标记，而 splitTraceSpans 的「先到优先」在这里没有意义）。
   final seen = <String>{};
-
   for (final lk in lookups) {
     final word = lk.word.trim();
     if (word.isEmpty) continue;
@@ -53,6 +76,29 @@ List<TraceMark> locateTraceMarks({
     // 🔑 已掌握 → `forReps` 返回 null → **不产生标记**（白哥 2026-09-27 决策）。
     //    注意这个词仍然在 lookups 里（它是事实），只是渲染层不表达它。
     final style = tokens.forReps(lk.reps, lapses: lk.lapses);
+    if (style == null) continue;
+
+    // 档位 = 「是不是 fresh」这一条判据（forReps 只有 fresh / reviewing / null 三种输出）
+    out[key] = identical(style, tokens.fresh) ? 0 : 1;
+  }
+  return out;
+}
+
+List<TraceMark> locateTraceMarks({
+  required String text,
+  required List<ArticleLookup> lookups,
+  required TraceTokens tokens,
+}) {
+  if (text.isEmpty || lookups.isEmpty) return const [];
+
+  final marks = <TraceMark>[];
+  // 🔑 词筛选（去重 + 已掌握排除）**复用共享判据** —— 别在这里再写一份
+  //    （Markdown 渲染路径用的是同一个函数，两边漂移会静默少画痕迹）。
+  final tiers = pickedTraceTiers(lookups: lookups, tokens: tokens);
+
+  for (final entry in tiers.entries) {
+    final word = entry.key;
+    final style = tokens.forReps(entry.value);
     if (style == null) continue;
 
     final re = RegExp(

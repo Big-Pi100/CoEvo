@@ -34,8 +34,7 @@ import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
 import '../widgets/bookmark_button.dart';
 import '../widgets/lookup_sheet.dart';
-import '../widgets/trace_locator.dart';
-import '../widgets/trace_text.dart';
+import '../widgets/trace_markdown.dart';
 
 /// # 阅读器 —— 一篇文章的正文 + 痕迹
 ///
@@ -109,9 +108,6 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   /// ⚠️ 放在 State 里（而非 widget 类）：只为 build 使用，
   ///    且 Dart 的 State **访问不到** widget 类的私有 static 成员。
   static const double _bodyFontSize = 17;
-
-  /// 段落间距（设计稿 `.rd .body p+p{margin-top:16px}`）。
-  static const double _paragraphGap = 16;
 
   /// 选中文本变化的**防抖定时器**（每次回调重置，停手 300ms 后才查词）。
   ///
@@ -307,9 +303,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           tokens: t,
           icon: notFound ? Icons.search_off : Icons.cloud_off,
           title: notFound ? '找不到这篇文章' : '这篇文章暂时打不开',
-          message: notFound
-              ? '它可能已被移除。返回上一页看看别的。'
-              : '内容需要联网读取，现在读不到。\n稍后再试。',
+          message: notFound ? '它可能已被移除。返回上一页看看别的。' : '内容需要联网读取，现在读不到。\n稍后再试。',
           // 只在「可能好起来」时给重试（404 不会好）
           onRetry: notFound
               ? null
@@ -319,16 +313,21 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       // ③ 拿到详情 —— 再分「有正文」「只有摘要」「什么都没有」
       data: (value) {
         final item = value.item;
-        // 🔑 正文分段用**纯函数**（`article_text.splitParagraphs`）——
-        //    后端已按 `\n\n` 分好段，本层只切不猜（见那里的说明）。
-        //
         // 🆕 2026-10-02：取的是 `renderable`（**带来源**），不再是 `readableText`。
         // 🔴 原来那个 `String?` 把「全文」与「兜底摘要」压成同一个东西 →
         //    某篇的 summary 是源站报错时，**那句报错被当正文渲染**
         //    （用户看到「只有半句话」）。见 `ArticleTextSource` 的说明。
         final renderable = value.renderable;
-        final paragraphs = splitParagraphs(renderable?.text);
+        final body = renderable?.text ?? '';
         final summaryOnly = renderable?.source == ArticleTextSource.summary;
+
+        // 「有没有正文」的判据**保持不变**（仍是 `splitParagraphs` 切出非空段落）。
+        // 🔑 为什么不改成「Markdown 是否为空」：那是把**一个判据换成另一个**，
+        //    而现判据有它自己的语义（「至少有一段能读的文字」，
+        //    不设「至少 N 段」门槛 —— 一句话短讯也是合法内容）。
+        //    正文形态从纯文本变 Markdown **不影响这条**：Markdown 的段落同样按空行分。
+        //    📌 换渲染器时，「呈现」要跟着换，「判据」要能不动就不动。
+        final paragraphs = splitParagraphs(body);
 
         // 正文真的为空 → 「没有正文」。
         // ⚠️ 与「找不到」是**两种不同的**表达（一个还有机会，一个没有）。
@@ -348,7 +347,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           context,
           t,
           item,
-          paragraphs,
+          body,
           lookups,
           summaryOnly: summaryOnly,
         );
@@ -358,6 +357,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
 
   /// 正文可读时的阅读界面（从原 `build` 抽出 —— 让上面的四态分派保持扁平）。
   ///
+  /// [body] 正文**原文**（Markdown 形态）—— 交给 [`TraceMarkdown`] 渲染，
+  /// 本层**不再分段**（分段与排版是渲染器的事）。
+  ///
   /// [summaryOnly] = 现在渲染的不是全文，而是**兜底摘要**（见 [ArticleTextSource]）。
   /// 此时顶部加一条明确说明 —— 🔴 **不许让摘要冒充正文**：
   /// 用户读到一段就结束、却以为「文章就这么短」，比看到一句实话更糟。
@@ -365,7 +367,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     BuildContext context,
     CoEvoTokens t,
     FeedItem item,
-    List<String> paragraphs,
+    String body,
     List<ArticleLookup> lookups, {
     bool summaryOnly = false,
   }) {
@@ -403,9 +405,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               bookmarked: bookmarked,
               // 库未就绪 → 传 null → 按钮禁用（不传「点了没反应」的回调）
               onToggleBookmark: bookmarkReady
-                  ? () => ref
-                      .read(bookmarkProvider.notifier)
-                      .toggle(item.id)
+                  ? () => ref.read(bookmarkProvider.notifier).toggle(item.id)
                   : null,
             ),
             Expanded(
@@ -439,32 +439,32 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                    _ReaderHead(tokens: t, item: item),
-                    // 🆕 「这不是全文」必须**在正文之前**说 ——
-                    //    放在末尾等于用户读完了才知道（那时已经误解了）。
-                    if (summaryOnly) ...[
-                      const SizedBox(height: 16),
-                      _SummaryOnlyBanner(tokens: t),
-                    ],
-                    for (var i = 0; i < paragraphs.length; i++) ...[
-                      if (i > 0) const SizedBox(height: _paragraphGap),
-                      TraceText(
-                        text: paragraphs[i],
-                        // 痕迹：已查词在正文里的位置（已掌握的词不产生标记）
-                        marks: locateTraceMarks(
-                          text: paragraphs[i],
-                          lookups: lookups,
-                          tokens: t.trace,
-                        ),
-                        style: TextStyle(
-                          fontFamily: CoFonts.latinSerif,
-                          fontSize: _bodyFontSize,
-                          height: t.readLineHeight,
-                          letterSpacing: _bodyFontSize * 0.002,
-                          color: Color(t.ink.argb32),
-                        ),
+                      _ReaderHead(tokens: t, item: item),
+                      // 🆕 「这不是全文」必须**在正文之前**说 ——
+                      //    放在末尾等于用户读完了才知道（那时已经误解了）。
+                      if (summaryOnly) ...[
+                        const SizedBox(height: 16),
+                        _SummaryOnlyBanner(tokens: t),
+                      ],
+                      // ── 正文（Markdown 渲染）──
+                      // 🆕 2026-10-02（S4）：从「逐段 `TraceText`」换成 `TraceMarkdown`。
+                      //
+                      // 🔴 为什么必须换（不是风格选择）：后端正文已变成 **Markdown**，
+                      //    而纯文本渲染会：
+                      //      · 把代码块的多行/缩进**压平**（段落内换行 → 空格）
+                      //      · 把 ``` / `##` / `**` 当**普通文字**显示
+                      //    ⇒ 不换 = 白哥报的症状一个都没治好，还多出 Markdown 标记。
+                      //
+                      // 🔑 痕迹**没丢** —— 它换了一种表达方式（字符区间 → 源内标记），
+                      //    判定逻辑仍是同一个 `pickedTraceTiers`（见 `trace_locator.dart`）。
+                      TraceMarkdown(
+                        markdown: body,
+                        lookups: lookups,
+                        tokens: t,
+                        bodyFontSize: _bodyFontSize,
+                        // 链接打不开时给用户一个出口（静默失败比报错更糟）
+                        onLinkFailed: (url) => _hint(context, '打不开这个链接'),
                       ),
-                    ],
                     ],
                   ),
                 ),
@@ -475,7 +475,6 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       ),
     );
   }
-
 }
 
 /// 查词 —— 长按选中后（经 300 ms 防抖）的落点。
@@ -499,7 +498,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
 ///
 /// 🔑 提成顶层函数（而非 State 方法）：它不依赖任何 State 字段
 /// （只用到 `context` 与 `ref`，两者都由调用处传入）→ 挂在 State 上没有理由。
-Future<void> _lookupWord(BuildContext context, WidgetRef ref, String rawText) async {
+Future<void> _lookupWord(
+    BuildContext context, WidgetRef ref, String rawText) async {
   // ⚠️ 这里用 `read`（不订阅）是对的 —— 预热由 `build` 里的 `watch` 负责。
   //    `valueOrNull == null` 表示 future **还没跑完**（首次落盘中）。
   final load = ref.read(wordQueryProvider).valueOrNull;
@@ -774,7 +774,8 @@ Future<void> Function() _showGenerating(BuildContext context, String word) {
     // 🔴 等**条件**（builder 跑过），不是等时长。
     // ⚠️ 超时是**兜底而非正常路径**：3 秒内 builder 都没跑，
     //    说明对话框根本没弹出来（如页面已 pop）→ 此时不该再等、也不该 pop 别的东西。
-    await dialogReady.future.timeout(const Duration(seconds: 3), onTimeout: () {});
+    await dialogReady.future
+        .timeout(const Duration(seconds: 3), onTimeout: () {});
     final c = dialogCtx;
     if (c != null && c.mounted) Navigator.of(c).pop();
   };
@@ -946,7 +947,6 @@ Future<void> _checkAchievementsAfterLookup(
   if (newly.isEmpty) return;
   notifier.pushAll(newly);
 }
-
 
 /// 轻提示（沿用首页 toast 的样式 —— `snackBarTheme` 已是「ink 底 + page 字 + floating」）。
 void _hint(BuildContext context, String message) {

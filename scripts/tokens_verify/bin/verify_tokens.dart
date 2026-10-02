@@ -1072,8 +1072,14 @@ void _s12Reader() {
   check('顶部栏书签走 BookmarkButton（粘土的单一出口）',
       code.contains('BookmarkButton('));
   check('阅读器不自绘阴影（无 BoxShadow）', !code.contains('BoxShadow('));
-  check('正文痕迹走 TraceText + locateTraceMarks（不手写背景色）',
-      code.contains('TraceText(') && code.contains('locateTraceMarks('));
+  // 🆕 2026-10-02（S4）：正文渲染从「逐段 TraceText」换成 `TraceMarkdown`
+  //    （Markdown 渲染 + 痕迹走 inline 标记）。**判据没变**（仍是「不手写背景色，
+  //    样式由 token 层决定」），只是实现载体换了 —— 所以断言跟着换，
+  //    而不是删掉（删了后人就会手写背景色）。
+  check('正文走 TraceMarkdown（Markdown 渲染 + 痕迹）',
+      code.contains('TraceMarkdown('));
+  check('🔑 痕迹样式不手写：经 token 层（`pickedTraceTiers`）取',
+      code.contains('pickedTraceTiers') || code.contains('trace_markdown'));
   // 正文底色必须取主题 token，不能写死
   check('阅读底色取 token（t.read）', code.contains('t.read'));
 
@@ -2588,7 +2594,16 @@ void _s21TimingWait() {
 
   // ④ 🔴 必须有**有界超时**兜底 —— 否则 builder 永不运行时会把调用方挂死
   //    （`等条件` 的代价：条件永不成立就永不返回 → 必须给上限）
-  check('🔴 等待有**有界超时**兜底（`.future.timeout(`）', body.contains('.future.timeout('));
+  //
+  // ⚠️ **不能写成 `.contains('.future.timeout(')`**（2026-10-02 实测踩到）：
+  //    `dart format` 会把这行按列宽**拆成两行** ——
+  //      `await dialogReady.future` / `    .timeout(const Duration(seconds: 3), …)`
+  //    → 连在一起的字符串不再存在 → **断言假红**。
+  //    🔑 判据：**文本断言不该依赖换行/空格**（格式由 formatter 决定，不由我决定）。
+  //       改为「两个片段都在」——语义相同，且抗格式化。
+  check(
+      '🔴 等待有**有界超时**兜底（`.future` + `.timeout(`，**抗换行**）',
+      body.contains('.future') && body.contains('.timeout('));
 
   // ⑤ 兜底路径：对话框因故结束时也要解除等待（否则关闭函数一直挂着）
   check('🔑 `showDialog` 的 future 完成时也解除等待（`whenComplete`）',
@@ -3012,14 +3027,18 @@ void _s22ArticleTextSource() {
   check('说明条有实际文案（不是空壳）',
       reader.contains('以下是摘要'));
 
-  // ⑥ 🔑 **位置**：说明必须排在**正文段落之前**
+  // ⑥ 🔑 **位置**：说明必须排在**正文之前**
   //    放在后面 = 用户读完了才知道（那时已经误解成「文章就这么短」）。
-  //    ⚠️ 用**调用形态**定位（`_SummaryOnlyBanner(tokens:`），不用类名 ——
-  //       类名会先命中**类定义**，位置比较就变成「定义 vs 段落」= 无意义。
+  //    ⚠️ 用**调用形态**定位，不用类名 ——
+  //       类名会先命中**类定义**，位置比较就变成「定义 vs 正文」= 无意义。
+  //
+  // 🆕 2026-10-02（S4）：正文渲染换成 `TraceMarkdown(` 之后，
+  //    原来的标志（`for (var i = 0; …paragraphs…)` 段落循环）**已不存在** →
+  //    本断言跟着换标志（**不是删掉**：它守的性质没变，只是实现换了载体）。
   final bannerCall = reader.indexOf('_SummaryOnlyBanner(tokens:');
-  final firstPara = reader.indexOf('for (var i = 0; i < paragraphs.length; i++)');
-  check('🔑 说明条在正文段落**之前**（不是读完了才说）',
-      bannerCall >= 0 && firstPara > bannerCall,
-      'banner@$bannerCall 段落@$firstPara');
+  final bodyAt = reader.indexOf('TraceMarkdown(');
+  check('🔑 说明条在正文**之前**（不是读完了才说）',
+      bannerCall >= 0 && bodyAt > bannerCall,
+      'banner@$bannerCall 正文@$bodyAt');
 }
 
