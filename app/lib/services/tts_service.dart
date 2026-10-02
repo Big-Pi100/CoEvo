@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,11 +10,67 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Provides a unified interface for text-to-speech across engines.
 enum TtsState { loading, playing, stopped, paused }
 
+// ─────────────────────────────────────────────────────────────
+// 语速范围 —— **唯一权威是库自己声明的值**
+// ─────────────────────────────────────────────────────────────
+
+/// 语速下限。不用 `0`：`0` = 完全不读，是无效配置而非「最慢」。
+const double kSpeechRateMin = 0.1;
+
+/// 语速上限 = `flutter_tts` **自己声明**的 flutter 侧 max。
+///
+/// 依据（读的是包源码，不是文档）：`flutter_tts-4.2.5` 的
+/// `getSpeechRateValidRange()` 返回 `min 0 · normal 0.5 · max 1.5`。
+const double kSpeechRateMax = 1.5;
+
+/// 默认语速。
+///
+/// 🔑 取 `1.0` 的两条依据：
+/// · 它是 **07-11 之前的默认值** —— `c49673c` 把它改成 `1.5` 才引入本次事故
+/// · 映射到 Android 是 `2.0` = **Android 原生文档的合法上限**（`1.0` = 正常语速）
+///
+/// ⚠️ 它**不是最保守**的选择（最保守是 `0.5` = 库声明的 `normal` → Android 正常语速）。
+///    选它是因为**与用户长期在用的值一致**（不改变体验），代价是贴着上限。
+///    📌 若真机再反馈不稳 → 降到 `kSpeechRateNormal`。
+const double kSpeechRateDefault = 1.0;
+
+/// 库声明的「正常语速」（flutter 侧）。保留常量是为了**让上一条注释可执行**。
+const double kSpeechRateNormal = 0.5;
+
+/// 把任意输入钳到合法范围 —— **本文件唯一的语速入口**。
+///
+/// # 🔴 为什么必须由我们钳（2026-10-02 真机事故）
+///
+/// `flutter_tts` 的 Android 实现（`FlutterTtsPlugin.kt`）：
+/// ```kotlin
+/// "setSpeechRate" -> {
+///     setSpeechRate(rate.toFloat() * 2.0f)   // 🔴 会乘 2
+///     result.success(1)                       // 🔴 硬编码成功 —— 永不报错
+/// }
+/// private fun setSpeechRate(rate: Float) {
+///     tts!!.setSpeechRate(rate)               // 🔴 Android 的返回值(ERROR/SUCCESS)被丢弃
+/// }
+/// ```
+/// ⇒ **无论值是否合法，Dart 侧都收不到任何错误。**
+///
+/// 而曾默认 `1.5`（→ Android **3.0**）、Slider 允许到 `2.0`（→ Android **4.0**），
+/// 症状是：**引擎接受朗读请求（`speak` 返回 1）但不产生声音**，全程零报错。
+/// 真机上表现为「喇叭图标变停止、就是没声」，且**新装用户必现**（prefs 空 → 落到坏默认值）。
+///
+/// 📌 判据：**「第三方库报成功」不能当作「值合法」** —— 范围要由**我们自己的代码**兑现。
+///    同族：`mature-package-replacement` skill 的「决定要靠自己的代码兑现，不在依赖身上寄生」。
+///
+/// ⚠️ **加载持久化值时也要过这里** —— 只改默认值**修不好**已经存在设备上的坏值。
+double clampSpeechRate(double v) {
+  if (v.isNaN) return kSpeechRateDefault;
+  return v.clamp(kSpeechRateMin, kSpeechRateMax);
+}
+
 class TtsService extends ChangeNotifier {
   final FlutterTts _tts = FlutterTts();
   TtsState state = TtsState.stopped;
   bool _enabled = true;
-  double _speechRate = 1.5;
+  double _speechRate = kSpeechRateDefault;
   Map<String, dynamic>? _selectedVoice;
   List<Map<String, dynamic>> _availableVoices = [];
   String? _currentPlayingText;
@@ -20,6 +78,33 @@ class TtsService extends ChangeNotifier {
   // 单调递增的"代"计数器。每次发起新请求时 +1，
   // 异步回调完成时检查回调请求的代是否仍是最新一代，否则丢弃。
   int _playGen = 0;
+
+  /// 单次插件调用的**有界超时**。
+  ///
+  /// # 🔴 为什么必须有出口（2026-10-02）
+  /// `flutter_tts` 在**引擎未就绪**时会把调用挂起、**永不回调**：
+  /// ```kotlin
+  /// if (ttsStatus == null) { pendingMethodCalls.add(...); return }   // 🔴 result 永不返回
+  /// ```
+  /// ⇒ Dart 侧 `await _tts.stop()` **永久挂着** → 后面一行都到不了
+  ///   → UI **永久停在 loading 转圈**，无报错、无出口。
+  /// 📌 判据：**「静默失败 + 无出口」比「报错」更糟**（本项目既定）。
+  ///
+  /// 超时后 [`_guard`] 返回 `null` → `state` 复位 → **按钮变回可点**（用户能重试，而不是干等）。
+  static const Duration _kPluginTimeout = Duration(seconds: 3);
+
+  /// 包一层超时 —— 插件不回调时**不让调用方永久挂起**。
+  ///
+  /// 返回 `null` = 超时（**而不是抛异常**）：调用点写 `if (result != 1)` 这类
+  /// 判定时天然把 `null` 归入「没成功」，不必每处都写 try/catch。
+  Future<T?> _guard<T>(Future<T> op, String label) async {
+    try {
+      return await op.timeout(_kPluginTimeout);
+    } on TimeoutException {
+      debugPrint('[TTS] $label 超时（插件未回调）→ 放弃本次调用');
+      return null;
+    }
+  }
 
   TtsService() {
     _tts.setCompletionHandler(() {
@@ -36,12 +121,24 @@ class TtsService extends ChangeNotifier {
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _enabled = prefs.getBool('tts_enabled') ?? true;
-    _speechRate = prefs.getDouble('tts_speech_rate') ?? 1.5;
-    try {
-      _availableVoices = await _tts.getVoices;
-    } catch (_) {
-      _availableVoices = [];
-    }
+    // 🔑 **必须钳制** —— 见 [clampSpeechRate]：设备上可能存着旧版本写入的越界值，
+    //    而「只改默认值」对它们无效（读得到 prefs 就永远不会走默认值）。
+    _speechRate = clampSpeechRate(
+      prefs.getDouble('tts_speech_rate') ?? kSpeechRateDefault,
+    );
+    // ⚠️ `getVoices` 也走同一条 method channel ⇒ 引擎未就绪时**同样会永久挂起**，
+    //    故一并过 `_guard`（取不到就是空列表，音色下拉框显示「系统默认」，不影响朗读）。
+    //
+    // 🔑 插件这个 getter 的**静态类型是 `Future<dynamic>`**（未声明泛型）⇒
+    //    原写法 `_availableVoices = await _tts.getVoices` 其实是**隐式运行时强转**：
+    //    插件一旦返回别的形状（null / 非 Map 元素）就抛 `TypeError` —— 而它发生在
+    //    `init()` 里，会被上游吞成「音色列表为空」，**看不出是类型问题**。
+    //    ⇒ 这里显式做一次**逐元素规范化**：类型不对的元素直接丢弃，不猜、不抛。
+    final raw = await _guard<dynamic>(_tts.getVoices, 'getVoices');
+    _availableVoices = (raw is List ? raw : const <dynamic>[])
+        .whereType<Map>()
+        .map(Map<String, dynamic>.from)
+        .toList(growable: false);
     notifyListeners();
   }
 
@@ -60,7 +157,7 @@ class TtsService extends ChangeNotifier {
       _playGen++;  // 废弃当前代，阻止任何进行中的回调继续播放
       state = TtsState.stopped;
       notifyListeners();
-      await _tts.stop();
+      await _guard(_tts.stop(), 'stop');
       return;
     }
 
@@ -69,7 +166,7 @@ class TtsService extends ChangeNotifier {
     final myGen = _playGen;
     debugPrint('[TTS]  new gen=$myGen');
 
-    await _tts.stop();
+    await _guard(_tts.stop(), 'stop');
 
     if (myGen != _playGen) {
       debugPrint('[TTS]  gen changed, abort');
@@ -90,7 +187,7 @@ class TtsService extends ChangeNotifier {
     final myGen = _playGen;
     debugPrint('[TTS] speak gen=$myGen: "${_trunc(text)}"');
 
-    await _tts.stop();
+    await _guard(_tts.stop(), 'stop');
 
     _currentPlayingText = text;
     state = TtsState.loading;
@@ -107,7 +204,11 @@ class TtsService extends ChangeNotifier {
   /// 使用本地原生 TTS 朗读（带代检查）
   Future<void> _speakWithNative(int myGen, String text, {String? language}) async {
     try {
-      await _tts.stop();
+      // ⚠️ 这 100ms 是**绕第三方插件的竞态**（`stop()` 后立刻 `speak()` 会被丢弃）。
+      //    它是本机判据「等条件成立 ＜ 等猜的时长」的**同类实例**，但此处属不得已：
+      //    插件没有暴露「已停止」的状态可等。缓解手段是下面的 `myGen` 代检查
+      //    （即使这里等错了，代检查也能挡住过期播放）。
+      await _guard(_tts.stop(), 'stop');
       await Future.delayed(const Duration(milliseconds: 100));
 
       if (myGen != _playGen) {
@@ -118,24 +219,27 @@ class TtsService extends ChangeNotifier {
       final lang = language ?? _detectLanguage(text);
 
       if (_selectedVoice != null) {
-        await _tts.setVoice(Map<String, String>.from(_selectedVoice! as Map));
+        await _guard(
+            _tts.setVoice(Map<String, String>.from(_selectedVoice! as Map)), 'setVoice');
       } else {
         // 无用户指定音色 → 按语言自动挑该语言内质量最高的音色；
         // 挑不到（无匹配语言、或音色列表为空）返回 null → 交给系统按 lang 选默认音色
         final best = _pickBestVoice(lang);
         if (best != null) {
-          await _tts.setVoice(Map<String, String>.from(best as Map));
+          await _guard(_tts.setVoice(Map<String, String>.from(best as Map)), 'setVoice');
         } else {
-          await _tts.setLanguage(lang);
+          await _guard(_tts.setLanguage(lang), 'setLanguage');
         }
       }
-      await _tts.setSpeechRate(_speechRate);
-      await _tts.setVolume(1.0);
+      // 🔑 `_speechRate` 在 setter 与 `init()` 两处都已钳过（见 [clampSpeechRate]），
+      //    这里不再重复判断 —— 保证「值合法」只有一处权威。
+      await _guard(_tts.setSpeechRate(_speechRate), 'setSpeechRate');
+      await _guard(_tts.setVolume(1.0), 'setVolume');
 
       state = TtsState.playing;
       notifyListeners();
       // 清理 markdown 标记后再朗读（`**bold**`、标题符号等会被逐字念出来）
-      final result = await _tts.speak(_cleanText(text));
+      final result = await _guard(_tts.speak(_cleanText(text)), 'speak');
       if (result != 1) {
         if (myGen == _playGen) {
           state = TtsState.stopped;
@@ -155,7 +259,7 @@ class TtsService extends ChangeNotifier {
   Future<void> stop() async {
     debugPrint('[TTS] stop  gen=$_playGen');
     _playGen++;  // 废弃当前代
-    await _tts.stop();
+    await _guard(_tts.stop(), 'stop');
     state = TtsState.stopped;
     _currentPlayingText = null;
     notifyListeners();
@@ -192,10 +296,20 @@ class TtsService extends ChangeNotifier {
   }
 
   double get speechRate => _speechRate;
+
+  /// 设置语速。
+  ///
+  /// 🔴 **必须钳制**（见 [clampSpeechRate]）—— 插件对越界值**静默成功**，
+  ///    症状是「图标变停止、就是没声音」，且**不报任何错**。
+  ///    写入口只有这一处 + `init()` 读持久化值那一处，两处都过同一个函数。
   set speechRate(double v) {
-    _speechRate = v;
-    _tts.setSpeechRate(v);
-    SharedPreferences.getInstance().then((prefs) => prefs.setDouble('tts_speech_rate', v));
+    _speechRate = clampSpeechRate(v);
+    // ⚠️ setter 是**同步**方法，不能 `await` ⇒ 用 `unawaited` +
+    //    仍走 `_guard`（插件挂起时 Future 永远 pending，但**不会阻塞 UI**
+    //    因为没有 await；同时也不会再出现「裸调用」这种无保护写法）。
+    unawaited(_guard(_tts.setSpeechRate(_speechRate), 'setSpeechRate'));
+    SharedPreferences.getInstance()
+        .then((prefs) => prefs.setDouble('tts_speech_rate', _speechRate));
     notifyListeners();
   }
 
@@ -205,7 +319,7 @@ class TtsService extends ChangeNotifier {
   Future<void> selectVoice(Map<String, dynamic>? voice) async {
     _selectedVoice = voice;
     if (voice != null) {
-      await _tts.setVoice(Map<String, String>.from(voice as Map));
+      await _guard(_tts.setVoice(Map<String, String>.from(voice as Map)), 'setVoice');
     }
     notifyListeners();
   }

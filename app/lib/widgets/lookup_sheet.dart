@@ -98,12 +98,23 @@ class LookupSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── ① 词 + 音标 ──
+          // ── ① 词（第一行）──
+          //
+          // 🔴 2026-10-02（白哥真机反馈）：**单词与音标改成两行**（原先同排）。
+          //
+          // 原因（不只是「不好看」，是**排版机制上必然挤**）：
+          // 原布局是 `Flexible(词) + Flexible(音标) + Spacer + 喇叭` ——
+          // **三个 flex 子项平分行宽** ⇒ 单词最多只能拿到约 1/3 宽度
+          // ⇒ 稍长的词就折行，且和音标「互相挤」。
+          //
+          // ⇒ 现在：单词独占第一行（`Expanded` = 除喇叭外的全部宽度，给词最多空间），
+          //    音标单独一行。两行各自可完整展示。
           Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
+            // 第一行不再有「词与音标基线对齐」的需求（音标已移到下一行）⇒ 用居中。
+            // 📌 原来必须 baseline 对齐，是因为两个文本并排时视觉上要共享基线。
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Flexible(
+              Expanded(
                 child: Text(
                   card.spelling,
                   style: TextStyle(
@@ -114,30 +125,29 @@ class LookupSheet extends StatelessWidget {
                   ),
                 ),
               ),
-              if (ipa.isNotEmpty) ...[
-                const SizedBox(width: 9),
-                Flexible(
-                  child: Text(
-                    ipa,
-                    style: TextStyle(
-                      // 🔴 **元素级指定 CharisSIL** —— 音标必须整条同字体
-                      //    （挂 fallback 链会让 93.9% 的音标「一条音标两种字体」，见 spec §4.1.1）
-                      fontFamily: CoFonts.ipaSerif,
-                      fontSize: compact.ipa,
-                      color: Color(t.ink2.argb32),
-                    ),
-                  ),
-                ),
-              ],
-              // 🔴 单词行的喇叭 —— 锚点 §07 浮层的 `.spk{margin-left:auto}`
-              //    （**推到行最右**，不是紧跟音标）。
-              //    ⚠️ 此前漏做：锚点 §07 里画着它，实现里没有。
-              // 🔑 用 `Spacer()` 顶到最右（对应 CSS `margin-left:auto`）——
-              //    浮层的音标长度差异大，紧跟会让喇叭位置飘。
-              const Spacer(),
+              const SizedBox(width: 9),
+              // 🔴 单词行的喇叭 —— 锚点 §07 浮层的 `.spk{margin-left:auto}`（**推到行最右**）。
+              // 🔑 用 `Expanded` 把左边的词撑满（等价于 CSS `margin-left:auto`），
+              //    而不是 `Spacer` —— `Spacer` 也是 flex 子项，会和词**分走宽度**
+              //    （`Expanded` 只作用于词本身，不引入第二个可分配项）。
               SpeakButton(text: card.spelling),
             ],
           ),
+
+          // ── ①-b 音标（第二行）──
+          if (ipa.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              ipa,
+              style: TextStyle(
+                // 🔴 **元素级指定 CharisSIL** —— 音标必须整条同字体
+                //    （挂 fallback 链会让 93.9% 的音标「一条音标两种字体」，见 spec §4.1.1）
+                fontFamily: CoFonts.ipaSerif,
+                fontSize: compact.ipa,
+                color: Color(t.ink2.argb32),
+              ),
+            ),
+          ],
 
           // ── ② 词性（`normalizePos` 把 47 种写法归一到词典惯例缩写）──
           if (pos.isNotEmpty) ...[

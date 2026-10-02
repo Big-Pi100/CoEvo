@@ -124,6 +124,8 @@ void main() {
   _s20DeviceId();
   _s21TimingWait();
   _s22ArticleTextSource();
+  _s23TtsSpeechRate();
+  _s24TraceArticleId();
 
   print('\n' + '═' * 72);
   print('通过 $_pass 项，实现类失败 $_fail 项，规格内部冲突 ${_conflicts.length} 项');
@@ -3042,3 +3044,158 @@ void _s22ArticleTextSource() {
       'banner@$bannerCall 正文@$bodyAt');
 }
 
+
+// ════════════════════════════════════════════════════════════════
+// 【23】TTS 语速范围（2026-10-02 真机事故）
+// ════════════════════════════════════════════════════════════════
+
+/// 为什么这组必须有：**越界语速会「静默无声」** ——
+/// `flutter_tts` 的 Android 实现把语速 **×2**、并且对 Dart **硬编码 `success(1)`**、
+/// 还**丢弃** Android 的返回值 ⇒ 值越界时**没有任何错误**，
+/// 表现只是「点了喇叭、图标变停止、就是不出声」，而且**新装用户必现**。
+///
+/// ⇒ 唯一可靠的防线是**我们自己的钳制**（不能指望库报错）。
+///   这组断言锁的就是「钳制在不在、范围对不对、默认值有没有回到安全区」。
+void _s23TtsSpeechRate() {
+  print('\n【23】🔴 TTS 语速范围（越界静默无声 · 库永不报错 ⇒ 只能自己钳）');
+
+  final root = _repoRoot();
+  String src(String p) {
+    final f = File('$root/app/lib/$p');
+    return f.existsSync() ? _codeOnly(f.readAsStringSync()) : '';
+  }
+
+  final tts = src('services/tts_service.dart');
+  final profile = src('screens/profile_screen.dart');
+  check('tts_service.dart 存在', tts.isNotEmpty);
+  check('profile_screen.dart 存在', profile.isNotEmpty);
+
+  // ① 范围常量必须存在（范围要有**唯一权威**，不能散在调用点）
+  check('有 kSpeechRateMin 常量',
+      RegExp(r'const double kSpeechRateMin').hasMatch(tts));
+  check('有 kSpeechRateMax 常量',
+      RegExp(r'const double kSpeechRateMax').hasMatch(tts));
+  check('有 kSpeechRateDefault 常量',
+      RegExp(r'const double kSpeechRateDefault').hasMatch(tts));
+
+  // ② 🔴 默认值必须是 1.0 —— 1.5 正是本次事故值（→ Android 3.0，超原生上限 2.0）
+  check('🔴 默认语速 = 1.0（不是越界的 1.5）',
+      RegExp(r'kSpeechRateDefault\s*=\s*1\.0').hasMatch(tts));
+
+  // ③ 🔴 上限不得大于库声明的 1.5
+  final mM = RegExp(r'kSpeechRateMax\s*=\s*([\d.]+)').firstMatch(tts);
+  final maxV = mM == null ? -1.0 : (double.tryParse(mM.group(1)!) ?? -1.0);
+  check('🔴 上限 ≤ 1.5（= 库 getSpeechRateValidRange 声明值）', maxV > 0 && maxV <= 1.5,
+      'max=$maxV');
+
+  // ④ 🔑 钳制函数存在，且**两处入口都过它** ——
+  //    「只改默认值」修不好已经存在设备上的坏值（读得到 prefs 就永远走不到默认值）
+  check('有 clampSpeechRate（唯一的语速入口）',
+      RegExp(r'double clampSpeechRate\(').hasMatch(tts));
+  check('🔑 加载持久化值时钳制（否则设备上的旧坏值永远修不好）',
+      RegExp(r'clampSpeechRate\(\s*\n?\s*prefs\.getDouble').hasMatch(tts));
+  check('🔑 setter 里也钳制',
+      RegExp(r'_speechRate\s*=\s*clampSpeechRate\(').hasMatch(tts));
+
+  // ⑤ Slider 引用常量，不写字面量（范围只有一处权威）
+  check('🔑 Slider 的 min 引用常量', profile.contains('min: kSpeechRateMin'));
+  check('🔑 Slider 的 max 引用常量', profile.contains('max: kSpeechRateMax'));
+  check('🔴 Slider 不再有字面量 `max: 2.0`（超上限 33% 的旧值）',
+      !profile.contains('max: 2.0'));
+
+  // ⑥ 🔴 每个插件调用都必须过超时包装 ——
+  //    插件在「引擎未就绪」时会把调用挂起且**永不回调** ⇒ 裸 await = UI 永久转圈、无出口
+  check('有 _guard 超时包装（插件不回调时不至于永久挂起）',
+      RegExp(r'Future<T\?> _guard<T>\(').hasMatch(tts));
+  final bareAwaits = RegExp(r'await _tts\.').allMatches(tts).length;
+  check(
+      '🔴 无裸 `await _tts.`（都必须经 _guard）', bareAwaits == 0, '实得 $bareAwaits 处');
+  // ⚠️ 判定方式：**逐个调用点往前看 60 字符**，而不是用定长负向后顾
+  //    `(?<!_guard\()` —— 因为 `dart format` 会把 `_guard(` 与实参**拆成两行**，
+  //    此时 `_tts` 前面是换行+缩进而非 `_guard(` ⇒ 负向后顾**失效**（假红）。
+  //    📌 判据：**位置型断言不该依赖格式**（同「文本断言不该依赖换行/空格」）。
+  final callRe = RegExp(
+      r'_tts\.(stop|speak|setSpeechRate|setVolume|setVoice|setLanguage|getVoices)\(');
+  final callCount = callRe.allMatches(tts).length;
+  var unguardedCalls = 0;
+  final bareLabels = <String>[];
+  for (final m in callRe.allMatches(tts)) {
+    final from = (m.start - 60).clamp(0, m.start);
+    if (!tts.substring(from, m.start).contains('_guard(')) {
+      unguardedCalls++;
+      bareLabels.add(m.group(0)!);
+    }
+  }
+  // 构造函数里的 `setCompletionHandler` / `setErrorHandler` 是 **Dart 侧回调注册**，
+  // 不走 method channel ⇒ 不在上面正则的名单里，天然不参与判定。
+  check('🔴 无未包装的 `_tts.xxx(` 调用', unguardedCalls == 0,
+      unguardedCalls == 0 ? '$callCount 处均经 _guard' : bareLabels.join(', '));
+}
+
+// ════════════════════════════════════════════════════════════════
+// 【24】痕迹接线：`lookup_event.article_id` 必须一路传到底
+// ════════════════════════════════════════════════════════════════
+
+/// 为什么这组必须有（2026-10-02 真机）：痕迹**恒不显示**，
+/// 根因是 `_writeBackLookup` 的签名里**根本没有 `articleId`** ⇒ 写库时该列为 NULL
+/// ⇒ 读取侧 `WHERE le.article_id = ?1` 永不匹配 —— **全程零报错**（只是少画底色），
+/// 所以它躺了很久才被白哥「专门去验痕迹」时发现。
+///
+/// 🔑 修法用的是 `required`（编译期拦截）而**不是**「默认 null + 靠自觉」；
+///   这组断言守的是「有人把 required 改回可选」这种回退。
+void _s24TraceArticleId() {
+  print('\n【24】🔴 痕迹接线：articleId 必须一路传到底（漏传 = 痕迹静默消失）');
+
+  final root = _repoRoot();
+  final f = File('$root/app/lib/screens/reader_screen.dart');
+  check('reader_screen.dart 存在', f.existsSync());
+  if (!f.existsSync()) return;
+  final reader = _codeOnly(f.readAsStringSync());
+
+  // ① 链上三个函数都要**要求** articleId。
+  //    用正则跨空白匹配（签名里可能换行），但限制搜索窗口避免跨函数误命中。
+  bool requiresArticleId(String fn) {
+    final at = reader.indexOf('Future<void> $fn(');
+    if (at < 0) return false;
+    final seg = reader.substring(at, (at + 900).clamp(0, reader.length));
+    // 到下一个顶层函数定义为止
+    // ⚠️ 用 `\r?\n` 而不是 `\n` —— 工作区行尾会漂移（实测：`dart format` 在 Windows
+    //    上会把改过的文件写成 **CRLF**，而仓库其余文件是 LF）⇒ 只认 `\n` 的跨行匹配
+    //    会**静默失配**。📌 判据：**读源码做跨行匹配时，必须容忍 `\r?\n`**。
+    final nextFn = RegExp(r'\r?\nFuture<').firstMatch(seg.substring(1));
+    final body = nextFn == null ? seg : seg.substring(0, nextFn.start + 1);
+    return RegExp(r'\brequired int articleId\b').hasMatch(body);
+  }
+
+  check('🔑 `_lookupWord` 要求 articleId（required = 编译期拦截漏传）',
+      requiresArticleId('_lookupWord'));
+  check('🔑 `_lookupExternalWord` 要求 articleId',
+      requiresArticleId('_lookupExternalWord'));
+  check('🔑 `_writeBackLookup` 要求 articleId',
+      requiresArticleId('_writeBackLookup'));
+
+  // ② 调用点必须真的把当前文章的 id 传下去
+  check('🔑 划词入口传 `widget.articleId`',
+      reader.contains('articleId: widget.articleId'));
+  check(
+      '🔑 写回时把 articleId 传给了 repo.recordLookup',
+      RegExp(r'recordLookup\([\s\S]{0,200}?articleId:\s*articleId')
+          .hasMatch(reader));
+
+  // ③ 负向：`_writeBackLookup` 的调用点不得**只传两个参数**（那是修之前的样子）
+  final calls =
+      RegExp(r'_writeBackLookup\([\s\S]{0,220}?\)\)').allMatches(reader);
+  var missing = 0;
+  for (final m in calls) {
+    if (!m.group(0)!.contains('articleId:')) missing++;
+  }
+  check('🔴 无「缺 articleId」的 _writeBackLookup 调用点', missing == 0,
+      '实得 $missing 处（共 ${calls.length} 处）');
+
+  // ④ 读取侧仍按 article_id 过滤（否则「痕迹=这篇文章里查过的词」语义就没了）
+  final repo = _codeOnly(
+      File('$root/app/lib/services/user_word_repository.dart')
+          .readAsStringSync());
+  check('读取侧仍按 `le.article_id = ?1` 过滤（语义：本篇查过的词）',
+      repo.contains('le.article_id = ?1'));
+}

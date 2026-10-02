@@ -263,7 +263,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
 
     _lookupDebounce = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
-      _lookupWord(context, ref, text);
+      // 🔴 **必须传 `articleId`**：它是「痕迹」的唯一键 ——
+      //    `lookup_event.article_id` 为空 ⇒ 阅读页永远查不到「本文查过的词」⇒ 痕迹恒不显示。
+      _lookupWord(context, ref, text, articleId: widget.articleId);
     });
   }
 
@@ -499,7 +501,20 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
 /// 🔑 提成顶层函数（而非 State 方法）：它不依赖任何 State 字段
 /// （只用到 `context` 与 `ref`，两者都由调用处传入）→ 挂在 State 上没有理由。
 Future<void> _lookupWord(
-    BuildContext context, WidgetRef ref, String rawText) async {
+  BuildContext context,
+  WidgetRef ref,
+  String rawText, {
+  /// 🔴 **「这篇」的 id —— 痕迹的命根子**（2026-10-02 真机定位的缺口）。
+  ///
+  /// 它一路传到 `lookup_event.article_id`，而读取侧是
+  /// `lookupsForArticle(articleId) → WHERE le.article_id = ?1`。
+  /// 两边只要有一边缺，痕迹就**恒为空** —— 且**不报任何错**（只是少画底色）。
+  ///
+  /// 📌 判据：**「写了 A 端」≠「B 端会显示」** —— 这条链跨了 3 个文件
+  ///    （本文件 → `_writeBackLookup` → `recordLookup` → SQL），
+  ///    任一处漏传都会静默失效。故 `tokens_verify` 里有**接线断言**守着。
+  required int articleId,
+}) async {
   // ⚠️ 这里用 `read`（不订阅）是对的 —— 预热由 `build` 里的 `watch` 负责。
   //    `valueOrNull == null` 表示 future **还没跑完**（首次落盘中）。
   final load = ref.read(wordQueryProvider).valueOrNull;
@@ -534,7 +549,7 @@ Future<void> _lookupWord(
     //
     // 产品原则：**仍不验证登录态**、**仍不打断阅读** ——
     // 失败时给准确提示，成功时弹与词库内词**同一个**浮层。
-    await _lookupExternalWord(context, ref, text);
+    await _lookupExternalWord(context, ref, text, articleId: articleId);
     return;
   }
 
@@ -546,6 +561,7 @@ Future<void> _lookupWord(
   //    （真实语境需从正文渲染层拿到句子边界，属后续增强。）
   unawaited(_writeBackLookup(
     ref,
+    articleId: articleId,
     wordId: result.card.wordId,
     spelling: result.card.spelling,
   ));
@@ -582,8 +598,10 @@ Future<void> _lookupWord(
 Future<void> _lookupExternalWord(
   BuildContext context,
   WidgetRef ref,
-  String text,
-) async {
+  String text, {
+  /// 见 `_lookupWord` 的同名参数：痕迹的唯一键，**必须一路传下去**。
+  required int articleId,
+}) async {
   // ── ① 端侧缓存（离线也能看 + 免一次网络往返）──
   String? raw;
   try {
@@ -633,6 +651,7 @@ Future<void> _lookupExternalWord(
   //    区别只有 `wordId` 的形态（`ext:brainstorm` vs `w005333`）。
   unawaited(_writeBackLookup(
     ref,
+    articleId: articleId,
     wordId: externalWordId(text),
     spelling: text,
   ));
@@ -867,6 +886,17 @@ class _GeneratingDialog extends StatelessWidget {
 ///    → 若将来要做严格一致，才需要包事务；**当前没有这个必要**。
 Future<void> _writeBackLookup(
   WidgetRef ref, {
+  /// 🔴 **`required`，不是可选** —— 这是本次真机事故的修法（2026-10-02）。
+  ///
+  /// 它曾经**不在签名里**，于是两个调用点也都没传 ⇒ `lookup_event.article_id`
+  /// 恒为 `NULL` ⇒ 阅读页 `WHERE le.article_id = ?1` 永不匹配 ⇒ **痕迹恒不显示** ——
+  /// 而且**没有任何报错**（只是少画底色），所以躺了很久才被发现。
+  ///
+  /// 🔑 用 `required` 而**不是**「默认 null + 祈祷调用方记得传」：
+  ///    ⇒ 漏传会在**编译期**就失败，而不是在真机上表现为「某个功能悄悄没了」。
+  ///    📌 判据：**能用类型系统保证的，就不要靠自觉**（同 `CollocationItem.zh`
+  ///       删死判空那次的理由 —— 「编译器强制处理」比「运行时守卫」更早）。
+  required int articleId,
   String? wordId,
   required String spelling,
 }) async {
@@ -882,7 +912,11 @@ Future<void> _writeBackLookup(
 
   try {
     final repo = await ref.read(userWordProvider.future);
-    await repo.recordLookup(wordId: wordId, spelling: spelling);
+    await repo.recordLookup(
+      articleId: articleId,
+      wordId: wordId,
+      spelling: spelling,
+    );
 
     if (wordId == null) return; // 未命中：没有词库 id，到此为止
     // ⚠️ 未命中时**不 bump**：只写了 `lookup_event`，而复习页读的是

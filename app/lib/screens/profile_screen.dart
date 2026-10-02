@@ -876,11 +876,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
                 ],
               ),
+              // 🔴 范围**引用常量**，不写字面量 —— 见 `kSpeechRateMax` 的说明：
+              //    原先这里是 `max: 2.0`（超库声明上限 33%），
+              //    导致「拖到右半边就没声音」，且**不报任何错**。
+              //    范围只有一处权威 ⇒ 将来调上下限不必回来找这个 Slider。
               Slider(
                 value: tts.speechRate,
-                min: 0.1,
-                max: 2.0,
-                divisions: 19,
+                min: kSpeechRateMin,
+                max: kSpeechRateMax,
+                // 步长 0.1：(1.5 − 0.1) / 0.1 = 14 档
+                divisions: ((kSpeechRateMax - kSpeechRateMin) / 0.1).round(),
                 label: tts.speechRate.toStringAsFixed(1),
                 onChanged: (v) => tts.speechRate = v,
               ),
