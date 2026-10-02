@@ -418,6 +418,32 @@ pub async fn fetch_all(now_utc: &str) -> Vec<FetchOutcome> {
 ///    否则它不是「分摊到多轮」，而是**永远落后**。
 pub const MAX_BODY_FETCH_PER_ROUND: usize = 100;
 
+/// 内容保留天数（白哥 2026-10-02 定：「存量不要，太多内容没有意义」）。
+///
+/// `COEVO_CONTENT_RETENTION_DAYS` 覆盖；`0` = **不清理**。
+///
+/// # 🔴 为什么是「保留期」而不是「全清」
+/// 「太多内容没有意义」不等于「一条都不留」—— 读者仍需要一个**可翻的积压**
+/// （今天没读完的，明天还在）。保留期同时满足两件事：
+/// ① 信息流保持新鲜（旧的自然消失）② 库不会无限增长。
+///
+/// # 为什么用 `fetched_at` 而不是 `published_at`
+/// 🔴 实测：**有些源的条目本身就是旧的**，用 `published_at` 会「刚抓到就被删」：
+/// · Dev.to 的 RSS 里有 2020 年的热门老文
+/// · Smashing 的 40 条跨度 **156 天**（最新 09-30，最旧 04-27）
+/// ⇒ 用 **`fetched_at`（我们拿到它的时刻）** 语义更准：
+///    「这条内容我们保留了多久」——与「源给的是什么日期」无关。
+pub const DEFAULT_CONTENT_RETENTION_DAYS: i64 = 30;
+
+/// 每轮清理的**上限条数**。
+///
+/// 🔑 为什么要限量：第一次生效时可能积压很多（或将来某轮抓得特别多），
+///    一次性 `DELETE` 几万行会**长时间持有写锁**（SQLite 单写者模型）
+///    ⇒ 同一时间其它写入（抓取入库）会被挡住。
+///    分轮小批删除：每轮最多 500，4 轮/天 = 2000/天 的清理吞吐，
+///    远大于稳态新增（约 600/天）⇒ 足够，且不会长时间锁库。
+pub const PRUNE_BATCH_PER_ROUND: usize = 500;
+
 /// 补抓正文：挑「有 url、允许全文、还没试过」的条目。
 ///
 /// # 查询条件的含义
@@ -497,6 +523,54 @@ pub fn refetch_existing_enabled() -> bool {
     std::env::var("COEVO_REFETCH_BODIES")
         .map(|v| v.trim() == "1")
         .unwrap_or(false)
+}
+
+/// 内容保留天数（`COEVO_CONTENT_RETENTION_DAYS`；`0` = 不清理）。
+///
+/// 解析失败或没设 → 用 [`DEFAULT_CONTENT_RETENTION_DAYS`]。
+/// ⚠️ 负数当作 `0`（不清理）—— 避免「手滑写负数」导致把 `-(-1) days` 拼成
+///    `--1 days` 这种非法 SQL 修饰符（那样会**每轮报错**，还不好查）。
+pub fn content_retention_days() -> i64 {
+    std::env::var("COEVO_CONTENT_RETENTION_DAYS")
+        .ok()
+        .and_then(|v| v.trim().parse::<i64>().ok())
+        .unwrap_or(DEFAULT_CONTENT_RETENTION_DAYS)
+        .max(0)
+}
+
+/// 清理超过保留期的内容，**每轮限量**。返回本轮删除条数。
+///
+/// # 语义
+/// 删的是「**我们拿到它已超过 `days` 天**」的条目（按 `fetched_at`，理由见常量注释）。
+///
+/// # 🔴 删之前查过「谁在读它」（判据：删之前三问）
+/// · **端侧 `bookmark.content_id` / `article_read.article_id` 都指向 `content_pool.id`**
+///   ⇒ 删行后那两条记录会**悬空**。
+/// · ✅ **id 不会复用**：本表用 `AUTOINCREMENT`（`schema.rs` 有专门说明），
+///   所以**不会出现「旧收藏静默指向新文章」**这类最难查的错。
+///   📌 那句注释当时就是**为保留期清理预留的**（原文：「若内容池做保留期清理…」）。
+/// · ⚠️ **但仍会「点开收藏打不开」**（端侧没有正文缓存，阅读页是联网取的）。
+///   当前 **零真实用户**（生产库 `users` 仅 1 行 trial）⇒ 现在无影响；
+///   若将来做「离线阅读 / 收藏缓存正文」，这条风险自然消失。
+///   📄 已记入 `docs/review/source-onboarding-2026-10-02.md`
+///
+/// # 幂等
+/// 重复调用是安全的：第二次没有更旧的行 → 返回 0。
+pub fn prune_old_content(conn: &Connection, days: i64, batch: usize) -> Result<usize, String> {
+    if days <= 0 {
+        return Ok(0);
+    }
+    let modifier = format!("-{} days", days);
+    let n = conn
+        .execute(
+            // ⚠️ 用 `id IN (SELECT ... LIMIT)` 而不是 `DELETE ... LIMIT`：
+            //    后者需要 SQLite 编译时开 `SQLITE_ENABLE_UPDATE_DELETE_LIMIT`，
+            //    不能假定构建环境有（跨平台/不同发行版不一致）。
+            "DELETE FROM content_pool WHERE id IN (                SELECT id FROM content_pool                 WHERE fetched_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?1)                 ORDER BY fetched_at ASC LIMIT ?2              )",
+            rusqlite::params![modifier, batch as i64],
+        )
+        .map_err(|e| format!("prune content_pool: {}", e))?;
+    Ok(n)
 }
 
 /// 写入抓到的正文 + **无论成败都记下尝试时间**。
@@ -759,6 +833,10 @@ pub fn start_fetch_scheduler() {
             FIRST_FETCH_DELAY_SECS,
             interval
         );
+        tracing::info!(
+            "content_fetch: 内容保留期 {} 天（`COEVO_CONTENT_RETENTION_DAYS=0` 可关闭清理）",
+            content_retention_days()
+        );
         // 🔴 重抓模式**必须显式可见** —— 它是给「存量迁移」用的临时开关。
         //    忘了关的后果：每轮都去抓「已有正文但未试过」的条目（正常运行时那批应为空），
         //    虽不致命，但语义上「重抓」不该是常态 ⇒ 用 WARN 级别，让人一眼看到。
@@ -784,6 +862,26 @@ pub fn start_fetch_scheduler() {
             let (tried, got) = rt.block_on(fetch_bodies_round());
             if tried > 0 {
                 tracing::info!("content_fetch: 正文补抓 {}/{}", got, tried);
+            }
+            // 🆕 保留期清理：删掉「拿到超过 N 天」的旧内容（`COEVO_CONTENT_RETENTION_DAYS`）
+            // 🔑 放在抓取之后：先入库新的，再清旧的 —— 中间不会出现「空窗」
+            let keep_days = content_retention_days();
+            if keep_days > 0 {
+                // ⚠️ 连接 guard 必须在**同步块**里取用后立刻释放 ——
+                //    本函数（`prune_old_content`）是同步的，不跨 `await`，所以安全
+                let pruned = {
+                    let conn = crate::db_pool::get_conn();
+                    prune_old_content(&conn, keep_days, PRUNE_BATCH_PER_ROUND)
+                };
+                match pruned {
+                    Ok(0) => {}
+                    Ok(n) => tracing::info!(
+                        "content_fetch: 保留期清理删除 {} 条（保留 {} 天内的）",
+                        n,
+                        keep_days
+                    ),
+                    Err(e) => tracing::error!("content_fetch: 保留期清理失败: {}", e),
+                }
             }
             std::thread::sleep(std::time::Duration::from_secs(interval));
         }
@@ -835,7 +933,11 @@ mod tests {
         //    理由与实测数据见 `schema.rs` 里那几行的注释。
         //    📌 这条断言同时是「`enabled` 真的被过滤」的守门人 ——
         //       它数的是 `load_enabled_sources` 的结果，不是表里的行数。
-        assert_eq!(s.len(), 12, "种子应有 12 个**启用**源（Ars 已禁用）");
+        assert_eq!(
+            s.len(),
+            11,
+            "种子应有 11 个**启用**源（Ars 已禁用 · HackerNoon 未接）"
+        );
         assert!(s.iter().any(|x| x.kind == "hn"), "应有 HN 源");
         assert!(
             s.iter().all(|x| x.url.starts_with("http")),
@@ -852,8 +954,8 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM content_source", [], |r| r.get(0))
             .unwrap();
         assert_eq!(
-            total, 13,
-            "表里仍应有 13 行（5 原有 + 8 新增；Ars 是禁用，不是删除）"
+            total, 12,
+            "表里仍应有 12 行（5 原有 + 7 新增；Ars 是禁用，不是删除）"
         );
 
         // ═══ 2026-10-02 新增源的守门断言 ═══════════════════════════════════
@@ -862,7 +964,28 @@ mod tests {
         //    改错了不会报错，只会静默地把不该存的内容存进来（或该存的存不进来）。
         //    判据：**「决定」要固化成断言**，不能只写在注释里。
 
-        // ① 分类覆盖：扩源的目的是「补其他类型」→ 断言确实扩到了
+        // ①a 🔑 **所有源分类都必须落在受控词表内** ——
+        //     词表是 `schema::CONTENT_CATEGORIES`（唯一权威定义处），
+        //     `content_source.category` 上也有 CHECK。
+        //     这里再断言一次的原因：**CHECK 只对新库生效**（旧库的 DDL 不会重建），
+        //     而这条断言在**任何**库上都会跑。
+        for src in &s {
+            let cat = src.category.as_deref().unwrap_or("");
+            assert!(
+                crate::schema::CONTENT_CATEGORIES.contains(&cat),
+                "源 `{}` 的 category `{}` 不在受控词表 {:?} 内",
+                src.name,
+                cat,
+                crate::schema::CONTENT_CATEGORIES
+            );
+        }
+
+        // ①b 分类**覆盖**：扩源的目的是「补其他类型」→ 断言确实扩到了
+        //
+        //     ⚠️ `sports` / `entertainment` **故意不在此列** ——
+        //        词表里有这两个值（定稿要求），但**还没有源**。
+        //        NPR 有对应频道且实测可达（Sports=1055 · Movies=1045），
+        //        补不补是产品决定 ⇒ 不写成断言，否则会变成「为过断言而加源」。
         let cats: std::collections::BTreeSet<&str> =
             s.iter().filter_map(|x| x.category.as_deref()).collect();
         for need in ["news", "tech", "business", "science", "culture", "health"] {
@@ -875,9 +998,18 @@ mod tests {
         }
 
         // ② 🔴 许可受限的源**必须** `redistributable = 0`
-        //    （实测依据：arXiv 默认许可「limits re-use of any type」；
-        //      HackerNoon terms「YOU ARE THE SOLE OWNER OF YOUR CONTENT」）
-        for name in ["arXiv", "HackerNoon"] {
+        //    （实测依据：arXiv 默认许可「limits re-use of any type from other
+        //      entities or individuals」⇒ 不抓 /html/ 全文，只存 abstract）
+        //
+        //    ⚠️ 这里曾有 HackerNoon（terms「YOU ARE THE SOLE OWNER OF YOUR
+        //       CONTENT」）—— 白哥 2026-10-02 决定**不接**：许可既然只允许存摘要，
+        //       而它的价值恰恰在「RSS 全文」⇒ 接了也只等于再加一个 ECNS。
+        //
+        //    📌 新增「许可受限」的源时，把名字加进下面这个切片即可（**别写成
+        //       `for` 单元素数组** —— clippy 的 `single_element_loop` 会报，
+        //       而且那种写法掩盖了「本来就只有一条」这个事实）。
+        const LICENSE_RESTRICTED: &[&str] = &["arXiv"];
+        for name in LICENSE_RESTRICTED {
             let src = s
                 .iter()
                 .find(|x| x.name.contains(name))
@@ -899,7 +1031,7 @@ mod tests {
 
         // ④ 时间格式：这 3 家都用 RFC 2822（自带时区）⇒ tz_offset 不生效，须为 0
         //    （⚠️ ECNS 是唯一的例外，它用不带时区的格式 ⇒ 480）
-        for name in ["arXiv", "HackerNoon", "NPR"] {
+        for name in ["arXiv", "NPR"] {
             for src in s.iter().filter(|x| x.name.contains(name)) {
                 assert_eq!(
                     src.tz_offset_min, 0,
@@ -1179,6 +1311,103 @@ mod tests {
             rusqlite::params![id, source_id, url, body, attempted],
         )
         .unwrap();
+    }
+
+    /// `N` 天前的 UTC ISO8601（带 `Z`）—— 保留期测试用。
+    fn days_ago_iso(days: i64) -> String {
+        // ⚠️ 用 SQLite 算时间而不是 Rust —— 与 `prune_old_content` 里的
+        //    `strftime(...,'now',?1)` **同一套机制**（判据：基准值必须同源，
+        //    否则「测试用 Rust 算、生产用 SQLite 算」会出现不可比的边界）
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.query_row(
+            "SELECT strftime('%Y-%m-%dT%H:%M:%SZ','now',?1)",
+            rusqlite::params![format!("-{} days", days)],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    /// 插一行**指定 `fetched_at`** 的内容（保留期测试要控制时间）。
+    fn pool_row_at(conn: &Connection, id: i64, fetched_at: &str) {
+        conn.execute(
+            "INSERT INTO content_pool (id, source_id, title, url, fetched_at) \
+             VALUES (?1, 1, 'T', ?2, ?3)",
+            rusqlite::params![id, format!("https://x.test/{}", id), fetched_at],
+        )
+        .unwrap();
+    }
+
+    fn count_pool(conn: &Connection) -> i64 {
+        conn.query_row("SELECT COUNT(*) FROM content_pool", [], |r| r.get(0))
+            .unwrap()
+    }
+
+    // ═══ 保留期清理（2026-10-02 · 白哥「存量不要，太多内容没有意义」）═══════
+
+    #[test]
+    fn test_prune_only_deletes_rows_older_than_window() {
+        let c = mem();
+        // 三档：今天 / 40 天前 / 100 天前 —— 保留期 30 天
+        pool_row_at(&c, 1, &now_utc_iso()); // 今天
+        pool_row_at(&c, 2, &days_ago_iso(40));
+        pool_row_at(&c, 3, &days_ago_iso(100));
+
+        let deleted = prune_old_content(&c, 30, 1000).unwrap();
+        assert_eq!(deleted, 2, "30 天保留期 ⇒ 只该删 40 与 100 天前那两条");
+        assert_eq!(count_pool(&c), 1, "今天那条必须留着");
+        let left: i64 = c
+            .query_row("SELECT id FROM content_pool", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(left, 1, "留下的应该是「今天」那条（不是别条）");
+    }
+
+    #[test]
+    fn test_prune_respects_batch_limit() {
+        let c = mem();
+        for i in 1..=10 {
+            pool_row_at(&c, i, &days_ago_iso(100));
+        }
+        // 🔑 限量是为了不长时间持有写锁（SQLite 单写者）——
+        //    这条断言守的是「限量真的生效」（否则一次删几万行会阻塞抓取入库）
+        assert_eq!(prune_old_content(&c, 30, 4).unwrap(), 4);
+        assert_eq!(count_pool(&c), 6);
+        // 幂等：再删一次又是 4（还剩 6）
+        assert_eq!(prune_old_content(&c, 30, 4).unwrap(), 4);
+        // 删到没有为止
+        assert_eq!(prune_old_content(&c, 30, 100).unwrap(), 2);
+        assert_eq!(
+            prune_old_content(&c, 30, 100).unwrap(),
+            0,
+            "没有更旧的了 ⇒ 0"
+        );
+        assert_eq!(count_pool(&c), 0);
+    }
+
+    #[test]
+    fn test_prune_disabled_when_days_is_zero_or_negative() {
+        let c = mem();
+        for i in 1..=3 {
+            pool_row_at(&c, i, &days_ago_iso(9999));
+        }
+        // `0` 与负数都表示「不清理」—— 白哥口径是「默认清理」，
+        // 但要留一个**一键关闭**的开关（出问题时能立刻止血）。
+        assert_eq!(prune_old_content(&c, 0, 1000).unwrap(), 0);
+        assert_eq!(prune_old_content(&c, -1, 1000).unwrap(), 0);
+        assert_eq!(count_pool(&c), 3, "关闭时一行都不该删");
+    }
+
+    #[test]
+    fn test_prune_keeps_row_exactly_at_boundary() {
+        let c = mem();
+        // 边界：刚好 29 天（在 30 天窗口内）→ 留；刚好 31 天 → 删
+        // 🔑 用「边界两侧各一条」而不是「只测一侧」，否则窗口写反了也发现不了
+        pool_row_at(&c, 1, &days_ago_iso(29));
+        pool_row_at(&c, 2, &days_ago_iso(31));
+        assert_eq!(prune_old_content(&c, 30, 1000).unwrap(), 1);
+        let left: i64 = c
+            .query_row("SELECT id FROM content_pool", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(left, 1, "29 天那条在窗口内，必须留下");
     }
 
     fn picked_ids(conn: &Connection, refetch: bool) -> Vec<i64> {

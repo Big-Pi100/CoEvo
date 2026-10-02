@@ -3,6 +3,7 @@
 //   ② 三态齐全（加载 / 失败可重试 / 空）—— 防「静默失败 + 无出口」
 //   ③ 阅读页从 `/api/feed/{id}` 取正文 + 痕迹来自端侧 `lookup_event`
 //   ④ 后端 `/api/feed` 支持 `ids`（收藏清单用）且 `parse_ids` 不能被绕过
+//   ⑤ 分类词表**跨语言一致**（后端 `CONTENT_CATEGORIES` ↔ 端侧 `_categoryLabels`）
 //
 // 跑法：cd scripts/query_verify && dart run bin/verify_feed_wiring.dart
 //
@@ -71,6 +72,7 @@ void main() {
   final feedItem = readNoComment('../../app/lib/models/feed_item.dart');
   final repo = readNoComment('../../app/lib/services/user_word_repository.dart');
   final handler = readNoComment('../../backend/crates/api_server/src/content_handler.rs');
+  final schema = readNoComment('../../backend/crates/api_server/src/schema.rs');
 
   // ══════════════════════════════════════════════════════════
   section('【1】信息流：从服务端取数（不再有 mock）');
@@ -195,6 +197,70 @@ void main() {
       feedProvider.contains('autoDispose.family<ArticleDetail'));
   check('信息流列表**不** autoDispose（切 tab 回来不该重拉）',
       feedProvider.contains('final feedProvider =\n    FutureProvider.family<FeedPage, String>'));
+
+  // ══════════════════════════════════════════════════════════
+  section('【9】分类词表：后端与端侧**逐字一致**（跨语言漂移是无症状的）');
+  // ══════════════════════════════════════════════════════════
+  //
+  // 🔴 为什么需要这条（2026-10-02）：
+  //    分类词表**同时存在于两种语言**里 ——
+  //      后端 `schema.rs` 的 `CONTENT_CATEGORIES`（源配置 + CHECK 用它）
+  //      端侧 `feed_item.dart` 的 `_categoryLabels`（卡片显示用它）
+  //    后端加了新类而端侧没跟上时：**不报错**，只是卡片显示兜底词 `Reading`
+  //    （`_unknownCategory`）—— 用户看到的是「分类名变成了 Reading」，
+  //    而没有任何一处会红。⇒ 只能靠源级断言守住。
+  //
+  // ⚠️ 反向也要守：端侧有、后端没有的 key，说明端侧残留了已删的分类
+  //    （`life` 就是这样被删掉的 —— 它必须**从两边同时消失**）。
+  final backendCats = <String>{};
+  final catBlock = RegExp(r'pub const CONTENT_CATEGORIES[^=]*=\s*&\[([^\]]*)\]',
+          multiLine: true)
+      .firstMatch(schema);
+  if (catBlock != null) {
+    for (final m in RegExp(r'"([a-z_]+)"').allMatches(catBlock.group(1)!)) {
+      backendCats.add(m.group(1)!);
+    }
+  }
+  check('后端 `CONTENT_CATEGORIES` 可解析（唯一权威定义处）',
+      backendCats.isNotEmpty, '实得 ${backendCats.length} 个');
+
+  final dartCats = <String>{};
+  final mapBlock = RegExp(r"_categoryLabels\s*=\s*\{([^}]*)\}", multiLine: true)
+      .firstMatch(feedItem);
+  if (mapBlock != null) {
+    for (final m in RegExp(r"'([a-z_]+)'\s*:").allMatches(mapBlock.group(1)!)) {
+      dartCats.add(m.group(1)!);
+    }
+  }
+  check('端侧 `_categoryLabels` 可解析', dartCats.isNotEmpty, '实得 ${dartCats.length} 个');
+
+  check('🔴 两边**集合相等**（不是「包含」—— 多一个也是漂移）',
+      backendCats.length == dartCats.length &&
+          backendCats.difference(dartCats).isEmpty &&
+          dartCats.difference(backendCats).isEmpty,
+      '后端缺 ${dartCats.difference(backendCats)} · 端侧缺 ${backendCats.difference(dartCats)}');
+
+  // 🔑 定稿的 7 类必须都在（`implementation-plan-v2` §10.3.1）
+  for (final must in [
+    'tech',
+    'business',
+    'science',
+    'sports',
+    'culture',
+    'entertainment',
+    'health'
+  ]) {
+    check('定稿 7 类里有 `$must`（§10.3.1）', backendCats.contains(must));
+  }
+  // `news` 是白哥追加的第 8 类（定稿没有它 —— 所以单独断言，说明它是有意保留的）
+  check('🆕 `news` 保留为第 8 类（白哥附加决定，非定稿）', backendCats.contains('news'));
+  // 🔴 定稿要求删掉的 `life`：**必须彻底消失**（否则语义残留会把它带回来）
+  check('🔴 `life` 已从两边删除（定稿：「生活太糊」）',
+      !backendCats.contains('life') && !dartCats.contains('life'));
+  // 源配置的 CHECK 必须与常量同步（否则改了一边另一边还在放行）
+  check('`content_source.category` 的 CHECK 与常量同步（8 个值）',
+      RegExp(r"CHECK \(category IN \('news','tech','business','science','sports',")
+          .hasMatch(schema));
 
   // ══════════════════════════════════════════════════════════
   // 汇总

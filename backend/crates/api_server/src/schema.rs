@@ -453,13 +453,57 @@ CREATE TABLE IF NOT EXISTS generated_card_hit (
 /// 若内容池做保留期清理，被清理文章的 id 会被新文章占用
 /// → 端侧那条「已读」记录会**静默指向另一篇文章**。
 /// `AUTOINCREMENT` 保证 id 单调不复用 → 断掉这条静默错配。
+/// 内容分类的**受控词表**（唯一权威定义处）。
+///
+/// # 为什么要有这个常量
+/// 词表要同时被**三处**使用：① 建表 CHECK ② 种子源配置 ③ 断言。
+/// 各写一份就会漂移 —— 本项目已多次踩过「同一件事的口径散在多处」。
+/// ⇒ 集中在这里，其余地方引用它。
+///
+/// # 🔴 这 8 个值的来历（**不是拍脑袋定的**）
+/// 定稿 → `docs/design/english-app-implementation-plan-v2-2026-09-25.md` §10.3.1：
+/// 「扩到 **7** 个 category，删掉 `life`」——
+/// `tech | business | science | sports | culture | entertainment | health`。
+/// 理由是「**兴趣标签是用户可见的**，粒度决定『按我兴趣推』的感知强度」，
+/// 并要求与兴趣选择界面的 7 个标签 **1:1 映射**。
+///
+/// 🆕 **`news` 是白哥 2026-10-02 追加的第 8 个值**：
+/// · 定稿两版**都没有** `news`（原设计评估的 VOA / BBC 都不可达，当时没有新闻源）
+/// · 它是**实现期**为 NPR / ECNS 临时加的，一直没进设计文档
+/// · 而「综合 / 国际新闻」确实**不属于任何兴趣类** ⇒ 硬塞类会不准
+/// ⇒ 白哥定：**保留 `news`**（卡片显示 `News`），其余按定稿收敛。
+///
+/// ⚠️ **已删掉 `life`**（定稿理由：「生活」太糊 —— 睡眠算健康还是生活？）。
+///    生产库现有源**无一个**用 `life` ⇒ 删除零影响。
+///
+/// ⚠️ **`sports` / `entertainment` 目前没有源**（NPR 有对应频道，实测可达：
+///    Sports=`feeds.npr.org/1055` · Movies=`feeds.npr.org/1045`）——
+///    即定稿 §10.3 担心的「用户勾了这三个标签却拉不到内容」里剩下的两个。
+///    词表先收进来（定稿要求），补源另行决定。
+pub const CONTENT_CATEGORIES: &[&str] = &[
+    "news",
+    "tech",
+    "business",
+    "science",
+    "sports",
+    "culture",
+    "entertainment",
+    "health",
+];
+
 pub const CONTENT_SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS content_source (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     name               TEXT    NOT NULL,
     url                TEXT    NOT NULL,
     kind               TEXT    NOT NULL DEFAULT 'rss',   -- rss | hn
-    category           TEXT,                             -- news | tech | science | culture | business | life
+    -- 🔑 受控词表 —— 见 `CONTENT_CATEGORIES`（单一定义处）
+    -- ⚠️ CHECK 在这里是**有意义的**：种子/admin 改错类会**立刻报错**。
+    --    本表用 `INSERT OR IGNORE`，而它**会静默忽略 CHECK 违规** ——
+    --    所以「源少了一个」不会报错；靠 `test_seed_sources_are_loaded` 的数量断言兜住。
+    category           TEXT
+        CHECK (category IN ('news','tech','business','science','sports',
+                            'culture','entertainment','health')),
     cefr_hint          TEXT,                             -- A2 | B1 | B2 | C1（难度提示）
     license            TEXT,                             -- public_domain | cc | news | esl
     -- 1 = 允许**全文**入库并展示；0 = 只存摘要 + 链接（Flipboard 模式）
@@ -493,6 +537,15 @@ CREATE TABLE IF NOT EXISTS content_pool (
     body         TEXT,                                -- 全文（仅 redistributable=1 的源）
     url          TEXT    NOT NULL,
     author       TEXT,                                -- dc:creator（⚠️ 不放 service 层做展示决策）
+    -- 内容分类（入库时**从 `content_source.category` 拷**，不是 RSS 的自由标签）
+    -- 🔑 取值见 `CONTENT_CATEGORIES`。
+    --
+    -- 🔴 **本列故意不加 `CHECK`**（虽然定稿 §10.3.1 写了）——
+    --    因为入库用的是 `INSERT OR IGNORE`，而 SQLite 的 OR IGNORE
+    --    **会把 CHECK 违规一并忽略** ⇒ 结果是**静默丢内容**（用户看不到、日志也没有）。
+    --    这正是本项目最忌讳的「静默失败」，比「没有约束」更糟。
+    --    ⇒ 约束改在**上游**做：`content_source.category` 有 CHECK（配置表、改了会报错），
+    --      且源配置被断言锁住 ⇒ `content_pool` 拿到的值天然合法。
     category     TEXT,
     published_at TEXT,                                -- UTC ISO8601 带 Z（源给的 RFC822 要归一）
     fetched_at   TEXT    NOT NULL,                    -- UTC ISO8601 带 Z
@@ -516,6 +569,9 @@ CREATE TABLE IF NOT EXISTS content_pool (
 CREATE INDEX IF NOT EXISTS idx_cpool_cat_time ON content_pool (category, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_cpool_pub      ON content_pool (published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_cpool_score    ON content_pool (score DESC);
+-- 🆕 保留期清理的查询列（`prune_old_content` 按 `fetched_at` 排序 + 过滤）
+-- ⚠️ 没有它：每轮清理都要**全表扫** content_pool（将来几万行时就是每 6 小时一次全扫）
+CREATE INDEX IF NOT EXISTS idx_cpool_fetched  ON content_pool (fetched_at);
 
 -- 种子源（实测**可达**才进这份清单 —— 2026-09-29 本机 + VPS 双实测）
 -- 🔴 曾经推荐的 VOA / BBC Learning English / Wikipedia **国内不可达**（HTTP 000）
@@ -598,27 +654,8 @@ VALUES
     -- ⚠️ `cs.AI + cs.LG + cs.CL` 每天合计 1400+ 条，远超需求
     --    ⇒ 本行**只接 cs.CL**（与「语言」最贴，269 条/天）。
     -- `tz_offset_min = 0`：arXiv 用 RFC 2822 时间戳（自带时区），本列不生效。
-    (12, 'arXiv cs.CL',  'https://export.arxiv.org/rss/cs.CL', 'rss', 'science', 'C1', 'mixed', 0, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    (12, 'arXiv cs.CL',  'https://export.arxiv.org/rss/cs.CL', 'rss', 'science', 'C1', 'mixed', 0, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now'));
 
-    -- ── HackerNoon（白哥指定）：RSS 直接给全文 ───────────────────────────
-    --
-    -- 🔑 实测：**RSS 自带 1612 词全文**（20/20 条）⇒ 技术上「零抓取」最优。
-    --
-    -- 🔴 **但 `redistributable = 0`，依据同样是实测条款（2026-10-02）**：
-    --    HackerNoon 是 **UGC 平台**，其 terms 原文：
-    --      「AS BETWEEN YOU AND COMPANY, **YOU ARE THE SOLE OWNER OF YOUR CONTENT**」
-    --    并且**全文无 `CC BY` / `Creative Commons` / `attribution` 字样**
-    --    （对照：同族的 Dev.to 也查了，其 terms 是
-    --      「personal, **non-commercial** transitory viewing only」—— 同样不是 CC）。
-    --    terms 还禁止 `Record, process, or mine information about other Users`。
-    --    ⇒ 原作者保留版权 ⇒ **不展示全文**，只入库 RSS 的 `description`（14–28 词）+ 链接。
-    --
-    -- ⚠️ **这条的代价要说清楚**：设 0 之后，本源的「RSS 全文」优势**用不上**
-    --    （`write_items` 会丢弃 `content:encoded` 的 1612 词）。
-    --    只留 14–28 词摘要 ⇒ **价值接近 ECNS**（也是只存摘要）。
-    --    ⇒ 白哥若要它，是在「合规」与「内容量」之间做一次选择 —— 已在报告里列出。
-    -- `license = 'author'`（作者保留）—— 与 `mixed` 区分，便于合规审查时一眼看出。
-    (13, 'HackerNoon', 'https://hackernoon.com/feed', 'rss', 'tech', 'B2', 'author', 0, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now'));
 "#;
 
 /// 初始化完整数据库 schema（核心表 + 管理表 + 偏好表 + 词库缓存表 + 额外索引）
@@ -1099,7 +1136,7 @@ mod tests {
             );
         }
 
-        // 种子源：实测**可达**的 13 个（VOA/BBC/Wikipedia 因国内不可达**不在内**）
+        // 种子源：实测**可达**的 12 个（VOA/BBC/Wikipedia 因国内不可达**不在内**）
         //
         // 🔑 **与 `content_fetch::tests::test_seed_sources_are_loaded` 的分工**：
         //    那条数的是 `load_enabled_sources()` 的结果（**启用数** = 12，Ars 被禁用）；
@@ -1112,8 +1149,8 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM content_source", [], |r| r.get(0))
             .unwrap();
         assert_eq!(
-            seeded, 13,
-            "种子源应为 13 行（5 原有 + 8 新增；含被禁用的 Ars —— 禁用≠删除）"
+            seeded, 12,
+            "种子源应为 12 行（5 原有 + 7 新增；含被禁用的 Ars —— 禁用≠删除）"
         );
 
         // 🔴 种子源里**不得**出现不可达的源（防止照旧方案加回 VOA/BBC）

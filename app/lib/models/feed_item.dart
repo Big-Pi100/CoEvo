@@ -123,27 +123,34 @@ class FeedItem {
 
   /// 分类显示表（后端 key → 界面文字）。
   ///
-  /// ⚠️ **key 必须与 `content_source.category` 的取值一致** ——
-  ///    后端种子源用的就是这几个。
+  /// ⚠️ **key 必须与后端受控词表逐字一致** ——
+  ///    后端定义处：`backend/crates/api_server/src/schema.rs` 的
+  ///    **`CONTENT_CATEGORIES`**（唯一权威）。改这里必须同步改那里（反之亦然）。
+  ///    这条一致性由 `scripts/query_verify/bin/verify_feed_wiring.dart`
+  ///    的【9】组断言锁住（它读这个 map 的 key 与那份清单比对）。
   ///
-  /// 🆕 **`health` 是 2026-10-02 为接 NPR Health 频道加的**（`feeds.npr.org/1128`）。
-  ///    依据是**已定稿的规格** —— `implementation-plan-v2` §10.3.1「扩到 7 个 category」：
-  ///    `tech | business | science | sports | culture | entertainment | health`
-  ///    （**删掉 `life`**）。所以 `health` 是规格里的值，不是临时发明的。
+  /// # 🔑 这 8 个值的来历（**照定稿收敛**，2026-10-02 白哥批准）
+  /// 定稿 → `implementation-plan-v2` §10.3.1「扩到 **7** 个 category，**删掉 `life`**」：
+  /// `tech | business | science | sports | culture | entertainment | health`
+  /// （理由：兴趣标签**用户可见**，粒度决定「按我兴趣推」的感知强度；
+  ///   且「生活」太糊 —— 睡眠算健康还是生活？会让抓取时分类不稳定）。
   ///
-  /// 🔴 **但当前 map 与那份定稿仍有差异**（未在本轮处理，已另行报告）：
-  ///    · map 里有 `news` / `life` —— 定稿里**没有**（定稿删 `life`，且未定义 `news`）
-  ///    · map 里缺 `sports` / `entertainment` —— 定稿有
-  ///    ⚠️ 收敛词表要连带处理**存量 `content_pool.category`**（生产库现有 `news` 127 条、
-  ///       `tech` 288 条）+ 后端 CHECK + 断言，是一组动作 ⇒ 单独一批做。
+  /// 🆕 **`news` 是第 8 个值**（白哥追加）—— 定稿两版都没有它：
+  /// 它是**实现期**为 NPR / ECNS 临时加的，而「综合 / 国际新闻」
+  /// 确实不属于任何兴趣类 ⇒ 保留，卡片显示 `News`。
+  ///
+  /// ⚠️ **`sports` / `entertainment` 目前没有源**（词表先收进来）。
+  ///    NPR 有对应频道且实测可达（Sports=`feeds.npr.org/1055` ·
+  ///    Movies=`feeds.npr.org/1045`），补不补是产品决定。
   static const Map<String, String> _categoryLabels = {
     'news': 'News',
     'tech': 'Tech',
-    'science': 'Science',
-    'culture': 'Culture',
     'business': 'Business',
+    'science': 'Science',
+    'sports': 'Sports',
+    'culture': 'Culture',
+    'entertainment': 'Entertainment',
     'health': 'Health',
-    'life': 'Life',
   };
 
   /// 阅读速度（词/分钟）—— 用于把 `word_count` 换算成「N min」。
