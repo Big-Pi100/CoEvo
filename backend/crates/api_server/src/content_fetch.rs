@@ -812,7 +812,8 @@ mod tests {
         }
     }
 
-    fn item(url: &str) -> ParsedItem {        ParsedItem {
+    fn item(url: &str) -> ParsedItem {
+        ParsedItem {
             title: "T".into(),
             summary: Some("S".into()),
             body: Some("B".into()),
@@ -1136,7 +1137,14 @@ mod tests {
         let c = mem();
         pool_row(&c, 900, 1, "https://x.test/a", Some("已有正文"), None);
         pool_row(&c, 901, 1, "https://x.test/b", None, None);
-        pool_row(&c, 902, 1, "https://x.test/c", Some("x"), Some("2026-10-01T00:00:00Z"));
+        pool_row(
+            &c,
+            902,
+            1,
+            "https://x.test/c",
+            Some("x"),
+            Some("2026-10-01T00:00:00Z"),
+        );
 
         let ids = picked_ids(&c, false);
         assert!(ids.contains(&901), "无正文 + 未试过 ⇒ 应被挑中");
@@ -1154,7 +1162,14 @@ mod tests {
         let c = mem();
         pool_row(&c, 910, 1, "https://x.test/d", Some("已有正文"), None);
         pool_row(&c, 911, 1, "https://x.test/e", None, None);
-        pool_row(&c, 912, 1, "https://x.test/f", Some("x"), Some("2026-10-01T00:00:00Z"));
+        pool_row(
+            &c,
+            912,
+            1,
+            "https://x.test/f",
+            Some("x"),
+            Some("2026-10-01T00:00:00Z"),
+        );
 
         let ids = picked_ids(&c, true);
         assert!(
