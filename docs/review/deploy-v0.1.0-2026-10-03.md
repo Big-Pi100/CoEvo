@@ -76,6 +76,40 @@ content_fetch: 内容保留期 30 天（`COEVO_CONTENT_RETENTION_DAYS=0` 可关�
 
 23 个启用源**全部**有产出；新接入的 10 个源（id 15–24）合计 **91 条**。
 
+### 1.5 用户视角验证：**12 类按分类筛选全部有内容**
+
+`/api/feed?category=<类>` 逐个实测（对外接口）：
+
+| 类 | 首条来源 | 类 | 首条来源 |
+|---|---|---|---|
+| news | NPR News | entertainment | **NPR Movies 影视** |
+| tech | Dev.to | health | NPR Health 健康 |
+| business | **NPR Business 商业** | education | **NPR Education 教育** |
+| science | arXiv cs.CL | history | **NPR History 历史** |
+| sports | **NPR Sports 体育** | law | **NPR Law 法律** |
+| culture | NPR Culture 文化 | family | **NPR Family 家庭** |
+
+⇒ 兴趣筛选的**数据基础已就绪**（12 类都能拉到内容，且每类都≥1 个源）。
+
+### 🔑 1.6 一个产品层观察（**不是 bug，但值得知道**）
+
+**默认信息流**（不带 `category`）返回的仍是 `tech 46 + news 4`（前 50 条），
+而库里明明有 12 类共 853 条。原因在**排序**：
+
+```rust
+// content_handler.rs `normalize()`
+_ => "COALESCE(p.published_at, p.fetched_at) DESC"   // 默认按时间倒序
+```
+
+⇒ **高频源占满前排** —— Dev.to 每天十几条、HN 几十条，
+   而 NPR 各频道每天 ~10 条且时间较旧 ⇒ 前 50 条被 tech/news 吃满。
+
+📌 **这与白哥早先反馈的「大部分都是技术文章」是同一个现象的两种表述** ——
+   根因不是「缺少其他类的源」（本次已补齐 12 类），
+   而是**「默认排序让高频源挤占展示」**。
+   ⇒ 这**正是「兴趣筛选」要解决的问题**：用户选了自己的兴趣后，按 `category` 筛即可。
+   ⚠️ 但**默认信息流**（未选兴趣时）是否仍是 tech 一家独大，属于**产品决策**（白哥定）。
+
 ---
 
 ## 二、🔴 根因：CI 的 `on.push` 缺 `tags` —— 推 tag **从未触发过 workflow**
