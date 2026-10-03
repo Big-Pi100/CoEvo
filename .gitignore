@@ -170,3 +170,9 @@ desktop.ini
 
 # 同理：其它运行时数据目录
 /backend/crates/api_server/data
+
+# 内容质量诊断的临时数据（含生产正文，体积大且涉内容版权）——
+# 由 `scripts/trace_verify/bin/probe_*.dart` 用，**从生产库现导**，不进仓库。
+# 复现方式见 docs/review/content-text-quality-issues-2026-10-03.md「产出物」一节。
+/scripts/trace_verify/fixtures/all_bodies.json
+/scripts/trace_verify/fixtures/prod_bodies.json
