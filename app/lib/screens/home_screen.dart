@@ -8,9 +8,11 @@ import 'package:http/http.dart' as http;
 
 import '../api/api_config.dart';
 import '../api/content_client.dart';
+import '../models/feed_item.dart';
 import '../providers/auth_provider.dart';
 import '../providers/bookmark_provider.dart';
 import '../providers/feed_provider.dart';
+import '../services/feed_pager.dart';
 import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
@@ -95,12 +97,163 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _authRestoreTries = 0;
   static const int _kMaxAuthRestoreTries = 20;
 
+  /// 🆕 2026-10-03：信息流列表的滚动控制器 —— 用于**触底加载更多**。
+  ///
+  /// 🔑 为什么用「滚动监听」而不是 `NotificationListener`：
+  ///    两者都能做，但 `ScrollController` 能让「距底部还有多远」成为一个**显式数字**
+  ///    （`maxScrollExtent - pixels`），预警距离是**可调的一个常量**，而不是散在
+  ///    回调里的魔法判断。
+  final ScrollController _feedScroll = ScrollController();
+
+  /// 距底部还有多少像素时开始预加载下一页。
+  ///
+  /// 🔑 取 400 而不是 0：等真正滚到底再请求，用户会**看到一次明显的停顿**
+  ///    （网络往返期间底部什么都没有）。提前 400px 让下一页在用户滑到之前就绪。
+  ///    ⚠️ 不能太大（如整屏 800）：那样首屏刚渲染完就会立刻触发第 2 页请求，
+  ///    等于把「首屏只加载 30 条」的省流设计作废。
+  static const double _kLoadMoreThreshold = 400;
+
+  /// 信息流当前使用的 category key（`''` = 全部）。
+  ///
+  /// ⚠️ 目前**恒为空** —— 兴趣选择尚未实现。抽成常量是为了让它只有一处，
+  ///    将来接入筛选时改这里即可（`feedProvider('')` 散在 3 处会漏改）。
+  static const String _kFeedCategory = '';
+
   @override
   void initState() {
     super.initState();
     // 🔑 启动引导跑在 `addPostFrameCallback` 里（**不阻塞 build**）——
     //    这样首屏立刻渲染信息流，引导成功与否都不影响「能不能读」。
     WidgetsBinding.instance.addPostFrameCallback((_) => _initAuth());
+    _feedScroll.addListener(_onFeedScroll);
+  }
+
+  @override
+  void dispose() {
+    // 🔑 必须 dispose：否则监听器会跟着 State 泄漏
+    //    （列表被释放后回调仍可能被调用 → `hasClients` 之外还可能有陈旧引用）
+    _feedScroll.removeListener(_onFeedScroll);
+    _feedScroll.dispose();
+    super.dispose();
+  }
+
+  /// 滚动到接近底部 ⇒ 触发加载下一页。
+  ///
+  /// ⚠️ **必须自己去重** —— 滚动回调在滑动过程中**每帧都会触发**，
+  ///    不去重会在一次滑动里连发十几个请求。
+  ///    但这里**已经**有两道保险，所以本函数不需要再加标志位：
+  ///    ① `FeedNotifier.loadMore()` 里 `loadingMore` 守卫（语义层）
+  ///    ② `FeedPager.hasMore`（到底了直接 return，连请求都不发）
+  ///    📌 判据：**防重入放在「状态的所有者」那里，而不是每个调用点** ——
+  ///       否则将来多一个触发源（如下拉超过顶部）就要再写一遍。
+  void _onFeedScroll() {
+    if (!_feedScroll.hasClients) return;
+    final pos = _feedScroll.position;
+    if (pos.pixels < pos.maxScrollExtent - _kLoadMoreThreshold) return;
+
+    // ⚠️ 用 `read` 而不是 `watch`：这里只是「通知它去做事」，
+    //    不需要本 widget 因 notifier 变化而重建（重建由 build 里的 watch 负责）。
+    ref.read(feedProvider(_kFeedCategory).notifier).loadMore();
+  }
+
+  /// `RefreshIndicator.onRefresh` —— 返回的 `Future` 决定**转圈何时收起**。
+  ///
+  /// 🔴 时序要点（本项目反复的教训）：
+  ///    **「等一个猜的时长」＜「等一个条件成立」**。
+  ///    `FeedNotifier.refresh()` 内部 `await` 到了新数据**写进 state** 才返回
+  ///    ⇒ 转圈收起时内容**已经**是新的。
+  ///    ⚠️ 若这里写成「`invalidate` 然后立刻返回」，转圈会**立刻收起**、
+  ///    内容随后才变 —— 用户看到的是「下拉了一下，什么也没发生」，
+  ///    于是**再下拉一次**（而第一次其实成功了）。这类「假失败」极伤体验。
+  Future<void> _refreshFeed() {
+    return ref.read(feedProvider(_kFeedCategory).notifier).refresh();
+  }
+
+  /// 把「不可滚动的居中内容」放进可滚动容器 —— 让**下拉手势**成立。
+  ///
+  /// # 为什么需要它
+  ///
+  /// `RefreshIndicator` 要求 child **可滚动**：给它一个 `Center` 就永远拉不动。
+  /// 而空态（`_FeedEmpty`）正是一个 `Center` ⇒ 空态下**没有任何刷新出口**。
+  ///
+  /// 标准做法：`SingleChildScrollView` + `AlwaysScrollableScrollPhysics`
+  /// + `ConstrainedBox(minHeight = 视口高)` ——
+  /// 后两者合起来的效果是「内容不满屏，但**仍然可以下拉**」。
+  Widget _fillViewport(Widget child) {
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  /// 列表末尾的「加载更多」footer。
+  ///
+  /// # 为什么必须有 footer（不能只靠滚动监听）
+  ///
+  /// 滚动监听只在「用户滑到底附近」时触发。若**加载失败**，列表既不增长、
+  /// 用户也没有任何提示 —— 就是典型的「**静默失败 + 无出口**」。
+  /// ⇒ 错误必须在**用户刚操作的那个位置**（列表底部）说出来，并给出口。
+  ///
+  /// # 四态处理
+  ///
+  /// | 状态 | 显示 |
+  /// |---|---|
+  /// | 加载更多**失败** | 一行说明 + 「重试」 |
+  /// | **正在**加载 | 小转圈 |
+  /// | 还有更多、未触发 | 空（滚动监听随时会触发）|
+  /// | **已经到底** | 空 —— ⚠️ **待定项**：是否显示「没有更多了」属 UI 文案，规格未定 |
+  ///
+  /// ⚠️ 「到底」时**刻意不显示文案**：新增用户可见文案属设计决策，
+  ///    规格（`visual-feed-bookmark`）里没有它 ⇒ 不擅自发明。
+  ///    但它**不是缺陷**（列表自然结束，不会让人以为卡住）；
+  ///    若你要一句「到底了」，告诉我文案即可。
+  Widget _feedFooter(FeedPager<FeedItem> pager) {
+    if (pager.loadMoreError != null) {
+      final t = CoEvoTokensExt.of(context);
+      return Padding(
+        padding: const EdgeInsets.only(top: 20),
+        child: Column(
+          children: [
+            Text(
+              // 🔑 不显示异常原文（用户读不懂 `SocketException…`）——
+              //    与 `_FeedError` 同一取舍
+              '没能加载更多',
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: 13,
+                color: Color(t.ink3.argb32),
+              ),
+            ),
+            const SizedBox(height: CoSpacing.sm),
+            // 🔑 重试是**唯一的出口**（否则用户只能一直上拉，而每次都失败）
+            TextButton(
+              onPressed: () =>
+                  ref.read(feedProvider(_kFeedCategory).notifier).loadMore(),
+              child: const Text('重试'),
+            ),
+          ],
+        ),
+      );
+    }
+    if (pager.loadingMore) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 22),
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+    // 还有更多（等滚动触发）或已到底 —— 都留一点空隙，避免卡片贴住 tabbar
+    return const SizedBox(height: 8);
   }
 
   /// 启动引导 —— **后台副作用，不阻塞首屏**（见类文档「不验证登录态」）。
@@ -333,7 +486,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
             // ── 信息流（设计稿 `.feed` padding 0 16px · `.fcards` gap 13px）──
             Expanded(
-              child: ref.watch(feedProvider('')).when(
+              child: ref.watch(feedProvider(_kFeedCategory)).when(
                     // ① 加载中：**给一个可见的转圈**（不是一个空白区）。
                     //    🔑 首次进 App 要等一次网络往返 → 没有占位的话
                     //       用户看到的是「今日精选」下面一片空白 = 像坏了。
@@ -349,43 +502,79 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     //       而网络失败是**常态**（不是异常）。
                     //       判据：「静默失败 + 无出口」比报错更糟 ——
                     //       一个永远空着的信息流，用户只会以为 App 坏了。
-                    error: (e, _) => _FeedError(
-                      error: e,
-                      onRetry: () => ref.invalidate(feedProvider('')),
+                    //
+                    // ⚠️ 走到这里 = **首次加载就失败**（一条都没拿到）。
+                    //    若已有数据、只是「加载更多/刷新」失败，**不会**变成这一态 ——
+                    //    那两种失败分别由 footer 与轻提示表达（见 FeedPager 的说明）。
+                    //    📌 判据：**「有数据时失败」≠「没数据时失败」**。
+                    //
+                    // 🆕 2026-10-03：错误态**也包进下拉刷新**。
+                    //    🔑 理由：`_FeedError` 的说明文案里**本来就写着**
+                    //       「服务可能正在忙。稍后再试，**或者下拉重试**」——
+                    //       而在此之前**根本没有下拉刷新**（这句文案是空头支票）。
+                    //    📌 判据：**「声称的能力」必须真的存在** ——
+                    //       文案/注释里的能力声明要 grep 得到实现，否则就是误导。
+                    error: (e, _) => RefreshIndicator(
+                      onRefresh: _refreshFeed,
+                      child: _fillViewport(
+                        _FeedError(
+                          error: e,
+                          onRetry: () =>
+                              ref.invalidate(feedProvider(_kFeedCategory)),
+                        ),
+                      ),
                     ),
                     // ③ 空：**区分「服务通了但没有内容」与「拿不到」**。
                     //    两者的处理完全不同（前者不该劝重试 —— 重试也没用）。
-                    data: (page) {
-                      if (page.items.isEmpty) return const _FeedEmpty();
-                      return ListView.separated(
-                        // 🔴 底部 padding 必须**留出 tabbar 的高度**（2026-09-27）。
-                        //    `_ShellScaffold` 加了 `extendBody: true` → 正文延伸到 tabbar **之后**，
-                        //    若仍用原来的 24，最后一张卡片会被按钮压住。
-                        //    数值与依据见 `CoSpacing.tabBarClearance`（≈83–93 取 100）。
-                        padding: const EdgeInsets.fromLTRB(
-                            16, 0, 16, CoSpacing.tabBarClearance),
-                        itemCount: page.items.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 13),
-                        itemBuilder: (_, i) {
-                          final item = page.items[i];
-                          return FeedCard(
-                            item: item,
-                            bookmarked: bookmarkIds.contains(item.id),
-                            // 🔴 库未就绪 → 传 `null` → 按钮**禁用**。
-                            //    不传一个「点了没反应」的回调 —— 那会让用户以为 App 坏了
-                            //    （3.22 的教训：「静默无效的操作」比「禁用」更糟）。
-                            onToggleBookmark: bookmarkReady
-                                ? () => _toggleBookmark(item.id)
-                                : null,
-                            // 点卡片 → 阅读器（3.4a）。
-                            // 🔑 **正文未就绪的卡片照样可点** —— 与书签的「禁用」不同：
-                            //    书签禁用是因为「数据库没开」这种**异常状态**；
-                            //    而「正文未抓取」是**正常状态**（该源的 feed 只给摘要），
-                            //    进阅读器会看到一句明确的解释 —— 比「点了没反应」好，
-                            //    也比「卡片不可点」好（后者要用户猜原因）。
-                            onTap: () => context.push('/article/${item.id}'),
-                          );
-                        },
+                    //
+                    // 🆕 2026-10-03：空态**也包进下拉刷新**。
+                    //    原先 `_FeedEmpty` 是个不可滚动的 `Center` ⇒ 空态下
+                    //    用户**没有任何刷新出口**（只能杀 App）—— 与「静默失败」同族。
+                    //    修法：用可滚动容器撑满高度，让下拉手势成立。
+                    data: (pager) {
+                      if (pager.isEmpty) {
+                        return RefreshIndicator(
+                          onRefresh: _refreshFeed,
+                          child: _fillViewport(const _FeedEmpty()),
+                        );
+                      }
+                      return RefreshIndicator(
+                        onRefresh: _refreshFeed,
+                        child: ListView.separated(
+                          controller: _feedScroll,
+                          // 🔴 底部 padding 必须**留出 tabbar 的高度**（2026-09-27）。
+                          //    `_ShellScaffold` 加了 `extendBody: true` → 正文延伸到 tabbar **之后**，
+                          //    若仍用原来的 24，最后一张卡片会被按钮压住。
+                          //    数值与依据见 `CoSpacing.tabBarClearance`（≈83–93 取 100）。
+                          padding: const EdgeInsets.fromLTRB(
+                              16, 0, 16, CoSpacing.tabBarClearance),
+                          // 🔑 `+1` = 末尾的「加载更多」footer（见 `_feedFooter`）
+                          itemCount: pager.items.length + 1,
+                          separatorBuilder: (_, __) => const SizedBox(height: 13),
+                          itemBuilder: (_, i) {
+                            if (i == pager.items.length) {
+                              return _feedFooter(pager);
+                            }
+                            final item = pager.items[i];
+                            return FeedCard(
+                              item: item,
+                              bookmarked: bookmarkIds.contains(item.id),
+                              // 🔴 库未就绪 → 传 `null` → 按钮**禁用**。
+                              //    不传一个「点了没反应」的回调 —— 那会让用户以为 App 坏了
+                              //    （3.22 的教训：「静默无效的操作」比「禁用」更糟）。
+                              onToggleBookmark: bookmarkReady
+                                  ? () => _toggleBookmark(item.id)
+                                  : null,
+                              // 点卡片 → 阅读器（3.4a）。
+                              // 🔑 **正文未就绪的卡片照样可点** —— 与书签的「禁用」不同：
+                              //    书签禁用是因为「数据库没开」这种**异常状态**；
+                              //    而「正文未抓取」是**正常状态**（该源的 feed 只给摘要），
+                              //    进阅读器会看到一句明确的解释 —— 比「点了没反应」好，
+                              //    也比「卡片不可点」好（后者要用户猜原因）。
+                              onTap: () => context.push('/article/${item.id}'),
+                            );
+                          },
+                        ),
                       );
                     },
                   ),
