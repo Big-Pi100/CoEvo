@@ -79,6 +79,78 @@ fn parse_ids(raw: &str) -> Vec<i64> {
     out
 }
 
+/// 解析 `category=tech,science` → **规范化后的逗号串**（形如 `",science,tech,"`）。
+///
+/// # 🔴 与 `parse_ids` 的关键差别：本函数**不参与拼 SQL**
+///
+/// `ids` 走的是「动态占位符 `?,?,?`」；这里走 **`INSTR` 单参数**方案：
+///
+/// ```sql
+/// WHERE (?1 IS NULL OR INSTR(?1, ',' || p.category || ',') > 0)
+/// ```
+///
+/// **为什么不用 `IN (?,?,?)`**（那样与 `parse_ids` 更对称）：
+/// 单参数方案下 **SQL 结构完全不变** ⇒ 参数**个数与顺序**都不变
+/// ⇒ 改动面最小，且不必靠断言去守「动态占位符个数 == 参数个数」这种一致性。
+/// 代价：`INSTR` 用不上索引（当前 990 行，毫秒级）。
+/// ⚠️ **将来规模上来要换 `IN` + 动态占位符，并把 `category` 索引一起加上** ——
+///    届时不换只是变慢（不是错），所以现在选「不易出错」这一边。
+/// 📌 判据：**改动面小的方案要显式写下它的代价与触发条件**，否则「临时方案」会永久留下。
+///
+/// # 🔑 为什么是 `,x,y,` 形态（前后都带逗号）
+/// 直接 `INSTR('tech,science', category)` 会**误匹配**：`tech` 命中 `technology`。
+/// 逗号包裹后才是**精确的集合成员判定**。
+///
+/// # ✅ 白名单过滤是安全边界的**唯一**来源
+/// `category` 是**用户输入**。这里**只保留** [`crate::schema::CONTENT_CATEGORIES`]
+/// 里存在的值 ⇒ 拼进参数的值**只能来自代码常量**，与用户输入无关（无注入面）。
+/// 非法片段**静默丢弃**（与 `parse_ids` 同一约定）+ 去重 + 天然上限（白名单仅 12 个）。
+///
+/// 🔴 **「空集」与「没传」必须区分**（本函数最容易写错的一处）：
+///
+/// | 输入 | 返回 | 行为 |
+/// |---|---|---|
+/// | `None` / `""` / 纯空白 | `None` | **不筛**（返回全部）|
+/// | `"tech"` | `Some(",tech,")` | 只返回该分类 |
+/// | `"tech,xyz"` | `Some(",tech,")` | 非法值丢弃 ⇒ 等价于只传 `tech` |
+/// | `"xyz"`（**全非法**）| `Some(",")` | **返回空**（`INSTR` 永不匹配）|
+///
+/// ⚠️ 最后一行是重点：**旧行为**是 `p.category = 'xyz'` ⇒ 空结果。
+///    若把「全非法」也当成 `None`，就从「返回空」变成「**返回全部**」——
+///    那是**静默的行为反转**（用户明明传了筛选条件，却拿到未筛选的结果）。
+///    ⇒ 断言 `test_parse_categories` 专门锁这一条。
+///
+/// 排序：规范化后**按字典序排**，让「相同集合 ⇒ 相同字符串」
+/// （便于日志聚合与人工比对；对 `INSTR` 本身无影响）。
+fn parse_categories(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None; // 没传 ⇒ 不筛（**不是**「筛出空」）
+    }
+    let mut seen: Vec<String> = Vec::new();
+    for part in trimmed.split(',') {
+        let k = part.trim().to_ascii_lowercase();
+        // 白名单过滤 —— 这是安全边界
+        if crate::schema::CONTENT_CATEGORIES.contains(&k.as_str()) && !seen.contains(&k) {
+            seen.push(k);
+        }
+    }
+    // ⚠️ 全非法 ⇒ `Some(",")`（**空集**，INSTR 永不匹配）—— 见上面表格最后一行
+    seen.sort();
+    // 🔑 空集必须**单独处理**：`format!(",{},", "")` 会得到 `",,"`（两个逗号）。
+    //    虽然对 `INSTR` 而言 `",,"` 与 `","` **行为等价**（都永不匹配任何分类），
+    //    但「空集」应当有**唯一且干净**的表示 —— 否则日志/断言里出现 `",,"`
+    //    会让人以为「这里有两个空分类」；将来若有人把这个串 `split(',')` 解析回来，
+    //    两者得到的元素个数也不同。
+    //    📌 判据：**「行为等价」≠「表示可以随便」** —— 表示唯一是避免后续误判的前提。
+    //    （本条由单测 `test_parse_categories_distinguishes_absent_from_all_invalid` 抓到。）
+    if seen.is_empty() {
+        Some(",".to_string())
+    } else {
+        Some(format!(",{},", seen.join(",")))
+    }
+}
+
 /// 把 query 归一成安全的 (limit, offset, order_sql)。
 ///
 /// 抽成独立函数是为了**可断言**：边界（负数 / 超大 / 非法排序值）都在这里收口，
@@ -104,8 +176,11 @@ pub async fn feed_list_handler(Query(q): Query<FeedQuery>) -> Response {
     let (limit, offset, order) = normalize(&q);
     let conn = crate::db_pool::get_conn();
 
-    // 分类筛选：`None` / 空串 → 不筛（用 `?1 IS NULL` 统一处理，避免拼 SQL）
-    let category: Option<&str> = q.category.as_deref().filter(|c| !c.trim().is_empty());
+    // 分类筛选（🆕 2026-10-03 支持**多值**：`?category=tech,science`）。
+    //   `None` / 空串 → **不筛**；给了值 → 只返回这些分类。
+    //   🔴 「没传」与「传了但全部非法」是**两种不同**的结果（不筛 vs 空结果），
+    //      这个区分在 `parse_categories` 里 —— 见它的文档表格。
+    let cat_filter: Option<String> = q.category.as_deref().and_then(parse_categories);
 
     let sql = format!(
         "SELECT p.id, p.title, p.summary, p.url, p.author, p.category, \
@@ -114,7 +189,7 @@ pub async fn feed_list_handler(Query(q): Query<FeedQuery>) -> Response {
                 s.name AS source_name, p.word_count \
          FROM content_pool p \
          LEFT JOIN content_source s ON s.id = p.source_id \
-         WHERE (?1 IS NULL OR p.category = ?1) \
+         WHERE (?1 IS NULL OR INSTR(?1, ',' || p.category || ',') > 0) \
          ORDER BY {} LIMIT ?2 OFFSET ?3",
         order // 已白名单化，非用户输入
     );
@@ -127,7 +202,7 @@ pub async fn feed_list_handler(Query(q): Query<FeedQuery>) -> Response {
         }
     };
 
-    let rows = stmt.query_map(rusqlite::params![category, limit, offset], |r| {
+    let rows = stmt.query_map(rusqlite::params![cat_filter, limit, offset], |r| {
         Ok(serde_json::json!({
             "id":          r.get::<_, i64>(0)?,
             "title":       r.get::<_, String>(1)?,
@@ -155,8 +230,13 @@ pub async fn feed_list_handler(Query(q): Query<FeedQuery>) -> Response {
 
     let total: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM content_pool WHERE (?1 IS NULL OR category = ?1)",
-            rusqlite::params![category],
+            // 🔴 `total` 的筛选条件必须与上面 `items` 的**逐字相同**（同一个 `cat_filter`）。
+            //    两处不一致时**不报错**，只是 `total` 与 `items` 对不上 ⇒
+            //    端侧 `hasMore`（`fetched < total`）**永远为真** ⇒ 无限上拉、每次都白请求。
+            //    📌 判据：**「同一个口径」在多个 SQL 里出现时，必须由同一个值驱动**。
+            "SELECT COUNT(*) FROM content_pool \
+             WHERE (?1 IS NULL OR INSTR(?1, ',' || category || ',') > 0)",
+            rusqlite::params![cat_filter],
             |r| r.get(0),
         )
         .unwrap_or(0);
@@ -394,5 +474,103 @@ mod tests {
         assert_eq!(parse_ids("1; DROP TABLE content_pool--"), Vec::<i64>::new());
         // 而**逗号分隔**时，只有干净的那个整数会留下
         assert_eq!(parse_ids("1,2;DROP TABLE content_pool--"), vec![1]);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // `parse_categories`（2026-10-03 · 兴趣筛选「多值」支持）
+    // ══════════════════════════════════════════════════════════════════
+
+    /// 🔴 **最重要的一条**：区分「没传」与「传了但全非法」。
+    ///
+    /// 两者都得到「空集合」的**直觉**，但行为必须相反：
+    /// · 没传 → `None` → **不筛**（返回全部）
+    /// · 全非法 → `Some(",")` → **空结果**
+    ///
+    /// 若把后者也归成 `None`，就变成「用户传了筛选条件，却拿到未筛选的全部」
+    /// —— **静默的行为反转**，而且没有任何一处会报错。
+    #[test]
+    fn test_parse_categories_distinguishes_absent_from_all_invalid() {
+        // ① 「没传」的三种形态 → 都不筛
+        assert_eq!(parse_categories(""), None);
+        assert_eq!(parse_categories("   "), None);
+        assert_eq!(parse_categories("\t\n"), None);
+
+        // ② 全非法 → **空集**（不是 None！）
+        let all_invalid = parse_categories("xyz");
+        assert_eq!(
+            all_invalid.as_deref(),
+            Some(","),
+            "🔴 全非法必须是 Some(\",\")（空集 ⇒ INSTR 永不匹配 ⇒ 空结果），\
+             不能是 None（那会变成「不筛」⇒ 返回全部）"
+        );
+        // 语义确认：空集串**不含**任何合法 key
+        assert!(!all_invalid.unwrap().contains("tech"));
+    }
+
+    #[test]
+    fn test_parse_categories_basic_and_multi() {
+        // 单值：行为与旧的 `p.category = ?1` **等价**
+        assert_eq!(parse_categories("tech").as_deref(), Some(",tech,"));
+        // 🔑 逗号包裹是精确成员判定 ⇒ `tech` **不会**误匹配 `technology`
+        let one = parse_categories("tech").unwrap();
+        assert!(
+            !one.contains(",technology,"),
+            "逗号包裹后不该匹配 technology"
+        );
+
+        // 多值
+        assert_eq!(
+            parse_categories("tech,science").as_deref(),
+            Some(",science,tech,"),
+            "规范化后按字典序排（相同集合 ⇒ 相同串）"
+        );
+        // 顺序无关：输入顺序不同 ⇒ **同一串**
+        assert_eq!(
+            parse_categories("tech,science"),
+            parse_categories("science,tech")
+        );
+        // 空白容忍
+        assert_eq!(
+            parse_categories(" tech , science ").as_deref(),
+            Some(",science,tech,")
+        );
+        // 大小写归一
+        assert_eq!(parse_categories("TECH").as_deref(), Some(",tech,"));
+    }
+
+    #[test]
+    fn test_parse_categories_drops_invalid_and_dedupes() {
+        // 非法值**静默丢弃**（与 `parse_ids` 同约定）
+        assert_eq!(parse_categories("tech,xyz").as_deref(), Some(",tech,"));
+        // 去重
+        assert_eq!(
+            parse_categories("tech,tech,TECH").as_deref(),
+            Some(",tech,")
+        );
+        // 全部合法值（12 个）都能通过白名单
+        let all = crate::schema::CONTENT_CATEGORIES.join(",");
+        let got = parse_categories(&all).unwrap();
+        for k in crate::schema::CONTENT_CATEGORIES {
+            assert!(got.contains(&format!(",{}", k)), "合法分类 {} 不该被丢", k);
+        }
+    }
+
+    /// 🔴 安全边界：**拼进 SQL 参数的值只能来自代码白名单**。
+    ///
+    /// `parse_categories` 的输出会被当**绑定参数**用（不是拼 SQL），
+    /// 所以本测试的意义是「**输出里不可能出现白名单以外的字符串**」——
+    /// 即使输入是注入尝试。
+    #[test]
+    fn test_parse_categories_output_only_contains_whitelist() {
+        let evil = parse_categories("'; DROP TABLE content_pool;--").unwrap();
+        assert_eq!(evil, ",", "注入尝试 → 一个合法分类都没有 ⇒ 空集");
+        assert!(!evil.contains("DROP"));
+
+        // 混在合法值里的注入片段也被丢掉
+        let mixed = parse_categories("tech,'; DROP TABLE content_pool;--").unwrap();
+        assert_eq!(mixed, ",tech,");
+
+        // 通配符也是非法值（我们**不**支持 `*`；「不筛」用「不传参数」表达）
+        assert_eq!(parse_categories("*").as_deref(), Some(","));
     }
 }

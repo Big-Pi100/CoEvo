@@ -12,7 +12,9 @@ import '../models/feed_item.dart';
 import '../providers/auth_provider.dart';
 import '../providers/bookmark_provider.dart';
 import '../providers/feed_provider.dart';
+import '../providers/interest_provider.dart';
 import '../services/feed_pager.dart';
+import '../services/interest_selection.dart';
 import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
@@ -115,9 +117,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// 信息流当前使用的 category key（`''` = 全部）。
   ///
-  /// ⚠️ 目前**恒为空** —— 兴趣选择尚未实现。抽成常量是为了让它只有一处，
-  ///    将来接入筛选时改这里即可（`feedProvider('')` 散在 3 处会漏改）。
-  static const String _kFeedCategory = '';
+  /// # 🆕 2026-10-03：由常量改为**每次 build 从兴趣选择刷新**的字段
+  ///
+  /// 原来它是 `static const ''`（一个**恒为空**的占位）—— 现在接上了兴趣筛选。
+  ///
+  /// 🔑 为什么是**字段**而不是 getter：
+  ///    它要在两类上下文里被读，而这两类**读法不同**：
+  ///    | 上下文 | 例子 | 读法 |
+  ///    |---|---|---|
+  ///    | build 内 | `ref.watch(feedProvider(key))` | 必须 `watch`（兴趣变化要触发重建）|
+  ///    | **回调内** | 滚动触发 `loadMore()` | **不能** `watch`（不在 build 上下文）|
+  ///    ⇒ 折中：build 里 `watch` 一次并**存进字段**，回调统一读字段 ——
+  ///      回调拿到的正是「当前屏幕上那份列表所对应的 key」✅
+  String _feedKey = '';
 
   @override
   void initState() {
@@ -153,7 +165,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     // ⚠️ 用 `read` 而不是 `watch`：这里只是「通知它去做事」，
     //    不需要本 widget 因 notifier 变化而重建（重建由 build 里的 watch 负责）。
-    ref.read(feedProvider(_kFeedCategory).notifier).loadMore();
+    ref.read(feedProvider(_feedKey).notifier).loadMore();
   }
 
   /// `RefreshIndicator.onRefresh` —— 返回的 `Future` 决定**转圈何时收起**。
@@ -166,7 +178,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   ///    内容随后才变 —— 用户看到的是「下拉了一下，什么也没发生」，
   ///    于是**再下拉一次**（而第一次其实成功了）。这类「假失败」极伤体验。
   Future<void> _refreshFeed() {
-    return ref.read(feedProvider(_kFeedCategory).notifier).refresh();
+    return ref.read(feedProvider(_feedKey).notifier).refresh();
   }
 
   /// 把「不可滚动的居中内容」放进可滚动容器 —— 让**下拉手势**成立。
@@ -233,7 +245,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             // 🔑 重试是**唯一的出口**（否则用户只能一直上拉，而每次都失败）
             TextButton(
               onPressed: () =>
-                  ref.read(feedProvider(_kFeedCategory).notifier).loadMore(),
+                  ref.read(feedProvider(_feedKey).notifier).loadMore(),
               child: const Text('重试'),
             ),
           ],
@@ -410,6 +422,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 🔑 每次 build 刷新「当前分类 key」：
+    //    · `ref.watch(interestProvider)` 让**兴趣变化能触发本页重建**（必须 watch）
+    //    · `interestKeyOf` 把「prefs 未加载完 / 读失败」都收敛成 `''`（= 全部）
+    //      ⇒ 偏好读不出来**不会**挡住信息流（同 `device_id` 的降级判据）
+    //    · 存进字段供**回调**使用（滚动/下拉刷新/重试 —— 那些地方不能 watch）
+    //    ⚠️ 已知取舍：若用户确实设了筛选，首帧会先用 `''`（全部）发起一次请求，
+    //       prefs 就绪后 key 变化 ⇒ 可能**多发一次请求**。
+    //       彻底消除需要在 `main()` 预载 prefs 并 override（动启动路径，本轮不做）。
+    _feedKey = interestKeyOf(ref.watch(interestProvider).valueOrNull);
     final t = CoEvoTokensExt.of(context);
 
     // 🔑 只取 `idsOrEmpty` / `isReady`，**不用 `when`**：
@@ -486,7 +507,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
             // ── 信息流（设计稿 `.feed` padding 0 16px · `.fcards` gap 13px）──
             Expanded(
-              child: ref.watch(feedProvider(_kFeedCategory)).when(
+              child: ref.watch(feedProvider(_feedKey)).when(
                     // ① 加载中：**给一个可见的转圈**（不是一个空白区）。
                     //    🔑 首次进 App 要等一次网络往返 → 没有占位的话
                     //       用户看到的是「今日精选」下面一片空白 = 像坏了。
@@ -520,7 +541,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         _FeedError(
                           error: e,
                           onRetry: () =>
-                              ref.invalidate(feedProvider(_kFeedCategory)),
+                              ref.invalidate(feedProvider(_feedKey)),
                         ),
                       ),
                     ),
@@ -535,7 +556,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       if (pager.isEmpty) {
                         return RefreshIndicator(
                           onRefresh: _refreshFeed,
-                          child: _fillViewport(const _FeedEmpty()),
+                          child: _fillViewport(_FeedEmpty(
+                            // 🔑 传 key 而不是 bool：空状态要**说清**「哪一类为空」
+                            //    并对「筛选后为空」给出回到全部的出口。
+                            //    ⚠️ 用 `_feedKey`（本帧已由 build 刷新）而不是再读一遍
+                            //       provider —— 两者必须一致，读两处就会漂移。
+                            categoryKey: _feedKey,
+                            onShowAll: () =>
+                                ref.read(interestProvider.notifier).clear(),
+                          )),
                         );
                       }
                       return RefreshIndicator(
@@ -639,7 +668,7 @@ class _FeedError extends StatelessWidget {
   }
 }
 
-/// 信息流**确实为空**（服务通了，但内容池里没有可展示的条目）。
+/// 信息流**确实为空**（服务通了，但本次查询没有可展示的条目）。
 ///
 /// # 🔑 与 [_FeedError] 分开是**必须的**，不是啰嗦
 /// 「拿不到」与「没有」对用户是**两件事**：
@@ -647,19 +676,41 @@ class _FeedError extends StatelessWidget {
 /// · 没有 → 重试也没用（内容就是空的）
 /// → 所以本态**不给重试按钮**，而是说明原因（首次部署时内容池还没抓完）。
 /// 若两者共用一个「重试」态，用户会对一个不会变的状态反复点重试。
+///
+/// # 🆕 2026-10-03：分成**两态**（兴趣筛选上线后必须分）
+///
+/// | 情形 | 文案 | 按钮 |
+/// |---|---|---|
+/// | **没筛**（全部）却为空 | 还没有内容（内容池还没抓完）| ❌ **不给**（重试无意义）|
+/// | **筛选后**为空 | 这一类还没有内容 | ✅ **「查看全部」** |
+///
+/// 🔴 第二行是本条存在的理由：筛选后为空时若只显示「还没有内容」，
+///    用户会以为**整个 App 都没内容**（而不是「我筛掉了」）——
+///    典型的「静默失败 + 无出口」。而且本项目**已知**有些类内容很少
+///    （`family` / `business` 近 7 天只有个位数）⇒ 这一态会**真的被用户遇到**。
+///    📌 判据：**「空」必须说清是哪种空，并给出口**。
 class _FeedEmpty extends StatelessWidget {
-  const _FeedEmpty();
+  /// 当前分类 key（`''` = 全部）。
+  final String categoryKey;
+
+  /// 「查看全部」——清空兴趣筛选。
+  final VoidCallback onShowAll;
+
+  const _FeedEmpty({required this.categoryKey, required this.onShowAll});
 
   @override
   Widget build(BuildContext context) {
+    final filtered = categoryKey.isNotEmpty;
     return _FeedNotice(
-      icon: Icons.inbox_outlined,
-      title: '还没有内容',
-      detail: '内容还在准备中。过一会儿回来看，或者稍后重试。',
-      // ⚠️ **有意不给按钮** —— 见类文档：这里重试没有意义。
-      //    ⚠️ 但也不给「下拉刷新」的暗示，那会诱导用户做无效操作。
-      actionLabel: null,
-      onAction: null,
+      icon: filtered ? Icons.filter_alt_off_outlined : Icons.inbox_outlined,
+      title: filtered ? '这一类还没有内容' : '还没有内容',
+      detail: filtered
+          // ⚠️ 不写「试试别的类别」这种空话 —— 直接给按钮更省事
+          ? '你筛选的类别下暂时没有文章。'
+          : '内容还在准备中。过一会儿回来看，或者稍后重试。',
+      // 筛选后为空 ⇒ **必须给出口**（否则用户卡在自己的筛选里出不去）
+      actionLabel: filtered ? '查看全部' : null,
+      onAction: filtered ? onShowAll : null,
       tokens: CoEvoTokensExt.of(context),
     );
   }

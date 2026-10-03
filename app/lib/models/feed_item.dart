@@ -108,7 +108,7 @@ class FeedItem {
   /// ⚠️ 目前是**英文**（`Science` / `Tech`）—— 依据是 **L1 界面锚点**
   /// `visual-feed-bookmark-2026-09-25.html` 的卡片原文就是 `Science · 4 min`。
   /// 若要改中文，**只改本 map**（不要在页面里覆盖）。
-  String get categoryLabel => _categoryLabels[category.toLowerCase()] ?? _unknownCategory;
+  String get categoryLabel => kCategoryLabels[category.toLowerCase()] ?? _unknownCategory;
 
   /// 未登记分类的兜底显示。
   ///
@@ -150,7 +150,7 @@ class FeedItem {
   ///
   ///    后端锁定处：`content_fetch::tests::test_seed_sources_are_loaded` ①b
   ///    （断言 `content_source` 的分类集合 **≡** `CONTENT_CATEGORIES`）。
-  static const Map<String, String> _categoryLabels = {
+  static const Map<String, String> kCategoryLabels = {
     'news': 'News',
     'tech': 'Tech',
     'business': 'Business',
@@ -193,7 +193,7 @@ class FeedItem {
     final category = (json['category'] as String?) ?? '';
     final wordCount = (json['word_count'] as num?)?.toInt() ?? 0;
     // ⚠️ 未登记分类 → 兜底文案 + 一条日志（别让它静默）
-    if (category.isNotEmpty && !_categoryLabels.containsKey(category.toLowerCase())) {
+    if (category.isNotEmpty && !kCategoryLabels.containsKey(category.toLowerCase())) {
       debugPrint('[FeedItem] 未登记的分类 `$category`（后端加了新分类？）→ 显示 $_unknownCategory');
     }
     return FeedItem(

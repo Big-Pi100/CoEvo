@@ -3,7 +3,7 @@
 //   ② 三态齐全（加载 / 失败可重试 / 空）—— 防「静默失败 + 无出口」
 //   ③ 阅读页从 `/api/feed/{id}` 取正文 + 痕迹来自端侧 `lookup_event`
 //   ④ 后端 `/api/feed` 支持 `ids`（收藏清单用）且 `parse_ids` 不能被绕过
-//   ⑤ 分类词表**跨语言一致**（后端 `CONTENT_CATEGORIES` ↔ 端侧 `_categoryLabels`）
+//   ⑤ 分类词表**跨语言一致**（后端 `CONTENT_CATEGORIES` ↔ 端侧 `kCategoryLabels`）
 //
 // 跑法：cd scripts/query_verify && dart run bin/verify_feed_wiring.dart
 //
@@ -78,16 +78,25 @@ void main() {
   section('【1】信息流：从服务端取数（不再有 mock）');
   // ══════════════════════════════════════════════════════════
   //
-  // 🔴 断言用的是**完整表达式** `ref.watch(feedProvider('')).when(`，不是裸的
-  //    `feedProvider`。原因（**受控实验抓到的**）：
-  //    裸名字在 `error:` 回调里也出现（`ref.invalidate(feedProvider(''))`），
-  //    所以只匹配裸名时，「把 watch 换成 mock」这个回归**不会让它变红** ——
-  //    断言看着在守，实际是**假绿**。
-  //    → 锁「取数 + 三态分派」这个完整形状，才真的守得住。
-  //    📌 同族判据：**断言要覆盖到「形状」，不只是一个名字的出现**。
-  const feedWatch = "ref.watch(feedProvider('')).when(";
-  check('🔴 信息流是 `ref.watch(feedProvider(...)).when(...)`（完整形状）',
-      home.contains(feedWatch));
+  // 🔴 断言要锁「**取数 + 三态分派**」这个形状，但**不能写死标识符拼写**。
+  //
+  // 两端都踩过（都是真实事故）：
+  //   · **写太松 ⇒ 假绿**（受控实验抓到的）：只匹配裸名 `feedProvider` 时，
+  //     那名字在 `error:` 回调里也出现（`ref.invalidate(feedProvider(…))`），
+  //     所以「把 watch 换成 mock」这个回归**不会让它变红**。
+  //   · **写太死 ⇒ 假红**（2026-10-03 实际发生）：原断言写死
+  //     `ref.watch(feedProvider('')).when(`，而实现把硬编码 `''` 提成了常量
+  //     `_kFeedCategory` —— 那是**纯重构（语义没变）**，却让断言变红。
+  //     ⚠️ 危害不只是「误报」：**一条合理改动就报警的断言，会训练人忽略红灯**
+  //        ⇒ 真回归来了也一起被忽略。
+  //
+  // ✅ 解法：**锁语义形状，不锁拼写** —— 正则允许参数是任意表达式（含常量名）。
+  // 📌 判据：断言要**覆盖到形状**，同时**对无关重构免疫**；
+  //    两难时优先用**正则匹配结构**，而不是 `contains` 匹配字面量。
+  final feedWatch =
+      RegExp(r'ref\.watch\(\s*feedProvider\([^)]*\)\s*\)\s*\.when\(');
+  check('🔴 信息流是 `ref.watch(feedProvider(…)).when(…)`（形状 · 参数名不限）',
+      feedWatch.hasMatch(home));
   check('🔴 信息流**不再**引用 `mockFeedItems`', !home.contains('mockFeedItems'));
 
   // 🔴 mock 文件必须已删除 —— 留着就是「随时可以被接回去」的死代码
@@ -180,12 +189,24 @@ void main() {
       feedItem.contains("json['summary']"));
   check('🔴 `minutes` 由 `word_count` 换算（不是后端字段）',
       feedItem.contains('minutesFromWordCount') && feedItem.contains('word_count'));
-  check('🔴 分类显示映射**只有一处**（`_categoryLabels`）',
-      feedItem.contains('_categoryLabels') && feedItem.contains('categoryLabel'));
+  check('🔴 分类显示映射**只有一处**（`kCategoryLabels`）',
+      feedItem.contains('kCategoryLabels') && feedItem.contains('categoryLabel'));
   check('未登记分类有兜底文案（不留空、不漏内部 key）',
       feedItem.contains('_unknownCategory'));
-  check('🔴 热帖字段是 `Option`（只有 HN 有，其余源为 null）',
-      feedItem.contains('int? score') && feedItem.contains('int? comments'));
+  // 🔴 **反向断言**（2026-10-03 改）：原断言是「`int? score` 存在」（正向）。
+  //    但 HN 弃用 ⇒ 后端 `content_pool.score` 列已删 ⇒ 「热帖排序」不复存在
+  //    ⇒ 端侧也**必须**同步删掉这两个字段。
+  //    留着就是**语义残留** —— 表里没有的列、模型里还留着 ⇒
+  //    后来人会以为「这个字段还能用」而把它接回某处（本项目已多次踩这个形状）。
+  //    📌 判据：**删功能要连带清理语义残留**，并把断言**翻成反向**防它回来。
+  check('🔴 模型**已删** `score` / `comments`（HN 弃用 ⇒ 后端列已删）',
+      !feedItem.contains('int? score') && !feedItem.contains('int? comments'));
+  // ⚠️ **不要**去断言「注释里保留了兼容说明」——
+  //    本文件第 72 行用的是 `readNoComment(...)`（**剥掉注释再断言**），
+  //    那是**刻意**的：注释不是契约，若把它也纳入断言，
+  //    改一句措辞就会红 ⇒ 又是一种假红（正是本轮在修的病）。
+  //    ⇒ 「删字段 ≠ 删文档」这条知识留在**代码注释**里即可，**不进断言**。
+  //    📌 判据：**断言锁行为/形状，不锁注释文本**。
   check('`has_body` 映射到 `hasBody`', feedItem.contains('has_body'));
 
   // ══════════════════════════════════════════════════════════
@@ -195,8 +216,31 @@ void main() {
       feedProvider.contains('FutureProvider.family<Map<int, FeedItem>, String>'));
   check('🔴 详情用 `autoDispose`（读完释放全文，防积内存）',
       feedProvider.contains('autoDispose.family<ArticleDetail'));
-  check('信息流列表**不** autoDispose（切 tab 回来不该重拉）',
-      feedProvider.contains('final feedProvider =\n    FutureProvider.family<FeedPage, String>'));
+
+  // 🔴 「信息流列表**不** autoDispose」这条约定**没变**，但**断言写法要改**
+  //    （2026-10-03）：原断言写死
+  //      `final feedProvider =\n    FutureProvider.family<FeedPage, String>`
+  //    —— 而实现已从 `FutureProvider` 换成 `AsyncNotifierProvider`
+  //    （分页需要累积状态 ⇒ `FutureProvider` 是「一次算完」的语义，做不到），
+  //    类型名一改，写死的正向断言就**假红**，而约定本身**完全没变**。
+  //
+  //    ✅ 改成两步，都**锁语义不锁拼写**：
+  //      ① 正向（弱）：确认它**确实是 family**（否则「provider 被删掉」也会绿）
+  //      ② 反向（强）：确认声明块里**没有** `autoDispose`
+  //         —— 「不该有的东西不存在」对实现更换**天然免疫**，且更贴近约定本身
+  //    ⚠️ 必须**先截出 `feedProvider` 自己的声明块**，不能对整个文件做反向断言：
+  //       同文件里 `articleDetailProvider` **是** autoDispose（那是刻意的），
+  //       对整个文件断言会误判。
+  final feedFeedDecl = RegExp(r'final feedProvider\s*=\s*[\s\S]*?\);')
+          .firstMatch(feedProvider)
+          ?.group(0) ??
+      '';
+  check('🔴 截到了 `feedProvider` 的声明块（断言前提成立）',
+      feedFeedDecl.isNotEmpty, '截不到 ⇒ 下面的反向断言会假绿');
+  check('🔴 `feedProvider` 是 **family**（参数 = 分类 key）',
+      feedFeedDecl.contains('.family<') && feedFeedDecl.contains('String'));
+  check('🔴 信息流列表**不** autoDispose（切 tab 回来不该重拉）',
+      feedFeedDecl.isNotEmpty && !feedFeedDecl.contains('autoDispose'));
 
   // ══════════════════════════════════════════════════════════
   section('【9】分类词表：后端与端侧**逐字一致**（跨语言漂移是无症状的）');
@@ -205,7 +249,7 @@ void main() {
   // 🔴 为什么需要这条（2026-10-02）：
   //    分类词表**同时存在于两种语言**里 ——
   //      后端 `schema.rs` 的 `CONTENT_CATEGORIES`（源配置 + CHECK 用它）
-  //      端侧 `feed_item.dart` 的 `_categoryLabels`（卡片显示用它）
+  //      端侧 `feed_item.dart` 的 `kCategoryLabels`（卡片显示用它）
   //    后端加了新类而端侧没跟上时：**不报错**，只是卡片显示兜底词 `Reading`
   //    （`_unknownCategory`）—— 用户看到的是「分类名变成了 Reading」，
   //    而没有任何一处会红。⇒ 只能靠源级断言守住。
@@ -225,14 +269,14 @@ void main() {
       backendCats.isNotEmpty, '实得 ${backendCats.length} 个');
 
   final dartCats = <String>{};
-  final mapBlock = RegExp(r"_categoryLabels\s*=\s*\{([^}]*)\}", multiLine: true)
+  final mapBlock = RegExp(r"kCategoryLabels\s*=\s*\{([^}]*)\}", multiLine: true)
       .firstMatch(feedItem);
   if (mapBlock != null) {
     for (final m in RegExp(r"'([a-z_]+)'\s*:").allMatches(mapBlock.group(1)!)) {
       dartCats.add(m.group(1)!);
     }
   }
-  check('端侧 `_categoryLabels` 可解析', dartCats.isNotEmpty, '实得 ${dartCats.length} 个');
+  check('端侧 `kCategoryLabels` 可解析', dartCats.isNotEmpty, '实得 ${dartCats.length} 个');
 
   check('🔴 两边**集合相等**（不是「包含」—— 多一个也是漂移）',
       backendCats.length == dartCats.length &&

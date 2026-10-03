@@ -640,15 +640,21 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
                   <span class="ico">🎯</span>
                   <span class="tx">
                     <b>兴趣筛选</b>
-                    <span>决定信息流的内容权重</span>
+                    <span>决定信息流显示哪些类别</span>
                   </span>
                 </div>
+                <!-- ⚠️ 2026-10-03 注：下面这 5 个 pill 是**当时画的示意值**（形状/颜色仍有效）。
+                     实际实现有 **12 类**，且**显示名以 `feed_item.dart` 的 `kCategoryLabels` 为准**
+                     （与卡片元信息行同一个映射 —— 口径只有一处）。
+                     示例里的「环境」**不在** 12 类中（那是当时的假想分类）。
+                     语义：**筛选**（勾 N 类 ⇒ 只显示这 N 类），**不是权重/排序**（白哥 2026-10-03 定）。
+                     实施依据：`profile_screen.dart` 的 `_buildInterestGroup`。 -->
                 <div class="pills">
-                  <span class="pill on">科技</span>
-                  <span class="pill on">环境</span>
-                  <span class="pill">商业</span>
-                  <span class="pill">文化</span>
-                  <span class="pill">体育</span>
+                  <span class="pill on">News</span>
+                  <span class="pill on">Tech</span>
+                  <span class="pill">Business</span>
+                  <span class="pill">Science</span>
+                  <span class="pill">Sports</span>
                 </div>
               </div>
             </div>
@@ -798,15 +804,21 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
                   <span class="ico">🎯</span>
                   <span class="tx">
                     <b>兴趣筛选</b>
-                    <span>决定信息流的内容权重</span>
+                    <span>决定信息流显示哪些类别</span>
                   </span>
                 </div>
+                <!-- ⚠️ 2026-10-03 注：下面这 5 个 pill 是**当时画的示意值**（形状/颜色仍有效）。
+                     实际实现有 **12 类**，且**显示名以 `feed_item.dart` 的 `kCategoryLabels` 为准**
+                     （与卡片元信息行同一个映射 —— 口径只有一处）。
+                     示例里的「环境」**不在** 12 类中（那是当时的假想分类）。
+                     语义：**筛选**（勾 N 类 ⇒ 只显示这 N 类），**不是权重/排序**（白哥 2026-10-03 定）。
+                     实施依据：`profile_screen.dart` 的 `_buildInterestGroup`。 -->
                 <div class="pills">
-                  <span class="pill on">科技</span>
-                  <span class="pill on">环境</span>
-                  <span class="pill">商业</span>
-                  <span class="pill">文化</span>
-                  <span class="pill">体育</span>
+                  <span class="pill on">News</span>
+                  <span class="pill on">Tech</span>
+                  <span class="pill">Business</span>
+                  <span class="pill">Science</span>
+                  <span class="pill">Sports</span>
                 </div>
               </div>
             </div>
