@@ -209,8 +209,14 @@ pub fn write_items(
         // ⚠️ 判据用「**抓到了什么**」（`it.body` 优先，退回 summary），而不是
         //    「打算存什么」（`body` 变量受 `redistributable` 影响）——
         //    否则 `redistributable = 0` 的源会**绕过**闸门。
+        //
+        // 🆕 2026-10-03 新增第三类判据：**URL 形态**（非 HTML 文档 → 直接不入库）。
+        //    🔑 它堵的是**乱码判据的盲区** —— 实测 4 条 PDF 里只有 2 条带乱码，
+        //       另 2 条是 `body = 0`（没有乱码 ⇒ 乱码判据看不见）。
+        //       按 URL 过滤覆盖 4/4。
+        //    📄 详见 `content_quality::NON_HTML_EXTENSIONS` 的说明。
         let gate_text = it.body.as_deref().or(it.summary.as_deref()).unwrap_or("");
-        if let Some(reason) = crate::content_quality::check_content(&it.title, gate_text) {
+        if let Some(reason) = crate::content_quality::check_content(&it.title, gate_text, &it.url) {
             tracing::info!(
                 "content_fetch: 跳过条目（{}）· {} — {}",
                 reason,
@@ -647,6 +653,13 @@ pub enum BodyOutcome {
     NoParagraphs,
     /// 提取到了，但总长不够（附实际长度）。
     TooShort(usize),
+    /// 🆕 2026-10-03：**非 HTML 文档**（PDF / 文档 / 压缩包）—— **未发起网络请求**。
+    ///
+    /// 与 [`NoParagraphs`](Self::NoParagraphs) 的区别很重要：
+    /// 后者是「抓了但提取不到」（可能重试），前者是「**这个 url 根本不是网页**」（不该重试）。
+    /// ⚠️ 之所以要单独一个变体：把它混进 `NoParagraphs` 会让日志显示
+    ///    「抓了但没有段落」—— 而真相是「**压根没抓**」⇒ 误导排查方向。
+    NonHtmlDocument(String),
 }
 
 impl BodyOutcome {
@@ -669,6 +682,8 @@ impl BodyOutcome {
             BodyOutcome::HttpFailed(_) => "http_failed",
             BodyOutcome::NoParagraphs => "no_paragraphs",
             BodyOutcome::TooShort(_) => "too_short",
+            // 🔑 单独的 reason 名 —— 让日志能区分「抓了没提取到」与「压根没抓」
+            BodyOutcome::NonHtmlDocument(_) => "non_html_document",
         }
         .to_string()
     }
@@ -692,6 +707,24 @@ pub async fn fetch_article_body(client: &reqwest::Client, url: &str) -> BodyOutc
     /// 取 300 是个**很松**的下限 —— 只用来挡「明显不是正文」的情况
     /// （cookie 横幅 / 一句导航）。宁松不严：严了会把短讯判死。
     const MIN_EXTRACTED_CHARS: usize = 300;
+
+    // 🆕 2026-10-03：**非 HTML 文档直接跳过，不抓**。
+    //
+    // # 为什么在**这里**也要拦一次（入库闸门不是已经拦了吗）
+    //
+    // 入库闸门管的是「**新**条目」；本函数管的是「**已入库**条目的补抓」。
+    // 两者覆盖的场景不同：
+    //   · 存量里可能已有 PDF（实测 4 条）⇒ 每轮补抓都会去拉它们
+    //   · 而 PDF 会**原样返回二进制**（实测 body 达 3.5M / 4.3M 字符）
+    //     ⇒ 每次白拉几 MB 进内存，且**永远抓不到正文** ⇒ 每轮重复
+    //
+    // 🔑 判据：**「按缺失挑候选」的批处理，必须能「记住这个挑不出来」**——
+    //    否则失败项变成永久噪音（同族：`body_attempted_at` 的设计初衷）。
+    //
+    // ⚠️ 调用方会把本结果记入 `body_attempted_at` ⇒ 之后不再重试。
+    if let Some(ext) = crate::content_quality::non_html_extension(url) {
+        return BodyOutcome::NonHtmlDocument(ext);
+    }
 
     let html = match http_get_text(client, url).await {
         Ok(h) => h,

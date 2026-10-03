@@ -81,5 +81,12 @@ fn main() {
             println!("  → 下一步：看清是不是「cookie 横幅 + 一句导航」被误当正文；");
             println!("    若确实是短讯，考虑调低阈值（但有把噪音当正文的风险）。");
         }
+        // 🆕 2026-10-03：非 HTML 文档 —— **未发起网络请求**（url 形态就不是网页）
+        api_server::content_fetch::BodyOutcome::NonHtmlDocument(ext) => {
+            println!("  ⬜ 非 HTML 文档（.{}）→ **根本没有发起请求**", ext);
+            println!();
+            println!("  → 这不是抓取失败，是**这个 url 不是网页**（PDF / 文档 / 压缩包）。");
+            println!("    本项目的正文提取基于 HTML ⇒ 对它永远无效，会被入库闸门拦下。");
+        }
     }
 }

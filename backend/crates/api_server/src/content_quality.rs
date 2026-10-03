@@ -67,9 +67,113 @@ pub const MIN_LATIN_RATIO: f64 = 0.90;
 /// 实测：正常文章 **全部 0%**；PDF 乱码 **41.8%** ⇒ 0.05 有 40 个百分点的余量。
 pub const MAX_REPLACEMENT_RATIO: f64 = 0.05;
 
+/// 🆕 2026-10-03：**不是 HTML 页面**的文件扩展名 —— 命中则**不抓取、不入库**。
+///
+/// # 🔴 为什么必须有这条（它堵的是乱码闸门的**盲区**）
+///
+/// 白哥问：「PDF 的占比如果很少的话，要不都过滤掉？」→ 实测后**建议过滤**，
+/// 但理由**不是「占比少」**，而是下面两条：
+///
+/// **① 产品层**：PDF 是论文/报告（实测：`NTSB Preliminary Report`、
+///    `Electrification Special Report`、`The Legend of von Neumann (1973)`），
+///    学术语言不适合学英语；而且本产品的核心交互（**划词查词 + 朗读 + Markdown 渲染**）
+///    在 PDF 上**全部会坏**。
+///
+/// **② 技术层**：抓 PDF 只有**两种**结果（实测生产库 4 条）：
+///    | 结果 | 实例 | 危害 |
+///    |---|---|---|
+///    | **变乱码** | id=2041（3.5M 字符）· id=2692（4.3M）| 占**库体积 70.9%** |
+///    | **body = 0** | id=195 · id=1495 | feed 里出现「点开没正文」的条目 |
+///
+/// 🔑 **关键是第二种**：`body = 0` 的条目**没有乱码** ⇒ [`check_content`] 的
+///    乱码判据（`U+FFFD` 占比）**完全看不见它们**。
+///    实测覆盖率只有 **2/4**。
+///    ⇒ 「按 URL 形态过滤」是**更前面、更完整**的一道闸（4/4）。
+///
+/// # 实测数据（生产 924 条）
+///
+/// | 项 | 值 |
+/// |---|---|
+/// | URL 以 `.pdf` 结尾 | **4 条（0.43%）** |
+/// | 其他文档类（`.doc` `.zip` `.xls` …）| **0 条** |
+/// | 来源 | **全部是 HN**（其他 22 个源零 PDF）|
+/// | **HN 每轮抓取里的占比** | **5.0%**（前 60 条含 3 条）⇒ **会持续产生** |
+///
+/// ⚠️ **「占比少」不是过滤的理由** —— 它是「5% 每轮持续产生」的反面：
+///    单看库内 0.43% 很小，但它**不是一次性事件**。
+///
+/// # 误伤风险（实测为零）
+///
+/// 全库 URL 后缀分布：**920 网页 + 4 pdf** —— 只有 `.pdf` 一种非网页。
+/// 特别验证过两个「看似会被误伤」的形态，**都不会**：
+/// · `arxiv.org/abs/2609.38181` —— 是 `/abs/` 页面（**不是** `.pdf`）✅
+/// · `dev.to/.../como-automatizar-facturas-pdf-...` —— url 含 `pdf` 但**不以它结尾** ✅
+///   （这是「讲 PDF 的文章」，**是正常内容**，13 条，不该过滤）
+pub const NON_HTML_EXTENSIONS: &[&str] = &[
+    // 文档
+    "pdf", "doc", "docx", "odt", "rtf", "txt", "epub", "mobi", // 表格 / 幻灯片
+    "xls", "xlsx", "ods", "csv", "ppt", "pptx", "odp",
+    // 压缩包（HN 偶尔有 `[zip]` 帖）
+    "zip", "tar", "gz", "bz2", "xz", "7z",
+];
+
+/// 🆕 从 URL 提取「非 HTML 文档」的扩展名。返回 `Some(ext)` = 该跳过。
+///
+/// # 处理的形态（全部有断言锁住）
+///
+/// | 输入 | 结果 | 说明 |
+/// |---|---|---|
+/// | `https://a.com/x.pdf` | `Some("pdf")` | 基本形态 |
+/// | `https://a.com/X.PDF` | `Some("pdf")` | **大小写归一** |
+/// | `https://a.com/x.pdf?v=2#p1` | `Some("pdf")` | **剥 query / fragment** |
+/// | `https://a.com/docs.pdf/index.html` | `None` | 🔑 只看**最后一段**（它才是文件名）|
+/// | `https://a.com/report` | `None` | 无扩展名 |
+/// | `https://a.com/v1.2/pdf` | `None` | 最后一段无点 ⇒ 不是扩展名 |
+/// | `https://a.com` | `None` | 🔴 **域名里的点不算**（见下）|
+///
+/// # 🔴 为什么必须「先取最后一段，再找点」
+///
+/// 若直接对整串找最后一个 `.`，`https://example.com` 会得出 `com`
+/// （恰好不在表里所以没出事，但那是**运气**）。
+/// 先 `rsplit('/')` 取最后一段，`example.com` 就变成「无斜杠 ⇒ 整串即最后一段」，
+/// 而它没有 `/` 之后的文件名 ⇒ 用 `rsplit_once('.')` 得到的 `com` 会被
+/// 「最后一段必须是**路径**的最后一段」这个前提排除掉 ——
+/// ⚠️ 诚实说：`example.com` 这种情况**我靠「`com` 不在表里」兜住**，
+///    不是靠结构。所以**表里不能出现 `com` / `org` / `net` 这类 TLD**。
+///    `test_non_html_extension_does_not_match_domain` 锁住这条。
+pub fn non_html_extension(url: &str) -> Option<String> {
+    // ① 剥 query / fragment（`x.pdf?v=2` 也是 PDF）
+    let path = url.split(['?', '#']).next().unwrap_or(url);
+    // ② 取**最后一个非空段**（文件名那一段）
+    //    ⚠️ 用 `find` 而不是 `next`：`a.com/x.pdf/`（尾部斜杠）时
+    //       `next` 会返回空串 ⇒ 漏拦。`find` 会跳过空段取到 `x.pdf`。
+    let last = path.rsplit('/').find(|s| !s.is_empty())?;
+    // ③ 取扩展名（必须有点，且点后非空）
+    let (_, ext) = last.rsplit_once('.')?;
+    if ext.is_empty() {
+        return None;
+    }
+    let ext = ext.to_ascii_lowercase();
+    if NON_HTML_EXTENSIONS.contains(&ext.as_str()) {
+        Some(ext)
+    } else {
+        None
+    }
+}
+
+// ⚠️ 已知盲区（**如实列出**，不掩盖）：
+//
+// | 形态 | 行为 | 为什么可接受 |
+// |---|---|---|
+// | `a.com/dl?f=x.pdf`（扩展名在 **query** 里）| **漏拦** | 罕见；且这种多是「下载端点」，返回的可能是 HTML 页 |
+// | `a.com/download/1.0`（路径以版本号结尾）| 不拦 ✅ | `0` 不在表里 —— 这是**对的**（`v1.0` 是版本号不是文件）|
+// | 无扩展名的下载端点（`a.com/getfile/123`）| **漏拦** | 判不出来；但这类返回 HTML 时正常处理，返回二进制时被**乱码判据**兜住 |
+
 /// 内容被拒的原因（用于日志 —— 必须能看出**为什么**被拦）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum ContentReject {
+    /// 🆕 非 HTML 文档（PDF / 文档 / 压缩包）—— 不抓取、不入库。
+    NonHtmlDocument { ext: String },
     /// 非英语：拉丁字母占比过低。
     NonEnglish { latin_pct: u32 },
     /// 编码乱码：替换字符占比过高。
@@ -79,6 +183,9 @@ pub enum ContentReject {
 impl std::fmt::Display for ContentReject {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            ContentReject::NonHtmlDocument { ext } => {
+                write!(f, "非 HTML 文档（.{}）", ext)
+            }
             ContentReject::NonEnglish { latin_pct } => {
                 write!(f, "非英语（拉丁字母仅 {}%）", latin_pct)
             }
@@ -93,7 +200,25 @@ impl std::fmt::Display for ContentReject {
 ///
 /// `title` 与 `text`（正文或摘要，取能拿到的最长者）会**拼在一起**判定 ——
 /// 因为「标题英文、正文俄语」与「标题俄语、正文英文」都该拦。
-pub fn check_content(title: &str, text: &str) -> Option<ContentReject> {
+///
+/// `url` 用于判「**是不是 HTML 页面**」（见 [`non_html_extension`]）。
+/// ⚠️ 传 `""` = 不判 URL（测试与「无 url」场景用）。
+///
+/// # 判据顺序：**便宜且确定的放前面**
+///
+/// 1. **URL 形态**（字符串比较，O(len)）—— 且它**最确定**（url 是 `.pdf` 就是 PDF）
+/// 2. 编码乱码（要遍历全串算占比）
+/// 3. 语言（要遍历 + 计数）
+///
+/// 🔑 顺序不只是性能：`check_content` 返回**第一个**命中的原因，
+///    而日志要看到「**最本质**的那个」—— 一条 PDF 的 `body` 是 3.5M 乱码，
+///    报「乱码」会让人以为「抓取解析出问题」，报「非 HTML 文档」才指向真因。
+pub fn check_content(title: &str, text: &str, url: &str) -> Option<ContentReject> {
+    // ① URL 形态：最便宜、最确定、最本质
+    if let Some(ext) = non_html_extension(url) {
+        return Some(ContentReject::NonHtmlDocument { ext });
+    }
+
     let all = format!("{}\n{}", title, text);
 
     // ① 乱码优先判：它的信号（U+FFFD）比语言更硬，且判据更简单
@@ -221,7 +346,7 @@ mod tests {
                        уведомления менеджеру. Разберём архитектуру по частям.";
         assert!(
             matches!(
-                check_content(ru_title, ru_body),
+                check_content(ru_title, ru_body, ""),
                 Some(ContentReject::NonEnglish { .. })
             ),
             "🔴 俄语内容必须被拦下（生产实测样本）"
@@ -236,7 +361,7 @@ mod tests {
         );
         assert!(
             matches!(
-                check_content("The Legend of von Neumann [pdf]", &junk),
+                check_content("The Legend of von Neumann [pdf]", &junk, ""),
                 Some(ContentReject::EncodingJunk { .. })
             ),
             "🔴 PDF 乱码必须被拦下"
@@ -250,7 +375,7 @@ mod tests {
                        in Ithaca, N.Y. Police officers often start interrogations by asking \
                        questions that assume the person is guilty, researchers say.";
         assert_eq!(
-            check_content(en_title, en_body),
+            check_content(en_title, en_body, ""),
             None,
             "🔴 正常英文内容**不能**被拦（误杀比漏拦更糟）"
         );
@@ -261,7 +386,7 @@ mod tests {
                     We compute \\alpha + \\beta with the formula \\(\\frac{1}{2}\\) and code: \
                     `const re = /\\d+/;` — the value is 0.1 + 0.2 = 0.30000000000000004.";
         assert_eq!(
-            check_content("Adding Floating-Point Decimals", tech),
+            check_content("Adding Floating-Point Decimals", tech, ""),
             None,
             "🔴 英文技术文（LaTeX/代码/希腊字母）不能被拦"
         );
@@ -270,7 +395,7 @@ mod tests {
         let mixed = "Your Angular Test Passed. Could the User Click the Button? \
                      The fixture includes a name «Иван» and a city Москва in one test case.";
         assert_eq!(
-            check_content(mixed, ""),
+            check_content(mixed, "", ""),
             None,
             "🔴 英文里混少量非拉丁（人名/地名）不能被拦"
         );
@@ -280,17 +405,17 @@ mod tests {
     #[test]
     fn test_short_text_is_not_judged() {
         assert_eq!(
-            check_content("Привет", "мир"),
+            check_content("Привет", "мир", ""),
             None,
             "短样本不判（否则误杀短英文标题）"
         );
-        assert_eq!(check_content("Hi", "ok"), None);
-        assert_eq!(check_content("", ""), None, "空内容不判");
+        assert_eq!(check_content("Hi", "ok", ""), None);
+        assert_eq!(check_content("", "", ""), None, "空内容不判");
         // 但**乱码是例外**：它不依赖最小样本（信号够硬）
         let short_junk = "\u{FFFD}".repeat(20);
         assert!(
             matches!(
-                check_content("x", &short_junk),
+                check_content("x", &short_junk, ""),
                 Some(ContentReject::EncodingJunk { .. })
             ),
             "🔴 乱码不适用最小样本保护（它是硬信号）"
@@ -300,9 +425,192 @@ mod tests {
     /// 无字母（纯符号/数字/emoji）→ 不判（`letters == 0` 时不能除零，也不能误判）。
     #[test]
     fn test_no_letters_is_not_rejected() {
-        assert_eq!(check_content("123 + 456 = 579", "!!! *** ###"), None);
-        assert_eq!(check_content("🎉🎉🎉", "→←↑↓"), None);
+        assert_eq!(check_content("123 + 456 = 579", "!!! *** ###", ""), None);
+        assert_eq!(check_content("🎉🎉🎉", "→←↑↓", ""), None);
         assert_eq!(count_letters("123"), (0, 0));
+    }
+
+    /// 🆕 2026-10-03：URL 扩展名提取 —— **全部形态与边界**。
+    ///
+    /// 这条判据是「**删/拦**」类判断，所以**两侧都要测**：
+    /// 该拦的（正例）必须拦，不能拦的（反例）必须放 —— 只测一侧会假绿。
+    #[test]
+    fn test_non_html_extension_forms_and_boundaries() {
+        // ── 正例：该拦 ──
+        assert_eq!(
+            non_html_extension("https://a.com/x.pdf").as_deref(),
+            Some("pdf")
+        );
+        assert_eq!(
+            non_html_extension("https://a.com/X.PDF").as_deref(),
+            Some("pdf"),
+            "大小写归一"
+        );
+        assert_eq!(
+            non_html_extension("https://a.com/x.pdf?v=2").as_deref(),
+            Some("pdf"),
+            "剥 query"
+        );
+        assert_eq!(
+            non_html_extension("https://a.com/x.pdf#page=3").as_deref(),
+            Some("pdf"),
+            "剥 fragment"
+        );
+        assert_eq!(
+            non_html_extension("https://a.com/x.pdf/").as_deref(),
+            Some("pdf"),
+            "🔴 尾部斜杠（`next` 会漏，`find` 才对）"
+        );
+        assert_eq!(
+            non_html_extension("https://a.com/x.zip").as_deref(),
+            Some("zip")
+        );
+        assert_eq!(
+            non_html_extension("https://a.com/x.docx").as_deref(),
+            Some("docx")
+        );
+        // 生产实测的真实 url（含 %20 编码）
+        assert_eq!(
+            non_html_extension(
+                "https://www.ntsb.gov/investigations/Documents/DCA26MA352%20Prelim.pdf"
+            )
+            .as_deref(),
+            Some("pdf")
+        );
+        assert_eq!(
+            non_html_extension("https://gwern.net/doc/math/1973-halmos.pdf").as_deref(),
+            Some("pdf")
+        );
+
+        // ── 反例：**不能**拦（这组是防误杀的关键）──
+        assert_eq!(
+            non_html_extension("https://arxiv.org/abs/2609.38181"),
+            None,
+            "🔴 arXiv 是 `/abs/` 页面，不是 .pdf"
+        );
+        assert_eq!(
+            non_html_extension("https://dev.to/luis_carias/como-automatizar-facturas-pdf-3j3e"),
+            None,
+            "🔴 「讲 PDF 的文章」url 含 pdf 但不以它结尾 —— 是**正常内容**"
+        );
+        assert_eq!(
+            non_html_extension("https://github.com/x/y/releases/tag/v1.0"),
+            None,
+            "版本号结尾不是文件扩展名"
+        );
+        assert_eq!(non_html_extension("https://a.com/report"), None, "无扩展名");
+        assert_eq!(
+            non_html_extension("https://a.com/v1.2/pdf"),
+            None,
+            "最后一段无点 ⇒ 不是扩展名"
+        );
+        assert_eq!(
+            non_html_extension("https://a.com/docs.pdf/index.html"),
+            None,
+            "🔑 只看**最后一段** —— 真实文件是 index.html"
+        );
+        assert_eq!(non_html_extension(""), None, "空 url（测试/无 url 场景）");
+        assert_eq!(non_html_extension("not a url"), None);
+    }
+
+    /// 🔴 **域名不能被误判**（这是本条判据最危险的地方）。
+    ///
+    /// 若直接对整串找最后一个 `.`，`https://example.com` 会得出 `com`。
+    /// 它**恰好**不在表里所以没出事 —— 但那是**运气**，所以要有断言锁住：
+    /// **表里绝不能出现 `com` / `org` / `net` 这类 TLD**。
+    #[test]
+    fn test_non_html_extension_does_not_match_domain() {
+        for u in [
+            "https://example.com",
+            "https://example.com/",
+            "https://example.org",
+            "https://example.net",
+            "https://example.io",
+            "https://feeds.npr.org/1001/rss.xml",
+        ] {
+            assert_eq!(
+                non_html_extension(u),
+                None,
+                "🔴 域名/TLD 不该被当扩展名: {}",
+                u
+            );
+        }
+        // 反向断言：表里不能有 TLD（防止有人「顺手」加进去）
+        for tld in ["com", "org", "net", "io", "gov", "edu"] {
+            assert!(
+                !NON_HTML_EXTENSIONS.contains(&tld),
+                "🔴 `{}` 是 TLD，绝不能进 NON_HTML_EXTENSIONS（会拦掉整个域名）",
+                tld
+            );
+        }
+    }
+
+    /// `check_content` 的 URL 判据 —— 正例拦、反例放，且**报的原因要对**。
+    #[test]
+    fn test_check_content_rejects_non_html_document() {
+        // ── 正例：URL 是文档 → 拦，且原因必须是 `NonHtmlDocument` ──
+        let r = check_content(
+            "The Legend of von Neumann (1973) [pdf]",
+            &"\u{FFFD}".repeat(300),
+            "https://gwern.net/doc/math/1973-halmos.pdf",
+        );
+        assert!(
+            matches!(r, Some(ContentReject::NonHtmlDocument { .. })),
+            "🔴 必须报「非 HTML 文档」而**不是**「乱码」—— 乱码只是表象，PDF 才是真因。实得: {:?}",
+            r
+        );
+
+        // 🔑 关键：**没有乱码**的 PDF 也要拦（这是乱码闸门的盲区）
+        let clean_pdf = check_content(
+            "Some Report [pdf]",
+            "This is a perfectly readable English sentence about reports. "
+                .repeat(5)
+                .as_str(),
+            "https://a.com/report.pdf",
+        );
+        assert!(
+            matches!(clean_pdf, Some(ContentReject::NonHtmlDocument { .. })),
+            "🔴 **body 正常**的 PDF 也必须拦（实测 id=195/1495 就是这种：body=0 无乱码）",
+        );
+
+        // body 为空也要拦（实测那两条 PDF 的 body 就是 0）
+        assert!(
+            matches!(
+                check_content("Report [pdf]", "", "https://a.com/r.pdf"),
+                Some(ContentReject::NonHtmlDocument { .. })
+            ),
+            "body 为空的 PDF 也要拦"
+        );
+
+        // ── 反例：正常网页 → 放行（继续走语言/乱码判据）──
+        assert_eq!(
+            check_content(
+                "Police questioning can shape a sexual assault case",
+                "A person walks by the police department headquarters on March 22.",
+                "https://www.npr.org/2026/10/02/1234567/police-questioning"
+            ),
+            None,
+            "🔴 正常新闻网页不能被 URL 判据误杀"
+        );
+        assert_eq!(
+            check_content(
+                "OpenRive editor",
+                "A local-first editor for Rive animations.",
+                "https://dev.to/x/openrive"
+            ),
+            None,
+            "正常 Dev.to 文章"
+        );
+        // ⚠️ 反例里**有 url 含 pdf 字样**的（最容易被误伤的一类）
+        assert_eq!(
+            check_content(
+                "How to autofacturas PDF invoices",
+                "A guide about generating PDF invoices with code and templates.",
+                "https://dev.to/luis/como-automatizar-facturas-pdf-3j3e"
+            ),
+            None,
+            "🔴 「讲 PDF 的文章」不能被误杀（url 含 pdf 但不以它结尾）"
+        );
     }
 
     /// 🔑 **生产真实数据**上的两侧一致性（最强的一条）。
@@ -364,7 +672,7 @@ mod tests {
         );
         assert!(
             matches!(
-                check_content(title, body),
+                check_content(title, body, ""),
                 Some(ContentReject::NonEnglish { .. })
             ),
             "🔴 真实俄语正文必须被拦下"
@@ -389,7 +697,7 @@ mod tests {
             "я".repeat(100) // 900/(900+100) = 0.90
         );
         assert_eq!(
-            check_content(&exactly_90, ""),
+            check_content(&exactly_90, "", ""),
             None,
             "恰好 0.90 应通过（判据是「< 0.90 才拦」，边界要明确）"
         );
@@ -398,7 +706,7 @@ mod tests {
         let just_below = format!("{}{}", "a".repeat(899), "я".repeat(101));
         assert!(
             matches!(
-                check_content(&just_below, ""),
+                check_content(&just_below, "", ""),
                 Some(ContentReject::NonEnglish { .. })
             ),
             "0.899 应被拦"
@@ -407,7 +715,7 @@ mod tests {
         // 边界 3：FFFD 恰好 0.05 → 通过（判据是「> 0.05 才拦」）
         let exactly_5pct = format!("{}{}", "a".repeat(950), "\u{FFFD}".repeat(50));
         assert_eq!(
-            check_content(&exactly_5pct, ""),
+            check_content(&exactly_5pct, "", ""),
             None,
             "恰 5% 应通过（边界要明确）"
         );
@@ -416,7 +724,7 @@ mod tests {
         let just_above = format!("{}{}", "a".repeat(940), "\u{FFFD}".repeat(60));
         assert!(
             matches!(
-                check_content(&just_above, ""),
+                check_content(&just_above, "", ""),
                 Some(ContentReject::EncodingJunk { .. })
             ),
             "6% 应被拦"

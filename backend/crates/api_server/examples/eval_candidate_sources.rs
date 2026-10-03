@@ -426,6 +426,18 @@ async fn main() {
                         it.title.chars().take(40).collect::<String>()
                     );
                 }
+                // 🆕 2026-10-03：非 HTML 文档（PDF 等）—— **未发起网络请求**。
+                // ⚠️ 单独分支而不是并进 `NoParagraphs`：本评估工具是用来
+                //    「判断某个源值不值得接」的，把「压根不是网页」混进
+                //    「抓了但没提取到」会**高估该源的质量问题**（其实是 url 形态问题）。
+                BodyOutcome::NonHtmlDocument(ext) => {
+                    fails += 1;
+                    println!(
+                        "       ⬜ 非 HTML 文档(.{}) ← {}",
+                        ext,
+                        it.title.chars().take(38).collect::<String>()
+                    );
+                }
             }
         }
         let readable = got.iter().filter(|(w, _)| *w >= READABLE_WORDS).count();
