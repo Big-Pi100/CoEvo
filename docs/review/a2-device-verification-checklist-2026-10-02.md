@@ -41,7 +41,12 @@
 
 ### 0.1 构建（**由你跑** —— 我这个环境跑不了，原因见 0.4）
 
-```bash
+> 🔗 **同一份命令也在** `app/lib/api/api_config.dart` 的类注释里
+> （**开发者最先看的地方** —— 2026-10-03 加：有人凭记忆写命令漏了 `--dart-define`，
+> 而这份清单里早就写全了）。
+> 📌 **改命令要两处同步**：本清单是「流程 + 为什么」，`api_config.dart` 是「开发者入口」。
+
+```bat
 cd E:\CoEvo\app
 
 :: 🔴 必须【全路径】—— 裸调 flutter 会解析到 D:\flutter_flutter（鸿蒙分支 3.27.5）
@@ -54,6 +59,12 @@ D:\flutter\bin\flutter.bat build apk --release ^
 ```
 
 产物：`app\build\app\outputs\flutter-apk\app-release.apk`
+
+📌 **两条按需追加**（默认不用加）：
+- 报 `ProcessException: 231`（Dart 创建不了子进程）→ 追加 `--no-version-check`
+  （⚠️ 2026-10-03 实测：它只跳过 `checkFlutterVersionFreshness` 那一次 git 调用，
+  本机后续仍崩 ⇒ **只是绕行一步，不是修好**；普通终端不需要它）
+- 要验「分享 / 二维码」→ 追加 `--dart-define=PUBLIC_BASE_URL=https://keyievolution.fun`
 
 🔴 **为什么要重新构建**（2026-10-02 下午核实过磁盘上的实际产物）：
 

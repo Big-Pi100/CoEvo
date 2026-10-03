@@ -208,24 +208,33 @@ ProcessException: 231（所有的管道范例都在使用中）
 
 ```bat
 cd E:\CoEvo\app
-D:\flutter\bin\flutter.bat --no-version-check build apk --release ^
+:: 🔴 全路径（裸调 = 鸿蒙分支 3.27.5 → BUILD FAILED in 59s）
+:: 🔴 --dart-define 必加（否则默认 localhost:8080 ⇒ 连不上）
+:: --target-platform → 只打 arm64 ⇒ 体积 82.6 → 43.9 MB
+D:\flutter\bin\flutter.bat build apk --release ^
   --target-platform android-arm64 ^
   --dart-define=API_HOST=api.keyievolution.fun
 ```
 
 | 参数 | 不加会怎样 |
 |---|---|
-| `--dart-define=API_HOST=api.keyievolution.fun` | 🔴 **`ApiConfig` 默认 `localhost:8080`**（见 `app/lib/api/api_config.dart:37`）⇒ 真机上**首页空、划词提示连不上服务** |
-| `--target-platform android-arm64` | 打全架构 ⇒ **体积 82.6 → 43.9 MB（省 47%）**（实测数据，见同一清单）|
-| `--no-version-check` | 🔴 本机 **Dart 创建不了子进程**（§5.1）⇒ 必须加它才能绕过 `git` 调用 |
+| `--dart-define=API_HOST=api.keyievolution.fun` | 🔴 **`ApiConfig` 默认 `localhost:8080`**（`app/lib/api/api_config.dart`）⇒ 真机上**首页空、划词提示连不上服务** |
+| `--target-platform android-arm64` | 打全架构 ⇒ **体积 82.6 → 43.9 MB**（实测）|
+| （全路径 `D:\flutter\bin\flutter.bat`）| 裸调 `flutter` 解析到**鸿蒙分支** ⇒ `BUILD FAILED in 59s` |
 
-**可选**（要验「分享 / 二维码」才需要，否则指向 `http://localhost:3000`）：
-```
-  --dart-define=PUBLIC_BASE_URL=https://keyievolution.fun
-```
+📌 **两条按需追加**（默认不用加）：
+- 报 `ProcessException: 231`（本机 Dart 创建不了子进程，§5.1）→ 追加 `--no-version-check`
+  （⚠️ 实测**只跳过 `checkFlutterVersionFreshness` 那一次 git 调用**，后续仍崩 ⇒
+  「绕行一步」而非「修好」；**普通终端不需要它**）
+- 要验「分享 / 二维码」→ 追加 `--dart-define=PUBLIC_BASE_URL=https://keyievolution.fun`
 
 ⚠️ 注意 `ApiConfig` 的自动推断：**域名 → `https://host`（不追加端口）**；
 IP/localhost → `http://host:port`。所以传 `api.keyievolution.fun` 会得到 `https://api.keyievolution.fun` ✅
+
+📄 **这份命令现已双向登记**（白哥 2026-10-03 同意）：
+- `app/lib/api/api_config.dart` 类注释 —— **开发者入口**（含 Android + iOS + 按需追加项）
+- 本清单 §〇 —— **流程与「为什么」**
+- 📌 改命令要**两处同步**
 
 🔴 **另一处同类问题**（CI）：`ci.yml` 的 `ios-build` job 是全仓库**唯一**的出包 job，
 它的命令是 `flutter build ios --release --no-codesign` —— **没有 `--dart-define`**
