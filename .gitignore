@@ -176,3 +176,7 @@ desktop.ini
 # 复现方式见 docs/review/content-text-quality-issues-2026-10-03.md「产出物」一节。
 /scripts/trace_verify/fixtures/all_bodies.json
 /scripts/trace_verify/fixtures/prod_bodies.json
+# 🔑 2026-10-03：从生产**批量导出**的单篇文本（含正文 ⇒ 版权 + 体积）。
+#    ⚠️ 显式列出而非目录通配 —— `fixtures/` 里 `benchmarks_id1452.md` /
+#    `http_query_id1444.md` 是**手动挑选**的样本，**应当入库**。
+/scripts/trace_verify/fixtures/vn_4260.txt
