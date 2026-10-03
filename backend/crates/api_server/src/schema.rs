@@ -550,10 +550,13 @@ CREATE TABLE IF NOT EXISTS content_source (
     --      （`CREATE TABLE IF NOT EXISTS` 对已存在的表无效，而 SQLite
     --       **不支持 `ALTER TABLE ADD CONSTRAINT`** ⇒ 重建是唯一途径）。
     --      ✅ 2026-10-02 起**两条路都有** ⇒ 新库/旧库的约束一致（不再有「只对新库生效」）。
-    --   ② seed 用 `ON CONFLICT DO NOTHING`（**不是** `INSERT OR IGNORE`）——
-    --      前者只忽略**重复**，**CHECK 违规会正常报错** ⇒ 新源写错分类**立刻炸**，
-    --      而不是静默丢一个源。
+    --   ② seed 用**条件 UPSERT**（`ON CONFLICT (url) DO UPDATE ... WHERE 有变化`，
+    --      **不是** `INSERT OR IGNORE`，也不是 `DO NOTHING`）——
+    --      · 只处理**唯一冲突** ⇒ **CHECK 违规会正常报错** ⇒ 新源写错分类**立刻炸**；
+    --      · 🔴 `DO UPDATE` 而非 `DO NOTHING` ⇒ **存量库的配置也会被 seed 对齐**
+    --        （`DO NOTHING` 时期改了代码只对新库生效 —— 见 `CONTENT_SEED_SQL` 的说明）。
     --      🔴 **若有人把它改回 `INSERT OR IGNORE`，「静默丢源」会立刻回来。**
+    --      🔴 **若有人把它改回 `DO NOTHING`，「存量库配置变更静默失效」会立刻回来。**
     --   ③ 词表与 CHECK 的同步由 `test_content_source_check_matches_categories`
     --      （读 DDL 逐类比对，集合相等）兜住。
     category           TEXT
@@ -647,14 +650,77 @@ CREATE INDEX IF NOT EXISTS idx_cpool_fetched  ON content_pool (fetched_at);
 
 /// **种子源**（实测**可达**才进这份清单 —— 2026-09-29 本机 + VPS 双实测）
 ///
-/// # 🔴 为什么用 `ON CONFLICT DO NOTHING` 而**不是** `INSERT OR IGNORE`
+/// # 🔴 这份 seed 是「**源配置的唯一权威**」—— 老库也会被它对齐（2026-10-03 改）
 ///
-/// 两者都幂等，但**差一条关键的**：
-/// · `INSERT OR IGNORE` 忽略**任何**约束冲突 —— **包括 CHECK 违规**
-///   ⇒ 新源的 `category` 写错时**静默丢源**（本项目最忌讳的「静默失败」）
-/// · `ON CONFLICT DO NOTHING` 只忽略**冲突**（唯一约束/主键），
-///   **CHECK 违规会正常报错** ⇒ 写错类**立刻炸**
-/// 📌 判据：**要「忽略重复」就只忽略重复，别用「忽略一切」的语法。**
+/// ## 为什么从 `ON CONFLICT DO NOTHING` 改成「条件 UPSERT」
+///
+/// 原先用 `DO NOTHING` ⇒ 它对**已存在的行什么都不做** ⇒
+/// **改代码里的源配置，只对「新建的库」生效；已部署的库永远保持旧配置**。
+///
+/// 🔴 实测代价（2026-10-03）：HN 弃用后 seed 写 `enabled = 0`，
+///    但**生产库的 HN 仍是 `enabled = 1`** ⇒ 每轮抓取报 `未知的源类型 hn`。
+///    而 Ars Technica（更早被禁用）在生产库里**是 0** —— 因为那一次是**手工改库**的。
+///    ⇒ 「手工改库」是 `DO NOTHING` 时期**唯一可行**的办法，本改动就是要根治它。
+///
+/// ⚠️ 而且当时**已经有**一条防回退断言（`test_seed_sources_are_loaded` 里
+///    「不得有启用的 `hn` 源」）—— 它跑在**内存库**上，抓不到生产库的偏差。
+///    这正是「断言只守住了一条路径」的实例。
+///
+/// ## ⚠️ 为什么不能改用「迁移里写 UPDATE」
+///
+/// 迁移列表**每次启动都执行**。若写成 `UPDATE ... SET enabled = 0 WHERE url LIKE '%hacker-news%'`：
+/// 将来要**重新启用** HN 时，改 seed 常量不生效（seed 当时还是 `DO NOTHING`），
+/// 而迁移又把它改回 0 ⇒ **代码改了也启不回来**，必须先去删迁移条目 —— 极其反直觉。
+/// 而本方案下「重新启用」= **改这一处 seed 常量**，下次启动自动生效。
+///
+/// ## 🔑 只碰「配置列」，**绝不碰运行时状态列**
+///
+/// 本表的列分两类，判据是「**这一列是『代码规定的』还是『运行时长出来的』**」：
+///
+/// | 类 | 列 | 谁写 |
+/// |---|---|---|
+/// | **配置** | `name` `kind` `category` `cefr_hint` `license` `redistributable` `tz_offset_min` `enabled` | **seed（权威）** + 重建表 |
+/// | **运行时状态** | `last_fetch_at` `fail_count`（+ `fetch_interval_min`）| **抓取循环**（`content_fetch.rs:330/332`）|
+/// | 审计 | `created_at` `updated_at` | 见下 |
+///
+/// 🔑 **本节的 SET 列表里完全没有运行时状态列** ⇒ 结构上不可能覆盖它们。
+///    （已实测：代码里除 seed 外**只有 2 处** UPDATE `content_source`，都只写
+///      `last_fetch_at` / `fail_count` / `updated_at`；**没有任何地方写 `enabled`**。）
+///
+/// `created_at` **不在 SET 里** ⇒ 保留原始创建时间。
+/// `updated_at` 在 SET 里，但被下面的 `WHERE` 保护 ⇒ **只在配置真的变了才更新**。
+///
+/// ## 🔴 为什么 `WHERE` 那一段不可省
+///
+/// 没有它 ⇒ **每次启动都无条件 UPDATE** ⇒
+/// ① `updated_at` 每启动刷新一次，「上次配置变更时间」这个信息**永久失真**
+/// ② 24 行无谓写（WAL 增长 + 触发 `idx_csrc_due` 维护）
+/// ⇒ 加 `WHERE 任一列不同` 后：**无变化 = 完全不写**（幂等且零副作用）。
+///
+/// ## 🔴 为什么比较用 `IS NOT` 而不是 `<>`
+///
+/// SQLite 里 `NULL <> 'x'` 求值为 **NULL**（不是 TRUE）⇒ 整条 `WHERE` 的 `OR` 链
+/// 不会因此为真 ⇒ **该行永远不会被更新** —— 一个**静默失效**。
+/// `IS NOT` 对 NULL 有确定的真值（`NULL IS NOT 'x'` = **true**）⇒ 正常更新。
+/// （本项目已有同族教训：`<>` 与 NULL 的交互是「不报错只给错结果」。）
+///
+/// ## ⚠️ 与 `run_migrations_inner` 的顺序
+///
+/// `run_migrations_inner`（含 `rebuild_content_source_with_check`）**先跑**，
+/// seed **后跑** ⇒ 若某轮 CHECK 类目变了、表被重建（逐列拷旧数据），
+/// **重建完紧接着 seed 会把配置对齐** ✅ 顺序天然正确。
+///
+/// ## 🔴 使用上的一个后果（**明知的取舍，不是 bug**）
+///
+/// 从此**不能**靠手工改库来临时禁用某个源（下次启动会被 seed 冲掉）。
+/// 要改配置就**改这里** —— 配置只有一处权威。
+/// 📌 「配置漂移」从「允许但静默」变成「不可能」。
+///
+/// ## 🔑 为什么不用 `INSERT OR IGNORE`
+///
+/// `INSERT OR IGNORE` 忽略**任何**约束冲突 —— **包括 CHECK 违规**
+/// ⇒ 新源的 `category` 写错时**静默丢源**（本项目最忌讳的「静默失败」）。
+/// UPSERT 只处理**唯一冲突**，**CHECK 违规会正常报错** ⇒ 写错类**立刻炸**。
 pub const CONTENT_SEED_SQL: &str = r#"
 -- 🔴 曾经推荐的 VOA / BBC Learning English / Wikipedia **国内不可达**（HTTP 000）
 --    → 不在种子清单里（详见方案文档「实测修订」）
@@ -817,7 +883,35 @@ VALUES
     (22, 'NPR Strange News 趣闻','https://feeds.npr.org/1146/rss.xml', 'rss', 'news',      'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     (23, 'NPR On Aging 老龄',    'https://feeds.npr.org/1028/rss.xml', 'rss', 'health',    'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     (24, 'NPR Media 媒体',       'https://feeds.npr.org/1020/rss.xml', 'rss', 'news',      'B2', 'news', 1, 0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now'))
-ON CONFLICT DO NOTHING;
+-- ══════════════════════════════════════════════════════════════════════════
+-- 🔴 冲突时「**有条件**地更新配置」—— 老库靠这一句被对齐到与代码一致。
+--    详见 `CONTENT_SEED_SQL` 的文档注释（含「为什么不能用迁移」「为什么用 IS NOT」「不碰哪些列」）。
+--    ⚠️ 千万别把这里改回 `DO NOTHING` —— 那会让**所有存量库的配置变更静默失效**
+--       （实例：HN 弃用后生产库 `enabled` 一直停在 1）。
+-- ══════════════════════════════════════════════════════════════════════════
+ON CONFLICT (url) DO UPDATE SET
+    -- 只列「配置列」——**不含** last_fetch_at / fail_count / fetch_interval_min（运行时状态）
+    name            = excluded.name,
+    kind            = excluded.kind,
+    category        = excluded.category,
+    cefr_hint       = excluded.cefr_hint,
+    license         = excluded.license,
+    redistributable = excluded.redistributable,
+    tz_offset_min   = excluded.tz_offset_min,
+    enabled         = excluded.enabled,
+    -- created_at **不在上面**：保留原始创建时间（它属于「历史事实」，不该被 seed 改写）
+    updated_at      = excluded.updated_at
+WHERE
+    -- 🔑 `IS NOT`（不是 `<>`）：`<>` 遇 NULL 求值为 NULL ⇒ 该行永不更新（静默失效）
+    -- 🔑 任意一列不同才写 ⇒ 无变化时不写（幂等 · 不刷 updated_at · 零无谓写）
+    content_source.name            IS NOT excluded.name
+ OR content_source.kind            IS NOT excluded.kind
+ OR content_source.category        IS NOT excluded.category
+ OR content_source.cefr_hint       IS NOT excluded.cefr_hint
+ OR content_source.license         IS NOT excluded.license
+ OR content_source.redistributable IS NOT excluded.redistributable
+ OR content_source.tz_offset_min   IS NOT excluded.tz_offset_min
+ OR content_source.enabled         IS NOT excluded.enabled;
 
 "#;
 
@@ -876,8 +970,10 @@ pub fn init_database(conn: &rusqlite::Connection) -> Result<(), String> {
     //
     // 🔴 顺序不能反：`content_source` 的 CHECK 可能在迁移里被**重建更新**
     //    （如 2026-10-02 从 8 类扩到 12 类）。若 seed 先跑，新分类的行会撞上**旧 CHECK**
-    //    而**报错**（`ON CONFLICT DO NOTHING` **不忽略** CHECK 违规 —— 这正是我们要的语义，
+    //    而**报错**（seed 的条件 UPSERT **不忽略** CHECK 违规 —— 这正是我们要的语义，
     //    但也意味着「顺序错了就会炸」）。
+    // 🔑 反过来，这个顺序还保证「重建后才对齐配置」：重建是逐列拷旧数据，
+    //    紧接着 seed 会把配置列刷成代码里的值（含 `enabled`）✅
     // 📌 判据：**「先保证结构正确，再灌数据」** —— 迁移属于「结构」，seed 属于「数据」。
     conn.execute_batch(CONTENT_SEED_SQL)
         .map_err(|e| format!("content seed: {}", e))?;
@@ -1081,10 +1177,14 @@ fn content_source_check_categories(
 ///
 /// # 收益（配合 seed 的改动才成立）
 ///
-/// 本轮同时把 seed 从 `INSERT OR IGNORE` 改成 `ON CONFLICT DO NOTHING` ——
-/// 后者**只忽略重复**，**不忽略 CHECK 违规**。两者合起来才是：
+/// 本轮同时把 seed 从 `INSERT OR IGNORE` 改成**条件 UPSERT**（`ON CONFLICT (url) DO UPDATE`）——
+/// 它**只处理唯一冲突**，**不忽略 CHECK 违规**。两者合起来才是：
 /// **新源写错分类 → 立刻报错**，而不是「静默少一个源、靠数量断言事后发现」。
 /// ⚠️ 只做重建不改 seed 的话，收益有限（`OR IGNORE` 照样吞 CHECK 违规）。
+///
+/// 🔑 **与 2026-10-03 的 UPSERT 改动的配合**：重建是「逐列拷旧数据」，
+///    它**不会**把配置刷成代码里的值；而 seed 紧接着跑 ⇒ **配置在此刻被对齐**。
+///    ⇒ 两个机制分工：**重建管「结构」，seed 管「配置」**。
 ///
 /// # 幂等
 ///
@@ -1618,7 +1718,9 @@ mod tests {
     ///
     /// ✅ **①② 已于 2026-10-02 修复**：
     ///    · `rebuild_content_source_with_check()` —— 让**已存在的库**也拿到最新 CHECK
-    ///    · seed 改 `ON CONFLICT DO NOTHING` —— 只忽略重复，**CHECK 违规会正常报错**
+    ///    · seed 改**条件 UPSERT** —— 只处理唯一冲突，**CHECK 违规会正常报错**
+    ///      （🆕 2026-10-03：由 `DO NOTHING` 进一步改为 `DO UPDATE ... WHERE 有变化`
+    ///       ⇒ 存量库的**配置**（含 `enabled`）也会被对齐，见 `CONTENT_SEED_SQL` 的说明）
     ///
     /// ⚠️ **但本断言必须保留** —— 它挡的是**新库**这条路径：
     ///    改了 `CONTENT_CATEGORIES` 却漏改建表语句里的 CHECK 时，
@@ -2046,5 +2148,229 @@ mod tests {
             .unwrap()
             .filter_map(|r| r.ok())
             .collect()
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // 🆕 2026-10-03：seed 是「源配置的唯一权威」—— **存量库也会被它对齐**
+    //
+    // 背景：原先 seed 用 `ON CONFLICT DO NOTHING` ⇒ 改代码里的源配置
+    // **只对新建的库生效**；已部署的库永远保持旧配置。
+    // 🔴 实测代价：HN 弃用后 seed 写 `enabled = 0`，而**生产库一直是 1**
+    //    （每轮抓取报「未知的源类型 hn」）。Ars 那次之所以生效，是**手工改库**。
+    // ══════════════════════════════════════════════════════════════════════
+
+    /// 生产里 HN 那行的 url（seed 常量里的原文）。
+    const HN_URL: &str = "https://hacker-news.firebaseio.com/v0";
+
+    /// 读一列（String）。`None` = 该列为 NULL（**必须能区分 NULL 与空串**）。
+    fn get_text(conn: &Connection, col: &str) -> Option<String> {
+        conn.query_row(
+            &format!("SELECT {} FROM content_source WHERE url = ?1", col),
+            rusqlite::params![HN_URL],
+            |r| r.get::<_, Option<String>>(0),
+        )
+        .unwrap()
+    }
+
+    /// 读一列（i64）。
+    fn get_int(conn: &Connection, col: &str) -> i64 {
+        conn.query_row(
+            &format!("SELECT {} FROM content_source WHERE url = ?1", col),
+            rusqlite::params![HN_URL],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap()
+    }
+
+    fn set_col(conn: &Connection, sql_fragment: &str) {
+        conn.execute(
+            &format!("UPDATE content_source SET {} WHERE url = ?1", sql_fragment),
+            rusqlite::params![HN_URL],
+        )
+        .unwrap();
+    }
+
+    /// 🔴 **存量库的源配置会被 seed 对齐**（本改动的**主目的**）。
+    ///
+    /// 造的偏差 = **生产库 2026-10-03 的真实状态**（HN 被弃用后仍是 `enabled = 1`）。
+    #[test]
+    fn test_seed_upsert_realigns_existing_source_config() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_database(&conn).unwrap();
+
+        // ── ① 造「存量偏差」（= 生产库当时的状态）──
+        set_col(&conn, "enabled = 1, category = 'news', cefr_hint = 'A2'");
+        // 运行时状态 + 一个「远古」updated_at
+        //   🔑 把 updated_at 设成远古值 ⇒ 「seed 到底写没写它」**不依赖时间精度**
+        //      （若两次跑都在同一秒内，拿 now 比 now 会**假绿**）
+        set_col(
+            &conn,
+            "last_fetch_at = '2020-01-01T00:00:00Z', fail_count = 7, \
+             updated_at = '2000-01-01T00:00:00Z'",
+        );
+        let created_before = get_text(&conn, "created_at").unwrap();
+
+        assert_eq!(get_int(&conn, "enabled"), 1, "前置：偏差已造出");
+
+        // ── ② 跑 seed（模拟服务启动）──
+        conn.execute_batch(CONTENT_SEED_SQL).unwrap();
+
+        // ── ③ ✅ 配置被对齐到代码里的值 ──
+        assert_eq!(
+            get_int(&conn, "enabled"),
+            0,
+            "🔴 存量库的 `enabled` 必须被 seed 对齐（HN 已弃用）—— \
+             这正是本改动的目的（原先 `DO NOTHING` 对已存在的行什么都不做）"
+        );
+        assert_eq!(get_text(&conn, "category").as_deref(), Some("tech"));
+        assert_eq!(get_text(&conn, "cefr_hint").as_deref(), Some("C1"));
+
+        // ── ④ 🔴 **运行时状态绝不能被碰**（本方案的核心安全性质）──
+        assert_eq!(
+            get_text(&conn, "last_fetch_at").as_deref(),
+            Some("2020-01-01T00:00:00Z"),
+            "🔴 `last_fetch_at` 是**运行时长出来的**，seed 绝不能覆盖它 —— \
+             守不住这条就该改成「迁移写 UPDATE」，而不是加宽 SET"
+        );
+        assert_eq!(
+            get_int(&conn, "fail_count"),
+            7,
+            "🔴 `fail_count` 同理（它是失败的累计，被清零会让退避策略失真）"
+        );
+
+        // ── ⑤ 配置真变了 ⇒ updated_at 应被更新 ──
+        assert_ne!(
+            get_text(&conn, "updated_at").as_deref(),
+            Some("2000-01-01T00:00:00Z"),
+            "配置确实变了 ⇒ updated_at 应更新（否则 ④ 的断言可能只是「永不写」= 假绿）"
+        );
+
+        // ── ⑥ 🔴 **无变化时不写**（幂等 · 不刷 updated_at）──
+        //    再把 updated_at 设成另一个远古值，然后**再跑一次 seed**。
+        //    此时配置已与 seed 一致 ⇒ `WHERE 有变化` 为假 ⇒ 不该有任何写入。
+        set_col(&conn, "updated_at = '2001-01-01T00:00:00Z'");
+        conn.execute_batch(CONTENT_SEED_SQL).unwrap();
+        assert_eq!(
+            get_text(&conn, "updated_at").as_deref(),
+            Some("2001-01-01T00:00:00Z"),
+            "🔴 配置无变化时 seed **不该写** —— 否则每次启动都刷 updated_at，\
+             「上次配置变更时间」这个信息永久失真，且 24 行无谓写"
+        );
+
+        // ── ⑦ `created_at` 是历史事实，不参与更新 ──
+        assert_eq!(
+            get_text(&conn, "created_at").as_deref(),
+            Some(created_before.as_str()),
+            "🔴 `created_at` 不该被 seed 改写（SET 列表里没有它）"
+        );
+
+        // ── ⑧ 行数不变（UPSERT 不增行、**更不删行**）──
+        let total: i64 = conn
+            .query_row("SELECT COUNT(*) FROM content_source", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(total, 24, "UPSERT 既不增行也不删行");
+    }
+
+    /// 🔴 **守门人**：`WHERE` 里若把 `IS NOT` 改成 `<>`，这条会红。
+    ///
+    /// SQLite 里 `NULL <> 'x'` 求值为 **NULL**（不是 TRUE）⇒ 整条 `OR` 链不会为真
+    /// ⇒ **该行永远不会被更新** —— 一个**不报错、只静默不生效**的 bug。
+    ///
+    /// 造的场景：只把 `cefr_hint` / `license` 改成 NULL（其余列都与 seed 相同）
+    /// ⇒ 只有 NULL 那一列能触发更新 ⇒ 正好**只由 `IS NOT` 决定**。
+    #[test]
+    fn test_seed_upsert_handles_null_columns() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_database(&conn).unwrap();
+
+        // 老库可能有 NULL 的 cefr_hint / license（这两列本身可空）
+        set_col(&conn, "cefr_hint = NULL, license = NULL");
+        assert_eq!(get_text(&conn, "cefr_hint"), None, "前置：NULL 已造出");
+
+        conn.execute_batch(CONTENT_SEED_SQL).unwrap();
+
+        assert_eq!(
+            get_text(&conn, "cefr_hint").as_deref(),
+            Some("C1"),
+            "🔴 NULL 列也必须被对齐 —— 若 `WHERE` 用 `<>`，`NULL <> 'C1'` 是 NULL \
+             ⇒ 整行不更新 ⇒ 这里会读到 None（**静默失效**）"
+        );
+        assert_eq!(get_text(&conn, "license").as_deref(), Some("public_domain"));
+    }
+
+    /// 🔑 seed 里的「手改配置」不能**误伤**别的源，也不能删掉 seed 里没有的行。
+    ///
+    /// 判据：**批量写入必须验「不该动的一条没动」**（`safe-bulk-deletion` 的同族要求）。
+    #[test]
+    fn test_seed_upsert_does_not_touch_other_sources() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_database(&conn).unwrap();
+
+        // 造一条**不在 seed 里**的「手工源」（生产上管理员可能加过）
+        conn.execute(
+            "INSERT INTO content_source \
+             (name, url, kind, category, cefr_hint, license, redistributable, \
+              tz_offset_min, enabled, last_fetch_at, fail_count, created_at, updated_at) \
+             VALUES ('手工源', 'https://example.com/feed', 'rss', 'news', 'B1', 'news', 1, \
+                     0, 1, '2026-01-01T00:00:00Z', 3, '2026-01-01T00:00:00Z', \
+                     '2026-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        // 再取一条 seed 里的源（NPR News），记下它的运行时状态
+        //
+        // 🔑 必须**先给它设上非 NULL 的值**：`init_database` 刚建的库里
+        //    `last_fetch_at` 本来就是 NULL —— 而 `NULL → NULL` **无法区分**
+        //    「seed 没写」与「seed 写了 NULL」⇒ 那样的断言是**假绿**。
+        conn.execute(
+            "UPDATE content_source SET last_fetch_at = '2026-01-02T00:00:00Z', fail_count = 5 \
+             WHERE id = 1",
+            [],
+        )
+        .unwrap();
+        let read_npr_runtime = || -> (Option<String>, i64) {
+            conn.query_row(
+                "SELECT last_fetch_at, fail_count FROM content_source WHERE id = 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap()
+        };
+        let npr_runtime = read_npr_runtime();
+        assert_eq!(
+            npr_runtime,
+            (Some("2026-01-02T00:00:00Z".to_string()), 5),
+            "前置：运行时状态已造出（非 NULL，才能验证「没被覆盖」）"
+        );
+
+        conn.execute_batch(CONTENT_SEED_SQL).unwrap();
+
+        // ① 手工源**仍在**（UPSERT 不删行），且配置未被改
+        let manual: (String, String, i64) = conn
+            .query_row(
+                "SELECT name, cefr_hint, enabled FROM content_source \
+                 WHERE url = 'https://example.com/feed'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            manual,
+            ("手工源".to_string(), "B1".to_string(), 1),
+            "🔴 seed 不该动任何「不在清单里」的行（既不删也不改）"
+        );
+
+        // ② 别的 seed 源的**运行时状态**也没被动
+        assert_eq!(
+            read_npr_runtime(),
+            npr_runtime,
+            "🔴 其他源的运行时状态不该被动（seed 的 SET 里没有这些列）"
+        );
+
+        // ③ 总数 = 24 seed + 1 手工
+        let total: i64 = conn
+            .query_row("SELECT COUNT(*) FROM content_source", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(total, 25, "seed 只对齐配置，不增不删");
     }
 }
