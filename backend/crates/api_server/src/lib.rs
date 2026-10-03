@@ -39,7 +39,6 @@ pub mod config_admin;
 pub mod content_extract;
 pub mod content_fetch;
 pub mod content_handler;
-pub mod content_hn;
 pub mod content_quality;
 pub mod content_rss;
 pub mod db_pool;

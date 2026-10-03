@@ -27,7 +27,6 @@ import 'package:flutter/foundation.dart' show debugPrint;
 /// | — | `url` | 原文链接（**`redistributable` / 跳原文**用） |
 /// | — | `author` | 作者（`dc:creator`） |
 /// | — | `published_at` | 发布时刻（**UTC ISO8601 带 `Z`**） |
-/// | — | `score` / `comments` | 热帖分数与评论数（**只有 HN 有**，其余为 `null`） |
 /// | — | `has_body` | 是否已拿到全文 → 决定阅读器能不能读 |
 class FeedItem {
   /// 内容 id —— = 后端 `content_pool.id`，也是端侧 `bookmark.content_id` 与
@@ -65,14 +64,15 @@ class FeedItem {
   /// 作者。`null` = 该源没提供（如 ECNS 没有 `dc:creator`）。
   final String? author;
 
-  /// 发布时刻（**UTC ISO8601 带 `Z`**）。`null` = 源没给（如 HN 的极端情况）。
+  /// 发布时刻（**UTC ISO8601 带 `Z`**）。`null` = 该源没提供。
   final String? publishedAt;
 
-  /// 热帖分数（**只有 Hacker News 有**，其余源为 `null`）。
-  final int? score;
-
-  /// 评论数（同上）。
-  final int? comments;
+  // 🔴 2026-10-03 已删除 `score` / `comments` 两字段 ——
+  //    它们只有 HN 会填，而**后端已放弃 HN**（适配器删除 + 两列 DROP）。
+  //    📌 删除前实测：全 `app/lib` **零消费者**（`grep '\.score'` 无命中）
+  //       ⇒ 属死代码，删除无行为影响。
+  //    ⚠️ 老客户端（未升级的包）仍会读 `json['score']` —— 后端不返回该键时
+  //       它解析为 `null`，**不会崩**（`(json['score'] as num?)?.toInt()`）。
 
   /// 是否已拿到全文。
   ///
@@ -91,8 +91,6 @@ class FeedItem {
     this.url = '',
     this.author,
     this.publishedAt,
-    this.score,
-    this.comments,
     this.hasBody = false,
   });
 
@@ -209,8 +207,6 @@ class FeedItem {
       url: (json['url'] as String?) ?? '',
       author: json['author'] as String?,
       publishedAt: json['published_at'] as String?,
-      score: (json['score'] as num?)?.toInt(),
-      comments: (json['comments'] as num?)?.toInt(),
       hasBody: json['has_body'] == true,
     );
   }
@@ -225,8 +221,6 @@ class FeedItem {
         'url': url,
         'author': author,
         'published_at': publishedAt,
-        'score': score,
-        'comments': comments,
         'has_body': hasBody,
       };
 }

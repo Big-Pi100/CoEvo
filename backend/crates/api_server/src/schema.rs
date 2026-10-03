@@ -619,8 +619,10 @@ CREATE TABLE IF NOT EXISTS content_pool (
     published_at TEXT,                                -- UTC ISO8601 带 Z（源给的 RFC822 要归一）
     fetched_at   TEXT    NOT NULL,                    -- UTC ISO8601 带 Z
     word_count   INTEGER,                             -- 生词密度参考
-    score        INTEGER,                             -- 热帖分数（HN · 供「热帖」排序）
-    comments     INTEGER,                             -- 热帖评论数（HN）
+    -- 🔴 2026-10-03 已删除 `score` / `comments` 两列（原为 HN 的「热帖」字段）。
+    --    白哥决定放弃 HN ⇒ 两列**再无生产者**（RSS 源恒为 NULL）⇒ 一并移除。
+    --    ⚠️ 对**已存在的库**，这里的改动**无效**（`CREATE TABLE IF NOT EXISTS` 跳过），
+    --       必须靠 `run_migrations_inner` 里的 `DROP COLUMN` 迁移（见该函数）。
     -- 🆕 抓正文的**尝试记录**（UTC ISO8601 带 `Z`）
     --
     -- # 🔴 为什么需要这一列（不是「以后可能有用」）
@@ -637,7 +639,7 @@ CREATE TABLE IF NOT EXISTS content_pool (
 );
 CREATE INDEX IF NOT EXISTS idx_cpool_cat_time ON content_pool (category, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_cpool_pub      ON content_pool (published_at DESC);
-CREATE INDEX IF NOT EXISTS idx_cpool_score    ON content_pool (score DESC);
+-- 🔴 2026-10-03 已删除 `idx_cpool_score`（随 `score` 列一起 —— 放弃 HN ⇒ 无热帖排序）
 -- 🆕 保留期清理的查询列（`prune_old_content` 按 `fetched_at` 排序 + 过滤）
 -- ⚠️ 没有它：每轮清理都要**全表扫** content_pool（将来几万行时就是每 6 小时一次全扫）
 CREATE INDEX IF NOT EXISTS idx_cpool_fetched  ON content_pool (fetched_at);
@@ -681,7 +683,25 @@ VALUES
     -- 📌 「禁用」≠「删除」—— 前者可逆、保留追溯性（同「已作废 ≠ 已删除」）。
     (3, 'Ars Technica',  'https://arstechnica.com/feed/',                             'rss', 'tech', 'C1', 'news',          1,    0, 0, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     (4, 'Dev.to',        'https://dev.to/feed',                                       'rss', 'tech', 'B2', 'cc',            1,    0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
-    (5, 'Hacker News',   'https://hacker-news.firebaseio.com/v0',                     'hn',  'tech', 'C1', 'public_domain', 1,    0, 1, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+
+    -- 🔴 **已禁用**（`enabled = 0` · 2026-10-03 白哥「麻烦远比收益多，不如直接放弃」）
+    --
+    -- 实测数据（生产库快照）：
+    --   · 196 条，**第二大源**；正文字符 **122 万（全库第一）** —— 所以
+    --     ⚠️ 「它不是小源」；真正的问题是**可替代**（全部分是 `tech`，而 `tech`
+    --     另有 Dev.to 169 / Ars 33 / NPR Technology 6）⇒ **零独有分类贡献**。
+    --   · 🔴 麻烦：**间歇性抓取失败**（同机 curl 通、reqwest 失败；一天内交替成败）
+    --     · 唯一产出 **PDF** 的源（HN 的 `[pdf]` 帖）
+    --     · 技术文密集 ⇒ LaTeX（`\(x\)`）与代码（`\m` `\t`）的转义残留集中在此
+    --   · 唯一独有价值 = **`score` / `comments`**（「热帖」形态的唯一承载者）
+    --     ⇒ 放弃它 = **「热帖」这条产品线结束**（白哥 2026-10-03 明确接受）
+    --
+    -- 保留本行（不删）的理由：`content_pool` 里已有 196 条历史数据，
+    -- 删源会让它们变成孤儿；保留行 + `enabled = 0` 可随时改回 1。
+    -- 📌 「禁用」≠「删除」—— 前者可逆、保留追溯性（同 Ars Technica 先例）。
+    -- 🔴 **但适配器 `content_hn.rs` 已删** ⇒ 若改回 `enabled = 1`，
+    --    抓取会报「未知的源类型 `hn`」（这是**有意的**：让重新启用立刻可见地失败）。
+    (5, 'Hacker News',   'https://hacker-news.firebaseio.com/v0',                     'hn',  'tech', 'C1', 'public_domain', 1,    0, 0, strftime('%Y-%m-%dT%H:%M:%SZ','now'), strftime('%Y-%m-%dT%H:%M:%SZ','now')),
 
     -- ═══════════════════════════════════════════════════════════════════════
     -- 🆕 2026-10-02 扩充（白哥「其他类型的信息不太够」+「这样tech就差不多」）
@@ -982,6 +1002,28 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
     //    （`CREATE TABLE IF NOT EXISTS` 对旧表无效，而 SQLite 不能 ALTER 加 CHECK
     //      ⇒ 唯一的办法是**重建表**。详见函数内的说明。）
     rebuild_content_source_with_check(conn)?;
+
+    // ── 🆕 2026-10-03：删 `content_pool.score` / `comments`（放弃 HN 的连带）──
+    //
+    // 白哥决定放弃 HN（适配器 `content_hn.rs` 已删）⇒ 这两列**再无生产者**
+    // （原本只由 HN 适配器填，RSS 源恒为 NULL）。留着会让后来的人困惑
+    // 「这两列是干嘛的」；且 `?sort=score` 已一并移除。
+    //
+    // # 🔴 顺序硬约束：**先删索引，再删列**
+    //
+    // SQLite 规定「**列被索引引用时不可 DROP**」—— `idx_cpool_score` 正引用 `score`。
+    // 该索引的**创建点**已从 `CONTENT_POOL_SQL` 移除，但**已存在的库**里它还在
+    // ⇒ 必须在这里显式删，否则下面的 `DROP COLUMN` 会**报错**（不是静默失败，但会
+    //   让整个 `init_database` 失败 → 服务起不来）。
+    //    （同族先例：`users` 的 `idx_users_phone_hash`，见上方。）
+    //
+    // ⚠️ 对**新库**这两步都是空操作：建表时就没有那两列、也没那个索引
+    //    ⇒ `drop_column_if_exists` 查 `PRAGMA table_info` 找不到 → 直接返回（幂等）。
+    conn.execute("DROP INDEX IF EXISTS idx_cpool_score", [])
+        .map_err(|e| format!("drop idx_cpool_score: {}", e))?;
+    for col in ["score", "comments"] {
+        drop_column_if_exists(conn, "content_pool", col)?;
+    }
 
     Ok(())
 }
@@ -1485,12 +1527,24 @@ mod tests {
             "published_at",
             "fetched_at",
             "word_count",
-            "score",
-            "comments",
+            // 🔴 2026-10-03 移除 `score` / `comments`（放弃 HN 的连带）
+            //    新库按 `CONTENT_POOL_SQL` 建表时就没有它们 —— 这条断言跟着删，
+            //    否则会「期望有、实际没有」而报红。
             // 🆕 抓正文的尝试记录 —— 缺了它「只试一次」的语义会静默失效
             "body_attempted_at",
         ] {
             assert!(cols.contains(&c.to_string()), "content_pool 缺 {}", c);
+        }
+
+        // 🔴 **反向断言**：那两列必须**真的不在**（只删期望是「假绿」——
+        //    万一 `DROP COLUMN` 迁移没生效，上面那圈 `contains` 也发现不了）。
+        for gone in ["score", "comments"] {
+            assert!(
+                !cols.contains(&gone.to_string()),
+                "🔴 content_pool 不该再有 `{}` —— 放弃 HN 后它没有生产者，\
+                 若还在说明 DROP COLUMN 迁移没生效",
+                gone
+            );
         }
 
         // 🔴 **反向断言**：方案 §4.3 里的这两张表**有意不建** ——
@@ -1575,6 +1629,118 @@ mod tests {
     ///    而不是源文件里的声明 —— 并**复用迁移用的同一个解析函数**，
     ///    避免「判断是否重建」与「断言是否合格」两处解析逻辑漂移。
     ///
+    /// ⚠️ **独立成 test 而不是塞进 `test_core_table_columns`** ——
+    ///    因为后者的数量断言会先 panic，**本条根本没机会跑**
+    /// 🔴 2026-10-03：放弃 HN ⇒ 删 `content_pool.score` / `comments` 的迁移演练。
+    ///
+    /// # 🔑 为什么必须「手工造旧结构」
+    ///
+    /// 若用 `init_database` 建库再验，库是按**新** DDL 建的（压根没有那两列）
+    /// ⇒ 迁移走的是「列不存在 → 直接返回」的**空路径** ⇒ **测了个空**。
+    /// 必须手工建一张**含 `score`/`comments` 且带 `idx_cpool_score` 的旧表**。
+    /// （同族：`test_rebuild_content_source_...` 也是手工造旧结构。）
+    ///
+    /// # 🔑 为什么还要断言「索引也没了」
+    ///
+    /// SQLite 规定「**列被索引引用时不可 DROP**」——
+    /// 若迁移里漏了 `DROP INDEX`，`ALTER TABLE ... DROP COLUMN` 会**报错**，
+    /// 导致整个 `init_database` 失败 ⇒ **服务起不来**（生产事故级）。
+    /// 这条断言把那个顺序约束钉住。
+    ///
+    /// # 为什么断言「行还在」
+    ///
+    /// 删列容易写错成「删表重建」。行数 + 内容双重确认只删了列。
+    #[test]
+    fn test_migration_drops_score_and_comments() {
+        let conn = Connection::open_in_memory().unwrap();
+
+        // ① 先用**真实流程**建一个完整正确的库（保证 `content_source` 等表结构齐全），
+        //    再手工把它「回退」成**旧结构**（加回 `score`/`comments` + 那个索引）。
+        //
+        // # 🔑 为什么这样绕一圈，而不是直接手写两张 CREATE TABLE
+        //
+        // 我第一版就是手写的，结果**用例自己跑不起来**：
+        // 手工的 `content_source` 列不全 ⇒ `run_migrations_inner` 里的
+        // `rebuild_content_source_with_check` 判定「没有 CHECK」→ 触发重建 →
+        // 按**完整列**拷贝时列名对不上 ⇒ `init_database` 直接失败。
+        // ⇒ 教训：**造「旧结构」时，只回退你要验的那部分特征**，
+        //    其余结构让真实流程去建 —— 否则你会花时间在「用例本身错」上，
+        //    甚至误判成「迁移有 bug」。
+        init_database(&conn).unwrap();
+
+        conn.execute_batch(
+            "ALTER TABLE content_pool ADD COLUMN score INTEGER;
+             ALTER TABLE content_pool ADD COLUMN comments INTEGER;
+             CREATE INDEX idx_cpool_score ON content_pool (score DESC);",
+        )
+        .unwrap();
+
+        // 🔑 前置断言：确认旧结构**真的建出来了**。
+        //    否则下面的「删后不存在」会因为「一开始就不存在」而**假绿**。
+        let before = table_columns(&conn, "content_pool");
+        for c in ["score", "comments"] {
+            assert!(
+                before.contains(&c.to_string()),
+                "🔴 前置失败：旧表应有 `{}`（用例构造错了 ⇒ 后面的断言无意义）",
+                c
+            );
+        }
+        let idx_before: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_cpool_score'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(idx_before, 1, "🔴 前置失败：旧库应有 idx_cpool_score");
+
+        // ② 塞一行内容：`source_id = 5` 就是 seed 里的 Hacker News
+        //    （**行仍在，只是 `enabled = 0`** ⇒ 顺带验证「禁用源的既有数据不受影响」）。
+        //    🔑 外键在这里**是**有意义的：`open_in_memory` 的连接也开着外键
+        //       （第一版手工造表时实测报 `787 FOREIGN KEY`）⇒ 造用例别忘引用关系。
+        conn.execute(
+            "INSERT INTO content_pool (source_id,title,url,fetched_at,score,comments)
+             VALUES (5,'old hn item','https://x.test/1','2026-10-01T00:00:00Z',123,45)",
+            [],
+        )
+        .expect("插入旧行失败（用例构造问题）");
+
+        // ③ 跑迁移（`init_database` = 建表 + 迁移，正是生产启动走的路径）
+        init_database(&conn).unwrap();
+
+        // ④ 正向：两列没了
+        let after = table_columns(&conn, "content_pool");
+        for c in ["score", "comments"] {
+            assert!(
+                !after.contains(&c.to_string()),
+                "`{}` 应已被 DROP COLUMN 删除",
+                c
+            );
+        }
+
+        // ⑤ 反向：行还在，内容没变（只删列，不删数据）
+        let (n, title): (i64, String) = conn
+            .query_row("SELECT COUNT(*), MAX(title) FROM content_pool", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(n, 1, "🔴 删列不该删行");
+        assert_eq!(title, "old hn item", "🔴 行内容被破坏了");
+
+        // ⑥ 🔑 索引也没了 —— 「先删索引再删列」那个顺序约束的哨兵
+        let idx_after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_cpool_score'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(idx_after, 0, "idx_cpool_score 应已删除");
+
+        // ⑦ 幂等：再跑一次不该报错（生产每次启动都会跑）
+        init_database(&conn).unwrap();
+    }
+
     /// ⚠️ **独立成 test 而不是塞进 `test_core_table_columns`** ——
     ///    因为后者的数量断言会先 panic，**本条根本没机会跑**
     ///    （实测：删掉 CHECK 里的 `education` 后，只看到「少了一行」）。

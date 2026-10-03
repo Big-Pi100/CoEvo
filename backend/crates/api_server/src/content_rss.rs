@@ -64,11 +64,9 @@ pub struct ParsedItem {
     pub author: Option<String>,
     /// 发布于 **UTC ISO8601 带 `Z`**。
     pub published_at: Option<String>,
-    /// 热帖分数 —— **只有 HN 会给**（RSS 源恒为 `None`）。
-    /// 用于「热帖」形态的排序（`content_pool.score DESC`）。
-    pub score: Option<i64>,
-    /// 评论数 —— **只有 HN 会给**（RSS 源的 `slash:comments` 暂未取）。
-    pub comments: Option<i64>,
+    // 🔴 2026-10-03：原来这里有 `score` / `comments` 两字段 —— **只有 HN 会填**。
+    //    白哥决定放弃 HN（`content_hn.rs` 已删）⇒ 这两字段**没有任何生产者**，
+    //    一并移除。`content_pool` 里的对应两列也同时删掉（见 `run_migrations_inner`）。
 }
 
 /// 解析 RSS 2.0 文档 → 条目列表。
@@ -134,9 +132,6 @@ pub fn parse_rss(xml: &str, tz_offset_min: i32) -> Result<Vec<ParsedItem>, Strin
             published_at: child_text(item, "pubDate")
                 .as_deref()
                 .and_then(|s| parse_pub_date(s, tz_offset_min)),
-            // RSS 没有「分数/评论数」的概念 → 恒为 None（热帖字段只由 HN 适配器填）
-            score: None,
-            comments: None,
         });
     }
     Ok(out)

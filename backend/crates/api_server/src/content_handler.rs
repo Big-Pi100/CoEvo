@@ -24,19 +24,21 @@ use serde::Deserialize;
 const MAX_LIMIT: i64 = 50;
 const DEFAULT_LIMIT: i64 = 20;
 
-/// 允许的排序（**白名单**，防止把排序字段变成注入面）。
-///
-/// 🔑 判据同 `review_list_query` 的 `allowedOrders`：**不接受调用方传任意 SQL**。
-const SORT_BY_TIME: &str = "time";
-const SORT_BY_SCORE: &str = "score";
+// 🔴 2026-10-03：这里原有 `SORT_BY_TIME` / `SORT_BY_SCORE` 两个白名单常量
+//    （对应 `?sort=time|score`，其中 `score` 是「热帖」排序）。
+//
+//    白哥决定放弃 HN ⇒ `content_pool.score` 列已删 ⇒ **「热帖排序」不复存在**，
+//    两个常量随之移除。顺带说明：`SORT_BY_TIME` 此前**只有定义、从未被消费**
+//    —— 也就是说它是**死代码**，正好一并清掉。
 
 #[derive(Debug, Deserialize)]
 pub struct FeedQuery {
     pub category: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
-    /// `time`（默认）| `score`（热帖）
-    pub sort: Option<String>,
+    // 🔴 原 `sort: Option<String>`（`time` | `score`）已移除 —— 见上方说明。
+    //    ⚠️ 兼容性：`FeedQuery` **没有** `deny_unknown_fields`，
+    //       所以老客户端仍传 `?sort=xxx` 也**不会报错**，只是被忽略（仍是时间序）。
     /// 🔑 **按 id 批量取**（逗号分隔）—— 供「收藏清单」用。
     ///
     /// # 为什么需要它（而不是让端侧逐条调 `/api/feed/{id}`）
@@ -84,12 +86,9 @@ fn parse_ids(raw: &str) -> Vec<i64> {
 fn normalize(q: &FeedQuery) -> (i64, i64, &'static str) {
     let limit = q.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let offset = q.offset.unwrap_or(0).max(0);
-    let order = match q.sort.as_deref() {
-        Some(SORT_BY_SCORE) => "p.score DESC, COALESCE(p.published_at, p.fetched_at) DESC",
-        // 兜底走时间（含 `sort` 传了非法值的情况 —— 白名单未命中即回退）
-        _ => "COALESCE(p.published_at, p.fetched_at) DESC",
-    };
-    (limit, offset, order)
+    // 🔴 2026-10-03：原来这里按 `sort` 白名单选 `order`（`time` / `score`）。
+    //    放弃 HN ⇒ `score` 列已删 ⇒ **只剩「按时间倒序」一种** ⇒ 白名单与 match 都移除。
+    (limit, offset, "COALESCE(p.published_at, p.fetched_at) DESC")
 }
 
 /// `GET /api/feed?category=&limit=&offset=&sort=`
@@ -110,7 +109,7 @@ pub async fn feed_list_handler(Query(q): Query<FeedQuery>) -> Response {
 
     let sql = format!(
         "SELECT p.id, p.title, p.summary, p.url, p.author, p.category, \
-                p.published_at, p.score, p.comments, \
+                p.published_at, \
                 CASE WHEN p.body IS NOT NULL AND p.body <> '' THEN 1 ELSE 0 END AS has_body, \
                 s.name AS source_name, p.word_count \
          FROM content_pool p \
@@ -137,14 +136,12 @@ pub async fn feed_list_handler(Query(q): Query<FeedQuery>) -> Response {
             "author":      r.get::<_, Option<String>>(4)?,
             "category":    r.get::<_, Option<String>>(5)?,
             "published_at": r.get::<_, Option<String>>(6)?,
-            "score":       r.get::<_, Option<i64>>(7)?,
-            "comments":    r.get::<_, Option<i64>>(8)?,
-            "has_body":    r.get::<_, i64>(9)? == 1,
-            "source":      r.get::<_, Option<String>>(10)?,
+            "has_body":    r.get::<_, i64>(7)? == 1,
+            "source":      r.get::<_, Option<String>>(8)?,
             // 🔑 `word_count` 是**事实**（让端侧自己算「N min」这个展示口径）——
             //    与 `Article.lookups` 存 `reps` 不存样式同一条原则：
             //    「数据层存事实，渲染层算表现」。列表与详情都返回它。
-            "word_count":  r.get::<_, Option<i64>>(11)?,
+            "word_count":  r.get::<_, Option<i64>>(9)?,
         }))
     });
 
@@ -201,7 +198,7 @@ fn feed_by_ids(raw: &str) -> Response {
     let placeholders = vec!["?"; ids.len()].join(",");
     let sql = format!(
         "SELECT p.id, p.title, p.summary, p.url, p.author, p.category, \
-                p.published_at, p.score, p.comments, \
+                p.published_at, \
                 CASE WHEN p.body IS NOT NULL AND p.body <> '' THEN 1 ELSE 0 END AS has_body, \
                 s.name AS source_name, p.word_count \
          FROM content_pool p \
@@ -229,14 +226,12 @@ fn feed_by_ids(raw: &str) -> Response {
             "author":      r.get::<_, Option<String>>(4)?,
             "category":    r.get::<_, Option<String>>(5)?,
             "published_at": r.get::<_, Option<String>>(6)?,
-            "score":       r.get::<_, Option<i64>>(7)?,
-            "comments":    r.get::<_, Option<i64>>(8)?,
-            "has_body":    r.get::<_, i64>(9)? == 1,
-            "source":      r.get::<_, Option<String>>(10)?,
+            "has_body":    r.get::<_, i64>(7)? == 1,
+            "source":      r.get::<_, Option<String>>(8)?,
             // 🔑 `word_count` 是**事实**（让端侧自己算「N min」这个展示口径）——
             //    与 `Article.lookups` 存 `reps` 不存样式同一条原则：
             //    「数据层存事实，渲染层算表现」。列表与详情都返回它。
-            "word_count":  r.get::<_, Option<i64>>(11)?,
+            "word_count":  r.get::<_, Option<i64>>(9)?,
         }))
     }) {
         Ok(it) => it.filter_map(|x| x.ok()).collect(),
@@ -260,7 +255,7 @@ pub async fn feed_detail_handler(Path(id): Path<i64>) -> Response {
 
     let row = conn.query_row(
         "SELECT p.id, p.title, p.summary, p.body, p.url, p.author, p.category, \
-                p.published_at, p.fetched_at, p.word_count, p.score, p.comments, \
+                p.published_at, p.fetched_at, p.word_count, \
                 s.name AS source_name, s.license \
          FROM content_pool p \
          LEFT JOIN content_source s ON s.id = p.source_id \
@@ -278,10 +273,8 @@ pub async fn feed_detail_handler(Path(id): Path<i64>) -> Response {
                 "published_at": r.get::<_, Option<String>>(7)?,
                 "fetched_at":   r.get::<_, Option<String>>(8)?,
                 "word_count":   r.get::<_, Option<i64>>(9)?,
-                "score":        r.get::<_, Option<i64>>(10)?,
-                "comments":     r.get::<_, Option<i64>>(11)?,
-                "source":       r.get::<_, Option<String>>(12)?,
-                "license":      r.get::<_, Option<String>>(13)?,
+                "source":       r.get::<_, Option<String>>(10)?,
+                "license":      r.get::<_, Option<String>>(11)?,
             }))
         },
     );
@@ -314,7 +307,6 @@ mod tests {
             category: None,
             limit: l,
             offset: None,
-            sort: None,
             ids: None,
         };
         assert_eq!(normalize(&q(None)).0, DEFAULT_LIMIT);
@@ -330,34 +322,32 @@ mod tests {
             category: None,
             limit: None,
             offset: Some(-3),
-            sort: None,
             ids: None,
         };
         assert_eq!(normalize(&q).1, 0);
     }
 
+    /// 🔴 2026-10-03 改写：原为 `test_normalize_sort_whitelist`，测「`sort` 值白名单」。
+    ///
+    /// 放弃 HN ⇒ `sort` 参数与 `score` 列都移除 ⇒ **白名单本身不存在了**。
+    /// 但它守的**核心关切仍然成立**：`order` 必须是**编译期常量**，
+    /// 绝不能让调用方输入以任何形式拼进 SQL（那才是注入面）。
+    /// ⇒ 改成直接锁「`order` 恒等于那条固定 SQL」—— 比原来更强
+    ///    （原测试只验「非法值不出现 DROP」，现在验「任何输入下 order 都不变」）。
     #[test]
-    fn test_normalize_sort_whitelist() {
-        let mk = |s: Option<&str>| FeedQuery {
-            category: None,
-            limit: None,
-            offset: None,
-            sort: s.map(|x| x.to_string()),
+    fn test_normalize_order_is_constant() {
+        // 造一个「字段全填」的 query —— 现在 `sort` 已不存在，
+        // 老客户端若仍传 `?sort=xxx` 会被 serde **忽略**（未 deny_unknown_fields）。
+        let q = FeedQuery {
+            category: Some("news".into()),
+            limit: Some(5),
+            offset: Some(0),
             ids: None,
         };
-        assert!(normalize(&mk(Some("score"))).2.contains("score DESC"));
-        assert!(normalize(&mk(Some("time"))).2.contains("published_at"));
-        // 🔴 非法值 → 回退到时间，而不是拼进 SQL（注入面）
-        let injected = normalize(&mk(Some("id; DROP TABLE content_pool"))).2;
-        assert!(
-            injected.contains("published_at"),
-            "非法排序应回退: {}",
-            injected
-        );
-        assert!(
-            !injected.contains("DROP"),
-            "不得把用户输入拼进 SQL: {}",
-            injected
+        assert_eq!(
+            normalize(&q).2,
+            "COALESCE(p.published_at, p.fetched_at) DESC",
+            "order 必须是固定常量 —— 绝不能包含任何调用方输入"
         );
     }
 

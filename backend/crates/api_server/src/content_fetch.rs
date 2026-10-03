@@ -27,7 +27,6 @@
 
 use rusqlite::Connection;
 
-use crate::content_hn::{self, DEFAULT_STORY_LIMIT};
 use crate::content_rss::{self, ParsedItem};
 
 /// 抓取用的 UA。
@@ -130,40 +129,13 @@ pub async fn fetch_source_items(src: &SourceRow) -> Result<Vec<ParsedItem>, Stri
             let body = http_get_text(&client, &src.url).await?;
             content_rss::parse_rss(&body, src.tz_offset_min)
         }
-        "hn" => fetch_hn(&client, src).await,
-        other => Err(format!("未知的源类型 `{}`（支持 rss | hn）", other)),
+        // 🔴 2026-10-03 白哥决定**放弃 HN**（见 `schema.rs` seed 里 HN 行的说明）。
+        //    这里**不保留 `"hn"` 分支** —— 若有人把 HN 重新 `enabled=1`，
+        //    会走下面这条 `other` 分支**明确报错**（而不是静默返回空）。
+        //    📌 判据：**去掉能力时，要让「重新启用」立刻可见地失败**，
+        //       而不是留一段没人维护的分支假装还支持。
+        other => Err(format!("未知的源类型 `{}`（目前只支持 rss）", other)),
     }
-}
-
-/// Hacker News：无批量接口 → 逐个拉（见 `content_hn::DEFAULT_STORY_LIMIT`）。
-///
-/// 🔑 单条拉失败**不断整轮** —— 用 `filter_map` 跳过拿不到的，而不是 `?` 提前返回。
-///    理由：HN 的 id 列表里可能夹着已删除的帖子（返回 `null`），
-///    为此丢掉整批热帖是**用局部问题惩罚整体**。
-async fn fetch_hn(client: &reqwest::Client, src: &SourceRow) -> Result<Vec<ParsedItem>, String> {
-    let base = src.url.trim_end_matches('/');
-    let list_url = format!("{}/topstories.json", base);
-    let list = http_get_text(client, &list_url).await?;
-    let ids = content_hn::parse_topstory_ids(&list, DEFAULT_STORY_LIMIT)?;
-
-    let mut out = Vec::new();
-    for id in ids {
-        let item_url = format!("{}/item/{}.json", base, id);
-        // 单条失败 → 跳过（记 debug 日志，不中断）
-        match http_get_text(client, &item_url).await {
-            Ok(txt) => match content_hn::parse_story_item(&txt) {
-                Ok(Some(it)) => out.push(it),
-                Ok(None) => {}
-                Err(e) => tracing::debug!("hn item {} 解析跳过: {}", id, e),
-            },
-            Err(e) => tracing::debug!("hn item {} 拉取跳过: {}", id, e),
-        }
-    }
-    if out.is_empty() {
-        // 🔴 「一条都没拿到」要报错 —— 否则会被当成「这轮无新内容」而静默通过
-        return Err("HN 一条都没取到（API 变了或网络受限？）".into());
-    }
-    Ok(out)
 }
 
 async fn http_get_text(client: &reqwest::Client, url: &str) -> Result<String, String> {
@@ -248,8 +220,8 @@ pub fn write_items(
             .execute(
                 "INSERT OR IGNORE INTO content_pool \
                  (source_id, title, summary, body, url, author, category, \
-                  published_at, fetched_at, word_count, score, comments) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                  published_at, fetched_at, word_count) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 rusqlite::params![
                     src.id,
                     it.title,
@@ -262,8 +234,6 @@ pub fn write_items(
                     it.published_at,
                     now_utc,
                     wc,
-                    it.score,
-                    it.comments,
                 ],
             )
             .map_err(|e| format!("插入 content_pool 失败 ({}): {}", it.url, e))?;
@@ -972,8 +942,6 @@ mod tests {
             url: url.into(),
             author: Some("A".into()),
             published_at: Some("2026-09-29T00:00:00Z".into()),
-            score: None,
-            comments: None,
         }
     }
 
@@ -993,10 +961,21 @@ mod tests {
         //       它数的是 `load_enabled_sources` 的结果，不是表里的行数。
         assert_eq!(
             s.len(),
-            23,
-            "种子应有 23 个**启用**源（Ars 已禁用 · HackerNoon 未接）"
+            22,
+            "种子应有 22 个**启用**源（Ars + Hacker News 均已禁用 · HackerNoon 未接）"
         );
-        assert!(s.iter().any(|x| x.kind == "hn"), "应有 HN 源");
+        // 🔴 反向断言：**不得**再有启用的 `hn` 源。
+        //    2026-10-03 白哥决定放弃 HN ⇒ 适配器（content_hn.rs）已删。
+        //    保留这条用意是**防回退**：若有人把 HN 重新 `enabled=1`，
+        //    抓取时会走到「未知的源类型」而报错 —— 这条断言让它在**测试阶段**就暴露。
+        assert!(
+            s.iter().all(|x| x.kind != "hn"),
+            "HN 已废弃（适配器已删）⇒ 不该有启用的 hn 源: {:?}",
+            s.iter()
+                .filter(|x| x.kind == "hn")
+                .map(|x| &x.name)
+                .collect::<Vec<_>>()
+        );
         assert!(
             s.iter().all(|x| x.url.starts_with("http")),
             "每个源的 url 都应可用: {:?}",
