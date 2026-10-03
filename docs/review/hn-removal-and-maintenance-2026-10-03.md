@@ -202,10 +202,36 @@ ProcessException: 231（所有的管道范例都在使用中）
 
 ### 5.2 请你在普通终端跑（不受这个限制）
 
+🔴 **更正（2026-10-03 · 白哥指出）**：本节初版给的是 `build apk --release`（**光秃秃的**）——
+**漏了两个关键参数**，打出来的包**连不上后端**、且**体积大一倍**。原因是我**没去读项目里已有的
+权威清单**（`a2-device-verification-checklist-2026-10-02.md` §〇 早就把命令写全了）。
+
 ```bat
 cd E:\CoEvo\app
-D:\flutter\bin\flutter.bat --no-version-check build apk --release
+D:\flutter\bin\flutter.bat --no-version-check build apk --release ^
+  --target-platform android-arm64 ^
+  --dart-define=API_HOST=api.keyievolution.fun
 ```
+
+| 参数 | 不加会怎样 |
+|---|---|
+| `--dart-define=API_HOST=api.keyievolution.fun` | 🔴 **`ApiConfig` 默认 `localhost:8080`**（见 `app/lib/api/api_config.dart:37`）⇒ 真机上**首页空、划词提示连不上服务** |
+| `--target-platform android-arm64` | 打全架构 ⇒ **体积 82.6 → 43.9 MB（省 47%）**（实测数据，见同一清单）|
+| `--no-version-check` | 🔴 本机 **Dart 创建不了子进程**（§5.1）⇒ 必须加它才能绕过 `git` 调用 |
+
+**可选**（要验「分享 / 二维码」才需要，否则指向 `http://localhost:3000`）：
+```
+  --dart-define=PUBLIC_BASE_URL=https://keyievolution.fun
+```
+
+⚠️ 注意 `ApiConfig` 的自动推断：**域名 → `https://host`（不追加端口）**；
+IP/localhost → `http://host:port`。所以传 `api.keyievolution.fun` 会得到 `https://api.keyievolution.fun` ✅
+
+🔴 **另一处同类问题**（CI）：`ci.yml` 的 `ios-build` job 是全仓库**唯一**的出包 job，
+它的命令是 `flutter build ios --release --no-codesign` —— **没有 `--dart-define`**
+（全 `ci.yml` 里 `dart-define` 出现 **0 次**）。
+它只做「**能编译**」验证（`--no-codesign`）⇒ **影响有限，但绝不能拿它当发布源**。
+将来若要 CI 出正式包，**必须补上 `--dart-define`**。
 
 产物：`app\build\app\outputs\flutter-apk\app-release.apk`
 
