@@ -268,3 +268,80 @@ Transaction.currentEntitlements
 | IAP 技术链条 | WebSearch 核实（`in_app_purchase` 3.3.0 · StoreKit 2 默认 · JWS）|
 | Rust 库可行 | crates.io API（147 万下载）+ 库文档 |
 | 法律要件缺失 | `grep pay_screen`「自动续费」零命中 + `about_screen` 自述 URL 未定 |
+
+---
+
+## 十、实施记录 ① 清微信支付残留（2026-10-03）
+
+> 白哥决策：**只删微信**（分销/营销/admin 单独立项）· 返佣函数一并删。
+
+### 删除清单（实测）
+
+| 目标 | 前 | 后 |
+|---|---|---|
+| `pay_handlers.rs` | 862 行 | **173 行** |
+| `wechat_pay.rs` | 283 行 | **已删除** |
+| `lib.rs` 的 `pub mod wechat_pay;` | 1 行 | 已删 |
+| `routes.rs` 的 `/api/pay/native` + `/api/pay/notify` | 2 个端点 | 已删 |
+
+**净变化：`-1034 / +53` 行**（+53 是保留下来的注释与重构后的文档）。
+
+### 保留了什么（以及为什么）
+
+| 保留项 | 理由 |
+|---|---|
+| `user_orders_handler`（我的订单）| IAP 的交易**也会写进 `payment_orders`** ⇒ 查询接口无需重写 |
+| `admin_orders_handler`（管理端）| 同上 |
+| `order_status_handler` | **已简化为纯只读** —— 去掉了「向微信查单并同步状态」那段 |
+
+### 🔑 `order_status_handler` 的简化（有设计价值，值得记）
+
+原实现有一段「本地 `NOTPAY` 时主动向微信查单 → 同步状态 → 延期订阅 → 分发佣金」。
+**IAP 下这一整段没有对应物**：
+
+| 微信的做法 | IAP 的对应 |
+|---|---|
+| 服务端**主动**向微信查单 | ❌ 不需要 —— 凭据由客户端上报（`/api/iap/verify`）|
+| 「条件 UPDATE 防竞态翻倍」 | ❌ 不需要 —— 验证**幂等**（按 `transaction_id` 唯一）|
+| 同步时顺带 `extend_subscription` | ❌ 移入 `iap_handlers`（由**验证**触发，不由查单触发）|
+
+📌 判据：**「查状态」不该有副作用** —— 原实现把它做成「查着查着就改了状态」，
+在 IAP 下**多余且危险**（会与验证链路争抢同一份状态）。
+
+### 🐛 过程中的失误（如实记录）
+
+**删除粒度不一致 → 编译报错**：两处端点删除时，一处删了内层两行、
+另一处删了整块（含 `.route(` 与 `)`）⇒ 留下**空的 `.route()`** ⇒ 编译失败。
+
+✅ **编译器抓到了**（不是静默失败）—— 这正是「删完必须编译」的价值。
+📌 判据：**批量删除时，每处的「删除边界」必须一致**（否则留下语法残缺）。
+   更稳的做法：每处匹配**完整表达式**（含外层括号）。
+
+### ⚠️ 记录一个耦合点（将删分销时会踩）
+
+`distribution_handler.rs`（**保留**，白哥定「单独立项」）里有：
+
+```
+routes.rs:516   "/api/webhook/refund"   ← 微信退款回调（在分销系统里）
+distribution_handler.rs:2064  POST /api/webhook/refund — 微信退款回调
+```
+
+🔴 **微信支付已删 ⇒ 这个 webhook 永远不会被调用**，但代码仍在。
+⇒ **将来删分销时要一并处理**；在那之前，若有人问「这个 webhook 还有用吗」——
+答案是：**没有上游了**。
+
+### 验证
+
+| 项 | 结果 |
+|---|---|
+| `cargo check -p api_server --lib` | ✅ 通过 |
+| `cargo fmt --check` | ✅ |
+| `cargo clippy --workspace --all-targets -D warnings` | ✅ 0 警告 |
+| `cargo test --workspace` | ✅ **176 passed / 0 failed**（+20）|
+| 残留扫描（`grep -rn wechat\|微信` 全 `src/`）| ✅ 代码**零残留**（剩下的全是历史说明注释 · 分销文件除外）|
+
+**未做（属后续批次）**：
+- ⬜ `payment_orders` 表的 `prepay_id` 字段（微信专有）—— 待 IAP 改造时一并处理
+- ⬜ 前端 `pay_screen.dart`（552 行微信扫码）—— 待订阅页重做
+- ⬜ 分销/营销/admin（7461 行 + 73 端点）—— 白哥定「单独立项」
+

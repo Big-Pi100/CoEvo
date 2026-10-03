@@ -136,14 +136,6 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
             get(crate::plans_handlers::plans_list_handler),
         )
         .route(
-            "/api/pay/native",
-            post(crate::pay_handlers::native_pay_handler),
-        )
-        .route(
-            "/api/pay/notify",
-            post(crate::pay_handlers::pay_notify_handler),
-        )
-        .route(
             "/api/pay/orders",
             get(crate::pay_handlers::user_orders_handler),
         )
