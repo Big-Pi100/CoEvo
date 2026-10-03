@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../models/article.dart';
 import '../services/markdown_unescape.dart';
@@ -55,7 +54,6 @@ class TraceMarkdown extends StatelessWidget {
     required this.lookups,
     required this.tokens,
     required this.bodyFontSize,
-    this.onLinkFailed,
   });
 
   /// 正文（**Markdown 形态**）。
@@ -69,13 +67,6 @@ class TraceMarkdown extends StatelessWidget {
 
   /// 正文字号（由调用方给 —— 阅读器有「字号」概念，不在 token 层）。
   final double bodyFontSize;
-
-  /// 链接打不开时的回调（`null` = 静默）。
-  ///
-  /// ⚠️ 有回调**不等于**「必须弹提示」—— 调用方决定怎么表达。
-  ///    这里给回调而不是自己弹，是因为**本组件不该知道怎么跟用户说话**
-  ///    （与 `hasReadableBody` 只管判定、不管文案是同一条分层原则）。
-  final void Function(String url)? onLinkFailed;
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +156,11 @@ class TraceMarkdown extends StatelessWidget {
         ),
       ),
 
-      onLinkTap: (url, _) => _openLink(url),
+      // 🔴 正文里的链接**渲染成普通文字**（不可点）—— 见下方「链接」一节
+      inlineLinkBuilder: (details) => TextSpan(
+        text: details.label,
+        style: base,
+      ),
     );
   }
 
@@ -192,27 +187,41 @@ class TraceMarkdown extends StatelessWidget {
         },
       );
 
-  /// 打开外部链接。
-  ///
-  /// 🔑 沿用 `notification_panel.dart` 的惯例（`LaunchMode.externalApplication`）——
-  /// 外部链接不该在 App 内用 WebView 打开（本项目不做 Web）。
-  ///
-  /// ⚠️ **失败必须可见**：`launchUrl` 返回 `false` 或被抛异常时，
-  /// 静默什么都不做 = 用户以为「链接坏了」。→ 交给 [onLinkFailed] 表达。
-  /// （📌 项目已有的教训：「静默失败 + 无出口」比「报错」更糟。）
-  Future<void> _openLink(String url) async {
-    try {
-      final uri = Uri.tryParse(url);
-      if (uri == null) {
-        onLinkFailed?.call(url);
-        return;
-      }
-      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!ok) onLinkFailed?.call(url);
-    } catch (e) {
-      // 打不开是**预期内**的（没有浏览器 / scheme 不支持）→ 不当作崩溃
-      debugPrint('[TraceMarkdown] 打开链接失败: $url ($e)');
-      onLinkFailed?.call(url);
-    }
-  }
+  // ─────────────────────────────────────────────────────────────────────
+  // 🔴 2026-10-03：**正文里的链接不再可点**（白哥定）
+  // ─────────────────────────────────────────────────────────────────────
+  //
+  // 实现方式见 `build` 里的 `inlineLinkBuilder` —— 它返回一个**纯 `TextSpan`**
+  // （不带 `recognizer`）⇒ 不可点。
+  //
+  // # 为什么（白哥真机反馈）
+  //
+  // 原话：「应该把正文内的 url 都过滤掉，**不然用户选词会跳转影响阅读**」。
+  //
+  // 🔑 痛点定位的关键：他说的是「**影响阅读**」，不是「URL 难看」。
+  //    实测正文里 **262/523 篇**含 URL（共 2062 个，其中 1879 个是 `[文字](url)`
+  //    的可点链接）—— 而阅读页的核心交互是**长按划词查词**，
+  //    手指落下时若压到链接，会**直接跳出 App**，阅读被打断。
+  //
+  // # 取舍（当时给白哥的三个选项，他选 A）
+  //
+  // | 方案 | 结果 |
+  // |---|---|
+  // | **A. 禁用点击** ✅ | 文字保留、不可点 —— **对准痛点** |
+  // | B. 只删裸 URL | 1879 个可点链接**仍在** ⇒ 没解决误触 |
+  // | C. 全删 | 信息丢失（链接文字常是有意义的词）|
+  //
+  // # ⚠️ 为什么连「链接样式」也一起去掉（而不是只掐掉点击）
+  //
+  // 项目已有判据：**视觉元素的形态/作用域须与语义一致**。
+  // 若保留蓝色下划线但点了没反应，用户会以为**功能坏了**（比没有链接更糟）。
+  // ⇒ 渲染成与正文完全一致的样式：**看起来是普通文字，行为也是普通文字**。
+  //
+  // # 影响面（已核实）
+  //
+  // · 「打开原文」在**阅读页顶栏**，不走这里 ⇒ **不受影响**
+  // · 其他用链接的地方（`notification_panel.dart`）**不受影响**（各自独立实现）
+  // · `onLinkFailed` / `_openLink` / `url_launcher` **已一并移除** ——
+  //   禁用点击后它们永远不会被调用，留着就是**死代码 + 误导**
+  //   （📌 判据：删功能要清理语义残留，否则后续开发会把旧概念加回来）
 }

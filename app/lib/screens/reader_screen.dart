@@ -464,8 +464,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                         lookups: lookups,
                         tokens: t,
                         bodyFontSize: _bodyFontSize,
-                        // 链接打不开时给用户一个出口（静默失败比报错更糟）
-                        onLinkFailed: (url) => _hint(context, '打不开这个链接'),
+                        // ⚠️ 2026-10-03：`onLinkFailed` 已移除 ——
+                        //    正文里的链接现在**不可点**（白哥定），
+                        //    所以「打不开链接」这个失败路径**不存在了**。
+                        //    见 `trace_markdown.dart` 的「链接」一节。
                       ),
                     ],
                   ),

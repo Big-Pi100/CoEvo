@@ -199,6 +199,27 @@ pub fn write_items(
 ) -> Result<usize, String> {
     let mut inserted = 0usize;
     for it in items {
+        // ── 🆕 2026-10-03 内容质量闸门（见 `content_quality` 模块）──
+        //
+        // 🔑 为什么放在**这一层**（`write_items` 是所有源的**唯一入库点**）：
+        //    守门人放在「参数化的点」上，新接一个源就自动受保护；
+        //    若放在各源自己的解析函数里，将来必忘（同族教训：`unescape` 只接了一处，
+        //    另一处渲染路径就漏了）。
+        //
+        // ⚠️ 判据用「**抓到了什么**」（`it.body` 优先，退回 summary），而不是
+        //    「打算存什么」（`body` 变量受 `redistributable` 影响）——
+        //    否则 `redistributable = 0` 的源会**绕过**闸门。
+        let gate_text = it.body.as_deref().or(it.summary.as_deref()).unwrap_or("");
+        if let Some(reason) = crate::content_quality::check_content(&it.title, gate_text) {
+            tracing::info!(
+                "content_fetch: 跳过条目（{}）· {} — {}",
+                reason,
+                src.name,
+                it.title
+            );
+            continue;
+        }
+
         // 🔴 `redistributable = 0` 的源**不存全文** —— 列的含义就是「能不能存全文」，
         //    不能因为「刚好抓到了」就存（那会让这一列失去意义）。
         let body = if src.redistributable == 1 {
