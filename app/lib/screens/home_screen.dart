@@ -14,7 +14,6 @@ import '../providers/bookmark_provider.dart';
 import '../providers/feed_provider.dart';
 import '../providers/interest_provider.dart';
 import '../services/feed_pager.dart';
-import '../services/interest_selection.dart';
 import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
