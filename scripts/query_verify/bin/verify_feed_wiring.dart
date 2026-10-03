@@ -74,8 +74,15 @@ void main() {
   final handler = readNoComment('../../backend/crates/api_server/src/content_handler.rs');
   final schema = readNoComment('../../backend/crates/api_server/src/schema.rs');
   final profile = readNoComment('../../app/lib/screens/profile_screen.dart');
-  final filterBar =
-      readNoComment('../../app/lib/widgets/interest_filter_bar.dart');
+  // 🔴 2026-10-03 v3：组件**改名**（`InterestFilterBar` → `InterestFilterSection`）——
+  //    位置/语义变了，名字也要跟着审（「Bar」暗示横向常驻条，已不是那个形态）。
+  //    ⚠️ 变量名**不能叫 `section`**：本脚本第 42 行有 `void section(String s)` 函数，
+  //       局部变量会**遮蔽**它 ⇒ 11 处 `section('...')` 调用全变成「调用 String」⇒ 编译错。
+  //       📌 这类错**语法检查查不出**，只有符号解析才报。
+  //    ⚠️ 路径也要跟着改：旧路径的文件已删 ⇒ `readAsStringSync` 会**抛异常**（退出码非 0）。
+  //       这算「好的失败」（显式、不静默），但断言得先能跑起来才有意义。
+  final filterSection =
+      readNoComment('../../app/lib/widgets/interest_filter_section.dart');
 
   // ══════════════════════════════════════════════════════════
   section('【1】信息流：从服务端取数（不再有 mock）');
@@ -331,38 +338,69 @@ void main() {
   check('🔴 它定义在**顶层**（缩进为空 ⇒ 外部可裸名引用）',
       defMatch != null && defMatch.namedGroup('indent')!.isEmpty,
       '缩进非空 ⇒ 是**类静态成员** ⇒ 外部裸名引用**会解析失败**（build 会报 not defined）');
-  // ⚠️ 2026-10-03：**兴趣界面已从 `profile_screen` 移到 `interest_filter_bar`**
-  //    （白哥真机反馈 ⇒ 筛选栏移到信息流页顶部）。这条断言随之改指向新文件 ——
-  //    🔑 断言必须跟着「**当前**用它的地方」走，否则撤回后会**假红**。
+  // ⚠️ 2026-10-03 v3：兴趣界面**又移回了**（信息流页 ⇒ 「我的」页），组件同时**改名**
+  //    （`interest_filter_bar` → `interest_filter_section`）⇒ 本断言读的文件随之改指新路径。
+  //    🔑 断言必须跟着「**当前**用它的地方」走。
+  //    ⚠️ **但「跟着走」必须主动做** —— 这条注释本身一度停留在 v2 的措辞（说「已移到
+  //       interest_filter_bar」），是**残留扫描**（全仓库 grep 旧名）才发现并修正的。
+  //       📌 判据：**改名/撤回后要扫「旧名残留」**，不能只改代码 ——
+  //          注释里的过时说明会让后来人（包括我自己）按错的口径做事。
   check('🔴 兴趣界面用**裸名**引用它（与上面「顶层」配套）',
-      filterBar.contains('kCategoryLabels.entries'));
+      filterSection.contains('kCategoryLabels.entries'));
   check('不出现 `FeedItem.kCategoryLabels`（那是「定义在类内」的写法，与顶层矛盾）',
-      !filterBar.contains('FeedItem.kCategoryLabels'));
+      !filterSection.contains('FeedItem.kCategoryLabels'));
   // 源配置的 CHECK 必须与常量同步（否则改了一边另一边还在放行）
   check('`content_source.category` 的 CHECK 与常量同步（8 个值）',
       RegExp(r"CHECK \(category IN \('news','tech','business','science','sports',")
           .hasMatch(schema));
 
   // ══════════════════════════════════════════════════════════
-  section('【10】🔴 兴趣筛选栏在**信息流页**（2026-10-03 位置改动）');
+  section('【10】🔴 兴趣筛选在**「我的」页**且**默认收起**（2026-10-03 · 第三次定案）');
   // ══════════════════════════════════════════════════════════
   //
-  // # 事故
-  // 兴趣筛选最初放在「我的」页的「内容偏好」分组（依 `profile-redesign` 锚点）。
-  // 白哥真机反馈：「筛选正常，但 **UI 设计不好**，做成**下拉栏**」——
-  // 🔑 真问题是**位置**：它是「看信息流的前置控制」，放在设置页要**切 tab、跨屏**
-  //    （路径 4 步，且筛选器与所筛内容不在同一屏）。
-  // ⇒ 移到信息流页顶部。**这是一次「撤回已定案」**（实现 / 锚点 / 规格 / 断言 / 设计稿一组动作）。
+  // # 三轮变更（每轮都是白哥真机反馈，每轮的真问题都不同）
   //
-  // 📌 判据：**「控件属于哪一屏」比「它是什么形态」更根本** ——
-  //    形态错了只是难看；位置错了会让用户**走冤枉路**，而且不易被归因。
-  check('🔴 信息流页**引用了**筛选栏', home.contains('InterestFilterBar'));
-  check('🔴「我的」页**不再**有筛选（撤回防回归：别把它放回去）',
-      !profile.contains('InterestFilterBar'));
-  check('🔴「我的」页不再引用 `kCategoryLabels`（分组确已移除）',
-      !profile.contains('kCategoryLabels'));
-  check('筛选栏是**自包含**的（自己 watch provider ⇒ 与 `_feedKey` 天然同步）',
-      filterBar.contains('ref.watch(interestProvider)'));
+  // | 版本 | 形态 | 反馈 | 真问题 |
+  // |---|---|---|---|
+  // | v1 | 「我的」页 · 12 胶囊**全展开** | 「UI 设计不好」 | 低频项**常驻铺开**，撑乱本页 |
+  // | v2 | **信息流页顶部** · 常驻一行 | 「**阅读界面太拥挤**」 | 🔴 见下 |
+  // | **v3** ⭐ | 「我的」页 · **收起成一行** + 就地展开 | — | — |
+  //
+  // # 🔑 v2 为什么错：判据漏了「使用频率」这一维
+  //
+  // 上轮写的判据是「**控件属于哪一屏**」（兴趣筛选是「看信息流的前置控制」⇒ 该放信息流页）。
+  // **方向对，但不完整** —— 漏了「这个控制**多久用一次**」：
+  // ```
+  // 搜索框   ：高频 + 小占用  ⇒ 放主界面
+  // 兴趣筛选 ：低频（设一次长期不动）+ 大占用 ⇒ 放设置页
+  // ```
+  // ⇒ 它是**低频**操作，却要在信息流页**常驻占一行** = 用一次的便利换每天的拥挤。
+  //   信息流页的垂直空间是**稀缺资源**。
+  //
+  // 📌 **修正后的判据**：「前置控制放哪」= **使用频率 × 占用空间**。
+  //    · 高频 + 小占用 ⇒ 主界面（搜索框）
+  //    · 低频 + 任意 ⇒ 设置页（**且必须能收起来**）
+  //    · 高频 + 大占用 ⇒ 主界面但**默认收起**
+  //
+  // # 断言要防的两个方向
+  // 1. **别把它放回信息流页**（会重新挤内容）
+  // 2. 🔴 **别让「收起」退化** —— 本版之所以成立全靠「默认收起」；
+  //    若有人把 `_expanded` 改成 `true`，就退回 v1 的「常驻铺开」⇒ 白哥的原始不满会重来。
+  check('🔴「我的」页**有**筛选分区（`InterestFilterSection`）',
+      profile.contains('InterestFilterSection'));
+  check('🔴 信息流页**不再**有筛选（位置防回归：别放回去 —— 会挤内容）',
+      !home.contains('InterestFilterSection') && !home.contains('InterestFilterBar'));
+  check('🔴 旧组件 `interest_filter_bar.dart` 已删（改名不留旧文件 ⇒ 防「两处同名组件」漂移）',
+      !File('../../app/lib/widgets/interest_filter_bar.dart').existsSync());
+  // 🔴 本版的核心：**默认收起**。压低频项的常驻占用，才不会退回 v1 的问题。
+  check('🔴 **默认收起**（`bool _expanded = false` —— v3 存在的理由）',
+      RegExp(r'bool _expanded = false;').hasMatch(filterSection));
+  check('筛选分区是**自包含**的（自己 watch provider ⇒ 调用方只需一行）',
+      filterSection.contains('ref.watch(interestProvider)'));
+  check('收起态副标题能扫出「当前选了啥」（`_summary` + 省略号防撑高）',
+      filterSection.contains('_summary(sel)') && filterSection.contains('TextOverflow.ellipsis'));
+  check('🔑 缺项过滤 `whereType<String>()`（否则缺 key 会渲染出字面量 null）',
+      filterSection.contains('whereType<String>()'));
   check('`interestKeyOf` 仍由信息流页用来定 family key',
       home.contains('interestKeyOf('));
 

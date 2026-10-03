@@ -633,13 +633,23 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
               </div>
             </div>
 
-            <!-- 🔴 2026-10-03 **移除**：「内容偏好（兴趣筛选）」组 ——
-                 白哥真机反馈「筛选正常、但 UI 设计不好 ⇒ 做成下拉栏」。
-                 真问题是**位置**：兴趣筛选是「**看信息流的前置控制**」，
-                 放在设置页要**切 tab、跨屏**（筛选器与所筛内容不同屏）⇒
-                 已移到**信息流页顶部**（下拉展开，见 `visual-feed-bookmark`）。
-                 实现与判据：`app/lib/widgets/interest_filter_bar.dart` 类文档。
-                 ⚠️ **别再放回来**。 -->
+            <div class="grp">
+              <div class="grplab">内容偏好</div>
+              <div class="clay">
+                <!-- 🔴 2026-10-03 第三次定案（白哥两次真机反馈）：位置回到这里，
+                     但形态改为**默认收起**（这一行）—— 点击**就地展开** 12 个类别。
+                     为什么这样：v1 在这页里 12 胶囊全展开 ⇒「UI 设计不好」（低频项占半屏）；
+                     v2 移到信息流页顶部常驻一行 ⇒「阅读界面太拥挤」。
+                     ⇒ v3 = 保留本页位置 + 收起成一行（两轮问题的交集解）。
+                     实现：app/lib/widgets/interest_filter_section.dart
+                     收起态副标题 = **当前状态**（一眼扫出筛了什么，不是「藏信息」）。 -->
+                <div class="item">
+                  <span class="ico">🎯</span>
+                  <span class="tx"><b>兴趣筛选</b><span>全部类别（不筛选）</span></span>
+                  <span class="go">▾</span>
+                </div>
+              </div>
+            </div>
 
             <div class="grp">
               <div class="grplab">订阅</div>
@@ -779,13 +789,43 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
               </div>
             </div>
 
-            <!-- 🔴 2026-10-03 **移除**：「内容偏好（兴趣筛选）」组 ——
-                 白哥真机反馈「筛选正常、但 UI 设计不好 ⇒ 做成下拉栏」。
-                 真问题是**位置**：兴趣筛选是「**看信息流的前置控制**」，
-                 放在设置页要**切 tab、跨屏**（筛选器与所筛内容不同屏）⇒
-                 已移到**信息流页顶部**（下拉展开，见 `visual-feed-bookmark`）。
-                 实现与判据：`app/lib/widgets/interest_filter_bar.dart` 类文档。
-                 ⚠️ **别再放回来**。 -->
+            <div class="grp">
+              <div class="grplab">内容偏好</div>
+              <div class="clay">
+                <!-- 🔴 2026-10-03：**展开态**示意（点击上面那行后的样子）。
+                     12 类胶囊与卡片选中态同一语汇（Clay selected）；**再点标题行收起**
+                     ⇒ 所以面板里**不放「完成」按钮**（收起动作只有一处出口）。
+                     但保留「清除」——语义不同：收起=藏面板，清除=取消全部勾选。 -->
+                <div class="item" style="align-items:flex-start">
+                  <span class="ico">🎯</span>
+                  <span class="tx">
+                    <b>兴趣筛选</b>
+                    <span>News · Tech · Science</span>
+                  </span>
+                  <span class="go">▴</span>
+                </div>
+                <div style="padding:0 14px 12px">
+                  <div style="font-size:11.5px;color:var(--ink3);line-height:1.4;margin-bottom:8px">
+                    决定信息流显示哪些类别 · 不选 = 全部
+                  </div>
+                  <div class="pills">
+                    <span class="pill on">News</span>
+                    <span class="pill on">Tech</span>
+                    <span class="pill">Business</span>
+                    <span class="pill on">Science</span>
+                    <span class="pill">Sports</span>
+                    <span class="pill">Culture</span>
+                    <span class="pill">Entertainment</span>
+                    <span class="pill">Health</span>
+                    <span class="pill">Education</span>
+                    <span class="pill">History</span>
+                    <span class="pill">Law</span>
+                    <span class="pill">Family</span>
+                  </div>
+                  <div style="text-align:right;margin-top:6px;font-size:12px;color:var(--accent)">清除</div>
+                </div>
+              </div>
+            </div>
 
             <div class="grp">
               <div class="grplab">订阅</div>

@@ -21,7 +21,6 @@ import '../widgets/bookmark_toggle.dart';
 import '../widgets/claim_dialog.dart';
 import '../widgets/feed_card.dart';
 import '../widgets/header_chip.dart';
-import '../widgets/interest_filter_bar.dart';
 
 /// 首页 —— **信息流**（导航第一个 tab「阅读」）。
 ///
@@ -505,13 +504,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
 
-            // ── 兴趣筛选栏（🆕 2026-10-03 从「我的」页移来 · 白哥真机反馈）──
-            //    自包含组件：自己 watch `interestProvider` ⇒ 与下面 `_feedKey` 天然同步
-            //    （两者读同一个 provider，不存在「显示 A、请求 B」的漂移）。
-            //    位置：标题栏与信息流之间 —— 它是「看信息流的前置控制」，
-            //    必须与被它筛的内容**同屏**（原来在「我的」页，要切 tab、跨屏）。
-            const InterestFilterBar(),
-
+            // 🔴 2026-10-03：这里**曾**放过兴趣筛选栏（`InterestFilterBar`），
+            //    白哥真机反馈「**阅读界面太拥挤**」⇒ 已移回「我的」页。
+            //    🔑 判据修正：「前置控制放哪」= **使用频率 × 占用空间** ——
+            //       兴趣筛选是**低频**操作（设一次长期不动），却要在信息流页
+            //       **常驻占一行** ⇒ 用一次的便利，换每天的拥挤，不划算。
+            //       信息流页的垂直空间是**稀缺资源**，留给内容。
+            //    ⚠️ **别再放回来** —— 详见 `widgets/interest_filter_section.dart` 类文档。
             // ── 信息流（设计稿 `.feed` padding 0 16px · `.fcards` gap 13px）──
             Expanded(
               child: ref.watch(feedProvider(_feedKey)).when(

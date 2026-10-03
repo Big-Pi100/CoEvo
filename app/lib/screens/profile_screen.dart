@@ -25,6 +25,7 @@ import '../widgets/claim_dialog.dart';
 import '../widgets/clay_button.dart';
 import '../widgets/clay_field.dart';
 import '../widgets/co_dialog.dart';
+import '../widgets/interest_filter_section.dart';
 import '../widgets/order_history.dart';
 import '../widgets/subscribe_panel.dart';
 import '../theme/clay.dart';
@@ -487,13 +488,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _buildAccountGroup(auth),
         const SizedBox(height: CoSpacing.lg),
 
-        // 🔴 2026-10-03：「内容偏好（兴趣筛选）」分组**已移除** —— 白哥真机反馈
-        //    「UI 设计不好 + 下拉栏」⇒ 移到**信息流页顶部**（`InterestFilterBar`）。
-        //    🔑 兴趣筛选是「**看信息流的前置控制**」，属信息流页、**不属设置页** ——
-        //       ⚠️ **别再放回来**（否则又是一次「筛选器与所筛内容跨屏」）。
-        //    迁移依据：`widgets/interest_filter_bar.dart` 类文档（含「撤回已定案 = 一组动作」）。
+        // ── ③ 内容偏好（兴趣筛选）──
+        //    🔴 **位置与形态都改过两轮**，最终定在这里（白哥 2026-10-03 两次真机反馈）：
+        //      · v1 「我的」页 · 12 个胶囊**全展开** ⇒「UI 设计不好」（低频项占半屏，撑乱本页）
+        //      · v2 **信息流页顶部** · 常驻一行 ⇒「**阅读界面太拥挤**」
+        //      · v3 ⭐ **「我的」页 · 收起成一行**（本版）—— 保留 v1 的位置，修掉 v1 的形态
+        //    🔑 **判据（修正后）**：「前置控制放哪」= **使用频率 × 占用空间**，
+        //       不是「它是不是前置控制」。兴趣筛选**低频**（设一次长期不动）
+        //       ⇒ 属设置页，**且必须能收起来**（收起态只占一行）。
+        //    📌 完整推导 + 两次反馈的对照表 → `widgets/interest_filter_section.dart` 类文档。
+        _groupLabel('内容偏好'),
+        const InterestFilterSection(),
+        const SizedBox(height: CoSpacing.lg),
 
-        // ── ③ 订阅 ──
+        // ── ④ 订阅 ──
         //    🔴 登录态分流的**三处之一**（另两处：顶栏通知入口 · 账号组）。
         //
         //    未登录时**不隐藏订阅组**，而是换文案为「订阅完整版」入口 ——
@@ -513,7 +521,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ],
         const SizedBox(height: CoSpacing.lg),
 
-        // ── ④ 其他 ──
+        // ── ⑤ 其他 ──
         //    🔑 「我的成就」是**到成就墙的入口**（不是成就列表本身）。
         //      本页不再展示徽章/进度 —— 那两样都在 `/achievements`。
         //
@@ -541,7 +549,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
         const SizedBox(height: CoSpacing.xl),
 
-        // ── ⑤ 退出账号（**仅已登录**）──
+        // ── ⑥ 退出账号（**仅已登录**）──
         //    🔴 未登录无账号可退。原先是**无条件渲染** → 逻辑矛盾
         //       （未登录的用户看到一个「退出账号」，点了会清一个本来就不存在的登录态）。
         if (auth.isAuthenticated) _buildSignOutTile(),
