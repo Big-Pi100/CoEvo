@@ -1,0 +1,208 @@
+Hướng Dẫn Khắc Phục Lỗi "Setup Does Not Support Configuration or Installation to Disk Connected Through USB or IEEE 1394"
+\`
+
+Gặp lỗi** \"[Setup Does Not Support Configuration or Installation to Disk Connected Through USB or IEEE 1394](https://tieushare.blogspot.com/)\"** \(Setup không hỗ trợ cấu hình hoặc cài đặt vào ổ đĩa kết nối qua USB hoặc IEEE 1394\) khi cài đặt Windows hoặc phần mềm khác có thể khiến bạn bối rối\. Lỗi này thường xuất hiện khi cố gắng cài hệ điều hành \(OS\) lên ổ đĩa ngoài kết nối qua **USB** hoặc **IEEE 1394 \(FireWire\)**\. Hướng dẫn này sẽ giải thích lý do lỗi xảy ra, cách khắc phục, và các **cách tốt nhất để xử lý lỗi cài đặt USB hoặc IEEE 1394** một cách dễ hiểu\.
+
+## Tại Sao Lỗi **Cài Đặt USB hoặc IEEE 1394** Xuất Hiện?
+
+Lỗi **\"Setup không hỗ trợ cấu hình hoặc cài đặt vào ổ đĩa kết nối qua USB hoặc IEEE 1394\"** thường xảy ra khi cài Windows vì hệ thống cài đặt của Microsoft chỉ cho phép cài lên ổ đĩa trong \(như SATA hoặc NVMe SSD\) để đảm bảo hiệu suất và độ ổn định\. Ổ đĩa ngoài kết nối qua **USB** hoặc **IEEE 1394** \(FireWire\) không được công nhận là ổ đĩa hợp lệ để cài đặt\. Điều này giúp hệ điều hành truy cập các tệp hệ thống quan trọng mà không phụ thuộc vào kết nối ngoài dễ bị lỗi\.
+
+Các trường hợp thường gặp lỗi:
+
+- Cố cài Windows lên ổ cứng ngoài hoặc USB\.
+- Dùng ổ **USB** hoặc **IEEE 1394** làm ổ khởi động chính\.
+- Cấu hình BIOS/UEFI sai, ưu tiên ổ ngoài\.
+
+
+|   |
+| - |
+|  |
+| Lỗi IEEE 1394 |
+
+## Hướng Dẫn Khắc Phục Lỗi \"Setup Does Not Support Configuration or Installation to Disk Connected Through USB or IEEE 1394\" Bằng Cách Tắt VMD Và Tác Động Đến RAID Array trên ASUS
+
+\<\!--more--\>
+
+### Lưu Ý Quan Trọng Trước Khi Tắt VMD
+
+**Lưu ý quan trọng**: Khi bạn tắt công nghệ **Intel Volume Management Device \(VMD\)**, thiết bị của bạn sẽ **không thể sử dụng RAID Array**\. Điều này có nghĩa là nếu bạn đang sử dụng hoặc dự định sử dụng cấu hình RAID \(kết hợp nhiều ổ đĩa để tăng hiệu suất hoặc bảo vệ dữ liệu\), việc tắt VMD sẽ vô hiệu hóa chức năng này\. Vì vậy, trước khi thực hiện, bạn cần xác định rõ:
+
+- **RAID Array là gì?**  
+RAID \(Redundant Array of Independent Disks\) là công nghệ kết hợp nhiều ổ đĩa \(như SSD hoặc HDD\) để hoạt động như một ổ đĩa duy nhất\. RAID có thể:
+
+    - Tăng tốc độ truy xuất dữ liệu \(RAID 0\)\.  
+
+    - Bảo vệ dữ liệu bằng cách sao lưu trên nhiều ổ \(RAID 1, RAID 5\)\.  
+
+    - Kết hợp cả tốc độ và bảo vệ \(RAID 10\)\.  
+
+VMD là một tính năng của Intel giúp quản lý các ổ đĩa trong cấu hình RAID, đặc biệt trên các hệ thống sử dụng ổ NVMe hoặc SSD hiện đại\. Khi VMD được bật, nó kiểm soát cách hệ thống nhận diện và quản lý ổ đĩa, nhưng điều này có thể gây xung đột khi cài Windows trên một số thiết bị, đặc biệt nếu bạn dùng ổ đĩa ngoài qua **USB** hoặc **IEEE 1394 \(FireWire\)**\.
+
+- **Tại sao cần kiểm tra trước?**  
+Nếu bạn đang sử dụng RAID \(ví dụ, hai ổ SSD được cấu hình để tăng tốc độ hoặc sao lưu dữ liệu\), việc tắt VMD sẽ làm mất cấu hình này, khiến dữ liệu trên các ổ RAID có thể không truy cập được hoặc cần cấu hình lại từ đầu\. Do đó, hãy kiểm tra xem bạn có đang dùng RAID hay không \(thường thấy trên máy tính hiệu năng cao hoặc máy chủ\)\. Nếu bạn chỉ dùng một ổ đĩa đơn lẻ \(không phải RAID\), việc tắt VMD sẽ không ảnh hưởng gì\.
+
+**Hành động cần làm**:
+
+- Kiểm tra trong BIOS hoặc phần mềm quản lý ổ đĩa \(như Intel Rapid Storage Technology\) xem thiết bị có đang dùng RAID không\.
+- Nếu không cần RAID, bạn có thể yên tâm tắt VMD để khắc phục lỗi cài đặt\.
+- Nếu cần RAID, hãy cân nhắc các giải pháp khác \(như dùng ổ trong hoặc tích hợp trình điều khiển VMD vào bộ cài Windows\) để tránh lỗi mà vẫn giữ RAID\.
+
+---
+
+## Tại Sao Tắt VMD Giúp Khắc Phục Lỗi **\"Setup không hỗ trợ cấu hình hoặc cài đặt vào ổ đĩa kết nối qua USB hoặc IEEE 1394\"**?
+
+Lỗi **\"Setup không hỗ trợ cấu hình hoặc cài đặt vào ổ đĩa kết nối qua USB hoặc IEEE 1394\"** xảy ra khi bạn cố cài Windows lên một ổ đĩa ngoài \(qua USB hoặc FireWire\) hoặc khi hệ thống không nhận diện được ổ đĩa trong quá trình cài đặt\. Công nghệ **VMD** có thể là nguyên nhân vì:
+
+- **VMD kiểm soát ổ đĩa**: VMD là một lớp quản lý phần cứng của Intel, thường được bật trên các máy tính hiện đại \(đặc biệt là laptop hoặc PC dùng chip Intel\)\. Nó giúp tối ưu hóa hiệu suất ổ NVMe/SSD trong các cấu hình phức tạp như RAID\. Tuy nhiên, khi VMD bật, nó có thể \"ẩn\" ổ đĩa khỏi bộ cài Windows, khiến hệ thống không nhận diện được ổ trong hoặc thậm chí gây xung đột với ổ ngoài qua **USB/IEEE 1394**\.
+- **Tương thích với bộ cài Windows**: Bộ cài Windows tiêu chuẩn \(đặc biệt là Windows 10/11\) đôi khi thiếu trình điều khiển \(driver\) để nhận diện ổ đĩa khi VMD được bật\. Điều này dẫn đến việc Windows báo lỗi khi bạn cố cài lên ổ ngoài hoặc ổ trong được quản lý bởi VMD\.
+- **Tắt VMD để đơn giản hóa**: Khi tắt VMD, hệ thống sẽ quay lại chế độ quản lý ổ đĩa truyền thống \(không qua VMD\)\. Điều này giúp Windows dễ dàng nhận diện ổ đĩa trong hoặc cho phép cài đặt trên ổ ngoài \(nếu dùng công cụ như Rufus\)\. Tắt VMD không làm mất dữ liệu trên ổ, nhưng sẽ thay đổi cách hệ thống nhìn thấy ổ đĩa\.
+
+## Cách Tắt VMD Để Khắc Phục Lỗi
+
+Dưới đây là hai cách tắt VMD trong BIOS/UEFI, phù hợp với mọi người dùng\. Hai cách gần giống nhau, chỉ khác ở giao diện BIOS \(UEFI chuẩn hoặc MyASUS\)\.
+
+### **Cách 1: Tắt VMD trong Giao Diện UEFI Chuẩn**
+
+**Truy cập BIOS/UEFI**:  
+
+- Tắt thiết bị, sau đó nhấn và giữ phím **F2**, rồi nhấn **nút nguồn** để vào BIOS\.
+- Với thiết bị chơi game cầm tay \(như ROG Ally\), nhấn và giữ **phím giảm âm lượng \(-\)**, sau đó nhấn **nút nguồn**\.
+
+
+|   |
+| - |
+|  |
+| BIOS/UEFI |
+
+- Nếu gặp khó khăn, xem Hướng dẫn vào BIOS để biết thêm chi tiết\.
+**Chuyển sang Chế độ Nâng cao**:  
+
+- Trong giao diện BIOS, nhấn phím **F7** hoặc nhấp vào **Chế độ Nâng cao \(Advanced Mode\)** trên màn hình bằng chuột\.
+
+
+|   |
+| - |
+|  |
+| Nhấn phím F7 |
+
+**Tìm và Tắt VMD**:  
+  
+
+- Vào tab **Nâng cao \(Advanced\)**\.
+
+
+|   |
+| - |
+|  |
+| Vào tab Nâng cao \(Advanced\) |
+
+- Chọn **Menu thiết lập VMD \(VMD Setup Menu\)**\.
+- Tìm dòng **Bật bộ điều khiển VMD \(Enable VMD Controller\)**, chọn **Tắt \(Disabled\)**\.
+
+
+|   |
+| - |
+|  |
+| Chọn Tắt \(Disabled\) |
+
+- Nhấn **OK** để xác nhận\.
+
+
+|   |
+| - |
+|  |
+| Nhấn OK để xác nhận |
+
+**Lưu và Khởi động lại**:  
+
+- Nhấn phím **F10**, chọn **OK** để lưu cài đặt và khởi động lại máy\.
+- Hoặc vào tab **Lưu & Thoát \(Save & Exit\)**, chọn **Lưu Thay Đổi và Thoát \(Save Changes and Exit\)**\.
+
+
+|   |
+| - |
+|  |
+| Nhấn phím F10, chọn OK để lưu cài đặt |
+
+Sau khởi động lại, ổ đĩa sẽ xuất hiện trong bộ cài Windows\.
+
+\<\!--more--\>
+
+### Cách 2: Tắt VMD trong MyASUS UEFI
+
+**Vào BIOS/UEFI**:  
+
+- Trước khi bật máy, nhấn và giữ **F2**, sau đó nhấn **nút nguồn**\.
+- Với thiết bị chơi game cầm tay, nhấn và giữ **phím giảm âm lượng \(-\)**, rồi nhấn **nút nguồn**\.
+- Xem Hướng dẫn vào BIOS nếu cần hỗ trợ\.
+
+
+|   |
+| - |
+|  |
+| Giao diện Myasus UEFI |
+
+**Mở Chế độ Nâng cao**:  
+
+- Tại giao diện BIOS, nhấn **F7** hoặc nhấp vào **Chế độ Nâng cao \(Advanced Mode\)**\.
+
+
+|   |
+| - |
+|  |
+| Nhấp vào Chế độ Nâng cao \(Advanced Mode\) |
+
+**Vô hiệu hóa VMD**:  
+
+- Vào tab **Nâng cao \(Advanced\)**, chọn **Menu thiết lập VMD \(VMD Setup Menu\)**\.
+
+
+|   |
+| - |
+|  |
+| Vào tab Nâng cao \(Advanced\) |
+
+- Chọn **Bật bộ điều khiển VMD \(Enable VMD Controller\)**, sau đó chuyển sang **Tắt \(Disabled\)**\.
+
+
+|   |
+| - |
+|  |
+| Chuyển sang Tắt \(Disabled\) |
+
+- Nhấn **OK** để lưu thay đổi\.
+
+
+|   |
+| - |
+|  |
+| Nhấn OK để lưu thay đổi |
+
+**Lưu và Khởi động lại**:  
+
+- Nhấn **F10**, chọn **OK** để lưu và khởi động lại\.
+- Hoặc vào tab **Lưu & Thoát \(Save & Exit\)**, chọn **Lưu Thay Đổi và Thoát \(Save Changes and Exit\)**\.
+
+
+|   |
+| - |
+|  |
+| Nhấn F10, chọn OK để lưu và khởi động lại |
+
+Ổ đĩa sẽ được nhận diện sau khi máy khởi động lại\.
+
+### Lưu Ý Thêm
+
+- **Kiểm tra giao diện BIOS**: Tùy thuộc vào mẫu máy, giao diện BIOS/UEFI có thể hơi khác nhau\. Nếu không tìm thấy **Menu thiết lập VMD**, hãy kiểm tra trong các tab liên quan như **Storage** hoặc **Advanced Settings**\.
+- **Sao lưu dữ liệu**: Trước khi thay đổi cài đặt BIOS, hãy sao lưu dữ liệu quan trọng để tránh rủi ro\.
+- **Tìm hỗ trợ**: Nếu gặp khó khăn, bạn có thể tham khảo tài liệu từ nhà sản xuất thiết bị hoặc diễn đàn như ASUS Support hoặc Microsoft Community\.
+
+---
+
+## Kết Luận
+
+Tắt công nghệ **VMD** là một giải pháp hiệu quả để khắc phục lỗi **\"[Setup không hỗ trợ cấu hình hoặc cài đặt vào ổ đĩa kết nối qua USB hoặc IEEE 1394](https://tieushare.blogspot.com/)\"**, giúp ổ đĩa được nhận diện khi cài Windows\. Hai phương pháp trên, sử dụng giao diện UEFI chuẩn hoặc MyASUS, đều dễ thực hiện và phù hợp với mọi người dùng\. Hãy làm theo các bước trên, lưu cài đặt cẩn thận và tận hưởng quá trình cài đặt Windows mượt mà\!
+
+**Tiểu Share \| Chia sẻ kiến thức về Facebook, TikTok, Instagram, YouTube, công nghệ, lập trình và Java\. Cập nhật những tính năng mới, hướng dẫn thực tế và kiến thức dễ hiểu dành cho mọi người\. **
+
+\`

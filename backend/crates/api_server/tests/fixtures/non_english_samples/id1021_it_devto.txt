@@ -1,0 +1,50 @@
+OpenAPA: una vecchia idea militare per bloccare la prompt injection negli agenti (senza nuovi chip)
+Posted on Oct 1 • Originally published at frontendfacile.it
+
+Classificare una sessione come “segreta” dopo l’accesso a dati sensibili e impedire, in modo deterministico, che finisca in contesti meno sicuri.
+
+Gli agenti basati su LLM sono bravissimi a portare a termine task complessi, ma hanno una debolezza strutturale: faticano a separare le istruzioni dell’utente da input ostili infilati in contenuti esterni (pagine web, issue, email, log, documenti).
+
+Quando un agente ha accesso a strumenti potenti (filesystem, GitHub, DB, browser, deploy, email), questa debolezza diventa pratica, non teorica: un prompt “iniettato” può convincerlo a esfiltrare segreti, modificare risorse, o aggirare i “no” dell’applicazione.
+
+Negli ultimi anni l’industria ha provato più strade. Le due più diffuse hanno limiti prevedibili.
+
+L’idea: mantenere una lista di operazioni vietate.
+
+Il limite: gli agenti trovano facilmente equivalenti funzionali. Blocchi un comando, e l’agente ottiene lo stesso risultato con un percorso alternativo (un altro tool, un altro endpoint, un altro formato di output). È sicurezza “a whack-a-mole”.
+
+L’idea: un modello supervisiona l’altro e blocca azioni rischiose.
+
+Il limite: è comunque un LLM. Quindi eredita lo stesso tipo di vulnerabilità (può essere confuso, manipolato, o “persuaso”). Anche introducendo separazioni (per esempio impedendo al supervisore di vedere certi contenuti), resta un approccio probabilistico: va bene per mitigare spam o contenuti borderline, meno per azioni con conseguenze irreversibili.
+
+OpenAPA propone una terza via: invece di “convincere” l’agente a comportarsi bene, gli mette davanti un cancello.
+
+L’idea è ispirata a un modello di sicurezza usato da decenni in contesti militari/classificati:
+
+Trasportato sugli agenti:
+
+Il punto chiave: OpenAPA non valuta la “bontà” delle intenzioni dell’LLM. Applica regole.
+
+Nei progetti moderni, specialmente in team frontend, l’agente viene spesso usato per:
+
+È un mix tossico: dati sensibili + canali di output pubblici (issue tracker, paste, commenti, commit). Se la sessione legge un file segreto, qualsiasi successiva azione verso un target “public” dovrebbe essere considerata sospetta per definizione.
+
+Con OpenAPA la protezione è indipendente dal prompt: anche una prompt injection “perfetta” non cambia le policy.
+
+Scenario tipico:
+
+Senza controlli: l’agente potrebbe incollare interi blocchi di codice o file “segreti” nel testo dell’issue.
+
+Con OpenAPA:
+
+Due dettagli utili in produzione:
+
+Questo tipo di guardrail ha un prezzo.
+
+Detto questo, è una delle prime proposte che mette tra agente e strumenti un meccanismo chiaro: non “fidarti dell’LLM”, ma isola e applica policy.
+
+Se stai introducendo agenti nel workflow (anche solo per repo frontend), la domanda non è “quanto è bravo il modello?”, ma:
+
+Un modello di classificazione a sessione, con enforcement esterno e deterministico, sposta la sicurezza da un piano “probabilistico” (prompt, filtri, supervisori) a uno “ingegneristico” (policy, livelli, blocchi, audit). In altre parole: meno psicologia del modello, più controllo dei confini. È un cambio di paradigma che vale la pena tenere d’occhio mentre gli agenti diventano sempre più autonomi.
+
+Articolo originale: https://frontendfacile.it/blog/openapa-una-vecchia-idea-militare-per-bloccare-la-prompt-injection-negli-agenti-

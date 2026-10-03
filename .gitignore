@@ -180,3 +180,18 @@ desktop.ini
 #    ⚠️ 显式列出而非目录通配 —— `fixtures/` 里 `benchmarks_id1452.md` /
 #    `http_query_id1444.md` 是**手动挑选**的样本，**应当入库**。
 /scripts/trace_verify/fixtures/vn_4260.txt
+# 🔑 2026-10-03：**全库**导出（966 条 ≈ 6 MB）—— `gate_replay.rs` 的输入。
+#    同一个「批量导出 ⇒ 不入库」判据（体积 + 含生产正文）。
+#    ⚠️ **但它必需** —— 不进仓库就得**每次现导**（`dump_prod_content.py`），
+#       这正是「导出脚本入库、产物不入库」的分工。
+/scripts/trace_verify/fixtures/prod_content_all.json
+
+# ⚠️ 分界（2026-10-03 · 防后来人困惑）：
+#   同一个「生产正文」概念，两处处理相反 —— 判据是「**是不是编译期必需**」：
+#   · `/scripts/.../vn_4260.txt`         → ❌ 不入库（诊断工具用，可现导）
+#   · `backend/crates/api_server/tests/fixtures/non_english_samples/*.txt`
+#                                        → ✅ **入库**（`include_str!` 编译期必需；
+#                                          否则 CI 直接编译失败 / 单测失去防回归能力）
+#   后者与已入库的 `npr.xml`(13 KB) / `devto.xml`(234 KB) / `npr_page.html`(182 KB)
+#   是**同一类**（RSS / 网页原始样本）—— 且这些源的 `redistributable = 1`
+#   （产品本身即存全文并展示）⇒ 无新增许可风险。

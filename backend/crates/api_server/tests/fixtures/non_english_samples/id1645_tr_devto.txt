@@ -1,0 +1,65 @@
+Haftalık yapay zekâ özeti · 2 Ekim 2026
+Bu hafta yapay zekâ gündemini kurumsal benimseme, güvenlik ve veri tarafındaki gelişmeler birlikte şekillendirdi\. Büyük finans ve hizmet şirketlerinin üretime taşıdığı kullanım senaryoları, sınır modellerinin siber yeteneklerine dair yeni uyarılar ve ajan eğitimi için sentetik veri üretimi üzerine çalışmalar öne çıktı\. Küçük işletmelerden gazetecilik projelerine uzanan destek açıklamaları ise teknolojinin yayılımının farklı ölçeklerde sürdüğünü gösterdi\.
+
+### Barclays, operasyonlarını geniş ölçekte Claude'a taşıyor
+
+Barclays, Anthropic ile stratejik iş birliğini genişleterek küresel operasyonlarına kurumsal düzeyde güvenli yapay zekâ sistemleri entegre ediyor\. Banka, yazılım geliştirme süreçlerini hızlandırmak, eski sistemleri modernize etmek ve operasyonel verimliliği artırmak için Claude'u yaygınlaştırıyor\. Buna göre 2026 sonunda geliştirici nüfusunun yüzde 50'sinin Claude Code kullanması, 2027'de ise yazılım mühendislerinin çoğunluğuna ulaşılması bekleniyor\. Bir ML/AI mühendisi için buradaki önemli nokta, yüksek regülasyonlu bir ortamda büyük ölçekli dağıtımın yönetişim disipliniyle birlikte ilerlemesi ve kod üretim araçlarının gerçek kurumsal içgörülerle ölçülen benimsemesi\.
+
+[Kaynak: Anthropic](https://www.anthropic.com/news/barclays-scales-claude)
+
+### Küçük işletmeler için ChatGPT Work ile zaman kazanımı
+
+OpenAI'nin paylaştığı vaka çalışmasında The Den adlı sosyal kulüp, yeni bir lokasyon açarken hazırlık süreçlerini kısaltmak için ChatGPT Work'ten yararlandı\. Hibeye başvuru materyalleri üç gün yerine iki saatte, alkollü içki ruhsatı belgeleri ise dört gün yerine üç saatte hazırlandı\. Şirket, haftada 10-15 saat tasarruf ederek bu zamanı büyümeye ayırabildiğini bildiriyor\. Bu örnek, büyük kurumların ötesinde, düşük hacimli ama çok adımlı idari görevlerde bile üretken yapay zekânın somut verimlilik sağlayabildiğini gösteriyor\.
+
+[Kaynak: OpenAI](https://openai.com/index/the-den-family-social)
+
+### Karar verme modellerinde yeni rekabet: Clef ve Strands Decider 2B
+
+Cloudflare'ın Jev'e rakip olarak Clef adlı karar modelini tanıttığı ve Amazon'un da açık kaynaklı, 2 milyar parametreli Strands Decider 2B modelini yayımladığı bildirildi\. Bu iki gelişme, tekil dil modellerinin ötesinde, belirli karar veya yönlendirme görevlerine odaklanan daha küçük ve uzmanlaşmış modellere yönelik ilgiyi işaret ediyor\. Haberlerde mimari ya da eğitim detayı verilmediği için kapsamı sınırlı tutmak gerekiyor\. Yine de ajan tabanlı sistemlerde karar katmanını ayrı bir modelle ele alma yaklaşımının giderek daha fazla konuşulduğunu söylemek mümkün\.
+
+[Kaynak: dev\.ua](https://news.google.com/rss/articles/CBMid0FVX3lxTE1sRTFtTHZfUUhjdk4wVGI3R3plUDFTdVVtUWZEcWZmNFlBSmEydzJtODZMcVprVTVSNDZSQkFpYkcyQ0p6NGJNdmJhb3c2NG5mbVU4Z2VqTWo3dS1aRWw2NUI2bjVKUGJLWmt1Qk02NnQ5Vnp6RlhZ?oc=5)
+
+### EnterpriseOps Gym: ajanlar için sentetik görev ve doğrulama hattı
+
+ServiceNow AI ekibi, kurumsal ajanların kendi çalışma ortamlarına uyum sağlaması için AutoSynthData adlı bir yöntem sundu\. Yaklaşım; sistem spesifikasyonundan ajan görevlerine, doğrulayıcılardan model hatalarından türetilen müfredata kadar uzanan bir üretim ve ölçekleme hattı içeriyor\. Üretilen veriler örnek bazında onarılıyor, toplu düzeyde gözden geçiriliyor ve EnterpriseOps Gym deneylerinde ITSM gibi alanlarda sonuçlar raporlanıyor\. ML mühendisleri için değerli tarafı, yüksek kaliteli sentetik verinin yalnızca üretimle değil, doğrulama ve onarım döngüsüyle elde edilmesi gerektiği yaklaşımı\.
+
+[Kaynak: Hugging Face](https://huggingface.co/blog/ServiceNow-AI/autosynthdata)
+
+### MCP ajanlarında kaynak duyarlı doğruluk: ProvenanceGuard
+
+Multiverse Computing, MCP tabanlı ajanların farklı kaynaklardan gelen bilgileri tek cevapta birleştirmesiyle ortaya çıkan doğruluk sorununu ele alıyor\. Sorun yalnızca ifadenin doğru olması değil, hangi kaynağa dayandığının da doğru şekilde eşleştirilmesi; çünkü benzer görünen kaynaklar arasında yanlış atıf yapılabiliyor\. Ekip, RAGAS, MiniCheck, AlignScore ve SummaC gibi mevcut doğrulama araçlarının sınırlarını vurgulayan ProvenanceGuard adlı bir çözüm öneriyor\. Araç, kaynak benzerliği yüksek olduğunda iddiaları kontrol ediyor ve engellenen yanıtları onarmaya çalışıyor\. Ajan sistemlerinde kanıt zinciri ve atıf doğruluğunu ölçmek isteyen mühendisler için pratik bir referans niteliğinde\.
+
+[Kaynak: Hugging Face](https://huggingface.co/blog/MultiverseComputingCAI/getting-the-source-right-not-just-the-fact-source)
+
+### Sınır modellerinde siber yetenek eşiği
+
+Simon Willison'in derlediği Anthropic Frontier Red Team notuna göre, ikili sömürü \(binary exploitation\) görevlerinden oluşan iç bir benchmark'ta GLM-5\.3 denemelerin yüzde 4'ünde, Claude Mythos Preview ise yüzde 6'sında tam kontrol akışı ele geçirmesi başarabildi\. Önceki modeller olan Claude Opus 4\.6 ve GLM-5\.2 ise bu görevlerin hiçbirinde başarı sağlayamadı\. Buradaki asıl mesele yüzdelerin kendisinden çok, anlamlı bir eşiğin aşılmış olması\. Güvenlik değerlendirmesi yapan ekipler için bu, siber yeteneklerin artık izole testlerin ötesinde gerçekçi tehdit senaryolarıyla ölçülmesi gerektiğini gösteriyor\.
+
+[Kaynak: Simon Willison](https://simonwillison.net/2026/Sep/29/anthropic-frontier-red-team/)
+
+### OpenAI'den Codex ve gazetecilik tarafında yeni hamleler
+
+OpenAI, Codex kullanıcılarının hikâyelerini ve projelerini topladığı Codex Originals çağrısını duyurdu\. Ayrıca Lenfest Institute ile yürütülen AI Collaborative ve Fellowship Program'ı, 5 milyon dolar fon ve 5 milyon dolara kadar yazılım kredisi ile mühendislik desteğiyle genişletildi\. Bunlar ürün duyurusundan çok ekosistem yatırımı hamleleri olsa da, geliştirici araçlarının nasıl konumlandığına dair fikir veriyor\. Öte yandan Simon Willison'in canlı blogunda, Codex Cloud'ta yaşadığı sorunun ardından Claude Code'a geçtiği notu, bulut tabanlı kodlama araçlarındaki olgunlaşma sürecinin hâlâ süreceğine işaret ediyor\.
+
+[Kaynak: Simon Willison](https://simonwillison.net/2026/Sep/29/openai-devday-2026-live-blog/)
+
+### Haftanın değerlendirmesi
+
+Haftanın ana izlekleri kurumsal ölçekte dağıtım, ajan davranışının doğrulanabilirliği ve sınır yeteneklerinin güvenliğe etkisi oldu\. Özellikle sentetik veri üretimi ile kaynak doğrulaması üzerine çalışmalar, ajan sistemlerini üretime taşırken en çok vakit alan mühendislik problemlerine odaklanıyor\. Siber yetenek eşiğinin aşılması ise değerlendirme altyapısının artık yalnızca doğruluk metrikleriyle sınırlı kalamayacağını düşündürüyor\. Genel tabloya bakıldığında, alan hâlâ hızlı ilerliyor ama kalıcı değerin disiplinli veri, doğrulama ve yönetişim pratiklerinden geçtiği daha net görülüyor\.
+
+---
+
+#### Kaynaklar
+
+- [The Den frees up 10-15 hours a week to grow with ChatGPT Work](https://openai.com/index/the-den-family-social) · OpenAI
+- [Barclays scales Claude to upgrade operations and improve client experience](https://www.anthropic.com/news/barclays-scales-claude) · Anthropic
+- [Cloudflare launches Clef, the model challenging Jev on AI decisions](https://news.google.com/rss/articles/CBMif0FVX3lxTE11STNwQU1nclg3WG56M1BZUXF2ejJnSnRxbGtBLUJIQWJ4aFNvTFYzaE9VNl81OUpVRm5zVU5lbk1fQ0o2c1hSclJVdDdYNDNxS0JqaEYyYnZSaFhKNkZEWUdyalV5N0JhVS14VmtORE80d1Jzc0tFcE1KM29Uajg?oc=5) · Pasquale Pillitteri
+- [Amazon has released its own analogue of Jev - an open decision-making model Strands Decider 2B](https://news.google.com/rss/articles/CBMid0FVX3lxTE1sRTFtTHZfUUhjdk4wVGI3R3plUDFTdVVtUWZEcWZmNFlBSmEydzJtODZMcVprVTVSNDZSQkFpYkcyQ0p6NGJNdmJhb3c2NG5mbVU4Z2VqTWo3dS1aRWw2NUI2bjVKUGJLWmt1Qk02NnQ5Vnp6RlhZ?oc=5) · dev\.ua
+- [AutoSynthData: Generating Training Data for Enterprise Agents](https://huggingface.co/blog/ServiceNow-AI/autosynthdata) · Hugging Face
+- [The Lenfest Institute grows landmark program with expanded OpenAI support](https://openai.com/index/lenfest-ai-collaborative-expansion) · OpenAI
+- [Are you a Codex Original?](https://openai.com/form/codex-originals) · OpenAI
+- [Quoting Anthropic Frontier Red Team](https://simonwillison.net/2026/Sep/29/anthropic-frontier-red-team/) · Simon Willison
+- [OpenAI DevDay 2026 live blog](https://simonwillison.net/2026/Sep/29/openai-devday-2026-live-blog/) · Simon Willison
+- [Getting the Source Right, Not Just the Fact: Source-Aware Verification for MCP Agents](https://huggingface.co/blog/MultiverseComputingCAI/getting-the-source-right-not-just-the-fact-source) · Hugging Face
+
+*Bu yazı ilk olarak [goksudemirci\.tech](https://goksudemirci.tech/yazi/7c752461-8fea-45c8-82e0-43494072e01e) üzerinde yayımlandı\.*

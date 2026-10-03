@@ -1,0 +1,171 @@
+A Linux Kernel CVE Just Dropped. Now What? A Practical Patching Playbook for Small Teams
+Tuần này trên Hacker News có thread \"Several vulnerabilities have been discovered in the Linux kernel\" với gần 500 điểm\. Phần comment thì quen thuộc: một nửa bảo \"chuyện thường ngày\", nửa còn lại hỏi \"vậy giờ mình phải làm gì với mấy con VPS đang chạy production?\"\. Mình thấy câu hỏi thứ hai mới đáng bàn\. Phần lớn team nhỏ ở Việt Nam mà mình từng làm cùng đều có chung một kiểu: `apt upgrade` chạy đều đặn, nhưng server thì **chưa reboot từ năm ngoái**\. Nghĩa là package kernel mới đã nằm trên disk, còn kernel đang chạy trong RAM vẫn là bản cũ, vẫn dính lỗ hổng\.
+
+Bài này là playbook mình đang dùng thật cho khoảng 30 server \(Ubuntu 22\.04/24\.04 và vài con Rocky Linux 9\)\. Không lý thuyết nhiều, chủ yếu là lệnh và script\.
+
+## 1\. Sự thật phũ phàng: upgrade xong chưa có nghĩa là đã patch
+
+Đây là hiểu lầm phổ biến nhất\. Khi bạn chạy `apt upgrade` hay `dnf upgrade`, package manager chỉ cài thêm kernel image mới vào `/boot`\. Kernel cũ vẫn chạy cho đến lần boot tiếp theo\. Userspace library \(như `openssl`, `glibc`\) cũng tương tự: process nào đã load bản cũ thì vẫn giữ bản cũ trong memory cho đến khi restart\.  
+
+
+```mermaid
+flowchart LR
+    A[CVE công bố] --> B[Distro release kernel mới]
+    B --> C[apt/dnf upgrade]
+    C --> D[Kernel mới nằm trong /boot]
+    D --> E{Đã reboot?}
+    E -- Chưa --> F[Vẫn chạy kernel cũ - VẪN DÍNH LỖI]
+    E -- Rồi --> G[Đã an toàn]
+    D --> H{Có livepatch?}
+    H -- Có --> G
+```
+
+Vậy bước đầu tiên luôn là: **kiểm tra kernel đang chạy so với kernel đã cài**\.  
+
+
+```
+# Kernel đang chạy
+uname -r
+
+# Kernel mới nhất đã cài trên disk
+ls -t /boot/vmlinuz-* | head -1
+
+# Ubuntu/Debian: file này xuất hiện khi cần reboot
+cat /var/run/reboot-required.pkgs 2>/dev/null
+
+# needrestart (có sẵn từ Ubuntu 22.04): check kernel ở batch mode
+sudo needrestart -k -b
+# NEEDRESTART-KCUR: 6.8.0-40-generic
+# NEEDRESTART-KEXP: 6.8.0-45-generic
+# NEEDRESTART-KSTA: 3   <- 3 nghĩa là cần reboot
+
+# RHEL/Rocky/Alma: liệt kê security update cho kernel
+sudo dnf updateinfo list --security | grep kernel
+# exit code 1 = cần reboot
+sudo needs-restarting -r; echo $?
+
+```
+
+Enter fullscreen mode Exit fullscreen mode
+
+Trên Ubuntu có subscription Pro \(bản free cho cá nhân vẫn dùng được\), bạn còn có `pro fix CVE-2024-xxxxx` để check trực tiếp một CVE cụ thể đã được fix trên máy chưa\. Rất tiện khi sếp hỏi \"server mình có dính con CVE trên báo không?\"\.
+
+## 2\. Biến việc kiểm tra thành metric, đừng làm bằng tay
+
+SSH vào từng máy gõ `uname -r` thì được 3 máy, đến máy thứ 10 là bỏ\. Mình viết một script Python nhỏ, output JSON, rồi cho chạy bằng cron và đẩy về hệ thống monitoring \(Prometheus node\_exporter textfile collector, Zabbix, hay đơn giản là gửi về một webhook đều được\)\.  
+
+
+```
+#!/usr/bin/env python3
+"""kernel_check.py - báo cáo trạng thái kernel cho monitoring"""
+import json
+import platform
+import socket
+from pathlib import Path
+
+
+def latest_installed_kernel():
+    images = sorted(Path("/boot").glob("vmlinuz-*"),
+                    key=lambda p: p.stat().st_mtime)
+    return images[-1].name.removeprefix("vmlinuz-") if images else None
+
+
+def cpu_vulns():
+    base = Path("/sys/devices/system/cpu/vulnerabilities")
+    if not base.exists():
+        return {}
+    return {f.name: f.read_text().strip() for f in base.iterdir()}
+
+
+def main():
+    running = platform.release()
+    installed = latest_installed_kernel()
+    vulns = cpu_vulns()
+    needs_reboot = (
+        (installed is not None and installed != running)
+        or Path("/var/run/reboot-required").exists()
+    )
+    report = {
+        "host": socket.gethostname(),
+        "running": running,
+        "latest_installed": installed,
+        "needs_reboot": needs_reboot,
+        "vulnerable_cpu": [k for k, v in vulns.items()
+                           if v.startswith("Vulnerable")],
+    }
+    print(json.dumps(report, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()
+
+```
+
+Enter fullscreen mode Exit fullscreen mode
+
+Cần Python 3\.9\+ vì dùng `removeprefix`\. Phần `cpu_vulns()` đọc thêm `/sys/devices/system/cpu/vulnerabilities/`, nơi kernel tự báo cáo trạng thái mitigation cho các lỗi kiểu Spectre/Meltdown/Retbleed\. Dòng nào bắt đầu bằng `Vulnerable` là bạn cần để ý: hoặc thiếu microcode, hoặc kernel quá cũ\.
+
+Mình set alert đơn giản: `needs_reboot == true` quá **7 ngày** thì báo lên channel\. Không cần hoàn hảo, chỉ cần không ai quên\.
+
+## 3\. Chiến lược reboot: tự động, nhưng có kiểm soát
+
+Với team nhỏ, mình chia server làm 2 nhóm:
+
+- **Stateless** \(web app sau load balancer, worker queue\): cho tự reboot\.
+- **Stateful** \(database, server có 1 instance duy nhất\): reboot thủ công trong maintenance window, hoặc dùng livepatch\.
+
+Với nhóm stateless trên Ubuntu, `unattended-upgrades` làm được hết\. Sửa file `/etc/apt/apt.conf.d/50unattended-upgrades`:  
+
+
+```
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "03:30";
+Unattended-Upgrade::Automatic-Reboot-WithUsers "false";
+
+```
+
+Enter fullscreen mode Exit fullscreen mode
+
+Điểm quan trọng: **đừng để mọi máy reboot cùng lúc 03:30**\. Đặt giờ lệch nhau \(03:00, 03:30, 04:00\.\.\.\) theo từng node để load balancer luôn còn instance sống\. Trên Rocky/RHEL thì dùng `dnf-automatic` với `upgrade_type = security` trong `/etc/dnf/automatic.conf`, kết hợp một systemd timer riêng để reboot khi `needs-restarting -r` trả về 1\.
+
+Quy trình rolling reboot mình dùng cho cụm web:  
+
+
+```mermaid
+sequenceDiagram
+    participant Ops as Script/Ansible
+    participant LB as Load Balancer
+    participant N as Node
+    Ops->>LB: Drain node (ngừng nhận traffic)
+    LB-->>Ops: Connections = 0
+    Ops->>N: reboot
+    N-->>Ops: SSH up + healthcheck OK
+    Ops->>N: uname -r == kernel mới?
+    Ops->>LB: Enable node lại
+    Ops->>Ops: Sang node tiếp theo
+```
+
+Nếu dùng Ansible, module `ansible.builtin.reboot` cộng `serial: 1` trong playbook là đủ cho flow trên\. Bước \"kiểm tra `uname -r` sau reboot\" hay bị bỏ qua, nhưng mình từng gặp trường hợp GRUB vẫn boot vào kernel cũ vì `GRUB_DEFAULT` bị ai đó hardcode\. Reboot xong mà kernel không đổi thì coi như chưa làm gì\.
+
+## 4\. Livepatch: cứu cánh cho máy không thể reboot
+
+Với database primary hay server legacy không ai dám động vào, livepatch cho phép vá kernel ngay khi đang chạy, không cần reboot:
+
+- **Ubuntu**: `sudo pro enable livepatch`, sau đó kiểm tra bằng `canonical-livepatch status --verbose`\.
+- **RHEL/Rocky/Alma**: `kpatch` \(`sudo dnf install kpatch kpatch-dnf`\), kiểm tra bằng `kpatch list`\.
+
+Nhưng cần hiểu đúng giới hạn: livepatch chỉ áp dụng được cho **một số** CVE nghiêm trọng mà vendor chọn để làm patch, và thường chỉ hỗ trợ kernel GA/LTS chính thức \(không phải kernel HWE hay custom build nào cũng được\)\. Livepatch giúp bạn **kéo dài** khoảng thời gian giữa hai lần reboot chứ không thay thế được reboot\. Mình vẫn đặt lịch reboot các máy này mỗi quý một lần\.
+
+Một mẹo nữa: với VPS giá rẻ \(DigitalOcean, Vultr, Linode\.\.\.\), nhiều khi chạy các bản image tối giản, livepatch không hỗ trợ kernel flavor đó\. Kiểm tra `canonical-livepatch status` trước, đừng mặc định là \"bật rồi thì yên tâm\"\.
+
+## Kết luận
+
+Lỗ hổng kernel sẽ còn xuất hiện đều đều, thread HN tuần này chỉ là một lần nữa trong rất nhiều lần\. Thứ phân biệt team ổn với team gặp sự cố không nằm ở việc đọc tin nhanh, mà ở chỗ có quy trình sẵn hay không\. Checklist mình đề xuất:
+
+1. **Ngay hôm nay**: chạy `uname -r` so với `ls -t /boot/vmlinuz-* | head -1` trên tất cả server\. Bạn sẽ bất ngờ với số máy đang chạy kernel cũ\.
+1. **Tuần này**: deploy script `kernel_check.py` \(hoặc tương đương\) chạy bằng cron, alert khi `needs_reboot` quá 7 ngày\.
+1. **Phân loại server**: stateless thì bật `Automatic-Reboot` với giờ lệch nhau; stateful thì lên lịch maintenance window cố định\.
+1. **Máy không thể reboot**: bật livepatch/kpatch, nhưng vẫn reboot định kỳ mỗi quý\.
+1. **Luôn verify sau reboot**: `uname -r` phải ra đúng version mới, nếu không thì kiểm tra lại cấu hình GRUB\.
+
+Patch xong mà không reboot thì cũng như mua khóa mới rồi để nguyên trong hộp\. Đừng để server của bạn là cái cửa đó\.
