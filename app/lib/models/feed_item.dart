@@ -1,5 +1,63 @@
 import 'package:flutter/foundation.dart' show debugPrint;
 
+/// 分类显示表（后端 key → 界面文字）。
+///
+/// ⚠️ **key 必须与后端受控词表逐字一致** ——
+///    后端定义处：`backend/crates/api_server/src/schema.rs` 的
+///    **`CONTENT_CATEGORIES`**（唯一权威）。改这里必须同步改那里（反之亦然）。
+///    这条一致性由 `scripts/query_verify/bin/verify_feed_wiring.dart`
+///    的【9】组断言锁住（它读这个 map 的 key 与那份清单比对）。
+///
+/// # 🔑 这 8 个值的来历（**照定稿收敛**，2026-10-02 白哥批准）
+/// 定稿 → `implementation-plan-v2` §10.3.1「扩到 **7** 个 category，**删掉 `life`**」：
+/// `tech | business | science | sports | culture | entertainment | health`
+/// （理由：兴趣标签**用户可见**，粒度决定「按我兴趣推」的感知强度；
+///   且「生活」太糊 —— 睡眠算健康还是生活？会让抓取时分类不稳定）。
+///
+/// 🆕 **`news` 是第 8 个值**（白哥追加）—— 定稿两版都没有它：
+/// 它是**实现期**为 NPR / ECNS 临时加的，而「综合 / 国际新闻」
+/// 确实不属于任何兴趣类 ⇒ 保留，卡片显示 `News`。
+///
+/// 🆕 **2026-10-02 三轮扩到 12 类**（白哥「不能归类可以增加新分类」）：
+///    新增 `education` / `history` / `law` / `family` 四类。
+///    ⇒ 每个类**都有源覆盖**（后端断言：分类集合 ≡ `CONTENT_CATEGORIES`）。
+///
+///    ⚠️ 后端新增「跨类编辑栏目」**不接**（`Opinion`/`Analysis`/`Perspective`/
+///       `Obituaries`/`Race`/`On Disabilities`）—— 它们的内容分属各类，
+///       建类会让分类自相矛盾。详见 `schema.rs` 的 `CONTENT_CATEGORIES` 注释。
+///
+///    ⚠️ **12 个已是上限**（兴趣标签用户可见，定稿 §10.3.1）——
+///       再加就该先合并（`law`→`news`、`family`→`health`）。
+///
+///    后端锁定处：`content_fetch::tests::test_seed_sources_are_loaded` ①b
+///    （断言 `content_source` 的分类集合 **≡** `CONTENT_CATEGORIES`）。
+/// 🔴 **为什么在顶层（不在 `FeedItem` 内）** —— 2026-10-03 从类内移出：
+///    ① 它是**跨模块共享定义**：卡片元信息行 + 「我的」页的兴趣筛选 pill 都用它
+///       两处各写一份映射 = 同一口径两个出处 ⇒ 必然漂移
+///    ② `k` 前缀在本项目是**顶层常量**惯例（`kFeedPageSize` / `kInterestPrefsKey` /
+///       `kUnescapablePunct` …）—— 原先在类内却叫 `_categoryLabels`（私有成员）
+///    ⚠️ **踩过的坑**：改名时只把 `_` 换成 `k`，**位置没跟着动** ⇒ 外部按顶层惯例
+///       **裸写** `kCategoryLabels` 时**解析不到**（它是 `FeedItem` 的静态成员）。
+///       🔑 这类错**语法检查查不出**（`dart format` 通过），只有**符号解析**才报 ——
+///          所以「语法通过 ≠ 能编译」，且断言必须验「可达」而非「字符串存在」。
+
+const Map<String, String> kCategoryLabels = {
+  'news': 'News',
+  'tech': 'Tech',
+  'business': 'Business',
+  'science': 'Science',
+  'sports': 'Sports',
+  'culture': 'Culture',
+  'entertainment': 'Entertainment',
+  'health': 'Health',
+  // ── 🆕 2026-10-02 三轮新增 ──
+  'education': 'Education',
+  'history': 'History',
+  'law': 'Law',
+  'family': 'Family',
+};
+
+
 /// 信息流文章 —— 一篇文章 = 一张卡片 + 一个阅读对象。
 ///
 /// 目标态见 `docs/design/visual-feed-bookmark-2026-09-25.html`：
@@ -119,52 +177,6 @@ class FeedItem {
   ///   所以同时 `debugPrint` 一条（见 [FeedItem.fromJson]），别让它静默。
   static const String _unknownCategory = 'Reading';
 
-  /// 分类显示表（后端 key → 界面文字）。
-  ///
-  /// ⚠️ **key 必须与后端受控词表逐字一致** ——
-  ///    后端定义处：`backend/crates/api_server/src/schema.rs` 的
-  ///    **`CONTENT_CATEGORIES`**（唯一权威）。改这里必须同步改那里（反之亦然）。
-  ///    这条一致性由 `scripts/query_verify/bin/verify_feed_wiring.dart`
-  ///    的【9】组断言锁住（它读这个 map 的 key 与那份清单比对）。
-  ///
-  /// # 🔑 这 8 个值的来历（**照定稿收敛**，2026-10-02 白哥批准）
-  /// 定稿 → `implementation-plan-v2` §10.3.1「扩到 **7** 个 category，**删掉 `life`**」：
-  /// `tech | business | science | sports | culture | entertainment | health`
-  /// （理由：兴趣标签**用户可见**，粒度决定「按我兴趣推」的感知强度；
-  ///   且「生活」太糊 —— 睡眠算健康还是生活？会让抓取时分类不稳定）。
-  ///
-  /// 🆕 **`news` 是第 8 个值**（白哥追加）—— 定稿两版都没有它：
-  /// 它是**实现期**为 NPR / ECNS 临时加的，而「综合 / 国际新闻」
-  /// 确实不属于任何兴趣类 ⇒ 保留，卡片显示 `News`。
-  ///
-  /// 🆕 **2026-10-02 三轮扩到 12 类**（白哥「不能归类可以增加新分类」）：
-  ///    新增 `education` / `history` / `law` / `family` 四类。
-  ///    ⇒ 每个类**都有源覆盖**（后端断言：分类集合 ≡ `CONTENT_CATEGORIES`）。
-  ///
-  ///    ⚠️ 后端新增「跨类编辑栏目」**不接**（`Opinion`/`Analysis`/`Perspective`/
-  ///       `Obituaries`/`Race`/`On Disabilities`）—— 它们的内容分属各类，
-  ///       建类会让分类自相矛盾。详见 `schema.rs` 的 `CONTENT_CATEGORIES` 注释。
-  ///
-  ///    ⚠️ **12 个已是上限**（兴趣标签用户可见，定稿 §10.3.1）——
-  ///       再加就该先合并（`law`→`news`、`family`→`health`）。
-  ///
-  ///    后端锁定处：`content_fetch::tests::test_seed_sources_are_loaded` ①b
-  ///    （断言 `content_source` 的分类集合 **≡** `CONTENT_CATEGORIES`）。
-  static const Map<String, String> kCategoryLabels = {
-    'news': 'News',
-    'tech': 'Tech',
-    'business': 'Business',
-    'science': 'Science',
-    'sports': 'Sports',
-    'culture': 'Culture',
-    'entertainment': 'Entertainment',
-    'health': 'Health',
-    // ── 🆕 2026-10-02 三轮新增 ──
-    'education': 'Education',
-    'history': 'History',
-    'law': 'Law',
-    'family': 'Family',
-  };
 
   /// 阅读速度（词/分钟）—— 用于把 `word_count` 换算成「N min」。
   ///

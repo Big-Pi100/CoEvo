@@ -1,0 +1,14 @@
+name: codestatic
+description: 本地「符号解析」检查 —— 用 package:analyzer 做编译级诊断（本机 flutter analyze 崩时的替代）
+publish_to: 'none'
+version: 1.0.0
+
+environment:
+  sdk: ">=3.9.0 <4.0.0"
+
+dependencies:
+  # 🔴 钉版本（不用 any）：analyzer 的 **API 在大版本间会变**
+  #    （本脚本用的 `AnalysisContextCollection` / `getResolvedUnit` /
+  #      `Diagnostic.severity` 都是 14.x 的形状）。
+  #    📌 判据同 CI：锁版本要取「实际在用的那个」—— 14.4.0 是本机实测可用的版本。
+  analyzer: ^14.4.0

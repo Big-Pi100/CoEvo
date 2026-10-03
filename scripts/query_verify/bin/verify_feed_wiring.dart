@@ -73,6 +73,7 @@ void main() {
   final repo = readNoComment('../../app/lib/services/user_word_repository.dart');
   final handler = readNoComment('../../backend/crates/api_server/src/content_handler.rs');
   final schema = readNoComment('../../backend/crates/api_server/src/schema.rs');
+  final profile = readNoComment('../../app/lib/screens/profile_screen.dart');
 
   // ══════════════════════════════════════════════════════════
   section('【1】信息流：从服务端取数（不再有 mock）');
@@ -301,6 +302,37 @@ void main() {
   // 🔴 定稿要求删掉的 `life`：**必须彻底消失**（否则语义残留会把它带回来）
   check('🔴 `life` 已从两边删除（定稿：「生活太糊」）',
       !backendCats.contains('life') && !dartCats.contains('life'));
+
+  // ══════════════════════════════════════════════════════════
+  section('【9b】🔴 跨模块常量的**定义位置**（2026-10-03 真实编译失败）');
+  // ══════════════════════════════════════════════════════════
+  //
+  // # 事故
+  // `kCategoryLabels` 原名 `_categoryLabels`，是 **`FeedItem` 的私有静态成员**。
+  // 兴趣界面要复用它 ⇒ 改名 `kCategoryLabels`（去私有）、**但位置没动**。
+  // 而 `k` 前缀在本项目是**顶层常量**惯例（`kFeedPageSize` / `kInterestPrefsKey` …）
+  // ⇒ 调用方**按惯例裸写** `kCategoryLabels` ⇒ **解析不到** ⇒ `flutter build` 失败：
+  //     "The getter 'kCategoryLabels' isn't defined for the type '_ProfileScreenState'"
+  //
+  // 🔑 **为什么本脚本没能提前拦住**：原断言只查「字符串存在」
+  //    （`feedItem.contains('kCategoryLabels')`）⇒ 它**报了 ✅**。
+  //    「字符串存在」≠「引用可解析」—— 这类错**语法检查也查不出**（`dart format` 通过）。
+  //
+  // 📌 判据：**跨模块共享的标识符，断言要锁「定义位置（顶层 / 类内）」**，
+  //    而不只是「它存在」。位置决定调用方能不能裸名引用。
+  final defMatch = RegExp(
+    r'^(?<indent>[ \t]*)(?:static )?const Map<String, String> kCategoryLabels',
+    multiLine: true,
+  ).firstMatch(feedItem);
+  check('🔴 `kCategoryLabels` 有定义（前提）', defMatch != null,
+      '截不到 ⇒ 下面会假绿');
+  check('🔴 它定义在**顶层**（缩进为空 ⇒ 外部可裸名引用）',
+      defMatch != null && defMatch.namedGroup('indent')!.isEmpty,
+      '缩进非空 ⇒ 是**类静态成员** ⇒ 外部裸名引用**会解析失败**（build 会报 not defined）');
+  check('🔴 兴趣界面用**裸名**引用它（与上面「顶层」配套）',
+      profile.contains('kCategoryLabels.entries'));
+  check('不出现 `FeedItem.kCategoryLabels`（那是「定义在类内」的写法，与顶层矛盾）',
+      !profile.contains('FeedItem.kCategoryLabels'));
   // 源配置的 CHECK 必须与常量同步（否则改了一边另一边还在放行）
   check('`content_source.category` 的 CHECK 与常量同步（8 个值）',
       RegExp(r"CHECK \(category IN \('news','tech','business','science','sports',")
