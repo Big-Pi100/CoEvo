@@ -21,6 +21,7 @@ import '../widgets/bookmark_toggle.dart';
 import '../widgets/claim_dialog.dart';
 import '../widgets/feed_card.dart';
 import '../widgets/header_chip.dart';
+import '../widgets/interest_filter_bar.dart';
 
 /// 首页 —— **信息流**（导航第一个 tab「阅读」）。
 ///
@@ -503,6 +504,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ],
               ),
             ),
+
+            // ── 兴趣筛选栏（🆕 2026-10-03 从「我的」页移来 · 白哥真机反馈）──
+            //    自包含组件：自己 watch `interestProvider` ⇒ 与下面 `_feedKey` 天然同步
+            //    （两者读同一个 provider，不存在「显示 A、请求 B」的漂移）。
+            //    位置：标题栏与信息流之间 —— 它是「看信息流的前置控制」，
+            //    必须与被它筛的内容**同屏**（原来在「我的」页，要切 tab、跨屏）。
+            const InterestFilterBar(),
 
             // ── 信息流（设计稿 `.feed` padding 0 16px · `.fcards` gap 13px）──
             Expanded(

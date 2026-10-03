@@ -74,6 +74,8 @@ void main() {
   final handler = readNoComment('../../backend/crates/api_server/src/content_handler.rs');
   final schema = readNoComment('../../backend/crates/api_server/src/schema.rs');
   final profile = readNoComment('../../app/lib/screens/profile_screen.dart');
+  final filterBar =
+      readNoComment('../../app/lib/widgets/interest_filter_bar.dart');
 
   // ══════════════════════════════════════════════════════════
   section('【1】信息流：从服务端取数（不再有 mock）');
@@ -329,14 +331,40 @@ void main() {
   check('🔴 它定义在**顶层**（缩进为空 ⇒ 外部可裸名引用）',
       defMatch != null && defMatch.namedGroup('indent')!.isEmpty,
       '缩进非空 ⇒ 是**类静态成员** ⇒ 外部裸名引用**会解析失败**（build 会报 not defined）');
+  // ⚠️ 2026-10-03：**兴趣界面已从 `profile_screen` 移到 `interest_filter_bar`**
+  //    （白哥真机反馈 ⇒ 筛选栏移到信息流页顶部）。这条断言随之改指向新文件 ——
+  //    🔑 断言必须跟着「**当前**用它的地方」走，否则撤回后会**假红**。
   check('🔴 兴趣界面用**裸名**引用它（与上面「顶层」配套）',
-      profile.contains('kCategoryLabels.entries'));
+      filterBar.contains('kCategoryLabels.entries'));
   check('不出现 `FeedItem.kCategoryLabels`（那是「定义在类内」的写法，与顶层矛盾）',
-      !profile.contains('FeedItem.kCategoryLabels'));
+      !filterBar.contains('FeedItem.kCategoryLabels'));
   // 源配置的 CHECK 必须与常量同步（否则改了一边另一边还在放行）
   check('`content_source.category` 的 CHECK 与常量同步（8 个值）',
       RegExp(r"CHECK \(category IN \('news','tech','business','science','sports',")
           .hasMatch(schema));
+
+  // ══════════════════════════════════════════════════════════
+  section('【10】🔴 兴趣筛选栏在**信息流页**（2026-10-03 位置改动）');
+  // ══════════════════════════════════════════════════════════
+  //
+  // # 事故
+  // 兴趣筛选最初放在「我的」页的「内容偏好」分组（依 `profile-redesign` 锚点）。
+  // 白哥真机反馈：「筛选正常，但 **UI 设计不好**，做成**下拉栏**」——
+  // 🔑 真问题是**位置**：它是「看信息流的前置控制」，放在设置页要**切 tab、跨屏**
+  //    （路径 4 步，且筛选器与所筛内容不在同一屏）。
+  // ⇒ 移到信息流页顶部。**这是一次「撤回已定案」**（实现 / 锚点 / 规格 / 断言 / 设计稿一组动作）。
+  //
+  // 📌 判据：**「控件属于哪一屏」比「它是什么形态」更根本** ——
+  //    形态错了只是难看；位置错了会让用户**走冤枉路**，而且不易被归因。
+  check('🔴 信息流页**引用了**筛选栏', home.contains('InterestFilterBar'));
+  check('🔴「我的」页**不再**有筛选（撤回防回归：别把它放回去）',
+      !profile.contains('InterestFilterBar'));
+  check('🔴「我的」页不再引用 `kCategoryLabels`（分组确已移除）',
+      !profile.contains('kCategoryLabels'));
+  check('筛选栏是**自包含**的（自己 watch provider ⇒ 与 `_feedKey` 天然同步）',
+      filterBar.contains('ref.watch(interestProvider)'));
+  check('`interestKeyOf` 仍由信息流页用来定 family key',
+      home.contains('interestKeyOf('));
 
   // ══════════════════════════════════════════════════════════
   // 汇总

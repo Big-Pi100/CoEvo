@@ -13,11 +13,8 @@ import 'package:flutter/rendering.dart';
 import '../api/user_api_client.dart';
 import '../api/api_config.dart';
 import '../constants/app_info.dart';
-import '../models/feed_item.dart';
 import '../providers/auth_provider.dart';
-import '../providers/interest_provider.dart';
 import '../providers/subscription_provider.dart';
-import '../services/interest_selection.dart';
 import '../providers/theme_provider.dart';
 import '../services/tts_service.dart';
 import '../providers/achievement_notifier.dart';
@@ -490,17 +487,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _buildAccountGroup(auth),
         const SizedBox(height: CoSpacing.lg),
 
-        // ── ③ 内容偏好（兴趣筛选）──
-        //    🔑 位置依据 `profile-redesign-plan` §6.1：`├ 内容偏好 ← 🆕 兴趣筛选
-        //       （替换学习设置）`；界面锚点 `profile-redesign-2026-09-29.html`
-        //       里它也在「账号」之后、「订阅」之前。
-        //    顺序理由（规格原文）：「**兴趣是内容供给侧设置**」——
-        //       与「账号」「订阅」（账号侧）分开，但紧邻内容相关的语境。
-        _groupLabel('内容偏好'),
-        _buildInterestGroup(),
-        const SizedBox(height: CoSpacing.lg),
+        // 🔴 2026-10-03：「内容偏好（兴趣筛选）」分组**已移除** —— 白哥真机反馈
+        //    「UI 设计不好 + 下拉栏」⇒ 移到**信息流页顶部**（`InterestFilterBar`）。
+        //    🔑 兴趣筛选是「**看信息流的前置控制**」，属信息流页、**不属设置页** ——
+        //       ⚠️ **别再放回来**（否则又是一次「筛选器与所筛内容跨屏」）。
+        //    迁移依据：`widgets/interest_filter_bar.dart` 类文档（含「撤回已定案 = 一组动作」）。
 
-        // ── ④ 订阅 ──
+        // ── ③ 订阅 ──
         //    🔴 登录态分流的**三处之一**（另两处：顶栏通知入口 · 账号组）。
         //
         //    未登录时**不隐藏订阅组**，而是换文案为「订阅完整版」入口 ——
@@ -520,7 +513,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ],
         const SizedBox(height: CoSpacing.lg),
 
-        // ── ⑤ 其他 ──
+        // ── ④ 其他 ──
         //    🔑 「我的成就」是**到成就墙的入口**（不是成就列表本身）。
         //      本页不再展示徽章/进度 —— 那两样都在 `/achievements`。
         //
@@ -548,153 +541,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
         const SizedBox(height: CoSpacing.xl),
 
-        // ── ⑥ 退出账号（**仅已登录**）──
+        // ── ⑤ 退出账号（**仅已登录**）──
         //    🔴 未登录无账号可退。原先是**无条件渲染** → 逻辑矛盾
         //       （未登录的用户看到一个「退出账号」，点了会清一个本来就不存在的登录态）。
         if (auth.isAuthenticated) _buildSignOutTile(),
       ],
-    );
-  }
-
-  /// ── 内容偏好：兴趣筛选（🆕 2026-10-03）──
-  ///
-  /// # 语义：**筛选**（白哥 2026-10-03 定）—— 不是排序
-  /// 勾 N 类 ⇒ 信息流**只**显示这 N 类；
-  /// ~~勾 N 类 ⇒ 这 N 类排前面、其余仍在~~（那是排序，**没做**）。
-  ///
-  /// 🔴 **「全部」出口是筛选语义的必要组成**（不是可选装饰）：
-  ///    选「筛选」就必须回答「用户怎么回到全部」——
-  ///    ⇒ 一个都不勾 = 全部（[InterestSelection.none]，key 为 `''`，后端**不筛**）
-  ///      + 有勾选时右上角出现「清除」。
-  ///    📌 判据：**「静默失败 + 无出口」比报错更糟** —— 没有出口的筛选，
-  ///       用户会以为「App 里就只有这一类的文章」。
-  ///
-  /// # 🔴 12 类**全部显示**（白哥 2026-10-03：「空类显示」）
-  /// 即使某类当前没有内容，也**不隐藏、不置灰**：
-  /// · 隐藏 ⇒ 用户永远不知道这个类存在（能力被藏起来）
-  /// · 勾了空类 ⇒ 信息流会**明确说明**「这一类还没有内容」并给出口（见 `home_screen`）
-  ///   ⇒ 这正是「空类显示」的完整含义：**能选 + 选了有解释**。
-  ///
-  /// ⚠️ **暂未标注「哪几类是空的」**：那需要每类的条数，
-  ///    而当前后端**没有**「分类计数」接口（只有 `/api/feed` 返回单次查询的 `total`）。
-  ///    ⇒ 不为这个标注新增接口（本轮的克制）；勾了之后由空状态兜住。
-  ///
-  /// # 显示名直接复用 [kCategoryLabels]
-  /// 🔑 那是**唯一**的「后端 key → 界面文字」映射（卡片元信息行也用它）。
-  ///    在这里另写一份中文映射 = 引入第二个口径 ⇒ 必然漂移
-  ///    （且 `verify_feed_wiring` 的【9】组断言正是为防这个而存在）。
-  ///    ⚠️ 界面锚点画的 pill 是中文（科技/环境/…）且含我们**没有**的「环境」——
-  ///       那是 2026-09-29 的示意值，**以 `kCategoryLabels` 为准**（已在锚点里留注）。
-  Widget _buildInterestGroup() {
-    final t = CoEvoTokensExt.of(context);
-    // 🔑 `valueOrNull ?? none`：prefs 未读完 / 读失败 ⇒ 按「全部」渲染
-    //    —— **不要**在这里 `.when(loading:)` 成空白：偏好读不出来不该挡住设置页。
-    final sel = ref.watch(interestProvider).valueOrNull ?? InterestSelection.none;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(15, 13, 15, 0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: 21,
-                child: Icon(Icons.track_changes_outlined,
-                    size: 17, color: Color(t.ink3.argb32)),
-              ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '兴趣筛选',
-                      style: TextStyle(
-                        fontFamily: CoFonts.uiSans,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Color(t.ink.argb32),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      sel.isAll
-                          ? '决定信息流显示哪些类别 · 不选 = 全部'
-                          : '只看这 ${sel.count} 类',
-                      style: TextStyle(
-                        fontFamily: CoFonts.uiSans,
-                        fontSize: 12,
-                        height: 1.4,
-                        color: Color(t.ink3.argb32),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // 「清除」= **回到全部**的显式出口（仅在确有勾选时出现）
-              if (!sel.isAll)
-                TextButton(
-                  onPressed: () => ref.read(interestProvider.notifier).clear(),
-                  child: const Text('清除'),
-                ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(15, 10, 15, 14),
-          child: Wrap(
-            spacing: CoSpacing.sm,
-            runSpacing: CoSpacing.sm,
-            // 🔑 顺序 = `kCategoryLabels` 的声明顺序（与后端 `CONTENT_CATEGORIES`
-            //    同源）⇒ 排序稳定，不随构建/字典序漂移。
-            children: [
-              for (final e in kCategoryLabels.entries)
-                _interestPill(
-                  label: e.value,
-                  on: sel.contains(e.key),
-                  onTap: () =>
-                      ref.read(interestProvider.notifier).toggle(e.key),
-                ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// 单个兴趣 pill。
-  ///
-  /// 🔑 用公共组件 [Clay] 而不是手写 `Container`：
-  ///    · `state: selected` 会**自动**取 `accent` 填充 + `accentInk` 压字 + `accentOut` 外阴影
-  ///      （见 `app.dart` 的 `.tb.on` 对照表）—— 与全站「选中态」同一套语汇
-  ///    · `onTap` 非空时**自动**处理按下态与回弹，不用自己写 `InkWell`/`AnimatedScale`
-  ///      ⇒ 视觉与交互都无需在此处重复定义（本机也验不了视觉，越少自绘越安全）
-  ///
-  /// ⚠️ 圆角用 `999` = **胶囊形**（pill 的定义就是全圆角），不走 `clay` 的圆角派生 ——
-  ///    后者是**尺寸档**的函数（`scaleRadius`），而 pill 的形态与高度档无关。
-  Widget _interestPill({
-    required String label,
-    required bool on,
-    required VoidCallback onTap,
-  }) {
-    final t = CoEvoTokensExt.of(context);
-    return Clay(
-      state: on ? ClayState.selected : ClayState.raised,
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontFamily: CoFonts.uiSans,
-          fontSize: 13,
-          fontWeight: on ? FontWeight.w600 : FontWeight.w500,
-          // 选中时字压在 accent 上（`accentInk`）；未选时是普通次要文字
-          color: Color(on ? t.accentInk.argb32 : t.ink2.argb32),
-        ),
-      ),
     );
   }
 
