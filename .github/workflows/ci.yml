@@ -420,6 +420,69 @@ jobs:
       - name: Verify FsrsService (imports real app source)
         run: dart run bin/verify_service.dart
 
+  # ── 纯 Dart 验收：痕迹注入 / 转义消化 / 信息流分页 ──
+  #
+  # 🔴 为什么这个 job 之前**不存在**（2026-10-03 加）：这三个脚本从建好起就
+  #    **一直在仓库里、从没被 CI 跑过** —— 而 `feed_provider` 里那个
+  #    「`FeedPage.hasMore` 写好了却零调用」是**同一类病**：
+  #    **写了没人跑 = 迟早失效**（判据：`grep -c` 只有 1 处 = 只有定义）。
+  #
+  # ✅ 为什么这三个能进 CI（**逐条核实过依赖**，不是「看着像纯 Dart」就搬）：
+  #    ① `verify_unescape` / `verify_trace_markdown` / `verify_feed_pager`
+  #       **都不 import Flutter**（核心逻辑全在 `app/lib/services/` 的纯 Dart 层）
+  #       ⇒ 能在最便宜的环境跑，退出码可直接判定
+  #    ② 需要的 fixture **已入库**（`http_query_id1444.md` / `benchmarks_id1452.md`，
+  #       手动挑选的样本）；路径靠 `_repoRoot()` 向上找 `.git` 解析，
+  #       所以 `working-directory` 设在子目录也能定位到仓库根
+  #
+  # ⛔ 为什么**不接** `probe_*.dart`（同为 trace_verify 下的脚本）：
+  #    它们读 `all_bodies.json` / `prod_bodies.json` / `prod_content_all.json`
+  #    —— 全是**从生产库批量导出**的正文（22 MB+，含第三方版权内容），
+  #    在 `.gitignore` 里**故意不入库** ⇒ CI 的干净检出里没有 ⇒ 必然失败。
+  #    📌 判据：**能进 CI 的只有「自带全部输入」的脚本**；依赖生产数据的属于
+  #       「人肉诊断工具」，只能本地/连生产跑。
+  #
+  # ⛔ 为什么**不接** `*.py`：它们要用 SSH 连**生产库**（dump/verify/del）。
+  #    CI 不该、也不能访问生产 —— 部署验证是 `backend-deploy` 的事，与门禁分开。
+  #
+  # 🔴 `sdk` **钉死 3.11.0**（不写 `stable`）—— 与 `frontend` / `ios-build`
+  #    钉 `flutter-version: 3.41.1` 是**同一条教训**：`stable` 随上游漂移，
+  #    而**规则集 / stdlib 行为随版本变化** ⇒「本地绿 / CI 红」会变成常态。
+  #    3.11.0 = 本项目 Flutter 3.41.1 自带的 Dart（`bin/cache/dart-sdk/version` 实测），
+  #    且该版本 archive 实测可下载（dart-archive → HTTP 200）。
+  #    ⚠️ 顺带记录一处**已知不一致**（未改，待批）：上面的 `fsrs-verify` 仍写
+  #       `sdk: stable` —— 同样有漂移风险，但它**不在本轮授权范围**内。
+  trace-verify:
+    name: Trace Verify (pure Dart)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scripts/trace_verify
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: 3.11.0
+
+      - name: Pub get
+        run: dart pub get
+
+      # 三个脚本共用 `check()` + `_fail > 0 ⇒ exit(1)` 的判定模式，
+      # 已逐个**证伪**过（注入真实回归 ⇒ 退出码确实变 1）：
+      #   verify_feed_pager     54 项 · 注入 nextOffset 回归 → 50/4 → exit 1
+      #   verify_unescape       71 项 · 注入 kUnescapablePunct 回归 → 63/8 → exit 1
+      #   verify_trace_markdown 43 项 · 注入 kTraceMarkerPattern 回归 → 40/3 → exit 1
+      # 📌 判据：**门禁必须证伪过** —— 没证伪过的断言集，可能是「永远绿的装饰」。
+      - name: 转义消化（markdown_unescape · 71 项）
+        run: dart run bin/verify_unescape.dart
+
+      - name: 痕迹注入（trace_markdown_source · 43 项）
+        run: dart run bin/verify_trace_markdown.dart
+
+      - name: 信息流分页（feed_pager · 54 项）
+        run: dart run bin/verify_feed_pager.dart
+
   # ── 原生就绪度结构检查 ──
   #
   # 为什么需要：本地 Flutter 是**鸿蒙定制版**，`dart/flutter analyze` 会崩

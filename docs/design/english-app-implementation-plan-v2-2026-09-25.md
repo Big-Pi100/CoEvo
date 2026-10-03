@@ -2286,6 +2286,10 @@ TextStyle(
 
 #### 10.3.1 ✅ 定稿：扩到 7 个 category，删掉 `life`
 
+> ⚠️ **2026-10-03 更正：本小节的「7 类」已过时** —— 现役 **12 类**（`news` + 三轮扩类）。
+> 完整更正、以及「兴趣筛选」的**语义定案**见 **§10.3.2**。
+> 本小节**原样保留**：让「曾经定过 7 类」这件事可追溯（📌 判据：**标注而非删除**）。
+
 ```sql
 category TEXT NOT NULL
   CHECK (category IN ('tech','business','science','sports',
@@ -2299,6 +2303,73 @@ category TEXT NOT NULL
 4. 1:1 映射后，**抓取时的分类规则简单**
 
 ⚠️ **内容抓取时需验证**：VOA / BBC Learning English 的 RSS 是否自带分类？若有要做「源分类 → 我们 category」映射表；NASA 之类的单主题源直接归 `science`。
+
+#### 10.3.2 🆕 语义定案：**筛选**（白哥 2026-10-03 定）＋ 分类数更正 7 → 12
+
+**① 语义 = 筛选（不是排序）**
+
+| 方案 | 行为 | 是否需要「全部」出口 |
+|---|---|---|
+| **筛选** ⭐ 定案 | 勾 N 类 ⇒ **只**显示这 N 类 | ✅ **必须**（否则用户出不去）|
+| ~~排序~~ | 勾 N 类 ⇒ 这 N 类排前，其余仍在 | ❌ 不需要 |
+
+依据：产品定位是「**今天有什么可读**」—— 用户勾兴趣是**缩小范围**，不是**调整优先级**。
+且本项目**没有**个性化权重/已读未读/热度排序（「按我兴趣推」最早是 §10.3 开头的表述，
+但落地形态已被本表收敛为「筛选」）。⚠️ **实施时必须给「全部」出口**（默认值 = 全部）。
+
+**② 分类数：7 → 12（更正 §10.3.1）**
+
+🔴 **权威来源 = 代码，不是本表**：`backend/crates/api_server/src/schema.rs` 的 `CONTENT_CATEGORIES`。
+
+| | 值 |
+|---|---|
+| §10.3.1 写的（❌ 已过时）| `tech business science sports culture entertainment health`（7）|
+| **现役**（2026-10-02 三轮扩类后）| `news tech business science sports culture entertainment health education history law family`（**12**）|
+
+变化：**+`news`**（定稿 7 类漏了它，但它挂着主力源 NPR）· **+4**（`education history law family`）。
+⚠️ §10.3.1 那节**不改写**（保留旧值可追溯）；本节为唯一现役口径。
+
+**③ 🔴🔴 硬约束：内容供给不足（必须先解决，否则筛选比不做更糟）**
+
+2026-10-03 实测生产库 990 条的分布（`scripts/trace_verify/bin/category_stats.py`）：
+
+| category | 全量 | 近 7 天 | |
+|---|---|---|---|
+| tech | 438 | 438 | ✅ |
+| science | 284 | 281 | ✅ |
+| news | 168 | 144 | ✅ |
+| culture | 30 | 13 | 🟡 |
+| health | 16 | 6 | ⚠️ |
+| sports | 10 | 8 | ⚠️ |
+| history | 10 | 3 | ⚠️ |
+| family | 10 | 1 | ⚠️ |
+| entertainment | 9 | 3 | 🔴 |
+| education | 7 | 5 | 🔴 |
+| law | 5 | 5 | 🔴 |
+| business | 3 | 3 | 🔴 |
+
+**12 类里 8 类近 7 天 < 13 条** ⇒ 勾 `business` 得 **3 条**、`family` 得 **1 条**。
+🔴 用户会理解为「**App 里没这类内容**」而不是「被我筛掉了」——
+正是本项目反复踩的那条：**「静默失败 + 无出口」比「报错」更糟**（见 `content-quality-round2`）。
+
+**④ 基础设施已 100% 就位**（2026-10-03 核实，属**接线活**）
+
+| 层 | 状态 |
+|---|---|
+| 后端 | `/api/feed?category=<key>` ✅（`content_handler.rs`）|
+| 客户端 | `fetchFeed(category:, limit:, offset:)` ✅ |
+| Provider | `FutureProvider.family<String>` 当初**就是为兴趣筛选预留的**（注释原话：「分类筛选是既定下一步」）|
+| ⚠️ 缺口 | UI 写死 `feedProvider('')` ⇒ **参数从没被传过非空值** |
+
+**⑤ 实施顺序（定）**
+
+```
+① 定语义 ✅ 2026-10-03（= 筛选）
+② 补内容供给（或定「空类怎么处理」：隐藏 / 提示 / 不可选）   ← ⏳ 当前卡点
+③ 做界面（位置见 §决策 #3：放进「我的」，替换「学习设置」）
+```
+
+📄 调查依据：`docs/review/feed-paging-refresh-and-interests-2026-10-03.md`
 
 ---
 
