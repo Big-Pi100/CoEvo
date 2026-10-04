@@ -673,14 +673,18 @@ jobs:
     name: iOS Build (no codesign)
     runs-on: macos-latest
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
-    # 🔴🔴 `continue-on-error` **已从 job 级移到「Build iOS」那一步**（2026-10-04）
+    # 🔴🔴 关于 `continue-on-error`：**这个 job 现在已经完全没有它了**（2026-10-04）
     #
-    # ## 为什么移（这是一个**真实的假绿**事件）
+    # 完整过程（三步，值得作为「容错生命周期」的模板）：
+    #   ① 原本在 **job 级** ⇒ 制造了一个**真实的假绿**（见下）
+    #   ② 移到 `Build iOS` **步骤级** ⇒ 让 `Setup`/`pub get` 的失败能真红
+    #   ③ 实测 `Build iOS` **绿** ⇒ 那条「必然失败」的旧断言被推翻 ⇒ **连步骤级也移除**
     #
+    # ## ① 为什么要从 job 级挪走（**真实的假绿**事件）
     # 原来写在 job 级时，实测发生的事：
-    #   ① `Setup Flutter` 因 **Flutter SDK 缓存解压失败**（`spawn EIO`）而崩
-    #   ② 后面两步（`flutter pub get` / `flutter build ios`）**被整体跳过**
-    #   ③ 而 job 级的 `continue-on-error` 让整个 run **显示为绿**
+    #   · `Setup Flutter` 因 **Flutter SDK 缓存解压失败**（`spawn EIO`）而崩
+    #   · 后面两步（`flutter pub get` / `flutter build ios`）**被整体跳过**
+    #   · 而 job 级的 `continue-on-error` 让整个 run **显示为绿**
     #   ⇒ 白哥看到「CI 绿」，但 **iOS 编译其实一次都没跑过**。
     #
     # 📌 判据（本轮新增）：**「优化类步骤」失败会掩盖「真正的验证」** ——
@@ -688,13 +692,15 @@ jobs:
     #    ⇒ 关键验证步骤**不得排在「可能失败的非关键步骤」之后**，
     #      且容错**必须精确到步骤**，不能罩住整个 job。
     #
-    # ## 移动后的语义（这才是想要的）
-    #   · `Setup Flutter` / `pub get` 失败 ⇒ **job 真红**（它们该成功）
-    #   · `Build iOS` 失败 ⇒ 该步标黄，**job 仍绿**（已知情况，见下）
-    # ❌ 反例（原来的写法）：**任何**一步失败都让 job 变黄 ⇒ 真问题被吞
+    # ## ③ 为什么连步骤级也移除（依据：实测）
+    # 原步骤级容错的前提是「`Build iOS` 必然失败（缺 Development Team）」——
+    # **实测证明那是错的**：`--no-codesign` 传 `CODE_SIGNING_ALLOWED=NO`
+    # ⇒ 不需要证书、也不需要 Team ID ⇒ 该步**绿**。
+    # ⇒ 现在它是**严格门禁**：失败即 job 红。这正是想要的（iOS 能否编过是真实信号）。
     #
-    # ⚠️ 这里**没有** `continue-on-error`（默认即 false）—— 是**有意省略**，
-    #    不是漏写。job 级一旦设 true 就会罩住所有步骤（上面那段就是教训）。
+    # ⚠️ **这里没有任何 `continue-on-error`** —— 是**有意为之**，不是漏写。
+    #    将来若它因**签名**相关原因失败，**不要**加回容错；
+    #    应先去查「是不是又引入了需要签名的步骤」（签名属 `ios-archive.yml` 的事）。
     defaults:
       run:
         working-directory: app
@@ -783,25 +789,29 @@ jobs:
       #    补它的真实价值是：**将来建「archive → TestFlight」流程时不会忘**
       #    （那个 workflow 的产物会真装到手机上）。
       #
-      # ── 🔴 `continue-on-error` 已从 job 级**移到这一步**（2026-10-04）─────────
+      # ── ✅ `continue-on-error` 已**移除**（2026-10-04 · 按上一条注释的约定执行）──
       #
-      # ## 为什么是这一步，而不是整个 job
-      #   原注释断言「现在**必然失败**（缺 Development Team / Provisioning Profile）」。
-      #   ⚠️ 但**那条断言从未被验证过** —— 因为 job 级的 `continue-on-error`
-      #      加上缓存崩溃，让这一步**每次都被跳过**（见 job 顶部那段）。
+      # ## 移除依据：实测结果**推翻了**原来那条断言
+      #   原注释（现已删除）断言：「现在**必然失败** —— 缺 Development Team /
+      #   Provisioning Profile」。
+      #   ⇒ 2026-10-04 白哥手动触发一次（在修好缓存崩溃、且容错降到步骤级之后），
+      #      **`Build iOS` 这一步绿了**。
+      #   ⇒ 证明那条断言**是错的**：`--no-codesign` 传给 xcodebuild
+      #      `CODE_SIGNING_ALLOWED=NO` ⇒ **不需要证书、也不需要 Team ID**。
+      #   📌 教训：**那条「必然失败」的断言从来没被验证过** ——
+      #      它一直被 job 级容错 + 缓存崩溃掩盖着（见 job 顶部那段「假绿」说明）。
+      #      「预期」写进注释久了，就会被当成「事实」。
       #
-      #   ⇒ 现在把它挪到**步骤级**，效果是：
-      #     · 若它真因缺 Team ID 失败 ⇒ 该步标黄，**job 仍绿**（不刷红灯）
-      #     · 若 `Setup Flutter` / `pub get` 失败 ⇒ **job 真红**（真问题不被吞）
+      # ## 现在的语义：**严格门禁**
+      #   这一步失败 ⇒ **job 真红**。这正是想要的 ——
+      #   iOS 能不能编过是**真实信号**，不该被任何容错吞掉。
+      #   ⏳ 若将来它因**签名**相关原因失败（那是 `archive` 流程才需要 Team ID 的事，
+      #      见 `ios-archive.yml`），**不要**给它加回容错；
+      #      应先去查清「是不是又引入了需要签名的步骤」。
       #
-      # ## ⏳ 它跑起来之后要做的判断（留给下次）
-      #   `--no-codesign` **理论上不需要** Team ID（它不签名）。
-      #   ⇒ 若这一步**绿了**，说明那条注释是**错的**：
-      #     请删掉本行的 `continue-on-error`，让它变回严格门禁。
-      #   📌 判据：**临时的 `continue-on-error` 必须写明「何时移除」**，
-      #      否则会永久留在那里、变成新的静默失效。
+      # 📌 判据（本轮新增）：**临时的容错必须写明「何时移除」+ 移除时须有实测依据**。
+      #    本例完整走了一遍这个流程：写明条件 → 触发验证 → 依据结果移除。
       - name: Build iOS (no codesign)
-        continue-on-error: true
         run: |
           flutter build ios --release --no-codesign \
             --dart-define=API_HOST=api.keyievolution.fun \

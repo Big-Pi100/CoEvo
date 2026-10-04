@@ -313,7 +313,8 @@ IAP_KEY_ID / IAP_ISSUER_ID / IAP_PRIVATE_KEY / IAP_ENVIRONMENT
 | Apple Developer 账号审批 | ⏳ **进行中**（你在办）|
 | **Team ID**（签名必需）| ⏳ 审批通过后可得 → 配进 GitHub Secrets |
 | **App Store Connect API Key**（`.p8` + Key ID + Issuer ID）| ⏳ 待生成 → 配进 GitHub Secrets |
-| `ios-build` job 的 `continue-on-error` | 🔴 **Phase 0 完成后要删掉那一行**（CI 里已写明「何时移除」）|
+| ~~`ios-build` 的 `continue-on-error`~~ | ✅ **已移除**（2026-10-04）—— 实测证明 `--no-codesign` **不需要 Team ID**，那条「必然失败」的旧断言是错的 |
+| **iOS 能否编过** | ✅ **已实测通过**（`Build iOS` 绿 · 含 11 个原生插件）|
 | 归档/签名/导出/上传四步 | ✅ **已实现**（2026-10-04）→ `.github/workflows/ios-archive.yml` |
 
 > 🔑 **所以：iOS 出包不需要你额外决策** —— 等 ASC 账号下来、配好 API Key，

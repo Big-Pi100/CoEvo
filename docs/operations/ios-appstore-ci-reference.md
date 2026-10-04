@@ -314,18 +314,64 @@ App Store Connect → TestFlight
 iPhone 装 TestFlight → 真机测试（含 IAP！）
 ```
 
-### 6.6 当前状态与下一步
+### 6.6 当前状态与下一步（🆕 2026-10-04 晚已更新）
 
 | 项 | 状态 |
 |---|---|
-| ① iOS **能否编过** | ✅ 现在就能验 —— 手动触发 `ios-build` 即可 |
-| ② iOS **真机测试** | ⏳ 需 Team ID + ASC API Key（你账号审批完成后）|
-| ③ 「archive + TestFlight」workflow | ⏳ **未建**（§五 说明了当时不建的四条理由）|
+| ① iOS **能否编过** | ✅ **已验证通过** —— 见下方「实测结果」 |
+| ② iOS **真机测试** | ⏳ 需 Team ID + ASC API Key（账号审批完成后）|
+| ③ 「archive + TestFlight」workflow | ✅ **已建**（`.github/workflows/ios-archive.yml`）· 缺 Secrets 暂时跑不了 |
 
-⚠️ **一处如实交代**：`ios-build` 的注释写着「现在**必然失败**（缺 Development Team /
-Provisioning Profile）」，且据此设了 `continue-on-error: true`。
-但 —— **那是预期，不是实测**，且 `--no-codesign` 理论上**不要求** Team ID。
-⇒ **建议手动触发一次看真实结果**；若它其实能过，那条注释与 `continue-on-error` 都该更新。
+#### ✅ 实测结果：**iOS 编译第一次真的通过**（2026-10-04）
+
+白哥手动触发 `ios-build`（在修好缓存崩溃 + 容错降到步骤级之后）⇒ **`Build iOS` 该步绿**。
+
+**这条结果推翻了三条旧断言**：
+
+| 旧断言 | 实测 |
+|---|---|
+| 「现在**必然失败**（缺 Development Team / Provisioning Profile）」 | 🔴 **错的** —— `--no-codesign` 传 `CODE_SIGNING_ALLOWED=NO` ⇒ **不需要证书、也不需要 Team ID** |
+| 该 job 的 `continue-on-error` 属「临时措施」 | ✅ **已按约定移除**（条件触发 → 实测验证 → 依据结果移除，完整走了一遍流程）|
+| 「iOS 侧无法验证」 | ✅ 不再成立 —— 见下方覆盖面 |
+
+**这次绿覆盖了什么（比表面更多）**：
+
+| 覆盖 | 说明 |
+|---|---|
+| `app/lib` 全部 Dart 代码 | **AOT 编译通过**（含最新的电子书/订阅/注销那批） |
+| **11 个 iOS 原生插件** | `GeneratedPluginRegistrant.m` 实测注册了 11 个，含 **`in_app_purchase_storekit`**（我们的 IAP）|
+| 新增的 `archive` / `xml` | 纯 Dart 包，随整体编译一并验证 |
+| **CocoaPods 集成** | 🔑 见下方「一个反直觉的事实」 |
+
+#### 🔑 一个反直觉的事实：`ios/Podfile` **不在 git 里，也不需要**
+
+实测：本机 `app/ios/` **没有 Podfile**，`git log --all -- ios/Podfile` **零记录**。
+
+**为什么不是问题**（读 `flutter_tools` 源码核实，`macos/cocoapods.dart:246`）：
+
+```dart
+Future<void> setupPodfile(XcodeBasedProject xcodeProject) async {
+  if (!_xcodeProjectInterpreter.isInstalled) return;   // ← 本机无 Xcode ⇒ 直接返回
+  ...
+  final File podfile = xcodeProject.podfile;
+  if (podfile.existsSync()) { ...; return; }
+  final File podfileTemplate = await getPodfileTemplate(...);  // ← 从模板复制
+  podfileTemplate.copySync(podfile.path);
+```
+
+⇒ **`flutter build ios` 会自动从模板生成 Podfile 并跑 `pod install`**。
+· 本机（Windows）无 Xcode ⇒ 提前 return ⇒ **不生成**（所以仓库里没有）
+· CI（macOS）有 Xcode ⇒ **自动生成 + 装 Pods** ⇒ 插件真的被链接进去
+
+⚠️ **但有一条要记住的约束**：既然 Podfile 是**每次在 CI 上现生成**的，
+    ⇒ **任何 iOS 侧配置定制**（最低系统版本、`post_install` 钩子、权限声明等）
+      都**无处可写**。
+    ⇒ 将来若需要，必须**手工创建 `app/ios/Podfile` 并提交**（并注意它与 Flutter 模板的差异会被覆盖逻辑影响）。
+    📌 记录在案，不是当前阻塞。
+
+⚠️ **另一种「绿」的可能**（必须排除）：该步失败但被 `continue-on-error` 显示为**黄**、而 job 显示绿。
+已向白哥确认：**`Build iOS` 这一步本身为绿** ⇒ 即编译真的通过。
+（这也正是本次事故教会的：**「绿」这个词必须问清是「job 绿」还是「步骤绿」**。）
 
 ### 6.7 🔴 实测事故：缓存解压 `spawn EIO`（2026-10-04 第一次手动触发）
 
@@ -384,11 +430,21 @@ Setup Flutter 崩  ⇒  pub get / build ios 被【跳过】
 · 且它**每次 push 都跑** ⇒ 关缓存代价高得多
 📌 判据：**按证据分区处理，不搞一刀切** —— 只改已出现问题的环境。
 
-#### ⏳ 下次要做的判断
+#### ✅ 「下次要做的判断」—— 已完成（2026-10-04 当晚）
 
-`--no-codesign` **理论上不需要** Team ID ⇒
-**若 `Build iOS` 这一步绿了**，说明 `ci.yml` 那条「必然失败」注释是**错的**：
-应删掉该步骤的 `continue-on-error`，让它变回严格门禁。
+触发验证后，`Build iOS` **绿** ⇒ 结论已出，动作已执行：
+
+| 项 | 结果 |
+|---|---|
+| `--no-codesign` 是否真的不需要 Team ID | ✅ **不需要** —— 已实测 |
+| `ci.yml` 那条「必然失败」注释 | 🔴 **已删除**（它是错的）|
+| 该步骤的 `continue-on-error: true` | ✅ **已移除** ⇒ 变回**严格门禁** |
+
+📌 **这个流程本身值得记下来**：写明移除条件 → 触发实测 → 依据结果移除。
+   对比反例：`native-readiness` job 的 `continue-on-error` 也写了条件（「Step 1 完成后去掉」），
+   但它的条件**尚未达成**，所以**正确地保留着**（见 §6.6 上方的说明）。
+   ⇒ 判据：**容错写「何时移除」只是第一步；到点还得有人真的去移** ——
+     本次这条走完了全程，可作为模板。
 
 ---
 
