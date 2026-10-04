@@ -289,25 +289,33 @@ IAP_KEY_ID / IAP_ISSUER_ID / IAP_PRIVATE_KEY / IAP_ENVIRONMENT
 
 ## 七、🔴 两个必须先解决的阻塞
 
-### 7.1 iOS 出包需要 macOS（**当前最大风险**）
+### 7.1 iOS 出包：✅ **无 Mac 链路已规划，不需要你选方案**
 
-| 事实 | 来源 |
+> ⚠️ **2026-10-04 更正**：本文件初版把这条列为「需要你确认走哪条路（A 有 Mac / B 云 Mac / C 买 Mac）」
+> —— **那是错的**。项目**早已规划好无 Mac 链路**，我把「本机构建不了」（真话）
+> 外推成了「项目做不到」（错误推论），中间漏了「查项目是否已有替代路径」这一步。
+> 📌 教训：**「本机做不到」≠「项目做不到」** —— 先查有没有已规划/替代路径。
+
+| 事实 | 出处 |
 |---|---|
-| iOS 构建需要 **Xcode / macOS** | `docs/review/step3-reader-plan-2026-09-27.md:738` |
-| Windows **构建不了** iOS | `docs/review/a2-device-verification-checklist-2026-10-02.md:151` |
+| **无 Mac 的 iOS 开发闭环（今天就能搭）** | `qualification-startup-2026-09-25.md` **§一** |
+| 🔴 **不需要 Codemagic** —— GHA 自带 `macos-latest`，且已有基础设施 | `plan-and-progress-2026-09-26.md:309` |
+| ✅ **CI 已有 `ios-build` job**（`flutter build ios --release --no-codesign`）| `.github/workflows/ci.yml` |
+| archive → 导出 IPA → 上传 ASC 的**完整参考实现** | `ios-appstore-ci-reference.md` |
+| iOS 构建额度 | macOS runner 私有仓库按 **10x** 计费（2,000 分钟/月 → 实际 200）⇒ 已改为**手动/tag 触发** |
 
-**⇒ 你的开发机是 Windows ⇒ 现在无法产出 iOS 包。**
+**⇒ 真正的卡点不是「有没有 Mac」，而是 Phase 0（账号链路）：**
 
-三条路（**需要你确认走哪条**）：
+| 需要 | 状态 |
+|---|---|
+| Apple Developer 账号审批 | ⏳ **进行中**（你在办）|
+| **Team ID**（签名必需）| ⏳ 审批通过后可得 |
+| **App Store Connect API Key**（`.p8` + Key ID + Issuer ID）| ⏳ 待生成 → 配进 GitHub Secrets |
+| `ios-build` job 的 `continue-on-error` | 🔴 **Phase 0 完成后要删掉那一行**（CI 里已写明「何时移除」）|
+| 归档/签名/导出/上传四步 | ⏳ 尚未实现（`ios-appstore-ci-reference.md` 有参考，待 Phase 0 后启用）|
 
-| | 方案 | 说明 |
-|---|---|---|
-| **A** | 你**有** Mac → 直接用 | 最省事 |
-| **B** | 租**云 Mac**（MacinCloud / MacStadium）| 按月付费，可远程构建 |
-| **C** | 借/买一台 Mac | 一次性投入 |
-
-⚠️ 这是**上架链路的必经环节** —— 无论代码多完整，没有 macOS 就产不出 `.ipa`。
-我要在清单里明确写出来，避免做到最后才发现。
+> 🔑 **所以：iOS 出包不需要你额外决策** —— 等 ASC 账号下来、配好 API Key，
+> 就能在 CI 上跑通「构建 → 归档 → 上传 ASC」。你唯一要做的仍是 §一~§三 那些账号动作。
 
 ### 7.2 账号注销功能 —— 前后端**零实现**
 
@@ -348,7 +356,8 @@ IAP_KEY_ID / IAP_ISSUER_ID / IAP_PRIVATE_KEY / IAP_ENVIRONMENT
 ✅ 告知：运营者姓名 + 联系邮箱            → 已完成（白旭 / support@）
 ✅ 隐私政策页：方案 A 选定 + 已部署 + 公网验证  → 已完成
 ✅ Cloudflare Email Routing（support@）    → 已完成（端到端验证通过）
-□ 确认：iOS 出包走哪条路（A 有 Mac / B 云 Mac / C 买 Mac）
+✅ iOS 出包：无 Mac 链路已规划（GHA macos-latest）→ **不需你决策**
+□ 等 ASC 审批后拿 Team ID + 生成 ASC API Key → 配进 GitHub Secrets
 □ 确认：账号注销是否本批做
 □ 建沙盒测试账号
 □ 审批通过后补审核截图（订阅页已完成，可截）
