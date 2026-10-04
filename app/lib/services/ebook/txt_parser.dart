@@ -29,7 +29,8 @@ final List<RegExp> _chapterTitlePatterns = [
   // 英文：Chapter 1 / CHAPTER IV
   RegExp(r'^(Chapter|CHAPTER|chapter)\s+([0-9]+|[IVXLCDM]+)\b.{0,40}$'),
   // 常见英文分节词（同样要求整行短）
-  RegExp(r'^(PART|Part|BOOK|Book|PROLOGUE|EPILOGUE|Prologue|Epilogue)\b.{0,40}$'),
+  RegExp(
+      r'^(PART|Part|BOOK|Book|PROLOGUE|EPILOGUE|Prologue|Epilogue)\b.{0,40}$'),
   // 纯数字行（如「1」「12」独占一行）—— ⚠️ 限制 1~4 位，避免把正文里的数字切成标题
   RegExp(r'^\s*\d{1,4}\s*$'),
 ];
@@ -120,7 +121,7 @@ class DecodedText {
 ///   ① BOM 优先 —— 有 BOM 就是明示，最可靠
 ///   ② 无 BOM ⇒ 试 **UTF-8 严格解码**（`allowMalformed: false`）
 ///      能解出来（不抛异常）就是合法 UTF-8 —— 这是**可判定的**，不是猜
-///   ③ 失败 ⇒ 返回 null（当前不支持 GBK，见下方 TODO）
+///   ③ 失败 ⇒ 返回 null（当前不支持 GBK，见下方「待办」）
 DecodedText? decodeTextBytes(Uint8List bytes) {
   // ① BOM
   if (bytes.length >= 3 &&

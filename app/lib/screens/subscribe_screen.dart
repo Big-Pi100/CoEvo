@@ -2,23 +2,33 @@
 // CoEvo · 订阅页（独立页 · 路由 `/subscribe`）
 // ════════════════════════════════════════════════════════════════════════
 //
-// 依据：`docs/design/ui-ux-refactor-assessment-2026-09-25.md` §4.4
-//   （订阅界面的**唯一权威规格**）
+// # 依据（两条线，缺一不可）
 //
-// | 规格 | 本页对应 |
-// |---|---|
-// | §4.4.1 付费墙（免费层如实展示 / 价值主张具体 / 价格并列）| 权益卡 + 免费版说明 + 两档并列 |
-// | §4.4.2 🔴 自动续费披露（**法定**）| [_disclosure] —— 名称/时长/价格/续期/取消路径 |
-// | §4.4.3 🔴 恢复购买（Apple 强制项）| [_restoreButton]（另一处在「我的」页）|
-// | §4.4.4 订阅状态与降级展示 | [_activeCard] + [_downgradeNote] |
+// | 线 | 文档 | 管什么 |
+// |---|---|---|
+// | **内容/合规** | `ui-ux-refactor-assessment-2026-09-25.md` §4.4 | 必须有哪些要素 |
+// | **排版** | `design-system-spec-2026-09-25.md` §5.2 + §2/§3 | 该怎么摆 |
 //
-// # 🔴 为什么是独立页，不是弹层（2026-10-04 白哥定）
+// ## 🔑 排版的核心依据：§5.2 的两条原则（原用于复习卡片，可直接迁移）
 //
-// 原来是「`CoDialog` + `SubscribePanel`」的 380px 弹层。改独立页的理由：
-//   ① **法定要件放不下** —— 自动续费披露 + 两个法律链接 + 权益 + 两档 + 恢复购买，
-//      塞进弹层要滚动，而 §4.4.2 判例明确「**不是发了就行，要看得见、找得到**」
-//   ② **Apple 审核要能看清** —— 订阅页是审核员必看的页面
-//   ③ 规格一直写「订阅**页**」
+// > **「权重该由 色彩 + 底色 + 结构 承担；字号只承担层级」**
+// > ⚠️ 易犯的错：① 把解释性段落做成大字号 ② **用字号当权重**
+//
+// 这页的「**答案**」是**价格** —— 所以全页最大字号必须给它。
+// （同 §5.2「内容层最大的字号必须落在『释义』」的逻辑：答案要最显眼。）
+//
+// ## 🔴 2026-10-04 重排：修掉五个问题（白哥指出「排版有问题」）
+//
+// | # | 问题 | 依据 |
+// |---|---|---|
+// | 1 | **「答案」不是主角** —— 价格埋在 15px 里，与权益正文（14px）几乎同级 | §5.2 |
+// | 2 | **月/年纵向堆叠** ⇒ 对比丢失（要上下扫视 + 心算）| §4.4.1 判据 4 要求「**并列**展示」<br>⇒ 这是**规格 vs 实现的偏差**，不是审美偏好 |
+// | 3 | 法律条文 3 段**文字墙**夹在按钮与恢复购买之间 | §4.4.2 要「显著」+ 判例「要看得见、找得到、关得掉」<br>⇒ 文字墙反而**降低**显著性 |
+// | 4 | 购买按钮与价格**分离**（选中后要往下滚）| 移动端可用性 |
+// | 5 | 权益卡是**最重的一块**，但内容不成立 | §4.4.1 判据 3 要「主张具体」—— **没说要大卡片** |
+//
+// ⇒ 新结构（自上而下）：价值主张(一句话) → **价格并排(28px)** → 按钮紧邻
+//    → **法定要点(贴按钮·不折叠)** → 折叠详情 → 恢复购买 → 法律链接
 //
 // # 🔴 三条不可省的法定义务（删任一条都会被拒审）
 //
@@ -26,12 +36,21 @@
 // ② **隐私政策 + 用户协议**链接（Apple 对订阅类 App 的强制要求）
 // ③ **恢复购买**入口（审核指南 3.1.1；且**两处**：本页 + 「我的」页）
 //
+// ## 🔑 「要点不可折叠，补充可以」—— 折叠区的合规边界
+//
+// 法定要求的是「**显著提示**自动续期与取消路径」⇒ 那两句在本页
+// **始终可见且紧贴购买按钮**（见 [_keynote]）。
+// 折叠区（[_detailFold]）只放**补充细节**（续费扣款时机 / 免费版清单 / 到期后行为），
+// 它们不影响「用户是否被告知」⇒ 折叠不构成隐瞒。
+//
 // # 🔴 不预选任何档位
 //
 // §4.4.2「**不得默认勾选**」⇒ [_selectedProductId] 初值为 null，
 // 未选时购买按钮**禁用**并提示「请先选择订阅方式」。
 // 宁可让用户多点一次，也不做「默认选中 + 一键付款」——后者是 30 万元罚款的量级
 // （判例：某视频公司因提醒路径不明确被判「难谓显著」）。
+// ⚠️ 同理：**「省 34%」角标是价格事实陈述**（§4.4.1 判据 4 要求展示），
+//    但**不得**演变成「推荐 / 默认选中」那种视觉诱导 —— 那是变相预选。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -48,14 +67,29 @@ import '../theme/tokens_ext.dart';
 import '../widgets/clay_button.dart';
 import '../widgets/legal_link_row.dart';
 
-/// 正文（说明文字）字号 —— 与「关于」页同值（`about_screen._kBodyFontSize`）。
+/// 弱说明（角标 / 附注 / 补充段落）字号。
 ///
-/// 🔑 跨页同字号：「关于」页与订阅页都是「从『我的』页进去的信息页」，
-///    来回切换时正文字号必须一致，否则会有「跳一下」的观感。
-const double _kBody = 14;
-
-/// 弱说明（角标 / 附注）字号。
+/// 🔑 本页**刻意没有**「正文字号」常量（原有一个 `_kBody = 14`，已删）——
+///    重排后本页不再有「正文段落」这类元素：所有文字都归入
+///    **价值主张（[_kLead]）/ 价格（[_kPrice]）/ 要点与说明（本常量）** 三类。
+///    ⇒ 留一个用不到的常量会触发 `unused_element`（**CI 的 warning 是致命档**），
+///      也会让后人以为「这里该有正文」。
+///    📌 与「关于」页的字号一致性仍然成立 —— 那说的是**它的**正文；
+///      本页没有对应元素，故无需同值。
 const double _kCaption = 12.5;
+
+/// 🔴 价格字号 —— **全页最大**。
+///
+/// 依据 `design-system-spec §5.2`：内容层最大字号必须落在「要记住的答案」。
+/// 用户来订阅页要的答案是「多少钱」，所以它必须压过其它一切文字。
+/// ⚠️ 反例（本次修掉）：原实现给价格 20px、给权益正文 14px —— 层级几乎不分。
+const double _kPrice = 28;
+
+/// 价值主张（一句话）字号。
+///
+/// 🔑 16px/600 足够 —— 它只承担「为什么值得看」，不承担「答案」。
+///    权重靠**位置（顶部）+ 色彩（主文字色）**表达，不靠字号（§5.2）。
+const double _kLead = 16;
 
 class SubscribeScreen extends ConsumerStatefulWidget {
   const SubscribeScreen({super.key});
@@ -67,6 +101,11 @@ class SubscribeScreen extends ConsumerStatefulWidget {
 class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
   /// 🔴 **不预选**（§4.4.2「不得默认勾选」）—— 见文件头说明。
   String? _selectedProductId;
+
+  /// 「订阅详情」折叠区的展开态。
+  ///
+  /// 🔑 默认**收起** —— 它装的是补充说明，不是要点（见文件头）。
+  bool _detailOpen = false;
 
   @override
   Widget build(BuildContext context) {
@@ -104,35 +143,10 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
                   CoSpacing.xxl,
                   CoSpacing.xxxxl,
                 ),
-                children: [
-                  if (snap.isActive) ...[
-                    _activeCard(t, snap),
-                    const SizedBox(height: CoSpacing.lg),
-                    _downgradeNote(t),
-                  ] else ...[
-                    _benefitsCard(t),
-                    const SizedBox(height: CoSpacing.xl),
-                    _sectionTitle(t, '选择订阅方式'),
-                    const SizedBox(height: CoSpacing.sm),
-                    for (final p in plans)
-                      _planCard(t, p, selected?.productId == p.productId),
-                    const SizedBox(height: CoSpacing.lg),
-                    _buyButton(snap, selected),
-                    if ((snap.lastError ?? '').isNotEmpty) ...[
-                      const SizedBox(height: CoSpacing.sm),
-                      _errorLine(snap.lastError!),
-                    ],
-                    const SizedBox(height: CoSpacing.lg),
-                    _disclosure(t, selected),
-                    const SizedBox(height: CoSpacing.xl),
-                    _restoreButton(t, snap),
-                    const SizedBox(height: CoSpacing.lg),
-                    _divider(t),
-                    _legalRows(),
-                    const SizedBox(height: CoSpacing.lg),
-                    _signInHint(t),
-                  ],
-                ],
+                // ── 顺序即优先级（自上而下）────────────────────────────
+                children: snap.isActive
+                    ? _activeChildren(t, snap)
+                    : _purchaseChildren(t, snap, plans, selected),
               ),
             ),
           ],
@@ -140,6 +154,63 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
       ),
     );
   }
+
+  /// 已订阅态（§4.4.4）：状态 → 详情 → 恢复购买 → 法律链接。
+  List<Widget> _activeChildren(CoEvoTokens t, IapSnapshot snap) => [
+        _activeCard(t, snap),
+        const SizedBox(height: CoSpacing.xl),
+        _detailFold(t),
+        const SizedBox(height: CoSpacing.lg),
+        _restoreButton(t, snap),
+        const SizedBox(height: CoSpacing.lg),
+        _legalRows(),
+        const SizedBox(height: CoSpacing.lg),
+        _signInHint(t),
+      ];
+
+  /// 未订阅态：**价格与按钮在首屏**，法定要点紧贴按钮，其余按需展开。
+  List<Widget> _purchaseChildren(
+    CoEvoTokens t,
+    IapSnapshot snap,
+    List<IapPlanDisplay> plans,
+    IapPlanDisplay? selected,
+  ) =>
+      [
+        // ① 价值主张 —— 一句话（不是卡片）
+        _valueProp(t),
+        const SizedBox(height: CoSpacing.xl),
+
+        // ② 价格 —— 月/年**并排**（§4.4.1 判据 4「并列展示」）
+        _planRow(t, plans, selected),
+
+        // ③ 购买按钮 —— **紧邻价格**（原实现隔了「选择订阅方式」标题 + 卡片 + 间距，
+        //    选中后要往下滚才按得到，白哥指出的问题 4）
+        const SizedBox(height: CoSpacing.lg),
+        _buyButton(snap, selected),
+        if ((snap.lastError ?? '').isNotEmpty) ...[
+          const SizedBox(height: CoSpacing.sm),
+          _errorLine(snap.lastError!),
+        ],
+
+        // ④ 法定要点 —— 🔴 **不可折叠**，紧贴按钮（§4.4.2）
+        const SizedBox(height: CoSpacing.md),
+        _keynote(t, selected),
+
+        // ⑤ 补充说明（可折叠）
+        const SizedBox(height: CoSpacing.lg),
+        _detailFold(t),
+
+        // ⑥ 恢复购买（§4.4.3 Apple 强制项）
+        const SizedBox(height: CoSpacing.md),
+        _restoreButton(t, snap),
+
+        // ⑦ 法律链接（Apple 强制）
+        const SizedBox(height: CoSpacing.md),
+        _legalRows(),
+
+        const SizedBox(height: CoSpacing.lg),
+        _signInHint(t),
+      ];
 
   // ── 顶栏 ──────────────────────────────────────────────────────────
   //
@@ -181,114 +252,73 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
         ),
       );
 
-  // ── 已订阅：状态卡（§4.4.4）────────────────────────────────────────
-  Widget _activeCard(CoEvoTokens t, IapSnapshot snap) {
-    final expires = snap.expiresAtUtc;
-    final dateText = expires == null
-        ? ''
-        : ' · 到期日 ${expires.toLocal().toString().substring(0, 10)}';
-    return Clay(
-      borderRadius: BorderRadius.circular(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.verified, size: 19, color: Color(t.accent.argb32)),
-              const SizedBox(width: 10),
-              Text(
-                '订阅中$dateText',
-                style: TextStyle(
-                  fontFamily: CoFonts.uiSans,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: Color(t.ink.argb32),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: CoSpacing.sm),
-          Text(
-            SubscriptionLegalText.howToCancel(),
-            style: TextStyle(
-              fontFamily: CoFonts.uiSans,
-              fontSize: _kCaption,
-              height: 1.6,
-              color: Color(t.ink3.argb32),
-            ),
-          ),
-          const SizedBox(height: CoSpacing.md),
-          // 🔴 §4.4.4：「已订阅 → 提供**管理订阅**（跳 Apple 订阅管理）」
-          ClayButton(
-            label: '管理订阅',
-            onTap: () => _openUrl(kAppleManageSubscriptionsUrl),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── 权益卡（§4.4.1：价值主张要具体）────────────────────────────────
-  Widget _benefitsCard(CoEvoTokens t) {
-    return Clay(
-      borderRadius: BorderRadius.circular(16),
-      child: Column(
+  // ── ① 价值主张（§4.4.1 判据 3：主张要具体）────────────────────────
+  //
+  // 🔑 为什么是**一句话 + 一行补充**，而不是原来的「权益卡」：
+  //    ① §4.4.1 判据 3 只要求「主张**具体**」（不写「解锁全部功能」），
+  //       **没有**要求做成卡片 —— 卡片是我们自己加的、还用满了视觉权重
+  //    ② 现在的权益只有 **1 条**（跨设备同步）⇒ 用卡片装一条，形式远大于内容
+  //    ③ §5.2 判据：权重靠位置与色彩表达即可，不必靠体积
+  Widget _valueProp(CoEvoTokens t) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '订阅后可以',
+            SubscriptionLegalText.benefits.join(' · '),
             style: TextStyle(
               fontFamily: CoFonts.uiSans,
-              fontSize: 15,
+              fontSize: _kLead,
               fontWeight: FontWeight.w600,
+              height: 1.55,
               color: Color(t.ink.argb32),
             ),
           ),
-          const SizedBox(height: CoSpacing.md),
-          for (final b in SubscriptionLegalText.benefits) ...[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 5),
-                  child: Icon(Icons.check,
-                      size: 15, color: Color(t.accent.argb32)),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    b,
-                    style: TextStyle(
-                      fontFamily: CoFonts.uiSans,
-                      fontSize: _kBody,
-                      height: 1.5,
-                      color: Color(t.ink.argb32),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: CoSpacing.sm),
-          ],
-          const SizedBox(height: CoSpacing.xs),
-          Divider(height: 1, color: Color(t.line.argb32)),
-          const SizedBox(height: CoSpacing.md),
-          // 🔴 §4.4.1「免费层如实展示」：明确写「免费可用」，**不用「试用」「限时」话术**
+          const SizedBox(height: 6),
+          // 🔴 §4.4.1 判据 2「免费层如实展示」：明确写「免费可用」，
+          //    **不用「试用」「限时」话术**。
           Text(
             SubscriptionLegalText.freeTierNote(),
             style: TextStyle(
               fontFamily: CoFonts.uiSans,
-              fontSize: _kCaption,
+              fontSize: 13,
               height: 1.6,
               color: Color(t.ink3.argb32),
             ),
           ),
         ],
-      ),
-    );
-  }
+      );
 
-  // ── 套餐卡（并列展示 · 未选中态是默认）──────────────────────────────
+  // ── ② 价格：月/年【并排】──────────────────────────────────────────
+  //
+  // 🔑 为什么并排（而不是原来的纵向两卡）：
+  //    §4.4.1 判据 4 明确要求「月付 ¥9.9 / 年付 ¥78（省 34%）**并列**展示」。
+  //    纵向堆叠时用户要**上下扫视 + 心算**才知道差多少 ⇒ 对比关系丢失。
+  //    ⇒ 这一条是**规格 vs 实现的偏差**，不是我的审美偏好。
+  Widget _planRow(
+    CoEvoTokens t,
+    List<IapPlanDisplay> plans,
+    IapPlanDisplay? selected,
+  ) =>
+      IntrinsicHeight(
+        // 🔑 需要 IntrinsicHeight：`CrossAxisAlignment.stretch` 要求父级高度有界，
+        //    而 ListView 的纵向是无界的 ⇒ 没有它两卡会被拉成不同高（或报错）。
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < plans.length; i++) ...[
+              if (i > 0) const SizedBox(width: CoSpacing.md),
+              Expanded(
+                child: _planCard(
+                  t,
+                  plans[i],
+                  selected?.productId == plans[i].productId,
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+
+  /// 单个档位卡（纵向：名称 → 价格 → 周期）。
   Widget _planCard(
     CoEvoTokens t,
     IapPlanDisplay plan,
@@ -298,117 +328,120 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
     final int? discount =
         plan.productId == kProductYearly ? _yearlyDiscount() : null;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: CoSpacing.sm),
-      child: Clay(
-        state: isSelected ? ClayState.selected : ClayState.raised,
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => setState(() => _selectedProductId = plan.productId),
-        child: Row(
-          children: [
-            // 单选圈 —— 🔴 未选中是空心圈（「不预选」在视觉上也要能看出来）
-            Icon(
-              isSelected
-                  ? Icons.radio_button_checked
-                  : Icons.radio_button_unchecked,
-              size: 19,
-              color:
-                  isSelected ? Color(t.accentInk.argb32) : Color(t.ink3.argb32),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    final inkOn = isSelected ? Color(t.accent.argb32) : Color(t.ink.argb32);
+    final subOn = isSelected ? Color(t.accent.argb32) : Color(t.ink3.argb32);
+
+    return Stack(
+      // 角标要溢出卡片顶部
+      clipBehavior: Clip.none,
+      children: [
+        Clay(
+          state: isSelected ? ClayState.selected : ClayState.raised,
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => setState(() => _selectedProductId = plan.productId),
+          padding: const EdgeInsets.fromLTRB(14, 15, 14, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      Text(
-                        plan.durationLabel,
-                        style: TextStyle(
-                          fontFamily: CoFonts.uiSans,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                          color: isSelected
-                              ? Color(t.accentInk.argb32)
-                              : Color(t.ink.argb32),
-                        ),
-                      ),
-                      if (discount != null) ...[
-                        const SizedBox(width: CoSpacing.sm),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: Color(t.accentBright.argb32)
-                                .withValues(alpha: 0.18),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            '省 $discount%',
-                            style: TextStyle(
-                              fontFamily: CoFonts.uiSans,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                              color: isSelected
-                                  ? Color(t.accentInk.argb32)
-                                  : Color(t.accent.argb32),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 2),
                   Text(
-                    'CoEvo 专业版',
+                    plan.durationLabel,
                     style: TextStyle(
                       fontFamily: CoFonts.uiSans,
-                      fontSize: _kCaption,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w500,
                       color: isSelected
-                          ? Color(t.accentInk.argb32)
-                          : Color(t.ink3.argb32),
+                          ? Color(t.accent.argb32)
+                          : Color(t.ink2.argb32),
                     ),
+                  ),
+                  const Spacer(),
+                  // 🔴 未选中 = 空心圈 ⇒「不预选」在视觉上也要能看出来
+                  Icon(
+                    isSelected
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_unchecked,
+                    size: 18,
+                    color: isSelected
+                        ? Color(t.accent.argb32)
+                        : Color(t.ink3.argb32),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(width: CoSpacing.sm),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
+              const SizedBox(height: 8),
+              // 🔴 价格 —— **全页最大字号**（§5.2：最大字号给「答案」）
+              //    FittedBox 兜底：价格串来自 StoreKit（可能较长，如「¥1,280.00」），
+              //    缩不下会溢出两列布局 ⇒ 让它**缩字**而不是撑破。
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
                   plan.priceLabel,
                   style: TextStyle(
                     fontFamily: CoFonts.uiSans,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: isSelected
-                        ? Color(t.accentInk.argb32)
-                        : Color(t.ink.argb32),
+                    fontSize: _kPrice,
+                    fontWeight: FontWeight.w700,
+                    height: 1.05,
+                    letterSpacing: _kPrice * -0.018,
+                    color: inkOn,
                   ),
                 ),
-                if (plan.usingFallbackPrice)
-                  Text(
-                    // 🔑 兜底价必须**标注来源** —— 否则用户看到的价格与 App Store
-                    //    实际扣款不一致时会认为被欺骗（价格权威在 ASC）
-                    '以 App Store 为准',
-                    style: TextStyle(
-                      fontFamily: CoFonts.uiSans,
-                      fontSize: 11,
-                      color: isSelected
-                          ? Color(t.accentInk.argb32)
-                          : Color(t.ink3.argb32),
-                    ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                plan.periodLabel,
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: _kCaption,
+                  color: subOn,
+                ),
+              ),
+              if (plan.usingFallbackPrice) ...[
+                const SizedBox(height: 2),
+                Text(
+                  // 🔑 兜底价必须**标注来源** —— 否则用户看到的价格与 App Store
+                  //    实际扣款不一致时会认为被欺骗（价格权威在 ASC）
+                  '以 App Store 为准',
+                  style: TextStyle(
+                    fontFamily: CoFonts.uiSans,
+                    fontSize: 10.5,
+                    color: subOn,
                   ),
+                ),
               ],
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
+
+        // 「省 34%」角标 —— §4.4.1 判据 4 要求展示。
+        // ⚠️ 它是**价格事实陈述**，不是「推荐」标签 —— 不得演变成变相预选。
+        if (discount != null)
+          Positioned(
+            top: -8,
+            right: 10,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: Color(t.accent.argb32),
+                borderRadius: BorderRadius.circular(7),
+              ),
+              child: Text(
+                '省 $discount%',
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Color(t.accentInk.argb32),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
-  // ── 购买按钮 ──────────────────────────────────────────────────────
+  // ── ③ 购买按钮 ────────────────────────────────────────────────────
   Widget _buyButton(
     IapSnapshot snap,
     IapPlanDisplay? selected,
@@ -440,13 +473,21 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
     );
   }
 
-  // ── 🔴 自动续费披露（§4.4.2 · 法定）────────────────────────────────
-  Widget _disclosure(
-    CoEvoTokens t,
-    IapPlanDisplay? selected,
-  ) {
-    // 选中了就按该档披露（名称/时长/价格齐）；没选则给通用说明 ——
-    // §4.4.2 要求「**接受服务前**」就提示，不能等到选完才告知。
+  // ── ④ 🔴 法定要点（§4.4.2 · **不可折叠**）────────────────────────────
+  //
+  // 🔑 它**必须**满足三件事（少一件就可能是 30 万元罚款的量级）：
+  //    ① 在购买按钮**附近**（这里：正下方，零间隔元素）
+  //    ② 说明**自动续期**（含 24 小时取消窗口）
+  //    ③ 说明**在哪里取消**（可找到的路径）
+  //
+  // 📌 为什么用**纯文本**而不是做成「链接/按钮」：
+  //    判例的核心是「**路径不明确 ⇒ 难谓显著**」。
+  //    把取消路径写进**可见的句子**里（而不是藏在可点文字后面），
+  //    比任何交互都更「显著」。
+  //
+  // ⚠️ 未选档位时也必须显示（`autoRenewNoticeGeneric`）——
+  //    §4.4.2 要求「**接受服务前**」就提示，不能等用户选完才告知。
+  Widget _keynote(CoEvoTokens t, IapPlanDisplay? selected) {
     final notice = selected == null
         ? SubscriptionLegalText.autoRenewNoticeGeneric()
         : SubscriptionLegalText.autoRenewNotice(
@@ -463,18 +504,8 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
           style: TextStyle(
             fontFamily: CoFonts.uiSans,
             fontSize: _kCaption,
-            height: 1.6,
+            height: 1.62,
             color: Color(t.ink2.argb32),
-          ),
-        ),
-        const SizedBox(height: CoSpacing.sm),
-        Text(
-          SubscriptionLegalText.renewalCharge(),
-          style: TextStyle(
-            fontFamily: CoFonts.uiSans,
-            fontSize: _kCaption,
-            height: 1.6,
-            color: Color(t.ink3.argb32),
           ),
         ),
         const SizedBox(height: CoSpacing.sm),
@@ -483,11 +514,184 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
           style: TextStyle(
             fontFamily: CoFonts.uiSans,
             fontSize: _kCaption,
-            height: 1.6,
-            color: Color(t.ink3.argb32),
+            height: 1.62,
+            color: Color(t.ink2.argb32),
           ),
         ),
       ],
+    );
+  }
+
+  // ── ⑤ 订阅详情（折叠 · 只放**补充**）───────────────────────────────
+  //
+  // 🔑 折叠交互照项目既有范式（`widgets/order_history.dart`）：
+  //    `InkWell(onTap: toggle)` + `AnimatedRotation(turns: 0.5)` + `AnimatedCrossFade`。
+  //    ⇒ 复用既有模式而不是新发明（全站展开/收起的手感要一致）。
+  Widget _detailFold(CoEvoTokens t) => Column(
+        children: [
+          Divider(height: 1, color: Color(t.line.argb32)),
+          InkWell(
+            onTap: () => setState(() => _detailOpen = !_detailOpen),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '订阅详情与免费版说明',
+                      style: TextStyle(
+                        fontFamily: CoFonts.uiSans,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: Color(t.ink2.argb32),
+                      ),
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: _detailOpen ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(
+                      Icons.expand_more,
+                      size: 18,
+                      color: Color(t.ink3.argb32),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedCrossFade(
+            firstChild: const SizedBox.shrink(),
+            secondChild: _detailBody(t),
+            crossFadeState: _detailOpen
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 200),
+          ),
+        ],
+      );
+
+  Widget _detailBody(CoEvoTokens t) => Padding(
+        padding: const EdgeInsets.only(bottom: CoSpacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _detailHeading(t, '续费与扣款'),
+            _detailPara(t, SubscriptionLegalText.renewalCharge()),
+            _detailHeading(t, '免费版包含'),
+            for (final s in SubscriptionLegalText.freeIncludes)
+              _detailItem(t, s),
+            _detailHeading(t, '订阅到期后'),
+            for (final s in SubscriptionLegalText.afterExpiry)
+              _detailItem(t, s),
+            const SizedBox(height: CoSpacing.sm),
+            _downgradeNote(t),
+          ],
+        ),
+      );
+
+  Widget _detailHeading(CoEvoTokens t, String text) => Padding(
+        padding: const EdgeInsets.only(top: CoSpacing.md, bottom: 6),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontFamily: CoFonts.uiSans,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 12 * 0.05,
+            color: Color(t.ink3.argb32),
+          ),
+        ),
+      );
+
+  Widget _detailPara(CoEvoTokens t, String text) => Text(
+        text,
+        style: TextStyle(
+          fontFamily: CoFonts.uiSans,
+          fontSize: _kCaption,
+          height: 1.68,
+          color: Color(t.ink2.argb32),
+        ),
+      );
+
+  Widget _detailItem(CoEvoTokens t, String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 5),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Container(
+                width: 3,
+                height: 3,
+                decoration: BoxDecoration(
+                  color: Color(t.ink3.argb32),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: _kCaption,
+                  height: 1.62,
+                  color: Color(t.ink2.argb32),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+
+  // ── 已订阅：状态卡（§4.4.4）────────────────────────────────────────
+  Widget _activeCard(CoEvoTokens t, IapSnapshot snap) {
+    final expires = snap.expiresAtUtc;
+    final dateText = expires == null
+        ? ''
+        : ' · 到期日 ${expires.toLocal().toString().substring(0, 10)}';
+    return Clay(
+      borderRadius: BorderRadius.circular(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.verified, size: 19, color: Color(t.accent.argb32)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '订阅中$dateText',
+                  style: TextStyle(
+                    fontFamily: CoFonts.uiSans,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: Color(t.ink.argb32),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: CoSpacing.sm),
+          Text(
+            SubscriptionLegalText.howToCancel(),
+            style: TextStyle(
+              fontFamily: CoFonts.uiSans,
+              fontSize: _kCaption,
+              height: 1.6,
+              color: Color(t.ink3.argb32),
+            ),
+          ),
+          const SizedBox(height: CoSpacing.md),
+          // 🔴 §4.4.4：「已订阅 → 提供**管理订阅**（跳 Apple 订阅管理）」
+          ClayButton(
+            label: '管理订阅',
+            onTap: () => _openUrl(kAppleManageSubscriptionsUrl),
+          ),
+        ],
+      ),
     );
   }
 
@@ -502,12 +706,9 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
 
   // ── 法律链接（Apple 强制要求）──────────────────────────────────────
   //
-  // 🔑 用**共享组件** `LegalLinkRow` —— 与「关于」页是**同一套规则**：
-  //    URL 为空 → 显示「即将上线」且不可点；就绪 → 可点。
-  //    抽成组件而不是各写一份，理由见该文件（同一条规则写在两处会漂）。
-  //
   // 📌 位置：`Column` 里两行，**不可省略** —— Apple 对订阅类 App 强制要求
   //    （审核指南 3.1.2），`iap_verify` 有断言守着。
+  // 🔑 用**共享组件** `LegalLinkRow`：「url 空则显示『即将上线』不可点」的规则单点。
   Widget _legalRows() => const Column(
         children: [
           LegalLinkRow(label: '隐私政策', url: kPrivacyPolicyUrl),
@@ -539,22 +740,6 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
           height: 1.6,
           color: Color(t.ink3.argb32),
         ),
-      );
-
-  Widget _sectionTitle(CoEvoTokens t, String text) => Text(
-        text,
-        style: TextStyle(
-          fontFamily: CoFonts.uiSans,
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-          color: Color(t.ink.argb32),
-        ),
-      );
-
-  Widget _divider(CoEvoTokens t) => Column(
-        children: [
-          Divider(height: 1, color: Color(t.line.argb32)),
-        ],
       );
 
   Widget _errorLine(String msg) => Text(

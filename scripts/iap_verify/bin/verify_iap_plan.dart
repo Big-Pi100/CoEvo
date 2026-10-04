@@ -189,17 +189,80 @@ void main() {
       SubscriptionLegalText.howToCancel().contains('订阅') &&
           SubscriptionLegalText.howToCancel().contains('取消'));
 
-  // 权益必须与我们**实际实现**的一致（不能写未实现的能力）
+  // ── 权益必须与我们**实际实现的能力**一致（不能写未实现的能力）──────────
+  //
+  // 🔴🔴 2026-10-04 重大修正：这一组断言原来**在保护错误**。
+  //
+  //    原文断言「权益含无限生词本」「免费版说明含 200 词上限」——
+  //    而这两件事都已在 **2026-10-01 作废**（白哥定：上限取消，免费全量使用）。
+  //    ⇒ 后果很严重：**改了正确的事实反而变红** ⇒ 于是没人敢改，
+  //      错误文案就被断言「合法化」了（订阅页上真的这么写了）。
+  //    📌 判据（本轮新增）：**断言必须与被断言的「事实」同步演进**；
+  //      事实作废后，断言要**反向** —— 从「断言它存在」改为「断言它不再出现」。
+  //
+  // 🔑 同时**不再锁「权益条数」** —— 太死（增减权益都要改断言 ⇒ 假红）。
+  //    改为锁**语义**：非空 + 不得含已作废 / 未实现的能力。
   final b = SubscriptionLegalText.benefits;
-  check('权益共 3 条', b.length == 3, '${b.length}');
-  check('权益含「无限生词本」', b.any((e) => e.contains('无限生词本')));
-  check('权益含「文章朗读」', b.any((e) => e.contains('文章朗读')));
-  check('权益含「电子书导入」', b.any((e) => e.contains('电子书导入')));
-  // 🔴 反向：不许出现**已取消**的权益（语音包 2026-09-26 已取消）
-  check('🔴 不含已取消的「语音包」权益', !b.any((e) => e.contains('语音包')));
+  check('权益非空', b.isNotEmpty, '权益列表为空 —— 订阅页没有可说的价值主张');
 
-  check('免费版说明含 200 词上限',
-      SubscriptionLegalText.freeTierNote().contains('200'));
+  // 🔴 四条反向断言：这些**都不能**出现在权益里
+  check(
+    '🔴 不含「无限生词本」（免费版已无上限，2026-10-01 取消）',
+    !b.any((e) => e.contains('无限生词本')),
+    '它已不是「订阅才有」的能力 —— 写它就是虚假宣传',
+  );
+  check(
+    '🔴 不含「文章朗读」（零实现，不得作权益宣传）',
+    !b.any((e) => e.contains('文章朗读')),
+    '阅读器里没有朗读入口（只有词卡的喇叭）⇒ 写它就是承诺未实现',
+  );
+  check(
+    '🔴 不含「电子书导入」（已定为免费能力）',
+    !b.any((e) => e.contains('电子书导入')),
+  );
+  check(
+    '🔴 不含「语音包」（2026-09-26 已取消）',
+    !b.any((e) => e.contains('语音包')),
+  );
+
+  // 🔴 免费版说明**不得**再提 200 词上限 —— 那个限制不存在了，说了就是假话
+  check(
+    '🔴 免费版说明不含「200」（上限已取消）',
+    !SubscriptionLegalText.freeTierNote().contains('200'),
+    SubscriptionLegalText.freeTierNote(),
+  );
+  check(
+    '免费版说明点出「不设数量限制」（§4.4.1 判据 2：免费层如实展示）',
+    SubscriptionLegalText.freeTierNote().contains('数量限制'),
+  );
+
+  // ── 折叠区（补充说明 · 非要点故可折叠）──────────────────────────────
+  check('免费版包含清单非空', SubscriptionLegalText.freeIncludes.isNotEmpty);
+  check('到期后行为清单非空', SubscriptionLegalText.afterExpiry.isNotEmpty);
+  check(
+    '🔴 到期后**不没收资产**（§4.4.4 原则：词可读可复习、电子书保留）',
+    SubscriptionLegalText.afterExpiry.any((e) => e.contains('保留')),
+  );
+
+  // ── 价格周期标注（§5.2：把两档拉到**同一量纲**才可比）───────────────
+  final plansForPeriod = defaultPlans();
+  check(
+    '月付标注「每月自动续期」',
+    plansForPeriod[0].periodLabel.contains('每月'),
+    plansForPeriod[0].periodLabel,
+  );
+  check(
+    '年付折算成「≈ ¥X / 月」（同一量纲，一眼可比）',
+    plansForPeriod[1].periodLabel.contains('/ 月'),
+    plansForPeriod[1].periodLabel,
+  );
+  // 🔑 折算**只在本地兜底价**下做 —— 拿 StoreKit 的本地化串（可能是 $/€）
+  //    去算人民币会自相矛盾（「价格 $99.99，下面写 ≈ ¥6.5/月」）
+  check(
+    '非兜底价的年付 → 不折算（避免货币自相矛盾）',
+    defaultPlans(yearlyStorePrice: r'$99.99')[1].periodLabel == '每年自动续期',
+    defaultPlans(yearlyStorePrice: r'$99.99')[1].periodLabel,
+  );
 
   // ────────────────────────────────────────────────────────────────
   // ⑥ 订阅状态判定
