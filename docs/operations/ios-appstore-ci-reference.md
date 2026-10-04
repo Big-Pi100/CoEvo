@@ -187,4 +187,112 @@ jobs:
 
 ---
 
+## 六、🆕 「我要在 iOS 上测」——现在能做什么（2026-10-04 补）
+
+> 触发：白哥问「`ios-build` 命令是什么，我一直在安卓上测试」
+> 📌 本节回答的是**使用方式**，不涉及代码改动。
+
+### 6.1 那条命令是什么
+
+`ci.yml` 的 `ios-build` job（`runs-on: macos-latest`）：
+
+```bash
+flutter pub get
+flutter build ios --release --no-codesign
+```
+
+对比白哥的安卓命令：
+
+```bash
+# 安卓（白哥在用 · 本机 Windows 可跑）
+D:\flutter\bin\flutter.bat build apk --release \
+    --target-platform android-arm64 \
+    --dart-define=API_HOST=api.keyievolution.fun
+
+# iOS（本机 Windows **跑不了** —— 需要 Xcode/macOS）
+flutter build ios --release --no-codesign
+```
+
+### 6.2 🔴 它跑在哪 —— 以及为什么**不需要买 Mac**
+
+| | 安卓 | iOS |
+|---|---|---|
+| 构建机 | 你的 Windows（`D:\flutter`）✅ | 🔴 **必须 macOS**（Xcode） |
+| 项目方案 | 本机直接构建 | ✅ **GitHub Actions `macos-latest`**（已规划，见 `qualification-startup` §一）|
+
+**⇒ iOS 不需要本地 Mac**，靠 CI 的 macOS runner。
+
+### 6.3 🔴 两个必须先知道的陷阱
+
+**陷阱 ①：`ios-build` 平时**不跑** —— 「CI 绿」里没有它**
+
+```yaml
+if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
+```
+
+⇒ push `main` 时它**被跳过**（不是失败，是没运行）。
+要让它跑，二选一：
+- GitHub → Actions → 选 `CI` → **Run workflow**（手动，`workflow_dispatch`）
+- push 一个 `v*` tag（⚠️ 会**连带触发部署** job，别随便推）
+
+**陷阱 ②：🔴 CI 的命令**没有**传 `--dart-define=API_HOST`**
+
+实测 `grep 'API_HOST\|dart-define' .github/workflows/ci.yml` ⇒ **0 命中**。
+
+而 `api_config.dart` 的默认值是：
+
+```dart
+static const String _host = String.fromEnvironment('API_HOST', defaultValue: 'localhost');
+```
+
+⇒ 若直接用 CI 的 iOS 产物去测，**它连的是 `localhost`（必然连不上）**。
+
+| 当前危害 | 说明 |
+|---|---|
+| 🟢 **现在无害** | `ios-build` 只做「能否编过」的就绪度探测，**产物不用于测试**（且 `--no-codesign` 的 `.app` 也装不进真机） |
+| 🔴 **建真机测试/上架流程时必须补** | 否则打出来的包连不上后端，会误判成「App 坏了」 |
+
+📌 判据：**「构建成功」≠「包可用」** —— 编译期注入的参数（`--dart-define`）缺失**不会报错**，
+只会在运行时表现为「网络请求全失败」。
+
+### 6.4 命令的两个层次（白哥最需要区分的一点）
+
+| 命令 | 产物 | 能装真机？ | 前置 |
+|---|---|---|---|
+| `flutter build ios --release --no-codesign` | `.app`（**未签名**） | ❌ **不能** | 无（纯编译验证）|
+| `xcodebuild archive` + `-exportArchive` | `.ipa`（**已签名**） | ✅ 能（含 TestFlight）| 🔴 **Team ID + ASC API Key** |
+
+**⇒ 你的目标（真机测试）需要第二层，而它卡在 Phase 0。**
+
+### 6.5 完整路径（🔑 全程不需要 Mac）
+
+```
+Windows 开发机（写代码）
+      │  git push
+      ▼
+GitHub Actions · macos-latest
+      │  ① flutter build ios --no-codesign     ← ✅ 现在就能跑（只验编译）
+      │  ② xcodebuild archive + exportArchive  ← ⏳ 需 Team ID + API Key
+      ▼
+App Store Connect → TestFlight
+      │
+      ▼
+iPhone 装 TestFlight → 真机测试（含 IAP！）
+```
+
+### 6.6 当前状态与下一步
+
+| 项 | 状态 |
+|---|---|
+| ① iOS **能否编过** | ✅ 现在就能验 —— 手动触发 `ios-build` 即可 |
+| ② iOS **真机测试** | ⏳ 需 Team ID + ASC API Key（你账号审批完成后）|
+| ③ 「archive + TestFlight」workflow | ⏳ **未建**（§五 说明了当时不建的四条理由）|
+
+⚠️ **一处如实交代**：`ios-build` 的注释写着「现在**必然失败**（缺 Development Team /
+Provisioning Profile）」，且据此设了 `continue-on-error: true`。
+但 —— **那是预期，不是实测**，且 `--no-codesign` 理论上**不要求** Team ID。
+⇒ **建议手动触发一次看真实结果**；若它其实能过，那条注释与 `continue-on-error` 都该更新。
+
+---
+
 *本文档为从已删除的 `app_user` 抢救的参考实现，非现行配置。全文经修正标注（原配置有 6 处会直接失败）。*
