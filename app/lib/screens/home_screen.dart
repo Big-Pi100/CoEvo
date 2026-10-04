@@ -17,6 +17,7 @@ import '../services/feed_pager.dart';
 import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
+import '../widgets/book_library_entry.dart';
 import '../widgets/bookmark_toggle.dart';
 import '../widgets/claim_dialog.dart';
 import '../widgets/feed_card.dart';
@@ -511,6 +512,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             //       **常驻占一行** ⇒ 用一次的便利，换每天的拥挤，不划算。
             //       信息流页的垂直空间是**稀缺资源**，留给内容。
             //    ⚠️ **别再放回来** —— 详见 `widgets/interest_filter_section.dart` 类文档。
+
+            // ── 🆕 我的书库入口（2026-10-04 · 白哥定位置：标题栏之后、信息流之前）──
+            //
+            // 🔴 **它跟上面那个「兴趣筛选」不是一类东西** —— 否则会撞上同一条判据：
+            //
+            // | | 兴趣筛选（已移走） | 我的书库（本入口） |
+            // |---|---|---|
+            // | 性质 | **前置控制**（筛选信息流本身）| **内容导航**（去读另一类内容）|
+            // | 频率 | 低频（设一次长期不动）| 中频（想读书时就用）|
+            // | 判定 | ❌ 不该常驻占行（空间留给内容）| ✅ **它本身就是内容入口** |
+            //
+            // 🔑 白哥的真问题是「**没看到导入入口**」⇒ 入口的首要指标是**被发现**。
+            //    所以它做成**淡色底的条**（不是纯文字行）——比裸文字醒目、又不像卡片重。
+            //    ⚠️ 占一行是**有意的代价**，不是疏忽。
+            //
+            // ⚠️ 本入口**纯 UI、不查 book.db** ⇒ 书库打不开也照常显示、照常能点。
+            //    判据同产品原则：「库可用性」不该成为「入口可见性」的开关。
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: BookLibraryEntry(),
+            ),
+
             // ── 信息流（设计稿 `.feed` padding 0 16px · `.fcards` gap 13px）──
             Expanded(
               child: ref.watch(feedProvider(_feedKey)).when(

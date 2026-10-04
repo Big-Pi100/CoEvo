@@ -130,6 +130,23 @@ dependencies:
   archive: ^4.3.0
   xml: ^6.5.0
 
+  # ── 书库：id 生成 + 选文件（2026-10-04）────────────────────────────────
+  #
+  # 🔑 `uuid` —— 书 id / 章节 id（**端侧生成**，不与后端关联）。
+  #    **零下载**：它已在 `pubspec.lock` 里（但标着 `transitive`，被别的包拉进来的）。
+  #    仍然要**显式声明** —— 隐式依赖会在上游改依赖树时突然断掉，
+  #    且 `depend_on_referenced_packages` 会告警（本项目已记这条）。
+  #
+  # 🔑 `file_selector` —— 书库页右上角「导入」选文件（白哥 2026-10-04 定的位置）。
+  #    选它而不是 `file_picker`：`file_selector` 是 **flutter.dev 官方包**
+  #    （`file_picker` 是第三方），与本项目「优先官方包」的既有取向一致。
+  #    ✅ 它的传输依赖 `file_selector_platform_interface` / `cross_file` **已在 lock 里**
+  #       （被 `image_picker` 拉的）⇒ 只需新下载 `file_selector` 与其 iOS 实现。
+  #
+  # ⚠️ 本机 `flutter pub get` 不可用 ⇒ 这两个依赖能否解析**只能靠 CI 验证**。
+  uuid: ^3.0.7
+  file_selector: ^1.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

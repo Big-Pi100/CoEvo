@@ -14,6 +14,8 @@ import 'screens/home_screen.dart';
 import 'screens/achievements_screen.dart';
 import 'screens/about_screen.dart';
 import 'screens/aggregate_page_screen.dart';
+import 'screens/book_library_screen.dart';
+import 'screens/book_reader_screen.dart';
 import 'screens/bookmark_list_screen.dart';
 import 'screens/review_screen.dart';
 import 'screens/review_session_screen.dart';
@@ -193,6 +195,23 @@ final goRouter = GoRouter(
     GoRoute(
       path: '/about',
       builder: (context, state) => const AboutScreen(),
+    ),
+    // ── 🆕 电子书（2026-10-04）──
+    //
+    // 🔑 路由与 `widgets/book_library_entry.dart` 的 `kBookLibraryRoute` **必须一致**
+    //    （入口只 push 那个常量，不硬编码字符串 —— 两处各写一份就会漂）。
+    //
+    // ⚠️ `/books/:id` 必须在 `/books` **之后**声明？不 —— go_router 按**具体度**匹配，
+    //    不是声明顺序；但两条都写清楚路径避免歧义（顺序无所谓，可读性上放一起）。
+    GoRoute(
+      path: '/books',
+      builder: (context, state) => const BookLibraryScreen(),
+    ),
+    GoRoute(
+      // `:id` 是 `book.db` 里 `book.id`（端侧 uuid）
+      path: '/books/:id',
+      builder: (context, state) =>
+          BookReaderScreen(bookId: state.pathParameters['id']!),
     ),
     // 🗑 2026-09-29 已删除：`/chat` 路由（+ `screens/chat_screen.dart` import）
     //    —— 产品已定**不做 chat/UGC**；且该路由**全库无任何 push/go/named 跳转**

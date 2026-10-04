@@ -671,6 +671,26 @@ jobs:
       - name: EPUB 解析（30 项）
         run: dart run bin/verify_epub_parser.dart
 
+      # ── 🆕 2026-10-04：落库层（第二批：解析 → 落库 → 书库/阅读页）──
+      #
+      # 🔑 为什么落库逻辑能「零依赖」地被验证：把「落库」拆成了两层 ——
+      #    · `book_import_plan.dart`（**纯函数**：BookDraft → 各表的行数据）⇒ 本机可断言
+      #    · `book_importer.dart`（真正碰 sqflite）⇒ 靠源级断言 + 真机
+      #    📌 判据：**把可验证的核心抽成零依赖**（`verifiable-core-logic`）。
+      #       落库正确性的**大头是映射逻辑**（字段对错、章节序号断号、计数不一致），
+      #       而「sqflite 的事务能不能提交」是**库的行为**、不是我们的 ⇒ 不该拖累前者可验证。
+      - name: 落库计划（映射/序号/计数 · 34 项）
+        run: dart run bin/verify_book_import_plan.dart
+
+      # 🔴 这一条守的是**编译期抓不到**的错：`book_importer.dart` 里的 INSERT
+      #    列名是**字符串字面量** —— 拼错一个字母，Dart 编译器一声不吭，
+      #    只有那本书真的被导入时才炸（`no such column`）。
+      #    ⚠️ 符号解析（`codestatic`）也救不了字符串键 ⇒ **只有源级比对能守**。
+      #    ✅ 已证伪：注入「列名拼错 + 少一列」⇒ 恰好 1 项变红、报告精确到
+      #       「缺 {source_format, chapter_count} / 多 {source_fromat}」。
+      - name: 落库 SQL 与 schema 一致性（集合相等 · 9 项）
+        run: dart run bin/verify_book_importer_sql.dart
+
   # ── 原生就绪度结构检查 ──
   #
   # 为什么需要：本地 Flutter 是**鸿蒙定制版**，`dart/flutter analyze` 会崩
