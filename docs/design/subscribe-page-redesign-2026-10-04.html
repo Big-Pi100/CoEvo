@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>订阅页排版重做 · 设计原型（2026-10-04）</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   CoEvo 订阅页 · 排版重做原型
+   ──────────────────────────────────────────────────────────────────────
+   依据（不凭记忆，逐条来自项目规格）：
+     · design-system-spec §2.1   三档 token（色值原文抄自文档）
+     · design-system-spec §3.2   粘土三层公式（外阴影 + 内暗 + 内亮）
+     · design-system-spec §3.3   三档粘土 token + clayFill = --card
+     · design-system-spec §3.3.1 --accent-out（彩色元素外阴影染自身色相）
+     · design-system-spec §3.5   尺寸阶梯（阴影随尺寸缩放；<24px 去 inset）
+     · design-system-spec §3.5.1 「格」档圆角不缩放（radiusFactor = 1.0）
+     · design-system-spec §5.2   字号层级原则（★ 本次设计的核心依据）
+     · ui-ux §4.4.1 / §4.4.2 / §4.4.3  订阅页的法定与结构要求
+
+   ⚠️ 原型局限（如实标注）：
+     · 字体用系统栈近似 —— 真实实现是 Noto Sans SC / Literata / Charis SIL
+     · 间距已对齐 CoSpacing 常量（4/8/12/16/20/24/32/48）
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── 三档主题 token（值抄自 spec §2.1 / §3.3）────────────────────────── */
+:root, .t-mo {
+  --page:#F1EDE4; --card:#FFFFFF; --read:#FAF8F4;
+  --ink:#24211C; --ink2:#6E6659; --ink3:#988F7C;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF;
+  --accent-out:rgba(180,67,44,.40);
+  --line:#EFE9DE; --sunken:#EDE6DA;
+  --cl-out:rgba(150,125,95,.24); --cl-shade:rgba(186,166,138,.55);
+  --cl-light:rgba(255,255,255,1);
+  --cl-radius:26px; --rf:1;      /* 墨：radiusFactor lg=1.0 */
+  --page-label:'墨 · 暖纸';
+}
+.t-ge {
+  --page:#EDEEF0; --card:#FFFFFF; --read:#FFFFFF;
+  --ink:#0A0A0A; --ink2:#5A5A5A; --ink3:#8A8A8A;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF;
+  --accent-out:rgba(180,67,44,.40);
+  --line:#E8E8E8; --sunken:#F0F0F0;
+  --cl-out:rgba(110,115,125,.22); --cl-shade:rgba(158,158,158,.46);
+  --cl-light:rgba(255,255,255,1);
+  --cl-radius:14px; --rf:1;      /* 格：radiusFactor 全 1.0（§3.5.1）*/
+  --page-label:'格 · 纯白';
+}
+.t-ye {
+  --page:#0B0D12; --card:#1C1F27; --read:#14161C;
+  --ink:#EDEBE6; --ink2:#9AA0AE; --ink3:#6E7484;
+  --accent:#DB7E6B; --accent-bright:#E89B8C; --accent-ink:#2A1405;
+  --accent-out:rgba(219,126,107,.40);
+  --line:#262A34; --sunken:#0B0D12;
+  --cl-out:rgba(0,0,0,.55); --cl-shade:rgba(0,0,0,.42);
+  --cl-light:rgba(255,255,255,.062);   /* 夜档内亮受限（§3.9）*/
+  --cl-radius:24px; --rf:1;
+  --page-label:'夜 · 深墨';
+}
+
+* { box-sizing:border-box; margin:0; padding:0; }
+
+body {
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+  background:#3a3a3a;              /* 舞台底色：与手机屏区分开 */
+  color:#eee;
+  padding:28px 20px 60px;
+  display:flex; flex-direction:column; align-items:center; gap:20px;
+  min-height:100vh;
+}
+
+/* ── 工具条 ───────────────────────────────────────────────────────── */
+.toolbar {
+  display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+  justify-content:center;
+}
+.toolbar button {
+  font:inherit; font-size:13px; padding:7px 15px; border-radius:8px;
+  border:1px solid #666; background:#4a4a4a; color:#eee; cursor:pointer;
+}
+.toolbar button.on { background:#B4432C; border-color:#B4432C; color:#fff; }
+.toolbar .hint { font-size:12px; color:#aaa; margin-left:6px; }
+
+/* ── 手机框（378px = spec §5.2 的基准逻辑宽）────────────────────────── */
+.phone {
+  width:378px; flex:0 0 auto;
+  background:var(--page);
+  border-radius:22px; overflow:hidden;
+  box-shadow:0 18px 50px rgba(0,0,0,.5);
+  transition:background .25s;
+}
+
+/* ── 顶栏（自绘，与全站一致）───────────────────────────────────────── */
+.topbar {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 24px 6px;
+}
+.topbar .title {
+  font-size:15px; font-weight:600; color:var(--ink);
+}
+.topbar .back {
+  font-size:13.5px; color:var(--accent); cursor:pointer;
+}
+
+/* ── 内容区 ───────────────────────────────────────────────────────── */
+.body { padding:8px 24px 34px; }
+
+/* ① 价值主张 —— 一句话（不是卡片）
+   🔑 依据 §5.2「权重由色彩+底色+结构承担，字号只承担层级」
+      ⇒ 它不需要大字号，16px/600 + 主文字色即可；做卡片会给它不该有的重量 */
+.value-prop {
+  font-size:16px; font-weight:600; line-height:1.55; color:var(--ink);
+  margin-bottom:6px;
+}
+.value-sub {
+  font-size:13px; line-height:1.6; color:var(--ink3); margin-bottom:20px;
+}
+
+/* ② 价格区 —— 月/年【并排】（§4.4.1 判据 4「并列展示」）
+   🔑 这是本页唯一该用大字号的地方：价格是用户来这页要的「答案」 */
+.plans { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+.plan {
+  position:relative; cursor:pointer;
+  background:var(--card);
+  /* §3.5 尺寸阶梯：本卡 ~132px ⇒ **lg** 档 */
+  box-shadow:
+    6px 8px 16px var(--cl-out),
+    inset -5px -5px 12px var(--cl-shade),
+    inset 4px 4px 10px var(--cl-light);
+  border-radius:calc(var(--cl-radius) * var(--rf));
+  padding:16px 14px 14px;
+  transition:box-shadow .18s, transform .18s;
+}
+/* 选中态：🔑 用【结构】而非字号表达权重（§5.2）
+   —— accent 描边 + 染自身色相的外阴影（§3.3.1），不放大文字 */
+.plan.sel {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    6px 8px 16px var(--accent-out),
+    inset -5px -5px 12px var(--cl-shade),
+    inset 4px 4px 10px var(--cl-light);
+}
+.plan .name {
+  font-size:13.5px; font-weight:500; color:var(--ink2); margin-bottom:9px;
+}
+.plan .price {
+  font-size:28px; font-weight:700; line-height:1.05; color:var(--ink);
+  font-variant-numeric:tabular-nums;
+  letter-spacing:-.5px;
+}
+.plan .price .cur { font-size:16px; font-weight:600; margin-right:1px; }
+.plan .per {
+  font-size:12.5px; color:var(--ink3); margin-top:5px;
+}
+.plan.sel .name, .plan.sel .price { color:var(--accent); }
+
+/* 「省 34%」角标 —— §4.4.1 判据 4 要求展示（**事实陈述**，非诱导）*/
+.badge {
+  position:absolute; top:-8px; right:10px;
+  font-size:11px; font-weight:600; padding:2px 7px; border-radius:7px;
+  background:var(--accent); color:var(--accent-ink);
+}
+/* 单选圈：🔴 未选中 = 空心（§4.4.2「不预选」在视觉上也要看得出来）*/
+.radio {
+  position:absolute; top:16px; right:14px;
+  width:17px; height:17px; border-radius:50%;
+  border:1.8px solid var(--ink3);
+}
+.plan.sel .radio {
+  border-color:var(--accent); background:var(--accent);
+}
+.plan.sel .radio::after {
+  content:''; position:absolute; inset:4px; border-radius:50%;
+  background:var(--accent-ink);
+}
+.plan.has-badge .radio { top:20px; }   /* 有角标时下移，避免叠字 */
+
+/* ③ 购买按钮 —— 🔴 **紧邻价格区**（原来是「选中后要往下滚才能按」）*/
+.buy {
+  margin-top:16px; width:100%; height:50px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:15px; font-weight:600; cursor:pointer;
+  background:var(--card); color:var(--ink);
+  border:none; font-family:inherit;
+  border-radius:calc(var(--cl-radius) * 0.55);   /* md 档 ⇒ ×0.55 */
+  box-shadow:
+    4px 5px 10px var(--cl-out),
+    inset -3px -3px 8px var(--cl-shade),
+    inset 3px 3px 7px var(--cl-light);
+  transition:box-shadow .18s;
+}
+.buy.on {
+  background:var(--accent); color:var(--accent-ink);
+  box-shadow:
+    4px 5px 10px var(--accent-out),
+    inset -3px -3px 8px var(--cl-shade),
+    inset 3px 3px 7px var(--cl-light);
+}
+.buy.off { color:var(--ink3); cursor:not-allowed; }
+
+/* ④ 法定要点 —— 🔴 **紧贴按钮**，只放最关键一句
+   依据 §4.4.2 + 判例「不是发了就行，要看得见、找得到、关得掉」
+   ⇒ 「显著」的正解是【短 + 在按钮旁边】，不是堆一大段文字墙 */
+.keynote {
+  margin-top:11px; font-size:12px; line-height:1.62; color:var(--ink2);
+  text-align:center;
+}
+.keynote a { color:var(--accent); text-decoration:none; }
+
+/* ⑤ 详细说明 —— 折叠（放【补充】而非【要点】）
+   合规边界：名称/时长/价格（在上方卡片）+ 自动续期/取消（在上面那句）
+             ⇒ 已满足「显著提示」；折叠的只是补充说明，不影响合规 */
+.fold {
+  margin-top:22px; border-top:1px solid var(--line);
+}
+.fold > summary {
+  list-style:none; cursor:pointer;
+  padding:13px 0; font-size:13px; font-weight:500; color:var(--ink2);
+  display:flex; align-items:center; justify-content:space-between;
+}
+.fold > summary::-webkit-details-marker { display:none; }
+.fold > summary::after {
+  content:'▸'; font-size:12px; color:var(--ink3); transition:transform .18s;
+}
+.fold[open] > summary::after { transform:rotate(90deg); }
+.fold .inner { padding:2px 0 14px; }
+.fold h4 {
+  font-size:12px; font-weight:600; color:var(--ink3);
+  letter-spacing:.05em; margin:12px 0 6px;
+}
+.fold p {
+  font-size:12.5px; line-height:1.68; color:var(--ink2); margin-bottom:9px;
+}
+.fold ul { list-style:none; }
+.fold li {
+  font-size:12.5px; line-height:1.62; color:var(--ink2);
+  padding-left:15px; position:relative; margin-bottom:5px;
+}
+.fold li::before {
+  content:'·'; position:absolute; left:4px; color:var(--ink3);
+}
+
+/* ⑥ 恢复购买 —— §4.4.3 Apple 强制项 · 次要位置（文字按钮）*/
+.restore {
+  margin-top:18px; width:100%; text-align:center;
+  font-size:13.5px; color:var(--accent); cursor:pointer;
+  background:none; border:none; font-family:inherit; padding:9px 0;
+}
+
+/* ⑦ 法律链接（Apple 强制）*/
+.legal {
+  margin-top:12px; padding-top:14px; border-top:1px solid var(--line);
+  display:flex; gap:16px; justify-content:center;
+  font-size:12.5px;
+}
+.legal a { color:var(--ink3); text-decoration:none; }
+
+/* ── 已订阅态（§4.4.4）───────────────────────────────────────────── */
+.active-card {
+  background:var(--card); border-radius:calc(var(--cl-radius) * var(--rf));
+  padding:17px 16px;
+  box-shadow:6px 8px 16px var(--cl-out),
+             inset -5px -5px 12px var(--cl-shade),
+             inset 4px 4px 10px var(--cl-light);
+}
+.active-card .row { display:flex; align-items:center; gap:9px; }
+.active-card .dot {
+  width:7px; height:7px; border-radius:50%; background:var(--accent);
+}
+.active-card .t { font-size:15px; font-weight:600; color:var(--ink); }
+.active-card .d { font-size:13px; color:var(--ink2); margin-top:7px; }
+.active-card .m {
+  margin-top:13px; font-size:13px; color:var(--accent); cursor:pointer;
+}
+
+/* ── 设计说明（页面外，给白哥看的）────────────────────────────────── */
+.notes {
+  width:min(760px,100%); background:#2a2a2a; border-radius:12px;
+  padding:20px 24px; font-size:13.5px; line-height:1.75; color:#ddd;
+}
+.notes h3 { font-size:15px; color:#fff; margin-bottom:10px; }
+.notes h4 { font-size:13.5px; color:#f0a58e; margin:16px 0 7px; }
+.notes table { width:100%; border-collapse:collapse; margin:8px 0; }
+.notes th, .notes td {
+  border:1px solid #444; padding:6px 9px; text-align:left; font-size:12.5px;
+  vertical-align:top;
+}
+.notes th { background:#333; color:#fff; font-weight:600; }
+.notes code {
+  background:#3a3a3a; padding:1px 5px; border-radius:4px; font-size:12px;
+}
+.notes .warn { color:#ffb4a0; }
+.notes .ok { color:#9fd6a0; }
+
+.sect-label {
+  font-size:11px; color:#999; letter-spacing:.1em;
+  align-self:flex-start; margin-left:calc(50% - 189px); margin-bottom:-12px;
+}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <button class="on" data-t="t-mo">墨 · 暖纸</button>
+  <button data-t="t-ge">格 · 纯白</button>
+  <button data-t="t-ye">夜 · 深墨</button>
+  <button id="tog" style="margin-left:8px">切换 未订阅 / 已订阅</button>
+  <span class="hint" id="hint">点价格卡试试「不预选 → 选中」的交互</span>
+</div>
+
+<!-- ═══════════════════ 手机预览 ═══════════════════ -->
+<div class="phone t-mo" id="phone">
+
+  <div class="topbar">
+    <div class="title">CoEvo 专业版</div>
+    <div class="back">返回</div>
+  </div>
+
+  <!-- ── 未订阅态 ── -->
+  <div class="body" id="view-none">
+
+    <!-- ① 价值主张（一句话，不是卡片）-->
+    <div class="value-prop">订阅后，生词与复习进度可跨设备同步</div>
+    <div class="value-sub">换手机、重装 App 后自动取回；免费版继续无限制使用阅读、划词、生词本与复习。</div>
+
+    <!-- ② 价格：月/年【并排】-->
+    <div class="plans">
+      <div class="plan" data-p="monthly">
+        <div class="radio"></div>
+        <div class="name">月度</div>
+        <div class="price"><span class="cur">¥</span>9.9</div>
+        <div class="per">每月自动续期</div>
+      </div>
+      <div class="plan has-badge" data-p="yearly">
+        <div class="badge">省 34%</div>
+        <div class="radio"></div>
+        <div class="name">年度</div>
+        <div class="price"><span class="cur">¥</span>78</div>
+        <div class="per">≈ ¥6.5 / 月</div>
+      </div>
+    </div>
+
+    <!-- ③ 购买按钮（紧邻）-->
+    <button class="buy off" id="buy">请先选择订阅方式</button>
+
+    <!-- ④ 法定要点（紧贴按钮 · 短）-->
+    <div class="keynote">
+      到期自动续期，可随时在 <a href="#">Apple ID 设置 → 订阅</a> 中取消
+    </div>
+
+    <!-- ⑤ 详细说明（折叠）-->
+    <details class="fold">
+      <summary>订阅详情与免费版说明</summary>
+      <div class="inner">
+        <h4>续费与扣款</h4>
+        <p>系统会在当前订阅期结束前 24 小时内，从你的 Apple 账户扣取下一期费用。
+           订阅期内可随时取消；取消后当前订阅期结束前仍可使用会员功能。</p>
+
+        <h4>免费版包含</h4>
+        <ul>
+          <li>阅读信息流全部内容</li>
+          <li>划词查词</li>
+          <li><b>生词本无数量限制</b></li>
+          <li>词卡朗读与复习</li>
+        </ul>
+
+        <h4>订阅到期后</h4>
+        <ul>
+          <li>端侧学习数据（生词、复习进度、已导入的电子书）<b>全部保留</b></li>
+          <li>回到免费版能力，不会丢失或锁定任何已积累的内容</li>
+        </ul>
+      </div>
+    </details>
+
+    <!-- ⑥ 恢复购买 -->
+    <button class="restore">恢复购买</button>
+
+    <!-- ⑦ 法律链接 -->
+    <div class="legal">
+      <a href="#">隐私政策</a>
+      <a href="#">用户协议</a>
+    </div>
+  </div>
+
+  <!-- ── 已订阅态（§4.4.4）── -->
+  <div class="body" id="view-active" style="display:none">
+    <div class="active-card">
+      <div class="row"><div class="dot"></div><div class="t">订阅中</div></div>
+      <div class="d">到期日 2027 年 10 月 4 日 · 年度订阅</div>
+      <div class="m">管理订阅 ›</div>
+    </div>
+
+    <details class="fold" style="margin-top:22px">
+      <summary>订阅详情</summary>
+      <div class="inner">
+        <p>管理或取消订阅：<a href="#" style="color:var(--accent)">Apple ID 设置 → 订阅</a>。
+           取消后，当前订阅期结束前仍可使用跨设备同步。</p>
+      </div>
+    </details>
+
+    <button class="restore">恢复购买</button>
+    <div class="legal">
+      <a href="#">隐私政策</a><a href="#">用户协议</a>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════ 设计说明 ═══════════════════ -->
+<div class="notes">
+  <h3>这次改了什么，以及为什么</h3>
+
+  <h4>一、🔴 五个具体问题（都可指向代码行）</h4>
+  <table>
+    <tr><th>#</th><th>问题</th><th>依据</th></tr>
+    <tr>
+      <td>1</td>
+      <td><b>「答案」不是视觉主角</b> —— 价格埋在 15px 文字里，与权益正文（14px）几乎同级</td>
+      <td>设计系统 §5.2：<b>内容层最大的字号必须落在「要记住的答案」</b>。这页的答案是<b>价格</b>，它现在是平的</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td><b>月/年纵向堆叠</b>，对比关系丢失 —— 用户要上下扫视 + 心算才知道「省多少」</td>
+      <td>§4.4.1 判据 4 要求「月付/年付<b>并列</b>展示」+「省 34%」一眼可见 ⇒ 这是<b>规格 vs 实现的偏差</b>，不是审美偏好</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td><b>法律条文 3 段连续文字墙</b>，夹在购买按钮与恢复购买之间</td>
+      <td>§4.4.2 要「<b>显著</b>方式提请注意」；判例明确「不是发了就行，<b>要看得见、找得到、关得掉</b>」<br>⇒ 一大块字反而让人跳过，<b>降低</b>了显著性</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td><b>购买按钮与价格分离</b> —— 选中后要往下滚才能按到</td>
+      <td>移动端可用性；且按钮与「它对应哪一档」不直观</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td><b>权益卡是最重的一块</b>，但内容不成立（三项权益全无实现）</td>
+      <td>§4.4.1 判据 3 要「价值主张<b>具体</b>」——<b>没说要做成大卡片</b>。一句话就够</td>
+    </tr>
+  </table>
+
+  <h4>二、新结构（自上而下）</h4>
+  <table>
+    <tr><th>区块</th><th>做什么</th><th>理由</th></tr>
+    <tr><td>① 价值主张</td><td><b>一句话</b> + 一行补充</td><td>只承担「为什么值得看」，16px/600 足够</td></tr>
+    <tr><td>② 价格区</td><td><b>月/年并排</b>，价格 28px（全页最大）</td><td>把「答案」放到它该在的视觉位置</td></tr>
+    <tr><td>③ 购买按钮</td><td><b>紧邻</b>价格区</td><td>选中即可购买，零滚动</td></tr>
+    <tr><td>④ 法定要点</td><td>按钮下<b>一句</b>（续期 + 取消路径，可点）</td><td>「显著」的正解是<b>短 + 就在按钮旁边</b></td></tr>
+    <tr><td>⑤ 详细说明</td><td><b>折叠</b>（续费细则 / 免费版 / 到期后行为）</td><td>放<b>补充</b>而非<b>要点</b>；合规要点已在上方</td></tr>
+    <tr><td>⑥ 恢复购买</td><td>文字按钮（次要）</td><td>§4.4.3 强制项，但不需要抢视觉</td></tr>
+    <tr><td>⑦ 法律链接</td><td>底部并排</td><td>Apple 强制</td></tr>
+  </table>
+
+  <h4>三、🔴 三条合规要求怎么落位的（这部分不能随意改）</h4>
+  <table>
+    <tr><th>要求</th><th>落位</th></tr>
+    <tr><td>自动续费披露须<b>显著</b></td><td>名称/时长/价格在卡片上（选择时即见）· 续期与取消路径在按钮<b>正下方</b>不折叠</td></tr>
+    <tr><td>🔴 <b>不得默认勾选</b></td><td>两卡默认<b>都未选中</b>（空心圈）⇒ 按钮禁用并提示「请先选择」<span class="ok">（原型里可点开试）</span></td></tr>
+    <tr><td>恢复购买（Apple 3.1.1）</td><td>本页 + 「我的」页<b>两处</b>（「我的」页那份不动）</td></tr>
+  </table>
+  <p class="warn">⚠️ 「省 34%」角标保留 —— 它是<b>价格事实陈述</b>，且 §4.4.1 判据 4 明确要求展示。
+     但它<b>不能</b>变成「推荐/默认选中」那种视觉诱导（那就等于变相预选）。</p>
+
+  <h4>四、⚠️ 这次<b>没有</b>解决、必须你定的两件事</h4>
+  <p class="warn">① <b>权益文案是占位的</b>。这一稿写的是「跨设备同步」——即你 10-04 定的方向。
+     但<b>云端同步功能目前零实现</b> ⇒ 以现状提审会构成「承诺未实现」，是归零型风险。
+     所以：排版可以先定稿，<b>上架前同步功能必须先做出来</b>。</p>
+  <p class="warn">② <b>订阅页不该在现在的状态下被截图提审</b>。审核截图必须是真实页面，
+     而真实页面的权益必须是真的。</p>
+
+  <h4>五、顺带发现：<code>ui-ux §4.4</code> 有一处<b>已过时</b>，会误导实现</h4>
+  <table>
+    <tr><th>位置</th><th>原文</th><th>实际</th></tr>
+    <tr><td>§4.4.1 判据 1</td><td>触发点：「<b>生词本接近上限时（如 180/200）</b>」</td><td>🔴 200 上限已于 <b>2026-10-01 取消</b> ⇒ <b>这个触发点不存在了</b></td></tr>
+    <tr><td>§4.4.4 整表</td><td>「生词本达 200 时提示上限」「已过期且词数 &gt; 200」</td><td>🔴 整节建立在 200 上限上 ⇒ <b>需重写</b></td></tr>
+    <tr><td>§4.4.1 判据 3</td><td>价值主张写「无限生词本 · 文章朗读」</td><td>🔴 生词本已无限（非权益）；朗读是否收费待定</td></tr>
+  </table>
+  <p>⇒ 我按「当前事实」实现，并在 <code>ui-ux</code> 里标注作废（不删原文，留决策史）。</p>
+</div>
+
+<script>
+// 主题切换
+document.querySelectorAll('.toolbar button[data-t]').forEach(function (b) {
+  b.onclick = function () {
+    document.querySelectorAll('.toolbar button[data-t]').forEach(function (x) {
+      x.classList.remove('on');
+    });
+    b.classList.add('on');
+    var p = document.getElementById('phone');
+    p.className = 'phone ' + b.dataset.t;
+  };
+});
+
+// 未订阅 / 已订阅 切换
+var showingNone = true;
+document.getElementById('tog').onclick = function () {
+  showingNone = !showingNone;
+  document.getElementById('view-none').style.display = showingNone ? '' : 'none';
+  document.getElementById('view-active').style.display = showingNone ? 'none' : '';
+  document.getElementById('hint').textContent = showingNone
+    ? '点价格卡试试「不预选 → 选中」的交互'
+    : '已订阅态：显示到期日 + 管理订阅（§4.4.4）';
+};
+
+// 档位选择（演示「不预选」+ 按钮状态跟随）
+var sel = null;
+var buy = document.getElementById('buy');
+var PRICE = { monthly: '¥9.9 / 月', yearly: '¥78 / 年' };
+
+document.querySelectorAll('.plan').forEach(function (card) {
+  card.onclick = function () {
+    sel = card.dataset.p;
+    document.querySelectorAll('.plan').forEach(function (c) {
+      c.classList.toggle('sel', c === card);
+    });
+    buy.classList.remove('off');
+    buy.classList.add('on');
+    buy.textContent = '订阅 · ' + PRICE[sel];
+  };
+});
+</script>
+</body>
+</html>
