@@ -54,6 +54,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   String? _avatarUrl;
   String _displayName = '';
   bool _isUploading = false;
+
+  /// 正在注销（防重入 —— 用户连点入口会开出两个确认弹层）。
+  bool _deletingAccount = false;
   ProviderSubscription? _authSub;
   int _unreadCount = 0;
 
@@ -581,10 +584,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
         const SizedBox(height: CoSpacing.xl),
 
-        // ── ⑥ 退出账号（**仅已登录**）──
-        //    🔴 未登录无账号可退。原先是**无条件渲染** → 逻辑矛盾
-        //       （未登录的用户看到一个「退出账号」，点了会清一个本来就不存在的登录态）。
-        if (auth.isAuthenticated) _buildSignOutTile(),
+        // ── ⑥ 账号级操作（**仅已登录**）──
+        //
+        // 🔑 「注销账号」放在「退出账号」**正上方**：两者都是账号级操作，
+        //    而注销**更重**（不可逆）—— 放在下面会显得「顺手就能点」。
+        //    ⚠️ 但**不能藏起来**：Apple 明确要求「入口要显眼，别藏太深」
+        //       （它只禁止「仅靠邮件/客服才能注销」，不禁止放在设置区）。
+        //
+        // 🔴 未登录无账号可注销 —— 与 `_buildSignOutTile` 同一条理由
+        //    （未登录时看到一个「注销账号」，点了只会 401）。
+        if (auth.isAuthenticated) ...[
+          _navTile(
+            icon: Icons.delete_forever_outlined,
+            title: '注销账号',
+            subtitle: '永久删除账号与云端数据',
+            onTap: _showDeleteAccountDialog,
+          ),
+          const SizedBox(height: CoSpacing.sm),
+          _buildSignOutTile(),
+        ],
       ],
     );
   }
@@ -1376,5 +1394,165 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       RestoreOutcome.unavailable => '当前无法连接 App Store',
     };
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 注销账号（Apple 5.1.1(v)：支持注册的 App **必须**能 App 内自助注销）
+  // ══════════════════════════════════════════════════════════════════════
+
+  /// 二次确认 → 执行注销。
+  ///
+  /// 🔴 **为什么必须二次确认**（Apple 明确允许且推荐）：
+  ///    注销**不可逆**。Apple 的规定是「不得要求用户发邮件/打电话」，
+  ///    **但**「may include confirmation steps to prevent users from accidentally
+  ///    deleting their account」—— 确认步骤是允许的，也是这里唯一的安全网。
+  Future<void> _showDeleteAccountDialog() async {
+    if (_deletingAccount) return; // 防重入
+
+    final t = CoEvoTokensExt.of(context);
+    final confirmed = await CoDialog.show<bool>(
+      context,
+      builder: (ctx) => CoDialog(
+        title: '注销账号',
+        actions: [
+          ClayButton(
+            label: '取消',
+            variant: ClayButtonVariant.secondary,
+            expanded: true,
+            onTap: () => Navigator.of(ctx).pop(false),
+          ),
+          ClayButton(
+            label: '确认注销',
+            expanded: true,
+            onTap: () => Navigator.of(ctx).pop(true),
+          ),
+        ],
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 🔴 三条必须说清的（顺序＝用户最该先知道的）
+            //
+            // ⚠️ 文案**不用 `**粗体**`**：`Tw` 是否解析 markdown 未确认
+            //    ⇒ 万一不解析，页面上会**原样显示星号**（比不加粗更糟）。
+            //    重点靠**图标颜色 + 位置（第一条）**传达。
+            _deleteDialogLine(
+              t,
+              icon: Icons.warning_amber_rounded,
+              // 最关键的一条放第一行
+              text: '账号与云端数据（邮箱、密码、订阅记录）将被永久删除，无法恢复。',
+              emphasize: true,
+            ),
+            const SizedBox(height: CoSpacing.md),
+            _deleteDialogLine(
+              t,
+              icon: Icons.phone_iphone,
+              // 🔑 与《用户协议》§三.5 的措辞一致 ——
+              //    不写清这一条，用户会以为生词也一起没了（那是不必要的流失）
+              text: '你设备上的学习数据（生词、复习记录、已导入的电子书）不会被删除。',
+            ),
+            const SizedBox(height: CoSpacing.md),
+            _deleteDialogLine(
+              t,
+              icon: Icons.credit_card,
+              // ⚠️ 必须说 —— 否则用户会以为「注销 = 退订/退款」
+              text: '注销不会自动取消订阅。如需取消，请在 Apple ID 设置的「订阅」中操作。',
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    await _doDeleteAccount();
+  }
+
+  /// 弹层里的一行说明（图标 + 文字）。
+  ///
+  /// ⚠️ 用 `Tw`（Twemoji 渲染）而非裸 `Text` —— 与「我的」页其它文案一致；
+  ///    且 `**粗体**` 由它统一处理，不必在这里手写 RichText。
+  Widget _deleteDialogLine(
+    CoEvoTokens t, {
+    required IconData icon,
+    required String text,
+    bool emphasize = false,
+  }) {
+    // ⚠️ 用 ColorScheme 的 error（**不是** tokens）——
+    //    `CoEvoTokens` **没有** `danger` 字段（初版凭印象写了 `t.danger`，编译会挂）。
+    //    「危险提示用 error 色」也正是 Material 语义槽的用途。
+    final danger = Theme.of(context).colorScheme.error;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(
+            icon,
+            size: 16,
+            color: emphasize ? danger : Color(t.ink3.argb32),
+          ),
+        ),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Tw(
+            text,
+            style: TextStyle(
+              fontFamily: CoFonts.uiSans,
+              fontSize: 13,
+              height: 1.5,
+              color: Color(emphasize ? t.ink.argb32 : t.ink2.argb32),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 真正执行注销。
+  ///
+  /// # 🔴 失败时**必须说清「账号还在」**
+  ///
+  /// 服务端是事务的（失败即回滚 ⇒ 账号未删），所以失败时**不能**让用户以为
+  /// 「可能删了一半」。文案写「注销未完成，账号未被删除」——
+  /// 这正是本项目判据「**「静默失败 + 无出口」比「报错」更糟**」的应用。
+  Future<void> _doDeleteAccount() async {
+    final token = ref.read(authProvider).token;
+    if (token == null) return;
+
+    setState(() => _deletingAccount = true);
+    String? error;
+    try {
+      final resp = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/api/user/me/delete'),
+        // 🔴 **不传 uid** —— 服务端只认 token 里的身份
+        //    （见 `user_purge::resolve_uid_from_token`）。
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 20));
+      if (resp.statusCode != 200) {
+        error = '注销未完成，账号未被删除（服务端返回 ${resp.statusCode}）';
+      }
+    } catch (_) {
+      error = '注销未完成，账号未被删除（网络异常）';
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    if (error != null) {
+      setState(() => _deletingAccount = false);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error)));
+      return;
+    }
+
+    // ── 成功：清本地登录态 + 回首页 ──
+    await ref.read(authProvider.notifier).logout();
+    if (!mounted) return;
+    setState(() => _deletingAccount = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('账号已注销')),
+    );
+    context.go('/home');
   }
 }

@@ -414,5 +414,88 @@ void main() {
   );
   check('🔴 代码中无残留的 /api/pay/native 调用', !profileCode.contains('/api/pay/native'));
 
+  // ────────────────────────────────────────────────────────────────
+  // ⑨ 🔴 账号注销（Apple 5.1.1(v)：支持注册的 App **必须**能在 App 内注销）
+  // ────────────────────────────────────────────────────────────────
+  //
+  // ⚠️ 边界同 §⑧：源级断言只证明「代码里有」，**不**证明运行时行为。
+  //    运行时行为由后端 11 个单测守着（`user_purge::tests::*`）。
+  //    📌 两层各有分工：这里防「入口/接口被删」，那边防「删得不干净」。
+  print('\n[⑨] 账号注销（Apple 5.1.1(v)）');
+
+  String readRepo(String rel) {
+    final f = File('../../$rel');
+    return f.existsSync() ? f.readAsStringSync() : '';
+  }
+
+  // ⚠️ `routesSrc` **也必须过 `codeOnly`** ——
+  //    routes.rs 的注释里**提到了**这个路径（解释为什么用 `/me/` 而不是 `/{user_id}/`）
+  //    ⇒ 不滤注释的话，「真路由被删、注释留着」会**假绿**。
+  //    📌 这正是 §⑧ 记过的同一条判据：**注释里提到 ≠ 代码里写了**。
+  final routesSrc = codeOnly(readRepo('backend/crates/api_server/src/routes.rs'));
+  final purgeSrc = codeOnly(readRepo('backend/crates/api_server/src/user_purge.rs'));
+
+  check('后端注销路由已注册', routesSrc.contains('/api/user/me/delete'));
+  check(
+    '后端路由用 POST（不是 GET/DELETE）',
+    RegExp(r'"/api/user/me/delete",\s*post\(').hasMatch(routesSrc),
+  );
+
+  // 🔴 **协议层安全**：注销只能删自己 ⇒ uid 必须来自 token，不能是客户端参数。
+  check(
+    '🔴 后端从 token 反查 uid（协议上无法指定他人）',
+    purgeSrc.contains('fn resolve_uid_from_token') &&
+        purgeSrc.contains('SELECT user_id FROM tokens WHERE token = ?1'),
+  );
+
+  // Apple：「仅停用/禁用不够」⇒ 必须是 DELETE，不能是 UPDATE ... deleted_at
+  check(
+    '🔴 硬删（不是软删 —— Apple 明确「仅停用不够」）',
+    purgeSrc.contains('DELETE FROM {} WHERE {} = ?1'),
+  );
+  check(
+    '事务 + 失败回滚',
+    purgeSrc.contains('BEGIN IMMEDIATE') && purgeSrc.contains('ROLLBACK'),
+  );
+  check(
+    '🔴 临时关外键并**恢复**（否则该连接永久失去外键保护）',
+    purgeSrc.contains('PRAGMA foreign_keys = OFF') &&
+        purgeSrc.contains('PRAGMA foreign_keys = ON'),
+  );
+  check(
+    '交易/审计**匿名化**而非删除（法定保存义务）',
+    purgeSrc.contains('ANONYMIZE_TARGETS') && purgeSrc.contains('deleted:'),
+  );
+  check(
+    '🔴 有「引用图覆盖」断言（防加表忘加注销 ⇒ 留孤儿）',
+    purgeSrc.contains('purge_covers_all_user_refs'),
+  );
+  check(
+    'trial_ip_log **不在**注销清单（它不含用户标识）',
+    !purgeSrc.contains(r'"trial_ip_log"'),
+  );
+
+  check('前端「我的」页有注销入口', profileCode.contains('_showDeleteAccountDialog'));
+  check('🔴 有二次确认（Apple 明确允许确认步骤）', profileCode.contains('CoDialog.show<bool>'));
+  // 🔴 前端也不得传 uid —— 与后端「只认 token」相辅相成
+  check(
+    '🔴 前端注销请求只带 Authorization（不传 uid）',
+    RegExp(
+      r"api/user/me/delete'\),[\s\S]{0,160}?headers: \{'Authorization'",
+    ).hasMatch(profileCode),
+  );
+  check(
+    '🔴 失败文案明确「账号未被删除」（不留「删了一半」的疑惧）',
+    profileCode.contains('账号未被删除'),
+  );
+
+  // 🔴 反向：隐私政策**不得**再写「通过邮箱提交申请」
+  //    依据：Apple 5.1.1(v) 原文 —— 除高度监管行业，**不得**要求用户发邮件才能注销
+  final privacyMd = readRepo('docs/legal/privacy-policy.md');
+  check(
+    '🔴 隐私政策写「应用内直接注销」（不再要求发邮件）',
+    privacyMd.contains('直接注销') && !privacyMd.contains('提交申请'),
+  );
+
   _report();
 }

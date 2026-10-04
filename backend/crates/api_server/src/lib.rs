@@ -65,3 +65,4 @@ pub mod tencent_asr;
 pub mod tencent_tts;
 pub mod test_helpers;
 pub mod trial_handler;
+pub mod user_purge;

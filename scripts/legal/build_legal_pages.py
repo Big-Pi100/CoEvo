@@ -99,10 +99,19 @@ PLACEHOLDER_MAP = {
     #    ⚠️ 不要试图用「禁用 autolink」绕开 —— 那会让裸邮箱**不可点**，
     #       而「联系邮箱」正是最该可点的一处。
     "【待填：联系邮箱】": "[{email}](mailto:{email})",
-    # 🔑 「注销入口或联系邮箱」短期填**邮箱**（邮件申请也是合法渠道）。
-    #    ⏳ 长期应改为 App 内注销入口 —— 那是 Apple 5.1.1(v) 的要求，
-    #       目前前后端零实现（见 docs/operations/owner-action-checklist-2026-10-04.md §7.2）。
-    "【待填：注销入口或联系邮箱】": "[{email}](mailto:{email})",
+    # 🔴 2026-10-04 已删一项：`【待填：注销入口或联系邮箱】`
+    #
+    #    原因：**「注销要发邮件申请」本身不合规** —— Apple 5.1.1(v) 原文：
+    #      「only apps in highly-regulated industries may require users to use
+    #        customer service resources, such as ... **sending an email**,
+    #        to complete account deletion」
+    #    ⇒ 应用内自助注销功能上线后，政策里那句已改为「在应用内『我的』页面**直接注销**」
+    #      （见 `docs/design/account-deletion-2026-10-04.md`）。
+    #    📌 这不是「填个占位符」，而是把**申请制**改成**自助制** —— 前者上架会被拒。
+    #
+    # ⚠️ 本文件是 **Python**，注释是 `#` —— 别写成 `//`（Rust/Dart 的风格）。
+    #    本轮就写错过一次：`python -m py_compile` 立刻报 `SyntaxError: invalid character '：'`。
+    #    📌 判据：**改了脚本必须跑一次语法检查** —— 它比「读一遍」可靠得多。
 }
 
 # 🔴 还有一类**不是 `【待填】` 格式**的占位符：**日期**。

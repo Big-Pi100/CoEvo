@@ -452,8 +452,24 @@ pub async fn admin_restore_user(headers: HeaderMap, Path(uid): Path<String>) -> 
     }
 }
 
-/// POST /api/admin/users/{user_id}/hard-delete — 超管永久删除用户（清库+归档）
-/// 归档记录写入 data/deleted_users.ndjson 文件，不留在数据库内
+/// POST /api/admin/users/{user_id}/hard-delete — 超管永久删除用户（清库 + 归档）
+///
+/// # 🔴 2026-10-04 重构：改为调用共用的 `user_purge::purge_user`
+///
+/// 原实现**自带一份删除列表**，实测有**两个 bug**：
+///
+/// | # | 问题 | 后果 |
+/// |---|---|---|
+/// | 1 | 列表**只有 3 条**（`user_preferences` / `tokens` / `users`），漏了 7+ 张表 | **静默留下孤儿数据** —— SQLite 的外键只保证「子表不引用不存在的父表」，**管不了「父表删了子表没清」**，所以删 `users` 行不会报错 |
+/// | 2 | 归档用 `std::fs::write`（**截断覆盖**）| 第二次硬删**冲掉第一次的归档**（注释却写着「归档记录写入」）|
+///
+/// ⇒ 改为与「用户自助注销」共用 `purge_user`：**同一件事的口径只能一处权威**。
+/// 📌 判据：「**补丁 ≠ 修法**」—— 发现删除列表漏项时，要问「**还有哪些地方也有一份**」，
+///    而不是只补当前这一份。（当时确实还有另一份没写 —— 用户自助注销。）
+///
+/// ⚠️ **与用户自助注销的差异**：本接口**写运维归档**（含 email 明文，便于运维辨识），
+///    自助注销不写（用户已要求删除，不该在磁盘再留 PII 副本）。
+///    差异通过 `PurgeMode` 表达，见 `user_purge` 模块文档。
 pub async fn admin_hard_delete_user(
     headers: HeaderMap,
     Path(uid): Path<String>,
@@ -468,79 +484,28 @@ pub async fn admin_hard_delete_user(
     if role != "super" {
         return err(StatusCode::FORBIDDEN, "forbidden");
     }
+
     let c = conn();
-    let now = chrono::Utc::now().timestamp().to_string();
-    let now_rfc = chrono::Utc::now().to_rfc3339();
-
-    // 1. 读取用户归档信息（在删除之前）
-    //
-    // 🔴 2026-09-29：`u.phone_hash` → `u.email`（硬删除归档时留个可辨识的登录标识）。
-    //    ⚠️ 原来存的是 **phone_hash（哈希）**，现在直接存 email（明文）——
-    //       这是有意放宽，不是疏漏：归档文件 `deleted_users.ndjson` 是**运维私有的本地文件**，
-    //       而 phone_hash 那种「存哈希只为让运维自己也认不出是谁」的做法，
-    //       在改邮箱后会让归档条目**完全没有辨识度**（只剩 username，而它只是 `u_xxx` 内部 id）。
-    let user_info: Result<(String, Option<String>, Option<String>, Option<String>, Option<String>), _> = c.query_row(
-        "SELECT u.username, u.display_name, u.email, u.subscription_expires, up_act.value
-         FROM users u
-         LEFT JOIN user_preferences up_act ON u.id=up_act.user_id AND up_act.key='subscription_activated_at'
-         WHERE u.id=?1",
-        rusqlite::params![&uid],
-        |row| Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, Option<String>>(1)?,
-            row.get::<_, Option<String>>(2)?,
-            row.get::<_, Option<String>>(3)?,
-            row.get::<_, Option<String>>(4)?,
-        )),
-    );
-
-    let (username, display_name, email, sub_expires, sub_activated) = match user_info {
-        Ok(info) => info,
-        Err(_) => return err(StatusCode::NOT_FOUND, "user_not_found"),
-    };
-
-    // 2. 写入归档文件 data/deleted_users.ndjson
-    let archive_id = uuid::Uuid::new_v4().to_string();
-    let archive_entry = serde_json::json!({
-        "archive_id": archive_id,
-        "original_user_id": uid,
-        "username": username,
-        "display_name": display_name,
-        "email": email,
-        "subscription_expires": sub_expires,
-        "subscription_activated_at": sub_activated,
-        "deleted_by": "super",
-        "deleted_at": now,
-        "deleted_at_rfc3339": now_rfc,
-    });
-    let _ = std::fs::write(
-        std::path::Path::new("data").join("deleted_users.ndjson"),
-        format!(
-            "{}\n",
-            serde_json::to_string(&archive_entry).unwrap_or_default()
-        ),
-    );
-
-    // 3. 删除关联数据（按外键顺序防止约束冲突）
-    // 🔴 2026-09-29：旧学习链（user_cards / card_memory / review_log / conversations /
-    //     plan_runs / user_plan_progress / guardian_assignments / achievements）已退役，
-    //     这些表已删除 → 级联删除只剩现役表。
-    let tables = [
-        "DELETE FROM user_preferences WHERE user_id=?1",
-        "DELETE FROM tokens WHERE user_id=?1",
-        "DELETE FROM users WHERE id=?1",
-    ];
-    for sql in &tables {
-        let _ = c.execute(sql, rusqlite::params![&uid]);
+    match crate::user_purge::purge_user(
+        &c,
+        &uid,
+        crate::user_purge::PurgeMode::AdminArchive,
+        "super",
+    ) {
+        Ok(rep) => ok(serde_json::json!({
+            "status": if rep.user_existed { "hard_deleted" } else { "already_deleted" },
+            // 🔑 把清理规模回给调用方 —— 管理端能一眼看出「到底清了多少」，
+            //    而不是只有一个 status（漏删时也看不出来）。
+            "anonymized_rows": rep.anonymized_rows(),
+            "deleted_rows": rep.deleted_rows(),
+        })),
+        Err(e) => {
+            // 🔴 事务已回滚 ⇒ 用户**未被删除**。日志要写清这一点，
+            //    否则运维看到失败还得推断「到底删了没」。
+            tracing::error!("硬删用户失败（已回滚，用户未删除）uid={}: {}", uid, e);
+            err(StatusCode::INTERNAL_SERVER_ERROR, "delete_failed")
+        }
     }
-
-    // 4. 审计日志
-    let _ = c.execute(
-        "INSERT INTO admin_audit_log (id,admin_id,action,target_user_id,detail,created_at) VALUES (?1,?2,'hard_delete_user',?3,?4,?5)",
-        rusqlite::params![uuid::Uuid::new_v4().to_string(), "super", &uid, serde_json::json!({"archive_id": archive_id, "deleted_at": now}).to_string(), now],
-    );
-
-    ok(serde_json::json!({"status":"hard_deleted", "archive_id": archive_id}))
 }
 
 // 🔴 2026-09-29 已退役：`admin_reveal_phone`（两步揭看手机号）+ `RevealPhoneQuery`

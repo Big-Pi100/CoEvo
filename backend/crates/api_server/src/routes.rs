@@ -182,6 +182,15 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
             "/api/user/{user_id}/subscription",
             get(user_subscription_handler),
         )
+        // 🆕 账号注销（Apple 5.1.1(v)：支持注册的 App **必须**能 App 内注销）
+        //
+        // 🔑 路径用 `/api/user/me/delete` 而不是 `/api/user/{user_id}/delete`：
+        //    后者会让「删谁」变成**客户端参数**。本接口只认 token 里的身份
+        //    （见 `user_purge::resolve_uid_from_token`）⇒ 协议上无法指定他人。
+        .route(
+            "/api/user/me/delete",
+            post(crate::user_purge::delete_me_handler),
+        )
         .route("/api/stt/transcribe", post(stt_transcribe_handler))
         // ── 词库外生词兜底（LLM 在线制卡）──
         // 🔴 **不需登录** —— 产品原则「除生词表上限外不验证登录态」：
