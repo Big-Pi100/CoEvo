@@ -123,6 +123,82 @@ ASC → 我的 App → 选 CoEvo → 侧边栏「营利」→「订阅」
 
 > 🔑 Apple 审核**不要求**域名好看，只要求**可访问、能点开**。
 > 📌 我的建议：**先 A 满足上架**，上线后再升级 B（两件事不冲突）。
+
+### 4.3 🆕 联系邮箱：建议用 `support@keyievolution.fun`（而非 QQ 邮箱）
+
+> 白哥 2026-10-04 问：「像 vibedollar 那样建一个 CoEvo 域名的 support 邮箱、转发到 QQ 如何？」
+
+**先澄清一个前提**（实测，SSH 直查）—— **vibedollar 没有域名邮箱**：
+
+| 项 | 实测值 |
+|---|---|
+| mailproxy 的作用 | **发信代理**（`smtp.qq.com` → 国内 VPS → 发出，避开海外 IP 被拒）|
+| `MAIL_FROM` | `mr.bigpi100@qq.com` —— **发件人就是 QQ 邮箱本身** |
+| 收信配置 | 🔴 **0 条**（无 IMAP / POP3 / 入站规则）|
+| 它能否支持「support@ 发信」 | ❌ 不能 —— QQ SMTP **强制发件人 = 授权账号**，换个 From 会被拒 |
+
+⇒ 所以「照 vibedollar 那样建」这条路**不存在**；但**你的需求本身完全合理**，而且有更简单的做法。
+
+#### 现状（用 `dig` 实测；已用 `qq.com` 对照证明查询方式正确）
+
+| 项 | 值 |
+|---|---|
+| `keyievolution.fun` 的 NS | `*.ns.cloudflare.com` ⇒ **DNS 已在 Cloudflare** ✅ |
+| `keyievolution.fun` 的 MX | 🔴 **空 ⇒ 当前一个邮件都收不到** |
+
+#### ⭐ 方案：Cloudflare Email Routing（免费）
+
+| 项 | 说明 |
+|---|---|
+| 费用 | **永久免费**（Cloudflare 标准服务，非试用）|
+| 前提 | 域名 DNS 在 Cloudflare ✅ **已满足** |
+| 能做 | 收 `support@keyievolution.fun` → 转发到你的 QQ 邮箱 · 无限地址 · 支持 catch-all（任意前缀都收）|
+| 🔴 **不能做** | **发信**（它不是邮箱服务，是**转发器**：不能登录、不发信、不存邮件）|
+| 限制 | 单封 ≤ **25 MB**（含附件）；转发数量无限制 |
+
+**你要点的 5 步**（约 5 分钟，需你的 Cloudflare 账号）：
+
+```
+1. Cloudflare Dashboard → 选 keyievolution.fun
+2. 左侧 Email → Email Routing → Get Started
+   → 点「Add records and enable」（**MX/SPF 自动加**，不用手填）
+3. Destination addresses → 添加你的 QQ 邮箱 → 收验证邮件 → **点确认**
+   🔴 不验证 = 转发完全不生效（最常被漏的一步）
+4. Routing rules → Create address
+   → Custom address 填 `support` → 目标选刚验证的 QQ 邮箱 → Save
+5.（可选）开 Catch-all → 任意前缀都能收（如 contact@ / 拼错的地址）
+```
+
+#### ⚠️ 两条边界（先说清，避免以后返工）
+
+| # | 边界 | 影响 |
+|---|---|---|
+| 1 | **不能发信** | 若将来要用 `support@` 主动发邮件（验证码、通知），需**另接 SMTP 服务**（Resend / SMTP2Go 免费额度）。⚠️ 且换 SMTP 后 **vibedollar 的 mailproxy 也用不上**（它的授权账号是 QQ 邮箱）|
+| 2 | **在 QQ 里回复时，对方看到的发件人是 QQ 邮箱** | 要「以 support@ 名义回复」需要 SMTP 代发（同上）。**一期不必解决** —— 用户收到回复即可 |
+
+> 📌 **建议**：一期用 CF Email Routing 拿到**专业地址 + 隐私保护**（公开的是 `support@` 而非个人 QQ 邮箱）；
+> 发信能力等到真需要时再接。
+> 🔑 **隐私政策的「联系邮箱」建议填 `support@keyievolution.fun`** —— 这是它的主要价值之一：
+> **不把个人邮箱暴露给所有 App 用户**。
+
+#### ⏳ 所以「联系邮箱」这个占位符有两条路
+
+| 选项 | 填什么 | 何时可用 |
+|---|---|---|
+| **A** ⭐ | `support@keyievolution.fun` | 先在 Cloudflare 配好 Email Routing（上面 5 步）|
+| **B** | 直接填 QQ 邮箱 | 立刻可用，但**个人邮箱会公开在政策里** |
+
+> ⚠️ 无论选哪个，**都需要你先在 Cloudflare 建好**（选 A）或**告诉我要填哪个**（选 B）。
+
+#### ⛔ 为什么不推荐「腾讯企业邮 / 网易企业邮」
+
+CSDN 实测记录（2026）：**腾讯企业邮免费版强制绑定企业微信**、**网易免费版「全域通」是付费功能**。
+且白哥是**个人主体**，企业邮通常需要企业资质 ⇒ **不合用**。
+
+#### 🔑 为什么不自建邮件服务器
+
+MX + Postfix 看似可行，但**要维护 IP 信誉、反垃圾、DKIM/DMARC、退信处理** ——
+而且**国内新 IP 发信极易被判垃圾**。判据：**能用托管服务就别自建**（成本远低于收益）。
 > ⚠️ 根域 `keyievolution.fun` / `www` **已解析**到本机 ✅（实测 nslookup），所以 B 也可行。
 
 ### 4.3 你只需给我两个值
