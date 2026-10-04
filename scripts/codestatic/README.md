@@ -41,8 +41,23 @@ CI 的判据是 `--no-fatal-infos` ⇒ **只有 `error` 与 `warning` 致命**�
 |---|---|---|
 | ① | `kCategoryLabels` 改名后仍在 `FeedItem` 类内，调用方按「`k` = 顶层常量」惯例裸写 ⇒ **符号解析不到** ⇒ `flutter build` 失败 | ✅ **error 级** |
 | ② | 多写了一个**未使用的 import** ⇒ CI 的 `warning` ⇒ **CI 红** | ✅ **warning 级** |
+| ③ | 🔵 2026-10-04：**凭印象写了一个不存在的 API** —— `Stream.value(x).followedBy(y)`。`followedBy` 是 **`Iterable`** 的方法，**`Stream` 没有它** | ✅ **error 级** |
 
-两次 `dart format --output=none` **都完全通过**（语法没错）。
+三次 `dart format --output=none` **都完全通过**（语法没错）。
+
+🔑 **事故 ③ 的教训（值得单独记）**：
+
+**API 名不能靠猜。** 「这个类应该有这么个方法」是**记忆**，不是**事实** ——
+而错的 API 名**语法完全合法**（`a.followedBy(b)` 长得没毛病），
+`dart format` 也不会报，**只有符号解析能发现**。
+⇒ 凡「我没在本项目里见过被用过的」API，落笔后**必须过一遍本工具**。
+📌 同族判据：**「注释/记忆里的声明」须 grep 才算数** —— 这里把「记忆」换成了「API 名」。
+
+⚠️ **附一条：本工具的假红怎么认** —— 它不覆盖 lint（见文件头分档表），
+   但**会报「某包在本机没装」**：如 2026-10-04 的 `in_app_purchase`
+   （pub 缓存里没有该包 ⇒ 20 条 `Undefined name 'InAppPurchase'`）。
+   🔑 **判法**：看错误是否**集中在「import 该包的那一个文件」** ——
+   若是，就是假红（CI 会 `pub get` 补上）；若散落在别的文件，多半是真问题。
 
 ⇒ 本脚本直接调用 analyzer **库**（**不经 analysis_server**）⇒ 不受那个崩溃影响。
 
