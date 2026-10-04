@@ -133,7 +133,7 @@ ASC → 我的 App → 选 CoEvo → 侧边栏「营利」→「订阅」
 | 项 | 实测值 |
 |---|---|
 | mailproxy 的作用 | **发信代理**（`smtp.qq.com` → 国内 VPS → 发出，避开海外 IP 被拒）|
-| `MAIL_FROM` | `mr.bigpi100@qq.com` —— **发件人就是 QQ 邮箱本身** |
+| `MAIL_FROM` | 一个 **QQ 邮箱地址**（`<你的账号>@qq.com`）—— **发件人就是 QQ 邮箱本身** |
 | 收信配置 | 🔴 **0 条**（无 IMAP / POP3 / 入站规则）|
 | 它能否支持「support@ 发信」 | ❌ 不能 —— QQ SMTP **强制发件人 = 授权账号**，换个 From 会被拒 |
 
