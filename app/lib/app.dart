@@ -10,13 +10,12 @@ import 'theme/coevo_tokens.dart';
 import 'theme/clay.dart';
 import 'theme/tokens_ext.dart';
 import 'theme/theme_builder.dart';
-import 'screens/home_screen.dart';
 import 'screens/achievements_screen.dart';
 import 'screens/about_screen.dart';
 import 'screens/aggregate_page_screen.dart';
-import 'screens/book_library_screen.dart';
 import 'screens/book_reader_screen.dart';
 import 'screens/bookmark_list_screen.dart';
+import 'screens/reading_tab_screen.dart';
 import 'screens/review_screen.dart';
 import 'screens/review_session_screen.dart';
 import 'screens/profile_screen.dart';
@@ -60,7 +59,20 @@ final goRouter = GoRouter(
           routes: [
             GoRoute(
               path: '/home',
-              builder: (context, state) => const HomeScreen(),
+              // 🔴 **2026-10-04**：`/home` 的 builder 从 `HomeScreen` 改为
+              //    **`ReadingTabScreen`（容器）**。
+              //
+              // 「阅读」这个 tab 现在有**两个平级视图**：「今日精选」（信息流）与「书库」。
+              // 白哥定案原话：「书库与今日精选是**平级的页面**，入口不是一个下方的按钮
+              // 而是与『今日精选』**title 平级**，你应该给我设计稿再做，而不是直接做」。
+              // ⇒ 容器负责**标题栏**（双标题 + 随段切换的右侧动作）与 `IndexedStack` 切换；
+              //    `HomeScreen` 与 `BookLibraryScreen` 降级为**无标题栏的内容视图**。
+              // 📄 设计稿（方案 A）：`docs/design/book-library-entry-placement-2026-10-04.html`
+              // 📄 段定义（可断言）：`screens/reading_section.dart`
+              //
+              // ⚠️ `HomeScreen` 的**启动引导**（试用账户 / 推广码 / 注册弹窗）仍留在它自己
+              //    的 `initState` 里 ⇒ 容器用 `IndexedStack`（两段都构建）保证它照旧执行。
+              builder: (context, state) => const ReadingTabScreen(),
               routes: [
                 // 🔴 收藏清单（3.5）= **「阅读」tab 内的子视图**
                 //
@@ -196,17 +208,22 @@ final goRouter = GoRouter(
       path: '/about',
       builder: (context, state) => const AboutScreen(),
     ),
-    // ── 🆕 电子书（2026-10-04）──
+    // ── 电子书（2026-10-04）──
     //
-    // 🔑 路由与 `widgets/book_library_entry.dart` 的 `kBookLibraryRoute` **必须一致**
-    //    （入口只 push 那个常量，不硬编码字符串 —— 两处各写一份就会漂）。
+    // 🗑 **`/books`（书库页）顶层路由已删除**（2026-10-04 · 方案 A）——
+    //    书库改为「阅读」tab 内的**平级视图**，由 `ReadingTabScreen` 承载。
+    //    🔑 它现在**不是一条能 push 的路由**（点标题即切换、无转场），
+    //       所以也没有「返回键」这回事 —— 与「收藏清单」同类
+    //       （区别：收藏清单是**子路由** `/home/bookmarks`，因为它是一次「进入」；
+    //        而书库是同屏切换 ⇒ 连子路由都不需要，状态在容器里）。
+    //    🔑 连带删除：`widgets/book_library_entry.dart`（上一版那条「我的书库 ›」
+    //       入口条）—— 入口已由**标题级双 Tab** 取代。
     //
-    // ⚠️ `/books/:id` 必须在 `/books` **之后**声明？不 —— go_router 按**具体度**匹配，
-    //    不是声明顺序；但两条都写清楚路径避免歧义（顺序无所谓，可读性上放一起）。
-    GoRoute(
-      path: '/books',
-      builder: (context, state) => const BookLibraryScreen(),
-    ),
+    // ⚠️ 阅读器 `/books/:id` **仍是顶层路由**：判据「它是不是 tab 的内容」——
+    //    阅读时要求**覆盖全屏的沉浸态**（同 `/article/:id` / `/review/session`）。
+    //    路径保留 `/books/:id` 前缀（入口在书库视图里）；改路径要连带改
+    //    `book_library_screen.dart` 与 `services/ebook/book_import_flow.dart` 的 push，
+    //    无收益 ⇒ 不动。
     GoRoute(
       // `:id` 是 `book.db` 里 `book.id`（端侧 uuid）
       path: '/books/:id',

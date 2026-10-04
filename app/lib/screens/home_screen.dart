@@ -17,11 +17,9 @@ import '../services/feed_pager.dart';
 import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
-import '../widgets/book_library_entry.dart';
 import '../widgets/bookmark_toggle.dart';
 import '../widgets/claim_dialog.dart';
 import '../widgets/feed_card.dart';
-import '../widgets/header_chip.dart';
 
 /// 首页 —— **信息流**（导航第一个 tab「阅读」）。
 ///
@@ -281,10 +279,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (_pendingRefCode == null) {
         final refCode = _readRefCode();
         final uri = GoRouter.of(context).state.uri;
-        final campaignId = uri.queryParameters['campaign_id'] ?? uri.queryParameters['camp'];
+        final campaignId =
+            uri.queryParameters['campaign_id'] ?? uri.queryParameters['camp'];
         _pendingRefCode = refCode;
         _pendingCampaignId = campaignId;
-        debugPrint('_initAuth refCode=$refCode campaignId=$campaignId href=${Uri.base}');
+        debugPrint(
+            '_initAuth refCode=$refCode campaignId=$campaignId href=${Uri.base}');
       }
 
       // ── 点击追踪：来自推广链接或二维码扫码 → 记录一次分享点击 ──
@@ -342,7 +342,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         if (mounted) _showAuthDialog();
         return;
       }
-      debugPrint('_initAuth trialStart refCode=${_pendingRefCode} campaignId=${_pendingCampaignId}');
+      debugPrint(
+          '_initAuth trialStart refCode=${_pendingRefCode} campaignId=${_pendingCampaignId}');
       await ref
           .read(authProvider.notifier)
           .trialStart(refCode: _pendingRefCode, campaignId: _pendingCampaignId);
@@ -379,8 +380,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// 登录时触发活动推送检查（写 campaign_push 通知到通知中心）
   void _checkLoginCampaignPush(String userId, String token) {
     http.get(
-      Uri.parse('${ApiConfig.baseUrl}/api/campaigns/check-push-trigger?push_trigger=login&user_id=$userId'),
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      Uri.parse(
+          '${ApiConfig.baseUrl}/api/campaigns/check-push-trigger?push_trigger=login&user_id=$userId'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token'
+      },
     ); // fire-and-forget
   }
 
@@ -388,7 +393,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void _joinCampaign(String userId, String token, String campaignId) {
     http.post(
       Uri.parse('${ApiConfig.baseUrl}/api/campaign/join'),
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token'
+      },
       body: jsonEncode({
         'campaign_id': campaignId,
         'user_id': userId,
@@ -466,73 +474,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── 标题栏（设计稿 `.feed-hd`：23 / w600 / 字距 -.015em）──
-            //    右侧「收藏 N」入口 = 3.5（设计稿 `.bm-entry`）。
-            //    🔑 现在放得下手了 —— 收藏清单页已存在（`/home/bookmarks`），
-            //       不会出现「点了没反应的死入口」（这正是之前不放的理由）。
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 2, 18, 14),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '今日精选',
-                      style: TextStyle(
-                        fontFamily: CoFonts.uiSans,
-                        fontSize: 23,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 23 * -0.015,
-                        color: Color(t.ink.argb32),
-                      ),
-                    ),
-                  ),
-                  // 设计稿 `.feed-hd{gap:12px}`
-                  const SizedBox(width: 12),
-                  // 🔴 这里**曾经**有一个「生词 N」入口（3.4d）—— 已于 2026-09-28 删除。
-                  //
-                  // 白哥：「**阅读页面的『生词』按钮要取消**」。
-                  // 🔑 理由（顺着规格读下来就通了）：**生词本 ≡ 复习页**（`ui-ux` §6.2），
-                  //    而复习**本身就是一个 tab** —— 底部导航已经有它了。
-                  //    再放一个标题栏按钮，是**同一目的的第二个入口**；
-                  //    而且它指过去只是「切 tab」，等于把导航按钮做了第二遍。
-                  HeaderChip(
-                    icon: Icons.bookmark_border,
-                    label: '收藏',
-                    count: bookmarkIds.length,
-                    onTap: () => context.push('/home/bookmarks'),
-                  ),
-                ],
-              ),
-            ),
-
-            // 🔴 2026-10-03：这里**曾**放过兴趣筛选栏（`InterestFilterBar`），
-            //    白哥真机反馈「**阅读界面太拥挤**」⇒ 已移回「我的」页。
-            //    🔑 判据修正：「前置控制放哪」= **使用频率 × 占用空间** ——
-            //       兴趣筛选是**低频**操作（设一次长期不动），却要在信息流页
-            //       **常驻占一行** ⇒ 用一次的便利，换每天的拥挤，不划算。
-            //       信息流页的垂直空间是**稀缺资源**，留给内容。
-            //    ⚠️ **别再放回来** —— 详见 `widgets/interest_filter_section.dart` 类文档。
-
-            // ── 🆕 我的书库入口（2026-10-04 · 白哥定位置：标题栏之后、信息流之前）──
+            // ── 🆕 2026-10-04：标题栏与「我的书库」入口**已上移到容器** ──
             //
-            // 🔴 **它跟上面那个「兴趣筛选」不是一类东西** —— 否则会撞上同一条判据：
+            // 🔴 白哥定案原话：「书库与今日精选是**平级的页面**，入口不是一个下方的
+            //    按钮而是与『今日精选』**title 平级**，你应该给我设计稿再做，而不是直接做」。
+            //    ⇒ 「今日精选 ｜ 书库」双标题 + 右侧动作（信息流「收藏 N」/ 书库「导入」）
+            //      由 **`ReadingTabScreen`** 提供（见 `screens/reading_tab_screen.dart`）。
             //
-            // | | 兴趣筛选（已移走） | 我的书库（本入口） |
-            // |---|---|---|
-            // | 性质 | **前置控制**（筛选信息流本身）| **内容导航**（去读另一类内容）|
-            // | 频率 | 低频（设一次长期不动）| 中频（想读书时就用）|
-            // | 判定 | ❌ 不该常驻占行（空间留给内容）| ✅ **它本身就是内容入口** |
+            // ⚠️ 因此本 widget 现在**只负责信息流内容** —— 这里**不再有**
+            //    「今日精选」标题、`HeaderChip`（收藏 N）与 `BookLibraryEntry`（那条第）。
+            //    **别再加回来**：标题栏只有一处定义，两处必然静默走偏。
             //
-            // 🔑 白哥的真问题是「**没看到导入入口**」⇒ 入口的首要指标是**被发现**。
-            //    所以它做成**淡色底的条**（不是纯文字行）——比裸文字醒目、又不像卡片重。
-            //    ⚠️ 占一行是**有意的代价**，不是疏忽。
-            //
-            // ⚠️ 本入口**纯 UI、不查 book.db** ⇒ 书库打不开也照常显示、照常能点。
-            //    判据同产品原则：「库可用性」不该成为「入口可见性」的开关。
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 10),
-              child: BookLibraryEntry(),
-            ),
+            // 📌 前车之鉴（留档，防止又有人往这一页塞东西）：
+            //    · 3.4d 的「生词 N」标题栏按钮 → 2026-09-28 删除
+            //      （复习已是独立 tab，那是「同一目的的第二个入口」）
+            //    · 兴趣筛选栏 → 2026-10-03 移回「我的」页
+            //      （低频设置白占一行；信息流页的垂直空间是**稀缺资源**）
+            //    · 书库入口条 → 2026-10-04 上移为**平级标题**（本次）
+            //    ⇒ 三次都是**同一类修正**：别把「导航/设置」放在「内容」的位置上。
 
             // ── 信息流（设计稿 `.feed` padding 0 16px · `.fcards` gap 13px）──
             Expanded(
@@ -569,8 +528,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       child: _fillViewport(
                         _FeedError(
                           error: e,
-                          onRetry: () =>
-                              ref.invalidate(feedProvider(_feedKey)),
+                          onRetry: () => ref.invalidate(feedProvider(_feedKey)),
                         ),
                       ),
                     ),
@@ -608,7 +566,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               16, 0, 16, CoSpacing.tabBarClearance),
                           // 🔑 `+1` = 末尾的「加载更多」footer（见 `_feedFooter`）
                           itemCount: pager.items.length + 1,
-                          separatorBuilder: (_, __) => const SizedBox(height: 13),
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 13),
                           itemBuilder: (_, i) {
                             if (i == pager.items.length) {
                               return _feedFooter(pager);
@@ -681,9 +640,7 @@ class _FeedError extends StatelessWidget {
     final isNetwork = error is ContentApiException &&
         (error as ContentApiException).statusCode == 0;
     final title = isNetwork ? '网络好像不通' : '内容暂时取不到';
-    final detail = isNetwork
-        ? '检查一下网络连接，然后再试一次。'
-        : '服务可能正在忙。稍后再试，或者下拉重试。';
+    final detail = isNetwork ? '检查一下网络连接，然后再试一次。' : '服务可能正在忙。稍后再试，或者下拉重试。';
 
     return _FeedNotice(
       icon: isNetwork ? Icons.wifi_off : Icons.cloud_off,
@@ -754,6 +711,7 @@ class _FeedNotice extends StatelessWidget {
   final IconData icon;
   final String title;
   final String detail;
+
   /// `null` = 不给按钮（见 [_FeedEmpty] 的说明）。
   final String? actionLabel;
   final VoidCallback? onAction;
@@ -826,5 +784,3 @@ class _FeedNotice extends StatelessWidget {
     );
   }
 }
-
-

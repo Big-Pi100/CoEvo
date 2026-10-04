@@ -20,7 +20,14 @@
 //    为什么改：这个二维码承载的**不是客服个人微信，而是共读群** ——
 //    「联系工作人员」会让用户以为是「找人办事」，与它实际做的事不符。
 //    判据：**视觉/形态须与语义一致**（改了功能/对象，就得改名字，否则语义残留会误导后人）。
-//    配套改动：方法名 `_showContactDialog` → `_showGroupQrcodeDialog`（同一判据）。
+//    🔄 **同日又改**：弹层已**抽到 `widgets/group_qrcode_dialog.dart`（唯一实现）**——
+//       因为**书库空态**与**导入失败（DRM）**也要用它（「外观一致 = 只有一处定义」，
+//       同 `HeaderChip` / `CoDialog` 的抽取理由）。本页只调 `GroupQrcodeDialog.show()`，
+//       **入口文案也取自 `GroupQrcodeDialog.kTitle`** —— 文案写两份迟早会漂。
+//       （原私有方法 `_showContactDialog` → `_showGroupQrcodeDialog` → 已删除。）
+//    ⚠️ 原方法文档里有一条「线上二维码图当前不存在（实测返回 text/plain）」的说明 ——
+//       **已核实为过时**（2026-10-04 23:0x 实测：200 · image/jpeg · 134551 B，图已上传）。
+//       📌 判据：**「还没配好」是状态、不是结论** —— 写这类说明必须带**观测时间**。
 //    📄 群的定位、群规与运营方式 → `docs/operations/wechat-study-group-plan-2026-10-04.md`
 //
 // 🔑 为什么移到这里（不是冗余搬运）：它属**「关于本 App」这一族** ——
@@ -93,14 +100,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../api/api_config.dart';
 import '../constants/app_info.dart';
 import '../services/iap_plan.dart';
 import '../theme/co_spacing.dart';
 import '../theme/tokens_ext.dart';
 import '../theme/coevo_tokens.dart';
-import '../widgets/clay_button.dart';
-import '../widgets/co_dialog.dart';
+import '../widgets/group_qrcode_dialog.dart';
 import '../widgets/legal_link_row.dart';
 import '../widgets/twemoji.dart';
 
@@ -306,8 +311,10 @@ class AboutScreen extends StatelessWidget {
                   //    一张图片）⇒ **换码只要传一张新图，不用改代码、不用发版**。
                   //    这对我们很关键：微信群二维码**只有 7 天有效期**（见群方案 §2.1）。
                   _LinkRow(
-                    label: '加入英文原著共读群',
-                    onTap: () => _showGroupQrcodeDialog(context),
+                    // 🔑 文案与弹层**都取自公共组件**（`GroupQrcodeDialog.kTitle` / `.show`）
+                    //    —— 入口名与弹窗标题**必须同一个字**，写两份迟早会漂。
+                    label: GroupQrcodeDialog.kTitle,
+                    onTap: () => GroupQrcodeDialog.show(context),
                   ),
                 ],
               ),
@@ -315,72 +322,6 @@ class AboutScreen extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-
-  /// 「加入英文原著共读群」弹窗（群二维码）。
-  ///
-  /// 🔴 2026-09-29 由 `profile_screen` 整体移入 —— 逻辑与原实现一致，
-  ///    只是**弹窗外壳换成公共 `CoDialog`**（本页此前无弹窗，现在起有了一处）。
-  ///
-  /// 🔴 **2026-10-04 改名 + 换语义**：原名 `_showContactDialog`（「联系工作人员」）——
-  ///    它弹的其实是**群二维码**，不是客服个人微信 ⇒ 入口文案与方法名一起改，
-  ///    否则「名字说的」与「它做的事」不符（判据：形态须与语义一致）。
-  ///
-  /// 🔑 二维码是**联网图片**（`/api/public/qrcode`）→ 必须有 `errorBuilder`：
-  ///    没网/接口挂了时显示一个「图片不可用」图标，而不是留一块空白
-  ///    （判据同本页文件头：「静默失败 + 无出口」比报错更糟）。
-  ///
-  /// ⚠️ **线上该图当前不存在**（2026-10-04 实测 `/api/public/qrcode` 返回的是
-  ///    `text/plain` + 「二维码图片未配置」那句）⇒ 本弹窗现在显示的是 `errorBuilder`
-  ///    那个图标。**这不是 bug，是「还没传图」** —— 传图步骤见群方案 §四。
-  void _showGroupQrcodeDialog(BuildContext context) {
-    CoDialog.show<void>(
-      context,
-      builder: (ctx) {
-        // ⚠️ 用 builder 的 `ctx` 取 token（而不是外层 context）——
-        //    弹窗是**路由级 overlay**，它的 context 才是它真正所在的树。
-        final t = CoEvoTokensExt.of(ctx);
-        return CoDialog(
-          title: '加入英文原著共读群',
-          actions: [
-            ClayButton(
-              label: '关闭',
-              variant: ClayButtonVariant.secondary,
-              expanded: true,
-              onTap: () => Navigator.of(ctx).pop(),
-            ),
-          ],
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Tw(
-                '微信扫码加入共读群',
-                style: TextStyle(
-                  fontFamily: CoFonts.uiSans,
-                  fontSize: 13,
-                  color: Color(t.ink2.argb32),
-                ),
-              ),
-              const SizedBox(height: CoSpacing.lg),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image(
-                  image: NetworkImage('${ApiConfig.baseUrl}/api/public/qrcode'),
-                  width: 200,
-                  height: 200,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => Icon(
-                    Icons.image_not_supported,
-                    size: 64,
-                    color: Color(t.ink3.argb32),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }
