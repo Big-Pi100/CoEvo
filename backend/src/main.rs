@@ -214,7 +214,13 @@ async fn main() {
             //    🔑 这正是「容错吞掉真错」的实例：**顺序本身就是错的，只是被掩盖了**。
             //    收紧容错（不再吞 `no such table`）前必须先把顺序改对，否则启动会直接炸。
             "ALTER TABLE subscription_plans ADD COLUMN once_per_user INTEGER DEFAULT 0",
-            // 支付订单
+            // 支付订单（🔴 2026-10-04：微信 → Apple IAP，删 `prepay_id`）
+            // ⚠️ 这里是**第二份**建表定义（第一份在 `api_server/src/schema.rs` 的
+            //    `SCHEMA_SQL`）。主初始化路径是 `schema::init_database()`（由
+            //    `db_pool.rs` 无条件调用）；本列表是**其后的补充迁移**。
+            //    ⇒ 改 schema 必须**两处都改**，否则新库/老库行为不一致。
+            //    ⚠️ 已存在的库不受本 CREATE 影响（`IF NOT EXISTS` 见到表就跳过）——
+            //       删列由 `schema.rs` 的 `drop_column_if_exists` 负责。
             "CREATE TABLE IF NOT EXISTS payment_orders (
                 id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
@@ -222,7 +228,6 @@ async fn main() {
                 amount INTEGER NOT NULL,
                 currency TEXT DEFAULT 'CNY',
                 status TEXT DEFAULT 'NOTPAY',
-                prepay_id TEXT,
                 transaction_id TEXT,
                 paid_at TEXT,
                 created_at TEXT NOT NULL,
@@ -230,6 +235,25 @@ async fn main() {
             )",
             "CREATE INDEX IF NOT EXISTS idx_payment_orders_user ON payment_orders(user_id)",
             "CREATE INDEX IF NOT EXISTS idx_payment_orders_status ON payment_orders(status)",
+            // 🆕 Apple IAP 交易明细（2026-10-04）
+            // 🔑 `original_transaction_id`：同一订阅的所有续期共享它 ⇒ 恢复购买靠它；
+            //    `transaction_id` 每期续费会变，**不能**用它标识「同一个订阅」。
+            "CREATE TABLE IF NOT EXISTS iap_transactions (
+                transaction_id          TEXT PRIMARY KEY,
+                original_transaction_id TEXT NOT NULL,
+                user_id                 TEXT,
+                product_id              TEXT NOT NULL,
+                purchase_date           INTEGER,
+                expires_date            INTEGER,
+                environment             TEXT,
+                app_account_token       TEXT,
+                raw_payload             TEXT,
+                created_at              TEXT NOT NULL,
+                updated_at              TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_iap_original ON iap_transactions(original_transaction_id)",
+            "CREATE INDEX IF NOT EXISTS idx_iap_user ON iap_transactions(user_id)",
             // 订阅操作审计
             "CREATE TABLE IF NOT EXISTS subscription_audit_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -245,10 +269,21 @@ async fn main() {
             )",
             "CREATE INDEX IF NOT EXISTS idx_audit_target ON subscription_audit_log(target_user_id)",
             "CREATE INDEX IF NOT EXISTS idx_audit_created ON subscription_audit_log(created_at)",
-            // 初始化套餐（三档默认定价，其他特殊定价走营销活动）
-            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('30d', '月度会员', 30, 12000, 0, 1, datetime('now'))",
-            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('90d', '季度会员', 90, 35000, 1, 1, datetime('now'))",
-            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('365d', '年度会员', 365, 128000, 2, 1, datetime('now'))",
+            // 初始化订阅产品（🔴 2026-10-04：微信档位 → Apple IAP 自动续期订阅）
+            // ⚠️ 价格权威在 **App Store Connect**，本表 `price` 仅作离线展示兜底 /
+            //    分销算佣金的「原价」参照。若与 ASC 不一致，以 ASC 为准。
+            // 🔑 用 `INSERT OR IGNORE`：管理端可改套餐（`plans_handlers`），
+            //    无条件 UPDATE 会**覆盖管理员改动**。改价走 ASC，不依赖本 seed。
+            // 🔑 id 直接用 Apple Product ID，省掉「本地 id ↔ productId」映射层。
+            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('com.coevo.coevoApp.pro.monthly', 'CoEvo 专业版 · 月度', 30, 990, 0, 1, datetime('now'))",
+            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('com.coevo.coevoApp.pro.yearly', 'CoEvo 专业版 · 年度', 365, 7800, 1, 1, datetime('now'))",
+            // 🔴 微信「买断 N 天」档位**下架**（不是删除）——
+            //    `distribution_handler.rs` 会按 plan_id 查 price 算佣金原价，删行会断链。
+            //    幂等：已下架的档位再跑一次 `is_active` 已是 0 ⇒ 0 行受影响。
+            "UPDATE subscription_plans SET is_active = 0 WHERE id IN ('30d', '90d', '365d') AND is_active = 1",
+            // 🔴 2026-10-04：删 `payment_orders.prepay_id`（微信专有）由
+            //    `api_server::schema::init_database` 的 `drop_column_if_exists` 负责 ——
+            //    它跑在本列表**之前**，故此处不重复。
             // 🔴 2026-09-29 已删两条（`UPDATE ... phone_hash` 去重 + `idx_users_phone_hash`）：
             //    `phone_hash` 列已移除。留着它们会在**启动时直接报 `no such column: phone_hash`**
             //    → 服务起不来。（这段的容错只放行 `duplicate column` / `already exists`，

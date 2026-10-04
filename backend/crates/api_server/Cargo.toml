@@ -63,6 +63,20 @@ scraper = "0.20"
 #    → 零重复编译、二进制不膨胀（对照：`htmd` 用 html5ever 0.39 → 会引入第二份解析器）。
 #    📌 判据：选包不只看「能不能做」，还要看「**与现有栈叠不叠**」。
 dom_smoothie = "0.18"
+# ── Apple IAP 服务端验证（2026-10-04）──────────────────────────
+# ES256（ECDSA P-256）签 App Store Server API 的鉴权 JWT。
+#
+# 🔑 为什么用 `ring` 而不是 `jsonwebtoken` / `p256`（**实测约束，非偏好**）：
+#    `ring 0.17.14` **已在 Cargo.lock + 本地 crate 缓存**（reqwest 的间接依赖）
+#    ⇒ 显式声明为直接依赖**不会触发拉取 crates.io 索引** ⇒ `--offline` 可构建。
+#    而 `jsonwebtoken` / `p256` 都不在 Cargo.lock ⇒ 按本机实测的索引超时问题，
+#    贸然引入会导致 `cargo check` 卡死。（同族判据见上方 roxmltree 的说明。）
+#
+# ⚠️ 用它签 JWT 有两个必须踩对的点（已写进 `iap_handlers::sign_es256` 的注释）：
+#    ① `.p8` 是 PEM，`EcdsaKeyPair::from_pkcs8` 收 **DER** ⇒ 必须先剥头尾再解码
+#    ② 必须用 `ECDSA_P256_SHA256_FIXED_SIGNING`（R||S 64 字节），
+#       不能用 `_ASN1_`（DER 编码）—— 后者不符合 JWT ES256 规范，Apple 会 401
+ring = "0.17"
 
 [dev-dependencies]
 dotenvy = "0.15"

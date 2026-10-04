@@ -46,6 +46,7 @@ pub mod distribution_handler;
 pub mod encryption;
 pub mod error;
 pub mod h5_template;
+pub mod iap_handlers;
 pub mod llm;
 /// 词库在线制卡（LLM 兜底 · 服务端全局缓存）
 pub mod llm_card;

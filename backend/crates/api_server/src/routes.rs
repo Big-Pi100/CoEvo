@@ -135,6 +135,14 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
             "/api/pay/plans",
             get(crate::plans_handlers::plans_list_handler),
         )
+        // 🔴 2026-10-04：Apple IAP 服务端验证
+        //    替代了微信时代的 `/api/pay/native`（下单）+ `/api/pay/notify`（回调）两条端点 ——
+        //    IAP 下服务端不参与下单，只做「端侧上报 → 主动查证 → 记账」这一条。
+        //    ⚠️ 需要登录（`user_id` 必须与 token 对得上），见 `iap_handlers` 的模块文档。
+        .route(
+            "/api/iap/verify",
+            post(crate::iap_handlers::iap_verify_handler),
+        )
         .route(
             "/api/pay/orders",
             get(crate::pay_handlers::user_orders_handler),

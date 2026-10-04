@@ -1,0 +1,395 @@
+// ════════════════════════════════════════════════════════════════════════
+// IAP 服务层 —— 封装 `in_app_purchase`，把「商店事件」翻译成「我们的状态」
+// ════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ 本文件 import Flutter 插件 ⇒ **本机无法验证**（`flutter` 命令不可用）。
+//    所以本文件**只做接线**，所有能判断的逻辑都下沉到 `iap_plan.dart`（已验收）。
+//    📌 判据：**把能验证的尽量下沉**，别让不可验证的层承担正确性。
+//
+// # 架构位置
+//     StoreKit ──事件──▶ IapService ──状态──▶ IapNotifier ──▶ UI
+//                            │
+//                            └──上报──▶ 后端 /api/iap/verify（失败不影响解锁）
+//
+// # 🔴 三条硬规则（都来自 Apple 文档，违反的后果不对称）
+//
+// ① **必须调 `completePurchase`**。否则 iOS 的事务**滞留在未完成队列**：
+//    每次启动重复投递、同一商品再次购买直接报「重复事务待处理」；
+//    Android 则是 **3 天后退款**。⇒ 这是**静默失效**型陷阱（不调也不报错）。
+//
+// ② **端侧权威**：购买/恢复成功后**立刻解锁**，不等服务端。
+//    服务端只做对账（详见后端 `iap_handlers.rs` 模块文档）。
+//    ⇒ 上报失败**不得**影响解锁 —— 否则「网络差就白买了」。
+//
+// ③ **上报需要登录，但购买不需要**（白哥 2026-10-04 决策）。
+//    未登录 ⇒ 端侧照常解锁 + 完成事务，**上报推迟到登录后补报**
+//    （见 `reportEntitlementsIfSignedIn`）。购买流程**不得**因未登录而中断。
+
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
+
+import 'iap_plan.dart';
+
+/// 上报回调的签名 —— 由调用方注入，使服务层**不依赖 auth / http**。
+///
+/// 🔑 为什么用回调而不是直接在服务里读 userId + 发请求：
+///    ① 服务层与 `authProvider` / `ApiConfig` **解耦**（少一层耦合，多一层可测）
+///    ② 上报失败的处理策略由调用方决定（服务层只负责「告诉它有事发生」）
+///    ③ **可 mock** —— 测试时注入一个只记录调用的假实现
+typedef IapVerifyReporter = Future<void> Function({
+  required String transactionId,
+  required String productId,
+});
+
+/// 商店可用性。
+enum IapAvailability {
+  /// 还没查
+  unknown,
+
+  /// 可用（能买）
+  available,
+
+  /// 不可用（如设备禁止内购、非 iOS 上未接入的商店）
+  unavailable,
+}
+
+/// 服务层对外暴露的一段订阅状态（**端侧权威**）。
+@immutable
+class IapSnapshot {
+  final IapAvailability availability;
+  final IapEntitlementStatus entitlement;
+  final DateTime? expiresAtUtc;
+
+  /// StoreKit 返回的商品（用于展示**权威价格**）。
+  final List<IapPlanDisplay> plans;
+
+  /// 正在进行某笔购买（UI 转圈用）。
+  final bool purchasing;
+
+  /// 最近一次错误（给用户看的一句话）。
+  final String? lastError;
+
+  const IapSnapshot({
+    this.availability = IapAvailability.unknown,
+    this.entitlement = IapEntitlementStatus.unknown,
+    this.expiresAtUtc,
+    this.plans = const [],
+    this.purchasing = false,
+    this.lastError,
+  });
+
+  bool get isActive => entitlement == IapEntitlementStatus.active;
+
+  IapSnapshot copyWith({
+    IapAvailability? availability,
+    IapEntitlementStatus? entitlement,
+    DateTime? expiresAtUtc,
+    List<IapPlanDisplay>? plans,
+    bool? purchasing,
+    String? lastError,
+    bool clearError = false,
+  }) =>
+      IapSnapshot(
+        availability: availability ?? this.availability,
+        entitlement: entitlement ?? this.entitlement,
+        expiresAtUtc: expiresAtUtc ?? this.expiresAtUtc,
+        plans: plans ?? this.plans,
+        purchasing: purchasing ?? this.purchasing,
+        lastError: clearError ? null : (lastError ?? this.lastError),
+      );
+}
+
+/// IAP 服务 —— 商店事件的唯一入口。
+class IapService {
+  IapService({IapVerifyReporter? reporter}) : _reporter = reporter;
+
+  /// 上报器（可为 null ⇒ 只解锁不上报，用于「未登录」场景）。
+  IapVerifyReporter? _reporter;
+
+  /// 由调用方在登录状态变化时更新（登录后从 null 换成真实上报器）。
+  void setReporter(IapVerifyReporter? reporter) => _reporter = reporter;
+
+  final _controller = StreamController<IapSnapshot>.broadcast();
+  Stream<IapSnapshot> get stream => _controller.stream;
+
+  IapSnapshot _snapshot = const IapSnapshot();
+  IapSnapshot get snapshot => _snapshot;
+
+  StreamSubscription<List<PurchaseDetails>>? _sub;
+
+  /// 记录「已解锁但还没上报成功」的交易，供登录后补报。
+  ///
+  /// 🔑 为什么需要它：未登录购买时**不能**把交易丢掉 ——
+  ///    否则用户登录后服务端永远不知道这笔交易（对账缺口）。
+  final Map<String, String> _pendingReports = {};
+
+  /// 供测试观察「积压了多少待上报」。
+  @visibleForTesting
+  int get pendingReportCount => _pendingReports.length;
+
+  void _emit(IapSnapshot next) {
+    _snapshot = next;
+    if (!_controller.isClosed) _controller.add(next);
+  }
+
+  /// 启动：订阅商店事件流 + 查商品。
+  ///
+  /// ⚠️ 必须在 App 启动时**尽早**调用 —— 商店可能在启动瞬间投递未完成的事务
+  ///    （上次没 `completePurchase` 的）。晚订阅 = 漏掉它们。
+  Future<void> start() async {
+    _sub ??= InAppPurchase.instance.purchaseStream.listen(
+      _onPurchases,
+      onError: (Object e) {
+        _emit(_snapshot.copyWith(
+          purchasing: false,
+          lastError: '商店连接异常，请稍后重试',
+        ));
+        debugPrint('[IAP] purchaseStream error: $e');
+      },
+    );
+
+    final ok = await InAppPurchase.instance.isAvailable();
+    _emit(_snapshot.copyWith(
+      availability: ok ? IapAvailability.available : IapAvailability.unavailable,
+    ));
+
+    if (ok) await loadProducts();
+  }
+
+  /// 查商品（拿到 **StoreKit 的权威价格**）。
+  Future<void> loadProducts() async {
+    try {
+      final resp = await InAppPurchase.instance
+          .queryProductDetails(kKnownProductIds.toSet());
+
+      if (resp.notFoundIDs.isNotEmpty) {
+        // 🔴 这条**必须记日志**：productId 写错 / ASC 产品没建好
+        //    都会表现为「某档消失」。不记就变成「用户说少了一档」的悬案。
+        debugPrint('[IAP] 未找到的商品: ${resp.notFoundIDs}');
+      }
+
+      // 把 StoreKit 的价格映射到我们的展示模型。
+      String? monthlyPrice;
+      String? yearlyPrice;
+      for (final p in resp.productDetails) {
+        if (p.id == kProductMonthly) monthlyPrice = p.price;
+        if (p.id == kProductYearly) yearlyPrice = p.price;
+      }
+
+      _emit(_snapshot.copyWith(
+        plans: defaultPlans(
+          monthlyStorePrice: monthlyPrice,
+          yearlyStorePrice: yearlyPrice,
+        ),
+      ));
+    } catch (e) {
+      debugPrint('[IAP] 查商品失败: $e');
+      // 查商品失败**不阻断** —— 用兜底价渲染，用户仍能点购买。
+      _emit(_snapshot.copyWith(plans: defaultPlans()));
+    }
+  }
+
+  /// 发起购买。
+  ///
+  /// 🔴 `buyNonConsumable` 是**订阅的正确入口** —— `in_app_purchase` 没有
+  ///    单独的 `buySubscription`；订阅与「非消耗型」走同一个方法。
+  ///    （分界线是「能否被消耗/重复购买」，订阅属不可重复购买 ⇒ non-consumable。）
+  Future<void> buy(String productId) async {
+    if (!isKnownProductId(productId)) {
+      _emit(_snapshot.copyWith(lastError: '未知的订阅商品'));
+      return;
+    }
+
+    _emit(_snapshot.copyWith(purchasing: true, clearError: true));
+
+    try {
+      final resp = await InAppPurchase.instance
+          .queryProductDetails({productId});
+      if (resp.productDetails.isEmpty) {
+        _emit(_snapshot.copyWith(
+          purchasing: false,
+          lastError: '商品暂不可用，请稍后重试',
+        ));
+        return;
+      }
+
+      final param = PurchaseParam(productDetails: resp.productDetails.first);
+      await InAppPurchase.instance.buyNonConsumable(purchaseParam: param);
+      // ⚠️ 到这里**还没结束** —— 结果从 `purchaseStream` 回来（见 `_onPurchases`）。
+      //    ⇒ 不要在 await 之后立刻 emit「成功」。
+    } catch (e) {
+      _emit(_snapshot.copyWith(purchasing: false, lastError: '购买失败，请重试'));
+      debugPrint('[IAP] buy 异常: $e');
+    }
+  }
+
+  /// 「恢复购买」——Apple **硬性要求**（审核指南 3.1.1）。
+  ///
+  /// 🔴 恢复的是 **Apple ID 名下的交易**，**不依赖我们的账号**。
+  ///    ⇒ 未登录也**必须能恢复**（这是「换设备后找回」的唯一途径）。
+  Future<void> restore() async {
+    _emit(_snapshot.copyWith(purchasing: true, clearError: true));
+    try {
+      await InAppPurchase.instance.restorePurchases();
+      // 恢复结果同样从 purchaseStream 回来（status = restored）。
+      // ⚠️ 若该 Apple ID 名下**没有**任何订阅，purchaseStream **不会发事件**
+      //    ⇒ 必须在这里给一个「结束」信号，否则 UI 会一直转圈。
+      _emit(_snapshot.copyWith(purchasing: false));
+    } catch (e) {
+      _emit(_snapshot.copyWith(purchasing: false, lastError: '恢复购买失败，请稍后重试'));
+      debugPrint('[IAP] restore 异常: $e');
+    }
+  }
+
+  /// 商店事件处理。
+  Future<void> _onPurchases(List<PurchaseDetails> list) async {
+    for (final pd in list) {
+      switch (pd.status) {
+        case PurchaseStatus.pending:
+          _emit(_snapshot.copyWith(purchasing: true));
+          break;
+
+        case PurchaseStatus.error:
+          _emit(_snapshot.copyWith(
+            purchasing: false,
+            lastError: _humanizeError(pd.error),
+          ));
+          await _complete(pd);
+          break;
+
+        case PurchaseStatus.canceled:
+          // 用户主动取消 —— **不是错误**，不要显示红字。
+          _emit(_snapshot.copyWith(purchasing: false));
+          await _complete(pd);
+          break;
+
+        case PurchaseStatus.purchased:
+        case PurchaseStatus.restored:
+          await _deliver(pd);
+          break;
+      }
+    }
+  }
+
+  /// 交付：**先解锁（端侧权威）→ 再完成事务 → 最后异步上报**。
+  ///
+  /// 🔴 顺序不能反：
+  ///    · 若「等上报成功才解锁」⇒ 网络差时用户看到「买了没生效」（最糟体验）
+  ///    · 若「忘了 completePurchase」⇒ 事务滞留（见文件头规则 ①）
+  ///    · 上报放最后 ⇒ 它失败**不影响**前两步
+  Future<void> _deliver(PurchaseDetails pd) async {
+    // ① 端侧解锁
+    final expires = _parseExpiry(pd);
+    _emit(_snapshot.copyWith(
+      purchasing: false,
+      entitlement: resolveEntitlement(
+        expiresAtUtc: expires,
+        hasAnyPurchase: true,
+        nowUtc: DateTime.now().toUtc(),
+      ),
+      expiresAtUtc: expires,
+      clearError: true,
+    ));
+
+    // ② 完成事务（**必须**）
+    await _complete(pd);
+
+    // ③ 上报（失败不影响①②）
+    await _report(pd);
+  }
+
+  /// 调 `completePurchase`，并**吞掉异常**。
+  ///
+  /// 🔑 为什么吞：`completePurchase` 失败时再抛会打断后面的循环，
+  ///    导致**同一批里的其它交易处理不到** ⇒ 更大的事务滞留。
+  ///    ⚠️ 但它**绝不是可以省略的** —— 见文件头规则 ①。
+  Future<void> _complete(PurchaseDetails pd) async {
+    if (!pd.pendingCompletePurchase) return;
+    try {
+      await InAppPurchase.instance.completePurchase(pd);
+    } catch (e) {
+      debugPrint('[IAP] completePurchase 失败（${pd.productID}）: $e');
+    }
+  }
+
+  /// 上报到后端。
+  Future<void> _report(PurchaseDetails pd) async {
+    final txId = pd.purchaseID;
+    final productId = pd.productID;
+
+    if (txId == null || txId.isEmpty) {
+      // 没有 transactionId 就没法让服务端查证 —— 但**端侧已解锁**，不必打扰用户。
+      debugPrint('[IAP] 无 purchaseID，跳过上报（${pd.productID}）');
+      return;
+    }
+    if (!isKnownProductId(productId)) return;
+
+    final reporter = _reporter;
+    if (reporter == null) {
+      // 未登录 ⇒ 记下来，登录后补报（见 `reportEntitlementsIfSignedIn`）
+      _pendingReports[txId] = productId;
+      debugPrint('[IAP] 未登录，交易 $txId 待补报');
+      return;
+    }
+
+    try {
+      await reporter(transactionId: txId, productId: productId);
+      _pendingReports.remove(txId);
+    } catch (e) {
+      _pendingReports[txId] = productId;
+      debugPrint('[IAP] 上报失败（已记待补报）: $e');
+    }
+  }
+
+  /// 登录后补报：把积压的交易 + 当前仍有效的权益都报一遍。
+  ///
+  /// 🔑 为什么要「当前仍有效的权益」而不只是「积压的交易」：
+  ///    用户可能在**未登录时就买过**（那笔已不在积压里，或换了设备）⇒
+  ///    靠 `restorePurchases()` 重新投递一次，才能覆盖这种情况。
+  Future<void> reportEntitlementsIfSignedIn() async {
+    if (_reporter == null) return;
+
+    // ① 先报积压的
+    final pending = Map<String, String>.from(_pendingReports);
+    for (final entry in pending.entries) {
+      try {
+        await _reporter!(transactionId: entry.key, productId: entry.value);
+        _pendingReports.remove(entry.key);
+      } catch (_) {
+        // 留着下次再试
+      }
+    }
+
+    // ② 再让 StoreKit 重新投递当前权益（覆盖「未登录时购买」的情况）
+    try {
+      await InAppPurchase.instance.restorePurchases();
+    } catch (e) {
+      debugPrint('[IAP] 补报时的 restore 失败: $e');
+    }
+  }
+
+  /// 从 StoreKit 的 `PurchaseDetails` 里取到期时间。
+  ///
+  /// ⚠️ `in_app_purchase` 的通用 API **不直接给订阅到期时间** ——
+  ///    `transactionDate` 只是**购买时间**。真正的到期时间由**服务端**从 Apple 查得，
+  ///    端侧在收到服务端响应后更新。
+  ///    ⇒ 这里返回 null（=「不知道」），交给 `resolveEntitlement` 判为「有购买史」。
+  ///    🔑 这是**有意的**：与其在端侧**猜**一个到期日（可能错），不如承认不知道。
+  ///       而「有购买史 + 服务端之后会确认」足以让 UI 先解锁。
+  DateTime? _parseExpiry(PurchaseDetails pd) => null;
+
+  String _humanizeError(IAPError? err) {
+    final code = err?.code ?? '';
+    // 🔴 用户主动取消在 iOS 上是 `paymentCancelled` —— 别报错
+    if (code.contains('cancel')) return '';
+    return '购买未完成，请稍后重试';
+  }
+
+  Future<void> dispose() async {
+    await _sub?.cancel();
+    _sub = null;
+    await _controller.close();
+  }
+}

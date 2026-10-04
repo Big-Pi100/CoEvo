@@ -104,6 +104,7 @@ dependencies = [
  "regex",
  "reqwest",
  "resvg",
+ "ring",
  "roxmltree",
  "rsa",
  "rusqlite",

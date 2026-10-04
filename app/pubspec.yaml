@@ -89,6 +89,22 @@ dependencies:
   # 本是 Flutter SDK 的传递依赖，这里**显式声明**才符合 pub 规范
   # （隐式依赖会在上游改依赖树时突然断掉，且 `depend_on_referenced_packages` 会告警）
   path: ^1.9.0
+  # ── Apple 应用内购买（2026-10-04 · 替代已删除的微信支付）────────────
+  #
+  # 🔑 为什么用 `flutter.dev` 官方包而不是第三方（如 RevenueCat）：
+  #    ① RevenueCat 是境外服务 ⇒ **用户订阅数据出境**，与本项目已核实的
+  #       「境外广告平台」问题同族（合规风险）—— 见 `payment-iap-assessment` §5.2
+  #    ② 我们的订阅权益是**端侧功能**（生词本 + 朗读）⇒ 不需要服务端托管状态
+  #    📌 判据：**「平台允许」≠「法律允许」** —— 技术可行不等于能用。
+  #
+  # 🔑 版本注意：`in_app_purchase` 的**通用 API 在 iOS/macOS 上默认走 StoreKit 2**，
+  #    不需要额外引 `in_app_purchase_storekit`（它的 iOS 实现是 endorsed federated plugin，
+  #    会随本包自动带上）。⚠️ 若要退回 StoreKit 1 才需要显式调
+  #    `InAppPurchaseStoreKitPlatform.enableStoreKit1()` —— **我们不要那个**。
+  #
+  # ⚠️ 本机 `flutter pub get` **不可用**（`flutter` 命令建不了子进程）⇒
+  #    本依赖的解析结果**只能靠 CI 验证**。若 CI 报版本冲突，改这一行即可。
+  in_app_purchase: ^3.3.1
 
 dev_dependencies:
   flutter_test:

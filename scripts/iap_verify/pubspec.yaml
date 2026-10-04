@@ -1,0 +1,13 @@
+name: iap_verify
+description: CoEvo IAP 订阅 —— 纯逻辑验收（产品 ID 三处一致 / 价格 / 法定文案 / 状态判定）
+publish_to: 'none'
+version: 1.0.0
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+
+# 🔴 **零依赖**（有意为之）：
+#    被验收的 `app/lib/services/iap_plan.dart` 是零 import 的纯逻辑 ⇒ 本子项目
+#    不需要任何包。这样 `dart run` 能在**没有 Flutter 的环境**下跑 ——
+#    这正是本机的情况（`flutter` 命令不可用，见 README）。
+dependencies: {}

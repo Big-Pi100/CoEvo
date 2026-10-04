@@ -302,6 +302,12 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
 );
 
 -- 支付订单表
+--
+-- 🔴 2026-10-04：微信支付移除后改为 Apple IAP。
+--    · 删 `prepay_id`（微信专有，业务代码 0 读取）—— 已存在的库走下面的迁移删列。
+--    · `transaction_id` 语义从「微信流水号」变为「Apple transactionId」。
+--    · 本表 = **面向用户的订单视图**；Apple 交易的技术明细在 `iap_transactions`。
+--    · 价格权威在 **App Store Connect**，本表 `amount` 只记录实际成交额。
 CREATE TABLE IF NOT EXISTS payment_orders (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -309,7 +315,6 @@ CREATE TABLE IF NOT EXISTS payment_orders (
     amount INTEGER NOT NULL,
     currency TEXT DEFAULT 'CNY',
     status TEXT DEFAULT 'NOTPAY',
-    prepay_id TEXT,
     transaction_id TEXT,
     paid_at TEXT,
     created_at TEXT NOT NULL,
@@ -317,6 +322,32 @@ CREATE TABLE IF NOT EXISTS payment_orders (
 );
 CREATE INDEX IF NOT EXISTS idx_payment_orders_user ON payment_orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_payment_orders_status ON payment_orders(status);
+
+-- Apple IAP 交易明细表（🆕 2026-10-04）
+--
+-- 🔑 与 `payment_orders` 的职责分离：
+--    · `payment_orders`  = **用户视角的订单**（金额/状态，供「我的订单」展示）
+--    · `iap_transactions`= **Apple 视角的交易**（原始凭据/环境/续期，供恢复购买与对账）
+--
+-- 🔴 `original_transaction_id` 是订阅的**核心稳定标识**：
+--    同一订阅的所有续期共享同一个 original_transaction_id ⇒ **恢复购买/查订阅状态靠它**。
+--    `transaction_id` 每期续费会变，**不能**用它标识「同一个订阅」。
+CREATE TABLE IF NOT EXISTS iap_transactions (
+    transaction_id          TEXT PRIMARY KEY,
+    original_transaction_id TEXT NOT NULL,
+    user_id                 TEXT,
+    product_id              TEXT NOT NULL,
+    purchase_date           INTEGER,
+    expires_date            INTEGER,
+    environment             TEXT,
+    app_account_token       TEXT,
+    raw_payload             TEXT,
+    created_at              TEXT NOT NULL,
+    updated_at              TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_iap_original ON iap_transactions(original_transaction_id);
+CREATE INDEX IF NOT EXISTS idx_iap_user ON iap_transactions(user_id);
 
 -- 订阅操作审计表
 CREATE TABLE IF NOT EXISTS subscription_audit_log (
@@ -334,13 +365,18 @@ CREATE TABLE IF NOT EXISTS subscription_audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_target ON subscription_audit_log(target_user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON subscription_audit_log(created_at);
 
--- 初始化套餐数据（三档默认定价，其他特殊定价走营销活动）
+-- 初始化订阅产品（🔴 2026-10-04：微信「买断 N 天」档位 → Apple IAP 自动续期订阅）
+--
+-- 🔑 id 直接用 **Apple Product ID** —— 避免「本地 id ↔ ASC productId」再引入一层映射。
+-- ⚠️ **价格权威在 App Store Connect（ASC）**，本表 `price` 只作两用：
+--    ① 离线/降级时的展示兜底  ② 分销算佣金的「原价」参照
+--    ⇒ 若本表价格与 ASC 不一致，**以 ASC 为准**（端侧价格从 StoreKit 取）。
+-- ⚠️ 用 `INSERT OR IGNORE`（而非 DO UPDATE）：管理端可改套餐（见 `plans_handlers`），
+--    无条件 UPDATE 会**覆盖管理员改动**。价格调整走 ASC，不依赖本 seed。
 INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at)
-VALUES ('30d', '月度会员', 30, 12000, 0, 1, datetime('now'));
+VALUES ('com.coevo.coevoApp.pro.monthly', 'CoEvo 专业版 · 月度', 30, 990, 0, 1, datetime('now'));
 INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at)
-VALUES ('90d', '季度会员', 90, 35000, 1, 1, datetime('now'));
-INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at)
-VALUES ('365d', '年度会员', 365, 128000, 2, 1, datetime('now'));
+VALUES ('com.coevo.coevoApp.pro.yearly', 'CoEvo 专业版 · 年度', 365, 7800, 1, 1, datetime('now'));
 
 -- 运行时配置表
 CREATE TABLE IF NOT EXISTS app_config (
@@ -1038,6 +1074,13 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
         drop_column_if_exists(conn, "users", col)?;
     }
 
+    // ── 🔴 2026-10-04：微信支付移除 ⇒ 删 `payment_orders.prepay_id` ──
+    //    `prepay_id` 是微信「统一下单」返回的预支付会话标识，IAP 下无对应概念。
+    //    实测：全 `backend/` 只有 schema 定义 / 迁移 / 断言提到它，**业务代码 0 读取**。
+    //    ⚠️ 用 `drop_column_if_exists`（而不是 ALTER + 容错吞错）：后者会连
+    //       「列名拼错」一起吞掉 ⇒ 以为删成功、实际还在（详见上面的说明）。
+    drop_column_if_exists(conn, "payment_orders", "prepay_id")?;
+
     let migrations: &[&str] = &[
         // 🔴 2026-09-29 已删：`ALTER TABLE users ADD COLUMN phone_hash TEXT DEFAULT NULL`
         //    —— 该列已随「实名 + 手机号」一并移除（见上面的删列段）。
@@ -1049,6 +1092,13 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
         // 退款支持字段
         "ALTER TABLE payment_orders ADD COLUMN refund_reason TEXT DEFAULT NULL",
         "ALTER TABLE payment_orders ADD COLUMN refund_id TEXT DEFAULT NULL",
+        // ── 🔴 2026-10-04：微信「买断 N 天」档位**下架**（不是删除）──
+        //    🔑 为什么不删行：`distribution_handler.rs:250` 会按 `plan_id` 查 `price`
+        //       算佣金原价 —— 删行会让历史订单的参照断链。下架即可：
+        //       前端 `/api/pay/plans` 只返回 `is_active = 1` 的档位
+        //       （见 `subscription.rs::get_available_plans` 的 WHERE 条件）。
+        //    幂等：已下架的档位再跑一次 `is_active` 已是 0 ⇒ 0 行受影响，无副作用。
+        "UPDATE subscription_plans SET is_active = 0 WHERE id IN ('30d', '90d', '365d') AND is_active = 1",
         // 营销活动自定义海报系统提示
         "ALTER TABLE marketing_campaigns ADD COLUMN poster_prompt TEXT DEFAULT NULL",
         // users 表增加 referred_campaign_id：追踪注册来源活动
@@ -1399,6 +1449,8 @@ mod tests {
         "subscription_requests",
         "subscription_plans",
         "payment_orders",
+        // 🆕 Apple IAP 交易明细（2026-10-04）
+        "iap_transactions",
         "subscription_audit_log",
         // 分销营销
         "marketing_campaigns",
@@ -1544,14 +1596,40 @@ mod tests {
 
         // payment_orders：退款字段来自迁移
         let cols = table_columns(&conn, "payment_orders");
-        for c in [
-            "status",
-            "prepay_id",
-            "transaction_id",
-            "refund_reason",
-            "refund_id",
-        ] {
+        for c in ["status", "transaction_id", "refund_reason", "refund_id"] {
             assert!(cols.contains(&c.to_string()), "payment_orders 缺 {}", c);
+        }
+
+        // 🔴 反向断言：`prepay_id` **必须不存在**（2026-10-04 随微信支付移除）。
+        //
+        // 🔑 为什么断言「不存在」，而不只是断言新列「存在」：
+        //    后者只能证明**新列加上了**，证明不了**旧列删掉了**。
+        //    而旧列残留正是「语义残留」的来源 —— 列还在，后续开发就会
+        //    误以为「微信那套还能用」，把相关 SELECT / 逻辑加回来。
+        //    （同族实例见上方 users 的 5 列反向断言。）
+        assert!(
+            !cols.contains(&"prepay_id".to_string()),
+            "payment_orders 仍有已删列 `prepay_id` —— 微信专有字段，2026-10-04 已随微信支付移除"
+        );
+
+        // 🆕 iap_transactions：Apple IAP 交易明细（2026-10-04）
+        let iap_cols = table_columns(&conn, "iap_transactions");
+        for c in [
+            "transaction_id",
+            "original_transaction_id",
+            "user_id",
+            "product_id",
+            "purchase_date",
+            "expires_date",
+            "environment",
+            "created_at",
+            "updated_at",
+        ] {
+            assert!(
+                iap_cols.contains(&c.to_string()),
+                "iap_transactions 缺 {}",
+                c
+            );
         }
 
         // marketing_campaigns：迁移新增列
