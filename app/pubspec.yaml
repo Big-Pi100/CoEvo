@@ -106,6 +106,30 @@ dependencies:
   #    本依赖的解析结果**只能靠 CI 验证**。若 CI 报版本冲突，改这一行即可。
   in_app_purchase: ^3.3.1
 
+  # ── 电子书导入（2026-10-04）───────────────────────────────────────────
+  #
+  # 🔑 用途与选型（依据 `docs/design/ebook-import-implementation-2026-10-04.md`）：
+  #    · `archive` —— `.epub` 本质是 zip ⇒ 解压。**纯 Dart，无原生依赖**
+  #    · `xml`     —— 解析 `META-INF/container.xml` 与 `content.opf`（都是简单 XML）
+  #
+  # 🔴 **为什么不用现成的 EPUB 阅读器包**（`epub_view` / `cosmos_epub` 等）：
+  #    ① 它们是**阅读器 UI 组件**（自带排版/翻页），而我们有自建设计系统，嵌不进来
+  #    ② 我们只要**纯文本** —— 不需要保留原书样式/图片
+  #    ③ 主流几个包维护评级都是 `Poor`（见 `ebook-import-assessment` §2.1）
+  #
+  # 🔴 **`xml` 为什么钉 6.x 而不是最新的 7.x**：
+  #    `pubspec.lock` 里 `xml` 已是 **6.5.0**（`gpt_markdown` 依赖链的传递依赖）。
+  #    升到 7.x 会**连带把 `petitparser` 从 6.0.2 升到 7.x** —— 而 `gpt_markdown`
+  #    （正文 Markdown 渲染的**核心**）依赖它。
+  #    📌 判据：**不为「解析两个小 XML」去动渲染链的依赖树**。
+  #      我们的用法只有 `descendants` / `name.local` / `getAttribute` / `innerText`，
+  #      6.x 全都有 ⇒ 没有功能损失。
+  #
+  # ⚠️ 版本与 `scripts/ebook_verify/pubspec.yaml` **必须一致**（同一份解析代码两边跑）。
+  # ⚠️ 本机 `flutter pub get` 不可用 ⇒ 这两个依赖能否解析**只能靠 CI 验证**。
+  archive: ^4.3.0
+  xml: ^6.5.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

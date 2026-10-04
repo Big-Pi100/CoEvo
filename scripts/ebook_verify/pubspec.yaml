@@ -1,0 +1,26 @@
+name: ebook_verify
+description: 电子书导入 —— 纯 Dart 验收（本机可运行）
+publish_to: none
+
+# 依赖与 `app/pubspec.yaml` **必须同版本**（见下方说明）。
+#
+# 🔴 为什么版本要钉死并两边一致
+#    `lib/services/ebook/epub_parser.dart` 是**两边共用**的同一份代码。
+#    若验证项目用 `xml 7.x` 而 app 用 `xml 6.x`，就可能出现
+#    「本地绿 / CI 红」（或反之）—— 这正是本项目记过的
+#    「同一套判据要在两个实现里跑，须逐条对齐」那类问题。
+#
+# 🔴 为什么是 `xml ^6.5.0` 而**不是**最新的 7.x
+#    app 的 `pubspec.lock` 里 `xml` 已是 **6.5.0**（`gpt_markdown` 依赖链的传递依赖）。
+#    声明 `^7.x` 会把它升到 7.x，**连带把 `petitparser` 从 6.0.2 升到 7.0.2** ——
+#    而 `gpt_markdown`（正文 Markdown 渲染核心）依赖 petitparser。
+#    📌 判据：**不为一个「只是想解析两个小 XML」的需求，去动渲染链的依赖树**。
+#    本文件用到的 XML API 只有 `descendants` / `name.local` / `getAttribute` / `innerText`
+#    —— 两版都有，钉 6.5.0 没有功能损失。
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+dependencies:
+  # EPUB = zip ⇒ 解压
+  archive: ^4.3.0
+  # 解析 META-INF/container.xml 与 content.opf
+  xml: ^6.5.0

@@ -576,6 +576,49 @@ jobs:
       - name: IAP 订阅 + 注销（纯逻辑 + 法定要件，99 项）
         run: dart run bin/verify_iap_plan.dart
 
+  # ── 电子书导入：解析器验收（纯 Dart）──
+  #
+  # 守什么：EPUB 的 **spine 顺序**（不能按文件名排）· 路径归一化（`../` / `#fragment`）
+  #        · 命名空间前缀（`opf:itemref`）· **DRM 检测**（最高频失败原因）
+  #        · 失败分类（notEpub / brokenEpub / drmProtected / empty / tooLarge）
+  #        · TXT 编码探测（BOM / 严格 UTF-8 / **不猜 GBK**）· 分章与兜底切分
+  #        · HTML → 纯文本（实体解码顺序：`&amp;` 必须最后）
+  #
+  # 🔑 为什么解析器能在无 Flutter 环境跑：
+  #    `app/lib/services/ebook/*.dart` **不 import 任何 Flutter 包**
+  #    （只依赖纯 Dart 的 `archive` / `xml`）—— 与 `services/iap_plan.dart` 同一套做法。
+  #
+  # 🔑 EPUB 样本是**现场造的**（用 `archive` 的 `ZipEncoder` 拼一个 zip）——
+  #    真书进不了 git（版权+体积），而畸形样本（缺 OPF / 带前缀 / spine 乱序）用真书很难凑。
+  #
+  # 🔴 已**证伪**（判据：门禁必须证伪过 —— 没证伪过的断言集可能是装饰）：
+  #    · DRM 检测的返回类别改错 → 「有 encryption.xml → drmProtected」变红
+  #    · 把 `&amp;` 解码提前到 `&lt;` 之前 → 「&amp;lt; 不被二次解码」变红
+  #    → 两次均**非零退出码**。
+  ebook-verify:
+    name: Ebook Verify (pure Dart)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scripts/ebook_verify
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          # 钉死 3.11.0 —— 与 `frontend` / `iap-verify` 同一条教训：
+          # `stable` 随上游漂移 ⇒「本地绿 / CI 红」成为常态。
+          sdk: 3.11.0
+
+      - name: Pub get
+        run: dart pub get
+
+      - name: TXT 解析（35 项）
+        run: dart run bin/verify_txt_parser.dart
+
+      - name: EPUB 解析（30 项）
+        run: dart run bin/verify_epub_parser.dart
+
   # ── 原生就绪度结构检查 ──
   #
   # 为什么需要：本地 Flutter 是**鸿蒙定制版**，`dart/flutter analyze` 会崩
