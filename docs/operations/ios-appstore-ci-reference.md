@@ -108,7 +108,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@v2.23.0   # 🔴 必须钉具体版本，见 §六.7
         with:
           channel: stable
           # ✅ 固定 3.41.1（2026-10-01 定）—— 与项目 SDK 一致；
@@ -326,6 +326,69 @@ iPhone 装 TestFlight → 真机测试（含 IAP！）
 Provisioning Profile）」，且据此设了 `continue-on-error: true`。
 但 —— **那是预期，不是实测**，且 `--no-codesign` 理论上**不要求** Team ID。
 ⇒ **建议手动触发一次看真实结果**；若它其实能过，那条注释与 `continue-on-error` 都该更新。
+
+### 6.7 🔴 实测事故：缓存解压 `spawn EIO`（2026-10-04 第一次手动触发）
+
+> 白哥手动触发 `ios-build` 后遇到的真实故障。**已修**（`ci.yml` / `ios-archive.yml`）。
+
+#### 现象
+
+```
+Cache hit for: flutter-macos-stable-3.41.1-arm64-...
+gtar -xf .../cache.tzst --use-compress-program unzstd
+Error: spawn EIO
+    at ToolRunner (actions/cache/v5/dist/restore/index.js:5069)
+Node.js v24.19.0
+```
+
+缓存**下载完成**（2.0 GB @ 200 MB/s），崩在**解压**这一步。
+
+#### 根因：**上游静默换了实现，我们一行没改**
+
+| 事实 | 来源 |
+|---|---|
+| `subosito/flutter-action` **现在内部用 `actions/cache@v5`** | 该 action 官方 README |
+| `actions/cache@v5` = 迁到 **Node.js 24** + ESM 重写 | actions/cache 官方 README |
+| **v2.22.0**（2026-03-17）的 PR #385 引入 v5 | 该仓库 release 记录（实测）|
+| 我们写的是**浮动标签** `@v2` ⇒ 被静默升级 | `ci.yml` |
+
+⇒ 日志里的 `Node.js v24.19.0` 正是 v5 的运行时特征。
+
+📌 **判据：「钉版本」要钉到整条链**（SDK + action + 工具）。
+项目早已钉了 `flutter-version: 3.41.1`，却漏了 **action 自己的版本**。
+
+#### 🔴 比 EIO 更严重的问题：它制造了一个「假绿」
+
+```
+Setup Flutter 崩  ⇒  pub get / build ios 被【跳过】
+                 ⇒  job 级 continue-on-error 让它仍显示【绿】
+                 ⇒  你以为 iOS 编过了，其实一步都没跑
+```
+
+📌 **判据：「优化类步骤」失败会掩盖「真正的验证」** ——
+「**没能执行**」在面板上与「**通过**」难以区分。
+⇒ 关键验证步骤**不得排在「可能失败的非关键步骤」之后**；
+且容错**必须精确到步骤，不能罩住整个 job**。
+
+#### 修法（三处）
+
+| # | 改动 | 理由 |
+|---|---|---|
+| 1 | macOS 两个 job 加 **`cache: false`** | 直接绕开出错的 `actions/cache@v5`。<br>⚠️ **不回退到 v2.21.0**（最后一个未用 v5 的版本）—— 那要押一个我**无法验证**的前提（旧版内部 `actions/cache@v4` 是否仍被 GitHub cache 服务支持）。<br>🔑 对**手动触发**的 job，**重下 SDK 的代价远小于押错版本的代价**。 |
+| 2 | 三处 `@v2` → **`@v2.23.0`** | 防将来的静默漂移。✅ **零行为变化** —— `@v2` 当前解析到的就是 v2.23.0。 |
+| 3 | `continue-on-error` **从 job 级移到 `Build iOS` 步骤级** | ⇒ `Setup`/`pub get` 失败会**真红**；`Build iOS` 失败仍标黄不刷红灯。 |
+
+⚠️ **`frontend` job（ubuntu）的 `cache: true` 刻意**不动**：
+· 报错发生在 macOS 的 `/opt/homebrew/bin/gtar`
+· 它一直绿 —— 无证据表明 ubuntu 受影响
+· 且它**每次 push 都跑** ⇒ 关缓存代价高得多
+📌 判据：**按证据分区处理，不搞一刀切** —— 只改已出现问题的环境。
+
+#### ⏳ 下次要做的判断
+
+`--no-codesign` **理论上不需要** Team ID ⇒
+**若 `Build iOS` 这一步绿了**，说明 `ci.yml` 那条「必然失败」注释是**错的**：
+应删掉该步骤的 `continue-on-error`，让它变回严格门禁。
 
 ---
 

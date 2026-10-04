@@ -82,12 +82,27 @@ jobs:
           echo "✅ 4 个 Secrets 齐全（Team ID=${#APPLE_TEAM_ID} 位）"
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        # 🔴 钉 `v2.23.0` —— 与 `ci.yml` 的两个 job **同一个号**。
+        #    理由（一次真实事故）：浮动 `@v2` 会被上游静默升级；
+        #    实测 `ci.yml` 的 `ios-build` 曾因上游换成 `actions/cache@v5`（Node 24）
+        #    导致缓存解压 `spawn EIO`。详见 `ci.yml` 里 `cache: false` 的注释。
+        uses: subosito/flutter-action@v2.23.0
         with:
           channel: stable
           # 🔴 与 `ci.yml` 钉同一个版本号 —— 两处不一致会让「CI 绿 / 出包红」成为常态。
           flutter-version: 3.41.1
-          cache: true
+
+          # 🔴 `cache: false`（与 `ci.yml` 的 `ios-build` 一致）——
+          #    本 job 同样跑在 **macOS**，而 `spawn EIO` 正是 macOS 的
+          #    `/opt/homebrew/bin/gtar` 解压缓存时崩的。
+          #    ⚠️ 代价：每次重下 ~2 GB Flutter SDK。但本 workflow 是
+          #    **workflow_dispatch（手动）触发** ⇒ 频率极低，代价可接受。
+          #    📌 判据：**手动触发的 job，稳定 > 快**。
+          #
+          # ⏳ 将来若确认 upstream 修好了 EIO（例如 actions/cache 出了修复版），
+          #    可以把这里改回 `cache: true` —— 届时应先确认 `ci.yml` 的
+          #    `ios-build` 也能带着缓存跑绿（**以那边为准，两边保持一致**）。
+          cache: false
 
       - name: Install dependencies
         run: flutter pub get

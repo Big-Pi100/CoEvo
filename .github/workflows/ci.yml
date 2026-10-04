@@ -327,7 +327,27 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        # 🔴 **钉到 v2.23.0**（2026-10-04 改，原来写的是浮动 `@v2`）
+        #
+        # ## 为什么必须钉（一次真实事故）
+        # `@v2` 是**浮动 major 标签** —— 上游发新版我们就**被静默升级**。
+        # 实测事故：`ios-build` 因 Flutter SDK 缓存解压崩（`spawn EIO`）而失败，
+        # 根因是上游 v2.22.0 把内部实现换成了 **`actions/cache@v5`**（Node 24 重写），
+        # 而**我们一行都没改**。详见 `ios-build` job 里 `cache: false` 那段注释。
+        #
+        # 📌 判据：**「钉版本」要钉到整条链**（SDK + action + 工具）。
+        #    本文件早已钉了 `flutter-version: 3.41.1`，却漏了 **action 自己的版本**。
+        #
+        # ## ✅ 钉 v2.23.0 是**零行为变化**
+        #    `@v2` 当前解析到的**就是 v2.23.0**（该仓库最新 tag，2026-03-25）。
+        #    ⇒ 本改动**不改现有行为**，只是把「将来的漂移」堵住。
+        #
+        # ## 为什么这里**不**关缓存（与 `ios-build` 的差异）
+        #    · 本 job 在 **ubuntu**，报错发生在 macOS 的 `/opt/homebrew/bin/gtar`
+        #    · 它**一直绿** —— 无证据表明 ubuntu 受影响
+        #    · 且它**每次 push 都跑** ⇒ 关缓存的代价高得多
+        #    📌 判据：**按证据分区处理，不搞一刀切**。
+        uses: subosito/flutter-action@v2.23.0
         with:
           channel: stable
           # 🔴 **钉死到 3.41.1** —— 不要只写 `channel: stable`。
@@ -653,19 +673,28 @@ jobs:
     name: iOS Build (no codesign)
     runs-on: macos-latest
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
-    # 🔴 `continue-on-error: true` —— 它是「**就绪度探测**」，不是代码质量门禁。
+    # 🔴🔴 `continue-on-error` **已从 job 级移到「Build iOS」那一步**（2026-10-04）
     #
-    #    现在**必然失败**，且原因与代码无关：
-    #      「Building a deployable iOS app requires a selected Development Team with a
-    #        Provisioning Profile」
-    #    —— Apple 开发者账号 / Team ID 尚未办（Phase 0 未做，见
-    #       `docs/operations/ios-appstore-ci-reference.md` §二 的启用前提）。
-    #    ⇒ 不设它会**每次都红**，把真问题淹在噪音里（「红灯常态化 = 门禁失效」）。
+    # ## 为什么移（这是一个**真实的假绿**事件）
     #
-    #    ✅ Phase 0 完成后（有 Apple 账号 + Team ID + Secret 配好）**请删掉这一行**，
-    #       让它变回真正的门禁。判据：**临时的 continue-on-error 必须写明「何时移除」**，
-    #       否则会永久留在那里、变成新的静默失效。
-    continue-on-error: true
+    # 原来写在 job 级时，实测发生的事：
+    #   ① `Setup Flutter` 因 **Flutter SDK 缓存解压失败**（`spawn EIO`）而崩
+    #   ② 后面两步（`flutter pub get` / `flutter build ios`）**被整体跳过**
+    #   ③ 而 job 级的 `continue-on-error` 让整个 run **显示为绿**
+    #   ⇒ 白哥看到「CI 绿」，但 **iOS 编译其实一次都没跑过**。
+    #
+    # 📌 判据（本轮新增）：**「优化类步骤」失败会掩盖「真正的验证」** ——
+    #    「没能执行」在面板上与「通过」难以区分。
+    #    ⇒ 关键验证步骤**不得排在「可能失败的非关键步骤」之后**，
+    #      且容错**必须精确到步骤**，不能罩住整个 job。
+    #
+    # ## 移动后的语义（这才是想要的）
+    #   · `Setup Flutter` / `pub get` 失败 ⇒ **job 真红**（它们该成功）
+    #   · `Build iOS` 失败 ⇒ 该步标黄，**job 仍绿**（已知情况，见下）
+    # ❌ 反例（原来的写法）：**任何**一步失败都让 job 变黄 ⇒ 真问题被吞
+    #
+    # ⚠️ 这里**没有** `continue-on-error`（默认即 false）—— 是**有意省略**，
+    #    不是漏写。job 级一旦设 true 就会罩住所有步骤（上面那段就是教训）。
     defaults:
       run:
         working-directory: app
@@ -673,7 +702,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@v2.23.0
         with:
           channel: stable
           # 🔴 **钉死到 3.41.1** —— 不要只写 `channel: stable`。
@@ -697,7 +726,38 @@ jobs:
           #       先在本地装目标版本跑一遍 analyze/test，再改这一行与项目 SDK 一起升。
           #    📌 与 `scripts/setup/install_flutter_in_wsl.sh` 的默认版本保持**同一个号**。
           flutter-version: 3.41.1
-          cache: true
+
+          # 🔴🔴 `cache: false`（2026-10-04 改，原来写的是 `cache: true`）
+          #
+          # ## 实测到的故障
+          # 缓存**命中并下载完成**（2.0 GB @ 200 MB/s），但**解压**时崩：
+          #     gtar -xf .../cache.tzst --compress-program unzstd
+          #     Error: spawn EIO   at ToolRunner (actions/cache/v5/dist/restore/index.js:5069)
+          #     Node.js v24.19.0
+          #
+          # ## 根因：**上游静默换了实现，我们一行没改**
+          #   · `subosito/flutter-action` 官方 README：**现在内部用 `actions/cache@v5`**
+          #   · `actions/cache@v5` = 迁到 **Node.js 24** + ESM 重写
+          #     （v2.22.0 的 PR #385 "Upgrade actions/cache to v5" 引入 —— 实测版本记录）
+          #   · 我们写的是**浮动标签** `@v2` ⇒ 上游升级我们完全不知情
+          #   ⇒ 日志里的 `Node.js v24.19.0` 正是 v5 的运行时特征。
+          #
+          # 📌 判据（本轮新增）：**「钉版本」要钉到整条链**（SDK + action + 工具）——
+          #    本文件早已钉了 `flutter-version`，却漏了 `action 版本`，于是被上游踩中。
+          #
+          # ## 为什么选「关缓存」而不是「回退到 v2.21.0」
+          #   v2.21.0 是**最后一个未用 actions/cache@v5 的版本**（v2.22.0 引入 v5）。
+          #   但回退要押一个我**无法验证**的前提：旧版 action 内部的
+          #   `actions/cache@v4` 是否仍被 GitHub 的 cache 服务支持
+          #   （actions/cache README 有「不升级就会失败」的弃用提示）。
+          #   ⇒ 对一个**手动触发**的 job（不常跑），**重下 SDK 的代价远小于押错版本的代价**。
+          #
+          # ## 为什么不改 frontend job（它在 ubuntu 也用了 cache: true）
+          #   · 它**一直绿** —— 没有证据表明 ubuntu 也受影响
+          #   · 报错发生在 macOS 的 `/opt/homebrew/bin/gtar`
+          #   · 且它**每次 push 都跑** ⇒ 关缓存的代价高得多
+          #   📌 判据：**按证据分区处理，不搞一刀切** —— 只改已出现问题的环境。
+          cache: false
 
       - name: Install dependencies
         run: flutter pub get
@@ -722,7 +782,26 @@ jobs:
       #    本 job 只做 `--no-codesign` 的**编译验证**，产物**不运行、不安装**。
       #    补它的真实价值是：**将来建「archive → TestFlight」流程时不会忘**
       #    （那个 workflow 的产物会真装到手机上）。
+      #
+      # ── 🔴 `continue-on-error` 已从 job 级**移到这一步**（2026-10-04）─────────
+      #
+      # ## 为什么是这一步，而不是整个 job
+      #   原注释断言「现在**必然失败**（缺 Development Team / Provisioning Profile）」。
+      #   ⚠️ 但**那条断言从未被验证过** —— 因为 job 级的 `continue-on-error`
+      #      加上缓存崩溃，让这一步**每次都被跳过**（见 job 顶部那段）。
+      #
+      #   ⇒ 现在把它挪到**步骤级**，效果是：
+      #     · 若它真因缺 Team ID 失败 ⇒ 该步标黄，**job 仍绿**（不刷红灯）
+      #     · 若 `Setup Flutter` / `pub get` 失败 ⇒ **job 真红**（真问题不被吞）
+      #
+      # ## ⏳ 它跑起来之后要做的判断（留给下次）
+      #   `--no-codesign` **理论上不需要** Team ID（它不签名）。
+      #   ⇒ 若这一步**绿了**，说明那条注释是**错的**：
+      #     请删掉本行的 `continue-on-error`，让它变回严格门禁。
+      #   📌 判据：**临时的 `continue-on-error` 必须写明「何时移除」**，
+      #      否则会永久留在那里、变成新的静默失效。
       - name: Build iOS (no codesign)
+        continue-on-error: true
         run: |
           flutter build ios --release --no-codesign \
             --dart-define=API_HOST=api.keyievolution.fun \
