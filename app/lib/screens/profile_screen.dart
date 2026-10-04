@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
 // ⚠️ `flutter/rendering.dart` 与 `shade.dart` 的 `ImageFilter`/`BlurStyle` 同名冲突，
 //    这里用 `as ui` 前缀限定 `dart:ui`（原先直接 import 两者会歧义）。
@@ -14,8 +15,10 @@ import '../api/user_api_client.dart';
 import '../api/api_config.dart';
 import '../constants/app_info.dart';
 import '../providers/auth_provider.dart';
-import '../providers/subscription_provider.dart';
+import '../providers/iap_provider.dart';
 import '../providers/theme_provider.dart';
+import '../services/iap_plan.dart';
+import '../services/iap_service.dart';
 import '../services/tts_service.dart';
 import '../providers/achievement_notifier.dart';
 import '../providers/achievement_provider.dart';
@@ -27,7 +30,6 @@ import '../widgets/clay_field.dart';
 import '../widgets/co_dialog.dart';
 import '../widgets/interest_filter_section.dart';
 import '../widgets/order_history.dart';
-import '../widgets/subscribe_panel.dart';
 import '../theme/clay.dart';
 import '../theme/co_spacing.dart';
 import '../theme/tokens_ext.dart';
@@ -129,7 +131,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (auth.userId == null || auth.token == null) return;
     try {
       final resp = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}/api/notifications?user_id=${auth.userId}'),
+        Uri.parse(
+            '${ApiConfig.baseUrl}/api/notifications?user_id=${auth.userId}'),
         headers: {'Authorization': 'Bearer ${auth.token}'},
       ).timeout(const Duration(seconds: 10));
       if (resp.statusCode == 200 && mounted) {
@@ -192,7 +195,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       // 异步加载推广数据
       _loadReferralCode();
     } catch (e) {
-      if (mounted) setState(() { _isLoading = false; _error = '加载失败，请检查网络连接'; });
+      if (mounted)
+        setState(() {
+          _isLoading = false;
+          _error = '加载失败，请检查网络连接';
+        });
     }
   }
 
@@ -201,22 +208,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (auth.userId == null || auth.token == null) return;
 
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 512, maxHeight: 512);
+    final picked = await picker.pickImage(
+        source: ImageSource.gallery, maxWidth: 512, maxHeight: 512);
     if (picked == null) return;
 
     setState(() => _isUploading = true);
 
-    final uri = Uri.parse('${ApiConfig.baseUrl}/api/user/${auth.userId}/avatar');
+    final uri =
+        Uri.parse('${ApiConfig.baseUrl}/api/user/${auth.userId}/avatar');
     final request = http.MultipartRequest('POST', uri);
     request.headers['Authorization'] = 'Bearer ${auth.token}';
     try {
       final bytes = await picked.readAsBytes();
-      request.files.add(http.MultipartFile.fromBytes('file', bytes, filename: 'avatar.png'));
-      final streamed = await request.send().timeout(const Duration(seconds: 15));
+      request.files.add(
+          http.MultipartFile.fromBytes('file', bytes, filename: 'avatar.png'));
+      final streamed =
+          await request.send().timeout(const Duration(seconds: 15));
       if (streamed.statusCode == 200 && mounted) {
-        setState(() => _avatarUrl = '${ApiConfig.baseUrl}/api/user/${auth.userId}/avatar?t=${DateTime.now().millisecondsSinceEpoch}');
+        setState(() => _avatarUrl =
+            '${ApiConfig.baseUrl}/api/user/${auth.userId}/avatar?t=${DateTime.now().millisecondsSinceEpoch}');
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('头像已更新'), duration: Duration(seconds: 2)),
+          const SnackBar(
+              content: Text('头像已更新'), duration: Duration(seconds: 2)),
         );
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -280,7 +293,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         } catch (e) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('昵称同步失败: $e'), action: SnackBarAction(label: '重试', onPressed: () => _editName())),
+              SnackBar(
+                  content: Text('昵称同步失败: $e'),
+                  action: SnackBarAction(
+                      label: '重试', onPressed: () => _editName())),
             );
           }
         }
@@ -304,8 +320,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   /// 本地音色试听文本（纯英文，贴近词卡朗读场景：先单词、后例句）
-  static const String _nativePreviewText =
-      'Hello. This is a sample sentence.';
+  static const String _nativePreviewText = 'Hello. This is a sample sentence.';
 
   Widget _buildErrorView() {
     return Center(
@@ -318,11 +333,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             const SizedBox(height: CoSpacing.lg),
             Text('加载失败', style: _tt.titleLarge?.copyWith(color: _cs.onSurface)),
             const SizedBox(height: CoSpacing.sm),
-            Text(_error ?? '请检查网络连接后重试', style: _tt.bodyMedium?.copyWith(color: _cs.onSurfaceVariant), textAlign: TextAlign.center),
+            Text(_error ?? '请检查网络连接后重试',
+                style: _tt.bodyMedium?.copyWith(color: _cs.onSurfaceVariant),
+                textAlign: TextAlign.center),
             const SizedBox(height: CoSpacing.xl),
             FilledButton.icon(
               onPressed: () {
-                setState(() { _isLoading = true; _error = null; });
+                setState(() {
+                  _isLoading = true;
+                  _error = null;
+                });
                 _load();
               },
               icon: const Icon(Icons.refresh),
@@ -389,10 +409,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   ///    详见方案 §11.6.1b。
   Widget _buildTopBar(AuthState auth) {
     final t = CoEvoTokensExt.of(context);
-    final sub = ref.watch(subscriptionProvider);
-
-    // 「白哥 · 免费版」—— 昵称 + 版本；**未登录时不带昵称**
-    final version = sub.isActive ? '订阅版' : '免费版';
+    // 版本标签用**端侧状态**（与订阅卡同源 —— 两处口径必须一致，
+    // 否则会出现「卡片说订阅中、副标题说免费版」这种自相矛盾）
+    final version = versionLabel(iapSnapshotOf(ref).isActive);
     final subtitle = auth.isAuthenticated
         ? '${_displayName.isEmpty ? '用户' : _displayName} · $version'
         : version;
@@ -473,8 +492,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       // 底部留出 tabbar 高度 —— `_ShellScaffold` 开了 `extendBody: true`，
       // 正文会延伸到 tabbar 之后，不留距离的话最后一项会被按钮压住。
       // 依据见 `CoSpacing.tabBarClearance`。
-      padding: const EdgeInsets.fromLTRB(
-          CoSpacing.xxl, CoSpacing.sm, CoSpacing.xxl, CoSpacing.tabBarClearance),
+      padding: const EdgeInsets.fromLTRB(CoSpacing.xxl, CoSpacing.sm,
+          CoSpacing.xxl, CoSpacing.tabBarClearance),
       children: [
         // ── ① 顶部统计卡（三列：连续天数 / 掌握词数 / 阅读篇数 + 分享）──
         //    🔑 规格：「顶部：统计区 + 分享入口」。
@@ -512,6 +531,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         //    → 未登录 = 必然未订阅 ⇒ 应显示**入口**。**藏起来会切断订阅动机。**
         _groupLabel('订阅'),
         _buildSubscriptionCard(auth),
+        const SizedBox(height: CoSpacing.sm),
+        // 🆕 「恢复购买」—— `ui-ux §4.4.3` 明确要求**两处**入口
+        //    （订阅页 + 本页）。理由：**用户订阅后就不会再进订阅页了**，
+        //    得从「我的」页也能找到（Apple 审核会检查这一项）。
+        //
+        // 🔑 与上面「我的成就 / 关于」同样用 `_navTile` —— 同族入口行，
+        //    不做特殊外壳（判据：统一的是外壳与层级）。
+        _navTile(
+          icon: Icons.restore,
+          title: '恢复购买',
+          subtitle: '换设备或重装后找回已订阅',
+          onTap: _restorePurchases,
+        ),
         //    ⚠️ 历史订单**未登录时不渲染**：它按 `user_id` 查（`_loadOrders`
         //       里 `userId == null` 直接 return）→ 未登录必然显示「暂无订单」。
         //       显示一个恒空的列表没有信息量，属「未登录态多出来的东西」。
@@ -887,7 +919,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   Text('语速', style: Theme.of(context).textTheme.bodyMedium),
                   const Spacer(),
                   Text(tts.speechRate.toStringAsFixed(1),
-                      style: TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
+                      style:
+                          TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
                 ],
               ),
               // 🔴 范围**引用常量**，不写字面量 —— 见 `kSpeechRateMax` 的说明：
@@ -930,16 +963,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 isExpanded: true,
                 decoration: const InputDecoration(
                   isDense: true,
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: CoSpacing.md, vertical: 10),
+                  contentPadding: EdgeInsets.symmetric(
+                      horizontal: CoSpacing.md, vertical: 10),
                   border: OutlineInputBorder(),
                 ),
                 // 🔴 原为「系统默认 (zh-CN)」—— 语义错误：本产品朗读英文，
                 // 未指定音色时 `_pickBestVoice` 会按**文本语言**自动匹配（英文 → en-US）
                 hint: Tw('系统默认（自动匹配语言）'),
                 items: [
-                  const DropdownMenuItem(
-                      value: '', child: Tw('系统默认（自动匹配语言）')),
+                  const DropdownMenuItem(value: '', child: Tw('系统默认（自动匹配语言）')),
                   if (voices.isNotEmpty)
                     ...voices.map<DropdownMenuItem<String>>((v) {
                       final name = v['name'] ?? '';
@@ -956,10 +988,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     tts.selectVoice(null);
                     return;
                   }
-                  final match = voices
-                      .cast<Map<String, dynamic>?>()
-                      .firstWhere((v) => v?['name'] == voiceName,
-                          orElse: () => null);
+                  final match = voices.cast<Map<String, dynamic>?>().firstWhere(
+                      (v) => v?['name'] == voiceName,
+                      orElse: () => null);
                   if (match != null) {
                     tts.selectVoice(match);
                     // 切换音色后自动试听（英文），方便立即对比
@@ -1168,7 +1199,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (auth.userId == null || auth.token == null) return;
     try {
       final resp = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}/api/referral/my-code?user_id=${auth.userId}'),
+        Uri.parse(
+            '${ApiConfig.baseUrl}/api/referral/my-code?user_id=${auth.userId}'),
         headers: {'Authorization': 'Bearer ${auth.token}'},
       ).timeout(const Duration(seconds: 10));
       if (resp.statusCode == 200 && mounted) {
@@ -1196,100 +1228,57 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   ///    两者都落到 `!isActivated` 分支，统一显示「未激活 — 请联系服务人员开通」。
   ///    对**未登录**用户这是**误导**（他会去找客服，其实只是没登录）。
   ///
-  /// 🔴 **遗留（待支付批次改，白哥已认可）**：已登录分支的文案
-  ///    「未激活 — 请联系服务人员**开通**」「已到期 — 请联系服务人员**续费**」
-  ///    是**微信 Native 扫码支付时代**的残留。规格 §4.4 / `ui-ux:153` 定的是
-  ///    「订单 / 订阅状态 = **Apple IAP 自动处理**」→ 这两句届时一并改。
-  ///    （现状端侧无 `in_app_purchase` 依赖，`pay_screen` 仍走微信流程。）
+  /// ✅ **2026-10-04 已完成（支付批次）**：原遗留的两句
+  ///    「未激活 — 请联系服务人员**开通**」/「已到期 — 请联系服务人员**续费**」
+  ///    是微信 Native 扫码支付时代的残留，**已随本轮 IAP 改造删除**：
+  ///    · 状态判定改为**端侧 IAP**（`iapSnapshot`），不再看后端 `subscriptionProvider`
+  ///      （端侧权威：离线可判、刚买完立刻生效，不等对账）
+  ///    · 开通/续费由 Apple 自动处理 ⇒ **不再有「找服务人员」这一环**
+  ///    · 已订阅时按钮变「管理」→ 跳 Apple 订阅管理（§4.4.4）
   Widget _buildSubscriptionCard(AuthState auth) {
-    // ── 未登录：入口（**不显示任何订阅状态**）────────────────────────
-    if (!auth.isAuthenticated) {
-      return Clay(
-        borderRadius: BorderRadius.circular(16),
-        padding: EdgeInsets.zero,
-        onTap: _showLoginDialog,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
-          child: Row(
-            children: [
-              Icon(Icons.workspace_premium_outlined,
-                  color: Color(CoEvoTokensExt.of(context).accent.argb32),
-                  size: 19),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('订阅完整版',
-                        style: TextStyle(
-                          fontFamily: CoFonts.uiSans,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Color(CoEvoTokensExt.of(context).ink.argb32),
-                        )),
-                    const SizedBox(height: 2),
-                    // 价值主张照规格 §4.4 判据 3「要具体」——
-                    // 不写「解锁全部功能」，写清到底是什么。
-                    Text('无限生词本 · 文章朗读',
-                        style: TextStyle(
-                          fontFamily: CoFonts.uiSans,
-                          fontSize: 11.5,
-                          color: Color(CoEvoTokensExt.of(context).ink3.argb32),
-                        )),
-                  ],
-                ),
-              ),
-              ClayButton(label: '查看', onTap: _showLoginDialog),
-            ],
-          ),
-        ),
-      );
-    }
+    // ── 状态展示（**未登录也显示**）────────────────────────────────
+    //
+    // 🔴 2026-10-04（支付批次）：原为「未登录 → 引导登录」的独立分支，已合并。
+    //    理由：**购买与恢复都不需要登录**（StoreKit 走 Apple ID）⇒
+    //    未登录时只给「去登录」等于**把购买路径堵死**，违反产品原则
+    //    「除生词本上限外不验证登录态」。
+    //    ⇒ 统一按**端侧状态**展示；登录只影响「记录能否同步到账号」。
 
-    // ── 已登录：状态文案 ──────────────────────────────────────────
-    final sub = ref.watch(subscriptionProvider);
-    final expiresStr = sub.expiresAt;
-    final bool isActivated = expiresStr != null && expiresStr.isNotEmpty;
-    final bool isExpired = sub.isExpired;
+    // ── 状态判定：**端侧 IAP 为权威** ──────────────────────────────
+    //
+    // 🔴 2026-10-04（支付批次）判定源变更：后端 `subscriptionProvider`
+    //    → **端侧 `iapSnapshot`**。三条理由：
+    //      ① **离线可用** —— 后端记录拿不到时不该显示「未订阅」
+    //      ② **刚买完立刻生效** —— 不等 `/api/iap/verify` 对账回来
+    //      ③ 与产品原则一致：端侧是权益判据，后端只作对账留档
+    //    ⚠️ 删掉的两句「未激活 — 请联系服务人员**开通**」/「已到期 — 请联系服务人员**续费**」
+    //       是**微信 Native 扫码时代**的残留（原注释已标注「待支付批次改」）——
+    //       IAP 下开通/续费都由 Apple 自动处理，**没有「找服务人员」这一环**。
+    final snap = iapSnapshotOf(ref);
+    final bool isActivated = snap.isActive;
 
     String statusText;
     Color statusColor;
     IconData statusIcon;
 
-    if (!isActivated) {
-      statusText = '未激活 — 请联系服务人员开通';
-      statusColor = _cs.tertiary;
-      statusIcon = Icons.lock_outline;
-    } else if (isExpired) {
-      statusText = '已到期 — 请联系服务人员续费';
+    if (isActivated) {
+      final expires = snap.expiresAtUtc;
+      statusText = expires == null
+          ? '订阅中'
+          : '订阅中 · 到期日 ${expires.toLocal().toString().substring(0, 10)}';
+      statusColor = _cs.primary;
+      statusIcon = Icons.verified;
+    } else if (snap.entitlement == IapEntitlementStatus.expired) {
+      // 🔑 到期**不没收资产**（§4.4.4）—— 文案只说「续订后继续」，
+      //    不说「已锁定」（生词仍可读可复习，只是不能新增/朗读）
+      statusText = '会员已到期 · 续订后继续';
       statusColor = _cs.error;
       statusIcon = Icons.lock_clock;
     } else {
-      final dt = expiresStr.contains('T')
-          ? DateTime.tryParse(expiresStr)
-          : DateTime.tryParse('${expiresStr.substring(0, 10)}T00:00:00Z');
-      final expires = dt ?? DateTime.now().toUtc();
-      final remaining = expires.difference(DateTime.now().toUtc());
-      if (remaining.isNegative) {
-        statusText = '已到期 — 请联系服务人员续费';
-        statusColor = _cs.error;
-        statusIcon = Icons.lock_clock;
-      } else if (remaining.inDays > 30) {
-        statusText = '有效 — 到期日: ${expiresStr.substring(0, 10)}';
-        statusColor = _cs.primary;
-        statusIcon = Icons.verified;
-      } else if (remaining.inDays > 0) {
-        statusText = '即将到期 — 剩余 ${remaining.inDays} 天';
-        statusColor = _cs.tertiary;
-        statusIcon = Icons.access_time;
-      } else {
-        final hours = remaining.inHours;
-        statusText = hours > 0
-            ? '即将到期 — 剩余 $hours 小时'
-            : '即将到期 — 剩余 ${remaining.inMinutes} 分钟';
-        statusColor = _cs.tertiary;
-        statusIcon = Icons.access_time;
-      }
+      // 🔑 价值主张要具体（§4.4.1 判据 3）—— 不写「解锁全部功能」
+      statusText = '无限生词本 · 文章朗读';
+      statusColor = _cs.tertiary;
+      statusIcon = Icons.workspace_premium_outlined;
     }
 
     // 🔑 只换**外壳**（`Card` → `Clay`），内部保持原样 ——
@@ -1299,7 +1288,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return Clay(
       borderRadius: BorderRadius.circular(16),
       padding: EdgeInsets.zero,
-      onTap: _showSubscribeDialog,
+      // 整行进订阅页（便利区）；右侧按钮是**同一个动作**的显式 CTA
+      onTap: () => context.push('/subscribe'),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
         child: Row(
@@ -1339,8 +1329,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             //    未订阅时说「续费」是错的 —— 没订阅过，哪来的「续」？
             //    原型 ② 屏画的也是「升级」。→ 未激活/已到期 = 升级；有效 = 续费。
             ClayButton(
-              label: isActivated ? '续费' : '升级',
-              onTap: _showSubscribeDialog,
+              // 🔑 已订阅 → 「管理」（跳 **Apple** 订阅管理，§4.4.4）；
+              //    未订阅 → 「升级」（进我们自己的订阅页）
+              label: isActivated ? '管理' : '升级',
+              onTap: isActivated
+                  ? _openAppleSubscriptions
+                  : () => context.push('/subscribe'),
             ),
           ],
         ),
@@ -1348,22 +1342,39 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  void _showSubscribeDialog() {
-    CoDialog.show<void>(
-      context,
-      builder: (ctx) => CoDialog(
-        title: '订阅套餐',
-        actions: [
-          ClayButton(
-            label: '关闭',
-            variant: ClayButtonVariant.secondary,
-            expanded: true,
-            onTap: () => Navigator.of(ctx).pop(),
-          ),
-        ],
-        child: const SubscribePanel(),
-      ),
+  /// 打开 Apple 的订阅管理页（§4.4.4「已订阅 → 管理订阅」）。
+  ///
+  /// 🔑 取消 / 改档**由 Apple 提供**，我们不自建（既做不到也没权限）——
+  ///    但**必须在界面上给出路径**（判例：「不是发了就行，要看得见、找得到、关得掉」）。
+  Future<void> _openAppleSubscriptions() async {
+    final uri = Uri.tryParse(kAppleManageSubscriptionsUrl);
+    if (uri == null) return;
+    var ok = false;
+    try {
+      ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      ok = false;
+    }
+    if (ok || !mounted) return;
+    // 🔴 打开失败必须让用户看见（点了没反应 = 「静默失败 + 无出口」）
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('无法打开链接，请稍后重试')),
     );
   }
-}
 
+  /// 「恢复购买」—— §4.4.3 要求**两处**入口（订阅页 + 本页）。
+  ///
+  /// 🔴 恢复的是 **Apple ID 名下的交易**，与我们的账号无关 ⇒
+  ///    未登录也**必须能用**（这是换设备/重装后找回的唯一途径）。
+  Future<void> _restorePurchases() async {
+    final outcome = await ref.read(iapServiceProvider).restore();
+    if (!mounted) return;
+    final msg = switch (outcome) {
+      RestoreOutcome.restored => '已恢复订阅',
+      RestoreOutcome.notFound => '未找到订阅记录',
+      RestoreOutcome.failed => '恢复购买失败，请稍后重试',
+      RestoreOutcome.unavailable => '当前无法连接 App Store',
+    };
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+}

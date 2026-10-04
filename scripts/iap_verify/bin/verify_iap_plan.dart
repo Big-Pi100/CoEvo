@@ -259,5 +259,118 @@ void main() {
   check('有效 → 订阅版', versionLabel(true) == '订阅版');
   check('无效 → 免费版', versionLabel(false) == '免费版');
 
+  // ────────────────────────────────────────────────────────────────
+  // ⑧ 🔴 订阅页 / 「我的」页的**法定要件**（源级断言）
+  // ────────────────────────────────────────────────────────────────
+  //
+  // ⚠️ 为什么这里用**源级检查**（而不是符号解析）：
+  //    这几条守的是「**内容存在性**」—— 文案里有没有「自动续期」、
+  //    有没有引用那两个法律链接常量。**符号解析看不到字符串内容**。
+  //
+  // 📌 边界如实说明（不夸大）：它只能证明「代码里出现了这个调用」，
+  //    **不能**证明「运行时真的渲染出来了」（那需要 widget 测试，本项目暂无）。
+  //    ⇒ 它的价值是：**谁删掉法定要件，CI 就红** —— 这正是要防的。
+  //
+  // 🔴 已证伪：把 `subscribe_screen.dart` 里 `autoRenewNotice` 这一处调用删掉
+  //    → 本组对应断言变红、退出码 1。
+  print('\n[⑧] 法定要件（订阅页 / 「我的」页）');
+
+  String readApp(String rel) {
+    final f = File('../../app/lib/$rel');
+    return f.existsSync() ? f.readAsStringSync() : '';
+  }
+
+  /// 去掉**整行注释**后的源码。
+  ///
+  /// 🔴 为什么必须去注释再断言（否则两边都会错）：
+  ///    · **正向**（如「有 autoRenewNotice」）会命中**注释里的提及** ⇒ **假绿** ——
+  ///      本项目的历史说明大量写在整行 `///` 注释里（本轮改造正是如此）
+  ///    · **反向**（如「无『请联系服务人员』」）会命中**注释里的引用** ⇒ **假红** ——
+  ///      实际第一次跑就撞上了（注释在解释「这句已删掉」）
+  ///    📌 判据：**注释里提到 ≠ 代码里写了**；且**断言的范围必须等于被测对象的范围**。
+  ///
+  /// ⚠️ 保守实现：只跳过「trimLeft 后以 `//` 开头」的行，**不处理行内注释**
+  ///    （那需要完整词法分析，且会误伤字符串里的 `//`）。
+  ///    对本用途足够 —— 本项目的历史说明都写在**整行**注释里。
+  String codeOnly(String src) => src
+      .split('\n')
+      .where((l) => !l.trimLeft().startsWith('//'))
+      .join('\n');
+
+  final subscribeCode = codeOnly(readApp('screens/subscribe_screen.dart'));
+  check('订阅页文件存在', subscribeCode.isNotEmpty, 'screens/subscribe_screen.dart');
+
+  if (subscribeCode.isNotEmpty) {
+    // ── §4.4.2 自动续费披露（法定）──
+    //
+    // ⚠️ 断言都带 **`(`** —— 不带的话 `autoRenewNotice` 会被 `autoRenewNoticeX`
+    //    前缀命中（**假绿**）。📌 判据：**断言锁「语义形状」不锁「拼写」，
+    //    但也不能松到「一个更长的名字也满足」**。
+    check(
+      '🔴 有按档位的自动续费披露',
+      subscribeCode.contains('SubscriptionLegalText.autoRenewNotice('),
+    );
+    check(
+      '🔴 有「未选档位时」的通用续费说明（接受服务前就要提示）',
+      subscribeCode.contains('autoRenewNoticeGeneric('),
+    );
+    check('🔴 有续费扣款说明', subscribeCode.contains('renewalCharge('));
+    check('🔴 有取消路径说明（Apple ID 设置）', subscribeCode.contains('howToCancel('));
+    check('🔴 有隐私政策链接', subscribeCode.contains('kPrivacyPolicyUrl'));
+    check('🔴 有用户协议链接', subscribeCode.contains('kTermsOfServiceUrl'));
+    // 🔑 「链接未就绪时不显示死链」—— 必须走兜底文案而不是硬编码 URL
+    check('法律链接缺失时有兜底文案（不放死链）', subscribeCode.contains('即将上线'));
+
+    // ── §4.4.3 恢复购买（Apple 强制）──
+    check('🔴 订阅页有恢复购买调用', subscribeCode.contains('.restore()'));
+    check(
+      '🔴 恢复结果分「已恢复 / 未找到」两种提示',
+      subscribeCode.contains('RestoreOutcome.restored') &&
+          subscribeCode.contains('RestoreOutcome.notFound'),
+    );
+
+    // ── §4.4.4 管理订阅 + 降级说明 ──
+    check(
+      '有「管理订阅」（跳 Apple 订阅管理）',
+      subscribeCode.contains('kAppleManageSubscriptionsUrl'),
+    );
+    check('有降级说明（不没收用户资产）', subscribeCode.contains('downgradeNotice('));
+
+    // ── §4.4.2 「不得默认勾选」──
+    // 🔑 断言「档位变量声明处**没有初值**」—— 这就是「不预选」在代码上的形状。
+    //    ⚠️ 用正则而不是 contains：要区分「声明但没赋值」与「声明并赋了初值」。
+    check(
+      '🔴 档位不预选（_selectedProductId 声明处无初值）',
+      RegExp(r'String\?\s+_selectedProductId\s*;').hasMatch(subscribeCode),
+    );
+  }
+
+  // ── 「我的」页：§4.4.3 要求**两处**入口 ──
+  final profileCode = codeOnly(readApp('screens/profile_screen.dart'));
+  check(
+    '🔴 「我的」页也有恢复购买（§4.4.3 要求两处）',
+    profileCode.contains('_restorePurchases'),
+  );
+  check(
+    '「我的」页有「管理订阅」（跳 Apple）',
+    profileCode.contains('_openAppleSubscriptions'),
+  );
+  // 🔴 反向：微信时代的「找服务人员开通/续费」不得残留（**代码里**）
+  check(
+    '🔴 代码中无「请联系服务人员」残留（微信 Native 时代文案）',
+    !profileCode.contains('请联系服务人员'),
+  );
+
+  // ── 🔴 反向：已删的微信支付链路不得复活 ──
+  check(
+    '🔴 pay_screen.dart 已删除（微信扫码支付页，IAP 无对应物）',
+    !File('../../app/lib/screens/pay_screen.dart').existsSync(),
+  );
+  check(
+    '🔴 subscribe_panel.dart 已删除（订阅已改独立页）',
+    !File('../../app/lib/widgets/subscribe_panel.dart').existsSync(),
+  );
+  check('🔴 代码中无残留的 /api/pay/native 调用', !profileCode.contains('/api/pay/native'));
+
   _report();
 }

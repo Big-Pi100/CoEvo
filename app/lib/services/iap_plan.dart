@@ -101,7 +101,9 @@ class IapPlanDisplay {
 }
 
 /// 内置的两档（StoreKit 返回商品前也能渲染骨架屏）。
-List<IapPlanDisplay> defaultPlans({String? monthlyStorePrice, String? yearlyStorePrice}) => [
+List<IapPlanDisplay> defaultPlans(
+        {String? monthlyStorePrice, String? yearlyStorePrice}) =>
+    [
       IapPlanDisplay(
         productId: kProductMonthly,
         title: 'CoEvo 专业版',
@@ -158,13 +160,19 @@ class SubscriptionLegalText {
       '$title，$durationLabel，$priceLabel。'
       '订阅将自动续期，除非在当前订阅期结束前至少 24 小时关闭自动续期。';
 
+  /// **未选档位时**的通用续费说明。
+  ///
+  /// 🔑 为什么需要它：`ui-ux §4.4.2` 要求「**接受服务前**」就显著提示自动续费 ——
+  ///    即**用户还没点选任何档位时**，页面上就得有续费说明。
+  ///    ⇒ 不能等到「选中了才有说明」（那就成了「选完才告知」）。
+  static String autoRenewNoticeGeneric() =>
+      '订阅按月或按年自动续期，除非在当前订阅期结束前至少 24 小时关闭自动续期。';
+
   /// 续费扣款说明。
-  static String renewalCharge() =>
-      '系统会在当前订阅期结束前 24 小时内从你的 Apple 账户扣取下一期费用。';
+  static String renewalCharge() => '系统会在当前订阅期结束前 24 小时内从你的 Apple 账户扣取下一期费用。';
 
   /// 取消方式（Apple 要求说明「在哪里取消」）。
-  static String howToCancel() =>
-      '可在「设置 → Apple 账户 → 订阅」中随时管理或取消订阅。取消后，'
+  static String howToCancel() => '可在「设置 → Apple 账户 → 订阅」中随时管理或取消订阅。取消后，'
       '当前订阅期结束前仍可使用会员功能。';
 
   /// 会员权益（与我们产品实际提供的对齐 —— **不能写未实现的能力**）。
@@ -175,8 +183,7 @@ class SubscriptionLegalText {
   ];
 
   /// 免费版说明（让用户理解「为什么订阅」）。
-  static String freeTierNote() =>
-      '免费版可无限使用阅读、划词查词、生词本（上限 200 词）与词卡朗读。';
+  static String freeTierNote() => '免费版可无限使用阅读、划词查词、生词本（上限 200 词）与词卡朗读。';
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -222,9 +229,40 @@ IapEntitlementStatus resolveEntitlement({
 ///
 /// 🔴 与规格一致：**保留全部生词（可读/可复习/可发音），仅冻结新增**。
 ///    所以文案**不能**说「生词本已锁定」——那与实现不符（属虚假陈述）。
-String downgradeNotice() =>
-    '会员已到期。你的生词、学习记录与已导入的电子书都已保留，'
+String downgradeNotice() => '会员已到期。你的生词、学习记录与已导入的电子书都已保留，'
     '仍可正常查看与复习；新增生词（超过 200 词上限）与文章朗读需要续订。';
 
 /// 「我的」页的版本标签。
 String versionLabel(bool isActive) => isActive ? '订阅版' : '免费版';
+
+// ════════════════════════════════════════════════════════════════════════
+// 外部链接（订阅页 / 关于页共用）
+// ════════════════════════════════════════════════════════════════════════
+
+/// 🔴 Apple **订阅管理**页 —— 固定的官方地址。
+///
+/// 用途：`ui-ux §4.4.4` 要求「已订阅 → 提供**管理订阅**（跳 Apple 订阅管理）」。
+/// ⚠️ 取消订阅由 Apple 提供（我们不自建），但**必须在页面上说明路径** ——
+///    判例：「不是发了就行，要**看得见、找得到、关得掉**」。
+/// ⚠️ 若 Apple 调整该地址，改这一处即可（全 App 只此一个定义）。
+const String kAppleManageSubscriptionsUrl =
+    'https://apps.apple.com/account/subscriptions';
+
+/// 隐私政策 URL。
+///
+/// 🔴 **现在为 null = 尚未部署**。按项目判据：**不编造链接** ——
+///    放死链比不放进糟糕（用户点了没反应，会以为 App 坏了；同「静默失败 + 无出口」）。
+/// ⏳ 待白哥确定 URL 后填这里（方案见 `docs/operations/owner-action-checklist-2026-10-04.md` §4.2）。
+/// 📌 它是 **Apple 上架硬要求**（ASC 必填 + App 内需有入口 + 订阅页法定必填）。
+const String? kPrivacyPolicyUrl = null;
+
+/// 用户协议 URL。同上。
+const String? kTermsOfServiceUrl = null;
+
+/// 两个法律链接是否**都已就绪**（订阅页/关于页据此决定「显示链接」还是「说明待上线」）。
+///
+/// 🔑 为什么要这个判断函数而不是各处写 `!= null`：
+///    ① 「两个都齐才算就绪」是一条**规则**，写在两处会漂
+///    ② 它能被断言（`scripts/iap_verify` 里已覆盖）—— 将来填了 URL 忘了另一个，测试会提醒
+bool get hasLegalLinks =>
+    kPrivacyPolicyUrl != null && kTermsOfServiceUrl != null;

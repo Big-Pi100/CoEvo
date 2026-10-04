@@ -17,16 +17,18 @@ import 'screens/aggregate_page_screen.dart';
 import 'screens/bookmark_list_screen.dart';
 import 'screens/review_screen.dart';
 import 'screens/review_session_screen.dart';
-import 'screens/pay_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/reader_screen.dart';
+import 'screens/subscribe_screen.dart';
 import 'pages/user/distribution/notification_panel.dart';
 import 'providers/auth_provider.dart';
+import 'providers/iap_provider.dart';
 import 'providers/subscription_provider.dart';
 import 'providers/theme_provider.dart';
+import 'services/iap_plan.dart';
+import 'services/iap_service.dart';
 import 'widgets/achievement_unlock_overlay.dart';
 import 'widgets/dialog_overlay.dart';
-import 'widgets/subscribe_panel.dart';
 
 final goRouter = GoRouter(
   initialLocation: '/',
@@ -201,9 +203,13 @@ final goRouter = GoRouter(
     //    ⚠️ 注意：`widgets/review_dialog.dart` / `review_card_widget.dart` **不是复习页组件** ——
     //       名字像，但属**旧架构（走后端）**的 chat 专用件；现役 `review_screen.dart`
     //       已自建复习页（数据源全走端侧 `user.db`），**不复用它们**。
+    // 🗑 2026-10-04：`/pay`（`PayScreen` 微信扫码支付页）已删除 ——
+    //    Apple IAP 下**没有「下单 + 二维码 + 轮询」这一环**
+    //    （购买由 StoreKit 在客户端完成），整页 552 行无对应物。
+    //    订阅入口统一为独立页 `/subscribe`（见 `screens/subscribe_screen.dart`）。
     GoRoute(
-      path: '/pay',
-      builder: (context, state) => const PayScreen(),
+      path: '/subscribe',
+      builder: (context, state) => const SubscribeScreen(),
     ),
     GoRoute(
       path: '/notifications',
@@ -595,6 +601,12 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 🔴 IAP **预热**（必须在启动时 read 一次）——
+      //    `iapServiceProvider` 是懒加载的：不预热的话，用户若从不打开
+      //    订阅页 /「我的」页，商店在**启动瞬间**投递「上次未完成的事务」时就漏了
+      //    （事务滞留 → 每次启动重复投递、再次购买报「重复事务待处理」）。
+      //    ⚠️ 只 read（创建服务 + 订阅事件流），无 UI 副作用。
+      ref.read(iapServiceProvider);
       ref.read(authProvider.notifier).tryRestore();
       // 等 auth 恢复完成后首次检查
       Future.delayed(const Duration(seconds: 3), _checkSubscription);
@@ -610,9 +622,38 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
     super.dispose();
   }
 
+  /// 检查订阅状态并按需驱动「已到期」覆盖层。
+  ///
+  /// 🔴 2026-10-04（支付批次）：判定源改为**端侧 IAP 优先**。
+  ///    原实现只看后端 `subscriptionProvider` ⇒ 用户**刚买完**、
+  ///    后端还没收到 `/api/iap/verify` 对账的那段时间里会**误弹「已到期」**
+  ///    （端侧已解锁、后端尚未记账）—— 这正是「端侧权威」要解决的问题。
+  ///    回退分支保留：IAP 不可用时（如非 iOS 平台）仍用后端记录。
   void _checkSubscription() {
     final auth = ref.read(authProvider);
+    final iap = ref.read(iapServiceProvider).snapshot;
+    final isTrial = (auth.username ?? '').startsWith('trial_');
+
+    if (iap.availability == IapAvailability.available) {
+      _applyExpired(
+        expired: iap.entitlement == IapEntitlementStatus.expired,
+        isTrial: isTrial,
+      );
+      return;
+    }
+
+    // 回退：IAP 不可用 → 沿用后端记录
     if (!auth.isAuthenticated || auth.userId == null) return;
+    ref.fetchSubscription().then((_) {
+      _applyExpired(
+        expired: ref.read(subscriptionProvider).isExpired,
+        isTrial: isTrial,
+      );
+    });
+  }
+
+  /// 按「是否已到期」驱动覆盖层显隐（含 backoff）。
+  void _applyExpired({required bool expired, required bool isTrial}) {
     // 距上次关闭时间按 dismiss 次数递增（已显示的覆盖层不在此限，支付后需立即刷新）
     if (_lastDismissed != null && !_showSubExpired) {
       final idx = _dismissCount.clamp(0, _backoffMinutes.length - 1);
@@ -622,20 +663,14 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
       }
     }
 
-    ref.fetchSubscription().then((_) {
-      // provider 状态更新后，检查是否需要弹出覆盖层
-      final sub = ref.read(subscriptionProvider);
-      final auth = ref.read(authProvider);
-      final isTrial = (auth.username ?? '').startsWith('trial_');
-      // 临时账户不弹订阅覆盖层，引导注册由 ChatScreen 处理
-      if (sub.isExpired && mounted && !_showSubExpired && !isTrial) {
-        setState(() => _showSubExpired = true);
-      }
-      // 订阅已激活（刚支付完成）→ 关闭覆盖层
-      if (!sub.isExpired && mounted && _showSubExpired) {
-        setState(() => _showSubExpired = false);
-      }
-    });
+    // 临时账户不弹订阅覆盖层，引导注册由 ChatScreen 处理
+    if (expired && mounted && !_showSubExpired && !isTrial) {
+      setState(() => _showSubExpired = true);
+    }
+    // 订阅已激活（刚买完）→ 关闭覆盖层
+    if (!expired && mounted && _showSubExpired) {
+      setState(() => _showSubExpired = false);
+    }
   }
 
   Widget _buildSubExpiredOverlay() {
@@ -672,8 +707,19 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  const SubscribePanel(),
-                  const SizedBox(height: 16),
+                  // 🔴 2026-10-04：原为内嵌的 `SubscribePanel`（380px 弹层）。
+                  //    订阅界面已改为**独立页** ⇒ 这里改为跳转按钮（覆盖层本身保留：
+                  //    它承担的是「到期提示」的职责，与订阅页是两件事）。
+                  FilledButton(
+                    onPressed: () {
+                      _lastDismissed = DateTime.now();
+                      _dismissCount++;
+                      setState(() => _showSubExpired = false);
+                      context.push('/subscribe');
+                    },
+                    child: const Text('查看订阅'),
+                  ),
+                  const SizedBox(height: 4),
                   TextButton(
                     onPressed: () {
                       _lastDismissed = DateTime.now();
@@ -740,13 +786,13 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
           data: MediaQuery.of(context).copyWith(textScaleFactor: scale),
           child: DialogOverlay(
             child: Stack(
-            children: [
-              child!,
-              // 全局成就解锁弹窗（**任何页面**解锁都会弹）—— 顶层 Stack 最上层
-              // 数据源：端侧（见 providers/achievement_notifier.dart）
-              const AchievementUnlockOverlay(),
-              _buildSubExpiredOverlay(),
-            ],
+              children: [
+                child!,
+                // 全局成就解锁弹窗（**任何页面**解锁都会弹）—— 顶层 Stack 最上层
+                // 数据源：端侧（见 providers/achievement_notifier.dart）
+                const AchievementUnlockOverlay(),
+                _buildSubExpiredOverlay(),
+              ],
             ),
           ),
         );

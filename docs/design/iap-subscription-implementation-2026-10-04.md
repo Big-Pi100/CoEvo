@@ -297,3 +297,77 @@ distribution_handler.rs:250  SELECT price FROM subscription_plans WHERE id = ?1
 
 > 🔑 代码已完整实现，**只差运行时配置**。`IapConfig::from_env()` 缺配置时返回 503 + 明确原因
 > （不让端侧误判为「交易无效」）。
+
+---
+
+## 九、实施记录 ② 前端（2026-10-04 · 已完成并验证）
+
+### 9.1 🔴 一个关键的形态决策（白哥定）
+
+| | **原**：弹层 | **新**：独立页 `/subscribe` |
+|---|---|---|
+| 载体 | `CoDialog` + `SubscribePanel`（380px）| `screens/subscribe_screen.dart` |
+| 为什么换 | 法定要件放不下（要滚动）| ✅ 自动续费披露 + 2 法律链接 + 权益 + 2 档 + 恢复购买，整页才排得开 |
+| | | ✅ Apple 审核截图更清晰（订阅页是审核员必看页）|
+| | | ✅ 与规格用词一致（`ui-ux §4.4` 一直写「订阅**页**」）|
+
+**另一个决策**：`order_history.dart` **保留列表、去掉支付按钮**（其交易由 IAP 写入 `payment_orders`，有数据可看）。
+
+### 9.2 落地清单
+
+| # | 文件 | 动作 | 说明 |
+|---|---|---|---|
+| 1 | `lib/services/iap_plan.dart` 🆕 | **新增** | **零 import 纯逻辑**（产品 ID 契约 · 价格 · 折扣 · 法定文案 · 状态判定 · 法律链接常量）|
+| 2 | `lib/services/iap_service.dart` 🆕 | **新增** | `in_app_purchase` 封装（端侧权威 · `completePurchase` 必调 · 未登录记待补报）|
+| 3 | `lib/providers/iap_provider.dart` 🆕 | **新增** | Provider + 三条接线（绑定上报器 / 登录后补报 / 启动监听）|
+| 4 | `lib/screens/subscribe_screen.dart` 🆕 | **新增** | 订阅页（含全部法定要件）|
+| 5 | `lib/screens/profile_screen.dart` | 改 | 订阅卡改**端侧权威** · 删微信时代文案 · 加「恢复购买」+「管理订阅」|
+| 6 | `lib/app.dart` | 改 | 路由 `/pay` → `/subscribe` · 覆盖层改跳转 · **启动预热 IAP** · 判定源改端侧 |
+| 7 | `lib/widgets/order_history.dart` | 改 | 删「继续支付」按钮 + `_continuePay`（含 2 个随之失效的 import）|
+| 8 | `lib/screens/pay_screen.dart` | 🔴 **删** | 552 行微信扫码页（IAP 无对应物）|
+| 9 | `lib/widgets/subscribe_panel.dart` | 🔴 **删** | 392 行套餐弹层（被订阅页取代）|
+| 10 | `app/pubspec.yaml` | 改 | 加 `in_app_purchase: ^3.3.1` |
+| 11 | `scripts/iap_verify/` 🆕 | **新增** | 79 项纯 Dart 验收（已接 CI）|
+
+**净效果**：删 **944 行**死代码，加 **4 个新文件**。
+
+### 9.3 三条不可省的义务（都在断言里守着）
+
+| 义务 | 出处 | 断言 |
+|---|---|---|
+| **自动续费披露** | `ui-ux §4.4.2`（法定，判例 30 万罚款）| `autoRenewNotice(` + `autoRenewNoticeGeneric(` |
+| **隐私政策 + 用户协议** | Apple 订阅类强制 | `kPrivacyPolicyUrl` + `kTermsOfServiceUrl` + 兜底文案 |
+| **恢复购买 ×2 处** | Apple 3.1.1 + `§4.4.3` | 订阅页 `.restore()` + 「我的」页 `_restorePurchases` |
+
+🔑 还守了 `§4.4.2`「**不得默认勾选**」：断言「`_selectedProductId` 声明处**无初值**」——
+    这是「不预选」在代码上的**形状**。
+
+### 9.4 过程中的三个真问题（**都是工具抓到的，不是我想到的**）
+
+| # | 问题 | 谁抓到 | 性质 |
+|---|---|---|---|
+| 1 | `iap_provider.dart` 有 **unused import** | `codestatic` | 🔴 **CI 致命**（warning 档）|
+| 2 | `Stream.followedBy` **不存在**（那是 `Iterable` 的方法）| `codestatic` | 🔴 符号解析错误 —— **API 名靠猜**踩的 |
+| 3 | 断言「无『请联系服务人员』」**假红**（命中全在注释里）| `iap_verify` | 🟠 断言范围 > 被测对象范围 |
+
+📌 **教训**：
+- **API 名不能靠猜** —— 「应该有这么个方法」必须过一遍符号解析（#2）
+- **断言范围必须等于被测对象范围** —— 注释里的提及既会**假绿**（正向）也会**假红**（反向）（#3）
+- **本地检查的判据必须与 CI 逐条对齐** —— #1 就是靠这条抓到的（warning 也致命）
+
+### 9.5 ⚠️ 本机验证的**盲区**（如实记录）
+
+| 项 | 状态 |
+|---|---|
+| `iap_plan.dart`（零 import）| ✅ **完整验证**（`dart run`）|
+| `iap_provider` / `subscribe_screen` / `profile_screen` / `app.dart` | ✅ **符号解析通过**（`codestatic`，0 error / 0 warning）|
+| `iap_service.dart` | 🟡 **本机无法解析** —— `in_app_purchase` **不在** pub 缓存，`package_config.json` 里没有 ⇒ 20 条 `Undefined name 'InAppPurchase'` 全属**假红**（CI 会 `flutter pub get` 补上）|
+| **UI 渲染** | 🔴 **本机完全无法验证** —— `flutter` 命令建不了子进程（`CreateFile failed 231`）⇒ 视觉/交互只能靠 CI 编译 + 白哥真机 |
+
+### 9.6 ⏳ 剩余（依赖白哥）
+
+| 项 | 依赖 |
+|---|---|
+| 法律链接**填入真值** | 🔴 需要隐私政策/用户协议的正式 URL（`owner-action-checklist` §4.2 选方案 A/B）→ 填 `iap_plan.dart` 的两个常量 |
+| 沙盒端到端 | ASC 产品 + 沙盒账号 + 4 个环境变量 |
+| 审核截图 | 订阅页做完后截（≥640×920，须是 App 内订阅页）|

@@ -55,6 +55,25 @@ enum IapAvailability {
   unavailable,
 }
 
+/// 「恢复购买」的结果 —— 供 UI 决定提示文案。
+///
+/// 🔑 为什么要有这个枚举（而不是只更新状态）：`ui-ux §4.4.3` 明确要求
+///    「成功则提示『已恢复』；**无记录则提示『未找到订阅记录』**」——
+///    两种情况的提示**不同**，而 StoreKit 不会告诉你「恢复结束了但什么都没有」。
+enum RestoreOutcome {
+  /// 恢复到了有效订阅
+  restored,
+
+  /// 调用成功，但该 Apple ID 名下没有有效订阅
+  notFound,
+
+  /// 调用抛异常
+  failed,
+
+  /// 商店不可用（没连上 / 设备不支持）
+  unavailable,
+}
+
 /// 服务层对外暴露的一段订阅状态（**端侧权威**）。
 @immutable
 class IapSnapshot {
@@ -152,7 +171,8 @@ class IapService {
 
     final ok = await InAppPurchase.instance.isAvailable();
     _emit(_snapshot.copyWith(
-      availability: ok ? IapAvailability.available : IapAvailability.unavailable,
+      availability:
+          ok ? IapAvailability.available : IapAvailability.unavailable,
     ));
 
     if (ok) await loadProducts();
@@ -205,8 +225,8 @@ class IapService {
     _emit(_snapshot.copyWith(purchasing: true, clearError: true));
 
     try {
-      final resp = await InAppPurchase.instance
-          .queryProductDetails({productId});
+      final resp =
+          await InAppPurchase.instance.queryProductDetails({productId});
       if (resp.productDetails.isEmpty) {
         _emit(_snapshot.copyWith(
           purchasing: false,
@@ -229,18 +249,42 @@ class IapService {
   ///
   /// 🔴 恢复的是 **Apple ID 名下的交易**，**不依赖我们的账号**。
   ///    ⇒ 未登录也**必须能恢复**（这是「换设备后找回」的唯一途径）。
-  Future<void> restore() async {
+  ///
+  /// # ⚠️ 为什么这里有一个「等 1.2 秒」
+  ///
+  /// **StoreKit 不提供「恢复已完成」的信号** —— `restorePurchases()` 返回后，
+  /// 结果通过 `purchaseStream` **异步**投递；而该 Apple ID 名下**没有订阅**时，
+  /// **一条事件都不会发**。⇒ 无法用「等条件成立」来判断结束（没有条件可等）。
+  ///
+  /// 🔑 所以用**固定窗口**：它**只影响提示文案**，**不影响权益** ——
+  ///    权益由 `_deliver()` 独立更新，事件晚到也照样正确解锁；
+  ///    最坏情况是先提示「未找到」、随后状态自动变成已订阅（且不再提示错误）。
+  /// 📌 判据对照：项目反对「等猜的时长」是针对**可以用条件替代**的场景
+  ///    （如 `showDialog` 的 builder 是否跑过）。此处无替代信号，如实记录理由。
+  Future<RestoreOutcome> restore() async {
+    if (_snapshot.availability != IapAvailability.available) {
+      return RestoreOutcome.unavailable;
+    }
+
     _emit(_snapshot.copyWith(purchasing: true, clearError: true));
+
     try {
       await InAppPurchase.instance.restorePurchases();
-      // 恢复结果同样从 purchaseStream 回来（status = restored）。
-      // ⚠️ 若该 Apple ID 名下**没有**任何订阅，purchaseStream **不会发事件**
-      //    ⇒ 必须在这里给一个「结束」信号，否则 UI 会一直转圈。
-      _emit(_snapshot.copyWith(purchasing: false));
     } catch (e) {
-      _emit(_snapshot.copyWith(purchasing: false, lastError: '恢复购买失败，请稍后重试'));
+      _emit(_snapshot.copyWith(
+        purchasing: false,
+        lastError: '恢复购买失败，请稍后重试',
+      ));
       debugPrint('[IAP] restore 异常: $e');
+      return RestoreOutcome.failed;
     }
+
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    _emit(_snapshot.copyWith(purchasing: false));
+
+    return _snapshot.entitlement == IapEntitlementStatus.active
+        ? RestoreOutcome.restored
+        : RestoreOutcome.notFound;
   }
 
   /// 商店事件处理。
@@ -343,30 +387,36 @@ class IapService {
     }
   }
 
-  /// 登录后补报：把积压的交易 + 当前仍有效的权益都报一遍。
+  /// 登录后补报：把**积压的交易**补报给服务端。
   ///
-  /// 🔑 为什么要「当前仍有效的权益」而不只是「积压的交易」：
-  ///    用户可能在**未登录时就买过**（那笔已不在积压里，或换了设备）⇒
-  ///    靠 `restorePurchases()` 重新投递一次，才能覆盖这种情况。
+  /// # 🔴 为什么**不**在这里调 `restorePurchases()`
+  ///
+  /// 初版实现让它顺带 `restorePurchases()`，理由是「覆盖未登录时购买的情况」。
+  /// **那是错的**，两条独立理由：
+  ///
+  /// ① 🔴 **Apple 的设计意图是「恢复购买由用户主动触发」** ——
+  ///    它对应一个**可见按钮**（审核指南 3.1.1 的要求就是「提供恢复入口」）。
+  ///    每次启动/登录都自动调，会产生用户没要求的系统级交互。
+  /// ② ✅ **积压机制已经覆盖了那个场景** —— 未登录购买时上报器为 null，
+  ///    `_report()` 会把交易记进 `_pendingReports`（**不是丢掉**）
+  ///    ⇒ 登录后这次补报就能覆盖，**根本不需要 restore**。
+  ///
+  /// 📌 而「换设备/重装」场景由**用户主动点「恢复购买」按钮**覆盖（`restore()`）——
+  ///    那正是 Apple 期望的路径。
   Future<void> reportEntitlementsIfSignedIn() async {
     if (_reporter == null) return;
 
-    // ① 先报积压的
     final pending = Map<String, String>.from(_pendingReports);
+    if (pending.isEmpty) return;
+
+    debugPrint('[IAP] 登录后补报 ${pending.length} 笔积压交易');
     for (final entry in pending.entries) {
       try {
         await _reporter!(transactionId: entry.key, productId: entry.value);
         _pendingReports.remove(entry.key);
       } catch (_) {
-        // 留着下次再试
+        // 留着下次再试（不删 ⇒ 不会丢）
       }
-    }
-
-    // ② 再让 StoreKit 重新投递当前权益（覆盖「未登录时购买」的情况）
-    try {
-      await InAppPurchase.instance.restorePurchases();
-    } catch (e) {
-      debugPrint('[IAP] 补报时的 restore 失败: $e');
     }
   }
 

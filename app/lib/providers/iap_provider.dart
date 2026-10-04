@@ -1,0 +1,134 @@
+// ════════════════════════════════════════════════════════════════════════
+// IAP providers —— 把 `IapService` 接入 Riverpod，并接线「登录 → 上报」
+// ════════════════════════════════════════════════════════════════════════
+//
+// # 三条接线（都在 [iapServiceProvider] 里做完）
+//
+// | # | 接线 | 为什么 |
+// |---|---|---|
+// | ① | **绑定上报器**（已登录才绑）| 未登录时上报器为 null ⇒ 交易进入「待补报」，**不丢** |
+// | ② | **登录后补报** | 覆盖「未登录时购买」—— 只报积压，**不自动 restore**（理由见 `iap_service` 的 `reportEntitlementsIfSignedIn`）|
+// | ③ | **启动商店监听** | 商店可能在**启动瞬间**投递上次未完成的事务；晚监听 = 漏掉它们 |
+//
+// # 🔴 权益判定以端侧为准
+//
+// `iapSnapshotProvider` 是**权益的唯一判据**（离线也能判）。
+// 后端的 `subscriptionProvider` 只用于**对账展示**（见后端 `iap_handlers` 模块文档）。
+// ⇒ 上报失败**不得**影响解锁 —— 否则「网络差就白买了」。
+//
+// # ⚠️ 本 provider 是**懒加载**的
+//
+// 必须在 App 启动时 `ref.read` 一次预热（点在 `CoEvoApp.initState`）。
+// 不预热的话，用户若从不打开订阅页/我的页，启动瞬间那次事务投递就漏了。
+
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
+
+import '../api/api_config.dart';
+import '../services/iap_service.dart';
+import 'auth_provider.dart';
+import 'subscription_provider.dart';
+
+/// [IapService] 单例 + 全部接线。
+final iapServiceProvider = Provider<IapService>((ref) {
+  final service = IapService();
+
+  /// 上报一笔交易到后端（`POST /api/iap/verify`）。
+  ///
+  /// 🔴 **失败必须抛**：service 层会把它记回「待补报」，下次登录/启动再试。
+  ///    若吞掉不抛，这笔交易就**静默丢了**（服务端出现对账缺口，且无人知道）。
+  Future<void> report({
+    required String transactionId,
+    required String productId,
+  }) async {
+    final auth = ref.read(authProvider);
+    final userId = auth.userId;
+    // 兜底：service 层只在「上报器非 null」时调用，而 null 就是未登录
+    if (userId == null) throw StateError('未登录，不该走到这里');
+
+    final headers = <String, String>{'Content-Type': 'application/json'};
+    if (auth.token != null) headers['Authorization'] = 'Bearer ${auth.token}';
+
+    final resp = await http
+        .post(
+          Uri.parse('${ApiConfig.baseUrl}/api/iap/verify'),
+          headers: headers,
+          body: jsonEncode({
+            'transactionId': transactionId,
+            'productId': productId,
+            'user_id': userId,
+          }),
+        )
+        .timeout(const Duration(seconds: 15));
+
+    if (resp.statusCode != 200) {
+      throw Exception('iap/verify HTTP ${resp.statusCode}');
+    }
+
+    // 对账成功 ⇒ 后端已写 `users.subscription_expires` → 刷新本地缓存的口径
+    unawaited(ref
+        .read(subscriptionProvider.notifier)
+        .fetch(userId: userId, token: auth.token));
+  }
+
+  void bindReporter() {
+    final auth = ref.read(authProvider);
+    final signedIn = auth.isAuthenticated && auth.userId != null;
+    service.setReporter(signedIn ? report : null);
+  }
+
+  bindReporter();
+
+  // 登录 / 登出 / 换账号 ⇒ 重绑上报器；**登录后补报**积压交易
+  ref.listen<AuthState>(authProvider, (prev, next) {
+    bindReporter();
+    if (next.isAuthenticated && prev?.userId != next.userId) {
+      unawaited(service.reportEntitlementsIfSignedIn());
+    }
+  });
+
+  // 尽早监听商店事件（理由见文件头 ③）
+  unawaited(service.start());
+
+  ref.onDispose(service.dispose);
+  return service;
+});
+
+/// 端侧订阅快照 —— **UI 判权益 / 取商品价格**用。
+///
+/// 🔑 **先发当前值、再跟流**：
+///    `service.stream` 是 broadcast 的、**不回放历史**，而 `start()` 是异步的 ——
+///    若只跟流，首个 build 可能拿不到已就绪的状态（会闪一下「未订阅」）。
+///
+/// 🔴 **不能用 `Stream.value(x).followedBy(...)`** —— `followedBy` 是 **`Iterable`**
+///    的方法，**`Stream` 没有它**（2026-10-04 实测：`codestatic` 报
+///    「The method 'followedBy' isn't defined for the type 'Stream<...>'」）。
+///    📌 教训：**API 名不能靠猜** —— 想当然的「应该有这么个方法」必须过一遍符号解析。
+///    ✅ 正确写法是 `async*` 生成器：先 `yield` 当前值，再 `yield*` 跟流。
+final iapSnapshotProvider = StreamProvider<IapSnapshot>((ref) {
+  final service = ref.watch(iapServiceProvider);
+  return _snapshotStream(service);
+});
+
+Stream<IapSnapshot> _snapshotStream(IapService service) async* {
+  yield service.snapshot;
+  yield* service.stream;
+}
+
+/// 便捷读取：当前快照（**UI 层用**）。
+///
+/// ⚠️ 参数是 `WidgetRef`（不是 `Ref`）—— Riverpod 2.x 里两者是**不同类型**，
+///    不能互相传。`Ref` 给 provider 内部用，`WidgetRef` 给 widget 用。
+///
+/// 🔑 为什么不让调用方各自 `maybeWhen`：那会把「loading 时回落到什么」这个
+///    决策散到每个页面。统一在这里回落到 `service.snapshot`（即最近一次已知值）。
+IapSnapshot iapSnapshotOf(WidgetRef ref) {
+  final async = ref.watch(iapSnapshotProvider);
+  return async.maybeWhen(
+    data: (s) => s,
+    orElse: () => ref.read(iapServiceProvider).snapshot,
+  );
+}
