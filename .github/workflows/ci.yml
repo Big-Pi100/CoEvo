@@ -569,6 +569,34 @@ jobs:
         working-directory: scripts/query_verify
         run: dart run bin/verify_auth_entry.dart
 
+      # ── 🆕 2026-10-05：设计系统 / 页面结构 / 交互约束（tokens_verify · 688 项）──
+      #
+      # 🔴🔴 **它是被「一次真实的漏检」抓出来的**（2026-10-04 夜）：
+      #    改「阅读 tab 标题栏」时，CI 只报了 **2 项**红 —— 而它这里红了 **4 项**
+      #    （标题栏收藏入口 / 用 HeaderChip / 跳 `/home/bookmarks` / 传 icon）。
+      #    **它不在 CI 里，所以那 4 项没人会看见** —— 是人工逐个跑脚本才发现的。
+      #    ⇒ 「**写了没人跑 = 迟早失效**」的又一个活证据（先例：verify_feed_wiring 曾红 3 项、
+      #      verify_auth_entry 因源文件被删而一跑就崩，两者此前都不在 CI）。
+      #
+      # 📌 判据（本仓库已在用）：**新断言集必须接入 CI**，否则它只是「永远绿的装饰」。
+      #    上一批（本次）才发现它已经在「装饰」状态下待了很久。
+      #
+      # ✅ 为什么它能进（逐条核实，不是「看着像纯 Dart」）：
+      #    ① `pubspec.yaml` **零依赖** ⇒ `dart pub get` 秒回，不拉包、不等网络
+      #    ② 只 import `dart:io`（读仓库源码做**源级断言**）+ 一个**零依赖**的
+      #       `app/lib/theme/coevo_tokens.dart`（该文件本身不 import Flutter）⇒ 不依赖 Flutter
+      #    ③ 期望值**独立于被测代码**：它去读 `design-system-spec-*.md` 与
+      #       `app/lib/**` 源码**逐项对照**，不是在脚本里把值重抄一遍
+      #
+      # ⚠️ **与 `flutter analyze` 的分工**（不重叠）：本 job 守的是「**设计系统的一致性**」
+      #    （色值/字号/间距/组件形态/页面接线）—— 这些**编译期全都合法**，
+      #    analyze 看不出「用错了另一个 token 的值」。
+      #
+      # ⏳ 它覆盖 688 项，是本仓库最大的单个断言集 ⇒ 跑得比其它 step 久一点（实测约 30–60s）。
+      - name: 设计系统 + 页面结构 + 交互约束（tokens_verify · 688 项）
+        working-directory: scripts/tokens_verify
+        run: dart run bin/verify_tokens.dart
+
   # ── 纯 Dart 验收：IAP 订阅纯逻辑（2026-10-04 加）──
   #
   # 🔴 为什么必须进 CI：这个脚本**建好时就没进 CI** 是「写了没人跑 = 迟早失效」
