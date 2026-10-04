@@ -14,7 +14,14 @@
 // → 🔑 判据：**页面上的每个链接都必须能打开**。放一个死链比不放进糟糕 ——
 //    用户点了没反应，会以为是 App 坏了（同「静默失败 + 无出口」）。
 //
-// # 🆕 「联系工作人员」2026-09-29 由「我的」页**移入本页**（白哥定）
+// # 🆕 末行入口：2026-09-29 由「我的」页**移入本页**（白哥定）
+//
+// 🔴 **2026-10-04 改名**：「联系工作人员」→「**加入英文原著共读群**」（白哥定）。
+//    为什么改：这个二维码承载的**不是客服个人微信，而是共读群** ——
+//    「联系工作人员」会让用户以为是「找人办事」，与它实际做的事不符。
+//    判据：**视觉/形态须与语义一致**（改了功能/对象，就得改名字，否则语义残留会误导后人）。
+//    配套改动：方法名 `_showContactDialog` → `_showGroupQrcodeDialog`（同一判据）。
+//    📄 群的定位、群规与运营方式 → `docs/operations/wechat-study-group-plan-2026-10-04.md`
 //
 // 🔑 为什么移到这里（不是冗余搬运）：它属**「关于本 App」这一族** ——
 //    与「隐私政策 / 用户协议 / 版本 / 备案号」同类（都是「产品层面的信息」），
@@ -113,7 +120,7 @@ import '../widgets/twemoji.dart';
 ///    **同字号** —— 两个列表页的字号必须一致，否则来回切换会「跳」。
 ///
 /// ⚠️ **不受它管**的只有两处：顶栏标题（23px，属页面级）与
-///    「联系工作人员」弹窗（`CoDialog` 内部，属另一个视觉上下文）。
+///    「加入英文原著共读群」弹窗（`CoDialog` 内部，属另一个视觉上下文）。
 const double _kBodyFontSize = 14;
 
 /// 信息行**左列（字段名）的唯一样式** —— [AboutScreen] 量列宽与 [_InfoRow] 渲染**共用**它。
@@ -293,10 +300,14 @@ class AboutScreen extends StatelessWidget {
 
                   _divider(t),
 
-                  // ── ④ 🆕 联系工作人员（2026-09-29 由「我的」页移入）──
+                  // ── ④ 🆕 加入英文原著共读群（2026-09-29 移入 · 10-04 改名）──
+                  //
+                  // 🔑 点进去是**群二维码** —— 由后端 `/api/public/qrcode` 托管（读服务器上的
+                  //    一张图片）⇒ **换码只要传一张新图，不用改代码、不用发版**。
+                  //    这对我们很关键：微信群二维码**只有 7 天有效期**（见群方案 §2.1）。
                   _LinkRow(
-                    label: '联系工作人员',
-                    onTap: () => _showContactDialog(context),
+                    label: '加入英文原著共读群',
+                    onTap: () => _showGroupQrcodeDialog(context),
                   ),
                 ],
               ),
@@ -307,15 +318,23 @@ class AboutScreen extends StatelessWidget {
     );
   }
 
-  /// 「联系工作人员」弹窗（二维码）。
+  /// 「加入英文原著共读群」弹窗（群二维码）。
   ///
   /// 🔴 2026-09-29 由 `profile_screen` 整体移入 —— 逻辑与原实现一致，
   ///    只是**弹窗外壳换成公共 `CoDialog`**（本页此前无弹窗，现在起有了一处）。
   ///
+  /// 🔴 **2026-10-04 改名 + 换语义**：原名 `_showContactDialog`（「联系工作人员」）——
+  ///    它弹的其实是**群二维码**，不是客服个人微信 ⇒ 入口文案与方法名一起改，
+  ///    否则「名字说的」与「它做的事」不符（判据：形态须与语义一致）。
+  ///
   /// 🔑 二维码是**联网图片**（`/api/public/qrcode`）→ 必须有 `errorBuilder`：
   ///    没网/接口挂了时显示一个「图片不可用」图标，而不是留一块空白
   ///    （判据同本页文件头：「静默失败 + 无出口」比报错更糟）。
-  void _showContactDialog(BuildContext context) {
+  ///
+  /// ⚠️ **线上该图当前不存在**（2026-10-04 实测 `/api/public/qrcode` 返回的是
+  ///    `text/plain` + 「二维码图片未配置」那句）⇒ 本弹窗现在显示的是 `errorBuilder`
+  ///    那个图标。**这不是 bug，是「还没传图」** —— 传图步骤见群方案 §四。
+  void _showGroupQrcodeDialog(BuildContext context) {
     CoDialog.show<void>(
       context,
       builder: (ctx) {
@@ -323,7 +342,7 @@ class AboutScreen extends StatelessWidget {
         //    弹窗是**路由级 overlay**，它的 context 才是它真正所在的树。
         final t = CoEvoTokensExt.of(ctx);
         return CoDialog(
-          title: '联系工作人员',
+          title: '加入英文原著共读群',
           actions: [
             ClayButton(
               label: '关闭',
@@ -336,7 +355,7 @@ class AboutScreen extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Tw(
-                '扫码添加工作人员微信',
+                '微信扫码加入共读群',
                 style: TextStyle(
                   fontFamily: CoFonts.uiSans,
                   fontSize: 13,

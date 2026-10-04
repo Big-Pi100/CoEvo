@@ -517,16 +517,18 @@ jobs:
       - name: 兴趣选择集合（interest_selection · 38 项）
         run: dart run bin/verify_interest_selection.dart
 
-      # ── 🆕 2026-10-03：接线验收（`scripts/query_verify` 里的**唯一**一个能进 CI 的）──
+      # ── 🆕 2026-10-03：接线验收（`scripts/query_verify` 里**不需真库**的那一类 · 当时唯一）──
       #
       # 🔴 它此前**从没被跑过**，而**已经红了 3 项**（含 2 项由「信息流分页」那次
       #    改动引入的回归）—— 没人知道，因为它不在 CI 里。
       #    ⇒ 又一次「**写了没人跑 = 迟早失效**」。这次一并修掉并接进来。
       #
-      # ✅ 为什么它能进（而同目录其他 ~19 个不能）：**只 import `dart:io`**，
-      #    读仓库源码做**源级断言**（不需要生产库、不需要 fixture、不需要 `pub get`）。
+      # ✅ 为什么它能进：**只 import `dart:io`**，读仓库源码做**源级断言**
+      #    （不需要生产库、不需要 fixture、不需要 `pub get`）。
       #    ⚠️ 已在干净检出下实测：不跑 `pub get` 直接 `dart run` 也全绿（59 项）。
-      # ⛔ 同目录其他脚本要连**真库**（`sqflite_common_ffi` + 端侧 `user.db`）⇒ 不能进 CI。
+      # ⛔ **要连真库的那些**（`sqflite_common_ffi` + 端侧 `user.db`）才不能进 CI。
+      #    📌 判据不是「这个目录的脚本都不能进」，而是「**只 import `dart:io` 的能进**」——
+      #       2026-10-04 的 `verify_auth_entry` 就是第二个（见下方 step）。
       #
       # 它守什么：信息流从 `/api/feed` 取数（防退回 mock）· 三态齐全（防静默失败）·
       #           `parse_ids` 不被绕过 · **分类词表跨语言一致**（后端 `CONTENT_CATEGORIES`
@@ -536,6 +538,36 @@ jobs:
       - name: 信息流接线 + 分类词表一致性（verify_feed_wiring · 59 项）
         working-directory: scripts/query_verify
         run: dart run bin/verify_feed_wiring.dart
+
+      # ── 🆕 2026-10-04：「关于」页入口 + 弹层形态统一（verify_auth_entry · 47 项）──
+      #
+      # 🔴 **它此前不在 CI 里，而且已经跑不起来了**：本脚本读
+      #    `widgets/subscribe_panel.dart`，而该文件在「订阅页重做」时被**删除**
+      #    （订阅改成独立页 `/subscribe`）⇒ 一跑就 `PathNotFoundException`。
+      #    因为不在 CI 里，**没人发现** —— 又一次「写了没人跑 = 迟早失效」
+      #    （先例：上一个 step 的 `verify_feed_wiring` 曾红了 3 项没人知道）。
+      #
+      # ✅ 本轮做两件事：① **修**（断言对象由「订阅弹层」平移到「订阅页」，意图不变）
+      #                  ② **接入 CI**（本 step）
+      #
+      # 🔴 顺带改掉一条**过时**的断言 —— 「断言守实现细节」的典型：
+      #    原断言是「`_showLoginDialog` **≥3 处**（账号行 / 订阅卡 / 查看按钮）」，
+      #    而那 3 处是**当时的实现**，不是意图。订阅页重做后，订阅卡整行与「升级」按钮
+      #    **有意**改跳订阅页（`context.push('/subscribe')`）⇒ 自然只剩 1 处。
+      #    ⇒ 改为守**意图**：「登录入口仍可达（≥1 处）」+ 新增一条锁住
+      #      「订阅卡已改跳订阅页」这个新事实（防实现与断言两边各说各话）。
+      #
+      # 它守什么：「关于」页的共读群入口与群二维码弹窗（含**旧名不得复活** ——
+      #           2026-10-04 由「联系工作人员」改名为「加入英文原著共读群」）·
+      #           弹层形态统一（不得残留 Material `FilledButton`）·
+      #           登录能力可达（防退回「占位式登录入口」—— 那会让登录能力**整条消失**，
+      #           而 analyzer 与后端测试都发现不了）。
+      #
+      # ✅ 为什么它能进：**只 import `dart:io`**（理由同上一个 step）。
+      # 🆕 已**证伪**：注入「入口名 + 方法名都改回旧名」⇒ 恰好 3 项变红、退出码 1 ✔
+      - name: 「关于」页入口 + 弹层形态（verify_auth_entry · 47 项）
+        working-directory: scripts/query_verify
+        run: dart run bin/verify_auth_entry.dart
 
   # ── 纯 Dart 验收：IAP 订阅纯逻辑（2026-10-04 加）──
   #
