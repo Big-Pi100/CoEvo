@@ -56,34 +56,53 @@ SSH 直查生产机：
 
 > 🔑 Apple 审核只要求 URL **可访问、能点开**，不要求域名好看。
 
-## 部署（建议）
+## 部署（🆕 2026-10-04 已固化成脚本）
 
-> ⚠️ 下面这段是**原方案（假设有 Web 站点）**，实际需先解决上面的「无网页」问题。
+> 🔑 **脚本默认走方案 A**（挂 `api.keyievolution.fun` 下 —— 证书已有、改动最小）。
+>    如需方案 B（根域 `keyievolution.fun`），需**先签根域证书**，
+>    再改 `PUBLIC_BASE=https://keyievolution.fun` 重跑即可。
+> ✅ **不再需要手工转换**：两个脚本已就位，且**幂等**（重复跑安全）。
+> ⚠️ 但**执行部署前必须白哥批准**（项目铁律：动生产必须先请示，含静态文件）。
 
-放到你自己域名下，**用静态页**最省事：
-
+```bash
+# 一条命令：生成 → 上传 → 配 nginx → 校验+reload → 公网验证
+bash scripts/legal/publish_legal_pages.sh \
+    --operator "你的法定姓名" --email "对外联系邮箱"
+#   可选：--effective-date "2026 年 10 月 4 日"
+#         （默认 = 今天；若先备文本、几天后才发，填实际发布日）
 ```
-https://keyievolution.fun/privacy   →  privacy-policy.md 渲染成 HTML
-https://keyievolution.fun/terms     →  terms-of-service.md 渲染成 HTML
+
+> 🔴 `--operator` 必须**与 App Store 开发者主体（法定姓名）一致** ——
+>    否则法律文本的「运营者」与 ASC 的「供应商」对不上。
+
+| 脚本 / 文件 | 作用 |
+|---|---|
+| `scripts/legal/build_legal_pages.py` | md → HTML（**pandoc** + 本项目模板；占位符走命令行参数）|
+| `scripts/legal/publish_legal_pages.sh` | 五步部署（生成 / 上传 / **幂等**配 nginx / 校验+reload / 公网验证）|
+| `docs/legal/templates/legal-page.html` | HTML 模板（朱砂主题 · 手机优先 · **支持深色模式** · 表格可横向滚）|
+
+**预览**（不部署、不连服务器）：
+```bash
+python scripts/legal/build_legal_pages.py --dry-run
 ```
+→ 产物在 `build/legal/`（已被 `.gitignore` 覆盖，**不会进 git**）
 
-### 做法 A：我帮你转成 HTML（推荐）
+### 🔴 三个设计决定（都是为了防「把残缺文本发到公网」）
 
-两份 Markdown 我可以生成**配好主题的单页 HTML**（无外部依赖、手机可读），
-你只需把两个文件放到 nginx 的静态目录。⇒ **告诉我一声即可**。
+| # | 决定 | 为什么 |
+|---|---|---|
+| 1 | 占位符走**命令行参数**，不写进 md | md 是**模板** ⇒ 进 git 的**不含真实姓名/邮箱** |
+| 2 | 生成后**校验无 `【待填`**，有则**拒绝上传** | 漏填的后果是「公网可见的法律文本残缺」，比构建失败严重得多 |
+| 3 | 部署**幂等** + 改前备份 + `nginx -t` 失败**自动回滚** | nginx 配置坏了会**连累同机所有站点**（这是共享机器）|
 
-### 做法 B：你自己用现成工具
+### 部署后要做的三件事
 
-任何 Markdown → HTML 都行（如 GitHub Pages、Vercel、或本地 `pandoc`）。
-
-## 部署后要做的三件事
-
-1. **回填 URL**：
-   - `app/lib/screens/about_screen.dart`（「关于」页 —— 现在写的是「即将上线」占位）
-   - **订阅页**（待实现）—— Apple 要求订阅页必须能点开这两个链接
-   - ASC 的「App 隐私」与「隐私政策 URL」字段
-2. **在 ASC 填隐私详情**：Apple 要求逐项声明收集的数据类型（本政策 §二 可逐条对应）
-3. 🔴 **810 号令**：在 ASC 填**身份证号**（规格里已记）
+1. **回填到代码**（🔴 否则订阅页/「我的」页的法律链接仍是「即将上线」）：
+   - `app/lib/services/iap_plan.dart` 的 `kPrivacyPolicyUrl` / `kTermsOfServiceUrl`
+   - `app/lib/screens/about_screen.dart` 的「即将上线」占位文案
+2. **在 ASC 填隐私详情 + 隐私政策 URL**（Apple 要求逐项声明收集的数据类型，
+   本政策 §二 可逐条对应）
+3. 🔴 **810 号令**：ASC → 商务 → 协议 → 合规，填**身份证号**（不填影响打款）
 
 ## 写作依据（**为什么这么写**）
 
@@ -95,7 +114,7 @@ https://keyievolution.fun/terms     →  terms-of-service.md 渲染成 HTML
 | 「IP 仅用于试用防滥用」| 后端 `trial_ip_log` 表（**确实记录 IP**）|
 | 「无第三方埋点/广告」| 全 `app/lib` grep `analytics` / `umeng` / `firebase` **零命中** |
 | 「AI 服务在境内」| `DEEPSEEK_API_KEY` + `api.deepseek.com`（境内）|
-| 「支付由 Apple 处理」| 即将接入的 IAP（**当前微信支付将一并移除**）|
+| 「支付由 Apple 处理」| ✅ **已接入 Apple IAP**（`iap_transactions` + `/api/iap/verify`）；微信支付已移除 |
 | 「收集邮箱/密码哈希」| `users` 表 `email` / `password_hash`（**已删实名/手机号 5 列**）|
 
 > 📌 判据：**隐私政策不能写未实现的能力**（会构成虚假陈述），

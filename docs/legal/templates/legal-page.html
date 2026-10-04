@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="index, follow">
+<title>$title$</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════
+   CoEvo 法律文本页样式
+   ══════════════════════════════════════════════════════════════════
+
+   🔴 设计前提：**主要在手机上看**（用户从 App 内的「隐私政策 / 用户协议」
+      链接点进来，Apple 审核员也多在中途查看）⇒ 移动优先。
+
+   配色取自 App 的设计系统（`app/lib/theme/coevo_tokens.dart`）：
+     · 朱砂 `#B4432C`（品牌强调色）
+     · 页面底 / 卡面 / 三级文字 同 App
+   ⇒ 从 App 点进来不会有「跳到了另一个网站」的割裂感。
+
+   ⚠️ 深色模式**必须支持**：App 有「夜」主题，且 iOS 用户常在夜间开系统深色；
+      不跟随会让页面白得刺眼（用户在有深色模式的 App 里点开一个纯白页面）。
+      深色下朱砂要**提亮**（#B4432C → #E0715A），否则对比度不足。
+
+   ⚠️ 表格在手机上会超宽 ⇒ `display:block; overflow-x:auto` 让它**横向滚动**，
+      而不是把页面撑爆（法律文本里表格很多，这个是必需的）。
+   ══════════════════════════════════════════════════════════════════ */
+
+:root {
+  --ink:   #1F1B18;
+  --ink2:  #57504A;
+  --ink3:  #8A817A;
+  --line:  #E6E1DA;
+  --page:  #FBFAF8;
+  --card:  #FFFFFF;
+  --accent:#B4432C;
+  --quote: #F4F1EC;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink:   #ECE7E1;
+    --ink2:  #B8B0A8;
+    --ink3:  #8A817A;
+    --line:  #3A342F;
+    --page:  #17140F;
+    --card:  #1F1B18;
+    --accent:#E0715A;
+    --quote: #24201B;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  padding: 0 20px 72px;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC",
+               "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC",
+               "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.75;
+  /* 手机上正文 16px / 1.75 是长文可读性的通行值 */
+}
+
+main { max-width: 720px; margin: 0 auto; }
+
+/* ── 标题 ────────────────────────────────────────────────────── */
+h1 {
+  font-size: 25px;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 40px 0 20px;
+  color: var(--ink);
+}
+
+h2 {
+  font-size: 19px;
+  font-weight: 600;
+  margin: 36px 0 14px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+}
+
+/* h3 不再画线 —— 与 h2 的层级差靠**字号 + 间距**表达，而不是多一条线
+   （判据同 App：「视觉乱先查容器与分隔」，层级线太多反而更乱） */
+h3 {
+  font-size: 16.5px;
+  font-weight: 600;
+  margin: 26px 0 10px;
+  color: var(--ink);
+}
+
+p { margin: 12px 0; }
+
+/* ── 强调 ────────────────────────────────────────────────────── */
+strong { font-weight: 600; color: var(--ink); }
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+}
+a:hover { border-bottom-color: var(--accent); }
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  background: var(--quote);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+/* ── 列表 ────────────────────────────────────────────────────── */
+ul, ol { margin: 12px 0; padding-left: 24px; }
+li { margin: 6px 0; }
+li > ul, li > ol { margin: 6px 0; }
+
+/* ── 引用块（md 的 `>`，本文档大量使用）─────────────────────────
+   🔴 容器要有**明显不同的底**，否则「提示块」与正文读不出层级
+      （App 的判据：视觉乱先查容器与分隔） */
+blockquote {
+  margin: 16px 0;
+  padding: 12px 16px;
+  background: var(--quote);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  color: var(--ink2);
+}
+blockquote > p { margin: 6px 0; }
+blockquote > p:first-child { margin-top: 0; }
+blockquote > p:last-child  { margin-bottom: 0; }
+
+/* ── 表格（手机上横向滚动，不撑爆页面）───────────────────────── */
+table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-collapse: collapse;
+  margin: 18px 0;
+  font-size: 14.5px;
+}
+thead { background: var(--quote); }
+th, td {
+  border: 1px solid var(--line);
+  padding: 8px 11px;
+  text-align: left;
+  vertical-align: top;
+  white-space: normal;
+  min-width: 84px;
+}
+th { font-weight: 600; color: var(--ink); }
+td { color: var(--ink2); }
+
+/* ── 分隔线 ───────────────────────────────────────────────────── */
+hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 32px 0;
+}
+
+/* ── 页脚 ─────────────────────────────────────────────────────── */
+footer {
+  max-width: 720px;
+  margin: 48px auto 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--ink3);
+}
+
+@media print {
+  body { padding: 0; background: #fff; color: #000; }
+  h2 { page-break-after: avoid; }
+  table { display: table; }
+}
+</style>
+</head>
+<body>
+<main>
+$body$
+</main>
+<footer>
+  <p>CoEvo · 本页面为法律文本的在线版本，可在浏览器中保存或打印。</p>
+</footer>
+</body>
+</html>

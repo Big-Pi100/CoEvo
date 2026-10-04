@@ -136,16 +136,39 @@ ASC → 我的 App → 选 CoEvo → 侧边栏「营利」→「订阅」
 
 ## 五、部署 + 配环境变量
 
-> 这步我出**具体命令**，你执行（或批准我执行 —— 但**改动生产需你批准**）。
+> 🔑 **2026-10-04 更新**：部署已**固化成脚本**，不再需要我手写命令逐条给你。
 
-**顺序**（每步都要你确认）：
+### 5.1 法律文本页（一条命令）
 
-1. 填好占位符 → 转 HTML（**我可以做**：生成配好主题的单页 HTML）
-2. 传到服务器静态目录 → nginx 加 location（§4.2 选 A 的话只改一处）
-3. 后端加 4 个环境变量（§三）→ 重启 `coevo.service`
-4. 验证：浏览器打开两个 URL 能正常显示
+```bash
+bash scripts/legal/publish_legal_pages.sh \
+    --operator "你的法定姓名" --email "对外联系邮箱"
+```
 
-⚠️ 按项目铁律：**没你批准不进生产**。
+| 它会做 | 说明 |
+|---|---|
+| ① 生成 HTML | pandoc + 本项目模板（朱砂主题 · 手机可读 · 深色模式）|
+| ② 上传 | → `/var/www/coevo-legal/` |
+| ③ 配 nginx | **幂等**（重复跑不会重复插入）· 只加不改 |
+| ④ 校验 + reload | `nginx -t` 失败**自动回滚**（不连累同机其它站点）|
+| ⑤ 公网验证 | HTTP 200 + 内容检查 + 🔴 **无残留占位符** |
+
+**URL**（默认方案 A，证书已有）：
+- `https://api.keyievolution.fun/privacy`
+- `https://api.keyievolution.fun/terms`
+
+**预览**（不部署、不连服务器）：`python scripts/legal/build_legal_pages.py --dry-run`
+→ 产物在 `build/legal/`，浏览器直接打开就能看效果。
+
+⚠️ 按项目铁律：**没你批准不进生产**（含静态文件）。
+
+### 5.2 后端环境变量（IAP）
+
+后端加 4 个环境变量（§三）→ 重启 `coevo.service` → 验证：
+```
+IAP_KEY_ID / IAP_ISSUER_ID / IAP_PRIVATE_KEY / IAP_ENVIRONMENT
+```
+> ⏳ 这步依赖你先在 ASC 生成 IAP Key（§三）。
 
 ---
 
