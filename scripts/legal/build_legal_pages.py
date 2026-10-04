@@ -56,16 +56,53 @@ PAGES = [
 
 # 🔴 占位符 → 替换值的映射（`{operator}` / `{email}` / `{privacy_url}` 由参数填充）
 #
+# ⚠️ **顺序有意义**（Python dict 保序）：**整段替换必须排在单 token 之前** ——
+#    否则单 token 先被吃掉，整段就匹配不上了。
+#
 # ⚠️ 每加一个占位符都必须在这里登记 —— 否则会被下面的「残留检查」拦下
 #    （这正是我们要的：宁可生成失败，也不要发布残缺的法律文本）。
 PLACEHOLDER_MAP = {
+    # ── 🔴 整段替换（不是换占位符，是修**两个渲染 bug**）──────────────
+    #
+    # 源 md 写的是：
+    #     `[《隐私政策》](./privacy-policy.md)（【待填：链接】）`
+    #
+    # 直接渲染会出两个问题（2026-10-04 实测产物时发现）：
+    #   ① `./privacy-policy.md` 在 md 语境下是「同目录文件引用」，但**渲染成 HTML 后
+    #      就是死链** —— 服务器上根本没有 `.md` 文件（点了 404）。
+    #   ② `（https://...privacy）` 里的**中文右括号被 pandoc 吞进 URL** ⇒
+    #      产出 `href="https://.../privacy）"`（含非法字符），链接照样坏，
+    #      而且显示文本里括号重复。
+    #
+    # ⇒ 整段替换成**一个正确的 markdown 链接**：两个问题一并解决，
+    #    且不在括号里重复显示 URL（链接本身就是 URL，重复是冗余）。
+    #
+    # 📌 教训：**「占了位」不等于「渲染对了」** ——
+    #    占位符替换是字符串层面的事，**链接能不能点是渲染层面的事**。
+    #    所以本脚本除了查占位符残留，还必须查**产物里的链接**（见 `find_bad_links`）。
+    "[《隐私政策》](./privacy-policy.md)（【待填：链接】）":
+        "[《隐私政策》]({privacy_url})",
+
     "【待填：开发者/运营者姓名】": "{operator}",
-    "【待填：联系邮箱】": "{email}",
+
+    # ── 🔴 邮箱替换成 **markdown 链接**（不是裸邮箱）────────────────────
+    #
+    # 直接替换成裸邮箱会出问题（2026-10-04 实测，被 `find_bad_links` 抓到）：
+    #     md 里是 `发送邮件至【待填：联系邮箱】`
+    #              → 替换后 `发送邮件至support@keyievolution.fun`
+    #              → pandoc 把**「发送邮件至」也当成邮箱的一部分**
+    #                （RFC 允许 UTF-8 local part）⇒ 产出
+    #                `href="mailto:发送邮件至support@keyievolution.fun"` —— **坏链接**。
+    #
+    # ✅ 用 `[邮箱](mailto:邮箱)`：pandoc **优先解析 link 语法**，
+    #    中文不会被吞；同时链接**可点**（法律文本里的联系方式应当能点）。
+    #    ⚠️ 不要试图用「禁用 autolink」绕开 —— 那会让裸邮箱**不可点**，
+    #       而「联系邮箱」正是最该可点的一处。
+    "【待填：联系邮箱】": "[{email}](mailto:{email})",
     # 🔑 「注销入口或联系邮箱」短期填**邮箱**（邮件申请也是合法渠道）。
     #    ⏳ 长期应改为 App 内注销入口 —— 那是 Apple 5.1.1(v) 的要求，
     #       目前前后端零实现（见 docs/operations/owner-action-checklist-2026-10-04.md §7.2）。
-    "【待填：注销入口或联系邮箱】": "{email}",
-    "（【待填：链接】）": "（{privacy_url}）",
+    "【待填：注销入口或联系邮箱】": "[{email}](mailto:{email})",
 }
 
 # 🔴 还有一类**不是 `【待填】` 格式**的占位符：**日期**。
@@ -143,6 +180,32 @@ def find_leftover_placeholders(text: str) -> list[str]:
     if "__ 日" in text:
         found.add("__ 日（生效日期未填）")
     return sorted(found)
+
+
+def find_bad_links(html: str) -> list[str]:
+    """🔴 查**产物 HTML** 里的坏链接（只在字符串层查占位符是抓不到的）。
+
+    # 为什么必须单独做这一步（2026-10-04 实测踩到）
+
+    占位符替换是**字符串**层面的事；而「链接能不能点」是**渲染**层面的事。
+    源 md 写 `[《隐私政策》](./privacy-policy.md)` 在 md 语境下完全正常
+    （同目录文件引用），**渲染成 HTML 后却成了死链**（服务器上没有 .md 文件）。
+    这类问题**残留检查看不见** —— 它没有占位符。
+    📌 判据：**「占了位」≠「渲染对了」**；**产物要按它自己的形态去验**。
+
+    检查两类：
+      ① `href` 指向 **`.md`** —— 源文档的相对路径，上线后必然 404
+      ② `href` 含**非 ASCII**（如被吞进 URL 的中文右括号 `）`）—— 非法 URL
+    """
+    problems: list[str] = []
+    for m in re.finditer(r'href="([^"]*)"', html):
+        href = m.group(1)
+        if href.endswith(".md"):
+            problems.append(f"指向 .md 的死链：{href}")
+        bad = [c for c in href if ord(c) > 127]
+        if bad:
+            problems.append(f"href 含非 ASCII 字符 {''.join(bad)!r}：{href}")
+    return sorted(set(problems))
 
 
 def main() -> int:
@@ -253,6 +316,16 @@ def main() -> int:
             continue
         finally:
             tmp_md.unlink(missing_ok=True)
+
+        # 🔴 查**产物**里的坏链接 —— 字符串层的占位符检查抓不到这类问题
+        #    （死链没有占位符可查）。见 `find_bad_links` 的说明。
+        bad = find_bad_links(dst.read_text(encoding="utf-8"))
+        if bad:
+            print(f"🔴 {html_name} 有 {len(bad)} 处坏链接：")
+            for b in bad:
+                print(f"     · {b}")
+            failed = True
+            continue
 
         size = dst.stat().st_size
         print(f"✅ {md_name} → {html_name}  ({size:,} 字节)")
