@@ -46,6 +46,7 @@ import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
 import '../widgets/clay_button.dart';
+import '../widgets/legal_link_row.dart';
 
 /// 正文（说明文字）字号 —— 与「关于」页同值（`about_screen._kBodyFontSize`）。
 ///
@@ -127,7 +128,7 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
                     _restoreButton(t, snap),
                     const SizedBox(height: CoSpacing.lg),
                     _divider(t),
-                    _legalRows(t),
+                    _legalRows(),
                     const SizedBox(height: CoSpacing.lg),
                     _signInHint(t),
                   ],
@@ -500,67 +501,19 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
       );
 
   // ── 法律链接（Apple 强制要求）──────────────────────────────────────
-  Widget _legalRows(CoEvoTokens t) {
-    // 🔴 未部署时**不放假链接** —— 显示「即将上线」而不是一个点了没反应的入口
-    //    （判据：放死链比不放进糟糕；同 `about_screen` 的既有做法）
-    return Column(
-      children: [
-        _legalRow(t, '隐私政策', kPrivacyPolicyUrl),
-        _legalRow(t, '用户协议', kTermsOfServiceUrl),
-      ],
-    );
-  }
-
-  Widget _legalRow(CoEvoTokens t, String label, String? url) {
-    final accent = Color(t.accent.argb32);
-    if (url == null) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 9),
-        child: Row(
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontFamily: CoFonts.uiSans,
-                fontSize: _kBody,
-                color: Color(t.ink.argb32),
-              ),
-            ),
-            const Spacer(),
-            Text(
-              '即将上线',
-              style: TextStyle(
-                fontFamily: CoFonts.uiSans,
-                fontSize: _kCaption,
-                color: Color(t.ink3.argb32),
-              ),
-            ),
-          ],
-        ),
+  //
+  // 🔑 用**共享组件** `LegalLinkRow` —— 与「关于」页是**同一套规则**：
+  //    URL 为空 → 显示「即将上线」且不可点；就绪 → 可点。
+  //    抽成组件而不是各写一份，理由见该文件（同一条规则写在两处会漂）。
+  //
+  // 📌 位置：`Column` 里两行，**不可省略** —— Apple 对订阅类 App 强制要求
+  //    （审核指南 3.1.2），`iap_verify` 有断言守着。
+  Widget _legalRows() => const Column(
+        children: [
+          LegalLinkRow(label: '隐私政策', url: kPrivacyPolicyUrl),
+          LegalLinkRow(label: '用户协议', url: kTermsOfServiceUrl),
+        ],
       );
-    }
-    return InkWell(
-      onTap: () => _openUrl(url),
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 9),
-        child: Row(
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontFamily: CoFonts.uiSans,
-                fontSize: _kBody,
-                color: Color(t.ink.argb32),
-              ),
-            ),
-            const Spacer(),
-            Icon(Icons.chevron_right, size: 20, color: accent),
-          ],
-        ),
-      ),
-    );
-  }
 
   // ── 降级说明（§4.4.4：不没收用户资产）────────────────────────────────
   Widget _downgradeNote(CoEvoTokens t) => Text(

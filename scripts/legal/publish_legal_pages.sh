@@ -168,13 +168,19 @@ bak = CONF.with_suffix(CONF.suffix + f".bak-legal-{ts}")
 bak.write_text(src, encoding="utf-8")
 print(f"  备份: {bak}")
 
-# 幂等：先删掉可能已存在的旧块
-cleaned, n = re.subn(
-    r"[ \t]*# >>> coevo-legal .*?# <<< coevo-legal <<<\n",
-    "",
-    src,
-    flags=re.DOTALL,
-)
+# 🔴 幂等：先删掉可能已存在的旧块
+#
+# ⚠️ 正则末尾的 `\n\n?` **不是可有可无的**（2026-10-04 实测踩到）：
+#    插入时写的是 `BLOCK + "\n" + ANCHOR`（块后**多一个空行**），
+#    而删除时若只吃掉块本身（不含那个空行）⇒ **删的比插的少一个 `\n`**
+#    ⇒ 每跑一次就多一个空行。后果不严重（nginx 容忍空行），
+#    但「**声称幂等却没验证**」本身是问题 —— 它会让后来的维护者
+#    在「重复部署是否安全」这件事上**基于错误前提**做判断。
+#    📌 判据：**幂等性必须被实测**（见下方自检），不能只靠读代码推断。
+#    🔑 修法：让「删掉的字符」与「插入的字符」**守恒** —— 删除时同样吃掉块后的空行。
+DELETE_RE = r"[ \t]*# >>> coevo-legal .*?# <<< coevo-legal <<<\n\n?"
+
+cleaned, n = re.subn(DELETE_RE, "", src, flags=re.DOTALL)
 if n:
     print(f"  （移除已有的 legal 块 ×{n}）")
 
@@ -184,6 +190,23 @@ if ANCHOR not in cleaned:
     sys.exit(1)
 
 new = cleaned.replace(ANCHOR, BLOCK + "\n" + ANCHOR, 1)
+
+# 🔴 幂等自检：**在写出之前**模拟「再跑一次」，结果必须与本次完全一致。
+#
+# 为什么值得加这一步（而不只是修掉那个正则）：
+#   本次的 bug 就是「幂等声明与实现不符」，而**部署脚本一年可能只跑几次**，
+#   没有自检的话，同类偏差会**静默累积**（多几个空行没人发现）。
+#   ⇒ 把「幂等」从**声明**变成**每次部署都跑一次的断言**。
+# ⚠️ 失败则**中止且不写文件**（保持现场，便于排查）。
+rebuilt = re.subn(DELETE_RE, "", new, flags=re.DOTALL)[0].replace(
+    ANCHOR, BLOCK + "\n" + ANCHOR, 1
+)
+if rebuilt != new:
+    print("🔴 幂等自检失败：模拟再跑一次的结果与本次不一致")
+    print("   ⇒ **不写入**（避免每次部署累积漂移），请修 DELETE_RE / BLOCK 的边界")
+    sys.exit(1)
+print("  ✅ 幂等自检通过（模拟再跑一次 = 本次结果）")
+
 CONF.write_text(new, encoding="utf-8")
 print("  ✅ 已插入 legal 块")
 REMOTE_PY

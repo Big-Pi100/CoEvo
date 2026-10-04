@@ -248,21 +248,12 @@ String versionLabel(bool isActive) => isActive ? '订阅版' : '免费版';
 const String kAppleManageSubscriptionsUrl =
     'https://apps.apple.com/account/subscriptions';
 
-/// 隐私政策 URL。
+/// 隐私政策 URL —— ✅ **2026-10-04 已上线**。
 ///
-/// 🔴 **现在为 null = 尚未部署**。按项目判据：**不编造链接** ——
-///    放死链比不放进糟糕（用户点了没反应，会以为 App 坏了；同「静默失败 + 无出口」）。
-/// ⏳ 待白哥确定 URL 后填这里（方案见 `docs/operations/owner-action-checklist-2026-10-04.md` §4.2）。
-/// 📌 它是 **Apple 上架硬要求**（ASC 必填 + App 内需有入口 + 订阅页法定必填）。
-const String? kPrivacyPolicyUrl = null;
+/// 部署方式见 `scripts/legal/publish_legal_pages.sh`（幂等 · nginx 直接给静态文件）。
+/// ⚠️ 若将来换域名（如改用根域 `keyievolution.fun`），只需改这两处常量 ——
+///    订阅页与「关于」页都从它们取值（经由 `widgets/legal_link_row.dart`）。
+const String? kPrivacyPolicyUrl = 'https://api.keyievolution.fun/privacy';
 
-/// 用户协议 URL。同上。
-const String? kTermsOfServiceUrl = null;
-
-/// 两个法律链接是否**都已就绪**（订阅页/关于页据此决定「显示链接」还是「说明待上线」）。
-///
-/// 🔑 为什么要这个判断函数而不是各处写 `!= null`：
-///    ① 「两个都齐才算就绪」是一条**规则**，写在两处会漂
-///    ② 它能被断言（`scripts/iap_verify` 里已覆盖）—— 将来填了 URL 忘了另一个，测试会提醒
-bool get hasLegalLinks =>
-    kPrivacyPolicyUrl != null && kTermsOfServiceUrl != null;
+/// 用户协议 URL —— 同上。
+const String? kTermsOfServiceUrl = 'https://api.keyievolution.fun/terms';

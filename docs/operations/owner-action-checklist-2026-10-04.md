@@ -112,14 +112,13 @@ ASC → 我的 App → 选 CoEvo → 侧边栏「营利」→「订阅」
 ⚠️ 原因：产品已定「**仅 iOS 原生 App，不做 Web**」⇒ 没有网站来挂这两个页面。
 ⚠️ `docs/deploy/web-deploy-guide.md` 里画的架构图（`/var/www/coevo-landing/`）**已过时**。
 
-**两个方案（需你选）**：
+**两个方案 → ✅ 已采用方案 A 并完成部署（2026-10-04）**：
 
-| | 方案 A ⭐ 挂在 api 域下 | 方案 B 用根域建站 |
+| | 方案 A ✅ **已采用** | 方案 B（未用） |
 |---|---|---|
-| URL | `https://api.keyievolution.fun/privacy` | `https://keyievolution.fun/privacy` |
-| 做法 | 在现有 `zz-coevo` 加两条静态 location | 给根域签证书 + 新建站点 |
-| 优势 | ✅ **证书已有** · 改一处配置 · 5 分钟 · 不动邻居站点 | URL 更「像官网」· 观感专业 |
-| 代价 | URL 带 `api.` 前缀，观感一般 | 需签新证书 + 改 nginx（多一步）|
+| URL | https://api.keyievolution.fun/privacy · /terms | https://keyievolution.fun/privacy |
+| 做法 | 在现有 `zz-coevo` 加两条 `location =` | 给根域签证书 + 新建站点 |
+| 状态 | 🟢 **已上线且公网验证通过** | 上线后可升级（两件事不冲突）|
 
 > 🔑 Apple 审核**不要求**域名好看，只要求**可访问、能点开**。
 > 📌 我的建议：**先 A 满足上架**，上线后再升级 B（两件事不冲突）。
@@ -346,10 +345,11 @@ IAP_KEY_ID / IAP_ISSUER_ID / IAP_PRIVATE_KEY / IAP_ENVIRONMENT
 □ ASC 建群组 CoEvo Pro
 □ ASC 建 2 个产品（monthly ¥9.9 / yearly ¥78 · 均等级 1）
 □ ASC 生成 IAP Key（.p8 + Key ID + Issuer ID）
-□ 告知：运营者姓名 + 联系邮箱          → 我填法律文本
-□ 选定：隐私政策页方案（A api 域 / B 根域）→ 我做部署
+✅ 告知：运营者姓名 + 联系邮箱            → 已完成（白旭 / support@）
+✅ 隐私政策页：方案 A 选定 + 已部署 + 公网验证  → 已完成
+✅ Cloudflare Email Routing（support@）    → 已完成（端到端验证通过）
 □ 确认：iOS 出包走哪条路（A 有 Mac / B 云 Mac / C 买 Mac）
 □ 确认：账号注销是否本批做
 □ 建沙盒测试账号
-□ 审批通过后补审核截图（等订阅页做完）
+□ 审批通过后补审核截图（订阅页已完成，可截）
 ```

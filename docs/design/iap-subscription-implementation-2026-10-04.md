@@ -364,10 +364,26 @@ distribution_handler.rs:250  SELECT price FROM subscription_plans WHERE id = ?1
 | `iap_service.dart` | 🟡 **本机无法解析** —— `in_app_purchase` **不在** pub 缓存，`package_config.json` 里没有 ⇒ 20 条 `Undefined name 'InAppPurchase'` 全属**假红**（CI 会 `flutter pub get` 补上）|
 | **UI 渲染** | 🔴 **本机完全无法验证** —— `flutter` 命令建不了子进程（`CreateFile failed 231`）⇒ 视觉/交互只能靠 CI 编译 + 白哥真机 |
 
-### 9.6 ⏳ 剩余（依赖白哥）
+### 9.6 剩余（依赖白哥）
 
-| 项 | 依赖 |
+| 项 | 状态 |
 |---|---|
-| 法律链接**填入真值** | 🔴 需要隐私政策/用户协议的正式 URL（`owner-action-checklist` §4.2 选方案 A/B）→ 填 `iap_plan.dart` 的两个常量 |
-| 沙盒端到端 | ASC 产品 + 沙盒账号 + 4 个环境变量 |
-| 审核截图 | 订阅页做完后截（≥640×920，须是 App 内订阅页）|
+| 法律链接填入真值 | ✅ **已完成** —— `https://api.keyievolution.fun/privacy` · `/terms`（2026-10-04 部署上线）|
+| 沙盒端到端 | ⏳ ASC 产品 + 沙盒账号 + 4 个环境变量 |
+| 审核截图 | ⏳ 订阅页**已完成**（可截：≥640×920，须是 App 内订阅页）|
+
+### 9.7 🆕 法律链接的最终形态（方案 A）
+
+| 项 | 值 |
+|---|---|
+| URL | `https://api.keyievolution.fun/privacy` · `/terms` |
+| 部署 | `scripts/legal/publish_legal_pages.sh`（幂等 · nginx 静态 · 改前备份 · 失败回滚）|
+| App 消费点 | `iap_plan.dart` 两个常量 → 订阅页 + 「关于」页 |
+| 共享组件 | `widgets/legal_link_row.dart` —— 「url 空 → 即将上线不可点」规则**单点** |
+| 联系邮箱 | `support@keyievolution.fun`（Cloudflare Email Routing → QQ，**端到端验证通过**）|
+
+> 🔑 **抽组件的理由**：订阅页（Apple 强制）与「关于」页（ASC 要求）需要**同一条规则** ——
+>    URL 为空时显示「即将上线」而不是**死链**（点不动比不放进糟糕）。
+>    规则写在两处会漂 ⇒ 抽成组件，各写一份的机会被消除。
+> 📌 代价：`iap_verify` 的断言目标**跟着搬了**（订阅页源码里不再有「即将上线」）——
+>    抽组件后**断言的目标文件要一起改**，否则会**假红**。

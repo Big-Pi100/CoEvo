@@ -318,8 +318,15 @@ void main() {
     check('🔴 有取消路径说明（Apple ID 设置）', subscribeCode.contains('howToCancel('));
     check('🔴 有隐私政策链接', subscribeCode.contains('kPrivacyPolicyUrl'));
     check('🔴 有用户协议链接', subscribeCode.contains('kTermsOfServiceUrl'));
-    // 🔑 「链接未就绪时不显示死链」—— 必须走兜底文案而不是硬编码 URL
-    check('法律链接缺失时有兜底文案（不放死链）', subscribeCode.contains('即将上线'));
+    // 🔑 「链接未就绪时不显示死链」—— 该逻辑现在在**共享组件**里
+    //    （`widgets/legal_link_row.dart`：url 为空 → 「即将上线」不可点）。
+    // ⚠️ 所以下面的断言目标**跟着搬了**：2026-10-04 抽组件后，
+    //    订阅页源码里不再有「即将上线」字样 —— 断言若不跟着改会**假红**。
+    //    📌 判据：**抽组件后，断言的目标文件要一起搬** —— 否则会误报。
+    check(
+      '订阅页用共享组件 LegalLinkRow（法律链接规则单点）',
+      subscribeCode.contains('LegalLinkRow('),
+    );
 
     // ── §4.4.3 恢复购买（Apple 强制）──
     check('🔴 订阅页有恢复购买调用', subscribeCode.contains('.restore()'));
@@ -335,6 +342,41 @@ void main() {
       subscribeCode.contains('kAppleManageSubscriptionsUrl'),
     );
     check('有降级说明（不没收用户资产）', subscribeCode.contains('downgradeNotice('));
+
+    // ── 🔴 法律链接**常量必须就绪**（2026-10-04 已部署）──
+    //
+    // 🔑 为什么断言「值」而不只是「被引用」：
+    //    类型是 `String?` ⇒ 有人把它改回 `null` 时**编译不报错**，
+    //    只是订阅页/关于页悄悄退回「即将上线」（**静默失效**）。
+    //    而它是 **Apple 上架的硬要求** ⇒ 值得用断言锁住。
+    check(
+      '🔴 隐私政策 URL 已配置且为 https',
+      kPrivacyPolicyUrl != null && kPrivacyPolicyUrl!.startsWith('https://'),
+      '$kPrivacyPolicyUrl',
+    );
+    check(
+      '🔴 用户协议 URL 已配置且为 https',
+      kTermsOfServiceUrl != null && kTermsOfServiceUrl!.startsWith('https://'),
+      '$kTermsOfServiceUrl',
+    );
+
+    // ── 🔴 「不放死链」规则在**共享组件**里（抽组件后断言跟着搬）──
+    final linkRowCode = codeOnly(readApp('widgets/legal_link_row.dart'));
+    check('共享组件 legal_link_row.dart 存在', linkRowCode.isNotEmpty);
+    check(
+      '🔴 组件在 url 为空时显示「即将上线」（不放死链）',
+      linkRowCode.contains('即将上线') && linkRowCode.contains('target == null'),
+    );
+    check(
+      '组件在被两个页面共用（订阅页 + 关于页）',
+      subscribeCode.contains('LegalLinkRow(') &&
+          codeOnly(readApp('screens/about_screen.dart')).contains('LegalLinkRow('),
+    );
+    // 🔴 反向：`hasLegalLinks` 已删（零引用 = 死代码，不该回来）
+    check(
+      '🔴 无 hasLegalLinks 残留（已删的零引用常量）',
+      !codeOnly(readApp('services/iap_plan.dart')).contains('hasLegalLinks'),
+    );
 
     // ── §4.4.2 「不得默认勾选」──
     // 🔑 断言「档位变量声明处**没有初值**」—— 这就是「不预选」在代码上的形状。

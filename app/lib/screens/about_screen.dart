@@ -88,11 +88,13 @@ import 'package:go_router/go_router.dart';
 
 import '../api/api_config.dart';
 import '../constants/app_info.dart';
+import '../services/iap_plan.dart';
 import '../theme/co_spacing.dart';
 import '../theme/tokens_ext.dart';
 import '../theme/coevo_tokens.dart';
 import '../widgets/clay_button.dart';
 import '../widgets/co_dialog.dart';
+import '../widgets/legal_link_row.dart';
 import '../widgets/twemoji.dart';
 
 /// 关于页**正文的唯一字号**（信息行 / 说明 / 入口行 全用它）。
@@ -277,23 +279,17 @@ class AboutScreen extends StatelessWidget {
                   //       也是「不齐」的一部分。现在两条**完全一致**。
                   _divider(t),
 
-                  // ── ③ 🔴 待补项（**可见地标注，而不是留死链**）──
-                  //    Apple 上架需要「隐私政策」入口；URL 未定 → 先如实说明，
-                  //    而不是放一个点了没反应的链接。
+                  // ── ③ 法律文本入口（✅ 2026-10-04 已上线）──
                   //
-                  // 🔴 2026-09-29：**产品简介已删**（白哥：「在关于里不用产品简介」）。
-                  //    原文案是「CoEvo 是一款英语学习应用：读英文新闻、划词查词…」。
-                  //    🔑 删它的道理：用户**已经在用**这个 App 了，再告诉他「这是英语学习应用」
-                  //       是把营销文案放进了产品内部 —— 那是 App Store 描述该干的事。
-                  //       「关于」页只该回答「我装的是什么版本、谁做的、去哪找人」。
-                  Text(
-                    '隐私政策与用户协议即将上线。',
-                    style: TextStyle(
-                      fontFamily: CoFonts.uiSans,
-                      fontSize: _kBodyFontSize,
-                      color: Color(t.ink3.argb32),
-                    ),
-                  ),
+                  // 🔴 这是 **ASC 与 Apple 审核的必填项**（App 内必须有隐私政策入口）。
+                  // 原实现是一句「隐私政策与用户协议即将上线。」的占位说明 ——
+                  // 现在两页已部署到 `api.keyievolution.fun`，改为**可点入口**。
+                  //
+                  // 🔑 用**共享组件** `LegalLinkRow`（订阅页同一套规则）：
+                  //    URL 为空 → 「即将上线」不可点；就绪 → 可点。
+                  //    两处各写一份的话，这条规则会漂（改了一处忘另一处）。
+                  const LegalLinkRow(label: '隐私政策', url: kPrivacyPolicyUrl),
+                  const LegalLinkRow(label: '用户协议', url: kTermsOfServiceUrl),
 
                   _divider(t),
 
@@ -310,6 +306,7 @@ class AboutScreen extends StatelessWidget {
       ),
     );
   }
+
   /// 「联系工作人员」弹窗（二维码）。
   ///
   /// 🔴 2026-09-29 由 `profile_screen` 整体移入 —— 逻辑与原实现一致，

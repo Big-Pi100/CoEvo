@@ -535,7 +535,8 @@ jobs:
   #    · 把 `kProductMonthly` 改一个字符 → 「前端产品 ID 与后端一致」变红
   #    · 把文案里「自动续期」全部移除   → 「含『自动续期』字样」变红
   #    · 把订阅页的 `autoRenewNotice(` 改名 → 「有按档位的自动续费披露」变红
-  #    → 三次退出码均为 **1**（⚠️ 注意用 `dart run ...; echo $?` 直读，
+  #    · 把 `kPrivacyPolicyUrl` 改回 `null` → 「隐私政策 URL 已配置且为 https」变红
+  #    → 四次退出码均为 **1**（⚠️ 注意用 `dart run ...; echo $?` 直读，
   #      不要写成 `dart run ... | tail` —— 管道会让 `$?` 取到 `tail` 的退出码 = 0，
   #      这正是本项目记过的「**Dart main 返回值 ≠ 退出码**」同族陷阱）。
   #
@@ -571,7 +572,7 @@ jobs:
       #      ⚠️ 边界如实说明：只证明「代码里有这个调用」，**不**证明「运行时渲染出来了」
       #   ④ **反向**：`pay_screen` / `subscribe_panel` 已删**不得复活** ·
       #      无 `/api/pay/native` 残留 · 无「请联系服务人员」（微信时代文案）残留
-      - name: IAP 订阅（纯逻辑 + 法定要件，79 项）
+      - name: IAP 订阅（纯逻辑 + 法定要件，85 项）
         run: dart run bin/verify_iap_plan.dart
 
   # ── 原生就绪度结构检查 ──
