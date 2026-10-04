@@ -702,5 +702,28 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # 🔴 必须传 `--dart-define`（2026-10-04 补）
+      #
+      # ## 为什么（两个都是「不报错但错」的编译期常量）
+      #
+      # ① `API_HOST` —— 默认值 `localhost`
+      #    `api_config.dart` 写的是 `String.fromEnvironment('API_HOST', defaultValue: 'localhost')`
+      #    ⇒ 不传的话，产物**连的是 localhost**，在真机/CI 上必然全失败。
+      #    📌 判据：**「构建成功」≠「包可用」** —— 编译期注入的参数缺失**不会报错**，
+      #       只在运行时表现为「网络请求全失败」，很容易被误判成「App 坏了」。
+      #
+      # ② `PUBLIC_BASE_URL` —— 默认值 `http://localhost:3000`
+      #    控制**分享链接 / 二维码**指向的域名（`referral_qr_code.dart` 消费）。
+      #    📄 `docs/deploy/web-deploy-guide.md` 明确：「**VPS 部署必须传入**」，
+      #       且记着一条已踩过的坑：「以前漏传 PUBLIC_BASE_URL 导致 QR 码打不开」。
+      #    ⇒ 与部署命令**保持一致**，避免又漏一个。
+      #
+      # ## ⚠️ 对本 job 的**实际作用 = 无**（如实说明，别误以为它治了什么）
+      #    本 job 只做 `--no-codesign` 的**编译验证**，产物**不运行、不安装**。
+      #    补它的真实价值是：**将来建「archive → TestFlight」流程时不会忘**
+      #    （那个 workflow 的产物会真装到手机上）。
       - name: Build iOS (no codesign)
-        run: flutter build ios --release --no-codesign
+        run: |
+          flutter build ios --release --no-codesign \
+            --dart-define=API_HOST=api.keyievolution.fun \
+            --dart-define=PUBLIC_BASE_URL=https://keyievolution.fun

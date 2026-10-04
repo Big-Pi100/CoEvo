@@ -6,12 +6,25 @@
   来源：从已删除的 app_user/.github/export-options.plist 抢救并修正。
   完整流程与启用前提见 docs/operations/ios-appstore-ci-reference.md
 
-  ⚠️ 待 Phase 0 完成后填写：
-     - teamID：Apple Developer 账号办好后拿到（10 位）
-     - 且需在 CI 配好 App Store Connect API Key（ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_P8）
+  🆕 2026-10-04：**本文件已被真正消费** ——
+    `.github/workflows/ios-archive.yml` 的「配置签名」步骤会用它，
+    并用 `/usr/libexec/PlistBuddy` **覆盖下面两个 key**：
+
+      :teamID        ← secrets.APPLE_TEAM_ID（**所以占位符不用手改**）
+      :destination   ← export（不上传）/ upload（上传 ASC），按 workflow_dispatch 的 input 决定
+
+    ⇒ 本文件里的 `YOUR_TEAM_ID` 与 `export` 是**默认值/标记**，运行时会被替换。
+    📌 为什么要覆盖而不是手填：**手填的占位符会忘**（本项目已踩过：
+      `docs/legal/*.md` 的 10 处【待填】差点发到公网）。
+    🔑 且 Team ID 不进 git（`.p8` 与 Team ID 都只存在 GitHub Secrets 里）。
+
+  ⚠️ 不要用 sed 改本文件 —— plist 的结构用字符串匹配很脆
+    （`<string>export</string>` 这类模式会随文件演进悄悄匹配错行）。
+    本文件里 `destination` 的注释行也含 "upload" 字样，正是这种陷阱的例子。
+    请一律用 PlistBuddy（按 key 路径操作）。
 
   修正记录（相对原文件）：
-     1. teamID 由 YOUR_TEAM_ID 占位 → 保留占位（待填）
+     1. teamID 由 YOUR_TEAM_ID 占位 → **保留占位**（由 workflow 运行时注入）
      2. 删除 uploadBitcode / compileBitcode —— Bitcode 自 Xcode 14 起已废弃
      3. 新增 signingStyle=automatic —— 免去 fastlane match 证书管理
      4. method 保持 app-store（Xcode 15+ 亦可写 app-store-connect，两者兼容）
@@ -30,7 +43,6 @@
     <key>uploadSymbols</key>
     <true/>
 
-    <!-- destination=upload 时 exportArchive 会直接上传；不写则只导出 IPA -->
     <key>destination</key>
     <string>export</string>
 </dict>

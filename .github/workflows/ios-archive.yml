@@ -1,0 +1,225 @@
+# iOS 归档 + 导出 IPA + 上传 App Store Connect（TestFlight）
+#
+# 📄 依据：`docs/operations/ios-appstore-ci-reference.md` §3.2（参考实现）
+#    ⚠️ 本文件相对那份参考实现有 **4 处修正**，每一处都在下面注明了理由。
+#    启用前提见下方「🔴 前置」段。
+#
+# ──────────────────────────────────────────────────────────────────────────
+# 🔴 前置（不做完，这个 workflow 一定失败）
+# ──────────────────────────────────────────────────────────────────────────
+#
+# ① **Apple Developer 账号办好**（Phase 0）⇒ 拿到 **Team ID**（10 位）
+# ② ASC → Users and Access → Integrations → **App Store Connect API**
+#    ⇒ 生成 Key（`.p8` + Key ID + Issuer ID），并给它 **App Manager** 以上权限
+# ③ 在 GitHub 仓库配 **4 个 Secrets**（Settings → Secrets and variables → Actions）：
+#
+#      ASC_KEY_ID       Key ID（如 `2X9R4HXF34`）
+#      ASC_ISSUER_ID    Issuer ID（UUID 形式）
+#      ASC_KEY_P8       **.p8 文件的完整文本内容**（含 BEGIN/END 行）
+#      APPLE_TEAM_ID    Team ID（10 位）
+#
+# ④ ASC 里已创建 App 记录，Bundle ID = `com.coevo.coevoApp`
+#
+# 📌 缺任一项都会在 runner 上报错（**不是静默失败** —— 见下方的显式校验步骤）。
+#
+# ──────────────────────────────────────────────────────────────────────────
+# 🔴 为什么只有 workflow_dispatch（不许自动触发）
+# ──────────────────────────────────────────────────────────────────────────
+#
+# GitHub 对**私有仓库**的 macOS runner 按 **10 倍**计费
+# （2,000 分钟/月 → 实际仅 200 macOS 分钟）。
+# 📌 判据：**贵且不可回退的管道，一律人工触发**。
+
+name: iOS Archive & Upload
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: '上传到 App Store Connect（TestFlight）。不勾则只产出 IPA 作为 artifact'
+        type: boolean
+        default: false
+
+jobs:
+  archive:
+    name: Archive & Export IPA
+    runs-on: macos-latest
+    defaults:
+      run:
+        # 🔴 工作目录是 `app`（不是仓库根）—— 与 `ci.yml` 的 `ios-build` 一致
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── 🔴 前置校验（先失败，别等到 10 分钟后才报缺 secret）──────────────
+      #
+      # 📌 为什么单独一步做：macOS runner 按分钟计费，且这些缺失**在构建中期**才暴露。
+      #    在这里 5 秒内报出来，省下一整轮 macOS 分钟。
+      - name: 校验 Secrets 是否齐全
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          missing=""
+          [ -n "$ASC_KEY_ID" ]    || missing="$missing ASC_KEY_ID"
+          [ -n "$ASC_ISSUER_ID" ] || missing="$missing ASC_ISSUER_ID"
+          [ -n "$ASC_KEY_P8" ]    || missing="$missing ASC_KEY_P8"
+          [ -n "$APPLE_TEAM_ID" ] || missing="$missing APPLE_TEAM_ID"
+          if [ -n "$missing" ]; then
+            echo "🔴 缺少 Secrets：$missing"
+            echo "   配置位置：仓库 Settings → Secrets and variables → Actions"
+            echo "   说明见 .github/workflows/ios-archive.yml 顶部「🔴 前置」"
+            exit 1
+          fi
+          # p8 内容格式粗校验 —— 最常见的错误是「只贴了 base64 主体，丢了 BEGIN/END 行」
+          case "$ASC_KEY_P8" in
+            *"BEGIN PRIVATE KEY"*) ;;
+            *) echo "🔴 ASC_KEY_P8 不含 'BEGIN PRIVATE KEY' —— 需要 .p8 文件的**完整内容**"; exit 1 ;;
+          esac
+          echo "✅ 4 个 Secrets 齐全（Team ID=${#APPLE_TEAM_ID} 位）"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          # 🔴 与 `ci.yml` 钉同一个版本号 —— 两处不一致会让「CI 绿 / 出包红」成为常态。
+          flutter-version: 3.41.1
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Install CocoaPods
+        run: pod install --repo-update
+        working-directory: app/ios
+
+      # ── 配置签名：API Key 落盘 + 注入 Team ID ────────────────────────────
+      #
+      # 🔴 修正 ①（相对参考实现）：**export-options.plist 的 teamID 用真值覆盖**
+      #    参考实现里 plist 的 teamID 是 `YOUR_TEAM_ID` 占位符，且**没人替换它** ——
+      #    那样 exportArchive 会失败（或导出出不可用的包）。
+      #    ⇒ 用 `/usr/libexec/PlistBuddy`（macOS 自带，专用于 plist）。
+      #    📌 为什么不用 sed：**按字符串猜 plist 结构是脆的**（`<string>export</string>`
+      #       这类模式会随文件演进悄悄匹配错行）。PlistBuddy 按 key 路径操作。
+      - name: 配置签名（API Key + Team ID）
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          UPLOAD: ${{ inputs.upload }}
+        run: |
+          set -euo pipefail
+
+          # ① 私钥落盘（xcodebuild 要求它在 ~/private_keys/AuthKey_<KEY_ID>.p8）
+          mkdir -p ~/private_keys
+          printf '%s' "$ASC_KEY_P8" > ~/private_keys/AuthKey_$ASC_KEY_ID.p8
+          chmod 600 ~/private_keys/AuthKey_$ASC_KEY_ID.p8
+
+          # ② 往 plist 注入 Team ID
+          PLIST=.github/export-options.plist
+          /usr/libexec/PlistBuddy -c "Set :teamID $APPLE_TEAM_ID" "$PLIST"
+
+          # ③ 🔴 修正 ②：**destination 按 input 切换**
+          #    参考实现有个**静默陷阱**：plist 里写的是 `destination: export`
+          #    （只导出、不上传），而注释却说「destination=upload 时会直接上传」
+          #    ⇒ 勾了「上传」也**不会真的上传**，而日志看起来一切正常。
+          #    📌 这正是本项目那条判据的又一实例：**「配置与意图矛盾」必须显式消除**。
+          if [ "$UPLOAD" = "true" ]; then
+            /usr/libexec/PlistBuddy -c "Set :destination upload" "$PLIST"
+            echo "📤 destination=upload（会直接上传到 App Store Connect）"
+          else
+            /usr/libexec/PlistBuddy -c "Set :destination export" "$PLIST"
+            echo "📦 destination=export（只产出 IPA，不上传）"
+          fi
+
+          echo "--- 最终 export options ---"
+          cat "$PLIST"
+
+      # ── 构建 ────────────────────────────────────────────────────────────
+      #
+      # 🔴 修正 ③（相对参考实现）：`flutter build ios --release` → 加 `--no-codesign`
+      #    参考实现用的是**带签名**的 `flutter build ios --release`，
+      #    但 `DEVELOPMENT_TEAM` 在 `ios/Runner.xcodeproj` 里**根本不存在**（实测 grep 0 命中）
+      #    ⇒ 这一步会在「Select a Development Team」处失败。
+      #    ⇒ 拆成：本步只**生成 Flutter 产物**（不签名），签名交给下一步的 xcodebuild。
+      #
+      # 🔴 修正 ④：**补 `--dart-define`**
+      #    参考实现完全没传 ⇒ 产物会连 `localhost`（`api_config.dart` 的默认值）。
+      #    `flutter build ios` 会把 dart-define 写进 `ios/Flutter/Generated.xcconfig`，
+      #    下一步 xcodebuild 会读到它 ⇒ **只需在这里传一次**。
+      #    📌 判据：**「构建成功」≠「包可用」** —— 缺 dart-define 不报错，
+      #       只在运行时表现为「网络请求全失败」，极易误判成「App 坏了」。
+      - name: Build Flutter artifacts (no codesign)
+        run: |
+          flutter build ios --release --no-codesign \
+            --dart-define=API_HOST=api.keyievolution.fun \
+            --dart-define=PUBLIC_BASE_URL=https://keyievolution.fun
+
+      # ── 归档（这一步才签名）────────────────────────────────────────────
+      #
+      # 🔴 修正 ⑤：**必须显式传 `DEVELOPMENT_TEAM`**
+      #    `flutter build ipa` **不暴露 Team ID 参数**（实测读 `flutter_tools` 源码：
+      #    `BuildIOSArchiveCommand` 只有 `--export-method` / `--export-options-plist`），
+      #    而自动签名若拿不到 Team 会去**交互式询问**（CI 无终端 ⇒ 卡死或失败）。
+      #    ⇒ 用 xcodebuild 的**命令行 build setting 覆盖**（标准做法，**不需改 pbxproj**）。
+      #    📌 为什么不在 `project.pbxproj` 里写死：那样 Team ID 会进 git，
+      #       且改 pbxproj 格式风险高（它由 Xcode 维护）。
+      - name: Archive
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          xcodebuild -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            -sdk iphoneos \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_$ASC_KEY_ID.p8 \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            archive
+
+      # ── 导出（上传与否由 plist 的 destination 决定）─────────────────────
+      - name: Export IPA（upload 时同时上传 ASC）
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          xcodebuild -exportArchive \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            -exportPath build/ios/ipa \
+            -exportOptionsPlist .github/export-options.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_$ASC_KEY_ID.p8 \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: 列出产物
+        run: ls -la build/ios/ipa/ || true
+
+      - name: Upload IPA as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coevo-ios-ipa
+          # ⚠️ 这里的路径**相对仓库根**（upload-artifact 不受 defaults.run.working-directory 影响）
+          path: app/build/ios/ipa/*.ipa
+          if-no-files-found: warn
+          retention-days: 7
+
+      # ── 收尾：清掉 runner 上的私钥 ────────────────────────────────────────
+      #
+      # 🔑 runner 是一次性的，但**显式删除**是廉价的好习惯
+      #    （万一 runner 被复用，或有人 dump 了工作区）。
+      #    用 `if: always()` ⇒ 前面失败时也要清。
+      - name: 清理私钥
+        if: always()
+        run: rm -rf ~/private_keys

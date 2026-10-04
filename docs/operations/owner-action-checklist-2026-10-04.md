@@ -311,13 +311,44 @@ IAP_KEY_ID / IAP_ISSUER_ID / IAP_PRIVATE_KEY / IAP_ENVIRONMENT
 | 需要 | 状态 |
 |---|---|
 | Apple Developer 账号审批 | ⏳ **进行中**（你在办）|
-| **Team ID**（签名必需）| ⏳ 审批通过后可得 |
+| **Team ID**（签名必需）| ⏳ 审批通过后可得 → 配进 GitHub Secrets |
 | **App Store Connect API Key**（`.p8` + Key ID + Issuer ID）| ⏳ 待生成 → 配进 GitHub Secrets |
 | `ios-build` job 的 `continue-on-error` | 🔴 **Phase 0 完成后要删掉那一行**（CI 里已写明「何时移除」）|
-| 归档/签名/导出/上传四步 | ⏳ 尚未实现（`ios-appstore-ci-reference.md` 有参考，待 Phase 0 后启用）|
+| 归档/签名/导出/上传四步 | ✅ **已实现**（2026-10-04）→ `.github/workflows/ios-archive.yml` |
 
 > 🔑 **所以：iOS 出包不需要你额外决策** —— 等 ASC 账号下来、配好 API Key，
 > 就能在 CI 上跑通「构建 → 归档 → 上传 ASC」。你唯一要做的仍是 §一~§三 那些账号动作。
+
+#### 🆕 7.1.1 API Key 拿到后，在 GitHub 配 4 个 Secrets
+
+**位置**：GitHub 仓库 → `Settings` → `Secrets and variables` → `Actions` → `New repository secret`
+
+| Secret 名 | 值从哪来 |
+|---|---|
+| `ASC_KEY_ID` | ASC → Users and Access → Integrations → **App Store Connect API** → Key ID |
+| `ASC_ISSUER_ID` | 同页顶部的 **Issuer ID**（UUID 形式）|
+| `ASC_KEY_P8` | 🔴 **`.p8` 文件的完整文本内容**（含 `BEGIN PRIVATE KEY` / `END PRIVATE KEY` 两行）。<br>⚠️ 最常见的错误是只贴了中间的主体 ⇒ workflow 会**显式报错**（已加格式校验）|
+| `APPLE_TEAM_ID` | ASC → Membership → **Team ID**（10 位）|
+
+**配完就能跑**：Actions → 左侧 `iOS Archive & Upload` → `Run workflow`
+- 不勾「上传」⇒ 只产出 IPA 供下载（可先这样验一遍）
+- 勾「上传」⇒ 直接推到 App Store Connect，之后在 **TestFlight** 里装到 iPhone
+
+> 🔑 **这就是你「不用 Mac 也能真机测」的路** —— 见 §7.1.2。
+
+#### 🆕 7.1.2 为什么要走这条路（你之前只能用安卓测）
+
+| | 安卓（你现在的方式）| iOS（这条新路）|
+|---|---|---|
+| 构建机 | 你的 Windows ✅ | GitHub `macos-latest`（**不需要买 Mac**）|
+| 装到手机 | `adb install` / 直接装 APK | **TestFlight** |
+| 能测什么 | 信息流 / 划词 / 复习 / **账号注销** / 朗读 | 同上 **＋ 🔴 订阅（IAP）** |
+
+⚠️ **一个必须知道的限制**：**安卓包测不了订阅** ——
+它走 Google Play Billing，而我们只有 Apple 的 Product ID（`com.coevo.coevoApp.pro.*`），
+Play Console 里也没有对应商品 ⇒ 点订阅**必然失败**。
+**订阅只能在 iOS（TestFlight 或沙盒）上验。**
+
 
 ### 7.2 ✅ 账号注销功能 —— **已完成**（2026-10-04）
 
@@ -345,12 +376,21 @@ IAP_KEY_ID / IAP_ISSUER_ID / IAP_PRIVATE_KEY / IAP_ENVIRONMENT
 |---|---|
 | 后端 `iap_transactions` 表 + `/api/iap/verify` | ✅ 已完成（**220** 测试全绿）|
 | 前端接 `in_app_purchase` + 订阅服务层 | ✅ 已完成 |
-| 订阅页重做（法律要件 + 两处恢复购买入口）| ✅ 已完成 |
+| 订阅页重做（法律要件 + 两处恢复购买入口）| 🟠 **需再改一轮**（文案错 + 排版重做 + 权益改「云端同步」）|
 | **账号注销功能** | ✅ **已完成**（§7.2）|
+| **电子书导入**（解析层）| ✅ 已完成（65 项断言 · `book.db`，UI 待做）|
+| 云端同步（订阅的新权益）| ⏳ **待设计实现**（否则订阅页是空头承诺）|
+| iOS archive → TestFlight workflow | ✅ 已建（`.github/workflows/ios-archive.yml`，缺 Secrets）|
 | 法律文本 → HTML + 部署 | ✅ 已完成（`api.keyievolution.fun/privacy` · `/terms`）|
 | IAP / 注销 / 法定要件的验收断言 | ✅ 99 项（已接 CI）|
 
-> 🔑 我这边**已无待做**；剩下的都卡在 ASC（§一~§三）与你的真机验证。
+> ⚠️ **订阅线当前状态（如实说）**：页面已做出，但**还不能用** ——
+> ① 文案写的「免费版上限 200 词」是**已作废**的规格
+> ② 权益三项（无限生词本 / 文章朗读 / 电子书导入）**全都不成立**
+> ③ 排版白哥指出有问题
+> ⇒ 等 ①②③ 都处理完才可截图提审（截图必须是**真实的**订阅页）。
+>
+> 🔑 我这边**已无「阻塞你」的待做**；剩下的都卡在 ASC（§一~§三）与你的真机验证。
 
 ---
 
@@ -367,9 +407,16 @@ IAP_KEY_ID / IAP_ISSUER_ID / IAP_PRIVATE_KEY / IAP_ENVIRONMENT
 ✅ 隐私政策页：方案 A 选定 + 已部署 + 公网验证  → 已完成
 ✅ Cloudflare Email Routing（support@）    → 已完成（端到端验证通过）
 ✅ iOS 出包：无 Mac 链路已规划（GHA macos-latest）→ **不需你决策**
-□ 等 ASC 审批后拿 Team ID + 生成 ASC API Key → 配进 GitHub Secrets
 ✅ 账号注销（Apple 5.1.1(v)）→ 已完成（前后端 + 法律文本 + 断言）
+✅ archive→TestFlight workflow → 已建（缺 Secrets，暂时跑不了 = 预期）
+□ **审批通过后**：拿 Team ID → 生成 ASC API Key → 配 4 个 GitHub Secrets（§7.1.1）
+    ⇒ 配完就能跑 `iOS Archive & Upload`，用 TestFlight 装到 iPhone 测
 □ **真机验注销流程**（点注销 → 确认 → 回首页 → 再登录提示不存在；生词本仍在）
 □ 建沙盒测试账号
-□ 审批通过后补审核截图（订阅页已完成，可截）
+□ 审批通过后补审核截图（⚠️ 等订阅页重做完再截，否则截出来是旧版）
 ```
+
+> ⚠️ **订阅页待重做**（2026-10-04 白哥指出）：① 文案错（免费版已无 200 词上限）
+> ② 排版要重新设计 ③ 订阅权益已改为**「云端同步」**（原三项都不成立）。
+> ④ 且「云端同步」本身要实现 —— 否则订阅页仍是「承诺未实现」。
+> 📄 依据：`docs/review/online-ebook-subscription-compliance-2026-10-04.md`

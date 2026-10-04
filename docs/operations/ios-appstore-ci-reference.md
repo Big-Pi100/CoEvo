@@ -36,10 +36,14 @@ pod install → flutter build ios → xcodebuild archive → xcodebuild -exportA
 
 ---
 
-## 三、修正后的参考流程（占位，待 Phase 0 完成后启用）
+## 三、修正后的参考流程（🆕 2026-10-04 **已实施**）
 
 > **启用前提**（Phase 0）：Apple Developer 账号办好 · Bundle ID 确定 · Team ID 拿到 ·
 > App Store Connect API Key（`.p8` + Key ID + Issuer ID）配进 GitHub Secrets
+>
+> 🆕 **2026-10-04：已按本节建成 `.github/workflows/ios-archive.yml`**（白哥确认）。
+> ⚠️ 实施时发现本节参考实现有 **5 处会失败或静默出错**，实际实现已修正 ——
+> 逐条见 §3.2 的表格。**以 `.github/workflows/ios-archive.yml` 为准**，本节文字作依据留档。
 
 ### 3.1 `app/.github/export-options.plist`（已随本文档创建）
 
@@ -64,6 +68,21 @@ pod install → flutter build ios → xcodebuild archive → xcodebuild -exportA
 ```
 
 ### 3.2 归档 + 导出 + 上传（修正版）
+
+> ## 🔴 实施时修正的 5 处（2026-10-04）
+>
+> 下面的参考实现**不能照抄** —— 实测发现 5 处问题。实际实现见
+> `.github/workflows/ios-archive.yml`（**以它为准**）。
+>
+> | # | 参考实现 | 问题 | 实际实现 |
+> |---|---|---|---|
+> | 1 | `flutter build ios --release`（**带签名**） | `DEVELOPMENT_TEAM` 在 `ios/Runner.xcodeproj` 里**根本不存在**（实测 `grep` 0 命中）⇒ 必然在「Select a Development Team」处失败 | 改为 `--no-codesign`（本步只生成 Flutter 产物），签名交给 xcodebuild |
+> | 2 | `xcodebuild archive` **无** `DEVELOPMENT_TEAM` | 自动签名拿不到团队 ⇒ 会**交互式询问**（CI 无终端 ⇒ 卡死/失败）。<br>📌 `flutter build ipa` **不暴露** Team ID 参数（实测读 `flutter_tools` 源码：`BuildIOSArchiveCommand` 只有 `--export-method` / `--export-options-plist`）| xcodebuild 命令行加 `DEVELOPMENT_TEAM=...`（标准 build setting 覆盖，**不需改 pbxproj**）|
+> | 3 | 无 `--dart-define` | 产物连 `localhost`（`api_config.dart` 默认值）⇒ 真机全网络失败 | 补 `API_HOST` + `PUBLIC_BASE_URL` |
+> | 4 | plist 的 `teamID` 是 `YOUR_TEAM_ID` 占位，**没人替换** | exportArchive 会失败或导出不可用包 | 用 `/usr/libexec/PlistBuddy` 注入（**不用 sed** —— 见 §3.1 plist 注释里的理由）|
+> | 5 | 🔴 plist 写 `destination: export`，注释却说「destination=upload 时会直接上传」 | **静默陷阱**：勾了「上传」也**不会真上传**，而日志看起来一切正常 | 按 `workflow_dispatch` 的 input **动态切** `:destination` |
+>
+> 🔑 第 5 条是最值得记的一类：**「配置与意图矛盾」不会报错，只会静静地不做那件事**。
 
 ```yaml
 # 放在仓库根的 .github/workflows/ 下才会执行（不要在子目录）
@@ -176,14 +195,29 @@ jobs:
 
 ---
 
-## 五、为什么现在不建这个 workflow
+## 五、⏱ 为什么**当时**没建（🆕 2026-10-04 已建）
 
-1. **Phase 0 未完成** —— Apple Developer 账号还没办，Team ID / Bundle ID / API Key 都不存在
-2. **配了也跑不了** —— 缺 secrets，每次触发都失败
-3. **macOS runner 贵** —— 私有仓库按 **10x** 计费（2,000 分钟/月 → 实际 200 macOS 分钟）
-4. **已有替代** —— `.github/workflows/ci.yml` 的 `ios-build` job 已能验证「iOS 能编过」（`--no-codesign`，手动触发）
+> 🆕 **2026-10-04：白哥确认「建」** ⇒ 已建成 `.github/workflows/ios-archive.yml`。
+> 下面四条是**当时的判断依据**（保留作决策史 —— 不是错的，只是条件变了）。
 
-**→ 待 Phase 0 完成、要真正上架时，再按 §3.2 建这份 workflow。**
+| # | 当时理由 |
+|---|---|
+| 1 | **Phase 0 未完成** —— Apple Developer 账号还没办，Team ID / API Key 都不存在 |
+| 2 | **配了也跑不了** —— 缺 secrets，每次触发都失败 |
+| 3 | **macOS runner 贵** —— 私有仓库按 **10x** 计费（2,000 分钟/月 → 实际 200 macOS 分钟）|
+| 4 | **已有替代** —— `ci.yml` 的 `ios-build` job 已能验证「iOS 能编过」（`--no-codesign`，手动触发）|
+
+### 5.1 为什么"条件变了"就可以建
+
+| 变化 | 说明 |
+|---|---|
+| ✅ workflow **不占额度** | 只在 `workflow_dispatch` 下跑 ⇒ **不触发就不花钱**（理由 3 被规避）|
+| ✅ **不阻塞现在** | 缺 secrets 时它只在**有人手动点**的情况下失败 ⇒ 不影响 `push main` 的 CI（理由 2 被规避）|
+| ✅ **省掉将来的来回** | 账号一批下来就能直接跑，不必再等一轮「写 → 审 → 改」 |
+| ⚠️ 理由 1 **仍然成立** | 所以它建好了也**暂时跑不了** —— 这是预期，不是缺陷 |
+
+⚠️ **它现在无法通过**（缺 4 个 Secrets）。要它真能跑，先完成：
+`owner-action-checklist` 里的 ASC 建产品 + 生成 API Key + 配 Secrets。
 
 ---
 
