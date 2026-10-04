@@ -124,6 +124,55 @@ ASC → 我的 App → 选 CoEvo → 侧边栏「营利」→「订阅」
 > 🔑 Apple 审核**不要求**域名好看，只要求**可访问、能点开**。
 > 📌 我的建议：**先 A 满足上架**，上线后再升级 B（两件事不冲突）。
 
+#### ✅ 2026-10-04 14:21 —— 配置进度与实测结果
+
+白哥已开启 Cloudflare Email Routing。**DNS 层实测通过**（VPS 上 `dig`，`qq.com` 对照）：
+
+| 项 | 实测值 | 判定 |
+|---|---|---|
+| **MX** | `route1.mx.cloudflare.net`(1) · `route3.mx.cloudflare.net`(48) · `route2.mx.cloudflare.net`(98) | ✅ |
+| **SPF** | `v=spf1 include:_spf.mx.cloudflare.net ~all` | ✅ |
+| NS | `*.ns.cloudflare.com` | ✅ |
+
+> ⚠️ **但「MX 有了」≠「邮件能到」** —— MX 是**域名级**的，只要启用了 Email Routing 就会加。
+> 真正决定成败的是**两件在 Dashboard 里、DNS 看不到的事**：
+> ① 目标地址是否**已验证**（收过验证邮件并点了链接）
+> ② 路由规则是否存在且**已启用**
+> ⇒ 只有**真发一封**才能验。
+
+#### 🧪 端到端测试（已发出，等确认）
+
+2026-10-04 14:21 发了一封测试邮件（主题含 `[CoEvo] Email Routing 测试`）到 `support@keyievolution.fun`。
+
+| 项 | 值 |
+|---|---|
+| 发信方式 | 复用 vibedollar 的 `mailproxy`（`POST 127.0.0.1:8200/api/mail/send`）|
+| ⚠️ 因此发件人是 | **你的 QQ 邮箱**（QQ SMTP 强制发件人=授权账号，见上表）|
+| 返回 | `{"ok":true}` —— QQ SMTP 已接受投递（**不代表已到 CF**）|
+
+**请确认**：QQ 邮箱（🔴 **含垃圾箱**）里有没有这封信。
+
+#### 🔍 若没收到 —— 按这个顺序排查
+
+| # | 检查 | 在哪 |
+|---|---|---|
+| 1 | **垃圾箱**（最常见）| QQ 邮箱 → 垃圾邮件 |
+| 2 | 目标地址显示 **Verified** 吗 | Cloudflare → Email Routing → **Destination addresses** |
+| 3 | 路由规则存在且**启用**吗（`support` → 你的 QQ）| Email Routing → **Routing rules** |
+| 4 | 开 **Catch-all**（任意前缀都收）再试 | Routing rules → Catch-all |
+| 5 | 看 Cloudflare 的 Email Routing **Activity/Logs** | 那里能看到「收到并转发」或「被拒」 |
+
+⚠️ **已知可能**：CF 转发后，QQ 侧可能因 SPF/DKIM 对齐变化判为垃圾 —— 所以第 1 步**必须**先看垃圾箱。
+（若长期被判垃圾，可在 QQ 侧把 `support@` 加白名单 / 设过滤器。）
+
+#### 收到之后
+
+把 `support@keyievolution.fun` 填进：
+- `docs/legal/*.md` 的「联系邮箱」占位符（**由部署脚本参数注入**，不用改 md）
+- 即：部署命令里 `--email "support@keyievolution.fun"`
+
+---
+
 ### 4.3 🆕 联系邮箱：建议用 `support@keyievolution.fun`（而非 QQ 邮箱）
 
 > 白哥 2026-10-04 问：「像 vibedollar 那样建一个 CoEvo 域名的 support 邮箱、转发到 QQ 如何？」
