@@ -1338,6 +1338,19 @@ void _s14BookmarkList() {
   final app = src('app.dart');
   final home = src('screens/home_screen.dart');
 
+  // 🆕 2026-10-04：标题栏**上移到容器** —— 白哥定案（书库与「今日精选」平级）
+  //    ⇒「今日精选 ｜ 书库」双标题由 `screens/reading_tab_screen.dart` 提供，
+  //      `home_screen.dart` 降级为**只负责信息流内容**。
+  //    🔑 因此下面 ⑥ 那组断言的**读取对象**随之平移 —— 但它们的**意图一个字没变**：
+  //      「阅读 tab 的标题栏上必须有收藏入口」。
+  //    🔑 刻意**不锁单一文件**，而是在「阅读 tab 这一族文件」里找：
+  //      标题栏将来若再拆成独立 widget，本组**不会假红**。
+  //      （假红的真危害是消耗门禁可信度 ⇒ 训练人忽略红灯 ⇒ 真回归也被忽略。）
+  final readingTab = [
+    src('screens/reading_tab_screen.dart'),
+    src('screens/home_screen.dart'),
+  ].join('\n');
+
   // ② **路由形态**：必须是 `/home` 的**子路由**（相对路径 = 无前导 `/`）
   //
   //    🔑 判据用「相对路径」而不是去解析嵌套结构：
@@ -1386,9 +1399,12 @@ void _s14BookmarkList() {
   //       （生词入口与它共用同一个组件）。判据从「类名」改为**文案** ——
   //       类名是实现细节，**文案才是设计稿规定的东西**。
   //       🔑 断言越贴近「被保护的对象」越不易碎（改实现不该报红，改语义才该报红）。
-  check('首页标题栏有收藏入口（文案为「收藏」）', home.contains("label: '收藏'"));
+  //    ⚠️ 2026-10-04：读取对象由 `home` 改为 `readingTab`（标题栏上移至容器）——
+  //       **断言名与判据都没变**：变的是「承载标题栏的文件」，不是「要守的意图」。
+  check('阅读 tab 标题栏有收藏入口（文案为「收藏」）',
+      readingTab.contains("label: '收藏'"));
   check('入口指向 /home/bookmarks（与 ② 的路由一致）',
-      home.contains('/home/bookmarks'));
+      readingTab.contains('/home/bookmarks'));
   //    🔑 计数按设计稿呈现（`.bm-entry .n{font-size:10.5px;opacity:.7}`）
   //
   //    ⚠️ 2026-09-28：计数渲染已移入**公共组件** `widgets/header_chip.dart`
@@ -1408,8 +1424,14 @@ void _s14BookmarkList() {
   //       也照样 ≥2 → **假绿**。
   //       🔑 这是「文本断言的范围纪律」问题：**计数类断言必须排除定义处**。
   //    生词入口已于当天下线 → `_HeaderChip` 只有收藏一个消费者，不再计数。
-  check('首页标题栏入口用公共组件 HeaderChip（统一实现，不另写一份）',
-      home.contains('HeaderChip('));
+  check('阅读 tab 标题栏入口用公共组件 HeaderChip（统一实现，不另写一份）',
+      readingTab.contains('HeaderChip('));
+  // 🆕 反向哨兵（本次改动新增）：标题栏**只有一处** ——
+  //    内容视图（信息流页）不得再自带一份标题栏。
+  //    🔑 这条是**职责边界**的断言：`home_screen` 现在只负责信息流内容。
+  //      若将来有意把标题栏放回去，请**连本组一起改**（而不是只删这条）。
+  check('🔴 信息流内容视图**不再**自带标题栏（防两份实现）',
+      !home.contains('HeaderChip(') && !home.contains("label: '收藏'"));
 
   // ⑦ **extendBody 配套**：清单页也要留出 tabbar 高度，否则最后一张卡被压住
   //    （同三个 tab 页的处理 —— 少一处就出现「最后一条看不到」）
@@ -2295,10 +2317,13 @@ void _s17ReviewList() {
     check('🔴 复习页**不传 icon**（去掉图标 = 文字既不偏、又左右对称的唯一解）',
         !review.contains('Icons.filter_alt'),
         'filter_alt 残留: ${review.contains("Icons.filter_alt")}');
+    // ⚠️ 2026-10-04：读取对象 home_screen → reading_tab_screen（标题栏上移至容器）。
+    //    **判据一字未改**：收藏是「入口 + 计数」⇒ 传 icon、不传 active。
     check('  信息流「收藏」**仍传 icon**（那边是入口 + 计数，图标有意义）',
-        src('screens/home_screen.dart').contains('icon: Icons.bookmark_border'));
+        src('screens/reading_tab_screen.dart')
+            .contains('icon: Icons.bookmark_border'));
     check('  信息流「收藏」入口**不传** active（它是入口，不是开关 → 保持凹陷）',
-        !src('screens/home_screen.dart').contains('active:'));
+        !src('screens/reading_tab_screen.dart').contains('active:'));
   }
 
   // ⑩ 🔴🔴 **Clay 凹陷容器里的输入框必须「完全无边框」**（2026-09-28 22:2x 真机 Bug）

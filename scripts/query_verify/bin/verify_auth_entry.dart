@@ -57,12 +57,26 @@ void check(String label, bool ok, [String detail = '']) {
 ///    泛型实参（`show<T>(`）与可选泛型会插在那里。
 ///    正解：匹配 `名字` + `可选空白` + `[<(]`，或干脆只匹配名字。
 ///    同理，**开 / 闭标签的正则本就不该对称**（开可能带属性）。
+/// 剥掉**整行注释**（注释前可有空白）。
+///
+/// # 🔴 为什么是「整行」而不是「行内切 `//`」（2026-10-04 修 · 实测踩到）
+///
+/// 原实现是「每行找 `//`、切掉后半」—— 它有一个**方向相反**的故障：
+/// **代码行里含 `//` 时会被当成注释起点切掉**，于是注释之后的正文**整段消失**。
+/// 实测形态：
+/// ```dart
+/// final _dup = NetworkImage('https://x/api/public/qrcode');   // ← 是代码，不是注释
+/// ```
+/// 这行里 `https://` 含 `//` ⇒ 被切掉 ⇒ 拿 `public/qrcode` 去查会**查不到**
+/// （若是**反向**断言「不得含 X」，则是**假绿**）。
+/// 📌 判据：**「剥注释」这个动作本身会改变被检查的文本** ——
+///    它修好了「注释里的说明造成假红」，却可能引入「URL / 字符串里的 `//` 造成漏检」。
+///    ⇒ 剥注释**只能在「整行注释」这一粒度上做**。
+/// ⚠️ 代价（如实记录）：**行尾注释不被剥** —— 若有人把被禁的写法写进行尾注释，
+///    本脚本会误报。已知盲区，不假装没有。
 String stripComments(String src) => src
     .split('\n')
-    .map((l) {
-      final i = l.indexOf('//');
-      return i < 0 ? l : l.substring(0, i);
-    })
+    .where((l) => !l.trimLeft().startsWith('//'))
     .join('\n');
 
 int countOccurrences(String src, String pattern) =>
@@ -244,14 +258,32 @@ void main() {
   final about = stripComments(
       File('../../app/lib/screens/about_screen.dart').readAsStringSync());
 
+  // 🆕 **2026-10-04 平移（第二次）**：二维码弹层已抽到**公共组件**
+  //    `widgets/group_qrcode_dialog.dart`（**唯一实现**）—— 因为**书库空态**与
+  //    **导入失败（DRM）**也要用它（判据同 `HeaderChip`：「外观一致 = 只有一处定义」）。
+  //    ⇒ 本组断言的**读取对象**随之改到「关于页 + 公共弹层」**两处**，
+  //      而**意图一字未变**：①「关于」页有共读群入口 ② 点它能出二维码。
+  //    🔑 强度是**提高**了的（分工见下面两条）：
+  //       · 关于页侧：「**作为 label 传的**是那个公共常量」（仍精确到对象）
+  //       · 弹层侧：「常量的**值**确实是那个名字」+「二维码地址确实在弹层里」
+  //    ⚠️ 若只查 about 里含 `GroupQrcodeDialog`，就锁不住「常量值被改坏」——
+  //       那种情况下入口与弹窗会**同步变成错名字**，而断言照样通过（假绿）。
+  final qrDialog = stripComments(
+      File('../../app/lib/widgets/group_qrcode_dialog.dart').readAsStringSync());
+
   // 🔴 **口径要精确到「对象」**：只查裸字符串 `'加入英文原著共读群'` 会**假绿** ——
   //    弹窗的 `title:` 也是这个名字 ⇒ 「入口 label 被改回旧名」也照样通过。
   //    （实测踩到：注入回归时正向断言没红，就是这个原因。
   //      与 `check-prototype.js` 那条「『某处不该有 X』的『某处』要精确到对象」同族。）
-  check('🔴 「关于」页有「加入英文原著共读群」入口',
-      about.contains("label: '加入英文原著共读群'"));
-  check('🔴 「关于」页承载群二维码弹窗（`_showGroupQrcodeDialog` + `public/qrcode`）',
-      about.contains('_showGroupQrcodeDialog') && about.contains('public/qrcode'));
+  check('🔴 「关于」页有「加入英文原著共读群」入口（label 取自公共常量）',
+      about.contains('label: GroupQrcodeDialog.kTitle'));
+  // 🔴 常量的**值**必须独立核对 —— 否则「把 kTitle 改成别的字」会**假绿**。
+  check('🔴 入口/弹窗文案常量 = 「加入英文原著共读群」',
+      qrDialog.contains("kTitle = '加入英文原著共读群'"));
+  check('🔴 「关于」页承载群二维码弹窗（走公共组件 `GroupQrcodeDialog.show`）',
+      about.contains('GroupQrcodeDialog.show(context)'));
+  check('🔴 二维码地址在公共弹层里（`public/qrcode`）',
+      qrDialog.contains('public/qrcode'));
   // 🔴 反向：旧入口名不得复活（`stripComments` 已剥注释，注释里的改名记载不会误伤）
   check('🔴 「关于」页已无旧入口名「联系工作人员」',
       !about.contains("'联系工作人员'"));

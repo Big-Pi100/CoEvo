@@ -52,12 +52,24 @@ void section(String s) {
 /// （如「曾经的 `mockFeedItems`」），不剥就会把**说明**当**实现**。
 /// ⚠️ 但**不剥** `///` 之外的块注释（本文件不处理 `/* */`）——
 ///    项目里 Dart 侧 Doxygen 风格是 `///`，够用。
+/// 剥掉**整行注释**（注释前可有空白）。
+///
+/// # 🔴 为什么是「整行」而不是「行内切 `//`」（2026-10-04 统一修 · 实测踩到）
+///
+/// 原实现「每行找 `//` 切后半」有一个方向相反的故障：
+/// **代码行里含 `//` 时会被当注释起点，后半段整段消失**。实测形态：
+/// ```dart
+/// final x = NetworkImage('https://host/path');   // ← 是代码，不是注释
+/// ```
+/// `https://` 里的 `//` 会被当作注释起点 ⇒ 后半段查不到
+/// （**反向**断言「不得含 X」则是**假绿**）。
+/// 📌 判据：**剥注释这个动作本身会改变被检查的文本** ⇒ 只能在「整行注释」粒度做。
+/// 🔑 同族已统一：`verify_auth_entry` / `verify_reading_tab` 本轮改成同一形态；
+///    `iap_verify` / `tokens_verify` 本来就是这一形态。
+/// ⚠️ 已知代价：**行尾注释不被剥** —— 不假装没有。
 String stripComments(String src) => src
     .split('\n')
-    .map((l) {
-      final i = l.indexOf('//');
-      return i >= 0 ? l.substring(0, i) : l;
-    })
+    .where((l) => !l.trimLeft().startsWith('//'))
     .join('\n');
 
 String read(String rel) => File(rel).readAsStringSync();
