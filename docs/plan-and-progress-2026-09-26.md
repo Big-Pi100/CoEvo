@@ -31,6 +31,27 @@
 >
 > 验证：`cargo test` **228 passed / 0 failed** · 断言 60/60 · `codestatic` error 0 / warning 0
 > · 可移植性 19 项过 · 纯逻辑冒烟 21/21。
+> 🔴🔴 **2026-10-05 部署状态实测**（易忘，必看）：
+> **最新 tag = `v0.1.4`** · 服务器二进制 **`Oct 4 20:18`** · 服务启动 **10-04 20:19**
+> ⇒ **今天（10-05）的全部后端改动都还没部署**：
+> 找回密码（`auth.rs` / `routes.rs` / `schema.rs` / `main.rs` + 🆕 `tencent_ses.rs` / `tencent_sign.rs`）·
+> 同理前端改动也**未随包发布**。
+> ✅ 实测 DB：`/opt/coevo/data/coevo.db` **24 张表**，**`password_reset` 不存在**（符合「未部署」）
+> 🔑 **依赖顺序（重要）**：**`password_reset` 表是「部署时才建」的**
+>    （`schema.rs` 管新库 + `main.rs` 迁移列表管老库 ⇒ 服务重启时执行）
+>    ⇒ 不部署 ⇒ 表不存在 ⇒ 找回密码接口必然失败。
+> ⚠️ 部署需 **push tag（`v*`）**（**push main 不部署**）·
+>    且按白哥铁律：**本地验证通过 + 经他确认**才能部署。
+>
+> 🆕 **2026-10-05 云端同步开工**（订阅权益 —— 唯一「已承诺但未实现」的功能）：
+> 白哥批准 **3 个决策**（改隐私政策 / **多端登录**（推翻 L0「单端踢旧」）/ 同步校验有效订阅）
+> ⇒ 按 `docs/design/sync-implementation-assessment-2026-10-04.md` §五 实施。
+> ✅ **阶段 0（端侧 schema 迁移）已完成**（提交 `830e385`）：
+> · `user.db` **v5→v6**：`bookmark.deleted`（收藏**软删**，为同步并集铺路）
+> · `book.db` **v1→v2**：`book.content_hash`（内容指纹）· 🆕 `book_progress_pending` + `idx_book_hash`
+> · 断言 `verify_userdb_migration` **234 项**（五条路径）· 🆕 `verify_bookdb_migration` **16 项** · 证伪 **6/6**
+> ⏳ **下一步**：阶段 1（后端 `sync_handlers.rs` + `push`/`pull` + 幂等写入）→ 2 端侧纯逻辑 → 3 接线 → 4 隐私政策 → 5 端到端
+>
 > 🆕 **2026-10-05 发信链路进度**（找回密码的最后一个前置）：
 > **SES 已开通** · DNS **四项已验证通过**（含 DKIM 2048 位深度校验）·
 > 发信地址已设（`noreply@mail.keyievolution.fun`）·
