@@ -79,6 +79,30 @@ String stripComments(String src) => src
     .where((l) => !l.trimLeft().startsWith('//'))
     .join('\n');
 
+
+/// 只取**实现部分** —— 切掉 `#[cfg(test)]` 之后的测试代码。
+///
+/// # 🔴 为什么必须切（证伪时实测踩到）
+///
+/// 本组断言查的是「**实现**里有没有 X」，而 Rust 源文件里**同时包含 tests mod** ——
+/// 测试代码会**复述**实现里的字符串。实测：
+/// ```rust
+/// // 实现
+/// return Err("该账号尚未设置密码，请先完成注册".to_string());
+/// // 测试（同一个文件里）
+/// assert!(e.contains("尚未设置密码"));
+/// ```
+/// ⇒ 把**实现**的报错文案改掉后，断言查 `authRs.contains('尚未设置密码')`
+///    **仍然通过**（被测试里那句命中）⇒ **假绿**，而 `change_password`
+///    的实际行为已经变了。
+///
+/// 📌 判据：**断言作用的切片范围必须等于「被测对象」** ——
+///    这里被测对象是「实现」，就**必须排除测试**。
+///    （同族：本文件另一条「只查裸字符串会假绿」——都是「口径要精确到对象」。）
+String implOnly(String src) {
+  final i = src.indexOf('#[cfg(test)]');
+  return i < 0 ? src : src.substring(0, i);
+}
 int countOccurrences(String src, String pattern) =>
     pattern.allMatches(src).length;
 
@@ -294,6 +318,105 @@ void main() {
       !profile.contains('联系工作人员') && !profile.contains('加入英文原著共读群'));
   check('🔴 「我的」页已删 `_buildContactCard` / `_showContactDialog`',
       !profile.contains('_buildContactCard') && !profile.contains('_showContactDialog'));
+
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 【改密码】2026-10-05 —— 「修改密码」全链路（后端 + 前端）
+  //
+  // 为什么要它：「修改密码」是三条**安全约束**的复合体，任何一条被删掉，
+  // 功能仍「能用」、测试也未必报 —— 但会变成真漏洞：
+  //   ① 不验原密码 ⇒ 拿到已解锁设备的人可静默改密码，主人**再也登不回来**
+  //   ② 不失效其他会话 ⇒ 账号被盗后主人改密码，**攻击者会话仍然有效**
+  //   ③ 不查新旧相同 ⇒ 「修改」成空操作，而用户以为改成功了
+  // 前端同理：3 个字段 · 每框一个显隐切换 · 副作用**事先**告知。
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    // 🔴 必须 `implOnly` —— 否则会被 tests mod 里的同名字符串命中而**假绿**
+    //    （见 `implOnly` 文档：实测「改掉报错文案但断言仍通过」）
+    final authRs = implOnly(stripComments(
+        File('../../backend/crates/api_server/src/auth.rs').readAsStringSync()));
+    final routesRs = implOnly(stripComments(
+        File('../../backend/crates/api_server/src/routes.rs').readAsStringSync()));
+    final profile = stripComments(
+        File('../../app/lib/screens/profile_screen.dart').readAsStringSync());
+    final dlg = stripComments(
+        File('../../app/lib/widgets/change_password_dialog.dart')
+            .readAsStringSync());
+    final client = stripComments(
+        File('../../app/lib/api/auth_client.dart').readAsStringSync());
+
+    // ── 后端 ①：密码规则**只有一处定义**（注册与改密码共用）──
+    check('后端有 `validate_password_strength`（密码规则的唯一权威）',
+        authRs.contains('pub fn validate_password_strength('));
+    check('🔴 `register` 调它（不再自己写一套）',
+        authRs.contains('validate_password_strength(&req.password)?'));
+    // 🔴 反向：**不得**回退成按字节数判长度
+    //    （旧实现 `password.len() < 6` —— UTF-8 字节数，与前端「字符数」口径不同；
+    //     实测 `"a1密码"` 旧实现放行，而它在用户眼里只有 4 个字符）
+    check('🔴 不得回退成 `password.len() < 6`（那是**字节数**，与前端口径不一致）',
+        !authRs.contains('password.len() < 6'));
+    check('🔴 用 `chars().count()` 数**字符**（与前端口径对齐）',
+        authRs.contains('password.chars().count() < 6'));
+
+    // ── 后端 ②：三个安全约束 ──
+    check('🔴 ① 验原密码（`verify_password(&req.old_password`）',
+        authRs.contains('verify_password(&req.old_password'));
+    check('🔴 ② 失效**其他**会话、保留当前（`token != ?2`）',
+        authRs.contains('DELETE FROM tokens WHERE user_id = ?1 AND token != ?2'));
+    check('🔴 ③ 新旧相同要拒（`new_password == req.old_password`）',
+        authRs.contains('req.new_password == req.old_password'));
+    check('匿名账号（无密码）给**明确**报错，而不是含糊的「原密码不正确」',
+        authRs.contains('尚未设置密码'));
+
+    // ── 后端 ③：路由 + 鉴权面 ──
+    check('路由 `/api/auth/change-password` 已注册',
+        routesRs.contains('/api/auth/change-password'));
+    // 🔴 改谁的密码**只能由 token 决定** —— 若允许 body 传 user_id，
+    //    就等于开了「改别人密码」的口子（与 delete_me 同一条判据）
+    final cpInput =
+        RegExp(r'struct ChangePasswordInput\s*\{[^}]*\}').firstMatch(routesRs);
+    check('🔴 `ChangePasswordInput` **只有** old/new 两个字段（无 user_id）',
+        cpInput != null && !cpInput.group(0)!.contains('user_id'),
+        '若接受 user_id，就是「改别人密码」的口子');
+
+    // ── 前端 ④：入口 + 弹层形态 ──
+    check('「我的」页有「修改密码」入口行', profile.contains("title: '修改密码'"));
+    // 🔴🔴 **接线断言**（证伪时发现前一条**锁不住**这件事）：
+    //    只查 `title: '修改密码'` —— 行在，但把 `onTap` 换回
+    //    `() => _comingSoon('修改密码')` 时**照样通过**。
+    //    ⇒ 这正是判据「**子串断言锁不到「接线」**」的又一次实例：
+    //      「有这一行」≠「点它能打开」。
+    //    ✅ 修法：锁**实参**（`onTap:` 后面跟的是哪个方法），不是锁标题字符串。
+    check('🔴 入口 `onTap` **真的**指向弹层方法（不是占位）',
+        profile.contains('onTap: _showChangePasswordDialog'));
+    check('弹层 `show` 可被调起（`ChangePasswordDialog.show`）',
+        profile.contains('ChangePasswordDialog.show(context)'));
+    check('弹层用 `CoDialog`（与登录/注册同一套观感）', dlg.contains('CoDialog('));
+    // 🔑 用**计数**锁「3 个字段」——「A 里有 X」锁不到「少了一个」
+    final fieldCount = RegExp(r'ClayField\(').allMatches(dlg).length;
+    check('🔴 弹层有 **3** 个凹陷字段（原/新/确认）', fieldCount == 3,
+        '实际 $fieldCount 个');
+    // 🔑 每框一个显隐切换（白哥选「每框一个」而不是总开关）
+    final eyeCount = RegExp(r'_eye\(').allMatches(dlg).length;
+    check('🔴 显隐切换每框一个（共 3 处调用）', eyeCount >= 3, '实际 $eyeCount 处');
+
+    // ── 前端 ⑤：副作用告知 + 错误文案同位置 + 网络层 ──
+    check('🔴 弹层说明「其他设备需要重新登录」（副作用**事先**告知）',
+        dlg.contains('其他设备需要重新登录'));
+    check('客户端校验与服务端错误在**同一位置**显示', dlg.contains('_error ?? '));
+    check('`auth_client` 用 `Authorization: Bearer`（鉴权只认 token）',
+        client.contains("'Authorization': 'Bearer "));
+
+    // ── 前端 ⑥：反向（不得出现的东西）──
+    check('弹层不得用 Material `AlertDialog`（要走 CoDialog）',
+        !dlg.contains('AlertDialog('));
+    check('弹层不得用 `IconButton`（48px 最小点击区 + 水波纹，会撑高凹陷框）',
+        !dlg.contains('IconButton('));
+    check('`ClayField.trailing` 是**通用**参数（不得叫 obscureToggle 之类业务名）',
+        !stripComments(
+                File('../../app/lib/widgets/clay_field.dart').readAsStringSync())
+            .contains('obscureToggle'));
+  }
 
   _report();
 }

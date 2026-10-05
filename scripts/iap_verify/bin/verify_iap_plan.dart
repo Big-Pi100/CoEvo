@@ -525,6 +525,8 @@ void main() {
   //    📌 这正是 §⑧ 记过的同一条判据：**注释里提到 ≠ 代码里写了**。
   final routesSrc = codeOnly(readRepo('backend/crates/api_server/src/routes.rs'));
   final purgeSrc = codeOnly(readRepo('backend/crates/api_server/src/user_purge.rs'));
+  // 🆕 2026-10-05：「token 反查 uid」的实现搬到了 `auth.rs`（见下面那条断言）
+  final authSrc = codeOnly(readRepo('backend/crates/api_server/src/auth.rs'));
 
   check('后端注销路由已注册', routesSrc.contains('/api/user/me/delete'));
   check(
@@ -533,10 +535,26 @@ void main() {
   );
 
   // 🔴 **协议层安全**：注销只能删自己 ⇒ uid 必须来自 token，不能是客户端参数。
+  //
+  // 🔴 2026-10-05 **读取对象转移**：「从 token 反查 uid」的实现
+  //    从 `user_purge.rs` **搬到了 `auth.rs` 的 `uid_by_token`** ——
+  //    因为「修改密码」也要用它，且要知道**当前 token 本身**（保留当前会话）。
+  //    要守的**意图一字未改**：uid 必须来自 token，协议上无法指定他人。
+  //    📌 判据：**断言跟着「意图」走，不跟着「文件」走**。
+  //    🔑 而且强度**提高了**：拆成两条 ——
+  //      ① 唯一实现存在（含那条 SQL，**只许有一处**）
+  //      ② 注销路径**确实**调它（接线），而不是自己另写一份
+  //    （判据「一处定义」用**计数**：实现只有一处 + 调用点存在）
+  final uidImplCount =
+      RegExp(r'SELECT user_id FROM tokens WHERE token = \?1').allMatches(authSrc).length;
   check(
-    '🔴 后端从 token 反查 uid（协议上无法指定他人）',
-    purgeSrc.contains('fn resolve_uid_from_token') &&
-        purgeSrc.contains('SELECT user_id FROM tokens WHERE token = ?1'),
+    '🔴 「token 反查 uid」在 `auth.rs` 有唯一实现（`uid_by_token`）',
+    authSrc.contains('pub fn uid_by_token') && uidImplCount == 1,
+    '该 SQL 在 auth.rs 出现 $uidImplCount 次（应为 1）',
+  );
+  check(
+    '🔴 注销路径**确实**调它（协议上无法指定他人）',
+    purgeSrc.contains('crate::auth::uid_by_token'),
   );
 
   // Apple：「仅停用/禁用不够」⇒ 必须是 DELETE，不能是 UPDATE ... deleted_at

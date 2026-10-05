@@ -54,6 +54,7 @@ class ClayField extends StatelessWidget {
     this.onSubmitted,
     this.autofocus = false,
     this.enabled = true,
+    this.trailing,
   });
 
   final TextEditingController controller;
@@ -77,6 +78,18 @@ class ClayField extends StatelessWidget {
   ///    （凹陷是「输入区」的固有形态，不是状态）。
   final bool enabled;
 
+  /// 凹陷框**右侧**的可点元素（2026-10-05 新增）。
+  ///
+  /// 🔑 **这是通用形态，不是「密码专用」** —— 它只是「在框内右侧放一个可点件」，
+  ///    首个使用者是「修改密码」弹层的**显隐切换**（👁）。
+  ///    📌 判据：**别把某个业务概念塞进通用组件**（原打算叫 `obscureToggle`，
+  ///    那会让 `ClayField` 知道「密码」这件事，而它本不该知道）。
+  ///    若将来搜索框要「清空按钮」，同一个参数即可复用。
+  ///
+  /// ⚠️ 传 `null` 时**布局与从前完全一致**（`Row` 里只有那个 `Expanded`）——
+  ///    既有调用点（登录/注册弹窗）不受影响。
+  final Widget? trailing;
+
   /// 原型 `.inp{border-radius:12px}` —— 写死，不走 token（同 `HeaderChip` 的 13）。
   static final BorderRadius _radius = BorderRadius.circular(12);
 
@@ -94,39 +107,51 @@ class ClayField extends StatelessWidget {
       //    而凹陷区应当比卡面更暗（同 `HeaderChip` 的未激活态、`BookmarkButton`）。
       fill: t.sunken,
       borderRadius: _radius,
-      child: TextField(
-        controller: controller,
-        enabled: enabled,
-        obscureText: obscureText,
-        keyboardType: keyboardType,
-        textInputAction: textInputAction,
-        onSubmitted: onSubmitted,
-        autofocus: autofocus,
-        // 🔴 四种 border 全部显式置 `none` —— 只关 `border` 不够：
-        //    `TextField` 在**聚焦**时会切到 `focusedBorder`，
-        //    只写 `border` 的话，一点进输入框就会冒出一条 Material 下划线
-        //    （粘土容器里出现一条 Material 线 = 两个体系混在一起）。
-        decoration: InputDecoration(
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-          disabledBorder: InputBorder.none,
-          isDense: true,
-          contentPadding: _pad,
-          hintText: hintText,
-          hintStyle: TextStyle(
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+          controller: controller,
+          enabled: enabled,
+          obscureText: obscureText,
+          keyboardType: keyboardType,
+          textInputAction: textInputAction,
+          onSubmitted: onSubmitted,
+          autofocus: autofocus,
+          // 🔴 四种 border 全部显式置 `none` —— 只关 `border` 不够：
+          //    `TextField` 在**聚焦**时会切到 `focusedBorder`，
+          //    只写 `border` 的话，一点进输入框就会冒出一条 Material 下划线
+          //    （粘土容器里出现一条 Material 线 = 两个体系混在一起）。
+          decoration: InputDecoration(
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            disabledBorder: InputBorder.none,
+            isDense: true,
+            contentPadding: _pad,
+            hintText: hintText,
+            hintStyle: TextStyle(
+              fontFamily: CoFonts.uiSans,
+              fontSize: 13.5,
+              color: Color(t.ink3.argb32),
+            ),
+          ),
+          style: TextStyle(
             fontFamily: CoFonts.uiSans,
             fontSize: 13.5,
-            color: Color(t.ink3.argb32),
+            color: ink,
           ),
-        ),
-        style: TextStyle(
-          fontFamily: CoFonts.uiSans,
-          fontSize: 13.5,
-          color: ink,
-        ),
-        // 光标用强调色 —— 这是输入焦点**唯一**的视觉提示（见类文档「待目视」）。
-        cursorColor: Color(t.accent.argb32),
+              // 光标用强调色 —— 这是输入焦点**唯一**的视觉提示（见类文档「待目视」）。
+              cursorColor: Color(t.accent.argb32),
+            ),
+          ),
+          // 🔑 `trailing == null` 时这一段不产生任何布局 ⇒ 既有调用点零变化。
+          if (trailing != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 13),
+              child: trailing,
+            ),
+        ],
       ),
     );
   }

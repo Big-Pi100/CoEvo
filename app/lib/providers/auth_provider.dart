@@ -295,6 +295,38 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = const AuthState(isRestored: true);
   }
 
+  /// 修改密码（需登录）。
+  ///
+  /// # 为什么**不用** `state.isLoading` / `state.error`
+  ///
+  /// 那两个字段是**页面级**状态（`AuthState` 驱动登录弹窗与「我的」页的整体态）。
+  /// 改密码是**弹层内**的操作 —— 若借用它们，会导致：
+  /// · 弹层转圈的同时**整个页面**也在 loading（视觉上像整页在刷新）
+  /// · 错误会同时出现在**弹层内**（本地 `_error`）与**页面**上（`state.error`）
+  ///   ⇒ 用户看到两处同一句话，以为出了两个问题
+  ///   （与 `ClaimDialog` 把两类错误收在**同一个位置**是同一条判据）。
+  ///
+  /// ⇒ 本方法**只做转发与异常抛出**：loading / error 由弹层的局部状态持有。
+  /// ⚠️ 抛出的异常**消息即可直接展示**（后端文案已是中文且面向用户）。
+  Future<void> changePassword(String oldPassword, String newPassword) async {
+    final token = state.token;
+    if (token == null || token.isEmpty) {
+      // 未登录 —— 正常情况下「修改密码」入口只在已登录时可见，
+      // 这里是**兜底**（判据：AuthProvider 应自带前置检查，别依赖 UI 状态）。
+      throw Exception('请先登录');
+    }
+    try {
+      await _client.changePassword(
+        token: token,
+        oldPassword: oldPassword,
+        newPassword: newPassword,
+      );
+    } catch (e) {
+      debugPrint('changePassword 失败 endpoint=${ApiConfig.baseUrl} error=$e');
+      rethrow;
+    }
+  }
+
   /// 创建临时账户，可选推广码（来自 URL ?ref=）
   Future<void> trialStart({String? refCode, String? campaignId}) async {
     state = state.copyWith(isLoading: true, error: null);

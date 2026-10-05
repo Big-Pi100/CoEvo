@@ -25,6 +25,7 @@ import '../providers/achievement_provider.dart';
 import '../widgets/stats_card.dart';
 import '../widgets/header_chip.dart';
 import '../widgets/claim_dialog.dart';
+import '../widgets/change_password_dialog.dart';
 import '../widgets/clay_button.dart';
 import '../widgets/clay_field.dart';
 import '../widgets/co_dialog.dart';
@@ -712,8 +713,42 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             onTap: () => _comingSoon('修改邮箱'),
             bare: true,
           ),
+          Divider(height: 1, thickness: 1, color: Color(t.line.argb32)),
+          // ── 🆕 2026-10-05 修改密码 ──
+          //
+          // 位置（白哥定案 · 设计稿 §二 方案 A）：**账号组内、邮箱下方**。
+          // · 语义归属：它与「邮箱」「注销账号」同属**账号级**操作 ⇒ 同一组
+          // · 放在「邮箱」之后而不是最末：组内顺序 = 「看账号 → 改凭证」，
+          //   而**破坏性**操作（注销/退出）在页尾**独立成卡**，隔得很远 ✅
+          // · 判据：**控件放哪两维度缺一不可**（语义归属 × 常驻成本）——
+          //   它低频但不占地方（一行），且语义上必须与账号同组。
+          //
+          // 🔴 为什么和「忘记密码」是两件事（都缺就都做）：
+          //   只有「忘记密码」⇒ 记得密码的人**改不了**；
+          //   只有「修改密码」⇒ 忘了密码的人**进不去**。
+          _navTile(
+            icon: Icons.lock_outline,
+            title: '修改密码',
+            subtitle: '定期更换更安全',
+            onTap: _showChangePasswordDialog,
+            bare: true,
+          ),
         ],
       ),
+    );
+  }
+
+  /// 打开「修改密码」弹层；成功则提示。
+  ///
+  /// 🔑 toast 放在**这里**而不是弹层内部：弹层关闭的瞬间它自己的 `context`
+  ///    已失效，若在里面弹 toast 会跟着一起消失（判据：**时序：等条件成立**）。
+  Future<void> _showChangePasswordDialog() async {
+    final ok = await ChangePasswordDialog.show(context);
+    if (ok != true || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      // 文案用「已修改」（**状态**）而不是「修改成功」（系统播报口吻）——
+      // 与既有提示的语感一致。
+      SnackBar(content: Tw('密码已修改')),
     );
   }
 

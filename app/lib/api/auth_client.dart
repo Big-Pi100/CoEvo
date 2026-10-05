@@ -148,4 +148,39 @@ class AuthClient {
     }
     return data;
   }
+
+  /// 修改密码（需登录）。
+  ///
+  /// # 后端约定（`POST /api/auth/change-password`）
+  /// · 鉴权**只认 `Authorization: Bearer <token>`** —— body 里**没有** `user_id`
+  ///   （有的话就成了「改别人密码」的口子）
+  /// · 成功 → `{"ok": true}`；失败 → `{"error": "<可直接展示给用户的文案>"}`
+  ///
+  /// 🔑 后端的 error 文案**已经写得可直接展示**（「原密码不正确」/「新密码不能与原密码相同」/
+  ///    「该账号尚未设置密码，请先完成注册」）⇒ 这里**原样抛出**，不要再包一层英文前缀。
+  ///    ⚠️ 上层（弹层）负责展示；**不要**把它和网络错误的英文混在一起。
+  ///
+  /// ⚠️ 超时用 `requestTimeout`（默认档）：它跑 bcrypt 两次（验旧 + 算新），
+  ///    比登录稍慢，但仍在秒级 —— 不需要像 `verifyToken` 那样开例外。
+  Future<void> changePassword({
+    required String token,
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    final resp = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/api/auth/change-password'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'old_password': oldPassword,
+        'new_password': newPassword,
+      }),
+    ).timeout(ApiConfig.requestTimeout);
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    if (resp.statusCode != 200 || data.containsKey('error')) {
+      throw Exception(data['error'] ?? '修改失败，请重试');
+    }
+  }
 }
