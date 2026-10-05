@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>书库界面设计语言统一 · 设计稿（2026-10-05）</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   CoEvo · 书库界面设计语言统一 · 设计稿
+   ──────────────────────────────────────────────────────────────────────
+   白哥 2026-10-05 原话：
+     「收藏按钮应该更靠右，其他页面的 title 按钮都是靠右的，书库界面的导入按钮
+      应该也是一个一个粘土按钮，设计语言要统一，书库的目录清单应该也要统一设计语言」
+
+   ⇒ 本稿处理三件事：
+     ① 标题栏「收藏」不靠右（与全站不一致）
+     ② 「导入」是纯文字、零体积（与粘土语言不一致）
+     ③ 书库目录清单是「平坦行 + divider」（与两种既有列表语言都不一致）
+
+   ⚠️ 本文件是**设计稿**，不是实现。三档主题可切换，请逐档看一遍再定。
+
+   依据（不凭记忆，逐条抄自项目文件）：
+     · design-system-spec §〇 规则 1「内容平面 / 交互粘土 / 输入凹陷 —— 有体积的只可能是可点的东西」
+     · design-system-spec §3.5    尺寸阶梯（sm/md/lg 阴影随尺寸缩放）
+     · design-system-spec §3.6    凹陷公式（两个 inset 方向互换）
+     · design-system-spec §3.7    四态
+     · 既有实现：review_screen._header（Expanded 标题 → chip 贴右）
+                bookmark_list_screen（spaceBetween → 动作贴右）
+                widgets/feed_card.dart（粘土卡 = 一条内容）
+                profile_screen._navTile（Clay 容器 + Divider + bare 行 = 一组）
+                widgets/header_chip.dart（凹陷药丸 · 标题栏唯一形态）
+     ⚠️ 字体用系统栈近似（真实实现是 Literata / Inter / 思源黑体子集）
+   ══════════════════════════════════════════════════════════════════════ */
+
+:root{
+  --serif:'Literata',Georgia,serif;
+  --ui:'Inter',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+  --round:'Quicksand','Inter',sans-serif;
+  --mono:ui-monospace,'SFMono-Regular',Menlo,monospace;
+}
+
+.theme-ink{
+  --page:#F1EDE4; --read:#FAF8F4; --card:#FFFFFF;
+  --ink:#24211C; --ink2:#6E6659; --ink3:#9A917F;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF; --accent-out:rgba(180,67,44,.40);
+  --line:#EFE9DE; --sunken:#EDE6DA;
+  --cl-out:rgba(150,125,95,.24); --cl-shade:rgba(186,166,138,.55); --cl-light:rgba(255,255,255,1);
+  --cl-radius:26px;
+  --stage:#E4E0D8; --stage-ink:#29251F; --stage-sub:#6E6659; --stage-line:#CFC8BA; --stage-panel:#F7F4EC;
+  --dot:#B4432C;
+}
+.theme-grid{
+  --page:#EDEEF0; --read:#FFFFFF; --card:#FFFFFF;
+  --ink:#0A0A0A; --ink2:#5A5A5A; --ink3:#8A8A8A;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF; --accent-out:rgba(180,67,44,.40);
+  --line:#E8E8E8; --sunken:#F0F0F0;
+  --cl-out:rgba(120,120,120,.18); --cl-shade:rgba(158,158,158,.46); --cl-light:rgba(255,255,255,1);
+  --cl-radius:14px;
+  --stage:#E7E9EC; --stage-ink:#14161A; --stage-sub:#5A5A5A; --stage-line:#D2D6DA; --stage-panel:#F7F8FA;
+  --dot:#B4432C;
+}
+.theme-night{
+  --page:#0B0D12; --read:#14161C; --card:#1C1F27;
+  --ink:#EDEBE6; --ink2:#9AA0AE; --ink3:#6E7484;
+  --accent:#DB7E6B; --accent-bright:#E89B8C; --accent-ink:#2A1405; --accent-out:rgba(219,126,107,.40);
+  --line:#262A34; --sunken:#0B0D12;
+  --cl-out:rgba(0,0,0,.55); --cl-shade:rgba(0,0,0,.42); --cl-light:rgba(255,255,255,.062);
+  --cl-radius:24px;
+  --stage:#15171C; --stage-ink:#EDEBE6; --stage-sub:#9AA0AE; --stage-line:#2E323C; --stage-panel:#1B1E24;
+  --dot:#DB7E6B;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--stage);color:var(--stage-ink);font-family:var(--ui);-webkit-font-smoothing:antialiased;padding:0 0 90px;transition:background .28s,color .28s}
+.wrap{max-width:1480px;margin:0 auto;padding:0 34px}
+
+header.top{padding:52px 0 0}
+.eyebrow{font-size:12px;letter-spacing:.15em;text-transform:uppercase;color:var(--stage-sub);margin-bottom:14px}
+h1{font-family:var(--round);font-size:34px;font-weight:600;letter-spacing:-.015em;line-height:1.2;margin-bottom:16px;max-width:980px}
+.lede{font-size:15px;line-height:1.74;color:var(--stage-sub);max-width:920px}
+.lede strong{color:var(--stage-ink);font-weight:600}
+.lede code{font-family:var(--mono);font-size:12.5px;background:var(--stage-line);padding:1px 5px;border-radius:3px}
+.quote{margin-top:20px;padding:16px 20px;border-left:3px solid var(--dot);background:var(--stage-panel);border-radius:0 12px 12px 0;font-size:14px;line-height:1.75;color:var(--stage-ink);max-width:920px}
+.quote .who{display:block;font-size:12px;color:var(--stage-sub);margin-bottom:7px;letter-spacing:.04em}
+
+.switcher{position:sticky;top:0;z-index:60;background:var(--stage);border-bottom:1px solid var(--stage-line);padding:12px 0;margin-top:26px;transition:background .28s,border-color .28s}
+.sw-inner{max-width:1480px;margin:0 auto;padding:0 34px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sw-label{font-family:var(--round);font-size:12.5px;font-weight:600;color:var(--stage-sub)}
+.sw-btn{font-family:var(--round);font-size:13px;font-weight:600;border:1px solid var(--stage-line);background:var(--stage-panel);color:var(--stage-sub);border-radius:12px;padding:8px 16px;cursor:pointer;transition:all .16s}
+.sw-btn.on{background:var(--dot);border-color:var(--dot);color:#fff}
+.sw-note{font-size:12.5px;color:var(--stage-sub);margin-left:auto}
+
+.sect{margin-top:58px}
+.sect-head{padding-bottom:18px;border-bottom:1px solid var(--stage-line);margin-bottom:24px;display:flex;align-items:flex-end;gap:16px}
+.sect-n{font-family:var(--mono);font-size:13px;color:var(--stage-sub);border:1.5px solid var(--stage-line);border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--stage-panel)}
+.sect-title{font-family:var(--round);font-size:22px;font-weight:600;letter-spacing:-.01em}
+.sect-sub{font-size:13px;color:var(--stage-sub);margin-top:5px;line-height:1.6;max-width:860px}
+.sect-sub code{font-family:var(--mono);font-size:12px;background:var(--stage-line);padding:1px 5px;border-radius:3px}
+.verdict{margin-left:auto;font-family:var(--round);font-size:12px;font-weight:600;padding:5px 12px;border-radius:9px;white-space:nowrap}
+.v-bad{background:#EFDCDC;color:#8C3A2E}
+.v-good{background:#DDE8D8;color:#4A6B33}
+.v-alt{background:#E5E2F0;color:#4B4470}
+
+.rail{display:flex;gap:26px;overflow-x:auto;padding:4px 4px 18px;align-items:flex-start}
+.slot{flex-shrink:0;width:360px}
+.slot-cap{font-family:var(--round);font-size:13px;font-weight:600;color:var(--stage-sub);margin-bottom:11px;display:flex;align-items:center;gap:8px}
+.slot-cap i{width:15px;height:2px;background:var(--dot);border-radius:1px;display:block;font-style:normal}
+.slot-note{font-size:12px;color:var(--stage-sub);margin-top:12px;line-height:1.65}
+.slot-note b{color:var(--stage-ink);font-weight:600}
+.slot-note code{font-family:var(--mono);font-size:11.5px;background:var(--stage-line);padding:1px 4px;border-radius:3px}
+
+/* ── 手机框（360 = 锚点设计稿基准宽）───────────────────────────────── */
+.phone{width:360px;height:748px;border-radius:42px;overflow:hidden;position:relative;display:flex;flex-direction:column;
+  background:var(--page);color:var(--ink);font-family:var(--ui);
+  box-shadow:0 2px 4px rgba(120,100,75,.1),0 14px 36px -10px rgba(120,100,75,.28);
+  transition:background .28s,color .28s}
+.statusbar{height:42px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:12.5px;font-weight:500;flex-shrink:0;color:var(--ink)}
+.sb-r{display:flex;align-items:center;gap:5px}
+.batt{width:20px;height:10px;border:1.2px solid currentColor;border-radius:2.5px;position:relative;opacity:.85}
+.batt::after{content:'';position:absolute;right:-3px;top:2.5px;width:1.5px;height:4px;background:currentColor;border-radius:0 1px 1px 0}
+.batt i{position:absolute;left:1.2px;top:1.2px;bottom:1.2px;width:11px;background:currentColor;border-radius:1px}
+.sig{display:flex;align-items:flex-end;gap:1.5px;height:10px}
+.sig i{width:2.5px;background:currentColor;border-radius:1px}
+
+/* ── 粘土三层公式（spec §3.2）────────────────────────────────────── */
+.clay{background:var(--card);border-radius:var(--cl-radius);
+  box-shadow:6px 8px 16px var(--cl-out),inset -5px -5px 12px var(--cl-shade),inset 4px 4px 10px var(--cl-light);
+  transition:background .28s,box-shadow .28s,border-radius .28s}
+/* sm 档（24–40px 高） */
+.clay-sm{background:var(--card);border-radius:calc(var(--cl-radius) * .5);
+  box-shadow:2px 3px 5px var(--cl-out),inset -2px -2px 5px var(--cl-shade),inset 2px 2px 4px var(--cl-light)}
+/* 凹陷（spec §3.6：两个 inset 方向互换）*/
+.sunken{border-radius:calc(var(--cl-radius) * .5);background:var(--sunken);
+  box-shadow:inset 3px 3px 8px var(--cl-shade),inset -2px -2px 6px var(--cl-light)}
+/* 「格」档圆角不缩放（spec §3.5.1）—— 用 CSS 无法按主题分支，故此处以变量近似；
+   真实实现由 `ClayTokens.scaleRadius`（「格」档为 false）保证。*/
+
+/* ── 标题栏 ───────────────────────────────────────────────────────── */
+.hd{display:flex;align-items:center;padding:2px 18px 14px;gap:12px}
+.hd h2{font-family:var(--round);font-size:23px;font-weight:600;letter-spacing:-.015em;white-space:nowrap}
+/* 🔴 现状（错）：标题只占内容宽 → 右侧元素不贴边 */
+.hd-bad{display:flex;align-items:center;gap:12px;padding:2px 18px 14px}
+.hd-tabs{display:flex;align-items:baseline;gap:16px}
+.ht{font-family:var(--round);font-size:23px;font-weight:600;letter-spacing:-.015em;color:var(--ink3);position:relative;padding-bottom:5px;white-space:nowrap;transition:color .22s}
+.ht.on{color:var(--ink)}
+.ht.on::after{content:'';position:absolute;left:1px;right:1px;bottom:0;height:3px;border-radius:2px;background:var(--accent)}
+.spacer{flex:1}
+/* 药丸（HeaderChip 形态 · 凹陷）*/
+.pill{display:flex;align-items:center;gap:6px;font-family:var(--round);font-size:11.5px;font-weight:600;color:var(--accent);
+  background:var(--sunken);border-radius:13px;padding:7px 12px;white-space:nowrap;
+  box-shadow:inset 2px 2px 6px var(--cl-shade),inset -2px -2px 5px var(--cl-light)}
+.pill .n{font-family:var(--mono);font-size:10.5px;opacity:.7}
+/* 纯文字链（现状的「导入」）*/
+.txt-link{font-family:var(--ui);font-size:14px;font-weight:600;color:var(--accent);white-space:nowrap;padding:6px 10px}
+/* 粘土按钮（ClayButton 形态 · 凸起）*/
+.cbtn{display:flex;align-items:center;justify-content:center;gap:5px;font-family:var(--ui);
+  font-size:12.5px;font-weight:600;padding:7px 14px;white-space:nowrap;
+  border-radius:calc(var(--cl-radius) * .5);
+  background:var(--sunken);color:var(--ink2);
+  box-shadow:2px 3px 5px var(--cl-out),inset -2px -2px 5px var(--cl-shade),inset 2px 2px 4px var(--cl-light)}
+.cbtn.pri{background:var(--accent);color:var(--accent-ink);box-shadow:2px 3px 6px var(--accent-out),inset -2px -2px 5px rgba(0,0,0,.15),inset 2px 2px 5px rgba(255,255,255,.26)}
+
+/* ── 信息流卡（对照用）───────────────────────────────────────────── */
+.feed{padding:0 16px;flex:1;overflow:hidden}
+.fcards{display:flex;flex-direction:column;gap:13px}
+.fc{border-radius:var(--cl-radius);padding:19px 18px 17px}
+.fc .cat{font-family:var(--round);font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--accent)}
+.fc h3{font-family:var(--serif);font-size:19px;font-weight:500;line-height:1.31;letter-spacing:-.011em;margin:10px 0;color:var(--ink)}
+.fc .ex{font-family:var(--serif);font-size:13.5px;line-height:1.7;color:var(--ink2);
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+
+/* ── 书库 · 现状（平坦行 + divider）─────────────────────────────── */
+.flat-list{padding:0 24px;flex:1;overflow:hidden}
+.flat-row{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);align-items:flex-start;cursor:pointer}
+.flat-row:last-child{border-bottom:none}
+.cover-sm{width:40px;height:56px;border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  background:rgba(180,67,44,.10);font-family:var(--serif);font-size:18px;font-weight:500;color:var(--accent)}
+.flat-bd{flex:1;min-width:0}
+.flat-t{font-size:14px;font-weight:500;color:var(--ink);line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.flat-a{font-size:12px;color:var(--ink3);margin-top:3px}
+.flat-p{font-size:11.5px;color:var(--ink3);margin-top:6px}
+.chev{color:var(--accent);font-size:18px;align-self:center}
+
+/* ── 书库 · 方案 A：每本书一张粘土卡 ────────────────────────────── */
+.book-cards{padding:0 16px;flex:1;overflow:hidden;display:flex;flex-direction:column;gap:13px}
+.bcard{border-radius:var(--cl-radius);padding:15px 16px;display:flex;gap:14px;align-items:center;cursor:pointer}
+.bcover{width:46px;height:62px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  background:var(--sunken);font-family:var(--serif);font-size:22px;font-weight:600;color:var(--ink2);
+  box-shadow:inset 2px 2px 6px var(--cl-shade),inset -2px -2px 5px var(--cl-light)}
+.bbd{flex:1;min-width:0}
+.bt{font-family:var(--serif);font-size:16px;font-weight:500;color:var(--ink);line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bmeta{font-size:11.5px;color:var(--ink3);margin-top:5px}
+.bbar{height:4px;border-radius:2px;background:var(--sunken);margin-top:9px;overflow:hidden}
+.bbar i{display:block;height:100%;border-radius:2px;background:var(--accent)}
+
+/* ── 书库 · 方案 B：整列表一个粘土容器 + 内部 Divider ───────────── */
+.group-wrap{padding:0 16px;flex:1;overflow:hidden}
+.grow{display:flex;gap:12px;align-items:center;padding:13px 16px;cursor:pointer}
+.grow + .grow{border-top:1px solid var(--line)}
+
+/* ── 空态 ─────────────────────────────────────────────────────────── */
+.bk-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:0 32px;text-align:center}
+.bk-empty .ring{width:74px;height:74px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--sunken);
+  box-shadow:inset 4px 4px 10px var(--cl-shade),inset -3px -3px 8px var(--cl-light);font-size:30px}
+.bk-empty .t1{font-size:15px;font-weight:500;color:var(--ink)}
+.bk-empty .t2{font-size:12.5px;line-height:1.65;color:var(--ink3)}
+.guide-card{width:100%;border-radius:18px;padding:14px 15px;display:flex;gap:11px;align-items:flex-start;background:rgba(180,67,44,.07);cursor:pointer}
+.theme-night .guide-card{background:rgba(219,126,107,.10)}
+.guide-card .gi{font-size:17px;line-height:1.15;flex-shrink:0}
+.guide-card .gt{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:4px}
+.guide-card .gs{font-size:11.5px;line-height:1.6;color:var(--ink3)}
+.guide-card .ga{margin-left:auto;color:var(--accent);font-weight:700;align-self:center;font-size:15px}
+
+/* ── 底部 tabbar ──────────────────────────────────────────────────── */
+.tabbar{margin-top:auto;display:flex;padding:12px 20px 24px;gap:9px;flex-shrink:0}
+.tb{flex:1;text-align:center;font-family:var(--round);font-size:11px;font-weight:600;border-radius:17px;padding:8px 0 7px;color:var(--ink2)}
+.tb.on{background:var(--accent);color:var(--accent-ink);box-shadow:3px 4px 10px var(--accent-out),inset -2px -2px 6px rgba(0,0,0,.15),inset 2px 2px 6px rgba(255,255,255,.26)}
+
+/* ── 标注 ─────────────────────────────────────────────────────────── */
+.callout{position:absolute;left:8px;right:8px;border:2px dashed #C0392B;border-radius:12px;pointer-events:none;z-index:30}
+.callout.ok{border-color:#4A6B33}
+.callout .tag{position:absolute;top:-11px;left:10px;background:#C0392B;color:#fff;font-size:10px;font-weight:600;padding:2px 7px;border-radius:6px;font-family:var(--ui)}
+.callout.ok .tag{background:#4A6B33}
+
+table.cmp{width:100%;border-collapse:collapse;margin-top:22px;font-size:13px;background:var(--stage-panel);border-radius:14px;overflow:hidden}
+table.cmp th,table.cmp td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--stage-line);vertical-align:top;line-height:1.6}
+table.cmp th{font-family:var(--round);font-size:12.5px;font-weight:600;color:var(--stage-sub);background:var(--stage);letter-spacing:.02em}
+table.cmp td:first-child{font-weight:600;white-space:nowrap}
+table.cmp tr:last-child td{border-bottom:none}
+.yes{color:#4A6B33;font-weight:600}
+.no{color:#A5462F;font-weight:600}
+
+.tips{margin-top:24px;display:flex;flex-direction:column;gap:12px}
+.tip{background:var(--stage-panel);border:1px solid var(--stage-line);border-left:3px solid var(--dot);border-radius:0 12px 12px 0;padding:14px 18px;font-size:13px;line-height:1.7;color:var(--stage-ink)}
+.tip b{font-weight:600}
+.tip code{font-family:var(--mono);font-size:12px;background:var(--stage-line);padding:1px 5px;border-radius:3px}
+footer{margin-top:56px;padding-top:22px;border-top:1px solid var(--stage-line);font-size:12.5px;color:var(--stage-sub);line-height:1.8}
+</style>
+</head>
+<body class="theme-ink">
+
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">CoEvo · 设计稿 · 待确认</div>
+    <h1>书库界面 · 设计语言统一（三处）</h1>
+    <p class="lede">
+      本稿处理白哥指出的三处不一致。每一处我都<strong>先给出根因（带代码位置）</strong>，
+      再给<strong>选项与推荐</strong>。三档主题可切换 —— 请逐档看过再定。
+      <strong>确认后我再改代码</strong>。
+    </p>
+    <div class="quote">
+      <span class="who">白哥 2026-10-05 · 原话</span>
+      「收藏按钮应该更靠右，其他页面的 title 按钮都是靠右的，书库界面的导入按钮应该也是
+       一个一个粘土按钮，<br>设计语言要统一，书库的目录清单应该也要统一设计语言」
+    </div>
+  </header>
+</div>
+
+<div class="switcher">
+  <div class="sw-inner">
+    <span class="sw-label">主题</span>
+    <button class="sw-btn on" data-t="ink">墨 · 暖纸</button>
+    <button class="sw-btn" data-t="grid">格 · 纯白</button>
+    <button class="sw-btn" data-t="night">夜 · 深墨</button>
+    <span class="sw-note">重点看「格」档：它的圆角不缩放（spec §3.5.1），小药丸最容易糊</span>
+  </div>
+</div>
+
+<!-- ═══════════════════ ① 收藏按钮不靠右 ═══════════════════ -->
+<div class="wrap">
+  <section class="sect">
+    <div class="sect-head">
+      <div class="sect-n">①</div>
+      <div>
+        <div class="sect-title">「收藏」不靠右 —— 与全站不一致</div>
+        <div class="sect-sub">
+          全站其他页面的标题栏动作都<strong>贴屏幕右缘</strong>，只有「阅读」这个 tab 的标题栏不是。
+          根因是<code>reading_tab_screen.dart</code> 的 <code>_header</code> 用
+          <code>Flexible</code> 包标题 —— 标题只占<strong>内容宽</strong>，
+          右侧元素紧跟其后 ⇒ 停在标题右边，而不是屏幕右边。
+        </div>
+      </div>
+      <span class="verdict v-bad">✕ 需改</span>
+    </div>
+
+    <div class="rail">
+      <div class="slot">
+        <div class="slot-cap"><i></i>现状 · 阅读 tab（不靠右）</div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+          <!-- 现状：标题只占内容宽 → 药丸紧跟标题 -->
+          <div class="hd-bad" style="justify-content:flex-start">
+            <div class="hd-tabs"><span class="ht on">今日精选</span><span class="ht">书库</span></div>
+            <span class="pill">⌘ 收藏 <span class="n">12</span></span>
+          </div>
+          <div style="padding:0 18px 6px;font-size:11px;color:var(--stage-sub);font-family:var(--mono)">↑ 药丸停在标题右边，右边留一大片空</div>
+          <div class="feed">
+            <div class="fcards">
+              <div class="fc clay"><div class="cat">Science · 4 min</div><h3>A New Way to Grow Food in Cities</h3>
+                <div class="ex">In the middle of Singapore, a tall glass building produces more than 800 tons of vegetables every year.</div></div>
+              <div class="fc clay"><div class="cat">Culture · 6 min</div><h3>Why We Sing Together</h3>
+                <div class="ex">Every human culture has music, and almost every one of them sings in groups.</div></div>
+            </div>
+          </div>
+          <div class="tabbar"><div class="tb on">阅读</div><div class="tb">复习</div><div class="tb">我的</div></div>
+          <div class="callout" style="top:52px;height:44px"><span class="tag">药丸没贴右</span></div>
+        </div>
+        <div class="slot-note">
+          <b>代码位置</b>：<code>reading_tab_screen.dart</code> 的 <code>_header</code>：
+          <code>Flexible(FittedBox(fit: scaleDown, child: Row(tabs)))</code> + <code>SizedBox(12)</code> + <code>_trailing</code>。<br>
+          <b>根因</b>：<code>Flexible</code> 只给「内容宽」，剩余空间没人占 ⇒ 右侧元素不贴边。
+        </div>
+      </div>
+
+      <div class="slot">
+        <div class="slot-cap"><i></i>改法 · 标题撑满（<code>Expanded</code>）</div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+          <!-- 改法：Expanded 包标题 → 药丸贴右 -->
+          <div class="hd">
+            <div style="flex:1;min-width:0;display:flex"><div class="hd-tabs"><span class="ht on">今日精选</span><span class="ht">书库</span></div></div>
+            <span class="pill">⌘ 收藏 <span class="n">12</span></span>
+          </div>
+          <div class="feed">
+            <div class="fcards">
+              <div class="fc clay"><div class="cat">Science · 4 min</div><h3>A New Way to Grow Food in Cities</h3>
+                <div class="ex">In the middle of Singapore, a tall glass building produces more than 800 tons of vegetables every year.</div></div>
+              <div class="fc clay"><div class="cat">Culture · 6 min</div><h3>Why We Sing Together</h3>
+                <div class="ex">Every human culture has music, and almost every one of them sings in groups.</div></div>
+            </div>
+          </div>
+          <div class="tabbar"><div class="tb on">阅读</div><div class="tb">复习</div><div class="tb">我的</div></div>
+          <div class="callout ok" style="top:52px;height:44px"><span class="tag">✅ 贴右（与全站一致）</span></div>
+        </div>
+        <div class="slot-note">
+          <b>改法</b>：标题行由 <code>Flexible</code> 改 <code>Expanded</code> ——
+          标题占满剩余宽度，右缘元素自然被推到最右。<br>
+          🔑 <code>FittedBox(scaleDown)</code> <b>保留在 Expanded 内部</b>（对齐左），
+          于是「小屏 + 大字体不溢出」的兜底仍在，只是不再影响右侧布局。<br>
+          ✅ 这正是 <code>review_screen</code> 的做法（<code>Expanded(Text('复习'))</code> → chip 贴右）。
+        </div>
+      </div>
+
+      <div class="slot">
+        <div class="slot-cap"><i></i>对照 · 其他页面（已贴右）</div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+          <div class="hd"><h2 style="flex:1">复习</h2><span class="pill">全部</span></div>
+          <div style="padding:0 16px;font-size:12.5px;color:var(--ink3);line-height:1.7">
+            「复习」页：<code>Expanded(Text)</code> → 药丸贴右<br>
+            「收藏」页：<code>spaceBetween</code> → 「返回」贴右
+          </div>
+          <div style="padding:16px"><div style="font-size:12px;color:var(--stage-sub);font-family:var(--mono)">review_screen.dart:268<br>bookmark_list_screen.dart:115</div></div>
+          <div class="tabbar"><div class="tb">阅读</div><div class="tb on">复习</div><div class="tb">我的</div></div>
+          <div class="callout ok" style="top:52px;height:44px"><span class="tag">✅ 这两页本来就是对的</span></div>
+        </div>
+        <div class="slot-note">
+          🔑 <b>「全站一致」的判据</b>：同一位置（标题栏右缘）承担同类职责的元素，
+          应有<b>同一个落点</b>。现在三页里两页对、一页错 ⇒ 错的那页是<b>离群值</b>。
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════ ② 导入按钮应有粘土体积 ═══════════════════ -->
+  <section class="sect">
+    <div class="sect-head">
+      <div class="sect-n">②</div>
+      <div>
+        <div class="sect-title">「导入」是纯文字、零体积 —— 违反粘土语言</div>
+        <div class="sect-sub">
+          现状是一段 <code>InkWell</code> + <code>Text('导入')</code>，<strong>没有体积</strong>。
+          而 spec §〇 规则 1 的粘土语汇是：<strong>可点的东西可以有体积</strong>
+          （项目里「收藏」是凹陷药丸、「续费 / 支付」是凸起粘土按钮）。
+        </div>
+      </div>
+      <span class="verdict v-bad">✕ 需改</span>
+    </div>
+
+    <div class="rail">
+      <div class="slot">
+        <div class="slot-cap"><i></i>现状 · 纯文字「导入」</div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+          <div class="hd">
+            <div style="flex:1;display:flex"><div class="hd-tabs"><span class="ht">今日精选</span><span class="ht on">书库</span></div></div>
+            <span class="txt-link">导入</span>
+          </div>
+          <div class="book-cards">
+            <div class="bcard clay"><div class="bcover">P</div><div class="bbd"><div class="bt">Pride and Prejudice</div><div class="bmeta">Jane Austen · 第 12 章</div><div class="bbar"><i style="width:42%"></i></div></div></div>
+            <div class="bcard clay"><div class="bcover">A</div><div class="bbd"><div class="bt">Alice's Adventures in Wonderland</div><div class="bmeta">Lewis Carroll · 第 3 章</div><div class="bbar"><i style="width:18%"></i></div></div></div>
+          </div>
+          <div class="tabbar"><div class="tb on">阅读</div><div class="tb">复习</div><div class="tb">我的</div></div>
+          <div class="callout" style="top:52px;height:32px"><span class="tag">零体积</span></div>
+        </div>
+        <div class="slot-note">
+          <b>代码位置</b>：<code>reading_tab_screen.dart</code> 的 <code>_trailing</code>（books 分支）：
+          <code>InkWell &gt; Padding &gt; Text('导入', fontSize:14, accent)</code>。<br>
+          同页的「收藏」是 <code>HeaderChip</code>（凹陷药丸）⇒ <b>同一行两种形态</b>。
+        </div>
+      </div>
+
+      <div class="slot">
+        <div class="slot-cap"><i></i>方案 A · 凹陷药丸（同「收藏」）★</div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+          <div class="hd">
+            <div style="flex:1;display:flex"><div class="hd-tabs"><span class="ht">今日精选</span><span class="ht on">书库</span></div></div>
+            <span class="pill">＋ 导入</span>
+          </div>
+          <div class="book-cards">
+            <div class="bcard clay"><div class="bcover">P</div><div class="bbd"><div class="bt">Pride and Prejudice</div><div class="bmeta">Jane Austen · 第 12 章</div><div class="bbar"><i style="width:42%"></i></div></div></div>
+            <div class="bcard clay"><div class="bcover">A</div><div class="bbd"><div class="bt">Alice's Adventures in Wonderland</div><div class="bmeta">Lewis Carroll · 第 3 章</div><div class="bbar"><i style="width:18%"></i></div></div></div>
+          </div>
+          <div class="tabbar"><div class="tb on">阅读</div><div class="tb">复习</div><div class="tb">我的</div></div>
+          <div class="callout ok" style="top:52px;height:32px"><span class="tag">✅ 凹 = 可按下去</span></div>
+        </div>
+        <div class="slot-note">
+          <b>用 <code>HeaderChip</code>（现有公共组件）</b>：凹陷药丸 + 可选图标。<br>
+          ✅ 与「收藏」<b>同一行、同一形态</b> ⇒ 标题栏语言统一<br>
+          ✅ 零新组件（<code>HeaderChip</code> 已是「标题栏唯一形态」）<br>
+          ✅ 是 <b>sm 档</b>（24–40px）⇒ 尺寸阶梯自动正确<br>
+          🔑 凹陷的语义＝「<b>可以按下去</b>」，正合「导入」这个动作。
+        </div>
+      </div>
+
+      <div class="slot">
+        <div class="slot-cap"><i></i>方案 B · 凸起粘土按钮（<code>ClayButton</code>）</div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+          <div class="hd">
+            <div style="flex:1;display:flex"><div class="hd-tabs"><span class="ht">今日精选</span><span class="ht on">书库</span></div></div>
+            <span class="cbtn">＋ 导入</span>
+          </div>
+          <div class="book-cards">
+            <div class="bcard clay"><div class="bcover">P</div><div class="bbd"><div class="bt">Pride and Prejudice</div><div class="bmeta">Jane Austen · 第 12 章</div><div class="bbar"><i style="width:42%"></i></div></div></div>
+            <div class="bcard clay"><div class="bcover">A</div><div class="bbd"><div class="bt">Alice's Adventures in Wonderland</div><div class="bmeta">Lewis Carroll · 第 3 章</div><div class="bbar"><i style="width:18%"></i></div></div></div>
+          </div>
+          <div class="tabbar"><div class="tb on">阅读</div><div class="tb">复习</div><div class="tb">我的</div></div>
+          <div class="callout" style="top:52px;height:32px"><span class="tag">凸 = 有体积</span></div>
+        </div>
+        <div class="slot-note">
+          <b>用 <code>ClayButton</code>（现有公共组件）· <code>secondary</code> 变体</b>：凸起 + 暗底。<br>
+          ⚠️ 与「收藏」的药丸<b>形态不同源</b>（凸 vs 凹）⇒ 同一行出现两种物理形态。<br>
+          ❌ <code>primary</code>（朱砂填充）在标题栏会<b>抢走视线</b> ——
+          标题栏不该有「这一屏的主动作」，主动作在内容里。
+        </div>
+      </div>
+    </div>
+
+    <table class="cmp">
+      <thead><tr><th>方案</th><th>与「收藏」同源</th><th>体积语义</th><th>新增代码</th><th>风险</th></tr></thead>
+      <tbody>
+        <tr><td>A · 凹陷药丸（<code>HeaderChip</code>）<br><span class="yes">★ 推荐</span></td>
+            <td class="yes">✅ 完全同源（同一行同一形态）</td>
+            <td>凹 = 「可以按下去」</td>
+            <td class="yes">零新组件（改 4 行）</td>
+            <td>低 —— 但需给按钮加 <code>Semantics</code> 便于读屏（现「收藏」已有）</td></tr>
+        <tr><td>B · 凸起 <code>ClayButton</code></td>
+            <td class="no">⚠️ 不同源（凸 vs 凹）</td>
+            <td>凸 = 「有物理形态的物件」</td>
+            <td class="yes">零新组件</td>
+            <td>同一行两种形态；若用 <code>primary</code> 会抢标题栏视线</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ═══════════════════ ③ 书库目录清单 ═══════════════════ -->
+  <section class="sect">
+    <div class="sect-head">
+      <div class="sect-n">③</div>
+      <div>
+        <div class="sect-title">书库目录清单 —— 两种既有列表语言，它一个都不属于</div>
+        <div class="sect-sub">
+          项目里已有<strong>两种</strong>「列表」语言，书库现在都不是：
+          <br>· <strong>信息流</strong>：一条内容 = <strong>一张粘土卡</strong>（凸起、可点）
+          <br>· <strong>「我的」页</strong>：一组 = <strong>一个 <code>Clay</code> 容器</strong> + 内部 <code>Divider</code> + 平坦行
+          <br>· <strong>书库现在</strong>：平坦行 + <code>Divider</code>，<strong>直接铺在 page 底色上、无容器</strong> —— 所以既不像卡片、也不像分组。
+        </div>
+      </div>
+      <span class="verdict v-bad">✕ 需改</span>
+    </div>
+
+    <div class="rail">
+      <div class="slot">
+        <div class="slot-cap"><i></i>现状 · 平坦行 + divider（无容器）</div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+          <div class="hd"><div style="flex:1;display:flex"><div class="hd-tabs"><span class="ht">今日精选</span><span class="ht on">书库</span></div></div><span class="pill">＋ 导入</span></div>
+          <div class="flat-list">
+            <div class="flat-row"><div class="cover-sm">P</div><div class="flat-bd"><div class="flat-t">Pride and Prejudice</div><div class="flat-a">Jane Austen</div><div class="flat-p">已读 42%</div></div><span class="chev">›</span></div>
+            <div class="flat-row"><div class="cover-sm">A</div><div class="flat-bd"><div class="flat-t">Alice's Adventures in Wonderland</div><div class="flat-a">Lewis Carroll</div><div class="flat-p">已读 18%</div></div><span class="chev">›</span></div>
+            <div class="flat-row"><div class="cover-sm">S</div><div class="flat-bd"><div class="flat-t">The Sign of the Four</div><div class="flat-a">Arthur Conan Doyle</div><div class="flat-p">未开始</div></div><span class="chev">›</span></div>
+          </div>
+          <div class="tabbar"><div class="tb on">阅读</div><div class="tb">复习</div><div class="tb">我的</div></div>
+          <div class="callout" style="top:104px;height:150px"><span class="tag">平坦 · 无体积</span></div>
+        </div>
+        <div class="slot-note">
+          <b>代码位置</b>：<code>book_library_screen.dart</code> 的 <code>_list</code> +
+          <code>_bookRow</code>（<code>ListView.separated</code> + <code>Divider</code>）。<br>
+          ⚠️ 结果是：从「今日精选」切到「书库」，<b>整页的质感突然变平</b> —— 这是白哥说的「不统一」。
+        </div>
+      </div>
+
+      <div class="slot">
+        <div class="slot-cap"><i></i>方案 A · 每本书一张粘土卡 ★</div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+          <div class="hd"><div style="flex:1;display:flex"><div class="hd-tabs"><span class="ht">今日精选</span><span class="ht on">书库</span></div></div><span class="pill">＋ 导入</span></div>
+          <div class="book-cards">
+            <div class="bcard clay"><div class="bcover">P</div><div class="bbd"><div class="bt">Pride and Prejudice</div><div class="bmeta">Jane Austen · 第 12 章</div><div class="bbar"><i style="width:42%"></i></div></div><span class="chev">›</span></div>
+            <div class="bcard clay"><div class="bcover">A</div><div class="bbd"><div class="bt">Alice's Adventures in Wonderland</div><div class="bmeta">Lewis Carroll · 第 3 章</div><div class="bbar"><i style="width:18%"></i></div></div><span class="chev">›</span></div>
+            <div class="bcard clay"><div class="bcover">S</div><div class="bbd"><div class="bt">The Sign of the Four</div><div class="bmeta">Arthur Conan Doyle · 第 1 章</div><div class="bbar"><i style="width:4%"></i></div></div><span class="chev">›</span></div>
+          </div>
+          <div class="tabbar"><div class="tb on">阅读</div><div class="tb">复习</div><div class="tb">我的</div></div>
+          <div class="callout ok" style="top:104px;height:170px"><span class="tag">✅ 与信息流同一语言</span></div>
+        </div>
+        <div class="slot-note">
+          🔑 <b>为什么推荐它</b>：书是<b>内容</b>（和信息流的文章同类 —— 打开它读），
+          不是「设置项」。而本 tab 的两段（今日精选 ↔ 书库）<b>共处同一屏</b>，
+          切换时用<b>同一套卡片语言</b>才不会「像两个 App」。<br>
+          ✅ 规则 1 成立：每本书<b>可点</b> ⇒ 可以有体积。<br>
+          ✅ 与 <code>FeedCard</code> 同源（<code>Clay</code> + 三段式：封面/标题/摘要）。<br>
+          ✅ 滑动删除（<code>Dismissible</code>）在卡片上更自然。
+        </div>
+      </div>
+
+      <div class="slot">
+        <div class="slot-cap"><i></i>方案 B · 整列表一个 <code>Clay</code> 容器 + 内部行</div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+          <div class="hd"><div style="flex:1;display:flex"><div class="hd-tabs"><span class="ht">今日精选</span><span class="ht on">书库</span></div></div><span class="pill">＋ 导入</span></div>
+          <div class="group-wrap">
+            <div class="clay" style="padding:0">
+              <div class="grow"><div class="bcover">P</div><div class="bbd"><div class="bt">Pride and Prejudice</div><div class="bmeta">Jane Austen · 已读 42%</div></div><span class="chev">›</span></div>
+              <div class="grow"><div class="bcover">A</div><div class="bbd"><div class="bt">Alice's Adventures in Wonderland</div><div class="bmeta">Lewis Carroll · 已读 18%</div></div><span class="chev">›</span></div>
+              <div class="grow"><div class="bcover">S</div><div class="bbd"><div class="bt">The Sign of the Four</div><div class="bmeta">Arthur Conan Doyle · 未开始</div></div><span class="chev">›</span></div>
+            </div>
+          </div>
+          <div class="tabbar"><div class="tb on">阅读</div><div class="tb">复习</div><div class="tb">我的</div></div>
+          <div class="callout" style="top:104px;height:190px"><span class="tag">整块凸起 = 一个分组</span></div>
+        </div>
+        <div class="slot-note">
+          与<b>「我的」页</b>同一语言（<code>Clay</code> 容器 + 内部 <code>Divider</code> + <code>bare</code> 行）。<br>
+          ⚠️ 但它表达的是「<b>一组同质设置</b>」——
+          这里每本书是<b>独立内容</b>，捆成一块会让「删掉中间一本」看起来像「从表格里划掉一行」。<br>
+          ⚠️ 且与信息流卡片<b>不同源</b>（同屏切换时质感仍不一致）。<br>
+          <b>若你更看重「与我的页统一」，选这个也行</b> —— 请定。
+        </div>
+      </div>
+
+      <div class="slot">
+        <div class="slot-cap"><i></i>对照 · 两种既有列表语言</div>
+        <div class="phone">
+          <div class="statusbar"><span>9:41</span><span class="sb-r"><span class="sig"><i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:10px"></i></span><span class="batt"><i></i></span></span></div>
+          <div class="hd"><h2 style="flex:1">信息流（卡）</h2></div>
+          <div class="feed"><div class="fcards">
+            <div class="fc clay"><div class="cat">Science · 4 min</div><h3>A New Way to Grow Food in Cities</h3><div class="ex">In the middle of Singapore, a tall glass building produces more than 800 tons of vegetables every year.</div></div>
+          </div></div>
+          <div style="padding:8px 18px;font-size:11px;color:var(--stage-sub);font-family:var(--mono)">feed_card.dart → Clay()</div>
+          <div class="hd" style="padding-top:6px"><h2 style="flex:1">我的（分组容器）</h2></div>
+          <div style="padding:0 16px">
+            <div class="clay" style="padding:0">
+              <div class="grow" style="padding:11px 16px"><span>🎯</span><div class="bbd"><div class="flat-t">我的成就</div></div><span class="chev">›</span></div>
+              <div class="grow" style="padding:11px 16px"><span>ℹ️</span><div class="bbd"><div class="flat-t">关于</div></div><span class="chev">›</span></div>
+            </div>
+          </div>
+          <div style="padding:8px 18px;font-size:11px;color:var(--stage-sub);font-family:var(--mono)">profile_screen → Clay() + Divider + bare</div>
+          <div class="tabbar"><div class="tb on">阅读</div><div class="tb">复习</div><div class="tb on" style="background:transparent;color:var(--ink2);box-shadow:none">我的</div></div>
+        </div>
+        <div class="slot-note">
+          🔑 <b>判据</b>：选哪种，取决于「书库列表里的<b>每一项是什么</b>」——
+          · 是<b>内容</b>（可打开来读）→ 卡片（方案 A）
+          · 是<b>同质设置项</b>（开关/跳转）→ 分组容器（方案 B）<br>
+          书显然是前者。<b>但这是判断，请你拍板。</b>
+        </div>
+      </div>
+    </div>
+
+    <table class="cmp">
+      <thead><tr><th>方案</th><th>与信息流统一</th><th>与「我的」页统一</th><th>语义贴合</th><th>滑动删除</th><th>风险</th></tr></thead>
+      <tbody>
+        <tr><td>A · 每本书一张粘土卡<br><span class="yes">★ 推荐</span></td>
+            <td class="yes">✅ 完全同源</td><td class="no">✗ 不同</td>
+            <td class="yes">✅ 书是「内容」</td><td class="yes">✅ 自然</td>
+            <td>列表变「重」一些（卡间距 13px）⇒ 一屏可见的书从 ~6 本降到 ~5 本</td></tr>
+        <tr><td>B · 整列表一个容器</td>
+            <td class="no">✗ 不同</td><td class="yes">✅ 同源</td>
+            <td>⚠️ 读作「一组设置项」</td><td>⚠️ 从表格里划掉一行</td>
+            <td>同屏切换质感仍不一致</td></tr>
+      </tbody>
+    </table>
+
+    <div class="tips">
+      <div class="tip">
+        <b>🔑 三处改动其实是同一条规则</b>：
+        spec §〇 规则 1 ——「<b>内容平面 / 交互粘土</b>；<b>有体积的只可能是可点的东西</b>」。
+        ① 是「落点」问题（同位置同职责 → 同落点）；
+        ② 是「可点却没体积」（该有粘土的没有）；
+        ③ 是「内容却做成了平面行」（该是卡片的做成了表格）。
+      </div>
+      <div class="tip">
+        <b>⚠️ 连带影响（定方案后我会一并处理）</b>：
+        <br>· ② 若「导入」改成药丸，则「<b>收藏 / 导入</b>」两个药丸会都在标题栏右缘 ——
+          但<b>不会同时出现</b>（信息流段显示收藏、书库段显示导入）⇒ 无并排拥挤问题。
+        <br>· ③ 若改卡片，<code>_list</code> 的 <code>ListView.separated</code> + <code>Divider</code>
+          要改成 <code>ListView</code> + 间距 13（同信息流）；<b>封面占位</b>要放大到 46×62 并加凹陷底。
+        <br>· 三处都改 ⇒ <code>verify_tokens</code> / <code>verify_reading_tab</code> 的相关断言要同步更新。
+      </div>
+      <div class="tip">
+        <b>📌 本稿未涉及</b>：书库<b>空态</b>（进群引导卡）已在上一稿定案，本稿沿用；
+        阅读页（<code>/books/:id</code>）不在本次范围。
+      </div>
+    </div>
+
+    <footer>
+      CoEvo · 设计稿 · 2026-10-05 · 未实现任何代码改动<br>
+      待确认：<b>① 收藏靠右</b>（改法唯一，仅确认即可）·
+      <b>② 导入用 A 凹陷药丸 / B 凸起按钮</b> ·
+      <b>③ 书库清单用 A 粘土卡 / B 分组容器</b>。<br>
+      定完我再进入实现与断言环节。
+    </footer>
+  </section>
+</div>
+
+<script>
+  var btns = document.querySelectorAll('.sw-btn');
+  btns.forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.body.className = 'theme-' + b.dataset.t;
+      btns.forEach(function (x) { x.classList.toggle('on', x === b); });
+    });
+  });
+</script>
+</body>
+</html>
