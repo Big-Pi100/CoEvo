@@ -205,10 +205,16 @@ python scripts/check_mail_dns.py mail.keyievolution.fun <selector>  # 带 DKIM s
 
 | # | Type | **Name** | **Value** | Priority | Proxy |
 |---|---|---|---|---|---|
-| 1 | `MX` | `mail` | `mxbiz1.qq.com` | **`10`** | 灰色（MX 不给开代理）|
-| 2 | `TXT` | `mail` | `v=spf1 include:qcloudmail.com ~all` | — | 灰色 |
-| 3 | `TXT` | `_dmarc.mail` | `v=DMARC1; p=none` | — | 灰色 |
-| 4 | `TXT` | `qcloudhk2048._domainkey.mail` | **（把腾讯云那串完整粘进去）** | — | 灰色 |
+| 1 | `MX` | `mail` | `mxbiz1.qq.com` | **`10`** 🔴必填 | 灰色（MX 不给开代理）|
+| 2 | `TXT` | `mail` | `v=spf1 include:qcloudmail.com ~all` | — 无此字段 | 灰色 |
+| 3 | `TXT` | `_dmarc.mail` | `v=DMARC1; p=none` | — 无此字段 | 灰色 |
+| 4 | `TXT` | `qcloudhk2048._domainkey.mail` | **（把腾讯云那串完整粘进去）** | — 无此字段 | 灰色 |
+
+> 🔴 **`Priority` 只有第 1 条（MX）会出现，且必填**（不填 Cloudflare 不让保存）⇒ **填 `10`**。
+> 📌 为什么是 10：它是「这条 MX 的优先级」，**只有多条 MX 时才有比较意义**。
+> 我们**只有一条** MX ⇒ 填什么都能工作，**`10` 是最常规的写法**（腾讯云官方文档的示例也是 10）。
+> ⚠️ 第 2/3/4 条是 TXT，Cloudflare 的表单**不会**出现 Priority 字段
+> —— 若你在配 TXT 时也看到了，那是界面版本差异，填 `0` 即可（对 TXT 无意义）。
 
 **三条要点**：
 
