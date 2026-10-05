@@ -62,6 +62,10 @@ pub mod share_data;
 pub mod subject_router;
 pub mod subscription;
 pub mod tencent_asr;
+/// 腾讯云邮件推送（SES）—— 找回密码的验证码邮件
+pub mod tencent_ses;
+/// 腾讯云 API 3.0 公共调用层（TC3 签名 + HTTP）—— ASR 与 SES **共用**
+pub mod tencent_sign;
 pub mod tencent_tts;
 pub mod test_helpers;
 pub mod trial_handler;

@@ -120,6 +120,10 @@ pub const ANONYMIZE_TARGETS: &[(&str, &str)] = &[
 ///    （防止将来有人「顺手」把 FK OFF 去掉）。
 pub const DELETE_TARGETS: &[(&str, &str)] = &[
     ("tokens", "user_id"),
+    // 🆕 2026-10-05：找回密码的验证码 —— 纯个人数据（无保留义务）⇒ **删除**，不匿名化。
+    //    🔴 为什么是删而不是匿名化：它的内容就是「重置密码的凭据」，
+    //       行本身对业务没有任何留存价值（与支付流水不同 —— 那些要留给对账）。
+    ("password_reset", "user_id"),
     ("user_preferences", "user_id"),
     ("user_notifications", "user_id"),
     ("subscription_requests", "target_user_id"),

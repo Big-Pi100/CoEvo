@@ -157,6 +157,11 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/auth/verify", post(auth_verify))
         // 🆕 2026-10-05 修改密码（需登录 · 只认 token，不接受 body 里的 user_id）
         .route("/api/auth/change-password", post(auth_change_password))
+        // 🆕 2026-10-05 找回密码「忘记密码」（**无需登录** · 邮件 6 位码）
+        // 🔑 与上面那条是「账号维护功能」的两半：已登录的人走 change-password，
+        //    进不来的人走这里。两条路径的旧会话处理**相反**（保留当前 vs 全删）。
+        .route("/api/auth/forgot-password", post(auth_forgot_password))
+        .route("/api/auth/reset-password", post(auth_reset_password))
         // ── 🔴 2026-09-29 已退役：/api/review/* · /api/cards/* · /api/history · /api/conversations/* ──
         //     学习状态已整体迁到端侧 `user.db`（`card_review_state` / `review_log` / `user_word`）：
         //       · `/api/review/*` 与 `/api/cards/*` 原由后端 FSRS（crate `card_engine`）驱动
@@ -715,6 +720,120 @@ async fn auth_change_password(
         Err(e) => {
             // ⚠️ **不打印密码**（即使是日志）—— 只记「失败」这件事。
             tracing::warn!("auth_change_password: 失败 —— {}", e);
+            Json(serde_json::json!({"error": e})).into_response()
+        }
+    }
+}
+
+/// 「已发送」的统一文案 —— **含糊**是刻意的（防邮箱枚举）。
+///
+/// 🔑 前端应原样显示这句，不要自己再写一遍（同一句话两处维护会漂移）。
+const FORGOT_SENT_MSG: &str = "若该邮箱已注册，验证码已发送";
+
+/// 「忘记密码」第 1 步的请求体（`POST /api/auth/forgot-password`）。
+#[derive(Deserialize)]
+pub struct ForgotPasswordInput {
+    pub email: String,
+}
+
+/// 「忘记密码」第 2 步的请求体（`POST /api/auth/reset-password`）。
+///
+/// 🔑 与 `ChangePasswordInput` **刻意不共用**（判据：复用结构体看语义是否同一件事）：
+///    · `ChangePasswordInput` = 已登录 + **验原密码** + 保留当前会话
+///    · 本结构 = 未登录 + **验邮箱码** + 删除全部会话
+///    字段长得像（都有一个「新密码」），但它们是两套不同的凭据体系。
+#[derive(Deserialize)]
+pub struct ResetPasswordInput {
+    pub email: String,
+    pub code: String,
+    pub new_password: String,
+}
+
+/// POST /api/auth/forgot-password — **忘记密码**第 1 步：发送验证码
+///
+/// 请求体: `{"email": "str"}`
+/// 响应: `{"ok": true, "message": "若该邮箱已注册，验证码已发送"}` 或 `{"error": "str"}`
+/// 限流: **5 次/分钟/IP**（比 login 更严 —— 每次都会**真发一封邮件**）
+///
+/// # 🔴 邮箱未注册也返回成功（这是安全要求，不是疏漏）
+///
+/// 报错就等于提供「哪些邮箱注册过」的探测接口 —— 撞库的第一步。
+/// 这与 `login` 统一回「邮箱或密码错误」是同一条判据。
+///
+/// # ⚠️ 唯一例外：**发信失败**要如实报错
+///
+/// 发信失败（服务未配置 / 网络 / 模板被拒）与「邮箱是否存在」**无关** ——
+/// 它对所有邮箱一视同仁 ⇒ 不构成枚举面，可以告知用户。
+/// 反过来说，若这里把失败吞掉当成功，用户会一直等一封永远不来的验证码
+/// （「静默失效」—— 本项目的主要敌人）。⚠️ 但错误信息**不透技术细节**。
+async fn auth_forgot_password(
+    headers: HeaderMap,
+    Json(input): Json<ForgotPasswordInput>,
+) -> axum::response::Response {
+    if let Err(resp) = crate::rate_limiter::check_rate_limit(&headers, 5, 60) {
+        return resp;
+    }
+
+    // ── ① 签发（同步 · 落库）──
+    let code = {
+        let conn = crate::db_pool::get_conn();
+        match crate::auth::issue_reset_code(&conn, &input.email) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("auth_forgot_password: 拒绝 —— {}", e);
+                return Json(serde_json::json!({"error": e})).into_response();
+            }
+        }
+    };
+
+    // ── ② 邮箱未注册 ⇒ **不发信**，但对外的响应与成功**一字不差** ──
+    let Some(code) = code else {
+        return Json(serde_json::json!({"ok": true, "message": FORGOT_SENT_MSG})).into_response();
+    };
+
+    // ── ③ 发信（异步）──
+    match crate::tencent_ses::send_reset_code(input.email.trim(), &code).await {
+        Ok(()) => Json(serde_json::json!({"ok": true, "message": FORGOT_SENT_MSG})).into_response(),
+        Err(e) => {
+            // 内部细节只进日志（可能是「模板 ID 错」「余额不足」等，不该给终端用户看）
+            tracing::error!("auth_forgot_password: 发信失败 —— {}", e);
+            Json(serde_json::json!({"error": "验证码发送失败，请稍后再试"})).into_response()
+        }
+    }
+}
+
+/// POST /api/auth/reset-password — **忘记密码**第 2 步：用验证码重置密码
+///
+/// 请求体: `{"email": "str", "code": "str", "new_password": "str"}`
+/// 响应: `{"user_id","token","message","email"}`（**与 login 同形 ⇒ 前端可直接自动登录**）
+///        或 `{"error": "str"}`
+/// 限流: 10 次/分钟/IP（与 `login` / `change-password` 同档 —— 都要跑 bcrypt）
+///
+/// # 🔴 无鉴权（不需要 token）
+///
+/// 这正是本接口存在的意义：**用户此刻登不进来**。
+/// 凭据是「能收到该邮箱验证码」—— 即「确实拥有这个邮箱」。
+async fn auth_reset_password(
+    headers: HeaderMap,
+    Json(input): Json<ResetPasswordInput>,
+) -> axum::response::Response {
+    if let Err(resp) = crate::rate_limiter::check_rate_limit(&headers, 10, 60) {
+        return resp;
+    }
+
+    let result = {
+        let conn = crate::db_pool::get_conn();
+        crate::auth::reset_password(&conn, &input.email, &input.code, &input.new_password)
+    };
+
+    match result {
+        Ok(resp) => {
+            tracing::info!("auth_reset_password: 重置成功并自动登录");
+            Json(serde_json::json!(resp)).into_response()
+        }
+        Err(e) => {
+            // ⚠️ **不打印密码/验证码**（即使是日志）—— 只记「失败」这件事。
+            tracing::warn!("auth_reset_password: 失败 —— {}", e);
             Json(serde_json::json!({"error": e})).into_response()
         }
     }

@@ -131,6 +131,22 @@ async fn main() {
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )",
+            // 🆕 2026-10-05 `password_reset`（找回密码的验证码表）。
+            // 🔴 **必须与 `schema.rs` 里的那份同时存在**（判据：改 schema 必查两处）：
+            //    `schema.rs` 管**新库**，这里管**老库升级**。只改一处的结果是
+            //    「新装的有表、已上线的库没有」—— 而生产库正是后者。
+            //    定义以 `schema.rs` 为准（含完整注释），此处保持逐字一致。
+            "CREATE TABLE IF NOT EXISTS password_reset (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                code_hash TEXT NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                expires_at INTEGER NOT NULL,
+                used_at INTEGER,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset(user_id, created_at)",
             // 🔴 2026-09-29 已删 4 条：`real_name` · `phone` · `id_number` · `bind_hash`
             //
             // 🔑 **为什么必须删**（否则本轮所有后端改动都会被静默撤销）：

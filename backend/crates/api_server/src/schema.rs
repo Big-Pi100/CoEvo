@@ -35,6 +35,28 @@ CREATE TABLE IF NOT EXISTS tokens (
     created_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
+-- 🆕 2026-10-05：找回密码（「忘记密码」）的验证码表。
+--
+-- 🔴 **只存 hash，不存明文码** —— 明文只在 `auth::issue_reset_code` 返回的那一刻存在，
+--    交给发信函数后即从内存消失。库里即使被拿走也还原不出码。
+-- 🔑 6 位数字码用 bcrypt 存**够安全**：码空间 10^6，bcrypt cost=10 每次约 100ms
+--    ⇒ 离线穷举需 ~27 小时；而码**只活 10 分钟**（`expires_at`）且错 5 次即废
+--    （`attempts`）⇒ 拿到库也来不及用。
+-- 🔑 与「修改密码」的关键区别（**不要**把两处逻辑合并）：
+--    · 修改密码：用户**在登录态** ⇒ 改完**保留当前会话**、踢掉其他设备
+--    · 忘记密码：用户**不在登录态**（登不进来才来重置）⇒ 重置完**删掉该用户全部 token**
+-- 📄 端点与文案 → `docs/design/forgot-password-ui-2026-10-05.html`
+CREATE TABLE IF NOT EXISTS password_reset (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    code_hash TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    expires_at INTEGER NOT NULL,
+    used_at INTEGER,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset(user_id, created_at);
 -- 🔴 2026-09-29 已退役：`conversations` / `conversation_turns`（对话链）·
 --    `card_memory` / `review_log`（后端 FSRS 复习状态）· `achievements`（成就改为端侧计算）
 -- ── 已移除：K12 课程体系（2026-09-28 白哥决定 · 整体清退）──
@@ -1442,6 +1464,8 @@ mod tests {
         // 核心
         "users",
         "tokens",
+        // 🆕 2026-10-05：找回密码的验证码（「忘记密码」）
+        "password_reset",
         "trial_ip_log",
         // 管理端
         "admin_users",

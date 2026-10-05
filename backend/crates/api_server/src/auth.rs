@@ -476,6 +476,266 @@ pub fn verify_token(conn: &rusqlite::Connection, user_id: &str, token: &str) -> 
     ).unwrap_or(false)
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// 「忘记密码」（自助重置）—— 与「修改密码」并列的另一半
+// ══════════════════════════════════════════════════════════════════════════
+//
+// 📄 为什么必须两个都有 → `docs/design/forgot-password-ui-2026-10-05.html`
+// 📄 邮件通道（腾讯云 SES）→ `docs/operations/tencent-ses-onboarding-2026-10-05.md`
+
+/// 重置验证码的有效期（秒）—— **10 分钟**。
+pub const RESET_CODE_TTL_SECS: i64 = 600;
+/// 同一邮箱两次「申请验证码」之间的最小间隔（秒）—— 防刷 + 控制发信成本。
+pub const RESET_CODE_COOLDOWN_SECS: i64 = 60;
+/// 同一个验证码允许的最大错误次数 —— 达到即**作废**该码（防 6 位码被穷举）。
+pub const RESET_CODE_MAX_ATTEMPTS: i64 = 5;
+
+/// 生成一个 **6 位数字**验证码，含前导零（如 `"004271"`）。
+///
+/// 🔑 用 `gen_range(0..1_000_000)` + `{:06}` 而不是「随机 6 个数字拼接」：
+///    前者每一位都是独立均匀的，后者容易写出「首位不为 0」这类偏斜
+///    （而偏斜会把 10^6 的搜索空间缩小，直接削弱防暴力能力）。
+fn generate_reset_code() -> String {
+    use rand::Rng;
+    let n: u32 = rand::thread_rng().gen_range(0..1_000_000);
+    format!("{:06}", n)
+}
+
+/// 「忘记密码」第 1 步：为该邮箱**签发**一个验证码并落库。
+///
+/// # 返回值的三种含义（调用方必须分清）
+///
+/// | 返回 | 含义 | 调用方应做什么 |
+/// |---|---|---|
+/// | `Ok(Some(code))` | 签发成功，明文码**只在此刻可见** | 立刻发信，把 `code` 发出去 |
+/// | `Ok(None)` | 该邮箱**不存在**（或账号已注销） | **不发信**，但对外仍回「成功」 |
+/// | `Err(msg)` | 格式非法 / 距上次申请不足 60 秒 | 把 `msg` 回给前端（或统一文案） |
+///
+/// # 🔴 为什么明文码只返回一次、之后无处可查
+///
+/// 表里只存 bcrypt hash —— 库被拿走也还原不出码。
+/// 代价是「码只在这一刻可得」⇒ 调用方**必须**在同一个请求里把信发出去。
+///
+/// # 🔴 为什么「邮箱不存在」不报错（这是安全要求，不是疏漏）
+///
+/// 若报错，本接口就变成「这个邮箱注册过吗」的探测器 —— 撞库的第一步。
+/// `login` 之所以统一回「邮箱或密码错误」，正是同一条判据。
+pub fn issue_reset_code(
+    conn: &rusqlite::Connection,
+    email: &str,
+) -> Result<Option<String>, String> {
+    let email = email.trim();
+    if !is_valid_email(email) {
+        return Err("邮箱格式不正确".into());
+    }
+
+    // ── 查用户（大小写不敏感，与 login / register 同一判据）──
+    let user_id: Option<String> = conn
+        .query_row(
+            "SELECT id FROM users WHERE email = ?1 COLLATE NOCASE AND deleted_at IS NULL",
+            rusqlite::params![email],
+            |row| row.get(0),
+        )
+        .ok();
+
+    let Some(user_id) = user_id else {
+        tracing::info!("issue_reset_code: 邮箱未注册 —— 静默返回（不发信、不报错）");
+        return Ok(None);
+    };
+
+    let now = chrono::Utc::now().timestamp();
+
+    // ── 限流：同一邮箱 60 秒内只能申请一次 ──
+    // 🔑 必须有：① 每次申请都**真发一封邮件**（有成本/有信誉风险）；
+    //            ② 不限速的话，攻击者可高频申请把 6 位码的搜索空间压小。
+    let last: Option<i64> = conn
+        .query_row(
+            "SELECT created_at FROM password_reset WHERE user_id = ?1 \
+             ORDER BY created_at DESC LIMIT 1",
+            rusqlite::params![user_id],
+            |row| row.get(0),
+        )
+        .ok();
+    if let Some(last) = last {
+        if now - last < RESET_CODE_COOLDOWN_SECS {
+            return Err("发送太频繁，请稍后再试".into());
+        }
+    }
+
+    // ── 签发 ──
+    let code = generate_reset_code();
+    let code_hash = hash_password(&code);
+    if code_hash.is_empty() {
+        return Err("验证码生成失败，请重试".into());
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO password_reset (id, user_id, code_hash, attempts, expires_at, created_at) \
+         VALUES (?1, ?2, ?3, 0, ?4, ?5)",
+        rusqlite::params![id, user_id, code_hash, now + RESET_CODE_TTL_SECS, now],
+    )
+    .map_err(|e| {
+        tracing::error!("issue_reset_code: 写库失败: {}", e);
+        "验证码生成失败，请重试".to_string()
+    })?;
+
+    tracing::info!("issue_reset_code: 已签发给 user_id={}", user_id);
+    Ok(Some(code))
+}
+
+/// 「忘记密码」第 2 步：用验证码重置密码。
+///
+/// 成功返回与 [`login`] **同形**的响应（含新 `token`）⇒ 前端可**直接进 App**（自动登录）。
+///
+/// # 校验顺序（有讲究，别调换）
+///
+/// 1. **新密码强度** —— 格式错的输入不必查库
+/// 2. **用户存在** —— 不存在则回含糊的「验证码不正确」（不泄露邮箱是否注册）
+/// 3. **取最新一条未用未过期的码** —— 没有 → 「已失效，请重新获取」
+/// 4. **是否过期**
+/// 5. **比对码** —— 错则 `attempts + 1`；达上限则**作废**（见 [`RESET_CODE_MAX_ATTEMPTS`]）
+/// 6. **改密码 → 用掉码 → 删全部会话 → 签发新 token**（**一个事务**）
+///
+/// # 🔴 与「修改密码」的关键差异 —— 不要合并这两个函数
+///
+/// | | 修改密码 | 忘记密码 |
+/// |---|---|---|
+/// | 用户状态 | **已登录** | **未登录**（登不进来才来重置）|
+/// | 旧会话 | **保留当前**、踢其他 | **全部删除** |
+/// | 理由 | 主人正在用这台设备 | 没有「当前会话」；且重置常发生在「怀疑被盗」时 |
+pub fn reset_password(
+    conn: &rusqlite::Connection,
+    email: &str,
+    code: &str,
+    new_password: &str,
+) -> Result<AuthResponse, String> {
+    // ── 1. 新密码强度（与注册 / 改密码**同一条**规则 —— 全后端唯一权威）──
+    validate_password_strength(new_password)?;
+
+    let email = email.trim();
+    let user_id: Option<String> = conn
+        .query_row(
+            "SELECT id FROM users WHERE email = ?1 COLLATE NOCASE AND deleted_at IS NULL",
+            rusqlite::params![email],
+            |row| row.get(0),
+        )
+        .ok();
+    // ── 2. 含糊：不区分「邮箱不存在」与「码不对」──
+    let Some(user_id) = user_id else {
+        return Err("验证码不正确".into());
+    };
+
+    let now = chrono::Utc::now().timestamp();
+
+    // ── 3. 取最新一条「未用」的码 ──
+    let row: Option<(String, String, i64, i64)> = conn
+        .query_row(
+            "SELECT id, code_hash, attempts, expires_at FROM password_reset \
+             WHERE user_id = ?1 AND used_at IS NULL ORDER BY created_at DESC LIMIT 1",
+            rusqlite::params![user_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .ok();
+    let Some((pr_id, code_hash, attempts, expires_at)) = row else {
+        return Err("验证码已失效，请重新获取".into());
+    };
+
+    // ── 4. 过期 ──
+    if now > expires_at {
+        return Err("验证码已过期，请重新获取".into());
+    }
+
+    // ── 5. 比对（bcrypt · 恒定时长 ⇒ 不能靠响应时间逐位猜）──
+    if !verify_password(code.trim(), &code_hash) {
+        let next = attempts + 1;
+        if next >= RESET_CODE_MAX_ATTEMPTS {
+            // 🔴 达上限 ⇒ **作废这个码**（标 `used_at`），迫使用户重新申请。
+            //    不这么做，攻击者可无限次试 —— 6 位码只有 10^6 种，
+            //    不限次就等于没有防暴力能力。
+            if let Err(e) = conn.execute(
+                "UPDATE password_reset SET attempts = ?1, used_at = ?2 WHERE id = ?3",
+                rusqlite::params![next, now, pr_id],
+            ) {
+                tracing::warn!("reset_password: 作废验证码失败: {}", e);
+            }
+            return Err("尝试次数过多，请重新获取验证码".into());
+        }
+        if let Err(e) = conn.execute(
+            "UPDATE password_reset SET attempts = ?1 WHERE id = ?2",
+            rusqlite::params![next, pr_id],
+        ) {
+            tracing::warn!("reset_password: 累加尝试次数失败: {}", e);
+        }
+        return Err("验证码不正确".into());
+    }
+
+    // ── 6. 通过：改密码 + 用掉码 + 换新会话（**原子**）──
+    let new_hash = hash_password(new_password);
+    if new_hash.is_empty() {
+        return Err("密码保存失败，请重试".into());
+    }
+
+    // 🔑 用 `unchecked_transaction`（只需 `&Connection`，与 `db_pool` 的共享连接兼容）
+    //    把三步包成原子。不做事务的两种坏结果：
+    //      · 改了密码但没换 token → 用户拿旧 token 继续用，而我们以为已重置
+    //      · 码标了已用但密码没改 → 用户被彻底锁死（码废了、密码还是旧的）
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("事务开启失败: {}", e))?;
+
+    tx.execute(
+        "UPDATE users SET password_hash = ?1 WHERE id = ?2",
+        rusqlite::params![new_hash, user_id],
+    )
+    .map_err(|e| {
+        tracing::error!("reset_password: 更新 hash 失败: {}", e);
+        "密码保存失败，请重试".to_string()
+    })?;
+
+    tx.execute(
+        "UPDATE password_reset SET used_at = ?1 WHERE id = ?2",
+        rusqlite::params![now, pr_id],
+    )
+    .map_err(|e| format!("密码保存失败，请重试: {}", e))?;
+
+    // 🔴 删掉该用户**全部** token（与「修改密码」相反 —— 见上方差异表）
+    tx.execute(
+        "DELETE FROM tokens WHERE user_id = ?1",
+        rusqlite::params![user_id],
+    )
+    .map_err(|e| format!("密码保存失败，请重试: {}", e))?;
+
+    // 签发新 token（自动登录）
+    let token = uuid::Uuid::new_v4().to_string();
+    let token_id = uuid::Uuid::new_v4().to_string();
+    tx.execute(
+        "INSERT INTO tokens (id, user_id, token, created_at) VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![token_id, user_id, token, now],
+    )
+    .map_err(|e| format!("密码保存失败，请重试: {}", e))?;
+
+    tx.commit()
+        .map_err(|e| format!("密码保存失败，请重试: {}", e))?;
+
+    // 顺带清理该用户其余的历史验证码（防表无限增长）。
+    // ⚠️ 放在事务**之外**且失败只记日志 —— 密码已经改成功了，
+    //    把「清理旧码失败」报成整体失败会误导用户去重试（而码已被用掉）。
+    if let Err(e) = conn.execute(
+        "DELETE FROM password_reset WHERE user_id = ?1 AND id != ?2",
+        rusqlite::params![user_id, pr_id],
+    ) {
+        tracing::warn!("reset_password: 清理历史验证码失败（不影响结果）: {}", e);
+    }
+
+    tracing::info!("reset_password: 重置成功（已失效该用户全部旧会话）");
+    Ok(AuthResponse {
+        user_id,
+        token,
+        message: "Password reset successful".into(),
+        email: Some(email.to_string()),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1001,5 +1261,250 @@ mod tests {
             uid_by_token(&conn, "not-a-real-token").is_err(),
             "无效 token 应报错"
         );
+    }
+
+    // ═══════════════════ 找回密码（「忘记密码」）═══════════════════
+
+    /// 未注册邮箱 ⇒ `Ok(None)`（**静默**），且**不写库、不发信**。
+    /// 🔑 这是安全要求：报错就等于提供「邮箱是否注册」的探测接口。
+    #[test]
+    fn test_issue_reset_code_unknown_email_is_silent() {
+        let conn = setup_db();
+        assert!(
+            matches!(issue_reset_code(&conn, "nobody@example.com"), Ok(None)),
+            "未注册邮箱必须静默返回 None，而不是报错"
+        );
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM password_reset", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 0, "未注册邮箱不应写入验证码表");
+    }
+
+    #[test]
+    fn test_issue_reset_code_rejects_invalid_email() {
+        let conn = setup_db();
+        assert!(issue_reset_code(&conn, "not-an-email").is_err());
+        // 已注册的账号配上非法邮箱串，同样拦在前面
+        seed_user(&conn, "ok@example.com", "abc123");
+        assert!(
+            issue_reset_code(&conn, "ok@example").is_err(),
+            "缺顶级域应被拒"
+        );
+    }
+
+    /// 码必须是 **6 位数字**，且库里存的是 **bcrypt hash**（不是明文）。
+    #[test]
+    fn test_issued_code_is_six_digits_and_hashed() {
+        let conn = setup_db();
+        seed_user(&conn, "a@example.com", "abc123");
+
+        let code = issue_reset_code(&conn, "a@example.com").unwrap().unwrap();
+        assert_eq!(code.len(), 6, "必须 6 位：{code}");
+        assert!(
+            code.chars().all(|c| c.is_ascii_digit()),
+            "必须全数字：{code}"
+        );
+
+        let stored: String = conn
+            .query_row("SELECT code_hash FROM password_reset", [], |r| r.get(0))
+            .unwrap();
+        assert_ne!(stored, code, "🔴 库里不能是明文验证码");
+        assert!(stored.starts_with("$2"), "应是 bcrypt hash，实际 {stored}");
+    }
+
+    #[test]
+    fn test_issue_reset_code_cooldown() {
+        let conn = setup_db();
+        seed_user(&conn, "b@example.com", "abc123");
+        issue_reset_code(&conn, "b@example.com").unwrap().unwrap();
+
+        let err = issue_reset_code(&conn, "b@example.com").unwrap_err();
+        assert!(err.contains("频繁"), "60 秒内二次申请应被限流：{err}");
+    }
+
+    /// 成功重置：新 token 可用 · 旧会话**全清** · 新密码能登、旧密码不能。
+    #[test]
+    fn test_reset_password_happy_path() {
+        let conn = setup_db();
+        let (uid, _old_token) = seed_user(&conn, "c@example.com", "secret1");
+
+        let code = issue_reset_code(&conn, "c@example.com").unwrap().unwrap();
+        let resp = reset_password(&conn, "c@example.com", &code, "newpass1").unwrap();
+
+        assert_eq!(resp.user_id, uid);
+        assert!(
+            verify_token(&conn, &uid, &resp.token),
+            "🔴 重置后应立即自动登录（新 token 必须有效）"
+        );
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tokens WHERE user_id = ?1",
+                [&uid],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 1, "🔴 旧会话必须全部失效（只剩刚签发的新 token）");
+
+        assert!(
+            login(
+                &conn,
+                &LoginRequest {
+                    email: "c@example.com".into(),
+                    password: "newpass1".into()
+                }
+            )
+            .is_ok(),
+            "新密码必须能登录"
+        );
+        assert!(
+            login(
+                &conn,
+                &LoginRequest {
+                    email: "c@example.com".into(),
+                    password: "secret1".into()
+                }
+            )
+            .is_err(),
+            "旧密码必须失效"
+        );
+    }
+
+    /// 码错 4 次仍可用；第 5 次达上限 ⇒ 文案变化 + **该码作废**（连正确的码也不能再用）。
+    #[test]
+    fn test_reset_password_attempt_limit_locks_code() {
+        let conn = setup_db();
+        seed_user(&conn, "d@example.com", "abc123");
+        let code = issue_reset_code(&conn, "d@example.com").unwrap().unwrap();
+        // 一个「长度对但值不同」的码
+        let wrong = if code == "000000" { "000001" } else { "000000" };
+
+        for i in 1..=4 {
+            let err = reset_password(&conn, "d@example.com", wrong, "newpass1").unwrap_err();
+            assert_eq!(err, "验证码不正确", "第 {i} 次错误应是普通文案");
+        }
+        let err = reset_password(&conn, "d@example.com", wrong, "newpass1").unwrap_err();
+        assert!(err.contains("尝试次数过多"), "第 5 次应达上限：{err}");
+
+        // 作废之后，**正确的码**也不能再用（迫使重新申请）
+        let err2 = reset_password(&conn, "d@example.com", &code, "newpass1").unwrap_err();
+        assert!(err2.contains("失效"), "码应已作废：{err2}");
+    }
+
+    #[test]
+    fn test_reset_password_expired_code_rejected() {
+        let conn = setup_db();
+        seed_user(&conn, "e@example.com", "abc123");
+        let code = issue_reset_code(&conn, "e@example.com").unwrap().unwrap();
+
+        // 把过期时间推到过去
+        conn.execute("UPDATE password_reset SET expires_at = 1", [])
+            .unwrap();
+
+        let err = reset_password(&conn, "e@example.com", &code, "newpass1").unwrap_err();
+        assert!(err.contains("过期"), "{err}");
+    }
+
+    /// 强度校验发生在**验码之前** ⇒ 弱密码被拒时**不会消耗**那条码。
+    #[test]
+    fn test_reset_password_rejects_weak_password_without_burning_code() {
+        let conn = setup_db();
+        seed_user(&conn, "f@example.com", "abc123");
+        let code = issue_reset_code(&conn, "f@example.com").unwrap().unwrap();
+
+        assert!(
+            reset_password(&conn, "f@example.com", &code, "a1").is_err(),
+            "太短"
+        );
+        assert!(
+            reset_password(&conn, "f@example.com", &code, "abcdefg").is_err(),
+            "无数字"
+        );
+        assert!(
+            reset_password(&conn, "f@example.com", &code, "1234567").is_err(),
+            "无字母"
+        );
+
+        // 码仍在 ⇒ 用合规密码能成功
+        assert!(
+            reset_password(&conn, "f@example.com", &code, "goodpass1").is_ok(),
+            "🔑 被强度校验拒掉的尝试不应消耗验证码"
+        );
+    }
+
+    /// 码是**一次性**的。
+    #[test]
+    fn test_reset_code_is_single_use() {
+        let conn = setup_db();
+        seed_user(&conn, "g@example.com", "abc123");
+        let code = issue_reset_code(&conn, "g@example.com").unwrap().unwrap();
+
+        assert!(reset_password(&conn, "g@example.com", &code, "newpass1").is_ok());
+        let err = reset_password(&conn, "g@example.com", &code, "newpass2").unwrap_err();
+        assert!(err.contains("失效"), "同一个码不能复用：{err}");
+
+        assert!(login(
+            &conn,
+            &LoginRequest {
+                email: "g@example.com".into(),
+                password: "newpass1".into()
+            }
+        )
+        .is_ok());
+    }
+
+    /// 未注册邮箱 ⇒ 与「码不对」**同一句**（防邮箱枚举，与 `login` 同一判据）。
+    #[test]
+    fn test_reset_password_unknown_email_is_vague() {
+        let conn = setup_db();
+        let err = reset_password(&conn, "nobody@example.com", "123456", "newpass1").unwrap_err();
+        assert_eq!(err, "验证码不正确", "不能泄露邮箱是否注册");
+    }
+
+    /// 邮箱大小写不敏感（与 `register` / `login` 同一判据）。
+    #[test]
+    fn test_reset_password_email_case_insensitive() {
+        let conn = setup_db();
+        seed_user(&conn, "Mixed@Example.com", "abc123");
+        let code = issue_reset_code(&conn, "mixed@example.com")
+            .unwrap()
+            .unwrap();
+        assert!(
+            reset_password(&conn, "MIXED@EXAMPLE.COM", &code, "newpass1").is_ok(),
+            "邮箱大小写不同也应能找到账号"
+        );
+    }
+
+    /// 重置成功后，历史验证码被清理（只留刚用过的那条），防表无限增长。
+    #[test]
+    fn test_reset_password_prunes_old_codes() {
+        let conn = setup_db();
+        seed_user(&conn, "h@example.com", "abc123");
+        // 手动插入 3 条历史码（模拟多次申请）
+        for i in 0..3 {
+            conn.execute(
+                "INSERT INTO password_reset (id, user_id, code_hash, attempts, expires_at, used_at, created_at) \
+                 VALUES (?1, (SELECT id FROM users WHERE email='h@example.com'), 'x', 0, 1, 1, ?2)",
+                rusqlite::params![format!("old-{i}"), 1000 + i],
+            )
+            .unwrap();
+        }
+        let code = issue_reset_code(&conn, "h@example.com").unwrap().unwrap();
+        assert!(reset_password(&conn, "h@example.com", &code, "newpass1").is_ok());
+
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM password_reset", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 1, "应只剩刚用过的那条，实际 {n}");
+    }
+
+    /// `generate_reset_code` 恒为 6 位（含前导零也必须补足）。
+    /// 🔑 直接跑 200 次 —— 这是个**概率性**函数，只测一次抓不到「偶尔 5 位」。
+    #[test]
+    fn test_generate_reset_code_always_six_digits() {
+        for _ in 0..200 {
+            let c = generate_reset_code();
+            assert_eq!(c.len(), 6, "恒 6 位：{c}");
+            assert!(c.chars().all(|ch| ch.is_ascii_digit()), "恒数字：{c}");
+        }
     }
 }
