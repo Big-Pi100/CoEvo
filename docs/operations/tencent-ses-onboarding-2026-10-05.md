@@ -125,17 +125,7 @@ v=spf1 include:_spf.mx.cloudflare.net include:<腾讯云给的 spf 域> ~all
 
 当前状态是「**待验证**」⇒ 说明还没配记录（或配了但没通过）。
 
-### 📋 预期形态（结构是通用的；**值以控制台为准**）
-
-> ⚠️ **我不预先编造具体值** —— 每家的 MX 目标域、DKIM 公钥都不同，编了你对不上。
-> 下表只帮你**确认「自己找对了地方」**：
-
-| 类型 | 主机记录该填什么 | 注意 |
-|---|---|---|
-| **MX** | **`mail`**（非主域名填子域名部分，**不是 `@`**） | 🔴 **记录值末尾要有点 `.`**；**优先级填 10** |
-| **TXT（SPF）** | `mail` | 值形如 `v=spf1 include:xxx ~all` |
-| **CNAME 或 TXT（DKIM）** | `<selector>._domainkey.mail` | ⚠️ 若是 **CNAME**，Cloudflare 会**默认开代理** ⇒ 必须点成**灰色** |
-| **TXT（DMARC）** | `_dmarc.mail` | 值形如 `v=DMARC1; ...` |
+### 📋 具体值 —— 见下方「**实际要配的 4 条**」（2026-10-05 已从控制台抄到）
 
 🔑 **最容易搞错的一条**：官方文档明确写了 ——
 > 如果填入的域名是 `sampledomain.com`，这属于**主域名**（主机记录填 `@`）；
@@ -189,21 +179,63 @@ python scripts/check_mail_dns.py mail.keyievolution.fun <selector>  # 带 DKIM s
 并区分 **NXDOMAIN**（名字完全没有记录）与 **NODATA**（名字有别的记录、但缺这一类）——
 这两种状态在腾讯云控制台上**长得一模一样**（都是一句「未通过」），但对排查的含义完全不同。
 
-### 💡 省事的做法：用 BIND 格式**批量导入**，不要一条条点
+### ❌ 撤回上一版的一条建议：**不要**用 BIND 批量导入（实际 4 条记录见下一节）
 
-Cloudflare 支持粘贴导入：**DNS → 右上角「导入和导出」→ 导入记录**（BIND 格式）。
+我上一版推荐「用 BIND 格式批量导入省事」—— **收回**。理由（拿到实际参数后才看清）：
 
-把腾讯云给的 4 条记录按下面格式改写（**主机名写完整 FQDN**，避开「相对名」那个坑）：
+| 项 | 我上一版假设 | 实际 |
+|---|---|---|
+| 记录条数 | 「好几条，值得批量」 | **只有 4 条** ⇒ 手填也就 4 次 |
+| 副作用面 | 没细想 | 🔴 Cloudflare 导入时会问「**是否覆盖现有记录**」，而这个域名上**正跑着生产邮件**（`support@` 的 Email Routing）—— 为省 3 次点击去冒覆盖主域名记录的风险，**不划算** |
 
-```bind
-mail.keyievolution.fun.        300  IN  MX   10 <腾讯云给的退信主机>.
-mail.keyievolution.fun.        300  IN  TXT  "v=spf1 <腾讯云给的 include> ~all"
-<selector>._domainkey.mail.keyievolution.fun.  300  IN  CNAME  <腾讯云给的 DKIM 目标>.
-_dmarc.mail.keyievolution.fun. 300  IN  TXT  "v=DMARC1; <腾讯云给的内容>"
-```
+📌 判据：**方案的「省事收益」要跟「它引入的风险面」一起算** ——
+我上一版只算了「省几次点击」，没算「导入是批量操作、影响面比手填大」。
+⇒ **4 条记录，手动加**（逐条可见、错哪条一眼看得出）。
 
-> 🔑 导入后**逐条点开检查代理状态**：TXT/MX 会是灰云朵（对）；
-> ⚠️ **CNAME 那条可能被设成橙色**（已代理）⇒ 手动点成**灰色**。
+### 📋 实际要配的 4 条（2026-10-05 从控制台抄录）
+
+| # | 验证项 | 类型 | 主机记录 | 记录值 | 状态 |
+|---|---|---|---|---|---|
+| 1 | **MX** | MX | `mail` | `mxbiz1.qq.com.` | 待验证 |
+| 2 | **SPF** | TXT | `mail` | `v=spf1 include:qcloudmail.com ~all` | 待验证 |
+| 3 | **DMARC** | TXT | `_dmarc.mail` | `v=DMARC1; p=none` | 待验证 |
+| 4 | **DKIM**（2048 位） | **TXT** | `qcloudhk2048._domainkey.mail` | ⏳ 超长公钥串（400+ 字符，**待补**） | 待验证 |
+
+#### 🔴 抄成 Cloudflare 的填法（逐条照抄）
+
+| # | Type | **Name** | **Value** | Priority | Proxy |
+|---|---|---|---|---|---|
+| 1 | `MX` | `mail` | `mxbiz1.qq.com` | **`10`** | 灰色（MX 不给开代理）|
+| 2 | `TXT` | `mail` | `v=spf1 include:qcloudmail.com ~all` | — | 灰色 |
+| 3 | `TXT` | `_dmarc.mail` | `v=DMARC1; p=none` | — | 灰色 |
+| 4 | `TXT` | `qcloudhk2048._domainkey.mail` | **（把腾讯云那串完整粘进去）** | — | 灰色 |
+
+**三条要点**：
+
+1. 🔑 **Name 一律填相对名**（不带 `.keyievolution.fun`）——
+   填 `mail`、`_dmarc.mail`、`qcloudhk2048._domainkey.mail` 即可，Cloudflare 自动补域名。
+2. ✅ **DKIM 是 `TXT` 而不是 `CNAME`** ⇒ 我此前反复警告的
+   「CNAME 默认开代理（橙色云朵）⇒ 验证永远不过」这个坑**不存在**了
+   （TXT 记录 Cloudflare 不给开代理）。🎉 少一个坑。
+3. ⚠️ **MX 记录值末尾的点**：腾讯云给的是 `mxbiz1.qq.com.`（带点）。
+   在 Cloudflare 里填 **`mxbiz1.qq.com`**（不带点）即可 —— 它自己会按 FQDN 处理。
+   少数 DNS 商要求带点，Cloudflare 不带更稳。
+
+#### 🔑 关于「已存在 MX 记录则无需配置 mxbiz1.qq.com」这句提示
+
+腾讯云界面上那句是**针对「发信域名选的是主域名」**的场景：
+若主域名本身已有邮件服务（如企业邮箱），它的 MX 已在，不必再指到 `mxbiz1`。
+
+**我们不适用**：
+- 我们的**发信域名是子域名** `mail.keyievolution.fun`，它**当前没有任何 MX**（实测 NODATA）
+- ⇒ **需要配** `mxbiz1.qq.com.`（它的作用 = **接收这个子域名的退信**）
+
+✅ 而且它与主域名的 MX（Cloudflare Email Routing）**互不干扰** ——
+邮件路由按域名归属，`@mail.keyievolution.fun` 的退信走腾讯，
+`support@keyievolution.fun` 照旧走 Cloudflare。**主域名一个字都不用动。**
+
+> 📌 将来若想给 `mail.` 子域名也配 Email Routing 收信，会与这条 MX 冲突 ——
+> 那时再取舍（当前没有这个需求）。
 
 ### 🔴🔴 Cloudflare 的填写规则（这是最容易填错的地方）
 
