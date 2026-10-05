@@ -6,18 +6,20 @@
 
 ---
 
-## ⏳ 进行中：等 Apple 审批（1–2 天）
+## ✅ Apple Developer Program 会员 —— **已生效**（白哥 2026-10-05 确认）
 
 | 项 | 状态 |
 |---|---|
-| Apple Developer Program 会员 | ✅ **已付款** · ⏳ **等 Apple 审批**（≤48 小时）|
-| 判定「审批通过」 | `developer.apple.com` → Account → Membership 显示 **Team ID**（不再是 Enroll）|
+| Apple Developer Program 会员 | ✅ **已注册完成**（2026-10-05 白哥确认）|
+| 判定标准（自查） | `developer.apple.com` → Account → **Membership** 显示 **Team ID**（10 位），不再显示 Enroll |
 
-> 审批期间**不用等** —— 下面 §三 之后的步骤有些现在就能做。
+> 🔑 会员生效后，下面 §一~§三 就能一次做完（约 40 分钟）。
+> ⏳ **但 §一 两件（SBP / 810 号令）建议排在最前**：前者越早生效越早拿 15%，
+> 后者**不填会影响打款**（钱收了拿不到）。
 
 ---
 
-## 一、审批通过后立刻做（各约 10 分钟）
+## 一、立刻做（各约 10 分钟）
 
 ### 1.1 申请 Small Business Program
 
@@ -63,22 +65,59 @@ ASC → 我的 App → 选 CoEvo → 侧边栏「营利」→「订阅」
 
 ---
 
-## 三、生成 In-App Purchase Key（`.p8` + Key ID + Issuer ID）
+## 三、🔴 生成 API Key —— **要两把，不是一把**
+
+> ⚠️ **2026-10-05 补正**：本文件初版把这两把 key 分写在 §三 与 §7.1.1 两处，
+> **没说清它们是两把不同的 key、且两把都要** —— 极易只生成一把。
+> Apple 官方明确：**App Store Connect API Key 不能用来验单**
+> （原文：*cannot send push notifications **or check purchases***）⇒ 后端会 401。
+> 📌 判据：**同一个页面上、名字相近的两种凭据，必须显式说明「各用在哪」** ——
+> 否则「生成过 key 了」会让人以为事情做完了。
+
+**两把都在** ASC → **Users and Access** → **Integrations**，但是**两个不同的 tab**：
+
+| | ① **In-App Purchase**（tab）| ② **App Store Connect API**（tab）|
+|---|---|---|
+| **给谁用** | **后端验单**（`iap_handlers.rs`）| **CI 上传 IPA**（`ios-archive.yml`）|
+| **我调什么** | App Store Server API（`api.storekit.itunes.apple.com`）| App Store Connect API（上传构建 / TestFlight）|
+| **放到哪** | 服务器环境变量（4 个，见 §5.2）| GitHub Secrets（4 个，见 §7.1.1）|
+| **角色要求** | 🔴 **Account Holder 或 Admin**（**App Manager 不够**）| Account Holder / Admin（**选 Team Key**）|
+| **数量上限** | 10 个 | 50 个 |
+
+**两者共用**：· **Issuer ID 是同一个**（Integrations 页面顶部，UUID 形式，**账号级**）
+· 都产出 `.p8` 文件，**都只能下载一次**（Apple 不留副本）
+**两者不同**：· **Key ID 各自独立**（各 10 位）
+· 🔴 **不要混用**：curl 时 `.p8` 与 Key ID 必须**同属一把**
+
+### 3.1 ① In-App Purchase Key（后端用）
 
 | 项 | 内容 |
 |---|---|
-| 在哪 | ASC → **Users and Access** → **Integrations** → **In-App Purchase** |
-| 产出 | ① **`.p8` 文件**（只能下载**一次**！）② **Key ID** ③ **Issuer ID**（页面上方）|
-| 🔴 注意 | 下载的 `.p8` **别丢**，Apple **不提供二次下载** |
+| 路径 | Users and Access → Integrations → **In-App Purchase** → Generate In-App Purchase Key |
+| 产出 | `.p8`（文件名形如 `SubscriptionKey_XXXXXXXXXX.p8`，**别改名**）+ **Key ID** + **Issuer ID** |
 
-**拿到后给我**（我会配到后端）：
+**拿到后给我**（我配到服务器）：
 - `IAP_KEY_ID` = Key ID
 - `IAP_ISSUER_ID` = Issuer ID
 - `IAP_PRIVATE_KEY` = **`.p8` 文件的全部内容**（含 `-----BEGIN PRIVATE KEY-----` 那几行）
 - `IAP_ENVIRONMENT` = `Sandbox`（联调期）/ `Production`（上线）
 
-> ⚠️ `.p8` 是**密钥** —— 按项目隐私铁律，**不要贴到外部对话/群里**，
-> 直接放进服务器的环境变量配置即可（我给命令）。
+### 3.2 ② App Store Connect API Key（CI 上传用）
+
+| 项 | 内容 |
+|---|---|
+| 路径 | Users and Access → Integrations → **App Store Connect API** → **Team Keys** → Generate |
+| 角色 | 选 **App Manager** 或 **Admin**（上传构建够用；Admin 权限过大，非必要）|
+| 产出 | `.p8` + **Key ID** + **Issuer ID**（同上，账号级）|
+
+**拿到后配到 GitHub**（4 个 Secrets，见 §7.1.1）：`ASC_KEY_ID` · `ASC_ISSUER_ID` · `ASC_KEY_P8` · `APPLE_TEAM_ID`
+
+> ⚠️ `.p8` 是**密钥** —— 按项目隐私铁律，**不要贴到外部对话/群里**。
+> 后端那把我会给命令让你直接写到服务器；GitHub 那把由你在网页上填入（值不会经过我）。
+>
+> 💡 **`APPLE_TEAM_ID` 是第三样东西**，别与 Issuer ID 混：
+> Team ID 在 `developer.apple.com` → Account → **Membership**（10 位）；
+> **ASC API 的 token 里不用 Team ID**，但 iOS 签名需要它。
 
 ---
 
@@ -310,9 +349,10 @@ IAP_KEY_ID / IAP_ISSUER_ID / IAP_PRIVATE_KEY / IAP_ENVIRONMENT
 
 | 需要 | 状态 |
 |---|---|
-| Apple Developer 账号审批 | ⏳ **进行中**（你在办）|
-| **Team ID**（签名必需）| ⏳ 审批通过后可得 → 配进 GitHub Secrets |
-| **App Store Connect API Key**（`.p8` + Key ID + Issuer ID）| ⏳ 待生成 → 配进 GitHub Secrets |
+| Apple Developer 账号审批 | ✅ **已生效**（2026-10-05 白哥确认）|
+| **Team ID**（签名必需）| ✅ **现在可取** —— `developer.apple.com` → Account → **Membership**（10 位）|
+| **App Store Connect API Key**（`.p8` + Key ID + Issuer ID）| ⏳ **现在可生成**（§3.2）→ 配进 GitHub Secrets |
+| **In-App Purchase Key**（后端验单用 ⚠️ 另一把）| ⏳ **现在可生成**（§3.1）→ 配进服务器环境变量 |
 | ~~`ios-build` 的 `continue-on-error`~~ | ✅ **已移除**（2026-10-04）—— 实测证明 `--no-codesign` **不需要 Team ID**，那条「必然失败」的旧断言是错的 |
 | **iOS 能否编过** | ✅ **已实测通过**（`Build iOS` 绿 · 含 11 个原生插件）|
 | 归档/签名/导出/上传四步 | ✅ **已实现**（2026-10-04）→ `.github/workflows/ios-archive.yml` |
@@ -321,6 +361,10 @@ IAP_KEY_ID / IAP_ISSUER_ID / IAP_PRIVATE_KEY / IAP_ENVIRONMENT
 > 就能在 CI 上跑通「构建 → 归档 → 上传 ASC」。你唯一要做的仍是 §一~§三 那些账号动作。
 
 #### 🆕 7.1.1 API Key 拿到后，在 GitHub 配 4 个 Secrets
+
+> 🔴 **注意**：这里用的是 **App Store Connect API Key**（§3.2）——
+> 与后端验单用的 **In-App Purchase Key**（§3.1）是**两把不同的 key**，别混。
+> （Apple 官方：ASC API Key **不能**用来查购买。）
 
 **位置**：GitHub 仓库 → `Settings` → `Secrets and variables` → `Actions` → `New repository secret`
 
@@ -377,19 +421,19 @@ Play Console 里也没有对应商品 ⇒ 点订阅**必然失败**。
 |---|---|
 | 后端 `iap_transactions` 表 + `/api/iap/verify` | ✅ 已完成（**220** 测试全绿）|
 | 前端接 `in_app_purchase` + 订阅服务层 | ✅ 已完成 |
-| 订阅页重做（法律要件 + 两处恢复购买入口）| 🟠 **需再改一轮**（文案错 + 排版重做 + 权益改「云端同步」）|
+| 订阅页重做（法律要件 + 两处恢复购买入口）| ✅ **已完成**（2026-10-04/05：文案已改 · 按原型重排 · 权益改「跨设备同步」）|
 | **账号注销功能** | ✅ **已完成**（§7.2）|
-| **电子书导入**（解析层）| ✅ 已完成（65 项断言 · `book.db`，UI 待做）|
+| **电子书导入** | ✅ **已完成**（解析 + 落库 + UI `book_library_screen` · 入口为平级标题「书库」）|
 | 云端同步（订阅的新权益）| ⏳ **待设计实现**（否则订阅页是空头承诺）|
 | iOS archive → TestFlight workflow | ✅ 已建（`.github/workflows/ios-archive.yml`，缺 Secrets）|
 | 法律文本 → HTML + 部署 | ✅ 已完成（`api.keyievolution.fun/privacy` · `/terms`）|
-| IAP / 注销 / 法定要件的验收断言 | ✅ 99 项（已接 CI）|
+| IAP / 注销 / 法定要件的验收断言 | ✅ 已接 CI（CI 覆盖 ≈2200 项）|
 
-> ⚠️ **订阅线当前状态（如实说）**：页面已做出，但**还不能用** ——
-> ① 文案写的「免费版上限 200 词」是**已作废**的规格
-> ② 权益三项（无限生词本 / 文章朗读 / 电子书导入）**全都不成立**
-> ③ 排版白哥指出有问题
-> ⇒ 等 ①②③ 都处理完才可截图提审（截图必须是**真实的**订阅页）。
+> ✅ **订阅页的三个问题都已处理**（2026-10-05）：① 作废的「200 词上限」文案已删
+> ② 已按原型重排 ③ 权益改为「生词与复习进度跨设备同步」。
+> ⇒ **可以截审核截图了**（≥640×920，须是 App 内的订阅页）。
+>
+> ⚠️ **唯一遗留**：权益所承诺的**云端同步尚未实现** ⇒ 上线前需完成，否则是空头承诺。
 >
 > 🔑 我这边**已无「阻塞你」的待做**；剩下的都卡在 ASC（§一~§三）与你的真机验证。
 
@@ -398,23 +442,47 @@ Play Console 里也没有对应商品 ⇒ 点订阅**必然失败**。
 ## 📋 勾选清单（打印/复制用）
 
 ```
-□ 等 Apple 审批通过（Membership 出现 Team ID）
-□ 申请 Small Business Program
-□ 810 号令填报（身份证号 + 姓名）
-□ ASC 建群组 CoEvo Pro
-□ ASC 建 2 个产品（monthly ¥9.9 / yearly ¥78 · 均等级 1）
-□ ASC 生成 IAP Key（.p8 + Key ID + Issuer ID）
-✅ 告知：运营者姓名 + 联系邮箱            → 已完成（白旭 / support@）
-✅ 隐私政策页：方案 A 选定 + 已部署 + 公网验证  → 已完成
-✅ Cloudflare Email Routing（support@）    → 已完成（端到端验证通过）
+━━ 会员已生效（2026-10-05）⇒ 下面按顺序做 ━━
+
+【第 1 步 · 两件 10 分钟的事，建议最先做】
+□ 1.1 申请 Small Business Program（佣金 30%→15%，越早生效越好）
+□ 1.2 810 号令填报：ASC → 商务 → 协议 → 合规（身份证号 + 姓名）
+      🔴 不填会影响打款
+
+【第 2 步 · 前置检查（不做完，产品建了也不生效）】见 §11.1
+□ 2.1 付费 App 协议处于「生效」状态（ASC → 商务 → 协议）
+□ 2.2 税务 + 银行信息完整
+□ 2.3 App 已用 Bundle ID `com.coevo.coevoApp` 创建（ASC → 我的 App）
+□ 2.4 810 号令（同 1.2，此处复核状态）
+
+【第 3 步 · 建订阅产品】§二
+□ 3.1 建群组 `CoEvo Pro`（只建一个）
+□ 3.2 建 2 个产品：monthly ¥9.9 / yearly ¥78 · 均等级 1
+      ⚠️ Product ID 保存后不可改 · 简体中文本地化为必填
+□ 3.3 审核截图 —— ✅ 订阅页已重做完，可以截了（≥640×920，须是 App 内订阅页）
+
+【第 4 步 · 生成 Key（🔴 两把！见 §三）】
+□ 4.1 In-App Purchase Key（Integrations → In-App Purchase）→ 给我（配服务器）
+□ 4.2 App Store Connect API Key（Integrations → App Store Connect API → Team Keys）
+      → 配 GitHub Secrets：ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_P8 / APPLE_TEAM_ID
+□ 4.3 Team ID（developer.apple.com → Membership，10 位）→ 同上第 4 个 Secret
+
+【第 5 步 · 建沙盒测试账号】§六
+□ 5.1 ASC → Users and Access → Sandbox Testers
+      🔴 与真实 Apple ID 分开，别用主账号
+
+【第 6 步 · 真机验证（可在拿到 TestFlight 后做）】
+□ 6.1 用 TestFlight 装 iOS 包
+□ 6.2 真机验注销流程（点注销 → 确认 → 回首页 → 再登录提示不存在；生词本仍在）
+□ 6.3 沙盒验订阅（⚠️ 安卓包装不了订阅 —— 只能 iOS）
+
+✅ 已完成（留档，不必再做）
+✅ 运营者姓名 + 联系邮箱            → 白旭 / support@keyievolution.fun
+✅ 隐私政策页部署 + 公网验证        → api.keyievolution.fun/privacy · /terms
+✅ Cloudflare Email Routing（support@）
 ✅ iOS 出包：无 Mac 链路已规划（GHA macos-latest）→ **不需你决策**
-✅ 账号注销（Apple 5.1.1(v)）→ 已完成（前后端 + 法律文本 + 断言）
+✅ 账号注销（Apple 5.1.1(v)）→ 前后端 + 法律文本 + 断言
 ✅ archive→TestFlight workflow → 已建（缺 Secrets，暂时跑不了 = 预期）
-□ **审批通过后**：拿 Team ID → 生成 ASC API Key → 配 4 个 GitHub Secrets（§7.1.1）
-    ⇒ 配完就能跑 `iOS Archive & Upload`，用 TestFlight 装到 iPhone 测
-□ **真机验注销流程**（点注销 → 确认 → 回首页 → 再登录提示不存在；生词本仍在）
-□ 建沙盒测试账号
-□ 审批通过后补审核截图（⚠️ 等订阅页重做完再截，否则截出来是旧版）
 ```
 
 > ⚠️ **订阅页待重做**（2026-10-04 白哥指出）：① 文案错（免费版已无 200 词上限）
