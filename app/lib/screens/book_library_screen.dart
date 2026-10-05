@@ -56,24 +56,18 @@ import '../widgets/co_dialog.dart';
 import '../widgets/group_qrcode_dialog.dart';
 
 class BookLibraryScreen extends ConsumerStatefulWidget {
-  const BookLibraryScreen({
-    super.key,
-    required this.onImport,
-    required this.importing,
-  });
+  const BookLibraryScreen({super.key, required this.onImport});
 
   /// 触发导入 —— 实现由 `services/ebook/book_import_flow.dart` 提供，
   /// 由容器（`ReadingTabScreen`）传入。
   ///
   /// 🔑 **空态里那个「导入文件」按钮与标题栏右上角的「导入」药丸是同一个动作** ——
   ///    两处都调这一个回调，不各写一遍（判据：一处权威）。
-  final VoidCallback onImport;
-
-  /// 是否正在导入 —— 由容器持有（按钮在容器里，状态就该由它的所有者持有）。
   ///
-  /// 🔑 用途：空态那个按钮要跟着**禁用**，否则导入中还能再点一次
-  ///    （虽然 `_import` 内部也有守卫，但「看起来能点」本身就该避免）。
-  final bool importing;
+  /// ⚠️ **本视图不再有 `importing` 参数**（2026-10-05 白哥定「不要忙碌态」）——
+  ///    防重入改由 `runBookImportFlow` 内部负责（它才是「是否正在导入」的所有者）。
+  ///    ⇒ 两个入口都不需要知道「是否在导入」，各自只是**触发器**。
+  final VoidCallback onImport;
 
   @override
   ConsumerState<BookLibraryScreen> createState() => _BookLibraryScreenState();
@@ -135,13 +129,9 @@ class _BookLibraryScreenState extends ConsumerState<BookLibraryScreen> {
                 ),
               ),
               const SizedBox(height: CoSpacing.xl),
-              // 🔑 导入中 → 禁用（`ClayButton.enabled` 走 `ClayState.disabled`），
-              //    与标题栏那颗药丸**同时**进禁用态（同一个 `_importing` 驱动）。
-              ClayButton(
-                label: widget.importing ? '导入中…' : '导入文件',
-                enabled: !widget.importing,
-                onTap: widget.onImport,
-              ),
+              // 🔑 无忙碌态（2026-10-05）—— 防重入在 `runBookImportFlow` 内部，
+              //    所以这里不需要禁用；重复点击会被流程自己忽略。
+              ClayButton(label: '导入文件', onTap: widget.onImport),
               const SizedBox(height: CoSpacing.lg),
               _groupGuideCard(t),
             ],

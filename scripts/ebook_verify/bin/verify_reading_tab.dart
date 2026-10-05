@@ -188,14 +188,32 @@ void main() {
     final chipCalls = RegExp(r'HeaderChip\(').allMatches(container).length;
     check('🔴 两段动作都用 HeaderChip（计数 = 2：收藏 + 导入）', chipCalls == 2,
         '实得 $chipCalls 处');
-    // 锁「导入」那处的**特有形态**（＋ 图标，与「收藏」的书签图标区分）
-    check('导入药丸用 ＋ 图标（与收藏的书签图标区分）', container.contains('Icons.add'));
-    // 🔴 「导入中」也仍是**同一颗药丸**（形状不变 ⇒ 标题栏不跳），且有 `labelReserve` 定宽
-    check(
-        '🔴 「导入中」仍是药丸 + labelReserve 定宽（防切换时标题栏跳动）',
-        container.contains("labelReserve: '导入中'") &&
-            container.contains('enabled: !_importing'),
-        '未见到 labelReserve / enabled 的配套用法');
+    // 锁「导入」那处的**特有形态**
+    //
+    // 🔴 **2026-10-05 白哥定改版**：**去掉加号、去掉忙碌态**。
+    //    原断言守的是「有 `Icons.add`」+「`labelReserve: '导入中'` + `enabled: !_importing`」——
+    //    那是**上一版的有意设计**，本条**随新意图更新**（不是放松）：
+    check('🔴 导入药丸**不带图标**（与「收藏」的差异只在「有无数字」）',
+        !container.contains('Icons.add'),
+        '仍见到 Icons.add —— 白哥定：加号与「收藏」并排不协调');
+    check('🔴 导入药丸**不传 labelReserve**（防内边距不对称回归）',
+        !container.contains("labelReserve: '导入中'"),
+        "仍见到 labelReserve: '导入中' —— 它会让左右内边距不对称（左 8 / 右 27）");
+    // 🔑 逆否：没有 `reserve` ⇒ 内边距对称（与「收藏」同一套版式）
+    check('  ↳ 且**确实**没有 reserve（内边距对称的前提）',
+        !container.contains('labelReserve:'));
+
+    // 🔴 防重入**移进流程内部**（容器退化为纯触发器 ⇒ 无忙碌态）
+    final flow = _stripComments(
+        _read('../../app/lib/services/ebook/book_import_flow.dart') ?? '');
+    check('🔴 防重入在 `runBookImportFlow` 内部（`_busy` 守卫）',
+        flow.contains('if (_busy)') && flow.contains('_busy = true'),
+        '未见到 _busy 守卫 —— 没有它就会连开两个文件选择器');
+    check('  ↳ 流程**不再**接受 `onBusy` 参数（无忙碌态）',
+        !flow.contains('onBusy'));
+    check('  ↳ 容器**不再**持有 `_importing` 状态',
+        !container.contains('_importing'),
+        '仍见到 _importing —— 白哥定：不要忙碌态');
   }
 
   // 🔴 书库视图**不该**再有返回键与自带骨架（那是容器的职责）

@@ -56,17 +56,28 @@ const _kEbookTypeGroup = XTypeGroup(
 
 /// 选文件 → 导入 → 反馈。**书库页内所有「导入」入口都调这一个函数。**
 ///
-/// [onBusy] 由调用方用来驱动「按钮转圈 / 禁用」（容器自己不持有导入状态，
-/// 状态归页面的所有者 —— 同「防重入放在状态的所有者那里」这条判据）。
+/// # 🔴 防重入由**本函数**负责（2026-10-05 改）
 ///
-/// ⚠️ **不做防重入**：调用方需在 `onBusy(true)` 期间自行禁用入口
-///    （容器把「导入」按钮换成转圈、书库空态按钮交给同一状态）。
+/// 原设计是「调用方用 `onBusy` 驱动按钮禁用」——但那带来两个问题（白哥真机反馈）：
+/// ① 标题栏药丸为了容纳「导入中…」要传 `labelReserve`，而那个参数**本是为「文字居中」
+///    设计的**（复习页筛选药丸）⇒ 副作用是**左右内边距不对称**，与「收藏」并排很难看；
+/// ② 空态按钮也要跟着禁用 ⇒ 同一个「忙碌」状态被两处 UI 读取，改一处忘一处。
+///
+/// 现在改为：**流程自己防重入**（模块级 `_busy`）。
+/// 📌 判据：**「防重入」应放在「状态的唯一所有者」上** ——
+///    而本流程就是「是否正在导入」这件事的唯一所有者（调用方只是触发者）。
+///    ⇒ 调用方不再需要持有任何导入状态，UI 也不需要忙碌态。
+///
+/// ⚠️ `_busy` 是**模块级**（全 App 一份）—— 符合事实：同一时刻只可能有一个系统文件选择器。
 Future<void> runBookImportFlow({
   required BuildContext context,
   required WidgetRef ref,
-  required ValueChanged<bool> onBusy,
 }) async {
-  onBusy(true);
+  if (_busy) {
+    debugPrint('[book] 导入已在进行中，忽略重复触发');
+    return;
+  }
+  _busy = true;
   try {
     final XFile? file =
         await openFile(acceptedTypeGroups: const [_kEbookTypeGroup]);
@@ -104,9 +115,12 @@ Future<void> runBookImportFlow({
     debugPrint('[book] 导入异常：$e');
     await _showImportFailure(context, EbookParseErrorKind.unknown);
   } finally {
-    onBusy(false);
+    _busy = false;
   }
 }
+
+/// 「是否正在导入」—— 由 [runBookImportFlow] 独占读写（见其文档）。
+bool _busy = false;
 
 /// 导入失败弹层。
 ///

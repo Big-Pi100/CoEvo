@@ -246,8 +246,24 @@ class _BookReaderScreenState extends ConsumerState<BookReaderScreen> {
           const SizedBox(width: CoSpacing.md),
           // 整章朗读 —— 🔴 **免费**（设计文档 §六 #2：订阅已改卖「云端同步」，
           // 朗读与词卡朗读是同一个 `flutter_tts` 能力，收费会显得抠）
+          //
+          // 🔴 2026-10-05 修：原来调 `togglePlay(ch.text)`（**短文本**用）——
+          //    而整章正文远超平台单次朗读上限（Android
+          //    `getMaxSpeechInputLength()` ≈ 4000 字符）⇒ 静默无声（真机反馈）。
+          //    ⇒ 改调 `speakLong`：**分段 + 依次播放**（分段逻辑见
+          //    `services/speech_chunks.dart`，零 import 纯 Dart、已断言）。
+          //
+          // 🔑 停止用 `stop()` 而不是 `togglePlay` —— 长文本的语义是「整章读完」，
+          //    不是「再点一次切歌」；点击时按 `isSpeaking(整章原文)` 判断当前状态。
           InkWell(
-            onTap: () => ref.read(ttsServiceProvider).togglePlay(ch.text),
+            onTap: () {
+              final tts = ref.read(ttsServiceProvider);
+              if (tts.isSpeaking(ch.text)) {
+                tts.stop();
+              } else {
+                tts.speakLong(ch.text);
+              }
+            },
             borderRadius: BorderRadius.circular(8),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

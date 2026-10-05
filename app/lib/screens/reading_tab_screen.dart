@@ -68,35 +68,26 @@ class _ReadingTabScreenState extends ConsumerState<ReadingTabScreen> {
   /// 当前段 —— 默认信息流（与旧行为一致：进 App 先看今日精选）。
   ReadingSection _section = ReadingSection.feed;
 
-  /// 导入进行中 —— 用来把「导入」换成转圈（**防重入**）。
-  ///
-  /// 🔑 状态放在**容器**而不是书库视图：按钮在容器里，状态就该由它的所有者持有
-  ///    （判据：防重入放在「状态的所有者」那里，而不是每个调用点）。
-  bool _importing = false;
-
   void _select(ReadingSection s) {
     if (s == _section) return;
     setState(() => _section = s);
   }
 
-  /// 触发导入 —— **本页有两处入口**（标题栏药丸、书库空态的「导入文件」按钮），
-  /// 两个都调这一个方法 ⇒ 防重入放在**这里**（状态的所有者），不放在各个调用点。
+  /// 触发导入 —— **本页有两处入口**（标题栏药丸、书库空态的「导入文件」按钮）。
   ///
-  /// 🔴 **2026-10-05 补的守卫**：`runBookImportFlow` 自己**不做**防重入
-  /// （它把这件事留给调用方，见那里的注释）。而「书库空态」那个按钮
-  /// 无法从 `_importing` 推知要不要禁用（它只是 `onImport` 回调）⇒
-  /// 若只靠按钮的 `enabled`，两处入口就会**漏一处**。
-  /// ⇒ 在**唯一的入口**上加守卫：重复调用直接返回，不会连开两个文件选择器。
-  Future<void> _import() async {
-    if (_importing) return;
-    await runBookImportFlow(
-      context: context,
-      ref: ref,
-      onBusy: (busy) {
-        if (mounted) setState(() => _importing = busy);
-      },
-    );
-  }
+  /// # 🔴 2026-10-05：本页**不再持有任何导入状态**
+  ///
+  /// 原设计：`_importing` 驱动「导入」药丸变成「导入中…」并禁用。
+  /// 白哥真机反馈两点 ⇒ 改为**无忙碌态**：
+  /// · 为容纳更长的「导入中」文案，药丸要传 `labelReserve` ——
+  ///   而那个参数**本是为「文字居中」设计的**（复习页筛选药丸），它假定药丸右侧没有
+  ///   其它元素 ⇒ 副作用是**左右内边距不对称**（左 8 / 右 27），与「收藏」并排不协调
+  /// · 忙碌态还要同步到空态按钮 ⇒ 一个状态被两处 UI 读取，改一处忘一处
+  ///
+  /// ⇒ 防重入**移进 `runBookImportFlow` 内部**（它才是「是否正在导入」的所有者），
+  ///   本页退化为**纯触发者**（无状态）。
+  /// 📌 判据复用：**防重入放在「状态的唯一所有者」上** —— 只是所有者变了。
+  Future<void> _import() => runBookImportFlow(context: context, ref: ref);
 
   /// 标题栏段落间距 —— 设计稿 `.hd-tabs{gap:16px}`。
   static const double _titleGap = 16;
@@ -130,7 +121,7 @@ class _ReadingTabScreenState extends ConsumerState<ReadingTabScreen> {
                   const HomeScreen(),
                   // ⚠️ `importing` 要传下去 —— 书库**空态**里那个「导入文件」按钮
                   //    也必须在导入中禁用（否则它成了一个可重复点、但点了没反应的入口）。
-                  BookLibraryScreen(onImport: _import, importing: _importing),
+                  BookLibraryScreen(onImport: _import),
                 ],
               ),
             ),
@@ -254,14 +245,17 @@ class _ReadingTabScreenState extends ConsumerState<ReadingTabScreen> {
   ///
   /// ⚠️ **两段不会同时出现**（信息流段显示收藏、书库段显示导入）⇒ 无并排拥挤问题。
   ///
-  /// # 「导入中」为什么仍是一颗**药丸**
+  /// # 🔴 「导入中」那一版**已撤销**（2026-10-05 白哥定）
   ///
-  /// 改前用的是一个**裸转圈**（`CircularProgressIndicator`）—— 切换时形状会突变。
-  /// 现在改成 `HeaderChip(label: '导入中', enabled: false)`：
-  ///   · 形状**不变**（仍是同一颗药丸）⇒ 标题栏**不跳**；
-  ///   · `labelReserve: '导入中'` ⇒ 两态**同宽**（「导入」2 字 vs 「导入中」3 字本来会差一个字宽）；
-  ///   · `enabled: false` ⇒ 走 `ClayState.disabled`（瘪了）表达「暂时不可点」，
-  ///     而**不是**传一个空回调（那会造出「点了没反应的死入口」）。
+  /// 曾经的做法：导入中把药丸换成 `HeaderChip(label: '导入中', labelReserve: '导入中',
+  /// enabled: false)` —— 出发点（形状不变、标题栏不跳）是对的，但**副作用不可接受**：
+  ///    · `labelReserve` 是**为「让文字居中」设计的**（复习页筛选药丸），
+  ///      它**假定药丸右侧没有其它元素** ⇒ 借用它会导致**左右内边距不对称**
+  ///      （左 8 / 右 27）⇒ 与「收藏」（走 `count` 分支，对称）并排**不协调**；
+  ///    · 忙碌态还要同步给空态按钮 ⇒ 一个状态被两处 UI 读取，改一处忘一处。
+  /// ⇒ 白哥定：**不要忙碌态**（防重入交给 `runBookImportFlow`），**顺手把加号也去掉**。
+  /// 📌 判据：**「借用为 A 设计的参数」** —— 副作用会以「说不清哪里怪」的形式出现；
+  ///    正解是**消除借用**，不是去调参数的副作用。
   Widget _trailing(CoEvoTokens t, int bookmarkCount) {
     switch (_section) {
       case ReadingSection.feed:
@@ -274,16 +268,17 @@ class _ReadingTabScreenState extends ConsumerState<ReadingTabScreen> {
         );
 
       case ReadingSection.books:
-        // 🔑 药丸形态与「收藏」同源（`HeaderChip`），只是图标/文案/回调不同。
-        //    ⚠️ `labelReserve` 取**最长的那个**文案（「导入中」3 字）——
-        //    传短了会让长文案在切换时把标题栏挤动（`HeaderChip` 文档 §🆕 ④）。
-        return HeaderChip(
-          icon: Icons.add,
-          label: _importing ? '导入中' : '导入',
-          labelReserve: '导入中',
-          enabled: !_importing,
-          onTap: _import,
-        );
+        // 🔑 药丸形态与「收藏」**完全同源**（`HeaderChip`），只是文案/回调不同。
+        //
+        // 🔴 2026-10-05（白哥定）：**去掉图标、去掉忙碌态**。
+        //    · 去图标：原来是 `Icons.add`（加号）—— 而「收藏」是「图标 + 文字 + 数字」，
+        //      本按钮**没有数字** ⇒ 并排时看起来不协调（白哥原话）。
+        //      去掉后只剩文字，与「收藏」的差异变成「有数字 / 无数字」这一条**语义差异**，
+        //      而不是「多一个加号」这种**形态差异**。
+        //    · 去忙碌态：不再传 `labelReserve`（它会让内边距不对称，见 `_import` 的文档）。
+        //      ⇒ 无 `reserve` ⇒ 左右内边距对称 ⇒ 与「收藏」同一套版式。
+        //    防重入改由 `runBookImportFlow` 内部负责（本页无状态）。
+        return HeaderChip(label: '导入', onTap: _import);
     }
   }
 }

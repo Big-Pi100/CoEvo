@@ -5,6 +5,8 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'speech_chunks.dart';
+
 /// N14: TTS Service — Device-native speech synthesis + Tencent Cloud TTS
 ///
 /// Provides a unified interface for text-to-speech across engines.
@@ -79,6 +81,23 @@ class TtsService extends ChangeNotifier {
   // 异步回调完成时检查回调请求的代是否仍是最新一代，否则丢弃。
   int _playGen = 0;
 
+  // ── 长文本朗读的**分段队列**（2026-10-05 加）──
+  //
+  // # 🔴 为什么需要队列（真机反馈：书库「整章朗读」没声音且不报错）
+  //
+  // 根因：整章正文（数千～数万字符）**远超平台单次输入上限**
+  // （Android `getMaxSpeechInputLength()` ≈ 4000；iOS `AVSpeechUtterance` 同样有上限），
+  // 而 `_cleanText` 不截断 ⇒ 平台拒收，且 `awaitSpeakCompletion` 未开启
+  // ⇒ `speak()` 立即返回、**Dart 侧收不到失败** ⇒ 表现为「点了没反应」。
+  //
+  // 修法：**分段 + 用 completion 回调依次推进**（切分逻辑在
+  // `speech_chunks.dart`，那是零 import 的纯 Dart，本机可断言）。
+  //
+  // 🔑 `_currentPlayingText` 仍存**整段原文**（不是当前小块）——
+  //    因为 UI 判断按钮状态用的是 `isSpeaking(整章文本)`，改了就永远判不到。
+  List<String> _queue = const <String>[];
+  int _queueIndex = 0;
+
   /// 单次插件调用的**有界超时**。
   ///
   /// # 🔴 为什么必须有出口（2026-10-02）
@@ -109,10 +128,23 @@ class TtsService extends ChangeNotifier {
   TtsService() {
     _tts.setCompletionHandler(() {
       debugPrint('[TTS] native completion');
-      state = TtsState.stopped;
+      // 🆕 2026-10-05：**队列推进** —— 长文本分段朗读靠这条回调串起来。
+      //
+      // 🔑 与词卡朗读（`togglePlay`）**共用**这一条回调，靠 `_queue` 是否为空区分：
+      //    · 队列非空且还有下一段 → 推进（长文本路径）
+      //    · 否则 → 复位（词卡的既有行为，一字未改）
+      if (_queue.isNotEmpty && _queueIndex < _queue.length - 1) {
+        _queueIndex++;
+        debugPrint('[TTS]  queue ${_queueIndex + 1}/${_queue.length}');
+        unawaited(_speakChunkAt(_queueIndex, _playGen));
+      } else {
+        _resetQueue(notify: true);
+      }
     });
     _tts.setErrorHandler((msg) {
       debugPrint('[TTS] native error: $msg');
+      // 🔴 出错也要清队列 —— 否则「队列还在、但不会推进」会一直挂着
+      _resetQueue(notify: false);
       state = TtsState.stopped;
     });
   }
@@ -148,6 +180,10 @@ class TtsService extends ChangeNotifier {
   Future<void> togglePlay(String text) async {
     if (!_enabled || text.isEmpty) return;
 
+    // 🔴 短文本播放必须**清掉长文本队列** —— 否则「整章朗读中点了词卡」会出现
+    //    词卡读完后 completion 又去推进整章队列（两条播放流互相抢）。
+    _resetQueue(notify: false);
+
     debugPrint('[TTS] togglePlay: "${_trunc(text)}" gen=$_playGen');
 
     // 如果正在播放同一段文本 → 停止
@@ -177,6 +213,107 @@ class TtsService extends ChangeNotifier {
     state = TtsState.loading;
     notifyListeners();
     await _speakWithNative(myGen, text);
+  }
+
+  /// **长文本朗读**：分段 + 依次播放（修「整章朗读没声音」· 2026-10-05）。
+  ///
+  /// 与 [togglePlay] 的分工：
+  /// · [togglePlay] —— **短文本**（词卡 / 试听），一次 `speak` 就够
+  /// · 本方法 —— **长文本**（整章正文），必须先分段（见 [splitForSpeech]）
+  ///
+  /// 🔑 停止用 [stop]（由调用方判断 `isSpeaking(原文)` 决定「播 / 停」）——
+  ///    本方法**不复用** `togglePlay` 的「同一文本再点即停」逻辑，
+  ///    因为那个逻辑对长文本没有意义（用户要的是「整章读完」而不是「再点一次切歌」）。
+  Future<void> speakLong(String text) async {
+    if (!_enabled || text.isEmpty) return;
+
+    // 🔑 分段在 `_cleanText` **之后** —— 先清 markdown 再算长度，
+    //    否则可能按「含标记的长度」切、实际内容更短（白切）。
+    final chunks = splitForSpeech(_cleanText(text));
+
+    debugPrint('[TTS] speakLong: ${text.length} 字符 → ${chunks.length} 段');
+    if (chunks.isEmpty) return;
+
+    _playGen++;
+    final myGen = _playGen;
+
+    // 先停掉一切在播的东西（含其它队列）
+    _resetQueue(notify: false);
+    await _guard(_tts.stop(), 'stop');
+    // ⚠️ 同 `_speakWithNative`：`stop()` 后立刻 `speak()` 会被插件丢弃
+    //    （插件没暴露「已停止」状态可等 —— 本项目的不得已，见那里的注释）
+    await Future.delayed(const Duration(milliseconds: 100));
+    if (myGen != _playGen) return;
+
+    _queue = chunks;
+    _queueIndex = 0;
+    // 🔴 存**原文**（不是当前小块）—— UI 的 `isSpeaking(整章文本)` 靠它
+    _currentPlayingText = text;
+    state = TtsState.loading;
+    notifyListeners();
+
+    await _speakChunkAt(0, myGen);
+  }
+
+  /// 播放队列中第 [index] 段。段间**不再 `stop()`**（上一段已读完才推进）。
+  Future<void> _speakChunkAt(int index, int myGen) async {
+    if (myGen != _playGen) {
+      debugPrint('[TTS]  gen stale, abort chunk $index');
+      return;
+    }
+    if (index >= _queue.length) {
+      _resetQueue(notify: true);
+      return;
+    }
+    _queueIndex = index;
+    final chunk = _queue[index];
+
+    try {
+      // 🔑 语言**按段**判定 —— 中英混排的书里，每段的 `_detectLanguage` 可能不同，
+      //    用第一段的语言读完整本会出现「用中文腔读英文」。
+      final lang = _detectLanguage(chunk);
+      if (_selectedVoice != null) {
+        await _guard(
+            _tts.setVoice(Map<String, String>.from(_selectedVoice! as Map)), 'setVoice');
+      } else {
+        final best = _pickBestVoice(lang);
+        if (best != null) {
+          await _guard(_tts.setVoice(Map<String, String>.from(best as Map)), 'setVoice');
+        } else {
+          await _guard(_tts.setLanguage(lang), 'setLanguage');
+        }
+      }
+      await _guard(_tts.setSpeechRate(_speechRate), 'setSpeechRate');
+      await _guard(_tts.setVolume(1.0), 'setVolume');
+
+      if (myGen != _playGen) return;
+
+      state = TtsState.playing;
+      notifyListeners();
+
+      final result = await _guard(_tts.speak(chunk), 'speak');
+      if (result != 1) {
+        // 🔴 **单段失败就停整条队列** —— 继续读会变成
+        //    「前半本没声、后半本有声」，比「整本没声」更难判断。
+        debugPrint('[TTS]  chunk $index 未接受，停止队列');
+        if (myGen == _playGen) _resetQueue(notify: true);
+      }
+      // ✅ 成功时**不在这里推进** —— 由 `setCompletionHandler` 在真正读完后推进
+      //    （`speak()` 立即返回，它返回 1 只代表「请求被接受」）。
+    } catch (e) {
+      debugPrint('[TTS] chunk $index error: $e');
+      if (myGen == _playGen) _resetQueue(notify: true);
+    }
+  }
+
+  /// 清空队列。`notify: true` 时把状态复位为 `stopped` 并通知 UI。
+  void _resetQueue({required bool notify}) {
+    _queue = const <String>[];
+    _queueIndex = 0;
+    if (notify) {
+      state = TtsState.stopped;
+      notifyListeners();
+    }
   }
 
   /// 兼容旧接口：直接播放（不切换停止）
@@ -258,7 +395,9 @@ class TtsService extends ChangeNotifier {
   /// Stop playback
   Future<void> stop() async {
     debugPrint('[TTS] stop  gen=$_playGen');
-    _playGen++;  // 废弃当前代
+    _playGen++; // 废弃当前代
+    // 🔴 必须清队列：否则已排队的后续分段还会被 completion 推进 ⇒「按了停止还在念」
+    _resetQueue(notify: false);
     await _guard(_tts.stop(), 'stop');
     state = TtsState.stopped;
     _currentPlayingText = null;
