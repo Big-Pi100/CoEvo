@@ -76,6 +76,88 @@ def fmt(answers: list[dict]) -> list[str]:
     return [f"{TYPE_NAMES.get(a.get('type'), a.get('type'))}  {a.get('data')}" for a in answers]
 
 
+# ──────────────────────────────────────────────────────────────────────
+# DKIM 深度校验
+#
+# 为什么 DKIM 需要单独深查（另外三项不需要）：
+#   · MX / SPF / DMARC 都是**短值**，肉眼一看就知道对不对
+#   · DKIM 是 400+ 字符的 RSA 公钥 ⇒ **两个特有风险**：
+#       ① DNS 层会把超长 TXT **分片**（单段上限 255 字节）⇒ 显示成 `"段1" "段2"`
+#          按 RFC 1035，多段是**直接连接**（不加空格）—— 若误加空格，公钥就坏了
+#       ② base64 长度必须是 4 的倍数；错一个字符（多/少/换行）就解不出来
+#   ⇒ 肉眼看不出坏没坏，只能程序校验。
+# ──────────────────────────────────────────────────────────────────────
+
+def split_txt_segments(data: str) -> list[str]:
+    """把 DoH 返回的 TXT data（形如 `"段1" "段2"`）拆成**段列表**。"""
+    segs, cur, inq = [], [], False
+    for ch in data:
+        if ch == '"':
+            if inq:
+                segs.append("".join(cur))
+                cur = []
+            inq = not inq
+        elif inq:
+            cur.append(ch)
+    if cur:
+        segs.append("".join(cur))
+    return segs if segs else [data]
+
+
+def check_dkim_value(data: str) -> tuple[bool, str]:
+    """校验一条 DKIM TXT 的值：分片拼接 + base64 合法性 + RSA 位长。
+
+    返回 (是否通过, 逐行报告字符串)。
+    """
+    import base64
+
+    lines: list[str] = []
+    segs = split_txt_segments(data)
+    joined = "".join(segs)  # 🔑 RFC 1035：多段直接连接，**不加空格**
+
+    lines.append(f"  分片：{len(segs)} 段" + (f"（{', '.join(str(len(s)) for s in segs)} 字符）" if len(segs) > 1 else ""))
+    lines.append(f"  拼接后总长：{len(joined)}")
+
+    if not joined.startswith("v=DKIM1"):
+        return False, "\n".join(lines + ["  🔴 不以 v=DKIM1 开头"])
+    if "k=rsa" not in joined:
+        return False, "\n".join(lines + ["  🔴 缺 k=rsa"])
+    if "p=" not in joined:
+        return False, "\n".join(lines + ["  🔴 缺 p=（公钥）"])
+
+    b64 = joined.split("p=", 1)[1].strip()
+    # 🔑 只看 **p= 之后** 有没有空格 —— 别检查整个字符串
+    #    （`v=DKIM1; k=rsa;` 本身就含空格 ⇒ 检查全体必然假红。本脚本第一版就误报过。）
+    if " " in b64 or "\t" in b64:
+        return False, "\n".join(lines + ["  🔴 p= 部分含空白字符（公钥已损坏 —— 多半是分片拼接时混入了空格）"])
+
+    if len(b64) % 4 != 0:
+        return False, "\n".join(lines + [f"  🔴 base64 长度 {len(b64)} 不是 4 的倍数 ⇒ 值不完整或多了字符"])
+
+    allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=")
+    bad = sorted(set(b64) - allowed)
+    if bad:
+        return False, "\n".join(lines + [f"  🔴 含非法字符：{bad}"])
+
+    try:
+        der = base64.b64decode(b64, validate=True)
+    except Exception as e:
+        return False, "\n".join(lines + [f"  🔴 base64 解码失败：{e}"])
+
+    lines.append(f"  ✅ base64 合法：{len(b64)} 字符 → {len(der)} 字节")
+    if der[:1] != b"\x30":
+        return False, "\n".join(lines + [f"  🔴 DER 首字节 {der[0]:#x}（应为 0x30 SEQUENCE）"])
+
+    # RSAPublicKey 的 modulus：INTEGER, length=0x0101（257 字节）⇒ 2048 位
+    if der.find(b"\x02\x82\x01\x01") > 0:
+        lines.append("  ✅ DER 合法，公钥为 **2048 位 RSA**")
+    elif der.find(b"\x02\x81\x81") > 0:
+        lines.append("  ⚠️ DER 合法，但公钥是 **1024 位**（腾讯云另有 1024 位记录，确认选对了没）")
+    else:
+        lines.append("  ⚠️ DER 合法，但未能识别密钥位长")
+    return True, "\n".join(lines)
+
+
 def main() -> int:
     mail_domain = sys.argv[1] if len(sys.argv) > 1 else "mail.keyievolution.fun"
     dkim_selector = sys.argv[2] if len(sys.argv) > 2 else None
@@ -139,11 +221,20 @@ def main() -> int:
         if not ans:
             st2, ans2, _ = query_multi(dkim_name, "CNAME")
             if ans2:
-                print(f"  ✅ {dkim_name} → CNAME " + " ; ".join(fmt(ans2)))
+                print(f"  ✅ {dkim_name} → CNAME")
+                for line in fmt(ans2):
+                    print(f"     {line}")
+                print("     🔴 是 CNAME ⇒ **务必确认代理是「仅 DNS」（灰云朵）**，")
+                print("        否则 Cloudflare 会代理它 ⇒ 腾讯云验证永远不通过")
                 ans = ans2
         else:
-            for line in fmt(ans):
-                print(f"  ✅ {dkim_name} → {line}")
+            print(f"  ✅ {dkim_name} → TXT")
+            # 🔑 只做深度校验，**不打印 400+ 字符的原文**（打印了也看不出对不对，
+            #    还会把终端刷满）。
+            ok_dkim, report = check_dkim_value(ans[0].get("data", ""))
+            print(report)
+            if not ok_dkim:
+                problems.append("DKIM(值非法)")
         if not ans:
             print(f"  ❌ 缺 DKIM（查了 {dkim_name}）")
             problems.append("DKIM")
