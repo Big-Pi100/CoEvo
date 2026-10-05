@@ -9,13 +9,23 @@
 
 ## 〇、🔴 先说三个坑（我已替你查过现状，照做可避开）
 
-### 现状实测（我刚跑的 DNS 查询）
+### 现状实测（2026-10-05 20:27 复测 · `nslookup`）
 
-| 项 | 实测值 |
-|---|---|
-| **NS** | `weston.ns.cloudflare.com` / `aitana.ns.cloudflare.com` ⇒ 🔴 **DNS 托管在 Cloudflare** |
-| **MX** | 3 条 `route1/2/3.mx.cloudflare.net`（= **Email Routing，`support@` 的收信路由**）|
-| **SPF** | `v=spf1 include:_spf.mx.cloudflare.net ~all` |
+| 项 | 实测值 | 动作 |
+|---|---|---|
+| **NS** | `weston.ns.cloudflare.com` / `aitana.ns.cloudflare.com` | ⇒ **DNS 托管在 Cloudflare** |
+| **主域名 MX** | 3 条 `route1/2/3.mx.cloudflare.net`（= **Email Routing，`support@` 的收信路由**）| 🔴 **一个字都不要动** |
+| **主域名 SPF** | `v=spf1 include:_spf.mx.cloudflare.net ~all` | 🔴 **不要动、也不要再加第二条**（见坑③） |
+| 🆕 **`mail.keyievolution.fun`** | **Non-existent domain**（A / MX / TXT **全查过，三类都是 NXDOMAIN**） | ✅ **全新** ⇒ 加什么都不冲突 |
+| 🆕 **`_dmarc.keyievolution.fun`** | **不存在**（主域名没配 DMARC） | 无影响；SES 的 DMARC 配在 **`_dmarc.mail`** 上，两者独立 |
+
+> ✅ **最省心的一条结论**：`mail.` 这个子域名**完全是空白的**，
+> 所以本次配置**不可能**与现有记录打架 —— 只要**不去碰主域名的两条**（MX / SPF）就是安全的。
+>
+> 🔑 顺带排除一个易被忽略的冲突源：**Cloudflare Email Routing 有没有管到 `mail` 子域名？**
+> —— 若管了，Cloudflare 会**自动**在 `mail` 上写 MX，与我们加的腾讯云 MX 直接打架。
+> 实测：`mail.keyievolution.fun` 的 **A / MX / TXT 三类查询全部返回 NXDOMAIN**
+> ⇒ Email Routing **只管主域名**，没碰子域名 ⇒ **无冲突** ✅
 
 ### 坑 ①：DNS 记录加在 **Cloudflare**，不是腾讯云
 
@@ -81,21 +91,56 @@ v=spf1 include:_spf.mx.cloudflare.net include:<腾讯云给的 spf 域> ~all
 ⚠️ **记录值以腾讯云控制台实际显示为准** —— 我**不预先编造**（编了你也对不上）。
 把列表**截图或抄给我**，我帮你逐条核对「加到 Cloudflare 的哪一项、有没有跟现有记录打架」。
 
-预期会有（**名称与值都以它显示的为准**）：
+> ### ✅ 直接回答：**要配的「域名」只有 `mail.keyievolution.fun` 一个**
+>
+> 不是「多个域名」，而是**同一个子域名下的 4 条记录**。
+> 换句话说：**每一条记录的 Name 都以 `mail` 结尾**（见下表右列），
+> 而主域名 `keyievolution.fun` **一条都不新增、一条都不修改**。
 
-| 类型 | 作用 | 加在哪 |
+腾讯云控制台给的是 **4 类**记录（正是提示里的 MX · SPF · DMARC · DKIM）：
+
+| 类型 | 作用 | Cloudflare 的 **Name** 该填什么 |
 |---|---|---|
-| `TXT` | **所有权验证** | Cloudflare → DNS → Add record |
-| `MX` | 接收退信 | 同上（加在 `mail` 子域名）|
-| `TXT` | **SPF** | 同上 |
-| `TXT` / `CNAME` | **DKIM** | 同上（通常是 `xxx._domainkey.mail`）|
-| `TXT` | **DMARC**（可选但建议）| 同上（`_dmarc.mail`）|
+| **MX** | 接收退信（腾讯云要求发信域名必须有） | `mail` |
+| **TXT** | **SPF**（`v=spf1 …`） | `mail` |
+| **TXT** 或 **CNAME** | **DKIM**（记录名形如 `xxxx._domainkey`） | `xxxx._domainkey.mail` |
+| **TXT** | **DMARC**（`v=DMARC1; …`） | `_dmarc.mail` |
 
-🔴 **Cloudflare 的两个注意点**：
-1. Cloudflare 默认会给记录开**代理（橙色云朵）**⇒ **MX / TXT 记录必须设为「DNS only」（灰色云朵）**，
-   否则发信验证不通过。（Cloudflare 对 MX/TXT 通常自动不代理，但要**检查一眼**。）
-2. 添加完等 **5 分钟–2 小时**（腾讯云原话），再回控制台点「验证」。
-   ⚠️ **别反复点** —— 生效前点多少次都是「未通过」，不是出错。
+⚠️ 有的腾讯云版本还会给一条「**所有权验证 TXT**」（主机记录 `mail`）。
+**以你控制台实际显示的为准** —— 它给几条就配几条，不必自己加。
+（我原先写「通常会有所有权验证」，但你控制台的提示只列了四项 ⇒ **按你的四项做**。）
+
+### 🔴🔴 Cloudflare 的填写规则（这是最容易填错的地方）
+
+| # | 规则 | 说明 |
+|---|---|---|
+| 1 | **Name 填「相对名」，不要填完整域名** | Cloudflare 会**自动补上** `keyievolution.fun`。<br>填 `mail` → 实际是 `mail.keyievolution.fun` ✅<br>❌ 若填 `mail.keyievolution.fun` → 会变成 `mail.keyievolution.fun.keyievolution.fun` |
+| 2 | 🔴 **代理状态必须「已关闭」**（灰色云朵 ☁️ / DNS only） | 记录列表右侧那个云朵图标，**点一下**要在**灰色**状态。<br>⚠️ **TXT / MX 记录 Cloudflare 不给开代理**（自动灰）—— 但 **CNAME 默认是橙色！**<br>⇒ **如果 DKIM 给的是 CNAME，务必手动点成灰色**，否则发信验证永远不过。 |
+| 3 | **TTL 用默认（Auto）** | 不用改。 |
+| 4 | 🔴 **只在 `mail` 子域名上加，绝不碰主域名** | 主域名现有 MX（3 条 cloudflare route）与 SPF **一个字都不改**（见 §〇 坑②）。 |
+
+### 🔴 为什么这套配置能通过 DMARC（不是「照着填就行」）
+
+DMARC 要求 **SPF 或 DKIM 至少一项与 `From` 域名「对齐」**。
+我们发信是 `noreply@mail.keyievolution.fun` ⇒ 对齐的是 **`mail.keyievolution.fun`**：
+
+| 检查项 | 配在哪 | 对齐吗 |
+|---|---|---|
+| SPF | `mail.keyievolution.fun` 的 TXT | ✅ 与 From 域名**完全相同** |
+| DKIM | `xxxx._domainkey.mail.keyievolution.fun` | ✅ 签名域 = `mail.keyievolution.fun` |
+| DMARC | `_dmarc.mail.keyievolution.fun` | ✅ 自己声明自己的策略 |
+
+⇒ 这套是**自洽**的。
+⚠️ **反例（别这么做）**：若从 `mail.` 子域名发信，却把 SPF/DKIM 配在主域名上，
+DMARC 会因**不对齐**而失败 ⇒ 邮件大批进垃圾箱。这正是「用子域名发信」必须
+**整套记录都跟着子域名走**的原因（不是可选项）。
+
+### ⏳ 填完之后
+
+1. 等 **5 分钟–2 小时**（腾讯云原话），再回控制台点「验证」。
+   ⚠️ **别反复点** —— 生效前点多少次都是「未通过」，不是出错（也不是被拒）。
+2. 四项**全部**验证通过，才能正常发信。
+3. ✅ 通过后把控制台的**验证状态截图**发我 —— 我据此确认「可以配密钥了」。
 
 ### 1.4 新建发信地址
 
@@ -194,25 +239,73 @@ v=spf1 include:_spf.mx.cloudflare.net include:<腾讯云给的 spf 域> ~all
 
 ## 四、密钥怎么安全地给我（等你到这一步再做）
 
-**不要**贴在对话里。我届时会给你一条命令，形如：
+**不要**贴在对话里。
+
+### 4.1 🔴 先纠正一处：我上一版写错了路径（已实测改正）
+
+我原先写的是 `/etc/coevo/backend.env` —— **那是错的**。
+2026-10-05 **直连服务器实测**（判据：给用户跑的命令须抄项目文档 / 验证优先直查）：
+
+| 项 | 实测值（`systemctl show coevo.service`） |
+|---|---|
+| **服务名** | **`coevo.service`**（`CoEvo backend (Rust/axum, 127.0.0.1:8300)`）|
+| **可执行** | `/opt/coevo/bin/coevo_backend` |
+| ✅ **环境变量文件** | **`/opt/coevo/.env`** ← 真实路径 |
+| 现有 key（**只列名，不读值**） | `COEVO_ADMIN_KEY` · `COEVO_HOST` · `COEVO_PORT` · `COEVO_PII_KEY` · `DEEPSEEK_API_KEY` |
+| 是否已有 `TENCENT_*` | ❌ **0 个** ⇒ SES 的 5 个变量全新、**不会冲突** |
+
+> 🔑 附带确认：**`TENCENT_*` 一个都没有**，说明 ASR（`tencent_asr.rs`）**在生产从未配置**
+> ⇒ 我把它改成共用 `tencent_sign` 的签名实现，是**零风险**改动（它没在跑）。
+
+### 4.2 命令（到那一步再执行）
+
+⚠️ **先别急着执行** —— 现在写密钥也发不出信（DNS 还没验证 + 模板还没审核）。
+到「四项验证通过 + 模板审核通过」时再跑这条：
 
 ```bash
-# 在服务器上执行（把 <...> 换成真值）
-ssh -i ~/.ssh/coevo_key ubuntu@<服务器IP>
-sudo tee -a /etc/coevo/backend.env >/dev/null <<'EOF'
+# ① 本地 → 服务器
+ssh -i ~/.ssh/coevo_key ubuntu@<VPS_IP>
+
+# ② 在服务器上执行（把 <...> 换成真值）
+sudo cp /opt/coevo/.env /opt/coevo/.env.bak.$(date +%s)   # 先备份
+sudo sed -i '/^TENCENT_SES_/d' /opt/coevo/.env            # 删旧的同名行（幂等，可重复执行）
+sudo tee -a /opt/coevo/.env >/dev/null <<'EOF'
 TENCENT_SES_SECRET_ID=<你的 SecretId>
 TENCENT_SES_SECRET_KEY=<你的 SecretKey>
-TENCENT_SES_FROM=noreply@mail.keyievolution.fun
+TENCENT_SES_FROM=CoEvo <noreply@mail.keyievolution.fun>
 TENCENT_SES_TEMPLATE_ID=<模板审核通过后的 ID>
 TENCENT_SES_REGION=ap-guangzhou
+TENCENT_SES_REPLY_TO=support@keyievolution.fun
 EOF
+sudo systemctl restart coevo
+
+# ③ 核对「名字在不在」（🔴 只看名字，不要打印值）
+sudo grep -oE '^TENCENT_SES_[A-Z_]*' /opt/coevo/.env
+sudo systemctl is-active coevo
 ```
 
-> ⚠️ 这条命令**必须抄项目文档**（判据：给用户跑的命令须抄文档，别手写）——
-> 我在实施那一步会从 `maintenance-spec.md` 抄准确的服务名与路径再给你，**现在不写死**。
+**逐条说明**：
 
-🔑 密钥**只进服务器环境变量**，**不进仓库**。实施时我会加一条断言：
-**仓库里不得出现 `TENCENT_SES_SECRET` 的真值**（防误提交）。
+| 步骤 | 为什么 |
+|---|---|
+| `cp` 备份 | 改环境变量出错会导致服务起不来 ⇒ 留回滚点 |
+| `sed -i '/^TENCENT_SES_/d'` | 幂等：重复执行不会堆出**重复 key**（`grep -c` 只看值不看重的坑） |
+| `tee -a`（append） | **绝不覆盖** `/opt/coevo/.env` 里既有的 5 个 key |
+| `<<'EOF'`（**带引号**） | 防止 `<>` 与 `$` 被 shell 解释 —— `CoEvo <noreply@…>` 里的尖括号必须原样写入 |
+| `TENCENT_SES_REPLY_TO` | 用户直接按「回复」时能到达 `support@`（我们不填的话用户回复会失败）|
+| **只 grep 名字** | 🔴 `systemctl show -p Environment` 会**打印密钥值** ⇒ **不要用它核对** |
+
+**若报 `FailedOperation.IncorrectSender`**（发件人格式不对）：
+把 `TENCENT_SES_FROM` 改成**只留邮箱**（`noreply@mail.keyievolution.fun`）再试 ——
+腾讯云要求「显示名与第一个尖括号之间**必须有空格**」，各家对显示名的宽松度不同。
+
+**若 `TENCENT_SES_TEMPLATE_ID` 还没拿到**：
+可以先把其余 4 项写上、这一项留空 —— 后端 `SesConfig::from_env()` 会判「**未配置**」
+并返回明确的 `Err("邮件服务未配置")`（**不会静默失败**，用户看到的是
+「验证码发送失败，请稍后再试」）。审核通过后补上这一项 + 重启即可。
+
+🔑 密钥**只进服务器环境变量**，**不进仓库**。
+它对应一条断言：**仓库里不得出现 `TENCENT_SES_SECRET` 的真值**（防误提交）。
 
 ---
 
