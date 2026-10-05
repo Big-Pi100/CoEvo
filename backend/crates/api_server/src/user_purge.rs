@@ -433,20 +433,29 @@ use axum::response::IntoResponse;
 ///
 /// 📌 两种模式并存是**有意**的：不动存量（`verify_auth` 的既有调用方），
 ///    新接口用约束更强的那种。
-fn resolve_uid_from_token(headers: &HeaderMap) -> Result<String, AppError> {
-    let token = headers
+/// 从 `Authorization: Bearer <token>` 头里取出 token —— **全后端唯一实现**。
+///
+/// 🔑 2026-10-05 抽出：原先只有本模块的 `resolve_uid_from_token` 里有这段解析，
+///    而「修改密码」要知道**当前 token 本身**（用于「保留当前会话、失效其他」）
+///    ⇒ 若各写一份，两处的 header 名/前缀/错误文案会**静默漂移**。
+pub(crate) fn extract_bearer_token(headers: &HeaderMap) -> Result<String, AppError> {
+    headers
         .get("authorization")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
-        .ok_or_else(|| AppError::Unauthorized("缺少 Authorization 头".to_string()))?;
+        .map(|s| s.to_string())
+        .ok_or_else(|| AppError::Unauthorized("缺少 Authorization 头".to_string()))
+}
 
+/// 用会话 token 反查 `user_id`（**唯一实现**，见 `crate::auth::uid_by_token`）。
+pub(crate) fn resolve_uid_by_token(token: &str) -> Result<String, AppError> {
     let conn = crate::db_pool::get_conn();
-    conn.query_row(
-        "SELECT user_id FROM tokens WHERE token = ?1 LIMIT 1",
-        params![token],
-        |r| r.get::<_, String>(0),
-    )
-    .map_err(|_| AppError::Unauthorized("登录已失效，请重新登录".to_string()))
+    crate::auth::uid_by_token(&conn, token).map_err(AppError::Unauthorized)
+}
+
+fn resolve_uid_from_token(headers: &HeaderMap) -> Result<String, AppError> {
+    let token = extract_bearer_token(headers)?;
+    resolve_uid_by_token(&token)
 }
 
 /// `POST /api/user/me/delete` —— 用户自助注销账号。

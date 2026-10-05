@@ -155,6 +155,8 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         .route("/api/auth/register", post(auth_register))
         .route("/api/auth/login", post(auth_login))
         .route("/api/auth/verify", post(auth_verify))
+        // 🆕 2026-10-05 修改密码（需登录 · 只认 token，不接受 body 里的 user_id）
+        .route("/api/auth/change-password", post(auth_change_password))
         // ── 🔴 2026-09-29 已退役：/api/review/* · /api/cards/* · /api/history · /api/conversations/* ──
         //     学习状态已整体迁到端侧 `user.db`（`card_review_state` / `review_log` / `user_word`）：
         //       · `/api/review/*` 与 `/api/cards/*` 原由后端 FSRS（crate `card_engine`）驱动
@@ -562,6 +564,17 @@ pub struct AuthInput {
     pub referral: Option<crate::auth::ReferralInfo>,
 }
 
+/// 修改密码的请求体（`POST /api/auth/change-password`）。
+///
+/// 🔑 刻意**不复用** `AuthInput`：那个带 `email` 与 `referral`，
+///    语义不同（改密码不需要、也不该接受邮箱参数 —— 账号由 token 确定）。
+///    判据：**复用结构体要看语义是否同一件事**，不是「字段长得像就共用」。
+#[derive(Deserialize)]
+pub struct ChangePasswordInput {
+    pub old_password: String,
+    pub new_password: String,
+}
+
 /// POST /api/auth/register — 注册新用户
 /// 请求: {"email": "str", "password": "str", "referral?": {"code": "str"}}
 /// 响应: {"user_id": "uuid", "token": "str", "email": "str"} 或 {"error": "str"}
@@ -640,6 +653,70 @@ async fn auth_login(
             Json(serde_json::json!(resp)).into_response()
         }
         Err(e) => Json(serde_json::json!({"error": e})).into_response(),
+    }
+}
+
+/// POST /api/auth/change-password — **修改密码**（需登录）
+///
+/// 请求头: `Authorization: Bearer <token>`
+/// 请求体: `{"old_password": "str", "new_password": "str"}`
+/// 响应: `{"ok": true}` 或 `{"error": "str"}`
+/// 限流: 10 次/分钟/IP（与 `login` 同档 —— 都要跑 bcrypt，是 CPU 敏感操作）
+///
+/// # 为什么它和「忘记密码」必须**两个都有**
+///
+/// 它们在「账号维护功能」清单里是并列项：
+/// · 只有「忘记密码」⇒ 记得密码的人**改不了**（想换强密码也做不到）
+/// · 只有「修改密码」⇒ 忘了密码的人**进不去**（没有出口）
+///
+/// # 🔴 鉴权只认 token（**不接受任何请求体里的 user_id**）
+///
+/// 与 `POST /api/user/me/delete` 同一条判据：**改谁的密码只能由 token 决定**。
+/// 若允许 body 传 `user_id`，就等于开了一个「改别人密码」的口子。
+/// （`ChangePasswordInput` 因此**只有** old/new 两个字段。）
+async fn auth_change_password(
+    headers: HeaderMap,
+    Json(input): Json<ChangePasswordInput>,
+) -> axum::response::Response {
+    // Rate limit: 10 次/分钟/IP（bcrypt 开销大，且防「拿旧密码反复试」）
+    if let Err(resp) = crate::rate_limiter::check_rate_limit(&headers, 10, 60) {
+        return resp;
+    }
+
+    // ① 取当前 token（**唯一实现**在 `user_purge::extract_bearer_token`）
+    let token = match crate::user_purge::extract_bearer_token(&headers) {
+        Ok(t) => t,
+        Err(e) => return auth_json(e).into_response(),
+    };
+
+    let result = {
+        let conn = crate::db_pool::get_conn();
+        // ② token → uid（**唯一实现**在 `auth::uid_by_token`）
+        match crate::auth::uid_by_token(&conn, &token) {
+            // ③ 改密码（内部：验原密码 → 更新 hash → 失效其他会话、保留当前）
+            Ok(uid) => crate::auth::change_password(
+                &conn,
+                &uid,
+                &token,
+                &crate::auth::ChangePasswordRequest {
+                    old_password: input.old_password,
+                    new_password: input.new_password,
+                },
+            ),
+            Err(e) => Err(e),
+        }
+    };
+
+    match result {
+        Ok(()) => {
+            tracing::info!("auth_change_password: 修改成功");
+            Json(serde_json::json!({"ok": true})).into_response()
+        }
+        Err(e) => {
+            // ⚠️ **不打印密码**（即使是日志）—— 只记「失败」这件事。
+            tracing::warn!("auth_change_password: 失败 —— {}", e);
+            Json(serde_json::json!({"error": e})).into_response()
+        }
     }
 }
 
