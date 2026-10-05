@@ -79,13 +79,24 @@ class _ReadingTabScreenState extends ConsumerState<ReadingTabScreen> {
     setState(() => _section = s);
   }
 
-  Future<void> _import() => runBookImportFlow(
-        context: context,
-        ref: ref,
-        onBusy: (busy) {
-          if (mounted) setState(() => _importing = busy);
-        },
-      );
+  /// 触发导入 —— **本页有两处入口**（标题栏药丸、书库空态的「导入文件」按钮），
+  /// 两个都调这一个方法 ⇒ 防重入放在**这里**（状态的所有者），不放在各个调用点。
+  ///
+  /// 🔴 **2026-10-05 补的守卫**：`runBookImportFlow` 自己**不做**防重入
+  /// （它把这件事留给调用方，见那里的注释）。而「书库空态」那个按钮
+  /// 无法从 `_importing` 推知要不要禁用（它只是 `onImport` 回调）⇒
+  /// 若只靠按钮的 `enabled`，两处入口就会**漏一处**。
+  /// ⇒ 在**唯一的入口**上加守卫：重复调用直接返回，不会连开两个文件选择器。
+  Future<void> _import() async {
+    if (_importing) return;
+    await runBookImportFlow(
+      context: context,
+      ref: ref,
+      onBusy: (busy) {
+        if (mounted) setState(() => _importing = busy);
+      },
+    );
+  }
 
   /// 标题栏段落间距 —— 设计稿 `.hd-tabs{gap:16px}`。
   static const double _titleGap = 16;
@@ -117,7 +128,9 @@ class _ReadingTabScreenState extends ConsumerState<ReadingTabScreen> {
                 index: _section.stackIndex,
                 children: [
                   const HomeScreen(),
-                  BookLibraryScreen(onImport: _import),
+                  // ⚠️ `importing` 要传下去 —— 书库**空态**里那个「导入文件」按钮
+                  //    也必须在导入中禁用（否则它成了一个可重复点、但点了没反应的入口）。
+                  BookLibraryScreen(onImport: _import, importing: _importing),
                 ],
               ),
             ),
@@ -130,18 +143,33 @@ class _ReadingTabScreenState extends ConsumerState<ReadingTabScreen> {
   /// 标题栏：`今日精选 ｜ 书库` + 右侧动作。
   ///
   /// 版式照锚点设计稿的 `.feed-hd`：`padding: 2px 18px 14px`、`gap: 12px`。
+  ///
+  /// 🔴 **2026-10-05：标题由 `Flexible` 改 `Expanded`**（白哥真机反馈）
+  /// > 「收藏按钮应该更靠右，其他页面的 title 按钮都是靠右的」
+  ///
+  /// **根因**：`Flexible` 只给「**内容宽**」—— 标题只占它自己那么宽，
+  /// 剩余空间**没人占**，于是右侧元素紧跟在标题后面 ⇒ 停在标题右边、不贴屏幕右缘。
+  /// `Expanded`（= `Flexible(fit: FlexFit.tight)`）让标题**占满剩余宽度**，
+  /// 右缘元素自然被推到最右。
+  ///
+  /// 🔑 **对照（本项目其他两页本来就是对的）**：
+  ///   · `review_screen.dart`  → `Expanded(Text('复习'))` → 药丸贴右
+  ///   · `bookmark_list_screen` → `MainAxisAlignment.spaceBetween` → 动作贴右
+  /// ⇒ 判据：**同一位置承担同类职责的元素，应有同一个落点**；
+  ///   三页里两页对、一页错的，那页就是**离群值**。
+  ///
+  /// ⚠️ `FittedBox(scaleDown)` **保留在 `Expanded` 内部**（`alignment: centerLeft`）——
+  ///    「小屏 + 系统大字体（本项目限到 1.3）不溢出」的兜底仍在，
+  ///    只是它现在只作用于标题自身，不再影响右侧布局。
   Widget _header(CoEvoTokens t, int bookmarkCount) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 2, 18, 14),
       child: Row(
         children: [
-          // 🔑 `Flexible` + `FittedBox(scaleDown)`：正常时完全不动（scale = 1），
-          //    只有小屏 + 系统大字体（本项目把 `textScaleFactor` 限到 1.3）时才整体缩一点，
-          //    而不是溢出成黄黑条纹。
-          //    （两个 23px 标题 + 右侧药丸在 320px 宽的机器上放不下。）
-          Flexible(
+          Expanded(
             child: FittedBox(
               fit: BoxFit.scaleDown,
+              // 🔑 缩放时**靠左**对齐 —— 标题始终从左边开始，不会因缩放而横移
               alignment: Alignment.centerLeft,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -213,6 +241,27 @@ class _ReadingTabScreenState extends ConsumerState<ReadingTabScreen> {
   }
 
   /// 右侧动作 —— **随当前段切换**（设计稿：信息流是「收藏 N」，书库是「导入」）。
+  ///
+  /// 🔴 **2026-10-05：两段都用粘土药丸了**（白哥真机反馈）
+  /// > 「书库界面的导入按钮应该也是一个一个粘土按钮，设计语言要统一」
+  ///
+  /// **改前**：`books` 分支是一段 `InkWell > Text('导入')` —— **零体积的纯文字**。
+  /// 于是**同一行**出现了两种形态（收藏 = 凹陷药丸 / 导入 = 裸文字）。
+  ///
+  /// **改后**：用 `HeaderChip`（凹陷药丸）—— 与「收藏」**同一行、同一形态、同一处定义**。
+  /// 🔑 依据 spec §〇 规则 1：「**有体积的只可能是可点的东西**」——
+  ///    导入可点 ⇒ 可以有体积；而**凹陷**的物理语义正是「**可以按下去**」，与「导入」这个动作相合。
+  ///
+  /// ⚠️ **两段不会同时出现**（信息流段显示收藏、书库段显示导入）⇒ 无并排拥挤问题。
+  ///
+  /// # 「导入中」为什么仍是一颗**药丸**
+  ///
+  /// 改前用的是一个**裸转圈**（`CircularProgressIndicator`）—— 切换时形状会突变。
+  /// 现在改成 `HeaderChip(label: '导入中', enabled: false)`：
+  ///   · 形状**不变**（仍是同一颗药丸）⇒ 标题栏**不跳**；
+  ///   · `labelReserve: '导入中'` ⇒ 两态**同宽**（「导入」2 字 vs 「导入中」3 字本来会差一个字宽）；
+  ///   · `enabled: false` ⇒ 走 `ClayState.disabled`（瘪了）表达「暂时不可点」，
+  ///     而**不是**传一个空回调（那会造出「点了没反应的死入口」）。
   Widget _trailing(CoEvoTokens t, int bookmarkCount) {
     switch (_section) {
       case ReadingSection.feed:
@@ -225,33 +274,15 @@ class _ReadingTabScreenState extends ConsumerState<ReadingTabScreen> {
         );
 
       case ReadingSection.books:
-        final accent = Color(t.accent.argb32);
-        if (_importing) {
-          // 导入中 → 转圈（同时天然**禁用**了重复点击）
-          return const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            child: SizedBox(
-              width: 15,
-              height: 15,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          );
-        }
-        return InkWell(
+        // 🔑 药丸形态与「收藏」同源（`HeaderChip`），只是图标/文案/回调不同。
+        //    ⚠️ `labelReserve` 取**最长的那个**文案（「导入中」3 字）——
+        //    传短了会让长文案在切换时把标题栏挤动（`HeaderChip` 文档 §🆕 ④）。
+        return HeaderChip(
+          icon: Icons.add,
+          label: _importing ? '导入中' : '导入',
+          labelReserve: '导入中',
+          enabled: !_importing,
           onTap: _import,
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            child: Text(
-              '导入',
-              style: TextStyle(
-                fontFamily: CoFonts.uiSans,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: accent,
-              ),
-            ),
-          ),
         );
     }
   }

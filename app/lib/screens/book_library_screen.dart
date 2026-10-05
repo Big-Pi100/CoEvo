@@ -47,6 +47,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../providers/book_provider.dart';
+import '../theme/clay.dart';
 import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
@@ -55,14 +56,24 @@ import '../widgets/co_dialog.dart';
 import '../widgets/group_qrcode_dialog.dart';
 
 class BookLibraryScreen extends ConsumerStatefulWidget {
-  const BookLibraryScreen({super.key, required this.onImport});
+  const BookLibraryScreen({
+    super.key,
+    required this.onImport,
+    required this.importing,
+  });
 
   /// 触发导入 —— 实现由 `services/ebook/book_import_flow.dart` 提供，
   /// 由容器（`ReadingTabScreen`）传入。
   ///
-  /// 🔑 **空态里那个「导入文件」按钮与标题栏右上角的「导入」是同一个动作** ——
+  /// 🔑 **空态里那个「导入文件」按钮与标题栏右上角的「导入」药丸是同一个动作** ——
   ///    两处都调这一个回调，不各写一遍（判据：一处权威）。
   final VoidCallback onImport;
+
+  /// 是否正在导入 —— 由容器持有（按钮在容器里，状态就该由它的所有者持有）。
+  ///
+  /// 🔑 用途：空态那个按钮要跟着**禁用**，否则导入中还能再点一次
+  ///    （虽然 `_import` 内部也有守卫，但「看起来能点」本身就该避免）。
+  final bool importing;
 
   @override
   ConsumerState<BookLibraryScreen> createState() => _BookLibraryScreenState();
@@ -124,7 +135,13 @@ class _BookLibraryScreenState extends ConsumerState<BookLibraryScreen> {
                 ),
               ),
               const SizedBox(height: CoSpacing.xl),
-              ClayButton(label: '导入文件', onTap: widget.onImport),
+              // 🔑 导入中 → 禁用（`ClayButton.enabled` 走 `ClayState.disabled`），
+              //    与标题栏那颗药丸**同时**进禁用态（同一个 `_importing` 驱动）。
+              ClayButton(
+                label: widget.importing ? '导入中…' : '导入文件',
+                enabled: !widget.importing,
+                onTap: widget.onImport,
+              ),
               const SizedBox(height: CoSpacing.lg),
               _groupGuideCard(t),
             ],
@@ -239,18 +256,48 @@ class _BookLibraryScreenState extends ConsumerState<BookLibraryScreen> {
         ),
       );
 
+  /// 书库列表 —— 🔴 **2026-10-05：由「平坦行 + Divider」改为「每本书一张粘土卡」**
+  ///
+  /// 白哥真机反馈：「书库的目录清单应该也要统一设计语言」。
+  ///
+  /// # 改前的形态属于**哪一套都不是**
+  ///
+  /// 项目里已有两种「列表」语言：
+  /// | 语言 | 形态 | 用在 |
+  /// |---|---|---|
+  /// | **卡片** | 一条内容 = 一张粘土卡（凸起、可点）| 信息流（`feed_card.dart` → `Clay`）|
+  /// | **分组容器** | 一组 = 一个 `Clay` + 内部 `Divider` + 平坦行 | 「我的」页（`profile_screen` 的 `_navTile(bare:)`）|
+  ///
+  /// 而书库改前是**平坦行 + `Divider`、直接铺在 `page` 底色上、外面没有容器** ——
+  /// 既不像卡片、也不像分组。表现是：从「今日精选」切到「书库」，
+  /// **整页质感突然变平**（同屏切换、两种质感 ⇒ 像两个 App）。
+  ///
+  /// # 为什么选「卡片」而不是「分组容器」
+  ///
+  /// 🔑 判据：**列表里的每一项是什么** ——
+  ///   · 是**内容**（可以打开来读）→ 卡片
+  ///   · 是**同质设置项**（开关 / 跳转）→ 分组容器
+  /// 书显然是前者（点进去是**读**），且本 tab 的两段**共处同一屏**、
+  /// 切换时应当用**同一套卡片语言** ⇒ 卡片。
+  ///
+  /// 🔑 spec §〇 规则 1 也成立：每本书**可点** ⇒ 可以有体积。
+  ///
+  /// ⚠️ **间距必须一起改**：信息流是 `.fcards{gap:13px}`，
+  ///    所以这里也用 **13**（+ 左右 16，同 `.feed{padding:0 16px}`）。
+  ///    📌 判据：**「同一套卡片语言」不只是卡片长得一样，间距也是它的一部分** ——
+  ///       只改卡片不改间距，切换时仍会有「疏密突变」。
   Widget _list(CoEvoTokens t, List<BookSummary> books) => ListView.separated(
-        padding: const EdgeInsets.fromLTRB(
-            CoSpacing.xxl, 0, CoSpacing.xxl, CoSpacing.tabBarClearance),
+        padding:
+            const EdgeInsets.fromLTRB(16, 0, 16, CoSpacing.tabBarClearance),
         itemCount: books.length,
-        separatorBuilder: (_, __) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: CoSpacing.sm),
-          child: Divider(height: 1, color: Color(t.line.argb32)),
-        ),
-        itemBuilder: (_, i) => _bookRow(t, books[i]),
+        separatorBuilder: (_, __) => const SizedBox(height: 13),
+        itemBuilder: (_, i) => _bookCard(t, books[i]),
       );
 
-  Widget _bookRow(CoEvoTokens t, BookSummary b) {
+  /// 一本书 = 一张粘土卡（与信息流 `FeedCard` 同源）。
+  ///
+  /// 版式：`[封面占位 46×62] [标题 / 作者·进度 / 进度条] [›]`
+  Widget _bookCard(CoEvoTokens t, BookSummary b) {
     return Dismissible(
       key: ValueKey(b.id),
       direction: DismissDirection.endToStart,
@@ -260,67 +307,101 @@ class _BookLibraryScreenState extends ConsumerState<BookLibraryScreen> {
       onDismissed: (_) => _deleteBook(b),
       background: Container(
         alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: CoSpacing.lg),
+        padding: const EdgeInsets.only(right: CoSpacing.xl),
         child:
             Icon(Icons.delete_outline, size: 20, color: Color(t.accent.argb32)),
       ),
-      child: InkWell(
+      child: Clay(
         onTap: () => context.push('/books/${b.id}'),
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: CoSpacing.md),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.fromLTRB(16, 15, 16, 15),
+        child: Row(
+          children: [
+            _coverPlaceholder(t, b),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    b.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      // 🔑 用**衬线体**（同信息流卡片标题）——
+                      //    书库标题与信息流标题是同一类东西（内容标题），
+                      //    字体也应当同源。中文字名由 fallback 链兜底。
+                      fontFamily: CoFonts.latinSerif,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      height: 1.3,
+                      color: Color(t.ink.argb32),
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    _metaLabel(b),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: CoFonts.uiSans,
+                      fontSize: 11.5,
+                      color: Color(t.ink3.argb32),
+                    ),
+                  ),
+                  const SizedBox(height: 9),
+                  _progressBar(t, b),
+                ],
+              ),
+            ),
+            const SizedBox(width: CoSpacing.sm),
+            Icon(Icons.chevron_right, size: 20, color: Color(t.accent.argb32)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 进度条（设计稿 `.bbar`：4px 高、圆角 2、槽 `sunken`、填充 `accent`）。
+  ///
+  /// 🔑 **为什么加它**：进度原本只有一行文字（「已读 42%」）。做成卡片后，
+  ///    条能把「读到哪里」变成一个**可扫视的长度** —— 列表扫一眼就知道哪本在读。
+  ///    ⚠️ **文字仍保留**（在 `_metaLabel` 里）：条表达「大概多少」，
+  ///       文字表达「确切多少」，两者互补；只有条会在 0% / 未开始时说不清。
+  ///
+  /// # ⚠️ 实现上避开了两个「看起来对、实际会塌」的写法
+  ///
+  /// ① **不用 `Row` + `Expanded(flex: v*1000)`** —— `flex` 必须 > 0 才有弹性语义，
+  ///    而进度极小（如 0.0004）时 `round()` 得 **0** ⇒ 落进 `RenderFlex` 的**非弹性**分支，
+  ///    那条路径对「无 intrinsic 尺寸的色块」会算成 0 宽（不是 assert 失败，是**静默塌掉**）。
+  /// ② **不用 `FractionallySizedBox(widthFactor: v)` + `ColoredBox`** ——
+  ///    `ColoredBox` 没有 child 时 `computeDryLayout` 取 `constraints.smallest`
+  ///    ⇒ **高度塌成 0**（条会整个消失）。
+  ///
+  /// ✅ 现在的写法：`Positioned(left/top/bottom + width)` —— 四个方向都定死，
+  ///    高度铺满、宽度由 `LayoutBuilder` **实测**的可用宽 × 比例算出。
+  ///    📌 判据（本项目已记）：**能用「让引擎实测」解决的，不要靠估算或假设固有尺寸。**
+  Widget _progressBar(CoEvoTokens t, BookSummary b) {
+    final v = b.progress.clamp(0.0, 1.0);
+    final track = Color(t.sunken.argb32);
+    final fill = Color(t.accent.argb32);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(2),
+      child: SizedBox(
+        height: 4,
+        child: LayoutBuilder(
+          builder: (context, c) => Stack(
             children: [
-              _coverPlaceholder(t, b),
-              const SizedBox(width: CoSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      b.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontFamily: CoFonts.uiSans,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        height: 1.4,
-                        color: Color(t.ink.argb32),
-                      ),
-                    ),
-                    if ((b.author ?? '').isNotEmpty) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        b.author!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontFamily: CoFonts.uiSans,
-                          fontSize: 12,
-                          color: Color(t.ink3.argb32),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 6),
-                    Text(
-                      _progressLabel(b),
-                      style: TextStyle(
-                        fontFamily: CoFonts.uiSans,
-                        fontSize: 11.5,
-                        color: Color(t.ink3.argb32),
-                      ),
-                    ),
-                  ],
+              // 槽：整宽铺满
+              Positioned.fill(child: ColoredBox(color: track)),
+              // 填充：按比例（v == 0 时不画，避免一个 0 宽的 Positioned）
+              if (v > 0)
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: c.maxWidth * v,
+                  child: ColoredBox(color: fill),
                 ),
-              ),
-              const SizedBox(width: CoSpacing.sm),
-              Padding(
-                padding: const EdgeInsets.only(top: 14),
-                child: Icon(Icons.chevron_right,
-                    size: 20, color: Color(t.accent.argb32)),
-              ),
             ],
           ),
         ),
@@ -328,27 +409,48 @@ class _BookLibraryScreenState extends ConsumerState<BookLibraryScreen> {
     );
   }
 
+  /// 卡片第二行：`作者 · 进度`（任一侧为空则只显示另一侧）。
+  ///
+  /// 🔑 合并成一行而不是两行：卡片高度有限，而这两条都是**次要信息** ——
+  ///    分成两行会把卡片撑高，与信息流卡片的疏密不一致。
+  ///    ⚠️ 作者可能为 `null`（TXT 常无作者）⇒ 不能写死 `'${b.author} · ...'`。
+  String _metaLabel(BookSummary b) {
+    final parts = <String>[];
+    final author = (b.author ?? '').trim();
+    if (author.isNotEmpty) parts.add(author);
+    parts.add(_progressLabel(b));
+    return parts.join(' · ');
+  }
+
   /// 封面占位 —— 标题首字（设计文档 §4.2：一期不解析封面图）。
   ///
   /// 🔑 用**首字**而不是一个通用书本图标：列表里每本书长得一样时，
   ///    用户只能靠读标题区分 ⇒ 首字给了他一个**扫视时的锚点**。
+  ///
+  /// # 🔴 2026-10-05：尺寸按设计稿放大，但**底改为平面**（偏离稿子，按 spec 修正）
+  ///
+  /// 设计稿里这一块画的是**凹陷**（`sunken` + 两个 inset）。实现时改成**平面**：
+  /// 📌 依据 spec §〇 规则 1「**有体积的只可能是可点的东西**」——
+  ///    封面占位**不可点**（点的是整张卡片）⇒ 给它凹陷会**读作「可以按」**，是误导。
+  ///    （凹陷在本项目只有两种语义：① 输入框 ② 按下态 —— 都指向「可交互」。）
+  /// ⇒ 保留原有的「强调色 10% 淡底 + 圆角」写法（平面），只把尺寸放大到 46×62。
   Widget _coverPlaceholder(CoEvoTokens t, BookSummary b) {
     final initial = b.title.trim().isEmpty
         ? '?'
         : String.fromCharCode(b.title.trim().runes.first);
     return Container(
-      width: 40,
-      height: 56,
+      width: 46,
+      height: 62,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: Color(t.accent.argb32).withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
         initial,
         style: TextStyle(
           fontFamily: CoFonts.latinSerif,
-          fontSize: 18,
+          fontSize: 22,
           fontWeight: FontWeight.w500,
           color: Color(t.accent.argb32),
         ),

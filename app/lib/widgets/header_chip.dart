@@ -140,6 +140,7 @@ class HeaderChip extends StatelessWidget {
     this.count,
     this.active = false,
     this.labelReserve,
+    this.enabled = true,
   }) : assert(
           labelReserve == null || count == null,
           'labelReserve 与 count 不能同时用：文字居中的推导（L == R）'
@@ -176,6 +177,20 @@ class HeaderChip extends StatelessWidget {
   /// 语义见类文档：`true` = 「**它正处于生效状态**」（如「已到期」筛选已开），
   /// 只改**凸凹**、**不改填充色**（避免与 `_SortChip` 撞脸）。
   final bool active;
+
+  /// **可用性**（2026-10-05 新增）—— 默认 `true`。`false` = 暂时不可点（如「导入中」）。
+  ///
+  /// 🔑 与 `ClayButton.enabled` 是**同一个能力**（那里已有，见其文档）：
+  ///    走 `ClayState.disabled`（§3.7：**抽掉内亮** + 外阴影减半 + `opacity .5`）
+  ///    来表达「它瘪了 / 暂时不可用」，而**不是**把 `onTap` 置 `null`
+  ///    —— 置 null 会让「为什么点不动」需要读两层代码才能解释，
+  ///    而且调用方为了凑一个 `VoidCallback` 往往会传一个空函数
+  ///    （那就是判据里说的「**点了没反应的死入口**」，比禁用更糟）。
+  ///
+  /// ⚠️ 这个参数的**触发场景是「进行中」**（书库「导入」：选文件 → 解析 → 落库期间
+  ///    不能重复触发）—— 因为它**形状不变**（仍是同一颗药丸），
+  ///    所以状态切换时标题栏**不会跳**（这正是抽公共组件要保证的那部分）。
+  final bool enabled;
 
   /// **宽度参照文案**（可选）—— 用于「文案长度会变」的药丸。
   ///
@@ -245,7 +260,13 @@ class HeaderChip extends StatelessWidget {
     );
 
     return Clay(
-      state: active ? ClayState.raised : ClayState.pressed,
+      // 🔴 三个态**互斥**，先判 `enabled`（照 `ClayButton` 的既有写法）。
+      //    写反了药丸会「看着能点、点不动」—— 「视觉形态须与语义一致」。
+      //    ⚠️ 禁用时**照样把 onTap 传下去**（`Clay` 内部 `_interactive` 已经挡掉），
+      //       故本组件不额外判 `enabled` 去置空回调。
+      state: !enabled
+          ? ClayState.disabled
+          : (active ? ClayState.raised : ClayState.pressed),
       // ⚠️ 必须显式给 `sunken`：`Clay` 默认填充是 `clayFill`（= `card`），
       //    而设计稿这里的底是 `--sunken`（比 `page` 更暗）。同 `BookmarkButton`。
       // 🔑 `active` 时不传（`null` → `Clay` 用 `clayFill`）——
@@ -255,8 +276,8 @@ class HeaderChip extends StatelessWidget {
       borderRadius: _radius,
       onTap: onTap,
       // 设计稿 `.bm-entry{padding:7px 12px}` —— 仅**自然宽**时左右对称（见上面的推导）
-      padding:
-          EdgeInsets.only(left: leftPad, right: rightPad, top: _padV, bottom: _padV),
+      padding: EdgeInsets.only(
+          left: leftPad, right: rightPad, top: _padV, bottom: _padV),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

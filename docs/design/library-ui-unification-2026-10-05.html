@@ -185,8 +185,8 @@ h1{font-family:var(--round);font-size:34px;font-weight:600;letter-spacing:-.015e
 .book-cards{padding:0 16px;flex:1;overflow:hidden;display:flex;flex-direction:column;gap:13px}
 .bcard{border-radius:var(--cl-radius);padding:15px 16px;display:flex;gap:14px;align-items:center;cursor:pointer}
 .bcover{width:46px;height:62px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
-  background:var(--sunken);font-family:var(--serif);font-size:22px;font-weight:600;color:var(--ink2);
-  box-shadow:inset 2px 2px 6px var(--cl-shade),inset -2px -2px 5px var(--cl-light)}
+  /* ⚠️ 平面（无 inset）—— 实现按 spec §〇 规则 1 修正过，见 §③ 说明框 */
+  background:rgba(180,67,44,.10);font-family:var(--serif);font-size:22px;font-weight:600;color:var(--accent)}
 .bbd{flex:1;min-width:0}
 .bt{font-family:var(--serif);font-size:16px;font-weight:500;color:var(--ink);line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bmeta{font-size:11.5px;color:var(--ink3);margin-top:5px}
@@ -253,6 +253,12 @@ footer{margin-top:56px;padding-top:22px;border-top:1px solid var(--stage-line);f
       「收藏按钮应该更靠右，其他页面的 title 按钮都是靠右的，书库界面的导入按钮应该也是
        一个一个粘土按钮，<br>设计语言要统一，书库的目录清单应该也要统一设计语言」
     </div>
+    <div class="tip" style="margin-top:18px;max-width:920px">
+      <b>📌 本稿 v2（2026-10-05）· ✅ 已定案并实现</b>：白哥定
+      <b>① 收藏靠右</b> · <b>② 导入用方案 A（凹陷药丸）</b> · <b>③ 清单用方案 A（粘土卡）</b>。<br>
+      ⇒ 下方 verdict 已改为「已定案」；⚠️ <b>实现时对 ③ 的封面占位做了一处修正</b>
+      （稿里画的是凹陷底，实改为**平面**）—— 理由见 §③ 的说明框，属**按 spec 修正稿子**。
+    </div>
   </header>
 </div>
 
@@ -280,7 +286,7 @@ footer{margin-top:56px;padding-top:22px;border-top:1px solid var(--stage-line);f
           右侧元素紧跟其后 ⇒ 停在标题右边，而不是屏幕右边。
         </div>
       </div>
-      <span class="verdict v-bad">✕ 需改</span>
+      <span class="verdict v-good">✅ 已定案并实现</span>
     </div>
 
     <div class="rail">
@@ -374,7 +380,7 @@ footer{margin-top:56px;padding-top:22px;border-top:1px solid var(--stage-line);f
           （项目里「收藏」是凹陷药丸、「续费 / 支付」是凸起粘土按钮）。
         </div>
       </div>
-      <span class="verdict v-bad">✕ 需改</span>
+      <span class="verdict v-good">✅ 已定案：方案 A</span>
     </div>
 
     <div class="rail">
@@ -478,7 +484,7 @@ footer{margin-top:56px;padding-top:22px;border-top:1px solid var(--stage-line);f
           <br>· <strong>书库现在</strong>：平坦行 + <code>Divider</code>，<strong>直接铺在 page 底色上、无容器</strong> —— 所以既不像卡片、也不像分组。
         </div>
       </div>
-      <span class="verdict v-bad">✕ 需改</span>
+      <span class="verdict v-good">✅ 已定案：方案 A</span>
     </div>
 
     <div class="rail">
@@ -521,7 +527,15 @@ footer{margin-top:56px;padding-top:22px;border-top:1px solid var(--stage-line);f
           切换时用<b>同一套卡片语言</b>才不会「像两个 App」。<br>
           ✅ 规则 1 成立：每本书<b>可点</b> ⇒ 可以有体积。<br>
           ✅ 与 <code>FeedCard</code> 同源（<code>Clay</code> + 三段式：封面/标题/摘要）。<br>
-          ✅ 滑动删除（<code>Dismissible</code>）在卡片上更自然。
+          ✅ 滑动删除（<code>Dismissible</code>）在卡片上更自然。<br>
+          <br>
+          <b>⚠️ 实现时对封面占位做了一处修正（偏离本稿，按 spec）</b>：<br>
+          稿里把封面位画成<b>凹陷</b>（<code>sunken</code> + 两个 inset）；实现改为<b>平面</b>
+          （强调色 10% 淡底 + 圆角）。<br>
+          依据 spec §〇 规则 1「<b>有体积的只可能是可点的东西</b>」——
+          封面**不可点**（点的是整张卡片）⇒ 给它凹陷会<b>读作「可以按」</b>，是误导。
+          （凹陷在本项目只有两种语义：① 输入框 ② 按下态 —— 都指向「可交互」。）<br>
+          🔑 判据：<b>稿子与 spec 冲突时按 spec</b>。
         </div>
       </div>
 
@@ -615,10 +629,13 @@ footer{margin-top:56px;padding-top:22px;border-top:1px solid var(--stage-line);f
 
     <footer>
       CoEvo · 设计稿 · 2026-10-05 · 未实现任何代码改动<br>
-      待确认：<b>① 收藏靠右</b>（改法唯一，仅确认即可）·
-      <b>② 导入用 A 凹陷药丸 / B 凸起按钮</b> ·
-      <b>③ 书库清单用 A 粘土卡 / B 分组容器</b>。<br>
-      定完我再进入实现与断言环节。
+      ✅ <b>已定案并实现（2026-10-05）</b>：<b>① 收藏靠右</b>（<code>Flexible</code>→<code>Expanded</code>）·
+      <b>② 导入用方案 A</b>（<code>HeaderChip</code> 凹陷药丸，与「收藏」同行同形态；
+      「导入中」= 同一颗药丸 + <code>enabled:false</code> + <code>labelReserve</code> 定宽）·
+      <b>③ 清单用方案 A</b>（每本书一张 <code>Clay</code> 卡，间距 13 = 同信息流）。<br>
+      产物：<code>reading_tab_screen.dart</code> · <code>book_library_screen.dart</code> ·
+      <code>widgets/header_chip.dart</code>（<code>HeaderChip</code> 新增 <code>enabled</code>）·
+      <code>scripts/ebook_verify/bin/verify_reading_tab.dart</code>（<b>63 项 · 已证伪 6 组</b>）。
     </footer>
   </section>
 </div>
