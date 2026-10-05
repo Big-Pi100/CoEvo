@@ -348,6 +348,52 @@ void main() {
 
   // ══════════════════════════════════════════════════════════════════════
   print('');
+  // ══════════════════════════════════════════════════════════════════════
+  // 🆕 2026-10-05：**划词查词「一处定义」**（书库与信息流共用）
+  //
+  // 背景：书库原来**有意没做**划词（注释写着「不用 SelectionArea 是有意的」），
+  // 白哥真机反馈「书库中的书籍划词不成功」⇒ 把查词逻辑与划词手势各抽一份出来，
+  // 两页共用。本组守的就是「**别再退化成两份**」。
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    final widget =
+        _stripComments(_read('../../app/lib/widgets/word_lookup_selection.dart') ?? '');
+    final reader =
+        _stripComments(_read('../../app/lib/screens/reader_screen.dart') ?? '');
+    final bookReader = _stripComments(
+        _read('../../app/lib/screens/book_reader_screen.dart') ?? '');
+
+    check('划词组件存在', widget.isNotEmpty);
+    check('🔴 信息流页用 `WordLookupSelection`', reader.contains('WordLookupSelection('));
+    check('🔴 书库阅读页用 `WordLookupSelection`（**划词已接入**）',
+        bookReader.contains('WordLookupSelection('));
+
+    // 「一处定义」—— 用**计数**而不是「A 里有 X」（后者锁不到「多出一份」）
+    check('🔴 `SelectionArea(` 只在公共组件里出现（两页不许自带一份）',
+        widget.contains('SelectionArea(') &&
+            !reader.contains('SelectionArea(') &&
+            !bookReader.contains('SelectionArea('));
+
+    // 防抖时长同理：两处各写一个 300ms，将来改一处忘一处 ⇒ 体验静默不一致
+    check('🔴 防抖时长只有一处定义（`kLookupDebounce`，且不在页面里）',
+        widget.contains('const Duration kLookupDebounce') &&
+            !reader.contains('kLookupDebounce') &&
+            !bookReader.contains('kLookupDebounce'));
+
+    // 🔴 书库**显式**传 null（有意不记痕迹）—— 删掉这个实参就退化成「未提供」
+    check('🔴 书库页**显式**传 `articleId: null`（有意不记痕迹，不是漏传）',
+        bookReader.contains('articleId: null'));
+    // 信息流页则**必须**传非空（痕迹的命根子）
+    check('🔴 信息流页传 `articleId: widget.articleId`（非空）',
+        reader.contains('articleId: widget.articleId'));
+
+    // 查词逻辑也只有一份：`lookupWord(` 应恰好出现 **2** 次
+    // （1 定义在 `word_lookup.dart` + 1 调用在公共组件里）
+    final lw = _countInAppLib('lookupWord(');
+    check('🔴 查词入口 `lookupWord(` 全项目恰好 2 处（1 定义 + 1 调用）', lw == 2,
+        '实际 $lw 次 —— 多了就是「第二份实现」冒出来了');
+  }
+
   print('═══ verify_reading_tab ═══');
   print('pass = $_pass · fail = $_fail');
   if (_failures.isNotEmpty) {

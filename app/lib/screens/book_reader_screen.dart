@@ -6,20 +6,27 @@
 //    两者唯一的共同点是「显示一段长文本」—— 而复用会让
 //    「取内容」这一步在两处各有分支（正是漂移的来源）。
 //
-// # 🔴 本轮**没有**做划词查词（如实交代，不是漏了）
+// # ✅ 划词查词**已补上**（2026-10-05）
 //
-// `reader_screen.dart`（1284 行）里的划词逻辑（`SelectionArea` + 防抖 +
-// 自绘 `contextMenuBuilder` + `WordLookupResult`）**内联在页面里、没有抽成组件**。
-// 要在书内也支持查词，只有两条路：
-//   · 复制一份 ⇒ 违反「同一件事只能有一处权威」（将来改查词逻辑要改两处）
-//   · 把它抽成公共组件 ⇒ **那是一次重构**（涉及 1284 行里最精细的一段：
-//     防抖、菜单自绘、手势与滚动的相互影响），应当**单独做 + 单独验证**
-// ⇒ 本轮取后者，但**不在这一轮做**。本页先给「阅读 + 翻章 + 进度 + 朗读」。
-// ⏳ 下一轮：把 `reader_screen` 的划词抽成 `WordLookupSelection`，
-//    两页共用（那时也顺手统一两处的菜单行为）。
+// 原文（留档，防止又被绕回去）：
+// > 本轮**没有**做划词查词 …… `reader_screen.dart` 里的划词逻辑**内联在页面里、
+// > 没有抽成组件** ⇒ 要在书内也支持查词只有两条路：复制一份（违反一处权威）/
+// > 抽成公共组件（那是一次重构）⇒ 本轮取后者，但**不在这一轮做**。
 //
-// ⚠️ 在划词补上之前，本页**不宣称**支持查词 —— 有断言守「页面里不得出现
-//    `lookup` 字样」（防「宣称了却没实现」）。
+// 白哥真机反馈「书库中的书籍划词不成功」⇒ 那次重构**这一轮做了**：
+//   · **查词逻辑** → `services/word_lookup.dart`（`lookupWord`，公开）
+//   · **手势 + 防抖** → `widgets/word_lookup_selection.dart`（`WordLookupSelection`）
+//   · 信息流页 `reader_screen` 与**本页共用**这两份（判据：一处定义）
+//
+// 🔑 之所以能从 1284 行里安全搬出那一段，是因为它**早就是顶层函数、
+//    不依赖任何 State**（`reader_screen` 的原文注释自己写着这一点）——
+//    那是更早一次重构留下的收益。
+//
+// 🔴 **本页传 `articleId: null`**（有意，不是漏传）：
+//    痕迹键是 `lookup_event.article_id`（**int**），而书的 id 是 String uuid ——
+//    硬塞一个 int 会**污染痕迹数据**（将来 id 撞上就串）。
+//    ⇒ 书库**不记「本文查过的词」底色**，但**查词 / 入生词本照常**。
+//    📌 见 `services/word_lookup.dart` 头部「`articleId` 可空」那一节。
 
 import 'dart:async';
 
@@ -32,6 +39,7 @@ import '../services/tts_service.dart';
 import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
+import '../widgets/word_lookup_selection.dart';
 
 class BookReaderScreen extends ConsumerStatefulWidget {
   const BookReaderScreen({super.key, required this.bookId});
@@ -216,16 +224,26 @@ class _BookReaderScreenState extends ConsumerState<BookReaderScreen> {
             ),
             const SizedBox(height: CoSpacing.lg),
           ],
-          // ⚠️ 一期用 `Text`（不可选）—— 划词查词留到下一轮（见文件头）。
-          //    不用 `SelectionArea` 是**有意**的：那会让用户以为能查词，
-          //    选了却没有菜单 ⇒ 「有出口的假象」比「没有出口」更让人困惑。
-          Text(
-            ch.text,
-            style: TextStyle(
-              fontFamily: CoFonts.latinSerif,
-              fontSize: 17,
-              height: 1.75,
-              color: Color(t.ink.argb32),
+          // 🔑 **划词查词**（2026-10-05 补）—— 与信息流页**同一份实现**：
+          //    `WordLookupSelection`（手势 + 防抖）+ `lookupWord`（查词逻辑）。
+          //    原文这里是**不可选**的 `Text`，注释写着「不用 `SelectionArea` 是
+          //    **有意**的（有出口的假象比没出口更困惑）」——那个取舍当年是对的
+          //    （宁可没有，也不要假装有），但白哥真机反馈「书库划词不成功」
+          //    ⇒ 现在真的做出来了，取舍不再适用。
+          WordLookupSelection(
+            // 🔴 **传 null 是有意的**（不是漏传）：书不是「文章」——
+            //    书的 id 是 String uuid，而痕迹键 `lookup_event.article_id` 是 int，
+            //    硬塞一个 int 会**污染痕迹数据**。
+            //    ⇒ 书库**不记「本文查过的词」底色**，但查词 / 入生词本**照常**。
+            articleId: null,
+            child: Text(
+              ch.text,
+              style: TextStyle(
+                fontFamily: CoFonts.latinSerif,
+                fontSize: 17,
+                height: 1.75,
+                color: Color(t.ink.argb32),
+              ),
             ),
           ),
           const SizedBox(height: CoSpacing.xxl),

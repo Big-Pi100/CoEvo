@@ -1524,7 +1524,14 @@ void _s16WordWriteback() {
     return f.existsSync() ? _codeOnly(f.readAsStringSync()) : '';
   }
 
-  final reader = src('screens/reader_screen.dart');
+  // 🔴 2026-10-05：查词那一族**搬到了 `services/word_lookup.dart`**（书库页要复用）
+  //    ⇒ 本组断言读**两个文件的拼接**：
+  //      · 正断言（「应该有 X」）—— 内容在任一文件里即可（搬迁不该让它变红）
+  //      · 反断言（「不该有 X」）—— **两个文件都不许有**（比原来更严）
+  //    📌 判据：**断言跟着「意图」走，不跟着「文件」走**。
+  //    ⚠️ 注意：若本组含**计数**断言，数字会因拼接而变 —— 那些单独复核。
+  final reader =
+      src('screens/reader_screen.dart') + src('services/word_lookup.dart');
   final dbProv = src('providers/user_db_provider.dart');
   final bmProv = src('providers/bookmark_provider.dart');
   final uwRepo = src('services/user_word_repository.dart');
@@ -2590,7 +2597,14 @@ void _s21TimingWait() {
     return f.existsSync() ? _codeOnly(f.readAsStringSync()) : '';
   }
 
-  final reader = src('screens/reader_screen.dart');
+  // 🔴 2026-10-05：查词那一族**搬到了 `services/word_lookup.dart`**（书库页要复用）
+  //    ⇒ 本组断言读**两个文件的拼接**：
+  //      · 正断言（「应该有 X」）—— 内容在任一文件里即可（搬迁不该让它变红）
+  //      · 反断言（「不该有 X」）—— **两个文件都不许有**（比原来更严）
+  //    📌 判据：**断言跟着「意图」走，不跟着「文件」走**。
+  //    ⚠️ 注意：若本组含**计数**断言，数字会因拼接而变 —— 那些单独复核。
+  final reader =
+      src('screens/reader_screen.dart') + src('services/word_lookup.dart');
 
   // ① 🔴 全文件（**已剥注释**）不许再用 `Duration.zero` 等待
   //    ⚠️ 曾经的写法：`await Future<void>.delayed(Duration.zero)` 想「让出一帧」，
@@ -2659,7 +2673,14 @@ void _s20DeviceId() {
   final devId = src('services/device_id.dart');
   final devProv = src('providers/device_id_provider.dart');
   final client = src('api/generate_card_client.dart');
-  final reader = src('screens/reader_screen.dart');
+  // 🔴 2026-10-05：查词那一族**搬到了 `services/word_lookup.dart`**（书库页要复用）
+  //    ⇒ 本组断言读**两个文件的拼接**：
+  //      · 正断言（「应该有 X」）—— 内容在任一文件里即可（搬迁不该让它变红）
+  //      · 反断言（「不该有 X」）—— **两个文件都不许有**（比原来更严）
+  //    📌 判据：**断言跟着「意图」走，不跟着「文件」走**。
+  //    ⚠️ 注意：若本组含**计数**断言，数字会因拼接而变 —— 那些单独复核。
+  final reader =
+      src('screens/reader_screen.dart') + src('services/word_lookup.dart');
   final sess = src('screens/review_session_screen.dart');
   final auth = src('providers/auth_provider.dart');
 
@@ -2737,7 +2758,14 @@ void _s18DbRevision() {
   final listProv = src('providers/review_list_provider.dart');
   final page = src('screens/review_screen.dart');
   final sess = src('screens/review_session_screen.dart');
-  final reader = src('screens/reader_screen.dart');
+  // 🔴 2026-10-05：查词那一族**搬到了 `services/word_lookup.dart`**（书库页要复用）
+  //    ⇒ 本组断言读**两个文件的拼接**：
+  //      · 正断言（「应该有 X」）—— 内容在任一文件里即可（搬迁不该让它变红）
+  //      · 反断言（「不该有 X」）—— **两个文件都不许有**（比原来更严）
+  //    📌 判据：**断言跟着「意图」走，不跟着「文件」走**。
+  //    ⚠️ 注意：若本组含**计数**断言，数字会因拼接而变 —— 那些单独复核。
+  final reader =
+      src('screens/reader_screen.dart') + src('services/word_lookup.dart');
   final sessProv = src('providers/review_session_provider.dart');
 
   // ① 信号源存在，且**与库同一处定义**（「库有变化」只有一个出处）
@@ -2904,7 +2932,14 @@ void _s19ExternalCard() {
     return f.existsSync() ? _codeOnly(f.readAsStringSync()) : '';
   }
 
-  final reader = src('screens/reader_screen.dart');
+  // 🔴 2026-10-05：查词那一族**搬到了 `services/word_lookup.dart`**（书库页要复用）
+  //    ⇒ 本组断言读**两个文件的拼接**：
+  //      · 正断言（「应该有 X」）—— 内容在任一文件里即可（搬迁不该让它变红）
+  //      · 反断言（「不该有 X」）—— **两个文件都不许有**（比原来更严）
+  //    📌 判据：**断言跟着「意图」走，不跟着「文件」走**。
+  //    ⚠️ 注意：若本组含**计数**断言，数字会因拼接而变 —— 那些单独复核。
+  final reader =
+      src('screens/reader_screen.dart') + src('services/word_lookup.dart');
   final wqs = src('services/word_query_service.dart');
   final client = src('api/generate_card_client.dart');
   final adapter = src('services/generated_card_adapter.dart');
@@ -3172,44 +3207,89 @@ void _s24TraceArticleId() {
   print('\n【24】🔴 痕迹接线：articleId 必须一路传到底（漏传 = 痕迹静默消失）');
 
   final root = _repoRoot();
-  final f = File('$root/app/lib/screens/reader_screen.dart');
-  check('reader_screen.dart 存在', f.existsSync());
-  if (!f.existsSync()) return;
-  final reader = _codeOnly(f.readAsStringSync());
 
-  // ① 链上三个函数都要**要求** articleId。
-  //    用正则跨空白匹配（签名里可能换行），但限制搜索窗口避免跨函数误命中。
-  bool requiresArticleId(String fn) {
-    final at = reader.indexOf('Future<void> $fn(');
+  // 🔴 2026-10-05：查词那一族**从 `reader_screen` 搬到了 `services/word_lookup.dart`**
+  //    （书库页要复用 ⇒ 私有函数跨不了文件）。所以本组断言分**两个**读取对象：
+  //    · `services/word_lookup.dart` —— 链上三个函数的**签名**
+  //    · `screens/reader_screen.dart` —— 信息流页的**调用点**（必须传非空）
+  //    · `screens/book_reader_screen.dart` —— 书库页（**有意**传 null）
+  //    📌 判据：**断言跟着「意图」走，不跟着「文件」走** ——
+  //       变的是承载它的文件；要守的意图（「漏传 ⇒ 痕迹静默消失」）一字未改。
+  final lookupF = File('$root/app/lib/services/word_lookup.dart');
+  final readerF = File('$root/app/lib/screens/reader_screen.dart');
+  final bookF = File('$root/app/lib/screens/book_reader_screen.dart');
+  check('word_lookup.dart 存在（查词逻辑的载体）', lookupF.existsSync());
+  check('reader_screen.dart 存在', readerF.existsSync());
+  check('book_reader_screen.dart 存在', bookF.existsSync());
+  if (!lookupF.existsSync() || !readerF.existsSync() || !bookF.existsSync()) {
+    return;
+  }
+  final lookup = _codeOnly(lookupF.readAsStringSync());
+  final reader = _codeOnly(readerF.readAsStringSync());
+  final book = _codeOnly(bookF.readAsStringSync());
+
+  // ① 链上三个函数接受 `int? articleId`。
+  //
+  //    🔴 **2026-10-05 语义变更：`required int` → `int?`** —— 强度**提高了**，不是放松：
+  //       · `required` 只保证「语法上传了参数」，但**允许传任意 int**（含哨兵值）
+  //       · 现在：可空 + ② 的「信息流页必须传**非空**」——
+  //         `ReaderScreen.articleId` 的类型是 `final int`（非空）⇒ **由类型系统保证**，
+  //         比一条正则更强。
+  //    为什么必须放宽：书库场景**没有 article 概念**（书的 id 是 String uuid，
+  //    而痕迹键 `lookup_event.article_id` 是 int）—— 硬塞一个 int 会**污染痕迹数据**
+  //    （将来 id 撞上就串）。而该列在 schema 里**本来就是可空的**
+  //    （`user_db_schema.sql` 原文注释：「哪篇文章（**可空**）」）⇒ `required` 是过度约束。
+  //
+  //    ⚠️ 本组仍是「防回退」的：若有人把 `int?` 改回 `required int`（堵死书库）
+  //       或改成 `dynamic`（丢掉类型保护），下面都会红。
+  bool acceptsNullableArticleId(String fn) {
+    final at = lookup.indexOf('Future<void> $fn(');
     if (at < 0) return false;
-    final seg = reader.substring(at, (at + 900).clamp(0, reader.length));
+    final seg = lookup.substring(at, (at + 900).clamp(0, lookup.length));
     // 到下一个顶层函数定义为止
     // ⚠️ 用 `\r?\n` 而不是 `\n` —— 工作区行尾会漂移（实测：`dart format` 在 Windows
     //    上会把改过的文件写成 **CRLF**，而仓库其余文件是 LF）⇒ 只认 `\n` 的跨行匹配
     //    会**静默失配**。📌 判据：**读源码做跨行匹配时，必须容忍 `\r?\n`**。
     final nextFn = RegExp(r'\r?\nFuture<').firstMatch(seg.substring(1));
     final body = nextFn == null ? seg : seg.substring(0, nextFn.start + 1);
-    return RegExp(r'\brequired int articleId\b').hasMatch(body);
+    return RegExp(r'\bint\? articleId\b').hasMatch(body);
   }
 
-  check('🔑 `_lookupWord` 要求 articleId（required = 编译期拦截漏传）',
-      requiresArticleId('_lookupWord'));
-  check('🔑 `_lookupExternalWord` 要求 articleId',
-      requiresArticleId('_lookupExternalWord'));
-  check('🔑 `_writeBackLookup` 要求 articleId',
-      requiresArticleId('_writeBackLookup'));
+  check('🔑 `lookupWord` 接受 `int? articleId`（可空 = 允许「有意不记痕迹」）',
+      acceptsNullableArticleId('lookupWord'));
+  check('🔑 `_lookupExternalWord` 接受 `int? articleId`',
+      acceptsNullableArticleId('_lookupExternalWord'));
+  check('🔑 `_writeBackLookup` 接受 `int? articleId`',
+      acceptsNullableArticleId('_writeBackLookup'));
 
-  // ② 调用点必须真的把当前文章的 id 传下去
-  check('🔑 划词入口传 `widget.articleId`',
+  // ② 🔴 **信息流页必须传「非空」id**（痕迹照旧）——
+  //    两处**独立**判据互相印证：调用点 + 字段类型。这是本组最强的一条。
+  check('🔴 信息流页传 `articleId: widget.articleId`',
       reader.contains('articleId: widget.articleId'));
+  check('🔴 且 `ReaderScreen.articleId` 是**非空 `int`**（类型系统保证传不出 null）',
+      RegExp(r'\bfinal int articleId;').hasMatch(reader));
+
+  // ③ 🆕 **书库页必须「显式」传 `null`** —— 它是「有意不记痕迹」，不是「漏传」。
+  //    若有人删掉这个实参，语义会退化成「未提供」（将来默认值一变就静默改行为）
+  //    ⇒ 必须显式写出。
+  check('🔴 书库页**显式**传 `articleId: null`（有意不记，不是漏传）',
+      book.contains('articleId: null'));
+
+  // ④ 写回时把 articleId 传给了 repo
+  //
+  //    ⚠️ 这里曾写成 `articleId://s*articleId`（`\\s` 手滑成 `//s`）——
+  //       正则里 `//s` 表示「匹配两个斜杠后跟 s」⇒ **永远匹配不到** ⇒ 断言恒红。
+  //       📌 判据：**在字符串里写正则时，反斜杠的层数要数清**；
+  //          而 `//` 这个形状尤其危险（它是 Dart 的注释起点，
+  //          本项目已有「行内切 `//` 会把 URL 切坏」的同族教训）。
   check(
       '🔑 写回时把 articleId 传给了 repo.recordLookup',
       RegExp(r'recordLookup\([\s\S]{0,200}?articleId:\s*articleId')
-          .hasMatch(reader));
+          .hasMatch(lookup));
 
-  // ③ 负向：`_writeBackLookup` 的调用点不得**只传两个参数**（那是修之前的样子）
+  // ⑤ 负向：`_writeBackLookup` 的调用点不得漏传（那是修之前的形态）
   final calls =
-      RegExp(r'_writeBackLookup\([\s\S]{0,220}?\)\)').allMatches(reader);
+      RegExp(r'_writeBackLookup\([\s\S]{0,220}?\)\)').allMatches(lookup);
   var missing = 0;
   for (final m in calls) {
     if (!m.group(0)!.contains('articleId:')) missing++;
@@ -3217,7 +3297,7 @@ void _s24TraceArticleId() {
   check('🔴 无「缺 articleId」的 _writeBackLookup 调用点', missing == 0,
       '实得 $missing 处（共 ${calls.length} 处）');
 
-  // ④ 读取侧仍按 article_id 过滤（否则「痕迹=这篇文章里查过的词」语义就没了）
+  // ⑥ 读取侧仍按 article_id 过滤（否则「痕迹=这篇文章里查过的词」语义就没了）
   final repo = _codeOnly(
       File('$root/app/lib/services/user_word_repository.dart')
           .readAsStringSync());

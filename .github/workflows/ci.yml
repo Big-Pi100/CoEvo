@@ -908,7 +908,7 @@ jobs:
       #        会被当注释切掉（**假绿**）；改为「只剥整行注释」+ needle 取完整调用表达式。
       #      · 「A 里含 X」这类**子串**断言太松 —— `BookLibraryScreen(onImport: () {})`
       #        也能让 `contains('onImport:')` 通过 ⇒ 必须锁到「接的是容器的方法」。
-      - name: 阅读 tab 双段 + 群入口一处定义（67 项 · 含导入按钮形态）
+      - name: 阅读 tab 双段 + 群入口 + 划词「一处定义」（75 项）
         run: dart run bin/verify_reading_tab.dart
 
   # ── 原生就绪度结构检查 ──
