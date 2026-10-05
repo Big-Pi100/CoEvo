@@ -709,6 +709,30 @@ jobs:
       - name: 🔴 脚本可移植性（禁盘符绝对路径 / 禁 cwd 相对资源路径 · 19 项）
         run: dart run bin/verify_script_portability.dart
 
+      # ── 🐍 Python 脚本语法门禁（2026-10-05 加）──
+      #
+      # 🔴 为什么必须进 CI：Rust 有 `cargo check` / `clippy`，Dart 有 `flutter analyze`，
+      #    而 **`scripts/**/*.py` 有 121 个文件、此前没有任何语法门禁** —— 改了没人验。
+      #
+      # 实际踩到（2026-10-05）：我改一个脚本的文档字符串时，`Edit` 的 new 内容
+      # 漏掉了结尾的 `"""` ⇒ docstring 不闭合 ⇒ 后面代码全被当成字符串。
+      # 报 `SyntaxError: invalid character '（'`，但**报错行号指向别处**
+      # （第 59 行 vs 真凶第 41 行），完全看不出问题在哪。
+      # 那次是**提交前手工跑了一次 `py_compile`** 才发现的 —— 手工步骤不叫门禁。
+      # 📌 判据：**「写了没人跑 = 迟早失效」** ⇒ 门禁必须接入 CI。
+      #
+      # ✅ 为什么能进（逐条核实）：
+      #    · **零依赖**：只用标准库 `py_compile` ⇒ 无需 `pip install`（本仓库 Python 工具
+      #      一贯零依赖，不引入新依赖是刻意取舍）
+      #    · **秒级**：121 个文件逐个 `py_compile`（写到临时文件，不生成 `__pycache__`）
+      #    · **接入前已实测全绿**：121/121 通过 ⇒ 不会引入历史遗留的红
+      #    · 脚本**自己找仓库根**（靠 `app/pubspec.yaml` 特征文件）⇒ cwd 无关
+      #      （⚠️ 但工作目录仍是 `scripts/query_verify`，故路径写 `../`）
+      # ✅ **已证伪**：删掉 `_tencent_api.py` 的 docstring 闭合三引号 ⇒ 退出码 **1**
+      #    （且输出精确复现了那次真实故障）
+      - name: 🐍 Python 脚本语法（121 个 · 秒级 · 零依赖）
+        run: python3 ../check_python_syntax.py
+
       # ── A 组（7 个 · 184 项 · 纯 Dart，先跑以便定位）──
       - name: 成就规则（55 项）
         run: dart run bin/verify_achievement_rules.dart
