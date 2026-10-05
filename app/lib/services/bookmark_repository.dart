@@ -7,7 +7,13 @@
 //   ① `content_id` 直接当主键 —— 收藏没有数量/顺序/分类需求
 //   ② 时间戳 DESC 排序（「我刚存了什么」的直觉）
 //   ③ 跟着已有同步机制（`pending_push` + 增量 pull/push）
-//   ④ **取消收藏 = `DELETE`** —— 收藏是**可再生的用户意图**，与「生词本不能硬删」不同
+//   ④ ~~**取消收藏 = `DELETE`**（硬删）~~ → 🔴 **2026-10-05 改为「软删」**（`deleted` 字段）
+//      **为什么改**：跨设备同步的合并是**并集**，而并集**只增不减** ⇒ 硬删会让
+//      「另一端取消掉的收藏」在下次同步时**被并回来**（用户看到「删了又自己回来」，
+//      且**无从解释**）。改成字段值后，合并规则变成「按时间取较新」，问题**消失**。
+//      📄 `docs/design/sync-implementation-assessment-2026-10-04.md` §3.3
+//      ⚠️ 设计稿 §四 ④ 那句「可再生的用户意图 ⇒ 可以硬删」在**无同步**时成立；
+//        引入同步后**不再成立** —— 这是**同步需求引入的改变**，不是原设计有误。
 //   ⑤ 收藏数不单独存，`COUNT(*)` 即可
 //
 // # 设计稿 §三 ④ 那条约束（**代码级落实**）
@@ -91,7 +97,9 @@ class BookmarkRepository {
 
   /// 从库中重新载入（打开后必须调一次；外部写入后也可调）。
   Future<void> reload() async {
-    final rows = await _db.query('bookmark', columns: ['content_id']);
+    // 🔴 v6 起必须 `WHERE deleted = 0` —— 否则「取消过的收藏」会被当成已收藏
+    final rows = await _db.query('bookmark',
+        columns: ['content_id'], where: 'deleted = 0');
     _ids = {
       for (final r in rows) (r['content_id'] as num).toInt(),
     };
@@ -106,16 +114,23 @@ class BookmarkRepository {
   /// 返回 `true` = **本次真的新增了**（UI 可据此决定要不要弹 toast）。
   Future<bool> add(int contentId) async {
     if (_ids.contains(contentId)) return false;
-    await _db.insert(
-      'bookmark',
-      {
-        'content_id': contentId,
-        // 不传 `bookmarked_at` / `pending_push` —— 由 DDL 的 DEFAULT 生成。
-        // 🔑 为什么不在 Dart 侧生成时间戳：那样「同一时刻」这个语义就取决于客户端时钟；
-        //    而 DEFAULT 用的是**数据库时钟**，与 `card_review_state` 同源。
-        //    （也顺便避免了 Dart/UTC 格式化写错时区。）
-      },
-      conflictAlgorithm: ConflictAlgorithm.ignore,
+    // 🔴 **不能用 `INSERT OR IGNORE`**（v6 软删引入的真陷阱）：
+    //    若这一行**曾经被软删**（`deleted = 1`），PK 冲突会让 `INSERT` 被**忽略**
+    //    ⇒ 那行仍是 `deleted = 1` ⇒ **收藏不生效**，而界面看着「点了没反应」（**静默**）。
+    // ✅ 用 upsert：不存在则插；存在则**归零 + 刷新 `bookmarked_at`**。
+    //    🔑 刷新时间是设计要求的（`sync-...-assessment` §3.3.3 第 3 条）：
+    //       「重新收藏」= 重新计时，否则它在「最近收藏」列表里的位置是错的。
+    //    ⚠️ 时间用 `strftime(...)` 而非 Dart 侧生成 —— 与 DDL 的 DEFAULT **同一表达式**，
+    //       保证「同一口径」且不依赖客户端时钟（同下方原注释的理由）。
+    await _db.rawInsert(
+      '''
+      INSERT INTO bookmark (content_id, deleted) VALUES (?, 0)
+      ON CONFLICT (content_id) DO UPDATE SET
+        deleted       = 0,
+        bookmarked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+        pending_push  = 1
+      ''',
+      [contentId],
     );
     _ids.add(contentId);
     return true;
@@ -123,14 +138,20 @@ class BookmarkRepository {
 
   /// 取消收藏。
   ///
-  /// 🔑 **硬删**（设计稿 §四 ④ 明确）—— 与「生词本不能硬删」不同：
-  /// 收藏是可再生的用户意图，删了再点一次就回来了，没有学习数据损失。
+  /// 🔴 **软删**（`deleted = 1`，v6 起）—— 不再是硬删。
+  ///
+  /// **为什么**：见文件头 §④ —— 并集同步下硬删会被别端「并回来」。
+  /// ⚠️ 已删行**不会被清理**（一期刻意不做：一篇文章一行、几十字节，量极小）。
+  ///    若将来要清，注意「清早了会让已删收藏复活」，且是**间歇性**的（难复现）。
   ///
   /// 返回 `true` = **本次真的删掉了**（UI 可据此决定要不要弹 toast）。
   Future<bool> remove(int contentId) async {
     if (!_ids.contains(contentId)) return false;
-    await _db.delete(
+    // 🔑 `pending_push = 1` 必须一起置 —— 同步要能**把「删除」这件事推出去**
+    //    （这正是软删相对硬删的**直接好处**：删除变成了一个可传输的字段值）。
+    await _db.update(
       'bookmark',
+      {'deleted': 1, 'pending_push': 1},
       where: 'content_id = ?',
       whereArgs: [contentId],
     );
@@ -155,6 +176,8 @@ class BookmarkRepository {
   Future<List<Bookmark>> list({int? limit, int? offset}) async {
     final rows = await _db.query(
       'bookmark',
+      // 🔴 必须过滤 —— 软删的行仍在表里，漏了它界面会显示「已取消的收藏」
+      where: 'deleted = 0',
       orderBy: 'bookmarked_at DESC',
       limit: limit,
       offset: offset,

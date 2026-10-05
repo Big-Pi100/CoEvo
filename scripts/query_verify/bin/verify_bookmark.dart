@@ -252,8 +252,32 @@ Future<void> groupRepository(String schemaPath) async {
   check('remove 返回 true', removed);
   check('contains 变 false', !repo.contains(1));
   eq('count = 0', repo.count, 0);
-  eq('remove 后表里确实没有该行',
-      (await db.query('bookmark')).length, 0);
+  // ── 🔴 v6（2026-10-05 · 跨设备同步）：取消收藏由**硬删**改为**软删** ──
+  //
+  // 这条断言原来写的是「表里确实没有该行」（= 硬删）。改软删后**它必然红** ——
+  // ✅ 这正是它该做的：**断言守着实现，把「语义变更」显式暴露**，而不是静默放过。
+  // 📄 依据：`docs/design/sync-implementation-assessment-2026-10-04.md` §3.3
+  //    （硬删在**并集同步**下会被别端「并回来」⇒ 删除必须变成**字段值**）
+  final rowsAfterRemove = await db.query('bookmark');
+  eq('🔴 remove 后该行**仍在**（软删，不是硬删）', rowsAfterRemove.length, 1);
+  // ⚠️ **必须判空再取 `.first`** —— 若上面那条红了（= 又变回硬删，行数为 0），
+  //    这里直接 `.first` 会抛异常 ⇒ **整个脚本崩栈**（后面的断言一条都不跑、汇总也不打印）
+  //    ⇒ 门禁从「红 + 说清原因」退化成「崩 + 什么都不说」，极易被误读成环境问题。
+  // 📌 判据：**依赖前提的断言要在前提不成立时跳过**（前面已经红了，门禁已经是红的）。
+  if (rowsAfterRemove.isNotEmpty) {
+    eq('🔴 且该行 `deleted = 1`',
+        (rowsAfterRemove.first['deleted'] as num).toInt(), 1);
+    eq('🔴 且 `pending_push = 1` —— 同步要能把「删除」推出去',
+        (rowsAfterRemove.first['pending_push'] as num).toInt(), 1);
+  }
+  // 🔴 **最关键的一条**：软删后**界面不能还显示它** ——
+  //    `reload()` / `list()` 都必须带 `WHERE deleted = 0`，漏一处就是「删了还在」。
+  check('🔴 reload 后内存集合不含已删项（否则界面显示「已取消的收藏」）',
+      !repo.contains(1) && repo.count == 0);
+  final listedAfterRemove = await repo.list();
+  check('🔴 list 不返回已软删的项',
+      listedAfterRemove.every((b) => b.contentId != 1),
+      '实得 ${listedAfterRemove.map((b) => b.contentId).toList()}');
 
   // 移除不存在的 → false（不报错）
   check('remove 不存在的条目返回 false', !(await repo.remove(999)));
