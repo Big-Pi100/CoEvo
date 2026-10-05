@@ -432,6 +432,33 @@ IAP_KEY_ID / IAP_ISSUER_ID / IAP_PRIVATE_KEY / IAP_ENVIRONMENT
 | archive → 导出 IPA → 上传 ASC 的**完整参考实现** | `ios-appstore-ci-reference.md` |
 | iOS 构建额度 | macOS runner 私有仓库按 **10x** 计费（2,000 分钟/月 → 实际 200）⇒ 已改为**手动/tag 触发** |
 
+#### 🔴 7.1.0 【2026-10-05 更新】**额度已耗尽 ⇒ 出包走「临时改公开」**
+
+**实测事实**（白哥提供 billing 页）：`Actions minutes: 2,000 / 2,000 used`，
+**27 天后才重置**（≈ 11-01）。官方机制：**无付款方式时额度用尽 ⇒ 用量被 blocked**
+⇒ 所有 job 立即失败且**日志页空白**（只显示 `This job failed`）。
+
+| 可选路径 | 评估 |
+|---|---|
+| ⏳ **等到 11-01** | ✅ 零成本，但要等 |
+| ✅ **出包时临时改公开**（**白哥已定**） | 公开仓库的标准 runner（**含 macOS**）**免费无限**；凭据在 Secrets 里不受影响 |
+| ❌ 借 Mac 跑 Xcode Cloud | 官方要「configure a workflow **in Xcode**」⇒ 首次配置需 Mac（借不到） |
+| ❌ Codemagic | 纯按量付费（$0.095/分），无免费层 |
+| ❌ 自托管 runner | iOS 必须 macOS，需 Mac 硬件 |
+
+##### 🔴 改公开之前**必须先做**的事（顺序不能反）
+
+1. **吊销历史里泄漏的 key** —— 见 📄 `docs/review/git-history-secret-audit-2026-10-05.md`
+   （`backend/.env` 里那个 `DEEPSEEK_API_KEY`；**哈希比对确认它不是服务器在用的那个**，
+   但 key 不会自动过期 ⇒ 仍需吊销）
+2. **清 git 历史**（`filter-repo`）—— ⚠️ 会**重写全部 commit hash**
+   ⇒ **5 个 tag（v0.1.0~v0.1.4）需重建** + 所有克隆需重新 clone
+   ✅ 部署链路不受影响（CI 靠 **tag 名**触发，不靠 hash）
+3. 改公开 → 跑 `iOS Archive & Upload` → 出包完成后**改回私有**
+
+> 📌 **为什么必须先吊销再改公开**：清历史只防「未来公开时可见」，
+> **防不了「过去 5 个月里已经看过的人」** ⇒ 只有轮换凭据能根治。
+
 **⇒ 真正的卡点不是「有没有 Mac」，而是 Phase 0（账号链路）：**
 
 | 需要 | 状态 |
@@ -589,6 +616,15 @@ Play Console 里也没有对应商品 ⇒ 点订阅**必然失败**。
 ✅ iOS 出包：无 Mac 链路已规划（GHA macos-latest）→ **不需你决策**
 ✅ 账号注销（Apple 5.1.1(v)）→ 前后端 + 法律文本 + 断言
 ✅ archive→TestFlight workflow → 已建（缺 Secrets，暂时跑不了 = 预期）
+
+━━ 🔴 【2026-10-05 新增 · 出包前置（顺序不能反）】━━
+□ 7.1.0-A 吊销「git 历史里泄漏的 DEEPSEEK key」（DeepSeek 控制台 → API Keys）
+      ⚠️ 别吊销服务器在用的那个（哈希 e63bb04…，见 §7.1.0）
+□ 7.1.0-B 我清 git 历史（filter-repo）→ 重建 5 个 tag（v0.1.0~v0.1.4）
+      ⚠️ 会重写全部 commit hash ⇒ 你的本地克隆需重新 clone
+□ 7.1.0-C 出包时：仓库临时改 Public → 跑 `iOS Archive & Upload` → 出包完成后改回 Private
+      ℹ️ 为什么：Actions 额度已耗尽（2,000/2,000，≈11-01 重置）；
+         公开仓库的标准 runner（含 macOS）**免费无限**
 ```
 
 > ⚠️ **订阅页待重做**（2026-10-04 白哥指出）：① 文案错（免费版已无 200 词上限）

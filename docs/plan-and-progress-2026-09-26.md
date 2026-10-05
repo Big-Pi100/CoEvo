@@ -52,6 +52,21 @@
 > · 断言 `verify_userdb_migration` **234 项**（五条路径）· 🆕 `verify_bookdb_migration` **16 项** · 证伪 **6/6**
 > ⏳ **下一步**：阶段 1（后端 `sync_handlers.rs` + `push`/`pull` + 幂等写入）→ 2 端侧纯逻辑 → 3 接线 → 4 隐私政策 → 5 端到端
 >
+> 🔴🔴 **2026-10-05 CI 额度耗尽**（影响所有「推 main 验证」与「出包」）：
+> 实测 `Actions minutes: **2,000 / 2,000 used**`（**≈11-01 才重置**）。
+> 官方机制：无付款方式时额度用尽 ⇒ **用量被 blocked** ⇒ 所有 job 立即失败且**日志页空白**
+> （只显示 `This job failed`，**与「配置写错」表现完全相同**，排查极易跑偏）。
+> · 🔑 **计费口径**：按「**各 job 分钟之和**」× OS 倍数（Linux **1x** / Win 2x / **macOS 10x**）
+>   ⇒ 单 run ≈ 20 分钟 ⇒ **今天 60 个提交若逐个推 ≈ 600 分钟/日** ⇒ 撞破月额度。
+> · ✅ **对策已落地**：① **攒批推送**（`commit` 本地零成本，**只有 push 触发 CI**）
+>   ② `ci.yml` 加 `concurrency + cancel-in-progress`（🔑 **group 含 `github.ref`**
+>   ⇒ tag 独立 group ⇒ **部署不会被取消**）③ 纯文档提交用 **`[skip ci]`**
+> · 🔴 **出包方案**（白哥定）：**出包时临时改仓库为 Public**（公开仓含 macOS **免费无限**）。
+>   ⚠️ **改公开前必须先**：① 吊销历史泄漏的 key ② 清 git 历史（见下）③ 出包后改回 Private。
+> · 📄 审计报告 `docs/review/git-history-secret-audit-2026-10-05.md`
+>   （**发现真实泄漏**：`backend/.env` 的 `DEEPSEEK_API_KEY` 在 first commit 进过历史 ·
+>   哈希比对确认**非生产在用** · 但 **key 不会自动过期** ⇒ 仍需吊销 · 在 ① 完成前**不能改公开**）
+>
 > 🆕 **2026-10-05 发信链路进度**（找回密码的最后一个前置）：
 > **SES 已开通** · DNS **四项已验证通过**（含 DKIM 2048 位深度校验）·
 > 发信地址已设（`noreply@mail.keyievolution.fun`）·
