@@ -51,6 +51,7 @@ import '../utils/validators.dart';
 import 'clay_button.dart';
 import 'clay_field.dart';
 import 'co_dialog.dart';
+import 'forgot_password_dialog.dart';
 import 'twemoji.dart';
 
 class ClaimDialog extends ConsumerStatefulWidget {
@@ -162,6 +163,20 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
     });
   }
 
+  /// 打开「忘记密码」流程（**入口 A** · 白哥 2026-10-05 定案）。
+  ///
+  /// 🔑 重置成功后后端**直接建了新会话**（自动登录）⇒ 本弹层也要一起关掉，
+  ///    并让调用方知道「现在已登录」。
+  ///    若只关子弹层，用户会看到「已登录的 App 上仍压着一个登录弹窗」——
+  ///    而那个弹窗里的「登录」按钮再点会报「已登录」，非常费解。
+  Future<void> _openForgotPassword() async {
+    final ok = await ForgotPasswordDialog.show(context);
+    if (!mounted) return;
+    if (ok == true) {
+      Navigator.of(context).pop(true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = CoEvoTokensExt.of(context);
@@ -231,6 +246,41 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
             textInputAction: TextInputAction.done,
             onSubmitted: (_) => _submit(),
           ),
+
+          // ── ②-b 忘记密码出口（**入口 A** · 白哥 2026-10-05 定案）──
+          //
+          // 🔑 只放在**登录态**：注册态的用户还没账号，「忘记密码」不成立。
+          //
+          // 🔑 **右对齐小字**，而不是与底部「没有账号？注册」并列居中 ——
+          //    两条次要链接若都居中，用户会以为是同一组二选一。
+          //    视觉分层（右对齐 + 紧贴密码框 vs 居中 + 弹层底部）表达的是
+          //    「这条属于**密码**这个字段，那条属于**整个弹层**」。
+          //
+          // 📌 位置刻意就在**密码框正下方** —— 用户「想不起来」的那一刻，
+          //    视线与手指都在这个框上。
+          if (_isLogin) ...[
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: GestureDetector(
+                onTap: busy ? null : _openForgotPassword,
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+                  child: Tw(
+                    '忘记密码？',
+                    style: TextStyle(
+                      fontFamily: CoFonts.uiSans,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w500,
+                      color: Color(t.accent.argb32),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
 
           // ── ③ 错误提示 ──
           // 🔑 两类错误**同一个位置、同一种样式**：

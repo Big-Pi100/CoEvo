@@ -724,6 +724,14 @@ jobs:
         run: dart run bin/verify_worddb_bootstrap.dart
       - name: 词库两份一致（6 项）
         run: dart run bin/verify_worddb_sync.dart
+      # 🔴 2026-10-05 加：找回密码「忘记密码」。
+      #    按既定判据「**新断言集必须接入 CI**，否则它只是永远绿的装饰」——
+      #    先例：`verify_feed_wiring` 曾红了 3 项没人知道；`verify_auth_entry` 也因
+      #    「不在 CI 里」而未能在文件被删时变红。
+      # ✅ 它能进 A 组（纯 Dart）的依据：只 import `dart:io` + 零 import 的
+      #    `app/lib/services/code_box_logic.dart` ⇒ **不依赖 Flutter / sqflite**。
+      - name: 忘记密码（60 项 · 后端契约 + 前端接线 + 6 格纯逻辑）
+        run: dart run bin/verify_forgot_password.dart
 
       # ── B 组（12 个 · 665 项 · 需 sqflite_common_ffi）──
       # ⚠️ 这些脚本自己 `createTempSync` 造库或读**已入库**的 `word.db`

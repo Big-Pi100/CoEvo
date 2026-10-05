@@ -183,4 +183,52 @@ class AuthClient {
       throw Exception(data['error'] ?? '修改失败，请重试');
     }
   }
+
+  /// 「忘记密码」第 1 步 —— 申请验证码（**无需 token**）。
+  ///
+  /// 🔑 用户此刻**登不进来**（忘了密码），所以这个接口不能带 `Authorization`。
+  ///
+  /// ⚠️ 后端的错误文案**可直接展示**：邮箱未注册时是「该邮箱尚未注册」
+  ///    （白哥 2026-10-05 定「明说」）；60 秒内重复申请是「发送太频繁，请稍后再试」。
+  ///    这里**不改写**这些文案（改写会把准确信息变模糊）。
+  Future<void> forgotPassword(String email) async {
+    final resp = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/api/auth/forgot-password'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email}),
+    ).timeout(ApiConfig.requestTimeout);
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    if (resp.statusCode != 200 || data.containsKey('error')) {
+      throw Exception(data['error'] ?? '验证码发送失败，请稍后再试');
+    }
+  }
+
+  /// 「忘记密码」第 2 步 —— 用验证码重置密码（**无需 token**）。
+  ///
+  /// 返回体与 [login] **同形**（`user_id` / `token` / `email`）——
+  /// 后端在重置成功时直接建了新会话 ⇒ 前端可**自动登录**，不必再登一次。
+  ///
+  /// 🔑 与 [changePassword] 的关键差异：那个是「已登录时改密码」，
+  ///    这个是「登不进来时重置」⇒ 两个接口的入参、鉴权、旧会话处理**都不同**，
+  ///    参数名也刻意不同（`new_password` 相同，但这里多 `email` + `code`）。
+  Future<Map<String, dynamic>> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    final resp = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/api/auth/reset-password'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'email': email,
+        'code': code,
+        'new_password': newPassword,
+      }),
+    ).timeout(ApiConfig.requestTimeout);
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    if (resp.statusCode != 200 || data.containsKey('error')) {
+      throw Exception(data['error'] ?? '重置失败，请重试');
+    }
+    return data;
+  }
 }

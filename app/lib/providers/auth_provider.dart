@@ -327,6 +327,89 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  /// 「忘记密码」第 1 步：申请验证码（**无需登录**）。
+  ///
+  /// 与 `changePassword` 同一取舍：**不占用** `state.isLoading` / `state.error`
+  /// —— 那两个是**页面级**字段，而这是弹层内的操作
+  /// （借用它们会让弹层转圈时整页也在 loading，且错误同时出现在两处）。
+  ///
+  /// ⚠️ 抛出的消息**可直接展示**。后端在「邮箱未注册」时返回「该邮箱尚未注册」
+  ///    （白哥 2026-10-05 定「明说」）⇒ 前端**原样显示**，不要自己改写。
+  Future<void> forgotPassword(String email) async {
+    try {
+      await _client.forgotPassword(email);
+    } catch (e) {
+      debugPrint('forgotPassword 失败 endpoint=${ApiConfig.baseUrl} error=$e');
+      rethrow;
+    }
+  }
+
+  /// 「忘记密码」第 2 步：用验证码重置密码。
+  ///
+  /// # 🔴 它和 `forgotPassword` **不同**：这是一个**登录动作**
+  ///
+  /// 后端在重置成功时**直接返回新 token**（`auth::reset_password` 建了新会话）
+  /// ⇒ 这里必须走和 `login` / `register` 一样的路径：**保存凭据 + 置登录态**，
+  /// 让用户重置完直接进 App，不必拿新密码再登一次。
+  ///
+  /// 🔑 所以它**要用** `state`（与 `changePassword` / `forgotPassword` 相反）——
+  ///    判据：**看这个动作是否改变「谁登录着」**。
+  ///    改密码 / 发验证码：不改变 ⇒ 不碰页面态；
+  ///    重置密码：改变 ⇒ 必须碰（否则 App 不知道用户已经登录了）。
+  ///
+  /// 🔴 另一处**语义差别**（后端已实现，前端无须处理但要知道）：
+  ///    重置成功后该用户**所有**旧会话都被删除（与「修改密码」保留当前会话相反）。
+  ///
+  /// # 为什么**只**在成功时碰 `state`，失败时只 `rethrow`
+  ///
+  /// `state.isLoading` 与 `state.error` 的**唯一消费者是 `claim_dialog`**
+  /// （实测 `grep`：全库只有它读这两个字段）。
+  /// 而本方法由 `ForgotPasswordDialog` 调用 —— 那个弹层**自己有** `_error` / `_submitting`
+  /// 局部状态。若这里也写 `state.error`：
+  ///   · 弹层里显示一次（自己的 `_error`）
+  ///   · **弹层关掉后**，后面的 `ClaimDialog` 上还挂着一句错误 ⇒ 用户莫名其妙
+  /// 若写 `state.isLoading`：弹层转圈时 `ClaimDialog` 的按钮也变成「登录中…」。
+  ///
+  /// ⇒ 判据：**「谁在屏幕上」决定用哪套状态** —— 弹层内的操作不该污染页面级状态。
+  ///    与 `changePassword` / `forgotPassword` 同一条，但**成功路径不同**：
+  ///    那两者不改变「谁登录着」，本方法**改变** ⇒ 必须写 `AuthState`
+  ///    （否则 App 不知道用户已经登录，重置完还被拦在门外）。
+  Future<void> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    final result = await _client.resetPassword(
+      email: email,
+      code: code,
+      newPassword: newPassword,
+    );
+    final uid = result['user_id'] as String?;
+    final token = result['token'] as String?;
+    final returnedEmail = result['email'] as String? ?? email;
+    if (uid != null && token != null) {
+      await _saveCredentials(uid, token, returnedEmail);
+    }
+    state = AuthState(
+      isAuthenticated: true,
+      userId: uid,
+      token: token,
+      username: returnedEmail.split('@').first,
+      email: returnedEmail,
+      isRestored: true,
+    );
+    // 清除「退出登录」标记（与 register 同一处理）——
+    // 否则刚重置完又被引导去登录页。
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('coevo_show_login');
+    } catch (e) {
+      // 清标记失败**不影响**重置结果（凭据已存、state 已登录）
+      // ⇒ 只记日志，不向用户报错（同 `logout` 的处理）。
+      debugPrint('resetPassword: 清除登录标记失败: $e');
+    }
+  }
+
   /// 创建临时账户，可选推广码（来自 URL ?ref=）
   Future<void> trialStart({String? refCode, String? campaignId}) async {
     state = state.copyWith(isLoading: true, error: null);

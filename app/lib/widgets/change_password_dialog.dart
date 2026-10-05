@@ -44,6 +44,7 @@ import '../utils/validators.dart';
 import 'clay_button.dart';
 import 'clay_field.dart';
 import 'co_dialog.dart';
+import 'forgot_password_dialog.dart';
 import 'twemoji.dart';
 
 class ChangePasswordDialog extends ConsumerStatefulWidget {
@@ -257,21 +258,55 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
             ),
           ],
 
-          // ── ④ 忘密码的出口 ──
+          // ── ④ 忘密码的出口（**入口 B** · 白哥 2026-10-05 定案，本次接上）──
+          //
           // 🔴 这个是**唯一**把两个功能连起来的地方：
           //    用户点进「修改密码」多半是因为「我想不起来原密码了」
           //    —— 此时最该告诉他「有找回的路」。
-          // ⚠️ 文案与「忘记密码」功能**同批上线前**先不放（避免指向不存在的功能）。
-          //    见文件尾「⏳ 待接」。
+          //
+          // 🔑 **放在 `child` 末尾而不是 `actions` 里** ——
+          //    `CoDialog.actions` 是**横向 Row + Expanded 平分**（见 `co_dialog.dart`），
+          //    放进去会变成「确认修改 | 找回密码」两个并排按钮，语义完全不同。
+          //
+          // ⚠️ 形态照 **`ClaimDialog` 底部的「没有账号？注册」**（同一个弹层家族里
+          //    已有的先例），而不是新造一种链接样式。
+          //    📌 2026-10-05 更正：原注释写「照 `subscribe_screen` 的次要链接」——
+          //      实测那处是 `ClayButton(variant: secondary)`（一个**按钮**，不是文字链接）
+          //      ⇒ 那份引用是错的（同族判据：**引用要复制，不要凭印象写**）。
+          const SizedBox(height: CoSpacing.sm),
+          GestureDetector(
+            // 提交中置 `null` ⇒ 不可点（`_secondaryLink` 的既有取舍）。
+            onTap: _submitting ? null : _openForgotPassword,
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Tw(
+                '忘了原密码？找回密码 ›',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                  color: Color(t.accent.argb32),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
-}
 
-// ⏳ 待接（等腾讯云 SES 通了、忘记密码页做出来之后）
-//
-// 在 §④ 处加一行次要出口：「忘了原密码？找回密码 ›」→ 打开找回密码流程。
-// 🔴 **不能现在加** —— 指向一个不存在的功能比没有更糟
-//    （判据：**「有提示、无出口」**—— 本项目已因这条改过两处）。
-// 届时该行的形态照 `subscribe_screen` 的次要链接，不要新造。
+  /// 打开「忘记密码」流程（**入口 B** · 白哥 2026-10-05 定案）。
+  ///
+  /// 🔑 重置成功后用户**已自动登录**，而本弹层是「已登录才会打开」的
+  ///    ⇒ 重置成功时把本弹层一起关掉（`pop(false)` 表示「改密码**没**发生」，
+  ///    调用方据此不弹「修改成功」——因为用户做的是**另一件事**）。
+  Future<void> _openForgotPassword() async {
+    final ok = await ForgotPasswordDialog.show(context);
+    if (!mounted) return;
+    if (ok == true) {
+      Navigator.of(context).pop(false);
+    }
+  }
+}
