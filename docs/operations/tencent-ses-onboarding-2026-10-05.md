@@ -354,33 +354,53 @@ DMARC 会因**不对齐**而失败 ⇒ 邮件大批进垃圾箱。这正是「�
 
 ---
 
-## 三、邮件模板内容（我已经写好，直接复制）
+## 三、邮件模板内容
 
-### 模板正文（HTML）
+> ### 📂 模板正文在独立文件里（**可直接粘贴**）
+>
+> | 要粘到腾讯云哪个字段 | 用哪个文件 |
+> |---|---|
+> | 模板类型选 **HTML 富文本** → **正文（HTML）** | [`email-templates/password-reset.html`](email-templates/password-reset.html) |
+> | 同一条模板的 **纯文本（Text）** 字段 | [`email-templates/password-reset.txt`](email-templates/password-reset.txt) |
+>
+> 🔑 **两处重复已消除**：本文件**不再内嵌**一份 HTML ——
+>    「同一封邮件两个版本」会静默不一致（改一处漏一处）。
+>    📌 判据：**同一件事的「口径」只能一处权威。**
+>
+> 📖 模板的**用法说明 / 自查清单 / 技术取舍**（为什么用 table、为什么不用图片、
+>    改了要重审）→ [`email-templates/README.md`](email-templates/README.md)
 
-```html
-<div style="font-family:-apple-system,'PingFang SC',sans-serif;font-size:15px;line-height:1.7;color:#2b2b2b;max-width:520px">
-  <p>你好，</p>
-  <p>你正在重置 <strong>CoEvo</strong> 账号的密码。验证码是：</p>
-  <p style="font-size:30px;font-weight:700;letter-spacing:6px;color:#B4432C;margin:20px 0">{{code}}</p>
-  <p>验证码 <strong>10 分钟内</strong>有效。</p>
-  <p style="color:#6b6b6b">如果这不是你本人的操作，请忽略这封邮件 —— 你的密码不会被修改。</p>
-  <p style="margin-top:26px;color:#6b6b6b;font-size:13px">—— CoEvo 团队<br>
-  <a href="mailto:support@keyievolution.fun" style="color:#B4432C">support@keyievolution.fun</a></p>
-</div>
+### 模板变量（**唯一的契约**）
+
+模板里只有一个变量 **`{{code}}`**，后端发信时通过 `TemplateData` 传入：
+
+```json
+{"code":"482913"}
 ```
 
-> 🎨 颜色 `#B4432C` = 项目品牌色「朱砂」（视觉规格 `design-system-spec`）。
+🔴 **必须保留双花括号** —— 腾讯云官方原文：「模板中的变量使用 **`{{变量名}}`** 表示」。
+写成 `{code}` 用户会看到**字面的 `{code}`** 而不是验证码。
 
-### 为什么这样写（逐条对齐腾讯云的模板规范）
+### 自查（改过模板后跑一遍）
+
+```bash
+python scripts/check_email_template.py
+```
+
+它会查腾讯云规范（外部 CSS / 禁项 / 变量语法 / 变量:文字比例）**与**邮件客户端兼容性
+（flex 布局 / 图片 / `role="presentation"` 等）—— 这些**错了不会报错**，
+所以必须程序化检查。✅ 已证伪（4/4：注入 `<style>`、`加群`、`{code}`、`flex` 均能抓到）。
+
+### 逐条对齐腾讯云的模板规范
 
 | 腾讯云规范 | 我们怎么满足 |
 |---|---|
-| 「模板必须体现实际业务」 | 明确写「重置 CoEvo 账号密码」✅ |
-| 「变量与文字比例不超过 1:5」 | 只有 `{{code}}` 一个变量，比例极低 ✅ |
+| 「HTML 不要包含外部文件的 CSS」 | ✅ **全部内联 style**，无 `<link>` / `@import` / `<style>` |
+| 「模板必须体现实际业务」 | 明确写「重置 CoEvo 账号的密码」✅ |
+| 「变量与文字比例不超过 1:5」 | ✅ 只有 `{{code}}` 一个变量，实测比例 **1:18.1** |
 | 🔴 「禁止出现加 QQ / 加微信 / **加群** 等内容」| 邮件里**没有任何群/二维码** ✅<br>⚠️ 注意：App 的「关于」页有共读群入口，但**邮件模板里绝不能提** |
 | 「URL 必须确定」| 我们把链接换成**6 位码**⇒ 连 URL 都没有 ✅ |
-| 「触发类邮件无字数要求」| 属用户操作触发（触发类）✅ |
+| 「TemplateContent 建议 TEXT + HTML 都提供」 | ✅ 两份都给了 |
 
 ### 🔑 为什么用「6 位码」而不是「邮件链接」
 
