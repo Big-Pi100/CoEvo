@@ -503,27 +503,39 @@ fn generate_reset_code() -> String {
 
 /// 「忘记密码」第 1 步：为该邮箱**签发**一个验证码并落库。
 ///
-/// # 返回值的三种含义（调用方必须分清）
+/// # 返回值
 ///
 /// | 返回 | 含义 | 调用方应做什么 |
 /// |---|---|---|
-/// | `Ok(Some(code))` | 签发成功，明文码**只在此刻可见** | 立刻发信，把 `code` 发出去 |
-/// | `Ok(None)` | 该邮箱**不存在**（或账号已注销） | **不发信**，但对外仍回「成功」 |
-/// | `Err(msg)` | 格式非法 / 距上次申请不足 60 秒 | 把 `msg` 回给前端（或统一文案） |
+/// | `Ok(code)` | 签发成功，明文码**只在此刻可见** | 立刻发信，把 `code` 发出去 |
+/// | `Err(msg)` | 邮箱未注册 / 格式非法 / 距上次申请不足 60 秒 | 把 `msg` 原样给前端 |
 ///
 /// # 🔴 为什么明文码只返回一次、之后无处可查
 ///
 /// 表里只存 bcrypt hash —— 库被拿走也还原不出码。
 /// 代价是「码只在这一刻可得」⇒ 调用方**必须**在同一个请求里把信发出去。
 ///
-/// # 🔴 为什么「邮箱不存在」不报错（这是安全要求，不是疏漏）
+/// # 🔴 「邮箱未注册」显式报错 —— 白哥 2026-10-05 定，**有意**的取舍
 ///
-/// 若报错，本接口就变成「这个邮箱注册过吗」的探测器 —— 撞库的第一步。
-/// `login` 之所以统一回「邮箱或密码错误」，正是同一条判据。
-pub fn issue_reset_code(
-    conn: &rusqlite::Connection,
-    email: &str,
-) -> Result<Option<String>, String> {
+/// 本函数**知道**这个选择会带来什么，如实记在这里：
+///
+/// | | 含糊（`login` 的做法）| **明说（本函数，白哥定）** |
+/// |---|---|---|
+/// | 防邮箱枚举 | ✅ 不能探测「哪些邮箱注册过」 | ❌ **可以**探测 |
+/// | 用户打错邮箱时 | 🔴 一直等一封**永远不会来**的邮件 | ✅ 立刻知道「这邮箱没注册」 |
+///
+/// 🔑 **为什么这里选了和 `login` 相反的一侧**：
+///   · `login` 的含糊是**必须**的 —— 那里泄露的是「密码对不对」，
+///     配合撞库直接威胁已有账号；
+///   · 这里泄露的只是「这个邮箱在本站注册过」，**不涉及任何凭据**；
+///   · 而代价是**真实的用户伤害**：打错一个字母就要干等十分钟
+///     （且用户会以为「系统坏了」—— 属「静默失败」那一族）。
+/// 📌 判据：**含糊与明说的取舍要看「泄露什么 × 换来什么」**，
+///    不能机械照搬「登录必须含糊」这条规则 —— 两者泄露的东西完全不同。
+/// ⚠️ 风险已知并接受：本项目**个人运营、用户量小、无定向攻击动机**；
+///    若将来出现「批量探测」迹象（如大量 404 邮箱的申请），
+///    这里应改回含糊（改动范围：本函数 + `reset_password` + 两条测试）。
+pub fn issue_reset_code(conn: &rusqlite::Connection, email: &str) -> Result<String, String> {
     let email = email.trim();
     if !is_valid_email(email) {
         return Err("邮箱格式不正确".into());
@@ -539,8 +551,8 @@ pub fn issue_reset_code(
         .ok();
 
     let Some(user_id) = user_id else {
-        tracing::info!("issue_reset_code: 邮箱未注册 —— 静默返回（不发信、不报错）");
-        return Ok(None);
+        // 🔴 明说（见上方注释的取舍表）—— 与 `login` 的含糊**有意不同**
+        return Err("该邮箱尚未注册".into());
     };
 
     let now = chrono::Utc::now().timestamp();
@@ -580,7 +592,7 @@ pub fn issue_reset_code(
     })?;
 
     tracing::info!("issue_reset_code: 已签发给 user_id={}", user_id);
-    Ok(Some(code))
+    Ok(code)
 }
 
 /// 「忘记密码」第 2 步：用验证码重置密码。
@@ -590,7 +602,7 @@ pub fn issue_reset_code(
 /// # 校验顺序（有讲究，别调换）
 ///
 /// 1. **新密码强度** —— 格式错的输入不必查库
-/// 2. **用户存在** —— 不存在则回含糊的「验证码不正确」（不泄露邮箱是否注册）
+/// 2. **用户存在** —— 不存在则回「该邮箱尚未注册」（与第 1 步一致，见下）
 /// 3. **取最新一条未用未过期的码** —— 没有 → 「已失效，请重新获取」
 /// 4. **是否过期**
 /// 5. **比对码** —— 错则 `attempts + 1`；达上限则**作废**（见 [`RESET_CODE_MAX_ATTEMPTS`]）
@@ -620,9 +632,12 @@ pub fn reset_password(
             |row| row.get(0),
         )
         .ok();
-    // ── 2. 含糊：不区分「邮箱不存在」与「码不对」──
+    // ── 2. 未注册 ⇒ 明说（与 `issue_reset_code` 保持一致）──
+    // 🔑 这里**不再**含糊：第 1 步已经明说过了，枚举面**已经开了**
+    //    ⇒ 此处含糊**没有额外保护价值**，只会让用户困惑
+    //    （「第一步说没注册，第二步说验证码不对，到底哪个是真的？」）。
     let Some(user_id) = user_id else {
-        return Err("验证码不正确".into());
+        return Err("该邮箱尚未注册".into());
     };
 
     let now = chrono::Utc::now().timestamp();
@@ -1265,19 +1280,25 @@ mod tests {
 
     // ═══════════════════ 找回密码（「忘记密码」）═══════════════════
 
-    /// 未注册邮箱 ⇒ `Ok(None)`（**静默**），且**不写库、不发信**。
-    /// 🔑 这是安全要求：报错就等于提供「邮箱是否注册」的探测接口。
+    /// 未注册邮箱 ⇒ **显式报错**（白哥 2026-10-05 定「明说」）。
+    ///
+    /// 🔴 这条断言在 2026-10-05 从**反向**改过来 —— 原实现是「静默返回 `Ok(None)`」，
+    ///    断言也照着写（`matches!(..., Ok(None))`）。白哥改选「明说」后，
+    ///    **断言必须跟着事实走**（否则它会「保护错误」：代码改对了反而变红）。
+    /// 📌 同族判据：「断言会保护错误」+「事实作废后断言要反向」。
+    ///
+    /// 🔑 仍然守住的那一半（与「明说」无关，**必须**一直成立）：
+    ///    未注册邮箱**绝不写库**（否则会凭空产生一条无主的验证码记录）。
     #[test]
-    fn test_issue_reset_code_unknown_email_is_silent() {
+    fn test_issue_reset_code_unknown_email_is_explicit() {
         let conn = setup_db();
-        assert!(
-            matches!(issue_reset_code(&conn, "nobody@example.com"), Ok(None)),
-            "未注册邮箱必须静默返回 None，而不是报错"
-        );
+        let err = issue_reset_code(&conn, "nobody@example.com").unwrap_err();
+        assert_eq!(err, "该邮箱尚未注册", "白哥定「明说」⇒ 必须显式告知");
+
         let n: i64 = conn
             .query_row("SELECT COUNT(*) FROM password_reset", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(n, 0, "未注册邮箱不应写入验证码表");
+        assert_eq!(n, 0, "未注册邮箱绝不能写入验证码表");
     }
 
     #[test]
@@ -1298,7 +1319,7 @@ mod tests {
         let conn = setup_db();
         seed_user(&conn, "a@example.com", "abc123");
 
-        let code = issue_reset_code(&conn, "a@example.com").unwrap().unwrap();
+        let code = issue_reset_code(&conn, "a@example.com").unwrap();
         assert_eq!(code.len(), 6, "必须 6 位：{code}");
         assert!(
             code.chars().all(|c| c.is_ascii_digit()),
@@ -1316,7 +1337,7 @@ mod tests {
     fn test_issue_reset_code_cooldown() {
         let conn = setup_db();
         seed_user(&conn, "b@example.com", "abc123");
-        issue_reset_code(&conn, "b@example.com").unwrap().unwrap();
+        issue_reset_code(&conn, "b@example.com").unwrap();
 
         let err = issue_reset_code(&conn, "b@example.com").unwrap_err();
         assert!(err.contains("频繁"), "60 秒内二次申请应被限流：{err}");
@@ -1328,7 +1349,7 @@ mod tests {
         let conn = setup_db();
         let (uid, _old_token) = seed_user(&conn, "c@example.com", "secret1");
 
-        let code = issue_reset_code(&conn, "c@example.com").unwrap().unwrap();
+        let code = issue_reset_code(&conn, "c@example.com").unwrap();
         let resp = reset_password(&conn, "c@example.com", &code, "newpass1").unwrap();
 
         assert_eq!(resp.user_id, uid);
@@ -1374,7 +1395,7 @@ mod tests {
     fn test_reset_password_attempt_limit_locks_code() {
         let conn = setup_db();
         seed_user(&conn, "d@example.com", "abc123");
-        let code = issue_reset_code(&conn, "d@example.com").unwrap().unwrap();
+        let code = issue_reset_code(&conn, "d@example.com").unwrap();
         // 一个「长度对但值不同」的码
         let wrong = if code == "000000" { "000001" } else { "000000" };
 
@@ -1394,7 +1415,7 @@ mod tests {
     fn test_reset_password_expired_code_rejected() {
         let conn = setup_db();
         seed_user(&conn, "e@example.com", "abc123");
-        let code = issue_reset_code(&conn, "e@example.com").unwrap().unwrap();
+        let code = issue_reset_code(&conn, "e@example.com").unwrap();
 
         // 把过期时间推到过去
         conn.execute("UPDATE password_reset SET expires_at = 1", [])
@@ -1409,7 +1430,7 @@ mod tests {
     fn test_reset_password_rejects_weak_password_without_burning_code() {
         let conn = setup_db();
         seed_user(&conn, "f@example.com", "abc123");
-        let code = issue_reset_code(&conn, "f@example.com").unwrap().unwrap();
+        let code = issue_reset_code(&conn, "f@example.com").unwrap();
 
         assert!(
             reset_password(&conn, "f@example.com", &code, "a1").is_err(),
@@ -1436,7 +1457,7 @@ mod tests {
     fn test_reset_code_is_single_use() {
         let conn = setup_db();
         seed_user(&conn, "g@example.com", "abc123");
-        let code = issue_reset_code(&conn, "g@example.com").unwrap().unwrap();
+        let code = issue_reset_code(&conn, "g@example.com").unwrap();
 
         assert!(reset_password(&conn, "g@example.com", &code, "newpass1").is_ok());
         let err = reset_password(&conn, "g@example.com", &code, "newpass2").unwrap_err();
@@ -1452,12 +1473,15 @@ mod tests {
         .is_ok());
     }
 
-    /// 未注册邮箱 ⇒ 与「码不对」**同一句**（防邮箱枚举，与 `login` 同一判据）。
+    /// 未注册邮箱 ⇒ **明说**（与第 1 步 `issue_reset_code` 一致）。
+    ///
+    /// 🔑 为什么不在这里单独「含糊」：第 1 步已经明说过了，枚举面**已经开了**
+    ///    ⇒ 此处含糊没有额外保护价值，只会让用户困惑。两处**必须同口径**。
     #[test]
-    fn test_reset_password_unknown_email_is_vague() {
+    fn test_reset_password_unknown_email_is_explicit() {
         let conn = setup_db();
         let err = reset_password(&conn, "nobody@example.com", "123456", "newpass1").unwrap_err();
-        assert_eq!(err, "验证码不正确", "不能泄露邮箱是否注册");
+        assert_eq!(err, "该邮箱尚未注册", "两处必须同口径（都明说）");
     }
 
     /// 邮箱大小写不敏感（与 `register` / `login` 同一判据）。
@@ -1465,9 +1489,7 @@ mod tests {
     fn test_reset_password_email_case_insensitive() {
         let conn = setup_db();
         seed_user(&conn, "Mixed@Example.com", "abc123");
-        let code = issue_reset_code(&conn, "mixed@example.com")
-            .unwrap()
-            .unwrap();
+        let code = issue_reset_code(&conn, "mixed@example.com").unwrap();
         assert!(
             reset_password(&conn, "MIXED@EXAMPLE.COM", &code, "newpass1").is_ok(),
             "邮箱大小写不同也应能找到账号"
@@ -1488,7 +1510,7 @@ mod tests {
             )
             .unwrap();
         }
-        let code = issue_reset_code(&conn, "h@example.com").unwrap().unwrap();
+        let code = issue_reset_code(&conn, "h@example.com").unwrap();
         assert!(reset_password(&conn, "h@example.com", &code, "newpass1").is_ok());
 
         let n: i64 = conn

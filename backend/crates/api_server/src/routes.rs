@@ -725,10 +725,14 @@ async fn auth_change_password(
     }
 }
 
-/// 「已发送」的统一文案 —— **含糊**是刻意的（防邮箱枚举）。
+/// 「已发送」的统一文案。
 ///
 /// 🔑 前端应原样显示这句，不要自己再写一遍（同一句话两处维护会漂移）。
-const FORGOT_SENT_MSG: &str = "若该邮箱已注册，验证码已发送";
+///
+/// 📌 2026-10-05 白哥定「**明说**」后，这句不再承担「含糊（防枚举）」的职责 ——
+///    未注册邮箱走的是 `error` 分支（「该邮箱尚未注册」）。
+///    保留统一文案的价值在于：**同一条消息只有一个出处**（改动时不会漏）。
+const FORGOT_SENT_MSG: &str = "验证码已发送，请查收邮件";
 
 /// 「忘记密码」第 1 步的请求体（`POST /api/auth/forgot-password`）。
 #[derive(Deserialize)]
@@ -755,16 +759,16 @@ pub struct ResetPasswordInput {
 /// 响应: `{"ok": true, "message": "若该邮箱已注册，验证码已发送"}` 或 `{"error": "str"}`
 /// 限流: **5 次/分钟/IP**（比 login 更严 —— 每次都会**真发一封邮件**）
 ///
-/// # 🔴 邮箱未注册也返回成功（这是安全要求，不是疏漏）
+/// # 🔴 「邮箱未注册」**显式报错**（白哥 2026-10-05 定「明说」）
 ///
-/// 报错就等于提供「哪些邮箱注册过」的探测接口 —— 撞库的第一步。
-/// 这与 `login` 统一回「邮箱或密码错误」是同一条判据。
+/// 这与 `login`（统一回「邮箱或密码错误」）**有意不同**，取舍写在
+/// `auth::issue_reset_code` 的文档里：那边泄露的是「密码对不对」（威胁已有账号），
+/// 这边只泄露「这个邮箱在本站注册过」（不涉凭据）；
+/// 而含糊的代价是**打错一个字就要干等十分钟**（且用户会以为系统坏了）。
 ///
-/// # ⚠️ 唯一例外：**发信失败**要如实报错
+/// # ⚠️ 发信失败也必须如实报错
 ///
-/// 发信失败（服务未配置 / 网络 / 模板被拒）与「邮箱是否存在」**无关** ——
-/// 它对所有邮箱一视同仁 ⇒ 不构成枚举面，可以告知用户。
-/// 反过来说，若这里把失败吞掉当成功，用户会一直等一封永远不来的验证码
+/// 若把失败吞掉当成功，用户会一直等一封永远不来的验证码
 /// （「静默失效」—— 本项目的主要敌人）。⚠️ 但错误信息**不透技术细节**。
 async fn auth_forgot_password(
     headers: HeaderMap,
@@ -775,6 +779,8 @@ async fn auth_forgot_password(
     }
 
     // ── ① 签发（同步 · 落库）──
+    // 未注册邮箱、格式非法、60 秒内重复申请 —— 都在这里返回 `Err`，
+    // 由下面统一转成 `{"error": ...}`（白哥定「明说」⇒ 未注册也走 error 分支）。
     let code = {
         let conn = crate::db_pool::get_conn();
         match crate::auth::issue_reset_code(&conn, &input.email) {
@@ -786,12 +792,7 @@ async fn auth_forgot_password(
         }
     };
 
-    // ── ② 邮箱未注册 ⇒ **不发信**，但对外的响应与成功**一字不差** ──
-    let Some(code) = code else {
-        return Json(serde_json::json!({"ok": true, "message": FORGOT_SENT_MSG})).into_response();
-    };
-
-    // ── ③ 发信（异步）──
+    // ── ② 发信（异步）──
     match crate::tencent_ses::send_reset_code(input.email.trim(), &code).await {
         Ok(()) => Json(serde_json::json!({"ok": true, "message": FORGOT_SENT_MSG})).into_response(),
         Err(e) => {
