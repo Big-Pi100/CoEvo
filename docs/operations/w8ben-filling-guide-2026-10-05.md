@@ -73,14 +73,23 @@ the income tax treaty between the United States and that country or region.*
 
 ### 第 10 条 · 具体条款与税率 ← **最容易填错的一行**
 
-要填 **4 个空**：
+🔴 **订正（2026-10-05 白哥实测）**：本节初版写成「要填 4 个空」—— 那是对**纸质表**的描述。
+**Apple 的电子表单只有 2 个输入框需要打字**，其余是点选 / 留空：
 
-| 空 | 填 |
-|---|---|
-| **Article** | **11** |
-| **paragraph** | **2** |
-| **% rate of withholding** | **10** |
-| **type of income** | 选 **`Income from the sale of applications`** |
+| 表单控件 | 类型 | 填什么 |
+|---|---|---|
+| **Article and paragraph** | ✅ 输入框 | **`11(2)`** |
+| **`___% rate of withholding`** | ✅ 输入框 | **`10`** |
+| type of income（`Income from the sale of applications` / `Other`）| 🔘 **单选，点选** | 勾 **`Income from the sale of applications`** |
+| Explain additional conditions | 输入框（Optional）| **留空** |
+
+> 🔑 **`11(2)` 是 W-8BEN 的通行缩写**（= Article 11, paragraph 2）——
+> 因为电子表单把「Article __ and paragraph __」**合并成了一个框**，
+> 所以用括号写成 `11(2)`（若框够长，写 `Article 11, paragraph 2` 更明确）。
+> ⚠️ **不要写中文**。
+>
+> 📌 判据：**「纸质表的字段数」≠「电子表单的输入框数」** ——
+>    转述表单结构时必须以**实际界面**为准（本次是我照纸质表描述，与实际不符）。
 
 > 🔑 **为什么是第十一条第二款**：协定第十一条第二款规定
 > 「如果收款人是该特许权使用费受益所有人，则所征税款不应超过**特许权使用费总额的 10%**」。
