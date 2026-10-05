@@ -24,3 +24,11 @@ dependencies:
   archive: ^4.3.0
   # 解析 META-INF/container.xml 与 content.opf
   xml: ^6.5.0
+  # 🔑 内容指纹（`sha256`）—— 跨设备识别「同一本书」。
+  # 🔴 **约束必须与 `app/pubspec.yaml` 一致**（同为 `^3.0.7`）：
+  #    `lib/services/book_importer.dart` / `lib/services/ebook/book_import_plan.dart`
+  #    是**两边共用**的同一份代码，版本漂移会出现「本地绿 / CI 红」
+  #    （同文件头 `xml` 的那条理由）。
+  # ✅ 已核实：所有依赖 crypto 的包都要求 `^3.0.x` ⇒ `^3.0.7` 无冲突。
+  #    ⚠️ `0.3.4+2` 那种老版本在 pub.dev 上**已不存在**，写了会直接解析失败。
+  crypto: ^3.0.7

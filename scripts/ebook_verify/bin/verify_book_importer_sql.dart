@@ -125,7 +125,11 @@ void main() {
   //    判据：**「检测为 0」时先证检测器有效** —— 用已知有值的样本做对照。
   final bookCols = columnsOf(schemaSql, 'book');
   final chapterCols = columnsOf(schemaSql, 'book_chapter');
-  check('🔴 schema 解析器有效：book 解析出 9 列', bookCols.length == 9,
+  // ⚠️ 列数会随 schema 变更而变 —— 2026-10-05 因 v2（跨设备同步）加了
+  //    `book.content_hash`（内容指纹）⇒ 9 → **10**。
+  //    📌 这条的意义是「**证明解析器本身有效**」（否则下面「集合相等」全绿也可能是
+  //       根本没解析到东西）⇒ 数字变化时**要更新它**，但不能删。
+  check('🔴 schema 解析器有效：book 解析出 10 列', bookCols.length == 10,
       '实际 ${bookCols.length}：${bookCols.join(',')}');
   check('🔴 schema 解析器有效：book_chapter 解析出 6 列',
       chapterCols.length == 6, '实际 ${chapterCols.length}：${chapterCols.join(',')}');

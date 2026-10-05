@@ -170,6 +170,32 @@ CREATE INDEX IF NOT EXISTS idx_ar_pending ON article_read (pending_push)
   WHERE pending_push = 1;
 ''';
 
+/// 🆕 **v5 的 schema**（2026-10-01 时点的样子）= v4 + `external_word_cache`。
+///
+/// 🔑 **历史快照**，只增不改（理由见 `_v1Schema`）。
+/// 它对应「A2（热词缓存 + LLM 制卡）上线后」的设备状态 —— 那时 `user_version = 5`。
+///
+/// 🔴 **这一条是最重要的升级路径** —— 理由：
+///    真机上**最可能存在的版本就是 v5**（白哥 2026-10-05 刚测过的包 = v5）。
+///    在加它之前，脚本只跑 v1~v4 → 当前版本 ⇒ **「v5 → v6」根本没被覆盖**。
+///    ⚠️ 而 v6 恰恰是**第一次「给已有表加列」**的版本 ⇒ 风险最高的那一次变更。
+/// 📌 判据：**升级路径要覆盖「真实存在的起点」** —— 补历史快照时，
+///    优先补**最老的可能起点**与**最新的现状版本**，而不是凑数量。
+const String _v5Schema = '''
+$_v4Schema
+CREATE TABLE IF NOT EXISTS external_word_cache (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  spelling     TEXT    NOT NULL COLLATE NOCASE,
+  card_content TEXT    NOT NULL,
+  fetched_at   TEXT    NOT NULL
+               DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  pending_push INTEGER NOT NULL DEFAULT 1 CHECK (pending_push IN (0, 1)),
+  UNIQUE (spelling)
+);
+CREATE INDEX IF NOT EXISTS idx_ewc_pending ON external_word_cache (pending_push)
+  WHERE pending_push = 1;
+''';
+
 /// 从 schema 文件里提取**全部建表语句的表名**。
 ///
 /// 🔑 这样本脚本**不需要**维护一份「应该有哪张表」的清单 ——
@@ -268,7 +294,25 @@ Future<void> runUpgradeCase({
   if (fromVersion < 5) {
     check('🔴 前提成立：v$fromVersion 老库**不含** external_word_cache（v5 才加）',
         !oldTables.contains('external_word_cache'));
+  } else {
+    check('🔴 前提成立：v$fromVersion 老库**含** external_word_cache（v5 的内容）',
+        oldTables.contains('external_word_cache'));
   }
+
+  // 🔴🆕 **v6 的前提（本次新增，最关键的一条）**：老库的 `bookmark` **不含 `deleted` 列**
+  //    —— 否则「升级后它有 deleted」这条断言就失去意义（它本来就存在）。
+  //    ⚠️ 必须查**列**、不是查表：本次变更是**加列**。
+  //    📌 判据：「前提类断言」的检查粒度必须**等于被测变更的粒度**
+  //       （上一条查表是因为那些版本加的是**表**；本条查列是因为加的是**列**）。
+  final oldBmCols = <String>[
+    for (final r in await old.rawQuery('PRAGMA table_info(bookmark)'))
+      r['name'] as String,
+  ];
+  check('🔴 前提成立：v$fromVersion 老库的 bookmark **不含** deleted 列（v6 才加）',
+      !oldBmCols.contains('deleted'), oldBmCols.join(','));
+  check('  （同时确认老库确实有 bookmark 表 —— 否则上面那条是空过）',
+      oldBmCols.isNotEmpty);
+
   check('老库已有 bookmark 数据（2 条）',
       firstInt(await old.rawQuery('SELECT count(*) AS n FROM bookmark')) == 2);
   await old.close();
@@ -332,6 +376,72 @@ Future<void> runUpgradeCase({
                 .first['article_id'] ==
             77);
   }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  section('【5b】🔴🆕 v6 加列：`bookmark.deleted`（跨设备同步 · 收藏改软删）');
+  // ══════════════════════════════════════════════════════════════════════════
+  //
+  // 这是本库**第一次「给已有表加列」** —— 与前几版「纯新增表」是**两种性质**：
+  // 新增表能被「重跑全量幂等脚本」覆盖，**加列不能**（`IF NOT EXISTS` 见表就跳过）
+  // ⇒ 必须靠 `onUpgrade` 里的 `ALTER`。这几条断言就是守住它。
+  final bmColsAfter = <String>[
+    for (final r in await db.rawQuery('PRAGMA table_info(bookmark)'))
+      r['name'] as String,
+  ];
+  final hasDeleted = bmColsAfter.contains('deleted');
+  check('🔴 `bookmark` 有 `deleted` 列 —— 加列**只能**靠 ALTER（全量脚本覆盖不了）',
+      hasDeleted, bmColsAfter.join(','));
+
+  // 🔴🔴 **下面两条必须包在 `if (hasDeleted)` 里**（2026-10-05 证伪时实测踩到）
+  //
+  // 它们会 **查询 `deleted` 列** —— 若该列不存在，SQLite 直接抛
+  // `no such column: deleted` ⇒ **整个脚本崩溃**（退出码 255）。
+  // ⚠️ 崩溃比「干净报红」糟得多：**后面的断言一条都不跑、汇总也不打印**，
+  //    容易被误读成「环境问题 / 脚本坏了」，而不是「迁移漏了加列」。
+  //    （本脚本 §241 的注释早就记过这一族坑，这次是它在**断言自身**上复发。）
+  //
+  // 📌 判据：**「依赖某前提的断言」在前提不成立时要跳过，而不是让它把脚本炸掉**。
+  //    门禁的正确形态是「红 + 指出原因」，不是「崩 + 什么都不说」。
+  //    ✅ 前提不足时跳过**不会**削弱门禁：上面那条已经红了，门禁已经是红的。
+  if (hasDeleted) {
+    // 🔴 默认值必须是 **0**：老库已有的收藏**不能**被当成「已删除」
+    //    （否则用户升级后**收藏全部消失** —— 静默数据事故，且用户无从解释、我们无从复现）
+    check('🔴 老收藏的 `deleted` 默认值是 **0**（不是 1）—— 否则升级后收藏全没了',
+        firstInt(await db
+                .rawQuery('SELECT count(*) AS n FROM bookmark WHERE deleted = 0')) ==
+            2);
+    check('  且没有一行的 deleted = 1（老数据不该凭空变成「已删」）',
+        firstInt(await db
+                .rawQuery('SELECT count(*) AS n FROM bookmark WHERE deleted = 1')) ==
+            0);
+
+    // 🔴 **CHECK 必须真的生效** —— 这才是「加列时带上 CHECK」的目的。
+    //    ⚠️ 若 `onUpgrade` 的 ddl 漏写成 `INTEGER NOT NULL DEFAULT 0`
+    //       （不带 CHECK），老库就能写进 `deleted = 2`，而**新建的库会拒绝**
+    //       ⇒ 两种库的约束漂移，同步逻辑（把 deleted 当布尔）行为不同，且**不报错**。
+    var checkEnforced = false;
+    try {
+      await db.insert('bookmark', {'content_id': 777, 'deleted': 2});
+    } catch (_) {
+      checkEnforced = true;
+    }
+    check('🔴 CHECK(deleted IN (0,1)) 在**升级出来的**库上也生效（写 2 必须报错）',
+        checkEnforced);
+    if (!checkEnforced) {
+      // CHECK 没生效时那一行**真的插进去了** ⇒ 清掉，避免污染后续断言
+      await db.delete('bookmark', where: 'content_id = ?', whereArgs: [777]);
+    }
+  }
+
+  // 🔑 直接读 `sqlite_master` 的 DDL，确认**升级出来的表**定义里也带 CHECK
+  //    （`ALTER TABLE ADD COLUMN` 会**重写** sqlite_master 里的 CREATE TABLE 语句 ⇒ 可以这样验）
+  //    📌 这是「加列」场景下唯一能证明「两种库定义一致」的判据。
+  final bmDdl = (await db.rawQuery(
+          "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'bookmark'"))
+      .first['sql'] as String;
+  check('🔑 升级后的 bookmark DDL 同时含 `deleted` 与 `CHECK (deleted IN (0, 1))`'
+      '（与新建库**同一份定义**）',
+      bmDdl.contains('deleted') && bmDdl.contains('CHECK (deleted IN (0, 1))'));
 
   section('【6】新表**可正常使用**（不只是「存在」）');
   // 🔴 前置守卫：若 §3 判定「新表没建出来」，继续 INSERT 会**直接抛异常** →
@@ -550,11 +660,27 @@ Future<void> main() async {
     oldSchema: _v4Schema,
     expectedTables: expectedTables,
   );
+  // 🆕 **v6（2026-10-05 · 跨设备同步）：本次最重要的一条路径**
+  //
+  // 🔴 为什么它最重要：
+  //    · 真机上的库此刻**很可能就是 v5**（白哥 2026-10-05 刚测过的包 = v5）
+  //      ⇒ 这才是「真实用户升级」的主路径，不是 v1~v4 那些历史起点
+  //    · v6 是**第一次「给已有表加列」**（`bookmark.deleted`）
+  //      ⇒ **加列靠 `ALTER`，重跑全量脚本覆盖不了** —— 最容易漏的一类变更
+  //    · 漏了是**静默的**：老库永远没有 `deleted` 列 ⇒ 收藏同步时
+  //      「取消收藏」的删除**同步不出去**（另一台设备上收藏又回来），而不报任何错
+  await runUpgradeCase(
+    factory: factory,
+    schemaSql: schemaSql,
+    fromVersion: 5,
+    oldSchema: _v5Schema,
+    expectedTables: expectedTables,
+  );
 
   print('');
   print('═' * 74);
   if (_failures.isEmpty) {
-    print('✅ 全部通过：$_pass 项（v1/v2/v3/v4 → v$kUserDbVersion 四条路径）');
+    print('✅ 全部通过：$_pass 项（v1/v2/v3/v4/v5 → v$kUserDbVersion 五条路径）');
   } else {
     print('🔴 失败 ${_failures.length} 项 / 通过 $_pass 项：');
     for (final f in _failures) {

@@ -30,6 +30,7 @@
 import 'dart:isolate';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:sqflite_common/sqlite_api.dart';
 
 import 'ebook/book_import_plan.dart';
@@ -114,15 +115,31 @@ Future<BookImportResult> importBook({
     );
   }
 
-  // ── ② 解析（走 Isolate）──
-  final EbookParseResult parsed;
+  // ── ② 解析 + 内容指纹（**合并进同一个 Isolate**）──
+  //
+  // 🔑 为什么把两者合在一个 `Isolate.run` 里：它们都要读 `bytes` ——
+  //    分两次调用会让一个 50 MB 的 `Uint8List` **跨 isolate 拷贝两次**
+  //    （`Isolate.run` 的入参按值传递）。合并后只拷一次，
+  //    返回值只是个 record（`parsed` + 一个 64 字符的 hex）⇒ 几乎无成本。
+  //
+  // 🔑 指纹**必须**在 isolate 里算：50 MB 的 sha256 约 **100–200 ms**，
+  //    放主 isolate 会卡住 UI（导入虽是用户主动触发，卡顿仍不可接受）。
+  //
+  // ⚠️ 指纹是**跨设备身份**，**不是**「重复导入去重」——
+  //    两者的判据**相反**（身份要「同文件必同值」，去重要「不同书必不同值」），
+  //    见 `ebook/book_import_plan.dart` 文件尾那一节。
+  final ({EbookParseResult parsed, String hash}) work;
   try {
-    parsed = await Isolate.run(() => parseByFormat(bytes, fileName));
+    work = await Isolate.run(() => (
+          parsed: parseByFormat(bytes, fileName),
+          hash: sha256.convert(bytes).toString(),
+        ));
   } catch (e) {
     // 解析器设计上**不抛异常**（用返回值表达失败）⇒ 走到这里说明是**意料之外**的错误
     // （OOM / 解析器 bug）。如实归到 `unknown` 并保留原始信息便于排查。
     return BookImportFailure(EbookParseErrorKind.unknown, '解析时抛出异常：$e');
   }
+  final parsed = work.parsed;
 
   return switch (parsed) {
     // 🔴 **必须是 `EbookParseFailure`（解析层的类型）**，不是本文件的 `BookImportFailure`。
@@ -141,6 +158,7 @@ Future<BookImportResult> importBook({
         fileName: fileName,
         newId: newId,
         addedAt: addedAt,
+        contentHash: work.hash,
       ),
   };
 }
@@ -152,6 +170,8 @@ Future<BookImportResult> _persistBook({
   required String fileName,
   required String Function() newId,
   required String addedAt,
+  /// 🆕 内容指纹（见 `importBook` 里算它的那段注释）。
+  required String contentHash,
 }) async {
   // 🔴 章节数上限：中文长篇极端情况能切出上万章 ⇒ 会让阅读页的章节列表爆炸。
   //    在**落库前**拦（同体积检查的理由）。
@@ -167,6 +187,7 @@ Future<BookImportResult> _persistBook({
     fileName: fileName,
     addedAt: addedAt,
     newId: newId,
+    contentHash: contentHash,
   );
 
   try {
@@ -200,6 +221,8 @@ Future<void> _writePlan(Database db, BookImportPlan plan) async {
       'chapter_count': plan.chapterCount,
       'char_count': plan.charCount,
       'added_at': plan.addedAt,
+      // 🆕 内容指纹 —— ⚠️ 与 schema 的**列顺序一致**（它在末尾）
+      'content_hash': plan.contentHash,
     });
 
     // 🔑 用 `batch` 而不是 N 次 `insert`：sqflite 的 batch 把多条语句

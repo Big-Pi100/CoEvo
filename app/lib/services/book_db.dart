@@ -21,7 +21,7 @@
 
 import 'package:sqflite_common/sqlite_api.dart';
 
-import 'user_db.dart' show executeSqlScript;
+import 'user_db.dart' show addColumnIfMissing, executeSqlScript;
 
 /// `book.db` 的文件名（调用方拼路径用）。
 const String kBookDbFileName = 'book.db';
@@ -36,13 +36,21 @@ const String kBookDbSchemaAsset = 'assets/sql/book_db_schema.sql';
 /// `book.db` 的 schema 版本。
 ///
 /// ## 版本历史
-/// | 版本 | 内容 |
-/// |---|---|
-/// | **1** | 初版：`book` · `book_chapter` · `book_progress` |
+/// | 版本 | 内容 | 变更类型 |
+/// |---|---|---|
+/// | **1** | 初版：`book` · `book_chapter` · `book_progress` | — |
+/// | **2** | 🆕 `book.content_hash`（内容指纹）· 🆕 `book_progress_pending`（待认领进度）| **加列** + 新增表 |
 ///
-/// ⚠️ 本库是**新增的库**（真机上尚不存在）⇒ `onCreate` 一定会走，
-///    首版**不需要**写迁移分支。
-const int kBookDbVersion = 1;
+/// ⚠️ 本库是**新增的库**（真机上尚不存在）⇒ `onCreate` 一定会走。
+///
+/// 🔑 **但仍然写迁移分支**（v2），两条理由：
+///   ① 若有测试机已经建过 v1 库，`onCreate` **不会再走**（只走 `onUpgrade`）
+///   ② 本次两处变更性质**不同**：
+///      · `book_progress_pending` = **新增表** ⇒ 重跑全量幂等脚本**能**覆盖
+///      · `book.content_hash` = **加列** ⇒ 重跑脚本**不能**覆盖（`IF NOT EXISTS` 见表就跳过）
+///   ⇒ 只测「全新库」会**假绿**（全新的当然有这一列，因为建表语句里写了）。
+///   📌 判据：**「新建库跑通」≠「老库能升级」**。
+const int kBookDbVersion = 2;
 
 /// 打开（必要时创建）`book.db`。
 ///
@@ -89,8 +97,38 @@ Future<Database> openBookDb({
       // · 必须在本分支里**按 `oldVersion` 写专门处理**
       // → 判据：**「这条变更对已存在的表要做点什么吗？」** 答「不用」→ 本实现够。
       onUpgrade: (db, oldVersion, newVersion) async {
-        // ⚠️ 别把 `oldVersion` 丢掉 —— 它是将来写列变更分支的依据
-        final _ = oldVersion;
+        // ── ① v2：**先**给已存在的 `book` 表补 `content_hash` 列 ──
+        //
+        // 🔴🔴 **顺序不能反！**（2026-10-05 实测踩到、由本文件的断言脚本抓到）
+        //
+        // 我先写成「先重跑全量脚本、后加列」，结果**直接崩溃**：
+        // ```
+        // no such column: content_hash
+        // Causing statement: CREATE INDEX IF NOT EXISTS idx_book_hash ON book(content_hash)
+        // ```
+        // 📌 原因：schema 脚本里**有引用新列的索引**（`idx_book_hash`）——
+        //    「先跑脚本」会在**列还不存在**时去建那个索引 ⇒ `no such column`。
+        // 🔑 判据：**加列必须排在「重跑全量脚本」之前** ——
+        //    因为脚本里任何**引用新列的索引**都要求列先存在。
+        //    （同族：skill `sqlite-schema-migration` 的「索引必须在新表改名之后建」。）
+        //
+        // 🔑 加列本身**必须**单独做：`CREATE TABLE IF NOT EXISTS book (...)` 对已存在的表
+        //    整条跳过（不比对结构）⇒ 建表语句里那一列对老库永远加不上。
+        // ⚠️ 可空（不带 DEFAULT）—— 理由见 `book_db_schema.sql` 的该列注释
+        //    （「算不出哈希」必须是 NULL，不能拿哨兵值伪装成「有一个哈希」）。
+        // ✅ `addColumnIfMissing` 自带「表不存在 / 列已存在 ⇒ 跳过」两道判断
+        //    ⇒ 对全新库、重复升级都无害（幂等）。
+        if (oldVersion < 2) {
+          await addColumnIfMissing(
+            db,
+            table: 'book',
+            column: 'content_hash',
+            ddl: 'TEXT',
+          );
+        }
+
+        // ── ② **再**重跑全量幂等脚本：建出缺失的表 / 索引 ──
+        // （含 v2 新增的 `book_progress_pending` 表与 `idx_book_hash` 索引）
         await executeSqlScript(db, schemaSql);
       },
     ),

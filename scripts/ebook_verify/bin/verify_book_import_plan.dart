@@ -109,7 +109,15 @@ void main() {
     fileName: 'pride.epub',
     addedAt: '2026-10-04T00:00:00Z',
     newId: seqIds(),
+    // 🆕 v2：内容指纹**由调用方传入**（算它需要原始字节，而本函数是纯逻辑）
+    contentHash: 'e3b0c44298fc1c149afbf4c8996fb924',
   );
+
+  // 🆕 指纹必须**原样透传** —— 它是跨设备识别「同一本书」的唯一依据；
+  //    若在这里被截断/改写，另一台设备就**永远匹配不上** ⇒ 进度认领失败（静默）。
+  check('🆕 contentHash 原样透传（不被截断/改写）',
+      plan.contentHash == 'e3b0c44298fc1c149afbf4c8996fb924',
+      '「${plan.contentHash}」');
 
   // ① `idx` 必须**连续 0..n-1**（不是「看起来连续」）
   check('🔴 章节 idx 连续 0..n-1',
@@ -161,6 +169,7 @@ void main() {
     fileName: '  ',
     addedAt: '2026-10-04T00:00:00Z',
     newId: seqIds(),
+    contentHash: 'h-empty',
   );
   check('空章节 → chapterCount 0 且不崩', emptyPlan.chapterCount == 0);
   check('空章节 → charCount 0', emptyPlan.charCount == 0);
@@ -175,6 +184,7 @@ void main() {
     fileName: '  my book.epub  ',
     addedAt: '2026-10-04T00:00:00Z',
     newId: seqIds(),
+    contentHash: 'h-trim',
   );
   check('文件名前后空白被 trim', trimPlan.sourceName == 'my book.epub',
       '「${trimPlan.sourceName}」');

@@ -39,8 +39,44 @@ CREATE TABLE IF NOT EXISTS book (
   source_name   TEXT,                      -- 原始文件名（让用户认出「哪来的」）
   chapter_count INTEGER NOT NULL DEFAULT 0,
   char_count    INTEGER NOT NULL DEFAULT 0,
-  added_at      TEXT NOT NULL              -- ISO8601 UTC
+  added_at      TEXT NOT NULL,             -- ISO8601 UTC
+  -- ─────────────────────────────────────────────────────────────────────
+  -- 🆕 v2（2026-10-05 · 跨设备同步）：**内容指纹** —— 解决「同一本书在两台
+  --    设备上是两本书」的问题
+  -- ─────────────────────────────────────────────────────────────────────
+  -- `book.id` 是**端侧生成的 uuid** ⇒ 同一本《Pride and Prejudice》在两台设备
+  -- 上导入会得到**两个不同 id** ⇒ 进度对不上。
+  -- ⇒ 用 **`sha256(原始文件字节)`** 作为跨设备的「同一本书」判据 +
+  --    一张「待认领」表（见下方 `book_progress_pending`）承接「本地还没导入时」的进度。
+  --
+  -- 📄 设计依据：`docs/design/sync-implementation-assessment-2026-10-04.md` §3.4
+  --
+  -- # 🔴 可空是刻意的（不是漏写 NOT NULL）
+  --  · 本库**尚未上线** ⇒ 正常情况下没有「旧书」；但若将来出现「算不出哈希」的情况
+  --    （如导入流程异常中断），该行为 NULL ⇒ **不参与同步**（而不是拿错误哈希去匹配）
+  --  · ⚠️ SQLite 也**不允许** `ADD COLUMN ... NOT NULL` 不带默认值 ⇒ 迁移侧必须可空
+  --    （或给一个哨兵默认值 —— 那更糟，会让「算不出」伪装成「有一个哈希」）
+  --
+  -- # 🔴 这个指纹的边界（**不假装更强**）
+  --
+  -- | 情形 | 哈希 | 结果 |
+  -- |---|---|---|
+  -- | 同一文件拷到两台设备 | 相同 | ✅ 进度共享 |
+  -- | **同一本公版书、从不同来源下载** | 🔴 **不同**（元数据/排版有差异）| ❌ 进度不共享 |
+  --
+  -- 🔑 后者是**刻意接受**的：不同来源的同一本书**章节划分可能完全不同** ⇒
+  --    硬把进度「共享」过去会**把用户带到错误的位置** —— **比不同步更糟**。
+  --    ⇒ 将来若要做跨来源识别，需要「书名+作者+章节数」等**弱指纹**，
+  --      但那会引入**错配风险**，必须配套「用户确认」交互 ⇒ **一期不做**。
+  --    ⚠️ 实施时**不要**顺手把它加强成「模糊匹配」。
+  --
+  -- ⚠️ **算哈希必须放 Isolate**（50 MB 约 100–200 ms）—— 导入流程本就在 Isolate 里。
+  -- ⚠️ 同样写在**末尾**：`ALTER TABLE ADD COLUMN` 只能追加到末尾，保持一致。
+  content_hash  TEXT
 );
+
+-- 按指纹找书（跨设备认领进度时用：`WHERE content_hash = ?`）
+CREATE INDEX IF NOT EXISTS idx_book_hash ON book(content_hash);
 
 CREATE INDEX IF NOT EXISTS idx_book_added ON book(added_at DESC);
 
@@ -73,4 +109,34 @@ CREATE TABLE IF NOT EXISTS book_progress (
   scroll_ratio REAL    NOT NULL DEFAULT 0, -- 章内相对位置 0~1（**不存绝对像素** —— 换设备/换字号后像素值无意义）
   updated_at   TEXT NOT NULL,
   FOREIGN KEY (book_id) REFERENCES book(id) ON DELETE CASCADE
+);
+
+-- ── 🆕 v2（2026-10-05 · 跨设备同步）：**待认领**的远端进度 ────────────────
+--
+-- # 🔴 为什么必须有这张表（不是过度设计）
+--
+-- `book_progress` 有 `FK → book(id) ON DELETE CASCADE`。
+-- 同步拉取时，远端的 `book_id` 是**另一台设备的 uuid** —— 本地**没导入这本书**
+-- ⇒ 直接写 `book_progress` 会 **FK 失败**（插不进去）。
+--
+-- **若因此丢弃远端进度**（更简单的做法）⇒ 用户的真实流程是
+-- 「新设备 → **导入书** → 打开」，而同步往往**早于**导入
+-- ⇒ 进度**永久丢失** ⇒ 这个功能等于没做。
+--
+-- ⇒ 用本表按**指纹**（`book.content_hash`，不是 `book_id`）先接住，
+--    等用户在新设备导入同一本书后「**认领**」。
+--
+-- # 认领流程
+--
+-- ```
+-- ① 同步拉取 → 写进本表（**不需要**本地已有这本书）
+-- ② 用户导入同一本书 → 算出 content_hash → 命中本表
+--    ⇒ 写入 book_progress（此时 FK 满足）→ 删掉本表的行
+-- ③ 本地读书 → 更新 book_progress + 一并更新本表（便于上传）
+-- ```
+CREATE TABLE IF NOT EXISTS book_progress_pending (
+  content_hash TEXT PRIMARY KEY,           -- 按**指纹**存，而不是 book_id（见上）
+  chapter_idx  INTEGER NOT NULL,
+  scroll_ratio REAL    NOT NULL,
+  updated_at   TEXT    NOT NULL
 );

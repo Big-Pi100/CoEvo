@@ -99,6 +99,7 @@ class BookImportPlan {
     required this.chapterCount,
     required this.charCount,
     required this.addedAt,
+    required this.contentHash,
     required this.chapters,
   });
 
@@ -120,6 +121,24 @@ class BookImportPlan {
 
   /// ISO8601 UTC。
   final String addedAt;
+
+  /// 🆕 **内容指纹** = `sha256(原始文件字节)` 的 hex（小写）。
+  ///
+  /// # 用途：跨设备识别「同一本书」—— **不是去重**
+  ///
+  /// `bookId` 是端侧 uuid ⇒ 同一本书在两台设备上是**两个 id** ⇒ 进度对不上。
+  /// 用**内容指纹**做跨设备身份，配一张「待认领」表
+  /// （`book_progress_pending`）承接「本地还没导入这本书时」的进度。
+  /// 📄 `docs/design/sync-implementation-assessment-2026-10-04.md` §3.4
+  ///
+  /// ⚠️ **它不承担「重复导入去重」的职责** —— 文件尾有一节专门讲为什么**不做**去重。
+  ///    🔑 两件事的判据不同：**身份**要求「同一文件必须同值」（严格）；
+  ///    **去重**要求「不同的书必须不同值」（我们做不到，因为不同来源的同一本书
+  ///    字节必然不同）⇒ 用同一个哈希做两件事会得出**相反**的结论，别混。
+  ///
+  /// ⚠️ 由调用方算好传入（不经本函数）—— 因为它需要**原始字节**，
+  ///    而本文件是**纯逻辑**（不碰 IO、不碰字节）。
+  final String contentHash;
 
   final List<ChapterRow> chapters;
 }
@@ -164,6 +183,8 @@ BookImportPlan buildImportPlan({
   required String fileName,
   required String addedAt,
   required String Function() newId,
+  /// 🆕 内容指纹 —— 由调用方算好（需要原始字节；本函数是纯逻辑，不碰字节）。
+  required String contentHash,
 }) {
   final rows = <ChapterRow>[];
   for (var i = 0; i < draft.chapters.length; i++) {
@@ -190,6 +211,7 @@ BookImportPlan buildImportPlan({
     chapterCount: rows.length,
     charCount: rows.fold(0, (a, r) => a + r.charCount),
     addedAt: addedAt,
+    contentHash: contentHash,
     chapters: rows,
   );
 }
@@ -203,7 +225,7 @@ BookImportPlan buildImportPlan({
 //
 // | 方案 | 代价 |
 // |---|---|
-// | 按内容 hash 去重 | 需引入 `crypto`；且**不同来源的同一本书 hash 必然不同** ⇒ 拦不住真正的情况 |
+// | 按内容 hash 去重 | 🔴 **拦不住真正的情况** —— 不同来源的同一本书字节必然不同 ⇒ hash 不同 |
 // | 按「书名 + 作者」去重 | 🔴 **会误判**：同名的不同译本 / 不同版本是**合法的两本书** ⇒ 用户会困惑「为什么导不进去」 |
 // | **不拦（本方案）** | 列表里可能出现两本一样的书 ⇒ 用户**滑删**即可 |
 //

@@ -131,7 +131,39 @@ CREATE TABLE IF NOT EXISTS bookmark (
   bookmarked_at TEXT    NOT NULL
                 DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
   pending_push  INTEGER NOT NULL DEFAULT 1
-                CHECK (pending_push IN (0, 1))
+                CHECK (pending_push IN (0, 1)),
+  -- ─────────────────────────────────────────────────────────────────────
+  -- 🆕 v6（2026-10-05 · 跨设备同步）：取消收藏由 **硬删** 改为 **软删**
+  -- ─────────────────────────────────────────────────────────────────────
+  -- # 为什么必须改（不是「顺手优化」）
+  --
+  -- 同步的合并规则是**并集**（收藏是个集合）—— 而**并集只增不减**：
+  -- 设备 A 取消收藏（原来 `DELETE` 真删行）⇒ 设备 B 的行还在
+  -- ⇒ 下一次同步**又把它并回来** ⇒ 用户看到「删了又自己回来」，且**无从解释**。
+  --
+  -- 🔑 关键转变：**把「删除」从「删行」变成「字段值」** ⇒ 合并规则立刻变成
+  --    「按 `bookmarked_at` **取较新**」—— 不需要墓碑表、不需要清理策略。
+  --    这与 `user_word.deleted`（生词本「暂停」）**同一模式**，不引入新概念。
+  --
+  -- 📄 设计依据：`docs/design/sync-implementation-assessment-2026-10-04.md` §3.3
+  --
+  -- # 🔴 有意留下的两处（别顺手改）
+  --
+  -- ① **不做清理**：已删行会永久留在本地（除非显式清理）。
+  --    量极小（一篇文章一行、几十字节）⇒ 一期不做。
+  --    ⚠️ 若将来要做，注意「清早了会让已删收藏复活」，且是**间歇性**的（难复现）。
+  -- ② **`content_id` 仍是 PK** ⇒ 一行一篇、不会重复；
+  --    重新收藏 = `deleted` 1→0 **且刷新 `bookmarked_at`**（不刷新则排序错）。
+  --
+  -- # ⚠️ 这一列对已存在的库**必须靠迁移**
+  --    `CREATE TABLE IF NOT EXISTS` 见到表就跳过 ⇒ 本行的改动**只对新库有效**。
+  --    老库由 `user_db.dart` 的 `onUpgrade`（`oldVersion < 6` 分支）用 `ALTER` 补
+  --    （SQLite 允许 `ADD COLUMN ... NOT NULL DEFAULT 0`）。
+  -- ⚠️ 放在**末尾**是刻意的：`ALTER TABLE ADD COLUMN` 只能追加到末尾
+  --    ⇒ 这样「新建的库」与「升级出来的库」**列顺序一致**
+  --    （否则按位置取值的代码会在两种库上读到不同的列 —— 静默值错位）。
+  deleted       INTEGER NOT NULL DEFAULT 0
+                CHECK (deleted IN (0, 1))
 );
 
 -- 「我刚存了什么」= 按时间倒序 —— 收藏清单的唯一排序

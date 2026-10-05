@@ -760,8 +760,18 @@ jobs:
       # ── B 组（12 个 · 665 项 · 需 sqflite_common_ffi）──
       # ⚠️ 这些脚本自己 `createTempSync` 造库或读**已入库**的 `word.db`
       #    ⇒ 与仓库状态无关，可重复跑。
-      - name: user.db 迁移（157 项 · v1~v4 → v5 四条路径）
+      # ⚠️ step 名里的「项数/路径」会随版本演进 —— 2026-10-05 已从
+      #    「157 项 · v1~v4 → v5 四条路径」变为「234 项 · v1~v5 → v6 五条路径」
+      #    （新增 v6 = 本库**第一次「给已有表加列」**，且补了 v5 这个真实起点）。
+      - name: user.db 迁移（234 项 · v1~v5 → v6 五条路径）
         run: dart run bin/verify_userdb_migration.dart
+      # 🆕 2026-10-05：`book.db` 的迁移 —— 与上一条**同族**，但守的是另一个库。
+      #    它专测「**从 v1 升级**」（不是「全新建库」）：
+      #    v2 给 `book` 加了 `content_hash` **列** ⇒ 加列靠 `ALTER`，重跑全量脚本覆盖不了
+      #    ⇒ 漏了是**静默的**（跨设备认领进度永远匹配不上，不报错）。
+      #    📌 判据：**「新建库跑通」≠「老库能升级」**。
+      - name: 🆕 book.db 迁移（16 项 · v1 → v2 · 专测老库升级）
+        run: dart run bin/verify_bookdb_migration.dart
       - name: 制卡适配（75 项）
         run: dart run bin/verify_generated_card_adapter.dart
       - name: 查词服务（64 项）
