@@ -597,6 +597,115 @@ jobs:
         working-directory: scripts/tokens_verify
         run: dart run bin/verify_tokens.dart
 
+  # ── 🆕 2026-10-05：端侧查询/数据层验收（`scripts/query_verify` · 19 个脚本 · 849 项）──
+  #
+  # # 为什么这批此前不在 CI（普查结论 → `docs/operations/script-assertion-census-2026-10-04.md`）
+  #
+  # 🔴 它被写下的原因与 `verify_feed_wiring` / `verify_auth_entry` / `tokens_verify`
+  #    **完全同一条**：「**写了没人跑 = 迟早失效**」。
+  #    前三个都是因为「不在 CI 里红了没人知道」才被接进来的；本轮普查发现
+  #    这批 **19 个脚本（849 项断言）从来没有门禁保护**。
+  #
+  # # 🔴🔴 本轮普查**推翻了一个旧假设**（这是接进这 19 个的关键依据）
+  #
+  # 旧判据（写在 `ci.yml` 里）是：
+  # > 「⛔ **要连真库的那些**（`sqflite_common_ffi` + 端侧 `user.db`）才不能进 CI」
+  #
+  # 普查时**逐条核实了「库从哪来」**，发现这条判据**切错了维度**：
+  #   · **8 个**用 `Directory.systemTemp.createTempSync()` **自建临时库** ——
+  #     与仓库/本机状态**无关**（跑完即弃）
+  #   · **4 个**读**已入库**的 `data/word.db` / `app/assets/word.db`
+  #     （各 33 MB，`git ls-files` 实测有 ⇒ 干净检出里也在）
+  #   ⇒ **「用了 `sqflite_common_ffi`」≠「依赖我本机的数据」。**
+  # 📌 判据修正：能不能进 CI，按「**是否需要本机数据**」分，**不按「用什么库」分**。
+  #    （同族：「按证据分区处理，不搞一刀切」—— 但首先**分区要分对维度**。）
+  #
+  # # 分组（**A 组在前**：不依赖 sqlite3 动态库，若后者在 CI 上有问题也能定位）
+  #
+  # · **A 组 7 个（184 项）**：只 import `dart:io` / `dart:math` + **零 Flutter 依赖**的
+  #   `app/lib` 源文件 ⇒ 理论上是纯 Dart
+  # · **B 组 12 个（665 项）**：需 `sqflite_common_ffi`（走 sqlite3 动态库）
+  #
+  # ⚠️ **本机实测（Windows）19 个全绿**；但「Linux 上能否加载 sqlite3」**本机验不了**
+  #    ⇒ step 里显式装 `libsqlite3-0`，去掉这个不确定性。
+  #    🔑 判据：**不为验证而改生产行为**；但对「平台差异」要**显式制造等价条件**。
+  #
+  # # 为什么是一个 job 而不是两个
+  #
+  # 19 个脚本**都在 `scripts/query_verify`**，共用同一份 `pubspec.yaml`（含
+  # `sqflite_common_ffi` + `fsrs`）⇒ 一次 `pub get` 即可。
+  # 拆两个 job 会让 `pub get` 跑两遍、且多一份 runner 启动开销 —— **收益为零**。
+  # 📌 判据：**能进 CI 的只有「自带全部输入且不重复既有门禁」的**（本仓库既有判据）；
+  #    这里再加一条配套：**同一份输入（pubspec）的脚本不拆 job**。
+  query-verify:
+    name: Query/DB Verify (sqflite ffi)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scripts/query_verify
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          # 钉死 3.11.0 —— 与 `frontend` / `trace-verify` / `iap-verify` / `ebook-verify`
+          # 同一条教训：`stable` 随上游漂移 ⇒「本地绿 / CI 红」成为常态。
+          sdk: 3.11.0
+
+      # `sqflite_common_ffi` 在 Linux 上要 sqlite3 动态库（`libsqlite3.so.0`）。
+      # ubuntu-latest 镜像**通常**自带，但不保证 —— 显式装上，让「平台差异」不成变量。
+      # 🔑 本 step **不依赖工作目录**（apt-get 与 cwd 无关）—— 故不写 `working-directory`，
+      #    以免与 job 的 default 混在一起看不出来。
+      - name: Install sqlite3 (sqflite_common_ffi 依赖)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libsqlite3-0
+
+      - name: Pub get
+        run: dart pub get
+
+      # ── A 组（7 个 · 184 项 · 纯 Dart，先跑以便定位）──
+      - name: 成就规则（55 项）
+        run: dart run bin/verify_achievement_rules.dart
+      - name: 应用版本（6 项）
+        run: dart run bin/verify_app_version.dart
+      - name: 正文文本（19 项）
+        run: dart run bin/verify_article_text.dart
+      - name: 设备 ID（47 项）
+        run: dart run bin/verify_device_id.dart
+      - name: 阅读完成度（13 项）
+        run: dart run bin/verify_reading_completion.dart
+      - name: 词库落盘决策（38 项）
+        run: dart run bin/verify_worddb_bootstrap.dart
+      - name: 词库两份一致（6 项）
+        run: dart run bin/verify_worddb_sync.dart
+
+      # ── B 组（12 个 · 665 项 · 需 sqflite_common_ffi）──
+      # ⚠️ 这些脚本自己 `createTempSync` 造库或读**已入库**的 `word.db`
+      #    ⇒ 与仓库状态无关，可重复跑。
+      - name: user.db 迁移（157 项 · v1~v4 → v5 四条路径）
+        run: dart run bin/verify_userdb_migration.dart
+      - name: 制卡适配（75 项）
+        run: dart run bin/verify_generated_card_adapter.dart
+      - name: 查词服务（64 项）
+        run: dart run bin/verify_word_query.dart
+      - name: 复习列表查询（60 项）
+        run: dart run bin/verify_review_list.dart
+      - name: 生词本写入（54 项）
+        run: dart run bin/verify_user_word.dart
+      - name: 收藏数据层（52 项）
+        run: dart run bin/verify_bookmark.dart
+      - name: word_id 收敛（46 项）
+        run: dart run bin/verify_word_id_convergence.dart
+      - name: 成就服务（37 项）
+        run: dart run bin/verify_achievement_service.dart
+      - name: 外部词缓存（33 项）
+        run: dart run bin/verify_external_word_cache.dart
+      - name: 拼写判定（32 项）
+        run: dart run bin/verify_spelling_grader.dart
+      - name: 词性归一化（31 项 · 对真库）
+        run: dart run bin/verify_pos_display.dart
+      - name: 文章阅读记录（24 项）
+        run: dart run bin/verify_article_read.dart
+
   # ── 纯 Dart 验收：IAP 订阅纯逻辑（2026-10-04 加）──
   #
   # 🔴 为什么必须进 CI：这个脚本**建好时就没进 CI** 是「写了没人跑 = 迟早失效」
