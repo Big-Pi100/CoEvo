@@ -1,13 +1,14 @@
 import 'dart:io';
 
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import '_repo_paths.dart';
 
 /// 稳态性能测试 —— 区分「首查」与「稳态」。
 ///
 /// ⚠️ 用途澄清：本测是 **Windows 桌面 FFI** 下的数值，用于验证「索引是否有效」
 /// 与「查询复杂度是否 O(log n)」；**不代表 iOS 真机性能**（不同 SQLite 构建 + 闪存）。
 Future<void> main(List<String> args) async {
-  final dbPath = args.isNotEmpty ? args[0] : r'E:\CoEvo\data\word.db';
+  final dbPath = args.isNotEmpty ? args[0] : wordDbPath();
   sqfliteFfiInit();
   final db = await databaseFactoryFfi
       .openDatabase(dbPath, options: OpenDatabaseOptions(readOnly: true));

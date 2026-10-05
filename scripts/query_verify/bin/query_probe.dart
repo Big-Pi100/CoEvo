@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import '_repo_paths.dart';
 
 /// 探针：验证「纯 Dart（无 Flutter）能否打开真 word.db 并跑查词」。
 ///
@@ -8,9 +9,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 /// 若能 → 查询层可做成纯 Dart → 本地可验证（符合 verifiable-core-logic）
 /// 若不能 → 只能等真机/CI 验证
 Future<void> main(List<String> args) async {
-  final dbPath = args.isNotEmpty
-      ? args[0]
-      : r'E:\CoEvo\data\word.db';
+  final dbPath = args.isNotEmpty ? args[0] : wordDbPath();
 
   if (!File(dbPath).existsSync()) {
     stderr.writeln('找不到 word.db: $dbPath');

@@ -21,6 +21,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../../app/lib/services/bookmark_repository.dart';
 import '../../../app/lib/services/user_db.dart';
+import '_repo_paths.dart';
 
 var _pass = 0;
 final _failures = <String>[];
@@ -354,9 +355,7 @@ void groupUtcParsing() {
 
 // ════════════════════════════════════════════════════════════════
 Future<void> main(List<String> args) async {
-  final schemaPath = args.isNotEmpty
-      ? args[0]
-      : r'E:\CoEvo\app\assets\sql\user_db_schema.sql';
+  final schemaPath = args.isNotEmpty ? args[0] : userDbSchemaPath();
 
   print('CoEvo 收藏验收 · SQL 拆分器 + user.db 连接层 + BookmarkRepository');
   print('schema: $schemaPath');

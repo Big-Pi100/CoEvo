@@ -22,6 +22,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../../../app/lib/services/fsrs_service.dart';
 import '../../../app/lib/services/review_list_query.dart';
 import '../../../app/lib/services/user_db.dart';
+import '_repo_paths.dart';
 
 var _pass = 0;
 final _failures = <String>[];
@@ -37,9 +38,7 @@ void check(String label, bool ok, [String detail = '']) {
 }
 
 Future<void> main(List<String> args) async {
-  final schemaPath = args.isNotEmpty
-      ? args[0]
-      : r'E:\CoEvo\app\assets\sql\user_db_schema.sql';
+  final schemaPath = args.isNotEmpty ? args[0] : userDbSchemaPath();
   final schemaFile = File(schemaPath);
   if (!schemaFile.existsSync()) {
     stderr.writeln('找不到 schema: $schemaPath');

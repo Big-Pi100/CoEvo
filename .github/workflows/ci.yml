@@ -662,6 +662,31 @@ jobs:
       - name: Pub get
         run: dart pub get
 
+      # ── 🔴 **先跑可移植性**（2026-10-05 的真实 CI 红）──
+      #
+      # 上一轮把这 19 个脚本接进 CI 时，**本机（Windows）全绿**就以为没问题了 ——
+      # 结果 CI（ubuntu-latest）报：
+      # ```
+      # Run dart run bin/verify_word_query.dart
+      # 找不到 word.db: E:\CoEvo\data\word.db      ← 硬编码的 Windows 绝对路径
+      # Error: Process completed with exit code 2.
+      # ```
+      #
+      # # 🔴 更值得注意的是「门禁只报了 1 个，实际有 5 个」
+      #
+      # 那次 CI 只报 `verify_word_query`（B 组第 3 个）—— 因为 **workflow 是顺序执行的，
+      # 第一个 step 失败后**（GitHub Actions 默认）**后续 step 不再跑**。
+      # 而静态扫描发现**共 5 个**脚本写着 `r'E:\...'`：
+      # `bench` · `query_probe` · `verify_word_query` · `verify_bookmark` · `verify_review_list`。
+      # ⇒ 后面 4 个**既没跑到、也就不会被报出来** —— 修完第 1 个，第 2 个才浮现（挤牙膏）。
+      # 📌 判据：**「门禁报了 N 项」≠「只有 N 项」** —— 顺序门禁只报**第一个**；
+      #    要拿全清单必须**静态扫**（本 step 就是干这个的），而不是靠反复跑。
+      #
+      # ⇒ 为什么不把它放在别的 job 里：它守的是「**本 job 下面这些脚本**能不能在 Linux 跑」，
+      #    放这里**失败最早、指向最准**（不用等某个脚本跑到一半才暴露路径问题）。
+      - name: 🔴 脚本可移植性（禁盘符绝对路径 / 禁 cwd 相对资源路径 · 19 项）
+        run: dart run bin/verify_script_portability.dart
+
       # ── A 组（7 个 · 184 项 · 纯 Dart，先跑以便定位）──
       - name: 成就规则（55 项）
         run: dart run bin/verify_achievement_rules.dart

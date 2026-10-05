@@ -22,6 +22,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 // 直接相对导入 app 源码 —— 验证的是**实际要发布的实现**，不是副本
 import '../../../app/lib/services/word_query_service.dart';
+import '_repo_paths.dart';
 
 var _pass = 0;
 final _failures = <String>[];
@@ -39,7 +40,7 @@ void check(String label, bool ok, [String detail = '']) {
 String fmtUs(int us) => us < 1000 ? '${us}us' : '${(us / 1000).toStringAsFixed(2)}ms';
 
 Future<void> main(List<String> args) async {
-  final dbPath = args.isNotEmpty ? args[0] : r'E:\CoEvo\data\word.db';
+  final dbPath = args.isNotEmpty ? args[0] : wordDbPath();
   if (!File(dbPath).existsSync()) {
     stderr.writeln('找不到 word.db: $dbPath');
     exit(2);
