@@ -31,7 +31,13 @@
 >
 > 验证：`cargo test` **228 passed / 0 failed** · 断言 60/60 · `codestatic` error 0 / warning 0
 > · 可移植性 19 项过 · 纯逻辑冒烟 21/21。
-> ⏳ **只剩**：发信通道定案（建议 SES，见下）→ 端到端发信；⚠️ 渲染未验（本机跑不了 flutter）。
+> 🆕 **2026-10-05 发信链路进度**（找回密码的最后一个前置）：
+> **SES 已开通** · DNS **四项已验证通过**（含 DKIM 2048 位深度校验）·
+> 发信地址已设（`noreply@mail.keyievolution.fun`）·
+> 🆕 **邮件模板已提交**（TemplateID **`221378`** · **审核中**，1 个工作日）·
+> 🆕 端到端检查工具已备好（`scripts/tencent_ses_check.py`，**一条命令验通**）。
+> ⏳ **只剩**：模板审核通过 → 把密钥 + TemplateID 配到服务器 → 端到端发一封。
+> ⚠️ 渲染未验（本机跑不了 flutter）。
 >
 > 📄 设计稿 `docs/design/forgot-password-ui-2026-10-05.html` ·
 > **发信通道对比** `docs/review/mail-channel-comparison-2026-10-05.md`（vibedollar 那套 vs SES）·
