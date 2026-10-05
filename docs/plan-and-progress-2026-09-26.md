@@ -15,6 +15,16 @@
 >
 > 🔴 **2026-09-26 本轮变更**：**Phase 2（语音包）整条轨道取消** —— TTS 全量端侧 `flutter_tts`
 > （文章朗读 + 词卡都是）→ 权威文档 `docs/design/tts-unified-client-side-2026-09-26.md`
+>
+> 🆕 **2026-10-05 本轮变更**：**「找回密码」后端交付**（「账号维护功能」的另一半 ——
+> 与已交付的「修改密码」并列）。**忘记密码** = 自助重置，邮件 **6 位码**
+> （腾讯云 SES · 国内 · **数据不出境**）。新增表 `password_reset` ·
+> 端点 `POST /api/auth/forgot-password` / `POST /api/auth/reset-password` ·
+> 🆕 抽 TC3 签名公共层 `tencent_sign`（ASR 与 SES **共用**，消除第二份实现）。
+> 验证：`cargo test` **228 passed / 0 failed** · `clippy` 0 · `cargo fmt --check` 干净。
+> ⏳ **未完成**：前端页（等设计稿确认）· 端到端发信（等 SES 密钥 + 模板审核）。
+> 📄 设计稿 `docs/design/forgot-password-ui-2026-10-05.html` ·
+> 开通指引 `docs/operations/tencent-ses-onboarding-2026-10-05.md`
 
 ---
 
