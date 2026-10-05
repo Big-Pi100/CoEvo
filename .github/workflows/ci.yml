@@ -31,6 +31,28 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-D warnings"
 
+# ── 🔴 额度保护：同一分支的连续推送**自动取消旧 run**（2026-10-05 加）──
+#
+# 背景（实测踩到）：GitHub Free **私有仓库 = 2,000 分钟/月**，
+#   🔴 **用尽后所有 job 立即失败且日志页空白**（只显示 "This job failed"）——
+#   表现与「workflow 配置错」**完全相同**，把排查引向过 YAML / action 版本 / runner / 平台状态。
+#   官方原文：「If your account does not have a valid payment method on file,
+#   usage is **blocked** once you use up your quota.」
+#
+# 🔑 计费口径（决定怎么省）：
+#   · **按「各 job 分钟之和」计费**，不是墙钟时间 ⇒ **并行不省，合并 job 才省**
+#   · **OS 倍数**：Linux **1x** · Windows 2x · **macOS 10x**
+#     ⇒ 一次 iOS 出包构建 15 分钟 = **消耗 150 分钟额度**（Free 实际只够约 13 次）
+#
+# 🔑 为什么 group 里必须含 `github.ref`：
+#   · **tag 是独立 ref** ⇒ 独立 group ⇒ **部署 run 不会被后续推送取消** ✅
+#   · 而 `main` 的连续推送只保留最新那次 ✅（这正是本配置要解决的主要浪费）
+#   ⚠️ **不要**改成不含 `ref` 的 group（那会让多个 tag 的部署互相取消 ⇒ 漏部署）。
+#   ⚠️ 也不要给 tag 加 `cancel-in-progress`：部署是**不可重入**的动作。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 🔴 两条「别改回去」的约定（2026-10-05 定，白哥批准）
 # ══════════════════════════════════════════════════════════════════════════════
