@@ -31,16 +31,38 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-D warnings"
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 🔴 两条「别改回去」的约定（2026-10-05 定，白哥批准）
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# ## ① `runs-on` 钉 `ubuntu-24.04`，**不要**改回 `ubuntu-latest`
+#
+# 原用 `ubuntu-latest`，GitHub 通知：**2026-10-19 起**该标签开始迁移到 **Ubuntu 26**。
+# 📌 为什么钉住（而不是跟着 latest）：
+#   · 本项目正处**上架窗口** ⇒ 基础镜像换代可能落在最不该变的时刻
+#   · 底层依赖会跟着换代：`query-verify` 靠 `sqflite_common_ffi` 加载系统 sqlite3、
+#     `backend` / `frontend` 靠 apt 装的构建链 —— **换代 = 这些依赖换代**
+#   · 钉住 = **升级时机由我们挑**（等上架后，先本地验一遍再改这一行）
+#   🔑 判据：**发版窗口附近，把「基础镜像」这个变量钉住，比省一次迁移更值。**
+#
+# ⚠️ 迁移到 26 应作为**一次性有意的动作**：先本地跑通 → 再改这 10 处 → 推 main 看 CI。
+#    （同 `flutter-version` 的既有做法：升级要有意为之，不靠自动漂移。）
+#
+# ## ② `macos-latest` **暂不动**（如实记录）
+#   `ios-build` / `ios-archive.yml` 仍用 `macos-latest`。本次通知**只提 ubuntu**，
+#   且 macOS runner 是**按 10 倍计费**的稀缺资源 ⇒ 不主动扩大改动面。
+#   ⏳ 若将来 GitHub 对 macOS 也发迁移通知，按 ① 同样的理由钉住。
+
 jobs:
   # ── Backend: Rust ──
   backend:
     name: Backend (Rust)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -59,7 +81,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -84,7 +106,7 @@ jobs:
   # 🔑 只在**手动 / tag** 触发 —— 日常 push 不需要产物（省额度 · artifact 30 天过期）。
   backend-release:
     name: Backend Release (linux x86_64)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
     defaults:
       run:
@@ -95,7 +117,7 @@ jobs:
       #    否则一个 warning 就会让部署包发不出来。
       RUSTFLAGS: ""
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -104,7 +126,7 @@ jobs:
           toolchain: 1.98.0
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -134,7 +156,7 @@ jobs:
           file dist/bin/coevo_backend
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coevo-backend-linux-x86_64
           path: backend/dist/
@@ -158,7 +180,7 @@ jobs:
   #      都是「部署把服务器侧独有的东西弄没了」。
   backend-deploy:
     name: Deploy backend to VPS
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: backend-release
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
     env:
@@ -167,7 +189,7 @@ jobs:
       VPS_PATH: /opt/coevo/
     steps:
       - name: Download build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: coevo-backend-linux-x86_64
           path: dist
@@ -319,12 +341,12 @@ jobs:
   # ── Frontend: Flutter ──
   frontend:
     name: Frontend (Flutter)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Flutter
         # 🔴 **钉到 v2.23.0**（2026-10-04 改，原来写的是浮动 `@v2`）
@@ -420,12 +442,12 @@ jobs:
   # 依据：docs/design/fsrs-client-side-migration-plan-2026-09-26.md §七（白哥定：单测强制）
   fsrs-verify:
     name: FSRS Verify (pure Dart)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: scripts/fsrs_verify
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dart-lang/setup-dart@v1
         with:
@@ -482,12 +504,12 @@ jobs:
   #       `sdk: stable` —— 同样有漂移风险，但它**不在本轮授权范围**内。
   trace-verify:
     name: Pure Dart Verify (trace + wiring)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: scripts/trace_verify
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dart-lang/setup-dart@v1
         with:
@@ -639,12 +661,12 @@ jobs:
   #    这里再加一条配套：**同一份输入（pubspec）的脚本不拆 job**。
   query-verify:
     name: Query/DB Verify (sqflite ffi)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: scripts/query_verify
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dart-lang/setup-dart@v1
         with:
@@ -760,12 +782,12 @@ jobs:
   #    （`codeOnly()`）。📌 判据：注释里提到 ≠ 代码里写了；**断言的范围必须等于被测对象的范围**。
   iap-verify:
     name: IAP Verify (pure Dart)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: scripts/iap_verify
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dart-lang/setup-dart@v1
         with:
@@ -811,12 +833,12 @@ jobs:
   #    → 两次均**非零退出码**。
   ebook-verify:
     name: Ebook Verify (pure Dart)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: scripts/ebook_verify
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dart-lang/setup-dart@v1
         with:
@@ -888,12 +910,12 @@ jobs:
   #    加 `continue-on-error` 让它先作为**度量**而非门禁；Step 1 完成后去掉。
   native-readiness:
     name: Native Readiness (advisory)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
 
@@ -945,7 +967,7 @@ jobs:
       run:
         working-directory: app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2.23.0

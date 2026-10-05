@@ -49,7 +49,7 @@ jobs:
         # 🔴 工作目录是 `app`（不是仓库根）—— 与 `ci.yml` 的 `ios-build` 一致
         working-directory: app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # ── 🔴 前置校验（先失败，别等到 10 分钟后才报缺 secret）──────────────
       #
@@ -222,7 +222,7 @@ jobs:
         run: ls -la build/ios/ipa/ || true
 
       - name: Upload IPA as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coevo-ios-ipa
           # ⚠️ 这里的路径**相对仓库根**（upload-artifact 不受 defaults.run.working-directory 影响）
