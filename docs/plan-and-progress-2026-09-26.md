@@ -50,7 +50,20 @@
 > · `user.db` **v5→v6**：`bookmark.deleted`（收藏**软删**，为同步并集铺路）
 > · `book.db` **v1→v2**：`book.content_hash`（内容指纹）· 🆕 `book_progress_pending` + `idx_book_hash`
 > · 断言 `verify_userdb_migration` **234 项**（五条路径）· 🆕 `verify_bookdb_migration` **16 项** · 证伪 **6/6**
-> ⏳ **下一步**：阶段 1（后端 `sync_handlers.rs` + `push`/`pull` + 幂等写入）→ 2 端侧纯逻辑 → 3 接线 → 4 隐私政策 → 5 端到端
+> · ✅ **阶段 0b**（提交 `399c8e0`）：软删**真正落地**（`bookmark_repository` 5 处 —— 只加列不改代码 = 死列）
+> · ✅ **L0 回填**（提交 `556a091`）：多端登录裁决（按「标注而非删除」）· **隐私政策 §2.1 已改稿**
+> ✅ **阶段 1（后端 push/pull）已完成**（提交 `d8de561`）：
+> · 新增 5 张服务端表 `SYNC_SCHEMA_SQL`：`sync_review_log` / `sync_user_word` /
+>   `sync_article_read` / `sync_bookmark` / `sync_book_progress`
+> · 🔑 三条设计要点：**键 = `(user_id, 端侧业务键)`**（服务端多用户 ⇒ 必须加 user_id 前缀）·
+>   **主键 = 幂等键**（幂等落 DB 约束，不落应用层「查-写」）·
+>   **`received_at`（服务端收货时间）才是 pull 的时间轴**（设备时间在离线补传时会**漏**）
+> · 🔴 `user_word` 是**字段级**合并：`deleted`/`updated_at` 取较新；`added_at`/`source_sentence` 取**较早**
+> · 🔴 「未订阅」回 **403**（不是 401 —— 401 会让端侧把用户**登出**）⇒ 新增 `AppError::Forbidden`
+> · 验证：`cargo test --workspace` **241 passed**（+13）· clippy `-D warnings` **0** · fmt 干净
+>   · **证伪 6/6** · 🆕 `verify_sync.dart` **43 项**（守 handler 层）· 全部 **39 个断言脚本** ✅
+> ⏳ **下一步**：阶段 2（端侧 `sync_service.dart` 纯逻辑）→ 3 接线 → 5 端到端（阶段 4 隐私政策**已改稿**）
+⚠️ **阶段 1 未部署**（按铁律等白哥指令）· 阶段 4 的法律页**需重新部署才对外生效**
 >
 > 🔴🔴 **2026-10-05 CI 额度耗尽**（影响所有「推 main 验证」与「出包」）：
 > 实测 `Actions minutes: **2,000 / 2,000 used**`（**≈11-01 才重置**）。
