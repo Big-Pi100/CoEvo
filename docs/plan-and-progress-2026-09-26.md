@@ -160,10 +160,13 @@
 >   ② `ci.yml` 加 `concurrency + cancel-in-progress`（🔑 **group 含 `github.ref`**
 >   ⇒ tag 独立 group ⇒ **部署不会被取消**）③ 纯文档提交用 **`[skip ci]`**
 > · 🔴 **出包方案**（白哥定）：**出包时临时改仓库为 Public**（公开仓含 macOS **免费无限**）。
->   ⚠️ **改公开前必须先**：① 吊销历史泄漏的 key ② 清 git 历史（见下）③ 出包后改回 Private。
+>   ⚠️ **改公开前必须先**：① 吊销历史泄漏的 key ✅ ② 清 git 历史 ✅（10-06 完成）③ 出包后改回 Private。
 > · 📄 审计报告 `docs/review/git-history-secret-audit-2026-10-05.md`
 >   （**发现真实泄漏**：`backend/.env` 的 `DEEPSEEK_API_KEY` 在 first commit 进过历史 ·
->   哈希比对确认**非生产在用** · 但 **key 不会自动过期** ⇒ 仍需吊销 · 在 ① 完成前**不能改公开**）
+>   哈希比对确认**非生产在用** · 但 **key 不会自动过期** ⇒ 仍需吊销 · ✅ 已吊销）
+> · ✅ **2026-10-06 git 历史已清理**（filter-repo · 619 commit 全重写 · 本地 + 远程均验证零残留）
+>   ⇒ **技术上前置条件已满足，可改公开**。⏳ **仅剩「改公开」动作本身需白哥操作**
+>   （本机 `gh` 未登录、无 `GH_TOKEN`）→ 记录 `docs/review/git-history-purge-2026-10-06.md` §六
 >
 > 🆕 **2026-10-05 发信链路进度**（找回密码的最后一个前置）：
 > **SES 已开通** · DNS **四项已验证通过**（含 DKIM 2048 位深度校验）·
