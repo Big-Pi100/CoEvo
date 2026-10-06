@@ -239,6 +239,14 @@ void main() {
   // ⇒ `RepaintBoundary.size` 变小 ⇒ `toImage` 出的图**随屏幕变化**
   //    （正好废掉「导出尺寸恒定」这个保证，而**当时没有任何断言能发现**）。
   // ✅ `FittedBox` 给 child 无界约束 ⇒ child 按 360×480 布局，再缩放显示 ✓
+  //    🔑 **源码依据**（`rendering/proxy_box.dart` · `RenderFittedBox.performLayout`）：
+  //    ```dart
+  //    child!.layout(const BoxConstraints(), parentUsesSize: true);   // ← 全无界
+  //    ...
+  //    size = constraints.constrainSizeAndAttemptToPreserveAspectRatio(child!.size);
+  //    ```
+  //    ⇒ child 拿到 `BoxConstraints()`（min/max 全无界）⇒ `SizedBox(360,480)` 取自身尺寸
+  //      ⇒ `RepaintBoundary.size` **恒为 360×480** ⇒ `toImage(3.0)` 恒得 1080×1440 ✓
   check('  🔴 用 FittedBox 缩放（不是 Transform.scale）',
       prevCode.contains('FittedBox('), '缺 FittedBox');
   check('  🔴 **不得**出现 Transform.scale（会把卡片压小 ⇒ 导出尺寸随屏幕变）',
