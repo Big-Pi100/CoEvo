@@ -255,6 +255,45 @@ String _stripInline(String src) {
   s = s.replaceAllMapped(_strikeRe, (m) => m.group(1) ?? '');
   s = s.replaceAllMapped(_italicStarRe, (m) => m.group(1) ?? '');
   s = s.replaceAllMapped(_italicUnderscoreRe, (m) => m.group(1) ?? '');
+
+  // ── 🔴🔴 第二轮：「剥掉一层标记」会**新暴露**下一层的 HTML 标签与 URL ──
+  //
+  // # 实测形态（生产库 `content_pool.id=7091` · NPR 音频页的真实正文）
+  //
+  // 原文（反引号包着一段畸形加粗）：
+  // ```text
+  // - **Embed** ** `<**iframe src="https://…" width="100%" …>` **
+  // ```
+  // 第 ① 轮的执行过程：
+  //
+  // | 步骤 | 看到的文本 | 结果 |
+  // |---|---|---|
+  // | `_htmlTagRe` | `<**iframe …` —— `<` 后跟的是 `*`，**不是字母** | ❌ **不匹配**（HTML 清理空转）|
+  // | `_inlineCodeRe` | 剥掉反引号 | ⇒ 内容 `**<**iframe …>` **暴露出来** |
+  // | `_boldRe` | 把 `**<**` 剥成 `<` | ⇒ **`<iframe …>` 成形，但 HTML 清理早已跑完** |
+  //
+  // ⇒ 最终输出里**留着完整的 `<iframe src="…" width="100%" …>`**，
+  //    而 TTS 会把 `src` / `width` / `frameborder` / `scrolling` **逐字念出来**。
+  //    🔴 这正是「**用户听得出来、断言测不出来**」那一类 ——
+  //    92 项断言全绿，因为没有一条用例是「**标记内部藏着 HTML 标签**」的形态。
+  //
+  // # 为什么必须放在**最后**（而不是调整第 ① 轮的顺序）
+  //
+  // `_boldRe` 剥 `**` 是「**产生**新标签」的动作，它后面还有 `_strikeRe` /
+  // `_italicStarRe` 也可能产生 ⇒ 只要清理在中间，就可能被后面的步骤绕过。
+  // 📌 判据：**「剥离型」操作必须排在「结构性清理」之前** ——
+  //    或等价地：结构性清理（HTML/URL）要**在最后一轮做**。
+  //
+  // ⚠️ 用**迭代到稳定**而不是「固定跑两遍」：嵌套层数无法先验确定（本轮实测 2 层），
+  //    固定次数在某天遇到 3 层时会**静默漏掉**（又是"只给错数、不报错"）。
+  //    上限 3 次是**防异常输入死循环**的护栏，正常输入第 2 次就 `break`。
+  for (var round = 0; round < 3; round++) {
+    final before = s;
+    s = s.replaceAll(_autoLinkRe, '');
+    s = s.replaceAll(_htmlTagRe, '');
+    s = s.replaceAll(_bareUrlRe, '');
+    if (s == before) break; // 已稳定
+  }
   return s;
 }
 

@@ -3127,8 +3127,17 @@ void _s23TtsSpeechRate() {
 
   final tts = src('services/tts_service.dart');
   final profile = src('screens/profile_screen.dart');
+  // 🔴 2026-10-06：「朗读设置」卡（语速 + 音色）**从「我的」页搬进了阅读设置面板**
+  //    （白哥定 · spec §5.1 明写「面板内：…发音语速音色」）⇒
+  //    **语速 Slider 的落点跟着搬** ⇒ 下面 ⑤ 组的读取对象要跟着平移。
+  //    📌 判据（本项目既定）：**断言跟「意图」走，不跟「文件」走** ——
+  //      改的是「读哪个文件」，断言名与判据**一字不改**。
+  //      ⚠️ 反例（会踩）：直接删掉这两条断言 ⇒ 「永不写死范围」这个意图就**没人守了**。
+  final readerPanel = src('widgets/reading_settings_panel.dart');
   check('tts_service.dart 存在', tts.isNotEmpty);
   check('profile_screen.dart 存在', profile.isNotEmpty);
+  check('reading_settings_panel.dart 存在（语速 Slider 的新落点）',
+      readerPanel.isNotEmpty);
 
   // ① 范围常量必须存在（范围要有**唯一权威**，不能散在调用点）
   check('有 kSpeechRateMin 常量',
@@ -3158,10 +3167,21 @@ void _s23TtsSpeechRate() {
       RegExp(r'_speechRate\s*=\s*clampSpeechRate\(').hasMatch(tts));
 
   // ⑤ Slider 引用常量，不写字面量（范围只有一处权威）
-  check('🔑 Slider 的 min 引用常量', profile.contains('min: kSpeechRateMin'));
-  check('🔑 Slider 的 max 引用常量', profile.contains('max: kSpeechRateMax'));
+  //
+  // 🔴 2026-10-06：对象由 `profile_screen` **平移到 `reading_settings_panel`**
+  //    （语速 Slider 随「朗读设置」卡搬迁）—— 见上面 `readerPanel` 的说明。
+  check('🔑 Slider 的 min 引用常量（阅读设置面板）',
+      readerPanel.contains('min: kSpeechRateMin'));
+  check('🔑 Slider 的 max 引用常量（阅读设置面板）',
+      readerPanel.contains('max: kSpeechRateMax'));
   check('🔴 Slider 不再有字面量 `max: 2.0`（超上限 33% 的旧值）',
-      !profile.contains('max: 2.0'));
+      !readerPanel.contains('max: 2.0'));
+  // 🆕 反向：**不许两处都有**语速 Slider ——
+  //    两个 Slider 写同一状态不会不一致，但**会漂**（一处改范围、另一处忘）
+  //    ⇒ 同一控件只保留一处定义（同「同一口径只能一处权威」）。
+  check('🔴 「我的」页**不再**有语速 Slider（避免两处定义漂移）',
+      !profile.contains('kSpeechRateMax'),
+      '实测 profile 里还有 kSpeechRateMax ⇒ 搬迁没搬干净');
 
   // ⑥ 🔴 每个插件调用都必须过超时包装 ——
   //    插件在「引擎未就绪」时会把调用挂起且**永不回调** ⇒ 裸 await = UI 永久转圈、无出口

@@ -35,10 +35,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../providers/book_provider.dart';
+import '../providers/reading_settings_provider.dart';
 import '../services/tts_service.dart';
 import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
+import '../widgets/reading_settings_panel.dart';
 import '../widgets/word_lookup_selection.dart';
 
 class BookReaderScreen extends ConsumerStatefulWidget {
@@ -199,10 +201,36 @@ class _BookReaderScreenState extends ConsumerState<BookReaderScreen> {
               ),
             ),
           ),
+          // 🆕 2026-10-06：阅读设置键（白哥：「书库没有同步设置面板」）
+          //
+          // 🔑 与信息流阅读器**同一个面板、同一套状态**（`readingSettingsProvider`
+          //    + 全局 `themeProvider` / `ttsServiceProvider`）——
+          //    所以「在文章里调过的字号，进书库依然生效」，反之亦然。
+          // ⚠️ 传 `showTrace: false`：书库**有意不记痕迹**
+          //    （`articleId: null`），显示该开关 = 拨了没反应（静默失败）。
+          InkWell(
+            onTap: () => showReadingSettingsPanel(context, showTrace: false),
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+              child: Icon(Icons.format_size, size: 20, color: accent),
+            ),
+          ),
         ],
       ),
     );
   }
+
+  /// 正文字号 —— 来自用户设置（与信息流阅读器**同一份** provider）。
+  ///
+  /// 🆕 2026-10-06：此前是**写死的 17**（书库没有设置入口）。
+  ///    白哥指出「书库没有同步设置面板」⇒ 现在两页共用同一个 `readingSettingsProvider`：
+  ///    **在文章里调过的字号，进书库依然生效**，反之亦然。
+  ///
+  /// ⚠️ 用 `ref.watch`（不是 `read`）：用户拖字号时本页要**立即重排**。
+  ///    在 build 路径上调用（`_body` / `_header` 均由 `build` 调）⇒ 合法。
+  double get _bodyFontSize =>
+      ref.watch(readingSettingsProvider).fontSize.toDouble();
 
   Widget _body(CoEvoTokens t, ChapterText ch) => ListView(
         controller: _scroll,
@@ -216,7 +244,10 @@ class _BookReaderScreenState extends ConsumerState<BookReaderScreen> {
               ch.chapterTitle!,
               style: TextStyle(
                 fontFamily: CoFonts.latinSerif,
-                fontSize: 19,
+                // 🔑 章节标题字号 = 正文字号 + 2 —— **跟随设置**（不是写死 19）。
+                //    写死的话，用户把正文调到 24 时标题反而显得不突出
+                //    （甚至层级反转 —— 而「字号层级不可反转」是本项目的既定不变量）。
+                fontSize: _bodyFontSize + 2,
                 fontWeight: FontWeight.w600,
                 height: 1.4,
                 color: Color(t.ink.argb32),
@@ -236,11 +267,15 @@ class _BookReaderScreenState extends ConsumerState<BookReaderScreen> {
             //    硬塞一个 int 会**污染痕迹数据**。
             //    ⇒ 书库**不记「本文查过的词」底色**，但查词 / 入生词本**照常**。
             articleId: null,
+            // 🆕 2026-10-06：**单击正文唤出阅读设置**（与信息流阅读器同款交互）。
+            //    ⚠️ 面板传 `showTrace: false`（书库不记痕迹，见上面 articleId 的说明）。
+            onTap: () => showReadingSettingsPanel(context, showTrace: false),
             child: Text(
               ch.text,
               style: TextStyle(
                 fontFamily: CoFonts.latinSerif,
-                fontSize: 17,
+                // 🆕 字号来自用户设置（已钳 15–24），不再是写死的 17
+                fontSize: _bodyFontSize,
                 height: 1.75,
                 color: Color(t.ink.argb32),
               ),

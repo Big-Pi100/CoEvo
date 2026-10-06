@@ -41,6 +41,7 @@ class WordLookupSelection extends ConsumerStatefulWidget {
     super.key,
     required this.child,
     this.articleId,
+    this.onTap,
   });
 
   /// 被包裹的正文。
@@ -56,6 +57,45 @@ class WordLookupSelection extends ConsumerStatefulWidget {
   ///    `services/word_lookup.dart` 头部关于 `articleId` 可空的那一节。
   final int? articleId;
 
+  /// 🆕 **单击正文**时回调（2026-10-06 —— 阅读设置面板的入口，spec §5.1）。
+  ///
+  /// 默认 `null` ⇒ **不注册点击识别器** ⇒ 行为与改动前**逐字相同**。
+  ///
+  /// # 🔴 为什么这个回调必须放在**本组件内部**（不能在外面包一层 `GestureDetector`）
+  ///
+  /// 读 Flutter SDK 源码（`widgets/selectable_region.dart`）实测：
+  ///
+  /// | 手势 | 注册者 | 位置 |
+  /// |---|---|---|
+  /// | **长按（划词）** | `LongPressGestureRecognizer` | `:717` |
+  /// | **单击** | `TapAndHorizontalDragGestureRecognizer`（`onTapUp`）| `:683` |
+  /// | 右键 | `TapGestureRecognizer`（**只绑 `onSecondaryTapDown`**）| `:458` |
+  ///
+  /// ⇒ **手势语义上「单击」与「长按」确实不冲突**（是两个不同的 recognizer）。
+  ///
+  /// ⚠️ **但竞技场层面，外面包一层拿不到**：手势竞技场按「**加入顺序**」裁决，
+  ///    而加入顺序 = hit test 顺序 = **内层先**。外层 `GestureDetector` 比
+  ///    `SelectableRegion` 浅 ⇒ **它总是后加入** ⇒ 单击被内层吃掉。
+  /// ✅ 放在**本组件内部**（作为 `SelectionArea` 的 child）⇒ 它**比内层的
+  ///    `SelectableRegion` 更深** ⇒ **先加入竞技场** ⇒ 单击归我们。
+  ///    （长按仍是 `LongPressGestureRecognizer` 在 500ms 后先 accept ⇒ 划词不受影响。）
+  ///
+  /// # 🔑 与「单击取消选区」如何共存（**这是关键**）
+  ///
+  /// 原文/书库页的既有行为是「**单击正文 = 清空选区**」。若无条件接管单击，
+  /// 用户长按选中、看完浮层后想取消选区，点一下却弹出**设置面板** —— 手感是错的。
+  ///
+  /// ⇒ 用 [selectionActive] 分流，且**靠「注册与否」分流**（不是靠 handler 里判断）：
+  ///    · **有选区** ⇒ `onTap` 传 **`null`** ⇒ `GestureDetector` **不创建**该识别器
+  ///      （读源码：`onTap == null` 时不注册 `TapGestureRecognizer`）
+  ///      ⇒ 单击**落到 `SelectableRegion`** ⇒ **清空选区**（原行为，一字不差）
+  ///    · **无选区** ⇒ 注册 ⇒ 单击 ⇒ **弹面板**
+  ///
+  /// 📌 为什么用「注册与否」而不是「handler 里 `if (有选区) return;`」：
+  ///    后者仍会**吃掉**这次点击 ⇒ 选区永远取消不掉（且没有任何报错）。
+  ///    🔑 判据：**要让出事件，只能不注册识别器**（handler 里 return 拦不住竞技场）。
+  final VoidCallback? onTap;
+
   @override
   ConsumerState<WordLookupSelection> createState() =>
       _WordLookupSelectionState();
@@ -63,6 +103,12 @@ class WordLookupSelection extends ConsumerStatefulWidget {
 
 class _WordLookupSelectionState extends ConsumerState<WordLookupSelection> {
   Timer? _lookupDebounce;
+
+  /// 当前是否有选区 —— 决定 [WordLookupSelection.onTap] **是否注册**。
+  ///
+  /// ⚠️ 只在**真正变化**时 `setState`：`onSelectionChanged` 在拖动手柄时会被**高频**调用
+  ///    （每移动一次一次），无条件 setState 会让正文反复重建。
+  bool _selectionActive = false;
 
   @override
   void dispose() {
@@ -77,6 +123,13 @@ class _WordLookupSelectionState extends ConsumerState<WordLookupSelection> {
     _lookupDebounce?.cancel();
 
     final text = _cleanPicked(content?.plainText);
+
+    // 🔑 选区「有/无」的状态（供 onTap 注册与否）——**去重后再 setState**
+    final active = text.isNotEmpty;
+    if (active != _selectionActive) {
+      setState(() => _selectionActive = active);
+    }
+
     if (text.isEmpty) {
       // 拖动把手的瞬间会出现「空选中」→ 撤掉已排队的那次，但不查
       return;
@@ -90,12 +143,26 @@ class _WordLookupSelectionState extends ConsumerState<WordLookupSelection> {
 
   @override
   Widget build(BuildContext context) {
+    // 🔑 内层包一层（比 `SelectableRegion` 深 ⇒ 竞技场里先赢，见 [onTap] 的说明）。
+    //
+    // ⚠️ `behavior: HitTestBehavior.opaque` —— 让**正文空白处**也能触发
+    //    （Kindle 式「点哪都能唤出」）。若用 `deferToChild`，只有恰好点在
+    //    文字上才生效，留白处点了没反应（且不报错，最难查的那种）。
+    final body = widget.child;
+    final withTap = widget.onTap == null || _selectionActive
+        ? body // 无回调 / 有选区 ⇒ **不注册** ⇒ 单击归 SelectableRegion（清空选区）
+        : GestureDetector(
+            onTap: widget.onTap,
+            behavior: HitTestBehavior.opaque,
+            child: body,
+          );
+
     return SelectionArea(
       onSelectionChanged: _onSelectionChanged,
       // 🔑 **必须显式返回空** —— 不提供时 `SelectionArea` 会用默认菜单
       //    （复制/全选/…）。本项目「划词即查词」，不要系统菜单。
       contextMenuBuilder: (_, __) => const SizedBox.shrink(),
-      child: widget.child,
+      child: withTap,
     );
   }
 }

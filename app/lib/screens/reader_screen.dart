@@ -10,14 +10,17 @@ import '../providers/feed_provider.dart';
 import '../services/article_text.dart';
 import '../models/article.dart';
 import '../providers/bookmark_provider.dart';
+import '../providers/reading_settings_provider.dart';
 import '../providers/user_db_provider.dart';
 import '../providers/user_word_provider.dart';
 import '../providers/word_db_provider.dart';
 import '../services/article_read_repository.dart';
 import '../services/reading_completion.dart';
+import '../services/tts_service.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
 import '../widgets/bookmark_button.dart';
+import '../widgets/reading_settings_panel.dart';
 import '../widgets/trace_markdown.dart';
 import '../widgets/word_lookup_selection.dart';
 
@@ -87,13 +90,13 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   /// spec §5.1 写「默认 18px，可调 15–24px」；白哥 2026-09-27 定为 **17**（对齐 L1 界面锚点
   /// `visual-word-card-target` §07）。
   ///
-  /// 🔑 为什么**不进主题 token**：行高是**主题相关**的（`readLineHeight` 三档 1.82/1.74/1.84 ——
-  /// 不同底色下人眼舒适度不同），而字号是**用户偏好**（将来可调 15–24）。
-  /// 一个是「主题」，一个是「设置」—— 混进同一层，将来做设置面板时会分不清谁覆盖谁。
+  /// 🔴 **2026-10-06：从「硬编码常量」改为「用户可调状态」** ——
+  ///    值现在来自 `readingSettingsProvider`（规格链见 `services/reading_settings.dart`）。
+  ///    本页**不再持有**字号常量（同一件事两处口径 ⇒ 必然漂移）。
   ///
-  /// ⚠️ 放在 State 里（而非 widget 类）：只为 build 使用，
-  ///    且 Dart 的 State **访问不到** widget 类的私有 static 成员。
-  static const double _bodyFontSize = 17;
+  /// ⚠️ 它**不进主题 token**（理由不变）：字号是**用户偏好**，行高才是**主题相关**
+  ///    （`readLineHeight` 三档 1.82/1.74/1.84 —— 不同底色下人眼舒适度不同）。
+  ///    一个是「设置」，一个是「主题」—— 混进同一层会分不清谁覆盖谁。
 
   // ─────────────────────────────────────────────────────────────
   // 「读完」判定（「阅读篇数」的唯一写入点）
@@ -162,6 +165,17 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     _completionTimer?.cancel();
     _scroll.dispose();
     _dwell.stop();
+
+    // 🔴 离开页面就停朗读 —— **不跨页**（白哥 2026-10-06 定）。
+    //
+    // 理由（与 `book_reader_screen` 同一条）：退出去了声音还在念，
+    // 用户回到列表页**找不到在哪关** —— 那是最典型的「失控感」。
+    // 书库已有先例（`book_reader_screen.dart` 的 dispose），两处**同一判据**。
+    //
+    // ⚠️ 无条件 stop（不判断「是否本页启动的」）—— 与书库一致。
+    //    刻意如此：本页停的是**全局唯一**的播放流，若这里有条件地停，
+    //    就会出现「退出后残留播放」的路径，而那种 bug 只在真机上偶发。
+    ref.read(ttsServiceProvider).stop();
 
     super.dispose();
   }
@@ -328,6 +342,32 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     final bookmarked = bookmarkState.idsOrEmpty.contains(item.id);
     final bookmarkReady = bookmarkState.isReady;
 
+    // 阅读器设置（字号 + 痕迹开关）—— 🆕 2026-10-06（spec §5.1 面板）
+    final rs = ref.watch(readingSettingsProvider);
+
+    // ── 朗读（整篇）· 2026-10-06 ──
+    //
+    // 🔑 判据与书库**完全同一个** `isSpeaking(body)`（不是另写一套「是否在播」）。
+    //    `watch` 是必需的：TTS 状态变了要重建，否则图标永远停在「空闲」。
+    //
+    // 🔴 传的是 [body] **原文**（Markdown），**不是**「已清好的纯文本」：
+    //    ① 清洗发生在 `speakLong` 内部（`_cleanText` → `speechTextFromMarkdown`）
+    //       ⇒ **一处权威**，本页不重复实现一遍；
+    //    ② `isSpeaking()` 判的是「字符串相等」，两边传**同一个对象**才便宜
+    //       （若这里现算纯文本，每次 build 都要重扫整篇长正文，
+    //        且与内部存的不是同一实例 ⇒ 变成逐字符比较）。
+    //    🔴 所以「`_cleanText` 委托出去」是**这个按钮成立的前提**：
+    //       `speechTextFromMarkdown` 里那条「链接只去 URL、保留文字」的规则
+    //       正是本页正文必需的（NPR 正文里 `### [Law](https://…)` 很常见）。
+    final tts = ref.watch(ttsServiceProvider);
+    final speaking = tts.isSpeaking(body);
+
+    // 🔴 设置里关了朗读 → **不渲染**朗读键（与 `widgets/speak_button.dart` 同一判据）：
+    //    「**静默失败 + 无出口」比「报错」更糟** —— 留着它，用户点了没反应，
+    //    只会以为「App 坏了」。⚠️ 这是扫尾时补上的：第一版漏了这条，
+    //    而词卡那 5 个喇叭**早就遵守了**（同族功能的既有约定，新入口必须也遵守）。
+    final ttsEnabled = ref.watch(ttsEnabledProvider);
+
     // 🔴🔴 **词库预热 —— 这一行不能删**（2026-09-27 修）
     //
     // `wordQueryProvider` 首次落盘 31.4 MB 要 0.5–2 s。
@@ -359,6 +399,13 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               onToggleBookmark: bookmarkReady
                   ? () => ref.read(bookmarkProvider.notifier).toggle(item.id)
                   : null,
+              // 「这篇」是否正在朗读 —— 判据与书库**同一个** `isSpeaking()`。
+              speaking: speaking,
+              onToggleSpeech: () => _toggleSpeech(body),
+              // 关了朗读 ⇒ 整个键不渲染（不是「渲染成禁用态」）
+              showSpeak: ttsEnabled,
+              // 🆕 阅读设置面板（字号 / 底色 / 痕迹 / 语速）
+              onOpenSettings: () => showReadingSettingsPanel(context),
             ),
             Expanded(
               child: SingleChildScrollView(
@@ -389,6 +436,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                   //    「本文查过的词」⇒ 痕迹恒不显示。
                   //    ⚠️ 书库页传 `null`（书不是「文章」），那是**有意不记痕迹**。
                   articleId: widget.articleId,
+                  // 🆕 2026-10-06：**单击正文唤出阅读设置面板**（spec §5.1 原定交互）。
+                  //    ⚠️ 只在「无选区」时生效 —— 有选区时这一次点击让给「清空选区」
+                  //       （否则用户取消不掉选区，见 `onTap` 的长说明）。
+                  onTap: () => showReadingSettingsPanel(context),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -414,7 +465,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                         markdown: body,
                         lookups: lookups,
                         tokens: t,
-                        bodyFontSize: _bodyFontSize,
+                        // 🔑 字号来自用户设置（已 clamp 15–24）
+                        bodyFontSize: rs.fontSize.toDouble(),
+                        // 🆕 痕迹开关（面板内控制；值已由 provider 钳过）
+                        traceEnabled: rs.traceEnabled,
                         // ⚠️ 2026-10-03：`onLinkFailed` 已移除 ——
                         //    正文里的链接现在**不可点**（白哥定），
                         //    所以「打不开链接」这个失败路径**不存在了**。
@@ -430,25 +484,114 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       ),
     );
   }
+
+  /// 点朗读按钮：正在读这篇 → **停**；否则 → **读整篇**。
+  ///
+  /// # 为什么用 [TtsService.speakLong] 而不是 [TtsService.togglePlay]
+  ///
+  /// `togglePlay` 是**短文本**用的（词卡 / 试听）：它一次 `speak()` 交出全文。
+  /// 而文章正文**远超平台单次朗读上限**（Android `getMaxSpeechInputLength()` ≈ 4000 字符）
+  /// ⇒ 交上去会被**静默拒收**：没有报错、没有声音。
+  ///
+  /// 🔴 这不是推测 —— 书库「整章朗读」踩过同一个坑（真机反馈「没声音」），
+  ///    修法就是改调 `speakLong`（分段 + 依次播放）。两处**同一判据**。
+  ///
+  /// # 为什么停止用 `stop()` 而不是再点一次 `togglePlay`
+  ///
+  /// 长文本的语义是「**读完整篇**」，不是「再点一次切歌」——
+  /// 用户在长文朗读中点第二次，想的是「别念了」，不是「从头再念一遍」。
+  /// （`speakLong` 的文档里也写了这一条。）
+  ///
+  /// # 为什么读 [body] 原文
+  ///
+  /// 清洗在 `speakLong` 内部（`_cleanText`）—— 本页**不预先清洗**，
+  /// 否则就变成「同一件事两处口径」（见 `_buildReader` 里的说明）。
+  ///
+  /// ⚠️ 点击时**重新读一次**当前状态（`ref.read`），不用 build 时的 `speaking` 快照：
+  ///    朗读状态可能在「渲染完这一帧」到「用户点上去」之间变了
+  ///    （如朗读自然读完 → 那时应按「开始播」而不是「停止」）。
+  void _toggleSpeech(String body) {
+    final tts = ref.read(ttsServiceProvider);
+    if (tts.isSpeaking(body)) {
+      tts.stop();
+    } else {
+      tts.speakLong(body);
+    }
+  }
 }
 
-
-/// 顶部栏 —— 设计稿 `.rd-bar`：**返回 / 分类 / 书签**三元素。
+/// 顶部栏 —— 设计稿 `.rd-bar`：**返回 / 分类 / 朗读 / 书签**四元素。
 ///
 /// 设计稿的原话：「书签是「**动作**」不是「**显示元素**」—— 不占版面、不干扰阅读，
 /// 也不违反「阅读界面保持单纯」」。
+///
+/// # 🆕 朗读键（2026-10-06）—— 位置与形态由白哥定
+///
+/// 依据 `docs/design/article-tts-entry-2026-10-06.html`：
+/// · **位置 = A（顶栏右侧）** —— 与「其他页面的 title 按钮都靠右」一致；
+///   且**不违反 spec §5.1**（「阅读器底部无操作栏」）⇒ 不选底部栏方案。
+/// · **形态 = 纯图标** —— 顶栏已有返回 / 分类 / 收藏，再加「朗读」两个字会把
+///   分类挤成省略号。
+/// · **排在收藏左边** —— 收藏仍是最右（白哥 2026-10-05 定的规则不变）。
+///
+/// 🔴 **为什么它不用粘土（与书签不同）**：本页的注释写明「**顶部栏的书签按钮是
+///    唯一的粘土**」，那是**有意保留**的一条（spec §八「阅读界面零粘土」的边界）。
+///    再加一个粘土按钮会把那条说明变成假的（两个就不叫「唯一」）。
+///    设计稿里它本来就是**平面**（`.icon-btn` 无底色，只有播放中一层淡朱砂底）。
 class _ReaderBar extends StatelessWidget {
   const _ReaderBar({
     required this.tokens,
     required this.category,
     required this.bookmarked,
     required this.onToggleBookmark,
+    required this.speaking,
+    required this.onToggleSpeech,
+    required this.showSpeak,
+    required this.onOpenSettings,
   });
 
   final CoEvoTokens tokens;
   final String category;
   final bool bookmarked;
   final VoidCallback? onToggleBookmark;
+
+  /// 整篇是否正在朗读（判据 = `TtsService.isSpeaking(body)`）。
+  final bool speaking;
+
+  /// 点朗读键（在播 → 停；没播 → 读整篇）。`null` 不可点。
+  final VoidCallback? onToggleSpeech;
+
+  /// **是否渲染**朗读键（`false` = 用户已关朗读）。
+  ///
+  /// 🔑 与 [onToggleSpeech] 分开是刻意的：`null` 在那里的语义是「不可点」，
+  ///    而这里的语义是「**不存在**」—— 两者混用会让后来人分不清
+  ///    （「禁用态」与「不渲染」是**两种不同的产品决策**）。
+  final bool showSpeak;
+
+  /// 🆕 打开阅读设置面板（2026-10-06）。
+  ///
+  /// # ✅ 入口有两个（**同一动作**，不是两种含义）
+  ///
+  /// | 入口 | 依据 | 状态 |
+  /// |---|---|---|
+  /// | **单击正文** | spec §5.1「单击屏幕中央唤出底部面板」 | ✅ 本轮实现（无选区时生效）|
+  /// | **顶栏键** | 无（本项目的补充）| ✅ 保留 —— 见下 |
+  ///
+  /// # 🔑 为什么**两个都留**（而不是"有了单击就删顶栏键"）
+  ///
+  /// 1. **单击那条依赖手势竞技场**：`onTap` 放在 `SelectionArea` 的 child 里
+  ///    （比内层 `SelectableRegion` 深 ⇒ 先加入竞技场 ⇒ 赢），这是**从 SDK 源码推断**的；
+  ///    推理自洽但**本机验不了**（需真机）。留一个顶栏键 ⇒ **万一手势不生效，仍有入口**
+  ///    （而不是"功能在、用户摸不到"那种最难查的状态）。
+  /// 2. 二者**不冲突**：顶栏在 `SafeArea` 顶部、正文在滚动区 ⇒ 点击区域不重叠。
+  /// 3. 无障碍角度：可点区域比"只能点正文"更好命中。
+  ///
+  /// ⚠️ 这与「**同一件事只能一处权威**」不矛盾 —— 那条讲的是**状态/口径**
+  ///    （字号只有一份、痕迹只有一个开关），而这里是**入口**。
+  ///    先例：恢复购买就有两处入口（订阅页 + 我的页），同一个 `iapService`。
+  ///
+  /// ⏳ **待真机确认**：单击是否真的生效（若生效，顶栏键可考虑去掉以省空间）。
+  final VoidCallback onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -489,11 +632,79 @@ class _ReaderBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
+          // 阅读设置 —— **双入口之一**（另一个是「单击正文」，spec §5.1 原定）。
+          // 见 [onOpenSettings] 的说明：为什么要留两个。
+          InkWell(
+            onTap: onOpenSettings,
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+              child: Icon(
+                Icons.format_size,
+                size: 20,
+                color: Color(tokens.ink2.argb32),
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          // 朗读（整篇）—— 🔴 排在**收藏左边**（收藏仍最右）
+          // 关了朗读时整段消失（不留「点了没反应」的键，见 [showSpeak]）
+          if (showSpeak) ...[
+            _SpeakButton(speaking: speaking, onPressed: onToggleSpeech),
+            const SizedBox(width: 8),
+          ],
           BookmarkButton(
             bookmarked: bookmarked,
             onPressed: onToggleBookmark,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 朗读键（顶栏）—— **纯图标 · 平面**（设计稿 `.icon-btn`）。
+///
+/// | 状态 | 图标 | 颜色 |
+/// |---|---|---|
+/// | 空闲 | `play_circle_outline` | `ink2`（顶栏常态色）|
+/// | 播放中（含准备中）| `stop_circle_outlined` | `accent`（朱砂 = 「正在发生」）|
+///
+/// 🔑 判据来自 `TtsService.isSpeaking()` —— **与书库朗读键同一套**
+///    （含「`loading` 也算在播」：首次朗读有准备时间，那段时间不能退回空闲态，
+///      否则图标会「空闲 → 播放中」闪一下）。
+///
+/// ⚠️ **不用 `IconButton`**：它自带 48×48 的 Material 热区与 splash，
+///    会把顶栏行高从 39（返回键决定的）撑到 48 —— 视觉上「顶部栏变高了」。
+///    本组件用 `InkWell` + `Padding`，热区够大但**不改变行高**（与返回键同一手法）。
+///
+/// ⚠️ **热区说明（如实标注）**：图标 22 + 四周 7/6 ⇒ 视觉块约 36×36。
+///    未达 44 的触达标准 —— 与同一行的书签键（30×30，设计稿定的）**同级**。
+///    顶栏三个按钮挤在一行，单独把朗读键撑到 44 会让它比书签更醒目（视觉失衡）。
+///    📌 若真机反馈难点，正解是**三个一起放大**，而不是只放这一个。
+class _SpeakButton extends StatelessWidget {
+  const _SpeakButton({required this.speaking, required this.onPressed});
+
+  final bool speaking;
+  final VoidCallback? onPressed;
+
+  /// 🔑 22 = 书库朗读键的同一档（`book_reader_screen` 的 `size: 22`）——
+  ///    两个入口读的是同一件事，图标大小不该有第二套口径。
+  static const double _iconSize = 22;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+        child: Icon(
+          speaking ? Icons.stop_circle_outlined : Icons.play_circle_outline,
+          size: _iconSize,
+          color: Color(speaking ? t.accent.argb32 : t.ink2.argb32),
+        ),
       ),
     );
   }

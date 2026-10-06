@@ -313,6 +313,47 @@ void main() {
         npr.every((p) => !p.contains('http')), '');
   }
 
+  // ═══════════════════════════════════════════════════════════
+  section('【13】🔴🔴 剥标记后**新暴露**的 HTML 标签（2026-10-06 真实事故）');
+  // ═══════════════════════════════════════════════════════════
+  //
+  // # 这条守的是什么（不是一个假想用例，是生产库的真实形态）
+  //
+  // `content_pool.id=7091`（NPR 音频页）的正文里有：
+  // ```text
+  // - **Embed** ** `<**iframe src="https://…" width="100%" …>` **
+  // ```
+  // 第 ① 轮 `_htmlTagRe` 看到的是 `<**iframe`（`<` 后跟 `*` 而**不是字母**）⇒ **不匹配**；
+  // 随后的 `_inlineCodeRe` / `_boldRe` 才把 `**<**` 变成 `<` ⇒ **`<iframe …>` 成形，
+  // 而 HTML 清理早已跑完** ⇒ 输出里留着完整标签，TTS **逐字念出**
+  // `src` / `width` / `frameborder` / `scrolling`。
+  //
+  // 🔴 修复前 **92 项断言全绿** —— 因为没有一条用例是「**标记内部藏着 HTML 标签**」。
+  //    📌 判据：**用例集要覆盖「标记的嵌套与变形」，不能只覆盖「标记本身」**。
+  {
+    // 生产库原文片段（逐字节取自 SSH 直查）
+    const nprLine =
+        r'- **Embed** ** `**<**iframe src="https://www.npr.org/player/embed/x/y" width="100%" height="290" frameborder="0" scrolling="no" title="NPR embedded audio player">` **';
+    final out = speechTextFromMarkdown(nprLine);
+    notContain('🔴 不念 iframe 标签名', out, 'iframe');
+    notContain('🔴 不念 src=', out, 'src=');
+    notContain('🔴 不念 width=', out, 'width=');
+    notContain('🔴 不念 frameborder', out, 'frameborder');
+    notContain('🔴 不念 scrolling', out, 'scrolling');
+    notContain('  URL 也去掉', out, 'http');
+    check('  保留了可见文字 Embed', out.contains('Embed'), out);
+
+    // 更普通的形态：加粗里包一个 HTML 标签（不经过反引号）
+    final out2 = speechTextFromMarkdown('See **<b>bold</b>** here');
+    notContain('  加粗里的标签也去掉', out2, '<b>');
+    check('  但保留文字', out2.contains('bold'), out2);
+
+    // 🔑 迭代到稳定：两层变形（`~~**<**iframe…**~~`）
+    final out3 = speechTextFromMarkdown('~~**<**iframe src="x" a="1">**~~');
+    notContain('🔴 两层嵌套也能清干净', out3, 'iframe');
+    notContain('  且不留残留属性', out3, 'a=&quot;1&quot;');
+  }
+
   print('');
   print('═' * 74);
   if (_failures.isEmpty) {

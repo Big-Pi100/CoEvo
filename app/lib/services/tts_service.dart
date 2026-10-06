@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'speech_chunks.dart';
+import 'speech_text.dart';
 
 /// N14: TTS Service — Device-native speech synthesis + Tencent Cloud TTS
 ///
@@ -541,17 +542,44 @@ class TtsService extends ChangeNotifier {
     return null;
   }
 
+  /// 把待朗读文本清成**能听的纯文本**。
+  ///
+  /// # 🔴 2026-10-06：由「手写一串 `replaceAll`」改为**委托** `speechTextFromMarkdown`
+  ///
+  /// ## 原实现的两个缺口（`docs/design/article-tts-entry-2026-10-06.html` §四）
+  ///
+  /// 原实现逐条列在这里（**已全部删除**，留作对照）：
+  /// ```dart
+  /// .replaceAll('**', '')      // 只去双星，单星 `/` `*` 强调不管
+  /// .replaceAll('### ', '')    // 只去「井号 + 空格」这一种写法
+  /// .replaceAll('\\(', '')     // ← 只去**转义的**圆括号
+  /// .replaceAll('\\[', '')     // ← 只去**转义的**方括号
+  /// ```
+  /// 最后一个就是**真事故**：`[Law](https://www.npr.org/sections/law/)` 里是
+  /// **普通**方括号，`\[` 那条规则**完全不受影响** ⇒ **整条 URL 被逐字念出来**
+  /// （「h-t-t-p-s colon slash slash …」）。生产库实测这种行很常见。
+  ///
+  /// 链接 / 图片 / 裸 URL / 行内代码 / 表格分隔线 —— 一个都没处理。
+  ///
+  /// ## 现在：一处权威
+  ///
+  /// `speechTextFromMarkdown` 已把这套规则做完整（92 项断言 · 含真实 NPR 样本），
+  /// 所以这里**只保留 TTS 特有的** `<graph>` 清理，其余全部交给它。
+  /// 📌 判据：**同一件事的口径只能一处权威** —— 两份实现并存时，
+  /// 只有一份会随新用例修好，另一份会**静默地**留在旧口径上。
+  ///
+  /// ⚠️ 顺序：`<graph>` 必须**先删**再委托 ——
+  ///    `speechTextFromMarkdown` 的 HTML 标签规则会剥掉 `<graph>` **标签本身**，
+  ///    却**留下里面的图形 JSON**（那些内容会被逐字念出来）。
+  ///
+  /// 🔴 影响面（三处共用）：**词卡朗读**（[togglePlay]）·
+  ///    **书库整章朗读**（[speakLong]）· **文章朗读**（信息流阅读器）。
+  ///    前两处是既有的 ⇒ 白哥 2026-10-06 批准「一并做」，
+  ///    并要求真机复验书库朗读（章节是端侧数据，本机无样本）。
   String _cleanText(String text) {
-    return text
-        .replaceAll('**', '')
-        .replaceAll('### ', '')
-        .replaceAll('## ', '')
-        .replaceAll('# ', '')
-        .replaceAll('\\(', '')
-        .replaceAll('\\)', '')
-        .replaceAll('\\[', '')
-        .replaceAll('\\]', '')
-        .replaceAll(RegExp(r'<graph>.*?</graph>', dotAll: true), '');
+    return speechTextFromMarkdown(
+      text.replaceAll(RegExp(r'<graph>.*?</graph>', dotAll: true), ''),
+    );
   }
 
   /// 日志截断辅助

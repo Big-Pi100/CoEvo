@@ -831,6 +831,70 @@ jobs:
       - name: 朗读用纯文本（92 项 · Markdown → 能听的文本，含真实 NPR 样本）
         run: dart run bin/verify_speech_text.dart
 
+      # 🆕 2026-10-06：整篇朗读**接线** + 清洗口径唯一化（verify_reader_tts · 39 项）
+      #
+      # 🔑 与上一个 step 的分工（**不重叠**）：
+      #    · `verify_speech_text` 守「**纯函数**算得对不对」（Markdown → 能听的文本）
+      #    · 本脚本守「**接线**接得对不对」—— 上次那次是「函数写好了没人调 / 调错方法」那一类
+      #    两者缺一不可：纯函数 92 项全绿，也挡不住「阅读器用了 `togglePlay`」。
+      #
+      # 它守什么（四件，**全都不报错**）：
+      #   ① `tts_service._cleanText` 必须**委托** `speechTextFromMarkdown`（一处权威）——
+      #      旧实现只去**转义的**方括号 `\[`，而正文里是**普通**方括号
+      #      ⇒ `[Law](https://www.npr.org/…)` 的 **URL 被逐字念出来**（生产库实测常见）。
+      #   ② 阅读器真的接了 `speakLong`（**不是** `togglePlay`）+ `isSpeaking` 判状态
+      #      + `dispose` 停（**不跨页**，白哥 2026-10-06 定）。
+      #   ③ `isSpeaking(X)` 与 `speakLong(Y)` 必须 **X == Y** —— 否则按钮永远显示「空闲」
+      #      且**停不掉**。这是本项目记过的「**子串断言锁不到接线**」的真例。
+      #   ④ 朗读键位置（**收藏左边**）与形态（**纯图标** · 不粘土）。
+      #
+      # ✅ 为什么能进 A 组：只 import `dart:io`（源级断言，读 `app/lib/**` 源码）
+      #    ⇒ 不需要 Flutter / 真库 / fixture。
+      # ✅ **已证伪 10/10**（注入 10 种真实回归 ⇒ 均为 exit=1）：旧 `_cleanText`（**从
+      #    `git show HEAD:` 取的真代码**，不是凭记忆重写）· 去掉 `<graph>` 清理 ·
+      #    `speakLong`→`togglePlay` · `speaking` 改实参 · 删 dispose 的 stop ·
+      #    朗读键挪到收藏之后 · 加文字标签 · 删 import · `showSpeak` 写死 true ·
+      #    删掉「两个朗读键的分工」说明。
+      # 🔴 **证伪抓到 2 处假绿**（都已改进，值得记）：
+      #    · 捕获组写窄 `([\w.]+)` ⇒ `isSpeaking('x')` 不匹配 ⇒ **静默缺项** = 假绿
+      #      ⇒ 判据：**「检测为 0」先证检测器有效**
+      #    · `dispose` 里宽松查 `.stop()` ⇒ 被同一方法里的 `_dwell.stop()` 满足 = 假绿
+      #      ⇒ 判据：**判据口径要指定「谁在被停」**（差一层 = 不报错只给错数）
+      # ⚠️ 还假红过一次：用**文本位置**判顺序，而 `f(g(x))` 的求值顺序与文本顺序相反
+      #    ⇒ 判据：**「文本顺序」≠「求值顺序」**。
+      # 🆕 扫尾又抓到 3 个真问题（都已修）：① 漏了「关了朗读不渲染键」（词卡的 5 个喇叭
+      #    早就遵守 ⇒ **新入口要扫同族既有约定**）② `speak_button.dart` 自称「全应用唯一
+      #    一处定义」随本页失效 ③ `speech_chunks` 注释把「先清洗后分段」写反了。
+      - name: 整篇朗读接线 + 清洗一处权威（verify_reader_tts · 43 项）
+        working-directory: scripts/query_verify
+        run: dart run bin/verify_reader_tts.dart
+
+      # 🆕 2026-10-06：阅读器设置（spec §5.1 面板 —— 字号 + 痕迹开关）
+      #
+      # 🔑 它守什么：① 字号**规则**（clamp 15–24，真跑函数）② 默认值 = **17**
+      #    （白哥定的，**不是 spec 的 18** —— 防有人照 spec 改回去）
+      #    ③ **持久化键名＝对外契约**（改它 = 已发布后丢用户设置）
+      #    ④ **接线**（reader 真的用上了；若只写 service 不接 UI ⇒ 功能等于不存在）
+      #
+      # ✅ 为什么能进 A 组：只 import `dart:io` + 零 import 的
+      #    `app/lib/services/reading_settings.dart` ⇒ 不需要 Flutter。
+      # ✅ **已证伪 12/12**：去掉字号下界 · 默认值改 18 · 键名改一字符 ·
+      #    reader 字号改回硬编码 · 不传 traceEnabled · TraceMarkdown 默认改 false ·
+      #    面板去掉音色 · 面板去掉试听 · profile 又出现朗读卡 · 措辞回退「临时入口」。
+      # 🔴 **证伪抓到 2 处假绿**（值得记）：
+      #    ① 把 `ReadingPrefKeys.fontSize` 改一个字符，断言**全绿** ——
+      #       写端与读端**共用同一常量** ⇒ 一起改了 ⇒ 运行时自洽。
+      #       但后果真实：磁盘上旧键名的设置**读不出来** ⇒ 用户字号被静默重置。
+      #       ⇒ 补了「键名字面值＝契约」这条。
+      #       📌 判据：**证伪没红时先问「这个改动真的无害吗」** ——
+      #         无害 ⇒ 删掉那条无意义的断言；有害 ⇒ 补上能抓住它的判据。
+      #    ② `contains('试听')` 在文案改成 `'试听X'` 后**仍匹配** ⇒ 假绿。
+      #       ⇒ 改用字面量正则 `'\s*试听\s*'`。
+      #       📌 判据：**断言某个「值」存在时要连边界一起锁**（子串断言锁不到接线）。
+      - name: 阅读器设置 + 朗读卡搬迁（51 项 · 字号规则 + 键名契约 + 接线 + 搬迁）
+        working-directory: scripts/query_verify
+        run: dart run bin/verify_reading_settings.dart
+
       # ── B 组（12 个 · 665 项 · 需 sqflite_common_ffi）──
       # ⚠️ 这些脚本自己 `createTempSync` 造库或读**已入库**的 `word.db`
       #    ⇒ 与仓库状态无关，可重复跑。

@@ -54,6 +54,7 @@ class TraceMarkdown extends StatelessWidget {
     required this.lookups,
     required this.tokens,
     required this.bodyFontSize,
+    this.traceEnabled = true,
   });
 
   /// 正文（**Markdown 形态**）。
@@ -68,10 +69,28 @@ class TraceMarkdown extends StatelessWidget {
   /// 正文字号（由调用方给 —— 阅读器有「字号」概念，不在 token 层）。
   final double bodyFontSize;
 
+  /// 🆕 痕迹开关（spec §5.1：**面板内**、默认开启 · 2026-10-06 接线）。
+  ///
+  /// 🔑 关掉时**不注入标记**（而不是「把样式改透明」）—— 两者对外观等价，
+  ///    但「不注入」还省一次全文扫描，且天然满足验收要求
+  ///    「**已掌握的痕迹与普通文字逐像素一致**」
+  ///    （改透明可能残留一点颜色/间距，那是「看不见但不一致」）。
+  ///
+  /// ⚠️ 默认 `true` 是**刻意的**：本组件的既有调用方行为逐字不变
+  ///    （同 `pick_body_candidates` 的 `refetch_existing` 默认 `false` 那一族原则——
+  ///     加参数时让**旧行为成为默认值**）。
+  final bool traceEnabled;
+
   @override
   Widget build(BuildContext context) {
     // ① 判定：哪些词该标、哪一档（与纯文本路径**同一份判据**）
-    final tiers = pickedTraceTiers(lookups: lookups, tokens: tokens.trace);
+    //
+    // 🔑 关了痕迹 ⇒ 传**空 tiers**（而不是跳过注入那一步）：
+    //    这样下面所有逻辑走**同一条路径**，只是「没有词要标」——
+    //    少一个分支就少一处可能漂移的地方（判据：**能少一个分支就少一个**）。
+    final tiers = traceEnabled
+        ? pickedTraceTiers(lookups: lookups, tokens: tokens.trace)
+        : const <String, int>{};
 
     // ② 🔴 消化**多余的 Markdown 转义**（2026-10-02 · 白哥真机反馈「转义没消化」）
     //

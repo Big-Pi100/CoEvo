@@ -19,7 +19,6 @@ import '../providers/iap_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/iap_plan.dart';
 import '../services/iap_service.dart';
-import '../services/tts_service.dart';
 import '../providers/achievement_notifier.dart';
 import '../providers/achievement_provider.dart';
 import '../widgets/stats_card.dart';
@@ -310,23 +309,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
-  /// 试听本地原生 TTS —— 用**当前选中的音色 + 当前语速**
-  ///
-  /// 设计要点（2026-09-26 修正）：
-  /// - 🔴 **文本必须是英文**：本产品是英语学习 App，用户实际听到的永远是英文；
-  ///   原先读「你好，这是试听语音」(zh-CN) 无法反映真实朗读效果。
-  /// - ✅ **跟随语速**：`TtsService.speak` → `_speakWithNative` 每次都会
-  ///   `setSpeechRate(_speechRate)`，因此自动跟随上方语速滑块。
-  /// - 🔑 **复用 `TtsService`** 而非新建 `FlutterTts`：继承其音色选择（`_selectedVoice`）、
-  ///   代检查（`_playGen`）与停止逻辑，避免出现两套播放状态。
-  Future<void> _previewNativeTts() async {
-    final tts = ref.read(ttsServiceProvider);
-    await tts.speak(_nativePreviewText, language: 'en-US');
-  }
-
-  /// 本地音色试听文本（纯英文，贴近词卡朗读场景：先单词、后例句）
-  static const String _nativePreviewText = 'Hello. This is a sample sentence.';
-
   Widget _buildErrorView() {
     return Center(
       child: Padding(
@@ -568,8 +550,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         //      📄 现由 `about_screen` 承载（含二维码弹窗）。
         _groupLabel('其他'),
         _buildThemeTile(),
-        const SizedBox(height: CoSpacing.sm),
-        _buildSpeechCard(),
+        // 🔴 2026-10-06：「朗读设置」卡（语速 + 音色 + 试听）**已搬走** ——
+        //    搬进**阅读设置面板**（`widgets/reading_settings_panel.dart`）。
+        //    依据：白哥 2026-10-06 定「搬」+ spec §5.1「面板内：字号/…/发音语速音色」。
+        //    ⚠️ 那张卡原先也服务**词卡朗读**场景 ⇒ 搬走后词卡里调音色需先进入文章。
+        //      这是白哥权衡后的决定，代价记在 `reading_settings_panel` 的类文档里。
+        //    🔑 状态**没有搬** —— 语速/音色仍是 `ttsServiceProvider` 的同一个值，
+        //      只是入口换了个位置（「入口位置」与「状态权威」是两件事）。
         const SizedBox(height: CoSpacing.sm),
         _navTile(
           icon: Icons.emoji_events_outlined,
@@ -955,126 +942,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void _comingSoon(String what) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Tw('$what即将开放')),
-    );
-  }
-
-  /// 朗读设置（外壳 `Clay`；**内容与改造前一致** · 决策 1：本次**不搬家**）。
-  ///
-  /// 🔑 「搬去阅读面板」的前提是**面板先存在** —— 而它尚未实现
-  ///    （`reader_screen.dart` 明载「面板是独立一批」）。
-  ///    所以现在这里仍是**唯一**入口 → 搬走 = 用户没地方调。
-  Widget _buildSpeechCard() {
-    final t = CoEvoTokensExt.of(context);
-    return Consumer(
-      builder: (_, ref, __) {
-        final tts = ref.watch(ttsServiceProvider);
-        final voices = tts.availableVoices;
-        return Clay(
-          borderRadius: BorderRadius.circular(16),
-          padding: const EdgeInsets.all(CoSpacing.xl),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('朗读设置',
-                  style: TextStyle(
-                    fontFamily: CoFonts.uiSans,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Color(t.ink.argb32),
-                  )),
-              const Divider(height: 24),
-
-              // ── 语速 ──
-              Row(
-                children: [
-                  const Icon(Icons.speed, size: 18),
-                  const SizedBox(width: CoSpacing.sm),
-                  Text('语速', style: Theme.of(context).textTheme.bodyMedium),
-                  const Spacer(),
-                  Text(tts.speechRate.toStringAsFixed(1),
-                      style:
-                          TextStyle(color: _cs.onSurfaceVariant, fontSize: 13)),
-                ],
-              ),
-              // 🔴 范围**引用常量**，不写字面量 —— 见 `kSpeechRateMax` 的说明：
-              //    原先这里是 `max: 2.0`（超库声明上限 33%），
-              //    导致「拖到右半边就没声音」，且**不报任何错**。
-              //    范围只有一处权威 ⇒ 将来调上下限不必回来找这个 Slider。
-              Slider(
-                value: tts.speechRate,
-                min: kSpeechRateMin,
-                max: kSpeechRateMax,
-                // 步长 0.1：(1.5 − 0.1) / 0.1 = 14 档
-                divisions: ((kSpeechRateMax - kSpeechRateMin) / 0.1).round(),
-                label: tts.speechRate.toStringAsFixed(1),
-                onChanged: (v) => tts.speechRate = v,
-              ),
-              const SizedBox(height: CoSpacing.sm),
-
-              // ── 音色 ──
-              Row(
-                children: [
-                  const Icon(Icons.record_voice_over, size: 18),
-                  const SizedBox(width: CoSpacing.sm),
-                  Text('音色', style: Theme.of(context).textTheme.bodyMedium),
-                  const Spacer(),
-                  // 🆕 显式试听按钮（2026-09-26 修正）——
-                  // 原先只有「切换音色时自动读一句」，用户想重听必须来回切音色，不直观
-                  SizedBox(
-                    height: 32,
-                    child: TextButton.icon(
-                      icon: const Icon(Icons.play_arrow, size: 16),
-                      label: Tw('试听', style: TextStyle(fontSize: 12)),
-                      onPressed: () => _previewNativeTts(),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: CoSpacing.sm),
-              DropdownButtonFormField<String>(
-                value: tts.selectedVoice?['name'] as String?,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  isDense: true,
-                  contentPadding: EdgeInsets.symmetric(
-                      horizontal: CoSpacing.md, vertical: 10),
-                  border: OutlineInputBorder(),
-                ),
-                // 🔴 原为「系统默认 (zh-CN)」—— 语义错误：本产品朗读英文，
-                // 未指定音色时 `_pickBestVoice` 会按**文本语言**自动匹配（英文 → en-US）
-                hint: Tw('系统默认（自动匹配语言）'),
-                items: [
-                  const DropdownMenuItem(value: '', child: Tw('系统默认（自动匹配语言）')),
-                  if (voices.isNotEmpty)
-                    ...voices.map<DropdownMenuItem<String>>((v) {
-                      final name = v['name'] ?? '';
-                      final locale = v['locale'] ?? '';
-                      return DropdownMenuItem(
-                        value: name as String,
-                        child: Tw('$name ($locale)',
-                            overflow: TextOverflow.ellipsis),
-                      );
-                    }),
-                ],
-                onChanged: (voiceName) {
-                  if (voiceName == null || voiceName.isEmpty) {
-                    tts.selectVoice(null);
-                    return;
-                  }
-                  final match = voices.cast<Map<String, dynamic>?>().firstWhere(
-                      (v) => v?['name'] == voiceName,
-                      orElse: () => null);
-                  if (match != null) {
-                    tts.selectVoice(match);
-                    // 切换音色后自动试听（英文），方便立即对比
-                    tts.speak(_nativePreviewText, language: 'en-US');
-                  }
-                },
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 
