@@ -49,14 +49,18 @@
 //   · `review_log`      → `fsrs_service.dart`（重放派生 `card_review_state`）
 //   · 其余 4 张表       → **本文件**（字段级合并）
 //
-// # ⚠️ 关于 `pending_push`：合并结果**恒为 1**
+// # ⚠️ 关于 `pending_push`：**合并函数不产出它**（由调用方决定）
 //
-// 理由（安全性优先）：合并 = 本地状态**变了**（吸收了远端数据），
-// 而「漏推」会让两端永久不一致（**归零型**），「多推」只是多一次请求（**罚款型**）
-// ⇒ 取安全的那侧。重复推送由服务端 UPSERT 的条件保证**幂等**（不刷新收货时间）。
-// ⚠️ 代价如实记录：pull 之后每次都会产生一批「其实服务端已知」的待推行。
-//    一期的 pull 频率低（登录一次 + 手动），可接受；将来若要省流量，
-//    可改成「与 local 逐字段比对，不同才置 1」—— 但那需要正确的浮点/null 比较。
+// 合并是「**两个值 → 一个权威值**」；`pending_push` 是「**这个值还需不需要推给服务端**」
+// —— 后者取决于「本地原本有没有未推的改动」，与合并口径无关。
+// ⇒ 职责分开，调用方（`sync_service`）用 [pendingPushAfterPull] 决定，理由见那里。
+//
+// 🔴 **为什么不能让合并结果一律标记待推**（一个会被误认为「更安全」的做法）：
+//    pull 下来的数据是**服务端已经知道的**。若合并后一律标 `pending_push = 1`，
+//    下一次 push 会把它们**整批推回服务端** ⇒ 三重代价：
+//    ① 首次同步（全量）时最严重 —— 偏偏那是新设备最常见的场景
+//    ② 每次 pull 后都多一轮「其实什么都不需要推」的请求
+//    ③ 把「待推」这个信号的含义稀释了（它本应表示「有本地改动待上云」）
 
 // ───────────────────────── 时间戳工具 ─────────────────────────
 
@@ -183,7 +187,8 @@ Map<String, Object?> userWordToPushJson(Map<String, Object?> r) => {
 
 /// 服务端 `UserWordOut` → 本地行（可**直接**喂给 `mergeUserWord` 或 INSERT）。
 ///
-/// 注意：**不产生** `pending_push` —— 那由合并函数负责（见文件头说明）。
+/// 注意：**不产生** `pending_push` —— 那是「同步标记」不是「合并口径」，
+/// 由调用方用 [pendingPushAfterPull] 决定（理由见文件头）。
 Map<String, Object?> userWordFromPullJson(Map<String, dynamic> j) => {
       'word_id': j['word_id'],
       'spelling': j['spelling'],
@@ -234,7 +239,6 @@ Map<String, Object?> mergeUserWord(
     'added_at': _pickEarlierTs(local['added_at'], remote['added_at']),
     'updated_at': latest['updated_at'],
     'deleted': latest['deleted'] ?? 0,
-    'pending_push': 1,
   };
 }
 
@@ -265,8 +269,7 @@ Map<String, Object?> mergeArticleRead(
     {
       'article_id': local['article_id'] ?? remote['article_id'],
       'read_at': _pickEarlierTs(local['read_at'], remote['read_at']),
-      'pending_push': 1,
-    };
+      };
 
 // ───────────────────────── ③ bookmark（收藏）─────────────────────────
 
@@ -303,7 +306,6 @@ Map<String, Object?> mergeBookmark(
     'content_id': local['content_id'] ?? remote['content_id'],
     'bookmarked_at': winner['bookmarked_at'],
     'deleted': winner['deleted'] ?? 0,
-    'pending_push': 1,
   };
 }
 
@@ -344,9 +346,44 @@ Map<String, Object?> mergeBookProgress(
     'chapter_idx': winner['chapter_idx'],
     'scroll_ratio': winner['scroll_ratio'],
     'updated_at': winner['updated_at'],
-    'pending_push': 1,
   };
 }
+
+// ───────────────────────── 合并后的同步标记 ─────────────────────────
+
+/// **pull 并合并之后**，这一行是否还需要推给服务端？
+///
+/// # 规则（一句话）
+///
+/// ```
+/// 本地原本就有未推的改动  ⇒ 需要推（1）
+/// 否则                    ⇒ 不需要（0）
+/// ```
+///
+/// # 为什么是这个规则（逐种情形过一遍）
+///
+/// | 情形 | 结果 | 为什么 |
+/// |---|---|---|
+/// | 本地**没有**这一行（首次同步拉下来的）| **0** | 数据来自服务端，**它已经知道** —— 推回去是纯浪费 |
+/// | 本地有，且 `pending_push = 1`（有本地改动没推上去）| **1** | 合并结果**含有本地改动** ⇒ 必须推，否则本地改动永远上不了云 |
+/// | 本地有，且 `pending_push = 0`（已与服务端一致）| **0** | 无需再推 |
+///
+/// 🔑 **关键洞察**：合并后的值是「权威值」，它**可能包含本地改动** ——
+///    所以不能一概置 0（会丢本地改动），也不能一概置 1（会把服务端已知的数据推回去）。
+///    判据恰好是「**本地原本有没有未推的改动**」——一个二元信息，无需逐字段比较
+///    （逐字段比较要正确处理 `null` / `double` / `int` vs `double`，是自找的复杂度）。
+///
+/// ⚠️ 一个**刻意接受**的边界：若本地那一行**已推但服务端后来变了**，
+///    合并结果取的是权威值，而 `pending_push = 0` ⇒ 我们不会把合并结果推回去。
+///    这是**对的**（两端都由服务端的那份驱动，本地没有「新事实」需要上云）。
+///
+/// 📌 泛化：**「需不需要同步」是「有没有本地改动」，不是「值变没变」** ——
+///    后者要比较，前者只要一个标志位（且该标志位本来就存在）。
+bool pendingPushAfterPull({
+  required bool localExisted,
+  required bool localWasPending,
+}) =>
+    localExisted && localWasPending;
 
 // ───────────────────────── 列名契约（供断言核对）─────────────────────────
 

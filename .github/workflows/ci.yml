@@ -808,13 +808,18 @@ jobs:
       #    偏偏那一层正是**安全关键**：鉴权是否做了 · 订阅校验是否做了 · 未订阅回 403 还是 401。
       #    ⇒ 本脚本就是那一层的**兜底判据**（判据：**盲区要配不依赖它的兜底**）。
       # ✅ 已证伪 5/5：PK 去 user_id · 注销漏表 · handler 不调鉴权 · 403 改 401 · 路由改名
-      - name: 云端同步（43 项 · 表结构 + 注销覆盖 + 鉴权/订阅 + 路由）
+      - name: 云端同步（53 项 · 表结构 + 注销 + 鉴权/订阅 + 路由 + 端侧接线）
         run: dart run bin/verify_sync.dart
 
       # ✅ 已证伪 8/8：字符串比较 · 例句取最新 · read_at 取新 · 取消失效 ·
       #    remove 不刷新时间戳 · 精度改回秒 · JSON 键改名 · schema 列名改
-      - name: 同步合并口径（105 项 · 字段级合并 + 时间精度 + 两份跨语言契约）
+      - name: 同步合并口径（111 项 · 字段级合并 + 时间精度 + 两份跨语言契约）
         run: dart run bin/verify_sync_merge.dart
+
+      # ✅ 已证伪 7/7：push 失败也标记 · 回声 · 丢本地改动 · 事件回声 ·
+      #    游标用当前时间 · 空批次发请求 · 测试隔离失效
+      - name: 同步编排（51 项 · 假 client + 真库：push/pull 全链行为）
+        run: dart run bin/verify_sync_service.dart
 
       # ── B 组（12 个 · 665 项 · 需 sqflite_common_ffi）──
       # ⚠️ 这些脚本自己 `createTempSync` 造库或读**已入库**的 `word.db`

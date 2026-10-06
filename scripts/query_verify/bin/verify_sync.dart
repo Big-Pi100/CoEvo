@@ -65,6 +65,13 @@ String between(String src, String a, String b) {
   return j < 0 ? src.substring(i) : src.substring(i, j);
 }
 
+void section(String title) {
+  print('');
+  print('─' * 74);
+  print(title);
+  print('─' * 74);
+}
+
 String readFile(String p) {
   final f = File(p);
   return f.existsSync() ? f.readAsStringSync() : '';
@@ -216,6 +223,76 @@ void main() {
   check('🔴 `GET /api/sync/pull` 已注册',
       routes.contains('"/api/sync/pull", get(crate::sync_handlers::sync_pull)'));
   check('lib.rs 导出 sync_handlers', lib.contains('pub mod sync_handlers;'));
+
+  // ═══════════════════════════════════════════════════════════
+  section('【⑤】端侧**接线**（widget 层 —— 本机跑不了 flutter ⇒ 只能靠源码断言守）');
+
+  // 这一节守的是「功能真的被接上了」。
+  // 🔴 本项目已多次踩「有实现、无入口」：分析器与后端测试**都发现不了**
+  //    （代码能编译、能测，只是没人调它）。
+  final appDart = stripComments(readFile('../../app/lib/app.dart'));
+  final profile = stripComments(readFile('../../app/lib/screens/profile_screen.dart'));
+  final syncProvider = stripComments(readFile('../../app/lib/providers/sync_provider.dart'));
+
+  // ── 登录 → 触发同步 ──
+  final loginHook = between(appDart,
+      "ref.listen<String?>(authProvider.select((a) => a.userId)", '});');
+  check('🔴 登录钩子里**调了** `runSyncAfterLogin`', loginHook.isNotEmpty &&
+      loginHook.contains('runSyncAfterLogin(ref)'),
+      '—— 挂在既有的「userId 变化」钩子上（一处覆盖 登录/注册/会话恢复 三条路径）');
+  check('  且**仍然**保留了原有的订阅刷新（不是替换掉）',
+      loginHook.contains('ref.fetchSubscription()'));
+
+  // ── 登出 → 先 flush ──
+  check('🔴 退出登录**前**调了 `flushBeforeLogout`',
+      profile.contains('await flushBeforeLogout(ref);'));
+  final logoutIdx = profile.indexOf('await ref.read(authProvider.notifier).logout();');
+  final flushIdx = profile.indexOf('await flushBeforeLogout(ref);');
+  check('🔴🔴 顺序正确：flush **在** logout **之前**',
+      flushIdx >= 0 && logoutIdx > flushIdx,
+      '—— 反了则「本地写了但没推」的数据要等下次登录才上去（可能永远不上）');
+  check(
+    '🔑 **注销**路径**不**调 flush（账号已删，推上去无意义）',
+    profile.indexOf('flushBeforeLogout',
+            profile.indexOf('_deleteAccount') > 0 ? profile.indexOf('_deleteAccount') : 0) <
+        0 ||
+        between(profile, '_deleteAccount', 'flushBeforeLogout').isEmpty ||
+        !between(profile, 'Future<void> _deleteAccount', '/// ').contains('flushBeforeLogout'),
+    '两条路径语义不同：登出 = 还会回来；注销 = 账号没了',
+  );
+
+  // ── provider 的关键约束 ──
+  // 🔑 用**计数**而不是 `contains` —— 「读」与「写」是两处，
+  //    只锁一处会出现「读带 userId、写不带」这种**最坏的组合**
+  //    （写进固定键、读一个永远空的带 userId 键 ⇒ 永远全量拉，且不报错）。
+  //    📌 判据：**「一处口径」的断言要用计数**，不能用「存在性」。
+  // ⚠️ 用 `split` 计数而**不用正则** —— 要匹配的字符串里含 `$`，
+  //    而正则里 `$` 是行尾锚点；转义写错会**静默匹配 0 处**
+  //    （本人踩过一次：表现为「实得 0 处」的假红，看起来像实现问题，
+  //      实际是断言自己坏了 —— 这正是「假红消耗门禁可信度」的典型）。
+  final cursorKeys =
+      syncProvider.split('kSyncCursorPrefsKeyPrefix').length - 1;
+  check('🔴 游标键**读、写两处都**带 `userId`（用计数锁，不是存在性）',
+      cursorKeys >= 2, '实得 $cursorKeys 处（应为 2：readCursor + writeCursor）');
+  check('  且**没有**残留的固定键字面量',
+      !syncProvider.contains("'coevo_sync_since'"),
+      '—— 留一处就会「写固定键、读 userId 键」⇒ 永远全量拉，且不报错');
+  check('🔴 token / userId 为空时**不构造** SyncService（未登录不同步）',
+      syncProvider.contains("if (token.isEmpty || userId.isEmpty) return null;"));
+  check('🔑 `book.db` 打不开时**降级**（不阻塞其余四类）',
+      RegExp(r'bookDb = await ref\.read\(bookDbProvider\.future\);')
+          .hasMatch(syncProvider) &&
+      syncProvider.contains('db 不可用（跳过电子书进度）'));
+  check('🔑 `device_id` 取不到时**降级为空**（只影响精确度，不影响正确性）',
+      syncProvider.contains("deviceId = ''") ||
+          syncProvider.contains('deviceId = \'\''));
+
+  // ── 登出确认文案（同步上线后原话已不完整）──
+  check(
+    '🔑 登出确认文案已更新（不再说「只保存在本机」）',
+    profile.contains('已同步到云端的数据也仍保留'),
+    '—— 同步上线后「只保存在本机」不准确；且退出**不会**删除云端那份',
+  );
 
   _report();
 }

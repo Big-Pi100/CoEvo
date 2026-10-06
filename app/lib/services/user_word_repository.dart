@@ -112,6 +112,29 @@ class UserWord {
   @override
   String toString() => 'UserWord(#$id $wordId "$spelling"'
       '${deleted ? ' · 已移出' : ''}${pendingPush ? ' · 待同步' : ''})';
+
+  /// 转成**与 `user_word` 表列名一致**的 `Map`（供同步用）。
+  ///
+  /// 🔑 为什么要有它（而不是让 `sync_service` 自己拼）：
+  ///    · 列名只在这一个类里出现 ⇒ 改名时只改一处（同 `ReviewState.toRow()` 的理由）
+  ///    · `sync_merge` 的合并函数吃 `Map<String, Object?>`（**row 形状**）⇒
+  ///      本方法是「强类型对象 → row 形状」的**唯一转换点**
+  ///
+  /// ⚠️ 时间用 `toUtc().toIso8601String()`：库里存的是毫秒精度（`%f`），
+  ///    而 Dart 的 `toIso8601String()` 对「整毫秒」也输出 3 位小数
+  ///    ⇒ **两种表示逐字相同**（断言 `verify_sync_merge.dart`【1】锁了这一点）。
+  ///
+  /// ⚠️ **不含 `pending_push`** —— 那是同步标记，由 `sync_merge`/`sync_service`
+  ///    按各自的口径决定（见 `sync_merge.pendingPushAfterPull`）。
+  Map<String, Object?> toPushRow() => {
+        'word_id': wordId,
+        'spelling': spelling,
+        'source_article_id': sourceArticleId,
+        'source_sentence': sourceSentence,
+        'added_at': addedAt.toUtc().toIso8601String(),
+        'updated_at': updatedAt.toUtc().toIso8601String(),
+        'deleted': deleted ? 1 : 0,
+      };
 }
 
 /// 一条查词记录（`lookup_event`）。

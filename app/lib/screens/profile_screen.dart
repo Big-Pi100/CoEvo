@@ -32,6 +32,7 @@ import '../widgets/co_dialog.dart';
 import '../widgets/interest_filter_section.dart';
 import '../widgets/order_history.dart';
 import '../theme/clay.dart';
+import '../providers/sync_provider.dart';
 import '../theme/co_spacing.dart';
 import '../theme/tokens_ext.dart';
 import '../theme/coevo_tokens.dart';
@@ -908,8 +909,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         ],
         child: Tw(
-          '退出后将清除本机登录状态。'
-          '你的学习记录（生词本 / 复习进度）保存在本机，不会丢失。',
+          // 🆕 2026-10-06：原文案只说「保存在本机」——
+          //    云端同步上线后它**不完整**了（同步过的数据在服务端也有一份，
+          //    且退出登录**不会**删除它）。按「声明要与配置一致」补齐。
+          '退出后将清除本机登录状态。你的学习记录仍保留在本机；'
+          '已同步到云端的数据也仍保留，重新登录后可继续同步。',
           style: TextStyle(
             fontFamily: CoFonts.uiSans,
             fontSize: 12.5,
@@ -920,6 +924,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ),
     );
     if (ok != true || !mounted) return;
+    // 🔴 **先 flush 再 logout**（设计 §4.5）—— 清凭据前把「本地写了但还没推」的
+    //    数据送上去。否则那批数据要等**下次登录**才上去，而用户可能不再登录
+    //    （或换账号 ⇒ 那批数据永久留在这台机器上）。
+    //    ⚠️ 失败**不阻止登出** —— 把用户困在账号里比丢几个待推数据更糟
+    //    （`flushBeforeLogout` 内部已把异常收敛成日志）。
+    await flushBeforeLogout(ref);
     await ref.read(authProvider.notifier).logout();
     if (mounted) context.go('/');
   }

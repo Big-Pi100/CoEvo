@@ -172,7 +172,31 @@ void main() {
     '${wm['source_sentence']}',
   );
   check('source_article_id 同「较早那端」', wm['source_article_id'] == 7);
-  check('合并结果标记待推（pending_push = 1）', wm['pending_push'] == 1);
+  // 🔴 合并函数**不产出** `pending_push` —— 那是「同步标记」不是「合并口径」。
+  //    由调用方用 `pendingPushAfterPull` 决定（见该函数的注释）。
+  check('🔴 合并结果**不含** `pending_push`（职责分开：合并 ≠ 同步标记）',
+      !wm.containsKey('pending_push'));
+
+  // ── 合并后的「要不要推」规则 ──
+  check('本地原本有未推改动 ⇒ 需要推（否则本地改动永远上不了云）',
+      M.pendingPushAfterPull(localExisted: true, localWasPending: true));
+  check('本地没有这一行（首次同步拉下来的）⇒ **不需要**推（服务端已知道）',
+      !M.pendingPushAfterPull(localExisted: false, localWasPending: false));
+  check('本地有但已推（与服务端一致）⇒ 不需要推',
+      !M.pendingPushAfterPull(localExisted: true, localWasPending: false));
+  check(
+    '⚠️ 反例守卫：**不能一概置 1**（会把服务端已知的数据推回去 = 回声）',
+    !M.pendingPushAfterPull(localExisted: false, localWasPending: false),
+    '首次同步全量拉取后若一律置 1 ⇒ 整批推回服务端',
+  );
+  check(
+    '⚠️ 反例守卫：**不能一概置 0**（会丢本地改动）',
+    M.pendingPushAfterPull(localExisted: true, localWasPending: true),
+  );
+  check(
+    '⚠️ `localExisted: false` 时与 `localWasPending` 无关（不存在的行不可能「有待推改动」）',
+    !M.pendingPushAfterPull(localExisted: false, localWasPending: true),
+  );
 
   // 反向：交换参数顺序 ⇒ 结果应**一致**（合并是对称的）
   final wmRev = M.mergeUserWord(wB, wA);
@@ -221,7 +245,7 @@ void main() {
   check('🔴 取较早（后到的较晚时间不得覆盖）', rmLater['read_at'] == tNoMs, '${rmLater['read_at']}');
   check('对称', M.mergeArticleRead(aread(42, tNoMs), aread(42, t2))['read_at'] == tNoMs);
   check('article_id 保留', rmLater['article_id'] == 42);
-  check('标记待推', rmLater['pending_push'] == 1);
+  check('不产出 `pending_push`（同【2】）', !rmLater.containsKey('pending_push'));
 
   // ═══════════════════════════════════════════════════════════
   section('【4】🔴 bookmark：整行取较新 —— 「取消必须能生效」');
@@ -407,7 +431,7 @@ void main() {
     M.mergeUserWord(uwBack, wB)['deleted'] == 1,
   );
   check(
-    '⚠️ 反序列化**不产生** `pending_push`（那由合并函数负责，职责不重叠）',
+    '⚠️ 反序列化**不产生** `pending_push`（那是同步标记，由 `sync_service` 决定）',
     !uwBack.containsKey('pending_push'),
   );
 

@@ -25,6 +25,7 @@ import 'pages/user/distribution/notification_panel.dart';
 import 'providers/auth_provider.dart';
 import 'providers/iap_provider.dart';
 import 'providers/subscription_provider.dart';
+import 'providers/sync_provider.dart';
 import 'providers/theme_provider.dart';
 import 'services/iap_plan.dart';
 import 'services/iap_service.dart';
@@ -782,6 +783,14 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
     ref.listen<String?>(authProvider.select((a) => a.userId), (prev, next) {
       if (next != null && next != prev) {
         ref.fetchSubscription();
+        // 🆕 云端同步（2026-10-06）：**刚登录 / 换账号** ⇒ 触发一次同步
+        //    （先把本地未推的改动送上去，再拉别端的 —— 见 `sync_service.syncNow`）
+        //
+        // 🔑 为什么挂在**这里**而不是改 `auth_provider`：
+        //    `AuthNotifier` 是 `StateNotifier`（**拿不到 `ref`**），
+        //    而这里是**所有登录路径**（登录弹层 / 注册 / 会话恢复）的**唯一汇聚点**
+        //    ⇒ 一处接线覆盖全部，且 `syncNow` 内部失败只记日志、不影响登录。
+        runSyncAfterLogin(ref);
       }
     });
 

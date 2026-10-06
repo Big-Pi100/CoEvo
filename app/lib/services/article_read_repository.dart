@@ -140,4 +140,44 @@ class ArticleReadRepository {
     );
     return rows.isNotEmpty;
   }
+
+  // ───────────────────────────────────────────────────────────
+  // 跨设备同步（2026-10-06 · 云端同步阶段 3）
+  // ───────────────────────────────────────────────────────────
+
+  /// 待同步的阅读记录（`pending_push = 1`），按 `read_at` 升序。
+  ///
+  /// 🔑 返回 **record** 而不是新造一个类：调用方（`sync_service`）只需要
+  /// 「有什么要推」，而这个形状（id + 时间）恰好与后端 `ArticleReadInput` 同构
+  /// ⇒ 不必为它维护一个只有两个字段的类（同 `fsrs_service.review()` 用 record 的理由）。
+  Future<List<({int articleId, String readAt})>> pending() async {
+    final rows = await _db.query(
+      'article_read',
+      columns: ['article_id', 'read_at'],
+      where: 'pending_push = 1',
+      orderBy: 'read_at ASC', // 按**发生顺序**推，便于服务端时间轴单调
+    );
+    return rows
+        .map((r) => (
+              articleId: (r['article_id'] as num).toInt(),
+              readAt: r['read_at'] as String,
+            ))
+        .toList();
+  }
+
+  /// 标记已同步（push 成功后调用）。
+  ///
+  /// ⚠️ **只在 push 真正成功后才调** —— 否则「标记了但没推上去」= 数据永久不同步
+  /// （且本地看不出来）。调用方 `sync_service` 把「成功」与「标记」绑在同一段里。
+  Future<void> markSynced(Iterable<int> articleIds) async {
+    final ids = articleIds.toList();
+    if (ids.isEmpty) return;
+    final ph = List.filled(ids.length, '?').join(',');
+    await _db.update(
+      'article_read',
+      {'pending_push': 0},
+      where: 'article_id IN ($ph)',
+      whereArgs: ids,
+    );
+  }
 }

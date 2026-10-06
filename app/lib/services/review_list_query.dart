@@ -248,11 +248,79 @@ class ReviewListQuery {
   ///
   /// ⚠️ 幂等由表自身的 `UNIQUE (word_id, reviewed_at, device_id)` 保证 →
   ///    用 `INSERT OR IGNORE`（多端拉取重复事件时天然去重）。
-  Future<void> logReview(ReviewEvent event) async {
+  ///
+  /// # 🆕 `synced` 参数（2026-10-06 · 云端同步阶段 3）
+  ///
+  /// | 来源 | 该传什么 | 为什么 |
+  /// |---|---|---|
+  /// | **本地复习**（用户刚评的） | `0`（默认） | 还没上云 ⇒ 要推 |
+  /// | **pull 拉回来的** | **`1`** | 🔴 服务端**已经知道**这些事件 ⇒ 若标 0 会被推回去（**回声**）|
+  ///
+  /// 🔑 默认值取 `0`（本地复习是最常见的调用方）+ pull 侧**显式**传 `1`
+  ///    —— 「默认安全、例外显式」比反过来好：默认 1 会让「忘了传」变成静默漏推。
+  Future<void> logReview(ReviewEvent event, {int synced = 0}) async {
     await _db.insert(
       'review_log',
-      event.toRow(),
+      {...event.toRow(), 'synced': synced},
       conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+  /// 某词的全部复习事件（**升序**），用于重放。
+  ///
+  /// 同步的「重放派生状态」需要它（`FsrsService.replay`）。
+  Future<List<ReviewEvent>> eventsOf(String wordId) async {
+    final rows = await _db.query(
+      'review_log',
+      where: 'word_id = ?',
+      whereArgs: [wordId],
+      orderBy: 'reviewed_at ASC',
+    );
+    return rows.map(ReviewEvent.fromRow).toList();
+  }
+
+  // ───────────────────────────────────────────────────────────
+  // 跨设备同步（2026-10-06 · 云端同步阶段 3）
+  // ───────────────────────────────────────────────────────────
+
+  /// 待同步的复习事件（`synced = 0`），按 `reviewed_at` 升序。
+  ///
+  /// 🔑 **为什么带 `rowId`**：`ReviewEvent` 是「事件的值」（业务概念），
+  ///    没有行号；而 `markReviewsSynced` 需要精确指向「刚推上去的那几行」。
+  ///    用 `(word_id, reviewed_at, device_id)` 三元组也能定位，但那要重复
+  ///    拼 SQL 条件且**依赖幂等键不变**；`id` 是表自增主键，更直接。
+  ///    ⇒ 用 record 把「值」与「行号」一起带出（不改 `ReviewEvent` 的形状，
+  ///      它是 FSRS 的对外类型，不该被 DB 细节污染）。
+  ///
+  /// ⚠️ `ReviewEvent.fromRow` 要求 `rating` 是**合法档位（1–4）** ——
+  ///    表上有 CHECK 约束，所以库里不会出现非法值；这里不再兜底（多一层兜底
+  ///    会让「约束失效」这种真问题被静默吞掉）。
+  Future<List<({int rowId, ReviewEvent event})>> pendingReviews() async {
+    final rows = await _db.query(
+      'review_log',
+      where: 'synced = 0',
+      orderBy: 'reviewed_at ASC',
+    );
+    return rows
+        .map((r) => (
+              rowId: (r['id'] as num).toInt(),
+              event: ReviewEvent.fromRow(r),
+            ))
+        .toList();
+  }
+
+  /// 标记已同步（push 成功后调用）。
+  ///
+  /// ⚠️ 同 `ArticleReadRepository.markSynced`：**只在 push 真正成功后调**。
+  Future<void> markReviewsSynced(Iterable<int> rowIds) async {
+    final ids = rowIds.toList();
+    if (ids.isEmpty) return;
+    final ph = List.filled(ids.length, '?').join(',');
+    await _db.update(
+      'review_log',
+      {'synced': 1},
+      where: 'id IN ($ph)',
+      whereArgs: ids,
     );
   }
 

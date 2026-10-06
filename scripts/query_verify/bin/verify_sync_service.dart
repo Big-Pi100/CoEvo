@@ -1,0 +1,645 @@
+// 「云端同步 · 编排层」验收 —— 假 client + 真 sqlite 内存库
+//
+// 跑：cd scripts/query_verify && dart run bin/verify_sync_service.dart
+// 🔴 退出码：0 = 全过，1 = 有失败（直读，别接 `| tail`）。
+//
+// # 为什么需要它
+//
+// `sync_service.dart` 是**编排层** —— 它把「HTTP / 数据库 / 合并口径」串起来。
+// 这一层的错误**几乎都是静默的**：
+//   · push 失败却标记了已同步 ⇒ 那批数据**永远上不了云**（用户看不出来）
+//   · pull 后把「服务端已知的数据」标成待推 ⇒ **回声**（每次同步都白推一遍）
+//   · pull 时把「本地未推的改动」标成已同步 ⇒ **本地改动永久丢失**
+//   · 游标用「当前时间」而非 `server_time` ⇒ 那段时间的记录**永久跳过**
+//
+// 🔑 **本脚本的验证方式**（skill `verifiable-core-logic`）：
+//    把 IO 推到边界（HTTP 与游标读写都是**注入**的），于是一台本机就能
+//    跑完整链路：**假 client**（记录收到的 body / 可切换成失败）
+//    + **真 sqlite 内存库**（读真实 schema 文件建表）。
+//    ⇒ 这不是「查文本」式的断言，是**真跑一遍看行为**。
+//
+// # 🔴 证伪方式（每次改断言都该跑一遍）
+//
+// | 改这里 | 应该变红的是 |
+// |---|---|
+// | `pushOnce` 把 `markReviewsSynced` 移到 push 之前 | 【1】push 失败不标记 |
+// | `pushOnce` 去掉「空批次直接返回」 | 【2】空批次不发请求 |
+// | `pendingPushAfterPull` 恒返回 true | 【3】不回声 |
+// | `pendingPushAfterPull` 恒返回 false | 【4】不丢本地改动 |
+// | `_applyReviewEvents` 的 `logReview(..., synced: 1)` 改成 `0` | 【6】事件不回声 |
+// | `pullOnce` 的游标改用 `DateTime.now()` | 【7】游标 = server_time |
+// | `pullOnce` 在缺 `server_time` 时仍写游标 | 【8】缺 server_time 不推进 |
+// | `_applyBookmarks` 直接用远端值（不合并） | 【9】取消能同步 |
+// | `_applyUserWords` 改成整行取新 | 【10】例句取首次 |
+//
+// # ⚠️ 口径（如实标注）
+//
+// · 用的是**真 sqlite**（`sqflite_common_ffi`）+ **真 schema 文件** ⇒ 列名/约束都真实。
+// · HTTP 是**假**的 ⇒ 本脚本**不验证** URL / header / JSON 解析
+//   （那是 `sync_client.dart` 的事，需要 Flutter + 真后端 ⇒ 端到端才验）。
+// · 本机 flutter 跑不起来 ⇒ 本脚本是**唯一**能在本地验证这层的途径。
+
+import 'dart:io';
+
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+import '../../../app/lib/services/sync_service.dart';
+import '../../../app/lib/services/sync_merge.dart' as m;
+import '../../../app/lib/services/user_db.dart';
+
+int _pass = 0;
+final _failures = <String>[];
+
+void check(String label, bool ok, [String detail = '']) {
+  if (ok) {
+    _pass++;
+    print('  ✅ $label${detail.isEmpty ? '' : '  ($detail)'}');
+  } else {
+    _failures.add('$label  $detail');
+    print('  🔴 $label${detail.isEmpty ? '' : '  ($detail)'}');
+  }
+}
+
+void section(String title) {
+  print('');
+  print('─' * 74);
+  print(title);
+  print('─' * 74);
+}
+
+/// 假 HTTP：记录收到的 body，可切换成「抛异常」（模拟网络失败）。
+class FakeHttp {
+  final pushBodies = <Map<String, dynamic>>[];
+  final pullCalls = <({String? since, String? deviceId})>[];
+  Map<String, dynamic> pullResponse = {'server_time': '2026-10-06T10:00:00.000Z'};
+  bool failPush = false;
+  bool failPull = false;
+
+  Future<Map<String, dynamic>> push(Map<String, dynamic> body) async {
+    if (failPush) throw Exception('网络不可达（假）');
+    pushBodies.add(body);
+    return {'ok': true, 'received_at': '2026-10-06T10:00:00.000Z'};
+  }
+
+  Future<Map<String, dynamic>> pull({String? since, String? deviceId}) async {
+    if (failPull) throw Exception('网络不可达（假）');
+    pullCalls.add((since: since, deviceId: deviceId));
+    return pullResponse;
+  }
+}
+
+/// 🔴🔴 **必须 `singleInstance: false`** —— 否则每个「新库」其实是同一个库。
+///
+/// `sqflite` 默认 `singleInstance: true`：**同路径**的第二次 `openDatabase`
+/// 返回的是**同一个 `Database` 对象**（本项目 `user_db_provider.dart` 头部
+/// 正是为这条约束而存在）。而内存库的路径恒为 `:memory:` ⇒ 若不关掉它，
+/// 本脚本里所有 `_openUserDb()` 都是**同一个库**：
+/// · 「新库」里还能查到上一个场景写的数据（**场景之间互相污染**）
+/// · `userDb` 与 `bookDb` 也会变成**同一个库**（跨库场景全部失真）
+/// ⇒ 断言会以「时对时错」的方式表现，极难排查。
+/// 📌 判据：**测试的每个「隔离单元」都必须真的独立** ——
+///    「看起来是新对象」不等于「状态是新的」。
+Future<Database> _openUserDb() async {
+  final db = await databaseFactoryFfi.openDatabase(
+    inMemoryDatabasePath,
+    options: OpenDatabaseOptions(singleInstance: false),
+  );
+  await executeSqlScript(
+      db, File('../../app/assets/sql/user_db_schema.sql').readAsStringSync());
+  return db;
+}
+
+Future<Database> _openBookDb() async {
+  final db = await databaseFactoryFfi.openDatabase(
+    inMemoryDatabasePath,
+    options: OpenDatabaseOptions(singleInstance: false),
+  );
+  await executeSqlScript(
+      db, File('../../app/assets/sql/book_db_schema.sql').readAsStringSync());
+  return db;
+}
+
+/// 造一个 SyncService，游标存在内存里。
+({SyncService svc, FakeHttp http, void Function(String) cursorSetter, String? Function() cursorGetter})
+    _mk(Database db, {Database? bookDb, FakeHttp? http}) {
+  final h = http ?? FakeHttp();
+  String? cursor;
+  final svc = SyncService(
+    userDb: db,
+    bookDb: bookDb,
+    pushHttp: h.push,
+    pullHttp: h.pull,
+    readCursor: () async => cursor,
+    writeCursor: (s) async => cursor = s,
+    deviceId: 'dev-test',
+  );
+  return (
+    svc: svc,
+    http: h,
+    cursorSetter: (s) => cursor = s,
+    cursorGetter: () => cursor,
+  );
+}
+
+/// 插入一条复习日志（本地产生的，`synced = 0`）。
+Future<void> _seedLocalReview(Database db, String wordId, int rating) async {
+  await db.insert('review_log', {
+    'word_id': wordId,
+    'rating': rating,
+    'reviewed_at': '2026-10-06T09:00:00.000Z',
+    'utc_day': '2026-10-06',
+    'device_id': 'dev-test',
+    'synced': 0,
+  }, conflictAlgorithm: ConflictAlgorithm.ignore);
+}
+
+Future<int> _count(Database db, String sql) async =>
+    (await db.rawQuery(sql)).first.values.first as int;
+
+void main() async {
+  sqfliteFfiInit();
+  print('');
+  print('#' * 74);
+  print('# 云端同步 · 编排层验收（假 client + 真 sqlite 内存库）');
+  print('#' * 74);
+
+  // ═══════════════════════════════════════════════════════════
+  section('【1】🔴 push 失败时**不得**标记已同步（否则数据永远上不了云）');
+  {
+    final db = await _openUserDb();
+    await _seedLocalReview(db, 'w001', 3);
+    final x = _mk(db);
+    x.http.failPush = true;
+
+    final r = await x.svc.pushOnce();
+    check('push 失败 ⇒ ok = false', !r.ok, '${r.error}');
+    check('  error 有值（不是静默失败）', (r.error ?? '').isNotEmpty);
+    check(
+      '🔴🔴 仍**保持** `synced = 0`（下次会重试）',
+      await _count(db, 'SELECT count(*) AS n FROM review_log WHERE synced = 0') == 1,
+      '—— 若这里变成 0，那批复习**永远上不了云**，且用户完全看不出来',
+    );
+
+    // 恢复网络 ⇒ 应能推上去并标记
+    x.http.failPush = false;
+    final r2 = await x.svc.pushOnce();
+    check('恢复后重试成功', r2.ok && r2.pushedReviewEvents == 1, '$r2');
+    check('  且此时才标记 `synced = 1`',
+        await _count(db, 'SELECT count(*) AS n FROM review_log WHERE synced = 1') == 1);
+    await db.close();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  section('【2】空批次**不发请求**（省一次网络往返）');
+  {
+    final db = await _openUserDb();
+    final x = _mk(db);
+    final r = await x.svc.pushOnce();
+    check('无待推数据 ⇒ 0 个请求', x.http.pushBodies.isEmpty);
+    check('  report.isEmpty = true', r.isEmpty && r.ok, '$r');
+    check(
+      '  push 仍算「成功」（不是失败）',
+      r.ok,
+      '—— 「没有东西要推」不是错误；调用方不该为此报错',
+    );
+    await db.close();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  section('【3】🔴 pull 下来的数据**不产生回声**（pending_push = 0）');
+  {
+    final db = await _openUserDb();
+    final x = _mk(db);
+    x.http.pullResponse = {
+      'review_events': [
+        {
+          'word_id': 'w100',
+          'rating': 3,
+          'duration_ms': null,
+          'reviewed_at': '2026-10-06T09:30:00.000Z',
+          'utc_day': '2026-10-06',
+          'device_id': 'dev-other',
+        }
+      ],
+      'user_words': [
+        {
+          'word_id': 'w100',
+          'spelling': 'receive',
+          'source_article_id': 7,
+          'source_sentence': 'I receive it.',
+          'added_at': '2026-10-01T00:00:00Z',
+          'updated_at': '2026-10-01T00:00:00Z',
+          'deleted': 0,
+        }
+      ],
+      'article_reads': [
+        {'article_id': 42, 'read_at': '2026-10-02T00:00:00Z'}
+      ],
+      'bookmarks': [
+        {'content_id': 5, 'bookmarked_at': '2026-10-03T00:00:00Z', 'deleted': 0}
+      ],
+      'server_time': '2026-10-06T11:00:00.000Z',
+    };
+
+    final r = await x.svc.pullOnce();
+    check('pull ok', r.ok, '${r.error}');
+    check('  计数：事件 1 词 1 读 1 藏 1',
+        r.pulledReviewEvents == 1 &&
+            r.pulledUserWords == 1 &&
+            r.pulledArticleReads == 1 &&
+            r.pulledBookmarks == 1,
+        '$r');
+
+    check(
+      '🔴🔴 `user_word.pending_push = 0`（本地原本没有 ⇒ 不必推回服务端）',
+      await _count(db,
+              'SELECT count(*) AS n FROM user_word WHERE pending_push = 0') ==
+          1,
+      '—— 若为 1，则每次 pull 后都会把服务端已知的数据整批推回去（回声）',
+    );
+    check(
+      '🔴 `article_read.pending_push = 0`',
+      await _count(db,
+              'SELECT count(*) AS n FROM article_read WHERE pending_push = 0') ==
+          1,
+    );
+    check(
+      '🔴 `bookmark.pending_push = 0`',
+      await _count(db,
+              'SELECT count(*) AS n FROM bookmark WHERE pending_push = 0') ==
+          1,
+    );
+    check(
+      '🔴🔴 `review_log.synced = 1`（服务端已知的事件不要再推回去）',
+      await _count(db, 'SELECT count(*) AS n FROM review_log WHERE synced = 1') ==
+          1,
+    );
+
+    // 紧接着 push ⇒ 应当**什么都不推**（连请求都不发）
+    final beforePush = x.http.pushBodies.length;
+    final p = await x.svc.pushOnce();
+    check('🔑🔑 紧接着 push ⇒ **0 条待推**（本地没有未推改动）',
+        p.pushedTotal == 0, '$p');
+    check(
+      '🔑 且**没有发出** push 请求 —— 回声被彻底消除',
+      x.http.pushBodies.length == beforePush,
+      'push 请求数 $beforePush → ${x.http.pushBodies.length}',
+    );
+
+    await db.close();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  section('【4】🔴 本地有未推改动时**不丢**（pending_push 保持 1）');
+  {
+    final db = await _openUserDb();
+    // 本地有一条**待推**的生词
+    await db.insert('user_word', {
+      'word_id': 'w200',
+      'spelling': 'receive',
+      'added_at': '2026-10-01T00:00:00Z',
+      'updated_at': '2026-10-01T00:00:00Z',
+      'deleted': 0,
+      'pending_push': 1,
+    });
+    final x = _mk(db);
+    x.http.pullResponse = {
+      'user_words': [
+        {
+          'word_id': 'w200',
+          'spelling': 'receive',
+          'source_article_id': null,
+          'source_sentence': null,
+          'added_at': '2026-10-01T00:00:00Z',
+          // 远端**较旧**（本地有新增改动没推上去）
+          'updated_at': '2026-10-01T00:00:00Z',
+          'deleted': 0,
+        }
+      ],
+      'server_time': '2026-10-06T11:00:00.000Z',
+    };
+    await x.svc.pullOnce();
+    check(
+      '🔴🔴 本地待推的行在 pull 后**仍是** `pending_push = 1`',
+      await _count(db,
+              'SELECT count(*) AS n FROM user_word WHERE word_id = \'w200\' AND pending_push = 1') ==
+          1,
+      '—— 若变成 0，本地那条改动就**再也推不上去**了（静默丢数据）',
+    );
+    await db.close();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  section('【5】复习事件 pull 后**重放派生状态**（card_review_state）');
+  {
+    final db = await _openUserDb();
+    final x = _mk(db);
+    x.http.pullResponse = {
+      'review_events': [
+        {
+          'word_id': 'w300',
+          'rating': 3,
+          'duration_ms': null,
+          'reviewed_at': '2026-10-06T09:30:00.000Z',
+          'utc_day': '2026-10-06',
+          'device_id': 'dev-other',
+        }
+      ],
+      'server_time': '2026-10-06T11:00:00.000Z',
+    };
+    await x.svc.pullOnce();
+
+    final state = await db.query('card_review_state',
+        where: 'word_id = ?', whereArgs: ['w300']);
+    check('🔑 重放后 `card_review_state` 出现该词', state.length == 1);
+    if (state.isNotEmpty) {
+      final row = state.first;
+      check('  `reps` = 1（重放了一次评级）',
+          (row['reps'] as num).toInt() == 1, 'reps=${row['reps']}');
+      check(
+        '🔴 `pending_push = 0` —— 派生状态**不参与同步**（推的依据是 review_log.synced）',
+        (row['pending_push'] as num).toInt() == 0,
+      );
+      check(
+        '  `spelling` 兜底为 `word_id`（此时既无生词本记录、也无本地状态）',
+        row['spelling'] == 'w300',
+        '实得 ${row['spelling']}',
+      );
+      check(
+        '  `next_review_at` 已算出（非空）',
+        (row['next_review_at'] as String).isNotEmpty,
+      );
+    }
+
+    // 有生词本记录时应取**真拼写**
+    final db2 = await _openUserDb();
+    await db2.insert('user_word', {
+      'word_id': 'w300',
+      'spelling': 'receive',
+      'added_at': '2026-10-01T00:00:00Z',
+      'updated_at': '2026-10-01T00:00:00Z',
+      'deleted': 0,
+      'pending_push': 0,
+    });
+    final x2 = _mk(db2);
+    x2.http.pullResponse = x.http.pullResponse;
+    await x2.svc.pullOnce();
+    final st2 = await db2.query('card_review_state',
+        columns: ['spelling'], where: 'word_id = ?', whereArgs: ['w300']);
+    check('🔑 生词本里有该词时，`spelling` 取**真拼写**（不是 word_id）',
+        st2.isNotEmpty && st2.first['spelling'] == 'receive',
+        '实得 ${st2.isEmpty ? '(无行)' : st2.first['spelling']}');
+    await db.close();
+    await db2.close();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  section('【6】游标：用 `server_time`，且缺它就**不推进**');
+  {
+    final db = await _openUserDb();
+    final x = _mk(db);
+    await x.svc.pullOnce();
+    check(
+      '🔑 游标 = 服务端返回的 `server_time`（不是当前时间）',
+      x.cursorGetter() == '2026-10-06T10:00:00.000Z',
+      '实得 ${x.cursorGetter()}',
+    );
+
+    // 第二次 pull ⇒ since 应带上上次的游标
+    await x.svc.pullOnce();
+    check('第二次 pull 带上了 `since`',
+        x.http.pullCalls.length == 2 && x.http.pullCalls[1].since == '2026-10-06T10:00:00.000Z',
+        '${x.http.pullCalls.map((c) => c.since).toList()}');
+    check('  且 `device_id` 一直带着（服务端据此排除本设备的数据）',
+        x.http.pullCalls.every((c) => c.deviceId == 'dev-test'));
+
+    // 缺 server_time
+    final db2 = await _openUserDb();
+    final y = _mk(db2);
+    y.cursorSetter('2026-01-01T00:00:00.000Z');
+    y.http.pullResponse = {'review_events': []}; // 无 server_time
+    final r = await y.svc.pullOnce();
+    check('🔴 缺 `server_time` ⇒ ok = false（如实报错）', !r.ok, '${r.error}');
+    check(
+      '🔴🔴 且游标**未推进**（宁可下次重复拉，也不能跳过一个未知区间）',
+      y.cursorGetter() == '2026-01-01T00:00:00.000Z',
+      '实得 ${y.cursorGetter()}',
+    );
+    await db.close();
+    await db2.close();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  section('【7】push 的 body 形状（键名与后端契约一致）');
+  {
+    final db = await _openUserDb();
+    await _seedLocalReview(db, 'w400', 4);
+    await db.insert('bookmark', {
+      'content_id': 9,
+      'bookmarked_at': '2026-10-05T00:00:00Z',
+      'deleted': 1, // 已取消 ⇒ 必须带出去
+      'pending_push': 1,
+    });
+    final x = _mk(db);
+    await x.svc.pushOnce();
+
+    check('发了 1 个 push 请求', x.http.pushBodies.length == 1);
+    final body = x.http.pushBodies.first;
+    check('顶层键集合正确',
+        body.keys.toSet().toString() ==
+            {
+              'device_id',
+              'review_events',
+              'user_words',
+              'article_reads',
+              'bookmarks',
+              'book_progress'
+            }.toString(),
+        '${body.keys.toList()}');
+    check('顶层 `device_id` = 本机', body['device_id'] == 'dev-test');
+    final ev = (body['review_events'] as List).first as Map;
+    check('`review_events[0]` 键集合 = 后端 `ReviewEventInput`',
+        ev.keys.toSet().toString() ==
+            {'word_id', 'rating', 'duration_ms', 'reviewed_at'}.toString(),
+        '${ev.keys.toList()}');
+    check('  rating 是**数值**（不是枚举名）', ev['rating'] == 4, '${ev['rating']}');
+    check('  reviewed_at 是 ISO8601（带 Z）',
+        (ev['reviewed_at'] as String).endsWith('Z'), '${ev['reviewed_at']}');
+    final bm = (body['bookmarks'] as List).first as Map;
+    check('🔴 `bookmarks[0].deleted = 1`（取消要能推出去）', bm['deleted'] == 1);
+    check('`bookmarks[0]` 键集合 = 后端 `BookmarkInput`',
+        bm.keys.toSet().toString() ==
+            {'content_id', 'bookmarked_at', 'deleted'}.toString(),
+        '${bm.keys.toList()}');
+    await db.close();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  section('【8】`flushBeforeLogout` = 只 push（登出前别丢东西）');
+  {
+    final db = await _openUserDb();
+    await _seedLocalReview(db, 'w500', 3);
+    final x = _mk(db);
+    final r = await x.svc.flushBeforeLogout();
+    check('推送了待推数据', r.ok && r.pushedReviewEvents == 1, '$r');
+    check('🔑 **没有**发 pull 请求（登出前的最后一件事是「别丢东西」）',
+        x.http.pullCalls.isEmpty, 'pull 调用数 = ${x.http.pullCalls.length}');
+    await db.close();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  section('【9】`syncNow` = 先 push 后 pull，且失败互不阻塞');
+  {
+    final db = await _openUserDb();
+    await _seedLocalReview(db, 'w600', 3);
+    final x = _mk(db);
+    x.http.pullResponse = {'server_time': '2026-10-06T12:00:00.000Z'};
+    final r = await x.svc.syncNow();
+    check('两者都执行：push 1 条', r.pushedReviewEvents == 1, '$r');
+    check('  pull 带上了 since = null（首次）',
+        x.http.pullCalls.length == 1 && x.http.pullCalls.first.since == null,
+        'since=${x.http.pullCalls.firstOrNull?.since}');
+
+    // push 失败但仍要 pull（能拿到别端数据，对用户有价值）
+    final db2 = await _openUserDb();
+    await _seedLocalReview(db2, 'w601', 3);
+    final y = _mk(db2);
+    y.http.failPush = true;
+    y.http.pullResponse = {'server_time': '2026-10-06T13:00:00.000Z'};
+    final r2 = await y.svc.syncNow();
+    check('push 失败 ⇒ ok = false', !r2.ok, '${r2.error}');
+    check('🔑 但 **pull 仍执行了**（半个同步比没有好）',
+        y.http.pullCalls.length == 1);
+    check('  游标仍推进了（pull 成功）',
+        y.cursorGetter() == '2026-10-06T13:00:00.000Z');
+    await db.close();
+    await db2.close();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  section('【10】电子书进度：写**待认领表**（本地还没这本书时不丢进度）');
+  {
+    final userDb = await _openUserDb();
+    final bookDb = await _openBookDb();
+    final x = _mk(userDb, bookDb: bookDb);
+    x.http.pullResponse = {
+      'book_progress': [
+        {
+          'content_hash': 'hash-abc',
+          'chapter_idx': 9,
+          'scroll_ratio': 0.8,
+          'updated_at': '2026-10-06T09:00:00Z',
+        }
+      ],
+      'server_time': '2026-10-06T11:00:00.000Z',
+    };
+    final r = await x.svc.pullOnce();
+    check('pull 到 1 条电子书进度', r.pulledBookProgress == 1, '$r');
+    final pend = await bookDb.query('book_progress_pending');
+    check('🔑 写进 `book_progress_pending`（**不需要**本地已有这本书 ⇒ 无 FK 问题）',
+        pend.length == 1 && pend.first['content_hash'] == 'hash-abc');
+    if (pend.isNotEmpty) {
+      check('  chapter_idx / scroll_ratio 保真',
+          pend.first['chapter_idx'] == 9 && pend.first['scroll_ratio'] == 0.8);
+    }
+
+    // 较旧的远端进度**不得**回退本地
+    x.http.pullResponse = {
+      'book_progress': [
+        {
+          'content_hash': 'hash-abc',
+          'chapter_idx': 1,
+          'scroll_ratio': 0.1,
+          'updated_at': '2026-10-01T00:00:00Z',
+        }
+      ],
+      'server_time': '2026-10-06T12:00:00.000Z',
+    };
+    final r2 = await x.svc.pullOnce();
+    check('🔴 较旧的进度不回退（不覆盖较新的）', r2.pulledBookProgress == 0);
+    final pend2 = await bookDb.query('book_progress_pending');
+    check('  仍是第 9 章',
+        pend2.first['chapter_idx'] == 9, '实得 ${pend2.first['chapter_idx']}');
+
+    // book.db 缺失 ⇒ 其余四类照常
+    final userDb2 = await _openUserDb();
+    final z = _mk(userDb2 /* 无 bookDb */);
+    z.http.pullResponse = {
+      'book_progress': [
+        {
+          'content_hash': 'hash-x',
+          'chapter_idx': 1,
+          'scroll_ratio': 0.5,
+          'updated_at': '2026-10-06T09:00:00Z',
+        }
+      ],
+      'article_reads': [
+        {'article_id': 7, 'read_at': '2026-10-02T00:00:00Z'}
+      ],
+      'server_time': '2026-10-06T11:00:00.000Z',
+    };
+    final r3 = await z.svc.pullOnce();
+    check('🔑 无 `book.db` 时**不报错**且其余四类照常（库不可用不阻塞其它功能）',
+        r3.ok && r3.pulledArticleReads == 1 && r3.pulledBookProgress == 0, '$r3');
+
+    await userDb.close();
+    await userDb2.close();
+    await bookDb.close();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  section('【11】契约交叉验证：body 键名 == `kPushJsonContract`');
+  {
+    final db = await _openUserDb();
+    await db.insert('user_word', {
+      'word_id': 'w700',
+      'spelling': 'receive',
+      'source_article_id': 3,
+      'source_sentence': 'Keep it.',
+      'added_at': '2026-10-01T00:00:00Z',
+      'updated_at': '2026-10-02T00:00:00Z',
+      'deleted': 0,
+      'pending_push': 1,
+    });
+    await db.insert('article_read', {
+      'article_id': 11,
+      'read_at': '2026-10-02T00:00:00Z',
+      'pending_push': 1,
+    });
+    final x = _mk(db);
+    await x.svc.pushOnce();
+    final body = x.http.pushBodies.first;
+
+    // 用契约表核对（而不是手写期望 —— 契约表本身另有断言核对后端源码）
+    void cmp(String key, String contractKey) {
+      final actual = (body[key] as List).first as Map;
+      final want = m.kPushJsonContract[contractKey]!;
+      check('`$key[0]` 的键 == 契约 `$contractKey`',
+          actual.keys.toSet().toString() == want.toSet().toString(),
+          '实得 ${actual.keys.toList()} vs 期望 $want');
+    }
+
+    cmp('user_words', 'user_word');
+    cmp('article_reads', 'article_read');
+    await db.close();
+  }
+
+  print('');
+  print('═' * 74);
+  if (_failures.isEmpty) {
+    print('✅ 全部通过：$_pass 项');
+  } else {
+    print('🔴 失败 ${_failures.length} 项 / 通过 $_pass 项：');
+    for (final f in _failures) {
+      print('    · $f');
+    }
+    print('');
+    print('🔑 最可能的原因（这一层几乎都是**静默**错误）：');
+    print('   · push 失败却标记了已同步 ⇒ 那批数据永远上不了云');
+    print('   · pull 后把服务端已知的数据标成待推 ⇒ 回声（每次同步都白推）');
+    print('   · pull 时把本地未推改动标成已同步 ⇒ 本地改动永久丢失');
+    print('   · 游标用当前时间而非 server_time ⇒ 那段时间的记录永久跳过');
+  }
+  print('═' * 74);
+  if (_failures.isNotEmpty) exitCode = 1;
+}
