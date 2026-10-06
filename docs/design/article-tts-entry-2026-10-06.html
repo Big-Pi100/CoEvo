@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>文章朗读 · 入口位置设计稿（2026-10-06）</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   CoEvo · 「文章朗读」入口位置 设计稿
+
+   由来：信息流的文章朗读**未接线**（`reader_screen` 零 TTS 命中），
+        而技术上**全部就绪**（`speakLong` 分段+队列 · 语言自动检测 · 免费）。
+
+   ✅ 已先做完的部分（本机可验证）：`services/speech_text.dart` ——
+      Markdown → **能听的纯文本**（92 项断言，含真实 NPR 样本）。
+      🔴 不做这一步会念出 `### [Law](https://www.npr.org/...)` 里的**整条 URL**。
+
+   ⚠️ 本稿只解决**入口放哪 + 什么形态**（UI 决策需白哥定）。
+
+   依据（逐条抄自项目文件，不凭记忆）：
+     · design-system-spec §5.1「阅读器底部：**无**（保持单纯）」← 关键约束
+     · 既有设计语言：**其他页面的 title 按钮都是靠右的**（白哥 2026-10-05 定的）
+     · `reader_screen.dart` 的 `_ReaderBar`：返回 ‹ / category / **收藏**（已在右侧）
+     · `book_reader_screen.dart` 的朗读按钮：`isSpeaking(text)` → `stop()` / `speakLong()`
+     · `tts_service._detectLanguage`：CJK → zh-CN，否则 **en-US** ⇒ 英文文章自动正确
+   ══════════════════════════════════════════════════════════════════════ */
+
+:root{
+  --serif:'Literata',Georgia,serif;
+  --ui:'Inter',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+  --round:'Quicksand','Inter',sans-serif;
+  --mono:ui-monospace,'SFMono-Regular',Menlo,monospace;
+}
+.theme-ink{
+  --page:#F1EDE4; --read:#FAF8F4; --card:#FFFFFF;
+  --ink:#24211C; --ink2:#6E6659; --ink3:#9A917F;
+  --accent:#B4432C; --accent-ink:#FFFFFF;
+  --line:#EFE9DE; --sunken:#EDE6DA;
+  --cl-out:rgba(150,125,95,.24); --cl-shade:rgba(186,166,138,.55); --cl-light:rgba(255,255,255,1);
+  --stage:#E4E0D8; --stage-ink:#29251F; --stage-sub:#6E6659;
+}
+.theme-night{
+  --page:#0F1116; --read:#14161C; --card:#1B1E25;
+  --ink:#E8E4DC; --ink2:#A8A296; --ink3:#6E6A61;
+  --accent:#D4654A; --accent-ink:#14161C;
+  --line:#262A31; --sunken:#1E2128;
+  --cl-out:rgba(255,255,255,.10); --cl-shade:rgba(0,0,0,.55); --cl-light:rgba(255,255,255,.05);
+  --stage:#1A1D24; --stage-ink:#E8E4DC; --stage-sub:#A8A296;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;padding:34px 22px 60px;background:var(--stage);color:var(--stage-ink);
+  font-family:var(--ui);font-size:14px;line-height:1.65;
+}
+.wrap{max-width:1120px;margin:0 auto}
+h1{font-family:var(--serif);font-size:25px;margin:0 0 6px}
+.sub{color:var(--stage-sub);font-size:13px;margin-bottom:26px}
+h2{font-family:var(--serif);font-size:17px;margin:34px 0 4px;padding-bottom:7px;
+   border-bottom:1px solid var(--cl-out)}
+h2 .n{display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;
+      border-radius:7px;background:var(--accent);color:var(--accent-ink);
+      font-family:var(--ui);font-size:12px;font-weight:700;margin-right:8px;vertical-align:1px}
+.sect-note{color:var(--stage-sub);font-size:12.5px;margin:8px 0 18px}
+table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13px}
+th,td{border:1px solid var(--cl-out);padding:8px 10px;text-align:left;vertical-align:top}
+th{background:rgba(150,125,95,.10);font-weight:600;font-size:12.5px}
+td.ok{color:#1E7A46;font-weight:600}
+td.no{color:#B4432C;font-weight:600}
+td.mid{color:#9A6B12}
+.warn{border-left:4px solid var(--accent);background:rgba(180,67,44,.07);
+      padding:12px 15px;border-radius:0 10px 10px 0;margin:16px 0;font-size:13px}
+.tip{border-left:4px solid #4A7BA7;background:rgba(74,123,167,.08);
+     padding:12px 15px;border-radius:0 10px 10px 0;margin:16px 0;font-size:13px}
+code{font-family:var(--mono);font-size:12px;background:rgba(150,125,95,.14);
+     padding:1.5px 5px;border-radius:4px}
+
+/* ── 手机框 ── */
+.row{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.slot{flex:1;min-width:290px;max-width:340px}
+.slot-cap{font-size:12.5px;font-weight:700;margin-bottom:9px;display:flex;align-items:center;gap:7px}
+.verdict{font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;font-family:var(--ui)}
+.v-good{background:rgba(30,122,70,.15);color:#1E7A46}
+.v-alt{background:rgba(154,107,18,.16);color:#9A6B12}
+.v-no{background:rgba(180,67,44,.14);color:#B4432C}
+
+.phone{
+  width:100%;border-radius:26px;overflow:hidden;
+  border:1px solid var(--cl-out);box-shadow:0 10px 26px rgba(0,0,0,.13);
+  background:var(--read);
+}
+.statusbar{display:flex;justify-content:space-between;padding:7px 15px;
+  font-size:10.5px;color:var(--ink3);background:var(--read);font-family:var(--mono)}
+.bar{display:flex;align-items:center;gap:9px;padding:11px 15px 9px;
+     border-bottom:1px solid var(--line)}
+.bar .back{font-size:18px;line-height:1;color:var(--ink2)}
+.bar .cat{font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;
+          text-transform:uppercase;color:var(--ink3);flex:1;
+          overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.icon-btn{width:27px;height:27px;border-radius:9px;display:grid;place-items:center;
+          font-size:14px;color:var(--ink2)}
+.icon-btn.on{color:var(--accent);background:rgba(180,67,44,.10)}
+.body{padding:15px 17px 22px;font-family:var(--serif);font-size:13.5px;line-height:1.75;color:var(--ink)}
+.body p{margin:0 0 11px}
+.body .h{font-family:var(--serif);font-size:15px;font-weight:700;margin:4px 0 10px}
+.nav-bar{display:flex;align-items:center;justify-content:space-between;
+         padding:11px 17px;border-top:1px solid var(--line);font-size:12px;color:var(--ink2)}
+.nav-bar .mid{font-size:16px;color:var(--accent)}
+.slot-note{font-size:12px;color:var(--stage-sub);margin-top:9px;line-height:1.6}
+.slot-note b{color:var(--stage-ink)}
+
+/* 悬浮方案示意 */
+.floating{position:relative}
+.float-pill{position:absolute;right:17px;bottom:58px;display:flex;gap:6px;
+  background:var(--card);border:1px solid var(--cl-out);border-radius:20px;
+  padding:6px 12px;font-size:12px;color:var(--ink2);box-shadow:0 4px 14px rgba(0,0,0,.10)}
+.occlude{position:relative;background:rgba(180,67,44,.10);border-radius:4px}
+.occlude::after{content:'被挡住';position:absolute;right:3px;top:-15px;font-size:9px;
+  color:var(--accent);font-family:var(--ui)}
+
+/* 状态对照 */
+.states{display:flex;gap:18px;flex-wrap:wrap;margin:14px 0}
+.state-box{border:1px solid var(--cl-out);border-radius:12px;padding:12px 15px;
+  background:var(--card);min-width:190px}
+.state-box .cap{font-size:11.5px;color:var(--stage-sub);margin-bottom:8px}
+.mini-bar{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink2)}
+.mini-bar .sp{width:26px;height:26px;border-radius:9px;display:grid;place-items:center;font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>文章朗读 · 入口位置设计稿</h1>
+<div class="sub">2026-10-06 · 信息流阅读器（`reader_screen`）· 三档主题跟随 · 待白哥定入口</div>
+
+<div class="tip">
+  <b>📌 本稿的前提：文字预处理已完成（本机可验证）</b><br>
+  <code>services/speech_text.dart</code> —— 把 Markdown 正文转成<b>能听的纯文本</b>
+  （92 项断言 · 含真实 NPR 正文样本）。<br>
+  <b>为什么必须先做</b>：正文是 Markdown <b>原文</b>（书库章节是纯文本），
+  直接朗读会念出 <code>### [Law](https://www.npr.org/sections/law/)</code> 里的
+  <b>整条 URL</b> —— 实测生产库里这种行很常见。
+</div>
+
+<!-- ══════════════════════════════════════════════════ -->
+<h2><span class="n">一</span>入口位置：三个方案</h2>
+<p class="sect-note">
+  <b>硬约束</b>（抄自 spec §5.1）：阅读器<b>底部无操作栏</b>（「保持单纯」）—— 这一条直接决定了方案 B 的代价。
+</p>
+
+<div class="row">
+
+  <!-- 方案 A -->
+  <div class="slot">
+    <div class="slot-cap"><i></i>方案 A · 顶栏右侧（收藏左边） <span class="verdict v-good">✅ 推荐</span></div>
+    <div class="phone theme-ink">
+      <div class="statusbar"><span>9:41</span><span>●●● ▮</span></div>
+      <div class="bar">
+        <span class="back">‹</span>
+        <span class="cat">LAW</span>
+        <span class="icon-btn on">◉</span>
+        <span class="icon-btn">🔖</span>
+      </div>
+      <div class="body">
+        <div class="h">Supreme Court case centers on battle over liability</div>
+        <p>The Supreme Court heard its first argument of the new term: a case about how much power local governments have to recover the costs…</p>
+        <p>Local governments argue that the costs of responding to climate change effects should be borne by the companies…</p>
+      </div>
+    </div>
+    <div class="slot-note">
+      <b>为什么推荐</b>：与既有设计语言一致 —— 播放键是<b>又一个 title 按钮</b>，排在<b>收藏左边</b>（收藏仍最右，白哥 2026-10-05 定的规则不变）。<br>
+      <b>图标</b>：空闲 <code>play_circle_outline</code> ／ 播放中 <code>stop_circle_outlined</code> + 朱砂色（与书库同一套图标与状态判据 <code>isSpeaking()</code>）。<br>
+      <b>代价</b>：顶栏多一个 27×27 的按钮；标题（category）可用宽度少 36px —— 已实测 category 是<b>省略号截断</b>的，不换行，无风险。
+    </div>
+  </div>
+
+  <!-- 方案 B -->
+  <div class="slot">
+    <div class="slot-cap"><i></i>方案 B · 底部栏（照书库） <span class="verdict v-alt">⚠️ 有代价</span></div>
+    <div class="phone theme-ink">
+      <div class="statusbar"><span>9:41</span><span>●●● ▮</span></div>
+      <div class="bar">
+        <span class="back">‹</span>
+        <span class="cat">LAW</span>
+        <span class="icon-btn">🔖</span>
+      </div>
+      <div class="body">
+        <div class="h">Supreme Court case centers on battle over liability</div>
+        <p>The Supreme Court heard its first argument of the new term: a case about how much power local governments have to recover the costs…</p>
+        <p>Local governments argue that the costs of responding to climate change effects should be borne by the companies…</p>
+      </div>
+      <div class="nav-bar"><span style="opacity:.35">（文章无上下章）</span><span class="mid">▶</span><span style="opacity:.35">（空）</span></div>
+    </div>
+    <div class="slot-note">
+      <b>为什么不推荐</b>：书库那条栏是「上一章 / 朗读 / 下一章」—— <b>三格都被用满</b>；
+      文章没有章节概念 ⇒ 只剩中间一个键，两侧空着，视觉上「为 1 个按钮加了一条栏」。<br>
+      并且<b>违反 spec §5.1</b>（阅读器底部无栏）—— 那是为「阅读时不分心」定的。
+    </div>
+  </div>
+
+  <!-- 方案 C -->
+  <div class="slot">
+    <div class="slot-cap"><i></i>方案 C · 正文内悬浮 <span class="verdict v-no">不建议</span></div>
+    <div class="phone theme-ink floating">
+      <div class="statusbar"><span>9:41</span><span>●●● ▮</span></div>
+      <div class="bar">
+        <span class="back">‹</span>
+        <span class="cat">LAW</span>
+        <span class="icon-btn">🔖</span>
+      </div>
+      <div class="body">
+        <div class="h">Supreme Court case centers on battle over liability</div>
+        <p>The Supreme Court heard its first argument of the new term: a case about how much power local governments have to recover the costs…</p>
+        <p class="occlude">Local governments argue that the costs of responding to climate change effects should be borne…</p>
+      </div>
+      <div class="float-pill">🔊 朗读全文</div>
+    </div>
+    <div class="slot-note">
+      <b>为什么不行</b>：悬浮件会<b>永久遮住正文</b>（图里红底那行就是被挡住的文字）。
+      阅读器的核心是「读」，任何遮挡正文的常驻元素都会招致抱怨。<br>
+      （若做成「滚动时淡出」则需要滚动监听 + 淡入淡出，复杂度与收益不成比例。）
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════ -->
+<h2><span class="n">二</span>状态与行为（三档主题 · 同 `theme-ink` 规则）</h2>
+<p class="sect-note">与书库朗读<b>完全同一套判据</b>（<code>isSpeaking(文本)</code> 决定图标），只是入口位置不同。</p>
+
+<div class="states">
+  <div class="state-box">
+    <div class="cap">① 空闲</div>
+    <div class="mini-bar theme-ink"><span class="sp">▶</span><span style="color:var(--ink2)">朗读</span></div>
+  </div>
+  <div class="state-box">
+    <div class="cap">② 播放中（图标变停止 + 朱砂）</div>
+    <div class="mini-bar theme-ink"><span class="sp" style="color:var(--accent);background:rgba(180,67,44,.10)">◉</span><span style="color:var(--accent)">停止</span></div>
+  </div>
+  <div class="state-box theme-night">
+    <div class="cap">③ 夜档（同一套语义）</div>
+    <div class="mini-bar"><span class="sp" style="color:var(--accent)">◉</span><span style="color:var(--ink2)">停止</span></div>
+  </div>
+</div>
+
+<table>
+  <tr><th style="width:26%">行为</th><th>怎么做</th><th style="width:34%">为什么</th></tr>
+  <tr>
+    <td><b>点击</b></td>
+    <td>空闲 → 读全文；播放中 → <b>停止</b></td>
+    <td>与书库一致：长文本的语义是「读完」而不是「再点一次切歌」（`speakLong` 的注释已写明）</td>
+  </tr>
+  <tr>
+    <td><b>读什么</b></td>
+    <td><code>speechTextFromMarkdown(body)</code> 的结果</td>
+    <td>🔴 不剥就会念出 URL / `###` / `**`。已有 92 项断言守住</td>
+  </tr>
+  <tr>
+    <td><b>语言</b></td>
+    <td>自动（英文文章 → <code>en-US</code>）</td>
+    <td><code>_detectLanguage</code> 已实现（CJK 判 zh-CN）—— <b>零改动</b></td>
+  </tr>
+  <tr>
+    <td><b>离开页面</b></td>
+    <td><b>停止朗读</b>（`dispose` 里 `stop()`）</td>
+    <td>书库已有先例；否则退出后声音还在播，用户找不到在哪关</td>
+  </tr>
+  <tr>
+    <td><b>收费</b></td>
+    <td class="ok"><b>免费</b></td>
+    <td>项目已定：订阅卖的是<b>云端同步</b>；朗读与词卡朗读是同一个能力，收费显得抠</td>
+  </tr>
+</table>
+
+<!-- ══════════════════════════════════════════════════ -->
+<h2><span class="n">三</span>一期<b>不做</b>的事（如实列出，避免以为是漏了）</h2>
+
+<table>
+  <tr><th style="width:30%">不做</th><th>理由</th></tr>
+  <tr>
+    <td><b>不高亮「当前朗读到哪一句」</b></td>
+    <td>需要「按段回调 + 自动滚动跟随」，而多段拼接后<b>文本位置与段落的对应关系不可靠</b>
+        （TTS 不返回逐字位置）。<b>书库也没做</b> ⇒ 保持一致性。
+        ⚠️ 若将来要做，正解是「逐段朗读 + 高亮该段」，但那要自管队列（`speakLong` 的队列是一次性的）。</td>
+  </tr>
+  <tr>
+    <td><b>不做语速/音色选择（本文档内）</b></td>
+    <td>设置页已有全局 TTS 设置（`ttsEnabledProvider` / 语速）⇒ 复用，不新增本页控件。</td>
+  </tr>
+  <tr>
+    <td><b>不处理「时间格式粘连」</b></td>
+    <td>实测正文里有 <code>October 5, 20265:31 PM ET</code>（日期与时间粘在一起）——
+        那是<b>内容源侧</b>（NPR 的 HTML 结构）的问题，不该在朗读层"修"。</td>
+  </tr>
+</table>
+
+<!-- ══════════════════════════════════════════════════ -->
+<h2><span class="n">四</span>⚠️ 一个<b>附带发现</b>（需白哥定是否一并处理）</h2>
+
+<div class="warn">
+  <b>🔴 <code>tts_service._cleanText</code> 已存在，但它漏了 URL —— 书库朗读也有这个缺口</b><br><br>
+  现有实现（<code>tts_service.dart:544</code>）：
+  <div style="font-family:var(--mono);font-size:11.5px;background:rgba(150,125,95,.12);
+              padding:9px 11px;border-radius:7px;margin:9px 0;white-space:pre-wrap">text
+  .replaceAll('**', '')
+  .replaceAll('### ', '').replaceAll('## ', '').replaceAll('# ', '')
+  .replaceAll('\(', '').replaceAll('\)', '')
+  .replaceAll('\[', '').replaceAll('\]', '')   ← 只去「转义的」方括号
+  .replaceAll(RegExp(r'&lt;graph&gt;.*?&lt;/graph&gt;', dotAll: true), '')</div>
+  它去掉的是 <code>\[</code>（<b>转义的</b>方括号），而 <code>[Law](https://…)</code> 里是
+  <b>普通</b>方括号 ⇒ <b>完全不受影响</b> ⇒ <b>URL 会被逐字念出来</b>。
+  <br><br>
+  <b>我的建议（未实施）</b>：让 <code>_cleanText</code> <b>委托</b>给
+  <code>speechTextFromMarkdown</code>（一处权威），只保留 TTS 特有的 <code>&lt;graph&gt;</code> 清理。<br>
+  <b>⚠️ 为什么先请示</b>：<code>_cleanText</code> 被 <b>词卡朗读 + 书库整章朗读共用</b>
+  ⇒ 改它 = <b>影响现有功能</b> ⇒ 需要白哥同意 + 真机验证（书库章节是端侧数据，本机无样本）。
+</div>
+
+<h2><span class="n">五</span>待白哥定</h2>
+<table>
+  <tr><th style="width:8%">#</th><th>问题</th><th style="width:32%">我的建议</th></tr>
+  <tr>
+    <td><b>①</b></td>
+    <td><b>入口位置</b>：A 顶栏右侧 / B 底部栏 / C 悬浮？</td>
+    <td class="ok"><b>A</b> —— 与「title 按钮靠右」一致，且不违反 spec §5.1</td>
+  </tr>
+  <tr>
+    <td><b>②</b></td>
+    <td><b>形态</b>：纯图标 还是 图标 + 文字（「朗读」）？</td>
+    <td class="ok"><b>纯图标</b> —— 顶栏已有返回/category/收藏，加文字会挤</td>
+  </tr>
+  <tr>
+    <td><b>③</b></td>
+    <td>是否<b>一并</b>把 <code>_cleanText</code> 委托出去（顺带修书库的 URL 缺口）？</td>
+    <td class="ok">建议<b>一并做</b>（一处权威），但这要你真机验一次书库朗读 —— 因为它影响现有功能</td>
+  </tr>
+  <tr>
+    <td><b>④</b></td>
+    <td>朗读可否<b>跨页继续</b>（退出文章后继续读）？</td>
+    <td class="ok">❌ <b>不跨页</b> —— 退出即停（书库先例；跨页会让「在哪关」变成谜）</td>
+  </tr>
+</table>
+
+</div>
+</body>
+</html>
