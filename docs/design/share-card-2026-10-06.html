@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CoEvo · 学习记录分享图 · 设计稿 2026-10-06</title>
+<style>
+  :root{
+    /* ── 来自 app/lib/theme/coevo_tokens.dart（真实值，不是近似）── */
+    --ink-mo:#24211C; --ink2-mo:#6E6659; --ink3-mo:#988F7C; --page-mo:#F1EDE4; --card-mo:#FFFFFF;
+    --accent:#B4432C; --accent-bright:#C4533A;
+    --ink-ge:#0A0A0A; --ink2-ge:#5A5A5A; --page-ge:#EDEEF0;
+    --ink-ye:#EDEBE6; --ink2-ye:#9AA0AE; --page-ye:#0B0D12; --card-ye:#1C1F27; --accent-ye:#DB7E6B;
+    /* 页面自身 */
+    --bg:#FAF9F7; --fg:#24211C; --fg2:#6E6659; --line:#E5E0D6; --ok:#2F7D4F; --warn:#B4432C;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:36px 28px 72px;background:var(--bg);color:var(--fg);
+       font-family:system-ui,-apple-system,"Noto Sans SC","PingFang SC",sans-serif;
+       line-height:1.65;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:24px;margin:0 0 6px;letter-spacing:-.01em}
+  .sub{color:var(--fg2);font-size:13px;margin-bottom:26px}
+  h2{font-size:16px;margin:38px 0 12px;padding-bottom:7px;border-bottom:2px solid var(--line)}
+  h2 .n{display:inline-block;min-width:22px;height:22px;line-height:22px;text-align:center;
+        background:var(--accent);color:#fff;border-radius:6px;font-size:12px;margin-right:9px;
+        vertical-align:1px}
+  p,li{font-size:13.5px}
+  code{font-family:var(--mono);font-size:12px;background:#EFEBE3;padding:1px 5px;border-radius:4px}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;margin:10px 0}
+  th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+  th{background:#F3F0E9;font-weight:600}
+  .note{background:#FFF8E6;border-left:3px solid #D9A227;padding:11px 14px;border-radius:0 6px 6px 0;
+        font-size:13px;margin:14px 0}
+  .ok{color:var(--ok);font-weight:600}
+  .warn{color:var(--warn);font-weight:600}
+
+  /* ── 分享图预览区 ── */
+  .gallery{display:flex;gap:30px;flex-wrap:wrap;align-items:flex-start;margin:18px 0 8px}
+  .slot{flex:0 0 auto}
+  .slot-cap{font-size:12.5px;font-weight:600;margin-bottom:9px;color:var(--fg)}
+  .slot-cap span{font-weight:400;color:var(--fg2);font-size:11.5px;display:block;margin-top:2px}
+
+  /* 分享图本体：真实比例 3:4（导出 1080×1440，这里按 1/3.34 缩放 = 324×432） */
+  .card{width:324px;height:432px;border-radius:14px;position:relative;overflow:hidden;
+        display:flex;flex-direction:column;padding:34px 30px 26px;
+        box-shadow:0 6px 22px rgba(0,0,0,.13)}
+  .card .brand-top{font-size:11px;letter-spacing:.22em;font-weight:600;opacity:.62}
+  .card .grow{flex:1;display:flex;flex-direction:column;justify-content:center}
+  .card .big{display:flex;align-items:baseline;gap:6px;line-height:1}
+  .card .big .num{font-family:Literata,Georgia,serif;font-size:76px;font-weight:600;letter-spacing:-.02em}
+  .card .big .unit{font-size:19px;font-weight:600;opacity:.85}
+  .card .lbl{font-size:13px;margin-top:9px;letter-spacing:.06em;opacity:.8}
+  .card .rows{margin-top:26px;display:flex;gap:26px}
+  .card .rows .it .v{font-family:Literata,Georgia,serif;font-size:24px;font-weight:600;line-height:1.1}
+  .card .rows .it .k{font-size:11.5px;opacity:.7;margin-top:3px}
+  .card .foot{display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+  .card .foot .mark{font-size:15px;font-weight:700;letter-spacing:.04em}
+  .card .foot .tag{font-size:10.5px;opacity:.62;text-align:right;line-height:1.45}
+  .card .hair{position:absolute;left:30px;right:30px;height:1px;opacity:.28}
+
+  /* 深色版：accent 底 + accentInk(白) */
+  .c-dark{background:var(--accent);color:#fff}
+  /* 浅色版：page 底 + ink 字 */
+  .c-light{background:var(--page-mo);color:var(--ink-mo)}
+  .c-light .big .num{color:var(--accent)}
+  .c-light .hair{background:var(--ink-mo)}
+  /* 夜档版：夜 page 底 + 亮朱砂 */
+  .c-night{background:var(--page-ye);color:var(--ink-ye)}
+  .c-night .big .num{color:var(--accent-ye)}
+  .c-night .hair{background:var(--ink-ye)}
+
+  .scale-note{font-size:11.5px;color:var(--fg2);margin-top:9px}
+  ul{padding-left:20px}
+  .kv{font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>学习记录分享图 · 设计稿</h1>
+  <div class="sub">2026-10-06 · 入口：`stats_card`（「我的」页顶部统计卡）· 依据 `english-app-implementation-plan-v2` §5.7.3</div>
+
+  <h2><span class="n">一</span>规格依据（原文，不是我的转述）</h2>
+  <table>
+    <tr><th style="width:22%">项</th><th>规格原文</th></tr>
+    <tr><td><b>形态</b></td><td>「竖版 <b>3:4</b>（适配小红书/朋友圈），<b>深色/浅色双版本</b>，右下角小 logo（<b>不加二维码</b>）」</td></tr>
+    <tr><td><b>为什么不加二维码</b></td><td>「小红书/微信对图片中的二维码会判定为<b>站外引流</b>，<b>限流甚至封号</b>。用户为了不被限流反而不会发 → 不如<b>只放品牌名，让用户主动搜索</b>」</td></tr>
+    <tr><td><b>内容</b></td><td>「<b>只展示用户自己的数据</b>，不含他人内容」</td></tr>
+    <tr><td><b>技术实现</b></td><td>「Flutter 端侧渲染 · <code>RepaintBoundary + toImage</code> → 生成 PNG → 系统分享（<code>share_plus</code>）」</td></tr>
+    <tr><td><b>内容类型</b>（§5.7.3 表）</td><td>连续学习（7/30/100/365 天）· 词汇里程碑（100/500/1000/3000 词）· 月度报告 · 单篇成果 · 年度总结</td></tr>
+  </table>
+
+  <div class="note">
+    <b>本次建议范围</b>：先做 <b>1 个模板</b>（「学习记录」= 连续天数 + 掌握词数 + 阅读篇数，正好是 <code>stats_card</code> 已有的数据）+
+    <b>1 个里程碑变体</b>（连续 100 天这类，换个主视觉）。其余 4 类（月度/单篇/年度）等这版验证后再排。
+    <br><b>理由</b>：数据现成、无需新接口；而月度/年度报告要「按时间聚合」的新查询。
+  </div>
+
+  <h2><span class="n">二</span>预览（真实比例 3:4 · 导出尺寸 1080×1440）</h2>
+  <div class="gallery">
+
+    <!-- ① 深色版 -->
+    <div class="slot">
+      <div class="slot-cap">① 深色版 <span>朱砂底 <code>#B4432C</code> + 白字</span></div>
+      <div class="card c-dark">
+        <div class="brand-top">COEVO</div>
+        <div class="grow">
+          <div class="big"><span class="num">47</span><span class="unit">天</span></div>
+          <div class="lbl">连续学习</div>
+          <div class="rows">
+            <div class="it"><div class="v">1,203</div><div class="k">已掌握词</div></div>
+            <div class="it"><div class="v">86</div><div class="k">读完文章</div></div>
+          </div>
+        </div>
+        <div class="foot">
+          <div class="mark">CoEvo</div>
+          <div class="tag">读英文新闻<br>学真正在用的词</div>
+        </div>
+      </div>
+      <div class="scale-note">主视觉 = 连续天数（最大）</div>
+    </div>
+
+    <!-- ② 浅色版 -->
+    <div class="slot">
+      <div class="slot-cap">② 浅色版 <span>页面底 <code>#F1EDE4</code> + 墨字 · 数字用朱砂</span></div>
+      <div class="card c-light">
+        <div class="brand-top">COEVO</div>
+        <div class="grow">
+          <div class="big"><span class="num">47</span><span class="unit">天</span></div>
+          <div class="lbl">连续学习</div>
+          <div class="rows">
+            <div class="it"><div class="v">1,203</div><div class="k">已掌握词</div></div>
+            <div class="it"><div class="v">86</div><div class="k">读完文章</div></div>
+          </div>
+        </div>
+        <div class="foot">
+          <div class="mark">CoEvo</div>
+          <div class="tag">读英文新闻<br>学真正在用的词</div>
+        </div>
+      </div>
+      <div class="scale-note">同一份数据，另一种底色</div>
+    </div>
+
+    <!-- ③ 夜档版 -->
+    <div class="slot">
+      <div class="slot-cap">③ 夜档版 <span>夜底 <code>#0B0D12</code> + 亮朱砂 <code>#DB7E6B</code></span></div>
+      <div class="card c-night">
+        <div class="brand-top">COEVO</div>
+        <div class="grow">
+          <div class="big"><span class="num">47</span><span class="unit">天</span></div>
+          <div class="lbl">连续学习</div>
+          <div class="rows">
+            <div class="it"><div class="v">1,203</div><div class="k">已掌握词</div></div>
+            <div class="it"><div class="v">86</div><div class="k">读完文章</div></div>
+          </div>
+        </div>
+        <div class="foot">
+          <div class="mark">CoEvo</div>
+          <div class="tag">读英文新闻<br>学真正在用的词</div>
+        </div>
+      </div>
+      <div class="scale-note">三档主题各有对应底色</div>
+    </div>
+
+    <!-- ④ 里程碑版 -->
+    <div class="slot">
+      <div class="slot-cap">④ 里程碑变体 <span>主视觉换成成就，数字更大</span></div>
+      <div class="card c-dark">
+        <div class="brand-top">COEVO</div>
+        <div class="grow" style="justify-content:center">
+          <div style="font-size:12px;letter-spacing:.14em;opacity:.8;margin-bottom:10px">里程碑达成</div>
+          <div class="big"><span class="num" style="font-size:88px">100</span><span class="unit" style="font-size:22px">天</span></div>
+          <div class="lbl" style="font-size:14px;opacity:.92;margin-top:11px">连续学习不间断</div>
+          <div style="margin-top:22px;font-size:12.5px;opacity:.75;line-height:1.6">
+            从第 1 天到今天<br>一共读了 86 篇文章
+          </div>
+        </div>
+        <div class="foot">
+          <div class="mark">CoEvo</div>
+          <div class="tag">读英文新闻<br>学真正在用的词</div>
+        </div>
+      </div>
+      <div class="scale-note">触发时机：7 / 30 / 100 / 365 天</div>
+    </div>
+
+  </div>
+
+  <h2><span class="n">三</span>实现标注（供接线用）</h2>
+  <table>
+    <tr><th style="width:26%">项</th><th>值</th></tr>
+    <tr><td>导出尺寸</td><td><code>1080 × 1440</code>（3:4）· 渲染时用 <code>RepaintBoundary</code> + <code>pixelRatio: 3.0</code>（逻辑 360×480）</td></tr>
+    <tr><td>安全边距</td><td>四边 <b>30pt</b>（= 1080 下的 90px）—— 社交平台会裁边，内容不贴边</td></tr>
+    <tr><td>字体</td><td>数字 = <code>Literata</code>（项目 <code>CoFonts.latinSerif</code>）· 中文 = <code>Noto Sans SC</code>（<code>CoFonts.cjk</code>）</td></tr>
+    <tr><td>字号（按 360pt 逻辑宽）</td><td>主数字 <b>76pt</b> · 单位 19pt · 标签 13pt · 副数据 24pt · 品牌名 15pt</td></tr>
+    <tr><td>底色来源</td><td>全部取自 <code>coevo_tokens.dart</code> 三档 token ⇒ <b>跟随用户当前主题</b>（不新造色）</td></tr>
+    <tr><td>文件名</td><td><code>coevo_stats_&lt;yyyyMMdd&gt;.png</code>（传给 <code>exportPngBytes(fileName:)</code>）</td></tr>
+    <tr><td>分享文案</td><td>「我在 CoEvo 连续学了 47 天 🔥」+ 图片（<b>无 URL · 无二维码</b>）</td></tr>
+    <tr><td class="warn">接线点</td><td><code>stats_card.dart::_share()</code> —— 现在是<b>纯文字</b>分享（<code>Share.share(buf)</code>），要改成「渲染 → <code>exportPngBytes</code>」</td></tr>
+    <tr><td class="warn">同时移除</td><td><code>_share()</code> 里的 <code>?ref=$referralCode</code>（<b>K12 分销残留</b>；新设计不带推广链接）</td></tr>
+  </table>
+
+  <h2><span class="n">四</span>请白哥定（4 项）</h2>
+  <table>
+    <tr><th style="width:5%">#</th><th style="width:34%">问题</th><th>我的建议</th></tr>
+    <tr>
+      <td><b>①</b></td>
+      <td><b>底色</b>：三档都做（跟随主题），还是固定一版？</td>
+      <td class="ok">三档都做 —— token 现成，成本几乎为零；且用户在不同主题下截图风格一致</td>
+    </tr>
+    <tr>
+      <td><b>②</b></td>
+      <td><b>范围</b>：先做「学习记录」1 版，还是连里程碑版一起？</td>
+      <td class="ok">一起做 —— 里程碑版只是换个主视觉，同一套渲染代码；且它是「获客闭环」里最容易被转发的（数字更有冲击）</td>
+    </tr>
+    <tr>
+      <td><b>③</b></td>
+      <td><b>文案 slogan</b>：「读英文新闻 / 学真正在用的词」可以吗？</td>
+      <td class="ok">可用，或您给一句更好的（我不编造品牌文案）</td>
+    </tr>
+    <tr>
+      <td><b>④</b></td>
+      <td><b>入口</b>：<code>stats_card</code> 那个「分享我的学习记录」按钮，点击后直接生成图分享？还是弹个预览让用户先看？</td>
+      <td class="ok"><b>先弹预览</b> —— 图是给别人看的，用户该先看到再决定发不发（且预览页可顺带放"保存到相册"）</td>
+    </tr>
+  </table>
+
+  <div class="note">
+    <b>另外提一句</b>：这一批会同时<b>移除</b> <code>_share()</code> 里的推广链接（<code>?ref=</code>）。
+    那是 K12 分销时代的残留，而新设计明确「不加二维码、只放品牌名」⇒ 两者语义冲突，不能并存。
+    <br>⚠️ 但<b>后端的 <code>/api/referral/*</code> 与 <code>register</code> 的 <code>referral</code> 参数仍在</b>（只清端侧调用不改后端）——
+    后端死路由的清理属<b>批次④</b>（涉及删除，要单独批准）。
+  </div>
+
+</div>
+</body>
+</html>
