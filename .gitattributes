@@ -12,3 +12,21 @@
 #   ⚠️ **只作用于本目录** —— 仓库其它 `*.md` 当前是 `i/lf w/crlf`（既有状态），
 #      不写全仓库级 `* text=auto` 以免触发一次性大规模重写。
 .workbuddy/memory/** text eol=lf
+
+# ── 归档区（2026-10-06 加）──────────────────────────────────────
+#
+# 🔴 **归档 = 不可变的历史快照** ⇒ 必须保证「**将来取回时与归档时逐字节一致**」。
+#
+# 为什么必须 pin（与上面 memory 那条**同源**，都是 `core.autocrlf=true` 造成的）：
+#   · 默认行为 = 「入库 CRLF→LF、**checkout 时 LF→CRLF**」
+#   · 归档的文件是 **LF**（实测：`docs/archive/app_admin/lib/main.dart` 342 B 全 LF）
+#   · ⇒ 不 pin 的话，**下一次 `git checkout`/`reset` 会把它们改成 CRLF**
+#     ⇒ 与归档时留下的 `sha256` 清单**对不上**（且 `git diff` 会显示「整个文件都改了」）
+#   · pin `eol=lf` 后：入库 LF、checkout LF ⇒ **三者（原件/仓库/工作区）字节级一致** ✅
+#
+# ⚠️ 与 `.workbuddy/memory/**` 的区别：那边是「**工具依赖**行尾」（`wc -c` 字节预算、
+#    逐行锚点比对）；这边是「**归档内容不可变**」（要能对 sha256）。
+#    理由不同，但**根因同为 autocrlf**，所以都写在同一份文件里。
+#
+# 🔑 判据：**凡「内容要与外部记录（哈希清单）对得上」的目录，都必须 pin 行尾。**
+docs/archive/** text eol=lf
