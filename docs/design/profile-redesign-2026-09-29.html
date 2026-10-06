@@ -450,7 +450,7 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
   <div class="scard fixed">
     <h3>✅ 已定（白哥 2026-09-29 · 全部决策）</h3>
     <ul>
-      <li><b>朗读设置</b>：留「我的」，<b>等阅读面板做好再搬</b>（面板本体尚未实现）</li>
+      <li><b>朗读设置</b>：<s>留「我的」，等阅读面板做好再搬</s> → ✅ <b>2026-10-06 已搬</b>（阅读设置面板已存在；白哥定「搬」）</li>
       <li><b>主题风格</b>：留「我的」（它是<b>全局</b>主题，不只阅读）</li>
       <li><b>成就 / 统计</b>：顶部只放统计 + 分享（三列），成就列表留 <code>/achievements</code></li>
       <li><b>阅读篇数</b>：口径 = <b>乙「读完的文章数」</b>（滚到底 + 最短停留）· <code>article_id</code> 去重</li>
@@ -1148,7 +1148,9 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
     <tr>
       <td><b>朗读设置</b></td>
       <td>§6.3 定「移到阅读界面内」，但<b>阅读设置面板尚未实现</b>（<code>reader_screen.dart:59</code> 注释明说「独立一批，不在骨架内」）</td>
-      <td><b>留在「我的」页</b> —— <b>等阅读面板做好再搬</b>。本次只清理，不搬家。<br>
+      <td><s><b>留在「我的」页</b> —— <b>等阅读面板做好再搬</b>。本次只清理，不搬家。</s><br>
+          ✅ <b>2026-10-06 更新：已搬进阅读设置面板</b>（语速 + 音色 + 试听）。
+          前置条件（面板本体）已完成 —— 见 <code>docs/review/full-inventory-plan-vs-implementation-2026-10-06.md</code> §七。<br>
           <span style="font-size:11.5px;color:var(--ink3)">🔑 面板没做之前，这里是<b>唯一</b>入口 —— 搬走 = 用户没地方调</span></td>
     </tr>
     <tr>
@@ -1275,7 +1277,8 @@ footer{color:#7E7869;font-size:12.5px;line-height:1.8;padding:30px 0 0;
 <section class="sec">
   <h2>📖 阅读面板还有什么要做的（回答白哥提问）</h2>
   <p class="lead">
-    <code>reader_screen.dart</code> 实测 <b>663 行</b>。结论：<b>面板本体还没做</b> —— 所以现在把朗读设置搬过去会「没地方可搬」。
+    <code>reader_screen.dart</code> 实测 <b>663 行</b>（2026-09-29 时点）。结论：<s><b>面板本体还没做</b> —— 所以现在把朗读设置搬过去会「没地方可搬」。</s>
+    <br>✅ <b>2026-10-06 更新：面板本体已实现</b>（<code>widgets/reading_settings_panel.dart</code>），朗读设置已搬入 ⇒ 本条前提**已满足**。
   </p>
   <table>
     <tr><th style="width:40px">#</th><th style="width:210px">项</th><th>现状</th></tr>
