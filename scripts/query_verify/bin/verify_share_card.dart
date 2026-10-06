@@ -232,14 +232,29 @@ void main() {
   check('  toByteData 指定 PNG 格式',
       prevCode.contains('ImageByteFormat.png'));
 
-  // 🔴 顺序断言：`Transform` 必须在 `RepaintBoundary` **外层**。
-  //    反了的话，toImage 截的是「已被缩放的」内容 ⇒ 导出尺寸随屏幕变化（同一份数据出不同大小的图）。
-  //    ⚠️ 这里是**嵌套结构**（不是求值顺序）⇒ 文本位置能反映嵌套层次。
-  final idxTransform = prevCode.indexOf('Transform.scale(');
-  final idxBoundary = prevCode.indexOf('RepaintBoundary(');
-  check('  🔴 Transform 在 RepaintBoundary **之前**（外层）',
-      idxTransform >= 0 && idxBoundary >= 0 && idxTransform < idxBoundary,
-      'transform@$idxTransform boundary@$idxBoundary');
+  // 🔴🔴 缩放必须用 `FittedBox`，**不能**用 `Transform.scale`（2026-10-06 真机踩过）
+  //
+  // 为什么：`Transform` **不改变布局约束** —— 它把父给的 `tight(360*scale, …)`
+  // 原样传给 child ⇒ 里面 `SizedBox(360,480)` 被**压成** `360*scale`
+  // ⇒ `RepaintBoundary.size` 变小 ⇒ `toImage` 出的图**随屏幕变化**
+  //    （正好废掉「导出尺寸恒定」这个保证，而**当时没有任何断言能发现**）。
+  // ✅ `FittedBox` 给 child 无界约束 ⇒ child 按 360×480 布局，再缩放显示 ✓
+  check('  🔴 用 FittedBox 缩放（不是 Transform.scale）',
+      prevCode.contains('FittedBox('), '缺 FittedBox');
+  check('  🔴 **不得**出现 Transform.scale（会把卡片压小 ⇒ 导出尺寸随屏幕变）',
+      !prevCode.contains('Transform.scale'), '用了 Transform.scale');
+
+  // 🔴 `ByteData` 来自 `dart:typed_data`（**不是** `dart:ui`）
+  //    2026-10-06 真机编译报 `'ByteData' isn't a type`（本机跑不了 flutter ⇒ 只在真机暴露）
+  //
+  // ⚠️ **两条都必须用 `prevCode`（剥了注释的）** ——
+  //    因为本文件对应的**注释里就写着**「不得写 `ui.ByteData`」这句话，
+  //    用原文查会**假红**（断言把"说明文字"当成了"代码"）。
+  //    第一版就是这么错的，被自己的注释绊倒。
+  check('  🔴 导入了 dart:typed_data（ByteData 的来源）',
+      prevCode.contains("import 'dart:typed_data';"), '缺 dart:typed_data');
+  check('  🔴 **不得**写 ui.ByteData（不存在 ⇒ 编译报 `isn\'t a type`）',
+      !prevCode.contains('ui.ByteData'), '写了 ui.ByteData');
 
   // ══════════════════════════════════════════════════════════
   section('【9】源级：share_card 用 token（不另写一套色）');

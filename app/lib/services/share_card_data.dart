@@ -177,8 +177,13 @@ String shareFileName(DateTime now) {
 /// 分享图必须**导出固定尺寸**（[kShareCardWidth] × [kShareCardPixelRatio] ⇒ 1080 宽）。
 /// 若为了适配小屏而**改小卡片的逻辑尺寸**，那不同手机导出的图**尺寸就不同**
 /// （同一份数据在小屏上出的图更小）—— 不可接受。
-/// ⇒ 卡片**始终按 [kShareCardWidth] 渲染**，只在**预览时**用 `Transform.scale` 缩小显示。
-///    `toImage` 取的是 widget 自身的逻辑尺寸，**不受外层 Transform 影响**。
+/// ⇒ 卡片**始终按 [kShareCardWidth] 渲染**，只在**预览时**缩放显示。
+///
+/// ⚠️ 缩放那个 widget **必须是 `FittedBox`，不能是 `Transform.scale`**：
+///    `Transform` 不改布局约束 ⇒ 父 `SizedBox(360*scale)` 会把卡片**压小** ⇒
+///    `RepaintBoundary.size` 跟着变小 ⇒ **导出尺寸随屏幕变化**（正好废掉上面的保证）。
+///    `FittedBox` 给 child 无界约束 ⇒ child 按 360×480 布局，再缩放显示 ✓
+///    （见 `widgets/share_card_preview.dart` 的同款说明。）
 ///
 /// 【参数】[screenW] / [screenH] = `MediaQuery.of(context).size`
 ///

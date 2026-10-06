@@ -7,12 +7,21 @@
 // · **失败出口**（渲染/分享失败时把原因**显示出来**，不是静默 —— 本项目大忌「静默失败 + 无出口」）
 //
 // # 🔴 渲染管线的两个关键点
-// 1. **卡片尺寸恒定**：`RepaintBoundary` 内始终是 `kShareCardWidth × kShareCardHeight`，
-//    外层的 `Transform.scale` **只影响显示** ⇒ 不同手机导出的图**尺寸一致**（1080×1440）。
-//    ⚠️ 顺序不能反（`RepaintBoundary` 必须在 `Transform` **里面**）。
+// 1. **卡片尺寸恒定**：`RepaintBoundary` 内**始终**是 `kShareCardWidth × kShareCardHeight`
+//    （`FittedBox` 给 child 无界约束 ⇒ child 按自己尺寸布局，再由 FittedBox 缩放显示）。
+//    ⇒ 不同手机导出的图**尺寸一致**（1080×1440）。
+//    ⚠️ **不能用 `Transform.scale` 代替 `FittedBox`**（2026-10-06 实测踩过）：
+//       `Transform` **不改布局约束** ⇒ 父 `SizedBox(360*scale)` 会把卡片**压小** ⇒
+//       `RepaintBoundary.size` 变成 `360*scale` ⇒ **导出尺寸随屏幕变化**。
+//       （同族先例：`reading_tab_screen.dart:161` / `subscribe_screen.dart:376` 用 `FittedBox`。）
 // 2. **导出走 `exportPngBytes`**（`utils/image_export.dart`）—— 它内部是
 //    「写临时文件 → `share_plus` 唤起系统面板」，这是**原生平台唯一可行**的路径
 //    （`XFile.fromData` 在 iOS/Android 没有真实路径，会失败）。
+//
+// # 🔴 `ByteData` 的 import（一次真机编译才暴露的错）
+// `Image.toByteData()` 返回 `Future<ByteData?>`，而 **`ByteData` 来自 `dart:typed_data`**，
+// 不在 `dart:ui` —— 写成 `ui.ByteData` 会报 **`'ByteData' isn't a type`**。
+// （本机跑不了 flutter ⇒ 这类错只在真机构建时暴露。）
 //
 // # 🔴 与旧实现的关系（2026-10-06）
 // 旧 `stats_card._share()` 是「**纯文字** + `?ref=<推荐码>` 链接」。本次改为：
@@ -22,6 +31,7 @@
 //
 // 设计稿：`docs/design/share-card-2026-10-06.html`
 
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -102,13 +112,30 @@ class _ShareCardPreviewState extends State<_ShareCardPreview> {
             const SizedBox(height: CoSpacing.md),
 
             // ── 卡片预览（缩放显示 · 渲染尺寸恒定）──
+            //
+            // 🔴 这里必须用 `FittedBox` 而**不是** `Transform.scale`（2026-10-06 实测踩过）
+            //
+            // 原因：`Transform.scale` **不改变布局约束** —— 它把父给的
+            // `tight(360*scale, 480*scale)` **原样传给 child** ⇒ 里面 `SizedBox(360,480)`
+            // 会被**压成** `360*scale × 480*scale`（`RenderConstrainedBox` 会
+            // `enforce(parentConstraints)`）⇒ 于是：
+            //   · 卡片**渲染成小尺寸**（不是"渲染大再缩小"）
+            //   · `RepaintBoundary.size` = `360*scale × 480*scale`
+            //   · ⇒ `toImage(pixelRatio: 3)` **随屏幕变化**
+            //      ← 正是本文件想防的那件事，而且**断言查不出**（这是运行时的约束行为）
+            //
+            // ✅ `FittedBox` 会给 child **无界约束** ⇒ child 按**自己的 360×480** 布局，
+            //    再由 FittedBox 缩放到父约束 ⇒ `RepaintBoundary.size` **恒为 360×480**
+            //    ⇒ 导出恒为 **1080×1440**。
+            //    ⚠️ 前提：FittedBox 的**父约束必须有界**（这里是外层 `SizedBox` ✓）——
+            //       无界时 FittedBox 会报错。
+            // 📌 先例：`reading_tab_screen.dart:161` / `subscribe_screen.dart:376` 同用 `FittedBox`。
             Center(
               child: SizedBox(
                 width: kShareCardWidth * scale,
                 height: kShareCardHeight * scale,
-                child: Transform.scale(
-                  scale: scale,
-                  alignment: Alignment.topLeft,
+                child: FittedBox(
+                  fit: BoxFit.contain,
                   child: RepaintBoundary(
                     key: _cardKey,
                     child: ShareCard(
@@ -202,7 +229,11 @@ class _ShareCardPreviewState extends State<_ShareCardPreview> {
 
       final ui.Image image =
           await boundary.toImage(pixelRatio: kShareCardPixelRatio);
-      final ui.ByteData? bytes =
+      // ⚠️ `ByteData` 来自 **`dart:typed_data`**（不是 `dart:ui`）——
+      //    `Image.toByteData()` 的签名是 `Future<ByteData?>`（**裸类型**）。
+      //    🔴 2026-10-06 实测踩过：写成 `ui.ByteData` ⇒ **编译期报
+      //    `'ByteData' isn't a type`**（本机跑不了 flutter，只在真机构建时暴露）
+      final ByteData? bytes =
           await image.toByteData(format: ui.ImageByteFormat.png);
       image.dispose(); // 及时释放（图片内存不小）
 
