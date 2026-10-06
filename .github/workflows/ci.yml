@@ -895,6 +895,22 @@ jobs:
         working-directory: scripts/query_verify
         run: dart run bin/verify_reading_settings.dart
 
+      # 🔴 分享图是**对外触点**（用户会发到小红书/朋友圈）⇒ 两类错误的代价特别高：
+      #    · **对外泄露** —— 图上带上用户 id / 邮箱 / 推荐码
+      #    · **违规引流** —— 图上带二维码、或分享文案带链接
+      #      （规格 §5.7.3 原文：「小红书/微信对图片中的二维码会判定为站外引流，
+      #        限流甚至封号」）⇒ 这两类**各设了独立断言**，而不是只验「功能能跑」。
+      # ✅ 为什么能进 A 组：`share_card_data.dart` 是**零 import** 的纯逻辑 ⇒ 不需要 Flutter。
+      # ⚠️ **渲染效果仍需真机确认** —— 本脚本验不了「图长什么样」。
+      # ✅ **已证伪 10/10**（注入真实回归 ⇒ 全部 exit=1）：
+      #    `milestoneReached` 用 `>=` · `shareText` 加回 `?ref=` 链接 · 千分位失效 ·
+      #    `fromMetrics` 恒判常规版 · 缩放去掉下限 · `stats_card` 接线断 ·
+      #    加回 `referralCode` · `Transform` 改名 · 硬编码 hex ·
+      #    `profile_screen` 加回 `/api/referral/my-code`。
+      - name: 学习记录分享图（84 项 · 里程碑判定 + 文案无 URL + 渲染管线 + K12 残留清理）
+        working-directory: scripts/query_verify
+        run: dart run bin/verify_share_card.dart
+
       # ── B 组（12 个 · 665 项 · 需 sqflite_common_ffi）──
       # ⚠️ 这些脚本自己 `createTempSync` 造库或读**已入库**的 `word.db`
       #    ⇒ 与仓库状态无关，可重复跑。

@@ -26,20 +26,27 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../providers/achievement_provider.dart';
 import '../services/achievement_rules.dart';
 import '../services/achievement_service.dart';
+import '../services/share_card_data.dart';
 import '../theme/co_spacing.dart';
+import 'share_card_preview.dart';
 
 /// 「我的」页顶部的统计卡：**三列数字 + 分享**。
 ///
-/// [referralCode]：用于分享文案里带上推荐链接（可为 null —— 未登录/未拉到时纯文字分享）。
+/// # 🆕 分享形态（2026-10-06）
+/// 点「分享我的学习记录」→ 弹**分享图预览**（3:4 PNG → 系统分享面板）。
+///
+/// 🔴 旧实现是「**纯文字** + `?ref=<推荐码>` 链接」，本次改掉：
+/// · 换成图片（用上此前 **0 调用方**的 `utils/image_export.dart::exportPngBytes`）
+/// · **移除 `?ref=`** —— 规格 §5.7.3 明说「不加二维码…不如只放品牌名，让用户主动搜索」，
+///   带推广链接同样会被社交平台判为营销
+///
+/// 详见 `widgets/share_card_preview.dart` 与设计稿 `docs/design/share-card-2026-10-06.html`。
 class StatsCard extends ConsumerWidget {
-  final String? referralCode;
-
-  const StatsCard({super.key, this.referralCode});
+  const StatsCard({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -72,7 +79,7 @@ class StatsCard extends ConsumerWidget {
           detail: '$e',
         ),
         // ③ 正常
-        data: (snap) => _Content(snapshot: snap, referralCode: referralCode),
+        data: (snap) => _Content(snapshot: snap),
       ),
     );
   }
@@ -116,9 +123,8 @@ class _Fallback extends StatelessWidget {
 /// 正常态内容。
 class _Content extends StatelessWidget {
   final AchievementSnapshot snapshot;
-  final String? referralCode;
 
-  const _Content({required this.snapshot, this.referralCode});
+  const _Content({required this.snapshot});
 
   @override
   Widget build(BuildContext context) {
@@ -187,32 +193,25 @@ class _Content extends StatelessWidget {
     );
   }
 
-  /// 分享文案。
+  /// 打开**分享图预览**（3:4 学习记录图 → 系统分享面板）。
   ///
-  /// 🔑 只分享**统计数字**（连续天数 / 掌握 / 阅读篇数）——
-  /// 不分享生词内容（那是用户的阅读数据，不该外泄）。
-  /// ⚠️ 若 [referralCode] 为空 → 不带链接（**不编造** URL）。
+  /// 🔑 只上图**统计数字**（连续天数 / 掌握词数 / 阅读篇数）——
+  /// 用户 id / 邮箱 / 推荐码**一律不上图**（规格：「只展示用户自己的数据」，
+  /// 而那三样一旦上图就是**对外泄露**）。
+  ///
+  /// 🔴 与旧实现的两点不同（2026-10-06）：
+  /// · **出图**（不再只发文字）—— 用上此前 0 调用方的 `exportPngBytes`
+  /// · **不带 `?ref=` 推广链接**（规格 §5.7.3：「只放品牌名，让用户主动搜索」；
+  ///   带链接同样会被社交平台判为营销 ⇒ 与产品意图冲突）
   Future<void> _share(BuildContext context) async {
     final metrics = snapshot.metrics;
-    final streak = (metrics[AchievementMetrics.streakDays] ?? 0).toInt();
-    final mature = (metrics[AchievementMetrics.matureCards] ?? 0).toInt();
-    final read = (metrics[AchievementMetrics.articlesRead] ?? 0).toInt();
-
-    final buf = StringBuffer()
-      ..writeln('我在 CoEvo 的学习记录：')
-      ..writeln('🔥 连续学习 $streak 天')
-      ..writeln('📚 已掌握 $mature 词 · 读完 $read 篇文章');
-    if (referralCode != null && referralCode!.isNotEmpty) {
-      buf.writeln();
-      buf.write('一起来读英文新闻：https://keyievolution.fun/?ref=$referralCode');
-    }
-
-    try {
-      await Share.share(buf.toString());
-    } catch (e) {
-      // 分享失败（用户取消不算错，但真异常要留痕且不崩）
-      debugPrint('[stats] share 失败: $e');
-    }
+    // 🔑 里程碑版由 `fromMetrics` **自动判定**（恰好 7/30/100/365 天 ⇒ 换主视觉）
+    final data = ShareCardData.fromMetrics(
+      streakDays: (metrics[AchievementMetrics.streakDays] ?? 0).toInt(),
+      matureCards: (metrics[AchievementMetrics.matureCards] ?? 0).toInt(),
+      articlesRead: (metrics[AchievementMetrics.articlesRead] ?? 0).toInt(),
+    );
+    await showShareCardPreview(context, data: data);
   }
 }
 

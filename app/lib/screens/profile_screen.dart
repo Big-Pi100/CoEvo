@@ -63,14 +63,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   // ── 🗑 2026-09-29 删除的状态（「我的」页重设计 · 白哥定）──
   // · `_hasShownClaimDialog` / `_realName` / `_phone` —— trial 认领与实名（已定不做）
-  // · `_referralCode` / `_qrKey` / `_referralStats` / `_statsLoading` —— 分销（`ui-ux` §4.2 定「删分销」）
+  // · `_qrKey` / `_referralStats` / `_statsLoading` —— 分销账本（`ui-ux` §4.2 定「删分销」）
   // 🔑 只删「显示层」是不够的：名字/字段留着会被后来的人当成「还需要的功能」加回来
   //    （判据：「删掉一个功能后，要清理它的语义残留」）。
   //
-  // ⚠️ 但**分享入口**保留 → `StatsCard` 仍需要推荐码来拼分享链接
-  //    → `_referralCode` **保留**，且 `_loadReferralCode` 也保留（只取码，不取推广统计）。
-  //    🔑 区分：**推荐码 = 分享链接的身份**（要留）；**推广统计/收益/提现 = 分销账本**（已删）。
-  String? _referralCode;
+  // 🆕 2026-10-06：**`_referralCode` 也删了**（连带 `_loadReferralCode` 与
+  //    `GET /api/referral/my-code` 的调用）。
+  //    当初留它的理由只有一条：「`StatsCard` 分享时要拼 `?ref=<码>`」——
+  //    而新分享形态（3:4 分享图）按规格 §5.7.3「**只放品牌名 · 不加二维码/链接**」
+  //    ⇒ 推荐码**失去唯一用途**；留着它等于继续拖着一个 K12 分销端点的调用。
+  //    📌 判据：**「当初为什么留」的理由消失时，要回来删掉它** ——
+  //       否则残留会**自我延续**（后人看到字段还在，就以为这功能还需要）。
 
   // TTS：2026-09-26 起只剩端侧 flutter_tts（腾讯云分支与引擎选择已取消）
   // 语速/音色由 `TtsService` 自持（`speechRate` / `selectedVoice`），本页不再另存状态
@@ -91,11 +94,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       //
       // 🔴 为什么必须清（不只是「干净一点」）：
       //    这几个字段**在未登录时仍会被使用** ——
-      //      · `_referralCode` → `StatsCard` 的分享文案会拼 `?ref=<码>`。
-      //        不清 → 未登录用户分享出去的是**上一个登录用户的推荐码**
-      //        （推荐码是「分享链接的身份」，`_loadReferralCode` 的注释原文）。
       //      · `_unreadCount` / `_avatarUrl` → 当前已随登录态隐藏，
       //        但留着会让「下次登录前的瞬间」显示旧值（闪烁）。
+      //      · （`_referralCode` 曾在此列 —— 2026-10-06 随分享图改造一并删除）
       //
       // 🔑 判据：**登录态是一组状态的所有者** —— 切换时该**整体复位**，
       //    而不是逐个等到「用到了才发现不对」。
@@ -103,7 +104,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!next.isAuthenticated && prev?.isAuthenticated == true) {
         setState(() {
           _unreadCount = 0;
-          _referralCode = null;
           _avatarUrl = null;
         });
         return;
@@ -196,8 +196,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
       // 异步加载未读通知数（不阻塞主流程）
       _loadUnreadCount();
-      // 异步加载推广数据
-      _loadReferralCode();
     } catch (e) {
       if (mounted)
         setState(() {
@@ -486,7 +484,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         //    🔑 规格：「顶部：统计区 + 分享入口」。
         //    ⚠️ 「成就列表」（徽章行 / 进度条）按白哥 2026-09-29 决策**移出**本页
         //       → 它们在 `/achievements` 完整存在（本页只留一个入口，见 ④）。
-        StatsCard(referralCode: _referralCode),
+        StatsCard(),
         const SizedBox(height: CoSpacing.xl),
 
         // ── ② 账号（未登录 / 已登录两态）──
@@ -1131,28 +1129,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
       ),
     );
-  }
-
-  // ── 推荐码（**不是分销账本** —— 见 `_loadReferralCode` 内的说明）──
-  Future<void> _loadReferralCode() async {
-    final auth = ref.read(authProvider);
-    if (auth.userId == null || auth.token == null) return;
-    try {
-      final resp = await http.get(
-        Uri.parse(
-            '${ApiConfig.baseUrl}/api/referral/my-code?user_id=${auth.userId}'),
-        headers: {'Authorization': 'Bearer ${auth.token}'},
-      ).timeout(const Duration(seconds: 10));
-      if (resp.statusCode == 200 && mounted) {
-        final data = jsonDecode(resp.body) as Map<String, dynamic>;
-        // 🔑 **只取推荐码，不取推广统计** ——
-        //    推荐码是「**分享链接的身份**」（`StatsCard` 的分享文案要用），
-        //    而推广统计（邀请数 / 收益 / 提现）是**分销账本**，按 `ui-ux` §4.2 已删。
-        //    🔑 这两件事以前写在同一个方法里，删的时候容易一起删掉 ——
-        //       但「分享」还在（规格明确要），所以码必须留。
-        _referralCode = data['referral_code'] as String?;
-      }
-    } catch (_) {}
   }
 
   /// 订阅状态卡片。
