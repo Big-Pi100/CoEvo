@@ -233,6 +233,43 @@
     后端死路由的清理属<b>批次④</b>（涉及删除，要单独批准）。
   </div>
 
+  <h2><span class="n">五</span>✅ 已实施（2026-10-06 · commit <code>acc260c</code>）</h2>
+
+  <div class="note" style="border-left-color:#2F7D4F;background:#F0F7F2">
+    <b>上面 4 项的建议已全部作为「默认实现」落地</b> —— 白哥若要改，改动成本都很低
+    （底色是 <code>ShareCardStyle</code> 枚举 · 文案是 <code>kShareCardTagline</code> 常量 · 入口在预览弹层）。
+  </div>
+
+  <table>
+    <tr><th style="width:26%">文件</th><th>作用</th></tr>
+    <tr><td><code>services/share_card_data.dart</code></td>
+        <td><b>纯逻辑 · 零 import</b>（本机可断言）：里程碑判定 · 文案 · 文件名 · 预览缩放</td></tr>
+    <tr><td><code>widgets/share_card.dart</code></td>
+        <td>分享图 widget：3:4 固定尺寸 · <b>配色全取自 token</b>（墨/格/夜）</td></tr>
+    <tr><td><code>widgets/share_card_preview.dart</code></td>
+        <td>预览弹层：<b>先看再发</b> · 底色切换（实心/素雅）· <b>失败出口可见</b></td></tr>
+    <tr><td><code>widgets/stats_card.dart</code></td>
+        <td>分享入口改为「弹预览」；删掉 <code>referralCode</code> 参数</td></tr>
+    <tr><td><code>screens/profile_screen.dart</code></td>
+        <td>连带清理：删 <code>_referralCode</code> + <code>_loadReferralCode()</code> + <code>GET /api/referral/my-code</code></td></tr>
+    <tr><td><code>scripts/query_verify/bin/verify_share_card.dart</code></td>
+        <td><b>84 项断言</b>（已接 CI）· <b>证伪 10/10</b></td></tr>
+  </table>
+
+  <div class="note">
+    <b>🔴 一个实现层面的关键点</b>（防「图尺寸随手机变」）：
+    <code>RepaintBoundary</code> 必须在 <code>Transform.scale</code> <b>里面</b> ——
+    卡片始终按 360×480 渲染，<code>Transform</code> 只影响预览显示大小。
+    <br>顺序反了 ⇒ <code>toImage</code> 截的是「已缩放」的内容 ⇒
+    <b>同一份数据在不同手机上导出的图尺寸不同</b>。断言里有一条<b>顺序检查</b>守这个。
+  </div>
+
+  <div class="note" style="border-left-color:#B4432C">
+    <b>⚠️ 仍需真机确认</b>（本机跑不了 flutter）：
+    图长什么样 · 分享面板能否唤起 · 「保存到相册」是否可用。
+    断言只覆盖了<b>结构</b>与<b>判定逻辑</b>，<b>覆盖不到视觉</b>。
+  </div>
+
 </div>
 </body>
 </html>
