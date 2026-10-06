@@ -37,7 +37,9 @@
 /// ```
 /// 产物 `app\build\app\outputs\flutter-apk\app-release.apk` → **装到 Android 手机**。
 /// · 若报 `ProcessException: 231`（Dart 创建不了子进程）→ 追加 `--no-version-check`
-///   （⚠️ 实测**只能绕过其中一步**，本机仍不可用；普通终端不需要它）
+///   （⚠️ 实测**只能绕过其中一步** —— 在 **AI 沙箱终端**里仍不可用；
+///    **普通终端（白哥的）不需要它**。📌 注意措辞：是「**我的执行环境**跑不了」，
+///    不是「本机跑不了」—— 后者会被误读成「这台机器不能构建」）
 /// · 要验「分享 / 二维码」再加 `--dart-define=PUBLIC_BASE_URL=https://keyievolution.fun`
 ///   （不加则指向 `http://localhost:3000`）
 ///

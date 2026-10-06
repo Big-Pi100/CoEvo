@@ -77,9 +77,24 @@
 >   · 单一常量 `kSqlNowUtc` 收敛（原先散在 3 处 ⇒ 改一处漏一处）· `Bookmark` 模型 + `deleted`
 > · 验证：🆕 `verify_sync_merge.dart` **105 项**（已接 CI）· `verify_bookmark` **59 项**
 >   · **证伪 8/8** · 全部 **40 个断言脚本** ✅ · codestatic error 0 / warning 0
-> ⏳ **下一步**：阶段 3（端侧接线：登录 pull / 复习标脏 / 批量 push / 退出先 flush）
->   → 5 端到端双设备（阶段 4 隐私政策**已改稿**）
-⚠️ **阶段 1/2 未部署**（按铁律等白哥指令）· 阶段 4 的法律页**需重新部署才对外生效**
+> ✅ **阶段 3（端侧接线）已完成**（提交 `37a932e`）：
+> · 三层：`api/sync_client.dart`（HTTP）· `services/sync_service.dart`（**编排**，零 Flutter 依赖）
+>   · `providers/sync_provider.dart`（Riverpod 接线）
+> · 🔑 **IO 推边界、逻辑留中间** ⇒ 编排层可本机验证（假 client + 真内存库）
+> · 设计：**先 push 再 pull** · **403 单列**（`SyncNotSubscribed` ⇒ 说「订阅后可用」不是「失败」）·
+>   **空批次不发请求** · `card_review_state` **不参与同步**（pull 后重放派生）·
+>   `book_progress` 写「待认领」表（本地没这本书也不丢）·
+>   **游标按 `userId` 隔离**（用结构隔离 > 用流程清理）
+> · 接线**复用既有钩子**：登录/注册/会话恢复 走 `app.dart` 的「userId 变化」listen（一处覆盖三条路径）·
+>   登出**先 flush 再 logout**（注销路径**不** flush —— 账号已删）
+> · 🔴 顺带修 3 个真问题：`pendingPushAfterPull` 分支死代码 · bool 传进 SQLite ·
+>   **测试隔离失效**（`sqflite` 默认 `singleInstance: true` ⇒ 所有内存库是同一个）
+> · 验证：🆕 `verify_sync_service` **51 项**（证伪 7/7）· `verify_sync` 43 → **54 项**（证伪 4/4）
+>   · 全部 **41 个断言脚本** ✅ · codestatic 0/0
+> ⏳ **下一步**：阶段 5（端到端双设备）—— ⚠️ 需**部署** + 真机（按铁律等白哥指令）
+> ⏳ **两处待办**：① 电子书进度的「认领流程」（导入时把 pending 写进 `book_progress`）
+>   ② 批量 push 的「复习后 / 定时」时机（现覆盖「启动 + 登录 + 登出前」，复习数据不丢但延迟）
+⚠️ **阶段 1–3 未部署**（按铁律等白哥指令）· 阶段 4 的法律页**需重新部署才对外生效**
 >
 > 🔴🔴 **2026-10-05 CI 额度耗尽**（影响所有「推 main 验证」与「出包」）：
 > 实测 `Actions minutes: **2,000 / 2,000 used**`（**≈11-01 才重置**）。
