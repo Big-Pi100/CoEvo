@@ -175,3 +175,86 @@ PY
 > **先部署**（否则白抓）→ 备份 → 清标记 → 开 refetch 重启 → 四层验证 → **关 refetch**。
 > 而**方案 C 上线后会自动做同样的事**（只是要等 2–3 天）——
 > ⇒ 若不急，**跳过 A 也行**；A 的价值是「立刻生效」+「覆盖已超窗的 1 篇」。
+
+---
+
+## 四、✅ 部署已执行（2026-10-06 18:38 CST）· 本手册的「方案 A」**不必再做**
+
+> 本节记录**实际执行结果**。结论：**方案 C 已在生效并自动修存量 ⇒ 不需要走上面的手工重抓流程。**
+
+### 1. 为什么走的不是 CI（两条路都实测堵死）
+
+| 路径 | 结论 |
+|---|---|
+| **CI**（`tag ⇒ backend-release ⇒ backend-deploy`）| 🔴 **额度 exhausted**（Free 私有仓库 2000 分/月 · 官方「无付款方式 ⇒ 用量被 blocked」· 窗口约 27 天）|
+| **本机 WSL 构建** | 🔴 沙箱拦 `wsl.exe`（Program Blacklist）⇒ **只有白哥能跑** |
+| **Windows 交叉编译** | 🔴 不可行：无 `zig`/`clang`/`cc`/`gcc`，且 `rusqlite` 用 **`bundled`**（要为目标平台编译 C）+ `native-tls`（要 OpenSSL）|
+
+⚠️ 另：推 `v*` tag 会**连带触发 `ios-build`**（`macos-latest` = **10 倍计费**）⇒ 一次 tag 部署 ≈ **160 分额度**。
+
+### 2. 实际执行的路径（**额度断时可用**，建议留档）
+
+```bash
+# ① 构建（白哥侧 · WSL）
+LANG=C wsl.exe -d Ubuntu-22.04 -- bash -lc "tr -d '\r' < /mnt/e/CoEvo/scripts/deploy/build_linux_in_wsl.sh | bash"
+#   产物：C:/Users/Lenovo/AppData/Local/Temp/coevo_deploy/{coevo_backend, cefr_catalog.json, prompts/}
+
+# ② 传输（我侧 · Git Bash）
+scp -i ~/.ssh/coevo_key <产物>/coevo_backend ubuntu@<VPS_IP>:/tmp/coevo_stage/coevo_backend
+
+# ③ 部署（我侧 · 在 VPS 上跑，**不加 --with-assets** ⇒ 不动 .env / unit / prompts）
+tr -d '\r' < scripts/deploy/deploy_update.sh | ssh -i ~/.ssh/coevo_key ubuntu@<VPS_IP> 'bash -s'
+```
+
+**部署前预检三件（缺一不可）**：
+
+| 检查 | 命令 | 本次结果 |
+|---|---|---|
+| 传输完整性 | `sha256sum`（本地 vs VPS 双向）| **`c2c4d170…` 完全一致** ✅ |
+| 产物类型 | `file` | `ELF 64-bit LSB pie executable, x86-64, stripped` ✅ |
+| 依赖可解析 | `ldd … \| grep "not found"` | 无缺失 ✅（目标机 glibc **2.39** ≥ 构建机 2.35）|
+
+### 3. 部署结果
+
+| 项 | 值 |
+|---|---|
+| 新二进制 | 17640896 B · sha256 `c2c4d170accbdb3b…` |
+| 回滚点 | `coevo_backend.prev` = 17397848 B（10-04 那版）|
+| **健康检查** | **重启后第 1 次就 HTTP 200** ✅ |
+| 邻居服务 | `vibedollar-pay` / `mailproxy` / `nginx` 全 active ✅ · 外网 `/health` 200 · `pay`/healthz 200 |
+| 内存 / 监听 | 80.1 / 256 MB · 仅 `127.0.0.1:8300` ✅ |
+| panic / ERROR | **0** ✅ |
+
+### 4. 🔴 验证结论：**B / C / D 三项全部生效**（实测，非推断）
+
+判据 —— 本轮（部署后 1 分钟的首轮抓取）处理了 **43 篇 = 20 重试 + 23 新**：
+
+| 方案 | 怎么验 | 结果 |
+|---|---|---|
+| **B** 配件清理 | 这 43 篇正文里搜 `iframe` / `ondemand.npr.org` / `npr.org/player/embed` / 裸配件词 | **0 条残留** ✅ |
+| **D** 标题去重 | 这 43 篇：正文首行是否 == `title` | **0 条** ✅ |
+| **C** 重试窗口 | 20 重试 + 23 新 = **43**（与日志「补抓正文 41/43 篇成功 · 失败分类: too_short=2（其中重试 20 篇）」**完全对上**）| ✅ |
+
+正文长度分布变化：`3001-10000` **+20 篇** · `10001+` **+5 篇**。
+抽样 `id=8640` 拿到 **29976 字符**完整文字稿（`TONYA MOSLEY, HOST: This is FRESH AIR\.`）。
+
+### 5. 白哥报的那篇（`id=7091`）
+
+- **排名：第 3 / 188**（重试队列，`ORDER BY COALESCE(published_at, fetched_at) DESC` ⇒ 最新优先）
+- ⇒ **下一轮（约 6h 后）会被自动重试**
+- 剩余 188 篇 · 配额 20/轮 · 6h/轮 ⇒ **约 2.5 天自动跑完** ⇒ **本手册 §二的「方案 A 手工重抓」不需要执行**
+
+### 6. ⚠️ 两个「看哪里」的坑（下次省时间）
+
+| 坑 | 真相 |
+|---|---|
+| **日志不在 journald** | `journalctl -u coevo \| grep content_fetch` **全时间 0 条**；日志在 **`/opt/coevo/data/logs/coevo.log.YYYY-MM-DD`**（按天滚动，当天 77 条）|
+| **`data/` 是 WAL 模式** | 主库 `coevo.db` 的 mtime 只在 checkpoint 时更新（写入先进 `-wal`）⇒ **mtime 不代表「没写」** |
+
+### 7. 回滚（若需要）
+
+```bash
+install -m 755 /opt/coevo/bin/coevo_backend.prev /opt/coevo/bin/coevo_backend
+sudo systemctl restart coevo
+```
+（`deploy_update.sh` 在健康检查失败时会**自动**执行这一步，并把失败副本留档为 `coevo_backend.failed-*`。）
