@@ -162,6 +162,15 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         //    进不来的人走这里。两条路径的旧会话处理**相反**（保留当前 vs 全删）。
         .route("/api/auth/forgot-password", post(auth_forgot_password))
         .route("/api/auth/reset-password", post(auth_reset_password))
+        // 🆕 2026-10-06 云端同步（订阅权益 · 白哥批准的决策③：**校验有效订阅**）
+        //
+        // 🔴 这是**唯一**需要「登录 + 订阅」双重要求的业务接口 ——
+        //    其余接口要么不需登录（读信息流），要么只需登录（账号维护）。
+        //    判据：**服务端也要能拒绝**（只靠端侧不显示入口 = 协议上不设防）。
+        // ⚠️ 未订阅回 **403**（不是 401）—— 401 会让端侧以为 token 失效而**把用户登出**。
+        // 📄 设计：`docs/design/sync-implementation-assessment-2026-10-04.md` §四
+        .route("/api/sync/push", post(crate::sync_handlers::sync_push))
+        .route("/api/sync/pull", get(crate::sync_handlers::sync_pull))
         // ── 🔴 2026-09-29 已退役：/api/review/* · /api/cards/* · /api/history · /api/conversations/* ──
         //     学习状态已整体迁到端侧 `user.db`（`card_review_state` / `review_log` / `user_word`）：
         //       · `/api/review/*` 与 `/api/cards/*` 原由后端 FSRS（crate `card_engine`）驱动

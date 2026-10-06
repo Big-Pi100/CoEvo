@@ -128,6 +128,17 @@ pub const DELETE_TARGETS: &[(&str, &str)] = &[
     ("user_notifications", "user_id"),
     ("subscription_requests", "target_user_id"),
     ("campaign_members", "user_id"),
+    // 🆕 2026-10-06：云端同步副本（订阅权益）—— **删除**，不匿名化。
+    //    🔴 为什么是删：这 5 张表**整体都是用户的学习数据**（复习事件 / 生词本 /
+    //       阅读记录 / 收藏 / 电子书进度）⇒ 它们**没有「非个人用途」**，
+    //       不像支付流水那样需要留给对账 ⇒ 匿名化无从下手（匿名化了剩下的列也没意义）。
+    //    🔑 与 `password_reset` 同一判断：**行本身对业务没有留存价值** ⇒ 删。
+    //    ⚠️ 隐私政策 §2.1 已写明「注销账号时一并删除」—— 漏了这几张表就是**政策失实**。
+    ("sync_review_log", "user_id"),
+    ("sync_user_word", "user_id"),
+    ("sync_article_read", "user_id"),
+    ("sync_bookmark", "user_id"),
+    ("sync_book_progress", "user_id"),
     // ⚠️ 最后
     ("users", "id"),
 ];

@@ -973,6 +973,111 @@ WHERE
 
 "#;
 
+/// ── 云端同步（订阅权益 · 2026-10-06 · 阶段 1）─────────────────────────
+///
+/// # 🔑 设计要点一：**服务端的键 = `(user_id, 端侧业务键)`**
+///
+/// 端侧 `user.db` 是**单用户库** ⇒ 主键就是业务键（`word_id` / `content_id`…）。
+/// 而服务端是多用户的 ⇒ **每张表都必须以 `user_id` 打头**，否则：
+///   · 两个用户对同一 `word_id` 的事件会**互相覆盖**（同一个 PK）
+///   · 且这类错**只在有第二个用户时**才暴露（单人测试**永远发现不了**）
+/// ⇒ 所有表的第一列都是 `user_id`，主键的第一段也是它。
+///
+/// # 🔑 设计要点二：**主键 = 幂等键**（设计 §4.2 的硬要求）
+///
+/// 设计文档要求「同一批 push 重放两次，结果必须一致」。
+/// ⇒ 把幂等键直接做成**主键**，写入用 `INSERT OR IGNORE` 即可天然幂等 ——
+/// 不需要「先查再写」（那有竞态：两个并发 push 都查到不存在，然后都插入）。
+/// 📌 判据：**幂等要落在数据库约束上，不要落在应用层的「查-写」上**。
+///
+/// # 🔑 设计要点三：`received_at`（服务端收货时间）才是 `pull` 的时间轴
+///
+/// `reviewed_at` 是**设备说的时间**，不可信也不单调：
+///   · 设备离线积压几天 ⇒ 补传的事件 `reviewed_at` 很旧 ⇒ 用它会**漏**（since 已经过去了）
+///   · 设备时钟不准 ⇒ 同一时刻被覆盖
+/// ⇒ **pull 用 `received_at`**（服务端生成），才能保证「不漏」。
+///   ⚠️ 代价是同一事件可能被拉多次 ⇒ 由**主键 + 端侧幂等**兜住（这正是要点二的作用）。
+///
+/// # ⚠️ 本表组的边界（如实说明）
+/// · 只存**同步用的最小字段**，不是端侧表的完整镜像（如不存 `pending_push` —— 那是端侧概念）
+/// · `sync_book_progress` 用 **`content_hash`** 而不是 `book_id`：
+///   书籍 id 是**端侧 uuid**（同一本书在两台设备上是两个 id）⇒ 必须用内容指纹做跨设备身份。
+///   这与端侧 `book_progress_pending` 同一口径（设计 §3.4）。
+pub const SYNC_SCHEMA_SQL: &str = r#"
+-- ── 复习事件（唯一真相源）──
+-- 🔑 复习是**事件**，状态是事件的函数 ⇒ 只同步事件，端侧重放即可重建 `card_review_state`
+--    （设计 §三：`card_review_state` 是派生值，**直接同步它会在冲突时永久丢掉一次复习的记忆增益**）
+CREATE TABLE IF NOT EXISTS sync_review_log (
+    user_id     TEXT    NOT NULL,
+    word_id     TEXT    NOT NULL,
+    rating      INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 4),
+    duration_ms INTEGER,
+    reviewed_at TEXT    NOT NULL,                  -- 设备时间（UTC ISO8601）
+    utc_day     TEXT    NOT NULL,                  -- 'YYYY-MM-DD'（端侧 FSRS 同日去重用）
+    device_id   TEXT    NOT NULL DEFAULT '',       -- ⚠️ NOT NULL DEFAULT '' 而非 NULL：
+                                                   --    NULL 在 PK 里互不相等 ⇒ 破坏幂等
+    received_at TEXT    NOT NULL,                  -- 🔑 服务端收货时间（pull 的时间轴，见上文要点三）
+    PRIMARY KEY (user_id, word_id, reviewed_at, device_id)
+);
+-- 🔑 pull 的查询形态：WHERE user_id=? AND received_at > ? AND device_id <> ?（排除自己传的）
+CREATE INDEX IF NOT EXISTS idx_sync_review_pull ON sync_review_log(user_id, received_at);
+
+-- ── 生词本（并集；`deleted` 取较新）──
+CREATE TABLE IF NOT EXISTS sync_user_word (
+    user_id           TEXT    NOT NULL,
+    word_id           TEXT    NOT NULL,
+    spelling          TEXT    NOT NULL,
+    source_article_id INTEGER,
+    source_sentence   TEXT,                        -- 🔴 端侧取**首次**语境（见端侧 schema 注释）
+    added_at          TEXT    NOT NULL,
+    updated_at        TEXT    NOT NULL,
+    deleted           INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1)),
+    received_at       TEXT    NOT NULL,
+    PRIMARY KEY (user_id, word_id)
+);
+CREATE INDEX IF NOT EXISTS idx_sync_user_word_pull ON sync_user_word(user_id, received_at);
+
+-- ── 阅读记录（并集；`read_at` 取**较早**）──
+-- 🔑 语义是「**首次读完**的时刻」⇒ 合并取 `min`（与端侧 `INSERT OR IGNORE` 幂等写入一致）
+CREATE TABLE IF NOT EXISTS sync_article_read (
+    user_id     TEXT    NOT NULL,
+    article_id  INTEGER NOT NULL,
+    read_at     TEXT    NOT NULL,
+    received_at TEXT    NOT NULL,
+    PRIMARY KEY (user_id, article_id)
+);
+CREATE INDEX IF NOT EXISTS idx_sync_article_read_pull ON sync_article_read(user_id, received_at);
+
+-- ── 收藏（并集；`deleted` 取较新）──
+-- 🔑 「取消收藏」是**字段值**（软删）而不是删行 ⇒ 合并规则 = 按 `bookmarked_at` 取较新，
+--    不需要墓碑表（设计 §3.3）
+CREATE TABLE IF NOT EXISTS sync_bookmark (
+    user_id       TEXT    NOT NULL,
+    content_id    INTEGER NOT NULL,
+    bookmarked_at TEXT    NOT NULL,
+    deleted       INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1)),
+    received_at   TEXT    NOT NULL,
+    PRIMARY KEY (user_id, content_id)
+);
+CREATE INDEX IF NOT EXISTS idx_sync_bookmark_pull ON sync_bookmark(user_id, received_at);
+
+-- ── 电子书进度（按**内容指纹**；`updated_at` 取较新）──
+-- 🔴 PK 是 `content_hash` 而不是 `book_id`：书籍 id 是端侧 uuid，跨设备不通用。
+--    与端侧 `book_progress_pending` 同一口径（设计 §3.4.3）。
+-- ⚠️ 指纹只覆盖「**同一文件**」—— 不同来源下载的同一本书指纹不同 ⇒ **进度不共享**
+--    （刻意取舍：错配会把用户带到错误章节，比不同步更糟）
+CREATE TABLE IF NOT EXISTS sync_book_progress (
+    user_id      TEXT    NOT NULL,
+    content_hash TEXT    NOT NULL,
+    chapter_idx  INTEGER NOT NULL DEFAULT 0,
+    scroll_ratio REAL    NOT NULL DEFAULT 0,       -- 章内相对位置 0~1（不存绝对像素）
+    updated_at   TEXT    NOT NULL,
+    received_at  TEXT    NOT NULL,
+    PRIMARY KEY (user_id, content_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_sync_book_progress_pull ON sync_book_progress(user_id, received_at);
+"#;
+
 /// 初始化完整数据库 schema（核心表 + 管理表 + 偏好表 + 词库缓存表 + 额外索引）
 pub fn init_database(conn: &rusqlite::Connection) -> Result<(), String> {
     conn.execute_batch(SCHEMA_SQL)
@@ -1010,6 +1115,14 @@ pub fn init_database(conn: &rusqlite::Connection) -> Result<(), String> {
         .map_err(|e| format!("content source index: {}", e))?;
     conn.execute_batch(CONTENT_POOL_SQL)
         .map_err(|e| format!("content pool: {}", e))?;
+    // 🆕 云端同步表（订阅权益 · 2026-10-06 · 阶段 1）
+    //
+    // 🔑 **新表不需要专门的迁移分支** —— `init_database` 每次启动**无条件**执行，
+    //    而 `CREATE TABLE IF NOT EXISTS` 对「老库缺这张表」是**有效**的（会建出来）。
+    //    ⚠️ 与「给已有表**加列**」不同：那才需要 `ALTER`（见 `main.rs` 的 migrations 列表）。
+    //    📌 判据：**新表只写 `schema.rs`；加列才要写迁移**。
+    conn.execute_batch(SYNC_SCHEMA_SQL)
+        .map_err(|e| format!("sync schema: {}", e))?;
     // 🔴 2026-09-29 删除：`CREATE UNIQUE INDEX idx_users_phone_hash ON users(phone_hash)`
     //
     // 为什么**必须删**（两条独立理由，任一条都足以致命）：
@@ -1496,6 +1609,15 @@ mod tests {
         //    后者设计未定（「兴趣怎么影响排序」还没做）。见 `CONTENT_POOL_SQL`。
         "content_source",
         "content_pool",
+        // 🆕 云端同步（订阅权益 · 2026-10-06 · 阶段 1）
+        //    ⚠️ 注意 `sync_review_log` 与上面 RETIRED_TABLES 里的 `review_log` **不是一回事**：
+        //       后者是**已退役**的「后端 FSRS 状态」（学习状态已迁端侧）；
+        //       前者是**服务端持有的同步副本**（用户数据跨设备中转）⇒ 命名加 `sync_` 前缀区分。
+        "sync_review_log",
+        "sync_user_word",
+        "sync_article_read",
+        "sync_bookmark",
+        "sync_book_progress",
     ];
 
     /// 已**彻底退役**的表 —— 出现在库里即说明「退役没做干净」。

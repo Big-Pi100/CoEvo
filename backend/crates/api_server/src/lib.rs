@@ -61,6 +61,8 @@ pub mod schema;
 pub mod share_data;
 pub mod subject_router;
 pub mod subscription;
+/// 云端同步（订阅权益）—— `POST /api/sync/push` · `GET /api/sync/pull`
+pub mod sync_handlers;
 pub mod tencent_asr;
 /// 腾讯云邮件推送（SES）—— 找回密码的验证码邮件
 pub mod tencent_ses;
