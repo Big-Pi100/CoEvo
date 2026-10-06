@@ -25,40 +25,41 @@
 #![allow(clippy::if_same_then_else)]
 #![allow(clippy::unnecessary_to_owned)]
 
-pub mod admin_handlers;
+// 🔴 2026-10-06 退役（分销/营销链 + admin 链）—— 见 `docs/review/backend-dead-route-cleanup-2026-10-06.md`
+//    `admin_handlers` / `campaign_handler` / `campaign_member_handler` /
+//    `campaign_executor` / `campaign_scheduler` / `distribution_handler` /
+//    `h5_template` / `poster_template` / `llm_poster` / `share_data` / `config_admin`
+//    上述模块已整体删除。**保留**：通知中心（`notification_handler`）·
+//    运维定时任务（`maintenance`）· 公共二维码（`public_assets`）。
+
 pub mod app_config_cache;
 pub mod auth;
 pub mod auth_middleware;
-pub mod campaign_executor;
-pub mod campaign_handler;
-pub mod campaign_member_handler;
-pub mod campaign_scheduler;
 /// 内容合规闸门（在线制卡的**前置**检查 · 涉主权/涉政/涉黄暴/涉歧视）
 pub mod compliance;
-pub mod config_admin;
 pub mod content_extract;
 pub mod content_fetch;
 pub mod content_handler;
 pub mod content_quality;
 pub mod content_rss;
 pub mod db_pool;
-pub mod distribution_handler;
 pub mod encryption;
 pub mod error;
-pub mod h5_template;
 pub mod iap_handlers;
 pub mod llm;
 /// 词库在线制卡（LLM 兜底 · 服务端全局缓存）
 pub mod llm_card;
-pub mod llm_poster;
+/// 运维定时任务（**与营销活动无关**）—— 未支付订单关单 · 过期 trial 清理
+pub mod maintenance;
+/// 用户通知中心 —— `user_notifications` 的读写
+pub mod notification_handler;
 pub mod pay_handlers;
 pub mod plans_handlers;
-pub mod poster_template;
+/// 公共资源托管（微信共读群二维码）—— `GET /api/public/qrcode`
+pub mod public_assets;
 pub mod rate_limiter;
-pub mod referral_handler;
 pub mod routes;
 pub mod schema;
-pub mod share_data;
 pub mod subject_router;
 pub mod subscription;
 /// 云端同步（订阅权益）—— `POST /api/sync/push` · `GET /api/sync/pull`

@@ -73,3 +73,20 @@ impl<T> IntoAppError<T> for Result<T, String> {
         self.map_err(AppError::Internal)
     }
 }
+
+// ── 轻量响应工具 ──
+
+/// 直接返回 JSON 的 200 响应。
+///
+/// 🔄 **2026-10-06 从 `admin_handlers.rs` 迁来**：它原本定义在那里，但被
+/// `distribution_handler`（通知）等模块 `use` —— 删 admin 链时若跟着删掉，
+/// 「通知」这类**保留功能**会一起断掉。判别依据见
+/// `docs/review/backend-dead-route-cleanup-2026-10-06.md` §二 陷阱 4。
+pub(crate) fn ok(v: serde_json::Value) -> Response {
+    Json(v).into_response()
+}
+
+/// 返回 `{"error": msg}` 形态的指定状态码响应。
+pub(crate) fn err(code: StatusCode, msg: &str) -> Response {
+    (code, Json(serde_json::json!({ "error": msg }))).into_response()
+}

@@ -28,7 +28,7 @@
 |---|---|---|---|
 | **1** | 🔴🔴 **阅读设置面板** | `design-system-spec §5.1` 要求：字号**可调 15–24px**·行高·主题·**痕迹开关**·语速。实测 `grep 阅读设置\|readingSettings` → 只命中注释「面板本身是独立一批，不在骨架内」 | **连带阻塞 3 处**：① spec 第 86 行明说「**痕迹开关在阅读设置面板内**」⇒ 面板不存在 ⇒ **该开关无任何入口** ②「单击屏幕中央唤出面板」⇒ **手势目前是空的** ③ `profile_screen:963` 注释「搬去阅读面板的前提是面板先存在」⇒ 有项设置搬不走 |
 | **2** | 🔴 **单击屏幕中央唤出面板**（Kindle 模式） | 同 `ui-ux §6.3/§6.6` | 与 #1 **同一个根因**（面板不存在，手势无目的）。🔑 也是当初划词选**长按**的原因 —— 一个手势不能有两种含义 |
-| **3** | 🔴 **私密笔记** | 两个独立来源都计划：`implementation-plan-v2 §5.7.2 / Phase 4 #9` + `ui-ux §4.3/§6.5`。实测 `grep user_note\|笔记\|addNote` → 端侧 **0 命中**（`user.db` 也无笔记表） | 计划里把它定位为「**低合规风险的记忆增益功能**」—— 用户自己的笔记不涉版权 |
+| ~~**3**~~ | ~~🔴 私密笔记~~ **⛔ 已作废（2026-10-06）** | 两个来源都计划过：`implementation-plan-v2 §5.7.2 / Phase 4 #9` + `ui-ux §4.3/§6.5`。实测 `grep user_note\|笔记\|addNote` → 端侧 **0 命中** | **白哥 2026-10-06 定：「不做这个功能，没有用」** ⇒ 从 P1 移除（原因：它只停在概念层，从未出过 UI 稿，实际价值不成立） |
 | **4** | 🟠 **学习成果分享图**（**半成品**） | `utils/image_export.dart:30` 的 `exportPngBytes` **已写好但全仓 0 个调用方**；实际分享只有 `stats_card.dart:211` 的**纯文字** `Share.share` | 代码写完了没接线 ⇒ 典型的「**写了没人跑**」 |
 | **5** | 🟠 **Apple 登录** | `pubspec.yaml` 无 `sign_in_with_apple`；`app/lib` 全库无 `SignInWithApple`；`widgets/claim_dialog.dart:24` 注释自记「全库无该依赖」 | 上架前常见配置；且记忆里「登录页批次」列过它 |
 
@@ -51,37 +51,44 @@
 
 ## 二、🔴 清理未完成（不是「没做」，是「做了半边」）
 
-### 2.1 app 里残留 **K12 分销时代**的调用
+### 2.1 app 里残留 **K12 分销时代**的调用 → ✅ **2026-10-06 已清理**
 
-| 调用点 | 接口 | 性质 |
+| 原调用点 | 接口 | 处置 |
 |---|---|---|
-| `home_screen.dart:381` `_checkLoginCampaignPush` | `GET /api/campaigns/check-push-trigger?push_trigger=login` | 🔴 **每次登录自动发**（营销推送触发）|
-| `home_screen.dart:393` `_joinCampaign` | `POST /api/campaign/join` | 注释自述「拼团/砍价类」—— **与英语学习无关** |
-| `home_screen.dart:295` | `POST /api/referral/click` | 分销推荐点击 |
-| `profile_screen.dart:1276` | `GET /api/referral/my-code` | 推荐码 |
-| `notification_panel.dart:126` | `POST /api/referral/generate-h5` | 分销 H5 分享页 |
+| `home_screen.dart` `_checkLoginCampaignPush` | `GET /api/campaigns/check-push-trigger` | ✅ **方法 + 调用已删** |
+| `home_screen.dart` `_joinCampaign` | `POST /api/campaign/join` | ✅ **方法 + 调用已删** |
+| `home_screen.dart` | `POST /api/referral/click` | ✅ **上报块已删**（连同 `_readRefCode` / `_pendingRefCode` / `_pendingCampaignId`）|
+| `profile_screen.dart` | `GET /api/referral/my-code` | ✅ 批次② 已清 |
+| `notification_panel.dart` | `POST /api/referral/generate-h5` | ✅ **`_openH5InNewTab` + `_openExternal` 已删**（本轮新发现，原报告遗漏）|
 
-⇒ **英语学习 App 里没有「拼团/砍价/推荐码」的产品位置**。这些是 K12 分销线的残留调用。
-⚠️ 后端 `marketing_campaigns` 表 **0 行** ⇒ 接口返回空 ⇒ **无害但白跑**。
+**连带清理**（API 签名去分销参数）：
+`auth_client.dart` / `auth_provider.dart` / `claim_dialog.dart` 的
+`referralCode` · `campaignId` · `refCode` 参数全部移除；`app.dart` 的
+`/share/:refCode` 简化为跳首页（老链接仍可用）。
 
-### 2.2 后端 61 条 `/api/admin/*` 路由仍在（**风险已缓解，但代码未清**）
+🔴 **报告遗漏的那一条**（`notification_panel`）说明：**按报告清单执行是不够的** ——
+必须用 `grep` 全量扫接口前缀（`api/referral|api/campaign`），才抓到它。
 
-- ✅ **缓解**：Nginx `location /api/admin/ { return 404; }`（2026-10-02 加的，实测生产配置里有）
-- 🔴 **但代码层三处未清**：
-  1. **61 条路由 + `admin_handlers.rs`** 仍在（含 `admin_hard_delete_user` / `admin_users_export`）
-  2. `admin_users` 表生产上 **1 行 `super`，且 `password_hash` 长度为 0** ⇒ 那个账号**无法用 token 登录**（空串被 `token.is_empty()` 挡）⇒ 实际**唯一入口是 `x-admin-key`**
-  3. `verify_admin` 的 `x-admin-key` 一旦匹配**直接返回 `("super","super")`** ⇒ **单一静态密钥 = 全部权限**；且实测生产该密钥**以 `coev` 开头**（疑似可猜的短词）
-  ⚠️ 我**没有打印完整密钥值**（那会造成新的泄漏）。
-- 📌 **纵深防御**：Nginx 挡的是「外部」；但①密钥弱 ②代码在 ③`admin_users` 有 active 行 ⇒ 任一环节失守即可直达 `hard-delete-user`
+---
+
+### 2.2 后端 61 条 `/api/admin/*` 路由 → ✅ **2026-10-06 已全部删除**
+
+- ✅ **58 条路由 + `admin_handlers.rs`（1,431 行）已删**（实测是 58 条，非 61）
+- ✅ `config_admin.rs` 只留 `qrcode_handler` → **改名 `public_assets.rs`**（原文件名已成语义残留）
+- ✅ `plans_handlers` / `pay_handlers` 的 4 个 `admin_*` handler 已删（用户端保留）
+- ✅ Nginx 的 `location /api/admin/ { return 404; }` **保留**（纵深防御，可继续留着）
+- ⏳ **未做**：`COEVO_ADMIN_KEY` 密钥轮换（删路由后已无消费者，但属「改生产」，需单独批准）
+- ⏳ **未做**：`admin_users` 表（生产 1 行 `super`）+ 分销 5 张表 —— 删表属 ④-c，未动
 
 ### 2.3 其他残留
 
 - `data/word.db` 的 **`card_audio` 空表**（语音包已取消 · 表还在）
 - `docs/features/` **17 个 K12 时代文档**（5–6 月）混在 docs 里，看着像「当前计划的 feature」
-- 🔴 **memory 目录 91 个日志（5 月 7 日 ~ 10 月 6 日）** —— `MEMORY.md` 写明「**30 天以上 distill 后删除**」，
+- 🔴 **memory 目录 105 个日志 / 3.0 MB**（实测，原报告写 91）—— `MEMORY.md` 写明「**30 天以上 distill 后删除**」，
   **该规则从未执行**。⚠️ 后果已实测：我把 5 月 13 日的「考试模式透明度」当成**待办**去问白哥，
   而它 5 月 21 日就**结案**了（白哥 10-06 确认「过时，现在的考试模式是正确的」）。
-  ⇒ 与「progress 文档过时」**同一个病**：手写快照 vs 持续前进的现实。⚠️ 删除不可逆，需单独批准。
+  ⇒ 与「progress 文档过时」**同一个病**：手写快照 vs 持续前进的现实。
+  ⏳ **未做**：删除不可逆，且需先定 **distill 落点**（建议新建 `references/history-2026-H1.md`）⇒ 待白哥定。
 
 ---
 
@@ -109,8 +116,8 @@
 |---|---|---|---|
 | **①** | **阅读设置面板**（含痕迹开关 + 字号 + 语速）+ 顶栏入口 | 一条根因解 3 处阻塞；规格最明确；不依赖外部 | ✅ **2026-10-06 已实现**（见 §七）|
 | **②** | **分享图接线**（`exportPngBytes` 已有，只需接 UI）+ **K12 分销调用清理** | 前者是「写完没接线」，成本低收益直观；后者是纯减法 | ✅ **2026-10-06 已实现**（commit `acc260c` · 84 项断言 · 证伪 10/10）|
-| **③** | **私密笔记**（schema + UI） | 需先定「笔记放哪」—— 属产品决策 | ⏳ 待定 |
-| **④** | 后端死路由清理（61 条 admin + referral/campaign 残留）+ memory 归档 | ⚠️ 涉及删除，单独批准 | ⏳ 待批 |
+| ~~**③**~~ | ~~私密笔记（schema + UI）~~ | ~~需先定「笔记放哪」—— 属产品决策~~ | ⛔ **2026-10-06 白哥定：不做**（「没有用」）|
+| **④** | 后端死路由清理 + 分销/活动链删除 + app 端连带 + memory 归档 | ⚠️ 涉及删除，单独批准 | 🟢 **代码部分 2026-10-06 已完成**（见 `backend-dead-route-cleanup-2026-10-06.md` §八）：删 12 个文件 / 新建 3 个 / 删 ~83 条路由 · Rust 三道门全绿 · app 端 `error=0 warning=0` · 6 个断言脚本 1032 项全过。⏳ **未做**：memory 归档 · ④-c（改 `auth.rs` 注册 + 删 schema 列）· ④-e（trial 决策）|
 | **⑤** | P2 增强（自动加载下一篇 / 阅读-复习联动 / 结构化交互） | 需求更弱，等前面稳定 | ⏳ |
 
 ---
@@ -176,5 +183,5 @@
 
 | # | 问题 | 我的建议 |
 |---|---|---|
-| **①** | **私密笔记**要不要做？做成什么样？ | 建议做（计划里定位为低合规风险的记忆增益）。**但要先定位置** —— 我倾向「词卡内一个可折叠的笔记区」而不是独立页（避免又是一个低频独立页） |
+| ~~**①**~~ | ~~私密笔记要不要做？做成什么样？~~ | ⛔ **2026-10-06 已定：不做**（白哥：「没有用」）|
 | **②** | `COEVO_ADMIN_KEY` 现在是**弱值**（`coev` 开头），且 admin 路由只是 Nginx 挡着。要不要**轮换密钥 + 删死路由**？ | 建议**都做**：轮换零风险（无消费者）；删路由是纯减法。⚠️ 但两者都属「改生产」，按铁律等你批准 |

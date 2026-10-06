@@ -90,62 +90,6 @@ pub async fn user_orders_handler(Query(query): Query<UserOrdersQuery>) -> impl I
     (StatusCode::OK, json!({"orders": rows}).to_string()).into_response()
 }
 
-/// GET /api/admin/pay/orders — 管理端查询全部订单（含用户信息）
-pub async fn admin_orders_handler() -> impl IntoResponse {
-    let conn = crate::db_pool::get_conn();
-    let mut stmt = match conn.prepare(
-        "SELECT po.id, po.user_id, po.plan_id, sp.name, po.amount, po.status, po.transaction_id, po.paid_at, po.created_at
-         FROM payment_orders po
-         LEFT JOIN subscription_plans sp ON po.plan_id = sp.id
-         ORDER BY po.created_at DESC"
-    ) {
-        Ok(s) => s,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("查询失败: {}", e)).into_response(),
-    };
-
-    let rows: Vec<serde_json::Value> = match stmt.query_map([], |row| {
-        Ok(json!({
-            "id": row.get::<_, String>(0)?,
-            "user_id": row.get::<_, String>(1)?,
-            "plan_id": row.get::<_, String>(2)?,
-            "plan_name": row.get::<_, Option<String>>(3)?,
-            "amount": row.get::<_, i64>(4)?,
-            "status": row.get::<_, String>(5)?,
-            "transaction_id": row.get::<_, Option<String>>(6)?,
-            "paid_at": row.get::<_, Option<String>>(7)?,
-            "created_at": row.get::<_, String>(8)?,
-        }))
-    }) {
-        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("查询失败: {}", e),
-            )
-                .into_response()
-        }
-    };
-
-    (StatusCode::OK, json!({"orders": rows}).to_string()).into_response()
-}
-
-/// GET /api/pay/orders/{id} — 查询单笔订单状态（**只读本地**）
-///
-/// # 🔴 2026-10-03 简化：去掉了「向微信查询实际状态并同步」那一段
-///
-/// 原实现有一段「本地是 `NOTPAY` 时，主动向微信查单，若已支付则同步本地状态 +
-/// 延期订阅 + 分发佣金」。**IAP 下这一整段都没有对应物**：
-///
-/// | 微信的做法 | IAP 下的对应 |
-/// |---|---|
-/// | 服务端**主动**向微信查单 | ❌ 不需要 —— 交易凭据由客户端上报（`/api/iap/verify`）|
-/// | 「条件 UPDATE 防竞态翻倍」| ❌ 不需要 —— 验证是**幂等**的（按 `transaction_id` 唯一）|
-/// | 同步时顺带 `extend_subscription` | ❌ 移入 `iap_handlers`（由**验证**触发，不是由查单触发）|
-/// | 顺带分发佣金 | ❌ 已随微信一并删除（见模块文档）|
-///
-/// ⇒ 本接口现在**纯粹是只读查询**：查不到就 404，不做任何副作用。
-///    📌 判据：**「查状态」不该有副作用** —— 原实现把它做成了「查着查着就改了状态」，
-///       在 IAP 下这是**多余且危险**的（会与验证链路争抢同一份状态）。
 pub async fn order_status_handler(Path(order_id): Path<String>) -> impl IntoResponse {
     let conn = crate::db_pool::get_conn();
     let order = conn.query_row(

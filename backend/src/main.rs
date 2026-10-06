@@ -64,8 +64,8 @@ async fn main() {
     tracing::info!("DB: {}", db_path);
 
     // 启动后台定时任务（佣金解锁 + NOTPAY 关单，每 5 分钟执行）
-    api_server::campaign_scheduler::start_scheduler(&db_path);
-    tracing::info!("Campaign scheduler started (interval: 5 min)");
+    api_server::maintenance::start_scheduler(&db_path);
+    tracing::info!("Maintenance scheduler started (interval: 5 min)");
 
     // 🆕 内容抓取（信息流数据源 · 2026-09-29 白哥定「先做后端」）
     // 🔑 自带 runtime 的独立线程（见 `content_fetch::start_fetch_scheduler` 的说明）——

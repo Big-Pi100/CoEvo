@@ -361,17 +361,8 @@ pub async fn claim(headers: HeaderMap, Json(body): Json<ClaimRequest>) -> impl I
         }
     }
 
-    // 8. 触发注册活动（不传 campaign_filter，scope check 由 executor 内部处理）
-    if let Err(e) = crate::campaign_executor::execute_campaign_trigger(
-        &conn,
-        "registration",
-        &body.user_id,
-        referred_by.as_deref(),
-        None,
-        None,
-    ) {
-        tracing::warn!("trial/claim campaign trigger failed: {}", e);
-    }
+    // 8. 🔴 2026-10-06 已退役：认领后触发营销活动（原 `campaign_executor::execute_campaign_trigger`）
+    //    —— 分销/营销链整体删除，见 `docs/review/backend-dead-route-cleanup-2026-10-06.md`
 
     // 9. 🔴 2026-09-29 已退役：推荐注册成就事件（成就改为「端侧计算」）
 

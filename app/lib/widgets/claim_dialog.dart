@@ -55,25 +55,18 @@ import 'forgot_password_dialog.dart';
 import 'twemoji.dart';
 
 class ClaimDialog extends ConsumerStatefulWidget {
-  const ClaimDialog({super.key, this.pendingRefCode, this.pendingCampaignId});
-
-  final String? pendingRefCode;
-  final String? pendingCampaignId;
+  const ClaimDialog({super.key});
 
   /// 弹出本弹窗（「我的」页账号区与 `home_screen` 都走这里）。
   ///
   /// 🔑 弹出方式统一走 [CoDialog.show] —— 遮罩浓度 / `insetPadding` 只该有一处定义。
-  static Future<bool?> show(
-    BuildContext context, {
-    String? pendingRefCode,
-    String? pendingCampaignId,
-  }) {
+  ///
+  /// 🔴 2026-10-06：原 `pendingRefCode` / `pendingCampaignId` 两个参数已删 ——
+  /// 分销/营销链整体退役（后端 `/api/referral/*` 与 `/api/campaign*` 路由已不存在）。
+  static Future<bool?> show(BuildContext context) {
     return CoDialog.show<bool>(
       context,
-      builder: (_) => ClaimDialog(
-        pendingRefCode: pendingRefCode,
-        pendingCampaignId: pendingCampaignId,
-      ),
+      builder: (_) => const ClaimDialog(),
     );
   }
 
@@ -124,8 +117,6 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
         await notifier.trialClaim(
           email,
           _passwordController.text,
-          referralCode: widget.pendingRefCode,
-          campaignId: widget.pendingCampaignId,
         );
       } else {
         // ── 未登录 → **直接注册** ──
@@ -137,8 +128,7 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
         //
         // 🔑 两者的语义本就不同：认领 = 「升级**这个**匿名账号」，
         //    直接注册 = 「新建一个账号」。混用是接口选错了，不是参数写错了。
-        await notifier.register(email, _passwordController.text,
-            referralCode: widget.pendingRefCode);
+        await notifier.register(email, _passwordController.text);
       }
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {

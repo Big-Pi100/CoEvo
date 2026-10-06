@@ -265,17 +265,8 @@ pub fn register(
     )
     .map_err(|e| format!("Token insert error: {}", e))?;
 
-    // 触发注册活动（不阻塞注册）
-    if let Err(e) = crate::campaign_executor::execute_campaign_trigger(
-        conn,
-        "registration",
-        &user_id,
-        referred_by.as_deref(),
-        None,
-        None,
-    ) {
-        tracing::warn!("registration campaign trigger failed: {}", e);
-    }
+    // 🔴 2026-10-06 已退役：注册后触发营销活动（原 `campaign_executor::execute_campaign_trigger`）
+    //    —— 分销/营销链整体删除，见 `docs/review/backend-dead-route-cleanup-2026-10-06.md`
 
     // 🔴 2026-09-29 已退役：推荐注册成就事件（成就改为「端侧计算」，后端不再处理）
 

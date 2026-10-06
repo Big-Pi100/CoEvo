@@ -35,11 +35,8 @@ class AuthClient {
   /// Register a new user（**直接注册**，不需要既有账号）。
   ///
   /// 返回 `{user_id, token, email}` 或抛异常。
-  Future<Map<String, dynamic>> register(String email, String password, {String? referralCode}) async {
+  Future<Map<String, dynamic>> register(String email, String password) async {
     final body = <String, dynamic>{'email': email, 'password': password};
-    if (referralCode != null && referralCode.isNotEmpty) {
-      body['referral'] = {'code': referralCode};
-    }
     final resp = await http.post(
       Uri.parse('${ApiConfig.baseUrl}/api/auth/register'),
       headers: {'Content-Type': 'application/json'},
@@ -95,14 +92,8 @@ class AuthClient {
   }
 
   /// Create a trial account. Returns {user_id, token}.
-  Future<Map<String, dynamic>> trialStart({String? referralCode, String? campaignId}) async {
+  Future<Map<String, dynamic>> trialStart() async {
     final body = <String, String>{};
-    if (referralCode != null && referralCode.isNotEmpty) {
-      body['referral_code'] = referralCode;
-    }
-    if (campaignId != null && campaignId.isNotEmpty) {
-      body['campaign_id'] = campaignId;
-    }
     final resp = await http.post(
       Uri.parse('${ApiConfig.baseUrl}/api/trial/start'),
       headers: {'Content-Type': 'application/json'},
@@ -123,17 +114,13 @@ class AuthClient {
     String userId,
     String token,
     String email,
-    String password, {
-    String? referralCode,
-    String? campaignId,
-  }) async {
+    String password,
+  ) async {
     final body = <String, dynamic>{
       'user_id': userId,
       'email': email,
       'password': password,
     };
-    if (referralCode != null && referralCode.isNotEmpty) body['referral_code'] = referralCode;
-    if (campaignId != null && campaignId.isNotEmpty) body['campaign_id'] = campaignId;
     final resp = await http.put(
       Uri.parse('${ApiConfig.baseUrl}/api/trial/claim'),
       headers: {

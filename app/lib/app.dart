@@ -38,15 +38,13 @@ final goRouter = GoRouter(
     return null;
   },
   routes: [
+    // 🔴 2026-10-06：分销/营销链退役 —— 原 `/share/:refCode` 会把 `ref` 与
+    //    `campaign_id` 拼进 `/home` 供上报与归因（`/api/referral/click`），
+    //    现已无消费者（后端路由亦已删）。**路由保留**（老分享链接仍能进 app），
+    //    仅简化为跳首页。见 `docs/review/backend-dead-route-cleanup-2026-10-06.md`
     GoRoute(
       path: '/share/:refCode',
-      redirect: (context, state) {
-        final refCode = state.pathParameters['refCode'] ?? '';
-        final campaignId = state.uri.queryParameters['campaign_id'] ?? '';
-        var dest = '/home?ref=$refCode';
-        if (campaignId.isNotEmpty) dest += '&campaign_id=$campaignId';
-        return dest;
-      },
+      redirect: (context, state) => '/home',
     ),
     GoRoute(
       path: '/',

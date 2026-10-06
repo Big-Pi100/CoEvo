@@ -1,12 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:http/http.dart' as http;
 
-import '../api/api_config.dart';
 import '../api/content_client.dart';
 import '../models/feed_item.dart';
 import '../providers/auth_provider.dart';
@@ -84,8 +81,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  String? _pendingRefCode;
-  String? _pendingCampaignId;
   bool _authInitBusy = false;
 
   /// `_initAuth` 等待 auth 恢复的重试计数。
@@ -275,34 +270,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (_authInitBusy) return;
     _authInitBusy = true;
     try {
-      // 首次创建试用时读取 URL 推广码（只读一次，防止递归调用时 GoRouter 状态变化丢失）
-      if (_pendingRefCode == null) {
-        final refCode = _readRefCode();
-        final uri = GoRouter.of(context).state.uri;
-        final campaignId =
-            uri.queryParameters['campaign_id'] ?? uri.queryParameters['camp'];
-        _pendingRefCode = refCode;
-        _pendingCampaignId = campaignId;
-        debugPrint(
-            '_initAuth refCode=$refCode campaignId=$campaignId href=${Uri.base}');
-      }
-
-      // ── 点击追踪：来自推广链接或二维码扫码 → 记录一次分享点击 ──
-      if (_pendingRefCode != null && _pendingRefCode!.isNotEmpty) {
-        try {
-          final baseUrl = ApiConfig.baseUrl;
-          http.post(
-            Uri.parse('$baseUrl/api/referral/click'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'campaign_id': _pendingCampaignId ?? 'share',
-              'referrer_code': _pendingRefCode,
-              'share_channel': 'direct_link',
-              'landed_page': '/home',
-            }),
-          );
-        } catch (_) {}
-      }
+      // 🔴 2026-10-06：原「读 URL 推广码（?ref=）+ 上报 `/api/referral/click`」整段已删
+      //    —— 分销/营销链整体退役，后端 `/api/referral/*` 与 `/api/campaign*` 路由已不存在。
+      //    见 `docs/review/backend-dead-route-cleanup-2026-10-06.md`
 
       final auth = ref.read(authProvider);
       if (!auth.isRestored) {
@@ -320,15 +290,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         return;
       }
       if (auth.isAuthenticated) {
-        // 已登录用户：有 campaign_id 则加入活动（拼团/砍价）
-        if (_pendingRefCode != null &&
-            _pendingCampaignId != null &&
-            _pendingCampaignId!.isNotEmpty &&
-            mounted) {
-          _joinCampaign(auth.userId!, auth.token!, _pendingCampaignId!);
-        }
-        // 登录时触发活动推送检查（写 campaign_push 通知）
-        _checkLoginCampaignPush(auth.userId!, auth.token!);
+        // 🔴 2026-10-06：原「加入活动 `_joinCampaign`」与「活动推送检查
+        //    `_checkLoginCampaignPush`」两次调用已删（分销/营销链整体退役）。
         // 已登录但还没完善资料 → 引导注册（**只是弹窗，不挡内容**）
         // 🔴 判据换成 `auth.isRegistered`（= 邮箱非空）—— 它取代了原来的 `realName`。
         //    语义完全相同：「这个账号还没完成注册 → 引导注册」。
@@ -342,11 +305,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         if (mounted) _showAuthDialog();
         return;
       }
-      debugPrint(
-          '_initAuth trialStart refCode=${_pendingRefCode} campaignId=${_pendingCampaignId}');
-      await ref
-          .read(authProvider.notifier)
-          .trialStart(refCode: _pendingRefCode, campaignId: _pendingCampaignId);
+      debugPrint('_initAuth trialStart');
+      await ref.read(authProvider.notifier).trialStart();
       // trial 完成后重新读取 auth 状态，继续流程
       final auth2 = ref.read(authProvider);
       if (auth2.isAuthenticated && mounted) {
@@ -366,66 +326,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     //    弹窗的**弹出方式**（遮罩浓度 · insetPadding…）只该有一处定义；
     //    两个调用方各写一遍，迟早在某个参数上走偏
     //    （同 `HeaderChip` 被抽成公共组件的理由）。
-    ClaimDialog.show(
-      context,
-      pendingRefCode: _pendingRefCode,
-      pendingCampaignId: _pendingCampaignId,
-    ).then((result) {
+    ClaimDialog.show(context).then((result) {
       debugPrint('_showAuthDialog: 对话框关闭 result=$result');
     }).catchError((e) {
       debugPrint('_showAuthDialog: 异常 $e');
     });
-  }
-
-  /// 登录时触发活动推送检查（写 campaign_push 通知到通知中心）
-  void _checkLoginCampaignPush(String userId, String token) {
-    http.get(
-      Uri.parse(
-          '${ApiConfig.baseUrl}/api/campaigns/check-push-trigger?push_trigger=login&user_id=$userId'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token'
-      },
-    ); // fire-and-forget
-  }
-
-  /// 已登录用户点击活动分享链接 → 加入活动成员（拼团/砍价类）
-  void _joinCampaign(String userId, String token, String campaignId) {
-    http.post(
-      Uri.parse('${ApiConfig.baseUrl}/api/campaign/join'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token'
-      },
-      body: jsonEncode({
-        'campaign_id': campaignId,
-        'user_id': userId,
-        'role': 'member',
-      }),
-    ); // fire-and-forget
-  }
-
-  String? _readRefCode() {
-    // 优先从 GoRouter URI 读，兜底从 window.location.href 解析（防止 GoRouter 丢参数）
-    try {
-      final fromRouter = GoRouter.of(context).state.uri.queryParameters['ref'];
-      if (fromRouter != null && fromRouter.isNotEmpty) return fromRouter;
-    } catch (_) {}
-    try {
-      final href = Uri.base.toString();
-      final parsed = Uri.parse(href);
-      final fromUrl = parsed.queryParameters['ref'];
-      if (fromUrl != null && fromUrl.isNotEmpty) return fromUrl;
-      // 兜底：从 /share/{refCode} 路径提取
-      if (parsed.path.contains('/share/')) {
-        final parts = parsed.path.split('/share/');
-        if (parts.length > 1) {
-          final ref = parts[1].split('?')[0].split('&')[0];
-          if (ref.isNotEmpty) return ref;
-        }
-      }
-    } catch (_) {}
-    return null;
   }
 
   @override

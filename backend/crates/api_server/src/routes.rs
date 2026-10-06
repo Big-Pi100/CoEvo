@@ -6,7 +6,7 @@ use axum::http::{header, HeaderMap, StatusCode};
 use axum::{
     extract::Path,
     response::IntoResponse,
-    routing::{delete, get, patch, post, put},
+    routing::{get, post, put},
     Json, Router,
 };
 use serde::Deserialize;
@@ -15,7 +15,8 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 use tower_http::trace::TraceLayer;
 
-use crate::admin_handlers::*;
+// 🔴 2026-10-06：`use crate::admin_handlers::*` 已删 —— 58 条 `/api/admin/*` 路由随
+//    admin 链一并退役（见 `docs/review/backend-dead-route-cleanup-2026-10-06.md`）。
 use crate::error::AppError;
 
 /// 提供 Flutter Web 构建的静态文件（SPA 模式：未匹配路径返回 index.html）
@@ -128,7 +129,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         // ── Public ──
         .route(
             "/api/public/qrcode",
-            get(crate::config_admin::qrcode_handler),
+            get(crate::public_assets::qrcode_handler),
         )
         // ── Payment & Subscription ──
         .route(
@@ -226,328 +227,21 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         // 🔴 2026-09-29 已退役：学习报表（learning-report / activity / weekly-report）
         //     与 WebSocket（/ws）—— 依赖已迁端侧的学习状态（user_cards / review_log / conversation_turns）
         // 🔴 2026-09-29 已退役：/ws（WebSocket chat —— app 内无 UI 入口）
-        // ── Verify Translation (V1 forward mode) ──
-        .route("/api/verify-translation", post(verify_translation_handler))
-        // ── Admin ──
-        .route("/api/admin/login", post(admin_login))
-        .route("/api/admin/dashboard", get(admin_dashboard))
-        .route("/api/admin/register", post(admin_register))
-        .route("/api/admin/users", get(admin_users_handler))
-        .route("/api/admin/users/expiring", get(admin_expiring_users))
-        .route("/api/admin/users/export", get(admin_users_export))
-        .route(
-            "/api/admin/users/batch-subscription",
-            post(admin_batch_subscription),
-        )
-        .route(
-            "/api/admin/users/{user_id}",
-            get(admin_user_detail).delete(admin_delete_user),
-        )
-        .route(
-            "/api/admin/users/{user_id}/hard-delete",
-            delete(admin_hard_delete_user),
-        )
-        .route(
-            "/api/admin/users/{user_id}/restore",
-            post(admin_restore_user),
-        )
-        // 🔴 2026-09-29 已退役：`POST /api/admin/users/{id}/reveal-phone`（两步揭看手机号）
-        //    —— `users.phone` 列已删。handler `admin_reveal_phone` 同步移除。
-        .route(
-            "/api/admin/users/{user_id}/subscription",
-            put(admin_set_subscription),
-        )
-        .route(
-            "/api/admin/users/{user_id}/quick-extend",
-            post(admin_quick_extend),
-        )
-        .route(
-            "/api/admin/subscription-requests",
-            get(admin_list_subscription_requests).post(admin_create_subscription_request),
-        )
-        .route(
-            "/api/admin/subscription-requests/{req_id}/approve",
-            post(admin_approve_request),
-        )
-        .route(
-            "/api/admin/subscription-requests/{req_id}/reject",
-            post(admin_reject_request),
-        )
-        // ── Admin: 支付 & 套餐管理 ──
-        .route(
-            "/api/admin/plans",
-            get(crate::plans_handlers::admin_plans_list_handler)
-                .post(crate::plans_handlers::admin_plan_create_handler),
-        )
-        .route(
-            "/api/admin/plans/{id}",
-            put(crate::plans_handlers::admin_plan_update_handler),
-        )
-        .route(
-            "/api/admin/pay/orders",
-            get(crate::pay_handlers::admin_orders_handler),
-        )
-        // ── Admin: Audit Log ──
-        .route(
-            "/api/admin/users/{user_id}/audit-log",
-            get(admin_audit_log_handler),
-        )
-        .route(
-            "/api/admin/admins",
-            get(admin_list_admins).post(admin_create_admin),
-        )
-        .route(
-            "/api/admin/admins/{admin_id}/approve",
-            post(admin_approve_admin),
-        )
-        .route(
-            "/api/admin/admins/{admin_id}/reject",
-            post(admin_reject_admin),
-        )
-        .route(
-            "/api/admin/admins/{admin_id}/password",
-            post(admin_reset_password),
-        )
-        .route(
-            "/api/admin/admins/{admin_id}/permissions",
-            put(admin_set_permissions),
-        )
-        .route(
-            "/api/admin/admins/{admin_id}/disable",
-            delete(admin_disable_admin),
-        )
-        .route(
-            "/api/admin/admins/{admin_id}/enable",
-            post(admin_enable_admin),
-        )
-        .route("/api/admin/audit-log", get(admin_audit_log))
-        // ── 🔴 2026-09-29 已退役：Admin K12 后台（Guardian + Curriculum，41 个路由）──
-        //     依赖的表已删（`guardian_assignments` / `prebuilt_*` / `card_relations` /
-        //     `plan_runs` / `user_plan_progress`）→ 模块 `curriculum_admin` / `curriculum_loader` 一并退役。
-        // ── Admin: Config & Debug ──
-        .route(
-            "/api/admin/config",
-            get(crate::config_admin::get_config_handler)
-                .post(crate::config_admin::post_config_handler),
-        )
-        .route(
-            "/api/admin/prompt/template",
-            get(crate::config_admin::get_template_handler)
-                .post(crate::config_admin::post_template_handler),
-        )
-        .route(
-            "/api/admin/prompt/templates",
-            get(crate::config_admin::list_templates_handler),
-        )
-        // 🔴 2026-09-29 已退役：/api/admin/debug/*（依赖已删表 debug_logs / debug_trackers）
-        // ── Distribution & Marketing ──
-        // 用户端 API
-        .route(
-            "/api/campaigns/check-push-trigger",
-            get(crate::campaign_handler::check_push_trigger),
-        )
-        .route("/api/referral/click", post(crate::referral_handler::click))
-        .route(
-            "/api/referral/my-code",
-            get(crate::referral_handler::my_code),
-        )
-        .route(
-            "/api/referral/my-stats",
-            get(crate::referral_handler::my_stats),
-        )
-        .route(
-            "/api/referral/my-team",
-            get(crate::referral_handler::my_team),
-        )
-        .route(
-            "/api/referral/my-commissions",
-            get(crate::referral_handler::my_commissions),
-        )
-        .route(
-            "/api/referral/generate-poster",
-            post(crate::referral_handler::generate_poster),
-        )
-        .route(
-            "/api/referral/generate-h5",
-            post(crate::referral_handler::generate_h5),
-        )
-        .route(
-            "/api/referral/user-portrait",
-            get(crate::referral_handler::user_portrait),
-        )
-        .route(
-            "/api/referral/qrcode",
-            get(crate::referral_handler::get_qrcode),
-        )
-        .route(
-            "/api/campaign/join",
-            post(crate::campaign_member_handler::join),
-        )
+        // ── 试用（trial）──  ⚠️ 去留待定，见 docs/review/backend-dead-route-cleanup-2026-10-06.md §4.2
         .route("/api/trial/start", post(crate::trial_handler::start))
         .route("/api/trial/claim", put(crate::trial_handler::claim))
-        // 用户端提现
-        .route(
-            "/api/referral/withdraw",
-            post(crate::distribution_handler::user_withdraw),
-        )
-        .route(
-            "/api/referral/my-withdrawals",
-            get(crate::distribution_handler::user_withdrawals),
-        )
-        // 推广落地页
-        .route("/share/{code}", get(crate::referral_handler::share_landing))
-        .route("/share/", get(crate::referral_handler::share_landing_home))
-        .route("/share", get(crate::referral_handler::share_landing_home))
-        .route("/go/{code}", get(crate::referral_handler::share_landing))
-        .route("/go/", get(crate::referral_handler::share_landing_home))
-        .route("/go", get(crate::referral_handler::share_landing_home))
-        .route(
-            "/api/pay/calculate",
-            post(crate::distribution_handler::calculate),
-        )
-        .route(
-            "/api/referral/user-campaign",
-            get(crate::distribution_handler::user_campaign),
-        )
+        // ── 通知中心（用户通知 · 非营销推送）—— 数据源 user_notifications
         .route(
             "/api/notifications",
-            get(crate::distribution_handler::list_notifications),
+            get(crate::notification_handler::list_notifications),
         )
         .route(
             "/api/notifications/{id}/read",
-            post(crate::distribution_handler::mark_read),
+            post(crate::notification_handler::mark_read),
         )
         .route(
             "/api/notifications/read-all",
-            post(crate::distribution_handler::mark_read_all),
-        )
-        // 管理端活动 API
-        .route(
-            "/api/admin/campaigns",
-            get(crate::campaign_handler::list).post(crate::campaign_handler::create),
-        )
-        .route(
-            "/api/admin/campaigns/default-poster-prompt",
-            get(crate::campaign_handler::default_poster_prompt),
-        )
-        .route(
-            "/api/admin/campaigns/{id}",
-            get(crate::campaign_handler::get)
-                .put(crate::campaign_handler::update)
-                .delete(crate::campaign_handler::delete),
-        )
-        .route(
-            "/api/admin/campaigns/{id}/status",
-            patch(crate::campaign_handler::toggle_status),
-        )
-        .route(
-            "/api/admin/campaigns/{id}/push",
-            post(crate::campaign_handler::push),
-        )
-        .route(
-            "/api/admin/campaigns/{id}/stats",
-            get(crate::campaign_handler::stats),
-        )
-        .route(
-            "/api/admin/campaigns/{id}/generate-poster-template",
-            post(crate::campaign_handler::generate_poster_template),
-        )
-        .route(
-            "/api/admin/campaigns/{id}/generate-h5-template",
-            post(crate::campaign_handler::generate_h5_template),
-        )
-        .route(
-            "/api/admin/campaigns/{id}/preview-poster",
-            post(crate::campaign_handler::preview_poster),
-        )
-        .route(
-            "/api/admin/campaigns/{id}/preview-h5",
-            post(crate::campaign_handler::preview_h5),
-        )
-        // 管理端结算 API
-        .route(
-            "/api/admin/settlement/pending-commissions",
-            get(crate::distribution_handler::pending_commissions),
-        )
-        .route(
-            "/api/admin/settlement/batches/export-all",
-            get(crate::distribution_handler::export_all_batches),
-        )
-        .route(
-            "/api/admin/settlement/batches",
-            get(crate::distribution_handler::list_batches),
-        )
-        .route(
-            "/api/admin/settlement/batches/{batch_no}",
-            get(crate::distribution_handler::get_batch),
-        )
-        .route(
-            "/api/admin/settlement/batches/{batch_no}/export",
-            get(crate::distribution_handler::export_batch),
-        )
-        .route(
-            "/api/admin/settlement/complete-payment",
-            post(crate::distribution_handler::mark_paid),
-        )
-        .route(
-            "/api/admin/settlement/pending-export",
-            get(crate::distribution_handler::export_pending_csv),
-        )
-        // 管理端提现 API
-        .route(
-            "/api/admin/withdrawals",
-            get(crate::distribution_handler::list_withdrawals),
-        )
-        .route(
-            "/api/admin/withdrawals/{id}/approve",
-            post(crate::distribution_handler::approve_withdrawal),
-        )
-        .route(
-            "/api/admin/withdrawals/{id}/reject",
-            post(crate::distribution_handler::reject_withdrawal),
-        )
-        // 管理端团队 API
-        .route(
-            "/api/admin/team",
-            get(crate::distribution_handler::admin_team),
-        )
-        .route(
-            "/api/admin/team/{user_id}",
-            get(crate::distribution_handler::admin_team_user),
-        )
-        // 管理端统计 API
-        .route(
-            "/api/admin/distribution/stats",
-            get(crate::distribution_handler::admin_stats),
-        )
-        .route(
-            "/api/admin/distribution/funnel",
-            get(crate::distribution_handler::admin_funnel),
-        )
-        .route(
-            "/api/admin/distribution/summary",
-            get(crate::distribution_handler::admin_summary),
-        )
-        .route(
-            "/api/admin/distribution/monthly-stats",
-            get(crate::distribution_handler::admin_monthly_stats),
-        )
-        .route(
-            "/api/admin/distribution/ranking",
-            get(crate::distribution_handler::admin_ranking),
-        )
-        .route(
-            "/api/admin/distribution/export",
-            get(crate::distribution_handler::admin_export),
-        )
-        // 退款 API
-        .route(
-            "/api/admin/refund/{order_id}",
-            post(crate::distribution_handler::admin_refund),
-        )
-        .route(
-            "/api/webhook/refund",
-            post(crate::distribution_handler::webhook_refund),
+            post(crate::notification_handler::mark_read_all),
         )
         // ── Flutter Web App 静态文件（SPA 路由） ──
         .route("/app/{*path}", get(serve_flutter_web))

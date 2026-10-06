@@ -1,10 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
-import 'package:url_launcher/url_launcher.dart';
 import '../api/api_config.dart';
 import '../providers/auth_provider.dart';
 import '../theme/co_spacing.dart';
@@ -32,7 +30,6 @@ class _NotificationPanelBody extends StatefulWidget {
 class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
   List<Map<String, dynamic>> _notifications = [];
   bool _loading = true;
-  bool _dialogOpen = false; // 防弹窗堆叠锁
 
   Map<String, String> get _headers {
     final token = widget.auth.token;
@@ -109,63 +106,19 @@ class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
     }
   }
 
-  /// 活动/分享通知 → 调 API 获取 H5 分享链接，在新标签页打开
-  Future<void> _openH5InNewTab(Map<String, dynamic> n) async {
-    try {
-      final auth = widget.auth;
-      final userId = auth.userId;
-      final token = auth.token;
-      String? campaignId;
-      final actionUrl = n['action_url'] as String?;
-      if (actionUrl != null && actionUrl.startsWith('share?campaign_id=')) {
-        campaignId = actionUrl.substring('share?campaign_id='.length);
-      }
-      // 调 API 获取 H5 分享 URL（含用户邀请码）
-      if (userId != null && token != null && campaignId != null) {
-        final resp = await http.post(
-          Uri.parse('${ApiConfig.baseUrl}/api/referral/generate-h5'),
-          headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-          body: jsonEncode({'user_id': userId, 'campaign_id': campaignId}),
-        ).timeout(const Duration(seconds: 10));
-        if (resp.statusCode == 200) {
-          final data = jsonDecode(resp.body) as Map<String, dynamic>;
-          final url = data['url'] as String?;
-          if (url != null && url.isNotEmpty) {
-            await _openExternal(url);
-            _dialogOpen = false;
-            return;
-          }
-        }
-      }
-    } catch (_) {}
-    // fallback: 打开通用分享页
-    await _openExternal('${ApiConfig.baseUrl}/share/');
-    _dialogOpen = false;
-  }
-
-  /// 在系统浏览器中打开外部链接。
-  ///
-  /// 原实现用 `html.window.open(url, '_blank')`（web-only）→ 改为 `url_launcher`。
-  Future<void> _openExternal(String url) async {
-    try {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    } catch (_) {
-      // 打不开时退回复制链接，至少让用户能手动粘贴
-      await Clipboard.setData(ClipboardData(text: url));
-    }
-  }
+  // 🔴 2026-10-06：原 `_openH5InNewTab` + `_openExternal` 两个方法已删 ——
+  //    前者调 `/api/referral/generate-h5`（已随分销链退役，调用必然 404），
+  //    后者（`url_launcher` + `Clipboard`）只服务前者。
+  //    见 `docs/review/backend-dead-route-cleanup-2026-10-06.md`
 
   void _navigateByType(BuildContext context, Map<String, dynamic> n) {
     final type = n['notification_type'] as String?;
     _markRead(n['id'] as String);
 
-    // 活动推送和分享类通知 → 在新标签页打开 H5 分享页（避免 Flutter Web iframe 卡死）
-    if (type == 'campaign_push' || type == 'share_poster' || type == 'share_h5' || type == 'marketing_campaign') {
-      if (_dialogOpen) return; // 防止重复点击
-      _dialogOpen = true;
-      _openH5InNewTab(n);
-      return;
-    }
+    // 🔴 2026-10-06：原「活动推送 / 分享类通知 → 打开 H5 分享页」分支已删
+    //    （依赖已退役的 `/api/referral/generate-h5` 与 `/share/` 落地页）。
+    //    ⚠️ 库里可能仍有历史 `campaign_push` 通知 → 下面 `_iconFor` **保留**其图标映射，
+    //       点击时落进 `default`（不跳转），不会报错。
 
     switch (type) {
       case 'commission':

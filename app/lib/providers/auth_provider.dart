@@ -217,10 +217,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
   ///
   /// ✅ 正解就是这里：**未登录 → 直接注册；已登录的匿名账号 → 认领**
   ///    （见 `ClaimDialog._submit`）。两者语义本就不同，不该走同一条路。
-  Future<void> register(String email, String password, {String? referralCode}) async {
+  Future<void> register(String email, String password) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final result = await _client.register(email, password, referralCode: referralCode);
+      final result = await _client.register(email, password);
       final uid = result['user_id'] as String?;
       final token = result['token'] as String?;
       final returnedEmail = result['email'] as String? ?? email;
@@ -410,11 +410,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  /// 创建临时账户，可选推广码（来自 URL ?ref=）
-  Future<void> trialStart({String? refCode, String? campaignId}) async {
+  /// 创建临时账户（**匿名试用**）
+  ///
+  /// 🔴 2026-10-06：原 `refCode` / `campaignId` 两个参数已删 —— 分销/营销链
+  /// 整体退役（后端 `/api/referral/*` 与 `/api/campaign*` 路由已不存在）。
+  Future<void> trialStart() async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final result = await _client.trialStart(referralCode: refCode, campaignId: campaignId);
+      final result = await _client.trialStart();
       final uid = result['user_id'] as String?;
       final token = result['token'] as String?;
       final trialUsername = result['username'] as String?;
@@ -434,8 +437,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       // 🔑 日志**必须带端点** —— 「连错地址」是本项目踩过的真坑：
       //    `flutter run` 默认 `localhost:8080`，而后端在 VPS，
       //    失败信息里若没有端点，就要靠猜。
-      debugPrint('trialStart 失败 endpoint=${ApiConfig.baseUrl} '
-          'refCode=$refCode campaignId=$campaignId error=$e');
+      debugPrint('trialStart 失败 endpoint=${ApiConfig.baseUrl} error=$e');
       state = state.copyWith(
         isLoading: false,
         error: _friendlyError(e.toString()),
@@ -479,7 +481,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   ///
   /// ✅ 现在改为**显式前置检查 + 人话提示**。调用方（`ClaimDialog`）则为
   ///    「未登录」走 [register]，两个入口各司其职。
-  Future<void> trialClaim(String email, String password, {String? referralCode, String? campaignId}) async {
+  Future<void> trialClaim(String email, String password) async {
     final userId = state.userId;
     final token = state.token;
     if (userId == null || token == null) {
@@ -497,8 +499,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
         token,
         email,
         password,
-        referralCode: referralCode,
-        campaignId: campaignId,
       );
       final newToken = result['token'] as String? ?? token;
       final returnedEmail = result['email'] as String? ?? email;
