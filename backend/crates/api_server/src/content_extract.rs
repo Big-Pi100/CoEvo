@@ -382,7 +382,256 @@ pub fn extract_to_markdown(html: &str, base_url: Option<&str>) -> String {
     let md = article.text_content.to_string();
 
     // ④ 显式剥离图片语法（见函数文档「图片」一节）
-    strip_markdown_images(&md)
+    let md = strip_markdown_images(&md);
+
+    // ⑤ 🆕 2026-10-06 · 清掉「播放器配件」（见 [`strip_media_furniture`] 的长注释）
+    //
+    // 🔴 这是**根因修复**：NPR 把播放器放在正文容器（`storytext`）**内部**，
+    //    Readability 认为它属于正文 ⇒ 原样进 Markdown ⇒ 入库
+    //    ⇒ App 渲染出两行链接、朗读把 `src`/`width`/`frameborder` **逐字念出来**。
+    //    端侧只治得了「念出来」，治不了「渲染出来」—— 必须在**这一层**清。
+    strip_media_furniture(&md)
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 🆕 2026-10-06 · 清掉内容源的「播放器配件」（根因修复）
+// ─────────────────────────────────────────────────────────────────────
+
+/// **媒体类** HTML 标签（**只删这些**）。
+///
+/// # 🔴 为什么不删「所有 HTML 标签」
+///
+/// 技术文章会**讨论**标签（`` `<img>` `` / `<div>`）—— 那是**内容**。
+/// 实测本项目专门有治这个的 fixture（`devto_inline_code_page.html`，
+/// 原文用 32 个 `<code>` 讨论标签）⇒ 全删会把那篇文章的内容删掉。
+///
+/// 📌 判据：**「看起来像标签」≠「是配件」** ——
+/// 按**语义**（媒体资源）筛，不按**形状**（尖括号）筛。
+///
+/// # 🔴 `[*`_~\s]{0,4}` 这一段是干什么的（**实测踩到才加的**）
+///
+/// 源站（NPR）的真实形态是**标记与标签粘在一起**：
+/// ```text
+/// - **Embed** ** `<**iframe src="…">` **
+/// ```
+/// 若正则写 `</?(?:iframe|…)`，则 `<` 后面跟的是 `**` ⇒ **不匹配** ⇒ 标签留着
+/// （实测：`iframe 未清` 断言失败，输出里整行原样保留）。
+/// ⇒ 允许 `<` 与标签名之间有少量标记字符。
+///
+/// ✅ 比「先剥掉整行的 markdown 标记再删标签」更安全 ——
+///    后者会**改动整行**（把 `**粗体**` 也剥了），而这里只放宽**匹配**。
+/// 📌 判据：**「目标被别的东西粘住」时，放宽匹配优于先清理整行。**
+static MEDIA_TAG_RE: OnceLock<Regex> = OnceLock::new();
+
+fn media_tag_re() -> &'static Regex {
+    MEDIA_TAG_RE.get_or_init(|| {
+        Regex::new(
+            r"(?i)</?[*`_~\s]{0,4}(?:iframe|audio|video|embed|object|source|track|param)\b[^>]*>",
+        )
+        .expect("媒体标签正则必须合法（编译期常量）")
+    })
+}
+
+/// Markdown 链接 `[文字](URL)`。
+static MD_LINK_RE: OnceLock<Regex> = OnceLock::new();
+
+fn md_link_re() -> &'static Regex {
+    MD_LINK_RE.get_or_init(|| {
+        Regex::new(r"\[([^\]]*)\]\(([^)]*)\)").expect("链接正则必须合法（编译期常量）")
+    })
+}
+
+/// `## 标题` 形态（用于「首行标题去重」）。
+static HEADING_RE: OnceLock<Regex> = OnceLock::new();
+
+fn heading_re() -> &'static Regex {
+    HEADING_RE
+        .get_or_init(|| Regex::new(r"^#{1,6}\s+(.*)$").expect("标题正则必须合法（编译期常量）"))
+}
+
+/// URL 命中任一 ⇒ 判为**媒体资源**（音频/视频）。
+///
+/// 🔑 命中时**连可见文字一起删**（而普通链接保留文字）——
+/// 因为播放器的可见文字是「Download」「Listen to the story」这类**按钮文案**：
+/// 留着它们，正文里就塞着「Download」「Embed」这种**没有上下文的孤词**
+/// （白哥 2026-10-06 反馈的正是这个）。
+/// 而正文里的**普通**链接（`[his post](https://dev.to/…)`）文字是**内容**，必须留。
+const MEDIA_URL_HINTS: &[&str] = &[".mp3", ".m4a", ".ogg", ".wav", ".mp4", "ondemand."];
+
+/// 「播放器按钮」词表 —— 整行**只剩**这些词 ⇒ 判为配件行。
+///
+/// # ⚠️ 如实标注取舍
+/// 这些都是英文常用词，理论上可能出现在正文里（如 `Play` 单独成段）。
+/// 但那种情况**本身就不构成可读内容**；而留着它们，会让**每篇** NPR 音频页
+/// 都多出两个孤词（实测 109 篇含 `Embed`/`Download`）。
+/// 📌 取舍：**宁可删掉一个孤立的 `Play`，也不要每篇都留 `Download` / `Embed`。**
+const FURNITURE_WORDS: &[&str] = &["embed", "download", "play", "listen", "watch"];
+
+/// 从提取出的 Markdown 正文里**清掉内容源的「播放器配件」**（纯函数 · 可单测）。
+///
+/// # 为什么需要它（**根因** · 2026-10-06）
+///
+/// NPR 把音频播放器放在**正文容器（`storytext`）内部**：
+/// ```text
+/// - [Download](https://ondemand.npr.org/anon.npr-mp3/…mp3?…)
+/// - **Embed** ** `<**iframe src="https://www.npr.org/player/embed/…" width="100%" …>` **
+/// ```
+/// Readability 认为它们属于正文 ⇒ 原样进 Markdown ⇒ 入库
+/// ⇒ **所有消费者都拿到这份脏数据**。
+///
+/// # 规则（**保守**：宁可留下一行，也不误删正文）
+///
+/// 逐行处理（**围栏代码块内完全不动**）：
+/// 1. 删**媒体类** HTML 标签（见 [`media_tag_re`]）
+/// 2. 链接分两类：**媒体 URL** ⇒ 整个删；**普通 URL** ⇒ 保留可见文字
+/// 3. 该行**只剩标记字符与空白**（这行只有配件）⇒ 删整行
+/// 4. 该行剩下的可见文字 ∈ [`FURNITURE_WORDS`] ⇒ 删整行
+///
+/// # 🔴 为什么 3 与 4 都要 —— 实测两行各命中一条
+///
+/// | 原文 | 命中 | 删完后 |
+/// |---|---|---|
+/// | `- [Download](…ondemand…mp3)` | 2 + 3 | 剩 `-` ⇒ 空 ⇒ 删行 |
+/// | ``- **Embed** ** `<**iframe …>` **`` | 1 + 4 | 删 iframe ⇒ 剥标记 ⇒ `Embed` ∈ 词表 ⇒ 删行 |
+///
+/// ⚠️ **只做 1/2 会留下 `Embed`** —— 端侧 `speechTextFromMarkdown` 第一版就漏了它，
+///    实测朗读输出里留着 `Embed  <iframe …>` ⇒ 逐字念出标签属性。
+///
+/// # ✅ 不删（**这三类必须保住**）
+/// · 正文里**提到 URL** 的句子（`See [his post](https://dev.to/…) for details`）
+/// · **围栏代码块**内的标签（技术文章的示例）
+/// · 非媒体类标签（`<div>` / `<code>` —— 它们可能就是文章讨论的对象）
+pub fn strip_media_furniture(md: &str) -> String {
+    let mut out: Vec<String> = Vec::new();
+    let mut in_fence = false;
+
+    for line in md.lines() {
+        // ① 围栏行：状态切换 + **原样保留**
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_fence = !in_fence;
+            out.push(line.to_string());
+            continue;
+        }
+        // ② 围栏内：**完全不动**
+        if in_fence {
+            out.push(line.to_string());
+            continue;
+        }
+        // ③ 空行：**必须保留**（它是段落分隔符）
+        //
+        // 🔴 这里踩过一次：下面第 ⑤ 步用「剥掉标记后还剩什么」判配件，
+        //    而**空行剥完也是空** ⇒ 会被判成配件删掉 ⇒ **段落全连成一片**。
+        //    📌 判据：**「剩余为空」这个判据本身包含空行** ⇒ 必须先排除空行。
+        if line.trim().is_empty() {
+            out.push(line.to_string());
+            continue;
+        }
+
+        // ④ 删媒体标签
+        let s = media_tag_re().replace_all(line, "").into_owned();
+
+        // ⑤ 链接：**只处理媒体链接**（整个删）；普通链接**原样保留**
+        //
+        // 🔴 这里改过一次（实测发现破坏了既有行为）：
+        //    初版把**所有**链接都替换成「可见文字」（URL 去掉），
+        //    结果既有测试 `test_md_relative_links_absolutized` **红了** ——
+        //    那条测试守的是「相对链接被绝对化」（正文里的链接**要保留成 markdown**，
+        //    端侧才点得开）。
+        //    ⇒ 本函数的职责是**去配件**，不是「去所有 URL」。
+        //      📌 判据：**别顺手做「看起来也是清理」的事** —— 越界就会撞既有契约。
+        let s = md_link_re()
+            .replace_all(&s, |caps: &regex::Captures| {
+                let url = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+                if is_media_url(url) {
+                    String::new() // 媒体链接：连可见文字一起删（那是播放器按钮文案）
+                } else {
+                    caps.get(0).map(|m| m.as_str()).unwrap_or("").to_string() // 原样
+                }
+            })
+            .into_owned();
+
+        // ⑥ 剥掉标记字符与首尾标点后还剩什么？
+        let rest: String = s
+            .chars()
+            .filter(|c| !"*`_~#>-•[]()".contains(*c) && !c.is_whitespace())
+            .collect();
+        let rest = rest
+            .trim_matches(|c: char| !c.is_alphanumeric() && c != ' ')
+            .to_lowercase();
+
+        let is_furniture = rest.is_empty() || FURNITURE_WORDS.contains(&rest.as_str());
+        if is_furniture {
+            continue; // 删整行
+        }
+        out.push(s);
+    }
+
+    // ⑦ 压缩连续空行（删行会留下空行；但**保留一个**空行 = 段落分隔）
+    let mut result = String::with_capacity(md.len());
+    let mut blank_run = 0usize;
+    for line in out.iter() {
+        if line.trim().is_empty() {
+            blank_run += 1;
+            if blank_run > 1 {
+                continue;
+            }
+        } else {
+            blank_run = 0;
+        }
+        result.push_str(line);
+        result.push('\n');
+    }
+    result.trim_end().to_string()
+}
+
+/// URL 是否指向**媒体资源**（音频/视频）—— 见 [`MEDIA_URL_HINTS`]。
+fn is_media_url(url: &str) -> bool {
+    let u = url.to_ascii_lowercase();
+    MEDIA_URL_HINTS.iter().any(|h| u.contains(h))
+}
+
+/// 去掉正文**首行的重复标题**（与 `content_pool.title` 逐字相同时）。
+///
+/// # 为什么需要它（实测 · 2026-10-06）
+///
+/// `content_pool.id=7091` 的 `body` 首行是：
+/// ```text
+/// #### Temwa Chawinga is a soccer star at home and abroad
+/// ```
+/// 而同一行的 `title` 字段**一字不差**是同一句
+/// ⇒ 端侧 `_ReaderHead` 显示 title，`TraceMarkdown` 又渲染 body 首行的 `####`
+/// ⇒ **阅读页标题显示两次**（白哥 2026-10-06 反馈的样本里前两行就是这个）。
+///
+/// # 🔑 为什么在**抓取层**做（而不是端侧渲染时跳过首行）
+///
+/// 端侧做的话，**每个消费者都要各写一遍**（阅读器 / 朗读 / 将来的任何用途），
+/// 而漏掉一个就重现（📌 同族：`_cleanText` 的手写剥标记 —— 一处漏、处处漏）。
+/// 抓取层是**所有消费者的共同上游** ⇒ 脏数据不进库，下游天然干净。
+pub fn strip_duplicate_title(md: &str, title: &str) -> String {
+    let t = title.trim();
+    if t.is_empty() {
+        return md.to_string();
+    }
+    let mut out: Vec<&str> = Vec::new();
+    let mut first_content_seen = false;
+    for line in md.lines() {
+        if !first_content_seen {
+            let s = line.trim();
+            if s.is_empty() {
+                out.push(line); // 前导空行照留
+                continue;
+            }
+            first_content_seen = true; // 只看**第一个非空行**
+            if let Some(caps) = heading_re().captures(s) {
+                if caps.get(1).map(|m| m.as_str().trim()) == Some(t) {
+                    continue; // 丢掉这行重复标题
+                }
+            }
+        }
+        out.push(line);
+    }
+    out.join("\n").trim().to_string()
 }
 
 /// 删掉 Markdown 图片语法 `![alt](url)` —— 见 [extract_to_markdown] 的「图片」说明。
@@ -401,6 +650,180 @@ fn strip_markdown_images(md: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ─────────────────────────────────────────────────────────────────
+    // 🆕 2026-10-06 · 播放器配件清理 + 标题去重（**真实事故回归**）
+    // ─────────────────────────────────────────────────────────────────
+
+    /// 生产库 `content_pool.id=7091` 的 body **原文**（2026-10-06 SSH 直取，逐字节）。
+    ///
+    /// ⚠️ 这是**真样本**而不是我手编的 —— 手编样本会漏掉真实形态
+    /// （例如 `<**iframe` 这种「标记与标签粘在一起」的样子）。
+    const NPR_AUDIO_FURNITURE: &str = r#"#### Temwa Chawinga is a soccer star at home and abroad
+
+- [Download](https://ondemand.npr.org/anon.npr-mp3/npr/wesun/2026/10/20261004_wesun_temwa_chawinga_is_a_soccer_star_at_home_and_abroad.mp3?t=progseg&e=nx-s1-5929603&p=10&seg=13&d=237&size=3794278&sc=siteplayer&aw_0_1st.playerid=siteplayer)
+- **Embed** ** `<**iframe src="https://www.npr.org/player/embed/nx-s1-5981387/nx-s1-9951305" width="100%" height="290" frameborder="0" scrolling="no" title="NPR embedded audio player">` **
+
+The two-time MVP of the National Women's Soccer League is making waves with her team, the Current, in Kansas City and at home in Malawi\."#;
+
+    #[test]
+    fn strip_furniture_removes_both_npr_player_lines() {
+        let out = strip_media_furniture(NPR_AUDIO_FURNITURE);
+        // ① 两条配件行都要清掉
+        assert!(!out.contains("iframe"), "iframe 未清:\n{out}");
+        assert!(!out.contains("ondemand.npr.org"), "音频链接未清:\n{out}");
+        assert!(!out.contains("Download"), "Download 未清:\n{out}");
+        // 🔴 `Embed` 是**最容易漏的** —— 它藏在 `**…**` 与反引号之间，
+        //    只做「删标签 + 剥媒体链接」两条规则**清不掉它**（实测端侧就漏了）。
+        assert!(
+            !out.contains("Embed"),
+            "Embed 未清（词表规则没生效）:\n{out}"
+        );
+        assert!(!out.contains("width="), "标签属性未清:\n{out}");
+        // ② 正文必须**保住**
+        assert!(out.contains("The two-time MVP"), "正文被误删:\n{out}");
+        assert!(
+            out.contains("in Kansas City and at home in Malawi"),
+            "正文尾部被误删:\n{out}"
+        );
+        // ③ 标题行保留（它由 `strip_duplicate_title` 负责，职责分离）
+        assert!(
+            out.contains("Temwa Chawinga is a soccer star"),
+            "标题行被误删:\n{out}"
+        );
+    }
+
+    #[test]
+    fn strip_furniture_keeps_blank_lines_as_paragraph_separators() {
+        // 🔴 段间空行**必须保留** —— 否则正文连成一片。
+        //    （踩过：「剥掉标记后为空」这个判据**本身就包含空行** ⇒ 空行被误判成配件）
+        let md = "First para.\n\nSecond para.";
+        assert_eq!(strip_media_furniture(md), md, "空行被删了");
+    }
+
+    #[test]
+    fn strip_furniture_does_not_touch_fenced_code() {
+        // 🔑 技术文章的示例代码里可能就有 `<iframe>` —— 那是**内容**
+        let md = "Text\n\n```html\n<iframe src=\"x\"></iframe>\n- [Download](https://a/b.mp3)\n```\n\nMore";
+        let out = strip_media_furniture(md);
+        assert!(
+            out.contains("<iframe src=\"x\">"),
+            "代码块内的 iframe 被删:\n{out}"
+        );
+        assert!(out.contains("a/b.mp3"), "代码块内的链接被删:\n{out}");
+    }
+
+    #[test]
+    fn strip_furniture_keeps_normal_links_intact() {
+        // 普通链接 ⇒ **原样保留**（含 URL）——
+        // 它是正文的一部分，端侧要渲染成可点的链接。
+        // 🔴 初版把普通链接也剥成文字，**撞红了既有测试**
+        //    `test_md_relative_links_absolutized`（守「相对链接绝对化」）。
+        let md = "See [his post here](https://dev.to/x/y) for details.";
+        let out = strip_media_furniture(md);
+        assert!(out.contains("his post here"), "链接文字被删:\n{out}");
+        assert!(
+            out.contains("(https://dev.to/x/y)"),
+            "普通链接的 URL 被去掉了（越界了）:\n{out}"
+        );
+    }
+
+    #[test]
+    fn strip_furniture_keeps_relative_links_for_absolutization() {
+        // 🔑 回归：本函数**不得**破坏「相对链接绝对化」这个既有能力
+        //     （`extract_to_markdown` 的 base_url 依赖它）
+        let md = "[t](/a/b) is a relative link in someone's post.";
+        let out = strip_media_furniture(md);
+        assert!(out.contains("(/a/b)"), "相对链接被破坏:\n{out}");
+    }
+
+    #[test]
+    fn strip_furniture_keeps_sentence_mentioning_media_url() {
+        // ⚠️ 一句完整的话里提到音频链接 —— **整行不该被删**
+        //    （那是正文在引用它，不是播放器配件）
+        let md =
+            "You can listen to the full episode at https://ondemand.npr.org/x.mp3 if you want.";
+        let out = strip_media_furniture(md);
+        assert!(
+            out.contains("You can listen to the full episode"),
+            "正文被误删:\n{out}"
+        );
+    }
+
+    #[test]
+    fn strip_furniture_keeps_non_media_tags() {
+        // `<div>` / `<code>` 可能是文章**讨论的对象** ⇒ 不删
+        let md = "In HTML you write `<div>` and `<code>` like this.";
+        let out = strip_media_furniture(md);
+        assert!(out.contains("<div>"), "非媒体标签被删:\n{out}");
+    }
+
+    #[test]
+    fn strip_duplicate_title_removes_repeated_heading() {
+        let md = "#### Temwa Chawinga is a soccer star at home and abroad\n\nBody text.";
+        let out = strip_duplicate_title(md, "Temwa Chawinga is a soccer star at home and abroad");
+        assert!(!out.contains("####"), "重复标题未删:\n{out}");
+        assert!(out.contains("Body text."), "正文被误删:\n{out}");
+    }
+
+    #[test]
+    fn strip_duplicate_title_keeps_different_heading() {
+        let md = "## 另一个标题\n\nBody.";
+        let out = strip_duplicate_title(md, "完全不同的标题");
+        assert!(out.contains("## 另一个标题"), "不该删的标题被删了:\n{out}");
+    }
+
+    #[test]
+    fn strip_duplicate_title_ignores_non_heading_first_line() {
+        // 🔑 首行是**普通段落**且与 title 相同 ⇒ **不删**（刻意保守：
+        //    正文首句与标题相同是正常的，那不是「重复标题」）
+        let md = "Just a paragraph.\n\nMore.";
+        assert_eq!(strip_duplicate_title(md, "Just a paragraph."), md);
+    }
+
+    #[test]
+    fn strip_duplicate_title_tolerates_blank_title() {
+        let md = "#### X\n\nBody.";
+        assert_eq!(
+            strip_duplicate_title(md, "   "),
+            md,
+            "空 title 不该删任何东西"
+        );
+    }
+
+    /// 🔑 **接线测试**：`strip_media_furniture` 必须真的被 [`extract_to_markdown`] 调用。
+    ///
+    /// # 为什么需要它（本项目既定判据）
+    /// 上面那些单测测的是**函数本身**；而「函数写好了、但主路径没调」是本项目
+    /// 反复踩的坑（**「写了没人跑 = 迟早失效」**）。
+    /// ⇒ 必须有**一条**测试走**端到端**（HTML → Markdown），否则「接线断了」不会被发现。
+    #[test]
+    fn extract_to_markdown_applies_furniture_cleanup_end_to_end() {
+        // 模拟 NPR 音频页：正文容器（`storytext`）**内部**带播放器配件。
+        // 正文写得足够长，否则 Readability 可能判定「无可提取正文」。
+        let body = "The two-time MVP of the National Women's Soccer League is making \
+                    waves with her team, the Current, in Kansas City and at home in \
+                    Malawi. She grew up playing during the hottest part of the day in \
+                    a country where opportunities for women in sport were scarce, and \
+                    her story has become a source of pride for many young players who \
+                    now see a path they did not have before she broke through.";
+        let html = format!(
+            r#"<html><body><article class="storytext">
+            <p>{body}</p>
+            <p>- <a href="https://ondemand.npr.org/anon.npr-mp3/x.mp3?t=1">Download</a></p>
+            <p>- <strong>Embed</strong> <code>&lt;iframe src="https://www.npr.org/player/embed/x/y" width="100%"&gt;</code></p>
+            <p>{body}</p>
+            </article></body></html>"#
+        );
+        let md = extract_to_markdown(&html, None);
+        assert!(!md.is_empty(), "提取不该为空（fixture 太短？）");
+        assert!(
+            !md.contains("ondemand.npr.org"),
+            "音频链接没被清（接线断了？）:\n{md}"
+        );
+        assert!(!md.contains("iframe"), "iframe 没被清（接线断了？）:\n{md}");
+        assert!(md.contains("two-time MVP"), "正文被误删:\n{md}");
+    }
 
     /// 真实文章页（2026-09-29 抓自三站的真实文章，入库供离线断言）
     const NPR_PAGE: &str = include_str!("../tests/fixtures/npr_page.html");

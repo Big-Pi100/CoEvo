@@ -485,10 +485,12 @@ pub fn pick_body_candidates(
     conn: &Connection,
     limit: usize,
     refetch_existing: bool,
-) -> Result<Vec<(i64, String)>, String> {
+) -> Result<Vec<(i64, String, String)>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT p.id, p.url FROM content_pool p \
+            // 🆕 2026-10-06：多取一列 `title` —— 供「首行标题去重」用
+            // （`content_extract::strip_duplicate_title`）。
+            "SELECT p.id, p.url, COALESCE(p.title, '') FROM content_pool p \
              LEFT JOIN content_source s ON s.id = p.source_id \
              WHERE COALESCE(s.redistributable, 0) = 1 \
                AND p.body_attempted_at IS NULL \
@@ -501,11 +503,135 @@ pub fn pick_body_candidates(
     let rows = stmt
         .query_map(
             rusqlite::params![limit as i64, refetch_existing as i64],
-            |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
+            |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            },
         )
         .map_err(|e| format!("query body candidates: {}", e))?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("collect body candidates: {}", e))
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 🆕 2026-10-06 · 「重试窗口」—— 治「内容源事后补充」（`body_attempted_at` 的盲区）
+// ─────────────────────────────────────────────────────────────────────
+
+/// 距上次尝试**至少**这么久才允许重试（小时）。
+///
+/// 🔑 与抓取间隔的关系：补抓每轮 6 小时 ⇒ 12 小时 = **每两轮重试一次**。
+///    太短会让同一批条目挤满每轮配额；太长会错过文字稿上线。
+pub const BODY_RETRY_MIN_GAP_HOURS: i64 = 12;
+
+/// 发布后**多少天内**允许重试（天）。
+///
+/// 依据（实测 2026-10-06 · NPR 音频页 57 篇）：失败组「发布→抓取」间隔
+/// 中位 **3.2h**、上界 **7.8h**；成功组中位 **103.9h（≈4.3 天）**
+/// ⇒ 文字稿在**数小时到数天**内上线 ⇒ 7 天窗口足以覆盖。
+///
+/// 🔴 **窗口必须有上界**（而不是"永远重试"）：
+///    否则一篇「源站本来就只有摘要」的短新闻会被**永久**重试，
+///    白耗配额（同族：「失败项变成永久噪音」——`body_attempted_at` 的设计初衷就是防这个）。
+pub const BODY_RETRY_WINDOW_DAYS: i64 = 7;
+
+/// 每轮**重试**的条数上限（与「新条目」配额**分开**）。
+///
+/// 🔴 必须分开：若把重试混进同一个 `LIMIT 100` 的查询，
+///    重试会**挤掉新条目**的抓取（新内容的新鲜度更值钱）。
+///    📌 判据：**两条用途不同的通道不要共用配额**（否则一边饿了另一边）。
+pub const MAX_BODY_RETRY_PER_ROUND: usize = 20;
+
+/// 正文短于这个**字符数** ⇒ 视为「疑似没抓到正文」⇒ 允许重试。
+///
+/// 依据（实测）：NPR 音频页的「配件版」626–1398 字符；
+/// 完整文字稿 4431–11438 字符 ⇒ 3000 落在**很宽的空档**里。
+///
+/// ⚠️ 这是**启发式**（不是判据）：短新闻（如一句话快讯）本来就短，
+///    会被判为"疑似" ⇒ 靠 [`BODY_RETRY_WINDOW_DAYS`] 的时间窗兜住
+///    （7 天后不再重试）。📌 **两个条件（长度 + 时间窗）缺一不可。**
+pub const BODY_RETRY_SUSPECT_MAX_CHARS: i64 = 3000;
+
+/// 生成「[hours] 小时前」的 UTC ISO 字符串 —— **与 [`now_utc_iso`] 同格式**。
+///
+/// # 🔴 为什么不用 SQL 的 `datetime('now','-12 hours')`
+///
+/// 它返回 `2026-10-06 05:26:15`（**空格分隔、无 `Z`**），而库里的
+/// `body_attempted_at` 是 `2026-10-06T05:26:15Z` ⇒
+/// **字符串比较会得到错误结果**（`'T'` = 0x54 > `' '` = 0x20
+/// ⇒ `'2026-10-06T…' > '2026-10-06 …'` 恒为真 ⇒ 条件恒过/恒不过）。
+///
+/// 📌 判据：**时间比较必须格式一致**（本项目已记同族：
+/// 「时间戳按语义不按字符串」「判定的时间粒度必须 ≤ 两次操作的最小间隔」）。
+fn utc_iso_ago(hours: i64) -> String {
+    (chrono::Utc::now() - chrono::Duration::hours(hours))
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string()
+}
+
+/// 挑「**当时没抓到 / 疑似只抓到配件**」的条目**重试**。
+///
+/// # 它补的是 `body_attempted_at` 的盲区（**根因之一**）
+///
+/// `body_attempted_at` 的语义是「**试过就别再来**」，这在「抓失败就算了」的
+/// 假设下没问题 —— 但**内容源不是静态的**：
+///
+/// | 内容源 | 为什么会变好 |
+/// |---|---|
+/// | **NPR 音频页** | **文字稿延迟上线**（实测中位 103.9h ≈ 4.3 天）|
+/// | 付费墙 | 可能过期 |
+/// | 抓取失败 | 临时故障会自愈 |
+///
+/// 🔴 而补抓是**按 `published_at DESC` 优先抓最新的** ⇒
+///    正好抓在「文字稿还没上线」的窗口 ⇒ 拿到配件版 ⇒ 标记写上 ⇒
+///    **文字稿后来上线了也不再抓**（永久锁定劣质结果 · 全程零报错）。
+///
+/// # 三个条件（**缺一不可**）
+/// 1. `body_attempted_at` **已存在**（试过的才谈得上"重试"）
+/// 2. 距上次尝试 ≥ [`BODY_RETRY_MIN_GAP_HOURS`]（避免每轮都抓同一批）
+/// 3. 发布在 [`BODY_RETRY_WINDOW_DAYS`] 天内（给窗口**上界**，防永久噪音）
+/// 4. 且「当时没抓到」（`body` 空）**或**「疑似只抓到配件」（长度 < 阈值）
+pub fn pick_body_retry_candidates(
+    conn: &Connection,
+    limit: usize,
+) -> Result<Vec<(i64, String, String)>, String> {
+    let min_gap_before = utc_iso_ago(BODY_RETRY_MIN_GAP_HOURS);
+    let window_start = utc_iso_ago(BODY_RETRY_WINDOW_DAYS * 24);
+    let mut stmt = conn
+        .prepare(
+            "SELECT p.id, p.url, COALESCE(p.title, '') FROM content_pool p \
+             LEFT JOIN content_source s ON s.id = p.source_id \
+             WHERE COALESCE(s.redistributable, 0) = 1 \
+               AND p.url <> '' \
+               AND p.body_attempted_at IS NOT NULL \
+               AND p.body_attempted_at <= ?1 \
+               AND COALESCE(p.published_at, p.fetched_at) >= ?2 \
+               AND (p.body IS NULL OR p.body = '' OR LENGTH(p.body) < ?3) \
+             ORDER BY COALESCE(p.published_at, p.fetched_at) DESC \
+             LIMIT ?4",
+        )
+        .map_err(|e| format!("prepare body retry candidates: {}", e))?;
+    let rows = stmt
+        .query_map(
+            rusqlite::params![
+                min_gap_before,
+                window_start,
+                BODY_RETRY_SUSPECT_MAX_CHARS,
+                limit as i64
+            ],
+            |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            },
+        )
+        .map_err(|e| format!("query body retry candidates: {}", e))?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("collect body retry candidates: {}", e))
 }
 
 /// 「重抓模式」开关 —— `COEVO_REFETCH_BODIES=1` 时为真（**默认关**）。
@@ -733,16 +859,35 @@ pub async fn fetch_article_body_diagnostic(url: &str) -> BodyOutcome {
 /// 🔴 结构与 [`fetch_all`] 一致：**先异步抓（不碰 DB）→ 再同步写**。
 ///    不能把 `get_conn()` 的 guard 带进 `await`（见模块头 ①）。
 pub async fn fetch_bodies_round() -> (usize, usize) {
-    let candidates = {
+    let (new_candidates, retry_candidates) = {
         let conn = crate::db_pool::get_conn();
-        match pick_body_candidates(&conn, MAX_BODY_FETCH_PER_ROUND, refetch_existing_enabled()) {
+        let new =
+            match pick_body_candidates(&conn, MAX_BODY_FETCH_PER_ROUND, refetch_existing_enabled())
+            {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::error!("content_fetch: 挑正文候选失败: {}", e);
+                    return (0, 0);
+                }
+            };
+        // 🆕 2026-10-06：**重试通道**（独立配额，见 `MAX_BODY_RETRY_PER_ROUND`）。
+        // 挑失败**不影响**主通道 —— 重试是「锦上添花」，不该让整轮停摆。
+        let retry = match pick_body_retry_candidates(&conn, MAX_BODY_RETRY_PER_ROUND) {
             Ok(c) => c,
             Err(e) => {
-                tracing::error!("content_fetch: 挑正文候选失败: {}", e);
-                return (0, 0);
+                tracing::warn!("content_fetch: 挑重试候选失败（不影响主通道）: {}", e);
+                Vec::new()
             }
-        }
+        };
+        (new, retry)
     };
+
+    // 🔑 重试放**前面**：它的时间窗会过期（7 天），而新条目**永远可以下一轮再抓**。
+    //    先做会过期的事（同族：「先做不可逆的」那一类取舍）。
+    let retry_count = retry_candidates.len();
+    let mut candidates = retry_candidates;
+    candidates.extend(new_candidates);
+
     if candidates.is_empty() {
         return (0, 0);
     }
@@ -763,13 +908,24 @@ pub async fn fetch_bodies_round() -> (usize, usize) {
     let total = candidates.len();
     // 🔑 按失败原因分类计数 —— 让日志直接指向「下一步查什么」
     let mut reasons: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
-    for (id, url) in candidates {
+    for (id, url, title) in candidates {
         let outcome = fetch_article_body(&client, &url).await;
         if let Some(text) = outcome.text() {
             ok += 1;
+            // 🆕 2026-10-06 · **首行标题去重**
+            //
+            // 实测：`content_pool.id=7091` 的 body 首行是
+            // `#### Temwa Chawinga is a soccer star at home and abroad`，
+            // 而 `title` 字段**一字不差**是同一句 ⇒ 端侧显示两次。
+            //
+            // 🔑 为什么在**这一层**（而不是端侧渲染时跳过首行）：
+            //    端侧做的话**每个消费者都要各写一遍**（阅读器 / 朗读 / 将来的用途），
+            //    漏一个就重现（同族：`_cleanText` 的手写剥标记 —— 一处漏、处处漏）。
+            //    这里是**所有消费者的共同上游** ⇒ 脏数据不进库，下游天然干净。
+            let text = crate::content_extract::strip_duplicate_title(text, &title);
             // 🔑 到这里才碰 DB
             let conn = crate::db_pool::get_conn();
-            if let Err(e) = save_body(&conn, id, Some(text), &now_utc_iso()) {
+            if let Err(e) = save_body(&conn, id, Some(&text), &now_utc_iso()) {
                 tracing::warn!("content_fetch: 写正文失败 id={}: {}", id, e);
             }
         } else {
@@ -789,14 +945,15 @@ pub async fn fetch_bodies_round() -> (usize, usize) {
         .map(|(k, v)| format!("{}={}", k, v))
         .collect();
     tracing::info!(
-        "content_fetch: 补抓正文 {}/{} 篇成功{}",
+        "content_fetch: 补抓正文 {}/{} 篇成功{}（其中重试 {} 篇）",
         ok,
         total,
         if detail.is_empty() {
             String::new()
         } else {
             format!(" · 失败分类: {}", detail.join(" "))
-        }
+        },
+        retry_count
     );
     (total, ok)
 }
@@ -943,6 +1100,171 @@ mod tests {
             author: Some("A".into()),
             published_at: Some("2026-09-29T00:00:00Z".into()),
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 🆕 2026-10-06 · 重试窗口（治「内容源事后补充」）
+    // ─────────────────────────────────────────────────────────────
+
+    /// 直接插一行 `content_pool`（绕过 RSS 解析）。
+    ///
+    /// ⚠️ 时间戳用**真实格式**（`%Y-%m-%dT%H:%M:%SZ` = 生产的 `now_utc_iso`）——
+    ///    重试窗口的 SQL 靠**字符串比较**，用假值（`"t1"`）会把那个前提测掉。
+    fn seed_pool(
+        conn: &Connection,
+        id: i64,
+        url: &str,
+        body: Option<&str>,
+        attempted_at: Option<&str>,
+        published_at: &str,
+    ) {
+        conn.execute(
+            "INSERT INTO content_pool \
+             (id, source_id, title, summary, body, url, category, published_at, fetched_at, \
+              word_count, body_attempted_at) \
+             VALUES (?1, 1, 'T', 'S', ?2, ?3, 'news', ?4, ?4, 10, ?5)",
+            rusqlite::params![id, body, url, published_at, attempted_at],
+        )
+        .unwrap();
+    }
+
+    /// 「N 小时前」的 ISO 串 —— **与 `utc_iso_ago` 同一算式**。
+    fn hours_ago(h: i64) -> String {
+        (chrono::Utc::now() - chrono::Duration::hours(h))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string()
+    }
+
+    #[test]
+    fn retry_picks_short_body_within_window() {
+        let conn = mem();
+        // 配件版：626 字符、12 小时前抓过、2 天前发布（在 7 天窗口内）
+        let short = "x".repeat(626);
+        seed_pool(
+            &conn,
+            1,
+            "https://a/1",
+            Some(&short),
+            Some(&hours_ago(13)),
+            &hours_ago(48),
+        );
+        let got = pick_body_retry_candidates(&conn, 10).unwrap();
+        assert_eq!(got.len(), 1, "短正文 + 窗口内 ⇒ 应被挑中");
+        assert_eq!(got[0].0, 1);
+    }
+
+    #[test]
+    fn retry_skips_healthy_long_body() {
+        let conn = mem();
+        let long = "y".repeat(5000); // 完整文字稿量级
+        seed_pool(
+            &conn,
+            2,
+            "https://a/2",
+            Some(&long),
+            Some(&hours_ago(13)),
+            &hours_ago(48),
+        );
+        let got = pick_body_retry_candidates(&conn, 10).unwrap();
+        assert!(got.is_empty(), "正文够长 ⇒ 不该重试（白耗配额）");
+    }
+
+    #[test]
+    fn retry_skips_recent_attempt() {
+        let conn = mem();
+        // 🔴 距上次尝试只过了 1 小时（< MIN_GAP 12h）⇒ 不该马上再抓
+        let short = "x".repeat(626);
+        seed_pool(
+            &conn,
+            3,
+            "https://a/3",
+            Some(&short),
+            Some(&hours_ago(1)),
+            &hours_ago(48),
+        );
+        let got = pick_body_retry_candidates(&conn, 10).unwrap();
+        assert!(got.is_empty(), "间隔不足 ⇒ 不该重试（否则每轮都抓同一批）");
+    }
+
+    #[test]
+    fn retry_skips_outside_publish_window() {
+        let conn = mem();
+        // 🔴 发布已 30 天（> WINDOW 7 天）⇒ 停止重试（防「失败项变永久噪音」）
+        let short = "x".repeat(626);
+        seed_pool(
+            &conn,
+            4,
+            "https://a/4",
+            Some(&short),
+            Some(&hours_ago(13)),
+            &hours_ago(30 * 24),
+        );
+        let got = pick_body_retry_candidates(&conn, 10).unwrap();
+        assert!(got.is_empty(), "超出发布窗口 ⇒ 该放弃（不是永久重试）");
+    }
+
+    #[test]
+    fn retry_picks_empty_body_in_window() {
+        let conn = mem();
+        // "当时完全没抓到" —— 也应重试（文字稿那时还没上线）
+        seed_pool(
+            &conn,
+            5,
+            "https://a/5",
+            None,
+            Some(&hours_ago(20)),
+            &hours_ago(72),
+        );
+        let got = pick_body_retry_candidates(&conn, 10).unwrap();
+        assert_eq!(got.len(), 1, "body 为空 + 窗口内 ⇒ 应被挑中");
+    }
+
+    #[test]
+    fn retry_ignores_never_attempted() {
+        let conn = mem();
+        // 从未试过 ⇒ 属于**主通道**（`body_attempted_at IS NULL`），不该走重试
+        seed_pool(&conn, 6, "https://a/6", None, None, &hours_ago(48));
+        let got = pick_body_retry_candidates(&conn, 10).unwrap();
+        assert!(got.is_empty(), "未试过的归主通道，重试通道不该抢");
+    }
+
+    #[test]
+    fn retry_respects_limit() {
+        let conn = mem();
+        let short = "x".repeat(626);
+        for i in 0..5 {
+            seed_pool(
+                &conn,
+                100 + i,
+                &format!("https://a/{}", 100 + i),
+                Some(&short),
+                Some(&hours_ago(13)),
+                &hours_ago(48),
+            );
+        }
+        let got = pick_body_retry_candidates(&conn, 2).unwrap();
+        assert_eq!(got.len(), 2, "必须遵守 LIMIT（配额不得被挤爆）");
+    }
+
+    #[test]
+    fn main_channel_ignores_attempted_rows() {
+        // 🔑 反向：主通道**仍然**只挑 `body_attempted_at IS NULL` 的 ——
+        //    加了重试通道**不得**改变主通道的语义（同族：「让旧行为成为默认值」）
+        let conn = mem();
+        let short = "x".repeat(626);
+        seed_pool(
+            &conn,
+            7,
+            "https://a/7",
+            Some(&short),
+            Some(&hours_ago(13)),
+            &hours_ago(48),
+        );
+        seed_pool(&conn, 8, "https://a/8", None, None, &hours_ago(48));
+        let got = pick_body_candidates(&conn, 10, false).unwrap();
+        assert_eq!(got.len(), 1, "主通道只该挑 id=8");
+        assert_eq!(got[0].0, 8);
+        assert_eq!(got[0].2, "T", "主通道要带上 title（供去重用）");
     }
 
     #[test]
@@ -1467,7 +1789,9 @@ mod tests {
         pick_body_candidates(conn, 1000, refetch)
             .unwrap()
             .into_iter()
-            .map(|(i, _)| i)
+            // ⚠️ 2026-10-06：返回从 `(id, url)` 变成 `(id, url, title)`（去重要用 title）
+            //    ⇒ 解构跟着改。📌 判据：**改返回结构要扫全部解构点**（这里靠编译器发现）。
+            .map(|(i, _, _)| i)
             .collect()
     }
 
