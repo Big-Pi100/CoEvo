@@ -22,15 +22,24 @@
 import 'package:sqflite_common/sqlite_api.dart';
 
 import '../models/article.dart' show ArticleLookup;
-import 'bookmark_repository.dart' show parseUserDbUtc;
+import 'bookmark_repository.dart' show kSqlNowUtc, parseUserDbUtc;
 
-/// `updated_at` 用的 SQL 表达式 —— 与 DDL 的 `DEFAULT` **同一个表达式**。
+/// 🔴 2026-10-06 改为**引用公共常量**（原来此处内联了同一表达式）。
 ///
-/// 🔑 为什么要常量共用：`UPDATE` 时 `DEFAULT` **不生效**（只作用于 `INSERT`），
-/// 必须显式赋值。若这里手写一份格式串，就与 DDL 有**两处定义** →
-/// 改一处忘一处会让「INSERT 生成的时间」与「UPDATE 生成的时间」格式不同
-/// （一个带 `Z` 一个不带 → `parseUserDbUtc` 会对后者抛错，且只在 UPDATE 路径上）。
-const String _nowUtcSql = "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')";
+/// # 为什么（两件事，都是「改一处漏一处」的教训）
+///
+/// ① **消除第二份实现**：这个表达式原先在 `bookmark_repository`（2 处）与本文件
+///    各写一份 —— 我先改了 bookmark 那两处，才想起这里也有一份。
+///    同族判据：**同一口径只能一处权威**（本项目已在 `parseUserDbUtc` 上做过同样收敛）。
+///
+/// ② **精度必须是毫秒**（原为 `%S`）：`user_word.updated_at` 是同步合并的判定依据
+///    （服务端 `excluded.updated_at > sync_user_word.updated_at`，**严格大于**）。
+///    秒精度下「加入生词本 → 立刻点暂停」会得到**相同时间戳** ⇒ 暂停不生效。
+///    📄 完整失败链见 `bookmark_repository.dart` 的 `kSqlNowUtc` 注释。
+///
+/// （原注释保留其价值：「`UPDATE` 时 `DEFAULT` 不生效（只作用于 `INSERT`），
+///   必须显式赋值」—— 这条仍然成立，只是表达式改为共用。）
+const String _nowUtcSql = kSqlNowUtc;
 
 /// 🔴 **本库没有「生词本上限」**（2026-10-01 白哥定：免费可全量使用，收费点另议）。
 ///

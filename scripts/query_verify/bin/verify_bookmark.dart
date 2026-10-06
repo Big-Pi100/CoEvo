@@ -248,6 +248,17 @@ Future<void> groupRepository(String schemaPath) async {
       row['bookmarked_at'], '2020-01-01T00:00:00Z');
 
   // ── 取消 ──
+  // 🔴 先记下「收藏时」的时间戳 —— 用于验证 `remove()` 会**刷新**它。
+  //    不刷新则取消与收藏**同值** ⇒ 服务端判定（严格 `>`）为假 ⇒ **丢弃取消**
+  //    ⇒ 别端拉回去 ⇒ 用户看到「取消了的收藏又自己回来」。
+  final beforeRemove = (await db.query('bookmark',
+          columns: ['bookmarked_at'],
+          where: 'content_id = ?',
+          whereArgs: [1]))
+      .first['bookmarked_at'] as String;
+  // ⚠️ 必须等一会儿：`bookmarked_at` 现在是**毫秒**精度，连续两次操作若落在
+  //    同一毫秒 ⇒ 下面那条「严格变新」的断言会**假红**（不是实现的问题）。
+  await Future<void>.delayed(const Duration(milliseconds: 5));
   final removed = await repo.remove(1);
   check('remove 返回 true', removed);
   check('contains 变 false', !repo.contains(1));
@@ -269,11 +280,30 @@ Future<void> groupRepository(String schemaPath) async {
         (rowsAfterRemove.first['deleted'] as num).toInt(), 1);
     eq('🔴 且 `pending_push = 1` —— 同步要能把「删除」推出去',
         (rowsAfterRemove.first['pending_push'] as num).toInt(), 1);
+    // 🔴🔴 **行为断言**（比源码断言可靠）：取消**必须**刷新时间戳。
+    //    同族源码断言在 `verify_sync_merge.dart`【10】，但那条只能看「代码里写了」，
+    //    这条是**真跑一次库**看「行为对不对」（skill：`verifiable-core-logic`）。
+    final afterTs = rowsAfterRemove.first['bookmarked_at'] as String;
+    check(
+      '🔴🔴 且 `bookmarked_at` 被**刷新**（严格晚于收藏时）—— '
+      '否则同步时「取消」会被服务端丢弃',
+      parseUserDbUtc(afterTs).isAfter(parseUserDbUtc(beforeRemove)),
+      '$beforeRemove → $afterTs',
+    );
   }
   // 🔴 **最关键的一条**：软删后**界面不能还显示它** ——
   //    `reload()` / `list()` 都必须带 `WHERE deleted = 0`，漏一处就是「删了还在」。
   check('🔴 reload 后内存集合不含已删项（否则界面显示「已取消的收藏」）',
       !repo.contains(1) && repo.count == 0);
+  // 🔵 另一面：**同步要能看到它** —— `pending()` 必须**包含**已删行，
+  //    且模型要带上 `deleted`（否则 push 时不知道该告诉别端「我取消了」）。
+  final pendAfterRemove = await repo.pending();
+  final pendRow = pendAfterRemove.where((b) => b.contentId == 1).toList();
+  check('🔴 `pending()` **包含**已删行（删除也要推给别端）', pendRow.isNotEmpty);
+  if (pendRow.isNotEmpty) {
+    check('🔴 且模型 `deleted = true` —— 漏了它 push 时传不出「取消」',
+        pendRow.first.deleted);
+  }
   final listedAfterRemove = await repo.list();
   check('🔴 list 不返回已软删的项',
       listedAfterRemove.every((b) => b.contentId != 1),

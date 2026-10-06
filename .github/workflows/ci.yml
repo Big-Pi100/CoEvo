@@ -811,6 +811,11 @@ jobs:
       - name: 云端同步（43 项 · 表结构 + 注销覆盖 + 鉴权/订阅 + 路由）
         run: dart run bin/verify_sync.dart
 
+      # ✅ 已证伪 8/8：字符串比较 · 例句取最新 · read_at 取新 · 取消失效 ·
+      #    remove 不刷新时间戳 · 精度改回秒 · JSON 键改名 · schema 列名改
+      - name: 同步合并口径（105 项 · 字段级合并 + 时间精度 + 两份跨语言契约）
+        run: dart run bin/verify_sync_merge.dart
+
       # ── B 组（12 个 · 665 项 · 需 sqflite_common_ffi）──
       # ⚠️ 这些脚本自己 `createTempSync` 造库或读**已入库**的 `word.db`
       #    ⇒ 与仓库状态无关，可重复跑。

@@ -31,8 +31,30 @@ class Bookmark {
   /// 内容 id（一篇文章一个）。
   final int contentId;
 
-  /// 收藏时刻 —— **UTC ISO8601**（库中该列恒带 `Z`）。
+  /// **最后一次改变收藏状态的时刻** —— **UTC ISO8601**（库中该列恒带 `Z`）。
+  ///
+  /// # 🔴 语义在 v6（软删）之后变宽了，别按旧含义理解
+  ///
+  /// 软删之前：`remove()` 是 `DELETE`（行没了）⇒ 本列只能是「收藏时刻」。
+  /// 软删之后：行会留下 ⇒ **取消收藏也必须刷新本列**，否则有两个后果：
+  ///   ① **同步被丢弃**：服务端按 `bookmarked_at` 比大小决定谁赢（`>`），
+  ///      若取消不刷新，取消传上去的值与收藏时**同值** ⇒ `t > t` 为假
+  ///      ⇒ 服务端**保留旧的 `deleted = 0`** ⇒ 另一台拉回去
+  ///      ⇒ 用户看到「**取消了的收藏又自己回来**」（软删本来就是为了解决它）。
+  ///   ② **「最近操作」无法排序**（收藏列表按本列倒序）。
+  /// 📄 详见 `docs/design/sync-implementation-assessment-2026-10-04.md` §3.3.3
+  ///
+  /// ⚠️ 已知边界：判定用**严格大于**（`>`）。若取消与收藏落在**同一毫秒**，
+  ///    取消会被丢弃。人手操作不可能撞上毫秒，且改 `>=` 会让「重复推送」
+  ///    也刷新服务端收货时间（**破坏幂等**）⇒ 有意的取舍，别顺手改成 `>=`。
   final DateTime bookmarkedAt;
+
+  /// 是否已取消收藏（**软删**，`deleted = 1`）。
+  ///
+  /// 🔑 软删的行**仍在表里**（同步需要把「删除」这件事推出去）。
+  ///    ⇒ 凡是**读**收藏清单的地方都必须按本字段过滤（`WHERE deleted = 0`）；
+  ///      凡是**推**同步的地方都必须带上本字段（否则别端不知道你取消了）。
+  final bool deleted;
 
   /// 是否待同步（`pending_push = 1`）。
   final bool pendingPush;
@@ -40,6 +62,7 @@ class Bookmark {
   const Bookmark({
     required this.contentId,
     required this.bookmarkedAt,
+    this.deleted = false,
     required this.pendingPush,
   });
 
@@ -48,14 +71,15 @@ class Bookmark {
       other is Bookmark &&
       other.contentId == contentId &&
       other.bookmarkedAt == bookmarkedAt &&
+      other.deleted == deleted &&
       other.pendingPush == pendingPush;
 
   @override
-  int get hashCode => Object.hash(contentId, bookmarkedAt, pendingPush);
+  int get hashCode => Object.hash(contentId, bookmarkedAt, deleted, pendingPush);
 
   @override
-  String toString() =>
-      'Bookmark(#$contentId @ ${bookmarkedAt.toIso8601String()}${pendingPush ? ' · 待同步' : ''})';
+  String toString() => 'Bookmark(#$contentId @ ${bookmarkedAt.toIso8601String()}'
+      '${deleted ? ' · 已取消' : ''}${pendingPush ? ' · 待同步' : ''})';
 }
 
 /// 收藏仓储。
@@ -120,14 +144,18 @@ class BookmarkRepository {
     // ✅ 用 upsert：不存在则插；存在则**归零 + 刷新 `bookmarked_at`**。
     //    🔑 刷新时间是设计要求的（`sync-...-assessment` §3.3.3 第 3 条）：
     //       「重新收藏」= 重新计时，否则它在「最近收藏」列表里的位置是错的。
-    //    ⚠️ 时间用 `strftime(...)` 而非 Dart 侧生成 —— 与 DDL 的 DEFAULT **同一表达式**，
-    //       保证「同一口径」且不依赖客户端时钟（同下方原注释的理由）。
+    // ⚠️ 时间用 `kSqlNowUtc`（毫秒精度）而非 Dart 侧生成 ——
+    //    与 DDL 的 DEFAULT **同一表达式**（同一口径），且不依赖客户端时钟。
+    // 🔴 **首次插入也要显式给 `bookmarked_at`** —— 否则走 DDL 的 DEFAULT，
+    //    而「走 DEFAULT 的插入」与「走本表达式的 upsert」若精度不同，
+    //    同一列会混出两种精度（`.000Z` 与 `.123Z`）⇒ 详见 `kSqlNowUtc` 的注释。
     await _db.rawInsert(
       '''
-      INSERT INTO bookmark (content_id, deleted) VALUES (?, 0)
+      INSERT INTO bookmark (content_id, deleted, bookmarked_at)
+      VALUES (?, 0, $kSqlNowUtc)
       ON CONFLICT (content_id) DO UPDATE SET
         deleted       = 0,
-        bookmarked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+        bookmarked_at = $kSqlNowUtc,
         pending_push  = 1
       ''',
       [contentId],
@@ -149,11 +177,22 @@ class BookmarkRepository {
     if (!_ids.contains(contentId)) return false;
     // 🔑 `pending_push = 1` 必须一起置 —— 同步要能**把「删除」这件事推出去**
     //    （这正是软删相对硬删的**直接好处**：删除变成了一个可传输的字段值）。
-    await _db.update(
-      'bookmark',
-      {'deleted': 1, 'pending_push': 1},
-      where: 'content_id = ?',
-      whereArgs: [contentId],
+    //
+    // 🔴 `bookmarked_at` 也**必须刷新** —— 这不是「顺手更新」，是**同步的正确性前提**：
+    //    服务端按 `excluded.bookmarked_at > sync_bookmark.bookmarked_at` 判谁赢。
+    //    若取消不刷新，取消的值与收藏时**同值** ⇒ `t > t` 假 ⇒ 服务端保留 `deleted = 0`
+    //    ⇒ 别的设备拉回去 ⇒ **「取消了的收藏又自己回来」**。
+    //    ⚠️ 这条 2026-10-06 才发现 —— 上一版只置 `deleted`，**看起来对但同步是坏的**。
+    //    实测依据：`scripts/query_verify/bin/verify_sync_merge.dart`【3】
+    //    （断言「取消后 bookmarked_at 严格大于收藏时」）。
+    //
+    // ⚠️ 时间用 `kSqlNowUtc`（**毫秒**，理由见该常量注释）—— 精度不足会让
+    //    「同一秒内 收藏→取消」得到相同时间戳 ⇒ 服务端 `t > t` 假 ⇒ 丢弃取消。
+    await _db.rawUpdate(
+      "UPDATE bookmark SET deleted = 1, pending_push = 1, "
+      "bookmarked_at = $kSqlNowUtc "
+      "WHERE content_id = ?",
+      [contentId],
     );
     _ids.remove(contentId);
     return true;
@@ -215,9 +254,43 @@ class BookmarkRepository {
   Bookmark _fromRow(Map<String, Object?> r) => Bookmark(
         contentId: (r['content_id'] as num).toInt(),
         bookmarkedAt: parseUserDbUtc(r['bookmarked_at'] as String),
+        // ⚠️ 用 `as num?` 而非 `as num`：调用方若只 `SELECT` 了部分列（未取 `deleted`），
+        //    缺失应**当作未删除**而不是抛 `TypeError`。
+        //    📌 但「缺失」与「真的是 0」在这里结果相同 ⇒ 真漏了列**不会报错**
+        //    ⇒ 由 `verify_sync_merge.dart` 的「列名与 schema 一致」断言兜。
+        deleted: (r['deleted'] as num?)?.toInt() == 1,
         pendingPush: (r['pending_push'] as num).toInt() == 1,
       );
 }
+
+/// `user.db` 时间列的 **SQLite「当前时刻」表达式 —— 真·唯一口径**。
+///
+/// # 🔴 为什么必须是**毫秒**（`%f`）而不是秒（`%S`）
+///
+/// 同步的合并判定是「**谁的时间戳更新谁赢**」（服务端 `excluded.x > table.x`，
+/// 严格大于）。若精度只到秒，**同一秒内的两次操作会得到相同时间戳** ⇒
+/// 后者**永不生效**：
+///
+/// | 场景 | 秒精度 | 毫秒精度 |
+/// |---|---|---|
+/// | 点收藏 → 马上点取消（< 1s） | 两个时间戳**相同** ⇒ 服务端**丢弃取消** ⇒ 别端拉回去 = 「取消了的收藏又自己回来」 | 区分得开 ✅ |
+/// | 读书滚动 → 进度连更（同秒多次） | 后一次进度**不生效** | ✅ |
+///
+/// ⚠️ 而**人手操作完全可能落在同一秒**（点一下收藏、后悔了立刻再点一下）。
+/// 📌 判据：**判定的时间粒度 ≤ 两次操作的最小间隔**。这里最小间隔是人手点击
+///     （~0.2 s）⇒ 必须毫秒；用秒就是「有窗口的缺陷」，且**只在多设备时可见**
+///     （单设备本地永远是对的，因为它不走合并）。
+///
+/// # 🔑 为什么是一个常量，而不是各处内联
+///
+/// 这个表达式原先在 `bookmark_repository`（2 处内联）与 `user_word_repository`
+/// （`_nowUtcSql`）里各写一份 ⇒ **改一处漏一处**（本次正是如此：改 bookmark 时
+/// 才发现 user_word 那份也要改）。⇒ 收敛到一处（同 `parseUserDbUtc` 的理由）。
+///
+/// ⚠️ 与 DDL 的 `DEFAULT` 是**同一个表达式**（`user_db_schema.sql` 里那几个时间列
+/// 也用 `%f`）—— 两处必须一致，否则「走 DEFAULT 的插入」与「走本常量的更新」
+/// 会产出不同精度的值。断言见 `verify_sync_merge.dart`【12】。
+const String kSqlNowUtc = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 
 /// 解析 `user.db` 里的 UTC ISO8601 时间串（**公开以便独立断言**）。
 ///
@@ -232,6 +305,11 @@ class BookmarkRepository {
 ///
 /// 🔑 这条与 `fsrs_service.dart` 的 UTC 校验同源 —— 那个坑是「fsrs 包只支持 UTC，
 /// 传本地时间会抛 ArgumentError」，这个是「漏 `Z` 不抛错、只是算错」，更难发现。
+///
+/// ⚠️ 本函数接受**任意精度**（`…:00Z` 与 `…:00.123Z` 都行）—— 库里两类混存是
+///   正常现象（历史数据秒精度、v6 之后毫秒）。比较时间请用
+///   `sync_merge.dart` 的 `isNewer`/`isEarlier`（**语义比较**），
+///   若用字符串比较，这两种写法在**同一时刻**的次序是**反的**。
 DateTime parseUserDbUtc(String raw) {
   if (!raw.endsWith('Z')) {
     throw FormatException(

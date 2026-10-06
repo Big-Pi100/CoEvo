@@ -129,7 +129,7 @@ CREATE INDEX IF NOT EXISTS idx_log_day         ON review_log (utc_day);
 CREATE TABLE IF NOT EXISTS bookmark (
   content_id    INTEGER PRIMARY KEY,                -- 一篇文章只收藏一次
   bookmarked_at TEXT    NOT NULL
-                DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   pending_push  INTEGER NOT NULL DEFAULT 1
                 CHECK (pending_push IN (0, 1)),
   -- ─────────────────────────────────────────────────────────────────────
@@ -145,6 +145,16 @@ CREATE TABLE IF NOT EXISTS bookmark (
   --    「按 `bookmarked_at` **取较新**」—— 不需要墓碑表、不需要清理策略。
   --    这与 `user_word.deleted`（生词本「暂停」）**同一模式**，不引入新概念。
   --
+  --    🔴 由此推出一个**必须遵守的前提**（2026-10-06 才补上，此前是坏的）：
+  --       **取消收藏也必须刷新 `bookmarked_at`**。
+  --       合并的判定是「谁的时间戳更新谁赢」（服务端 `excluded.bookmarked_at >
+  --       sync_bookmark.bookmarked_at`）。若取消不刷新，取消传上去的值与收藏时
+  --       **同值** ⇒ `t > t` 为假 ⇒ 服务端保留旧的 `deleted = 0` ⇒ 别端拉回去
+  --       ⇒ 「取消了的收藏又自己回来」——**正是软删要解决的问题，却仍然会发生**。
+  --       ⇒ 本列的语义因此是「**最后一次改变收藏状态的时刻**」，不只是「收藏时刻」。
+  --    📌 教训：把「删除」变成「字段值」时，**该字段的判定依据也必须跟着更新** ——
+  --       只加列不改写路径，得到的是「看起来对、同步是坏的」。
+  --
   -- 📄 设计依据：`docs/design/sync-implementation-assessment-2026-10-04.md` §3.3
   --
   -- # 🔴 有意留下的两处（别顺手改）
@@ -153,7 +163,8 @@ CREATE TABLE IF NOT EXISTS bookmark (
   --    量极小（一篇文章一行、几十字节）⇒ 一期不做。
   --    ⚠️ 若将来要做，注意「清早了会让已删收藏复活」，且是**间歇性**的（难复现）。
   -- ② **`content_id` 仍是 PK** ⇒ 一行一篇、不会重复；
-  --    重新收藏 = `deleted` 1→0 **且刷新 `bookmarked_at`**（不刷新则排序错）。
+  --    收藏 = `deleted` 0、取消 = `deleted` 1；**两种操作都要刷新 `bookmarked_at`**
+  --    （不刷新则排序错，且取消会被服务端丢弃 —— 见上）。
   --
   -- # ⚠️ 这一列对已存在的库**必须靠迁移**
   --    `CREATE TABLE IF NOT EXISTS` 见到表就跳过 ⇒ 本行的改动**只对新库有效**。
@@ -236,8 +247,8 @@ CREATE TABLE IF NOT EXISTS user_word (
   --    `lookup_event` 是完整记录；本列是**首次**那条的快照
   --    → 断言锁「与 `lookup_event` 里该词最早一条的 sentence 一致」（防两处漂移）
   source_sentence   TEXT,
-  added_at          TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-  updated_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  added_at          TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   -- 🔑 **软删**（见上）：1 = 用户已移出生词本，但学习数据保留
   deleted           INTEGER NOT NULL DEFAULT 0
                     CHECK (deleted IN (0, 1)),
@@ -376,7 +387,7 @@ CREATE TABLE IF NOT EXISTS article_read (
   --    后者是「空格分隔、无 Z」→ Dart 侧 `DateTime.parse` 会**静默按本地时区**解释
   --    （本库硬约束 1，同 `bookmark` / `user_word`）
   read_at      TEXT    NOT NULL
-               DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+               DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   pending_push INTEGER NOT NULL DEFAULT 1
                CHECK (pending_push IN (0, 1))
 );
