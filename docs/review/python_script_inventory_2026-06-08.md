@@ -198,6 +198,6 @@
 ### 注意事项
 
 清理前建议：
-1. 先**吊销**泄露的 API Key `sk-***REDACTED***`
+1. 先**吊销**泄露的 API Key `sk-****`（2026-10-06 掩码；该 Key 已吊销）
 2. 确认 `data/curriculum/prebuilt/` 数据文件完整可用（生成管线不再需要跑）
 3. 检查 `.gitignore` 确保 `.env` 不提交
