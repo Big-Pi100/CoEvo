@@ -287,6 +287,28 @@ void main() {
       syncProvider.contains("deviceId = ''") ||
           syncProvider.contains('deviceId = \'\''));
 
+  // ── push 时机：App 进后台（覆盖所有本地改动）──
+  check('🔴 根 widget 注册了 lifecycle observer（`addObserver`）',
+      appDart.contains('WidgetsBinding.instance.addObserver(this)'));
+  check('🔴 且在 dispose 里**注销**（否则回调会打到已销毁的 state）',
+      appDart.contains('WidgetsBinding.instance.removeObserver(this)'));
+  final lifecycle = between(appDart, 'void didChangeAppLifecycleState',
+      '\n  @override');
+  check('🔴 只在 **`paused`** 时推（不是 `inactive`）',
+      lifecycle.contains('AppLifecycleState.paused') &&
+          !lifecycle.contains('AppLifecycleState.inactive'),
+      '—— `inactive` 在 来电/控制中心/切换器 都会触发 ⇒ 过频');
+  check('  且检查了 `mounted`（避免对已卸载的 state 操作）',
+      lifecycle.contains('mounted'));
+  check('🔑 provider 有 `pushWhenAppPaused`（只推不拉）',
+      syncProvider.contains('void pushWhenAppPaused(WidgetRef ref)'));
+  check('🔑 `flushBeforeLogout` 与它**共用**同一个实现（口径一处）',
+      syncProvider.contains('void pushWhenAppPaused') &&
+          syncProvider.contains("=> _pushOnly(ref, '登出前 flush')"),
+      '两处各写一份 ⇒ 改一处漏一处');
+  check('🔑 进后台走 `pushOnce`（**不** pull —— 进后台不是取新数据的时机）',
+      RegExp(r'final report = await svc\.pushOnce\(\);').hasMatch(syncProvider));
+
   // ── 登出确认文案（同步上线后原话已不完整）──
   check(
     '🔑 登出确认文案已更新（不再说「只保存在本机」）',

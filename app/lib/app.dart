@@ -626,7 +626,8 @@ class CoEvoApp extends ConsumerStatefulWidget {
   ConsumerState<CoEvoApp> createState() => _CoEvoAppState();
 }
 
-class _CoEvoAppState extends ConsumerState<CoEvoApp> {
+class _CoEvoAppState extends ConsumerState<CoEvoApp>
+    with WidgetsBindingObserver {
   Timer? _subTimer;
   DateTime? _lastDismissed;
   int _dismissCount = 0;
@@ -637,6 +638,11 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
   @override
   void initState() {
     super.initState();
+    // 🆕 云端同步（2026-10-06）：**App 进后台时**把本地改动推上去。
+    //    🔑 挂在根 widget（生命周期 = App）而不是复习页的 `dispose`
+    //    —— widget 的 `dispose` 里**不能安全用 `ref`**（Riverpod 会拒绝），
+    //    而且根 widget 能覆盖**所有**本地改动（复习/生词/收藏/阅读/电子书）。
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // 🔴 IAP **预热**（必须在启动时 read 一次）——
       //    `iapServiceProvider` 是懒加载的：不预热的话，用户若从不打开
@@ -655,8 +661,21 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _subTimer?.cancel();
     super.dispose();
+  }
+
+  /// App 生命周期变化 —— 只管一件事：**进后台时推一次同步**。
+  ///
+  /// ⚠️ 只处理 `paused`（**不处理 `inactive`**）：后者在「来电 / 拉控制中心 /
+  ///    切 App 切换器」时都会触发 ⇒ 过频；`paused` 才是「真的退到后台」。
+  /// ⚠️ 没有本地改动时 `pushOnce` **不发请求**（空批次直接返回）⇒ 平时零成本。
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused && mounted) {
+      pushWhenAppPaused(ref);
+    }
   }
 
   /// 检查订阅状态并按需驱动「已到期」覆盖层。

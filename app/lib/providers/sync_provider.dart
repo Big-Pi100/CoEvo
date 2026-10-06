@@ -149,8 +149,32 @@ void runSyncAfterLogin(WidgetRef ref) {
 /// ⚠️ 返回 `Future`（与 [runSyncAfterLogin] 不同）—— 调用方**需要**等它完成
 ///    才能继续登出。但调用方**不应因为失败而阻止登出**：
 ///    把用户困在账号里比丢几个待推数据更糟。
-///    失败只记日志（[SyncService] 内部已把异常收敛成 report）。
-Future<void> flushBeforeLogout(WidgetRef ref) async {
+Future<void> flushBeforeLogout(WidgetRef ref) => _pushOnly(ref, '登出前 flush');
+
+/// **App 进入后台时**触发一次 push（只推不拉）。
+///
+/// # 🔑 为什么用「进后台」而不是「退出复习页」
+///
+/// | 时机 | 覆盖面 | 生命周期 |
+/// |---|---|---|
+/// | 退出复习页（`dispose`）| 只有复习数据 | 🔴 **widget 的 `dispose` 里不能安全用 `ref`**（Riverpod 会拒绝）|
+/// | **App 进后台** ✅ | **所有**本地改动（复习/生词/收藏/阅读/电子书）| ✅ 根 widget，生命周期 = App |
+///
+/// ⇒ 进后台**既更全面、又更安全**。且它天然是「用户要离开」的时刻 ——
+///   正是把数据送上去的好时机（不用担心打断他正在做的事）。
+///
+/// ⚠️ 只处理 `paused`（**不处理 `inactive`**）：
+///    `inactive` 会在「来电 / 拉控制中心 / 切 App 切换器」时触发 ⇒ **过于频繁**；
+///    而 `paused` 才是「真的退到后台」。
+///
+/// ⚠️ 不发请求的情形：**没有任何本地改动**时 `pushOnce` 直接返回
+///    （`pushedTotal == 0` ⇒ 空批次不发请求）⇒ 这个钩子**平时是零成本**的。
+void pushWhenAppPaused(WidgetRef ref) {
+  Future.microtask(() => _pushOnly(ref, '进后台'));
+}
+
+/// 两种「只 push」时机的共用实现（**口径只有一处**）。
+Future<void> _pushOnly(WidgetRef ref, String tag) async {
   try {
     final auth = ref.read(authProvider);
     final svc = await buildSyncService(
@@ -158,10 +182,13 @@ Future<void> flushBeforeLogout(WidgetRef ref) async {
       token: auth.token ?? '',
       userId: auth.userId ?? '',
     );
-    if (svc == null) return;
-    final report = await svc.flushBeforeLogout();
-    debugPrint('[sync] 登出前 flush：$report');
+    if (svc == null) return; // 未登录 / user.db 不可用 ⇒ 静默跳过（同步是可选能力）
+    final report = await svc.pushOnce();
+    // 只在「真的推了东西」或「失败了」时打日志 —— 平时安静（否则日志会被刷屏）
+    if (!report.isEmpty || !report.ok) {
+      debugPrint('[sync] $tag：$report');
+    }
   } catch (e) {
-    debugPrint('[sync] 登出前 flush 失败（不阻止登出）：$e');
+    debugPrint('[sync] $tag 失败（不影响用户）：$e');
   }
 }
