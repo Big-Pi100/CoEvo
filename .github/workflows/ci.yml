@@ -826,6 +826,11 @@ jobs:
       - name: 电子书进度跨设备（41 项 · 认领/镜像/三条接线）
         run: dart run bin/verify_book_progress_sync.dart
 
+      # ✅ 已证伪 7/7：链接丢文字 · URL 残留 · 转义顺序 · 表格分隔 · 下划线判据 ·
+      #    行首空格 · 围栏保护
+      - name: 朗读用纯文本（92 项 · Markdown → 能听的文本，含真实 NPR 样本）
+        run: dart run bin/verify_speech_text.dart
+
       # ── B 组（12 个 · 665 项 · 需 sqflite_common_ffi）──
       # ⚠️ 这些脚本自己 `createTempSync` 造库或读**已入库**的 `word.db`
       #    ⇒ 与仓库状态无关，可重复跑。
