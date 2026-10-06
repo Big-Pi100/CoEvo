@@ -55,6 +55,7 @@ import 'package:sqflite_common/sqlite_api.dart';
 
 import 'article_read_repository.dart';
 import 'bookmark_repository.dart';
+import 'ebook/book_progress_sync.dart';
 import 'fsrs_service.dart';
 import 'review_list_query.dart';
 import 'sync_merge.dart' as m;
@@ -86,6 +87,12 @@ class SyncReport {
   int pushedArticleReads = 0;
   int pushedBookmarks = 0;
   int pushedBookProgress = 0;
+
+  /// 本次**认领**（把「别端的电子书进度」应用到本地已导入的书）的本数。
+  ///
+  /// 🔑 单列而不是并进 `pulledBookProgress`：后者是「交换区写入数」，
+  ///    这个是「**真正生效**的书数」。两者不等是正常的（书还没导入时后者 > 0、前者 = 0）。
+  int claimedBooks = 0;
 
   /// 本次**拉回来并写入本地**的条数（按表分）。
   int pulledReviewEvents = 0;
@@ -122,7 +129,7 @@ class SyncReport {
   String toString() => ok
       ? 'SyncReport(推 $pushedTotal: 复习$pushedReviewEvents 词$pushedUserWords '
           '读$pushedArticleReads 藏$pushedBookmarks 书$pushedBookProgress | '
-          '拉 $pulledTotal)'
+          '拉 $pulledTotal${claimedBooks > 0 ? ' 认领书$claimedBooks' : ''})'
       : 'SyncReport(失败: $error)';
 }
 
@@ -203,6 +210,7 @@ class SyncService {
       ..pulledArticleReads = pullReport.pulledArticleReads
       ..pulledBookmarks = pullReport.pulledBookmarks
       ..pulledBookProgress = pullReport.pulledBookProgress
+      ..claimedBooks = pullReport.claimedBooks
       ..ok = pushReport.ok && pullReport.ok
       ..error = pushReport.error ?? pullReport.error;
   }
@@ -355,6 +363,15 @@ class SyncService {
       r.pulledArticleReads = await _applyArticleReads(reads);
       r.pulledBookmarks = await _applyBookmarks(marks);
       r.pulledBookProgress = await _applyBookProgress(progress);
+
+      // 🔴🔴 **pull 之后必须认领一次** —— 否则对**已导入**的书，
+      //    别端刚推来的进度会被写进交换区却**永远不被应用**
+      //    （用户在新设备上仍看到旧章节，且**没有任何提示**）。
+      //
+      // 🔑 与「导入后认领」（`book_importer`）是**两条互补的线**：
+      //    导入后 → 覆盖「书还没导入时那段窗口」；pull 后 → 覆盖「书已导入」的情形。
+      //    设计文档 §3.4.3 只画了前者 ⇒ 后者是实测时才发现的缺口。
+      r.claimedBooks = await _claimBookProgress();
 
       // 🔴 **推进游标用服务端返回的 `server_time`**，不是「当前时间」：
       //    它 = 本次数据里最大的 `received_at`。若用当前时间，
@@ -626,6 +643,25 @@ class SyncService {
     return n;
   }
 
+  /// 把交换区里「本地已有这本书」的进度**认领**进 `book_progress`。
+  ///
+  /// 失败**不抛**（同步是后台行为）：认领失败时 `pending` 行仍在
+  /// ⇒ 下次 pull 会再试（自愈）⇒ 如实记日志即可。
+  Future<int> _claimBookProgress() async {
+    final db = _bookDb;
+    if (db == null) return 0;
+    try {
+      final result = await claimAllPending(db);
+      if (result.didSomething) {
+        _say('sync.pull: 认领电子书进度 $result');
+      }
+      return result.claimed;
+    } catch (e) {
+      _say('sync.pull: 认领电子书进度失败（下次重试）: $e');
+      return 0;
+    }
+  }
+
   /// **电子书进度** → `book_progress_pending`（按**指纹**，不需要本地有书）。
   ///
   /// 🔑 为什么写「待认领」表而不是 `book_progress`：
@@ -633,9 +669,10 @@ class SyncService {
   ///    `FK → book(id)` —— 本地没导入这本书时**插不进去**（FK 失败）。
   ///    待认领表按 `content_hash` 存 ⇒ 无需 FK，等用户导入同一本书时「认领」
   ///    （设计 §3.4.3）。
-  /// ⚠️ **一期只做「接住」**：认领流程（导入时把 pending 行写进 `book_progress`
-  ///    并删除 pending）属**导入侧**改动，尚未实现 ⇒ 待办。
-  ///    当前效果：进度不会丢（存在 pending 表里），但**还没被真正应用**。
+  /// ✅ **认领已实现**（2026-10-06 · `ebook/book_progress_sync.dart`），两条线：
+  ///    · 导入后 —— `book_importer._persistBook` 调 `claimPendingForBook`
+  ///    · **pull 后** —— 本文件紧接着调 `_claimBookProgress`（批量）
+  ///    ⇒ 写进交换区的进度**一定会被应用**（书没导入时先存着，导入后用上）。
   Future<int> _applyBookProgress(List<Map<String, dynamic>> rows) async {
     final db = _bookDb;
     if (db == null || rows.isEmpty) return 0;

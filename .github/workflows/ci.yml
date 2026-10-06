@@ -818,8 +818,13 @@ jobs:
 
       # ✅ 已证伪 7/7：push 失败也标记 · 回声 · 丢本地改动 · 事件回声 ·
       #    游标用当前时间 · 空批次发请求 · 测试隔离失效
-      - name: 同步编排（51 项 · 假 client + 真库：push/pull 全链行为）
+      - name: 同步编排（59 项 · 假 client + 真库：push/pull 全链 + 端到端认领）
         run: dart run bin/verify_sync_service.dart
+
+      # ✅ 已证伪 10/10：不删 pending · 无条件覆盖 · 镜像冲掉较新 · 空指纹 ·
+      #    pull 后不认领 · 导入后不认领 · 不镜像 · 时间戳不同源 · 等
+      - name: 电子书进度跨设备（41 项 · 认领/镜像/三条接线）
+        run: dart run bin/verify_book_progress_sync.dart
 
       # ── B 组（12 个 · 665 项 · 需 sqflite_common_ffi）──
       # ⚠️ 这些脚本自己 `createTempSync` 造库或读**已入库**的 `word.db`

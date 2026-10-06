@@ -46,6 +46,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../../../app/lib/services/sync_service.dart';
 import '../../../app/lib/services/sync_merge.dart' as m;
 import '../../../app/lib/services/user_db.dart';
+import '../../../app/lib/services/ebook/book_progress_sync.dart' as bps;
 
 int _pass = 0;
 final _failures = <String>[];
@@ -622,6 +623,83 @@ void main() async {
     cmp('user_words', 'user_word');
     cmp('article_reads', 'article_read');
     await db.close();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  section('【12】🔴🔴 端到端：pull → 认领 → 进度**真的**生效');
+  {
+    // 这是本文件最有价值的一条 —— 它跨了三个模块：
+    //   sync_service（写交换区）→ book_progress_sync（认领）→ book_progress（生效）
+    // 🔑 只测「写进交换区」是不够的：那正是**用户看不到**的中间态。
+    final userDb = await _openUserDb();
+    final bookDb = await _openBookDb();
+    // 本地**已经导入**这本书（有指纹）
+    await bookDb.insert('book', {
+      'id': 'local-book-1',
+      'title': 'Pride and Prejudice',
+      'source_format': 'epub',
+      'added_at': '2026-10-01T00:00:00.000Z',
+      'content_hash': 'hash-abc',
+    });
+
+    final x = _mk(userDb, bookDb: bookDb);
+    x.http.pullResponse = {
+      'book_progress': [
+        {
+          'content_hash': 'hash-abc',
+          'chapter_idx': 9,
+          'scroll_ratio': 0.0,
+          'updated_at': '2026-10-05T00:00:00.000Z',
+        }
+      ],
+      'server_time': '2026-10-06T11:00:00.000Z',
+    };
+    final r = await x.svc.pullOnce();
+
+    check('pull 到 1 条进度', r.pulledBookProgress == 1, '$r');
+    check('🔴🔴 **认领了 1 本**（`claimedBooks`）', r.claimedBooks == 1, '$r');
+
+    final prog = await bookDb.query('book_progress',
+        where: 'book_id = ?', whereArgs: ['local-book-1']);
+    check(
+      '🔴🔴 进度**真的写进了 `book_progress`**（用户打开书会续读到第 9 章）',
+      prog.isNotEmpty && prog.first['chapter_idx'] == 9,
+      prog.isEmpty ? '（没有行 ⇒ 别端的进度**永远不生效**，且不报错）' : '第 ${prog.first['chapter_idx']} 章',
+    );
+    check(
+      '🔑 交接完成后交换区**清空**（不会每次 pull 白比对）',
+      (await bookDb.query('book_progress_pending')).isEmpty,
+    );
+
+    // 反向：本地**没**这本书 ⇒ 进度只存交换区，不认领
+    final userDb2 = await _openUserDb();
+    final bookDb2 = await _openBookDb();
+    final y = _mk(userDb2, bookDb: bookDb2);
+    y.http.pullResponse = x.http.pullResponse;
+    final r2 = await y.svc.pullOnce();
+    check('本地没这本书 ⇒ 认领 0 本（进度先存着）', r2.claimedBooks == 0, '$r2');
+    check('  交换区**保留** 1 条（等导入时认领）',
+        (await bookDb2.query('book_progress_pending')).length == 1);
+
+    // 再模拟「用户导入同一本书」⇒ 导入侧认领会取过来
+    await bookDb2.insert('book', {
+      'id': 'local-book-2',
+      'title': 'Pride and Prejudice',
+      'source_format': 'epub',
+      'added_at': '2026-10-06T00:00:00.000Z',
+      'content_hash': 'hash-abc',
+    });
+    final claimed = await bps.claimAllPending(bookDb2);
+    check('🔑 导入后（下次 pull / 手动）能认领到', claimed.claimed == 1, '$claimed');
+    final prog2 = await bookDb2.query('book_progress',
+        where: 'book_id = ?', whereArgs: ['local-book-2']);
+    check('  且写进了**新导入的** book_id（uuid 不同但指纹相同）',
+        prog2.isNotEmpty && prog2.first['chapter_idx'] == 9);
+
+    await userDb.close();
+    await userDb2.close();
+    await bookDb.close();
+    await bookDb2.close();
   }
 
   print('');

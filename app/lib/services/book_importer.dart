@@ -34,6 +34,7 @@ import 'package:crypto/crypto.dart';
 import 'package:sqflite_common/sqlite_api.dart';
 
 import 'ebook/book_import_plan.dart';
+import 'ebook/book_progress_sync.dart';
 import 'ebook/book_text.dart';
 import 'ebook/epub_parser.dart';
 import 'ebook/txt_parser.dart';
@@ -194,6 +195,25 @@ Future<BookImportResult> _persistBook({
     await _writePlan(db, plan);
   } catch (e) {
     return BookImportFailure(EbookParseErrorKind.unknown, '写库失败：$e');
+  }
+
+  // 🆕 2026-10-06 · 跨设备续读：**认领**这本书的待认领进度。
+  //
+  // 场景：在另一台设备读到第 9 章 ⇒ 那台的进度已推到服务端 ⇒ 本机 pull 时
+  // 按**指纹**存进 `book_progress_pending`（那时本机还没这本书）⇒ 现在导入
+  // 同一本书（指纹相同）⇒ 把进度取过来，用户直接续读。
+  //
+  // 🔑 放在这个函数里（而不是「导入流程的调用方」）：
+  //    它是**唯一的落库出口** ⇒ 不会漏（本项目已多次踩「多入口 ⇒ 漏一处」）。
+  //
+  // ⚠️ **失败可以静默**（不是「吞掉问题」）：
+  //    书已经落库成功（本函数的主要职责已完成）；认领失败**什么都不丢**
+  //    —— `pending` 行还在，下次 pull 后的批量认领会再试一次（自愈）。
+  //    而本文件**零 Flutter 依赖**（不能用 `debugPrint`）⇒ 不在这里记日志。
+  try {
+    await claimPendingForBook(db, bookId: plan.bookId);
+  } catch (_) {
+    // 见上：失败自愈（pending 行未删，下次 pull 重试）
   }
 
   return BookImportSuccess(

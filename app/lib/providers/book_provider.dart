@@ -25,6 +25,7 @@ import 'package:sqflite_common/sqlite_api.dart'
     show ConflictAlgorithm, Database;
 
 import '../services/book_db.dart';
+import '../services/ebook/book_progress_sync.dart';
 
 /// 已打开的 `book.db`（**全局唯一**）。
 final bookDbProvider = FutureProvider<Database>((ref) async {
@@ -204,6 +205,11 @@ Future<void> saveProgress(
   required String bookId,
   required int chapterIdx,
 }) async {
+  // 🔑 **一个时间戳供两处用** —— `book_progress`（本地权威）与
+  //    `book_progress_pending`（跨设备交换区）必须是**同一时刻**，
+  //    否则「哪边更新」的判定会在毫秒级漂移（而那是合并的唯一依据）。
+  final now = DateTime.now().toUtc().toIso8601String();
+
   await db.insert(
     'book_progress',
     {
@@ -214,10 +220,28 @@ Future<void> saveProgress(
       //    要存得存「相对位置」，那需要稳定的定位锚点 ⇒ 留到需要时做。
       //    现在记「读到第几章」已经覆盖绝大多数续读需求。
       'scroll_ratio': 0.0,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
+      'updated_at': now,
     },
     conflictAlgorithm: ConflictAlgorithm.replace,
   );
+
+  // 🆕 2026-10-06 · 跨设备续读：把进度**镜像**到交换区（`book_progress_pending`），
+  //    这样它才会被 `sync_service.push` 带上去（push 读的正是那张表）。
+  //
+  // ⚠️ **失败不影响阅读**（本函数调用方**刻意不 await** 它，见上方说明）：
+  //    本地权威进度已写成功；镜像失败只是「这次上传没带上最新章节」，
+  //    下次读书 / 下次启动仍会镜像 ⇒ 自愈。
+  try {
+    await mirrorProgress(
+      db,
+      bookId: bookId,
+      chapterIdx: chapterIdx,
+      scrollRatio: 0.0,
+      updatedAt: now,
+    );
+  } catch (e) {
+    debugPrint('[book_progress] 镜像到待上传表失败（不影响阅读）：$e');
+  }
 }
 
 /// 「书库数据变了」的单一信号源 —— 写端 `bump()` 一次，读端自动跟随。
