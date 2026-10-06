@@ -48,7 +48,6 @@ KNOWN_DART_HTML = {
     'lib/pages/admin/campaign/admin_campaign_detail.dart',
     'lib/pages/admin/settlement/admin_batch_detail.dart',
     'lib/pages/admin/settlement/admin_commission_list.dart',
-    'lib/pages/user/distribution/notification_panel.dart',
     'lib/providers/auth_provider.dart',
     'lib/screens/admin_screen.dart',
     'lib/screens/chat/chat_input.dart',
@@ -157,7 +156,7 @@ def main() -> int:
 
     # 其他 admin 相关文件（非 pages/admin 目录）
     other_admin = []
-    for pat in ['lib/pages/user/distribution/', 'lib/screens/user_detail_screen.dart']:
+    for pat in ['lib/screens/user_detail_screen.dart']:
         p = os.path.join(APP, pat.rstrip('/'))
         if os.path.isdir(p):
             other_admin.append(pat)

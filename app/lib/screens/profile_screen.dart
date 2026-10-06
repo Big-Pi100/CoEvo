@@ -36,7 +36,7 @@ import '../providers/sync_provider.dart';
 import '../theme/co_spacing.dart';
 import '../theme/tokens_ext.dart';
 import '../theme/coevo_tokens.dart';
-import '../pages/user/distribution/notification_panel.dart';
+import 'notification_panel.dart';
 import '../widgets/twemoji.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {

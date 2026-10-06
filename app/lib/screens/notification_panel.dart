@@ -5,10 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
-import '../../../api/api_config.dart';
-import '../../../providers/auth_provider.dart';
-import '../../../theme/co_spacing.dart';
-import '../../../widgets/twemoji.dart';
+import '../api/api_config.dart';
+import '../providers/auth_provider.dart';
+import '../theme/co_spacing.dart';
+import '../widgets/twemoji.dart';
 
 /// 通知中心页面
 class NotificationPanel extends ConsumerWidget {

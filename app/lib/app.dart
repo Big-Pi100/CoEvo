@@ -21,7 +21,7 @@ import 'screens/review_session_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/reader_screen.dart';
 import 'screens/subscribe_screen.dart';
-import 'pages/user/distribution/notification_panel.dart';
+import 'screens/notification_panel.dart';
 import 'providers/auth_provider.dart';
 import 'providers/iap_provider.dart';
 import 'providers/subscription_provider.dart';
