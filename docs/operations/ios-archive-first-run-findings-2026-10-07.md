@@ -223,8 +223,63 @@ Xcode 26 起，export method 的命名改了（本项目用的 `ad-hoc` 仍可�
 
 ---
 
-## 八、下一步
+## 八、✅ 出包成功（第三轮）+ 真机安装
 
-1. 白哥按 §7.2 新建 **Admin** 角色的 API Key，更新 `ASC_KEY_ID` / `ASC_KEY_P8`
-2. 重跑 `iOS Archive & Upload`（`method=ad-hoc`、`upload` 不勾）
-3. 成功后下载 artifact `coevo-ios-ipa`，用 iTunes / 爱思助手装到 iPhone
+第三次跑**全绿**，并且**复核了产物**（不是只看 job 颜色 —— 见 §8.4 的假绿口子）：
+
+```
+job: Archive & Export IPA → success
+  ✅ Export IPA（upload 时同时上传 ASC）
+  ✅ Upload IPA as artifact
+📦 artifact: coevo-ios-ipa  31.8 MB  (expired=False)
+```
+
+### 8.1 完整修复链（三轮）
+
+| 轮次 | 失败点 | 根因 | 修法 |
+|---|---|---|---|
+| 1 | `Install CocoaPods` | 部署目标 12.0 < 插件要求 13.0 | `Podfile` + `pbxproj` + `AppFrameworkInfo` **三处对齐** |
+| 2 | `Export IPA` | API Key 角色是 App Manager，而 cloud signing 要 **Admin** | 新建 Admin Key，换 `ASC_KEY_ID` / `ASC_KEY_P8` |
+| 3 | — | — | ✅ **通过** |
+
+### 8.2 下载 IPA
+
+GitHub → **Actions** → 该 run → 页面**最底部** **Artifacts** → `coevo-ios-ipa` → 下载 zip → 解压得 `.ipa`
+
+### 8.3 真机安装（Windows · **iOS 16+ 必读**）
+
+1. 用 **爱思助手**（i4Tools）连上 iPhone → 「应用游戏」→ 导入安装 → 选那个 `.ipa`
+2. 🔴 **装完先点开一次 App** —— iOS 16+ 会提示「需要启用开发者模式」
+3. **设置 → 隐私与安全性** → 拉到底 → **开发者模式** → 打开 → **重启设备**
+4. 重启后确认（输设备密码）→ 再打开 App
+
+⚠️ **「开发者模式」这个入口默认可能不显示** —— 它**只在设备上装过「需要开发者模式的应用」之后才出现**。
+⇒ 所以**必须先装一次 ad-hoc 包**，入口才会冒出来。（来源：蒲公英《iOS 安装失败原因排查》）
+
+🔑 注意适用范围：**只有 `ad-hoc` / `development` 分发的包需要开发者模式**；
+**TestFlight 和 App Store 分发的包不需要**。
+
+### 8.4 顺带堵掉一个「假绿」口子（提交 `66ddced`）
+
+本次虽然真成功了，但复核时发现 workflow 的**产物校验形同虚设**：
+
+| 原实现 | 问题 |
+|---|---|
+| 「列出产物」= `ls -la ... \|\| true` | **永远成功**，不构成校验 |
+| `upload-artifact` 的 `if-no-files-found: warn` | **一个文件都没有也判成功** |
+
+⇒ 典型假绿：**job 全绿、却没有包可下载**（而 `exportArchive` 返回 0 并不代表真产出了 `.ipa`）。
+
+**改法**：`列出产物` → **`校验 IPA 产物（缺失即失败）`**（断言「存在 + 大于 1 MB」）；
+`if-no-files-found`: `warn` → **`error`**。
+
+📌 **判据：校验要断言「产物」，不是断言「命令退出码」。**
+
+---
+
+## 九、下一步
+
+- ⚠️ **证书堆积**：CI 每次都是全新 runner ⇒ 每次 archive 创建一个
+  `Apple Development: Created via API` 证书 ⇒ 撞账号上限时会报 revoke 错误。
+  定期去 Certificates 清理**找不到对应私钥**的那些。
+- ⏳ `ad-hoc` 已 deprecated（Xcode 26 起叫 `release-testing`）—— 暂不改，等不支持时再切。
