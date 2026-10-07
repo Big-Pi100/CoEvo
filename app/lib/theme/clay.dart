@@ -128,6 +128,23 @@ class ClayPainter extends CustomPainter {
   }
 
   /// inset 阴影 —— 环形 + 模糊 + 裁剪（原理见类文档）。
+  ///
+  /// # 🔴 2026-10-07 修复：iOS 上渲染成「实心黑块」（真机实测）
+  ///
+  /// **现象**：验证码弹窗的 6 个输入格上盖着一整块**纯黑矩形**，
+  /// 比 6 格区域更宽，把格子的上半部分全遮住（格子只剩底部圆弧可见）。
+  /// 📄 截图与调查：`docs/review/code-input-mask-artifact-2026-10-07.md`
+  ///
+  /// **根因**：原实现的两处**都依赖 Impeller 不可靠的行为**：
+  ///   ① `evenOdd` 的「大矩形 − 圆角矩形」被渲染成**实心填充**（空洞失效）
+  ///   ② `canvas.save()` + `clipRRect` **不足以隔离** `MaskFilter` 的绘制
+  ///      （Impeller 下需要 `saveLayer` 才分配独立的离屏层）⇒ 画到了格子外面
+  /// ⇒ 反过来说：**`evenOdd` 与 clip 只要有一个生效，就不会是实心黑块**。
+  ///   所以两处必须**同时**改掉（只改一处仍会残留另一半症状）。
+  ///
+  /// **为什么只在验证码弹窗显眼**：那里 6 个格子仅隔 7px、
+  /// 每个格子的溢出范围（`blur + 40`）远大于间距 ⇒ 互相叠加成**连续一片**；
+  /// 别处的粘土元素周围就是背景，同样的溢出只像一圈淡晕。
   void _inset(Canvas canvas, RRect rrect, CoRgba color, CoShadow s) {
     final delta = Offset(s.dx, s.dy);
     final sigma = _sigma(s.blur);
@@ -136,14 +153,19 @@ class ClayPainter extends CustomPainter {
       paint.maskFilter = ui.MaskFilter.blur(ui.BlurStyle.normal, sigma);
     }
 
-    canvas.save();
+    // 🔴 独立图层 —— 让 MaskFilter 的绘制被真正隔离在格子内。
+    //    用 `rrect.outerRect` 作 bounds：内阴影本就只该出现在格子**内部**，
+    //    模糊向外渗出的那部分理应被裁掉（不是"少画了"）。
+    canvas.saveLayer(rrect.outerRect, Paint());
     // ① 只保留圆角矩形**内部** —— 于是模糊渗进来的那半个才成为 inset 阴影
     canvas.clipRRect(rrect);
-    // ② 「大矩形 − 平移后的圆角矩形」= 环形（evenOdd 让中间成为空洞）
-    final ring = Path()
-      ..fillType = ui.PathFillType.evenOdd
-      ..addRect(rrect.outerRect.shift(delta).inflate(s.blur + 40))
-      ..addRRect(rrect.shift(delta));
+    // ② 「圆角矩形 − 平移后的圆角矩形」= 环形。
+    //    🔑 用 `Path.combine(difference)` 而**不是** `evenOdd` ——
+    //      前者的结果**几何上就落在 `outer` 内**，不依赖渲染器的填充规则；
+    //      后者被 Impeller 渲染成实心（见上方根因①）。
+    final outer = Path()..addRRect(rrect);
+    final inner = Path()..addRRect(rrect.shift(delta));
+    final ring = Path.combine(ui.PathOperation.difference, outer, inner);
     canvas.drawPath(ring, paint);
     canvas.restore();
   }

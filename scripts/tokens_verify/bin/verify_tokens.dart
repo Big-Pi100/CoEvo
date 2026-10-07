@@ -850,8 +850,19 @@ void _s10ClayRender() {
   //    spec §7.2：gradient 方案只有「约 80%」（圆角处会出现色带）→ 最终须 CustomPainter
   check('用 MaskFilter 实现 inset（不是 gradient 兜底）',
       clay.contains('MaskFilter.blur'));
-  check('用 evenOdd 差集把圆角矩形挖空成环', clay.contains('PathFillType.evenOdd'));
+  // 🔴 2026-10-07：本条原锁 `PathFillType.evenOdd`（**实现手段**）——
+  //    真机发现它正是 iOS 出「实心黑块」的成因之一 ⇒ 实现改用 `Path.combine(difference)`。
+  //    📌 断言锁**意图**（「差集挖空成环」），**不锁具体 API** ——
+  //       否则「改对了反而变红」（本项目已多次踩到的「断言保护错误」）。
+  check('用差集把圆角矩形挖空成环（不依赖填充规则）',
+      clay.contains('PathOperation.difference'));
+  // 🔴 反向断言（天然免疫"锁住已废止事实"）：evenOdd 在 Impeller 下被渲染成实心
+  check('🔴 不再用 PathFillType.evenOdd（iOS 上渲染成实心色块）',
+      !clay.contains('PathFillType.evenOdd'));
   check('渲染前 clipRRect 裁剪（只留渗入内部的那半）', clay.contains('clipRRect'));
+  // 🔴 Impeller 下 `save()` 不足以隔离 MaskFilter 的绘制（会画到元素外面）
+  check('🔴 用 saveLayer 隔离（Impeller 下 save() 不够）',
+      clay.contains('saveLayer'));
 
   // ② 零硬编码色 —— 视觉全部来自 token
   final hard = RegExp(r'Color\(0x').allMatches(clay).length;

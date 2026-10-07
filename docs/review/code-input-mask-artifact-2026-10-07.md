@@ -2,9 +2,15 @@
 
 > **触发**：白哥真机反馈 —— Apple 登录 ✅ / 邮件发送 ✅，但
 > 「输入验证码的弹窗在**六个输入框上有个遮罩**，将输入框**遮住一半**」。
-> **状态**：🔴 **已定位到高可信根因假设，但需一张截图确认后再改** ——
-> 涉及 `ClayPainter`（**全 App 视觉基础**），改错会波及所有粘土元素。
-> **本轮未改任何代码。**
+>
+> ## ✅ 状态：根因已由真机截图**证实**，修复**已实施**（2026-10-07 18:1x）
+>
+> | | |
+> |---|---|
+> | **根因** | `ClayPainter._inset` 的两处写法**都依赖 Impeller 不可靠的行为**（详见 §三）|
+> | **修复** | ① `evenOdd` → `Path.combine(difference)`　② `save()` → `saveLayer()` |
+> | **验证** | `analyze_inproc` error=0/warning=0 · 断言 698+75+43+60+71+60 全过 |
+> | **待办** | ⏳ **重新出包在真机复验**（本机跑不了 Flutter ⇒ 渲染效果**无法本地验证**）|
 
 ---
 
@@ -30,7 +36,21 @@
 
 ---
 
-## 三、🔴 高可信根因假设：`ClayPainter._inset` 的模糊溢出
+## 三、🔴 根因（**已由截图证实**）
+
+### 3.0 截图证据 → 逐条对上
+
+白哥提供截图后，**三个特征同时出现**，只有「`evenOdd` 失效 + `clip` 失效」能全部解释：
+
+| 截图特征 | 说明什么 |
+|---|---|
+| 那一块是**纯黑实心**（不是半透明晕）| `evenOdd` 的「大矩形 − 圆角矩形」被渲染成**实心填充** —— **空洞失效** |
+| 黑块**比 6 格区域更宽**（左右都超出）| `canvas.clipRRect` **未生效** —— `save()` 在 Impeller 下不足以隔离 |
+| 下边缘仍有 **6 个格子圆弧** | 偏移格子的"空洞"**部分生效** ⇒ 不是"没画"，而是**画成了实心 + 没被裁** |
+
+🔑 **关键推论**：**`evenOdd` 与 `clip` 只要有一个生效，就不会出现实心黑块。**
+⇒ 两处**必须同时改**，只改一处会残留另一半症状（只改 `evenOdd` ⇒ 环形正确但模糊仍糊出格子；
+只改 `saveLayer` ⇒ 被裁在格子内的**实心黑块**）。
 
 ### 3.1 机制
 
@@ -61,50 +81,76 @@ canvas.restore();
 
 ⇒ 与白哥「**在六个输入框上有个遮罩**」的描述吻合。
 
-### 3.3 为什么 Android 上不明显
+### 3.3 为什么 Android 上没出现
 
 - Android 用 **Skia**、iOS 用 **Impeller**
 - 已有公开记录：**Impeller 下 `canvas.save()` + clip 不足以隔离绘制**，
   需要 `saveLayer()` 才能分配独立的离屏层
   （来源：Flutter Impeller 已知问题整理 —— 「CustomPainter Layer Bleed … **save() fails to isolate**…
   `saveLayer()` is required」）
-- 另一篇 Impeller 排查文也把「**半透明弹窗边缘糊化**」归因于 **blur 半径映射偏差**，
-  修复方向写的是「**调整 blur sigma**」
+- 另一篇 Impeller 排查文的速查表里，「**渐变区域出现矩形色块**」与
+  「**自定义绘制图形错位**」都被归为 Impeller 的已知花屏类问题 —— 与本例吻合
 
-⚠️ 但**这是假设，不是已证事实** —— 本机**无法渲染验证**（跑不了 `flutter`，`dart:ui` 不可用）。
+⚠️ 但**具体是 `evenOdd` 的填充规则、还是 `MaskFilter` 的隔离、抑或两者叠加**，
+   本机**无法进一步区分**（跑不了 `flutter`，`dart:ui` 在纯 Dart VM 不可用）。
+   ⇒ 所以修复**两处一起改**（见 §五），不赌单一成因。
 
 ---
 
-## 四、需要白哥给一张截图（**这一条是必要的，不是客气**）
+## 四、截图证据（白哥 2026-10-07 18:13 提供）
 
-**为什么必须看图**：改的是 `ClayPainter` —— **全 App 每一个粘土元素都走它**。
-按「先报告 → 请示 → 再改」的规矩，我不能凭假设改基础组件。
+已并入 §3.0。**结论**：`evenOdd` 失效 + `clip` 失效 —— **两处同时**。
 
-**看什么**（一句话就够）：
+---
 
-| 问题 | 用于区分 |
+## 五、✅ 已实施的修复（`app/lib/theme/clay.dart` → `_inset`）
+
+```dart
+// 改前
+canvas.save();                                     // ← ① Impeller 下隔离不足
+final ring = Path()
+  ..fillType = ui.PathFillType.evenOdd             // ← ② 被渲染成实心
+  ..addRect(rrect.outerRect.shift(delta).inflate(s.blur + 40))
+  ..addRRect(rrect.shift(delta));
+canvas.drawPath(ring, paint);
+canvas.restore();
+
+// 改后
+canvas.saveLayer(rrect.outerRect, Paint());        // ① 真正隔离（bounds 取格子本身）
+canvas.clipRRect(rrect);
+final outer = Path()..addRRect(rrect);
+final inner = Path()..addRRect(rrect.shift(delta));
+final ring = Path.combine(ui.PathOperation.difference, outer, inner);  // ② 几何差集
+canvas.drawPath(ring, paint);
+canvas.restore();
+```
+
+| 改动 | 为什么 |
 |---|---|
-| 遮罩是**半透明暗色**，且**每个格子各自**被压暗（尤其**左上或上缘更深**）| ⇒ 支持 §三 的内阴影溢出假设 ✅ |
-| 还是**一整片纯色**盖在 6 格区域上、与格子边界**无关** | ⇒ 另有原因，我换方向查 |
-| 格子里的**数字还能看清**吗 | 判断是"糊"还是"实心覆盖" |
+| `evenOdd` → `Path.combine(difference)` | 差集结果**几何上就落在 `outer`（格子）内**，不依赖渲染器的填充规则 |
+| `save()` → `saveLayer(rrect.outerRect, …)` | Impeller 下需要**独立离屏层**才能隔离 `MaskFilter` 的绘制 |
+
+🔑 **几何结果与改前完全一致** ⇒ **正常渲染下视觉不变**（只是不再有 iOS 的异常）。
+⚠️ **代价**：`saveLayer` 有离屏合成开销 —— **需在真机复验时一并留意滚动帧率**
+（`Clay` 元素遍布全 App）。若帧率受影响，退路是「只对**小尺寸**元素用 `saveLayer`」。
+
+### 断言同步（`verify_tokens.dart`）
+
+| 原断言 | 处理 |
+|---|---|
+| `check('用 evenOdd 差集挖空成环', clay.contains('PathFillType.evenOdd'))` | 🔴 **锁的是实现手段** ⇒ 改为锁**意图**：`PathOperation.difference` |
+| — | 🆕 **反向断言**：`!clay.contains('PathFillType.evenOdd')`（不得再用）|
+| — | 🆕 正向：`clay.contains('saveLayer')`（Impeller 下 `save()` 不够）|
+
+📌 这是本日第 **4** 次遇到「**断言保护错误**」（锁住已废止的实现 ⇒ 改对了反红）。
+**反向断言天然免疫**这一点 —— 因此「禁止某写法」的判据应尽量写成反向断言。
 
 ---
 
-## 五、修法候选（确认后择一，你说哪个）
+## 六、本轮做了什么 / 没做什么
 
-| 选项 | 做法 | 影响 | 风险 |
-|---|---|---|---|
-| **A · `saveLayer` 隔离**（推荐）| `_inset` 里 `canvas.save()` → `canvas.saveLayer(rrect, Paint())` | 正常视觉**完全不变**；每次绘制多一个离屏层 | ⚠️ **性能**：Clay 元素多，`saveLayer` 有代价 —— 需实测帧率 |
-| **B · 几何限制环形** | 用 `Path.combine(difference, 格子, 偏移格子)` 取代 `evenOdd` 大矩形 —— **环本身就在格子内** | 视觉不变；**无性能代价** | ⚠️ 模糊仍会向外扩散 ~15px，**仍依赖 clip** ⇒ 若不修好 clip，只是减轻 |
-| **C · 小尺寸格子改用无 inset 档** | 把 `clayNoInsetBelow`（现 24）提到 48，或给 `CodeInput` 传 `ClayState.raised` | 格子失去「凹陷」感 ⇒ **视觉变化明显** | 需白哥确认是否接受形态变化 |
-
-🔑 **我倾向 A**（治本、视觉不变），**但先要确认根因**。
-若 A 的性能有影响，则 **A + C 组合**（只在小尺寸格子上关 inset）。
-
----
-
-## 六、本轮未做
-
-- ❌ **未改任何代码**（按铁律：先报告 → 请示 → 再改）
-- ✅ 只做了**代码阅读 + 常量计算**（未改文件、未部署、未碰服务器）
-- ⚠️ 本机**无法渲染复现**（`flutter` 命令跑不了 ⇒ 渲染类问题只能靠真机反馈）
+- ✅ **改了 2 个文件**：`app/lib/theme/clay.dart`（`_inset`）· `scripts/tokens_verify/bin/verify_tokens.dart`（断言）
+- ✅ 验证：`analyze_inproc` **error=0 / warning=0**；断言 **698 + 75 + 43 + 60 + 71 + 60** 全过
+- ❌ **未部署后端**（本次是 App 端改动，与原定「部署」无关）
+- ⏳ **待办：重新出包 → 真机复验**（渲染效果本机无法验证）
+  · 复验点：① 遮罩消失 ② **其余粘土元素（按钮/卡片/输入框）视觉无变化** ③ 滚动帧率
