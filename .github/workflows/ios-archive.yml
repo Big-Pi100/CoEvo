@@ -10,7 +10,22 @@
 #
 # ① **Apple Developer 账号办好**（Phase 0）⇒ 拿到 **Team ID**（10 位）
 # ② ASC → Users and Access → Integrations → **App Store Connect API**
-#    ⇒ 生成 Key（`.p8` + Key ID + Issuer ID），并给它 **App Manager** 以上权限
+#    ⇒ 生成 Key（`.p8` + Key ID + Issuer ID）
+#
+#    🔴🔴 **角色必须选 `Admin`**（2026-10-07 实测踩到）——
+#       `xcodebuild -exportArchive` 的 **cloud signing 只接受 Admin 角色的 Key**。
+#       Developer / App Manager 角色：**认证能通过、上传也能用**，
+#       但会在**签名进行到一半**时失败，且只报一句语焉不详的
+#         error: exportArchive Cloud signing permission error
+#       （完整信息：`You haven't been given access to cloud-managed distribution
+#         certificates. Please contact your team's Account Holder or an Admin…`）
+#       ⚠️ 角色**创建时固定、之后不可改** ⇒ 只能**新建**一个 Key 并替换 secrets。
+#       🔑 现象特征（很有辨识度）：**`Archive` 成功、只有 `Export IPA` 失败** ——
+#          archive 用 Development 证书（cloud signing 够用），
+#          export 需要 Distribution 证书（cloud signing 被拒）。
+#       📌 依据：developer.apple.com/forums/tags/wwdc21-10204（多个实测帖一致）
+#       ⚠️ 副作用：archive 每次都会创建一个 "Created via API" 的 Development 证书，
+#          而账号里 Development 证书有**数量上限** ⇒ 需要定期去后台清理孤儿证书。
 # ③ 在 GitHub 仓库配 **4 个 Secrets**（Settings → Secrets and variables → Actions）：
 #
 #      ASC_KEY_ID       Key ID（如 `2X9R4HXF34`）

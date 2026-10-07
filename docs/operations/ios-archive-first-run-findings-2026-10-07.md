@@ -143,8 +143,88 @@ Flutter 官方的 `ios/.gitignore` **只忽略 `Pods/`，不忽略 `Podfile`** �
 
 ---
 
-## 七、下一步
+## 七、第二轮：`Export IPA` 失败 → **API Key 角色必须是 `Admin`**
 
-1. 白哥重跑 `iOS Archive & Upload`（`method=ad-hoc`、`upload` 不勾）
-2. 若停在 `Archive` / `Export IPA` ⇒ 判读是否签名、证书或 API Key 角色问题
-   （ad-hoc 需要 Ad Hoc 描述文件；自动签名应由 `-allowProvisioningUpdates` + API Key 创建）
+第一轮的部署目标修复**生效了** —— `pod install` ✅ / `Build Flutter artifacts` ✅ / `Archive` ✅
+全部通过，卡在**最后一步** `Export IPA`：
+
+```
+[MT] IDEDistribution: Command line name "ad-hoc" is deprecated. Use "release-testing" instead.
+error: exportArchive Cloud signing permission error
+error: exportArchive No signing certificate "iOS Distribution" found
+error: exportArchive No profiles for 'com.coevo.coevoApp' were found
+** EXPORT FAILED **
+```
+
+### 7.1 根因
+
+**App Store Connect API Key 的角色必须是 `Admin`** —— cloud signing 的硬性要求。
+
+Apple 官方论坛里的**原始错误详情**（与本项目完全一致）：
+
+> `Error Domain=DeveloperAPIServiceErrorDomain Code=5 "Cloud signing permission error"`
+> `NSLocalizedRecoverySuggestion=You haven't been given access to cloud-managed
+> distribution certificates. Please contact your team's Account Holder or an Admin to give you access.`
+
+多个实测帖的一致结论：
+
+> 「传给 xcodebuild 的 API Key 是**有角色权限的，创建时就定死了**。坑在：
+> **Developer 或 App Manager 角色的 Key，身份认证能通过、上传也能用，
+> 唯独云签名这一步会死**，只甩一句语焉不详的 `Cloud signing permission error`。
+> 按实测，**云签名要求 Key 必须是 Admin 角色**。**角色创建时固定、后续改不了**
+> ⇒ 唯一办法是重新生成一个。」
+
+🔑 **现象特征（很有辨识度）**：**`Archive` 成功、只有 `Export IPA` 失败** ——
+- `archive` 走 **Development** 证书 ⇒ cloud signing 够用（它会创建
+  `Apple Development: Created via API (TEAM ID)`）
+- `exportArchive` 需要 **Distribution** 证书 ⇒ cloud signing 被拒
+
+⇒ 之前把角色写成「App Manager 以上」**是错的**，已在 workflow 顶部更正为 **Admin**。
+
+### 7.2 修法
+
+1. ASC → Users and Access → Integrations → **App Store Connect API** → **Team Keys** → `+`
+2. 角色选 **`Admin`**（⚠️ 角色**创建时固定、之后不可改** ⇒ 只能新建）
+3. 下载 `.p8`（**只有一次下载机会**）
+4. 更新 GitHub Secrets：
+   - `ASC_KEY_ID` ← 新 Key 的 ID
+   - `ASC_KEY_P8` ← 新 `.p8` 全文
+   - `ASC_ISSUER_ID` **不用改**（它是**账号级**的，所有 Key 共用）
+5. 重跑
+
+⚠️ **Admin 角色的 `.p8` 是整套流程里唯一的真机密** ——
+`issuer id` / `key id` / `team id` 都不是机密，`.p8` 和 `.p12` 才是。
+
+### 7.3 连带隐患：证书会堆积
+
+论坛实测：同一个 API Key 在 CI 上**第二次**跑 archive 时会报
+
+> `Revoke certificate: Your account already has an Apple Development signing certificate
+> for this machine, but its private key is not installed in your keychain.`
+
+因为**每次 CI 都是全新 runner** ⇒ 每次都创建一个新证书 ⇒ 而 Development 证书有**数量上限**。
+
+⇒ **对策**：定期去 `developer.apple.com` → Certificates 里清理**找不到对应私钥**的孤儿证书
+（名字形如 `Apple Development: Created via API (TEAM ID)`）。
+若将来频繁出包，应改为「**预先创建证书 → 导出 `.p12` → 存 secrets → CI 导入**」的固定凭据模式
+（那样就不再有创建/堆积）。
+
+### 7.4 顺带记录：`ad-hoc` 已废弃
+
+Xcode 26 起，export method 的命名改了（本项目用的 `ad-hoc` 仍可用，只是 deprecated）：
+
+| 旧名 | 新名（Xcode 26+） |
+|---|---|
+| `ad-hoc` | `release-testing` |
+| `app-store` | `app-store-connect` |
+| `development` | `debugging` |
+
+⏳ 暂不改（现在能用），等实际不支持时再切。
+
+---
+
+## 八、下一步
+
+1. 白哥按 §7.2 新建 **Admin** 角色的 API Key，更新 `ASC_KEY_ID` / `ASC_KEY_P8`
+2. 重跑 `iOS Archive & Upload`（`method=ad-hoc`、`upload` 不勾）
+3. 成功后下载 artifact `coevo-ios-ipa`，用 iTunes / 爱思助手装到 iPhone
