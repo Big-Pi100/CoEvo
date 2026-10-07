@@ -165,6 +165,14 @@
 >   （**发现真实泄漏**：`backend/.env` 的 `DEEPSEEK_API_KEY` 在 first commit 进过历史 ·
 >   哈希比对确认**非生产在用** · 但 **key 不会自动过期** ⇒ 仍需吊销 · ✅ 已吊销）
 > · ✅ **2026-10-06 git 历史已清理**（filter-repo · 619 commit 全重写 · 本地 + 远程均验证零残留）
+> · 🆕 **2026-10-07 Sign in with Apple + 修改邮箱 两项已实现**（白哥定「都做吧」）：
+>   后端新增 `apple_auth.rs` —— 验 `identityToken` **只需要 Apple 公钥**，
+>   🔴 **不需要 `.p8`**（那个服务于「注销时向 Apple 撤销授权」，用途不同）；
+>   改邮箱 = **两步端点**（发码到新邮箱**须当前密码** ⇒ 防「拿到已解锁设备者换绑后接管账号」）。
+>   前端 Apple 按钮（照原型第 ⑤ 屏版式）+ 改邮箱两步弹窗；iOS 加 `Runner.entitlements`。
+>   ✅ 后端 `fmt` / `clippy -D warnings` / `test 242+20` 全绿 · 前端 `error=0 warning=0` · 12 个断言全过。
+>   ⏳ **未部署** · ⏳ 待白哥在**腾讯云 SES 控制台**把模板**正文**改中性（代码侧主题已改）。
+>   📄 `docs/review/ios-auth-features-implementation-plan-2026-10-07.md`（**含一条更正**）
 > · 🔴 **2026-10-07 改公开后发现「漏了一整个类别」** —— 原审计**只扫「密钥」**，
 >   漏了 IP / 域名 / 邮箱（SOUL.md 明确要求「无密钥、**无 IP、无域名**」）。
 >   ⇒ 已处置：**`.workbuddy/memory/` 移出 git**（111 文件 · 主风险源）·

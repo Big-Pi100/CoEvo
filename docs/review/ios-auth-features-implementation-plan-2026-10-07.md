@@ -1,27 +1,47 @@
-# 实施计划：Apple 登录 · 修改邮箱（2026-10-07）
+# 实施记录：Apple 登录 · 修改邮箱（2026-10-07）
 
+> ✅ **2026-10-07 已执行完毕**（提交 `c1fa1c4`，**未部署**）——
+> 本文档因此从「实施计划」升级为「实施记录」：保留原计划 + 追加实际结果与更正。
 > **触发**：白哥定「都做吧」（此前评估结论：两项都**不阻塞上架**，属产品增强）。
-> **本文档**：实现方案 + **外部依赖清单**（需要白哥在第三方后台操作的部分）。
+> 🔴 **§〇 有一条重要更正**（关于 `.p8`）—— 我原以为登录需要它，
+>    查 Apple 官方文档后确认**不需要**，详见该节。
 
 ---
 
-## 〇、先说要紧的：两项**各有一个外部依赖**
+## 〇、外部依赖（含一条**执行时的更正**）
 
-| 功能 | 🔴 外部依赖（白哥做）| 不做的后果 |
+| 功能 | 外部依赖 | 状态 |
 |---|---|---|
-| **Apple 登录** | Apple Developer 后台：① App ID 勾选 **Sign in with Apple** capability ② 生成 **Key**（`.p8`）| 代码写完也**跑不起来**：iOS 端 `ASAuthorizationAppleIDProvider` 会直接报错，CI 签名也会失败（profile 不含该 capability）|
-| **修改邮箱** | 腾讯云 SES：确认/新建一个**中性**邮件模板 | 用户改邮箱时，收到的邮件**标题写着「密码重置验证码」** ⇒ 严重误导（用户会以为账号被盗）|
+| **Apple 登录** | ① App ID 勾 **Sign in with Apple** capability（**必需**）<br>② ~~生成 Key（`.p8`）~~ ← **见下方更正** | ✅ 白哥已完成 |
+| **修改邮箱** | 腾讯云 SES：把模板**正文**改成中性文案 | ⏳ 待白哥在控制台改 |
 
-⚠️ **第二个是我这轮新查出来的**（原以为改邮箱无外部依赖）：
-`auth.rs` / `tencent_ses.rs` 里主题是**硬编码**的：
+### 🔴 更正：`.p8` **不是「登录」所需**
+
+原文把「生成 Key（`.p8`）」列为 Apple 登录的必要条件 —— **那是错的**。
+查 Apple 官方文档（`signinwithapple/verifying-a-user`）后确认：
+
+| 事项 | 需要什么 | `.p8` 用得上吗 |
+|---|---|---|
+| **验证 `identityToken`**（= 登录本身）| **只需 Apple 公钥（JWKS）** | ❌ **不需要** |
+| 用 `authorizationCode` 换 refresh token | `client_secret`（`.p8` + Team ID + Key ID 生成）| ✅ 需要 |
+| 注销时向 Apple **撤销授权** | 同上（且先要有 token 可撤）| ✅ 需要 |
+
+⇒ 白哥生成的 `.p8` **没有浪费**，但它的用途是**「注销时撤销 Apple 授权」**，不是登录。
+⚠️ 而真要用它时**必须重新实现登录那一步** —— 因为 `authorizationCode`
+**只在登录那一刻存在**，事后补不了（详见 `apple_auth.rs` 文件头的「有意不做」表）。
+
+### 为什么「修改邮箱」也有外部依赖（原以为没有）
+
+`tencent_ses.rs` 里主题原为**硬编码**：
 
 ```rust
-const SUBJECT: &str = "CoEvo 密码重置验证码";
+const SUBJECT: &str = "CoEvo 密码重置验证码";   // 已改为 "CoEvo 验证码"
 ```
 
-⇒ 复用同一模板/主题会让「改邮箱」与「重置密码」的邮件**无法区分**。
-📌 判据：**发信类功能复用时，「收件人看到什么」也要一起复用或区分** ——
-只复用发送通道、不复用文案，等于两种业务共用一个语义标签。
+⇒ 复用同一条发送通道会让「改邮箱」的邮件**标题写着「密码重置」** ⇒ 严重误导
+（用户会以为账号被盗）。
+📌 判据：**发信类功能复用时，「收件人看到什么」必须一并中性化或区分** ——
+**代码这半我已改**（主题 + 函数改名），**控制台那半（模板正文）需要白哥改**。
 
 ---
 
@@ -52,7 +72,7 @@ CREATE TABLE IF NOT EXISTS email_change (
 
 ---
 
-## 二、待实现
+## 二、实现内容（2026-10-07 已完成）
 
 ### 2.1 修改邮箱（不需新依赖，除 SES 模板）
 
@@ -99,34 +119,60 @@ CREATE TABLE IF NOT EXISTS email_change (
 
 ---
 
-## 四、需要白哥操作的两件事
+## 四、白哥需要做的（2026-10-07 更新）
 
-### ① Apple Developer 后台（为 Apple 登录）
+### ① Apple Developer 后台 ✅ 已完成
 
-1. https://developer.apple.com/account → **Certificates, Identifiers & Profiles**
-2. **Identifiers** → 找到 `com.coevo.coevoApp` → 勾选 **Sign in with Apple** → Save
-3. 建一个 **Key**（Keys → `+`）→ 勾 **Sign in with Apple** → 下载 `.p8`（**只有一次**）
-4. 记下 **Key ID** 与 **Team ID**（Team ID 我们已有 → `APPLE_TEAM_ID`）
+白哥已走完：App ID 勾选 **Sign in with Apple** + 生成 Key 并下载 `.p8`。
 
-⚠️ 第 2 步不做的话：CI 自动签名**创建不出含该 capability 的 profile** ⇒ 构建/归档会失败。
+🔴 **更正**：其中**只有「勾 capability」是登录必需的**；
+「生成 Key / `.p8`」登录**用不到**（见 §〇 的更正表）——
+它服务于「注销时撤销 Apple 授权」。
 
-### ② 腾讯云 SES（为修改邮箱）
+⚠️ 若**未**勾 capability：CI 自动签名创建不出含该能力的 profile ⇒ 构建 / 归档失败。
 
-现状：主题硬编码为「CoEvo 密码重置验证码」，且**模板正文**可能也写死了"重置密码"。
+### ② 腾讯云 SES：改模板**正文** ⏳ 待办
 
-**两个选项**（建议 A）：
-- **A（省事）**：把模板正文改成**中性文案**（如「你的验证码是 {code}，5 分钟内有效。
-  如非本人操作请忽略本邮件。」）⇒ 两个场景共用，主题按用途传
-- **B（更清晰）**：**新建一个模板**给"修改邮箱"专用 ⇒ 两套文案互不干扰
+**代码侧已完成**：主题 `CoEvo 验证码` + 函数改名 `send_verification_code`（两场景共用）。
 
-⇒ 请白哥在腾讯云控制台确认模板正文，并告知选 A 还是 B。
+⚠️ **控制台的模板正文我改不了** —— 请在腾讯云 SES 控制台把它改成中性文案，例如：
+
+> 你的验证码是 {code}，10 分钟内有效。如非本人操作，请忽略本邮件。
+
+（`{code}` 是**原有变量名**，别改 —— 后端 `tencent_ses::build_body` 传的就是 `code`。）
 
 ---
 
-## 五、本文未做
+## 五、执行结果汇总
 
-- ❌ 未写业务代码（本轮只落了**已充分论证**的 DB 表 + 验证）
-- ❌ 未改 Apple 后台 / 腾讯云（也不该由我改）
-- ⚠️ **顺带发现（不在本任务内）**：`schema.rs` 里还留着
-  `DISTRIBUTION_SCHEMA_SQL` / `ADMIN_SCHEMA_SQL` 两个**分销与 admin 时代的残留常量** ——
-  属另一个清理项，未动。
+### ✅ 已做（提交 `c1fa1c4` · **未部署**）
+
+| 层 | 内容 |
+|---|---|
+| **后端** | `apple_auth.rs`（新 · 739 行）· `auth.rs` +562 行（改邮箱两个函数）<br>`routes.rs` +3 端点 · `schema.rs` / `main.rs` / `user_purge.rs` · SES 中性化 |
+| **前端** | `claim_dialog`（Apple 按钮 + 「或」分隔线）· `change_email_dialog`（新 · 两步）<br>`profile_screen` 接线（并删除已成死代码的 `_comingSoon`）<br>`auth_client` / `auth_provider` +3 方法 · `pubspec` + `sign_in_with_apple 8.1.0` |
+| **iOS** | `Runner.entitlements`（新）+ `project.pbxproj` 三处 `CODE_SIGN_ENTITLEMENTS` |
+| **断言** | `verify_auth_entry` 反转一条（`_comingSoon` 不该再存在）|
+
+### 验证（全绿）
+
+- 后端：`cargo fmt` ✅ · `clippy -D warnings` ✅ · `cargo test` **242 + 20 全过** ✅
+- 前端：`analyze_inproc` **error=0 warning=0** ✅
+- 12 个相关断言脚本全过（`forgot_password` 60 · `auth_entry` 71 · `sync` 61 ·
+  `feed_wiring` 71 · `tokens` 696 · `iap_plan` 109 · `reading_settings` 60 ·
+  `script_portability` 19 · `app_version` 6 · `worddb_sync` 6 ·
+  `native_readiness` · `no_secrets`）
+
+### ⏳ 未做
+
+- **部署**（按铁律需白哥单独批准）
+- **`authorizationCode → refresh_token`** —— 只为「注销时向 Apple 撤销授权」服务。
+  ⚠️ 要做就**必须与登录同一轮**实现：`authorizationCode` **只在登录那一刻存在**，
+  事后补不了（那时已登录的用户将无法撤销）。
+- **`nonce` 校验** —— 当前 nonce 面较小（token 约 10 分钟有效 + HTTPS 传输）；
+  若将来接入 Web 端（重放面变大）应补。
+
+### ⚠️ 顺带发现（不在本任务内）
+
+`schema.rs` 里还留着 `DISTRIBUTION_SCHEMA_SQL` / `ADMIN_SCHEMA_SQL`
+两个**分销与 admin 时代的残留常量** —— 属另一个清理项，未动。
