@@ -304,7 +304,7 @@ DMARC 会因**不对齐**而失败 ⇒ 邮件大批进垃圾箱。这正是「�
 |---|---|
 | 位置 | 邮件推送控制台 → **发信模板** → 新建 |
 | 模板类型 | **HTML 富文本** |
-| 正文 | 见 §三（两个文件：`password-reset.html` + `.txt`）|
+| 正文 | 见 §三（两个文件：`verification-code.html` + `.txt`）|
 | 🔑 **TemplateID** | **`221378`** ← 后端发信要用，已写进 `tencent_ses_check.py` 的默认值 |
 | 状态 | ⏳ **审核中** |
 
@@ -324,7 +324,7 @@ DMARC 会因**不对齐**而失败 ⇒ 邮件大批进垃圾箱。这正是「�
 
 | 规范 | 我们的模板 | 判定 |
 |---|---|---|
-| 「模板必须体现实际业务」 | 明确写「重置 CoEvo 账号的密码」 | ✅ |
+| 「模板必须体现实际业务」 | 明确写「你的 CoEvo 验证码是」+ 有效期 + 非本人操作提示 | ✅ |
 | 字数：**通知类/事务类/测试类 ≥ 50 字**（触发类无要求） | 纯文本 **139 字符**（除变量外） | ✅ 远超 |
 | 「变量和文字比例**不超过 1:5**」 | 实测 **1:18.1** | ✅ |
 | 「**不支持全变量模板**」 | 只有 1 个变量 | ✅ |
@@ -386,8 +386,15 @@ DMARC 会因**不对齐**而失败 ⇒ 邮件大批进垃圾箱。这正是「�
 >
 > | 要粘到腾讯云哪个字段 | 用哪个文件 |
 > |---|---|
-> | 模板类型选 **HTML 富文本** → **正文（HTML）** | [`email-templates/password-reset.html`](email-templates/password-reset.html) |
-> | 同一条模板的 **纯文本（Text）** 字段 | [`email-templates/password-reset.txt`](email-templates/password-reset.txt) |
+> | 模板类型选 **HTML 富文本** → **正文（HTML）** | [`email-templates/verification-code.html`](email-templates/verification-code.html) |
+> | 同一条模板的 **纯文本（Text）** 字段 | [`email-templates/verification-code.txt`](email-templates/verification-code.txt) |
+>
+> 🔴 **2026-10-07 改名 + 中性化**：原文件名 `password-reset.*` ——
+>    这条模板现在**服务两个场景**（**找回密码** + **修改邮箱**），
+>    原名与「只写重置密码」的正文都成了**语义残留** ⇒ 一并改掉。
+>    ⚠️ **改模板内容 ⇒ 要重新提交腾讯云审核（1 个工作日）**。
+>
+> 📌 判据：**复用发送通道时，「收件人看到什么」必须一并中性化或区分**。
 >
 > 🔑 **两处重复已消除**：本文件**不再内嵌**一份 HTML ——
 >    「同一封邮件两个版本」会静默不一致（改一处漏一处）。

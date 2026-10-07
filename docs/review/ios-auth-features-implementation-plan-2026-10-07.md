@@ -135,11 +135,17 @@ CREATE TABLE IF NOT EXISTS email_change (
 
 **代码侧已完成**：主题 `CoEvo 验证码` + 函数改名 `send_verification_code`（两场景共用）。
 
-⚠️ **控制台的模板正文我改不了** —— 请在腾讯云 SES 控制台把它改成中性文案，例如：
+✅ **模板正文也已改好**（2026-10-07）：
+`docs/operations/email-templates/verification-code.html` + `.txt`
+（原 `password-reset.*` ⇒ **已改名并中性化**，两个场景共用一条模板）。
 
-> 你的验证码是 {code}，10 分钟内有效。如非本人操作，请忽略本邮件。
+⚠️ **剩下一步只能你做**：把这份新正文**粘回腾讯云 SES 控制台**并**重新提交审核**
+（模板是「审核通过才能用」的 ⇒ **要等约 1 个工作日**）。
 
-（`{code}` 是**原有变量名**，别改 —— 后端 `tencent_ses::build_body` 传的就是 `code`。）
+🔴 **变量是 `{{code}}`（双花括号）** —— 腾讯云的变量语法。
+（⚠️ 我在上一版对话里写成了 `{code}`，**那是错的**；仓库里的模板文件一直是对的。
+写成单括号 ⇒ 用户会收到**字面的 `{code}`** 而不是验证码。）
+后端 `tencent_ses::build_body` 传的是 `TemplateData: {"code": "..."}` ⇒ 与 `{{code}}` 对应。
 
 ---
 

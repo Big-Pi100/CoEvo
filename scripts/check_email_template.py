@@ -3,7 +3,7 @@
 
 用法：
     python scripts/check_email_template.py                              # 查默认目录全部模板
-    python scripts/check_email_template.py docs/operations/email-templates/password-reset.html
+    python scripts/check_email_template.py docs/operations/email-templates/verification-code.html
     python scripts/check_email_template.py <目录>
 
 # 为什么需要它
