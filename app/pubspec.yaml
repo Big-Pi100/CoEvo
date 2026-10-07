@@ -60,7 +60,16 @@ dependencies:
   #
   # ⚠️ 判据：**依赖也是死代码**。删掉一个功能后要连它的依赖一起清，
   #    否则依赖树会只增不减（同「删功能要清语义残留」的既定原则）。
-  record: ^6.2.1
+  #
+  # 🔴 `record` 已于 2026-10-07 移除（**同一判据的第二次应用**）——
+  #    源码 0 处使用：`grep -rn "package:record\|AudioRecorder" app/lib` → 无命中。
+  #    它是上一轮删「跟读」功能时**漏掉的依赖残留**。
+  #
+  #    ⚠️ 它同时**污染了 iOS 构建**：`record_ios` 会把麦克风 API 链接进 App，
+  #       而 `Info.plist` 原本没有 `NSMicrophoneUsageDescription` ——
+  #       「链接了却不用」，审核会追问为什么申请麦克风权限。
+  #    ⇒ 依赖与其 iOS 权限声明**一并移除**（见 `ios/Runner/Info.plist`）。
+  #    📌 若将来真做录音：加回依赖 + **同时**补回那条 Info.plist 声明。
   web: ^1.1.1
   qr_flutter: ^4.1.0
   graphic: ^2.7.0

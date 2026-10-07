@@ -92,6 +92,29 @@ class ReadingSettingsPanel extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 🔴 2026-10-07 真机修复（白哥反馈 #7）：可见的**下拉把手**。
+          //
+          // 白哥的原话是「应该要能**下拉**关闭」—— 面板靠下拉手势关闭，
+          // 但此前**没有任何视觉提示**说明「这里能拖」。
+          // 本把手做两件事：
+          //   ① 告诉用户「可以拖」
+          //   ② 给手势一个**明确的落点** —— 手势若落在 `Slider` / 下拉框上
+          //      会先被它们接管，而把手区域没有竞争。
+          //
+          // ⚠️ 必须用 `Center` 单独包：外层 `Column` 是 `crossAxisAlignment: start`
+          //    （那是给下面各分区左对齐用的，**别动**），
+          //    直接把它放进 children 会**靠左**而不是居中。
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 14),
+              decoration: BoxDecoration(
+                color: Color(t.ink3.argb32).withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
           Text(
             '阅读设置',
             style: TextStyle(
@@ -457,6 +480,16 @@ Future<void> showReadingSettingsPanel(
     backgroundColor: Colors.transparent,
     // 与 `lookup_sheet` 同一遮罩（半透明浅黑，不抢内容）
     barrierColor: const Color(0x1F000000),
+    // 🔴 2026-10-07 真机修复（白哥反馈 #7）：**显式**声明可下拉关闭 + 点遮罩关闭。
+    //
+    // 白哥的原话：「不是点哪里没反应，而是**应该要能下拉关闭**」。
+    // ⚠️ 这两个参数本就是 Flutter 的默认值 —— **显式写出来**是为了让下面那个
+    //    自绘把手有明确对应的行为（后人删把手时能立刻看到它靠什么生效）。
+    // 📌 用自绘把手而不是 `showDragHandle: true`：本面板背景是
+    //    `Colors.transparent`（外层 `Container` 自己画圆角与底色），
+    //    而官方把手依赖 sheet 自身背景色 ⇒ 透明时观感不可控。
+    enableDrag: true,
+    isDismissible: true,
     builder: (_) => ReadingSettingsPanel(showTrace: showTrace),
   );
 }

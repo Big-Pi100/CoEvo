@@ -376,3 +376,69 @@ App **能正常连服务器**（内容类接口全部 200）
 4. `UIFileSharingEnabled` / `LSSupportsOpeningDocumentsInPlace` **未加**（不在本次批准范围）——
    它们让 App 的 Documents 出现在「文件」App 里，属**产品决策**，需你定是否要
 5. `record` 依赖是否移除（见 §6.3）
+
+---
+
+## 九、第二轮修复（白哥补充反馈后 · 2026-10-07）
+
+白哥补充三点：① 音色菜单要的是**下拉关闭** ② 问 `UIFileSharingEnabled` 是什么 ③ `record` 可移除。
+
+### 9.1 问题 7 · 音色菜单：加可见的下拉把手
+
+**先澄清误解**：白哥原话是「**不是点哪里没反应，而是应该要能下拉关闭**」
+⇒ 不是找不到关闭入口，而是**下拉手势没有视觉提示 / 没有明确落点**。
+
+**改动**（`app/lib/widgets/reading_settings_panel.dart`）：
+
+| 处 | 改动 |
+|---|---|
+| `showReadingSettingsPanel` | **显式** `enableDrag: true` + `isDismissible: true`（本就是默认值；写出来是为了让自绘把手**有明确对应的行为**，后人删把手时能看到它靠什么生效）|
+| 面板顶部 | 新增**可见下拉把手**（36×4 圆角条）· 用 `Center` 单独包（外层 `Column` 是 `crossAxisAlignment: start`，**那是给各分区左对齐用的，别动**）|
+
+**把手解决的第二个问题**：给手势一个**无竞争的落点** ——
+手势若落在 `Slider` / 下拉框上，会先被它们接管。
+
+⚠️ **根因未 100% 确定**：面板结构是 `Container + Column(mainAxisSize: min)`，
+**没有任何滚动视图** ⇒ **不是「滚动冲突」**（我最初的假设被代码否定）。
+加了把手后下拉有了明确落点；**若真机上仍无效**，下一步候选是加**显式关闭按钮**保底。
+
+### 9.2 移除 `record` 依赖（白哥批准）
+
+**先核实依赖关系**（不是直接删）：`record` 系 8 个包在依赖树里**完全孤立** ——
+没有任何其它包依赖它们 ⇒ **可安全移除**。且源码 0 处使用。
+
+| 文件 | 改动 |
+|---|---|
+| `app/pubspec.yaml` | 删 `record: ^6.2.1`（保留注释说明沿革与「将来加回时要同时补什么」）|
+| `app/pubspec.lock` | 删 8 个条目（**1531 → 1467 行**，包数 192 → 184）<br>⚠️ **本机跑不了 `flutter pub get`**（`ProcessExit: 1`）⇒ 手工按段落删除，删后用 YAML 解析校验 |
+| `app/ios/Runner/Info.plist` | **同时移除** `NSMicrophoneUsageDescription` |
+
+📌 **判据：移除依赖时，要连带移除它带来的平台声明** ——
+否则会出现「**声明了权限却没有对应代码**」的反向不一致（审核会追问「你到底用不用麦克风」）。
+
+### 9.3 验证
+
+| 项 | 结果 |
+|---|---|
+| `analyze_inproc app/lib` | ✅ **error=0 · warning=0**（5 个 info 均为既有项）|
+| `Info.plist` | ✅ `plistlib` 解析通过 · 无 `NSMicrophoneUsageDescription` |
+| `pubspec.lock` | ✅ YAML 合法 · 无 record 系 · 184 包 |
+
+---
+
+## 十、`UIFileSharingEnabled` / `LSSupportsOpeningDocumentsInPlace` 是什么
+
+（白哥问的，答在对话里，此处留档）
+
+| 开关 | 效果 |
+|---|---|
+| `UIFileSharingEnabled` | iOS「**文件**」App 里出现一个 **CoEvo 文件夹**（On My iPhone → Coevo App），可以直接把文件拖进去 |
+| `LSSupportsOpeningDocumentsInPlace` | 让「文件」App 显示**原文件**（而不是拷贝），并能直接用 CoEvo 打开它们 |
+
+**合起来的含义**：用户能「用电脑 / iTunes / 文件 App 拷 EPUB 进 App」，
+或「在文件 App 里点 EPUB → 用 CoEvo 打开」。
+
+⚠️ **它是产品决策**：会让 App 的数据目录**对用户可见**
+（含隐私含义 —— 拿到手机的人能翻到这些文件）。
+**不加也不影响现有的「选文件导入」路径**（那条走的是系统文件选择器）。
+⇒ **本次未加**，等白哥定。
