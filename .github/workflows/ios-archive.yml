@@ -116,7 +116,23 @@ jobs:
         run: flutter pub get
 
       - name: Install CocoaPods
-        run: pod install --repo-update
+        run: |
+          # 🔴 2026-10-07 修正：本仓库 `app/ios/` 下**实际没有 Podfile**
+          #    （`app/ios/.gitignore` 也没忽略它 ⇒ 是真缺失，不是被 ignore）。
+          #
+          #    🔑 判据来源：`ci.yml` 的 `ios-build`（**已验证可过**）**根本不跑 pod install** ——
+          #       `flutter build ios` 自己会生成 Podfile 并完成 pod 集成。
+          #       而这里硬跑 `pod install`，在无 Podfile 时必然
+          #       `[!] No Podfile found in the project directory.` 直接失败。
+          #
+          #    ⇒ 改成**有则跑、无则跳过**：不假设 Podfile 一定存在，
+          #       也不阻碍将来若真提交了 Podfile 的正常流程。
+          if [ -f Podfile ]; then
+            echo "✅ 发现 Podfile ⇒ pod install"
+            pod install --repo-update
+          else
+            echo "⚠️ app/ios 下无 Podfile ⇒ 跳过（下一步 flutter build ios 会自动生成并处理）"
+          fi
         working-directory: app/ios
 
       # ── 配置签名：API Key 落盘 + 注入 Team ID ────────────────────────────
