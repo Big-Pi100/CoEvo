@@ -3,6 +3,14 @@
 
 背景：2026-10-07「出包需临时把仓库改 public」暴露了前提变化 ——
       私有仓库里「能看」的东西，改公开后就是「公开」的。
+
+⚠️🔴 **为什么不写完整 IP 字面量**（而是在运行时拼接）：
+     本脚本要在 `git filter-repo --replace-text` **之后**仍然可用，
+     而 replace-text 会扫描**所有文件内容**（含本文件）——
+     若这里写了完整 IP，它会被替换成 `b"<VPS_IP>": b"<VPS_IP>"`（自我替换 ⇒ 脚本失效）。
+     2026-10-07 实测踩到：第一版就写成字面量，filter-repo 跑完脚本即废。
+     🔑 判据：**「用于清理敏感字符串的工具」自身不能包含那些字符串。**
+
 用法：python scripts/redact_infra_ips.py [repo_root]
 注意：只改工作区文件；git 历史由 git filter-repo --replace-text 单独处理。
 """
@@ -10,12 +18,19 @@ import subprocess
 import sys
 from pathlib import Path
 
+
+def _b(s: str) -> bytes:
+    """运行时拼接出的字节串 —— 见模块头「为什么不写字面量」。"""
+    return s.encode()
+
+
+# 拆成两段，避免在源码里出现完整 IP 字面量
 MAP = {
-    b"<VPS_IP>": b"<VPS_IP>",              # 当前生产
-    b"<OLD_VPS_IP>": b"<OLD_VPS_IP>",        # 旧 VPS
-    b"<DOMAIN_OLD_IP>": b"<DOMAIN_OLD_IP>",       # 主域曾指向
-    b"<OTHER_PROJECT_IP>": b"<OTHER_PROJECT_IP>",   # 另一个项目的 VPS（跨项目）
-    # ⚠️ 51.89.42.211 故意不替换 —— 它是「猜 root 密码」的**扫描器** IP，
+    _b("111.230.197." + "4"): b"<VPS_IP>",                  # 当前生产
+    _b("193.112.130." + "126"): b"<OLD_VPS_IP>",            # 旧 VPS
+    _b("43.160.194." + "26"): b"<DOMAIN_OLD_IP>",           # 主域曾指向
+    _b("43.160.214." + "151"): b"<OTHER_PROJECT_IP>",       # 另一个项目的 VPS（跨项目）
+    # ⚠️ "51.89.42." + "211" 故意不替换 —— 它是「猜 root 密码」的**扫描器** IP，
     #    不是我们的资产；保留它反而是有用的安全记录。
 }
 
@@ -59,9 +74,10 @@ def main():
         detail.append((hits, rel))
 
     print(f"脱敏文件数: {total_files} · 替换总数: {total_hits}")
-    print("\n按命中数排序：")
-    for n, rel in sorted(detail, reverse=True):
-        print(f"  {n:3d}  {rel}")
+    if detail:
+        print("\n按命中数排序：")
+        for n, rel in sorted(detail, reverse=True):
+            print(f"  {n:3d}  {rel}")
 
 
 if __name__ == "__main__":
