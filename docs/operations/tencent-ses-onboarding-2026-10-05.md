@@ -538,7 +538,7 @@ TENCENT_SES_SECRET_ID=<你的 SecretId>
 TENCENT_SES_SECRET_KEY=<你的 SecretKey>
 TENCENT_SES_FROM=CoEvo <noreply@mail.keyievolution.fun>
 TENCENT_SES_TEMPLATE_ID=<模板审核通过后的 ID>
-TENCENT_SES_REGION=ap-guangzhou
+TENCENT_SES_REGION=ap-hongkong
 TENCENT_SES_REPLY_TO=support@keyievolution.fun
 EOF
 sudo systemctl restart coevo
@@ -557,7 +557,37 @@ sudo systemctl is-active coevo
 | `tee -a`（append） | **绝不覆盖** `/opt/coevo/.env` 里既有的 5 个 key |
 | `<<'EOF'`（**带引号**） | 防止 `<>` 与 `$` 被 shell 解释 —— `CoEvo <noreply@…>` 里的尖括号必须原样写入 |
 | `TENCENT_SES_REPLY_TO` | 用户直接按「回复」时能到达 `support@`（我们不填的话用户回复会失败）|
+| 🔴 **`TENCENT_SES_REGION`** | **必须与 SES 控制台左上角的地域一致** —— 见下方「region 陷阱」 |
 | **只 grep 名字** | 🔴 `systemctl show -p Environment` 会**打印密钥值** ⇒ **不要用它核对** |
+
+### 🔴 region 陷阱（2026-10-07 实测踩到）
+
+**本项目实测值 = `ap-hongkong`**（SES 资源建在香港）。
+
+代码里 `TENCENT_SES_REGION` 有默认值 `ap-guangzhou` —— 但**「有默认值」≠「默认值正确」**：
+它描述的是**外部资源的实际位置**，只有控制台知道，代码不可能猜对。
+
+**症状**：配好密钥、重启、调用接口 → HTTP 200 但 body 是
+`{"error":"验证码发送失败，请稍后再试"}`，日志里是：
+
+```
+ses API error FailedOperation.SendEmailErr: 操作失败。
+您的发送遇到问题，请检查Region参数是否指定准确，若Region参数无误，请联系腾讯云提交工单沟通原因并解决。
+```
+
+⚠️ 这个错误码**极其笼统** —— region 不对 / 模板未过审 / 域名未验证 都可能报它，
+而 Message 只会让你「检查 Region」。**它不指向真实原因。**
+
+**定位方法（只读，不改服务器）**：用同一对密钥对候选 region 各发一次，看哪个成功。
+实测：
+
+| region | 结果 |
+|---|---|
+| `ap-guangzhou` | 🔴 `FailedOperation.SendEmailErr` |
+| `ap-hongkong` | ✅ 成功（返回 `MessageId`）|
+| 其他 6 个（sh/bj/nj/cd/sg/tokyo）| `UnsupportedRegion` ⇒ **SES 只覆盖广州与香港** |
+
+⇒ **靠实测二分，比读文档猜快**。
 
 **若报 `FailedOperation.IncorrectSender`**（发件人格式不对）：
 把 `TENCENT_SES_FROM` 改成**只留邮箱**（`noreply@mail.keyievolution.fun`）再试 ——

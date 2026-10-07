@@ -58,7 +58,7 @@ from _tencent_api import (
 DEFAULT_DOMAIN = "mail.keyievolution.fun"
 # 我们的密码重置模板（白哥 2026-10-05 提交，ID 从控制台抄录）
 DEFAULT_TEMPLATE_ID = 221378
-SUBJECT = "CoEvo 密码重置验证码"
+SUBJECT = "CoEvo 验证码"
 
 
 def _line(ok: bool | None, label: str, detail: str = "") -> None:

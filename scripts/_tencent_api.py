@@ -200,6 +200,17 @@ ERROR_HINTS = {
     "FailedOperation.InsufficientBalance": "余额不足 / 账号欠费",
     "FailedOperation.EmailAddrInBlacklist": "收件地址在黑名单",
     "FailedOperation.ReceiverHasUnsubscribed": "收件人已退订",
+    # 🔴 2026-10-07 实测补录：这个错误的 Message **只叫你「检查 Region」**，
+    #    但真实原因可能是 region 不对 / 模板未过审 / 域名未验证 —— 三者共用一个码。
+    #    📌 本项目实测：region 填成默认的 ap-guangzhou 时必报此错，
+    #       改成资源实际所在地域（ap-hongkong）后立刻成功。
+    "FailedOperation.SendEmailErr": (
+        "发信失败（笼统错误，不指向真实原因）—— **先换 region 试**：\n"
+        "        ① 把 `TENCENT_SES_REGION` 设成 SES 控制台左上角的地域\n"
+        "           （本项目=ap-hongkong；SES 仅支持 ap-guangzhou / ap-hongkong）\n"
+        "        ② 仍失败再看 模板是否审核通过 / 发信域名是否验证通过"
+    ),
+    "UnsupportedRegion": "SES 不支持该地域（只支持 ap-guangzhou / ap-hongkong）",
 }
 
 
