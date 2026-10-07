@@ -72,5 +72,29 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+
+	<!-- ═══════════════════════════════════════════════════════════════════
+	     🔴 2026-10-07 iOS 真机首测修复
+	     依据：docs/review/ios-device-first-run-findings-2026-10-07.md
+	     ═══════════════════════════════════════════════════════════════════ -->
+
+	<!-- 后台音频。
+	     iOS 的「后台能力」是**硬性声明制**：不声明，App 一进后台/锁屏，
+	     音频会话必被系统挂起 —— 表现为「朗读到一半就停」。
+	     📌 判据：iOS 上「功能在后台不工作」先查 Info.plist，别查代码。
+	     （白哥真机反馈 #3b） -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+
+	<!-- 麦克风用途说明。
+	     iOS 上缺这个 key **不是报错，是直接 kill 进程**；上架审核也会因此被拒。
+	     ⚠️ 现状：`pubspec.yaml` 有 `record` 依赖，但 `app/lib` 里**零引用**
+	     （录音尚未接线）⇒ 当前不会触发。提前加上，避免将来接线时踩崩溃。
+	     TODO（另议）：若不打算做录音，应考虑移除 `record` 依赖 ——
+	     链接了麦克风 API 却不用，审核可能追问。 -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>用于跟读与发音练习：需要访问麦克风录制你的朗读。</string>
 </dict>
 </plist>

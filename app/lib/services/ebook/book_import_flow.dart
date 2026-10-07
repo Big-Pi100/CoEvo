@@ -49,9 +49,35 @@ import 'book_text.dart';
 ///    但**不能当验证用** —— 用户仍可能选到别的（或从「最近」里选）。
 ///    ⇒ 真正的判定在 `pickFormat`（看魔数），见 `book_import_plan.dart`。
 ///    判据：**UI 的过滤是便利，不是安全边界**。
+/// 🔴 2026-10-07 **iOS 真机修复**：必须补 `uniformTypeIdentifiers`。
+///
+/// 原因：`file_selector` 的过滤参数**按平台分化**（官方支持矩阵）：
+///   · `extensions`             → Android / 桌面 / Web ✅ · **iOS ❌ 不支持**
+///   · `uniformTypeIdentifiers` → **仅 iOS / macOS** ✅
+///
+/// 而 `file_selector_ios` 源码（`_allowedUtiListFromTypeGroups`）写死了逻辑：
+///   若某类型组的 `uniformTypeIdentifiers` 为空、且不是 `allowsAny`
+///   ⇒ **抛 `ArgumentError`**
+///
+/// ⇒ 之前只写 `extensions`，在 **iOS 上必然抛错** → 被 `catch (e)` 兜住
+///   → 用户看到「导入失败」。**这是确定性 bug，不是偶发。**
+///   （Android 上一直正常，因为 Android 读的正是 `extensions`。）
+///
+/// 📌 判据：**跨平台插件要逐平台核对参数支持矩阵** ——
+///    「Android 跑通」≠「参数写对了」，另一个平台可能直接抛异常。
+/// 🔑 强信号：官方 pub 页有「参数支持矩阵」表格 ⇒ **先查表，再写代码**。
+///
+/// ⚠️ 这里的过滤只是**便利**（不是安全边界）——真正的格式判定看魔数，
+///    见 `book_import_plan.dart`。判据：**UI 的过滤是便利，不是安全边界**。
 const _kEbookTypeGroup = XTypeGroup(
   label: '电子书',
   extensions: <String>['epub', 'txt'],
+  // UTI 与 `ios/Runner/Info.plist` 的 `CFBundleDocumentTypes` **保持一致** ——
+  // 两处若不同，会出现「能选到文件但系统不从别的 App 把文件交给我们」这类不一致。
+  uniformTypeIdentifiers: <String>[
+    'org.idpf.epub-container', // EPUB
+    'public.plain-text', // TXT
+  ],
 );
 
 /// 选文件 → 导入 → 反馈。**书库页内所有「导入」入口都调这一个函数。**

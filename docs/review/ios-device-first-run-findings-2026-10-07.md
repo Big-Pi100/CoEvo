@@ -245,8 +245,134 @@ Future<void> showReadingSettingsPanel(BuildContext context, {bool showTrace = tr
 
 ---
 
-## 五、本轮未做
+## 五、本轮未做（首轮调查时）
 
 - ❌ **未改任何代码**（按铁律：先报告 → 请示 → 再改）
 - ❌ 未部署、未改生产
 - ✅ 生产后端**只做了只读探测**（`/api/feed`、`/api/auth/login`、`/api/auth/register` 的**无效输入**用例，未创建任何账号）
+
+---
+
+## 六、修复实施（白哥批准后 · 2026-10-07）
+
+白哥批准三件：① 语速统一 `0.5` ② 修 ③ 提供 IPA 路径。
+
+### 6.1 五处改动
+
+| # | 文件 | 改动 | 修的问题 |
+|---|---|---|---|
+| A1 | `app/lib/services/ebook/book_import_flow.dart` | `_kEbookTypeGroup` 补 `uniformTypeIdentifiers`（`org.idpf.epub-container` / `public.plain-text`）| **书库无法导入** |
+| A2 | `app/ios/Runner/Info.plist` | 补 `UIBackgroundModes: [audio]` | **后台/锁屏不能朗读** |
+| A3 | `app/ios/Runner/Info.plist` | 补 `NSMicrophoneUsageDescription` | 防录音崩溃 |
+| A4 | `app/lib/screens/review_screen.dart` | 空状态改 `LayoutBuilder + ConstrainedBox(minHeight) + Column(center)` | **空状态靠左上** |
+| B1 | `app/lib/services/tts_service.dart` | `kSpeechRateDefault` `1.0` → **`0.5`** | **默认语速过快** |
+
+**A4 的写法要说明**：不能直接写 `Center(child: SingleChildScrollView(...))` ——
+scroll view 的 viewport 高度会取 `maxHeight` ⇒ 撑满 ⇒ `Center` 失效。
+用 `LayoutBuilder` + `ConstrainedBox(minHeight: constraints.maxHeight - padding)`
+才能**既垂直居中、又保留超屏滚动能力**。
+
+### 6.2 验证
+
+| 项 | 结果 |
+|---|---|
+| `analyze_inproc app/lib` | ✅ **error=0 · warning=0**（5 个 info 均为既有项）|
+| `Info.plist` | ✅ `plistlib` 解析通过 · `UIBackgroundModes = ['audio']` |
+| 语速常量 | ✅ `kSpeechRateDefault = 0.5` |
+
+### 6.3 ⚠️ 对 §二.3b 的一处修正
+
+`record`（录音）在 `pubspec.yaml` 里有，但 `app/lib` **零引用** ⇒ 录音**未接线**。
+⇒ 所以「缺麦克风声明会崩溃」目前**不会触发**（我此前称"定时炸弹"略重了）。
+补声明是为了**防将来接线**；另建议单独评估是否移除 `record` 依赖
+（链接麦克风 API 却不用，审核可能追问）。
+
+---
+
+## 七、问题 5 的重大进展：**App 从未发出过 auth 请求**
+
+### 7.1 IPA 验证 → dart-define **注入成功** ✅
+
+解包 `E:\CoEvo_backups\coevo_app.ipa`，在 AOT 快照（`App.framework/App`，10.8 MB）里搜：
+
+```
+✅ api.keyievolution.fun × 5      ← 注入成功
+✅ keyievolution.fun     × 5
+   localhost × 1 / 8080 × 1       ← 只是 `String.fromEnvironment` 的 defaultValue 常量
+```
+
+⇒ **不是 dart-define 的问题**。
+（同时确认 IPA 里的 `Info.plist` 确实缺 `UIBackgroundModes` / `NSMicrophoneUsageDescription`。）
+
+### 7.2 TLS 验证 → **完全满足 iOS ATS** ✅
+
+```
+协议: TLSv1.3 · 套件: TLS_AES_256_GCM_SHA384
+证书: Let's Encrypt · 有效期 2026-10-01 → 2026-12-30
+✅ ECDHE + AES-GCM 系列套件握手成功（ATS 的核心要求）
+```
+
+⇒ **不是 ATS 的问题**。
+
+### 7.3 🔴 决定性证据：nginx access log
+
+**iOS App（UA = `Dart/3.11 (dart:io)`）当天发出的全部请求**：
+
+```
+12:33:08  GET  /api/public/qrcode                    200
+12:33:15  GET  /api/feed?limit=30&offset=0           200
+12:33:17  GET  /api/feed/10779                       200
+12:39:11  GET  /api/feed/10780                       200
+12:39:14  POST /api/generate-card                    200
+12:42:39  POST /api/generate-card                    200
+12:43:04  GET  /api/feed?...category=sports          200
+12:43:07  GET  /api/feed/9945                        200
+12:46:40  GET  /api/public/qrcode                    200
+12:48:26  GET  /api/feed/7091                        200
+12:48:31  GET  /api/feed?ids=7091                    200
+12:52:22  GET  /api/feed?...category=sports          200
+```
+
+**`/api/auth/*` 与 `/api/trial/*`：零条**
+（日志里所有 `/api/auth/*` 都是**我的 curl 探测**，UA = `curl/8.21.0`。）
+
+### 7.4 结论与两条候选根因
+
+App **能正常连服务器**（内容类接口全部 200）
+⇒ 「连不上服务器」**不是网络层问题**，而是 **App 端**。
+
+两条候选，**需要用新包重试来区分**：
+
+**候选 1 · 显示的是「陈旧错误」**（我倾向这条）
+`ClaimDialog` 显示的是 `authState.error`，而该字段可能由**启动阶段**的失败写入。
+`home_screen._initAuth` 只在「**从未用过 trial**」时才发 `trialStart`；
+若冷启动瞬间 DNS/网络尚未就绪 ⇒ `SocketException` ⇒ 写进 `state.error`，
+之后用户打开注册弹窗，看到的就是这句**与当前操作无关的旧错误**。
+✅ 这能同时解释「日志里没有 auth 请求」+「用户却看到连不上」。
+
+**候选 2 · 请求在客户端提前失败**（未到 TCP 层 ⇒ nginx 无日志）
+例如按钮逻辑提前 `return`。
+
+⚠️ **区分方法**：在新包上**再点一次注册**，同时盯 nginx 日志 ——
+- 日志**出现** `/api/auth/register` ⇒ 候选 1（陈旧错误）
+- 日志**仍无** ⇒ 候选 2（按钮/流程问题）
+
+### 7.5 📌 无论哪条，都有一个共通的产品缺陷值得修
+
+**「错误提示的生命周期」** —— 旧错误应在新操作开始 / 弹窗打开时**清除**，
+否则用户会把「上一次的故障」当成「这次操作的结果」。
+（这与已入库的判据**「静默失败 + 无出口 比报错更糟」**是一对：
+这里是**「有出口但出口指向错的因」**。）
+
+---
+
+## 八、待白哥确认 / 后续
+
+1. **重新出包**（method=ad-hoc）→ 装机验证 A1/A2/A4/B1 是否解决
+2. **重试注册**（我同时盯 nginx 日志）→ 区分问题 5 的候选 1 / 2
+3. **问题 7（音色菜单）** 需要补充现象：点哪里没反应？
+   （另注：`analyze` 提示 `reading_settings_panel.dart:263` 的
+    `DropdownButtonFormField.value` 已 deprecated，建议改 `initialValue` —— 与本问题无关，顺带记录）
+4. `UIFileSharingEnabled` / `LSSupportsOpeningDocumentsInPlace` **未加**（不在本次批准范围）——
+   它们让 App 的 Documents 出现在「文件」App 里，属**产品决策**，需你定是否要
+5. `record` 依赖是否移除（见 §6.3）

@@ -865,10 +865,27 @@ class _EmptyState extends StatelessWidget {
       );
     }
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(22, 52, 22, 52),
-      child: Column(
-        children: [
+    // 🔴 2026-10-07 真机修复（白哥反馈 #6）：让空状态**真正在页面居中**。
+    //
+    // 原实现是 `SingleChildScrollView(padding: fromLTRB(22,52,22,52)) + Column`：
+    //   · **垂直不居中** —— 从顶部起算 + 52 上边距 ⇒ 内容浮在偏上
+    //   · **水平可能被收缩** —— 外层 `Column(crossAxisAlignment: .start)`
+    //     （见 `build` 里那个 `.start`，它是**有意给 header / sortBar 用的，不要动**）
+    //     会给孩子**宽松宽度约束** ⇒ 空状态可能收缩到内容宽度 ⇒ 视觉上靠左
+    //
+    // 修法：`LayoutBuilder` + `ConstrainedBox(minHeight: 可用高度)` +
+    //      `Column(mainAxisAlignment: center)`
+    //   ⇒ **内容短时垂直居中、内容超屏时可滚动**，两头都顾到。
+    // ⚠️ 不能直接写 `Center(child: SingleChildScrollView(...))` ——
+    //    scroll view 的 viewport 高度会取 `maxHeight` ⇒ 撑满 ⇒ `Center` 就失效了。
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(22, 24, 22, 24),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
           // 粘土凹陷圆环（与收藏清单同一版式语言，两页解决的是同一个问题）
           SizedBox(
             width: 74,
@@ -911,7 +928,9 @@ class _EmptyState extends StatelessWidget {
               ),
             ),
           ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
