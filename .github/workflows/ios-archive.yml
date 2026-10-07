@@ -155,8 +155,17 @@ jobs:
           set -euo pipefail
 
           # ① 私钥落盘（xcodebuild 要求它在 ~/private_keys/AuthKey_<KEY_ID>.p8）
+          #
+          # 🔴 2026-10-07：`printf '%s'` → **`'%s\n'`**
+          #    `.p8` 是 PEM 格式，**末尾必须有换行**。
+          #    Secret 的值末尾**有没有换行取决于复制时选到哪** ——
+          #    在 GitHub 网页上粘贴多行值时，很容易漏掉最后一行末尾的换行。
+          #    ⇒ 缺尾换行时 xcodebuild 会报 key 无效，而错误信息指向
+          #       「认证失败」，很难联想到是**换行**问题。
+          #    加 `\n` 后：有换行 ⇒ 末尾多一个空行（PEM 解析器容忍）；
+          #                无换行 ⇒ 补上。**两种情况都可用（幂等）**。
           mkdir -p ~/private_keys
-          printf '%s' "$ASC_KEY_P8" > ~/private_keys/AuthKey_$ASC_KEY_ID.p8
+          printf '%s\n' "$ASC_KEY_P8" > ~/private_keys/AuthKey_$ASC_KEY_ID.p8
           chmod 600 ~/private_keys/AuthKey_$ASC_KEY_ID.p8
 
           # ② 往 plist 注入 Team ID
