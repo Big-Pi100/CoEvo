@@ -22,6 +22,14 @@ TEXT_EXT = {
 }
 
 # 敏感模式（名称 → 正则）
+#
+# 🔴 2026-10-07 扩充：原版**只覆盖「密钥」一类**，导致「仓库改公开」后
+#    才发现 IP / 邮箱同样暴露（SOUL.md 明确要求「无密钥、无 IP、无域名」）。
+#    ⇒ 判据：**审计要按「隐私类别」逐类扫，不能只扫密钥。**
+#
+# ⚠️ IP / 邮箱用**通用正则**而非具体值 —— 两个原因：
+#    ① 覆盖面全（不会因"清单不全"漏掉某个 IP）
+#    ② 脚本自身不含敏感字面量（否则 filter-repo --replace-text 会把它自己替换掉）
 PATTERNS = {
     "deepseek_key": re.compile(rb"sk-[A-Za-z0-9]{20,}"),
     "tencent_akid": re.compile(rb"AKID[A-Za-z0-9]{10,}"),
@@ -30,6 +38,9 @@ PATTERNS = {
     "aws_key": re.compile(rb"AKIA[0-9A-Z]{16}"),
     "slack_token": re.compile(rb"xox[baprs]-[A-Za-z0-9-]{10,}"),
     "password_assign": re.compile(rb"(?i)(password|passwd|pwd)\s*[:=]\s*[\"']?[^\s\"']{8,}"),
+    # 🆕 基础设施 / 联系信息（2026-10-07 加）
+    "public_ipv4": re.compile(rb"\b(?!0\.|10\.|127\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|255\.)(?:\d{1,3}\.){3}\d{1,3}\b"),
+    "email_addr": re.compile(rb"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),
 }
 
 # 已知的「假值 / 示例」标记 —— 命中这些词的一律判为示例（报告 §四 判据）

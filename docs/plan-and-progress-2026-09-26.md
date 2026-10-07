@@ -165,8 +165,16 @@
 >   （**发现真实泄漏**：`backend/.env` 的 `DEEPSEEK_API_KEY` 在 first commit 进过历史 ·
 >   哈希比对确认**非生产在用** · 但 **key 不会自动过期** ⇒ 仍需吊销 · ✅ 已吊销）
 > · ✅ **2026-10-06 git 历史已清理**（filter-repo · 619 commit 全重写 · 本地 + 远程均验证零残留）
->   ⇒ **技术上前置条件已满足，可改公开**。⏳ **仅剩「改公开」动作本身需白哥操作**
->   （本机 `gh` 未登录、无 `GH_TOKEN`）→ 记录 `docs/review/git-history-purge-2026-10-06.md` §六
+> · 🔴 **2026-10-07 改公开后发现「漏了一整个类别」** —— 原审计**只扫「密钥」**，
+>   漏了 IP / 域名 / 邮箱（SOUL.md 明确要求「无密钥、**无 IP、无域名**」）。
+>   ⇒ 已处置：**`.workbuddy/memory/` 移出 git**（111 文件 · 主风险源）·
+>   **44 文件 / 109 处 IP 脱敏** · `ci.yml` 明文 IP → `secrets.VPS_HOST` ·
+>   `report-email.sh` 硬编码邮箱 → 环境变量 · 再跑一轮 filter-repo（621 → 516 commits）。
+>   ✅ 本地 + 远程均已验证：我方 4 个 IP / 邮箱 / memory 目录 **全部 0 命中**。
+>   📄 记录 `docs/review/public-exposure-audit-2026-10-07.md`
+> · ⏳ **还需白哥做两件**：① GitHub 加 secret `VPS_HOST` ② 服务器配邮箱文件
+>   （`/opt/coevo/.report-email-to|from`）
+> · ⚠️ **Actions 历史日志**仍会随公开暴露（含 2 个 deploy run）—— 未处理，见报告 §5.5
 >
 > 🆕 **2026-10-05 发信链路进度**（找回密码的最后一个前置）：
 > **SES 已开通** · DNS **四项已验证通过**（含 DKIM 2048 位深度校验）·
