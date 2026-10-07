@@ -104,17 +104,52 @@ class ReadingSettingsPanel extends ConsumerWidget {
           // ⚠️ 必须用 `Center` 单独包：外层 `Column` 是 `crossAxisAlignment: start`
           //    （那是给下面各分区左对齐用的，**别动**），
           //    直接把它放进 children 会**靠左**而不是居中。
-          Center(
-            child: Container(
-              width: 36,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 14),
-              decoration: BoxDecoration(
-                color: Color(t.ink3.argb32).withValues(alpha: 0.35),
-                borderRadius: BorderRadius.circular(2),
-              ),
+          // 把手居左？不 —— **把手居中 + 关闭按钮靠右**（同一行）。
+          //
+          // 🔴 2026-10-07 真机修复（白哥反馈 #7，**第二次**）：
+          //    白哥反馈「下拉依旧不能关」。复盘后找到更可能的原因：
+          //    `showModalBottomSheet` 的下拉关闭判定是
+          //    「**拖拽距离超过面板高度的一半**」（`_closeProgressThreshold = 0.5`）——
+          //    而本面板有 5 个区块（字号/主题/痕迹/语速/音色），高度**接近全屏**
+          //    ⇒ 要拖过半屏才关 ⇒ 用户拖不到 ⇒ 体感「拖不动/关不掉」。
+          //
+          // ⇒ 与其继续赌手势，不如**给一个必然可用的出口**：
+          //    右上角显式关闭按钮。下拉同时保留（拖得够远仍能关）。
+          // 📌 判据：**当「手势类交互」的判定条件对当前布局不友好时，
+          //    补一个确定性的等价入口** —— 不要让用户猜怎么退出。
+          SizedBox(
+            width: double.infinity,
+            height: 30,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Color(t.ink3.argb32).withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Positioned(
+                  right: -6,
+                  child: InkWell(
+                    onTap: () => Navigator.of(context).pop(),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Icon(
+                        Icons.close,
+                        size: 18,
+                        color: Color(t.ink3.argb32),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
+          const SizedBox(height: 8),
           Text(
             '阅读设置',
             style: TextStyle(

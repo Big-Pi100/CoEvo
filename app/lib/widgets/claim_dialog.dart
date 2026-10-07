@@ -86,6 +86,20 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
   String? _validationError;
 
   @override
+  void initState() {
+    super.initState();
+    // 🔴 2026-10-07 真机修复（白哥反馈 #7B）：**打开弹窗时清掉上一次的错误**。
+    //
+    // 现象：网络正常，但弹窗里一直写着「连不上服务器，请检查网络后重试」。
+    // 根因：`authState.error` 只在下次操作时被覆盖，而「打开弹窗」不碰它
+    // ⇒ 用户看到的是启动阶段那次失败留下的**陈旧错误**。
+    //
+    // ⚠️ 用 `microtask` 而不是直接调用：`initState` 期间改 provider 会触发
+    //    「setState during build」告警。
+    Future.microtask(() => ref.read(authProvider.notifier).clearError());
+  }
+
+  @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();

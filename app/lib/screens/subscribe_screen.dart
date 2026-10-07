@@ -328,8 +328,19 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
     final int? discount =
         plan.productId == kProductYearly ? _yearlyDiscount() : null;
 
-    final inkOn = isSelected ? Color(t.accent.argb32) : Color(t.ink.argb32);
-    final subOn = isSelected ? Color(t.accent.argb32) : Color(t.ink3.argb32);
+    // 🔴 2026-10-07 真机修复：选中态的**文字**必须用 `accentInk`，不是 `accent`。
+    //
+    // `Clay(state: ClayState.selected)` 的填充色是 `tokens.accent`（朱砂红，
+    // 见 `theme/clay.dart:81`：`fill ?? (isSelected ? tokens.accent : tokens.clayFill)`）
+    // ⇒ 若文字也用 `accent`，就是**红底红字** —— 真机上表现为
+    //   「选中以后文字看不见了」（白哥反馈 #8）。
+    //
+    // 🔑 `accentInk` 正是为这个场景定义的 token：它是「**强调色底上的文字色**」
+    //    （墨/格档 `#FFFFFF`，夜档 `#2A1405`），两档都保证对比度。
+    //    📌 判据：**凡是「某色当背景」，前景就用配套的 `*Ink`** ——
+    //       配对 token 的存在本身就是为了防这种撞色。
+    final inkOn = isSelected ? Color(t.accentInk.argb32) : Color(t.ink.argb32);
+    final subOn = isSelected ? Color(t.accentInk.argb32) : Color(t.ink3.argb32);
 
     return Stack(
       // 角标要溢出卡片顶部

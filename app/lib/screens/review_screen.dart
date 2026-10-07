@@ -882,7 +882,18 @@ class _EmptyState extends StatelessWidget {
       builder: (context, constraints) => SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(22, 24, 22, 24),
         child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
+          // 🔴 2026-10-07 真机修复（**第二次**）：必须**同时**给 `minWidth`。
+          //
+          // 第一次只加了 `minHeight` ⇒ 修好了「上/下居中」，**留下了「左/右靠左」**。
+          // 原因：只约束高度时，宽度仍是外层
+          // `Column(crossAxisAlignment: CrossAxisAlignment.start)` 传下来的
+          // **宽松约束** ⇒ 内层 `Column` 会 shrink-wrap 到内容宽度 ⇒ 视觉上靠左。
+          // ⇒ 用 `minWidth: double.infinity` 强制撑满可用宽度，
+          //   内层 `Column` 的 `center` 才真正相对于**页面**居中。
+          constraints: BoxConstraints(
+            minHeight: constraints.maxHeight - 48,
+            minWidth: double.infinity,
+          ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [

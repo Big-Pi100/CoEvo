@@ -92,6 +92,26 @@ class AuthNotifier extends StateNotifier<AuthState> {
       : _storage = const FlutterSecureStorage(),
         super(const AuthState());
 
+  /// 清除「上一次操作留下的错误」。
+  ///
+  /// 🔴 2026-10-07 真机修复（白哥反馈 #7B）：
+  ///    注册弹窗里**一直**显示「连不上服务器，请检查网络后重试」，但网络其实是通的
+  ///    （服务器日志证明内容类与注册请求都 200）。
+  ///    根因：`authState.error` **只在下次操作时才会被覆盖** ——
+  ///    用户打开弹窗时看到的是**上一次**（常常是启动阶段）留下的旧错误。
+  ///
+  /// 📌 判据：**错误提示的生命周期要绑定「产生它的那次操作」** ——
+  ///    新操作开始 / 弹窗打开时就该清掉，否则用户会把**旧故障当成新结果**。
+  ///    （与「静默失败 + 无出口」是一对：这里是**有出口，但出口指向错的因**。）
+  ///
+  /// ⚠️ 实现细节：`AuthState.copyWith` 里写的是 `error: error`（**没有** `?? this.error`）
+  ///    ⇒ **不带 `error` 调用即可清空**。那是有意设计（每次操作都重置错误），这里直接复用，
+  ///    不要"顺手"给它加上 `?? this.error` —— 那会让本方法失效。
+  void clearError() {
+    if (state.error == null) return; // 避免无谓的通知
+    state = state.copyWith();
+  }
+
   Future<void> tryRestore() async {
     try {
       debugPrint('tryRestore: 开始恢复认证...');

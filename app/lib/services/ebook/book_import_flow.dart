@@ -220,6 +220,18 @@ void _toast(
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content: Text(msg),
+      // 🔴 2026-10-07 真机修复（白哥反馈 #9）：**显式**给时长 + 关闭按钮。
+      //
+      // 现象：「已导入」提示一直在，不会自己消失。
+      // ⚠️ 根因**未 100% 确定** —— 主题里没改 `duration`
+      //    （`theme_builder.dart` 的 `SnackBarThemeData` 只有配色/形状/behavior），
+      //    理论上默认 4s 应当自动消失。
+      // ⇒ 因此**两头都补**：显式时长（自动）+ 关闭按钮（手动），
+      //    无论默认值因何失效，用户都有确定的出口。
+      // 📌 判据：**「能自动消失」不该依赖默认值** —— 默认会随框架/主题变化，
+      //    关键行为必须显式声明。
+      duration: const Duration(seconds: 4),
+      showCloseIcon: true,
       action: action == null
           ? null
           : SnackBarAction(label: action, onPressed: onAction ?? () {}),

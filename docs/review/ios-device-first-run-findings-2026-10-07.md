@@ -511,3 +511,53 @@ run 37576434815 · sha 888a36b · 92 秒
 
 📌 **判据：开启「目录对用户可见」这类能力前，先核对那个目录里到底有什么** ——
 「加开关」是配置问题，「目录里有什么」是后果问题，**两者必须一起看**。
+
+---
+
+## 十一、第三轮（第二次真机反馈 · 2026-10-07）
+
+**4 项已解决** ✅：数据导入 · 文件 App · 后台朗读 · 语速 —— 上轮修复全部生效。
+
+### 11.1 新报问题与根因（均已定位到行）
+
+| # | 现象 | 根因 | 修法 |
+|---|---|---|---|
+| 5 | 空状态**上下居中 OK，左右仍靠左** | 上轮只给了 `minHeight`，**没给 `minWidth`** ⇒ 宽度仍是外层 `Column(crossAxisAlignment: .start)` 传下来的**宽松约束** ⇒ 内层 Column **shrink-wrap 到内容宽度** | 补 `minWidth: double.infinity` |
+| 6 | 音色面板**下拉仍不能关** | `showModalBottomSheet` 的关闭判定是「**拖拽超过面板高度的 50%**」；而本面板有 5 个区块、**接近全屏** ⇒ 物理上拖不到一半 | 加**右上角关闭按钮**（确定性出口）；下拉保留 |
+| 7B | 注册弹窗「**未联网提示一直存在**」 | `claim_dialog.dart:279` 显示 `authState.error`，而该字段**只在下次操作时被覆盖** ⇒ 显示的是启动阶段那次失败的**陈旧错误** | 新增 `AuthNotifier.clearError()`；`ClaimDialog.initState` 调用 |
+| 7C | 找回密码报「**网络异常**」 | 服务端 `auth_forgot_password`（`routes.rs:499`）**同步 `await` 腾讯云 SES 发信** ⇒ 慢于客户端 10s ⇒ `TimeoutException`（**英文**）⇒ `_friendly()` 见英文开头就笼统说「网络异常」。⚠️ **服务器日志里这条是 200** | 客户端改用 `longTimeout`(60s)<br>⚠️ **根本解法在服务端**：发信改后台任务、接口即时返回（待评估）|
+| 7D | **修改邮箱不能用** | `profile_screen.dart:699` = `_comingSoon('修改邮箱')` ⇒ **尚未实现**（不是缺陷）| — |
+| 8 | 订阅卡**选中后文字看不见** | `theme/clay.dart:81` 选中态填充 = `tokens.accent`（朱砂红），而 `subscribe_screen` 的文字也用 `accent` ⇒ **红底红字** | 文字改用 **`accentInk`** |
+| 9 | 「已导入」提示**不自动消失** | ⚠️ **未定论** —— `SnackBarThemeData` 没改 `duration`，默认 4s 本应自动消失 | 显式 `duration: 4s` + `showCloseIcon`（自动 + 手动两头都补）|
+
+### 11.2 🔑 本轮三条判据
+
+1. 🔴 **渲染类修复要「两个轴一起看」** —— 上轮只修 `minHeight` 就以为解决了居中，
+   实际**留下了水平轴**。📌 居中 = 两个**独立**的约束，改一个 ≠ 改两个。
+2. 🔴 **手势类交互的触发条件可能对当前布局不友好** ——
+   `showModalBottomSheet` 要求「拖过半屏」，而面板近全屏 ⇒ 用户**物理上做不到**。
+   ⇒ 判据：**当手势的触发条件在当前布局下难以满足时，补一个确定性的等价入口**。
+3. 🔴 **「某色当背景」必须用配套的 `*Ink` 作前景** ——
+   `accent` 背景 + `accent` 文字 = 不可见。配对 token 的存在**就是为了防这种撞色**。
+
+### 11.3 顺带确认：sync 的 403 **不是 bug**
+
+nginx 日志里 `/api/sync/push` 与 `/api/sync/pull` 反复 **403**，一度像是故障。
+查 `sync_client.dart:17` 的类文档：
+
+> 「🔴 **403 是语义信号，不是错误** —— 后端对「已登录但**没有有效订阅**」回 403 Forbidden」
+
+⇒ 这是**订阅门槛的正常表达**（云同步属订阅功能），**无需修**。
+
+### 11.4 验证
+
+| 断言 | 结果 |
+|---|---|
+| `analyze_inproc` | ✅ **error=0 · warning=0** |
+| `verify_auth_entry` | ✅ 71 项 |
+| `verify_forgot_password` | ✅ 60 项 |
+| `verify_reading_settings` | ✅ 60 项 |
+| `verify_tokens` | ✅ 696 项 |
+| `verify_reading_tab` | ✅ 75 项 |
+| `verify_iap_plan` | ✅ 109 项 |
+| `check_native_readiness` | ✅ 无编译阻塞 |

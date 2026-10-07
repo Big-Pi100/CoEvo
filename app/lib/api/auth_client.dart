@@ -179,11 +179,24 @@ class AuthClient {
   ///    （白哥 2026-10-05 定「明说」）；60 秒内重复申请是「发送太频繁，请稍后再试」。
   ///    这里**不改写**这些文案（改写会把准确信息变模糊）。
   Future<void> forgotPassword(String email) async {
+    // 🔴 2026-10-07 真机修复（白哥反馈 #7C）：**用长超时，不用默认 10s**。
+    //
+    // 现象：客户端显示「网络异常，请稍后重试」，但**服务器日志里这条是 200**。
+    // 根因：服务端 `auth_forgot_password`（`routes.rs:499`）**同步 `await`**
+    //      腾讯云 SES 发信 —— 发信慢于 10s 时：
+    //        · 客户端先超时 ⇒ `TimeoutException`（**英文**）
+    //        · `_friendly()` 见消息以英文开头 ⇒ 笼统显示「网络异常」（**误导**：
+    //          用户以为没网，实际是服务端在等第三方）
+    //        · 而服务器最终仍返回 200（日志可证）⇒ 邮件可能**已经发出去了**
+    //
+    // ⇒ 用 `longTimeout`（60s）：发信依赖**外部服务**，耗时不由我们控制。
+    // ⚠️ 更根本的解法在**服务端**（把发信改成后台任务、接口立即返回）——
+    //    否则用户只是不再被误导，等待时长并未改善。已记入报告待评估。
     final resp = await http.post(
       Uri.parse('${ApiConfig.baseUrl}/api/auth/forgot-password'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'email': email}),
-    ).timeout(ApiConfig.requestTimeout);
+    ).timeout(ApiConfig.longTimeout);
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     if (resp.statusCode != 200 || data.containsKey('error')) {
       throw Exception(data['error'] ?? '验证码发送失败，请稍后再试');
