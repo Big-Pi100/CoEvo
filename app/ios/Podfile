@@ -1,0 +1,72 @@
+# 🔴 2026-10-07：本文件原**不在版本控制里**（每次由 `flutter pub get` 在 CI 上临时生成）。
+#
+#   问题：生成出来的 `platform` 行是**注释状态** ⇒ CocoaPods 转而读 `Runner.xcodeproj`
+#   里的 `IPHONEOS_DEPLOYMENT_TARGET`（当时为 **12.0**）⇒ 与插件要求冲突：
+#
+#     [!] CocoaPods could not find compatible versions for pod "url_launcher_ios"
+#         Specs satisfying ... were found, but they required a higher minimum
+#         deployment target.
+#
+#   实测各插件要求（pub-cache 里的 podspec）：
+#     url_launcher_ios 6.4.1        → iOS 13.0
+#     audioplayers_darwin 6.4.0     → iOS 13.0
+#     image_picker_ios 0.8.13+6     → iOS 13.0
+#     in_app_purchase_storekit 0.4.13 → iOS 13.0
+#     record_ios / sqflite_darwin / share_plus → 12.0
+#   ⇒ **最高要求 = 13.0**
+#
+#   Flutter 3.41.1 自己的模板注释里默认值也正是 `'13.0'` —— 即 12.0 是本项目的历史遗留。
+#
+#   修法：显式写 `platform :ios, '13.0'`，并同步主工程三处保持一致：
+#     · 本文件（Podfile）
+#     · Runner.xcodeproj/project.pbxproj（IPHONEOS_DEPLOYMENT_TARGET ×3）
+#     · Flutter/AppFrameworkInfo.plist（MinimumOSVersion）
+#   📌 判据：**同一件事的口径只能一处权威** —— 三处不一致时，
+#      CocoaPods 取一处、Xcode 取另一处，报错信息会互相矛盾。
+#
+# 📌 为什么把它提交进 git：Flutter 官方 `ios/.gitignore` 只忽略 `Pods/`，**不忽略 Podfile**
+#    ⇒ 它本该在版本控制里。不提交就只能靠隐式推导，升级插件时不受控。
+
+# The following line defines a global platform for the project.
+platform :ios, '13.0'
+
+# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  use_frameworks!
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+  end
+end
