@@ -57,6 +57,31 @@ CREATE TABLE IF NOT EXISTS password_reset (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset(user_id, created_at);
+
+-- ── 修改邮箱的验证码（🆕 2026-10-07 · 白哥定「做」）─────────────────────
+-- 🔴 **为什么不复用 `password_reset`**（两个理由，都成立）：
+--    ① **验证对象不同**：那张表按 `user_id` 关联，语义是「给**本账号**重置密码」；
+--       而改邮箱要证明的是「**新**邮箱确实属于你」—— 发信目标是**新邮箱**，
+--       不是账号当前绑定的那个。硬塞进去会让 `user_id` 的语义变模糊。
+--    ② **用途必须隔离**：共用一张表 ⇒ 用户可拿「找回密码」的验证码去改邮箱
+--       （或反向）⇒ 把一个低风险动作的凭据**升级**成高风险动作的凭据。
+--       📌 判据：**验证码是「为某个用途签发的凭据」，不同用途不能互相通用。**
+-- 字段与生命周期对齐 `password_reset`（只存 hash · attempts 封顶 ·
+-- expires_at 过期 · used_at 作废），保持两套流程的行为一致、可互相参照。
+CREATE TABLE IF NOT EXISTS email_change (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    new_email TEXT NOT NULL,
+    code_hash TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    expires_at INTEGER NOT NULL,
+    used_at INTEGER,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_email_change_user ON email_change(user_id, created_at);
+-- 按「新邮箱」查：申请阶段要判断该邮箱是否已被占用 / 是否已有在途申请
+CREATE INDEX IF NOT EXISTS idx_email_change_new_email ON email_change(new_email, created_at);
 -- 🔴 2026-09-29 已退役：`conversations` / `conversation_turns`（对话链）·
 --    `card_memory` / `review_log`（后端 FSRS 复习状态）· `achievements`（成就改为端侧计算）
 -- ── 已移除：K12 课程体系（2026-09-28 白哥决定 · 整体清退）──
