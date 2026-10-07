@@ -40,8 +40,10 @@
 /// 里面的**输入框是凹陷**（`ClayField`）、**按钮是粘土**（`ClayButton`）。
 library;
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import '../providers/auth_provider.dart';
 import '../theme/co_spacing.dart';
@@ -155,6 +157,60 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
     }
   }
 
+  /// Apple 登录只在 **iOS** 上可用（本项目唯一的目标平台）。
+  ///
+  /// 🔑 用 `defaultTargetPlatform` 而**不是** `Platform.isIOS`：
+  ///    后者要 `import 'dart:io'`，在本项目（有 web 目标）会让 web 构建直接失败。
+  bool get _supportsApple => defaultTargetPlatform == TargetPlatform.iOS;
+
+  /// Sign in with Apple —— **建号 / 登录 / 绑定 三合一**（2026-10-07）。
+  ///
+  /// 🔑 身份完全由**设备上取得的 `identityToken`** 决定；provider 把它连同
+  ///    「当前是否已登录」一起交给后端，由后端决定「绑定」还是「建号/登录」。
+  ///    ⚠️ 本方法**不传** `authorizationCode`（它只为「注销时撤销 Apple 授权」服务，
+  ///       本批不做；详见 `backend/crates/api_server/src/apple_auth.rs` 文件头）。
+  Future<void> _submitApple() async {
+    setState(() {
+      _isSubmitting = true;
+      _validationError = null;
+    });
+    try {
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: const [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+      );
+      final identityToken = credential.identityToken;
+      if (identityToken == null || identityToken.isEmpty) {
+        // 拿不到 token **不是用户取消**（取消走下面的 exception 分支），
+        // 通常是 entitlement / 后台 capability 没配齐 ⇒ 留日志便于排查。
+        debugPrint('claim_dialog: Apple 未返回 identityToken（检查 App ID 的 '
+            'Sign in with Apple capability 与 Runner.entitlements）');
+        if (mounted) setState(() => _isSubmitting = false);
+        return;
+      }
+      await ref.read(authProvider.notifier).appleLogin(identityToken);
+      if (mounted) Navigator.of(context).pop(true);
+    } on SignInWithAppleAuthorizationException catch (e) {
+      // 🔑 用户**主动取消**不是错误 —— 静默收场，不弹「登录失败」
+      //    （弹了会让用户以为系统出问题，而他只是改了主意）。
+      if (e.code == AuthorizationErrorCode.canceled) {
+        debugPrint('claim_dialog: 用户取消了 Apple 登录');
+        if (mounted) setState(() => _isSubmitting = false);
+        return;
+      }
+      debugPrint('claim_dialog: Apple 授权失败 code=${e.code} msg=${e.message}');
+      if (mounted) setState(() => _isSubmitting = false);
+    } catch (e) {
+      // 服务端/网络错误：文案已由 `authProvider` 归一化并写进 `authState.error`
+      // ⇒ 这里只 `setState` 触发重绘，**不重复拼一遍原始异常**
+      //   （否则界面上会同时出现「网络异常」和「Exception: …」两行）。
+      debugPrint('claim_dialog: Apple 登录失败: $e');
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
   /// 切换登录 / 注册。
   ///
   /// 🔑 必须清掉上一态留下的**已提交错误**：否则从「登录」切到「注册」时，
@@ -228,6 +284,56 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
             ),
           ),
           const SizedBox(height: CoSpacing.lg),
+
+          // ── ①-b Sign in with Apple（2026-10-07 · 原型第 ⑤ 屏的上半部分）──
+          //
+          // 🔴 **只在 iOS 显示** —— `SignInWithApple` 在非 Apple 平台会直接抛异常，
+          //    留一个「点了必失败」的按钮比没有按钮更糟。
+          // 🔑 位置照原型：Apple 按钮在上、「或」分隔线在中、邮箱/密码在下。
+          if (_supportsApple) ...[
+            ClayButton(
+              label: '通过 Apple 继续',
+              // 与主按钮（登录/注册）**区分开**：它是一条**并列**的路，
+              // 不是「更重要的那一个」。用 secondary 表达「同级的另一种选择」。
+              variant: ClayButtonVariant.secondary,
+              expanded: true,
+              enabled: !busy,
+              onTap: _submitApple,
+            ),
+            const SizedBox(height: CoSpacing.md),
+            // 「或」分隔线 —— 明确「上面一条路、下面一条路」是二选一，
+            // 而不是「先点 Apple 再填表单」这类顺序关系。
+            Row(
+              children: [
+                Expanded(
+                  child: Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: Color(t.line.argb32),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Tw(
+                    '或',
+                    style: TextStyle(
+                      fontFamily: CoFonts.uiSans,
+                      fontSize: 11.5,
+                      color: Color(t.ink3.argb32),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: Color(t.line.argb32),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: CoSpacing.md),
+          ],
 
           // ── ② 输入区（凹陷）──
           //

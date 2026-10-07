@@ -231,4 +231,98 @@ class AuthClient {
     }
     return data;
   }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 修改邮箱（两步）—— 2026-10-07
+  // ══════════════════════════════════════════════════════════════════════
+
+  /// 「修改邮箱」第 1 步 —— 发验证码到**新邮箱**（**需登录**）。
+  ///
+  /// 🔴 除了 token 还**必须**传当前密码：
+  ///    只验「新邮箱的码」等于让**拿到已解锁设备的人**把邮箱改成他自己的，
+  ///    随后走一次「忘记密码」就**彻底接管账号**
+  ///    —— 与「改密码必须验原密码」是同一条理由（后端的对应注释在
+  ///    `auth::issue_email_change_code`）。
+  ///
+  /// ⚠️ 超时用 `longTimeout`（60s）：这一步**会真发一封邮件**（腾讯云 SES），
+  ///    与 [forgotPassword] 完全同理 —— 发信耗时不归我们控制。
+  ///    （默认 10s 会让用户看到误导性的「网络异常」，而服务端其实成功了。）
+  Future<void> changeEmailCode({
+    required String token,
+    required String password,
+    required String newEmail,
+  }) async {
+    final resp = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/api/auth/change-email/code'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'password': password, 'new_email': newEmail}),
+    ).timeout(ApiConfig.longTimeout);
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    if (resp.statusCode != 200 || data.containsKey('error')) {
+      throw Exception(data['error'] ?? '验证码发送失败，请稍后再试');
+    }
+  }
+
+  /// 「修改邮箱」第 2 步 —— 用验证码完成换绑（**需登录**）。返回**新邮箱**。
+  ///
+  /// 🔑 后端返回 `{"ok": true, "email": "<新邮箱>"}` ——
+  ///    返回新邮箱是为了让调用方**立刻刷新界面上的账号邮箱**，
+  ///    而不是等下一次 `verifyToken` 才知道改成了什么。
+  Future<String> changeEmail({
+    required String token,
+    required String newEmail,
+    required String code,
+  }) async {
+    final resp = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/api/auth/change-email'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'new_email': newEmail, 'code': code}),
+    ).timeout(ApiConfig.requestTimeout);
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    if (resp.statusCode != 200 || data.containsKey('error')) {
+      throw Exception(data['error'] ?? '修改失败，请重试');
+    }
+    return (data['email'] as String?) ?? newEmail;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Sign in with Apple —— 2026-10-07
+  // ══════════════════════════════════════════════════════════════════════
+
+  /// Sign in with Apple（`POST /api/auth/apple`）。
+  ///
+  /// · [identityToken] 由 `sign_in_with_apple` 插件在**设备上**取得（JWS）
+  /// · [token] 传当前会话 token ⇒ 把 Apple 身份**绑到该账号**（认领语义：
+  ///   保留已有学习记录）；传 `null` ⇒ 建号 / 登录
+  ///
+  /// 返回体与 [login] **同形**（`user_id` / `token` / `email`）——
+  /// 所以 `AuthProvider` 可以走与登录取值完全相同的落库路径。
+  ///
+  /// ⚠️ 后端**不接收** `authorizationCode`（它只为「注销时撤销 Apple 授权」服务，
+  ///    本批不做；详见 `backend/crates/api_server/src/apple_auth.rs` 文件头）。
+  Future<Map<String, dynamic>> appleLogin({
+    required String identityToken,
+    String? token,
+  }) async {
+    final headers = <String, String>{'Content-Type': 'application/json'};
+    if (token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    final resp = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/api/auth/apple'),
+      headers: headers,
+      body: jsonEncode({'identity_token': identityToken}),
+    ).timeout(ApiConfig.requestTimeout);
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    if (resp.statusCode != 200 || data.containsKey('error')) {
+      throw Exception(data['error'] ?? 'Apple 登录失败，请重试');
+    }
+    return data;
+  }
 }

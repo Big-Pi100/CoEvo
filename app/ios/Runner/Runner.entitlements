@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+		Sign in with Apple —— 2026-10-07
+
+		🔴 这个 key **必须**与 Apple 后台的两处配置同时存在，缺一即登录失败：
+		  ① Apple Developer → Identifiers → `com.coevo.coevoApp` 勾选
+		     **Sign in with Apple** capability（白哥 2026-10-07 已完成）
+		  ② 本文件（entitlement）—— Xcode 靠它把该能力写进签名
+
+		⚠️ 现象对照（便于排查）：
+		  · 只缺 ②  ⇒ 设备上点「通过 Apple 继续」拿不到 identityToken
+		                （`claim_dialog` 会打一行 debugPrint 提示检查 entitlement）
+		  · 只缺 ①  ⇒ CI 自动签名**创建不出**含该能力的描述文件 ⇒ Archive/Export 失败
+
+		📌 `Default` 是 Apple 规定的字面值（不是可选项名）——
+		   写错（如 `true`）会被签名阶段拒绝。
+		🔑 引入方式：`project.pbxproj` 的三个 build configuration（Debug/Release/Profile）
+		   都设了 `CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;`
+		   —— 三处缺一都会让**那个配置**编出的包不带该能力。
+	-->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+</dict>
+</plist>

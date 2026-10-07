@@ -742,6 +742,307 @@ pub fn reset_password(
     })
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// 「修改邮箱」—— 与「修改密码」并列的**账号敏感操作**
+// ══════════════════════════════════════════════════════════════════════════
+//
+// 📌 为什么需要「验当前密码 + 验新邮箱的码」两道：
+//    邮箱是**登录标识**（也是「忘记密码」的收信地址）⇒ 换掉它就等于换了找回途径。
+//    · 只验新邮箱的码 ⇒ 拿到已解锁设备的人可把邮箱改成自己的，随后走「忘记密码」
+//      **彻底接管账号**（与 `change_password` 注释 ①「必须验原密码」同一条理由）。
+//    · 只验密码 ⇒ 能把账号换绑到**别人的**邮箱（格式合法但非本人所有）
+//      ⇒ 那个邮箱的主人会莫名收到验证码，且原主人被锁在外面。
+//    ⇒ 两个凭据各挡一类攻击，缺一不可。
+
+/// 修改邮箱验证码的有效期（秒）—— **10 分钟**（与找回密码同档）。
+pub const EMAIL_CHANGE_TTL_SECS: i64 = 600;
+/// 同一用户两次「申请换绑」之间的最小间隔（秒）—— 防刷 + 控制发信成本。
+pub const EMAIL_CHANGE_COOLDOWN_SECS: i64 = 60;
+/// 同一个验证码允许的最大错误次数 —— 达到即**作废**该码（与找回密码同一防暴力口径）。
+pub const EMAIL_CHANGE_MAX_ATTEMPTS: i64 = 5;
+
+/// 「修改邮箱」第 1 步：给**用户想换成的那个新邮箱**签发验证码。
+///
+/// # 返回值
+///
+/// | 返回 | 含义 | 调用方应做什么 |
+/// |---|---|---|
+/// | `Ok(code)` | 签发成功，明文码**只在此刻可见** | 立刻发信到 `new_email` |
+/// | `Err(msg)` | 密码错 / 格式非法 / 该邮箱已被占用 / 与当前相同 / 60 秒内重复 | 把 `msg` 原样给前端 |
+///
+/// # 🔴 「新邮箱已被占用」明说 —— 与 [`issue_reset_code`] 同一条取舍
+///
+/// 含糊的代价是**真实的用户伤害**：用户会一直等一封**永远不会来**的邮件
+/// （且以为系统坏了 ⇒ 「静默失败」那一族）。
+/// 而此处**调用方已通过密码鉴权**，不存在匿名枚举面
+/// ⇒ 明说更优。（`login` 的含糊是另一回事：那里泄露的是「密码对不对」。）
+pub fn issue_email_change_code(
+    conn: &rusqlite::Connection,
+    user_id: &str,
+    current_password: &str,
+    new_email: &str,
+) -> Result<String, String> {
+    let new_email = new_email.trim();
+    if !is_valid_email(new_email) {
+        return Err("邮箱格式不正确".into());
+    }
+
+    // ── ① 验当前密码（证明是账号主人）──
+    let stored_hash: Option<String> = conn
+        .query_row(
+            "SELECT password_hash FROM users WHERE id = ?1 AND deleted_at IS NULL",
+            rusqlite::params![user_id],
+            |row| row.get(0),
+        )
+        .map_err(|_| "账号不存在或已注销".to_string())?;
+    // 匿名试用账号没有密码 —— 它「获得邮箱」的路径是注册/认领，不是改邮箱
+    // （同 `change_password` 的处理：明确报错，而不是让用户以为「我输错了」）。
+    let Some(hash) = stored_hash else {
+        return Err("该账号尚未设置密码，请先完成注册".to_string());
+    };
+    if !verify_password(current_password, &hash) {
+        return Err("当前密码不正确".to_string());
+    }
+
+    // ── ② 与当前邮箱相同 ⇒ 无意义操作（在验密码**之后**才说，避免未验证者探测）──
+    let current_email: Option<String> = conn
+        .query_row(
+            "SELECT email FROM users WHERE id = ?1",
+            rusqlite::params![user_id],
+            |row| row.get(0),
+        )
+        .ok()
+        .flatten();
+    if let Some(cur) = current_email.as_ref() {
+        if cur.eq_ignore_ascii_case(new_email) {
+            return Err("新邮箱与当前邮箱相同".into());
+        }
+    }
+
+    // ── ③ 新邮箱是否已被**别人**占用 ──
+    // 判据与 `register` 完全一致（COLLATE NOCASE）—— 同一件事只能有一个口径。
+    let taken: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM users WHERE email = ?1 COLLATE NOCASE \
+             AND deleted_at IS NULL AND id != ?2",
+            rusqlite::params![new_email, user_id],
+            |row| row.get::<_, i32>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if taken {
+        return Err("该邮箱已被其他账号使用".into());
+    }
+
+    let now = chrono::Utc::now().timestamp();
+
+    // ── ④ 限流：同一用户 60 秒一次 ──
+    let last: Option<i64> = conn
+        .query_row(
+            "SELECT created_at FROM email_change WHERE user_id = ?1 \
+             ORDER BY created_at DESC LIMIT 1",
+            rusqlite::params![user_id],
+            |row| row.get(0),
+        )
+        .ok();
+    if let Some(last) = last {
+        if now - last < EMAIL_CHANGE_COOLDOWN_SECS {
+            return Err("发送太频繁，请稍后再试".into());
+        }
+    }
+
+    // ── ⑤ 签发（**只存 hash**，明文只在这一刻存在）──
+    let code = generate_reset_code();
+    let code_hash = hash_password(&code);
+    if code_hash.is_empty() {
+        return Err("验证码生成失败，请重试".into());
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO email_change \
+         (id, user_id, new_email, code_hash, attempts, expires_at, used_at, created_at) \
+         VALUES (?1, ?2, ?3, ?4, 0, ?5, NULL, ?6)",
+        rusqlite::params![
+            id,
+            user_id,
+            new_email,
+            code_hash,
+            now + EMAIL_CHANGE_TTL_SECS,
+            now
+        ],
+    )
+    .map_err(|e| {
+        tracing::error!("issue_email_change_code: 写库失败: {}", e);
+        "验证码生成失败，请重试".to_string()
+    })?;
+
+    tracing::info!("issue_email_change_code: 已签发给 user_id={}", user_id);
+    Ok(code)
+}
+
+/// 「修改邮箱」第 2 步：用验证码完成换绑。成功返回**新邮箱**。
+///
+/// # 校验顺序（与 [`reset_password`] 同构，别调换）
+///
+/// 1. 新邮箱格式
+/// 2. 取最新一条「未用」的码 —— 🔴 **必须同时匹配 `new_email`**
+///    （否则「用 A 邮箱收到的码」可以完成「改到 B 邮箱」）
+/// 3. 是否过期
+/// 4. 比对码 —— 错则 `attempts + 1`；达上限则**作废**
+/// 5. **再查一次唯一性**（发码 → 用码之间该邮箱可能被别人抢注 —— TOCTOU）
+/// 6. **换绑 + 用掉码**（**一个事务**）
+///
+/// # 🔴 为什么这一步不再验密码
+///
+/// 第 1 步已经验过（那是「发码」的前提）。本步的安全性由**另一个独立凭据**保证：
+/// **确实收到了发往新邮箱的验证码**。重复验密码只会让用户在两步之间输两次，
+/// 而**不增加任何安全性**（能走到第 1 步的人本来就知道密码）。
+pub fn change_email(
+    conn: &rusqlite::Connection,
+    user_id: &str,
+    new_email: &str,
+    code: &str,
+) -> Result<String, String> {
+    let new_email = new_email.trim();
+    if !is_valid_email(new_email) {
+        return Err("邮箱格式不正确".into());
+    }
+
+    let now = chrono::Utc::now().timestamp();
+
+    // ── 取最新一条未用的码（🔴 `new_email` 必须一起匹配，见上头第 2 条）──
+    let row: Option<(String, String, i64, i64)> = conn
+        .query_row(
+            "SELECT id, code_hash, attempts, expires_at FROM email_change \
+             WHERE user_id = ?1 AND new_email = ?2 AND used_at IS NULL \
+             ORDER BY created_at DESC LIMIT 1",
+            rusqlite::params![user_id, new_email],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .ok();
+    let Some((ec_id, code_hash, attempts, expires_at)) = row else {
+        return Err("验证码已失效，请重新获取".into());
+    };
+
+    if now > expires_at {
+        return Err("验证码已过期，请重新获取".into());
+    }
+
+    // ── 比对（bcrypt · 恒定时长）──
+    if !verify_password(code.trim(), &code_hash) {
+        let next = attempts + 1;
+        if next >= EMAIL_CHANGE_MAX_ATTEMPTS {
+            // 达上限 ⇒ 作废该码（否则 6 位码可被无限次试）
+            if let Err(e) = conn.execute(
+                "UPDATE email_change SET attempts = ?1, used_at = ?2 WHERE id = ?3",
+                rusqlite::params![next, now, ec_id],
+            ) {
+                tracing::warn!("change_email: 作废验证码失败: {}", e);
+            }
+            return Err("尝试次数过多，请重新获取验证码".into());
+        }
+        if let Err(e) = conn.execute(
+            "UPDATE email_change SET attempts = ?1 WHERE id = ?2",
+            rusqlite::params![next, ec_id],
+        ) {
+            tracing::warn!("change_email: 累加尝试次数失败: {}", e);
+        }
+        return Err("验证码不正确".into());
+    }
+
+    // ── 🔴 再查一次唯一性（TOCTOU：发码到用码之间，该邮箱可能已被别人注册）──
+    let taken: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM users WHERE email = ?1 COLLATE NOCASE \
+             AND deleted_at IS NULL AND id != ?2",
+            rusqlite::params![new_email, user_id],
+            |row| row.get::<_, i32>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if taken {
+        return Err("该邮箱已被其他账号使用".into());
+    }
+
+    // ── 取旧邮箱（用于「昵称是否还是旧邮箱前缀」的判断）──
+    let old_email: Option<String> = conn
+        .query_row(
+            "SELECT email FROM users WHERE id = ?1",
+            rusqlite::params![user_id],
+            |row| row.get(0),
+        )
+        .ok()
+        .flatten();
+
+    // 🔑 `display_name` 为空、或**仍等于旧邮箱前缀**（= 用户从未自定义过昵称）
+    //    ⇒ 顺带更新为新前缀。否则「我的」页会一直显示一个**已不存在的**邮箱前缀。
+    //    ⚠️ 用户自己设过昵称 ⇒ 一个字都不动（那是他的选择）。
+    let new_display_name: Option<String> = match old_email.as_deref() {
+        Some(old) => {
+            let old_prefix = default_display_name(old);
+            let cur: Option<String> = conn
+                .query_row(
+                    "SELECT display_name FROM users WHERE id = ?1",
+                    rusqlite::params![user_id],
+                    |row| row.get(0),
+                )
+                .ok()
+                .flatten();
+            match cur {
+                None => Some(default_display_name(new_email)),
+                Some(d) if d == old_prefix => Some(default_display_name(new_email)),
+                _ => None, // 用户自定义过 ⇒ 不动
+            }
+        }
+        None => Some(default_display_name(new_email)),
+    };
+
+    // ── 换绑 + 用掉码（**原子**）──
+    // 不做事务的坏结果：改了邮箱但码没标已用 ⇒ 同一个码还能再改一次
+    //（而新邮箱现在归这个账号了，第二次改会命中「与当前邮箱相同」——
+    //  看似无害，但那是**碰巧**被另一条规则挡住，不是本流程的保证）。
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("事务开启失败: {}", e))?;
+
+    match &new_display_name {
+        Some(name) => tx.execute(
+            "UPDATE users SET email = ?1, display_name = ?2 WHERE id = ?3",
+            rusqlite::params![new_email, name, user_id],
+        ),
+        None => tx.execute(
+            "UPDATE users SET email = ?1 WHERE id = ?2",
+            rusqlite::params![new_email, user_id],
+        ),
+    }
+    .map_err(|e| {
+        // 唯一索引冲突（并发下的最后一道闸）也走这里
+        tracing::error!("change_email: 更新邮箱失败: {}", e);
+        "邮箱保存失败，请重试".to_string()
+    })?;
+
+    tx.execute(
+        "UPDATE email_change SET used_at = ?1 WHERE id = ?2",
+        rusqlite::params![now, ec_id],
+    )
+    .map_err(|e| format!("邮箱保存失败，请重试: {}", e))?;
+
+    tx.commit()
+        .map_err(|e| format!("邮箱保存失败，请重试: {}", e))?;
+
+    // 清理该用户其余历史码（放事务**之外**，失败只记日志 ——
+    // 邮箱已经改成功了，把它报成失败会让用户去重试一个已完成的动作）。
+    if let Err(e) = conn.execute(
+        "DELETE FROM email_change WHERE user_id = ?1 AND id != ?2",
+        rusqlite::params![user_id, ec_id],
+    ) {
+        tracing::warn!("change_email: 清理历史验证码失败（不影响结果）: {}", e);
+    }
+
+    tracing::info!("change_email: 换绑成功");
+    Ok(new_email.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1519,5 +1820,266 @@ mod tests {
             assert_eq!(c.len(), 6, "恒 6 位：{c}");
             assert!(c.chars().all(|ch| ch.is_ascii_digit()), "恒数字：{c}");
         }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 修改邮箱（2026-10-07）
+    // ══════════════════════════════════════════════════════════════════
+
+    /// 🔴 **核心安全断言**：第 1 步必须验**当前密码**。
+    ///
+    /// 若这里放行，拿到「已解锁设备」的人可以（不知道密码）把邮箱换成自己的，
+    /// 随后走「忘记密码」**彻底接管账号** —— 与 `change_password` 必须验原密码同理。
+    #[test]
+    fn test_issue_email_change_code_rejects_wrong_password() {
+        let conn = setup_db();
+        let (uid, _) = seed_user(&conn, "a@example.com", "old123");
+
+        let err = issue_email_change_code(&conn, &uid, "WRONG-pw", "new@example.com").unwrap_err();
+        assert_eq!(err, "当前密码不正确", "密码错必须拒绝");
+
+        // 正确密码 ⇒ 通过（证明确实是「密码」这道门，而不是别的校验误拦）
+        assert!(issue_email_change_code(&conn, &uid, "old123", "new@example.com").is_ok());
+    }
+
+    /// 新邮箱已被**别人**注册 ⇒ 明说（否则用户等一封永远不来的邮件）。
+    #[test]
+    fn test_issue_email_change_code_rejects_taken_email() {
+        let conn = setup_db();
+        let (uid, _) = seed_user(&conn, "a@example.com", "old123");
+        seed_user(&conn, "taken@example.com", "other123");
+
+        let err = issue_email_change_code(&conn, &uid, "old123", "taken@example.com").unwrap_err();
+        assert_eq!(err, "该邮箱已被其他账号使用");
+    }
+
+    /// 新邮箱与当前邮箱相同（含**大小写不同**的同一邮箱）⇒ 无意义操作，拒绝。
+    #[test]
+    fn test_issue_email_change_code_rejects_same_email() {
+        let conn = setup_db();
+        let (uid, _) = seed_user(&conn, "same@example.com", "old123");
+
+        let err = issue_email_change_code(&conn, &uid, "old123", "same@example.com").unwrap_err();
+        assert_eq!(err, "新邮箱与当前邮箱相同");
+
+        // 大小写不同也是同一个邮箱（与 register / login 同一判据 COLLATE NOCASE）
+        let err2 = issue_email_change_code(&conn, &uid, "old123", "SAME@Example.COM").unwrap_err();
+        assert_eq!(err2, "新邮箱与当前邮箱相同", "大小写不同应视为同一邮箱");
+    }
+
+    /// 匿名试用账号（`password_hash` 为 NULL）没有密码 ⇒ 明确报错，
+    /// 而不是让用户以为「我输错了原密码」。它的路径是注册/认领。
+    #[test]
+    fn test_issue_email_change_code_on_passwordless_account() {
+        let conn = setup_db();
+        conn.execute(
+            "INSERT INTO users (id, username, password_hash, email, created_at) \
+             VALUES ('trial-u1', 'trial_abc', NULL, NULL, 1)",
+            [],
+        )
+        .unwrap();
+
+        let err =
+            issue_email_change_code(&conn, "trial-u1", "whatever", "new@example.com").unwrap_err();
+        assert_eq!(err, "该账号尚未设置密码，请先完成注册");
+    }
+
+    /// Happy path：签发 → 换绑 → **新邮箱能登录、旧邮箱登不进来**。
+    /// 🔑 必须验证「登录」这一层 —— 只断言 `users.email` 变了是不够的，
+    ///    那证明不了「用户真的能用新邮箱进来」（示例：唯一索引没走通时的中间态）。
+    #[test]
+    fn test_change_email_happy_path() {
+        let conn = setup_db();
+        let (uid, _) = seed_user(&conn, "old@example.com", "abc123");
+
+        let code = issue_email_change_code(&conn, &uid, "abc123", "brand-new@example.com").unwrap();
+        let returned = change_email(&conn, &uid, "brand-new@example.com", &code).unwrap();
+        assert_eq!(returned, "brand-new@example.com");
+
+        // 新邮箱可登录
+        assert!(
+            login(
+                &conn,
+                &LoginRequest {
+                    email: "brand-new@example.com".into(),
+                    password: "abc123".into(),
+                }
+            )
+            .is_ok(),
+            "换绑后必须能用新邮箱登录"
+        );
+        // 旧邮箱登不进来
+        assert!(
+            login(
+                &conn,
+                &LoginRequest {
+                    email: "old@example.com".into(),
+                    password: "abc123".into(),
+                }
+            )
+            .is_err(),
+            "旧邮箱必须失效"
+        );
+
+        // 昵称跟随更新（原昵称 = 旧邮箱前缀 "old"，用户没自定义过）
+        let dn: String = conn
+            .query_row(
+                "SELECT display_name FROM users WHERE id = ?1",
+                rusqlite::params![uid],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(dn, "brand-new", "未自定义过昵称 ⇒ 应跟随新邮箱前缀");
+    }
+
+    /// 用户**自定义过**昵称 ⇒ 换邮箱时一个字都不动（那是他的选择）。
+    #[test]
+    fn test_change_email_keeps_custom_display_name() {
+        let conn = setup_db();
+        let (uid, _) = seed_user(&conn, "old2@example.com", "abc123");
+        conn.execute(
+            "UPDATE users SET display_name = '我的昵称' WHERE id = ?1",
+            rusqlite::params![uid],
+        )
+        .unwrap();
+
+        let code = issue_email_change_code(&conn, &uid, "abc123", "n2@example.com").unwrap();
+        change_email(&conn, &uid, "n2@example.com", &code).unwrap();
+
+        let dn: String = conn
+            .query_row(
+                "SELECT display_name FROM users WHERE id = ?1",
+                rusqlite::params![uid],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(dn, "我的昵称", "自定义昵称不该被覆盖");
+    }
+
+    /// 🔴🔴 **码必须与「目标新邮箱」绑定** —— 用 A 邮箱收到的码**不能**完成「改到 B 邮箱」。
+    ///
+    /// 若这里不按 `new_email` 过滤，则「能收到 A 的人」可以把账号改到任意 B
+    /// （只要他也在同一时间申请过一次 B 的码 —— 或更糟：服务端只取「最新一条码」时，
+    ///  两个并行的改邮箱请求会互相串味）。
+    #[test]
+    fn test_change_email_code_is_bound_to_target_email() {
+        let conn = setup_db();
+        let (uid, _) = seed_user(&conn, "bind@example.com", "abc123");
+
+        let code_a =
+            issue_email_change_code(&conn, &uid, "abc123", "a-target@example.com").unwrap();
+        let err = change_email(&conn, &uid, "b-target@example.com", &code_a).unwrap_err();
+        assert!(
+            err.contains("失效"),
+            "A 邮箱的码不能用于改到 B 邮箱，实际：{err}"
+        );
+
+        // 原样用 A 的码改 A ⇒ 仍然有效（证明上面的失败是「绑错邮箱」，不是码被作废）
+        assert!(change_email(&conn, &uid, "a-target@example.com", &code_a).is_ok());
+    }
+
+    /// 验证码**单次有效**（用掉后不能再改一次）。
+    #[test]
+    fn test_change_email_code_is_single_use() {
+        let conn = setup_db();
+        let (uid, _) = seed_user(&conn, "once@example.com", "abc123");
+
+        let code = issue_email_change_code(&conn, &uid, "abc123", "n1@example.com").unwrap();
+        assert!(change_email(&conn, &uid, "n1@example.com", &code).is_ok());
+
+        let err = change_email(&conn, &uid, "n1@example.com", &code).unwrap_err();
+        assert!(err.contains("失效"), "同一个码不能复用：{err}");
+    }
+
+    /// 🔴 **TOCTOU**：发码 → 用码之间，目标邮箱可能被**别人**抢先注册
+    /// ⇒ 第 2 步必须再查一次唯一性（否则会把两个账号的 email 撞成同一个值）。
+    #[test]
+    fn test_change_email_rechecks_uniqueness_at_step_two() {
+        let conn = setup_db();
+        let (uid, _) = seed_user(&conn, "race@example.com", "abc123");
+
+        // ① 发码时该邮箱还空着
+        let code =
+            issue_email_change_code(&conn, &uid, "abc123", "race-target@example.com").unwrap();
+        // ② 别人抢注了它
+        seed_user(&conn, "race-target@example.com", "thief123");
+        // ③ 用码 ⇒ 必须被拦
+        let err = change_email(&conn, &uid, "race-target@example.com", &code).unwrap_err();
+        assert_eq!(err, "该邮箱已被其他账号使用", "第 2 步必须重查唯一性");
+
+        // 该码**不被作废**（是业务冲突，不是猜码）⇒ 用户换个邮箱申请即可
+        // ⚠️ 这里不断言「码仍可用」：目标是同一个邮箱，重试仍会撞占用 —— 那是预期的。
+        //    只断言「没有把两个账号写成同一个 email」。
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM users WHERE email = 'race-target@example.com'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 1, "同一邮箱绝不能落进两个账号");
+    }
+
+    /// 错误次数达上限 ⇒ **作废该码**（6 位码只有 10^6 种，不限次等于没有防暴力能力）。
+    #[test]
+    fn test_change_email_attempt_limit_locks_code() {
+        let conn = setup_db();
+        let (uid, _) = seed_user(&conn, "brute@example.com", "abc123");
+        let code = issue_email_change_code(&conn, &uid, "abc123", "bt@example.com").unwrap();
+        // 🔑 保证错误码**不等于**真码（1/10^6 的概率会让这条测试偶发假红）
+        let wrong = if code == "000000" { "111111" } else { "000000" };
+
+        for _ in 0..EMAIL_CHANGE_MAX_ATTEMPTS {
+            let _ = change_email(&conn, &uid, "bt@example.com", wrong);
+        }
+        // 码已作废 ⇒ 即使拿**正确的**码也不行
+        let err = change_email(&conn, &uid, "bt@example.com", &code).unwrap_err();
+        assert!(
+            err.contains("尝试次数过多") || err.contains("失效"),
+            "达上限后该码必须作废，实际：{err}"
+        );
+    }
+
+    /// 验证码过期 ⇒ 拒绝。
+    #[test]
+    fn test_change_email_expired_code_rejected() {
+        let conn = setup_db();
+        let (uid, _) = seed_user(&conn, "exp@example.com", "abc123");
+        let code = issue_email_change_code(&conn, &uid, "abc123", "et@example.com").unwrap();
+
+        // 把过期时间改到过去
+        conn.execute(
+            "UPDATE email_change SET expires_at = 1 WHERE user_id = ?1",
+            rusqlite::params![uid],
+        )
+        .unwrap();
+
+        let err = change_email(&conn, &uid, "et@example.com", &code).unwrap_err();
+        assert!(err.contains("过期"), "实际：{err}");
+    }
+
+    /// 换绑成功后，历史验证码被清理（只留刚用过的那条）—— 防表无限增长。
+    #[test]
+    fn test_change_email_prunes_old_codes() {
+        let conn = setup_db();
+        let (uid, _) = seed_user(&conn, "prune@example.com", "abc123");
+        // 手动插 3 条历史码（模拟多次申请 —— 走 cooldown 才不冲突）
+        for i in 0..3 {
+            conn.execute(
+                "INSERT INTO email_change \
+                 (id, user_id, new_email, code_hash, attempts, expires_at, used_at, created_at) \
+                 VALUES (?1, ?2, 'x@example.com', 'x', 0, 1, 1, ?3)",
+                rusqlite::params![format!("ec-old-{i}"), uid, 1000 + i],
+            )
+            .unwrap();
+        }
+        let code =
+            issue_email_change_code(&conn, &uid, "abc123", "prune-target@example.com").unwrap();
+        change_email(&conn, &uid, "prune-target@example.com", &code).unwrap();
+
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM email_change", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 1, "应只剩刚用过的那条，实际 {n}");
     }
 }

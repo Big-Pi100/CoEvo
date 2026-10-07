@@ -124,6 +124,11 @@ pub const DELETE_TARGETS: &[(&str, &str)] = &[
     //    🔴 为什么是删而不是匿名化：它的内容就是「重置密码的凭据」，
     //       行本身对业务没有任何留存价值（与支付流水不同 —— 那些要留给对账）。
     ("password_reset", "user_id"),
+    // 🆕 2026-10-07：修改邮箱的验证码 —— 与 `password_reset` 同理 ⇒ **删除**，不匿名化。
+    //    🔴 为什么是删：它的内容就是「换绑邮箱的凭据」，行本身对业务无留存价值。
+    //    ⚠️ 漏了它 ⇒ 注销后库里还留着「这个账号想换到哪个邮箱」的痕迹
+    //       （**匿名化不彻底**：旧邮箱与新邮箱的关联仍可反查）。
+    ("email_change", "user_id"),
     ("user_preferences", "user_id"),
     ("user_notifications", "user_id"),
     ("subscription_requests", "target_user_id"),

@@ -21,6 +21,16 @@ CREATE TABLE IF NOT EXISTS users (
     --    不会改结构。老库（含生产库）必须靠 `run_migrations_inner` 的删列迁移。
     --    📄 那个函数里记了「为什么用条件删列而不是吞 `no such column`」。
     email TEXT DEFAULT NULL,
+    -- 🆕 2026-10-07：Sign in with Apple 的**稳定用户标识**（Apple identityToken 的 `sub`）。
+    --
+    -- 🔑 **必须按它找账号，不能按 email** —— 两条理由：
+    --    ① Apple **只在「首次授权」返回 email**，之后每次登录的 identityToken 里
+    --       可能**没有 email** ⇒ 靠 email 找会把老用户当新用户，**重复建号**；
+    --    ② 用户可在 Apple 侧选「隐藏我的邮箱」⇒ 我们拿到的是
+    --       `xxx@privaterelay.appleid.com` **转发地址**（有效，但不是他的常用邮箱）。
+    -- ⚠️ 唯一性用**部分索引**表达（见下方 `idx_users_apple_user_id`）——
+    --    `NULL` = 非 Apple 账号（绝大多数用户）。
+    apple_user_id TEXT DEFAULT NULL,
     deleted_at TEXT DEFAULT NULL,
     subscription_expires TEXT DEFAULT NULL,
     referral_code TEXT UNIQUE,
@@ -1281,6 +1291,17 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
         //      所以严格说列级 UNIQUE 也能用；但部分索引把「唯一性只约束真实邮箱」
         //      这个意图**写在定义里**，读代码的人不必去查 NULL 语义。
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL",
+        // 🆕 2026-10-07：Apple 登录的稳定标识（`sub`）。
+        // ① 先加列（新库走 `SCHEMA_SQL` 已含此列 → 这里报 `duplicate column` → 容错放行）
+        "ALTER TABLE users ADD COLUMN apple_user_id TEXT DEFAULT NULL",
+        // ② 再加索引 —— 🔴 **必须排在 ① 之后**（同上面 email 那条的理由）。
+        //    实测教训：本行最初漏了 ①，直接报
+        //    `no such column: apple_user_id in CREATE UNIQUE INDEX ...`
+        //    —— 好在它**不在容错白名单**里 ⇒ 直接炸出来（正是想要的）。
+        // 🔑 唯一性是**业务硬要求**：同一个 Apple 账号只能对应一个 CoEvo 账号，
+        //    否则「用 Apple 登录」会随机落到多个账号上（学习记录分裂）。
+        // 📌 用部分索引把「唯一性只约束真实 Apple 账号」写在定义里（同 email 的理由）。
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_apple_user_id ON users(apple_user_id) WHERE apple_user_id IS NOT NULL",
         // ── 🆕 2026-09-29 内容池：抓正文的尝试记录 ──
         // 新库走 `CONTENT_POOL_SQL` 已含此列 → 这里对它们报 `duplicate column` → 容错放行。
         // 🔴 对**已存在的库**（本地开发库 / 将来的生产库）这是**唯一**的补列途径 ——
@@ -1604,6 +1625,14 @@ mod tests {
         "tokens",
         // 🆕 2026-10-05：找回密码的验证码（「忘记密码」）
         "password_reset",
+        // 🆕 2026-10-07：修改邮箱的验证码 —— 与 `password_reset` **刻意分表**。
+        //    🔴 两条理由（写清以免后来者「顺手合并」）：
+        //      ① **验证对象不同** —— `password_reset` 按 `user_id` 关联（给本账号重置密码）；
+        //         改邮箱要证明的是「**新**邮箱属于你」⇒ 发信目标是那个新邮箱，行里存它。
+        //      ② **用途必须隔离** —— 同一张表 ⇒ 用户能拿「找回密码」的码去改邮箱（或反向）
+        //         ⇒ **低风险动作的凭据被升级成高风险动作的凭据**。
+        //    📌 判据：验证码是「为某个用途签发的凭据」，**不同用途不能互相通用**。
+        "email_change",
         "trial_ip_log",
         // 管理端
         "admin_users",

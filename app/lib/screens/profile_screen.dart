@@ -24,6 +24,7 @@ import '../providers/achievement_provider.dart';
 import '../widgets/stats_card.dart';
 import '../widgets/header_chip.dart';
 import '../widgets/claim_dialog.dart';
+import '../widgets/change_email_dialog.dart';
 import '../widgets/change_password_dialog.dart';
 import '../widgets/clay_button.dart';
 import '../widgets/clay_field.dart';
@@ -690,13 +691,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           //    旧文案「绑定邮箱 / 用于找回账号 · 跨设备同步」在注册即绑邮箱之后
           //    会让人以为「还没绑、要去绑一次」—— 那是错的。
           //
-          // ⚠️ 邮箱目前**不可修改**（后端无改邮箱端点）→ 点了给明确说明，
-          //    而不是留一个点了没反应的行。
+          // 🔴 2026-10-07 **已可修改** —— 此前这里写着「邮箱目前不可修改（后端无改邮箱端点）
+          //    → 点了给明确说明」，那句**已过时**：后端已加
+          //    `/api/auth/change-email/code` + `/api/auth/change-email` 两步端点。
+          // 🔑 它是**敏感操作**（邮箱正是找回密码的收信地址）⇒ 要「当前密码 +
+          //    发到新邮箱的验证码」两道凭据，见 `ChangeEmailDialog` 的文档。
           _navTile(
             icon: Icons.mail_outline,
             title: auth.email ?? '未绑定邮箱',
             subtitle: '登录账号 · 找回账号靠它',
-            onTap: () => _comingSoon('修改邮箱'),
+            onTap: _showChangeEmailDialog,
             bare: true,
           ),
           Divider(height: 1, thickness: 1, color: Color(t.line.argb32)),
@@ -932,14 +936,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     ClaimDialog.show(context);
   }
 
-  /// 「即将开放」提示。
+  /// 打开「修改邮箱」弹层；成功则提示。
   ///
-  /// 🔑 占位入口**点了必须有反馈** —— 判据：
-  ///    「**静默失败 + 无出口**」比报错更糟。一个点了没反应的入口，
-  ///    用户只会以为 App 坏了。
-  void _comingSoon(String what) {
+  /// 🔑 toast 放在**这里**而不是弹层内部：弹层关闭的瞬间它自己的 `context`
+  ///    已失效，若在里面弹 toast 会跟着一起消失
+  ///    （判据：**时序 —— 等条件成立**；与 `_showChangePasswordDialog` 同一处理）。
+  ///
+  /// 🔑 界面上的邮箱**不需要**在这里手动刷新：弹层的第 2 步成功后，
+  ///    `AuthProvider.changeEmail` 已把新邮箱写回 `state`（订阅者自动重建）。
+  ///    ⚠️ 若将来有人把那段写回删掉，这里就必须自己补上 ——
+  ///    否则出现「提示说改成功了，而页面上还是旧邮箱」。
+  Future<void> _showChangeEmailDialog() async {
+    final updated = await ChangeEmailDialog.show(context);
+    if (updated == null || !mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Tw('$what即将开放')),
+      // 文案用「已修改」（**状态**）而不是「修改成功」（系统播报口吻）——
+      // 与「密码已修改」的语感一致。
+      SnackBar(content: Tw('邮箱已修改')),
     );
   }
 

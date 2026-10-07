@@ -147,6 +147,31 @@ async fn main() {
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )",
             "CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset(user_id, created_at)",
+            // 🆕 2026-10-07 `email_change`（修改邮箱的验证码表）。
+            // 🔴 **必须与 `schema.rs` 里的那份同时存在**（同 `password_reset` 的理由）：
+            //    `schema.rs` 管**新库**，这里管**老库升级** —— 只改一处 =
+            //    「新装的有表、已上线的库没有」，而生产库正是后者。
+            // 📌 **刻意与 `password_reset` 分表**（不是重复建设）：
+            //    验证对象不同（本表证「**新**邮箱是你的」）+ 用途必须隔离
+            //    （共用一张 ⇒ 「找回密码」的码可升级成「改邮箱」的凭据）。详见 `schema.rs`。
+            "CREATE TABLE IF NOT EXISTS email_change (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                new_email TEXT NOT NULL,
+                code_hash TEXT NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                expires_at INTEGER NOT NULL,
+                used_at INTEGER,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_email_change_user ON email_change(user_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_email_change_new_email ON email_change(new_email, created_at)",
+            // 🆕 2026-10-07 Apple 登录的稳定标识（`sub`）。
+            // 🔴 与 `schema.rs` 的 `CREATE TABLE users` 成对：那里管新库，这里管老库。
+            "ALTER TABLE users ADD COLUMN apple_user_id TEXT DEFAULT NULL",
+            // 唯一索引也要在老库上补（`ALTER` 只加列，不会带来索引）。
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_apple_user_id ON users(apple_user_id) WHERE apple_user_id IS NOT NULL",
             // 🔴 2026-09-29 已删 4 条：`real_name` · `phone` · `id_number` · `bind_hash`
             //
             // 🔑 **为什么必须删**（否则本轮所有后端改动都会被静默撤销）：

@@ -39,6 +39,19 @@ dependencies:
   #    拆成 `blockComponents`/`inlinePatterns`/`inlineDirectives`）。
   gpt_markdown: 1.3.0
   flutter_secure_storage: ^9.2.4
+  # 🆕 2026-10-07 Sign in with Apple（账号登录）
+  #
+  # 🔴 版本**钉死 8.1.0**，不是偶然：
+  #    · 8.2.0 要求 `sdk: ^3.12.0` + `flutter: >=3.44.0`
+  #    · 本项目是 Dart **3.11.0** / Flutter **3.41.1**（`dart --version` 实测）
+  #    ⇒ 8.2.0 **装不上**（`pub get` 直接解析失败）。8.1.0
+  #      （`sdk ^3.11.0` / `flutter >=3.41.0`）是**当前能用的最高版**。
+  #    📌 升级本行前先核对本机 Dart/Flutter 版本，否则依赖解析会挂。
+  #
+  # ⚠️ 它带 2 个传递依赖：`sign_in_with_apple_platform_interface` / `sign_in_with_apple_web`
+  #    —— 已一并写入 `pubspec.lock`（本机 `flutter` 命令跑不了 ⇒ lock 只能手工维护，
+  #    见 `app/pubspec.lock` 里那三条的 sha256 来源：pub.dev API 的 `archive_sha256`）。
+  sign_in_with_apple: 8.1.0
   flutter_web_plugins:
     sdk: flutter
   freezed_annotation: ^2.4.0

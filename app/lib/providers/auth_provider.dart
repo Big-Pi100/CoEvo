@@ -302,6 +302,55 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  /// Sign in with Apple（**建号 / 登录 / 绑定 三合一**）—— 2026-10-07
+  ///
+  /// [identityToken] 由**调用方（UI）**从 `sign_in_with_apple` 插件取得。
+  /// 🔑 Provider 层刻意**不引入该插件**：这样它仍可在无 iOS 环境（纯 Dart 测试）里被驱动，
+  ///    也不用把平台相关的异常处理混进状态管理。
+  ///
+  /// # 与 [login] 的唯一差别：会带上**当前 token**
+  ///
+  /// · 已登录（含匿名试用账号）⇒ 后端把 Apple 身份**绑到当前账号**
+  ///   （**认领**语义：该账号已有的学习记录**不丢**）
+  /// · 未登录 ⇒ 后端建号或按 `apple_user_id` / email 找到既有账号登录
+  ///
+  /// ⚠️ 这与后端 `/api/auth/apple` 的「一个端点覆盖两种情况」是同一设计，见其 handler 注释。
+  Future<void> appleLogin(String identityToken) async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final result = await _client.appleLogin(
+        identityToken: identityToken,
+        token: state.token, // 已登录 ⇒ 绑定；未登录 ⇒ null
+      );
+      final uid = result['user_id'] as String?;
+      final token = result['token'] as String?;
+      final returnedEmail = result['email'] as String?;
+      if (uid != null && token != null) {
+        await _saveCredentials(uid, token, returnedEmail);
+      }
+      state = AuthState(
+        isAuthenticated: true,
+        userId: uid,
+        token: token,
+        // ⚠️ Apple 可能**不返回 email**（非首次授权；或隐藏邮箱且无转发地址）
+        //    ⇒ 用「Apple 用户」兜底，与后端建号时的 `display_name` 一致。
+        username: (returnedEmail ?? 'Apple 用户').split('@').first,
+        email: returnedEmail,
+        isRestored: true,
+      );
+      // 与 register / login 同一处理：清掉「退出登录」标记
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('coevo_show_login');
+    } catch (e) {
+      debugPrint('appleLogin 失败 endpoint=${ApiConfig.baseUrl} error=$e');
+      state = state.copyWith(
+        isLoading: false,
+        error: _friendlyError(e.toString()),
+      );
+      rethrow;
+    }
+  }
+
   Future<void> logout() async {
     await _clearCredentials();
     // 清除 SharedPreferences 缓存（display_name 等）
@@ -428,6 +477,60 @@ class AuthNotifier extends StateNotifier<AuthState> {
       // ⇒ 只记日志，不向用户报错（同 `logout` 的处理）。
       debugPrint('resetPassword: 清除登录标记失败: $e');
     }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 修改邮箱（两步）—— 2026-10-07
+  // ══════════════════════════════════════════════════════════════════════
+
+  /// 「修改邮箱」第 1 步 —— 发验证码到**新邮箱**（需登录 + **需当前密码**）。
+  ///
+  /// 🔑 同 [changePassword]：**只转发 + 抛异常**，loading / error 由弹层自己持有。
+  ///    理由见 [changePassword] 的文档（借用页面级状态会让弹层与整页同时转圈/报错）。
+  ///
+  /// 🔴 为什么要密码：只验「新邮箱的码」等于让拿到已解锁设备的人把邮箱改成自己的，
+  ///    随后走「忘记密码」彻底接管账号（后端 `auth::issue_email_change_code` 有详述）。
+  Future<void> changeEmailCode({
+    required String password,
+    required String newEmail,
+  }) async {
+    final token = state.token;
+    if (token == null || token.isEmpty) {
+      // 兜底（判据同 `changePassword`：Provider 自带前置检查，别依赖 UI 状态）
+      throw Exception('请先登录');
+    }
+    await _client.changeEmailCode(
+      token: token,
+      password: password,
+      newEmail: newEmail,
+    );
+  }
+
+  /// 「修改邮箱」第 2 步 —— 用验证码换绑（需登录）。返回**新邮箱**。
+  ///
+  /// 🔑 **成功后必须把新邮箱写回 `state`** —— 否则「我的」页仍显示旧邮箱，
+  ///    而用户刚刚明明改成功了。这正是那条判据：
+  ///    **「写了 A 端」≠「B 端会显示」**（写库 ≠ 界面已刷新）。
+  Future<String> changeEmail({
+    required String newEmail,
+    required String code,
+  }) async {
+    final token = state.token;
+    if (token == null || token.isEmpty) {
+      throw Exception('请先登录');
+    }
+    final updated = await _client.changeEmail(
+      token: token,
+      newEmail: newEmail,
+      code: code,
+    );
+    // 🔑 `username` 由邮箱前缀得来（与后端 `default_display_name` 同一规则）
+    //    ⇒ 一起更新，否则「我的」页的副标题会留着旧前缀。
+    state = state.copyWith(
+      email: updated,
+      username: updated.split('@').first,
+    );
+    return updated;
   }
 
   /// 创建临时账户（**匿名试用**）

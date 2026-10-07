@@ -33,6 +33,8 @@
 //    运维定时任务（`maintenance`）· 公共二维码（`public_assets`）。
 
 pub mod app_config_cache;
+/// Sign in with Apple —— `identityToken` 的服务端验证 + 建号 / 登录 / 绑定
+pub mod apple_auth;
 pub mod auth;
 pub mod auth_middleware;
 /// 内容合规闸门（在线制卡的**前置**检查 · 涉主权/涉政/涉黄暴/涉歧视）

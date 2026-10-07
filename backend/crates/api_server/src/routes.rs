@@ -163,6 +163,18 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         //    进不来的人走这里。两条路径的旧会话处理**相反**（保留当前 vs 全删）。
         .route("/api/auth/forgot-password", post(auth_forgot_password))
         .route("/api/auth/reset-password", post(auth_reset_password))
+        // 🆕 2026-10-07 修改邮箱（**需登录** · 两步：先发码到新邮箱，再用码换绑）
+        // 🔑 为什么是两步而不是一条：换邮箱要证明的是「**新**邮箱属于你」
+        //    ⇒ 那个证明只能在「收到新邮箱的信」之后成立 ⇒ 必须先发、后验。
+        // 🔴 第 1 步除 token 外**还要当前密码** —— 见 `auth::issue_email_change_code`
+        //    的文档（只验新邮箱 ⇒ 拿到已解锁设备者可换绑后用「忘记密码」接管账号）。
+        .route("/api/auth/change-email/code", post(auth_change_email_code))
+        .route("/api/auth/change-email", post(auth_change_email))
+        // 🆕 2026-10-07 Sign in with Apple（**无需登录** · 带 Authorization 头则视为「绑定」）
+        // 🔑 一个端点覆盖两种情况：
+        //    · 无 token ⇒ 建号 / 登录（全新用户）
+        //    · 有 token ⇒ 把 Apple 身份**绑到当前账号**（= 认领，学习记录不丢）
+        .route("/api/auth/apple", post(auth_apple))
         // 🆕 2026-10-06 云端同步（订阅权益 · 白哥批准的决策③：**校验有效订阅**）
         //
         // 🔴 这是**唯一**需要「登录 + 订阅」双重要求的业务接口 ——
@@ -496,7 +508,7 @@ async fn auth_forgot_password(
     };
 
     // ── ② 发信（异步）──
-    match crate::tencent_ses::send_reset_code(input.email.trim(), &code).await {
+    match crate::tencent_ses::send_verification_code(input.email.trim(), &code).await {
         Ok(()) => Json(serde_json::json!({"ok": true, "message": FORGOT_SENT_MSG})).into_response(),
         Err(e) => {
             // 内部细节只进日志（可能是「模板 ID 错」「余额不足」等，不该给终端用户看）
@@ -538,6 +550,207 @@ async fn auth_reset_password(
         Err(e) => {
             // ⚠️ **不打印密码/验证码**（即使是日志）—— 只记「失败」这件事。
             tracing::warn!("auth_reset_password: 失败 —— {}", e);
+            Json(serde_json::json!({"error": e})).into_response()
+        }
+    }
+}
+
+// ── 修改邮箱（两步）──────────────────────────────────────────────────────
+//
+// 📄 设计依据（为什么需要「当前密码 + 新邮箱码」两道）→ `auth::issue_email_change_code`
+// 📌 复用的是找回密码那条通道（`tencent_ses::send_verification_code`），
+//    但**表、端点、限流档位各自独立** —— 见 `schema.rs` 的 `email_change` 注释。
+
+/// 「修改邮箱」第 1 步的请求体（`POST /api/auth/change-email/code`）。
+///
+/// 🔑 与 `ForgotPasswordInput` **刻意不共用**：那个只需 `email`（未登录），
+///    这里需要 `password`（已登录 + 证明是本人）+ 目标 `new_email`。
+#[derive(Deserialize)]
+pub struct ChangeEmailCodeInput {
+    pub password: String,
+    pub new_email: String,
+}
+
+/// 「修改邮箱」第 2 步的请求体（`POST /api/auth/change-email`）。
+#[derive(Deserialize)]
+pub struct ChangeEmailInput {
+    pub new_email: String,
+    pub code: String,
+}
+
+/// 「已发送」的统一文案（同 `FORGOT_SENT_MSG` 的做法：**同一条消息只有一个出处**）。
+const EMAIL_CHANGE_SENT_MSG: &str = "验证码已发送至新邮箱，请查收";
+
+/// POST /api/auth/change-email/code — 修改邮箱第 1 步：发验证码到**新邮箱**
+///
+/// 请求头: `Authorization: Bearer <token>`
+/// 请求体: `{"password": "str", "new_email": "str"}`
+/// 响应: `{"ok": true, "message": "验证码已发送至新邮箱，请查收"}` 或 `{"error": "str"}`
+/// 限流: **5 次/分钟/IP**（与 forgot-password 同档 —— 每次都会**真发一封邮件**）
+async fn auth_change_email_code(
+    headers: HeaderMap,
+    Json(input): Json<ChangeEmailCodeInput>,
+) -> axum::response::Response {
+    if let Err(resp) = crate::rate_limiter::check_rate_limit(&headers, 5, 60) {
+        return resp;
+    }
+
+    // ① 取当前 token（**唯一实现**在 `user_purge::extract_bearer_token`）
+    let token = match crate::user_purge::extract_bearer_token(&headers) {
+        Ok(t) => t,
+        Err(e) => return auth_json(e).into_response(),
+    };
+
+    // ② 签发（同步 · 落库）
+    let code = {
+        let conn = crate::db_pool::get_conn();
+        // token → uid（**唯一实现**在 `auth::uid_by_token`）
+        let uid = match crate::auth::uid_by_token(&conn, &token) {
+            Ok(u) => u,
+            Err(e) => {
+                tracing::warn!("auth_change_email_code: 鉴权失败 —— {}", e);
+                return Json(serde_json::json!({"error": e})).into_response();
+            }
+        };
+        match crate::auth::issue_email_change_code(&conn, &uid, &input.password, &input.new_email) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("auth_change_email_code: 拒绝 —— {}", e);
+                return Json(serde_json::json!({"error": e})).into_response();
+            }
+        }
+    };
+
+    // ③ 发信（异步）—— 🔴 发到**新邮箱**（凭据就是「能收到那个邮箱的信」）
+    match crate::tencent_ses::send_verification_code(input.new_email.trim(), &code).await {
+        Ok(()) => {
+            Json(serde_json::json!({"ok": true, "message": EMAIL_CHANGE_SENT_MSG})).into_response()
+        }
+        Err(e) => {
+            // 内部细节只进日志（模板 ID 错 / 余额不足 等不该给终端用户看）
+            tracing::error!("auth_change_email_code: 发信失败 —— {}", e);
+            Json(serde_json::json!({"error": "验证码发送失败，请稍后再试"})).into_response()
+        }
+    }
+}
+
+/// POST /api/auth/change-email — 修改邮箱第 2 步：用验证码换绑
+///
+/// 请求头: `Authorization: Bearer <token>`
+/// 请求体: `{"new_email": "str", "code": "str"}`
+/// 响应: `{"ok": true, "email": "<新邮箱>"}` 或 `{"error": "str"}`
+/// 限流: 10 次/分钟/IP（要跑 bcrypt，且防「对验证码反复试」）
+///
+/// ⚠️ **不改 token、不踢会话** —— 与改密码**有意不同**：
+///    token 按 `user_id` 关联，换邮箱不影响任何会话的有效性；
+///    而强行踢会话会让用户「改个邮箱就被登出」，收益为零。
+async fn auth_change_email(
+    headers: HeaderMap,
+    Json(input): Json<ChangeEmailInput>,
+) -> axum::response::Response {
+    if let Err(resp) = crate::rate_limiter::check_rate_limit(&headers, 10, 60) {
+        return resp;
+    }
+
+    let token = match crate::user_purge::extract_bearer_token(&headers) {
+        Ok(t) => t,
+        Err(e) => return auth_json(e).into_response(),
+    };
+
+    let result = {
+        let conn = crate::db_pool::get_conn();
+        match crate::auth::uid_by_token(&conn, &token) {
+            Ok(uid) => crate::auth::change_email(&conn, &uid, &input.new_email, &input.code),
+            Err(e) => Err(e),
+        }
+    };
+
+    match result {
+        Ok(new_email) => {
+            tracing::info!("auth_change_email: 修改成功");
+            Json(serde_json::json!({"ok": true, "email": new_email})).into_response()
+        }
+        Err(e) => {
+            // ⚠️ **不打印验证码**（即使是日志）—— 只记「失败」这件事。
+            tracing::warn!("auth_change_email: 失败 —— {}", e);
+            Json(serde_json::json!({"error": e})).into_response()
+        }
+    }
+}
+
+// ── Sign in with Apple ────────────────────────────────────────────────────
+
+/// Sign in with Apple 的请求体（`POST /api/auth/apple`）。
+///
+/// 🔑 只有 `identity_token`：
+///    · **不需要** `.p8` / Key ID（那是 `client_secret` 的事，本模块不做）
+///    · ⚠️ 也**不收** `authorization_code` —— 它的唯一用途是换 refresh token
+///      以支持「注销时向 Apple 撤销授权」。既然本批不做撤销，收下一个**无法使用**
+///      （短时效）的字段就是**死参数**。将来启用撤销时，客户端与服务端一起改。
+#[derive(Deserialize)]
+pub struct AppleLoginInput {
+    /// Apple 返回的 `identityToken`（JWS，RS256）。
+    pub identity_token: String,
+}
+
+/// POST /api/auth/apple — Sign in with Apple
+///
+/// 请求体: `{"identity_token": "str"}`
+/// 请求头: `Authorization: Bearer <token>` **可选** ——
+///   带 ⇒ 把 Apple 身份**绑到当前账号**（认领：保留学习记录）；不带 ⇒ 建号 / 登录。
+/// 响应: `{"user_id","token","message","email"}`（**与 login 同形**）或 `{"error": "str"}`
+/// 限流: 20 次/分钟/IP（与 `register` 同档 —— 两者都是「建号/登录」入口）
+///
+/// # 🔴 鉴权在 claims 里，不在请求体里
+///
+/// 用户身份完全由**验签通过的** `identityToken` 决定 ——
+/// 请求体里没有任何「我是谁」的可自证字段（那会被随便伪造）。
+async fn auth_apple(
+    headers: HeaderMap,
+    Json(input): Json<AppleLoginInput>,
+) -> axum::response::Response {
+    if let Err(resp) = crate::rate_limiter::check_rate_limit(&headers, 20, 60) {
+        return resp;
+    }
+
+    // ── ① 验 identityToken（内部会取 Apple 公钥并验签；失败一律拒绝）──
+    let claims = match crate::apple_auth::verify_identity_token(
+        &input.identity_token,
+        &crate::apple_auth::apple_client_id(),
+    )
+    .await
+    {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("auth_apple: identityToken 验证失败 —— {}", e);
+            return Json(serde_json::json!({"error": e})).into_response();
+        }
+    };
+
+    // ── ② 可选：带了 Authorization 头 ⇒ 「已登录用户绑定 Apple」──
+    // ⚠️ 取不到有效 uid **不是错误** —— 那就是「未登录用户走 Apple 登录」的正常路径。
+    let current_uid: Option<String> = match crate::user_purge::extract_bearer_token(&headers) {
+        Ok(token) => {
+            let conn = crate::db_pool::get_conn();
+            crate::auth::uid_by_token(&conn, &token).ok()
+        }
+        Err(_) => None,
+    };
+
+    // ── ③ 建号 / 登录 / 绑定 ──
+    let result = {
+        let conn = crate::db_pool::get_conn();
+        crate::apple_auth::apple_login(&conn, &claims, current_uid.as_deref())
+    };
+
+    match result {
+        Ok(resp) => {
+            tracing::info!("auth_apple: 成功（user_id={}）", resp.user_id);
+            Json(serde_json::json!(resp)).into_response()
+        }
+        Err(e) => {
+            // ⚠️ 不打印 identityToken（即使是日志）—— 它是可重放的凭据。
+            tracing::warn!("auth_apple: 失败 —— {}", e);
             Json(serde_json::json!({"error": e})).into_response()
         }
     }
