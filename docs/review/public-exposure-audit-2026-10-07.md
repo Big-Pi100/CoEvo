@@ -227,7 +227,21 @@
 | `report-email.sh` | （改前 2026-05-31）|
 
 **全部零外部引用** ⇒ 微信支付早已删除（白哥决策），这些是遗留调试脚本。
-⏳ **待白哥定**：是否整目录清理（删除不可逆，且有历史参考价值 ⇒ 我没擅自删）。
+
+✅ **2026-10-07 白哥批准「清掉」** ⇒ **整目录已删除**（`git rm -r backend/scripts/`，12 文件）。
+
+**删除前已确认的三件事**：
+1. **可找回** —— 12 个文件均在 git 历史（该目录共 6 个提交），
+   取回命令：`git checkout <删除前的commit> -- backend/scripts/`
+2. **不影响构建/CI** —— 不在 `src/` 下，且 CI/部署脚本/仓库根 `scripts/` 均零引用
+3. **`migrate_subscription_expires.sql` 是一次性迁移**（微信时代把 `subscription_expires`
+   从 `user_preferences` 搬到 `users`）—— 该字段已在 `schema.rs` 就位（`:1223` 有 ALTER），
+   迁移路径已走完 ⇒ 一次性脚本的归宿就是删除
+
+⚠️ **遗留的引用未清理**（有意）：`docs/deliverables/` 下有 3 处引用这些脚本的文档
+（`distribution-manual-test-plan.md` · `distribution-marketing-design.md` ·
+`distribution-task-decomposition.md`）—— 那些文档**本身是分销线的交付物**，
+属**另一个待清理范围** ⇒ 按「不该改造待删文件的遗留问题」，本次不动它们。
 
 ### 5.5 现在可以安全改公开了吗？
 ✅ **可以**（历史 + HEAD 均已清净）。但请注意：
