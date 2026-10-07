@@ -173,6 +173,12 @@
 >   ✅ 后端 `fmt` / `clippy -D warnings` / `test 242+20` 全绿 · 前端 `error=0 warning=0` · 12 个断言全过。
 >   ⏳ **未部署** · ⏳ 待白哥在**腾讯云 SES 控制台**把模板**正文**改中性（代码侧主题已改）。
 >   📄 `docs/review/ios-auth-features-implementation-plan-2026-10-07.md`（**含一条更正**）
+> · ✅ **2026-10-07 SES 已配通** ⇒ **找回密码的发信可用**（实测返回 `message_id`）：
+>   🔴 踩到 **region 坑** —— 代码默认 `ap-guangzhou`，而本项目 SES 资源**在香港**
+>   ⇒ 必须显式配 `TENCENT_SES_REGION=ap-hongkong`（**实测二分定位**：广州 ❌ / 香港 ✅）。
+>   📌 判据：**「有默认值」≠「默认值正确」**（地域/端点/bucket 类配置**代码猜不对，必须核实**）。
+>   ⚠️ **Apple 登录 / 修改邮箱仍等部署**（新路由只在新二进制里；实测 `users` 表尚无 `apple_user_id`）。
+>   📄 `docs/review/ios-device-round2-environment-findings-2026-10-07.md` §二·五
 > · 🔴 **2026-10-07 改公开后发现「漏了一整个类别」** —— 原审计**只扫「密钥」**，
 >   漏了 IP / 域名 / 邮箱（SOUL.md 明确要求「无密钥、**无 IP、无域名**」）。
 >   ⇒ 已处置：**`.workbuddy/memory/` 移出 git**（111 文件 · 主风险源）·
