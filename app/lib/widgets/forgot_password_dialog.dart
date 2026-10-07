@@ -63,16 +63,44 @@ import 'twemoji.dart';
 const int kResendCooldownSecs = 60;
 
 class ForgotPasswordDialog extends ConsumerStatefulWidget {
-  const ForgotPasswordDialog({super.key});
+  const ForgotPasswordDialog({
+    super.key,
+    this.initialEmail,
+    this.lockedEmail,
+  });
+
+  /// **预填**的邮箱 —— 用户在上一个弹窗里已经打过，别让他再打一遍。
+  ///
+  /// 🔑 仍**可编辑**：他可能记错了 / 想重置另一个账号的密码。
+  final String? initialEmail;
+
+  /// **已锁定**的邮箱 —— 非空时第 0 步**不显示输入框**，改成一行只读说明。
+  ///
+  /// 🔴 用于「**已登录**」的入口（`ChangePasswordDialog` 里的「忘记密码」）：
+  ///    那时账号邮箱是**确定的**（就是当前登录账号的），
+  ///    让用户重填不但多余，**填错了还会把验证码发到别人的邮箱**。
+  ///
+  /// 📌 白哥 2026-07 反馈原话：「找回密码应该是账号绑定的邮箱，**而非填写任意邮箱**，
+  ///    现在让填写邮箱。」—— 指的就是这条路径。
+  /// ⚠️ 入口是「未登录」时（`ClaimDialog` 的「忘记密码？」）**不能锁定** ——
+  ///    系统那时确实不知道用户是谁，只能靠他填（或预填他刚打完的）。
+  final String? lockedEmail;
 
   /// 打开弹层。**返回值**：`true` = 重置成功（且已自动登录）。
   ///
   /// 🔑 与 `ChangePasswordDialog.show` 同一约定：不在弹层里弹 toast，
   ///    由调用方统一负责（避免弹层关闭瞬间 toast 跟着消失）。
-  static Future<bool?> show(BuildContext context) {
+  static Future<bool?> show(
+    BuildContext context, {
+    String? initialEmail,
+    String? lockedEmail,
+  }) {
     return CoDialog.show<bool>(
       context,
-      builder: (_) => const ForgotPasswordDialog(),
+      builder: (_) => ForgotPasswordDialog(
+        initialEmail: initialEmail,
+        lockedEmail: lockedEmail,
+      ),
     );
   }
 
@@ -101,6 +129,24 @@ class _ForgotPasswordDialogState extends ConsumerState<ForgotPasswordDialog> {
   /// 「重新发送」倒计时（秒）。> 0 时不可点。
   int _cooldown = 0;
   Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    // 预填已有的邮箱（见 `initialEmail` / `lockedEmail` 的文档）。
+    // 🔑 `lockedEmail` 优先 —— 它是「**确定的**那个」（已登录账号的邮箱）。
+    final prefill = (widget.lockedEmail ?? widget.initialEmail ?? '').trim();
+    if (prefill.isNotEmpty) {
+      _emailController.text = prefill;
+    }
+  }
+
+  /// 本次操作**实际使用**的邮箱。
+  ///
+  /// 🔑 锁定态下**以 `lockedEmail` 为准**，不读输入框 ——
+  ///    那时输入框压根不显示（见 `_bodyEmail`），读它会拿到空串。
+  String _effectiveEmail() =>
+      (widget.lockedEmail ?? _emailController.text).trim();
 
   @override
   void dispose() {
@@ -154,7 +200,7 @@ class _ForgotPasswordDialogState extends ConsumerState<ForgotPasswordDialog> {
 
   // ── 屏① 发送验证码 ──
   Future<void> _sendCode() async {
-    final email = _emailController.text.trim();
+    final email = _effectiveEmail();
     final clientErr = Validators.email(email);
     if (clientErr != null) {
       setState(() => _error = clientErr);
@@ -190,9 +236,7 @@ class _ForgotPasswordDialogState extends ConsumerState<ForgotPasswordDialog> {
       _error = null;
     });
     try {
-      await ref.read(authProvider.notifier).forgotPassword(
-            _emailController.text.trim(),
-          );
+      await ref.read(authProvider.notifier).forgotPassword(_effectiveEmail());
       if (!mounted) return;
       setState(() {
         _submitting = false;
@@ -395,9 +439,12 @@ class _ForgotPasswordDialogState extends ConsumerState<ForgotPasswordDialog> {
   }
 
   List<Widget> _bodyEmail(CoEvoTokens t) {
+    final locked = widget.lockedEmail;
     return [
       Tw(
-        '输入你的注册邮箱，我们会发送 6 位验证码。',
+        locked != null
+            ? '将向你的账号邮箱发送 6 位验证码。'
+            : '输入你的注册邮箱，我们会发送 6 位验证码。',
         style: TextStyle(
           fontFamily: CoFonts.uiSans,
           fontSize: 12.5,
@@ -406,22 +453,52 @@ class _ForgotPasswordDialogState extends ConsumerState<ForgotPasswordDialog> {
         ),
       ),
       const SizedBox(height: CoSpacing.lg),
-      ClayField(
-        controller: _emailController,
-        hintText: '邮箱',
-        keyboardType: TextInputType.emailAddress,
-        enabled: !_submitting,
-        autofocus: true,
-        textInputAction: TextInputAction.done,
-        onSubmitted: (_) => _sendCode(),
-      ),
+      // 🔴 已登录入口 ⇒ 邮箱是**确定的** ⇒ **不给输入框**（白哥 2026-10-07）。
+      //    给他一个可编辑的框，等于允许「把验证码发到任意邮箱」——
+      //    而那时用户是要重置**自己当前账号**的密码。
+      if (locked != null)
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            color: Color(t.sunken.argb32),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.mail_outline, size: 18, color: Color(t.ink3.argb32)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Tw(
+                  // 显示**完整**邮箱（未打码）：用户要在按「发送」前确认是不是它。
+                  // 打码留给**下一屏**（那时只是回显，防旁人看一眼）。
+                  locked,
+                  style: TextStyle(
+                    fontFamily: CoFonts.uiSans,
+                    fontSize: 14,
+                    color: Color(t.ink.argb32),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        )
+      else
+        ClayField(
+          controller: _emailController,
+          hintText: '邮箱',
+          keyboardType: TextInputType.emailAddress,
+          enabled: !_submitting,
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _sendCode(),
+        ),
     ];
   }
 
   List<Widget> _bodyCode(CoEvoTokens t) {
     return [
       Tw(
-        '已发送至 ${_maskEmail(_emailController.text.trim())}\n验证码 10 分钟内有效。',
+        '已发送至 ${_maskEmail(_effectiveEmail())}\n验证码 10 分钟内有效。',
         style: TextStyle(
           fontFamily: CoFonts.uiSans,
           fontSize: 12.5,

@@ -230,7 +230,15 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
   ///    若只关子弹层，用户会看到「已登录的 App 上仍压着一个登录弹窗」——
   ///    而那个弹窗里的「登录」按钮再点会报「已登录」，非常费解。
   Future<void> _openForgotPassword() async {
-    final ok = await ForgotPasswordDialog.show(context);
+    // 🔑 把用户**刚在登录框里打的**邮箱带过去预填 ——
+    //    他点「忘记密码」的时机，往往就是刚打完邮箱、登录失败之后
+    //    ⇒ 别让他再把同一串再打一遍。
+    // ⚠️ 这里**不锁定**（`lockedEmail` 留空）：未登录时系统并不知道他是谁
+    //    ⇒ 他可能记错了邮箱，必须允许改（见 `ForgotPasswordDialog.lockedEmail`）。
+    final ok = await ForgotPasswordDialog.show(
+      context,
+      initialEmail: _emailController.text,
+    );
     if (!mounted) return;
     if (ok == true) {
       Navigator.of(context).pop(true);

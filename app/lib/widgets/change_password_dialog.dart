@@ -303,7 +303,15 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
   ///    ⇒ 重置成功时把本弹层一起关掉（`pop(false)` 表示「改密码**没**发生」，
   ///    调用方据此不弹「修改成功」——因为用户做的是**另一件事**）。
   Future<void> _openForgotPassword() async {
-    final ok = await ForgotPasswordDialog.show(context);
+    // 🔴 传 `lockedEmail`：本弹层是「**已登录**才会打开」的（见上）⇒
+    //    账号邮箱是**确定的**，没有任何理由让用户重填
+    //    —— 白哥 2026-10-07：「找回密码应该是账号绑定的邮箱，而非填写任意邮箱」。
+    //    ⚠️ 不传的话，用户能在这里把验证码发到**任意**邮箱：既多余（他要重置的是
+    //       自己这个账号），又危险（等于给了一个「往别人邮箱发码」的入口）。
+    final ok = await ForgotPasswordDialog.show(
+      context,
+      lockedEmail: ref.read(authProvider).email,
+    );
     if (!mounted) return;
     if (ok == true) {
       Navigator.of(context).pop(false);
