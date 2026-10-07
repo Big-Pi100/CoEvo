@@ -281,8 +281,26 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
 
-      - name: 列出产物
-        run: ls -la build/ios/ipa/ || true
+      - name: 校验 IPA 产物（缺失即失败）
+        # 🔴 2026-10-07：原来的「列出产物」是 `ls ... || true`，不构成校验 ——
+        #    `exportArchive` 返回 0 **不代表**真产出了 .ipa（历史上它就"成功"过
+        #    但没有任何产物）。⇒ 显式断言「文件存在 + 大小合理」。
+        #    📌 判据：**「绿」≠「有产物」** —— 校验要断言**产物**，不是断言**命令退出码**。
+        run: |
+          set -euo pipefail
+          echo "--- build/ios/ipa 目录 ---"
+          ls -la build/ios/ipa/ || true
+          ipa=$(ls build/ios/ipa/*.ipa 2>/dev/null | head -1)
+          if [ -z "$ipa" ]; then
+            echo "🔴 未产出任何 .ipa —— exportArchive 虽返回 0，但产物不存在"
+            exit 1
+          fi
+          size=$(stat -f%z "$ipa")
+          echo "✅ IPA: $ipa  ($((size / 1024 / 1024)) MB)"
+          if [ "$size" -lt 1000000 ]; then
+            echo "🔴 IPA 小于 1 MB（$size 字节）—— 疑似异常产物"
+            exit 1
+          fi
 
       - name: Upload IPA as artifact
         uses: actions/upload-artifact@v6
@@ -290,7 +308,9 @@ jobs:
           name: coevo-ios-ipa
           # ⚠️ 这里的路径**相对仓库根**（upload-artifact 不受 defaults.run.working-directory 影响）
           path: app/build/ios/ipa/*.ipa
-          if-no-files-found: warn
+          # 🔴 2026-10-07：`warn` → **`error`**。`warn` 会让「一个文件都没有」
+          #    也判为成功 ⇒ 典型的**假绿**（job 绿、却没有包可下）。
+          if-no-files-found: error
           retention-days: 7
 
       # ── 收尾：清掉 runner 上的私钥 ────────────────────────────────────────
