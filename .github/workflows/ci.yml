@@ -206,7 +206,13 @@ jobs:
     needs: backend-release
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
     env:
-      VPS_HOST: <VPS_IP>
+      # 🔴 2026-10-07：明文 IP → secret。
+      #    原因：「出包需临时改仓库为 public」⇒ 明文基础设施信息会**公开暴露**
+      #    （原判断「IP 在已跟踪文件里」只在**私有**前提下成立）。
+      #    ⚠️ 需在仓库 Settings → Secrets and variables → Actions 添加 `VPS_HOST`（值为部署机 IP）。
+      #    🔑 用 secrets 后，日志里出现该值时 GitHub 会**自动打码**（`***`）—— 这正是目的。
+      #    📌 job 级 `env` 可以用 `secrets.*`（workflow 级 env 不行，会报错）。
+      VPS_HOST: ${{ secrets.VPS_HOST }}
       VPS_USER: ubuntu
       VPS_PATH: /opt/coevo/
     steps:

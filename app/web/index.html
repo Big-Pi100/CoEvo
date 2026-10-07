@@ -24,8 +24,11 @@
   <link rel="preload" href="main.dart.js" as="script">
   <link rel="preload" href="canvaskit/canvaskit.wasm" as="fetch" type="application/wasm">
   <link rel="preload" href="canvaskit/canvaskit.js" as="script">
-  <link rel="dns-prefetch" href="//<OLD_VPS_IP>:8080">
-  <link rel="preconnect" href="//<OLD_VPS_IP>:8080">
+  <!-- 🔴 2026-10-07：原为 `//<旧VPS IP>:8080` —— 「Web + IP 直连」时代的写法，
+       而该 IP 早已废弃。因「改公开前须清基础设施信息」做了脱敏，
+       原写法失效 ⇒ 改为指向**当前 API 域名**（这才是有效的 dns-prefetch / preconnect 目标）。 -->
+  <link rel="dns-prefetch" href="//api.keyievolution.fun">
+  <link rel="preconnect" href="//api.keyievolution.fun">
 
   <!-- Canonical URL -->
   <link rel="canonical" href="https://www.keyievolution.fun/app/">
