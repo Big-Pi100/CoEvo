@@ -468,6 +468,19 @@ check('🔴 默认语速 = 1.0（不是越界的 1.5）',
 | `static_check`（语义级静态分析）| ✅ error = 0 |
 | `check_native_readiness.py` | ✅ 无编译阻塞项 |
 
+### 9.5 ✅ CI 恢复全绿
+
+```
+run 37576434815 · sha 888a36b · 92 秒
+  ✅ Query/DB Verify (sqflite ffi)     ✅ FSRS Verify (pure Dart)
+  ✅ Pure Dart Verify (trace+wiring)   ✅ Frontend (Flutter)
+  ✅ IAP Verify (pure Dart)            ✅ Ebook Verify (pure Dart)
+  ✅ Backend (Rust)                    ✅ Native Readiness (advisory)
+  ⏭️ iOS Build (no codesign) · Deploy backend to VPS · Backend Release
+     —— 三个**正确跳过**（`if` 含 workflow_dispatch / tags，`push main` 不触发）
+```
+⇒ **断言修复生效，可以出包。**
+
 ---
 
 ## 十、`UIFileSharingEnabled` / `LSSupportsOpeningDocumentsInPlace` 是什么
