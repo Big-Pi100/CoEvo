@@ -1,10 +1,16 @@
 #!/bin/bash
 # CoEvo 巡检报告邮件发送脚本
 #
+# 🔴 2026-10-07 核实：**本脚本当前无任何调用方** ——
+#    服务器上无 crontab / 无 systemd timer 调用它 · `/opt/coevo/backups/email.log` 不存在 ·
+#    仓库内也零引用；且它依赖的 `/home/ubuntu/.msmtprc` 在服务器上**不存在**
+#    ⇒ **一跑就会在第 11 行 `exit 1`**。
+#    📌 所以「要不要配下面的邮箱」= 取决于**你将来是否启用它**；现在不配也不影响任何东西。
+#
 # 🔴 2026-10-07：原为**硬编码邮箱**（收件人 + 发件人）—— 属个人联系信息，
 #    「仓库改公开」后会暴露 ⇒ 改为**从环境变量读**，并保留**服务器本地文件**回退。
 #
-# 📌 服务器上部署时二选一（文件方式更省事，且不会进 git）：
+# 📌 若要启用，服务器上二选一（文件方式更省事，且不会进 git）：
 #      echo 'your@mail.com' | sudo tee /opt/coevo/.report-email-to   >/dev/null
 #      echo 'your@mail.com' | sudo tee /opt/coevo/.report-email-from >/dev/null
 #    或 export COEVO_REPORT_EMAIL_TO / COEVO_REPORT_EMAIL_FROM

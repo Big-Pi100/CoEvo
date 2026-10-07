@@ -172,8 +172,14 @@
 >   `report-email.sh` 硬编码邮箱 → 环境变量 · 再跑一轮 filter-repo（621 → 516 commits）。
 >   ✅ 本地 + 远程均已验证：我方 4 个 IP / 邮箱 / memory 目录 **全部 0 命中**。
 >   📄 记录 `docs/review/public-exposure-audit-2026-10-07.md`
-> · ⏳ **还需白哥做两件**：① GitHub 加 secret `VPS_HOST` ② 服务器配邮箱文件
->   （`/opt/coevo/.report-email-to|from`）
+> · ✅ ① GitHub secret `VPS_HOST` **已配好**（白哥 2026-10-07）
+> · ❌ ② ~~服务器配邮箱文件~~ —— **实测后撤销**：上服务器核实发现
+>   `report-email.sh` **从未被调用**（无 crontab / 无 systemd timer / 无 `email.log` / `/opt/coevo` 零引用），
+>   且它依赖的 `/home/ubuntu/.msmtprc` **不存在** ⇒ 一跑就 `exit 1`。
+>   🔴 **这是推断失误**：我没核实"它是否在用"就给了操作建议（判据：**给建议前先核实现状**）。
+> · ⚠️ **连带发现**：`backend/scripts/` 整目录 12 个文件里，
+>   **11 个是 2026-06-16 的微信支付时代遗留**（`test_wechat_pay` / `compare_sign` /
+>   `download_platform_cert` …），**全部零外部引用** ⇒ 待清理决策（微信支付早已删除）
 > · ⚠️ **Actions 历史日志**仍会随公开暴露（含 2 个 deploy run）—— 未处理，见报告 §5.5
 >
 > 🆕 **2026-10-05 发信链路进度**（找回密码的最后一个前置）：

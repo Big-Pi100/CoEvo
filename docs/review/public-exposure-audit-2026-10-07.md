@@ -193,11 +193,43 @@
 
 | # | 事项 | 原因 |
 |---|---|---|
-| 1 | 在 GitHub 加 secret **`VPS_HOST`**（值为部署机 IP）| `ci.yml` 已改为 `${{ secrets.VPS_HOST }}`，不加以后 tag 部署会失败 |
-| 2 | 服务器上创建邮箱配置（或设环境变量）| `report-email.sh` 已改：`/opt/coevo/.report-email-to` 与 `.report-email-from` |
+| 1 | 在 GitHub 加 secret **`VPS_HOST`**（值为部署机 IP）| ✅ **白哥 2026-10-07 已配好** |
+| 2 | ~~服务器上创建邮箱配置~~ | ❌ **实测后撤销** —— 见下方 🔴 更正 |
+
+### 5.4-b 🔴 更正：「服务器配邮箱」这条建议**是错的**（实测撤销）
+
+**我原以为**：`report-email.sh` 是服务器上的巡检脚本，改了它的硬编码邮箱后需要配服务器文件。
+
+**上服务器核实（2026-10-07 · 只读查询）**：
+
+| 检查项 | 实测结果 |
+|---|---|
+| `/home/ubuntu/.msmtprc`（它依赖的发信配置）| 🔴 **不存在** |
+| crontab / systemd timer 调用它 | 🔴 **无** |
+| `/opt/coevo/backups/email.log`（它自己写的日志）| 🔴 **不存在** |
+| `/opt/coevo` 下引用该脚本的文件 | 🔴 **零引用** |
+| 仓库内（除我改的注释/文档）引用它 | 🔴 **零引用** |
+
+⇒ **它是死脚本** —— 而且第 11 行的 `if [ ! -f /home/ubuntu/.msmtprc ]; then exit 1` 意味着
+**它一跑就直接退出**。**根本不需要配任何邮箱。**
+
+🔑 **教训**：**给操作建议前必须核实「它是否在用」** —— 我只看了脚本内容（"它有邮箱配置，所以要配"），
+**没查它有没有调用方**。这与「谁在做 X 须跟完整调用链」是同一条判据，我又踩了一次。
+
+### 5.4-c ⚠️ 连带发现：`backend/scripts/` 整目录是**微信支付时代遗留**
+
+顺手核实时发现同目录 12 个文件里 **11 个是 2026-06-16 的微信支付一次性调试脚本**：
+
+| 文件 | 日期 |
+|---|---|
+| `test_wechat_pay.py` · `compare_sign.py` · `download_platform_cert.py` · `capture_sdk_request.py` · `inspect_sdk.py` · `sdk_test.py` · `test_key.py` · `check_serial.py` · `download_cert_sdk.py` · `test_curl.py` | 2026-06-16 |
+| `migrate_subscription_expires.sql` | 2026-06-20 |
+| `report-email.sh` | （改前 2026-05-31）|
+
+**全部零外部引用** ⇒ 微信支付早已删除（白哥决策），这些是遗留调试脚本。
+⏳ **待白哥定**：是否整目录清理（删除不可逆，且有历史参考价值 ⇒ 我没擅自删）。
 
 ### 5.5 现在可以安全改公开了吗？
-
 ✅ **可以**（历史 + HEAD 均已清净）。但请注意：
 
 - ⚠️ **域名 `keyievolution.fun` 仍会公开**（它是 App 的 API 端点，功能必需且本质公开）
