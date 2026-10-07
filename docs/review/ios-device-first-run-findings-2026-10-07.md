@@ -424,6 +424,50 @@ App **能正常连服务器**（内容类接口全部 200）
 | `Info.plist` | ✅ `plistlib` 解析通过 · 无 `NSMicrophoneUsageDescription` |
 | `pubspec.lock` | ✅ YAML 合法 · 无 record 系 · 184 包 |
 
+### 9.4 🔴 连带：CI 红了 —— 断言「保护了错误」
+
+改动推送后 CI 失败，失败项只有一条：
+
+```
+🔴 🔴 默认语速 = 1.0（不是越界的 1.5）
+```
+
+**根因**：`scripts/tokens_verify/bin/verify_tokens.dart:3151` 的断言**硬编码了实现值**：
+
+```dart
+// 原写法
+check('🔴 默认语速 = 1.0（不是越界的 1.5）',
+    RegExp(r'kSpeechRateDefault\s*=\s*1\.0').hasMatch(tts));
+```
+
+⇒ 白哥定案改成 `0.5` 之后，**改对了反而变红**。
+
+📌 这是判据「**断言会保护错误**」的**教科书实例** ——
+它锁的是「**当时的实现值**」，而不是「默认值**应当满足的性质**」。
+
+**修法**（改为三条**语义**断言，**不写死 `0.5`**）：
+
+| 断言 | 性质 |
+|---|---|
+| ① 落在合法范围内（`0.1 ≤ def ≤ 1.5`）| 防**越界** —— 越界会**静默无声**（库永不报错，只能自己钳）|
+| ② `def == kSpeechRateNormal` | 「**不贴上限**」这条决策的**表达式**（贴上限时任何平台差异都表现为「太快」）|
+| ③ `def != 1.5` | 历史事故值 |
+
+⚠️ **为什么不写死 `0.5`**：将来若再调（比如按设备/语言分档），
+这条断言应当**跟着意图**而不是跟着数字红 ——
+**太死 = 假红**（训练人忽略红灯）、**太松 = 假绿**。
+
+**验证**（按「改了 `app/lib` 要跑**引用了它的全部断言**」）：
+
+| 断言 | 结果 |
+|---|---|
+| `verify_tokens` | ✅ **696 项 · 0 失败** |
+| `verify_reading_tab` | ✅ 75 项 |
+| `verify_reader_tts` | ✅ 43 项 |
+| `verify_reading_settings` | ✅ 60 项 |
+| `static_check`（语义级静态分析）| ✅ error = 0 |
+| `check_native_readiness.py` | ✅ 无编译阻塞项 |
+
 ---
 
 ## 十、`UIFileSharingEnabled` / `LSSupportsOpeningDocumentsInPlace` 是什么

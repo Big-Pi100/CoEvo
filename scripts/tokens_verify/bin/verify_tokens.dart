@@ -3147,9 +3147,28 @@ void _s23TtsSpeechRate() {
   check('有 kSpeechRateDefault 常量',
       RegExp(r'const double kSpeechRateDefault').hasMatch(tts));
 
-  // ② 🔴 默认值必须是 1.0 —— 1.5 正是本次事故值（→ Android 3.0，超原生上限 2.0）
-  check('🔴 默认语速 = 1.0（不是越界的 1.5）',
-      RegExp(r'kSpeechRateDefault\s*=\s*1\.0').hasMatch(tts));
+  // ② 🔴 默认值 —— 断言**语义**，不锁「当时的值」
+  //
+  // 🆕 2026-10-07：原断言硬编码 `= 1.0`。白哥真机首测后定案改为 `0.5`
+  //   ⇒ **这条断言红了** —— 而改的正是**对的方向**。
+  //   📌 这就是判据「**断言会保护错误**」的教科书实例：
+  //      它锁住的是「当时的实现值」，而不是「默认值应当满足的性质」。
+  //   ⇒ 重写为三条**语义**断言：
+  //     ① 落在合法范围内 —— 越界会**静默无声**（库永不报错，只能自己钳）
+  //     ② 取**库声明的 `normal`** —— 这是「不贴上限」这条决策的表达式；
+  //        贴上限时任何平台实现差异都表现为「太快」，而「略慢」用户能自己调
+  //     ③ ≠ 1.5 —— 那是历史事故值
+  //   ⚠️ 不把 `0.5` 写死：将来若再调（比如按设备/语言分档），
+  //      这里应当**跟着意图**而不是跟着数字红 —— 太死=假红，太松=假绿。
+  final mD = RegExp(r'kSpeechRateDefault\s*=\s*([\d.]+)').firstMatch(tts);
+  final defV = mD == null ? -1.0 : (double.tryParse(mD.group(1)!) ?? -1.0);
+  final mN = RegExp(r'kSpeechRateNormal\s*=\s*([\d.]+)').firstMatch(tts);
+  final normV = mN == null ? -1.0 : (double.tryParse(mN.group(1)!) ?? -1.0);
+  check('🔴 默认语速落在合法范围内（不越界 ⇒ 越界会静默无声）',
+      defV >= 0.1 && defV <= 1.5, 'default=$defV');
+  check('🔑 默认语速 = kSpeechRateNormal（库声明的 normal，不贴上限）',
+      normV > 0 && defV == normV, 'default=$defV normal=$normV');
+  check('🔴 默认语速 ≠ 1.5（历史事故值）', defV != 1.5, 'default=$defV');
 
   // ③ 🔴 上限不得大于库声明的 1.5
   final mM = RegExp(r'kSpeechRateMax\s*=\s*([\d.]+)').firstMatch(tts);
