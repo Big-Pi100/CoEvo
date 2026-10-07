@@ -39,6 +39,14 @@ on:
         description: '上传到 App Store Connect（TestFlight）。不勾则只产出 IPA 作为 artifact'
         type: boolean
         default: false
+      method:
+        description: '导出方式（app-store = 上架/TestFlight · ad-hoc / development = 装指定 UDID 的真机验证）'
+        type: choice
+        options:
+          - app-store
+          - ad-hoc
+          - development
+        default: app-store
 
 jobs:
   archive:
@@ -126,6 +134,7 @@ jobs:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           UPLOAD: ${{ inputs.upload }}
+          METHOD: ${{ inputs.method }}
         run: |
           set -euo pipefail
 
@@ -143,6 +152,20 @@ jobs:
           #    （只导出、不上传），而注释却说「destination=upload 时会直接上传」
           #    ⇒ 勾了「上传」也**不会真的上传**，而日志看起来一切正常。
           #    📌 这正是本项目那条判据的又一实例：**「配置与意图矛盾」必须显式消除**。
+          #
+          # 🆕 2026-10-07：**method 也按 input 切换**（此前硬编码 app-store）
+          #    动机：白哥要「先出包在 iPhone 真机上验证」，而 **app-store 分发的 IPA
+          #    「装不了真机」**（只能上传 ASC → TestFlight）。
+          #    真机直装需要 `ad-hoc` / `development`（前提：设备 UDID 已在开发者账号里注册）。
+          #    ⚠️ 默认仍是 `app-store` ⇒ **向后兼容**，上架流程不受影响。
+          #    🔴 `upload` 只对 app-store 有意义 —— ad-hoc/development **不能上传 ASC**。
+          /usr/libexec/PlistBuddy -c "Set :method $METHOD" "$PLIST"
+
+          if [ "$METHOD" != "app-store" ] && [ "$UPLOAD" = "true" ]; then
+            echo "🔴 method=$METHOD 不支持上传 App Store Connect ⇒ 强制 destination=export"
+            UPLOAD=false
+          fi
+
           if [ "$UPLOAD" = "true" ]; then
             /usr/libexec/PlistBuddy -c "Set :destination upload" "$PLIST"
             echo "📤 destination=upload（会直接上传到 App Store Connect）"
