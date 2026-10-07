@@ -88,6 +88,22 @@
 		<string>audio</string>
 	</array>
 
+	<!-- 「文件」App 集成（🆕 2026-10-07 白哥定：要加）。
+	     · UIFileSharingEnabled              → 「文件」App 的「我的 iPhone」下出现
+	                                            CoEvo 文件夹，可直接把文件拖进去 / 删文件
+	     · LSSupportsOpeningDocumentsInPlace → 「文件」App 显示**原文件**（而非副本），
+	                                            并可直接用 CoEvo 打开
+	     ⚠️ 生效前提是 App 确实在用 `Documents` 目录 —— 本项目是 `Documents/imports/`
+	        （见 `services/open_with_handler.dart`：外部打开的文件会复制到这里）。
+	     ✅ 已核实**数据库不在 Documents 下**：`user.db` / `word.db` / `book.db` 三个库
+	        都在 `getApplicationSupportDirectory()`（`Library/Application Support/`）
+	        ⇒ **不会**因本项暴露给用户（否则用户误删会导致 App 直接崩）。
+	     📌 将来若把新数据写进 `Documents/`，要意识到它会**对用户可见**。 -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+
 	<!-- 🔴 2026-10-07：`NSMicrophoneUsageDescription` 已**移除**（同日加、同日移除）。
 	     原因：`record` 依赖一并移除了（见 `pubspec.yaml`）——
 	     不再链接麦克风 API ⇒ **不需要**该声明；
