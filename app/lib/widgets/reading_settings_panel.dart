@@ -81,6 +81,19 @@ class ReadingSettingsPanel extends ConsumerWidget {
         borderRadius:
             BorderRadius.vertical(top: Radius.circular(t.clay.radius)),
       ),
+      // 🔴 2026-10-07 白哥定：**面板最多占屏幕 2/3**。
+      //
+      // 为什么这个高度是关键（不是随手定的）：
+      //   `showModalBottomSheet` 的下拉关闭判定是
+      //   「**拖拽距离 > 面板高度的 50%**」（`_closeProgressThreshold = 0.5`）。
+      //   面板越高 ⇒ 需要拖的距离越长 ⇒ 近全屏时**物理上够不着** ⇒
+      //   体感就是「下拉关不掉」（白哥两轮反馈都提到了这点）。
+      //   限到 2/3 屏后，**只需往下拖 1/3 屏**，是自然手势就能完成的量。
+      //   📌 判据：**手势的阈值若依赖元素自身尺寸，就要让那个尺寸落进
+      //      手势可达的范围** —— 光加视觉提示（把手）解决不了「够不着」。
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 2 / 3,
+      ),
       // 底部避让 Home Indicator（同 `lookup_sheet`）
       padding: EdgeInsets.fromLTRB(
         22,
@@ -88,7 +101,11 @@ class ReadingSettingsPanel extends ConsumerWidget {
         22,
         24 + MediaQuery.of(context).padding.bottom,
       ),
-      child: Column(
+      // ⚠️ 小屏（如 iPhone SE）上内容仍可能超出 2/3 屏 ⇒ 用可滚动兜住，避免溢出黄条。
+      //    关键：内容**没超出时它不滚动**，因此不会与 sheet 抢下拉手势 ——
+      //    滚动视图只在「真的能滚」时才参与手势竞争。
+      child: SingleChildScrollView(
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -375,6 +392,7 @@ class ReadingSettingsPanel extends ConsumerWidget {
             },
           ),
         ],
+        ),
       ),
     );
   }
