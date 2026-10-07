@@ -177,8 +177,10 @@
 >   🔴 踩到 **region 坑** —— 代码默认 `ap-guangzhou`，而本项目 SES 资源**在香港**
 >   ⇒ 必须显式配 `TENCENT_SES_REGION=ap-hongkong`（**实测二分定位**：广州 ❌ / 香港 ✅）。
 >   📌 判据：**「有默认值」≠「默认值正确」**（地域/端点/bucket 类配置**代码猜不对，必须核实**）。
->   ⚠️ **Apple 登录 / 修改邮箱仍等部署**（新路由只在新二进制里；实测 `users` 表尚无 `apple_user_id`）。
->   📄 `docs/review/ios-device-round2-environment-findings-2026-10-07.md` §二·五
+>   ⚠️ ~~Apple 登录 / 修改邮箱仍等部署~~ ⇒ ✅ **2026-10-07 已部署 `v0.1.5`**（CI 11/11 job 绿，
+>   含 `Deploy backend to VPS`）；部署后实测：新路由已接入、④-a 清理生效、schema 迁移完成、
+>   `.env` 未被覆盖、发信正常。回滚点 `coevo_backend.prev` + db 备份 + `.env` 备份均留存。
+>   📄 `docs/review/ios-device-round2-environment-findings-2026-10-07.md`（§二·五 · 文首「部署执行」）
 > · 🔴 **2026-10-07 改公开后发现「漏了一整个类别」** —— 原审计**只扫「密钥」**，
 >   漏了 IP / 域名 / 邮箱（SOUL.md 明确要求「无密钥、**无 IP、无域名**」）。
 >   ⇒ 已处置：**`.workbuddy/memory/` 移出 git**（111 文件 · 主风险源）·
