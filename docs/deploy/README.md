@@ -68,17 +68,46 @@ CI 部署的是 **GitHub 上的代码**，不是本地工作区。⇒ **先 comm
 LANG=C wsl.exe -d Ubuntu-22.04 -- bash -lc "tr -d '\r' < /mnt/e/CoEvo/scripts/deploy/build_linux_in_wsl.sh | bash"
 #   产出：%TEMP%\coevo_deploy\  （coevo_backend + cefr_catalog.json + prompts/）
 
-# ② 上传 + 替换 + 重启（agent 执行）
-scp -i ~/.ssh/coevo_key "%TEMP%/coevo_deploy/coevo_backend" ubuntu@111.230.197.4:/tmp/
+# ② 上传（打包成 tar 一次传，比逐个 scp 稳）
+cd "/c/Users/Lenovo/AppData/Local/Temp/coevo_deploy" && tar czf /tmp/coevo_deploy.tar.gz coevo_backend cefr_catalog.json prompts
+scp -i ~/.ssh/coevo_key /tmp/coevo_deploy.tar.gz ubuntu@111.230.197.4:/tmp/
+
+# ③ 替换 + 同步 + 预检 + 重启（agent 执行）
 ssh -i ~/.ssh/coevo_key ubuntu@111.230.197.4 '
-  cp -a /opt/coevo/bin/coevo_backend /opt/coevo/bin/coevo_backend.prev     # 留回滚点
-  cp /tmp/coevo_backend /opt/coevo/bin/coevo_backend && chmod 755 /opt/coevo/bin/coevo_backend
-  rsync -a /tmp/coevo_deploy_prompts/ /opt/coevo/prompts/                  # prompt 单独同步
-  sudo systemctl restart coevo && sleep 3 && curl -s http://127.0.0.1:8300/health'
+set -e
+rm -rf /tmp/coevo_new && mkdir -p /tmp/coevo_new
+tar xzf /tmp/coevo_deploy.tar.gz -C /tmp/coevo_new
+
+cp -a /opt/coevo/bin/coevo_backend /opt/coevo/bin/coevo_backend.prev     # 回滚点
+
+# 🔴 不能直接 cp 覆盖运行中的二进制 —— 报 `Text file busy`（EXT4 拒写正在执行的文件）。
+#    同分区 mv 是**原子 rename**（运行中的进程继续持旧 inode）⇒ 零停机、无需先停服。
+cp /tmp/coevo_new/coevo_backend /tmp/coevo_backend.staged
+chmod 755 /tmp/coevo_backend.staged
+mv /tmp/coevo_backend.staged /opt/coevo/bin/coevo_backend
+
+# ⚠️ 用 cp -a src/. dst/ 而不是 rsync —— VPS 上**没装 rsync**。
+#    它与「rsync 不带 --delete」等价：覆盖同名、保留服务器独有的文件。
+cp -a /tmp/coevo_new/prompts/. /opt/coevo/prompts/
+cp /tmp/coevo_new/cefr_catalog.json /opt/coevo/cefr_catalog.json
+
+test -x /opt/coevo/bin/coevo_backend || { echo "🔴 无执行位"; exit 1; }
+ldd /opt/coevo/bin/coevo_backend 2>&1 | grep -q "not found" && { echo "🔴 缺动态库"; exit 1; }
+sudo systemctl restart coevo && sleep 3 && curl -s http://127.0.0.1:8300/health'
 ```
 
 ⚠️ **前置**：WSL 里要有 Rust 工具链。报 `cargo: command not found` ⇒
 `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y`
+
+⚠️ **回滚也要用 `mv`**（同样会 `Text file busy`）：
+
+```bash
+ssh -i ~/.ssh/coevo_key ubuntu@111.230.197.4 '
+  cp -a /opt/coevo/bin/coevo_backend /opt/coevo/bin/coevo_backend.failed.$(date +%s)  # 先留现场
+  cp -a /opt/coevo/bin/coevo_backend.prev /tmp/rollback.bin
+  mv /tmp/rollback.bin /opt/coevo/bin/coevo_backend
+  sudo systemctl restart coevo && sleep 3 && curl -s http://127.0.0.1:8300/health'
+```
 
 ### 2.2 路径 B：推 `v*` tag 走 CI（仅在仓库**已公开**时用）
 
@@ -131,7 +160,7 @@ ssh -i ~/.ssh/coevo_key ubuntu@111.230.197.4 "tr -d '\r' | python3 -" \
 
 | 判据 | 为什么 |
 |---|---|
-| 新端点无 token → **401**（不是 404）| **401 = 路由已注册**；404 = 没部署。🔴 配**阴性对照**：不存在的 `/api` 路径必须 **404** —— 否则「全 401」和「全过」长得一样 |
+| 新端点 **不是 404** | **404 才代表路径不存在**。🔴 配**阴性对照**：不存在的 `/api` 路径必须 **404**。<br>⚠️ **不要断言「必须 401」** —— axum 的**提取器在鉴权之前**执行：<br>· 不读 body 的端点（GET/DELETE）⇒ 无 token 得 **401** ✅<br>· 读 body 的端点 ⇒ 无 `Content-Type` **415** · 有但字段不全 **422** · multipart 无 body **400**<br>· 只有 body 合法才会进 handler 拿 401<br>📌 2026-10-08 首次跑就因「断言必须 401」**误报 ②-1 / ②-4 两条**。<br>想拿到 401 就得在这里维护一份请求 schema 副本 —— 它会漂 ⇒ **判据停在「路由存在」这一层** |
 | 二进制 grep 特征串 | 交付物级证据。⚠️ **子串要独特**：`sync_book` 在**旧**二进制里就有 16 次（`sync_book_progress`/`sync_bookmark` 含它）⇒ 得搜 `IF NOT EXISTS sync_book (` |
 | DB 新表 + 新列存在 | 老库靠 `init_database` 的 `CREATE TABLE IF NOT EXISTS`；**「表建了但列没加」**是这类迁移最典型的半成品 |
 | 重启窗口内无 ERROR | 日志在 `data/logs/`，**不在 journald** |
