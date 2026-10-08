@@ -221,6 +221,14 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
             post(crate::user_purge::delete_me_handler),
         )
         .route("/api/stt/transcribe", post(stt_transcribe_handler))
+        // ── 整段 / 整句翻译（订阅权益 · 2026-10-08）──
+        // 🔴 **需登录**（额度要记在某个人头上），但**不要求订阅** ——
+        //    免费用户每月有 10 次。这与「读信息流不需登录」不冲突：
+        //    那条原则管的是**内容可见性**，翻译属于**能力记账**（同 `/api/sync/*`）。
+        .route(
+            "/api/translate",
+            post(crate::translation::translate_handler),
+        )
         // ── 词库外生词兜底（LLM 在线制卡）──
         // 🔴 **不需登录** —— 产品原则「除生词表上限外不验证登录态」：
         //    读内容/划词/生成卡片都不得被登录态阻塞。
@@ -257,6 +265,13 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         )
         // ── Flutter Web App 静态文件（SPA 路由） ──
         .route("/app/{*path}", get(serve_flutter_web))
+        // ── 🆕 云端书架文件端点（上传 / 下载 / 删除 · 订阅配额）──
+        // 🔑 用 `merge` 而不是 `route`：这几个端点带**自己的 state**
+        //    （`Arc<dyn BlobStore>`），而 `route` 只能挂无 state 的 handler。
+        //    `blob_routes` 内部已 `with_state` ⇒ 出来就是 `Router<()>`。
+        .merge(crate::book_blob_handler::blob_routes(
+            crate::book_blob_handler::BlobState::from_env(),
+        ))
         // ── 全局中间件：HTTP 请求/响应日志 ──
         .layer(TraceLayer::new_for_http())
 }

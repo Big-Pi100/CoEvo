@@ -37,6 +37,10 @@ pub mod app_config_cache;
 pub mod apple_auth;
 pub mod auth;
 pub mod auth_middleware;
+/// 云端书架的文件端点（上传 / 下载 / 删除 · 订阅配额）
+pub mod book_blob_handler;
+/// 电子书文件存储 —— **对象存储抽象** + 本地盘实现（切 COS 只换一个 impl）
+pub mod book_storage;
 /// 内容合规闸门（在线制卡的**前置**检查 · 涉主权/涉政/涉黄暴/涉歧视）
 pub mod compliance;
 pub mod content_extract;
@@ -73,5 +77,7 @@ pub mod tencent_ses;
 pub mod tencent_sign;
 pub mod tencent_tts;
 pub mod test_helpers;
+/// 整段 / 整句翻译（订阅权益 · 免费 10 次/月）
+pub mod translation;
 pub mod trial_handler;
 pub mod user_purge;

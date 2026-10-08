@@ -103,6 +103,31 @@ pub struct BookProgressInput {
     pub updated_at: String,
 }
 
+/// 书单条目（**元数据**；文件本体走独立端点，见 `book_blob_handler`）。
+///
+/// 🔴 **这里没有 `blob_size`** —— 它不是端侧事实（见 `schema.rs::SYNC_SCHEMA_SQL`
+/// 的 `sync_book` 说明）。端侧若想「把云端标记抹掉」是**做不到的**，这正是设计。
+#[derive(Debug, Deserialize)]
+pub struct BookInput {
+    /// 内容指纹（跨设备身份）。⚠️ 服务端**只做长度/字符校验**，不重算 ——
+    /// 重算需要原始文件，而 push 通道里只有元数据。
+    pub content_hash: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub author: String,
+    #[serde(default)]
+    pub lang: String,
+    #[serde(default)]
+    pub chapter_count: i64,
+    #[serde(default)]
+    pub size_bytes: i64,
+    pub added_at: String,
+    pub updated_at: String,
+    #[serde(default)]
+    pub deleted: i64,
+}
+
 /// `POST /api/sync/push` 的请求体。
 #[derive(Debug, Deserialize)]
 pub struct PushInput {
@@ -117,6 +142,8 @@ pub struct PushInput {
     pub bookmarks: Vec<BookmarkInput>,
     #[serde(default)]
     pub book_progress: Vec<BookProgressInput>,
+    #[serde(default)]
+    pub books: Vec<BookInput>,
 }
 
 /// `GET /api/sync/pull` 的查询参数。
@@ -176,6 +203,24 @@ pub struct BookProgressOut {
     pub updated_at: String,
 }
 
+/// 书单条目（回应给端侧）。
+///
+/// 🔑 `blob_size` 是端侧判断「**云端有没有这本书**」的**唯一依据**：
+///    `> 0` ⇒ 云端有 ⇒ 本地没有时可显示「云端」并允许下载。
+#[derive(Debug, Serialize)]
+pub struct BookOut {
+    pub content_hash: String,
+    pub title: String,
+    pub author: String,
+    pub lang: String,
+    pub chapter_count: i64,
+    pub size_bytes: i64,
+    pub blob_size: i64,
+    pub added_at: String,
+    pub updated_at: String,
+    pub deleted: i64,
+}
+
 #[derive(Debug, Serialize)]
 pub struct PullOutput {
     pub review_events: Vec<ReviewEventOut>,
@@ -183,6 +228,7 @@ pub struct PullOutput {
     pub article_reads: Vec<ArticleReadOut>,
     pub bookmarks: Vec<BookmarkOut>,
     pub book_progress: Vec<BookProgressOut>,
+    pub books: Vec<BookOut>,
     /// 🔑 客户端把它存下来作为**下次 pull 的 `since`**。
     ///    取「本次返回数据里最大的 `received_at`」；若无数据则取当前时间。
     ///    ⚠️ **不能用「当前时间」替代** —— 若本次有数据而客户端用当前时间当 since，
@@ -199,7 +245,9 @@ pub struct PullOutput {
 /// 🔑 为什么用毫秒而非秒：`pull` 用 `received_at > since`（严格大于）。
 /// 若精度只到秒，则「同一秒内写入 + 取 since」会**漏掉**那条记录。
 /// 毫秒把这个窗口压到理论极限，且端侧幂等能兜住残余的重复。
-fn now_ms() -> String {
+/// 服务端当前时间（毫秒精度）。`pub(crate)`：翻译额度也要用**同一个**时间口径
+/// （判据：同一件事的口径只能一处权威）。
+pub(crate) fn now_ms() -> String {
     chrono::Utc::now()
         .format("%Y-%m-%dT%H:%M:%S%.3fZ")
         .to_string()
@@ -248,15 +296,39 @@ fn check_batch_size(label: &str, n: usize) -> Result<(), AppError> {
 /// 两个入口的判据**必须完全一致** —— 若一处漏了，那条路径就成了「免费同步」的后门
 /// （决策③ 的目的是「服务端也要能拒绝」，不是只靠端侧不显示入口）。
 /// 📌 判据：**同一件事的口径只能一处权威**。
-fn authorize_with_subscription(headers: &HeaderMap) -> Result<(String, String), AppError> {
+/// **只校验登录**（不校验订阅）—— 返回 `(uid, token)`。
+///
+/// # 🔑 为什么需要它（而不是到处用 `authorize_with_subscription`）
+///
+/// 书架的**下载 / 删除**端点**刻意不要求订阅**：
+/// 订阅过期后，用户**必须仍能取回和删除**自己已上传的书。
+/// 否则「数据不丢」这句承诺是假的 —— 那正是订阅的全部卖点。
+///
+/// | 动作 | 要求 | 为什么 |
+/// |---|---|---|
+/// | 推送同步 / 拉取同步 | 登录 + **订阅** | 它是订阅权益 |
+/// | **上传**文件（占配额）| 登录 + **订阅** | 消耗服务端资源 |
+/// | **下载**文件 | **只需登录** | 🔑 已付费期间存进去的数据，取回权不随订阅到期而消失 |
+/// | **删除**文件 | **只需登录** | 否则过期用户的配额被**永久占用**（他也删不掉）|
+///
+/// 📌 判据：**「付费买的是存储，不是访问权」** —— 限制入口可以，限制出口不行。
+pub(crate) fn authorize_login_only(headers: &HeaderMap) -> Result<(String, String), AppError> {
     // ① 取 token（**唯一实现**在 `user_purge::extract_bearer_token`）
     let token = crate::user_purge::extract_bearer_token(headers)?;
     let conn = crate::db_pool::get_conn();
     // ② token → uid（**唯一实现**在 `auth::uid_by_token`）
-    //    ⚠️ 它返回 `Result<_, String>` ⇒ 显式映射为 `Unauthorized`
-    //    （token 无效 = 认证失败，不是「参数错」）
     let uid = crate::auth::uid_by_token(&conn, &token).map_err(AppError::Unauthorized)?;
-    // ③ 🔴 订阅校验（决策③）
+    Ok((uid, token))
+}
+
+/// **登录 + 订阅**（同步接口的准入）。
+///
+/// 🔑 token 解析只走 [`authorize_login_only`] 一处 —— 两份实现迟早漂移
+///    （本项目在「文本断言」上已踩过「同一口径两处实现」的坑）。
+fn authorize_with_subscription(headers: &HeaderMap) -> Result<(String, String), AppError> {
+    let (uid, token) = authorize_login_only(headers)?;
+    // 🔴 订阅校验（决策③）
+    let conn = crate::db_pool::get_conn();
     if !crate::subscription::is_subscription_active(&conn, &uid) {
         // ⚠️ 403 而非 401（见模块头 ③）—— 文案要**说清是订阅问题**，
         //    否则用户看到「操作失败」只会反复重试。
@@ -279,6 +351,7 @@ pub struct PushStats {
     pub article_reads: usize,
     pub bookmarks: usize,
     pub book_progress: usize,
+    pub books: usize,
 }
 
 /// **push 的核心逻辑**（接受 `&Connection` ⇒ 测试可直接用临时库验证）。
@@ -309,6 +382,7 @@ pub fn push_changes(
     check_batch_size("article_reads", input.article_reads.len())?;
     check_batch_size("bookmarks", input.bookmarks.len())?;
     check_batch_size("book_progress", input.book_progress.len())?;
+    check_batch_size("books", input.books.len())?;
 
     let mut stats = PushStats::default();
     // 🔑 用 `unchecked_transaction`（只需 `&Connection`，与 `db_pool` 的共享连接兼容）
@@ -450,6 +524,54 @@ pub fn push_changes(
             .map_err(|e| AppError::Internal(format!("upsert book_progress: {e}")))?;
     }
 
+    // ── ⑥ 书单：按 `updated_at` 取**较新** ──
+    //
+    // 🔴🔴 **`blob_size` 故意不在 `DO UPDATE SET` 里** —— 这是本表最重要的一行约束。
+    //
+    //    它**不是遗漏**：`blob_size` 是**服务端事实**（云端存了几个字节），
+    //    只有文件端点能写。若端侧能写，一台离线很久的设备推一次书单，
+    //    就能把「云端已有」标回「没有」⇒ 用户以为备份丢了，而文件**明明还在**。
+    //
+    //    ⚠️ 但 `VALUES` 里**必须**给一个初值（NOT NULL 无默认值时会失败）：
+    //       给 `0` 是安全的 —— 新插入的行本来就没上传过文件。
+    //       若「上传先于 push」（不该发生，上传端点要求行已存在），
+    //       后续 push 走 `DO UPDATE` 分支，也不会动 `blob_size`。
+    //
+    // 📌 判据：**「谁产生的事实，只能由谁写」** —— 跨设备可推的字段必须是「端侧产生的」。
+    for b in &input.books {
+        stats.books += tx
+            .execute(
+                "INSERT INTO sync_book
+                   (user_id, content_hash, title, author, lang, chapter_count,
+                    size_bytes, blob_size, added_at, updated_at, deleted, received_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?9, ?10, ?11)
+                 ON CONFLICT (user_id, content_hash) DO UPDATE SET
+                   title         = excluded.title,
+                   author        = excluded.author,
+                   lang          = excluded.lang,
+                   chapter_count = excluded.chapter_count,
+                   size_bytes    = excluded.size_bytes,
+                   updated_at    = excluded.updated_at,
+                   deleted       = excluded.deleted,
+                   received_at   = excluded.received_at
+                 WHERE excluded.updated_at > sync_book.updated_at",
+                params![
+                    &uid,
+                    &b.content_hash,
+                    &b.title,
+                    &b.author,
+                    &b.lang,
+                    b.chapter_count,
+                    b.size_bytes,
+                    &b.added_at,
+                    &b.updated_at,
+                    b.deleted,
+                    &received_at
+                ],
+            )
+            .map_err(|e| AppError::Internal(format!("upsert book: {e}")))?;
+    }
+
     tx.commit()
         .map_err(|e| AppError::Internal(format!("commit: {e}")))?;
     Ok(stats)
@@ -472,14 +594,15 @@ pub async fn sync_push(
     };
 
     tracing::info!(
-        "sync_push: uid={} device={} review={} word={} read={} bm={} bp={}",
+        "sync_push: uid={} device={} review={} word={} read={} bm={} bp={} book={}",
         uid,
         device_id,
         stats.review_events,
         stats.user_words,
         stats.article_reads,
         stats.bookmarks,
-        stats.book_progress
+        stats.book_progress,
+        stats.books
     );
 
     Ok(Json(serde_json::json!({
@@ -633,6 +756,38 @@ pub fn pull_changes(
         }
     }
 
+    let mut books: Vec<BookOut> = Vec::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT content_hash, title, author, lang, chapter_count,
+                        size_bytes, blob_size, added_at, updated_at, deleted
+                   FROM sync_book
+                  WHERE user_id = ?1 AND received_at > ?2
+                  ORDER BY received_at ASC",
+            )
+            .map_err(|e| AppError::Internal(format!("prepare pull book: {e}")))?;
+        let rows = stmt
+            .query_map(params![&uid, &since], |r| {
+                Ok(BookOut {
+                    content_hash: r.get(0)?,
+                    title: r.get(1)?,
+                    author: r.get(2)?,
+                    lang: r.get(3)?,
+                    chapter_count: r.get(4)?,
+                    size_bytes: r.get(5)?,
+                    blob_size: r.get(6)?,
+                    added_at: r.get(7)?,
+                    updated_at: r.get(8)?,
+                    deleted: r.get(9)?,
+                })
+            })
+            .map_err(|e| AppError::Internal(format!("query pull book: {e}")))?;
+        for row in rows {
+            books.push(row.map_err(|e| AppError::Internal(format!("row book: {e}")))?);
+        }
+    }
+
     // 🔑 `server_time` = 「**本次返回的数据里**最大的 received_at」，没有数据时才用当前时间。
     //
     // 🔴 为什么不能用「当前时间」一了百了：本函数先查数据、后取当前时间，
@@ -650,6 +805,7 @@ pub fn pull_changes(
             "SELECT MAX(received_at) FROM sync_article_read  WHERE user_id = ?1",
             "SELECT MAX(received_at) FROM sync_bookmark      WHERE user_id = ?1",
             "SELECT MAX(received_at) FROM sync_book_progress WHERE user_id = ?1",
+            "SELECT MAX(received_at) FROM sync_book          WHERE user_id = ?1",
         ] {
             let v: Option<String> = conn
                 .query_row(sql, params![&uid], |r| r.get(0))
@@ -670,6 +826,7 @@ pub fn pull_changes(
         article_reads,
         bookmarks,
         book_progress,
+        books,
         server_time: max_received,
     })
 }
@@ -778,6 +935,7 @@ mod tests {
             article_reads: vec![],
             bookmarks: vec![],
             book_progress: vec![],
+            books: vec![],
         }
     }
 

@@ -77,6 +77,14 @@ pub struct PurgeReport {
     pub deleted: Vec<(&'static str, usize)>,
     /// 本次使用的匿名 id（审计用）
     pub anon_id: String,
+    /// 🆕 云端书架**文件**释放的字节数（0 = 该用户没上传过书）。
+    pub blob_bytes_freed: u64,
+    /// 🆕 删文件失败的原因（`Some` ⇒ **库里删干净了，但磁盘上还有残留**）。
+    ///
+    /// 🔴 这个字段存在的意义：文件删除**不在 SQL 事务里**（文件系统不参与事务），
+    ///    所以它**可能失败而数据库已提交**。那种情况必须**说出来**，
+    ///    而不是让「注销成功」掩盖「文件还在」。
+    pub blob_cleanup_error: Option<String>,
 }
 
 impl PurgeReport {
@@ -129,21 +137,27 @@ pub const DELETE_TARGETS: &[(&str, &str)] = &[
     //    ⚠️ 漏了它 ⇒ 注销后库里还留着「这个账号想换到哪个邮箱」的痕迹
     //       （**匿名化不彻底**：旧邮箱与新邮箱的关联仍可反查）。
     ("email_change", "user_id"),
+    // 🆕 2026-10-08：翻译额度计数 —— **删除**，不匿名化。
+    //    它记的是「某账号某月用了几次」⇒ 纯使用行为，对业务无留存价值。
+    ("translation_usage", "user_id"),
     ("user_preferences", "user_id"),
     ("user_notifications", "user_id"),
     ("subscription_requests", "target_user_id"),
     ("campaign_members", "user_id"),
     // 🆕 2026-10-06：云端同步副本（订阅权益）—— **删除**，不匿名化。
-    //    🔴 为什么是删：这 5 张表**整体都是用户的学习数据**（复习事件 / 生词本 /
-    //       阅读记录 / 收藏 / 电子书进度）⇒ 它们**没有「非个人用途」**，
+    //    🔴 为什么是删：这 6 张表**整体都是用户的学习数据**（复习事件 / 生词本 /
+    //       阅读记录 / 收藏 / 电子书进度 / 书单）⇒ 它们**没有「非个人用途」**，
     //       不像支付流水那样需要留给对账 ⇒ 匿名化无从下手（匿名化了剩下的列也没意义）。
     //    🔑 与 `password_reset` 同一判断：**行本身对业务没有留存价值** ⇒ 删。
     //    ⚠️ 隐私政策 §2.1 已写明「注销账号时一并删除」—— 漏了这几张表就是**政策失实**。
+    //    🆕 `sync_book`（2026-10-07 加）：书单里的**书名本身可能含个人信息**
+    //       （如「我的日记.txt」）⇒ 尤其不能留。
     ("sync_review_log", "user_id"),
     ("sync_user_word", "user_id"),
     ("sync_article_read", "user_id"),
     ("sync_bookmark", "user_id"),
     ("sync_book_progress", "user_id"),
+    ("sync_book", "user_id"),
     // ⚠️ 最后
     ("users", "id"),
 ];
@@ -193,12 +207,13 @@ pub fn purge_user(
     mode: PurgeMode,
     actor: &str,
 ) -> Result<PurgeReport, String> {
-    purge_user_with_archive(
+    purge_user_full(
         conn,
         uid,
         mode,
         actor,
         &std::path::Path::new("data").join("deleted_users.ndjson"),
+        &crate::book_storage::LocalDiskStore::from_env(),
     )
 }
 
@@ -215,6 +230,29 @@ pub fn purge_user_with_archive(
     actor: &str,
     archive_path: &std::path::Path,
 ) -> Result<PurgeReport, String> {
+    purge_user_full(
+        conn,
+        uid,
+        mode,
+        actor,
+        archive_path,
+        &crate::book_storage::LocalDiskStore::from_env(),
+    )
+}
+
+/// 同 [`purge_user_with_archive`]，但**文件存储后端也可注入**。
+///
+/// 🔑 同一条判据的延伸：`blob purge` 的结果（释放了多少字节 / 有没有残留）
+///    是**行为**，只能用真文件系统断言 —— 所以 store 必须能参数化。
+///    用环境变量注入不行：**测试并行跑，环境变量是全局的**（会互相串）。
+pub fn purge_user_full(
+    conn: &Connection,
+    uid: &str,
+    mode: PurgeMode,
+    actor: &str,
+    archive_path: &std::path::Path,
+    blob_store: &dyn crate::book_storage::BlobStore,
+) -> Result<PurgeReport, String> {
     // 🔴 AdminArchive 必须**在删除前**取快照 —— 删除后 `users` 行就没了，
     //    再查 username/email 只会得到 None（初版就这么错了：注释还辩解「查不到是正常的」，
     //    那是把 bug 写成设计说明 —— **注释不能替代正确性**）。
@@ -224,7 +262,27 @@ pub fn purge_user_with_archive(
         None
     };
 
-    let report = with_foreign_keys_off(conn, || purge_user_tx(conn, uid, mode, actor))?;
+    let mut report = with_foreign_keys_off(conn, || purge_user_tx(conn, uid, mode, actor))?;
+
+    // ── 🔴 删云端书架的**文件**（必须在事务提交之后）──
+    //
+    // 🔑 顺序**不可颠倒**，两个失败方向后果不对称：
+    //    · 先删文件、后提交事务 ⇒ 若提交失败：**文件没了、账号还在**（用户数据凭空丢失）
+    //    · 先提交、后删文件   ⇒ 最坏是文件残留（可重试 / 可由巡检清理）
+    //    ⇒ 选「后果更轻」的那个。
+    //
+    // ⚠️ 文件系统**不参与 SQL 事务** ⇒ 这一步不是原子的。
+    //    失败时如实记进 `blob_cleanup_error` ——
+    //    **不让「注销成功」掩盖「你的书还在服务器上」**。
+    if report.user_existed {
+        match blob_store.purge_user(uid) {
+            Ok(freed) => report.blob_bytes_freed = freed,
+            Err(e) => {
+                tracing::error!("注销：删云端文件失败 uid={} err={}", uid, e);
+                report.blob_cleanup_error = Some(e);
+            }
+        }
+    }
 
     // 仅在**真的删掉了**的时候写归档（幂等命中时没什么可归档的）
     if let Some(snap) = snapshot {
@@ -621,6 +679,91 @@ mod tests {
     }
 
     // ── 正向：该删的删了 / 该匿名的匿名了 ──
+
+    /// 🔴 注销必须删掉**云端书架的实体文件**（不只是数据库行）。
+    ///
+    /// # 为什么这条断言重要
+    ///
+    /// 隐私政策 §2.1 承诺「注销账号时一并删除」，而**电子书正文与书名**
+    /// 恰恰是最私人的内容之一。只删 DB 行会留下「服务端还存着我的书」这个事实
+    /// —— 而且用户**看不到**（那是服务器上的文件，不在他的设备上）。
+    ///
+    /// ⚠️ 文件删除**不在 SQL 事务里**，所以它必须被单独验证：
+    ///    「数据库提交成功」绝不蕴含「文件已删」。
+    #[test]
+    fn purge_removes_book_blobs() {
+        use crate::book_storage::BlobStore;
+        let conn = setup();
+        seed_user(&conn, "u1");
+
+        let root = std::env::temp_dir().join(format!("coevo_purge_blob_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let store = crate::book_storage::LocalDiskStore::with_root(&root);
+
+        store
+            .put("u1", "0123456789abcdef", "epub", b"SECRET-BOOK")
+            .unwrap();
+        store
+            .put("u2", "fedcba9876543210", "txt", b"OTHER-USER")
+            .unwrap();
+
+        let archive = root.join("archive.ndjson");
+        let rep = purge_user_full(
+            &conn,
+            "u1",
+            PurgeMode::SelfService,
+            "self",
+            &archive,
+            &store,
+        )
+        .unwrap();
+
+        assert!(rep.user_existed);
+        assert_eq!(
+            rep.blob_bytes_freed,
+            b"SECRET-BOOK".len() as u64,
+            "应报告释放的字节数（用于日志与对账）"
+        );
+        assert!(
+            rep.blob_cleanup_error.is_none(),
+            "本次应当成功：{:?}",
+            rep.blob_cleanup_error
+        );
+        assert!(
+            !root.join("u1").exists(),
+            "🔴 u1 的云端目录必须整棵删掉 —— 否则「注销」没删干净最私人的数据"
+        );
+        assert!(root.join("u2").exists(), "🔴 别人的文件一个字都不能动");
+    }
+
+    /// 注销**没上传过书**的用户 ⇒ 文件清理是幂等的，不是错误。
+    ///
+    /// 🔑 这条守的是「绝大多数用户没有云端书」这个常态 ——
+    ///    若清理逻辑把「目录不存在」当失败，注销会**大面积报错**。
+    #[test]
+    fn purge_blob_is_idempotent_when_no_files() {
+        let conn = setup();
+        seed_user(&conn, "u1");
+
+        let root = std::env::temp_dir().join(format!("coevo_purge_nb_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::book_storage::LocalDiskStore::with_root(&root);
+
+        let archive = root.join("archive.ndjson");
+        let rep = purge_user_full(
+            &conn,
+            "u1",
+            PurgeMode::SelfService,
+            "self",
+            &archive,
+            &store,
+        )
+        .unwrap();
+
+        assert_eq!(rep.blob_bytes_freed, 0);
+        assert!(rep.blob_cleanup_error.is_none(), "没文件不是失败");
+    }
 
     #[test]
     fn purge_deletes_personal_data() {

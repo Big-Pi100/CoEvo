@@ -1111,6 +1111,77 @@ CREATE TABLE IF NOT EXISTS sync_book_progress (
     PRIMARY KEY (user_id, content_hash)
 );
 CREATE INDEX IF NOT EXISTS idx_sync_book_progress_pull ON sync_book_progress(user_id, received_at);
+
+-- ── 电子书**书单**（元数据 + 云端文件状态）──
+--
+-- 🔴 本表与其余同步表**性质不同**，这是刻意的：
+--
+-- | 字段类 | 谁写 | 为什么 |
+-- |---|---|---|
+-- | `title` / `author` / `lang` / `chapter_count` / `size_bytes` / `deleted` | **端侧 push** | 只有端侧知道这本书是什么 |
+-- | 🔴 `blob_size` | **只有文件端点写**（`book_blob_handler`）| 它是**服务端事实**：「云端存了几个字节」 |
+--
+-- 🔴 **`blob_size` 绝不出现在 push 的 `DO UPDATE SET` 里** —— 理由不是洁癖，是**防丢数据**：
+--    若端侧能写它，一台**离线很久的旧设备**推一次书单，就能把「云端已有文件」标回「没有」
+--    ⇒ 用户在大陆设备上看到"云端"消失、以为备份没了。而服务端**明明有文件**。
+--    📌 判据：**「谁产生的事实，只能由谁写」** —— 跨设备可推的字段，必须是「端侧产生的」。
+--
+-- `content_hash` 作 PK 而不是 `book_id`：书籍 id 是端侧 uuid，跨设备不通用
+-- （与 `sync_book_progress` 同一条理由）。
+--
+-- ⚠️ 不存 `blob_ext`：文件格式是**端侧知识**（它有 `book` 表），
+--    下载时由客户端以 `?ext=` 传参 ⇒ 服务端少一个需要保持一致的字段。
+CREATE TABLE IF NOT EXISTS sync_book (
+    user_id       TEXT    NOT NULL,
+    content_hash  TEXT    NOT NULL,
+    title         TEXT    NOT NULL DEFAULT '',
+    author        TEXT    NOT NULL DEFAULT '',
+    lang          TEXT    NOT NULL DEFAULT '',
+    chapter_count INTEGER NOT NULL DEFAULT 0,
+    size_bytes    INTEGER NOT NULL DEFAULT 0,      -- 原始文件大小（端侧上报，用于端侧展示）
+    blob_size     INTEGER NOT NULL DEFAULT 0,      -- 🔴 服务端权威·已上传字节数（0 = 云端没有）
+    added_at      TEXT    NOT NULL,
+    updated_at    TEXT    NOT NULL,
+    deleted       INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1)),
+    received_at   TEXT    NOT NULL,
+    PRIMARY KEY (user_id, content_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_sync_book_pull ON sync_book(user_id, received_at);
+-- 🔑 配额查询：`SELECT COALESCE(SUM(blob_size),0) WHERE user_id=? AND deleted=0`
+--    —— 挂在 PK 的 user_id 前缀上，不需要额外索引。
+"#;
+
+/// **翻译额度**（免费层月度计数 · 2026-10-08）。
+///
+/// # 为什么需要一张表（而不是复用 `rate_limiter`）
+///
+/// `rate_limiter.rs` 的注释写明它是「Not production-grade — state resets on restart,
+/// no persistence」。而「免费 10 次/**月**」必须**跨重启存活** ——
+/// 进程一重启额度就重置 = **额度形同虚设**（重启一次就多 10 次）。
+///
+/// ⇒ 额度是**有记账义务**的，落在库里。与「限流」是两件事：
+///
+/// | | rate_limiter | 本表 |
+/// |---|---|---|
+/// | 目的 | 挡瞬时打爆（同秒几百次） | 挡**累积**消耗（一个月内用太多）|
+/// | 存活期 | 进程内 | **持久** |
+/// | 口径 | 每 IP / 每窗口 | 每用户 / 每自然月 |
+///
+/// # 字段说明
+///
+/// · `period` = `'YYYY-MM'`，**由服务端 UTC 时间算**（不信客户端 —— 否则改本地时间就能刷额度）
+/// · `used_count` = 成功计费的次数（**失败要退**，见 `translation::refund_quota`）
+/// · `chars_sum` = 累计字符数。⚠️ **只记长度，不记内容** ——
+///   它用于将来分析「人均翻译多长」（定价依据），而存正文会让这张表变成第二个内容库
+pub const QUOTA_SCHEMA_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS translation_usage (
+    user_id    TEXT    NOT NULL,
+    period     TEXT    NOT NULL,                   -- 'YYYY-MM'（服务端 UTC）
+    used_count INTEGER NOT NULL DEFAULT 0,
+    chars_sum  INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT    NOT NULL,
+    PRIMARY KEY (user_id, period)
+);
 "#;
 
 /// 初始化完整数据库 schema（核心表 + 管理表 + 偏好表 + 词库缓存表 + 额外索引）
@@ -1158,6 +1229,10 @@ pub fn init_database(conn: &rusqlite::Connection) -> Result<(), String> {
     //    📌 判据：**新表只写 `schema.rs`；加列才要写迁移**。
     conn.execute_batch(SYNC_SCHEMA_SQL)
         .map_err(|e| format!("sync schema: {}", e))?;
+    // 🆕 翻译额度（免费层月度计数 · 2026-10-08）
+    //    🔑 同一条判据：**新表只写 `schema.rs`**（`init_database` 每次启动无条件跑）。
+    conn.execute_batch(QUOTA_SCHEMA_SQL)
+        .map_err(|e| format!("quota schema: {}", e))?;
     // 🔴 2026-09-29 删除：`CREATE UNIQUE INDEX idx_users_phone_hash ON users(phone_hash)`
     //
     // 为什么**必须删**（两条独立理由，任一条都足以致命）：
@@ -1672,6 +1747,10 @@ mod tests {
         "sync_article_read",
         "sync_bookmark",
         "sync_book_progress",
+        // 🆕 书单（2026-10-07 · 书架上云的地基：端侧推元数据，服务端持 blob_size）
+        "sync_book",
+        // 🆕 翻译额度（2026-10-08 · 免费层月度计数，持久化）
+        "translation_usage",
     ];
 
     /// 已**彻底退役**的表 —— 出现在库里即说明「退役没做干净」。

@@ -60,7 +60,15 @@ const MAX_TOKENS: u32 = 900;
 const TEMPERATURE: f32 = 0.1;
 
 /// 预制脚本传的**额外请求体字段**（`generate_with_extra` 会 merge 进去）。
-fn extra_params() -> serde_json::Value {
+/// 对 DeepSeek 的**通用**调用参数 —— 🔴 现在有**两个**调用方：
+/// 词卡制卡（`llm_card`）与翻译（`translation`）。
+///
+/// 🔑 因此它是 `pub(crate)` 而**不是各写一份**：
+///    · `thinking: disabled` 是**成本关键**（实测与开启推理差约 6 倍）——
+///      漏传会让账单翻几倍，而**功能看起来完全正常**（最典型的静默成本泄漏）
+///    · `response_format: json_object` 让模型稳定输出 JSON
+///    ⇒ 任何新增的 LLM 调用都必须走这一份，不要自己拼 body。
+pub(crate) fn extra_params() -> serde_json::Value {
     serde_json::json!({
         "response_format": {"type": "json_object"},
         "thinking": {"type": "disabled"},
@@ -574,7 +582,8 @@ fn validate_spelling(w: &str) -> Result<(), CardError> {
     Ok(())
 }
 
-fn preview(s: &str) -> String {
+/// 日志用的短预览（**不是**给用户看的）。
+pub(crate) fn preview(s: &str) -> String {
     s.chars().take(120).collect()
 }
 
