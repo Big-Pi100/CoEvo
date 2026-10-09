@@ -1,5 +1,16 @@
 # 推广码绑定 + 弹窗统一方案
 
+> ## 🔴 2026-10-09 标注：本文**整体失效**（两半都死了）
+>
+> | 本文的前提 | 现状 |
+> |---|---|
+> | 「创建临时账户时后端绑定推广关系」（`trialStart(referral_code)`）| 🔴 **分销/推广链 2026-10-06 已整体退役**（`/api/referral/*`、`/api/campaign*` 路由已删）|
+> | `POST /api/trial/start` / `trialClaim` | 🔴 **试用账号机制 2026-10-09 已整体退役**（两个路由 + `trial_handler` 已删）|
+>
+> ⇒ **本文保留仅供追溯**，不要按它实现任何东西。
+> 📄 `docs/review/trial-account-removal-2026-10-09.md` ·
+>    `docs/review/backend-dead-route-cleanup-2026-10-06.md`
+
 ## 核心思路
 
 推广关系不在注册表单里手动填写，而是在创建临时账户时由后端直接绑定。

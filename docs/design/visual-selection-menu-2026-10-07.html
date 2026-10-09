@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="ink">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CoEvo · 划词菜单（选区操作重构）</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/literata@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5/500.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5/600.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5/400.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5/500.css">
+<style>
+/* ══════════════════════════════════════════════════════════════════════════
+   CoEvo · 划词菜单 —— 界面锚点（2026-10-07）
+
+   🔴 本文件是 **L1 界面锚点**：数值全部对齐
+      `design-system-spec-2026-09-25.md` 与 `theme/coevo_tokens.dart`。
+      改本文件的值 = 改设计意图，须同步 spec + tokens + 断言。
+
+   ⚠️ 本稿 **只画界面，不写实现**。实现落点见文末 `.foot`。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 三档主题 token（与 coevo_tokens.dart 的 inkTokens/gridTokens/nightTokens 逐值对齐）── */
+:root{
+  --serif:'Literata',Georgia,serif;
+  --round:'Quicksand','Noto Sans SC',system-ui,sans-serif;
+  --cjk:'Noto Sans SC',system-ui,sans-serif;
+  --mono:ui-monospace,'SFMono-Regular',Consolas,monospace;
+}
+
+/* 墨 · 暖纸（默认档） */
+[data-theme="ink"]{
+  --page:#F1EDE4; --read:#FAF8F4; --card:#FFFFFF;
+  --ink:#24211C; --ink2:#6E6659; --ink3:#988F7C;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF;
+  --accent-out:rgba(180,67,44,.40);
+  --line:#EFE9DE; --sunken:#EDE6DA;
+  --cl-out:rgba(150,125,95,.24); --cl-shade:rgba(186,166,138,.55); --cl-light:rgba(255,255,255,1);
+  --cl-radius:26px; --cl-radius-md:14.3px;   /* = 26 × 0.55 */
+  --cl-sh-out:4px 5px 10px; --cl-sh-shade:-3px -3px 8px; --cl-sh-light:3px 3px 7px;
+  --read-lh:1.82;
+  /* 🆕 选区高亮 —— 见下方「规格 · 补的一个缺口」 */
+  --sel:rgba(180,67,44,.22);
+}
+/* 格 · 纯白 */
+[data-theme="grid"]{
+  --page:#EDEEF0; --read:#FFFFFF; --card:#FFFFFF;
+  --ink:#0A0A0A; --ink2:#5A5A5A; --ink3:#8A8A8A;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF;
+  --accent-out:rgba(180,67,44,.40);
+  --line:#E8E8E8; --sunken:#F0F0F0;
+  --cl-out:rgba(110,115,125,.22); --cl-shade:rgba(158,158,158,.46); --cl-light:rgba(255,255,255,1);
+  --cl-radius:14px; --cl-radius-md:14px;     /* 🔴 格档不缩放（scaleRadius:false）*/
+  --cl-sh-out:4px 5px 10px; --cl-sh-shade:-3px -3px 8px; --cl-sh-light:3px 3px 7px;
+  --read-lh:1.74;
+  --sel:rgba(180,67,44,.20);
+}
+/* 夜 · 深墨 */
+[data-theme="night"]{
+  --page:#0B0D12; --read:#14161C; --card:#1C1F27;
+  --ink:#EDEBE6; --ink2:#9AA0AE; --ink3:#6E7484;
+  --accent:#DB7E6B; --accent-bright:#E89B8C; --accent-ink:#2A1405;
+  --accent-out:rgba(219,126,107,.40);
+  --line:#262A34; --sunken:#0B0D12;
+  --cl-out:rgba(0,0,0,.55); --cl-shade:rgba(0,0,0,.42); --cl-light:rgba(255,255,255,.062);
+  --cl-radius:24px; --cl-radius-md:13.2px;   /* = 24 × 0.55 */
+  --cl-sh-out:4px 5px 10px; --cl-sh-shade:-3px -3px 8px; --cl-sh-light:3px 3px 7px;
+  --read-lh:1.84;
+  --sel:rgba(219,126,107,.30);               /* 深底需更高不透明度才可见 */
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:#DAD3C6;padding:0 0 80px;color:#29251F;
+  font-family:var(--cjk);font-size:15px;line-height:1.75;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:0 28px}
+
+/* ── 页头 ── */
+.top{padding:56px 0 10px}
+.eyebrow{font-family:var(--round);font-size:11.5px;font-weight:600;letter-spacing:.14em;
+  text-transform:uppercase;color:#B4432C;margin-bottom:14px}
+.top h1{font-family:var(--round);font-size:35px;font-weight:600;letter-spacing:-.02em;
+  line-height:1.24;color:#24211C;margin-bottom:18px}
+.lede{font-size:15.5px;line-height:1.85;color:#4A453C;max-width:820px}
+.lede strong{color:#24211C;font-weight:500}
+.lede code{font-family:var(--mono);font-size:12.5px;background:#CFC8BA;padding:1px 6px;border-radius:4px}
+
+/* ── 决策卡 ── */
+.changes{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin:32px 0 0}
+.chg{background:#F7F4EC;border-radius:16px;padding:18px 20px;border-left:3px solid #B4432C}
+.chg .tag{font-family:var(--round);font-size:10px;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;display:inline-block;padding:3px 9px;border-radius:20px;margin-bottom:11px}
+.tag.keep{background:#E4E9E2;color:#3C5136}
+.tag.add{background:#F3E2DC;color:#8E3320}
+.tag.warn{background:#F0E8D2;color:#7A5B12}
+.chg h3{font-family:var(--round);font-size:15.5px;font-weight:600;margin-bottom:8px;color:#24211C}
+.chg p{font-size:13px;line-height:1.72;color:#5C5648}
+
+/* ── 手机模拟 ── */
+.stage{display:flex;gap:30px;flex-wrap:wrap;margin:44px 0 0;align-items:flex-start}
+.phone{width:330px;flex-shrink:0}
+.ph-label{font-family:var(--round);font-size:13px;font-weight:600;color:#3A352D;margin-bottom:9px}
+.ph-label span{display:block;font-family:var(--cjk);font-size:12px;font-weight:400;color:#6E6659;margin-top:3px}
+.frame{width:330px;height:600px;border-radius:38px;background:var(--page);
+  border:8px solid #2B2823;overflow:hidden;position:relative;display:flex;flex-direction:column;
+  transition:background .28s}
+.frame.read{background:var(--read)}
+
+/* 阅读页顶栏 */
+.rd-bar{display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px;gap:12px;flex-shrink:0}
+.rd-bar .back{font-size:19px;color:var(--ink3);line-height:1}
+.rd-bar .ttl{font-family:var(--round);font-size:12.5px;font-weight:600;color:var(--ink2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.rd-bar .bm{width:28px;height:28px;border-radius:9px;flex-shrink:0;background:var(--sunken);
+  box-shadow:inset 2px 2px 5px var(--cl-shade),inset -2px -2px 5px var(--cl-light)}
+
+/* 正文 */
+.rd{padding:6px 24px;flex:1;position:relative;overflow:hidden}
+.rd-hd{padding:2px 0 16px}
+.rd-hd .src{font-family:var(--round);font-size:10px;font-weight:600;letter-spacing:.07em;
+  text-transform:uppercase;margin-bottom:7px;color:var(--accent)}
+.rd-hd h3{font-family:var(--serif);font-size:19px;font-weight:500;line-height:1.3;color:var(--ink)}
+.rd .body{font-family:var(--serif);font-size:16px;line-height:var(--read-lh);color:var(--ink);transition:line-height .28s}
+.rd .body p+p{margin-top:14px}
+
+/* 痕迹（已有规格，非本轮新增） */
+.tk{background:rgba(180,67,44,.15);border-radius:3px;padding:1px 3px;margin:0 -1px}
+[data-theme="grid"] .tk{background:transparent;border-bottom:2.5px solid var(--accent-bright);
+  border-radius:0;padding:0 0 1px;margin:0}
+[data-theme="night"] .tk{background:transparent;color:#FFD9B8;padding:1px 3px}
+
+/* 🆕 选区高亮 */
+.sel{background:var(--sel);border-radius:3px;padding:1px 2px;margin:0 -2px;
+  -webkit-box-decoration-break:clone;box-decoration-break:clone}
+
+/* 🆕 浮动菜单条 */
+.menu{
+  position:absolute;left:50%;transform:translateX(-50%) scale(1);
+  display:flex;align-items:center;
+  background:var(--card);
+  border-radius:var(--cl-radius-md);
+  padding:4px;
+  /* 🔴 零粘土（spec §〇 规则 2「阅读界面零粘土」）—— 只此一层外阴影，无 inset */
+  box-shadow:0 6px 16px var(--cl-out);
+  transition:all .28s;
+  z-index:20;
+}
+.mi{display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:9px;
+  font-family:var(--cjk);font-size:12.5px;font-weight:500;color:var(--ink);
+  white-space:nowrap;cursor:pointer;transition:background .15s}
+.mi svg{width:15px;height:15px;flex-shrink:0}
+.mi svg .ic{stroke:var(--accent-bright);fill:none;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round}
+.mi.dim{color:var(--ink3);cursor:not-allowed}
+.mi.dim svg .ic{stroke:var(--ink3)}
+.sep{width:1px;height:18px;background:var(--line);flex-shrink:0}
+
+/* 词卡浮层（已有：LookupSheet，仅示意位置关系） */
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--card);
+  border-radius:var(--cl-radius) var(--cl-radius) 0 0;
+  padding:20px 22px 30px;box-shadow:0 -6px 22px rgba(60,50,35,.16);z-index:30}
+.sheet .w{font-family:var(--serif);font-size:28px;font-weight:500;color:var(--ink);margin-bottom:5px}
+.sheet .ipa{font-family:var(--serif);font-size:13.5px;color:var(--ink3);margin-bottom:12px}
+.sheet .d{font-size:14.5px;line-height:1.75;color:var(--ink)}
+.sheet .lbl{font-family:var(--round);font-size:10px;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink3);margin:14px 0 5px}
+.dim-veil{position:absolute;inset:0;background:rgba(0,0,0,.12);z-index:25}
+
+/* toast */
+.toast{position:absolute;left:50%;transform:translateX(-50%);bottom:110px;
+  background:var(--ink);color:var(--page);font-family:var(--cjk);font-size:12px;font-weight:500;
+  padding:10px 18px;border-radius:14px;z-index:40;white-space:nowrap}
+
+/* 说明角标 */
+.pin{position:absolute;font-family:var(--round);font-size:10px;font-weight:600;
+  background:#B4432C;color:#fff;padding:2px 7px;border-radius:20px;z-index:50;
+  letter-spacing:.05em}
+
+/* ── 文字区块 ── */
+section{margin-top:64px}
+h2{font-family:var(--round);font-size:23px;font-weight:600;letter-spacing:-.01em;
+  color:#24211C;margin-bottom:8px}
+h2 .n{display:inline-flex;width:26px;height:26px;border-radius:9px;background:#B4432C;color:#fff;
+  font-size:13px;align-items:center;justify-content:center;margin-right:10px;vertical-align:2px}
+.sub{font-size:13.5px;color:#5C5648;margin-bottom:20px;max-width:860px}
+table{width:100%;border-collapse:collapse;background:#F7F4EC;border-radius:14px;overflow:hidden;font-size:13px}
+th{background:#EDE6DA;text-align:left;padding:11px 14px;font-family:var(--round);
+  font-weight:600;font-size:12px;color:#3A352D;letter-spacing:.02em}
+td{padding:11px 14px;border-top:1px solid #E4DDD0;vertical-align:top;line-height:1.7;color:#403B33}
+td code,th code{font-family:var(--mono);font-size:11.5px;background:#E3DDD0;padding:1px 5px;border-radius:3px}
+td b{color:#24211C;font-weight:500}
+.yes{color:#3C5136;font-weight:600}
+.no{color:#8E3320;font-weight:600}
+.half{color:#7A5B12;font-weight:600}
+
+.note-band{margin-top:22px;background:#F7F4EC;border-left:3px solid #B4432C;
+  border-radius:0 12px 12px 0;padding:16px 20px;font-size:13px;line-height:1.78;color:#5C5648}
+.note-band b{color:#29251F;font-weight:500}
+.note-band code{font-family:var(--mono);font-size:11.5px;background:#E3DDD0;padding:1px 5px;border-radius:3px}
+.note-band.warn{border-left-color:#B8860B;background:#F6F1E0}
+
+.foot{margin-top:64px;padding-top:28px;border-top:1px solid #CFC8BA;font-size:13.5px;
+  line-height:1.85;color:#5C5648}
+.foot b{color:#29251F;font-weight:500}
+.foot code{font-family:var(--mono);font-size:11.5px;background:#DCD6C9;padding:1px 5px;border-radius:3px}
+.foot h3{font-family:var(--round);font-size:15px;font-weight:600;color:#24211C;margin:20px 0 8px}
+.foot ul{margin:8px 0 0 20px}
+.foot li{margin-bottom:7px}
+
+/* 主题切换 */
+.themebar{position:fixed;right:22px;bottom:22px;display:flex;gap:6px;background:#2B2823;
+  padding:7px;border-radius:16px;box-shadow:0 8px 22px rgba(0,0,0,.28);z-index:99}
+.themebar button{font-family:var(--round);font-size:12px;font-weight:600;border:0;
+  background:transparent;color:#B8B0A2;padding:7px 13px;border-radius:10px;cursor:pointer}
+.themebar button.on{background:#B4432C;color:#fff}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="eyebrow">CoEvo · 划词（选区操作）重构</div>
+  <h1>有选区就弹菜单；<br>点第一项时，才分「查词」还是「翻译」</h1>
+  <p class="lede">
+    <strong>2026-10-07 v2 · 白哥指出判定点可以后移 —— 这一改连带把整套防抖删掉了。</strong><br><br>
+    v1 的判断是「一个词不弹菜单、多词才弹」。但它要求<b>在划选那一刻就判定</b>是否单词，
+    而那一刻恰恰是<b>信息最不可靠</b>的时刻：拖手柄时文本每帧都在变，只能用 300ms 防抖去<b>猜</b>「用户停手了没」。<br><br>
+    白哥的改法：把判定<b>挪到用户点了第一项之后</b>。于是判定的输入变成<b>稳定的文本</b>；
+    更关键的是，菜单可以交给 Flutter 自己的 <code>contextMenuBuilder</code> 承载 ——
+    而它<b>本身就是「选择完成」的准确信号</b>（长按结束、拖手柄松手都会触发它）
+    ⇒ <b>300ms 防抖这一整套机制可以删掉</b>。
+  </p>
+
+  <div class="changes">
+    <div class="chg">
+      <span class="tag add">v2 · 判定后移</span>
+      <h3>判定从「划选时」挪到「点第一项时」</h3>
+      <p>判定的输入从<b>每帧都在变的选区</b>，变成<b>已经稳定的文本</b>。
+         这才是「更容易实现」的真正来源 —— 不是少写一个 <code>if</code>，
+         而是<b>整条防抖链可以不要了</b>。</p>
+    </div>
+    <div class="chg">
+      <span class="tag warn">连带后果</span>
+      <h3>菜单「总是」弹（含单词）</h3>
+      <p>不判定，就<b>无法决定弹不弹菜单</b> ⇒ 有选区就弹。⚠️ 这会让最高频的
+         「划词查词」从 <b>0 次点击</b> 变成 <b>1 次</b> —— 与白哥 2026-09-27
+         「点『查词』是多余的」<b>有张力</b>。取舍见 §4。</p>
+    </div>
+    <div class="chg">
+      <span class="tag keep">删掉一整套</span>
+      <h3>300ms 防抖</h3>
+      <p><code>contextMenuBuilder</code> 是 Flutter 在<b>选择完成时</b>主动调用的
+         （<code>_handleTouchLongPressEnd</code> / <code>_onAnyDragEnd</code> 里都会走
+         <code>_showToolbar()</code>）⇒ 它<b>准确</b>，不必再靠「停手 300ms」去猜。
+         顺带修掉一个现存毛病：拖动中停顿会弹词卡。</p>
+    </div>
+    <div class="chg">
+      <span class="tag add">第一项文案动态</span>
+      <h3>单词「查词」· 多词「翻译」</h3>
+      <p>项数不变（<b>3 项</b>）、宽度不变（都是 2 字）⇒ <b>菜单形态稳定</b>。
+         用户一眼看到会做什么，不需要理解「翻译一个单词其实是查词」。</p>
+    </div>
+    <div class="chg">
+      <span class="tag warn">必须加回</span>
+      <h3>复制</h3>
+      <p>系统菜单曾被我们<b>显式屏蔽</b>（<code>contextMenuBuilder</code> 返回空），
+         所以正文其实<b>复制不了</b>。菜单恢复时复制必须一并回来 ——
+         现在它由 <code>state.copySelection()</code> 直接提供。</p>
+    </div>
+    <div class="chg">
+      <span class="tag keep">回到 3 项</span>
+      <h3>翻译 · 划线 · 复制</h3>
+      <p>「制卡」<b>已并入「划线」</b>（划线即入记忆队列 —— 见
+         <code>visual-generic-card-2026-10-07.html</code> v2）⇒ 本菜单从 4 项回到 <b>3 项</b>。</p>
+    </div>
+  </div>
+</header>
+
+<div class="stage">
+
+  <!-- ① 单词：菜单第一项是「查词」 -->
+  <div class="phone">
+    <div class="ph-label">① 一个词 —— 第一项是「查词」
+      <span>点了就弹词卡，与原来的词卡逐字相同（同一张 LookupSheet）。</span></div>
+    <div class="frame read">
+      <div class="rd-bar">
+        <div class="back">‹</div>
+        <div class="ttl">Why We Read Slowly</div>
+        <div class="bm"></div>
+      </div>
+      <div class="rd">
+        <div class="rd-hd">
+          <div class="src">The Atlantic</div>
+          <h3>Why We Read Slowly</h3>
+        </div>
+        <div class="body">
+          <p>The habit of <span class="tk">reading</span> closely is being
+             replaced by something faster, and the cost is paid in
+             <span class="sel" style="position:relative">attention.
+               <span class="pin" style="top:-24px;left:60px">长按选中</span>
+             </span></p>
+          <p>None of this is new, but the <span class="tk">scale</span> is.</p>
+        </div>
+      </div>
+        <div class="menu" style="top:196px">
+          <div class="mi">
+            <svg viewBox="0 0 24 24"><path class="ic" d="M12 6.6C10 4.7 6.6 4.4 3.6 5.2v12.9c3-.8 6.4-.5 8.4 1.4 2-1.9 5.4-2.2 8.4-1.4V5.2c-3-.8-6.4-.5-8.4 1.4z"/><path class="ic" d="M12 6.6v12.9"/></svg>
+            查词
+          </div>
+          <div class="sep"></div>
+          <div class="mi">
+            <svg viewBox="0 0 24 24"><path class="ic" d="M4 20l3.5-.8L18.6 8.1a2 2 0 000-2.8l-.9-.9a2 2 0 00-2.8 0L3.8 15.5 3 19z"/><path class="ic" d="M14 5.5l4.5 4.5"/></svg>
+            划线
+          </div>
+          <div class="sep"></div>
+          <div class="mi">
+            <svg viewBox="0 0 24 24"><rect class="ic" x="9" y="9" width="11" height="11" rx="2.5"/><path class="ic" d="M5 15V6.5A1.5 1.5 0 016.5 5H15"/></svg>
+            复制
+          </div>
+          <span class="pin" style="top:-22px;left:50%;transform:translateX(-50%)">第一项 = 查词</span>
+        </div>
+      </div>
+      <span class="pin" style="top:9px;left:9px">单词</span>
+    </div>
+  </div>
+
+  <!-- ② 多词：菜单 -->
+  <div class="phone">
+    <div class="ph-label">② 不止一个词 —— 第一项变成「翻译」
+      <span>同样 3 项、同样宽度；菜单不跟着内容变形。无遮罩。</span></div>
+    <div class="frame read">
+      <div class="rd-bar">
+        <div class="back">‹</div>
+        <div class="ttl">Why We Read Slowly</div>
+        <div class="bm"></div>
+      </div>
+      <div class="rd">
+        <div class="rd-hd">
+          <div class="src">The Atlantic</div>
+          <h3>Why We Read Slowly</h3>
+        </div>
+        <div class="body">
+          <p>The habit of <span class="tk">reading</span> closely is being
+             replaced by something faster, and the cost is paid in
+             <span class="sel">attention. None of this is new, but the scale is.</span></p>
+        </div>
+
+        <div class="menu" style="top:196px">
+          <div class="mi">
+            <svg viewBox="0 0 24 24"><path class="ic" d="M3 6h11M3 12h7M3 18h5"/><path class="ic" d="M16 10l4 4-4 4"/><path class="ic" d="M20 14h-6"/></svg>
+            翻译
+          </div>
+          <div class="sep"></div>
+          <div class="mi">
+            <svg viewBox="0 0 24 24"><path class="ic" d="M4 20l3.5-.8L18.6 8.1a2 2 0 000-2.8l-.9-.9a2 2 0 00-2.8 0L3.8 15.5 3 19z"/><path class="ic" d="M14 5.5l4.5 4.5"/></svg>
+            划线
+          </div>
+          <div class="sep"></div>
+          <div class="mi">
+            <svg viewBox="0 0 24 24"><rect class="ic" x="9" y="9" width="11" height="11" rx="2.5"/><path class="ic" d="M5 15V6.5A1.5 1.5 0 016.5 5H15"/></svg>
+            复制
+          </div>
+          <span class="pin" style="top:-22px;left:50%;transform:translateX(-50%)">第一项 = 翻译</span>
+        </div>
+      </div>
+      <span class="pin" style="top:9px;left:9px">多词</span>
+    </div>
+  </div>
+
+  <!-- ③ 上方空间不足 → 翻到下方 -->
+  <div class="phone">
+    <div class="ph-label">③ 选区贴近顶部 → 自动翻到下方
+      <span>夹紧在屏幕内，不裁切、不溢出。</span></div>
+    <div class="frame read">
+      <div class="rd-bar">
+        <div class="back">‹</div>
+        <div class="ttl">Why We Read Slowly</div>
+        <div class="bm"></div>
+      </div>
+      <div class="rd">
+        <div class="rd-hd">
+          <div class="src">The Atlantic</div>
+          <h3>Why We Read Slowly</h3>
+        </div>
+        <div class="body">
+          <p><span class="sel">The habit of reading closely is being replaced</span>
+             by something faster, and the cost is paid in
+             <span class="tk">attention</span>.</p>
+
+          <div class="menu" style="top:74px">
+            <div class="mi">
+              <svg viewBox="0 0 24 24"><path class="ic" d="M3 6h11M3 12h7M3 18h5"/><path class="ic" d="M16 10l4 4-4 4"/><path class="ic" d="M20 14h-6"/></svg>
+              翻译
+            </div>
+            <div class="sep"></div>
+            <div class="mi">
+              <svg viewBox="0 0 24 24"><path class="ic" d="M4 20l3.5-.8L18.6 8.1a2 2 0 000-2.8l-.9-.9a2 2 0 00-2.8 0L3.8 15.5 3 19z"/><path class="ic" d="M14 5.5l4.5 4.5"/></svg>
+              划线
+            </div>
+            <div class="sep"></div>
+            <div class="mi">
+              <svg viewBox="0 0 24 24"><rect class="ic" x="9" y="9" width="11" height="11" rx="2.5"/><path class="ic" d="M5 15V6.5A1.5 1.5 0 016.5 5H15"/></svg>
+              复制
+            </div>
+            <span class="pin" style="bottom:-22px;left:50%;transform:translateX(-50%)">翻到下方 10px</span>
+          </div>
+        </div>
+      </div>
+      <span class="pin" style="top:9px;left:9px">空间不足</span>
+    </div>
+  </div>
+
+</div><!-- /stage -->
+
+<!-- ══════════════ 规格 ══════════════ -->
+<section>
+  <h2><span class="n">1</span>判定：它现在决定什么</h2>
+  <p class="sub">
+    <b>v2 变化：判定不再是「弹不弹菜单」（菜单总是弹），而是「第一项叫什么、点了走哪条路」。</b>
+    判定规则本身<b>一字未改</b> —— 改的只是<b>什么时候调用它</b>。
+  </p>
+  <table>
+    <tr><th style="width:34%">选中内容</th><th style="width:26%">判定</th><th>理由</th></tr>
+    <tr><td><code>attention</code></td><td class="yes">单词 → 第一项「查词」</td><td>标准情形</td></tr>
+    <tr><td><code>attention.</code>（拖手柄带进句号）</td><td class="yes">单词 → 第一项「查词」</td><td><b>剥首尾标点后再判</b>。标点不是用户选的，是手柄的副产物</td></tr>
+    <tr><td><code>don't</code> · <code>e-mail</code> · <code>a.m.</code></td><td class="yes">单词 → 第一项「查词」</td><td>撇号 / 连字符 / 内部句点<b>属于词</b>（词库里含内部标点的词共 64 个）</td></tr>
+    <tr><td><code>give up</code></td><td class="no">多词 → 第一项「翻译」</td><td>含空白 ⇒ 两个 token。⚠️ 短语想查词请缩到单个词（见 §4 末）</td></tr>
+    <tr><td><code>attention. None of this…</code></td><td class="no">多词 → 第一项「翻译」</td><td>含空白</td></tr>
+    <tr><td><code>123</code> · <code>!!</code> · 中文</td><td class="no">多词 → 第一项「翻译」</td><td>剥标点后<b>不含字母</b> ⇒ 不是可查的词</td></tr>
+  </table>
+  <div class="note-band">
+    <b>判定的形式化写法</b>（供实现对照）：<br>
+    ① <code>s = trim(选中文本)</code> →
+    ② <code>t = 剥掉 s 首尾所有非字母字符</code> →
+    ③ 若 <code>t</code> 含空白 ⇒ <b>多词</b>；否则若 <code>t</code> 只由 <code>[A-Za-z'\-.]</code> 组成 ⇒ <b>单词</b>；否则 ⇒ <b>多词</b>。<br><br>
+    🔑 <b>②只用于判定</b>。真正送去查词的仍是原始选中文本 —— 这条边界必须守住，否则会踩到 §7 那个坑。<br>
+    🔑 <b>判定只调用一次</b>：在 <code>contextMenuBuilder</code> 里判一次，结果由<b>闭包捕获</b>给菜单项用；
+    🔴 <b>不在点击时再判一遍</b> —— 两处判定 = 两处口径，迟早漂移。
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">2</span>形态与尺寸</h2>
+  <div class="note-band warn">
+    🔴 <b>2026-10-07 更正（动手实现时才发现）：本菜单<b>不用粘土</b>。</b><br>
+    本节原写「内阴影 <code>inset -3 -3 8</code> / <code>inset 3 3 7</code>（md 档 · 体积）」——
+    这与 spec <b>§〇 规则 2「阅读界面零粘土」</b> <b>直接冲突</b>。<br>
+    菜单浮在<b>正文之上</b> ⇒ 属阅读界面 ⇒ 与 <code>LookupSheet</code> 同一条规矩：<br>
+    <b>用 <code>card</code> 底 + 一层外阴影表达层级，<u>不加内阴影</u></b>
+    （无「厚度」⇒ 内边距 <code>5px → 4px</code>）。<br>
+    📌 判据：<b>设计稿与 spec 冲突时按 spec</b>。代码已按 spec 实现
+    （<code>app/lib/widgets/selection_menu.dart</code>），本稿同步更正。
+  </div>
+  <p class="sub">菜单是<b>中性色元素</b>（卡面白底），所以用主题级外阴影而不是朱砂外阴影。</p>
+  <table>
+    <tr><th style="width:32%">项</th><th style="width:26%">值</th><th>说明</th></tr>
+    <tr><td>形态</td><td>横向胶囊，一行</td><td>项数 ≤ 4 且标签 ≤2 字时用它；再多改底部面板（见 §5）</td></tr>
+    <tr><td><b>项数</b></td><td><b>3</b>（查词/翻译 · 划线 · 复制）</td><td>宽度 ≈ <b>225px</b>。第一项文案在「查词」「翻译」间切换 —— <b>都是 2 字</b> ⇒ 宽度不变形</td></tr>
+    <tr><td>填充</td><td><code>card</code></td><td>与词卡浮层同色 ⇒ 同一套材质</td></tr>
+    <tr><td>圆角</td><td>墨 <code>14.3</code> · 格 <code>14</code> · 夜 <code>13.2</code></td><td>= 主题 <code>clay.radius × 0.55</code>（格档不缩放 —— <code>scaleRadius:false</code>）</td></tr>
+    <tr><td>外阴影</td><td><code>0 6px 16px</code> · <code>clay.out</code></td><td><b>只此一层</b>（零粘土，见上）</td></tr>
+    <tr><td>🔴 内阴影</td><td class="no">无</td><td>spec §〇 规则 2 —— 与 <code>LookupSheet</code> 同一条</td></tr>
+    <tr><td>条内边距</td><td><code>4px</code></td><td>无内阴影 ⇒ 不必留「厚度」</td></tr>
+    <tr><td>单项</td><td>图标 15px + 间距 6px + 文字</td><td>文字 <code>12.5px / 500</code>，项内 <code>padding: 8px 12px</code></td></tr>
+    <tr><td>分隔线</td><td><code>1px</code> × 高 <code>18px</code> · <code>line</code></td><td>不是间距分隔 —— 留白会让「三个动作」看着不在一组</td></tr>
+    <tr><td>图标颜色</td><td><code>accentBright</code></td><td>项目规定：<b>细线与描边用亮调</b>，不用 <code>accent</code>（那是实心填充色）</td></tr>
+    <tr><td>文字颜色</td><td><code>ink</code></td><td>主文字。<b>不用朱砂</b> —— 三个项都染红会互相争夺注意力</td></tr>
+    <tr><td>🆕 置灰态</td><td>图标与文字同降 <code>ink3</code></td><td><b>形状不变、只降对比度</b>；点击**给一句说明**（不静默 —— 见 footer 的实现说明）</td></tr>
+  </table>
+  <div class="note-band warn">
+    🔴 <b>菜单不带遮罩</b>（连 12% 都不要）。<br>
+    词卡浮层（<code>LookupSheet</code>）用 12% 轻遮罩是对的 —— 它是<b>全屏</b>浮层，压暗是为了把注意力收到卡上。
+    但菜单是<b>贴选区</b>的，用户此刻正盯着那行字；一旦压暗，<b>选区自己就变灰了</b>，
+    而且菜单与正文的<strong>明度对比会失真</strong>。⇒ 菜单期间正文保持原亮度。
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">3</span>位置、动画、时序</h2>
+  <p class="sub">
+    🔴 <b>v2 重大简化：这一节大部分由 Flutter 负责 —— 但有<b>一件必须我们自己做</b>。</b>
+    菜单挂在 <code>contextMenuBuilder</code> 上、由框架的 <code>SelectionOverlay</code> 承载。
+    <br>🔴🔴 <b>2026-10-08 更正（真机踩到白屏后回标）</b>：原稿写「位置、翻转、夹紧<b>都是框架行为</b>」
+    —— <b>这句是错的</b>。框架只做两件事：<b>把返回值插进 Overlay</b> + <b>给出锚点</b>
+    （<code>SelectableRegionState.contextMenuAnchors</code>）；
+    <b>约束放松与定位必须由调用方补</b> —— <code>CustomSingleChildLayout</code> +
+    <code>TextSelectionToolbarLayoutDelegate</code>。
+    <br>⚠️ 不做会怎样：Overlay 给非定位 entry 的是 <code>BoxConstraints.tight(size)</code>
+    （<b>全屏紧约束</b>）⇒ 菜单被撑满全屏，而它的实心底 <code>card</code> 色盖住整屏 ⇒
+    <b>用户看到「白屏」</b>（三项菜单会出现在屏幕中间偏左，正是这个形状）。
+    <br>📌 判据：<b>「框架负责位置」≠「框架负责约束」</b>。
+  </p>
+  <table>
+    <tr><th style="width:30%">项</th><th style="width:22%">谁负责</th><th>说明</th></tr>
+    <tr><td>位置 / 翻转 / 夹紧</td><td class="half"><b>我们</b>（用框架的 delegate）</td>
+        <td>🔴 <b>2026-10-08 更正</b>（原写「Flutter」是<b>错的</b>）：框架<b>只给锚点</b>，
+            定位要自己包 <code>CustomSingleChildLayout</code> +
+            <code>TextSelectionToolbarLayoutDelegate</code>（<code>anchorAbove / anchorBelow</code>
+            取 <code>contextMenuAnchors.primaryAnchor / secondaryAnchor</code>）。
+            该 delegate 还负责<b>解除全屏紧约束</b>（<code>getConstraintsForChild → loosen()</code>）
+            —— <b>不做就白屏</b></td></tr>
+    <tr><td>🔴 拖动把手期间隐藏</td><td class="yes"><b>Flutter</b></td>
+        <td>拖手柄时不显示 toolbar、松手后重新显示（<code>_onAnyDragEnd</code>）⇒ <b>「菜单抖」这个问题不存在了</b></td></tr>
+    <tr><td>点菜单外收起</td><td class="yes"><b>Flutter</b></td>
+        <td>框架负责收起；选区按既有行为处理</td></tr>
+    <tr><td><b>菜单长什么样</b></td><td class="half"><b>我们</b></td>
+        <td>即 §2 的全部内容 —— 尺寸、材质、图标色</td></tr>
+    <tr><td>出现 / 消失动画</td><td class="half">我们（<b>可先不做</b>）</td>
+        <td>框架直接插入 widget，无动画。若要 <code>140ms</code>「弹一下」，得自己包一层</td></tr>
+  </table>
+  <div class="note-band warn">
+    🔴 <b>这条务必写进实现备注</b>：v1 里「拖动手柄期间隐藏菜单」是一条<b>要自己写的规格</b>；
+    v2 里它<b>已经是框架行为</b>。<br>
+    ⇒ <b>不要照着 v1 去实现它</b> —— 我们隐藏、框架又显示 ⇒ <b>闪烁</b>。<br>
+    🔑 一般化：<b>能用框架既有行为满足的规格，就不要自己实现一遍。</b>
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">4</span>🔴 一个必须先说清的代价（v2 新增）</h2>
+  <div class="note-band warn">
+    <b>「菜单总是弹」的代价：划词查词从 0 次点击变成 1 次。</b><br>
+    而白哥 2026-09-27 明确去掉过一次中间步骤 ——
+    <b>「中间那个点『查词』是多余的，直接弹出底部浮窗就可以了」</b>
+    （原话记在 <code>app/lib/screens/reader_screen.dart</code> 的注释里）。<br><br>
+    <b>为什么这次不矛盾</b>：那次是<b>单功能菜单</b>（菜单里只有一个按钮 ⇒ 纯多余一步）；
+    现在<b>有 3 个功能</b>（查词/翻译 · 划线 · 复制）⇒ 菜单带来了<b>可发现性</b>。<br>
+    🔑 这条还和白哥「<b>大部分功能都在长按划词重构里</b>」直接相关：
+    <b>若单词不弹菜单，用户大多数划选都看不到菜单</b> ⇒ 翻译 / 划线这些新功能<b>永远没有曝光</b>。
+    ⇒ <b>「总是弹」不只是实现更简单，它本身就是这些功能的入口。</b>
+  </div>
+
+  <h3 style="font-family:var(--round);font-size:15px;font-weight:600;color:#24211C;margin:26px 0 10px">
+    那能不能保住「单词零点击」？</h3>
+  <table>
+    <tr><th style="width:16%">方案</th><th style="width:42%">做法</th><th>代价</th></tr>
+    <tr><td><b>A ⭐</b><br>（本期采用）</td>
+        <td>菜单总是弹；第一项「查词」</td>
+        <td>划词多 1 次点击。换来<b>整条防抖链删除</b> + 新功能的可发现性</td></tr>
+    <tr><td><b>B</b></td>
+        <td><code>contextMenuBuilder</code> 里判定：单词返回空、多词返回菜单</td>
+        <td>🔴 <b>保不住零点击</b> —— 「单词自动查词」必须<b>有人主动触发</b>，
+            而 <code>contextMenuBuilder</code> 是<b>构建期</b>（不能做副作用）
+            ⇒ 仍要保留 <code>onSelectionChanged</code> + 300ms 防抖。<b>白哥要的简化就没了</b></td></tr>
+  </table>
+  <div class="note-band">
+    📌 结论：<b>「判定后移」与「单词零点击」两者只能选一个。</b>
+    v2 选前者 —— 因为白哥的诉求是「更容易实现」，而后者要求同时维护「防抖 + 两套 UI 分支」。
+  </div>
+
+  <h3 style="font-family:var(--round);font-size:15px;font-weight:600;color:#24211C;margin:26px 0 10px">
+    ✅ 已定：<b>直接全弹</b>，不存在过渡期（白哥 2026-10-07）</h3>
+  <div class="note-band">
+    <b>白哥原话：「不存在过渡期，现在产品还没有上架，直接全弹。」</b><br><br>
+    🔑 理由成立：<b>「过渡期」这个概念的前提是「有存量用户会体验到变差」</b> ——
+    产品<b>尚未上架</b> ⇒ <b>没有存量用户</b> ⇒ 那笔账根本不存在。<br>
+    ⇒ <b>不做「先只对多词弹菜单」那一档</b>，直接实现「<b>有选区就弹菜单</b>」。
+  </div>
+  <table>
+    <tr><th style="width:16%">开发步</th><th style="width:28%">菜单可用项</th><th>说明</th></tr>
+    <tr><td><b>1</b></td><td>查词 · 复制</td>
+        <td>✅ 立刻可用；<b>顺手修掉「正文复制不了」</b></td></tr>
+    <tr><td><b>2</b></td><td>+ 划线</td><td>依赖 <code>visual-generic-card</code> v2 落地</td></tr>
+    <tr><td><b>3</b></td><td>+ 翻译</td><td>依赖翻译端点</td></tr>
+  </table>
+  <div class="note-band">
+    📌 <b>上表只是开发顺序，不是产品分期</b> —— 任何一步里，菜单都是「<b>有选区就弹</b>」，
+    变的只是<b>可用项数</b>。<b>「第一步」到「第三步」之间没有面向用户的分界</b>，
+    产品上架时三项都已就绪。
+  </div>
+
+  <h3 style="font-family:var(--round);font-size:15px;font-weight:600;color:#24211C;margin:26px 0 10px">
+    仍然存在的一个边界</h3>
+  <table>
+    <tr><th style="width:30%">情形</th><th style="width:20%">走向</th><th>说明</th></tr>
+    <tr><td>选中 <code>give up</code>（词组）想查词</td><td class="half">走「翻译」</td>
+        <td>判定按「含空白 ⇒ 多词」；词库以单词为主，词组命中率极低。
+            🔑 想查词 ⇒ 缩到单个词。<b>有意不做</b>（否则菜单第一项会时有时无）</td></tr>
+    <tr><td>单个词也想复制</td><td class="yes">✅ 已解决</td><td>单词同样弹菜单，含「复制」</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2><span class="n">5</span>扩展性：项变多了怎么办</h2>
+  <p class="sub">
+    白哥说「大部分功能都在长按划词重构里」⇒ 这一步必须现在就定。
+    <b>v2 更新：本菜单是 3 项</b>（查词/翻译 · 划线 · 复制）——
+    「制卡」<b>已并入「划线」</b>（见 <code>visual-generic-card-2026-10-07.html</code> v2）。
+  </p>
+  <table>
+    <tr><th style="width:24%">项数</th><th style="width:26%">呈现</th><th>实测宽度 / 理由</th></tr>
+    <tr><td><b>1 – 4 项</b>（标签 ≤ 2 字）</td><td class="yes">浮动胶囊（本稿）</td>
+        <td>3 × 2 字项 ≈ <b>225px</b>；即使回到 4 项（≈ <b>297px</b>），iPhone SE（375 − 24 边距 = 351）仍放得下</td></tr>
+    <tr><td><b>≥ 5 项</b>，或标签更长</td><td class="half">底部面板（与词卡同族）</td>
+        <td>再宽就会溢出；底部面板可带标题、说明、分组</td></tr>
+  </table>
+  <div class="note-band">
+    🔑 <b>两种呈现共用同一个数据源</b>（一个「选区动作」列表）——
+    这是判据「同一件事的口径只能有一处权威」的直接应用：
+    加功能时只改列表，呈现形式由项数决定，<b>不需要改两处</b>。<br>
+    ⚠️ <b>4 项是边界</b>（本稿 3 项，还剩 1 项余量）：再想加一项（如「查词源」）就必须换底部面板，否则窄屏溢出。
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">6</span>长度上限（只约束「翻译」）</h2>
+  <p class="sub">
+    🔑 <b>v2：「划线」不限长度</b> —— 它不调 LLM、零成本
+    （见 <code>visual-generic-card-2026-10-07.html</code> v2）⇒ 本节的限制<b>只针对「翻译」</b>。
+  </p>
+  <table>
+    <tr><th style="width:30%">选中长度</th><th style="width:28%">翻译</th><th>理由</th></tr>
+    <tr><td>≤ 800 字符（约一段）</td><td class="yes">可用</td><td>一次 LLM 调用的合理范围</td></tr>
+    <tr><td>800 – 2000 字符</td><td class="half">可用，但先提示确认</td><td>成本上升，且译文质量下降</td></tr>
+    <tr><td>&gt; 2000 字符</td><td class="no">置灰并说明</td><td>🔴 每次真花钱（见 §4）。同时避免「整篇一键翻译」这种<b>削弱阅读</b>的用法</td></tr>
+  </table>
+  <div class="note-band">
+    🔑 <b>这条限制不均摊到整个菜单</b>：超长选区时「划线 / 复制」<b>照常可用</b> ——
+    只有「翻译」置灰。<b>一项的限制不该变成整条菜单的限制。</b>
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">7</span>一个真实矛盾（实现时必须知道）</h2>
+  <div class="note-band warn">
+    <b>现象</b>：长按后<b>拖动手柄</b>，会把相邻标点带进来（如 <code>vertical,</code>）。<br>
+    现在这条链的走向是：<code>vertical,</code> → 词库查不到 → <b>送去在线制卡</b> →
+    服务端 <code>validate_spelling</code> 以 <b>400 参数错误</b>拒掉（它只收纯词形）。<br><br>
+    <b>本方案 §1 已经「剥标点」了，为什么不顺手修掉？</b><br>
+    因为 §1 剥标点<b>只用于判定弹不弹菜单</b>。真正要修的是<b>查询层</b>：
+    它需要「<b>精确命中 → 未命中再剥标点重查</b>」的两段查。<br>
+    🔴 而<b>不能简单地在 UI 层剥完再查</b> —— 反例是 <code>a.m.</code> 和 <code>dr.</code>：
+    剥掉尾随句点会变成 <code>a.m</code>，而词库里存的<b>就是带句点的原形</b> ⇒ 反而查不到。<br><br>
+    ⇒ <b>本轮不动查询层</b>。这条缺陷单独修（要同步改 <code>verify_word_query</code> 的断言），
+    与划词菜单<b>解耦</b>。
+  </div>
+</section>
+
+<!-- ══════════════ 落点 ══════════════ -->
+<footer class="foot">
+  <h3>✅ 实现落点（本轮已落地 · 开发步 1）</h3>
+  <table>
+    <tr><th style="width:36%">文件</th><th>改了什么</th></tr>
+    <tr><td><b>🆕 <code>app/lib/services/picked_text.dart</code></b></td>
+        <td><b>零依赖纯 Dart</b> 判定（<code>PickedKind</code> + <code>classifyPicked</code>）。
+            🔑 单独成文件是为了「**本机可验**」—— 组件 import Flutter，本机跑不了。</td></tr>
+    <tr><td><b>🆕 <code>app/lib/widgets/selection_menu.dart</code></b></td>
+        <td>菜单外观（§2 全部规格 + 置灰态）。<b>零粘土</b>（见 §2 的更正）。</td></tr>
+    <tr><td><code>app/lib/widgets/word_lookup_selection.dart</code></td>
+        <td>① <b>删掉 <code>kLookupDebounce</code> 与 <code>Timer</code></b>（整套防抖）；
+            ② <code>onSelectionChanged</code> 只留「缓存文本 + 维护 <code>_selectionActive</code>」；
+            ③ <code>contextMenuBuilder</code> 返回真实菜单（不再屏蔽系统菜单）。</td></tr>
+    <tr><td><code>scripts/ebook_verify/bin/<br>verify_picked_classify.dart</code></td>
+        <td><b>40 项</b>断言（纯 Dart · 本机可跑）。</td></tr>
+    <tr><td><code>scripts/ebook_verify/bin/<br>verify_reading_tab.dart</code></td>
+        <td>🔴 <b>替换</b>原先那条锁「防抖只有一处定义」的断言 ——
+            它锁的是一个**已撤销的设计**（<b>断言保护错误</b>，留着会逼人把防抖加回来）；
+            改成 4 条守新意图的断言。</td></tr>
+    <tr><td><code>.github/workflows/ci.yml</code></td>
+        <td>把新脚本挂进 <code>ebook-verify</code> job（<b>写了没人跑 = 迟早失效</b>）。</td></tr>
+  </table>
+
+  <h3>✅ 本机验证结果</h3>
+  <ul>
+    <li><code>dart run bin/verify_picked_classify.dart</code> ⇒ <b>pass = 40 · fail = 0</b></li>
+    <li><code>dart run bin/verify_reading_tab.dart</code> ⇒ <b>pass = 78 · fail = 0</b>（原 75 ＋新增 4 − 删除 1）</li>
+    <li>进程内类型检查 <code>scripts/analyze_inproc</code> ⇒ <b>error = 0</b>（139 文件）</li>
+    <li>🔴 <b>门禁已证伪</b>：把 <code>_wordChar</code> 改回纯 ASCII ⇒ <b>4 项变红</b>
+        （<code>naïve</code> / <code>résumé</code> / <code>français</code> ＋1 条结构断言）、退出码 1，随后字节级还原。
+        ⚠️ 第一版用例里 <code>café</code> <b>不具区分力</b>（重音在末尾，会被「剥首尾」顺手剥掉 ⇒
+        <b>纯 ASCII 实现也能过 = 假绿</b>）⇒ 换成**重音在词内**的例子才真正锁住。</li>
+  </ul>
+
+  <h3>⚠️ 只有真机能验的（本机无渲染）</h3>
+  <ul>
+    <li>📌 <b>拖动手柄松手后，菜单是否会重新弹出</b> —— 这一条是从 SDK 源码读出来的
+        （<code>_onAnyDragEnd</code> → <code>_showToolbar()</code>），<b>未经真机</b>。
+        若不重弹，「拖手柄扩选」这条主路径就看不到菜单，那要改用别的触发时机。</li>
+    <li>🔴 <b>已验证（2026-10-08 · 白哥真机）</b>：菜单在真实选区旁的定位 / 翻转 / 与「选择手柄」的视觉关系。
+        结论：<b>曾整屏白</b> —— 根因是缺「约束放松」（见 §3 的更正）；
+        已按框架同款做法修（<code>CustomSingleChildLayout</code> + delegate）。
+        ⚠️ <b>修后仍要真机再目视一次</b>（位置/翻转按下图预期）。</li>
+    <li>⚠️ <b>图标是近似</b>：本稿画的是自定义 SVG 细线图标；实现用 Material <b>outlined</b> 系
+        （<code>menu_book_outlined</code> / <code>translate</code> / <code>content_copy_outlined</code>）
+        —— 描边粗细未必逐像素一致，真机目视后可换。</li>
+    <li>🔴 菜单项的**下游尚未接通**：「翻译」端点未做（<b>置灰 + 点击给一句说明</b>）·
+        「划线」依赖 <code>visual-generic-card</code> v2 落地（<b>暂不在菜单里</b>）。</li>
+  </ul>
+
+  <h3>顺带发现的一个规格缺口</h3>
+  <ul>
+    <li><b>选中高亮色从未定义</b>：<code>theme_builder.dart</code> 目前<b>没有</b>
+        <code>textSelectionTheme</code> / <code>selectionColor</code> ⇒ 现在用的是 Flutter/Material 默认色（偏蓝），
+        与本项目的暖纸 + 朱砂体系<b>明显冲突</b>。</li>
+    <li>本稿按三档给了值（见 CSS <code>--sel</code>）：墨 <code>rgba(180,67,44,.22)</code>、
+        格 <code>.20</code>、夜 <code>rgba(219,126,107,.30)</code>。
+        夜档更高是因为深底上低不透明度<b>看不见</b>。</li>
+    <li>🔑 这与「痕迹」是<b>两个概念</b>：痕迹 = 「我查过这个词」（持久）；选区 = 「我现在选中了这段」（瞬时）。
+        所以选区比痕迹<b>重</b>（.22 vs .15），并且<b>不受熟练度影响</b>。</li>
+    <li>⇒ 需把 <code>selectionColor</code> 补进 spec §2 + <code>theme_builder.dart</code>，并加断言。</li>
+  </ul>
+
+  <h3>本轮边界</h3>
+  <ul>
+    <li>✅ <b>本轮已改代码</b>（开发步 1：菜单骨架 + 查词 + 复制）—— 见上「实现落点」</li>
+    <li>✅ <b>v2 撤回 v1 的两处</b>：① 菜单 4 项 → <b>3 项</b>（制卡并入划线）；
+        ② 「拖手柄期间隐藏菜单」不再是自己实现的规格（改为框架行为，见 §3）</li>
+    <li>✅ <b>v2 更正一处 spec 冲突</b>：菜单<b>零粘土</b>（见 §2）</li>
+    <li>⏳ <b>未接通的下游</b>：「翻译」（端点未做 ⇒ 置灰并说明）·「划线」（依赖
+        <code>visual-generic-card</code> v2 落地）</li>
+    <li>⚠️ 未改 spec 正文 —— <code>selectionColor</code> 那个缺口仍在（见下节）</li>
+  </ul>
+</footer>
+
+</div><!-- /wrap -->
+
+<div class="themebar">
+  <button data-t="ink" class="on">墨</button>
+  <button data-t="grid">格</button>
+  <button data-t="night">夜</button>
+</div>
+
+<script>
+document.querySelectorAll('.themebar button').forEach(function(b){
+  b.addEventListener('click', function(){
+    document.documentElement.setAttribute('data-theme', b.dataset.t);
+    document.querySelectorAll('.themebar button').forEach(function(x){ x.classList.remove('on'); });
+    b.classList.add('on');
+  });
+});
+</script>
+</body>
+</html>

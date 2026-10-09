@@ -49,6 +49,13 @@
 
 ### 4.4 弹窗调度器
 
+> 🗑 **2026-10-09：本节的机制已从代码中删除**（`dialog_queue_provider.dart` + `dialog_overlay.dart`
+> 均已移除）—— 它从未被任何业务调用（`enqueue` 零调用方），且建在已退役的优先级概念上。
+> 现状：各弹窗自己 `showDialog` / 走 `CoDialog`。
+> ⚠️ 若将来要重建「全局弹窗队列」，**不要**再挂在 `MaterialApp.builder` 里做需要 Navigator 的事 ——
+> 那个上下文在 **Navigator 之上**（`GoRouter.of(context)` 在那里必然抛）。
+> 📄 `docs/review/subscription-expiry-overlay-investigation-2026-10-09.md` §三.a
+
 所有弹窗走统一 `DialogQueue`（Riverpod Provider），单点 `DialogOverlay` 渲染。
 
 | 优先级 | 弹窗 | 表现 |

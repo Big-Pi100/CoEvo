@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="ink">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CoEvo · 书架上云</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/literata@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5/500.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5/600.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5/400.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5/500.css">
+<style>
+/* ══════════════════════════════════════════════════════════════════════════
+   CoEvo · 书架上云 —— 界面锚点（2026-10-07）
+
+   🔴 本文件是 **L1 界面锚点**：数值对齐 `design-system-spec` 与 `theme/coevo_tokens.dart`。
+   📄 上游：`docs/review/sync-scope-extension-2026-10-07.md` §四（成本量化 + 合规分界）
+   📄 同族：`visual-generic-card-*`（划线记忆）· `visual-bookmark-*`（书签）
+
+   🔑 本稿的核心设计对象是**一个新概念**：
+      「一本书」在本地有**三种状态**（本地有 / 只有云端 / 正在传），而现有书架只有一种。
+      设计要做的就是把这三态表达清楚，且**不让用户觉得"我的书不在我手上"**。
+   ══════════════════════════════════════════════════════════════════════════ */
+:root{
+  --serif:'Literata',Georgia,serif;
+  --round:'Quicksand','Noto Sans SC',system-ui,sans-serif;
+  --cjk:'Noto Sans SC',system-ui,sans-serif;
+  --mono:ui-monospace,'SFMono-Regular',Consolas,monospace;
+}
+[data-theme="ink"]{
+  --page:#F1EDE4; --read:#FAF8F4; --card:#FFFFFF;
+  --ink:#24211C; --ink2:#6E6659; --ink3:#988F7C;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF;
+  --accent-out:rgba(180,67,44,.40);
+  --line:#EFE9DE; --sunken:#EDE6DA;
+  --cl-out:rgba(150,125,95,.24); --cl-shade:rgba(186,166,138,.55); --cl-light:rgba(255,255,255,1);
+  --cl-radius:26px; --cl-radius-md:14.3px;
+  --cl-sh-out:4px 5px 10px; --cl-sh-shade:-3px -3px 8px; --cl-sh-light:3px 3px 7px;
+  --read-lh:1.82;
+}
+[data-theme="grid"]{
+  --page:#EDEEF0; --read:#FFFFFF; --card:#FFFFFF;
+  --ink:#0A0A0A; --ink2:#5A5A5A; --ink3:#8A8A8A;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF;
+  --accent-out:rgba(180,67,44,.40);
+  --line:#E8E8E8; --sunken:#F0F0F0;
+  --cl-out:rgba(110,115,125,.22); --cl-shade:rgba(158,158,158,.46); --cl-light:rgba(255,255,255,1);
+  --cl-radius:14px; --cl-radius-md:14px;
+  --cl-sh-out:4px 5px 10px; --cl-sh-shade:-3px -3px 8px; --cl-sh-light:3px 3px 7px;
+  --read-lh:1.74;
+}
+[data-theme="night"]{
+  --page:#0B0D12; --read:#14161C; --card:#1C1F27;
+  --ink:#EDEBE6; --ink2:#9AA0AE; --ink3:#6E7484;
+  --accent:#DB7E6B; --accent-bright:#E89B8C; --accent-ink:#2A1405;
+  --accent-out:rgba(219,126,107,.40);
+  --line:#262A34; --sunken:#0B0D12;
+  --cl-out:rgba(0,0,0,.55); --cl-shade:rgba(0,0,0,.42); --cl-light:rgba(255,255,255,.062);
+  --cl-radius:24px; --cl-radius-md:13.2px;
+  --cl-sh-out:4px 5px 10px; --cl-sh-shade:-3px -3px 8px; --cl-sh-light:3px 3px 7px;
+  --read-lh:1.84;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#DAD3C6;padding:0 0 80px;color:#29251F;font-family:var(--cjk);font-size:15px;line-height:1.75;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 28px}
+.top{padding:56px 0 10px}
+.eyebrow{font-family:var(--round);font-size:11.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#B4432C;margin-bottom:14px}
+.top h1{font-family:var(--round);font-size:35px;font-weight:600;letter-spacing:-.02em;line-height:1.24;color:#24211C;margin-bottom:18px}
+.lede{font-size:15.5px;line-height:1.85;color:#4A453C;max-width:850px}
+.lede strong{color:#24211C;font-weight:500}
+.lede code{font-family:var(--mono);font-size:12.5px;background:#CFC8BA;padding:1px 6px;border-radius:4px}
+.changes{display:grid;grid-template-columns:repeat(auto-fit,minmax(272px,1fr));gap:14px;margin:32px 0 0}
+.chg{background:#F7F4EC;border-radius:16px;padding:18px 20px;border-left:3px solid #B4432C}
+.chg.warn{border-left-color:#B8860B;background:#F6F1E0}
+.chg .tag{font-family:var(--round);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;display:inline-block;padding:3px 9px;border-radius:20px;margin-bottom:11px}
+.tag.keep{background:#E4E9E2;color:#3C5136}
+.tag.add{background:#F3E2DC;color:#8E3320}
+.tag.warn{background:#F0E8D2;color:#7A5B12}
+.chg h3{font-family:var(--round);font-size:15.5px;font-weight:600;margin-bottom:8px;color:#24211C}
+.chg p{font-size:13px;line-height:1.72;color:#5C5648}
+.chg code{font-family:var(--mono);font-size:11.5px;background:#E3DDD0;padding:1px 5px;border-radius:3px}
+
+/* 三态对照 */
+.tri{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin:26px 0 0}
+.tric{background:#FFFFFF;border-radius:16px;padding:18px 20px;border-top:4px solid #3C5136;box-shadow:0 2px 10px rgba(120,100,70,.10)}
+.tric.c{border-top-color:#B8860B}
+.tric.b{border-top-color:#6E6659}
+.tric .h{font-family:var(--round);font-size:15px;font-weight:600;color:#24211C;margin-bottom:10px}
+.tric ul{margin:0 0 0 16px;font-size:12.5px;line-height:1.75;color:#5C5648}
+.tric li{margin-bottom:4px}
+.tric b{color:#24211C;font-weight:500}
+
+.stage{display:flex;gap:26px;flex-wrap:wrap;margin:40px 0 0;align-items:flex-start}
+.phone{width:322px;flex-shrink:0}
+.ph-label{font-family:var(--round);font-size:13px;font-weight:600;color:#3A352D;margin-bottom:9px}
+.ph-label span{display:block;font-family:var(--cjk);font-size:12px;font-weight:400;color:#6E6659;margin-top:3px}
+.frame{width:322px;height:594px;border-radius:38px;background:var(--page);border:8px solid #2B2823;overflow:hidden;position:relative;display:flex;flex-direction:column;transition:background .28s}
+
+.rd-bar{display:flex;align-items:center;padding:12px 14px 6px 18px;gap:10px;flex-shrink:0}
+.rd-bar .back{font-size:19px;color:var(--accent);padding:6px 8px 6px 2px;line-height:1}
+.rd-bar .ttl{font-family:var(--round);font-size:17px;font-weight:600;color:var(--ink);flex:1}
+.iconbtn{height:32px;border-radius:10px;display:flex;align-items:center;gap:6px;padding:0 12px;background:var(--sunken);font-family:var(--cjk);font-size:12.5px;font-weight:500;color:var(--ink2);box-shadow:inset 2px 2px 5px var(--cl-shade),inset -1px -1px 3px var(--cl-light)}
+
+.blist{padding:6px 16px;flex:1;overflow:hidden}
+.brow{background:var(--card);border-radius:var(--cl-radius-md);padding:14px 15px;margin-bottom:11px;box-shadow:var(--cl-sh-out) var(--cl-out),inset var(--cl-sh-shade) var(--cl-shade),inset var(--cl-sh-light) var(--cl-light);display:flex;gap:13px;align-items:flex-start;position:relative;overflow:hidden}
+.cover{width:38px;height:52px;border-radius:6px;background:var(--sunken);flex-shrink:0;box-shadow:inset 2px 2px 5px var(--cl-shade),inset -1px -1px 3px var(--cl-light)}
+.brow .c{flex:1;min-width:0}
+.brow .t{font-family:var(--serif);font-size:14.5px;font-weight:500;line-height:1.35;color:var(--ink);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.brow .s{font-family:var(--round);font-size:10.5px;color:var(--ink3);margin-top:5px;display:flex;align-items:center;gap:5px}
+.brow .badge{display:inline-flex;align-items:center;gap:4px;font-family:var(--cjk);font-size:10.5px;font-weight:500;color:var(--ink2);background:var(--sunken);border-radius:20px;padding:3px 9px}
+.brow .badge svg{width:12px;height:12px}
+.brow .badge svg path{stroke:var(--ink2);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.brow .badge.up svg path{stroke:var(--accent)}
+.brow .badge.dl{color:var(--accent)}
+.brow .badge.dl svg path{stroke:var(--accent)}
+/* 进度条：贴在卡片底部（不占额外高度） */
+.pbar{position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--sunken)}
+.pbar i{display:block;height:100%;background:var(--accent);border-radius:0 3px 3px 0}
+.pbar.cloud i{background:var(--accent-bright)}
+
+.quota{margin:0 16px 8px;background:var(--card);border-radius:var(--cl-radius-md);padding:12px 15px;box-shadow:var(--cl-sh-out) var(--cl-out),inset var(--cl-sh-shade) var(--cl-shade),inset var(--cl-sh-light) var(--cl-light)}
+.quota .t{font-family:var(--cjk);font-size:12.5px;color:var(--ink2);display:flex;justify-content:space-between;align-items:baseline}
+.quota .t b{font-family:var(--round);font-size:13px;font-weight:600;color:var(--ink)}
+.quota .g{height:7px;border-radius:7px;background:var(--sunken);margin-top:9px;box-shadow:inset 2px 2px 5px var(--cl-shade)}
+.quota .g i{display:block;height:100%;border-radius:7px;background:var(--accent)}
+.quota .h{font-size:11px;color:var(--ink3);margin-top:8px;line-height:1.55}
+.quota.full .t b{color:#8E3320}
+.quota.full .g i{background:#8E3320}
+
+.toast{position:absolute;left:50%;transform:translateX(-50%);bottom:104px;background:var(--ink);color:var(--page);font-family:var(--cjk);font-size:12px;font-weight:500;padding:10px 18px;border-radius:14px;z-index:40;white-space:nowrap}
+.pin{position:absolute;font-family:var(--round);font-size:10px;font-weight:600;background:#B4432C;color:#fff;padding:2px 7px;border-radius:20px;z-index:50;letter-spacing:.05em}
+.pin.g{background:#3C5136}.pin.y{background:#B8860B}
+
+section{margin-top:62px}
+h2{font-family:var(--round);font-size:23px;font-weight:600;letter-spacing:-.01em;color:#24211C;margin-bottom:8px}
+h2 .n{display:inline-flex;width:26px;height:26px;border-radius:9px;background:#B4432C;color:#fff;font-size:13px;align-items:center;justify-content:center;margin-right:10px;vertical-align:2px}
+.sub{font-size:13.5px;color:#5C5648;margin-bottom:20px;max-width:880px}
+table{width:100%;border-collapse:collapse;background:#F7F4EC;border-radius:14px;overflow:hidden;font-size:13px}
+th{background:#EDE6DA;text-align:left;padding:11px 14px;font-family:var(--round);font-weight:600;font-size:12px;color:#3A352D}
+td{padding:11px 14px;border-top:1px solid #E4DDD0;vertical-align:top;line-height:1.7;color:#403B33}
+td code,th code{font-family:var(--mono);font-size:11.5px;background:#E3DDD0;padding:1px 5px;border-radius:3px}
+td b{color:#24211C;font-weight:500}
+.yes{color:#3C5136;font-weight:600}.no{color:#8E3320;font-weight:600}.half{color:#7A5B12;font-weight:600}
+.note-band{margin-top:22px;background:#F7F4EC;border-left:3px solid #B4432C;border-radius:0 12px 12px 0;padding:16px 20px;font-size:13px;line-height:1.78;color:#5C5648}
+.note-band.warn{border-left-color:#B8860B;background:#F6F1E0}
+.note-band b{color:#29251F;font-weight:500}
+.note-band code{font-family:var(--mono);font-size:11.5px;background:#E3DDD0;padding:1px 5px;border-radius:3px}
+.foot{margin-top:62px;padding-top:28px;border-top:1px solid #CFC8BA;font-size:13.5px;line-height:1.85;color:#5C5648}
+.foot b{color:#29251F;font-weight:500}
+.foot code{font-family:var(--mono);font-size:11.5px;background:#DCD6C9;padding:1px 5px;border-radius:3px}
+.foot h3{font-family:var(--round);font-size:15px;font-weight:600;color:#24211C;margin:20px 0 8px}
+.foot ul{margin:8px 0 0 20px}.foot li{margin-bottom:7px}
+.themebar{position:fixed;right:22px;bottom:22px;display:flex;gap:6px;background:#2B2823;padding:7px;border-radius:16px;box-shadow:0 8px 22px rgba(0,0,0,.28);z-index:99}
+.themebar button{font-family:var(--round);font-size:12px;font-weight:600;border:0;background:transparent;color:#B8B0A2;padding:7px 13px;border-radius:10px;cursor:pointer}
+.themebar button.on{background:#B4432C;color:#fff}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="eyebrow">CoEvo · 书架上云</div>
+  <h1>换机以后，书还在</h1>
+  <p class="lede">
+    用户为订阅付费，买的就是「<strong>东西在云上、换机不丢</strong>」。所以书架的正文要真的上云 ——
+    换机登录后书架全在，<strong>点开就能读</strong>。<br><br>
+    🔑 但这件事会造出一个<b>现有书架没有的状态</b>：一本书可能在本地、可能只在云端、可能正在传。
+    本稿要解决的就是把这三个状态<b>表达清楚</b>，而且<b>不让用户觉得"我的书不在我手上"</b>。
+  </p>
+
+  <div class="changes">
+    <div class="chg">
+      <span class="tag add">存什么</span>
+      <h3>存原始文件，不是解析结果</h3>
+      <p>直接存导入的 <code>.epub</code> / <code>.txt</code> ——
+         它本身就是压缩包，<strong>体积最小</strong>；换机后下载下来用<b>端侧已有解析器</b>重解析，
+         不需要服务端理解书籍结构。</p>
+    </div>
+    <div class="chg">
+      <span class="tag keep">怎么下</span>
+      <h3>点开才下，不自动全下</h3>
+      <p>书架有 20 本，换机时全自动下载 = 白耗流量和时间。⇒ 列表先显示书，
+         <strong>点开某本才下它</strong>（带进度）。</p>
+    </div>
+    <div class="chg">
+      <span class="tag add">配额</span>
+      <h3>订阅 2 GB</h3>
+      <p>成本实测只占订阅收入 <strong>0.12%</strong>（<code>sync-scope-extension</code> §4.2），
+         所以配额给得宽松；免费层<b>不提供</b>云端书架。</p>
+    </div>
+    <div class="chg warn">
+      <span class="tag warn">合规措辞</span>
+      <h3>只说「存储空间」</h3>
+      <p>🔴 <b>私人云存储 ≠ 在线书库</b>（分界是「是否向公众提供」）。UI 文案只能写
+         「云端存储」，<strong>不能</strong>写「这里有书可以看」。</p>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════ 〇 三态 ══════════ -->
+<h2 style="margin-top:48px"><span class="n">〇</span>核心：一本书有<b>三种本地性</b></h2>
+<p class="sub">
+  现有书架只有一种状态（书在本地）。上云之后必须区分三态，而且<b>三态的表达要一眼分得开</b> ——
+  🔑 用<b>图标形状</b>区分（云 / 箭头），不靠颜色深浅（颜色只有朱砂一个强调色，压不住三态）。
+</p>
+<div class="tri">
+  <div class="tric">
+    <div class="h">✅ 本地有</div>
+    <div class="tric s" style="font-size:12px;color:#3C5136;font-weight:600;margin-bottom:8px">默认态 · 不加任何标记</div>
+    <ul>
+      <li><b>点开</b>：直接进阅读页</li>
+      <li><b>视觉</b>：<b>什么都不加</b> —— 默认态不该有装饰</li>
+      <li><b>云端</b>：可能已备份、也可能没（不区分，见下）</li>
+    </ul>
+  </div>
+  <div class="tric c">
+    <div class="h">☁️ 只有云端</div>
+    <div class="tric s" style="font-size:12px;color:#7A5B12;font-weight:600;margin-bottom:8px">换机后 / 删过本地</div>
+    <ul>
+      <li><b>点开</b>：先下载（转圈 + 进度），完成即进阅读页</li>
+      <li><b>视觉</b>：书名下一枚 <b>云图标 + 「云端」</b></li>
+      <li>🔑 文案只说「云端」，<b>不说「不在本地」</b>（后者读作"你丢了它"）</li>
+    </ul>
+  </div>
+  <div class="tric b">
+    <div class="h">⏳ 正在传</div>
+    <div class="tric s" style="font-size:12px;color:#6E6659;font-weight:600;margin-bottom:8px">刚导入 / 刚点开</div>
+    <ul>
+      <li><b>上传中</b>：导入后<b>后台</b>跑，不阻塞导入完成</li>
+      <li><b>下载中</b>：点开后跑</li>
+      <li><b>视觉</b>：卡片<b>底部一条 3px 进度</b>（不占额外高度）</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ══════════ 1 书架 ══════════ -->
+<h2 style="margin-top:62px"><span class="n">1</span>书架列表：四行示例（三态同框）</h2>
+
+<div class="stage">
+  <div class="phone">
+    <div class="ph-label">同一屏里三态并存
+      <span>🔑 默认态无装饰 ⇒ 有标记的一定有原因</span></div>
+    <div class="frame">
+      <div class="rd-bar" style="padding-bottom:8px">
+        <span class="back">‹</span>
+        <span class="ttl">书架</span>
+        <span class="iconbtn">导入</span>
+      </div>
+      <div class="blist">
+        <div class="brow">
+          <div class="cover"></div>
+          <div class="c">
+            <div class="t">A Tale of Two Cities</div>
+            <div class="s">16 章 · 读完 12%</div>
+          </div>
+        </div>
+
+        <div class="brow">
+          <div class="cover"></div>
+          <div class="c">
+            <div class="t">Pride and Prejudice</div>
+            <div class="s">
+              <span class="badge"><svg viewBox="0 0 24 24"><path d="M7 18h10a3 3 0 100-6 4.5 4.5 0 00-8.6-1.5A3.5 3.5 0 007 18z"/></svg>云端</span>
+              24 章
+            </div>
+          </div>
+        </div>
+
+        <div class="brow">
+          <div class="cover"></div>
+          <div class="c">
+            <div class="t">Great Expectations</div>
+            <div class="s">
+              <span class="badge dl"><svg viewBox="0 0 24 24"><path d="M12 4v10"/><path d="M8 11l4 4 4-4"/><path d="M5 19h14"/></svg>下载中 62%</span>
+            </div>
+          </div>
+          <div class="pbar"><i style="width:62%"></i></div>
+        </div>
+
+        <div class="brow">
+          <div class="cover"></div>
+          <div class="c">
+            <div class="t">The Old Man and the Sea</div>
+            <div class="s">
+              <span class="badge up"><svg viewBox="0 0 24 24"><path d="M12 18V8"/><path d="M8 11l4-4 4 4"/><path d="M5 19h14"/></svg>备份中 28%</span>
+            </div>
+          </div>
+          <div class="pbar cloud"><i style="width:28%"></i></div>
+        </div>
+      </div>
+      <span class="pin" style="top:9px;left:9px">三态</span>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="ph-label">换机后（全部「云端」）
+      <span>🔑 不写「本地没有」，只标「云端」</span></div>
+    <div class="frame">
+      <div class="rd-bar" style="padding-bottom:8px">
+        <span class="back">‹</span>
+        <span class="ttl">书架</span>
+        <span class="iconbtn">导入</span>
+      </div>
+      <div class="blist">
+        <div class="brow">
+          <div class="cover"></div>
+          <div class="c">
+            <div class="t">A Tale of Two Cities</div>
+            <div class="s"><span class="badge"><svg viewBox="0 0 24 24"><path d="M7 18h10a3 3 0 100-6 4.5 4.5 0 00-8.6-1.5A3.5 3.5 0 007 18z"/></svg>云端 · 读完 12%</span></div>
+          </div>
+        </div>
+        <div class="brow">
+          <div class="cover"></div>
+          <div class="c">
+            <div class="t">Pride and Prejudice</div>
+            <div class="s"><span class="badge"><svg viewBox="0 0 24 24"><path d="M7 18h10a3 3 0 100-6 4.5 4.5 0 00-8.6-1.5A3.5 3.5 0 007 18z"/></svg>云端 · 读完 4%</span></div>
+          </div>
+        </div>
+        <div class="brow">
+          <div class="cover"></div>
+          <div class="c">
+            <div class="t">Great Expectations</div>
+            <div class="s"><span class="badge"><svg viewBox="0 0 24 24"><path d="M7 18h10a3 3 0 100-6 4.5 4.5 0 00-8.6-1.5A3.5 3.5 0 007 18z"/></svg>云端 · 未开始</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="toast">书架已恢复 · 3 本在云端</div>
+      <span class="pin g" style="top:9px;left:9px">换机</span>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="ph-label">点开云端书 → 下载 → 直接读
+      <span>用户的意图很明确（"我要读它"）⇒ 下完就进，不要求再点一次</span></div>
+    <div class="frame" style="background:var(--read)">
+      <div class="rd-bar">
+        <span class="back">‹</span>
+        <span class="ttl">Great Expectations</span>
+        <span class="iconbtn" style="background:transparent;box-shadow:none">Aa</span>
+      </div>
+      <div style="padding:24px 24px;flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center">
+        <div style="width:34px;height:34px;border-radius:50%;border:2.5px solid var(--line);border-top-color:var(--accent);animation:spin 1s linear infinite"></div>
+        <div style="margin-top:16px;font-size:14px;font-weight:500;color:var(--ink)">正在从云端取回…</div>
+        <div style="margin-top:6px;font-size:12px;color:var(--ink3)">Great Expectations · 1.2 MB</div>
+        <div style="width:170px;height:5px;border-radius:5px;background:var(--sunken);margin-top:16px;overflow:hidden">
+          <i style="display:block;height:100%;width:62%;background:var(--accent);border-radius:5px"></i>
+        </div>
+      </div>
+      <span class="pin" style="top:9px;left:9px">下载中</span>
+    </div>
+  </div>
+
+</div>
+
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+
+<!-- ══════════ 2 配额 ══════════ -->
+<h2 style="margin-top:62px"><span class="n">2</span>配额：<b>只在接近满的时候出现</b></h2>
+<p class="sub">
+  2 GB 对几十本纯文本 epub 来说很宽（一本约 1 MB）。所以配额条<b>不该常驻</b> ——
+  常驻会让用户觉得"我在被计量"。⇒ 平时不显示，<b>用量超过 80% 才出现</b>，满了给明确出口。
+</p>
+
+<div class="stage">
+  <div class="phone">
+    <div class="ph-label">用量 62% —— <b>不显示</b>
+      <span>书架保持干净（低频信息不占常驻位置）</span></div>
+    <div class="frame">
+      <div class="rd-bar" style="padding-bottom:8px">
+        <span class="back">‹</span><span class="ttl">书架</span><span class="iconbtn">导入</span>
+      </div>
+      <div class="blist">
+        <div class="brow"><div class="cover"></div><div class="c"><div class="t">A Tale of Two Cities</div><div class="s">16 章 · 读完 12%</div></div></div>
+        <div class="brow"><div class="cover"></div><div class="c"><div class="t">Pride and Prejudice</div><div class="s">24 章 · 读完 4%</div></div></div>
+        <div class="brow"><div class="cover"></div><div class="c"><div class="t">Great Expectations</div><div class="s">59 章 · 未开始</div></div></div>
+      </div>
+      <span class="pin g" style="top:9px;left:9px">无配额条</span>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="ph-label">用量 &gt; 80% —— 出现提示
+      <span>给数字 + 给出口，但不打断阅读</span></div>
+    <div class="frame">
+      <div class="rd-bar" style="padding-bottom:8px">
+        <span class="back">‹</span><span class="ttl">书架</span><span class="iconbtn">导入</span>
+      </div>
+      <div class="quota">
+        <div class="t"><span>云端存储</span><b>1.7 GB / 2 GB</b></div>
+        <div class="g"><i style="width:85%"></i></div>
+        <div class="h">快满了。可以在书架里删掉不再读的书，或扩容。</div>
+      </div>
+      <div class="blist" style="padding-top:0">
+        <div class="brow"><div class="cover"></div><div class="c"><div class="t">A Tale of Two Cities</div><div class="s">16 章 · 读完 12%</div></div></div>
+        <div class="brow"><div class="cover"></div><div class="c"><div class="t">Pride and Prejudice</div><div class="s">24 章 · 读完 4%</div></div></div>
+      </div>
+      <span class="pin y" style="top:9px;left:9px">85%</span>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="ph-label">已满 —— 上传暂停 + 明确出口
+      <span>🔴 不静默失败：说清"哪本没上云"</span></div>
+    <div class="frame">
+      <div class="rd-bar" style="padding-bottom:8px">
+        <span class="back">‹</span><span class="ttl">书架</span><span class="iconbtn">导入</span>
+      </div>
+      <div class="quota full">
+        <div class="t"><span>云端存储</span><b>2 GB / 2 GB · 已满</b></div>
+        <div class="g"><i style="width:100%"></i></div>
+        <div class="h">新导入的书<b>不会自动备份</b>。删掉不再读的书即可腾出空间。</div>
+      </div>
+      <div class="blist" style="padding-top:0">
+        <div class="brow"><div class="cover"></div><div class="c"><div class="t">A Tale of Two Cities</div><div class="s">16 章 · 读完 12%</div></div></div>
+        <div class="brow">
+          <div class="cover"></div>
+          <div class="c">
+            <div class="t">Bleak House</div>
+            <div class="s"><span class="badge"><svg viewBox="0 0 24 24"><path d="M12 8v5"/><path d="M12 16.5v.01"/><circle cx="12" cy="12" r="9"/></svg>未备份 · 空间不足</span></div>
+          </div>
+        </div>
+      </div>
+      <span class="pin" style="top:9px;left:9px">已满</span>
+    </div>
+  </div>
+
+</div>
+
+<div class="note-band">
+  🔑 <b>配额条为什么不做成常驻</b>：它是一条<b>低频</b>信息（用户极少关心用了多少 MB）。
+  常驻会同时带来两个坏处：① 占掉书架本来就不多的横向空间；② <b>心理上把"读自己的书"变成"用配额"</b>。
+  📌 判据同「<b>控件放哪</b>」那条：低频项不占常驻位置，只在<b>需要它的时候</b>出现。
+</div>
+
+<!-- ══════════ 3 规格 ══════════ -->
+<h2 style="margin-top:62px"><span class="n">3</span>规格</h2>
+<div class="note-band warn">
+  🔴 <b>2026-10-07 实现时的两处修正</b>（本稿原写的内容已按实测更新）：<br><br>
+  <b>① 「存哪」由 COS 改为 <u>本地盘</u></b> —— 原稿的否决理由是「VPS 只有 40 GB 且外网流量贵」，
+  但<b>实测</b>：<code>df -h</code> 显示 <b>31 GB 可用</b>（40G 用 6.8G，现有数据 106 MB）
+  ⇒ 按 1 MB/本可存 <b>3 万本</b>，<b>磁盘根本不是瓶颈</b>。<br>
+  <b>带宽</b>才是真实约束，也已实测：下行 <b>652 KB/s</b> · 上行 <b>1291 KB/s</b>
+  ⇒ 单本 1 MB 下载 ≈ <b>1.5 s</b>（完全可用）；换机全量 50 MB ≈ <b>77 s</b>（一次性动作 + 进度条，可接受）。<br>
+  ⇒ 选本地盘的理由变成：<b>零配置</b>（不需要开通云服务 + 密钥 + 签名 + CORS，当天即可端到端跑通）
+  + 现零用户、无带宽竞争。代价是<b>大文件慢</b>，留给「用户量上来后」再切。<br>
+  ✅ 已抽象成 <code>BlobStore</code> trait ⇒ <b>切 COS 只需新增一个 impl</b>，端点与配额逻辑一行不改。<br><br>
+  <b>② <code>ext</code> <u>不进表</u></b> —— 文件格式是<b>端侧知识</b>（它有 <code>book</code> 表），
+  下载时以 <code>?ext=epub</code> 传参即可。存进表会多一个「需要保持一致的字段」，
+  而它并不承载跨设备信息。
+</div>
+<table>
+  <tr><th style="width:24%">项</th><th>决定</th></tr>
+  <tr><td><b>存什么</b></td><td><b>原始文件</b>（<code>.epub</code> / <code>.txt</code>）—— 不存解析后的章节。
+      epub 本身是 zip ⇒ 体积最小；换机后<b>复用端侧解析器</b>（<code>epub_parser.dart</code>）</td></tr>
+  <tr><td><b>存哪</b></td><td><b>本地盘</b>（<code>data/book_blobs/{user_id}/{content_hash}.{ext}</code>，
+      见上方修正 ①）。生产路径 <code>/opt/coevo/data/book_blobs/</code>。
+      🔑 抽象为 <code>book_storage::BlobStore</code> ⇒ 换 COS 只换 impl</td></tr>
+  <tr><td><b>对象键</b></td><td><code>{user_id}/{content_hash}.{ext}</code>
+      —— 用 <b><code>content_hash</code></b>（已有 v2 指纹）⇒ 同书重复导入天然幂等。
+      ⚠️ <code>content_hash</code> 必须校验为<b>十六进制</b>（路径安全，见修正 ②与实现说明）</td></tr>
+  <tr><td><b>去重</b></td><td>🔴 <b>不跨用户去重</b>（按 <code>user_id</code> 隔离）。
+      跨用户去重会泄露「<b>有别人也上传了这本书</b>」⇒ 隐私问题</td></tr>
+  <tr><td><b>上传时机</b></td><td>导入完成后<b>后台</b>上传 —— 不阻塞导入、不阻塞阅读</td></tr>
+  <tr><td><b>下载时机</b></td><td>点开「云端」书时按需下载；<b>不自动全下</b></td></tr>
+  <tr><td><b>配额</b></td><td>订阅 <b>2 GB</b> · 免费层<b>不提供</b>云端书架（<code>403</code>，与现有同步一致）。
+      🔑 用量 = <code>SUM(blob_size) WHERE deleted=0</code> ⇒ <b>删了书空间立即可用</b>
+      （即使云端文件因删除失败而残留，也不会占用用户的配额）</td></tr>
+  <tr><td><b>凭证</b></td><td><b>无需凭证</b>（本地盘形态）。切 COS 时后端签发<b>预签名 URL</b>，密钥不落客户端</td></tr>
+  <tr><td><b>删除</b></td><td>删书 ⇒ <b>同时删云端文件</b>（<code>blob_size</code> 归零，配额退还）。
+      ⚠️ 删除端点<b>不依赖扩展名</b>（扫目录匹配 <code>{hash}.*</code>）——
+      否则端侧传错格式就删不掉，配额被永久占用</td></tr>
+  <tr><td><b>书单同步</b></td><td>元数据（书名/作者/指纹/章节数）走<b>现有 sync 通道</b>（<code>sync_book</code> 表）；
+      <b>文件走独立端点</b>（大、二进制）</td></tr>
+  <tr><td><b>🔴 鉴权分级</b></td><td><b>上传</b>＝登录 + <b>订阅</b>（消耗配额）；<br>
+      <b>下载 / 删除</b>＝<b>只需登录</b> —— 订阅到期后用户<b>必须仍能取回和删除</b>自己已存的书。
+      📌 判据：<b>「付费买的是存储，不是访问权」—— 限制入口可以，限制出口不行</b></td></tr>
+</table>
+
+<div class="note-band warn">
+  🔴 <b>措辞约束（写进本稿，因为 UI 就是文案的落点）</b>：<br>
+  ✅ 可以说：「<b>云端存储 · 换机不丢</b>」「已备份到云端」「从云端取回」<br>
+  ❌ <b>不能</b>说：「云端书库」「这里可以找到书」「分享给朋友」「看看别人在读什么」<br>
+  📌 分界线是<b>「是否向公众提供」</b>（见 <code>sync-scope-extension</code> §4.3）——
+  UI 文案一旦往"内容提供者"那边靠，法律性质就变了。
+</div>
+
+<!-- ══════════ 4 边界 ══════════ -->
+<h2 style="margin-top:62px"><span class="n">4</span>边界与取舍</h2>
+<table>
+  <tr><th style="width:26%">项</th><th>决定 / 取舍</th></tr>
+  <tr><td><b>本地有 + 已备份</b></td><td><b>不显示任何标记</b>。若显示"已备份"勾，几乎每本书都有 ⇒ 噪声</td></tr>
+  <tr><td><b>本地有但未备份</b></td><td>也<b>不显示</b>（免费用户全部如此；订阅用户的会很快自动补上）。
+      ⚠️ 只有<b>空间不足导致失败</b>时才显式标出（§2 第三屏）</td></tr>
+  <tr><td><b>删本地 vs 删云端</b></td><td>「删书」= <b>两边都删</b>（并集同步下软删 + 删云端对象）。
+      ⚠️ 若以后要"只删本地腾空间"，那是一个<b>新动作</b>，不叫"删书"</td></tr>
+  <tr><td><b>下载失败</b></td><td>明确提示 + 可重试（<b>不静默</b> —— 本项目的主敌）</td></tr>
+  <tr><td><b>流量</b></td><td>一次换机下载全部约 20–60 MB（20–50 本）⇒ 可提示"仅 Wi-Fi 下载"作为后续选项</td></tr>
+</table>
+
+<footer class="foot">
+  <h3>✅ 实现状态（2026-10-07 · <b>后端已落地</b>）</h3>
+  <table>
+    <tr><th style="width:40%">落点</th><th>内容</th></tr>
+    <tr><td><b>🆕 <code>book_storage.rs</code></b></td>
+        <td><b>对象存储抽象</b>（<code>trait BlobStore</code>）+ 本地盘实现 + 配额判定。
+            🔴 <b>三层路径穿越防御</b>（字符白名单 / 前缀校验 / 拒绝元字符）——
+            <code>content_hash</code> 只允许十六进制 ⇒ 拼不出 <code>..</code> 与分隔符</td></tr>
+    <tr><td><b>🆕 <code>book_blob_handler.rs</code></b></td>
+        <td>三个端点 + 记账 + <code>DefaultBodyLimit</code> 放大到 33 MB。
+            🔑 上传<b>分块读 + 边读边限</b>（不用 <code>field.bytes()</code> —— 那会把整个 body 读进内存）；
+            下载用 <code>try_unfold</code> 手写流（项目没有 <code>tokio-util</code>，拉不动 <code>ReaderStream</code>）</td></tr>
+    <tr><td><b>🆕 <code>sync_book</code> 表</b>（<code>schema.rs</code>）</td>
+        <td>书单元数据 + 🔴 <b><code>blob_size</code>（服务端权威字段）</b>。
+            <b>它的关键约束</b>：<code>blob_size</code> <u>绝不出现在 push 的 <code>DO UPDATE SET</code> 里</u> ——
+            否则一台离线旧设备推一次书单就能把「云端有」标回「没有」，
+            而文件<b>明明还在</b>（用户以为备份丢了）</td></tr>
+    <tr><td><b>同步端点</b>（<code>sync_handlers.rs</code>）</td>
+        <td><code>books</code> 加入 <code>push</code> / <code>pull</code>（照 <code>bookmarks</code> 模式）；
+            新增 <code>authorize_login_only</code>（token 解析仍只有一处实现）</td></tr>
+    <tr><td><b>路由</b>（<code>routes.rs</code>）</td>
+        <td><code>.merge(blob_routes(...))</code> —— 用 <code>merge</code> 而非 <code>route</code>，
+            因为这几个端点带<b>自己的 state</b></td></tr>
+  </table>
+  <div class="note-band">
+    ✅ <b>本机验证</b>（<code>cargo test -p api_server --offline</code>）：
+    <b>8 项存储层断言全过</b> —— 含 <b>4 类路径穿越载荷</b>（<code>../../etc/passwd</code> ·
+    <code>..%2f</code> · <code>/etc/passwd</code> · NUL 字节）、配额边界（恰好填满<b>允许</b> / 超 1 字节<b>拒绝</b> /
+    饱和加法不溢出）、真文件系统往返、<b>删除不依赖扩展名</b>、用户隔离。<br>
+    🔑 另有 5 项记账断言（用量排除已删书 · 记账<b>推进 <code>received_at</code></b> ·
+    已删书拒绝上传 · <b>push 不改 <code>blob_size</code></b> · <b>路由表可构造</b>）。
+  </div>
+
+  <h3>⏳ 还没做（如实标注）</h3>
+  <ul>
+    <li><b>端侧全部</b>：书单 push/pull 接线 · 上传队列 · 三态 UI · 配额显示 · 下载后接解析器</li>
+    <li>⚠️ <b>孤儿文件清理</b>：端侧删书是「推 <code>deleted=1</code>」+「调 DELETE 端点」两个动作，
+        后者失败会残留文件。配额已排除 <code>deleted=1</code> ⇒ <b>用户不受影响</b>，
+        但残留文件需要定期清理任务（未做）</li>
+    <li>⚠️ <b>并发窗口</b>：两个并发上传可能同时通过配额检查 ⇒ 轻微超额。
+        不是安全漏洞（只能超额自己的配额），且端侧上传是串行队列。
+        若将来改并发上传，此处要加锁</li>
+    <li>📌 <b>切 COS</b>：只差一个 <code>BlobStore</code> impl（约 150 行），端点与配额<b>一行不改</b></li>
+  </ul>
+
+  <h3>本轮未做</h3>
+  <ul>
+    <li>✅ <b>已改代码</b>（后端全链：存储层 + 三个端点 + 同步通道 + 配额）·
+        ❌ 未开通 COS（改走本地盘，见 §3 修正 ①）· ❌ 未动端侧</li>
+    <li>📄 成本与合规依据见 <code>docs/review/sync-scope-extension-2026-10-07.md</code> §四</li>
+  </ul>
+</footer>
+
+</div>
+
+<div class="themebar">
+  <button data-t="ink" class="on">墨</button>
+  <button data-t="grid">格</button>
+  <button data-t="night">夜</button>
+</div>
+
+<script>
+document.querySelectorAll('.themebar button').forEach(function(b){
+  b.addEventListener('click', function(){
+    document.documentElement.setAttribute('data-theme', b.dataset.t);
+    document.querySelectorAll('.themebar button').forEach(function(x){ x.classList.remove('on'); });
+    b.classList.add('on');
+  });
+});
+</script>
+</body>
+</html>

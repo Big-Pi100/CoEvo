@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>「复习 ｜ 笔记」双标题 · 设计稿（2026-10-08）</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════
+   CoEvo · 「复习」tab 双段（复习 ｜ 笔记）· 设计稿
+   ──────────────────────────────────────────────────────────────────
+   起因（白哥 2026-10-08 原话）：
+     「把『我的划线』移动到复习页面，名称改为『笔记』与『复习』同级，
+       就像阅读页面有『今日精选』和『书架』两个同级页面一样」
+
+   ⚠️ 本文件是**设计稿**，不是实现。三档主题可切换，请逐档看一遍。
+
+   依据（逐条抄自项目文件，不凭记忆）：
+     · app/lib/screens/reading_section.dart    段定义范式（零依赖 · 可断言）
+     · app/lib/screens/reading_tab_screen.dart 标题栏实现（23 / w600 / -.015em · 下划线 3px）
+     · app/lib/screens/review_screen.dart      原「复习」标题规格（同上 23 / w600）
+     · app/lib/screens/highlights_screen.dart  原「我的划线」页（顶层路由 + 返回）
+     · docs/design/design-system-spec-2026-09-25.md  §2.1 三档色值
+   ══════════════════════════════════════════════════════════════════ */
+:root{
+  --serif:'Literata',Georgia,serif;
+  --ui:'Inter',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+  --mono:ui-monospace,'SFMono-Regular',Menlo,monospace;
+}
+.theme-ink{
+  --page:#F1EDE4; --card:#FFFFFF; --ink:#24211C; --ink2:#6E6659; --ink3:#9A917F;
+  --accent:#B4432C; --accent-ink:#FFFFFF; --line:#EFE9DE; --sunken:#EDE6DA;
+  --cl-out:rgba(150,125,95,.24); --cl-shade:rgba(186,166,138,.55); --cl-light:#fff; --cl-radius:26px;
+}
+.theme-grid{
+  --page:#EDEEF0; --card:#FFFFFF; --ink:#0A0A0A; --ink2:#5A5A5A; --ink3:#8A8A8A;
+  --accent:#B4432C; --accent-ink:#FFFFFF; --line:#E8E8E8; --sunken:#F0F0F0;
+  --cl-out:rgba(120,120,120,.18); --cl-shade:rgba(158,158,158,.46); --cl-light:#fff; --cl-radius:14px;
+}
+.theme-night{
+  --page:#0B0D12; --card:#1C1F27; --ink:#EDEBE6; --ink2:#9AA0AE; --ink3:#6E7484;
+  --accent:#DB7E6B; --accent-ink:#2A1405; --line:#262A34; --sunken:#0B0D12;
+  --cl-out:rgba(0,0,0,.55); --cl-shade:rgba(0,0,0,.42); --cl-light:rgba(255,255,255,.062); --cl-radius:26px;
+}
+body{margin:0;padding:28px 20px 80px;background:var(--page);color:var(--ink);
+  font-family:var(--ui);line-height:1.65;-webkit-font-smoothing:antialiased;}
+.wrap{max-width:940px;margin:0 auto;}
+h1{font-size:21px;font-weight:600;margin:0 0 6px;}
+.sub{color:var(--ink3);font-size:12.5px;margin-bottom:26px;}
+h2{font-size:15px;font-weight:600;margin:34px 0 12px;padding-bottom:7px;border-bottom:1px solid var(--line);}
+table{width:100%;border-collapse:collapse;font-size:12.5px;margin:10px 0 4px;}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;}
+th{color:var(--ink3);font-weight:600;font-size:11.5px;}
+code{font-family:var(--mono);font-size:11.5px;background:var(--sunken);padding:1.5px 5px;border-radius:4px;}
+.ok{color:var(--accent);font-weight:600;}
+/* ── mockup ── */
+.phone{width:330px;border-radius:22px;overflow:hidden;border:1px solid var(--cl-out);
+  background:var(--page);box-shadow:0 10px 30px rgba(0,0,0,.14);}
+.hd{padding:10px 18px 14px;display:flex;align-items:flex-end;gap:16px;}
+.tab{font-size:23px;font-weight:600;letter-spacing:-.345px;position:relative;
+  padding-bottom:8px;color:var(--ink3);cursor:default;}
+.tab.on{color:var(--ink);}
+.tab.on::after{content:'';position:absolute;left:1px;right:1px;bottom:0;height:3px;
+  border-radius:2px;background:var(--accent);}
+.body{padding:2px 16px 18px;}
+.card{background:var(--card);border-radius:var(--cl-radius);padding:13px 15px;margin-bottom:11px;
+  border:1px solid var(--cl-out);box-shadow:0 1px 0 var(--cl-light) inset;}
+.ttl{font-family:var(--serif);font-size:14.5px;font-weight:500;margin-bottom:4px;}
+.meta{font-size:11.5px;color:var(--ink3);}
+.quote{font-family:var(--serif);font-size:13px;color:var(--ink2);border-left:2px solid var(--accent);
+  padding-left:9px;margin:6px 0 0;}
+.row{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start;}
+.note{font-size:12px;color:var(--ink2);}
+.themebar{position:fixed;right:18px;bottom:18px;display:flex;gap:6px;background:var(--card);
+  border:1px solid var(--cl-out);border-radius:999px;padding:5px;}
+.themebar button{border:0;background:transparent;color:var(--ink2);font-family:var(--ui);
+  font-size:12px;padding:5px 12px;border-radius:999px;cursor:pointer;}
+.themebar button.on{background:var(--accent);color:var(--accent-ink);}
+</style>
+</head>
+<body class="theme-ink">
+<div class="wrap">
+
+<h1>「复习」tab：双段结构（复习 ｜ 笔记）</h1>
+<div class="sub">2026-10-08 · 白哥定案：「把我的划线移动到复习页面，名称改为笔记，与复习同级，就像阅读页面有今日精选和书架」</div>
+
+<h2>一、要解决的问题</h2>
+<table>
+  <tr><th style="width:22%">维度</th><th style="width:39%">改前</th><th>改后</th></tr>
+  <tr>
+    <td><b>形态</b></td>
+    <td>「我的划线」是<b>顶层路由</b> <code>/highlights</code>，从「我的」页 push 进去（带返回按钮、不带 tabbar）</td>
+    <td>「<b>笔记</b>」是<b>「复习」tab 内的一段</b>，与「复习」<b>平级标题</b>（同「今日精选 ｜ 书架」）</td>
+  </tr>
+  <tr>
+    <td><b>名称</b></td>
+    <td><span class="ok">我的划线</span>（实现视角：我们存的是高亮区间）</td>
+    <td><span class="ok">笔记</span>（用户视角：他做的事是「记笔记」）</td>
+  </tr>
+  <tr>
+    <td><b>入口数</b></td>
+    <td>2 个（「我的」页的列表项 + 路由）</td>
+    <td><b>1 个</b>（复习 tab 的标题行）—— 同一份数据只留一个入口</td>
+  </tr>
+</table>
+<div class="note">🔑 措辞理由：<b>描述用户的动作，不描述我们的存储</b>。技术标识（表名 <code>highlight</code> / 文件名 / 路由参数）<b>不改</b> —— 那只影响内部。</div>
+
+<h2>二、形态（三档主题请逐档看）</h2>
+<div class="row">
+
+  <div>
+    <div class="phone">
+      <div class="hd">
+        <div class="tab on">复习</div>
+        <div class="tab">笔记</div>
+      </div>
+      <div class="body">
+        <div class="card">
+          <div class="ttl">diligent</div>
+          <div class="meta">形容词 · 明早 08:00 到期</div>
+        </div>
+        <div class="card">
+          <div class="ttl">resilient</div>
+          <div class="meta">形容词 · 3 天后</div>
+        </div>
+        <div class="card">
+          <div class="ttl">scrutiny</div>
+          <div class="meta">名词 · 已到期</div>
+        </div>
+      </div>
+    </div>
+    <div class="note" style="margin-top:8px">默认段 = <b>复习</b>（点进这个 tab 想做的事）</div>
+  </div>
+
+  <div>
+    <div class="phone">
+      <div class="hd">
+        <div class="tab">复习</div>
+        <div class="tab on">笔记</div>
+      </div>
+      <div class="body">
+        <div class="card">
+          <div class="ttl">Why We Read Slowly</div>
+          <div class="quote">…we read not to finish, but to <b>linger</b>…</div>
+          <div class="meta" style="margin-top:6px">来自文章 · 3 天前</div>
+        </div>
+        <div class="card">
+          <div class="ttl">Pride and Prejudice</div>
+          <div class="quote">It is a truth universally acknowledged…</div>
+          <div class="meta" style="margin-top:6px">来自书 · 第 1 章</div>
+        </div>
+      </div>
+    </div>
+    <div class="note" style="margin-top:8px">点标题即切换 —— <b>切换是瞬时的，且两段状态都保留</b></div>
+  </div>
+
+</div>
+
+<h2>三、实现要点（都已落地 · 带断言）</h2>
+<table>
+  <tr><th style="width:30%">要点</th><th>说明</th></tr>
+  <tr>
+    <td><b>与阅读 tab 同构</b></td>
+    <td>段定义 <code>review_section.dart</code>（零依赖 · 可断言）+ 容器 <code>review_tab_screen.dart</code>。
+        标题 <b>23px / w600 / 字距 -1.5%</b>、下划线 <b>3px</b>、段间距 <b>16px</b> —— 与阅读 tab <b>逐值相同</b>，否则切 tab 时标题会横移。</td>
+  </tr>
+  <tr>
+    <td><b>用 <code>IndexedStack</code></b></td>
+    <td>两段都留在树上 ⇒ 切换<b>瞬时</b>，且<b>滚动位置与筛选状态都保留</b>。
+        用 <code>if (section == …)</code> 会在切走时销毁另一段（回来时重置）。</td>
+  </tr>
+  <tr>
+    <td><b>顺序 = 「复习」在前</b></td>
+    <td>与阅读 tab 同一规则：<b>默认段写在最前</b> —— 点进这个 tab 想做的事就是复习。</td>
+  </tr>
+  <tr>
+    <td><b>删掉旧入口</b></td>
+    <td>顶层路由 <code>/highlights</code> 与「我的」页那个列表项<b>都删了</b>。
+        理由：<b>两个入口指向同一份数据会让栈行为分叉</b>（生词本那次踩过）。</td>
+  </tr>
+  <tr>
+    <td><b>「返回」按钮不需要了</b></td>
+    <td>判据没变（用户必须有出口），变的是层级：现在是 tab 内视图，出口 = <b>切 tab / 点底部 tabbar</b> —— 与「阅读」tab 的书架段一样。</td>
+  </tr>
+  <tr>
+    <td><b>暂停要二次确认</b>（2026-10-08 补）</td>
+    <td>白哥真机反馈「很容易误点」。它是一个<b>单击</b>动作，而后果（那张卡从复习列表里消失）
+        <b>在当前界面上看不见</b>，恢复入口在<b>另一个 tab</b>。
+        <br>⇒ 判据：<b>「后果不可见 + 恢复路径远」的动作才加确认</b> —— 给每个动作都加确认等于每步多一次点击。
+        <br>外壳用全应用唯一的 <code>CoDialog</code>；按钮顺序按 iOS 惯例（取消在左 / 暂停在右）。
+        <br>文案与事后提示<b>同一处权威</b>（<code>review_pause.dart</code> 的 <code>pauseConfirmBody</code> /
+        <code>pausedMessage</code>），且按卡片类型分两套（生词 = 再次查词 · 划线 = 「笔记」页）。</td>
+  </tr>
+</table>
+
+<h2>四、有意没做 / 待你定</h2>
+<table>
+  <tr><th style="width:30%">项</th><th>说明</th></tr>
+  <tr>
+    <td>标题行右侧动作</td>
+    <td>阅读 tab 右侧有动作（收藏 N / 导入），本容器<b>暂时空着</b>：复习段的筛选/搜索/排序是三件东西、
+        且状态都在页面内部。若要加，建议加 <b>「到期 N」药丸</b>（一屏信息量最大）。</td>
+  </tr>
+  <tr>
+    <td>两段的顺序</td>
+    <td>现为 <b>复习 ｜ 笔记</b>。若你希望「笔记」在前，改一处（<code>review_section.dart</code> 的声明顺序）即可 —— 断言会跟着验证。</td>
+  </tr>
+  <tr>
+    <td>「笔记」是否再收口</td>
+    <td>现在它 = 原来的「我的划线」（文章 + 书的划线）。若将来「注记/感悟」也要进来，建议<b>仍在这段内</b>用筛选区分，而不是再加一段。</td>
+  </tr>
+</table>
+
+</div>
+
+<div class="themebar">
+  <button data-t="ink" class="on">墨</button>
+  <button data-t="grid">格</button>
+  <button data-t="night">夜</button>
+</div>
+<script>
+document.querySelectorAll('.themebar button').forEach(function(b){
+  b.addEventListener('click',function(){
+    document.body.className='theme-'+b.dataset.t;
+    document.querySelectorAll('.themebar button').forEach(function(x){x.classList.remove('on')});
+    b.classList.add('on');
+  });
+});
+</script>
+</body>
+</html>

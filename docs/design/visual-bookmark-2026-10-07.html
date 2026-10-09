@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="ink">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CoEvo · 书签（位置标记）</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/literata@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5/500.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5/600.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5/400.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5/500.css">
+<style>
+/* ══════════════════════════════════════════════════════════════════════════
+   CoEvo · 书签 —— 界面锚点（2026-10-07）
+
+   🔴 本文件是 **L1 界面锚点**：数值对齐 `design-system-spec` 与 `theme/coevo_tokens.dart`。
+   📄 上游：`docs/review/product-core-expansion-2026-10-07.md` §3.3
+   📄 同族：`visual-generic-card-2026-10-07.html`（划线记忆 · 本功能的**姊妹项**，
+            两者共用一张表 + 同一个 `source_type` 机制，但**语义完全不同** —— 见 §3）
+
+   🔑 本稿最重要的一件事：**把「书签」「进度」「划线」三者的边界钉死**（§〇）。
+      它们是三个不同的东西，混一个都会让语义烂掉。
+   ══════════════════════════════════════════════════════════════════════════ */
+:root{
+  --serif:'Literata',Georgia,serif;
+  --round:'Quicksand','Noto Sans SC',system-ui,sans-serif;
+  --cjk:'Noto Sans SC',system-ui,sans-serif;
+  --mono:ui-monospace,'SFMono-Regular',Consolas,monospace;
+}
+[data-theme="ink"]{
+  --page:#F1EDE4; --read:#FAF8F4; --card:#FFFFFF;
+  --ink:#24211C; --ink2:#6E6659; --ink3:#988F7C;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF;
+  --accent-out:rgba(180,67,44,.40);
+  --line:#EFE9DE; --sunken:#EDE6DA;
+  --cl-out:rgba(150,125,95,.24); --cl-shade:rgba(186,166,138,.55); --cl-light:rgba(255,255,255,1);
+  --cl-radius:26px; --cl-radius-md:14.3px;
+  --cl-sh-out:4px 5px 10px; --cl-sh-shade:-3px -3px 8px; --cl-sh-light:3px 3px 7px;
+  --read-lh:1.82; --sel:rgba(180,67,44,.22);
+}
+[data-theme="grid"]{
+  --page:#EDEEF0; --read:#FFFFFF; --card:#FFFFFF;
+  --ink:#0A0A0A; --ink2:#5A5A5A; --ink3:#8A8A8A;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF;
+  --accent-out:rgba(180,67,44,.40);
+  --line:#E8E8E8; --sunken:#F0F0F0;
+  --cl-out:rgba(110,115,125,.22); --cl-shade:rgba(158,158,158,.46); --cl-light:rgba(255,255,255,1);
+  --cl-radius:14px; --cl-radius-md:14px;
+  --cl-sh-out:4px 5px 10px; --cl-sh-shade:-3px -3px 8px; --cl-sh-light:3px 3px 7px;
+  --read-lh:1.74; --sel:rgba(180,67,44,.20);
+}
+[data-theme="night"]{
+  --page:#0B0D12; --read:#14161C; --card:#1C1F27;
+  --ink:#EDEBE6; --ink2:#9AA0AE; --ink3:#6E7484;
+  --accent:#DB7E6B; --accent-bright:#E89B8C; --accent-ink:#2A1405;
+  --accent-out:rgba(219,126,107,.40);
+  --line:#262A34; --sunken:#0B0D12;
+  --cl-out:rgba(0,0,0,.55); --cl-shade:rgba(0,0,0,.42); --cl-light:rgba(255,255,255,.062);
+  --cl-radius:24px; --cl-radius-md:13.2px;
+  --cl-sh-out:4px 5px 10px; --cl-sh-shade:-3px -3px 8px; --cl-sh-light:3px 3px 7px;
+  --read-lh:1.84; --sel:rgba(219,126,107,.30);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#DAD3C6;padding:0 0 80px;color:#29251F;font-family:var(--cjk);font-size:15px;line-height:1.75;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 28px}
+.top{padding:56px 0 10px}
+.eyebrow{font-family:var(--round);font-size:11.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#B4432C;margin-bottom:14px}
+.top h1{font-family:var(--round);font-size:35px;font-weight:600;letter-spacing:-.02em;line-height:1.24;color:#24211C;margin-bottom:18px}
+.lede{font-size:15.5px;line-height:1.85;color:#4A453C;max-width:850px}
+.lede strong{color:#24211C;font-weight:500}
+.lede code{font-family:var(--mono);font-size:12.5px;background:#CFC8BA;padding:1px 6px;border-radius:4px}
+.changes{display:grid;grid-template-columns:repeat(auto-fit,minmax(272px,1fr));gap:14px;margin:32px 0 0}
+.chg{background:#F7F4EC;border-radius:16px;padding:18px 20px;border-left:3px solid #B4432C}
+.chg.warn{border-left-color:#B8860B;background:#F6F1E0}
+.chg .tag{font-family:var(--round);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;display:inline-block;padding:3px 9px;border-radius:20px;margin-bottom:11px}
+.tag.keep{background:#E4E9E2;color:#3C5136}
+.tag.add{background:#F3E2DC;color:#8E3320}
+.tag.warn{background:#F0E8D2;color:#7A5B12}
+.chg h3{font-family:var(--round);font-size:15.5px;font-weight:600;margin-bottom:8px;color:#24211C}
+.chg p{font-size:13px;line-height:1.72;color:#5C5648}
+.chg code{font-family:var(--mono);font-size:11.5px;background:#E3DDD0;padding:1px 5px;border-radius:3px}
+
+/* 三方对照表（本稿的核心） */
+.tri{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin:26px 0 0}
+.tric{background:#FFFFFF;border-radius:16px;padding:18px 20px;border-top:4px solid #B4432C;box-shadow:0 2px 10px rgba(120,100,70,.10)}
+.tric.bk{border-top-color:#B8860B}
+.tric.hl{border-top-color:#3C5136}
+.tric .h{font-family:var(--round);font-size:15px;font-weight:600;color:#24211C;margin-bottom:4px}
+.tric .who{font-size:11px;color:#8E3320;font-weight:600;letter-spacing:.04em;margin-bottom:10px}
+.tric.bk .who{color:#7A5B12}.tric.hl .who{color:#3C5136}
+.tric ul{margin:0 0 0 16px;font-size:12.5px;line-height:1.75;color:#5C5648}
+.tric li{margin-bottom:4px}
+.tric b{color:#24211C;font-weight:500}
+
+.stage{display:flex;gap:26px;flex-wrap:wrap;margin:40px 0 0;align-items:flex-start}
+.phone{width:322px;flex-shrink:0}
+.ph-label{font-family:var(--round);font-size:13px;font-weight:600;color:#3A352D;margin-bottom:9px}
+.ph-label span{display:block;font-family:var(--cjk);font-size:12px;font-weight:400;color:#6E6659;margin-top:3px}
+.frame{width:322px;height:594px;border-radius:38px;background:var(--page);border:8px solid #2B2823;overflow:hidden;position:relative;display:flex;flex-direction:column;transition:background .28s}
+
+.rd-bar{display:flex;align-items:center;padding:12px 14px 6px 18px;gap:2px;flex-shrink:0}
+.rd-bar .back{font-size:19px;color:var(--accent);padding:6px 10px 6px 2px;line-height:1}
+.rd-bar .ttl{font-family:var(--round);font-size:15px;font-weight:600;color:var(--ink);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.iconbtn{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.iconbtn svg{width:20px;height:20px}
+.iconbtn svg path{stroke:var(--accent);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+/* 🔑 已标记态：**填充朱砂**（形状/重量都变，不只是变色） */
+.iconbtn.on{background:var(--accent);box-shadow:3px 4px 9px var(--accent-out),inset -2px -2px 5px rgba(0,0,0,.15),inset 2px 2px 5px rgba(255,255,255,.26)}
+.iconbtn.on svg path{stroke:var(--accent-ink);fill:var(--accent-ink)}
+
+.rd{padding:4px 24px;flex:1;position:relative;overflow:hidden}
+.rd .ch{font-family:var(--serif);font-size:17px;font-weight:600;color:var(--ink);margin-bottom:12px}
+.rd .body{font-family:var(--serif);font-size:16px;line-height:var(--read-lh);color:var(--ink)}
+.rd .body p+p{margin-top:14px}
+.hl{border-bottom:2px solid var(--accent-bright);padding-bottom:1px}
+
+/* 书签列表 */
+.blist{padding:4px 18px;flex:1;overflow:hidden}
+.brow{background:var(--card);border-radius:var(--cl-radius-md);padding:13px 15px;margin-bottom:10px;box-shadow:var(--cl-sh-out) var(--cl-out),inset var(--cl-sh-shade) var(--cl-shade),inset var(--cl-sh-light) var(--cl-light);display:flex;gap:11px}
+.brow .mark{width:3px;border-radius:3px;background:var(--accent);flex-shrink:0}
+.brow .c{flex:1;min-width:0}
+.brow .pos{font-family:var(--round);font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--accent);margin-bottom:5px}
+.brow .q{font-family:var(--serif);font-size:13.5px;line-height:1.6;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.brow .f{font-family:var(--round);font-size:10px;color:var(--ink3);margin-top:7px}
+
+.toast{position:absolute;left:50%;transform:translateX(-50%);bottom:104px;background:var(--ink);color:var(--page);font-family:var(--cjk);font-size:12px;font-weight:500;padding:10px 18px;border-radius:14px;z-index:40;white-space:nowrap}
+.pin{position:absolute;font-family:var(--round);font-size:10px;font-weight:600;background:#B4432C;color:#fff;padding:2px 7px;border-radius:20px;z-index:50;letter-spacing:.05em}
+.pin.g{background:#3C5136}
+.pin.y{background:#B8860B}
+
+section{margin-top:62px}
+h2{font-family:var(--round);font-size:23px;font-weight:600;letter-spacing:-.01em;color:#24211C;margin-bottom:8px}
+h2 .n{display:inline-flex;width:26px;height:26px;border-radius:9px;background:#B4432C;color:#fff;font-size:13px;align-items:center;justify-content:center;margin-right:10px;vertical-align:2px}
+.sub{font-size:13.5px;color:#5C5648;margin-bottom:20px;max-width:880px}
+table{width:100%;border-collapse:collapse;background:#F7F4EC;border-radius:14px;overflow:hidden;font-size:13px}
+th{background:#EDE6DA;text-align:left;padding:11px 14px;font-family:var(--round);font-weight:600;font-size:12px;color:#3A352D}
+td{padding:11px 14px;border-top:1px solid #E4DDD0;vertical-align:top;line-height:1.7;color:#403B33}
+td code,th code{font-family:var(--mono);font-size:11.5px;background:#E3DDD0;padding:1px 5px;border-radius:3px}
+td b{color:#24211C;font-weight:500}
+.yes{color:#3C5136;font-weight:600}.no{color:#8E3320;font-weight:600}.half{color:#7A5B12;font-weight:600}
+.note-band{margin-top:22px;background:#F7F4EC;border-left:3px solid #B4432C;border-radius:0 12px 12px 0;padding:16px 20px;font-size:13px;line-height:1.78;color:#5C5648}
+.note-band.warn{border-left-color:#B8860B;background:#F6F1E0}
+.note-band b{color:#29251F;font-weight:500}
+.note-band code{font-family:var(--mono);font-size:11.5px;background:#E3DDD0;padding:1px 5px;border-radius:3px}
+.foot{margin-top:62px;padding-top:28px;border-top:1px solid #CFC8BA;font-size:13.5px;line-height:1.85;color:#5C5648}
+.foot b{color:#29251F;font-weight:500}
+.foot code{font-family:var(--mono);font-size:11.5px;background:#DCD6C9;padding:1px 5px;border-radius:3px}
+.foot h3{font-family:var(--round);font-size:15px;font-weight:600;color:#24211C;margin:20px 0 8px}
+.foot ul{margin:8px 0 0 20px}.foot li{margin-bottom:7px}
+.themebar{position:fixed;right:22px;bottom:22px;display:flex;gap:6px;background:#2B2823;padding:7px;border-radius:16px;box-shadow:0 8px 22px rgba(0,0,0,.28);z-index:99}
+.themebar button{font-family:var(--round);font-size:12px;font-weight:600;border:0;background:transparent;color:#B8B0A2;padding:7px 13px;border-radius:10px;cursor:pointer}
+.themebar button.on{background:#B4432C;color:#fff}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="eyebrow">CoEvo · 书签（位置标记）</div>
+  <h1>进度是自动的，<br>书签是你的</h1>
+  <p class="lede">
+    书里已经有一个「读到哪」—— 但那是<b>系统替你记的</b>，而且<b>只有一条</b>（一读就把上一条盖掉）。
+    书签是<b>你自己标的</b>，而且<b>可以有很多条</b>：读到想回头的地方，打一个，以后直接从列表跳回来。<br><br>
+    🔑 它和「划线记忆」是同一天定下的两件事，但<b>语义完全不同</b> ——
+    划线的内容<b>要复习</b>（进记忆队列），书签<b>不复习</b>（它只是"这里我想回来"）。
+  </p>
+</header>
+
+<!-- ══════════ 〇 三方边界 ══════════ -->
+<h2 style="margin-top:48px"><span class="n">〇</span>先把三个东西分清（<b>混一个语义就烂</b>）</h2>
+<p class="sub">
+  书里同时存在三种"标记"，它们都跟"位置/文字"有关，但<b>目的、归属、要不要复习</b>全都不同。
+  ⇒ 本稿的第一件事是把边界钉死，否则实现时一定会有人把它们合并（看着像"都是标记"）。
+</p>
+<div class="tri">
+  <div class="tric">
+    <div class="h">进度</div>
+    <div class="who">系统自动 · 只有一条</div>
+    <ul>
+      <li><b>谁产生</b>：滚动时自动写</li>
+      <li><b>几条</b>：一本书<b>一条</b>（覆盖式）</li>
+      <li><b>目的</b>：下次打开回到原处</li>
+      <li><b>要复习吗</b>：❌ 不是记忆内容</li>
+      <li><b>表</b>：<code>book_progress</code>（已有）</li>
+    </ul>
+  </div>
+  <div class="tric bk">
+    <div class="h">书签</div>
+    <div class="who">用户主动 · 可以很多条</div>
+    <ul>
+      <li><b>谁产生</b>：用户点一下</li>
+      <li><b>几条</b>：一本书<b>任意多条</b></li>
+      <li><b>目的</b>：<b>回头找</b>某个地方</li>
+      <li><b>要复习吗</b>：❌ <b>不进记忆队列</b></li>
+      <li><b>表</b>：🆕 <code>book_marker</code></li>
+    </ul>
+  </div>
+  <div class="tric hl">
+    <div class="h">划线</div>
+    <div class="who">用户主动 · 进记忆队列</div>
+    <ul>
+      <li><b>谁产生</b>：用户选中一段</li>
+      <li><b>几条</b>：任意多条</li>
+      <li><b>目的</b>：<b>记住</b>这段内容</li>
+      <li><b>要复习吗</b>：✅ <b>进</b>（默写考核）</li>
+      <li><b>表</b>：🆕 <code>book_highlight</code> / <code>article_highlight</code></li>
+    </ul>
+  </div>
+</div>
+<div class="note-band">
+  🔑 <b>一句话区分</b>：<br>
+  · <b>进度</b> = 系统在说「你读到这了」　·　<b>书签</b> = 你在说「<b>这里我要回来</b>」　·　
+  <b>划线</b> = 你在说「<b>这段我要记住</b>」。<br>
+  📌 前两者的区别是<b>「谁说的 + 有几条」</b>；后两者的区别是<b>「要不要复习」</b>。
+</div>
+
+<!-- ══════════ 1 打书签 ══════════ -->
+<h2 style="margin-top:62px"><span class="n">1</span>打书签：顶栏一个键，<b>一次点击</b></h2>
+<p class="sub">
+  阅读页顶栏现在是「返回 · 书名 · 设置」。书签键加在<b>设置键左边</b> ——
+  位置沿用信息流阅读页那条已有判据（<b>顶部图标都靠右</b>）。
+  <br>⚠️ 书签的是<b>「此刻屏幕上的位置」</b>，不是"整章"—— 所以同一个键连点两次是「打上 / 取消」。
+</p>
+
+<div class="stage">
+
+  <div class="phone">
+    <div class="ph-label">① 未标记 —— 空心飘带
+      <span>朱砂描边（与设置键同色系，不抢眼）</span></div>
+    <div class="frame" style="background:var(--read)">
+      <div class="rd-bar">
+        <span class="back">‹</span>
+        <span class="ttl">A Tale of Two Cities</span>
+        <span class="iconbtn"><svg viewBox="0 0 24 24"><path d="M7 4h10a1 1 0 011 1v15l-6-4-6 4V5a1 1 0 011-1z"/></svg></span>
+        <span class="iconbtn"><svg viewBox="0 0 24 24"><path d="M5 7h9M5 12h6M5 17h4"/><path d="M15 10l3 3-3 3"/><path d="M18 13h-4"/></svg></span>
+      </div>
+      <div class="rd">
+        <div class="ch">Chapter 1 · The Period</div>
+        <div class="body">
+          <p>It was the best of times, it was the worst of times, it was the age of
+             wisdom, it was the age of foolishness, it was the <span class="hl">epoch of belief</span>,
+             it was the epoch of incredulity…</p>
+          <p>It was the season of Light, it was the season of Darkness, it was the spring
+             of hope, it was the winter of despair.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="ph-label">② 已标记 —— <b>实心朱砂 + 底</b>
+      <span>🔑 不只是变色：形状（空 → 实）与重量（无底 → 有底）都变</span></div>
+    <div class="frame" style="background:var(--read)">
+      <div class="rd-bar">
+        <span class="back">‹</span>
+        <span class="ttl">A Tale of Two Cities</span>
+        <span class="iconbtn on"><svg viewBox="0 0 24 24"><path d="M7 4h10a1 1 0 011 1v15l-6-4-6 4V5a1 1 0 011-1z"/></svg></span>
+        <span class="iconbtn"><svg viewBox="0 0 24 24"><path d="M5 7h9M5 12h6M5 17h4"/><path d="M15 10l3 3-3 3"/><path d="M18 13h-4"/></svg></span>
+      </div>
+      <div class="rd">
+        <div class="ch">Chapter 1 · The Period</div>
+        <div class="body">
+          <p>It was the best of times, it was the worst of times, it was the age of
+             wisdom, it was the age of foolishness, it was the <span class="hl">epoch of belief</span>,
+             it was the epoch of incredulity…</p>
+          <p>It was the season of Light, it was the season of Darkness, it was the spring
+             of hope, it was the winter of despair.</p>
+        </div>
+      </div>
+      <div class="toast">已加书签 · 第 1 章</div>
+      <span class="pin g" style="top:9px;left:9px">已标记</span>
+    </div>
+  </div>
+
+</div>
+
+<div class="note-band">
+  🔑 <b>正文里不画书签标记</b>（这是一个有意的取舍）：<br>
+  · 划线已经用「下划线」占了正文的视觉位置，再叠一个"书签点"会打架；<br>
+  · 而且书签是<b>位置</b>不是<b>文字</b> —— 在段落旁挂一个小图标，只会干扰阅读；<br>
+  · ⇒ 书签的"存在感"由<b>顶栏那个键的状态</b> + <b>列表</b>承担，正文保持干净。<br>
+  ⚠️ 代价：用户看不到"这本书我标了几处"。若真机上这一点反馈缺失，
+  再考虑在右侧加一条极细的刻度条（<b>不改正文</b>）。
+</div>
+
+<!-- ══════════ 2 列表 ══════════ -->
+<h2 style="margin-top:62px"><span class="n">2</span>书签列表：<b>能看到内容</b>，才回得去</h2>
+<p class="sub">
+  列表在<b>书内</b>（这本的），从顶栏的书签键<b>长按</b>进入（点 = 打/取消，长按 = 看全部）。
+  🔑 每条必须带<b>摘录</b>：只写「第 3 章 42%」用户认不出那是哪一段，等于白存。
+</p>
+
+<div class="stage">
+
+  <div class="phone">
+    <div class="ph-label">书内书签列表
+      <span>按位置先后排（不是按时间 —— 找地方要按顺序找）</span></div>
+    <div class="frame">
+      <div class="rd-bar" style="padding-bottom:8px">
+        <span class="back">‹</span>
+        <span class="ttl" style="font-size:17px;color:var(--ink)">书签 · A Tale of Two Cities</span>
+        <span class="iconbtn"></span>
+      </div>
+      <div class="blist">
+        <div class="brow">
+          <div class="mark"></div>
+          <div class="c">
+            <div class="pos">第 1 章 · 12%</div>
+            <div class="q">It was the best of times, it was the worst of times, it was the age of wisdom…</div>
+            <div class="f">10-07</div>
+          </div>
+        </div>
+        <div class="brow">
+          <div class="mark"></div>
+          <div class="c">
+            <div class="pos">第 1 章 · 68%</div>
+            <div class="q">It was the season of Light, it was the season of Darkness, it was the spring of hope…</div>
+            <div class="f">10-07</div>
+          </div>
+        </div>
+        <div class="brow">
+          <div class="mark"></div>
+          <div class="c">
+            <div class="pos">第 4 章 · 5%</div>
+            <div class="q">A wonderful fact to reflect upon, that every human creature is constituted to be that profound secret…</div>
+            <div class="f">10-06</div>
+          </div>
+        </div>
+      </div>
+      <span class="pin" style="top:9px;left:9px">列表</span>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="ph-label">点任意一条 → <b>跳回去</b>
+      <span>跨章跳转：先切章，再滚到比例位置</span></div>
+    <div class="frame" style="background:var(--read)">
+      <div class="rd-bar">
+        <span class="back">‹</span>
+        <span class="ttl">A Tale of Two Cities</span>
+        <span class="iconbtn on"><svg viewBox="0 0 24 24"><path d="M7 4h10a1 1 0 011 1v15l-6-4-6 4V5a1 1 0 011-1z"/></svg></span>
+        <span class="iconbtn"><svg viewBox="0 0 24 24"><path d="M5 7h9M5 12h6M5 17h4"/><path d="M15 10l3 3-3 3"/><path d="M18 13h-4"/></svg></span>
+      </div>
+      <div class="rd">
+        <div class="ch">Chapter 1 · The Period</div>
+        <div class="body">
+          <p>It was the season of <span class="hl">Light</span>, it was the season of Darkness,
+             it was the spring of hope, it was the winter of despair.</p>
+          <p>We had everything before us, we had nothing before us.</p>
+        </div>
+      </div>
+      <div class="toast" style="opacity:.94">已跳到书签位置</div>
+      <span class="pin" style="top:9px;left:9px">跳转后</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════ 3 规格 ══════════ -->
+<h2 style="margin-top:62px"><span class="n">3</span>数据规格</h2>
+<table>
+  <tr><th style="width:22%">项</th><th>决定</th></tr>
+  <tr><td><b>表</b></td><td>🆕 <code>book_marker</code>（<b>book.db</b>，与 <code>book_progress</code> 同库）</td></tr>
+  <tr><td><b>字段</b></td><td><code>id</code>(uuid) · <code>book_id</code> · <code>chapter_idx</code> ·
+      <code>scroll_ratio</code> · <code>excerpt</code> · <code>created_at</code> · <code>deleted</code></td></tr>
+  <tr><td><b>位置表示</b></td><td><code>chapter_idx</code> + <code>scroll_ratio</code> —— <b>与进度同一套</b>
+      （"章内相对位置，不存绝对像素"那条判据直接复用）</td></tr>
+  <tr><td><b>不变量</b></td><td>🔴 <b>同一位置不重复</b>（<code>chapter_idx</code> + 比例相同 ⇒ 视为已在书签处 ⇒ 键点为"取消"）</td></tr>
+  <tr><td><b>排序</b></td><td>按 <b>位置</b>（章 idx → 比例），<b>不是按时间</b> ——
+      找地方是按顺序找，不是按"我什么时候标的"找</td></tr>
+  <tr><td><b>要复习吗</b></td><td>❌ <b>不进记忆队列</b>（不产生 <code>hl:</code> 之类的合成 id、不碰 FSRS）</td></tr>
+  <tr><td><b>同步</b></td><td>✅ 要（学习资产）· <b>软删</b>（并集同步下硬删会复活 —— <code>bookmark</code> 已踩过）</td></tr>
+</table>
+
+<div class="note-band warn">
+  🔴 <b>一条要如实标注的近似</b>：<code>excerpt</code> 的取法。<br>
+  打书签时要记"这段文字"，但 <code>scroll_ratio</code> 是<b>像素比例</b>，
+  而文字位置是<b>字符位置</b> —— 两者<b>不是线性关系</b>（段落长短不一、还有章节标题占位）。<br>
+  ✅ <b>第一版做法</b>：用比例估算字符 offset，从那里向后取<b>第一个完整句子的前 60 字</b>。
+  ⚠️ 会有偏差（可能差几十到一百多字），但列表只需要"让用户认出这是哪段" ⇒ <b>可接受</b>。<br>
+  📌 <b>若真机上偏差明显</b>，再改成"记录当前可见的第一个段落 index"（要用可见性查询，
+  比纯计算重，所以<b>不作为第一版</b>）。
+</div>
+
+<div class="note-band warn">
+  🔴 <b>2026-10-07 实现时偏离了上面那行字面描述（已回标）</b>：<br>
+  「向<b>后</b>取第一个完整句子」改成「取<b>包含该位置的那一句</b>」。两条理由（都是实测出来的）：<br>
+  · <b>区分度</b>：向后取会让<b>一整句范围内</b>的所有比例产出<b>同一个</b>摘录
+    （实测：正文 104 字、比例 0.30~0.75 全给出同一句）⇒ 列表里一堆条目看着一样<br>
+  · <b>末尾不产出垃圾</b>：比例 = 1（滚到底）时后面<b>没有</b>句子 ⇒ 实测给出摘录
+    <b>「。」</b>（孤零零一个句号），用户完全认不出<br>
+  📌 判据：<b>实现要服务用途，不是服务措辞</b> —— 偏离时回标本文档，而不是让文档说谎。
+  ⚠️ 另一处同批修掉的：中文句末 <code>。</code> <b>后面没有空格</b>，
+  首版正则要求「句末 + 空白」⇒ <b>匹配不到任何中文句界</b>（中文摘录取到半句）。
+</div>
+
+<!-- ══════════ 4 边界 ══════════ -->
+<h2 style="margin-top:62px"><span class="n">4</span>边界（如实列出）</h2>
+<table>
+  <tr><th style="width:26%">项</th><th>决定</th></tr>
+  <tr><td><b>只给书，不给文章</b></td>
+      <td>文章短（一屏到两屏），有<b>整篇收藏</b>就够了；给文章再加"位置书签"会让入口膨胀。
+          🔑 这也正是白哥原话的范围 ——「<b>书内</b>的收藏 / 书签 / 划线」</td></tr>
+  <tr><td><b>数量上限</b></td><td>不设硬上限。但列表按位置排序 ⇒ 多了也能用。
+      ⚠️ 若真机上有人存几百条，再加"按章分组"（不改表结构）</td></tr>
+  <tr><td><b>与划线的共存</b></td><td>同一段可以既是书签又是划线 —— 两者<b>不互斥</b>（
+      一个说"我要回来"，一个说"我要记住"，理由不同）</td></tr>
+  <tr><td><b>删书</b></td><td>随书级联删除（<code>ON DELETE CASCADE</code>，同 <code>book_progress</code>）</td></tr>
+</table>
+
+<footer class="foot">
+  <h3>✅ 实现落点（2026-10-07 · 已落地）</h3>
+  <table>
+    <tr><th style="width:38%">文件</th><th>内容</th></tr>
+    <tr><td><b>🆕 <code>assets/sql/book_db_schema.sql</code> v3</b></td>
+        <td><code>book_marker</code> 表（<b>book.db</b> + 索引 + <b>级联删除</b>）；
+            <code>kBookDbVersion</code> 2 → 3</td></tr>
+    <tr><td><b>🆕 <code>services/ebook/book_marker.dart</code></b></td>
+        <td><b>纯逻辑</b>：<code>estimateBookmarkExcerpt</code>（摘录估算）·
+            <code>isSameBookmarkPosition</code>（容差）· <code>BookMarker</code> 模型</td></tr>
+    <tr><td><b>🆕 <code>services/ebook/book_marker_repository.dart</code></b></td>
+        <td>仓储：<code>add</code> · <code>listForBook</code>（<b>按位置排序</b>）·
+            <code>findAt</code>（容差查询）· <code>remove</code>（软删）· <code>countForBook</code></td></tr>
+    <tr><td><b>🆕 <code>providers/book_marker_provider.dart</code></b></td>
+        <td>书签列表（依赖 <code>bookDbRevisionProvider</code> ⇒ 打完自动刷新）</td></tr>
+    <tr><td><b>✏️ <code>screens/book_reader_screen.dart</code></b></td>
+        <td>顶栏书签键（<b>点=打/取消 · 长按=看全部</b>）· 滚动结束刷新图标状态
+            （<code>ScrollEndNotification</code> —— <b>框架给的准确信号</b>，不是防抖）·
+            书签面板 · 跳转（同章滚动 / 跨章切章后滚）· 切章重查</td></tr>
+    <tr><td><code>scripts/query_verify/bin/<br>verify_book_marker.dart</code></td>
+        <td><b>56 项</b> · 已进 CI</td></tr>
+    <tr><td><code>scripts/query_verify/bin/<br>verify_bookdb_migration.dart</code></td>
+        <td>已扩展到 <b>v3</b>（`book_marker` 表 + 索引 + 前提「老库不含它」）</td></tr>
+  </table>
+  <div class="note-band">
+    ✅ <b>本机验证</b>：<code>56/0</code> · 迁移 <code>18/0</code> ·
+    <code>analyze_inproc</code> <b>error = 0</b><br>
+    🔴 <b>两条门禁都已证伪</b>（各 ⇒ 55/1、退出码 1）：<br>
+    · 把中文句末的正则改回「要求后跟空白」<br>
+    · 去掉浮点 epsilon（边界值反向判定）
+  </div>
+
+  <h3>🔴 实现时发现并修掉的两个真 bug（首版都有）</h3>
+  <table>
+    <tr><th style="width:30%">问题</th><th>现象 / 修法</th></tr>
+    <tr><td><b>中文句末识别不了</b></td>
+        <td>首版正则写成「句末标点 + <b>空白</b>」—— 而<b>中文正文里 <code>。</code> 后面没有空格</b>
+            ⇒ <b>匹配不到任何中文句子边界</b> ⇒ 摘录从估算位置硬切，取到半句。
+            ✅ 修：中文句末（<code>。！？</code>）不要求空白；英文句末（<code>.!?</code>）仍要求
+            （否则 <code>a.m.</code> / <code>66.4%</code> 会被切碎）</td></tr>
+    <tr><td><b>滚到底部给出垃圾摘录</b></td>
+        <td>首版按设计稿字面「向<b>后</b>取第一个完整句子」⇒ 比例 1.0 时后面没有句子
+            ⇒ 实测给出摘录 <b>「。」</b>（孤零零一个句号）。
+            ✅ 修：改成「取<b>包含该位置的那一句</b>」—— 顺带解决了<b>区分度</b>问题
+            （实测：「向后取」会让一整句范围内的所有比例产出同一个摘录）</td></tr>
+  </table>
+  <div class="note-band warn">
+    ⚠️ 上面第 2 条是<b>对本文档 §3 字面描述的偏离</b> —— 已回标本文件 §3（理由：服务用途，不是服务措辞）。
+  </div>
+
+  <h3>还没做的（如实标注）</h3>
+  <ul>
+    <li><b>同步</b>：表结构（<code>deleted</code> 软删 + uuid）已按最终形态做，
+        但<b>同步管线未接入</b>（那是订阅权益上线时的事）</li>
+    <li>⏳ 待真机确认两点：① 正文不画书签标记够不够 ② <code>excerpt</code> 的近似偏不偏</li>
+    <li>📌 <b>下一步</b>：书架上云（计划 §五 的第 3 项）</li>
+  </ul>
+</footer>
+
+</div>
+
+<div class="themebar">
+  <button data-t="ink" class="on">墨</button>
+  <button data-t="grid">格</button>
+  <button data-t="night">夜</button>
+</div>
+
+<script>
+document.querySelectorAll('.themebar button').forEach(function(b){
+  b.addEventListener('click', function(){
+    document.documentElement.setAttribute('data-theme', b.dataset.t);
+    document.querySelectorAll('.themebar button').forEach(function(x){ x.classList.remove('on'); });
+    b.classList.add('on');
+  });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="ink">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CoEvo · 划线记忆（v2 · 取代 AI 制卡）</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/literata@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5/500.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5/600.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5/400.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5/500.css">
+<style>
+/* ══════════════════════════════════════════════════════════════════════════
+   CoEvo · 划线记忆 —— 界面锚点（v2 · 2026-10-07）
+
+   🔴 v1 → v2 的变更（白哥 2026-10-07 定）
+   ┌────────────────┬──────────────────────────┬──────────────────────────┐
+   │                │ v1（已被取代）            │ v2（本稿）                │
+   ├────────────────┼──────────────────────────┼──────────────────────────┤
+   │ 内容从哪来      │ LLM 现场生成              │ **用户划的原文**          │
+   │ LLM 成本        │ ¥0.003 / 次               │ **0**                    │
+   │ 生成质量        │ 要管（闸门 / 合规）        │ **不存在这个问题**         │
+   │ 长度            │ ≤ 300 字符                │ **任意长度**              │
+   │ 免费额度        │ 必须（30 张/月）           │ 🔴 **不需要 → 免费无限**  │
+   │ 菜单项数        │ 4（翻译/制卡/划线/复制）   │ **3**（查词/翻译 · 划线 · 复制）  │
+   └────────────────┴──────────────────────────┴──────────────────────────┘
+
+   🔑 v1 里**仍然有效**的部分：卡片形状复用（见 §3）。
+   ⚠️ v1 的「挖空考核」在 v2 里**降级为可选项** —— 因为挑空原本靠 AI（§4）。
+
+   📄 上游：`docs/review/product-core-expansion-2026-10-07.md` §3.3
+   📄 同族：`visual-selection-menu-2026-10-07.html`（入口）·
+            `visual-word-card-target-2026-09-26.html`（词卡 · 复习交互的对齐基准）
+   ══════════════════════════════════════════════════════════════════════════ */
+:root{
+  --serif:'Literata',Georgia,serif;
+  --round:'Quicksand','Noto Sans SC',system-ui,sans-serif;
+  --cjk:'Noto Sans SC',system-ui,sans-serif;
+  --mono:ui-monospace,'SFMono-Regular',Consolas,monospace;
+}
+[data-theme="ink"]{
+  --page:#F1EDE4; --read:#FAF8F4; --card:#FFFFFF;
+  --ink:#24211C; --ink2:#6E6659; --ink3:#988F7C;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF;
+  --accent-out:rgba(180,67,44,.40);
+  --line:#EFE9DE; --sunken:#EDE6DA;
+  --cl-out:rgba(150,125,95,.24); --cl-shade:rgba(186,166,138,.55); --cl-light:rgba(255,255,255,1);
+  --cl-radius:26px; --cl-radius-md:14.3px;
+  --cl-sh-out:4px 5px 10px; --cl-sh-shade:-3px -3px 8px; --cl-sh-light:3px 3px 7px;
+  --read-lh:1.82; --sel:rgba(180,67,44,.22);
+}
+[data-theme="grid"]{
+  --page:#EDEEF0; --read:#FFFFFF; --card:#FFFFFF;
+  --ink:#0A0A0A; --ink2:#5A5A5A; --ink3:#8A8A8A;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF;
+  --accent-out:rgba(180,67,44,.40);
+  --line:#E8E8E8; --sunken:#F0F0F0;
+  --cl-out:rgba(110,115,125,.22); --cl-shade:rgba(158,158,158,.46); --cl-light:rgba(255,255,255,1);
+  --cl-radius:14px; --cl-radius-md:14px;
+  --cl-sh-out:4px 5px 10px; --cl-sh-shade:-3px -3px 8px; --cl-sh-light:3px 3px 7px;
+  --read-lh:1.74; --sel:rgba(180,67,44,.20);
+}
+[data-theme="night"]{
+  --page:#0B0D12; --read:#14161C; --card:#1C1F27;
+  --ink:#EDEBE6; --ink2:#9AA0AE; --ink3:#6E7484;
+  --accent:#DB7E6B; --accent-bright:#E89B8C; --accent-ink:#2A1405;
+  --accent-out:rgba(219,126,107,.40);
+  --line:#262A34; --sunken:#0B0D12;
+  --cl-out:rgba(0,0,0,.55); --cl-shade:rgba(0,0,0,.42); --cl-light:rgba(255,255,255,.062);
+  --cl-radius:24px; --cl-radius-md:13.2px;
+  --cl-sh-out:4px 5px 10px; --cl-sh-shade:-3px -3px 8px; --cl-sh-light:3px 3px 7px;
+  --read-lh:1.84; --sel:rgba(219,126,107,.30);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#DAD3C6;padding:0 0 80px;color:#29251F;font-family:var(--cjk);font-size:15px;line-height:1.75;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 28px}
+
+.top{padding:56px 0 10px}
+.eyebrow{font-family:var(--round);font-size:11.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#B4432C;margin-bottom:14px}
+.top h1{font-family:var(--round);font-size:35px;font-weight:600;letter-spacing:-.02em;line-height:1.24;color:#24211C;margin-bottom:18px}
+.lede{font-size:15.5px;line-height:1.85;color:#4A453C;max-width:850px}
+.lede strong{color:#24211C;font-weight:500}
+.lede code{font-family:var(--mono);font-size:12.5px;background:#CFC8BA;padding:1px 6px;border-radius:4px}
+
+.changes{display:grid;grid-template-columns:repeat(auto-fit,minmax(272px,1fr));gap:14px;margin:32px 0 0}
+.chg{background:#F7F4EC;border-radius:16px;padding:18px 20px;border-left:3px solid #B4432C}
+.chg.warn{border-left-color:#B8860B;background:#F6F1E0}
+.chg .tag{font-family:var(--round);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;display:inline-block;padding:3px 9px;border-radius:20px;margin-bottom:11px}
+.tag.keep{background:#E4E9E2;color:#3C5136}
+.tag.add{background:#F3E2DC;color:#8E3320}
+.tag.warn{background:#F0E8D2;color:#7A5B12}
+.chg h3{font-family:var(--round);font-size:15.5px;font-weight:600;margin-bottom:8px;color:#24211C}
+.chg p{font-size:13px;line-height:1.72;color:#5C5648}
+.chg code{font-family:var(--mono);font-size:11.5px;background:#E3DDD0;padding:1px 5px;border-radius:3px}
+
+.stage{display:flex;gap:26px;flex-wrap:wrap;margin:40px 0 0;align-items:flex-start}
+.phone{width:322px;flex-shrink:0}
+.ph-label{font-family:var(--round);font-size:13px;font-weight:600;color:#3A352D;margin-bottom:9px}
+.ph-label span{display:block;font-family:var(--cjk);font-size:12px;font-weight:400;color:#6E6659;margin-top:3px}
+.frame{width:322px;height:594px;border-radius:38px;background:var(--page);border:8px solid #2B2823;overflow:hidden;position:relative;display:flex;flex-direction:column;transition:background .28s}
+
+.rd-bar{display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px;gap:12px;flex-shrink:0}
+.rd-bar .back{font-size:19px;color:var(--ink3);line-height:1}
+.rd-bar .ttl{font-family:var(--round);font-size:12.5px;font-weight:600;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.rd-bar .bm{width:28px;height:28px;border-radius:9px;flex-shrink:0;background:var(--sunken);box-shadow:inset 2px 2px 5px var(--cl-shade),inset -2px -2px 5px var(--cl-light)}
+
+.rd{padding:4px 24px;flex:1;position:relative;overflow:hidden}
+.rd .body{font-family:var(--serif);font-size:16px;line-height:var(--read-lh);color:var(--ink)}
+.rd .body p+p{margin-top:14px}
+.sel{background:var(--sel);border-radius:3px;padding:1px 2px;margin:0 -2px}
+/* 🆕 划线：下划线（与「痕迹」的底色浸染**形状不同** —— 形状区分优于参数） */
+.hl{border-bottom:2px solid var(--accent-bright);padding-bottom:1px}
+[data-theme="night"] .hl{border-bottom-color:var(--accent-bright)}
+
+.menu{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;background:var(--card);border-radius:var(--cl-radius-md);padding:5px;box-shadow:var(--cl-sh-out) var(--cl-out),inset var(--cl-sh-shade) var(--cl-shade),inset var(--cl-sh-light) var(--cl-light);z-index:20}
+.mi{display:flex;align-items:center;gap:6px;padding:8px 13px;border-radius:9px;font-family:var(--cjk);font-size:12.5px;font-weight:500;color:var(--ink);white-space:nowrap}
+.mi svg{width:15px;height:15px;flex-shrink:0}
+.mi svg .ic{stroke:var(--accent-bright);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.mi.on{background:var(--accent);color:var(--accent-ink)}
+.mi.on svg .ic{stroke:var(--accent-ink)}
+.sep{width:1px;height:18px;background:var(--line);flex-shrink:0}
+
+.veil{position:absolute;inset:0;background:rgba(0,0,0,.12);z-index:25}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--card);border-radius:var(--cl-radius) var(--cl-radius) 0 0;padding:18px 22px 26px;box-shadow:0 -6px 22px rgba(60,50,35,.16);z-index:30}
+.sheet .src{font-family:var(--round);font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3);margin-bottom:12px}
+.sheet .lbl{font-family:var(--round);font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);margin:14px 0 6px}
+.sheet .quote{font-family:var(--serif);font-size:16px;line-height:1.62;color:var(--ink);padding-left:11px;border-left:2.5px solid var(--accent-bright)}
+.sheet .zh{font-size:14px;line-height:1.7;color:var(--ink2)}
+.sheet .hint{font-size:11.5px;color:var(--ink3);margin-top:7px;line-height:1.6}
+.acts{display:flex;gap:9px;margin-top:18px}
+.btn{flex:1;text-align:center;font-family:var(--cjk);font-size:13.5px;font-weight:500;padding:12px 0;border-radius:var(--cl-radius-md);cursor:pointer}
+.btn.pri{background:var(--accent);color:var(--accent-ink);box-shadow:var(--cl-sh-out) var(--accent-out),inset -2px -2px 6px rgba(0,0,0,.15),inset 2px 2px 6px rgba(255,255,255,.26)}
+.btn.sec{background:var(--sunken);color:var(--ink2);box-shadow:inset 2px 2px 5px var(--cl-shade),inset -2px -2px 5px var(--cl-light)}
+
+.toast{position:absolute;left:50%;transform:translateX(-50%);bottom:104px;background:var(--ink);color:var(--page);font-family:var(--cjk);font-size:12px;font-weight:500;padding:10px 18px;border-radius:14px;z-index:40;white-space:nowrap}
+
+/* 记忆列表 */
+.mlist{padding:6px 18px;flex:1;overflow:hidden}
+.mrow{background:var(--card);border-radius:var(--cl-radius-md);padding:13px 15px;margin-bottom:10px;box-shadow:var(--cl-sh-out) var(--cl-out),inset var(--cl-sh-shade) var(--cl-shade),inset var(--cl-sh-light) var(--cl-light)}
+.mrow .q{font-family:var(--serif);font-size:13.5px;line-height:1.6;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mrow .f{font-family:var(--round);font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--ink3);margin-top:8px;display:flex;justify-content:space-between}
+.mrow .f b{color:var(--accent);font-weight:600}
+
+/* 复习卡 */
+.rcard{background:var(--card);border-radius:var(--cl-radius);margin:14px 18px;padding:20px;box-shadow:var(--cl-sh-out) var(--cl-out),inset var(--cl-sh-shade) var(--cl-shade),inset var(--cl-sh-light) var(--cl-light)}
+.rcard .meta{font-family:var(--round);font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3);margin-bottom:13px;display:flex;justify-content:space-between}
+.rcard .prompt{font-family:var(--serif);font-size:17.5px;line-height:1.66;color:var(--ink)}
+.rcard .prompt.long{font-size:15.5px;line-height:1.72;max-height:270px;overflow:hidden}
+/* 默写骨架：弱化呈现（它是提示，不是答案） */
+.rcard .prompt.skel{color:var(--ink2);font-size:16.5px;line-height:1.92;letter-spacing:.01em}
+.rcard .prompt.skel.long{font-size:14.5px;line-height:1.88;max-height:250px;overflow:hidden}
+/* 🆕 笔记：凹陷底 = 「我自己写的」（与原文的引用样式刻意不同 —— 形状区分） */
+.note{background:var(--sunken);border-radius:10px;padding:11px 13px;font-family:var(--cjk);font-size:13.5px;line-height:1.72;color:var(--ink);box-shadow:inset 2px 2px 5px var(--cl-shade)}
+.note .who{font-family:var(--round);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);margin-bottom:5px}
+.note .ph{color:var(--ink3)}
+.note.add{background:transparent;border:1.5px dashed var(--line);border-radius:10px;text-align:center;font-size:12.5px;color:var(--ink3);box-shadow:none;padding:12px}
+.rate{display:flex;gap:9px;margin-top:20px}
+.rate .b{flex:1;text-align:center;font-family:var(--cjk);font-size:13.5px;font-weight:500;padding:13px 0;border-radius:var(--cl-radius-md);cursor:pointer}
+.rate .b.no{background:var(--sunken);color:var(--ink2);box-shadow:inset 2px 2px 5px var(--cl-shade),inset -2px -2px 5px var(--cl-light)}
+.rate .b.ok{background:var(--accent);color:var(--accent-ink);box-shadow:var(--cl-sh-out) var(--accent-out),inset -2px -2px 6px rgba(0,0,0,.15),inset 2px 2px 6px rgba(255,255,255,.26)}
+.rate .b small{display:block;font-family:var(--round);font-size:10px;font-weight:400;opacity:.7;margin-top:2px}
+
+.input{margin-top:18px;background:var(--sunken);border-radius:var(--cl-radius-md);padding:13px 15px;font-family:var(--serif);font-size:17px;color:var(--ink);box-shadow:inset 2px 2px 6px var(--cl-shade),inset -2px -2px 6px var(--cl-light);display:flex;align-items:center;justify-content:space-between}
+.input .caret{width:1.5px;height:20px;background:var(--accent);animation:blink 1s step-end infinite}
+@keyframes blink{50%{opacity:0}}
+.verdict{margin-top:14px;font-size:13.5px;font-weight:500;display:flex;align-items:center;gap:7px}
+.verdict.ok{color:#3C5136}
+.verdict .dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0}
+.blank{display:inline-block;min-width:92px;border-bottom:2.5px solid var(--accent-bright);margin:0 3px;vertical-align:-3px}
+.fill{color:var(--accent);font-weight:500}
+
+.pin{position:absolute;font-family:var(--round);font-size:10px;font-weight:600;background:#B4432C;color:#fff;padding:2px 7px;border-radius:20px;z-index:50;letter-spacing:.05em}
+.pin.g{background:#3C5136}
+.pin.y{background:#B8860B}
+
+/* ── 「我的」页 · 设置分组 ── */
+.glabel{font-family:var(--round);font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--ink3);text-transform:uppercase;padding:0 4px;margin:18px 0 9px}
+.setcard{background:var(--card);border-radius:var(--cl-radius-md);padding:16px 17px 14px;box-shadow:var(--cl-sh-out) var(--cl-out),inset var(--cl-sh-shade) var(--cl-shade),inset var(--cl-sh-light) var(--cl-light)}
+.setcard .st{font-family:var(--cjk);font-size:14.5px;font-weight:500;color:var(--ink)}
+.setcard .ss{font-family:var(--cjk);font-size:11.5px;color:var(--ink3);line-height:1.6;margin-top:4px}
+.setcard .scope{font-family:var(--cjk);font-size:11px;color:var(--ink3);background:var(--sunken);border-radius:8px;padding:5px 9px;margin-top:11px;line-height:1.55}
+
+/* 滑动条 */
+.slrow{display:flex;align-items:center;gap:12px;margin-top:15px}
+.track{flex:1;height:9px;border-radius:9px;background:var(--sunken);position:relative;box-shadow:inset 2px 2px 5px var(--cl-shade),inset -1px -1px 3px var(--cl-light)}
+.track .fill{position:absolute;left:0;top:0;bottom:0;border-radius:9px;background:var(--accent);box-shadow:1px 1px 4px var(--accent-out)}
+.knob{position:absolute;top:50%;width:26px;height:26px;border-radius:50%;background:var(--card);transform:translate(-50%,-50%);box-shadow:0 2px 6px rgba(60,50,35,.30),inset -1px -1px 3px var(--cl-shade),inset 1px 1px 3px var(--cl-light);border:2.5px solid var(--accent)}
+.rec{position:absolute;top:-20px;transform:translateX(-50%);font-family:var(--round);font-size:9px;font-weight:600;color:var(--accent);letter-spacing:.04em}
+.val{font-family:var(--round);font-size:16px;font-weight:600;color:var(--accent);min-width:44px;text-align:right}
+.ticks{display:flex;justify-content:space-between;margin-top:9px;font-family:var(--cjk);font-size:10px;color:var(--ink3)}
+.prev{margin-top:13px;background:var(--sunken);border-radius:10px;padding:10px 12px;font-family:var(--cjk);font-size:12.5px;color:var(--ink2);line-height:1.6}
+.prev b{color:var(--accent);font-weight:600}
+
+section{margin-top:62px}
+h2{font-family:var(--round);font-size:23px;font-weight:600;letter-spacing:-.01em;color:#24211C;margin-bottom:8px}
+h2 .n{display:inline-flex;width:26px;height:26px;border-radius:9px;background:#B4432C;color:#fff;font-size:13px;align-items:center;justify-content:center;margin-right:10px;vertical-align:2px}
+.sub{font-size:13.5px;color:#5C5648;margin-bottom:20px;max-width:880px}
+table{width:100%;border-collapse:collapse;background:#F7F4EC;border-radius:14px;overflow:hidden;font-size:13px}
+th{background:#EDE6DA;text-align:left;padding:11px 14px;font-family:var(--round);font-weight:600;font-size:12px;color:#3A352D}
+td{padding:11px 14px;border-top:1px solid #E4DDD0;vertical-align:top;line-height:1.7;color:#403B33}
+td code,th code{font-family:var(--mono);font-size:11.5px;background:#E3DDD0;padding:1px 5px;border-radius:3px}
+td b{color:#24211C;font-weight:500}
+.yes{color:#3C5136;font-weight:600}
+.no{color:#8E3320;font-weight:600}
+.half{color:#7A5B12;font-weight:600}
+.note-band{margin-top:22px;background:#F7F4EC;border-left:3px solid #B4432C;border-radius:0 12px 12px 0;padding:16px 20px;font-size:13px;line-height:1.78;color:#5C5648}
+.note-band.warn{border-left-color:#B8860B;background:#F6F1E0}
+.note-band b{color:#29251F;font-weight:500}
+.note-band code{font-family:var(--mono);font-size:11.5px;background:#E3DDD0;padding:1px 5px;border-radius:3px}
+.foot{margin-top:62px;padding-top:28px;border-top:1px solid #CFC8BA;font-size:13.5px;line-height:1.85;color:#5C5648}
+.foot b{color:#29251F;font-weight:500}
+.foot code{font-family:var(--mono);font-size:11.5px;background:#DCD6C9;padding:1px 5px;border-radius:3px}
+.foot h3{font-family:var(--round);font-size:15px;font-weight:600;color:#24211C;margin:20px 0 8px}
+.foot ul{margin:8px 0 0 20px}.foot li{margin-bottom:7px}
+
+.themebar{position:fixed;right:22px;bottom:22px;display:flex;gap:6px;background:#2B2823;padding:7px;border-radius:16px;box-shadow:0 8px 22px rgba(0,0,0,.28);z-index:99}
+.themebar button{font-family:var(--round);font-size:12px;font-weight:600;border:0;background:transparent;color:#B8B0A2;padding:7px 13px;border-radius:10px;cursor:pointer}
+.themebar button.on{background:#B4432C;color:#fff}
+
+/* ── §8 记忆列表 ── */
+.mrow.open{-webkit-line-clamp:unset;display:block;overflow:visible}
+.mrow .note{font-family:var(--cjk);font-size:11.5px;line-height:1.65;color:var(--ink2);margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.mrow .acts{display:flex;gap:15px;margin-top:11px}
+.mrow .acts span{font-family:var(--round);font-size:11px;font-weight:600;color:var(--accent)}
+.mrow .acts span.g{color:var(--ink3)}
+.tile{display:flex;align-items:center;gap:11px;background:var(--card);border-radius:var(--cl-radius-md);padding:13px 15px;margin-top:9px;box-shadow:var(--cl-sh-out) var(--cl-out),inset var(--cl-sh-shade) var(--cl-shade),inset var(--cl-sh-light) var(--cl-light)}
+.tile .i{width:22px;height:22px;border-radius:7px;background:var(--sunken);flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--ink3)}
+.tile .tx{flex:1}
+.tile .tx .a{font-family:var(--cjk);font-size:13.5px;font-weight:500;color:var(--ink)}
+.tile .tx .b{font-family:var(--cjk);font-size:11px;color:var(--ink3);margin-top:3px}
+.tile .cv{color:var(--ink3);font-size:15px;flex:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="eyebrow">CoEvo · 划线记忆 · v2</div>
+  <h1>划线，就是记住</h1>
+  <p class="lede">
+    v1 把「记别的东西」绑在了 LLM 上 —— 于是有了成本、额度、生成质量三个要管的东西。
+    这一步把它还原成<b>用户的一个动作</b>：<strong>划一段 → 进记忆队列</strong>。<br><br>
+    ⇒ <strong>不调模型、不管生成质量、不限长度</strong>，而且因为零成本，
+    <strong>它可以免费无限</strong>（不是额度制）。<br><br>
+    <strong>复习怎么考（2026-10-07 白哥定）：考默写 —— 和单词一样。</strong>
+    给<b>骨架</b>作提示 → 写出原文 → 判定 → 两档。
+    🔑 <b>交互与判定与单词卡同构</b>，只是判定要多一层「句子级归一化」（长句不该因为一个标点全错，见 §4）。
+  </p>
+
+  <div class="changes">
+    <div class="chg">
+      <span class="tag keep">消失的东西</span>
+      <h3>成本 · 额度 · 质量闸门</h3>
+      <p>没有 LLM 调用 ⇒ 不需要 ¥0.003/次 的额度、不需要合规与格式闸门、不需要"生成失败重试"。
+         <strong>免费层可以给到无限</strong>。</p>
+    </div>
+    <div class="chg">
+      <span class="tag keep">简化</span>
+      <h3>菜单从 4 项回到 3 项</h3>
+      <p>「制卡」与「划线」<strong>合并成一个动作</strong>（划线即入队）⇒
+         翻译 · <code>划线</code> · 复制。胶囊宽度回到宽松区间。</p>
+    </div>
+    <div class="chg">
+      <span class="tag add">新增</span>
+      <h3>任意长度</h3>
+      <p>v1 限 300 字符（因为 LLM 成本与长度成正比）。v2 <strong>不限</strong>——
+         一段、一页都可以。复习时按长度自适应排版。</p>
+    </div>
+    <div class="chg">
+      <span class="tag add">⭐ 已定</span>
+      <h3>复习 = 默写（和单词一样）</h3>
+      <p>白哥原话：「<strong>复习的时候考默写，和单词一样</strong>」⇒
+         给<b>首字母骨架</b>作提示 → 写出原文 → 判定 → <code>good</code>/<code>again</code>。
+         🔑 这是<b>收口</b>而不是发明：把单词卡的考核<b>原样搬到句子上</b>。</p>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════ 1 动作 ══════════ -->
+<h2 style="margin-top:56px"><span class="n">1</span>动作：划线 → 入队（<b>一步</b>）</h2>
+<p class="sub">
+  与 v1 的"生成 → 预览 → 确认"三步不同，v2 只剩一步：
+  <b>划完点一下，内容就已经在队列里了</b>。因为内容就是用户自己选的原文，没有"要不要留"的疑问。
+</p>
+
+<div class="stage">
+
+  <div class="phone">
+    <div class="ph-label">① 划线 —— 菜单第 2 项
+      <span>与「翻译 / 复制」同一处入口</span></div>
+    <div class="frame" style="background:var(--read)">
+      <div class="rd-bar"><div class="back">‹</div><div class="ttl">Why We Read Slowly</div><div class="bm"></div></div>
+      <div class="rd">
+        <div class="body">
+          <p>The habit of reading closely is being replaced by something faster,
+             and the cost is paid in <span class="sel">attention. None of this is new, but the scale is.</span></p>
+        </div>
+        <div class="menu" style="top:158px">
+          <div class="mi"><svg viewBox="0 0 24 24"><path class="ic" d="M3 6h11M3 12h7M3 18h5"/><path class="ic" d="M16 10l4 4-4 4"/><path class="ic" d="M20 14h-6"/></svg>翻译</div>
+          <div class="sep"></div>
+          <div class="mi on"><svg viewBox="0 0 24 24"><path class="ic" d="M4 20l3.5-.8L18.6 8.1a2 2 0 000-2.8l-.9-.9a2 2 0 00-2.8 0L3.8 15.5 3 19z"/><path class="ic" d="M14 5.5l4.5 4.5"/></svg>划线</div>
+          <div class="sep"></div>
+          <div class="mi"><svg viewBox="0 0 24 24"><rect class="ic" x="9" y="9" width="11" height="11" rx="2.5"/><path class="ic" d="M5 15V6.5A1.5 1.5 0 016.5 5H15"/></svg>复制</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="ph-label">② 划完当场可见
+      <span>下划线留下 · 一句 toast · 没有第二次确认</span></div>
+    <div class="frame" style="background:var(--read)">
+      <div class="rd-bar"><div class="back">‹</div><div class="ttl">Why We Read Slowly</div><div class="bm"></div></div>
+      <div class="rd">
+        <div class="body">
+          <p>The habit of reading closely is being replaced by something faster,
+             and the cost is paid in <span class="hl" style="background:var(--sel)">attention. None of this is new, but the scale is.</span></p>
+          <p>None of this is new, but the <span class="hl" style="background:var(--sel)">scale</span> is.</p>
+        </div>
+      </div>
+      <div class="toast">已加入记忆 · <b style="color:var(--accent-bright)">写笔记</b></div>
+      <span class="pin g" style="top:9px;left:9px">已入队</span>
+      <span class="pin y" style="top:38px;left:9px">不带笔记 = 零额外点击</span>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="ph-label">③ 记忆列表
+      <span>划过的都在这里 —— 可回原文、可删除</span></div>
+    <div class="frame">
+      <div class="rd-bar" style="padding-bottom:6px">
+        <div class="back">‹</div><div class="ttl" style="font-family:var(--round);font-size:17px;color:var(--ink);font-weight:600">记忆</div>
+        <div class="bm"></div>
+      </div>
+      <div class="mlist">
+        <div class="mrow">
+          <div class="q">attention. None of this is new, but the scale is.</div>
+          <div class="f"><span>Why We Read Slowly</span><b>今天</b></div>
+        </div>
+        <div class="mrow">
+          <div class="q">The habit of reading closely is being replaced by something faster…</div>
+          <div class="f"><span>Why We Read Slowly</span><b>今天</b></div>
+        </div>
+        <div class="mrow">
+          <div class="q">scale</div>
+          <div class="f"><span>Why We Read Slowly</span><b>昨天</b></div>
+        </div>
+        <div class="mrow">
+          <div class="q">It was the best of times, it was the worst of times.</div>
+          <div class="f"><span>《A Tale of Two Cities》· 第 1 章</span><b>10-05</b></div>
+        </div>
+      </div>
+      <span class="pin" style="top:9px;left:9px">③ 列表</span>
+    </div>
+  </div>
+
+</div>
+
+<div class="note-band">
+  🔑 <b>「划线」是自动入队，那"只想标一下不想记"怎么办？</b><br>
+  v2 的取舍是：<b>不区分</b> —— 划线本身就是"这段我要留着"的表达，让它也进复习队列，
+  语义是一致的（划线 = 我的选择）。<br>
+  ⚠️ 若你希望分开（划线 ≠ 入队），那菜单就要回到 4 项、且要两个视觉（"标记" vs "已入队"）。
+  📌 这属于 §4 同一个决策的一部分。
+</div>
+
+<!-- ══════════ 2 复习（核心） ══════════ -->
+<h2 style="margin-top:62px"><span class="n">2</span>复习 = 默写（<b>与单词卡同一套</b>）</h2>
+<p class="sub">
+  白哥定：「<b>复习的时候考默写，和单词一样</b>」⇒
+  不是发明一种新考核，而是把单词卡的<b>动作</b>原样搬到句子上：
+  <b>看到提示 → 写出内容 → 判定 → 两档</b>。<br>
+  唯一的差别是<b>提示的形式</b>：单词卡给的是释义（中文），划线卡给的是<b>首字母骨架</b> ——
+  因为划线内容没有"释义"可用，而骨架是<b>纯算法、零成本、任意长度都能生成</b>的。
+</p>
+
+<div class="stage">
+
+  <div class="phone">
+    <div class="ph-label">① 默写中 · 给骨架
+      <span>每个词只留首字母，其余用下划线占位</span></div>
+    <div class="frame">
+      <div class="rd-bar"><div class="back">‹</div><div class="ttl" style="font-family:var(--round)">复习 · 7 / 23</div><div class="bm"></div></div>
+      <div class="rcard">
+        <div class="meta"><span>划线 · Why We Read Slowly</span><span>1 / 4</span></div>
+        <div class="prompt skel">
+          a________. N___ of t___ is n___, b__ the s____ is.
+        </div>
+        <div class="input"><span style="color:var(--ink2)">凭记忆写出来</span><span class="caret"></span></div>
+        <div class="rate"><div class="b ok">提交</div></div>
+      </div>
+      <span class="pin" style="top:9px;left:9px">默写</span>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="ph-label">② 判定后 · 逐词比对
+      <span>结果页把原文完整给回来 —— 它本身就是一次学习</span></div>
+    <div class="frame">
+      <div class="rd-bar"><div class="back">‹</div><div class="ttl" style="font-family:var(--round)">复习 · 7 / 23</div><div class="bm"></div></div>
+      <div class="rcard">
+        <div class="meta"><span>划线 · Why We Read Slowly</span><span>1 / 4</span></div>
+        <div class="prompt">
+          attention. None of this is new, but the <span class="fill">scall</span> is.
+        </div>
+        <div class="verdict ok"><span class="dot"></span>判为记得 · 下次复习：21 天</div>
+        <div class="lbl" style="font-family:var(--round);font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);margin:16px 0 6px">原文</div>
+        <div class="zh" style="font-size:14px">attention. None of this is new, but the <b style="color:var(--accent)">scale</b> is.</div>
+      </div>
+      <span class="pin g" style="top:9px;left:9px">结果</span>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="ph-label">③ 长内容同理
+      <span>骨架天然适应任意长度，差异只在"要回忆多少"</span></div>
+    <div class="frame">
+      <div class="rd-bar"><div class="back">‹</div><div class="ttl" style="font-family:var(--round)">复习 · 8 / 23</div><div class="bm"></div></div>
+      <div class="rcard">
+        <div class="meta"><span>划线 · A Tale of Two Cities · 第 1 章</span><span>2 / 4</span></div>
+        <div class="prompt skel long">
+          I_ w__ the b___ of t___, it w__ the w____ of t___, it w__ the a__ of w____,
+          it w__ the a__ of f__________, it w__ the e____ of b_____…
+        </div>
+        <div class="input" style="font-family:var(--cjk);font-size:13px;color:var(--ink3);align-items:flex-start;line-height:1.6">
+          <span>凭记忆写出来（写不全是正常的，判定按错词比例）…</span>
+        </div>
+      </div>
+      <span class="pin" style="top:9px;left:9px">长</span>
+    </div>
+  </div>
+
+</div>
+
+<div class="note-band">
+  🔑 <b>为什么「骨架」是对的形式</b>：<br>
+  ① <b>零成本</b> —— 纯字符串处理（每个词留首字母），不调模型；<br>
+  ② <b>任意长度都能生成</b> —— 一个词和一段话走的是同一条规则；<br>
+  ③ <b>难度是一个参数</b> —— 「揭示多少」可调（只留首字母 / 留前两个字母 / 完全不给），
+     不需要改结构；<br>
+  ④ <b>它逼出真实回忆</b> —— 骨架足够触发，又不足以照抄。这正是"默写"与"重读"的分界。
+</div>
+
+<div class="note-band warn">
+  🔴 <b>与词卡复习的关系要说清</b>：单词卡继续用<b>拼写考核</b>（显示释义 → 拼写单词），
+  <b>不受本稿影响</b>。两者的<b>结果页共用同一个形态</b>（判定 → 「下次复习：X」），
+  所以复习页仍然是<b>一套</b> —— 差别只在<b>提示形式</b>与<b>判定容差</b>（见 §4）。
+</div>
+
+<!-- ══════════ 3 数据规格 ══════════ -->
+<h2 style="margin-top:62px"><span class="n">3</span>数据规格</h2>
+<table>
+  <tr><th style="width:22%">项</th><th>决定</th></tr>
+  <tr><td><b>存什么</b></td><td><b>用户划的原文</b> + 定位信息 + 来源。不存任何生成内容</td></tr>
+  <tr><td><b>来源两类</b></td><td><code>article</code>（信息流 · int id + 字符 offset）·
+      <code>book</code>（书架 · uuid + 章 idx + 字符 offset）<br>
+      ⇒ 用<b>一张表 + <code>source_type</code></b>，而不是两张表（一处定义）</td></tr>
+  <tr><td><b>长度</b></td><td><b>不限</b>。渲染按长度自适应（≤2 行用 17.5px；更多降到 15.5px 并可滚）</td></tr>
+  <tr><td><b>卡片形状</b></td><td>🔑 <b>不进 <code>word.db</code> 的卡片形状</b> —— 划线卡没有 sections/ipa，
+      硬套那套形状要造一堆空字段。⇒ 复习取卡加<b>一级来源分支</b>（现有已是"词库 → ext: 缓存"两级）</td></tr>
+  <tr><td><b>🆕 笔记</b></td><td>同一条记录上的 <code>note</code> 字段（<b>不是新表</b> —— 见 §7）·
+      🔴 <b>默写判定前不显示</b>（可能含答案）· 不参与判定</td></tr>
+  <tr><td><b>FSRS 的 id</b></td><td><code>hl:&lt;highlight_id&gt;</code> —— 与 <code>ext:&lt;拼写&gt;</code> <b>同一套合成 id 机制</b>
+      （FSRS 只认字符串，不需要新机制）</td></tr>
+  <tr><td><b>评估信号</b></td><td><b>默写对错</b>（与单词卡同一套）：错词比例 ≤ <b>5%</b> → <code>good</code>；否则 → <code>again</code>
+      ⇒ <code>ratingForSpelling()</code> <b>直接复用</b>（§4.②）</td></tr>
+  <tr><td><b>同步</b></td><td>与书架同批（学习资产）。<b>软删</b>（并集同步下硬删会复活 —— `bookmark` 已踩过）</td></tr>
+</table>
+
+<!-- ══════════ 4 待定 ══════════ -->
+<h2 style="margin-top:62px"><span class="n">4</span>默写规格（怎么做到"和单词一样"，又不至于全错）</h2>
+<p class="sub">
+  「和单词一样」指的是<b>动作</b>：写出内容 → 判定 → 两档。
+  但<b>判定口径不能一模一样</b> —— 单词是 1 个 token，句子是 20 个；
+  一个逗号打错就判「忘了」，会把复习队列<b>卡死</b>（永远 again）。⇒ 三件事要定。
+</p>
+
+<h3 style="font-family:var(--round);font-size:15.5px;font-weight:600;color:#24211C;margin:6px 0 10px">① 归一化：句子比单词宽一层</h3>
+<table>
+  <tr><th style="width:30%">处理</th><th style="width:30%">单词卡（现有）</th><th>划线卡（本设计）</th></tr>
+  <tr><td>大小写 / 全角 / 首尾空白</td><td colspan="2" class="yes">✅ 都做 —— 复用 <code>normalizeSpelling</code> 的这一套</td></tr>
+  <tr><td><b>标点</b></td><td class="no">🔴 敏感（<code>a.m.</code> ≠ <code>am</code> 是有意的）</td>
+      <td class="yes">✅ <b>剔除</b>（比较时丢掉所有标点）—— 默写长句时标点差异<b>不代表没记住</b></td></tr>
+  <tr><td>词间空白</td><td>严格</td><td class="yes">✅ 压缩成单空格</td></tr>
+  <tr><td>比较单位</td><td>整串相等</td><td><b>逐词比较</b>（这样才有"错在哪"可标）</td></tr>
+</table>
+<div class="note-band">
+  📌 <b>为什么不能直接复用 <code>gradeSpelling</code></b>：它对<b>标点敏感</b>（那是为
+  <code>a.m.</code> / <code>dr.</code> 这类词条刻意保留的严格性）。
+  句子用它 ⇒ 少一个逗号就判错 ⇒ 体验灾难。
+  ⇒ <b>复用的是"这套归一化的思路"，不是那个函数</b>：新增一层
+  <code>normalizeSentence()</code>（丢掉标点 + 压空白 + 小写），放在<b>同一个文件</b>里
+  （判定的唯一落点，与 <code>spelling_grader.dart</code> 同族）。
+</div>
+
+<h3 style="font-family:var(--round);font-size:15.5px;font-weight:600;color:#24211C;margin:24px 0 10px">② 阈值：按<b>错词比例</b>判 —— 白哥定为 <b>5%</b></h3>
+<table>
+  <tr><th style="width:18%">错词比例</th><th style="width:26%">判定</th><th style="width:14%">FSRS</th><th>说明</th></tr>
+  <tr><td><b>0</b></td><td class="yes">完全正确</td><td><code>good</code></td><td>—</td></tr>
+  <tr><td><b>≤ 5%</b></td><td class="half">判为<b>记得</b>（结果页标出错的词）</td><td><code>good</code></td>
+      <td>白哥 2026-10-07 定 —— <b>很严</b>，短内容基本等同「逐词全对」</td></tr>
+  <tr><td><b>&gt; 5%</b></td><td class="no">判为忘记</td><td><code>again</code></td><td>—</td></tr>
+</table>
+
+<div class="note-band">
+  🔑 <b>5% 的实际含义</b>（按 <code>错词数 × 20 ≤ 总词数</code> 判定 —— 整数比较，避开浮点误差）：
+
+  <table style="margin-top:12px">
+    <tr><th style="width:44%">内容长度</th><th>最多允许错</th></tr>
+    <tr><td><b>≤ 19 词</b>（短语 / 短句）</td>
+        <td class="no"><b>0 个</b> —— 错 1 个即 &gt; 5% ⇒ <b>与单词卡的逐字严格完全同级</b></td></tr>
+    <tr><td><b>20 – 39 词</b></td><td class="half">1 个</td></tr>
+    <tr><td><b>40 – 59 词</b></td><td class="half">2 个</td></tr>
+    <tr><td><b>100 词</b>（长段）</td><td class="half">5 个</td></tr>
+  </table>
+  <br>⇒ 📌 <b>容错只对「长段」生效</b>，短语与短句和单词卡同一条线 —— 这正符合「和单词一样」。
+</div>
+
+<h3 style="font-family:var(--round);font-size:15.5px;font-weight:600;color:#24211C;margin:24px 0 10px">③ 想不起来怎么办（比"瞎写"诚实）</h3>
+<table>
+  <tr><th style="width:26%">出口</th><th>行为</th></tr>
+  <tr><td><b>「想不起来」按钮</b></td><td>直接判 <code>again</code> + <b>立刻显示原文</b>。
+      🔑 给一个诚实出口，比让用户对着骨架瞎敲更省时间、也更准确</td></tr>
+  <tr><td>提示揭示程度</td><td>骨架"揭示多少"是一个<b>参数</b>（只留首字母 / 留前两个字母 / 完全不给）。
+      第一期固定默认，<b>不开放设置项</b>（避免设置膨胀）</td></tr>
+</table>
+
+<div class="note-band">
+  ✅ <b>默认阈值：5%</b>（白哥 2026-10-07）· 🎛 <b>用户可调</b> —— 「我的 → 记忆」的滑动条，见 <b>§6</b>。<br>
+  实现上它是一个<b>用户设置值</b>（不是编译期常数），判定用<b>整数比较</b>
+  （<code>错词数 × 20 ≤ 总词数</code> —— 既避开浮点，也天然支持任意百分比）。
+</div>
+
+<!-- ══════════ 5 连带影响 ══════════ -->
+<h2 style="margin-top:62px"><span class="n">5</span>连带影响（这个方案改动的不止一个功能）</h2>
+<table>
+  <tr><th style="width:26%">受影响的</th><th>怎么变</th></tr>
+  <tr><td><b>订阅对照表</b></td>
+      <td>🔴 <b>「AI 制卡」这一行要从订阅里拿掉</b> —— 它现在免费且零成本。
+          ⇒ 订阅只剩：<b>整段翻译 · 学习记录云备份 · 书架云端备份</b>（3 行）</td></tr>
+  <tr><td><b>划词菜单</b></td>
+      <td>4 项 → <b>3 项</b>（翻译/查词 · 划线 · 复制）⇒ 退回宽松区间（≈ 225px）。<br>
+          🔑 <b>第一项文案由 <code>classifyPicked</code> 决定</b>：单词 ⇒「查词」· 多词 ⇒「翻译」
+          （都是 2 字 ⇒ 宽度不变形）。<br>
+          ✅ <b>2026-10-07 已实现</b>（菜单骨架 + 查词 + 复制）；
+          ⏳ <b>「划线」接入等本稿落地</b> —— 在菜单里加第 3 项即可。</td></tr>
+  <tr><td><b>通用制卡的成本模型</b></td>
+      <td>¥0.003/次 + 额度制 <b>整段作废</b> ⇒ <b>免费无限</b>（这才是"什么都能记"真正成立的前提）</td></tr>
+  <tr><td><b>整段翻译</b></td>
+      <td>✅ <b>不受影响，仍是订阅权益</b> —— 它每次都真调 LLM，是另一条线</td></tr>
+  <tr><td><b>书内标注</b></td>
+      <td>✅ <b>与本方案合并</b> —— 原来的"书签 / 划线"里的<b>划线就是本功能</b>，
+          书签（位置标记）另算，但同一张表 + 同一个 <code>source_type</code> 机制</td></tr>
+  <tr><td>🆕 <b>「我的」页</b></td>
+      <td>新增一个设置项（见 §6）—— 它把「5% 够不够严」这个问题<b>交给用户</b>，
+          而不是由我们猜死</td></tr>
+</table>
+
+<!-- ══════════ 6 用户可调 ══════════ -->
+<h2 style="margin-top:62px"><span class="n">6</span>🆕 可调：把关卡标准交给用户（「我的」页）</h2>
+<p class="sub">
+  5% 很严（≤19 词一个都不能错）。与其我们猜死，不如<b>把这一档做成可调的</b> ——
+  因为"多准算记住"本来就是<b>用户对自己要求</b>的差别，不是一个客观正确的数字。
+  <br>🔑 放置判据（<b>语义归属 × 常驻成本</b>）：它属<b>学习行为</b>的设置，且是<b>低频</b>项
+  ⇒ 归<b>设置页</b>、<b>新开一个「记忆」分组</b>（不是塞进「其他」——那样会被注销、关于之类的杂项埋掉）。
+</p>
+
+<div class="stage">
+
+  <div class="phone">
+    <div class="ph-label">① 「我的」页里的位置
+      <span>新分组「记忆」—— 与账号 / 内容偏好 / 订阅 平级</span></div>
+    <div class="frame">
+      <div class="rd-bar" style="padding-bottom:4px">
+        <div class="back">‹</div><div class="ttl" style="font-family:var(--round);font-size:17px;color:var(--ink);font-weight:600">我的</div><div class="bm"></div>
+      </div>
+      <div style="padding:0 20px;flex:1;overflow:hidden">
+        <div class="glabel">内容偏好</div>
+        <div class="setcard" style="padding:13px 16px">
+          <div class="st" style="font-size:13.5px;color:var(--ink2)">兴趣筛选</div>
+        </div>
+
+        <div class="glabel" style="margin-top:16px">记忆</div>
+        <div class="setcard">
+          <div class="st">默写过关准确率</div>
+          <div class="ss">默写达到这个准确率，才算「记住」</div>
+          <div class="slrow">
+            <div class="track">
+              <div class="fill" style="width:17%"></div>
+              <span class="rec" style="left:17%">推荐</span>
+              <div class="knob" style="left:17%"></div>
+            </div>
+            <div class="val">5%</div>
+          </div>
+          <div class="ticks"><span>0% 最严</span><span>5%</span><span>15%</span><span>30% 最宽</span></div>
+        </div>
+
+        <div class="glabel" style="margin-top:16px">其他</div>
+        <div class="setcard" style="padding:13px 16px">
+          <div class="st" style="font-size:13.5px;color:var(--ink2)">关于 · 注销账号</div>
+        </div>
+      </div>
+      <span class="pin" style="top:9px;left:9px">我的页</span>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="ph-label">② 拖动时 · <b>实时预览后果</b>
+      <span>🔑 不显示公式，显示「意味着什么」</span></div>
+    <div class="frame">
+      <div class="rd-bar" style="padding-bottom:4px">
+        <div class="back">‹</div><div class="ttl" style="font-family:var(--round);font-size:17px;color:var(--ink);font-weight:600">我的</div><div class="bm"></div>
+      </div>
+      <div style="padding:0 20px;flex:1;overflow:hidden">
+        <div class="glabel">记忆</div>
+        <div class="setcard">
+          <div class="st">默写过关准确率</div>
+          <div class="ss">默写达到这个准确率，才算「记住」</div>
+          <div class="slrow">
+            <div class="track">
+              <div class="fill" style="width:50%"></div>
+              <div class="knob" style="left:50%"></div>
+            </div>
+            <div class="val">15%</div>
+          </div>
+          <div class="ticks"><span>0% 最严</span><span>5%</span><span>15%</span><span>30% 最宽</span></div>
+          <div class="prev">当前标准：<b>20 个词的句子</b>最多错 <b>3 个</b>；<br>7 个词的短句最多错 <b>1 个</b></div>
+          <div class="scope">只影响<b>划线记忆</b>的默写 · 单词卡的拼写判定不受影响</div>
+        </div>
+      </div>
+      <span class="pin" style="top:9px;left:9px">拖动中</span>
+    </div>
+  </div>
+
+</div>
+
+<div class="note-band">
+  🔑 <b>三个设计要点</b>：<br>
+  ① <b>不显示百分比公式，显示「意味着什么」</b> —— 「20 个词的句子最多错 3 个」是人话，
+     「15%」不是。这沿用了复习卡那条已有先例（<b>数字来自实时计算，不是写死的文案</b>）。<br>
+  ② <b>推荐值有标记</b> —— 滑块上一个小「推荐」，用户拖远了能看到该回哪。
+  ③ <b>写清作用范围</b> —— 只说「影响划线记忆」，否则用户会以为它也让<b>单词拼写</b>变宽
+     （那绝不可以：<code>scale</code> 就是 <code>scale</code>，单词卡没有灰度）。
+</div>
+
+<div class="note-band warn">
+  🔴 <b>为什么这个设置</b>只能<b>管划线卡</b>：单词卡的答案是<b>唯一的</b>，
+  「多准算对」在它上面<b>没有意义</b>（拼错一个字母就是拼错了）。
+  划线卡的默写有「<b>精确 vs 大意</b>」的灰度 —— <b>只有这种地方才需要用户来定标准</b>。
+</div>
+
+<!-- ══════════ 7 笔记 ══════════ -->
+<h2 style="margin-top:62px"><span class="n">7</span>🆕 笔记：给它一句<b>自己的话</b></h2>
+<p class="sub">
+  划线说的是「这段我要记住」，但<b>为什么想记住</b>只有你自己知道 —— 笔记就是把那个理由留下来。
+  两个入口：<b>划线的时候</b>写，或者之后<b>在卡片里</b>写（复习时 / 记忆列表）。
+  <br>🔑 关键约束：<b>不能打断「划线即入队」</b> —— 默认仍然是一步入队，想写笔记的人再点一下。
+</p>
+
+<div class="stage">
+
+  <div class="phone">
+    <div class="ph-label">① 写笔记（从 toast 或卡片进入）
+      <span>半屏浮层 · 原文在上一眼能看见</span></div>
+    <div class="frame" style="background:var(--read)">
+      <div class="rd-bar"><div class="back">‹</div><div class="ttl">Why We Read Slowly</div><div class="bm"></div></div>
+      <div class="rd">
+        <div class="body"><p>The habit of reading closely is being replaced by something faster,
+          and the cost is paid in <span style="border-bottom:2px solid var(--accent-bright)">attention. None of this is new, but the scale is.</span></p></div>
+      </div>
+      <div class="veil"></div>
+      <div class="sheet">
+        <div class="src">笔记 · 挂在这段划线上</div>
+        <div class="quote">attention. None of this is new, but the scale is.</div>
+        <div class="lbl" style="font-family:var(--round);font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);margin:15px 0 6px">我的笔记</div>
+        <div class="note">
+          「not new, but the scale is」—— 转折点在 size，不在性质。写外面那篇稿子可以用这个句式。
+        </div>
+        <div class="acts">
+          <div class="btn sec">取消</div>
+          <div class="btn pri">保存</div>
+        </div>
+      </div>
+      <span class="pin" style="top:9px;left:9px">写笔记</span>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="ph-label">② 复习 · 判定<b>前</b> —— 笔记必须藏起来
+      <span>🔴 笔记里可能就写着答案</span></div>
+    <div class="frame">
+      <div class="rd-bar"><div class="back">‹</div><div class="ttl" style="font-family:var(--round)">复习 · 7 / 23</div><div class="bm"></div></div>
+      <div class="rcard">
+        <div class="meta"><span>划线 · Why We Read Slowly</span><span>1 / 4</span></div>
+        <div class="prompt skel">
+          a________. N___ of t___ is n___, b__ the s____ is.
+        </div>
+        <div class="input"><span style="color:var(--ink2)">凭记忆写出来</span><span class="caret"></span></div>
+        <div class="rate"><div class="b ok">提交</div></div>
+      </div>
+      <span class="pin y" style="top:9px;left:9px">笔记不可见</span>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="ph-label">③ 复习 · 判定<b>后</b> —— 笔记出现
+      <span>答完才给，而且能顺手改</span></div>
+    <div class="frame">
+      <div class="rd-bar"><div class="back">‹</div><div class="ttl" style="font-family:var(--round)">复习 · 7 / 23</div><div class="bm"></div></div>
+      <div class="rcard">
+        <div class="meta"><span>划线 · Why We Read Slowly</span><span>1 / 4</span></div>
+        <div class="prompt">
+          attention. None of this is new, but the <span class="fill">scall</span> is.
+        </div>
+        <div class="verdict ok"><span class="dot"></span>判为记得 · 下次复习：21 天</div>
+        <div class="lbl" style="font-family:var(--round);font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);margin:15px 0 6px">原文</div>
+        <div style="font-family:var(--serif);font-size:13.5px;line-height:1.6;color:var(--ink2)">attention. None of this is new, but the <b style="color:var(--accent)">scale</b> is.</div>
+        <div class="lbl" style="font-family:var(--round);font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);margin:15px 0 6px">我的笔记</div>
+        <div class="note">
+          「not new, but the scale is」—— 转折点在 size，不在性质。
+        </div>
+      </div>
+      <span class="pin g" style="top:9px;left:9px">笔记可见</span>
+    </div>
+  </div>
+
+</div>
+
+<div class="note-band warn">
+  🔴 <b>一条硬约束：默写判定之前，笔记不能显示。</b><br>
+  笔记是用户自己写的，很可能<b>就写着答案</b>（"这句意思是…"）⇒ 判定前露出来 = <b>泄题</b>。
+  📌 它与「原文」同一条规则：<b>判定后才给</b>（见 §2 场景②）。
+</div>
+
+<h3 style="font-family:var(--round);font-size:15.5px;font-weight:600;color:#24211C;margin:26px 0 10px">两个入口的分工</h3>
+<table>
+  <tr><th style="width:20%">入口</th><th style="width:30%">时机</th><th>为什么要有</th></tr>
+  <tr><td><b>划线时</b></td><td>划线后 toast 上的「<b>写笔记</b>」（存活 3–4 秒）</td>
+      <td>🔑 <b>手感最新鲜</b> —— 用户刚读到这段、刚决定"要记住"，此刻最有话想说。
+      ⚠️ 但它<b>不能是强制步骤</b>（那会把「一步入队」变成两步）</td></tr>
+  <tr><td><b>卡片里</b></td><td>复习结果页 · 记忆列表 · 卡片详情</td>
+      <td>🔑 <b>复习时反而是最想补笔记的时候</b> —— 默不出来 / 写错了，正好记下"我为什么没记住"。
+      这也让笔记成为<b>复习的一部分</b>，而不是前置动作</td></tr>
+</table>
+
+<h3 style="font-family:var(--round);font-size:15.5px;font-weight:600;color:#24211C;margin:26px 0 10px">与「私密笔记」的关系（要分清，否则会打架）</h3>
+<div class="note-band">
+  📌 2026-10-06 曾定「**私密笔记不做**」（白哥：「没有用」）。<b>那条决定不受影响</b> ——
+  两者是<b>不同的东西</b>：
+
+  <table style="margin-top:12px">
+    <tr><th style="width:34%"></th><th>曾被否掉的「私密笔记」</th><th>本稿的「笔记」</th></tr>
+    <tr><td><b>挂在哪</b></td><td>文章 / 书的<b>任意位置</b>（独立内容）</td>
+        <td class="yes"><b>挂在一条已有的划线上</b></td></tr>
+    <tr><td><b>要新建什么</b></td><td>一整套笔记体系（入口 / 列表 / 编辑 / 同步）</td>
+        <td class="yes"><b>只给划线表加一个 <code>note</code> 字段</b></td></tr>
+    <tr><td><b>它是谁的</b></td><td>用户的<b>另一份内容</b></td><td>划线的<b>附属说明</b></td></tr>
+  </table>
+  <br>⇒ 🔑 判据：**「不做 X」要连「X 挂在哪」一起记** ——
+  同一个词（"笔记"）在不同挂载点上，是**不同的功能**。
+</div>
+
+<h3 style="font-family:var(--round);font-size:15.5px;font-weight:600;color:#24211C;margin:26px 0 10px">规格</h3>
+<table>
+  <tr><th style="width:24%">项</th><th>决定</th></tr>
+  <tr><td><b>存哪</b></td><td>划线表的 <code>note</code> 字段（与划线<b>同一条记录</b>，不是新表）</td></tr>
+  <tr><td><b>长度</b></td><td>建议上限 <b>200 字</b>（超了提示，但不硬截断）</td></tr>
+  <tr><td><b>与默写判定</b></td><td>🔴 <b>笔记不参与判定</b>（它不改变正确答案），但<b>判定前不显示</b></td></tr>
+  <tr><td><b>视觉</b></td><td><b>凹陷底</b>（<code>sunken</code> + 内阴影）= 「这是我自己写的」——
+      与原文的<b>引用样式</b>（左侧朱砂竖线）刻意不同 ⇒ <b>形状区分</b></td></tr>
+  <tr><td><b>同步</b></td><td>✅ 随划线一起（学习资产 · 软删）</td></tr>
+  <tr><td><b>可选性</b></td><td>✋ <b>完全可选</b> —— 没有笔记的划线一切照常（列表不显示空位）</td></tr>
+</table>
+
+<!-- ══════════ 8 记忆列表 ══════════ -->
+<h2 style="margin-top:62px"><span class="n">8</span>记忆列表（<b>划过的都在这里</b>）<span style="font-family:var(--round);font-size:11px;font-weight:600;color:var(--accent);letter-spacing:.06em;margin-left:8px">✅ 已实现</span></h2>
+<p class="sub">
+  划线的<b>出口</b>：看得见自己划过什么、能回原文、能改笔记、能删掉。<br>
+  §7 说笔记有两个入口 —— 「划线时」与「卡片里」，本页就是<b>第二个入口的落点</b>
+  （复习页只有当前那一张卡，回不到「我上周划了什么」）。<br><br>
+  🔑 <b>入口在「我的 → 记忆」分组</b>，与「默写准确率」同组 ——
+  两者都属「记忆」这件事（一个调标准，一个看结果）。<br>
+  🔑 路由形态的依据同 <code>/achievements</code>：
+  <b>它是「我的」页的二级信息页，不是某个 tab 的内容</b>
+  ⇒ <b>顶层路由 <code>/highlights</code></b>，不带 tabbar。
+  ⚠️ 它跨<b>两种来源</b>（文章 + 书）⇒ 也不适合挂在某一个 tab 下。
+</p>
+
+<div class="stage">
+
+  <div class="phone">
+    <div class="ph-label">① 入口 —— 「我的」页「记忆」分组
+      <span>与「默写准确率」同组</span></div>
+    <div class="frame">
+      <div class="rd-bar" style="padding-bottom:4px">
+        <div class="back">‹</div><div class="ttl" style="font-family:var(--round);font-size:17px;color:var(--ink);font-weight:600">我的</div><div class="bm"></div>
+      </div>
+      <div style="padding:2px 18px;position:relative">
+        <div class="glabel">记忆</div>
+        <div class="setcard">
+          <div class="st">默写准确率</div>
+          <div class="ss">只影响划线记忆的默写 · 单词卡的拼写判定不受影响</div>
+        </div>
+        <div class="tile">
+          <div class="i">✎</div>
+          <div class="tx">
+            <div class="a">我的划线</div>
+            <div class="b">看划过什么 · 回原文 · 改笔记</div>
+          </div>
+          <div class="cv">›</div>
+        </div>
+        <span class="pin y" style="top:34px;right:14px">🆕 新增这一行</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="ph-label">② 列表（展开一条）
+      <span>点一项展开：全文 + 笔记 + 三个动作</span></div>
+    <div class="frame">
+      <div class="rd-bar" style="padding-bottom:6px">
+        <div class="back">‹</div><div class="ttl" style="font-family:var(--round);font-size:17px;color:var(--ink);font-weight:600">我的划线</div><div class="bm"></div>
+      </div>
+      <div class="mlist">
+        <div class="mrow">
+          <div class="q">attention. None of this is new, but the scale is.</div>
+          <div class="f"><span>Why We Read Slowly</span><b>今天</b></div>
+        </div>
+        <div class="mrow open">
+          <div class="q">The habit of reading closely is being replaced by something faster, and we are supposed to call that progress.</div>
+          <div class="f"><span>Why We Read Slowly</span><b>今天</b></div>
+          <div class="note">✎ 这句是全篇的论点 —— 作者在说「快」并不等于「进步」。</div>
+          <div class="acts"><span>打开原文</span><span class="g">改笔记</span><span class="g">删除</span></div>
+        </div>
+        <div class="mrow">
+          <div class="q">It was the best of times, it was the worst of times.</div>
+          <div class="f"><span>《A Tale of Two Cities》· 第 1 章</span><b>10-05</b></div>
+        </div>
+      </div>
+      <span class="pin g" style="top:9px;left:9px">展开态</span>
+    </div>
+  </div>
+
+</div>
+
+<h3 style="font-family:var(--round);font-size:15px;font-weight:600;color:var(--ink);margin:30px 0 10px">交互</h3>
+<table>
+  <tr><th style="width:22%">动作</th><th style="width:30%">行为</th><th>理由</th></tr>
+  <tr><td><b>点一项</b></td><td><b>展开 / 收起</b>（不跳页）</td>
+      <td>🔑 列表里最常做的是「看看这段写了什么」—— 跳页再返回太重。
+          展开态给全文 + 笔记 + 动作，<b>一次点击解决大多数事</b></td></tr>
+  <tr><td><b>打开原文</b></td><td>文章 → <code>/article/:id</code> · 书 → <code>/books/:id</code></td>
+      <td>⚠️ <b>只跳到「那篇 / 那本」，不精确定位到划线处</b>（见「边界」第 1 条）</td></tr>
+  <tr><td><b>改笔记</b></td><td>复用 §7 的笔记弹窗（同一份实现）</td>
+      <td>🔑 判据：一处定义 —— 三个入口（划线时 / 复习页 / 这里）共用同一个弹窗</td></tr>
+  <tr><td><b>删除</b></td><td><b>软删</b>（<code>deleted = 1</code>）+ 二次确认？</td>
+      <td>🔴 见下「一个我替你定了的」</td></tr>
+  <tr><td><b>排序</b></td><td><b>按时间倒序</b>（最近划的在最上面）</td>
+      <td>与「收藏清单」同一条：<b>「我刚划了什么」是第一问题</b>。
+          ⚠️ 不按来源分组（划线天然混杂文章与书）</td></tr>
+  <tr><td><b>筛选</b></td><td>❌ <b>第一版不做</b></td>
+      <td>🔑 依据是本项目那条：「<b>低频项不做常驻控件</b>」——
+          划线量级小时筛选是负担；等真机数据显示「太多找不到」再加</td></tr>
+</table>
+
+<h3 style="font-family:var(--round);font-size:15px;font-weight:600;color:var(--ink);margin:26px 0 10px">边界（四条）</h3>
+<table>
+  <tr><th style="width:26%">情形</th><th>处理</th></tr>
+  <tr><td>🔴 <b>原文已不可用</b></td>
+      <td>两种情况：① 文章被下架 / 换源 ② 书被用户删了。
+          ⇒ 点「打开原文」时<b>给准确的话</b>（「这篇已不在信息流里」），
+          <b>不是</b>空白页、也<b>不是</b>沉默。
+          🔑 判据：清单里的条目<b>不因来源消失而消失</b> —— 那条划线的内容还在库里，
+          用户写过的笔记也在（这正是「存全文而不只存 offset」的收益）</td></tr>
+  <tr><td>无笔记</td><td>展开后<b>不显示笔记区</b>（不显示「暂无笔记」的空占位）</td></tr>
+  <tr><td>空列表</td><td>用<b>引导文案</b>（同收藏清单的空态取向：「教会用户划线在哪」），
+      不是「暂无数据」</td></tr>
+  <tr><td>🔴 库打不开</td><td><b>不把外部依赖当渲染前置条件</b> ——
+      给一条准确的提示（同收藏清单的 <code>_Unavailable</code>），而不是让页面崩</td></tr>
+</table>
+
+<div class="note-band warn">
+  🔴 <b>一个我替你定了的（可推翻）：删除<b>不加</b>二次确认。</b><br>
+  理由：① 删除是<b>软删</b>，数据还在库里；② 划线是<b>低成本动作</b>（再划一次很容易），
+  加确认会让「清理 20 条」变成 20 次确认；③ 项目已有反例 —— 「播放/暂停」类高频动作不加确认。<br>
+  ⚠️ 但 <b>「删除」用弱化色（<code>ink3</code>）而不是朱砂</b> —— 不引导用户去点它。
+  若你要「不可逆的动作必须确认」，改成确认弹窗是<b>一处改动</b>（不影响结构）。
+</div>
+
+<div class="note-band">
+  🔑 <b>「打开原文不精确定位」这条，如实说清</b>：<br>
+  · <b>文章</b>：<code>startOffset</code> 落在 <b>Markdown 源</b>空间，而渲染是<b>分块</b>的
+    ⇒ 想「滚到那一句」要建立「源偏移 → 块索引」的映射（新的工作量）<br>
+  · <b>书</b>：还要先切到<b>正确的那一章</b>（<code>chapter_idx</code> 有，路由没有这个参数）<br>
+  ⇒ 第一版只跳到「那篇 / 那本」，<b>把"滚到划线处"留作后续</b>。
+  📌 判据：<b>先给「到得了」，再给「到得准」</b> —— 后者要动渲染管线，是独立一件事。
+</div>
+
+<footer class="foot">
+  <h3>✅ 实现落点（2026-10-07 · 全链已打通）</h3>
+  <table>
+    <tr><th style="width:38%">文件</th><th>内容</th></tr>
+    <tr><td><b>🆕 <code>services/highlight_grader.dart</code></b></td>
+        <td><b>默写判定核心</b>（纯 Dart · 零 import）：<code>skeletonFor</code>（首字母骨架）·
+            <code>normalizeSentence</code>（剔句读标点 · 折叠打字机变体）·
+            <code>gradeCloze</code>（<b>词级对齐 + 整数比例判定</b>）。</td></tr>
+    <tr><td><b>🆕 <code>services/highlight_id.dart</code></b></td>
+        <td><code>hl:&lt;uuid&gt;</code> 合成 id —— 🔴 用 <b>uuid 而非本地自增</b>：
+            自增会在多设备同步时互相覆盖，而 <code>word_id</code> 已抄进
+            <code>card_review_state</code> / <code>review_log</code> 两份用户数据 ⇒ 改形态要迁移用户数据。</td></tr>
+    <tr><td><b>🆕 <code>assets/sql/user_db_schema.sql</code> v1.7</b></td>
+        <td><code>highlight</code> 表（4 个索引）—— 🔴 <b>存全文而不只存 offset</b>：
+            offset 依赖「同一份正文」，而正文会被重新抓取 ⇒ 只存 offset 会让划线<b>指到别处</b>。</td></tr>
+    <tr><td><b>🆕 <code>services/highlight_repository.dart</code></b></td>
+        <td>仓储（新增 / 按来源取 / 笔记 / 软删 / 待同步）。🔑 <b>它不碰 FSRS</b> ——
+            入队是调用方的<b>组合动作</b>（另写一行 <code>card_review_state</code>），
+            因为两张表的失败语义不同。</td></tr>
+    <tr><td><b>🆕 <code>services/highlight_span.dart</code></b></td>
+        <td><b>定位 + 切分</b>：<code>locateSelection</code>（选中文本 → 正文字符区间）·
+            <code>buildTextSegments</code>（正文 → 普通段/划线段的交替序列）。
+            🔴 后者只有一条硬不变量：<b>拼回去必须逐字等于原文</b>（掉字 ⇒ 用户划过的内容
+            在正文里看不见，而库里明明有它）。</td></tr>
+    <tr><td><b>🆕 <code>services/highlight_enqueue.dart</code></b></td>
+        <td><b>入队组合动作</b>（写两张表）。按 ①内容 →②排期 顺序，<b>① 失败即终止</b> ——
+            两张表失败语义不同：① 失败＝用户白划了，② 失败＝划线还在、只是暂不复习。</td></tr>
+    <tr><td><b>🆕 <code>services/memory_settings.dart</code></b></td>
+        <td><b>阈值规则层</b>（纯 Dart）：区间 / 钳制 / <code>maxWrongWordsFor</code>（「20 个词最多错几个」）。
+            🔑 它是把判定层那条不等式<b>解出来给用户看</b>，不是重新定义它 ——
+            断言脚本<b>逐点交叉核对</b>两者。</td></tr>
+    <tr><td><b>🆕 <code>providers/highlight_provider.dart</code></b></td>
+        <td>按来源取划线（正文渲染 / 清单的数据源）。<b>读端自己 <code>watch</code> 修订号</b>
+            ⇒ 划线 / 改笔记后正文自动重画（反转依赖：写端只 <code>bump()</code> 一次）。
+            ⚠️ 失败 ⇒ <b>空列表</b>（正文照常渲染，只是没下划线）——
+            不把易失败的外部依赖放在内容渲染的前置条件上。</td></tr>
+    <tr><td><b>🆕 <code>providers/memory_settings_provider.dart</code></b></td>
+        <td>记忆设置状态（SharedPreferences）。🔑 读回时<b>必须钳一次</b> ——
+            存储值可能是历史脏值，阈值 0 ⇒ 复习队列卡死且<b>不报错</b>。</td></tr>
+    <tr><td><b>🆕 <code>widgets/note_dialog.dart</code></b></td>
+        <td>笔记弹窗（两个入口共用）。🔴 结果用 <code>NoteDialogResult</code> 而不是 <code>String?</code>
+            —— 后者分不出「取消」与「删掉笔记」，而前者不该写库、后者必须写。</td></tr>
+    <tr><td><b>✏️ <code>widgets/word_lookup_selection.dart</code></b></td>
+        <td>菜单第 2 项「<b>划线</b>」→ 入队；toast 带「<b>写笔记</b>」（4 秒）。
+            🔴 自己拼 <code>Row</code> 而不用 <code>SnackBarAction</code>：墨档深底、夜档浅底，
+            任何朱砂色在其中一档都低对比 ⇒ 用正文同色 + <b>下划线</b>表达可点（形态区分优于参数）。</td></tr>
+    <tr><td><b>✏️ <code>screens/review_session_screen.dart</code></b></td>
+        <td>划线卡三态：<b>骨架（考核）/ 原文 + 笔记（结果、浏览）</b>；
+            🔴 <b>笔记在判定前一律不渲染</b>（含「写笔记」入口 —— 它会提示「这里该记点什么」）。
+            提交时按<b>用户设置</b>的阈值判。</td></tr>
+    <tr><td><b>✏️ <code>screens/book_reader_screen.dart</code></b></td>
+        <td>正文 <code>Text</code> → <code>Text.rich</code>：划过的部分画<b>下划线</b>。
+            🔑 与<b>痕迹</b>（底色）区分形状 —— 痕迹＝系统记的（面），划线＝<b>我</b>划的（线）。</td></tr>
+    <tr><td><code>scripts/query_verify/bin/<br>verify_highlight_grader.dart</code></td>
+        <td><b>129 项</b> · 已进 CI</td></tr>
+    <tr><td><code>scripts/query_verify/bin/<br>verify_highlight_repo.dart</code></td>
+        <td><b>48 项</b>（真库）· 已进 CI</td></tr>
+    <tr><td><code>scripts/query_verify/bin/<br>verify_memory_settings.dart</code></td>
+        <td><b>51 项</b> · 已进 CI（含<b>与判定层逐点交叉核对</b>）</td></tr>
+    <tr><td><b>✏️ <code>services/trace_markdown_source.dart</code></b></td>
+        <td><b>🆕 划线标记注入</b>（信息流页路径）：<code>kHighlightOpen = \u0003</code> ·
+            <code>injectHighlightMarkers</code>（<b>按 offset</b>，与痕迹的按词匹配相对）·
+            <code>_noMarkRanges</code>（禁插区 = 代码块/行内代码/URL + <b>行内语法定界符</b>）·
+            <code>_subtract</code>（区间差集 ⇒ 跨语法时<b>断开</b>而不是整条丢弃）。
+            🔑 痕迹注入同步改了 ④ 分支与 <code>_nextSpecial</code>：<b>跳过划线标记</b> ⇒
+            划线区间内的词不再有底色（<b>有意的互斥</b>：两者都是高亮，叠加会互相干扰）。</td></tr>
+    <tr><td><b>✏️ <code>widgets/trace_markdown.dart</code></b></td>
+        <td><code>highlights</code> 参数（默认空 ⇒ <b>逐字</b>走原路径）· 注入顺序
+            <b>划线 → unescape → 痕迹</b> · 新增 <code>_highlightPattern()</code>
+            （下划线 · 与书架页<b>同一口径</b>：<code>accentBright</code> + thickness 1.2）</td></tr>
+    <tr><td><b>✏️ <code>screens/reader_screen.dart</code></b></td>
+        <td>取本文划线（<code>sourceId: '${'$'}{widget.articleId}'</code> —— 必须与入库时<b>逐字一致</b>，
+            否则「划完线不出下划线」且不报错）</td></tr>
+    <tr><td><code>scripts/trace_verify/bin/<br>verify_highlight_markers.dart</code></td>
+        <td><b>62 项</b> · 已进 CI（含<b>顺序保护</b>【2】与<b>跨模块口径交叉核对</b>【4】）</td></tr>
+    <tr><td><b>🆕 <code>app/tool/highlight_marker_probe.dart</code></b></td>
+        <td><b>诊断探针</b>（恒退出 0 · 不是门禁）：注入 → <b>真实解析器</b>
+            <code>plusparse</code> → 按渲染层正则匹配。🔴 它逼出了「<b>排除整段语法单元</b>」
+            这个<b>过宽</b>的首版（会让「划线整个落在粗体内」也不画）⇒ 改成只排除<b>定界符</b>。</td></tr>
+  </table>
+  <div class="note-band">
+    ✅ <b>本机验证</b>：<code>129/0</code> · <code>48/0</code> · <code>51/0</code> · <code>62/0</code> ·
+    <code>analyze_inproc</code> <b>error = 0</b>（148 文件）·
+    探针 <code>23/0</code> · 全量回归（query_verify 35 个脚本 · ebook_verify 7 个 ·
+    trace_verify 4 个 · tokens 698 · iap 109 · auth 71）<b>全 exit=0</b><br>
+    🔴 <b>六条门禁都已证伪</b>（判据：没证伪过的断言集可能是装饰）：<br>
+    · 抬高词级对齐里「删除」的代价（模拟退化成按下标逐位比）⇒ 62/2<br>
+    · 去掉仓储 upsert 的恢复分支（模拟 <code>INSERT OR IGNORE</code> 陷阱）⇒ 37/4<br>
+    · 把「端点相接」也合并进重叠（最容易被顺手写成 <code>&lt;=</code>）⇒ 127/2<br>
+    · 把「最多能错几个」+1（模拟设置页与判定层差一个）⇒ 37/112<br>
+    · <b>清空 <code>_kInlineDelimiters</code></b>（不排除行内定界符）⇒ <b>60/2</b><br>
+    · <b>去掉代码块/行内代码的排除</b> ⇒ <b>60/2</b>
+  </div>
+
+  <h3>⚠️ 能力边界与还没做的（如实标注）</h3>
+  <ul>
+    <li>✅ <b>信息流页的正文下划线 —— 已做</b>（2026-10-07 晚）。
+        它<b>不能</b>像书架页那样按区间切 <code>TextSpan</code>：信息流正文是
+        <b>Markdown 分块渲染</b>，解析后偏移全变 ⇒ 必须走「<b>在源文本里插控制字符标记</b>」
+        （与痕迹同一机制，第三个标记字符 <code>\u0003</code>）。
+        🔴 <b>注入顺序是硬约束</b>：<code>划线（按 offset）→ unescape → 痕迹（按词）</code>
+        —— unescape 会删反斜杠，之后偏移就全错位。
+        🔑 用<b>真实解析器</b>量过边界（<code>app/tool/highlight_marker_probe.dart</code>）：
+        跨 <code>**粗体**</code> / 链接 / 行内代码时会<b>在定界符处断开</b>（两侧照画），
+        而<b>整段落在代码块里</b>则一个标记都不插（有意 —— 那里不能放控制字符）。</li>
+    <li><b>划线清单页</b>与<b>笔记列表</b>（数据层已就绪：<code>listAll</code> / <code>listForSource</code>）</li>
+    <li><b>书签</b>（见 <code>visual-bookmark-2026-10-07.html</code>）</li>
+    <li><b>信息流页的划线清单按来源筛选</b>（现在只有按章的查询）</li>
+    <li>⚠️ <b>两页的划线都不可点击</b>（点它打开那条划线）—— 那要等划线清单页，
+        届时给 marker 带上 id（现在是纯区间，不含 id）</li>
+  </ul>
+
+  <h3>v1（AI 制卡）的处理</h3>
+  <ul>
+    <li>v1 的<b>流程 / 额度 / 生成质量</b>三部分<b>已作废</b>（不调 LLM 就没有它们）</li>
+    <li>🔑 v1 提出的那个<b>问题</b>（「非单词怎么考」）被白哥一句
+        「<b>考默写，和单词一样</b>」<b>收口</b> —— 答案不是发明新考核，
+        而是<b>把单词卡的考核搬到句子上</b></li>
+    <li>📌 本文件<b>取代</b> v1 成为该功能的界面锚点；v1 的内容保留在
+        <code>git</code> 历史与本文件头部的对照表里</li>
+  </ul>
+
+  <h3>进度</h3>
+  <ul>
+    <li>✅ <b>全链打通</b>：划选 → 菜单「划线」→ 定位区间 → 写 <code>highlight</code> +
+        <code>card_review_state('hl:&lt;uuid&gt;')</code> → 复习页取卡（认 <code>hl:</code>）→
+        <b>骨架 → 默写 → 判定 → FSRS</b></li>
+    <li>✅ <b>阈值默认 5%</b>（错词比例 · 短内容等同逐词全对，见 §4.②）·
+        🎛 <b>且用户可调</b>（「我的 → 记忆」滑动条，§6，<b>已接线</b>）</li>
+    <li>✅ <b>笔记两个入口</b>（划线后的 toast · 复习结果页 / 浏览态）—— §7，<b>已接线</b></li>
+    <li>✅ <b>正文下划线 · 两页都已做</b>：
+        书架页（<code>Text.rich</code> 按区间切 span）+
+        <b>信息流页</b>（Markdown 路径 · 按 offset 插控制字符标记）——
+        两页<b>口径一致</b>（由断言【4】交叉核对），但<b>实现不同</b>（渲染管线不同）</li>
+    <li>✅ <b>记忆列表 · 已实现</b>（§8）：<code>highlights_screen.dart</code>（展开态 / 软删 /
+        打开原文）+ <code>highlight_display.dart</code>（来源与时间标签 · 纯逻辑可断言）+
+        顶层路由 <code>/highlights</code> + 「我的」页入口。
+        ⚠️ <b>未做</b>：筛选（有意）· 点击划线跳转（marker 现在不含 id）·
+        「打开原文」不精确定位（只到那篇 / 那本）</li>
+    <li>⏳ <b>下一步</b>：书签 · 上云的订阅配额</li>
+  </ul>
+</footer>
+
+</div>
+
+<div class="themebar">
+  <button data-t="ink" class="on">墨</button>
+  <button data-t="grid">格</button>
+  <button data-t="night">夜</button>
+</div>
+
+<script>
+document.querySelectorAll('.themebar button').forEach(function(b){
+  b.addEventListener('click', function(){
+    document.documentElement.setAttribute('data-theme', b.dataset.t);
+    document.querySelectorAll('.themebar button').forEach(function(x){ x.classList.remove('on'); });
+    b.classList.add('on');
+  });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="ink">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CoEvo · 整句 / 整段翻译</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/literata@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5/500.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/quicksand@5/600.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5/400.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5/500.css">
+<style>
+/* ══════════════════════════════════════════════════════════════════════════
+   CoEvo · 整句 / 整段翻译 —— 界面锚点（2026-10-07）
+
+   🔴 本文件是 **L1 界面锚点**：数值对齐 `design-system-spec` 与 `theme/coevo_tokens.dart`。
+   📄 上游：`docs/review/product-core-expansion-2026-10-07.md` §3.1（缺口①）· §四（订阅归属）
+   📄 同族：`visual-selection-menu-*`（入口）· `visual-generic-card-*`（划线记忆 · 本功能的出口联动）
+
+   🔴 本稿要正面处理一个**产品矛盾**（§3）：
+      「整段翻译会削弱阅读本身」—— 用户看了译文就以为读懂了，但没学到。
+      这不是靠文案能解决的，必须靠**交互形态**解决。本稿给两条：
+      ① 译文**不替换**原文　② 看完给一个「**记住这段**」的出口。
+   ══════════════════════════════════════════════════════════════════════════ */
+:root{
+  --serif:'Literata',Georgia,serif;
+  --round:'Quicksand','Noto Sans SC',system-ui,sans-serif;
+  --cjk:'Noto Sans SC',system-ui,sans-serif;
+  --mono:ui-monospace,'SFMono-Regular',Consolas,monospace;
+}
+[data-theme="ink"]{
+  --page:#F1EDE4; --read:#FAF8F4; --card:#FFFFFF;
+  --ink:#24211C; --ink2:#6E6659; --ink3:#988F7C;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF;
+  --accent-out:rgba(180,67,44,.40);
+  --line:#EFE9DE; --sunken:#EDE6DA;
+  --cl-out:rgba(150,125,95,.24); --cl-shade:rgba(186,166,138,.55); --cl-light:rgba(255,255,255,1);
+  --cl-radius:26px; --cl-radius-md:14.3px;
+  --cl-sh-out:4px 5px 10px; --cl-sh-shade:-3px -3px 8px; --cl-sh-light:3px 3px 7px;
+  --read-lh:1.82; --sel:rgba(180,67,44,.22);
+}
+[data-theme="grid"]{
+  --page:#EDEEF0; --read:#FFFFFF; --card:#FFFFFF;
+  --ink:#0A0A0A; --ink2:#5A5A5A; --ink3:#8A8A8A;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF;
+  --accent-out:rgba(180,67,44,.40);
+  --line:#E8E8E8; --sunken:#F0F0F0;
+  --cl-out:rgba(110,115,125,.22); --cl-shade:rgba(158,158,158,.46); --cl-light:rgba(255,255,255,1);
+  --cl-radius:14px; --cl-radius-md:14px;
+  --cl-sh-out:4px 5px 10px; --cl-sh-shade:-3px -3px 8px; --cl-sh-light:3px 3px 7px;
+  --read-lh:1.74; --sel:rgba(180,67,44,.20);
+}
+[data-theme="night"]{
+  --page:#0B0D12; --read:#14161C; --card:#1C1F27;
+  --ink:#EDEBE6; --ink2:#9AA0AE; --ink3:#6E7484;
+  --accent:#DB7E6B; --accent-bright:#E89B8C; --accent-ink:#2A1405;
+  --accent-out:rgba(219,126,107,.40);
+  --line:#262A34; --sunken:#0B0D12;
+  --cl-out:rgba(0,0,0,.55); --cl-shade:rgba(0,0,0,.42); --cl-light:rgba(255,255,255,.062);
+  --cl-radius:24px; --cl-radius-md:13.2px;
+  --cl-sh-out:4px 5px 10px; --cl-sh-shade:-3px -3px 8px; --cl-sh-light:3px 3px 7px;
+  --read-lh:1.84; --sel:rgba(219,126,107,.30);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#DAD3C6;padding:0 0 80px;color:#29251F;font-family:var(--cjk);font-size:15px;line-height:1.75;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 28px}
+.top{padding:56px 0 10px}
+.eyebrow{font-family:var(--round);font-size:11.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#B4432C;margin-bottom:14px}
+.top h1{font-family:var(--round);font-size:35px;font-weight:600;letter-spacing:-.02em;line-height:1.24;color:#24211C;margin-bottom:18px}
+.lede{font-size:15.5px;line-height:1.85;color:#4A453C;max-width:850px}
+.lede strong{color:#24211C;font-weight:500}
+.lede code{font-family:var(--mono);font-size:12.5px;background:#CFC8BA;padding:1px 6px;border-radius:4px}
+.changes{display:grid;grid-template-columns:repeat(auto-fit,minmax(272px,1fr));gap:14px;margin:32px 0 0}
+.chg{background:#F7F4EC;border-radius:16px;padding:18px 20px;border-left:3px solid #B4432C}
+.chg.warn{border-left-color:#B8860B;background:#F6F1E0}
+.chg .tag{font-family:var(--round);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;display:inline-block;padding:3px 9px;border-radius:20px;margin-bottom:11px}
+.tag.keep{background:#E4E9E2;color:#3C5136}
+.tag.add{background:#F3E2DC;color:#8E3320}
+.tag.warn{background:#F0E8D2;color:#7A5B12}
+.chg h3{font-family:var(--round);font-size:15.5px;font-weight:600;margin-bottom:8px;color:#24211C}
+.chg p{font-size:13px;line-height:1.72;color:#5C5648}
+.chg code{font-family:var(--mono);font-size:11.5px;background:#E3DDD0;padding:1px 5px;border-radius:3px}
+
+.stage{display:flex;gap:26px;flex-wrap:wrap;margin:40px 0 0;align-items:flex-start}
+.phone{width:322px;flex-shrink:0}
+.ph-label{font-family:var(--round);font-size:13px;font-weight:600;color:#3A352D;margin-bottom:9px}
+.ph-label span{display:block;font-family:var(--cjk);font-size:12px;font-weight:400;color:#6E6659;margin-top:3px}
+.frame{width:322px;height:594px;border-radius:38px;background:var(--page);border:8px solid #2B2823;overflow:hidden;position:relative;display:flex;flex-direction:column;transition:background .28s}
+
+.rd-bar{display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px;gap:12px;flex-shrink:0}
+.rd-bar .back{font-size:19px;color:var(--ink3);line-height:1}
+.rd-bar .ttl{font-family:var(--round);font-size:12.5px;font-weight:600;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.rd-bar .bm{width:28px;height:28px;border-radius:9px;flex-shrink:0;background:var(--sunken);box-shadow:inset 2px 2px 5px var(--cl-shade),inset -2px -2px 5px var(--cl-light)}
+.rd{padding:4px 24px;flex:1;position:relative;overflow:hidden}
+.rd .body{font-family:var(--serif);font-size:16px;line-height:var(--read-lh);color:var(--ink)}
+.rd .body p+p{margin-top:14px}
+.sel{background:var(--sel);border-radius:3px;padding:1px 2px;margin:0 -2px}
+
+.menu{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;background:var(--card);border-radius:var(--cl-radius-md);padding:5px;box-shadow:var(--cl-sh-out) var(--cl-out),inset var(--cl-sh-shade) var(--cl-shade),inset var(--cl-sh-light) var(--cl-light);z-index:20}
+.mi{display:flex;align-items:center;gap:6px;padding:8px 13px;border-radius:9px;font-family:var(--cjk);font-size:12.5px;font-weight:500;color:var(--ink);white-space:nowrap}
+.mi svg{width:15px;height:15px;flex-shrink:0}
+.mi svg .ic{stroke:var(--accent-bright);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.mi.on{background:var(--accent);color:var(--accent-ink)}
+.mi.on svg .ic{stroke:var(--accent-ink)}
+.sep{width:1px;height:18px;background:var(--line);flex-shrink:0}
+
+.veil{position:absolute;inset:0;background:rgba(0,0,0,.12);z-index:25}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--card);border-radius:var(--cl-radius) var(--cl-radius) 0 0;padding:18px 22px 24px;box-shadow:0 -6px 22px rgba(60,50,35,.16);z-index:30;max-height:90%;overflow:hidden}
+.sheet .src{font-family:var(--round);font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3);margin-bottom:13px}
+.sheet .lbl{font-family:var(--round);font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);margin:15px 0 6px}
+.sheet .quote{font-family:var(--serif);font-size:15.5px;line-height:1.6;color:var(--ink);padding-left:11px;border-left:2.5px solid var(--accent-bright)}
+.sheet .zh{font-size:16px;line-height:1.78;color:var(--ink)}
+.pair{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.pair:first-of-type{border-top:0;padding-top:0;margin-top:6px}
+.pair .en{font-family:var(--serif);font-size:13.5px;line-height:1.6;color:var(--ink2)}
+.pair .cn{font-size:15px;line-height:1.7;color:var(--ink);margin-top:5px}
+.acts{display:flex;gap:9px;margin-top:17px}
+.btn{flex:1;text-align:center;font-family:var(--cjk);font-size:13.5px;font-weight:500;padding:12px 0;border-radius:var(--cl-radius-md);cursor:pointer}
+.btn.pri{background:var(--accent);color:var(--accent-ink);box-shadow:var(--cl-sh-out) var(--accent-out),inset -2px -2px 6px rgba(0,0,0,.15),inset 2px 2px 6px rgba(255,255,255,.26)}
+.btn.sec{background:var(--sunken);color:var(--ink2);box-shadow:inset 2px 2px 5px var(--cl-shade),inset -2px -2px 5px var(--cl-light)}
+.gen{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);background:var(--card);border-radius:var(--cl-radius-md);padding:22px 26px 20px;text-align:center;z-index:35;box-shadow:var(--cl-sh-out) var(--cl-out),inset var(--cl-sh-shade) var(--cl-shade),inset var(--cl-sh-light) var(--cl-light)}
+.ring{width:26px;height:26px;border-radius:50%;border:2.5px solid var(--line);border-top-color:var(--accent);margin:0 auto 14px;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.gen .t{font-size:14.5px;font-weight:500;color:var(--ink);margin-bottom:6px}
+.gen .s{font-size:12px;color:var(--ink3);line-height:1.6}
+.toast{position:absolute;left:50%;transform:translateX(-50%);bottom:104px;background:var(--ink);color:var(--page);font-family:var(--cjk);font-size:12px;font-weight:500;padding:10px 18px;border-radius:14px;z-index:40;white-space:nowrap}
+.pin{position:absolute;font-family:var(--round);font-size:10px;font-weight:600;background:#B4432C;color:#fff;padding:2px 7px;border-radius:20px;z-index:50;letter-spacing:.05em}
+.pin.g{background:#3C5136}.pin.y{background:#B8860B}
+
+section{margin-top:62px}
+h2{font-family:var(--round);font-size:23px;font-weight:600;letter-spacing:-.01em;color:#24211C;margin-bottom:8px}
+h2 .n{display:inline-flex;width:26px;height:26px;border-radius:9px;background:#B4432C;color:#fff;font-size:13px;align-items:center;justify-content:center;margin-right:10px;vertical-align:2px}
+.sub{font-size:13.5px;color:#5C5648;margin-bottom:20px;max-width:880px}
+table{width:100%;border-collapse:collapse;background:#F7F4EC;border-radius:14px;overflow:hidden;font-size:13px}
+th{background:#EDE6DA;text-align:left;padding:11px 14px;font-family:var(--round);font-weight:600;font-size:12px;color:#3A352D}
+td{padding:11px 14px;border-top:1px solid #E4DDD0;vertical-align:top;line-height:1.7;color:#403B33}
+td code,th code{font-family:var(--mono);font-size:11.5px;background:#E3DDD0;padding:1px 5px;border-radius:3px}
+td b{color:#24211C;font-weight:500}
+.yes{color:#3C5136;font-weight:600}.no{color:#8E3320;font-weight:600}.half{color:#7A5B12;font-weight:600}
+.note-band{margin-top:22px;background:#F7F4EC;border-left:3px solid #B4432C;border-radius:0 12px 12px 0;padding:16px 20px;font-size:13px;line-height:1.78;color:#5C5648}
+.note-band.warn{border-left-color:#B8860B;background:#F6F1E0}
+.note-band b{color:#29251F;font-weight:500}
+.note-band code{font-family:var(--mono);font-size:11.5px;background:#E3DDD0;padding:1px 5px;border-radius:3px}
+.foot{margin-top:62px;padding-top:28px;border-top:1px solid #CFC8BA;font-size:13.5px;line-height:1.85;color:#5C5648}
+.foot b{color:#29251F;font-weight:500}
+.foot code{font-family:var(--mono);font-size:11.5px;background:#DCD6C9;padding:1px 5px;border-radius:3px}
+.foot h3{font-family:var(--round);font-size:15px;font-weight:600;color:#24211C;margin:20px 0 8px}
+.foot ul{margin:8px 0 0 20px}.foot li{margin-bottom:7px}
+.themebar{position:fixed;right:22px;bottom:22px;display:flex;gap:6px;background:#2B2823;padding:7px;border-radius:16px;box-shadow:0 8px 22px rgba(0,0,0,.28);z-index:99}
+.themebar button{font-family:var(--round);font-size:12px;font-weight:600;border:0;background:transparent;color:#B8B0A2;padding:7px 13px;border-radius:10px;cursor:pointer}
+.themebar button.on{background:#B4432C;color:#fff}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="eyebrow">CoEvo · 整句 / 整段翻译</div>
+  <h1>看懂之后，<br>别让它就这么过去</h1>
+  <p class="lede">
+    翻译是<b>订阅权益</b>里正当性最直白的一个 —— 它<b>每次真的调模型</b>，不是端侧能算出来的东西
+    （词卡、朗读、复习都是端侧零成本）。<br><br>
+    🔴 但它有一个<b>产品上的反作用</b>：用户看了译文就以为读懂了，然后<b>什么都没留下</b>。
+    这不是加句提示文案能解决的 —— 本稿用<b>交互形态</b>处理它（§3）。
+  </p>
+
+  <div class="changes">
+    <div class="chg">
+      <span class="tag add">形态</span>
+      <h3>译文<b>不替换</b>原文</h3>
+      <p>结果是<b>浮层</b>，关掉就没了 —— 用户读的<b>始终是原文</b>。
+         绝不做「点一下把整段换成中文」那种做法，那等于把阅读产品变成翻译产品。</p>
+    </div>
+    <div class="chg">
+      <span class="tag add">关键联动</span>
+      <h3>看完给一个「记住这段」</h3>
+      <p>🔑 翻译是<b>一次性理解</b>，划线记忆是<b>长期记住</b> —— 两者在同一个浮层里接上：
+         看懂之后，一键把它变成记忆卡。这是本功能与产品核心的<b>接缝</b>。</p>
+    </div>
+    <div class="chg">
+      <span class="tag keep">成本控制</span>
+      <h3>端侧缓存翻过的句子</h3>
+      <p>同一句在本机翻过一次就不再付费 ⇒ 既省钱又<b>瞬时出结果</b>。
+         缓存在<b>端侧</b>（服务端做全局缓存收益极低：每句话都不重复）。</p>
+    </div>
+    <div class="chg warn">
+      <span class="tag warn">额度</span>
+      <h3>免费 10 次 / 月</h3>
+      <p>它<b>每次都真花钱</b> ⇒ 与划线记忆（零成本 · 无限）不同，它必须带额度。
+         用尽时的文案要<b>如实说明原因</b>，不是"升级解锁"。</p>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════ 1 触发 ══════════ -->
+<h2 style="margin-top:52px"><span class="n">1</span>触发：菜单第 1 项 → 生成 → 浮层</h2>
+<p class="sub">
+  入口就是划词菜单的「翻译」（三项里的第一项）。<b>没有任何额外的按钮或开关</b> ——
+  「选中才翻」本身就是最强的按需约束。
+</p>
+
+<div class="stage">
+
+  <div class="phone">
+    <div class="ph-label">① 菜单 → 翻译
+      <span>与「划线 / 复制」同一处</span></div>
+    <div class="frame" style="background:var(--read)">
+      <div class="rd-bar"><div class="back">‹</div><div class="ttl">Why We Read Slowly</div><div class="bm"></div></div>
+      <div class="rd">
+        <div class="body">
+          <p>The habit of reading closely is being replaced by something faster,
+             and the cost is paid in <span class="sel">attention. None of this is new, but the scale is.</span></p>
+        </div>
+        <div class="menu" style="top:158px">
+          <div class="mi on"><svg viewBox="0 0 24 24"><path class="ic" d="M3 6h11M3 12h7M3 18h5"/><path class="ic" d="M16 10l4 4-4 4"/><path class="ic" d="M20 14h-6"/></svg>翻译</div>
+          <div class="sep"></div>
+          <div class="mi"><svg viewBox="0 0 24 24"><path class="ic" d="M4 20l3.5-.8L18.6 8.1a2 2 0 000-2.8l-.9-.9a2 2 0 00-2.8 0L3.8 15.5 3 19z"/><path class="ic" d="M14 5.5l4.5 4.5"/></svg>划线</div>
+          <div class="sep"></div>
+          <div class="mi"><svg viewBox="0 0 24 24"><rect class="ic" x="9" y="9" width="11" height="11" rx="2.5"/><path class="ic" d="M5 15V6.5A1.5 1.5 0 016.5 5H15"/></svg>复制</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="ph-label">② 生成中
+      <span>与词卡 / 制卡同一个等待形态</span></div>
+    <div class="frame" style="background:var(--read)">
+      <div class="rd-bar"><div class="back">‹</div><div class="ttl">Why We Read Slowly</div><div class="bm"></div></div>
+      <div class="rd">
+        <div class="body"><p>The habit of reading closely is being replaced by something faster,
+          and the cost is paid in <span class="sel">attention. None of this is new, but the scale is.</span></p></div>
+      </div>
+      <div class="veil"></div>
+      <div class="gen">
+        <div class="ring"></div>
+        <div class="t">正在翻译</div>
+        <div class="s">约 2–4 秒</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="ph-label">③ 结果浮层 · 单句
+      <span>原文引用在上、译文在下（不用来回对照）</span></div>
+    <div class="frame" style="background:var(--read)">
+      <div class="rd-bar"><div class="back">‹</div><div class="ttl">Why We Read Slowly</div><div class="bm"></div></div>
+      <div class="rd">
+        <div class="body"><p>The habit of reading closely is being replaced by something faster,
+          and the cost is paid in <span class="sel">attention. None of this is new, but the scale is.</span></p></div>
+      </div>
+      <div class="veil"></div>
+      <div class="sheet">
+        <div class="src">翻译 · 来自 Why We Read Slowly</div>
+        <div class="pair">
+          <div class="en">attention. None of this is new, but the scale is.</div>
+          <div class="cn">注意力。这些都不新鲜，但规模不一样。</div>
+        </div>
+        <div class="acts">
+          <div class="btn sec">划线记住这段</div>
+          <div class="btn pri">复制译文</div>
+        </div>
+      </div>
+      <span class="pin" style="top:9px;left:9px">③ 单句</span>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="ph-label">④ 结果浮层 · 多句（<b>逐句对照</b>）
+      <span>长文本一段译文没法对应 ⇒ 拆成句对</span></div>
+    <div class="frame" style="background:var(--read)">
+      <div class="rd-bar"><div class="back">‹</div><div class="ttl">A Tale of Two Cities</div><div class="bm"></div></div>
+      <div class="rd">
+        <div class="body"><p><span class="sel">It was the best of times, it was the worst of times,
+          it was the age of wisdom, it was the age of foolishness.</span></p></div>
+      </div>
+      <div class="veil"></div>
+      <div class="sheet">
+        <div class="src">翻译 · 4 句对照</div>
+        <div class="pair"><div class="en">It was the best of times,</div><div class="cn">那是最美好的时代，</div></div>
+        <div class="pair"><div class="en">it was the worst of times,</div><div class="cn">那是最糟糕的时代；</div></div>
+        <div class="pair"><div class="en">it was the age of wisdom,</div><div class="cn">那是睿智的年月，</div></div>
+        <div class="pair"><div class="en">it was the age of foolishness.</div><div class="cn">那是蒙昧的年月。</div></div>
+        <div class="acts">
+          <div class="btn sec">划线记住这段</div>
+          <div class="btn pri">复制译文</div>
+        </div>
+      </div>
+      <span class="pin" style="top:9px;left:9px">④ 多句</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════ 2 对抗削弱阅读 ══════════ -->
+<h2 style="margin-top:62px"><span class="n">2</span>🔴 正面处理「翻译会削弱阅读」</h2>
+<p class="sub">
+  这是本功能<b>唯一真正的产品风险</b>（计划 §3.1 已列为风险）。三条设计手段，前两条是<b>约束</b>，
+  第三条是<b>转化</b>：
+</p>
+<table>
+  <tr><th style="width:22%">手段</th><th style="width:34%">怎么做</th><th>它挡住的是</th></tr>
+  <tr><td><b>① 按需触发</b></td>
+      <td>只有<b>选中之后</b>才翻；<b>没有</b>「一键翻译整篇」按钮，也没有"自动显示译文"的开关</td>
+      <td>「打开文章 → 一键全译 → 读完（其实是读完中文）」这条捷径 —— <b>把它物理上堵掉</b></td></tr>
+  <tr><td><b>② 译文不替换原文</b></td>
+      <td>结果是浮层；关掉后正文<b>一个字都没变</b>，用户读的始终是英文</td>
+      <td>「把文章变成中文」的观感。🔑 翻译是<b>工具</b>，不是<b>另一份文本</b></td></tr>
+  <tr><td><b>③ 给一个记忆出口</b> ⭐</td>
+      <td>浮层里直接「<b>划线记住这段</b>」⇒ 把<b>看懂</b>转成<b>记住</b></td>
+      <td>「看懂了，然后什么都没留下」—— 这是<b>最实际的</b>那一条，
+          因为它把翻译从"终点"变回"中间站"</td></tr>
+</table>
+<div class="note-band">
+  🔑 <b>为什么 ③ 是关键</b>：前两条是"不让用户走捷径"，是<b>防守</b>；
+  ③ 是<b>进攻</b> —— 它让翻译产生一个<b>留在产品里</b>的结果（一张记忆卡）。
+  <br>📌 这也正是「制卡-FSRS」这个产品核心与翻译功能的<b>接缝</b>：
+  <b>看不懂 → 翻译 → 看懂 → 划线 → 记住</b>，每一步都在同一个产品里闭环。
+</div>
+
+<!-- ══════════ 3 额度 ══════════ -->
+<h2 style="margin-top:62px"><span class="n">3</span>额度：免费 10 次 / 月</h2>
+<div class="stage">
+  <div class="phone">
+    <div class="ph-label">额度用尽
+      <span>如实说明原因（不是"升级解锁"）</span></div>
+    <div class="frame" style="background:var(--read)">
+      <div class="rd-bar"><div class="back">‹</div><div class="ttl">Why We Read Slowly</div><div class="bm"></div></div>
+      <div class="rd">
+        <div class="body"><p>The habit of reading closely is being replaced by something faster,
+          and the cost is paid in <span class="sel">attention. None of this is new, but the scale is.</span></p></div>
+      </div>
+      <div class="veil"></div>
+      <div class="sheet">
+        <div class="src">本月翻译额度</div>
+        <div class="zh" style="font-size:17px;font-weight:500;margin-bottom:8px">10 次已用完</div>
+        <div class="zh" style="font-size:13.5px;color:var(--ink2);line-height:1.7">
+          下月 1 日重置。翻译每次都真的调用模型 —— 订阅后不限量。
+        </div>
+        <div class="acts">
+          <div class="btn sec">知道了</div>
+          <div class="btn pri">查看订阅</div>
+        </div>
+      </div>
+      <span class="pin y" style="top:9px;left:9px">额度</span>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="ph-label">翻译后再划线的样子
+      <span>③ 的落地：浮层关掉，正文多了一条下划线</span></div>
+    <div class="frame" style="background:var(--read)">
+      <div class="rd-bar"><div class="back">‹</div><div class="ttl">Why We Read Slowly</div><div class="bm"></div></div>
+      <div class="rd">
+        <div class="body">
+          <p>The habit of reading closely is being replaced by something faster,
+             and the cost is paid in <span style="border-bottom:2px solid var(--accent-bright)">attention. None of this is new, but the scale is.</span></p>
+          <p>It is not a failure of will, but of <span class="sel">habit</span>.</p>
+        </div>
+      </div>
+      <div class="toast">已加入记忆 · 复习里会再见</div>
+      <span class="pin g" style="top:9px;left:9px">已记住</span>
+    </div>
+  </div>
+</div>
+
+<div class="note-band warn">
+  ⚠️ <b>额度按"次"不按"长度"</b>：一次翻译 = 一次调用（选中上限 <b>800</b> 字符）。
+  ⇒ 用户不需要担心"这句太长会不会多扣"，扣费口径<b>单一</b>（同「同一件事的口径只能一处权威」）。
+</div>
+
+<div class="note-band">
+  🔴 <b>2026-10-09 数值变更</b>：长度上限 <b>300 → 800 字符</b>（白哥：用起来经常超出，800 更合理）。
+  随之同步三个常量（<b>必须同比例</b>，否则长文本分别表现为「译文被截断」或「被拒：段落太多」）：
+  <code>MAX_TEXT_CHARS 300→800</code> · <code>MAX_TOKENS 900→2400</code> · <code>MAX_SEGMENTS 50→140</code>。<br>
+  ⚠️ 同时<b>修正本文档一处与实现不符的说法</b>：下方原写「与<b>划线记忆</b>同一条线（300）」——
+  实测<b>划线 / 痕迹侧没有任何字符长度限制</b>（<code>word_lookup_selection</code> 里的 300 是
+  <b>300ms 防抖</b>，与字符数无关）⇒ 300 只是翻译这一侧的历史值，<b>不构成约束</b>。
+</div>
+
+<!-- ══════════ 4 规格 ══════════ -->
+<h2 style="margin-top:62px"><span class="n">4</span>规格</h2>
+<table>
+  <tr><th style="width:24%">项</th><th>决定</th></tr>
+  <tr><td><b>入口</b></td><td>划词菜单第 1 项（<code>翻译 · 划线 · 复制</code>）—— 不新增按钮</td></tr>
+  <tr><td><b>长度上限</b></td><td><b>800 字符</b>（<s>与划线记忆同一条线</s> —— 那句已证伪，见上方
+      2026-10-09 变更说明；800 ≈ 一段较长的英文自然段）</td></tr>
+  <tr><td><b>结果形态</b></td><td><b>单句</b> ⇒ 一整句译文；<b>多句</b> ⇒ <b>逐句对照</b>（英文上 / 中文下）</td></tr>
+  <tr><td><b>方向</b></td><td>英 → 中（目标用户是中文母语者）。<b>不做</b>中 → 英</td></tr>
+  <tr><td><b>缓存</b></td><td><b>端侧</b>（本机翻过的句子不再付费）· 服务端<b>不做</b>全局缓存
+      （每句话都不重复 ⇒ 命中率极低，白付一层复杂度）</td></tr>
+  <tr><td><b>额度</b></td><td>免费 <b>10 次/月</b> · 订阅<b>无限</b> · 按<b>次</b>不按长度</td></tr>
+  <tr><td><b>🔴 周期口径</b></td><td>「月」按 <b>UTC+8（中国标准时间）</b>算，<b>不是 UTC</b> ——
+      产品只上架中国区，用 UTC 会让「1 日重置」实际发生在 <b>1 日早上 8 点</b>，
+      用户凌晨用不了会以为额度系统坏了。<br>
+      ⚠️ 也<b>不按用户本地时区</b>：那要客户端上报（可伪造），而<b>额度口径只能有一处权威</b></td></tr>
+  <tr><td><b>计费时机</b></td><td>🔴 <b>只有成功返回译文才计费</b> —— 调模型失败 / 内容不合规 /
+      格式异常 <b>全部退额</b>。收了次数却没给东西，是最快失去信任的方式</td></tr>
+  <tr><td><b>契约</b></td><td>请求 <code>{text}</code>；响应 <code>{segments:[{src,dst}], quota:{used,limit,subscribed}}</code>。<br>
+      🔑 <b><code>segments</code> 永远是数组</b>（哪怕只有一句）⇒ 客户端只需<b>一条</b>渲染路径
+      （判据：能少一个分支就少一个）</td></tr>
+  <tr><td><b>鉴权</b></td><td><b>需登录</b>（额度要记在某个人头上）· <b>不要求订阅</b>（免费有 10 次）。<br>
+      🔑 与「读内容不需登录」不冲突：那条管的是<b>内容可见性</b>，翻译属<b>能力记账</b>（同 <code>/api/sync/*</code>）。<br>
+      ⚠️ 未登录 ⇒ <b>401</b>（端侧清凭据跳登录）· 已登录但额度用尽 ⇒ <b>403</b>（不会被莫名登出）</td></tr>
+  <tr><td><b>合规</b></td><td>复用现有 <code>compliance</code> 闸门（动态生成内容必须先过闸门）</td></tr>
+  <tr><td><b>不下沉</b></td><td>🔴 译文<b>不写进文章</b>、不参与痕迹、不进生词本 —— 它是一次性的</td></tr>
+</table>
+
+<div class="note-band">
+  🔑 <b>为什么服务端不做全局缓存</b>：词卡的缓存能摊薄，是因为<b>高频词被很多人查同一张卡</b>；
+  而翻译的单位是<b>句子</b> —— 每篇文章的每句话都是唯一的，跨用户几乎不可能命中。
+  📌 判据还是那条：<b>能摊薄才有缓存价值</b>（见 <code>product-core-expansion</code> §4.3）。
+  端侧缓存则有价值，因为<b>同一个用户会重复看同一句</b>。
+</div>
+
+<footer class="foot">
+  <h3>✅ 实现状态（2026-10-08 · <b>后端已落地</b>）</h3>
+  <table>
+    <tr><th style="width:40%">落点</th><th>内容</th></tr>
+    <tr><td><b>🆕 <code>translation.rs</code></b></td>
+        <td>周期计算（UTC+8）· 输入校验 · <b>格式闸门</b> · <b>原子占额</b> · 退款 ·
+            <code>translate_text</code> 核心 · handler</td></tr>
+    <tr><td><b>🆕 <code>prompts/translate.md</code></b></td>
+        <td>只做一件事（英译中逐句对照）的 prompt —— 🔑 与词卡的 11.5 KB 契约<b>分开</b>：
+            它不是「契约」，是一次调用的指令</td></tr>
+    <tr><td><b>🆕 <code>translation_usage</code> 表</b></td>
+        <td>免费层月度计数（<b>持久</b>）。⚠️ <b>不能</b>复用 <code>rate_limiter</code> ——
+            那份的注释写明「state resets on restart」⇒ 进程一重启额度就重置 = <b>形同虚设</b></td></tr>
+    <tr><td><b>复用（改可见性）</b></td>
+        <td><code>llm_card::extra_params</code> · <code>llm_card::preview</code> ·
+            <code>sync_handlers::now_ms</code> 改成 <code>pub(crate)</code>
+            —— 🔑 <b>不是各写一份</b>，而是让既有的那一份被两处用（判据：一处权威）</td></tr>
+    <tr><td><b>路由</b></td>
+        <td><code>POST /api/translate</code>（<code>routes.rs</code> 直接挂，无 state）</td></tr>
+    <tr><td><b>注销</b></td>
+        <td><code>translation_usage</code> 已进 <code>DELETE_TARGETS</code>
+            —— 否则「覆盖所有用户引用」那条断言会红（它就抓过一次同类的漏）</td></tr>
+  </table>
+  <div class="note-band">
+    ✅ <b>本机验证</b>：<code>cargo test -p api_server --offline</code> ——
+    <b>12 项翻译断言</b>全过：周期边界（<b>UTC 9/30 16:00 ⇒ 中国已是 10/1</b> · 跨年）·
+    输入校验（恰好 800 允许 / 801 拒且<b>不截断</b> / 按<b>字符</b>不按字节）·
+    格式闸门（只有一句 / 多句 / <b>只翻一半要拒</b> / <b>自己加内容要拒</b> /
+    智能引号<b>不该</b>判失败）· 额度（<b>恰好用满</b> / 退款 / <b>不能退成负数</b> /
+    周期隔离 / 用户隔离 / <b>边界不双花</b>）。
+  </div>
+
+  <h3>🔴 实现时定的两处口径（与设计稿字面有出入，均已回标）</h3>
+  <ul>
+    <li><b><code>src</code> 只查「长度覆盖率」不查「逐字相等」</b> ——
+        设计要求 <code>src</code> 与原文一致，但逐字相等是<b>假严</b>：
+        模型把 <code>don't</code> 写成 <code>don’t</code>（智能引号）就能让整个请求失败。
+        ⇒ 改查 <code>src 总长 / 原文长度 ∈ [0.8, 1.25]</code> ——
+        它表达的是<b>真实目的</b>（防「只翻一半」与「自己加内容」），而不是字符级洁癖。</li>
+    <li><b>额度用尽回 403 而非 429</b> —— 429 会让端侧按「稍后重试」处理，
+        用户会一直重试到明天。403 + 一句「下月 1 日重置」才是准确的。</li>
+  </ul>
+
+  <h3>⏳ 还没做（如实标注）</h3>
+  <ul>
+    <li><b>端侧全部</b>：菜单第 1 项接通（现在仍是置灰）· 等待浮层 · 译文浮层 ·
+        浮层里的「划线记住这段」· <b>端侧缓存</b>（本机翻过的句子不再付费）</li>
+    <li>⚠️ <b>prompt 部署</b>：<code>translate.md</code> 要随 <code>prompts/</code> 同步到 VPS
+        （与 <code>wordlib_contract.md</code> 同一路径）—— 漏了会在<b>运行时</b>读不到文件</li>
+  </ul>
+
+  <h3>✅ 端侧实现状态（2026-10-08 · <b>已接通</b>）</h3>
+  <table>
+    <tr><th style="width:40%">落点</th><th>内容</th></tr>
+    <tr><td><b>🆕 <code>services/translate_parse.dart</code></b></td>
+        <td><b>解析（纯 Dart · 零 Flutter/http）</b> —— 🔑 抽出来是为了让「服务返回什么形状」
+            能被<b>一行字符串</b>断言：401 / 403 / 缺字段 / 非 JSON / 空数组</td></tr>
+    <tr><td><b>🆕 <code>api/translate_client.dart</code></b></td>
+        <td>只做 HTTP（带 <b>Bearer token</b>）+ <code>export</code> 上面那份类型</td></tr>
+    <tr><td><b>🆕 <code>providers/translate_provider.dart</code></b></td>
+        <td>编排：<b>先查缓存 → 未命中才调接口 → 成功才写缓存</b></td></tr>
+    <tr><td><b>🆕 <code>widgets/translation_sheet.dart</code></b></td>
+        <td>浮层：单句 / 多句对照 + ③「划线记住这段」+ 复制 + 额度行</td></tr>
+    <tr><td><b>✏️ <code>word_lookup_selection.dart</code></b></td>
+        <td>菜单第 1 项从<b>置灰</b>改为<b>接通</b>（<code>disabledHint</code> 那行已删）</td></tr>
+    <tr><td><b>✏️ <code>auth_provider.dart</code></b></td>
+        <td>退出登录时<b>清空翻译缓存</b>（行为数据不跨账号）</td></tr>
+  </table>
+  <div class="note-band">
+    ✅ <b>本机验证</b>：解析 <b>28 项</b> · <code>analyze_inproc</code> <b>error=0/warning=0</b>（158 文件）。<br>
+    🔴 <b>门禁已证伪</b>：把 <code>401</code> 合并进普通失败（最常见的退化）⇒ 精确 <b>1 项红</b>。
+  </div>
+
+  <h3>🔴 两处实现时才定的取舍（与设计稿字面有出入）</h3>
+  <ul>
+    <li><b>「生成中」不再用全屏遮罩</b>（本稿 ② 画的是 <code>veil</code> + 转圈），
+        改成 <b>底部浮层内的行内转圈</b>。<br>
+        🔑 理由：翻译只等 <b>2–4 秒</b>，而全屏遮罩的语义是「跳到了另一个界面」——
+        与本稿 §2 的<b>首要约束「不打断阅读」相冲突</b>。浮层内转圈既给了等待反馈，又留着正文。</li>
+    <li><b>未登录的「去登录」是用户主动点的，不是自动跳</b> ——
+        本稿 ③ 只画了一句文字指引。实现时给了<b>两个平级出口</b>
+        （<b>继续阅读</b> / <b>去登录</b>），
+        主操作是「去登录」（用户点翻译就是<b>明确想用这个功能</b>，去登录才是他意图的延续），
+        但<b>不自动跳</b> —— 自动跳同样违反「不打断阅读」。<br>
+        🔴 关掉浮层的出口<b>必须留着</b>：只剩一个「去登录」会让不想现在登的人
+        <b>读到「登录后可翻译」却无处可去</b>。</li>
+  </ul>
+
+  <h3>✅ 2026-10-08 补齐（承上稿「还没做」）</h3>
+  <ul>
+    <li>✅ <b>浮层顶栏的来源标题</b> —— <code>HighlightSource.title</code> 由两个阅读页各自传入
+        （文章用 <code>item.title</code>、书用 <code>ch.bookTitle</code>）。<br>
+        🔴 <b>不传 id</b>：把 <code>articleId</code> 当标题显示等于给用户看一串内部标识。<br>
+        ⚠️ 字段<b>可空</b>：拿不到就不显示来源（浮层退化为只写「翻译」），
+        <b>不用 id 顶替</b>。</li>
+    <li>✅ <b>未登录的一键跳登录</b>（形态见上「取舍」第 2 条）· 跳转前<b>先关浮层</b>
+        （不关的话浮层会压在新页面上，用户以为「点了没反应」）。</li>
+  </ul>
+
+  <h3>⏳ 还没做（如实标注）</h3>
+  <ul>
+    <li>⚠️ <b>端侧缓存命中时无额度信息</b>（<code>used = -1</code> 哨兵值 ⇒ 不显示额度行）——
+        这是<b>有意</b>的：显示「本月已用 0 次」是假信息</li>
+    <li>⚠️ <b>真机验证</b>（本机无渲染）—— 浮层外观、跳转后落到「我的」页的位置，
+        都要真机确认</li>
+  </ul>
+
+  <h3>本轮边界</h3>
+  <ul>
+    <li>✅ <b>后端 + 端侧均已落地</b> · ❌ 未部署 · ❌ 未真机验证（本机无渲染）</li>
+    <li>⚠️ <b>prompt 部署</b>：<code>backend/prompts/translate.md</code> 要随 <code>prompts/</code> 同步到 VPS</li>
+  </ul>
+</footer>
+
+</div>
+
+<div class="themebar">
+  <button data-t="ink" class="on">墨</button>
+  <button data-t="grid">格</button>
+  <button data-t="night">夜</button>
+</div>
+
+<script>
+document.querySelectorAll('.themebar button').forEach(function(b){
+  b.addEventListener('click', function(){
+    document.documentElement.setAttribute('data-theme', b.dataset.t);
+    document.querySelectorAll('.themebar button').forEach(function(x){ x.classList.remove('on'); });
+    b.classList.add('on');
+  });
+});
+</script>
+</body>
+</html>

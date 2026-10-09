@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>订阅页重排 · 界面锚点（2026-10-09）</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   CoEvo 订阅页 · 重排锚点（2026-10-09）
+   ──────────────────────────────────────────────────────────────────────
+   本次要解决的是白哥 2026-10-09 的三句话：
+     ① 「订阅页面的排版要重新排」
+     ② 「订阅详情与免费版说明的文字说明要改」
+     ③ 「之前已经定了怎么对比订阅版和免费版」  ← 依据在这里 ↓
+
+   🔑 依据（**逐条可查，不凭记忆**）：
+     · `docs/review/subscription-value-assessment-2026-10-07.md` §四
+       —— 「对照表设计」（**已定的对比形态**：`功能 | 免费 | 订阅` 三列）
+       其 §4.1 判据：「**对照表是"放大器"不是"说服器"** —— 差为正则有力，
+       差近零则自杀 ⇒ **先补权益，再上对照表**」
+       ⚠️ 当时没上，因为订阅列只有 1 项（免费 5 项 ✅）⇒ 会上演「自曝其短」。
+       ✅ **现在条件变了**：订阅侧已补齐为 3 项（见下），差为正 ⇒ 可以上了。
+     · `docs/review/product-core-expansion-2026-10-07.md` §4.2 / §4.5
+       —— **归属定案**：整段翻译 ✅订阅 · 云同步 ✅订阅 · 书库上云 🟡订阅配额 ·
+         任意内容制卡 🟡免费额度+订阅扩额
+     · 后端闸门 `is_subscription_active()` 的**三个消费点**（= 事实清单）
+     · `design-system-spec` §2.1 三档 token（色值抄自文档）
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── 三档主题 token（值抄自 spec §2.1 / §3.3）────────────────────────── */
+:root, .t-mo {
+  --page:#F1EDE4; --card:#FFFFFF; --read:#FAF8F4;
+  --ink:#24211C; --ink2:#6E6659; --ink3:#988F7C;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF;
+  --accent-out:rgba(180,67,44,.40);
+  --line:#EFE9DE; --sunken:#EDE6DA;
+  --cl-out:rgba(150,125,95,.24); --cl-shade:rgba(186,166,138,.55);
+  --cl-light:rgba(255,255,255,1);
+  --cl-radius:26px; --page-label:'墨 · 暖纸';
+}
+.t-ge {
+  --page:#EDEEF0; --card:#FFFFFF; --read:#FFFFFF;
+  --ink:#0A0A0A; --ink2:#5A5A5A; --ink3:#8A8A8A;
+  --accent:#B4432C; --accent-bright:#C4533A; --accent-ink:#FFFFFF;
+  --accent-out:rgba(180,67,44,.40);
+  --line:#E8E8E8; --sunken:#F0F0F0;
+  --cl-out:rgba(110,115,125,.22); --cl-shade:rgba(158,158,158,.46);
+  --cl-light:rgba(255,255,255,1);
+  --cl-radius:14px; --page-label:'格 · 纯白';
+}
+.t-ye {
+  --page:#0B0D12; --card:#1C1F27; --read:#14161C;
+  --ink:#EDEBE6; --ink2:#9AA0AE; --ink3:#6E7484;
+  --accent:#DB7E6B; --accent-bright:#E89B8C; --accent-ink:#2A1405;
+  --accent-out:rgba(219,126,107,.40);
+  --line:#262A34; --sunken:#0B0D12;
+  --cl-out:rgba(0,0,0,.55); --cl-shade:rgba(0,0,0,.42);
+  --cl-light:rgba(255,255,255,.062);
+  --cl-radius:24px; --page-label:'夜 · 深墨';
+}
+
+* { box-sizing:border-box; margin:0; padding:0; }
+body {
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+  background:#3a3a3a; color:#eee; padding:28px 20px 60px;
+  display:flex; flex-direction:column; align-items:center; gap:20px; min-height:100vh;
+}
+.toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:center; }
+.toolbar button {
+  font:inherit; font-size:13px; padding:7px 15px; border-radius:8px;
+  border:1px solid #666; background:#4a4a4a; color:#eee; cursor:pointer;
+}
+.toolbar button.on { background:#B4432C; border-color:#B4432C; }
+.hint { font-size:12.5px; color:#aaa; }
+
+/* ── 手机原型 ─────────────────────────────────────────────────────── */
+.phone {
+  width:390px; min-height:844px; background:var(--page); color:var(--ink);
+  border-radius:38px; overflow:hidden; box-shadow:0 24px 60px rgba(0,0,0,.5);
+  display:flex; flex-direction:column;
+}
+.topbar {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:16px 20px 10px; font-size:15px; font-weight:600;
+}
+.topbar .back { font-size:13px; font-weight:400; color:var(--ink3); }
+.body { padding:6px 20px 28px; overflow-y:auto; flex:1; }
+
+/* 粘土层（外阴影 + 内暗 + 内亮）—— spec §3.2 */
+.clay {
+  background:var(--card); border-radius:var(--cl-radius);
+  box-shadow:0 0 0 1px var(--line), 0 6px 14px var(--cl-out);
+}
+
+/* ── ① 价值主张 ───────────────────────────────────────────────────── */
+.value-prop { font-size:16px; font-weight:600; line-height:1.5; margin-top:6px; }
+.value-sub { font-size:12.5px; color:var(--ink3); line-height:1.7; margin-top:6px; }
+
+/* 🆕 2026-10-09 二稿：原「订阅专享」标签/胶囊**已去掉**（白哥问"这是什么" ⇒ 它不自解释；
+   且下方常驻的「订阅权益」区块已经承担了那个职责）。改为**常驻区块**：
+   小标题 + 平面卡 —— 与「我的」页的分组语汇一致（`_groupLabel` + `Clay`）。*/
+.section-title {
+  font-size:12px; font-weight:600; color:var(--ink2);
+  margin:22px 0 8px; padding-left:2px; letter-spacing:.02em;
+}
+.panel { padding:14px 16px 16px; }
+
+/* ── ② 价格（月/年并排）───────────────────────────────────────────── */
+.plans { display:flex; gap:11px; margin-top:22px; }
+.plan {
+  flex:1; position:relative; cursor:pointer;
+  background:var(--card); border-radius:var(--cl-radius); padding:14px 13px 13px;
+  box-shadow:0 0 0 1px var(--line), 0 4px 10px var(--cl-out);
+}
+.plan.sel { box-shadow:0 0 0 2px var(--accent), 0 6px 16px var(--accent-out); }
+.radio {
+  width:17px; height:17px; border-radius:50%; border:2px solid var(--ink3);
+  position:absolute; top:13px; right:13px;
+}
+.plan.sel .radio { border-color:var(--accent); background:
+  radial-gradient(circle at center, var(--accent) 0 5px, transparent 5px); }
+.plan .name { font-size:13px; color:var(--ink2); }
+.plan .price { font-size:28px; font-weight:700; letter-spacing:-.02em; margin-top:3px; }
+.plan .price .cur { font-size:15px; font-weight:600; vertical-align:6px; margin-right:1px; }
+.plan .per { font-size:11.5px; color:var(--ink3); margin-top:3px; }
+.badge {
+  position:absolute; top:-9px; left:13px; font-size:10.5px; font-weight:600;
+  padding:2px 7px; border-radius:7px; background:var(--accent); color:var(--accent-ink);
+}
+
+/* ── ③ 购买按钮（紧邻价格）────────────────────────────────────────── */
+.buy {
+  width:100%; margin-top:13px; padding:14px; border:0; border-radius:16px;
+  font:inherit; font-size:15px; font-weight:600; cursor:pointer;
+  background:var(--accent); color:var(--accent-ink);
+  box-shadow:0 5px 0 var(--accent-out);
+}
+.buy.off { background:var(--sunken); color:var(--ink3); box-shadow:none; cursor:not-allowed; }
+
+/* ── ④ 法定要点（紧贴按钮 · 短）───────────────────────────────────── */
+.keynote { font-size:11.5px; color:var(--ink3); line-height:1.7; margin-top:9px; text-align:center; }
+.keynote a { color:var(--accent); text-decoration:none; }
+
+/* ── ⑤ 常驻区块：本页**已无折叠控件**（见文末说明 §一.1），
+      所以这里不再有 `details/summary` 的样式 —— 一稿那套已随折叠一起删掉。*/
+/* 「订阅到期后」的清单（原来是 `.fold ul/li`，现在挂在 `.panel` 上）*/
+.panel ul { list-style:none; }
+.panel li {
+  font-size:12px; color:var(--ink2); line-height:1.9;
+  padding-left:13px; position:relative;
+}
+.panel li::before { content:'·'; position:absolute; left:3px; color:var(--ink3); }
+
+/* ── 🆕 对照表（本次的核心）──────────────────────────────────────── */
+.cmp { width:100%; border-collapse:collapse; margin-top:2px; }
+.cmp th, .cmp td {
+  font-size:12px; padding:8px 4px; text-align:left; vertical-align:middle;
+  border-bottom:1px solid var(--line);
+}
+.cmp th { font-size:11px; font-weight:600; color:var(--ink3); letter-spacing:.02em; }
+.cmp td:first-child { color:var(--ink); }
+.cmp th:nth-child(2), .cmp td:nth-child(2),
+.cmp th:nth-child(3), .cmp td:nth-child(3) { text-align:center; width:64px; }
+.cmp .yes { color:var(--ink2); }
+.cmp .no  { color:var(--ink3); }
+/* 订阅专享行的强调：不用底色块，靠**字重 + accent 对勾**区分（形状区分优于参数）*/
+.cmp tr.exclusive td { color:var(--ink); font-weight:600; }
+.cmp tr.exclusive td .yes { color:var(--accent); font-weight:700; }
+.cmp .quota { font-size:11px; color:var(--ink3); font-weight:400; }
+.cmp .rowhead {
+  font-size:11px; font-weight:600; color:var(--ink3);
+  padding-top:14px; border-bottom:0; letter-spacing:.02em;
+}
+
+/* ── ⑥ 恢复购买（次要）───────────────────────────────────────────── */
+.restore {
+  width:100%; margin-top:14px; padding:13px; cursor:pointer;
+  font:inherit; font-size:13.5px; font-weight:500;
+  background:var(--card); color:var(--ink2); border:0;
+  border-radius:16px; box-shadow:0 0 0 1px var(--line), 0 4px 10px var(--cl-out);
+}
+
+/* ── ⑦ 法律链接 ───────────────────────────────────────────────────── */
+.legal { display:flex; gap:20px; justify-content:center; margin-top:20px; }
+.legal a { font-size:11.5px; color:var(--ink3); text-decoration:none; }
+
+/* ── 已订阅态 ─────────────────────────────────────────────────────── */
+.active-card { margin-top:6px; padding:16px; }
+.active-card .row { display:flex; align-items:center; gap:9px; }
+.active-card .dot {
+  width:19px; height:19px; border-radius:50%; background:var(--accent);
+  display:flex; align-items:center; justify-content:center;
+  color:var(--accent-ink); font-size:12px;
+}
+.active-card .t { font-size:15px; font-weight:600; }
+.active-card .d { font-size:12.5px; color:var(--ink3); margin-top:8px; }
+/* 🆕 云朵标（2026-10-09 白哥定：「加云朵图标就行了」）*/
+.cloud {
+  margin-left:auto; font-size:15px; color:var(--ink3); cursor:pointer;
+  padding:6px; border-radius:8px;
+}
+.cloud.ok { color:var(--ink3); }
+.cloud.syncing { color:var(--accent); }
+.cloud.fail { color:#C0392B; }
+.cloud-demo { display:flex; gap:14px; align-items:center; margin-top:10px; font-size:11.5px; color:var(--ink3); }
+
+/* 🆕 2026-10-09 三稿：「我的」页的云端同步**独立胶囊**
+   （白哥：「还是在我的里弄个独立的胶囊吧」）——证据见文末 §八 */
+.chip {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:6px 11px; border-radius:999px;
+  background:var(--sunken); color:var(--ink2);
+  font-size:11.5px; white-space:nowrap;
+}
+.chip-ic { font-size:13px; color:var(--ink3); }
+.chip-ic.sync { color:var(--accent); }
+.chip-ic.ok { color:var(--ink3); }
+.chip-ic.fail { color:#C0392B; }
+
+/* ══════════════════ 设计说明区 ══════════════════ */
+.notes {
+  max-width:860px; background:#f7f5f0; color:#24211C;
+  border-radius:14px; padding:26px 28px; font-size:13.5px; line-height:1.75;
+}
+.notes h3 { font-size:17px; margin-bottom:12px; }
+.notes h4 { font-size:14px; margin:22px 0 8px; }
+.notes table { width:100%; border-collapse:collapse; margin:10px 0; }
+.notes th, .notes td {
+  border:1px solid #ddd7cc; padding:7px 9px; font-size:12.5px;
+  text-align:left; vertical-align:top;
+}
+.notes th { background:#efeae1; font-weight:600; }
+.ok { color:#1d7a4b; } .warn { color:#a8560f; } .bad { color:#B4432C; }
+code { background:#eae5dc; padding:1px 5px; border-radius:4px; font-size:12px; }
+.notes ul { padding-left:20px; } .notes li { margin:4px 0; }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <button class="on" data-t="t-mo">墨 · 暖纸</button>
+  <button data-t="t-ge">格 · 纯白</button>
+  <button data-t="t-ye">夜 · 深墨</button>
+  <button id="tog" style="margin-left:8px">切换 未订阅 / 已订阅</button>
+  <span class="hint" id="hint">点价格卡试「不预选 → 选中」；往下滚看常驻的「订阅权益」对照表</span>
+</div>
+
+<div class="phone t-mo" id="phone">
+
+  <div class="topbar">
+    <div class="title">CoEvo 专业版</div>
+    <div class="back">返回</div>
+  </div>
+
+  <!-- ═══════════ 未订阅态 ═══════════ -->
+  <div class="body" id="view-none">
+
+    <!-- ① 价值主张（🆕 二稿：去掉了「订阅专享」标签与胶囊）-->
+    <div class="value-prop">订阅后，学习记录可在多设备间同步</div>
+    <div class="value-sub">换手机、重装 App 后自动取回；免费版继续无限制使用阅读、划词、生词本与复习。</div>
+
+    <!-- ② 价格：月/年【并排】-->
+    <div class="plans">
+      <div class="plan" data-p="monthly">
+        <div class="radio"></div>
+        <div class="name">月度</div>
+        <div class="price"><span class="cur">¥</span>9.9</div>
+        <div class="per">每月自动续期</div>
+      </div>
+      <div class="plan has-badge" data-p="yearly">
+        <div class="badge">省 34%</div>
+        <div class="radio"></div>
+        <div class="name">年度</div>
+        <div class="price"><span class="cur">¥</span>78</div>
+        <div class="per">≈ ¥6.5 / 月</div>
+      </div>
+    </div>
+
+    <!-- ③ 购买按钮（紧邻）-->
+    <button class="buy off" id="buy">请先选择订阅方式</button>
+
+    <!-- ④ 法定要点（紧贴按钮 · 两行小字 · 常驻不折叠）
+         🔑 原「续费与扣款」原本在折叠区里 —— 2026-10-09 二稿把它并到这儿：
+            它本身就是**法定披露**，与「自动续期 / 取消路径」同族，
+            放在按钮正下方才是「显著」（§4.4.2 的判据）。-->
+    <div class="keynote">
+      到期自动续期，可随时在 <a href="#">Apple ID 设置 → 订阅</a> 中取消。<br>
+      系统会在当前订阅期结束前 24 小时内从你的 Apple 账户扣取下一期费用；
+      取消后当前订阅期结束前仍可使用会员功能。
+    </div>
+
+    <!-- ⑤ 🆕 二稿：标题 = 「订阅权益」，**常驻不折叠**（白哥 2026-10-09 定）-->
+    <div class="section-title">订阅权益</div>
+    <div class="clay panel">
+      <!-- 对照表（原「免费版包含」列表被它取代）—— 依据见文末说明 §二/§三 -->
+      <table class="cmp">
+        <tr>
+          <th>共同享有</th><th>免费版</th><th>订阅版</th>
+        </tr>
+        <tr>
+          <td>阅读信息流全部内容</td>
+          <td><span class="yes">✓</span></td><td><span class="yes">✓</span></td>
+        </tr>
+        <tr>
+          <td>划词查词</td>
+          <td><span class="yes">✓</span></td><td><span class="yes">✓</span></td>
+        </tr>
+        <tr>
+          <td>生词本 · 无数量限制</td>
+          <td><span class="yes">✓</span></td><td><span class="yes">✓</span></td>
+        </tr>
+        <tr>
+          <td>词卡朗读与复习</td>
+          <td><span class="yes">✓</span></td><td><span class="yes">✓</span></td>
+        </tr>
+
+        <tr><td class="rowhead" colspan="3">订阅版专享</td></tr>
+        <tr class="exclusive">
+          <td>学习记录跨设备同步</td>
+          <td><span class="no">—</span></td><td><span class="yes">✓</span></td>
+        </tr>
+        <tr class="exclusive">
+          <td>云端书架（电子书备份）</td>
+          <td><span class="no">—</span></td><td><span class="yes">✓</span></td>
+        </tr>
+        <tr class="exclusive">
+          <td>整段翻译</td>
+          <td><span class="quota">每月 10 次</span></td><td><span class="yes">不限次数</span></td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- ⑥ 订阅到期后（也常驻 —— 它回答「退了会怎样」，与权益同族、决策权重高）-->
+    <div class="section-title">订阅到期后</div>
+    <div class="clay panel">
+      <ul>
+        <li>端侧学习数据（生词、复习进度、已导入的电子书）<b>全部保留</b></li>
+        <li>跨设备同步停止 —— 两台设备不再互相更新</li>
+        <li>云端已备份的电子书仍可下载恢复，但不能再上传新书</li>
+        <li>整段翻译回到免费额度（每月 10 次）</li>
+        <li>不会丢失或锁定任何已积累的内容</li>
+      </ul>
+    </div>
+
+    <!-- ⑦ 恢复购买 -->
+    <button class="restore">恢复购买</button>
+
+    <!-- ⑧ 法律链接 -->
+    <div class="legal">
+      <a href="#">隐私政策</a>
+      <a href="#">用户协议</a>
+    </div>
+  </div>
+
+  <!-- ═══════════ 已订阅态 ═══════════ -->
+  <!-- 🔴 2026-10-09 三稿：**去掉「订阅权益」那一块**。
+       白哥：「已经订阅了的人有什么好看的」——
+       权益对比与「订阅到期后」的受众是**未订阅 / 已到期**的人，
+       已订阅态重复推销既占地方又零决策价值。⇒ 只留：状态卡 + 恢复购买 + 法律链接。-->
+  <div class="body" id="view-active" style="display:none">
+    <div class="clay active-card">
+      <div class="row">
+        <div class="dot">✓</div>
+        <div class="t">订阅中</div>
+        <!-- 云朵标（订阅页这张卡上**保留图标形态** —— 卡的主题就是订阅，
+             一枚紧凑图标恰好；文字会挤掉「订阅中 · 到期日」）-->
+        <div class="cloud ok" title="点它看上次同步时间">☁✓</div>
+      </div>
+      <div class="d">到期日 2027-10-09</div>
+      <div class="cloud-demo">
+        云朵标三态：<span class="cloud ok">☁✓</span> 已同步 ·
+        <span class="cloud syncing">☁↻</span> 同步中 ·
+        <span class="cloud fail">☁✕</span> 失败（点击给一句话 + 重试）
+      </div>
+      <div class="keynote" style="text-align:left;margin-top:10px">
+        管理或取消订阅：<a href="#">Apple ID 设置 → 订阅</a>
+      </div>
+    </div>
+
+    <button class="restore">恢复购买</button>
+    <div class="legal">
+      <a href="#">隐私政策</a><a href="#">用户协议</a>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════ 附：「我的」页 · 订阅组（云同步独立胶囊）═══════════ -->
+<div class="phone t-mo">
+  <div class="topbar">
+    <div class="title">我的</div>
+  </div>
+  <div class="body">
+    <div class="section-title" style="margin-top:4px">订阅</div>
+
+    <!-- 订阅状态卡（原样，**不再挂云朵图标**）-->
+    <div class="clay" style="padding:13px 15px">
+      <div style="display:flex;align-items:center;gap:11px">
+        <span style="color:var(--accent);font-size:19px">✓</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:500">订阅状态</div>
+          <div style="font-size:11.5px;color:var(--accent);margin-top:2px">
+            订阅中 · 到期日 2027-10-09
+          </div>
+        </div>
+        <span style="background:var(--sunken);border-radius:10px;padding:7px 13px;font-size:12px">管理</span>
+      </div>
+    </div>
+
+    <!-- 🆕 独立胶囊 -->
+    <div style="margin-top:8px">
+      <span class="chip"><span class="chip-ic ok">☁✓</span>已同步 · 今天 10:32</span>
+    </div>
+
+    <div style="margin-top:18px;font-size:11.5px;color:var(--ink3);line-height:2.1">
+      四种状态（点它都给一句话；失败时带「重试」；从没同步过 ⇒ 点它＝现在同步一次）：<br>
+      <span class="chip"><span class="chip-ic sync">☁↻</span>正在同步…</span>
+      <span class="chip"><span class="chip-ic ok">☁✓</span>已同步 · 昨天 09:00</span>
+      <span class="chip"><span class="chip-ic fail">☁✕</span>同步失败</span>
+      <span class="chip"><span class="chip-ic">☁</span>尚未同步</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ 设计说明 ═══════════════════ -->
+<div class="notes">
+  <h3>这次改了什么，以及为什么</h3>
+  <p class="warn">📌 <b>本文件是「界面锚点」</b>（三稿 · 2026-10-09）：白哥看完一稿提了两条、
+     看过二稿又定了一条（详见 §六）⇒ 现已按定案<b>落地实现</b>（见 §九的清单）。</p>
+
+  <h4>一、五条改动（三稿按白哥 2026-10-09 的指令修订）</h4>
+  <table>
+    <tr><th>#</th><th>改动</th><th>依据</th></tr>
+    <tr>
+      <td>1</td>
+      <td><b>标题 = 「订阅权益」，且整个区域<b>不折叠</b></b>（常驻）
+          <br><span class="bad">一稿写的是「订阅版与免费版对比」+ 折叠</span></td>
+      <td>🔴 白哥 2026-10-09 指令：「标题直接写『订阅权益』，同时这个区域不需要折叠」<br>
+          ⚠️ 折叠版有个真问题：<b>看不见 = 白做</b> —— 对照表是这页的<b>说服材料</b>，
+          藏在折叠里等于没写（10-07 §4.3 要解决的正是「用户读完不知道我有没有」）</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td><b>折叠区里的「免费版包含」列表 → 三列对照表</b>，分「共同享有 / 订阅版专享」两段</td>
+      <td><code>subscription-value-assessment-2026-10-07</code> §四「对照表设计」——
+          <b>这就是白哥说「之前已经定了怎么对比」的那份</b>；§4.2 的写法是
+          <b>合并共同项、突出专享项</b></td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td><b>首屏的「订阅专享」标签 + 三个胶囊 —— 已去掉</b>（一稿引入的）</td>
+      <td>🔴 白哥问「这是什么？」⇒ 它<b>不自解释</b>（一行无来由的胶囊）。
+          而第 1 条把「订阅权益」变成<b>常驻区块</b>之后，那个职责已经有人承担
+          ⇒ 首屏回到最轻：<b>一句话 + 价格 + 按钮</b></td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td><b>「续费与扣款」从折叠区并到按钮下方的法定要点区</b>（两行小字，常驻）</td>
+      <td>它本身就是<b>法定披露</b>，与「自动续期 / 取消路径」同族；
+          原来放在折叠里是为了「要点不可折叠、补充可以」（10-04 判据）——
+          但现在整个折叠区没了 ⇒ 并到按钮正下方反而<b>更符合「显著」</b>（§4.4.2）</td>
+    </tr>
+    <tr class="warn">
+      <td>5</td>
+      <td><b>🆕 三稿：已订阅态<b>删掉</b>「订阅权益」整块</b>；
+          「会员已到期」那句降级说明改为<b>只在真·已到期时</b>出现</td>
+      <td>🔴 白哥给的判据（§七逐字）：<b>受众是「没订阅、订阅到期的人」</b>——
+          已订阅的人看自己的权益清单零决策价值。顺带修掉一稿的一个<b>错误陈述</b>：
+          降级说明原来对<b>所有</b>状态显示，包括从未订阅的人</td>
+    </tr>
+  </table>
+  <p class="ok">✅ 结果：这页<b>没有任何折叠</b>，所有内容自上而下可见 —— 顺序仍是
+     「价值主张 → 价格 → 按钮 → 法定要点 → 订阅权益 → 到期后 → 恢复购买 → 法律链接」，
+     <b>价格依然在首屏</b>（§5.2：内容层最大字号必须是「要记住的答案」）。</p>
+
+  <h4>二、🔴 为什么「现在可以上对照表了」（10-07 的判据说得很明白）</h4>
+  <p><code>subscription-value-assessment</code> §4.1 原话：</p>
+  <p style="padding-left:14px;border-left:3px solid #ddd7cc">
+    「🔴 但如果现在做，会<b>自曝其短</b>：免费列 5 项 ✅、订阅列<b>只有 1 项</b> ——
+     对照表会<b>放大</b>『订阅不值』的观感……<br>
+     📌 判据：<b>对照表是「放大器」不是「说服器」</b> —— 差为正则有力；差近零则自杀。
+     ⇒ <b>先补权益，再上对照表。</b>」</p>
+  <p class="ok">✅ <b>条件已经变了</b>：订阅侧 2026-10-09 已补齐为 <b>3 项</b>（下节逐行有据），
+     免费侧 <b>5 项中 4 项与订阅完全相同</b>（合并成「共同享有」段）
+     ⇒ 差为正，而且是<b>一眼看得出的正</b>。</p>
+
+  <h4>三、对照表逐行依据（**每行都能落到代码**）</h4>
+  <table>
+    <tr><th>行</th><th>免费版</th><th>订阅版</th><th>依据（后端订阅闸门的三个消费点）</th></tr>
+    <tr><td>阅读 · 查词 · 生词本 · 朗读复习</td><td>✓</td><td>✓</td>
+        <td>2026-10-01 白哥定「免费全量」：生词上限取消、朗读免费 ⇒ 这些<b>不是</b>订阅权益</td></tr>
+    <tr><td>学习记录跨设备同步</td><td>—</td><td>✓</td>
+        <td><code>sync_handlers.rs:332</code> —— 未订阅返回 <b>403</b>「跨设备同步是订阅权益」</td></tr>
+    <tr><td>云端书架（电子书备份）</td><td>—</td><td>✓</td>
+        <td><code>book_blob_handler.rs:157</code>（<b>上传</b>要订阅）；⚠️ <b>下载不设闸门</b>
+            （<code>:329</code> 只验登录）⇒ 所以「订阅到期后」写的是「仍可下载、不能再上传」
+            <b>而不是</b>「云端书架不可用」</td></tr>
+    <tr><td>整段翻译</td><td>每月 10 次</td><td>不限次数</td>
+        <td><code>translation.rs:59</code> <code>FREE_MONTHLY_LIMIT = 10</code>；订阅用户
+            <b>不检查上限</b>（<code>:375</code>）</td></tr>
+  </table>
+
+  <h4>四、⚠️ 我把「任意内容制卡」<b>留在表外</b>了（请你定）</h4>
+  <p><code>product-core-expansion-2026-10-07</code> §4.2 的归属定案里，
+     <b>任意内容制卡 = 🟡 免费额度 + 订阅扩额</b>（它和整段翻译同类：真实边际成本）。</p>
+  <p class="bad">但它<b>目前还没实现额度制</b> —— <code>/api/generate-card</code>
+     <b>不验证登录态</b>，也就是对所有人无限免费。</p>
+  <p>⇒ 按既有硬判据「<b>订阅页必须与已实现的能力逐一对应</b>」（<code>iap_plan.dart</code> 的权益注释、
+     以及 <code>iap_verify</code> 里那几条反向断言），<b>没实现就不能写</b> ——
+     写了就是「承诺未实现」（10-04 那版踩过、也是归零型风险）。
+     所以本稿<b>不含这一行</b>；等额度制上线后，它会是第 4 行专享权益。</p>
+
+  <h4>五、⚠️ 一个必须说清的语义：订阅状态「跟谁走」（白哥同日问的第 3 件事）</h4>
+  <p>白哥问：「退出登录后订阅状态没有变化，订阅状态不是跟着账号状态吗？」</p>
+  <p>🔑 答案分两半 —— <b>两个来源的「所有者」不同</b>，所以生命周期也不同：</p>
+  <table>
+    <tr><th>来源</th><th>所有者的</th><th>登出后该怎么变</th></tr>
+    <tr>
+      <td>服务端 <code>users.subscription_expires</code></td>
+      <td><b>App 账号</b></td>
+      <td>🔴 <b>必须复位</b> —— 否则下一个账号看到上一个账号的订阅（跨账号泄漏）<br>
+          <span class="ok">✅ 已修（2026-10-09）：`onLogout` 里调 `subscriptionProvider.reset()`</span></td>
+    </tr>
+    <tr>
+      <td>端侧 StoreKit <code>currentEntitlements</code></td>
+      <td><b>Apple ID</b></td>
+      <td>✅ <b>不该变、也变不了</b> —— 订阅是 Apple ID 的，同一台设备换 App 账号，
+          权益<b>本来就还在</b>（用户确实付过钱）<br>
+          <span class="warn">⚠️ 所以 iOS 上「退出 App 账号后仍显示订阅版」是<b>正确</b>的</span></td>
+    </tr>
+  </table>
+  <p>⇒ 你看到的「退出后没变」在<b>安卓验证机</b>上是<b> bug</b>（端侧那一侧为空，显示的全是服务端那个残留值）；
+     在 <b>iOS</b> 上则是正确行为。<b>修完后</b>：安卓上登出 → 显示免费版；iOS 上登出 → 仍显示订阅版。</p>
+
+  <h4>六、✅ 白哥 2026-10-09 的定案（三稿按此实现，均已落地）</h4>
+  <table>
+    <tr><th>#</th><th>问题</th><th>定案</th></tr>
+    <tr><td>1</td><td>「订阅权益」区域要不要折叠</td>
+        <td><b>不折叠</b>，标题就叫 <b>「订阅权益」</b>（原话：「标题直接写『订阅权益』，
+            同时这个区域不需要折叠」）</td></tr>
+    <tr><td>2</td><td>「订阅到期后」要不要常驻</td>
+        <td><b>常驻</b>（原话：「<b>订阅到期后当然也要常驻</b>」）</td></tr>
+    <tr><td>3</td><td>云同步状态放哪</td>
+        <td><b>「我的」页里弄一个独立的胶囊</b>（原话），不贴在那张订阅卡上</td></tr>
+    <tr><td>4</td><td>一稿首屏的「订阅专享」胶囊</td>
+        <td><b>删掉</b> —— 白哥问「这是什么？」⇒ 它不自解释；
+            常驻的「订阅权益」已承担该职责</td></tr>
+  </table>
+
+  <h4>七、🔑 由第 2 条推出的判据：<b>先问「这块内容给谁看」</b></h4>
+  <p>白哥给的理由是这一整句（值得逐字留档）：</p>
+  <p style="padding-left:14px;border-left:3px solid #ddd77c">
+    「这就是为了让人知道订阅有什么好处，<b>没订阅、订阅到期的人看到才是关键，
+     已经订阅了的人有什么好看的</b>。」</p>
+  <p>⇒ 它直接决定了「订阅权益」与「订阅到期后」这两块出现在<b>哪个状态</b>里：</p>
+  <table>
+    <tr><th>状态</th><th>渲染这两块吗</th><th>为什么</th></tr>
+    <tr><td><b>未订阅</b></td><td>✅ 渲染</td><td>正在被说服的人 —— 这两块就是给他看的</td></tr>
+    <tr><td><b>已到期</b>（曾订阅、已失效）</td><td>✅ 渲染</td><td>同一类受众；且「订阅到期后」正是他的处境</td></tr>
+    <tr><td><b>已订阅</b></td><td>🔴 <b>不渲染</b></td><td>他已经买了 —— 重复推销既占地方又零决策价值</td></tr>
+  </table>
+  <p><b>三稿据此改掉了两处</b>：① 已订阅态删掉「订阅权益」整块；
+     ② 「会员已到期」那句降级说明<b>只在真·已到期时</b>出现
+     （一稿它写在折叠区里、对<b>所有</b>状态显示 —— 对从未订阅的人说「会员已到期」是<b>错误陈述</b>）。</p>
+  <p class="ok">📌 判据（可复用）：<b>任何「说服性」内容，先定受众状态，再定它出现在哪里</b> ——
+     「写得好」是第二位的事；「写给了已经不需要被说服的人」是第一位的事。</p>
+
+  <h4>八、🆕 云同步：从「贴在卡片上」改成「独立胶囊」（「我的」页）</h4>
+  <p>白哥原话：「<b>另外贴云端同步还是在我的里弄个独立的胶囊吧</b>」。</p>
+  <p>上一版是把一枚<b>图标</b>贴在「我的」页那张订阅卡里（副标题右侧、按钮左侧）。两个问题：</p>
+  <ul>
+    <li>贴着 ⇒ 被读成「<b>订阅状态的一部分</b>」（它是「云端数据走到哪了」，是另一件事）；</li>
+    <li>图标形态<b>说不出「上次同步是几点」</b> —— 只能点开才知道。</li>
+  </ul>
+  <p>⇒ 现在「我的」页用<b>独立胶囊</b>（图标 + 文案，如「已同步 · 今天 10:32」），
+     挂在「订阅」组内、订阅卡<b>下方</b>。语义归属不变（同属「订阅」组），
+     形态变了（它现在是它自己的东西）。</p>
+  <p>⚠️ <b>订阅页那张「已订阅」卡上的图标形态<b>保留</b></b> —— 那张卡的主题就是订阅，
+     一枚紧凑图标恰好；换成带文字的胶囊会挤掉「订阅中 · 到期日」。
+     📌 判据：<b>形态可以随上下文不同，但口径必须同源</b> ——
+     两种形态都走同一个「状态 →（图标, 颜色）」与同一个点击处理（见
+     <code>widgets/sync_cloud_badge.dart</code>）。</p>
+
+  <h4>九、⏳ 本稿尚未实现</h4>
+  <p class="warn">本文件是<b>界面锚点</b>；实现落在 <code>subscribe_screen.dart</code> ·
+     <code>profile_screen.dart</code> · <code>widgets/sync_cloud_badge.dart</code> ·
+     <code>services/iap_plan.dart</code> · <code>services/sync_status.dart</code>，
+     并已补断言（含「这页不得再出现折叠控件」这条反向断言）。</p>
+</div>
+
+<script>
+document.querySelectorAll('.toolbar button[data-t]').forEach(function (b) {
+  b.onclick = function () {
+    document.querySelectorAll('.toolbar button[data-t]').forEach(function (x) {
+      x.classList.remove('on');
+    });
+    b.classList.add('on');
+    document.getElementById('phone').className = 'phone ' + b.dataset.t;
+  };
+});
+var showingNone = true;
+document.getElementById('tog').onclick = function () {
+  showingNone = !showingNone;
+  document.getElementById('view-none').style.display = showingNone ? '' : 'none';
+  document.getElementById('view-active').style.display = showingNone ? 'none' : '';
+  document.getElementById('hint').textContent = showingNone
+    ? '点价格卡试「不预选 → 选中」；往下滚看常驻的「订阅权益」对照表'
+    : '已订阅态：只有状态卡 + 恢复购买 + 法律链接（**没有**权益对比 —— 受众不是他）';
+};
+var sel = null;
+var buy = document.getElementById('buy');
+var PRICE = { monthly: '¥9.9 / 月', yearly: '¥78 / 年' };
+document.querySelectorAll('.plan').forEach(function (card) {
+  card.onclick = function () {
+    sel = card.dataset.p;
+    document.querySelectorAll('.plan').forEach(function (c) {
+      c.classList.toggle('sel', c === card);
+    });
+    buy.classList.remove('off');
+    buy.classList.add('on');
+    buy.textContent = '订阅 · ' + PRICE[sel];
+  };
+});
+</script>
+</body>
+</html>

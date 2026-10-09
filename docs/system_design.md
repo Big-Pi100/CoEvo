@@ -30,6 +30,17 @@
 
 #### 1.3 架构模式
 
+> 🗑 **2026-10-09 已删除**：下图里的 `DialogQueue` / `DialogOverlay` 两个模块**已从代码中移除**
+> （`providers/dialog_queue_provider.dart` + `widgets/dialog_overlay.dart`）。两个理由：
+> ① **零消费者**（`enqueue` 全库无调用方）；② 它建在**已退役的概念**上（`P0_PAYMENT` / `P1_SHARE` /
+> `P2_CP1_CONCEPT` —— 分销 / 概念制卡时代）。更糟的是**它是个陷阱**：`_showDialog` 在
+> `MaterialApp.builder` 的上下文（**在 Navigator 之上**）里调 `showDialog` ⇒ 一旦真被用起来，
+> 弹窗会**静默不出现**（异常被它自己的 `catch` 吞掉）。
+> 📄 依据与证据：`docs/review/subscription-expiry-overlay-investigation-2026-10-09.md` §三.a
+>
+> ⚠️ 本节其余内容（`ChatScreen` / `ReviewDialog` / `SubscribePanel` / 分销链）是
+> **2026-09-25 的历史快照**，均与现状不符 —— 读架构请以代码为准。
+
 ```
 ┌───────────────────────────────────────────────────────────┐
 │                     Flutter 前端                           │
@@ -91,8 +102,8 @@
 
 | # | 文件路径 | 说明 |
 |---|----------|------|
-| 4 | `app/lib/providers/dialog_queue_provider.dart` | DialogQueue 全局状态管理 (Riverpod StateNotifier) |
-| 5 | `app/lib/widgets/dialog_overlay.dart` | 单点渲染 DialogOverlay widget (替换散装 showDialog) |
+| 4 | `app/lib/providers/dialog_queue_provider.dart` | DialogQueue 全局状态管理 (Riverpod StateNotifier) · 🗑 **2026-10-09 已删除**（零消费者） |
+| 5 | `app/lib/widgets/dialog_overlay.dart` | 单点渲染 DialogOverlay widget (替换散装 showDialog) · 🗑 **2026-10-09 已删除**（同上，且它是「一用就静默失败」的陷阱） |
 | 6 | `app/lib/widgets/review_dialog.dart` | 复习弹窗组件 (ReviewDialog) |
 | 7 | `app/lib/widgets/review_card_widget.dart` | 共享卡片组件 (从 ReviewScreen 抽出) |
 
