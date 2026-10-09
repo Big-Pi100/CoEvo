@@ -79,5 +79,7 @@ pub mod tencent_tts;
 pub mod test_helpers;
 /// 整段 / 整句翻译（订阅权益 · 免费 10 次/月）
 pub mod translation;
-pub mod trial_handler;
+// 🔴 2026-10-09 已删 `pub mod trial_handler;` —— 试用账号机制整体退役
+//    （`/api/trial/start` 与 `/api/trial/claim` 两个路由一并删除）。
+//    📄 `docs/review/trial-account-removal-2026-10-09.md`
 pub mod user_purge;

@@ -4,7 +4,7 @@
 //!
 //! | | `llm_card` | 本模块 |
 //! |---|---|---|
-//! | 输入 | 一个**词形**（≤64 字符、严格白名单）| 任意文本（≤300 字符）|
+//! | 输入 | 一个**词形**（≤64 字符、严格白名单）| 任意文本（≤800 字符）|
 //! | 缓存 | 🔑 **服务端全局**（高频词被多人查同一张卡 ⇒ 能摊薄）| ❌ **不做**（见下）|
 //! | 产物 | 结构化卡片（进复习）| 一次性译文（**不进任何地方**）|
 //! | 额度 | 无（缓存把成本摊掉了）| 免费 **10 次/月** · 订阅无限 |
@@ -23,7 +23,7 @@
 //!
 //! # 计费口径
 //!
-//! · **按次，不按长度**（选中上限 300 字符）⇒ 用户不必猜「这句长会不会多扣」
+//! · **按次，不按长度**（选中上限 800 字符）⇒ 用户不必猜「这句长会不会多扣」
 //! · 🔴 **只有成功返回译文才计费**（调模型失败 / 合规拒绝 ⇒ **退额**）
 //!   —— 收了钱没给东西是最快失去信任的方式
 
@@ -45,23 +45,46 @@ use crate::error::AppError;
 ///    （同一条教训在 `llm_card.rs` 里也记着。）
 const MODEL: &str = "deepseek-flash";
 
-/// 输出上限。翻译是「等长改写」，300 字符英文译成中文约 1.5 倍字符数 ⇒ 900 足够。
-const MAX_TOKENS: u32 = 900;
+/// 输出上限。
+///
+/// 🔑 与 [`MAX_TEXT_CHARS`] **同比例**（2026-10-09 由 900 提到 2400）：
+///    翻译是「等长改写」，英译中约 1.5 倍字符数；按 **3 tokens/字符** 的余量
+///    ⇒ 800 × 3 = 2400（与原来 300 × 3 = 900 完全同一口径）。
+///
+/// 🔴 **改长度上限时必须一起看这个** —— 不改的后果是**静默截断**：
+///    模型把长句译文拦腰切断，**没有任何报错**，用户拿到半句中文还以为原文就那样。
+///    📌 同族：`llm_card` 也有一个同名的 `MAX_TOKENS`（**那是制卡的，与翻译无关**，
+///       别改错文件）。
+const MAX_TOKENS: u32 = 2400;
 /// 低温度：翻译要**稳定**，不要发挥。
 const TEMPERATURE: f32 = 0.2;
 
 /// 选中文本长度上限（**字符**，不是字节）。
 ///
-/// 🔑 与划线记忆同一条线（300）—— 用户「选不动了就该分段处理」。
-pub const MAX_TEXT_CHARS: usize = 300;
+/// 🔑 2026-10-09 由 **300 提到 800** —— 白哥：「用了一下经常超出，800 字符比较合理」。
+///
+/// 原 300 的注释写着「与划线记忆同一条线」——
+/// ⚠️ **实测那个前提已不成立**：划线 / 痕迹侧**没有**字符长度限制
+///    （`word_lookup_selection` 里的 300 是 **300ms 防抖**，与字符数无关）
+///    ⇒ 300 只是翻译这一侧的历史值，**不构成任何约束**。
+/// 800 ≈ 一段较长的英文自然段 —— 用户实际想翻的单位就是「**一段**」。
+///
+/// 🔴 **改本值时必须同步 [`MAX_TOKENS`] 与 [`MAX_SEGMENTS`]**：
+///    两者都由本值推导 ⇒ 只改本值会让长文本分别表现为
+///    「**译文被截断**」与「**被拒：段落太多**」，两种都难自查。
+pub const MAX_TEXT_CHARS: usize = 800;
 
 /// 免费层每月次数（设计稿 §3 定的初值）。
 pub const FREE_MONTHLY_LIMIT: i64 = 10;
 
 /// 段数上限（防滥用：一次请求最多产出这么多段）。
 ///
-/// 300 字符按最短句子切也就 20–30 段，50 是安全余量。
-const MAX_SEGMENTS: usize = 50;
+/// 🔑 与 [`MAX_TEXT_CHARS`] **同比例**（2026-10-09 由 50 提到 140）：
+///    300 字符按最短句切是 20–30 段 ⇒ 50 是安全余量；
+///    800 字符则约 53–80 段 ⇒ 取 140（同样留约 2 倍余量）。
+///    🔴 不跟着改 ⇒ 长文本会被判「段落太多」而**直接拒掉**
+///      （用户看到的是「失败」，而不是「短一点就行」）。
+const MAX_SEGMENTS: usize = 140;
 
 /// prompt 文件名（在 `COEVO_PROMPTS_DIR` 下）。
 ///
@@ -254,6 +277,162 @@ pub fn usage_of(conn: &rusqlite::Connection, uid: &str, period: &str) -> Result<
 }
 
 // ══════════════════════════════════════════════════════════════════════
+// 端侧翻译的额度预扣（A1 · 2026-10-09）
+// ══════════════════════════════════════════════════════════════════════
+
+/// 端侧翻译「预扣」成功后发出的**一次性凭据**。
+///
+/// # 🔴 它同时解决两个问题（少解决一个都会坏）
+///
+/// | 问题 | 不解决的后果 |
+/// |---|---|
+/// | **回落时重复扣额** | 端侧翻失败 → 回落 LLM → **再扣 1 次** ⇒ 一次翻译收两次 |
+/// | **凭据被冒用** | 不做归属校验 ⇒ 换个身份就能白拿一次免扣 |
+///
+/// # 为什么放内存、不建表
+/// · 生命周期只跨「预扣 → 端侧翻 → 可能回落」这一次交互（**秒级**）
+/// · 丢了的最坏后果 = 用户**多扣 1 次**（罕见路径），**不是数据损坏**
+/// · 建表等于为「容错」多养一张表 —— 本库的原则是**不为假想的复杂度付费**
+///
+/// ⚠️ 过期项在**每次访问时顺手清理**（见 [`issue_ticket`]），不依赖后台任务。
+#[derive(Debug, Clone)]
+struct QuotaTicket {
+    uid: String,
+    expires_at_ms: i64,
+}
+
+/// 凭据有效期。5 分钟 ≫「预扣 → 端侧翻 → 回落」的实际耗时（秒级），
+/// 又短到不会被长期囤积。
+const TICKET_TTL_MS: i64 = 5 * 60 * 1000;
+
+type TicketMap = std::collections::HashMap<String, QuotaTicket>;
+
+fn tickets() -> &'static std::sync::Mutex<TicketMap> {
+    static T: std::sync::OnceLock<std::sync::Mutex<TicketMap>> = std::sync::OnceLock::new();
+    T.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// 发一张凭据（=「这个人刚刚扣过 1 次」的证明）。
+fn issue_ticket(uid: &str, now_ms: i64) -> String {
+    let id = uuid::Uuid::new_v4().to_string();
+    // ⚠️ 用 `unwrap_or_else(|e| e.into_inner())` 而不是 `unwrap()`：
+    //    本 Map 的操作**不会 panic**（只做插入/删除/保留），中毒只可能是
+    //    别的线程 panic 波及 —— 继续用比「崩掉整个请求」好（翻译是旁路能力）。
+    let mut m = tickets().lock().unwrap_or_else(|e| e.into_inner());
+    m.retain(|_, t| t.expires_at_ms > now_ms); // 顺手清过期 ⇒ Map 不会无界增长
+    m.insert(
+        id.clone(),
+        QuotaTicket {
+            uid: uid.to_string(),
+            expires_at_ms: now_ms + TICKET_TTL_MS,
+        },
+    );
+    id
+}
+
+/// 校验并**消费**一张凭据。只有「属于该用户 + 未过期」才算有效。
+///
+/// 🔑 **消费即删除**（一次性）—— 否则同一张凭据能反复换来免扣。
+fn take_ticket(uid: &str, ticket: &str, now_ms: i64) -> bool {
+    let mut m = tickets().lock().unwrap_or_else(|e| e.into_inner());
+    m.retain(|_, t| t.expires_at_ms > now_ms);
+    match m.get(ticket) {
+        Some(t) if t.uid == uid => {
+            m.remove(ticket);
+            true
+        }
+        _ => false,
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct QuotaRequest {
+    /// 本次预计翻译的字符数（与 `translate_text` 的 `chars_sum` 同口径）。
+    /// 缺省 = 0 ⇒ 它是**统计值，不参与上限判断**。
+    #[serde(default)]
+    pub chars: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct QuotaTicketOut {
+    pub quota: QuotaInfo,
+    /// 🔑 **非订阅用户才有**。回落时带回来 ⇒ 服务端据此**跳过扣额**。
+    /// 订阅用户为 `None`（他们不受上限，回落本来就不扣）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticket: Option<String>,
+}
+
+/// `POST /api/translate/quota` —— 端侧翻译的**额度预扣**（A1）。
+///
+/// # 为什么端侧翻译还要服务端点头
+///
+/// 端侧翻译本身**零成本**，但「翻译」是一项**订阅权益**（免费 10 次/月 · 订阅无限）。
+/// 若端侧翻译完全绕过服务端，免费用户就变成**事实上无限** ⇒ 权益就不是「不变」了。
+/// ⇒ 所以：**端侧翻之前先扣额**，闸门仍握在服务端手里（与 [`translate_text`] 用
+/// **同一个** [`try_consume_quota`]、同一条原子 SQL —— 口径只有一处）。
+///
+/// ⚠️ 本接口**不调模型** —— 这正是它便宜的原因。
+pub async fn consume_quota_handler(
+    headers: HeaderMap,
+    Json(req): Json<QuotaRequest>,
+) -> Result<Json<QuotaTicketOut>, AppError> {
+    let (uid, _token) = crate::sync_handlers::authorize_login_only(&headers)?;
+    let out = consume_quota_for_ondevice(req.chars.max(0), &uid)?;
+    Ok(Json(out))
+}
+
+/// 预扣一次额度（**端侧翻译专用 · 不调模型**）。
+pub fn consume_quota_for_ondevice(chars: i64, uid: &str) -> Result<QuotaTicketOut, TranslateError> {
+    let period = current_period(chrono::Utc::now());
+    let now_ms = crate::sync_handlers::now_ms();
+    let conn = crate::db_pool::get_conn();
+    consume_quota_on_conn(&conn, chars, uid, &period, &now_ms)
+}
+
+/// [`consume_quota_for_ondevice`] 的**可独立断言**核心（只依赖 `conn`）。
+///
+/// 🔑 拆出来是为了**能测**（`db_pool::get_conn()` 是全局池，测试里拿不到）。
+///    它与 `translate_text` 走**同一个** [`try_consume_quota`] ⇒
+///    「额度口径只有一处」这条由**结构**保证，而不是靠人去对齐。
+pub fn consume_quota_on_conn(
+    conn: &rusqlite::Connection,
+    chars: i64,
+    uid: &str,
+    period: &str,
+    now_ms: &str,
+) -> Result<QuotaTicketOut, TranslateError> {
+    // 🔑 与 `try_consume_quota` 的 `now` **同口径**（毫秒时间戳**字符串**）——
+    //    凭据的过期判断需要整数 ⇒ 在此解析一次。
+    //    ⚠️ 解析失败退化 0 ⇒ 凭据**立即过期**（保守：宁可多扣一次，不可漏扣）。
+    let now_i = now_ms.parse::<i64>().unwrap_or(0);
+    if crate::subscription::is_subscription_active(conn, uid) {
+        // 订阅用户不受上限 ⇒ **不预扣、也不发凭据**（回落时同样不受限）
+        let used = usage_of(conn, uid, period)?;
+        return Ok(QuotaTicketOut {
+            quota: QuotaInfo {
+                used,
+                limit: None,
+                subscribed: true,
+            },
+            ticket: None,
+        });
+    }
+
+    if !try_consume_quota(conn, uid, period, chars, FREE_MONTHLY_LIMIT, now_ms)? {
+        return Err(TranslateError::QuotaExceeded);
+    }
+    let used = usage_of(conn, uid, period)?;
+    Ok(QuotaTicketOut {
+        quota: QuotaInfo {
+            used,
+            limit: Some(FREE_MONTHLY_LIMIT),
+            subscribed: false,
+        },
+        ticket: Some(issue_ticket(uid, now_i)),
+    })
+}
+
+// ══════════════════════════════════════════════════════════════════════
 // 错误
 // ══════════════════════════════════════════════════════════════════════
 
@@ -365,34 +544,51 @@ pub fn prompt() -> Result<&'static str, TranslateError> {
 ///    后者在并发下会超用（多人同时调、都还没记账）。
 ///    代价是失败路径多一步退款 —— 而退款失败只影响一次计数，不是数据损坏。
 pub async fn translate_text(text: &str, uid: &str) -> Result<TranslationOut, TranslateError> {
+    translate_text_inner(text, uid, None).await
+}
+
+/// [`translate_text`] 的完整实现。
+///
+/// `ticket`：端侧翻译**预扣**时发出的凭据（见 [`take_ticket`]）——
+/// **有效时跳过扣额**（那次额度已在预扣时扣掉，不能再扣第二次）。
+pub async fn translate_text_inner(
+    text: &str,
+    uid: &str,
+    ticket: Option<&str>,
+) -> Result<TranslationOut, TranslateError> {
     let clean = validate_text(text).map_err(TranslateError::BadInput)?;
     let chars = clean.chars().count() as i64;
     let period = current_period(chrono::Utc::now());
 
-    // ── ① 订阅？占额？──
-    let (subscribed, used_before) = {
+    // ── ① 订阅？占额？（凭据有效则**跳过**扣额 —— 那次已在预扣时扣过）──
+    let subscribed = {
         let conn = crate::db_pool::get_conn();
         let sub = crate::subscription::is_subscription_active(&conn, uid);
         if sub {
             // 订阅用户不检查上限，但仍然**记账**（用于回显与将来的用量分析）
-            let before = usage_of(&conn, uid, &period)?;
-            (true, before)
+            let _ = usage_of(&conn, uid, &period)?;
+            true
         } else {
-            let ok = try_consume_quota(
-                &conn,
-                uid,
-                &period,
-                chars,
-                FREE_MONTHLY_LIMIT,
-                &crate::sync_handlers::now_ms(),
-            )?;
-            if !ok {
-                return Err(TranslateError::QuotaExceeded);
+            let now_ms = crate::sync_handlers::now_ms(); // 毫秒时间戳**字符串**
+            let now_i = now_ms.parse::<i64>().unwrap_or(0);
+            // 🔑 先看凭据：有效 ⇒ 本次是「端侧翻失败后的回落」⇒ 不再扣
+            let pre_paid = ticket.map(|t| take_ticket(uid, t, now_i)).unwrap_or(false);
+            if !pre_paid {
+                let ok = try_consume_quota(
+                    &conn,
+                    uid,
+                    &period,
+                    chars,
+                    FREE_MONTHLY_LIMIT,
+                    &now_ms,
+                )?;
+                if !ok {
+                    return Err(TranslateError::QuotaExceeded);
+                }
             }
-            (false, usage_of(&conn, uid, &period)?)
+            false
         }
     };
-    let _ = used_before;
 
     // ── ② 调模型（不持有连接）──
     let tpl = prompt()?;
@@ -503,6 +699,11 @@ fn refund_or_log(uid: &str, period: &str, subscribed: bool) {
 #[derive(Debug, Deserialize)]
 pub struct TranslateRequest {
     pub text: String,
+    /// 🆕 端侧翻译预扣时拿到的**一次性凭据**（见 [`take_ticket`]）。
+    ///
+    /// 🔑 **可选，且缺省即现状** —— 老客户端不发这个字段，行为一字不变。
+    #[serde(default)]
+    pub ticket: Option<String>,
 }
 
 /// `POST /api/translate` —— **需登录**（额度要记在某个人头上）。
@@ -524,7 +725,7 @@ pub async fn translate_handler(
     Json(req): Json<TranslateRequest>,
 ) -> Result<Json<TranslationOut>, AppError> {
     let (uid, _token) = crate::sync_handlers::authorize_login_only(&headers)?;
-    let out = translate_text(&req.text, &uid).await?;
+    let out = translate_text_inner(&req.text, &uid, req.ticket.as_deref()).await?;
     Ok(Json(out))
 }
 
@@ -585,20 +786,60 @@ mod tests {
         assert!(validate_text("。，！").is_err(), "没有英文字母");
         assert!(validate_text("123 456").is_err(), "没有英文字母");
 
-        // 恰好 300 字符 ⇒ 允许；301 ⇒ 拒（**不截断**）
-        let ok300 = "a".repeat(MAX_TEXT_CHARS);
-        assert!(validate_text(&ok300).is_ok(), "恰好 300 应当允许");
-        let bad301 = "a".repeat(MAX_TEXT_CHARS + 1);
-        let err = validate_text(&bad301).unwrap_err();
+        // 恰好 800 字符 ⇒ 允许；801 ⇒ 拒（**不截断**）
+        let ok_max = "a".repeat(MAX_TEXT_CHARS);
+        assert!(
+            validate_text(&ok_max).is_ok(),
+            "恰好 {MAX_TEXT_CHARS} 应当允许"
+        );
+        let over_max = "a".repeat(MAX_TEXT_CHARS + 1);
+        let err = validate_text(&over_max).unwrap_err();
         assert!(err.contains("太长"), "应当明确说太长：{err}");
 
         // ⚠️ 按**字符**不是字节：300 个中文字（UTF-8 下 900 字节）不含字母 ⇒ 拒；
-        //    但长度判定必须按字符，否则 90 个中文就"超 300 字节"了。
-        let zh150 = "中".repeat(150);
-        let e = validate_text(&zh150).unwrap_err();
+        //    但长度判定必须按字符，否则 900 字节会被"超 800 字节"误判为太长。
+        //
+        // 🔴 这个样本的大小**必须跟着 `MAX_TEXT_CHARS` 走**：
+        //    它要同时满足 ① 字符数 ≤ 上限 ② **字节数 > 上限**，
+        //    才验得出「实现改成按字节判」这个回归。
+        //    上限 300 时取 150（450 字节 > 300）刚好够；
+        //    上限提到 800 后，150 个中文只有 450 字节 ⇒ **不再触发误判 ⇒ 断言变成假绿**。
+        //    ⇒ 现在取 300（900 字节 > 800 ✅，且 300 ≤ 800 ✅）。
+        //    📌 判据：**阈值的测试样本必须随阈值一起重算**，否则守的东西悄悄消失。
+        let zh300 = "中".repeat(300);
+        let e = validate_text(&zh300).unwrap_err();
         assert!(
             e.contains("没有英文"),
-            "150 个中文字符不该被判太长，实际：{e}"
+            "300 个中文字符（900 字节）不该被判太长，实际：{e}"
+        );
+    }
+
+    /// 🔴 三个长度相关常量必须**同比例** —— 只改一个会让长文本以两种方式**静默坏掉**。
+    ///
+    /// | 常量 | 现状 | 漏改的后果 |
+    /// |---|---|---|
+    /// | `MAX_TEXT_CHARS` | 800 | —（用户可选中长度）|
+    /// | `MAX_TOKENS` | 2400（= 上限 × 3）| 译文**被拦腰截断**，不报错 |
+    /// | `MAX_SEGMENTS` | 140（≈ 上限 ÷ 5.7）| 长文本被**拒：段落太多** |
+    ///
+    /// ⚠️ 断言写成**区间**而不是精确等式：常量可以按需微调，
+    ///    但要挡住的是「上限翻了几倍、另两个没动」这种**量级脱节**。
+    /// 📌 判据：**派生值必须与源值同生命周期** —— 只改源值 = 制造静默 bug。
+    #[test]
+    fn test_length_constants_stay_in_proportion() {
+        assert!(
+            MAX_TOKENS as usize >= MAX_TEXT_CHARS * 2,
+            "MAX_TOKENS={MAX_TOKENS} 相对 MAX_TEXT_CHARS={MAX_TEXT_CHARS} 太小\
+             ⇒ 长文本的译文会被**静默截断**（用户拿到半句中文，日志里什么都没有）"
+        );
+        assert!(
+            MAX_SEGMENTS >= MAX_TEXT_CHARS / 10,
+            "MAX_SEGMENTS={MAX_SEGMENTS} 相对 MAX_TEXT_CHARS={MAX_TEXT_CHARS} 太小\
+             ⇒ 长文本会被**拒：段落太多**（实测按最短句切约 1 段/10 字符）"
+        );
+        assert!(
+            MAX_TOKENS as usize <= MAX_TEXT_CHARS * 6,
+            "MAX_TOKENS 相对上限过大 ⇒ 单次成本上限被白抬高"
         );
     }
 
@@ -790,5 +1031,113 @@ mod tests {
             )
             .unwrap();
         assert_eq!(n, 1, "translation_usage 表必须存在");
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // ⑧ 端侧翻译的额度预扣 + 一次性凭据（A1 · 2026-10-09）
+    // ══════════════════════════════════════════════════════════════
+    //
+    // ⚠️ 每个用例用**不同的 uid 与时间戳** —— 凭据存在**进程级全局 Map** 里，
+    //    而 `cargo test` 默认多线程并行 ⇒ 共用 uid 会互相干扰（假红/假绿都可能）。
+    //    凭据本身是 uuid ⇒ 天然唯一，只需避开 uid 与 now_ms 撞车。
+
+    /// 🔑 凭据**只能消费一次** —— 否则一张凭据能反复换免扣（免费用户=无限）。
+    #[test]
+    fn ticket_is_single_use() {
+        let now = 1_000_000i64;
+        let t = issue_ticket("tkt-single", now);
+        assert!(take_ticket("tkt-single", &t, now), "首次应有效");
+        assert!(
+            !take_ticket("tkt-single", &t, now + 1),
+            "★ 第二次必须失效（一次性）"
+        );
+    }
+
+    /// 🔴 凭据**绑定归属**：换 uid 不能用；且失败的那次尝试**不消费**它。
+    #[test]
+    fn ticket_is_bound_to_user() {
+        let now = 2_000_000i64;
+        let t = issue_ticket("tkt-owner", now);
+        assert!(!take_ticket("tkt-thief", &t, now), "★ 别人的凭据必须无效");
+        assert!(
+            take_ticket("tkt-owner", &t, now),
+            "本人仍可用（上面那次没把它消费掉）"
+        );
+    }
+
+    /// ⏰ 过期即失效。
+    #[test]
+    fn ticket_expires() {
+        let now = 3_000_000i64;
+        let t = issue_ticket("tkt-exp", now);
+        assert!(
+            !take_ticket("tkt-exp", &t, now + TICKET_TTL_MS),
+            "★ 过期后必须无效"
+        );
+        // 边界之内仍有效 —— 证明上面的失效是「过期」而不是「路径不通」
+        let t2 = issue_ticket("tkt-exp2", now);
+        assert!(take_ticket("tkt-exp2", &t2, now + TICKET_TTL_MS - 1));
+    }
+
+    /// 不存在的凭据 ⇒ 无效，且**不 panic**（客户端可能乱传）。
+    #[test]
+    fn unknown_ticket_is_rejected() {
+        assert!(!take_ticket("tkt-unknown", "no-such-ticket", 4_000_000));
+        assert!(!take_ticket("tkt-unknown", "", 4_000_000), "空串同样无效");
+    }
+
+    // ── 预扣：与 `translate_text` 走同一套额度口径 ──
+
+    /// 免费用户预扣 ⇒ 扣 1、**必须拿到凭据**（回落靠它免重复扣）。
+    #[test]
+    fn quota_consume_grants_ticket_for_free_user() {
+        let conn = setup();
+        let out = consume_quota_on_conn(&conn, 12, "pre-a", "2026-10", "5000000").unwrap();
+        assert_eq!(out.quota.used, 1, "应扣掉 1 次");
+        assert_eq!(out.quota.limit, Some(FREE_MONTHLY_LIMIT));
+        assert!(!out.quota.subscribed);
+        assert!(out.ticket.is_some(), "★ 免费用户必须拿到凭据");
+    }
+
+    /// 免费用户**到上限** ⇒ 报 `QuotaExceeded`（同一条原子 SQL 判的）。
+    #[test]
+    fn quota_consume_rejects_when_exhausted() {
+        let conn = setup();
+        for i in 0..FREE_MONTHLY_LIMIT {
+            let ok =
+                try_consume_quota(&conn, "pre-b", "2026-10", 1, FREE_MONTHLY_LIMIT, "t").unwrap();
+            assert!(ok, "第 {i} 次应成功");
+        }
+        let err = consume_quota_on_conn(&conn, 1, "pre-b", "2026-10", "5000000").unwrap_err();
+        assert!(
+            matches!(err, TranslateError::QuotaExceeded),
+            "★ 到上限必须报额度用尽"
+        );
+    }
+
+    /// 订阅用户预扣 ⇒ **不发凭据**、`limit` 为 `None`（他本来就不受限）。
+    #[test]
+    fn quota_consume_for_subscriber_has_no_ticket() {
+        let conn = setup();
+        conn.execute(
+            "INSERT INTO users (id, username, email, subscription_expires, created_at)
+             VALUES ('pre-sub', 'pre-sub', 'pre-sub@x.com', '2030-01-01', '2026-10-09')",
+            [],
+        )
+        .unwrap();
+        let out = consume_quota_on_conn(&conn, 12, "pre-sub", "2026-10", "5000000").unwrap();
+        assert!(out.quota.subscribed, "该账号应被判定为订阅中");
+        assert_eq!(out.quota.limit, None, "订阅不限 ⇒ limit 为 None");
+        assert!(out.ticket.is_none(), "★ 订阅用户不需要凭据");
+    }
+
+    /// 🔴 预扣**不调模型**：它只碰额度表 ⇒ 未配 `DEEPSEEK_API_KEY` 也能成功。
+    ///    （这条守的是「预扣接口便宜」这个前提 —— 一旦有人往里面塞模型调用，它会红。）
+    #[test]
+    fn quota_consume_does_not_touch_llm() {
+        let conn = setup();
+        // 环境里没有 key 也应该成功（本测试不依赖环境变量）
+        let out = consume_quota_on_conn(&conn, 5, "pre-c", "2026-10", "6000000");
+        assert!(out.is_ok(), "预扣不该依赖任何模型配置：{:?}", out.err());
     }
 }

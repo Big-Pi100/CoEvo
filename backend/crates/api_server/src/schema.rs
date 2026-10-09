@@ -1096,6 +1096,52 @@ CREATE TABLE IF NOT EXISTS sync_bookmark (
 );
 CREATE INDEX IF NOT EXISTS idx_sync_bookmark_pull ON sync_bookmark(user_id, received_at);
 
+-- ── 划线记忆（并集；「最新意愿」与「首次事实」**字段级**分开取）──
+--
+-- 🔴 为什么这张表拖到 2026-10-09 才有（如实记录一段真实的坑）：
+--    在此之前 `review_log`（复习事件）**参与同步**、而 `highlight`（划线本体）**不参与**
+--    ⇒ 一台重装 / 换机 / 清数据后的设备，pull 回来的 `hl:<uuid>` 复习事件会被重放成
+--      一行 `card_review_state`，而它引用的划线**在本机不存在** —— 即「**无主划线卡**」：
+--      标题显示成 `hl:<uuid>`、点「暂停」静默无反应、界面上没有任何出口能去掉它。
+--    📌 判据：**同步的粒度必须覆盖「引用关系」** ——
+--       只同步「引用了 X 的记录」而不同步 X 本身，接收端必然出现悬空引用。
+--       （同 `sync_book_progress` 用 `content_hash` 做跨设备身份的那条：身份必须在两端都成立。）
+--
+-- 🔴 字段级合并：**不能整行取较新**
+--
+-- | 字段 | 类别 | 口径 |
+-- |---|---|---|
+-- | `deleted` / `paused` / `note` | 最新意愿 | 取**较新**（按 `updated_at`）|
+-- | `text` / `start_offset` / `end_offset` / `source_type` / `source_id` / `chapter_idx` | 首次事实 | 取**较早**（按 `created_at`）|
+--
+--    「首次事实」那一组是「**这条划的是哪段文字**」—— 它一旦确定就不该被别端改写
+--    （整行取较新会让「同一 uuid 的两端副本」互相覆盖，而这两端的内容本该一致）。
+--    📌 与 `sync_user_word` 的 `source_sentence`（例句取首次）是**同一条判据**。
+--
+-- 🔑 `id` 是**端侧生成的 uuid v4**（不是自增）—— 两台设备各自从 1 开始必撞。
+--    见端侧 `highlight_id.dart` 里「将来要改的成本要在选型时算」那条。
+--
+-- ⚠️ 不存 `pending_push` —— 那是**端侧概念**（「这一行还需不需要推给服务端」），
+--    服务端没有「待推」这回事（它自己就是终点）。
+CREATE TABLE IF NOT EXISTS sync_highlight (
+    user_id      TEXT    NOT NULL,
+    id           TEXT    NOT NULL,                 -- 端侧生成的 uuid v4
+    source_type  TEXT    NOT NULL CHECK (source_type IN ('article', 'book')),
+    source_id    TEXT    NOT NULL,                 -- article: 文章 id（文本形式）· book: 端侧 book.id
+    chapter_idx  INTEGER,                          -- ⚠️ 可空：**只有书有**（文章是单页）
+    start_offset INTEGER NOT NULL,                 -- 章内字符 offset（半开区间 [start, end)）
+    end_offset   INTEGER NOT NULL,
+    text         TEXT    NOT NULL,                 -- 🔴 选中的原文 = 复习时的**标准答案**
+    note         TEXT,                             -- 用户笔记（可清空 ⇒ 取较新，含 NULL）
+    paused       INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1)),
+    deleted      INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1)),
+    created_at   TEXT    NOT NULL,
+    updated_at   TEXT    NOT NULL,                 -- 最后一次改变该条状态的时刻（改笔记/暂停也要刷）
+    received_at  TEXT    NOT NULL,
+    PRIMARY KEY (user_id, id)
+);
+CREATE INDEX IF NOT EXISTS idx_sync_highlight_pull ON sync_highlight(user_id, received_at);
+
 -- ── 电子书进度（按**内容指纹**；`updated_at` 取较新）──
 -- 🔴 PK 是 `content_hash` 而不是 `book_id`：书籍 id 是端侧 uuid，跨设备不通用。
 --    与端侧 `book_progress_pending` 同一口径（设计 §3.4.3）。
@@ -1746,6 +1792,8 @@ mod tests {
         "sync_user_word",
         "sync_article_read",
         "sync_bookmark",
+        // 🆕 划线记忆（2026-10-09 · 补上「引用关系」那条断链：此前只有复习事件同步）
+        "sync_highlight",
         "sync_book_progress",
         // 🆕 书单（2026-10-07 · 书架上云的地基：端侧推元数据，服务端持 blob_size）
         "sync_book",

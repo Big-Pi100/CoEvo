@@ -6,7 +6,7 @@ use axum::http::{header, HeaderMap, StatusCode};
 use axum::{
     extract::Path,
     response::IntoResponse,
-    routing::{get, post, put},
+    routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
@@ -229,6 +229,14 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
             "/api/translate",
             post(crate::translation::translate_handler),
         )
+        // ── 🆕 端侧翻译的**额度预扣**（A1 · 2026-10-09）──
+        // 端侧翻译零成本，但「翻译」仍是**订阅权益**（免费 10 次/月 · 订阅无限）
+        // ⇒ 端侧翻之前先在这里扣额（闸门仍由服务端握着），扣成功才发一次性凭据。
+        // 端侧翻失败 → 带凭据回落 `/api/translate` ⇒ **不重复扣**。
+        .route(
+            "/api/translate/quota",
+            post(crate::translation::consume_quota_handler),
+        )
         // ── 词库外生词兜底（LLM 在线制卡）──
         // 🔴 **不需登录** —— 产品原则「除生词表上限外不验证登录态」：
         //    读内容/划词/生成卡片都不得被登录态阻塞。
@@ -247,9 +255,12 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
         // 🔴 2026-09-29 已退役：学习报表（learning-report / activity / weekly-report）
         //     与 WebSocket（/ws）—— 依赖已迁端侧的学习状态（user_cards / review_log / conversation_turns）
         // 🔴 2026-09-29 已退役：/ws（WebSocket chat —— app 内无 UI 入口）
-        // ── 试用（trial）──  ⚠️ 去留待定，见 docs/review/backend-dead-route-cleanup-2026-10-06.md §4.2
-        .route("/api/trial/start", post(crate::trial_handler::start))
-        .route("/api/trial/claim", put(crate::trial_handler::claim))
+        // 🔴 2026-10-09 已退役：`POST /api/trial/start` 与 `PUT /api/trial/claim`
+        //     —— **试用账号机制整体删除**（白哥：「不需要试用账号，未登录本来就可以直接用」）。
+        //     端侧不再调用它们；`trial_handler` 模块与两个 handler 一并删除。
+        //     存量 `trial_*` 账号仍由 `maintenance::hard_delete_expired_trials`
+        //     在 30 天后清理（那是**清存量**，与「机制」无关，故保留）。
+        //     📄 `docs/review/trial-account-removal-2026-10-09.md`
         // ── 通知中心（用户通知 · 非营销推送）—— 数据源 user_notifications
         .route(
             "/api/notifications",
@@ -315,16 +326,18 @@ pub struct ChangePasswordInput {
 /// 响应: {"user_id": "uuid", "token": "str", "email": "str"} 或 {"error": "str"}
 /// 限流: 20 次/分钟/IP
 ///
-/// # 两个注册入口的分工（2026-09-29 明确）
+/// # 注册入口只有一个（2026-10-09 起）
 ///
-/// | 场景 | 走哪 | 为什么 |
-/// |---|---|---|
-/// | **未登录**（用户退出过登录 / 新设备） | **本接口** | 没有可认领的账号，直接新建 |
-/// | **已登录的匿名试用账号**（想同步 / 付费） | `/api/trial/claim` | **认领**：保留该账号已有的学习记录 |
+/// | 场景 | 走哪 |
+/// |---|---|
+/// | **未登录**（用户退出过登录 / 新设备） | **本接口** —— 直接新建 |
+/// | ~~已登录的匿名试用账号（认领）~~ | 🔴 **已删** —— `/api/trial/claim` 与整个试用账号机制于 2026-10-09 退役 |
 ///
-/// 🔑 这两条路**语义不同**，不能混用 —— 原先 `ClaimDialog` 不论是否已登录都调
+/// 🔑 历史上这两条路**语义不同**、且被混用过：`AuthDialog` 曾不论是否已登录都调
 ///    `trial/claim`，于是未登录时会因 `userId` 为 null 而报一句英文机器话。
-///    📄 详见 `docs/design/email-registration-2026-09-29.md` §4。
+///    现在只剩一条路，那种混用**从结构上不可能再发生**。
+///    📄 详见 `docs/design/email-registration-2026-09-29.md` §4 ·
+///       `docs/review/trial-account-removal-2026-10-09.md`
 async fn auth_register(
     headers: HeaderMap,
     Json(input): Json<AuthInput>,
@@ -787,8 +800,8 @@ async fn auth_verify(Json(input): Json<TokenVerifyInput>) -> Json<serde_json::Va
     let valid = crate::auth::verify_token(&conn, &input.user_id, &input.token);
     // 🔑 返回 `email` 而非 `real_name`（2026-09-29）。
     //    前端的用途从来不是「显示姓名」，而是「判断该账号**是否已完成注册**」——
-    //    `None` = 仍是 trial 匿名账号 → `home_screen` 据此弹注册引导。
-    //    改邮箱后这个语义**不变**（trial 账号的 email 为 NULL）。
+    //    `None` = 没有邮箱的账号（**存量**匿名试用账号；该机制 2026-10-09 已删，
+    //    不再产生新的）⇒ 界面显示「已登录」而不显示邮箱，订阅覆盖层放行。
     let email: Option<String> = if valid {
         conn.query_row(
             "SELECT email FROM users WHERE id = ?1",

@@ -121,6 +121,39 @@ pub fn set_blob_size(
     .map_err(|e| AppError::Internal(format!("更新 blob_size: {e}")))
 }
 
+/// 🔴 **按用户批量归零**（订阅到期满 30 天的清理用它）—— 与 [`set_blob_size`]
+///    是**同一条约束的两个形态**：写 `blob_size` 时**必须**同时推进 `received_at`。
+///
+/// # 为什么必须走这里，而不能在调用方直接写 UPDATE
+///
+/// `received_at` 是 **pull 的时间轴**（`sync_handlers::pull_changes` 的
+/// `WHERE received_at > ?since`）。清理只 `SET blob_size = 0` 而不动它的话，
+/// 后果是**静默的**：
+/// - 用户在**另一台设备**上（或同一台重装后）永远不知道备份已被释放
+///   ⇒ 书架仍显示「云端有」⇒ 点下载 **404**。
+/// 该后果在本函数被写出来之前**真实发生过**（`maintenance::purge_expired_blobs`
+/// 曾自写裸 UPDATE）—— 而它不报错、不掉断言，只有真机换设备才看得见。
+///
+/// ⇒ 📌 判据：**写 `blob_size` 的 SQL 只允许出现在本模块**
+///    （`set_blob_size` 单条 / `zero_blob_sizes_for_user` 批量）。
+///    别处一律调函数 —— 否则「归零要推进时间轴」这条约束会在两处重复，
+///    改一处漏一处，且漏的那一处**不会红**。
+///
+/// ⚠️ 与 [`set_blob_size`] 的差别只有范围：那个按 `content_hash` 单条，
+///    这个按 `user_id` 批量（一个用户可能有多本书）。
+pub fn zero_blob_sizes_for_user(
+    conn: &rusqlite::Connection,
+    uid: &str,
+    received_at: &str,
+) -> Result<usize, AppError> {
+    conn.execute(
+        "UPDATE sync_book SET blob_size = 0, received_at = ?2
+          WHERE user_id = ?1 AND blob_size > 0",
+        params![uid, received_at],
+    )
+    .map_err(|e| AppError::Internal(format!("清零 blob_size: {e}")))
+}
+
 /// `sync_book` 里有这本书吗（且未被端侧删除）。
 ///
 /// ⚠️ 被软删的书**不允许**上传：否则用户「删了书 → 云端文件又被传回来」。
@@ -140,7 +173,11 @@ fn book_row_exists(
     Ok(n > 0)
 }
 
-fn now_ms() -> String {
+/// 🔑 `pub(crate)`：`maintenance::purge_expired_blobs` 清理时也要生成
+///    `received_at` —— 与上传 / 删除**同一个形态**（服务端时刻，`%Y-%m-%dT%H:%M:%S%.3fZ`）。
+///    ⚠️ 格式必须与别处**逐字节一致**：`received_at > since` 是**字符串比较**，
+///       一旦格式不同（比如少了毫秒）⇒ 时间轴错乱 ⇒ pull 漏数据。
+pub(crate) fn now_ms() -> String {
     chrono::Utc::now()
         .format("%Y-%m-%dT%H:%M:%S%.3fZ")
         .to_string()
@@ -557,6 +594,7 @@ mod tests {
             user_words: vec![],
             article_reads: vec![],
             bookmarks: vec![],
+            highlights: vec![],
             book_progress: vec![],
             books: vec![crate::sync_handlers::BookInput {
                 content_hash: H1.into(),

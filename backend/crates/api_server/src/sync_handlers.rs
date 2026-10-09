@@ -94,6 +94,42 @@ pub struct BookmarkInput {
     pub deleted: i64,
 }
 
+/// 划线记忆。
+///
+/// 🔴 **本表是 2026-10-09 才加的，它补的是一个真实缺口**（见 `schema.rs::SYNC_SCHEMA_SQL`
+///    里 `sync_highlight` 的说明）：
+///    在此之前只有 `review_log`（复习事件）同步，而事件里 `hl:<uuid>` 指向的**划线本体不同步**
+///    ⇒ 重装 / 换机的设备会拿到「无主划线卡」（标题是 `hl:<uuid>`、点暂停无反应）。
+///    📌 判据：**同步的粒度必须覆盖「引用关系」**。
+///
+/// ⚠️ 没有 `pending_push`（端侧概念）；也没有 `received_at`（服务端生成）。
+#[derive(Debug, Deserialize)]
+pub struct HighlightInput {
+    /// 端侧生成的 uuid v4。🔴 **不能自增** —— 两台设备各自从 1 开始必撞。
+    pub id: String,
+    /// `article` / `book`（与端侧 `HighlightSourceType.wire` 逐字一致）。
+    pub source_type: String,
+    /// article: 文章 id（**文本形式**）· book: 端侧 `book.id`（uuid）。
+    pub source_id: String,
+    /// ⚠️ 可空：**只有书有**（文章是单页）。
+    #[serde(default)]
+    pub chapter_idx: Option<i64>,
+    pub start_offset: i64,
+    pub end_offset: i64,
+    /// 🔴 选中的原文 —— 复习时的**标准答案**（不是可推导的派生值）。
+    pub text: String,
+    #[serde(default)]
+    pub note: Option<String>,
+    /// 「暂停复习」（离开复习列表，但**不删**这条划线）。
+    #[serde(default)]
+    pub paused: i64,
+    #[serde(default)]
+    pub deleted: i64,
+    pub created_at: String,
+    /// 最后一次改变该条状态的时刻（改笔记 / 暂停 / 取消都要刷新）。
+    pub updated_at: String,
+}
+
 /// 电子书进度（按**内容指纹**，不是 `book_id` —— 书籍 id 是端侧 uuid）。
 #[derive(Debug, Deserialize)]
 pub struct BookProgressInput {
@@ -140,6 +176,10 @@ pub struct PushInput {
     pub article_reads: Vec<ArticleReadInput>,
     #[serde(default)]
     pub bookmarks: Vec<BookmarkInput>,
+    /// 🆕 2026-10-09：划线记忆（**必须在 `bookmarks` 之后** —— 端侧按同一顺序组装，
+    /// 顺序本身就是「有没有漏掉一张表」的可读信号）。
+    #[serde(default)]
+    pub highlights: Vec<HighlightInput>,
     #[serde(default)]
     pub book_progress: Vec<BookProgressInput>,
     #[serde(default)]
@@ -195,6 +235,27 @@ pub struct BookmarkOut {
     pub deleted: i64,
 }
 
+/// 划线记忆（回应给端侧）。
+///
+/// 🔑 字段与 `HighlightInput` **逐字对应**（含 `paused`）——
+///    `paused` 是**用户意图**（「这条先不复习了」），必须跨设备，
+///    否则在 A 设备暂停的笔记到 B 设备又回来了。
+#[derive(Debug, Serialize)]
+pub struct HighlightOut {
+    pub id: String,
+    pub source_type: String,
+    pub source_id: String,
+    pub chapter_idx: Option<i64>,
+    pub start_offset: i64,
+    pub end_offset: i64,
+    pub text: String,
+    pub note: Option<String>,
+    pub paused: i64,
+    pub deleted: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct BookProgressOut {
     pub content_hash: String,
@@ -227,6 +288,8 @@ pub struct PullOutput {
     pub user_words: Vec<UserWordOut>,
     pub article_reads: Vec<ArticleReadOut>,
     pub bookmarks: Vec<BookmarkOut>,
+    /// 🆕 2026-10-09：划线记忆（同 `PushInput.highlights`）。
+    pub highlights: Vec<HighlightOut>,
     pub book_progress: Vec<BookProgressOut>,
     pub books: Vec<BookOut>,
     /// 🔑 客户端把它存下来作为**下次 pull 的 `since`**。
@@ -350,6 +413,8 @@ pub struct PushStats {
     pub user_words: usize,
     pub article_reads: usize,
     pub bookmarks: usize,
+    /// 🆕 2026-10-09：划线记忆。
+    pub highlights: usize,
     pub book_progress: usize,
     pub books: usize,
 }
@@ -381,6 +446,7 @@ pub fn push_changes(
     check_batch_size("user_words", input.user_words.len())?;
     check_batch_size("article_reads", input.article_reads.len())?;
     check_batch_size("bookmarks", input.bookmarks.len())?;
+    check_batch_size("highlights", input.highlights.len())?;
     check_batch_size("book_progress", input.book_progress.len())?;
     check_batch_size("books", input.books.len())?;
 
@@ -499,6 +565,78 @@ pub fn push_changes(
             .map_err(|e| AppError::Internal(format!("upsert bookmark: {e}")))?;
     }
 
+    // ── ④b 🆕 划线：**字段级**合并（不能整行取较新）──
+    //
+    // 「最新意愿」（`deleted` / `paused` / `note`）取**较新**；
+    // 「首次事实」（`text` / offsets / `source_*` / `created_at`）取**较早** ——
+    // 理由见 `HighlightInput` 与 `schema.rs` 里 `sync_highlight` 的那张表。
+    //
+    // 🔴 `note` 取较新时**连 NULL 一起取**：`note` 可空，而「清空笔记」是一个**真实意图**
+    //    ⇒ 不能写成 `COALESCE(excluded.note, sync_highlight.note)`（那样笔记**永远清不掉**，
+    //    清空会被当成「这次没带这个字段」）。📌 判据：**可空的「意愿型」字段，
+    //    NULL 是值不是缺失** —— 只有「事实型」字段才该用「取非空」的宽松口径。
+    //
+    // ⚠️ `source_id` 是**文本**（article 存文章 id 的文本形式、book 存端侧 uuid）——
+    //    不转 INTEGER：书的来源 id 本来就不是数字。
+    for h in &input.highlights {
+        // 显式校验枚举：表上有 CHECK，但让 CHECK 抛错会变成 **500**（Internal），
+        // 而这是**客户端数据问题** ⇒ 必须回 400（与 `rating` 的处理同一条判据）。
+        if h.source_type != "article" && h.source_type != "book" {
+            return Err(AppError::BadRequest(format!(
+                "highlight.source_type 只能是 article / book（收到 {}）",
+                h.source_type
+            )));
+        }
+        stats.highlights += tx
+            .execute(
+                "INSERT INTO sync_highlight
+                   (user_id, id, source_type, source_id, chapter_idx, start_offset, end_offset,
+                    text, note, paused, deleted, created_at, updated_at, received_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                 ON CONFLICT (user_id, id) DO UPDATE SET
+                   deleted      = CASE WHEN excluded.updated_at > sync_highlight.updated_at
+                                       THEN excluded.deleted ELSE sync_highlight.deleted END,
+                   paused       = CASE WHEN excluded.updated_at > sync_highlight.updated_at
+                                       THEN excluded.paused ELSE sync_highlight.paused END,
+                   note         = CASE WHEN excluded.updated_at > sync_highlight.updated_at
+                                       THEN excluded.note ELSE sync_highlight.note END,
+                   updated_at   = MAX(excluded.updated_at, sync_highlight.updated_at),
+                   text         = CASE WHEN excluded.created_at < sync_highlight.created_at
+                                       THEN excluded.text ELSE sync_highlight.text END,
+                   start_offset = CASE WHEN excluded.created_at < sync_highlight.created_at
+                                       THEN excluded.start_offset ELSE sync_highlight.start_offset END,
+                   end_offset   = CASE WHEN excluded.created_at < sync_highlight.created_at
+                                       THEN excluded.end_offset ELSE sync_highlight.end_offset END,
+                   source_type  = CASE WHEN excluded.created_at < sync_highlight.created_at
+                                       THEN excluded.source_type ELSE sync_highlight.source_type END,
+                   source_id    = CASE WHEN excluded.created_at < sync_highlight.created_at
+                                       THEN excluded.source_id ELSE sync_highlight.source_id END,
+                   chapter_idx  = CASE WHEN excluded.created_at < sync_highlight.created_at
+                                       THEN excluded.chapter_idx ELSE sync_highlight.chapter_idx END,
+                   created_at   = MIN(excluded.created_at, sync_highlight.created_at),
+                   received_at  = excluded.received_at
+                 WHERE excluded.updated_at > sync_highlight.updated_at
+                    OR excluded.created_at < sync_highlight.created_at",
+                params![
+                    &uid,
+                    &h.id,
+                    &h.source_type,
+                    &h.source_id,
+                    h.chapter_idx,
+                    h.start_offset,
+                    h.end_offset,
+                    &h.text,
+                    h.note,
+                    h.paused,
+                    h.deleted,
+                    &h.created_at,
+                    &h.updated_at,
+                    &received_at
+                ],
+            )
+            .map_err(|e| AppError::Internal(format!("upsert highlight: {e}")))?;
+    }
+
     // ── ⑤ 电子书进度：按 `updated_at` 取**较新**（进度是「读到哪」的最新意愿）──
     for p in &input.book_progress {
         stats.book_progress += tx
@@ -594,13 +732,14 @@ pub async fn sync_push(
     };
 
     tracing::info!(
-        "sync_push: uid={} device={} review={} word={} read={} bm={} bp={} book={}",
+        "sync_push: uid={} device={} review={} word={} read={} bm={} hl={} bp={} book={}",
         uid,
         device_id,
         stats.review_events,
         stats.user_words,
         stats.article_reads,
         stats.bookmarks,
+        stats.highlights,
         stats.book_progress,
         stats.books
     );
@@ -731,6 +870,40 @@ pub fn pull_changes(
         }
     }
 
+    let mut highlights: Vec<HighlightOut> = Vec::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, source_type, source_id, chapter_idx, start_offset, end_offset,
+                        text, note, paused, deleted, created_at, updated_at
+                   FROM sync_highlight
+                  WHERE user_id = ?1 AND received_at > ?2
+                  ORDER BY received_at ASC",
+            )
+            .map_err(|e| AppError::Internal(format!("prepare pull highlight: {e}")))?;
+        let rows = stmt
+            .query_map(params![&uid, &since], |r| {
+                Ok(HighlightOut {
+                    id: r.get(0)?,
+                    source_type: r.get(1)?,
+                    source_id: r.get(2)?,
+                    chapter_idx: r.get(3)?,
+                    start_offset: r.get(4)?,
+                    end_offset: r.get(5)?,
+                    text: r.get(6)?,
+                    note: r.get(7)?,
+                    paused: r.get(8)?,
+                    deleted: r.get(9)?,
+                    created_at: r.get(10)?,
+                    updated_at: r.get(11)?,
+                })
+            })
+            .map_err(|e| AppError::Internal(format!("query pull highlight: {e}")))?;
+        for row in rows {
+            highlights.push(row.map_err(|e| AppError::Internal(format!("row highlight: {e}")))?);
+        }
+    }
+
     let mut book_progress: Vec<BookProgressOut> = Vec::new();
     {
         let mut stmt = conn
@@ -804,6 +977,7 @@ pub fn pull_changes(
             "SELECT MAX(received_at) FROM sync_user_word     WHERE user_id = ?1",
             "SELECT MAX(received_at) FROM sync_article_read  WHERE user_id = ?1",
             "SELECT MAX(received_at) FROM sync_bookmark      WHERE user_id = ?1",
+            "SELECT MAX(received_at) FROM sync_highlight     WHERE user_id = ?1",
             "SELECT MAX(received_at) FROM sync_book_progress WHERE user_id = ?1",
             "SELECT MAX(received_at) FROM sync_book          WHERE user_id = ?1",
         ] {
@@ -825,6 +999,7 @@ pub fn pull_changes(
         user_words,
         article_reads,
         bookmarks,
+        highlights,
         book_progress,
         books,
         server_time: max_received,
@@ -853,7 +1028,7 @@ pub async fn sync_pull(
     };
 
     tracing::info!(
-        "sync_pull: uid={} since={} device={} review={} word={} read={} bm={} bp={}",
+        "sync_pull: uid={} since={} device={} review={} word={} read={} bm={} hl={} bp={}",
         uid,
         since,
         my_device,
@@ -861,6 +1036,7 @@ pub async fn sync_pull(
         out.user_words.len(),
         out.article_reads.len(),
         out.bookmarks.len(),
+        out.highlights.len(),
         out.book_progress.len()
     );
 
@@ -934,6 +1110,7 @@ mod tests {
             user_words: vec![],
             article_reads: vec![],
             bookmarks: vec![],
+            highlights: vec![],
             book_progress: vec![],
             books: vec![],
         }
@@ -947,6 +1124,7 @@ mod tests {
             "sync_user_word",
             "sync_article_read",
             "sync_bookmark",
+            "sync_highlight",
             "sync_book_progress",
         ] {
             let n: i64 = conn
@@ -1234,6 +1412,176 @@ mod tests {
         assert_eq!(
             out2.bookmarks[0].deleted, 1,
             "旧的（较早）不得让已取消的收藏复活"
+        );
+    }
+
+    /// 🆕 2026-10-09 划线同步：**字段级**合并 + 暂停 / 笔记跨设备。
+    ///
+    /// 🔴 本测试守的是一个**真实缺口**：此前 `review_log`（复习事件）参与同步，
+    ///    而 `highlight`（划线本体）**不参与** ⇒ 重装 / 换机 / 清数据的设备会拿到
+    ///    「**无主划线卡**」：标题显示成 `hl:<uuid>`、点「暂停」静默无反应、
+    ///    界面上没有任何出口能去掉它。
+    ///    ⇒ 所以**第 ① 组的断言就是「别端必须能拿到这条划线本身」**。
+    ///
+    /// ⚠️ 时间戳用**真实 ISO8601**（毫秒精度）—— 合并判据依赖
+    ///    「字典序 == 时间序」这个前提（见测试模块顶部那条说明）。
+    #[test]
+    fn test_highlight_sync_field_level_merge() {
+        const C1: &str = "2026-10-01T00:00:00.000Z"; // created_at（首次事实）
+        const U1: &str = "2026-10-01T00:00:00.000Z";
+        const U2: &str = "2026-10-02T00:00:00.000Z";
+        const U3: &str = "2026-10-03T00:00:00.000Z";
+        const U4: &str = "2026-10-04T00:00:00.000Z";
+        const U5: &str = "2026-10-05T00:00:00.000Z";
+        const U6: &str = "2026-10-06T00:00:00.000Z";
+
+        #[allow(clippy::too_many_arguments)]
+        fn hl(
+            id: &str,
+            text: &str,
+            note: Option<&str>,
+            paused: i64,
+            deleted: i64,
+            created: &str,
+            updated: &str,
+        ) -> HighlightInput {
+            HighlightInput {
+                id: id.into(),
+                source_type: "article".into(),
+                source_id: "42".into(),
+                chapter_idx: None,
+                start_offset: 10,
+                end_offset: 20,
+                text: text.into(),
+                note: note.map(|s| s.into()),
+                paused,
+                deleted,
+                created_at: created.into(),
+                updated_at: updated.into(),
+            }
+        }
+
+        let conn = setup();
+        seed_user(&conn, "u1", Some("2099-01-01"));
+
+        // ① A 创建
+        let mut a = base_push("devA");
+        a.highlights = vec![hl("h1", "the quick fox", None, 0, 0, C1, U1)];
+        push_changes(&conn, "u1", "devA", RECV1, &a).unwrap();
+
+        let out = pull_changes(&conn, "u1", ALL, "").unwrap();
+        assert_eq!(
+            out.highlights.len(),
+            1,
+            "🔴 别端必须能拿到**划线本体** —— 拿不到就是「无主划线卡」"
+        );
+        assert_eq!(out.highlights[0].text, "the quick fox");
+        assert_eq!(out.highlights[0].paused, 0);
+        assert_eq!(out.highlights[0].chapter_idx, None, "文章没有章节号");
+        assert_eq!(out.highlights[0].source_id, "42");
+
+        // ② B **暂停**（较新）⇒ 必须跨设备（否则「A 暂停、换台设备又回来了」）
+        let mut b = base_push("devB");
+        b.highlights = vec![hl("h1", "the quick fox", None, 1, 0, C1, U2)];
+        push_changes(&conn, "u1", "devB", RECV1, &b).unwrap();
+        assert_eq!(
+            pull_changes(&conn, "u1", ALL, "").unwrap().highlights[0].paused,
+            1,
+            "暂停是**用户意图**，必须跨设备（同 `paused` 那条注释的判据）"
+        );
+
+        // ③ B 写笔记（较新）
+        let mut b2 = base_push("devB");
+        b2.highlights = vec![hl("h1", "the quick fox", Some("记一下"), 1, 0, C1, U3)];
+        push_changes(&conn, "u1", "devB", RECV1, &b2).unwrap();
+        assert_eq!(
+            pull_changes(&conn, "u1", ALL, "").unwrap().highlights[0]
+                .note
+                .as_deref(),
+            Some("记一下")
+        );
+
+        // ④ 🔴 B **清空**笔记（较新）—— `NULL` 是**值**，不是「这次没带这个字段」
+        //
+        //    若把 `note` 写成 `COALESCE(excluded.note, sync_highlight.note)`，
+        //    笔记就**永远清不掉**（清空被当成缺失）。同族的坑见 `sync_book` 的 `blob_size`。
+        let mut b3 = base_push("devB");
+        b3.highlights = vec![hl("h1", "the quick fox", None, 1, 0, C1, U4)];
+        push_changes(&conn, "u1", "devB", RECV1, &b3).unwrap();
+        assert_eq!(
+            pull_changes(&conn, "u1", ALL, "").unwrap().highlights[0].note,
+            None,
+            "清空笔记必须能同步"
+        );
+
+        // ⑤ A 推「正文不同 + `created_at` 更晚 + `updated_at` 更旧」的同一 id
+        //    ⇒ **整行都不该被改**（两边的判据都不成立）
+        let mut a2 = base_push("devA");
+        a2.highlights = vec![hl("h1", "被改写的正文", Some("旧笔记"), 0, 0, U5, U1)];
+        push_changes(&conn, "u1", "devA", RECV2, &a2).unwrap();
+        let out = pull_changes(&conn, "u1", ALL, "").unwrap();
+        assert_eq!(out.highlights[0].text, "the quick fox");
+        assert_eq!(out.highlights[0].paused, 1, "更旧的意愿不得让暂停复活");
+        assert_eq!(out.highlights[0].note, None, "更旧的意愿不得让笔记回来");
+
+        // ⑥ A 推「`created_at` 更晚 + `updated_at` 最新」⇒
+        //    **意愿字段更新、首次事实不动**（这正是「字段级分离」的判据）
+        let mut a3 = base_push("devA");
+        a3.highlights = vec![hl("h1", "又一次被改写", Some("新笔记"), 0, 0, U5, U5)];
+        push_changes(&conn, "u1", "devA", RECV2, &a3).unwrap();
+        let out = pull_changes(&conn, "u1", ALL, "").unwrap();
+        assert_eq!(
+            out.highlights[0].text, "the quick fox",
+            "🔴 「首次事实」（正文 / offsets）不得被**更晚**的副本改写"
+        );
+        assert_eq!(out.highlights[0].start_offset, 10);
+        assert_eq!(out.highlights[0].paused, 0, "更新的意愿生效（取消暂停）");
+        assert_eq!(
+            out.highlights[0].note.as_deref(),
+            Some("新笔记"),
+            "更新的意愿生效（改笔记）"
+        );
+
+        // ⑦ 取消（软删，较新）⇒ 必须传播
+        let mut b4 = base_push("devB");
+        b4.highlights = vec![hl("h1", "the quick fox", Some("新笔记"), 0, 1, C1, U6)];
+        push_changes(&conn, "u1", "devB", RECV2, &b4).unwrap();
+        assert_eq!(
+            pull_changes(&conn, "u1", ALL, "").unwrap().highlights[0].deleted,
+            1,
+            "取消划线必须能同步（否则「取消了的又自己回来」）"
+        );
+    }
+
+    /// 🔴 非法 `source_type` 必须回 **400**（客户端数据问题），不是 500。
+    ///
+    /// 表上有 `CHECK (source_type IN ('article','book'))` —— 若只靠它拦，
+    /// 触发的是 rusqlite 错误 ⇒ 被映射成 `AppError::Internal`（**500**）⇒
+    /// 客户端会以为是服务端故障而无限重试（同 `rating` 那条判据）。
+    #[test]
+    fn test_highlight_rejects_unknown_source_type() {
+        let conn = setup();
+        seed_user(&conn, "u1", Some("2099-01-01"));
+
+        let mut a = base_push("devA");
+        a.highlights = vec![HighlightInput {
+            id: "h1".into(),
+            source_type: "podcast".into(), // 不认识
+            source_id: "42".into(),
+            chapter_idx: None,
+            start_offset: 0,
+            end_offset: 5,
+            text: "hello".into(),
+            note: None,
+            paused: 0,
+            deleted: 0,
+            created_at: "2026-10-01T00:00:00.000Z".into(),
+            updated_at: "2026-10-01T00:00:00.000Z".into(),
+        }];
+        let err = push_changes(&conn, "u1", "devA", RECV1, &a).unwrap_err();
+        assert!(
+            matches!(err, AppError::BadRequest(_)),
+            "应为 400（客户端数据问题），实际 {err:?}"
         );
     }
 

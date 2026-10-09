@@ -49,9 +49,9 @@ pub struct AuthResponse {
 
 /// 邮箱格式校验（**与前端 `Validators.email` 保持同一判据**）。
 ///
-/// 🔑 `pub(crate)` —— `trial_handler::claim`（认领式注册）也用它。
-///    **注册与认领必须同一套判据**：两处各写一份，规则会静默漂移，
-///    而用户在界面上看不出差别（两个入口都叫「注册」）。
+/// 🔑 `pub(crate)` 是历史遗留（曾给 `trial_handler::claim` 的「认领式注册」共用）——
+///    该路径 2026-10-09 已随试用账号机制删除。保留 `pub(crate)` 不影响什么，
+///    但**注册判据只有这一处**这条判据仍然成立：别在别处再写一份邮箱正则。
 ///
 /// # ⚠️ 刻意宽松
 ///
@@ -89,8 +89,9 @@ pub(crate) fn is_valid_email(s: &str) -> bool {
 ///    用邮箱前缀当默认昵称，比「用户」更有辨识度，且**不含 `@` 之后的域名**
 ///    （域名不必要地暴露在界面上）。
 ///
-/// 🔑 `pub(crate)` —— `trial_handler::claim` 在**不改用户已设昵称**的前提下
-///    用它补齐空昵称（`CASE WHEN display_name IS NULL OR '' THEN ? ELSE display_name END`）。
+/// 🔑 `pub(crate)` 是历史遗留（曾给 `trial_handler::claim` 共用）——该路径已删。
+///    ⚠️ 但**「不改用户已设昵称」这条语义仍在**：注册时只在
+///    `display_name IS NULL OR ''` 的情况下才填它。
 pub(crate) fn default_display_name(email: &str) -> String {
     email.split('@').next().unwrap_or("").trim().to_string()
 }
@@ -189,9 +190,8 @@ pub fn register(
     // 🔴 `username` 列现在**不由用户提供** —— 它是内部标识。
     //
     // 为什么不能删掉这一列：① 它是 `NOT NULL UNIQUE`（存量 91 行都有值）；
-    // ② 它被 `isTrialAccount` 之类的判断用过（`trial_` 前缀）。
+    // ② 它曾被 `isTrialAccount` 之类的判断用过（`trial_` 前缀）—— **那个判据已删**。
     // 注册标识已改为 `email` → 这里自动生成一个不对外的内部 id。
-    // （trial 认领路径**不改** username，沿用它的 `trial_*` 值 → 见 `trial_handler`。）
     let username = format!(
         "u_{}",
         user_id
