@@ -20,6 +20,7 @@ import 'dart:typed_data';
 
 import 'package:sqflite_common/sqlite_api.dart';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/book_blob_client.dart';
@@ -45,14 +46,39 @@ final bookBlobClientProvider = Provider<BookBlobClient>((ref) {
 /// 🔑 装到一个 provider 里而不是每次 new：队列持有**失败次数**与**正在传的是哪本**
 ///    —— 每次 new 会让退避计数与「正在传」标记全部丢失（UI 会闪）。
 final bookUploadQueueProvider = Provider<BookUploadQueue>((ref) {
-  // ⚠️ 目录是异步拿的；这里同步取一次缓存值（导入流程启动时已 await 过一次）。
-  //    拿不到就用空串 —— 队列会因「读不到原始文件」而跳过并计数，
-  //    比抛异常好（本书仍可读）。
-  final rawDir = ref.watch(bookRawDirProvider).valueOrNull ?? '';
+  // 🔴🔴 2026-10-10：**目录不能在这里同步取** —— 原写法让上传**一次都没发出去过**。
+  //
+  //    旧代码是 `ref.watch(bookRawDirProvider).valueOrNull ?? ''`，注释理由是
+  //    「导入流程启动时已 await 过一次」。🔴 **那不是事实**（「注释里的声明须 grep 才算数」）：
+  //    导入流程走的是 `_safeRawDir()`（直接调 `rawBooksDir()`），
+  //    **从没预热过 `bookRawDirProvider`**；而本 provider **全库只有 1 处读取**
+  //    （`book_import_flow` 的「导入后上传」）⇒ **它第一次被构造，就是要上传的那一刻**
+  //    ⇒ FutureProvider 还没完成 ⇒ `valueOrNull == null` ⇒ `rawDir = ''`
+  //    ⇒ `readRawBook('')` 找不到文件 ⇒ 每本都判「原始文件缺失」跳过 ⇒ **0 次请求**。
+  //    实测：nginx access log 近一个月里 `POST /api/books/blob` 的 App 请求 = **0 次**，
+  //    且服务端**连 blob 目录都不存在**。
+  //
+  //    ✅ 改法：把「取目录」做成**回调**，交给队列在 `run()` 里 `await` ——
+  //       **必需配置在使用时取，而不是在构造时猜**（判据见 `BookUploadQueue.rawDirOf`）。
   final client = ref.read(bookBlobClientProvider);
 
   return BookUploadQueue(
-    rawDir: rawDir,
+    rawDirOf: () => ref.read(bookRawDirProvider.future),
+    // 🔴 2026-10-10：**上传成功后写回本地 `blob_size`** —— 此前没人做，后果是
+    //    `pendingUploadHashes` / `presenceByHash` 都只认 `blob_size > 0`
+    //    ⇒ 这本书**永远被判为「云端没有」** ⇒ 每轮都重传 + 书架永远不显示「已上云」。
+    onUploaded: (hash, blobSize) async {
+      final db = await ref.read(bookDbProvider.future);
+      await CloudBookRepository.markUploadedBlob(
+        db,
+        contentHash: hash,
+        blobSize: blobSize,
+      );
+      // 🔑 写回改的是 `book.db` ⇒ 让读端重算（书架 presence / 云端用量 / 「未上云」计数）
+      ref.read(bookDbRevisionProvider.notifier).bump();
+    },
+    onUploadedError: (hash, e) =>
+        debugPrint('[books] 写回 blob_size 失败 hash=$hash（下轮会重传）：$e'),
     upload: ({
       required String contentHash,
       required String ext,
@@ -121,6 +147,17 @@ final cloudOnlyBooksProvider = FutureProvider<List<CloudBook>>((ref) async {
     for (final b in all)
       if (presence[b.contentHash] == CloudPresence.cloudOnly) b,
   ];
+});
+
+/// 🆕 2026-10-10：**「未上云」的书有几本**（本地有、云端没有文件）。
+///
+/// 🔑 与上传队列的候选是**同一个口径**（`pendingUploadHashes`）—— 不另算一套。
+///    两处各写一份必然分叉，而表现是「提示 3 本、实际只传 2 本」这类**对不上却没人报错**的数。
+final pendingUploadCountProvider = FutureProvider<int>((ref) async {
+  ref.watch(bookDbRevisionProvider);
+  final db = await ref.read(bookDbProvider.future);
+  final hashes = await CloudBookRepository.pendingUploadHashes(db);
+  return hashes.length;
 });
 
 /// 触发一轮上传（**幂等**：队列已在跑就直接返回）。

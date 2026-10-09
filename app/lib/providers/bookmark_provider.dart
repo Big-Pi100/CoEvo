@@ -39,6 +39,26 @@ class BookmarkNotifier extends AsyncNotifier<Set<int>> {
 
   @override
   Future<Set<int>> build() async {
+    // 🔴🔴 2026-10-10：**订阅「库修订号」** —— 这是「写端 bump」的**另一半**。
+    //
+    //    `_runSync` 在 pull 之后会 `bump()`（2026-10-09 补的），但
+    //    **bump 只对「订阅了它的读端」生效**。实测逐类核对：
+    //      · `review_list_provider` 3 处 · `highlight_provider` 5 处
+    //      · `book_provider` 3 处 · `word_db_provider` 2 处
+    //      · **本 provider 0 处** ⇒ 6 类同步数据里**恰好漏了收藏这一类**
+    //    ⇒ 同步拉回来的收藏**落了库却不重算** ⇒ 白哥真机看到的
+    //      「收藏数据是对的，但要**关闭页面再打开**才显示」。
+    //
+    //    📌 判据：**`bump` 只在「读端也订阅」时才有效** ——
+    //       加 bump 时必须**逐个读端核对订阅**（列一张表），只补 bump 不核订阅
+    //       就会留下「6 类里漏 1 类」这种最难发现的缺口。
+    //       同族：「写端逐个通知读端」是必漏结构 ⇒ **反转依赖**（读端 watch 修订号）才对。
+    //
+    //    ⚠️ 放在 `await` **之前** —— async body 里 `await` 之后再 watch
+    //       可能撞上 provider 已被销毁（Riverpod 的 ref 在 async gap 后不再安全）。
+    //       （与 `review_list_provider` 同一形态，见那里的同款注释。）
+    ref.watch(userDbRevisionProvider);
+
     // 🔴 **连接不在这里打开**（2026-09-28 改为共享单例）
     //
     // 原先本方法自己 `rootBundle` + `getApplicationSupportDirectory` + `openUserDb`

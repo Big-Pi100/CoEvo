@@ -269,4 +269,71 @@ class CloudBookRepository {
         if (r['h'] is String && (r['h'] as String).isNotEmpty) r['h'] as String,
     ];
   }
+
+  /// 🆕 2026-10-10：**上传成功后把 `blob_size` 写回本地 `cloud_book`**。
+  ///
+  /// # 🔴 为什么必须写回（此前没人写 ⇒ 两个后果都是静默的）
+  ///
+  /// [presenceByHash] 与 [pendingUploadHashes] **都只认 `blob_size > 0`**。
+  /// 上传成功后不写回，这本书会**永远被判为「云端没有」**：
+  /// · 每次 kick / 每次同步都**重传同一份文件** ⇒ 白耗流量与服务端配额时间
+  /// · 书架**永远不显示「已上云」** ⇒ 用户以为没传成功，也看不到进度
+  ///
+  /// ⚠️ **不用「等下一次 pull」来兜**：那是**一次网络往返之后**的事，
+  ///    而中间任何一次 kick 都会先重传一遍；且用户当场看不到任何变化。
+  ///
+  /// 🔑 元数据自**本地 `book` 表**取（与 `_pendingBooks` 同一来源）——
+  ///    上传成功的书**必然本地有** ⇒ 字段齐全，不需要猜。
+  /// ⚠️ 行**已存在**时**只更新 `blob_size`**：`added_at` 是**服务端口径**
+  ///    （见 `book_db_schema.sql` 的注释：原样保留，否则云端排序会随
+  ///     每台设备同步的时刻漂移）。
+  /// ⚠️ `size_bytes` 同样传 0（与 `_pendingBooks` 的取舍一致：配额看服务端的
+  ///    `blob_size`，本地这个字段只用于展示，且当前 UI 不显示它）。
+  static Future<void> markUploadedBlob(
+    Database db, {
+    required String contentHash,
+    required int blobSize,
+  }) async {
+    if (contentHash.isEmpty) return;
+    final existing = await db.query(
+      'cloud_book',
+      columns: ['content_hash'],
+      where: 'content_hash = ?',
+      whereArgs: [contentHash],
+      limit: 1,
+    );
+    if (existing.isNotEmpty) {
+      await db.update(
+        'cloud_book',
+        {'blob_size': blobSize},
+        where: 'content_hash = ?',
+        whereArgs: [contentHash],
+      );
+      return;
+    }
+    final rows = await db.query(
+      'book',
+      where: 'content_hash = ?',
+      whereArgs: [contentHash],
+      limit: 1,
+    );
+    final b = rows.isEmpty ? null : rows.first;
+    await db.insert(
+      'cloud_book',
+      {
+        'content_hash': contentHash,
+        // `title` 是 NOT NULL ⇒ 取不到时退到指纹本身（宁可显示一串哈希，
+        // 也不让这条**已上云**的事实因为没有标题而丢失）
+        'title': (b?['title'] as String?) ?? contentHash,
+        'author': b?['author'],
+        'language': b?['language'],
+        'chapter_count': (b?['chapter_count'] as num?)?.toInt() ?? 0,
+        'blob_size': blobSize,
+        'size_bytes': 0,
+        'added_at': (b?['added_at'] as String?) ??
+            DateTime.now().toUtc().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
 }

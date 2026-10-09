@@ -23,6 +23,7 @@ import 'package:sqflite_common/sqlite_api.dart' show Database;
 import '../api/sync_client.dart';
 import '../services/sync_service.dart';
 import 'auth_provider.dart';
+import 'book_cloud_provider.dart' show kickBookUpload, bookUploadQueueProvider;
 import 'book_provider.dart';
 import 'device_id_provider.dart';
 import 'sync_status_provider.dart';
@@ -257,9 +258,43 @@ Future<void> _runSync(
       ref.read(userDbRevisionProvider.notifier).bump();
       ref.read(bookDbRevisionProvider.notifier).bump();
     }
+
+    // 🆕 2026-10-10：**「书单同步后」补一次上传尝试**（`kickBookUpload` 文档承诺的触发点 ②）。
+    //
+    //    🔴 此前只有「导入后」一个触发点 ⇒ 下面三种情形**永远不会重试**：
+    //       · 导入时未登录（`buildSyncService` 返回 null / token 为空）
+    //       · 目录取不到（`rawDir` 空串那个 bug —— 一次都没发出去）
+    //       · 网络失败（退避到上限后停住）
+    //    而注释里写着「调用时机：① 导入成功后 ② 书单同步后 ③ 用户手动重试」——
+    //    **承诺了但没实现**，正是本项目那条「写了没人跑 / 只写了一半」。
+    //
+    //    ⚠️ 只在 `!pushOnly`（登录后同步 / 手动同步）时做：登出前 flush 与进后台
+    //       是「只推」的时机，在那里传文件会让用户等一个不该等的东西。
+    //    ⚠️ 没有任何待传书目时 `kickBookUpload` 直接返回（**不发请求**）⇒ 平时零成本。
+    //    ⚠️ 失败只记日志：上传是后台行为，绝不能影响同步本身的结论。
+    if (!pushOnly) {
+      await _kickUploadIfNeeded(ref);
+    }
   } catch (e) {
     debugPrint('[sync] $tag 失败（不影响用户）：$e');
     status.finishFailed(_friendlySyncError(e));
+  }
+}
+
+/// 同步之后**补一次上传尝试**（`kickBookUpload` 承诺的触发点 ②，2026-10-10 补上）。
+///
+/// 🔑 与「导入后上传」**共用同一份实现**（`kickBookUpload`）——
+///    口径只有一处；这里只负责「什么时候再试一次」。
+/// ⚠️ 待传为空时它**不发任何请求**（`kickBookUpload` 内部提前返回）⇒ 平时零成本。
+Future<void> _kickUploadIfNeeded(WidgetRef ref) async {
+  try {
+    final db = await ref.read(bookDbProvider.future);
+    await kickBookUpload(
+      db: db,
+      queue: ref.read(bookUploadQueueProvider),
+    );
+  } catch (e) {
+    debugPrint('[sync] 同步后补传失败（不影响同步结论）：$e');
   }
 }
 

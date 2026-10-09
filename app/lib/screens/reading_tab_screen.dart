@@ -47,8 +47,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../providers/book_cloud_provider.dart'
+    show kickBookUpload, bookUploadQueueProvider, pendingUploadCountProvider;
+import '../providers/book_provider.dart' show bookDbProvider;
 import '../providers/bookmark_provider.dart';
 import '../services/ebook/book_import_flow.dart';
+import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
 import '../widgets/header_chip.dart';
@@ -277,8 +281,60 @@ class _ReadingTabScreenState extends ConsumerState<ReadingTabScreen> {
         //      而不是「多一个加号」这种**形态差异**。
         //    · 去忙碌态：不再传 `labelReserve`（它会让内边距不对称，见 `_import` 的文档）。
         //      ⇒ 无 `reserve` ⇒ 左右内边距对称 ⇒ 与「收藏」同一套版式。
-        //    防重入改由 `runBookImportFlow` 内部负责（本页无状态）。
-        return HeaderChip(label: '导入', onTap: _import);
+          //    防重入改由 `runBookImportFlow` 内部负责（本页无状态）。
+          final importChip = HeaderChip(label: '导入', onTap: _import);
+
+          // 🆕 2026-10-10：**「未上云」药丸 = 状态 + 重试入口**（触发点 ③）。
+          //
+          // 🔴 为什么必须有它：书架上云此前只有「导入后」一个触发点 ⇒
+          //    「导入时未登录 / 目录取不到 / 网络失败」的书**永久卡在本地**：
+          //    云端没有它、iOS 也就永远看不到它，而用户**看不到任何提示、也没有出口**。
+          //    （注释承诺的「③ 用户手动重试」此前**没有实现**。）
+          //
+          // 📌 「控件放哪」两维度：
+          //    · **语义归属** = 书架（这本书上不上云）⇒ 归书架，不归设置页
+          //    · **常驻成本** = 没有待传时**整枚不存在** ⇒ 零常驻
+          //    ⇒ 不需要「默认收起」，也不需要挤占别处。
+          //
+          // 🔑 数字取自 `pendingUploadCountProvider`（与上传队列**同一口径**）——
+          //    不另算一套，否则会出现「提示 3 本、只传 2 本」这种对不上却不报错的数。
+          final pending =
+              ref.watch(pendingUploadCountProvider).valueOrNull ?? 0;
+          if (pending <= 0) return importChip;
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              HeaderChip(
+                label: '未上云',
+                count: pending,
+                onTap: _retryUpload,
+              ),
+              const SizedBox(width: CoSpacing.sm),
+              importChip,
+            ],
+          );
+      }
     }
-  }
+
+    /// 🆕 2026-10-10：**手动重试上传**（`kickBookUpload` 文档承诺的触发点 ③）。
+    ///
+    /// 🔴 此前**只有**「导入后」一个触发点 ⇒ 「导入时未登录 / 目录取不到 / 网络失败」
+    ///    这三类书**永久卡在本地**：不上云，而用户**看不到提示、也没有出口**。
+    ///    （注释承诺了 ②③，代码只实现了 ① —— 典型的「只写了一半」。）
+    ///
+    /// ⚠️ 失败**只记日志、不弹错误**：这是重试，不是用户发起的主流程；
+    ///    结果由「未上云 N」这个数字自己说话（成功就少一本，失败数字不变）。
+    ///    📌 判据：**「没有出口的失败」比报错更糟** —— 但出口的形态可以是
+    ///        「一个能反映真实状态、且能再按一次的按钮」，不一定是弹窗。
+    Future<void> _retryUpload() async {
+      try {
+        final db = await ref.read(bookDbProvider.future);
+        await kickBookUpload(
+          db: db,
+          queue: ref.read(bookUploadQueueProvider),
+        );
+      } catch (e) {
+        debugPrint('[books] 手动重试上传失败：$e');
+      }
+    }
 }

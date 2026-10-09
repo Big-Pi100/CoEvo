@@ -50,6 +50,22 @@ void section(String s) {
   print('─' * 74);
 }
 
+/// 只留**代码行**（滤掉整行注释）。
+///
+/// 🔴 **文本断言前必须过这一层** —— 本轮实测踩到：
+///    我在 `book_cloud_provider.dart` 的注释里写了旧代码
+///    `ref.watch(bookRawDirProvider).valueOrNull ?? ''`（用来解释根因），
+///    于是「不得再用 valueOrNull」这条**反向断言会假红**。
+///    📌 判据：「**注释里提到**」≠「代码里写了」（两个方向都会出错：
+///       反向断言假红、正向断言假绿）。
+String _codeOnly(String s) => s
+    .split('\n')
+    .where((l) => !l.trimLeft().startsWith('//'))
+    .join('\n');
+
+String _readLib(String rel) =>
+    _codeOnly(File(repoPath('app/lib/$rel')).readAsStringSync());
+
 Future<void> main() async {
   sqfliteFfiInit();
   final factory = databaseFactoryFfi;
@@ -231,7 +247,10 @@ Future<void> main() async {
 
   var calls = <String>[];
   final q = BookUploadQueue(
-    rawDir: rawDir,
+    // 🔴 2026-10-10：目录改为**回调**（队列在 `run()` 时 await）——
+    //    旧写法由 provider 在构造时同步取，首次必拿到空串 ⇒ 整轮静默跳过。
+    //    断言见本节末尾那组「目录必须在使用时取」。
+    rawDirOf: () async => rawDir,
     upload: ({
       required String contentHash,
       required String ext,
@@ -250,7 +269,7 @@ Future<void> main() async {
 
   // 没有原始文件 ⇒ 跳过并**计数**（不是失败）
   final q2 = BookUploadQueue(
-    rawDir: rawDir,
+    rawDirOf: () async => rawDir,
     upload: ({required contentHash, required ext, required bytes, required fileName}) async {
       calls.add('不应被调用');
       return const BlobUploaded(blobSize: 0, usage: 0);
@@ -282,7 +301,7 @@ Future<void> main() async {
 
   final seen = <String>[];
   final q3 = BookUploadQueue(
-    rawDir: rawDir,
+    rawDirOf: () async => rawDir,
     upload: ({
       required String contentHash,
       required String ext,
@@ -309,6 +328,140 @@ Future<void> main() async {
   );
   check('🔑 `formatOf` 返回 null ⇒ 跳过（书已删 / 无指纹 —— 不猜、不传）',
       c.length == 1 && c.first.contentHash == 'a');
+
+  // ══════════════════════════════════════════════════════════
+  section('【5】上传闭环：目录在使用时取 · 成功后写回 blob_size · 触发点 ②③');
+
+  // ── ① 目录必须**在使用时**取（回归防线：旧写法在构造时取 ⇒ 空串 ⇒ 0 请求）──
+  var dirCalls = 0;
+  final q4 = BookUploadQueue(
+    rawDirOf: () async {
+      dirCalls++;
+      return rawDir;
+    },
+    upload: ({
+      required String contentHash,
+      required String ext,
+      required Uint8List bytes,
+      required String fileName,
+    }) async =>
+        const BlobUploaded(blobSize: 5, usage: 5),
+  );
+  check('构造时**不**取目录（回调此时未被调用）', dirCalls == 0, '实得 $dirCalls');
+  await saveRawBook(
+      rawDir: rawDir,
+      contentHash: 'h-dir',
+      ext: 'txt',
+      bytes: Uint8List.fromList([7]));
+  await q4.run(buildCandidates(
+    pendingHashes: ['h-dir'],
+    formatOf: (h) => (ext: 'txt', fileName: 'd.txt'),
+  ));
+  check('🔴 `run()` 时才取目录（**恰好一次**），且真的发起了上传',
+      dirCalls == 1 && q4.state.doneThisRun == 1,
+      'dirCalls=$dirCalls done=${q4.state.doneThisRun}');
+
+  // ── ② 目录为空串 ⇒ 判「缺原始文件」并计数（不崩、也不误报成功）──
+  final q5 = BookUploadQueue(
+    rawDirOf: () async => '',
+    upload: ({
+      required String contentHash,
+      required String ext,
+      required Uint8List bytes,
+      required String fileName,
+    }) async =>
+        const BlobUploaded(blobSize: 0, usage: 0),
+  );
+  await q5.run(buildCandidates(
+    pendingHashes: ['h-local-only'],
+    formatOf: (h) => (ext: 'txt', fileName: 'x.txt'),
+  ));
+  check('目录为空串 ⇒ 计 skippedNoRaw 且**不误报成功**',
+      q5.state.skippedNoRaw == 1 && q5.state.doneThisRun == 0,
+      'noRaw=${q5.state.skippedNoRaw} done=${q5.state.doneThisRun}');
+
+  // ── ③ 上传成功必须**写回 `blob_size`**（否则永远重传 + 书架永远不显示已上云）──
+  await db.insert('book', {
+    'id': 'local-wb',
+    'title': '写回测试书',
+    'source_format': 'txt',
+    'chapter_count': 1,
+    'char_count': 1,
+    'added_at': '2026-10-10T00:00:00Z',
+    'content_hash': 'h-writeback',
+  });
+  await saveRawBook(
+      rawDir: rawDir,
+      contentHash: 'h-writeback',
+      ext: 'txt',
+      bytes: Uint8List.fromList([1, 2]));
+  final wroteBack = <String>[];
+  final q6 = BookUploadQueue(
+    rawDirOf: () async => rawDir,
+    upload: ({
+      required String contentHash,
+      required String ext,
+      required Uint8List bytes,
+      required String fileName,
+    }) async =>
+        const BlobUploaded(blobSize: 42, usage: 0),
+    onUploaded: (hash, size) async {
+      wroteBack.add('$hash=$size');
+      await CloudBookRepository.markUploadedBlob(db,
+          contentHash: hash, blobSize: size);
+    },
+  );
+  await q6.run(buildCandidates(
+    pendingHashes: ['h-writeback'],
+    formatOf: (h) => (ext: 'txt', fileName: 'w.txt'),
+  ));
+  check('🔴 成功后调用写回钩子（且带上服务端算出的 blob_size）',
+      wroteBack.length == 1 && wroteBack.first == 'h-writeback=42',
+      wroteBack.join(','));
+  final pendingAfter = await CloudBookRepository.pendingUploadHashes(db);
+  check('🔴 写回后**不再**出现在待上传（否则每轮都重传同一份文件）',
+      !pendingAfter.contains('h-writeback'), pendingAfter.join(','));
+  final presAfter = await CloudBookRepository.presenceByHash(db);
+  check('🔴 …且 presence 变成 `synced`（云端有文件 + 本地也有）',
+      presAfter['h-writeback'] == CloudPresence.synced,
+      '实得 ${presAfter['h-writeback']}');
+
+  // ── ④ 接线与触发点（**锁调用点，不锁文件位置**）──
+  final prov = _readLib('providers/book_cloud_provider.dart');
+  check('🔴 provider 传 `rawDirOf:` **回调**（不在构造时同步取值）',
+      prov.contains('rawDirOf:'));
+  check('🔴 provider **不再**用 `bookRawDirProvider).valueOrNull` 同步取目录',
+      !prov.contains('bookRawDirProvider).valueOrNull'));
+  check('🔴 provider 接了 `onUploaded:`（上传成功 ⇒ 写回本地）',
+      prov.contains('onUploaded:'));
+  check('…且「未上云」计数与队列**同一口径**（`pendingUploadHashes`）',
+      prov.contains('pendingUploadCountProvider') &&
+          prov.contains('pendingUploadHashes'));
+
+  final syncProv = _readLib('providers/sync_provider.dart');
+  // 🔑 锁**调用处**（带实参），不锁方法名 —— 否则「把调用删了、只留定义」照样为绿
+  //    （本项目「子串断言锁不到接线」那一族）。
+  check('🔴 触发点 ②：同步之后**真的调了**补传（`await _kickUploadIfNeeded(ref)`）',
+      syncProv.contains('await _kickUploadIfNeeded(ref)'));
+  check('…且**只在非 pushOnly** 时做（登出前 flush / 进后台不该传文件）',
+      syncProv.contains('if (!pushOnly)'));
+
+  final tab = _readLib('screens/reading_tab_screen.dart');
+  // 🔑 同理：锁「药丸把 `_retryUpload` 接到了 onTap」，而不是「这个名字存在」。
+  check('🔴 触发点 ③：书架有**手动重试入口**（「未上云」药丸 → onTap: `_retryUpload`）',
+      tab.contains("label: '未上云'") && tab.contains('onTap: _retryUpload'));
+  check('…且计数走 `pendingUploadCountProvider`（**真的 watch**，不另算一套）',
+      tab.contains('ref.watch(pendingUploadCountProvider)'));
+  check('🔴 「没东西待传」时那枚药丸**不存在**（零常驻成本）',
+      tab.contains('if (pending <= 0) return importChip;'));
+
+  final shelf = _readLib('screens/book_library_screen.dart');
+  check('🔴 下载路径也在**使用时** `await` 目录（同类 bug 一次修全）',
+      shelf.contains('await ref.read(bookRawDirProvider.future)'));
+
+  final bm = _readLib('providers/bookmark_provider.dart');
+  check('🔴 收藏读端**订阅**了修订号（`bump` 的另一半 —— 否则要重开页面才刷）',
+      bm.contains('ref.watch(userDbRevisionProvider)'));
 
   await db.close();
   await dir.delete(recursive: true);

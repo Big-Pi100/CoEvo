@@ -427,7 +427,12 @@ class _BookLibraryScreenState extends ConsumerState<BookLibraryScreen> {
       token: ref.read(authProvider).token ?? '',
       client: ref.read(bookBlobClientProvider),
       db: db,
-      rawDir: ref.read(bookRawDirProvider).valueOrNull,
+      // 🔴 2026-10-10：**在使用时 `await`**，不要用 `valueOrNull` 同步取。
+      //    同类 bug 已经真实发生过一次：上传那条链用构造时的 `valueOrNull ?? ''`
+      //    拿到空串 ⇒ 队列判「原始文件缺失」⇒ 一次请求都没发出去。
+      //    下载这里虽然只是「可能拿到 null」，但同一个判据：
+      //    **必需配置要在使用时取，不在构造/渲染时猜**。
+      rawDir: await ref.read(bookRawDirProvider.future),
       newId: const Uuid().v4(),
       book: b,
     );

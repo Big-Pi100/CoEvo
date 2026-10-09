@@ -36,6 +36,21 @@ typedef BlobUploader = Future<BlobResult> Function({
   required String fileName,
 });
 
+/// 🆕 2026-10-10：**上传成功后写回本地状态**的钩子（真实实现 =
+/// `CloudBookRepository.markUploadedBlob` + `bookDbRevisionProvider.bump()`）。
+///
+/// # 🔴 为什么需要它（此前**没人写回** ⇒ 两个后果都是静默的）
+/// `presenceByHash` 与 `pendingUploadHashes` **都只认 `blob_size > 0`**：
+/// · 不写回 ⇒ 这本书**永远被判为「云端没有」**⇒ 每次 kick 都**重传同一份文件**
+/// · 书架**永远不显示「已上云」**⇒ 用户以为没传成功
+///
+/// ⚠️ 放在队列里（而不是让 `upload` 自己顺手写）：写回是**本队列的语义后果**
+///    （「传成功了 ⇒ 本地要知道」），而 `upload` 只负责网络那一下。
+typedef BlobUploadedHook = Future<void> Function(
+  String contentHash,
+  int blobSize,
+);
+
 /// 单本的失败上限（超过就**停**，等用户手动重试 / 下次启动）。
 const int kMaxUploadAttempts = 3;
 
@@ -82,16 +97,51 @@ class UploadCandidate {
 /// 上传队列。
 class BookUploadQueue {
   BookUploadQueue({
-    required this.rawDir,
+    required this.rawDirOf,
     required this.upload,
+    this.onUploaded,
+    this.onUploadedError,
     this.onStateChanged,
   });
 
-  /// 原始文件目录（`book_raw_dir_provider.dart` 是唯一权威来源）。
-  final String rawDir;
+  /// 原始文件目录 —— 🔴 **回调，不是值**（2026-10-10 修）。
+  ///
+  /// # 为什么必须是回调（这条链此前**从未跑通过一次**）
+  ///
+  /// 原先这里是 `final String rawDir`，由 `bookUploadQueueProvider` 在**构造时**同步取：
+  /// ```dart
+  /// final rawDir = ref.watch(bookRawDirProvider).valueOrNull ?? '';   // ← 首次必为 null
+  /// ```
+  /// 而那个 provider **全库只有 1 处读取**（`book_import_flow` 的「导入后上传」）
+  /// ⇒ **它第一次被构造，就是「要上传」的那一刻** —— 此时 FutureProvider 还没完成
+  /// ⇒ `valueOrNull == null` ⇒ `rawDir = ''`
+  /// ⇒ `readRawBook(rawDir: '')` = `File('/<hash>.epub')`（**不抛异常**，只 `exists()`）
+  /// ⇒ 每本都判「原始文件缺失」而跳过 ⇒ **一个 HTTP 请求都不发**。
+  ///
+  /// 📌 实测证据（2026-10-10）：nginx access log 近一个月里
+  ///    `POST /api/books/blob` 的 **App 请求 = 0 次**，且服务端**连 blob 目录都不存在**。
+  ///
+  /// 📌 判据：**「惰性 provider + 首次读 = 使用时刻」这个组合会稳定地拿到空值**
+  ///    —— 越是「只在最后一步读一次」的 provider 越容易踩。
+  ///    必需配置要在 `run()` 时 `await`，**不要**在 `Provider` 构造时同步取值。
+  ///
+  /// ⚠️ 一轮**只取一次**（放在 `run()` 开头，不在循环里逐本 await）——
+  ///    目录在单轮内不会变，逐本取只是多几次 platform channel 往返。
+  final Future<String> Function() rawDirOf;
 
   /// 注入的上传动作。
   final BlobUploader upload;
+
+  /// 🆕 上传成功后写回本地状态（可空 —— 只推不写回的场景不需要）。
+  final BlobUploadedHook? onUploaded;
+
+  /// 🆕 写回失败的上报出口。
+  ///
+  /// 🔴 **不许静默**：写回失败本身不影响本次上传结论，但它会让这本书**下一轮又被重传**
+  ///    （`pendingUploadHashes` 只看 `blob_size`）⇒ 必须留下痕迹。
+  /// ⚠️ 用回调而不是 `debugPrint`：本文件刻意不依赖 `flutter/foundation`
+  ///    （它的价值就是「能被 `dart run` 验」，见文件头）。
+  final void Function(String contentHash, Object error)? onUploadedError;
 
   /// 状态变化回调（UI 用它显示「正在传」）。
   final void Function(UploadQueueState)? onStateChanged;
@@ -129,6 +179,10 @@ class BookUploadQueue {
   Future<void> run(List<UploadCandidate> candidates) async {
     if (_state.isBusy) return;
     _cancelled = false;
+
+    // 🔴 **目录在本轮开始时取一次**（回调形态，根因见 `rawDirOf` 的长说明）。
+    //    这是「上传真的会发请求」的前提 —— 取到空串的旧写法会让整轮**静默跳过**。
+    final rawDir = await rawDirOf();
 
     var done = 0, failed = 0, noRaw = 0;
 
@@ -170,9 +224,19 @@ class BookUploadQueue {
       );
 
       switch (r) {
-        case BlobUploaded():
+        case BlobUploaded(:final blobSize):
           done++;
           _attempts.remove(c.contentHash);
+          // 🔴 写回本地 `blob_size`（根因见 `onUploaded` 的长说明）。
+          //    ⚠️ 失败**不改变本次结论**（网络那一下已经成功了）——
+          //       只记日志：下一轮同步的 pull 会把服务端权威值带回来。
+          if (onUploaded != null) {
+            try {
+              await onUploaded!(c.contentHash, blobSize);
+            } catch (e) {
+              onUploadedError?.call(c.contentHash, e);
+            }
+          }
         case BlobNeedLogin():
           // 未登录 ⇒ **整体停下**（后面的书同样传不了，继续只会刷一串 401）
           _cancelled = true;
