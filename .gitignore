@@ -221,3 +221,6 @@ desktop.ini
 #    后者会把该目录下**所有** ignore 规则一并取消（将来若有人往归档里放 `.env`
 #    也会被静默收进仓库）。📌 判据：**例外的范围要精确到「已知需要的那一个」**。
 !docs/archive/**/pubspec.lock
+
+# 诊断用临时正文（tool/real_body_trace_probe.dart 读它；可随时重抓）
+.tmp_traceprobe/
