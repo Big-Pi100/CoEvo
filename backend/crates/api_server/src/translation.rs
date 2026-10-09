@@ -574,14 +574,8 @@ pub async fn translate_text_inner(
             // 🔑 先看凭据：有效 ⇒ 本次是「端侧翻失败后的回落」⇒ 不再扣
             let pre_paid = ticket.map(|t| take_ticket(uid, t, now_i)).unwrap_or(false);
             if !pre_paid {
-                let ok = try_consume_quota(
-                    &conn,
-                    uid,
-                    &period,
-                    chars,
-                    FREE_MONTHLY_LIMIT,
-                    &now_ms,
-                )?;
+                let ok =
+                    try_consume_quota(&conn, uid, &period, chars, FREE_MONTHLY_LIMIT, &now_ms)?;
                 if !ok {
                     return Err(TranslateError::QuotaExceeded);
                 }
