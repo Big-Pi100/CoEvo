@@ -23,6 +23,7 @@
 import 'dart:io';
 
 import '../../../app/lib/services/iap_plan.dart';
+import '../../../app/lib/services/sync_status.dart';
 
 var _pass = 0;
 final _failures = <String>[];
@@ -236,8 +237,35 @@ void main() {
     SubscriptionLegalText.freeTierNote().contains('数量限制'),
   );
 
-  // ── 折叠区（补充说明 · 非要点故可折叠）──────────────────────────────
-  check('免费版包含清单非空', SubscriptionLegalText.freeIncludes.isNotEmpty);
+  // ── 🆕 2026-10-09：对照表（取代原来的「免费版包含」清单 + 「权益」清单两套）──
+  //
+  // 🔴 为什么把两条清单合成**一张表**：同一件事有**两个来源**时（`benefits` 与
+  //    `freeIncludes`），改一处漏一处不报错 —— 只会让订阅页**少说一条权益**。
+  //    `subscription-value-assessment-2026-10-07` §四 已把对比形态定为三列。
+  final cmp = SubscriptionLegalText.comparison;
+  check('「订阅权益」对照表非空', cmp.isNotEmpty);
+  check(
+    '🔴 对照表两段由 `exclusive` 划分（共同享有 + 订阅版专享），不另写清单',
+    SubscriptionLegalText.sharedBenefits.isNotEmpty &&
+        SubscriptionLegalText.benefits.isNotEmpty &&
+        SubscriptionLegalText.sharedBenefits.length +
+                SubscriptionLegalText.benefits.length ==
+            cmp.length,
+    '共同 ${SubscriptionLegalText.sharedBenefits.length} + 专享 ${SubscriptionLegalText.benefits.length}'
+        ' / 共 ${cmp.length} 行',
+  );
+  check(
+    '🔴 `benefits` 与对照表**同源**（每个专享权益都能在表里找到 exclusive 行）',
+    SubscriptionLegalText.benefits.every((label) =>
+        cmp.any((r) => r.exclusive && r.label == label)),
+    SubscriptionLegalText.benefits.join('｜'),
+  );
+  check(
+    '🔴 专享行必须写出**两栏差异**（整段翻译：免费版有额度、订阅版不限）',
+    cmp.any((r) =>
+        r.label.contains('整段翻译') && r.free.contains('10') && r.sub.contains('不限')),
+    '若两栏都写 ✓，对照表就白做了（§4.2：差为正才有力）',
+  );
   check('到期后行为清单非空', SubscriptionLegalText.afterExpiry.isNotEmpty);
   check(
     '🔴 到期后**不没收资产**（§4.4.4 原则：词可读可复习、电子书保留）',
@@ -434,6 +462,53 @@ void main() {
     );
     check('有降级说明（不没收用户资产）', subscribeCode.contains('downgradeNotice('));
 
+    // ── 🆕 2026-10-09：整页**没有折叠**，两块内容**常驻**（白哥定）──
+    //
+    // # 🔴 证伪方式
+    // · 把 `_benefitsSection(t)` 换回 `_detailFold(t)` ⇒ 「无折叠控件」必红。
+    // · 把 `_activeChildren` 里加回 `_benefitsSection(t)` ⇒ 「受众」那条必红。
+    check(
+      '🔴 订阅页**不再有折叠控件**（`AnimatedCrossFade` / `_detailOpen` 不得复活）',
+      !subscribeCode.contains('AnimatedCrossFade') &&
+          !subscribeCode.contains('_detailOpen') &&
+          !subscribeCode.contains('_detailFold'),
+      '折叠版的问题：看不见 = 白做 —— 对照表是这页的说服材料',
+    );
+    check(
+      '🔴 有「订阅权益」常驻区块（标题就是这四个字）',
+      subscribeCode.contains("'订阅权益'"),
+    );
+    check(
+      '🔴 有「订阅到期后」常驻区块',
+      subscribeCode.contains("'订阅到期后'"),
+    );
+    check(
+      '🔴 对照表渲染自**唯一事实源** `SubscriptionLegalText.comparison`',
+      subscribeCode.contains('SubscriptionLegalText.comparison'),
+      '行数据若在 UI 里另写一份，改 `comparison` 不会反映到页面',
+    );
+    check(
+      '🔴 「会员已到期」只在**真·已到期**时出现（不再对所有人显示）',
+      subscribeCode.contains('lapsed: subscriptionLapsedNow(ref, snap)'),
+      '对从未订阅的人说「会员已到期」是错误陈述',
+    );
+
+    // 🔑 受众判据（白哥：「已经订阅了的人有什么好看的」）——
+    //    切片**自带前提断言**（截不到就红），否则「取不到 ⇒ 下面的反向断言假绿」。
+    final activeBody =
+        RegExp(r'List<Widget> _activeChildren\([^)]*\) =>\s*\[(.*?)\];',
+                dotAll: true)
+            .firstMatch(subscribeCode)
+            ?.group(1) ??
+        '';
+    check(
+      '🔴 已订阅态**不渲染**「订阅权益」「订阅到期后」（受众不是已订阅的人）',
+      activeBody.isNotEmpty &&
+          !activeBody.contains('_benefitsSection') &&
+          !activeBody.contains('_expirySection'),
+      activeBody.isEmpty ? '切片失败（前提断言）—— 函数签名变了？' : '',
+    );
+
     // ── 🔴 法律链接**常量必须就绪**（2026-10-04 已部署）──
     //
     // 🔑 为什么断言「值」而不只是「被引用」：
@@ -605,6 +680,475 @@ void main() {
     '🔴 隐私政策写「应用内直接注销」（不再要求发邮件）',
     privacyMd.contains('直接注销') && !privacyMd.contains('提交申请'),
   );
+
+  // ────────────────────────────────────────────────────────────────
+  // ⑩ 🆕 2026-10-09 订阅到期覆盖层（白哥真机：点了「查看订阅」不跳转）
+  // ────────────────────────────────────────────────────────────────
+  //
+  // # 🔴 事故：`MaterialApp.builder` 的上下文在 **Navigator 之上**
+  //
+  // 覆盖层挂在 `MaterialApp.router` 的 `builder:` 里，而 `builder(context, child)`
+  // 的 `child` **就是 Router 本身**（Flutter `widgets/app.dart`）⇒ 那个 `context`
+  // 在 Router/Navigator **上面**；而 go_router 的 `InheritedGoRouter` 是包在
+  // **Navigator 周围**的（`go_router/src/router.dart` 的 `builderWithNav`）
+  // ⇒ 在 builder 上下文里 `GoRouter.of(context)` **必然抛**
+  //   （debug 断言失败；release 剥掉 assert 后是空值崩溃）。
+  //
+  // 而旧代码的执行顺序是「先 `setState(关弹窗)`，再 `context.push(...)`」
+  // ⇒ **弹窗关掉了、导航从未发生**（真机现象逐字如此）。
+  //
+  // 🔑 判据（本组要守的那条）：
+  //    **`MaterialApp.builder` 的上下文里不能做需要 Navigator / GoRouter 的事** ——
+  //    要导航必须**持实例**（`goRouter` / `navigatorKey`），不能靠 `context`。
+  //
+  // # 🔴 本组的证伪方式
+  // · 把覆盖层按钮改回 `context.push('/subscribe')` ⇒ 「用 goRouter 直调」必须变红。
+  // · 把判据改回 `startsWith('trial_')` ⇒ 「试用判据 = isRegistered」必须变红。
+  // · 把 `DialogOverlay` 包回 `builder` 里 ⇒ 「builder 里无全局弹窗队列」必须变红。
+  print('\n[⑩] 订阅到期覆盖层（导航 / 试用判据 / 勿复活死代码）');
+
+  final appSrc = codeOnly(readApp('app.dart'));
+
+  // 🆕 切片：只取 `_buildSubExpiredOverlay` 这个方法的实现。
+  //    🔑 **必须切片** —— 「app.dart 全文件不得出现 `context.push(`」会**假红**：
+  //       该文件里将来完全可能有**位于 Router 之下**的 widget（如 `_ShellScaffold`）
+  //       正当使用 `context.push`。口径要精确到「**这个覆盖层**里不许用」。
+  final overlaySrc =
+      RegExp(r'Widget _buildSubExpiredOverlay\(\)[\s\S]*?\n  \}')
+              .firstMatch(appSrc)
+              ?.group(0) ??
+          '';
+  check('🔴 截到了 `_buildSubExpiredOverlay` 的实现（断言前提成立）',
+      overlaySrc.isNotEmpty, '截不到 ⇒ 下面的反向断言会**假绿**');
+
+  check('🔴 「查看订阅」用 `goRouter` **直调**（不经 context）',
+      overlaySrc.contains("goRouter.push('/subscribe')"));
+  check('🔴 覆盖层里**不得**用 `context.push`（builder 上下文拿不到 GoRouter）',
+      overlaySrc.isNotEmpty && !overlaySrc.contains('context.push('),
+      '改回 context.push ⇒ 真机表现：弹窗关了、不跳转');
+
+  // ── 试用判据：全库只能有一种口径（`!isRegistered`，不是 `trial_` 前缀）──
+  check('🔴 订阅弹窗的试用判据 = `!auth.isRegistered`（与 `auth_provider` 同口径）',
+      appSrc.contains('!auth.isRegistered'));
+  check('🔴 `app.dart` 不再用 `trial_` 前缀猜账号类型（已废止的判据）',
+      !appSrc.contains("startsWith('trial_')"));
+
+  // ── 死代码不得复活：`DialogOverlay` 是「零消费者 + 建在已退役概念上」的陷阱 ──
+  check('🔴 `dialog_overlay.dart` 已删除（其内部在 builder 上下文里 showDialog）',
+      !File('../../app/lib/widgets/dialog_overlay.dart').existsSync());
+  check('🔴 `dialog_queue_provider.dart` 已删除（`enqueue` 全库零调用方）',
+      !File('../../app/lib/providers/dialog_queue_provider.dart').existsSync());
+  check('🔴 `MaterialApp.builder` 里不再包 `DialogOverlay`',
+      !appSrc.contains('DialogOverlay'));
+
+  // ────────────────────────────────────────────────────────────────
+  // ⑪ 🆕 2026-10-09 订阅判据：端侧**或**服务端（+「已到期」≠「从未订阅」）
+  // ────────────────────────────────────────────────────────────────
+  //
+  // # 🔴 事故：服务端明明开好了订阅，App 里还是「未订阅」
+  //
+  // 两处订阅 UI 都只读端侧 IAP（`iapSnapshotOf(ref).isActive`），
+  // 而安卓验证机上没有 StoreKit ⇒ `entitlement` 永远 `none`
+  // ⇒ **服务端的订阅在无商店的载体上完全不可见**（白哥 2026-10-09 真机）。
+  //
+  // 🔑 判据修正：**「端侧权威」不等于「端侧独占」** ——
+  //    权威说的是「谁说了算」，不是「只能听谁」；端侧**答不上来的场合**必须有人兜底。
+  //
+  // # 🔴 证伪方式
+  // · `subscriptionActive` 改成 `iapActive && backendActive` ⇒ 前两条必红。
+  // · `subscriptionLapsed` 改成 `!backendActive` 之类「取反」写法
+  //   ⇒ 「从未订阅不算已到期」必红（那正是「给所有免费用户显示会员已到期」的形状）。
+  // · 订阅页把判据改回 `iapSnapshotOf(ref).isActive` ⇒ 接线断言必红。
+  print('\n[⑪] 订阅判据（端侧权威 + 服务端兜底）');
+  {
+    check(
+      '任一来源有效 ⇒ 有效（端侧 OR 服务端）',
+      subscriptionActive(iapActive: true, backendActive: false) &&
+          subscriptionActive(iapActive: false, backendActive: true) &&
+          subscriptionActive(iapActive: true, backendActive: true),
+    );
+    check(
+      '🔴 两端都无效 ⇒ 无效（否则订阅页会白送权益）',
+      !subscriptionActive(iapActive: false, backendActive: false),
+    );
+
+    // 🔴 本组最重要的一条：把「从未订阅」与「已到期」分开
+    check(
+      '🔴 从未订阅（服务端无记录）**不算**已到期',
+      !subscriptionLapsed(
+          iapExpired: false, backendHasRecord: false, backendExpired: true),
+      '服务端的 expired 把 NULL 也算 true ⇒ 不能拿「不有效」当「已到期」',
+    );
+    check(
+      '端侧「有购买记录但已过期」⇒ 已到期',
+      subscriptionLapsed(
+          iapExpired: true, backendHasRecord: false, backendExpired: false),
+    );
+    check(
+      '服务端有有效期记录且已过期 ⇒ 已到期',
+      subscriptionLapsed(
+          iapExpired: false, backendHasRecord: true, backendExpired: true),
+    );
+    check(
+      '服务端有记录但未过期 ⇒ 不算已到期',
+      !subscriptionLapsed(
+          iapExpired: false, backendHasRecord: true, backendExpired: false),
+    );
+
+    // 到期日换算（全库唯一换算点）
+    check(
+      '到期日：端侧精确时刻**优先**，统一成 YYYY-MM-DD',
+      subscriptionExpiryLabel(
+            iapExpiresAtUtc: DateTime.utc(2027, 3, 5, 12),
+            backendExpiresAt: '2027-01-01',
+          ) ==
+          '2027-03-05',
+    );
+    check(
+      '到期日：端侧给不出（安卓）⇒ 退回服务端对账值',
+      subscriptionExpiryLabel(
+            iapExpiresAtUtc: null,
+            backendExpiresAt: '2027-10-09',
+          ) ==
+          '2027-10-09',
+    );
+    check(
+      '🔴 两处都没有 ⇒ null（**不编一个日期**，也不返回空串）',
+      subscriptionExpiryLabel(iapExpiresAtUtc: null, backendExpiresAt: null) ==
+              null &&
+          subscriptionExpiryLabel(iapExpiresAtUtc: null, backendExpiresAt: '  ') ==
+              null,
+    );
+
+    // ── 接线：两处订阅 UI 必须走**同一处**判据 ──
+    final subScreen = codeOnly(readApp('screens/subscribe_screen.dart'));
+    final profScreen = codeOnly(readApp('screens/profile_screen.dart'));
+    for (final e in {'subscribe_screen': subScreen, 'profile_screen': profScreen}.entries) {
+      check(
+        '🔴 ${e.key} 用唯一判据 `subscriptionActiveNow`',
+        e.value.contains('subscriptionActiveNow('),
+      );
+      check(
+        '🔴 ${e.key} 不再单独用 `iapSnapshotOf(ref).isActive` 当权益判据',
+        !e.value.contains('iapSnapshotOf(ref).isActive'),
+        '纯端侧 ⇒ 安卓/后台授予的订阅永远显示未订阅',
+      );
+    }
+    // 🔴 对账必须**无条件**发生，否则 iOS 上服务端那一侧永远是 unknown ⇒ 兜底形同虚设
+    check(
+      '🔴 `app.dart` 对账不再以「IAP 不可用」为前提（否则兜底没有数据）',
+      RegExp(r'if \(auth\.isAuthenticated && auth\.userId != null\) \{\s*'
+              r'ref\.fetchSubscription\(\)')
+          .hasMatch(appSrc),
+    );
+
+    // ── 短标语与权益清单**同源**（防「另写一套」—— 2026-10-04 那次事故的形状）──
+    final pitch = SubscriptionLegalText.shortPitch();
+    final allBenefits = SubscriptionLegalText.benefits.join('｜');
+    check(
+      '🔴 未订阅短标语的每一项都能在权益清单里找到',
+      pitch.split(' · ').every(allBenefits.contains),
+      '短标语=「$pitch」',
+    );
+    check(
+      '🔴 「我的」页订阅卡不再硬编码**已废止**的能力',
+      !profScreen.contains('无限生词本') && !profScreen.contains('文章朗读'),
+      '「无限生词本 · 文章朗读」曾写在那里 —— 两个能力早已免费，说成订阅权益是虚假陈述',
+    );
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // ⑫ 🆕 2026-10-09 云端同步状态（相对时间换算 + 单写入方 + 云朵标）
+  // ────────────────────────────────────────────────────────────────
+  //
+  // 白哥：「没有看到云端同步的状态」⇒ 加**云朵图标**（不加新页面）。
+  // 🔑 图标放不下「上次同步 10:32」，所以换算逻辑必须**可穷举**（纯函数）。
+  //
+  // # 🔴 证伪方式
+  // · `relativeSyncLabel` 改成按「小时差」算 ⇒ 「跨自然日」那条必红。
+  // · 把 `finishSkipped` 去掉、未登录也标失败 ⇒ 「没跑 ≠ 失败」失守（见下条）。
+  print('\n[⑫] 云端同步状态');
+  {
+    check(
+      '相对时间：同一天 ⇒ 「今天 HH:MM」',
+      relativeSyncLabel(DateTime(2026, 10, 9, 10, 32), DateTime(2026, 10, 9, 23, 59)) ==
+          '今天 10:32',
+    );
+    check(
+      '🔴 按**自然日**算：23:59 同步、00:01 查看 ⇒ 「昨天」（不是「0 小时前」）',
+      relativeSyncLabel(DateTime(2026, 10, 8, 23, 59), DateTime(2026, 10, 9, 0, 1)) ==
+          '昨天 23:59',
+    );
+    check(
+      '2~6 天 ⇒ 「N 天前」',
+      relativeSyncLabel(DateTime(2026, 10, 5, 8, 0), DateTime(2026, 10, 9, 8, 0)) ==
+          '4 天前',
+    );
+    check(
+      '≥7 天 ⇒ 直接给日期（相对天数已无意义）',
+      relativeSyncLabel(DateTime(2026, 9, 1, 8, 0), DateTime(2026, 10, 9, 8, 0)) ==
+          '2026-09-01',
+    );
+    check(
+      '🔴 时钟回拨（同步时间在「未来」）⇒ 归「今天」，不得输出负数天',
+      relativeSyncLabel(DateTime(2026, 10, 10, 8, 0), DateTime(2026, 10, 9, 8, 0)) ==
+          '今天 08:00',
+    );
+
+    final now9 = DateTime(2026, 10, 9, 12, 0);
+    check(
+      'summary：成功 ⇒ 「已同步 · 今天 10:32」',
+      syncStatusSummary(
+            SyncStatus(phase: SyncPhase.ok, lastOkAt: DateTime(2026, 10, 9, 10, 32)),
+            now9,
+          ) ==
+          '已同步 · 今天 10:32',
+    );
+    check(
+      'summary：同步中 ⇒ 「正在同步…」',
+      syncStatusSummary(const SyncStatus(phase: SyncPhase.syncing), now9) ==
+          '正在同步…',
+    );
+    check(
+      '🔴 summary：失败要带**上次成功时间**（否则用户以为从来没同步过）',
+      (syncStatusSummary(
+                SyncStatus(
+                  phase: SyncPhase.failed,
+                  lastError: '网络超时',
+                  lastOkAt: DateTime(2026, 10, 8, 9, 0),
+                ),
+                now9,
+              ) ??
+              '')
+          .contains('昨天 09:00'),
+    );
+    check(
+      '🔴 summary：还没同步过 / 本轮没跑 ⇒ null（**不弹无意义提示**）',
+      syncStatusSummary(const SyncStatus(), now9) == null &&
+          syncStatusSummary(const SyncStatus(phase: SyncPhase.skipped), now9) ==
+              null,
+    );
+
+    // ── 单写入方 + 单执行入口 ──
+    final syncProv = codeOnly(readApp('providers/sync_provider.dart'));
+    final runCount = RegExp(r'_runSync\(').allMatches(syncProv).length;
+    check(
+      '🔴 `_runSync` 是唯一同步执行入口（1 处定义 + 4 处调用：登录后/登出前/进后台/手动）',
+      runCount >= 5,
+      '实测 $runCount 处',
+    );
+    // 🔴 「单写入方」必须**全库**扫 —— 这个词的真实语义是「别处也不许写」。
+    //
+    // ⚠️ 本断言的第一版只扫了 `sync_provider.dart` 自己，结果**证伪失败**：
+    //    把 `syncStatusProvider.notifier` 加进 `sync_cloud_badge.dart` 时，
+    //    那个窄口径断言**照样绿**（实测）。📌 判据：
+    //    **断言的作用域必须覆盖它声称的语义范围** —— 说「唯一」就得扫全库，
+    //    只扫一个文件只能证明「这个文件里没写两次」。
+    final syncWriters = <String>[];
+    for (final f in Directory('../../app/lib').listSync(recursive: true)) {
+      if (f is! File || !f.path.endsWith('.dart')) continue;
+      if (codeOnly(f.readAsStringSync()).contains('syncStatusProvider.notifier')) {
+        syncWriters.add(f.uri.pathSegments.last);
+      }
+    }
+    check(
+      '🔴 同步状态全库**只有一个写入方**（`sync_provider.dart`）',
+      syncWriters.length == 1 && syncWriters.first == 'sync_provider.dart',
+      '实测 ${syncWriters.length} 个：$syncWriters',
+    );
+
+    // ── 云朵标（两种形态：图标 + 胶囊）──
+    final badge = codeOnly(readApp('widgets/sync_cloud_badge.dart'));
+    check(
+      '云朵标五态图标齐全（未订阅/同步中/已同步/失败/未同步过）',
+      badge.contains('cloud_sync') &&
+          badge.contains('cloud_done') &&
+          badge.contains('cloud_off') &&
+          badge.contains('cloud_queue'),
+    );
+    check(
+      '🔴 云朵标走唯一判据 `subscriptionActiveNow`（不是自己读端侧）',
+      badge.contains('subscriptionActiveNow(') &&
+          !badge.contains('iapSnapshotOf(ref).isActive'),
+    );
+
+    // 🔴 2026-10-09 **语义反转**（白哥：「云朵状态要一直显示……未同步显示灰色，
+    //    这样没有订阅的用户才知道要订阅」）：
+    //    原先两种形态都是「未订阅 ⇒ `SizedBox.shrink()`（零高藏起来）」。
+    //    ⇒ 现在**必须一处都不再有**这个早退，否则未订阅用户根本看不到它。
+    //
+    //    ⚠️ 这条断言本身也演示了「断言会保护错误」：旧版本锁的是
+    //       「未订阅自行隐藏」，新需求一来它就**锁住了错的行为**。
+    //       所以改需求时**必须同时改断言**（而不是删掉它）。
+    //
+    //    🔑 判据用「**文件里根本没有 `SizedBox.shrink`**」而不是「某一行文本不存在」——
+    //       后者一旦有人换个写法（`return const SizedBox.shrink();` 放在别的分支）
+    //       就漏过去了。
+    check(
+      '🔴 两种形态都不再「藏起来」（文件里不得出现 `SizedBox.shrink`）',
+      !badge.contains('SizedBox.shrink'),
+      '未订阅时藏起来 ⇒ 用户根本不知道有同步这回事，也无从产生订阅动机',
+    );
+    // 未订阅态必须**真的画出来**：灰云 + 专门文案 + 点击进订阅页。
+    check(
+      '🔴 未订阅态在共用函数里有明确分支（返回灰云，不是靠调用方特判）',
+      RegExp(r'if \(!subscribed\) \{').hasMatch(badge),
+    );
+
+    // 🔴 点击必须**在未订阅分支体内**跳订阅页 ——
+    //    ⚠️ 不能只查「文件里有没有 `context.push('/subscribe')`」：
+    //       那是个**子串判据**，把别的语句插在它前面（提前 `return`）照样通过（假绿）。
+    //       ⇒ 必须取**分支体切片**再断言。
+    //    ⚠️ 而且文件里有**两处** `if (!subscribed) {`（`syncCloudVisual` 里一处、
+    //       `syncCloudOnTap` 里一处）⇒ 直接对全文取 `firstMatch` 会截到**错的那个**
+    //       （本人第一次就踩了：切片 51 字符，正是"返回灰云"那一支）。
+    //       ⇒ 先按**起止锚点**切出 `syncCloudOnTap` 的函数体，再在它内部取分支。
+    //    ⚠️ 第二个坑：不能用 `\n\}` 当函数终点 —— 参数列表的收尾 `}) {` 里
+    //       也有「换行 + `}`」⇒ 切片只有 109 字符（签名本身），同样会假绿。
+    //       ⇒ 终点锚点用**下一个顶层声明** `class SyncCloudBadge`。
+    final _onTapStart = badge.indexOf('void syncCloudOnTap(');
+    final _onTapEnd = badge.indexOf('class SyncCloudBadge');
+    final onTapBody = (_onTapStart >= 0 && _onTapEnd > _onTapStart)
+        ? badge.substring(_onTapStart, _onTapEnd)
+        : '';
+    check(
+      '🔴 切片有效（截到了 `syncCloudOnTap` 函数体）',
+      onTapBody.isNotEmpty && onTapBody.contains('syncStatusSummary'),
+      '切片长 ${onTapBody.length} —— 哨兵用 `syncStatusSummary`（正常路径里才有）',
+    );
+    final notSubscribedBranch =
+        RegExp(r'if \(!subscribed\) \{([\s\S]*?)\n  \}').firstMatch(onTapBody)?.group(1) ??
+            '';
+    check(
+      '🔴 切片有效（截到了「未订阅」分支体）',
+      notSubscribedBranch.contains('return;'),
+      '切片长 ${notSubscribedBranch.length} —— 哨兵用 `return;`（该分支必须有出口）',
+    );
+    check(
+      '🔴 未订阅点击 ⇒ 跳订阅页（在分支体内，不是文件里随便哪一处）',
+      notSubscribedBranch.contains("context.push('/subscribe')"),
+      '「有动作、无出口」与静默失败同族',
+    );
+    // 🔑 还要**锁顺序**：分支里若先 `return;` 再 push，那行代码**永远不可达** ——
+    //    而「字符串在分支体内」这条判据照样通过（又一层假绿）。
+    //    ⇒ 判据 = 「跳转」必须排在「出口」之前（同族：本项目那几条顺序断言）。
+    final _iPush = notSubscribedBranch.indexOf("context.push('/subscribe')");
+    final _iReturn = notSubscribedBranch.indexOf('return;');
+    check(
+      '🔴 未订阅分支里**跳转在出口之前**（否则那行代码永远不可达）',
+      _iPush >= 0 && _iReturn >= 0 && _iPush < _iReturn,
+      'push @$_iPush · return @$_iReturn',
+    );
+    check(
+      '🔴 未订阅文案走纯逻辑层（可穷举），不是散在组件里',
+      badge.contains('syncUnsubscribedLabel()'),
+    );
+    // 🔴 「已同步」必须是**绿**（`success` token），不是中性灰 ——
+    //    绿/灰的对比本身就是白哥要的那个信号。
+    //    ⚠️ 正则对**空白/换行不敏感**（`[\s\S]{0,80}?`）—— 锁死单行写法的话，
+    //       将来跑一次 `dart format` 就会**假红**（本项目踩过「锁拼写」那类）。
+    check(
+      '🔴 「已同步」用 `success` 绿（不是 ink3 灰）',
+      RegExp(r'case SyncPhase\.ok:[\s\S]{0,80}?Icons\.cloud_done, color: success\)')
+          .hasMatch(badge),
+      '改成 ink3 会让「已同步」与「未同步」长得一样 ⇒ 信号消失',
+    );
+    check(
+      '🔴 未订阅态用**灰**（`ink3`）不用红 —— 它不是用户做错了什么',
+      RegExp(r'if \(!subscribed\)[\s\S]{0,60}?Icons\.cloud_queue, color: ink3\)')
+          .hasMatch(badge),
+    );
+    check(
+      '🔴 文字与图标共用同一个状态色（颜色只有一处口径）',
+      badge.contains('final textColor = v.color;'),
+      '若又长出 `s.phase == SyncPhase.failed ? … : …` 这类第二处判定，改一处会漏一处',
+    );
+    // 🆕 2026-10-09：两种形态，**一套口径**。
+    //
+    // 🔴 用**计数**而不是「存在性」：只看「定义在不在」是**假绿** ——
+    //    在 `SyncCloudChip` 里另抄一份 `switch` 照样过。
+    final visualSwitch =
+        RegExp(r'switch \((s|status)\.phase\)').allMatches(badge).length;
+    check(
+      '🔴 状态 →（图标,颜色）的 `switch` 全库**只有一处**（两种形态共用）',
+      visualSwitch == 1 &&
+          badge.contains('syncCloudVisual(') &&
+          badge.contains('syncCloudOnTap('),
+      '实测 switch $visualSwitch 处 —— 两处各写一套 ⇒ 改一处漏一处，失败态容易只在一边处理',
+    );
+    check(
+      '🔴 订阅页用**图标**、「我的」页用**独立胶囊**（且「我的」不再贴图标）',
+      codeOnly(readApp('screens/subscribe_screen.dart')).contains('SyncCloudBadge(') &&
+          codeOnly(readApp('screens/profile_screen.dart')).contains('SyncCloudChip(') &&
+          !codeOnly(readApp('screens/profile_screen.dart')).contains('SyncCloudBadge('),
+      '白哥：「还是在我的里弄个独立的胶囊吧」',
+    );
+
+    // ── 胶囊的常驻文案（纯逻辑，可穷举）──
+    check(
+      '胶囊文案：已同步 ⇒ 带时间「已同步 · 今天 10:32」',
+      syncChipLabel(
+            SyncStatus(phase: SyncPhase.ok, lastOkAt: DateTime(2026, 10, 9, 10, 32)),
+            now9,
+          ) ==
+          '已同步 · 今天 10:32',
+    );
+    check(
+      '🔴 胶囊文案：**未同步过也总有字**（空胶囊没有意义）⇒「尚未同步」',
+      syncChipLabel(const SyncStatus(), now9) == '尚未同步',
+    );
+    check(
+      '🔴 胶囊文案：本轮没跑但**曾成功过** ⇒ 仍说「已同步 …」（不倒退成「尚未同步」）',
+      syncChipLabel(
+            SyncStatus(phase: SyncPhase.skipped, lastOkAt: DateTime(2026, 10, 8, 9, 0)),
+            now9,
+          ) ==
+          '已同步 · 昨天 09:00',
+    );
+    check(
+      '胶囊文案：失败 ⇒「同步失败」；同步中 ⇒「正在同步…」',
+      syncChipLabel(const SyncStatus(phase: SyncPhase.failed), now9) == '同步失败' &&
+          syncChipLabel(const SyncStatus(phase: SyncPhase.syncing), now9) ==
+              '正在同步…',
+    );
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // ⑬ 🆕 2026-10-09 账号级状态的生命周期：**登出必须复位订阅状态**
+  // ────────────────────────────────────────────────────────────────
+  //
+  // # 🔴 事故（白哥真机）：「退出登录后，订阅状态没有发生变化」
+  //
+  // 根因：当天把 `subscriptionProvider` 加进订阅 UI 的判据
+  //   （`subscriptionActiveNow` = 端侧 OR 服务端）—— 而它是**账号级**状态
+  //   （读服务端 `users.subscription_expires`），**却没接管它的生命周期**
+  //   ⇒ 登出后它保留上一个账号的 `active` ⇒ 下一个账号/未登录态看到「订阅版」。
+  //
+  // 🔑 判据：**「给判据加一个数据来源」与「接管它的生命周期」是同一件事的两半** ——
+  //    只加来源不管生命周期，就是把**上一个账号的值**接进了新判据。
+  //
+  // # 🔴 证伪方式
+  // · 删掉 `onLogout` 里那行 `reset()` ⇒ 「真的调了」必红。
+  // · 在 `onLogout` 里顺手把端侧 IAP 也复位 ⇒ 「登出不碰 IAP」必红。
+  print('\n[⑬] 订阅状态的生命周期（登出复位 / 别碰端侧）');
+  {
+    final authProv = codeOnly(readApp('providers/auth_provider.dart'));
+    final subProv = codeOnly(readApp('providers/subscription_provider.dart'));
+    check('🔴 `SubscriptionNotifier` 有 `reset()`（复位的实现）',
+        subProv.contains('void reset()'));
+    // ⚠️ 切片到**文件末尾**（`onLogout` 就在 auth_provider 的末尾附近）——
+    //    用固定长度窗口会随注释增长而**假红**（本项目踩过「锁拼写/锁位置」那族）。
+    final idx = authProv.indexOf('onLogout:');
+    final onLogoutTail = idx < 0 ? '' : authProv.substring(idx);
+    check('🔴 截到了 `onLogout` 块（断言前提成立）', onLogoutTail.isNotEmpty,
+        '截不到 ⇒ 下面的断言会**假绿**');
+    check('🔴 `onLogout` 里**真的**调了订阅状态复位（防「写了没人调」）',
+        onLogoutTail.contains('subscriptionProvider.notifier).reset()'),
+        '不调 ⇒ 登出后仍显示上一个账号的订阅状态（白哥真机实测）');
+    check('🔴 登出**不**碰端侧 IAP（它是 Apple ID 级，不是 App 账号级）',
+        !onLogoutTail.contains('iapServiceProvider'),
+        '端侧 StoreKit 权益跟 Apple ID 走 —— 换 App 账号它本来就还在，复位它会误伤付费用户');
+  }
 
   _report();
 }

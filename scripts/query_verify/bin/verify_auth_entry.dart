@@ -1,6 +1,12 @@
 // CoEvo · 「我的」页 UI 接线验收
 //   ① **登录入口接线** —— 防「有实现、无入口」（analyzer 与后端测试都发现不了）
 //   ② **弹层形态统一** —— 防「半统一」复发（新加一个 Material 弹窗即变红）
+//   ③ 🔴 **启动不弹窗 + 未登录是一等状态**（2026-10-09 重写）
+//      —— 试用账号机制退役 ⇒ 启动**不得**有任何自动弹窗或自动建号；
+//         「未登录」时账号组那一整行**就是**登录入口（唯一入口，必须常驻）
+//   ④ 🆕 **账号组形态**（2026-10-08 · 第二批）—— 第一栏 = **状态**（点击下拉），
+//      「修改邮箱」= **四个字的动作名**；同时防两个反向：
+//      「整行点击被改回改昵称」与「改昵称能力被静默删掉」
 //
 // 跑法：cd scripts/query_verify && dart run bin/verify_auth_entry.dart
 //
@@ -15,6 +21,10 @@
 //    · 后端测试**不会报**（接口本身是好的）
 //    · 真机上表现为「点了提示『即将开放』」——**静默**，不报错
 //    → 只有一条**结构断言**能守住它。
+//
+// ⚠️ 2026-10-09：该弹窗已改名 `AuthDialog`（文件 `auth_dialog.dart`）——
+//    「Claim（认领）」那个概念随试用账号机制一起删除，
+//    名字不改的话那个已消失的概念会从命名里渗回来。
 //
 // # 🔴 本脚本自身的证伪方式（每次改断言都该跑一遍）
 //
@@ -32,6 +42,11 @@
 //    **不能**替代真机走一遍「登录 → 退出」。
 
 import 'dart:io';
+
+// 🔑 **纯 Dart** 判据（不 import Flutter）⇒ 本脚本可以直接把它当普通函数调用。
+//    ⚠️ 2026-10-09：`shouldPromptLoginOnLaunch` 已删（启动不再弹窗）；
+//       本文件现在只剩 `emailFromStoredLoginId` 一条判定。
+import '../../../app/lib/services/auth_session_policy.dart';
 
 var _pass = 0;
 final _failures = <String>[];
@@ -114,7 +129,7 @@ int countOccurrences(String src, String pattern) =>
 void main() {
   print('');
   print('#' * 74);
-  print('# 登录入口接线 —— 「我的」页 / 启动流程 ↔ ClaimDialog ↔ login()');
+  print('# 登录入口接线 —— 「我的」页 / 启动流程 ↔ AuthDialog ↔ login()');
   print('#' * 74);
 
   final profile =
@@ -122,7 +137,7 @@ void main() {
   final home =
       stripComments(File('../../app/lib/screens/home_screen.dart').readAsStringSync());
   final dialog =
-      stripComments(File('../../app/lib/widgets/claim_dialog.dart').readAsStringSync());
+      stripComments(File('../../app/lib/widgets/auth_dialog.dart').readAsStringSync());
   final field =
       stripComments(File('../../app/lib/widgets/clay_field.dart').readAsStringSync());
   final button = stripComments(
@@ -178,16 +193,48 @@ void main() {
   check('订阅卡入口指向订阅页（与「引导登录」的分工变更已固化）',
       profile.contains("context.push('/subscribe')"));
 
-  // ── ④ 启动流程那条入口仍在（且走同一处弹出方式）──
-  check('`home_screen` 调用 `ClaimDialog.show(`',
-      home.contains('ClaimDialog.show('));
+  // ── ④ 🔴 启动流程**不得**再自动弹窗、也不得再自动建号（2026-10-09）──
+  //
+  // 白哥：「不需要试用账号，未登录状态不是可以直接用吗？试用账号没有任何存在意义」。
+  // 退役后启动路径上**什么都不做** —— 这条断言守的是「别把它加回来」：
+  //   · 加回自动弹窗 ⇒ 新用户一打开就被拦一道「请登录」（而他本来就能用）
+  //   · 加回自动建号 ⇒ 又会出现「匿名账号 + 1 小时假订阅」那套东西
+  check('🔴 `home_screen` 不再调 `AuthDialog.show(`（启动不弹窗）',
+      !home.contains('AuthDialog.show('));
+  check('🔴 `home_screen` 已无 `_showAuthDialog` / `_initAuth`（启动无副作用）',
+      !home.contains('_showAuthDialog') && !home.contains('_initAuth'));
+  check('🔴 `home_screen` 不再引用 `authProvider`（它已不关心登录态）',
+      !home.contains('authProvider'));
 
   // ── ⑤ 🔴 登录能力可达：`login()` 真的被调用 ──
-  // 防「有实现、无入口」——这正是本次回归的本质。
-  check('🔴 `claim_dialog` 里调用了 `login(`（登录能力可达）',
+  // 防「有实现、无入口」——这正是本脚本存在的理由。
+  check('🔴 `auth_dialog` 里调用了 `login(`（登录能力可达）',
       dialog.contains('login('));
-  check('`claim_dialog` 里调用了 `trialClaim(`（认领能力未被删）',
-      dialog.contains('trialClaim('));
+  check('🔴 `auth_dialog` 里调用了 `register(`（注册能力可达）',
+      dialog.contains('notifier.register('));
+
+  // ── ⑤b 🔴 试用账号机制**不得**复活（端侧全库扫）──
+  //
+  // 🔴 扫的是**整个 app/lib**（不是某一个文件）：
+  //    「还有没有别处在调 `/api/trial/`」这个问题，只扫一个文件答不了
+  //    —— 这正是本文件里 `sync_cloud_badge` 那次「只扫一个文件 ⇒ 假绿」的教训。
+  final allDart = <File>[];
+  for (final e in Directory('../../app/lib').listSync(recursive: true)) {
+    if (e is File && e.path.endsWith('.dart')) allDart.add(e);
+  }
+  final trialHits = <String>[];
+  for (final f in allDart) {
+    final src = stripComments(f.readAsStringSync());
+    if (src.contains('/api/trial/') ||
+        src.contains('trialStart(') ||
+        src.contains('trialClaim(') ||
+        src.contains('hasUsedTrial(')) {
+      trialHits.add(f.uri.pathSegments.last);
+    }
+  }
+  check('🔴 端侧**没有任何**文件再碰试用账号（`/api/trial/` · trialStart · trialClaim · hasUsedTrial）',
+      trialHits.isEmpty,
+      trialHits.isEmpty ? '' : '实测命中：$trialHits');
 
   // ── ⑥ 弹窗已粘土化：不得残留 Material 控件 ──
   // ⚠️ 用「构造函数调用形状」（带左括号）而不是裸类名 —— 见 [stripComments]。
@@ -206,34 +253,28 @@ void main() {
   }
   check('邮箱输入框的 hint 是「邮箱」', dialog.contains("hintText: '邮箱'"));
 
-  // ── ⑥c 🔴 「未登录点注册」必须走 `register`，不能走 `trialClaim` ──
+  // ── ⑥c 🔴 注册路径：只有 `register` 一条（认领那条已删）──
   //
-  // 这是**本轮修掉的一个真崩溃**：`trialClaim` 内部用 `state.userId!` /
-  // `state.token!`，未登录时是 null → 抛
-  // `Null check operator used on a null value`，而 `_friendlyError` 映射不到
-  // 这种字符串 → **用户看到一句英文机器话**（不是闪退，但完全看不懂）。
-  //
-  // 判据：弹窗里**两条路都要在** —— 已登录 → 认领；未登录 → 直接注册。
-  check('🔴 弹窗未登录分支走 `notifier.register(`（防「英文机器话」崩溃回归）',
+  // 历史（值得留着）：`trialClaim` 内部用 `state.userId!` / `state.token!`，
+  // 未登录时是 null → 抛 `Null check operator used on a null value`，
+  // 而 `_friendlyError` 映射不到这种字符串 → **用户看到一句英文机器话**。
+  // 2026-10-09 起试用账号机制退役 ⇒ 那条路**从结构上不存在了**。
+  check('🔴 注册走 `notifier.register(`（防「英文机器话」崩溃回归）',
       dialog.contains('notifier.register('));
-  check('弹窗已登录分支仍走 `trialClaim(`（匿名账号认领能力保留）',
-      dialog.contains('notifier.trialClaim('));
-
-  // ── ⑥d 🔴 `trialClaim` 自身也必须有前置检查 ──
-  // 双保险：调用方分流是「主防线」，provider 层的显式检查是「兜底」——
-  // 万一将来有人从别处再调它，也不会再抛那句英文。
-  final provider = stripComments(
-      File('../../app/lib/providers/auth_provider.dart').readAsStringSync());
-  check('🔴 `authProvider.trialClaim` 有「未登录」前置检查（兜底防英文报错）',
-      provider.contains('trialClaim 需要已登录'));
+  // 🔴 反向：认领路径**不得**复活（它是试用账号机制的另一半）。
+  check('🔴 认领路径不得复活（`trialClaim` 在弹窗里必须为零）',
+      !dialog.contains('trialClaim'));
 
   // ── ⑥e 「是否已注册」的判据 = 邮箱非空（不是靠 username 前缀猜）──
+  final provider = stripComments(
+      File('../../app/lib/providers/auth_provider.dart').readAsStringSync());
   check('🔴 `AuthState.isRegistered` 以邮箱为判据',
       provider.contains('bool get isRegistered') && provider.contains('email != null'));
   check('🔴 已删 `isTrialAccount`（靠 `trial_` 前缀猜，改用户名即失效）',
       !provider.contains('bool isTrialAccount('));
-  check('「我的」页用 `isRegistered` 判断试用账号',
-      profile.contains('!auth.isRegistered'));
+  // 🔴 反向：端侧不得再有「已用过试用」标记（它是自动建号那套的配套）。
+  check('🔴 端侧不得再读写 `coevo_trial_used`（试用名额概念已删）',
+      !provider.contains('coevo_trial_used'));
 
   // ── ⑦ 输入框是**凹陷**（spec §3.6 / §6.2）──
   // 防「日后有人把它改成凸起」——凸起在语义上是「可点的粘土物件」，
@@ -430,6 +471,170 @@ void main() {
         !stripComments(
                 File('../../app/lib/widgets/clay_field.dart').readAsStringSync())
             .contains('obscureToggle'));
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════
+  // 【2026-10-09】启动**不弹窗** + 「未登录」时入口**常驻**
+  //
+  // 背景（两段）：
+  // · 2026-10-08：白哥真机报「已登录状态还是会弹出登录弹窗」——
+  //   根因是测试机的会话是**匿名试用账号**（`users.email` 为 NULL）
+  //   ⇒ 旧判据「已登录但没有邮箱 ⇒ 引导注册」**每次启动都成立**。
+  //   当时的修法是「判据换成真实登录态」，抽成纯函数 `shouldPromptLoginOnLaunch`。
+  // · 🔴 2026-10-09：白哥直接否掉了**前提本身** ——
+  //   「不需要试用账号，未登录状态不是可以直接用吗？试用账号没有任何存在意义」。
+  //   ⇒ 试用账号机制整体退役；`shouldPromptLoginOnLaunch` 的两个输入都失去意义
+  //     （没有「试用名额」这回事；「未登录」是一等状态，不该被拦）
+  //   ⇒ **启动时不再有任何自动弹窗**。
+  //
+  // # 🔴 本组要防的三件事（都是一改就静默坏掉）
+  //   ① 启动又被加上自动弹窗 / 自动建号；
+  //   ② 「未登录」那一行入口被删 ⇒ 登录能力整条消失（**本脚本存在的理由**）；
+  //   ③ `verifyToken` 的宽容兜底把已注册账号降级成未注册。
+  //
+  // # 🔴 证伪方式
+  // · 在 `home_screen` 里加回 `AuthDialog.show(context)` ⇒ 「启动不弹窗」必须变红。
+  // · 把 `profile` 里未登录分支的 `onTap: _showLoginDialog` 删掉 ⇒ 入口断言必须变红。
+  // · 把 `emailFromStoredLoginId` 改成 `return v;` ⇒ `trial_*` 那条必须变红。
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    // ── ① 「未登录」时账号组那一整行**就是**登录入口（且是全库唯一）──
+    //
+    // 🔴 为什么这条是全脚本的核心：账号入口一旦不可达，
+    //    登录 / 注册 / 找回订阅 / 跨设备同步**全部**一起消失，
+    //    而 analyzer 与后端测试**都发现不了**（见文件头「有实现、无入口」）。
+    final loginEntries = countOccurrences(profile, 'onTap: _showLoginDialog');
+    check('🔴 登录入口**只有一处**（未登录时账号组那一行）',
+        loginEntries == 1,
+        '实测 $loginEntries 处 —— 0 处 = 登录能力整条消失；>1 处 = 多出未经设计的入口');
+    check('🔴 它是**未登录分支**里的整行入口（`if (!auth.isAuthenticated)`）',
+        profile.contains('if (!auth.isAuthenticated)'));
+
+    // 🔴 反向：给「未完成注册的已登录账号」额外挂入口那一段（`if (trial)`）
+    //    **不得**复活 —— 那是试用账号时代的补丁，前提已不存在。
+    check('🔴 `if (trial)` 那段补丁不得复活（试用账号机制已删）',
+        !profile.contains('if (trial)'));
+    // 🔴 反向：已登录态不得再显示「试用账号」字样。
+    check('🔴 「已登录 · 试用账号」文案不得复活',
+        !profile.contains('试用账号'));
+
+    // ── ② 兜底：`verifyToken` 宽容兜底丢 email ⇒ 不能把已注册账号降级成未注册 ──
+    //
+    // 🔴 为什么仍要有这组：`AuthClient.verifyToken` 在网络失败时返回
+    //    `{'valid': true}`（**刻意宽容**：不该因一次网络抖动把用户登出），
+    //    但它**带不回 `email`** ⇒ `isRegistered` 从 true 掉成 false
+    //    ⇒ 界面少显示一次邮箱，且**存量账号的订阅覆盖层放行判断**会漂。
+    check('🔴 本地已存的登录标识可回填邮箱（`a@b.com` → 原样返回）',
+        emailFromStoredLoginId('a@b.com') == 'a@b.com');
+    check('🔴 存量匿名账号的 `trial_*` 标识**不得**被当成邮箱（否则反向误判）',
+        emailFromStoredLoginId('trial_1133f074') == null);
+    check('空白 / null 标识 ⇒ null（不留空串 —— 空串也会让 `isRegistered` 误判）',
+        emailFromStoredLoginId(null) == null &&
+            emailFromStoredLoginId('') == null &&
+            emailFromStoredLoginId('   ') == null);
+    check('🔴 `tryRestore` 真的用了它兜底（防「写了没人调」）',
+        provider.contains('emailFromStoredLoginId('));
+
+    // ── ③ 后端：两个 trial 路由**不得**复活 ──
+    final routesRs = implOnly(stripComments(
+        File('../../backend/crates/api_server/src/routes.rs').readAsStringSync()));
+    check('🔴 后端不再注册 `/api/trial/` 路由（`start` / `claim` 均已删）',
+        !routesRs.contains('/api/trial/'),
+        '复活它 = 又给未登录用户造匿名账号');
+    check('🔴 后端注册入口只有 `auth/register`（认领路径已删）',
+        routesRs.contains('/api/auth/register') &&
+            !routesRs.contains('trial_handler'));
+  }
+
+  // 【2026-10-08 · 第二批】账号组形态：第一栏 = **状态**，点击**下拉**
+  //
+  // 白哥原话：「账号下第一个栏目 —— 账号登录状态，**现在不需要修改昵称**，
+  //   点击**下拉**修改密码、退出账号、修改邮箱等。」
+  // 外加：「『修改邮箱』的文字说明不合适，**只要这四个字**」。
+  //
+  // 🔴 本组要防的两个方向（都是一改就静默坏掉的东西）：
+  //    ① **整行点击**若被改回 `_editName` ⇒ 与白哥的指令相反（下拉没了）；
+  //    ② 反过来若「改昵称」被顺手删掉 ⇒ 能力静默消失（编译器不报）。
+  //    ⇒ 所以**两个都要断言**，缺一个就只防住一半。
+  //
+  // # 🔴 证伪方式
+  // · 把第一行的 `onTap` 改回 `_editName` ⇒ 「点击目标是展开 / 收起」必须变红。
+  // · 删掉下拉里的「修改昵称」项 ⇒ 「改昵称能力没被删」必须变红。
+  // · 把 `bool _accountExpanded = false` 改成 `= true` ⇒ 「默认收起」必须变红。
+  // · 把 `title: '修改邮箱'` 改回 `title: auth.email` ⇒ 动作名断言必须变红。
+  // 【2026-10-09 追加】
+  // · 把「注销账号」那行 `onTap:` 删掉 ⇒ 「只有一处」变 0 ⇒ 必须变红。
+  // · 在页尾**再加一份** `onTap: _showDeleteAccountDialog` ⇒ 计数变 2 ⇒ 必须变红。
+  // · 把「退出账号」与「注销账号」对调 ⇒ 顺序断言必须变红。
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    check('🔴 账号组**默认收起**（`bool _accountExpanded = false;` —— 形态成立的默认值）',
+        RegExp(r'bool _accountExpanded = false;').hasMatch(profile));
+    check('🔴 第一行点击 = **展开 / 收起**（「点击下拉」的字面落实）',
+        profile.contains('_accountExpanded = !_accountExpanded'));
+    // 🔑 正向：改昵称**没被删**，只是搬进了下拉区 —— 它若零调用方就是死代码，
+    //    而「零调用方」**不是编译错误** ⇒ 只有断言能守。
+    check('🔴 改昵称能力未消失（`onTap: _editName` 仍有调用点）',
+        countOccurrences(profile, 'onTap: _editName') >= 1,
+        '实测 ${countOccurrences(profile, 'onTap: _editName')} 处');
+    // 🔑 「点击下拉」= **就地展开**，不是跳一个新页面/弹层。
+    check('🔴 下拉是**就地展开**（`AnimatedSize`，与兴趣筛选同一交互语汇）',
+        profile.contains('AnimatedSize('));
+
+    // ── 「修改邮箱」= **四个字的动作名**（白哥：文字说明不合适）──
+    check('🔴 下拉项是动作名「修改邮箱」',
+        profile.contains("title: '修改邮箱'"));
+    // 🔴 反向两条：**旧写法不得复活**。
+    //    · `title: auth.email` —— 把邮箱**地址**当条目名（那是「显示」，不是「动作」）
+    //    · 「未绑定邮箱」  —— 同一个旧形态的空态文案
+    //    · 「登录账号 · 找回账号靠它」—— 那条被点名的**说明**文案
+    //    📌 反向断言对实现更换天然免疫，正适合守「**别改回去**」这类要求。
+    //
+    // 🔴🔴 2026-10-09 修：这条原写作 `!profile.contains('title: auth.email')` ——
+    //    **它会假红**。同批把第一行的副标题改成 `subtitle: auth.email ?? '已登录'`
+    //    （那是**正确**的：副标题该显示邮箱），而 `subtitle: auth.email`
+    //    这串里**含有**子串 `title: auth.email` ⇒ 正确代码被判违规。
+    //    📌 判据：**子串断言必须考虑「被撞的车牌」** —— `X` 与 `subX` 的包含关系
+    //       在本项目已踩过多次（`token`/`tokens`、`<b>`/`<b class>`）。
+    //    ✅ 改法：按**行首**判定（`title:` 是 `_navTile` 的**命名参数**，必在行首缩进后），
+    //       这样 `subtitle:` 永远不会被误判成 `title:`。
+    check('🔴 邮箱地址不再当条目名（`title: auth.email` 不得复活）',
+        !profile.split('\n').any((l) => l.trimLeft().startsWith('title: auth.email')));
+    check('🔴 旧空态文案「未绑定邮箱」不得复活', !profile.contains('未绑定邮箱'));
+    check('🔴 被点名的说明文案「登录账号 · 找回账号靠它」已删且不得复活',
+        !profile.contains('登录账号 · 找回账号靠它'));
+
+    // ── 「注销账号」也在下拉区（2026-10-09 白哥：「注销账号也应该放进去」）──
+    //
+    // 🔑 用**计数 == 1** 一次锁住两件事：
+    //    ① 能力还在（0 处 ⇒ 违反 Apple 5.1.1(v) 的「App 内可自助注销」）
+    //    ② **搬迁要搬净**（2 处 ⇒ 页尾那份没删 ⇒ 同一动作两个入口）
+    //    —— 与本文件里 `_buildContactCard` 那条「搬迁要搬净，不是复制一份」同一口径。
+    check('🔴 「注销账号」在下拉区且**只有一处**（搬迁要搬净）',
+        countOccurrences(profile, 'onTap: _showDeleteAccountDialog') == 1,
+        '实测 ${countOccurrences(profile, 'onTap: _showDeleteAccountDialog')} 处');
+    check('🔴 注销弹层仍在（能力不因搬位置而消失）',
+        profile.contains('Future<void> _showDeleteAccountDialog()'));
+    // 🔴 顺序：**不可逆的在最末**（列表从上往下扫 ⇒ 离日常项最远）。
+    //    ⚠️ 「顺序断言」在本项目的另一族里是禁忌（`f(g(x))` 的**文本顺序 ≠ 求值顺序**），
+    //       但这里成立且必要：**children 列表的字面顺序就是渲染顺序**，
+    //       两者之间没有求值过程。⇒ 「文本顺序 ≠ 求值顺序」只在**表达式内**适用。
+    final iSignOut = profile.indexOf("title: '退出账号'");
+    final iDelete = profile.indexOf("title: '注销账号'");
+    check('🔴 「退出账号」在「注销账号」**之前**（不可逆的放最末）',
+        iSignOut > 0 && iDelete > iSignOut,
+        '退出 @$iSignOut · 注销 @$iDelete');
+    // 🔑 配套：入口上删掉了说明 ⇒ 必须确认**提示被接住了**（否则等于悄悄降级警示）。
+    //    旧页尾那行的说明「永久删除账号与云端数据」已删（下拉项只有动作名），
+    //    风险改由**二次确认弹窗**承担 —— 所以这里正向锁弹窗那三条。
+    check('🔴 旧页尾那行的说明「永久删除账号与云端数据」已删（下拉项只有动作名）',
+        !profile.contains('永久删除账号与云端数据'));
+    check('🔴 风险提示被确认弹窗接住（永久删除 / 本机数据保留 / 不影响订阅 三条都在）',
+        profile.contains('无法恢复') &&
+            profile.contains('不会被删除') &&
+            profile.contains('不会自动取消订阅'),
+        '入口上不留说明 ⇒ 弹窗里必须有');
   }
 
   _report();

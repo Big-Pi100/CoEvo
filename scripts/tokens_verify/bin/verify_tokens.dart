@@ -169,6 +169,9 @@ void _s1ThemeColors() {
     'accentInk': {'墨': 0xFFFFFF, '格': 0xFFFFFF, '夜': 0x2A1405},
     'line': {'墨': 0xEFE9DE, '格': 0xE8E8E8, '夜': 0x262A34},
     'sunken': {'墨': 0xEDE6DA, '格': 0xF0F0F0, '夜': 0x0B0D12},
+    // 🆕 2026-10-09：状态色 · 成功（同步「已同步」标用）。
+    //    ⚠️ 夜档**必须**是另一个值（深底上的深绿不可见）—— 同 accent 的做法。
+    'success': {'墨': 0x1F6B4A, '格': 0x1F6B4A, '夜': 0x57B87D},
   };
 
   for (final (label, t) in _themes) {
@@ -186,10 +189,17 @@ void _s1ThemeColors() {
         'accentInk' => t.accentInk,
         'line' => t.line,
         'sunken' => t.sunken,
+        'success' => t.success,
         _ => throw StateError('未知 token ${e.key}'),
       };
       eq('$label.${e.key}', got, CoRgba.hex(want));
     }
+    // 🆕 2026-10-09：`success` 的**取值依据**也要锁 —— 它是「同步已成功」绿的底色，
+    //    实际出现在胶囊的**凹陷底**上（14px 图标 + 11.5px 小字）⇒ 要求 4.5:1。
+    //    ⚠️ 只锁 hex 值不够：将来有人调了 `sunken`，值没变但对比度塌了 ⇒ 必须算一遍。
+    final crSuccess = t.success.contrastWith(t.sunken);
+    check('$label · success（已同步绿）↔ 胶囊底 sunken ≥ 4.5',
+        crSuccess >= 4.5, crSuccess.toStringAsFixed(2));
     // 阅读行高 —— spec 强调「不是全局 1.5」（对英文偏紧）
     final wantLh = {'墨': 1.82, '格': 1.74, '夜': 1.84}[label]!;
     near('$label.readLineHeight', t.readLineHeight, wantLh);
@@ -2957,6 +2967,8 @@ void _s19ExternalCard() {
   final extId = src('services/external_word_id.dart');
   final genProv = src('providers/generate_card_provider.dart');
   final wordProv = src('providers/word_db_provider.dart');
+  // 🆕 2026-10-09：`ext:` 取卡链**收进了共享取卡器**（划词与复习共用同一份）
+  final extCard = src('services/external_word_card.dart');
 
   // ① 未命中分支必须**真的**走制卡（不是只提示一句就结束）
   check('🔴 未命中分支调用了 `_lookupExternalWord`（**接线**，不只是定义）',
@@ -2984,8 +2996,19 @@ void _s19ExternalCard() {
           !client.contains('userToken'));
 
   // ⑤ 三块协作组件都**被引用**（否则是死代码）
-  check('适配器被 reader 调用（契约 v6 → card.content）',
-      reader.contains('toCardContent('));
+  // 🔴 2026-10-09：转换这一步**搬进了共享取卡器**（划词与复习共用同一份）
+  //    ⇒ 断言跟**意图**走（「适配器真的被调用，不是死代码」），读取对象跟着搬。
+  //
+  //    ⚠️⚠️ 必须**扣掉私有助手**再判 —— 单看 `toCardContent(` 会被
+  //       `_toCardContent(` **子串满足**：把真正的适配器调用删掉（转成死代码），
+  //       断言照样绿（**假绿**，实测）。
+  bool callsAdapter(String s) =>
+      'toCardContent('.allMatches(s).length >
+      '_toCardContent('.allMatches(s).length;
+  check('适配器被取卡链调用（契约 v6 → card.content）',
+      callsAdapter(reader) || callsAdapter(extCard));
+  check('🔑 且转换**只有一处**（共享取卡器里）—— 划词文件不再自己转一遍',
+      callsAdapter(extCard) && !callsAdapter(src('services/word_lookup.dart')));
   check('解析器被 reader 调用（card.content → 渲染形状）',
       reader.contains('parseCardContent('));
   check('生成客户端 provider 被 reader 引用（走 provider 复用 http.Client）',
@@ -3023,9 +3046,25 @@ void _s19ExternalCard() {
       'fallback@$segFallbackAt 首个 return null;@$segNullReturnAt');
 
   // ⑦ 🔴 `user.db` 打不开**不能**让词库不可用（增强不该阻断主体）
-  check('🔴 词库外卡片的读取器**吞异常**（返回 null，不冒泡）',
-      wordProv.contains('_externalCardLoader') &&
-          wordProv.contains('return null;'));
+  //
+  //    🔴🔴 **2026-10-09 语义变更**（白哥真机：「重装后 LLM 生词卡打不开」）：
+  //    读取器**不再靠 `return null` 把「取不到卡」静默吞掉** —— 它现在抛
+  //    `ExternalCardUnavailable`（带**准确原因** + **能否重试**），
+  //    由 `cardBundleProvider` 接住并如实显示。**被吞掉的只剩「读端侧缓存失败」**
+  //    （降级为继续联网），不再包括「取不到卡」。
+  //
+  //    ⚠️⚠️ 旧断言是 `wordProv.contains('return null;')` —— 它在**整文件**里找，
+  //       于是只要文件别处还有一个 `return null;`（`word_db_provider` 第 213 行
+  //       就有，与本节无关）它就**永远绿**：本次语义已经反过来了，它**照样绿**
+  //       （**假绿**，实测）。⇒ 改成**按切片**核对，判据与新的决定一致。
+  final loAt = wordProv.indexOf('ExternalCardLoader _externalCardLoader(');
+  final loSeg = loAt < 0 ? '' : wordProv.substring(loAt);
+  check('能切出 `_externalCardLoader` 的源码段（下面两条的前提）',
+      loSeg.isNotEmpty);
+  check('🔴 取不到卡时**抛**带原因的异常（不再静默 `return null` ⇒ 界面猜错原因）',
+      loSeg.contains('resolveExternalWordCard(') && !loSeg.contains('return null'));
+  check('🔑 但「读端侧缓存失败」仍**降级**（user.db 的问题不该变成词库不可用）',
+      loSeg.contains('readCache:') && loSeg.contains('onWarn:'));
 
   // ⑧ 表与迁移都在（结构性前提）
   final schemaFile = File('$root/app/assets/sql/user_db_schema.sql');

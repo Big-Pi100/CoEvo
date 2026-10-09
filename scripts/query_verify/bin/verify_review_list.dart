@@ -471,6 +471,100 @@ Future<void> main(List<String> args) async {
             (logRow.first['rating'] as int) <= 4);
     check('reviewed_at 以 Z 结尾（UTC ISO8601）',
         ((logRow.first['reviewed_at'] as String?) ?? '').endsWith('Z'));
+
+    // ── 14. 🔴「无主划线卡」不可见（2026-10-09）────────────────
+    //
+    // 现象（白哥真机）：复习列表顶部一张标题显示成 `hl:<uuid>` 的卡，
+    //   **点「暂停」没有任何反应**（不报错、不提示），界面上也没有任何出口能去掉它。
+    //
+    // 根因（两层都是既有的设计事实）：
+    //   ① `highlight`（划线本体）**从不参与同步**（服务端只有 6 张 `sync_*` 表，无它）；
+    //   ② `review_log`（复习事件）**参与同步** ⇒ `hl:<uuid>` 的事件照常上云。
+    //   ⇒ 重装 / 换机 / 清数据后，pull 回来的事件被重放成一行 `card_review_state`，
+    //     而它引用的划线在**本机不存在** —— 即「无主卡」。
+    //
+    // 🔑 修在**判据层**（`_visibilityWheres` 第 ④ 条）而不是「暂停」按钮上：
+    //    判据有洞时先问「还有哪些地方有」—— 无主卡出现在列表、被计数统计、还能点进翻卡页，
+    //    修在按钮上只堵住一个出口；而它的成因**对每个用户都会发生**。
+    //
+    // 🔴 本节的证伪方式（改了必须变红）：
+    //    · 删掉 `_visibilityWheres` 里那条 `OR h.id IS NOT NULL` ⇒ 「不在列表 / 不计入」变红
+    //    · 把它改成 `AND h.id IS NULL`（方向写反）⇒ 「划线存在时卡片出现」变红
+    print('\n【14】无主划线卡不可见（划线本体不在本机 ⇒ 卡片不显示）');
+
+    const orphanUuid = 'deadbeef-0000-4000-8000-00000000cafe';
+    const orphanWordId = 'hl:$orphanUuid';
+
+    final baseList = (await q.list()).length;
+    final baseCount = await q.count();
+    final baseDue = await q.dueCount(now);
+
+    // 造「有卡、无划线」的无主状态（= pull 重放之后的样子；`next_review_at` 取过去
+    // 时刻，这样它也**已到期** —— 用来证明 `dueCount` 同样排除它）
+    await q.upsertState(
+      wordId: orphanWordId,
+      // ⚠️ 故意写 id 当拼写：那只影响标题显示，与本节的可见性判据无关
+      //    （脏拼写的修复见 `verify_review_spelling.dart`）
+      spelling: orphanWordId,
+      nextReviewAt: DateTime.utc(2020),
+    );
+
+    check('🔴 无主划线卡**不在列表**里（引用了本机不存在的划线）',
+        !(await q.list()).any((e) => e.wordId == orphanWordId),
+        '列表 ${(await q.list()).length} 条（基线 $baseList）');
+    check('🔴 无主划线卡**不计入** count（列表与计数同源）',
+        await q.count() == baseCount,
+        '${await q.count()} vs 基线 $baseCount');
+    check('🔴 无主划线卡**不计入** dueCount（即使它已到期）',
+        await q.dueCount(now) == baseDue,
+        '${await q.dueCount(now)} vs 基线 $baseDue');
+    check('🔴 搜索也查不到它',
+        (await q.list(search: 'hl:')).isEmpty);
+
+    // 🔑 关键对照：**划线真的存在时，卡片必须立刻出现** ——
+    //    证明这条判据是「按划线是否存在」判，而不是「把 `hl:` 一律挡掉」。
+    await db.insert('highlight', {
+      'id': orphanUuid,
+      'source_type': 'article',
+      'source_id': '42',
+      'chapter_idx': null,
+      'start_offset': 0,
+      'end_offset': 5,
+      'text': 'hello world',
+      'note': null,
+      'deleted': 0,
+      'pending_push': 1,
+      'paused': 0,
+    });
+    check('🔑 划线在本机存在 ⇒ 卡片立刻出现（没有误杀 `hl:`）',
+        (await q.list()).any((e) => e.wordId == orphanWordId));
+    check('🔑 它也计入 count', await q.count() == baseCount + 1);
+    check('🔑 它已到期 ⇒ dueCount 也 +1',
+        await q.dueCount(now) == baseDue + 1);
+
+    // 既有的两条判据仍在那张卡上生效（暂停 / 取消）
+    await db.rawUpdate(
+        "UPDATE highlight SET paused = 1 WHERE id = '$orphanUuid'");
+    check('🔑 有划线但已暂停 ⇒ 仍不显示（既有判据未被新判据顶掉）',
+        !(await q.list()).any((e) => e.wordId == orphanWordId));
+
+    await db.rawUpdate(
+        "UPDATE highlight SET paused = 0, deleted = 1 WHERE id = '$orphanUuid'");
+    check('🔑 有划线但已取消 ⇒ 仍不显示',
+        !(await q.list()).any((e) => e.wordId == orphanWordId));
+
+    // 🆕 同族的另一半：**已取消的划线 + 无主** 也要挡住
+    //    （`h.id IS NOT NULL` 满足，所以靠的是原来的 `h.deleted` 那条 ——
+    //     这里显式锁一次，防止将来有人把 ④ 写成「有行就放行」）
+    await db.rawUpdate("DELETE FROM highlight WHERE id = '$orphanUuid'");
+    check('🔴 划线被删掉后又回到「无主」⇒ 依然不可见',
+        !(await q.list()).any((e) => e.wordId == orphanWordId));
+
+    // 🔑 反向：**词卡不受这条判据影响** —— 它在 `highlight` 里没有行，
+    //    若把 ④ 写成「必须 JOIN 上 highlight」就会让**所有词卡消失**。
+    check('🔑 词卡不受这条判据影响（`w…` 在 highlight 里没有行也照常显示）',
+        (await q.list()).any((e) => e.wordId == 'w000001'),
+        '列表 ${(await q.list()).length} 条');
   } finally {
     await db.close();
     try {

@@ -77,3 +77,10 @@ String wordDbPath() => repoPath('data/word.db');
 ///    从它建库意味着「脚本验的就是 App 真用的那张表结构」，
 ///    而不是脚本里手抄的第二份（那会漂）。
 String userDbSchemaPath() => repoPath('app/assets/sql/user_db_schema.sql');
+
+/// 端侧 `book.db` 的建表语句（**已入库**）。
+///
+/// 🔑 与 [userDbSchemaPath] 同一个理由：脚本自建临时库时的**唯一 schema 来源**。
+///    （2026-10-09 加：`local_data_owner` 的「清空清单」要**逐表**核对两个库，
+///      手抄第二份表清单会漂。）
+String bookDbSchemaPath() => repoPath('app/assets/sql/book_db_schema.sql');

@@ -77,6 +77,20 @@ String? _read(String relPath) {
 String _stripComments(String src) =>
     src.split('\n').where((l) => !l.trimLeft().startsWith('//')).join('\n');
 
+/// 取 `from` 与 `to` 之间的片段（`from` 找不到 ⇒ 空串；`to` 找不到 ⇒ 切到文件尾）。
+///
+/// 🔴 **切片必须自带前提断言**（本文件里每个调用点都跟着一条 `切片有效` 检查）：
+///    截不到时会退化成「切到文件尾」，而下游的 `contains` 断言可能因此**假绿**
+///    —— 它检查的是「文件里某处有 X」，不是「这个函数里有 X」。
+///    📌 同族实测：`verify_forgot_password` 曾用一个**被删掉的函数名**当 end marker，
+///       `between` 静默退化成「切到文件尾」⇒ 断言失去意义。
+String _between(String src, String from, String to) {
+  final i = src.indexOf(from);
+  if (i < 0) return '';
+  final j = src.indexOf(to, i + from.length);
+  return j < 0 ? src.substring(i) : src.substring(i, j);
+}
+
 /// 统计 `app/lib` 下所有 `.dart` 里 `needle` 的总出现次数（**剥掉整行注释后**）。
 ///
 /// 🔴 剥注释的理由（第一次跑就被咬到）：实测裸 URL 出现 **4 次**，其中 3 次在注释里
@@ -106,13 +120,21 @@ void main() {
   // 🔴 **集合相等**（不是「包含」）：多一段、少一段、改名都要红
   final titles = sections.map((s) => s.title).toSet();
   check(
-    '标题集合 == {今日精选, 书库}',
-    titles.length == 2 && titles.containsAll(const ['今日精选', '书库']),
+    '标题集合 == {今日精选, 书架}',
+    titles.length == 2 && titles.containsAll(const ['今日精选', '书架']),
     '$titles',
   );
 
-  // 🔴 白哥定「书库」二字 —— 防回退到「我的书库」
-  check('书库标题恰好 2 字', ReadingSection.books.title.length == 2,
+  // 🔴 白哥定 2 字 —— 防回退到「我的书架」
+  //
+  // ⚠️ 2026-10-07：「书库」→「书架」（**合规称谓**：`书库` 读作「内容集合」，
+  //    `书架` 指向「用户自己的东西」）。改称谓时**两处要分开看**：
+  //      · **本条锁「长度」** ⇒ 对新称谓**同样成立**（`书架` 也是 2 字）⇒ **不必改**
+  //      · **上一条锁「字面量」** ⇒ **必须同步改**，否则本脚本会红
+  //    📌 这正是「断言锁语义形状、而不是锁拼写」的边界：
+  //       能锁形状的（长度）就别锁拼写；**必须锁拼写的**（标题内容），
+  //       就要接受「改名要连着改断言」这个代价（它换来的是「改名不会被漏掉」）。
+  check('书架标题恰好 2 字', ReadingSection.books.title.length == 2,
       '「${ReadingSection.books.title}」共 ${ReadingSection.books.title.length} 字');
   check('信息流标题沿用「今日精选」', ReadingSection.feed.title == '今日精选',
       ReadingSection.feed.title);
@@ -374,11 +396,31 @@ void main() {
             !reader.contains('SelectionArea(') &&
             !bookReader.contains('SelectionArea('));
 
-    // 防抖时长同理：两处各写一个 300ms，将来改一处忘一处 ⇒ 体验静默不一致
-    check('🔴 防抖时长只有一处定义（`kLookupDebounce`，且不在页面里）',
-        widget.contains('const Duration kLookupDebounce') &&
-            !reader.contains('kLookupDebounce') &&
-            !bookReader.contains('kLookupDebounce'));
+    // 🆕 2026-10-07 v2：**防抖整条链已删除** —— 「选择完成」的信号改由框架给
+    //    （`contextMenuBuilder` 在长按结束 / 拖手柄松手时被 `_showToolbar()` 调用）。
+    //
+    // 🔴 这一组**替换**了原先那条「防抖时长只有一处定义（`kLookupDebounce`）」。
+    //    那条锁的是一个**当时就已撤销的设计**（防抖）——
+    //    留着它，实现一改对就**反而变红**，正是本项目记过的
+    //    「**断言会保护错误**／假红会训练人忽略红灯」那一类。
+    //    📌 判据：**断言跟「意图」走、不跟「旧实现」走**（改读取对象时，
+    //       断言名与判据一个字都不该动）。
+    check('🔴 划词已不再有防抖（`kLookupDebounce` / `Timer` 都不在组件里）',
+        !widget.contains('kLookupDebounce') && !widget.contains('Timer('));
+
+    // 菜单由 `contextMenuBuilder` 承载（不再是 `SizedBox.shrink()` 屏蔽系统菜单）
+    check('🔴 划词菜单由 `contextMenuBuilder` 返回（不再屏蔽系统菜单）',
+        widget.contains('contextMenuBuilder:') &&
+            widget.contains('SelectionMenu('));
+
+    // 判定只有一处权威：纯 Dart 的 `classifyPicked`
+    // （它住 `services/picked_text.dart` ⇒ 本机可跑 `verify_picked_classify.dart`）
+    check('🔴 选中形态判定用 `classifyPicked`（纯 Dart · 可本机独立验证）',
+        widget.contains('classifyPicked('));
+
+    // 复制走框架的 `copySelection` —— **不自己写剪贴板**（避免第二份实现）
+    check('🔴 复制用框架的 `copySelection`，不自己写 `Clipboard`',
+        widget.contains('copySelection(') && !widget.contains('Clipboard'));
 
     // 🔴 书库**显式**传 null（有意不记痕迹）—— 删掉这个实参就退化成「未提供」
     check('🔴 书库页**显式**传 `articleId: null`（有意不记痕迹，不是漏传）',
@@ -392,6 +434,139 @@ void main() {
     final lw = _countInAppLib('lookupWord(');
     check('🔴 查词入口 `lookupWord(` 全项目恰好 2 处（1 定义 + 1 调用）', lw == 2,
         '实际 $lw 次 —— 多了就是「第二份实现」冒出来了');
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 【2026-10-09】订阅到期满 30 天 ⇒ 云端备份清理（白哥定）+ 「云端有没有」的口径统一
+  //
+  // 背景：白哥「云端备份应该在订阅到期后一个月后清除释放」。
+  // 后端新增 `maintenance::purge_expired_blobs`；端侧**必须同时**把
+  // 「云端有没有这本书」的判据从「`cloud_book` 有行」改成 **`blob_size > 0`**。
+  //
+  // # 🔴 为什么端侧那两处必须一起改（只改一处 = 静默失败，不报错）
+  // · `presenceByHash` 不改 ⇒ 书架仍显示「云端有」⇒ 点下载 → `404 这本书在云端没有文件`
+  // · `pendingUploadHashes` 不改 ⇒ 云端被清后，本地书**永远不再重新上传**
+  //   ⇒ 用户重新订阅了，备份也再也回不来
+  //
+  // # 🔴 后端那条顺序约束（写反 = 文件永久残留，而配额看着是空的）
+  // 必须**先删文件、再归零**：反过来的话中途失败会留下
+  // 「blob_size = 0 + 文件还在」，而筛选条件 `blob_size > 0` **永远不再命中它**。
+  //
+  // # 🔴 归零还必须**推进 `received_at`**（= pull 的时间轴）
+  // 这是本功能第一版**真实踩过的缺陷** —— 当时自写裸 `UPDATE ... SET blob_size = 0`，
+  // 不碰 `received_at` ⇒ **其他设备永远不知道备份已被释放**（书架显示「云端」、
+  // 点下载 404），且不报错、不掉断言。现在归零一律走
+  // `book_blob_handler::zero_blob_sizes_for_user`（与 `set_blob_size` 同一条约束）。
+  //
+  // # 证伪方式
+  // · 把 `presenceByHash` 的 `where: 'blob_size > 0'` 删掉 ⇒ ① 组必红
+  // · 把 `pendingUploadHashes` 的 `AND c.blob_size > 0` 删掉 ⇒ ② 组必红
+  // · 在后端把 `purge_user` 与 `zero_blob_sizes_for_user` **对调** ⇒ ③ 组必红
+  // · 在后端把归零换回自写裸 UPDATE ⇒ 「走权威函数」与「不得自写」两条必红
+  // · 在后端给那条 UPDATE 加上 `deleted = 1` ⇒ ④ 组必红（端侧会删用户的书）
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    // ── ① 端侧：书架「云端有」的判据 ──
+    final cloudRepo = _stripComments(
+        _read('../../app/lib/services/ebook/cloud_book_repository.dart') ?? '');
+    check('端侧 cloud_book_repository 存在', cloudRepo.isNotEmpty);
+
+    // 切片：确认「云端清单」那段查询确实带了 blob_size 过滤
+    final presenceFn = _between(cloudRepo, 'presenceByHash(', 'pendingUploadHashes(');
+    check('切片有效（`presenceByHash` 与 `pendingUploadHashes` 都找得到）',
+        presenceFn.isNotEmpty, '切片长 ${presenceFn.length}');
+    check('🔴 书架「云端有」按 `blob_size > 0` 判（不是「有行就算有」）',
+        presenceFn.contains('blob_size > 0'),
+        '否则云端文件被清后仍显示「云端有」⇒ 点下载 404（静默失败）');
+
+    // ── ② 端侧：待上传的判据（同一口径，必须同源）──
+    //
+    // ⚠️ 起点用**完整签名**（`static Future<List<String>> pendingUploadHashes(`），
+    //    终点用**代码行** `}`（该方法是文件最后一个成员）。
+    //    🔴 这里踩过一次：初版终点用了 `/// 该用户云端占用的字节数`（**文档注释**），
+    //       而 [_stripComments] 会把 `///` **整行删掉** ⇒ 终点找不到 ⇒ 退化成
+    //       「切到文件尾」。那次没红是因为文件尾恰好**没有**别处出现 `c.blob_size > 0`；
+    //       换一次文件布局就变假绿。
+    //    📌 判据：**任何以文本为基准的定位（切片锚点 / 行号）都必须落在「剥注释后仍存在」的行上。**
+    final pendingFn = _between(
+        cloudRepo, 'static Future<List<String>> pendingUploadHashes(', '}');
+    check('切片有效（截到了 `pendingUploadHashes` 函数体）',
+        pendingFn.isNotEmpty, '切片长 ${pendingFn.length}');
+    check('🔴 待上传判据也用 `blob_size > 0`（与书架同一口径）',
+        pendingFn.contains('c.blob_size > 0'),
+        '否则云端被清后本地书永远不再重传 ⇒ 重新订阅也回不来');
+    check('切片未越界（没切到文件尾）', pendingFn.contains('FROM book b'),
+        '若没有 `FROM book b`，说明锚点失效、切片跑偏了');
+
+    // ── ③ 后端：清理函数的**语句顺序**（先删文件、后归零）──
+    final maintRaw = _read('../../backend/crates/api_server/src/maintenance.rs');
+    check('后端 maintenance.rs 存在', maintRaw != null);
+    final maint = _stripComments(maintRaw ?? '');
+    // ⚠️ 终点同样必须是**代码行**（`fn run_scheduler_inner(`）——
+    //    文档注释会被剥掉，拿它当锚点就会静默退化成「切到文件尾」。
+    final purgeFn = _between(maint, 'pub fn purge_expired_blobs(', '\nfn run_scheduler_inner(');
+    check('切片有效（截到了 `purge_expired_blobs` 函数体）',
+        purgeFn.isNotEmpty, '切片长 ${purgeFn.length}');
+    check('切片未越界（没切到测试代码）', !purgeFn.contains('mod tests'),
+        '越界了 ⇒ 下面的「不得出现 X」会被测试代码命中而假绿/假红');
+
+    final iDelete = purgeFn.indexOf('purge_user(');
+    final iZero = purgeFn.indexOf('zero_blob_sizes_for_user(');
+    check('🔴 先删文件、再归零（顺序反了会导致文件永久残留）',
+        iDelete >= 0 && iZero >= 0 && iDelete < iZero,
+        '删文件 @$iDelete · 归零 @$iZero —— 归零在前 ⇒ 中途失败就再也不会被选中');
+
+    // 🔴 归零**必须走权威函数**：`book_blob_handler::zero_blob_sizes_for_user`
+    //    会一并推进 `received_at`（= **pull 的时间轴**）。
+    //
+    // ⚠️ 这条是 2026-10-09 补的 —— 当时 `purge_expired_blobs` **第一版自写了一条
+    //    裸 `UPDATE ... SET blob_size = 0`**，不带 `received_at`，后果**完全静默**：
+    //    用户的**其他设备**永远拉不到这次归零（pull 按 `received_at > since` 增量）
+    //    ⇒ 书架仍显示「云端有」⇒ 点下载 **404**。只有换设备才看得见。
+    check('🔴 归零走权威函数 `zero_blob_sizes_for_user`（口径只有一处）',
+        purgeFn.contains('book_blob_handler::zero_blob_sizes_for_user'),
+        '自写裸 UPDATE ⇒ 不推进 received_at ⇒ 其他设备书架仍显示「云端」、点下载 404');
+    check('🔴 函数体内**不得**自写 `SET blob_size`（那会绕过 received_at 约束）',
+        !purgeFn.contains('SET blob_size'),
+        '写 blob_size 的 SQL 只允许出现在 book_blob_handler（set_blob_size / zero_blob_sizes_for_user）');
+
+    // ── ④ 后端：**绝不能**动 `deleted` ──
+    //
+    // 🔴 `deleted = 1` 在端侧被读成「别端删了书」⇒ `mergeCloudBooks` 会
+    //    **把用户本地的书删掉**。清理云端备份**不是**删用户的书。
+    //
+    // ⚠️ 本断言第一版写的是 `!purgeFn.contains('deleted')` —— **假红**：
+    //    筛选 SQL 里的 `deleted_at IS NULL` 含子串 `deleted`（那是「软删账号」的列，
+    //    与此无关）。于是**正确代码**被判违规。
+    //    📌 又是「**子串断言要考虑被撞的车牌**」（同族：`token`/`tokens`、
+    //       `title:`/`subtitle:`）。⇒ 改成精确到**赋值形态**。
+    check('🔴 清理时不得改 `sync_book.deleted`（否则端侧会删用户本地的书）',
+        !purgeFn.contains('SET deleted') &&
+            !purgeFn.contains('deleted = 1') &&
+            !purgeFn.contains('deleted=1'),
+        '`deleted` 在端侧被读成「别端删了书」⇒ 会删掉用户本地的书');
+    check('🔴 也不得删 `sync_book` 行（端侧还要靠它认书）',
+        !purgeFn.contains('DELETE FROM sync_book'));
+
+    // ── ⑤ 后端：保留期常量存在且为 30 天（白哥说「一个月」）──
+    check('🔴 保留期常量 = 30 天（白哥定「到期后一个月」）',
+        maint.contains('BLOB_RETENTION_DAYS_AFTER_EXPIRY: i64 = 30'));
+
+    // ── ⑥ 后端：任务已接进调度器（防「写了没人跑」）──
+    //
+    // 🔴 本断言第一版写的是 `maint.contains('purge_expired_blobs(&conn')` ——
+    //    **证伪时没变红**：那个字符串在**同文件的单元测试里还有 7 处调用**
+    //    ⇒ 把调度器里那唯一一处删掉/改名，断言照样通过（**假绿**）。
+    //    📌 又是判据「**子串断言锁不到「接线」**」：`contains` 只证明「文件某处有」，
+    //       证明不了「**在这个函数里有**」。
+    //    ✅ 改法：切出 `run_scheduler_inner` 的函数体，在**切片内**断言。
+    final schedFn = _between(maint, 'fn run_scheduler_inner(', 'fn start_scheduler');
+    check('切片有效（截到了 `run_scheduler_inner` 函数体）',
+        schedFn.isNotEmpty, '切片长 ${schedFn.length}');
+    check('切片未越界（没切到测试代码）', !schedFn.contains('mod tests'));
+    check('🔴 清理任务已接进 `run_scheduler_inner`（防「写了没人跑」）',
+        schedFn.contains('purge_expired_blobs('),
+        '只在测试里调用不算接线 —— 必须真在每 5 分钟跑的那个函数里');
   }
 
   print('═══ verify_reading_tab ═══');

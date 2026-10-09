@@ -196,6 +196,93 @@ CREATE INDEX IF NOT EXISTS idx_ewc_pending ON external_word_cache (pending_push)
   WHERE pending_push = 1;
 ''';
 
+/// **v6 的 schema 快照**（2026-10-05 · 跨设备同步）。
+///
+/// 🔴 **它存在的唯一理由是补一条盲区**：真机上的 `user.db` 此刻**恰好就是 v6**
+///    ⇒ 「**v6 → 当前版本**」是**最真实的那条升级路径**，而它**此前从未被测过**。
+///
+/// 为什么此前一直没被发现（见 `user_db.dart::kUserDbVersion` 的 v7 说明）：
+/// 本脚本的起点原本只有 **v1–v5**，那些路径**版本都在变** ⇒ `onUpgrade` 一定触发
+/// ⇒ 每次都能建出新表 ⇒ **全绿** —— 于是「v1.7 加表时忘了升版本号」这个缺陷
+/// 一路活到了 2026-10-08。
+///
+/// ⚠️ v6 的变更是**给已有表加列**（`bookmark.deleted`），而 `ADD COLUMN`
+///    不在 schema 脚本里（它在 `onUpgrade` 的分支里）⇒ 这里**显式模拟那次变更**，
+///    让「v6 老库」的结构与真机一致（`bookmark` **有** `deleted`）。
+///
+/// 📌 判据：**测试路径要覆盖「用户此刻真实所处的状态」**，而不只是「历史版本」。
+///    「最新的那个版本」恰恰是最容易被漏掉的一条 —— 因为它看起来「已经是新的了」。
+const String _v6Schema = '''
+$_v5Schema
+ALTER TABLE bookmark ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1));
+''';
+
+/// **v8 的 schema 快照**（2026-10-08 · `highlight.paused`）。
+///
+/// 🔴 与 `_v7Schema` **同一条理由**：真机上的 `user.db` 此刻**恰好就是 v8**
+///    ⇒ 「**v8 → 当前版本**」是**最真实的那条升级路径**。
+///
+/// ⚠️ v9 的变更是**新增一张表**（`local_meta`），它**在 schema 脚本里**
+///    ⇒ 本快照**不含**它（否则「升级后它存在」那条断言就失去意义）。
+///
+/// 📌 判据（同 v6/v7）：**测试路径要覆盖「用户此刻真实所处的状态」**。
+///    这一条在 2026-10-08 已经用真金白银验证过两次了 ——
+///    v6（漏升版本号 ⇒ `highlight` 建不出来）与 v7（同上）**都是「最新那版」被漏掉**。
+const String _v8Schema = '''
+$_v7Schema
+ALTER TABLE highlight ADD COLUMN paused INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1));
+''';
+
+/// **v7 的 schema 快照**（2026-10-08 · 划线 + 翻译缓存）。
+///
+/// 🔴 与 `_v6Schema` **同一条理由**：真机上的 `user.db` 此刻**恰好就是 v7**
+///    ⇒ 「**v7 → 当前版本**」是**最真实的那条升级路径**。
+///
+/// ⚠️ v8 的变更是**给已有表加列**（`highlight.paused`），而 `ADD COLUMN`
+///    不在 schema 脚本里（它在 `onUpgrade` 的 ①b 分支里）⇒ **本快照必须不含 `paused`**
+///    （否则「升级后它存在」那条断言就失去意义 —— 它本来就存在）。
+///
+/// 📌 判据（同 v6）：**测试路径要覆盖「用户此刻真实所处的状态」**，不只是历史版本。
+const String _v7Schema = '''
+$_v6Schema
+CREATE TABLE IF NOT EXISTS highlight (
+  id           TEXT    PRIMARY KEY,
+  source_type  TEXT    NOT NULL
+               CHECK (source_type IN ('article', 'book')),
+  source_id    TEXT    NOT NULL,
+  chapter_idx  INTEGER,
+  start_offset INTEGER NOT NULL,
+  end_offset   INTEGER NOT NULL,
+  text         TEXT    NOT NULL,
+  note         TEXT,
+  created_at   TEXT    NOT NULL
+               DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at   TEXT    NOT NULL
+               DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  deleted      INTEGER NOT NULL DEFAULT 0
+               CHECK (deleted IN (0, 1)),
+  pending_push INTEGER NOT NULL DEFAULT 1
+               CHECK (pending_push IN (0, 1))
+);;
+
+CREATE INDEX IF NOT EXISTS idx_hl_alive ON highlight (deleted) WHERE deleted = 0;
+
+CREATE INDEX IF NOT EXISTS idx_hl_source ON highlight (source_type, source_id, start_offset) WHERE deleted = 0;
+
+CREATE INDEX IF NOT EXISTS idx_hl_time ON highlight (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_hl_pending ON highlight (pending_push) WHERE pending_push = 1;
+
+CREATE TABLE IF NOT EXISTS translation_cache (
+  src_text   TEXT PRIMARY KEY,
+  segments   TEXT NOT NULL,
+  created_at TEXT NOT NULL
+             DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  used_at    TEXT NOT NULL
+             DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+''';
+
 /// 从 schema 文件里提取**全部建表语句的表名**。
 ///
 /// 🔑 这样本脚本**不需要**维护一份「应该有哪张表」的清单 ——
@@ -308,10 +395,55 @@ Future<void> runUpgradeCase({
     for (final r in await old.rawQuery('PRAGMA table_info(bookmark)'))
       r['name'] as String,
   ];
-  check('🔴 前提成立：v$fromVersion 老库的 bookmark **不含** deleted 列（v6 才加）',
-      !oldBmCols.contains('deleted'), oldBmCols.join(','));
+  // ⚠️ **必须条件式**：v6 的老库**有**那一列（它正是 v6 的内容）——
+  //    写死「不含」会让 `fromVersion: 6` 这条路径**假红**。
+  if (fromVersion < 6) {
+    check('🔴 前提成立：v$fromVersion 老库的 bookmark **不含** deleted 列（v6 才加）',
+        !oldBmCols.contains('deleted'), oldBmCols.join(','));
+  } else {
+    check('🔴 前提成立：v$fromVersion 老库的 bookmark **含** deleted 列（v6 的内容）',
+        oldBmCols.contains('deleted'), oldBmCols.join(','));
+  }
   check('  （同时确认老库确实有 bookmark 表 —— 否则上面那条是空过）',
       oldBmCols.isNotEmpty);
+
+  // 🔴🆕 **v7 的前提（2026-10-08 新增，本条是「修 bug」的守护）**：
+  //    所有老库（v1–v6）都**不含** `highlight` 与 `translation_cache`。
+  //    · `highlight` 是 v1.7 加的，但**当时忘了升版本号** ⇒ 真机（v6）拿不到它；
+  //      v7 补上了这个升级路径 ⇒ 本断言在 v6 起点的路径上**必须**先确认它不存在
+  //      （否则「升级后它存在」就没意义 —— 它本来就存在）。
+  //    · `translation_cache` 是 v1.8（本次）新增。
+  if (fromVersion < 7) {
+    check('🔴 前提成立：v$fromVersion 老库**不含** highlight（v7 才补上升级路径）',
+        !oldTables.contains('highlight'));
+    check('🔴 前提成立：v$fromVersion 老库**不含** translation_cache（v1.8 才加）',
+        !oldTables.contains('translation_cache'));
+  }
+
+  // 🔴🆕 **v8 的前提（2026-10-08 新增）**：老库的 `highlight` **不含 `paused` 列**
+  //    —— 否则「升级后它有 paused」这条断言就失去意义（它本来就存在）。
+  //    ⚠️ 与 v6 那条**同族**（都是「加列」）⇒ **必须查列**，不是查表。
+  //    ⚠️ 但比 v6 多一层：v1–v6 的老库**根本没有 `highlight` 表**（v7 才建出它）
+  //       ⇒ 表不存在时「不含该列」天然成立，用空列表表达即可。
+  //    📌 判据：「前提类断言」的**检查粒度**必须等于被测变更的粒度。
+  final oldHlCols = oldTables.contains('highlight')
+      ? <String>[
+          for (final r in await old.rawQuery('PRAGMA table_info(highlight)'))
+            r['name'] as String,
+        ]
+      : <String>[];
+  if (fromVersion < 8) {
+    check('🔴 前提成立：v$fromVersion 老库的 highlight **不含** paused 列（v8 才加）',
+        !oldHlCols.contains('paused'),
+        oldHlCols.isEmpty ? '（表不存在 ⇒ 天然成立）' : oldHlCols.join(','));
+  }
+  // 🔴🆕 **v9 的前提（2026-10-09）**：老库**不含 `local_meta`**（v9 才加）。
+  //    ⚠️ 这次是「加表」（同 v7）⇒ 查**表**，不是查列。
+  //    📌 判据：「前提类断言」的检查粒度必须等于被测变更的粒度（加表查表、加列查列）。
+  if (fromVersion < 9) {
+    check('🔴 前提成立：v$fromVersion 老库**不含** local_meta（v9 才加）',
+        !oldTables.contains('local_meta'));
+  }
 
   check('老库已有 bookmark 数据（2 条）',
       firstInt(await old.rawQuery('SELECT count(*) AS n FROM bookmark')) == 2);
@@ -329,6 +461,30 @@ Future<void> runUpgradeCase({
   check('🔴 achievement_unlock 已创建（老库升级拿到了新表）',
       tables.contains('achievement_unlock'));
   check('🔴 article_read 已创建（v1.5 新表）', tables.contains('article_read'));
+  // 🆕 v7（2026-10-08）：这两张是**本次修复/新增**的表
+  check('🔴 highlight 已创建（v1.7 加的表 —— v7 补上了「老库拿不到它」的升级路径）',
+      tables.contains('highlight'));
+  check('🔴 translation_cache 已创建（v1.8 新表）',
+      tables.contains('translation_cache'));
+  // 🆕 v8（2026-10-08）：`highlight.paused` —— **「加列」的守护**（与上面两条「加表」不同）
+  final hlCols = <String>[
+    for (final r in await db.rawQuery('PRAGMA table_info(highlight)'))
+      r['name'] as String,
+  ];
+  check('🔴 highlight.paused 列已存在（v8 的 ALTER 生效）',
+      hlCols.contains('paused'), hlCols.join(','));
+  // 🔑 列顺序：`paused` 必须是**最后一列**。
+  //    `ALTER TABLE ADD COLUMN` 只能追加到末尾，而 schema 文件里它也写在末尾
+  //    ⇒ 「新建的库」与「升级出来的库」列顺序**一致**。
+  //    ⚠️ 少了这条，将来有人在 schema 里把它插到中间 ⇒ 两类库错位 ⇒
+  //       按**下标**取值的代码在两种库上读到不同列（**静默值错位**）。
+  check('🔴 paused 是 highlight 的最后一列（新旧库列顺序一致）',
+      hlCols.isNotEmpty && hlCols.last == 'paused', hlCols.join(','));
+  // 🆕 v9（2026-10-09）：`local_meta` —— **「加表」的守护**（与 v7 同族）。
+  //    它是「本地数据归属账号」的判据表：建不出来 ⇒ 归属读不到 ⇒
+  //    换账号时**不清空**（静默地把上一个账号的数据留在新账号名下）。
+  check('🔴 local_meta 已创建（v1.9 新表 —— 「本地数据归属账号」的判据）',
+      tables.contains('local_meta'));
   check('user_version 已升到 $kUserDbVersion', ver == kUserDbVersion, '$ver');
 
   section('【4】🔑 全量表清单（从 schema 自动提取 → 将来加表自动覆盖）');
@@ -677,10 +833,58 @@ Future<void> main() async {
     expectedTables: expectedTables,
   );
 
+  // 🆕 **v6（2026-10-08 补）—— 这是「真机现状」，也是此前唯一的盲区**
+  //
+  // 🔴 为什么它是**最重要**的一条：真机上的 `user.db` 此刻**恰好就是 v6**。
+  //    ⇒ 「v6 → v7」不是历史路径，**是白哥打开下一个包时真实会发生的事**。
+  //
+  // 🔑 而它此前恰恰没被测过 —— 因为 v1–v5 的路径**版本都在变**，
+  //    `onUpgrade` 一定触发 ⇒ 每次都能建出新表 ⇒ 全绿。
+  //    于是「**v1.7 加 `highlight` 时忘了升版本号**」这个缺陷一路活到 v7 才被发现：
+  //    真机（v6）打开新版 app 时**版本没变** ⇒ `onUpgrade` **不触发**
+  //    ⇒ `highlight` **永远建不出来** ⇒ 划线功能**静默失败**。
+  //
+  // 📌 判据：**测试要覆盖「用户此刻真实所处的状态」**，不只覆盖历史版本。
+  //    「最新那个版本」最容易被漏 —— 它看起来「已经是新的了」。
+  await runUpgradeCase(
+    factory: factory,
+    schemaSql: schemaSql,
+    fromVersion: 6,
+    oldSchema: _v6Schema,
+    expectedTables: expectedTables,
+  );
+
+  // ── 🆕 v7 起点（2026-10-08）—— **今天真机所处的版本** ──
+  //
+  // 🔴 为什么必须有这一条：v8 的变更是**给 `highlight` 加列**。
+  //    `CREATE TABLE IF NOT EXISTS highlight (...)` 对**已存在的表整条跳过**
+  //    ⇒ 若 `onUpgrade` 里漏了 ①b 那段 `ALTER`，**老库永远拿不到 `paused`**
+  //    ⇒ 复习页的「暂停」对划线卡**继续静默无效**（正是本次修的那个 bug）。
+  //    📌 判据（同 v6→v7 那次）：「最新那个版本」最容易被漏 ——
+  //       它看起来「已经是新的了」，而**用户此刻恰好就在那儿**。
+  await runUpgradeCase(
+    factory: factory,
+    schemaSql: schemaSql,
+    fromVersion: 7,
+    oldSchema: _v7Schema,
+    expectedTables: expectedTables,
+  );
+
+  // 🔴🆕 **v8 → 当前**（2026-10-09 加）：真机上此刻**恰好是 v8**的库最多
+  //    （10-08 出的包把版本升到了 8 —— 详见 `kUserDbVersion` 注释），
+  //    而 v9 是「加表」⇒ 必须靠 `onUpgrade` 建出 `local_meta`。
+  await runUpgradeCase(
+    factory: factory,
+    schemaSql: schemaSql,
+    fromVersion: 8,
+    oldSchema: _v8Schema,
+    expectedTables: expectedTables,
+  );
+
   print('');
   print('═' * 74);
   if (_failures.isEmpty) {
-    print('✅ 全部通过：$_pass 项（v1/v2/v3/v4/v5 → v$kUserDbVersion 五条路径）');
+    print('✅ 全部通过：$_pass 项（v1…v8 → v$kUserDbVersion 八条路径）');
   } else {
     print('🔴 失败 ${_failures.length} 项 / 通过 $_pass 项：');
     for (final f in _failures) {

@@ -1,0 +1,33 @@
+name: reflow
+description: A3 · LLM 制卡回流 —— 导出候选（Python）→ 写进 word.db 的 word/card 两表（Dart）
+publish_to: 'none'
+version: 1.0.0
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+
+dependencies:
+  # 🔴 **精确 pin（不带 `^`）—— 必须与 `scripts/query_verify` 同一组合**
+  #
+  # 踩坑记录（2026-10-09）：写 `^2.3.4` 会被解析到 `2.4.0+3`，
+  # 而它依赖 `sqlite3 3.7.0` —— 后者带 **native assets build hook**（`hook/build.dart`）
+  # ⇒ `dart run` 会 spawn `cmd.exe /c dart compile kernel` 来编译它
+  # ⇒ **本机管道限制**直接崩：
+  #     `CreateFile failed 231` / `ProcessException: 所有的管道范例都在使用中`
+  #     at `runtime/bin/process_win.cc:742`
+  # （即项目已知的「本机不能 spawn 子进程 ⇒ 231」在**依赖解析层**的另一种表现。）
+  #
+  # ✅ `2.3.4+4` → `sqlite3 2.9.4`（**无 hook**，纯 Dart FFI 直接加载 dll）⇒ 可跑。
+  # 📌 判据：**「本机不能 spawn 子进程」不只是「别在脚本里调外部命令」** ——
+  #    连**依赖自带的 build hook** 都会触发。
+  sqflite_common_ffi: 2.3.4+4
+  # 🔴 还必须**显式** pin 这个传递依赖 —— 光 pin 上面那个不够：
+  #    `sqflite_common_ffi 2.3.4+4` 对 `sqlite3` 的约束是 `>=2.4.0 <4.0.0`，
+  #    pub 会挑**最新**的 3.7.0（带 hook）。`scripts/query_verify` 之所以能跑，
+  #    只是因为它 9 月生成的 `pubspec.lock` 恰好**冻结**在 2.9.4 —— 不是版本选得好。
+  #    ⚠️ 这里若跟着升到 3.7.0，本机立刻崩。
+  sqlite3: 2.9.4
+  # 🔑 算 `content_hash` —— 必须与既有词库**同一算法**：
+  #    `sha256(content + '' + '').hexdigest()[:32]`（`load_llm_results.py` 的口径）
+  #    ⚠️ 不用 `dart:io` 的 Process 调 python 算（本机不能 spawn 子进程）
+  crypto: ^3.0.3

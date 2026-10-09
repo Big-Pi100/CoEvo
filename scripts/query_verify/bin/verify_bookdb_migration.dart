@@ -92,6 +92,69 @@ CREATE TABLE IF NOT EXISTS book_progress (
 );
 ''';
 
+/// **v3 的 schema**（2026-10-08 时点的样子）= v1 + `content_hash` 列 +
+/// `book_progress_pending` + `book_marker`。
+///
+/// 🔑 **历史快照，只增不改** —— 它必须**不含** v4 才有的 `cloud_book`
+///    （否则「老库升级拿到了新表」这条断言失去意义：它本来就存在）。
+/// 🔑 为什么必须有 v3 这条路：**v3 就是真机此刻所处的版本**。
+///    若只测 v1 → v4，那么「加表却忘了升版本号」这个 bug **不会被抓到** ——
+///    因为 v1 的版本号 < 目标版本 ⇒ `onUpgrade` 一定触发 ⇒ 新表一定建出来。
+///    📌 判据：**测试要覆盖「用户此刻真实所处的状态」，不只是历史版本。**
+///    （`user.db` 上刚因这个形状漏掉过 `highlight` 表，见 `kUserDbVersion` 的注释。）
+const String _v3Schema = '''
+CREATE TABLE IF NOT EXISTS book (
+  id            TEXT PRIMARY KEY,          -- uuid v4（端侧生成）
+  title         TEXT NOT NULL,
+  author        TEXT,
+  language      TEXT,                      -- EPUB 的 dc:language；TXT 按编码推测
+  source_format TEXT NOT NULL              -- 'epub' | 'txt'
+                CHECK (source_format IN ('epub', 'txt')),
+  source_name   TEXT,                      -- 原始文件名（让用户认出「哪来的」）
+  chapter_count INTEGER NOT NULL DEFAULT 0,
+  char_count    INTEGER NOT NULL DEFAULT 0,
+  added_at      TEXT NOT NULL,             -- ISO8601 UTC
+  content_hash  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_book_hash ON book(content_hash);
+CREATE INDEX IF NOT EXISTS idx_book_added ON book(added_at DESC);
+CREATE TABLE IF NOT EXISTS book_chapter (
+  id         TEXT PRIMARY KEY,
+  book_id    TEXT NOT NULL,
+  idx        INTEGER NOT NULL,             -- 章序，0-based
+  title      TEXT,
+  text       TEXT NOT NULL,
+  char_count INTEGER NOT NULL,
+  FOREIGN KEY (book_id) REFERENCES book(id) ON DELETE CASCADE,
+  UNIQUE (book_id, idx)
+);
+CREATE INDEX IF NOT EXISTS idx_book_chapter ON book_chapter(book_id, idx);
+CREATE TABLE IF NOT EXISTS book_progress (
+  book_id      TEXT PRIMARY KEY,
+  chapter_idx  INTEGER NOT NULL DEFAULT 0,
+  scroll_ratio REAL    NOT NULL DEFAULT 0, -- 章内相对位置 0~1（**不存绝对像素** —— 换设备/换字号后像素值无意义）
+  updated_at   TEXT NOT NULL,
+  FOREIGN KEY (book_id) REFERENCES book(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS book_progress_pending (
+  content_hash TEXT PRIMARY KEY,           -- 按**指纹**存，而不是 book_id（见上）
+  chapter_idx  INTEGER NOT NULL,
+  scroll_ratio REAL    NOT NULL,
+  updated_at   TEXT    NOT NULL
+);
+CREATE TABLE IF NOT EXISTS book_marker (
+  id           TEXT PRIMARY KEY,           -- uuid v4（端侧生成 —— 同 `highlight`，多设备同步靠它去重）
+  book_id      TEXT NOT NULL,
+  chapter_idx  INTEGER NOT NULL,
+  scroll_ratio REAL    NOT NULL,           -- 章内相对位置 0~1（**与进度同一套**）
+  excerpt      TEXT    NOT NULL,
+  created_at   TEXT    NOT NULL,
+  deleted      INTEGER NOT NULL DEFAULT 0,
+  FOREIGN KEY (book_id) REFERENCES book(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_book_marker ON book_marker(book_id, chapter_idx, scroll_ratio);
+''';
+
 Future<List<String>> _columnsOf(Database db, String table) async {
   final rows = await db.rawQuery('PRAGMA table_info($table)');
   return rows.map((r) => r['name'] as String).toList();
@@ -156,12 +219,27 @@ Future<void> runCase({
   final oldTables = await _tables(old);
   final oldVer = (await old.rawQuery('PRAGMA user_version')).first.values.first;
 
-  // 🔴 前提：老库**不该**有 v2 的东西（否则「升级后它存在」那条断言失去意义）
+  // 🔴 前提：老库**不该**有「比它新的版本」才有的东西
+  //    （否则「升级后它存在」那条断言失去意义 —— 它本来就存在）。
+  //
+  // 🔑 这几条必须**按 `fromVersion` 分档** —— 它们原本是为 v1 路径写的，
+  //    直接复用会让 v3 路径**假红**（v3 库当然有 content_hash / book_marker）。
+  //    📌 判据：**「前提检查」是路径相关的，不能跟着断言体一起复用。**
   check('老库 user_version = $fromVersion', oldVer == fromVersion, '$oldVer');
-  check('🔴 前提成立：老库的 book **不含** content_hash（v2 才加）',
-      !oldCols.contains('content_hash'), oldCols.join(','));
-  check('🔴 前提成立：老库**不含** book_progress_pending（v2 才加）',
-      !oldTables.contains('book_progress_pending'));
+  if (fromVersion < 2) {
+    check('🔴 前提成立：老库的 book **不含** content_hash（v2 才加）',
+        !oldCols.contains('content_hash'), oldCols.join(','));
+    check('🔴 前提成立：老库**不含** book_progress_pending（v2 才加）',
+        !oldTables.contains('book_progress_pending'));
+  }
+  if (fromVersion < 3) {
+    // 🆕 v3（2026-10-07）：书签表
+    check('🔴 前提成立：老库**不含** book_marker（v3 才加）',
+        !oldTables.contains('book_marker'));
+  }
+  // 🆕 v4（2026-10-08）：云端书单镜像 —— **两条路径都会跑这条**
+  check('🔴 前提成立：老库**不含** cloud_book（v4 才加）',
+      !oldTables.contains('cloud_book'));
   check('老库已有 1 本书 + 1 章 + 1 条进度',
       (await old.rawQuery('SELECT count(*) AS n FROM book')).first['n'] == 1);
   await old.close();
@@ -191,6 +269,22 @@ Future<void> runCase({
   check('🔴 `book` 有 `content_hash` 列 —— 加列**只能**靠 ALTER（全量脚本覆盖不了）',
       hasCol, cols.join(','));
   check('🔴 `book_progress_pending` 表已创建（新增表靠重跑全量脚本）', hasPending);
+  // 🆕 v3：书签表 —— 同样是「新增表」（靠重跑幂等脚本），**不是**加列
+  check('🔴 `book_marker` 表已创建（v3 · 书签）',
+      tables.contains('book_marker'), tables.join(','));
+  check('🔴 `idx_book_marker` 索引已创建',
+      await _hasIndex(db, 'idx_book_marker'));
+  // 🆕 v4：云端书单镜像（书架上云）—— 同样是「新增表 + 新增索引」
+  //
+  // 🔴 这一条**必须显式加进来** —— 本段是**逐条列举**的，不是「扫出新表就报」。
+  //    2026-10-08 实测：加了 v3 路径但**漏加这两条** ⇒ 把 `kBookDbVersion` 改回 3
+  //    （= 复现「加表忘升版本」）时断言**依然全绿** —— 那条路径等于装饰。
+  //    📌 判据：**新增表/索引时，断言脚本里的「期望列表」要同步加项**，
+  //       否则新对象的覆盖是**空的**，而输出看起来一样漂亮。
+  check('🔴 `cloud_book` 表已创建（v4 · 书架上云）',
+      tables.contains('cloud_book'), tables.join(','));
+  check('🔴 `idx_cloud_book_added` 索引已创建（新增索引同样靠重跑脚本）',
+      await _hasIndex(db, 'idx_cloud_book_added'));
   check('🔴 `idx_book_hash` 索引已创建（新增索引同样靠重跑脚本）',
       await _hasIndex(db, 'idx_book_hash'));
   check('user_version 已升到 $kBookDbVersion',
@@ -272,6 +366,13 @@ Future<void> main() async {
     oldSchema: _v1Schema,
   );
 
+  await runCase(
+    factory: factory,
+    schemaSql: schemaSql,
+    fromVersion: 3,
+    oldSchema: _v3Schema,
+  );
+
   print('');
   print('═' * 74);
   if (_failures.isEmpty) {
@@ -282,8 +383,10 @@ Future<void> main() async {
       print('    · $f');
     }
     print('');
-    print('🔑 最可能的原因：`book_db.dart` 的 `onUpgrade` 少了 v2 分支，');
-    print('    或 `kBookDbVersion` 没升到 2（不升版本号 ⇒ `onUpgrade` 不触发）。');
+    print('🔑 最可能的原因：`kBookDbVersion` **没升**（不升版本号 ⇒ `onUpgrade` 不触发），');
+    print('    或新增的东西**不是**「加列」（加列必须写 ALTER 分支：重跑幂等脚本覆盖不了）。');
+    print('    📌 反过来：「新增表 / 新增索引」只要 `kBookDbVersion` 升了就够了'
+        '（重跑全量脚本能覆盖）。');
   }
   print('═' * 74);
   if (_failures.isNotEmpty) exitCode = 1;

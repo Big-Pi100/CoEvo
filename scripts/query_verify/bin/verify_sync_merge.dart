@@ -117,6 +117,36 @@ Map<String, Object?> bprog(String hash, int ch, double ratio, String at) => {
       'updated_at': at,
     };
 
+/// 🆕 2026-10-09：一条划线（形状与 `HighlightRepository.toPushRow()` 一致）。
+Map<String, Object?> hmark({
+  required String id,
+  String text = 'the quick fox',
+  String? note,
+  int? chapterIdx,
+  int paused = 0,
+  int deleted = 0,
+  String created = tNoMs,
+  String updated = tNoMs,
+  String sourceType = 'article',
+  String sourceId = '42',
+  int start = 11,
+  int end = 24,
+}) =>
+    {
+      'id': id,
+      'source_type': sourceType,
+      'source_id': sourceId,
+      'chapter_idx': chapterIdx,
+      'start_offset': start,
+      'end_offset': end,
+      'text': text,
+      'note': note,
+      'paused': paused,
+      'deleted': deleted,
+      'created_at': created,
+      'updated_at': updated,
+    };
+
 void main() {
   print('');
   print('#' * 74);
@@ -344,6 +374,7 @@ void main() {
     'user_word': schemaUser,
     'article_read': schemaUser,
     'bookmark': schemaUser,
+    'highlight': schemaUser, // 🆕 2026-10-09（划线记忆在 user.db）
     'book_progress': schemaBook,
     'book': schemaBook,
   };
@@ -388,6 +419,7 @@ void main() {
     'article_read': 'ArticleReadInput',
     'bookmark': 'BookmarkInput',
     'book_progress': 'BookProgressInput',
+    'highlight': 'HighlightInput',
   };
   for (final e in rustStructOf.entries) {
     final fields = _rustStructFields(rust, e.value);
@@ -543,6 +575,139 @@ void main() {
       m.group(1)!.contains(r"%H:%M:%fZ") && !m.group(1)!.contains(r"%H:%M:%SZ"),
     );
   }
+
+  // ═══════════════════════════════════════════════════════════
+  section('【13】🆕 highlight（划线记忆）：字段级合并 + 整组同端');
+
+  // 🔴 本段守的是一个**真实缺口**（2026-10-09）：此前 `review_log`（复习事件）同步，
+  //    而 `highlight`（划线本体）**不同步** ⇒ 重装 / 换机的设备会拿到「无主划线卡」：
+  //    标题显示成 `hl:<uuid>`、点「暂停」静默无反应、界面上没有出口能去掉它。
+  //    📌 判据：**同步的粒度必须覆盖「引用关系」**。
+
+  final hlOld = hmark(
+    id: 'h1',
+    text: 'the quick fox',
+    note: null,
+    paused: 0,
+    deleted: 0,
+    created: tNoMs,
+    updated: tNoMs,
+  );
+  final hlNew = hmark(
+    id: 'h1',
+    text: '被改写的正文',
+    note: '记一下',
+    paused: 1,
+    deleted: 0,
+    created: tLate, // ⚠️ `created_at` **更晚** ⇒ 不算「首次事实」
+    updated: t3, // ✅ `updated_at` 更新 ⇒ 意愿生效
+  );
+
+  final hm = M.mergeHighlight(hlOld, hlNew);
+  check('🔴 `note` 取**较新**（写笔记要能同步）', hm['note'] == '记一下', '${hm['note']}');
+  check('🔴 `paused` 取**较新**（暂停要能同步）', hm['paused'] == 1, '${hm['paused']}');
+  check('`updated_at` 取较新', hm['updated_at'] == t3);
+  check(
+    '🔴 `text` 取**较早**那端 —— 正文是「首次事实」，不得被更晚的副本改写',
+    hm['text'] == 'the quick fox',
+    '实际 ${hm['text']}',
+  );
+  check('`start_offset` 与 `text` **同端**（不许拼出「A 的正文 + B 的位置」）',
+      hm['start_offset'] == 11 && hm['end_offset'] == 24,
+      '实际 ${hm['start_offset']}-${hm['end_offset']}');
+  check('`source_id` 与 `text` 同端', hm['source_id'] == '42');
+  check('`created_at` 取较早', hm['created_at'] == tNoMs);
+  check('对称（交换两行参数结论相同）', () {
+    final r = M.mergeHighlight(hlNew, hlOld);
+    return r['note'] == '记一下' && r['text'] == 'the quick fox' && r['paused'] == 1;
+  }());
+
+  // 🔴 清空笔记：`NULL` 是**值**不是「没带这个字段」
+  final hlClear = hmark(
+    id: 'h1',
+    text: 'the quick fox',
+    note: null,
+    paused: 0,
+    deleted: 0,
+    created: tNoMs,
+    updated: tLate, // 更新 ⇒ 意愿生效
+  );
+  check(
+    '🔴 清空笔记（`note: null` + 更新的 `updated_at`）能生效 —— NULL 是值',
+    M.mergeHighlight(hlOld, hlClear)['note'] == null,
+    '—— 若写成「取非空」，笔记**永远清不掉**',
+  );
+
+  // ⚠️ `chapter_idx` 可空（文章没有章节号）⇒ 沿用「取较早那端的非空值」的宽松口径
+  check(
+    '`chapter_idx` 为 null（文章）时合并后仍是 null',
+    M.mergeHighlight(hlOld, hlNew)['chapter_idx'] == null,
+  );
+  check(
+    '🔑 较早那端没有章节号、另一侧有 ⇒ 退到有值的那端（不丢信息）',
+    M.mergeHighlight(hlOld, hmark(
+      id: 'h1',
+      text: 'the quick fox',
+      chapterIdx: 3,
+      created: tLate,
+      updated: t3,
+    ))['chapter_idx'] == 3,
+  );
+
+  check('合并结果**不含** `pending_push`（职责分开，同【2】）',
+      !hm.containsKey('pending_push'));
+
+  // ── 列名契约（Rust 侧字段存在性在【8】自动覆盖）──
+  check('契约表已登记 `highlight`', M.kSyncFieldSources.containsKey('highlight'));
+  check('契约表登记了全部 12 列',
+      M.kSyncFieldSources['highlight']!.length == 12,
+      '${M.kSyncFieldSources['highlight']!.length} 列');
+  check(
+    '🔴 `paused` 在契约里（漏了它 ⇒ 暂停不跨设备 ⇒「A 暂停、B 上又回来」）',
+    M.kPushJsonContract['highlight']!.contains('paused'),
+  );
+  check(
+    '🔴 `note` 在契约里（漏了它 ⇒ 笔记不跨设备）',
+    M.kPushJsonContract['highlight']!.contains('note'),
+  );
+  check(
+    '🔴 `created_at` 在契约里（漏了它 ⇒ 无法判「首次事实」）',
+    M.kPushJsonContract['highlight']!.contains('created_at'),
+  );
+  check(
+    '🔴 后端 `HighlightOut`（pull 侧）也带 `paused` / `note` —— '
+    '少一列 ⇒ 端侧永远收不到那个状态（`serde` 不会报错）',
+    _rustStructFields(rust, 'HighlightOut').contains('paused') &&
+        _rustStructFields(rust, 'HighlightOut').contains('note'),
+    '实际字段：${_rustStructFields(rust, 'HighlightOut').join(',')}',
+  );
+
+  // ── 序列化往返（row ↔ 推送 JSON）──
+  final hlJson = M.highlightToPushJson(hmark(id: 'h1', note: 'n', paused: 1));
+  check(
+    'highlight → JSON 键集合正确（漏一个键 ⇒ 端侧照发、对端**静默忽略**）',
+    hlJson.keys.toSet().toString() ==
+        M.kPushJsonContract['highlight']!.toSet().toString(),
+    '${hlJson.keys.toList()}',
+  );
+  final hlBack = M.highlightFromPullJson({
+    'id': 'h1',
+    'source_type': 'book',
+    'source_id': 'buuid',
+    'chapter_idx': 1,
+    'start_offset': 2,
+    'end_offset': 8,
+    'text': 't',
+    'note': 'n',
+    'paused': 1,
+    'deleted': 0,
+    'created_at': tNoMs,
+    'updated_at': t3,
+  });
+  check('JSON → row 往返保真（`paused` / `note` / `chapter_idx` 不丢）',
+      hlBack['paused'] == 1 && hlBack['note'] == 'n' && hlBack['chapter_idx'] == 1);
+  check('⚠️ 反序列化**不产生** `pending_push`（那是同步标记，由 `sync_service` 决定）',
+      !hlBack.containsKey('pending_push'));
   check(
     '反向：不同步的表**不必**改（`card_review_state` 仍是秒 —— 它是派生表）',
     stripComments(readFile('../../app/assets/sql/user_db_schema.sql'))
@@ -615,6 +780,8 @@ void _report() {
     print('   · 前端/后端的取早取晚方向不一致');
     print('   · `remove()` 丢了 `bookmarked_at` 刷新（取消会被服务端丢弃）');
     print('   · JSON 字段名与后端结构体漂移（会**静默传空**）');
+    print('   · 🆕 `highlight` 的「首次事实」组与「最新意愿」组串了位置'
+        '（正文被改写 / 笔记清不掉）');
   }
   print('═' * 74);
   if (_failures.isNotEmpty) exitCode = 1;

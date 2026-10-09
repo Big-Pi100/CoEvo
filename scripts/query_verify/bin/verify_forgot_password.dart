@@ -21,7 +21,7 @@
 // | `main.rs` 删掉 `password_reset` 迁移 | 「两处都有」（表升级断链）|
 // | `reset_password` 的删 token 改成 `token != ?1` | 「删**全部**会话」|
 // | `auth.rs` 把「该邮箱尚未注册」改回含糊文案 | 「未注册明说」|
-// | `claim_dialog` 删掉「忘记密码？」 | 「入口 A」|
+// | `auth_dialog` 删掉「忘记密码？」 | 「入口 A」|
 // | `forgot_password_dialog` 的冷却常量改成 30 | 「前后端冷却同值」|
 // | `code_box_logic` 的 `focusAfterInput` 去掉越界钳制 | 纯逻辑那组 |
 //
@@ -114,7 +114,7 @@ void main() {
   final asrRs = stripComments(readFile('../../backend/crates/api_server/src/tencent_asr.rs'));
 
   // ── 前端 ──
-  final claimDlg = stripComments(readFile('../../app/lib/widgets/claim_dialog.dart'));
+  final authDlg = stripComments(readFile('../../app/lib/widgets/auth_dialog.dart'));
   final changePwDlg =
       stripComments(readFile('../../app/lib/widgets/change_password_dialog.dart'));
   final forgotDlg = stripComments(readFile('../../app/lib/widgets/forgot_password_dialog.dart'));
@@ -205,13 +205,13 @@ void main() {
   // ═══════════════════════════════════════════════════════════════════
 
   check('入口 A：登录弹层有「忘记密码？」',
-      claimDlg.contains('忘记密码？'));
+      authDlg.contains('忘记密码？'));
   check('入口 A：有打开流程的方法 `_openForgotPassword`',
-      claimDlg.contains('_openForgotPassword'));
+      authDlg.contains('_openForgotPassword'));
   check('🔑 入口 A 只在**登录态**显示（注册态还没账号，「忘记密码」不成立）',
-      RegExp(r'if \(_isLogin\) \.\.\.\[').hasMatch(claimDlg));
+      RegExp(r'if \(_isLogin\) \.\.\.\[').hasMatch(authDlg));
   check('入口 A：重置成功要**连登录弹层一起关**（否则已登录还压着登录窗）',
-      between(claimDlg, 'Future<void> _openForgotPassword', '\n  @override')
+      between(authDlg, 'Future<void> _openForgotPassword', '\n  @override')
           .contains('Navigator.of(context).pop(true)'));
 
   check('入口 B：修改密码弹层有「忘了原密码？找回密码」',
@@ -263,18 +263,23 @@ void main() {
   check('`auth_provider.resetPassword` 存在',
       authProviderRaw.contains('Future<void> resetPassword('));
 
-  // 🔴 反向：resetPassword **不得**写 `state.error`（会污染页面级的 ClaimDialog）
+  // 🔴 反向：resetPassword **不得**写 `state.error`（会污染页面级的 AuthDialog）
   //
   // ⚠️ **切片边界必须用「代码行」，不能用注释行** —— 本脚本第一次跑就栽在这里：
-  //    原来写 end marker = `'\n  /// 创建临时账户'`（那是 `trialStart` 的文档注释），
+  //    上一版曾写 end marker = `'\n  /// 创建临时账户'`（那是 `trialStart` 的文档注释），
   //    而 `stripComments` **会把整行注释删掉** ⇒ 边界找不到 ⇒ `between` 退化成
   //    「切到文件尾」⇒ 把后面其它函数里的 `error: _friendlyError` 也算进来 ⇒ **假红**。
   //    📌 判据：**剥注释会改变被检查的文本** —— 所以**任何以这段文本为基准的定位
   //       （切片边界、锚点、行号）都必须落在「剥完之后仍然存在」的行上**。
   //    同族：本项目已因「剥注释」踩过两次（URL 里的 `//` 被误切、行内注释被当代码）。
+  // 🔴 2026-10-09：end marker 由 `'Future<void> trialStart('` 改为
+  //    `'Future<void> changeEmailCode('` —— `trialStart` 随试用账号机制一起删除，
+  //    旧 marker 从此找不到 ⇒ `between` 会退化成「切到文件尾」⇒ **假红**。
+  //    ⚠️ 这正是本项目那条判据的又一次实例：**切片边界必须落在「当时存在」的代码行上**，
+  //       而任何一次「删掉某个函数」都会让以它为边界的断言**静默失效**。
   final feResetFn =
-      between(authProviderRaw, 'Future<void> resetPassword(', 'Future<void> trialStart(');
-  check('切片边界有效（`resetPassword` 与 `trialStart` 都找得到）',
+      between(authProviderRaw, 'Future<void> resetPassword(', 'Future<void> changeEmailCode(');
+  check('切片边界有效（`resetPassword` 与 `changeEmailCode` 都找得到）',
       feResetFn.isNotEmpty, '切片长 ${feResetFn.length}');
   check('🔴 `resetPassword` **不碰** `state.error`（弹层自有 `_error`，写了会让登录弹窗挂一句错）',
       feResetFn.isNotEmpty && !feResetFn.contains('error: _friendlyError'),

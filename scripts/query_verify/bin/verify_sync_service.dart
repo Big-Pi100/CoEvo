@@ -31,6 +31,8 @@
 // | `pullOnce` 在缺 `server_time` 时仍写游标 | 【8】缺 server_time 不推进 |
 // | `_applyBookmarks` 直接用远端值（不合并） | 【9】取消能同步 |
 // | `_applyUserWords` 改成整行取新 | 【10】例句取首次 |
+// | `SyncReport.pulledTotal` 去掉 `+ pulledBooks` / `+ claimedBooks` | 【9】书单变更计入 |
+// | `sync_status_provider` 写回 `pulledTotal + claimedBooks`（补丁复活）| 【9】双计（需人工核）|
 //
 // # ⚠️ 口径（如实标注）
 //
@@ -454,7 +456,13 @@ void main() async {
               'user_words',
               'article_reads',
               'bookmarks',
-              'book_progress'
+              // 🆕 2026-10-09：划线记忆（**必须与后端 `PushInput` 的键逐字一致**）
+              'highlights',
+              'book_progress',
+              // 🆕 2026-10-08 书架上云：书单。
+              // 🔴 它必须**先于文件上传**到达服务端 —— 否则
+              //    `book_blob_handler` 会以 400 拒绝（「这本书还没在书单里」）。
+              'books'
             }.toString(),
         '${body.keys.toList()}');
     check('顶层 `device_id` = 本机', body['device_id'] == 'dev-test');
@@ -700,6 +708,203 @@ void main() async {
     await userDb2.close();
     await bookDb.close();
     await bookDb2.close();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  section('【9】🔴 `pulledTotal` 必须覆盖**所有**写进本地库的项');
+  // ══════════════════════════════════════════════════════════════════════
+  //
+  // # 为什么这条重要（2026-10-09 实测踩到）
+  //
+  // `pulledTotal` 是调用方判断「**本轮本地库变了没有**」的唯一依据：
+  //   · `isEmpty` —— 决定要不要打日志 / 给 UI 提示；
+  //   · `_runSync` 的 **revision bump 判据** —— 变了才让界面重算；
+  //   · 状态面板的 `lastPulled`。
+  //
+  // 🔴 它原先**漏了 `pulledBooks` 与 `claimedBooks`**（这两项是「书架上云」
+  //    之后才加的，而 getter 没跟着更新）。后果**完全静默**：
+  //    云端备份被清理（`blob_size → 0`）**只会计到 `pulledBooks`**
+  //    ⇒ `pulledTotal == 0` ⇒ 被判成「什么都没做」
+  //    ⇒ **界面不刷新**（书架仍显示「云端有」、点下载 404）。
+  //
+  // ⚠️ 所以断言必须**逐项**做：给每一项单独 +1，`pulledTotal` 都要跟着 +1。
+  //    只验「> 0」会漏掉「某一项没被算进去」—— 那正是本次踩到的形状。
+  {
+    check('空 report 的 pulledTotal == 0', SyncReport().pulledTotal == 0,
+        '实测 ${SyncReport().pulledTotal}');
+
+    void expectCounted(String name, void Function(SyncReport) setOne) {
+      final r = SyncReport();
+      setOne(r);
+      check('  `$name` 计入 pulledTotal', r.pulledTotal == 1,
+          '实测 ${r.pulledTotal}（应为 1）');
+    }
+
+    expectCounted('pulledReviewEvents', (r) => r.pulledReviewEvents = 1);
+    expectCounted('pulledUserWords', (r) => r.pulledUserWords = 1);
+    expectCounted('pulledArticleReads', (r) => r.pulledArticleReads = 1);
+    expectCounted('pulledBookmarks', (r) => r.pulledBookmarks = 1);
+    expectCounted('pulledBookProgress', (r) => r.pulledBookProgress = 1);
+    expectCounted('pulledBooks', (r) => r.pulledBooks = 1);
+    expectCounted('claimedBooks', (r) => r.claimedBooks = 1);
+
+    // 🔴 最关键的一条：**「只拉回了书单变更」不能被判成「什么都没做」**
+    //    —— 这正是「云端备份清理」生效时的形状（唯一变更项就是 `blob_size`）。
+    final onlyBooks = SyncReport()..pulledBooks = 1;
+    check('🔴 只拉回书单变更 ⇒ `isEmpty` 必须为 false（清理生效时的形状）',
+        !onlyBooks.isEmpty,
+        '若为 true ⇒ 不打日志、不 bump ⇒ 用户看不到「云端备份已释放」');
+
+    // ⚠️ 反向：`pushedTotal` **不该**被这次补全带上 `pulledBooks`
+    //    （push 与 pull 是两个方向，混在一起会让「推了 0 条」看起来像推了东西）。
+    final pushOnly = SyncReport()..pulledBooks = 1;
+    check('🔴 `pushedTotal` 与 pull 无关（不得被带进来）',
+        pushOnly.pushedTotal == 0, '实测 ${pushOnly.pushedTotal}');
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  section('【13】🆕 划线（highlight）：推得出去 / 合得进来（真库行为断言）');
+  //
+  // 🔴 本节守的是一个**真实缺口**（2026-10-09）：此前 `review_log`（复习事件）同步，
+  //    而 `highlight`（划线**本体**）不参与 ⇒ 重装 / 换机的设备拿到「**无主划线卡**」：
+  //    标题显示成 `hl:<uuid>`、点「暂停」静默无反应、界面上没有出口能去掉它。
+  //    📌 判据：**同步的粒度必须覆盖「引用关系」**。
+  //
+  // ⚠️ 契约键名/接线在 `verify_sync.dart`；这里是**真库跑一遍**（本机可跑的那一层）。
+  {
+    // ── push：本地一条待推划线 ──
+    final db = await _openUserDb();
+    await db.insert('highlight', {
+      'id': 'h-be',
+      'source_type': 'article',
+      'source_id': '42',
+      'chapter_idx': null,
+      'start_offset': 1,
+      'end_offset': 9,
+      'text': 'be careful',
+      'note': '记一下',
+      'created_at': '2026-10-01T00:00:00.000Z',
+      'updated_at': '2026-10-02T00:00:00.000Z',
+      'deleted': 0,
+      'pending_push': 1,
+      'paused': 1,
+    });
+    final x = _mk(db);
+    final r = await x.svc.pushOnce();
+    check('🔴 划线被推出去（不推 ⇒ 别端永远拿不到划线本体 ⇒ 无主卡）',
+        r.pushedHighlights == 1, '$r');
+    final body = x.http.pushBodies.first;
+    final hl = (body['highlights'] as List).first as Map;
+    check(
+      '`highlights[0]` 键集合 = 后端 `HighlightInput`',
+      hl.keys.toSet().toString() ==
+          {
+            'id',
+            'source_type',
+            'source_id',
+            'chapter_idx',
+            'start_offset',
+            'end_offset',
+            'text',
+            'note',
+            'paused',
+            'deleted',
+            'created_at',
+            'updated_at'
+          }.toString(),
+      '${hl.keys.toList()}',
+    );
+    check('🔴 `paused = 1` 带出去（漏 ⇒「A 暂停、换台设备又回来」）', hl['paused'] == 1);
+    check('`note` 带出去（漏 ⇒ 笔记不跨设备）', hl['note'] == '记一下');
+    check('`chapter_idx` 是 null（文章没有章节号，**不是 0**）', hl['chapter_idx'] == null);
+    check(
+      'push 成功后标记已同步（漏 ⇒ 每次同步都重推全量）',
+      (await db.query('highlight', where: "id = 'h-be'")).first['pending_push'] == 0,
+    );
+    await db.close();
+  }
+  {
+    // ── pull：别端的划线合并进本地（本地没有这一行）──
+    final db = await _openUserDb();
+    final y = _mk(db);
+    y.http.pullResponse = {
+      'server_time': '2026-10-09T12:00:00.000Z',
+      'highlights': [
+        {
+          'id': 'h-from-b',
+          'source_type': 'book',
+          'source_id': 'book-uuid-1',
+          'chapter_idx': 3,
+          'start_offset': 100,
+          'end_offset': 140,
+          'text': 'the quick brown fox',
+          'note': null,
+          'paused': 0,
+          'deleted': 0,
+          'created_at': '2026-10-03T00:00:00.000Z',
+          'updated_at': '2026-10-04T00:00:00.000Z',
+        },
+      ],
+    };
+    final r = await y.svc.pullOnce();
+    check('🔴 划线写进了本地 `highlight`（拿不到就是「无主卡」）',
+        r.pulledHighlights == 1, '$r');
+    final row = (await db.query('highlight', where: "id = 'h-from-b'")).first;
+    check('字段落库正确',
+        row['text'] == 'the quick brown fox' && row['chapter_idx'] == 3,
+        '${row['text']} / ${row['chapter_idx']}');
+    check('🔴 `pending_push = 0`（服务端已知的数据不回声）', row['pending_push'] == 0);
+    check('🔴 计入 `pulledTotal`（否则「只拉回笔记」会被判成「什么都没做」）',
+        r.pulledTotal >= 1, '$r');
+    await db.close();
+  }
+  {
+    // ── pull 合并：本地已推 + 别端**更新**（意愿生效、首次事实不动）──
+    final db = await _openUserDb();
+    await db.insert('highlight', {
+      'id': 'h-merge',
+      'source_type': 'article',
+      'source_id': '42',
+      'chapter_idx': null,
+      'start_offset': 1,
+      'end_offset': 9,
+      'text': '原文',
+      'note': null,
+      'created_at': '2026-10-01T00:00:00.000Z',
+      'updated_at': '2026-10-01T00:00:00.000Z',
+      'deleted': 0,
+      'pending_push': 0,
+      'paused': 0,
+    });
+    final z = _mk(db);
+    z.http.pullResponse = {
+      'server_time': '2026-10-09T12:00:00.000Z',
+      'highlights': [
+        {
+          'id': 'h-merge',
+          'source_type': 'article',
+          'source_id': '42',
+          'chapter_idx': null,
+          'start_offset': 999,
+          'end_offset': 1005,
+          'text': '被改写的',
+          'note': '别端写的',
+          'paused': 1,
+          'deleted': 0,
+          'created_at': '2026-10-05T00:00:00.000Z', // ⚠️ 更晚 ⇒ 不算「首次事实」
+          'updated_at': '2026-10-06T00:00:00.000Z', // ✅ 更新 ⇒ 意愿生效
+        },
+      ],
+    };
+    await z.svc.pullOnce();
+    final row = (await db.query('highlight', where: "id = 'h-merge'")).first;
+    check('🔴 意愿生效：`paused = 1`（暂停跨设备）', row['paused'] == 1, '${row['paused']}');
+    check('🔴 意愿生效：`note` 写入', row['note'] == '别端写的', '${row['note']}');
+    check('🔴 首次事实不动：`text` 仍是本地的原文', row['text'] == '原文', '${row['text']}');
+    check('🔴 首次事实不动：offsets 仍是本地的',
+        row['start_offset'] == 1, '${row['start_offset']}');
+    check('本地已推 + 无新事实 ⇒ 不标待推（防回声）', row['pending_push'] == 0);
+    await db.close();
   }
 
   print('');

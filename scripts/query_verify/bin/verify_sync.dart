@@ -106,6 +106,9 @@ void main() {
     'sync_user_word',
     'sync_article_read',
     'sync_bookmark',
+    // 🆕 2026-10-09：划线记忆。加进这份清单后，下面的「建表存在」「主键以 user_id 打头」
+    //    「pull 索引」「注销清单」四组断言**自动**覆盖它（不必逐条复制）。
+    'sync_highlight',
     'sync_book_progress',
   ];
 
@@ -233,6 +236,9 @@ void main() {
   final appDart = stripComments(readFile('../../app/lib/app.dart'));
   final profile = stripComments(readFile('../../app/lib/screens/profile_screen.dart'));
   final syncProvider = stripComments(readFile('../../app/lib/providers/sync_provider.dart'));
+  final syncService = stripComments(readFile('../../app/lib/services/sync_service.dart'));
+  final wordDbProvider =
+      stripComments(readFile('../../app/lib/providers/word_db_provider.dart'));
 
   // ── 登录 → 触发同步 ──
   final loginHook = between(appDart,
@@ -302,12 +308,231 @@ void main() {
       lifecycle.contains('mounted'));
   check('🔑 provider 有 `pushWhenAppPaused`（只推不拉）',
       syncProvider.contains('void pushWhenAppPaused(WidgetRef ref)'));
-  check('🔑 `flushBeforeLogout` 与它**共用**同一个实现（口径一处）',
-      syncProvider.contains('void pushWhenAppPaused') &&
-          syncProvider.contains("=> _pushOnly(ref, '登出前 flush')"),
-      '两处各写一份 ⇒ 改一处漏一处');
-  check('🔑 进后台走 `pushOnce`（**不** pull —— 进后台不是取新数据的时机）',
-      RegExp(r'final report = await svc\.pushOnce\(\);').hasMatch(syncProvider));
+  // 🔑 锁**意图**（「两个入口共用同一个执行函数」），**不锁那个函数的拼写**。
+  //
+  // 🔴 2026-10-09 实测踩到：该实现由 `_pushOnly` **并入** `_runSync`
+  //    （新版要在同一个地方上报同步状态），而原断言写死了
+  //    `=> _pushOnly(ref, '登出前 flush')` ⇒ 断言**假红**，而它要守的
+  //    「口径一处」**根本没变**。
+  //    📌 判据（项目已记）：**断言跟「意图」走、不跟「文件/拼写」走** ——
+  //       改实现（合并两个函数）不该让「它们共用一处」这条变红。
+  //    ✅ 修法：从两个函数的**各自切片**里把被调用的那个函数名抽出来，比较是否相同。
+  /// 取出 `fnDecl` 这个函数体里调用的**内部执行函数名**（形如 `_runSync`）。
+  String executorOf(String fnDecl) {
+    final seg = between(syncProvider, fnDecl, '\n\n');
+    return RegExp(r'_(\w+)\(ref, tag:').firstMatch(seg)?.group(1) ?? '';
+  }
+
+  final flushExecutor = executorOf('Future<void> flushBeforeLogout');
+  final pausedExecutor = executorOf('void pushWhenAppPaused');
+  check(
+    '🔑 `flushBeforeLogout` 与「进后台」**共用**同一个执行函数（口径一处）',
+    flushExecutor.isNotEmpty && flushExecutor == pausedExecutor,
+    '实测 flush→_$flushExecutor · paused→_$pausedExecutor',
+  );
+  // 🔑 「进后台 = 只推不拉」由两段共同保证：**标记**（`pushOnly: true`）
+  //    + **映射**（该标记必须落到 `pushOnce`，不是 `syncNow`）。
+  //    ⚠️ 下面这条是**有意的形状锁定**：若把三元重构成 `if`，请连同它一起改，
+  //       **不要**删掉 —— 删了就没有任何东西守着「进后台别去拉数据」了。
+  final pushWhenPaused = between(syncProvider, 'void pushWhenAppPaused', '\n\n');
+  check(
+    '🔑 进后台标记为「只推」（`pushOnly: true` —— 进后台不是取新数据的时机）',
+    pushWhenPaused.contains('pushOnly: true'),
+  );
+  check(
+    '🔑 该标记真的落到 `pushOnce`（不是 `syncNow`）',
+    syncProvider.contains('pushOnly ? await svc.pushOnce() : await svc.syncNow()'),
+  );
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 【2026-10-09】🔴 pull 之后**必须**通知读端（revision bump）
+  //
+  // # 为什么（这条是**真缺陷**的回归防线）
+  //
+  // pull 会把远端数据写进本地 `user.db` / `book.db`，而此前**没有任何地方**
+  // 通知界面重算 ⇒ 表现是「**同步成功了，界面就是不更新**」，且**不报错**：
+  //   · 云端备份被清理（`blob_size → 0`）⇒ 书架仍显示「云端有」⇒ 点下载 **404**
+  //   · 别端的生词 / 复习记录 ⇒ 要等**别的动作**（下载书 / 划线 / 查词）碰巧 bump
+  //     —— 而那些动作与同步毫无关系
+  //
+  // 🔑 判据：**「写端逐个通知读端」是必漏结构，要让读端 watch 一个 revision**
+  //    （`bump()` 早就存在，只是一直没人调）。
+  //
+  // ⚠️ 三条都要锁到**具体表达式**：这一族是「接线」断言 ——
+  //    只查「有没有出现 bump」的话，**换成一个永不触发的回调也照样通过**。
+  //
+  // # 证伪方式
+  // · 删掉 `_runSync` 里那两行 `bump()` ⇒ 前两条必红
+  // · 把 `!pushOnly &&` 去掉 ⇒ 第三条必红（进后台会白刷一遍）
+  // ══════════════════════════════════════════════════════════════════════
+  check(
+    '🔴 pull 后 bump `userDbRevisionProvider`（生词/复习/划线等读端要重算）',
+    syncProvider.contains('userDbRevisionProvider.notifier).bump()'),
+    '否则拉回来的学习数据写进了库、界面却不刷新（静默）',
+  );
+  check(
+    '🔴 pull 后 bump `bookDbRevisionProvider`（书架读端要重算）',
+    syncProvider.contains('bookDbRevisionProvider.notifier).bump()'),
+    '否则云端备份被清理后，书架仍显示「云端有」⇒ 点下载 404',
+  );
+  check(
+    '🔴 只在「真拉回东西」时 bump，且 `pushOnly`（只推不拉）不 bump',
+    syncProvider.contains('!pushOnly && report.pulledTotal > 0'),
+    '无条件 bump ⇒ 每次后台同步都白刷；改用漏项的字段 ⇒ 书单变更会被漏掉',
+  );
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 【2026-10-09】🔴 复习列表标题变成内部 ID（`w000129` / `hl:<uuid>` / `ext:fixtures`）
+  //
+  // 根因链（详见 `docs/review/review-list-spelling-id-pollution-2026-10-09.md`）：
+  //   ① 列表标题读 `card_review_state.spelling`（`review_list_query.dart`）
+  //   ② pull 复习事件时逐词重算拼写，用 `INSERT OR REPLACE` **整行覆盖**
+  //   ③ 旧实现解析不出时 **`return wordId`** ⇒ 占位被**持久化**成标题
+  //   ④ 且 pull 里 `_applyReviewEvents` 排在 `_applyUserWords` **之前**
+  //      ⇒ 同一次 pull 里那份正确拼写还没落库 ⇒ 解析**必然**失败
+  //
+  // ⚠️ 行为级断言在 `verify_review_spelling.dart`（真库，27 项）；
+  //    这里只锁**接线**（顺序 / 谁调用谁）——那是行为断言看不到的部分。
+  //
+  // # 证伪方式
+  // · 把 pull 两行**对调**回去 ⇒ 顺序断言必红
+  // · 让 `_spellingFor` 恢复 `return wordId` ⇒ 兜底断言必红
+  // · 删掉 `_repairStaleSpellings(...)` 那行 ⇒ 自愈接线断言必红
+  // · 把它挪进 `if (result.didWrite) { }` 里 ⇒ 「不在块内」必红
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    final iWords =
+        syncService.indexOf('r.pulledUserWords = await _applyUserWords(');
+    final iEvents =
+        syncService.indexOf('r.pulledReviewEvents = await _applyReviewEvents(');
+    check('🔴 pull 里 `user_words` 必须**先**落库（`review_events` 要拿它当拼写来源）',
+        iWords >= 0 && iEvents >= 0 && iWords < iEvents,
+        'words @$iWords · events @$iEvents —— events 在前 ⇒ 同一次 pull 里必然解析失败');
+
+    check('🔴 `_spellingFor` 委托**唯一**的解析器（不再自己查两级）',
+        syncService.contains('_spellingResolver.resolve(wordId)'));
+
+    // ⚠️ 判据要落在 `_spellingFor` 的**函数体切片**里，不能全文件扫 ——
+    //    调用点有一句 `resolved ?? currentRow?.spelling ?? wordId`（那是**有意**的），
+    //    全文件扫 `?? wordId` 会**假红**。
+    //    🔴 而只判「签名是不是 `Future<String?>`」又**太松**：
+    //       在体内写 `(await resolve(id)) ?? wordId` 签名不变、缺陷照样回来 ⇒ 假绿。
+    //    ⇒ 切片 + **哨兵**（截不到就自己红，不许静默退化成「扫到文件尾」）。
+    final spellingFn = between(
+        syncService, 'Future<String?> _spellingFor(', '\n  ReviewEvent? _eventFromPullJson');
+    check('切片有效（截到了 `_spellingFor` 函数体，没跑到文件尾）',
+        spellingFn.isNotEmpty && spellingFn.contains('_spellingResolver.resolve'),
+        '切片长 ${spellingFn.length}');
+    check('🔴 `_spellingFor` 体内**不得**再用 `word_id` 兜底（那会把显示问题变成数据污染）',
+        !spellingFn.contains('?? wordId') && !spellingFn.contains('return wordId'),
+        '兜底值经 `INSERT OR REPLACE` 会被持久化成列表标题');
+    check('🔴 返回类型保持可空（`Future<String?>`）—— 改回非空通常意味着兜底回来了',
+        !RegExp(r'Future<String>\s+_spellingFor').hasMatch(syncService));
+
+    check('🔴 调用点：解析不出时**保留原值**（不是把解析结果直接写进去）',
+        syncService.contains('resolved ?? currentRow?.spelling ?? wordId'));
+
+    check('🔴 拼写自愈已接线（词库就绪后跑）',
+        wordDbProvider.contains('await _repairStaleSpellings(ref, service)'));
+
+    final iDidWrite = wordDbProvider.indexOf('if (result.didWrite)');
+    final iRepair = wordDbProvider.indexOf('_repairStaleSpellings(ref, service)');
+    final iBlockEnd = iDidWrite >= 0 ? wordDbProvider.indexOf('}', iDidWrite) : -1;
+    check('🔴 自愈**不在** `didWrite` 块内（词库没变时同样要修）',
+        iDidWrite >= 0 && iRepair >= 0 && iBlockEnd >= 0 && iRepair > iBlockEnd,
+        'didWrite @$iDidWrite · 块尾 @$iBlockEnd · repair @$iRepair —— '
+            '进了块内 ⇒ 词库不更新时永远修不好');
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 【2026-10-09】🆕 划线纳入同步（`highlight` 表）
+  //
+  // # 为什么（这条守的是一个**真实缺口**）
+  //
+  // 此前 `review_log`（复习事件）参与同步，而 `highlight`（划线**本体**）不参与
+  // ⇒ 重装 / 换机 / 清数据的设备会拿到「**无主划线卡**」：
+  //   标题显示成 `hl:<uuid>`、点「暂停」静默无反应、界面上没有出口能去掉它。
+  // 📌 判据：**同步的粒度必须覆盖「引用关系」**。
+  //
+  // # 🔴 证伪方式（每条都要能红）
+  // · 删掉 push 里 `await hl.pending()` / `r.pushedHighlights = …` ⇒ 前两条必红
+  // · 从 `_buildPushBody` 的 map 里删掉 `'highlights'` ⇒ 必红
+  // · 删掉 `await hl.markSynced(…)` ⇒ 必红（会永远重推）
+  // · 把 `_applyHighlights` 挪到 `_applyReviewEvents` **之后** ⇒ 顺序断言必红
+  // · 把 `pulledHighlights` 从 `pulledTotal` 里删掉 ⇒ 必红
+  // · 让 `_applyHighlights` 改用 `HighlightRepository.add()` ⇒ 「不借业务方法」必红
+  // · 从后端 `max_received` 的表清单里删掉 `sync_highlight` ⇒ 必红
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    // ── push 侧 ──
+    check('push 收集待推划线（`HighlightRepository.pending()`）',
+        syncService.contains('await hl.pending()'));
+    check('push 计入 `pushedHighlights`（漏 ⇒ 「本轮只同步了笔记」被判成「什么都没做」）',
+        syncService.contains('r.pushedHighlights = highlights.length'));
+    check('push 请求体带 `highlights`（键名与后端 `PushInput` 一致）',
+        syncService.contains("'highlights': ["));
+    check('push 成功后标记已同步（漏 ⇒ 每次同步都重推全量）',
+        syncService.contains('await hl.markSynced(highlights.map((h) => h.id))'));
+    check('后端对 `highlights` 也做批量上限校验（防一次传百万条）',
+        sync.contains('check_batch_size("highlights"'),
+        '漏了它 ⇒ 超大批次不做保护直接进事务');
+
+    // ── pull 侧 ──
+    check('pull 解析 `highlights` 字段',
+        syncService.contains("_listOf(resp, 'highlights')"));
+    check('pull 调用 `_applyHighlights`',
+        syncService.contains('r.pulledHighlights = await _applyHighlights(highlights)'));
+
+    // 🔴 **顺序**：划线必须排在 `_applyReviewEvents` **之前**
+    //    （`ReviewSpellingResolver` 的第 ③ 级正是同库的 `highlight.text`）
+    final iHl = syncService.indexOf('r.pulledHighlights = await _applyHighlights(');
+    final iEv = syncService.indexOf('r.pulledReviewEvents = await _applyReviewEvents(');
+    check('🔴 pull 里划线必须**先**落库（复习事件要拿 `highlight.text` 当拼写来源）',
+        iHl >= 0 && iEv >= 0 && iHl < iEv,
+        'highlights @$iHl · events @$iEv —— events 在前 ⇒ 新设备上标题会先显示成 `hl:<uuid>`');
+
+    // 🔴 `pulledTotal` 必须含 `pulledHighlights`（切片 + 哨兵：截不到就自己红）
+    final reportCls =
+        between(syncService, 'class SyncReport {', '/// 同步编排器。');
+    check('切片有效（截到了 `SyncReport` 类体，没跑到文件尾）',
+        reportCls.isNotEmpty && reportCls.contains('pulledTotal'),
+        '切片长 ${reportCls.length}');
+    check('🔴 `pulledTotal` 含 `pulledHighlights`（漏 ⇒ 只拉回笔记时不算「有变化」）',
+        reportCls.contains('pulledHighlights +'));
+    check('🔴 `pushedTotal` 含 `pushedHighlights`',
+        reportCls.contains('pushedHighlights +'));
+
+    // ── `_applyHighlights` 的函数体（切片 + 哨兵）──
+    final applyFn = between(
+        syncService, 'Future<int> _applyHighlights(', 'Future<void> _upsertHighlight(');
+    check('切片有效（截到了 `_applyHighlights` 函数体）',
+        applyFn.isNotEmpty && applyFn.contains('m.mergeHighlight'),
+        '切片长 ${applyFn.length}');
+    check('🔴 走**直写**（`_upsertHighlight`），不借业务方法 `add()`',
+        applyFn.contains('_upsertHighlight(merged)') &&
+            !applyFn.contains('.add('),
+        '`add()` 会把 `deleted`/`paused` 归零 ⇒ 别端取消的划线在本地**复活**');
+    check('🔴 合并前**取整行**本地数据（少取一列会让「首次事实」被 `null` 静默覆盖）',
+        applyFn.contains("query('highlight', where: 'id = ?'"),
+        '只 SELECT 几列的话，`mergeHighlight` 读不到的键返回 `null` ⇒ 真值被覆盖');
+    check('`pending_push` 由 `pendingPushAfterPull` 决定（同其余表，防回声）',
+        applyFn.contains('m.pendingPushAfterPull('));
+
+    // ── 后端 pull：`server_time` 的取数表清单必须含划线 ──
+    check('🔴 `max_received` 的表清单含 `sync_highlight`',
+        sync.contains('MAX(received_at) FROM sync_highlight'),
+        '漏了它 ⇒ 只写划线时 `server_time` 不前进 ⇒ 同一批被**反复重拉**');
+
+    // ── 后端 pull 查询存在（否则 pull 永远返回空数组）──
+    check('后端 pull 有 `sync_highlight` 的查询',
+        sync.contains('FROM sync_highlight') &&
+            sync.contains('WHERE user_id = ?1 AND received_at > ?2'));
+
+    // ── 后端 push 的 `source_type` 校验（错值要回 400 不是 500）──
+    check('🔴 后端校验 `source_type` 枚举并回 400',
+        sync.contains('只能是 article / book'),
+        '只靠表上的 CHECK ⇒ 抛 rusqlite 错 ⇒ 映射成 500 ⇒ 客户端无限重试');
+  }
 
   // ── 登出确认文案（同步上线后原话已不完整）──
   check(
@@ -315,7 +540,6 @@ void main() {
     profile.contains('已同步到云端的数据也仍保留'),
     '—— 同步上线后「只保存在本机」不准确；且退出**不会**删除云端那份',
   );
-
   _report();
 }
 
